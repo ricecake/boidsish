@@ -63,25 +63,43 @@ struct Visualizer::VisualizerImpl {
             throw std::runtime_error("Failed to initialize GLFW");
         }
 
-        // Set OpenGL version and profile
-        glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
-        glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
-        glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
+        // Set error callback to get more info
+        glfwSetErrorCallback([](int error, const char* description) {
+            std::cerr << "GLFW Error " << error << ": " << description << std::endl;
+        });
 
-        // For macOS compatibility
-        glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE);
+        // Use more flexible OpenGL settings for better compatibility
+        glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 2);
+        glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 1);
+        glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_ANY_PROFILE);
+
+        // For macOS - try without forward compatibility first
+        glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_FALSE);
 
         window = glfwCreateWindow(width, height, title, nullptr, nullptr);
         if (!window) {
-            glfwTerminate();
-            throw std::runtime_error("Failed to create GLFW window");
+            std::cerr << "Failed to create window with OpenGL 2.1, trying with default settings..." << std::endl;
+
+            // Reset hints and try with default OpenGL
+            glfwDefaultWindowHints();
+            window = glfwCreateWindow(width, height, title, nullptr, nullptr);
+
+            if (!window) {
+                std::cerr << "Failed to create window with default settings" << std::endl;
+                glfwTerminate();
+                throw std::runtime_error("Failed to create GLFW window - check OpenGL drivers");
+            }
         }
 
         glfwMakeContextCurrent(window);
 
-        // Initialize GLEW
-        if (glewInit() != GLEW_OK) {
-            throw std::runtime_error("Failed to initialize GLEW");
+        // Initialize GLEW (optional for basic OpenGL)
+        GLenum glew_status = glewInit();
+        if (glew_status != GLEW_OK) {
+            std::cerr << "GLEW initialization failed: " << glewGetErrorString(glew_status) << std::endl;
+            std::cerr << "Continuing without GLEW - basic OpenGL should still work" << std::endl;
+        } else {
+            std::cout << "GLEW initialized successfully" << std::endl;
         }
 
         // Set up callbacks
@@ -97,7 +115,10 @@ struct Visualizer::VisualizerImpl {
         glEnable(GL_DEPTH_TEST);
         glEnable(GL_BLEND);
         glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-        glEnable(GL_PROGRAM_POINT_SIZE);
+
+        // Check OpenGL version
+        const GLubyte* version = glGetString(GL_VERSION);
+        std::cout << "OpenGL Version: " << version << std::endl;
 
         // Set background color (black for holodeck effect)
         glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
@@ -117,22 +138,19 @@ struct Visualizer::VisualizerImpl {
         glLoadIdentity();
 
         float aspect = static_cast<float>(width) / static_cast<float>(height);
-        float fov_rad = camera.fov * M_PI / 180.0f;
-        float f = 1.0f / tan(fov_rad / 2.0f);
 
-        // Manual perspective matrix setup
-        float near_plane = 0.1f;
-        float far_plane = 1000.0f;
+        // Use simpler perspective setup that's more compatible
+        glViewport(0, 0, width, height);
 
-        float perspective[16] = {
-            f / aspect, 0, 0, 0,
-            0, f, 0, 0,
-            0, 0, (far_plane + near_plane) / (near_plane - far_plane),
-            (2 * far_plane * near_plane) / (near_plane - far_plane),
-            0, 0, -1, 0
-        };
+        // Simple perspective using similar approach to gluPerspective
+        float fovy = camera.fov;
+        float zNear = 0.1f;
+        float zFar = 1000.0f;
 
-        glLoadMatrixf(perspective);
+        float fH = tan(fovy / 360.0f * M_PI) * zNear;
+        float fW = fH * aspect;
+
+        glFrustum(-fW, fW, -fH, fH, zNear, zFar);
     }
 
     void SetupCamera() {
@@ -239,6 +257,16 @@ struct Visualizer::VisualizerImpl {
         glBegin(GL_POINTS);
         glColor4f(dot.r, dot.g, dot.b, dot.a);
         glVertex3f(dot.x, dot.y, dot.z);
+        glEnd();
+
+        // Also draw as a small quad for better visibility
+        float half_size = dot.size * 0.02f;
+        glBegin(GL_QUADS);
+        glColor4f(dot.r, dot.g, dot.b, dot.a);
+        glVertex3f(dot.x - half_size, dot.y - half_size, dot.z);
+        glVertex3f(dot.x + half_size, dot.y - half_size, dot.z);
+        glVertex3f(dot.x + half_size, dot.y + half_size, dot.z);
+        glVertex3f(dot.x - half_size, dot.y + half_size, dot.z);
         glEnd();
     }
 
@@ -354,6 +382,16 @@ void Visualizer::Render() {
     // Render dots and trails
     if (impl->dot_function) {
         std::vector<Dot> dots = impl->dot_function(time);
+
+        static bool first_render = true;
+        if (first_render) {
+            std::cout << "Rendering " << dots.size() << " dots" << std::endl;
+            if (!dots.empty()) {
+                std::cout << "First dot: pos(" << dots[0].x << ", " << dots[0].y << ", " << dots[0].z
+                         << ") color(" << dots[0].r << ", " << dots[0].g << ", " << dots[0].b << ")" << std::endl;
+            }
+            first_render = false;
+        }
 
         for (size_t i = 0; i < dots.size(); ++i) {
             const Dot& dot = dots[i];
