@@ -79,6 +79,14 @@ public:
     EntityHandler() : last_time_(-1.0f), next_id_(0) {}
     virtual ~EntityHandler() = default;
 
+    // Delete copy constructor and assignment operator since we contain unique_ptr
+    EntityHandler(const EntityHandler&) = delete;
+    EntityHandler& operator=(const EntityHandler&) = delete;
+
+    // Enable move semantics
+    EntityHandler(EntityHandler&&) = default;
+    EntityHandler& operator=(EntityHandler&&) = default;
+
     // Operator() to make this compatible with DotFunction
     std::vector<Dot> operator()(float time);
 
@@ -101,8 +109,8 @@ public:
 
 protected:
     // Override these for custom behavior
-    virtual void PreTimestep(float time, float delta_time) {}
-    virtual void PostTimestep(float time, float delta_time) {}
+    virtual void PreTimestep(float time, float delta_time) { (void)time; (void)delta_time; }
+    virtual void PostTimestep(float time, float delta_time) { (void)time; (void)delta_time; }
 
 private:
     std::map<int, std::unique_ptr<Entity>> entities_;

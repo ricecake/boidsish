@@ -573,10 +573,6 @@ Visualizer::~Visualizer() {
     delete impl;
 }
 
-void Visualizer::SetDotFunction(DotFunction func) {
-    impl->dot_function = func;
-}
-
 void Visualizer::SetDotHandler(DotFunction func) {
     impl->dot_function = func;
 }
