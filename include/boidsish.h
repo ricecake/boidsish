@@ -162,6 +162,9 @@ struct Dot {
 // Function type for user-defined dot generation
 using DotFunction = std::function<std::vector<Dot>(float time)>;
 
+// Forward declaration for Entity class
+class EntityHandler;
+
 // Base entity class for the entity system
 class Entity {
 public:
@@ -170,7 +173,7 @@ public:
     virtual ~Entity() = default;
 
     // Called each frame to update the entity
-    virtual void UpdateEntity(float time, float delta_time) = 0;
+    virtual void UpdateEntity(EntityHandler& handler, float time, float delta_time) = 0;
 
     // Getters and setters
     int GetId() const { return id_; }
@@ -246,6 +249,29 @@ public:
     Entity* GetEntity(int id) {
         auto it = entities_.find(id);
         return (it != entities_.end()) ? it->second.get() : nullptr;
+    }
+
+    // Get all entities (for iteration)
+    const std::map<int, std::unique_ptr<Entity>>& GetAllEntities() const {
+        return entities_;
+    }
+
+    // Get entities by type (template method)
+    template<typename T>
+    std::vector<T*> GetEntitiesByType() {
+        std::vector<T*> result;
+        for (auto& pair : entities_) {
+            T* typed_entity = dynamic_cast<T*>(pair.second.get());
+            if (typed_entity) {
+                result.push_back(typed_entity);
+            }
+        }
+        return result;
+    }
+
+    // Get total entity count
+    size_t GetEntityCount() const {
+        return entities_.size();
     }
 
 protected:

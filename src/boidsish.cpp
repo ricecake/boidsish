@@ -698,7 +698,7 @@ std::vector<Dot> EntityHandler::operator()(float time) {
     // Update all entities
     for (auto& entity_pair : entities_) {
         Entity* entity = entity_pair.second.get();
-        entity->UpdateEntity(time, delta_time);
+        entity->UpdateEntity(*this, time, delta_time);
     }
 
     // Call post-timestep hook
