@@ -3,26 +3,52 @@
 #include <cmath>
 #include <iostream>
 #include <functional>
+#include <algorithm>
+#include <ranges>
 
 using namespace Boidsish;
 
-// Example entity that demonstrates Vector3 operations
+
 class VectorDemoEntity : public Entity {
 public:
-    VectorDemoEntity(int id, const Vector3& start_pos, const Vector3& target)
-        : Entity(id), target_(target), start_pos_(start_pos), phase_(0.0f) {
+    VectorDemoEntity(int id, const Vector3& start_pos);
+    void UpdateEntity(EntityHandler& handler, float time, float delta_time) override;
+private:
+    float phase_;
+};
+
+class FlockingEntity : public Entity {
+public:
+    FlockingEntity(int id, const Vector3& start_pos);
+    void UpdateEntity(EntityHandler& handler, float time, float delta_time) override;
+private:
+    Vector3 CalculateSeparation(const std::vector<FlockingEntity*>& neighbors);
+    Vector3 CalculateAlignment(const std::vector<FlockingEntity*>& neighbors);
+    Vector3 CalculateCohesion(const std::vector<FlockingEntity*>& neighbors);
+};
+
+
+
+    VectorDemoEntity::VectorDemoEntity(int id, const Vector3& start_pos)
+        : Entity(id), phase_(0.0f) {
         SetPosition(start_pos);
         SetSize(8.0f);
         SetTrailLength(100);
     }
 
-    void UpdateEntity(EntityHandler& handler, float time, float delta_time) override {
+    void VectorDemoEntity::UpdateEntity(EntityHandler& handler, float time, float delta_time) {
         (void)handler; (void)time; // Mark unused parameters
         phase_ += delta_time;
+        Vector3 current_pos = GetPosition();
+
+        auto prey = handler.GetEntitiesByType<FlockingEntity>();
+        auto targetInstance = std::ranges::min(prey, std::ranges::less{}, [&](auto i){ return current_pos.DistanceTo(i->GetPosition()); });
+        auto target = targetInstance->GetPosition();
+
+
 
         // Demonstrate various Vector3 operations
-        Vector3 current_pos = GetPosition();
-        Vector3 to_target = target_ - current_pos;
+        Vector3 to_target = target - current_pos;
 
         float distance_to_target = to_target.Magnitude();
 
@@ -40,13 +66,6 @@ public:
             Vector3 total_velocity = linear_vel + orbital_vel;
 
             SetVelocity(total_velocity);
-        } else {
-            // Reached target, pick a new random target
-            target_ = Vector3(
-                (rand() % 20 - 10) * 0.5f,
-                (rand() % 20 - 10) * 0.5f,
-                (rand() % 20 - 10) * 0.5f
-            );
         }
 
         // Color based on velocity magnitude and direction
@@ -60,16 +79,7 @@ public:
         SetColor(r, g, b, 1.0f);
     }
 
-private:
-    Vector3 target_;
-    Vector3 start_pos_;
-    float phase_;
-};
-
-// Example of using vector operations for flocking behavior
-class FlockingEntity : public Entity {
-public:
-    FlockingEntity(int id, const Vector3& start_pos) : Entity(id) {
+    FlockingEntity::FlockingEntity(int id, const Vector3& start_pos) : Entity(id) {
         SetPosition(start_pos);
         SetSize(5.0f);
         SetTrailLength(500);
@@ -82,7 +92,7 @@ public:
         SetVelocity(startVel);
     }
 
-    void UpdateEntity(EntityHandler& handler, float time, float delta_time) override {
+    void FlockingEntity::UpdateEntity(EntityHandler& handler, float time, float delta_time) {
         (void)time; (void)delta_time; // Mark unused parameters
 
         // Get all flocking entities from the handler
@@ -95,13 +105,22 @@ public:
         auto position = GetPosition();
         auto outering = position.Normalized();
         auto magSq = position.MagnitudeSquared();
-        auto centering = -outering * std::max(0.0f, magSq-25);
-        auto distance = centering + outering * std::min(0.0f, 1/(magSq-25));
+        auto centering = -outering * std::max(0.0f, magSq-36);
+        auto distance = centering + outering * std::min(0.0f, 1/(magSq-36));
 
-        logger::LOG("HERE", position.MagnitudeSquared(), std::max(0.0f, 9-magSq), std::min(0.0f, 1/magSq));
+
+        Vector3 pred;
+        auto avoids = handler.GetEntitiesByType<VectorDemoEntity>();
+        for (auto& a : avoids) {
+            auto pos = a->GetPosition();
+            auto dis = position.DistanceTo(pos);
+            auto dir = (position - pos).Normalized();
+            pred += dir * 1/dis;
+        }
+
 
         // Weight the flocking behaviors
-        Vector3 total_force = separation * 2.0f + alignment * 1.0f + cohesion * 1.0f + distance * 0.5f;
+        Vector3 total_force = separation * 2.0f + alignment * 1.0f + cohesion * 1.0f + distance * 0.5f + pred;
 
         // Add some random movement
         // Vector3 random_force(
@@ -124,9 +143,7 @@ public:
         SetColor(r, g, b, 1.0f);
     }
 
-private:
-
-    Vector3 CalculateSeparation(const std::vector<FlockingEntity*>& neighbors) {
+    Vector3 FlockingEntity::CalculateSeparation(const std::vector<FlockingEntity*>& neighbors) {
         Vector3 separation = Vector3::Zero();
         int count = 0;
         float separation_radius = 3.0f;
@@ -151,7 +168,7 @@ private:
         return separation;
     }
 
-    Vector3 CalculateAlignment(const std::vector<FlockingEntity*>& neighbors) {
+    Vector3 FlockingEntity::CalculateAlignment(const std::vector<FlockingEntity*>& neighbors) {
         Vector3 average_velocity = Vector3::Zero();
         int count = 0;
         float alignment_radius = 5.0f;
@@ -176,7 +193,7 @@ private:
         return Vector3::Zero();
     }
 
-    Vector3 CalculateCohesion(const std::vector<FlockingEntity*>& neighbors) {
+    Vector3 FlockingEntity::CalculateCohesion(const std::vector<FlockingEntity*>& neighbors) {
         Vector3 center_of_mass = Vector3::Zero();
         int count = 0;
         float cohesion_radius = 6.0f;
@@ -200,7 +217,6 @@ private:
         }
         return Vector3::Zero();
     }
-};
 
 // Handler for vector demonstration
 class VectorDemoHandler : public EntityHandler {
@@ -215,12 +231,7 @@ public:
                 0.0f,
                 0.0f
             );
-            Vector3 target(
-                (rand() % 10 - 5) * 2.0f,
-                (rand() % 10 - 5) * 2.0f,
-                (rand() % 10 - 5) * 2.0f
-            );
-            AddEntity<VectorDemoEntity>(start_pos, target);
+            AddEntity<VectorDemoEntity>(start_pos);
         }
 
         // Create a flock of entities
