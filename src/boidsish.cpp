@@ -16,7 +16,7 @@ struct Trail {
     std::deque<std::tuple<float, float, float, float>> positions; // x, y, z, alpha
     int max_length;
 
-    Trail(int length = 10) : max_length(length) {}
+    Trail(int length = 50) : max_length(length) {}
 
     void AddPosition(float x, float y, float z) {
         positions.push_back({x, y, z, 1.0f});
@@ -124,6 +124,22 @@ struct Visualizer::VisualizerImpl {
         glEnable(GL_DEPTH_TEST);
         glEnable(GL_BLEND);
         glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+        // Enable lighting for better sphere appearance
+        glEnable(GL_LIGHTING);
+        glEnable(GL_LIGHT0);
+        glEnable(GL_NORMALIZE); // Automatically normalize normals
+
+        // Set up a simple directional light
+        GLfloat light_pos[] = {1.0f, 1.0f, 1.0f, 0.0f}; // Directional light
+        GLfloat light_ambient[] = {0.2f, 0.2f, 0.2f, 1.0f};
+        GLfloat light_diffuse[] = {0.8f, 0.8f, 0.8f, 1.0f};
+        GLfloat light_specular[] = {1.0f, 1.0f, 1.0f, 1.0f};
+
+        glLightfv(GL_LIGHT0, GL_POSITION, light_pos);
+        glLightfv(GL_LIGHT0, GL_AMBIENT, light_ambient);
+        glLightfv(GL_LIGHT0, GL_DIFFUSE, light_diffuse);
+        glLightfv(GL_LIGHT0, GL_SPECULAR, light_specular);
 
         // Check OpenGL version
         const GLubyte* version = glGetString(GL_VERSION);
@@ -291,6 +307,7 @@ struct Visualizer::VisualizerImpl {
 
     void RenderGrid() {
         glDisable(GL_DEPTH_TEST);
+        glDisable(GL_LIGHTING); // Disable lighting for grid
         glLineWidth(1.0f);
 
         // Holodeck-style grid on z=0 plane
@@ -335,36 +352,78 @@ struct Visualizer::VisualizerImpl {
 
         glEnd();
         glEnable(GL_DEPTH_TEST);
+        glEnable(GL_LIGHTING); // Re-enable lighting after grid
     }
 
     void RenderDot(const Dot& dot) {
-        glPointSize(dot.size);
-        glBegin(GL_POINTS);
-        glColor4f(dot.r, dot.g, dot.b, dot.a);
-        glVertex3f(dot.x, dot.y, dot.z);
-        glEnd();
+        glPushMatrix();
+        glTranslatef(dot.x, dot.y, dot.z);
 
-        // Also draw as a small quad for better visibility
-        float half_size = dot.size * 0.02f;
-        glBegin(GL_QUADS);
+        float radius = dot.size * 0.01f; // Convert size to reasonable radius
         glColor4f(dot.r, dot.g, dot.b, dot.a);
-        glVertex3f(dot.x - half_size, dot.y - half_size, dot.z);
-        glVertex3f(dot.x + half_size, dot.y - half_size, dot.z);
-        glVertex3f(dot.x + half_size, dot.y + half_size, dot.z);
-        glVertex3f(dot.x - half_size, dot.y + half_size, dot.z);
+
+        // Draw sphere using triangulated approach
+        const int longitude_segments = 12;
+        const int latitude_segments = 8;
+
+        glBegin(GL_TRIANGLES);
+
+        for (int lat = 0; lat < latitude_segments; ++lat) {
+            float lat0 = M_PI * (-0.5f + (float)lat / latitude_segments);
+            float lat1 = M_PI * (-0.5f + (float)(lat + 1) / latitude_segments);
+
+            float y0 = sin(lat0) * radius;
+            float y1 = sin(lat1) * radius;
+            float r0 = cos(lat0) * radius;
+            float r1 = cos(lat1) * radius;
+
+            for (int lon = 0; lon < longitude_segments; ++lon) {
+                float lon0 = 2 * M_PI * (float)lon / longitude_segments;
+                float lon1 = 2 * M_PI * (float)(lon + 1) / longitude_segments;
+
+                float x0 = cos(lon0);
+                float z0 = sin(lon0);
+                float x1 = cos(lon1);
+                float z1 = sin(lon1);
+
+                // First triangle
+                glNormal3f(x0 * cos(lat0), sin(lat0), z0 * cos(lat0));
+                glVertex3f(x0 * r0, y0, z0 * r0);
+
+                glNormal3f(x1 * cos(lat0), sin(lat0), z1 * cos(lat0));
+                glVertex3f(x1 * r0, y0, z1 * r0);
+
+                glNormal3f(x1 * cos(lat1), sin(lat1), z1 * cos(lat1));
+                glVertex3f(x1 * r1, y1, z1 * r1);
+
+                // Second triangle
+                glNormal3f(x0 * cos(lat0), sin(lat0), z0 * cos(lat0));
+                glVertex3f(x0 * r0, y0, z0 * r0);
+
+                glNormal3f(x1 * cos(lat1), sin(lat1), z1 * cos(lat1));
+                glVertex3f(x1 * r1, y1, z1 * r1);
+
+                glNormal3f(x0 * cos(lat1), sin(lat1), z0 * cos(lat1));
+                glVertex3f(x0 * r1, y1, z0 * r1);
+            }
+        }
+
         glEnd();
+        glPopMatrix();
     }
 
     void RenderTrail(const Trail& trail, float r, float g, float b) {
         if (trail.positions.size() < 2) return;
 
+        glDisable(GL_LIGHTING); // Disable lighting for trails
         glBegin(GL_LINE_STRIP);
         for (const auto& pos : trail.positions) {
             float alpha = std::get<3>(pos);
-            glColor4f(r, g, b, alpha * 0.5f);
+            glColor4f(r, g, b, alpha);
             glVertex3f(std::get<0>(pos), std::get<1>(pos), std::get<2>(pos));
         }
         glEnd();
+        glEnable(GL_LIGHTING); // Re-enable lighting
     }
 
     static void KeyCallback(GLFWwindow* window, int key, int scancode, int action, int mods) {
