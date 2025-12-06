@@ -30,7 +30,7 @@ endif
 LIB_OBJ = ../src/boidsish.o
 
 # Targets
-EXAMPLES = advanced_examples
+EXAMPLES = advanced_examples entity_example
 
 all: $(EXAMPLES)
 
@@ -41,6 +41,9 @@ $(LIB_OBJ):
 # Build examples
 advanced_examples: advanced_examples.cpp $(LIB_OBJ)
 	$(CXX) $(CXXFLAGS) $(INCLUDES) advanced_examples.cpp $(LIB_OBJ) -o advanced_examples $(LDFLAGS) $(LIBS)
+
+entity_example: entity_example.cpp $(LIB_OBJ)
+	$(CXX) $(CXXFLAGS) $(INCLUDES) entity_example.cpp $(LIB_OBJ) -o entity_example $(LDFLAGS) $(LIBS)
 
 # Clean
 clean:

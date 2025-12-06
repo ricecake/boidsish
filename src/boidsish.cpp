@@ -577,6 +577,10 @@ void Visualizer::SetDotFunction(DotFunction func) {
     impl->dot_function = func;
 }
 
+void Visualizer::SetDotHandler(DotFunction func) {
+    impl->dot_function = func;
+}
+
 bool Visualizer::ShouldClose() const {
     return glfwWindowShouldClose(impl->window);
 }
@@ -682,6 +686,66 @@ Camera& Visualizer::GetCamera() {
 
 void Visualizer::SetCamera(const Camera& camera) {
     impl->camera = camera;
+}
+
+// EntityHandler implementation
+std::vector<Dot> EntityHandler::operator()(float time) {
+    float delta_time = 0.016f; // Default 60 FPS
+    if (last_time_ >= 0.0f) {
+        delta_time = time - last_time_;
+    }
+    last_time_ = time;
+
+    // Call pre-timestep hook
+    PreTimestep(time, delta_time);
+
+    // Update all entities
+    for (auto& entity_pair : entities_) {
+        Entity* entity = entity_pair.second.get();
+        entity->UpdateEntity(time, delta_time);
+    }
+
+    // Call post-timestep hook
+    PostTimestep(time, delta_time);
+
+    // Generate dots from entity states
+    std::vector<Dot> dots;
+    dots.reserve(entities_.size());
+
+    for (auto& entity_pair : entities_) {
+        int entity_id = entity_pair.first;
+        Entity* entity = entity_pair.second.get();
+
+        // Get or initialize absolute position for this entity
+        auto pos_it = entity_positions_.find(entity_id);
+        if (pos_it == entity_positions_.end()) {
+            entity_positions_[entity_id][0] = 0.0f;
+            entity_positions_[entity_id][1] = 0.0f;
+            entity_positions_[entity_id][2] = 0.0f;
+            pos_it = entity_positions_.find(entity_id);
+        }
+
+        // Integrate motion vector (entity position) with absolute position
+        float* abs_pos = pos_it->second;
+        abs_pos[0] += entity->GetX() * delta_time;
+        abs_pos[1] += entity->GetY() * delta_time;
+        abs_pos[2] += entity->GetZ() * delta_time;
+
+        // Get visual properties
+        float r, g, b, a;
+        entity->GetColor(r, g, b, a);
+
+        // Create dot at absolute position
+        dots.emplace_back(
+            entity->GetId(),
+            abs_pos[0], abs_pos[1], abs_pos[2],
+            entity->GetSize(),
+            r, g, b, a,
+            entity->GetTrailLength()
+        );
+    }
+
+    return dots;
 }
 
 } // namespace Boidsish
