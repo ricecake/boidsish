@@ -709,32 +709,22 @@ std::vector<Dot> EntityHandler::operator()(float time) {
     dots.reserve(entities_.size());
 
     for (auto& entity_pair : entities_) {
-        int entity_id = entity_pair.first;
         Entity* entity = entity_pair.second.get();
 
-        // Get or initialize absolute position for this entity
-        auto pos_it = entity_positions_.find(entity_id);
-        if (pos_it == entity_positions_.end()) {
-            entity_positions_[entity_id][0] = 0.0f;
-            entity_positions_[entity_id][1] = 0.0f;
-            entity_positions_[entity_id][2] = 0.0f;
-            pos_it = entity_positions_.find(entity_id);
-        }
-
-        // Integrate motion vector (entity position) with absolute position
-        float* abs_pos = pos_it->second;
-        abs_pos[0] += entity->GetX() * delta_time;
-        abs_pos[1] += entity->GetY() * delta_time;
-        abs_pos[2] += entity->GetZ() * delta_time;
+        // Update entity position using its velocity
+        float new_x = entity->GetXPos() + entity->GetXVel() * delta_time;
+        float new_y = entity->GetYPos() + entity->GetYVel() * delta_time;
+        float new_z = entity->GetZPos() + entity->GetZVel() * delta_time;
+        entity->SetPosition(new_x, new_y, new_z);
 
         // Get visual properties
         float r, g, b, a;
         entity->GetColor(r, g, b, a);
 
-        // Create dot at absolute position
+        // Create dot at entity's position
         dots.emplace_back(
             entity->GetId(),
-            abs_pos[0], abs_pos[1], abs_pos[2],
+            entity->GetXPos(), entity->GetYPos(), entity->GetZPos(),
             entity->GetSize(),
             r, g, b, a,
             entity->GetTrailLength()

@@ -18,13 +18,13 @@ public:
         // Update orbital angle
         angle_ += speed_ * delta_time;
 
-        // Calculate orbital position as velocity (motion vector)
-        float orbit_x = cos(angle_) * radius_;
-        float orbit_y = height_offset_ + sin(time * 0.5f) * 2.0f;
-        float orbit_z = sin(angle_) * radius_;
+        // Calculate orbital velocity (rate of change of position)
+        float vel_x = -sin(angle_) * radius_ * speed_;
+        float vel_y = height_offset_ * cos(time * 0.5f) * 0.5f * 1.0f; // Bobbing motion velocity with height offset
+        float vel_z = cos(angle_) * radius_ * speed_;
 
-        // Set position as motion vector (velocity per frame)
-        SetPosition(orbit_x, orbit_y, orbit_z);
+        // Set velocity for automatic position integration
+        SetVelocity(vel_x, vel_y, vel_z);
 
         // Dynamic color based on angle and time
         float r = 0.5f + 0.5f * sin(angle_ + time * 0.1f);

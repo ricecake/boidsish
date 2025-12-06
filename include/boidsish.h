@@ -38,16 +38,16 @@ public:
     // Getters and setters
     int GetId() const { return id_; }
 
-    // Position (used as motion vector by EntityHandler)
-    float GetX() const { return position_[0]; }
-    float GetY() const { return position_[1]; }
-    float GetZ() const { return position_[2]; }
+    // Absolute spatial position
+    float GetXPos() const { return position_[0]; }
+    float GetYPos() const { return position_[1]; }
+    float GetZPos() const { return position_[2]; }
     void SetPosition(float x, float y, float z) { position_[0] = x; position_[1] = y; position_[2] = z; }
 
-    // Velocity (motion vector per frame)
-    float GetVelX() const { return velocity_[0]; }
-    float GetVelY() const { return velocity_[1]; }
-    float GetVelZ() const { return velocity_[2]; }
+    // Spatial velocity per frame
+    float GetXVel() const { return velocity_[0]; }
+    float GetYVel() const { return velocity_[1]; }
+    float GetZVel() const { return velocity_[2]; }
     void SetVelocity(float vx, float vy, float vz) { velocity_[0] = vx; velocity_[1] = vy; velocity_[2] = vz; }
 
     // Visual properties
@@ -66,8 +66,8 @@ public:
 
 protected:
     int id_;
-    float position_[3];      // Current position (treated as motion vector)
-    float velocity_[3];      // Velocity per frame
+    float position_[3];      // Absolute spatial position
+    float velocity_[3];      // Spatial velocity per frame
     float size_;
     float color_[4];         // RGBA
     int trail_length_;
@@ -114,7 +114,6 @@ protected:
 
 private:
     std::map<int, std::unique_ptr<Entity>> entities_;
-    std::map<int, float[3]> entity_positions_; // Absolute positions for integration
     float last_time_;
     int next_id_;
 };
