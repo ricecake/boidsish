@@ -12,7 +12,7 @@ public:
         : Entity(id), target_(target), start_pos_(start_pos), phase_(0.0f) {
         SetPosition(start_pos);
         SetSize(8.0f);
-        SetTrailLength(60);
+        SetTrailLength(100);
     }
 
     void UpdateEntity(EntityHandler& handler, float time, float delta_time) override {
@@ -70,8 +70,15 @@ class FlockingEntity : public Entity {
 public:
     FlockingEntity(int id, const Vector3& start_pos) : Entity(id) {
         SetPosition(start_pos);
-        SetSize(6.0f);
-        SetTrailLength(40);
+        SetSize(5.0f);
+        SetTrailLength(500);
+        Vector3 startVel(
+            (rand() % 30-15) * 2.0f,
+            (rand() % 10-5) * 2.0f,
+            (rand() % 16-8) * 2.0f
+        );
+
+        SetVelocity(startVel);
     }
 
     void UpdateEntity(EntityHandler& handler, float time, float delta_time) override {
@@ -89,11 +96,11 @@ public:
 
         // Add some random movement
         Vector3 random_force(
-            (rand() % 200 - 100) / 100.0f,
-            (rand() % 200 - 100) / 100.0f,
-            (rand() % 200 - 100) / 100.0f
+            (rand() % 300 - 100) / 100.0f,
+            (rand() % 300 - 100) / 100.0f,
+            (rand() % 300 - 100) / 100.0f
         );
-        total_force += random_force * 0.3f;
+        total_force += random_force * 0.5f;
 
         SetVelocity(total_force);
 
@@ -208,7 +215,7 @@ public:
         }
 
         // Create a flock of entities
-        for (int i = 0; i < 8; i++) {
+        for (int i = 0; i < 800; i++) {
             Vector3 start_pos(
                 (rand() % 10 - 5) * 2.0f,
                 (rand() % 6 - 3) * 2.0f,
