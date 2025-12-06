@@ -4,8 +4,145 @@
 #include <functional>
 #include <map>
 #include <memory>
+#include <cmath>
 
 namespace Boidsish {
+
+// Generic 3D vector class with basic operations
+class Vector3 {
+public:
+    float x, y, z;
+
+    // Constructors
+    Vector3() : x(0.0f), y(0.0f), z(0.0f) {}
+    Vector3(float x, float y, float z) : x(x), y(y), z(z) {}
+
+    // Copy constructor and assignment
+    Vector3(const Vector3& other) = default;
+    Vector3& operator=(const Vector3& other) = default;
+
+    // Vector addition
+    Vector3 operator+(const Vector3& other) const {
+        return Vector3(x + other.x, y + other.y, z + other.z);
+    }
+
+    Vector3& operator+=(const Vector3& other) {
+        x += other.x; y += other.y; z += other.z;
+        return *this;
+    }
+
+    // Vector subtraction
+    Vector3 operator-(const Vector3& other) const {
+        return Vector3(x - other.x, y - other.y, z - other.z);
+    }
+
+    Vector3& operator-=(const Vector3& other) {
+        x -= other.x; y -= other.y; z -= other.z;
+        return *this;
+    }
+
+    // Scalar multiplication
+    Vector3 operator*(float scalar) const {
+        return Vector3(x * scalar, y * scalar, z * scalar);
+    }
+
+    Vector3& operator*=(float scalar) {
+        x *= scalar; y *= scalar; z *= scalar;
+        return *this;
+    }
+
+    // Scalar division
+    Vector3 operator/(float scalar) const {
+        float inv = 1.0f / scalar;
+        return Vector3(x * inv, y * inv, z * inv);
+    }
+
+    Vector3& operator/=(float scalar) {
+        float inv = 1.0f / scalar;
+        x *= inv; y *= inv; z *= inv;
+        return *this;
+    }
+
+    // Unary minus
+    Vector3 operator-() const {
+        return Vector3(-x, -y, -z);
+    }
+
+    // Magnitude (length)
+    float Magnitude() const {
+        return std::sqrt(x * x + y * y + z * z);
+    }
+
+    // Squared magnitude (for efficiency when comparing lengths)
+    float MagnitudeSquared() const {
+        return x * x + y * y + z * z;
+    }
+
+    // Normalize to unit length
+    Vector3 Normalized() const {
+        float mag = Magnitude();
+        if (mag > 0.0f) {
+            return *this / mag;
+        }
+        return Vector3(0, 0, 0);
+    }
+
+    // Normalize in place
+    void Normalize() {
+        float mag = Magnitude();
+        if (mag > 0.0f) {
+            *this /= mag;
+        }
+    }
+
+    // Dot product
+    float Dot(const Vector3& other) const {
+        return x * other.x + y * other.y + z * other.z;
+    }
+
+    // Cross product
+    Vector3 Cross(const Vector3& other) const {
+        return Vector3(
+            y * other.z - z * other.y,
+            z * other.x - x * other.z,
+            x * other.y - y * other.x
+        );
+    }
+
+    // Spherical angle difference (angle between two vectors in radians)
+    float AngleTo(const Vector3& other) const {
+        float dot_product = Dot(other);
+        float magnitudes = Magnitude() * other.Magnitude();
+        if (magnitudes > 0.0f) {
+            // Clamp to avoid floating point errors in acos
+            float cos_angle = std::max(-1.0f, std::min(1.0f, dot_product / magnitudes));
+            return std::acos(cos_angle);
+        }
+        return 0.0f;
+    }
+
+    // Distance to another vector
+    float DistanceTo(const Vector3& other) const {
+        return (*this - other).Magnitude();
+    }
+
+    // Set components
+    void Set(float x, float y, float z) {
+        this->x = x; this->y = y; this->z = z;
+    }
+
+    // Zero vector
+    static Vector3 Zero() { return Vector3(0, 0, 0); }
+    static Vector3 One() { return Vector3(1, 1, 1); }
+    static Vector3 Up() { return Vector3(0, 1, 0); }
+    static Vector3 Right() { return Vector3(1, 0, 0); }
+    static Vector3 Forward() { return Vector3(0, 0, 1); }
+};
+
+// Scalar multiplication (scalar * vector)
+inline Vector3 operator*(float scalar, const Vector3& vec) {
+    return vec * scalar;
+}
 
 // Structure representing a single dot/particle
 struct Dot {
@@ -28,7 +165,7 @@ using DotFunction = std::function<std::vector<Dot>(float time)>;
 // Base entity class for the entity system
 class Entity {
 public:
-    Entity(int id = 0) : id_(id), position_{0.0f, 0.0f, 0.0f}, velocity_{0.0f, 0.0f, 0.0f},
+    Entity(int id = 0) : id_(id), position_(0.0f, 0.0f, 0.0f), velocity_(0.0f, 0.0f, 0.0f),
                          size_(8.0f), color_{1.0f, 1.0f, 1.0f, 1.0f}, trail_length_(50) {}
     virtual ~Entity() = default;
 
@@ -39,16 +176,20 @@ public:
     int GetId() const { return id_; }
 
     // Absolute spatial position
-    float GetXPos() const { return position_[0]; }
-    float GetYPos() const { return position_[1]; }
-    float GetZPos() const { return position_[2]; }
-    void SetPosition(float x, float y, float z) { position_[0] = x; position_[1] = y; position_[2] = z; }
+    float GetXPos() const { return position_.x; }
+    float GetYPos() const { return position_.y; }
+    float GetZPos() const { return position_.z; }
+    const Vector3& GetPosition() const { return position_; }
+    void SetPosition(float x, float y, float z) { position_.Set(x, y, z); }
+    void SetPosition(const Vector3& pos) { position_ = pos; }
 
     // Spatial velocity per frame
-    float GetXVel() const { return velocity_[0]; }
-    float GetYVel() const { return velocity_[1]; }
-    float GetZVel() const { return velocity_[2]; }
-    void SetVelocity(float vx, float vy, float vz) { velocity_[0] = vx; velocity_[1] = vy; velocity_[2] = vz; }
+    float GetXVel() const { return velocity_.x; }
+    float GetYVel() const { return velocity_.y; }
+    float GetZVel() const { return velocity_.z; }
+    const Vector3& GetVelocity() const { return velocity_; }
+    void SetVelocity(float vx, float vy, float vz) { velocity_.Set(vx, vy, vz); }
+    void SetVelocity(const Vector3& vel) { velocity_ = vel; }
 
     // Visual properties
     float GetSize() const { return size_; }
@@ -66,8 +207,8 @@ public:
 
 protected:
     int id_;
-    float position_[3];      // Absolute spatial position
-    float velocity_[3];      // Spatial velocity per frame
+    Vector3 position_;       // Absolute spatial position
+    Vector3 velocity_;       // Spatial velocity per frame
     float size_;
     float color_[4];         // RGBA
     int trail_length_;

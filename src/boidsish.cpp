@@ -712,10 +712,8 @@ std::vector<Dot> EntityHandler::operator()(float time) {
         Entity* entity = entity_pair.second.get();
 
         // Update entity position using its velocity
-        float new_x = entity->GetXPos() + entity->GetXVel() * delta_time;
-        float new_y = entity->GetYPos() + entity->GetYVel() * delta_time;
-        float new_z = entity->GetZPos() + entity->GetZVel() * delta_time;
-        entity->SetPosition(new_x, new_y, new_z);
+        Vector3 new_position = entity->GetPosition() + entity->GetVelocity() * delta_time;
+        entity->SetPosition(new_position);
 
         // Get visual properties
         float r, g, b, a;

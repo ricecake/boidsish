@@ -18,13 +18,15 @@ public:
         // Update orbital angle
         angle_ += speed_ * delta_time;
 
-        // Calculate orbital velocity (rate of change of position)
-        float vel_x = -sin(angle_) * radius_ * speed_;
-        float vel_y = height_offset_ * cos(time * 0.5f) * 0.5f * 1.0f; // Bobbing motion velocity with height offset
-        float vel_z = cos(angle_) * radius_ * speed_;
+        // Calculate orbital velocity using Vector3
+        Vector3 orbital_velocity(
+            -sin(angle_) * radius_ * speed_,
+            height_offset_ * cos(time * 0.5f) * 0.5f * 1.0f, // Bobbing motion velocity with height offset
+            cos(angle_) * radius_ * speed_
+        );
 
         // Set velocity for automatic position integration
-        SetVelocity(vel_x, vel_y, vel_z);
+        SetVelocity(orbital_velocity);
 
         // Dynamic color based on angle and time
         float r = 0.5f + 0.5f * sin(angle_ + time * 0.1f);
