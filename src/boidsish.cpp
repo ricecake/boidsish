@@ -166,16 +166,18 @@ struct Visualizer::VisualizerImpl {
     void ProcessInput(float delta_time) {
         float camera_speed = 5.0f * delta_time;
 
-        // Calculate camera direction vectors
+        // Calculate camera direction vectors using standard FPS math
         float yaw_rad = camera.yaw * M_PI / 180.0f;
         float pitch_rad = camera.pitch * M_PI / 180.0f;
 
-        float forward_x = cos(yaw_rad) * cos(pitch_rad);
+        // Forward vector - where the camera is looking
+        float forward_x = cos(pitch_rad) * sin(yaw_rad);
         float forward_y = sin(pitch_rad);
-        float forward_z = sin(yaw_rad) * cos(pitch_rad);
+        float forward_z = -cos(pitch_rad) * cos(yaw_rad);
 
-        float right_x = cos(yaw_rad - M_PI/2);
-        float right_z = sin(yaw_rad - M_PI/2);
+        // Right vector - cross product of forward and world up (0,1,0)
+        float right_x = cos(yaw_rad);
+        float right_z = -sin(yaw_rad);
 
         // Movement
         if (keys[GLFW_KEY_W]) {
@@ -309,7 +311,7 @@ struct Visualizer::VisualizerImpl {
         }
 
         double xoffset = xpos - impl->last_mouse_x;
-        double yoffset = impl->last_mouse_y - ypos; // Reversed since y-coordinates range from bottom to top
+        double yoffset = ypos - impl->last_mouse_y; // Fixed: don't reverse Y
 
         impl->last_mouse_x = xpos;
         impl->last_mouse_y = ypos;
@@ -318,8 +320,8 @@ struct Visualizer::VisualizerImpl {
         xoffset *= sensitivity;
         yoffset *= sensitivity;
 
-        impl->camera.yaw += static_cast<float>(xoffset);
-        impl->camera.pitch += static_cast<float>(yoffset);
+        impl->camera.yaw -= static_cast<float>(xoffset);
+        impl->camera.pitch -= static_cast<float>(yoffset); // Subtract for natural mouse feel
 
         // Constrain pitch
         if (impl->camera.pitch > 89.0f) {
