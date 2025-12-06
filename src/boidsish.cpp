@@ -168,7 +168,7 @@ struct Visualizer::VisualizerImpl {
 
         // Apply camera rotation and translation
         glRotatef(-camera.pitch, 1.0f, 0.0f, 0.0f);
-        glRotatef(-camera.yaw, 0.0f, 1.0f, 0.0f);
+        glRotatef(camera.yaw, 0.0f, 1.0f, 0.0f);
         glTranslatef(-camera.x, -camera.y, -camera.z);
     }
 
