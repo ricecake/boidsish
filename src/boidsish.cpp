@@ -6,6 +6,7 @@
 #include <vector>
 #include <deque>
 #include <map>
+#include <set>
 #include <cmath>
 #include <chrono>
 
@@ -40,7 +41,8 @@ struct Visualizer::VisualizerImpl {
     int width, height;
     Camera camera;
     DotFunction dot_function;
-    std::map<size_t, Trail> trails; // Trail for each dot (using hash of position as key)
+    std::map<int, Trail> trails; // Trail for each dot (using dot ID as key)
+    std::map<int, float> trail_last_update; // Track when each trail was last updated for cleanup
 
     // Mouse and keyboard state
     double last_mouse_x, last_mouse_y;
@@ -305,6 +307,32 @@ struct Visualizer::VisualizerImpl {
 
         // Constrain pitch to stay below 30 degrees above horizontal
         camera.pitch = std::max(-89.0f, std::min(30.0f, camera.pitch));
+    }
+
+    void CleanupOldTrails(float current_time, const std::vector<Dot>& active_dots) {
+        // Create set of active dot IDs
+        std::set<int> active_ids;
+        for (const auto& dot : active_dots) {
+            active_ids.insert(dot.id);
+        }
+
+        // Remove trails for dots that haven't been updated in a while
+        auto trail_it = trails.begin();
+        while (trail_it != trails.end()) {
+            int trail_id = trail_it->first;
+
+            // If dot is not active and trail hasn't been updated recently, remove it
+            if (active_ids.find(trail_id) == active_ids.end()) {
+                auto update_it = trail_last_update.find(trail_id);
+                if (update_it != trail_last_update.end() &&
+                    (current_time - update_it->second) > 2.0f) { // 2 second timeout
+                    trail_it = trails.erase(trail_it);
+                    trail_last_update.erase(trail_id);
+                    continue;
+                }
+            }
+            ++trail_it;
+        }
     }
 
     void RenderGrid() {
@@ -600,19 +628,41 @@ void Visualizer::Render() {
 
     // Render dots and trails
     if (!dots.empty()) {
-        for (size_t i = 0; i < dots.size(); ++i) {
-            const Dot& dot = dots[i];
+        // Clean up old trails first
+        impl->CleanupOldTrails(time, dots);
 
-            // Create or update trail
-            auto& trail = impl->trails[i];
+        // Track which dots we've seen this frame
+        std::set<int> current_dot_ids;
+
+        for (const Dot& dot : dots) {
+            current_dot_ids.insert(dot.id);
+
+            // Create or update trail using dot ID
+            auto& trail = impl->trails[dot.id];
             trail.max_length = dot.trail_length;
             trail.AddPosition(dot.x, dot.y, dot.z);
+
+            // Update last seen time for this trail
+            impl->trail_last_update[dot.id] = time;
 
             // Render trail
             impl->RenderTrail(trail, dot.r, dot.g, dot.b);
 
             // Render dot
             impl->RenderDot(dot);
+        }
+
+        // Render trails for dots that are no longer active but still fading
+        for (auto& trail_pair : impl->trails) {
+            int trail_id = trail_pair.first;
+            Trail& trail = trail_pair.second;
+
+            // If this trail is for a dot we didn't see this frame, just render the trail
+            if (current_dot_ids.find(trail_id) == current_dot_ids.end() &&
+                !trail.positions.empty()) {
+                // Use a default color for orphaned trails (white/gray)
+                impl->RenderTrail(trail, 0.7f, 0.7f, 0.7f);
+            }
         }
     }
 

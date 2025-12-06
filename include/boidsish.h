@@ -7,19 +7,18 @@ namespace Boidsish {
 
 // Structure representing a single dot/particle
 struct Dot {
+    int id;                  // Unique identifier for trail tracking
     float x, y, z;           // Position in 3D space
     float size;              // Size of the dot
     float r, g, b, a;        // Color (RGBA)
     int trail_length;        // Number of trail segments to maintain
 
-    Dot(float x = 0.0f, float y = 0.0f, float z = 0.0f,
+    Dot(int id = 0, float x = 0.0f, float y = 0.0f, float z = 0.0f,
         float size = 1.0f,
         float r = 1.0f, float g = 1.0f, float b = 1.0f, float a = 1.0f,
         int trail_length = 10)
-        : x(x), y(y), z(z), size(size), r(r), g(g), b(b), a(a), trail_length(trail_length) {}
-};
-
-// Function type for user-defined dot generation
+        : id(id), x(x), y(y), z(z), size(size), r(r), g(g), b(b), a(a), trail_length(trail_length) {}
+};// Function type for user-defined dot generation
 using DotFunction = std::function<std::vector<Dot>(float time)>;
 
 // Camera structure for 3D view control

@@ -30,7 +30,8 @@ std::vector<Dot> SpiralExample(float time) {
 
             float size = 6.0f + 3.0f * sin(time + i * 0.5f);
 
-            dots.emplace_back(x, y, z, size, r, g, b, 0.8f, 20);
+            int dot_id = spiral * particles_per_spiral + i; // Unique ID for each dot
+            dots.emplace_back(dot_id, x, y, z, size, r, g, b, 0.8f, 20);
         }
     }
 
@@ -79,7 +80,7 @@ std::vector<Dot> RandomWalkExample(float time) {
         float g = dist / 8.0f;
         float b = 0.5f + 0.5f * sin(time + i);
 
-        dots.emplace_back(x, y, z, 8.0f, r, g, b, 0.9f, 30);
+        dots.emplace_back(static_cast<int>(i), x, y, z, 8.0f, r, g, b, 0.9f, 30);
     }
 
     return dots;
@@ -107,7 +108,8 @@ std::vector<Dot> WaveExample(float time) {
 
             float size = 4.0f + 2.0f * (y / 1.5f);
 
-            dots.emplace_back(x, y, z, size, r, g, b, 0.7f, 5);
+            int dot_id = i * grid_size + j; // Unique ID based on grid position
+            dots.emplace_back(dot_id, x, y, z, size, r, g, b, 0.7f, 5);
         }
     }
 
