@@ -1,7 +1,7 @@
 # Makefile for Boidsish Examples
 
 CXX = g++
-CXXFLAGS = -std=c++17 -Wall -Wextra -O2
+CXXFLAGS = -std=c++23 -Wall -Wextra -O3
 INCLUDES = -I../include
 
 # Build directory (use parent's build directory)

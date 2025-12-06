@@ -1,4 +1,5 @@
-#include "../include/boidsish.h"
+#include "boidsish.h"
+#include "logger.h"
 #include <cmath>
 #include <iostream>
 #include <functional>
@@ -91,16 +92,24 @@ public:
         Vector3 alignment = CalculateAlignment(neighbors);
         Vector3 cohesion = CalculateCohesion(neighbors);
 
+        auto position = GetPosition();
+        auto outering = position.Normalized();
+        auto magSq = position.MagnitudeSquared();
+        auto centering = -outering * std::max(0.0f, magSq-25);
+        auto distance = centering + outering * std::min(0.0f, 1/(magSq-25));
+
+        logger::LOG("HERE", position.MagnitudeSquared(), std::max(0.0f, 9-magSq), std::min(0.0f, 1/magSq));
+
         // Weight the flocking behaviors
-        Vector3 total_force = separation * 2.0f + alignment * 1.0f + cohesion * 1.0f;
+        Vector3 total_force = separation * 2.0f + alignment * 1.0f + cohesion * 1.0f + distance * 0.5f;
 
         // Add some random movement
-        Vector3 random_force(
-            (rand() % 300 - 100) / 100.0f,
-            (rand() % 300 - 100) / 100.0f,
-            (rand() % 300 - 100) / 100.0f
-        );
-        total_force += random_force * 0.5f;
+        // Vector3 random_force(
+        //     (rand() % 20 - 10) / 10.0f,
+        //     (rand() % 20 - 10) / 10.0f,
+        //     (rand() % 20 - 10) / 10.0f
+        // );
+        // total_force += random_force * 0.5f;
 
         SetVelocity(total_force);
 
@@ -215,7 +224,7 @@ public:
         }
 
         // Create a flock of entities
-        for (int i = 0; i < 800; i++) {
+        for (int i = 0; i < 16; i++) {
             Vector3 start_pos(
                 (rand() % 10 - 5) * 2.0f,
                 (rand() % 6 - 3) * 2.0f,

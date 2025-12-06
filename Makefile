@@ -2,7 +2,7 @@
 # Cross-platform build for Linux and macOS
 
 CXX = g++
-CXXFLAGS = -std=c++17 -Wall -Wextra -O2
+CXXFLAGS = -std=gnu++23 -Wall -Wextra -O3
 INCLUDES = -Iinclude
 
 # Build directory
