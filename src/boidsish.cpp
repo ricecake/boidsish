@@ -56,6 +56,10 @@ struct Visualizer::VisualizerImpl {
     float auto_camera_height_offset;
     float auto_camera_distance;
 
+    // Coordinate wrapping
+    bool coordinate_wrapping_enabled;
+    float wrap_range;
+
     // Timing
     std::chrono::high_resolution_clock::time_point start_time;
 
@@ -63,7 +67,8 @@ struct Visualizer::VisualizerImpl {
         : window(nullptr), width(w), height(h), camera(), dot_function(nullptr),
           last_mouse_x(0.0), last_mouse_y(0.0), first_mouse(true),
           auto_camera_mode(false), auto_camera_time(0.0f), auto_camera_angle(0.0f),
-          auto_camera_height_offset(0.0f), auto_camera_distance(10.0f) {
+          auto_camera_height_offset(0.0f), auto_camera_distance(10.0f),
+          coordinate_wrapping_enabled(false), wrap_range(20.0f) {
 
         // Initialize all keys to false
         for (int i = 0; i < 1024; ++i) {
@@ -210,8 +215,12 @@ struct Visualizer::VisualizerImpl {
         float forward_z = -cos(pitch_rad) * cos(yaw_rad);
 
         // Right vector - cross product of forward and world up (0,1,0)
-        float right_x = cos(yaw_rad);
-        float right_z = -sin(yaw_rad);
+        // right = forward x up = (forward_x, forward_y, forward_z) x (0, 1, 0)
+        // right = (forward_z * 0 - forward_y * 1, forward_x * 0 - forward_z * 0, forward_x * 1 - forward_y * 0)
+        // right = (-forward_y, 0, forward_x)
+        // But for horizontal movement only, we normalize in the XZ plane:
+        float right_x = -forward_z;
+        float right_z = forward_x;
 
         // Movement
         if (keys[GLFW_KEY_W]) {
@@ -387,7 +396,17 @@ struct Visualizer::VisualizerImpl {
 
     void RenderDot(const Dot& dot) {
         glPushMatrix();
-        glTranslatef(dot.x, dot.y, dot.z);
+
+        // Apply coordinate wrapping if enabled
+        float x = dot.x, y = dot.y, z = dot.z;
+        if (coordinate_wrapping_enabled && wrap_range > 0) {
+            // Wrap coordinates to keep them within [-wrap_range, wrap_range]
+            x = fmod(x + wrap_range, 2.0f * wrap_range) - wrap_range;
+            y = fmod(y + wrap_range, 2.0f * wrap_range) - wrap_range;
+            z = fmod(z + wrap_range, 2.0f * wrap_range) - wrap_range;
+        }
+
+        glTranslatef(x, y, z);
 
         float radius = dot.size * 0.01f; // Convert size to reasonable radius
 
@@ -464,6 +483,14 @@ struct Visualizer::VisualizerImpl {
             const auto& pos = trail.positions[i];
             float alpha = std::get<3>(pos);
 
+            // Apply coordinate wrapping to trail positions if enabled
+            float x = std::get<0>(pos), y = std::get<1>(pos), z = std::get<2>(pos);
+            if (coordinate_wrapping_enabled && wrap_range > 0) {
+                x = fmod(x + wrap_range, 2.0f * wrap_range) - wrap_range;
+                y = fmod(y + wrap_range, 2.0f * wrap_range) - wrap_range;
+                z = fmod(z + wrap_range, 2.0f * wrap_range) - wrap_range;
+            }
+
             // Make colors more vibrant and add some brightness boost
             float brightness_boost = 1.5f;
             float trail_r = std::min(1.0f, r * brightness_boost);
@@ -479,7 +506,7 @@ struct Visualizer::VisualizerImpl {
             }
 
             glColor4f(trail_r, trail_g, trail_b, alpha * 0.8f); // Increased base alpha
-            glVertex3f(std::get<0>(pos), std::get<1>(pos), std::get<2>(pos));
+            glVertex3f(x, y, z);
         }
         glEnd();
 
@@ -515,6 +542,16 @@ struct Visualizer::VisualizerImpl {
                 // Re-enable cursor capture for manual mode
                 glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
                 impl->first_mouse = true; // Reset mouse to avoid jumps
+            }
+        }
+
+        // Toggle coordinate wrapping with B key (for "Boundary")
+        if (key == GLFW_KEY_B && action == GLFW_PRESS) {
+            impl->coordinate_wrapping_enabled = !impl->coordinate_wrapping_enabled;
+            if (impl->coordinate_wrapping_enabled) {
+                std::cout << "Coordinate wrapping enabled (range: ±" << impl->wrap_range << ")" << std::endl;
+            } else {
+                std::cout << "Coordinate wrapping disabled" << std::endl;
             }
         }
     }
