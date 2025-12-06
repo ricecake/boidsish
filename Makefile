@@ -5,16 +5,20 @@ CXX = g++
 CXXFLAGS = -std=c++17 -Wall -Wextra -O2
 INCLUDES = -Iinclude
 
+# Build directory
+BUILDDIR = build
+OBJDIR = $(BUILDDIR)/obj
+
 # Detect the operating system
 UNAME_S := $(shell uname -s)
 
 # Source files
 SRCDIR = src
 SOURCES = $(wildcard $(SRCDIR)/*.cpp)
-OBJECTS = $(SOURCES:.cpp=.o)
+OBJECTS = $(SOURCES:$(SRCDIR)/%.cpp=$(OBJDIR)/%.o)
 
 # Target executable
-TARGET = boidsish
+TARGET = $(BUILDDIR)/boidsish
 
 # Platform-specific settings
 ifeq ($(UNAME_S), Linux)
@@ -41,17 +45,27 @@ endif
 # Default target
 all: $(TARGET)
 
+# Create build directories
+$(OBJDIR):
+	@mkdir -p $(OBJDIR)
+
+$(BUILDDIR):
+	@mkdir -p $(BUILDDIR)
+
 # Build the main executable
-$(TARGET): $(OBJECTS)
+$(TARGET): $(BUILDDIR) $(OBJDIR) $(OBJECTS)
 	$(CXX) $(OBJECTS) -o $(TARGET) $(LDFLAGS) $(LIBS)
 
 # Compile source files
-%.o: %.cpp
+$(OBJDIR)/%.o: $(SRCDIR)/%.cpp | $(OBJDIR)
 	$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
 
 # Build just the library object (for use by examples)
-boidsish.o: src/boidsish.cpp
-	$(CXX) $(CXXFLAGS) $(INCLUDES) -c src/boidsish.cpp -o src/boidsish.o
+$(OBJDIR)/boidsish.o: $(SRCDIR)/boidsish.cpp | $(OBJDIR)
+	$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
+
+boidsish.o: $(OBJDIR)/boidsish.o
+	@cp $(OBJDIR)/boidsish.o src/boidsish.o
 
 # Build examples
 examples: $(TARGET)
@@ -59,7 +73,8 @@ examples: $(TARGET)
 
 # Clean build artifacts
 clean:
-	rm -f $(OBJECTS) $(TARGET)
+	rm -rf $(BUILDDIR)
+	rm -f src/boidsish.o
 	$(MAKE) -C examples clean
 
 # Install dependencies (helper targets)

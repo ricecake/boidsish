@@ -4,6 +4,9 @@ CXX = g++
 CXXFLAGS = -std=c++17 -Wall -Wextra -O2
 INCLUDES = -I../include
 
+# Build directory (use parent's build directory)
+BUILDDIR = ../build
+
 # Detect the operating system
 UNAME_S := $(shell uname -s)
 
@@ -30,27 +33,30 @@ endif
 LIB_OBJ = ../src/boidsish.o
 
 # Targets
-EXAMPLES = advanced_examples entity_example vector_demo
+EXAMPLES = $(BUILDDIR)/advanced_examples $(BUILDDIR)/entity_example $(BUILDDIR)/vector_demo
 
-all: $(EXAMPLES)
+all: $(BUILDDIR) $(EXAMPLES)
+
+# Create build directory
+$(BUILDDIR):
+	@mkdir -p $(BUILDDIR)
 
 # Build the library object if it doesn't exist
 $(LIB_OBJ):
 	$(MAKE) -C .. boidsish.o
 
 # Build examples
-advanced_examples: advanced_examples.cpp $(LIB_OBJ)
-	$(CXX) $(CXXFLAGS) $(INCLUDES) advanced_examples.cpp $(LIB_OBJ) -o advanced_examples $(LDFLAGS) $(LIBS)
+$(BUILDDIR)/advanced_examples: advanced_examples.cpp $(LIB_OBJ) | $(BUILDDIR)
+	$(CXX) $(CXXFLAGS) $(INCLUDES) advanced_examples.cpp $(LIB_OBJ) -o $@ $(LDFLAGS) $(LIBS)
 
-entity_example: entity_example.cpp $(LIB_OBJ)
-	$(CXX) $(CXXFLAGS) $(INCLUDES) entity_example.cpp $(LIB_OBJ) -o entity_example $(LDFLAGS) $(LIBS)
+$(BUILDDIR)/entity_example: entity_example.cpp $(LIB_OBJ) | $(BUILDDIR)
+	$(CXX) $(CXXFLAGS) $(INCLUDES) entity_example.cpp $(LIB_OBJ) -o $@ $(LDFLAGS) $(LIBS)
 
-vector_demo: vector_demo.cpp $(LIB_OBJ)
-	$(CXX) $(CXXFLAGS) $(INCLUDES) vector_demo.cpp $(LIB_OBJ) -o vector_demo $(LDFLAGS) $(LIBS)
-	$(CXX) $(CXXFLAGS) $(INCLUDES) entity_example.cpp $(LIB_OBJ) -o entity_example $(LDFLAGS) $(LIBS)
+$(BUILDDIR)/vector_demo: vector_demo.cpp $(LIB_OBJ) | $(BUILDDIR)
+	$(CXX) $(CXXFLAGS) $(INCLUDES) vector_demo.cpp $(LIB_OBJ) -o $@ $(LDFLAGS) $(LIBS)
 
 # Clean
 clean:
-	rm -f $(EXAMPLES)
+	rm -f $(BUILDDIR)/advanced_examples $(BUILDDIR)/entity_example $(BUILDDIR)/vector_demo
 
 .PHONY: all clean
