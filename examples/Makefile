@@ -30,7 +30,7 @@ ifeq ($(UNAME_S), Darwin)
 endif
 
 # Library object
-LIB_OBJ = ../src/boidsish.o
+LIB_OBJ = $(BUILDDIR)/obj/boidsish.o
 
 # Targets
 EXAMPLES = $(BUILDDIR)/advanced_examples $(BUILDDIR)/entity_example $(BUILDDIR)/vector_demo
