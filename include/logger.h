@@ -25,11 +25,11 @@ namespace logger {
 
 	struct LogMessage {
 		const LogLevel         level = LogLevel::LOG;
-		const std::string_view message;       // View of the original message
-		const std::string_view file_name;     // View of the const char*
+		const std::string_view message;   // View of the original message
+		const std::string_view file_name; // View of the const char*
 		// const std::string_view function_name; // View of the const char*
-		const std::string      tags;
-		const unsigned int     line_number;
+		const std::string  tags;
+		const unsigned int line_number;
 	};
 
 	inline const std::string format(const LogMessage& msg) {
@@ -67,7 +67,7 @@ namespace logger {
 		template <typename StringType>
 		constexpr LogSource(const StringType& m, const std::source_location& l = std::source_location::current()):
 			msg(m), loc(l) {}
-		};
+	};
 
 	template <class B>
 		requires std::derived_from<B, Backend>
@@ -75,8 +75,7 @@ namespace logger {
 		B backend;
 
 		template <typename... Ts>
-		void
-		doLogging(const LogLevel& level, const LogSource& src, Ts&&... flags) {
+		void doLogging(const LogLevel& level, const LogSource& src, Ts&&... flags) {
 			std::stringstream tags;
 			((tags << "[" << flags << "] "), ...);
 			LogMessage log{

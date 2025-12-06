@@ -86,6 +86,9 @@ install-deps-macos:
 	@echo "Installing dependencies on macOS..."
 	@echo "Run: brew install glfw glew"
 
+format:
+	@find ./ \( -name '*.cpp' -o -name '*.h' -o -name '*.hpp' \) ! -path './.*/*' -exec clang-format --Wno-error=unknown -i '{}' \;
+
 # Help target
 help:
 	@echo "Available targets:"
@@ -95,4 +98,4 @@ help:
 	@echo "  install-deps-linux  - Show Linux dependency installation command"
 	@echo "  install-deps-macos  - Show macOS dependency installation command"
 
-.PHONY: all clean examples install-deps-linux install-deps-macos help
+.PHONY: all clean examples install-deps-linux install-deps-macos help format
