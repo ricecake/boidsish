@@ -72,7 +72,9 @@ public:
         SetPosition(start_pos);
         SetSize(6.0f);
         SetTrailLength(40);
-    }    void UpdateEntity(EntityHandler& handler, float time, float delta_time) override {
+    }
+
+    void UpdateEntity(EntityHandler& handler, float time, float delta_time) override {
         (void)time; (void)delta_time; // Mark unused parameters
 
         // Get all flocking entities from the handler
@@ -132,6 +134,7 @@ private:
         }
         return separation;
     }
+
     Vector3 CalculateAlignment(const std::vector<FlockingEntity*>& neighbors) {
         Vector3 average_velocity = Vector3::Zero();
         int count = 0;

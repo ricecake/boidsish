@@ -14,25 +14,23 @@ public:
     float x, y, z;
 
     // Constructors
-    Vector3() : x(0.0f), y(0.0f), z(0.0f) {}
-    Vector3(float x, float y, float z) : x(x), y(y), z(z) {}
+    constexpr Vector3() : x(0.0f), y(0.0f), z(0.0f) {}
+    constexpr Vector3(float x, float y, float z) : x(x), y(y), z(z) {}
 
     // Copy constructor and assignment
     Vector3(const Vector3& other) = default;
     Vector3& operator=(const Vector3& other) = default;
 
     // Vector addition
-    Vector3 operator+(const Vector3& other) const {
+    constexpr Vector3 operator+(const Vector3& other) const {
         return Vector3(x + other.x, y + other.y, z + other.z);
-    }
-
-    Vector3& operator+=(const Vector3& other) {
+    }    Vector3& operator+=(const Vector3& other) {
         x += other.x; y += other.y; z += other.z;
         return *this;
     }
 
     // Vector subtraction
-    Vector3 operator-(const Vector3& other) const {
+    constexpr Vector3 operator-(const Vector3& other) const {
         return Vector3(x - other.x, y - other.y, z - other.z);
     }
 
@@ -42,17 +40,15 @@ public:
     }
 
     // Scalar multiplication
-    Vector3 operator*(float scalar) const {
+    constexpr Vector3 operator*(float scalar) const {
         return Vector3(x * scalar, y * scalar, z * scalar);
-    }
-
-    Vector3& operator*=(float scalar) {
+    }    Vector3& operator*=(float scalar) {
         x *= scalar; y *= scalar; z *= scalar;
         return *this;
     }
 
     // Scalar division
-    Vector3 operator/(float scalar) const {
+    constexpr Vector3 operator/(float scalar) const {
         float inv = 1.0f / scalar;
         return Vector3(x * inv, y * inv, z * inv);
     }
@@ -64,17 +60,15 @@ public:
     }
 
     // Unary minus
-    Vector3 operator-() const {
+    constexpr Vector3 operator-() const {
         return Vector3(-x, -y, -z);
-    }
-
-    // Magnitude (length)
+    }    // Magnitude (length)
     float Magnitude() const {
         return std::sqrt(x * x + y * y + z * z);
     }
 
     // Squared magnitude (for efficiency when comparing lengths)
-    float MagnitudeSquared() const {
+    constexpr float MagnitudeSquared() const {
         return x * x + y * y + z * z;
     }
 
@@ -96,20 +90,18 @@ public:
     }
 
     // Dot product
-    float Dot(const Vector3& other) const {
+    constexpr float Dot(const Vector3& other) const {
         return x * other.x + y * other.y + z * other.z;
     }
 
     // Cross product
-    Vector3 Cross(const Vector3& other) const {
+    constexpr Vector3 Cross(const Vector3& other) const {
         return Vector3(
             y * other.z - z * other.y,
             z * other.x - x * other.z,
             x * other.y - y * other.x
         );
-    }
-
-    // Spherical angle difference (angle between two vectors in radians)
+    }    // Spherical angle difference (angle between two vectors in radians)
     float AngleTo(const Vector3& other) const {
         float dot_product = Dot(other);
         float magnitudes = Magnitude() * other.Magnitude();
@@ -127,24 +119,22 @@ public:
     }
 
     // Set components
-    void Set(float x, float y, float z) {
+    constexpr void Set(float x, float y, float z) {
         this->x = x; this->y = y; this->z = z;
     }
 
     // Zero vector
-    static Vector3 Zero() { return Vector3(0, 0, 0); }
-    static Vector3 One() { return Vector3(1, 1, 1); }
-    static Vector3 Up() { return Vector3(0, 1, 0); }
-    static Vector3 Right() { return Vector3(1, 0, 0); }
-    static Vector3 Forward() { return Vector3(0, 0, 1); }
+    static constexpr Vector3 Zero() { return Vector3(0, 0, 0); }
+    static constexpr Vector3 One() { return Vector3(1, 1, 1); }
+    static constexpr Vector3 Up() { return Vector3(0, 1, 0); }
+    static constexpr Vector3 Right() { return Vector3(1, 0, 0); }
+    static constexpr Vector3 Forward() { return Vector3(0, 0, 1); }
 };
 
 // Scalar multiplication (scalar * vector)
-inline Vector3 operator*(float scalar, const Vector3& vec) {
+constexpr inline Vector3 operator*(float scalar, const Vector3& vec) {
     return vec * scalar;
-}
-
-// Structure representing a single dot/particle
+}// Structure representing a single dot/particle
 struct Dot {
     int id;                  // Unique identifier for trail tracking
     float x, y, z;           // Position in 3D space
@@ -152,10 +142,10 @@ struct Dot {
     float r, g, b, a;        // Color (RGBA)
     int trail_length;        // Number of trail segments to maintain
 
-    Dot(int id = 0, float x = 0.0f, float y = 0.0f, float z = 0.0f,
-        float size = 1.0f,
-        float r = 1.0f, float g = 1.0f, float b = 1.0f, float a = 1.0f,
-        int trail_length = 10)
+    constexpr Dot(int id = 0, float x = 0.0f, float y = 0.0f, float z = 0.0f,
+                  float size = 1.0f,
+                  float r = 1.0f, float g = 1.0f, float b = 1.0f, float a = 1.0f,
+                  int trail_length = 10)
         : id(id), x(x), y(y), z(z), size(size), r(r), g(g), b(b), a(a), trail_length(trail_length) {}
 };
 
@@ -251,6 +241,11 @@ public:
         return (it != entities_.end()) ? it->second.get() : nullptr;
     }
 
+    const Entity* GetEntity(int id) const {
+        auto it = entities_.find(id);
+        return (it != entities_.end()) ? it->second.get() : nullptr;
+    }
+
     // Get all entities (for iteration)
     const std::map<int, std::unique_ptr<Entity>>& GetAllEntities() const {
         return entities_;
@@ -262,6 +257,18 @@ public:
         std::vector<T*> result;
         for (auto& pair : entities_) {
             T* typed_entity = dynamic_cast<T*>(pair.second.get());
+            if (typed_entity) {
+                result.push_back(typed_entity);
+            }
+        }
+        return result;
+    }
+
+    template<typename T>
+    std::vector<const T*> GetEntitiesByType() const {
+        std::vector<const T*> result;
+        for (const auto& pair : entities_) {
+            const T* typed_entity = dynamic_cast<const T*>(pair.second.get());
             if (typed_entity) {
                 result.push_back(typed_entity);
             }
@@ -291,8 +298,8 @@ struct Camera {
     float pitch, yaw;        // Camera rotation
     float fov;               // Field of view
 
-    Camera(float x = 0.0f, float y = 0.0f, float z = 5.0f,
-           float pitch = 0.0f, float yaw = 0.0f, float fov = 45.0f)
+    constexpr Camera(float x = 0.0f, float y = 0.0f, float z = 5.0f,
+                     float pitch = 0.0f, float yaw = 0.0f, float fov = 45.0f)
         : x(x), y(y), z(z), pitch(pitch), yaw(yaw), fov(fov) {}
 };
 
