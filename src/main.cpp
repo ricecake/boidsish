@@ -8,7 +8,7 @@ using namespace Boidsish;
 std::vector<Dot> CircularMotionExample(float time) {
     std::vector<Dot> dots;
 
-    int num_dots = 5;
+    int num_dots = 5 + int(time/15);
     for (int i = 0; i < num_dots; ++i) {
         float angle = time * 0.5f + i * 2.0f * M_PI / num_dots;
         float radius = 3.0f + i * 0.5f;
@@ -23,7 +23,7 @@ std::vector<Dot> CircularMotionExample(float time) {
         float b = 0.5f + 0.5f * sin(time * 0.2f + i * 1.3f);
 
         float size = 8.0f + 4.0f * sin(time * 0.4f + i);
-        int trail_length = 15 + i * 5;
+        int trail_length = 50 + i * 20; // Much longer trails
 
         dots.emplace_back(x, y, z, size, r, g, b, 1.0f, trail_length);
     }

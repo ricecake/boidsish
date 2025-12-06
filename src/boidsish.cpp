@@ -16,7 +16,7 @@ struct Trail {
     std::deque<std::tuple<float, float, float, float>> positions; // x, y, z, alpha
     int max_length;
 
-    Trail(int length = 50) : max_length(length) {}
+    Trail(int length = 250) : max_length(length) {} // Increased default length
 
     void AddPosition(float x, float y, float z) {
         positions.push_back({x, y, z, 1.0f});
@@ -24,9 +24,11 @@ struct Trail {
             positions.pop_front();
         }
 
-        // Update alpha values for fade effect
+        // Improved alpha fade - more gradual and vibrant
         for (size_t i = 0; i < positions.size(); ++i) {
-            float alpha = static_cast<float>(i) / static_cast<float>(positions.size());
+            float t = static_cast<float>(i) / static_cast<float>(positions.size());
+            // Use a power curve for more vibrant trails
+            float alpha = pow(t, 0.7f); // Keeps more of the trail visible
             std::get<3>(positions[i]) = alpha;
         }
     }
@@ -360,7 +362,17 @@ struct Visualizer::VisualizerImpl {
         glTranslatef(dot.x, dot.y, dot.z);
 
         float radius = dot.size * 0.01f; // Convert size to reasonable radius
-        glColor4f(dot.r, dot.g, dot.b, dot.a);
+
+        // Set material properties for lighting
+        GLfloat material_ambient[] = {dot.r * 0.2f, dot.g * 0.2f, dot.b * 0.2f, dot.a};
+        GLfloat material_diffuse[] = {dot.r, dot.g, dot.b, dot.a};
+        GLfloat material_specular[] = {0.5f, 0.5f, 0.5f, dot.a};
+        GLfloat material_shininess[] = {32.0f};
+
+        glMaterialfv(GL_FRONT, GL_AMBIENT, material_ambient);
+        glMaterialfv(GL_FRONT, GL_DIFFUSE, material_diffuse);
+        glMaterialfv(GL_FRONT, GL_SPECULAR, material_specular);
+        glMaterialfv(GL_FRONT, GL_SHININESS, material_shininess);
 
         // Draw sphere using triangulated approach
         const int longitude_segments = 12;
@@ -416,13 +428,34 @@ struct Visualizer::VisualizerImpl {
         if (trail.positions.size() < 2) return;
 
         glDisable(GL_LIGHTING); // Disable lighting for trails
+        glLineWidth(2.0f); // Thicker lines for better visibility
+
+        // Render trail with gradient effect
         glBegin(GL_LINE_STRIP);
-        for (const auto& pos : trail.positions) {
+        for (size_t i = 0; i < trail.positions.size(); ++i) {
+            const auto& pos = trail.positions[i];
             float alpha = std::get<3>(pos);
-            glColor4f(r, g, b, alpha);
+
+            // Make colors more vibrant and add some brightness boost
+            float brightness_boost = 1.5f;
+            float trail_r = std::min(1.0f, r * brightness_boost);
+            float trail_g = std::min(1.0f, g * brightness_boost);
+            float trail_b = std::min(1.0f, b * brightness_boost);
+
+            // Add a subtle glow effect for newer trail segments
+            if (alpha > 0.7f) {
+                brightness_boost = 2.0f;
+                trail_r = std::min(1.0f, r * brightness_boost);
+                trail_g = std::min(1.0f, g * brightness_boost);
+                trail_b = std::min(1.0f, b * brightness_boost);
+            }
+
+            glColor4f(trail_r, trail_g, trail_b, alpha * 0.8f); // Increased base alpha
             glVertex3f(std::get<0>(pos), std::get<1>(pos), std::get<2>(pos));
         }
         glEnd();
+
+        glLineWidth(1.0f); // Reset line width
         glEnable(GL_LIGHTING); // Re-enable lighting
     }
 
