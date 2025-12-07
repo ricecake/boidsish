@@ -253,7 +253,7 @@ namespace Boidsish {
 
 		virtual ~EntityHandler() = default;
 
-		// Delete copy constructor and assignment operator since we contain unique_ptr
+		// Delete copy constructor and assignment operator since we contain shared_ptr
 		EntityHandler(const EntityHandler&) = delete;
 		EntityHandler& operator=(const EntityHandler&) = delete;
 
@@ -268,31 +268,31 @@ namespace Boidsish {
 		template <typename T, typename... Args>
 		int AddEntity(Args&&... args) {
 			int id = next_id_++;
-			entities_[id] = std::make_unique<T>(id, std::forward<Args>(args)...);
+			entities_[id] = std::make_shared<T>(id, std::forward<Args>(args)...);
 			return id;
 		}
 
 		void RemoveEntity(int id) { entities_.erase(id); }
 
-		Entity* GetEntity(int id) {
+		auto GetEntity(int id) {
 			auto it = entities_.find(id);
-			return (it != entities_.end()) ? it->second.get() : nullptr;
+			return (it != entities_.end()) ? it->second : nullptr;
 		}
 
-		const Entity* GetEntity(int id) const {
+		const auto GetEntity(int id) const {
 			auto it = entities_.find(id);
-			return (it != entities_.end()) ? it->second.get() : nullptr;
+			return (it != entities_.end()) ? it->second : nullptr;
 		}
 
 		// Get all entities (for iteration)
-		const std::map<int, std::unique_ptr<Entity>>& GetAllEntities() const { return entities_; }
+		const std::map<int, std::shared_ptr<Entity>>& GetAllEntities() const { return entities_; }
 
 		// Get entities by type (template method)
 		template <typename T>
-		std::vector<T*> GetEntitiesByType() {
-			std::vector<T*> result;
+		auto GetEntitiesByType() {
+			std::vector<std::shared_ptr<T>> result;
 			for (auto& pair : entities_) {
-				T* typed_entity = dynamic_cast<T*>(pair.second.get());
+				auto typed_entity = std::dynamic_pointer_cast<T>(pair.second);
 				if (typed_entity) {
 					result.push_back(typed_entity);
 				}
@@ -328,7 +328,7 @@ namespace Boidsish {
 		}
 
 	private:
-		std::map<int, std::unique_ptr<Entity>> entities_;
+		std::map<int, std::shared_ptr<Entity>> entities_;
 		float                                  last_time_;
 		int                                    next_id_;
 	};

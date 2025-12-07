@@ -743,9 +743,9 @@ namespace Boidsish {
 		PreTimestep(time, delta_time);
 
 		// Get entities
-		std::vector<Entity*> entities;
+		std::vector<std::shared_ptr<Entity>> entities;
 		std::transform(entities_.begin(), entities_.end(), std::back_inserter(entities), [](const auto& pair) {
-			return pair.second.get();
+			return pair.second;
 		});
 
 		// Update all entities

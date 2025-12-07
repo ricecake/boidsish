@@ -26,9 +26,9 @@ public:
 	void UpdateEntity(EntityHandler& handler, float time, float delta_time) override;
 
 private:
-	Vector3 CalculateSeparation(const std::vector<FlockingEntity*>& neighbors);
-	Vector3 CalculateAlignment(const std::vector<FlockingEntity*>& neighbors);
-	Vector3 CalculateCohesion(const std::vector<FlockingEntity*>& neighbors);
+	Vector3 CalculateSeparation(const std::vector<std::shared_ptr<FlockingEntity>>& neighbors);
+	Vector3 CalculateAlignment(const std::vector<std::shared_ptr<FlockingEntity>>& neighbors);
+	Vector3 CalculateCohesion(const std::vector<std::shared_ptr<FlockingEntity>>& neighbors);
 };
 
 VectorDemoEntity::VectorDemoEntity(int id, const Vector3& start_pos): Entity(id), phase_(0.0f) {
@@ -43,16 +43,20 @@ void VectorDemoEntity::UpdateEntity(EntityHandler& handler, float time, float de
 	phase_ += delta_time;
 
 	auto current_pos = GetPosition();
-	auto targetInstance = static_cast<FlockingEntity*>(handler.GetEntity(target_id));
+	auto targetInstance = std::static_pointer_cast<FlockingEntity>(handler.GetEntity(target_id));
 
 	if (targetInstance != nullptr) {
 		auto target = targetInstance->GetPosition();
 		auto to_target = target - current_pos;
 		auto distance_to_target = to_target.Magnitude();
-		if (distance_to_target < 0.5f) {
+		if (distance_to_target <= 0.4f) {
+			SetVelocity(3 * to_target);
+			SetColor(1.0f, 0, 0, 1.0f);
+
 			handler.RemoveEntity(target_id);
 			Vector3 start_pos((rand() % 10 - 5) * 2.0f, (rand() % 6 - 3) * 2.0f, (rand() % 10 - 5) * 2.0f);
 			handler.AddEntity<FlockingEntity>(start_pos);
+			return;
 		}
 	}
 
@@ -104,7 +108,7 @@ void FlockingEntity::UpdateEntity(EntityHandler& handler, float time, float delt
 	(void)delta_time; // Mark unused parameters
 
 	// Get all flocking entities from the handler
-	std::vector<FlockingEntity*> neighbors = handler.GetEntitiesByType<FlockingEntity>();
+	auto neighbors = handler.GetEntitiesByType<FlockingEntity>();
 
 	Vector3 separation = CalculateSeparation(neighbors);
 	Vector3 alignment = CalculateAlignment(neighbors);
@@ -151,14 +155,14 @@ void FlockingEntity::UpdateEntity(EntityHandler& handler, float time, float delt
 	SetColor(r, g, b, 1.0f);
 }
 
-Vector3 FlockingEntity::CalculateSeparation(const std::vector<FlockingEntity*>& neighbors) {
+Vector3 FlockingEntity::CalculateSeparation(const std::vector<std::shared_ptr<FlockingEntity>>& neighbors) {
 	Vector3 separation = Vector3::Zero();
 	int     count = 0;
 	float   separation_radius = 3.0f;
 
 	Vector3 my_pos = GetPosition();
-	for (auto* neighbor : neighbors) {
-		if (neighbor != this) {
+	for (auto neighbor : neighbors) {
+		if (neighbor.get() != this) {
 			Vector3 neighbor_pos = neighbor->GetPosition();
 			float   distance = my_pos.DistanceTo(neighbor_pos);
 
@@ -176,14 +180,14 @@ Vector3 FlockingEntity::CalculateSeparation(const std::vector<FlockingEntity*>& 
 	return separation;
 }
 
-Vector3 FlockingEntity::CalculateAlignment(const std::vector<FlockingEntity*>& neighbors) {
+Vector3 FlockingEntity::CalculateAlignment(const std::vector<std::shared_ptr<FlockingEntity>>& neighbors) {
 	Vector3 average_velocity = Vector3::Zero();
 	int     count = 0;
 	float   alignment_radius = 5.0f;
 
 	Vector3 my_pos = GetPosition();
-	for (auto* neighbor : neighbors) {
-		if (neighbor != this) {
+	for (auto neighbor : neighbors) {
+		if (neighbor.get() != this) {
 			Vector3 neighbor_pos = neighbor->GetPosition();
 			float   distance = my_pos.DistanceTo(neighbor_pos);
 
@@ -201,14 +205,14 @@ Vector3 FlockingEntity::CalculateAlignment(const std::vector<FlockingEntity*>& n
 	return Vector3::Zero();
 }
 
-Vector3 FlockingEntity::CalculateCohesion(const std::vector<FlockingEntity*>& neighbors) {
+Vector3 FlockingEntity::CalculateCohesion(const std::vector<std::shared_ptr<FlockingEntity>>& neighbors) {
 	Vector3 center_of_mass = Vector3::Zero();
 	int     count = 0;
 	float   cohesion_radius = 6.0f;
 
 	Vector3 my_pos = GetPosition();
-	for (auto* neighbor : neighbors) {
-		if (neighbor != this) {
+	for (auto neighbor : neighbors) {
+		if (neighbor.get() != this) {
 			Vector3 neighbor_pos = neighbor->GetPosition();
 			float   distance = my_pos.DistanceTo(neighbor_pos);
 
@@ -239,7 +243,7 @@ public:
 		}
 
 		// Create a flock of entities
-		for (int i = 0; i < 16; i++) {
+		for (int i = 0; i < 48; i++) {
 			Vector3 start_pos((rand() % 10 - 5) * 2.0f, (rand() % 6 - 3) * 2.0f, (rand() % 10 - 5) * 2.0f);
 			AddEntity<FlockingEntity>(start_pos);
 		}
