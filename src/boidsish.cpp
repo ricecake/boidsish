@@ -495,72 +495,28 @@ namespace Boidsish {
 			glDisable(GL_LIGHTING); // Disable lighting for trails
 			glLineWidth(2.0f);      // Thicker lines for better visibility
 
-			// Render trail segments, breaking at wrap boundaries
-			glBegin(GL_LINES);
-			for (size_t i = 0; i < trail.positions.size() - 1; ++i) {
-				const auto& pos1 = trail.positions[i];
-				const auto& pos2 = trail.positions[i + 1];
-
-				// Get original positions
-				float x1 = std::get<0>(pos1), y1 = std::get<1>(pos1), z1 = std::get<2>(pos1);
-				float x2 = std::get<0>(pos2), y2 = std::get<1>(pos2), z2 = std::get<2>(pos2);
-
-				// Check if this segment crosses wrap boundary (if wrapping is enabled)
-				bool crosses_boundary = false;
-				if (coordinate_wrapping_enabled && wrap_range > 0) {
-					// Check if consecutive points are on opposite sides of wrap boundary
-					// This happens when one point is near +wrap_range and the next is near -wrap_range (or vice versa)
-					float dx = x2 - x1;
-					float dy = y2 - y1;
-					float dz = z2 - z1;
-
-					// If the jump is more than half the wrap space, it's likely a boundary crossing
-					float half_wrap = wrap_range;
-					crosses_boundary = (fabs(dx) > half_wrap || fabs(dy) > half_wrap || fabs(dz) > half_wrap);
-				}
-
-				// Skip this segment if it crosses the boundary
-				if (crosses_boundary) {
-					glEnd();
-					glBegin(GL_LINES);
-					continue;
-				}
-
-				// Apply coordinate wrapping to trail positions if enabled
-				if (coordinate_wrapping_enabled && wrap_range > 0) {
-					x1 = fmod(x1 + wrap_range, 2.0f * wrap_range) - wrap_range;
-					y1 = fmod(y1 + wrap_range, 2.0f * wrap_range) - wrap_range;
-					z1 = fmod(z1 + wrap_range, 2.0f * wrap_range) - wrap_range;
-					x2 = fmod(x2 + wrap_range, 2.0f * wrap_range) - wrap_range;
-					y2 = fmod(y2 + wrap_range, 2.0f * wrap_range) - wrap_range;
-					z2 = fmod(z2 + wrap_range, 2.0f * wrap_range) - wrap_range;
-				} // Calculate colors for both ends of the segment
-				float alpha1 = std::get<3>(pos1);
-				float alpha2 = std::get<3>(pos2);
+			// Render trail with gradient effect
+			glBegin(GL_LINE_STRIP);
+			for (size_t i = 0; i < trail.positions.size(); ++i) {
+				const auto& pos = trail.positions[i];
+				float       alpha = std::get<3>(pos);
 
 				// Make colors more vibrant and add some brightness boost
-				float brightness_boost1 = 1.5f;
-				float brightness_boost2 = 1.5f;
+				float brightness_boost = 1.5f;
+				float trail_r = std::min(1.0f, r * brightness_boost);
+				float trail_g = std::min(1.0f, g * brightness_boost);
+				float trail_b = std::min(1.0f, b * brightness_boost);
 
 				// Add a subtle glow effect for newer trail segments
-				if (alpha1 > 0.7f)
-					brightness_boost1 = 2.0f;
-				if (alpha2 > 0.7f)
-					brightness_boost2 = 2.0f;
+				if (alpha > 0.7f) {
+					brightness_boost = 2.0f;
+					trail_r = std::min(1.0f, r * brightness_boost);
+					trail_g = std::min(1.0f, g * brightness_boost);
+					trail_b = std::min(1.0f, b * brightness_boost);
+				}
 
-				float trail_r1 = std::min(1.0f, r * brightness_boost1);
-				float trail_g1 = std::min(1.0f, g * brightness_boost1);
-				float trail_b1 = std::min(1.0f, b * brightness_boost1);
-
-				float trail_r2 = std::min(1.0f, r * brightness_boost2);
-				float trail_g2 = std::min(1.0f, g * brightness_boost2);
-				float trail_b2 = std::min(1.0f, b * brightness_boost2);
-
-				// Draw line segment
-				glColor4f(trail_r1, trail_g1, trail_b1, alpha1 * 0.8f);
-				glVertex3f(x1, y1, z1);
-				glColor4f(trail_r2, trail_g2, trail_b2, alpha2 * 0.8f);
-				glVertex3f(x2, y2, z2);
+				glColor4f(trail_r, trail_g, trail_b, alpha * 0.8f); // Increased base alpha
+				glVertex3f(std::get<0>(pos), std::get<1>(pos), std::get<2>(pos));
 			}
 			glEnd();
 
