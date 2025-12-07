@@ -1,6 +1,6 @@
 #include <cmath>
-#include <iostream>
 #include <filesystem>
+#include <iostream>
 
 #include "boidsish.h"
 

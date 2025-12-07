@@ -74,7 +74,7 @@ namespace Boidsish {
 			last_mouse_x(0.0),
 			last_mouse_y(0.0),
 			first_mouse(true),
-			auto_camera_mode(false),
+			auto_camera_mode(true),
 			auto_camera_time(0.0f),
 			auto_camera_angle(0.0f),
 			auto_camera_height_offset(0.0f),
@@ -138,7 +138,7 @@ namespace Boidsish {
 			glfwSetFramebufferSizeCallback(window, FramebufferSizeCallback);
 
 			// Capture cursor
-			glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+			glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
 
 			// Enable depth testing
 			glEnable(GL_DEPTH_TEST);
@@ -742,9 +742,14 @@ namespace Boidsish {
 		// Call pre-timestep hook
 		PreTimestep(time, delta_time);
 
+		// Get entities
+		std::vector<Entity*> entities;
+		std::transform(entities_.begin(), entities_.end(), std::back_inserter(entities), [](const auto& pair) {
+			return pair.second.get();
+		});
+
 		// Update all entities
-		for (auto& entity_pair : entities_) {
-			Entity* entity = entity_pair.second.get();
+		for (auto& entity : entities) {
 			entity->UpdateEntity(*this, time, delta_time);
 		}
 
@@ -755,9 +760,7 @@ namespace Boidsish {
 		std::vector<Dot> dots;
 		dots.reserve(entities_.size());
 
-		for (auto& entity_pair : entities_) {
-			Entity* entity = entity_pair.second.get();
-
+		for (auto& entity : entities) {
 			// Update entity position using its velocity
 			Vector3 new_position = entity->GetPosition() + entity->GetVelocity() * delta_time;
 			entity->SetPosition(new_position);

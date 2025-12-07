@@ -4,10 +4,9 @@
 #include <iostream>
 #include <ranges>
 
-#include <RTree.h>
-
 #include "boidsish.h"
 #include "logger.h"
+#include <RTree.h>
 
 using namespace Boidsish;
 
@@ -18,6 +17,7 @@ public:
 
 private:
 	float phase_;
+	int   target_id = -1;
 };
 
 class FlockingEntity: public Entity {
@@ -41,34 +41,43 @@ void VectorDemoEntity::UpdateEntity(EntityHandler& handler, float time, float de
 	(void)handler;
 	(void)time; // Mark unused parameters
 	phase_ += delta_time;
-	Vector3 current_pos = GetPosition();
+
+	auto current_pos = GetPosition();
+	auto targetInstance = static_cast<FlockingEntity*>(handler.GetEntity(target_id));
+
+	if (targetInstance != nullptr) {
+		auto target = targetInstance->GetPosition();
+		auto to_target = target - current_pos;
+		auto distance_to_target = to_target.Magnitude();
+		if (distance_to_target < 0.5f) {
+			handler.RemoveEntity(target_id);
+			Vector3 start_pos((rand() % 10 - 5) * 2.0f, (rand() % 6 - 3) * 2.0f, (rand() % 10 - 5) * 2.0f);
+			handler.AddEntity<FlockingEntity>(start_pos);
+		}
+	}
 
 	auto prey = handler.GetEntitiesByType<FlockingEntity>();
-	auto targetInstance = std::ranges::min(prey, std::ranges::less{}, [&](auto i) {
+	targetInstance = std::ranges::min(prey, std::ranges::less{}, [&](auto i) {
 		return current_pos.DistanceTo(i->GetPosition());
 	});
+	target_id = targetInstance->GetId();
 	auto target = targetInstance->GetPosition();
+	auto to_target = target - current_pos;
 
 	// Demonstrate various Vector3 operations
-	Vector3 to_target = target - current_pos;
+	// Normalize direction and move toward target
+	Vector3 direction = to_target.Normalized();
 
-	float distance_to_target = to_target.Magnitude();
+	// Add some orbital motion using cross product
+	Vector3 up = Vector3::Up();
+	Vector3 tangent = direction.Cross(up).Normalized();
 
-	if (distance_to_target > 0.1f) {
-		// Normalize direction and move toward target
-		Vector3 direction = to_target.Normalized();
+	// Combine linear movement with orbital motion
+	Vector3 linear_vel = direction * 2.0f;
+	Vector3 orbital_vel = tangent * sin(phase_ * 3.0f) * 1.5f;
+	Vector3 total_velocity = linear_vel + orbital_vel;
 
-		// Add some orbital motion using cross product
-		Vector3 up = Vector3::Up();
-		Vector3 tangent = direction.Cross(up).Normalized();
-
-		// Combine linear movement with orbital motion
-		Vector3 linear_vel = direction * 2.0f;
-		Vector3 orbital_vel = tangent * sin(phase_ * 3.0f) * 1.5f;
-		Vector3 total_velocity = linear_vel + orbital_vel;
-
-		SetVelocity(total_velocity);
-	}
+	SetVelocity(total_velocity);
 
 	// Color based on velocity magnitude and direction
 	Vector3 vel = GetVelocity();
@@ -115,8 +124,7 @@ void FlockingEntity::UpdateEntity(EntityHandler& handler, float time, float delt
 		auto dir = (position - pos).Normalized();
 		// pred += dir + (1 / dis * a->GetVelocity().Cross(GetVelocity()).Normalized());
 		// pred += dir + (1 / dis * pos.Cross(GetPosition()).Normalized()  );
-		pred += dir + (1 / (dis*dis) * pos.Cross(GetPosition()).Normalized()  );
-
+		pred += dir + (1 / (dis * dis) * pos.Cross(GetPosition()).Normalized());
 	}
 
 	// Weight the flocking behaviors
