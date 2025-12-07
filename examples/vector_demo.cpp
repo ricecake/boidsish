@@ -66,7 +66,7 @@ void VectorDemoEntity::UpdateEntity(EntityHandler& handler, float time, float de
 	});
 	target_id = targetInstance->GetId();
 	auto target = targetInstance->GetPosition();
-	auto to_target = target - current_pos;
+	auto to_target = (target+targetInstance->GetVelocity()) - current_pos;
 
 	// Demonstrate various Vector3 operations
 	// Normalize direction and move toward target
@@ -97,7 +97,7 @@ void VectorDemoEntity::UpdateEntity(EntityHandler& handler, float time, float de
 FlockingEntity::FlockingEntity(int id, const Vector3& start_pos): Entity(id) {
 	SetPosition(start_pos);
 	SetSize(5.0f);
-	SetTrailLength(500);
+	SetTrailLength(300);
 	Vector3 startVel((rand() % 30 - 15) * 2.0f, (rand() % 10 - 5) * 2.0f, (rand() % 16 - 8) * 2.0f);
 
 	SetVelocity(startVel);
@@ -158,7 +158,7 @@ void FlockingEntity::UpdateEntity(EntityHandler& handler, float time, float delt
 Vector3 FlockingEntity::CalculateSeparation(const std::vector<std::shared_ptr<FlockingEntity>>& neighbors) {
 	Vector3 separation = Vector3::Zero();
 	int     count = 0;
-	float   separation_radius = 3.0f;
+	float   separation_radius = 2.50f;
 
 	Vector3 my_pos = GetPosition();
 	for (auto neighbor : neighbors) {
@@ -183,7 +183,7 @@ Vector3 FlockingEntity::CalculateSeparation(const std::vector<std::shared_ptr<Fl
 Vector3 FlockingEntity::CalculateAlignment(const std::vector<std::shared_ptr<FlockingEntity>>& neighbors) {
 	Vector3 average_velocity = Vector3::Zero();
 	int     count = 0;
-	float   alignment_radius = 5.0f;
+	float   alignment_radius = 3.0f;
 
 	Vector3 my_pos = GetPosition();
 	for (auto neighbor : neighbors) {
@@ -208,7 +208,7 @@ Vector3 FlockingEntity::CalculateAlignment(const std::vector<std::shared_ptr<Flo
 Vector3 FlockingEntity::CalculateCohesion(const std::vector<std::shared_ptr<FlockingEntity>>& neighbors) {
 	Vector3 center_of_mass = Vector3::Zero();
 	int     count = 0;
-	float   cohesion_radius = 6.0f;
+	float   cohesion_radius = 4.0f;
 
 	Vector3 my_pos = GetPosition();
 	for (auto neighbor : neighbors) {
