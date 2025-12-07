@@ -516,6 +516,7 @@ namespace Boidsish {
 				if (crosses_boundary) {
 					glEnd();
 					glBegin(GL_LINES);
+					continue;
 				}
 
 				// Apply coordinate wrapping to trail positions if enabled
