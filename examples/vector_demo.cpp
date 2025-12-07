@@ -4,6 +4,8 @@
 #include <iostream>
 #include <ranges>
 
+#include <RTree.h>
+
 #include "boidsish.h"
 #include "logger.h"
 
@@ -111,7 +113,10 @@ void FlockingEntity::UpdateEntity(EntityHandler& handler, float time, float delt
 		auto pos = a->GetPosition();
 		auto dis = position.DistanceTo(pos);
 		auto dir = (position - pos).Normalized();
-		pred += dir * 1 / dis;
+		// pred += dir + (1 / dis * a->GetVelocity().Cross(GetVelocity()).Normalized());
+		// pred += dir + (1 / dis * pos.Cross(GetPosition()).Normalized()  );
+		pred += dir + (1 / (dis*dis) * pos.Cross(GetPosition()).Normalized()  );
+
 	}
 
 	// Weight the flocking behaviors
@@ -247,7 +252,7 @@ int main() {
 		camera.x = 0.0f;
 		camera.y = 5.0f;
 		camera.z = 15.0f;
-		camera.yaw = -90.0f;
+		camera.yaw = 0.0f;
 		camera.pitch = -15.0f;
 		viz.SetCamera(camera);
 

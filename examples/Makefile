@@ -2,7 +2,7 @@
 
 CXX = g++
 CXXFLAGS = -std=c++23 -Wall -Wextra -O3
-INCLUDES = -I../include
+INCLUDES = -isystem ../external/include -I../include
 
 # Build directory (use parent's build directory)
 BUILDDIR = ../build

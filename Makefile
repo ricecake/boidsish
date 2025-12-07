@@ -3,7 +3,7 @@
 
 CXX = g++
 CXXFLAGS = -std=gnu++23 -Wall -Wextra -O3
-INCLUDES = -Iinclude
+INCLUDES = -isystem external/include -Iinclude
 
 # Build directory
 BUILDDIR = build
