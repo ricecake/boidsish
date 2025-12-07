@@ -123,7 +123,7 @@ void VectorDemoEntity::UpdateEntity(EntityHandler& handler, float time, float de
 FlockingEntity::FlockingEntity(int id, const Vector3& start_pos): Entity(id) {
 	SetPosition(start_pos);
 	SetSize(5.0f);
-	SetTrailLength(300);
+	SetTrailLength(150);
 	Vector3 startVel((rand() % 30 - 15) * 2.0f, (rand() % 10 - 5) * 2.0f, (rand() % 16 - 8) * 2.0f);
 
 	SetVelocity(startVel);
@@ -150,7 +150,7 @@ void FlockingEntity::UpdateEntity(EntityHandler& handler, float time, float delt
 		auto dir = (position - pos).Normalized();
 		// pred += dir + (1 / dis * a->GetVelocity().Cross(GetVelocity()).Normalized());
 		// pred += dir + (1 / dis * pos.Cross(GetPosition()).Normalized()  );
-		pred += dir + (1 / (dis * dis) * pos.Cross(GetPosition()).Normalized());
+		pred += dir + (1 / (dis) * pos.Cross(GetPosition()).Normalized());
 	}
 
 	pred.Normalize();
