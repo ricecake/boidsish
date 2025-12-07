@@ -1,5 +1,6 @@
 #include <cmath>
 #include <iostream>
+#include <filesystem>
 
 #include "boidsish.h"
 
@@ -44,6 +45,9 @@ int main() {
 		// Set the dot function
 		viz.SetDotFunction(CircularMotionExample);
 
+		auto path = std::filesystem::current_path();
+
+		std::cout << "CWD: " << path.string() << std::endl;
 		std::cout << "Boidsish 3D Visualizer Started!" << std::endl;
 		std::cout << "Controls:" << std::endl;
 		std::cout << "  WASD - Move camera horizontally" << std::endl;

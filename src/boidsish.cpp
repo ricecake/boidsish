@@ -10,6 +10,7 @@
 
 #include <GL/glew.h>
 #include <GLFW/glfw3.h>
+#include <shader.h>
 
 namespace Boidsish {
 
@@ -149,6 +150,12 @@ namespace Boidsish {
 			glEnable(GL_LIGHT0);
 			glEnable(GL_NORMALIZE); // Automatically normalize normals
 
+			// Shader normalShader(
+			// 	"./shaders/vis.vs",
+			// 	"./shaders/frag.fs",
+			// 	"./shaders/geom.gs"
+			// );
+			// normalShader.use();
 			// Set up a simple directional light
 			GLfloat light_pos[] = {1.0f, 1.0f, 1.0f, 0.0f}; // Directional light
 			GLfloat light_ambient[] = {0.2f, 0.2f, 0.2f, 1.0f};
