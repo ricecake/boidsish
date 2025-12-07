@@ -26,10 +26,36 @@ public:
 	void UpdateEntity(EntityHandler& handler, float time, float delta_time) override;
 
 private:
+	float hunger_time;
 	Vector3 CalculateSeparation(const std::vector<std::shared_ptr<FlockingEntity>>& neighbors);
 	Vector3 CalculateAlignment(const std::vector<std::shared_ptr<FlockingEntity>>& neighbors);
 	Vector3 CalculateCohesion(const std::vector<std::shared_ptr<FlockingEntity>>& neighbors);
 };
+
+class FruitEntity: public Entity {
+public:
+	FruitEntity(int id);
+	void UpdateEntity(EntityHandler& handler, float time, float delta_time) override;
+	float GetValue() const {
+		return value;
+	}
+private:
+	float value;
+};
+
+FruitEntity::FruitEntity(int id): Entity(id), value(rand() % 30) {
+	Vector3 start_pos((rand() % 10 - 5) * 2.0f, (rand() % 6 - 3) * 2.0f, 1+(rand() % 10));
+	SetPosition(start_pos);
+	SetColor(255, 165, 0);
+}
+
+void FruitEntity::UpdateEntity(EntityHandler& handler, float time, float delta_time) {
+	value -= delta_time;
+	if (value <= 0) {
+		handler.AddEntity<FruitEntity>();
+		handler.RemoveEntity(GetId());
+	}
+}
 
 VectorDemoEntity::VectorDemoEntity(int id, const Vector3& start_pos): Entity(id), phase_(0.0f) {
 	SetPosition(start_pos);
@@ -66,7 +92,7 @@ void VectorDemoEntity::UpdateEntity(EntityHandler& handler, float time, float de
 	});
 	target_id = targetInstance->GetId();
 	auto target = targetInstance->GetPosition();
-	auto to_target = (target+targetInstance->GetVelocity()) - current_pos;
+	auto to_target = target - current_pos;
 
 	// Demonstrate various Vector3 operations
 	// Normalize direction and move toward target
@@ -115,10 +141,6 @@ void FlockingEntity::UpdateEntity(EntityHandler& handler, float time, float delt
 	Vector3 cohesion = CalculateCohesion(neighbors);
 
 	auto position = GetPosition();
-	auto outering = position.Normalized();
-	auto magSq = position.MagnitudeSquared();
-	auto centering = -outering * std::max(0.0f, magSq - 36);
-	auto distance = centering + outering * std::min(0.0f, 1 / (magSq - 36));
 
 	Vector3 pred;
 	auto    avoids = handler.GetEntitiesByType<VectorDemoEntity>();
@@ -131,8 +153,30 @@ void FlockingEntity::UpdateEntity(EntityHandler& handler, float time, float delt
 		pred += dir + (1 / (dis * dis) * pos.Cross(GetPosition()).Normalized());
 	}
 
+	pred.Normalize();
+
+	auto foods = handler.GetEntitiesByType<FruitEntity>();
+	auto targetInstance = std::ranges::min(foods, std::ranges::less{}, [&](auto i) {
+		return position.DistanceTo(i->GetPosition());
+	});
+	auto food = targetInstance->GetPosition();
+	auto foodDistance = position.DistanceTo(food);
+
+	if (foodDistance <= 0.6f) {
+		SetVelocity(3 * (food-position));
+		SetColor(1.0f, 0, 0, 1.0f);
+
+		handler.RemoveEntity(targetInstance->GetId());
+		handler.AddEntity<FruitEntity>();
+		return;
+	}
+
+
+	auto distance = std::max(hunger_time, 1.0f)*std::max(0.0f, foodDistance-0.1f*pred.Magnitude())*(food-position).Normalized();
+
 	// Weight the flocking behaviors
-	Vector3 total_force = separation * 2.0f + alignment * 1.0f + cohesion * 1.0f + distance * 0.5f + pred;
+	Vector3 total_force = separation * 1.750f + alignment * 0.750f + cohesion * 0.80f + distance * 1.0f + pred * 2.0f;
+	// Vector3 total_force = distance * 1.5f + pred * 1.0f;
 
 	// Add some random movement
 	// Vector3 random_force(
@@ -142,7 +186,10 @@ void FlockingEntity::UpdateEntity(EntityHandler& handler, float time, float delt
 	// );
 	// total_force += random_force * 0.5f;
 
-	SetVelocity(total_force);
+	auto newVel = (GetVelocity()+total_force.Normalized()).Normalized();
+	SetVelocity(newVel*3);
+
+	hunger_time += delta_time;
 
 	// Color based on dominant behavior
 	float sep_mag = separation.Magnitude();
@@ -246,6 +293,10 @@ public:
 		for (int i = 0; i < 48; i++) {
 			Vector3 start_pos((rand() % 10 - 5) * 2.0f, (rand() % 6 - 3) * 2.0f, (rand() % 10 - 5) * 2.0f);
 			AddEntity<FlockingEntity>(start_pos);
+		}
+
+		for (int i = 0; i < 11; i++) {
+			AddEntity<FruitEntity>();
 		}
 
 		std::cout << "Created 8 flocking entities and 5 target-seeking entities" << std::endl;
