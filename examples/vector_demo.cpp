@@ -26,7 +26,7 @@ public:
 	void UpdateEntity(EntityHandler& handler, float time, float delta_time) override;
 
 private:
-	float hunger_time;
+	float hunger_time = 100.0f;
 	Vector3 CalculateSeparation(const std::vector<std::shared_ptr<FlockingEntity>>& neighbors);
 	Vector3 CalculateAlignment(const std::vector<std::shared_ptr<FlockingEntity>>& neighbors);
 	Vector3 CalculateCohesion(const std::vector<std::shared_ptr<FlockingEntity>>& neighbors);
@@ -44,7 +44,7 @@ private:
 };
 
 FruitEntity::FruitEntity(int id): Entity(id), value(rand() % 30) {
-	Vector3 start_pos((rand() % 10 - 5) * 2.0f, (rand() % 6 - 3) * 2.0f, 1+(rand() % 10));
+	Vector3 start_pos((rand() % 10 - 5) * 2.0f, 1+(rand() % 10), (rand() % 6 - 3) * 2.0f);
 	SetPosition(start_pos);
 	SetColor(255, 165, 0);
 }
@@ -165,26 +165,17 @@ void FlockingEntity::UpdateEntity(EntityHandler& handler, float time, float delt
 	if (foodDistance <= 0.6f) {
 		SetVelocity(3 * (food-position));
 		SetColor(1.0f, 0, 0, 1.0f);
+		hunger_time -= targetInstance->GetValue()/100 * hunger_time;
 
 		handler.RemoveEntity(targetInstance->GetId());
 		handler.AddEntity<FruitEntity>();
 		return;
 	}
 
-
-	auto distance = std::max(hunger_time, 1.0f)*std::max(0.0f, foodDistance-0.1f*pred.Magnitude())*(food-position).Normalized();
+	auto distance = hunger_time/15*(1/std::min(1.0f, foodDistance/5))*(food-position).Normalized();
 
 	// Weight the flocking behaviors
-	Vector3 total_force = separation * 1.750f + alignment * 0.750f + cohesion * 0.80f + distance * 1.0f + pred * 2.0f;
-	// Vector3 total_force = distance * 1.5f + pred * 1.0f;
-
-	// Add some random movement
-	// Vector3 random_force(
-	//     (rand() % 20 - 10) / 10.0f,
-	//     (rand() % 20 - 10) / 10.0f,
-	//     (rand() % 20 - 10) / 10.0f
-	// );
-	// total_force += random_force * 0.5f;
+	Vector3 total_force = separation * 2.0f + alignment * 0.750f + cohesion * 1.30f + distance * 1.0f + pred * 2.0f;
 
 	auto newVel = (GetVelocity()+total_force.Normalized()).Normalized();
 	SetVelocity(newVel*3);
@@ -195,10 +186,12 @@ void FlockingEntity::UpdateEntity(EntityHandler& handler, float time, float delt
 	float sep_mag = separation.Magnitude();
 	float align_mag = alignment.Magnitude();
 	float coh_mag = cohesion.Magnitude();
+	float dis_mag = distance.Magnitude();
+	float pre_mag = pred.Magnitude();
 
-	float r = sep_mag / (sep_mag + align_mag + coh_mag + 0.1f);
-	float g = align_mag / (sep_mag + align_mag + coh_mag + 0.1f);
-	float b = coh_mag / (sep_mag + align_mag + coh_mag + 0.1f);
+	float b = (sep_mag + align_mag + coh_mag) / (sep_mag + align_mag + coh_mag + dis_mag + pre_mag + 0.1f);
+	float g = dis_mag / (sep_mag + align_mag + coh_mag + dis_mag + pre_mag + 0.1f);
+	float r = pre_mag / (sep_mag + align_mag + coh_mag + dis_mag + pre_mag + 0.1f);
 	SetColor(r, g, b, 1.0f);
 }
 
