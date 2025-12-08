@@ -139,16 +139,31 @@ namespace Boidsish {
 	// Scalar multiplication (scalar * vector)
 	constexpr inline Vector3 operator*(float scalar, const Vector3& vec) {
 		return vec * scalar;
-	} // Structure representing a single dot/particle
+	}
 
-	struct Dot {
-		int   id;           // Unique identifier for trail tracking
-		float x, y, z;      // Position in 3D space
-		float size;         // Size of the dot
-		float r, g, b, a;   // Color (RGBA)
-		int   trail_length; // Number of trail segments to maintain
+	// Base class for all renderable shapes
+	class Shape {
+	public:
+		virtual ~Shape() = default;
 
-		constexpr Dot(
+		// Pure virtual function for rendering the shape
+		virtual void render() const = 0;
+
+		// Common properties
+		int   id;
+		float x, y, z;
+		float r, g, b, a;
+		int   trail_length;
+	};
+
+	// Structure representing a single dot/particle
+
+	// Class representing a single dot/particle, inheriting from Shape
+	class Dot : public Shape {
+	public:
+		float size; // Size of the dot
+
+		Dot(
 			int   id = 0,
 			float x = 0.0f,
 			float y = 0.0f,
@@ -159,12 +174,13 @@ namespace Boidsish {
 			float b = 1.0f,
 			float a = 1.0f,
 			int   trail_length = 10
-		):
-			id(id), x(x), y(y), z(z), size(size), r(r), g(g), b(b), a(a), trail_length(trail_length) {}
+		);
+
+		void render() const override;
 	};
 
-	// Function type for user-defined dot generation
-	using DotFunction = std::function<std::vector<Dot>(float time)>;
+	// Function type for user-defined shape generation
+	using ShapeFunction = std::function<std::vector<std::shared_ptr<Shape>>(float time)>;
 
 	// Forward declaration for Entity class
 	class EntityHandler;
@@ -261,8 +277,8 @@ namespace Boidsish {
 		EntityHandler(EntityHandler&&) = default;
 		EntityHandler& operator=(EntityHandler&&) = default;
 
-		// Operator() to make this compatible with DotFunction
-		std::vector<Dot> operator()(float time);
+		// Operator() to make this compatible with ShapeFunction
+		std::vector<std::shared_ptr<Shape>> operator()(float time);
 
 		// Entity management
 		template <typename T, typename... Args>
@@ -356,11 +372,11 @@ namespace Boidsish {
 		Visualizer(int width = 800, int height = 600, const char* title = "Boidsish 3D Visualizer");
 		~Visualizer();
 
-		// Set the function/handler that generates dots for each frame
-		void SetDotHandler(DotFunction func);
+		// Set the function/handler that generates shapes for each frame
+		void SetShapeHandler(ShapeFunction func);
 
 		// Legacy method name for compatibility
-		void SetDotFunction(DotFunction func) { SetDotHandler(func); }
+		void SetDotFunction(ShapeFunction func) { SetShapeHandler(func); }
 
 		// Start the visualization loop
 		void Run();

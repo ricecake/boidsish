@@ -7,8 +7,8 @@
 using namespace Boidsish;
 
 // Example: Simple circular motion with multiple dots
-std::vector<Dot> CircularMotionExample(float time) {
-	std::vector<Dot> dots;
+std::vector<std::shared_ptr<Shape>> CircularMotionExample(float time) {
+	std::vector<std::shared_ptr<Shape>> shapes;
 
 	int num_dots = 5 + int(time / 15);
 	for (int i = 0; i < num_dots; ++i) {
@@ -27,10 +27,10 @@ std::vector<Dot> CircularMotionExample(float time) {
 		float size = 8.0f + 4.0f * sin(time * 0.4f + i);
 		int   trail_length = 50 + i * 20; // Much longer trails
 
-		dots.emplace_back(i, x, y, z, size, r, g, b, 1.0f, trail_length);
+		shapes.emplace_back(std::make_shared<Dot>(i, x, y, z, size, r, g, b, 1.0f, trail_length));
 	}
 
-	return dots;
+	return shapes;
 }
 
 int main() {
