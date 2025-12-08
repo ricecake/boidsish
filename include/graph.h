@@ -25,7 +25,7 @@ namespace Boidsish {
 
 		Graph(int id = 0, float x = 0.0f, float y = 0.0f, float z = 0.0f);
 
-		void render() const;
+		void render() const override;
 	};
 
 } // namespace Boidsish

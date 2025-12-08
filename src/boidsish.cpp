@@ -31,7 +31,62 @@ namespace Boidsish {
 	}
 
 	void Dot::render() const {
-		// Deprecated
+		float radius = size * 0.01f;
+
+		GLfloat material_ambient[] = {r * 0.2f, g * 0.2f, b * 0.2f, a};
+		GLfloat material_diffuse[] = {r, g, b, a};
+		GLfloat material_specular[] = {0.5f, 0.5f, 0.5f, a};
+		GLfloat material_shininess[] = {32.0f};
+
+		glMaterialfv(GL_FRONT, GL_AMBIENT, material_ambient);
+		glMaterialfv(GL_FRONT, GL_DIFFUSE, material_diffuse);
+		glMaterialfv(GL_FRONT, GL_SPECULAR, material_specular);
+		glMaterialfv(GL_FRONT, GL_SHININESS, material_shininess);
+
+		const int longitude_segments = 12;
+		const int latitude_segments = 8;
+
+		glBegin(GL_TRIANGLES);
+
+		for (int lat = 0; lat < latitude_segments; ++lat) {
+			float lat0 = M_PI * (-0.5f + (float)lat / latitude_segments);
+			float lat1 = M_PI * (-0.5f + (float)(lat + 1) / latitude_segments);
+
+			float y0 = sin(lat0) * radius;
+			float y1 = sin(lat1) * radius;
+			float r0 = cos(lat0) * radius;
+			float r1 = cos(lat1) * radius;
+
+			for (int lon = 0; lon < longitude_segments; ++lon) {
+				float lon0 = 2 * M_PI * (float)lon / longitude_segments;
+				float lon1 = 2 * M_PI * (float)(lon + 1) / longitude_segments;
+
+				float x0 = cos(lon0);
+				float z0 = sin(lon0);
+				float x1 = cos(lon1);
+				float z1 = sin(lon1);
+
+				glNormal3f(x0 * cos(lat0), sin(lat0), z0 * cos(lat0));
+				glVertex3f(x0 * r0, y0, z0 * r0);
+
+				glNormal3f(x1 * cos(lat0), sin(lat0), z1 * cos(lat0));
+				glVertex3f(x1 * r0, y0, z1 * r0);
+
+				glNormal3f(x1 * cos(lat1), sin(lat1), z1 * cos(lat1));
+				glVertex3f(x1 * r1, y1, z1 * r1);
+
+				glNormal3f(x0 * cos(lat0), sin(lat0), z0 * cos(lat0));
+				glVertex3f(x0 * r0, y0, z0 * r0);
+
+				glNormal3f(x1 * cos(lat1), sin(lat1), z1 * cos(lat1));
+				glVertex3f(x1 * r1, y1, z1 * r1);
+
+				glNormal3f(x0 * cos(lat1), sin(lat1), z0 * cos(lat1));
+				glVertex3f(x0 * r1, y1, z0 * r1);
+			}
+		}
+
+		glEnd();
 	}
 
 	// Trail data for each dot
@@ -137,12 +192,12 @@ namespace Boidsish {
 			});
 
 			// Use more flexible OpenGL settings for better compatibility
-			glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
-			glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
-			glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
+			glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 2);
+			glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 1);
+			glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_ANY_PROFILE);
 
 			// For macOS - try without forward compatibility first
-			glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE);
+			glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_FALSE);
 
 			window = glfwCreateWindow(width, height, title, nullptr, nullptr);
 			if (!window) {
@@ -184,6 +239,13 @@ namespace Boidsish {
 			glEnable(GL_DEPTH_TEST);
 			glEnable(GL_BLEND);
 			glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+			glEnable(GL_LIGHTING);
+			glEnable(GL_LIGHT0);
+			glEnable(GL_NORMALIZE);
+
+			GLfloat light_pos[] = {1.0f, 1.0f, 1.0f, 0.0f};
+			glLightfv(GL_LIGHT0, GL_POSITION, light_pos);
 
 			// Check OpenGL version
 			const GLubyte* version = glGetString(GL_VERSION);
@@ -826,6 +888,11 @@ namespace Boidsish {
 			glm::vec3 camera_up = glm::vec3(0.0f, 1.0f, 0.0f);
 			glm::mat4 view = glm::lookAt(camera_pos, camera_pos + camera_front, camera_up);
 
+			glMatrixMode(GL_PROJECTION);
+			glLoadMatrixf(glm::value_ptr(projection));
+			glMatrixMode(GL_MODELVIEW);
+			glLoadMatrixf(glm::value_ptr(view));
+
 			impl->dot_shader->setMat4("projection", projection);
 			impl->dot_shader->setMat4("view", view);
 			impl->dot_shader->setVec3("lightPos", camera_pos);
@@ -833,16 +900,22 @@ namespace Boidsish {
 
 			glBindVertexArray(impl->sphere_vao);
 
-			// Reflections
+			// Reflections & Main Render
 			for (const auto& shape : shapes) {
 				std::shared_ptr<Dot> dot = std::dynamic_pointer_cast<Dot>(shape);
 				if (dot) {
+					glDisable(GL_LIGHTING);
+					impl->dot_shader->use();
+					glBindVertexArray(impl->sphere_vao);
+
 					float x = dot->x, y = dot->y, z = dot->z;
 					if (impl->coordinate_wrapping_enabled && impl->wrap_range > 0) {
 						x = fmod(x + impl->wrap_range, 2.0f * impl->wrap_range) - impl->wrap_range;
 						y = fmod(y + impl->wrap_range, 2.0f * impl->wrap_range) - impl->wrap_range;
 						z = fmod(z + impl->wrap_range, 2.0f * impl->wrap_range) - impl->wrap_range;
 					}
+
+					// Reflection
 					glm::mat4 model = glm::mat4(1.0f);
 					model = glm::translate(model, glm::vec3(x, -y, z));
 					model = glm::scale(model, glm::vec3(dot->size * 0.01f));
@@ -850,29 +923,26 @@ namespace Boidsish {
 					impl->dot_shader->setVec3("objectColor", glm::vec3(dot->r, dot->g, dot->b));
 					impl->dot_shader->setBool("isReflection", true);
 					glDrawElements(GL_TRIANGLES, impl->sphere_indices, GL_UNSIGNED_INT, 0);
-				}
-			}
 
-			// Main render
-			for (const auto& shape : shapes) {
-				std::shared_ptr<Dot> dot = std::dynamic_pointer_cast<Dot>(shape);
-				if (dot) {
-					float x = dot->x, y = dot->y, z = dot->z;
-					if (impl->coordinate_wrapping_enabled && impl->wrap_range > 0) {
-						x = fmod(x + impl->wrap_range, 2.0f * impl->wrap_range) - impl->wrap_range;
-						y = fmod(y + impl->wrap_range, 2.0f * impl->wrap_range) - impl->wrap_range;
-						z = fmod(z + impl->wrap_range, 2.0f * impl->wrap_range) - impl->wrap_range;
-					}
-					glm::mat4 model = glm::mat4(1.0f);
+					// Main
+					model = glm::mat4(1.0f);
 					model = glm::translate(model, glm::vec3(x, y, z));
 					model = glm::scale(model, glm::vec3(dot->size * 0.01f));
 					impl->dot_shader->setMat4("model", model);
-					impl->dot_shader->setVec3("objectColor", glm::vec3(dot->r, dot->g, dot->b));
 					impl->dot_shader->setBool("isReflection", false);
 					glDrawElements(GL_TRIANGLES, impl->sphere_indices, GL_UNSIGNED_INT, 0);
+
+					glUseProgram(0);
+				} else {
+					glEnable(GL_LIGHTING);
+					glPushMatrix();
+					shape->render();
+					glPopMatrix();
 				}
 			}
 
+			glEnable(GL_LIGHTING);
+			glEnable(GL_LIGHTING);
 			// Render trails for dots that are no longer active but still fading
 			for (auto& trail_pair : impl->trails) {
 				int    trail_id = trail_pair.first;
@@ -884,6 +954,7 @@ namespace Boidsish {
 					impl->RenderTrail(trail, 0.7f, 0.7f, 0.7f);
 				}
 			}
+			glDisable(GL_LIGHTING);
 		}
 
 		glfwSwapBuffers(impl->window);
