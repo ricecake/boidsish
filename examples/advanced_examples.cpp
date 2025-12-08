@@ -7,8 +7,8 @@
 using namespace Boidsish;
 
 // Example 1: Spiraling particles
-std::vector<Dot> SpiralExample(float time) {
-	std::vector<Dot> dots;
+auto SpiralExample(float time) {
+	std::vector<std::shared_ptr<Shape>> dots;
 
 	int num_spirals = 3;
 	int particles_per_spiral = 8;
@@ -32,7 +32,7 @@ std::vector<Dot> SpiralExample(float time) {
 			float size = 6.0f + 3.0f * sin(time + i * 0.5f);
 
 			int dot_id = spiral * particles_per_spiral + i; // Unique ID for each dot
-			dots.emplace_back(dot_id, x, y, z, size, r, g, b, 0.8f, 20);
+			dots.emplace_back(std::make_shared<Dot>(dot_id, x, y, z, size, r, g, b, 0.8f, 20));
 		}
 	}
 
@@ -40,7 +40,7 @@ std::vector<Dot> SpiralExample(float time) {
 }
 
 // Example 2: Random walk particles
-std::vector<Dot> RandomWalkExample(float time) {
+auto RandomWalkExample(float time) {
 	static std::vector<std::tuple<float, float, float>> positions;
 	static std::default_random_engine                   generator;
 	static bool                                         initialized = false;
@@ -54,7 +54,7 @@ std::vector<Dot> RandomWalkExample(float time) {
 	}
 
 	std::uniform_real_distribution<float> distribution(-0.1f, 0.1f);
-	std::vector<Dot>                      dots;
+	std::vector<std::shared_ptr<Shape>>     dots;
 
 	for (size_t i = 0; i < positions.size(); ++i) {
 		// Update position with random walk
@@ -83,15 +83,15 @@ std::vector<Dot> RandomWalkExample(float time) {
 		float g = dist / 8.0f;
 		float b = 0.5f + 0.5f * sin(time + i);
 
-		dots.emplace_back(static_cast<int>(i), x, y, z, 8.0f, r, g, b, 0.9f, 30);
+		dots.emplace_back(std::make_shared<Dot>(static_cast<int>(i), x, y, z, 8.0f, r, g, b, 0.9f, 30));
 	}
 
 	return dots;
 }
 
 // Example 3: Wave function
-std::vector<Dot> WaveExample(float time) {
-	std::vector<Dot> dots;
+auto WaveExample(float time) {
+	std::vector<std::shared_ptr<Shape>> dots;
 
 	int   grid_size = 15;
 	float spacing = 0.5f;
@@ -112,7 +112,7 @@ std::vector<Dot> WaveExample(float time) {
 			float size = 4.0f + 2.0f * (y / 1.5f);
 
 			int dot_id = i * grid_size + j; // Unique ID based on grid position
-			dots.emplace_back(dot_id, x, y, z, size, r, g, b, 0.7f, 5);
+			dots.emplace_back(std::make_shared<Dot>(dot_id, x, y, z, size, r, g, b, 0.7f, 5));
 		}
 	}
 
@@ -132,24 +132,7 @@ int main(int argc, char* argv[]) {
 
 	try {
 		std::string title = "Boidsish - Example " + std::to_string(example) + " - ";
-		DotFunction func;
-
-		switch (example) {
-		case 1:
-			title += "Spiraling Particles";
-			func = SpiralExample;
-			break;
-		case 2:
-			title += "Random Walk";
-			func = RandomWalkExample;
-			break;
-		case 3:
-			title += "Wave Function";
-			func = WaveExample;
-			break;
-		}
-
-		Visualizer viz(1200, 800, title.c_str());
+		Visualizer  viz(1200, 800, title.c_str());
 
 		// Set camera based on example
 		Camera camera;
@@ -160,7 +143,20 @@ int main(int argc, char* argv[]) {
 		}
 		viz.SetCamera(camera);
 
-		viz.SetDotFunction(func);
+		switch (example) {
+		case 1:
+			title += "Spiraling Particles";
+			viz.SetDotFunction(SpiralExample);
+			break;
+		case 2:
+			title += "Random Walk";
+			viz.SetDotFunction(RandomWalkExample);
+			break;
+		case 3:
+			title += "Wave Function";
+			viz.SetDotFunction(WaveExample);
+			break;
+		}
 
 		std::cout << "Boidsish Advanced Examples" << std::endl;
 		std::cout << "Example " << example << ": "

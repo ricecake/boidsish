@@ -1,5 +1,7 @@
 #include "boidsish.h"
 
+#include <GL/glew.h>
+#include <GLFW/glfw3.h>
 #include <chrono>
 #include <cmath>
 #include <deque>
@@ -13,6 +15,89 @@
 #include <shader.h>
 
 namespace Boidsish {
+
+	Dot::Dot(
+		int   id,
+		float x,
+		float y,
+		float z,
+		float size,
+		float r,
+		float g,
+		float b,
+		float a,
+		int   trail_length
+	) {
+		this->id = id;
+		this->x = x;
+		this->y = y;
+		this->z = z;
+		this->size = size;
+		this->r = r;
+		this->g = g;
+		this->b = b;
+		this->a = a;
+		this->trail_length = trail_length;
+	}
+
+	void Dot::render() const {
+		float radius = size * 0.01f;
+
+		GLfloat material_ambient[] = {r * 0.2f, g * 0.2f, b * 0.2f, a};
+		GLfloat material_diffuse[] = {r, g, b, a};
+		GLfloat material_specular[] = {0.5f, 0.5f, 0.5f, a};
+		GLfloat material_shininess[] = {32.0f};
+
+		glMaterialfv(GL_FRONT, GL_AMBIENT, material_ambient);
+		glMaterialfv(GL_FRONT, GL_DIFFUSE, material_diffuse);
+		glMaterialfv(GL_FRONT, GL_SPECULAR, material_specular);
+		glMaterialfv(GL_FRONT, GL_SHININESS, material_shininess);
+
+		const int longitude_segments = 12;
+		const int latitude_segments = 8;
+
+		glBegin(GL_TRIANGLES);
+
+		for (int lat = 0; lat < latitude_segments; ++lat) {
+			float lat0 = M_PI * (-0.5f + (float)lat / latitude_segments);
+			float lat1 = M_PI * (-0.5f + (float)(lat + 1) / latitude_segments);
+
+			float y0 = sin(lat0) * radius;
+			float y1 = sin(lat1) * radius;
+			float r0 = cos(lat0) * radius;
+			float r1 = cos(lat1) * radius;
+
+			for (int lon = 0; lon < longitude_segments; ++lon) {
+				float lon0 = 2 * M_PI * (float)lon / longitude_segments;
+				float lon1 = 2 * M_PI * (float)(lon + 1) / longitude_segments;
+
+				float x0 = cos(lon0);
+				float z0 = sin(lon0);
+				float x1 = cos(lon1);
+				float z1 = sin(lon1);
+
+				glNormal3f(x0 * cos(lat0), sin(lat0), z0 * cos(lat0));
+				glVertex3f(x0 * r0, y0, z0 * r0);
+
+				glNormal3f(x1 * cos(lat0), sin(lat0), z1 * cos(lat0));
+				glVertex3f(x1 * r0, y0, z1 * r0);
+
+				glNormal3f(x1 * cos(lat1), sin(lat1), z1 * cos(lat1));
+				glVertex3f(x1 * r1, y1, z1 * r1);
+
+				glNormal3f(x0 * cos(lat0), sin(lat0), z0 * cos(lat0));
+				glVertex3f(x0 * r0, y0, z0 * r0);
+
+				glNormal3f(x1 * cos(lat1), sin(lat1), z1 * cos(lat1));
+				glVertex3f(x1 * r1, y1, z1 * r1);
+
+				glNormal3f(x0 * cos(lat1), sin(lat1), z0 * cos(lat1));
+				glVertex3f(x0 * r1, y1, z0 * r1);
+			}
+		}
+
+		glEnd();
+	}
 
 	// Trail data for each dot
 	struct Trail {
@@ -42,7 +127,7 @@ namespace Boidsish {
 		GLFWwindow*          window;
 		int                  width, height;
 		Camera               camera;
-		DotFunction          dot_function;
+		ShapeFunction        shape_function;
 		std::map<int, Trail> trails;            // Trail for each dot (using dot ID as key)
 		std::map<int, float> trail_last_update; // Track when each trail was last updated for cleanup
 
@@ -70,7 +155,7 @@ namespace Boidsish {
 			width(w),
 			height(h),
 			camera(),
-			dot_function(nullptr),
+			shape_function(nullptr),
 			last_mouse_x(0.0),
 			last_mouse_y(0.0),
 			first_mouse(true),
@@ -266,35 +351,35 @@ namespace Boidsish {
 			}
 		}
 
-		void UpdateAutoCamera(float delta_time, const std::vector<Dot>& dots) {
-			if (!auto_camera_mode || dots.empty()) {
+		void UpdateAutoCamera(float delta_time, const std::vector<std::shared_ptr<Shape>>& shapes) {
+			if (!auto_camera_mode || shapes.empty()) {
 				return;
 			}
 
 			auto_camera_time += delta_time;
 
-			// Calculate mean position of all dots
+			// Calculate mean position of all shapes
 			float mean_x = 0.0f, mean_y = 0.0f, mean_z = 0.0f;
-			float min_x = dots[0].x, max_x = dots[0].x;
-			float min_y = dots[0].y, max_y = dots[0].y;
-			float min_z = dots[0].z, max_z = dots[0].z;
+			float min_x = shapes[0]->x, max_x = shapes[0]->x;
+			float min_y = shapes[0]->y, max_y = shapes[0]->y;
+			float min_z = shapes[0]->z, max_z = shapes[0]->z;
 
-			for (const auto& dot : dots) {
-				mean_x += dot.x;
-				mean_y += dot.y;
-				mean_z += dot.z;
+			for (const auto& shape : shapes) {
+				mean_x += shape->x;
+				mean_y += shape->y;
+				mean_z += shape->z;
 
-				min_x = std::min(min_x, dot.x);
-				max_x = std::max(max_x, dot.x);
-				min_y = std::min(min_y, dot.y);
-				max_y = std::max(max_y, dot.y);
-				min_z = std::min(min_z, dot.z);
-				max_z = std::max(max_z, dot.z);
+				min_x = std::min(min_x, shape->x);
+				max_x = std::max(max_x, shape->x);
+				min_y = std::min(min_y, shape->y);
+				max_y = std::max(max_y, shape->y);
+				min_z = std::min(min_z, shape->z);
+				max_z = std::max(max_z, shape->z);
 			}
 
-			mean_x /= dots.size();
-			mean_y /= dots.size();
-			mean_z /= dots.size();
+			mean_x /= shapes.size();
+			mean_y /= shapes.size();
+			mean_z /= shapes.size();
 
 			// Calculate bounding box size to determine appropriate distance
 			float extent = std::max({max_x - min_x, max_y - min_y, max_z - min_z});
@@ -335,11 +420,11 @@ namespace Boidsish {
 			camera.pitch = std::max(-89.0f, std::min(30.0f, camera.pitch));
 		}
 
-		void CleanupOldTrails(float current_time, const std::vector<Dot>& active_dots) {
+		void CleanupOldTrails(float current_time, const std::vector<std::shared_ptr<Shape>>& active_shapes) {
 			// Create set of active dot IDs
 			std::set<int> active_ids;
-			for (const auto& dot : active_dots) {
-				active_ids.insert(dot.id);
+			for (const auto& shape : active_shapes) {
+				active_ids.insert(shape->id);
 			}
 
 			// Remove trails for dots that haven't been updated in a while
@@ -409,83 +494,6 @@ namespace Boidsish {
 			glEnd();
 			glEnable(GL_DEPTH_TEST);
 			glEnable(GL_LIGHTING); // Re-enable lighting after grid
-		}
-
-		void RenderDot(const Dot& dot) {
-			glPushMatrix();
-
-			// Apply coordinate wrapping if enabled
-			float x = dot.x, y = dot.y, z = dot.z;
-			if (coordinate_wrapping_enabled && wrap_range > 0) {
-				// Wrap coordinates to keep them within [-wrap_range, wrap_range]
-				x = fmod(x + wrap_range, 2.0f * wrap_range) - wrap_range;
-				y = fmod(y + wrap_range, 2.0f * wrap_range) - wrap_range;
-				z = fmod(z + wrap_range, 2.0f * wrap_range) - wrap_range;
-			}
-
-			glTranslatef(x, y, z);
-
-			float radius = dot.size * 0.01f; // Convert size to reasonable radius
-
-			// Set material properties for lighting
-			GLfloat material_ambient[] = {dot.r * 0.2f, dot.g * 0.2f, dot.b * 0.2f, dot.a};
-			GLfloat material_diffuse[] = {dot.r, dot.g, dot.b, dot.a};
-			GLfloat material_specular[] = {0.5f, 0.5f, 0.5f, dot.a};
-			GLfloat material_shininess[] = {32.0f};
-
-			glMaterialfv(GL_FRONT, GL_AMBIENT, material_ambient);
-			glMaterialfv(GL_FRONT, GL_DIFFUSE, material_diffuse);
-			glMaterialfv(GL_FRONT, GL_SPECULAR, material_specular);
-			glMaterialfv(GL_FRONT, GL_SHININESS, material_shininess);
-
-			// Draw sphere using triangulated approach
-			const int longitude_segments = 12;
-			const int latitude_segments = 8;
-
-			glBegin(GL_TRIANGLES);
-
-			for (int lat = 0; lat < latitude_segments; ++lat) {
-				float lat0 = M_PI * (-0.5f + (float)lat / latitude_segments);
-				float lat1 = M_PI * (-0.5f + (float)(lat + 1) / latitude_segments);
-
-				float y0 = sin(lat0) * radius;
-				float y1 = sin(lat1) * radius;
-				float r0 = cos(lat0) * radius;
-				float r1 = cos(lat1) * radius;
-
-				for (int lon = 0; lon < longitude_segments; ++lon) {
-					float lon0 = 2 * M_PI * (float)lon / longitude_segments;
-					float lon1 = 2 * M_PI * (float)(lon + 1) / longitude_segments;
-
-					float x0 = cos(lon0);
-					float z0 = sin(lon0);
-					float x1 = cos(lon1);
-					float z1 = sin(lon1);
-
-					// First triangle
-					glNormal3f(x0 * cos(lat0), sin(lat0), z0 * cos(lat0));
-					glVertex3f(x0 * r0, y0, z0 * r0);
-
-					glNormal3f(x1 * cos(lat0), sin(lat0), z1 * cos(lat0));
-					glVertex3f(x1 * r0, y0, z1 * r0);
-
-					glNormal3f(x1 * cos(lat1), sin(lat1), z1 * cos(lat1));
-					glVertex3f(x1 * r1, y1, z1 * r1);
-
-					// Second triangle
-					glNormal3f(x0 * cos(lat0), sin(lat0), z0 * cos(lat0));
-					glVertex3f(x0 * r0, y0, z0 * r0);
-
-					glNormal3f(x1 * cos(lat1), sin(lat1), z1 * cos(lat1));
-					glVertex3f(x1 * r1, y1, z1 * r1);
-
-					glNormal3f(x0 * cos(lat1), sin(lat1), z0 * cos(lat1));
-					glVertex3f(x0 * r1, y1, z0 * r1);
-				}
-			}
-
-			glEnd();
-			glPopMatrix();
 		}
 
 		void RenderTrail(const Trail& trail, float r, float g, float b) {
@@ -621,8 +629,8 @@ namespace Boidsish {
 		delete impl;
 	}
 
-	void Visualizer::SetDotHandler(DotFunction func) {
-		impl->dot_function = func;
+	void Visualizer::SetShapeHandler(ShapeFunction func) {
+		impl->shape_function = func;
 	}
 
 	bool Visualizer::ShouldClose() const {
@@ -647,17 +655,17 @@ namespace Boidsish {
 		auto  current_time = std::chrono::high_resolution_clock::now();
 		float time = std::chrono::duration<float>(current_time - impl->start_time).count();
 
-		// Get dots first so we can use them for auto-camera
-		std::vector<Dot> dots;
-		if (impl->dot_function) {
-			dots = impl->dot_function(time);
+		// Get shapes first so we can use them for auto-camera
+		std::vector<std::shared_ptr<Shape>> shapes;
+		if (impl->shape_function) {
+			shapes = impl->shape_function(time);
 
 			static bool first_render = true;
 			if (first_render) {
-				std::cout << "Rendering " << dots.size() << " dots" << std::endl;
-				if (!dots.empty()) {
-					std::cout << "First dot: pos(" << dots[0].x << ", " << dots[0].y << ", " << dots[0].z << ") color("
-							  << dots[0].r << ", " << dots[0].g << ", " << dots[0].b << ")" << std::endl;
+				std::cout << "Rendering " << shapes.size() << " shapes" << std::endl;
+				if (!shapes.empty()) {
+					std::cout << "First shape: pos(" << shapes[0]->x << ", " << shapes[0]->y << ", " << shapes[0]->z << ") color("
+							  << shapes[0]->r << ", " << shapes[0]->g << ", " << shapes[0]->b << ")" << std::endl;
 				}
 				first_render = false;
 			}
@@ -667,37 +675,48 @@ namespace Boidsish {
 		static auto last_frame_time = current_time;
 		float       delta_time = std::chrono::duration<float>(current_time - last_frame_time).count();
 		last_frame_time = current_time;
-		impl->UpdateAutoCamera(delta_time, dots);
+		impl->UpdateAutoCamera(delta_time, shapes);
 
 		impl->SetupCamera();
 
 		// Render grid
 		impl->RenderGrid();
 
-		// Render dots and trails
-		if (!dots.empty()) {
+		// Render shapes and trails
+		if (!shapes.empty()) {
 			// Clean up old trails first
-			impl->CleanupOldTrails(time, dots);
+			impl->CleanupOldTrails(time, shapes);
 
-			// Track which dots we've seen this frame
-			std::set<int> current_dot_ids;
+			// Track which shapes we've seen this frame
+			std::set<int> current_shape_ids;
 
-			for (const Dot& dot : dots) {
-				current_dot_ids.insert(dot.id);
+			for (const auto& shape : shapes) {
+				current_shape_ids.insert(shape->id);
 
-				// Create or update trail using dot ID
-				auto& trail = impl->trails[dot.id];
-				trail.max_length = dot.trail_length;
-				trail.AddPosition(dot.x, dot.y, dot.z);
+				// Create or update trail using shape ID
+				auto& trail = impl->trails[shape->id];
+				trail.max_length = shape->trail_length;
+				trail.AddPosition(shape->x, shape->y, shape->z);
 
 				// Update last seen time for this trail
-				impl->trail_last_update[dot.id] = time;
+				impl->trail_last_update[shape->id] = time;
 
 				// Render trail
-				impl->RenderTrail(trail, dot.r, dot.g, dot.b);
+				impl->RenderTrail(trail, shape->r, shape->g, shape->b);
 
-				// Render dot
-				impl->RenderDot(dot);
+				// Render shape
+				glPushMatrix();
+
+				float x = shape->x, y = shape->y, z = shape->z;
+				if (impl->coordinate_wrapping_enabled && impl->wrap_range > 0) {
+					x = fmod(x + impl->wrap_range, 2.0f * impl->wrap_range) - impl->wrap_range;
+					y = fmod(y + impl->wrap_range, 2.0f * impl->wrap_range) - impl->wrap_range;
+					z = fmod(z + impl->wrap_range, 2.0f * impl->wrap_range) - impl->wrap_range;
+				}
+
+				glTranslatef(x, y, z);
+				shape->render();
+				glPopMatrix();
 			}
 
 			// Render trails for dots that are no longer active but still fading
@@ -706,7 +725,7 @@ namespace Boidsish {
 				Trail& trail = trail_pair.second;
 
 				// If this trail is for a dot we didn't see this frame, just render the trail
-				if (current_dot_ids.find(trail_id) == current_dot_ids.end() && !trail.positions.empty()) {
+				if (current_shape_ids.find(trail_id) == current_shape_ids.end() && !trail.positions.empty()) {
 					// Use a default color for orphaned trails (white/gray)
 					impl->RenderTrail(trail, 0.7f, 0.7f, 0.7f);
 				}
@@ -732,7 +751,7 @@ namespace Boidsish {
 	}
 
 	// EntityHandler implementation
-	std::vector<Dot> EntityHandler::operator()(float time) {
+	std::vector<std::shared_ptr<Shape>> EntityHandler::operator()(float time) {
 		float delta_time = 0.016f; // Default 60 FPS
 		if (last_time_ >= 0.0f) {
 			delta_time = time - last_time_;
@@ -756,9 +775,9 @@ namespace Boidsish {
 		// Call post-timestep hook
 		PostTimestep(time, delta_time);
 
-		// Generate dots from entity states
-		std::vector<Dot> dots;
-		dots.reserve(entities_.size());
+		// Generate shapes from entity states
+		std::vector<std::shared_ptr<Shape>> shapes;
+		shapes.reserve(entities_.size());
 
 		for (auto& entity : entities) {
 			// Update entity position using its velocity
@@ -770,7 +789,7 @@ namespace Boidsish {
 			entity->GetColor(r, g, b, a);
 
 			// Create dot at entity's position
-			dots.emplace_back(
+			shapes.emplace_back(std::make_shared<Dot>(
 				entity->GetId(),
 				entity->GetXPos(),
 				entity->GetYPos(),
@@ -781,10 +800,10 @@ namespace Boidsish {
 				b,
 				a,
 				entity->GetTrailLength()
-			);
+			));
 		}
 
-		return dots;
+		return shapes;
 	}
 
 } // namespace Boidsish
