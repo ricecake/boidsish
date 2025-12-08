@@ -23,6 +23,10 @@ namespace Boidsish {
 		this->size = size;
 	}
 
+	void Dot::render() const {
+		// Dummy implementation to satisfy the vtable
+	}
+
 	// Trail data for each dot
 	struct Trail {
 		std::deque<std::tuple<float, float, float, float>> positions; // x, y, z, alpha
