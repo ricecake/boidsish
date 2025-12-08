@@ -859,6 +859,7 @@ namespace Boidsish {
 
 		// Update all entities
 		for (auto& entity : entities) {
+			entity->SetPreviousPosition(entity->GetPosition());
 			entity->UpdateEntity(*this, time, delta_time);
 		}
 

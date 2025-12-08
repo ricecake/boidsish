@@ -29,11 +29,11 @@ ifeq ($(UNAME_S), Darwin)
     LIBS += -lglfw -lGLEW
 endif
 
-# Library object
-LIB_OBJ = $(BUILDDIR)/obj/boidsish.o
+# Library objects
+LIB_OBJS = $(BUILDDIR)/obj/boidsish.o $(BUILDDIR)/obj/graph.o
 
 # Targets
-EXAMPLES = $(BUILDDIR)/advanced_examples $(BUILDDIR)/entity_example $(BUILDDIR)/vector_demo $(BUILDDIR)/collision_example
+EXAMPLES = $(BUILDDIR)/advanced_examples $(BUILDDIR)/entity_example $(BUILDDIR)/vector_demo $(BUILDDIR)/collision_example $(BUILDDIR)/raycast_example $(BUILDDIR)/graph_avoidance_example
 
 all: $(BUILDDIR) $(EXAMPLES)
 
@@ -41,25 +41,31 @@ all: $(BUILDDIR) $(EXAMPLES)
 $(BUILDDIR):
 	@mkdir -p $(BUILDDIR)
 
-# Build the library object if it doesn't exist
-$(LIB_OBJ):
-	$(MAKE) -C .. boidsish.o
+# Build the library objects if they don't exist
+$(LIB_OBJS):
+	$(MAKE) -C .. boidsish.o graph.o
 
 # Build examples
-$(BUILDDIR)/advanced_examples: advanced_examples.cpp $(LIB_OBJ) | $(BUILDDIR)
-	$(CXX) $(CXXFLAGS) $(INCLUDES) advanced_examples.cpp $(LIB_OBJ) -o $@ $(LDFLAGS) $(LIBS)
+$(BUILDDIR)/advanced_examples: advanced_examples.cpp $(LIB_OBJS) | $(BUILDDIR)
+	$(CXX) $(CXXFLAGS) $(INCLUDES) advanced_examples.cpp $(LIB_OBJS) -o $@ $(LDFLAGS) $(LIBS)
 
-$(BUILDDIR)/entity_example: entity_example.cpp $(LIB_OBJ) | $(BUILDDIR)
-	$(CXX) $(CXXFLAGS) $(INCLUDES) entity_example.cpp $(LIB_OBJ) -o $@ $(LDFLAGS) $(LIBS)
+$(BUILDDIR)/entity_example: entity_example.cpp $(LIB_OBJS) | $(BUILDDIR)
+	$(CXX) $(CXXFLAGS) $(INCLUDES) entity_example.cpp $(LIB_OBJS) -o $@ $(LDFLAGS) $(LIBS)
 
-$(BUILDDIR)/vector_demo: vector_demo.cpp $(LIB_OBJ) | $(BUILDDIR)
-	$(CXX) $(CXXFLAGS) $(INCLUDES) vector_demo.cpp $(LIB_OBJ) -o $@ $(LDFLAGS) $(LIBS)
+$(BUILDDIR)/vector_demo: vector_demo.cpp $(LIB_OBJS) | $(BUILDDIR)
+	$(CXX) $(CXXFLAGS) $(INCLUDES) vector_demo.cpp $(LIB_OBJS) -o $@ $(LDFLAGS) $(LIBS)
 
-$(BUILDDIR)/collision_example: collision_example.cpp $(LIB_OBJ) | $(BUILDDIR)
-	$(CXX) $(CXXFLAGS) $(INCLUDES) collision_example.cpp $(LIB_OBJ) -o $@ $(LDFLAGS) $(LIBS)
+$(BUILDDIR)/collision_example: collision_example.cpp $(LIB_OBJS) | $(BUILDDIR)
+	$(CXX) $(CXXFLAGS) $(INCLUDES) collision_example.cpp $(LIB_OBJS) -o $@ $(LDFLAGS) $(LIBS)
+
+$(BUILDDIR)/raycast_example: raycast_example.cpp $(LIB_OBJS) | $(BUILDDIR)
+	$(CXX) $(CXXFLAGS) $(INCLUDES) raycast_example.cpp $(LIB_OBJS) -o $@ $(LDFLAGS) $(LIBS)
+
+$(BUILDDIR)/graph_avoidance_example: graph_avoidance_example.cpp $(LIB_OBJS) | $(BUILDDIR)
+	$(CXX) $(CXXFLAGS) $(INCLUDES) graph_avoidance_example.cpp $(LIB_OBJS) -o $@ $(LDFLAGS) $(LIBS)
 
 # Clean
 clean:
-	rm -f $(BUILDDIR)/advanced_examples $(BUILDDIR)/entity_example $(BUILDDIR)/vector_demo $(BUILDDIR)/collision_example
+	rm -f $(BUILDDIR)/advanced_examples $(BUILDDIR)/entity_example $(BUILDDIR)/vector_demo $(BUILDDIR)/collision_example $(BUILDDIR)/raycast_example $(BUILDDIR)/graph_avoidance_example
 
 .PHONY: all clean

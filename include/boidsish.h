@@ -221,6 +221,9 @@ namespace Boidsish {
 
 		void SetPosition(const Vector3& pos) { position_ = pos; }
 
+		const Vector3& GetPreviousPosition() const { return previous_position_; }
+		void SetPreviousPosition(const Vector3& pos) { previous_position_ = pos; }
+
 		// Spatial velocity per frame
 		float GetXVel() const { return velocity_.x; }
 
@@ -260,6 +263,7 @@ namespace Boidsish {
 	protected:
 		int     id_;
 		Vector3 position_; // Absolute spatial position
+		Vector3 previous_position_; // Position at the start of the timestep
 		Vector3 velocity_; // Spatial velocity per frame
 		float   size_;
 		float   color_[4]; // RGBA
