@@ -26,6 +26,20 @@ namespace Boidsish {
 		Trail(int length = 250): max_length(length), VAO(0), VBO(0) {
 			glGenVertexArrays(1, &VAO);
 			glGenBuffers(1, &VBO);
+
+			glBindVertexArray(VAO);
+			glBindBuffer(GL_ARRAY_BUFFER, VBO);
+			glBufferData(GL_ARRAY_BUFFER, (max_length + 2) * 7 * sizeof(float), nullptr, GL_DYNAMIC_DRAW);
+
+			// Position attribute
+			glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 7 * sizeof(float), (void*)0);
+			glEnableVertexAttribArray(0);
+
+			// Color attribute
+			glVertexAttribPointer(1, 4, GL_FLOAT, GL_FALSE, 7 * sizeof(float), (void*)(3 * sizeof(float)));
+			glEnableVertexAttribArray(1);
+
+			glBindVertexArray(0);
 		}
 
 		~Trail() {
@@ -77,20 +91,8 @@ namespace Boidsish {
 			vertex_data.push_back(b);
 			vertex_data.push_back(1.0f);
 
-			glBindVertexArray(VAO);
 			glBindBuffer(GL_ARRAY_BUFFER, VBO);
-			glBufferData(GL_ARRAY_BUFFER, (max_length + 2) * 7 * sizeof(float), nullptr, GL_DYNAMIC_DRAW);
 			glBufferSubData(GL_ARRAY_BUFFER, 0, vertex_data.size() * sizeof(float), vertex_data.data());
-
-			// Position attribute
-			glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 7 * sizeof(float), (void*)0);
-			glEnableVertexAttribArray(0);
-
-			// Color attribute
-			glVertexAttribPointer(1, 4, GL_FLOAT, GL_FALSE, 7 * sizeof(float), (void*)(3 * sizeof(float)));
-			glEnableVertexAttribArray(1);
-
-			glBindVertexArray(0);
 		}
 	};
 
@@ -308,9 +310,9 @@ namespace Boidsish {
 			float pitch_rad = camera.pitch * M_PI / 180.0f;
 
 			// Forward vector - where the camera is looking
-			float forward_x = sin(yaw_rad) * cos(pitch_rad);
+			float forward_x = cos(pitch_rad) * cos(yaw_rad);
 			float forward_y = sin(pitch_rad);
-			float forward_z = -cos(yaw_rad) * cos(pitch_rad);
+			float forward_z = cos(pitch_rad) * sin(yaw_rad);
 
 			// Right vector - cross product of forward and world up (0,1,0)
 			// right = forward x up = (forward_x, forward_y, forward_z) x (0, 1, 0)
@@ -682,9 +684,9 @@ namespace Boidsish {
 			glm::vec3(impl->camera.x, impl->camera.y, impl->camera.z),
 			glm::vec3(impl->camera.x, impl->camera.y, impl->camera.z) +
 				glm::vec3(
-					sin(glm::radians(impl->camera.yaw)) * cos(glm::radians(impl->camera.pitch)),
+					cos(glm::radians(impl->camera.yaw)) * cos(glm::radians(impl->camera.pitch)),
 					sin(glm::radians(impl->camera.pitch)),
-					-cos(glm::radians(impl->camera.yaw)) * cos(glm::radians(impl->camera.pitch))
+					sin(glm::radians(impl->camera.yaw)) * cos(glm::radians(impl->camera.pitch))
 				),
 			glm::vec3(0.0f, 1.0f, 0.0f)
 		);
