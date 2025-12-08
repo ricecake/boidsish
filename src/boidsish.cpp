@@ -17,6 +17,11 @@
 
 namespace Boidsish {
 
+	Dot::Dot(int id, float x, float y, float z, float size, float r, float g, float b, float a, int trail_length):
+		Shape(id, x, y, z, r, g, b, a, trail_length) {
+		this->size = size;
+	}
+
 	// Trail data for each dot
 	struct Trail {
 		std::deque<std::tuple<float, float, float, float>> positions; // x, y, z, alpha
@@ -101,7 +106,7 @@ namespace Boidsish {
 		GLFWwindow*          window;
 		int                  width, height;
 		Camera               camera;
-		DotFunction          dot_function;
+		ShapeFunction        shape_function;
 		std::map<int, Trail> trails;            // Trail for each dot (using dot ID as key)
 		std::map<int, float> trail_last_update; // Track when each trail was last updated for cleanup
 
@@ -117,6 +122,10 @@ namespace Boidsish {
 		float auto_camera_height_offset;
 		float auto_camera_distance;
 
+		// Single-object tracking state
+		bool single_track_mode;
+		int	 tracked_dot_index;
+
 		// Coordinate wrapping
 		bool  coordinate_wrapping_enabled;
 		float wrap_range;
@@ -126,6 +135,7 @@ namespace Boidsish {
 		Shader*                                      trail_shader;
 		Shader*                                      grid_shader;
 		Shader*                                      sphere_shader;
+		Shader*                                      edge_shader;
 		unsigned int                                 grid_VAO, grid_VBO;
 		unsigned int                                 dot_VAO, dot_VBO;
 		unsigned int                                 sphere_VAO, sphere_VBO, sphere_EBO;
@@ -197,7 +207,7 @@ namespace Boidsish {
 			width(w),
 			height(h),
 			camera(),
-			dot_function(nullptr),
+			shape_function(nullptr),
 			last_mouse_x(0.0),
 			last_mouse_y(0.0),
 			first_mouse(true),
@@ -206,11 +216,14 @@ namespace Boidsish {
 			auto_camera_angle(0.0f),
 			auto_camera_height_offset(0.0f),
 			auto_camera_distance(10.0f),
+			single_track_mode(false),
+			tracked_dot_index(0),
 			coordinate_wrapping_enabled(false),
 			wrap_range(20.0f),
 			trail_shader(nullptr),
 			grid_shader(nullptr),
 			sphere_shader(nullptr),
+			edge_shader(nullptr),
 			grid_VAO(0),
 			grid_VBO(0),
 			dot_VAO(0),
@@ -254,6 +267,7 @@ namespace Boidsish {
 			trail_shader = new Shader("shaders/trail.vs", "shaders/trail.fs", "shaders/trail.gs");
 			grid_shader = new Shader("shaders/grid.vs", "shaders/grid.fs");
 			sphere_shader = new Shader("shaders/sphere.vs", "shaders/sphere.fs");
+			edge_shader = new Shader("shaders/edge.vs", "shaders/edge.fs");
 
 			glGenVertexArrays(1, &dot_VAO);
 			glGenBuffers(1, &dot_VBO);
@@ -276,6 +290,7 @@ namespace Boidsish {
 			delete trail_shader;
 			delete grid_shader;
 			delete sphere_shader;
+			delete edge_shader;
 			glDeleteVertexArrays(1, &grid_VAO);
 			glDeleteBuffers(1, &grid_VBO);
 			glDeleteVertexArrays(1, &dot_VAO);
@@ -305,79 +320,70 @@ namespace Boidsish {
 
 			float camera_speed = 5.0f * delta_time;
 
-			// Calculate camera direction vectors using standard FPS math
-			float yaw_rad = camera.yaw * M_PI / 180.0f;
-			float pitch_rad = camera.pitch * M_PI / 180.0f;
+			// Calculate camera direction vectors
+			glm::vec3 front;
+			front.x = cos(glm::radians(camera.yaw)) * cos(glm::radians(camera.pitch));
+			front.y = sin(glm::radians(camera.pitch));
+			front.z = sin(glm::radians(camera.yaw)) * cos(glm::radians(camera.pitch));
+			camera.front = glm::normalize(front);
+			camera.right = glm::normalize(glm::cross(camera.front, glm::vec3(0.0f, 1.0f, 0.0f)));
+			camera.up = glm::normalize(glm::cross(camera.right, camera.front));
 
-			// Forward vector - where the camera is looking
-			float forward_x = cos(pitch_rad) * cos(yaw_rad);
-			float forward_y = sin(pitch_rad);
-			float forward_z = cos(pitch_rad) * sin(yaw_rad);
-
-			// Right vector - cross product of forward and world up (0,1,0)
-			// right = forward x up = (forward_x, forward_y, forward_z) x (0, 1, 0)
-			// right = (forward_z * 0 - forward_y * 1, forward_x * 0 - forward_z * 0, forward_x * 1 - forward_y * 0)
-			// right = (-forward_y, 0, forward_x)
-			// But for horizontal movement only, we normalize in the XZ plane:
-			float right_x = -forward_z;
-			float right_z = forward_x;
+			glm::vec3 camera_pos(camera.x, camera.y, camera.z);
 
 			// Movement
 			if (keys[GLFW_KEY_W]) {
-				camera.x += forward_x * camera_speed;
-				camera.y += forward_y * camera_speed;
-				camera.z += forward_z * camera_speed;
+				camera_pos += camera.front * camera_speed;
 			}
 			if (keys[GLFW_KEY_S]) {
-				camera.x -= forward_x * camera_speed;
-				camera.y -= forward_y * camera_speed;
-				camera.z -= forward_z * camera_speed;
+				camera_pos -= camera.front * camera_speed;
 			}
 			if (keys[GLFW_KEY_A]) {
-				camera.x -= right_x * camera_speed;
-				camera.z -= right_z * camera_speed;
+				camera_pos -= camera.right * camera_speed;
 			}
 			if (keys[GLFW_KEY_D]) {
-				camera.x += right_x * camera_speed;
-				camera.z += right_z * camera_speed;
+				camera_pos += camera.right * camera_speed;
 			}
 			if (keys[GLFW_KEY_SPACE]) {
-				camera.y += camera_speed;
+				camera_pos.y += camera_speed;
 			}
 			if (keys[GLFW_KEY_LEFT_SHIFT]) {
-				camera.y -= camera_speed;
+				camera_pos.y -= camera_speed;
 			}
+			camera.x = camera_pos.x;
+			camera.y = camera_pos.y;
+			camera.z = camera_pos.z;
 		}
 
-		void UpdateAutoCamera(float delta_time, const std::vector<Dot>& dots) {
-			if (!auto_camera_mode || dots.empty()) {
+		void UpdateAutoCamera(float delta_time, const std::vector<std::shared_ptr<Shape>>& shapes) {
+			if (!auto_camera_mode || shapes.empty()) {
 				return;
 			}
 
 			auto_camera_time += delta_time;
 
-			// Calculate mean position of all dots
+			// Calculate mean position of all shapes
 			float mean_x = 0.0f, mean_y = 0.0f, mean_z = 0.0f;
-			float min_x = dots[0].x, max_x = dots[0].x;
-			float min_y = dots[0].y, max_y = dots[0].y;
-			float min_z = dots[0].z, max_z = dots[0].z;
+			float min_x = shapes[0]->x, max_x = shapes[0]->x;
+			float min_y = shapes[0]->y, max_y = shapes[0]->y;
+			float min_z = shapes[0]->z, max_z = shapes[0]->z;
 
-			for (const auto& dot : dots) {
-				mean_x += dot.x;
-				mean_y += dot.y;
-				mean_z += dot.z;
+			for (const auto& shape : shapes) {
+				mean_x += shape->x;
+				mean_y += shape->y;
+				mean_z += shape->z;
 
-				min_x = std::min(min_x, dot.x);
-				max_x = std::max(max_x, dot.x);
-				min_y = std::min(min_y, dot.y);
-				max_y = std::max(max_y, dot.y);
-				min_z = std::min(min_z, dot.z);
-				max_z = std::max(max_z, dot.z);
+				min_x = std::min(min_x, shape->x);
+				max_x = std::max(max_x, shape->x);
+				min_y = std::min(min_y, shape->y);
+				max_y = std::max(max_y, shape->y);
+				min_z = std::min(min_z, shape->z);
+				max_z = std::max(max_z, shape->z);
 			}
 
-			mean_x /= dots.size();
-			mean_y /= dots.size();
-			mean_z /= dots.size();
+			mean_x /= shapes.size();
+			mean_y /= shapes.size();
+			mean_z /= shapes.size();
 
 			// Calculate bounding box size to determine appropriate distance
 			float extent = std::max({max_x - min_x, max_y - min_y, max_z - min_z});
@@ -418,14 +424,14 @@ namespace Boidsish {
 			camera.pitch = std::max(-89.0f, std::min(30.0f, camera.pitch));
 		}
 
-		void CleanupOldTrails(float current_time, const std::vector<Dot>& active_dots) {
+		void CleanupOldTrails(float current_time, const std::vector<std::shared_ptr<Shape>>& active_shapes) {
 			// Create set of active dot IDs
 			std::set<int> active_ids;
-			for (const auto& dot : active_dots) {
-				active_ids.insert(dot.id);
+			for (const auto& shape : active_shapes) {
+				active_ids.insert(shape->id);
 			}
 
-			// Remove trails for dots that haven't been updated in a while
+			// Remove trails for shapes that haven't been updated in a while
 			auto trail_it = trails.begin();
 			while (trail_it != trails.end()) {
 				int trail_id = trail_it->first;
@@ -489,30 +495,34 @@ namespace Boidsish {
 			glBindVertexArray(0);
 		}
 
-		void RenderDot(const Dot& dot, const glm::mat4& projection, const glm::mat4& view) {
-			sphere_shader->use();
-			sphere_shader->setVec3("objectColor", dot.r, dot.g, dot.b);
-			sphere_shader->setVec3("lightColor", 1.0f, 1.0f, 1.0f);
-			sphere_shader->setVec3("lightPos", 1.0f, 1.0f, 1.0f);
-			sphere_shader->setVec3("viewPos", camera.x, camera.y, camera.z);
-			sphere_shader->setMat4("projection", projection);
-			sphere_shader->setMat4("view", view);
+		void RenderShape(const std::shared_ptr<Shape>& shape, const glm::mat4& projection, const glm::mat4& view) {
+			if (auto dot = std::dynamic_pointer_cast<Dot>(shape)) {
+				sphere_shader->use();
+				sphere_shader->setVec3("objectColor", dot->r, dot->g, dot->b);
+				sphere_shader->setVec3("lightColor", 1.0f, 1.0f, 1.0f);
+				sphere_shader->setVec3("lightPos", 1.0f, 1.0f, 1.0f);
+				sphere_shader->setVec3("viewPos", camera.x, camera.y, camera.z);
+				sphere_shader->setMat4("projection", projection);
+				sphere_shader->setMat4("view", view);
 
-			float x = dot.x, y = dot.y, z = dot.z;
-			if (coordinate_wrapping_enabled && wrap_range > 0) {
-				x = fmod(x + wrap_range, 2.0f * wrap_range) - wrap_range;
-				y = fmod(y + wrap_range, 2.0f * wrap_range) - wrap_range;
-				z = fmod(z + wrap_range, 2.0f * wrap_range) - wrap_range;
+				float x = dot->x, y = dot->y, z = dot->z;
+				if (coordinate_wrapping_enabled && wrap_range > 0) {
+					x = fmod(x + wrap_range, 2.0f * wrap_range) - wrap_range;
+					y = fmod(y + wrap_range, 2.0f * wrap_range) - wrap_range;
+					z = fmod(z + wrap_range, 2.0f * wrap_range) - wrap_range;
+				}
+
+				glm::mat4 model = glm::mat4(1.0f);
+				model = glm::translate(model, glm::vec3(x, y, z));
+				model = glm::scale(model, glm::vec3(dot->size * 0.01f));
+				sphere_shader->setMat4("model", model);
+
+				glBindVertexArray(sphere_VAO);
+				glDrawElements(GL_TRIANGLES, sphere_index_count, GL_UNSIGNED_INT, 0);
+				glBindVertexArray(0);
+			} else if (auto graph = std::dynamic_pointer_cast<Graph>(shape)) {
+				graph->render(*sphere_shader, *edge_shader, sphere_VAO, sphere_index_count, projection, view);
 			}
-
-			glm::mat4 model = glm::mat4(1.0f);
-			model = glm::translate(model, glm::vec3(x, y, z));
-			model = glm::scale(model, glm::vec3(dot.size * 0.01f));
-			sphere_shader->setMat4("model", model);
-
-			glBindVertexArray(sphere_VAO);
-			glDrawElements(GL_TRIANGLES, sphere_index_count, GL_UNSIGNED_INT, 0);
-			glBindVertexArray(0);
 		}
 
 		void RenderTrail(const Trail& trail, const glm::mat4& projection, const glm::mat4& view) {
@@ -575,6 +585,18 @@ namespace Boidsish {
 					std::cout << "Coordinate wrapping disabled" << std::endl;
 				}
 			}
+
+			if (key == GLFW_KEY_9 && action == GLFW_PRESS) {
+				impl->single_track_mode = true;
+				impl->auto_camera_mode = false;
+				impl->tracked_dot_index++;
+				std::cout << "Single-track camera enabled" << std::endl;
+			}
+
+			if (key == GLFW_KEY_8 && action == GLFW_PRESS) {
+				impl->single_track_mode = false;
+				std::cout << "Single-track camera disabled" << std::endl;
+			}
 		}
 
 		static void MouseCallback(GLFWwindow* window, double xpos, double ypos) {
@@ -631,8 +653,8 @@ namespace Boidsish {
 		delete impl;
 	}
 
-	void Visualizer::SetDotHandler(DotFunction func) {
-		impl->dot_function = func;
+	void Visualizer::SetShapeHandler(ShapeFunction func) {
+		impl->shape_function = func;
 	}
 
 	bool Visualizer::ShouldClose() const {
@@ -657,17 +679,18 @@ namespace Boidsish {
 		auto  current_time = std::chrono::high_resolution_clock::now();
 		float time = std::chrono::duration<float>(current_time - impl->start_time).count();
 
-		// Get dots first so we can use them for auto-camera
-		std::vector<Dot> dots;
-		if (impl->dot_function) {
-			dots = impl->dot_function(time);
+		// Get shapes first so we can use them for auto-camera
+		std::vector<std::shared_ptr<Shape>> shapes;
+		if (impl->shape_function) {
+			shapes = impl->shape_function(time);
 
 			static bool first_render = true;
 			if (first_render) {
-				std::cout << "Rendering " << dots.size() << " dots" << std::endl;
-				if (!dots.empty()) {
-					std::cout << "First dot: pos(" << dots[0].x << ", " << dots[0].y << ", " << dots[0].z << ") color("
-							  << dots[0].r << ", " << dots[0].g << ", " << dots[0].b << ")" << std::endl;
+				std::cout << "Rendering " << shapes.size() << " shapes" << std::endl;
+				if (!shapes.empty()) {
+					std::cout << "First shape: pos(" << shapes[0]->x << ", " << shapes[0]->y << ", " << shapes[0]->z
+							  << ") color(" << shapes[0]->r << ", " << shapes[0]->g << ", " << shapes[0]->b << ")"
+							  << std::endl;
 				}
 				first_render = false;
 			}
@@ -677,44 +700,36 @@ namespace Boidsish {
 		static auto last_frame_time = current_time;
 		float       delta_time = std::chrono::duration<float>(current_time - last_frame_time).count();
 		last_frame_time = current_time;
-		impl->UpdateAutoCamera(delta_time, dots);
+		impl->UpdateAutoCamera(delta_time, shapes);
 
 		glm::mat4 projection = glm::perspective(glm::radians(impl->camera.fov), (float)impl->width / (float)impl->height, 0.1f, 100.0f);
-		glm::mat4 view = glm::lookAt(
-			glm::vec3(impl->camera.x, impl->camera.y, impl->camera.z),
-			glm::vec3(impl->camera.x, impl->camera.y, impl->camera.z) +
-				glm::vec3(
-					cos(glm::radians(impl->camera.yaw)) * cos(glm::radians(impl->camera.pitch)),
-					sin(glm::radians(impl->camera.pitch)),
-					sin(glm::radians(impl->camera.yaw)) * cos(glm::radians(impl->camera.pitch))
-				),
-			glm::vec3(0.0f, 1.0f, 0.0f)
-		);
+		glm::vec3 camera_pos(impl->camera.x, impl->camera.y, impl->camera.z);
+		glm::mat4 view = glm::lookAt(camera_pos, camera_pos + impl->camera.front, impl->camera.up);
 
 		impl->RenderGrid(projection, view);
 
-		// Render dots and trails
-		if (!dots.empty()) {
+		// Render shapes and trails
+		if (!shapes.empty()) {
 			// Clean up old trails first
-			impl->CleanupOldTrails(time, dots);
+			impl->CleanupOldTrails(time, shapes);
 
-			// Track which dots we've seen this frame
-			std::set<int> current_dot_ids;
+			// Track which shapes we've seen this frame
+			std::set<int> current_shape_ids;
 
-			for (const Dot& dot : dots) {
-				current_dot_ids.insert(dot.id);
+			for (const auto& shape : shapes) {
+				current_shape_ids.insert(shape->id);
 
-				// Create or update trail using dot ID
-				auto& trail = impl->trails[dot.id];
-				trail.max_length = dot.trail_length;
-				trail.AddPosition(dot.x, dot.y, dot.z, dot.r, dot.g, dot.b);
+				// Create or update trail using shape ID
+				auto& trail = impl->trails[shape->id];
+				trail.max_length = shape->trail_length;
+				trail.AddPosition(shape->x, shape->y, shape->z, shape->r, shape->g, shape->b);
 
 				// Update last seen time for this trail
-				impl->trail_last_update[dot.id] = time;
+				impl->trail_last_update[shape->id] = time;
 
 				// Render trail
 				impl->RenderTrail(trail, projection, view);
-				impl->RenderDot(dot, projection, view);
+				impl->RenderShape(shape, projection, view);
 			}
 
 			// Render trails for dots that are no longer active but still fading
@@ -723,7 +738,7 @@ namespace Boidsish {
 				Trail& trail = trail_pair.second;
 
 				// If this trail is for a dot we didn't see this frame, just render the trail
-				if (current_dot_ids.find(trail_id) == current_dot_ids.end() && !trail.positions.empty()) {
+				if (current_shape_ids.find(trail_id) == current_shape_ids.end() && !trail.positions.empty()) {
 					// Use a default color for orphaned trails (white/gray)
 					impl->RenderTrail(trail, projection, view);
 				}
@@ -749,7 +764,7 @@ namespace Boidsish {
 	}
 
 	// EntityHandler implementation
-	std::vector<Dot> EntityHandler::operator()(float time) {
+	std::vector<std::shared_ptr<Shape>> EntityHandler::operator()(float time) {
 		float delta_time = 0.016f; // Default 60 FPS
 		if (last_time_ >= 0.0f) {
 			delta_time = time - last_time_;
@@ -773,9 +788,9 @@ namespace Boidsish {
 		// Call post-timestep hook
 		PostTimestep(time, delta_time);
 
-		// Generate dots from entity states
-		std::vector<Dot> dots;
-		dots.reserve(entities_.size());
+		// Generate shapes from entity states
+		std::vector<std::shared_ptr<Shape>> shapes;
+		shapes.reserve(entities_.size());
 
 		for (auto& entity : entities) {
 			// Update entity position using its velocity
@@ -787,21 +802,23 @@ namespace Boidsish {
 			entity->GetColor(r, g, b, a);
 
 			// Create dot at entity's position
-			dots.emplace_back(
-				entity->GetId(),
-				entity->GetXPos(),
-				entity->GetYPos(),
-				entity->GetZPos(),
-				entity->GetSize(),
-				r,
-				g,
-				b,
-				a,
-				entity->GetTrailLength()
+			shapes.emplace_back(
+				std::make_shared<Dot>(
+					entity->GetId(),
+					entity->GetXPos(),
+					entity->GetYPos(),
+					entity->GetZPos(),
+					entity->GetSize(),
+					r,
+					g,
+					b,
+					a,
+					entity->GetTrailLength()
+				)
 			);
 		}
 
-		return dots;
+		return shapes;
 	}
 
 } // namespace Boidsish

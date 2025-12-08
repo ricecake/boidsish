@@ -5,6 +5,7 @@
 #include <map>
 #include <memory>
 #include <vector>
+#include <glm/glm.hpp>
 
 namespace Boidsish {
 
@@ -139,32 +140,49 @@ namespace Boidsish {
 	// Scalar multiplication (scalar * vector)
 	constexpr inline Vector3 operator*(float scalar, const Vector3& vec) {
 		return vec * scalar;
-	} // Structure representing a single dot/particle
+	}
 
-	struct Dot {
-		int   id;           // Unique identifier for trail tracking
-		float x, y, z;      // Position in 3D space
-		float size;         // Size of the dot
-		float r, g, b, a;   // Color (RGBA)
-		int   trail_length; // Number of trail segments to maintain
+	// Base class for all renderable shapes
+	class Shape {
+	public:
+		virtual ~Shape() = default;
 
-		constexpr Dot(
-			int   id = 0,
-			float x = 0.0f,
-			float y = 0.0f,
-			float z = 0.0f,
-			float size = 1.0f,
-			float r = 1.0f,
-			float g = 1.0f,
-			float b = 1.0f,
-			float a = 1.0f,
-			int   trail_length = 10
-		):
-			id(id), x(x), y(y), z(z), size(size), r(r), g(g), b(b), a(a), trail_length(trail_length) {}
+		// Pure virtual function for rendering the shape
+		virtual void render() const = 0;
+
+		// Common properties
+		int   id;
+		float x, y, z;
+		float r, g, b, a;
+		int   trail_length;
+
+		Shape(int id, float x, float y, float z, float r, float g, float b, float a, int trail_length):
+			id(id), x(x), y(y), z(z), r(r), g(g), b(b), a(a), trail_length(trail_length) {}
 	};
 
-	// Function type for user-defined dot generation
-	using DotFunction = std::function<std::vector<Dot>(float time)>;
+	// Structure representing a single dot/particle
+
+	// Class representing a single dot/particle, inheriting from Shape
+	class Dot: public Shape {
+	public:
+		float size; // Size of the dot
+
+		Dot(int   id = 0,
+		    float x = 0.0f,
+		    float y = 0.0f,
+		    float z = 0.0f,
+		    float size = 1.0f,
+		    float r = 1.0f,
+		    float g = 1.0f,
+		    float b = 1.0f,
+		    float a = 1.0f,
+		    int   trail_length = 10);
+
+		void render() const override;
+	};
+
+	// Function type for user-defined shape generation
+	using ShapeFunction = std::function<std::vector<std::shared_ptr<Shape>>(float time)>;
 
 	// Forward declaration for Entity class
 	class EntityHandler;
@@ -261,18 +279,21 @@ namespace Boidsish {
 		EntityHandler(EntityHandler&&) = default;
 		EntityHandler& operator=(EntityHandler&&) = default;
 
-		// Operator() to make this compatible with DotFunction
-		std::vector<Dot> operator()(float time);
+		// Operator() to make this compatible with ShapeFunction
+		std::vector<std::shared_ptr<Shape>> operator()(float time);
 
 		// Entity management
 		template <typename T, typename... Args>
 		int AddEntity(Args&&... args) {
-			int id = next_id_++;
-			entities_[id] = std::make_shared<T>(id, std::forward<Args>(args)...);
+			int  id = next_id_++;
+			auto entity = std::make_shared<T>(id, std::forward<Args>(args)...);
+			AddEntity(id, entity);
 			return id;
 		}
 
-		void RemoveEntity(int id) { entities_.erase(id); }
+		virtual void AddEntity(int id, std::shared_ptr<Entity> entity) { entities_[id] = entity; }
+
+		virtual void RemoveEntity(int id) { entities_.erase(id); }
 
 		auto GetEntity(int id) {
 			auto it = entities_.find(id);
@@ -338,6 +359,7 @@ namespace Boidsish {
 		float x, y, z;    // Camera position
 		float pitch, yaw; // Camera rotation
 		float fov;        // Field of view
+		glm::vec3 front, up, right;
 
 		constexpr Camera(
 			float x = 0.0f,
@@ -356,11 +378,11 @@ namespace Boidsish {
 		Visualizer(int width = 800, int height = 600, const char* title = "Boidsish 3D Visualizer");
 		~Visualizer();
 
-		// Set the function/handler that generates dots for each frame
-		void SetDotHandler(DotFunction func);
+		// Set the function/handler that generates shapes for each frame
+		void SetShapeHandler(ShapeFunction func);
 
 		// Legacy method name for compatibility
-		void SetDotFunction(DotFunction func) { SetDotHandler(func); }
+		void SetDotFunction(ShapeFunction func) { SetShapeHandler(func); }
 
 		// Start the visualization loop
 		void Run();
