@@ -773,13 +773,15 @@ namespace Boidsish {
 			glm::vec3 camera_up = glm::vec3(0.0f, 1.0f, 0.0f);
 			glm::mat4 view = glm::lookAt(camera_pos, camera_pos + camera_front, camera_up);
 
-			background_shader->setMat4("inverseViewMatrix", inverse(projection * view));
+			background_shader->setMat4("inverseProjectionMatrix", inverse(projection));
+			background_shader->setMat4("inverseViewMatrix", inverse(view));
 			background_shader->setVec3("cameraPosition", camera_pos);
 			background_shader->setVec3("gridColor", grid_color);
 
 			glBindVertexArray(background_vao);
 			glDrawArrays(GL_TRIANGLES, 0, 6);
 			glEnable(GL_DEPTH_TEST);
+			glUseProgram(0);
 		}
 	};
 

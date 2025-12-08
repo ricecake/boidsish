@@ -1,10 +1,10 @@
 #version 330 core
 layout (location = 0) in vec3 aPos;
 
-out vec3 FragPos;
+out vec2 screenCoord;
 
 void main()
 {
-	FragPos = aPos;
-	gl_Position = vec4(aPos, 1.0);
+    screenCoord = aPos.xy;
+    gl_Position = vec4(aPos.x, aPos.y, 0.0, 1.0);
 }

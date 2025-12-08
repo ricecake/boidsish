@@ -1,11 +1,12 @@
 #version 330 core
 out vec4 FragColor;
 
-in vec3 FragPos;
+in vec2 screenCoord;
 
-uniform vec3 iResolution;
+uniform mat4 inverseProjectionMatrix;
 uniform mat4 inverseViewMatrix;
 uniform vec3 cameraPosition;
+uniform vec3 gridColor;
 
 float grid(vec2 coord, float thickness) {
     vec2 grid_coord = abs(fract(coord - 0.5) - 0.5) / fwidth(coord);
@@ -14,7 +15,10 @@ float grid(vec2 coord, float thickness) {
 }
 
 void main() {
-    vec3 view_dir = normalize(vec3(inverseViewMatrix * vec4(FragPos, 0.0)));
+    vec4 ray_clip = vec4(screenCoord.x, screenCoord.y, -1.0, 1.0);
+    vec4 ray_view = inverseProjectionMatrix * ray_clip;
+    ray_view = vec4(ray_view.xy, -1.0, 0.0);
+    vec3 view_dir = normalize(vec3(inverseViewMatrix * ray_view));
 
     // Sky gradient
     float horizon_intensity = 1.0 - abs(view_dir.y);
@@ -27,8 +31,6 @@ void main() {
     // Grid plane intersection
     float t = -cameraPosition.y / view_dir.y;
     vec3 world_pos = cameraPosition + t * view_dir;
-
-uniform vec3 gridColor;
 
     // Grid
     float fade_dist = 50.0;
