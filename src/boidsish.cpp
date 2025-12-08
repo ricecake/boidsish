@@ -132,7 +132,7 @@ namespace Boidsish {
 
 		// Single-object tracking state
 		bool single_track_mode;
-		int	 tracked_dot_index;
+		int  tracked_dot_index;
 
 		// Coordinate wrapping
 		bool  coordinate_wrapping_enabled;
