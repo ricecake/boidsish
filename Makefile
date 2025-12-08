@@ -97,5 +97,9 @@ help:
 	@echo "  examples     - Build example programs"
 	@echo "  install-deps-linux  - Show Linux dependency installation command"
 	@echo "  install-deps-macos  - Show macOS dependency installation command"
+	@echo "  compile_only - Compile all source files without linking"
 
-.PHONY: all clean examples install-deps-linux install-deps-macos help format
+compile_only: $(OBJECTS)
+	@echo "Compilation successful."
+
+.PHONY: all clean examples install-deps-linux install-deps-macos help format compile_only

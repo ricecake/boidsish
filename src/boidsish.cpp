@@ -10,6 +10,9 @@
 
 #include <GL/glew.h>
 #include <GLFW/glfw3.h>
+#include <glm/glm.hpp>
+#include <glm/gtc/matrix_transform.hpp>
+#include <glm/gtc/type_ptr.hpp>
 #include <shader.h>
 
 namespace Boidsish {
@@ -18,22 +21,76 @@ namespace Boidsish {
 	struct Trail {
 		std::deque<std::tuple<float, float, float, float>> positions; // x, y, z, alpha
 		int                                                max_length;
+		unsigned int                                       VAO, VBO;
 
-		Trail(int length = 250): max_length(length) {} // Increased default length
+		Trail(int length = 250): max_length(length), VAO(0), VBO(0) {
+			glGenVertexArrays(1, &VAO);
+			glGenBuffers(1, &VBO);
+		}
 
-		void AddPosition(float x, float y, float z) {
+		~Trail() {
+			glDeleteVertexArrays(1, &VAO);
+			glDeleteBuffers(1, &VBO);
+		}
+
+		void AddPosition(float x, float y, float z, float r, float g, float b) {
 			positions.push_back({x, y, z, 1.0f});
 			if (positions.size() > static_cast<size_t>(max_length)) {
 				positions.pop_front();
 			}
 
-			// Improved alpha fade - more gradual and vibrant
+			if (positions.size() < 2) {
+				return;
+			}
+
+			std::vector<float> vertex_data;
+			vertex_data.reserve((positions.size() + 2) * 7);
+
+			// Adjacency vertex at the beginning
+			vertex_data.push_back(std::get<0>(positions[0]));
+			vertex_data.push_back(std::get<1>(positions[0]));
+			vertex_data.push_back(std::get<2>(positions[0]));
+			vertex_data.push_back(r);
+			vertex_data.push_back(g);
+			vertex_data.push_back(b);
+			vertex_data.push_back(0.0f);
+
 			for (size_t i = 0; i < positions.size(); ++i) {
 				float t = static_cast<float>(i) / static_cast<float>(positions.size());
-				// Use a power curve for more vibrant trails
-				float alpha = pow(t, 0.7f); // Keeps more of the trail visible
-				std::get<3>(positions[i]) = alpha;
+				float alpha = pow(t, 0.7f);
+
+				vertex_data.push_back(std::get<0>(positions[i]));
+				vertex_data.push_back(std::get<1>(positions[i]));
+				vertex_data.push_back(std::get<2>(positions[i]));
+				vertex_data.push_back(r);
+				vertex_data.push_back(g);
+				vertex_data.push_back(b);
+				vertex_data.push_back(alpha);
 			}
+
+			// Adjacency vertex at the end
+			vertex_data.push_back(std::get<0>(positions.back()));
+			vertex_data.push_back(std::get<1>(positions.back()));
+			vertex_data.push_back(std::get<2>(positions.back()));
+			vertex_data.push_back(r);
+			vertex_data.push_back(g);
+			vertex_data.push_back(b);
+			vertex_data.push_back(1.0f);
+
+			glBindVertexArray(VAO);
+			glBindBuffer(GL_ARRAY_BUFFER, VBO);
+			glBufferData(GL_ARRAY_BUFFER, (max_length + 2) * 7 * sizeof(float), nullptr, GL_DYNAMIC_DRAW);
+			glBufferSubData(GL_ARRAY_BUFFER, 0, vertex_data.size() * sizeof(float), vertex_data.data());
+
+			// Position attribute
+			glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 7 * sizeof(float), (void*)0);
+			glEnableVertexAttribArray(0);
+
+			// Color attribute
+			glVertexAttribPointer(1, 4, GL_FLOAT, GL_FALSE, 7 * sizeof(float), (void*)(3 * sizeof(float)));
+			glEnableVertexAttribArray(1);
+
+			glBindVertexArray(0);
 		}
 	};
 
@@ -64,6 +121,11 @@ namespace Boidsish {
 
 		// Timing
 		std::chrono::high_resolution_clock::time_point start_time;
+		Shader*                                      trail_shader;
+		Shader*                                      dot_shader;
+		Shader*                                      grid_shader;
+		unsigned int                                 grid_VAO, grid_VBO;
+		unsigned int                                 dot_VAO, dot_VBO;
 
 		VisualizerImpl(int w, int h, const char* title):
 			window(nullptr),
@@ -80,7 +142,14 @@ namespace Boidsish {
 			auto_camera_height_offset(0.0f),
 			auto_camera_distance(10.0f),
 			coordinate_wrapping_enabled(false),
-			wrap_range(20.0f) {
+			wrap_range(20.0f),
+			trail_shader(nullptr),
+			dot_shader(nullptr),
+			grid_shader(nullptr),
+			grid_VAO(0),
+			grid_VBO(0),
+			dot_VAO(0),
+			dot_VBO(0) {
 			// Initialize all keys to false
 			for (int i = 0; i < 1024; ++i) {
 				keys[i] = false;
@@ -92,92 +161,54 @@ namespace Boidsish {
 				throw std::runtime_error("Failed to initialize GLFW");
 			}
 
-			// Set error callback to get more info
-			glfwSetErrorCallback([](int error, const char* description) {
-				std::cerr << "GLFW Error " << error << ": " << description << std::endl;
-			});
-
-			// Use more flexible OpenGL settings for better compatibility
-			glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 2);
-			glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 1);
-			glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_ANY_PROFILE);
-
-			// For macOS - try without forward compatibility first
-			glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_FALSE);
+			glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
+			glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
+			glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
+			glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE);
 
 			window = glfwCreateWindow(width, height, title, nullptr, nullptr);
 			if (!window) {
-				std::cerr << "Failed to create window with OpenGL 2.1, trying with default settings..." << std::endl;
-
-				// Reset hints and try with default OpenGL
-				glfwDefaultWindowHints();
-				window = glfwCreateWindow(width, height, title, nullptr, nullptr);
-
-				if (!window) {
-					std::cerr << "Failed to create window with default settings" << std::endl;
-					glfwTerminate();
-					throw std::runtime_error("Failed to create GLFW window - check OpenGL drivers");
-				}
+				glfwTerminate();
+				throw std::runtime_error("Failed to create GLFW window");
 			}
 
 			glfwMakeContextCurrent(window);
-
-			// Initialize GLEW (optional for basic OpenGL)
-			GLenum glew_status = glewInit();
-			if (glew_status != GLEW_OK) {
-				std::cerr << "GLEW initialization failed: " << glewGetErrorString(glew_status) << std::endl;
-				std::cerr << "Continuing without GLEW - basic OpenGL should still work" << std::endl;
-			} else {
-				std::cout << "GLEW initialized successfully" << std::endl;
+			glewExperimental = GL_TRUE;
+			if (glewInit() != GLEW_OK) {
+				throw std::runtime_error("Failed to initialize GLEW");
 			}
+
+			glEnable(GL_DEPTH_TEST);
+			glEnable(GL_BLEND);
+			glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+			trail_shader = new Shader("shaders/trail.vs", "shaders/trail.fs", "shaders/trail.gs");
+			dot_shader = new Shader("shaders/dot.vs", "shaders/dot.fs");
+			grid_shader = new Shader("shaders/grid.vs", "shaders/grid.fs");
+
+			glGenVertexArrays(1, &dot_VAO);
+			glGenBuffers(1, &dot_VBO);
+
+			const GLubyte* version = glGetString(GL_VERSION);
+			std::cout << "OpenGL Version: " << version << std::endl;
+
+			glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
 
 			// Set up callbacks
 			glfwSetWindowUserPointer(window, this);
 			glfwSetKeyCallback(window, KeyCallback);
 			glfwSetCursorPosCallback(window, MouseCallback);
 			glfwSetFramebufferSizeCallback(window, FramebufferSizeCallback);
-
-			// Capture cursor
-			glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
-
-			// Enable depth testing
-			glEnable(GL_DEPTH_TEST);
-			glEnable(GL_BLEND);
-			glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-
-			// Enable lighting for better sphere appearance
-			glEnable(GL_LIGHTING);
-			glEnable(GL_LIGHT0);
-			glEnable(GL_NORMALIZE); // Automatically normalize normals
-
-			// Shader normalShader(
-			// 	"./shaders/vis.vs",
-			// 	"./shaders/frag.fs",
-			// 	"./shaders/geom.gs"
-			// );
-			// normalShader.use();
-			// Set up a simple directional light
-			GLfloat light_pos[] = {1.0f, 1.0f, 1.0f, 0.0f}; // Directional light
-			GLfloat light_ambient[] = {0.2f, 0.2f, 0.2f, 1.0f};
-			GLfloat light_diffuse[] = {0.8f, 0.8f, 0.8f, 1.0f};
-			GLfloat light_specular[] = {1.0f, 1.0f, 1.0f, 1.0f};
-
-			glLightfv(GL_LIGHT0, GL_POSITION, light_pos);
-			glLightfv(GL_LIGHT0, GL_AMBIENT, light_ambient);
-			glLightfv(GL_LIGHT0, GL_DIFFUSE, light_diffuse);
-			glLightfv(GL_LIGHT0, GL_SPECULAR, light_specular);
-
-			// Check OpenGL version
-			const GLubyte* version = glGetString(GL_VERSION);
-			std::cout << "OpenGL Version: " << version << std::endl;
-
-			// Set background color (black for holodeck effect)
-			glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
-
-			SetupPerspective();
 		}
 
 		~VisualizerImpl() {
+			delete trail_shader;
+			delete dot_shader;
+			delete grid_shader;
+			glDeleteVertexArrays(1, &grid_VAO);
+			glDeleteBuffers(1, &grid_VBO);
+			glDeleteVertexArrays(1, &dot_VAO);
+			glDeleteBuffers(1, &dot_VBO);
 			if (window) {
 				glfwDestroyWindow(window);
 			}
@@ -185,33 +216,11 @@ namespace Boidsish {
 		}
 
 		void SetupPerspective() {
-			glMatrixMode(GL_PROJECTION);
-			glLoadIdentity();
-
-			float aspect = static_cast<float>(width) / static_cast<float>(height);
-
-			// Use simpler perspective setup that's more compatible
-			glViewport(0, 0, width, height);
-
-			// Simple perspective using similar approach to gluPerspective
-			float fovy = camera.fov;
-			float zNear = 0.1f;
-			float zFar = 1000.0f;
-
-			float fH = tan(fovy / 360.0f * M_PI) * zNear;
-			float fW = fH * aspect;
-
-			glFrustum(-fW, fW, -fH, fH, zNear, zFar);
+			// This is now handled by the projection matrix in the shader.
 		}
 
 		void SetupCamera() {
-			glMatrixMode(GL_MODELVIEW);
-			glLoadIdentity();
-
-			// Apply camera rotation and translation
-			glRotatef(-camera.pitch, 1.0f, 0.0f, 0.0f);
-			glRotatef(camera.yaw, 0.0f, 1.0f, 0.0f);
-			glTranslatef(-camera.x, -camera.y, -camera.z);
+			// This is now handled by the view matrix in the shader.
 		}
 
 		void ProcessInput(float delta_time) {
@@ -362,166 +371,135 @@ namespace Boidsish {
 		}
 
 		void RenderGrid() {
-			glDisable(GL_DEPTH_TEST);
-			glDisable(GL_LIGHTING); // Disable lighting for grid
-			glLineWidth(1.0f);
+			if (grid_VAO == 0) {
+				std::vector<float> grid_vertices;
+				int   grid_size = 25;
+				float grid_spacing = 1.0f;
 
-			// Holodeck-style grid on z=0 plane
-			glBegin(GL_LINES);
+				for (int i = -grid_size; i <= grid_size; ++i) {
+					grid_vertices.push_back(-grid_size * grid_spacing);
+					grid_vertices.push_back(0.0f);
+					grid_vertices.push_back(i * grid_spacing);
+					grid_vertices.push_back(grid_size * grid_spacing);
+					grid_vertices.push_back(0.0f);
+					grid_vertices.push_back(i * grid_spacing);
 
-			int   grid_size = 25;
-			float grid_spacing = 1.0f;
-
-			// Main grid lines (brighter cyan)
-			glColor4f(0.0f, 0.8f, 1.0f, 0.6f);
-
-			for (int i = -grid_size; i <= grid_size; ++i) {
-				// Every 5th line is brighter
-				if (i % 5 == 0) {
-					glColor4f(0.0f, 0.9f, 1.0f, 0.8f);
-				} else {
-					glColor4f(0.0f, 0.6f, 0.8f, 0.4f);
+					grid_vertices.push_back(i * grid_spacing);
+					grid_vertices.push_back(0.0f);
+					grid_vertices.push_back(-grid_size * grid_spacing);
+					grid_vertices.push_back(i * grid_spacing);
+					grid_vertices.push_back(0.0f);
+					grid_vertices.push_back(grid_size * grid_spacing);
 				}
 
-				// Lines parallel to X axis (on z=0 plane)
-				glVertex3f(-grid_size * grid_spacing, 0.0f, i * grid_spacing);
-				glVertex3f(grid_size * grid_spacing, 0.0f, i * grid_spacing);
+				glGenVertexArrays(1, &grid_VAO);
+				glGenBuffers(1, &grid_VBO);
 
-				// Lines parallel to Z axis (on z=0 plane)
-				glVertex3f(i * grid_spacing, 0.0f, -grid_size * grid_spacing);
-				glVertex3f(i * grid_spacing, 0.0f, grid_size * grid_spacing);
+				glBindVertexArray(grid_VAO);
+				glBindBuffer(GL_ARRAY_BUFFER, grid_VBO);
+				glBufferData(GL_ARRAY_BUFFER, grid_vertices.size() * sizeof(float), grid_vertices.data(), GL_STATIC_DRAW);
+
+				glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
+				glEnableVertexAttribArray(0);
+
+				glBindVertexArray(0);
 			}
 
-			// Add subtle border/frame effect
-			glColor4f(0.0f, 1.0f, 1.0f, 0.9f);
-			glVertex3f(-grid_size * grid_spacing, 0.0f, -grid_size * grid_spacing);
-			glVertex3f(grid_size * grid_spacing, 0.0f, -grid_size * grid_spacing);
+			grid_shader->use();
+			grid_shader->setVec4("color", 0.0f, 0.8f, 1.0f, 0.6f);
 
-			glVertex3f(grid_size * grid_spacing, 0.0f, -grid_size * grid_spacing);
-			glVertex3f(grid_size * grid_spacing, 0.0f, grid_size * grid_spacing);
+			glm::mat4 projection = glm::perspective(glm::radians(camera.fov), (float)width / (float)height, 0.1f, 100.0f);
+			grid_shader->setMat4("projection", projection);
 
-			glVertex3f(grid_size * grid_spacing, 0.0f, grid_size * grid_spacing);
-			glVertex3f(-grid_size * grid_spacing, 0.0f, grid_size * grid_spacing);
+			glm::mat4 view = glm::lookAt(
+				glm::vec3(camera.x, camera.y, camera.z),
+				glm::vec3(camera.x, camera.y, camera.z) +
+					glm::vec3(
+						cos(glm::radians(camera.yaw)) * cos(glm::radians(camera.pitch)),
+						sin(glm::radians(camera.pitch)),
+						sin(glm::radians(camera.yaw)) * cos(glm::radians(camera.pitch))
+					),
+				glm::vec3(0.0f, 1.0f, 0.0f)
+			);
+			grid_shader->setMat4("view", view);
 
-			glVertex3f(-grid_size * grid_spacing, 0.0f, grid_size * grid_spacing);
-			glVertex3f(-grid_size * grid_spacing, 0.0f, -grid_size * grid_spacing);
-
-			glEnd();
-			glEnable(GL_DEPTH_TEST);
-			glEnable(GL_LIGHTING); // Re-enable lighting after grid
+			glBindVertexArray(grid_VAO);
+			glDrawArrays(GL_LINES, 0, 4 * (2 * 25 + 1));
+			glBindVertexArray(0);
 		}
 
 		void RenderDot(const Dot& dot) {
-			glPushMatrix();
+			dot_shader->use();
+			dot_shader->setVec4("color", dot.r, dot.g, dot.b, dot.a);
+			dot_shader->setFloat("size", dot.size);
 
-			// Apply coordinate wrapping if enabled
+			glm::mat4 projection = glm::perspective(glm::radians(camera.fov), (float)width / (float)height, 0.1f, 100.0f);
+			dot_shader->setMat4("projection", projection);
+
+			glm::mat4 view = glm::lookAt(
+				glm::vec3(camera.x, camera.y, camera.z),
+				glm::vec3(camera.x, camera.y, camera.z) +
+					glm::vec3(
+						cos(glm::radians(camera.yaw)) * cos(glm::radians(camera.pitch)),
+						sin(glm::radians(camera.pitch)),
+						sin(glm::radians(camera.yaw)) * cos(glm::radians(camera.pitch))
+					),
+				glm::vec3(0.0f, 1.0f, 0.0f)
+			);
+			dot_shader->setMat4("view", view);
+
 			float x = dot.x, y = dot.y, z = dot.z;
 			if (coordinate_wrapping_enabled && wrap_range > 0) {
-				// Wrap coordinates to keep them within [-wrap_range, wrap_range]
 				x = fmod(x + wrap_range, 2.0f * wrap_range) - wrap_range;
 				y = fmod(y + wrap_range, 2.0f * wrap_range) - wrap_range;
 				z = fmod(z + wrap_range, 2.0f * wrap_range) - wrap_range;
 			}
 
-			glTranslatef(x, y, z);
+			glBindVertexArray(dot_VAO);
+			glBindBuffer(GL_ARRAY_BUFFER, dot_VBO);
+			float vertex[] = {x, y, z};
+			glBufferData(GL_ARRAY_BUFFER, sizeof(vertex), vertex, GL_DYNAMIC_DRAW);
 
-			float radius = dot.size * 0.01f; // Convert size to reasonable radius
+			glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
+			glEnableVertexAttribArray(0);
 
-			// Set material properties for lighting
-			GLfloat material_ambient[] = {dot.r * 0.2f, dot.g * 0.2f, dot.b * 0.2f, dot.a};
-			GLfloat material_diffuse[] = {dot.r, dot.g, dot.b, dot.a};
-			GLfloat material_specular[] = {0.5f, 0.5f, 0.5f, dot.a};
-			GLfloat material_shininess[] = {32.0f};
+			glEnable(GL_PROGRAM_POINT_SIZE);
+			glDrawArrays(GL_POINTS, 0, 1);
+			glDisable(GL_PROGRAM_POINT_SIZE);
 
-			glMaterialfv(GL_FRONT, GL_AMBIENT, material_ambient);
-			glMaterialfv(GL_FRONT, GL_DIFFUSE, material_diffuse);
-			glMaterialfv(GL_FRONT, GL_SPECULAR, material_specular);
-			glMaterialfv(GL_FRONT, GL_SHININESS, material_shininess);
-
-			// Draw sphere using triangulated approach
-			const int longitude_segments = 12;
-			const int latitude_segments = 8;
-
-			glBegin(GL_TRIANGLES);
-
-			for (int lat = 0; lat < latitude_segments; ++lat) {
-				float lat0 = M_PI * (-0.5f + (float)lat / latitude_segments);
-				float lat1 = M_PI * (-0.5f + (float)(lat + 1) / latitude_segments);
-
-				float y0 = sin(lat0) * radius;
-				float y1 = sin(lat1) * radius;
-				float r0 = cos(lat0) * radius;
-				float r1 = cos(lat1) * radius;
-
-				for (int lon = 0; lon < longitude_segments; ++lon) {
-					float lon0 = 2 * M_PI * (float)lon / longitude_segments;
-					float lon1 = 2 * M_PI * (float)(lon + 1) / longitude_segments;
-
-					float x0 = cos(lon0);
-					float z0 = sin(lon0);
-					float x1 = cos(lon1);
-					float z1 = sin(lon1);
-
-					// First triangle
-					glNormal3f(x0 * cos(lat0), sin(lat0), z0 * cos(lat0));
-					glVertex3f(x0 * r0, y0, z0 * r0);
-
-					glNormal3f(x1 * cos(lat0), sin(lat0), z1 * cos(lat0));
-					glVertex3f(x1 * r0, y0, z1 * r0);
-
-					glNormal3f(x1 * cos(lat1), sin(lat1), z1 * cos(lat1));
-					glVertex3f(x1 * r1, y1, z1 * r1);
-
-					// Second triangle
-					glNormal3f(x0 * cos(lat0), sin(lat0), z0 * cos(lat0));
-					glVertex3f(x0 * r0, y0, z0 * r0);
-
-					glNormal3f(x1 * cos(lat1), sin(lat1), z1 * cos(lat1));
-					glVertex3f(x1 * r1, y1, z1 * r1);
-
-					glNormal3f(x0 * cos(lat1), sin(lat1), z0 * cos(lat1));
-					glVertex3f(x0 * r1, y1, z0 * r1);
-				}
-			}
-
-			glEnd();
-			glPopMatrix();
+			glBindVertexArray(0);
 		}
 
-		void RenderTrail(const Trail& trail, float r, float g, float b) {
-			if (trail.positions.size() < 2)
+		void RenderTrail(const Trail& trail) {
+			if (trail.positions.size() < 2) {
 				return;
-
-			glDisable(GL_LIGHTING); // Disable lighting for trails
-			glLineWidth(2.0f);      // Thicker lines for better visibility
-
-			// Render trail with gradient effect
-			glBegin(GL_LINE_STRIP);
-			for (size_t i = 0; i < trail.positions.size(); ++i) {
-				const auto& pos = trail.positions[i];
-				float       alpha = std::get<3>(pos);
-
-				// Make colors more vibrant and add some brightness boost
-				float brightness_boost = 1.5f;
-				float trail_r = std::min(1.0f, r * brightness_boost);
-				float trail_g = std::min(1.0f, g * brightness_boost);
-				float trail_b = std::min(1.0f, b * brightness_boost);
-
-				// Add a subtle glow effect for newer trail segments
-				if (alpha > 0.7f) {
-					brightness_boost = 2.0f;
-					trail_r = std::min(1.0f, r * brightness_boost);
-					trail_g = std::min(1.0f, g * brightness_boost);
-					trail_b = std::min(1.0f, b * brightness_boost);
-				}
-
-				glColor4f(trail_r, trail_g, trail_b, alpha * 0.8f); // Increased base alpha
-				glVertex3f(std::get<0>(pos), std::get<1>(pos), std::get<2>(pos));
 			}
-			glEnd();
 
-			glLineWidth(1.0f);     // Reset line width
-			glEnable(GL_LIGHTING); // Re-enable lighting
+			trail_shader->use();
+
+			glm::mat4 projection = glm::perspective(glm::radians(camera.fov), (float)width / (float)height, 0.1f, 100.0f);
+			trail_shader->setMat4("projection", projection);
+
+			glm::mat4 view = glm::lookAt(
+				glm::vec3(camera.x, camera.y, camera.z),
+				glm::vec3(camera.x, camera.y, camera.z) +
+					glm::vec3(
+						cos(glm::radians(camera.yaw)) * cos(glm::radians(camera.pitch)),
+						sin(glm::radians(camera.pitch)),
+						sin(glm::radians(camera.yaw)) * cos(glm::radians(camera.pitch))
+					),
+				glm::vec3(0.0f, 1.0f, 0.0f)
+			);
+			trail_shader->setMat4("view", view);
+
+			glm::mat4 model = glm::mat4(1.0f);
+			trail_shader->setMat4("model", model);
+
+			trail_shader->setFloat("thickness", 0.02f);
+
+			glBindVertexArray(trail.VAO);
+			glDrawArrays(GL_LINE_STRIP_ADJACENCY, 0, trail.positions.size() + 2);
+			glBindVertexArray(0);
 		}
 
 		static void KeyCallback(GLFWwindow* window, int key, int scancode, int action, int mods) {
@@ -669,9 +647,6 @@ namespace Boidsish {
 		last_frame_time = current_time;
 		impl->UpdateAutoCamera(delta_time, dots);
 
-		impl->SetupCamera();
-
-		// Render grid
 		impl->RenderGrid();
 
 		// Render dots and trails
@@ -688,15 +663,13 @@ namespace Boidsish {
 				// Create or update trail using dot ID
 				auto& trail = impl->trails[dot.id];
 				trail.max_length = dot.trail_length;
-				trail.AddPosition(dot.x, dot.y, dot.z);
+				trail.AddPosition(dot.x, dot.y, dot.z, dot.r, dot.g, dot.b);
 
 				// Update last seen time for this trail
 				impl->trail_last_update[dot.id] = time;
 
 				// Render trail
-				impl->RenderTrail(trail, dot.r, dot.g, dot.b);
-
-				// Render dot
+				impl->RenderTrail(trail);
 				impl->RenderDot(dot);
 			}
 
@@ -708,7 +681,7 @@ namespace Boidsish {
 				// If this trail is for a dot we didn't see this frame, just render the trail
 				if (current_dot_ids.find(trail_id) == current_dot_ids.end() && !trail.positions.empty()) {
 					// Use a default color for orphaned trails (white/gray)
-					impl->RenderTrail(trail, 0.7f, 0.7f, 0.7f);
+					impl->RenderTrail(trail);
 				}
 			}
 		}
