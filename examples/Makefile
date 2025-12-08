@@ -31,9 +31,11 @@ endif
 
 # Library object
 LIB_OBJ = $(BUILDDIR)/obj/boidsish.o
+FIELD_HANDLER_OBJ = $(BUILDDIR)/obj/field_handler.o
+ALL_OBJS = $(LIB_OBJ) $(FIELD_HANDLER_OBJ)
 
 # Targets
-EXAMPLES = $(BUILDDIR)/advanced_examples $(BUILDDIR)/entity_example $(BUILDDIR)/vector_demo
+EXAMPLES = $(BUILDDIR)/advanced_examples $(BUILDDIR)/entity_example $(BUILDDIR)/vector_demo $(BUILDDIR)/field_example
 
 all: $(BUILDDIR) $(EXAMPLES)
 
@@ -42,8 +44,8 @@ $(BUILDDIR):
 	@mkdir -p $(BUILDDIR)
 
 # Build the library object if it doesn't exist
-$(LIB_OBJ):
-	$(MAKE) -C .. boidsish.o
+$(LIB_OBJ) $(FIELD_HANDLER_OBJ):
+	$(MAKE) -C ..
 
 # Build examples
 $(BUILDDIR)/advanced_examples: advanced_examples.cpp $(LIB_OBJ) | $(BUILDDIR)
@@ -55,8 +57,11 @@ $(BUILDDIR)/entity_example: entity_example.cpp $(LIB_OBJ) | $(BUILDDIR)
 $(BUILDDIR)/vector_demo: vector_demo.cpp $(LIB_OBJ) | $(BUILDDIR)
 	$(CXX) $(CXXFLAGS) $(INCLUDES) vector_demo.cpp $(LIB_OBJ) -o $@ $(LDFLAGS) $(LIBS)
 
+$(BUILDDIR)/field_example: field_example.cpp $(ALL_OBJS) | $(BUILDDIR)
+	$(CXX) $(CXXFLAGS) $(INCLUDES) field_example.cpp $(ALL_OBJS) -o $@ $(LDFLAGS) $(LIBS)
+
 # Clean
 clean:
-	rm -f $(BUILDDIR)/advanced_examples $(BUILDDIR)/entity_example $(BUILDDIR)/vector_demo
+	rm -f $(BUILDDIR)/advanced_examples $(BUILDDIR)/entity_example $(BUILDDIR)/vector_demo $(BUILDDIR)/field_example
 
 .PHONY: all clean
