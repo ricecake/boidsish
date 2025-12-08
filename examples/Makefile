@@ -33,7 +33,7 @@ endif
 LIB_OBJ = $(BUILDDIR)/obj/boidsish.o
 
 # Targets
-EXAMPLES = $(BUILDDIR)/advanced_examples $(BUILDDIR)/entity_example $(BUILDDIR)/vector_demo
+EXAMPLES = $(BUILDDIR)/advanced_examples $(BUILDDIR)/entity_example $(BUILDDIR)/vector_demo $(BUILDDIR)/collision_example
 
 all: $(BUILDDIR) $(EXAMPLES)
 
@@ -55,8 +55,11 @@ $(BUILDDIR)/entity_example: entity_example.cpp $(LIB_OBJ) | $(BUILDDIR)
 $(BUILDDIR)/vector_demo: vector_demo.cpp $(LIB_OBJ) | $(BUILDDIR)
 	$(CXX) $(CXXFLAGS) $(INCLUDES) vector_demo.cpp $(LIB_OBJ) -o $@ $(LDFLAGS) $(LIBS)
 
+$(BUILDDIR)/collision_example: collision_example.cpp $(LIB_OBJ) | $(BUILDDIR)
+	$(CXX) $(CXXFLAGS) $(INCLUDES) collision_example.cpp $(LIB_OBJ) -o $@ $(LDFLAGS) $(LIBS)
+
 # Clean
 clean:
-	rm -f $(BUILDDIR)/advanced_examples $(BUILDDIR)/entity_example $(BUILDDIR)/vector_demo
+	rm -f $(BUILDDIR)/advanced_examples $(BUILDDIR)/entity_example $(BUILDDIR)/vector_demo $(BUILDDIR)/collision_example
 
 .PHONY: all clean

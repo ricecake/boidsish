@@ -199,6 +199,12 @@ namespace Boidsish {
 		// Called each frame to update the entity
 		virtual void UpdateEntity(EntityHandler& handler, float time, float delta_time) = 0;
 
+		// Called when a collision is detected with another entity
+		virtual void OnCollision(Entity& other) {
+			// Default implementation does nothing
+			(void)other;
+		}
+
 		// Getters and setters
 		int GetId() const { return id_; }
 

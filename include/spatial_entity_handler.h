@@ -72,7 +72,7 @@ namespace Boidsish {
 			}
 		}
 
-	private:
+	protected:
 		RTree<int, float, 3> rtree_;
 	};
 
