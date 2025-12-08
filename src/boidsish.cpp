@@ -812,7 +812,7 @@ namespace Boidsish {
 	}
 
 	void Visualizer::Render() {
-		glClear(GL_DEPTH_BUFFER_BIT);
+		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
 		// Get current time for dot function
 		auto  current_time = std::chrono::high_resolution_clock::now();
