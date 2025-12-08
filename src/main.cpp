@@ -1,36 +1,32 @@
 #include <cmath>
 #include <filesystem>
 #include <iostream>
+#include <memory>
 
 #include "boidsish.h"
+#include "graph.h"
 
 using namespace Boidsish;
 
 // Example: Simple circular motion with multiple dots
-std::vector<std::shared_ptr<Shape>> CircularMotionExample(float time) {
-	std::vector<std::shared_ptr<Shape>> shapes;
+std::vector<std::shared_ptr<Shape>> GraphExample(float time) {
+    std::vector<std::shared_ptr<Shape>> shapes;
+    auto graph = std::make_shared<Graph>();
 
-	int num_dots = 5 + int(time / 15);
-	for (int i = 0; i < num_dots; ++i) {
-		float angle = time * 0.5f + i * 2.0f * M_PI / num_dots;
-		float radius = 3.0f + i * 0.5f;
+    // Add vertices
+    graph->vertices.push_back({Vector3(0, 0, 0), 10.0f, 1, 0, 0, 1});
+    graph->vertices.push_back({Vector3(2, 2, 0), 12.0f, 0, 1, 0, 1});
+    graph->vertices.push_back({Vector3(-2, 2, 0), 8.0f, 0, 0, 1, 1});
+    graph->vertices.push_back({Vector3(0, -2, 0), 15.0f, 1, 1, 0, 1});
 
-		float x = cos(angle) * radius;
-		float y = sin(time * 0.3f + i) * 2.0f;
-		float z = sin(angle) * radius;
+    // Add edges
+    graph->edges.push_back({0, 1});
+    graph->edges.push_back({0, 2});
+    graph->edges.push_back({0, 3});
+    graph->edges.push_back({1, 2});
 
-		// Different colors for each dot
-		float r = 0.5f + 0.5f * sin(time * 0.1f + i * 0.7f);
-		float g = 0.5f + 0.5f * cos(time * 0.15f + i * 1.1f);
-		float b = 0.5f + 0.5f * sin(time * 0.2f + i * 1.3f);
-
-		float size = 8.0f + 4.0f * sin(time * 0.4f + i);
-		int   trail_length = 50 + i * 20; // Much longer trails
-
-		shapes.emplace_back(std::make_shared<Dot>(i, x, y, z, size, r, g, b, 1.0f, trail_length));
-	}
-
-	return shapes;
+    shapes.push_back(graph);
+    return shapes;
 }
 
 int main() {
@@ -43,7 +39,7 @@ int main() {
 		viz.SetCamera(camera);
 
 		// Set the dot function
-		viz.SetDotFunction(CircularMotionExample);
+		viz.SetDotFunction(GraphExample);
 
 		auto path = std::filesystem::current_path();
 
