@@ -26,8 +26,11 @@ public:
 	void UpdateEntity(EntityHandler& handler, float time, float delta_time) override;
 
 private:
-	float hunger_time = 100.0f;
-	Vector3 CalculateSeparation(const std::vector<std::shared_ptr<FlockingEntity>>& neighbors);
+	float   hunger_time = 100.0f;
+	Vector3 CalculateSeparation(
+		const std::vector<std::shared_ptr<FlockingEntity>>&   neighbors,
+		const std::vector<std::shared_ptr<VectorDemoEntity>>& predators
+	);
 	Vector3 CalculateAlignment(const std::vector<std::shared_ptr<FlockingEntity>>& neighbors);
 	Vector3 CalculateCohesion(const std::vector<std::shared_ptr<FlockingEntity>>& neighbors);
 };
@@ -36,30 +39,36 @@ class FruitEntity: public Entity {
 public:
 	FruitEntity(int id);
 	void UpdateEntity(EntityHandler& handler, float time, float delta_time) override;
-	float GetValue() const {
-		return value;
-	}
+
+	float GetValue() const { return value; }
+
 private:
+	float phase_;
 	float value;
 };
 
-FruitEntity::FruitEntity(int id): Entity(id), value(rand() % 30) {
-	Vector3 start_pos((rand() % 10 - 5) * 2.0f, 1+(rand() % 10), (rand() % 6 - 3) * 2.0f);
+FruitEntity::FruitEntity(int id): Entity(id), value(rand() % 90) {
+	Vector3 start_pos((rand() % 10 - 5) * 2.0f, 1 + (rand() % 10), (rand() % 6 - 3) * 2.0f);
 	SetPosition(start_pos);
+	SetTrailLength(0);
 	SetColor(255, 165, 0);
+	phase_ = start_pos.Magnitude();
 }
 
 void FruitEntity::UpdateEntity(EntityHandler& handler, float time, float delta_time) {
 	value -= delta_time;
+	phase_ += delta_time;
+
 	if (value <= 0) {
 		handler.AddEntity<FruitEntity>();
 		handler.RemoveEntity(GetId());
 	}
+	SetVelocity(Vector3(sin(phase_ / 2) / 2, sin(phase_ / 3), cos(phase_ / 5) / 2));
 }
 
 VectorDemoEntity::VectorDemoEntity(int id, const Vector3& start_pos): Entity(id), phase_(0.0f) {
 	SetPosition(start_pos);
-	SetSize(8.0f);
+	SetSize(10.0f);
 	SetTrailLength(100);
 }
 
@@ -98,6 +107,16 @@ void VectorDemoEntity::UpdateEntity(EntityHandler& handler, float time, float de
 	// Normalize direction and move toward target
 	Vector3 direction = to_target.Normalized();
 
+	Vector3 spread = Vector3(0, 0, 0);
+	auto    avoids = handler.GetEntitiesByType<VectorDemoEntity>();
+	for (auto& a : avoids) {
+		auto pos = a->GetPosition();
+		auto dis = current_pos.DistanceTo(pos);
+		if (dis <= 1.0f) {
+			spread += (current_pos - pos).Normalized();
+		}
+	}
+
 	// Add some orbital motion using cross product
 	Vector3 up = Vector3::Up();
 	Vector3 tangent = direction.Cross(up).Normalized();
@@ -105,7 +124,7 @@ void VectorDemoEntity::UpdateEntity(EntityHandler& handler, float time, float de
 	// Combine linear movement with orbital motion
 	Vector3 linear_vel = direction * 2.0f;
 	Vector3 orbital_vel = tangent * sin(phase_ * 3.0f) * 1.5f;
-	Vector3 total_velocity = linear_vel + orbital_vel;
+	Vector3 total_velocity = linear_vel + orbital_vel + spread;
 
 	SetVelocity(total_velocity);
 
@@ -123,7 +142,7 @@ void VectorDemoEntity::UpdateEntity(EntityHandler& handler, float time, float de
 FlockingEntity::FlockingEntity(int id, const Vector3& start_pos): Entity(id) {
 	SetPosition(start_pos);
 	SetSize(5.0f);
-	SetTrailLength(150);
+	SetTrailLength(75);
 	Vector3 startVel((rand() % 30 - 15) * 2.0f, (rand() % 10 - 5) * 2.0f, (rand() % 16 - 8) * 2.0f);
 
 	SetVelocity(startVel);
@@ -136,10 +155,6 @@ void FlockingEntity::UpdateEntity(EntityHandler& handler, float time, float delt
 	// Get all flocking entities from the handler
 	auto neighbors = handler.GetEntitiesByType<FlockingEntity>();
 
-	Vector3 separation = CalculateSeparation(neighbors);
-	Vector3 alignment = CalculateAlignment(neighbors);
-	Vector3 cohesion = CalculateCohesion(neighbors);
-
 	auto position = GetPosition();
 
 	Vector3 pred;
@@ -150,7 +165,7 @@ void FlockingEntity::UpdateEntity(EntityHandler& handler, float time, float delt
 		auto dir = (position - pos).Normalized();
 		// pred += dir + (1 / dis * a->GetVelocity().Cross(GetVelocity()).Normalized());
 		// pred += dir + (1 / dis * pos.Cross(GetPosition()).Normalized()  );
-		pred += dir + (1 / (dis) * pos.Cross(GetPosition()).Normalized());
+		pred += dir + (1 / (dis)*pos.Cross(GetPosition()).Normalized());
 	}
 
 	pred.Normalize();
@@ -163,22 +178,28 @@ void FlockingEntity::UpdateEntity(EntityHandler& handler, float time, float delt
 	auto foodDistance = position.DistanceTo(food);
 
 	if (foodDistance <= 0.6f) {
-		SetVelocity(3 * (food-position));
+		SetVelocity(3 * (food - position));
 		SetColor(1.0f, 0, 0, 1.0f);
-		hunger_time -= targetInstance->GetValue()/100 * hunger_time;
+		hunger_time -= targetInstance->GetValue() / 100 * hunger_time;
+
+		hunger_time = std::max(0.0f, hunger_time);
 
 		handler.RemoveEntity(targetInstance->GetId());
 		handler.AddEntity<FruitEntity>();
 		return;
 	}
 
-	auto distance = hunger_time/15*(1/std::min(1.0f, foodDistance/5))*(food-position).Normalized();
+	auto distance = (foodDistance / 4 + hunger_time / 15 * (1 / std::min(1.0f, foodDistance / 5))) *
+		(food - position).Normalized();
 
+	Vector3 separation = CalculateSeparation(neighbors, avoids);
+	Vector3 alignment = CalculateAlignment(neighbors);
+	Vector3 cohesion = CalculateCohesion(neighbors);
 	// Weight the flocking behaviors
-	Vector3 total_force = separation * 2.0f + alignment * 0.750f + cohesion * 1.30f + distance * 1.0f + pred * 2.0f;
+	Vector3 total_force = separation * 2.0f + alignment * 0.50f + cohesion * 1.30f + distance * 1.0f + pred * 2.0f;
 
-	auto newVel = (GetVelocity()+total_force.Normalized()).Normalized();
-	SetVelocity(newVel*3);
+	auto newVel = (GetVelocity() + total_force.Normalized()).Normalized();
+	SetVelocity(newVel * 3);
 
 	hunger_time += delta_time;
 
@@ -195,12 +216,24 @@ void FlockingEntity::UpdateEntity(EntityHandler& handler, float time, float delt
 	SetColor(r, g, b, 1.0f);
 }
 
-Vector3 FlockingEntity::CalculateSeparation(const std::vector<std::shared_ptr<FlockingEntity>>& neighbors) {
+Vector3 FlockingEntity::CalculateSeparation(
+	const std::vector<std::shared_ptr<FlockingEntity>>&   neighbors,
+	const std::vector<std::shared_ptr<VectorDemoEntity>>& predators
+) {
 	Vector3 separation = Vector3::Zero();
+	Vector3 my_pos = GetPosition();
 	int     count = 0;
 	float   separation_radius = 2.50f;
 
-	Vector3 my_pos = GetPosition();
+	auto total_distance = 0.0f;
+	for (auto& p : predators) {
+		auto dist = p->GetPosition().DistanceTo(my_pos);
+		if (dist <= 2) {
+			total_distance += 1 / (dist * dist);
+		}
+	}
+	separation_radius *= std::max(1.0f, total_distance);
+
 	for (auto neighbor : neighbors) {
 		if (neighbor.get() != this) {
 			Vector3 neighbor_pos = neighbor->GetPosition();
@@ -223,7 +256,7 @@ Vector3 FlockingEntity::CalculateSeparation(const std::vector<std::shared_ptr<Fl
 Vector3 FlockingEntity::CalculateAlignment(const std::vector<std::shared_ptr<FlockingEntity>>& neighbors) {
 	Vector3 average_velocity = Vector3::Zero();
 	int     count = 0;
-	float   alignment_radius = 3.0f;
+	float   alignment_radius = 3.50f;
 
 	Vector3 my_pos = GetPosition();
 	for (auto neighbor : neighbors) {
@@ -248,7 +281,7 @@ Vector3 FlockingEntity::CalculateAlignment(const std::vector<std::shared_ptr<Flo
 Vector3 FlockingEntity::CalculateCohesion(const std::vector<std::shared_ptr<FlockingEntity>>& neighbors) {
 	Vector3 center_of_mass = Vector3::Zero();
 	int     count = 0;
-	float   cohesion_radius = 4.0f;
+	float   cohesion_radius = 6.0f;
 
 	Vector3 my_pos = GetPosition();
 	for (auto neighbor : neighbors) {
@@ -277,18 +310,18 @@ public:
 		std::cout << "=== Vector3 Operations Demo ===" << std::endl;
 
 		// Create some vector demo entities
-		for (int i = 0; i < 5; i++) {
-			Vector3 start_pos((i - 2) * 3.0f, 0.0f, 0.0f);
+		for (int i = 0; i < 10; i++) {
+			Vector3 start_pos(10 * sin(i / 4), 1.0f, 10 * cos(i / 6.0f));
 			AddEntity<VectorDemoEntity>(start_pos);
 		}
 
 		// Create a flock of entities
-		for (int i = 0; i < 48; i++) {
+		for (int i = 0; i < 256; i++) {
 			Vector3 start_pos((rand() % 10 - 5) * 2.0f, (rand() % 6 - 3) * 2.0f, (rand() % 10 - 5) * 2.0f);
 			AddEntity<FlockingEntity>(start_pos);
 		}
 
-		for (int i = 0; i < 11; i++) {
+		for (int i = 0; i < 64; i++) {
 			AddEntity<FruitEntity>();
 		}
 
