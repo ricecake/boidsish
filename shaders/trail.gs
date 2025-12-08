@@ -9,29 +9,33 @@ in VS_OUT {
 
 out vec4 fColor;
 
+uniform mat4 projection;
 uniform float thickness;
 
 void main() {
-    vec3 p1 = gl_in[1].gl_Position.xyz / gl_in[1].gl_Position.w;
-    vec3 p2 = gl_in[2].gl_Position.xyz / gl_in[2].gl_Position.w;
+    vec4 p1 = gl_in[1].gl_Position;
+    vec4 p2 = gl_in[2].gl_Position;
 
-    vec2 dir = normalize(p2.xy - p1.xy);
+    vec3 ndc1 = p1.xyz / p1.w;
+    vec3 ndc2 = p2.xyz / p2.w;
+
+    vec2 dir = normalize(ndc2.xy - ndc1.xy);
     vec2 offset = vec2(-dir.y, dir.x) * thickness;
 
     fColor = gs_in[1].color;
-    gl_Position = vec4(p1.xy + offset, p1.z, 1.0);
+    gl_Position = vec4(ndc1.xy + offset, ndc1.z, 1.0);
     EmitVertex();
 
     fColor = gs_in[1].color;
-    gl_Position = vec4(p1.xy - offset, p1.z, 1.0);
+    gl_Position = vec4(ndc1.xy - offset, ndc1.z, 1.0);
     EmitVertex();
 
     fColor = gs_in[2].color;
-    gl_Position = vec4(p2.xy + offset, p2.z, 1.0);
+    gl_Position = vec4(ndc2.xy + offset, ndc2.z, 1.0);
     EmitVertex();
 
     fColor = gs_in[2].color;
-    gl_Position = vec4(p2.xy - offset, p2.z, 1.0);
+    gl_Position = vec4(ndc2.xy - offset, ndc2.z, 1.0);
     EmitVertex();
 
     EndPrimitive();

@@ -122,10 +122,73 @@ namespace Boidsish {
 		// Timing
 		std::chrono::high_resolution_clock::time_point start_time;
 		Shader*                                      trail_shader;
-		Shader*                                      dot_shader;
 		Shader*                                      grid_shader;
+		Shader*                                      sphere_shader;
 		unsigned int                                 grid_VAO, grid_VBO;
 		unsigned int                                 dot_VAO, dot_VBO;
+		unsigned int                                 sphere_VAO, sphere_VBO, sphere_EBO;
+		int                                          sphere_index_count;
+
+		void CreateSphereMesh() {
+			std::vector<float> vertices;
+			std::vector<unsigned int> indices;
+			const int longitude_segments = 12;
+			const int latitude_segments = 8;
+			const float radius = 1.0f;
+
+			for (int lat = 0; lat <= latitude_segments; ++lat) {
+				float lat0 = M_PI * (-0.5f + (float)lat / latitude_segments);
+				float y0 = sin(lat0);
+				float r0 = cos(lat0);
+
+				for (int lon = 0; lon <= longitude_segments; ++lon) {
+					float lon0 = 2 * M_PI * (float)lon / longitude_segments;
+					float x0 = cos(lon0);
+					float z0 = sin(lon0);
+
+					vertices.push_back(x0 * r0 * radius);
+					vertices.push_back(y0 * radius);
+					vertices.push_back(z0 * r0 * radius);
+					vertices.push_back(x0 * r0);
+					vertices.push_back(y0);
+					vertices.push_back(z0 * r0);
+				}
+			}
+
+			for (int lat = 0; lat < latitude_segments; ++lat) {
+				for (int lon = 0; lon < longitude_segments; ++lon) {
+					int first = (lat * (longitude_segments + 1)) + lon;
+					int second = first + longitude_segments + 1;
+					indices.push_back(first);
+					indices.push_back(second);
+					indices.push_back(first + 1);
+					indices.push_back(second);
+					indices.push_back(second + 1);
+					indices.push_back(first + 1);
+				}
+			}
+
+			sphere_index_count = indices.size();
+
+			glGenVertexArrays(1, &sphere_VAO);
+			glGenBuffers(1, &sphere_VBO);
+			glGenBuffers(1, &sphere_EBO);
+
+			glBindVertexArray(sphere_VAO);
+
+			glBindBuffer(GL_ARRAY_BUFFER, sphere_VBO);
+			glBufferData(GL_ARRAY_BUFFER, vertices.size() * sizeof(float), vertices.data(), GL_STATIC_DRAW);
+
+			glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, sphere_EBO);
+			glBufferData(GL_ELEMENT_ARRAY_BUFFER, indices.size() * sizeof(unsigned int), indices.data(), GL_STATIC_DRAW);
+
+			glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void*)0);
+			glEnableVertexAttribArray(0);
+			glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void*)(3 * sizeof(float)));
+			glEnableVertexAttribArray(1);
+
+			glBindVertexArray(0);
+		}
 
 		VisualizerImpl(int w, int h, const char* title):
 			window(nullptr),
@@ -144,12 +207,16 @@ namespace Boidsish {
 			coordinate_wrapping_enabled(false),
 			wrap_range(20.0f),
 			trail_shader(nullptr),
-			dot_shader(nullptr),
 			grid_shader(nullptr),
+			sphere_shader(nullptr),
 			grid_VAO(0),
 			grid_VBO(0),
 			dot_VAO(0),
-			dot_VBO(0) {
+			dot_VBO(0),
+			sphere_VAO(0),
+			sphere_VBO(0),
+			sphere_EBO(0),
+			sphere_index_count(0) {
 			// Initialize all keys to false
 			for (int i = 0; i < 1024; ++i) {
 				keys[i] = false;
@@ -183,11 +250,13 @@ namespace Boidsish {
 			glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
 			trail_shader = new Shader("shaders/trail.vs", "shaders/trail.fs", "shaders/trail.gs");
-			dot_shader = new Shader("shaders/dot.vs", "shaders/dot.fs");
 			grid_shader = new Shader("shaders/grid.vs", "shaders/grid.fs");
+			sphere_shader = new Shader("shaders/sphere.vs", "shaders/sphere.fs");
 
 			glGenVertexArrays(1, &dot_VAO);
 			glGenBuffers(1, &dot_VBO);
+
+			CreateSphereMesh();
 
 			const GLubyte* version = glGetString(GL_VERSION);
 			std::cout << "OpenGL Version: " << version << std::endl;
@@ -203,12 +272,15 @@ namespace Boidsish {
 
 		~VisualizerImpl() {
 			delete trail_shader;
-			delete dot_shader;
 			delete grid_shader;
+			delete sphere_shader;
 			glDeleteVertexArrays(1, &grid_VAO);
 			glDeleteBuffers(1, &grid_VBO);
 			glDeleteVertexArrays(1, &dot_VAO);
 			glDeleteBuffers(1, &dot_VBO);
+			glDeleteVertexArrays(1, &sphere_VAO);
+			glDeleteBuffers(1, &sphere_VBO);
+			glDeleteBuffers(1, &sphere_EBO);
 			if (window) {
 				glfwDestroyWindow(window);
 			}
@@ -236,9 +308,9 @@ namespace Boidsish {
 			float pitch_rad = camera.pitch * M_PI / 180.0f;
 
 			// Forward vector - where the camera is looking
-			float forward_x = cos(pitch_rad) * sin(yaw_rad);
+			float forward_x = cos(pitch_rad) * cos(yaw_rad);
 			float forward_y = sin(pitch_rad);
-			float forward_z = -cos(pitch_rad) * cos(yaw_rad);
+			float forward_z = cos(pitch_rad) * sin(yaw_rad);
 
 			// Right vector - cross product of forward and world up (0,1,0)
 			// right = forward x up = (forward_x, forward_y, forward_z) x (0, 1, 0)
@@ -370,7 +442,7 @@ namespace Boidsish {
 			}
 		}
 
-		void RenderGrid() {
+		void RenderGrid(const glm::mat4& projection, const glm::mat4& view) {
 			if (grid_VAO == 0) {
 				std::vector<float> grid_vertices;
 				int   grid_size = 25;
@@ -407,20 +479,7 @@ namespace Boidsish {
 
 			grid_shader->use();
 			grid_shader->setVec4("color", 0.0f, 0.8f, 1.0f, 0.6f);
-
-			glm::mat4 projection = glm::perspective(glm::radians(camera.fov), (float)width / (float)height, 0.1f, 100.0f);
 			grid_shader->setMat4("projection", projection);
-
-			glm::mat4 view = glm::lookAt(
-				glm::vec3(camera.x, camera.y, camera.z),
-				glm::vec3(camera.x, camera.y, camera.z) +
-					glm::vec3(
-						cos(glm::radians(camera.yaw)) * cos(glm::radians(camera.pitch)),
-						sin(glm::radians(camera.pitch)),
-						sin(glm::radians(camera.yaw)) * cos(glm::radians(camera.pitch))
-					),
-				glm::vec3(0.0f, 1.0f, 0.0f)
-			);
 			grid_shader->setMat4("view", view);
 
 			glBindVertexArray(grid_VAO);
@@ -428,25 +487,14 @@ namespace Boidsish {
 			glBindVertexArray(0);
 		}
 
-		void RenderDot(const Dot& dot) {
-			dot_shader->use();
-			dot_shader->setVec4("color", dot.r, dot.g, dot.b, dot.a);
-			dot_shader->setFloat("size", dot.size);
-
-			glm::mat4 projection = glm::perspective(glm::radians(camera.fov), (float)width / (float)height, 0.1f, 100.0f);
-			dot_shader->setMat4("projection", projection);
-
-			glm::mat4 view = glm::lookAt(
-				glm::vec3(camera.x, camera.y, camera.z),
-				glm::vec3(camera.x, camera.y, camera.z) +
-					glm::vec3(
-						cos(glm::radians(camera.yaw)) * cos(glm::radians(camera.pitch)),
-						sin(glm::radians(camera.pitch)),
-						sin(glm::radians(camera.yaw)) * cos(glm::radians(camera.pitch))
-					),
-				glm::vec3(0.0f, 1.0f, 0.0f)
-			);
-			dot_shader->setMat4("view", view);
+		void RenderDot(const Dot& dot, const glm::mat4& projection, const glm::mat4& view) {
+			sphere_shader->use();
+			sphere_shader->setVec3("objectColor", dot.r, dot.g, dot.b);
+			sphere_shader->setVec3("lightColor", 1.0f, 1.0f, 1.0f);
+			sphere_shader->setVec3("lightPos", 1.0f, 1.0f, 1.0f);
+			sphere_shader->setVec3("viewPos", camera.x, camera.y, camera.z);
+			sphere_shader->setMat4("projection", projection);
+			sphere_shader->setMat4("view", view);
 
 			float x = dot.x, y = dot.y, z = dot.z;
 			if (coordinate_wrapping_enabled && wrap_range > 0) {
@@ -455,45 +503,27 @@ namespace Boidsish {
 				z = fmod(z + wrap_range, 2.0f * wrap_range) - wrap_range;
 			}
 
-			glBindVertexArray(dot_VAO);
-			glBindBuffer(GL_ARRAY_BUFFER, dot_VBO);
-			float vertex[] = {x, y, z};
-			glBufferData(GL_ARRAY_BUFFER, sizeof(vertex), vertex, GL_DYNAMIC_DRAW);
+			glm::mat4 model = glm::mat4(1.0f);
+			model = glm::translate(model, glm::vec3(x, y, z));
+			model = glm::scale(model, glm::vec3(dot.size * 0.01f));
+			sphere_shader->setMat4("model", model);
 
-			glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
-			glEnableVertexAttribArray(0);
-
-			glEnable(GL_PROGRAM_POINT_SIZE);
-			glDrawArrays(GL_POINTS, 0, 1);
-			glDisable(GL_PROGRAM_POINT_SIZE);
-
+			glBindVertexArray(sphere_VAO);
+			glDrawElements(GL_TRIANGLES, sphere_index_count, GL_UNSIGNED_INT, 0);
 			glBindVertexArray(0);
 		}
 
-		void RenderTrail(const Trail& trail) {
+		void RenderTrail(const Trail& trail, const glm::mat4& projection, const glm::mat4& view) {
 			if (trail.positions.size() < 2) {
 				return;
 			}
 
 			trail_shader->use();
-
-			glm::mat4 projection = glm::perspective(glm::radians(camera.fov), (float)width / (float)height, 0.1f, 100.0f);
-			trail_shader->setMat4("projection", projection);
-
-			glm::mat4 view = glm::lookAt(
-				glm::vec3(camera.x, camera.y, camera.z),
-				glm::vec3(camera.x, camera.y, camera.z) +
-					glm::vec3(
-						cos(glm::radians(camera.yaw)) * cos(glm::radians(camera.pitch)),
-						sin(glm::radians(camera.pitch)),
-						sin(glm::radians(camera.yaw)) * cos(glm::radians(camera.pitch))
-					),
-				glm::vec3(0.0f, 1.0f, 0.0f)
-			);
 			trail_shader->setMat4("view", view);
 
 			glm::mat4 model = glm::mat4(1.0f);
 			trail_shader->setMat4("model", model);
+			trail_shader->setMat4("projection", projection);
 
 			trail_shader->setFloat("thickness", 0.02f);
 
@@ -647,7 +677,19 @@ namespace Boidsish {
 		last_frame_time = current_time;
 		impl->UpdateAutoCamera(delta_time, dots);
 
-		impl->RenderGrid();
+		glm::mat4 projection = glm::perspective(glm::radians(impl->camera.fov), (float)impl->width / (float)impl->height, 0.1f, 100.0f);
+		glm::mat4 view = glm::lookAt(
+			glm::vec3(impl->camera.x, impl->camera.y, impl->camera.z),
+			glm::vec3(impl->camera.x, impl->camera.y, impl->camera.z) +
+				glm::vec3(
+					cos(glm::radians(impl->camera.yaw)) * cos(glm::radians(impl->camera.pitch)),
+					sin(glm::radians(impl->camera.pitch)),
+					sin(glm::radians(impl->camera.yaw)) * cos(glm::radians(impl->camera.pitch))
+				),
+			glm::vec3(0.0f, 1.0f, 0.0f)
+		);
+
+		impl->RenderGrid(projection, view);
 
 		// Render dots and trails
 		if (!dots.empty()) {
@@ -669,8 +711,8 @@ namespace Boidsish {
 				impl->trail_last_update[dot.id] = time;
 
 				// Render trail
-				impl->RenderTrail(trail);
-				impl->RenderDot(dot);
+				impl->RenderTrail(trail, projection, view);
+				impl->RenderDot(dot, projection, view);
 			}
 
 			// Render trails for dots that are no longer active but still fading
@@ -681,7 +723,7 @@ namespace Boidsish {
 				// If this trail is for a dot we didn't see this frame, just render the trail
 				if (current_dot_ids.find(trail_id) == current_dot_ids.end() && !trail.positions.empty()) {
 					// Use a default color for orphaned trails (white/gray)
-					impl->RenderTrail(trail);
+					impl->RenderTrail(trail, projection, view);
 				}
 			}
 		}
