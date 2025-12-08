@@ -58,6 +58,10 @@ namespace Boidsish {
 		float auto_camera_height_offset;
 		float auto_camera_distance;
 
+		// Single-object tracking state
+		bool single_track_mode;
+		int	 tracked_dot_index;
+
 		// Coordinate wrapping
 		bool  coordinate_wrapping_enabled;
 		float wrap_range;
@@ -79,6 +83,8 @@ namespace Boidsish {
 			auto_camera_angle(0.0f),
 			auto_camera_height_offset(0.0f),
 			auto_camera_distance(10.0f),
+			single_track_mode(false),
+			tracked_dot_index(0),
 			coordinate_wrapping_enabled(false),
 			wrap_range(20.0f) {
 			// Initialize all keys to false
@@ -335,6 +341,46 @@ namespace Boidsish {
 			camera.pitch = std::max(-89.0f, std::min(30.0f, camera.pitch));
 		}
 
+		void UpdateSingleTrackCamera(float delta_time, const std::vector<Dot>& dots) {
+			if (!single_track_mode || dots.empty()) {
+				return;
+			}
+
+			// Ensure tracked_dot_index is within bounds
+			if (tracked_dot_index >= static_cast<int>(dots.size())) {
+				tracked_dot_index = 0;
+			}
+
+			const Dot& target_dot = dots[tracked_dot_index];
+
+			float target_x = target_dot.x;
+			float target_y = target_dot.y;
+			float target_z = target_dot.z;
+
+			// Desired distance from the target
+			float distance = 15.0f;
+			float camera_height_offset = 5.0f;
+
+			// Smoothly move the camera towards the target
+			float pan_speed = 2.0f * delta_time;
+			camera.x += (target_x - camera.x) * pan_speed;
+			camera.y += (target_y + camera_height_offset - camera.y) * pan_speed;
+			camera.z += (target_z - distance - camera.z) * pan_speed;
+
+			// Look at the target
+			float dx = target_x - camera.x;
+			float dy = target_y - camera.y;
+			float dz = target_z - camera.z;
+
+			float distance_xz = sqrt(dx * dx + dz * dz);
+
+			camera.yaw = atan2(dx, -dz) * 180.0f / M_PI;
+			camera.pitch = atan2(dy, distance_xz) * 180.0f / M_PI;
+
+			// Constrain pitch
+			camera.pitch = std::max(-89.0f, std::min(89.0f, camera.pitch));
+		}
+
 		void CleanupOldTrails(float current_time, const std::vector<Dot>& active_dots) {
 			// Create set of active dot IDs
 			std::set<int> active_ids;
@@ -565,6 +611,18 @@ namespace Boidsish {
 					std::cout << "Coordinate wrapping disabled" << std::endl;
 				}
 			}
+
+			if (key == GLFW_KEY_9 && action == GLFW_PRESS) {
+				impl->single_track_mode = true;
+				impl->auto_camera_mode = false;
+				impl->tracked_dot_index++;
+				std::cout << "Single-track camera enabled" << std::endl;
+			}
+
+			if (key == GLFW_KEY_8 && action == GLFW_PRESS) {
+				impl->single_track_mode = false;
+				std::cout << "Single-track camera disabled" << std::endl;
+			}
 		}
 
 		static void MouseCallback(GLFWwindow* window, double xpos, double ypos) {
@@ -667,7 +725,11 @@ namespace Boidsish {
 		static auto last_frame_time = current_time;
 		float       delta_time = std::chrono::duration<float>(current_time - last_frame_time).count();
 		last_frame_time = current_time;
-		impl->UpdateAutoCamera(delta_time, dots);
+		if (impl->single_track_mode) {
+			impl->UpdateSingleTrackCamera(delta_time, dots);
+		} else {
+			impl->UpdateAutoCamera(delta_time, dots);
+		}
 
 		impl->SetupCamera();
 
