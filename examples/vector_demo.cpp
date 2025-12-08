@@ -6,6 +6,7 @@
 
 #include "boidsish.h"
 #include "logger.h"
+#include "spatial_entity_handler.h"
 #include <RTree.h>
 
 using namespace Boidsish;
@@ -73,12 +74,12 @@ VectorDemoEntity::VectorDemoEntity(int id, const Vector3& start_pos): Entity(id)
 }
 
 void VectorDemoEntity::UpdateEntity(EntityHandler& handler, float time, float delta_time) {
-	(void)handler;
 	(void)time; // Mark unused parameters
 	phase_ += delta_time;
 
-	auto current_pos = GetPosition();
-	auto targetInstance = std::static_pointer_cast<FlockingEntity>(handler.GetEntity(target_id));
+	auto& spatial_handler = static_cast<SpatialEntityHandler&>(handler);
+	auto  current_pos = GetPosition();
+	auto  targetInstance = std::static_pointer_cast<FlockingEntity>(handler.GetEntity(target_id));
 
 	if (targetInstance != nullptr) {
 		auto target = targetInstance->GetPosition();
@@ -95,26 +96,23 @@ void VectorDemoEntity::UpdateEntity(EntityHandler& handler, float time, float de
 		}
 	}
 
-	auto prey = handler.GetEntitiesByType<FlockingEntity>();
-	targetInstance = std::ranges::min(prey, std::ranges::less{}, [&](auto i) {
-		return current_pos.DistanceTo(i->GetPosition());
-	});
-	target_id = targetInstance->GetId();
-	auto target = targetInstance->GetPosition();
-	auto to_target = target - current_pos;
+	targetInstance = spatial_handler.FindNearest<FlockingEntity>(current_pos);
+	if (!targetInstance) {
+		return;
+	}
 
-	// Demonstrate various Vector3 operations
-	// Normalize direction and move toward target
+	target_id = targetInstance->GetId();
+	auto    target = targetInstance->GetPosition();
+	auto    to_target = target - current_pos;
 	Vector3 direction = to_target.Normalized();
 
-	Vector3 spread = Vector3(0, 0, 0);
-	auto    avoids = handler.GetEntitiesByType<VectorDemoEntity>();
+	Vector3                                  spread = Vector3(0, 0, 0);
+	auto                                     avoids =
+		spatial_handler.GetEntitiesInRadius<VectorDemoEntity>(current_pos, 1.0f);
 	for (auto& a : avoids) {
-		auto pos = a->GetPosition();
-		auto dis = current_pos.DistanceTo(pos);
-		if (dis <= 1.0f) {
-			spread += (current_pos - pos).Normalized();
-		}
+		if (a.get() == this)
+			continue;
+		spread += (current_pos - a->GetPosition()).Normalized();
 	}
 
 	// Add some orbital motion using cross product
@@ -152,28 +150,27 @@ void FlockingEntity::UpdateEntity(EntityHandler& handler, float time, float delt
 	(void)time;
 	(void)delta_time; // Mark unused parameters
 
-	// Get all flocking entities from the handler
-	auto neighbors = handler.GetEntitiesByType<FlockingEntity>();
+	auto& spatial_handler = static_cast<SpatialEntityHandler&>(handler);
+	auto  position = GetPosition();
 
-	auto position = GetPosition();
+	// Get neighbors and predators using spatial queries
+	auto neighbors = spatial_handler.GetEntitiesInRadius<FlockingEntity>(position, 6.0f);
+	auto predators = spatial_handler.GetEntitiesInRadius<VectorDemoEntity>(position, 2.0f);
 
 	Vector3 pred;
-	auto    avoids = handler.GetEntitiesByType<VectorDemoEntity>();
-	for (auto& a : avoids) {
+	for (auto& a : predators) {
 		auto pos = a->GetPosition();
 		auto dis = position.DistanceTo(pos);
 		auto dir = (position - pos).Normalized();
-		// pred += dir + (1 / dis * a->GetVelocity().Cross(GetVelocity()).Normalized());
-		// pred += dir + (1 / dis * pos.Cross(GetPosition()).Normalized()  );
 		pred += dir + (1 / (dis)*pos.Cross(GetPosition()).Normalized());
 	}
-
 	pred.Normalize();
 
-	auto foods = handler.GetEntitiesByType<FruitEntity>();
-	auto targetInstance = std::ranges::min(foods, std::ranges::less{}, [&](auto i) {
-		return position.DistanceTo(i->GetPosition());
-	});
+	auto targetInstance = spatial_handler.FindNearest<FruitEntity>(position);
+	if (!targetInstance) {
+		return;
+	}
+
 	auto food = targetInstance->GetPosition();
 	auto foodDistance = position.DistanceTo(food);
 
@@ -181,7 +178,6 @@ void FlockingEntity::UpdateEntity(EntityHandler& handler, float time, float delt
 		SetVelocity(3 * (food - position));
 		SetColor(1.0f, 0, 0, 1.0f);
 		hunger_time -= targetInstance->GetValue() / 100 * hunger_time;
-
 		hunger_time = std::max(0.0f, hunger_time);
 
 		handler.RemoveEntity(targetInstance->GetId());
@@ -192,10 +188,9 @@ void FlockingEntity::UpdateEntity(EntityHandler& handler, float time, float delt
 	auto distance = (foodDistance / 4 + hunger_time / 15 * (1 / std::min(1.0f, foodDistance / 5))) *
 		(food - position).Normalized();
 
-	Vector3 separation = CalculateSeparation(neighbors, avoids);
+	Vector3 separation = CalculateSeparation(neighbors, predators);
 	Vector3 alignment = CalculateAlignment(neighbors);
 	Vector3 cohesion = CalculateCohesion(neighbors);
-	// Weight the flocking behaviors
 	Vector3 total_force = separation * 2.0f + alignment * 0.50f + cohesion * 1.30f + distance * 1.0f + pred * 2.0f;
 
 	auto newVel = (GetVelocity() + total_force.Normalized()).Normalized();
@@ -304,7 +299,7 @@ Vector3 FlockingEntity::CalculateCohesion(const std::vector<std::shared_ptr<Floc
 }
 
 // Handler for vector demonstration
-class VectorDemoHandler: public EntityHandler {
+class VectorDemoHandler: public SpatialEntityHandler {
 public:
 	VectorDemoHandler() {
 		std::cout << "=== Vector3 Operations Demo ===" << std::endl;

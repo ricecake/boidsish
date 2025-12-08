@@ -268,11 +268,14 @@ namespace Boidsish {
 		template <typename T, typename... Args>
 		int AddEntity(Args&&... args) {
 			int id = next_id_++;
-			entities_[id] = std::make_shared<T>(id, std::forward<Args>(args)...);
+			auto entity = std::make_shared<T>(id, std::forward<Args>(args)...);
+			AddEntity(id, entity);
 			return id;
 		}
 
-		void RemoveEntity(int id) { entities_.erase(id); }
+		virtual void AddEntity(int id, std::shared_ptr<Entity> entity) { entities_[id] = entity; }
+
+		virtual void RemoveEntity(int id) { entities_.erase(id); }
 
 		auto GetEntity(int id) {
 			auto it = entities_.find(id);
