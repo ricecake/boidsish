@@ -17,8 +17,8 @@ namespace Boidsish {
 		template <typename T>
 		std::vector<std::shared_ptr<T>> GetEntitiesInRadius(const Vector3& center, float radius) {
 			std::vector<std::shared_ptr<T>> result;
-			float min[] = {center.x - radius, center.y - radius, center.z - radius};
-			float max[] = {center.x + radius, center.y + radius, center.z + radius};
+			float                           min[] = {center.x - radius, center.y - radius, center.z - radius};
+			float                           max[] = {center.x + radius, center.y + radius, center.z + radius};
 
 			rtree_.Search(min, max, [&](int id) {
 				auto entity = GetEntity(id);
@@ -35,15 +35,23 @@ namespace Boidsish {
 		}
 
 		template <typename T>
-		std::shared_ptr<T> FindNearest(const Vector3& center, float initial_radius = 1.0f, float expansion_factor = 2.0f, int max_expansions = 10) {
+		std::shared_ptr<T> FindNearest(
+			const Vector3& center,
+			float          initial_radius = 1.0f,
+			float          expansion_factor = 2.0f,
+			int            max_expansions = 10
+		) {
 			float radius = initial_radius;
 			for (int i = 0; i < max_expansions; ++i) {
 				auto entities_in_radius = GetEntitiesInRadius<T>(center, radius);
 				if (!entities_in_radius.empty()) {
-					return *std::min_element(entities_in_radius.begin(), entities_in_radius.end(),
+					return *std::min_element(
+						entities_in_radius.begin(),
+						entities_in_radius.end(),
 						[&](const auto& a, const auto& b) {
 							return center.DistanceTo(a->GetPosition()) < center.DistanceTo(b->GetPosition());
-						});
+						}
+					);
 				}
 				radius *= expansion_factor;
 			}

@@ -10,24 +10,24 @@ using namespace Boidsish;
 
 // Example: Graph with spline smoothing
 std::vector<std::shared_ptr<Shape>> GraphExample(float time) {
-    std::vector<std::shared_ptr<Shape>> shapes;
-    auto graph = std::make_shared<Graph>(0, 0, 0, 0);
+	std::vector<std::shared_ptr<Shape>> shapes;
+	auto                                graph = std::make_shared<Graph>(0, 0, 0, 0);
 
-    // Add vertices in a chain
-    graph->vertices.push_back({Vector3(-4, 0, 0), 10.0f, 1, 0, 0, 1});
-    graph->vertices.push_back({Vector3(-2, 2, 0), 12.0f, 0, 1, 0, 1});
-    graph->vertices.push_back({Vector3(0, 0, 0), 15.0f, 0, 0, 1, 1});
-    graph->vertices.push_back({Vector3(2, -2, 0), 12.0f, 1, 1, 0, 1});
-    graph->vertices.push_back({Vector3(4, 0, 0), 10.0f, 1, 0, 1, 1});
+	// Add vertices in a chain
+	graph->vertices.push_back({Vector3(-4, 0, 0), 10.0f, 1, 0, 0, 1});
+	graph->vertices.push_back({Vector3(-2, 2, 0), 12.0f, 0, 1, 0, 1});
+	graph->vertices.push_back({Vector3(0, 0, 0), 15.0f, 0, 0, 1, 1});
+	graph->vertices.push_back({Vector3(2, -2, 0), 12.0f, 1, 1, 0, 1});
+	graph->vertices.push_back({Vector3(4, 0, 0), 10.0f, 1, 0, 1, 1});
 
-    // Add edges to connect the vertices in a chain
-    graph->edges.push_back({0, 1});
-    graph->edges.push_back({1, 2});
-    graph->edges.push_back({2, 3});
-    graph->edges.push_back({3, 4});
+	// Add edges to connect the vertices in a chain
+	graph->edges.push_back({0, 1});
+	graph->edges.push_back({1, 2});
+	graph->edges.push_back({2, 3});
+	graph->edges.push_back({3, 4});
 
-    shapes.push_back(graph);
-    return shapes;
+	shapes.push_back(graph);
+	return shapes;
 }
 
 int main() {

@@ -159,22 +159,20 @@ namespace Boidsish {
 	// Structure representing a single dot/particle
 
 	// Class representing a single dot/particle, inheriting from Shape
-	class Dot : public Shape {
+	class Dot: public Shape {
 	public:
 		float size; // Size of the dot
 
-		Dot(
-			int   id = 0,
-			float x = 0.0f,
-			float y = 0.0f,
-			float z = 0.0f,
-			float size = 1.0f,
-			float r = 1.0f,
-			float g = 1.0f,
-			float b = 1.0f,
-			float a = 1.0f,
-			int   trail_length = 10
-		);
+		Dot(int   id = 0,
+		    float x = 0.0f,
+		    float y = 0.0f,
+		    float z = 0.0f,
+		    float size = 1.0f,
+		    float r = 1.0f,
+		    float g = 1.0f,
+		    float b = 1.0f,
+		    float a = 1.0f,
+		    int   trail_length = 10);
 
 		void render() const override;
 	};
@@ -283,7 +281,7 @@ namespace Boidsish {
 		// Entity management
 		template <typename T, typename... Args>
 		int AddEntity(Args&&... args) {
-			int id = next_id_++;
+			int  id = next_id_++;
 			auto entity = std::make_shared<T>(id, std::forward<Args>(args)...);
 			AddEntity(id, entity);
 			return id;

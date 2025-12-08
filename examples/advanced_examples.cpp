@@ -54,7 +54,7 @@ auto RandomWalkExample(float time) {
 	}
 
 	std::uniform_real_distribution<float> distribution(-0.1f, 0.1f);
-	std::vector<std::shared_ptr<Shape>>     dots;
+	std::vector<std::shared_ptr<Shape>>   dots;
 
 	for (size_t i = 0; i < positions.size(); ++i) {
 		// Update position with random walk

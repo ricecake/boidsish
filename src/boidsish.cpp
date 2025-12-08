@@ -1,7 +1,5 @@
 #include "boidsish.h"
 
-#include <GL/glew.h>
-#include <GLFW/glfw3.h>
 #include <chrono>
 #include <cmath>
 #include <deque>
@@ -16,18 +14,7 @@
 
 namespace Boidsish {
 
-	Dot::Dot(
-		int   id,
-		float x,
-		float y,
-		float z,
-		float size,
-		float r,
-		float g,
-		float b,
-		float a,
-		int   trail_length
-	) {
+	Dot::Dot(int id, float x, float y, float z, float size, float r, float g, float b, float a, int trail_length) {
 		this->id = id;
 		this->x = x;
 		this->y = y;
@@ -664,8 +651,9 @@ namespace Boidsish {
 			if (first_render) {
 				std::cout << "Rendering " << shapes.size() << " shapes" << std::endl;
 				if (!shapes.empty()) {
-					std::cout << "First shape: pos(" << shapes[0]->x << ", " << shapes[0]->y << ", " << shapes[0]->z << ") color("
-							  << shapes[0]->r << ", " << shapes[0]->g << ", " << shapes[0]->b << ")" << std::endl;
+					std::cout << "First shape: pos(" << shapes[0]->x << ", " << shapes[0]->y << ", " << shapes[0]->z
+							  << ") color(" << shapes[0]->r << ", " << shapes[0]->g << ", " << shapes[0]->b << ")"
+							  << std::endl;
 				}
 				first_render = false;
 			}
@@ -789,18 +777,20 @@ namespace Boidsish {
 			entity->GetColor(r, g, b, a);
 
 			// Create dot at entity's position
-			shapes.emplace_back(std::make_shared<Dot>(
-				entity->GetId(),
-				entity->GetXPos(),
-				entity->GetYPos(),
-				entity->GetZPos(),
-				entity->GetSize(),
-				r,
-				g,
-				b,
-				a,
-				entity->GetTrailLength()
-			));
+			shapes.emplace_back(
+				std::make_shared<Dot>(
+					entity->GetId(),
+					entity->GetXPos(),
+					entity->GetYPos(),
+					entity->GetZPos(),
+					entity->GetSize(),
+					r,
+					g,
+					b,
+					a,
+					entity->GetTrailLength()
+				)
+			);
 		}
 
 		return shapes;

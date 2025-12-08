@@ -56,7 +56,7 @@ FruitEntity::FruitEntity(int id): Entity(id), value(rand() % 90) {
 	phase_ = start_pos.Magnitude();
 }
 
-void FruitEntity::UpdateEntity(EntityHandler& handler, float time, float delta_time) {
+void FruitEntity::UpdateEntity(EntityHandler& handler, float, float delta_time) {
 	value -= delta_time;
 	phase_ += delta_time;
 
@@ -106,9 +106,8 @@ void VectorDemoEntity::UpdateEntity(EntityHandler& handler, float time, float de
 	auto    to_target = target - current_pos;
 	Vector3 direction = to_target.Normalized();
 
-	Vector3                                  spread = Vector3(0, 0, 0);
-	auto                                     avoids =
-		spatial_handler.GetEntitiesInRadius<VectorDemoEntity>(current_pos, 1.0f);
+	Vector3 spread = Vector3(0, 0, 0);
+	auto    avoids = spatial_handler.GetEntitiesInRadius<VectorDemoEntity>(current_pos, 1.0f);
 	for (auto& a : avoids) {
 		if (a.get() == this)
 			continue;
