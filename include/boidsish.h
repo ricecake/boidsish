@@ -146,9 +146,6 @@ namespace Boidsish {
 	public:
 		virtual ~Shape() = default;
 
-		// Pure virtual function for rendering the shape
-		virtual void render() const = 0;
-
 		// Common properties
 		int   id;
 		float x, y, z;
@@ -174,7 +171,7 @@ namespace Boidsish {
 		    float a = 1.0f,
 		    int   trail_length = 10);
 
-		void render() const override;
+		void render() const;
 	};
 
 	// Function type for user-defined shape generation

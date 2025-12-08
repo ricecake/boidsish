@@ -10,6 +10,9 @@
 
 #include <GL/glew.h>
 #include <GLFW/glfw3.h>
+#include <glm/glm.hpp>
+#include <glm/gtc/matrix_transform.hpp>
+#include <glm/gtc/type_ptr.hpp>
 #include <shader.h>
 
 namespace Boidsish {
@@ -28,62 +31,7 @@ namespace Boidsish {
 	}
 
 	void Dot::render() const {
-		float radius = size * 0.01f;
-
-		GLfloat material_ambient[] = {r * 0.2f, g * 0.2f, b * 0.2f, a};
-		GLfloat material_diffuse[] = {r, g, b, a};
-		GLfloat material_specular[] = {0.5f, 0.5f, 0.5f, a};
-		GLfloat material_shininess[] = {32.0f};
-
-		glMaterialfv(GL_FRONT, GL_AMBIENT, material_ambient);
-		glMaterialfv(GL_FRONT, GL_DIFFUSE, material_diffuse);
-		glMaterialfv(GL_FRONT, GL_SPECULAR, material_specular);
-		glMaterialfv(GL_FRONT, GL_SHININESS, material_shininess);
-
-		const int longitude_segments = 12;
-		const int latitude_segments = 8;
-
-		glBegin(GL_TRIANGLES);
-
-		for (int lat = 0; lat < latitude_segments; ++lat) {
-			float lat0 = M_PI * (-0.5f + (float)lat / latitude_segments);
-			float lat1 = M_PI * (-0.5f + (float)(lat + 1) / latitude_segments);
-
-			float y0 = sin(lat0) * radius;
-			float y1 = sin(lat1) * radius;
-			float r0 = cos(lat0) * radius;
-			float r1 = cos(lat1) * radius;
-
-			for (int lon = 0; lon < longitude_segments; ++lon) {
-				float lon0 = 2 * M_PI * (float)lon / longitude_segments;
-				float lon1 = 2 * M_PI * (float)(lon + 1) / longitude_segments;
-
-				float x0 = cos(lon0);
-				float z0 = sin(lon0);
-				float x1 = cos(lon1);
-				float z1 = sin(lon1);
-
-				glNormal3f(x0 * cos(lat0), sin(lat0), z0 * cos(lat0));
-				glVertex3f(x0 * r0, y0, z0 * r0);
-
-				glNormal3f(x1 * cos(lat0), sin(lat0), z1 * cos(lat0));
-				glVertex3f(x1 * r0, y0, z1 * r0);
-
-				glNormal3f(x1 * cos(lat1), sin(lat1), z1 * cos(lat1));
-				glVertex3f(x1 * r1, y1, z1 * r1);
-
-				glNormal3f(x0 * cos(lat0), sin(lat0), z0 * cos(lat0));
-				glVertex3f(x0 * r0, y0, z0 * r0);
-
-				glNormal3f(x1 * cos(lat1), sin(lat1), z1 * cos(lat1));
-				glVertex3f(x1 * r1, y1, z1 * r1);
-
-				glNormal3f(x0 * cos(lat1), sin(lat1), z0 * cos(lat1));
-				glVertex3f(x0 * r1, y1, z0 * r1);
-			}
-		}
-
-		glEnd();
+		// Deprecated
 	}
 
 	// Trail data for each dot
@@ -111,10 +59,17 @@ namespace Boidsish {
 
 	// Implementation details hidden from header
 	struct Visualizer::VisualizerImpl {
-		GLFWwindow*          window;
-		int                  width, height;
-		Camera               camera;
-		ShapeFunction        shape_function;
+		GLFWwindow*   window;
+		int           width, height;
+		Camera        camera;
+		ShapeFunction shape_function;
+		Shader*       background_shader;
+		GLuint        background_vao;
+		Shader*       dot_shader;
+		GLuint        sphere_vao;
+		int           sphere_indices;
+		glm::vec3     grid_color;
+
 		std::map<int, Trail> trails;            // Trail for each dot (using dot ID as key)
 		std::map<int, float> trail_last_update; // Track when each trail was last updated for cleanup
 
@@ -147,6 +102,12 @@ namespace Boidsish {
 			height(h),
 			camera(),
 			shape_function(nullptr),
+			background_shader(nullptr),
+			background_vao(0),
+			dot_shader(nullptr),
+			sphere_vao(0),
+			sphere_indices(0),
+			grid_color(0.0f, 1.0f, 1.0f),
 			last_mouse_x(0.0),
 			last_mouse_y(0.0),
 			first_mouse(true),
@@ -176,12 +137,12 @@ namespace Boidsish {
 			});
 
 			// Use more flexible OpenGL settings for better compatibility
-			glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 2);
-			glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 1);
-			glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_ANY_PROFILE);
+			glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
+			glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
+			glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
 
 			// For macOS - try without forward compatibility first
-			glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_FALSE);
+			glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE);
 
 			window = glfwCreateWindow(width, height, title, nullptr, nullptr);
 			if (!window) {
@@ -199,6 +160,7 @@ namespace Boidsish {
 			}
 
 			glfwMakeContextCurrent(window);
+			glewExperimental = true;
 
 			// Initialize GLEW (optional for basic OpenGL)
 			GLenum glew_status = glewInit();
@@ -223,28 +185,6 @@ namespace Boidsish {
 			glEnable(GL_BLEND);
 			glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
-			// Enable lighting for better sphere appearance
-			glEnable(GL_LIGHTING);
-			glEnable(GL_LIGHT0);
-			glEnable(GL_NORMALIZE); // Automatically normalize normals
-
-			// Shader normalShader(
-			// 	"./shaders/vis.vs",
-			// 	"./shaders/frag.fs",
-			// 	"./shaders/geom.gs"
-			// );
-			// normalShader.use();
-			// Set up a simple directional light
-			GLfloat light_pos[] = {1.0f, 1.0f, 1.0f, 0.0f}; // Directional light
-			GLfloat light_ambient[] = {0.2f, 0.2f, 0.2f, 1.0f};
-			GLfloat light_diffuse[] = {0.8f, 0.8f, 0.8f, 1.0f};
-			GLfloat light_specular[] = {1.0f, 1.0f, 1.0f, 1.0f};
-
-			glLightfv(GL_LIGHT0, GL_POSITION, light_pos);
-			glLightfv(GL_LIGHT0, GL_AMBIENT, light_ambient);
-			glLightfv(GL_LIGHT0, GL_DIFFUSE, light_diffuse);
-			glLightfv(GL_LIGHT0, GL_SPECULAR, light_specular);
-
 			// Check OpenGL version
 			const GLubyte* version = glGetString(GL_VERSION);
 			std::cout << "OpenGL Version: " << version << std::endl;
@@ -252,10 +192,84 @@ namespace Boidsish {
 			// Set background color (black for holodeck effect)
 			glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
 
-			SetupPerspective();
+			float quad_vertices[] = {
+				-1.0f, 1.0f, 0.0f, -1.0f, -1.0f, 0.0f, 1.0f, -1.0f, 0.0f,
+
+				-1.0f, 1.0f, 0.0f, 1.0f,  -1.0f, 0.0f, 1.0f, 1.0f,  0.0f,
+			};
+
+			// screen quad VAO
+			unsigned int quadVBO;
+			glGenVertexArrays(1, &background_vao);
+			glGenBuffers(1, &quadVBO);
+			glBindVertexArray(background_vao);
+			glBindBuffer(GL_ARRAY_BUFFER, quadVBO);
+			glBufferData(GL_ARRAY_BUFFER, sizeof(quad_vertices), &quad_vertices, GL_STATIC_DRAW);
+			glEnableVertexAttribArray(0);
+			glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
+
+			// Generate sphere mesh
+			std::vector<float> vertices;
+			std::vector<int>   indices;
+			const int          longitude_segments = 12;
+			const int          latitude_segments = 8;
+			for (int lat = 0; lat <= latitude_segments; ++lat) {
+				for (int lon = 0; lon <= longitude_segments; ++lon) {
+					float theta = lon * 2.0 * M_PI / longitude_segments;
+					float phi = lat * M_PI / latitude_segments;
+					float x = cos(theta) * sin(phi);
+					float y = cos(phi);
+					float z = sin(theta) * sin(phi);
+					vertices.push_back(x);
+					vertices.push_back(y);
+					vertices.push_back(z);
+					vertices.push_back(x); // Normal
+					vertices.push_back(y);
+					vertices.push_back(z);
+				}
+			}
+			for (int lat = 0; lat < latitude_segments; ++lat) {
+				for (int lon = 0; lon < longitude_segments; ++lon) {
+					int first = (lat * (longitude_segments + 1)) + lon;
+					int second = first + longitude_segments + 1;
+					indices.push_back(first);
+					indices.push_back(second);
+					indices.push_back(first + 1);
+					indices.push_back(second);
+					indices.push_back(second + 1);
+					indices.push_back(first + 1);
+				}
+			}
+			sphere_indices = indices.size();
+
+			unsigned int sphere_vbo, sphere_ebo;
+			glGenVertexArrays(1, &sphere_vao);
+			glGenBuffers(1, &sphere_vbo);
+			glGenBuffers(1, &sphere_ebo);
+
+			glBindVertexArray(sphere_vao);
+			glBindBuffer(GL_ARRAY_BUFFER, sphere_vbo);
+			glBufferData(GL_ARRAY_BUFFER, vertices.size() * sizeof(float), &vertices[0], GL_STATIC_DRAW);
+			glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, sphere_ebo);
+			glBufferData(
+				GL_ELEMENT_ARRAY_BUFFER, indices.size() * sizeof(int), &indices[0], GL_STATIC_DRAW
+			);
+
+			glEnableVertexAttribArray(0);
+			glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void*)0);
+			glEnableVertexAttribArray(1);
+			glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void*)(3 * sizeof(float)));
+
+			background_shader = new Shader("shaders/background.vs", "shaders/background.fs");
+			dot_shader = new Shader("shaders/dot.vs", "shaders/dot.fs");
 		}
 
 		~VisualizerImpl() {
+			glDeleteVertexArrays(1, &background_vao);
+			glDeleteVertexArrays(1, &sphere_vao);
+			delete background_shader;
+			delete dot_shader;
+
 			if (window) {
 				glfwDestroyWindow(window);
 			}
@@ -263,33 +277,11 @@ namespace Boidsish {
 		}
 
 		void SetupPerspective() {
-			glMatrixMode(GL_PROJECTION);
-			glLoadIdentity();
-
-			float aspect = static_cast<float>(width) / static_cast<float>(height);
-
-			// Use simpler perspective setup that's more compatible
-			glViewport(0, 0, width, height);
-
-			// Simple perspective using similar approach to gluPerspective
-			float fovy = camera.fov;
-			float zNear = 0.1f;
-			float zFar = 1000.0f;
-
-			float fH = tan(fovy / 360.0f * M_PI) * zNear;
-			float fW = fH * aspect;
-
-			glFrustum(-fW, fW, -fH, fH, zNear, zFar);
+			// Deprecated
 		}
 
 		void SetupCamera() {
-			glMatrixMode(GL_MODELVIEW);
-			glLoadIdentity();
-
-			// Apply camera rotation and translation
-			glRotatef(-camera.pitch, 1.0f, 0.0f, 0.0f);
-			glRotatef(camera.yaw, 0.0f, 1.0f, 0.0f);
-			glTranslatef(-camera.x, -camera.y, -camera.z);
+			// Deprecated
 		}
 
 		void ProcessInput(float delta_time) {
@@ -701,7 +693,31 @@ namespace Boidsish {
 			impl->width = width;
 			impl->height = height;
 			glViewport(0, 0, width, height);
-			impl->SetupPerspective();
+		}
+
+		void RenderBackgroundAndGrid() {
+			glDisable(GL_DEPTH_TEST);
+			background_shader->use();
+
+			glm::mat4 projection = glm::perspective(
+				glm::radians(camera.fov), (float)width / (float)height, 0.1f, 1000.0f
+			);
+			glm::vec3 camera_pos = glm::vec3(camera.x, camera.y, camera.z);
+			glm::vec3 camera_front = glm::vec3(
+				cos(glm::radians(camera.pitch)) * sin(glm::radians(camera.yaw)),
+				sin(glm::radians(camera.pitch)),
+				-cos(glm::radians(camera.pitch)) * cos(glm::radians(camera.yaw))
+			);
+			glm::vec3 camera_up = glm::vec3(0.0f, 1.0f, 0.0f);
+			glm::mat4 view = glm::lookAt(camera_pos, camera_pos + camera_front, camera_up);
+
+			background_shader->setMat4("inverseViewMatrix", inverse(projection * view));
+			background_shader->setVec3("cameraPosition", camera_pos);
+			background_shader->setVec3("gridColor", grid_color);
+
+			glBindVertexArray(background_vao);
+			glDrawArrays(GL_TRIANGLES, 0, 6);
+			glEnable(GL_DEPTH_TEST);
 		}
 	};
 
@@ -734,7 +750,7 @@ namespace Boidsish {
 	}
 
 	void Visualizer::Render() {
-		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+		glClear(GL_DEPTH_BUFFER_BIT);
 
 		// Get current time for dot function
 		auto  current_time = std::chrono::high_resolution_clock::now();
@@ -767,10 +783,8 @@ namespace Boidsish {
 			impl->UpdateAutoCamera(delta_time, shapes);
 		}
 
-		impl->SetupCamera();
-
 		// Render grid
-		impl->RenderGrid();
+		impl->RenderBackgroundAndGrid();
 
 		// Render shapes and trails
 		if (!shapes.empty()) {
@@ -793,20 +807,70 @@ namespace Boidsish {
 
 				// Render trail
 				impl->RenderTrail(trail, shape->r, shape->g, shape->b);
+			}
 
-				// Render shape
-				glPushMatrix();
+			impl->dot_shader->use();
 
-				float x = shape->x, y = shape->y, z = shape->z;
-				if (impl->coordinate_wrapping_enabled && impl->wrap_range > 0) {
-					x = fmod(x + impl->wrap_range, 2.0f * impl->wrap_range) - impl->wrap_range;
-					y = fmod(y + impl->wrap_range, 2.0f * impl->wrap_range) - impl->wrap_range;
-					z = fmod(z + impl->wrap_range, 2.0f * impl->wrap_range) - impl->wrap_range;
+			glm::mat4 projection = glm::perspective(
+				glm::radians(impl->camera.fov),
+				(float)impl->width / (float)impl->height,
+				0.1f,
+				1000.0f
+			);
+			glm::vec3 camera_pos = glm::vec3(impl->camera.x, impl->camera.y, impl->camera.z);
+			glm::vec3 camera_front = glm::vec3(
+				cos(glm::radians(impl->camera.pitch)) * sin(glm::radians(impl->camera.yaw)),
+				sin(glm::radians(impl->camera.pitch)),
+				-cos(glm::radians(impl->camera.pitch)) * cos(glm::radians(impl->camera.yaw))
+			);
+			glm::vec3 camera_up = glm::vec3(0.0f, 1.0f, 0.0f);
+			glm::mat4 view = glm::lookAt(camera_pos, camera_pos + camera_front, camera_up);
+
+			impl->dot_shader->setMat4("projection", projection);
+			impl->dot_shader->setMat4("view", view);
+			impl->dot_shader->setVec3("lightPos", camera_pos);
+			impl->dot_shader->setVec3("viewPos", camera_pos);
+
+			glBindVertexArray(impl->sphere_vao);
+
+			// Reflections
+			for (const auto& shape : shapes) {
+				std::shared_ptr<Dot> dot = std::dynamic_pointer_cast<Dot>(shape);
+				if (dot) {
+					float x = dot->x, y = dot->y, z = dot->z;
+					if (impl->coordinate_wrapping_enabled && impl->wrap_range > 0) {
+						x = fmod(x + impl->wrap_range, 2.0f * impl->wrap_range) - impl->wrap_range;
+						y = fmod(y + impl->wrap_range, 2.0f * impl->wrap_range) - impl->wrap_range;
+						z = fmod(z + impl->wrap_range, 2.0f * impl->wrap_range) - impl->wrap_range;
+					}
+					glm::mat4 model = glm::mat4(1.0f);
+					model = glm::translate(model, glm::vec3(x, -y, z));
+					model = glm::scale(model, glm::vec3(dot->size * 0.01f));
+					impl->dot_shader->setMat4("model", model);
+					impl->dot_shader->setVec3("objectColor", glm::vec3(dot->r, dot->g, dot->b));
+					impl->dot_shader->setBool("isReflection", true);
+					glDrawElements(GL_TRIANGLES, impl->sphere_indices, GL_UNSIGNED_INT, 0);
 				}
+			}
 
-				glTranslatef(x, y, z);
-				shape->render();
-				glPopMatrix();
+			// Main render
+			for (const auto& shape : shapes) {
+				std::shared_ptr<Dot> dot = std::dynamic_pointer_cast<Dot>(shape);
+				if (dot) {
+					float x = dot->x, y = dot->y, z = dot->z;
+					if (impl->coordinate_wrapping_enabled && impl->wrap_range > 0) {
+						x = fmod(x + impl->wrap_range, 2.0f * impl->wrap_range) - impl->wrap_range;
+						y = fmod(y + impl->wrap_range, 2.0f * impl->wrap_range) - impl->wrap_range;
+						z = fmod(z + impl->wrap_range, 2.0f * impl->wrap_range) - impl->wrap_range;
+					}
+					glm::mat4 model = glm::mat4(1.0f);
+					model = glm::translate(model, glm::vec3(x, y, z));
+					model = glm::scale(model, glm::vec3(dot->size * 0.01f));
+					impl->dot_shader->setMat4("model", model);
+					impl->dot_shader->setVec3("objectColor", glm::vec3(dot->r, dot->g, dot->b));
+					impl->dot_shader->setBool("isReflection", false);
+					glDrawElements(GL_TRIANGLES, impl->sphere_indices, GL_UNSIGNED_INT, 0);
+				}
 			}
 
 			// Render trails for dots that are no longer active but still fading
