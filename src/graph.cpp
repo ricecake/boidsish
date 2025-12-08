@@ -88,54 +88,6 @@ void render_sphere(const Graph::Vertex& vertex, const Vector3& offset) {
     glPopMatrix();
 }
 
-void render_frustum_segment(const Vector3& p1, const Vector3& p2, float r1, float g1, float b1, float a1, float r2, float g2, float b2, float a2, float radius1, float radius2) {
-    Vector3 axis = p2 - p1;
-    float height = axis.Magnitude();
-
-    if (height < 1e-6) return;
-
-    axis.Normalize();
-
-    glPushMatrix();
-    glTranslatef(p1.x, p1.y, p1.z);
-
-    Vector3 z_axis(0, 0, 1);
-    float dot = z_axis.Dot(axis);
-
-    if (std::abs(dot) > 0.99999f) {
-        if (dot < 0) {
-            glRotatef(180.0f, 1.0f, 0.0f, 0.0f);
-        }
-    } else {
-        Vector3 rot_axis = z_axis.Cross(axis);
-        float rot_angle = acos(dot) * 180.0f / M_PI;
-        glRotatef(rot_angle, rot_axis.x, rot_axis.y, rot_axis.z);
-    }
-
-    glBegin(GL_TRIANGLE_STRIP);
-    for (int i = 0; i <= CYLINDER_SEGMENTS; ++i) {
-        float angle = 2.0f * M_PI * (float)i / CYLINDER_SEGMENTS;
-
-        Vector3 normal(cos(angle), sin(angle), 0); // Approximate normal
-        glNormal3f(normal.x, normal.y, normal.z);
-
-        // Vertex 1 (bottom circle)
-        float x1 = cos(angle) * radius1;
-        float y1 = sin(angle) * radius1;
-        glColor4f(r1, g1, b1, a1);
-        glVertex3f(x1, y1, 0);
-
-        // Vertex 2 (top circle)
-        float x2 = cos(angle) * radius2;
-        float y2 = sin(angle) * radius2;
-        glColor4f(r2, g2, b2, a2);
-        glVertex3f(x2, y2, height);
-    }
-    glEnd();
-
-    glPopMatrix();
-}
-
 Vector3 CatmullRom(float t, const Vector3& p0, const Vector3& p1, const Vector3& p2, const Vector3& p3) {
     return 0.5f * (
         (2.0f * p1) +
@@ -151,31 +103,79 @@ void render_edge(const Graph::Vertex& v0, const Graph::Vertex& v1, const Graph::
     Vector3 p2 = v2.position + offset;
     Vector3 p3 = v3.position + offset;
 
-    Vector3 prev_point = p1;
+    // 1. Pre-calculate all points, tangents, colors, and radii
+    std::vector<Vector3> points;
+    std::vector<Vector3> tangents;
+    std::vector<std::array<float, 4>> colors;
+    std::vector<float> radii;
 
-    for (int i = 1; i <= CURVE_SEGMENTS; ++i) {
+    for (int i = 0; i <= CURVE_SEGMENTS; ++i) {
         float t = (float)i / CURVE_SEGMENTS;
+        points.push_back(CatmullRom(t, p0, p1, p2, p3));
+
         float u = 1.0f - t;
+        colors.push_back({u * v1.r + t * v2.r, u * v1.g + t * v2.g, u * v1.b + t * v2.b, u * v1.a + t * v2.a});
+        radii.push_back((u * v1.size + t * v2.size) * EDGE_RADIUS_SCALE);
+    }
 
-        Vector3 current_point = CatmullRom(t, p0, p1, p2, p3);
+    if (points.size() < 2) return;
 
-        float r = u * v1.r + t * v2.r;
-        float g = u * v1.g + t * v2.g;
-        float b = u * v1.b + t * v2.b;
-        float a = u * v1.a + t * v2.a;
+    for(size_t i = 0; i < points.size(); ++i) {
+        if (i == 0) tangents.push_back((points[1] - points[0]).Normalized());
+        else if (i == points.size() - 1) tangents.push_back((points[i] - points[i-1]).Normalized());
+        else tangents.push_back((points[i+1] - points[i-1]).Normalized());
+    }
 
-        float prev_t = (float)(i-1)/CURVE_SEGMENTS;
-        float prev_u = 1.0f - prev_t;
-        float prev_r = prev_u * v1.r + prev_t * v2.r;
-        float prev_g = prev_u * v1.g + prev_t * v2.g;
-        float prev_b = prev_u * v1.b + prev_t * v2.b;
-        float prev_a = prev_u * v1.a + prev_t * v2.a;
+    // 2. Generate all vertices for the tube
+    std::vector<std::vector<Vector3>> rings;
+    std::vector<std::vector<Vector3>> ring_normals;
 
-        float current_radius = (u * v1.size + t * v2.size) * EDGE_RADIUS_SCALE;
-        float prev_radius = (prev_u * v1.size + prev_t * v2.size) * EDGE_RADIUS_SCALE;
+    Vector3 normal;
+    if (std::abs(tangents[0].y) < 0.999f) normal = tangents[0].Cross(Vector3(0, 1, 0)).Normalized();
+    else normal = tangents[0].Cross(Vector3(1, 0, 0)).Normalized();
 
-        render_frustum_segment(prev_point, current_point, prev_r, prev_g, prev_b, prev_a, r, g, b, a, prev_radius, current_radius);
-        prev_point = current_point;
+    for (size_t i = 0; i < points.size(); ++i) {
+        if (i > 0) {
+            Vector3 t_prev = tangents[i-1];
+            Vector3 t_curr = tangents[i];
+            Vector3 axis = t_prev.Cross(t_curr);
+            float angle = acos(std::max(-1.0f, std::min(1.0f, t_prev.Dot(t_curr))));
+            if (axis.MagnitudeSquared() > 1e-6) {
+                float cos_a = cos(angle);
+                float sin_a = sin(angle);
+                axis.Normalize();
+                normal = normal * cos_a + axis.Cross(normal) * sin_a + axis * axis.Dot(normal) * (1 - cos_a);
+            }
+        }
+        Vector3 bitangent = tangents[i].Cross(normal).Normalized();
+
+        std::vector<Vector3> ring;
+        std::vector<Vector3> normals_ring;
+        for (int j = 0; j <= CYLINDER_SEGMENTS; ++j) {
+            float angle = 2.0f * M_PI * (float)j / CYLINDER_SEGMENTS;
+            Vector3 circle_normal = (normal * cos(angle) + bitangent * sin(angle)).Normalized();
+            ring.push_back(points[i] + circle_normal * radii[i]);
+            normals_ring.push_back(circle_normal);
+        }
+        rings.push_back(ring);
+        ring_normals.push_back(normals_ring);
+    }
+
+    // 3. Render the tube using GL_TRIANGLE_STRIP
+    for (size_t i = 0; i < points.size() - 1; ++i) {
+        glBegin(GL_TRIANGLE_STRIP);
+        for (int j = 0; j <= CYLINDER_SEGMENTS; ++j) {
+            // Vertex from current ring
+            glColor4fv(colors[i].data());
+            glNormal3fv(&ring_normals[i][j].x);
+            glVertex3fv(&rings[i][j].x);
+
+            // Vertex from next ring
+            glColor4fv(colors[i+1].data());
+            glNormal3fv(&ring_normals[i+1][j].x);
+            glVertex3fv(&rings[i+1][j].x);
+        }
+        glEnd();
     }
 }
 
