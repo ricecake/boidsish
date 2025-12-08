@@ -1,7 +1,7 @@
 #version 330 core
 
 layout (line_strip_adjacency) in;
-layout (triangle_strip, max_vertices = 256) out;
+layout (triangle_strip, max_vertices = 4) out;
 
 in VS_OUT {
     vec4 color;
@@ -9,7 +9,6 @@ in VS_OUT {
 
 out vec4 fColor;
 
-uniform mat4 projection;
 uniform float thickness;
 
 void main() {
@@ -20,22 +19,20 @@ void main() {
     vec3 ndc2 = p2.xyz / p2.w;
 
     vec2 dir = normalize(ndc2.xy - ndc1.xy);
-    vec2 offset = vec2(-dir.y, dir.x) * thickness;
+    vec2 offset = vec2(-dir.y, dir.x) * thickness * 0.1;
 
     fColor = gs_in[1].color;
-    gl_Position = vec4(ndc1.xy + offset, ndc1.z, 1.0);
+    gl_Position = vec4((ndc1.xy - offset) * p1.w, ndc1.z * p1.w, p1.w);
     EmitVertex();
 
-    fColor = gs_in[1].color;
-    gl_Position = vec4(ndc1.xy - offset, ndc1.z, 1.0);
+    gl_Position = vec4((ndc1.xy + offset) * p1.w, ndc1.z * p1.w, p1.w);
     EmitVertex();
 
     fColor = gs_in[2].color;
-    gl_Position = vec4(ndc2.xy + offset, ndc2.z, 1.0);
+    gl_Position = vec4((ndc2.xy - offset) * p2.w, ndc2.z * p2.w, p2.w);
     EmitVertex();
 
-    fColor = gs_in[2].color;
-    gl_Position = vec4(ndc2.xy - offset, ndc2.z, 1.0);
+    gl_Position = vec4((ndc2.xy + offset) * p2.w, ndc2.z * p2.w, p2.w);
     EmitVertex();
 
     EndPrimitive();

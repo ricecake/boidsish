@@ -308,9 +308,9 @@ namespace Boidsish {
 			float pitch_rad = camera.pitch * M_PI / 180.0f;
 
 			// Forward vector - where the camera is looking
-			float forward_x = cos(pitch_rad) * cos(yaw_rad);
+			float forward_x = sin(yaw_rad) * cos(pitch_rad);
 			float forward_y = sin(pitch_rad);
-			float forward_z = cos(pitch_rad) * sin(yaw_rad);
+			float forward_z = -cos(yaw_rad) * cos(pitch_rad);
 
 			// Right vector - cross product of forward and world up (0,1,0)
 			// right = forward x up = (forward_x, forward_y, forward_z) x (0, 1, 0)
@@ -682,9 +682,9 @@ namespace Boidsish {
 			glm::vec3(impl->camera.x, impl->camera.y, impl->camera.z),
 			glm::vec3(impl->camera.x, impl->camera.y, impl->camera.z) +
 				glm::vec3(
-					cos(glm::radians(impl->camera.yaw)) * cos(glm::radians(impl->camera.pitch)),
+					sin(glm::radians(impl->camera.yaw)) * cos(glm::radians(impl->camera.pitch)),
 					sin(glm::radians(impl->camera.pitch)),
-					sin(glm::radians(impl->camera.yaw)) * cos(glm::radians(impl->camera.pitch))
+					-cos(glm::radians(impl->camera.yaw)) * cos(glm::radians(impl->camera.pitch))
 				),
 			glm::vec3(0.0f, 1.0f, 0.0f)
 		);
