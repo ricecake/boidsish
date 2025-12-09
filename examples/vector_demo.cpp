@@ -2,6 +2,7 @@
 #include <cmath>
 #include <functional>
 #include <iostream>
+#include <random>
 #include <ranges>
 
 #include "graphics.h"
@@ -10,6 +11,23 @@
 #include <RTree.h>
 
 using namespace Boidsish;
+
+class MakeBranchAttractor {
+private:
+	std::random_device                 rd;
+	std::mt19937                       eng;
+	std::uniform_real_distribution<float> x;
+	std::uniform_real_distribution<float> y;
+	std::uniform_real_distribution<float> z;
+
+public:
+	MakeBranchAttractor(): eng(rd()), x(-1, 1), y(0, 1), z(-1, 1) {}
+	Vector3 operator()(float r) {
+		return r*Vector3(x(eng), y(eng), z(eng)).Normalized();
+	}
+};
+
+static auto fruitPlacer = MakeBranchAttractor();
 
 class VectorDemoEntity: public Entity {
 public:
@@ -49,7 +67,8 @@ private:
 };
 
 FruitEntity::FruitEntity(int id): Entity(id), value(rand() % 90) {
-	Vector3 start_pos((rand() % 10 - 5) * 2.0f, 1 + (rand() % 10), (rand() % 6 - 3) * 2.0f);
+	// Vector3 start_pos((rand() % 10 - 5) * 2.0f, 1 + (rand() % 10), (rand() % 6 - 3) * 2.0f);
+	auto start_pos = fruitPlacer(8);
 	SetPosition(start_pos);
 	SetTrailLength(0);
 	SetColor(255, 165, 0);
@@ -64,7 +83,7 @@ void FruitEntity::UpdateEntity(EntityHandler& handler, float, float delta_time) 
 		handler.AddEntity<FruitEntity>();
 		handler.RemoveEntity(GetId());
 	}
-	SetVelocity(Vector3(sin(phase_ / 2) / 2, sin(phase_ / 3), cos(phase_ / 5) / 2));
+	// SetVelocity(Vector3(sin(phase_ / 2) / 2, sin(phase_ / 3), cos(phase_ / 5) / 2));
 }
 
 VectorDemoEntity::VectorDemoEntity(int id, const Vector3& start_pos): Entity(id), phase_(0.0f) {
