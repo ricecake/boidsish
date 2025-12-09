@@ -43,7 +43,7 @@ ifeq ($(UNAME_S), Darwin)
 endif
 
 # Default target
-all: $(TARGET)
+all: $(TARGET) examples
 
 # Create build directories
 $(OBJDIR):
@@ -74,8 +74,6 @@ examples: $(TARGET)
 # Clean build artifacts
 clean:
 	rm -rf $(BUILDDIR)
-	rm -f src/boidsish.o
-	$(MAKE) -C examples clean
 
 # Install dependencies (helper targets)
 install-deps-linux:

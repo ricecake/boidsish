@@ -46,17 +46,7 @@ $(LIB_OBJ):
 	$(MAKE) -C .. boidsish.o
 
 # Build examples
-$(BUILDDIR)/advanced_examples: advanced_examples.cpp $(LIB_OBJ) | $(BUILDDIR)
-	$(CXX) $(CXXFLAGS) $(INCLUDES) advanced_examples.cpp $(LIB_OBJ) -o $@ $(LDFLAGS) $(LIBS)
-
-$(BUILDDIR)/entity_example: entity_example.cpp $(LIB_OBJ) | $(BUILDDIR)
-	$(CXX) $(CXXFLAGS) $(INCLUDES) entity_example.cpp $(LIB_OBJ) -o $@ $(LDFLAGS) $(LIBS)
-
-$(BUILDDIR)/vector_demo: vector_demo.cpp $(LIB_OBJ) | $(BUILDDIR)
-	$(CXX) $(CXXFLAGS) $(INCLUDES) vector_demo.cpp $(LIB_OBJ) -o $@ $(LDFLAGS) $(LIBS)
-
-# Clean
-clean:
-	rm -f $(BUILDDIR)/advanced_examples $(BUILDDIR)/entity_example $(BUILDDIR)/vector_demo
+$(BUILDDIR)/%: %.cpp $(LIB_OBJ) | $(BUILDDIR)
+	$(CXX) $(CXXFLAGS) $(INCLUDES) $< $(LIB_OBJ) -o $@ $(LDFLAGS) $(LIBS)
 
 .PHONY: all clean
