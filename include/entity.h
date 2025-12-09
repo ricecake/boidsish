@@ -221,20 +221,18 @@ namespace Boidsish {
 			entity->GetColor(r, g, b, a);
 
 			// Create dot at entity's position
-			shapes.emplace_back(
-				std::make_shared<Dot>(
-					entity->GetId(),
-					entity->GetXPos(),
-					entity->GetYPos(),
-					entity->GetZPos(),
-					entity->GetSize(),
-					r,
-					g,
-					b,
-					a,
-					entity->GetTrailLength()
-				)
-			);
+			shapes.emplace_back(std::make_shared<Dot>(
+				entity->GetId(),
+				entity->GetXPos(),
+				entity->GetYPos(),
+				entity->GetZPos(),
+				entity->GetSize(),
+				r,
+				g,
+				b,
+				a,
+				entity->GetTrailLength()
+			));
 		}
 
 		return shapes;

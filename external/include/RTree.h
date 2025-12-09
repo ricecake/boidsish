@@ -109,11 +109,9 @@ public:
 	/// \param a_resultCallback Callback function to return result.  Callback should return 'true' to continue searching
 	/// \param a_context User context to pass as parameter to a_resultCallback
 	/// \return Returns the number of entries found
-	int Search(
-		const ELEMTYPE                       a_min[NUMDIMS],
-		const ELEMTYPE                       a_max[NUMDIMS],
-		std::function<bool(const DATATYPE&)> callback
-	) const;
+	int
+	Search(const ELEMTYPE a_min[NUMDIMS], const ELEMTYPE a_max[NUMDIMS], std::function<bool(const DATATYPE&)> callback)
+		const;
 
 	/// Find the nearest neighbors
 	/// \param a_min Min of search bounding rect
@@ -1489,12 +1487,8 @@ void RTREE_QUAL::ReInsert(Node* a_node, ListNode** a_listNode) {
 
 // Search in an index tree or subtree for all data retangles that overlap the argument rectangle.
 RTREE_TEMPLATE
-bool RTREE_QUAL::Search(
-	Node*                                a_node,
-	Rect*                                a_rect,
-	int&                                 a_foundCount,
-	std::function<bool(const DATATYPE&)> callback
-) const {
+bool RTREE_QUAL::Search(Node* a_node, Rect* a_rect, int& a_foundCount, std::function<bool(const DATATYPE&)> callback)
+	const {
 	RTREE_ASSERT(a_node);
 	RTREE_ASSERT(a_node->m_level >= 0);
 	RTREE_ASSERT(a_rect);
