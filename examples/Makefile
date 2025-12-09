@@ -29,8 +29,8 @@ ifeq ($(UNAME_S), Darwin)
     LIBS += -lglfw -lGLEW
 endif
 
-# Library object
-LIB_OBJ = $(BUILDDIR)/obj/boidsish.o
+# Core library object files (excluding main.o)
+CORE_OBJS = $(BUILDDIR)/obj/boidsish.o $(BUILDDIR)/obj/graph.o
 
 # Targets
 EXAMPLES = $(BUILDDIR)/advanced_examples $(BUILDDIR)/entity_example $(BUILDDIR)/vector_demo
@@ -41,19 +41,19 @@ all: $(BUILDDIR) $(EXAMPLES)
 $(BUILDDIR):
 	@mkdir -p $(BUILDDIR)
 
-# Build the library object if it doesn't exist
-$(LIB_OBJ):
-	$(MAKE) -C .. boidsish.o
+# Build the library objects if they don't exist
+$(CORE_OBJS):
+	$(MAKE) -C .. compile_only
 
 # Build examples
-$(BUILDDIR)/advanced_examples: advanced_examples.cpp $(LIB_OBJ) | $(BUILDDIR)
-	$(CXX) $(CXXFLAGS) $(INCLUDES) advanced_examples.cpp $(LIB_OBJ) -o $@ $(LDFLAGS) $(LIBS)
+$(BUILDDIR)/advanced_examples: advanced_examples.cpp $(CORE_OBJS) | $(BUILDDIR)
+	$(CXX) $(CXXFLAGS) $(INCLUDES) advanced_examples.cpp $(CORE_OBJS) -o $@ $(LDFLAGS) $(LIBS)
 
-$(BUILDDIR)/entity_example: entity_example.cpp $(LIB_OBJ) | $(BUILDDIR)
-	$(CXX) $(CXXFLAGS) $(INCLUDES) entity_example.cpp $(LIB_OBJ) -o $@ $(LDFLAGS) $(LIBS)
+$(BUILDDIR)/entity_example: entity_example.cpp $(CORE_OBJS) | $(BUILDDIR)
+	$(CXX) $(CXXFLAGS) $(INCLUDES) entity_example.cpp $(CORE_OBJS) -o $@ $(LDFLAGS) $(LIBS)
 
-$(BUILDDIR)/vector_demo: vector_demo.cpp $(LIB_OBJ) | $(BUILDDIR)
-	$(CXX) $(CXXFLAGS) $(INCLUDES) vector_demo.cpp $(LIB_OBJ) -o $@ $(LDFLAGS) $(LIBS)
+$(BUILDDIR)/vector_demo: vector_demo.cpp $(CORE_OBJS) | $(BUILDDIR)
+	$(CXX) $(CXXFLAGS) $(INCLUDES) vector_demo.cpp $(CORE_OBJS) -o $@ $(LDFLAGS) $(LIBS)
 
 # Clean
 clean:

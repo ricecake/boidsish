@@ -366,7 +366,7 @@ namespace Boidsish {
 			float y = 0.0f,
 			float z = 5.0f,
 			float pitch = 0.0f,
-			float yaw = 0.0f,
+			float yaw = -90.0f,
 			float fov = 45.0f
 		):
 			x(x), y(y), z(z), pitch(pitch), yaw(yaw), fov(fov) {}

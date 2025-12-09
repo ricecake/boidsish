@@ -39,7 +39,7 @@ namespace Boidsish {
 
 			glBindVertexArray(VAO);
 			glBindBuffer(GL_ARRAY_BUFFER, VBO);
-			glBufferData(GL_ARRAY_BUFFER, (max_length + 2) * 7 * sizeof(float), nullptr, GL_DYNAMIC_DRAW);
+			glBufferData(GL_ARRAY_BUFFER, max_length * 4 * 7 * sizeof(float), nullptr, GL_DYNAMIC_DRAW);
 
 			// Position attribute
 			glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 7 * sizeof(float), (void*)0);
@@ -68,38 +68,57 @@ namespace Boidsish {
 			}
 
 			std::vector<float> vertex_data;
-			vertex_data.reserve((positions.size() + 2) * 7);
+			vertex_data.reserve(positions.size() * 4 * 7);
 
-			// Adjacency vertex at the beginning
-			vertex_data.push_back(std::get<0>(positions[0]));
-			vertex_data.push_back(std::get<1>(positions[0]));
-			vertex_data.push_back(std::get<2>(positions[0]));
-			vertex_data.push_back(r);
-			vertex_data.push_back(g);
-			vertex_data.push_back(b);
-			vertex_data.push_back(0.0f);
+			for (size_t i = 1; i < positions.size(); ++i) {
+				// Adjacency info: p0 is previous, p3 is next
+				auto p0 = (i > 1) ? positions[i - 2] : positions[i - 1];
+				auto p1 = positions[i - 1];
+				auto p2 = positions[i];
+				auto p3 = (i < positions.size() - 1) ? positions[i + 1] : positions[i];
 
-			for (size_t i = 0; i < positions.size(); ++i) {
-				float t = static_cast<float>(i) / static_cast<float>(positions.size());
-				float alpha = pow(t, 0.7f);
+				float t1 = static_cast<float>(i - 1) / static_cast<float>(positions.size());
+				float alpha1 = pow(t1, 0.7f);
 
-				vertex_data.push_back(std::get<0>(positions[i]));
-				vertex_data.push_back(std::get<1>(positions[i]));
-				vertex_data.push_back(std::get<2>(positions[i]));
+				float t2 = static_cast<float>(i) / static_cast<float>(positions.size());
+				float alpha2 = pow(t2, 0.7f);
+
+				// p0
+				vertex_data.push_back(std::get<0>(p0));
+				vertex_data.push_back(std::get<1>(p0));
+				vertex_data.push_back(std::get<2>(p0));
 				vertex_data.push_back(r);
 				vertex_data.push_back(g);
 				vertex_data.push_back(b);
-				vertex_data.push_back(alpha);
-			}
+				vertex_data.push_back(alpha1);
 
-			// Adjacency vertex at the end
-			vertex_data.push_back(std::get<0>(positions.back()));
-			vertex_data.push_back(std::get<1>(positions.back()));
-			vertex_data.push_back(std::get<2>(positions.back()));
-			vertex_data.push_back(r);
-			vertex_data.push_back(g);
-			vertex_data.push_back(b);
-			vertex_data.push_back(1.0f);
+				// p1
+				vertex_data.push_back(std::get<0>(p1));
+				vertex_data.push_back(std::get<1>(p1));
+				vertex_data.push_back(std::get<2>(p1));
+				vertex_data.push_back(r);
+				vertex_data.push_back(g);
+				vertex_data.push_back(b);
+				vertex_data.push_back(alpha1);
+
+				// p2
+				vertex_data.push_back(std::get<0>(p2));
+				vertex_data.push_back(std::get<1>(p2));
+				vertex_data.push_back(std::get<2>(p2));
+				vertex_data.push_back(r);
+				vertex_data.push_back(g);
+				vertex_data.push_back(b);
+				vertex_data.push_back(alpha2);
+
+				// p3
+				vertex_data.push_back(std::get<0>(p3));
+				vertex_data.push_back(std::get<1>(p3));
+				vertex_data.push_back(std::get<2>(p3));
+				vertex_data.push_back(r);
+				vertex_data.push_back(g);
+				vertex_data.push_back(b);
+				vertex_data.push_back(alpha2);
+			}
 
 			glBindBuffer(GL_ARRAY_BUFFER, VBO);
 			glBufferSubData(GL_ARRAY_BUFFER, 0, vertex_data.size() * sizeof(float), vertex_data.data());
@@ -545,7 +564,7 @@ namespace Boidsish {
 			trail_shader->setFloat("thickness", 0.02f);
 
 			glBindVertexArray(trail.VAO);
-			glDrawArrays(GL_LINE_STRIP_ADJACENCY, 0, trail.positions.size() + 2);
+			glDrawArrays(GL_LINES_ADJACENCY, 0, (trail.positions.size() - 1) * 4);
 			glBindVertexArray(0);
 		}
 

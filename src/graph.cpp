@@ -28,6 +28,11 @@ Graph::~Graph() {
     }
 }
 
+void Graph::setVertices(const std::vector<Vertex>& new_vertices) {
+    vertices = new_vertices;
+    buffers_dirty = true;
+}
+
 const int SPHERE_LONGITUDE_SEGMENTS = 12;
 const int SPHERE_LATITUDE_SEGMENTS = 8;
 const float SPHERE_RADIUS_SCALE = 0.01f;
@@ -195,7 +200,7 @@ void Graph::updateEdgeBuffers(const Vector3& offset) const {
     glEnableVertexAttribArray(2);
     glBindVertexArray(0);
 
-    buffers_need_update = false;
+    buffers_dirty = false;
 }
 
 void Graph::render(Shader& sphere_shader, Shader& edge_shader, unsigned int sphere_VAO, int sphere_index_count, const glm::mat4& projection, const glm::mat4& view) const {
@@ -220,7 +225,7 @@ void Graph::render(Shader& sphere_shader, Shader& edge_shader, unsigned int sphe
     glBindVertexArray(0);
 
     // Render edges
-    if (buffers_need_update) {
+    if (buffers_dirty) {
         updateEdgeBuffers(offset);
     }
 

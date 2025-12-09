@@ -37,11 +37,13 @@ namespace Boidsish {
 		            const glm::mat4& projection,
 		            const glm::mat4& view) const;
 
+		void setVertices(const std::vector<Vertex>& new_vertices);
+
 	private:
 		mutable unsigned int edge_VAO = 0;
 		mutable unsigned int edge_VBO = 0;
 		mutable size_t       edge_vertex_count = 0;
-		mutable bool         buffers_need_update = true;
+		mutable bool         buffers_dirty = true;
 
 		void updateEdgeBuffers(const Vector3& offset) const;
 	};
