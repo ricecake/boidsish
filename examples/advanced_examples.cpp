@@ -2,7 +2,8 @@
 #include <iostream>
 #include <random>
 
-#include "../include/boidsish.h"
+#include "graphics.h"
+#include "dot.h"
 
 using namespace Boidsish;
 

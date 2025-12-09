@@ -3,7 +3,8 @@
 #include <algorithm>
 #include <limits>
 
-#include "boidsish.h"
+#include "entity.h"
+#include "graphics.h"
 #include <RTree.h>
 
 namespace Boidsish {

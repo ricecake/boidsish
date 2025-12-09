@@ -4,7 +4,7 @@
 #include <iostream>
 #include <ranges>
 
-#include "boidsish.h"
+#include "graphics.h"
 #include "logger.h"
 #include "spatial_entity_handler.h"
 #include <RTree.h>

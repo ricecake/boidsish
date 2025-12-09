@@ -3,7 +3,7 @@
 #include <memory>
 #include <vector>
 
-#include "boidsish.h"
+#include "graphics.h"
 
 namespace Boidsish {
 

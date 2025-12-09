@@ -17,8 +17,7 @@ SRCDIR = src
 SOURCES = $(wildcard $(SRCDIR)/*.cpp)
 OBJECTS = $(SOURCES:$(SRCDIR)/%.cpp=$(OBJDIR)/%.o)
 
-# Target executable
-TARGET = $(BUILDDIR)/boidsish
+TARGET = $(BUILDDIR)/libboidsish.a
 
 # Platform-specific settings
 ifeq ($(UNAME_S), Linux)
@@ -52,20 +51,12 @@ $(OBJDIR):
 $(BUILDDIR):
 	@mkdir -p $(BUILDDIR)
 
-# Build the main executable
 $(TARGET): $(BUILDDIR) $(OBJDIR) $(OBJECTS)
-	$(CXX) $(OBJECTS) -o $(TARGET) $(LDFLAGS) $(LIBS)
+	ar rcs $(TARGET) $(OBJECTS)
 
 # Compile source files
 $(OBJDIR)/%.o: $(SRCDIR)/%.cpp | $(OBJDIR)
 	$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
-
-# Build just the library object (for use by examples)
-$(OBJDIR)/boidsish.o: $(SRCDIR)/boidsish.cpp | $(OBJDIR)
-	$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
-
-boidsish.o: $(OBJDIR)/boidsish.o
-	@cp $(OBJDIR)/boidsish.o src/boidsish.o
 
 # Build examples
 examples: $(TARGET)

@@ -1,26 +1,28 @@
 # Makefile for Boidsish Examples
 
+# Build directory (use parent's build directory)
+BUILDDIR = ../build
+
 CXX = g++
 CXXFLAGS = -std=c++23 -Wall -Wextra -O3
 INCLUDES = -isystem ../external/include -I../include
+LIBS = -L$(BUILDDIR) -lboidsish
 
-# Build directory (use parent's build directory)
-BUILDDIR = ../build
 
 # Detect the operating system
 UNAME_S := $(shell uname -s)
 
 # Platform-specific settings
 ifeq ($(UNAME_S), Linux)
-    LIBS = -lGL -lGLU -lglfw -lGLEW
+    LIBS += -lGL -lGLU -lglfw -lGLEW
     PKG_CONFIG = $(shell pkg-config --cflags --libs glfw3 glew)
     ifneq ($(PKG_CONFIG),)
-        LIBS = $(PKG_CONFIG) -lGL -lGLU
+        LIBS += $(PKG_CONFIG) -lGL -lGLU
     endif
 endif
 
 ifeq ($(UNAME_S), Darwin)
-    LIBS = -framework OpenGL -framework Cocoa -framework IOKit -framework CoreVideo
+    LIBS += -framework OpenGL -framework Cocoa -framework IOKit -framework CoreVideo
     HOMEBREW_PREFIX = $(shell brew --prefix 2>/dev/null)
     ifneq ($(HOMEBREW_PREFIX),)
         INCLUDES += -I$(HOMEBREW_PREFIX)/include
@@ -29,11 +31,9 @@ ifeq ($(UNAME_S), Darwin)
     LIBS += -lglfw -lGLEW
 endif
 
-# Library object
-LIB_OBJ = $(BUILDDIR)/obj/boidsish.o
 
 # Targets
-EXAMPLES = $(BUILDDIR)/advanced_examples $(BUILDDIR)/entity_example $(BUILDDIR)/vector_demo
+EXAMPLES = $(BUILDDIR)/advanced_examples $(BUILDDIR)/entity_example $(BUILDDIR)/vector_demo $(BUILDDIR)/basic_demo
 
 all: $(BUILDDIR) $(EXAMPLES)
 
@@ -41,12 +41,8 @@ all: $(BUILDDIR) $(EXAMPLES)
 $(BUILDDIR):
 	@mkdir -p $(BUILDDIR)
 
-# Build the library object if it doesn't exist
-$(LIB_OBJ):
-	$(MAKE) -C .. boidsish.o
-
 # Build examples
-$(BUILDDIR)/%: %.cpp $(LIB_OBJ) | $(BUILDDIR)
-	$(CXX) $(CXXFLAGS) $(INCLUDES) $< $(LIB_OBJ) -o $@ $(LDFLAGS) $(LIBS)
+$(BUILDDIR)/%: %.cpp | $(BUILDDIR)
+	$(CXX) $(CXXFLAGS) $(INCLUDES) $< -o $@ $(LDFLAGS) $(LIBS)
 
 .PHONY: all clean
