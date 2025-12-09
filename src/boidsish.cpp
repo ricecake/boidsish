@@ -134,10 +134,6 @@ namespace Boidsish {
 		bool single_track_mode;
 		int  tracked_dot_index;
 
-		// Coordinate wrapping
-		bool  coordinate_wrapping_enabled;
-		float wrap_range;
-
 		// Timing
 		std::chrono::high_resolution_clock::time_point start_time;
 
@@ -156,9 +152,7 @@ namespace Boidsish {
 			auto_camera_height_offset(0.0f),
 			auto_camera_distance(10.0f),
 			single_track_mode(false),
-			tracked_dot_index(0),
-			coordinate_wrapping_enabled(false),
-			wrap_range(20.0f) {
+			tracked_dot_index(0) {
 			// Initialize all keys to false
 			for (int i = 0; i < 1024; ++i) {
 				keys[i] = false;
@@ -637,16 +631,6 @@ namespace Boidsish {
 				}
 			}
 
-			// Toggle coordinate wrapping with B key (for "Boundary")
-			if (key == GLFW_KEY_B && action == GLFW_PRESS) {
-				impl->coordinate_wrapping_enabled = !impl->coordinate_wrapping_enabled;
-				if (impl->coordinate_wrapping_enabled) {
-					std::cout << "Coordinate wrapping enabled (range: ±" << impl->wrap_range << ")" << std::endl;
-				} else {
-					std::cout << "Coordinate wrapping disabled" << std::endl;
-				}
-			}
-
 			if (key == GLFW_KEY_9 && action == GLFW_PRESS) {
 				impl->single_track_mode = true;
 				impl->auto_camera_mode = false;
@@ -798,11 +782,6 @@ namespace Boidsish {
 				glPushMatrix();
 
 				float x = shape->x, y = shape->y, z = shape->z;
-				if (impl->coordinate_wrapping_enabled && impl->wrap_range > 0) {
-					x = fmod(x + impl->wrap_range, 2.0f * impl->wrap_range) - impl->wrap_range;
-					y = fmod(y + impl->wrap_range, 2.0f * impl->wrap_range) - impl->wrap_range;
-					z = fmod(z + impl->wrap_range, 2.0f * impl->wrap_range) - impl->wrap_range;
-				}
 
 				glTranslatef(x, y, z);
 				shape->render();
