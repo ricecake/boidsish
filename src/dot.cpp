@@ -1,19 +1,20 @@
 #include "dot.h"
 
-#include <chrono>
 #include <cmath>
-#include <deque>
-#include <iostream>
-#include <map>
-#include <set>
+#include <numbers>
 #include <vector>
 
-#include "graphics.h"
+#include "shader.h"
 #include <GL/glew.h>
-#include <GLFW/glfw3.h>
-#include <shader.h>
+#include <glm/glm.hpp>
+#include <glm/gtc/matrix_transform.hpp>
 
 namespace Boidsish {
+
+	GLuint Dot::vao = 0;
+	GLuint Dot::vbo = 0;
+	GLuint Dot::ebo = 0;
+	int    Dot::vertex_count = 0;
 
 	Dot::Dot(int id, float x, float y, float z, float size, float r, float g, float b, float a, int trail_length) {
 		this->id = id;
@@ -29,61 +30,81 @@ namespace Boidsish {
 	}
 
 	void Dot::render() const {
-		float radius = size * 0.01f;
+		render(*shader);
+	}
 
-		GLfloat material_ambient[] = {r * 0.2f, g * 0.2f, b * 0.2f, a};
-		GLfloat material_diffuse[] = {r, g, b, a};
-		GLfloat material_specular[] = {0.5f, 0.5f, 0.5f, a};
-		GLfloat material_shininess[] = {32.0f};
+	void Dot::render(Shader& shader) const {
+		glm::mat4 model = glm::mat4(1.0f);
+		model = glm::translate(model, glm::vec3(x, y, z));
+		model = glm::scale(model, glm::vec3(size * 0.01f));
+		shader.setMat4("model", model);
+		shader.setVec3("objectColor", r, g, b);
 
-		glMaterialfv(GL_FRONT, GL_AMBIENT, material_ambient);
-		glMaterialfv(GL_FRONT, GL_DIFFUSE, material_diffuse);
-		glMaterialfv(GL_FRONT, GL_SPECULAR, material_specular);
-		glMaterialfv(GL_FRONT, GL_SHININESS, material_shininess);
+		glBindVertexArray(vao);
+		glDrawElements(GL_TRIANGLES, vertex_count, GL_UNSIGNED_INT, 0);
+		glBindVertexArray(0);
+	}
 
-		const int longitude_segments = 12;
-		const int latitude_segments = 8;
+	void Dot::InitSphereMesh() {
+		const int   latitude_segments = 16;
+		const int   longitude_segments = 32;
+		const float radius = 1.0f;
 
-		glBegin(GL_TRIANGLES);
-
-		for (int lat = 0; lat < latitude_segments; ++lat) {
-			float lat0 = M_PI * (-0.5f + (float)lat / latitude_segments);
-			float lat1 = M_PI * (-0.5f + (float)(lat + 1) / latitude_segments);
-
-			float y0 = sin(lat0) * radius;
-			float y1 = sin(lat1) * radius;
-			float r0 = cos(lat0) * radius;
-			float r1 = cos(lat1) * radius;
-
-			for (int lon = 0; lon < longitude_segments; ++lon) {
-				float lon0 = 2 * M_PI * (float)lon / longitude_segments;
-				float lon1 = 2 * M_PI * (float)(lon + 1) / longitude_segments;
-
-				float x0 = cos(lon0);
-				float z0 = sin(lon0);
-				float x1 = cos(lon1);
-				float z1 = sin(lon1);
-
-				glNormal3f(x0 * cos(lat0), sin(lat0), z0 * cos(lat0));
-				glVertex3f(x0 * r0, y0, z0 * r0);
-
-				glNormal3f(x1 * cos(lat0), sin(lat0), z1 * cos(lat0));
-				glVertex3f(x1 * r0, y0, z1 * r0);
-
-				glNormal3f(x1 * cos(lat1), sin(lat1), z1 * cos(lat1));
-				glVertex3f(x1 * r1, y1, z1 * r1);
-
-				glNormal3f(x0 * cos(lat0), sin(lat0), z0 * cos(lat0));
-				glVertex3f(x0 * r0, y0, z0 * r0);
-
-				glNormal3f(x1 * cos(lat1), sin(lat1), z1 * cos(lat1));
-				glVertex3f(x1 * r1, y1, z1 * r1);
-
-				glNormal3f(x0 * cos(lat1), sin(lat1), z0 * cos(lat1));
-				glVertex3f(x0 * r1, y1, z0 * r1);
+		std::vector<float> vertices;
+		for (int lat = 0; lat <= latitude_segments; ++lat) {
+			for (int lon = 0; lon <= longitude_segments; ++lon) {
+				float theta = lat * std::numbers::pi / latitude_segments;
+				float phi = lon * 2 * std::numbers::pi / longitude_segments;
+				float x = radius * sin(theta) * cos(phi);
+				float y = radius * cos(theta);
+				float z = radius * sin(theta) * sin(phi);
+				vertices.push_back(x);
+				vertices.push_back(y);
+				vertices.push_back(z);
+				vertices.push_back(x);
+				vertices.push_back(y);
+				vertices.push_back(z);
 			}
 		}
 
-		glEnd();
+		std::vector<unsigned int> indices;
+		for (int lat = 0; lat < latitude_segments; ++lat) {
+			for (int lon = 0; lon < longitude_segments; ++lon) {
+				int first = (lat * (longitude_segments + 1)) + lon;
+				int second = first + longitude_segments + 1;
+				indices.push_back(first);
+				indices.push_back(second);
+				indices.push_back(first + 1);
+				indices.push_back(second);
+				indices.push_back(second + 1);
+				indices.push_back(first + 1);
+			}
+		}
+		vertex_count = indices.size();
+
+		glGenVertexArrays(1, &vao);
+		glBindVertexArray(vao);
+
+		glGenBuffers(1, &vbo);
+		glBindBuffer(GL_ARRAY_BUFFER, vbo);
+		glBufferData(GL_ARRAY_BUFFER, vertices.size() * sizeof(float), &vertices[0], GL_STATIC_DRAW);
+
+		glGenBuffers(1, &ebo);
+		glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ebo);
+		glBufferData(GL_ELEMENT_ARRAY_BUFFER, indices.size() * sizeof(unsigned int), &indices[0], GL_STATIC_DRAW);
+
+		glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void*)0);
+		glEnableVertexAttribArray(0);
+		glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void*)(3 * sizeof(float)));
+		glEnableVertexAttribArray(1);
+
+		glBindVertexArray(0);
 	}
+
+	void Dot::CleanupSphereMesh() {
+		glDeleteVertexArrays(1, &vao);
+		glDeleteBuffers(1, &vbo);
+		glDeleteBuffers(1, &ebo);
+	}
+
 } // namespace Boidsish

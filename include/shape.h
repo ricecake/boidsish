@@ -6,6 +6,8 @@
 #include <memory>
 #include <vector>
 
+class Shader;
+
 namespace Boidsish {
 
 	// Base class for all renderable shapes
@@ -17,10 +19,11 @@ namespace Boidsish {
 		virtual void render() const = 0;
 
 		// Common properties
-		int   id;
-		float x, y, z;
-		float r, g, b, a;
-		int   trail_length;
+		int                            id;
+		float                          x, y, z;
+		float                          r, g, b, a;
+		int                            trail_length;
+		static std::shared_ptr<Shader> shader;
 	};
 
 	// Function type for user-defined shape generation

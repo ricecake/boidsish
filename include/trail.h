@@ -1,0 +1,28 @@
+#pragma once
+
+#include <deque>
+#include <tuple>
+#include <vector>
+
+#include "shader.h"
+#include <GL/glew.h>
+#include <glm/glm.hpp>
+
+namespace Boidsish {
+
+	class Trail {
+	public:
+		Trail(int max_length = 250);
+		~Trail();
+
+		void AddPosition(float x, float y, float z);
+		void Render(Shader& shader, float r, float g, float b) const;
+
+	private:
+		std::deque<glm::vec3> positions;
+		int                   max_length;
+		GLuint                vao;
+		GLuint                vbo;
+	};
+
+} // namespace Boidsish

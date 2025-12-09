@@ -23,7 +23,7 @@ TARGET = $(BUILDDIR)/libboidsish.a
 ifeq ($(UNAME_S), Linux)
     # Linux-specific flags
     LIBS = -lGL -lGLU -lglfw -lGLEW
-    PKG_CONFIG = $(shell pkg-config --cflags --libs glfw3 glew)
+    PKG_CONFIG = $(shell pkg-config --cflags --libs glfw3 glew glm)
     ifneq ($(PKG_CONFIG),)
         LIBS = $(PKG_CONFIG) -lGL -lGLU
     endif
@@ -42,7 +42,13 @@ ifeq ($(UNAME_S), Darwin)
 endif
 
 # Default target
-all: $(TARGET) examples
+all: $(BUILDDIR)/boidsish examples
+
+$(BUILDDIR)/boidsish: $(TARGET) $(OBJDIR)/boidsish.o
+	$(CXX) $(CXXFLAGS) $(INCLUDES) $(OBJDIR)/boidsish.o -o $@ -L$(BUILDDIR) -lboidsish $(LIBS)
+
+$(OBJDIR)/boidsish.o: src/boidsish.cpp | $(OBJDIR)
+	$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
 
 # Create build directories
 $(OBJDIR):

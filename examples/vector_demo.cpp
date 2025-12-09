@@ -14,17 +14,16 @@ using namespace Boidsish;
 
 class MakeBranchAttractor {
 private:
-	std::random_device                 rd;
-	std::mt19937                       eng;
+	std::random_device                    rd;
+	std::mt19937                          eng;
 	std::uniform_real_distribution<float> x;
 	std::uniform_real_distribution<float> y;
 	std::uniform_real_distribution<float> z;
 
 public:
 	MakeBranchAttractor(): eng(rd()), x(-1, 1), y(0, 1), z(-1, 1) {}
-	Vector3 operator()(float r) {
-		return r*Vector3(x(eng), y(eng), z(eng)).Normalized();
-	}
+
+	Vector3 operator()(float r) { return r * Vector3(x(eng), y(eng), z(eng)).Normalized(); }
 };
 
 static auto fruitPlacer = MakeBranchAttractor();
