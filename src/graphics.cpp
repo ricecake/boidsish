@@ -138,7 +138,7 @@ namespace Boidsish {
 			shader = new Shader("shaders/vis.vs", "shaders/frag.fs");
 			Shape::shader = shader;
 			grid_shader = new Shader("shaders/grid.vs", "shaders/grid.fs");
-			trail_shader = new Shader("shaders/trail.vs", "shaders/trail.fs", "shaders/trail.gs");
+			trail_shader = new Shader("shaders/trail.vs", "shaders/trail.fs");
 
 			Dot::InitSphereMesh();
 
@@ -632,7 +632,7 @@ namespace Boidsish {
 			for (const auto& pair : impl->trails) {
 				const auto& shape = std::find_if(shapes.begin(), shapes.end(), [&](const auto& s) { return s->id == pair.first; });
 				if (shape != shapes.end()) {
-					pair.second->Render(*impl->trail_shader, (*shape)->r, (*shape)->g, (*shape)->b);
+					pair.second->Render(*impl->trail_shader, (*shape)->r, (*shape)->g, (*shape)->b, glm::vec3(impl->camera.x, impl->camera.y, impl->camera.z));
 				}
 			}
 		}

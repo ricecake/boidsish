@@ -17,7 +17,7 @@ namespace Boidsish {
 		~Trail();
 
 		void AddPosition(float x, float y, float z);
-		void Render(Shader& shader, float r, float g, float b) const;
+		void Render(Shader& shader, float r, float g, float b, const glm::vec3& camera_pos) const;
 
 	private:
 		std::deque<glm::vec3> positions;
