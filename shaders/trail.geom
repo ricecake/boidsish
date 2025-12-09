@@ -2,7 +2,7 @@
 layout (lines) in;
 layout (triangle_strip, max_vertices = 4) out;
 
-in float Progress[];
+in float vs_progress[];
 
 out float Fade;
 
@@ -20,23 +20,33 @@ void main() {
     vec3 p0_view = vec3(view * vec4(p0_world, 1.0));
     vec3 p1_view = vec3(view * vec4(p1_world, 1.0));
 
+    if (distance(p1_view, p0_view) < 0.0001) {
+        return;
+    }
+
     vec3 line_dir = normalize(p1_view - p0_view);
-    vec3 offset = normalize(cross(line_dir, vec3(0.0, 0.0, -1.0))) * thickness;
+    vec3 view_dir = vec3(0.0, 0.0, -1.0);
+    vec3 offset_dir = cross(line_dir, view_dir);
+
+    if (length(offset_dir) < 0.1) {
+        offset_dir = vec3(1.0, 0.0, 0.0);
+    }
+    vec3 offset = normalize(offset_dir) * thickness;
 
     gl_Position = projection * vec4(p0_view + offset, 1.0);
-    Fade = Progress[0];
+    Fade = vs_progress[0];
     EmitVertex();
 
     gl_Position = projection * vec4(p0_view - offset, 1.0);
-    Fade = Progress[0];
+    Fade = vs_progress[0];
     EmitVertex();
 
     gl_Position = projection * vec4(p1_view + offset, 1.0);
-    Fade = Progress[1];
+    Fade = vs_progress[1];
     EmitVertex();
 
     gl_Position = projection * vec4(p1_view - offset, 1.0);
-    Fade = Progress[1];
+    Fade = vs_progress[1];
     EmitVertex();
 
     EndPrimitive();

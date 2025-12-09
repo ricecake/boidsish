@@ -37,6 +37,7 @@ namespace Boidsish {
 	private:
 		static GLuint vao;
 		static GLuint vbo;
+		static GLuint ebo;
 		static int vertex_count;
 };
 } // namespace Boidsish

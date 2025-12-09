@@ -23,7 +23,7 @@ namespace Boidsish {
 		float x, y, z;
 		float r, g, b, a;
 		int   trail_length;
-		static Shader* shader;
+		static std::shared_ptr<Shader> shader;
 	};
 
 	// Function type for user-defined shape generation

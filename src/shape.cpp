@@ -2,6 +2,8 @@
 
 #include "shader.h"
 
+#include <memory>
+
 namespace Boidsish {
-    Shader* Shape::shader = nullptr;
+    std::shared_ptr<Shader> Shape::shader = nullptr;
 }

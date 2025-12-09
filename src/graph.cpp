@@ -1,152 +1,43 @@
 #include "graph.h"
-
+#include <vector>
 #include <cmath>
-
+#include <numbers>
 #include <GL/glew.h>
-
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
-#include <glm/gtc/type_ptr.hpp>
-
-#include "dot.h"
 #include "shader.h"
+#include "dot.h"
 
 namespace Boidsish {
 
 	Graph::Graph(int id, float x, float y, float z) {
-		this->id = id;
-		this->x = x;
-		this->y = y;
-		this->z = z;
-		this->r = 1.0f;
-		this->g = 1.0f;
-		this->b = 1.0f;
-		this->a = 1.0f;
+		this->id = id; this->x = x; this->y = y; this->z = z;
+		this->r = 1.0f; this->g = 1.0f; this->b = 1.0f; this->a = 1.0f;
 		this->trail_length = 0;
 	}
 
-	const int   CYLINDER_SEGMENTS = 12;
+	Graph::~Graph() {
+		if (buffers_initialized) {
+			glDeleteVertexArrays(1, &vao);
+			glDeleteBuffers(1, &vbo);
+		}
+	}
+
+	const int CYLINDER_SEGMENTS = 12;
 	const float EDGE_RADIUS_SCALE = 0.005f;
-	const int   CURVE_SEGMENTS = 10;
+	const int CURVE_SEGMENTS = 10;
 
 	Vector3 CatmullRom(float t, const Vector3& p0, const Vector3& p1, const Vector3& p2, const Vector3& p3) {
-		return 0.5f *
-			((2.0f * p1) + (-p0 + p2) * t + (2.0f * p0 - 5.0f * p1 + 4.0f * p2 - p3) * (t * t) +
-		     (-p0 + 3.0f * p1 - 3.0f * p2 + p3) * (t * t * t));
+		return 0.5f * ( (2.0f * p1) + (-p0 + p2) * t + (2.0f * p0 - 5.0f * p1 + 4.0f * p2 - p3) * (t * t) + (-p0 + 3.0f * p1 - 3.0f * p2 + p3) * (t * t * t) );
 	}
 
-	void render_edge(
-		const Graph::Vertex& v0,
-		const Graph::Vertex& v1,
-		const Graph::Vertex& v2,
-		const Graph::Vertex& v3,
-		const Vector3&       offset,
-		Shader& shader
-	) {
-		Vector3 p0 = v0.position + offset;
-		Vector3 p1 = v1.position + offset;
-		Vector3 p2 = v2.position + offset;
-		Vector3 p3 = v3.position + offset;
+	void Graph::setup_buffers() {
+		if (buffers_initialized || edges.empty()) return;
 
-		// 1. Pre-calculate all points, tangents, colors, and radii
-		std::vector<Vector3>              points;
-		std::vector<Vector3>              tangents;
-		std::vector<std::array<float, 4>> colors;
-		std::vector<float>                radii;
-
-		for (int i = 0; i <= CURVE_SEGMENTS; ++i) {
-			float t = (float)i / CURVE_SEGMENTS;
-			points.push_back(CatmullRom(t, p0, p1, p2, p3));
-
-			float u = 1.0f - t;
-			colors.push_back({u * v1.r + t * v2.r, u * v1.g + t * v2.g, u * v1.b + t * v2.b, u * v1.a + t * v2.a});
-			radii.push_back((u * v1.size + t * v2.size) * EDGE_RADIUS_SCALE);
-		}
-
-		if (points.size() < 2)
-			return;
-
-		for (size_t i = 0; i < points.size(); ++i) {
-			if (i == 0)
-				tangents.push_back((points[1] - points[0]).Normalized());
-			else if (i == points.size() - 1)
-				tangents.push_back((points[i] - points[i - 1]).Normalized());
-			else
-				tangents.push_back((points[i + 1] - points[i - 1]).Normalized());
-		}
-
-		// 2. Generate all vertices for the tube
-		std::vector<float> vertices;
-
-		Vector3 normal;
-		if (std::abs(tangents[0].y) < 0.999f)
-			normal = tangents[0].Cross(Vector3(0, 1, 0)).Normalized();
-		else
-			normal = tangents[0].Cross(Vector3(1, 0, 0)).Normalized();
-
-		for (size_t i = 0; i < points.size(); ++i) {
-			if (i > 0) {
-				Vector3 t_prev = tangents[i - 1];
-				Vector3 t_curr = tangents[i];
-				Vector3 axis = t_prev.Cross(t_curr);
-				float   angle = acos(std::max(-1.0f, std::min(1.0f, t_prev.Dot(t_curr))));
-				if (axis.MagnitudeSquared() > 1e-6) {
-					float cos_a = cos(angle);
-					float sin_a = sin(angle);
-					axis.Normalize();
-					normal = normal * cos_a + axis.Cross(normal) * sin_a + axis * axis.Dot(normal) * (1 - cos_a);
-				}
-			}
-			Vector3 bitangent = tangents[i].Cross(normal).Normalized();
-
-			for (int j = 0; j <= CYLINDER_SEGMENTS; ++j) {
-				float   angle = 2.0f * M_PI * (float)j / CYLINDER_SEGMENTS;
-				Vector3 circle_normal = (normal * cos(angle) + bitangent * sin(angle)).Normalized();
-				Vector3 vertex_pos = points[i] + circle_normal * radii[i];
-
-				// Position
-				vertices.push_back(vertex_pos.x);
-				vertices.push_back(vertex_pos.y);
-				vertices.push_back(vertex_pos.z);
-
-				// Normal
-				vertices.push_back(circle_normal.x);
-				vertices.push_back(circle_normal.y);
-				vertices.push_back(circle_normal.z);
-			}
-		}
-
-		GLuint vao, vbo;
-		glGenVertexArrays(1, &vao);
-		glBindVertexArray(vao);
-
-		glGenBuffers(1, &vbo);
-		glBindBuffer(GL_ARRAY_BUFFER, vbo);
-		glBufferData(GL_ARRAY_BUFFER, vertices.size() * sizeof(float), &vertices[0], GL_DYNAMIC_DRAW);
-
-		glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void*)0);
-		glEnableVertexAttribArray(0);
-
-		glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void*)(3 * sizeof(float)));
-		glEnableVertexAttribArray(1);
-
-		for (size_t i = 0; i < points.size() - 1; ++i) {
-			shader.setVec3("objectColor", colors[i][0], colors[i][1], colors[i][2]);
-			glDrawArrays(GL_TRIANGLE_STRIP, i * (CYLINDER_SEGMENTS + 1), 2 * (CYLINDER_SEGMENTS + 1));
-		}
-
-		glDeleteVertexArrays(1, &vao);
-		glDeleteBuffers(1, &vbo);
-	}
-
-	void Graph::render() const {
-		render(*shader);
-	}
-
-	void Graph::render(Shader& shader) const {
-		for (const auto& vertex : vertices) {
-			Dot(0, vertex.position.x + x, vertex.position.y + y, vertex.position.z + z, vertex.size, vertex.r, vertex.g, vertex.b, vertex.a, 0).render(shader);
-		}
+		struct VertexData {
+			glm::vec3 pos, normal, color;
+		};
+		std::vector<VertexData> all_vertices_data;
 
 		std::map<int, std::vector<int>> adj;
 		for (const auto& edge : edges) {
@@ -155,46 +46,113 @@ namespace Boidsish {
 		}
 
 		for (const auto& edge : edges) {
-			if (edge.vertex1_idx < 0 || edge.vertex1_idx >= (int)vertices.size() || edge.vertex2_idx < 0 ||
-			    edge.vertex2_idx >= (int)vertices.size()) {
-				continue;
-			}
+			if (edge.vertex1_idx >= (int)vertices.size() || edge.vertex2_idx >= (int)vertices.size()) continue;
 
 			const auto& v1 = vertices[edge.vertex1_idx];
 			const auto& v2 = vertices[edge.vertex2_idx];
 
-			Vertex v0;
-			int    v0_idx = -1;
-			for (int neighbor_idx : adj[edge.vertex1_idx]) {
-				if (neighbor_idx != edge.vertex2_idx) {
-					v0_idx = neighbor_idx;
-					break;
+			Vertex v0 = v1;
+			if(adj.count(edge.vertex1_idx)) {
+				for (int n_idx : adj[edge.vertex1_idx]) {
+					if (n_idx != edge.vertex2_idx) { v0 = vertices[n_idx]; break; }
 				}
 			}
-			if (v0_idx != -1) {
-				v0 = vertices[v0_idx];
-			} else {
-				v0 = v1;
-				v0.position = v1.position - (v2.position - v1.position);
-			}
+			if (v0.position.x == v1.position.x && v0.position.y == v1.position.y && v0.position.z == v1.position.z) v0.position = v1.position - (v2.position - v1.position);
 
-			Vertex v3;
-			int    v3_idx = -1;
-			for (int neighbor_idx : adj[edge.vertex2_idx]) {
-				if (neighbor_idx != edge.vertex1_idx) {
-					v3_idx = neighbor_idx;
-					break;
+			Vertex v3 = v2;
+			if(adj.count(edge.vertex2_idx)) {
+				for (int n_idx : adj[edge.vertex2_idx]) {
+					if (n_idx != edge.vertex1_idx) { v3 = vertices[n_idx]; break; }
 				}
 			}
-			if (v3_idx != -1) {
-				v3 = vertices[v3_idx];
-			} else {
-				v3 = v2;
-				v3.position = v2.position + (v2.position - v1.position);
-			}
+			if (v3.position.x == v2.position.x && v3.position.y == v2.position.y && v3.position.z == v2.position.z) v3.position = v2.position + (v2.position - v1.position);
 
-			render_edge(v0, v1, v2, v3, Vector3(x,y,z), shader);
+			Vector3 p0 = v0.position, p1 = v1.position, p2 = v2.position, p3 = v3.position;
+
+			for (int i = 0; i < CURVE_SEGMENTS; ++i) {
+				std::vector<Vector3> p_loop1, p_loop2;
+				std::vector<glm::vec3> c_loop1, c_loop2;
+				std::vector<Vector3> n_loop1, n_loop2;
+
+				float t1 = (float)i / CURVE_SEGMENTS;
+				float t2 = (float)(i + 1) / CURVE_SEGMENTS;
+
+				Vector3 point1 = CatmullRom(t1, p0, p1, p2, p3), point2 = CatmullRom(t2, p0, p1, p2, p3);
+
+				glm::vec3 color1 = { (1-t1)*v1.r+t1*v2.r, (1-t1)*v1.g+t1*v2.g, (1-t1)*v1.b+t1*v2.b };
+				glm::vec3 color2 = { (1-t2)*v1.r+t2*v2.r, (1-t2)*v1.g+t2*v2.g, (1-t2)*v1.b+t2*v2.b };
+
+				float r1 = ((1-t1)*v1.size+t1*v2.size)*EDGE_RADIUS_SCALE, r2 = ((1-t2)*v1.size+t2*v2.size)*EDGE_RADIUS_SCALE;
+
+				Vector3 tangent = (point2 - point1).Normalized();
+				Vector3 normal, bitangent;
+				if(abs(tangent.y) < 0.999) normal = tangent.Cross(Vector3(0,1,0)).Normalized();
+				else normal = tangent.Cross(Vector3(1,0,0)).Normalized();
+				bitangent = tangent.Cross(normal).Normalized();
+
+				for (int j = 0; j <= CYLINDER_SEGMENTS; ++j) {
+					float angle = 2.0f * std::numbers::pi * j / CYLINDER_SEGMENTS;
+					Vector3 cn = (normal * cos(angle) + bitangent * sin(angle)).Normalized();
+					p_loop1.push_back(point1 + cn * r1); c_loop1.push_back(color1); n_loop1.push_back(cn);
+					p_loop2.push_back(point2 + cn * r2); c_loop2.push_back(color2); n_loop2.push_back(cn);
+				}
+
+				for(int j=0; j < CYLINDER_SEGMENTS; ++j) {
+					all_vertices_data.push_back({glm::vec3(p_loop1[j].x, p_loop1[j].y, p_loop1[j].z), glm::vec3(n_loop1[j].x, n_loop1[j].y, n_loop1[j].z), c_loop1[j]});
+					all_vertices_data.push_back({glm::vec3(p_loop2[j].x, p_loop2[j].y, p_loop2[j].z), glm::vec3(n_loop2[j].x, n_loop2[j].y, n_loop2[j].z), c_loop2[j]});
+					all_vertices_data.push_back({glm::vec3(p_loop1[j+1].x, p_loop1[j+1].y, p_loop1[j+1].z), glm::vec3(n_loop1[j+1].x, n_loop1[j+1].y, n_loop1[j+1].z), c_loop1[j+1]});
+
+					all_vertices_data.push_back({glm::vec3(p_loop1[j+1].x, p_loop1[j+1].y, p_loop1[j+1].z), glm::vec3(n_loop1[j+1].x, n_loop1[j+1].y, n_loop1[j+1].z), c_loop1[j+1]});
+					all_vertices_data.push_back({glm::vec3(p_loop2[j].x, p_loop2[j].y, p_loop2[j].z), glm::vec3(n_loop2[j].x, n_loop2[j].y, n_loop2[j].z), c_loop2[j]});
+					all_vertices_data.push_back({glm::vec3(p_loop2[j+1].x, p_loop2[j+1].y, p_loop2[j+1].z), glm::vec3(n_loop2[j+1].x, n_loop2[j+1].y, n_loop2[j+1].z), c_loop2[j+1]});
+				}
+			}
 		}
+
+		edge_vertex_count = all_vertices_data.size();
+
+		glGenVertexArrays(1, &vao);
+		glBindVertexArray(vao);
+		glGenBuffers(1, &vbo);
+		glBindBuffer(GL_ARRAY_BUFFER, vbo);
+		glBufferData(GL_ARRAY_BUFFER, all_vertices_data.size()*sizeof(VertexData), all_vertices_data.data(), GL_STATIC_DRAW);
+
+		glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(VertexData), (void*)offsetof(VertexData, pos));
+		glEnableVertexAttribArray(0);
+		glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, sizeof(VertexData), (void*)offsetof(VertexData, normal));
+		glEnableVertexAttribArray(1);
+		glVertexAttribPointer(2, 3, GL_FLOAT, GL_FALSE, sizeof(VertexData), (void*)offsetof(VertexData, color));
+		glEnableVertexAttribArray(2);
+
+		glBindVertexArray(0);
+		buffers_initialized = true;
 	}
 
-} // namespace Boidsish
+	void Graph::render() const {
+		render(*shader);
+	}
+
+	void Graph::render(Shader& shader) const {
+		if(!buffers_initialized) return;
+
+		for (const auto& vertex : vertices) {
+			Dot(0, vertex.position.x + x, vertex.position.y + y, vertex.position.z + z, vertex.size, vertex.r, vertex.g, vertex.b, vertex.a, 0).render(shader);
+		}
+
+		shader.use();
+		shader.setInt("useVertexColor", 1);
+
+		glm::mat4 model = glm::mat4(1.0f);
+		model = glm::translate(model, glm::vec3(x, y, z));
+		shader.setMat4("model", model);
+
+		glBindVertexArray(vao);
+		glDrawArrays(GL_TRIANGLES, 0, edge_vertex_count);
+		glBindVertexArray(0);
+
+		shader.setInt("useVertexColor", 0);
+		model = glm::mat4(1.0f);
+		shader.setMat4("model", model);
+	}
+
+}

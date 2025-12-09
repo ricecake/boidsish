@@ -1,26 +1,17 @@
 #include "dot.h"
-
-#include <chrono>
-#include <cmath>
-#include <deque>
-#include <iostream>
-#include <map>
-#include <set>
 #include <vector>
-
-#include "graphics.h"
+#include <cmath>
+#include <numbers>
 #include <GL/glew.h>
-#include <GLFW/glfw3.h>
-#include <shader.h>
-
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
-#include <glm/gtc/type_ptr.hpp>
+#include "shader.h"
 
 namespace Boidsish {
 
 	GLuint Dot::vao = 0;
 	GLuint Dot::vbo = 0;
+	GLuint Dot::ebo = 0;
 	int Dot::vertex_count = 0;
 
 	Dot::Dot(int id, float x, float y, float z, float size, float r, float g, float b, float a, int trail_length) {
@@ -58,25 +49,15 @@ namespace Boidsish {
 		const float radius = 1.0f;
 
 		std::vector<float> vertices;
-
 		for (int lat = 0; lat <= latitude_segments; ++lat) {
 			for (int lon = 0; lon <= longitude_segments; ++lon) {
-				float theta = lat * M_PI / latitude_segments;
-				float phi = lon * 2 * M_PI / longitude_segments;
-
+				float theta = lat * std::numbers::pi / latitude_segments;
+				float phi = lon * 2 * std::numbers::pi / longitude_segments;
 				float x = radius * sin(theta) * cos(phi);
 				float y = radius * cos(theta);
 				float z = radius * sin(theta) * sin(phi);
-
-				// Position
-				vertices.push_back(x);
-				vertices.push_back(y);
-				vertices.push_back(z);
-
-				// Normal (for a sphere, the normal is the same as the position)
-				vertices.push_back(x);
-				vertices.push_back(y);
-				vertices.push_back(z);
+				vertices.push_back(x); vertices.push_back(y); vertices.push_back(z);
+				vertices.push_back(x); vertices.push_back(y); vertices.push_back(z);
 			}
 		}
 
@@ -85,14 +66,8 @@ namespace Boidsish {
 			for (int lon = 0; lon < longitude_segments; ++lon) {
 				int first = (lat * (longitude_segments + 1)) + lon;
 				int second = first + longitude_segments + 1;
-
-				indices.push_back(first);
-				indices.push_back(second);
-				indices.push_back(first + 1);
-
-				indices.push_back(second);
-				indices.push_back(second + 1);
-				indices.push_back(first + 1);
+				indices.push_back(first); indices.push_back(second); indices.push_back(first + 1);
+				indices.push_back(second); indices.push_back(second + 1); indices.push_back(first + 1);
 			}
 		}
 		vertex_count = indices.size();
@@ -104,16 +79,12 @@ namespace Boidsish {
 		glBindBuffer(GL_ARRAY_BUFFER, vbo);
 		glBufferData(GL_ARRAY_BUFFER, vertices.size() * sizeof(float), &vertices[0], GL_STATIC_DRAW);
 
-		GLuint ebo;
 		glGenBuffers(1, &ebo);
 		glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ebo);
 		glBufferData(GL_ELEMENT_ARRAY_BUFFER, indices.size() * sizeof(unsigned int), &indices[0], GL_STATIC_DRAW);
 
-		// Position attribute
 		glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void*)0);
 		glEnableVertexAttribArray(0);
-
-		// Normal attribute
 		glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void*)(3 * sizeof(float)));
 		glEnableVertexAttribArray(1);
 
@@ -123,5 +94,7 @@ namespace Boidsish {
 	void Dot::CleanupSphereMesh() {
 		glDeleteVertexArrays(1, &vao);
 		glDeleteBuffers(1, &vbo);
+		glDeleteBuffers(1, &ebo);
 	}
+
 } // namespace Boidsish
