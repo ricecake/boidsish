@@ -1,9 +1,6 @@
 #include "trail.h"
 
 #include <algorithm>
-#include <vector>
-
-#include <glm/gtc/matrix_transform.hpp>
 
 namespace Boidsish {
 
@@ -22,47 +19,27 @@ namespace Boidsish {
 		if (positions.size() > static_cast<size_t>(max_length)) {
 			positions.pop_front();
 		}
+
+		glBindVertexArray(vao);
+		glBindBuffer(GL_ARRAY_BUFFER, vbo);
+		glBufferData(GL_ARRAY_BUFFER, positions.size() * sizeof(glm::vec3), &positions[0], GL_DYNAMIC_DRAW);
+
+		glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
+		glEnableVertexAttribArray(0);
+
+		glBindVertexArray(0);
 	}
 
-	void Trail::Render(Shader& shader, float r, float g, float b, const glm::vec3& camera_pos) const {
+	void Trail::Render(Shader& shader, float r, float g, float b) const {
 		if (positions.size() < 2) {
 			return;
 		}
 
-		struct TrailVertex {
-			glm::vec3 pos;
-			float     progress;
-		};
-
-		std::vector<TrailVertex> vertices;
-		for (size_t i = 0; i < positions.size() - 1; ++i) {
-			glm::vec3 p0 = positions[i];
-			glm::vec3 p1 = positions[i+1];
-
-			glm::vec3 dir = glm::normalize(p1 - p0);
-			glm::vec3 to_camera = glm::normalize(camera_pos - p0);
-			glm::vec3 offset = glm::normalize(glm::cross(dir, to_camera)) * 0.05f;
-
-			vertices.push_back({p0 + offset, (float)i / (float)positions.size()});
-			vertices.push_back({p0 - offset, (float)i / (float)positions.size()});
-		}
-
-		glBindVertexArray(vao);
-		glBindBuffer(GL_ARRAY_BUFFER, vbo);
-		glBufferData(GL_ARRAY_BUFFER, vertices.size() * sizeof(TrailVertex), &vertices[0], GL_DYNAMIC_DRAW);
-
-		// Position
-		glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(TrailVertex), (void*)0);
-		glEnableVertexAttribArray(0);
-
-		// Progress
-		glVertexAttribPointer(1, 1, GL_FLOAT, GL_FALSE, sizeof(TrailVertex), (void*)offsetof(TrailVertex, progress));
-		glEnableVertexAttribArray(1);
-
 		shader.use();
 		shader.setVec3("color", r, g, b);
 
-		glDrawArrays(GL_TRIANGLE_STRIP, 0, vertices.size());
+		glBindVertexArray(vao);
+		glDrawArrays(GL_LINE_STRIP, 0, positions.size());
 		glBindVertexArray(0);
 	}
 
