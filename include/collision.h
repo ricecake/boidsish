@@ -2,6 +2,7 @@
 
 #include "spatial_entity_handler.h"
 #include "graph_entities.h"
+#include "collision_shapes.h"
 #include <iostream>
 #include <set>
 #include <optional>
@@ -21,10 +22,13 @@ class CollisionHandler : public SpatialEntityHandler {
 public:
     constexpr static float kRaycastEpsilon = 0.001f;
 
-    // Add a graph's vertices to the collision system as proxy entities
+    // Add a graph's vertices and edges to the collision system as proxy entities
     void AddGraphForCollision(std::shared_ptr<Graph> graph) {
         for (const auto& vertex : graph->vertices) {
             AddEntity<GraphVertexEntity>(vertex, graph);
+        }
+        for (const auto& edge : graph->edges) {
+            AddEntity<GraphEdgeEntity>(graph->vertices[edge.vertex1_idx], graph->vertices[edge.vertex2_idx], graph);
         }
     }
 
@@ -42,7 +46,7 @@ public:
             return true; // continue searching
         });
 
-        // Narrow Phase: Precise ray-sphere intersection test
+        // Narrow Phase: Dispatch to the correct intersection test
         std::optional<RaycastHit> closest_hit;
         float min_distance = std::numeric_limits<float>::max();
 
@@ -50,27 +54,40 @@ public:
             auto entity = GetEntity(id);
             if (!entity) continue;
 
-            const Vector3& center = entity->GetPosition();
-            float radius = entity->GetSize();
-
-            Vector3 oc = origin - center;
-            float a = direction.Dot(direction);
-            float b = 2.0f * oc.Dot(direction);
-            float c = oc.Dot(oc) - radius * radius;
-            float discriminant = b * b - 4 * a * c;
-
-            if (discriminant >= 0) {
-                float t = (-b - std::sqrt(discriminant)) / (2.0f * a);
-                if (t > kRaycastEpsilon && t < max_distance && t < min_distance) {
-                    min_distance = t;
-                    Vector3 hit_point = origin + direction * t;
-                    closest_hit = RaycastHit{
-                        entity,
-                        hit_point,
-                        (hit_point - center).Normalized(),
-                        t
-                    };
+            std::optional<float> hit_time;
+            if (entity->GetCollisionShapeType() == CollisionShapeType::SPHERE) {
+                 const Vector3& center = entity->GetPosition();
+                float radius = entity->GetSize();
+                Vector3 oc = origin - center;
+                float a = direction.Dot(direction);
+                float b = 2.0f * oc.Dot(direction);
+                float c = oc.Dot(oc) - radius * radius;
+                float discriminant = b * b - 4 * a * c;
+                if (discriminant >= 0) {
+                    hit_time = (-b - std::sqrt(discriminant)) / (2.0f * a);
                 }
+            } else if (entity->GetCollisionShapeType() == CollisionShapeType::CAPSULE) {
+                auto capsule_entity = std::dynamic_pointer_cast<GraphEdgeEntity>(entity);
+                if (capsule_entity) {
+                    hit_time = RayCapsuleIntersect(origin, direction, capsule_entity->GetCapsule());
+                }
+            }
+
+            if (hit_time && *hit_time > kRaycastEpsilon && *hit_time < max_distance && *hit_time < min_distance) {
+                min_distance = *hit_time;
+                Vector3 hit_point = origin + direction * min_distance;
+                // Note: hit_normal calculation is simplified here. A more robust solution
+                // would compute the normal based on the exact point of impact on the capsule.
+                Vector3 hit_normal = (hit_point - entity->GetPosition()).Normalized();
+                 if (entity->GetCollisionShapeType() == CollisionShapeType::CAPSULE) {
+                    auto capsule_entity = std::dynamic_pointer_cast<GraphEdgeEntity>(entity);
+                    if (capsule_entity) {
+                        Capsule c = capsule_entity->GetCapsule();
+                        Vector3 closest_point_on_axis = ClosestPointOnSegment(hit_point, c.a, c.b);
+                        hit_normal = (hit_point - closest_point_on_axis).Normalized();
+                    }
+                }
+                closest_hit = RaycastHit{entity, hit_point, hit_normal, min_distance};
             }
         }
 
@@ -124,44 +141,61 @@ protected:
         // First, update the R-tree with the new entity positions
         SpatialEntityHandler::PostTimestep(time, delta_time);
 
-        // Keep track of pairs we've already checked
         std::set<std::pair<int, int>> checked_pairs;
 
         for (const auto& pair : GetAllEntities()) {
-            auto& entity1 = pair.second;
+            auto& e1 = pair.second;
 
-            // Broad phase search box should encompass the entire movement volume
-            Vector3 start_pos = entity1->GetPreviousPosition();
-            Vector3 end_pos = entity1->GetPosition();
-            float size = entity1->GetSize();
+            // Broad phase AABB calculation
+            Vector3 start_pos = e1->GetPreviousPosition();
+            Vector3 end_pos = e1->GetPosition();
+            float radius = e1->GetSize();
+            float min_b[3], max_b[3];
 
-            float min_b[3] = {
-                std::min(start_pos.x, end_pos.x) - size,
-                std::min(start_pos.y, end_pos.y) - size,
-                std::min(start_pos.z, end_pos.z) - size
-            };
-            float max_b[3] = {
-                std::max(start_pos.x, end_pos.x) + size,
-                std::max(start_pos.y, end_pos.y) + size,
-                std::max(start_pos.z, end_pos.z) + size
-            };
+            if (e1->GetCollisionShapeType() == CollisionShapeType::SPHERE) {
+                min_b[0] = std::min(start_pos.x, end_pos.x) - radius;
+                min_b[1] = std::min(start_pos.y, end_pos.y) - radius;
+                min_b[2] = std::min(start_pos.z, end_pos.z) - radius;
+                max_b[0] = std::max(start_pos.x, end_pos.x) + radius;
+                max_b[1] = std::max(start_pos.y, end_pos.y) + radius;
+                max_b[2] = std::max(start_pos.z, end_pos.z) + radius;
+            } else { // Capsule
+                auto capsule_entity = std::static_pointer_cast<GraphEdgeEntity>(e1);
+                Capsule c = capsule_entity->GetCapsule();
+                min_b[0] = std::min(c.a.x, c.b.x) - radius;
+                min_b[1] = std::min(c.a.y, c.b.y) - radius;
+                min_b[2] = std::min(c.a.z, c.b.z) - radius;
+                max_b[0] = std::max(c.a.x, c.b.x) + radius;
+                max_b[1] = std::max(c.a.y, c.b.y) + radius;
+                max_b[2] = std::max(c.a.z, c.b.z) + radius;
+            }
 
             rtree_.Search(min_b, max_b, [&](int id2) {
-                if (entity1->GetId() == id2) return true;
+                if (e1->GetId() == id2) return true;
 
-                int id1 = entity1->GetId();
+                int id1 = e1->GetId();
                 if (id1 > id2) std::swap(id1, id2);
                 if (checked_pairs.count({id1, id2})) return true;
-
                 checked_pairs.insert({id1, id2});
 
-                auto entity2 = GetEntity(id2);
-                if (entity2) {
-                    // Narrow phase: swept-sphere collision test
-                    auto time_of_impact = SweptSphereSphere(*entity1, *entity2);
+                auto e2 = GetEntity(id2);
+                if (e2) {
+                    // Narrow phase dispatch
+                    std::optional<float> time_of_impact;
+                    if (e1->GetCollisionShapeType() == CollisionShapeType::SPHERE && e2->GetCollisionShapeType() == CollisionShapeType::SPHERE) {
+                        time_of_impact = SweptSphereSphere(*e1, *e2);
+                    } else if (e1->GetCollisionShapeType() == CollisionShapeType::SPHERE && e2->GetCollisionShapeType() == CollisionShapeType::CAPSULE) {
+                        auto capsule_entity = std::static_pointer_cast<GraphEdgeEntity>(e2);
+                        time_of_impact = SphereCapsuleIntersect(*e1, *capsule_entity);
+                    } else if (e1->GetCollisionShapeType() == CollisionShapeType::CAPSULE && e2->GetCollisionShapeType() == CollisionShapeType::SPHERE) {
+                         auto capsule_entity = std::static_pointer_cast<GraphEdgeEntity>(e1);
+                        time_of_impact = SphereCapsuleIntersect(*e2, *capsule_entity);
+                    }
+                    // Capsule-capsule not implemented
+
                     if (time_of_impact) {
-                        entity1->OnCollision(*entity2);
-                        entity2->OnCollision(*entity1);
+                        e1->OnCollision(*e2);
+                        e2->OnCollision(*e1);
                     }
                 }
                 return true;

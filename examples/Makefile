@@ -30,10 +30,10 @@ ifeq ($(UNAME_S), Darwin)
 endif
 
 # Library objects
-LIB_OBJS = $(BUILDDIR)/obj/boidsish.o $(BUILDDIR)/obj/graph.o
+LIB_OBJS = $(BUILDDIR)/obj/boidsish.o $(BUILDDIR)/obj/graph.o $(BUILDDIR)/obj/collision_shapes.o
 
 # Targets
-EXAMPLES = $(BUILDDIR)/advanced_examples $(BUILDDIR)/entity_example $(BUILDDIR)/vector_demo $(BUILDDIR)/collision_example $(BUILDDIR)/raycast_example $(BUILDDIR)/graph_avoidance_example
+EXAMPLES = $(BUILDDIR)/advanced_examples $(BUILDDIR)/entity_example $(BUILDDIR)/vector_demo $(BUILDDIR)/collision_example $(BUILDDIR)/raycast_example $(BUILDDIR)/graph_avoidance_example $(BUILDDIR)/full_collision_example
 
 all: $(BUILDDIR) $(EXAMPLES)
 
@@ -43,7 +43,7 @@ $(BUILDDIR):
 
 # Build the library objects if they don't exist
 $(LIB_OBJS):
-	$(MAKE) -C .. boidsish.o graph.o
+	$(MAKE) -C .. boidsish.o graph.o collision_shapes.o
 
 # Build examples
 $(BUILDDIR)/advanced_examples: advanced_examples.cpp $(LIB_OBJS) | $(BUILDDIR)
@@ -64,8 +64,11 @@ $(BUILDDIR)/raycast_example: raycast_example.cpp $(LIB_OBJS) | $(BUILDDIR)
 $(BUILDDIR)/graph_avoidance_example: graph_avoidance_example.cpp $(LIB_OBJS) | $(BUILDDIR)
 	$(CXX) $(CXXFLAGS) $(INCLUDES) graph_avoidance_example.cpp $(LIB_OBJS) -o $@ $(LDFLAGS) $(LIBS)
 
+$(BUILDDIR)/full_collision_example: full_collision_example.cpp $(LIB_OBJS) | $(BUILDDIR)
+	$(CXX) $(CXXFLAGS) $(INCLUDES) full_collision_example.cpp $(LIB_OBJS) -o $@ $(LDFLAGS) $(LIBS)
+
 # Clean
 clean:
-	rm -f $(BUILDDIR)/advanced_examples $(BUILDDIR)/entity_example $(BUILDDIR)/vector_demo $(BUILDDIR)/collision_example $(BUILDDIR)/raycast_example $(BUILDDIR)/graph_avoidance_example
+	rm -f $(BUILDDIR)/advanced_examples $(BUILDDIR)/entity_example $(BUILDDIR)/vector_demo $(BUILDDIR)/collision_example $(BUILDDIR)/raycast_example $(BUILDDIR)/graph_avoidance_example $(BUILDDIR)/full_collision_example
 
 .PHONY: all clean

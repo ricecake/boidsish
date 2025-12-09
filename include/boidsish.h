@@ -8,6 +8,12 @@
 
 namespace Boidsish {
 
+	// Enum to represent the type of collision shape an entity has
+	enum class CollisionShapeType {
+		SPHERE,
+		CAPSULE
+	};
+
 	// Generic 3D vector class with basic operations
 	class Vector3 {
 	public:
@@ -203,6 +209,11 @@ namespace Boidsish {
 		virtual void OnCollision(Entity& other) {
 			// Default implementation does nothing
 			(void)other;
+		}
+
+		// Get the collision shape type for this entity
+		virtual CollisionShapeType GetCollisionShapeType() const {
+			return CollisionShapeType::SPHERE;
 		}
 
 		// Getters and setters
