@@ -1,6 +1,7 @@
 #include "trail.h"
 
 #include <algorithm>
+#include <vector>
 
 namespace Boidsish {
 
@@ -20,12 +21,35 @@ namespace Boidsish {
 			positions.pop_front();
 		}
 
+		if (positions.size() < 2) {
+			return; // Not enough points for a line
+		}
+
+		struct TrailVertex {
+			glm::vec3 pos;
+			float     progress;
+		};
+
+		std::vector<TrailVertex> vertices;
+		// Create explicit line segments: (v0, v1), (v1, v2), (v2, v3)...
+		for (size_t i = 0; i < positions.size() - 1; ++i) {
+			float progress_start = (float)i / (float)(positions.size() - 1);
+			float progress_end = (float)(i + 1) / (float)(positions.size() - 1);
+			vertices.push_back({positions[i], progress_start});
+			vertices.push_back({positions[i + 1], progress_end});
+		}
+
 		glBindVertexArray(vao);
 		glBindBuffer(GL_ARRAY_BUFFER, vbo);
-		glBufferData(GL_ARRAY_BUFFER, positions.size() * sizeof(glm::vec3), &positions[0], GL_DYNAMIC_DRAW);
+		glBufferData(GL_ARRAY_BUFFER, vertices.size() * sizeof(TrailVertex), &vertices[0], GL_DYNAMIC_DRAW);
 
-		glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
+		// Position
+		glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(TrailVertex), (void*)0);
 		glEnableVertexAttribArray(0);
+
+		// Progress
+		glVertexAttribPointer(1, 1, GL_FLOAT, GL_FALSE, sizeof(TrailVertex), (void*)offsetof(TrailVertex, progress));
+		glEnableVertexAttribArray(1);
 
 		glBindVertexArray(0);
 	}
@@ -37,9 +61,11 @@ namespace Boidsish {
 
 		shader.use();
 		shader.setVec3("color", r, g, b);
+		shader.setFloat("thickness", 0.05f);
 
 		glBindVertexArray(vao);
-		glDrawArrays(GL_LINE_STRIP, 0, positions.size());
+		// Draw N-1 line segments, each with 2 vertices
+		glDrawArrays(GL_LINES, 0, (positions.size() - 1) * 2);
 		glBindVertexArray(0);
 	}
 

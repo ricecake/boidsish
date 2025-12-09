@@ -34,6 +34,7 @@ namespace Boidsish {
 		Shader*				 grid_shader;
 		Shader*				 trail_shader;
 		GLuint				 grid_vao;
+		GLuint				 grid_vbo;
 		glm::mat4			 projection;
 
 
@@ -135,10 +136,10 @@ namespace Boidsish {
 			// Set background color (black for holodeck effect)
 			glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
 
-			shader = new Shader("shaders/vis.vs", "shaders/frag.fs");
+			shader = new Shader("shaders/vis.vert", "shaders/vis.frag");
 			Shape::shader = shader;
-			grid_shader = new Shader("shaders/grid.vs", "shaders/grid.fs");
-			trail_shader = new Shader("shaders/trail.vs", "shaders/trail.fs", "shaders/trail.gs");
+			grid_shader = new Shader("shaders/grid.vert", "shaders/grid.frag");
+			trail_shader = new Shader("shaders/trail.vert", "shaders/trail.frag", "shaders/trail.geom");
 
 			Dot::InitSphereMesh();
 
@@ -154,9 +155,8 @@ namespace Boidsish {
 			glGenVertexArrays(1, &grid_vao);
 			glBindVertexArray(grid_vao);
 
-			GLuint vbo;
-			glGenBuffers(1, &vbo);
-			glBindBuffer(GL_ARRAY_BUFFER, vbo);
+			glGenBuffers(1, &grid_vbo);
+			glBindBuffer(GL_ARRAY_BUFFER, grid_vbo);
 			glBufferData(GL_ARRAY_BUFFER, sizeof(quad_vertices), quad_vertices, GL_STATIC_DRAW);
 
 			glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
@@ -171,6 +171,7 @@ namespace Boidsish {
 			delete grid_shader;
 			delete trail_shader;
 			glDeleteVertexArrays(1, &grid_vao);
+			glDeleteBuffers(1, &grid_vbo);
 			if (window) {
 				glfwDestroyWindow(window);
 			}
@@ -630,9 +631,13 @@ namespace Boidsish {
 			impl->trail_shader->setMat4("view", view);
 			impl->trail_shader->setMat4("projection", impl->projection);
 			for (const auto& pair : impl->trails) {
-				const auto& shape = std::find_if(shapes.begin(), shapes.end(), [&](const auto& s) { return s->id == pair.first; });
-				if (shape != shapes.end()) {
-					pair.second->Render(*impl->trail_shader, (*shape)->r, (*shape)->g, (*shape)->b);
+				auto it = std::find_if(shapes.begin(), shapes.end(), [&](const auto& s) { return s->id == pair.first; });
+				if (it != shapes.end()) {
+					// Render trail for active shape
+					pair.second->Render(*impl->trail_shader, (*it)->r, (*it)->g, (*it)->b);
+				} else {
+					// Render fading trail for inactive shape
+					pair.second->Render(*impl->trail_shader, 0.7f, 0.7f, 0.7f);
 				}
 			}
 		}
