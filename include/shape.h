@@ -25,4 +25,4 @@ namespace Boidsish {
 
 	// Function type for user-defined shape generation
 	using ShapeFunction = std::function<std::vector<std::shared_ptr<Shape>>(float time)>;
-}
+} // namespace Boidsish

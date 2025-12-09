@@ -140,4 +140,4 @@ namespace Boidsish {
 	constexpr inline Vector3 operator*(float scalar, const Vector3& vec) {
 		return vec * scalar;
 	}
-}
+} // namespace Boidsish

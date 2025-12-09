@@ -6,8 +6,8 @@
 #include <memory>
 #include <vector>
 
-#include "vector.h"
 #include "shape.h"
+#include "vector.h"
 
 namespace Boidsish {
 
@@ -29,4 +29,4 @@ namespace Boidsish {
 
 		void render() const override;
 	};
-}
+} // namespace Boidsish

@@ -2,8 +2,8 @@
 #include <functional>
 #include <iostream>
 
-#include "graphics.h"
 #include "entity.h"
+#include "graphics.h"
 
 using namespace Boidsish;
 

@@ -3,8 +3,8 @@
 #include <iostream>
 #include <memory>
 
-#include "graphics.h"
 #include "graph.h"
+#include "graphics.h"
 
 using namespace Boidsish;
 

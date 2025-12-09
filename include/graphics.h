@@ -6,8 +6,8 @@
 #include <memory>
 #include <vector>
 
-#include "vector.h"
 #include "shape.h"
+#include "vector.h"
 
 namespace Boidsish {
 	// Camera structure for 3D view control

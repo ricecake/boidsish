@@ -6,9 +6,9 @@
 #include <memory>
 #include <vector>
 
+#include "dot.h"
 #include "shape.h"
 #include "vector.h"
-#include "dot.h"
 
 namespace Boidsish {
 
