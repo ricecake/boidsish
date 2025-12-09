@@ -8,6 +8,7 @@
 
 #include "shape.h"
 #include "vector.h"
+#include <GL/glew.h>
 
 namespace Boidsish {
 
@@ -27,6 +28,15 @@ namespace Boidsish {
 		    float a = 1.0f,
 		    int   trail_length = 10);
 
+		void render(Shader& shader) const;
 		void render() const override;
-	};
+
+		// Static members for the shared sphere mesh
+		static void InitSphereMesh();
+		static void CleanupSphereMesh();
+	private:
+		static GLuint vao;
+		static GLuint vbo;
+		static int vertex_count;
+};
 } // namespace Boidsish

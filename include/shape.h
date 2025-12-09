@@ -6,6 +6,8 @@
 #include <memory>
 #include <vector>
 
+class Shader;
+
 namespace Boidsish {
 
 	// Base class for all renderable shapes
@@ -21,6 +23,7 @@ namespace Boidsish {
 		float x, y, z;
 		float r, g, b, a;
 		int   trail_length;
+		static Shader* shader;
 	};
 
 	// Function type for user-defined shape generation

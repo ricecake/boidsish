@@ -16,6 +16,7 @@ UNAME_S := $(shell uname -s)
 SRCDIR = src
 SOURCES = $(wildcard $(SRCDIR)/*.cpp)
 OBJECTS = $(SOURCES:$(SRCDIR)/%.cpp=$(OBJDIR)/%.o)
+OBJECTS += $(OBJDIR)/trail.o
 
 TARGET = $(BUILDDIR)/libboidsish.a
 
@@ -23,7 +24,7 @@ TARGET = $(BUILDDIR)/libboidsish.a
 ifeq ($(UNAME_S), Linux)
     # Linux-specific flags
     LIBS = -lGL -lGLU -lglfw -lGLEW
-    PKG_CONFIG = $(shell pkg-config --cflags --libs glfw3 glew)
+    PKG_CONFIG = $(shell pkg-config --cflags --libs glfw3 glew glm)
     ifneq ($(PKG_CONFIG),)
         LIBS = $(PKG_CONFIG) -lGL -lGLU
     endif

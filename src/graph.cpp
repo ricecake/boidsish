@@ -4,6 +4,13 @@
 
 #include <GL/glew.h>
 
+#include <glm/glm.hpp>
+#include <glm/gtc/matrix_transform.hpp>
+#include <glm/gtc/type_ptr.hpp>
+
+#include "dot.h"
+#include "shader.h"
+
 namespace Boidsish {
 
 	Graph::Graph(int id, float x, float y, float z) {
@@ -18,72 +25,9 @@ namespace Boidsish {
 		this->trail_length = 0;
 	}
 
-	const int   SPHERE_LONGITUDE_SEGMENTS = 12;
-	const int   SPHERE_LATITUDE_SEGMENTS = 8;
-	const float SPHERE_RADIUS_SCALE = 0.01f;
 	const int   CYLINDER_SEGMENTS = 12;
 	const float EDGE_RADIUS_SCALE = 0.005f;
 	const int   CURVE_SEGMENTS = 10;
-
-	void render_sphere(const Graph::Vertex& vertex, const Vector3& offset) {
-		float radius = vertex.size * SPHERE_RADIUS_SCALE;
-
-		GLfloat material_ambient[] = {vertex.r * 0.2f, vertex.g * 0.2f, vertex.b * 0.2f, vertex.a};
-		GLfloat material_diffuse[] = {vertex.r, vertex.g, vertex.b, vertex.a};
-		GLfloat material_specular[] = {0.5f, 0.5f, 0.5f, vertex.a};
-		GLfloat material_shininess[] = {32.0f};
-
-		glMaterialfv(GL_FRONT, GL_AMBIENT, material_ambient);
-		glMaterialfv(GL_FRONT, GL_DIFFUSE, material_diffuse);
-		glMaterialfv(GL_FRONT, GL_SPECULAR, material_specular);
-		glMaterialfv(GL_FRONT, GL_SHININESS, material_shininess);
-
-		glPushMatrix();
-		glTranslatef(vertex.position.x + offset.x, vertex.position.y + offset.y, vertex.position.z + offset.z);
-
-		glBegin(GL_TRIANGLES);
-
-		for (int lat = 0; lat < SPHERE_LATITUDE_SEGMENTS; ++lat) {
-			float lat0 = M_PI * (-0.5f + (float)lat / SPHERE_LATITUDE_SEGMENTS);
-			float lat1 = M_PI * (-0.5f + (float)(lat + 1) / SPHERE_LATITUDE_SEGMENTS);
-
-			float y0 = sin(lat0) * radius;
-			float y1 = sin(lat1) * radius;
-			float r0 = cos(lat0) * radius;
-			float r1 = cos(lat1) * radius;
-
-			for (int lon = 0; lon < SPHERE_LONGITUDE_SEGMENTS; ++lon) {
-				float lon0 = 2 * M_PI * (float)lon / SPHERE_LONGITUDE_SEGMENTS;
-				float lon1 = 2 * M_PI * (float)(lon + 1) / SPHERE_LONGITUDE_SEGMENTS;
-
-				float x0 = cos(lon0);
-				float z0 = sin(lon0);
-				float x1 = cos(lon1);
-				float z1 = sin(lon1);
-
-				glNormal3f(x0 * cos(lat0), sin(lat0), z0 * cos(lat0));
-				glVertex3f(x0 * r0, y0, z0 * r0);
-
-				glNormal3f(x1 * cos(lat0), sin(lat0), z1 * cos(lat0));
-				glVertex3f(x1 * r0, y0, z1 * r0);
-
-				glNormal3f(x1 * cos(lat1), sin(lat1), z1 * cos(lat1));
-				glVertex3f(x1 * r1, y1, z1 * r1);
-
-				glNormal3f(x0 * cos(lat0), sin(lat0), z0 * cos(lat0));
-				glVertex3f(x0 * r0, y0, z0 * r0);
-
-				glNormal3f(x1 * cos(lat1), sin(lat1), z1 * cos(lat1));
-				glVertex3f(x1 * r1, y1, z1 * r1);
-
-				glNormal3f(x0 * cos(lat1), sin(lat1), z0 * cos(lat1));
-				glVertex3f(x0 * r1, y1, z0 * r1);
-			}
-		}
-
-		glEnd();
-		glPopMatrix();
-	}
 
 	Vector3 CatmullRom(float t, const Vector3& p0, const Vector3& p1, const Vector3& p2, const Vector3& p3) {
 		return 0.5f *
@@ -96,7 +40,8 @@ namespace Boidsish {
 		const Graph::Vertex& v1,
 		const Graph::Vertex& v2,
 		const Graph::Vertex& v3,
-		const Vector3&       offset
+		const Vector3&       offset,
+		Shader& shader
 	) {
 		Vector3 p0 = v0.position + offset;
 		Vector3 p1 = v1.position + offset;
@@ -131,8 +76,7 @@ namespace Boidsish {
 		}
 
 		// 2. Generate all vertices for the tube
-		std::vector<std::vector<Vector3>> rings;
-		std::vector<std::vector<Vector3>> ring_normals;
+		std::vector<float> vertices;
 
 		Vector3 normal;
 		if (std::abs(tangents[0].y) < 0.999f)
@@ -155,44 +99,54 @@ namespace Boidsish {
 			}
 			Vector3 bitangent = tangents[i].Cross(normal).Normalized();
 
-			std::vector<Vector3> ring;
-			std::vector<Vector3> normals_ring;
 			for (int j = 0; j <= CYLINDER_SEGMENTS; ++j) {
 				float   angle = 2.0f * M_PI * (float)j / CYLINDER_SEGMENTS;
 				Vector3 circle_normal = (normal * cos(angle) + bitangent * sin(angle)).Normalized();
-				ring.push_back(points[i] + circle_normal * radii[i]);
-				normals_ring.push_back(circle_normal);
+				Vector3 vertex_pos = points[i] + circle_normal * radii[i];
+
+				// Position
+				vertices.push_back(vertex_pos.x);
+				vertices.push_back(vertex_pos.y);
+				vertices.push_back(vertex_pos.z);
+
+				// Normal
+				vertices.push_back(circle_normal.x);
+				vertices.push_back(circle_normal.y);
+				vertices.push_back(circle_normal.z);
 			}
-			rings.push_back(ring);
-			ring_normals.push_back(normals_ring);
 		}
 
-		// 3. Render the tube using GL_TRIANGLE_STRIP
+		GLuint vao, vbo;
+		glGenVertexArrays(1, &vao);
+		glBindVertexArray(vao);
+
+		glGenBuffers(1, &vbo);
+		glBindBuffer(GL_ARRAY_BUFFER, vbo);
+		glBufferData(GL_ARRAY_BUFFER, vertices.size() * sizeof(float), &vertices[0], GL_DYNAMIC_DRAW);
+
+		glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void*)0);
+		glEnableVertexAttribArray(0);
+
+		glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void*)(3 * sizeof(float)));
+		glEnableVertexAttribArray(1);
+
 		for (size_t i = 0; i < points.size() - 1; ++i) {
-			glBegin(GL_TRIANGLE_STRIP);
-			for (int j = 0; j <= CYLINDER_SEGMENTS; ++j) {
-				// Vertex from current ring
-				glColor4fv(colors[i].data());
-				glNormal3fv(&ring_normals[i][j].x);
-				glVertex3fv(&rings[i][j].x);
-
-				// Vertex from next ring
-				glColor4fv(colors[i + 1].data());
-				glNormal3fv(&ring_normals[i + 1][j].x);
-				glVertex3fv(&rings[i + 1][j].x);
-			}
-			glEnd();
+			shader.setVec3("objectColor", colors[i][0], colors[i][1], colors[i][2]);
+			glDrawArrays(GL_TRIANGLE_STRIP, i * (CYLINDER_SEGMENTS + 1), 2 * (CYLINDER_SEGMENTS + 1));
 		}
+
+		glDeleteVertexArrays(1, &vao);
+		glDeleteBuffers(1, &vbo);
 	}
 
 	void Graph::render() const {
-		Vector3 offset(x, y, z);
-		for (const auto& vertex : vertices) {
-			render_sphere(vertex, offset);
-		}
+		render(*shader);
+	}
 
-		glEnable(GL_COLOR_MATERIAL);
-		glColorMaterial(GL_FRONT_AND_BACK, GL_AMBIENT_AND_DIFFUSE);
+	void Graph::render(Shader& shader) const {
+		for (const auto& vertex : vertices) {
+			Dot(0, vertex.position.x + x, vertex.position.y + y, vertex.position.z + z, vertex.size, vertex.r, vertex.g, vertex.b, vertex.a, 0).render(shader);
+		}
 
 		std::map<int, std::vector<int>> adj;
 		for (const auto& edge : edges) {
@@ -239,10 +193,8 @@ namespace Boidsish {
 				v3.position = v2.position + (v2.position - v1.position);
 			}
 
-			render_edge(v0, v1, v2, v3, offset);
+			render_edge(v0, v1, v2, v3, Vector3(x,y,z), shader);
 		}
-
-		glDisable(GL_COLOR_MATERIAL);
 	}
 
 } // namespace Boidsish
