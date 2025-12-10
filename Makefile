@@ -2,7 +2,7 @@
 # Cross-platform build for Linux and macOS
 
 CXX = g++
-CXXFLAGS = -std=gnu++23 -Wall -Wextra -O3
+CXXFLAGS = -std=gnu++23 -Wall -Wextra -O3 -MMD -MP
 INCLUDES = -isystem external/include -Iinclude
 
 # Build directory
@@ -16,6 +16,12 @@ UNAME_S := $(shell uname -s)
 SRCDIR = src
 SOURCES = $(wildcard $(SRCDIR)/*.cpp)
 OBJECTS = $(SOURCES:$(SRCDIR)/%.cpp=$(OBJDIR)/%.o)
+
+# Example files
+EXAMPLE_SRCDIR = examples
+EXAMPLE_SOURCES = $(wildcard $(EXAMPLE_SRCDIR)/*.cpp)
+EXAMPLE_TARGETS = $(patsubst $(EXAMPLE_SRCDIR)/%.cpp,$(BUILDDIR)/%,$(EXAMPLE_SOURCES))
+
 
 TARGET = $(BUILDDIR)/libboidsish.a
 
@@ -42,13 +48,7 @@ ifeq ($(UNAME_S), Darwin)
 endif
 
 # Default target
-all: $(BUILDDIR)/boidsish examples
-
-$(BUILDDIR)/boidsish: $(TARGET) $(OBJDIR)/boidsish.o
-	$(CXX) $(CXXFLAGS) $(INCLUDES) $(OBJDIR)/boidsish.o -o $@ -L$(BUILDDIR) -lboidsish $(LIBS)
-
-$(OBJDIR)/boidsish.o: src/boidsish.cpp | $(OBJDIR)
-	$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
+all: library examples
 
 # Create build directories
 $(OBJDIR):
@@ -56,6 +56,8 @@ $(OBJDIR):
 
 $(BUILDDIR):
 	@mkdir -p $(BUILDDIR)
+
+library: $(TARGET)
 
 $(TARGET): $(BUILDDIR) $(OBJDIR) $(OBJECTS)
 	ar rcs $(TARGET) $(OBJECTS)
@@ -65,8 +67,11 @@ $(OBJDIR)/%.o: $(SRCDIR)/%.cpp | $(OBJDIR)
 	$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
 
 # Build examples
-examples: $(TARGET)
-	$(MAKE) -C examples
+examples: $(OBJECTS) $(EXAMPLE_TARGETS)
+
+$(BUILDDIR)/%: $(EXAMPLE_SRCDIR)/%.cpp $(OBJECTS) | $(BUILDDIR)
+	$(CXX) $(CXXFLAGS) $(INCLUDES) $< $(OBJECTS) -o $@ $(LDFLAGS) $(LIBS)
+
 
 # Clean build artifacts
 clean:
@@ -82,15 +87,18 @@ install-deps-macos:
 	@echo "Run: brew install glfw glew"
 
 format:
-	@find ./ \( -name '*.cpp' -o -name '*.h' -o -name '*.hpp' \) ! -path './.*/*' -exec clang-format --Wno-error=unknown -i '{}' \;
+	@find  include src examples \( -name '*.cpp' -o -name '*.h' -o -name '*.hpp' \) ! -path './.*/*' -exec clang-format --Wno-error=unknown -i '{}' \;
 
 # Help target
 help:
 	@echo "Available targets:"
-	@echo "  all          - Build the main program"
+	@echo "  all          - Build the library and examples"
+	@echo "  library      - Build the libboidsish.a library"
 	@echo "  clean        - Remove build artifacts"
 	@echo "  examples     - Build example programs"
 	@echo "  install-deps-linux  - Show Linux dependency installation command"
 	@echo "  install-deps-macos  - Show macOS dependency installation command"
 
-.PHONY: all clean examples install-deps-linux install-deps-macos help format
+.PHONY: all clean examples install-deps-linux install-deps-macos help format library
+
+-include $(OBJECTS:.o=.d)
