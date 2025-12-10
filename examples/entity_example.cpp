@@ -82,37 +82,18 @@ protected:
 	}
 };
 
-#include <string>
-int main(int argc, char* argv[]) {
-    bool close_on_finish = false;
-    std::string screenshot_path = "";
-    int width = 1200;
-    int height = 800;
-
-    for (int i = 1; i < argc; ++i) {
-        std::string arg = argv[i];
-        if (arg == "--close-on-finish" && i + 1 < argc) {
-            close_on_finish = std::stoi(argv[++i]);
-        } else if (arg == "--screenshot" && i + 1 < argc) {
-            screenshot_path = argv[++i];
-        } else if (arg == "--width" && i + 1 < argc) {
-            width = std::stoi(argv[++i]);
-        } else if (arg == "--height" && i + 1 < argc) {
-            height = std::stoi(argv[++i]);
-        }
-    }
-
+int main() {
 	try {
 		// Create the visualizer
-		Visualizer viz(width, height, "Boidsish - Entity System Example");
+		Visualizer viz(1200, 800, "Boidsish - Entity System Example");
 
 		// Set up camera
 		Camera camera(0.0f, 3.0f, 12.0f, -15.0f, 0.0f, 45.0f);
 		viz.SetCamera(camera);
 
 		// Create and set the entity handler
-		auto handler = std::make_shared<SwarmHandler>();
-		viz.SetShapeHandler(handler);
+		SwarmHandler handler;
+		viz.SetShapeHandler(std::ref(handler));
 
 		std::cout << "Entity System Example Started!" << std::endl;
 		std::cout << "Controls:" << std::endl;
@@ -124,18 +105,8 @@ int main(int argc, char* argv[]) {
 		std::cout << std::endl;
 		std::cout << "Watch as entities orbit and new ones spawn every 10 seconds!" << std::endl;
 
-        if (close_on_finish) {
-            for (int i = 0; i < 150; i++) {
-                viz.Update();
-                viz.Render();
-            }
-            if (!screenshot_path.empty()) {
-                viz.SaveScreenshot(screenshot_path);
-            }
-        } else {
-            viz.Run();
-        }
-
+		// Run the visualization
+		viz.Run();
 
 		std::cout << "Visualization ended." << std::endl;
 

@@ -107,12 +107,6 @@ namespace Boidsish {
 		EntityHandler(EntityHandler&&) = default;
 		EntityHandler& operator=(EntityHandler&&) = default;
 
-		// Update method to be called by the Visualizer
-		void Update(float time, float delta_time);
-
-		// Get shapes for rendering
-		std::vector<std::shared_ptr<Shape>> GetShapes();
-
 		// Operator() to make this compatible with ShapeFunction
 		std::vector<std::shared_ptr<Shape>> operator()(float time);
 
@@ -189,24 +183,44 @@ namespace Boidsish {
 	};
 
 	// EntityHandler implementation
-	inline void EntityHandler::Update(float time, float delta_time) {
-		PreTimestep(time, delta_time);
-		for (auto& pair : entities_) {
-			auto& entity = pair.second;
-			entity->UpdateEntity(*this, time, delta_time);
-			Vector3 new_position = entity->GetPosition() + entity->GetVelocity() * delta_time;
-			entity->SetPosition(new_position);
+	std::vector<std::shared_ptr<Shape>> EntityHandler::operator()(float time) {
+		float delta_time = 0.016f; // Default 60 FPS
+		if (last_time_ >= 0.0f) {
+			delta_time = time - last_time_;
 		}
-		PostTimestep(time, delta_time);
-	}
+		last_time_ = time;
 
-	inline std::vector<std::shared_ptr<Shape>> EntityHandler::GetShapes() {
+		// Call pre-timestep hook
+		PreTimestep(time, delta_time);
+
+		// Get entities
+		std::vector<std::shared_ptr<Entity>> entities;
+		std::transform(entities_.begin(), entities_.end(), std::back_inserter(entities), [](const auto& pair) {
+			return pair.second;
+		});
+
+		// Update all entities
+		for (auto& entity : entities) {
+			entity->UpdateEntity(*this, time, delta_time);
+		}
+
+		// Call post-timestep hook
+		PostTimestep(time, delta_time);
+
+		// Generate shapes from entity states
 		std::vector<std::shared_ptr<Shape>> shapes;
 		shapes.reserve(entities_.size());
-		for (const auto& pair : entities_) {
-			const auto& entity = pair.second;
-			float       r, g, b, a;
+
+		for (auto& entity : entities) {
+			// Update entity position using its velocity
+			Vector3 new_position = entity->GetPosition() + entity->GetVelocity() * delta_time;
+			entity->SetPosition(new_position);
+
+			// Get visual properties
+			float r, g, b, a;
 			entity->GetColor(r, g, b, a);
+
+			// Create dot at entity's position
 			shapes.emplace_back(
 				std::make_shared<Dot>(
 					entity->GetId(),
@@ -222,17 +236,7 @@ namespace Boidsish {
 				)
 			);
 		}
+
 		return shapes;
-	}
-
-	inline std::vector<std::shared_ptr<Shape>> EntityHandler::operator()(float time) {
-		float delta_time = 0.016f; // Default 60 FPS
-		if (last_time_ >= 0.0f) {
-			delta_time = time - last_time_;
-		}
-		last_time_ = time;
-
-		Update(time, delta_time);
-		return GetShapes();
 	}
 } // namespace Boidsish

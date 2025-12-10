@@ -16,7 +16,8 @@ namespace Boidsish {
 		~Trail();
 
 		void AddPoint(glm::vec3 position, glm::vec3 color);
-		void Render(Shader& shader) const;
+		void Render(
+		    Shader& shader, const glm::vec3& view_pos, const glm::vec3& light_pos) const;
 
 	private:
 		std::deque<std::pair<glm::vec3, glm::vec3>> points;

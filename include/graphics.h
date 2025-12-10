@@ -6,14 +6,10 @@
 #include <memory>
 #include <vector>
 
-#include "entity.h"
 #include "shape.h"
 #include "vector.h"
 
 namespace Boidsish {
-	// Forward declaration
-	class EntityHandler;
-
 	// Camera structure for 3D view control
 	struct Camera {
 		float x, y, z;    // Camera position
@@ -38,14 +34,13 @@ namespace Boidsish {
 		~Visualizer();
 
 		// Set the function/handler that generates shapes for each frame
-		void SetShapeHandler(std::shared_ptr<EntityHandler> handler);
 		void SetShapeHandler(ShapeFunction func);
 
 		// Legacy method name for compatibility
 		void SetDotFunction(ShapeFunction func) { SetShapeHandler(func); }
 
 		// Start the visualization loop
-		void Run();
+		void Run(bool close_on_finish = false);
 
 		// Check if the window should close
 		bool ShouldClose() const;
@@ -61,9 +56,6 @@ namespace Boidsish {
 
 		// Set camera position and orientation
 		void SetCamera(const Camera& camera);
-
-		// Save a screenshot to a file
-		void SaveScreenshot(const std::string& filename);
 
 	private:
 		struct VisualizerImpl;

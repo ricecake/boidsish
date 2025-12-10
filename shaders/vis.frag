@@ -30,13 +30,6 @@ void main()
     float spec = pow(max(dot(viewDir, reflectDir), 0.0), 64);
     vec3 specular = specularStrength * spec * lightColor;
 
-    // Rim
-    float rimPower = 2.0;
-    float rim = 1.0 - max(dot(viewDir, norm), 0.0);
-    rim = pow(rim, rimPower);
-    vec3 rimColor = rim * lightColor;
-
-
     vec3 final_color;
     if (useVertexColor == 1) {
         final_color = vs_color;
@@ -44,6 +37,13 @@ void main()
         final_color = objectColor;
     }
 
-    vec3 result = (ambient + diffuse) * final_color + specular + rimColor;
+    // Rim light
+    float rimPower = 0.7;
+    float rim = 1.0 - max(dot(viewDir, norm), 0.0);
+    rim = pow(rim, 2.0);
+    rim *= rimPower;
+    vec3 rimColor = vec3(1.0, 1.0, 1.0);
+
+    vec3 result = (ambient + diffuse) * final_color + specular + rim * rimColor;
     FragColor = vec4(result, 1.0);
 }

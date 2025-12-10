@@ -1,9 +1,10 @@
 #version 330 core
 out vec4 FragColor;
 
-in vec3 FragPos;
-in vec3 Normal;
 in vec3 color;
+in float fade;
+in vec3 Normal;
+in vec3 FragPos;
 
 uniform vec3 lightPos;
 uniform vec3 viewPos;
@@ -29,5 +30,5 @@ void main()
     vec3 specular = specularStrength * spec * lightColor;
 
     vec3 result = (ambient + diffuse) * color + specular;
-    FragColor = vec4(result, 1.0);
+    FragColor = vec4(result, 1.0); // Opaque
 }

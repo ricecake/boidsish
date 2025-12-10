@@ -56,13 +56,17 @@ namespace Boidsish {
 		glBindVertexArray(0);
 	}
 
-	void Trail::Render(Shader& shader) const {
+	void Trail::Render(
+			Shader& shader, const glm::vec3& view_pos, const glm::vec3& light_pos) const {
 		if (points.size() < 4) {
 			return;
 		}
 
 		shader.use();
 		shader.setFloat("thickness", 0.1f);
+		shader.setVec3("viewPos", view_pos);
+		shader.setVec3("lightPos", light_pos);
+		shader.setVec3("lightColor", 1.0f, 1.0f, 1.0f);
 
 		glBindVertexArray(vao);
 		glDrawArrays(GL_LINE_STRIP_ADJACENCY, 0, points.size());
