@@ -67,10 +67,11 @@ private:
 
 FruitEntity::FruitEntity(int id): Entity(id), value(rand() % 90) {
 	// Vector3 start_pos((rand() % 10 - 5) * 2.0f, 1 + (rand() % 10), (rand() % 6 - 3) * 2.0f);
-	auto start_pos = fruitPlacer(8);
+	auto start_pos = fruitPlacer(10);
+	start_pos.y += 8;
 	SetPosition(start_pos);
 	SetTrailLength(0);
-	SetColor(255, 165, 0);
+	SetColor(1, 0.36f, 1);
 	phase_ = start_pos.Magnitude();
 }
 

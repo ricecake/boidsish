@@ -400,7 +400,7 @@ namespace Boidsish {
 		impl->RenderGrid(view);
 
 		impl->shader->use();
-		impl->shader->setVec3("lightPos", 1.0f, 1.0f, 1.0f);
+		impl->shader->setVec3("lightPos", 1.0f, 100.0f, 25.0f);
 		impl->shader->setVec3("viewPos", impl->camera.x, impl->camera.y, impl->camera.z);
 		impl->shader->setVec3("lightColor", 1.0f, 1.0f, 1.0f);
 
