@@ -15,11 +15,11 @@ namespace Boidsish {
 		Trail(int max_length = 250);
 		~Trail();
 
-		void AddPosition(float x, float y, float z);
-		void Render(Shader& shader, float r, float g, float b) const;
+		void AddPoint(glm::vec3 position, glm::vec3 color);
+		void Render(Shader& shader) const;
 
 	private:
-		std::deque<glm::vec3> positions;
+		std::deque<std::pair<glm::vec3, glm::vec3>> points;
 		int                   max_length;
 		GLuint                vao;
 		GLuint                vbo;

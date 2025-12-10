@@ -207,7 +207,8 @@ namespace Boidsish {
 				if (trails.find(shape->id) == trails.end()) {
 					trails[shape->id] = std::make_shared<Trail>(shape->trail_length);
 				}
-				trails[shape->id]->AddPosition(shape->x, shape->y, shape->z);
+				trails[shape->id]->AddPoint(glm::vec3(shape->x, shape->y, shape->z),
+				                        	glm::vec3(shape->r, shape->g, shape->b));
 				trail_last_update[shape->id] = time;
 				shape->render();
 			}
@@ -216,14 +217,7 @@ namespace Boidsish {
 			trail_shader->setMat4("view", view);
 			trail_shader->setMat4("projection", projection);
 			for (const auto& pair : trails) {
-				auto it = std::find_if(shapes.begin(), shapes.end(), [&](const auto& s) {
-					return s->id == pair.first;
-				});
-				if (it != shapes.end()) {
-					pair.second->Render(*trail_shader, (*it)->r, (*it)->g, (*it)->b);
-				} else {
-					pair.second->Render(*trail_shader, 0.7f, 0.7f, 0.7f);
-				}
+				pair.second->Render(*trail_shader);
 			}
 		}
 
