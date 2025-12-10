@@ -16,9 +16,9 @@ namespace Boidsish {
 	class EntityHandler;
 
 	// Base entity class for the entity system
-	class Entity {
+	class EntityBase {
 	public:
-		Entity(int id = 0):
+		EntityBase(int id = 0):
 			id_(id),
 			position_(0.0f, 0.0f, 0.0f),
 			velocity_(0.0f, 0.0f, 0.0f),
@@ -26,10 +26,14 @@ namespace Boidsish {
 			color_{1.0f, 1.0f, 1.0f, 1.0f},
 			trail_length_(50) {}
 
-		virtual ~Entity() = default;
+		virtual ~EntityBase() = default;
 
 		// Called each frame to update the entity
 		virtual void UpdateEntity(EntityHandler& handler, float time, float delta_time) = 0;
+
+		// Shape management
+		virtual std::shared_ptr<Shape> GetShape() const = 0;
+		virtual void                   UpdateShape() = 0;
 
 		// Getters and setters
 		int GetId() const { return id_; }
@@ -92,6 +96,36 @@ namespace Boidsish {
 		int     trail_length_;
 	};
 
+	// Template-based entity class that takes a shape
+	template <typename ShapeType = Dot>
+	class Entity : public EntityBase {
+	public:
+		Entity(int id = 0) : EntityBase(id), shape_(std::make_shared<ShapeType>()) {
+			UpdateShape();
+		}
+
+		std::shared_ptr<Shape> GetShape() const override { return shape_; }
+
+		void UpdateShape() override {
+			shape_->id = id_;
+			shape_->x = position_.x;
+			shape_->y = position_.y;
+			shape_->z = position_.z;
+			shape_->r = color_[0];
+			shape_->g = color_[1];
+			shape_->b = color_[2];
+			shape_->a = color_[3];
+			shape_->trail_length = trail_length_;
+			// For dots, we can also update the size
+			if (auto dot = std::dynamic_pointer_cast<Dot>(shape_)) {
+				dot->size = size_;
+			}
+		}
+
+	protected:
+		std::shared_ptr<ShapeType> shape_;
+	};
+
 	// Entity handler that manages entities and provides dot generation
 	class EntityHandler {
 	public:
@@ -119,7 +153,7 @@ namespace Boidsish {
 			return id;
 		}
 
-		virtual void AddEntity(int id, std::shared_ptr<Entity> entity) { entities_[id] = entity; }
+		virtual void AddEntity(int id, std::shared_ptr<EntityBase> entity) { entities_[id] = entity; }
 
 		virtual void RemoveEntity(int id) { entities_.erase(id); }
 
@@ -134,7 +168,7 @@ namespace Boidsish {
 		}
 
 		// Get all entities (for iteration)
-		const std::map<int, std::shared_ptr<Entity>>& GetAllEntities() const { return entities_; }
+		const std::map<int, std::shared_ptr<EntityBase>>& GetAllEntities() const { return entities_; }
 
 		// Get entities by type (template method)
 		template <typename T>
@@ -177,9 +211,9 @@ namespace Boidsish {
 		}
 
 	private:
-		std::map<int, std::shared_ptr<Entity>> entities_;
-		float                                  last_time_;
-		int                                    next_id_;
+		std::map<int, std::shared_ptr<EntityBase>> entities_;
+		float                                     last_time_;
+		int                                       next_id_;
 	};
 
 	// EntityHandler implementation
@@ -194,7 +228,7 @@ namespace Boidsish {
 		PreTimestep(time, delta_time);
 
 		// Get entities
-		std::vector<std::shared_ptr<Entity>> entities;
+		std::vector<std::shared_ptr<EntityBase>> entities;
 		std::transform(entities_.begin(), entities_.end(), std::back_inserter(entities), [](const auto& pair) {
 			return pair.second;
 		});
@@ -216,25 +250,11 @@ namespace Boidsish {
 			Vector3 new_position = entity->GetPosition() + entity->GetVelocity() * delta_time;
 			entity->SetPosition(new_position);
 
-			// Get visual properties
-			float r, g, b, a;
-			entity->GetColor(r, g, b, a);
+			// Update the entity's shape
+			entity->UpdateShape();
 
-			// Create dot at entity's position
-			shapes.emplace_back(
-				std::make_shared<Dot>(
-					entity->GetId(),
-					entity->GetXPos(),
-					entity->GetYPos(),
-					entity->GetZPos(),
-					entity->GetSize(),
-					r,
-					g,
-					b,
-					a,
-					entity->GetTrailLength()
-				)
-			);
+			// Add shape to the list
+			shapes.push_back(entity->GetShape());
 		}
 
 		return shapes;
