@@ -2,6 +2,8 @@
 #include <filesystem>
 #include <iostream>
 #include <memory>
+#include <string>
+#include <vector>
 
 #include "graph.h"
 #include "graphics.h"
@@ -30,10 +32,28 @@ std::vector<std::shared_ptr<Shape>> GraphExample(float time) {
 	return shapes;
 }
 
-int main() {
+int main(int argc, char* argv[]) {
+    bool close_on_finish = false;
+    std::string screenshot_path = "";
+    int width = 1024;
+    int height = 768;
+
+    for (int i = 1; i < argc; ++i) {
+        std::string arg = argv[i];
+        if (arg == "--close-on-finish" && i + 1 < argc) {
+            close_on_finish = std::stoi(argv[++i]);
+        } else if (arg == "--screenshot" && i + 1 < argc) {
+            screenshot_path = argv[++i];
+        } else if (arg == "--width" && i + 1 < argc) {
+            width = std::stoi(argv[++i]);
+        } else if (arg == "--height" && i + 1 < argc) {
+            height = std::stoi(argv[++i]);
+        }
+    }
+
 	try {
 		// Create the visualizer
-		Visualizer viz(1024, 768, "Boidsish - Simple 3D Visualization Example");
+		Visualizer viz(width, height, "Boidsish - Simple 3D Visualization Example");
 
 		// Set up the initial camera position
 		Camera camera(0.0f, 2.0f, 8.0f, -15.0f, 0.0f, 45.0f);
@@ -53,8 +73,15 @@ int main() {
 		std::cout << "  ESC - Exit" << std::endl;
 		std::cout << std::endl;
 
-		// Run the visualization
-		viz.Run();
+        if (close_on_finish) {
+            viz.Update();
+            viz.Render();
+            if (!screenshot_path.empty()) {
+                viz.SaveScreenshot(screenshot_path);
+            }
+        } else {
+            viz.Run();
+        }
 
 		std::cout << "Visualization ended." << std::endl;
 

@@ -16,14 +16,18 @@
 #include <glm/gtc/matrix_transform.hpp>
 #include <shader.h>
 
+#define STB_IMAGE_WRITE_IMPLEMENTATION
+#include "stb_image_write.h"
+
 namespace Boidsish {
 	struct Visualizer::VisualizerImpl {
-		GLFWwindow*                           window;
-		int                                   width, height;
-		Camera                                camera;
-		ShapeFunction                         shape_function;
-		std::map<int, std::shared_ptr<Trail>> trails;
-		std::map<int, float>                  trail_last_update;
+		GLFWwindow*                                 window;
+		int                                         width, height;
+		Camera                                      camera;
+		ShapeFunction                               shape_function;
+		std::shared_ptr<EntityHandler>              entity_handler;
+		std::map<int, std::shared_ptr<Trail>>       trails;
+		std::map<int, float>                        trail_last_update;
 
 		std::shared_ptr<Shader> shader;
 		std::unique_ptr<Shader> plane_shader;
@@ -462,8 +466,14 @@ namespace Boidsish {
 		delete impl;
 	}
 
+	void Visualizer::SetShapeHandler(std::shared_ptr<EntityHandler> handler) {
+		impl->entity_handler = handler;
+		impl->shape_function = nullptr;
+	}
+
 	void Visualizer::SetShapeHandler(ShapeFunction func) {
 		impl->shape_function = func;
+		impl->entity_handler = nullptr;
 	}
 
 	bool Visualizer::ShouldClose() const {
@@ -477,6 +487,11 @@ namespace Boidsish {
 		float       delta_time = std::chrono::duration<float>(current_frame - last_frame).count();
 		last_frame = current_frame;
 		impl->ProcessInput(delta_time);
+
+		float time = std::chrono::duration<float>(std::chrono::high_resolution_clock::now() - impl->start_time).count();
+		if (impl->entity_handler) {
+			impl->entity_handler->Update(time, delta_time);
+		}
 	}
 
 	void Visualizer::Render() {
@@ -484,8 +499,12 @@ namespace Boidsish {
 		float time = std::chrono::duration<float>(std::chrono::high_resolution_clock::now() - impl->start_time).count();
 
 		std::vector<std::shared_ptr<Shape>> shapes;
-		if (impl->shape_function)
+		if (impl->shape_function) {
 			shapes = impl->shape_function(time);
+		} else if (impl->entity_handler) {
+			shapes = impl->entity_handler->GetShapes();
+		}
+
 
 		static auto last_frame_time = std::chrono::high_resolution_clock::now();
 		auto        current_frame_time = std::chrono::high_resolution_clock::now();
@@ -539,5 +558,15 @@ namespace Boidsish {
 
 	void Visualizer::SetCamera(const Camera& camera) {
 		impl->camera = camera;
+	}
+
+	void Visualizer::SaveScreenshot(const std::string& filename) {
+		int width, height;
+		glfwGetFramebufferSize(impl->window, &width, &height);
+		unsigned char* pixels = new unsigned char[width * height * 3];
+		glReadPixels(0, 0, width, height, GL_RGB, GL_UNSIGNED_BYTE, pixels);
+		stbi_flip_vertically_on_write(true);
+		stbi_write_png(filename.c_str(), width, height, 3, pixels, width * 3);
+		delete[] pixels;
 	}
 } // namespace Boidsish

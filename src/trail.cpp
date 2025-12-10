@@ -62,7 +62,7 @@ namespace Boidsish {
 		}
 
 		shader.use();
-		shader.setFloat("thickness", 0.05f);
+		shader.setFloat("thickness", 0.1f);
 
 		glBindVertexArray(vao);
 		glDrawArrays(GL_LINE_STRIP_ADJACENCY, 0, points.size());

@@ -5,19 +5,28 @@ layout (triangle_strip, max_vertices = 4) out;
 in vec3 vs_color[];
 in float vs_progress[];
 
+out vec3 FragPos;
+out vec3 Normal;
 out vec3 color;
-out float fade;
 
 uniform mat4 projection;
 uniform mat4 view;
 uniform float thickness;
 
 void main() {
-    // Transform all points to view space
-    vec4 p0 = view * gl_in[0].gl_Position;
-    vec4 p1 = view * gl_in[1].gl_Position;
-    vec4 p2 = view * gl_in[2].gl_Position;
-    vec4 p3 = view * gl_in[3].gl_Position;
+    mat4 pv = projection * view;
+
+    // Transform all points to clip space
+    vec4 p0 = pv * gl_in[0].gl_Position;
+    vec4 p1 = pv * gl_in[1].gl_Position;
+    vec4 p2 = pv * gl_in[2].gl_Position;
+    vec4 p3 = pv * gl_in[3].gl_Position;
+
+    // De-homogenize (perspective divide)
+    p0 /= p0.w;
+    p1 /= p1.w;
+    p2 /= p2.w;
+    p3 /= p3.w;
 
     // Screen-space directions and normals
     vec2 dir_curr = normalize(p2.xy - p1.xy);
@@ -43,26 +52,35 @@ void main() {
         miter2 = normalize(normal_curr + normal_next);
     }
 
+    // Calculate the world positions for lighting
+    vec3 worldPos1 = gl_in[1].gl_Position.xyz;
+    vec3 worldPos2 = gl_in[2].gl_Position.xyz;
+    vec3 worldNormal = normalize(cross(worldPos2 - worldPos1, vec3(0,1,0))); // Approximation
+
     // First point of the segment
-    gl_Position = projection * (p1 + vec4(miter1 * thickness, 0.0, 0.0));
+    gl_Position = p1 + vec4(miter1 * thickness, 0.0, 0.0);
+    FragPos = worldPos1;
+    Normal = worldNormal;
     color = vs_color[1];
-    fade = vs_progress[1];
     EmitVertex();
 
-    gl_Position = projection * (p1 - vec4(miter1 * thickness, 0.0, 0.0));
+    gl_Position = p1 - vec4(miter1 * thickness, 0.0, 0.0);
+    FragPos = worldPos1;
+    Normal = worldNormal;
     color = vs_color[1];
-    fade = vs_progress[1];
     EmitVertex();
 
     // Second point of the segment
-    gl_Position = projection * (p2 + vec4(miter2 * thickness, 0.0, 0.0));
+    gl_Position = p2 + vec4(miter2 * thickness, 0.0, 0.0);
+    FragPos = worldPos2;
+    Normal = worldNormal;
     color = vs_color[2];
-    fade = vs_progress[2];
     EmitVertex();
 
-    gl_Position = projection * (p2 - vec4(miter2 * thickness, 0.0, 0.0));
+    gl_Position = p2 - vec4(miter2 * thickness, 0.0, 0.0);
+    FragPos = worldPos2;
+    Normal = worldNormal;
     color = vs_color[2];
-    fade = vs_progress[2];
     EmitVertex();
 
     EndPrimitive();
