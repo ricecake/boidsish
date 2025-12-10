@@ -360,7 +360,7 @@ int main() {
 
 		// Create and set the vector demo handler
 		VectorDemoHandler handler;
-		viz.SetShapeHandler(std::ref(handler));
+		viz.AddShapeHandler(std::ref(handler));
 
 		std::cout << "Vector Demo Started!" << std::endl;
 		std::cout << "Controls:" << std::endl;
