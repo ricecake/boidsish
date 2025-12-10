@@ -29,8 +29,10 @@ namespace Boidsish {
 		std::unique_ptr<Shader> plane_shader;
 		std::unique_ptr<Shader> sky_shader;
 		std::unique_ptr<Shader> trail_shader;
-		GLuint                  plane_vao, plane_vbo, sky_vao;
+		std::unique_ptr<Shader> blur_shader;
+		GLuint                  plane_vao, plane_vbo, sky_vao, blur_quad_vao, blur_quad_vbo;
 		GLuint                  reflection_fbo, reflection_texture, reflection_depth_rbo;
+		GLuint                  pingpong_fbo[2], pingpong_texture[2];
 		glm::mat4               projection, reflection_vp;
 
 		double last_mouse_x = 0.0, last_mouse_y = 0.0;
@@ -91,6 +93,7 @@ namespace Boidsish {
 			plane_shader = std::make_unique<Shader>("shaders/plane.vert", "shaders/plane.frag");
 			sky_shader = std::make_unique<Shader>("shaders/sky.vert", "shaders/sky.frag");
 			trail_shader = std::make_unique<Shader>("shaders/trail.vert", "shaders/trail.frag", "shaders/trail.geom");
+			blur_shader = std::make_unique<Shader>("shaders/blur.vert", "shaders/blur.frag");
 
 			Dot::InitSphereMesh();
 
@@ -125,6 +128,27 @@ namespace Boidsish {
 
 			glGenVertexArrays(1, &sky_vao);
 
+			float blur_quad_vertices[] = {
+				// positions   // texCoords
+				-1.0f,  1.0f,  0.0f, 1.0f,
+				-1.0f, -1.0f,  0.0f, 0.0f,
+				 1.0f, -1.0f,  1.0f, 0.0f,
+
+				-1.0f,  1.0f,  0.0f, 1.0f,
+				 1.0f, -1.0f,  1.0f, 0.0f,
+				 1.0f,  1.0f,  1.0f, 1.0f
+			};
+			glGenVertexArrays(1, &blur_quad_vao);
+			glBindVertexArray(blur_quad_vao);
+			glGenBuffers(1, &blur_quad_vbo);
+			glBindBuffer(GL_ARRAY_BUFFER, blur_quad_vbo);
+			glBufferData(GL_ARRAY_BUFFER, sizeof(blur_quad_vertices), blur_quad_vertices, GL_STATIC_DRAW);
+			glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)0);
+			glEnableVertexAttribArray(0);
+			glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)(2 * sizeof(float)));
+			glEnableVertexAttribArray(1);
+			glBindVertexArray(0);
+
 			// --- Reflection Framebuffer ---
 			glGenFramebuffers(1, &reflection_fbo);
 			glBindFramebuffer(GL_FRAMEBUFFER, reflection_fbo);
@@ -146,6 +170,23 @@ namespace Boidsish {
 			if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
 				std::cerr << "ERROR::FRAMEBUFFER:: Framebuffer is not complete!" << std::endl;
 			glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+			// --- Ping-pong Framebuffers for blurring ---
+			glGenFramebuffers(2, pingpong_fbo);
+			glGenTextures(2, pingpong_texture);
+			for (unsigned int i = 0; i < 2; i++) {
+				glBindFramebuffer(GL_FRAMEBUFFER, pingpong_fbo[i]);
+				glBindTexture(GL_TEXTURE_2D, pingpong_texture[i]);
+				glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB16F, width, height, 0, GL_RGB, GL_FLOAT, NULL);
+				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+				glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, pingpong_texture[i], 0);
+				if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
+					std::cerr << "ERROR::FRAMEBUFFER:: Ping-pong Framebuffer is not complete!" << std::endl;
+			}
+			glBindFramebuffer(GL_FRAMEBUFFER, 0);
 		}
 
 		~VisualizerImpl() {
@@ -153,9 +194,13 @@ namespace Boidsish {
 			glDeleteVertexArrays(1, &plane_vao);
 			glDeleteBuffers(1, &plane_vbo);
 			glDeleteVertexArrays(1, &sky_vao);
+			glDeleteVertexArrays(1, &blur_quad_vao);
+			glDeleteBuffers(1, &blur_quad_vbo);
 			glDeleteFramebuffers(1, &reflection_fbo);
 			glDeleteTextures(1, &reflection_texture);
 			glDeleteRenderbuffers(1, &reflection_depth_rbo);
+			glDeleteFramebuffers(2, pingpong_fbo);
+			glDeleteTextures(2, pingpong_texture);
 			if (window)
 				glfwDestroyWindow(window);
 			glfwTerminate();
@@ -232,6 +277,24 @@ namespace Boidsish {
 			glEnable(GL_DEPTH_TEST);
 		}
 
+		void RenderBlur(int amount) {
+			glDisable(GL_DEPTH_TEST);
+			blur_shader->use();
+			bool horizontal = true, first_iteration = true;
+			for (int i = 0; i < amount; i++) {
+				glBindFramebuffer(GL_FRAMEBUFFER, pingpong_fbo[horizontal]);
+				blur_shader->setInt("horizontal", horizontal);
+				glActiveTexture(GL_TEXTURE0);
+				glBindTexture(GL_TEXTURE_2D, first_iteration ? reflection_texture : pingpong_texture[!horizontal]);
+				glBindVertexArray(blur_quad_vao);
+				glDrawArrays(GL_TRIANGLES, 0, 6);
+				horizontal = !horizontal;
+				if (first_iteration) first_iteration = false;
+			}
+			glBindFramebuffer(GL_FRAMEBUFFER, 0);
+			glEnable(GL_DEPTH_TEST);
+		}
+
 		void RenderPlane(const glm::mat4& view) {
 			glEnable(GL_DEPTH_TEST);
 			glEnable(GL_BLEND);
@@ -239,7 +302,7 @@ namespace Boidsish {
 			plane_shader->use();
 			plane_shader->setInt("reflectionTexture", 0);
 			glActiveTexture(GL_TEXTURE0);
-			glBindTexture(GL_TEXTURE_2D, reflection_texture);
+			glBindTexture(GL_TEXTURE_2D, pingpong_texture[0]);
 			plane_shader->setMat4("reflectionViewProjection", reflection_vp);
 
 			glm::mat4 model = glm::scale(glm::mat4(1.0f), glm::vec3(500.0f));
@@ -453,6 +516,12 @@ namespace Boidsish {
 			glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, width, height, 0, GL_RGB, GL_UNSIGNED_BYTE, NULL);
 			glBindRenderbuffer(GL_RENDERBUFFER, impl->reflection_depth_rbo);
 			glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT24, width, height);
+
+			// --- Resize ping-pong framebuffers ---
+			for (unsigned int i = 0; i < 2; i++) {
+				glBindTexture(GL_TEXTURE_2D, impl->pingpong_texture[i]);
+				glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB16F, width, height, 0, GL_RGB, GL_FLOAT, NULL);
+			}
 		}
 	};
 
@@ -516,6 +585,8 @@ namespace Boidsish {
 			glBindFramebuffer(GL_FRAMEBUFFER, 0);
 		}
 		glDisable(GL_CLIP_DISTANCE0);
+
+		impl->RenderBlur(10);
 
 		// --- Main Pass ---
 		glm::mat4 view = impl->SetupMatrices();
