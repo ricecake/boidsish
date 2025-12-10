@@ -25,11 +25,11 @@ namespace Boidsish {
 		std::map<int, float>                  trail_last_update;
 
 		std::shared_ptr<Shader> shader;
-		std::unique_ptr<Shader> grid_shader;
 		std::unique_ptr<Shader> plane_shader;
 		std::unique_ptr<Shader> sky_shader;
 		std::unique_ptr<Shader> trail_shader;
-		GLuint                  grid_vao, grid_vbo, sky_vao;
+		GLuint                  plane_vao, plane_vbo, sky_vao;
+		GLuint                  reflection_fbo, reflection_texture, reflection_depth_rbo;
 		glm::mat4               projection;
 
 		double last_mouse_x = 0.0, last_mouse_y = 0.0;
@@ -87,7 +87,6 @@ namespace Boidsish {
 
 			shader = std::make_shared<Shader>("shaders/vis.vert", "shaders/vis.frag");
 			Shape::shader = shader;
-			grid_shader = std::make_unique<Shader>("shaders/grid.vert", "shaders/grid.frag");
 			plane_shader = std::make_unique<Shader>("shaders/plane.vert", "shaders/plane.frag");
 			sky_shader = std::make_unique<Shader>("shaders/sky.vert", "shaders/sky.frag");
 			trail_shader = std::make_unique<Shader>("shaders/trail.vert", "shaders/trail.frag", "shaders/trail.geom");
@@ -114,41 +113,117 @@ namespace Boidsish {
 				0.0f,
 				-1.0f
 			};
-			glGenVertexArrays(1, &grid_vao);
-			glBindVertexArray(grid_vao);
-			glGenBuffers(1, &grid_vbo);
-			glBindBuffer(GL_ARRAY_BUFFER, grid_vbo);
+			glGenVertexArrays(1, &plane_vao);
+			glBindVertexArray(plane_vao);
+			glGenBuffers(1, &plane_vbo);
+			glBindBuffer(GL_ARRAY_BUFFER, plane_vbo);
 			glBufferData(GL_ARRAY_BUFFER, sizeof(quad_vertices), quad_vertices, GL_STATIC_DRAW);
 			glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
 			glEnableVertexAttribArray(0);
 			glBindVertexArray(0);
 
 			glGenVertexArrays(1, &sky_vao);
+
+			// --- Reflection Framebuffer ---
+			glGenFramebuffers(1, &reflection_fbo);
+			glBindFramebuffer(GL_FRAMEBUFFER, reflection_fbo);
+
+			// Color attachment
+			glGenTextures(1, &reflection_texture);
+			glBindTexture(GL_TEXTURE_2D, reflection_texture);
+			glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, width, height, 0, GL_RGB, GL_UNSIGNED_BYTE, NULL);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+			glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, reflection_texture, 0);
+
+			// Depth renderbuffer
+			glGenRenderbuffers(1, &reflection_depth_rbo);
+			glBindRenderbuffer(GL_RENDERBUFFER, reflection_depth_rbo);
+			glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT24, width, height);
+			glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, reflection_depth_rbo);
+
+			if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
+				std::cerr << "ERROR::FRAMEBUFFER:: Framebuffer is not complete!" << std::endl;
+			glBindFramebuffer(GL_FRAMEBUFFER, 0);
 		}
 
 		~VisualizerImpl() {
 			Dot::CleanupSphereMesh();
-			glDeleteVertexArrays(1, &grid_vao);
-			glDeleteBuffers(1, &grid_vbo);
+			glDeleteVertexArrays(1, &plane_vao);
+			glDeleteBuffers(1, &plane_vbo);
 			glDeleteVertexArrays(1, &sky_vao);
+			glDeleteFramebuffers(1, &reflection_fbo);
+			glDeleteTextures(1, &reflection_texture);
+			glDeleteRenderbuffers(1, &reflection_depth_rbo);
 			if (window)
 				glfwDestroyWindow(window);
 			glfwTerminate();
 		}
 
-		glm::mat4 SetupMatrices() {
-			projection = glm::perspective(glm::radians(camera.fov), (float)width / (float)height, 0.1f, 1000.0f);
-			glm::vec3 cameraPos(camera.x, camera.y, camera.z);
+		glm::mat4 SetupMatrices(const Camera& cam_to_use) {
+			projection = glm::perspective(glm::radians(cam_to_use.fov), (float)width / (float)height, 0.1f, 1000.0f);
+			glm::vec3 cameraPos(cam_to_use.x, cam_to_use.y, cam_to_use.z);
 			glm::vec3 front;
-			front.x = cos(glm::radians(camera.pitch)) * sin(glm::radians(camera.yaw));
-			front.y = sin(glm::radians(camera.pitch));
-			front.z = -cos(glm::radians(camera.pitch)) * cos(glm::radians(camera.yaw));
+			front.x = cos(glm::radians(cam_to_use.pitch)) * sin(glm::radians(cam_to_use.yaw));
+			front.y = sin(glm::radians(cam_to_use.pitch));
+			front.z = -cos(glm::radians(cam_to_use.pitch)) * cos(glm::radians(cam_to_use.yaw));
 			front = glm::normalize(front);
 			glm::mat4 view = glm::lookAt(cameraPos, cameraPos + front, glm::vec3(0.0f, 1.0f, 0.0f));
 			shader->use();
 			shader->setMat4("projection", projection);
 			shader->setMat4("view", view);
 			return view;
+		}
+
+		glm::mat4 SetupMatrices() { return SetupMatrices(camera); }
+
+		void RenderSceneObjects(
+			const glm::mat4&                               view,
+			const Camera&                                  cam,
+			const std::vector<std::shared_ptr<Shape>>&     shapes,
+			float                                          time,
+			const std::optional<glm::vec4>&                clip_plane
+		) {
+			shader->use();
+			shader->setMat4("view", view);
+			shader->setVec3("lightPos", 1.0f, 100.0f, 25.0f);
+			shader->setVec3("viewPos", cam.x, cam.y, cam.z);
+			shader->setVec3("lightColor", 1.0f, 1.0f, 1.0f);
+			if (clip_plane) {
+				shader->setVec4("clipPlane", *clip_plane);
+			} else {
+				shader->setVec4("clipPlane", glm::vec4(0, 0, 0, 0)); // No clipping
+			}
+
+			if (shapes.empty()) {
+				return;
+			}
+
+			CleanupOldTrails(time, shapes);
+			std::set<int> current_shape_ids;
+			for (const auto& shape : shapes) {
+				current_shape_ids.insert(shape->id);
+				if (trails.find(shape->id) == trails.end()) {
+					trails[shape->id] = std::make_shared<Trail>(shape->trail_length);
+				}
+				trails[shape->id]->AddPosition(shape->x, shape->y, shape->z);
+				trail_last_update[shape->id] = time;
+				shape->render();
+			}
+
+			trail_shader->use();
+			trail_shader->setMat4("view", view);
+			trail_shader->setMat4("projection", projection);
+			for (const auto& pair : trails) {
+				auto it = std::find_if(shapes.begin(), shapes.end(), [&](const auto& s) {
+					return s->id == pair.first;
+				});
+				if (it != shapes.end()) {
+					pair.second->Render(*trail_shader, (*it)->r, (*it)->g, (*it)->b);
+				} else {
+					pair.second->Render(*trail_shader, 0.7f, 0.7f, 0.7f);
+				}
+			}
 		}
 
 		void RenderSky(const glm::mat4& view) {
@@ -164,31 +239,23 @@ namespace Boidsish {
 
 		void RenderPlane(const glm::mat4& view) {
 			glEnable(GL_DEPTH_TEST);
+			glEnable(GL_BLEND);
+			glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 			plane_shader->use();
-			glm::mat4 model = glm::scale(glm::mat4(1.0f), glm::vec3(100.0f));
+			plane_shader->setInt("reflectionTexture", 0);
+			glActiveTexture(GL_TEXTURE0);
+			glBindTexture(GL_TEXTURE_2D, reflection_texture);
+
+			glm::mat4 model = glm::scale(glm::mat4(1.0f), glm::vec3(500.0f));
 			plane_shader->setMat4("model", model);
 			plane_shader->setMat4("view", view);
 			plane_shader->setMat4("projection", projection);
 			plane_shader->setVec3("viewPos", camera.x, camera.y, camera.z);
 			plane_shader->setVec3("lightPos", 1.0f, 100.0f, 25.0f);
 			plane_shader->setVec3("lightColor", 1.0f, 1.0f, 1.0f);
-			glBindVertexArray(grid_vao);
+			glBindVertexArray(plane_vao);
 			glDrawArrays(GL_TRIANGLES, 0, 6);
 			glBindVertexArray(0);
-		}
-
-		void RenderGrid(const glm::mat4& view) {
-			glDisable(GL_DEPTH_TEST);
-			grid_shader->use();
-			glm::mat4 model = glm::scale(glm::mat4(1.0f), glm::vec3(100.0f));
-			grid_shader->setMat4("model", model);
-			grid_shader->setMat4("view", view);
-			grid_shader->setMat4("projection", projection);
-			grid_shader->setFloat("far_plane", 1000.0f);
-			glBindVertexArray(grid_vao);
-			glDrawArrays(GL_TRIANGLES, 0, 6);
-			glBindVertexArray(0);
-			glEnable(GL_DEPTH_TEST);
 		}
 
 		void ProcessInput(float delta_time) {
@@ -429,43 +496,29 @@ namespace Boidsish {
 			impl->UpdateAutoCamera(delta_time, shapes);
 		}
 
+		// --- Reflection Pass ---
+		glEnable(GL_CLIP_DISTANCE0);
+		{
+			glBindFramebuffer(GL_FRAMEBUFFER, impl->reflection_fbo);
+			glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+			Camera reflection_cam = impl->camera;
+			reflection_cam.y = -reflection_cam.y;
+			reflection_cam.pitch = -reflection_cam.pitch;
+
+			glm::mat4 reflection_view = impl->SetupMatrices(reflection_cam);
+
+			impl->RenderSky(reflection_view);
+			impl->RenderSceneObjects(reflection_view, reflection_cam, shapes, time, glm::vec4(0, 1, 0, 0.01));
+			glBindFramebuffer(GL_FRAMEBUFFER, 0);
+		}
+		glDisable(GL_CLIP_DISTANCE0);
+
+		// --- Main Pass ---
 		glm::mat4 view = impl->SetupMatrices();
 		impl->RenderSky(view);
 		impl->RenderPlane(view);
-		impl->RenderGrid(view);
-
-		impl->shader->use();
-		impl->shader->setVec3("lightPos", 1.0f, 100.0f, 25.0f);
-		impl->shader->setVec3("viewPos", impl->camera.x, impl->camera.y, impl->camera.z);
-		impl->shader->setVec3("lightColor", 1.0f, 1.0f, 1.0f);
-
-		if (!shapes.empty()) {
-			impl->CleanupOldTrails(time, shapes);
-			std::set<int> current_shape_ids;
-			for (const auto& shape : shapes) {
-				current_shape_ids.insert(shape->id);
-				if (impl->trails.find(shape->id) == impl->trails.end()) {
-					impl->trails[shape->id] = std::make_shared<Trail>(shape->trail_length);
-				}
-				impl->trails[shape->id]->AddPosition(shape->x, shape->y, shape->z);
-				impl->trail_last_update[shape->id] = time;
-				shape->render();
-			}
-
-			impl->trail_shader->use();
-			impl->trail_shader->setMat4("view", view);
-			impl->trail_shader->setMat4("projection", impl->projection);
-			for (const auto& pair : impl->trails) {
-				auto it = std::find_if(shapes.begin(), shapes.end(), [&](const auto& s) {
-					return s->id == pair.first;
-				});
-				if (it != shapes.end()) {
-					pair.second->Render(*impl->trail_shader, (*it)->r, (*it)->g, (*it)->b);
-				} else {
-					pair.second->Render(*impl->trail_shader, 0.7f, 0.7f, 0.7f);
-				}
-			}
-		}
+		impl->RenderSceneObjects(view, impl->camera, shapes, time, std::nullopt);
 
 		glfwSwapBuffers(impl->window);
 	}
