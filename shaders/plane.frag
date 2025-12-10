@@ -13,7 +13,8 @@ uniform sampler2D reflectionTexture;
 void main()
 {
     // --- Reflection sampling ---
-    vec2 texCoords = ClipSpacePos.xy / ClipSpacePos.w / 2.0 + 0.5;
+    // The y-coordinate is negated to account for the inverted reflection texture
+    vec2 texCoords = vec2(ClipSpacePos.x, -ClipSpacePos.y) / ClipSpacePos.w / 2.0 + 0.5;
     vec3 reflectionColor = texture(reflectionTexture, texCoords).rgb;
 
     // --- Grid logic ---
