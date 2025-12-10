@@ -93,7 +93,7 @@ int main() {
 
 		// Create and set the entity handler
 		SwarmHandler handler;
-		viz.SetShapeHandler(std::ref(handler));
+		viz.AddShapeHandler(std::ref(handler));
 
 		std::cout << "Entity System Example Started!" << std::endl;
 		std::cout << "Controls:" << std::endl;

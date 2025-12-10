@@ -34,10 +34,11 @@ namespace Boidsish {
 		~Visualizer();
 
 		// Set the function/handler that generates shapes for each frame
-		void SetShapeHandler(ShapeFunction func);
+		void AddShapeHandler(ShapeFunction func);
+		void ClearShapeHandlers();
 
 		// Legacy method name for compatibility
-		void SetDotFunction(ShapeFunction func) { SetShapeHandler(func); }
+		void SetDotFunction(ShapeFunction func) { AddShapeHandler(func); }
 
 		// Start the visualization loop
 		void Run();

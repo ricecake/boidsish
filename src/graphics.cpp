@@ -21,7 +21,7 @@ namespace Boidsish {
 		GLFWwindow*                           window;
 		int                                   width, height;
 		Camera                                camera;
-		ShapeFunction                         shape_function;
+		std::vector<ShapeFunction>            shape_functions;
 		std::map<int, std::shared_ptr<Trail>> trails;
 		std::map<int, float>                  trail_last_update;
 
@@ -531,8 +531,12 @@ namespace Boidsish {
 		delete impl;
 	}
 
-	void Visualizer::SetShapeHandler(ShapeFunction func) {
-		impl->shape_function = func;
+	void Visualizer::AddShapeHandler(ShapeFunction func) {
+		impl->shape_functions.push_back(func);
+	}
+
+	void Visualizer::ClearShapeHandlers() {
+		impl->shape_functions.clear();
 	}
 
 	bool Visualizer::ShouldClose() const {
@@ -553,8 +557,12 @@ namespace Boidsish {
 		float time = std::chrono::duration<float>(std::chrono::high_resolution_clock::now() - impl->start_time).count();
 
 		std::vector<std::shared_ptr<Shape>> shapes;
-		if (impl->shape_function)
-			shapes = impl->shape_function(time);
+		if (!impl->shape_functions.empty()) {
+			for (const auto& func : impl->shape_functions) {
+				auto new_shapes = func(time);
+				shapes.insert(shapes.end(), new_shapes.begin(), new_shapes.end());
+			}
+		}
 
 		static auto last_frame_time = std::chrono::high_resolution_clock::now();
 		auto        current_frame_time = std::chrono::high_resolution_clock::now();

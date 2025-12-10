@@ -5,6 +5,7 @@
 #include <random>
 #include <ranges>
 
+#include "graph.h"
 #include "graphics.h"
 #include "logger.h"
 #include "spatial_entity_handler.h"
@@ -345,6 +346,27 @@ public:
 	}
 };
 
+std::vector<std::shared_ptr<Shape>> GraphExample(float time) {
+	std::vector<std::shared_ptr<Shape>> shapes;
+	auto                                graph = std::make_shared<Graph>(0, 0, 0, 0);
+
+	// Add vertices in a chain
+	graph->vertices.push_back({Vector3(-4, 0, 0), 10.0f, 1, 0, 0, 1});
+	graph->vertices.push_back({Vector3(-2, 2, 1), 12.0f, 0, 1, 0, 1});
+	graph->vertices.push_back({Vector3(0, 0, 0), 15.0f, 0, 0, 1, 1});
+	graph->vertices.push_back({Vector3(2, 2, -1), 12.0f, 1, 1, 0, 1});
+	graph->vertices.push_back({Vector3(4, 0, 0), 10.0f, 1, 0, 1, 1});
+
+	// Add edges to connect the vertices in a chain
+	graph->edges.push_back({0, 1});
+	graph->edges.push_back({1, 2});
+	graph->edges.push_back({2, 3});
+	graph->edges.push_back({3, 4});
+
+	shapes.push_back(graph);
+	return shapes;
+}
+
 int main() {
 	try {
 		Boidsish::Visualizer viz(1200, 800, "Vector3 Operations Demo");
@@ -360,7 +382,8 @@ int main() {
 
 		// Create and set the vector demo handler
 		VectorDemoHandler handler;
-		viz.SetShapeHandler(std::ref(handler));
+		viz.AddShapeHandler(std::ref(handler));
+		viz.AddShapeHandler(std::ref(GraphExample));
 
 		std::cout << "Vector Demo Started!" << std::endl;
 		std::cout << "Controls:" << std::endl;
