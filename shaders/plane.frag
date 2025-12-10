@@ -5,9 +5,12 @@ in vec3 WorldPos;
 in vec3 Normal;
 in vec4 ReflectionClipSpacePos;
 
-uniform vec3 viewPos;
-uniform vec3 lightPos;
-uniform vec3 lightColor;
+layout (std140) uniform Lighting {
+    vec3 lightPos;
+    vec3 viewPos;
+    vec3 lightColor;
+};
+
 uniform sampler2D reflectionTexture;
 
 void main()

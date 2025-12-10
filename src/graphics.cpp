@@ -33,6 +33,7 @@ namespace Boidsish {
 		GLuint                  plane_vao, plane_vbo, sky_vao, blur_quad_vao, blur_quad_vbo;
 		GLuint                  reflection_fbo, reflection_texture, reflection_depth_rbo;
 		GLuint                  pingpong_fbo[2], pingpong_texture[2];
+		GLuint                  lighting_ubo;
 		glm::mat4               projection, reflection_vp;
 
 		double last_mouse_x = 0.0, last_mouse_y = 0.0;
@@ -94,6 +95,19 @@ namespace Boidsish {
 			sky_shader = std::make_unique<Shader>("shaders/sky.vert", "shaders/sky.frag");
 			trail_shader = std::make_unique<Shader>("shaders/trail.vert", "shaders/trail.frag", "shaders/trail.geom");
 			blur_shader = std::make_unique<Shader>("shaders/blur.vert", "shaders/blur.frag");
+
+			glGenBuffers(1, &lighting_ubo);
+			glBindBuffer(GL_UNIFORM_BUFFER, lighting_ubo);
+			glBufferData(GL_UNIFORM_BUFFER, sizeof(glm::vec3) * 3, NULL, GL_STATIC_DRAW);
+			glBindBuffer(GL_UNIFORM_BUFFER, 0);
+			glBindBufferRange(GL_UNIFORM_BUFFER, 0, lighting_ubo, 0, sizeof(glm::vec3) * 3);
+
+			shader->use();
+			glUniformBlockBinding(shader->ID, glGetUniformBlockIndex(shader->ID, "Lighting"), 0);
+			plane_shader->use();
+			glUniformBlockBinding(plane_shader->ID, glGetUniformBlockIndex(plane_shader->ID, "Lighting"), 0);
+			trail_shader->use();
+			glUniformBlockBinding(trail_shader->ID, glGetUniformBlockIndex(trail_shader->ID, "Lighting"), 0);
 
 			Dot::InitSphereMesh();
 
@@ -232,9 +246,6 @@ namespace Boidsish {
 		) {
 			shader->use();
 			shader->setMat4("view", view);
-			shader->setVec3("lightPos", 1.0f, 100.0f, 25.0f);
-			shader->setVec3("viewPos", cam.x, cam.y, cam.z);
-			shader->setVec3("lightColor", 1.0f, 1.0f, 1.0f);
 			if (clip_plane) {
 				shader->setVec4("clipPlane", *clip_plane);
 			} else {
@@ -309,9 +320,6 @@ namespace Boidsish {
 			plane_shader->setMat4("model", model);
 			plane_shader->setMat4("view", view);
 			plane_shader->setMat4("projection", projection);
-			plane_shader->setVec3("viewPos", camera.x, camera.y, camera.z);
-			plane_shader->setVec3("lightPos", 1.0f, 100.0f, 25.0f);
-			plane_shader->setVec3("lightColor", 1.0f, 1.0f, 1.0f);
 			glBindVertexArray(plane_vao);
 			glDrawArrays(GL_TRIANGLES, 0, 6);
 			glBindVertexArray(0);
@@ -574,6 +582,12 @@ namespace Boidsish {
 		} else {
 			impl->UpdateAutoCamera(delta_time, shapes);
 		}
+
+		glBindBuffer(GL_UNIFORM_BUFFER, impl->lighting_ubo);
+		glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(glm::vec3), &glm::vec3(1.0f, 100.0f, 25.0f)[0]);
+		glBufferSubData(GL_UNIFORM_BUFFER, sizeof(glm::vec3), sizeof(glm::vec3), &glm::vec3(impl->camera.x, impl->camera.y, impl->camera.z)[0]);
+		glBufferSubData(GL_UNIFORM_BUFFER, sizeof(glm::vec3) * 2, sizeof(glm::vec3), &glm::vec3(1.0f, 1.0f, 1.0f)[0]);
+		glBindBuffer(GL_UNIFORM_BUFFER, 0);
 
 		// --- Reflection Pass ---
 		glEnable(GL_CLIP_DISTANCE0);
