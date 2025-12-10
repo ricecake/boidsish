@@ -57,7 +57,7 @@ namespace Boidsish {
 	}
 
 	void Trail::Render(Shader& shader) const {
-		if (points.size() < 4) {
+		if (points.size() < 2) {
 			return;
 		}
 
@@ -65,7 +65,7 @@ namespace Boidsish {
 		shader.setFloat("thickness", 0.05f);
 
 		glBindVertexArray(vao);
-		glDrawArrays(GL_LINE_STRIP_ADJACENCY, 0, points.size());
+		glDrawArrays(GL_LINE_STRIP, 0, points.size());
 		glBindVertexArray(0);
 	}
 
