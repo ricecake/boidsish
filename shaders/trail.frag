@@ -36,6 +36,6 @@ void main()
     vec3 specular = specularStrength * spec * lightColor;
 
     vec3 result = (ambient + diffuse) * color + specular;
-    float alpha = 1.0 - Progress;
+    float alpha = Progress;
     FragColor = vec4(result, alpha);
 }

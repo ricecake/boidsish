@@ -60,6 +60,9 @@ namespace Boidsish {
 	}
 
 	void Trail::AddPoint(glm::vec3 position, glm::vec3 color) {
+		if (!points.empty() && glm::distance(position, points.back().first) < 1e-5f) {
+			return;
+		}
 		points.push_back({position, color});
 		if (points.size() > static_cast<size_t>(max_length)) {
 			points.pop_front();
