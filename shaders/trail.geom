@@ -1,52 +1,68 @@
 #version 330 core
-layout (lines) in;
+layout (lines_adjacency) in;
 layout (triangle_strip, max_vertices = 4) out;
 
+in vec3 vs_color[];
 in float vs_progress[];
 
-out float Fade;
+out vec3 color;
+out float fade;
 
 uniform mat4 projection;
 uniform mat4 view;
 uniform float thickness;
 
 void main() {
-    vec4 p0 = gl_in[0].gl_Position;
-    vec4 p1 = gl_in[1].gl_Position;
+    // Transform all points to view space
+    vec4 p0 = view * gl_in[0].gl_Position;
+    vec4 p1 = view * gl_in[1].gl_Position;
+    vec4 p2 = view * gl_in[2].gl_Position;
+    vec4 p3 = view * gl_in[3].gl_Position;
 
-    vec3 p0_world = vec3(p0.xyz);
-    vec3 p1_world = vec3(p1.xyz);
+    // Screen-space directions and normals
+    vec2 dir_curr = normalize(p2.xy - p1.xy);
+    vec2 normal_curr = vec2(-dir_curr.y, dir_curr.x);
 
-    vec3 p0_view = vec3(view * vec4(p0_world, 1.0));
-    vec3 p1_view = vec3(view * vec4(p1_world, 1.0));
+    vec2 miter1, miter2;
 
-    if (distance(p1_view, p0_view) < 0.0001) {
-        return;
+    // Miter at the start of the segment (p1)
+    if (distance(p0, p1) < 0.0001) { // Start of the line, use normal_curr
+        miter1 = normal_curr;
+    } else {
+        vec2 dir_prev = normalize(p1.xy - p0.xy);
+        vec2 normal_prev = vec2(-dir_prev.y, dir_prev.x);
+        miter1 = normalize(normal_prev + normal_curr);
     }
 
-    vec3 line_dir = normalize(p1_view - p0_view);
-    vec3 view_dir = vec3(0.0, 0.0, -1.0);
-    vec3 offset_dir = cross(line_dir, view_dir);
-
-    if (length(offset_dir) < 0.1) {
-        offset_dir = vec3(1.0, 0.0, 0.0);
+    // Miter at the end of the segment (p2)
+    if (distance(p2, p3) < 0.0001) { // End of the line, use normal_curr
+        miter2 = normal_curr;
+    } else {
+        vec2 dir_next = normalize(p3.xy - p2.xy);
+        vec2 normal_next = vec2(-dir_next.y, dir_next.x);
+        miter2 = normalize(normal_curr + normal_next);
     }
-    vec3 offset = normalize(offset_dir) * thickness;
 
-    gl_Position = projection * vec4(p0_view + offset, 1.0);
-    Fade = vs_progress[0];
+    // First point of the segment
+    gl_Position = projection * (p1 + vec4(miter1 * thickness, 0.0, 0.0));
+    color = vs_color[1];
+    fade = vs_progress[1];
     EmitVertex();
 
-    gl_Position = projection * vec4(p0_view - offset, 1.0);
-    Fade = vs_progress[0];
+    gl_Position = projection * (p1 - vec4(miter1 * thickness, 0.0, 0.0));
+    color = vs_color[1];
+    fade = vs_progress[1];
     EmitVertex();
 
-    gl_Position = projection * vec4(p1_view + offset, 1.0);
-    Fade = vs_progress[1];
+    // Second point of the segment
+    gl_Position = projection * (p2 + vec4(miter2 * thickness, 0.0, 0.0));
+    color = vs_color[2];
+    fade = vs_progress[2];
     EmitVertex();
 
-    gl_Position = projection * vec4(p1_view - offset, 1.0);
-    Fade = vs_progress[1];
+    gl_Position = projection * (p2 - vec4(miter2 * thickness, 0.0, 0.0));
+    color = vs_color[2];
+    fade = vs_progress[2];
     EmitVertex();
 
     EndPrimitive();

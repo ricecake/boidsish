@@ -15,28 +15,26 @@ namespace Boidsish {
 		glDeleteBuffers(1, &vbo);
 	}
 
-	void Trail::AddPosition(float x, float y, float z) {
-		positions.push_back(glm::vec3(x, y, z));
-		if (positions.size() > static_cast<size_t>(max_length)) {
-			positions.pop_front();
+	void Trail::AddPoint(glm::vec3 position, glm::vec3 color) {
+		points.push_back({position, color});
+		if (points.size() > static_cast<size_t>(max_length)) {
+			points.pop_front();
 		}
 
-		if (positions.size() < 2) {
+		if (points.size() < 2) {
 			return; // Not enough points for a line
 		}
 
 		struct TrailVertex {
 			glm::vec3 pos;
+			glm::vec3 color;
 			float     progress;
 		};
 
 		std::vector<TrailVertex> vertices;
-		// Create explicit line segments: (v0, v1), (v1, v2), (v2, v3)...
-		for (size_t i = 0; i < positions.size() - 1; ++i) {
-			float progress_start = (float)i / (float)(positions.size() - 1);
-			float progress_end = (float)(i + 1) / (float)(positions.size() - 1);
-			vertices.push_back({positions[i], progress_start});
-			vertices.push_back({positions[i + 1], progress_end});
+		for (size_t i = 0; i < points.size(); ++i) {
+			float progress = (float)i / (float)(points.size() - 1);
+			vertices.push_back({points[i].first, points[i].second, progress});
 		}
 
 		glBindVertexArray(vao);
@@ -47,25 +45,27 @@ namespace Boidsish {
 		glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(TrailVertex), (void*)0);
 		glEnableVertexAttribArray(0);
 
-		// Progress
-		glVertexAttribPointer(1, 1, GL_FLOAT, GL_FALSE, sizeof(TrailVertex), (void*)offsetof(TrailVertex, progress));
+		// Color
+		glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, sizeof(TrailVertex), (void*)offsetof(TrailVertex, color));
 		glEnableVertexAttribArray(1);
+
+		// Progress
+		glVertexAttribPointer(2, 1, GL_FLOAT, GL_FALSE, sizeof(TrailVertex), (void*)offsetof(TrailVertex, progress));
+		glEnableVertexAttribArray(2);
 
 		glBindVertexArray(0);
 	}
 
-	void Trail::Render(Shader& shader, float r, float g, float b) const {
-		if (positions.size() < 2) {
+	void Trail::Render(Shader& shader) const {
+		if (points.size() < 4) {
 			return;
 		}
 
 		shader.use();
-		shader.setVec3("color", r, g, b);
 		shader.setFloat("thickness", 0.05f);
 
 		glBindVertexArray(vao);
-		// Draw N-1 line segments, each with 2 vertices
-		glDrawArrays(GL_LINES, 0, (positions.size() - 1) * 2);
+		glDrawArrays(GL_LINE_STRIP_ADJACENCY, 0, points.size());
 		glBindVertexArray(0);
 	}
 
