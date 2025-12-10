@@ -16,9 +16,6 @@
 #include <shader.h>
 
 namespace Boidsish {
-
-	std::shared_ptr<Shader> Shape::shader = nullptr;
-
 	struct Visualizer::VisualizerImpl {
 		GLFWwindow*                           window;
 		int                                   width, height;
