@@ -26,8 +26,10 @@ namespace Boidsish {
 
 		std::shared_ptr<Shader> shader;
 		std::unique_ptr<Shader> grid_shader;
+		std::unique_ptr<Shader> plane_shader;
+		std::unique_ptr<Shader> sky_shader;
 		std::unique_ptr<Shader> trail_shader;
-		GLuint                  grid_vao, grid_vbo;
+		GLuint                  grid_vao, grid_vbo, sky_vao;
 		glm::mat4               projection;
 
 		double last_mouse_x = 0.0, last_mouse_y = 0.0;
@@ -86,6 +88,8 @@ namespace Boidsish {
 			shader = std::make_shared<Shader>("shaders/vis.vert", "shaders/vis.frag");
 			Shape::shader = shader;
 			grid_shader = std::make_unique<Shader>("shaders/grid.vert", "shaders/grid.frag");
+			plane_shader = std::make_unique<Shader>("shaders/plane.vert", "shaders/plane.frag");
+			sky_shader = std::make_unique<Shader>("shaders/sky.vert", "shaders/sky.frag");
 			trail_shader = std::make_unique<Shader>("shaders/trail.vert", "shaders/trail.frag", "shaders/trail.geom");
 
 			Dot::InitSphereMesh();
@@ -118,12 +122,15 @@ namespace Boidsish {
 			glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
 			glEnableVertexAttribArray(0);
 			glBindVertexArray(0);
+
+			glGenVertexArrays(1, &sky_vao);
 		}
 
 		~VisualizerImpl() {
 			Dot::CleanupSphereMesh();
 			glDeleteVertexArrays(1, &grid_vao);
 			glDeleteBuffers(1, &grid_vbo);
+			glDeleteVertexArrays(1, &sky_vao);
 			if (window)
 				glfwDestroyWindow(window);
 			glfwTerminate();
@@ -142,6 +149,32 @@ namespace Boidsish {
 			shader->setMat4("projection", projection);
 			shader->setMat4("view", view);
 			return view;
+		}
+
+		void RenderSky(const glm::mat4& view) {
+			glDisable(GL_DEPTH_TEST);
+			sky_shader->use();
+			sky_shader->setMat4("invProjection", glm::inverse(projection));
+			sky_shader->setMat4("invView", glm::inverse(view));
+			glBindVertexArray(sky_vao);
+			glDrawArrays(GL_TRIANGLES, 0, 3);
+			glBindVertexArray(0);
+			glEnable(GL_DEPTH_TEST);
+		}
+
+		void RenderPlane(const glm::mat4& view) {
+			glEnable(GL_DEPTH_TEST);
+			plane_shader->use();
+			glm::mat4 model = glm::scale(glm::mat4(1.0f), glm::vec3(100.0f));
+			plane_shader->setMat4("model", model);
+			plane_shader->setMat4("view", view);
+			plane_shader->setMat4("projection", projection);
+			plane_shader->setVec3("viewPos", camera.x, camera.y, camera.z);
+			plane_shader->setVec3("lightPos", 1.0f, 100.0f, 25.0f);
+			plane_shader->setVec3("lightColor", 1.0f, 1.0f, 1.0f);
+			glBindVertexArray(grid_vao);
+			glDrawArrays(GL_TRIANGLES, 0, 6);
+			glBindVertexArray(0);
 		}
 
 		void RenderGrid(const glm::mat4& view) {
@@ -397,6 +430,8 @@ namespace Boidsish {
 		}
 
 		glm::mat4 view = impl->SetupMatrices();
+		impl->RenderSky(view);
+		impl->RenderPlane(view);
 		impl->RenderGrid(view);
 
 		impl->shader->use();
