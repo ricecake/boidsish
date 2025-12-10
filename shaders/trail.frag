@@ -1,33 +1,41 @@
 #version 330 core
 out vec4 FragColor;
 
-in vec3 color;
-in float fade;
-in vec3 normal;
-in vec3 frag_pos;
+in vec3 FragPos;
+in vec3 Normal;
+in vec3 Color;
+in float Progress;
 
-uniform vec3 view_pos;
+uniform vec3 lightPos;
+uniform vec3 viewPos;
+uniform vec3 lightColor;
+uniform int useVertexColor;
 
 void main()
 {
+    vec3 color = Color;
+    if (useVertexColor == 0) {
+        color = vec3(1.0, 0.0, 0.0);
+    }
+
     // Ambient
-    float ambient_strength = 0.2;
-    vec3 ambient = ambient_strength * vec3(1.0, 1.0, 1.0);
+    float ambientStrength = 0.1;
+    vec3 ambient = ambientStrength * lightColor;
 
     // Diffuse
-    vec3 light_pos = vec3(5.0, 10.0, 5.0);
-    vec3 norm = normalize(normal);
-    vec3 light_dir = normalize(light_pos - frag_pos);
-    float diff = max(dot(norm, light_dir), 0.0);
-    vec3 diffuse = diff * vec3(1.0, 1.0, 1.0);
+    vec3 norm = normalize(Normal);
+    vec3 lightDir = normalize(lightPos - FragPos);
+    float diff = max(dot(norm, lightDir), 0.0);
+    vec3 diffuse = diff * lightColor;
 
     // Specular
-    float specular_strength = 1.0;
-    vec3 view_dir = normalize(view_pos - frag_pos);
-    vec3 reflect_dir = reflect(-light_dir, norm);
-    float spec = pow(max(dot(view_dir, reflect_dir), 0.0), 64);
-    vec3 specular = specular_strength * spec * vec3(1.0, 1.0, 1.0);
+    float specularStrength = 0.5;
+    vec3 viewDir = normalize(viewPos - FragPos);
+    vec3 reflectDir = reflect(-lightDir, norm);
+    float spec = pow(max(dot(viewDir, reflectDir), 0.0), 32);
+    vec3 specular = specularStrength * spec * lightColor;
 
     vec3 result = (ambient + diffuse) * color + specular;
-    FragColor = vec4(result, 1);
+    float alpha = 1.0 - Progress;
+    FragColor = vec4(result, alpha);
 }

@@ -23,6 +23,7 @@ namespace Boidsish {
 		int                   max_length;
 		GLuint                vao;
 		GLuint                vbo;
+		int                   vertex_count;
 	};
 
 } // namespace Boidsish

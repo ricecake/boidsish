@@ -92,7 +92,7 @@ namespace Boidsish {
 			Shape::shader = shader;
 			plane_shader = std::make_unique<Shader>("shaders/plane.vert", "shaders/plane.frag");
 			sky_shader = std::make_unique<Shader>("shaders/sky.vert", "shaders/sky.frag");
-			trail_shader = std::make_unique<Shader>("shaders/trail.vert", "shaders/trail.frag", "shaders/trail.geom");
+			trail_shader = std::make_unique<Shader>("shaders/trail.vert", "shaders/trail.frag");
 			blur_shader = std::make_unique<Shader>("shaders/blur.vert", "shaders/blur.frag");
 
 			Dot::InitSphereMesh();
