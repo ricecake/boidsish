@@ -31,7 +31,7 @@ namespace Boidsish {
 		std::unique_ptr<Shader> trail_shader;
 		GLuint                  plane_vao, plane_vbo, sky_vao;
 		GLuint                  reflection_fbo, reflection_texture, reflection_depth_rbo;
-		glm::mat4               projection;
+		glm::mat4               projection, reflection_vp;
 
 		double last_mouse_x = 0.0, last_mouse_y = 0.0;
 		bool   first_mouse = true;
@@ -246,6 +246,7 @@ namespace Boidsish {
 			plane_shader->setInt("reflectionTexture", 0);
 			glActiveTexture(GL_TEXTURE0);
 			glBindTexture(GL_TEXTURE_2D, reflection_texture);
+			plane_shader->setMat4("reflectionViewProjection", reflection_vp);
 
 			glm::mat4 model = glm::scale(glm::mat4(1.0f), glm::vec3(500.0f));
 			plane_shader->setMat4("model", model);
@@ -452,6 +453,12 @@ namespace Boidsish {
 			impl->width = width;
 			impl->height = height;
 			glViewport(0, 0, width, height);
+
+			// --- Resize reflection framebuffer ---
+			glBindTexture(GL_TEXTURE_2D, impl->reflection_texture);
+			glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, width, height, 0, GL_RGB, GL_UNSIGNED_BYTE, NULL);
+			glBindRenderbuffer(GL_RENDERBUFFER, impl->reflection_depth_rbo);
+			glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT24, width, height);
 		}
 	};
 
@@ -508,6 +515,7 @@ namespace Boidsish {
 			reflection_cam.pitch = -reflection_cam.pitch;
 
 			glm::mat4 reflection_view = impl->SetupMatrices(reflection_cam);
+			impl->reflection_vp = impl->projection * reflection_view;
 
 			impl->RenderSky(reflection_view);
 			impl->RenderSceneObjects(reflection_view, reflection_cam, shapes, time, glm::vec4(0, 1, 0, 0.01));

@@ -3,7 +3,7 @@ out vec4 FragColor;
 
 in vec3 WorldPos;
 in vec3 Normal;
-in vec4 ClipSpacePos;
+in vec4 ReflectionClipSpacePos;
 
 uniform vec3 viewPos;
 uniform vec3 lightPos;
@@ -13,8 +13,7 @@ uniform sampler2D reflectionTexture;
 void main()
 {
     // --- Reflection sampling ---
-    // The y-coordinate is negated to account for the inverted reflection texture
-    vec2 texCoords = vec2(ClipSpacePos.x, -ClipSpacePos.y) / ClipSpacePos.w / 2.0 + 0.5;
+    vec2 texCoords = ReflectionClipSpacePos.xy / ReflectionClipSpacePos.w / 2.0 + 0.5;
     vec3 reflectionColor = texture(reflectionTexture, texCoords).rgb;
 
     // --- Grid logic ---
