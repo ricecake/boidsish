@@ -90,6 +90,17 @@ namespace Boidsish {
 
 			Vector3 p0 = v0.position, p1 = v1.position, p2 = v2.position, p3 = v3.position;
 
+			Vector3 last_normal;
+			{
+				Vector3 point1 = CatmullRom(0.0f, p0, p1, p2, p3);
+				Vector3 point2 = CatmullRom(1.0f / CURVE_SEGMENTS, p0, p1, p2, p3);
+				Vector3 tangent = (point2 - point1).Normalized();
+				if (abs(tangent.y) < 0.999)
+					last_normal = tangent.Cross(Vector3(0, 1, 0)).Normalized();
+				else
+					last_normal = tangent.Cross(Vector3(1, 0, 0)).Normalized();
+			}
+
 			for (int i = 0; i < CURVE_SEGMENTS; ++i) {
 				std::vector<Vector3>   p_loop1, p_loop2;
 				std::vector<glm::vec3> c_loop1, c_loop2;
@@ -109,12 +120,17 @@ namespace Boidsish {
 					  r2 = ((1 - t2) * v1.size + t2 * v2.size) * EDGE_RADIUS_SCALE;
 
 				Vector3 tangent = (point2 - point1).Normalized();
-				Vector3 normal, bitangent;
-				if (abs(tangent.y) < 0.999)
-					normal = tangent.Cross(Vector3(0, 1, 0)).Normalized();
-				else
-					normal = tangent.Cross(Vector3(1, 0, 0)).Normalized();
-				bitangent = tangent.Cross(normal).Normalized();
+				Vector3 normal = last_normal - tangent * tangent.Dot(last_normal);
+				if (normal.MagnitudeSquared() < 1e-6) {
+					if (abs(tangent.y) < 0.999)
+						normal = tangent.Cross(Vector3(0, 1, 0)).Normalized();
+					else
+						normal = tangent.Cross(Vector3(1, 0, 0)).Normalized();
+				} else {
+					normal.Normalize();
+				}
+				Vector3 bitangent = tangent.Cross(normal).Normalized();
+				last_normal = normal;
 
 				for (int j = 0; j <= CYLINDER_SEGMENTS; ++j) {
 					float   angle = 2.0f * std::numbers::pi * j / CYLINDER_SEGMENTS;
