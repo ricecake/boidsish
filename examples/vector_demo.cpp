@@ -28,7 +28,7 @@ public:
 
 static auto fruitPlacer = MakeBranchAttractor();
 
-class VectorDemoEntity: public Entity {
+class VectorDemoEntity: public Entity<> {
 public:
 	VectorDemoEntity(int id, const Vector3& start_pos);
 	void UpdateEntity(EntityHandler& handler, float time, float delta_time) override;
@@ -38,7 +38,7 @@ private:
 	int   target_id = -1;
 };
 
-class FlockingEntity: public Entity {
+class FlockingEntity: public Entity<> {
 public:
 	FlockingEntity(int id, const Vector3& start_pos);
 	void UpdateEntity(EntityHandler& handler, float time, float delta_time) override;
@@ -53,7 +53,7 @@ private:
 	Vector3 CalculateCohesion(const std::vector<std::shared_ptr<FlockingEntity>>& neighbors);
 };
 
-class FruitEntity: public Entity {
+class FruitEntity: public Entity<> {
 public:
 	FruitEntity(int id);
 	void UpdateEntity(EntityHandler& handler, float time, float delta_time) override;
@@ -65,7 +65,7 @@ private:
 	float value;
 };
 
-FruitEntity::FruitEntity(int id): Entity(id), value(rand() % 90) {
+FruitEntity::FruitEntity(int id): Entity<>(id), value(rand() % 90) {
 	// Vector3 start_pos((rand() % 10 - 5) * 2.0f, 1 + (rand() % 10), (rand() % 6 - 3) * 2.0f);
 	auto start_pos = fruitPlacer(10);
 	start_pos.y += 8;
@@ -86,7 +86,7 @@ void FruitEntity::UpdateEntity(EntityHandler& handler, float, float delta_time) 
 	// SetVelocity(Vector3(sin(phase_ / 2) / 2, sin(phase_ / 3), cos(phase_ / 5) / 2));
 }
 
-VectorDemoEntity::VectorDemoEntity(int id, const Vector3& start_pos): Entity(id), phase_(0.0f) {
+VectorDemoEntity::VectorDemoEntity(int id, const Vector3& start_pos): Entity<>(id), phase_(0.0f) {
 	SetPosition(start_pos);
 	SetSize(10.0f);
 	SetTrailLength(100);
@@ -155,7 +155,7 @@ void VectorDemoEntity::UpdateEntity(EntityHandler& handler, float time, float de
 	SetColor(r, g, b, 1.0f);
 }
 
-FlockingEntity::FlockingEntity(int id, const Vector3& start_pos): Entity(id) {
+FlockingEntity::FlockingEntity(int id, const Vector3& start_pos): Entity<>(id) {
 	SetPosition(start_pos);
 	SetSize(5.0f);
 	SetTrailLength(75);

@@ -8,7 +8,7 @@
 using namespace Boidsish;
 
 // Example entity that orbits around the origin
-class OrbitalEntity: public Entity {
+class OrbitalEntity: public Entity<> {
 public:
 	OrbitalEntity(int id, float radius, float speed, float height_offset = 0.0f):
 		Entity(id), radius_(radius), speed_(speed), height_offset_(height_offset), angle_(0.0f) {
