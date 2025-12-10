@@ -216,6 +216,7 @@ namespace Boidsish {
 			trail_shader->use();
 			trail_shader->setMat4("view", view);
 			trail_shader->setMat4("projection", projection);
+			trail_shader->setVec3("view_pos", cam.x, cam.y, cam.z);
 			for (const auto& pair : trails) {
 				pair.second->Render(*trail_shader);
 			}
