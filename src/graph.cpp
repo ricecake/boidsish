@@ -41,7 +41,7 @@ namespace Boidsish {
 		     (-p0 + 3.0f * p1 - 3.0f * p2 + p3) * (t * t * t));
 	}
 
-	void Graph::setup_buffers() {
+	void Graph::setup_buffers() const {
 		if (buffers_initialized || edges.empty())
 			return;
 
@@ -188,12 +188,16 @@ namespace Boidsish {
 	}
 
 	void Graph::render() const {
+		if (!buffers_initialized) {
+			setup_buffers();
+		}
 		render(*shader);
 	}
 
 	void Graph::render(Shader& shader) const {
-		if (!buffers_initialized)
-			return;
+		if (!buffers_initialized) {
+			setup_buffers();
+		}
 
 		for (const auto& vertex : vertices) {
 			Dot(0,

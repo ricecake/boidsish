@@ -27,15 +27,15 @@ namespace Boidsish {
 		Graph(int id = 0, float x = 0.0f, float y = 0.0f, float z = 0.0f);
 		~Graph();
 
-		void setup_buffers();
+		void setup_buffers() const;
 		void render(Shader& shader) const;
 		void render() const override;
 
 	private:
-		GLuint vao = 0;
-		GLuint vbo = 0;
-		int    edge_vertex_count = 0;
-		bool   buffers_initialized = false;
+		mutable GLuint vao = 0;
+		mutable GLuint vbo = 0;
+		mutable int    edge_vertex_count = 0;
+		mutable bool   buffers_initialized = false;
 	};
 
 } // namespace Boidsish
