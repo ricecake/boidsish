@@ -90,7 +90,9 @@ namespace Boidsish {
 
 			Vector3 p0 = v0.position, p1 = v1.position, p2 = v2.position, p3 = v3.position;
 
-			Vector3 last_normal;
+			std::vector<std::vector<VertexData>> rings;
+			Vector3                              last_normal;
+
 			{
 				Vector3 point1 = CatmullRom(0.0f, p0, p1, p2, p3);
 				Vector3 point2 = CatmullRom(1.0f / CURVE_SEGMENTS, p0, p1, p2, p3);
@@ -101,25 +103,22 @@ namespace Boidsish {
 					last_normal = tangent.Cross(Vector3(1, 0, 0)).Normalized();
 			}
 
-			for (int i = 0; i < CURVE_SEGMENTS; ++i) {
-				std::vector<Vector3>   p_loop1, p_loop2;
-				std::vector<glm::vec3> c_loop1, c_loop2;
-				std::vector<Vector3>   n_loop1, n_loop2;
+			for (int i = 0; i <= CURVE_SEGMENTS; ++i) {
+				std::vector<VertexData> ring;
+				float                   t = (float)i / CURVE_SEGMENTS;
 
-				float t1 = (float)i / CURVE_SEGMENTS;
-				float t2 = (float)(i + 1) / CURVE_SEGMENTS;
+				Vector3 point = CatmullRom(t, p0, p1, p2, p3);
+				glm::vec3 color =
+					{(1 - t) * v1.r + t * v2.r, (1 - t) * v1.g + t * v2.g, (1 - t) * v1.b + t * v2.b};
+				float r = ((1 - t) * v1.size + t * v2.size) * EDGE_RADIUS_SCALE;
 
-				Vector3 point1 = CatmullRom(t1, p0, p1, p2, p3), point2 = CatmullRom(t2, p0, p1, p2, p3);
+				Vector3 tangent;
+				if (i < CURVE_SEGMENTS) {
+					tangent = (CatmullRom((float)(i + 1) / CURVE_SEGMENTS, p0, p1, p2, p3) - point).Normalized();
+				} else {
+					tangent = (point - CatmullRom((float)(i - 1) / CURVE_SEGMENTS, p0, p1, p2, p3)).Normalized();
+				}
 
-				glm::vec3 color1 =
-					{(1 - t1) * v1.r + t1 * v2.r, (1 - t1) * v1.g + t1 * v2.g, (1 - t1) * v1.b + t1 * v2.b};
-				glm::vec3 color2 =
-					{(1 - t2) * v1.r + t2 * v2.r, (1 - t2) * v1.g + t2 * v2.g, (1 - t2) * v1.b + t2 * v2.b};
-
-				float r1 = ((1 - t1) * v1.size + t1 * v2.size) * EDGE_RADIUS_SCALE,
-					  r2 = ((1 - t2) * v1.size + t2 * v2.size) * EDGE_RADIUS_SCALE;
-
-				Vector3 tangent = (point2 - point1).Normalized();
 				Vector3 normal = last_normal - tangent * tangent.Dot(last_normal);
 				if (normal.MagnitudeSquared() < 1e-6) {
 					if (abs(tangent.y) < 0.999)
@@ -135,46 +134,24 @@ namespace Boidsish {
 				for (int j = 0; j <= CYLINDER_SEGMENTS; ++j) {
 					float   angle = 2.0f * std::numbers::pi * j / CYLINDER_SEGMENTS;
 					Vector3 cn = (normal * cos(angle) + bitangent * sin(angle)).Normalized();
-					p_loop1.push_back(point1 + cn * r1);
-					c_loop1.push_back(color1);
-					n_loop1.push_back(cn);
-					p_loop2.push_back(point2 + cn * r2);
-					c_loop2.push_back(color2);
-					n_loop2.push_back(cn);
+					Vector3 pos = point + cn * r;
+					ring.push_back(
+						{glm::vec3(pos.x, pos.y, pos.z), glm::vec3(cn.x, cn.y, cn.z), color}
+					);
 				}
+				rings.push_back(ring);
+			}
 
-				for (int j = 0; j < CYLINDER_SEGMENTS; ++j) {
-					all_vertices_data.push_back(
-						{glm::vec3(p_loop1[j].x, p_loop1[j].y, p_loop1[j].z),
-					     glm::vec3(n_loop1[j].x, n_loop1[j].y, n_loop1[j].z),
-					     c_loop1[j]}
-					);
-					all_vertices_data.push_back(
-						{glm::vec3(p_loop2[j].x, p_loop2[j].y, p_loop2[j].z),
-					     glm::vec3(n_loop2[j].x, n_loop2[j].y, n_loop2[j].z),
-					     c_loop2[j]}
-					);
-					all_vertices_data.push_back(
-						{glm::vec3(p_loop1[j + 1].x, p_loop1[j + 1].y, p_loop1[j + 1].z),
-					     glm::vec3(n_loop1[j + 1].x, n_loop1[j + 1].y, n_loop1[j + 1].z),
-					     c_loop1[j + 1]}
-					);
-
-					all_vertices_data.push_back(
-						{glm::vec3(p_loop1[j + 1].x, p_loop1[j + 1].y, p_loop1[j + 1].z),
-					     glm::vec3(n_loop1[j + 1].x, n_loop1[j + 1].y, n_loop1[j + 1].z),
-					     c_loop1[j + 1]}
-					);
-					all_vertices_data.push_back(
-						{glm::vec3(p_loop2[j].x, p_loop2[j].y, p_loop2[j].z),
-					     glm::vec3(n_loop2[j].x, n_loop2[j].y, n_loop2[j].z),
-					     c_loop2[j]}
-					);
-					all_vertices_data.push_back(
-						{glm::vec3(p_loop2[j + 1].x, p_loop2[j + 1].y, p_loop2[j + 1].z),
-					     glm::vec3(n_loop2[j + 1].x, n_loop2[j + 1].y, n_loop2[j + 1].z),
-					     c_loop2[j + 1]}
-					);
+			if (!all_vertices_data.empty() && !rings.empty()) {
+				// Create a degenerate triangle to disconnect from the previous edge's strip.
+				all_vertices_data.push_back(all_vertices_data.back());
+				all_vertices_data.push_back(rings[0][0]);
+			}
+			for (int i = 0; i < CURVE_SEGMENTS; ++i) {
+				// Create a strip for the segment between ring i and ring i+1.
+				for (int j = 0; j <= CYLINDER_SEGMENTS; ++j) {
+					all_vertices_data.push_back(rings[i][j]);
+					all_vertices_data.push_back(rings[i + 1][j]);
 				}
 			}
 		}
@@ -237,7 +214,7 @@ namespace Boidsish {
 		shader.setMat4("model", model);
 
 		glBindVertexArray(vao);
-		glDrawArrays(GL_TRIANGLES, 0, edge_vertex_count);
+		glDrawArrays(GL_TRIANGLE_STRIP, 0, edge_vertex_count);
 		glBindVertexArray(0);
 
 		shader.setInt("useVertexColor", 0);
