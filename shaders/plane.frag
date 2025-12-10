@@ -41,7 +41,7 @@ void main()
     float diff = max(dot(norm, lightDir), 0.0);
     vec3 diffuse = diff * lightColor;
 
-    float specularStrength = 0.3;
+    float specularStrength = 0.8;
     vec3 viewDir = normalize(viewPos - WorldPos);
     vec3 reflectDir = reflect(-lightDir, norm);
     float spec = pow(max(dot(viewDir, reflectDir), 0.0), 32);
@@ -51,7 +51,7 @@ void main()
     vec3 lighting = (ambient + diffuse + specular);
 
     // --- Combine colors ---
-    float reflection_strength = 0.4;
+    float reflection_strength = 0.8;
     vec3 final_color = mix(lighting * surfaceColor, reflectionColor, reflection_strength) + grid_color;
 
     // --- Distance Fade ---

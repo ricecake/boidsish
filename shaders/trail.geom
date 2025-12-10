@@ -1,69 +1,93 @@
 #version 330 core
 layout (lines_adjacency) in;
-layout (triangle_strip, max_vertices = 4) out;
+layout (triangle_strip, max_vertices = 10) out;
 
 in vec3 vs_color[];
 in float vs_progress[];
 
 out vec3 color;
 out float fade;
+out vec3 normal;
+out vec3 frag_pos; // Position in world space
 
 uniform mat4 projection;
 uniform mat4 view;
 uniform float thickness;
 
+// Calculates a robust, orthogonal frame (tangent, right, up)
+void GetOrthonormalFrame(vec3 p_prev, vec3 p_curr, vec3 p_next, out vec3 tangent, out vec3 right, out vec3 up) {
+    tangent = normalize(p_next - p_prev);
+
+    vec3 world_up = vec3(0.0, 1.0, 0.0);
+    if (abs(dot(tangent, world_up)) > 0.99) {
+        world_up = vec3(1.0, 0.0, 0.0); // Avoid gimbal lock
+    }
+
+    right = normalize(cross(tangent, world_up));
+    up = normalize(cross(right, tangent));
+}
+
 void main() {
-    // Transform all points to view space
-    vec4 p0 = view * gl_in[0].gl_Position;
-    vec4 p1 = view * gl_in[1].gl_Position;
-    vec4 p2 = view * gl_in[2].gl_Position;
-    vec4 p3 = view * gl_in[3].gl_Position;
+    // Input points for the current segment
+    vec3 p0 = gl_in[0].gl_Position.xyz;
+    vec3 p1 = gl_in[1].gl_Position.xyz;
+    vec3 p2 = gl_in[2].gl_Position.xyz;
+    vec3 p3 = gl_in[3].gl_Position.xyz;
 
-    // Screen-space directions and normals
-    vec2 dir_curr = normalize(p2.xy - p1.xy);
-    vec2 normal_curr = vec2(-dir_curr.y, dir_curr.x);
+    // Attributes for the start and end of the segment
+    vec3 c1 = vs_color[1];
+    vec3 c2 = vs_color[2];
+    float prog1 = vs_progress[1];
+    float prog2 = vs_progress[2];
 
-    vec2 miter1, miter2;
+    // Calculate orthonormal frames for the start and end points
+    vec3 tangent1, right1, up1;
+    vec3 tangent2, right2, up2;
+    GetOrthonormalFrame(p0, p1, p2, tangent1, right1, up1);
+    GetOrthonormalFrame(p1, p2, p3, tangent2, right2, up2);
 
-    // Miter at the start of the segment (p1)
-    if (distance(p0, p1) < 0.0001) { // Start of the line, use normal_curr
-        miter1 = normal_curr;
-    } else {
-        vec2 dir_prev = normalize(p1.xy - p0.xy);
-        vec2 normal_prev = vec2(-dir_prev.y, dir_prev.x);
-        miter1 = normalize(normal_prev + normal_curr);
-    }
+    // Build the 4 corner vertices and their normals for the start point (p1)
+    vec3 p1_br = p1 + (right1 * thickness - up1 * thickness);
+    vec3 n1_br = normalize(-up1 + right1);
+    vec3 p1_bl = p1 + (-right1 * thickness - up1 * thickness);
+    vec3 n1_bl = normalize(-up1 - right1);
+    vec3 p1_tr = p1 + (right1 * thickness + up1 * thickness);
+    vec3 n1_tr = normalize(up1 + right1);
+    vec3 p1_tl = p1 + (-right1 * thickness + up1 * thickness);
+    vec3 n1_tl = normalize(up1 - right1);
 
-    // Miter at the end of the segment (p2)
-    if (distance(p2, p3) < 0.0001) { // End of the line, use normal_curr
-        miter2 = normal_curr;
-    } else {
-        vec2 dir_next = normalize(p3.xy - p2.xy);
-        vec2 normal_next = vec2(-dir_next.y, dir_next.x);
-        miter2 = normalize(normal_curr + normal_next);
-    }
+    // Build the 4 corner vertices and their normals for the end point (p2)
+    vec3 p2_br = p2 + (right2 * thickness - up2 * thickness);
+    vec3 n2_br = normalize(-up2 + right2);
+    vec3 p2_bl = p2 + (-right2 * thickness - up2 * thickness);
+    vec3 n2_bl = normalize(-up2 - right2);
+    vec3 p2_tr = p2 + (right2 * thickness + up2 * thickness);
+    vec3 n2_tr = normalize(up2 + right2);
+    vec3 p2_tl = p2 + (-right2 * thickness + up2 * thickness);
+    vec3 n2_tl = normalize(up2 - right2);
 
-    // First point of the segment
-    gl_Position = projection * (p1 + vec4(miter1 * thickness, 0.0, 0.0));
-    color = vs_color[1];
-    fade = vs_progress[1];
-    EmitVertex();
+    // Emit a triangle strip that connects the start and end quads
+    // The strip wraps around the tube: bottom -> right -> top -> left -> bottom
 
-    gl_Position = projection * (p1 - vec4(miter1 * thickness, 0.0, 0.0));
-    color = vs_color[1];
-    fade = vs_progress[1];
-    EmitVertex();
+    // Bottom face
+    frag_pos = p1_br; normal = n1_br; gl_Position = projection * view * vec4(frag_pos, 1.0); color = c1; fade = prog1; EmitVertex();
+    frag_pos = p2_br; normal = n2_br; gl_Position = projection * view * vec4(frag_pos, 1.0); color = c2; fade = prog2; EmitVertex();
 
-    // Second point of the segment
-    gl_Position = projection * (p2 + vec4(miter2 * thickness, 0.0, 0.0));
-    color = vs_color[2];
-    fade = vs_progress[2];
-    EmitVertex();
+    // Right face
+    frag_pos = p1_tr; normal = n1_tr; gl_Position = projection * view * vec4(frag_pos, 1.0); color = c1; fade = prog1; EmitVertex();
+    frag_pos = p2_tr; normal = n2_tr; gl_Position = projection * view * vec4(frag_pos, 1.0); color = c2; fade = prog2; EmitVertex();
 
-    gl_Position = projection * (p2 - vec4(miter2 * thickness, 0.0, 0.0));
-    color = vs_color[2];
-    fade = vs_progress[2];
-    EmitVertex();
+    // Top face
+    frag_pos = p1_tl; normal = n1_tl; gl_Position = projection * view * vec4(frag_pos, 1.0); color = c1; fade = prog1; EmitVertex();
+    frag_pos = p2_tl; normal = n2_tl; gl_Position = projection * view * vec4(frag_pos, 1.0); color = c2; fade = prog2; EmitVertex();
+
+    // Left face
+    frag_pos = p1_bl; normal = n1_bl; gl_Position = projection * view * vec4(frag_pos, 1.0); color = c1; fade = prog1; EmitVertex();
+    frag_pos = p2_bl; normal = n2_bl; gl_Position = projection * view * vec4(frag_pos, 1.0); color = c2; fade = prog2; EmitVertex();
+
+    // Re-emit first two vertices to close the loop back to the bottom face
+    frag_pos = p1_br; normal = n1_br; gl_Position = projection * view * vec4(frag_pos, 1.0); color = c1; fade = prog1; EmitVertex();
+    frag_pos = p2_br; normal = n2_br; gl_Position = projection * view * vec4(frag_pos, 1.0); color = c2; fade = prog2; EmitVertex();
 
     EndPrimitive();
 }
