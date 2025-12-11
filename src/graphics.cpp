@@ -52,8 +52,11 @@ namespace Boidsish {
 		float auto_camera_height_offset = 0.0f;
 		float auto_camera_distance = 10.0f;
 
-		bool single_track_mode = false;
-		int  tracked_dot_index = 0;
+		bool  single_track_mode = false;
+		int   tracked_dot_index = 0;
+		float single_track_orbit_yaw = 0.0f;
+		float single_track_orbit_pitch = 20.0f;
+		float single_track_distance = 15.0f;
 
 		VisualizerImpl(int w, int h, const char* title): width(w), height(h) {
 			last_frame = std::chrono::high_resolution_clock::now();
@@ -339,7 +342,7 @@ namespace Boidsish {
 		}
 
 		void ProcessInput(float delta_time) {
-			if (auto_camera_mode)
+			if (auto_camera_mode || single_track_mode)
 				return;
 			float     camera_speed = 5.0f * delta_time;
 			glm::vec3 front(
@@ -438,9 +441,18 @@ namespace Boidsish {
 			float direction_modifier = sin(auto_camera_time * 0.08f) * 0.3f;
 			float effective_angle = auto_camera_angle + direction_modifier;
 
-			camera.x = mean_x + cos(effective_angle) * auto_camera_distance;
-			camera.z = mean_z + sin(effective_angle) * auto_camera_distance;
-			camera.y = camera_height;
+			glm::vec3 target_camera_pos(
+				mean_x + cos(effective_angle) * auto_camera_distance,
+				camera_height,
+				mean_z + sin(effective_angle) * auto_camera_distance
+			);
+
+			glm::vec3 current_camera_pos(camera.x, camera.y, camera.z);
+			glm::vec3 new_pos = current_camera_pos + (target_camera_pos - current_camera_pos) * (delta_time * 1.0f);
+			camera.x = new_pos.x;
+			camera.y = new_pos.y;
+			camera.z = new_pos.z;
+
 			if (camera.y < kMinCameraHeight)
 				camera.y = kMinCameraHeight;
 
@@ -464,28 +476,30 @@ namespace Boidsish {
 			}
 
 			const auto& target_dot = shapes[tracked_dot_index];
-			float       target_x = target_dot->GetX();
-			float       target_y = target_dot->GetY();
-			float       target_z = target_dot->GetZ();
 
-			float distance = 15.0f;
-			float camera_height_offset = 5.0f;
-			float pan_speed = 2.0f * delta_time;
+			glm::vec3 target_pos(target_dot->GetX(), target_dot->GetY(), target_dot->GetZ());
 
-			camera.x += (target_x - camera.x) * pan_speed;
-			camera.y += (target_y + camera_height_offset - camera.y) * pan_speed;
-			camera.z += (target_z - distance - camera.z) * pan_speed;
+			float yaw_rad = glm::radians(single_track_orbit_yaw);
+			float pitch_rad = glm::radians(single_track_orbit_pitch);
+
+			glm::vec3 offset;
+			offset.x = single_track_distance * cos(pitch_rad) * sin(yaw_rad);
+			offset.y = single_track_distance * sin(pitch_rad);
+			offset.z = -single_track_distance * cos(pitch_rad) * cos(yaw_rad);
+
+			glm::vec3 camera_pos = target_pos - offset;
+
+			camera.x = camera_pos.x;
+			camera.y = camera_pos.y;
+			camera.z = camera_pos.z;
 
 			if (camera.y < kMinCameraHeight)
 				camera.y = kMinCameraHeight;
 
-			float dx = target_x - camera.x;
-			float dy = target_y - camera.y;
-			float dz = target_z - camera.z;
-			float distance_xz = sqrt(dx * dx + dz * dz);
+			glm::vec3 front = glm::normalize(target_pos - camera_pos);
 
-			camera.yaw = atan2(dx, -dz) * 180.0f / M_PI;
-			camera.pitch = atan2(dy, distance_xz) * 180.0f / M_PI;
+			camera.yaw = glm::degrees(atan2(front.x, -front.z));
+			camera.pitch = glm::degrees(asin(front.y));
 			camera.pitch = std::max(-89.0f, std::min(89.0f, camera.pitch));
 		}
 
@@ -499,16 +513,38 @@ namespace Boidsish {
 			}
 			if (key == GLFW_KEY_ESCAPE && action == GLFW_PRESS)
 				glfwSetWindowShouldClose(w, true);
-			if (key == GLFW_KEY_0 && action == GLFW_PRESS) {
-				impl->auto_camera_mode = !impl->auto_camera_mode;
-				glfwSetInputMode(w, GLFW_CURSOR, impl->auto_camera_mode ? GLFW_CURSOR_NORMAL : GLFW_CURSOR_DISABLED);
-				if (!impl->auto_camera_mode)
-					impl->first_mouse = true;
+			if (action == GLFW_PRESS) {
+				if (key == GLFW_KEY_0) {
+					impl->single_track_mode = false;
+					impl->auto_camera_mode = !impl->auto_camera_mode;
+					glfwSetInputMode(
+						w,
+						GLFW_CURSOR,
+						impl->auto_camera_mode ? GLFW_CURSOR_NORMAL : GLFW_CURSOR_DISABLED
+					);
+					if (!impl->auto_camera_mode)
+						impl->first_mouse = true;
+				} else if (key == GLFW_KEY_9) {
+					if (impl->single_track_mode) {
+						impl->tracked_dot_index++;
+					} else {
+						impl->auto_camera_mode = false;
+						impl->single_track_mode = true;
+						glfwSetInputMode(w, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+						impl->first_mouse = true;
+					}
+				} else if (key == GLFW_KEY_8) {
+					impl->single_track_mode = false;
+					impl->auto_camera_mode = true;
+					glfwSetInputMode(w, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
+				} else if (key == GLFW_KEY_EQUAL) {
+					impl->single_track_distance -= 0.5f;
+					if (impl->single_track_distance < 1.0f)
+						impl->single_track_distance = 1.0f;
+				} else if (key == GLFW_KEY_MINUS) {
+					impl->single_track_distance += 0.5f;
+				}
 			}
-			if (key == GLFW_KEY_9 && action == GLFW_PRESS)
-				impl->single_track_mode = true;
-			if (key == GLFW_KEY_8 && action == GLFW_PRESS)
-				impl->single_track_mode = false;
 			if (key == GLFW_KEY_P && action == GLFW_PRESS)
 				impl->paused = !impl->paused;
 		}
@@ -517,22 +553,39 @@ namespace Boidsish {
 			auto* impl = static_cast<VisualizerImpl*>(glfwGetWindowUserPointer(w));
 			if (impl->auto_camera_mode)
 				return;
+
 			if (impl->first_mouse) {
 				impl->last_mouse_x = xpos;
 				impl->last_mouse_y = ypos;
 				impl->first_mouse = false;
 			}
-			float xoffset = xpos - impl->last_mouse_x, yoffset = impl->last_mouse_y - ypos;
+
+			float xoffset = xpos - impl->last_mouse_x;
+			float yoffset = impl->last_mouse_y - ypos;
 			impl->last_mouse_x = xpos;
 			impl->last_mouse_y = ypos;
-			xoffset *= 0.1f;
-			yoffset *= 0.1f;
-			impl->camera.yaw += xoffset;
-			impl->camera.pitch += yoffset;
-			if (impl->camera.pitch > 89.0f)
-				impl->camera.pitch = 89.0f;
-			if (impl->camera.pitch < -89.0f)
-				impl->camera.pitch = -89.0f;
+
+			float sensitivity = 0.1f;
+			xoffset *= sensitivity;
+			yoffset *= sensitivity;
+
+			if (impl->single_track_mode) {
+				impl->single_track_orbit_yaw += xoffset;
+				impl->single_track_orbit_pitch += yoffset;
+
+				if (impl->single_track_orbit_pitch > 89.0f)
+					impl->single_track_orbit_pitch = 89.0f;
+				if (impl->single_track_orbit_pitch < -89.0f)
+					impl->single_track_orbit_pitch = -89.0f;
+			} else {
+				impl->camera.yaw += xoffset;
+				impl->camera.pitch += yoffset;
+
+				if (impl->camera.pitch > 89.0f)
+					impl->camera.pitch = 89.0f;
+				if (impl->camera.pitch < -89.0f)
+					impl->camera.pitch = -89.0f;
+			}
 		}
 
 		static void FramebufferSizeCallback(GLFWwindow* w, int width, int height) {
