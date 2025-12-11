@@ -352,9 +352,9 @@ std::vector<std::shared_ptr<Shape>> GraphExample(float time) {
 
 	// Add vertices in a chain
 	graph->vertices.push_back({Vector3(-4, 0, 0), 10.0f, 1, 0, 0, 1});
-	graph->vertices.push_back({Vector3(-2, 2, 1), 12.0f, 0, 1, 0, 1});
-	graph->vertices.push_back({Vector3(0, 0, 0), 15.0f, 0, 0, 1, 1});
-	graph->vertices.push_back({Vector3(2, 2, -1), 12.0f, 1, 1, 0, 1});
+	graph->vertices.push_back({Vector3(-2, 2, 1*sin(time)), 12.0f, 0, 1, 0, 1});
+	graph->vertices.push_back({Vector3(0, 0, 0), 15.0f+20*sin(time), 0, 0, 1, 1});
+	graph->vertices.push_back({Vector3(2, 2, -1*sin(time)), 12.0f, 1, 1, 0, 1});
 	graph->vertices.push_back({Vector3(4, 0, 0), 10.0f, 1, 0, 1, 1});
 
 	// Add edges to connect the vertices in a chain
