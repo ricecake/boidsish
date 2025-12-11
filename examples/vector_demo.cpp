@@ -45,7 +45,8 @@ public:
 	void UpdateEntity(EntityHandler& handler, float time, float delta_time) override;
 
 private:
-	float   hunger_time = 100.0f;
+	float   hunger_time = 0.0f;
+	float   energy = 50.0f;
 	Vector3 CalculateSeparation(
 		const std::vector<std::shared_ptr<FlockingEntity>>&   neighbors,
 		const std::vector<std::shared_ptr<VectorDemoEntity>>& predators
@@ -113,8 +114,8 @@ void VectorDemoEntity::UpdateEntity(EntityHandler& handler, float time, float de
 			SetColor(1.0f, 0, 0, 1.0f);
 
 			handler.RemoveEntity(target_id);
-			Vector3 start_pos((rand() % 10 - 5) * 2.0f, (rand() % 6 - 3) * 2.0f, (rand() % 10 - 5) * 2.0f);
-			handler.AddEntity<FlockingEntity>(start_pos);
+			// Vector3 start_pos((rand() % 10 - 5) * 2.0f, (rand() % 6 - 3) * 2.0f, (rand() % 10 - 5) * 2.0f);
+			// handler.AddEntity<FlockingEntity>(start_pos);
 			return;
 		}
 	}
@@ -219,6 +220,24 @@ void FlockingEntity::UpdateEntity(EntityHandler& handler, float time, float delt
 	SetVelocity(newVel * 3);
 
 	hunger_time += delta_time;
+	hunger_time = std::min(100.0f, hunger_time);
+	// if (hunger_time >= 100) {
+	// 	handler.RemoveEntity(GetId());
+	// 	return;
+	// }
+
+	if (hunger_time < 25) {
+		energy += delta_time;
+	} else if (hunger_time > 75) {
+		energy -= delta_time;
+	}
+
+	if (energy < 10) {
+		handler.RemoveEntity(GetId());
+	} else if (energy >= 75) {
+		energy -= 25;
+		handler.AddEntity<FlockingEntity>(GetPosition());
+	}
 
 	// Color based on dominant behavior
 	float sep_mag = separation.Magnitude();
@@ -231,6 +250,7 @@ void FlockingEntity::UpdateEntity(EntityHandler& handler, float time, float delt
 	float g = dis_mag / (sep_mag + align_mag + coh_mag + dis_mag + pre_mag + 0.1f);
 	float r = pre_mag / (sep_mag + align_mag + coh_mag + dis_mag + pre_mag + 0.1f);
 	SetColor(r, g, b, 1.0f);
+	SetTrailLength(energy);
 }
 
 Vector3 FlockingEntity::CalculateSeparation(
