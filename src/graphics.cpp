@@ -17,6 +17,8 @@
 #include <shader.h>
 
 namespace Boidsish {
+	constexpr float kMinCameraHeight = 0.1f;
+
 	struct Visualizer::VisualizerImpl {
 		GLFWwindow*                           window;
 		int                                   width, height;
@@ -368,6 +370,8 @@ namespace Boidsish {
 				camera.y += camera_speed;
 			if (keys[GLFW_KEY_LEFT_SHIFT])
 				camera.y -= camera_speed;
+			if (camera.y < kMinCameraHeight)
+				camera.y = kMinCameraHeight;
 		}
 
 		void CleanupOldTrails(float current_time, const std::vector<std::shared_ptr<Shape>>& active_shapes) {
@@ -437,6 +441,8 @@ namespace Boidsish {
 			camera.x = mean_x + cos(effective_angle) * auto_camera_distance;
 			camera.z = mean_z + sin(effective_angle) * auto_camera_distance;
 			camera.y = camera_height;
+			if (camera.y < kMinCameraHeight)
+				camera.y = kMinCameraHeight;
 
 			float dx = mean_x - camera.x;
 			float dy = mean_y - camera.y;
@@ -469,6 +475,9 @@ namespace Boidsish {
 			camera.x += (target_x - camera.x) * pan_speed;
 			camera.y += (target_y + camera_height_offset - camera.y) * pan_speed;
 			camera.z += (target_z - distance - camera.z) * pan_speed;
+
+			if (camera.y < kMinCameraHeight)
+				camera.y = kMinCameraHeight;
 
 			float dx = target_x - camera.x;
 			float dy = target_y - camera.y;
