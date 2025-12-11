@@ -12,22 +12,12 @@
 
 namespace Boidsish {
 
-	Graph::Graph(int id, float x, float y, float z) {
-		this->id = id;
-		this->x = x;
-		this->y = y;
-		this->z = z;
-		this->r = 1.0f;
-		this->g = 1.0f;
-		this->b = 1.0f;
-		this->a = 1.0f;
-		this->trail_length = 0;
-	}
+	Graph::Graph(int id, float x, float y, float z): Shape(id, x, y, z, 1.0f, 1.0f, 1.0f, 1.0f, 0) {}
 
 	Graph::~Graph() {
-		if (buffers_initialized) {
-			glDeleteVertexArrays(1, &vao);
-			glDeleteBuffers(1, &vbo);
+		if (buffers_initialized_) {
+			glDeleteVertexArrays(1, &graph_vao_);
+			glDeleteBuffers(1, &graph_vbo_);
 		}
 	}
 
@@ -41,8 +31,8 @@ namespace Boidsish {
 		     (-p0 + 3.0f * p1 - 3.0f * p2 + p3) * (t * t * t));
 	}
 
-	void Graph::setup_buffers() const {
-		if (buffers_initialized || edges.empty())
+	void Graph::SetupBuffers() const {
+		if (buffers_initialized_ || edges.empty())
 			return;
 
 		struct VertexData {
@@ -53,21 +43,21 @@ namespace Boidsish {
 
 		std::map<int, std::vector<int>> adj;
 		for (const auto& edge : edges) {
-			adj[edge.vertex1_idx].push_back(edge.vertex2_idx);
-			adj[edge.vertex2_idx].push_back(edge.vertex1_idx);
+			adj[edge.from_vertex_index].push_back(edge.to_vertex_index);
+			adj[edge.to_vertex_index].push_back(edge.from_vertex_index);
 		}
 
 		for (const auto& edge : edges) {
-			if (edge.vertex1_idx >= (int)vertices.size() || edge.vertex2_idx >= (int)vertices.size())
+			if (edge.from_vertex_index >= (int)vertices.size() || edge.to_vertex_index >= (int)vertices.size())
 				continue;
 
-			const auto& v1 = vertices[edge.vertex1_idx];
-			const auto& v2 = vertices[edge.vertex2_idx];
+			const auto& v1 = vertices[edge.from_vertex_index];
+			const auto& v2 = vertices[edge.to_vertex_index];
 
 			Vertex v0 = v1;
-			if (adj.count(edge.vertex1_idx)) {
-				for (int n_idx : adj[edge.vertex1_idx]) {
-					if (n_idx != edge.vertex2_idx) {
+			if (adj.count(edge.from_vertex_index)) {
+				for (int n_idx : adj[edge.from_vertex_index]) {
+					if (n_idx != edge.to_vertex_index) {
 						v0 = vertices[n_idx];
 						break;
 					}
@@ -77,9 +67,9 @@ namespace Boidsish {
 				v0.position = v1.position - (v2.position - v1.position);
 
 			Vertex v3 = v2;
-			if (adj.count(edge.vertex2_idx)) {
-				for (int n_idx : adj[edge.vertex2_idx]) {
-					if (n_idx != edge.vertex1_idx) {
+			if (adj.count(edge.to_vertex_index)) {
+				for (int n_idx : adj[edge.to_vertex_index]) {
+					if (n_idx != edge.from_vertex_index) {
 						v3 = vertices[n_idx];
 						break;
 					}
@@ -107,10 +97,9 @@ namespace Boidsish {
 				std::vector<VertexData> ring;
 				float                   t = (float)i / CURVE_SEGMENTS;
 
-				Vector3 point = CatmullRom(t, p0, p1, p2, p3);
-				glm::vec3 color =
-					{(1 - t) * v1.r + t * v2.r, (1 - t) * v1.g + t * v2.g, (1 - t) * v1.b + t * v2.b};
-				float r = ((1 - t) * v1.size + t * v2.size) * EDGE_RADIUS_SCALE;
+				Vector3   point = CatmullRom(t, p0, p1, p2, p3);
+				glm::vec3 color = {(1 - t) * v1.r + t * v2.r, (1 - t) * v1.g + t * v2.g, (1 - t) * v1.b + t * v2.b};
+				float     r = ((1 - t) * v1.size + t * v2.size) * EDGE_RADIUS_SCALE;
 
 				Vector3 tangent;
 				if (i < CURVE_SEGMENTS) {
@@ -135,9 +124,7 @@ namespace Boidsish {
 					float   angle = 2.0f * std::numbers::pi * j / CYLINDER_SEGMENTS;
 					Vector3 cn = (normal * cos(angle) + bitangent * sin(angle)).Normalized();
 					Vector3 pos = point + cn * r;
-					ring.push_back(
-						{glm::vec3(pos.x, pos.y, pos.z), glm::vec3(cn.x, cn.y, cn.z), color}
-					);
+					ring.push_back({glm::vec3(pos.x, pos.y, pos.z), glm::vec3(cn.x, cn.y, cn.z), color});
 				}
 				rings.push_back(ring);
 			}
@@ -156,12 +143,12 @@ namespace Boidsish {
 			}
 		}
 
-		edge_vertex_count = all_vertices_data.size();
+		edge_vertex_count_ = all_vertices_data.size();
 
-		glGenVertexArrays(1, &vao);
-		glBindVertexArray(vao);
-		glGenBuffers(1, &vbo);
-		glBindBuffer(GL_ARRAY_BUFFER, vbo);
+		glGenVertexArrays(1, &graph_vao_);
+		glBindVertexArray(graph_vao_);
+		glGenBuffers(1, &graph_vbo_);
+		glBindBuffer(GL_ARRAY_BUFFER, graph_vbo_);
 		glBufferData(
 			GL_ARRAY_BUFFER,
 			all_vertices_data.size() * sizeof(VertexData),
@@ -177,49 +164,42 @@ namespace Boidsish {
 		glEnableVertexAttribArray(2);
 
 		glBindVertexArray(0);
-		buffers_initialized = true;
+		buffers_initialized_ = true;
 	}
 
 	void Graph::render() const {
-		if (!buffers_initialized) {
-			setup_buffers();
-		}
-		render(*shader);
-	}
-
-	void Graph::render(Shader& shader) const {
-		if (!buffers_initialized) {
-			setup_buffers();
+		if (!buffers_initialized_) {
+			SetupBuffers();
 		}
 
 		for (const auto& vertex : vertices) {
 			Dot(0,
-			    vertex.position.x + x,
-			    vertex.position.y + y,
-			    vertex.position.z + z,
+			    vertex.position.x + GetX(),
+			    vertex.position.y + GetY(),
+			    vertex.position.z + GetZ(),
 			    vertex.size,
 			    vertex.r,
 			    vertex.g,
 			    vertex.b,
 			    vertex.a,
 			    0)
-				.render(shader);
+				.render();
 		}
 
-		shader.use();
-		shader.setInt("useVertexColor", 1);
+		shader->use();
+		shader->setInt("useVertexColor", 1);
 
 		glm::mat4 model = glm::mat4(1.0f);
-		model = glm::translate(model, glm::vec3(x, y, z));
-		shader.setMat4("model", model);
+		model = glm::translate(model, glm::vec3(GetX(), GetY(), GetZ()));
+		shader->setMat4("model", model);
 
-		glBindVertexArray(vao);
-		glDrawArrays(GL_TRIANGLE_STRIP, 0, edge_vertex_count);
+		glBindVertexArray(graph_vao_);
+		glDrawArrays(GL_TRIANGLE_STRIP, 0, edge_vertex_count_);
 		glBindVertexArray(0);
 
-		shader.setInt("useVertexColor", 0);
+		shader->setInt("useVertexColor", 0);
 		model = glm::mat4(1.0f);
-		shader.setMat4("model", model);
+		shader->setMat4("model", model);
 	}
 
 } // namespace Boidsish

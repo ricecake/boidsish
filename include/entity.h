@@ -98,27 +98,20 @@ namespace Boidsish {
 
 	// Template-based entity class that takes a shape
 	template <typename ShapeType = Dot>
-	class Entity : public EntityBase {
+	class Entity: public EntityBase {
 	public:
-		Entity(int id = 0) : EntityBase(id), shape_(std::make_shared<ShapeType>()) {
-			UpdateShape();
-		}
+		Entity(int id = 0): EntityBase(id), shape_(std::make_shared<ShapeType>()) { UpdateShape(); }
 
 		std::shared_ptr<Shape> GetShape() const override { return shape_; }
 
 		void UpdateShape() override {
-			shape_->id = id_;
-			shape_->x = position_.x;
-			shape_->y = position_.y;
-			shape_->z = position_.z;
-			shape_->r = color_[0];
-			shape_->g = color_[1];
-			shape_->b = color_[2];
-			shape_->a = color_[3];
-			shape_->trail_length = trail_length_;
+			shape_->SetId(id_);
+			shape_->SetPosition(position_.x, position_.y, position_.z);
+			shape_->SetColor(color_[0], color_[1], color_[2], color_[3]);
+			shape_->SetTrailLength(trail_length_);
 			// For dots, we can also update the size
 			if (auto dot = std::dynamic_pointer_cast<Dot>(shape_)) {
-				dot->size = size_;
+				dot->SetSize(size_);
 			}
 		}
 
@@ -162,7 +155,7 @@ namespace Boidsish {
 			return (it != entities_.end()) ? it->second : nullptr;
 		}
 
-		const auto GetEntity(int id) const {
+		auto GetEntity(int id) const {
 			auto it = entities_.find(id);
 			return (it != entities_.end()) ? it->second : nullptr;
 		}
@@ -212,51 +205,7 @@ namespace Boidsish {
 
 	private:
 		std::map<int, std::shared_ptr<EntityBase>> entities_;
-		float                                     last_time_;
-		int                                       next_id_;
+		float                                      last_time_;
+		int                                        next_id_;
 	};
-
-	// EntityHandler implementation
-	std::vector<std::shared_ptr<Shape>> EntityHandler::operator()(float time) {
-		float delta_time = 0.016f; // Default 60 FPS
-		if (last_time_ >= 0.0f) {
-			delta_time = time - last_time_;
-		}
-		last_time_ = time;
-
-		// Call pre-timestep hook
-		PreTimestep(time, delta_time);
-
-		// Get entities
-		std::vector<std::shared_ptr<EntityBase>> entities;
-		std::transform(entities_.begin(), entities_.end(), std::back_inserter(entities), [](const auto& pair) {
-			return pair.second;
-		});
-
-		// Update all entities
-		for (auto& entity : entities) {
-			entity->UpdateEntity(*this, time, delta_time);
-		}
-
-		// Call post-timestep hook
-		PostTimestep(time, delta_time);
-
-		// Generate shapes from entity states
-		std::vector<std::shared_ptr<Shape>> shapes;
-		shapes.reserve(entities_.size());
-
-		for (auto& entity : entities) {
-			// Update entity position using its velocity
-			Vector3 new_position = entity->GetPosition() + entity->GetVelocity() * delta_time;
-			entity->SetPosition(new_position);
-
-			// Update the entity's shape
-			entity->UpdateShape();
-
-			// Add shape to the list
-			shapes.push_back(entity->GetShape());
-		}
-
-		return shapes;
-	}
 } // namespace Boidsish

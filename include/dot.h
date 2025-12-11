@@ -1,22 +1,15 @@
 #pragma once
 
-#include <cmath>
-#include <functional>
-#include <map>
-#include <memory>
-#include <vector>
-
 #include "shape.h"
 #include "vector.h"
 #include <GL/glew.h>
 
 namespace Boidsish {
 
-	// Class representing a single dot/particle, inheriting from Shape
+	// Class representing a single dot/particle
 	class Dot: public Shape {
 	public:
-		float size; // Size of the dot
-
+		// Constructor with proper parameter names
 		Dot(int   id = 0,
 		    float x = 0.0f,
 		    float y = 0.0f,
@@ -28,17 +21,25 @@ namespace Boidsish {
 		    float a = 1.0f,
 		    int   trail_length = 10);
 
-		void render(Shader& shader) const;
+		// Size accessor/mutator
+		inline float GetSize() const { return size_; }
+
+		inline void SetSize(float size) { size_ = size; }
+
+		// Render implementation
 		void render() const override;
 
-		// Static members for the shared sphere mesh
+		// Static mesh management
 		static void InitSphereMesh();
 		static void CleanupSphereMesh();
 
 	private:
-		static GLuint vao;
-		static GLuint vbo;
-		static GLuint ebo;
-		static int    vertex_count;
+		float size_;
+
+		// Shared sphere mesh data
+		static GLuint sphere_vao_;
+		static GLuint sphere_vbo_;
+		static GLuint sphere_ebo_;
+		static int    sphere_vertex_count_;
 	};
 } // namespace Boidsish

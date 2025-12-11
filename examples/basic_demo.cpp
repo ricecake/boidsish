@@ -3,30 +3,47 @@
 #include <iostream>
 #include <memory>
 
+#include "dot.h"
 #include "graph.h"
 #include "graphics.h"
 
 using namespace Boidsish;
 
-// Example: Graph with spline smoothing
-std::vector<std::shared_ptr<Shape>> GraphExample(float time) {
+// Example: Simple moving dot with trail
+std::vector<std::shared_ptr<Shape>> TrailExample(float time) {
 	std::vector<std::shared_ptr<Shape>> shapes;
-	auto                                graph = std::make_shared<Graph>(0, 0, 0, 0);
+
+	// Example: Graph with spline smoothing
+	auto graph = std::make_shared<Graph>(0, 0, 0, 0);
 
 	// Add vertices in a chain
-	graph->vertices.push_back({Vector3(-4, 0, 0), 10.0f, 1, 0, 0, 1});
-	graph->vertices.push_back({Vector3(-2, 2, 0), 12.0f, 0, 1, 0, 1});
-	graph->vertices.push_back({Vector3(0, 0, 0), 15.0f, 0, 0, 1, 1});
-	graph->vertices.push_back({Vector3(2, -2, 0), 12.0f, 1, 1, 0, 1});
-	graph->vertices.push_back({Vector3(4, 0, 0), 10.0f, 1, 0, 1, 1});
+	graph->AddVertex(Vector3(-4, 0, 0), 10.0f, 1, 0, 0, 1);
+	graph->AddVertex(Vector3(-2, 2, 0), 12.0f, 0, 1, 0, 1);
+	graph->AddVertex(Vector3(0, 0, 0), 15.0f, 0, 0, 1, 1);
+	graph->AddVertex(Vector3(2, -2, 0), 12.0f, 1, 1, 0, 1);
+	graph->AddVertex(Vector3(4, 0, 0), 10.0f, 1, 0, 1, 1);
 
 	// Add edges to connect the vertices in a chain
-	graph->edges.push_back({0, 1});
-	graph->edges.push_back({1, 2});
-	graph->edges.push_back({2, 3});
-	graph->edges.push_back({3, 4});
+	graph->V(0).Link(graph->V(1));
+	graph->V(1).Link(graph->V(2));
+	graph->V(2).Link(graph->V(3));
+	graph->V(3).Link(graph->V(4));
 
 	shapes.push_back(graph);
+
+	// Example: Simple moving dot with trail
+	// Create a moving dot with a trail
+	auto dot = std::make_shared<Dot>(1, sin(time) * 3.0f, cos(time * 0.7f) * 2.0f, sin(time * 0.5f) * 1.5f);
+	dot->SetTrailLength(100); // Enable trails
+	dot->SetColor(1.0f, 0.5f, 0.0f);
+	shapes.push_back(dot);
+
+	// Another moving dot
+	auto dot2 = std::make_shared<Dot>(2, cos(time * 1.3f) * 2.5f, sin(time * 0.9f) * 2.0f, cos(time * 0.8f) * 1.0f);
+	dot2->SetTrailLength(150);
+	dot2->SetColor(0.0f, 1.0f, 0.5f);
+	shapes.push_back(dot2);
+
 	return shapes;
 }
 
@@ -40,7 +57,7 @@ int main() {
 		viz.SetCamera(camera);
 
 		// Set the dot function
-		viz.SetDotFunction(GraphExample);
+		viz.SetDotFunction(TrailExample);
 
 		auto path = std::filesystem::current_path();
 

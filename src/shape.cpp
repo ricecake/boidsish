@@ -1,7 +1,5 @@
 #include "shape.h"
 
-#include <memory>
-
 #include "shader.h"
 
 namespace Boidsish {

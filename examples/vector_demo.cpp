@@ -66,7 +66,7 @@ private:
 	float value;
 };
 
-FruitEntity::FruitEntity(int id): Entity<>(id), value(rand() % 90) {
+FruitEntity::FruitEntity(int id): Entity<>(id), value(0) {
 	// Vector3 start_pos((rand() % 10 - 5) * 2.0f, 1 + (rand() % 10), (rand() % 6 - 3) * 2.0f);
 	auto start_pos = fruitPlacer(10);
 	start_pos.y += 8;
@@ -77,10 +77,13 @@ FruitEntity::FruitEntity(int id): Entity<>(id), value(rand() % 90) {
 }
 
 void FruitEntity::UpdateEntity(EntityHandler& handler, float, float delta_time) {
-	value -= delta_time;
 	phase_ += delta_time;
 
-	if (value <= 0) {
+	auto value_modifier = sin((4*phase_)/8);
+	value = value_modifier * 90;
+	SetSize(4+12*value_modifier);
+
+	if (value < 0) {
 		handler.AddEntity<FruitEntity>();
 		handler.RemoveEntity(GetId());
 	}
@@ -159,7 +162,7 @@ void VectorDemoEntity::UpdateEntity(EntityHandler& handler, float time, float de
 FlockingEntity::FlockingEntity(int id, const Vector3& start_pos): Entity<>(id) {
 	SetPosition(start_pos);
 	SetSize(5.0f);
-	SetTrailLength(75);
+	SetTrailLength(25);
 	Vector3 startVel((rand() % 30 - 15) * 2.0f, (rand() % 10 - 5) * 2.0f, (rand() % 16 - 8) * 2.0f);
 
 	SetVelocity(startVel);
@@ -324,18 +327,18 @@ public:
 		std::cout << "=== Vector3 Operations Demo ===" << std::endl;
 
 		// Create some vector demo entities
-		for (int i = 0; i < 10; i++) {
+		for (int i = 0; i < 4; i++) {
 			Vector3 start_pos(10 * sin(i / 4), 1.0f, 10 * cos(i / 6.0f));
 			AddEntity<VectorDemoEntity>(start_pos);
 		}
 
 		// Create a flock of entities
-		for (int i = 0; i < 256; i++) {
+		for (int i = 0; i < 32; i++) {
 			Vector3 start_pos((rand() % 10 - 5) * 2.0f, (rand() % 6 - 3) * 2.0f, (rand() % 10 - 5) * 2.0f);
 			AddEntity<FlockingEntity>(start_pos);
 		}
 
-		for (int i = 0; i < 64; i++) {
+		for (int i = 0; i < 4; i++) {
 			AddEntity<FruitEntity>();
 		}
 
@@ -350,18 +353,29 @@ std::vector<std::shared_ptr<Shape>> GraphExample(float time) {
 	std::vector<std::shared_ptr<Shape>> shapes;
 	auto                                graph = std::make_shared<Graph>(0, 0, 0, 0);
 
-	// Add vertices in a chain
-	graph->vertices.push_back({Vector3(-4, 0, 0), 10.0f, 1, 0, 0, 1});
-	graph->vertices.push_back({Vector3(-2, 2, 1*sin(time)), 12.0f, 0, 1, 0, 1});
-	graph->vertices.push_back({Vector3(0, 0, 0), 15.0f+20*sin(time), 0, 0, 1, 1});
-	graph->vertices.push_back({Vector3(2, 2, -1*sin(time)), 12.0f, 1, 1, 0, 1});
-	graph->vertices.push_back({Vector3(4, 0, 0), 10.0f, 1, 0, 1, 1});
+	// // Add vertices in a chain
+	// graph->vertices.push_back({Vector3(-4, 0, 0), 10.0f, 1, 0, 0, 1});
+	// graph->vertices.push_back({Vector3(-2, 2, 1.0f * sin(time)), 12.0f, 0, 1, 0, 1});
+	// graph->vertices.push_back({Vector3(0, 0, 0), 15.0f + 20.0f * sin(time), 0, 0, 1, 1});
+	// graph->vertices.push_back({Vector3(2, 2, -1.0f * sin(time)), 12.0f, 1, 1, 0, 1});
+	// graph->vertices.push_back({Vector3(4, 0, 0), 10.0f, 1, 0, 1, 1});
 
-	// Add edges to connect the vertices in a chain
-	graph->edges.push_back({0, 1});
-	graph->edges.push_back({1, 2});
-	graph->edges.push_back({2, 3});
-	graph->edges.push_back({3, 4});
+	// // Add edges to connect the vertices in a chain
+	// graph->edges.push_back({0, 1}); // from_vertex_index, to_vertex_index
+	// graph->edges.push_back({1, 2});
+	// graph->edges.push_back({2, 3});
+	// graph->edges.push_back({3, 4});
+
+
+	auto root = graph->AddVertex(Vector3(0, 0, 0), 48.0f, 0, 0, 1, 1);
+	auto trunk = graph->AddVertex(Vector3(0, 6, 0), 16.0f, 0, 1, 1, 1);
+	root.Link(trunk);
+
+	graph->AddVertex(Vector3(0, 11, 0), 24.0f,            abs(sin(time/2)), abs(sin(time/3 + M_PI/3)), abs(sin(time/5 + (2*M_PI/3))), 1).Link(trunk);
+	graph->AddVertex(Vector3(3, 10+sin(time), cos(time)), 24.0f,  abs(sin(time/2)), abs(sin(time/5 + (2*M_PI/3))), abs(sin(time/3 + M_PI/3)), 1).Link(trunk);
+	graph->AddVertex(Vector3(-3, 10+sin(time), cos(time)), 24.0f, abs(sin(time/3 + (2*M_PI/3))), abs(sin(time/2 + M_PI/3)), abs(sin(time/5)), 1).Link(trunk);
+	graph->AddVertex(Vector3(cos(time), 10+sin(time), 3), 24.0f,  abs(sin(time/3 + M_PI/3)), abs(sin(time/5)), abs(sin(time/2 + (2*M_PI/3))), 1).Link(trunk);
+	graph->AddVertex(Vector3(cos(time), 10+sin(time), -3), 24.0f, abs(sin(time/5 + (2*M_PI/3))), abs(sin(time/3 + M_PI/3)), abs(sin(time/2)), 1).Link(trunk);
 
 	shapes.push_back(graph);
 	return shapes;

@@ -93,7 +93,7 @@ namespace Boidsish {
 			Shape::shader = shader;
 			plane_shader = std::make_unique<Shader>("shaders/plane.vert", "shaders/plane.frag");
 			sky_shader = std::make_unique<Shader>("shaders/sky.vert", "shaders/sky.frag");
-			trail_shader = std::make_unique<Shader>("shaders/trail.vert", "shaders/trail.frag", "shaders/trail.geom");
+			trail_shader = std::make_unique<Shader>("shaders/trail.vert", "shaders/trail.frag");
 			blur_shader = std::make_unique<Shader>("shaders/blur.vert", "shaders/blur.frag");
 
 			glGenBuffers(1, &lighting_ubo);
@@ -143,15 +143,10 @@ namespace Boidsish {
 
 			glGenVertexArrays(1, &sky_vao);
 
-			float blur_quad_vertices[] = {
-				// positions   // texCoords
-				-1.0f,  1.0f,  0.0f, 1.0f,
-				-1.0f, -1.0f,  0.0f, 0.0f,
-				 1.0f, -1.0f,  1.0f, 0.0f,
+			float blur_quad_vertices[] = {// positions   // texCoords
+			                              -1.0f, 1.0f, 0.0f, 1.0f, -1.0f, -1.0f, 0.0f, 0.0f, 1.0f, -1.0f, 1.0f, 0.0f,
 
-				-1.0f,  1.0f,  0.0f, 1.0f,
-				 1.0f, -1.0f,  1.0f, 0.0f,
-				 1.0f,  1.0f,  1.0f, 1.0f
+			                              -1.0f, 1.0f, 0.0f, 1.0f, 1.0f,  -1.0f, 1.0f, 0.0f, 1.0f, 1.0f,  1.0f, 1.0f
 			};
 			glGenVertexArrays(1, &blur_quad_vao);
 			glBindVertexArray(blur_quad_vao);
@@ -239,11 +234,11 @@ namespace Boidsish {
 		glm::mat4 SetupMatrices() { return SetupMatrices(camera); }
 
 		void RenderSceneObjects(
-			const glm::mat4&                               view,
-			const Camera&                                  cam,
-			const std::vector<std::shared_ptr<Shape>>&     shapes,
-			float                                          time,
-			const std::optional<glm::vec4>&                clip_plane
+			const glm::mat4& view,
+			const Camera& /* cam */,
+			const std::vector<std::shared_ptr<Shape>>& shapes,
+			float                                      time,
+			const std::optional<glm::vec4>&            clip_plane
 		) {
 			shader->use();
 			shader->setMat4("view", view);
@@ -260,19 +255,31 @@ namespace Boidsish {
 			CleanupOldTrails(time, shapes);
 			std::set<int> current_shape_ids;
 			for (const auto& shape : shapes) {
-				current_shape_ids.insert(shape->id);
-				if (trails.find(shape->id) == trails.end()) {
-					trails[shape->id] = std::make_shared<Trail>(shape->trail_length);
+				current_shape_ids.insert(shape->GetId());
+				// Only create trails for shapes with trail_length > 0
+				if (shape->GetTrailLength() > 0) {
+					if (trails.find(shape->GetId()) == trails.end()) {
+						trails[shape->GetId()] = std::make_shared<Trail>(shape->GetTrailLength());
+					}
+					trails[shape->GetId()]->AddPoint(
+						glm::vec3(shape->GetX(), shape->GetY(), shape->GetZ()),
+						glm::vec3(shape->GetR(), shape->GetG(), shape->GetB())
+					);
+					trail_last_update[shape->GetId()] = time;
 				}
-				trails[shape->id]->AddPoint(glm::vec3(shape->x, shape->y, shape->z),
-				                        	glm::vec3(shape->r, shape->g, shape->b));
-				trail_last_update[shape->id] = time;
 				shape->render();
 			}
 
 			trail_shader->use();
 			trail_shader->setMat4("view", view);
 			trail_shader->setMat4("projection", projection);
+			glm::mat4 model = glm::mat4(1.0f);
+			trail_shader->setMat4("model", model);
+			if (clip_plane) {
+				trail_shader->setVec4("clipPlane", *clip_plane);
+			} else {
+				trail_shader->setVec4("clipPlane", glm::vec4(0, 0, 0, 0));
+			}
 			for (const auto& pair : trails) {
 				pair.second->Render(*trail_shader);
 			}
@@ -301,7 +308,8 @@ namespace Boidsish {
 				glBindVertexArray(blur_quad_vao);
 				glDrawArrays(GL_TRIANGLES, 0, 6);
 				horizontal = !horizontal;
-				if (first_iteration) first_iteration = false;
+				if (first_iteration)
+					first_iteration = false;
 			}
 			glBindFramebuffer(GL_FRAMEBUFFER, 0);
 			glEnable(GL_DEPTH_TEST);
@@ -363,7 +371,7 @@ namespace Boidsish {
 		void CleanupOldTrails(float current_time, const std::vector<std::shared_ptr<Shape>>& active_shapes) {
 			std::set<int> active_ids;
 			for (const auto& shape : active_shapes) {
-				active_ids.insert(shape->id);
+				active_ids.insert(shape->GetId());
 			}
 
 			auto trail_it = trails.begin();
@@ -390,20 +398,20 @@ namespace Boidsish {
 			auto_camera_time += delta_time;
 
 			float mean_x = 0.0f, mean_y = 0.0f, mean_z = 0.0f;
-			float min_x = shapes[0]->x, max_x = shapes[0]->x;
-			float min_y = shapes[0]->y, max_y = shapes[0]->y;
-			float min_z = shapes[0]->z, max_z = shapes[0]->z;
+			float min_x = shapes[0]->GetX(), max_x = shapes[0]->GetX();
+			float min_y = shapes[0]->GetY(), max_y = shapes[0]->GetY();
+			float min_z = shapes[0]->GetZ(), max_z = shapes[0]->GetZ();
 
 			for (const auto& shape : shapes) {
-				mean_x += shape->x;
-				mean_y += shape->y;
-				mean_z += shape->z;
-				min_x = std::min(min_x, shape->x);
-				max_x = std::max(max_x, shape->x);
-				min_y = std::min(min_y, shape->y);
-				max_y = std::max(max_y, shape->y);
-				min_z = std::min(min_z, shape->z);
-				max_z = std::max(max_z, shape->z);
+				mean_x += shape->GetX();
+				mean_y += shape->GetY();
+				mean_z += shape->GetZ();
+				min_x = std::min(min_x, shape->GetX());
+				max_x = std::max(max_x, shape->GetX());
+				min_y = std::min(min_y, shape->GetY());
+				max_y = std::max(max_y, shape->GetY());
+				min_z = std::min(min_z, shape->GetZ());
+				max_z = std::max(max_z, shape->GetZ());
 			}
 
 			mean_x /= shapes.size();
@@ -448,9 +456,9 @@ namespace Boidsish {
 			}
 
 			const auto& target_dot = shapes[tracked_dot_index];
-			float       target_x = target_dot->x;
-			float       target_y = target_dot->y;
-			float       target_z = target_dot->z;
+			float       target_x = target_dot->GetX();
+			float       target_y = target_dot->GetY();
+			float       target_z = target_dot->GetZ();
 
 			float distance = 15.0f;
 			float camera_height_offset = 5.0f;
@@ -470,7 +478,7 @@ namespace Boidsish {
 			camera.pitch = std::max(-89.0f, std::min(89.0f, camera.pitch));
 		}
 
-		static void KeyCallback(GLFWwindow* w, int key, int sc, int action, int mods) {
+		static void KeyCallback(GLFWwindow* w, int key, int /* sc */, int action, int /* mods */) {
 			auto* impl = static_cast<VisualizerImpl*>(glfwGetWindowUserPointer(w));
 			if (key >= 0 && key < 1024) {
 				if (action == GLFW_PRESS)
@@ -586,7 +594,12 @@ namespace Boidsish {
 
 		glBindBuffer(GL_UNIFORM_BUFFER, impl->lighting_ubo);
 		glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(glm::vec3), &glm::vec3(1.0f, 100.0f, 25.0f)[0]);
-		glBufferSubData(GL_UNIFORM_BUFFER, 16, sizeof(glm::vec3), &glm::vec3(impl->camera.x, impl->camera.y, impl->camera.z)[0]);
+		glBufferSubData(
+			GL_UNIFORM_BUFFER,
+			16,
+			sizeof(glm::vec3),
+			&glm::vec3(impl->camera.x, impl->camera.y, impl->camera.z)[0]
+		);
 		glBufferSubData(GL_UNIFORM_BUFFER, 32, sizeof(glm::vec3), &glm::vec3(1.0f, 1.0f, 1.0f)[0]);
 		glBindBuffer(GL_UNIFORM_BUFFER, 0);
 

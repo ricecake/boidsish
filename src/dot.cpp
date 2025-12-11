@@ -11,37 +11,23 @@
 
 namespace Boidsish {
 
-	GLuint Dot::vao = 0;
-	GLuint Dot::vbo = 0;
-	GLuint Dot::ebo = 0;
-	int    Dot::vertex_count = 0;
+	GLuint Dot::sphere_vao_ = 0;
+	GLuint Dot::sphere_vbo_ = 0;
+	GLuint Dot::sphere_ebo_ = 0;
+	int    Dot::sphere_vertex_count_ = 0;
 
-	Dot::Dot(int id, float x, float y, float z, float size, float r, float g, float b, float a, int trail_length) {
-		this->id = id;
-		this->x = x;
-		this->y = y;
-		this->z = z;
-		this->size = size;
-		this->r = r;
-		this->g = g;
-		this->b = b;
-		this->a = a;
-		this->trail_length = trail_length;
-	}
+	Dot::Dot(int id, float x, float y, float z, float size, float r, float g, float b, float a, int trail_length):
+		Shape(id, x, y, z, r, g, b, a, trail_length), size_(size) {}
 
 	void Dot::render() const {
-		render(*shader);
-	}
-
-	void Dot::render(Shader& shader) const {
 		glm::mat4 model = glm::mat4(1.0f);
-		model = glm::translate(model, glm::vec3(x, y, z));
-		model = glm::scale(model, glm::vec3(size * 0.01f));
-		shader.setMat4("model", model);
-		shader.setVec3("objectColor", r, g, b);
+		model = glm::translate(model, glm::vec3(GetX(), GetY(), GetZ()));
+		model = glm::scale(model, glm::vec3(size_ * 0.01f));
+		shader->setMat4("model", model);
+		shader->setVec3("objectColor", GetR(), GetG(), GetB());
 
-		glBindVertexArray(vao);
-		glDrawElements(GL_TRIANGLES, vertex_count, GL_UNSIGNED_INT, 0);
+		glBindVertexArray(sphere_vao_);
+		glDrawElements(GL_TRIANGLES, sphere_vertex_count_, GL_UNSIGNED_INT, 0);
 		glBindVertexArray(0);
 	}
 
@@ -80,17 +66,17 @@ namespace Boidsish {
 				indices.push_back(first + 1);
 			}
 		}
-		vertex_count = indices.size();
+		sphere_vertex_count_ = indices.size();
 
-		glGenVertexArrays(1, &vao);
-		glBindVertexArray(vao);
+		glGenVertexArrays(1, &sphere_vao_);
+		glBindVertexArray(sphere_vao_);
 
-		glGenBuffers(1, &vbo);
-		glBindBuffer(GL_ARRAY_BUFFER, vbo);
+		glGenBuffers(1, &sphere_vbo_);
+		glBindBuffer(GL_ARRAY_BUFFER, sphere_vbo_);
 		glBufferData(GL_ARRAY_BUFFER, vertices.size() * sizeof(float), &vertices[0], GL_STATIC_DRAW);
 
-		glGenBuffers(1, &ebo);
-		glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ebo);
+		glGenBuffers(1, &sphere_ebo_);
+		glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, sphere_ebo_);
 		glBufferData(GL_ELEMENT_ARRAY_BUFFER, indices.size() * sizeof(unsigned int), &indices[0], GL_STATIC_DRAW);
 
 		glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void*)0);
@@ -102,9 +88,9 @@ namespace Boidsish {
 	}
 
 	void Dot::CleanupSphereMesh() {
-		glDeleteVertexArrays(1, &vao);
-		glDeleteBuffers(1, &vbo);
-		glDeleteBuffers(1, &ebo);
+		glDeleteVertexArrays(1, &sphere_vao_);
+		glDeleteBuffers(1, &sphere_vbo_);
+		glDeleteBuffers(1, &sphere_ebo_);
 	}
 
 } // namespace Boidsish
