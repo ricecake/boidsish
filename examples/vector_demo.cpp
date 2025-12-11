@@ -79,9 +79,9 @@ FruitEntity::FruitEntity(int id): Entity<>(id), value(0) {
 void FruitEntity::UpdateEntity(EntityHandler& handler, float, float delta_time) {
 	phase_ += delta_time;
 
-	auto value_modifier = sin((4*phase_)/8);
+	auto value_modifier = sin((4 * phase_) / 8);
 	value = value_modifier * 90;
-	SetSize(4+12*value_modifier);
+	SetSize(4 + 12 * value_modifier);
 
 	if (value < 0) {
 		handler.AddEntity<FruitEntity>();
@@ -366,16 +366,60 @@ std::vector<std::shared_ptr<Shape>> GraphExample(float time) {
 	// graph->edges.push_back({2, 3});
 	// graph->edges.push_back({3, 4});
 
-
 	auto root = graph->AddVertex(Vector3(0, 0, 0), 48.0f, 0, 0, 1, 1);
 	auto trunk = graph->AddVertex(Vector3(0, 6, 0), 16.0f, 0, 1, 1, 1);
 	root.Link(trunk);
 
-	graph->AddVertex(Vector3(0, 11, 0), 24.0f,            abs(sin(time/2)), abs(sin(time/3 + M_PI/3)), abs(sin(time/5 + (2*M_PI/3))), 1).Link(trunk);
-	graph->AddVertex(Vector3(3, 10+sin(time), cos(time)), 24.0f,  abs(sin(time/2)), abs(sin(time/5 + (2*M_PI/3))), abs(sin(time/3 + M_PI/3)), 1).Link(trunk);
-	graph->AddVertex(Vector3(-3, 10+sin(time), cos(time)), 24.0f, abs(sin(time/3 + (2*M_PI/3))), abs(sin(time/2 + M_PI/3)), abs(sin(time/5)), 1).Link(trunk);
-	graph->AddVertex(Vector3(cos(time), 10+sin(time), 3), 24.0f,  abs(sin(time/3 + M_PI/3)), abs(sin(time/5)), abs(sin(time/2 + (2*M_PI/3))), 1).Link(trunk);
-	graph->AddVertex(Vector3(cos(time), 10+sin(time), -3), 24.0f, abs(sin(time/5 + (2*M_PI/3))), abs(sin(time/3 + M_PI/3)), abs(sin(time/2)), 1).Link(trunk);
+	graph
+		->AddVertex(
+			Vector3(0, 11, 0),
+			24.0f,
+			abs(sin(time / 2)),
+			abs(sin(time / 3 + M_PI / 3)),
+			abs(sin(time / 5 + (2 * M_PI / 3))),
+			1
+		)
+		.Link(trunk);
+	graph
+		->AddVertex(
+			Vector3(3, 10 + sin(time), cos(time)),
+			24.0f,
+			abs(sin(time / 2)),
+			abs(sin(time / 5 + (2 * M_PI / 3))),
+			abs(sin(time / 3 + M_PI / 3)),
+			1
+		)
+		.Link(trunk);
+	graph
+		->AddVertex(
+			Vector3(-3, 10 + sin(time), cos(time)),
+			24.0f,
+			abs(sin(time / 3 + (2 * M_PI / 3))),
+			abs(sin(time / 2 + M_PI / 3)),
+			abs(sin(time / 5)),
+			1
+		)
+		.Link(trunk);
+	graph
+		->AddVertex(
+			Vector3(cos(time), 10 + sin(time), 3),
+			24.0f,
+			abs(sin(time / 3 + M_PI / 3)),
+			abs(sin(time / 5)),
+			abs(sin(time / 2 + (2 * M_PI / 3))),
+			1
+		)
+		.Link(trunk);
+	graph
+		->AddVertex(
+			Vector3(cos(time), 10 + sin(time), -3),
+			24.0f,
+			abs(sin(time / 5 + (2 * M_PI / 3))),
+			abs(sin(time / 3 + M_PI / 3)),
+			abs(sin(time / 2)),
+			1
+		)
+		.Link(trunk);
 
 	shapes.push_back(graph);
 	return shapes;

@@ -40,6 +40,10 @@ namespace Boidsish {
 		bool   first_mouse = true;
 		bool   keys[1024] = {false};
 
+		bool                                           paused = false;
+		float                                          simulation_time = 0.0f;
+		std::chrono::high_resolution_clock::time_point last_frame;
+
 		bool  auto_camera_mode = true;
 		float auto_camera_time = 0.0f;
 		float auto_camera_angle = 0.0f;
@@ -49,10 +53,8 @@ namespace Boidsish {
 		bool single_track_mode = false;
 		int  tracked_dot_index = 0;
 
-		std::chrono::high_resolution_clock::time_point start_time;
-
 		VisualizerImpl(int w, int h, const char* title): width(w), height(h) {
-			start_time = std::chrono::high_resolution_clock::now();
+			last_frame = std::chrono::high_resolution_clock::now();
 			if (!glfwInit())
 				throw std::runtime_error("Failed to initialize GLFW");
 
@@ -257,7 +259,7 @@ namespace Boidsish {
 			for (const auto& shape : shapes) {
 				current_shape_ids.insert(shape->GetId());
 				// Only create trails for shapes with trail_length > 0
-				if (shape->GetTrailLength() > 0) {
+				if (shape->GetTrailLength() > 0 && !paused) {
 					if (trails.find(shape->GetId()) == trails.end()) {
 						trails[shape->GetId()] = std::make_shared<Trail>(shape->GetTrailLength());
 					}
@@ -498,6 +500,8 @@ namespace Boidsish {
 				impl->single_track_mode = true;
 			if (key == GLFW_KEY_8 && action == GLFW_PRESS)
 				impl->single_track_mode = false;
+			if (key == GLFW_KEY_P && action == GLFW_PRESS)
+				impl->paused = !impl->paused;
 		}
 
 		static void MouseCallback(GLFWwindow* w, double xpos, double ypos) {
@@ -562,21 +566,23 @@ namespace Boidsish {
 
 	void Visualizer::Update() {
 		glfwPollEvents();
-		static auto last_frame = std::chrono::high_resolution_clock::now();
-		auto        current_frame = std::chrono::high_resolution_clock::now();
-		float       delta_time = std::chrono::duration<float>(current_frame - last_frame).count();
-		last_frame = current_frame;
+		auto  current_frame = std::chrono::high_resolution_clock::now();
+		float delta_time = std::chrono::duration<float>(current_frame - impl->last_frame).count();
+		impl->last_frame = current_frame;
+
+		if (!impl->paused) {
+			impl->simulation_time += delta_time;
+		}
 		impl->ProcessInput(delta_time);
 	}
 
 	void Visualizer::Render() {
 		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-		float time = std::chrono::duration<float>(std::chrono::high_resolution_clock::now() - impl->start_time).count();
 
 		std::vector<std::shared_ptr<Shape>> shapes;
 		if (!impl->shape_functions.empty()) {
 			for (const auto& func : impl->shape_functions) {
-				auto new_shapes = func(time);
+				auto new_shapes = func(impl->simulation_time);
 				shapes.insert(shapes.end(), new_shapes.begin(), new_shapes.end());
 			}
 		}
@@ -617,7 +623,13 @@ namespace Boidsish {
 			impl->reflection_vp = impl->projection * reflection_view;
 
 			impl->RenderSky(reflection_view);
-			impl->RenderSceneObjects(reflection_view, reflection_cam, shapes, time, glm::vec4(0, 1, 0, 0.01));
+			impl->RenderSceneObjects(
+				reflection_view,
+				reflection_cam,
+				shapes,
+				impl->simulation_time,
+				glm::vec4(0, 1, 0, 0.01)
+			);
 			glBindFramebuffer(GL_FRAMEBUFFER, 0);
 		}
 		glDisable(GL_CLIP_DISTANCE0);
@@ -628,7 +640,7 @@ namespace Boidsish {
 		glm::mat4 view = impl->SetupMatrices();
 		impl->RenderSky(view);
 		impl->RenderPlane(view);
-		impl->RenderSceneObjects(view, impl->camera, shapes, time, std::nullopt);
+		impl->RenderSceneObjects(view, impl->camera, shapes, impl->simulation_time, std::nullopt);
 
 		glfwSwapBuffers(impl->window);
 	}

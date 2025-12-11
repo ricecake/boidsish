@@ -26,7 +26,7 @@ namespace Boidsish {
 			constexpr int GetId() const { return id; }
 			friend class Graph;
 
-			Vertex(std::weak_ptr<Graph> parent, int Id):  id(Id), parent_(parent) {}
+			Vertex(std::weak_ptr<Graph> parent, int Id): id(Id), parent_(parent) {}
 
 			Vertex(
 				std::weak_ptr<Graph> parent,
