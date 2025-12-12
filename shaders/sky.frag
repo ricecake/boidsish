@@ -15,71 +15,65 @@ layout (std140) uniform Lighting {
 uniform mat4 invProjection;
 uniform mat4 invView;
 
-// float rand(vec2 co){
-//     return fract(sin(dot(co.xy ,vec2(12.9898,78.233))) * 43758.5453);
-// }
 
-// float noise(vec2 p){
-//     vec2 ip = floor(p); // Integer part
-//     vec2 u = fract(p);  // Fractional part
-//     // Smoothstep for smooth interpolation
-//     u = u*u*(3.0-2.0*u);
+// sky.frag
 
-//     // Get random values for the four corners of the grid cell
-//     float a = rand(ip);
-//     float b = rand(ip + vec2(1.0, 0.0));
-//     float c = rand(ip + vec2(0.0, 1.0));
-//     float d = rand(ip + vec2(1.0, 1.0));
-
-//     // Bilinear interpolation
-//     return mix(
-//         mix(a, b, u.x),
-//         mix(c, d, u.x),
-//         u.y
-//     );
-// }
-
-
-// Simplex Noise (2D) - Replace your existing rand and noise functions
-
-// Permutation table (used for hashing the input coordinates)
+// --- 3D Simplex Noise (Full Replacement for old noise/snoise) ---
 vec4 permute(vec4 x){return mod(((x*34.0)+1.0)*x, 289.0);}
-vec2 fade(vec2 t) {return t*t*t*(t*(t*6.0-15.0)+10.0);}
+vec4 taylorInvSqrt(vec4 r){return 1.79284291400159 - 0.85373472095314 * r;}
 
-float snoise(vec2 P){
-    vec4 Pi = floor(P.xyxy) + vec4(0.0, 0.0, 1.0, 1.0);
-    vec4 Pf = fract(P.xyxy) - vec4(0.0, 0.0, 1.0, 1.0);
-    Pi = mod(Pi, 289.0); // Keep values in range
-    vec4 ix = Pi.xzxz;
-    vec4 iy = Pi.yyww;
-    vec4 fx = Pf.xzxz;
-    vec4 fy = Pf.yyww;
+float snoise3D(vec3 v) {
+  const vec2  C = vec2(1.0/6.0, 1.0/3.0) ;
+  const vec4  D = vec4(0.0, 0.5, 1.0, 2.0);
 
-    vec4 i = permute(permute(ix) + iy);
+  // First corner
+  vec3 i  = floor(v + dot(v, C.yyy) );
+  vec3 x0 =   v - i + dot(i, C.xxx) ;
 
-    vec4 gx = fract(i * (1.0 / 41.0)) * 2.0 - 1.0;
-    vec4 gy = abs(gx) - 0.5;
-    vec4 tx = floor(gx + 0.5);
-    gx = gx - tx;
+  // Other corners
+  vec3 g = step(x0.yzx, x0.xyz);
+  vec3 l = 1.0 - g;
+  vec3 i1 = min( g.xyz, l.zxy );
+  vec3 i2 = max( g.xyz, l.zxy );
 
-    vec2 g00 = vec2(gx.x,gy.x);
-    vec2 g10 = vec2(gx.y,gy.y);
-    vec2 g01 = vec2(gx.z,gy.z);
-    vec2 g11 = vec2(gx.w,gy.w);
+  //  x1 = x0 - i1 + 1.0 * C.xxx;
+  //  x2 = x0 - i2 + 2.0 * C.xxx;
+  //  x3 = x0 - 1.0 + 3.0 * C.xxx;
+  vec3 x1 = x0 - i1 + C.xxx;
+  vec3 x2 = x0 - i2 + C.yyy; // 2.0*C.x = 2/6 = 1/3 = C.y
+  vec3 x3 = x0 - D.yyy;      // 1.0 - 3.0*C.x = 0.5 = D.y
 
-    vec4 norm = 1.79284291400159 - 0.85373472095314 * vec4(dot(g00, g00), dot(g10, g10), dot(g01, g01), dot(g11, g11));
-    g00 *= norm.x;
-    g10 *= norm.y;
-    g01 *= norm.z;
-    g11 *= norm.w;
+  // Permutations
+  i = mod(i, 289.0 );
+  vec4 p = permute( permute( permute(
+             i.z + vec4(0.0, i1.z, i2.z, 1.0 ))
+           + i.y + vec4(0.0, i1.y, i2.y, 1.0 ))
+           + i.x + vec4(0.0, i1.x, i2.x, 1.0 ));
 
-    float n00 = dot(g00, vec2(fx.x, fy.x));
-    float n10 = dot(g10, vec2(fx.y, fy.y));
-    float n01 = dot(g01, vec2(fx.z, fy.z));
-    float n11 = dot(g11, vec2(fx.w, fy.w));
+  // Gradients: 7/8 of the cube faces
+  vec3 m0 = max(0.6 - vec3(dot(x0,x0), dot(x1,x1), dot(x2,x2)), 0.0);
+vec3 m1 = vec3(max(0.6 - dot(x3,x3), 0.0));
+  m0 = m0 * m0;
+  m1 = m1 * m1;
 
-    vec2 t = fade(Pf.xy);
-    return 2.3 * mix(mix(n00, n10, t.x), mix(n01, n11, t.x), t.y);
+  // Gradients: 44 of them
+  vec4 x = fract(p * (1.0 / 7.0)) * 2.0 - 1.0;
+  vec4 h = abs(x) - 0.5;
+  vec4 ox = floor(x + 0.5);
+  vec4 a0 = x - ox;
+
+vec4 inv_sqrt = taylorInvSqrt(vec4(dot(a0.xy,a0.xy), dot(a0.zw,a0.zw), dot(a0.xz,a0.xz), dot(a0.yw,a0.yw)));
+m0 *= inv_sqrt.xyz;
+
+// m1 (vec3) is scaled by the final factor (.w), broadcasted to vec3
+m1 *= vec3(inv_sqrt.w);
+
+// Use component swizzling (xyz, yzw) to match vec3 position vectors (x0-x3)
+float n0 = dot(a0.xyz, x0);
+float n1 = dot(a0.yzw, x1);
+float n2 = dot(a0.yzw, x2);
+float n3 = dot(a0.yzw, x3);
+  return 32.0 * (m0.x * n0 + m0.y * n1 + m0.z * n2 + m1.x * n3);
 }
 
 // A simple 3D hash function (returns pseudo-random vec3 between 0 and 1)
@@ -112,14 +106,6 @@ float starLayer(vec3 dir) {
     return smoothstep(radius, radius * 0.5, dist);
 }
 
-// Basic 3D Value Noise (Reuse your logic but adaptable to 3D input)
-float noise3D(vec3 p) {
-    // ... (Your bilinear interpolation logic extended to trilinear) ...
-    // Note: For best results, research "Gradient Noise" or "Simplex Noise"
-    // as they have fewer artifacts than the Value Noise in your file.
-    return 0.5; // Placeholder
-}
-
 // Fractal Brownian Motion
 // float fbm(vec3 p) {
 //     float value = 0.0;
@@ -131,17 +117,19 @@ float noise3D(vec3 p) {
 //     }
 //     return value;
 // }
-float fbm(vec2 p) {
+// sky.frag
+
+float fbm(vec3 p) { // Now accepts 3D vector
     float value = 0.0;
     float amplitude = 0.5;
     for (int i = 0; i < 4; i++) {
-        value += amplitude * snoise(p); // Use your existing noise function
+        // *** Use the 3D Simplex function ***
+        value += amplitude * snoise3D(p);
         p *= 2.0;
         amplitude *= 0.5;
     }
     return value;
 }
-
 
 void main()
 {
@@ -164,21 +152,20 @@ void main()
     vec3 color = mix(twilight_color, mid_sky_color, twilight_mix);
 
    // Mottled glow
-    color = mix(color, color*0.6, snoise(world_ray.xy * 10.0));
+    color = mix(color, color*0.6, snoise3D(world_ray * 10.0));
 
     float top_mix = smoothstep(0.1, 0.6, y);
     vec3 final_color = mix(color, top_sky_color, top_mix);
 
     // --- 2. Nebula/Haze Layer (Domain Warping + FBM) ---
     // Use the world_ray.xz component to map the noise to the sphere
-    vec2 p = world_ray.xz * 4.0;
+    vec3 p = world_ray * 4.0;
 
     // Domain Warping: Offset coordinates by time-animated noise
-    vec2 warp_offset = vec2(fbm(p + time * 0.05), fbm(p.yx + time * 0.05));
+    vec3 warp_offset = vec3(fbm(p + time * 0.05));
 
     // Final Nebula Noise calculation
     float nebula_noise = fbm(p + warp_offset * 0.5);
-
     // Map noise to a color palette (e.g., magenta and cyan for cosmic clouds)
     vec3 nebula_palette = mix(vec3(0.0, 0.1, 0.4), vec3(0.8, 0.2, 0.7), nebula_noise);
 
