@@ -5,6 +5,7 @@
 
 #include <fstream>
 #include <iostream>
+#include <set>
 #include <sstream>
 #include <string>
 
@@ -19,40 +20,18 @@ public:
 	// ------------------------------------------------------------------------
 	Shader(const char* vertexPath, const char* fragmentPath, const char* geometryPath = nullptr) {
 		// 1. retrieve the vertex/fragment source code from filePath
-		std::string   vertexCode;
-		std::string   fragmentCode;
-		std::string   geometryCode;
-		std::ifstream vShaderFile;
-		std::ifstream fShaderFile;
-		std::ifstream gShaderFile;
-		// ensure ifstream objects can throw exceptions:
-		vShaderFile.exceptions(std::ifstream::failbit | std::ifstream::badbit);
-		fShaderFile.exceptions(std::ifstream::failbit | std::ifstream::badbit);
-		gShaderFile.exceptions(std::ifstream::failbit | std::ifstream::badbit);
-		try {
-			// open files
-			vShaderFile.open(vertexPath);
-			fShaderFile.open(fragmentPath);
-			std::stringstream vShaderStream, fShaderStream;
-			// read file's buffer contents into streams
-			vShaderStream << vShaderFile.rdbuf();
-			fShaderStream << fShaderFile.rdbuf();
-			// close file handlers
-			vShaderFile.close();
-			fShaderFile.close();
-			// convert stream into string
-			vertexCode = vShaderStream.str();
-			fragmentCode = fShaderStream.str();
-			// if geometry shader path is present, also load a geometry shader
-			if (geometryPath != nullptr) {
-				gShaderFile.open(geometryPath);
-				std::stringstream gShaderStream;
-				gShaderStream << gShaderFile.rdbuf();
-				gShaderFile.close();
-				geometryCode = gShaderStream.str();
-			}
-		} catch (std::ifstream::failure& e) {
-			std::cout << "ERROR::SHADER::FILE_NOT_SUCCESSFULLY_READ: " << e.what() << std::endl;
+		std::string vertexCode;
+		std::string fragmentCode;
+		std::string geometryCode;
+		std::set<std::string> includedFiles;
+
+		vertexCode = loadAndPreprocessShader(vertexPath, includedFiles);
+		includedFiles.clear(); // Reset for the next shader
+		fragmentCode = loadAndPreprocessShader(fragmentPath, includedFiles);
+		includedFiles.clear();
+
+		if (geometryPath != nullptr) {
+			geometryCode = loadAndPreprocessShader(geometryPath, includedFiles);
 		}
 		const char* vShaderCode = vertexCode.c_str();
 		const char* fShaderCode = fragmentCode.c_str();
@@ -155,6 +134,53 @@ public:
 	}
 
 private:
+	// ------------------------------------------------------------------------
+	std::string loadAndPreprocessShader(const std::string& path, std::set<std::string>& includedFiles) {
+		if (includedFiles.count(path)) {
+			// Circular include detected
+			return "";
+		}
+		includedFiles.insert(path);
+
+		std::string       code;
+		std::ifstream     shaderFile;
+		std::stringstream shaderStream;
+
+		shaderFile.exceptions(std::ifstream::failbit | std::ifstream::badbit);
+		try {
+			shaderFile.open(path);
+			shaderStream << shaderFile.rdbuf();
+			shaderFile.close();
+			code = shaderStream.str();
+		} catch (std::ifstream::failure& e) {
+			std::cerr << "ERROR::SHADER::FILE_NOT_SUCCESSFULLY_READ: " << path << " (" << e.what() << ")"
+					  << std::endl;
+			return "";
+		}
+
+		std::istringstream iss(code);
+		std::ostringstream oss;
+		std::string        line;
+		while (std::getline(iss, line)) {
+			if (line.rfind("#include", 0) == 0) {
+				std::string includePath = line.substr(line.find('"') + 1);
+				includePath = includePath.substr(0, includePath.find('"'));
+
+				// Get the directory of the current file
+				std::string currentDir = path.substr(0, path.find_last_of('/'));
+				std::string fullIncludePath = currentDir + "/" + includePath;
+
+				oss << loadAndPreprocessShader(fullIncludePath, includedFiles) << "\n";
+			} else {
+				oss << line << "\n";
+			}
+		}
+
+		// Remove the file from the set for the current path, so it can be included in other files
+		includedFiles.erase(path);
+		return oss.str();
+	}
+
 	// utility function for checking shader compilation/linking errors.
 	// ------------------------------------------------------------------------
 	void checkCompileErrors(GLuint shader, std::string type) {

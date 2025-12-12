@@ -105,10 +105,10 @@ namespace Boidsish {
 
 			glGenBuffers(1, &lighting_ubo);
 			glBindBuffer(GL_UNIFORM_BUFFER, lighting_ubo);
-			// Allocate space for 3 vec3s with std140 padding (each vec3 padded to 16 bytes)
-			glBufferData(GL_UNIFORM_BUFFER, 48, NULL, GL_STATIC_DRAW);
+			// Allocate space for 3 vec3s (padded to 16 bytes each) and 1 float
+			glBufferData(GL_UNIFORM_BUFFER, 64, NULL, GL_STATIC_DRAW);
 			glBindBuffer(GL_UNIFORM_BUFFER, 0);
-			glBindBufferRange(GL_UNIFORM_BUFFER, 0, lighting_ubo, 0, 48);
+			glBindBufferRange(GL_UNIFORM_BUFFER, 0, lighting_ubo, 0, 64);
 
 			shader->use();
 			glUniformBlockBinding(shader->ID, glGetUniformBlockIndex(shader->ID, "Lighting"), 0);
@@ -669,6 +669,7 @@ namespace Boidsish {
 			&glm::vec3(impl->camera.x, impl->camera.y, impl->camera.z)[0]
 		);
 		glBufferSubData(GL_UNIFORM_BUFFER, 32, sizeof(glm::vec3), &glm::vec3(1.0f, 1.0f, 1.0f)[0]);
+		glBufferSubData(GL_UNIFORM_BUFFER, 48, sizeof(float), &impl->simulation_time);
 		glBindBuffer(GL_UNIFORM_BUFFER, 0);
 
 		// --- Reflection Pass ---
