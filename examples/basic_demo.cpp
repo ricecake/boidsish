@@ -6,11 +6,12 @@
 
 #include "graphics.h"
 #include "platonic_solid.h"
+#include "teapot.h"
 
 using namespace Boidsish;
 
-// Example showing the platonic solids
-std::vector<std::shared_ptr<Shape>> PlatonicSolidsExample(float time) {
+// Example showing the platonic solids and the Utah teapot
+std::vector<std::shared_ptr<Shape>> ShapesExample(float time) {
     std::vector<std::shared_ptr<Shape>> shapes;
 
     // Create one of each of the first three platonic solids
@@ -34,20 +35,24 @@ std::vector<std::shared_ptr<Shape>> PlatonicSolidsExample(float time) {
     icosahedron->SetColor(1.0f, 0.0f, 1.0f); // Magenta
     shapes.push_back(icosahedron);
 
+    auto teapot = std::make_shared<Teapot>(5, 9.0f, 0.0f, 0.0f);
+    teapot->SetColor(0.0f, 1.0f, 1.0f); // Cyan
+    shapes.push_back(teapot);
+
     return shapes;
 }
 
 int main() {
 	try {
 		// Create the visualizer
-		Visualizer viz(1024, 768, "Boidsish - Platonic Solids Example");
+		Visualizer viz(1024, 768, "Boidsish - Shapes Example");
 
 		// Set up the initial camera position
 		Camera camera(0.0f, 2.0f, 15.0f, -15.0f, 0.0f, 45.0f);
 		viz.SetCamera(camera);
 
 		// Set the shape function
-		viz.AddShapeHandler(PlatonicSolidsExample);
+		viz.AddShapeHandler(ShapesExample);
 
 		auto path = std::filesystem::current_path();
 
