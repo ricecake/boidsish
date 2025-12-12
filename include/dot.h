@@ -29,17 +29,7 @@ namespace Boidsish {
 		// Render implementation
 		void render() const override;
 
-		// Static mesh management
-		static void InitSphereMesh();
-		static void CleanupSphereMesh();
-
 	private:
 		float size_;
-
-		// Shared sphere mesh data
-		static GLuint sphere_vao_;
-		static GLuint sphere_vbo_;
-		static GLuint sphere_ebo_;
-		static int    sphere_vertex_count_;
 	};
 } // namespace Boidsish

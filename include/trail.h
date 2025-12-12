@@ -24,13 +24,20 @@ namespace Boidsish {
 			glm::vec3 pos;
 			glm::vec3 normal;
 			glm::vec3 color;
+			float     progress;
 		};
 
 		// Catmull-Rom interpolation for smooth curves
 		Vector3 CatmullRom(float t, const Vector3& p0, const Vector3& p1, const Vector3& p2, const Vector3& p3) const;
 
-		// Generate continuous mesh with frame transport
-		void GenerateMesh();
+		// (Re)calculates the entire trail's geometry from scratch
+		void GenerateTrailGeometry();
+		// Builds the renderable mesh from the cached geometry
+		void BuildMeshFromGeometryCache();
+		// Appends a new segment to the geometry cache
+		void AppendToGeometryCache(const Vector3& p0, const Vector3& p1, const Vector3& p2, const Vector3& p3, const Vector3& c0, const Vector3& c1, const Vector3& c2, const Vector3& c3);
+		// Removes the oldest segment from the geometry cache
+		void PopFromGeometryCache();
 
 		// Frame transport for maintaining smooth normal orientation
 		Vector3
@@ -44,7 +51,14 @@ namespace Boidsish {
 		// Mesh data
 		mutable std::vector<TrailVertex> mesh_vertices;
 		mutable int                      vertex_count;
-		mutable bool                     mesh_dirty;
+		mutable bool                    mesh_dirty;
+
+		// Cached geometry data for incremental updates
+		mutable std::deque<Vector3> curve_positions;
+		mutable std::deque<Vector3> curve_colors;
+		mutable std::deque<Vector3> tangents;
+		mutable std::deque<Vector3> normals;
+		mutable std::deque<Vector3> binormals;
 
 		// Configuration
 		const int   TRAIL_SEGMENTS = 8;     // Circular segments around trail

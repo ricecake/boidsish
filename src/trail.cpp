@@ -5,6 +5,8 @@
 #include <numbers>
 #include <vector>
 
+#include "shape.h"
+
 namespace Boidsish {
 
 	Trail::Trail(int max_length): max_length(max_length), vertex_count(0), mesh_dirty(false) {
@@ -45,56 +47,59 @@ namespace Boidsish {
 		return rotated.Normalized();
 	}
 
-	void Trail::GenerateMesh() {
-		mesh_vertices.clear();
+	void Trail::GenerateTrailGeometry() {
+		curve_positions.clear();
+		curve_colors.clear();
+		tangents.clear();
+		normals.clear();
+		binormals.clear();
 
 		if (points.size() < 4) {
-			vertex_count = 0;
 			return;
 		}
 
 		std::vector<Vector3> positions;
 		std::vector<Vector3> colors;
-
 		for (const auto& point : points) {
 			positions.emplace_back(point.first.x, point.first.y, point.first.z);
 			colors.emplace_back(point.second.x, point.second.y, point.second.z);
 		}
 
-		// Generate smooth curve using Catmull-Rom splines
-		std::vector<Vector3> curve_positions;
-		std::vector<Vector3> curve_colors;
-		std::vector<float>   curve_progress;
-
-		int total_segments = (positions.size() - 3) * CURVE_SEGMENTS;
 		for (int i = 0; i < (int)positions.size() - 3; ++i) {
-			for (int j = 0; j < CURVE_SEGMENTS; ++j) {
-				float   t = (float)j / CURVE_SEGMENTS;
-				Vector3 pos = CatmullRom(t, positions[i], positions[i + 1], positions[i + 2], positions[i + 3]);
-				Vector3 color = CatmullRom(t, colors[i], colors[i + 1], colors[i + 2], colors[i + 3]);
-
-				float progress = (float)(i * CURVE_SEGMENTS + j) / total_segments;
-
-				curve_positions.push_back(pos);
-				curve_colors.push_back(color);
-				curve_progress.push_back(progress);
-			}
+			AppendToGeometryCache(
+				positions[i],
+				positions[i+1],
+				positions[i+2],
+				positions[i+3],
+				colors[i],
+				colors[i+1],
+				colors[i+2],
+				colors[i+3]
+			);
 		}
+	}
 
-		// Add the final point
-		curve_positions.push_back(positions[positions.size() - 2]);
-		curve_colors.push_back(colors[colors.size() - 2]);
-		curve_progress.push_back(1.0f);
+	void Trail::BuildMeshFromGeometryCache() {
+		mesh_vertices.clear();
 
 		if (curve_positions.size() < 2) {
 			vertex_count = 0;
 			return;
 		}
 
-		// Generate tangents and frame transport
-		std::vector<Vector3> tangents;
-		std::vector<Vector3> normals;
-		std::vector<Vector3> binormals;
+		std::vector<float> curve_progress;
+		for (int i=0; i < curve_positions.size(); ++i) {
+			curve_progress.push_back((float)i / (curve_positions.size() -1));
+		}
+
+		if (curve_positions.size() < 2) {
+			vertex_count = 0;
+			return;
+		}
+
+		tangents.clear();
+		normals.clear();
+		binormals.clear();
 
 		for (int i = 0; i < (int)curve_positions.size(); ++i) {
 			Vector3 tangent;
@@ -128,11 +133,8 @@ namespace Boidsish {
 
 		// Generate cylindrical mesh around the curve
 		for (int i = 0; i < (int)curve_positions.size() - 1; ++i) {
-			// Calculate thickness based on progress (smaller towards end)
-			// Progress 0 = oldest (tail), Progress 1 = newest (head)
-			// We want thick at head (newest) and thin at tail (oldest)
-			float thickness1 = BASE_THICKNESS * (0.2f + curve_progress[i] * 0.8f); // 20% to 100%
-			float thickness2 = BASE_THICKNESS * (0.2f + curve_progress[i + 1] * 0.8f);
+			float thickness1 = BASE_THICKNESS;
+			float thickness2 = BASE_THICKNESS;
 
 			// Create rings of vertices
 			std::vector<glm::vec3> ring1_positions, ring1_normals;
@@ -166,34 +168,40 @@ namespace Boidsish {
 				mesh_vertices.push_back(
 					{ring1_positions[j],
 				     ring1_normals[j],
-				     glm::vec3(curve_colors[i].x, curve_colors[i].y, curve_colors[i].z)}
+				     glm::vec3(curve_colors[i].x, curve_colors[i].y, curve_colors[i].z),
+				     curve_progress[i]}
 				);
 				mesh_vertices.push_back(
 					{ring2_positions[j],
 				     ring2_normals[j],
-				     glm::vec3(curve_colors[i + 1].x, curve_colors[i + 1].y, curve_colors[i + 1].z)}
+				     glm::vec3(curve_colors[i + 1].x, curve_colors[i + 1].y, curve_colors[i + 1].z),
+				     curve_progress[i + 1]}
 				);
 				mesh_vertices.push_back(
 					{ring1_positions[j + 1],
 				     ring1_normals[j + 1],
-				     glm::vec3(curve_colors[i].x, curve_colors[i].y, curve_colors[i].z)}
+				     glm::vec3(curve_colors[i].x, curve_colors[i].y, curve_colors[i].z),
+				     curve_progress[i]}
 				);
 
 				// Second triangle
 				mesh_vertices.push_back(
 					{ring1_positions[j + 1],
 				     ring1_normals[j + 1],
-				     glm::vec3(curve_colors[i].x, curve_colors[i].y, curve_colors[i].z)}
+				     glm::vec3(curve_colors[i].x, curve_colors[i].y, curve_colors[i].z),
+				     curve_progress[i]}
 				);
 				mesh_vertices.push_back(
 					{ring2_positions[j],
 				     ring2_normals[j],
-				     glm::vec3(curve_colors[i + 1].x, curve_colors[i + 1].y, curve_colors[i + 1].z)}
+				     glm::vec3(curve_colors[i + 1].x, curve_colors[i + 1].y, curve_colors[i + 1].z),
+				     curve_progress[i + 1]}
 				);
 				mesh_vertices.push_back(
 					{ring2_positions[j + 1],
 				     ring2_normals[j + 1],
-				     glm::vec3(curve_colors[i + 1].x, curve_colors[i + 1].y, curve_colors[i + 1].z)}
+				     glm::vec3(curve_colors[i + 1].x, curve_colors[i + 1].y, curve_colors[i + 1].z),
+				     curve_progress[i + 1]}
 				);
 			}
 		}
@@ -203,8 +211,23 @@ namespace Boidsish {
 
 	void Trail::AddPoint(glm::vec3 position, glm::vec3 color) {
 		points.push_back({position, color});
+
 		if (points.size() > static_cast<size_t>(max_length)) {
 			points.pop_front();
+			PopFromGeometryCache();
+		}
+
+		if (points.size() >= 4) {
+			int size = points.size();
+			std::vector<Vector3> p(4);
+			std::vector<Vector3> c(4);
+
+			for (int i=0; i<4; ++i) {
+				p[i] = Vector3(points[size-4+i].first.x, points[size-4+i].first.y, points[size-4+i].first.z);
+				c[i] = Vector3(points[size-4+i].second.x, points[size-4+i].second.y, points[size-4+i].second.z);
+			}
+
+			AppendToGeometryCache(p[0], p[1], p[2], p[3], c[0], c[1], c[2], c[3]);
 		}
 
 		mesh_dirty = true;
@@ -216,7 +239,10 @@ namespace Boidsish {
 		}
 
 		if (mesh_dirty) {
-			const_cast<Trail*>(this)->GenerateMesh();
+			if (curve_positions.empty() && points.size() >= 4) {
+				const_cast<Trail*>(this)->GenerateTrailGeometry();
+			}
+			const_cast<Trail*>(this)->BuildMeshFromGeometryCache();
 			const_cast<Trail*>(this)->mesh_dirty = false;
 
 			// Upload mesh to GPU
@@ -241,10 +267,17 @@ namespace Boidsish {
 			glVertexAttribPointer(2, 3, GL_FLOAT, GL_FALSE, sizeof(TrailVertex), (void*)offsetof(TrailVertex, color));
 			glEnableVertexAttribArray(2);
 
+			// Progress
+			glVertexAttribPointer(
+				3, 1, GL_FLOAT, GL_FALSE, sizeof(TrailVertex), (void*)offsetof(TrailVertex, progress)
+			);
+			glEnableVertexAttribArray(3);
+
 			glBindVertexArray(0);
 		}
 
 		shader.use();
+		shader.setFloat("base_thickness", BASE_THICKNESS);
 		shader.setInt("useVertexColor", 1);
 
 		glBindVertexArray(vao);
@@ -252,6 +285,31 @@ namespace Boidsish {
 		glBindVertexArray(0);
 
 		shader.setInt("useVertexColor", 0);
+
+		// Render a cap at the end of the trail
+		if (!points.empty()) {
+			const auto& end_point = points.front();
+			float end_thickness = BASE_THICKNESS * 0.1f; // Make cap size relative to trail
+			Shape::RenderSphere(end_point.first, end_point.second, end_thickness);
+		}
+	}
+
+	void Trail::AppendToGeometryCache(const Vector3& p0, const Vector3& p1, const Vector3& p2, const Vector3& p3, const Vector3& c0, const Vector3& c1, const Vector3& c2, const Vector3& c3) {
+		for (int j = 0; j < CURVE_SEGMENTS; ++j) {
+			float   t = (float)j / CURVE_SEGMENTS;
+			Vector3 pos = CatmullRom(t, p0, p1, p2, p3);
+			Vector3 color = CatmullRom(t, c0, c1, c2, c3);
+
+			curve_positions.push_back(pos);
+			curve_colors.push_back(color);
+		}
+	}
+
+	void Trail::PopFromGeometryCache() {
+		for (int i = 0; i < CURVE_SEGMENTS; ++i) {
+			curve_positions.pop_front();
+			curve_colors.pop_front();
+		}
 	}
 
 } // namespace Boidsish

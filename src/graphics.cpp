@@ -117,7 +117,7 @@ namespace Boidsish {
 			trail_shader->use();
 			glUniformBlockBinding(trail_shader->ID, glGetUniformBlockIndex(trail_shader->ID, "Lighting"), 0);
 
-			Dot::InitSphereMesh();
+			Shape::InitSphereMesh();
 
 			float quad_vertices[] = {
 				-1.0f,
@@ -207,7 +207,7 @@ namespace Boidsish {
 		}
 
 		~VisualizerImpl() {
-			Dot::CleanupSphereMesh();
+			Shape::DestroySphereMesh();
 			glDeleteVertexArrays(1, &plane_vao);
 			glDeleteBuffers(1, &plane_vbo);
 			glDeleteVertexArrays(1, &sky_vao);
@@ -287,7 +287,7 @@ namespace Boidsish {
 			} else {
 				trail_shader->setVec4("clipPlane", glm::vec4(0, 0, 0, 0));
 			}
-			for (const auto& pair : trails) {
+			for (auto& pair : trails) {
 				pair.second->Render(*trail_shader);
 			}
 		}
