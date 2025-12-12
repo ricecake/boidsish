@@ -17,7 +17,7 @@ namespace Boidsish {
 		~Trail();
 
 		void AddPoint(glm::vec3 position, glm::vec3 color);
-		void Render(Shader& shader) const;
+		void Render(Shader& shader);
 
 	private:
 		struct TrailVertex {
@@ -44,7 +44,14 @@ namespace Boidsish {
 		// Mesh data
 		mutable std::vector<TrailVertex> mesh_vertices;
 		mutable int                      vertex_count;
-		mutable bool                     mesh_dirty;
+		mutable bool                    mesh_dirty;
+
+		// Cached geometry data for incremental updates
+		mutable std::deque<Vector3> curve_positions;
+		mutable std::deque<Vector3> curve_colors;
+		mutable std::deque<Vector3> tangents;
+		mutable std::deque<Vector3> normals;
+		mutable std::deque<Vector3> binormals;
 
 		// Configuration
 		const int   TRAIL_SEGMENTS = 8;     // Circular segments around trail

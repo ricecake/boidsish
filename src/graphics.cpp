@@ -287,7 +287,7 @@ namespace Boidsish {
 			} else {
 				trail_shader->setVec4("clipPlane", glm::vec4(0, 0, 0, 0));
 			}
-			for (const auto& pair : trails) {
+			for (auto& pair : trails) {
 				pair.second->Render(*trail_shader);
 			}
 		}
