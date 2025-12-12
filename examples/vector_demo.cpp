@@ -35,6 +35,8 @@ public:
 	void UpdateEntity(EntityHandler& handler, float time, float delta_time) override;
 
 private:
+	float hunger_time = 0.0f;
+	float energy = 50.0f;
 	float phase_;
 	int   target_id = -1;
 };
@@ -43,6 +45,8 @@ class FlockingEntity: public Entity<> {
 public:
 	FlockingEntity(int id, const Vector3& start_pos);
 	void UpdateEntity(EntityHandler& handler, float time, float delta_time) override;
+
+	float GetValue() const { return energy; }
 
 private:
 	float   hunger_time = 0.0f;
@@ -69,11 +73,12 @@ private:
 
 FruitEntity::FruitEntity(int id): Entity<>(id), value(0) {
 	// Vector3 start_pos((rand() % 10 - 5) * 2.0f, 1 + (rand() % 10), (rand() % 6 - 3) * 2.0f);
-	auto start_pos = fruitPlacer(10);
+	auto start_pos = fruitPlacer(6);
 	start_pos.y += 8;
 	SetPosition(start_pos);
 	SetTrailLength(0);
 	SetColor(1, 0.36f, 1);
+	SetVelocity(Vector3(0, 1, 0));
 	phase_ = start_pos.Magnitude();
 }
 
@@ -81,14 +86,19 @@ void FruitEntity::UpdateEntity(EntityHandler& handler, float, float delta_time) 
 	phase_ += delta_time;
 
 	auto value_modifier = sin((4 * phase_) / 8);
-	value = value_modifier * 90;
+	value = value_modifier * 100;
 	SetSize(4 + 12 * value_modifier);
 
 	if (value < 0) {
 		handler.AddEntity<FruitEntity>();
 		handler.RemoveEntity(GetId());
 	}
-	// SetVelocity(Vector3(sin(phase_ / 2) / 2, sin(phase_ / 3), cos(phase_ / 5) / 2));
+	auto v = GetVelocity();
+	v.x *= 0.95f;
+	v.z *= 0.95f;
+	v.y *= 1.0005f;
+	v += Vector3(sin(rand()), sin(rand()), sin(rand())).Normalized() / 4;
+	SetVelocity(v);
 }
 
 VectorDemoEntity::VectorDemoEntity(int id, const Vector3& start_pos): Entity<>(id), phase_(0.0f) {
@@ -112,6 +122,9 @@ void VectorDemoEntity::UpdateEntity(EntityHandler& handler, float time, float de
 		if (distance_to_target <= 0.4f) {
 			SetVelocity(3 * to_target);
 			SetColor(1.0f, 0, 0, 1.0f);
+
+			hunger_time -= targetInstance->GetValue() / 100 * hunger_time;
+			hunger_time = std::max(0.0f, hunger_time);
 
 			handler.RemoveEntity(target_id);
 			// Vector3 start_pos((rand() % 10 - 5) * 2.0f, (rand() % 6 - 3) * 2.0f, (rand() % 10 - 5) * 2.0f);
@@ -149,6 +162,24 @@ void VectorDemoEntity::UpdateEntity(EntityHandler& handler, float time, float de
 
 	SetVelocity(total_velocity);
 
+	hunger_time += delta_time;
+	hunger_time = std::min(100.0f, hunger_time);
+	if (hunger_time < 5) {
+		energy += delta_time;
+	} else if (hunger_time > 15) {
+		energy -= delta_time;
+	}
+
+	if (energy < 10) {
+		logger::LOG("DEAD Preadator");
+
+		handler.RemoveEntity(GetId());
+	} else if (energy >= 60) {
+		logger::LOG("New Preadator");
+		energy -= 25;
+		handler.AddEntity<VectorDemoEntity>(GetPosition());
+	}
+
 	// Color based on velocity magnitude and direction
 	Vector3 vel = GetVelocity();
 	float   speed = vel.Magnitude();
@@ -158,6 +189,7 @@ void VectorDemoEntity::UpdateEntity(EntityHandler& handler, float time, float de
 	float g = 0.5f + 0.5f * std::abs(vel_normalized.y);
 	float b = 0.5f + 0.3f * (speed / 5.0f); // Blue based on speed
 	SetColor(r, g, b, 1.0f);
+	SetTrailLength(2 * energy);
 }
 
 FlockingEntity::FlockingEntity(int id, const Vector3& start_pos): Entity<>(id) {
@@ -204,7 +236,7 @@ void FlockingEntity::UpdateEntity(EntityHandler& handler, float time, float delt
 		hunger_time = std::max(0.0f, hunger_time);
 
 		handler.RemoveEntity(targetInstance->GetId());
-		handler.AddEntity<FruitEntity>();
+		// handler.AddEntity<FruitEntity>();
 		return;
 	}
 
@@ -221,21 +253,18 @@ void FlockingEntity::UpdateEntity(EntityHandler& handler, float time, float delt
 
 	hunger_time += delta_time;
 	hunger_time = std::min(100.0f, hunger_time);
-	// if (hunger_time >= 100) {
-	// 	handler.RemoveEntity(GetId());
-	// 	return;
-	// }
-
-	if (hunger_time < 25) {
+	if (hunger_time < 5) {
 		energy += delta_time;
-	} else if (hunger_time > 75) {
+	} else if (hunger_time > 15) {
 		energy -= delta_time;
 	}
 
 	if (energy < 10) {
+		logger::LOG("DEAD Flocker");
 		handler.RemoveEntity(GetId());
-	} else if (energy >= 75) {
+	} else if (energy >= 60) {
 		energy -= 25;
+		logger::LOG("New Flocker");
 		handler.AddEntity<FlockingEntity>(GetPosition());
 	}
 
@@ -342,8 +371,11 @@ Vector3 FlockingEntity::CalculateCohesion(const std::vector<std::shared_ptr<Floc
 
 // Handler for vector demonstration
 class VectorDemoHandler: public SpatialEntityHandler {
+	std::random_device rd;
+	std::mt19937       eng;
+
 public:
-	VectorDemoHandler() {
+	VectorDemoHandler(): eng(rd()) {
 		std::cout << "=== Vector3 Operations Demo ===" << std::endl;
 
 		// Create some vector demo entities
@@ -354,11 +386,11 @@ public:
 
 		// Create a flock of entities
 		for (int i = 0; i < 32; i++) {
-			Vector3 start_pos((rand() % 10 - 5) * 2.0f, (rand() % 6 - 3) * 2.0f, (rand() % 10 - 5) * 2.0f);
+			Vector3 start_pos((rand() % 10 - 5) * 2.0f, -1, (rand() % 10 - 5) * 2.0f);
 			AddEntity<FlockingEntity>(start_pos);
 		}
 
-		for (int i = 0; i < 4; i++) {
+		for (int i = 0; i < 8; i++) {
 			AddEntity<FruitEntity>();
 		}
 
@@ -366,6 +398,34 @@ public:
 		std::cout << "Demonstrating Vector3 operations: addition, subtraction, normalization," << std::endl;
 		std::cout << "dot product, cross product, magnitude, and distance calculations!" << std::endl;
 		std::cout << "Flocking entities now automatically discover each other through the handler!" << std::endl;
+	}
+
+	void PreTimestep(float time, float delta_time) {
+		// logger::LOG("Time delta", delta_time);
+		float fruitRate = 2.0f;
+		auto  numFlocker = GetEntitiesByType<FlockingEntity>().size();
+		if (numFlocker <= 4) {
+			Vector3 start_pos((rand() % 10 - 5) * 2.0f, (rand() % 6 - 3) * 2.0f, (rand() % 10 - 5) * 2.0f);
+			AddEntity<FlockingEntity>(start_pos);
+			fruitRate++;
+		} else if (numFlocker > 96) {
+			fruitRate--;
+		}
+
+		fruitRate = std::max(4.0f, fruitRate);
+
+		if (GetEntitiesByType<VectorDemoEntity>().size() < 1) {
+			Vector3 start_pos(10 * sin(rand() / 4), 1.0f, 10 * cos(rand() / 6.0f));
+			AddEntity<VectorDemoEntity>(start_pos);
+		}
+
+		float weightedOdds = delta_time * fruitRate *
+			std::clamp(1.0f - (GetEntitiesByType<FruitEntity>().size() / 32), 0.0f, 1.0f);
+		std::bernoulli_distribution dist(weightedOdds);
+		bool                        makeFruit = dist(eng);
+		if (makeFruit) {
+			AddEntity<FruitEntity>();
+		}
 	}
 };
 
