@@ -5,6 +5,8 @@
 #include <numbers>
 #include <vector>
 
+#include "shape.h"
+
 namespace Boidsish {
 
 	Trail::Trail(int max_length): max_length(max_length), vertex_count(0), mesh_dirty(false) {
@@ -283,6 +285,13 @@ namespace Boidsish {
 		glBindVertexArray(0);
 
 		shader.setInt("useVertexColor", 0);
+
+		// Render a cap at the end of the trail
+		if (!points.empty()) {
+			const auto& end_point = points.front();
+			float end_thickness = BASE_THICKNESS * 0.1f; // Make cap size relative to trail
+			Shape::RenderSphere(end_point.first, end_point.second, end_thickness);
+		}
 	}
 
 	void Trail::AppendToGeometryCache(const Vector3& p0, const Vector3& p1, const Vector3& p2, const Vector3& p3, const Vector3& c0, const Vector3& c1, const Vector3& c2, const Vector3& c3) {

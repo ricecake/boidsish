@@ -4,6 +4,8 @@
 #include <memory>
 #include <vector>
 
+#include <glm/glm.hpp>
+
 class Shader;
 
 namespace Boidsish {
@@ -55,6 +57,13 @@ namespace Boidsish {
 		// Static shader reference
 		static std::shared_ptr<Shader> shader;
 
+		// Sphere mesh generation
+		static void InitSphereMesh();
+		static void DestroySphereMesh();
+		static void RenderSphere(
+			const glm::vec3& position, const glm::vec3& color, float scale
+		);
+
 	protected:
 		// Protected constructor for derived classes
 		Shape(
@@ -75,6 +84,12 @@ namespace Boidsish {
 		float x_, y_, z_;
 		float r_, g_, b_, a_;
 		int   trail_length_;
+
+	private:
+		// Shared sphere mesh
+		static unsigned int sphere_vao_;
+		static unsigned int sphere_vbo_;
+		static int          sphere_vertex_count_;
 	};
 
 	// Function type for user-defined shape generation
