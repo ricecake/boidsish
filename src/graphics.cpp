@@ -51,6 +51,8 @@ namespace Boidsish {
 		float auto_camera_angle = 0.0f;
 		float auto_camera_height_offset = 0.0f;
 		float auto_camera_distance = 10.0f;
+		glm::vec3 auto_camera_target = glm::vec3(0.0f);
+		float auto_camera_target_update_time = 0.0f;
 
 		bool  single_track_mode = false;
 		int   tracked_dot_index = 0;
@@ -292,11 +294,11 @@ namespace Boidsish {
 			}
 		}
 
-		void RenderSky(const glm::mat4& view) {
+		void RenderSky(const glm::mat4& invProjection, const glm::mat4& invView) {
 			glDisable(GL_DEPTH_TEST);
 			sky_shader->use();
-			sky_shader->setMat4("invProjection", glm::inverse(projection));
-			sky_shader->setMat4("invView", glm::inverse(view));
+			sky_shader->setMat4("invProjection", invProjection);
+			sky_shader->setMat4("invView", invView);
 			glBindVertexArray(sky_vao);
 			glDrawArrays(GL_TRIANGLES, 0, 3);
 			glBindVertexArray(0);
@@ -405,35 +407,38 @@ namespace Boidsish {
 			}
 
 			auto_camera_time += delta_time;
+			auto_camera_target_update_time += delta_time;
 
-			float mean_x = 0.0f, mean_y = 0.0f, mean_z = 0.0f;
-			float min_x = shapes[0]->GetX(), max_x = shapes[0]->GetX();
-			float min_y = shapes[0]->GetY(), max_y = shapes[0]->GetY();
-			float min_z = shapes[0]->GetZ(), max_z = shapes[0]->GetZ();
+			if (auto_camera_target_update_time > 0.1f) {
+				auto_camera_target_update_time = 0.0f;
+				float mean_x = 0.0f, mean_y = 0.0f, mean_z = 0.0f;
+				float min_x = shapes[0]->GetX(), max_x = shapes[0]->GetX();
+				float min_y = shapes[0]->GetY(), max_y = shapes[0]->GetY();
+				float min_z = shapes[0]->GetZ(), max_z = shapes[0]->GetZ();
 
-			for (const auto& shape : shapes) {
-				mean_x += shape->GetX();
-				mean_y += shape->GetY();
-				mean_z += shape->GetZ();
-				min_x = std::min(min_x, shape->GetX());
-				max_x = std::max(max_x, shape->GetX());
-				min_y = std::min(min_y, shape->GetY());
-				max_y = std::max(max_y, shape->GetY());
-				min_z = std::min(min_z, shape->GetZ());
-				max_z = std::max(max_z, shape->GetZ());
+				for (const auto& shape : shapes) {
+					mean_x += shape->GetX();
+					mean_y += shape->GetY();
+					mean_z += shape->GetZ();
+					min_x = std::min(min_x, shape->GetX());
+					max_x = std::max(max_x, shape->GetX());
+					min_y = std::min(min_y, shape->GetY());
+					max_y = std::max(max_y, shape->GetY());
+					min_z = std::min(min_z, shape->GetZ());
+					max_z = std::max(max_z, shape->GetZ());
+				}
+				auto_camera_target.x = mean_x / shapes.size();
+				auto_camera_target.y = mean_y / shapes.size();
+				auto_camera_target.z = mean_z / shapes.size();
+
+				float extent = std::max({max_x - min_x, max_y - min_y, max_z - min_z});
+				float target_distance = extent * 2.0f + 5.0f;
+
+				auto_camera_distance += (target_distance - auto_camera_distance) * delta_time * 0.5f;
 			}
 
-			mean_x /= shapes.size();
-			mean_y /= shapes.size();
-			mean_z /= shapes.size();
-
-			float extent = std::max({max_x - min_x, max_y - min_y, max_z - min_z});
-			float target_distance = extent * 2.0f + 5.0f;
-
-			auto_camera_distance += (target_distance - auto_camera_distance) * delta_time * 0.5f;
-
 			float height_cycle = sin(auto_camera_time * 0.3f) * 0.5f + 0.5f;
-			float camera_height = mean_y + 1.0f + height_cycle * auto_camera_distance * 0.5f;
+			float camera_height = auto_camera_target.y + 1.0f + height_cycle * auto_camera_distance * 0.5f;
 
 			float rotation_speed = 0.2f + 0.1f * sin(auto_camera_time * 0.15f);
 			auto_camera_angle += rotation_speed * delta_time;
@@ -442,9 +447,9 @@ namespace Boidsish {
 			float effective_angle = auto_camera_angle + direction_modifier;
 
 			glm::vec3 target_camera_pos(
-				mean_x + cos(effective_angle) * auto_camera_distance,
+				auto_camera_target.x + cos(effective_angle) * auto_camera_distance,
 				camera_height,
-				mean_z + sin(effective_angle) * auto_camera_distance
+				auto_camera_target.z + sin(effective_angle) * auto_camera_distance
 			);
 
 			glm::vec3 current_camera_pos(camera.x, camera.y, camera.z);
@@ -456,9 +461,9 @@ namespace Boidsish {
 			if (camera.y < kMinCameraHeight)
 				camera.y = kMinCameraHeight;
 
-			float dx = mean_x - camera.x;
-			float dy = mean_y - camera.y;
-			float dz = mean_z - camera.z;
+			float dx = auto_camera_target.x - camera.x;
+			float dy = auto_camera_target.y - camera.y;
+			float dz = auto_camera_target.z - camera.z;
 
 			float distance_xz = sqrt(dx * dx + dz * dz);
 
@@ -684,7 +689,9 @@ namespace Boidsish {
 			glm::mat4 reflection_view = impl->SetupMatrices(reflection_cam);
 			impl->reflection_vp = impl->projection * reflection_view;
 
-			impl->RenderSky(reflection_view);
+			glm::mat4 inv_reflection_proj = glm::inverse(impl->projection);
+			glm::mat4 inv_reflection_view = glm::inverse(reflection_view);
+			impl->RenderSky(inv_reflection_proj, inv_reflection_view);
 			impl->RenderSceneObjects(
 				reflection_view,
 				reflection_cam,
@@ -696,11 +703,13 @@ namespace Boidsish {
 		}
 		glDisable(GL_CLIP_DISTANCE0);
 
-		impl->RenderBlur(10);
+		impl->RenderBlur(4);
 
 		// --- Main Pass ---
 		glm::mat4 view = impl->SetupMatrices();
-		impl->RenderSky(view);
+		glm::mat4 inv_proj = glm::inverse(impl->projection);
+		glm::mat4 inv_view = glm::inverse(view);
+		impl->RenderSky(inv_proj, inv_view);
 		impl->RenderPlane(view);
 		impl->RenderSceneObjects(view, impl->camera, shapes, impl->simulation_time, std::nullopt);
 

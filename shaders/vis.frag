@@ -3,7 +3,7 @@ out vec4 FragColor;
 
 in vec3 FragPos;
 in vec3 Normal;
-in vec3 vs_color;
+in vec3 Color;
 
 layout (std140) uniform Lighting {
     vec3 lightPos;
@@ -12,7 +12,7 @@ layout (std140) uniform Lighting {
 };
 
 uniform vec3 objectColor;
-uniform int useVertexColor;
+uniform bool useVertexColor;
 
 void main()
 {
@@ -41,8 +41,8 @@ void main()
 
 
     vec3 final_color;
-    if (useVertexColor == 1) {
-        final_color = vs_color;
+    if (useVertexColor) {
+        final_color = Color;
     } else {
         final_color = objectColor;
     }

@@ -19,6 +19,10 @@ namespace Boidsish {
 			glDeleteVertexArrays(1, &graph_vao_);
 			glDeleteBuffers(1, &graph_vbo_);
 		}
+		if (dot_buffers_initialized_) {
+			glDeleteVertexArrays(1, &dots_vao_);
+			glDeleteBuffers(1, &dots_vbo_);
+		}
 	}
 
 	const int   CYLINDER_SEGMENTS = 12;
@@ -167,24 +171,94 @@ namespace Boidsish {
 		buffers_initialized_ = true;
 	}
 
+	void Graph::SetupDotBuffers() const {
+		if (dot_buffers_initialized_ || vertices.empty())
+			return;
+
+		struct DotData {
+			glm::vec3 position;
+			float     size;
+			glm::vec4 color;
+		};
+		std::vector<DotData> dot_data;
+		dot_data.reserve(vertices.size());
+		for (const auto& vertex : vertices) {
+			dot_data.push_back({
+				glm::vec3(
+					vertex.position.x + GetX(),
+					vertex.position.y + GetY(),
+					vertex.position.z + GetZ()
+				),
+				vertex.size,
+				glm::vec4(vertex.r, vertex.g, vertex.b, vertex.a),
+			});
+		}
+
+		glGenVertexArrays(1, &dots_vao_);
+		glBindVertexArray(dots_vao_);
+
+		glBindBuffer(GL_ARRAY_BUFFER, Shape::sphere_vbo_);
+		glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, Shape::sphere_ebo_);
+		glEnableVertexAttribArray(0);
+		glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void*)0);
+		glEnableVertexAttribArray(1);
+		glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void*)(3 * sizeof(float)));
+
+		glGenBuffers(1, &dots_vbo_);
+		glBindBuffer(GL_ARRAY_BUFFER, dots_vbo_);
+		glBufferData(GL_ARRAY_BUFFER, dot_data.size() * sizeof(DotData), dot_data.data(), GL_STATIC_DRAW);
+
+		glEnableVertexAttribArray(3);
+		glVertexAttribPointer(
+			3,
+			3,
+			GL_FLOAT,
+			GL_FALSE,
+			sizeof(DotData),
+			(void*)offsetof(DotData, position)
+		);
+		glVertexAttribDivisor(3, 1);
+		glEnableVertexAttribArray(4);
+		glVertexAttribPointer(4, 1, GL_FLOAT, GL_FALSE, sizeof(DotData), (void*)offsetof(DotData, size));
+		glVertexAttribDivisor(4, 1);
+		glEnableVertexAttribArray(5);
+		glVertexAttribPointer(
+			5,
+			4,
+			GL_FLOAT,
+			GL_FALSE,
+			sizeof(DotData),
+			(void*)offsetof(DotData, color)
+		);
+		glVertexAttribDivisor(5, 1);
+
+		glBindVertexArray(0);
+		dot_buffers_initialized_ = true;
+	}
+
 	void Graph::render() const {
 		if (!buffers_initialized_) {
 			SetupBuffers();
 		}
 
-		for (const auto& vertex : vertices) {
-			Dot(0,
-			    vertex.position.x + GetX(),
-			    vertex.position.y + GetY(),
-			    vertex.position.z + GetZ(),
-			    vertex.size,
-			    vertex.r,
-			    vertex.g,
-			    vertex.b,
-			    vertex.a,
-			    0)
-				.render();
+	// Batch render vertices
+	shader->use();
+	shader->setInt("useInstancedDrawing", 1);
+	if (!dot_buffers_initialized_) {
+		SetupDotBuffers();
 		}
+
+	glBindVertexArray(dots_vao_);
+	glDrawElementsInstanced(
+		GL_TRIANGLES,
+		Shape::sphere_vertex_count_,
+		GL_UNSIGNED_INT,
+		0,
+		vertices.size()
+	);
+	glBindVertexArray(0);
+	shader->setInt("useInstancedDrawing", 0);
+
 
 		shader->use();
 		shader->setInt("useVertexColor", 1);
@@ -193,9 +267,11 @@ namespace Boidsish {
 		model = glm::translate(model, glm::vec3(GetX(), GetY(), GetZ()));
 		shader->setMat4("model", model);
 
+	if (buffers_initialized_) {
 		glBindVertexArray(graph_vao_);
 		glDrawArrays(GL_TRIANGLE_STRIP, 0, edge_vertex_count_);
 		glBindVertexArray(0);
+	}
 
 		shader->setInt("useVertexColor", 0);
 		model = glm::mat4(1.0f);

@@ -14,6 +14,7 @@ namespace Boidsish {
 	// Initialize static members
 	unsigned int Shape::sphere_vao_ = 0;
 	unsigned int Shape::sphere_vbo_ = 0;
+	unsigned int Shape::sphere_ebo_ = 0;
 	int          Shape::sphere_vertex_count_ = 0;
     std::shared_ptr<Shader> Shape::shader = nullptr;
 
@@ -59,7 +60,6 @@ namespace Boidsish {
 		}
 		sphere_vertex_count_ = indices.size();
 
-		GLuint sphere_ebo;
 		glGenVertexArrays(1, &sphere_vao_);
 		glBindVertexArray(sphere_vao_);
 
@@ -67,8 +67,8 @@ namespace Boidsish {
 		glBindBuffer(GL_ARRAY_BUFFER, sphere_vbo_);
 		glBufferData(GL_ARRAY_BUFFER, vertices.size() * sizeof(float), &vertices[0], GL_STATIC_DRAW);
 
-		glGenBuffers(1, &sphere_ebo);
-		glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, sphere_ebo);
+		glGenBuffers(1, &sphere_ebo_);
+		glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, sphere_ebo_);
 		glBufferData(GL_ELEMENT_ARRAY_BUFFER, indices.size() * sizeof(unsigned int), &indices[0], GL_STATIC_DRAW);
 
 		glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void*)0);
@@ -85,10 +85,10 @@ namespace Boidsish {
 		if (sphere_vao_ != 0) {
 			glDeleteVertexArrays(1, &sphere_vao_);
 			glDeleteBuffers(1, &sphere_vbo_);
-			// Note: The EBO is not tracked as a member, so it can't be deleted here.
-            // This is a leak from the original code that should be addressed later.
+			glDeleteBuffers(1, &sphere_ebo_);
 			sphere_vao_ = 0;
 			sphere_vbo_ = 0;
+			sphere_ebo_ = 0;
 			sphere_vertex_count_ = 0;
 		}
 	}

@@ -30,29 +30,13 @@ public:
 		fShaderFile.exceptions(std::ifstream::failbit | std::ifstream::badbit);
 		gShaderFile.exceptions(std::ifstream::failbit | std::ifstream::badbit);
 		try {
-			// open files
-			vShaderFile.open(vertexPath);
-			fShaderFile.open(fragmentPath);
-			std::stringstream vShaderStream, fShaderStream;
-			// read file's buffer contents into streams
-			vShaderStream << vShaderFile.rdbuf();
-			fShaderStream << fShaderFile.rdbuf();
-			// close file handlers
-			vShaderFile.close();
-			fShaderFile.close();
-			// convert stream into string
-			vertexCode = vShaderStream.str();
-			fragmentCode = fShaderStream.str();
-			// if geometry shader path is present, also load a geometry shader
+			vertexCode = ReadShaderFile(vertexPath);
+			fragmentCode = ReadShaderFile(fragmentPath);
 			if (geometryPath != nullptr) {
-				gShaderFile.open(geometryPath);
-				std::stringstream gShaderStream;
-				gShaderStream << gShaderFile.rdbuf();
-				gShaderFile.close();
-				geometryCode = gShaderStream.str();
+				geometryCode = ReadShaderFile(geometryPath);
 			}
 		} catch (std::ifstream::failure& e) {
-			std::cout << "ERROR::SHADER::FILE_NOT_SUCCESSFULLY_READ: " << e.what() << std::endl;
+			std::cerr << "ERROR::SHADER::FILE_NOT_SUCCESSFULLY_READ: " << e.what() << std::endl;
 		}
 		const char* vShaderCode = vertexCode.c_str();
 		const char* fShaderCode = fragmentCode.c_str();
@@ -155,6 +139,23 @@ public:
 	}
 
 private:
+	std::string ReadShaderFile(const std::string& path) {
+		std::ifstream     shaderFile(path);
+		std::stringstream shaderStream;
+		std::string       line;
+
+		while (getline(shaderFile, line)) {
+			if (line.substr(0, 8) == "#include") {
+				std::string includePath = line.substr(10, line.length() - 11);
+				std::string fullPath = path.substr(0, path.find_last_of('/')) + "/" + includePath;
+				shaderStream << ReadShaderFile(fullPath);
+			} else {
+				shaderStream << line << '\n';
+			}
+		}
+		return shaderStream.str();
+	}
+
 	// utility function for checking shader compilation/linking errors.
 	// ------------------------------------------------------------------------
 	void checkCompileErrors(GLuint shader, std::string type) {
@@ -164,15 +165,17 @@ private:
 			glGetShaderiv(shader, GL_COMPILE_STATUS, &success);
 			if (!success) {
 				glGetShaderInfoLog(shader, 1024, NULL, infoLog);
-				std::cout << "ERROR::SHADER_COMPILATION_ERROR of type: " << type << "\n"
-						  << infoLog << "\n -- --------------------------------------------------- -- " << std::endl;
+				std::cerr << "ERROR::SHADER_COMPILATION_ERROR of type: " << type << "\n"
+						  << infoLog << "\n -- --------------------------------------------------- -- " << std::endl
+						  << std::flush;
 			}
 		} else {
 			glGetProgramiv(shader, GL_LINK_STATUS, &success);
 			if (!success) {
 				glGetProgramInfoLog(shader, 1024, NULL, infoLog);
-				std::cout << "ERROR::PROGRAM_LINKING_ERROR of type: " << type << "\n"
-						  << infoLog << "\n -- --------------------------------------------------- -- " << std::endl;
+				std::cerr << "ERROR::PROGRAM_LINKING_ERROR of type: " << type << "\n"
+						  << infoLog << "\n -- --------------------------------------------------- -- " << std::endl
+						  << std::flush;
 			}
 		}
 	}

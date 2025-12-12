@@ -70,6 +70,7 @@ namespace Boidsish {
 		~Graph();
 
 		void SetupBuffers() const;
+		void SetupDotBuffers() const;
 		void render() const override;
 
 		Vertex& AddVertex(const Vector3& pos, float Size = 0, float R = 0, float G = 0, float B = 0, float A = 0) {
@@ -89,10 +90,10 @@ namespace Boidsish {
 		std::vector<Vertex> vertices;
 		std::vector<Edge>   edges;
 
-		mutable GLuint graph_vao_ = 0;
-		mutable GLuint graph_vbo_ = 0;
+		mutable GLuint graph_vao_ = 0, graph_vbo_ = 0, dots_vao_ = 0, dots_vbo_ = 0;
 		mutable int    edge_vertex_count_ = 0;
 		mutable bool   buffers_initialized_ = false;
+		mutable bool   dot_buffers_initialized_ = false;
 	};
 
 } // namespace Boidsish

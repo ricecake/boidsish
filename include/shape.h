@@ -85,10 +85,11 @@ namespace Boidsish {
 		float r_, g_, b_, a_;
 		int   trail_length_;
 
-	private:
+	public:
 		// Shared sphere mesh
 		static unsigned int sphere_vao_;
 		static unsigned int sphere_vbo_;
+		static unsigned int sphere_ebo_;
 		static int          sphere_vertex_count_;
 	};
 
