@@ -207,38 +207,38 @@ void PlatonicSolid::Init() {
                      dodecahedron_vertices_data[dodecahedron_indices[i][2]][1],
                      dodecahedron_vertices_data[dodecahedron_indices[i][2]][2]);
 
-        glm::vec3 normal = glm::normalize(glm::cross(v1 - v0, v2 - v0));
+        glm::vec3 normal = glm::normalize(glm::cross(v2 - v0, v1 - v0));
 
-        // Triangulate the pentagon face (as a fan of 3 triangles) and apply the same normal to all vertices
-        for (int j = 0; j < 3; ++j) {
-            const int idx0 = dodecahedron_indices[i][0];
-            const int idx1 = dodecahedron_indices[i][j + 1];
-            const int idx2 = dodecahedron_indices[i][j + 2];
+        // Triangulate the pentagon face (as a fan of 3 triangles)
+        const int i0 = dodecahedron_indices[i][0];
+        const int i1 = dodecahedron_indices[i][1];
+        const int i2 = dodecahedron_indices[i][2];
+        const int i3 = dodecahedron_indices[i][3];
+        const int i4 = dodecahedron_indices[i][4];
 
-            // Vertex 1
-            dodecahedron_v.push_back(dodecahedron_vertices_data[idx0][0]);
-            dodecahedron_v.push_back(dodecahedron_vertices_data[idx0][1]);
-            dodecahedron_v.push_back(dodecahedron_vertices_data[idx0][2]);
+        auto push_vertex = [&](int index) {
+            dodecahedron_v.push_back(dodecahedron_vertices_data[index][0]);
+            dodecahedron_v.push_back(dodecahedron_vertices_data[index][1]);
+            dodecahedron_v.push_back(dodecahedron_vertices_data[index][2]);
             dodecahedron_v.push_back(normal.x);
             dodecahedron_v.push_back(normal.y);
             dodecahedron_v.push_back(normal.z);
+        };
 
-            // Vertex 2
-            dodecahedron_v.push_back(dodecahedron_vertices_data[idx1][0]);
-            dodecahedron_v.push_back(dodecahedron_vertices_data[idx1][1]);
-            dodecahedron_v.push_back(dodecahedron_vertices_data[idx1][2]);
-            dodecahedron_v.push_back(normal.x);
-            dodecahedron_v.push_back(normal.y);
-            dodecahedron_v.push_back(normal.z);
+        // Triangle 1
+        push_vertex(i0);
+        push_vertex(i1);
+        push_vertex(i2);
 
-            // Vertex 3
-            dodecahedron_v.push_back(dodecahedron_vertices_data[idx2][0]);
-            dodecahedron_v.push_back(dodecahedron_vertices_data[idx2][1]);
-            dodecahedron_v.push_back(dodecahedron_vertices_data[idx2][2]);
-            dodecahedron_v.push_back(normal.x);
-            dodecahedron_v.push_back(normal.y);
-            dodecahedron_v.push_back(normal.z);
-        }
+        // Triangle 2
+        push_vertex(i0);
+        push_vertex(i2);
+        push_vertex(i3);
+
+        // Triangle 3
+        push_vertex(i0);
+        push_vertex(i3);
+        push_vertex(i4);
     }
     create_solid_buffers(PlatonicSolidType::DODECAHEDRON, dodecahedron_v.data(), dodecahedron_v.size() * sizeof(GLfloat));
 
@@ -255,7 +255,7 @@ void PlatonicSolid::Init() {
                      icosahedron_vertices[icosahedron_indices[i][2]][1],
                      icosahedron_vertices[icosahedron_indices[i][2]][2]);
 
-        glm::vec3 normal = glm::normalize(glm::cross(v1 - v0, v2 - v0));
+        glm::vec3 normal = glm::normalize(glm::cross(v2 - v0, v1 - v0));
 
         // Vertex 1
         icosahedron_v.push_back(v0.x);
