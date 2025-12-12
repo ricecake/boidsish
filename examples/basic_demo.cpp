@@ -2,62 +2,52 @@
 #include <filesystem>
 #include <iostream>
 #include <memory>
+#include <vector>
 
-#include "dot.h"
-#include "graph.h"
 #include "graphics.h"
+#include "platonic_solid.h"
 
 using namespace Boidsish;
 
-// Example: Simple moving dot with trail
-std::vector<std::shared_ptr<Shape>> TrailExample(float time) {
-	std::vector<std::shared_ptr<Shape>> shapes;
+// Example showing the platonic solids
+std::vector<std::shared_ptr<Shape>> PlatonicSolidsExample(float time) {
+    std::vector<std::shared_ptr<Shape>> shapes;
 
-	// Example: Graph with spline smoothing
-	auto graph = std::make_shared<Graph>(0, 0, 0, 0);
+    // Create one of each of the first three platonic solids
+    auto tetrahedron = std::make_shared<PlatonicSolid>(PlatonicSolidType::TETRAHEDRON, 0, -6.0f, 0.0f, 0.0f);
+    tetrahedron->SetColor(1.0f, 0.0f, 0.0f); // Red
+    shapes.push_back(tetrahedron);
 
-	// Add vertices in a chain
-	graph->AddVertex(Vector3(-4, 0, 0), 10.0f, 1, 0, 0, 1);
-	graph->AddVertex(Vector3(-2, 2, 0), 12.0f, 0, 1, 0, 1);
-	graph->AddVertex(Vector3(0, 0, 0), 15.0f, 0, 0, 1, 1);
-	graph->AddVertex(Vector3(2, -2, 0), 12.0f, 1, 1, 0, 1);
-	graph->AddVertex(Vector3(4, 0, 0), 10.0f, 1, 0, 1, 1);
+    auto cube = std::make_shared<PlatonicSolid>(PlatonicSolidType::CUBE, 1, -3.0f, 0.0f, 0.0f);
+    cube->SetColor(0.0f, 1.0f, 0.0f); // Green
+    shapes.push_back(cube);
 
-	// Add edges to connect the vertices in a chain
-	graph->V(0).Link(graph->V(1));
-	graph->V(1).Link(graph->V(2));
-	graph->V(2).Link(graph->V(3));
-	graph->V(3).Link(graph->V(4));
+    auto octahedron = std::make_shared<PlatonicSolid>(PlatonicSolidType::OCTAHEDRON, 2, 0.0f, 0.0f, 0.0f);
+    octahedron->SetColor(0.0f, 0.0f, 1.0f); // Blue
+    shapes.push_back(octahedron);
 
-	shapes.push_back(graph);
+    auto dodecahedron = std::make_shared<PlatonicSolid>(PlatonicSolidType::DODECAHEDRON, 3, 3.0f, 0.0f, 0.0f);
+    dodecahedron->SetColor(1.0f, 1.0f, 0.0f); // Yellow
+    shapes.push_back(dodecahedron);
 
-	// Example: Simple moving dot with trail
-	// Create a moving dot with a trail
-	auto dot = std::make_shared<Dot>(1, sin(time) * 3.0f, cos(time * 0.7f) * 2.0f, sin(time * 0.5f) * 1.5f);
-	dot->SetTrailLength(100); // Enable trails
-	dot->SetColor(1.0f, 0.5f, 0.0f);
-	shapes.push_back(dot);
+    auto icosahedron = std::make_shared<PlatonicSolid>(PlatonicSolidType::ICOSAHEDRON, 4, 6.0f, 0.0f, 0.0f);
+    icosahedron->SetColor(1.0f, 0.0f, 1.0f); // Magenta
+    shapes.push_back(icosahedron);
 
-	// Another moving dot
-	auto dot2 = std::make_shared<Dot>(2, cos(time * 1.3f) * 2.5f, sin(time * 0.9f) * 2.0f, cos(time * 0.8f) * 1.0f);
-	dot2->SetTrailLength(150);
-	dot2->SetColor(0.0f, 1.0f, 0.5f);
-	shapes.push_back(dot2);
-
-	return shapes;
+    return shapes;
 }
 
 int main() {
 	try {
 		// Create the visualizer
-		Visualizer viz(1024, 768, "Boidsish - Simple 3D Visualization Example");
+		Visualizer viz(1024, 768, "Boidsish - Platonic Solids Example");
 
 		// Set up the initial camera position
-		Camera camera(0.0f, 2.0f, 8.0f, -15.0f, 0.0f, 45.0f);
+		Camera camera(0.0f, 2.0f, 15.0f, -15.0f, 0.0f, 45.0f);
 		viz.SetCamera(camera);
 
-		// Set the dot function
-		viz.SetDotFunction(TrailExample);
+		// Set the shape function
+		viz.AddShapeHandler(PlatonicSolidsExample);
 
 		auto path = std::filesystem::current_path();
 

@@ -9,6 +9,7 @@
 #include <vector>
 
 #include "dot.h"
+#include "platonic_solid.h"
 #include "trail.h"
 #include <GL/glew.h>
 #include <GLFW/glfw3.h>
@@ -118,6 +119,7 @@ namespace Boidsish {
 			glUniformBlockBinding(trail_shader->ID, glGetUniformBlockIndex(trail_shader->ID, "Lighting"), 0);
 
 			Dot::InitSphereMesh();
+			PlatonicSolid::Init();
 
 			float quad_vertices[] = {
 				-1.0f,
@@ -208,6 +210,7 @@ namespace Boidsish {
 
 		~VisualizerImpl() {
 			Dot::CleanupSphereMesh();
+			PlatonicSolid::Cleanup();
 			glDeleteVertexArrays(1, &plane_vao);
 			glDeleteBuffers(1, &plane_vbo);
 			glDeleteVertexArrays(1, &sky_vao);
