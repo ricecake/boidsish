@@ -204,6 +204,8 @@ namespace Boidsish {
 					std::cerr << "ERROR::FRAMEBUFFER:: Ping-pong Framebuffer is not complete!" << std::endl;
 			}
 			glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+			UpdateCameraVectors();
 		}
 
 		~VisualizerImpl() {
@@ -226,12 +228,7 @@ namespace Boidsish {
 		glm::mat4 SetupMatrices(const Camera& cam_to_use) {
 			projection = glm::perspective(glm::radians(cam_to_use.fov), (float)width / (float)height, 0.1f, 1000.0f);
 			glm::vec3 cameraPos(cam_to_use.x, cam_to_use.y, cam_to_use.z);
-			glm::vec3 front;
-			front.x = cos(glm::radians(cam_to_use.pitch)) * sin(glm::radians(cam_to_use.yaw));
-			front.y = sin(glm::radians(cam_to_use.pitch));
-			front.z = -cos(glm::radians(cam_to_use.pitch)) * cos(glm::radians(cam_to_use.yaw));
-			front = glm::normalize(front);
-			glm::mat4 view = glm::lookAt(cameraPos, cameraPos + front, glm::vec3(0.0f, 1.0f, 0.0f));
+			glm::mat4 view = glm::lookAt(cameraPos, cameraPos + cam_to_use.front, cam_to_use.up);
 			shader->use();
 			shader->setMat4("projection", projection);
 			shader->setMat4("view", view);
@@ -341,33 +338,38 @@ namespace Boidsish {
 			glBindVertexArray(0);
 		}
 
+		void UpdateCameraVectors() {
+			glm::vec3 front;
+			front.x = cos(glm::radians(camera.pitch)) * sin(glm::radians(camera.yaw));
+			front.y = sin(glm::radians(camera.pitch));
+			front.z = -cos(glm::radians(camera.pitch)) * cos(glm::radians(camera.yaw));
+			camera.front = glm::normalize(front);
+			camera.right = glm::normalize(glm::cross(camera.front, glm::vec3(0.0f, 1.0f, 0.0f)));
+			camera.up = glm::normalize(glm::cross(camera.right, camera.front));
+		}
+
 		void ProcessInput(float delta_time) {
 			if (auto_camera_mode || single_track_mode)
 				return;
-			float     camera_speed = 5.0f * delta_time;
-			glm::vec3 front(
-				cos(glm::radians(camera.pitch)) * sin(glm::radians(camera.yaw)),
-				sin(glm::radians(camera.pitch)),
-				-cos(glm::radians(camera.pitch)) * cos(glm::radians(camera.yaw))
-			);
-			glm::vec3 right = glm::normalize(glm::cross(front, glm::vec3(0.0f, 1.0f, 0.0f)));
+			UpdateCameraVectors();
+			float camera_speed = 5.0f * delta_time;
 			if (keys[GLFW_KEY_W]) {
-				camera.x += front.x * camera_speed;
-				camera.y += front.y * camera_speed;
-				camera.z += front.z * camera_speed;
+				camera.x += camera.front.x * camera_speed;
+				camera.y += camera.front.y * camera_speed;
+				camera.z += camera.front.z * camera_speed;
 			}
 			if (keys[GLFW_KEY_S]) {
-				camera.x -= front.x * camera_speed;
-				camera.y -= front.y * camera_speed;
-				camera.z -= front.z * camera_speed;
+				camera.x -= camera.front.x * camera_speed;
+				camera.y -= camera.front.y * camera_speed;
+				camera.z -= camera.front.z * camera_speed;
 			}
 			if (keys[GLFW_KEY_A]) {
-				camera.x -= right.x * camera_speed;
-				camera.z -= right.z * camera_speed;
+				camera.x -= camera.right.x * camera_speed;
+				camera.z -= camera.right.z * camera_speed;
 			}
 			if (keys[GLFW_KEY_D]) {
-				camera.x += right.x * camera_speed;
-				camera.z += right.z * camera_speed;
+				camera.x += camera.right.x * camera_speed;
+				camera.z += camera.right.z * camera_speed;
 			}
 			if (keys[GLFW_KEY_SPACE])
 				camera.y += camera_speed;
@@ -585,6 +587,8 @@ namespace Boidsish {
 					impl->camera.pitch = 89.0f;
 				if (impl->camera.pitch < -89.0f)
 					impl->camera.pitch = -89.0f;
+
+				impl->UpdateCameraVectors();
 			}
 		}
 

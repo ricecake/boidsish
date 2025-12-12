@@ -8,6 +8,7 @@
 
 #include "shape.h"
 #include "vector.h"
+#include <glm/glm.hpp>
 
 namespace Boidsish {
 	// Camera structure for 3D view control
@@ -16,12 +17,16 @@ namespace Boidsish {
 		float pitch, yaw; // Camera rotation
 		float fov;        // Field of view
 
+		glm::vec3 front = glm::vec3(0.0f, 0.0f, -1.0f);
+		glm::vec3 up = glm::vec3(0.0f, 1.0f, 0.0f);
+		glm::vec3 right = glm::vec3(1.0f, 0.0f, 0.0f);
+
 		constexpr Camera(
-			float x = 0.0f,
-			float y = 0.0f,
-			float z = 5.0f,
-			float pitch = 0.0f,
-			float yaw = 0.0f,
+			float x = 20.0f,
+			float y = 20.0f,
+			float z = 50.0f,
+			float pitch = -20.0f,
+			float yaw = -90.0f,
 			float fov = 45.0f
 		):
 			x(x), y(y), z(z), pitch(pitch), yaw(yaw), fov(fov) {}
