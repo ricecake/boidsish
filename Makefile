@@ -63,13 +63,13 @@ $(TARGET): $(BUILDDIR) $(OBJDIR) $(OBJECTS)
 	ar rcs $(TARGET) $(OBJECTS)
 
 # Compile source files
-$(OBJDIR)/%.o: $(SRCDIR)/%.cpp | $(OBJDIR)
+$(OBJDIR)/%.o: $(SRCDIR)/%.cpp $(OBJDIR)
 	$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
 
 # Build examples
 examples: $(OBJECTS) $(EXAMPLE_TARGETS)
 
-$(BUILDDIR)/%: $(EXAMPLE_SRCDIR)/%.cpp $(OBJECTS) | $(BUILDDIR)
+$(BUILDDIR)/%: $(EXAMPLE_SRCDIR)/%.cpp $(OBJECTS) $(BUILDDIR)
 	$(CXX) $(CXXFLAGS) $(INCLUDES) $< $(OBJECTS) -o $@ $(LDFLAGS) $(LIBS)
 
 

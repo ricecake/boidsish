@@ -28,8 +28,8 @@ void main()
     float line_major = min(grid_major.x, grid_major.y);
     float C_major = 1.0 - min(line_major, 1.0);
 
-    float pulse = 0.7 + 0.3 * sin(time * 2.0);
-    float intensity = max(C_minor, C_major * 1.5) * 0.6 * pulse;
+    float pulse = 0.5 + 0.5 * sin(time * 2.0);
+    float intensity = max(C_minor, C_major * 1.5) * (0.4 + 0.4 * pulse);
     vec3 grid_color = vec3(0.0, 0.8, 0.8) * intensity;
 
     // --- Plane lighting ---

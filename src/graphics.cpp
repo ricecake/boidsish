@@ -661,14 +661,13 @@ namespace Boidsish {
 		}
 
 		glBindBuffer(GL_UNIFORM_BUFFER, impl->lighting_ubo);
-		glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(glm::vec3), &glm::vec3(1.0f, 100.0f, 25.0f)[0]);
-		glBufferSubData(
-			GL_UNIFORM_BUFFER,
-			16,
-			sizeof(glm::vec3),
-			&glm::vec3(impl->camera.x, impl->camera.y, impl->camera.z)[0]
-		);
-		glBufferSubData(GL_UNIFORM_BUFFER, 32, sizeof(glm::vec3), &glm::vec3(1.0f, 1.0f, 1.0f)[0]);
+		// std140 layout requires vec3 to be padded to 16 bytes. Using vec4 is the easiest way to ensure this.
+		glm::vec4 lightPos(1.0f, 100.0f, 25.0f, 1.0f);
+		glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(glm::vec4), &lightPos[0]);
+		glm::vec4 viewPos(impl->camera.x, impl->camera.y, impl->camera.z, 1.0f);
+		glBufferSubData(GL_UNIFORM_BUFFER, 16, sizeof(glm::vec4), &viewPos[0]);
+		glm::vec4 lightColor(1.0f, 1.0f, 1.0f, 1.0f);
+		glBufferSubData(GL_UNIFORM_BUFFER, 32, sizeof(glm::vec4), &lightColor[0]);
 		glBufferSubData(GL_UNIFORM_BUFFER, 48, sizeof(float), &impl->simulation_time);
 		glBindBuffer(GL_UNIFORM_BUFFER, 0);
 
