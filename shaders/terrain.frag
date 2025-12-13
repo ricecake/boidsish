@@ -12,6 +12,10 @@ layout (std140) uniform Lighting {
 
 void main()
 {
+    if (FragPos.y < 0.001) {
+        discard;
+    }
+
     vec3 objectColor = vec3(0.1, 0.2, 0.5); // A deep blue
 
     // Ambient
