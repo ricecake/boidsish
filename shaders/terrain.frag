@@ -12,7 +12,7 @@ layout (std140) uniform Lighting {
 
 void main()
 {
-    vec3 objectColor = vec3(0.4, 0.25, 0.15); // A rocky brown
+    vec3 objectColor = vec3(0.1, 0.2, 0.5); // A deep blue
 
     // Ambient
     float ambientStrength = 0.2;
@@ -25,12 +25,12 @@ void main()
     vec3 diffuse = diff * lightColor;
 
     // Specular
-    float specularStrength = 0.1;
+    float specularStrength = 0.8;
     vec3 viewDir = normalize(viewPos - FragPos);
     vec3 reflectDir = reflect(-lightDir, norm);
-    float spec = pow(max(dot(viewDir, reflectDir), 0.0), 4);
+    float spec = pow(max(dot(viewDir, reflectDir), 0.0), 64);
     vec3 specular = specularStrength * spec * lightColor;
 
-    vec3 result = (ambient + diffuse + specular) * objectColor;
+    vec3 result = (ambient + diffuse) * objectColor + specular; // Add specular on top
     FragColor = vec4(result, 1.0);
 }

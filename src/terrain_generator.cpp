@@ -52,6 +52,7 @@ std::shared_ptr<Terrain> TerrainGenerator::generateChunk(int chunkX, int chunkZ)
     std::vector<std::vector<float>> heightmap(num_vertices_x, std::vector<float>(num_vertices_z));
     std::vector<float> vertexData;
     std::vector<unsigned int> indices;
+    bool has_terrain = false;
 
     // Generate heightmap
     for (int i = 0; i < num_vertices_x; ++i) {
@@ -62,10 +63,16 @@ std::shared_ptr<Terrain> TerrainGenerator::generateChunk(int chunkX, int chunkZ)
 
             if (noise > threshold_) {
                 heightmap[i][j] = (noise - threshold_) * amplitude_;
+                has_terrain = true;
             } else {
-                heightmap[i][j] = -1.0f; // Below threshold
+                heightmap[i][j] = 0.0f; // Flush with floor
             }
         }
+    }
+
+    // If chunk is completely flat, don't generate a mesh for it
+    if (!has_terrain) {
+        return nullptr;
     }
 
     // Generate vertices and normals
@@ -85,11 +92,6 @@ std::shared_ptr<Terrain> TerrainGenerator::generateChunk(int chunkX, int chunkZ)
             float hD = (j > 0) ? heightmap[i][j - 1] : y;
             float hU = (j < chunk_size_) ? heightmap[i][j + 1] : y;
 
-            if (hL < -0.5f) hL = y;
-            if (hR < -0.5f) hR = y;
-            if (hD < -0.5f) hD = y;
-            if (hU < -0.5f) hU = y;
-
             glm::vec3 normal = glm::normalize(glm::vec3(hL - hR, 2.0f, hD - hU));
             vertexData.push_back(normal.x);
             vertexData.push_back(normal.y);
@@ -97,25 +99,18 @@ std::shared_ptr<Terrain> TerrainGenerator::generateChunk(int chunkX, int chunkZ)
         }
     }
 
-    // Generate indices
+    // Generate indices for a full grid
     indices.reserve(chunk_size_ * chunk_size_ * 6);
     for (int i = 0; i < chunk_size_; ++i) {
         for (int j = 0; j < chunk_size_; ++j) {
-            if (heightmap[i][j] > -0.5f && heightmap[i+1][j] > -0.5f && heightmap[i][j+1] > -0.5f) {
-                indices.push_back(i * num_vertices_z + j);
-                indices.push_back((i + 1) * num_vertices_z + j);
-                indices.push_back(i * num_vertices_z + j + 1);
-            }
-            if (heightmap[i+1][j] > -0.5f && heightmap[i+1][j+1] > -0.5f && heightmap[i][j+1] > -0.5f) {
-                indices.push_back((i + 1) * num_vertices_z + j);
-                indices.push_back((i + 1) * num_vertices_z + j + 1);
-                indices.push_back(i * num_vertices_z + j + 1);
-            }
-        }
-    }
+            indices.push_back(i * num_vertices_z + j);
+            indices.push_back((i + 1) * num_vertices_z + j);
+            indices.push_back(i * num_vertices_z + j + 1);
 
-    if (indices.empty()) {
-        return nullptr;
+            indices.push_back((i + 1) * num_vertices_z + j);
+            indices.push_back((i + 1) * num_vertices_z + j + 1);
+            indices.push_back(i * num_vertices_z + j + 1);
+        }
     }
 
     auto terrain_chunk = std::make_shared<Terrain>(vertexData, indices);
