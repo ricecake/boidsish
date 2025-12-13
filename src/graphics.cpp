@@ -662,8 +662,13 @@ namespace Boidsish {
 			impl->UpdateAutoCamera(delta_time, shapes);
 		}
 
+		float     light_orbit_radius = 50.0f;
+		float     light_height = 40.0f;
+		float     light_angle = impl->simulation_time * 0.05f;
+		glm::vec3 lightPos(cos(light_angle) * light_orbit_radius, light_height, sin(light_angle) * light_orbit_radius);
+
 		glBindBuffer(GL_UNIFORM_BUFFER, impl->lighting_ubo);
-		glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(glm::vec3), &glm::vec3(1.0f, 100.0f, 25.0f)[0]);
+		glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(glm::vec3), &lightPos[0]);
 		glBufferSubData(
 			GL_UNIFORM_BUFFER,
 			16,

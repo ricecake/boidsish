@@ -53,7 +53,7 @@ int main() {
 		Visualizer viz(1024, 768, "Boidsish - Simple 3D Visualization Example");
 
 		// Set up the initial camera position
-		Camera camera(0.0f, 2.0f, 8.0f, -15.0f, 0.0f, 45.0f);
+		Camera camera(0.0f, 2.0f, 12.0f, 45.0f, 0.0f, -89.0f);
 		viz.SetCamera(camera);
 
 		// Set the dot function

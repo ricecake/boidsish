@@ -2,7 +2,8 @@
 
 out vec4 FragColor;
 
-in vec2 TexCoords;
+in vec3 viewDirection;
+in vec3 viewDirectionForHorizon;
 
 layout(std140) uniform Lighting {
 	vec3  lightPos;
@@ -10,9 +11,6 @@ layout(std140) uniform Lighting {
 	vec3  lightColor;
 	float time;
 };
-
-uniform mat4 invProjection;
-uniform mat4 invView;
 
 vec3 mod289(vec3 x) {
 	return x - floor(x * (1.0 / 289.0)) * 289.0;
@@ -30,45 +28,8 @@ vec4 taylorInvSqrt(vec4 r) {
 	return 1.79284291400159 - 0.85373472095314 * r;
 }
 
-// vec4 permute(vec4 x){return mod(((x*34.0)+1.0)*x, 289.0);}
 vec2 fade(vec2 t) {
 	return t * t * t * (t * (t * 6.0 - 15.0) + 10.0);
-}
-
-float snoise(vec2 P) {
-	vec4 Pi = floor(P.xyxy) + vec4(0.0, 0.0, 1.0, 1.0);
-	vec4 Pf = fract(P.xyxy) - vec4(0.0, 0.0, 1.0, 1.0);
-	Pi = mod(Pi, 289.0); // Keep values in range
-	vec4 ix = Pi.xzxz;
-	vec4 iy = Pi.yyww;
-	vec4 fx = Pf.xzxz;
-	vec4 fy = Pf.yyww;
-
-	vec4 i = permute(permute(ix) + iy);
-
-	vec4 gx = fract(i * (1.0 / 41.0)) * 2.0 - 1.0;
-	vec4 gy = abs(gx) - 0.5;
-	vec4 tx = floor(gx + 0.5);
-	gx = gx - tx;
-
-	vec2 g00 = vec2(gx.x, gy.x);
-	vec2 g10 = vec2(gx.y, gy.y);
-	vec2 g01 = vec2(gx.z, gy.z);
-	vec2 g11 = vec2(gx.w, gy.w);
-
-	vec4 norm = 1.79284291400159 - 0.85373472095314 * vec4(dot(g00, g00), dot(g10, g10), dot(g01, g01), dot(g11, g11));
-	g00 *= norm.x;
-	g10 *= norm.y;
-	g01 *= norm.z;
-	g11 *= norm.w;
-
-	float n00 = dot(g00, vec2(fx.x, fy.x));
-	float n10 = dot(g10, vec2(fx.y, fy.y));
-	float n01 = dot(g01, vec2(fx.z, fy.z));
-	float n11 = dot(g11, vec2(fx.w, fy.w));
-
-	vec2 t = fade(Pf.xy);
-	return 2.3 * mix(mix(n00, n10, t.x), mix(n01, n11, t.x), t.y);
 }
 
 float snoise(vec3 v) {
@@ -136,45 +97,21 @@ float snoise(vec3 v) {
 	return 42.0 * dot(m * m, vec4(dot(p0, x0), dot(p1, x1), dot(p2, x2), dot(p3, x3)));
 }
 
-// A simple 3D hash function (returns pseudo-random vec3 between 0 and 1)
 vec3 hash33(vec3 p) {
 	p = fract(p * vec3(443.897, 441.423, 437.195));
 	p += dot(p, p.yxz + 19.19);
 	return fract((p.xxy + p.yxx) * p.zyx);
 }
 
-// A robust 1D hash function (Returns float between 0.0 and 1.0)
-float hash11(float p) {
-	p = fract(p * 0.1031);
-	p *= p + 33.33;
-	p = fract(p);
-	return fract(p * 0.5);
-}
-
-// Function to convert 3D integer coordinates to a unique float seed
-float getSeed(vec3 p) {
-	return p.x * 123.0 + p.y * 456.0 + p.z * 789.0;
-}
-
 float starLayer(vec3 dir) {
-	// 1. Tiling: Scale the direction to create a grid
 	float scale = 100.0;
 	vec3  id = floor(dir * scale);
-	vec3  local_uv = fract(dir * scale); // 0.0 to 1.0 inside the cell
-
-	// 2. Random Position: Where is the star in this cell?
+	vec3  local_uv = fract(dir * scale);
 	vec3 star_pos = hash33(id);
-
-	// 3. Animation: Twinkle logic
-	// use the star's unique ID to give it a unique offset so they don't pulse in sync
-	float brightness = abs(sin(time / 2 + star_pos.x * 100));
-
-	// 4. Distance check: Are we looking at the star?
-	// Centering the star in the cell (0.5) + jitter (star_pos - 0.5)
+	float brightness = abs(sin(time / 2.0 + star_pos.x * 100.0));
 	vec3  center = vec3(0.5) + (star_pos - 0.5) * 0.8;
 	float dist = length(local_uv - center);
-
-	float radius = 0.05 * brightness; // Modulate radius by brightness for "glow"
+	float radius = 0.05 * brightness;
 	return smoothstep(radius, radius * 0.5, dist);
 }
 
@@ -190,44 +127,53 @@ float fbm(vec3 p) {
 }
 
 void main() {
-	// Convert screen coordinates to a world-space direction vector
-	vec4 clip = vec4(TexCoords * 2.0 - 1.0, 1.0, 1.0);
-	vec4 view_ray = invProjection * clip;
-	vec3 world_ray = (invView * vec4(view_ray.xy, -1.0, 0.0)).xyz;
-	world_ray = normalize(world_ray);
+	vec3 world_ray_horizon = normalize(viewDirectionForHorizon);
+	vec3 world_ray_objects = normalize(viewDirection);
 
-	// Color calculations based on the y-component of the view direction
-	float y = world_ray.y;
-
-	// Define colors for the gradient
-	vec3 twilight_color = vec3(0.9, 0.5, 0.2); // Orangey-red
-	vec3 mid_sky_color = vec3(0.2, 0.4, 0.8);  // Gentle blue
-	vec3 top_sky_color = vec3(0.05, 0.1, 0.3); // Dark blue
-
-	// Blend the colors
+	// 1. Base Sky Gradient
+	float y = world_ray_horizon.y;
+	vec3 twilight_color = vec3(0.9, 0.5, 0.2);
+	vec3 mid_sky_color = vec3(0.2, 0.4, 0.8);
+	vec3 top_sky_color = vec3(0.05, 0.1, 0.3);
 	float twilight_mix = smoothstep(0.0, 0.1, y);
 	vec3  color = mix(twilight_color, mid_sky_color, twilight_mix);
-
-	// Mottled glow
-	color = mix(color, color * 0.9, snoise(world_ray * 10.0));
-
+	color = mix(color, color * 0.9, snoise(world_ray_horizon * 10.0));
 	float top_mix = smoothstep(0.1, 0.6, y);
 	vec3  final_color = mix(color, top_sky_color, top_mix);
 
-	// --- 2. Nebula/Haze Layer (Domain Warping + FBM) ---
-	vec3  p = world_ray * 4.0;
+	// 2. Nebula/Haze Layer
+	vec3  p = world_ray_objects * 4.0;
 	vec3  warp_offset = vec3(fbm(p + time * 0.05));
 	float nebula_noise = fbm(p + warp_offset * 0.5);
-
-	// Map noise to a color palette (e.g., magenta and cyan for cosmic clouds)
 	vec3 nebula_palette = mix(vec3(0.0, 0.1, 0.4), vec3(0.8, 0.2, 0.7), nebula_noise);
-
-	// Blend the nebula color into the base sky, mostly visible in the dark top_sky area
-	float nebula_strength = smoothstep(0.2, 0.6, top_mix); // Only fade it in when sky is dark
+	float nebula_strength = smoothstep(0.2, 0.6, top_mix);
 	final_color = mix(final_color, nebula_palette * 1.5, nebula_strength * 0.4);
 
-	// --- 3. Star Field Layer (Additive Blend) ---
-	float stars = starLayer(world_ray);
+	// 3. Star Field Layer
+	float stars = starLayer(world_ray_objects);
 	final_color += stars * vec3(1.0, 0.9, 0.8);
+
+	// 4. Moon "Eye" Layer (Corrected Logic)
+	vec3  light_dir = normalize(lightPos - viewPos);
+	float dot_product = dot(world_ray_objects, light_dir);
+
+	// Define thresholds for smoothstep based on the dot product
+	float moon_threshold = 0.998;  // Outer edge of the moon's white
+	float iris_threshold = 0.999;
+	float pupil_threshold = 0.9995;
+
+	float moon_disc = smoothstep(moon_threshold, moon_threshold + 0.0005, dot_product);
+	float iris_disc = smoothstep(iris_threshold, iris_threshold + 0.0005, dot_product);
+	float pupil_disc = smoothstep(pupil_threshold, pupil_threshold + 0.0002, dot_product);
+
+	vec3 sclera_color = vec3(0.9, 0.9, 1.0);
+	vec3 iris_color = vec3(0.3, 0.8, 1.0);
+	vec3 pupil_color = vec3(0.05);
+
+	vec3 final_moon_color = mix(sclera_color, iris_color, iris_disc);
+	final_moon_color = mix(final_moon_color, pupil_color, pupil_disc);
+
+	final_color = mix(final_color, final_moon_color, moon_disc);
+
 	FragColor = vec4(final_color, 1.0);
 }
