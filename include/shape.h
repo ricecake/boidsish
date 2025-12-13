@@ -60,9 +60,7 @@ namespace Boidsish {
 		// Sphere mesh generation
 		static void InitSphereMesh();
 		static void DestroySphereMesh();
-		static void RenderSphere(
-			const glm::vec3& position, const glm::vec3& color, float scale
-		);
+		static void RenderSphere(const glm::vec3& position, const glm::vec3& color, float scale);
 
 	protected:
 		// Protected constructor for derived classes

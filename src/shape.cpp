@@ -12,20 +12,21 @@
 namespace Boidsish {
 
 	// Initialize static members
-	unsigned int Shape::sphere_vao_ = 0;
-	unsigned int Shape::sphere_vbo_ = 0;
-	int          Shape::sphere_vertex_count_ = 0;
-    std::shared_ptr<Shader> Shape::shader = nullptr;
+	unsigned int            Shape::sphere_vao_ = 0;
+	unsigned int            Shape::sphere_vbo_ = 0;
+	int                     Shape::sphere_vertex_count_ = 0;
+	std::shared_ptr<Shader> Shape::shader = nullptr;
 
 	void Shape::InitSphereMesh() {
-		if (sphere_vao_ != 0) return; // Already initialized
+		if (sphere_vao_ != 0)
+			return; // Already initialized
 
 		const int   latitude_segments = 16;
 		const int   longitude_segments = 32;
 		const float radius = 1.0f;
 
-		std::vector<float> vertices;
-        std::vector<unsigned int> indices;
+		std::vector<float>        vertices;
+		std::vector<unsigned int> indices;
 
 		for (int lat = 0; lat <= latitude_segments; ++lat) {
 			for (int lon = 0; lon <= longitude_segments; ++lon) {
@@ -77,8 +78,8 @@ namespace Boidsish {
 		glEnableVertexAttribArray(1);
 
 		glBindVertexArray(0);
-        // EBO is not needed after this, but we're not deleting it.
-        // This is a potential resource leak if not managed, but matches original logic.
+		// EBO is not needed after this, but we're not deleting it.
+		// This is a potential resource leak if not managed, but matches original logic.
 	}
 
 	void Shape::DestroySphereMesh() {
@@ -86,7 +87,7 @@ namespace Boidsish {
 			glDeleteVertexArrays(1, &sphere_vao_);
 			glDeleteBuffers(1, &sphere_vbo_);
 			// Note: The EBO is not tracked as a member, so it can't be deleted here.
-            // This is a leak from the original code that should be addressed later.
+			// This is a leak from the original code that should be addressed later.
 			sphere_vao_ = 0;
 			sphere_vbo_ = 0;
 			sphere_vertex_count_ = 0;
@@ -94,7 +95,8 @@ namespace Boidsish {
 	}
 
 	void Shape::RenderSphere(const glm::vec3& position, const glm::vec3& color, float scale) {
-		if (sphere_vao_ == 0) return;
+		if (sphere_vao_ == 0)
+			return;
 
 		shader->use();
 		glm::mat4 model = glm::mat4(1.0f);
@@ -107,4 +109,4 @@ namespace Boidsish {
 		glDrawElements(GL_TRIANGLES, sphere_vertex_count_, GL_UNSIGNED_INT, 0);
 		glBindVertexArray(0);
 	}
-}
+} // namespace Boidsish

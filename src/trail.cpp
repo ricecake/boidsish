@@ -68,13 +68,13 @@ namespace Boidsish {
 		for (int i = 0; i < (int)positions.size() - 3; ++i) {
 			AppendToGeometryCache(
 				positions[i],
-				positions[i+1],
-				positions[i+2],
-				positions[i+3],
+				positions[i + 1],
+				positions[i + 2],
+				positions[i + 3],
 				colors[i],
-				colors[i+1],
-				colors[i+2],
-				colors[i+3]
+				colors[i + 1],
+				colors[i + 2],
+				colors[i + 3]
 			);
 		}
 	}
@@ -88,8 +88,8 @@ namespace Boidsish {
 		}
 
 		std::vector<float> curve_progress;
-		for (int i=0; i < curve_positions.size(); ++i) {
-			curve_progress.push_back((float)i / (curve_positions.size() -1));
+		for (int i = 0; i < curve_positions.size(); ++i) {
+			curve_progress.push_back((float)i / (curve_positions.size() - 1));
 		}
 
 		if (curve_positions.size() < 2) {
@@ -218,13 +218,21 @@ namespace Boidsish {
 		}
 
 		if (points.size() >= 4) {
-			int size = points.size();
+			int                  size = points.size();
 			std::vector<Vector3> p(4);
 			std::vector<Vector3> c(4);
 
-			for (int i=0; i<4; ++i) {
-				p[i] = Vector3(points[size-4+i].first.x, points[size-4+i].first.y, points[size-4+i].first.z);
-				c[i] = Vector3(points[size-4+i].second.x, points[size-4+i].second.y, points[size-4+i].second.z);
+			for (int i = 0; i < 4; ++i) {
+				p[i] = Vector3(
+					points[size - 4 + i].first.x,
+					points[size - 4 + i].first.y,
+					points[size - 4 + i].first.z
+				);
+				c[i] = Vector3(
+					points[size - 4 + i].second.x,
+					points[size - 4 + i].second.y,
+					points[size - 4 + i].second.z
+				);
 			}
 
 			AppendToGeometryCache(p[0], p[1], p[2], p[3], c[0], c[1], c[2], c[3]);
@@ -269,7 +277,12 @@ namespace Boidsish {
 
 			// Progress
 			glVertexAttribPointer(
-				3, 1, GL_FLOAT, GL_FALSE, sizeof(TrailVertex), (void*)offsetof(TrailVertex, progress)
+				3,
+				1,
+				GL_FLOAT,
+				GL_FALSE,
+				sizeof(TrailVertex),
+				(void*)offsetof(TrailVertex, progress)
 			);
 			glEnableVertexAttribArray(3);
 
@@ -289,12 +302,21 @@ namespace Boidsish {
 		// Render a cap at the end of the trail
 		if (!points.empty()) {
 			const auto& end_point = points.front();
-			float end_thickness = BASE_THICKNESS * 0.1f; // Make cap size relative to trail
+			float       end_thickness = BASE_THICKNESS * 0.1f; // Make cap size relative to trail
 			Shape::RenderSphere(end_point.first, end_point.second, end_thickness);
 		}
 	}
 
-	void Trail::AppendToGeometryCache(const Vector3& p0, const Vector3& p1, const Vector3& p2, const Vector3& p3, const Vector3& c0, const Vector3& c1, const Vector3& c2, const Vector3& c3) {
+	void Trail::AppendToGeometryCache(
+		const Vector3& p0,
+		const Vector3& p1,
+		const Vector3& p2,
+		const Vector3& p3,
+		const Vector3& c0,
+		const Vector3& c1,
+		const Vector3& c2,
+		const Vector3& c3
+	) {
 		for (int j = 0; j < CURVE_SEGMENTS; ++j) {
 			float   t = (float)j / CURVE_SEGMENTS;
 			Vector3 pos = CatmullRom(t, p0, p1, p2, p3);
