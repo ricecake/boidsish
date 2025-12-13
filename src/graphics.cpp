@@ -85,6 +85,7 @@ namespace Boidsish {
 				throw std::runtime_error("Failed to initialize GLEW");
 			}
 
+			glfwWindowHint(GLFW_SAMPLES, 4);
 			glfwSetWindowUserPointer(window, this);
 			glfwSetKeyCallback(window, KeyCallback);
 			glfwSetCursorPosCallback(window, MouseCallback);
@@ -93,6 +94,7 @@ namespace Boidsish {
 
 			glEnable(GL_DEPTH_TEST);
 			glEnable(GL_BLEND);
+			glEnable(GL_MULTISAMPLE);
 			glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 			glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
 
