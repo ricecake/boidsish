@@ -1,10 +1,10 @@
 #version 330 core
 layout (location = 0) in vec3 aPos;
 layout (location = 1) in vec3 aNormal;
-layout (location = 2) in vec3 aColor; // For non-instanced vertex colors
-layout (location = 3) in vec3 instancePosition;
-layout (location = 4) in float instanceSize;
-layout (location = 5) in vec4 instanceColor;
+layout (location = 2) in vec3 instancePosition;
+layout (location = 3) in float instanceSize;
+layout (location = 4) in vec4 instanceColor;
+layout (location = 5) in vec3 aColor;
 
 out vec3 FragPos;
 out vec3 Normal;

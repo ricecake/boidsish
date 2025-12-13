@@ -208,29 +208,29 @@ namespace Boidsish {
 		glBindBuffer(GL_ARRAY_BUFFER, dots_vbo_);
 		glBufferData(GL_ARRAY_BUFFER, dot_data.size() * sizeof(DotData), dot_data.data(), GL_STATIC_DRAW);
 
-		glEnableVertexAttribArray(3);
+		glEnableVertexAttribArray(2);
 		glVertexAttribPointer(
-			3,
+			2,
 			3,
 			GL_FLOAT,
 			GL_FALSE,
 			sizeof(DotData),
 			(void*)offsetof(DotData, position)
 		);
+		glVertexAttribDivisor(2, 1);
+		glEnableVertexAttribArray(3);
+		glVertexAttribPointer(3, 1, GL_FLOAT, GL_FALSE, sizeof(DotData), (void*)offsetof(DotData, size));
 		glVertexAttribDivisor(3, 1);
 		glEnableVertexAttribArray(4);
-		glVertexAttribPointer(4, 1, GL_FLOAT, GL_FALSE, sizeof(DotData), (void*)offsetof(DotData, size));
-		glVertexAttribDivisor(4, 1);
-		glEnableVertexAttribArray(5);
 		glVertexAttribPointer(
-			5,
+			4,
 			4,
 			GL_FLOAT,
 			GL_FALSE,
 			sizeof(DotData),
 			(void*)offsetof(DotData, color)
 		);
-		glVertexAttribDivisor(5, 1);
+		glVertexAttribDivisor(4, 1);
 
 		glBindVertexArray(0);
 		dot_buffers_initialized_ = true;
@@ -243,10 +243,11 @@ namespace Boidsish {
 
 	// Batch render vertices
 	shader->use();
-	shader->setInt("useInstancedDrawing", 1);
+	shader->setBool("useInstancedDrawing", true);
+	shader->setBool("useVertexColor", true);
 	if (!dot_buffers_initialized_) {
 		SetupDotBuffers();
-		}
+	}
 
 	glBindVertexArray(dots_vao_);
 	glDrawElementsInstanced(
@@ -257,11 +258,11 @@ namespace Boidsish {
 		vertices.size()
 	);
 	glBindVertexArray(0);
-	shader->setInt("useInstancedDrawing", 0);
+	shader->setBool("useInstancedDrawing", false);
 
 
 		shader->use();
-		shader->setInt("useVertexColor", 1);
+		shader->setBool("useVertexColor", true);
 
 		glm::mat4 model = glm::mat4(1.0f);
 		model = glm::translate(model, glm::vec3(GetX(), GetY(), GetZ()));
@@ -273,7 +274,7 @@ namespace Boidsish {
 		glBindVertexArray(0);
 	}
 
-		shader->setInt("useVertexColor", 0);
+		shader->setBool("useVertexColor", false);
 		model = glm::mat4(1.0f);
 		shader->setMat4("model", model);
 	}
