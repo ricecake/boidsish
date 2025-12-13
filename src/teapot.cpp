@@ -23,7 +23,7 @@ void Teapot::render() const {
   if (shader) {
     glm::mat4 model = glm::mat4(1.0f);
     model = glm::translate(model, glm::vec3(GetX(), GetY(), GetZ()));
-    model = glm::scale(model, glm::vec3(0.1f, 0.1f, 0.1f));
+    model = glm::scale(model, glm::vec3(0.1f * GetScale(), 0.1f * GetScale(), 0.1f * GetScale()));
 
     shader->use();
     shader->setMat4("model", model);
@@ -42,12 +42,40 @@ void Teapot::create_buffers() const {
     return;
   }
 
-  std::vector<glm::vec3> vertices;
-  std::vector<glm::vec3> normals;
-  std::vector<GLfloat> buffer_data;
-
+  // 1. First pass: count vertices and faces to pre-allocate memory
+  size_t vertex_count = 0;
+  size_t final_vertex_count = 0;
   std::string line;
+  while (std::getline(obj_file, line)) {
+    if (line.rfind("v ", 0) == 0) {
+      vertex_count++;
+    } else if (line.rfind("f ", 0) == 0) {
+      std::stringstream ss(line.substr(2));
+      int indices = 0;
+      std::string val;
+      while(ss >> val) {
+          indices++;
+      }
+      if (indices > 2) {
+        final_vertex_count += (indices - 2) * 3;
+      }
+    }
+  }
+
+  // 2. Pre-allocate vectors
   std::vector<glm::vec3> temp_vertices;
+  temp_vertices.reserve(vertex_count);
+  std::vector<glm::vec3> vertices;
+  vertices.reserve(final_vertex_count);
+  std::vector<glm::vec3> normals;
+  normals.reserve(final_vertex_count);
+  std::vector<GLfloat> buffer_data;
+  buffer_data.reserve(final_vertex_count * 6);
+
+  // 3. Second pass: parse and fill vectors
+  obj_file.clear();
+  obj_file.seekg(0, std::ios::beg);
+
   while (std::getline(obj_file, line)) {
     std::stringstream ss(line);
     std::string type;

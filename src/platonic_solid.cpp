@@ -124,20 +124,24 @@ const GLfloat octahedron_vertices[] = {
 };
 
 // Dodecahedron
-const float p = 1.61803398875f; // phi
-const float ip = 0.61803398875f; // 1/phi
+// Data from https://www.geeks3d.com/20141201/how-to-render-a-basic-platonic-solid-in-opengl-c-or-glsl/
+const float G = 1.61803398875f;
+const float G_1 = 0.61803398875f;
 const GLfloat dodecahedron_vertices_data[20][3] = {
-    {-1, -1, -1}, { 1, -1, -1}, { 1,  1, -1}, {-1,  1, -1},
-    {-1, -1,  1}, { 1, -1,  1}, { 1,  1,  1}, {-1,  1,  1},
-    {0, -ip, -p}, {0, -ip,  p}, {0,  ip, -p}, {0,  ip,  p},
-    {-ip, -p, 0}, {-ip,  p, 0}, { ip, -p, 0}, { ip,  p, 0},
-    {-p, 0, -ip}, { p, 0, -ip}, { p, 0,  ip}, {-p, 0,  ip}
+  {-1, -1, -1}, {-1, -1, 1}, {-1, 1, -1}, {-1, 1, 1},
+  {1, -1, -1}, {1, -1, 1}, {1, 1, -1}, {1, 1, 1},
+  {0, -G_1, -G}, {0, -G_1, G}, {0, G_1, -G}, {0, G_1, G},
+  {-G_1, -G, 0}, {-G_1, G, 0}, {G_1, -G, 0}, {G_1, G, 0},
+  {-G, 0, -G_1}, {-G, 0, G_1}, {G, 0, -G_1}, {G, 0, G_1}
 };
-const GLuint dodecahedron_indices[12][5] = {
-    {0, 8, 10, 3, 16}, {0, 16, 19, 7, 4}, {0, 4, 9, 5, 12},
-    {8, 1, 17, 2, 10}, {10, 2, 15, 13, 3}, {3, 13, 9, 4, 16},
-    {1, 8, 0, 12, 14}, {1, 14, 5, 9, 18}, {1, 18, 6, 2, 17},
-    {5, 14, 1, 18, 9}, {2, 6, 11, 15, 10}, {4, 7, 11, 6, 9}
+
+const GLuint dodecahedron_triangle_indices[36][3] = {
+  {2, 10, 13}, {2, 13, 3}, {10, 6, 15}, {10, 15, 11}, {13, 1, 17}, {13, 17, 3},
+  {16, 2, 0}, {16, 0, 8}, {6, 10, 2}, {6, 2, 16}, {15, 13, 11}, {15, 11, 7},
+  {1, 12, 9}, {1, 9, 17}, {18, 16, 8}, {18, 8, 4}, {19, 7, 11}, {19, 11, 3},
+  {5, 14, 9}, {5, 9, 12}, {18, 6, 16}, {18, 6, 19}, {4, 14, 5}, {4, 5, 8},
+  {7, 19, 6}, {7, 6, 15}, {17, 9, 11}, {17, 11, 3}, {12, 8, 14}, {12, 8, 0},
+  {1, 0, 12}, {1, 0, 16}, {9, 5, 11}, {9, 5, 14}, {18, 4, 19}, {18, 4, 8},
 };
 
 // Icosahedron
@@ -195,26 +199,19 @@ void PlatonicSolid::Init() {
 
     // Dodecahedron
     std::vector<GLfloat> dodecahedron_v;
-    for (int i = 0; i < 12; ++i) { // For each of the 12 pentagonal faces
-        // Get the first three vertices of the pentagon to calculate the face normal
-        glm::vec3 v0(dodecahedron_vertices_data[dodecahedron_indices[i][0]][0],
-                     dodecahedron_vertices_data[dodecahedron_indices[i][0]][1],
-                     dodecahedron_vertices_data[dodecahedron_indices[i][0]][2]);
-        glm::vec3 v1(dodecahedron_vertices_data[dodecahedron_indices[i][1]][0],
-                     dodecahedron_vertices_data[dodecahedron_indices[i][1]][1],
-                     dodecahedron_vertices_data[dodecahedron_indices[i][1]][2]);
-        glm::vec3 v2(dodecahedron_vertices_data[dodecahedron_indices[i][2]][0],
-                     dodecahedron_vertices_data[dodecahedron_indices[i][2]][1],
-                     dodecahedron_vertices_data[dodecahedron_indices[i][2]][2]);
+    for (int i = 0; i < 36; ++i) { // For each of the 36 triangles
+        // Get the three vertices of the triangle to calculate the face normal
+        glm::vec3 v0(dodecahedron_vertices_data[dodecahedron_triangle_indices[i][0]][0],
+                     dodecahedron_vertices_data[dodecahedron_triangle_indices[i][0]][1],
+                     dodecahedron_vertices_data[dodecahedron_triangle_indices[i][0]][2]);
+        glm::vec3 v1(dodecahedron_vertices_data[dodecahedron_triangle_indices[i][1]][0],
+                     dodecahedron_vertices_data[dodecahedron_triangle_indices[i][1]][1],
+                     dodecahedron_vertices_data[dodecahedron_triangle_indices[i][1]][2]);
+        glm::vec3 v2(dodecahedron_vertices_data[dodecahedron_triangle_indices[i][2]][0],
+                     dodecahedron_vertices_data[dodecahedron_triangle_indices[i][2]][1],
+                     dodecahedron_vertices_data[dodecahedron_triangle_indices[i][2]][2]);
 
         glm::vec3 normal = glm::normalize(glm::cross(v2 - v0, v1 - v0));
-
-        // Triangulate the pentagon face (as a fan of 3 triangles)
-        const int i0 = dodecahedron_indices[i][0];
-        const int i1 = dodecahedron_indices[i][1];
-        const int i2 = dodecahedron_indices[i][2];
-        const int i3 = dodecahedron_indices[i][3];
-        const int i4 = dodecahedron_indices[i][4];
 
         auto push_vertex = [&](int index) {
             dodecahedron_v.push_back(dodecahedron_vertices_data[index][0]);
@@ -225,20 +222,9 @@ void PlatonicSolid::Init() {
             dodecahedron_v.push_back(normal.z);
         };
 
-        // Triangle 1
-        push_vertex(i0);
-        push_vertex(i1);
-        push_vertex(i2);
-
-        // Triangle 2
-        push_vertex(i0);
-        push_vertex(i2);
-        push_vertex(i3);
-
-        // Triangle 3
-        push_vertex(i0);
-        push_vertex(i3);
-        push_vertex(i4);
+        push_vertex(dodecahedron_triangle_indices[i][0]);
+        push_vertex(dodecahedron_triangle_indices[i][1]);
+        push_vertex(dodecahedron_triangle_indices[i][2]);
     }
     create_solid_buffers(PlatonicSolidType::DODECAHEDRON, dodecahedron_v.data(), dodecahedron_v.size() * sizeof(GLfloat));
 

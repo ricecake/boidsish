@@ -52,6 +52,10 @@ namespace Boidsish {
 
 		inline void SetTrailLength(int length) { trail_length_ = length; }
 
+        inline float GetScale() const { return scale_; }
+
+        inline void SetScale(float scale) { scale_ = scale; }
+
 		// Static shader reference
 		static std::shared_ptr<Shader> shader;
 
@@ -66,15 +70,17 @@ namespace Boidsish {
 			float g = 1.0f,
 			float b = 1.0f,
 			float a = 1.0f,
-			int   trail_length = 0
+			int   trail_length = 0,
+            float scale = 1.0f
 		):
-			id_(id), x_(x), y_(y), z_(z), r_(r), g_(g), b_(b), a_(a), trail_length_(trail_length) {}
+			id_(id), x_(x), y_(y), z_(z), r_(r), g_(g), b_(b), a_(a), trail_length_(trail_length), scale_(scale) {}
 
 	private:
 		int   id_;
 		float x_, y_, z_;
 		float r_, g_, b_, a_;
 		int   trail_length_;
+        float scale_;
 	};
 
 	// Function type for user-defined shape generation

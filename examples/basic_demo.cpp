@@ -2,57 +2,84 @@
 #include <filesystem>
 #include <iostream>
 #include <memory>
-#include <vector>
 
+#include "dot.h"
+#include "graph.h"
 #include "graphics.h"
 #include "platonic_solid.h"
 #include "teapot.h"
 
 using namespace Boidsish;
 
-// Example showing the platonic solids and the Utah teapot
-std::vector<std::shared_ptr<Shape>> ShapesExample(float time) {
-    std::vector<std::shared_ptr<Shape>> shapes;
+// Example: Simple moving dot with trail
+std::vector<std::shared_ptr<Shape>> TrailExample(float time) {
+	std::vector<std::shared_ptr<Shape>> shapes;
 
-    // Create one of each of the first three platonic solids
-    auto tetrahedron = std::make_shared<PlatonicSolid>(PlatonicSolidType::TETRAHEDRON, 0, -6.0f, 0.0f, 0.0f);
-    tetrahedron->SetColor(1.0f, 0.0f, 0.0f); // Red
-    shapes.push_back(tetrahedron);
+	// Platonic solids
+	auto tetrahedron = std::make_shared<PlatonicSolid>(PlatonicSolidType::TETRAHEDRON, 0, -5, -3, 0);
+	shapes.push_back(tetrahedron);
 
-    auto cube = std::make_shared<PlatonicSolid>(PlatonicSolidType::CUBE, 1, -3.0f, 0.0f, 0.0f);
-    cube->SetColor(0.0f, 1.0f, 0.0f); // Green
-    shapes.push_back(cube);
+	auto cube = std::make_shared<PlatonicSolid>(PlatonicSolidType::CUBE, 0, -3, -3, 0);
+	shapes.push_back(cube);
 
-    auto octahedron = std::make_shared<PlatonicSolid>(PlatonicSolidType::OCTAHEDRON, 2, 0.0f, 0.0f, 0.0f);
-    octahedron->SetColor(0.0f, 0.0f, 1.0f); // Blue
-    shapes.push_back(octahedron);
+	auto octahedron = std::make_shared<PlatonicSolid>(PlatonicSolidType::OCTAHEDRON, 0, -1, -3, 0);
+	shapes.push_back(octahedron);
 
-    auto dodecahedron = std::make_shared<PlatonicSolid>(PlatonicSolidType::DODECAHEDRON, 3, 3.0f, 0.0f, 0.0f);
-    dodecahedron->SetColor(1.0f, 1.0f, 0.0f); // Yellow
-    shapes.push_back(dodecahedron);
+	auto dodecahedron = std::make_shared<PlatonicSolid>(PlatonicSolidType::DODECAHEDRON, 0, 1, -3, 0);
+	shapes.push_back(dodecahedron);
 
-    auto icosahedron = std::make_shared<PlatonicSolid>(PlatonicSolidType::ICOSAHEDRON, 4, 6.0f, 0.0f, 0.0f);
-    icosahedron->SetColor(1.0f, 0.0f, 1.0f); // Magenta
-    shapes.push_back(icosahedron);
+	auto icosahedron = std::make_shared<PlatonicSolid>(PlatonicSolidType::ICOSAHEDRON, 0, 3, -3, 0);
+	shapes.push_back(icosahedron);
 
-    auto teapot = std::make_shared<Teapot>(5, 9.0f, 0.0f, 0.0f);
-    teapot->SetColor(0.0f, 1.0f, 1.0f); // Cyan
-    shapes.push_back(teapot);
+	// Utah teapot
+	auto teapot = std::make_shared<Boidsish::Teapot>(0, 5, -3, 0);
+	shapes.push_back(teapot);
 
-    return shapes;
+	// Example: Graph with spline smoothing
+	auto graph = std::make_shared<Graph>(0, 0, 0, 0);
+
+	// Add vertices in a chain
+	graph->AddVertex(Vector3(-4, 0, 0), 10.0f, 1, 0, 0, 1);
+	graph->AddVertex(Vector3(-2, 2, 0), 12.0f, 0, 1, 0, 1);
+	graph->AddVertex(Vector3(0, 0, 0), 15.0f, 0, 0, 1, 1);
+	graph->AddVertex(Vector3(2, -2, 0), 12.0f, 1, 1, 0, 1);
+	graph->AddVertex(Vector3(4, 0, 0), 10.0f, 1, 0, 1, 1);
+
+	// Add edges to connect the vertices in a chain
+	graph->V(0).Link(graph->V(1));
+	graph->V(1).Link(graph->V(2));
+	graph->V(2).Link(graph->V(3));
+	graph->V(3).Link(graph->V(4));
+
+	shapes.push_back(graph);
+
+	// Example: Simple moving dot with trail
+	// Create a moving dot with a trail
+	auto dot = std::make_shared<Dot>(1, sin(.5 * time) * 3.0f, cos(time * 0.7f) * 2.0f, sin(time * 0.5f) * 1.5f);
+	dot->SetTrailLength(100); // Enable trails
+	dot->SetColor(1.0f, 0.5f, 0.0f);
+	shapes.push_back(dot);
+
+	// Another moving dot
+	auto dot2 = std::make_shared<Dot>(2, cos(time * 1.3f) * 2.5f, sin(time * 0.9f) * 2.0f, cos(time * 0.8f) * 1.0f);
+	dot2->SetTrailLength(150);
+	dot2->SetColor(0.0f, 1.0f, 0.5f);
+	shapes.push_back(dot2);
+
+	return shapes;
 }
 
 int main() {
 	try {
 		// Create the visualizer
-		Visualizer viz(1024, 768, "Boidsish - Shapes Example");
+		Visualizer viz(1024, 768, "Boidsish - Simple 3D Visualization Example");
 
 		// Set up the initial camera position
-		Camera camera(0.0f, 2.0f, 15.0f, -15.0f, 0.0f, 45.0f);
+		Camera camera(0.0f, 2.0f, 15.0f, -15.0f, -90.0f, 45.0f);
 		viz.SetCamera(camera);
 
-		// Set the shape function
-		viz.AddShapeHandler(ShapesExample);
+		// Set the dot function
+		viz.AddShapeHandler(TrailExample);
 
 		auto path = std::filesystem::current_path();
 
