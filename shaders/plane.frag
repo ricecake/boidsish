@@ -34,18 +34,18 @@ void main()
     float C_major = 1.0 - min(line_major, 1.0);
 
     float intensity = max(C_minor, C_major * 1.5) * 0.6;
-    // vec3 grid_color = vec3(0.0, 0.8, 0.8) * intensity;
+    vec3 grid_color = vec3(0.0, 0.8, 0.8) * intensity;
     // vec3 grid_color = vec3(0.0, 0.8, 0.8) * intensity * (0.5 + 0.5 * sin(time));
-// Create a pulse that moves through the grid over time
-float pulse = sin(time * 2.0) * 0.5 + 0.5; // Oscillates 0.0 to 1.0
-float pulse_intensity = 0.5 + 0.5 * pulse;
+// // Create a pulse that moves through the grid over time
+// float pulse = sin(time * 2.0) * 0.5 + 0.5; // Oscillates 0.0 to 1.0
+// float pulse_intensity = 0.5 + 0.5 * pulse;
 
-// Apply to the grid color
-vec3 grid_color = vec3(0.0, 0.8, 0.8) * intensity * pulse_intensity;
+// // Apply to the grid color
+// vec3 grid_color = vec3(0.0, 0.8, 0.8) * intensity * pulse_intensity;
 
 // Optional: Add a "scanning" highlight that moves across the floor
-float scanner = 1.0 - smoothstep(0.0, 5.0, abs(WorldPos.z - (time * 20.0 - 200.0))); // Moves line
-grid_color += vec3(1.0, 0.2, 0.2) * scanner; // Add red scan line
+// float scanner = 1.0 - smoothstep(0.0, 5.0, abs(WorldPos.z - (time * 20.0 - 200.0))); // Moves line
+// grid_color += vec3(1.0, 0.2, 0.2) * scanner; // Add red scan line
     // --- Plane lighting ---
     float ambientStrength = 0.05;
     vec3 ambient = ambientStrength * lightColor;
