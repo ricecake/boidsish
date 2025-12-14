@@ -58,6 +58,8 @@ namespace Boidsish {
 		float single_track_orbit_pitch = 20.0f;
 		float single_track_distance = 15.0f;
 
+		bool color_shift_effect = false;
+
 		VisualizerImpl(int w, int h, const char* title): width(w), height(h) {
 			last_frame = std::chrono::high_resolution_clock::now();
 			if (!glfwInit())
@@ -250,6 +252,7 @@ namespace Boidsish {
 			const std::optional<glm::vec4>&            clip_plane
 		) {
 			shader->use();
+			shader->setBool("colorShift", color_shift_effect);
 			shader->setMat4("view", view);
 			if (clip_plane) {
 				shader->setVec4("clipPlane", *clip_plane);
@@ -549,6 +552,8 @@ namespace Boidsish {
 			}
 			if (key == GLFW_KEY_P && action == GLFW_PRESS)
 				impl->paused = !impl->paused;
+			if (key == GLFW_KEY_C && action == GLFW_PRESS)
+				impl->color_shift_effect = !impl->color_shift_effect;
 		}
 
 		static void MouseCallback(GLFWwindow* w, double xpos, double ypos) {
