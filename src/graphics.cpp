@@ -64,7 +64,7 @@ namespace Boidsish {
 		float single_track_distance = 15.0f;
 
 		bool color_shift_effect = false;
-		float chromatic_aberration_strength = 0.01f;
+		float chromatic_aberration_strength = 0.1f;
 
 		VisualizerImpl(int w, int h, const char* title): width(w), height(h) {
 			last_frame = std::chrono::high_resolution_clock::now();
