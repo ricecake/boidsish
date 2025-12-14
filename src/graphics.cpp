@@ -99,6 +99,9 @@ namespace Boidsish {
 			glfwSetFramebufferSizeCallback(window, FramebufferSizeCallback);
 			glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
 
+			glEnable(GL_CULL_FACE);
+			glCullFace(GL_BACK);
+			glFrontFace(GL_CCW);
 			glEnable(GL_DEPTH_TEST);
 			glEnable(GL_BLEND);
 			glEnable(GL_MULTISAMPLE);
@@ -133,24 +136,13 @@ namespace Boidsish {
 			Shape::InitSphereMesh();
 
 			float quad_vertices[] = {
-				-1.0f,
-				0.0f,
-				-1.0f,
-				1.0f,
-				0.0f,
-				-1.0f,
-				1.0f,
-				0.0f,
-				1.0f,
-				1.0f,
-				0.0f,
-				1.0f,
-				-1.0f,
-				0.0f,
-				1.0f,
-				-1.0f,
-				0.0f,
-				-1.0f
+				// Definitive CCW winding
+				-1.0f, 0.0f,  1.0f,
+				 1.0f, 0.0f, -1.0f,
+				-1.0f, 0.0f, -1.0f,
+				-1.0f, 0.0f,  1.0f,
+				 1.0f, 0.0f,  1.0f,
+				 1.0f, 0.0f, -1.0f
 			};
 			glGenVertexArrays(1, &plane_vao);
 			glBindVertexArray(plane_vao);

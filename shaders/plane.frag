@@ -54,7 +54,7 @@ void main() {
 	vec3 lighting = (ambient + diffuse + specular);
 
 	// --- Combine colors ---
-	float reflection_strength = 0.8;
+	float reflection_strength = 0.3;
 	vec3  final_color = mix(lighting * surfaceColor, reflectionColor, reflection_strength) + grid_color;
 
 	// --- Distance Fade ---

@@ -50,12 +50,14 @@ namespace Boidsish {
 			for (int lon = 0; lon < longitude_segments; ++lon) {
 				int first = (lat * (longitude_segments + 1)) + lon;
 				int second = first + longitude_segments + 1;
+				// CCW winding
 				indices.push_back(first);
-				indices.push_back(second);
 				indices.push_back(first + 1);
 				indices.push_back(second);
+
+				indices.push_back(second);
+				indices.push_back(first + 1);
 				indices.push_back(second + 1);
-				indices.push_back(first + 1);
 			}
 		}
 		sphere_vertex_count_ = indices.size();
