@@ -221,15 +221,21 @@ void PredatorEntity::UpdateEntity(EntityHandler& handler, float time, float delt
 class FlockingHandler : public SpatialEntityHandler {
 public:
     FlockingHandler(int num_flock, int num_predators, int num_food) : gen_(rd_()), dis_(-SimulationParameters::kWorldBounds, SimulationParameters::kWorldBounds) {
+        std::uniform_real_distribution<float> vel_dis(-1.0f, 1.0f);
+
         for (int i = 0; i < num_flock; ++i) {
             auto entity = std::make_shared<FlockingEntity>(next_id_++);
             entity->SetPosition(dis_(gen_), dis_(gen_) / 2.0f, dis_(gen_));
+            Vector3 initial_velocity(vel_dis(gen_), 0.0f, vel_dis(gen_));
+            entity->SetVelocity(initial_velocity.Normalized() * SimulationParameters::kFlockBaselineSpeed);
             AddEntity(entity->GetId(), entity);
         }
 
         for (int i = 0; i < num_predators; ++i) {
             auto entity = std::make_shared<PredatorEntity>(next_id_++);
             entity->SetPosition(dis_(gen_), dis_(gen_) / 2.0f, dis_(gen_));
+            Vector3 initial_velocity(vel_dis(gen_), 0.0f, vel_dis(gen_));
+            entity->SetVelocity(initial_velocity.Normalized() * SimulationParameters::kPredatorBaselineSpeed);
             AddEntity(entity->GetId(), entity);
         }
 

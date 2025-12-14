@@ -8,36 +8,34 @@ namespace Boidsish {
 		}
 		last_time_ = time;
 
-		// Call pre-timestep hook
-		PreTimestep(time, delta_time);
-
-		// Get entities
+		// Get all entities for processing
 		std::vector<std::shared_ptr<EntityBase>> entities;
 		std::transform(entities_.begin(), entities_.end(), std::back_inserter(entities), [](const auto& pair) {
 			return pair.second;
 		});
 
-		// Update all entities
+		// First, update all entity positions based on their current velocity
+		for (auto& entity : entities) {
+			Vector3 new_position = entity->GetPosition() + entity->GetVelocity() * delta_time;
+			entity->SetPosition(new_position);
+		}
+
+		// Call pre-timestep hook (this is where SpatialEntityHandler will build the R-Tree)
+		PreTimestep(time, delta_time);
+
+		// Now, update entity logic (steering, flocking, etc.) which may depend on neighbor positions
 		for (auto& entity : entities) {
 			entity->UpdateEntity(*this, time, delta_time);
 		}
 
-		// Call post-timestep hook
+		// Call post-timestep hook (for cleanup, interactions, etc.)
 		PostTimestep(time, delta_time);
 
-		// Generate shapes from entity states
+		// Finally, generate shapes from the updated entity states
 		std::vector<std::shared_ptr<Shape>> shapes;
-		shapes.reserve(entities_.size());
-
+		shapes.reserve(entities.size());
 		for (auto& entity : entities) {
-			// Update entity position using its velocity
-			Vector3 new_position = entity->GetPosition() + entity->GetVelocity() * delta_time;
-			entity->SetPosition(new_position);
-
-			// Update the entity's shape
 			entity->UpdateShape();
-
-			// Add shape to the list
 			shapes.push_back(entity->GetShape());
 		}
 

@@ -60,7 +60,7 @@ namespace Boidsish {
 		}
 
 	protected:
-		void PostTimestep(float time, float delta_time) override {
+		void PreTimestep(float time, float delta_time) override {
 			(void)time;
 			(void)delta_time;
 			rtree_.RemoveAll();
