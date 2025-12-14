@@ -48,6 +48,7 @@ namespace Boidsish {
 
 		bool                                           paused = false;
 		float                                          simulation_time = 0.0f;
+		float                                          ripple_strength = 0.0f;
 		std::chrono::high_resolution_clock::time_point last_frame;
 
 		bool  auto_camera_mode = true;
@@ -258,6 +259,7 @@ namespace Boidsish {
 			const std::optional<glm::vec4>&            clip_plane
 		) {
 			shader->use();
+			shader->setFloat("ripple_strength", ripple_strength);
 			shader->setMat4("view", view);
 			if (clip_plane) {
 				shader->setVec4("clipPlane", *clip_plane);
@@ -577,6 +579,8 @@ namespace Boidsish {
 			}
 			if (key == GLFW_KEY_P && action == GLFW_PRESS)
 				impl->paused = !impl->paused;
+			if (key == GLFW_KEY_R && action == GLFW_PRESS)
+				impl->ripple_strength = (impl->ripple_strength > 0.0f) ? 0.0f : 0.05f;
 		}
 
 		static void MouseCallback(GLFWwindow* w, double xpos, double ypos) {
