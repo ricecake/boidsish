@@ -22,16 +22,22 @@ EXAMPLE_SRCDIR = examples
 EXAMPLE_SOURCES = $(wildcard $(EXAMPLE_SRCDIR)/*.cpp)
 EXAMPLE_TARGETS = $(patsubst $(EXAMPLE_SRCDIR)/%.cpp,$(BUILDDIR)/%,$(EXAMPLE_SOURCES))
 
+# Shader files
+SHADER_SRCDIR = shaders
+SHADER_FILES := $(shell find $(SHADER_SRCDIR) -type f)
 
 TARGET = $(BUILDDIR)/libboidsish.a
 
 # Platform-specific settings
 ifeq ($(UNAME_S), Linux)
-    # Linux-specific flags
-    LIBS = -lGL -lGLU -lglfw -lGLEW
-    PKG_CONFIG = $(shell pkg-config --cflags --libs glfw3 glew glm)
-    ifneq ($(PKG_CONFIG),)
-        LIBS = $(PKG_CONFIG) -lGL -lGLU
+	LIBS = -lGL -lGLU -lglfw -lGLEW
+	PKG_CONFIG_CHECK = $(shell pkg-config --cflags --libs glfw3 glew glm 2>/dev/null)
+    ifeq ($(strip $(PKG_CONFIG_CHECK)),)
+        # Fallback if pkg-config fails or libraries are not in standard paths
+        $(warning "pkg-config failed to find glfw3, glew, or glm. Using default flags.")
+    else
+        # Use pkg-config for library flags
+        LIBS = $(PKG_CONFIG_CHECK) -lGL -lGLU
     endif
 endif
 
@@ -51,11 +57,8 @@ endif
 all: library examples
 
 # Create build directories
-$(OBJDIR):
-	@mkdir -p $(OBJDIR)
-
-$(BUILDDIR):
-	@mkdir -p $(BUILDDIR)
+$(OBJDIR) $(BUILDDIR):
+	@mkdir -p $@
 
 library: $(TARGET)
 
@@ -67,11 +70,11 @@ $(OBJDIR)/%.o: $(SRCDIR)/%.cpp | $(OBJDIR)
 	$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
 
 # Build examples
-examples: $(OBJECTS) $(EXAMPLE_TARGETS)
+examples: $(EXAMPLE_TARGETS)
 
-$(BUILDDIR)/%: $(EXAMPLE_SRCDIR)/%.cpp $(OBJECTS) | $(BUILDDIR)
-	$(CXX) $(CXXFLAGS) $(INCLUDES) $< $(OBJECTS) -o $@ $(LDFLAGS) $(LIBS)
-
+# Link examples. The target depends on all shader files.
+$(BUILDDIR)/%: $(EXAMPLE_SRCDIR)/%.cpp $(TARGET) $(SHADER_FILES)
+	$(CXX) $(CXXFLAGS) $(INCLUDES) $< $(TARGET) -o $@ $(LDFLAGS) $(LIBS)
 
 # Clean build artifacts
 clean:
@@ -101,4 +104,5 @@ help:
 
 .PHONY: all clean examples install-deps-linux install-deps-macos help format library
 
+# Include all dependency files
 -include $(OBJECTS:.o=.d)

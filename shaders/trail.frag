@@ -5,12 +5,7 @@ in vec3 vs_color;
 in vec3 vs_normal;
 in vec3 vs_frag_pos;
 
-layout(std140) uniform Lighting {
-	vec3  lightPos;
-	vec3  viewPos;
-	vec3  lightColor;
-	float time;
-};
+#include "lighting.glsl"
 
 void main() {
 	// Ambient

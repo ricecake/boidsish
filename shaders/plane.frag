@@ -5,12 +5,7 @@ in vec3 WorldPos;
 in vec3 Normal;
 in vec4 ReflectionClipSpacePos;
 
-layout(std140) uniform Lighting {
-	vec3  lightPos;
-	vec3  viewPos;
-	vec3  lightColor;
-	float time;
-};
+#include "lighting.glsl"
 
 uniform sampler2D reflectionTexture;
 

@@ -4,11 +4,7 @@ out vec4 FragColor;
 in vec3 Normal;
 in vec3 FragPos;
 
-layout (std140) uniform Lighting {
-    vec3 lightPos;
-    vec3 viewPos;
-    vec3 lightColor;
-};
+#include "lighting.glsl"
 
 void main()
 {

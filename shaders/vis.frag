@@ -5,12 +5,7 @@ in vec3 FragPos;
 in vec3 Normal;
 in vec3 vs_color;
 
-layout(std140) uniform Lighting {
-	vec3  lightPos;
-	vec3  viewPos;
-	vec3  lightColor;
-	float time;
-};
+#include "lighting.glsl"
 
 uniform vec3  objectColor;
 uniform int   useVertexColor;

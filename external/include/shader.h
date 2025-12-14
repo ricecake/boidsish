@@ -1,5 +1,3 @@
-
-
 #ifndef SHADER_H
 #define SHADER_H
 
@@ -7,6 +5,9 @@
 #include <iostream>
 #include <sstream>
 #include <string>
+#include <set>
+#include <filesystem>
+#include <vector>
 
 #include <GL/glew.h>
 #include <glm/glm.hpp>
@@ -17,79 +18,58 @@ public:
 
 	// constructor generates the shader on the fly
 	// ------------------------------------------------------------------------
-	Shader(const char* vertexPath, const char* fragmentPath, const char* geometryPath = nullptr) {
-		// 1. retrieve the vertex/fragment source code from filePath
-		std::string   vertexCode;
-		std::string   fragmentCode;
-		std::string   geometryCode;
-		std::ifstream vShaderFile;
-		std::ifstream fShaderFile;
-		std::ifstream gShaderFile;
-		// ensure ifstream objects can throw exceptions:
-		vShaderFile.exceptions(std::ifstream::failbit | std::ifstream::badbit);
-		fShaderFile.exceptions(std::ifstream::failbit | std::ifstream::badbit);
-		gShaderFile.exceptions(std::ifstream::failbit | std::ifstream::badbit);
-		try {
-			// open files
-			vShaderFile.open(vertexPath);
-			fShaderFile.open(fragmentPath);
-			std::stringstream vShaderStream, fShaderStream;
-			// read file's buffer contents into streams
-			vShaderStream << vShaderFile.rdbuf();
-			fShaderStream << fShaderFile.rdbuf();
-			// close file handlers
-			vShaderFile.close();
-			fShaderFile.close();
-			// convert stream into string
-			vertexCode = vShaderStream.str();
-			fragmentCode = fShaderStream.str();
-			// if geometry shader path is present, also load a geometry shader
-			if (geometryPath != nullptr) {
-				gShaderFile.open(geometryPath);
-				std::stringstream gShaderStream;
-				gShaderStream << gShaderFile.rdbuf();
-				gShaderFile.close();
-				geometryCode = gShaderStream.str();
-			}
-		} catch (std::ifstream::failure& e) {
-			std::cout << "ERROR::SHADER::FILE_NOT_SUCCESSFULLY_READ: " << e.what() << std::endl;
-		}
+	Shader(const char* vertexPath, const char* fragmentPath, const char* geometryPath = nullptr, const char* tessControlPath = nullptr, const char* tessEvalPath = nullptr) {
+		std::string vertexCode = loadShader(vertexPath);
+		std::string fragmentCode = loadShader(fragmentPath);
+		std::string geometryCode = loadShader(geometryPath);
+		std::string tessControlCode = loadShader(tessControlPath);
+		std::string tessEvalCode = loadShader(tessEvalPath);
+
 		const char* vShaderCode = vertexCode.c_str();
 		const char* fShaderCode = fragmentCode.c_str();
-		// 2. compile shaders
-		unsigned int vertex, fragment;
-		// vertex shader
-		vertex = glCreateShader(GL_VERTEX_SHADER);
-		glShaderSource(vertex, 1, &vShaderCode, NULL);
-		glCompileShader(vertex);
-		checkCompileErrors(vertex, "VERTEX");
-		// fragment Shader
-		fragment = glCreateShader(GL_FRAGMENT_SHADER);
-		glShaderSource(fragment, 1, &fShaderCode, NULL);
-		glCompileShader(fragment);
-		checkCompileErrors(fragment, "FRAGMENT");
-		// if geometry shader is given, compile geometry shader
-		unsigned int geometry;
-		if (geometryPath != nullptr) {
+
+		unsigned int vertex = compileShader(GL_VERTEX_SHADER, vShaderCode, "VERTEX");
+		unsigned int fragment = compileShader(GL_FRAGMENT_SHADER, fShaderCode, "FRAGMENT");
+
+        unsigned int geometry = 0;
+		if (geometryPath != nullptr && !geometryCode.empty()) {
 			const char* gShaderCode = geometryCode.c_str();
-			geometry = glCreateShader(GL_GEOMETRY_SHADER);
-			glShaderSource(geometry, 1, &gShaderCode, NULL);
-			glCompileShader(geometry);
-			checkCompileErrors(geometry, "GEOMETRY");
+			geometry = compileShader(GL_GEOMETRY_SHADER, gShaderCode, "GEOMETRY");
 		}
+
+        unsigned int tessControl = 0;
+        if (tessControlPath != nullptr && !tessControlCode.empty()) {
+            const char* tcShaderCode = tessControlCode.c_str();
+            tessControl = compileShader(GL_TESS_CONTROL_SHADER, tcShaderCode, "TESS_CONTROL");
+        }
+
+        unsigned int tessEval = 0;
+        if (tessEvalPath != nullptr && !tessEvalCode.empty()) {
+            const char* teShaderCode = tessEvalCode.c_str();
+            tessEval = compileShader(GL_TESS_EVALUATION_SHADER, teShaderCode, "TESS_EVALUATION");
+        }
+
 		// shader Program
 		ID = glCreateProgram();
 		glAttachShader(ID, vertex);
 		glAttachShader(ID, fragment);
-		if (geometryPath != nullptr)
+		if (geometry != 0)
 			glAttachShader(ID, geometry);
+        if (tessControl != 0)
+            glAttachShader(ID, tessControl);
+        if (tessEval != 0)
+            glAttachShader(ID, tessEval);
 		glLinkProgram(ID);
 		checkCompileErrors(ID, "PROGRAM");
 		// delete the shaders as they're linked into our program now and no longer necessary
 		glDeleteShader(vertex);
 		glDeleteShader(fragment);
-		if (geometryPath != nullptr)
+		if (geometry != 0)
 			glDeleteShader(geometry);
+        if (tessControl != 0)
+            glDeleteShader(tessControl);
+        if (tessEval != 0)
+            glDeleteShader(tessEval);
 	}
 
 	// activate the shader
@@ -176,5 +156,79 @@ private:
 			}
 		}
 	}
+
+    std::string loadShaderSourceWithIncludes(const std::string& filepath, std::set<std::string>& includedFiles) {
+        if (includedFiles.count(filepath)) {
+            // Circular dependency detected
+            std::cerr << "ERROR::SHADER::CIRCULAR_INCLUDE: " << filepath << std::endl;
+            return "";
+        }
+        includedFiles.insert(filepath);
+
+        std::ifstream shaderFile;
+        shaderFile.exceptions(std::ifstream::failbit | std::ifstream::badbit);
+        std::string shaderCode;
+        try {
+            shaderFile.open(filepath);
+            std::stringstream shaderStream;
+            shaderStream << shaderFile.rdbuf();
+            shaderFile.close();
+            shaderCode = shaderStream.str();
+        } catch (std::ifstream::failure& e) {
+            std::cout << "ERROR::SHADER::FILE_NOT_SUCCESSFULLY_READ: " << e.what() << " at " << filepath << std::endl;
+            return "";
+        }
+
+        std::stringstream processedCode;
+        std::istringstream sourceStream(shaderCode);
+        std::string line;
+
+        std::filesystem::path currentPath(filepath);
+        std::filesystem::path currentDir = currentPath.parent_path();
+
+        while (std::getline(sourceStream, line)) {
+            if (line.rfind("#include \"", 0) == 0) {
+                size_t start = line.find('"') + 1;
+                size_t end = line.find('"', start);
+                if (end != std::string::npos) {
+                    std::string includeFilename = line.substr(start, end - start);
+                    std::filesystem::path includePath = currentDir / includeFilename;
+                    try {
+                        std::string absoluteIncludePath = std::filesystem::canonical(includePath).string();
+                        processedCode << loadShaderSourceWithIncludes(absoluteIncludePath, includedFiles) << "\n";
+                    } catch (const std::filesystem::filesystem_error& e) {
+                        std::cerr << "ERROR::SHADER::INCLUDE_FILE_NOT_FOUND: " << e.what() << std::endl;
+                        processedCode << line << "\n"; // Keep the include line to see it in potential shader compile errors
+                    }
+                } else {
+                    processedCode << line << "\n";
+                }
+            } else {
+                processedCode << line << "\n";
+            }
+        }
+
+        return processedCode.str();
+    }
+
+    std::string loadShader(const char* path) {
+        if (!path) return "";
+        std::set<std::string> includedFiles;
+        try {
+            return loadShaderSourceWithIncludes(std::filesystem::canonical(path).string(), includedFiles);
+        } catch (const std::filesystem::filesystem_error& e) {
+            std::cout << "ERROR::SHADER::FILE_NOT_FOUND: " << e.what() << std::endl;
+            return "";
+        }
+    }
+
+    unsigned int compileShader(GLenum type, const char* source, const std::string& typeName) {
+        if (!source || std::string(source).empty()) return 0;
+        unsigned int shader = glCreateShader(type);
+        glShaderSource(shader, 1, &source, NULL);
+        glCompileShader(shader);
+        checkCompileErrors(shader, typeName);
+        return shader;
+    }
 };
 #endif
