@@ -131,40 +131,36 @@ namespace Boidsish {
 			binormals.push_back(tangents[i].Cross(transported_normal).Normalized());
 		}
 
-		// Generate cylindrical mesh around the curve
-		for (int i = 0; i < (int)curve_positions.size() - 1; ++i) {
-			float thickness1 = BASE_THICKNESS;
-			float thickness2 = BASE_THICKNESS;
+		std::vector<std::vector<glm::vec3>> ring_positions;
+		std::vector<std::vector<glm::vec3>> ring_normals;
 
-			// Create rings of vertices
-			std::vector<glm::vec3> ring1_positions, ring1_normals;
-			std::vector<glm::vec3> ring2_positions, ring2_normals;
+		// Precompute all rings to ensure seamless connections
+		for (size_t i = 0; i < curve_positions.size(); ++i) {
+			std::vector<glm::vec3> current_ring_pos;
+			std::vector<glm::vec3> current_ring_norm;
+			float                    thickness = BASE_THICKNESS;
 
 			for (int j = 0; j <= TRAIL_SEGMENTS; ++j) {
-				float angle = 2.0f * std::numbers::pi * j / TRAIL_SEGMENTS;
-				float cos_angle = cos(angle);
-				float sin_angle = sin(angle);
-
-				// Ring 1
-				Vector3 offset1 = (normals[i] * cos_angle + binormals[i] * sin_angle) * thickness1;
-				Vector3 pos1 = curve_positions[i] + offset1;
-				Vector3 norm1 = offset1.Normalized();
-
-				ring1_positions.emplace_back(pos1.x, pos1.y, pos1.z);
-				ring1_normals.emplace_back(norm1.x, norm1.y, norm1.z);
-
-				// Ring 2
-				Vector3 offset2 = (normals[i + 1] * cos_angle + binormals[i + 1] * sin_angle) * thickness2;
-				Vector3 pos2 = curve_positions[i + 1] + offset2;
-				Vector3 norm2 = offset2.Normalized();
-
-				ring2_positions.emplace_back(pos2.x, pos2.y, pos2.z);
-				ring2_normals.emplace_back(norm2.x, norm2.y, norm2.z);
+				float   angle = 2.0f * std::numbers::pi * j / TRAIL_SEGMENTS;
+				Vector3 offset = (normals[i] * cos(angle) + binormals[i] * sin(angle)) * thickness;
+				Vector3 pos = curve_positions[i] + offset;
+				Vector3 norm = offset.Normalized();
+				current_ring_pos.emplace_back(pos.x, pos.y, pos.z);
+				current_ring_norm.emplace_back(norm.x, norm.y, norm.z);
 			}
+			ring_positions.push_back(current_ring_pos);
+			ring_normals.push_back(current_ring_norm);
+		}
 
-			// Create triangle strip connecting the two rings
+		// Generate cylindrical mesh from precomputed rings
+		for (int i = 0; i < (int)curve_positions.size() - 1; ++i) {
+			const auto& ring1_positions = ring_positions[i];
+			const auto& ring1_normals = ring_normals[i];
+			const auto& ring2_positions = ring_positions[i + 1];
+			const auto& ring2_normals = ring_normals[i + 1];
+
 			for (int j = 0; j < TRAIL_SEGMENTS; ++j) {
-				// First triangle
+				// First triangle (CCW)
 				mesh_vertices.push_back(
 					{ring1_positions[j],
 				     ring1_normals[j],
@@ -172,25 +168,19 @@ namespace Boidsish {
 				     curve_progress[i]}
 				);
 				mesh_vertices.push_back(
-					{ring2_positions[j],
-				     ring2_normals[j],
-				     glm::vec3(curve_colors[i + 1].x, curve_colors[i + 1].y, curve_colors[i + 1].z),
-				     curve_progress[i + 1]}
-				);
-				mesh_vertices.push_back(
 					{ring1_positions[j + 1],
 				     ring1_normals[j + 1],
 				     glm::vec3(curve_colors[i].x, curve_colors[i].y, curve_colors[i].z),
 				     curve_progress[i]}
 				);
-
-				// Second triangle (corrected winding)
 				mesh_vertices.push_back(
 					{ring2_positions[j],
 				     ring2_normals[j],
 				     glm::vec3(curve_colors[i + 1].x, curve_colors[i + 1].y, curve_colors[i + 1].z),
 				     curve_progress[i + 1]}
 				);
+
+				// Second triangle (CCW)
 				mesh_vertices.push_back(
 					{ring1_positions[j + 1],
 				     ring1_normals[j + 1],
@@ -200,6 +190,12 @@ namespace Boidsish {
 				mesh_vertices.push_back(
 					{ring2_positions[j + 1],
 				     ring2_normals[j + 1],
+				     glm::vec3(curve_colors[i + 1].x, curve_colors[i + 1].y, curve_colors[i + 1].z),
+				     curve_progress[i + 1]}
+				);
+				mesh_vertices.push_back(
+					{ring2_positions[j],
+				     ring2_normals[j],
 				     glm::vec3(curve_colors[i + 1].x, curve_colors[i + 1].y, curve_colors[i + 1].z),
 				     curve_progress[i + 1]}
 				);
