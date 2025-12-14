@@ -1,16 +1,13 @@
-#version 330 core
+#version 410 core
 out vec4 FragColor;
 
 in vec3 FragPos;
 in vec3 Normal;
 in vec3 vs_color;
 
-layout(std140) uniform Lighting {
-	vec3  lightPos;
-	vec3  viewPos;
-	vec3  lightColor;
-	float time;
-};
+uniform vec3 lightPos;
+uniform vec3 viewPos;
+uniform vec3 lightColor;
 
 uniform vec3 objectColor;
 uniform int  useVertexColor;

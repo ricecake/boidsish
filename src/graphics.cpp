@@ -67,8 +67,8 @@ namespace Boidsish {
 				std::cerr << "GLFW Error " << error << ": " << description << std::endl;
 			});
 
-			glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
-			glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
+			glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
+			glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 1);
 			glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
 #ifdef __APPLE__
 			glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE);
@@ -98,7 +98,7 @@ namespace Boidsish {
 			glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 			glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
 
-			shader = std::make_shared<Shader>("shaders/vis.vert", "shaders/vis.frag");
+			shader = std::make_shared<Shader>("shaders/vis.vert", "shaders/vis.frag", nullptr, "shaders/vis.tcs", "shaders/vis.tes");
 			Shape::shader = shader;
 			plane_shader = std::make_unique<Shader>("shaders/plane.vert", "shaders/plane.frag");
 			sky_shader = std::make_unique<Shader>("shaders/sky.vert", "shaders/sky.frag");
@@ -113,7 +113,8 @@ namespace Boidsish {
 			glBindBufferRange(GL_UNIFORM_BUFFER, 0, lighting_ubo, 0, 48);
 
 			shader->use();
-			glUniformBlockBinding(shader->ID, glGetUniformBlockIndex(shader->ID, "Lighting"), 0);
+			shader->use();
+			shader->setFloat("time", simulation_time);
 			plane_shader->use();
 			glUniformBlockBinding(plane_shader->ID, glGetUniformBlockIndex(plane_shader->ID, "Lighting"), 0);
 			trail_shader->use();
@@ -250,6 +251,7 @@ namespace Boidsish {
 			const std::optional<glm::vec4>&            clip_plane
 		) {
 			shader->use();
+			shader->setFloat("time", time);
 			shader->setMat4("view", view);
 			if (clip_plane) {
 				shader->setVec4("clipPlane", *clip_plane);
@@ -662,6 +664,10 @@ namespace Boidsish {
 			impl->UpdateAutoCamera(delta_time, shapes);
 		}
 
+		impl->shader->use();
+		impl->shader->setVec3("lightPos", glm::vec3(1.0f, 100.0f, 25.0f));
+		impl->shader->setVec3("viewPos", glm::vec3(impl->camera.x, impl->camera.y, impl->camera.z));
+		impl->shader->setVec3("lightColor", glm::vec3(1.0f, 1.0f, 1.0f));
 		glBindBuffer(GL_UNIFORM_BUFFER, impl->lighting_ubo);
 		glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(glm::vec3), &glm::vec3(1.0f, 100.0f, 25.0f)[0]);
 		glBufferSubData(
@@ -671,7 +677,6 @@ namespace Boidsish {
 			&glm::vec3(impl->camera.x, impl->camera.y, impl->camera.z)[0]
 		);
 		glBufferSubData(GL_UNIFORM_BUFFER, 32, sizeof(glm::vec3), &glm::vec3(1.0f, 1.0f, 1.0f)[0]);
-		glBufferSubData(GL_UNIFORM_BUFFER, 44, sizeof(float), &impl->simulation_time);
 		glBindBuffer(GL_UNIFORM_BUFFER, 0);
 
 		// --- Reflection Pass ---
