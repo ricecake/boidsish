@@ -229,5 +229,23 @@ void main() {
 	// --- 3. Star Field Layer (Additive Blend) ---
 	float stars = starLayer(world_ray);
 	final_color += stars * vec3(1.0, 0.9, 0.8);
+
+	// --- 4. "Eye of God" Light Source ---
+	vec3 light_dir = normalize(lightPos - viewPos);
+	float alignment = dot(world_ray, light_dir);
+
+	// Create a soft, bright spot where the alignment is high
+	// The smoothstep values control the size and softness of the glow.
+	float eye_spot = smoothstep(0.99, 1.0, alignment);
+	vec3 eye_color = vec3(1.0, 0.9, 0.7) * 0.08; // Bright, warm color
+
+	// Create a darker "iris" for the eye effect
+	// This is done by creating a thin band using two smoothsteps.
+	float iris = smoothstep(0.995, 0.998, alignment) - smoothstep(0.998, 1.0, alignment);
+	vec3 iris_color = vec3(0.9, 0.5, 0.2); // Orangey color from twilight
+
+	final_color += eye_color * eye_spot * nebula_strength;
+	final_color += iris_color * iris * nebula_strength;
+
 	FragColor = vec4(final_color, 1.0);
 }
