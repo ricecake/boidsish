@@ -129,15 +129,16 @@ namespace Boidsish {
 				rings.push_back(ring);
 			}
 
-			if (!all_vertices_data.empty() && !rings.empty()) {
-				// Create a degenerate triangle to disconnect from the previous edge's strip.
-				all_vertices_data.push_back(all_vertices_data.back());
-				all_vertices_data.push_back(rings[0][0]);
-			}
 			for (int i = 0; i < CURVE_SEGMENTS; ++i) {
-				// Create a strip for the segment between ring i and ring i+1.
-				for (int j = 0; j <= CYLINDER_SEGMENTS; ++j) {
+				for (int j = 0; j < CYLINDER_SEGMENTS; ++j) {
+					// First triangle (CCW)
 					all_vertices_data.push_back(rings[i][j]);
+					all_vertices_data.push_back(rings[i][j + 1]);
+					all_vertices_data.push_back(rings[i + 1][j]);
+
+					// Second triangle (CCW)
+					all_vertices_data.push_back(rings[i][j + 1]);
+					all_vertices_data.push_back(rings[i + 1][j + 1]);
 					all_vertices_data.push_back(rings[i + 1][j]);
 				}
 			}
@@ -194,7 +195,7 @@ namespace Boidsish {
 		shader->setMat4("model", model);
 
 		glBindVertexArray(graph_vao_);
-		glDrawArrays(GL_TRIANGLE_STRIP, 0, edge_vertex_count_);
+		glDrawArrays(GL_TRIANGLES, 0, edge_vertex_count_);
 		glBindVertexArray(0);
 
 		shader->setInt("useVertexColor", 0);
