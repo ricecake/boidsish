@@ -17,14 +17,14 @@ namespace Boidsish {
 		float fov;        // Field of view
 
 		constexpr Camera(
-			float x = 0.0f,
-			float y = 0.0f,
-			float z = 5.0f,
-			float pitch = 0.0f,
-			float yaw = 0.0f,
-			float fov = 45.0f
+			float x_ = 0.0f,
+			float y_ = 0.0f,
+			float z_ = 5.0f,
+			float pitch_ = 0.0f,
+			float yaw_ = 0.0f,
+			float fov_ = 45.0f
 		):
-			x(x), y(y), z(z), pitch(pitch), yaw(yaw), fov(fov) {}
+			x(x_), y(y_), z(z_), pitch(pitch_), yaw(yaw_), fov(fov_) {}
 	};
 
 	// Main visualization class

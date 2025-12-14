@@ -264,9 +264,9 @@ namespace Boidsish {
 			projection = glm::perspective(glm::radians(cam_to_use.fov), (float)width / (float)height, 0.1f, 1000.0f);
 			glm::vec3 cameraPos(cam_to_use.x, cam_to_use.y, cam_to_use.z);
 			glm::vec3 front;
-			front.x = cos(glm::radians(cam_to_use.pitch)) * sin(glm::radians(cam_to_use.yaw));
-			front.y = sin(glm::radians(cam_to_use.pitch));
-			front.z = -cos(glm::radians(cam_to_use.pitch)) * cos(glm::radians(cam_to_use.yaw));
+			front.x = cosf(glm::radians(cam_to_use.pitch)) * sinf(glm::radians(cam_to_use.yaw));
+			front.y = sinf(glm::radians(cam_to_use.pitch));
+			front.z = -cosf(glm::radians(cam_to_use.pitch)) * cosf(glm::radians(cam_to_use.yaw));
 			front = glm::normalize(front);
 			glm::mat4 view = glm::lookAt(cameraPos, cameraPos + front, glm::vec3(0.0f, 1.0f, 0.0f));
 			shader->use();
@@ -482,22 +482,22 @@ namespace Boidsish {
 				max_z = std::max(max_z, shape->GetZ());
 			}
 
-			mean_x /= shapes.size();
-			mean_y /= shapes.size();
-			mean_z /= shapes.size();
+			mean_x /= static_cast<float>(shapes.size());
+			mean_y /= static_cast<float>(shapes.size());
+			mean_z /= static_cast<float>(shapes.size());
 
 			float extent = std::max({max_x - min_x, max_y - min_y, max_z - min_z});
 			float target_distance = extent * 2.0f + 5.0f;
 
 			auto_camera_distance += (target_distance - auto_camera_distance) * delta_time * 0.5f;
 
-			float height_cycle = sin(auto_camera_time * 0.3f) * 0.5f + 0.5f;
+			float height_cycle = sinf(auto_camera_time * 0.3f) * 0.5f + 0.5f;
 			float camera_height = mean_y + 1.0f + height_cycle * auto_camera_distance * 0.5f;
 
-			float rotation_speed = 0.2f + 0.1f * sin(auto_camera_time * 0.15f);
+			float rotation_speed = 0.2f + 0.1f * sinf(auto_camera_time * 0.15f);
 			auto_camera_angle += rotation_speed * delta_time;
 
-			float direction_modifier = sin(auto_camera_time * 0.08f) * 0.3f;
+			float direction_modifier = sinf(auto_camera_time * 0.08f) * 0.3f;
 			float effective_angle = auto_camera_angle + direction_modifier;
 
 			glm::vec3 target_camera_pos(
@@ -519,14 +519,14 @@ namespace Boidsish {
 			float dy = mean_y - camera.y;
 			float dz = mean_z - camera.z;
 
-			float distance_xz = sqrt(dx * dx + dz * dz);
+			float distance_xz = sqrtf(dx * dx + dz * dz);
 
-			camera.yaw = atan2(dx, -dz) * 180.0f / M_PI;
-			camera.pitch = atan2(dy, distance_xz) * 180.0f / M_PI;
+			camera.yaw = atan2f(dx, -dz) * 180.0f / std::numbers::pi_v<float>;
+			camera.pitch = atan2f(dy, distance_xz) * 180.0f / std::numbers::pi_v<float>;
 			camera.pitch = std::max(-89.0f, std::min(30.0f, camera.pitch));
 		}
 
-		void UpdateSingleTrackCamera(float delta_time, const std::vector<std::shared_ptr<Shape>>& shapes) {
+		void UpdateSingleTrackCamera(float /* delta_time */, const std::vector<std::shared_ptr<Shape>>& shapes) {
 			if (!single_track_mode || shapes.empty()) {
 				return;
 			}
@@ -542,9 +542,9 @@ namespace Boidsish {
 			float pitch_rad = glm::radians(single_track_orbit_pitch);
 
 			glm::vec3 offset;
-			offset.x = single_track_distance * cos(pitch_rad) * sin(yaw_rad);
-			offset.y = single_track_distance * sin(pitch_rad);
-			offset.z = -single_track_distance * cos(pitch_rad) * cos(yaw_rad);
+			offset.x = single_track_distance * cosf(pitch_rad) * sinf(yaw_rad);
+			offset.y = single_track_distance * sinf(pitch_rad);
+			offset.z = -single_track_distance * cosf(pitch_rad) * cosf(yaw_rad);
 
 			glm::vec3 camera_pos = target_pos - offset;
 
@@ -557,8 +557,8 @@ namespace Boidsish {
 
 			glm::vec3 front = glm::normalize(target_pos - camera_pos);
 
-			camera.yaw = glm::degrees(atan2(front.x, -front.z));
-			camera.pitch = glm::degrees(asin(front.y));
+			camera.yaw = glm::degrees(atan2f(front.x, -front.z));
+			camera.pitch = glm::degrees(asinf(front.y));
 			camera.pitch = std::max(-89.0f, std::min(89.0f, camera.pitch));
 		}
 
@@ -623,8 +623,8 @@ namespace Boidsish {
 				impl->first_mouse = false;
 			}
 
-			float xoffset = xpos - impl->last_mouse_x;
-			float yoffset = impl->last_mouse_y - ypos;
+			float xoffset = static_cast<float>(xpos - impl->last_mouse_x);
+			float yoffset = static_cast<float>(impl->last_mouse_y - ypos);
 			impl->last_mouse_x = xpos;
 			impl->last_mouse_y = ypos;
 

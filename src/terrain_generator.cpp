@@ -59,9 +59,9 @@ namespace Boidsish {
 		// Generate heightmap
 		for (int i = 0; i < num_vertices_x; ++i) {
 			for (int j = 0; j < num_vertices_z; ++j) {
-				float worldX = (chunkX * chunk_size_ + i);
-				float worldZ = (chunkZ * chunk_size_ + j);
-				float noise = perlin_noise_.octave2D_01(worldX * scale_, worldZ * scale_, 4);
+				float worldX = static_cast<float>(chunkX * chunk_size_ + i);
+				float worldZ = static_cast<float>(chunkZ * chunk_size_ + j);
+				float noise = static_cast<float>(perlin_noise_.octave2D_01(worldX * scale_, worldZ * scale_, 4));
 
 				if (noise > threshold_) {
 					heightmap[i][j] = (noise - threshold_) * amplitude_;
@@ -84,9 +84,9 @@ namespace Boidsish {
 				float y = heightmap[i][j];
 
 				// Vertex position
-				vertexData.push_back(i);
+				vertexData.push_back(static_cast<float>(i));
 				vertexData.push_back(y);
-				vertexData.push_back(j);
+				vertexData.push_back(static_cast<float>(j));
 
 				// Calculate normal
 				float hL = (i > 0) ? heightmap[i - 1][j] : y;
@@ -118,7 +118,7 @@ namespace Boidsish {
 		}
 
 		auto terrain_chunk = std::make_shared<Terrain>(vertexData, indices);
-		terrain_chunk->SetPosition(chunkX * chunk_size_, 0, chunkZ * chunk_size_);
+		terrain_chunk->SetPosition(static_cast<float>(chunkX * chunk_size_), 0, static_cast<float>(chunkZ * chunk_size_));
 		return terrain_chunk;
 	}
 

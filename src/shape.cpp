@@ -30,11 +30,11 @@ namespace Boidsish {
 
 		for (int lat = 0; lat <= latitude_segments; ++lat) {
 			for (int lon = 0; lon <= longitude_segments; ++lon) {
-				float theta = lat * std::numbers::pi / latitude_segments;
-				float phi = lon * 2 * std::numbers::pi / longitude_segments;
-				float x = radius * sin(theta) * cos(phi);
-				float y = radius * cos(theta);
-				float z = radius * sin(theta) * sin(phi);
+				float theta = static_cast<float>(lat) * std::numbers::pi_v<float> / static_cast<float>(latitude_segments);
+				float phi = static_cast<float>(lon) * 2.0f * std::numbers::pi_v<float> / static_cast<float>(longitude_segments);
+				float x = radius * sinf(theta) * cosf(phi);
+				float y = radius * cosf(theta);
+				float z = radius * sinf(theta) * sinf(phi);
 				// Position
 				vertices.push_back(x);
 				vertices.push_back(y);
@@ -60,7 +60,7 @@ namespace Boidsish {
 				indices.push_back(second + 1);
 			}
 		}
-		sphere_vertex_count_ = indices.size();
+		sphere_vertex_count_ = static_cast<int>(indices.size());
 
 		GLuint sphere_ebo;
 		glGenVertexArrays(1, &sphere_vao_);

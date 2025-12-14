@@ -95,17 +95,17 @@ namespace logger {
 		template <typename... Ts>
 		void LOG(LogSource& src, Ts&&... flags) {
 			doLogging(LogLevel::LOG, src, std::forward<Ts>(flags)...);
-		};
+		}
 
 		template <typename... Ts>
 		void ERROR(LogSource& src, Ts&&... flags) {
 			doLogging(LogLevel::ERROR, src, std::forward<Ts>(flags)...);
-		};
+		}
 
 		template <typename... Ts>
 		void DEBUG(LogSource& src, Ts&&... flags) {
 			doLogging(LogLevel::DEBUG, src, std::forward<Ts>(flags)...);
-		};
+		}
 	};
 
 	inline static Logger<ConsoleBackend> defaultLogger;
@@ -113,17 +113,17 @@ namespace logger {
 	template <typename... Ts>
 	void LOG(LogSource src, Ts&&... flags) {
 		defaultLogger.LOG(src, std::forward<Ts>(flags)...);
-	};
+	}
 
 	template <typename... Ts>
 	void ERROR(LogSource src, Ts&&... flags) {
 		defaultLogger.ERROR(src, std::forward<Ts>(flags)...);
-	};
+	}
 
 	template <typename... Ts>
 	void DEBUG(LogSource src, Ts&&... flags) {
 		defaultLogger.DEBUG(src, std::forward<Ts>(flags)...);
-	};
+	}
 
 	// What if these were classes, whose initializers did the logging?  A lot more would be definitively known at
 	// compile time...

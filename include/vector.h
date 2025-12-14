@@ -16,7 +16,7 @@ namespace Boidsish {
 		// Constructors
 		constexpr Vector3(): x(0.0f), y(0.0f), z(0.0f) {}
 
-		constexpr Vector3(float x, float y, float z): x(x), y(y), z(z) {}
+		constexpr Vector3(float x_, float y_, float z_): x(x_), y(y_), z(z_) {}
 
 		// Copy constructor and assignment
 		Vector3(const Vector3& other) = default;
@@ -118,10 +118,10 @@ namespace Boidsish {
 		float DistanceTo(const Vector3& other) const { return (*this - other).Magnitude(); }
 
 		// Set components
-		constexpr void Set(float x, float y, float z) {
-			this->x = x;
-			this->y = y;
-			this->z = z;
+		constexpr void Set(float x_, float y_, float z_) {
+			this->x = x_;
+			this->y = y_;
+			this->z = z_;
 		}
 
 		// Zero vector

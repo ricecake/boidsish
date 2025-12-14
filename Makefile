@@ -2,7 +2,7 @@
 # Cross-platform build for Linux and macOS
 
 CXX = g++
-CXXFLAGS = -std=gnu++23 -Wall -Wextra -O3 -MMD -MP
+CXXFLAGS = -std=gnu++23 -Wall -Wextra -O3 -MMD -MP -Werror -Wpedantic -Wcast-align -Wcast-qual -Wconversion -Wshadow -Wduplicated-branches -Wduplicated-cond -Wlogical-op -Wnull-dereference -Wuseless-cast
 INCLUDES = -isystem external/include -Iinclude
 
 # Build directory

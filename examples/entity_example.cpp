@@ -23,18 +23,18 @@ public:
 
 		// Calculate orbital velocity using Vector3
 		Vector3 orbital_velocity(
-			-sin(angle_) * radius_ * speed_,
-			height_offset_ * cos(time * 0.5f) * 0.5f * 1.0f, // Bobbing motion velocity with height offset
-			cos(angle_) * radius_ * speed_
+			-sinf(angle_) * radius_ * speed_,
+			height_offset_ * cosf(time * 0.5f) * 0.5f * 1.0f, // Bobbing motion velocity with height offset
+			cosf(angle_) * radius_ * speed_
 		);
 
 		// Set velocity for automatic position integration
 		SetVelocity(orbital_velocity);
 
 		// Dynamic color based on angle and time
-		float r = 0.5f + 0.5f * sin(angle_ + time * 0.1f);
-		float g = 0.5f + 0.5f * cos(angle_ * 0.7f + time * 0.15f);
-		float b = 0.5f + 0.5f * sin(angle_ * 1.3f + time * 0.2f);
+		float r = 0.5f + 0.5f * sinf(angle_ + time * 0.1f);
+		float g = 0.5f + 0.5f * cosf(angle_ * 0.7f + time * 0.15f);
+		float b = 0.5f + 0.5f * sinf(angle_ * 1.3f + time * 0.2f);
 		SetColor(r, g, b, 1.0f);
 	}
 
@@ -51,9 +51,9 @@ public:
 	SwarmHandler() {
 		// Create several orbital entities with different parameters
 		for (int i = 0; i < 8; ++i) {
-			float radius = 3.0f + i * 0.8f;
-			float speed = 0.5f + i * 0.2f;
-			float height = (i % 3 - 1) * 2.0f;
+			float radius = 3.0f + static_cast<float>(i) * 0.8f;
+			float speed = 0.5f + static_cast<float>(i) * 0.2f;
+			float height = static_cast<float>(i % 3 - 1) * 2.0f;
 
 			AddEntity<OrbitalEntity>(radius, speed, height);
 		}
@@ -67,7 +67,7 @@ protected:
 		static int last_spawn_time = 0;
 		int        current_time = static_cast<int>(time);
 		if (current_time > 0 && current_time % 10 == 0 && current_time != last_spawn_time) {
-			float radius = 2.0f + (current_time / 10) * 0.5f;
+			float radius = 2.0f + static_cast<float>(current_time / 10) * 0.5f;
 			float speed = 1.0f;
 			AddEntity<OrbitalEntity>(radius, speed, 0.0f);
 			std::cout << "Spawned new entity at time " << time << std::endl;

@@ -16,21 +16,21 @@ auto SpiralExample(float time) {
 
 	for (int spiral = 0; spiral < num_spirals; ++spiral) {
 		for (int i = 0; i < particles_per_spiral; ++i) {
-			float t = time * 0.3f + i * 0.2f;
-			float angle = t + spiral * 2.0f * M_PI / num_spirals;
+			float t = time * 0.3f + static_cast<float>(i) * 0.2f;
+			float angle = t + static_cast<float>(spiral) * 2.0f * std::numbers::pi_v<float> / static_cast<float>(num_spirals);
 			float radius = 2.0f + t * 0.1f;
-			float height = sin(t * 0.5f) * 3.0f;
+			float height = sinf(t * 0.5f) * 3.0f;
 
-			float x = cos(angle) * radius;
-			float y = height + i * 0.3f;
-			float z = sin(angle) * radius;
+			float x = cosf(angle) * radius;
+			float y = height + static_cast<float>(i) * 0.3f;
+			float z = sinf(angle) * radius;
 
 			// Color based on spiral and position
 			float r = (spiral == 0) ? 1.0f : 0.3f;
 			float g = (spiral == 1) ? 1.0f : 0.3f;
 			float b = (spiral == 2) ? 1.0f : 0.3f;
 
-			float size = 6.0f + 3.0f * sin(time + i * 0.5f);
+			float size = 6.0f + 3.0f * sinf(time + static_cast<float>(i) * 0.5f);
 
 			int dot_id = spiral * particles_per_spiral + i; // Unique ID for each dot
 			dots.emplace_back(std::make_shared<Dot>(dot_id, x, y, z, size, r, g, b, 0.8f, 20));
@@ -79,10 +79,10 @@ auto RandomWalkExample(float time) {
 		float z = std::get<2>(positions[i]);
 
 		// Color based on distance from origin
-		float dist = sqrt(x * x + y * y + z * z);
+		float dist = sqrtf(x * x + y * y + z * z);
 		float r = 1.0f - dist / 8.0f;
 		float g = dist / 8.0f;
-		float b = 0.5f + 0.5f * sin(time + i);
+		float b = 0.5f + 0.5f * sinf(time + static_cast<float>(i));
 
 		dots.emplace_back(std::make_shared<Dot>(static_cast<int>(i), x, y, z, 8.0f, r, g, b, 0.9f, 30));
 	}
@@ -99,11 +99,11 @@ auto WaveExample(float time) {
 
 	for (int i = 0; i < grid_size; ++i) {
 		for (int j = 0; j < grid_size; ++j) {
-			float x = (i - grid_size / 2) * spacing;
-			float z = (j - grid_size / 2) * spacing;
+			float x = (static_cast<float>(i) - static_cast<float>(grid_size) / 2.0f) * spacing;
+			float z = (static_cast<float>(j) - static_cast<float>(grid_size) / 2.0f) * spacing;
 
-			float dist = sqrt(x * x + z * z);
-			float y = sin(dist * 0.8f - time * 2.0f) * 1.5f * exp(-dist * 0.1f);
+			float dist = sqrtf(x * x + z * z);
+			float y = sinf(dist * 0.8f - time * 2.0f) * 1.5f * expf(-dist * 0.1f);
 
 			// Color based on height
 			float r = 0.5f + 0.5f * (y / 1.5f);

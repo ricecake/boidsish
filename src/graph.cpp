@@ -87,7 +87,7 @@ namespace Boidsish {
 				Vector3 point1 = CatmullRom(0.0f, p0, p1, p2, p3);
 				Vector3 point2 = CatmullRom(1.0f / CURVE_SEGMENTS, p0, p1, p2, p3);
 				Vector3 tangent = (point2 - point1).Normalized();
-				if (abs(tangent.y) < 0.999)
+				if (std::abs(tangent.y) < 0.999f)
 					last_normal = tangent.Cross(Vector3(0, 1, 0)).Normalized();
 				else
 					last_normal = tangent.Cross(Vector3(1, 0, 0)).Normalized();
@@ -110,7 +110,7 @@ namespace Boidsish {
 
 				Vector3 normal = last_normal - tangent * tangent.Dot(last_normal);
 				if (normal.MagnitudeSquared() < 1e-6) {
-					if (abs(tangent.y) < 0.999)
+					if (std::abs(tangent.y) < 0.999f)
 						normal = tangent.Cross(Vector3(0, 1, 0)).Normalized();
 					else
 						normal = tangent.Cross(Vector3(1, 0, 0)).Normalized();
@@ -121,8 +121,8 @@ namespace Boidsish {
 				last_normal = normal;
 
 				for (int j = 0; j <= CYLINDER_SEGMENTS; ++j) {
-					float   angle = 2.0f * std::numbers::pi * j / CYLINDER_SEGMENTS;
-					Vector3 cn = (normal * cos(angle) + bitangent * sin(angle)).Normalized();
+					float   angle = 2.0f * std::numbers::pi_v<float> * static_cast<float>(j) / static_cast<float>(CYLINDER_SEGMENTS);
+					Vector3 cn = (normal * cosf(angle) + bitangent * sinf(angle)).Normalized();
 					Vector3 pos = point + cn * r;
 					ring.push_back({glm::vec3(pos.x, pos.y, pos.z), glm::vec3(cn.x, cn.y, cn.z), color});
 				}
@@ -144,7 +144,7 @@ namespace Boidsish {
 			}
 		}
 
-		edge_vertex_count_ = all_vertices_data.size();
+		edge_vertex_count_ = static_cast<int>(all_vertices_data.size());
 
 		glGenVertexArrays(1, &graph_vao_);
 		glBindVertexArray(graph_vao_);

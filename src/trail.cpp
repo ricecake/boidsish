@@ -9,7 +9,7 @@
 
 namespace Boidsish {
 
-	Trail::Trail(int max_length): max_length(max_length), vertex_count(0), mesh_dirty(false) {
+	Trail::Trail(int max_length_): max_length(max_length_), vertex_count(0), mesh_dirty(false) {
 		glGenVertexArrays(1, &vao);
 		glGenBuffers(1, &vbo);
 	}
@@ -38,11 +38,11 @@ namespace Boidsish {
 		}
 
 		axis = axis / axis_length;
-		float angle = acos(std::clamp(prev_tangent.Dot(curr_tangent), -1.0f, 1.0f));
+		float angle = acosf(std::clamp(prev_tangent.Dot(curr_tangent), -1.0f, 1.0f));
 
 		// Rodrigues' rotation formula
-		Vector3 rotated = prev_normal * cos(angle) + axis.Cross(prev_normal) * sin(angle) +
-			axis * (axis.Dot(prev_normal)) * (1 - cos(angle));
+		Vector3 rotated = prev_normal * cosf(angle) + axis.Cross(prev_normal) * sinf(angle) +
+			axis * (axis.Dot(prev_normal)) * (1 - cosf(angle));
 
 		return rotated.Normalized();
 	}
@@ -88,8 +88,8 @@ namespace Boidsish {
 		}
 
 		std::vector<float> curve_progress;
-		for (int i = 0; i < curve_positions.size(); ++i) {
-			curve_progress.push_back((float)i / (curve_positions.size() - 1));
+		for (size_t i = 0; i < curve_positions.size(); ++i) {
+			curve_progress.push_back(static_cast<float>(i) / static_cast<float>(curve_positions.size() - 1));
 		}
 
 		if (curve_positions.size() < 2) {
@@ -115,7 +115,7 @@ namespace Boidsish {
 
 		// Initialize first frame
 		Vector3 initial_normal;
-		if (abs(tangents[0].y) < 0.999f) {
+		if (std::abs(tangents[0].y) < 0.999f) {
 			initial_normal = tangents[0].Cross(Vector3(0, 1, 0)).Normalized();
 		} else {
 			initial_normal = tangents[0].Cross(Vector3(1, 0, 0)).Normalized();
@@ -141,8 +141,8 @@ namespace Boidsish {
 			float                  thickness = BASE_THICKNESS;
 
 			for (int j = 0; j <= TRAIL_SEGMENTS; ++j) {
-				float   angle = 2.0f * std::numbers::pi * j / TRAIL_SEGMENTS;
-				Vector3 offset = (normals[i] * cos(angle) + binormals[i] * sin(angle)) * thickness;
+				float   angle = 2.0f * std::numbers::pi_v<float> * static_cast<float>(j) / static_cast<float>(TRAIL_SEGMENTS);
+				Vector3 offset = (normals[i] * cosf(angle) + binormals[i] * sinf(angle)) * thickness;
 				Vector3 pos = curve_positions[i] + offset;
 				Vector3 norm = offset.Normalized();
 				current_ring_pos.emplace_back(pos.x, pos.y, pos.z);
@@ -202,7 +202,7 @@ namespace Boidsish {
 			}
 		}
 
-		vertex_count = mesh_vertices.size();
+		vertex_count = static_cast<int>(mesh_vertices.size());
 	}
 
 	void Trail::AddPoint(glm::vec3 position, glm::vec3 color) {
@@ -214,7 +214,7 @@ namespace Boidsish {
 		}
 
 		if (points.size() >= 4) {
-			int                  size = points.size();
+			auto                  size = points.size();
 			std::vector<Vector3> p(4);
 			std::vector<Vector3> c(4);
 
@@ -314,7 +314,7 @@ namespace Boidsish {
 		const Vector3& c3
 	) {
 		for (int j = 0; j < CURVE_SEGMENTS; ++j) {
-			float   t = (float)j / CURVE_SEGMENTS;
+			float   t = static_cast<float>(j) / static_cast<float>(CURVE_SEGMENTS);
 			Vector3 pos = CatmullRom(t, p0, p1, p2, p3);
 			Vector3 color = CatmullRom(t, c0, c1, c2, c3);
 
