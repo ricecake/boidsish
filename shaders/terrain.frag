@@ -16,7 +16,7 @@ void main() {
 		discard;
 	}
 
-	vec3 objectColor = vec3(0.1, 0.33, 0.38); // A deep blue
+	vec3 objectColor = vec3(0, 0.3, 0.4); // A deep blue
 	// vec3 objectColor = vec3(mix(0.2, 0.4, step(0.1, fract(FragPos.y))), 0, 0.5); // A deep blue
 
 	// Ambient
@@ -49,7 +49,7 @@ void main() {
 	float line_major = min(grid_major.x, grid_major.y);
 	float C_major = 1.0 - min(line_major, 1.0);
 
-	float intensity = max(C_minor, C_major * 1.5) * 0.1;
+	float intensity = max(C_minor, C_major * 1.5) * 0.6;
 	vec3  grid_color = vec3(0.0, 0.8, 0.8) * intensity;
 
 	vec3 result = ((ambient + diffuse) * objectColor + specular) + grid_color; // Add specular on top

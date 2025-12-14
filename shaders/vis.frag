@@ -1,9 +1,12 @@
 #version 330 core
 out vec4 FragColor;
 
+#include "artistic_effects.frag"
+
 in vec3 FragPos;
 in vec3 Normal;
 in vec3 vs_color;
+in vec3 barycentric;
 
 layout(std140) uniform Lighting {
 	vec3  lightPos;
@@ -64,5 +67,6 @@ void main() {
 		result.b = floor(result.b * posterize_levels) / posterize_levels;
 	}
 
+	result = applyArtisticEffects(result, FragPos, barycentric, time);
 	FragColor = vec4(result, 1.0);
 }

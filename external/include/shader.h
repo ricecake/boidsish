@@ -1,10 +1,9 @@
-
-
 #ifndef SHADER_H
 #define SHADER_H
 
 #include <fstream>
 #include <iostream>
+#include <set>
 #include <sstream>
 #include <string>
 
@@ -15,45 +14,70 @@ class Shader {
 public:
 	unsigned int ID;
 
+private:
+	std::string loadShaderSource(const std::string& path, std::set<std::string>& includedFiles) {
+		if (includedFiles.count(path)) {
+			// Prevent circular inclusion
+			return "";
+		}
+		includedFiles.insert(path);
+
+		std::string sourceCode;
+		std::ifstream shaderFile;
+		shaderFile.exceptions(std::ifstream::failbit | std::ifstream::badbit);
+
+		try {
+			shaderFile.open(path);
+			std::stringstream shaderStream;
+			shaderStream << shaderFile.rdbuf();
+			shaderFile.close();
+			sourceCode = shaderStream.str();
+		} catch (std::ifstream::failure& e) {
+			std::cerr << "ERROR::SHADER::FILE_NOT_SUCCESSFULLY_READ: " << path << " " << e.what() << std::endl;
+			return "";
+		}
+
+		std::string finalSource;
+		std::istringstream iss(sourceCode);
+		std::string line;
+
+		size_t      last_slash_idx = path.rfind('/');
+		std::string directory = "";
+		if (std::string::npos != last_slash_idx) {
+			directory = path.substr(0, last_slash_idx);
+		}
+
+		while (std::getline(iss, line)) {
+			if (line.substr(0, 8) == "#include") {
+				std::string includePath = line.substr(line.find('"') + 1, line.rfind('"') - line.find('"') - 1);
+				finalSource += loadShaderSource(directory + "/" + includePath, includedFiles);
+			} else {
+				finalSource += line + "\n";
+			}
+		}
+		return finalSource;
+	}
+
+public:
 	// constructor generates the shader on the fly
 	// ------------------------------------------------------------------------
 	Shader(const char* vertexPath, const char* fragmentPath, const char* geometryPath = nullptr) {
 		// 1. retrieve the vertex/fragment source code from filePath
-		std::string   vertexCode;
-		std::string   fragmentCode;
-		std::string   geometryCode;
-		std::ifstream vShaderFile;
-		std::ifstream fShaderFile;
-		std::ifstream gShaderFile;
-		// ensure ifstream objects can throw exceptions:
-		vShaderFile.exceptions(std::ifstream::failbit | std::ifstream::badbit);
-		fShaderFile.exceptions(std::ifstream::failbit | std::ifstream::badbit);
-		gShaderFile.exceptions(std::ifstream::failbit | std::ifstream::badbit);
-		try {
-			// open files
-			vShaderFile.open(vertexPath);
-			fShaderFile.open(fragmentPath);
-			std::stringstream vShaderStream, fShaderStream;
-			// read file's buffer contents into streams
-			vShaderStream << vShaderFile.rdbuf();
-			fShaderStream << fShaderFile.rdbuf();
-			// close file handlers
-			vShaderFile.close();
-			fShaderFile.close();
-			// convert stream into string
-			vertexCode = vShaderStream.str();
-			fragmentCode = fShaderStream.str();
-			// if geometry shader path is present, also load a geometry shader
-			if (geometryPath != nullptr) {
-				gShaderFile.open(geometryPath);
-				std::stringstream gShaderStream;
-				gShaderStream << gShaderFile.rdbuf();
-				gShaderFile.close();
-				geometryCode = gShaderStream.str();
-			}
-		} catch (std::ifstream::failure& e) {
-			std::cout << "ERROR::SHADER::FILE_NOT_SUCCESSFULLY_READ: " << e.what() << std::endl;
+		std::string vertexCode;
+		std::string fragmentCode;
+		std::string geometryCode;
+
+		std::set<std::string> includedFiles;
+		vertexCode = loadShaderSource(vertexPath, includedFiles);
+
+		includedFiles.clear();
+		fragmentCode = loadShaderSource(fragmentPath, includedFiles);
+
+		if (geometryPath != nullptr) {
+			includedFiles.clear();
+			geometryCode = loadShaderSource(geometryPath, includedFiles);
 		}
+
 		const char* vShaderCode = vertexCode.c_str();
 		const char* fShaderCode = fragmentCode.c_str();
 		// 2. compile shaders
@@ -164,15 +188,15 @@ private:
 			glGetShaderiv(shader, GL_COMPILE_STATUS, &success);
 			if (!success) {
 				glGetShaderInfoLog(shader, 1024, NULL, infoLog);
-				std::cout << "ERROR::SHADER_COMPILATION_ERROR of type: " << type << "\n"
-						  << infoLog << "\n -- --------------------------------------------------- -- " << std::endl;
+				std::cerr << "ERROR::SHADER_COMPILATION_ERROR of type: " << type << "\n"
+				          << infoLog << "\n -- --------------------------------------------------- -- " << std::endl;
 			}
 		} else {
 			glGetProgramiv(shader, GL_LINK_STATUS, &success);
 			if (!success) {
 				glGetProgramInfoLog(shader, 1024, NULL, infoLog);
-				std::cout << "ERROR::PROGRAM_LINKING_ERROR of type: " << type << "\n"
-						  << infoLog << "\n -- --------------------------------------------------- -- " << std::endl;
+				std::cerr << "ERROR::PROGRAM_LINKING_ERROR of type: " << type << "\n"
+				          << infoLog << "\n -- --------------------------------------------------- -- " << std::endl;
 			}
 		}
 	}
