@@ -65,6 +65,14 @@ namespace Boidsish {
 
 		bool color_shift_effect = false;
 
+		// Artistic effects
+		GLuint artistic_effects_ubo;
+		bool   black_and_white_effect = false;
+		bool   negative_effect = false;
+		bool   shimmery_effect = false;
+		bool   glitched_effect = false;
+		bool   wireframe_effect = false;
+
 		VisualizerImpl(int w, int h, const char* title): width(w), height(h) {
 			last_frame = std::chrono::high_resolution_clock::now();
 			if (!glfwInit())
@@ -129,6 +137,19 @@ namespace Boidsish {
 			glUniformBlockBinding(plane_shader->ID, glGetUniformBlockIndex(plane_shader->ID, "Lighting"), 0);
 			trail_shader->use();
 			glUniformBlockBinding(trail_shader->ID, glGetUniformBlockIndex(trail_shader->ID, "Lighting"), 0);
+
+			glGenBuffers(1, &artistic_effects_ubo);
+			glBindBuffer(GL_UNIFORM_BUFFER, artistic_effects_ubo);
+			glBufferData(GL_UNIFORM_BUFFER, 20, NULL, GL_DYNAMIC_DRAW);
+			glBindBuffer(GL_UNIFORM_BUFFER, 0);
+			glBindBufferRange(GL_UNIFORM_BUFFER, 1, artistic_effects_ubo, 0, 20);
+
+			shader->use();
+			glUniformBlockBinding(
+				shader->ID,
+				glGetUniformBlockIndex(shader->ID, "ArtisticEffects"),
+				1
+			);
 
 			Terrain::terrain_shader_ = std::make_shared<Shader>("shaders/terrain.vert", "shaders/terrain.frag");
 			glUniformBlockBinding(
@@ -586,6 +607,16 @@ namespace Boidsish {
 						impl->single_track_distance = 1.0f;
 				} else if (key == GLFW_KEY_MINUS) {
 					impl->single_track_distance += 0.5f;
+				} else if (key == GLFW_KEY_1 && action == GLFW_PRESS) {
+					impl->black_and_white_effect = !impl->black_and_white_effect;
+				} else if (key == GLFW_KEY_2 && action == GLFW_PRESS) {
+					impl->negative_effect = !impl->negative_effect;
+				} else if (key == GLFW_KEY_3 && action == GLFW_PRESS) {
+					impl->shimmery_effect = !impl->shimmery_effect;
+				} else if (key == GLFW_KEY_4 && action == GLFW_PRESS) {
+					impl->glitched_effect = !impl->glitched_effect;
+				} else if (key == GLFW_KEY_5 && action == GLFW_PRESS) {
+					impl->wireframe_effect = !impl->wireframe_effect;
 				}
 			}
 			if (key == GLFW_KEY_P && action == GLFW_PRESS)
@@ -719,6 +750,19 @@ namespace Boidsish {
 		);
 		glBufferSubData(GL_UNIFORM_BUFFER, 32, sizeof(glm::vec3), &glm::vec3(1.0f, 1.0f, 1.0f)[0]);
 		glBufferSubData(GL_UNIFORM_BUFFER, 44, sizeof(float), &impl->simulation_time);
+		glBindBuffer(GL_UNIFORM_BUFFER, 0);
+
+		glBindBuffer(GL_UNIFORM_BUFFER, impl->artistic_effects_ubo);
+		int black_and_white_int = impl->black_and_white_effect;
+		int negative_int = impl->negative_effect;
+		int shimmery_int = impl->shimmery_effect;
+		int glitched_int = impl->glitched_effect;
+		int wireframe_int = impl->wireframe_effect;
+		glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(int), &black_and_white_int);
+		glBufferSubData(GL_UNIFORM_BUFFER, 4, sizeof(int), &negative_int);
+		glBufferSubData(GL_UNIFORM_BUFFER, 8, sizeof(int), &shimmery_int);
+		glBufferSubData(GL_UNIFORM_BUFFER, 12, sizeof(int), &glitched_int);
+		glBufferSubData(GL_UNIFORM_BUFFER, 16, sizeof(int), &wireframe_int);
 		glBindBuffer(GL_UNIFORM_BUFFER, 0);
 
 		// --- Reflection Pass ---
