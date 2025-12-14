@@ -60,9 +60,9 @@ namespace Boidsish {
 		}
 
 	protected:
-		void PreTimestep(float time, float delta_time) override {
+		void PostTimestep(float time, float delta_time) override {
 			(void)time;
-			(void)delta_time;
+			(void)delta_,time;
 			rtree_.RemoveAll();
 			for (const auto& pair : GetAllEntities()) {
 				auto&         entity = pair.second;
