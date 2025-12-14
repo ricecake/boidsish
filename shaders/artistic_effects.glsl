@@ -8,5 +8,3 @@ layout(std140) uniform ArtisticEffects {
 	bool glitched;
 	bool wireframe;
 };
-
-#endif
