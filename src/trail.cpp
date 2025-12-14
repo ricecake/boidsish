@@ -184,18 +184,18 @@ namespace Boidsish {
 				     curve_progress[i]}
 				);
 
-				// Second triangle
-				mesh_vertices.push_back(
-					{ring1_positions[j + 1],
-				     ring1_normals[j + 1],
-				     glm::vec3(curve_colors[i].x, curve_colors[i].y, curve_colors[i].z),
-				     curve_progress[i]}
-				);
+				// Second triangle (corrected winding)
 				mesh_vertices.push_back(
 					{ring2_positions[j],
 				     ring2_normals[j],
 				     glm::vec3(curve_colors[i + 1].x, curve_colors[i + 1].y, curve_colors[i + 1].z),
 				     curve_progress[i + 1]}
+				);
+				mesh_vertices.push_back(
+					{ring1_positions[j + 1],
+				     ring1_normals[j + 1],
+				     glm::vec3(curve_colors[i].x, curve_colors[i].y, curve_colors[i].z),
+				     curve_progress[i]}
 				);
 				mesh_vertices.push_back(
 					{ring2_positions[j + 1],
