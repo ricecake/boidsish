@@ -12,6 +12,7 @@
 #include "terrain.h"
 #include "terrain_generator.h"
 #include "trail.h"
+#include "visual_effects.h"
 #include <GL/glew.h>
 #include <GLFW/glfw3.h>
 #include <glm/glm.hpp>
@@ -40,6 +41,7 @@ namespace Boidsish {
 		GLuint                  reflection_fbo, reflection_texture, reflection_depth_rbo;
 		GLuint                  pingpong_fbo[2], pingpong_texture[2];
 		GLuint                  lighting_ubo;
+		GLuint                  visual_effects_ubo;
 		glm::mat4               projection, reflection_vp;
 
 		double last_mouse_x = 0.0, last_mouse_y = 0.0;
@@ -131,12 +133,21 @@ namespace Boidsish {
 			glBindBuffer(GL_UNIFORM_BUFFER, 0);
 			glBindBufferRange(GL_UNIFORM_BUFFER, 0, lighting_ubo, 0, 48);
 
+			glGenBuffers(1, &visual_effects_ubo);
+			glBindBuffer(GL_UNIFORM_BUFFER, visual_effects_ubo);
+			glBufferData(GL_UNIFORM_BUFFER, sizeof(VisualEffectsUbo), NULL, GL_DYNAMIC_DRAW);
+			glBindBuffer(GL_UNIFORM_BUFFER, 0);
+			glBindBufferRange(GL_UNIFORM_BUFFER, 1, visual_effects_ubo, 0, sizeof(VisualEffectsUbo));
+
 			shader->use();
 			glUniformBlockBinding(shader->ID, glGetUniformBlockIndex(shader->ID, "Lighting"), 0);
+			glUniformBlockBinding(shader->ID, glGetUniformBlockIndex(shader->ID, "VisualEffects"), 1);
 			plane_shader->use();
 			glUniformBlockBinding(plane_shader->ID, glGetUniformBlockIndex(plane_shader->ID, "Lighting"), 0);
+			glUniformBlockBinding(plane_shader->ID, glGetUniformBlockIndex(plane_shader->ID, "VisualEffects"), 1);
 			trail_shader->use();
 			glUniformBlockBinding(trail_shader->ID, glGetUniformBlockIndex(trail_shader->ID, "Lighting"), 0);
+			glUniformBlockBinding(trail_shader->ID, glGetUniformBlockIndex(trail_shader->ID, "VisualEffects"), 1);
 
 			glGenBuffers(1, &artistic_effects_ubo);
 			glBindBuffer(GL_UNIFORM_BUFFER, artistic_effects_ubo);
@@ -156,6 +167,11 @@ namespace Boidsish {
 				Terrain::terrain_shader_->ID,
 				glGetUniformBlockIndex(Terrain::terrain_shader_->ID, "Lighting"),
 				0
+			);
+			glUniformBlockBinding(
+				Terrain::terrain_shader_->ID,
+				glGetUniformBlockIndex(Terrain::terrain_shader_->ID, "VisualEffects"),
+				1
 			);
 
 			Shape::InitSphereMesh();
@@ -739,6 +755,21 @@ namespace Boidsish {
 		} else {
 			impl->UpdateAutoCamera(delta_time, shapes);
 		}
+
+		VisualEffectsUbo ubo_data = {};
+		for (const auto& shape : shapes) {
+			for (const auto& effect : shape->GetActiveEffects()) {
+				if (effect == VisualEffect::RIPPLE) {
+					ubo_data.ripple_enabled = 1;
+				} else if (effect == VisualEffect::COLOR_SHIFT) {
+					ubo_data.color_shift_enabled = 1;
+				}
+			}
+		}
+
+		glBindBuffer(GL_UNIFORM_BUFFER, impl->visual_effects_ubo);
+		glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(VisualEffectsUbo), &ubo_data);
+		glBindBuffer(GL_UNIFORM_BUFFER, 0);
 
 		glBindBuffer(GL_UNIFORM_BUFFER, impl->lighting_ubo);
 		glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(glm::vec3), &glm::vec3(1.0f, 100.0f, 25.0f)[0]);
