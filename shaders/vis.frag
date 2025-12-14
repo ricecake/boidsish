@@ -67,6 +67,6 @@ void main() {
 		result.b = floor(result.b * posterize_levels) / posterize_levels;
 	}
 
-	result = applyArtisticEffects(result, barycentric, time);
+	result = applyArtisticEffects(result, FragPos, barycentric, time);
 	FragColor = vec4(result, 1.0);
 }

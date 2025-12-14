@@ -1,13 +1,7 @@
 #ifndef ARTISTIC_EFFECTS_FRAG
 #define ARTISTIC_EFFECTS_FRAG
 
-layout(std140) uniform ArtisticEffects {
-	bool blackAndWhite;
-	bool negative;
-	bool shimmery;
-	bool glitched;
-	bool wireframe;
-};
+#include "artistic_effects.glsl"
 
 vec3 applyBlackAndWhite(vec3 color) {
 	if (blackAndWhite) {
@@ -32,8 +26,17 @@ vec3 applyShimmery(vec3 color, float time) {
 	return color;
 }
 
-vec3 applyGlitched(vec3 color, float time) {
+vec3 applyGlitched(vec3 color, vec3 fragPos, float time) {
 	if (glitched) {
+		float glitchStrength = 0.2;
+		float bandHeight = 0.1;
+		float speed = 20.0;
+		float bands = floor(fragPos.y / bandHeight);
+		if (mod(bands, 2.0) == 0.0) {
+			if (sin(time * speed + bands) > 0.5) {
+				discard;
+			}
+		}
 		float glitch = (sin(time * 50.0) + 1.0) / 2.0;
 		if (glitch > 0.9) {
 			return color.bgr;
@@ -52,11 +55,11 @@ vec3 applyWireframe(vec3 color, vec3 barycentric) {
 	return color;
 }
 
-vec3 applyArtisticEffects(vec3 color, vec3 barycentric, float time) {
+vec3 applyArtisticEffects(vec3 color, vec3 fragPos, vec3 barycentric, float time) {
 	color = applyBlackAndWhite(color);
 	color = applyNegative(color);
 	color = applyShimmery(color, time);
-	color = applyGlitched(color, time);
+	color = applyGlitched(color, fragPos, time);
 	color = applyWireframe(color, barycentric);
 	return color;
 }
