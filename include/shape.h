@@ -6,6 +6,8 @@
 
 #include <glm/glm.hpp>
 
+#include "visual_effects.h"
+
 class Shader;
 
 namespace Boidsish {
@@ -17,6 +19,9 @@ namespace Boidsish {
 
 		// Pure virtual function for rendering the shape
 		virtual void render() const = 0;
+
+		// Get the active visual effects for this shape
+		virtual std::vector<VisualEffect> GetActiveEffects() const { return {}; }
 
 		// Accessors
 		inline int GetId() const { return id_; }
