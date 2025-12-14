@@ -64,6 +64,7 @@ namespace Boidsish {
 		float single_track_distance = 15.0f;
 
 		bool color_shift_effect = false;
+		float chromatic_aberration_strength = 0.01f;
 
 		VisualizerImpl(int w, int h, const char* title): width(w), height(h) {
 			last_frame = std::chrono::high_resolution_clock::now();
@@ -255,6 +256,7 @@ namespace Boidsish {
 			shader->use();
 			shader->setFloat("ripple_strength", ripple_strength);
 			shader->setBool("colorShift", color_shift_effect);
+			shader->setFloat("chromaticAberrationStrength", chromatic_aberration_strength);
 			shader->setMat4("view", view);
 			if (clip_plane) {
 				shader->setVec4("clipPlane", *clip_plane);

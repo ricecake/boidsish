@@ -6,6 +6,7 @@ layout(location = 2) in vec3 aColor;
 out vec3 FragPos;
 out vec3 Normal;
 out vec3 vs_color;
+out vec4 ClipPos;
 
 uniform mat4 model;
 uniform mat4 view;
@@ -44,5 +45,6 @@ void main() {
 	Normal = mat3(transpose(inverse(model))) * displacedNormal;
 	vs_color = aColor;
 	gl_Position = projection * view * vec4(FragPos, 1.0);
+	ClipPos = gl_Position;
 	gl_ClipDistance[0] = dot(vec4(FragPos, 1.0), clipPlane);
 }

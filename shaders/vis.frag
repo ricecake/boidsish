@@ -4,6 +4,7 @@ out vec4 FragColor;
 in vec3 FragPos;
 in vec3 Normal;
 in vec3 vs_color;
+in vec4 ClipPos;
 
 layout(std140) uniform Lighting {
 	vec3  lightPos;
@@ -15,6 +16,7 @@ layout(std140) uniform Lighting {
 uniform vec3  objectColor;
 uniform int   useVertexColor;
 uniform bool  colorShift;
+uniform float chromaticAberrationStrength = 0.01;
 
 void main() {
 	// Ambient
@@ -50,18 +52,16 @@ void main() {
 	vec3 result = (ambient + diffuse) * final_color + specular;
 
 	if (colorShift) {
-		float shift_magnitude = 0.2;
-		float shift_speed = 5.0;
-		vec3  pos_based_shift;
-		pos_based_shift.r = sin(FragPos.x * shift_speed) * shift_magnitude;
-		pos_based_shift.g = sin(FragPos.y * shift_speed) * shift_magnitude;
-		pos_based_shift.b = sin(FragPos.z * shift_speed) * shift_magnitude;
-		result += pos_based_shift;
+		// Screen-space chromatic aberration using derivatives.
+		// This approximates sampling at offset screen-space coordinates
+		// without needing a full post-processing pass.
+		vec2 ndc = ClipPos.xy / ClipPos.w;
+		vec2 offset = ndc * chromaticAberrationStrength;
 
-		int   posterize_levels = 5;
-		result.r = floor(result.r * posterize_levels) / posterize_levels;
-		result.g = floor(result.g * posterize_levels) / posterize_levels;
-		result.b = floor(result.b * posterize_levels) / posterize_levels;
+		vec3 color = result;
+		vec3 color_r = result + dFdx(result) * offset.x + dFdy(result) * offset.y;
+		vec3 color_b = result - dFdx(result) * offset.x - dFdy(result) * offset.y;
+		result = vec3(color_r.r, color.g, color_b.b);
 	}
 
 	FragColor = vec4(result, 1.0);
