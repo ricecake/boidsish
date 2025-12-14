@@ -692,6 +692,8 @@ namespace Boidsish {
 			glm::mat4 reflection_view = impl->SetupMatrices(reflection_cam);
 			impl->reflection_vp = impl->projection * reflection_view;
 
+			impl->sky_shader->use();
+			impl->sky_shader->setBool("isReflectionPass", true);
 			impl->RenderSky(reflection_view);
 			impl->RenderSceneObjects(
 				reflection_view,
@@ -708,6 +710,8 @@ namespace Boidsish {
 
 		// --- Main Pass ---
 		glm::mat4 view = impl->SetupMatrices();
+		impl->sky_shader->use();
+		impl->sky_shader->setBool("isReflectionPass", false);
 		impl->RenderSky(view);
 		impl->RenderPlane(view);
 		impl->RenderSceneObjects(view, impl->camera, shapes, impl->simulation_time, std::nullopt);

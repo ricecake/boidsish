@@ -3,7 +3,6 @@
 out vec4 FragColor;
 
 in vec3 viewDirection;
-in vec3 viewDirectionForHorizon;
 
 layout(std140) uniform Lighting {
 	vec3  lightPos;
@@ -11,6 +10,8 @@ layout(std140) uniform Lighting {
 	vec3  lightColor;
 	float time;
 };
+
+uniform bool isReflectionPass;
 
 vec3 mod289(vec3 x) {
 	return x - floor(x * (1.0 / 289.0)) * 289.0;
@@ -127,8 +128,12 @@ float fbm(vec3 p) {
 }
 
 void main() {
-	vec3 world_ray_horizon = normalize(viewDirectionForHorizon);
 	vec3 world_ray_objects = normalize(viewDirection);
+	vec3 world_ray_horizon = world_ray_objects;
+
+	if (isReflectionPass) {
+		world_ray_horizon.y = -world_ray_horizon.y;
+	}
 
 	// 1. Base Sky Gradient
 	float y = world_ray_horizon.y;
@@ -142,19 +147,24 @@ void main() {
 	vec3  final_color = mix(color, top_sky_color, top_mix);
 
 	// 2. Nebula/Haze Layer
-	vec3  p = world_ray_objects * 4.0;
+	vec3 p = world_ray_horizon * 2.0; // Lower frequency base
+	float offset_noise = snoise(p * 3.0 + time * 0.1); // A second noise to warp the coordinates
+	p += offset_noise * 0.5; // Apply the warp
 	vec3  warp_offset = vec3(fbm(p + time * 0.05));
-	float nebula_noise = fbm(p + warp_offset * 0.5);
+	float nebula_noise = fbm(p + warp_offset * 0.2); // reduce warp strength
 	vec3 nebula_palette = mix(vec3(0.0, 0.1, 0.4), vec3(0.8, 0.2, 0.7), nebula_noise);
 	float nebula_strength = smoothstep(0.2, 0.6, top_mix);
 	final_color = mix(final_color, nebula_palette * 1.5, nebula_strength * 0.4);
 
 	// 3. Star Field Layer
-	float stars = starLayer(world_ray_objects);
+	float stars = starLayer(world_ray_horizon);
 	final_color += stars * vec3(1.0, 0.9, 0.8);
 
 	// 4. Moon "Eye" Layer (Corrected Logic)
 	vec3  light_dir = normalize(lightPos - viewPos);
+	if (isReflectionPass) {
+		light_dir.y = -light_dir.y;
+	}
 	float dot_product = dot(world_ray_objects, light_dir);
 
 	// Define thresholds for smoothstep based on the dot product
