@@ -237,7 +237,7 @@ void main() {
 	// Create a soft, bright spot where the alignment is high
 	// The smoothstep values control the size and softness of the glow.
 	float eye_spot = smoothstep(0.99, 1.0, alignment);
-	vec3 eye_color = vec3(1.0, 0.9, 0.7) * 2.0; // Bright, warm color
+	vec3 eye_color = vec3(1.0, 0.9, 0.7) * 0.08; // Bright, warm color
 
 	// Create a darker "iris" for the eye effect
 	// This is done by creating a thin band using two smoothsteps.

@@ -740,8 +740,14 @@ namespace Boidsish {
 		glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(VisualEffectsUbo), &ubo_data);
 		glBindBuffer(GL_UNIFORM_BUFFER, 0);
 
+		// --- Update Lighting UBO ---
+		float light_x = 50.0f * cos(impl->simulation_time * 0.1f);
+		float light_y = 20.0f;
+		float light_z = 50.0f * sin(impl->simulation_time * 0.1f);
+		glm::vec3 lightPos(light_x, light_y, light_z);
+
 		glBindBuffer(GL_UNIFORM_BUFFER, impl->lighting_ubo);
-		glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(glm::vec3), &glm::vec3(1.0f, 100.0f, 25.0f)[0]);
+		glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(glm::vec3), &lightPos[0]);
 		glBufferSubData(
 			GL_UNIFORM_BUFFER,
 			16,
