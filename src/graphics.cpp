@@ -9,9 +9,9 @@
 #include <vector>
 
 #include "dot.h"
-#include "trail.h"
 #include "terrain.h"
 #include "terrain_generator.h"
+#include "trail.h"
 #include <GL/glew.h>
 #include <GLFW/glfw3.h>
 #include <glm/glm.hpp>
@@ -29,7 +29,7 @@ namespace Boidsish {
 		std::map<int, std::shared_ptr<Trail>> trails;
 		std::map<int, float>                  trail_last_update;
 
-        std::unique_ptr<TerrainGenerator>     terrain_generator;
+		std::unique_ptr<TerrainGenerator> terrain_generator;
 
 		std::shared_ptr<Shader> shader;
 		std::unique_ptr<Shader> plane_shader;
@@ -114,7 +114,7 @@ namespace Boidsish {
 			sky_shader = std::make_unique<Shader>("shaders/sky.vert", "shaders/sky.frag");
 			trail_shader = std::make_unique<Shader>("shaders/trail.vert", "shaders/trail.frag");
 			blur_shader = std::make_unique<Shader>("shaders/blur.vert", "shaders/blur.frag");
-            terrain_generator = std::make_unique<TerrainGenerator>();
+			terrain_generator = std::make_unique<TerrainGenerator>();
 
 			glGenBuffers(1, &lighting_ubo);
 			glBindBuffer(GL_UNIFORM_BUFFER, lighting_ubo);
@@ -130,19 +130,35 @@ namespace Boidsish {
 			trail_shader->use();
 			glUniformBlockBinding(trail_shader->ID, glGetUniformBlockIndex(trail_shader->ID, "Lighting"), 0);
 
-            Terrain::terrain_shader_ = std::make_shared<Shader>("shaders/terrain.vert", "shaders/terrain.frag");
-            glUniformBlockBinding(Terrain::terrain_shader_->ID, glGetUniformBlockIndex(Terrain::terrain_shader_->ID, "Lighting"), 0);
+			Terrain::terrain_shader_ = std::make_shared<Shader>("shaders/terrain.vert", "shaders/terrain.frag");
+			glUniformBlockBinding(
+				Terrain::terrain_shader_->ID,
+				glGetUniformBlockIndex(Terrain::terrain_shader_->ID, "Lighting"),
+				0
+			);
 
 			Shape::InitSphereMesh();
 
 			float quad_vertices[] = {
 				// Definitive CCW winding
-				-1.0f, 0.0f,  1.0f,
-				 1.0f, 0.0f, -1.0f,
-				-1.0f, 0.0f, -1.0f,
-				-1.0f, 0.0f,  1.0f,
-				 1.0f, 0.0f,  1.0f,
-				 1.0f, 0.0f, -1.0f
+				-1.0f,
+				0.0f,
+				1.0f,
+				1.0f,
+				0.0f,
+				-1.0f,
+				-1.0f,
+				0.0f,
+				-1.0f,
+				-1.0f,
+				0.0f,
+				1.0f,
+				1.0f,
+				0.0f,
+				1.0f,
+				1.0f,
+				0.0f,
+				-1.0f
 			};
 			glGenVertexArrays(1, &plane_vao);
 			glBindVertexArray(plane_vao);
@@ -299,25 +315,25 @@ namespace Boidsish {
 			}
 		}
 
-        void RenderTerrain(const glm::mat4& view, const std::optional<glm::vec4>& clip_plane) {
-            auto terrain_chunks = terrain_generator->getVisibleChunks();
-            if (terrain_chunks.empty()) {
-                return;
-            }
+		void RenderTerrain(const glm::mat4& view, const std::optional<glm::vec4>& clip_plane) {
+			auto terrain_chunks = terrain_generator->getVisibleChunks();
+			if (terrain_chunks.empty()) {
+				return;
+			}
 
-            Terrain::terrain_shader_->use();
-            Terrain::terrain_shader_->setMat4("view", view);
-            Terrain::terrain_shader_->setMat4("projection", projection);
-            if (clip_plane) {
-                Terrain::terrain_shader_->setVec4("clipPlane", *clip_plane);
-            } else {
-                Terrain::terrain_shader_->setVec4("clipPlane", glm::vec4(0, 0, 0, 0)); // No clipping
-            }
+			Terrain::terrain_shader_->use();
+			Terrain::terrain_shader_->setMat4("view", view);
+			Terrain::terrain_shader_->setMat4("projection", projection);
+			if (clip_plane) {
+				Terrain::terrain_shader_->setVec4("clipPlane", *clip_plane);
+			} else {
+				Terrain::terrain_shader_->setVec4("clipPlane", glm::vec4(0, 0, 0, 0)); // No clipping
+			}
 
-            for (const auto& chunk : terrain_chunks) {
-                chunk->render();
-            }
-        }
+			for (const auto& chunk : terrain_chunks) {
+				chunk->render();
+			}
+		}
 
 		void RenderSky(const glm::mat4& view) {
 			glDisable(GL_DEPTH_TEST);
@@ -680,7 +696,7 @@ namespace Boidsish {
 			}
 		}
 
-        impl->terrain_generator->update(impl->camera);
+		impl->terrain_generator->update(impl->camera);
 
 		static auto last_frame_time = std::chrono::high_resolution_clock::now();
 		auto        current_frame_time = std::chrono::high_resolution_clock::now();
@@ -726,7 +742,7 @@ namespace Boidsish {
 				impl->simulation_time,
 				glm::vec4(0, 1, 0, 0.01)
 			);
-            impl->RenderTerrain(reflection_view, glm::vec4(0, 1, 0, 0.01));
+			impl->RenderTerrain(reflection_view, glm::vec4(0, 1, 0, 0.01));
 			glBindFramebuffer(GL_FRAMEBUFFER, 0);
 		}
 		glDisable(GL_CLIP_DISTANCE0);
@@ -738,7 +754,7 @@ namespace Boidsish {
 		impl->RenderSky(view);
 		impl->RenderPlane(view);
 		impl->RenderSceneObjects(view, impl->camera, shapes, impl->simulation_time, std::nullopt);
-        impl->RenderTerrain(view, std::nullopt);
+		impl->RenderTerrain(view, std::nullopt);
 
 		glfwSwapBuffers(impl->window);
 	}

@@ -138,7 +138,7 @@ namespace Boidsish {
 		for (size_t i = 0; i < curve_positions.size(); ++i) {
 			std::vector<glm::vec3> current_ring_pos;
 			std::vector<glm::vec3> current_ring_norm;
-			float                    thickness = BASE_THICKNESS;
+			float                  thickness = BASE_THICKNESS;
 
 			for (int j = 0; j <= TRAIL_SEGMENTS; ++j) {
 				float   angle = 2.0f * std::numbers::pi * j / TRAIL_SEGMENTS;

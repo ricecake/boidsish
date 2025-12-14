@@ -12,9 +12,9 @@ layout(std140) uniform Lighting {
 	float time;
 };
 
-uniform vec3  objectColor;
-uniform int   useVertexColor;
-uniform bool  colorShift;
+uniform vec3 objectColor;
+uniform int  useVertexColor;
+uniform bool colorShift;
 
 void main() {
 	// Ambient
@@ -58,7 +58,7 @@ void main() {
 		pos_based_shift.b = sin(FragPos.z * shift_speed) * shift_magnitude;
 		result += pos_based_shift;
 
-		int   posterize_levels = 5;
+		int posterize_levels = 5;
 		result.r = floor(result.r * posterize_levels) / posterize_levels;
 		result.g = floor(result.g * posterize_levels) / posterize_levels;
 		result.b = floor(result.b * posterize_levels) / posterize_levels;

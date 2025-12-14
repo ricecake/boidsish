@@ -7,10 +7,10 @@ out vec3 FragPos;
 out vec3 Normal;
 out vec3 vs_color;
 
-uniform mat4 model;
-uniform mat4 view;
-uniform mat4 projection;
-uniform vec4 clipPlane;
+uniform mat4  model;
+uniform mat4  view;
+uniform mat4  projection;
+uniform vec4  clipPlane;
 uniform float ripple_strength;
 
 layout(std140) uniform Lighting {
