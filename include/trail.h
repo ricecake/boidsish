@@ -13,10 +13,10 @@ namespace Boidsish {
 
 	class Trail {
 	public:
-		Trail(int max_length = 250);
+		Trail(float thickness = 0.06f, int max_length = 250);
 		~Trail();
 
-		void AddPoint(glm::vec3 position, glm::vec3 color);
+		void AddPoint(glm::vec3 position, glm::vec3 color, float object_radius);
 		void Render(Shader& shader) const;
 
 	private:
@@ -52,8 +52,9 @@ namespace Boidsish {
 		Vector3
 		TransportFrame(const Vector3& prev_normal, const Vector3& prev_tangent, const Vector3& curr_tangent) const;
 
-		std::deque<std::pair<glm::vec3, glm::vec3>> points;
+		float                                       thickness_;
 		int                                         max_length;
+		std::deque<std::pair<glm::vec3, glm::vec3>> points;
 		GLuint                                      vao;
 		GLuint                                      vbo;
 
@@ -70,9 +71,8 @@ namespace Boidsish {
 		mutable std::deque<Vector3> binormals;
 
 		// Configuration
-		const int   TRAIL_SEGMENTS = 8;     // Circular segments around trail
-		const int   CURVE_SEGMENTS = 4;     // Interpolation segments per point
-		const float BASE_THICKNESS = 0.06f; // Maximum thickness at trail start
+		const int TRAIL_SEGMENTS = 8; // Circular segments around trail
+		const int CURVE_SEGMENTS = 4; // Interpolation segments per point
 	};
 
 } // namespace Boidsish

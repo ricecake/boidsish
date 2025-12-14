@@ -326,11 +326,21 @@ namespace Boidsish {
 				// Only create trails for shapes with trail_length > 0
 				if (shape->GetTrailLength() > 0 && !paused) {
 					if (trails.find(shape->GetId()) == trails.end()) {
-						trails[shape->GetId()] = std::make_shared<Trail>(shape->GetTrailLength());
+					if (auto dot = std::dynamic_pointer_cast<Dot>(shape)) {
+						trails[shape->GetId()] =
+							std::make_shared<Trail>(dot->GetSize() * 0.01f, shape->GetTrailLength());
+					} else {
+						trails[shape->GetId()] = std::make_shared<Trail>(0.06f, shape->GetTrailLength());
+					}
+					}
+					float object_radius = 0.0f;
+					if (auto dot = std::dynamic_pointer_cast<Dot>(shape)) {
+						object_radius = dot->GetSize() * 0.01f;
 					}
 					trails[shape->GetId()]->AddPoint(
 						glm::vec3(shape->GetX(), shape->GetY(), shape->GetZ()),
-						glm::vec3(shape->GetR(), shape->GetG(), shape->GetB())
+						glm::vec3(shape->GetR(), shape->GetG(), shape->GetB()),
+						object_radius
 					);
 					trail_last_update[shape->GetId()] = time;
 				}

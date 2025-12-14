@@ -9,7 +9,8 @@
 
 namespace Boidsish {
 
-	Trail::Trail(int max_length): max_length(max_length), vertex_count(0), mesh_dirty(false) {
+	Trail::Trail(float thickness, int max_length):
+		thickness_(thickness), max_length(max_length), vertex_count(0), mesh_dirty(false) {
 		glGenVertexArrays(1, &vao);
 		glGenBuffers(1, &vbo);
 	}
@@ -138,7 +139,7 @@ namespace Boidsish {
 		for (size_t i = 0; i < curve_positions.size(); ++i) {
 			std::vector<glm::vec3> current_ring_pos;
 			std::vector<glm::vec3> current_ring_norm;
-			float                  thickness = BASE_THICKNESS;
+			float                  thickness = thickness_;
 
 			for (int j = 0; j <= TRAIL_SEGMENTS; ++j) {
 				float   angle = 2.0f * std::numbers::pi * j / TRAIL_SEGMENTS;
@@ -201,12 +202,59 @@ namespace Boidsish {
 				);
 			}
 		}
+		// Add a pointed cap at the oldest end of the trail
+		if (curve_positions.size() > 1) {
+			const auto& end_ring_positions = ring_positions[0];
+			Vector3     center_point = curve_positions[0] - tangents[0] * thickness_ *
+                    0.5f; // Extrude cap slightly for a pointed look
+			Vector3 center_normal = -tangents[0];
+
+			for (int j = 0; j < TRAIL_SEGMENTS; ++j) {
+				mesh_vertices.push_back(
+					{glm::vec3(center_point.x, center_point.y, center_point.z),
+				     glm::vec3(center_normal.x, center_normal.y, center_normal.z),
+				     glm::vec3(curve_colors[0].x, curve_colors[0].y, curve_colors[0].z),
+				     curve_progress[0]}
+				);
+				mesh_vertices.push_back(
+					{end_ring_positions[j + 1],
+				     glm::vec3(
+						 curve_positions[0].x - end_ring_positions[j + 1].x,
+						 curve_positions[0].y - end_ring_positions[j + 1].y,
+						 curve_positions[0].z - end_ring_positions[j + 1].z
+					 ),
+				     glm::vec3(curve_colors[0].x, curve_colors[0].y, curve_colors[0].z),
+				     curve_progress[0]}
+				);
+				mesh_vertices.push_back(
+					{end_ring_positions[j],
+				     glm::vec3(
+						 curve_positions[0].x - end_ring_positions[j].x,
+						 curve_positions[0].y - end_ring_positions[j].y,
+						 curve_positions[0].z - end_ring_positions[j].z
+					 ),
+				     glm::vec3(curve_colors[0].x, curve_colors[0].y, curve_colors[0].z),
+				     curve_progress[0]}
+				);
+			}
+		}
 
 		vertex_count = mesh_vertices.size();
 	}
 
-	void Trail::AddPoint(glm::vec3 position, glm::vec3 color) {
+	void Trail::AddPoint(glm::vec3 position, glm::vec3 color, float object_radius) {
 		points.push_back({position, color});
+
+		if (points.size() > 1) {
+			// Adjust the latest point to be on the surface of the sphere
+			glm::vec3&       latest_point = points.back().first;
+			const glm::vec3& prev_point = points[points.size() - 2].first;
+			glm::vec3        direction = latest_point - prev_point;
+			if (glm::length(direction) > 1e-6) {
+				direction = glm::normalize(direction);
+				latest_point -= direction * object_radius;
+			}
+		}
 
 		if (points.size() > static_cast<size_t>(max_length)) {
 			points.pop_front();
@@ -286,7 +334,7 @@ namespace Boidsish {
 		}
 
 		shader.use();
-		shader.setFloat("base_thickness", BASE_THICKNESS);
+		shader.setFloat("base_thickness", thickness_);
 		shader.setInt("useVertexColor", 1);
 
 		glBindVertexArray(vao);
@@ -294,13 +342,6 @@ namespace Boidsish {
 		glBindVertexArray(0);
 
 		shader.setInt("useVertexColor", 0);
-
-		// Render a cap at the end of the trail
-		if (!points.empty()) {
-			const auto& end_point = points.front();
-			float       end_thickness = BASE_THICKNESS * 0.1f; // Make cap size relative to trail
-			Shape::RenderSphere(end_point.first, end_point.second, end_thickness);
-		}
 	}
 
 	void Trail::AppendToGeometryCache(
