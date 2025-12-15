@@ -56,7 +56,7 @@ void main()
     vec3 dU = pos_u - FragPos;
     vec3 dV = pos_v - FragPos;
 
-    Normal = normalize(cross(dV, dU));
+    Normal = normalize(cross(dU, dV));
 
 
     // Final vertex position in clip space

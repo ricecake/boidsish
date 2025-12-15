@@ -18,7 +18,7 @@ out vec3 WorldPos_TC_out[];
 out vec2 TexCoords_TC_out[];
 
 float GetTessLevel(float distance) {
-    float maxTess = 64.0;
+    float maxTess = 24.0;
     float minTess = 1.0;
     float maxDist = 200.0;
     float minDist = 20.0;
