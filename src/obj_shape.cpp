@@ -58,11 +58,12 @@ const ObjShape::Mesh* ObjShape::LoadMesh(const std::string& filepath) {
     m.update_v_normals();
 
     std::vector<float> vertices;
+    const auto& vert_normals = m.vector_vert_normals();
     for (uint i = 0; i < m.num_polys(); ++i) {
         for (uint j = 0; j < 3; ++j) {
             uint vid = m.poly_vert_id(i, j);
             const cinolib::vec3d& v = m.vert(vid);
-            const cinolib::vec3d& n = m.vector_vert_normals()[vid];
+            const cinolib::vec3d& n = vert_normals[vid];
             vertices.push_back(v.x());
             vertices.push_back(v.y());
             vertices.push_back(v.z());
