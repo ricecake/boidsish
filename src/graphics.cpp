@@ -46,7 +46,8 @@ namespace Boidsish {
 
 		double last_mouse_x = 0.0, last_mouse_y = 0.0;
 		bool   first_mouse = true;
-		bool   keys[1024] = {false};
+		bool          keys[1024] = {false};
+		KeyCallback_t key_callback;
 
 		bool                                           paused = false;
 		float                                          simulation_time = 0.0f;
@@ -583,8 +584,14 @@ namespace Boidsish {
 			camera.pitch = std::max(-89.0f, std::min(89.0f, camera.pitch));
 		}
 
-		static void KeyCallback(GLFWwindow* w, int key, int /* sc */, int action, int /* mods */) {
+		static void KeyCallback(GLFWwindow* w, int key, int sc, int action, int mods) {
 			auto* impl = static_cast<VisualizerImpl*>(glfwGetWindowUserPointer(w));
+
+			// The user callback gets first priority.
+			if (impl->key_callback && impl->key_callback(key, action, mods)) {
+				return;
+			}
+
 			if (key >= 0 && key < 1024) {
 				if (action == GLFW_PRESS)
 					impl->keys[key] = true;
@@ -714,6 +721,10 @@ namespace Boidsish {
 
 	void Visualizer::ClearShapeHandlers() {
 		impl->shape_functions.clear();
+	}
+
+	void Visualizer::SetKeyCallback(KeyCallback_t callback) {
+		impl->key_callback = callback;
 	}
 
 	bool Visualizer::ShouldClose() const {
@@ -853,5 +864,51 @@ namespace Boidsish {
 
 	void Visualizer::SetCamera(const Camera& camera) {
 		impl->camera = camera;
+	}
+
+	void Visualizer::SetCameraPosition(float x, float y, float z) {
+		impl->camera.x = x;
+		impl->camera.y = y;
+		impl->camera.z = z;
+	}
+
+	void Visualizer::SetCameraYaw(float yaw) {
+		impl->camera.yaw = yaw;
+	}
+
+	void Visualizer::SetCameraPitch(float pitch) {
+		impl->camera.pitch = pitch;
+	}
+
+	void Visualizer::SetAutoCamera(bool enabled) {
+		impl->auto_camera_mode = enabled;
+		if (enabled) {
+			impl->single_track_mode = false;
+			glfwSetInputMode(impl->window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
+		} else {
+			glfwSetInputMode(impl->window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+			impl->first_mouse = true;
+		}
+	}
+
+	void Visualizer::SetSingleTrackCamera(bool enabled, int tracked_dot_index) {
+		impl->single_track_mode = enabled;
+		if (enabled) {
+			impl->auto_camera_mode = false;
+			impl->tracked_dot_index = tracked_dot_index;
+			glfwSetInputMode(impl->window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+			impl->first_mouse = true;
+		} else {
+			glfwSetInputMode(impl->window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
+		}
+	}
+
+	void Visualizer::SetSingleTrackOrbit(float yaw, float pitch) {
+		impl->single_track_orbit_yaw = yaw;
+		impl->single_track_orbit_pitch = pitch;
+	}
+
+	void Visualizer::SetSingleTrackDistance(float distance) {
+		impl->single_track_distance = distance;
 	}
 } // namespace Boidsish

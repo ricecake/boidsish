@@ -10,6 +10,9 @@
 #include "vector.h"
 
 namespace Boidsish {
+	// Key callback function type. Return true to suppress default handling.
+	using KeyCallback_t = std::function<bool(int, int, int)>;
+
 	// Camera structure for 3D view control
 	struct Camera {
 		float x, y, z;    // Camera position
@@ -37,6 +40,9 @@ namespace Boidsish {
 		void AddShapeHandler(ShapeFunction func);
 		void ClearShapeHandlers();
 
+		// Set a custom key callback
+		void SetKeyCallback(KeyCallback_t callback);
+
 		// Legacy method name for compatibility
 		void SetDotFunction(ShapeFunction func) { AddShapeHandler(func); }
 
@@ -57,6 +63,15 @@ namespace Boidsish {
 
 		// Set camera position and orientation
 		void SetCamera(const Camera& camera);
+		void SetCameraPosition(float x, float y, float z);
+		void SetCameraYaw(float yaw);
+		void SetCameraPitch(float pitch);
+
+		// Camera modes
+		void SetAutoCamera(bool enabled);
+		void SetSingleTrackCamera(bool enabled, int tracked_dot_index = 0);
+		void SetSingleTrackOrbit(float yaw, float pitch);
+		void SetSingleTrackDistance(float distance);
 
 	private:
 		struct VisualizerImpl;
