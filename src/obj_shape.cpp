@@ -58,7 +58,7 @@ const ObjShape::Mesh* ObjShape::LoadMesh(const std::string& filepath) {
     m.update_v_normals();
 
     std::vector<float> vertices;
-    const auto& vert_normals = m.vector_vert_normals();
+    const auto vert_normals = m.vector_vert_normals();
     for (uint i = 0; i < m.num_polys(); ++i) {
         for (uint j = 0; j < 3; ++j) {
             uint vid = m.poly_vert_id(i, j);
