@@ -111,11 +111,13 @@ void main() {
 	}
 
 	// vec3 objectColor = vec3(mix(0.2, 0.4, step(0.1, fract(FragPos.y))), 0, 0.5); // A deep blue
-	vec3 objectColor = vec3(0.2, 0.3, 0.4); // A deep blue
+	// vec3 objectColor = vec3(0.2, 0.3, 0.4); // A deep blue
+	vec3 objectColor = mix(vec3(0.05, 0.05, 0.08), vec3(0.2, 0.3, 0.4), FragPos.y/5); // A deep blue
 
 	vec3  warp = vec3(fbm(FragPos + time * 0.1));
 	float nebula_noise = fbm(FragPos + warp * 0.5);
-	objectColor = nebula_noise * (warp + objectColor);
+	// objectColor = nebula_noise * (warp + objectColor);
+	objectColor += nebula_noise * warp;
 
 	// Ambient
 	float ambientStrength = 0.2;
@@ -147,7 +149,7 @@ void main() {
 	float line_major = min(grid_major.x, grid_major.y);
 	float C_major = 1.0 - min(line_major, 1.0);
 
-	float intensity = max(C_minor, C_major * 1.5) * 0.6;
+	float intensity = max(C_minor, C_major * 1.5) * 0.3;
 	vec3  grid_color = vec3(0.0, 0.8, 0.8) * intensity;
 
 	vec3 result = ((ambient + diffuse) * objectColor + specular) + grid_color; // Add specular on top
