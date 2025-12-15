@@ -22,15 +22,6 @@ namespace Boidsish {
 			entity->UpdateEntity(*this, time, delta_time);
 		}
 
-		// On the first frame, the R-Tree is not yet built, so we need to run the entity update
-		// again to ensure they can find each other.
-		if (time == 0.0f) {
-			PostTimestep(time, delta_time);
-			for (auto& entity : entities) {
-				entity->UpdateEntity(*this, time, delta_time);
-			}
-		}
-
 		// Call post-timestep hook
 		PostTimestep(time, delta_time);
 

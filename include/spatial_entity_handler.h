@@ -62,7 +62,7 @@ namespace Boidsish {
 	protected:
 		void PostTimestep(float time, float delta_time) override {
 			(void)time;
-			(void)delta_,time;
+			(void)delta_time;
 			rtree_.RemoveAll();
 			for (const auto& pair : GetAllEntities()) {
 				auto&         entity = pair.second;

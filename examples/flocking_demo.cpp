@@ -52,6 +52,10 @@ namespace SimulationParameters {
     constexpr float kPreyCaptureRadius = 2.0f;
 }
 
+// Forward declarations
+class FlockingEntity;
+class PredatorEntity;
+
 // A stationary food source.
 class FoodEntity : public Entity<> {
 public:
@@ -63,9 +67,9 @@ public:
 
     void UpdateEntity(EntityHandler& handler, float time, float delta_time) override {
         // Food doesn't do anything.
-		(void)handler;
-		(void)time;
-		(void)delta_time;
+        (void)handler;
+        (void)time;
+        (void)delta_time;
     }
 };
 
@@ -93,26 +97,6 @@ protected:
     float baseline_speed_;
 };
 
-class FlockingEntity; // Forward declaration
-
-class PredatorEntity : public CreatureEntity {
-public:
-    PredatorEntity(int id) : CreatureEntity(id, SimulationParameters::kPredatorMaxSpeed, SimulationParameters::kPredatorBaselineSpeed) {
-        SetSize(SimulationParameters::kPredatorSize);
-        SetColor(0.9f, 0.1f, 0.1f); // Red
-        SetTrailLength(SimulationParameters::kPredatorTrailLength);
-    }
-
-    void UpdateEntity(EntityHandler& handler, float time, float delta_time) override;
-
-private:
-    static std::mt19937 gen_;
-    static std::uniform_real_distribution<float> dis_;
-};
-
-std::mt19937 PredatorEntity::gen_{std::random_device{}()};
-std::uniform_real_distribution<float> PredatorEntity::dis_{-1.0f, 1.0f};
-
 class FlockingEntity : public CreatureEntity {
 public:
     FlockingEntity(int id) : CreatureEntity(id, SimulationParameters::kFlockMaxSpeed, SimulationParameters::kFlockBaselineSpeed) {
@@ -130,11 +114,11 @@ public:
         Vector3 separation, alignment, cohesion, predator_avoidance, food_attraction;
         int flockmate_count = 0;
 
-        std::shared_ptr<EntityBase> closest_food = nullptr;
-        float min_food_dist = 1000.0f;
+        auto closest_food = spatial_handler.FindNearest<FoodEntity>(GetPosition());
+        float min_food_dist = closest_food ? GetPosition().DistanceTo(closest_food->GetPosition()) : 1000.0f;
 
         for (auto& neighbor_ptr : neighbors) {
-             if (neighbor_ptr.get() == this) continue;
+            if (neighbor_ptr.get() == this) continue;
 
             if (dynamic_cast<FlockingEntity*>(neighbor_ptr.get())) {
                 separation += (GetPosition() - neighbor_ptr->GetPosition()).Normalized() / GetPosition().DistanceTo(neighbor_ptr->GetPosition());
@@ -143,12 +127,6 @@ public:
                 flockmate_count++;
             } else if (dynamic_cast<PredatorEntity*>(neighbor_ptr.get())) {
                 predator_avoidance += (GetPosition() - neighbor_ptr->GetPosition()).Normalized() * (SimulationParameters::kFlockNeighborRadius / GetPosition().DistanceTo(neighbor_ptr->GetPosition()));
-            } else if (dynamic_cast<FoodEntity*>(neighbor_ptr.get())) {
-                float dist = GetPosition().DistanceTo(neighbor_ptr->GetPosition());
-                if (dist < min_food_dist) {
-                    min_food_dist = dist;
-                    closest_food = neighbor_ptr;
-                }
             }
         }
 
@@ -186,44 +164,71 @@ public:
 
         SetVelocity(new_velocity);
         ConsumeEnergy(delta_time);
-		(void)time;
+
+        // Interaction logic
+        if (closest_food && GetPosition().DistanceTo(closest_food->GetPosition()) < SimulationParameters::kFoodConsumptionRadius) {
+            AddEnergy(SimulationParameters::kFoodEnergy);
+            handler.RemoveEntity(closest_food->GetId());
+        }
+        (void)time;
     }
 };
 
-
-void PredatorEntity::UpdateEntity(EntityHandler& handler, float time, float delta_time) {
-    auto& spatial_handler = static_cast<SpatialEntityHandler&>(handler);
-
-    auto closest_prey = spatial_handler.FindNearest<FlockingEntity>(GetPosition(), SimulationParameters::kPredatorHuntRadius);
-
-    if (closest_prey) {
-        float prey_dist = GetPosition().DistanceTo(closest_prey->GetPosition());
-        Vector3 steering = (closest_prey->GetPosition() - GetPosition()).Normalized();
-
-        float speed_factor = std::max(0.0f, 1.0f - (prey_dist / SimulationParameters::kWorldBounds));
-        float desired_speed = baseline_speed_ + (max_speed_ - baseline_speed_) * speed_factor;
-
-        Vector3 new_velocity = steering * desired_speed;
-        SetVelocity(new_velocity);
-    } else {
-        // Wander
-        Vector3 current_velocity = GetVelocity();
-        if (current_velocity.MagnitudeSquared() < 0.1f) {
-            current_velocity = Vector3(dis_(gen_), 0, dis_(gen_));
-        }
-        SetVelocity(current_velocity.Normalized() * baseline_speed_);
+class PredatorEntity : public CreatureEntity {
+public:
+    PredatorEntity(int id) : CreatureEntity(id, SimulationParameters::kPredatorMaxSpeed, SimulationParameters::kPredatorBaselineSpeed) {
+        SetSize(SimulationParameters::kPredatorSize);
+        SetColor(0.9f, 0.1f, 0.1f); // Red
+        SetTrailLength(SimulationParameters::kPredatorTrailLength);
     }
 
-    ConsumeEnergy(delta_time);
-    (void)time;
-}
+    void UpdateEntity(EntityHandler& handler, float time, float delta_time) override {
+        auto& spatial_handler = static_cast<SpatialEntityHandler&>(handler);
+
+        auto closest_prey = spatial_handler.FindNearest<FlockingEntity>(GetPosition(), SimulationParameters::kPredatorHuntRadius);
+
+        if (closest_prey) {
+            float prey_dist = GetPosition().DistanceTo(closest_prey->GetPosition());
+            Vector3 steering = (closest_prey->GetPosition() - GetPosition()).Normalized();
+
+            float speed_factor = std::max(0.0f, 1.0f - (prey_dist / SimulationParameters::kWorldBounds));
+            float desired_speed = baseline_speed_ + (max_speed_ - baseline_speed_) * speed_factor;
+
+            Vector3 new_velocity = steering * desired_speed;
+            SetVelocity(new_velocity);
+
+            // Interaction logic
+            if (prey_dist < SimulationParameters::kPreyCaptureRadius) {
+                handler.RemoveEntity(closest_prey->GetId());
+            }
+
+        } else {
+            // Wander
+            Vector3 current_velocity = GetVelocity();
+            if (current_velocity.MagnitudeSquared() < 0.1f) {
+                current_velocity = Vector3(dis_(gen_), 0, dis_(gen_));
+            }
+            SetVelocity(current_velocity.Normalized() * baseline_speed_);
+        }
+
+        ConsumeEnergy(delta_time);
+        (void)time;
+    }
+
+private:
+    static std::mt19937 gen_;
+    static std::uniform_real_distribution<float> dis_;
+};
+
+std::mt19937 PredatorEntity::gen_{std::random_device{}()};
+std::uniform_real_distribution<float> PredatorEntity::dis_{-1.0f, 1.0f};
 
 class FlockingHandler : public SpatialEntityHandler {
 public:
-    FlockingHandler(int num_flock, int num_predators, int num_food) : gen_(rd_()), dis_(-SimulationParameters::kWorldBounds, SimulationParameters::kWorldBounds) {
+    FlockingHandler() : gen_(rd_()), dis_(-SimulationParameters::kWorldBounds, SimulationParameters::kWorldBounds) {
+        // Spawn initial entities
         std::uniform_real_distribution<float> vel_dis(-1.0f, 1.0f);
-
-        for (int i = 0; i < num_flock; ++i) {
+        for (int i = 0; i < SimulationParameters::kNumFlock; ++i) {
             auto entity = std::make_shared<FlockingEntity>(next_id_++);
             entity->SetPosition(dis_(gen_), dis_(gen_) / 2.0f, dis_(gen_));
             Vector3 initial_velocity(vel_dis(gen_), 0.0f, vel_dis(gen_));
@@ -231,7 +236,7 @@ public:
             AddEntity(entity->GetId(), entity);
         }
 
-        for (int i = 0; i < num_predators; ++i) {
+        for (int i = 0; i < SimulationParameters::kNumPredators; ++i) {
             auto entity = std::make_shared<PredatorEntity>(next_id_++);
             entity->SetPosition(dis_(gen_), dis_(gen_) / 2.0f, dis_(gen_));
             Vector3 initial_velocity(vel_dis(gen_), 0.0f, vel_dis(gen_));
@@ -239,38 +244,19 @@ public:
             AddEntity(entity->GetId(), entity);
         }
 
-        for (int i = 0; i < num_food; ++i) {
+        for (int i = 0; i < SimulationParameters::kNumFood; ++i) {
             SpawnFood();
         }
     }
 
 protected:
     void PostTimestep(float time, float delta_time) override {
-        // Handle interactions
-        std::vector<int> entities_to_remove;
-        for (auto const& [id, entity] : GetAllEntities()) {
-            if (auto flock_member = std::dynamic_pointer_cast<FlockingEntity>(entity)) {
-                // Check for food consumption
-                 auto food = FindNearest<FoodEntity>(flock_member->GetPosition(), SimulationParameters::kFoodConsumptionRadius);
-                 if (food) {
-                    flock_member->AddEnergy(SimulationParameters::kFoodEnergy);
-                    entities_to_remove.push_back(food->GetId());
-                    SpawnFood();
-                 }
-            } else if (auto predator = std::dynamic_pointer_cast<PredatorEntity>(entity)) {
-                // Check for prey capture
-                auto prey = FindNearest<FlockingEntity>(predator->GetPosition(), SimulationParameters::kPreyCaptureRadius);
-                if (prey) {
-                    entities_to_remove.push_back(prey->GetId());
-                }
-            }
+        // Respawn food and entities
+        if (GetEntitiesByType<FoodEntity>().size() < SimulationParameters::kNumFood) {
+            SpawnFood();
         }
-
-        for (int id : entities_to_remove) {
-            RemoveEntity(id);
-        }
-		(void)time;
-		(void)delta_time;
+        (void)time;
+        (void)delta_time;
     }
 
 private:
@@ -279,6 +265,7 @@ private:
         entity->SetPosition(dis_(gen_), dis_(gen_) / 4.0f, dis_(gen_));
         AddEntity(entity->GetId(), entity);
     }
+
     int next_id_ = 0;
     std::random_device rd_;
     std::mt19937 gen_;
@@ -292,7 +279,7 @@ int main() {
         Camera camera(0.0f, 15.0f, 60.0f, -15.0f, 0.0f, 45.0f);
         viz.SetCamera(camera);
 
-        FlockingHandler handler(SimulationParameters::kNumFlock, SimulationParameters::kNumPredators, SimulationParameters::kNumFood);
+        FlockingHandler handler;
         viz.AddShapeHandler(std::ref(handler));
 
         std::cout << "Flocking Demo Started!" << std::endl;
