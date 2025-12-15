@@ -1,4 +1,5 @@
 #include "graphics.h"
+#include "obj_shape.h"
 
 #include <chrono>
 #include <iostream>
@@ -228,6 +229,7 @@ namespace Boidsish {
 		}
 
 		~VisualizerImpl() {
+			ObjShape::CleanUp();
 			Shape::DestroySphereMesh();
 			glDeleteVertexArrays(1, &plane_vao);
 			glDeleteBuffers(1, &plane_vbo);

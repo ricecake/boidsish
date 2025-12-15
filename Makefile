@@ -2,8 +2,8 @@
 # Cross-platform build for Linux and macOS
 
 CXX = g++
-CXXFLAGS = -std=gnu++23 -Wall -Wextra -O3 -MMD -MP
-INCLUDES = -isystem external/include -Iinclude
+CXXFLAGS = -std=gnu++23 -Wall -Wextra -O3 -MMD -MP -DCINOLIB_USES_OPENGL_GLFW_GLEW
+INCLUDES = -isystem external/include -Iinclude -isystem external/cinolib/include -isystem external/eigen
 
 # Build directory
 BUILDDIR = build
@@ -14,8 +14,10 @@ UNAME_S := $(shell uname -s)
 
 # Source files
 SRCDIR = src
-SOURCES = $(wildcard $(SRCDIR)/*.cpp)
-OBJECTS = $(SOURCES:$(SRCDIR)/%.cpp=$(OBJDIR)/%.o)
+CINOLIB_SRCDIR = external/cinolib
+SOURCES = $(wildcard $(SRCDIR)/*.cpp) $(wildcard $(CINOLIB_SRCDIR)/src/io/*.cpp)
+OBJECTS = $(patsubst $(SRCDIR)/%.cpp,$(OBJDIR)/%.o,$(filter $(SRCDIR)/%.cpp,$(SOURCES)))
+OBJECTS += $(patsubst $(CINOLIB_SRCDIR)/src/io/%.cpp,$(OBJDIR)/cinolib/%.o,$(filter $(CINOLIB_SRCDIR)/src/io/%.cpp,$(SOURCES)))
 
 # Example files
 EXAMPLE_SRCDIR = examples
@@ -64,6 +66,10 @@ $(TARGET): $(BUILDDIR) $(OBJDIR) $(OBJECTS)
 
 # Compile source files
 $(OBJDIR)/%.o: $(SRCDIR)/%.cpp | $(OBJDIR)
+	$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
+
+$(OBJDIR)/cinolib/%.o: $(CINOLIB_SRCDIR)/src/io/%.cpp | $(OBJDIR)
+	@mkdir -p $(@D)
 	$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
 
 # Build examples
