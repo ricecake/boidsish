@@ -62,38 +62,20 @@ class PredatorEntity;
 // A stationary food source.
 class FoodEntity : public Entity<> {
 public:
-    FoodEntity(int id) : Entity(id) {
-        SetSize(SimulationParameters::kFoodSize);
-        SetColor(0.1f, 0.8f, 0.1f); // Green
-        SetTrailLength(0);
-    }
-
-    void UpdateEntity(EntityHandler& handler, float time, float delta_time) override {
-        // Food doesn't do anything.
-        (void)handler;
-        (void)time;
-        (void)delta_time;
-    }
+    FoodEntity(int id);
+    void UpdateEntity(EntityHandler& handler, float time, float delta_time) override;
 };
 
 // Base class for all creatures in the simulation.
 class CreatureEntity : public Entity<> {
 public:
-    CreatureEntity(int id, float max_speed, float baseline_speed)
-        : Entity(id), energy_(SimulationParameters::kInitialEnergy), max_speed_(max_speed), baseline_speed_(baseline_speed) {}
+    CreatureEntity(int id, float max_speed, float baseline_speed);
 
     float GetEnergy() const { return energy_; }
     void AddEnergy(float amount) { energy_ += amount; }
 
 protected:
-    void ConsumeEnergy(float delta_time) {
-        float speed = GetVelocity().Magnitude();
-        float energy_cost = 0.0f;
-        if (speed > baseline_speed_) {
-            energy_cost = (speed - baseline_speed_) * SimulationParameters::kEnergyCostFactor;
-        }
-        energy_ -= energy_cost * delta_time;
-    }
+    void ConsumeEnergy(float delta_time);
 
     float energy_;
     float max_speed_;
@@ -102,23 +84,13 @@ protected:
 
 class FlockingEntity : public CreatureEntity {
 public:
-    FlockingEntity(int id) : CreatureEntity(id, SimulationParameters::kFlockMaxSpeed, SimulationParameters::kFlockBaselineSpeed) {
-        SetSize(SimulationParameters::kFlockSize);
-        SetColor(0.8f, 0.8f, 0.2f); // Yellow
-        SetTrailLength(SimulationParameters::kFlockTrailLength);
-    }
-
+    FlockingEntity(int id);
     void UpdateEntity(EntityHandler& handler, float time, float delta_time) override;
 };
 
 class PredatorEntity : public CreatureEntity {
 public:
-    PredatorEntity(int id) : CreatureEntity(id, SimulationParameters::kPredatorMaxSpeed, SimulationParameters::kPredatorBaselineSpeed) {
-        SetSize(SimulationParameters::kPredatorSize);
-        SetColor(0.9f, 0.1f, 0.1f); // Red
-        SetTrailLength(SimulationParameters::kPredatorTrailLength);
-    }
-
+    PredatorEntity(int id);
     void UpdateEntity(EntityHandler& handler, float time, float delta_time) override;
 
 private:
@@ -130,8 +102,39 @@ std::mt19937 PredatorEntity::gen_{std::random_device{}()};
 std::uniform_real_distribution<float> PredatorEntity::dis_{-1.0f, 1.0f};
 
 //
-// Entity Update Implementations
+// Entity Implementations
 //
+
+FoodEntity::FoodEntity(int id) : Entity(id) {
+    SetSize(SimulationParameters::kFoodSize);
+    SetColor(0.1f, 0.8f, 0.1f); // Green
+    SetTrailLength(0);
+}
+
+void FoodEntity::UpdateEntity(EntityHandler& handler, float time, float delta_time) {
+    // Food doesn't do anything.
+    (void)handler;
+    (void)time;
+    (void)delta_time;
+}
+
+CreatureEntity::CreatureEntity(int id, float max_speed, float baseline_speed)
+    : Entity(id), energy_(SimulationParameters::kInitialEnergy), max_speed_(max_speed), baseline_speed_(baseline_speed) {}
+
+void CreatureEntity::ConsumeEnergy(float delta_time) {
+    float speed = GetVelocity().Magnitude();
+    float energy_cost = 0.0f;
+    if (speed > baseline_speed_) {
+        energy_cost = (speed - baseline_speed_) * SimulationParameters::kEnergyCostFactor;
+    }
+    energy_ -= energy_cost * delta_time;
+}
+
+FlockingEntity::FlockingEntity(int id) : CreatureEntity(id, SimulationParameters::kFlockMaxSpeed, SimulationParameters::kFlockBaselineSpeed) {
+    SetSize(SimulationParameters::kFlockSize);
+    SetColor(0.8f, 0.8f, 0.2f); // Yellow
+    SetTrailLength(SimulationParameters::kFlockTrailLength);
+}
 
 void FlockingEntity::UpdateEntity(EntityHandler& handler, float time, float delta_time) {
     auto& spatial_handler = static_cast<SpatialEntityHandler&>(handler);
@@ -202,6 +205,12 @@ void FlockingEntity::UpdateEntity(EntityHandler& handler, float time, float delt
     (void)time;
 }
 
+PredatorEntity::PredatorEntity(int id) : CreatureEntity(id, SimulationParameters::kPredatorMaxSpeed, SimulationParameters::kPredatorBaselineSpeed) {
+    SetSize(SimulationParameters::kPredatorSize);
+    SetColor(0.9f, 0.1f, 0.1f); // Red
+    SetTrailLength(SimulationParameters::kPredatorTrailLength);
+}
+
 void PredatorEntity::UpdateEntity(EntityHandler& handler, float time, float delta_time) {
     auto& spatial_handler = static_cast<SpatialEntityHandler&>(handler);
 
@@ -243,52 +252,58 @@ void PredatorEntity::UpdateEntity(EntityHandler& handler, float time, float delt
 
 class FlockingHandler : public SpatialEntityHandler {
 public:
-    FlockingHandler() : gen_(rd_()), dis_(-SimulationParameters::kWorldBounds, SimulationParameters::kWorldBounds) {
-        // Spawn initial entities
-        std::uniform_real_distribution<float> vel_dis(-1.0f, 1.0f);
-        for (int i = 0; i < SimulationParameters::kNumFlock; ++i) {
-            auto entity = std::make_shared<FlockingEntity>(next_id_++);
-            entity->SetPosition(dis_(gen_), dis_(gen_) / 2.0f, dis_(gen_));
-            Vector3 initial_velocity(vel_dis(gen_), 0.0f, vel_dis(gen_));
-            entity->SetVelocity(initial_velocity.Normalized() * SimulationParameters::kFlockBaselineSpeed);
-            AddEntity(entity->GetId(), entity);
-        }
-
-        for (int i = 0; i < SimulationParameters::kNumPredators; ++i) {
-            auto entity = std::make_shared<PredatorEntity>(next_id_++);
-            entity->SetPosition(dis_(gen_), dis_(gen_) / 2.0f, dis_(gen_));
-            Vector3 initial_velocity(vel_dis(gen_), 0.0f, vel_dis(gen_));
-            entity->SetVelocity(initial_velocity.Normalized() * SimulationParameters::kPredatorBaselineSpeed);
-            AddEntity(entity->GetId(), entity);
-        }
-
-        for (int i = 0; i < SimulationParameters::kNumFood; ++i) {
-            SpawnFood();
-        }
-    }
+    FlockingHandler();
 
 protected:
-    void PostTimestep(float time, float delta_time) override {
-        // Respawn food and entities
-        if (GetEntitiesByType<FoodEntity>().size() < SimulationParameters::kNumFood) {
-            SpawnFood();
-        }
-        (void)time;
-        (void)delta_time;
-    }
+    void PostTimestep(float time, float delta_time) override;
 
 private:
-    void SpawnFood() {
-        auto entity = std::make_shared<FoodEntity>(next_id_++);
-        entity->SetPosition(dis_(gen_), dis_(gen_) / 4.0f, dis_(gen_));
-        AddEntity(entity->GetId(), entity);
-    }
+    void SpawnFood();
 
     int next_id_ = 0;
     std::random_device rd_;
     std::mt19937 gen_;
     std::uniform_real_distribution<> dis_;
 };
+
+FlockingHandler::FlockingHandler() : gen_(rd_()), dis_(-SimulationParameters::kWorldBounds, SimulationParameters::kWorldBounds) {
+    // Spawn initial entities
+    std::uniform_real_distribution<float> vel_dis(-1.0f, 1.0f);
+    for (int i = 0; i < SimulationParameters::kNumFlock; ++i) {
+        auto entity = std::make_shared<FlockingEntity>(next_id_++);
+        entity->SetPosition(dis_(gen_), dis_(gen_) / 2.0f, dis_(gen_));
+        Vector3 initial_velocity(vel_dis(gen_), 0.0f, vel_dis(gen_));
+        entity->SetVelocity(initial_velocity.Normalized() * SimulationParameters::kFlockBaselineSpeed);
+        AddEntity(entity->GetId(), entity);
+    }
+
+    for (int i = 0; i < SimulationParameters::kNumPredators; ++i) {
+        auto entity = std::make_shared<PredatorEntity>(next_id_++);
+        entity->SetPosition(dis_(gen_), dis_(gen_) / 2.0f, dis_(gen_));
+        Vector3 initial_velocity(vel_dis(gen_), 0.0f, vel_dis(gen_));
+        entity->SetVelocity(initial_velocity.Normalized() * SimulationParameters::kPredatorBaselineSpeed);
+        AddEntity(entity->GetId(), entity);
+    }
+
+    for (int i = 0; i < SimulationParameters::kNumFood; ++i) {
+        SpawnFood();
+    }
+}
+
+void FlockingHandler::PostTimestep(float time, float delta_time) {
+    // Respawn food and entities
+    if (GetEntitiesByType<FoodEntity>().size() < SimulationParameters::kNumFood) {
+        SpawnFood();
+    }
+    (void)time;
+    (void)delta_time;
+}
+
+void FlockingHandler::SpawnFood() {
+    auto entity = std::make_shared<FoodEntity>(next_id_++);
+    entity->SetPosition(dis_(gen_), dis_(gen_) / 4.0f, dis_(gen_));
+    AddEntity(entity->GetId(), entity);
+}
 
 int main() {
     try {
