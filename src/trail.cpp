@@ -213,12 +213,35 @@ namespace Boidsish {
 		}
 		// Add a pointed cap at the oldest end of the trail
 		if (curve_positions.size() > 1) {
-			const auto& end_ring_positions = ring_positions[0];
-			Vector3     center_point = curve_positions[0] - tangents[0] * thickness_ *
-                    0.5f; // Extrude cap slightly for a pointed look
+			// Pre-scale the cap to match the tapered trail end
+			float taper_scale = 0.2f; // Taper scale at progress = 0
+			Vector3 center_point =
+				curve_positions[0] - tangents[0] * thickness_ * 0.5f * taper_scale;
 			Vector3 center_normal = -tangents[0];
 
 			for (int j = 0; j < TRAIL_SEGMENTS; ++j) {
+				// Manually scale the ring vertices for the cap
+				Vector3 scaled_pos1 = curve_positions[0] +
+					(Vector3(
+						 ring_positions[0][j].x,
+						 ring_positions[0][j].y,
+						 ring_positions[0][j].z
+					 ) -
+				     curve_positions[0]) *
+						taper_scale;
+				Vector3 scaled_pos2 = curve_positions[0] +
+					(Vector3(
+						 ring_positions[0][j + 1].x,
+						 ring_positions[0][j + 1].y,
+						 ring_positions[0][j + 1].z
+					 ) -
+				     curve_positions[0]) *
+						taper_scale;
+
+				// Normals for the cap ring should point outwards from the spine
+				Vector3 normal1 = (scaled_pos1 - curve_positions[0]).Normalized();
+				Vector3 normal2 = (scaled_pos2 - curve_positions[0]).Normalized();
+
 				mesh_vertices.push_back(
 					{glm::vec3(center_point.x, center_point.y, center_point.z),
 				     glm::vec3(center_normal.x, center_normal.y, center_normal.z),
@@ -227,23 +250,15 @@ namespace Boidsish {
 				     1.0f}
 				);
 				mesh_vertices.push_back(
-					{end_ring_positions[j + 1],
-				     glm::vec3(
-						 curve_positions[0].x - end_ring_positions[j + 1].x,
-						 curve_positions[0].y - end_ring_positions[j + 1].y,
-						 curve_positions[0].z - end_ring_positions[j + 1].z
-					 ),
+					{glm::vec3(scaled_pos2.x, scaled_pos2.y, scaled_pos2.z),
+				     glm::vec3(normal2.x, normal2.y, normal2.z),
 				     glm::vec3(curve_colors[0].x, curve_colors[0].y, curve_colors[0].z),
 				     curve_progress[0],
 				     1.0f}
 				);
 				mesh_vertices.push_back(
-					{end_ring_positions[j],
-				     glm::vec3(
-						 curve_positions[0].x - end_ring_positions[j].x,
-						 curve_positions[0].y - end_ring_positions[j].y,
-						 curve_positions[0].z - end_ring_positions[j].z
-					 ),
+					{glm::vec3(scaled_pos1.x, scaled_pos1.y, scaled_pos1.z),
+				     glm::vec3(normal1.x, normal1.y, normal1.z),
 				     glm::vec3(curve_colors[0].x, curve_colors[0].y, curve_colors[0].z),
 				     curve_progress[0],
 				     1.0f}
