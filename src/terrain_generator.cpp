@@ -1,12 +1,15 @@
 #include "terrain_generator.h"
 
+#include <cmath>
+#include <numeric>
 #include <vector>
 
 #include <glm/glm.hpp>
 
 namespace Boidsish {
 
-	TerrainGenerator::TerrainGenerator(int seed): perlin_noise_(seed) {}
+	TerrainGenerator::TerrainGenerator(int seed)
+		: perlin_noise_(seed), control_perlin_noise_(seed + 1) {}
 
 	void TerrainGenerator::update(const Camera& camera) {
 		int current_chunk_x = static_cast<int>(camera.x) / chunk_size_;
@@ -61,10 +64,39 @@ namespace Boidsish {
 			for (int j = 0; j < num_vertices_z; ++j) {
 				float worldX = (chunkX * chunk_size_ + i);
 				float worldZ = (chunkZ * chunk_size_ + j);
-				float noise = perlin_noise_.octave2D_01(worldX * scale_, worldZ * scale_, 4);
 
-				if (noise > threshold_) {
-					heightmap[i][j] = (noise - threshold_) * amplitude_;
+				// Get control value to determine biome
+				float control_value = control_perlin_noise_.octave2D_01(
+				    worldX * control_noise_scale_, worldZ * control_noise_scale_, 2);
+
+				// Interpolate parameters based on control value
+				TerrainParameters current_params;
+				if (control_value < hills_threshold_) {
+					// Interpolate between plains and hills
+					float t = control_value / hills_threshold_;
+					current_params.scale = std::lerp(plains_params_.scale, hills_params_.scale, t);
+					current_params.amplitude =
+					    std::lerp(plains_params_.amplitude, hills_params_.amplitude, t);
+					current_params.threshold =
+					    std::lerp(plains_params_.threshold, hills_params_.threshold, t);
+				} else {
+					// Interpolate between hills and mountains
+					float t = (control_value - hills_threshold_) / (1.0f - hills_threshold_);
+					current_params.scale =
+					    std::lerp(hills_params_.scale, mountains_params_.scale, t);
+					current_params.amplitude =
+					    std::lerp(hills_params_.amplitude, mountains_params_.amplitude, t);
+					current_params.threshold =
+					    std::lerp(hills_params_.threshold, mountains_params_.threshold, t);
+				}
+
+
+				// Generate primary noise with interpolated params
+				float noise = perlin_noise_.octave2D_01(worldX * current_params.scale,
+				                                       worldZ * current_params.scale, 4);
+
+				if (noise > current_params.threshold) {
+					heightmap[i][j] = (noise - current_params.threshold) * current_params.amplitude;
 					has_terrain = true;
 				} else {
 					heightmap[i][j] = 0.0f; // Flush with floor

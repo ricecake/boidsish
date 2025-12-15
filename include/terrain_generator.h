@@ -21,14 +21,26 @@ namespace Boidsish {
 		std::shared_ptr<Terrain> generateChunk(int chunkX, int chunkZ);
 
 		// Terrain parameters
-		const int   chunk_size_ = 32;
-		const float scale_ = 0.1f;
-		const float amplitude_ = 5.0f;
-		const float threshold_ = 0.5f;
-		const int   view_distance_ = 8; // in chunks
+		struct TerrainParameters {
+			float scale;
+			float amplitude;
+			float threshold;
+		};
 
-		// Noise generator
+		const int chunk_size_ = 32;
+		const int view_distance_ = 8; // in chunks
+
+		const TerrainParameters plains_params_ = {0.1f, 5.0f, 0.5f};
+		const TerrainParameters hills_params_ = {0.05f, 15.0f, 0.4f};
+		const TerrainParameters mountains_params_ = {0.02f, 50.0f, 0.35f};
+
+		// Control noise parameters
+		constexpr static const float control_noise_scale_ = 0.01f;
+		constexpr static const float hills_threshold_ = 0.5f;
+
+		// Noise generators
 		siv::PerlinNoise perlin_noise_;
+		siv::PerlinNoise control_perlin_noise_;
 
 		// Cache
 		std::map<std::pair<int, int>, std::shared_ptr<Terrain>> chunk_cache_;
