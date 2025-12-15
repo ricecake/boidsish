@@ -52,7 +52,7 @@ void main()
     FragPos = interpolate(WorldPos_TC_out[0], WorldPos_TC_out[1], WorldPos_TC_out[2], WorldPos_TC_out[3], uv);
 
     // Recalculate height
-    float noise = (fbm(FragPos * terrain.frequency) + 1.0) / 2.0;
+    float noise = (fbm(FragPos.xz * terrain.frequency));
     if (noise > terrain.threshold) {
         FragPos.y = (noise - terrain.threshold) * terrain.amplitude;
     } else {
@@ -74,7 +74,7 @@ void main()
     vec3 dU = pos_u - FragPos;
     vec3 dV = pos_v - FragPos;
 
-    Normal = normalize(cross(dU, dV));
+    Normal = normalize(cross(dV, dU));
 
 
     // Final vertex position in clip space

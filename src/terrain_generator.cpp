@@ -176,9 +176,25 @@ namespace Boidsish {
 		auto terrain_chunk = std::make_shared<Terrain>(vertexData, indices);
 		terrain_chunk->SetPosition(chunkX * chunk_size_, 0, chunkZ * chunk_size_);
 
-        // For now, let's just use the mountain parameters for all chunks
-        // a real implementation would store the interpolated params per-chunk
-		terrain_chunk->SetTerrainParameters(mountains_params_);
+        // Calculate biome parameters for the center of the chunk
+        float centerX = (chunkX + 0.5f) * chunk_size_;
+        float centerZ = (chunkZ + 0.5f) * chunk_size_;
+        float control_value = control_perlin_noise_.octave2D_01(centerX * control_noise_scale_, centerZ * control_noise_scale_, 2);
+
+        TerrainParameters current_params;
+        if (control_value < hills_threshold_) {
+            float t = control_value / hills_threshold_;
+            current_params.frequency = std::lerp(plains_params_.frequency, hills_params_.frequency, t);
+            current_params.amplitude = std::lerp(plains_params_.amplitude, hills_params_.amplitude, t);
+            current_params.threshold = std::lerp(plains_params_.threshold, hills_params_.threshold, t);
+        } else {
+            float t = (control_value - hills_threshold_) / (1.0f - hills_threshold_);
+            current_params.frequency = std::lerp(hills_params_.frequency, mountains_params_.frequency, t);
+            current_params.amplitude = std::lerp(hills_params_.amplitude, mountains_params_.amplitude, t);
+            current_params.threshold = std::lerp(hills_params_.threshold, mountains_params_.threshold, t);
+        }
+        terrain_chunk->SetTerrainParameters(current_params);
+
 		return terrain_chunk;
 	}
 
