@@ -2,6 +2,7 @@
 #include <functional>
 #include <iostream>
 #include <random>
+#include <limits>
 
 #include "graphics.h"
 #include "spatial_entity_handler.h"
@@ -45,7 +46,9 @@ namespace SimulationParameters {
     constexpr float kPredatorBaselineSpeed = 2.0f;
     constexpr float kPredatorSize = 10.0f;
     constexpr int   kPredatorTrailLength = 80;
-    constexpr float kPredatorHuntRadius = 20.0f;
+    constexpr float kPredatorBaseHuntRadius = 20.0f;
+    constexpr float kPredatorLowEnergyHuntRadius = 40.0f;
+
 
     // Interaction Radii
     constexpr float kFoodConsumptionRadius = 2.0f;
@@ -105,73 +108,7 @@ public:
         SetTrailLength(SimulationParameters::kFlockTrailLength);
     }
 
-    void UpdateEntity(EntityHandler& handler, float time, float delta_time) override {
-        auto& spatial_handler = static_cast<SpatialEntityHandler&>(handler);
-
-        // Find neighbors
-        auto neighbors = spatial_handler.GetEntitiesInRadius<EntityBase>(GetPosition(), SimulationParameters::kFlockNeighborRadius);
-
-        Vector3 separation, alignment, cohesion, predator_avoidance, food_attraction;
-        int flockmate_count = 0;
-
-        auto closest_food = spatial_handler.FindNearest<FoodEntity>(GetPosition());
-        float min_food_dist = closest_food ? GetPosition().DistanceTo(closest_food->GetPosition()) : 1000.0f;
-
-        for (auto& neighbor_ptr : neighbors) {
-            if (neighbor_ptr.get() == this) continue;
-
-            if (dynamic_cast<FlockingEntity*>(neighbor_ptr.get())) {
-                separation += (GetPosition() - neighbor_ptr->GetPosition()).Normalized() / GetPosition().DistanceTo(neighbor_ptr->GetPosition());
-                alignment += neighbor_ptr->GetVelocity();
-                cohesion += neighbor_ptr->GetPosition();
-                flockmate_count++;
-            } else if (dynamic_cast<PredatorEntity*>(neighbor_ptr.get())) {
-                predator_avoidance += (GetPosition() - neighbor_ptr->GetPosition()).Normalized() * (SimulationParameters::kFlockNeighborRadius / GetPosition().DistanceTo(neighbor_ptr->GetPosition()));
-            }
-        }
-
-        if (flockmate_count > 0) {
-            alignment /= flockmate_count;
-            cohesion = (cohesion / flockmate_count - GetPosition()).Normalized();
-        }
-
-        float speed_boost = 0.0f;
-        if (closest_food && energy_ < SimulationParameters::kFlockLowEnergyThreshold) {
-            food_attraction = (closest_food->GetPosition() - GetPosition()).Normalized();
-
-            // Check for competitors
-            for (auto& neighbor_ptr : neighbors) {
-                if (neighbor_ptr.get() != this && dynamic_cast<FlockingEntity*>(neighbor_ptr.get())) {
-                    if (neighbor_ptr->GetPosition().DistanceTo(closest_food->GetPosition()) < min_food_dist) {
-                        speed_boost = SimulationParameters::kFlockFoodCompetitionBoost;
-                        break;
-                    }
-                }
-            }
-        }
-
-        Vector3 steering = separation * SimulationParameters::kFlockSeparationWeight +
-                           alignment * SimulationParameters::kFlockAlignmentWeight +
-                           cohesion * SimulationParameters::kFlockCohesionWeight +
-                           predator_avoidance * SimulationParameters::kFlockPredatorAvoidanceWeight +
-                           food_attraction * (1.0f - energy_ / SimulationParameters::kInitialEnergy);
-
-        Vector3 new_velocity = GetVelocity() + steering * delta_time;
-        float current_max_speed = max_speed_ + speed_boost;
-        if (new_velocity.Magnitude() > current_max_speed) {
-            new_velocity = new_velocity.Normalized() * current_max_speed;
-        }
-
-        SetVelocity(new_velocity);
-        ConsumeEnergy(delta_time);
-
-        // Interaction logic
-        if (closest_food && GetPosition().DistanceTo(closest_food->GetPosition()) < SimulationParameters::kFoodConsumptionRadius) {
-            AddEnergy(SimulationParameters::kFoodEnergy);
-            handler.RemoveEntity(closest_food->GetId());
-        }
-        (void)time;
-    }
+    void UpdateEntity(EntityHandler& handler, float time, float delta_time) override;
 };
 
 class PredatorEntity : public CreatureEntity {
@@ -182,38 +119,7 @@ public:
         SetTrailLength(SimulationParameters::kPredatorTrailLength);
     }
 
-    void UpdateEntity(EntityHandler& handler, float time, float delta_time) override {
-        auto& spatial_handler = static_cast<SpatialEntityHandler&>(handler);
-
-        auto closest_prey = spatial_handler.FindNearest<FlockingEntity>(GetPosition(), SimulationParameters::kPredatorHuntRadius);
-
-        if (closest_prey) {
-            float prey_dist = GetPosition().DistanceTo(closest_prey->GetPosition());
-            Vector3 steering = (closest_prey->GetPosition() - GetPosition()).Normalized();
-
-            float speed_factor = std::max(0.0f, 1.0f - (prey_dist / SimulationParameters::kWorldBounds));
-            float desired_speed = baseline_speed_ + (max_speed_ - baseline_speed_) * speed_factor;
-
-            Vector3 new_velocity = steering * desired_speed;
-            SetVelocity(new_velocity);
-
-            // Interaction logic
-            if (prey_dist < SimulationParameters::kPreyCaptureRadius) {
-                handler.RemoveEntity(closest_prey->GetId());
-            }
-
-        } else {
-            // Wander
-            Vector3 current_velocity = GetVelocity();
-            if (current_velocity.MagnitudeSquared() < 0.1f) {
-                current_velocity = Vector3(dis_(gen_), 0, dis_(gen_));
-            }
-            SetVelocity(current_velocity.Normalized() * baseline_speed_);
-        }
-
-        ConsumeEnergy(delta_time);
-        (void)time;
-    }
+    void UpdateEntity(EntityHandler& handler, float time, float delta_time) override;
 
 private:
     static std::mt19937 gen_;
@@ -222,6 +128,118 @@ private:
 
 std::mt19937 PredatorEntity::gen_{std::random_device{}()};
 std::uniform_real_distribution<float> PredatorEntity::dis_{-1.0f, 1.0f};
+
+//
+// Entity Update Implementations
+//
+
+void FlockingEntity::UpdateEntity(EntityHandler& handler, float time, float delta_time) {
+    auto& spatial_handler = static_cast<SpatialEntityHandler&>(handler);
+
+    // Find neighbors
+    auto neighbors = spatial_handler.GetEntitiesInRadius<EntityBase>(GetPosition(), SimulationParameters::kFlockNeighborRadius);
+
+    Vector3 separation, alignment, cohesion, predator_avoidance, food_attraction;
+    int flockmate_count = 0;
+
+    auto closest_food = spatial_handler.FindNearest<FoodEntity>(GetPosition());
+    float min_food_dist = closest_food ? GetPosition().DistanceTo(closest_food->GetPosition()) : std::numeric_limits<float>::max();
+
+    for (auto& neighbor_ptr : neighbors) {
+        if (neighbor_ptr.get() == this) continue;
+
+        if (dynamic_cast<FlockingEntity*>(neighbor_ptr.get())) {
+            float dist = GetPosition().DistanceTo(neighbor_ptr->GetPosition());
+            separation += (GetPosition() - neighbor_ptr->GetPosition()).Normalized() / (dist + 1e-6f);
+            alignment += neighbor_ptr->GetVelocity();
+            cohesion += neighbor_ptr->GetPosition();
+            flockmate_count++;
+        } else if (dynamic_cast<PredatorEntity*>(neighbor_ptr.get())) {
+            predator_avoidance += (GetPosition() - neighbor_ptr->GetPosition()).Normalized() * (SimulationParameters::kFlockNeighborRadius / GetPosition().DistanceTo(neighbor_ptr->GetPosition()));
+        }
+    }
+
+    if (flockmate_count > 0) {
+        alignment /= flockmate_count;
+        cohesion = (cohesion / flockmate_count - GetPosition()).Normalized();
+    }
+
+    float speed_boost = 0.0f;
+    if (closest_food && energy_ < SimulationParameters::kFlockLowEnergyThreshold) {
+        food_attraction = (closest_food->GetPosition() - GetPosition()).Normalized();
+
+        // Check for competitors
+        for (auto& neighbor_ptr : neighbors) {
+            if (neighbor_ptr.get() != this && dynamic_cast<FlockingEntity*>(neighbor_ptr.get())) {
+                if (neighbor_ptr->GetPosition().DistanceTo(closest_food->GetPosition()) < min_food_dist) {
+                    speed_boost = SimulationParameters::kFlockFoodCompetitionBoost;
+                    break;
+                }
+            }
+        }
+    }
+
+    Vector3 steering = separation * SimulationParameters::kFlockSeparationWeight +
+                       alignment * SimulationParameters::kFlockAlignmentWeight +
+                       cohesion * SimulationParameters::kFlockCohesionWeight +
+                       predator_avoidance * SimulationParameters::kFlockPredatorAvoidanceWeight +
+                       food_attraction * (1.0f - energy_ / SimulationParameters::kInitialEnergy);
+
+    Vector3 new_velocity = GetVelocity() + steering * delta_time;
+    float current_max_speed = max_speed_ + speed_boost;
+    if (new_velocity.Magnitude() > current_max_speed) {
+        new_velocity = new_velocity.Normalized() * current_max_speed;
+    }
+
+    SetVelocity(new_velocity);
+    ConsumeEnergy(delta_time);
+
+    // Interaction logic
+    if (closest_food && GetPosition().DistanceTo(closest_food->GetPosition()) < SimulationParameters::kFoodConsumptionRadius) {
+        AddEnergy(SimulationParameters::kFoodEnergy);
+        handler.RemoveEntity(closest_food->GetId());
+    }
+    (void)time;
+}
+
+void PredatorEntity::UpdateEntity(EntityHandler& handler, float time, float delta_time) {
+    auto& spatial_handler = static_cast<SpatialEntityHandler&>(handler);
+
+    float hunt_radius = (energy_ < SimulationParameters::kFlockLowEnergyThreshold) ?
+                        SimulationParameters::kPredatorLowEnergyHuntRadius :
+                        SimulationParameters::kPredatorBaseHuntRadius;
+
+    auto closest_prey = spatial_handler.FindNearest<FlockingEntity>(GetPosition(), hunt_radius);
+
+    if (closest_prey) {
+        float prey_dist = GetPosition().DistanceTo(closest_prey->GetPosition());
+        Vector3 steering = (closest_prey->GetPosition() - GetPosition()).Normalized();
+
+        float speed_factor = std::max(0.0f, 1.0f - (prey_dist / SimulationParameters::kWorldBounds));
+        float desired_speed = baseline_speed_ + (max_speed_ - baseline_speed_) * speed_factor;
+
+        Vector3 new_velocity = steering * desired_speed;
+        SetVelocity(new_velocity);
+
+        // Interaction logic
+        if (prey_dist < SimulationParameters::kPreyCaptureRadius) {
+            AddEnergy(closest_prey->GetEnergy());
+            handler.RemoveEntity(closest_prey->GetId());
+        }
+
+    } else {
+        // Wander
+        Vector3 current_velocity = GetVelocity();
+        if (current_velocity.MagnitudeSquared() < 0.1f) {
+            current_velocity = Vector3(dis_(gen_), 0, dis_(gen_));
+        }
+        SetVelocity(current_velocity.Normalized() * baseline_speed_);
+    }
+
+    ConsumeEnergy(delta_time);
+    (void)time;
+}
+
 
 class FlockingHandler : public SpatialEntityHandler {
 public:
