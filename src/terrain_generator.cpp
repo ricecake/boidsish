@@ -40,6 +40,20 @@ namespace Boidsish {
 		}
 	}
 
+	float TerrainGenerator::fbm(float x, float z, TerrainParameters params) {
+		float total = 0;
+		float frequency = params.frequency;
+		float amplitude = 1.0;
+		float max_amplitude = 0;
+		for (int i = 0; i < octaves_; i++) {
+			total += perlin_noise_.noise2D(x * frequency, z * frequency) * amplitude;
+			max_amplitude += amplitude;
+			amplitude *= persistence_;
+			frequency *= lacunarity_;
+		}
+		return total / max_amplitude;
+	}
+
 	std::vector<std::shared_ptr<Terrain>> TerrainGenerator::getVisibleChunks() {
 		std::vector<std::shared_ptr<Terrain>> visible_chunks;
 		for (auto const& [key, val] : chunk_cache_) {
@@ -74,7 +88,7 @@ namespace Boidsish {
 				if (control_value < hills_threshold_) {
 					// Interpolate between plains and hills
 					float t = control_value / hills_threshold_;
-					current_params.scale = std::lerp(plains_params_.scale, hills_params_.scale, t);
+					current_params.frequency = std::lerp(plains_params_.frequency, hills_params_.frequency, t);
 					current_params.amplitude =
 					    std::lerp(plains_params_.amplitude, hills_params_.amplitude, t);
 					current_params.threshold =
@@ -82,8 +96,8 @@ namespace Boidsish {
 				} else {
 					// Interpolate between hills and mountains
 					float t = (control_value - hills_threshold_) / (1.0f - hills_threshold_);
-					current_params.scale =
-					    std::lerp(hills_params_.scale, mountains_params_.scale, t);
+					current_params.frequency =
+					    std::lerp(hills_params_.frequency, mountains_params_.frequency, t);
 					current_params.amplitude =
 					    std::lerp(hills_params_.amplitude, mountains_params_.amplitude, t);
 					current_params.threshold =
@@ -91,10 +105,7 @@ namespace Boidsish {
 				}
 
 
-				// Generate primary noise with interpolated params
-				float noise = perlin_noise_.octave2D_01(worldX * current_params.scale,
-				                                       worldZ * current_params.scale, 4);
-
+				float noise = (fbm(worldX, worldZ, current_params) + 1.0f) / 2.0f;
 				if (noise > current_params.threshold) {
 					heightmap[i][j] = (noise - current_params.threshold) * current_params.amplitude;
 					has_terrain = true;
