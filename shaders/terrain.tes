@@ -16,6 +16,16 @@ uniform mat4 view;
 uniform mat4 projection;
 uniform sampler2D heightMap; // Assuming a heightmap is used for detailed geometry
 
+#include "noise.glsl"
+
+struct TerrainParameters {
+    float frequency;
+    float amplitude;
+    float threshold;
+};
+uniform TerrainParameters terrain;
+
+
 layout (std140, binding = 0) uniform Lighting {
     vec3 lightPos;
     vec3 viewPos;
@@ -38,15 +48,23 @@ vec3 interpolate(vec3 v0, vec3 v1, vec3 v2, vec3 v3, vec2 uv) {
 void main()
 {
     vec2 uv = gl_TessCoord.xy;
-    // Interpolate texture coordinates and world position
-    TexCoords = interpolate(TexCoords_TC_out[0], TexCoords_TC_out[1], TexCoords_TC_out[2], TexCoords_TC_out[3], uv);
+    // Interpolate world position
     FragPos = interpolate(WorldPos_TC_out[0], WorldPos_TC_out[1], WorldPos_TC_out[2], WorldPos_TC_out[3], uv);
+
+    // Recalculate height
+    float noise = (fbm(FragPos * terrain.frequency) + 1.0) / 2.0;
+    if (noise > terrain.threshold) {
+        FragPos.y = (noise - terrain.threshold) * terrain.amplitude;
+    } else {
+        FragPos.y = 0.0;
+    }
+
 
     // Displace vertex along the normal based on a heightmap (optional, for detail)
     // FragPos += normalize(cross(WorldPos_TC_out[1] - WorldPos_TC_out[0], WorldPos_TC_out[3] - WorldPos_TC_out[0])) * (texture(heightMap, TexCoords).r * 20.0 - 10.0);
 
     // Calculate normals for lighting using finite differences
-    float delta = 0.001;
+    float delta = 0.01;
     vec2 uv_u = uv + vec2(delta, 0.0);
     vec2 uv_v = uv + vec2(0.0, delta);
 

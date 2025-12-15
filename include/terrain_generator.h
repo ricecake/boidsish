@@ -9,7 +9,6 @@
 #include "terrain.h"
 
 namespace Boidsish {
-
 	class TerrainGenerator {
 	public:
 		TerrainGenerator(int seed = 12345);
@@ -19,12 +18,6 @@ namespace Boidsish {
 
 	private:
 		std::shared_ptr<Terrain> generateChunk(int chunkX, int chunkZ);
-		// Terrain parameters
-		struct TerrainParameters {
-			float frequency;
-			float amplitude;
-			float threshold;
-		};
 
 		const int chunk_size_ = 32;
 		const int view_distance_ = 8; // in chunks

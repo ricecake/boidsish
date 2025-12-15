@@ -51,6 +51,10 @@ namespace Boidsish {
 		model = glm::translate(model, glm::vec3(GetX(), GetY(), GetZ()));
 		terrain_shader_->setMat4("model", model);
 
+        terrain_shader_->setFloat("terrain.frequency", params_.frequency);
+        terrain_shader_->setFloat("terrain.amplitude", params_.amplitude);
+        terrain_shader_->setFloat("terrain.threshold", params_.threshold);
+
 		glBindVertexArray(vao_);
 		glPatchParameteri(GL_PATCH_VERTICES, 4);
 		glDrawElements(GL_PATCHES, index_count_, GL_UNSIGNED_INT, 0);

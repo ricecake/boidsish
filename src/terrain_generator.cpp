@@ -162,24 +162,23 @@ namespace Boidsish {
 			}
 		}
 
-		// Generate indices for a full grid with CCW winding
-		indices.reserve(chunk_size_ * chunk_size_ * 6);
+		// Generate indices for a grid of quads
+		indices.reserve(chunk_size_ * chunk_size_ * 4);
 		for (int i = 0; i < chunk_size_; ++i) {
 			for (int j = 0; j < chunk_size_; ++j) {
-				// First triangle (CCW)
 				indices.push_back(i * num_vertices_z + j);
-				indices.push_back(i * num_vertices_z + j + 1);
 				indices.push_back((i + 1) * num_vertices_z + j);
-
-				// Second triangle (CCW)
-				indices.push_back((i + 1) * num_vertices_z + j);
-				indices.push_back(i * num_vertices_z + j + 1);
 				indices.push_back((i + 1) * num_vertices_z + j + 1);
+				indices.push_back(i * num_vertices_z + j + 1);
 			}
 		}
 
 		auto terrain_chunk = std::make_shared<Terrain>(vertexData, indices);
 		terrain_chunk->SetPosition(chunkX * chunk_size_, 0, chunkZ * chunk_size_);
+
+        // For now, let's just use the mountain parameters for all chunks
+        // a real implementation would store the interpolated params per-chunk
+		terrain_chunk->SetTerrainParameters(mountains_params_);
 		return terrain_chunk;
 	}
 
