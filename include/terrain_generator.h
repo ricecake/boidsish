@@ -14,7 +14,7 @@ namespace Boidsish {
 	public:
 		TerrainGenerator(int seed = 12345);
 
-		void                                  update(const Camera& camera);
+		void                                  update(const Frustum& frustum, const Camera& camera);
 		std::vector<std::shared_ptr<Terrain>> getVisibleChunks();
 
 	private:

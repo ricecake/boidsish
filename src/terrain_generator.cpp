@@ -5,22 +5,47 @@
 #include <vector>
 
 #include <glm/glm.hpp>
+#include <glm/gtc/matrix_transform.hpp>
 
 namespace Boidsish {
+	bool isChunkInFrustum(const Frustum& frustum, int chunkX, int chunkZ, int chunkSize, float amplitude) {
+		glm::vec3 center(
+			chunkX * chunkSize + chunkSize / 2.0f,
+			amplitude / 2.0f,
+			chunkZ * chunkSize + chunkSize / 2.0f
+		);
+		glm::vec3 halfSize(chunkSize / 2.0f, amplitude / 2.0f, chunkSize / 2.0f);
+
+		for (int i = 0; i < 6; ++i) {
+			float r = halfSize.x * std::abs(frustum.planes[i].normal.x) +
+			          halfSize.y * std::abs(frustum.planes[i].normal.y) +
+			          halfSize.z * std::abs(frustum.planes[i].normal.z);
+			float d = glm::dot(center, frustum.planes[i].normal) + frustum.planes[i].distance;
+			if (d < -r) {
+				return false;
+			}
+		}
+		return true;
+	}
 
 	TerrainGenerator::TerrainGenerator(int seed)
 		: perlin_noise_(seed), control_perlin_noise_(seed + 1) {}
 
-	void TerrainGenerator::update(const Camera& camera) {
+	void TerrainGenerator::update(const Frustum& frustum, const Camera& camera) {
 		int current_chunk_x = static_cast<int>(camera.x) / chunk_size_;
 		int current_chunk_z = static_cast<int>(camera.z) / chunk_size_;
 
-		// Load chunks
-		for (int x = current_chunk_x - view_distance_; x <= current_chunk_x + view_distance_; ++x) {
-			for (int z = current_chunk_z - view_distance_; z <= current_chunk_z + view_distance_; ++z) {
-				std::pair<int, int> chunk_coord = {x, z};
-				if (chunk_cache_.find(chunk_coord) == chunk_cache_.end()) {
-					chunk_cache_[chunk_coord] = generateChunk(x, z);
+		float height_factor = std::max(1.0f, camera.y / 10.0f);
+		int   dynamic_view_distance = static_cast<int>(view_distance_ * height_factor);
+
+		// Load chunks based on frustum and dynamic view distance
+		for (int x = current_chunk_x - dynamic_view_distance; x <= current_chunk_x + dynamic_view_distance; ++x) {
+			for (int z = current_chunk_z - dynamic_view_distance; z <= current_chunk_z + dynamic_view_distance; ++z) {
+				if (isChunkInFrustum(frustum, x, z, chunk_size_, amplitude_)) {
+					std::pair<int, int> chunk_coord = {x, z};
+					if (chunk_cache_.find(chunk_coord) == chunk_cache_.end()) {
+						chunk_cache_[chunk_coord] = generateChunk(x, z);
+					}
 				}
 			}
 		}
@@ -30,7 +55,7 @@ namespace Boidsish {
 		for (auto const& [key, val] : chunk_cache_) {
 			int dx = key.first - current_chunk_x;
 			int dz = key.second - current_chunk_z;
-			if (std::abs(dx) > view_distance_ || std::abs(dz) > view_distance_) {
+			if (std::abs(dx) > dynamic_view_distance || std::abs(dz) > dynamic_view_distance) {
 				to_remove.push_back(key);
 			}
 		}

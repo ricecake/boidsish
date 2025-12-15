@@ -8,8 +8,18 @@
 
 #include "shape.h"
 #include "vector.h"
+#include <glm/glm.hpp>
 
 namespace Boidsish {
+	struct Plane {
+		glm::vec3 normal;
+		float     distance;
+	};
+
+	struct Frustum {
+		Plane planes[6];
+	};
+
 	// Camera structure for 3D view control
 	struct Camera {
 		float x, y, z;    // Camera position
