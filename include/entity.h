@@ -9,6 +9,7 @@
 #include "dot.h"
 #include "shape.h"
 #include "vector.h"
+#include "shape_handler.h"
 
 namespace Boidsish {
 
@@ -120,11 +121,11 @@ namespace Boidsish {
 	};
 
 	// Entity handler that manages entities and provides dot generation
-	class EntityHandler {
+	class EntityHandler: public ShapeHandler {
 	public:
 		EntityHandler(): last_time_(-1.0f), next_id_(0) {}
 
-		virtual ~EntityHandler() = default;
+		~EntityHandler() override = default;
 
 		// Delete copy constructor and assignment operator since we contain shared_ptr
 		EntityHandler(const EntityHandler&) = delete;
@@ -134,8 +135,7 @@ namespace Boidsish {
 		EntityHandler(EntityHandler&&) = default;
 		EntityHandler& operator=(EntityHandler&&) = default;
 
-		// Operator() to make this compatible with ShapeFunction
-		std::vector<std::shared_ptr<Shape>> operator()(float time);
+		const std::vector<std::shared_ptr<Shape>>& GetShapes(float time) override;
 
 		// Entity management
 		template <typename T, typename... Args>
@@ -205,6 +205,7 @@ namespace Boidsish {
 
 	private:
 		std::map<int, std::shared_ptr<EntityBase>> entities_;
+		std::vector<std::shared_ptr<Shape>>        shapes_;
 		float                                      last_time_;
 		int                                        next_id_;
 	};

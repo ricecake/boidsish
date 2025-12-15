@@ -1,7 +1,23 @@
 #include <iostream>
 #include <vector>
+#include <functional>
 
 #include "graphics.h"
+
+// A wrapper to adapt the old ShapeFunction to the new ShapeHandler interface
+class ShapeFunctionHandler : public Boidsish::ShapeHandler {
+public:
+    ShapeFunctionHandler(Boidsish::ShapeFunction func) : func_(func) {}
+
+    const std::vector<std::shared_ptr<Boidsish::Shape>>& GetShapes(float time) override {
+        shapes_ = func_(time);
+        return shapes_;
+    }
+
+private:
+    Boidsish::ShapeFunction                     func_;
+    std::vector<std::shared_ptr<Boidsish::Shape>> shapes_;
+};
 
 int main() {
 	try {
@@ -17,7 +33,7 @@ int main() {
 		visualizer.SetCamera(camera);
 
 		// No shapes, just terrain
-		visualizer.AddShapeHandler([](float /* time */) { return std::vector<std::shared_ptr<Boidsish::Shape>>(); });
+		visualizer.AddShapeHandler(std::make_shared<ShapeFunctionHandler>([](float /* time */) { return std::vector<std::shared_ptr<Boidsish::Shape>>(); }));
 
 		visualizer.Run();
 	} catch (const std::exception& e) {

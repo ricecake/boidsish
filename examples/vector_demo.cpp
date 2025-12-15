@@ -13,6 +13,22 @@
 
 using namespace Boidsish;
 
+// A wrapper to adapt the old ShapeFunction to the new ShapeHandler interface
+class ShapeFunctionHandler : public ShapeHandler {
+public:
+    ShapeFunctionHandler(ShapeFunction func) : func_(func) {}
+
+    const std::vector<std::shared_ptr<Shape>>& GetShapes(float time) override {
+        shapes_ = func_(time);
+        return shapes_;
+    }
+
+private:
+    ShapeFunction                               func_;
+    std::vector<std::shared_ptr<Shape>>         shapes_;
+};
+
+
 class MakeBranchAttractor {
 private:
 	std::random_device                    rd;
@@ -519,9 +535,9 @@ int main() {
 		viz.SetCamera(camera);
 
 		// Create and set the vector demo handler
-		VectorDemoHandler handler;
-		viz.AddShapeHandler(std::ref(handler));
-		viz.AddShapeHandler(std::ref(GraphExample));
+		auto handler = std::make_shared<VectorDemoHandler>();
+		viz.AddShapeHandler(handler);
+		viz.AddShapeHandler(std::make_shared<ShapeFunctionHandler>(GraphExample));
 
 		std::cout << "Vector Demo Started!" << std::endl;
 		std::cout << "Controls:" << std::endl;
@@ -531,11 +547,7 @@ int main() {
 		std::cout << "  0 - Toggle auto-camera" << std::endl;
 		std::cout << "  ESC - Exit" << std::endl;
 
-		// Main loop
-		while (!viz.ShouldClose()) {
-			viz.Update();
-			viz.Render();
-		}
+		viz.Run();
 
 		std::cout << "Vector demo ended." << std::endl;
 

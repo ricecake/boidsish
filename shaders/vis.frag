@@ -1,4 +1,4 @@
-#version 330 core
+#version 420 core
 out vec4 FragColor;
 
 #include "artistic_effects.frag"
@@ -15,9 +15,15 @@ layout(std140) uniform Lighting {
 	float time;
 };
 
+layout(std140, binding = 1) uniform VisualEffects {
+    bool  ripple_enabled;
+    float ripple_strength;
+    bool  color_shift_enabled;
+    float color_shift_strength;
+};
+
 uniform vec3 objectColor;
 uniform int  useVertexColor;
-uniform bool colorShift;
 
 void main() {
 	// Ambient
@@ -52,8 +58,8 @@ void main() {
 
 	vec3 result = (ambient + diffuse) * final_color + specular;
 
-	if (colorShift) {
-		float shift_magnitude = 0.2;
+	if (color_shift_enabled) {
+		float shift_magnitude = 0.2 * color_shift_strength;
 		float shift_speed = 5.0;
 		vec3  pos_based_shift;
 		pos_based_shift.r = sin(FragPos.x * shift_speed) * shift_magnitude;

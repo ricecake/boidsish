@@ -6,6 +6,7 @@
 
 #include "shader.h"
 #include "vector.h"
+#include "visual_effects.h"
 #include <GL/glew.h>
 #include <glm/glm.hpp>
 
@@ -13,13 +14,16 @@ namespace Boidsish {
 
 	class Trail {
 	public:
-		Trail(int max_length = 250);
+		Trail(int max_length = 250, const EffectSet& parent_effects = EffectSet());
 		~Trail();
 
 		void AddPoint(glm::vec3 position, glm::vec3 color);
 		void Render(Shader& shader) const;
 
+		EffectSet& GetEffectSet() { return effect_set_; }
+
 	private:
+		EffectSet effect_set_;
 		struct TrailVertex {
 			glm::vec3 pos;
 			glm::vec3 normal;

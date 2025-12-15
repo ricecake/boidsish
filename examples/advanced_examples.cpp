@@ -1,11 +1,27 @@
 #include <cmath>
 #include <iostream>
 #include <random>
+#include <functional>
 
 #include "dot.h"
 #include "graphics.h"
 
 using namespace Boidsish;
+
+// A wrapper to adapt the old ShapeFunction to the new ShapeHandler interface
+class ShapeFunctionHandler : public ShapeHandler {
+public:
+    ShapeFunctionHandler(ShapeFunction func) : func_(func) {}
+
+    const std::vector<std::shared_ptr<Shape>>& GetShapes(float time) override {
+        shapes_ = func_(time);
+        return shapes_;
+    }
+
+private:
+    ShapeFunction                               func_;
+    std::vector<std::shared_ptr<Shape>>         shapes_;
+};
 
 // Example 1: Spiraling particles
 auto SpiralExample(float time) {
@@ -147,15 +163,15 @@ int main(int argc, char* argv[]) {
 		switch (example) {
 		case 1:
 			title += "Spiraling Particles";
-			viz.SetDotFunction(SpiralExample);
+			viz.AddShapeHandler(std::make_shared<ShapeFunctionHandler>(SpiralExample));
 			break;
 		case 2:
 			title += "Random Walk";
-			viz.SetDotFunction(RandomWalkExample);
+			viz.AddShapeHandler(std::make_shared<ShapeFunctionHandler>(RandomWalkExample));
 			break;
 		case 3:
 			title += "Wave Function";
-			viz.SetDotFunction(WaveExample);
+			viz.AddShapeHandler(std::make_shared<ShapeFunctionHandler>(WaveExample));
 			break;
 		}
 

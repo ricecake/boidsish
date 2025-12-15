@@ -1,9 +1,19 @@
-#version 330 core
+#version 420 core
 out vec4 FragColor;
 
 in vec3 vs_color;
 in vec3 vs_normal;
 in vec3 vs_frag_pos;
+in vec3 barycentric;
+
+#include "artistic_effects.frag"
+
+layout(std140, binding = 1) uniform VisualEffects {
+    bool  ripple_enabled;
+    float ripple_strength;
+    bool  color_shift_enabled;
+    float color_shift_strength;
+};
 
 layout(std140) uniform Lighting {
 	vec3  lightPos;
@@ -31,5 +41,6 @@ void main() {
 	vec3  specular = specular_strength * spec * lightColor;
 
 	vec3 result = (ambient + diffuse) * vs_color + specular;
+	result = applyArtisticEffects(result, vs_frag_pos, barycentric, time);
 	FragColor = vec4(result, 1.0);
 }

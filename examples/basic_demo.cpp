@@ -2,12 +2,28 @@
 #include <filesystem>
 #include <iostream>
 #include <memory>
+#include <functional>
 
 #include "dot.h"
 #include "graph.h"
 #include "graphics.h"
 
 using namespace Boidsish;
+
+// A wrapper to adapt the old ShapeFunction to the new ShapeHandler interface
+class ShapeFunctionHandler : public ShapeHandler {
+public:
+    ShapeFunctionHandler(ShapeFunction func) : func_(func) {}
+
+    const std::vector<std::shared_ptr<Shape>>& GetShapes(float time) override {
+        shapes_ = func_(time);
+        return shapes_;
+    }
+
+private:
+    ShapeFunction                               func_;
+    std::vector<std::shared_ptr<Shape>>         shapes_;
+};
 
 // Example: Simple moving dot with trail
 std::vector<std::shared_ptr<Shape>> TrailExample(float time) {
@@ -57,7 +73,7 @@ int main() {
 		viz.SetCamera(camera);
 
 		// Set the dot function
-		viz.SetDotFunction(TrailExample);
+		viz.AddShapeHandler(std::make_shared<ShapeFunctionHandler>(TrailExample));
 
 		auto path = std::filesystem::current_path();
 

@@ -1,4 +1,4 @@
-#version 330 core
+#version 420 core
 layout(location = 0) in vec3 aPos;
 layout(location = 1) in vec3 aNormal;
 layout(location = 2) in vec3 aColor;
@@ -15,6 +15,10 @@ out vec3  vs_color;
 out float vs_progress;
 out vec3  vs_normal;
 out vec3  vs_frag_pos;
+out vec3  barycentric;
+
+#include "artistic_effects.vert"
+#include "artistic_effects.glsl"
 
 uniform mat4  model;
 uniform mat4  view;
@@ -37,6 +41,7 @@ void main() {
 	vs_progress = aProgress; // Pass progress along, might be useful later
 	vs_normal = mat3(transpose(inverse(model))) * aNormal;
 	vs_frag_pos = vec3(model * vec4(final_pos, 1.0));
+	barycentric = getBarycentric();
 
 	vec4 world_pos = model * vec4(final_pos, 1.0);
 	gl_ClipDistance[0] = dot(world_pos, clipPlane);

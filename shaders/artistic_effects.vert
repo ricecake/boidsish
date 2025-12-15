@@ -1,6 +1,3 @@
-#ifndef ARTISTIC_EFFECTS_VERT
-#define ARTISTIC_EFFECTS_VERT
-
 #include "artistic_effects.glsl"
 
 vec3 getBarycentric() {
@@ -41,5 +38,3 @@ vec3 applyGlitch(vec3 position, float time) {
 	}
 	return position;
 }
-
-#endif

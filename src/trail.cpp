@@ -9,7 +9,12 @@
 
 namespace Boidsish {
 
-	Trail::Trail(int max_length): max_length(max_length), vertex_count(0), mesh_dirty(false) {
+	Trail::Trail(int max_length, const EffectSet& parent_effects)
+		:
+		max_length(max_length),
+		effect_set_(parent_effects),
+		vertex_count(0),
+		mesh_dirty(false) {
 		glGenVertexArrays(1, &vao);
 		glGenBuffers(1, &vbo);
 	}

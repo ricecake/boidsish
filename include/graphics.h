@@ -7,6 +7,7 @@
 #include <vector>
 
 #include "shape.h"
+#include "shape_handler.h"
 #include "vector.h"
 
 namespace Boidsish {
@@ -34,11 +35,8 @@ namespace Boidsish {
 		~Visualizer();
 
 		// Set the function/handler that generates shapes for each frame
-		void AddShapeHandler(ShapeFunction func);
+		void AddShapeHandler(std::shared_ptr<ShapeHandler> handler);
 		void ClearShapeHandlers();
-
-		// Legacy method name for compatibility
-		void SetDotFunction(ShapeFunction func) { AddShapeHandler(func); }
 
 		// Start the visualization loop
 		void Run();

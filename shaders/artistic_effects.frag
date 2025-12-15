@@ -1,6 +1,3 @@
-#ifndef ARTISTIC_EFFECTS_FRAG
-#define ARTISTIC_EFFECTS_FRAG
-
 #include "artistic_effects.glsl"
 
 vec3 applyBlackAndWhite(vec3 color) {
@@ -63,5 +60,3 @@ vec3 applyArtisticEffects(vec3 color, vec3 fragPos, vec3 barycentric, float time
 	color = applyWireframe(color, barycentric);
 	return color;
 }
-
-#endif

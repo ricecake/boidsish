@@ -20,8 +20,8 @@ namespace Boidsish {
 		// Pure virtual function for rendering the shape
 		virtual void render() const = 0;
 
-		// Get the active visual effects for this shape
-		virtual std::vector<VisualEffect> GetActiveEffects() const { return {}; }
+		// Get a reference to the shape's effect set to apply effects
+		EffectSet& GetEffectSet() { return effect_set_; }
 
 		// Accessors
 		inline int GetId() const { return id_; }
@@ -81,6 +81,9 @@ namespace Boidsish {
 			int   trail_length = 0
 		):
 			id_(id), x_(x), y_(y), z_(z), r_(r), g_(g), b_(b), a_(a), trail_length_(trail_length) {}
+
+	protected:
+		EffectSet effect_set_;
 
 	private:
 		int   id_;

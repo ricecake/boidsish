@@ -1,4 +1,4 @@
-#version 330 core
+#version 420 core
 layout(location = 0) in vec3 aPos;
 layout(location = 1) in vec3 aNormal;
 layout(location = 2) in vec3 aColor;
@@ -15,7 +15,13 @@ uniform mat4  model;
 uniform mat4  view;
 uniform mat4  projection;
 uniform vec4  clipPlane;
-uniform float ripple_strength;
+
+layout(std140, binding = 1) uniform VisualEffects {
+    bool  ripple_enabled;
+    float ripple_strength;
+    bool  color_shift_enabled;
+    float color_shift_strength;
+};
 
 layout(std140) uniform Lighting {
 	vec3  lightPos;
@@ -30,7 +36,7 @@ void main() {
 
 	displacedPos = applyGlitch(displacedPos, time);
 
-	if (ripple_strength > 0.0) {
+	if (ripple_enabled) {
 		float frequency = 20.0;
 		float speed = 3.0;
 		float amplitude = ripple_strength;

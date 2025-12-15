@@ -7,8 +7,10 @@
 #include <optional>
 #include <set>
 #include <vector>
+#include <cstring>
 
 #include "dot.h"
+#include "shape_handler.h"
 #include "terrain.h"
 #include "terrain_generator.h"
 #include "trail.h"
@@ -23,14 +25,22 @@ namespace Boidsish {
 	constexpr float kMinCameraHeight = 0.1f;
 
 	struct Visualizer::VisualizerImpl {
-		GLFWwindow*                           window;
-		int                                   width, height;
-		Camera                                camera;
-		std::vector<ShapeFunction>            shape_functions;
-		std::map<int, std::shared_ptr<Trail>> trails;
-		std::map<int, float>                  trail_last_update;
+		struct Renderable {
+			std::shared_ptr<Shape>        shape;
+			std::shared_ptr<ShapeHandler> handler;
+		};
 
-		std::unique_ptr<TerrainGenerator> terrain_generator;
+		GLFWwindow*                                        window;
+		int                                                width, height;
+		Camera                                             camera;
+		std::vector<std::shared_ptr<ShapeHandler>>         shape_handlers;
+		std::map<int, std::shared_ptr<Trail>>              trails;
+		std::map<int, float>                               trail_last_update;
+		std::unique_ptr<TerrainGenerator>                  terrain_generator;
+
+		// Effect management
+		EffectSet        global_effect_set;
+		VisualEffectsUbo current_ubo_state;
 
 		std::shared_ptr<Shader> shader;
 		std::unique_ptr<Shader> plane_shader;
@@ -84,8 +94,8 @@ namespace Boidsish {
 				std::cerr << "GLFW Error " << error << ": " << description << std::endl;
 			});
 
-			glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
-			glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
+			glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
+			glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 2);
 			glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
 #ifdef __APPLE__
 			glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE);
@@ -153,13 +163,13 @@ namespace Boidsish {
 			glBindBuffer(GL_UNIFORM_BUFFER, artistic_effects_ubo);
 			glBufferData(GL_UNIFORM_BUFFER, 20, NULL, GL_DYNAMIC_DRAW);
 			glBindBuffer(GL_UNIFORM_BUFFER, 0);
-			glBindBufferRange(GL_UNIFORM_BUFFER, 1, artistic_effects_ubo, 0, 20);
+			glBindBufferRange(GL_UNIFORM_BUFFER, 2, artistic_effects_ubo, 0, 20);
 
 			shader->use();
 			glUniformBlockBinding(
 				shader->ID,
 				glGetUniformBlockIndex(shader->ID, "ArtisticEffects"),
-				1
+				2
 			);
 
 			Terrain::terrain_shader_ = std::make_shared<Shader>("shaders/terrain.vert", "shaders/terrain.frag");
@@ -298,35 +308,60 @@ namespace Boidsish {
 
 		glm::mat4 SetupMatrices() { return SetupMatrices(camera); }
 
+		void UpdateVisualEffectsUbo(const EffectSet& effects) {
+			VisualEffectsUbo ubo_data;
+			ubo_data.ripple_enabled = effects.GetEffectSettings(VisualEffect::RIPPLE).state == EffectState::ENABLED;
+			ubo_data.ripple_strength = effects.GetEffectSettings(VisualEffect::RIPPLE).params.strength;
+			ubo_data.color_shift_enabled =
+				effects.GetEffectSettings(VisualEffect::COLOR_SHIFT).state == EffectState::ENABLED;
+			ubo_data.color_shift_strength = effects.GetEffectSettings(VisualEffect::COLOR_SHIFT).params.strength;
+
+			if (memcmp(&current_ubo_state, &ubo_data, sizeof(VisualEffectsUbo)) != 0) {
+				glBindBuffer(GL_UNIFORM_BUFFER, visual_effects_ubo);
+				glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(VisualEffectsUbo), &ubo_data);
+				glBindBuffer(GL_UNIFORM_BUFFER, 0);
+				current_ubo_state = ubo_data;
+			}
+		}
+
 		void RenderSceneObjects(
-			const glm::mat4& view,
+			const glm::mat4&                                 view,
 			const Camera& /* cam */,
-			const std::vector<std::shared_ptr<Shape>>& shapes,
-			float                                      time,
-			const std::optional<glm::vec4>&            clip_plane
+			const std::vector<Renderable>&                   renderables,
+			float                                            time,
+			const std::optional<glm::vec4>&                  clip_plane
 		) {
 			shader->use();
-			shader->setFloat("ripple_strength", ripple_strength);
-			shader->setBool("colorShift", color_shift_effect);
 			shader->setMat4("view", view);
 			if (clip_plane) {
 				shader->setVec4("clipPlane", *clip_plane);
 			} else {
-				shader->setVec4("clipPlane", glm::vec4(0, 0, 0, 0)); // No clipping
+				shader->setVec4("clipPlane", glm::vec4(0, 0, 0, 0));
 			}
 
-			if (shapes.empty()) {
+			if (renderables.empty()) {
 				return;
+			}
+			std::vector<std::shared_ptr<Shape>> shapes;
+			for (const auto& r : renderables) {
+				shapes.push_back(r.shape);
 			}
 
 			CleanupOldTrails(time, shapes);
 			std::set<int> current_shape_ids;
-			for (const auto& shape : shapes) {
+
+			for (const auto& renderable : renderables) {
+				auto& shape = renderable.shape;
+				auto& handler = renderable.handler;
+
+				// Resolve and apply effects for the main shape
+				EffectSet final_effects = EffectSet::Resolve(global_effect_set, handler->GetEffectSet(), shape->GetEffectSet());
+				UpdateVisualEffectsUbo(final_effects);
+
 				current_shape_ids.insert(shape->GetId());
-				// Only create trails for shapes with trail_length > 0
 				if (shape->GetTrailLength() > 0 && !paused) {
 					if (trails.find(shape->GetId()) == trails.end()) {
-						trails[shape->GetId()] = std::make_shared<Trail>(shape->GetTrailLength());
+						trails[shape->GetId()] = std::make_shared<Trail>(shape->GetTrailLength(), shape->GetEffectSet());
 					}
 					trails[shape->GetId()]->AddPoint(
 						glm::vec3(shape->GetX(), shape->GetY(), shape->GetZ()),
@@ -348,6 +383,9 @@ namespace Boidsish {
 				trail_shader->setVec4("clipPlane", glm::vec4(0, 0, 0, 0));
 			}
 			for (auto& pair : trails) {
+				// Resolve and apply effects for the trail
+				EffectSet final_trail_effects = EffectSet::Resolve(global_effect_set, EffectSet(), pair.second->GetEffectSet());
+				UpdateVisualEffectsUbo(final_trail_effects);
 				pair.second->Render(*trail_shader);
 			}
 		}
@@ -637,10 +675,20 @@ namespace Boidsish {
 			}
 			if (key == GLFW_KEY_P && action == GLFW_PRESS)
 				impl->paused = !impl->paused;
-			if (key == GLFW_KEY_R && action == GLFW_PRESS)
-				impl->ripple_strength = (impl->ripple_strength > 0.0f) ? 0.0f : 0.05f;
-			if (key == GLFW_KEY_C && action == GLFW_PRESS)
-				impl->color_shift_effect = !impl->color_shift_effect;
+			if (key == GLFW_KEY_R && action == GLFW_PRESS) {
+				auto& settings = impl->global_effect_set.GetEffectSettings(VisualEffect::RIPPLE);
+				impl->global_effect_set.SetEffectState(
+					VisualEffect::RIPPLE,
+					settings.state == EffectState::ENABLED ? EffectState::DEFAULT : EffectState::ENABLED
+				);
+			}
+			if (key == GLFW_KEY_C && action == GLFW_PRESS) {
+				auto& settings = impl->global_effect_set.GetEffectSettings(VisualEffect::COLOR_SHIFT);
+				impl->global_effect_set.SetEffectState(
+					VisualEffect::COLOR_SHIFT,
+					settings.state == EffectState::ENABLED ? EffectState::DEFAULT : EffectState::ENABLED
+				);
+			}
 		}
 
 		static void MouseCallback(GLFWwindow* w, double xpos, double ypos) {
@@ -708,12 +756,12 @@ namespace Boidsish {
 		delete impl;
 	}
 
-	void Visualizer::AddShapeHandler(ShapeFunction func) {
-		impl->shape_functions.push_back(func);
+	void Visualizer::AddShapeHandler(std::shared_ptr<ShapeHandler> handler) {
+		impl->shape_handlers.push_back(handler);
 	}
 
 	void Visualizer::ClearShapeHandlers() {
-		impl->shape_functions.clear();
+		impl->shape_handlers.clear();
 	}
 
 	bool Visualizer::ShouldClose() const {
@@ -735,11 +783,15 @@ namespace Boidsish {
 	void Visualizer::Render() {
 		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-		std::vector<std::shared_ptr<Shape>> shapes;
-		if (!impl->shape_functions.empty()) {
-			for (const auto& func : impl->shape_functions) {
-				auto new_shapes = func(impl->simulation_time);
-				shapes.insert(shapes.end(), new_shapes.begin(), new_shapes.end());
+		std::vector<VisualizerImpl::Renderable> renderables;
+		std::vector<std::shared_ptr<Shape>>     all_shapes;
+		if (!impl->shape_handlers.empty()) {
+			for (const auto& handler : impl->shape_handlers) {
+				const auto& new_shapes = handler->GetShapes(impl->simulation_time);
+				for (const auto& shape : new_shapes) {
+					renderables.push_back({shape, handler});
+				}
+				all_shapes.insert(all_shapes.end(), new_shapes.begin(), new_shapes.end());
 			}
 		}
 
@@ -751,25 +803,10 @@ namespace Boidsish {
 		last_frame_time = current_frame_time;
 
 		if (impl->single_track_mode) {
-			impl->UpdateSingleTrackCamera(delta_time, shapes);
+			impl->UpdateSingleTrackCamera(delta_time, all_shapes);
 		} else {
-			impl->UpdateAutoCamera(delta_time, shapes);
+			impl->UpdateAutoCamera(delta_time, all_shapes);
 		}
-
-		VisualEffectsUbo ubo_data = {};
-		for (const auto& shape : shapes) {
-			for (const auto& effect : shape->GetActiveEffects()) {
-				if (effect == VisualEffect::RIPPLE) {
-					ubo_data.ripple_enabled = 1;
-				} else if (effect == VisualEffect::COLOR_SHIFT) {
-					ubo_data.color_shift_enabled = 1;
-				}
-			}
-		}
-
-		glBindBuffer(GL_UNIFORM_BUFFER, impl->visual_effects_ubo);
-		glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(VisualEffectsUbo), &ubo_data);
-		glBindBuffer(GL_UNIFORM_BUFFER, 0);
 
 		// --- Update Lighting UBO ---
 		float light_x = 50.0f * cos(impl->simulation_time * 0.05f);
@@ -819,7 +856,7 @@ namespace Boidsish {
 			impl->RenderSceneObjects(
 				reflection_view,
 				reflection_cam,
-				shapes,
+				renderables,
 				impl->simulation_time,
 				glm::vec4(0, 1, 0, 0.01)
 			);
@@ -834,7 +871,7 @@ namespace Boidsish {
 		glm::mat4 view = impl->SetupMatrices();
 		impl->RenderSky(view);
 		impl->RenderPlane(view);
-		impl->RenderSceneObjects(view, impl->camera, shapes, impl->simulation_time, std::nullopt);
+		impl->RenderSceneObjects(view, impl->camera, renderables, impl->simulation_time, std::nullopt);
 		impl->RenderTerrain(view, std::nullopt);
 
 		glfwSwapBuffers(impl->window);
