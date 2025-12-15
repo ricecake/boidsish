@@ -1,0 +1,64 @@
+#version 420 core
+
+layout (quads, equal_spacing, ccw) in;
+
+// Input from Tessellation Control Shader
+in vec3 WorldPos_TC_out[];
+in vec2 TexCoords_TC_out[];
+
+// Output to Fragment Shader
+out vec3 FragPos;
+out vec3 Normal;
+out vec2 TexCoords;
+
+// Uniforms for transformations
+uniform mat4 view;
+uniform mat4 projection;
+uniform sampler2D heightMap; // Assuming a heightmap is used for detailed geometry
+
+layout (std140, binding = 0) uniform Lighting {
+    vec3 lightPos;
+    vec3 viewPos;
+    vec3 lightColor;
+    float time;
+};
+
+vec2 interpolate(vec2 v0, vec2 v1, vec2 v2, vec2 v3, vec2 uv) {
+    vec2 a = mix(v0, v1, uv.x);
+    vec2 b = mix(v3, v2, uv.x);
+    return mix(a, b, uv.y);
+}
+
+vec3 interpolate(vec3 v0, vec3 v1, vec3 v2, vec3 v3, vec2 uv) {
+    vec3 a = mix(v0, v1, uv.x);
+    vec3 b = mix(v3, v2, uv.x);
+    return mix(a, b, uv.y);
+}
+
+void main()
+{
+    vec2 uv = gl_TessCoord.xy;
+    // Interpolate texture coordinates and world position
+    TexCoords = interpolate(TexCoords_TC_out[0], TexCoords_TC_out[1], TexCoords_TC_out[2], TexCoords_TC_out[3], uv);
+    FragPos = interpolate(WorldPos_TC_out[0], WorldPos_TC_out[1], WorldPos_TC_out[2], WorldPos_TC_out[3], uv);
+
+    // Displace vertex along the normal based on a heightmap (optional, for detail)
+    // FragPos += normalize(cross(WorldPos_TC_out[1] - WorldPos_TC_out[0], WorldPos_TC_out[3] - WorldPos_TC_out[0])) * (texture(heightMap, TexCoords).r * 20.0 - 10.0);
+
+    // Calculate normals for lighting using finite differences
+    float delta = 0.001;
+    vec2 uv_u = uv + vec2(delta, 0.0);
+    vec2 uv_v = uv + vec2(0.0, delta);
+
+    vec3 pos_u = interpolate(WorldPos_TC_out[0], WorldPos_TC_out[1], WorldPos_TC_out[2], WorldPos_TC_out[3], uv_u);
+    vec3 pos_v = interpolate(WorldPos_TC_out[0], WorldPos_TC_out[1], WorldPos_TC_out[2], WorldPos_TC_out[3], uv_v);
+
+    vec3 dU = pos_u - FragPos;
+    vec3 dV = pos_v - FragPos;
+
+    Normal = normalize(cross(dV, dU));
+
+
+    // Final vertex position in clip space
+    gl_Position = projection * view * vec4(FragPos, 1.0);
+}

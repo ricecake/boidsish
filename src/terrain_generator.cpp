@@ -145,8 +145,8 @@ namespace Boidsish {
 			return nullptr;
 		}
 
-		// Generate vertices and normals
-		vertexData.reserve(num_vertices_x * num_vertices_z * 6);
+		// Generate vertices
+		vertexData.reserve(num_vertices_x * num_vertices_z * 5);
 		for (int i = 0; i < num_vertices_x; ++i) {
 			for (int j = 0; j < num_vertices_z; ++j) {
 				float y = heightmap[i][j];
@@ -156,16 +156,9 @@ namespace Boidsish {
 				vertexData.push_back(y);
 				vertexData.push_back(j);
 
-				// Calculate normal
-				float hL = (i > 0) ? heightmap[i - 1][j] : y;
-				float hR = (i < chunk_size_) ? heightmap[i + 1][j] : y;
-				float hD = (j > 0) ? heightmap[i][j - 1] : y;
-				float hU = (j < chunk_size_) ? heightmap[i][j + 1] : y;
-
-				glm::vec3 normal = glm::normalize(glm::vec3(hL - hR, 2.0f, hD - hU));
-				vertexData.push_back(normal.x);
-				vertexData.push_back(normal.y);
-				vertexData.push_back(normal.z);
+				// Texture coordinates
+				vertexData.push_back((float)i / chunk_size_);
+				vertexData.push_back((float)j / chunk_size_);
 			}
 		}
 

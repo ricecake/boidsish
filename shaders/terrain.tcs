@@ -1,0 +1,51 @@
+#version 420 core
+
+layout (vertices = 4) out;
+
+// Input from Vertex Shader
+in vec3 WorldPos_VS_out[];
+in vec2 TexCoords_VS_out[];
+
+layout (std140, binding = 0) uniform Lighting {
+    vec3 lightPos;
+    vec3 viewPos;
+    vec3 lightColor;
+    float time;
+};
+
+// Output to Tessellation Evaluation Shader
+out vec3 WorldPos_TC_out[];
+out vec2 TexCoords_TC_out[];
+
+float GetTessLevel(float distance) {
+    float maxTess = 64.0;
+    float minTess = 1.0;
+    float maxDist = 200.0;
+    float minDist = 20.0;
+    float tess = maxTess - (maxTess - minTess) * clamp((distance - minDist) / (maxDist - minDist), 0.0, 1.0);
+    return tess;
+}
+
+void main()
+{
+    // Pass through attributes
+    gl_out[gl_InvocationID].gl_Position = gl_in[gl_InvocationID].gl_Position;
+    WorldPos_TC_out[gl_InvocationID] = WorldPos_VS_out[gl_InvocationID];
+    TexCoords_TC_out[gl_InvocationID] = TexCoords_VS_out[gl_InvocationID];
+
+    if (gl_InvocationID == 0)
+    {
+        float d0 = distance(viewPos, WorldPos_VS_out[0]);
+        float d1 = distance(viewPos, WorldPos_VS_out[1]);
+        float d2 = distance(viewPos, WorldPos_VS_out[2]);
+        float d3 = distance(viewPos, WorldPos_VS_out[3]);
+
+        gl_TessLevelOuter[0] = GetTessLevel(0.5 * (d0 + d1));
+        gl_TessLevelOuter[1] = GetTessLevel(0.5 * (d1 + d2));
+        gl_TessLevelOuter[2] = GetTessLevel(0.5 * (d2 + d3));
+        gl_TessLevelOuter[3] = GetTessLevel(0.5 * (d3 + d0));
+
+        gl_TessLevelInner[0] = 0.5 * (gl_TessLevelOuter[0] + gl_TessLevelOuter[2]);
+        gl_TessLevelInner[1] = 0.5 * (gl_TessLevelOuter[1] + gl_TessLevelOuter[3]);
+    }
+}
