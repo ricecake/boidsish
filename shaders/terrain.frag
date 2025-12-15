@@ -117,7 +117,8 @@ void main() {
 	vec3  warp = vec3(fbm(FragPos + time * 0.1));
 	float nebula_noise = fbm(FragPos + warp * 0.5);
 	// objectColor = nebula_noise * (warp + objectColor);
-	objectColor += nebula_noise * warp;
+	vec3 warpNoise = nebula_noise * warp;
+	objectColor += warpNoise;
 
 	// Ambient
 	float ambientStrength = 0.2;
@@ -149,8 +150,12 @@ void main() {
 	float line_major = min(grid_major.x, grid_major.y);
 	float C_major = 1.0 - min(line_major, 1.0);
 
-	float intensity = max(C_minor, C_major * 1.5) * 0.3;
-	vec3  grid_color = vec3(0.0, 0.8, 0.8) * intensity;
+	vec3  warp2 = vec3(fbm(fwidth(FragPos) + time * 0.1));
+	float nebula_noise2 = fbm(fwidth(FragPos) + warp * 0.5);
+	// float intensity = max(C_minor, C_major * 1.5) * 0.3;
+	float intensity = max(C_minor, C_major * 1.5)*0.4;
+	// vec3  grid_color = normalize(abs(fwidth(FragPos.yxz))) * intensity+nebula_noise*warp;
+	vec3  grid_color = normalize(abs(fwidth(FragPos.yxz))) * intensity+nebula_noise2*warp2;
 
 	vec3 result = ((ambient + diffuse) * objectColor + specular) + grid_color; // Add specular on top
 	// --- Distance Fade ---
