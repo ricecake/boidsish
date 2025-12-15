@@ -155,7 +155,7 @@ void main() {
 	// float intensity = max(C_minor, C_major * 1.5) * 0.3;
 	float intensity = max(C_minor, C_major * 1.5)*0.4;
 	// vec3  grid_color = normalize(abs(fwidth(FragPos.yxz))) * intensity+nebula_noise*warp;
-	vec3  grid_color = normalize(abs(fwidth(FragPos.yxz))) * intensity+nebula_noise2*warp2;
+	vec3  grid_color = normalize(abs(fwidth(FragPos.zxy))) * intensity+nebula_noise2*warp2;
 
 	vec3 result = ((ambient + diffuse) * objectColor + specular) + grid_color; // Add specular on top
 	// --- Distance Fade ---
