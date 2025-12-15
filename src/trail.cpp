@@ -39,7 +39,10 @@ namespace Boidsish {
 		}
 
 		axis = axis / axis_length;
-		float angle = acos(std::clamp(prev_tangent.Dot(curr_tangent), -1.0f, 1.0f));
+		float dot = prev_tangent.Dot(curr_tangent);
+		if (dot < -1.0f) dot = -1.0f;
+		if (dot > 1.0f) dot = 1.0f;
+		float angle = acos(dot);
 
 		// Rodrigues' rotation formula
 		Vector3 rotated = prev_normal * cos(angle) + axis.Cross(prev_normal) * sin(angle) +
@@ -166,19 +169,22 @@ namespace Boidsish {
 					{ring1_positions[j],
 				     ring1_normals[j],
 				     glm::vec3(curve_colors[i].x, curve_colors[i].y, curve_colors[i].z),
-				     curve_progress[i]}
+				     curve_progress[i],
+				     0.0f}
 				);
 				mesh_vertices.push_back(
 					{ring1_positions[j + 1],
 				     ring1_normals[j + 1],
 				     glm::vec3(curve_colors[i].x, curve_colors[i].y, curve_colors[i].z),
-				     curve_progress[i]}
+				     curve_progress[i],
+				     0.0f}
 				);
 				mesh_vertices.push_back(
 					{ring2_positions[j],
 				     ring2_normals[j],
 				     glm::vec3(curve_colors[i + 1].x, curve_colors[i + 1].y, curve_colors[i + 1].z),
-				     curve_progress[i + 1]}
+				     curve_progress[i + 1],
+				     0.0f}
 				);
 
 				// Second triangle (CCW)
@@ -186,19 +192,22 @@ namespace Boidsish {
 					{ring1_positions[j + 1],
 				     ring1_normals[j + 1],
 				     glm::vec3(curve_colors[i].x, curve_colors[i].y, curve_colors[i].z),
-				     curve_progress[i]}
+				     curve_progress[i],
+				     0.0f}
 				);
 				mesh_vertices.push_back(
 					{ring2_positions[j + 1],
 				     ring2_normals[j + 1],
 				     glm::vec3(curve_colors[i + 1].x, curve_colors[i + 1].y, curve_colors[i + 1].z),
-				     curve_progress[i + 1]}
+				     curve_progress[i + 1],
+				     0.0f}
 				);
 				mesh_vertices.push_back(
 					{ring2_positions[j],
 				     ring2_normals[j],
 				     glm::vec3(curve_colors[i + 1].x, curve_colors[i + 1].y, curve_colors[i + 1].z),
-				     curve_progress[i + 1]}
+				     curve_progress[i + 1],
+				     0.0f}
 				);
 			}
 		}
@@ -214,7 +223,8 @@ namespace Boidsish {
 					{glm::vec3(center_point.x, center_point.y, center_point.z),
 				     glm::vec3(center_normal.x, center_normal.y, center_normal.z),
 				     glm::vec3(curve_colors[0].x, curve_colors[0].y, curve_colors[0].z),
-				     curve_progress[0]}
+				     curve_progress[0],
+				     1.0f}
 				);
 				mesh_vertices.push_back(
 					{end_ring_positions[j + 1],
@@ -224,7 +234,8 @@ namespace Boidsish {
 						 curve_positions[0].z - end_ring_positions[j + 1].z
 					 ),
 				     glm::vec3(curve_colors[0].x, curve_colors[0].y, curve_colors[0].z),
-				     curve_progress[0]}
+				     curve_progress[0],
+				     1.0f}
 				);
 				mesh_vertices.push_back(
 					{end_ring_positions[j],
@@ -234,7 +245,8 @@ namespace Boidsish {
 						 curve_positions[0].z - end_ring_positions[j].z
 					 ),
 				     glm::vec3(curve_colors[0].x, curve_colors[0].y, curve_colors[0].z),
-				     curve_progress[0]}
+				     curve_progress[0],
+				     1.0f}
 				);
 			}
 		}
@@ -242,19 +254,8 @@ namespace Boidsish {
 		vertex_count = mesh_vertices.size();
 	}
 
-	void Trail::AddPoint(glm::vec3 position, glm::vec3 color, float object_radius) {
+	void Trail::AddPoint(glm::vec3 position, glm::vec3 color) {
 		points.push_back({position, color});
-
-		if (points.size() > 1) {
-			// Adjust the latest point to be on the surface of the sphere
-			glm::vec3&       latest_point = points.back().first;
-			const glm::vec3& prev_point = points[points.size() - 2].first;
-			glm::vec3        direction = latest_point - prev_point;
-			if (glm::length(direction) > 1e-6) {
-				direction = glm::normalize(direction);
-				latest_point -= direction * object_radius;
-			}
-		}
 
 		if (points.size() > static_cast<size_t>(max_length)) {
 			points.pop_front();
@@ -329,6 +330,17 @@ namespace Boidsish {
 				(void*)offsetof(TrailVertex, progress)
 			);
 			glEnableVertexAttribArray(3);
+
+			// IsEndCap
+			glVertexAttribPointer(
+				4,
+				1,
+				GL_FLOAT,
+				GL_FALSE,
+				sizeof(TrailVertex),
+				(void*)offsetof(TrailVertex, is_end_cap)
+			);
+			glEnableVertexAttribArray(4);
 
 			glBindVertexArray(0);
 		}

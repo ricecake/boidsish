@@ -3,6 +3,7 @@ layout(location = 0) in vec3 aPos;
 layout(location = 1) in vec3 aNormal;
 layout(location = 2) in vec3 aColor;
 layout(location = 3) in float aProgress;
+layout(location = 4) in float is_end_cap;
 
 layout(std140) uniform Lighting {
 	vec3  lightPos;
@@ -32,6 +33,9 @@ void main() {
 	// This moves the vertex closer to or further from the tube's spine
 	vec3 offset = aNormal * base_thickness * (taper_scale - 1.0);
 	vec3 final_pos = aPos + offset;
+	if (is_end_cap > 0.5) {
+		final_pos = aPos;
+	}
 
 	vs_color = aColor;
 	vs_progress = aProgress; // Pass progress along, might be useful later

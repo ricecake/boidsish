@@ -333,14 +333,9 @@ namespace Boidsish {
 						trails[shape->GetId()] = std::make_shared<Trail>(0.06f, shape->GetTrailLength());
 					}
 					}
-					float object_radius = 0.0f;
-					if (auto dot = std::dynamic_pointer_cast<Dot>(shape)) {
-						object_radius = dot->GetSize() * 0.01f;
-					}
 					trails[shape->GetId()]->AddPoint(
 						glm::vec3(shape->GetX(), shape->GetY(), shape->GetZ()),
-						glm::vec3(shape->GetR(), shape->GetG(), shape->GetB()),
-						object_radius
+						glm::vec3(shape->GetR(), shape->GetG(), shape->GetB())
 					);
 					trail_last_update[shape->GetId()] = time;
 				}

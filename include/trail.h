@@ -16,7 +16,7 @@ namespace Boidsish {
 		Trail(float thickness = 0.06f, int max_length = 250);
 		~Trail();
 
-		void AddPoint(glm::vec3 position, glm::vec3 color, float object_radius);
+		void AddPoint(glm::vec3 position, glm::vec3 color);
 		void Render(Shader& shader) const;
 
 	private:
@@ -25,6 +25,7 @@ namespace Boidsish {
 			glm::vec3 normal;
 			glm::vec3 color;
 			float     progress;
+			float     is_end_cap;
 		};
 
 		// Catmull-Rom interpolation for smooth curves
