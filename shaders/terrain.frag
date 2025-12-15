@@ -104,6 +104,66 @@ float fbm(vec3 p) {
 	return value;
 }
 
+// --- Insert after snoise() ---
+
+// Calculate Curl Noise by sampling the potential field derivatives
+vec3 curlNoise(vec3 p, float time) {
+    const float e = 0.1; // Epsilon for finite difference
+
+    // We create a vector potential (psi) by sampling noise at offsets.
+    // We animate it by adding time to the input.
+    vec3 dx = vec3(e, 0.0, 0.0);
+    vec3 dy = vec3(0.0, e, 0.0);
+    vec3 dz = vec3(0.0, 0.0, e);
+
+    // Helper to sample our potential field (just 3 arbitrary noise lookups)
+    // We use large offsets (100.0) to decorrelate the axes
+    vec3 p_t = p + vec3(0, 0, time * 0.5);
+
+    float x0 = snoise(p_t - dy); float x1 = snoise(p_t + dy);
+    float x2 = snoise(p_t - dz); float x3 = snoise(p_t + dz);
+
+    float y0 = snoise(p_t - dz); float y1 = snoise(p_t + dz);
+    float y2 = snoise(p_t - dx); float y3 = snoise(p_t + dx);
+
+    float z0 = snoise(p_t - dx); float z1 = snoise(p_t + dx);
+    float z2 = snoise(p_t - dy); float z3 = snoise(p_t + dy);
+
+    // Finite difference approximation of curl
+    float cx = (x1 - x0) - (y1 - y0); // dPsi_z/dy - dPsi_y/dz (simplified mapping)
+    float cy = (y1 - y0) - (z1 - z0);
+    float cz = (z1 - z0) - (x1 - x0);
+
+    return normalize(vec3(cx, cy, cz));
+}
+
+vec3 getFlowField(vec3 pos, vec3 normal, float time) {
+    // 1. Base Wind (Global direction)
+    vec3 wind = normalize(vec3(0.2, 0.0, 1.0)); // Blowing roughly Z-forward
+
+    // 2. Downhill Vector (Gravity projected onto tangent plane)
+    // This makes critters swoop into valleys.
+    vec3 up = vec3(0, 1, 0);
+    // Project 'down' (-up) onto the surface defined by 'normal'
+    vec3 downhill = normalize((dot(normal, up) * normal) - up);
+
+    // Fix for perfectly flat ground (downhill becomes 0)
+    if (length(downhill) < 0.01) downhill = vec3(0);
+
+    // 3. Curl Noise (Turbulence)
+    // Scale position to control feature size of the swirls
+    vec3 curl = curlNoise(pos * 0.2, time);
+
+    // 4. Composite
+    // Heavy weight on downhill to force valley following
+    // Curl adds local variation
+    vec3 flow = wind * 0.5 + downhill * 1.5 + curl * 0.8;
+
+    return normalize(flow);
+}
+
+
+
 void main() {
 	// discard;
 	// FragColor = vec4(1,1,1, 1);
@@ -151,7 +211,7 @@ void main() {
 	// vec3  grid_color = normalize(abs(fwidth(FragPos.yxz))) * intensity+nebula_noise*warp;
 	vec3 grid_color = vec3(normalize(abs(fwidth(FragPos.zxy))) * intensity + nebula_noise2 * warp2);
 
-	vec3 result = vec3((ambient + diffuse) * objectColor + specular) + grid_color; // Add specular on top
+	vec3 result = vec3((ambient + diffuse) * objectColor + specular);// + grid_color; // Add specular on top
 	// --- Distance Fade ---
 	float dist = length(FragPos.xz - viewPos.xz);
 	float fade_start = 540.0;
@@ -173,4 +233,28 @@ void main() {
 
 	// FragColor = result;
 	// FragColor[3] = mix(0, fade, step(0.01, FragPos.y));
+
+
+// --- FLOW FIELD DEBUG VISUALIZATION ---
+    vec3 N = normalize(Normal);
+    vec3 flow = getFlowField(FragPos, N, time);
+
+    // OPTION A: Moving Streamlines
+    // Creates a moving sawtooth wave aligned with the flow direction
+    float streamSpeed = 4.0;
+    float streamFreq = 2.0;
+    float streamline = fract(dot(FragPos, flow) * streamFreq - time * streamSpeed);
+
+    // Sharpen the line
+    streamline = smoothstep(0.4, 0.5, streamline);
+
+    // OPTION B: Directional Color Map (0..1 range)
+    vec3 flowColor = flow * 0.5 + 0.5;
+
+    // Composite Debug Output
+    // Mix the terrain color with the flow data
+    vec3 debugOutput = mix(result, flowColor, 0.5); // Blend with lighting
+    debugOutput *= (0.5 + 0.5 * streamline);        // Apply moving bands
+
+    FragColor = vec4(debugOutput, 1.0);
 }

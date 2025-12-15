@@ -521,8 +521,10 @@ namespace Boidsish {
 				camera.roll -= kCameraRollSpeed * delta_time;
 			if (keys[GLFW_KEY_E])
 				camera.roll += kCameraRollSpeed * delta_time;
-			if (camera.y < kMinCameraHeight)
-				camera.y = kMinCameraHeight;
+
+			auto floor = std::max(kMinCameraHeight, terrain_generator->GetHeight(camera.x, camera.y)[0]);
+			if (camera.y < floor)
+				camera.y = floor;
 		}
 
 		void CleanupOldTrails(float current_time, const std::vector<std::shared_ptr<Shape>>& active_shapes) {
