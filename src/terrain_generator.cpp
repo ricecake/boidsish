@@ -37,6 +37,20 @@ namespace Boidsish {
 		}
 	}
 
+	float TerrainGenerator::fbm(float x, float z) {
+		float total = 0;
+		float frequency = frequency_;
+		float amplitude = 1.0;
+		float max_amplitude = 0;
+		for (int i = 0; i < octaves_; i++) {
+			total += perlin_noise_.noise2D(x * frequency, z * frequency) * amplitude;
+			max_amplitude += amplitude;
+			amplitude *= persistence_;
+			frequency *= lacunarity_;
+		}
+		return total / max_amplitude;
+	}
+
 	std::vector<std::shared_ptr<Terrain>> TerrainGenerator::getVisibleChunks() {
 		std::vector<std::shared_ptr<Terrain>> visible_chunks;
 		for (auto const& [key, val] : chunk_cache_) {
@@ -61,7 +75,7 @@ namespace Boidsish {
 			for (int j = 0; j < num_vertices_z; ++j) {
 				float worldX = (chunkX * chunk_size_ + i);
 				float worldZ = (chunkZ * chunk_size_ + j);
-				float noise = perlin_noise_.octave2D_01(worldX * scale_, worldZ * scale_, 4);
+				float noise = (fbm(worldX, worldZ) + 1.0f) / 2.0f;
 
 				if (noise > threshold_) {
 					heightmap[i][j] = (noise - threshold_) * amplitude_;
