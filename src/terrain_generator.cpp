@@ -41,7 +41,7 @@ namespace Boidsish {
 		// Load chunks based on frustum and dynamic view distance
 		for (int x = current_chunk_x - dynamic_view_distance; x <= current_chunk_x + dynamic_view_distance; ++x) {
 			for (int z = current_chunk_z - dynamic_view_distance; z <= current_chunk_z + dynamic_view_distance; ++z) {
-				if (isChunkInFrustum(frustum, x, z, chunk_size_, amplitude_)) {
+				if (isChunkInFrustum(frustum, x, z, chunk_size_, mountains_params_.amplitude)) {
 					std::pair<int, int> chunk_coord = {x, z};
 					if (chunk_cache_.find(chunk_coord) == chunk_cache_.end()) {
 						chunk_cache_[chunk_coord] = generateChunk(x, z);
