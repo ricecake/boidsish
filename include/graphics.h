@@ -22,9 +22,10 @@ namespace Boidsish {
 
 	// Camera structure for 3D view control
 	struct Camera {
-		float x, y, z;    // Camera position
-		float pitch, yaw; // Camera rotation
-		float fov;        // Field of view
+		float x, y, z;          // Camera position
+		float pitch, yaw, roll; // Camera rotation
+		float fov;              // Field of view
+		float speed;
 
 		constexpr Camera(
 			float x = 0.0f,
@@ -32,9 +33,11 @@ namespace Boidsish {
 			float z = 5.0f,
 			float pitch = 0.0f,
 			float yaw = 0.0f,
-			float fov = 45.0f
+			float roll = 0.0f,
+			float fov = 45.0f,
+			float speed = 10.0f
 		):
-			x(x), y(y), z(z), pitch(pitch), yaw(yaw), fov(fov) {}
+			x(x), y(y), z(z), pitch(pitch), yaw(yaw), roll(roll), fov(fov), speed(speed) {}
 	};
 
 	// Main visualization class

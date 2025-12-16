@@ -21,6 +21,9 @@
 
 namespace Boidsish {
 	constexpr float kMinCameraHeight = 0.1f;
+	constexpr float kCameraRollSpeed = 45.0f; // degrees per second
+	constexpr float kCameraSpeedStep = 2.5f;
+	constexpr float kMinCameraSpeed = 0.5f;
 
 	struct Visualizer::VisualizerImpl {
 		GLFWwindow*                           window;
@@ -339,7 +342,12 @@ namespace Boidsish {
 			front.y = sin(glm::radians(cam_to_use.pitch));
 			front.z = -cos(glm::radians(cam_to_use.pitch)) * cos(glm::radians(cam_to_use.yaw));
 			front = glm::normalize(front);
-			glm::mat4 view = glm::lookAt(cameraPos, cameraPos + front, glm::vec3(0.0f, 1.0f, 0.0f));
+			glm::vec3 right = glm::normalize(glm::cross(front, glm::vec3(0.0f, 1.0f, 0.0f)));
+			glm::vec3 up = glm::normalize(glm::cross(right, front));
+			glm::mat4 roll_mat = glm::rotate(glm::mat4(1.0f), glm::radians(cam_to_use.roll), front);
+			up = glm::vec3(roll_mat * glm::vec4(up, 0.0f));
+
+			glm::mat4 view = glm::lookAt(cameraPos, cameraPos + front, up);
 			shader->use();
 			shader->setMat4("projection", projection);
 			shader->setMat4("view", view);
@@ -474,7 +482,7 @@ namespace Boidsish {
 		void ProcessInput(float delta_time) {
 			if (auto_camera_mode || single_track_mode)
 				return;
-			float     camera_speed = 5.0f * delta_time;
+			float     camera_speed_val = camera.speed * delta_time;
 			glm::vec3 front(
 				cos(glm::radians(camera.pitch)) * sin(glm::radians(camera.yaw)),
 				sin(glm::radians(camera.pitch)),
@@ -482,27 +490,31 @@ namespace Boidsish {
 			);
 			glm::vec3 right = glm::normalize(glm::cross(front, glm::vec3(0.0f, 1.0f, 0.0f)));
 			if (keys[GLFW_KEY_W]) {
-				camera.x += front.x * camera_speed;
-				camera.y += front.y * camera_speed;
-				camera.z += front.z * camera_speed;
+				camera.x += front.x * camera_speed_val;
+				camera.y += front.y * camera_speed_val;
+				camera.z += front.z * camera_speed_val;
 			}
 			if (keys[GLFW_KEY_S]) {
-				camera.x -= front.x * camera_speed;
-				camera.y -= front.y * camera_speed;
-				camera.z -= front.z * camera_speed;
+				camera.x -= front.x * camera_speed_val;
+				camera.y -= front.y * camera_speed_val;
+				camera.z -= front.z * camera_speed_val;
 			}
 			if (keys[GLFW_KEY_A]) {
-				camera.x -= right.x * camera_speed;
-				camera.z -= right.z * camera_speed;
+				camera.x -= right.x * camera_speed_val;
+				camera.z -= right.z * camera_speed_val;
 			}
 			if (keys[GLFW_KEY_D]) {
-				camera.x += right.x * camera_speed;
-				camera.z += right.z * camera_speed;
+				camera.x += right.x * camera_speed_val;
+				camera.z += right.z * camera_speed_val;
 			}
 			if (keys[GLFW_KEY_SPACE])
-				camera.y += camera_speed;
+				camera.y += camera_speed_val;
 			if (keys[GLFW_KEY_LEFT_SHIFT])
-				camera.y -= camera_speed;
+				camera.y -= camera_speed_val;
+			if (keys[GLFW_KEY_Q])
+				camera.roll -= kCameraRollSpeed * delta_time;
+			if (keys[GLFW_KEY_E])
+				camera.roll += kCameraRollSpeed * delta_time;
 			if (camera.y < kMinCameraHeight)
 				camera.y = kMinCameraHeight;
 		}
@@ -683,6 +695,12 @@ namespace Boidsish {
 					impl->glitched_effect = !impl->glitched_effect;
 				} else if (key == GLFW_KEY_5 && action == GLFW_PRESS) {
 					impl->wireframe_effect = !impl->wireframe_effect;
+				} else if ((key == GLFW_KEY_LEFT_BRACKET) && (action == GLFW_PRESS || action == GLFW_REPEAT)) {
+					impl->camera.speed -= kCameraSpeedStep;
+					if (impl->camera.speed < kMinCameraSpeed)
+						impl->camera.speed = kMinCameraSpeed;
+				} else if ((key == GLFW_KEY_RIGHT_BRACKET) && (action == GLFW_PRESS || action == GLFW_REPEAT)) {
+					impl->camera.speed += kCameraSpeedStep;
 				}
 			}
 			if (key == GLFW_KEY_P && action == GLFW_PRESS)
