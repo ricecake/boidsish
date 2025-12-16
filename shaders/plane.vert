@@ -10,8 +10,16 @@ uniform mat4 view;
 uniform mat4 projection;
 uniform mat4 reflectionViewProjection;
 
+layout(std140) uniform Lighting {
+	vec3  lightPos;
+	vec3  viewPos;
+	vec3  lightColor;
+	float time;
+};
+
 void main() {
 	WorldPos = vec3(model * vec4(aPos, 1.0));
+	WorldPos.xz += viewPos.xz;
 	Normal = vec3(0.0, 1.0, 0.0);
 	ReflectionClipSpacePos = reflectionViewProjection * vec4(WorldPos, 1.0);
 	gl_Position = projection * view * vec4(WorldPos, 1.0);

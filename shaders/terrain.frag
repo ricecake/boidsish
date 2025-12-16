@@ -159,9 +159,9 @@ void main() {
 
 	vec3 result = ((ambient + diffuse) * objectColor + specular) + grid_color; // Add specular on top
 	// --- Distance Fade ---
-	float dist = length(FragPos.xz);
-	float fade_start = 450.0;
-	float fade_end = 500.0;
+	float dist = length(FragPos.xz - viewPos.xz);
+	float fade_start = 200.0;
+	float fade_end = 250.0;
 	float fade = 1.0 - smoothstep(fade_start, fade_end, dist);
 
 	FragColor = vec4(result, fade);

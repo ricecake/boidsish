@@ -58,9 +58,9 @@ void main() {
 	vec3  final_color = mix(lighting * surfaceColor, reflectionColor, reflection_strength) + grid_color;
 
 	// --- Distance Fade ---
-	float dist = length(WorldPos.xz);
-	float fade_start = 450.0;
-	float fade_end = 500.0;
+	float dist = length(WorldPos.xz - viewPos.xz);
+	float fade_start = 200.0;
+	float fade_end = 250.0;
 	float fade = 1.0 - smoothstep(fade_start, fade_end, dist);
 
 	FragColor = vec4(final_color, fade);
