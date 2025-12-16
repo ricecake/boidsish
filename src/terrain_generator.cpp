@@ -1,10 +1,5 @@
 #include "terrain_generator.h"
-
-struct TerrainParameters {
-    float frequency;
-    float amplitude;
-    float threshold;
-};
+#include "terrain.h"
 
 #include <cmath>
 #include <numeric>

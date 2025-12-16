@@ -16,6 +16,15 @@ out vec2 TexCoords;
 uniform mat4 view;
 uniform mat4 projection;
 
+#include "noise.glsl"
+
+struct TerrainParameters {
+    float frequency;
+    float amplitude;
+    float threshold;
+};
+uniform TerrainParameters terrain;
+
 layout (std140, binding = 0) uniform Lighting {
     vec3 lightPos;
     vec3 viewPos;
@@ -35,10 +44,19 @@ void main()
     vec3 pos2 = mix(WorldPos_TC_out[3], WorldPos_TC_out[2], uv.x);
     FragPos = mix(pos1, pos2, uv.y);
 
+    // Recalculate height
+    float noise = (fbm(FragPos.xz * terrain.frequency));
+    if (noise > terrain.threshold) {
+        FragPos.y = (noise - terrain.threshold) * terrain.amplitude;
+    } else {
+        FragPos.y = 0.0;
+    }
+
+    // Bilinearly interpolate the normal (This is the key to Phong tessellation)
     vec3 norm1 = mix(Normal_TC_out[0], Normal_TC_out[1], uv.x);
     vec3 norm2 = mix(Normal_TC_out[3], Normal_TC_out[2], uv.x);
-    Normal = normalize(mix(norm1, norm2, uv.y));
+    Normal = normalize(mix(norm1, norm2, uv.y)); // Use the interpolated normal
 
-    // Final vertex position in clip space
+    // Transform the final position to clip space
     gl_Position = projection * view * vec4(FragPos, 1.0);
 }
