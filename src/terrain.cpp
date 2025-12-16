@@ -46,11 +46,19 @@ namespace Boidsish {
 
 	void Terrain::render() const {
 		terrain_shader_->use();
-		// Set uniforms if necessary, e.g., model matrix
 		glm::mat4 model = glm::mat4(1.0f);
 		model = glm::translate(model, glm::vec3(GetX(), GetY(), GetZ()));
 		terrain_shader_->setMat4("model", model);
+		glBindVertexArray(vao_);
+		glDrawElements(GL_TRIANGLES, index_count_, GL_UNSIGNED_INT, 0);
+		glBindVertexArray(0);
+	}
 
+	void Terrain::render(Shader& shader) const {
+		shader.use();
+		glm::mat4 model = glm::mat4(1.0f);
+		model = glm::translate(model, glm::vec3(GetX(), GetY(), GetZ()));
+		shader.setMat4("model", model);
 		glBindVertexArray(vao_);
 		glDrawElements(GL_TRIANGLES, index_count_, GL_UNSIGNED_INT, 0);
 		glBindVertexArray(0);

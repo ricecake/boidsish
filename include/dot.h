@@ -28,6 +28,7 @@ namespace Boidsish {
 
 		// Render implementation
 		void render() const override;
+		void render(Shader& shader) const override;
 
 	private:
 		float size_;

@@ -37,6 +37,7 @@ namespace Boidsish {
 		std::unique_ptr<Shader> sky_shader;
 		std::unique_ptr<Shader> trail_shader;
 		std::unique_ptr<Shader> blur_shader;
+		std::shared_ptr<Shader> debug_shader;
 		GLuint                  plane_vao, plane_vbo, sky_vao, blur_quad_vao, blur_quad_vbo;
 		GLuint                  reflection_fbo, reflection_texture, reflection_depth_rbo;
 		GLuint                  pingpong_fbo[2], pingpong_texture[2];
@@ -74,6 +75,7 @@ namespace Boidsish {
 		bool   shimmery_effect = false;
 		bool   glitched_effect = false;
 		bool   wireframe_effect = false;
+		bool   debug_mode = false;
 
 		VisualizerImpl(int w, int h, const char* title): width(w), height(h) {
 			last_frame = std::chrono::high_resolution_clock::now();
@@ -124,6 +126,7 @@ namespace Boidsish {
 			sky_shader = std::make_unique<Shader>("shaders/sky.vert", "shaders/sky.frag");
 			trail_shader = std::make_unique<Shader>("shaders/trail.vert", "shaders/trail.frag");
 			blur_shader = std::make_unique<Shader>("shaders/blur.vert", "shaders/blur.frag");
+			debug_shader = std::make_shared<Shader>("shaders/debug.vert", "shaders/debug.frag", "shaders/debug.geom");
 			terrain_generator = std::make_unique<TerrainGenerator>();
 
 			glGenBuffers(1, &lighting_ubo);
@@ -305,14 +308,20 @@ namespace Boidsish {
 			float                                      time,
 			const std::optional<glm::vec4>&            clip_plane
 		) {
-			shader->use();
-			shader->setFloat("ripple_strength", ripple_strength);
-			shader->setBool("colorShift", color_shift_effect);
-			shader->setMat4("view", view);
-			if (clip_plane) {
-				shader->setVec4("clipPlane", *clip_plane);
+			std::shared_ptr<Shader> current_shader = debug_mode ? debug_shader : shader;
+			current_shader->use();
+			if (debug_mode) {
+				current_shader->setMat4("view", view);
+				current_shader->setMat4("projection", projection);
 			} else {
-				shader->setVec4("clipPlane", glm::vec4(0, 0, 0, 0)); // No clipping
+				current_shader->setFloat("ripple_strength", ripple_strength);
+				current_shader->setBool("colorShift", color_shift_effect);
+				current_shader->setMat4("view", view);
+			}
+			if (clip_plane) {
+				current_shader->setVec4("clipPlane", *clip_plane);
+			} else {
+				current_shader->setVec4("clipPlane", glm::vec4(0, 0, 0, 0)); // No clipping
 			}
 
 			if (shapes.empty()) {
@@ -334,7 +343,11 @@ namespace Boidsish {
 					);
 					trail_last_update[shape->GetId()] = time;
 				}
-				shape->render();
+                if (debug_mode) {
+                    shape->render(*debug_shader);
+                } else {
+				    shape->render();
+                }
 			}
 
 			trail_shader->use();
@@ -358,17 +371,22 @@ namespace Boidsish {
 				return;
 			}
 
-			Terrain::terrain_shader_->use();
-			Terrain::terrain_shader_->setMat4("view", view);
-			Terrain::terrain_shader_->setMat4("projection", projection);
+			std::shared_ptr<Shader> current_shader = debug_mode ? debug_shader : Terrain::terrain_shader_;
+			current_shader->use();
+			current_shader->setMat4("view", view);
+			current_shader->setMat4("projection", projection);
 			if (clip_plane) {
-				Terrain::terrain_shader_->setVec4("clipPlane", *clip_plane);
+				current_shader->setVec4("clipPlane", *clip_plane);
 			} else {
-				Terrain::terrain_shader_->setVec4("clipPlane", glm::vec4(0, 0, 0, 0)); // No clipping
+				current_shader->setVec4("clipPlane", glm::vec4(0, 0, 0, 0)); // No clipping
 			}
 
 			for (const auto& chunk : terrain_chunks) {
-				chunk->render();
+				if (debug_mode) {
+					chunk->render(*debug_shader);
+				} else {
+					chunk->render();
+				}
 			}
 		}
 
@@ -633,6 +651,8 @@ namespace Boidsish {
 					impl->glitched_effect = !impl->glitched_effect;
 				} else if (key == GLFW_KEY_5 && action == GLFW_PRESS) {
 					impl->wireframe_effect = !impl->wireframe_effect;
+				} else if (key == GLFW_KEY_6 && action == GLFW_PRESS) {
+					impl->debug_mode = !impl->debug_mode;
 				}
 			}
 			if (key == GLFW_KEY_P && action == GLFW_PRESS)

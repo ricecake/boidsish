@@ -18,4 +18,15 @@ namespace Boidsish {
 		RenderSphere(glm::vec3(GetX(), GetY(), GetZ()), glm::vec3(GetR(), GetG(), GetB()), size_ * 0.01f);
 	}
 
+	void Dot::render(Shader& shader) const {
+		shader.use();
+		glm::mat4 model = glm::mat4(1.0f);
+		model = glm::translate(model, glm::vec3(GetX(), GetY(), GetZ()));
+		model = glm::scale(model, glm::vec3(size_ * 0.01f));
+		shader.setMat4("model", model);
+		glBindVertexArray(sphere_vao_);
+		glDrawArrays(GL_TRIANGLE_STRIP, 0, sphere_vertex_count_);
+		glBindVertexArray(0);
+	}
+
 } // namespace Boidsish

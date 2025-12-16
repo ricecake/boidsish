@@ -13,6 +13,7 @@ namespace Boidsish {
 		~Terrain();
 
 		void render() const override;
+		void render(Shader& shader) const override;
 
 		static std::shared_ptr<Shader> terrain_shader_;
 

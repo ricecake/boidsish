@@ -19,6 +19,11 @@ namespace Boidsish {
 
 		// Pure virtual function for rendering the shape
 		virtual void render() const = 0;
+		virtual void render(Shader& /* shader */) const {
+			// Default implementation does nothing.
+			// This is to avoid forcing all subclasses to implement this method
+			// if they don't need to support the debug shader.
+		};
 
 		// Get the active visual effects for this shape
 		virtual std::vector<VisualEffect> GetActiveEffects() const { return {}; }
@@ -88,7 +93,7 @@ namespace Boidsish {
 		float r_, g_, b_, a_;
 		int   trail_length_;
 
-	private:
+	protected:
 		// Shared sphere mesh
 		static unsigned int sphere_vao_;
 		static unsigned int sphere_vbo_;
