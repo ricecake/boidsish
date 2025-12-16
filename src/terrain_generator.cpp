@@ -146,7 +146,7 @@ namespace Boidsish {
 		}
 
 		// Generate vertices and normals
-		vertexData.reserve(num_vertices_x * num_vertices_z * 6);
+		vertexData.reserve(num_vertices_x * num_vertices_z * 8);
 		for (int i = 0; i < num_vertices_x; ++i) {
 			for (int j = 0; j < num_vertices_z; ++j) {
 				float y = heightmap[i][j];
@@ -166,27 +166,27 @@ namespace Boidsish {
 				vertexData.push_back(normal.x);
 				vertexData.push_back(normal.y);
 				vertexData.push_back(normal.z);
+
+				// Texture coordinates
+				vertexData.push_back((float)i / chunk_size_);
+				vertexData.push_back((float)j / chunk_size_);
 			}
 		}
 
-		// Generate indices for a full grid with CCW winding
-		indices.reserve(chunk_size_ * chunk_size_ * 6);
+		// Generate indices for a grid of quads
+		indices.reserve(chunk_size_ * chunk_size_ * 4);
 		for (int i = 0; i < chunk_size_; ++i) {
 			for (int j = 0; j < chunk_size_; ++j) {
-				// First triangle (CCW)
 				indices.push_back(i * num_vertices_z + j);
-				indices.push_back(i * num_vertices_z + j + 1);
 				indices.push_back((i + 1) * num_vertices_z + j);
-
-				// Second triangle (CCW)
-				indices.push_back((i + 1) * num_vertices_z + j);
-				indices.push_back(i * num_vertices_z + j + 1);
 				indices.push_back((i + 1) * num_vertices_z + j + 1);
+				indices.push_back(i * num_vertices_z + j + 1);
 			}
 		}
 
 		auto terrain_chunk = std::make_shared<Terrain>(vertexData, indices);
 		terrain_chunk->SetPosition(chunkX * chunk_size_, 0, chunkZ * chunk_size_);
+
 		return terrain_chunk;
 	}
 

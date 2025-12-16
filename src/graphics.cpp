@@ -87,8 +87,8 @@ namespace Boidsish {
 				std::cerr << "GLFW Error " << error << ": " << description << std::endl;
 			});
 
-			glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
-			glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
+			glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
+			glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 2);
 			glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
 #ifdef __APPLE__
 			glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE);
@@ -165,7 +165,12 @@ namespace Boidsish {
 				1
 			);
 
-			Terrain::terrain_shader_ = std::make_shared<Shader>("shaders/terrain.vert", "shaders/terrain.frag");
+			Terrain::terrain_shader_ = std::make_shared<Shader>(
+				"shaders/terrain.vert",
+				"shaders/terrain.frag",
+				"shaders/terrain.tcs",
+				"shaders/terrain.tes"
+			);
 			glUniformBlockBinding(
 				Terrain::terrain_shader_->ID,
 				glGetUniformBlockIndex(Terrain::terrain_shader_->ID, "Lighting"),

@@ -61,10 +61,16 @@ private:
 public:
 	// constructor generates the shader on the fly
 	// ------------------------------------------------------------------------
-	Shader(const char* vertexPath, const char* fragmentPath, const char* geometryPath = nullptr) {
+	Shader(const char* vertexPath,
+	       const char* fragmentPath,
+	       const char* tessControlPath = nullptr,
+	       const char* tessEvaluationPath = nullptr,
+	       const char* geometryPath = nullptr) {
 		// 1. retrieve the vertex/fragment source code from filePath
 		std::string vertexCode;
 		std::string fragmentCode;
+		std::string tessControlCode;
+		std::string tessEvaluationCode;
 		std::string geometryCode;
 
 		std::set<std::string> includedFiles;
@@ -72,6 +78,13 @@ public:
 
 		includedFiles.clear();
 		fragmentCode = loadShaderSource(fragmentPath, includedFiles);
+
+		if (tessControlPath != nullptr && tessEvaluationPath != nullptr) {
+			includedFiles.clear();
+			tessControlCode = loadShaderSource(tessControlPath, includedFiles);
+			includedFiles.clear();
+			tessEvaluationCode = loadShaderSource(tessEvaluationPath, includedFiles);
+		}
 
 		if (geometryPath != nullptr) {
 			includedFiles.clear();
@@ -92,6 +105,22 @@ public:
 		glShaderSource(fragment, 1, &fShaderCode, NULL);
 		glCompileShader(fragment);
 		checkCompileErrors(fragment, "FRAGMENT");
+
+		unsigned int tessControl, tessEvaluation;
+		if (tessControlPath != nullptr && tessEvaluationPath != nullptr) {
+			const char* tcShaderCode = tessControlCode.c_str();
+			tessControl = glCreateShader(GL_TESS_CONTROL_SHADER);
+			glShaderSource(tessControl, 1, &tcShaderCode, NULL);
+			glCompileShader(tessControl);
+			checkCompileErrors(tessControl, "TESS_CONTROL");
+
+			const char* teShaderCode = tessEvaluationCode.c_str();
+			tessEvaluation = glCreateShader(GL_TESS_EVALUATION_SHADER);
+			glShaderSource(tessEvaluation, 1, &teShaderCode, NULL);
+			glCompileShader(tessEvaluation);
+			checkCompileErrors(tessEvaluation, "TESS_EVALUATION");
+		}
+
 		// if geometry shader is given, compile geometry shader
 		unsigned int geometry;
 		if (geometryPath != nullptr) {
@@ -105,6 +134,10 @@ public:
 		ID = glCreateProgram();
 		glAttachShader(ID, vertex);
 		glAttachShader(ID, fragment);
+		if (tessControlPath != nullptr && tessEvaluationPath != nullptr) {
+			glAttachShader(ID, tessControl);
+			glAttachShader(ID, tessEvaluation);
+		}
 		if (geometryPath != nullptr)
 			glAttachShader(ID, geometry);
 		glLinkProgram(ID);
@@ -112,6 +145,10 @@ public:
 		// delete the shaders as they're linked into our program now and no longer necessary
 		glDeleteShader(vertex);
 		glDeleteShader(fragment);
+		if (tessControlPath != nullptr && tessEvaluationPath != nullptr) {
+			glDeleteShader(tessControl);
+			glDeleteShader(tessEvaluation);
+		}
 		if (geometryPath != nullptr)
 			glDeleteShader(geometry);
 	}

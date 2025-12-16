@@ -6,7 +6,6 @@
 #include <glm/glm.hpp>
 
 namespace Boidsish {
-
 	class Terrain: public Shape {
 	public:
 		Terrain(const std::vector<float>& vertexData, const std::vector<unsigned int>& indices);

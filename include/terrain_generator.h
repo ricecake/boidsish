@@ -9,7 +9,6 @@
 #include "terrain.h"
 
 namespace Boidsish {
-
 	class TerrainGenerator {
 	public:
 		TerrainGenerator(int seed = 12345);

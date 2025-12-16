@@ -1,0 +1,44 @@
+#version 420 core
+
+layout (quads, equal_spacing, cw) in;
+
+// Input from Tessellation Control Shader
+in vec3 WorldPos_TC_out[];
+in vec2 TexCoords_TC_out[];
+in vec3 Normal_TC_out[];
+
+// Output to Fragment Shader
+out vec3 FragPos;
+out vec3 Normal;
+out vec2 TexCoords;
+
+// Uniforms for transformations
+uniform mat4 view;
+uniform mat4 projection;
+
+layout (std140, binding = 0) uniform Lighting {
+    vec3 lightPos;
+    vec3 viewPos;
+    vec3 lightColor;
+    float time;
+};
+
+void main()
+{
+    // Interpolate patch corner attributes
+    vec2 uv = gl_TessCoord.xy;
+    vec2 texCoord1 = mix(TexCoords_TC_out[0], TexCoords_TC_out[1], uv.x);
+    vec2 texCoord2 = mix(TexCoords_TC_out[3], TexCoords_TC_out[2], uv.x);
+    TexCoords = mix(texCoord1, texCoord2, uv.y);
+
+    vec3 pos1 = mix(WorldPos_TC_out[0], WorldPos_TC_out[1], uv.x);
+    vec3 pos2 = mix(WorldPos_TC_out[3], WorldPos_TC_out[2], uv.x);
+    FragPos = mix(pos1, pos2, uv.y);
+
+    vec3 norm1 = mix(Normal_TC_out[0], Normal_TC_out[1], uv.x);
+    vec3 norm2 = mix(Normal_TC_out[3], Normal_TC_out[2], uv.x);
+    Normal = normalize(mix(norm1, norm2, uv.y));
+
+    // Final vertex position in clip space
+    gl_Position = projection * view * vec4(FragPos, 1.0);
+}

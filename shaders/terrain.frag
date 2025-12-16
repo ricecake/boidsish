@@ -1,16 +1,16 @@
-#version 330 core
+#version 420 core
 out vec4 FragColor;
 
 in vec3 Normal;
 in vec3 FragPos;
+in vec2 TexCoords;
 
-layout(std140) uniform Lighting {
+layout(std140, binding = 0) uniform Lighting {
 	vec3  lightPos;
 	vec3  viewPos;
 	vec3  lightColor;
 	float time;
 };
-
 
 vec3 mod289(vec3 x) {
 	return x - floor(x * (1.0 / 289.0)) * 289.0;
