@@ -1,5 +1,11 @@
 #include "terrain_generator.h"
 
+struct TerrainParameters {
+    float frequency;
+    float amplitude;
+    float threshold;
+};
+
 #include <cmath>
 #include <numeric>
 #include <vector>
@@ -30,6 +36,7 @@ namespace Boidsish {
 
 	TerrainGenerator::TerrainGenerator(int seed)
 		: perlin_noise_(seed), control_perlin_noise_(seed + 1) {}
+    const TerrainParameters mountains_params_ = {0.02f, 50.0f, 0.35f};
 
 	void TerrainGenerator::update(const Frustum& frustum, const Camera& camera) {
 		int current_chunk_x = static_cast<int>(camera.x) / chunk_size_;
@@ -65,20 +72,6 @@ namespace Boidsish {
 		}
 	}
 
-	float TerrainGenerator::fbm(float x, float z, TerrainParameters params) {
-		float total = 0;
-		float frequency = params.frequency;
-		float amplitude = 1.0;
-		float max_amplitude = 0;
-		for (int i = 0; i < octaves_; i++) {
-			total += perlin_noise_.noise2D(x * frequency, z * frequency) * amplitude;
-			max_amplitude += amplitude;
-			amplitude *= persistence_;
-			frequency *= lacunarity_;
-		}
-		return total / max_amplitude;
-	}
-
 	std::vector<std::shared_ptr<Terrain>> TerrainGenerator::getVisibleChunks() {
 		std::vector<std::shared_ptr<Terrain>> visible_chunks;
 		for (auto const& [key, val] : chunk_cache_) {
@@ -109,6 +102,9 @@ namespace Boidsish {
 				    worldX * control_noise_scale_, worldZ * control_noise_scale_, 2);
 
 				// Interpolate parameters based on control value
+                const TerrainParameters plains_params_ = {0.1f, 5.0f, 0.5f};
+                const TerrainParameters hills_params_ = {0.05f, 15.0f, 0.4f};
+                const TerrainParameters mountains_params_ = {0.02f, 50.0f, 0.35f};
 				TerrainParameters current_params;
 				if (control_value < hills_threshold_) {
 					// Interpolate between plains and hills
@@ -129,8 +125,18 @@ namespace Boidsish {
 					    std::lerp(hills_params_.threshold, mountains_params_.threshold, t);
 				}
 
+                float total = 0;
+                float frequency = current_params.frequency;
+                float amplitude = 1.0;
+                float max_amplitude = 0;
+                for (int k = 0; k < 4; k++) {
+                    total += perlin_noise_.noise2D(worldX * frequency, worldZ * frequency) * amplitude;
+                    max_amplitude += amplitude;
+                    amplitude *= 0.5f;
+                    frequency *= 2.0f;
+                }
+                float noise = total / max_amplitude;
 
-				float noise = (fbm(worldX, worldZ, current_params) + 1.0f) / 2.0f;
 				if (noise > current_params.threshold) {
 					heightmap[i][j] = (noise - current_params.threshold) * current_params.amplitude;
 					has_terrain = true;
@@ -145,8 +151,8 @@ namespace Boidsish {
 			return nullptr;
 		}
 
-		// Generate vertices
-		vertexData.reserve(num_vertices_x * num_vertices_z * 5);
+		// Generate vertices and normals
+		vertexData.reserve(num_vertices_x * num_vertices_z * 8);
 		for (int i = 0; i < num_vertices_x; ++i) {
 			for (int j = 0; j < num_vertices_z; ++j) {
 				float y = heightmap[i][j];
@@ -155,6 +161,17 @@ namespace Boidsish {
 				vertexData.push_back(i);
 				vertexData.push_back(y);
 				vertexData.push_back(j);
+
+				// Calculate normal
+				float hL = (i > 0) ? heightmap[i - 1][j] : y;
+				float hR = (i < chunk_size_) ? heightmap[i + 1][j] : y;
+				float hD = (j > 0) ? heightmap[i][j - 1] : y;
+				float hU = (j < chunk_size_) ? heightmap[i][j + 1] : y;
+
+				glm::vec3 normal = glm::normalize(glm::vec3(hL - hR, 2.0f, hD - hU));
+				vertexData.push_back(normal.x);
+				vertexData.push_back(normal.y);
+				vertexData.push_back(normal.z);
 
 				// Texture coordinates
 				vertexData.push_back((float)i / chunk_size_);
@@ -175,25 +192,6 @@ namespace Boidsish {
 
 		auto terrain_chunk = std::make_shared<Terrain>(vertexData, indices);
 		terrain_chunk->SetPosition(chunkX * chunk_size_, 0, chunkZ * chunk_size_);
-
-        // Calculate biome parameters for the center of the chunk
-        float centerX = (chunkX + 0.5f) * chunk_size_;
-        float centerZ = (chunkZ + 0.5f) * chunk_size_;
-        float control_value = control_perlin_noise_.octave2D_01(centerX * control_noise_scale_, centerZ * control_noise_scale_, 2);
-
-        TerrainParameters current_params;
-        if (control_value < hills_threshold_) {
-            float t = control_value / hills_threshold_;
-            current_params.frequency = std::lerp(plains_params_.frequency, hills_params_.frequency, t);
-            current_params.amplitude = std::lerp(plains_params_.amplitude, hills_params_.amplitude, t);
-            current_params.threshold = std::lerp(plains_params_.threshold, hills_params_.threshold, t);
-        } else {
-            float t = (control_value - hills_threshold_) / (1.0f - hills_threshold_);
-            current_params.frequency = std::lerp(hills_params_.frequency, mountains_params_.frequency, t);
-            current_params.amplitude = std::lerp(hills_params_.amplitude, mountains_params_.amplitude, t);
-            current_params.threshold = std::lerp(hills_params_.threshold, mountains_params_.threshold, t);
-        }
-        terrain_chunk->SetTerrainParameters(current_params);
 
 		return terrain_chunk;
 	}
