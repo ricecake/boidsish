@@ -121,29 +121,14 @@ namespace Boidsish {
 				current_params.amplitude = std::lerp(low_item.amplitude, high_item.amplitude, t);
 				current_params.threshold = std::lerp(low_item.threshold, high_item.threshold, t);
 
-				// logger::LOG("CHUNK", i, j, control_value, low_threshold, high_threshold, t);
-
-				// if (control_value < hills_threshold_) {
-				// 	// Interpolate between plains and hills
-				// 	float t = control_value / hills_threshold_;
-				// 	current_params.frequency = std::lerp(plains_params_.frequency, hills_params_.frequency, t);
-				// 	current_params.amplitude = std::lerp(plains_params_.amplitude, hills_params_.amplitude, t);
-				// 	current_params.threshold = std::lerp(plains_params_.threshold, hills_params_.threshold, t);
-				// } else {
-				// 	// Interpolate between hills and mountains
-				// 	float t = (control_value - hills_threshold_) / (1.0f - hills_threshold_);
-				// 	current_params.frequency = std::lerp(hills_params_.frequency, mountains_params_.frequency, t);
-				// 	current_params.amplitude = std::lerp(hills_params_.amplitude, mountains_params_.amplitude, t);
-				// 	current_params.threshold = std::lerp(hills_params_.threshold, mountains_params_.threshold, t);
-				// }
-
 				auto noise = Simplex::dfBm(
-					glm::vec2(worldX, worldZ) * current_params.frequency,
-					current_params.frequency,
-					current_params.amplitude
-				);
-				noise = (noise + glm::vec3(1.0f, 1, 1)) / 2.0f;
-				// auto noise = (fbm(worldX, worldZ, current_params) + 1.0f) / 2.0f;
+					glm::vec2(worldX, worldZ),// * current_params.frequency,
+					octaves_,
+					lacunarity_,
+					persistence_
+					// current_params.frequency,
+					// current_params.amplitude
+				)*0.5f + 0.5f;
 				if (noise[0] > current_params.threshold) {
 					noise[0] -= current_params.threshold;
 					noise *= current_params.amplitude;
@@ -155,7 +140,6 @@ namespace Boidsish {
 			}
 		}
 
-		// If chunk is completely flat, don't generate a mesh for it
 		if (!has_terrain) {
 			return nullptr;
 		}
@@ -170,12 +154,6 @@ namespace Boidsish {
 				vertexData.push_back(i);
 				vertexData.push_back(y);
 				vertexData.push_back(j);
-
-				// Calculate normal
-				// float hL = (i > 0) ? heightmap[i - 1][j] : y;
-				// float hR = (i < chunk_size_) ? heightmap[i + 1][j] : y;
-				// float hD = (j > 0) ? heightmap[i][j - 1] : y;
-				// float hU = (j < chunk_size_) ? heightmap[i][j + 1] : y;
 
 				glm::vec3 normal = glm::normalize(glm::vec3(-heightmap[i][j][1], 1.0f, -heightmap[i][j][2]));
 				vertexData.push_back(normal.x);
