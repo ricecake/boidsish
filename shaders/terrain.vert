@@ -17,7 +17,7 @@ layout(std140, binding = 0) uniform Lighting {
 };
 
 void main() {
-    // gl_Position = model * vec4(aPos, 1.0);
+	// gl_Position = model * vec4(aPos, 1.0);
 	gl_Position = vec4(aPos, 1.0);
 	WorldPos_VS_out = vec3(model * vec4(aPos, 1.0));
 	TexCoords_VS_out = aTexCoords;

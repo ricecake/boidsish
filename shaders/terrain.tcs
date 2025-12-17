@@ -28,11 +28,11 @@ float GetVertexTessLevel(vec3 worldPos, vec3 normal) {
 	// If N is perpendicular to V (silhouette), dot is 0, factor is 1 (Max tess).
 	// If N is parallel to V (facing camera), dot is 1, factor is 0 (Min tess).
 	float dotProd = dot(normalize(normal), viewDir);
-	float silhouetteFactor = 1-abs(dotProd);
-    // float silhouetteFactor = 4*abs(sin(dotProd*time));
+	float silhouetteFactor = 1 - abs(dotProd);
+	// float silhouetteFactor = 4*abs(sin(dotProd*time));
 
 	// silhouetteFactor = mix(0, silhouetteFactor, dotProd >= 0);
-    silhouetteFactor = mix(0.2, 1.0, silhouetteFactor);
+	silhouetteFactor = mix(0.2, 1.0, silhouetteFactor);
 
 	// clamp the distance to avoid divide-by-zero or infinite tessellation at close range
 	float distanceFactor = uTessLevelMax / max(dist, 1.0);
@@ -61,9 +61,8 @@ void main() {
 		gl_TessLevelOuter[2] = clamp(edge2, uTessLevelMin, uTessLevelMax);
 		gl_TessLevelOuter[3] = clamp(edge3, uTessLevelMin, uTessLevelMax);
 
-
-        gl_TessLevelInner[0] = 0.5 * (gl_TessLevelOuter[0] + gl_TessLevelOuter[2]);
-        gl_TessLevelInner[1] = 0.5 * (gl_TessLevelOuter[1] + gl_TessLevelOuter[3]);
+		gl_TessLevelInner[0] = 0.5 * (gl_TessLevelOuter[0] + gl_TessLevelOuter[2]);
+		gl_TessLevelInner[1] = 0.5 * (gl_TessLevelOuter[1] + gl_TessLevelOuter[3]);
 
 		// gl_TessLevelInner[0] = (gl_TessLevelOuter[0] + gl_TessLevelOuter[1] + gl_TessLevelOuter[2] +
 		//                         gl_TessLevelOuter[3]) /
@@ -71,6 +70,5 @@ void main() {
 		// gl_TessLevelInner[1] = (gl_TessLevelOuter[0] + gl_TessLevelOuter[1] + gl_TessLevelOuter[2] +
 		//                         gl_TessLevelOuter[3]) /
 		// 	4.0;
-
 	}
 }

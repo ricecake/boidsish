@@ -103,12 +103,13 @@ float fbm(vec3 p) {
 	}
 	return value;
 }
-void main() {
-    // FragColor = vec4(1,1,1, 1.0);
 
-	if (FragPos.y < 0.001) {
-		discard;
-	}
+void main() {
+	// FragColor = vec4(1,1,1, 1.0);
+
+	// if (FragPos.y < 0.001) {
+	// 	discard;
+	// }
 
 	// vec3 objectColor = vec3(mix(0.2, 0.4, step(0.1, fract(FragPos.y))), 0, 0.5); // A deep blue
 	// vec3 objectColor = vec3(0.2, 0.3, 0.4); // A deep blue
@@ -164,5 +165,5 @@ void main() {
 	float fade_end = 425.0;
 	float fade = 1.0 - smoothstep(fade_start, fade_end, dist);
 
-	FragColor = vec4(result, fade);
+	FragColor = vec4(result, mix(0, fade, step(0.01, FragPos.y)));
 }
