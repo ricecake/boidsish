@@ -159,11 +159,7 @@ namespace Boidsish {
 			glBindBufferRange(GL_UNIFORM_BUFFER, 1, artistic_effects_ubo, 0, 20);
 
 			shader->use();
-			glUniformBlockBinding(
-				shader->ID,
-				glGetUniformBlockIndex(shader->ID, "ArtisticEffects"),
-				1
-			);
+			glUniformBlockBinding(shader->ID, glGetUniformBlockIndex(shader->ID, "ArtisticEffects"), 1);
 
 			Terrain::terrain_shader_ = std::make_shared<Shader>(
 				"shaders/terrain.vert",
@@ -847,9 +843,9 @@ namespace Boidsish {
 		glBindBuffer(GL_UNIFORM_BUFFER, 0);
 
 		// --- Update Lighting UBO ---
-		float light_x = 50.0f * cos(impl->simulation_time * 0.05f);
-		float light_y = 25.0f + 1.8 * abs(sin(impl->simulation_time*0.01));
-		float light_z = 50.0f * sin(impl->simulation_time * 0.05f);
+		float     light_x = 50.0f * cos(impl->simulation_time * 0.05f);
+		float     light_y = 25.0f + 1.8 * abs(sin(impl->simulation_time * 0.01));
+		float     light_z = 50.0f * sin(impl->simulation_time * 0.05f);
 		glm::vec3 lightPos(light_x, light_y, light_z);
 
 		glBindBuffer(GL_UNIFORM_BUFFER, impl->lighting_ubo);

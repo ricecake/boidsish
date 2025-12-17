@@ -1,6 +1,6 @@
 #version 420 core
 
-layout (vertices = 4) out;
+layout(vertices = 4) out;
 
 in vec3 WorldPos_VS_out[];
 in vec2 TexCoords_VS_out[];
@@ -10,55 +10,57 @@ out vec3 WorldPos_TC_out[];
 out vec2 TexCoords_TC_out[];
 out vec3 Normal_TC_out[];
 
-layout (std140, binding = 0) uniform Lighting {
-    vec3 lightPos;
-    vec3 viewPos;
-    vec3 lightColor;
-    float time;
+layout(std140, binding = 0) uniform Lighting {
+	vec3  lightPos;
+	vec3  viewPos;
+	vec3  lightColor;
+	float time;
 };
 
 float uTessLevelMax = 128;
 float uTessLevelMin = 2;
 
 float GetVertexTessLevel(vec3 worldPos, vec3 normal) {
-    vec3 viewDir = viewPos - worldPos;
-    float dist = length(viewDir);
-    viewDir /= dist;
+	vec3  viewDir = viewPos - worldPos;
+	float dist = length(viewDir);
+	viewDir /= dist;
 
-    // If N is perpendicular to V (silhouette), dot is 0, factor is 1 (Max tess).
-    // If N is parallel to V (facing camera), dot is 1, factor is 0 (Min tess).
-    float dotProd = dot(normalize(normal), viewDir);
-    float silhouetteFactor = 1.0 - dotProd;
+	// If N is perpendicular to V (silhouette), dot is 0, factor is 1 (Max tess).
+	// If N is parallel to V (facing camera), dot is 1, factor is 0 (Min tess).
+	float dotProd = dot(normalize(normal), viewDir);
+	float silhouetteFactor = 1.0 - dotProd;
 
-    silhouetteFactor = mix(0, max(silhouetteFactor, 0.1), silhouetteFactor >= 0);
+	silhouetteFactor = mix(0, max(silhouetteFactor, 0.1), silhouetteFactor >= 0);
 
-    // clamp the distance to avoid divide-by-zero or infinite tessellation at close range
-    float distanceFactor = uTessLevelMax / max(dist, 1.0);
+	// clamp the distance to avoid divide-by-zero or infinite tessellation at close range
+	float distanceFactor = uTessLevelMax / max(dist, 1.0);
 
-    return silhouetteFactor * distanceFactor;
+	return silhouetteFactor * distanceFactor;
 }
 
 void main() {
-    WorldPos_TC_out[gl_InvocationID] = WorldPos_VS_out[gl_InvocationID];
-    TexCoords_TC_out[gl_InvocationID] = TexCoords_VS_out[gl_InvocationID];
-    Normal_TC_out[gl_InvocationID]    = Normal_VS_out[gl_InvocationID];
+	WorldPos_TC_out[gl_InvocationID] = WorldPos_VS_out[gl_InvocationID];
+	TexCoords_TC_out[gl_InvocationID] = TexCoords_VS_out[gl_InvocationID];
+	Normal_TC_out[gl_InvocationID] = Normal_VS_out[gl_InvocationID];
 
-    if (gl_InvocationID == 0) {
-        float l0 = GetVertexTessLevel(WorldPos_VS_out[0], Normal_VS_out[0]);
-        float l1 = GetVertexTessLevel(WorldPos_VS_out[1], Normal_VS_out[1]);
-        float l2 = GetVertexTessLevel(WorldPos_VS_out[2], Normal_VS_out[2]);
-        float l3 = GetVertexTessLevel(WorldPos_VS_out[3], Normal_VS_out[3]);
+	if (gl_InvocationID == 0) {
+		float l0 = GetVertexTessLevel(WorldPos_VS_out[0], Normal_VS_out[0]);
+		float l1 = GetVertexTessLevel(WorldPos_VS_out[1], Normal_VS_out[1]);
+		float l2 = GetVertexTessLevel(WorldPos_VS_out[2], Normal_VS_out[2]);
+		float l3 = GetVertexTessLevel(WorldPos_VS_out[3], Normal_VS_out[3]);
 
-        float edge0 = mix(l0, l1, 0.5);
-        float edge1 = mix(l1, l2, 0.5);
-        float edge2 = mix(l2, l3, 0.5);
-        float edge3 = mix(l3, l0, 0.5);
+		float edge0 = mix(l0, l1, 0.5);
+		float edge1 = mix(l1, l2, 0.5);
+		float edge2 = mix(l2, l3, 0.5);
+		float edge3 = mix(l3, l0, 0.5);
 
-        gl_TessLevelOuter[0] = clamp(edge0, uTessLevelMin, uTessLevelMax);
-        gl_TessLevelOuter[1] = clamp(edge1, uTessLevelMin, uTessLevelMax);
-        gl_TessLevelOuter[2] = clamp(edge2, uTessLevelMin, uTessLevelMax);
-        gl_TessLevelOuter[3] = clamp(edge3, uTessLevelMin, uTessLevelMax);
+		gl_TessLevelOuter[0] = clamp(edge0, uTessLevelMin, uTessLevelMax);
+		gl_TessLevelOuter[1] = clamp(edge1, uTessLevelMin, uTessLevelMax);
+		gl_TessLevelOuter[2] = clamp(edge2, uTessLevelMin, uTessLevelMax);
+		gl_TessLevelOuter[3] = clamp(edge3, uTessLevelMin, uTessLevelMax);
 
-        gl_TessLevelInner[0] = (gl_TessLevelOuter[0] + gl_TessLevelOuter[1] + gl_TessLevelOuter[2] + gl_TessLevelOuter[3]) / 4.0;
-    }
+		gl_TessLevelInner[0] = (gl_TessLevelOuter[0] + gl_TessLevelOuter[1] + gl_TessLevelOuter[2] +
+		                        gl_TessLevelOuter[3]) /
+			4.0;
+	}
 }

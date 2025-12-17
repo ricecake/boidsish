@@ -4,9 +4,8 @@
 #include <memory>
 #include <vector>
 
-#include <glm/glm.hpp>
-
 #include "visual_effects.h"
+#include <glm/glm.hpp>
 
 class Shader;
 

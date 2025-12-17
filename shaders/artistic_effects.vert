@@ -30,14 +30,12 @@ vec3 applyGlitch(vec3 position, float time) {
 		// vec3 displacement = sin(position* glitchSpeed + time * 10.0) * glitchStrength;
 		// position += mix(displacement.yzx/2, 3*displacement.zxy/2, abs(sin(time*mod289(position))));
 
-		vec3 displacement = sin(position* glitchSpeed + time * 10.0) * glitchStrength;
-		position +=
-		mix(
-			smoothstep(displacement.yzx/2, 3*displacement.zxy/2, abs(sin(time*mod289(position)))),
-			mix(displacement.yzx/2, 3*displacement.zxy/2, abs(sin(time*mod289(position)))),
+		vec3 displacement = sin(position * glitchSpeed + time * 10.0) * glitchStrength;
+		position += mix(
+			smoothstep(displacement.yzx / 2, 3 * displacement.zxy / 2, abs(sin(time * mod289(position)))),
+			mix(displacement.yzx / 2, 3 * displacement.zxy / 2, abs(sin(time * mod289(position)))),
 			abs(sin(time))
 		);
-
 	}
 	return position;
 }

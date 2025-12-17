@@ -10,8 +10,8 @@ out vec3 Normal_VS_out;
 uniform mat4 model;
 
 void main() {
-    gl_Position = vec4(aPos, 1.0);
-    WorldPos_VS_out = vec3(model * vec4(aPos, 1.0));
-    TexCoords_VS_out = aTexCoords;
-    Normal_VS_out = mat3(transpose(inverse(model))) * aNormal;
+	gl_Position = vec4(aPos, 1.0);
+	WorldPos_VS_out = vec3(model * vec4(aPos, 1.0));
+	TexCoords_VS_out = aTexCoords;
+	Normal_VS_out = mat3(transpose(inverse(model))) * aNormal;
 }

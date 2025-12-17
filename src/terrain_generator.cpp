@@ -18,8 +18,7 @@ namespace Boidsish {
 
 		for (int i = 0; i < 6; ++i) {
 			float r = halfSize.x * std::abs(frustum.planes[i].normal.x) +
-			          halfSize.y * std::abs(frustum.planes[i].normal.y) +
-			          halfSize.z * std::abs(frustum.planes[i].normal.z);
+				halfSize.y * std::abs(frustum.planes[i].normal.y) + halfSize.z * std::abs(frustum.planes[i].normal.z);
 			float d = glm::dot(center, frustum.planes[i].normal) + frustum.planes[i].distance;
 			if (d < -r) {
 				return false;
@@ -28,8 +27,7 @@ namespace Boidsish {
 		return true;
 	}
 
-	TerrainGenerator::TerrainGenerator(int seed)
-		: perlin_noise_(seed), control_perlin_noise_(seed + 1) {}
+	TerrainGenerator::TerrainGenerator(int seed): perlin_noise_(seed), control_perlin_noise_(seed + 1) {}
 
 	void TerrainGenerator::update(const Frustum& frustum, const Camera& camera) {
 		int current_chunk_x = static_cast<int>(camera.x) / chunk_size_;
@@ -105,8 +103,8 @@ namespace Boidsish {
 				float worldZ = (chunkZ * chunk_size_ + j);
 
 				// Get control value to determine biome
-				float control_value = control_perlin_noise_.octave2D_01(
-				    worldX * control_noise_scale_, worldZ * control_noise_scale_, 2);
+				float control_value = control_perlin_noise_
+										  .octave2D_01(worldX * control_noise_scale_, worldZ * control_noise_scale_, 2);
 
 				// Interpolate parameters based on control value
 				TerrainParameters current_params;
@@ -114,21 +112,15 @@ namespace Boidsish {
 					// Interpolate between plains and hills
 					float t = control_value / hills_threshold_;
 					current_params.frequency = std::lerp(plains_params_.frequency, hills_params_.frequency, t);
-					current_params.amplitude =
-					    std::lerp(plains_params_.amplitude, hills_params_.amplitude, t);
-					current_params.threshold =
-					    std::lerp(plains_params_.threshold, hills_params_.threshold, t);
+					current_params.amplitude = std::lerp(plains_params_.amplitude, hills_params_.amplitude, t);
+					current_params.threshold = std::lerp(plains_params_.threshold, hills_params_.threshold, t);
 				} else {
 					// Interpolate between hills and mountains
 					float t = (control_value - hills_threshold_) / (1.0f - hills_threshold_);
-					current_params.frequency =
-					    std::lerp(hills_params_.frequency, mountains_params_.frequency, t);
-					current_params.amplitude =
-					    std::lerp(hills_params_.amplitude, mountains_params_.amplitude, t);
-					current_params.threshold =
-					    std::lerp(hills_params_.threshold, mountains_params_.threshold, t);
+					current_params.frequency = std::lerp(hills_params_.frequency, mountains_params_.frequency, t);
+					current_params.amplitude = std::lerp(hills_params_.amplitude, mountains_params_.amplitude, t);
+					current_params.threshold = std::lerp(hills_params_.threshold, mountains_params_.threshold, t);
 				}
-
 
 				float noise = (fbm(worldX, worldZ, current_params) + 1.0f) / 2.0f;
 				if (noise > current_params.threshold) {

@@ -104,7 +104,6 @@ float fbm(vec3 p) {
 	return value;
 }
 
-
 void main() {
 	if (FragPos.y < 0.001) {
 		discard;
@@ -112,7 +111,7 @@ void main() {
 
 	// vec3 objectColor = vec3(mix(0.2, 0.4, step(0.1, fract(FragPos.y))), 0, 0.5); // A deep blue
 	// vec3 objectColor = vec3(0.2, 0.3, 0.4); // A deep blue
-	vec3 objectColor = mix(vec3(0.05, 0.05, 0.08), vec3(0.2, 0.3, 0.4), FragPos.y/5); // A deep blue
+	vec3 objectColor = mix(vec3(0.05, 0.05, 0.08), vec3(0.2, 0.3, 0.4), FragPos.y / 5); // A deep blue
 
 	vec3  warp = vec3(fbm(FragPos + time * 0.1));
 	float nebula_noise = fbm(FragPos + warp * 0.5);
@@ -153,9 +152,9 @@ void main() {
 	vec3  warp2 = vec3(fbm(fwidth(FragPos) + time * 0.1));
 	float nebula_noise2 = fbm(fwidth(FragPos) + warp * 0.5);
 	// float intensity = max(C_minor, C_major * 1.5) * 0.3;
-	float intensity = max(C_minor, C_major * 1.5)*0.4;
+	float intensity = max(C_minor, C_major * 1.5) * 0.4;
 	// vec3  grid_color = normalize(abs(fwidth(FragPos.yxz))) * intensity+nebula_noise*warp;
-	vec3  grid_color = normalize(abs(fwidth(FragPos.zxy))) * intensity+nebula_noise2*warp2;
+	vec3 grid_color = normalize(abs(fwidth(FragPos.zxy))) * intensity + nebula_noise2 * warp2;
 
 	vec3 result = ((ambient + diffuse) * objectColor + specular) + grid_color; // Add specular on top
 	// --- Distance Fade ---

@@ -18,6 +18,7 @@ namespace Boidsish {
 
 	private:
 		std::shared_ptr<Terrain> generateChunk(int chunkX, int chunkZ);
+
 		// Terrain parameters
 		struct TerrainParameters {
 			float frequency;
@@ -25,8 +26,8 @@ namespace Boidsish {
 			float threshold;
 		};
 
-		const int chunk_size_ = 32;
-		const int view_distance_ = 8; // in chunks
+		const int   chunk_size_ = 32;
+		const int   view_distance_ = 8; // in chunks
 		const int   octaves_ = 4;
 		const float lacunarity_ = 2.0f;
 		const float persistence_ = 0.5f;
