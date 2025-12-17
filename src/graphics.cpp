@@ -166,6 +166,7 @@ namespace Boidsish {
 				"shaders/terrain.frag",
 				"shaders/terrain.tcs",
 				"shaders/terrain.tes"
+				// , "shaders/terrain.geom"
 			);
 			glUniformBlockBinding(
 				Terrain::terrain_shader_->ID,

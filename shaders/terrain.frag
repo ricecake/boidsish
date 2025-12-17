@@ -103,8 +103,9 @@ float fbm(vec3 p) {
 	}
 	return value;
 }
-
 void main() {
+    // FragColor = vec4(1,1,1, 1.0);
+
 	if (FragPos.y < 0.001) {
 		discard;
 	}
