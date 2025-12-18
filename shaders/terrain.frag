@@ -105,10 +105,11 @@ float fbm(vec3 p) {
 }
 
 void main() {
+	// FragColor = vec4(1,1,1, 1);
 
 	vec3  warp = vec3(fbm(FragPos + time * 0.1));
 	float nebula_noise = fbm(FragPos + warp * 0.5);
-	vec3 warpNoise = nebula_noise * warp;
+	vec3  warpNoise = nebula_noise * warp;
 
 	vec3 objectColor = mix(vec3(0.05, 0.05, 0.08), vec3(0.2, 0.3, 0.4), FragPos.y / 5); // A deep blue
 	objectColor += warpNoise;

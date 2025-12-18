@@ -121,14 +121,35 @@ namespace Boidsish {
 				current_params.amplitude = std::lerp(low_item.amplitude, high_item.amplitude, t);
 				current_params.threshold = std::lerp(low_item.threshold, high_item.threshold, t);
 
+				// Simplex::dFlowNoise( position + Simplex::fBm( vec3( position, time * 0.1f ) ), time )
+				auto pos = glm::vec2(worldX, worldZ); // * current_params.frequency;
+				// auto noise = fbm(worldX, worldZ, current_params);
+				// auto noise = siv::dn
+				// auto noise = Simplex::dFlowNoise(pos + Simplex::fBm( glm::vec2(pos )), worldZ) * 0.5f + 0.5f;
+
+				// glm::vec3 noise	= glm::vec3( 0.0f );
+				// float freq		= 1.0f;
+				// float amp		= 0.5f;
+				// // float max_amplitude = 0.0f;
+
+				// for( uint8_t i = 0; i < 2; i++ ){
+				// 	glm::vec3 n	= Simplex::dnoise( pos * freq );
+				// 	noise        += n*amp;
+				// 	freq       *= lacunarity_;
+				// 	amp        *= persistence_;
+				// 	// max_amplitude += amp;
+				// }
+				// noise /= max_amplitude;
+
 				auto noise = Simplex::dfBm(
-					glm::vec2(worldX, worldZ),// * current_params.frequency,
-					octaves_,
-					lacunarity_,
-					persistence_
-					// current_params.frequency,
-					// current_params.amplitude
-				)*0.5f + 0.5f;
+					glm::vec2(worldX, worldZ) * current_params.frequency,
+					1,
+					// 0,
+				    // 0
+					current_params.frequency,
+					current_params.amplitude
+				);
+				noise = noise * 0.5f + 0.5f;
 				if (noise[0] > current_params.threshold) {
 					noise[0] -= current_params.threshold;
 					noise *= current_params.amplitude;

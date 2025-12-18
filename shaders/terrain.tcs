@@ -5,6 +5,7 @@ layout(vertices = 4) out;
 in vec3 WorldPos_VS_out[];
 in vec2 TexCoords_VS_out[];
 in vec3 Normal_VS_out[];
+in vec3 viewForward[];
 
 out vec3 WorldPos_TC_out[];
 out vec2 TexCoords_TC_out[];
@@ -17,27 +18,54 @@ layout(std140, binding = 0) uniform Lighting {
 	float time;
 };
 
-float uTessLevelMax = 128;
+float uTessLevelMax = 64;
 float uTessLevelMin = 1;
 
-float GetVertexTessLevel(vec3 worldPos, vec3 normal) {
-	vec3  viewDir = viewPos - worldPos;
-	float dist = length(viewDir);
-	viewDir /= dist;
+float GetVertexTessLevel(vec3 worldPos, vec3 normal, vec3 forward) {
+	// 1. DISTANCE FACTOR (The Base)
+	// Calculate distance from camera
+	float dist = distance(viewPos, worldPos);
 
-	// If N is perpendicular to V (silhouette), dot is 0, factor is 1 (Max tess).
-	// If N is parallel to V (facing camera), dot is 1, factor is 0 (Min tess).
+	// Inverse distance rule: Closer = Higher Level.
+	// We assume 'uTessLevelMax' is the detail desired at 1 unit distance.
+	// Adjust '20.0' to control how fast detail drops off.
+	float distanceLevel = uTessLevelMax / (dist / 8.0);
+
+	// Clamp so we don't get infinite tessellation or drop below 1
+	distanceLevel = clamp(distanceLevel, uTessLevelMin, uTessLevelMax);
+
+	// 2. SILHOUETTE FACTOR (The Boost)
+	vec3  viewDir = normalize(viewPos - worldPos);
 	float dotProd = dot(normalize(normal), viewDir);
-	float silhouetteFactor = 1 - abs(dotProd);
-	// float silhouetteFactor = 4*abs(sin(dotProd*time));
+	// 0.0 = Facing Camera, 1.0 = Silhouette
+	float isSilhouette = 1.0 - abs(dotProd);
 
-	// silhouetteFactor = mix(0, silhouetteFactor, dotProd >= 0);
-	silhouetteFactor = mix(0.2, 1.0, silhouetteFactor);
+	// "Bump" logic:
+	// If facing camera, use 1.0x the DistanceLevel.
+	// If silhouette, use 3.0x the DistanceLevel (up to Max).
+	// This ensures flat ground is still smooth, but edges are SUPER smooth.
+	float silhouetteBoost = mix(1.0, 3.0, isSilhouette);
 
-	// clamp the distance to avoid divide-by-zero or infinite tessellation at close range
-	float distanceFactor = uTessLevelMax / max(dist, 1.0);
+	// 3. FOCUS FACTOR (The Cull)
+	// Vector from Camera -> Vertex
+	vec3 dirCamToVertex = normalize(worldPos - viewPos);
+	// Dot of CameraLook and VertexDir. 1.0 = Center Screen.
+	float align = dot(dirCamToVertex, forward);
 
-	return silhouetteFactor * distanceFactor;
+	// Drop detail rapidly if it's not in front of the camera
+	// If align < 0.7 (approx 45 degrees), detail drops to 0
+	float focusCull = smoothstep(0.8, 1.0, align);
+
+	// COMBINE
+	// We multiply the Base Distance Level by the Silhouette Boost
+	float finalLevel = distanceLevel * silhouetteBoost;
+
+	// Then we fade out things that are out of focus/off-screen
+	finalLevel *= focusCull;
+
+	// Ensure we never drop below 1 (which would delete the mesh)
+	// unless we are culling completely.
+	return step(0, finalLevel) * max(finalLevel, uTessLevelMin);
 }
 
 void main() {
@@ -46,10 +74,10 @@ void main() {
 	Normal_TC_out[gl_InvocationID] = Normal_VS_out[gl_InvocationID];
 
 	if (gl_InvocationID == 0) {
-		float l0 = GetVertexTessLevel(WorldPos_VS_out[0], Normal_VS_out[0]);
-		float l1 = GetVertexTessLevel(WorldPos_VS_out[1], Normal_VS_out[1]);
-		float l2 = GetVertexTessLevel(WorldPos_VS_out[2], Normal_VS_out[2]);
-		float l3 = GetVertexTessLevel(WorldPos_VS_out[3], Normal_VS_out[3]);
+		float l0 = GetVertexTessLevel(WorldPos_VS_out[0], Normal_VS_out[0], viewForward[0]);
+		float l1 = GetVertexTessLevel(WorldPos_VS_out[1], Normal_VS_out[1], viewForward[1]);
+		float l2 = GetVertexTessLevel(WorldPos_VS_out[2], Normal_VS_out[2], viewForward[2]);
+		float l3 = GetVertexTessLevel(WorldPos_VS_out[3], Normal_VS_out[3], viewForward[3]);
 
 		float edge0 = (l0 + l1) * 0.5;
 		float edge1 = (l1 + l2) * 0.5;

@@ -64,4 +64,5 @@ void main() {
 	float fade = 1.0 - smoothstep(fade_start, fade_end, dist);
 
 	FragColor = vec4(final_color, fade);
+	// FragColor = vec4(0,0,0,1);
 }
