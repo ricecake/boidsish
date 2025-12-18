@@ -9,6 +9,7 @@
 #include <vector>
 
 #include "dot.h"
+#include "logger.h"
 #include "terrain.h"
 #include "terrain_generator.h"
 #include "trail.h"
@@ -18,7 +19,6 @@
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <shader.h>
-#include "logger.h"
 
 namespace Boidsish {
 	constexpr float kMinCameraHeight = 0.1f;
