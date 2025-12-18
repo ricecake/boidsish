@@ -34,7 +34,7 @@ namespace Boidsish {
 		int current_chunk_x = static_cast<int>(camera.x) / chunk_size_;
 		int current_chunk_z = static_cast<int>(camera.z) / chunk_size_;
 
-		float height_factor = std::max(1.0f, camera.y / 10.0f);
+		float height_factor = std::max(1.0f, camera.y / 5.0f);
 		int   dynamic_view_distance = std::min(24, static_cast<int>(view_distance_ * height_factor));
 
 		// Load chunks based on frustum and dynamic view distance

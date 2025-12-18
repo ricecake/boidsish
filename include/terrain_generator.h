@@ -17,6 +17,12 @@ namespace Boidsish {
 		void                                  update(const Frustum& frustum, const Camera& camera);
 		std::vector<std::shared_ptr<Terrain>> getVisibleChunks();
 
+		 int   octaves_ = 4;
+		 float lacunarity_ = 0.99f;
+		 float persistence_ = 0.5f;
+
+		//  8, 0.05, 0.09
+
 	private:
 		std::shared_ptr<Terrain> generateChunk(int chunkX, int chunkZ);
 
@@ -28,9 +34,9 @@ namespace Boidsish {
 		};
 
 		const int   view_distance_ = 10; // in chunks
-		const int   octaves_ = 4;
-		const float lacunarity_ = 2.0f;
-		const float persistence_ = 0.5f;
+		// const int   octaves_ = 4;
+		// const float lacunarity_ = 2.0f;
+		// const float persistence_ = 0.5f;
 		const int   chunk_size_ = 32;
 
 		// const TerrainParameters                coast_params_ = {0.05f, 1.50f, 0.6f};

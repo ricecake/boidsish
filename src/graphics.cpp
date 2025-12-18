@@ -18,6 +18,7 @@
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <shader.h>
+#include "logger.h"
 
 namespace Boidsish {
 	constexpr float kMinCameraHeight = 0.1f;
