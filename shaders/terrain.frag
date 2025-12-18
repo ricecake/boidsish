@@ -146,7 +146,7 @@ void main() {
 
 	vec3  warp2 = vec3(fbm(fwidth(FragPos) + time * 0.1));
 	float nebula_noise2 = fbm(fwidth(FragPos) + warp * 0.5);
-	float intensity = max(C_minor, C_major * 1.5) * 0.4;
+	float intensity = max(C_minor, C_major * 1.5) * length(fwidth(FragPos));
 	// vec3  grid_color = normalize(abs(fwidth(FragPos.yxz))) * intensity+nebula_noise*warp;
 	vec3 grid_color = vec3(normalize(abs(fwidth(FragPos.zxy))) * intensity + nebula_noise2 * warp2);
 

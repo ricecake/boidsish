@@ -168,11 +168,13 @@ namespace Boidsish {
 					return height;
 				};
 
-				std::array<BiomeAttributes, 4> biomes = {
-					BiomeAttributes{0.05, 0.90, -0.10},
-					BiomeAttributes{0.8, 0.5, 2.0},
-					BiomeAttributes{0.3, 0.2, 8.25},
-					BiomeAttributes{0.1, 0.1, 64.6}
+				std::array<BiomeAttributes, 6> biomes = {
+					BiomeAttributes{1.00, 1.0, -0.10},
+					BiomeAttributes{0.80, 0.5, 2.0},
+					BiomeAttributes{0.05, 0.9, 1.0},
+					BiomeAttributes{0.30, 0.2, 8.00},
+					BiomeAttributes{0.10, 0.1, 64.0},
+					BiomeAttributes{0.05, 0.5, 128}
 				};
 
 				BiomeAttributes current;
