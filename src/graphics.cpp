@@ -152,6 +152,9 @@ namespace Boidsish {
 			trail_shader->use();
 			glUniformBlockBinding(trail_shader->ID, glGetUniformBlockIndex(trail_shader->ID, "Lighting"), 0);
 			glUniformBlockBinding(trail_shader->ID, glGetUniformBlockIndex(trail_shader->ID, "VisualEffects"), 1);
+			sky_shader->use();
+			glUniformBlockBinding(sky_shader->ID, glGetUniformBlockIndex(sky_shader->ID, "Lighting"), 0);
+			glUniformBlockBinding(sky_shader->ID, glGetUniformBlockIndex(sky_shader->ID, "VisualEffects"), 1);
 
 			glGenBuffers(1, &artistic_effects_ubo);
 			glBindBuffer(GL_UNIFORM_BUFFER, artistic_effects_ubo);

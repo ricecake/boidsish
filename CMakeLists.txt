@@ -42,3 +42,23 @@ foreach(EXAMPLE_PATH ${EXAMPLE_SOURCES})
     add_executable(${EXAMPLE_NAME} ${EXAMPLE_PATH})
     target_link_libraries(${EXAMPLE_NAME} PRIVATE boidsish)
 endforeach()
+
+
+# Find the clang-format executable
+find_program(CLANG_FORMAT_EXE NAMES clang-format)
+
+if(CLANG_FORMAT_EXE)
+    # Define the files to be formatted, matching your Makefile's scope
+    file(GLOB_RECURSE FORMAT_SOURCES
+        "src/*.cpp" "src/*.h" "src/*.hpp"
+        "include/*.cpp" "include/*.h" "include/*.hpp"
+        "examples/*.cpp" "examples/*.h" "examples/*.hpp"
+    )
+
+    add_custom_target(format
+        COMMAND ${CLANG_FORMAT_EXE} -i ${FORMAT_SOURCES}
+        COMMENT "Running clang-format on all source files..."
+    )
+else()
+    message(WARNING "clang-format not found. The 'format' target will not be available.")
+endif()

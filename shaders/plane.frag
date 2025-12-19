@@ -15,6 +15,7 @@ layout(std140) uniform Lighting {
 uniform sampler2D reflectionTexture;
 
 void main() {
+	// discard;
 	// --- Reflection sampling ---
 	vec2 texCoords = ReflectionClipSpacePos.xy / ReflectionClipSpacePos.w / 2.0 + 0.5;
 	vec3 reflectionColor = texture(reflectionTexture, texCoords).rgb;

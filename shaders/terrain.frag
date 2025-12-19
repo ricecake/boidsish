@@ -105,6 +105,7 @@ float fbm(vec3 p) {
 }
 
 void main() {
+	// discard;
 	// FragColor = vec4(1,1,1, 1);
 
 	vec3  warp = vec3(fbm(FragPos + time * 0.1));
