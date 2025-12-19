@@ -60,7 +60,7 @@ void main() {
 
 	// --- Distance Fade ---
 	float dist = length(WorldPos.xz - viewPos.xz);
-	float fade_start = 350.0;
+	float fade_start = 400.0;
 	float fade_end = 425.0;
 	float fade = 1.0 - smoothstep(fade_start, fade_end, dist);
 

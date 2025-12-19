@@ -1,8 +1,9 @@
+#include "entity.h"
+
 #include <cmath>
 #include <functional>
 #include <iostream>
 
-#include "entity.h"
 #include "graphics.h"
 
 using namespace Boidsish;
