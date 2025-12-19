@@ -198,6 +198,7 @@ void main() {
 
 	// Color calculations based on the y-component of the view direction
 	float y = world_ray.y;
+	// float y = world_ray.y + (viewPos.y * 0.005);
 
 	// Define colors for the gradient
 	vec3 twilight_color = vec3(0.9, 0.5, 0.2); // Orangey-red
@@ -205,11 +206,21 @@ void main() {
 	vec3 top_sky_color = vec3(0.05, 0.1, 0.3); // Dark blue
 
 	// Blend the colors
-	float twilight_mix = smoothstep(0.0, 0.1, y);
-	vec3  color = mix(twilight_color, mid_sky_color, twilight_mix);
+	// float twilight_mix = smoothstep(0.0, 0.1, y+(viewPos.y/1000));
+	// vec3  color = mix(twilight_color, mid_sky_color, twilight_mix);
+
+float t = -viewPos.y / min(world_ray.y, -0.001);
+float is_ground = step(0.0, t);
+float fog_density = 0.75;
+float fog_factor = 1.0 - exp(-t * fog_density);
+vec3 intersection_point = viewPos + world_ray * t;
+float glow_noise = fbm(0.5*intersection_point*fbm(vec3(intersection_point.xz,0) * 0.05 + time * 0.01));
+float final_glow = fog_factor * (1.0 + glow_noise * 0.5) * pow(max(0.0, dot(world_ray, vec3(1,0,0))), 4.0);
+final_glow *= 1/(y+0.01)+is_ground; //smoothstep(-0.04, -0.02, y); //is_ground; // Mask it so it stays on the "floor"
+vec3 color = mix(mid_sky_color, twilight_color, final_glow);
 
 	// Mottled glow
-	color = mix(color, color * 0.9, snoise(world_ray * 10.0));
+	// color = mix(color, color * 0.9, snoise(world_ray * 10.0));
 
 	float top_mix = smoothstep(0.1, 0.6, y);
 	vec3  final_color = mix(color, top_sky_color, top_mix);
@@ -248,4 +259,5 @@ void main() {
 	final_color += iris_color * iris * nebula_strength;
 
 	FragColor = vec4(final_color, 1.0);
+	// FragColor = vec4(world_ray * 0.5 + 0.5, 1.0);
 }
