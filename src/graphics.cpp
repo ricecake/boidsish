@@ -476,7 +476,7 @@ namespace Boidsish {
 			glBindTexture(GL_TEXTURE_2D, pingpong_texture[0]);
 			plane_shader->setMat4("reflectionViewProjection", reflection_vp);
 
-			glm::mat4 model = glm::scale(glm::mat4(1.0f), glm::vec3(500.0f));
+			glm::mat4 model = glm::scale(glm::mat4(1.0f), glm::vec3(600.0f));
 			plane_shader->setMat4("model", model);
 			plane_shader->setMat4("view", view);
 			plane_shader->setMat4("projection", projection);

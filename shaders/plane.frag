@@ -60,10 +60,10 @@ void main() {
 
 	// --- Distance Fade ---
 	float dist = length(WorldPos.xz - viewPos.xz);
-	float fade_start = 400.0;
-	float fade_end = 425.0;
+	float fade_start = 550.0;
+	float fade_end = 560.0;
 	float fade = 1.0 - smoothstep(fade_start, fade_end, dist);
 
-	FragColor = vec4(final_color, fade);
-	// FragColor = vec4(0,0,0,1);
+	vec4 outColor = vec4(final_color, fade);
+	FragColor = mix(vec4(0.7, 0.1, 0.7, fade)*length(outColor), outColor, step(1, fade));
 }
