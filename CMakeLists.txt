@@ -5,7 +5,7 @@ project(Boidsish VERSION 1.0 LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS ON) # Corresponds to -std=gnu++23
-set(FASTNOISE2_NOISETOOL ON CACHE BOOL "Enable NoiseTool build" FORCE)
+set(FASTNOISE2_NOISETOOL OFF CACHE BOOL "Enable NoiseTool build" FORCE)
 set(IMGUI_DIR external/imgui)
 
 # 2. Dependency Discovery
@@ -14,17 +14,8 @@ find_package(GLEW REQUIRED)
 find_package(glfw3 REQUIRED)
 find_package(glm REQUIRED)
 
-add_subdirectory(external/FastNoise2)
-# add_subdirectory(external/imgui)
-# Add include directories
-include_directories(${IMGUI_DIR})
-include_directories(${IMGUI_DIR}/backends)
-# 3. Define the Library
-# Finds all .cpp files in src/
-file(GLOB_RECURSE LIB_SOURCES "src/*.cpp")
-
-add_library(boidsish STATIC ${LIB_SOURCES})
-
+# 1. Define ImGui FIRST so FastNoise2 can see it
+set(IMGUI_DIR external/imgui)
 add_library(imgui STATIC
     ${IMGUI_DIR}/imgui.cpp
     ${IMGUI_DIR}/imgui_demo.cpp
@@ -35,11 +26,31 @@ add_library(imgui STATIC
     ${IMGUI_DIR}/backends/imgui_impl_opengl3.cpp
 )
 
+# Important: NoiseTool needs to find the headers within the imgui target
+target_include_directories(imgui PUBLIC ${IMGUI_DIR} ${IMGUI_DIR}/backends)
+
+# 2. Tell FastNoise2 where the ImGui headers are explicitly
+# set(FASTNOISE2_NOISETOOL_GLFW OFF CACHE BOOL "" FORCE)
+# set(FASTNOISE2_NOISETOOL_IMGUI OFF CACHE BOOL "" FORCE)
+# set(FASTNOISE2_NOISETOOL ON CACHE BOOL "Enable NoiseTool build" FORCE)
+set(IMGUI_INCLUDE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/${IMGUI_DIR}" CACHE PATH "" FORCE)
+
+# 3. Now add FastNoise2
+add_subdirectory(external/FastNoise2)
+
+# 3. Define the Library
+# Finds all .cpp files in src/
+file(GLOB_RECURSE LIB_SOURCES "src/*.cpp")
+
+add_library(boidsish STATIC ${LIB_SOURCES})
+
 target_include_directories(boidsish
     PUBLIC
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
         $<INSTALL_INTERFACE:include>
         external/include
+        ${IMGUI_DIR}/
+        ${IMGUI_DIR}/backends
 )
 
 # 4. Platform-Specific Linking
@@ -49,6 +60,7 @@ target_link_libraries(boidsish
         GLEW::GLEW
         glfw
         FastNoise
+        imgui
 )
 
 # 5. Build Examples
@@ -60,7 +72,6 @@ foreach(EXAMPLE_PATH ${EXAMPLE_SOURCES})
     add_executable(${EXAMPLE_NAME} ${EXAMPLE_PATH})
     target_link_libraries(${EXAMPLE_NAME} PRIVATE boidsish)
 endforeach()
-
 
 # Find the clang-format executable
 find_program(CLANG_FORMAT_EXE NAMES clang-format)
