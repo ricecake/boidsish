@@ -1,17 +1,30 @@
 cmake_minimum_required(VERSION 3.20)
 project(Boidsish VERSION 1.0 LANGUAGES CXX)
+include(FetchContent)
 
 # 1. C++ Standard and Flags
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS ON) # Corresponds to -std=gnu++23
-set(FASTNOISE2_NOISETOOL ON CACHE BOOL "Build Noise Tool" FORCE)
+set(FASTNOISE2_NOISETOOL ON CACHE BOOL "Enable NoiseTool build" FORCE)
 
 # 2. Dependency Discovery
 find_package(OpenGL REQUIRED)
 find_package(GLEW REQUIRED)
 find_package(glfw3 REQUIRED)
 find_package(glm REQUIRED)
+
+FetchContent_Declare(
+  imgui
+  GIT_REPOSITORY https://github.com/ocornut/imgui.git
+  GIT_TAG      master # Use a specific tag/commit for stability in real projects
+)
+set(IMGUI_BUILD_EXAMPLES OFF CACHE INTERNAL "") # Prevents building ImGui examples
+set(IMGUI_BUILD_DEMO    OFF CACHE INTERNAL "") # Prevents building the demo file
+set(IMGUI_BUILD_TESTS   OFF CACHE INTERNAL "")
+
+FetchContent_MakeAvailable(imgui) # This downloads and makes the targets available
+
 
 add_subdirectory(external/FastNoise2)
 
