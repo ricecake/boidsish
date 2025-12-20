@@ -1,12 +1,12 @@
 cmake_minimum_required(VERSION 3.20)
 project(Boidsish VERSION 1.0 LANGUAGES CXX)
-include(FetchContent)
 
 # 1. C++ Standard and Flags
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS ON) # Corresponds to -std=gnu++23
 set(FASTNOISE2_NOISETOOL ON CACHE BOOL "Enable NoiseTool build" FORCE)
+set(IMGUI_DIR external/imgui)
 
 # 2. Dependency Discovery
 find_package(OpenGL REQUIRED)
@@ -14,25 +14,26 @@ find_package(GLEW REQUIRED)
 find_package(glfw3 REQUIRED)
 find_package(glm REQUIRED)
 
-FetchContent_Declare(
-  imgui
-  GIT_REPOSITORY https://github.com/ocornut/imgui.git
-  GIT_TAG      master # Use a specific tag/commit for stability in real projects
-)
-set(IMGUI_BUILD_EXAMPLES OFF CACHE INTERNAL "") # Prevents building ImGui examples
-set(IMGUI_BUILD_DEMO    OFF CACHE INTERNAL "") # Prevents building the demo file
-set(IMGUI_BUILD_TESTS   OFF CACHE INTERNAL "")
-
-FetchContent_MakeAvailable(imgui) # This downloads and makes the targets available
-
-
 add_subdirectory(external/FastNoise2)
-
+# add_subdirectory(external/imgui)
+# Add include directories
+include_directories(${IMGUI_DIR})
+include_directories(${IMGUI_DIR}/backends)
 # 3. Define the Library
 # Finds all .cpp files in src/
 file(GLOB_RECURSE LIB_SOURCES "src/*.cpp")
 
 add_library(boidsish STATIC ${LIB_SOURCES})
+
+add_library(imgui STATIC
+    ${IMGUI_DIR}/imgui.cpp
+    ${IMGUI_DIR}/imgui_demo.cpp
+    ${IMGUI_DIR}/imgui_draw.cpp
+    ${IMGUI_DIR}/imgui_tables.cpp
+    ${IMGUI_DIR}/imgui_widgets.cpp
+    ${IMGUI_DIR}/backends/imgui_impl_glfw.cpp
+    ${IMGUI_DIR}/backends/imgui_impl_opengl3.cpp
+)
 
 target_include_directories(boidsish
     PUBLIC
