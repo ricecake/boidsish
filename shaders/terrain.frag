@@ -154,8 +154,8 @@ void main() {
 	vec3 result = vec3((ambient + diffuse) * objectColor + specular) + grid_color; // Add specular on top
 	// --- Distance Fade ---
 	float dist = length(FragPos.xz - viewPos.xz);
-	float fade_start = 515.0;
-	float fade_end = 525.0;
+	float fade_start = 540.0;
+	float fade_end = 550.0;
 	float fade = 1.0 - smoothstep(fade_start, fade_end, dist);
 
 	// result = smoothstep(fade_start, fade_end, dist)*vec3(0.0, 0.1, 0.4);
@@ -165,7 +165,11 @@ void main() {
 
 	vec4 outColor = vec4(result, mix(0, fade, step(0.01, FragPos.y)));
 	// outColor.a = mix(0, fade, step(0.01, FragPos.y));
-	FragColor = mix(vec4(0.0, 0.7, 0.7, mix(0, fade, step(0.01, FragPos.y)))*length(outColor), outColor, step(1, fade));
+	FragColor = mix(
+		vec4(0.0, 0.7, 0.7, mix(0, fade, step(0.01, FragPos.y))) * length(outColor),
+		outColor,
+		step(1, fade)
+	);
 
 	// FragColor = result;
 	// FragColor[3] = mix(0, fade, step(0.01, FragPos.y));

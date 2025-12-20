@@ -65,5 +65,5 @@ void main() {
 	float fade = 1.0 - smoothstep(fade_start, fade_end, dist);
 
 	vec4 outColor = vec4(final_color, fade);
-	FragColor = mix(vec4(0.7, 0.1, 0.7, fade)*length(outColor), outColor, step(1, fade));
+	FragColor = mix(vec4(0.7, 0.1, 0.7, fade) * length(outColor), outColor, step(1, fade));
 }
