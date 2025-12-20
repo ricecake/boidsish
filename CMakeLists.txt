@@ -5,12 +5,15 @@ project(Boidsish VERSION 1.0 LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS ON) # Corresponds to -std=gnu++23
+set(FASTNOISE2_NOISETOOL ON CACHE BOOL "Build Noise Tool" FORCE)
 
 # 2. Dependency Discovery
 find_package(OpenGL REQUIRED)
 find_package(GLEW REQUIRED)
 find_package(glfw3 REQUIRED)
 find_package(glm REQUIRED)
+
+add_subdirectory(external/FastNoise2)
 
 # 3. Define the Library
 # Finds all .cpp files in src/
@@ -31,6 +34,7 @@ target_link_libraries(boidsish
         OpenGL::GL
         GLEW::GLEW
         glfw
+        FastNoise
 )
 
 # 5. Build Examples
