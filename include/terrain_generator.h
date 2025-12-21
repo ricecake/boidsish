@@ -25,6 +25,10 @@ namespace Boidsish {
 
 	private:
 		std::shared_ptr<Terrain> generateChunk(int chunkX, int chunkZ);
+		void                     populateNoiseCache(int chunkX, int chunkZ);
+		void                     findSurface(
+			int chunkX, int chunkZ, std::vector<std::vector<glm::vec3>>& heightmap
+		);
 
 		// Terrain parameters
 		struct TerrainParameters {
@@ -61,10 +65,11 @@ namespace Boidsish {
 		siv::PerlinNoise perlin_noise_;
 		siv::PerlinNoise control_perlin_noise_;
 
-		auto fbm(float x, float z, TerrainParameters params);
+		// auto fbm(float x, float z, TerrainParameters params);
 
 		// Cache
-		std::map<std::pair<int, int>, std::shared_ptr<Terrain>> chunk_cache_;
+		std::map<std::pair<int, int>, std::shared_ptr<Terrain>>                chunk_cache_;
+		std::map<std::pair<int, int>, std::vector<std::vector<std::vector<float>>>> noise_cache_;
 	};
 
 } // namespace Boidsish
