@@ -13,6 +13,8 @@
 #include "terrain.h"
 #include "terrain_generator.h"
 #include "trail.h"
+#include "point_cloud.h"
+#include "point_cloud_visualizer.h"
 #include "visual_effects.h"
 #include <GL/glew.h>
 #include <GLFW/glfw3.h>
@@ -35,6 +37,7 @@ namespace Boidsish {
 		std::map<int, float>                  trail_last_update;
 
 		std::unique_ptr<TerrainGenerator> terrain_generator;
+		std::unique_ptr<PointCloudVisualizer> point_cloud_visualizer;
 
 		std::shared_ptr<Shader> shader;
 		std::unique_ptr<Shader> plane_shader;
@@ -182,6 +185,8 @@ namespace Boidsish {
 				glGetUniformBlockIndex(Terrain::terrain_shader_->ID, "VisualEffects"),
 				1
 			);
+
+			PointCloud::point_cloud_shader_ = std::make_shared<Shader>("shaders/point_cloud.vert", "shaders/point_cloud.frag");
 
 			Shape::InitSphereMesh();
 
@@ -413,6 +418,26 @@ namespace Boidsish {
 			}
 			for (auto& pair : trails) {
 				pair.second->Render(*trail_shader);
+			}
+		}
+
+		void RenderPointCloud(const glm::mat4& view) {
+			if (!point_cloud_visualizer) {
+				return;
+			}
+			auto point_cloud_chunks = point_cloud_visualizer->getVisibleChunks();
+			if (point_cloud_chunks.empty()) {
+				return;
+			}
+
+			PointCloud::point_cloud_shader_->use();
+			PointCloud::point_cloud_shader_->setMat4("view", view);
+			PointCloud::point_cloud_shader_->setMat4("projection", projection);
+			PointCloud::point_cloud_shader_->setFloat("threshold", point_cloud_visualizer->getThreshold());
+			PointCloud::point_cloud_shader_->setFloat("pointSize", point_cloud_visualizer->getPointSize());
+
+			for (const auto& chunk : point_cloud_chunks) {
+				chunk->render();
 			}
 		}
 
@@ -820,6 +845,9 @@ namespace Boidsish {
 		glm::mat4 view_matrix = impl->SetupMatrices();
 		Frustum   frustum = impl->CalculateFrustum(view_matrix, impl->projection);
 		impl->terrain_generator->update(frustum, impl->camera);
+		if (impl->point_cloud_visualizer) {
+			impl->point_cloud_visualizer->update(frustum, impl->camera);
+		}
 
 		static auto last_frame_time = std::chrono::high_resolution_clock::now();
 		auto        current_frame_time = std::chrono::high_resolution_clock::now();
@@ -900,6 +928,7 @@ namespace Boidsish {
 				glm::vec4(0, 1, 0, 0.01)
 			);
 			impl->RenderTerrain(reflection_view, glm::vec4(0, 1, 0, 0.01));
+			impl->RenderPointCloud(reflection_view);
 			glBindFramebuffer(GL_FRAMEBUFFER, 0);
 		}
 		glDisable(GL_CLIP_DISTANCE0);
@@ -912,6 +941,7 @@ namespace Boidsish {
 		impl->RenderPlane(view);
 		impl->RenderSceneObjects(view, impl->camera, shapes, impl->simulation_time, std::nullopt);
 		impl->RenderTerrain(view, std::nullopt);
+		impl->RenderPointCloud(view);
 
 		glfwSwapBuffers(impl->window);
 	}
@@ -929,5 +959,21 @@ namespace Boidsish {
 
 	void Visualizer::SetCamera(const Camera& camera) {
 		impl->camera = camera;
+	}
+
+	void Visualizer::SetPointCloudData(const std::vector<glm::vec4>& point_data) {
+		impl->point_cloud_visualizer = std::make_unique<PointCloudVisualizer>(point_data);
+	}
+
+	void Visualizer::SetPointCloudThreshold(float threshold) {
+		if (impl->point_cloud_visualizer) {
+			impl->point_cloud_visualizer->setThreshold(threshold);
+		}
+	}
+
+	void Visualizer::SetPointCloudSize(float size) {
+		if (impl->point_cloud_visualizer) {
+			impl->point_cloud_visualizer->setPointSize(size);
+		}
 	}
 } // namespace Boidsish

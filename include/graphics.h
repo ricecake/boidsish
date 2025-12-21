@@ -71,6 +71,11 @@ namespace Boidsish {
 		// Set camera position and orientation
 		void SetCamera(const Camera& camera);
 
+		// Set point cloud data and threshold
+		void SetPointCloudData(const std::vector<glm::vec4>& point_data);
+		void SetPointCloudThreshold(float threshold);
+		void SetPointCloudSize(float size);
+
 	private:
 		struct VisualizerImpl;
 		VisualizerImpl* impl;
