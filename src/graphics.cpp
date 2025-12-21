@@ -507,6 +507,9 @@ namespace Boidsish {
 		}
 
 		void ProcessInput(float delta_time) {
+			ImGuiIO& io = ImGui::GetIO();
+			if (io.WantCaptureKeyboard)
+				return;
 			if (auto_camera_mode || single_track_mode)
 				return;
 			float     camera_speed_val = camera.speed * delta_time;
@@ -673,6 +676,10 @@ namespace Boidsish {
 		}
 
 		static void KeyCallback(GLFWwindow* w, int key, int /* sc */, int action, int /* mods */) {
+			ImGuiIO& io = ImGui::GetIO();
+			if (io.WantCaptureKeyboard)
+				return;
+
 			auto* impl = static_cast<VisualizerImpl*>(glfwGetWindowUserPointer(w));
 			if (key >= 0 && key < 1024) {
 				if (action == GLFW_PRESS)
@@ -739,6 +746,9 @@ namespace Boidsish {
 		}
 
 		static void MouseCallback(GLFWwindow* w, double xpos, double ypos) {
+			ImGuiIO& io = ImGui::GetIO();
+			if (io.WantCaptureMouse)
+				return;
 			auto* impl = static_cast<VisualizerImpl*>(glfwGetWindowUserPointer(w));
 			if (impl->auto_camera_mode)
 				return;
@@ -934,6 +944,7 @@ namespace Boidsish {
 
 		// --- Main Pass ---
 		glm::mat4 view = impl->SetupMatrices();
+		glDisable(GL_BLEND);
 		impl->RenderSky(view);
 		impl->RenderPlane(view);
 		impl->RenderSceneObjects(view, impl->camera, shapes, impl->simulation_time, std::nullopt);
