@@ -17,12 +17,6 @@ namespace Boidsish {
 		void                                  update(const Frustum& frustum, const Camera& camera);
 		std::vector<std::shared_ptr<Terrain>> getVisibleChunks();
 
-		int   octaves_ = 4;
-		float lacunarity_ = 0.99f;
-		float persistence_ = 0.5f;
-
-		//  8, 0.05, 0.09
-
 	private:
 		std::shared_ptr<Terrain> generateChunk(int chunkX, int chunkZ);
 
@@ -33,35 +27,36 @@ namespace Boidsish {
 			float threshold;
 		};
 
+		struct BiomeAttributes {
+			float spikeDamping;  // How aggressively to cut off sharp gradients
+			float detailMasking; // How much valleys should hide high-frequency noise
+			float floorLevel;    // The height at which flattening occurs
+		};
+
+		std::array<BiomeAttributes, 6> biomes = {
+			BiomeAttributes{1.00, 1.0, -0.10},
+			BiomeAttributes{0.80, 0.5, 2.0},
+			BiomeAttributes{0.05, 0.9, 1.0},
+			BiomeAttributes{0.30, 0.2, 8.00},
+			BiomeAttributes{0.10, 0.1, 64.0},
+			BiomeAttributes{0.05, 0.5, 128}
+		};
+
 		const int view_distance_ = 10; // in chunks
-		// const int   octaves_ = 4;
-		// const float lacunarity_ = 2.0f;
-		// const float persistence_ = 0.5f;
 		const int chunk_size_ = 32;
-
-		// const TerrainParameters                coast_params_ = {0.05f, 1.50f, 0.6f};
-		// const TerrainParameters                plains_params_ = {0.07f, 2.0f, 0.5f};
-		// const TerrainParameters                hills_params_ = {0.05f, 5.0f, 0.4f};
-		// const TerrainParameters                mountains_params_ = {0.02f, 10.0f, 0.35f};
-
-		const TerrainParameters coast_params_ = {0.5f, 1.0f, 0.6f};
-		const TerrainParameters plains_params_ = {0.1f, 5.0f, 0.5f};
-		const TerrainParameters hills_params_ = {0.05f, 15.0f, 0.4f};
-		const TerrainParameters mountains_params_ = {0.02f, 50.0f, 0.35f};
-
-		const std::array<TerrainParameters, 4> terrain_set =
-			{coast_params_, plains_params_, hills_params_, mountains_params_};
-		// pick a random number between 1-N-1 (4 here) to pick random pair
+		// Other solid values:  8, 0.05, 0.09
+		int   octaves_ = 4;
+		float lacunarity_ = 0.99f;
+		float persistence_ = 0.5f;
 
 		// Control noise parameters
 		constexpr static const float control_noise_scale_ = 0.01f;
-		constexpr static const float hills_threshold_ = 0.5f;
 
 		// Noise generators
-		siv::PerlinNoise perlin_noise_;
 		siv::PerlinNoise control_perlin_noise_;
 
 		auto fbm(float x, float z, TerrainParameters params);
+		auto biomefbm(glm::vec2 pos, BiomeAttributes attr);
 
 		// Cache
 		std::map<std::pair<int, int>, std::shared_ptr<Terrain>> chunk_cache_;

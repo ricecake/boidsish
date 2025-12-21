@@ -1,7 +1,10 @@
 #include "terrain_generator.h"
 
+#include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <numeric>
+#include <ranges>
 #include <vector>
 
 #include "logger.h"
@@ -28,7 +31,7 @@ namespace Boidsish {
 		return true;
 	}
 
-	TerrainGenerator::TerrainGenerator(int seed): perlin_noise_(seed), control_perlin_noise_(seed + 1) {}
+	TerrainGenerator::TerrainGenerator(int seed): control_perlin_noise_(seed + 1) {}
 
 	void TerrainGenerator::update(const Frustum& frustum, const Camera& camera) {
 		int current_chunk_x = static_cast<int>(camera.x) / chunk_size_;
@@ -40,7 +43,13 @@ namespace Boidsish {
 		// Load chunks based on frustum and dynamic view distance
 		for (int x = current_chunk_x - dynamic_view_distance; x <= current_chunk_x + dynamic_view_distance; ++x) {
 			for (int z = current_chunk_z - dynamic_view_distance; z <= current_chunk_z + dynamic_view_distance; ++z) {
-				if (isChunkInFrustum(frustum, x, z, chunk_size_, mountains_params_.amplitude)) {
+				if (isChunkInFrustum(
+						frustum,
+						x,
+						z,
+						chunk_size_,
+						std::ranges::max(std::views::transform(biomes, &BiomeAttributes::floorLevel))
+					)) {
 					std::pair<int, int> chunk_coord = {x, z};
 					if (chunk_cache_.find(chunk_coord) == chunk_cache_.end()) {
 						chunk_cache_[chunk_coord] = generateChunk(x, z);
@@ -66,13 +75,11 @@ namespace Boidsish {
 
 	auto TerrainGenerator::fbm(float x, float z, TerrainParameters params) {
 		glm::vec3 total;
-		// float total = 0;
-		float frequency = params.frequency;
-		float amplitude = 1.0;
-		float max_amplitude = 0;
+		float     frequency = params.frequency;
+		float     amplitude = 1.0;
+		float     max_amplitude = 0;
 		for (int i = 0; i < octaves_; i++) {
 			total += Simplex::dnoise(glm::vec2(x * frequency, z * frequency));
-			// total += perlin_noise_.noise2D(x * frequency, z * frequency) * amplitude;
 			max_amplitude += amplitude;
 			amplitude *= persistence_;
 			frequency *= lacunarity_;
@@ -89,6 +96,37 @@ namespace Boidsish {
 		}
 		return visible_chunks;
 	}
+
+	auto TerrainGenerator::biomefbm(glm::vec2 pos, BiomeAttributes attr) {
+		glm::vec3 height(0, 0, 0);
+		float     amp = 0.5f;
+		float     freq = 0.99f;
+
+		// Initial low-frequency pass to establish "Base Shape"
+		glm::vec3 base = Simplex::dnoise(pos * freq);
+		height = base * amp;
+
+		for (int i = 1; i < 6; i++) {
+			amp *= 0.5f;
+			freq *= 2.0f;
+			glm::vec3 n = Simplex::dnoise(pos * freq);
+
+			// 1. Spikiness Correction using Biome Attribute
+			float slope = glm::length(glm::vec2(n.y, n.z));
+			float correction = 1.0f / (1.0f + slope * attr.spikeDamping);
+
+			// 2. Detail Masking (Valleys stay smoother than peaks)
+			auto mask = glm::mix(1.0f - attr.detailMasking, 1.0f, height.x);
+			height += (n * amp * correction * mask);
+		}
+
+		// 3. Final Floor Shaping
+		if (height.x < attr.floorLevel) {
+			height = glm::smoothstep(attr.floorLevel - 0.1f, attr.floorLevel, height) * attr.floorLevel;
+		}
+
+		return height;
+	};
 
 	std::shared_ptr<Terrain> TerrainGenerator::generateChunk(int chunkX, int chunkZ) {
 		const int num_vertices_x = chunk_size_ + 1;
@@ -109,123 +147,20 @@ namespace Boidsish {
 				float control_value = control_perlin_noise_
 										  .octave2D_01(worldX * control_noise_scale_, worldZ * control_noise_scale_, 2);
 
-				// Interpolate parameters based on control value
-				// TerrainParameters current_params;
-				// auto              low_threshold = (floor(control_value * terrain_set.size()) / terrain_set.size());
-				// auto              high_threshold = (ceil(control_value * terrain_set.size()) / terrain_set.size());
-				// auto              low_item = terrain_set[int(floor(control_value * terrain_set.size()))];
-				// auto              high_item = terrain_set[int(ceil(control_value * terrain_set.size()))];
-				// auto              t = (control_value - low_threshold) / (high_threshold - low_threshold);
-
-				// current_params.frequency = std::lerp(low_item.frequency, high_item.frequency, t);
-				// current_params.amplitude = std::lerp(low_item.amplitude, high_item.amplitude, t);
-				// current_params.threshold = std::lerp(low_item.threshold, high_item.threshold, t);
-
-				struct BiomeAttributes {
-					float spikeDamping;  // How aggressively to cut off sharp gradients
-					float detailMasking; // How much valleys should hide high-frequency noise
-					float floorLevel;    // The height at which flattening occurs
-				};
-
-				// auto smoothstep = [](float edge0, float edge1, auto x) {
-				// 	// Scale, bias and saturate x to 0..1 range
-				// 	float t = std::clamp((x - edge0) / (edge1 - edge0), 0.0f, 1.0f);
-				// 	// Evaluate polynomial
-				// 	return t * t * (3.0f - 2.0f * t);
-				// };
-
-				auto biomefbm = [&](glm::vec2 pos, BiomeAttributes attr) {
-					glm::vec3 height(0, 0, 0);
-					float     amp = 0.5f;
-					float     freq = 0.99f;
-
-					// Initial low-frequency pass to establish "Base Shape"
-					glm::vec3 base = Simplex::dnoise(pos * freq);
-					height = base * amp;
-
-					for (int i = 1; i < 6; i++) {
-						amp *= 0.5f;
-						freq *= 2.0f;
-						glm::vec3 n = Simplex::dnoise(pos * freq);
-
-						// 1. Spikiness Correction using Biome Attribute
-						float slope = glm::length(glm::vec2(n.y, n.z));
-						float correction = 1.0f / (1.0f + slope * attr.spikeDamping);
-
-						// 2. Detail Masking (Valleys stay smoother than peaks)
-						// float mask = std::lerp(1.0f - attr.detailMasking, 1.0f, height.x);
-						// float mask = std::lerp(1.0f - attr.detailMasking, 1.0f, height.x);
-						auto mask = glm::mix(1.0f - attr.detailMasking, 1.0f, height.x);
-
-						height += (n * amp * correction * mask);
-					}
-
-					// 3. Final Floor Shaping
-					if (height.x < attr.floorLevel) {
-						height = glm::smoothstep(attr.floorLevel - 0.1f, attr.floorLevel, height) * attr.floorLevel;
-					}
-
-					return height;
-				};
-
-				std::array<BiomeAttributes, 6> biomes = {
-					BiomeAttributes{1.00, 1.0, -0.10},
-					BiomeAttributes{0.80, 0.5, 2.0},
-					BiomeAttributes{0.05, 0.9, 1.0},
-					BiomeAttributes{0.30, 0.2, 8.00},
-					BiomeAttributes{0.10, 0.1, 64.0},
-					BiomeAttributes{0.05, 0.5, 128}
-				};
-
 				BiomeAttributes current;
 				auto            low_threshold = (floor(control_value * biomes.size()) / biomes.size());
 				auto            high_threshold = (ceil(control_value * biomes.size()) / biomes.size());
 				auto            low_item = biomes[int(floor(control_value * biomes.size()))];
 				auto            high_item = biomes[int(ceil(control_value * biomes.size()))];
-				// auto              t = (control_value - low_threshold) / (high_threshold - low_threshold);
-				auto t = glm::smoothstep(low_threshold, high_threshold, control_value);
+				auto            t = glm::smoothstep(low_threshold, high_threshold, control_value);
 
 				current.spikeDamping = std::lerp(low_item.spikeDamping, high_item.spikeDamping, t);
 				current.detailMasking = std::lerp(low_item.detailMasking, high_item.detailMasking, t);
 				current.floorLevel = std::lerp(low_item.floorLevel, high_item.floorLevel, t);
 
-				// Simplex::dFlowNoise( position + Simplex::fBm( vec3( position, time * 0.1f ) ), time )
-				auto pos = glm::vec2(worldX, worldZ); // * current_params.frequency;
-				// auto noise = fbm(worldX, worldZ, current_params);
-				// auto noise = siv::dn
-				// auto noise = Simplex::dFlowNoise(pos + Simplex::fBm( glm::vec2(pos )), worldZ) * 0.5f + 0.5f;
-
-				// glm::vec3 noise	= glm::vec3( 0.0f );
-				// float freq		= 1.0f;
-				// float amp		= 0.5f;
-				// // float max_amplitude = 0.0f;
-
-				// for( uint8_t i = 0; i < 2; i++ ){
-				// 	glm::vec3 n	= Simplex::dnoise( pos * freq );
-				// 	noise        += n*amp;
-				// 	freq       *= lacunarity_;
-				// 	amp        *= persistence_;
-				// 	// max_amplitude += amp;
-				// }
-				// noise /= max_amplitude;
-
-				// auto noise = Simplex::dfBm(
-				// 	glm::vec2(worldX, worldZ) * current_params.frequency,
-				// 	1,
-				// 	// 0,
-				//     // 0
-				// 	current_params.frequency,
-				// 	current_params.amplitude
-				// );
-
+				auto pos = glm::vec2(worldX, worldZ);
 				auto noise = biomefbm(pos, current);
 				noise = noise * 0.5f + 0.5f;
-				// if (noise > 0) {
-				// 	heightmap[i][j] = noise*current.floorLevel;
-				// 	has_terrain = true;
-				// } else {
-				// 	heightmap[i][j] = 0;//glm::vec3(0.0f, 0, 0); // Flush with floor
-				// }
 
 				if (noise[0] > 0) {
 					noise *= current.floorLevel;
