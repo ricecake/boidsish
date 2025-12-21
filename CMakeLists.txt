@@ -71,6 +71,13 @@ foreach(EXAMPLE_PATH ${EXAMPLE_SOURCES})
 
     add_executable(${EXAMPLE_NAME} ${EXAMPLE_PATH})
     target_link_libraries(${EXAMPLE_NAME} PRIVATE boidsish)
+
+    # Copy the config file to the directory of the executable
+    configure_file(
+        ${CMAKE_CURRENT_SOURCE_DIR}/imgui.ini
+        ${CMAKE_CURRENT_BINARY_DIR}/imgui.ini
+        COPYONLY
+    )
 endforeach()
 
 # Find the clang-format executable

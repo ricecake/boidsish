@@ -4,6 +4,7 @@
 
 #include "dot.h"
 #include "graphics.h"
+#include "imgui.h"
 
 using namespace Boidsish;
 
@@ -121,57 +122,33 @@ auto WaveExample(float time) {
 }
 
 int main(int argc, char* argv[]) {
-	int example = 1;
-
-	if (argc > 1) {
-		example = std::atoi(argv[1]);
-		if (example < 1 || example > 3) {
-			std::cout << "Invalid example number. Using example 1." << std::endl;
-			example = 1;
-		}
-	}
-
 	try {
-		std::string title = "Boidsish - Example " + std::to_string(example) + " - ";
-		Visualizer  viz(1200, 800, title.c_str());
+		Visualizer viz(1200, 800, "Boidsish - Advanced Examples");
 
-		// Set camera based on example
-		Camera camera;
-		if (example == 3) {
-			camera = Camera(0.0f, 8.0f, 8.0f, -45.0f, 0.0f, 45.0f);
-		} else {
-			camera = Camera(0.0f, 2.0f, 10.0f, -10.0f, 0.0f, 45.0f);
-		}
-		viz.SetCamera(camera);
+		int current_example = 1;
+		viz.SetCamera(Camera(0.0f, 2.0f, 10.0f, -10.0f, 0.0f, 45.0f));
 
-		switch (example) {
-		case 1:
-			title += "Spiraling Particles";
-			viz.SetDotFunction(SpiralExample);
-			break;
-		case 2:
-			title += "Random Walk";
-			viz.SetDotFunction(RandomWalkExample);
-			break;
-		case 3:
-			title += "Wave Function";
-			viz.SetDotFunction(WaveExample);
-			break;
-		}
+		viz.SetDotFunction([&](float time) {
+			ImGui::Begin("Advanced Demo");
+			ImGui::Text("Select Example:");
+			if (ImGui::RadioButton("Spiraling Particles", &current_example, 1)) {
+				viz.SetCamera(Camera(0.0f, 2.0f, 10.0f, -10.0f, 0.0f, 45.0f));
+			}
+			if (ImGui::RadioButton("Random Walk", &current_example, 2)) {
+				viz.SetCamera(Camera(0.0f, 2.0f, 10.0f, -10.0f, 0.0f, 45.0f));
+			}
+			if (ImGui::RadioButton("Wave Function", &current_example, 3)) {
+				viz.SetCamera(Camera(0.0f, 8.0f, 8.0f, -45.0f, 0.0f, 45.0f));
+			}
+			ImGui::End();
 
-		std::cout << "Boidsish Advanced Examples" << std::endl;
-		std::cout << "Example " << example << ": "
-				  << (example == 1       ? "Spiraling Particles"
-		                  : example == 2 ? "Random Walk"
-		                                 : "Wave Function")
-				  << std::endl;
-		std::cout << "Controls:" << std::endl;
-		std::cout << "  WASD - Move camera horizontally" << std::endl;
-		std::cout << "  Space/Shift - Move camera up/down" << std::endl;
-		std::cout << "  Mouse - Look around" << std::endl;
-		std::cout << "  ESC - Exit" << std::endl;
-		std::cout << "Run with argument 1, 2, or 3 to select example" << std::endl;
-		std::cout << std::endl;
+			switch (current_example) {
+				case 1: return SpiralExample(time);
+				case 2: return RandomWalkExample(time);
+				case 3: return WaveExample(time);
+				default: return std::vector<std::shared_ptr<Shape>>();
+			}
+		});
 
 		viz.Run();
 

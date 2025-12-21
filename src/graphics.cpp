@@ -19,6 +19,9 @@
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <shader.h>
+#include "imgui.h"
+#include "imgui_impl_glfw.h"
+#include "imgui_impl_opengl3.h"
 
 namespace Boidsish {
 	constexpr float kMinCameraHeight = 0.1f;
@@ -101,6 +104,18 @@ namespace Boidsish {
 				throw std::runtime_error("Failed to create GLFW window");
 			}
 			glfwMakeContextCurrent(window);
+
+			// Setup Dear ImGui context
+			IMGUI_CHECKVERSION();
+			ImGui::CreateContext();
+			ImGuiIO& io = ImGui::GetIO();
+			(void)io;
+			io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard; // Enable Keyboard Controls
+			io.IniFilename = "imgui.ini";
+
+			// Setup Platform/Renderer backends
+			ImGui_ImplGlfw_InitForOpenGL(window, true);
+			ImGui_ImplOpenGL3_Init("#version 420");
 
 			if (glewInit() != GLEW_OK) {
 				throw std::runtime_error("Failed to initialize GLEW");
@@ -285,6 +300,12 @@ namespace Boidsish {
 			glDeleteRenderbuffers(1, &reflection_depth_rbo);
 			glDeleteFramebuffers(2, pingpong_fbo);
 			glDeleteTextures(2, pingpong_texture);
+
+			// Cleanup
+			ImGui_ImplOpenGL3_Shutdown();
+			ImGui_ImplGlfw_Shutdown();
+			ImGui::DestroyContext();
+
 			if (window)
 				glfwDestroyWindow(window);
 			glfwTerminate();
@@ -807,6 +828,11 @@ namespace Boidsish {
 	}
 
 	void Visualizer::Render() {
+		// Start the Dear ImGui frame
+		ImGui_ImplOpenGL3_NewFrame();
+		ImGui_ImplGlfw_NewFrame();
+		ImGui::NewFrame();
+
 		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
 		std::vector<std::shared_ptr<Shape>> shapes;
@@ -912,6 +938,10 @@ namespace Boidsish {
 		impl->RenderPlane(view);
 		impl->RenderSceneObjects(view, impl->camera, shapes, impl->simulation_time, std::nullopt);
 		impl->RenderTerrain(view, std::nullopt);
+
+		// Rendering
+		ImGui::Render();
+		ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
 
 		glfwSwapBuffers(impl->window);
 	}

@@ -6,12 +6,17 @@
 #include "dot.h"
 #include "graph.h"
 #include "graphics.h"
+#include "imgui.h"
 
 using namespace Boidsish;
 
 // Example: Simple moving dot with trail
 std::vector<std::shared_ptr<Shape>> TrailExample(float time) {
 	std::vector<std::shared_ptr<Shape>> shapes;
+
+	ImGui::Begin("Basic Demo");
+	ImGui::Text("Simulation Time: %.2f", time);
+	ImGui::End();
 
 	// Example: Graph with spline smoothing
 	auto graph = std::make_shared<Graph>(0, 0, 0, 0);
@@ -59,21 +64,8 @@ int main() {
 		// Set the dot function
 		viz.SetDotFunction(TrailExample);
 
-		auto path = std::filesystem::current_path();
-
-		std::cout << "CWD: " << path.string() << std::endl;
-		std::cout << "Boidsish 3D Visualizer Started!" << std::endl;
-		std::cout << "Controls:" << std::endl;
-		std::cout << "  WASD - Move camera horizontally" << std::endl;
-		std::cout << "  Space/Shift - Move camera up/down" << std::endl;
-		std::cout << "  Mouse - Look around" << std::endl;
-		std::cout << "  ESC - Exit" << std::endl;
-		std::cout << std::endl;
-
 		// Run the visualization
 		viz.Run();
-
-		std::cout << "Visualization ended." << std::endl;
 
 	} catch (const std::exception& e) {
 		std::cerr << "Error: " << e.what() << std::endl;
