@@ -14,19 +14,9 @@
 
 using namespace Boidsish;
 
-std::map<int, bool> key_states;
-
-void key_callback(int key, int action, int mods) {
-    if (action == GLFW_PRESS) {
-        key_states[key] = true;
-    } else if (action == GLFW_RELEASE) {
-        key_states[key] = false;
-    }
-}
-
 class AircraftEntity : public Entity<AircraftShape> {
 public:
-    AircraftEntity(int id) : Entity(id), speed_(20.0f) {
+    AircraftEntity(int id, std::map<int, bool>& key_states) : Entity(id), speed_(20.0f), key_states_(key_states) {
         SetSize(1.0f);
         SetColor(0.8f, 0.8f, 0.8f, 1.0f);
         SetPosition(0, 50, 0);
@@ -38,36 +28,36 @@ public:
         float roll_speed = 80.0f * delta_time;
         float yaw_speed = 40.0f * delta_time;
 
-        if (key_states.count(GLFW_KEY_W) && key_states[GLFW_KEY_W]) {
+        if (key_states_.count(GLFW_KEY_W) && key_states_[GLFW_KEY_W]) {
             glm::quat pitch = glm::angleAxis(glm::radians(pitch_speed), glm::vec3(1, 0, 0));
             SetRotation(GetRotation() * pitch);
         }
-        if (key_states.count(GLFW_KEY_S) && key_states[GLFW_KEY_S]) {
+        if (key_states_.count(GLFW_KEY_S) && key_states_[GLFW_KEY_S]) {
             glm::quat pitch = glm::angleAxis(glm::radians(-pitch_speed), glm::vec3(1, 0, 0));
             SetRotation(GetRotation() * pitch);
         }
-        if (key_states.count(GLFW_KEY_A) && key_states[GLFW_KEY_A]) {
+        if (key_states_.count(GLFW_KEY_A) && key_states_[GLFW_KEY_A]) {
             glm::quat roll = glm::angleAxis(glm::radians(roll_speed), glm::vec3(0, 0, 1));
             SetRotation(GetRotation() * roll);
         }
-        if (key_states.count(GLFW_KEY_D) && key_states[GLFW_KEY_D]) {
+        if (key_states_.count(GLFW_KEY_D) && key_states_[GLFW_KEY_D]) {
             glm::quat roll = glm::angleAxis(glm::radians(-roll_speed), glm::vec3(0, 0, 1));
             SetRotation(GetRotation() * roll);
         }
-        if (key_states.count(GLFW_KEY_Q) && key_states[GLFW_KEY_Q]) {
+        if (key_states_.count(GLFW_KEY_Q) && key_states_[GLFW_KEY_Q]) {
             glm::quat yaw = glm::angleAxis(glm::radians(yaw_speed), glm::vec3(0, 1, 0));
             SetRotation(GetRotation() * yaw);
         }
-        if (key_states.count(GLFW_KEY_E) && key_states[GLFW_KEY_E]) {
+        if (key_states_.count(GLFW_KEY_E) && key_states_[GLFW_KEY_E]) {
             glm::quat yaw = glm::angleAxis(glm::radians(-yaw_speed), glm::vec3(0, 1, 0));
             SetRotation(GetRotation() * yaw);
         }
 
         // Speed control
-        if (key_states.count(GLFW_KEY_UP) && key_states[GLFW_KEY_UP]) {
+        if (key_states_.count(GLFW_KEY_UP) && key_states_[GLFW_KEY_UP]) {
             speed_ += 10.0f * delta_time;
         }
-        if (key_states.count(GLFW_KEY_DOWN) && key_states[GLFW_KEY_DOWN]) {
+        if (key_states_.count(GLFW_KEY_DOWN) && key_states_[GLFW_KEY_DOWN]) {
             speed_ -= 10.0f * delta_time;
         }
 
@@ -86,30 +76,57 @@ public:
     }
 private:
     float speed_;
+    std::map<int, bool>& key_states_;
 };
 
 class FlightHandler : public EntityHandler {
 public:
     FlightHandler() {
-        AddEntity<AircraftEntity>();
+        AddEntity<AircraftEntity>(key_states_);
     }
+
+    bool key_callback(int key, int action, int mods) {
+        if (action == GLFW_PRESS) {
+            key_states_[key] = true;
+        } else if (action == GLFW_RELEASE) {
+            key_states_[key] = false;
+        }
+
+        switch (key) {
+            case GLFW_KEY_W:
+            case GLFW_KEY_S:
+            case GLFW_KEY_A:
+            case GLFW_KEY_D:
+            case GLFW_KEY_Q:
+            case GLFW_KEY_E:
+            case GLFW_KEY_UP:
+            case GLFW_KEY_DOWN:
+                return true;
+            default:
+                return false;
+        }
+    }
+
     std::shared_ptr<AircraftEntity> GetAircraft() {
         if (GetAllEntities().empty()) {
             return nullptr;
         }
         return std::dynamic_pointer_cast<AircraftEntity>(GetAllEntities().begin()->second);
     }
+private:
+    std::map<int, bool> key_states_;
 };
 
 
 int main() {
     try {
         Boidsish::Visualizer visualizer(1280, 720, "Flight Simulator");
-        visualizer.SetManualCameraControl(false);
-
-        visualizer.SetKeyCallback(key_callback);
 
         FlightHandler handler;
+        visualizer.SetKeyCallback([&handler](int key, int action, int mods) {
+            return handler.key_callback(key, action, mods);
+        });
+
         visualizer.AddShapeHandler(std::ref(handler));
 
         while(!visualizer.ShouldClose()) {

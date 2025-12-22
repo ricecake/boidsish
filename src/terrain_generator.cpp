@@ -136,7 +136,7 @@ namespace Boidsish {
         auto low_threshold = (floor(control_value * biomes.size()) / biomes.size());
         auto high_threshold = (ceil(control_value * biomes.size()) / biomes.size());
         auto low_item = biomes[int(floor(control_value * biomes.size()))];
-        auto high_item = biomes[int(ceil(control_value * biomes.size()))];
+        auto high_item = biomes[std::min((size_t)biomes.size() - 1, (size_t)ceil(control_value * biomes.size()))];
         auto t = glm::smoothstep(low_threshold, high_threshold, control_value);
 
         current.spikeDamping = std::lerp(low_item.spikeDamping, high_item.spikeDamping, t);

@@ -74,8 +74,7 @@ namespace Boidsish {
 		// Artistic effects
 		GLuint artistic_effects_ubo;
 		bool   black_and_white_effect = false;
-        std::function<void(int, int, int)> key_callback_;
-        bool   manual_camera_control_ = false;
+        std::function<bool(int, int, int)> key_callback_;
 		bool   negative_effect = false;
 		bool   shimmery_effect = false;
 		bool   glitched_effect = false;
@@ -488,7 +487,7 @@ namespace Boidsish {
 		}
 
 		void ProcessInput(float delta_time) {
-			if (!manual_camera_control_ || auto_camera_mode || single_track_mode)
+			if (auto_camera_mode || single_track_mode)
 				return;
 			float     camera_speed_val = camera.speed * delta_time;
 			glm::vec3 front(
@@ -655,8 +654,8 @@ namespace Boidsish {
 
 		static void KeyCallback(GLFWwindow* w, int key, int scancode, int action, int mods) {
 			auto* impl = static_cast<VisualizerImpl*>(glfwGetWindowUserPointer(w));
-            if (impl->key_callback_) {
-                impl->key_callback_(key, action, mods);
+            if (impl->key_callback_ && impl->key_callback_(key, action, mods)) {
+                return;
             }
 			if (key >= 0 && key < 1024) {
 				if (action == GLFW_PRESS)
@@ -831,13 +830,11 @@ namespace Boidsish {
 		float       delta_time = std::chrono::duration<float>(current_frame_time - last_frame_time).count();
 		last_frame_time = current_frame_time;
 
-        if (impl->manual_camera_control_) {
 		if (impl->single_track_mode) {
 			impl->UpdateSingleTrackCamera(delta_time, shapes);
-		    } else {
-			    impl->UpdateAutoCamera(delta_time, shapes);
-		    }
-        }
+		} else {
+			impl->UpdateAutoCamera(delta_time, shapes);
+		}
 
 		VisualEffectsUbo ubo_data = {};
 		for (const auto& shape : shapes) {
@@ -938,12 +935,8 @@ namespace Boidsish {
 		impl->camera = camera;
 	}
 
-    void Visualizer::SetKeyCallback(std::function<void(int, int, int)> callback) {
+    void Visualizer::SetKeyCallback(std::function<bool(int, int, int)> callback) {
         impl->key_callback_ = callback;
-    }
-
-    void Visualizer::SetManualCameraControl(bool enabled) {
-        impl->manual_camera_control_ = enabled;
     }
 
     float Visualizer::GetTerrainHeight(float x, float z) {
