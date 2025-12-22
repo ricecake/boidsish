@@ -63,7 +63,8 @@ namespace Boidsish {
 		for (auto const& [key, val] : chunk_cache_) {
 			int dx = key.first - current_chunk_x;
 			int dz = key.second - current_chunk_z;
-			if (std::abs(dx) > dynamic_view_distance || std::abs(dz) > dynamic_view_distance) {
+			if (std::abs(dx) > dynamic_view_distance + kUnloadDistanceBuffer_ ||
+			    std::abs(dz) > dynamic_view_distance + kUnloadDistanceBuffer_) {
 				to_remove.push_back(key);
 			}
 		}
