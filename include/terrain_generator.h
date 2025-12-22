@@ -2,6 +2,7 @@
 
 #include <map>
 #include <memory>
+#include <tuple>
 #include <vector>
 
 #include "PerlinNoise.hpp"
@@ -16,6 +17,12 @@ namespace Boidsish {
 
 		void                                  update(const Frustum& frustum, const Camera& camera);
 		std::vector<std::shared_ptr<Terrain>> getVisibleChunks();
+
+		std::tuple<float, glm::vec3> pointProperties(float x, float z) {
+			auto point = pointGenerate(x, z);
+			auto norm = diffToNorm(point[1], point[2]);
+			return std::tuple<float, glm::vec3>(point[0], norm);
+		}
 
 	private:
 		std::shared_ptr<Terrain> generateChunk(int chunkX, int chunkZ);
@@ -56,8 +63,11 @@ namespace Boidsish {
 		// Noise generators
 		siv::PerlinNoise control_perlin_noise_;
 
-		auto fbm(float x, float z, TerrainParameters params);
-		auto biomefbm(glm::vec2 pos, BiomeAttributes attr);
+		auto      fbm(float x, float z, TerrainParameters params);
+		auto      biomefbm(glm::vec2 pos, BiomeAttributes attr);
+		glm::vec3 pointGenerate(float x, float y);
+
+		glm::vec3 diffToNorm(float dx, float dz) { return glm::normalize(glm::vec3(-dx, 1.0f, -dz)); }
 
 		// Cache
 		std::map<std::pair<int, int>, std::shared_ptr<Terrain>> chunk_cache_;
