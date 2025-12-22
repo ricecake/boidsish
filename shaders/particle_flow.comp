@@ -50,24 +50,36 @@ void main() {
     Particle pIn = particlesIn[index];
     vec3 position = pIn.position.xyz;
     vec3 velocity = pIn.velocity.xyz;
+    vec3 acceleration = vec3(0.0);
 
-    // --- Wind Force ---
+    // --- Forces ---
+
+    // 1. Wind Force (Curl Noise + Constant)
     vec3 noise_coord = position * 0.05 + vec3(0.0, 0.0, time * 0.1);
     vec3 curl = curlNoise(noise_coord) * 5.0;
     vec3 windForce = vec3(2.0, 0.0, 1.0) + curl;
+    acceleration += windForce;
 
-    // --- Integration ---
-    velocity = mix(velocity, windForce, 0.1);
-    position += velocity * deltaTime;
+    // 2. Altitude-based Gravity
+    float altitude = position.y;
+    float gravityStrength = -9.8 * (1.0 + altitude * 0.1);
+    acceleration += vec3(0.0, gravityStrength, 0.0);
 
-    // --- Terrain Collision ---
+    // 3. Terrain Avoidance Force
     vec2 terrainCoords = (position.xz - worldMin.xz) / (worldMax.xz - worldMin.xz);
-    float terrainHeight = texture(heightmap, terrainCoords).r * (worldMax.y - worldMin.y) + worldMin.y;
+    vec4 terrainData = texture(heightmap, terrainCoords);
+    vec3 terrainNormal = terrainData.xyz;
+    float terrainHeight = terrainData.w * (worldMax.y - worldMin.y) + worldMin.y;
 
-    if (position.y < terrainHeight) {
-        position.y = terrainHeight;
-        velocity.y = 0; // Stop vertical movement upon hitting the ground
+    float distanceToTerrain = position.y - terrainHeight;
+    if (distanceToTerrain < 2.0) {
+        float avoidanceStrength = 20.0 * (1.0 - smoothstep(0.0, 2.0, distanceToTerrain));
+        acceleration += terrainNormal * avoidanceStrength;
     }
+
+    // --- Integration (Euler) ---
+    velocity += acceleration * deltaTime;
+    position += velocity * deltaTime;
 
     // --- Boundary Conditions (Wrap around) ---
     if (position.x < worldMin.x) position.x = worldMax.x - (worldMin.x - position.x);

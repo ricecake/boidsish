@@ -196,7 +196,7 @@ namespace Boidsish {
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
             // Initial size, will be resized later
-            glTexImage2D(GL_TEXTURE_2D, 0, GL_R32F, 1, 1, 0, GL_RED, GL_FLOAT, NULL);
+            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, 1, 1, 0, GL_RGBA, GL_FLOAT, NULL);
 
 
 			glGenBuffers(1, &lighting_ubo);
@@ -926,7 +926,7 @@ namespace Boidsish {
                     impl->world_heightmap_width = new_width;
                     impl->world_heightmap_height = new_height;
                     glBindTexture(GL_TEXTURE_2D, impl->world_heightmap_texture);
-                    glTexImage2D(GL_TEXTURE_2D, 0, GL_R32F, new_width, new_height, 0, GL_RED, GL_FLOAT, NULL);
+                    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, new_width, new_height, 0, GL_RGBA, GL_FLOAT, NULL);
                 }
 
                 impl->world_min_bounds = glm::vec3(min_x, 0, min_z);
@@ -937,15 +937,17 @@ namespace Boidsish {
                 for (const auto& chunk : visible_chunks) {
                     const auto& heightmap = chunk->GetHeightmap();
                     if (!heightmap.empty()) {
-                        std::vector<float> float_heightmap;
+                    std::vector<glm::vec4> packed_data;
+                    packed_data.reserve(heightmap.size() * heightmap[0].size());
                         for(const auto& row : heightmap) {
                             for(const auto& val : row) {
-                                float_heightmap.push_back(val.x);
+                            glm::vec3 normal = glm::normalize(glm::vec3(-val.y, 1.0f, -val.z));
+                            packed_data.emplace_back(normal, val.x);
                             }
                         }
                         int offset_x = (int)chunk->GetX() - min_x;
                         int offset_z = (int)chunk->GetZ() - min_z;
-                        glTexSubImage2D(GL_TEXTURE_2D, 0, offset_x, offset_z, heightmap.size(), heightmap[0].size(), GL_RED, GL_FLOAT, float_heightmap.data());
+                    glTexSubImage2D(GL_TEXTURE_2D, 0, offset_x, offset_z, heightmap.size(), heightmap[0].size(), GL_RGBA, GL_FLOAT, packed_data.data());
                     }
                 }
             }
