@@ -140,6 +140,7 @@ namespace Boidsish {
 			glEnable(GL_DEPTH_TEST);
 			glEnable(GL_BLEND);
 			glEnable(GL_MULTISAMPLE);
+            glEnable(GL_PROGRAM_POINT_SIZE);
 			glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 			glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
 
