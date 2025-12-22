@@ -173,7 +173,7 @@ void main() {
 	// discard;
 	// FragColor = vec4(1,1,1, 1);
 
-	vec3  warp = vec3(fbm(FragPos / 50 + time * 0.1));
+	vec3  warp = vec3(fbm(FragPos / 50 + time * 0.05));
 	float nebula_noise = fbm(FragPos / 50 + warp * 0.5);
 	vec3  warpNoise = nebula_noise * warp;
 

@@ -126,6 +126,12 @@ namespace Boidsish {
 			height = glm::smoothstep(attr.floorLevel - 0.1f, attr.floorLevel, height) * attr.floorLevel;
 		}
 
+		height = height * 0.5f + 0.5f;
+
+		if (height[0] > 0) {
+			height *= attr.floorLevel;
+		}
+
 		return height;
 	};
 
@@ -161,15 +167,9 @@ namespace Boidsish {
 
 				auto pos = glm::vec2(worldX, worldZ);
 				auto noise = biomefbm(pos, current);
-				noise = noise * 0.5f + 0.5f;
 
-				if (noise[0] > 0) {
-					noise *= current.floorLevel;
-					heightmap[i][j] = noise;
-					has_terrain = true;
-				} else {
-					heightmap[i][j] = glm::vec3(0.0f, 0, 0); // Flush with floor
-				}
+				heightmap[i][j] = noise;
+				has_terrain = noise[0] > 0;
 			}
 		}
 
