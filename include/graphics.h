@@ -73,6 +73,8 @@ namespace Boidsish {
 
         void SetKeyCallback(std::function<void(int, int, int)> callback);
 
+        void SetManualCameraControl(bool enabled);
+
         float GetTerrainHeight(float x, float z);
 
 	private:

@@ -105,6 +105,7 @@ public:
 int main() {
     try {
         Boidsish::Visualizer visualizer(1280, 720, "Flight Simulator");
+        visualizer.SetManualCameraControl(false);
 
         visualizer.SetKeyCallback(key_callback);
 

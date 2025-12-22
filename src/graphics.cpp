@@ -75,6 +75,7 @@ namespace Boidsish {
 		GLuint artistic_effects_ubo;
 		bool   black_and_white_effect = false;
         std::function<void(int, int, int)> key_callback_;
+        bool   manual_camera_control_ = false;
 		bool   negative_effect = false;
 		bool   shimmery_effect = false;
 		bool   glitched_effect = false;
@@ -487,7 +488,7 @@ namespace Boidsish {
 		}
 
 		void ProcessInput(float delta_time) {
-			if (auto_camera_mode || single_track_mode)
+			if (!manual_camera_control_ || auto_camera_mode || single_track_mode)
 				return;
 			float     camera_speed_val = camera.speed * delta_time;
 			glm::vec3 front(
@@ -830,11 +831,13 @@ namespace Boidsish {
 		float       delta_time = std::chrono::duration<float>(current_frame_time - last_frame_time).count();
 		last_frame_time = current_frame_time;
 
+        if (impl->manual_camera_control_) {
 		if (impl->single_track_mode) {
 			impl->UpdateSingleTrackCamera(delta_time, shapes);
-		} else {
-			impl->UpdateAutoCamera(delta_time, shapes);
-		}
+		    } else {
+			    impl->UpdateAutoCamera(delta_time, shapes);
+		    }
+        }
 
 		VisualEffectsUbo ubo_data = {};
 		for (const auto& shape : shapes) {
@@ -937,6 +940,10 @@ namespace Boidsish {
 
     void Visualizer::SetKeyCallback(std::function<void(int, int, int)> callback) {
         impl->key_callback_ = callback;
+    }
+
+    void Visualizer::SetManualCameraControl(bool enabled) {
+        impl->manual_camera_control_ = enabled;
     }
 
     float Visualizer::GetTerrainHeight(float x, float z) {
