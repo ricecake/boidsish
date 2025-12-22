@@ -13,6 +13,11 @@
 class Shader {
 public:
 	unsigned int ID;
+    enum class Type {
+        GRAPHICS,
+        COMPUTE
+    };
+    Type shaderType;
 
 private:
 	std::string loadShaderSource(const std::string& path, std::set<std::string>& includedFiles) {
@@ -65,7 +70,7 @@ public:
 	       const char* fragmentPath,
 	       const char* tessControlPath = nullptr,
 	       const char* tessEvaluationPath = nullptr,
-	       const char* geometryPath = nullptr) {
+	       const char* geometryPath = nullptr) : shaderType(Type::GRAPHICS) {
 		// 1. retrieve the vertex/fragment source code from filePath
 		std::string vertexCode;
 		std::string fragmentCode;
@@ -153,9 +158,38 @@ public:
 			glDeleteShader(geometry);
 	}
 
+    Shader(const char* computePath) : shaderType(Type::COMPUTE) {
+        std::string computeCode;
+        std::set<std::string> includedFiles;
+        computeCode = loadShaderSource(computePath, includedFiles);
+        const char* cShaderCode = computeCode.c_str();
+
+        unsigned int compute;
+        compute = glCreateShader(GL_COMPUTE_SHADER);
+        glShaderSource(compute, 1, &cShaderCode, NULL);
+        glCompileShader(compute);
+        checkCompileErrors(compute, "COMPUTE");
+
+        ID = glCreateProgram();
+        glAttachShader(ID, compute);
+        glLinkProgram(ID);
+        checkCompileErrors(ID, "PROGRAM");
+
+        glDeleteShader(compute);
+    }
+
 	// activate the shader
 	// ------------------------------------------------------------------------
 	void use() { glUseProgram(ID); }
+
+    void dispatch(unsigned int num_groups_x, unsigned int num_groups_y, unsigned int num_groups_z) {
+        if (shaderType != Type::COMPUTE) {
+            std::cerr << "ERROR::SHADER::DISPATCH_CALLED_ON_GRAPHICS_SHADER" << std::endl;
+            return;
+        }
+        use();
+        glDispatchCompute(num_groups_x, num_groups_y, num_groups_z);
+    }
 
 	// utility uniform functions
 	// ------------------------------------------------------------------------

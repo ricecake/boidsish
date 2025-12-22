@@ -3,6 +3,7 @@
 #include <map>
 #include <memory>
 #include <vector>
+#include <ranges>
 
 #include "PerlinNoise.hpp"
 #include "Simplex.h"
@@ -16,6 +17,10 @@ namespace Boidsish {
 
 		void                                  update(const Frustum& frustum, const Camera& camera);
 		std::vector<std::shared_ptr<Terrain>> getVisibleChunks();
+		int GetChunkSize() const { return chunk_size_; }
+        float GetMaxHeight() const {
+            return std::ranges::max(std::views::transform(biomes, &BiomeAttributes::floorLevel));
+        }
 
 	private:
 		std::shared_ptr<Terrain> generateChunk(int chunkX, int chunkZ);

@@ -209,7 +209,7 @@ namespace Boidsish {
 			}
 		}
 
-		auto terrain_chunk = std::make_shared<Terrain>(vertexData, indices);
+		auto terrain_chunk = std::make_shared<Terrain>(vertexData, indices, std::move(heightmap));
 		terrain_chunk->SetPosition(chunkX * chunk_size_, 0, chunkZ * chunk_size_);
 
 		return terrain_chunk;

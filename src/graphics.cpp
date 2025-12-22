@@ -26,6 +26,11 @@ namespace Boidsish {
 	constexpr float kCameraSpeedStep = 2.5f;
 	constexpr float kMinCameraSpeed = 0.5f;
 
+    struct Particle {
+        glm::vec4 position;
+        glm::vec4 velocity;
+    };
+
 	struct Visualizer::VisualizerImpl {
 		GLFWwindow*                           window;
 		int                                   width, height;
@@ -35,6 +40,22 @@ namespace Boidsish {
 		std::map<int, float>                  trail_last_update;
 
 		std::unique_ptr<TerrainGenerator> terrain_generator;
+
+        // Particle system
+        std::unique_ptr<Shader> particle_compute_shader;
+        std::unique_ptr<Shader> particle_render_shader;
+        GLuint particle_ssbo[2];
+        GLuint particle_vao;
+        const int num_particles = 100000;
+
+        // World Heightmap
+        GLuint world_heightmap_texture;
+        int world_heightmap_width = 0;
+        int world_heightmap_height = 0;
+        glm::vec3 world_min_bounds;
+        glm::vec3 world_max_bounds;
+        std::set<std::pair<int, int>> last_visible_chunks;
+
 
 		std::shared_ptr<Shader> shader;
 		std::unique_ptr<Shader> plane_shader;
@@ -129,6 +150,44 @@ namespace Boidsish {
 			trail_shader = std::make_unique<Shader>("shaders/trail.vert", "shaders/trail.frag");
 			blur_shader = std::make_unique<Shader>("shaders/blur.vert", "shaders/blur.frag");
 			terrain_generator = std::make_unique<TerrainGenerator>();
+            particle_compute_shader = std::make_unique<Shader>("shaders/particle_flow.comp");
+            particle_render_shader = std::make_unique<Shader>("shaders/particle.vert", "shaders/particle.frag");
+
+            // --- Particle System Initialization ---
+            glGenBuffers(2, particle_ssbo);
+
+            std::vector<Particle> initial_particles(num_particles);
+            int terrain_size = terrain_generator->GetChunkSize() * 2; // Assuming a 2x2 chunk world initially
+            for(int i = 0; i < num_particles; ++i) {
+                float x = (float)rand() / (float)RAND_MAX * terrain_size;
+                float z = (float)rand() / (float)RAND_MAX * terrain_size;
+                initial_particles[i].position = glm::vec4(x, 20.0f, z, 1.0f);
+                initial_particles[i].velocity = glm::vec4(0.0f);
+            }
+
+            glBindBuffer(GL_SHADER_STORAGE_BUFFER, particle_ssbo[0]);
+            glBufferData(GL_SHADER_STORAGE_BUFFER, num_particles * sizeof(Particle), initial_particles.data(), GL_DYNAMIC_DRAW);
+
+            glBindBuffer(GL_SHADER_STORAGE_BUFFER, particle_ssbo[1]);
+            glBufferData(GL_SHADER_STORAGE_BUFFER, num_particles * sizeof(Particle), nullptr, GL_DYNAMIC_DRAW);
+
+            glGenVertexArrays(1, &particle_vao);
+            glBindVertexArray(particle_vao);
+            glBindBuffer(GL_ARRAY_BUFFER, particle_ssbo[0]); // Use the initial positions
+            glVertexAttribPointer(0, 4, GL_FLOAT, GL_FALSE, sizeof(Particle), (void*)offsetof(Particle, position));
+            glEnableVertexAttribArray(0);
+            glBindVertexArray(0);
+
+            // --- World Heightmap Initialization ---
+            glGenTextures(1, &world_heightmap_texture);
+            glBindTexture(GL_TEXTURE_2D, world_heightmap_texture);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+            // Initial size, will be resized later
+            glTexImage2D(GL_TEXTURE_2D, 0, GL_R32F, 1, 1, 0, GL_RED, GL_FLOAT, NULL);
+
 
 			glGenBuffers(1, &lighting_ubo);
 			glBindBuffer(GL_UNIFORM_BUFFER, lighting_ubo);
@@ -274,6 +333,9 @@ namespace Boidsish {
 		}
 
 		~VisualizerImpl() {
+            glDeleteBuffers(2, particle_ssbo);
+            glDeleteVertexArrays(1, &particle_vao);
+            glDeleteTextures(1, &world_heightmap_texture);
 			Shape::DestroySphereMesh();
 			glDeleteVertexArrays(1, &plane_vao);
 			glDeleteBuffers(1, &plane_vbo);
@@ -802,12 +864,84 @@ namespace Boidsish {
 
 		if (!impl->paused) {
 			impl->simulation_time += delta_time;
+
+            // --- Dispatch Particle Compute Shader ---
+            impl->particle_compute_shader->use();
+            impl->particle_compute_shader->setFloat("deltaTime", delta_time);
+            impl->particle_compute_shader->setFloat("time", impl->simulation_time);
+            impl->particle_compute_shader->setVec3("worldMin", impl->world_min_bounds);
+            impl->particle_compute_shader->setVec3("worldMax", impl->world_max_bounds);
+
+            glActiveTexture(GL_TEXTURE0);
+            glBindTexture(GL_TEXTURE_2D, impl->world_heightmap_texture);
+            impl->particle_compute_shader->setInt("heightmap", 0);
+
+            glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, impl->particle_ssbo[0]);
+            glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, impl->particle_ssbo[1]);
+
+            glDispatchCompute(impl->num_particles / 256, 1, 1);
+            glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT | GL_VERTEX_ATTRIB_ARRAY_BARRIER_BIT);
+
+            // Swap buffers
+            std::swap(impl->particle_ssbo[0], impl->particle_ssbo[1]);
 		}
 		impl->ProcessInput(delta_time);
 	}
 
 	void Visualizer::Render() {
 		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+        auto visible_chunks = impl->terrain_generator->getVisibleChunks();
+        std::set<std::pair<int, int>> current_visible_chunks;
+        for (const auto& chunk : visible_chunks) {
+            current_visible_chunks.insert({(int)chunk->GetX(), (int)chunk->GetZ()});
+        }
+
+        if (current_visible_chunks != impl->last_visible_chunks) {
+            impl->last_visible_chunks = current_visible_chunks;
+            if (!visible_chunks.empty()) {
+                int min_x = INT_MAX, min_z = INT_MAX, max_x = INT_MIN, max_z = INT_MIN;
+                int chunk_size = impl->terrain_generator->GetChunkSize();
+
+                for (const auto& chunk : visible_chunks) {
+                    min_x = std::min(min_x, (int)chunk->GetX());
+                    min_z = std::min(min_z, (int)chunk->GetZ());
+                    max_x = std::max(max_x, (int)chunk->GetX());
+                    max_z = std::max(max_z, (int)chunk->GetZ());
+                }
+
+                int new_width = (max_x - min_x) + chunk_size + 1;
+                int new_height = (max_z - min_z) + chunk_size + 1;
+
+                if (new_width != impl->world_heightmap_width || new_height != impl->world_heightmap_height) {
+                    impl->world_heightmap_width = new_width;
+                    impl->world_heightmap_height = new_height;
+                    glBindTexture(GL_TEXTURE_2D, impl->world_heightmap_texture);
+                    glTexImage2D(GL_TEXTURE_2D, 0, GL_R32F, new_width, new_height, 0, GL_RED, GL_FLOAT, NULL);
+                }
+
+                impl->world_min_bounds = glm::vec3(min_x, 0, min_z);
+                impl->world_max_bounds = glm::vec3(max_x + chunk_size, impl->terrain_generator->GetMaxHeight(), max_z + chunk_size);
+
+
+                glBindTexture(GL_TEXTURE_2D, impl->world_heightmap_texture);
+                for (const auto& chunk : visible_chunks) {
+                    const auto& heightmap = chunk->GetHeightmap();
+                    if (!heightmap.empty()) {
+                        std::vector<float> float_heightmap;
+                        for(const auto& row : heightmap) {
+                            for(const auto& val : row) {
+                                float_heightmap.push_back(val.x);
+                            }
+                        }
+                        int offset_x = (int)chunk->GetX() - min_x;
+                        int offset_z = (int)chunk->GetZ() - min_z;
+                        glTexSubImage2D(GL_TEXTURE_2D, 0, offset_x, offset_z, heightmap.size(), heightmap[0].size(), GL_RED, GL_FLOAT, float_heightmap.data());
+                    }
+                }
+            }
+        }
+
 
 		std::vector<std::shared_ptr<Shape>> shapes;
 		if (!impl->shape_functions.empty()) {
@@ -912,6 +1046,15 @@ namespace Boidsish {
 		impl->RenderPlane(view);
 		impl->RenderSceneObjects(view, impl->camera, shapes, impl->simulation_time, std::nullopt);
 		impl->RenderTerrain(view, std::nullopt);
+
+        // --- Render Particles ---
+        impl->particle_render_shader->use();
+        impl->particle_render_shader->setMat4("view", view);
+        impl->particle_render_shader->setMat4("projection", impl->projection);
+
+        glBindVertexArray(impl->particle_vao);
+        glDrawArrays(GL_POINTS, 0, impl->num_particles);
+        glBindVertexArray(0);
 
 		glfwSwapBuffers(impl->window);
 	}

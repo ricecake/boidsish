@@ -10,8 +10,10 @@ namespace Boidsish {
 
 	std::shared_ptr<Shader> Terrain::terrain_shader_ = nullptr;
 
-	Terrain::Terrain(const std::vector<float>& vertexData, const std::vector<unsigned int>& indices):
-		vao_(0), vbo_(0), ebo_(0), index_count_(indices.size()) {
+	Terrain::Terrain(const std::vector<float>& vertexData,
+                 const std::vector<unsigned int>& indices,
+                 std::vector<std::vector<glm::vec3>> heightmap):
+		vao_(0), vbo_(0), ebo_(0), index_count_(indices.size()), heightmap_(std::move(heightmap)) {
 		setupMesh(vertexData, indices);
 	}
 
