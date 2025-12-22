@@ -890,7 +890,7 @@ namespace Boidsish {
             glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, impl->particle_ssbo[1 - impl->particle_read_idx]);
 
             glDispatchCompute(impl->num_particles / 256, 1, 1);
-            glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
+            glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT | GL_VERTEX_ATTRIB_ARRAY_BARRIER_BIT);
 
             impl->particle_read_idx = 1 - impl->particle_read_idx;
 		}
@@ -1061,7 +1061,7 @@ namespace Boidsish {
         impl->particle_render_shader->setMat4("view", view);
         impl->particle_render_shader->setMat4("projection", impl->projection);
 
-        glBindVertexArray(impl->particle_vao[impl->particle_read_idx]);
+        glBindVertexArray(impl->particle_vao[1 - impl->particle_read_idx]);
         glDrawArrays(GL_POINTS, 0, impl->num_particles);
         glBindVertexArray(0);
 
