@@ -45,7 +45,8 @@ namespace Boidsish {
         std::unique_ptr<Shader> particle_compute_shader;
         std::unique_ptr<Shader> particle_render_shader;
         GLuint particle_ssbo[2];
-        GLuint particle_vao;
+        GLuint particle_vao[2];
+        int particle_read_idx = 0;
         const int num_particles = 100000;
 
         // World Heightmap
@@ -172,12 +173,20 @@ namespace Boidsish {
             glBindBuffer(GL_SHADER_STORAGE_BUFFER, particle_ssbo[1]);
             glBufferData(GL_SHADER_STORAGE_BUFFER, num_particles * sizeof(Particle), nullptr, GL_DYNAMIC_DRAW);
 
-            glGenVertexArrays(1, &particle_vao);
-            glBindVertexArray(particle_vao);
-            glBindBuffer(GL_ARRAY_BUFFER, particle_ssbo[0]); // Use the initial positions
+            glGenVertexArrays(2, particle_vao);
+
+            glBindVertexArray(particle_vao[0]);
+            glBindBuffer(GL_ARRAY_BUFFER, particle_ssbo[0]);
             glVertexAttribPointer(0, 4, GL_FLOAT, GL_FALSE, sizeof(Particle), (void*)offsetof(Particle, position));
             glEnableVertexAttribArray(0);
+
+            glBindVertexArray(particle_vao[1]);
+            glBindBuffer(GL_ARRAY_BUFFER, particle_ssbo[1]);
+            glVertexAttribPointer(0, 4, GL_FLOAT, GL_FALSE, sizeof(Particle), (void*)offsetof(Particle, position));
+            glEnableVertexAttribArray(0);
+
             glBindVertexArray(0);
+
 
             // --- World Heightmap Initialization ---
             glGenTextures(1, &world_heightmap_texture);
@@ -335,7 +344,7 @@ namespace Boidsish {
 
 		~VisualizerImpl() {
             glDeleteBuffers(2, particle_ssbo);
-            glDeleteVertexArrays(1, &particle_vao);
+            glDeleteVertexArrays(2, particle_vao);
             glDeleteTextures(1, &world_heightmap_texture);
 			Shape::DestroySphereMesh();
 			glDeleteVertexArrays(1, &plane_vao);
@@ -877,14 +886,13 @@ namespace Boidsish {
             glBindTexture(GL_TEXTURE_2D, impl->world_heightmap_texture);
             impl->particle_compute_shader->setInt("heightmap", 0);
 
-            glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, impl->particle_ssbo[0]);
-            glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, impl->particle_ssbo[1]);
+            glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, impl->particle_ssbo[impl->particle_read_idx]);
+            glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, impl->particle_ssbo[1 - impl->particle_read_idx]);
 
             glDispatchCompute(impl->num_particles / 256, 1, 1);
-            glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT | GL_VERTEX_ATTRIB_ARRAY_BARRIER_BIT);
+            glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
 
-            // Swap buffers
-            std::swap(impl->particle_ssbo[0], impl->particle_ssbo[1]);
+            impl->particle_read_idx = 1 - impl->particle_read_idx;
 		}
 		impl->ProcessInput(delta_time);
 	}
@@ -1053,11 +1061,7 @@ namespace Boidsish {
         impl->particle_render_shader->setMat4("view", view);
         impl->particle_render_shader->setMat4("projection", impl->projection);
 
-        glBindVertexArray(impl->particle_vao);
-        glBindBuffer(GL_ARRAY_BUFFER, impl->particle_ssbo[0]);
-        glVertexAttribPointer(0, 4, GL_FLOAT, GL_FALSE, sizeof(Particle), (void*)offsetof(Particle, position));
-        glEnableVertexAttribArray(0);
-
+        glBindVertexArray(impl->particle_vao[impl->particle_read_idx]);
         glDrawArrays(GL_POINTS, 0, impl->num_particles);
         glBindVertexArray(0);
 
