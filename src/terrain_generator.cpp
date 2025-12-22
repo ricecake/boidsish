@@ -40,6 +40,8 @@ namespace Boidsish {
 		float height_factor = std::max(1.0f, camera.y / 5.0f);
 		int   dynamic_view_distance = std::min(24, static_cast<int>(view_distance_ * height_factor));
 
+		visible_chunks_.clear();
+
 		// Load chunks based on frustum and dynamic view distance
 		for (int x = current_chunk_x - dynamic_view_distance; x <= current_chunk_x + dynamic_view_distance; ++x) {
 			for (int z = current_chunk_z - dynamic_view_distance; z <= current_chunk_z + dynamic_view_distance; ++z) {
@@ -51,25 +53,29 @@ namespace Boidsish {
 						std::ranges::max(std::views::transform(biomes, &BiomeAttributes::floorLevel))
 					)) {
 					std::pair<int, int> chunk_coord = {x, z};
-					if (chunk_cache_.find(chunk_coord) == chunk_cache_.end()) {
-						chunk_cache_[chunk_coord] = generateChunk(x, z);
+					if (chunk_map_.find(chunk_coord) == chunk_map_.end()) {
+						chunk_map_[chunk_coord] = generateChunk(x, z);
+					}
+					if (chunk_map_[chunk_coord]) {
+						visible_chunks_.push_back(chunk_map_[chunk_coord]);
 					}
 				}
 			}
 		}
 
-		// Unload chunks
+		// Unload chunks far from the camera
 		std::vector<std::pair<int, int>> to_remove;
-		for (auto const& [key, val] : chunk_cache_) {
+		for (auto const& [key, val] : chunk_map_) {
 			int dx = key.first - current_chunk_x;
 			int dz = key.second - current_chunk_z;
-			if (std::abs(dx) > dynamic_view_distance || std::abs(dz) > dynamic_view_distance) {
+			if (std::abs(dx) > dynamic_view_distance + kUnloadDistanceBuffer_ ||
+			    std::abs(dz) > dynamic_view_distance + kUnloadDistanceBuffer_) {
 				to_remove.push_back(key);
 			}
 		}
 
 		for (const auto& key : to_remove) {
-			chunk_cache_.erase(key);
+			chunk_map_.erase(key);
 		}
 	}
 
@@ -88,13 +94,7 @@ namespace Boidsish {
 	}
 
 	std::vector<std::shared_ptr<Terrain>> TerrainGenerator::getVisibleChunks() {
-		std::vector<std::shared_ptr<Terrain>> visible_chunks;
-		for (auto const& [key, val] : chunk_cache_) {
-			if (val) {
-				visible_chunks.push_back(val);
-			}
-		}
-		return visible_chunks;
+		return visible_chunks_;
 	}
 
 	auto TerrainGenerator::biomefbm(glm::vec2 pos, BiomeAttributes attr) {

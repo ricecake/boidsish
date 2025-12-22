@@ -43,6 +43,7 @@ namespace Boidsish {
 		};
 
 		const int view_distance_ = 10; // in chunks
+		const int kUnloadDistanceBuffer_ = 2; // in chunks
 		const int chunk_size_ = 32;
 		// Other solid values:  8, 0.05, 0.09
 		int   octaves_ = 4;
@@ -58,8 +59,8 @@ namespace Boidsish {
 		auto fbm(float x, float z, TerrainParameters params);
 		auto biomefbm(glm::vec2 pos, BiomeAttributes attr);
 
-		// Cache
-		std::map<std::pair<int, int>, std::shared_ptr<Terrain>> chunk_cache_;
+		std::vector<std::shared_ptr<Terrain>>                          visible_chunks_;
+		std::map<std::pair<int, int>, std::shared_ptr<Terrain>> chunk_map_;
 	};
 
 } // namespace Boidsish
