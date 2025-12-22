@@ -59,8 +59,8 @@ namespace Boidsish {
 		auto fbm(float x, float z, TerrainParameters params);
 		auto biomefbm(glm::vec2 pos, BiomeAttributes attr);
 
-		std::vector<std::shared_ptr<Terrain>>                          visible_chunks_;
-		std::map<std::pair<int, int>, std::shared_ptr<Terrain>> chunk_map_;
+		// Cache
+		std::map<std::pair<int, int>, std::shared_ptr<Terrain>> chunk_cache_;
 	};
 
 } // namespace Boidsish
