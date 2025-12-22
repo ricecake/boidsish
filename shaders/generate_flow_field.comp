@@ -1,0 +1,26 @@
+#version 430 core
+
+layout (local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
+
+uniform sampler2D world_texture;
+layout(rgba32f, binding = 0) uniform image2D flow_field_texture;
+
+void main() {
+    ivec2 pixel_coords = ivec2(gl_GlobalInvocationID.xy);
+    ivec2 dims = imageSize(flow_field_texture);
+
+    if (pixel_coords.x >= dims.x || pixel_coords.y >= dims.y) {
+        return;
+    }
+
+    float h_center = texelFetch(world_texture, pixel_coords, 0).w;
+    float h_up = texelFetch(world_texture, pixel_coords + ivec2(0, 1), 0).w;
+    float h_down = texelFetch(world_texture, pixel_coords + ivec2(0, -1), 0).w;
+    float h_right = texelFetch(world_texture, pixel_coords + ivec2(1, 0), 0).w;
+    float h_left = texelFetch(world_texture, pixel_coords + ivec2(-1, 0), 0).w;
+
+    vec2 gradient = vec2(h_right - h_left, h_up - h_down);
+    vec2 flow = normalize(vec2(-gradient.y, gradient.x));
+
+    imageStore(flow_field_texture, pixel_coords, vec4(flow, 0.0, 1.0));
+}

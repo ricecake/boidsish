@@ -42,8 +42,10 @@ namespace Boidsish {
 		std::unique_ptr<TerrainGenerator> terrain_generator;
 
         // Particle system
+        std::unique_ptr<Shader> generate_flow_field_shader;
         std::unique_ptr<Shader> particle_compute_shader;
         std::unique_ptr<Shader> particle_render_shader;
+        GLuint flow_field_texture;
         GLuint particle_ssbo[2];
         GLuint particle_vao[2];
         int particle_read_idx = 0;
@@ -152,8 +154,18 @@ namespace Boidsish {
 			trail_shader = std::make_unique<Shader>("shaders/trail.vert", "shaders/trail.frag");
 			blur_shader = std::make_unique<Shader>("shaders/blur.vert", "shaders/blur.frag");
 			terrain_generator = std::make_unique<TerrainGenerator>();
+            generate_flow_field_shader = std::make_unique<Shader>("shaders/generate_flow_field.comp");
             particle_compute_shader = std::make_unique<Shader>("shaders/particle_flow.comp");
             particle_render_shader = std::make_unique<Shader>("shaders/particle.vert", "shaders/particle.frag");
+
+            // --- Flow Field Initialization ---
+            glGenTextures(1, &flow_field_texture);
+            glBindTexture(GL_TEXTURE_2D, flow_field_texture);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, 1, 1, 0, GL_RGBA, GL_FLOAT, NULL);
 
             // --- Particle System Initialization ---
             glGenBuffers(2, particle_ssbo);
@@ -343,6 +355,7 @@ namespace Boidsish {
 		}
 
 		~VisualizerImpl() {
+            glDeleteTextures(1, &flow_field_texture);
             glDeleteBuffers(2, particle_ssbo);
             glDeleteVertexArrays(2, particle_vao);
             glDeleteTextures(1, &world_heightmap_texture);
@@ -886,6 +899,10 @@ namespace Boidsish {
             glBindTexture(GL_TEXTURE_2D, impl->world_heightmap_texture);
             impl->particle_compute_shader->setInt("heightmap", 0);
 
+            glActiveTexture(GL_TEXTURE1);
+            glBindTexture(GL_TEXTURE_2D, impl->flow_field_texture);
+            impl->particle_compute_shader->setInt("flow_field", 1);
+
             glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, impl->particle_ssbo[impl->particle_read_idx]);
             glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, impl->particle_ssbo[1 - impl->particle_read_idx]);
 
@@ -927,6 +944,8 @@ namespace Boidsish {
                     impl->world_heightmap_height = new_height;
                     glBindTexture(GL_TEXTURE_2D, impl->world_heightmap_texture);
                     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, new_width, new_height, 0, GL_RGBA, GL_FLOAT, NULL);
+                    glBindTexture(GL_TEXTURE_2D, impl->flow_field_texture);
+                    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, new_width, new_height, 0, GL_RGBA, GL_FLOAT, NULL);
                 }
 
                 impl->world_min_bounds = glm::vec3(min_x, 0, min_z);
@@ -950,6 +969,14 @@ namespace Boidsish {
                     glTexSubImage2D(GL_TEXTURE_2D, 0, offset_x, offset_z, heightmap.size(), heightmap[0].size(), GL_RGBA, GL_FLOAT, packed_data.data());
                     }
                 }
+
+                impl->generate_flow_field_shader->use();
+                glActiveTexture(GL_TEXTURE0);
+                glBindTexture(GL_TEXTURE_2D, impl->world_heightmap_texture);
+                impl->generate_flow_field_shader->setInt("world_texture", 0);
+                glBindImageTexture(0, impl->flow_field_texture, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA32F);
+                glDispatchCompute(impl->world_heightmap_width / 16, impl->world_heightmap_height / 16, 1);
+                glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
             }
         }
 

@@ -17,6 +17,7 @@ layout(std430, binding = 1) buffer ParticleBufferOut {
 
 uniform float deltaTime;
 uniform sampler2D heightmap;
+uniform sampler2D flow_field;
 uniform vec3 worldMin;
 uniform vec3 worldMax;
 uniform float time;
@@ -65,21 +66,22 @@ void main() {
     float gravityStrength = -9.8 * (1.0 + altitude * 0.1);
     acceleration += vec3(0.0, gravityStrength, 0.0);
 
-    // 3. Terrain Avoidance Force
+    // 3. Flow Field Force
     vec2 terrainCoords = (position.xz - worldMin.xz) / (worldMax.xz - worldMin.xz);
-    vec4 terrainData = texture(heightmap, terrainCoords);
-    vec3 terrainNormal = terrainData.xyz;
-    float terrainHeight = terrainData.w * (worldMax.y - worldMin.y) + worldMin.y;
-
-    float distanceToTerrain = position.y - terrainHeight;
-    if (distanceToTerrain < 2.0) {
-        float avoidanceStrength = 20.0 * (1.0 - smoothstep(0.0, 2.0, distanceToTerrain));
-        acceleration += terrainNormal * avoidanceStrength;
-    }
+    vec2 flow = texture(flow_field, terrainCoords).xy;
+    acceleration += vec3(flow.x, 0.0, flow.y) * 10.0;
 
     // --- Integration (Euler) ---
     velocity += acceleration * deltaTime;
     position += velocity * deltaTime;
+
+    // 4. Terrain Collision
+    vec4 terrainData = texture(heightmap, terrainCoords);
+    float terrainHeight = terrainData.w * (worldMax.y - worldMin.y) + worldMin.y;
+    if (position.y < terrainHeight) {
+        position.y = terrainHeight;
+        velocity.y = 0;
+    }
 
     // --- Boundary Conditions (Wrap around) ---
     if (position.x < worldMin.x) position.x = worldMax.x - (worldMin.x - position.x);
