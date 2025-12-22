@@ -4,7 +4,7 @@
 #include "dot.h"
 #include "graphics.h"
 
-std::vector<std::shared_ptr<Boidsish::Shape>> CreateShapes(float [[maybe_unused]] t) {
+std::vector<std::shared_ptr<Boidsish::Shape>> CreateShapes(float) {
 	std::vector<std::shared_ptr<Boidsish::Shape>> shapes;
 	for (int i = 0; i < 5; ++i) {
 		auto dot = std::make_shared<Boidsish::Dot>();
