@@ -42,7 +42,7 @@ namespace Boidsish {
 			BiomeAttributes{0.05, 0.5, 128}
 		};
 
-		const int view_distance_ = 10; // in chunks
+		const int view_distance_ = 10;        // in chunks
 		const int kUnloadDistanceBuffer_ = 2; // in chunks
 		const int chunk_size_ = 32;
 		// Other solid values:  8, 0.05, 0.09
