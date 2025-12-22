@@ -1054,6 +1054,10 @@ namespace Boidsish {
         impl->particle_render_shader->setMat4("projection", impl->projection);
 
         glBindVertexArray(impl->particle_vao);
+        glBindBuffer(GL_ARRAY_BUFFER, impl->particle_ssbo[0]);
+        glVertexAttribPointer(0, 4, GL_FLOAT, GL_FALSE, sizeof(Particle), (void*)offsetof(Particle, position));
+        glEnableVertexAttribArray(0);
+
         glDrawArrays(GL_POINTS, 0, impl->num_particles);
         glBindVertexArray(0);
 
