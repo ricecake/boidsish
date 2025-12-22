@@ -9,6 +9,7 @@
 #include "dot.h"
 #include "shape.h"
 #include "vector.h"
+#include <glm/gtc/quaternion.hpp>
 
 namespace Boidsish {
 
@@ -64,6 +65,10 @@ namespace Boidsish {
 
 		void SetVelocity(const Vector3& vel) { velocity_ = vel; }
 
+        const glm::quat& GetRotation() const { return rotation_; }
+
+        void SetRotation(const glm::quat& rot) { rotation_ = rot; }
+
 		// Visual properties
 		float GetSize() const { return size_; }
 
@@ -91,6 +96,7 @@ namespace Boidsish {
 		int     id_;
 		Vector3 position_; // Absolute spatial position
 		Vector3 velocity_; // Spatial velocity per frame
+        glm::quat rotation_; // Orientation
 		float   size_;
 		float   color_[4]; // RGBA
 		int     trail_length_;
@@ -107,6 +113,7 @@ namespace Boidsish {
 		void UpdateShape() override {
 			shape_->SetId(id_);
 			shape_->SetPosition(position_.x, position_.y, position_.z);
+            shape_->SetRotation(rotation_);
 			shape_->SetColor(color_[0], color_[1], color_[2], color_[3]);
 			shape_->SetTrailLength(trail_length_);
 			// For dots, we can also update the size

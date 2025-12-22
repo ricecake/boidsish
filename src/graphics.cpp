@@ -74,6 +74,7 @@ namespace Boidsish {
 		// Artistic effects
 		GLuint artistic_effects_ubo;
 		bool   black_and_white_effect = false;
+        std::function<void(int, int, int)> key_callback_;
 		bool   negative_effect = false;
 		bool   shimmery_effect = false;
 		bool   glitched_effect = false;
@@ -651,8 +652,11 @@ namespace Boidsish {
 			camera.pitch = std::max(-89.0f, std::min(89.0f, camera.pitch));
 		}
 
-		static void KeyCallback(GLFWwindow* w, int key, int /* sc */, int action, int /* mods */) {
+		static void KeyCallback(GLFWwindow* w, int key, int scancode, int action, int mods) {
 			auto* impl = static_cast<VisualizerImpl*>(glfwGetWindowUserPointer(w));
+            if (impl->key_callback_) {
+                impl->key_callback_(key, action, mods);
+            }
 			if (key >= 0 && key < 1024) {
 				if (action == GLFW_PRESS)
 					impl->keys[key] = true;
@@ -930,4 +934,12 @@ namespace Boidsish {
 	void Visualizer::SetCamera(const Camera& camera) {
 		impl->camera = camera;
 	}
+
+    void Visualizer::SetKeyCallback(std::function<void(int, int, int)> callback) {
+        impl->key_callback_ = callback;
+    }
+
+    float Visualizer::GetTerrainHeight(float x, float z) {
+        return impl->terrain_generator->GetHeight(x, z);
+    }
 } // namespace Boidsish

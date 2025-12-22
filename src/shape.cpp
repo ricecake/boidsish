@@ -96,13 +96,14 @@ namespace Boidsish {
 		}
 	}
 
-	void Shape::RenderSphere(const glm::vec3& position, const glm::vec3& color, float scale) {
+	void Shape::RenderSphere(const glm::vec3& position, const glm::quat& rotation, const glm::vec3& color, float scale) {
 		if (sphere_vao_ == 0)
 			return;
 
 		shader->use();
 		glm::mat4 model = glm::mat4(1.0f);
 		model = glm::translate(model, position);
+        model *= glm::mat4_cast(rotation);
 		model = glm::scale(model, glm::vec3(scale));
 		shader->setMat4("model", model);
 		shader->setVec3("objectColor", color.r, color.g, color.b);

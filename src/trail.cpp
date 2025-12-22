@@ -299,7 +299,7 @@ namespace Boidsish {
 		if (!points.empty()) {
 			const auto& end_point = points.front();
 			float       end_thickness = BASE_THICKNESS * 0.1f; // Make cap size relative to trail
-			Shape::RenderSphere(end_point.first, end_point.second, end_thickness);
+			Shape::RenderSphere(end_point.first, glm::quat(), end_point.second, end_thickness);
 		}
 	}
 

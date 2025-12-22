@@ -71,6 +71,10 @@ namespace Boidsish {
 		// Set camera position and orientation
 		void SetCamera(const Camera& camera);
 
+        void SetKeyCallback(std::function<void(int, int, int)> callback);
+
+        float GetTerrainHeight(float x, float z);
+
 	private:
 		struct VisualizerImpl;
 		VisualizerImpl* impl;

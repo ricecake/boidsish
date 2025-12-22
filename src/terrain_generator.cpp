@@ -128,6 +128,33 @@ namespace Boidsish {
 		return height;
 	};
 
+    glm::vec3 TerrainGenerator::_get_height_at(float x, float z) {
+        // Get control value to determine biome
+        float control_value = control_perlin_noise_.octave2D_01(x * control_noise_scale_, z * control_noise_scale_, 2);
+
+        BiomeAttributes current;
+        auto low_threshold = (floor(control_value * biomes.size()) / biomes.size());
+        auto high_threshold = (ceil(control_value * biomes.size()) / biomes.size());
+        auto low_item = biomes[int(floor(control_value * biomes.size()))];
+        auto high_item = biomes[int(ceil(control_value * biomes.size()))];
+        auto t = glm::smoothstep(low_threshold, high_threshold, control_value);
+
+        current.spikeDamping = std::lerp(low_item.spikeDamping, high_item.spikeDamping, t);
+        current.detailMasking = std::lerp(low_item.detailMasking, high_item.detailMasking, t);
+        current.floorLevel = std::lerp(low_item.floorLevel, high_item.floorLevel, t);
+
+        auto pos = glm::vec2(x, z);
+        auto noise = biomefbm(pos, current);
+        noise = noise * 0.5f + 0.5f;
+
+        if (noise[0] > 0) {
+            noise *= current.floorLevel;
+            return noise;
+        } else {
+            return glm::vec3(0.0f, 0, 0);
+        }
+    }
+
 	std::shared_ptr<Terrain> TerrainGenerator::generateChunk(int chunkX, int chunkZ) {
 		const int num_vertices_x = chunk_size_ + 1;
 		const int num_vertices_z = chunk_size_ + 1;
@@ -143,32 +170,13 @@ namespace Boidsish {
 				float worldX = (chunkX * chunk_size_ + i);
 				float worldZ = (chunkZ * chunk_size_ + j);
 
-				// Get control value to determine biome
-				float control_value = control_perlin_noise_
-										  .octave2D_01(worldX * control_noise_scale_, worldZ * control_noise_scale_, 2);
-
-				BiomeAttributes current;
-				auto            low_threshold = (floor(control_value * biomes.size()) / biomes.size());
-				auto            high_threshold = (ceil(control_value * biomes.size()) / biomes.size());
-				auto            low_item = biomes[int(floor(control_value * biomes.size()))];
-				auto            high_item = biomes[int(ceil(control_value * biomes.size()))];
-				auto            t = glm::smoothstep(low_threshold, high_threshold, control_value);
-
-				current.spikeDamping = std::lerp(low_item.spikeDamping, high_item.spikeDamping, t);
-				current.detailMasking = std::lerp(low_item.detailMasking, high_item.detailMasking, t);
-				current.floorLevel = std::lerp(low_item.floorLevel, high_item.floorLevel, t);
-
-				auto pos = glm::vec2(worldX, worldZ);
-				auto noise = biomefbm(pos, current);
-				noise = noise * 0.5f + 0.5f;
-
-				if (noise[0] > 0) {
-					noise *= current.floorLevel;
-					heightmap[i][j] = noise;
-					has_terrain = true;
-				} else {
+                glm::vec3 height = _get_height_at(worldX, worldZ);
+                if (height.x > 0) {
+                    heightmap[i][j] = height;
+                    has_terrain = true;
+                } else {
 					heightmap[i][j] = glm::vec3(0.0f, 0, 0); // Flush with floor
-				}
+                }
 			}
 		}
 
@@ -215,4 +223,7 @@ namespace Boidsish {
 		return terrain_chunk;
 	}
 
+    float TerrainGenerator::GetHeight(float x, float z) {
+        return _get_height_at(x, z).x;
+    }
 } // namespace Boidsish

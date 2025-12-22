@@ -6,8 +6,9 @@
 
 #include "visual_effects.h"
 #include <glm/glm.hpp>
+#include <glm/gtc/quaternion.hpp>
 
-class Shader;
+#include "shader.h"
 
 namespace Boidsish {
 
@@ -39,6 +40,8 @@ namespace Boidsish {
 			z_ = z;
 		}
 
+        inline void SetRotation(const glm::quat& rot) { rotation_ = rot; }
+
 		inline float GetR() const { return r_; }
 
 		inline float GetG() const { return g_; }
@@ -64,7 +67,7 @@ namespace Boidsish {
 		// Sphere mesh generation
 		static void InitSphereMesh();
 		static void DestroySphereMesh();
-		static void RenderSphere(const glm::vec3& position, const glm::vec3& color, float scale);
+		static void RenderSphere(const glm::vec3& position, const glm::quat& rotation, const glm::vec3& color, float scale);
 
 	protected:
 		// Protected constructor for derived classes
@@ -81,9 +84,10 @@ namespace Boidsish {
 		):
 			id_(id), x_(x), y_(y), z_(z), r_(r), g_(g), b_(b), a_(a), trail_length_(trail_length) {}
 
-	private:
+	protected:
 		int   id_;
 		float x_, y_, z_;
+        glm::quat rotation_;
 		float r_, g_, b_, a_;
 		int   trail_length_;
 

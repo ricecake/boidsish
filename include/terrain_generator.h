@@ -16,8 +16,10 @@ namespace Boidsish {
 
 		void                                  update(const Frustum& frustum, const Camera& camera);
 		std::vector<std::shared_ptr<Terrain>> getVisibleChunks();
+        float GetHeight(float x, float z);
 
 	private:
+        glm::vec3 _get_height_at(float x, float z);
 		std::shared_ptr<Terrain> generateChunk(int chunkX, int chunkZ);
 
 		// Terrain parameters
