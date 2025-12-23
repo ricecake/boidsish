@@ -7,20 +7,24 @@
 #include <glm/glm.hpp>
 
 namespace Boidsish {
-	class Terrain: public Shape {
-	public:
-		Terrain(const std::vector<float>& vertexData, const std::vector<unsigned int>& indices);
-		~Terrain();
 
-		void render() const override;
+class Terrain : public Shape {
+public:
+    Terrain(const std::vector<float>& vertexData,
+            const std::vector<unsigned int>& indices);
+    ~Terrain();
 
-		static std::shared_ptr<Shader> terrain_shader_;
+    void setupMesh();
+    void render() const override;
 
-	private:
-		void setupMesh(const std::vector<float>& vertexData, const std::vector<unsigned int>& indices);
+    static std::shared_ptr<Shader> terrain_shader_;
 
-		unsigned int vao_, vbo_, ebo_;
-		int          index_count_;
-	};
+private:
+    std::vector<float> vertex_data_;
+    std::vector<unsigned int> indices_;
+
+    unsigned int vao_, vbo_, ebo_;
+    int index_count_;
+};
 
 } // namespace Boidsish
