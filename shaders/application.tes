@@ -1,0 +1,38 @@
+#version 420 core
+
+layout(quads, fractional_odd_spacing, cw) in;
+
+//- Inputs from Tessellation Control Shader
+in vec3 vs_WorldPos_TC_out[];
+in vec2 vs_TexCoords_TC_out[];
+in vec3 vs_Normal_TC_out[];
+
+//- Outputs to Fragment Shader
+out vec3 vs_FragPos;
+out vec3 vs_Normal;
+out vec2 vs_TexCoords;
+out vec3 vs_barycentric;
+out vec3 vs_color;
+out vec3 vs_WorldPos;
+out vec4 vs_ReflectionClipSpacePos;
+out float vs_progress;
+
+
+//- Uniforms
+uniform mat4  view;
+uniform mat4  projection;
+uniform float uPhongAlpha;
+
+//- Terrain logic
+#include "modules/terrain.tes.glsl"
+
+void main() {
+    tess_eval_terrain();
+
+    // Provide dummy values for unused outputs to satisfy the linker
+    vs_barycentric = vec3(0.0);
+    vs_color = vec3(1.0);
+    vs_WorldPos = vs_FragPos;
+    vs_ReflectionClipSpacePos = vec4(0.0);
+    vs_progress = 0.0;
+}

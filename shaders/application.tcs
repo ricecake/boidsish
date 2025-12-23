@@ -1,0 +1,28 @@
+#version 420 core
+
+layout(vertices = 4) out;
+
+//- Inputs from vertex shader
+in vec3 vs_WorldPos_VS_out[];
+in vec2 vs_TexCoords_VS_out[];
+in vec3 vs_Normal_VS_out[];
+in vec3 vs_viewForward[];
+
+//- Outputs to tessellation evaluation shader
+out vec3 vs_WorldPos_TC_out[];
+out vec2 vs_TexCoords_TC_out[];
+out vec3 vs_Normal_TC_out[];
+
+//- Uniforms
+uniform float uTessLevelMax = 64;
+uniform float uTessLevelMin = 1;
+
+//- Lighting
+#include "helpers/lighting.glsl"
+
+//- Terrain logic
+#include "modules/terrain.tcs.glsl"
+
+void main() {
+    tess_control_terrain();
+}
