@@ -2,15 +2,16 @@
 
 #include <map>
 #include <memory>
-#include <future>
 #include <tuple>
 #include <vector>
 
 #include "PerlinNoise.hpp"
 #include "Simplex.h"
 #include "graphics.h"
-#include "thread_pool.h"
 #include "terrain.h"
+#include "thread_pool.h"
+#include "task.h"
+#include <future>
 
 namespace Boidsish {
 	class TerrainGenerator {
@@ -20,11 +21,7 @@ namespace Boidsish {
 		void                                  update(const Frustum& frustum, const Camera& camera);
 		std::vector<std::shared_ptr<Terrain>> getVisibleChunks();
 
-		std::tuple<float, glm::vec3> pointProperties(float x, float z) {
-			auto point = pointGenerate(x, z);
-			auto norm = diffToNorm(point[1], point[2]);
-			return std::tuple<float, glm::vec3>(point[0], norm);
-		}
+		std::tuple<float, glm::vec3> pointProperties(float x, float z);
 
 	private:
 		std::shared_ptr<Terrain> generateChunk(int chunkX, int chunkZ);
@@ -64,6 +61,8 @@ namespace Boidsish {
 
 		// Noise generators
 		siv::PerlinNoise control_perlin_noise_;
+		SimplexNoise control_simplex_noise_;
+		int seed_;
 
 		auto      fbm(float x, float z, TerrainParameters params);
 		auto      biomefbm(glm::vec2 pos, BiomeAttributes attr);

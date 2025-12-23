@@ -11,8 +11,9 @@ namespace Boidsish {
 	std::shared_ptr<Shader> Terrain::terrain_shader_ = nullptr;
 
 	Terrain::Terrain(const std::vector<float>& vertexData, const std::vector<unsigned int>& indices):
-		vao_(0), vbo_(0), ebo_(0), index_count_(indices.size()) {
-		setupMesh(vertexData, indices);
+		vao_(0), vbo_(0), ebo_(0), index_count_(indices.size()), is_initialized_(false) {
+		vertex_data_ = vertexData;
+        indices_ = indices;
 	}
 
 	Terrain::~Terrain() {
@@ -21,7 +22,7 @@ namespace Boidsish {
 		glDeleteBuffers(1, &ebo_);
 	}
 
-	void Terrain::setupMesh(const std::vector<float>& vertexData, const std::vector<unsigned int>& indices) {
+	void Terrain::setupMesh() {
 		glGenVertexArrays(1, &vao_);
 		glGenBuffers(1, &vbo_);
 		glGenBuffers(1, &ebo_);
@@ -29,10 +30,10 @@ namespace Boidsish {
 		glBindVertexArray(vao_);
 
 		glBindBuffer(GL_ARRAY_BUFFER, vbo_);
-		glBufferData(GL_ARRAY_BUFFER, vertexData.size() * sizeof(float), &vertexData[0], GL_STATIC_DRAW);
+		glBufferData(GL_ARRAY_BUFFER, vertex_data_.size() * sizeof(float), &vertex_data_[0], GL_STATIC_DRAW);
 
 		glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ebo_);
-		glBufferData(GL_ELEMENT_ARRAY_BUFFER, indices.size() * sizeof(unsigned int), &indices[0], GL_STATIC_DRAW);
+		glBufferData(GL_ELEMENT_ARRAY_BUFFER, indices_.size() * sizeof(unsigned int), &indices_[0], GL_STATIC_DRAW);
 
 		// Position attribute
 		glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)0);
@@ -45,9 +46,13 @@ namespace Boidsish {
 		glEnableVertexAttribArray(2);
 
 		glBindVertexArray(0);
+        is_initialized_ = true;
 	}
 
 	void Terrain::render() const {
+        if (!is_initialized_) {
+            return;
+        }
 		terrain_shader_->use();
 		// Set uniforms if necessary, e.g., model matrix
 		glm::mat4 model = glm::mat4(1.0f);

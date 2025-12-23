@@ -31,9 +31,7 @@ namespace Boidsish {
 		return true;
 	}
 
-	TerrainGenerator::TerrainGenerator(int seed)
-		: control_perlin_noise_(seed + 1),
-		  thread_pool_(std::make_unique<ThreadPool>(std::thread::hardware_concurrency())) {}
+	TerrainGenerator::TerrainGenerator(int seed): control_perlin_noise_(seed + 1), control_simplex_noise_(seed), thread_pool_(std::make_unique<ThreadPool>(4)) {}
 
 	void TerrainGenerator::update(const Frustum& frustum, const Camera& camera) {
 		int current_chunk_x = static_cast<int>(camera.x) / chunk_size_;
@@ -41,23 +39,6 @@ namespace Boidsish {
 
 		float height_factor = std::max(1.0f, camera.y / 5.0f);
 		int   dynamic_view_distance = std::min(24, static_cast<int>(view_distance_ * height_factor));
-
-		// Check for completed futures
-		std::vector<std::pair<int, int>> completed_chunks;
-		for (auto& [coord, handle] : pending_chunks_) {
-			if (handle.future.wait_for(std::chrono::seconds(0)) == std::future_status::ready) {
-				try {
-					chunk_cache_[coord] = handle.future.get();
-				} catch (const std::future_error& e) {
-					// This is expected if the task was cancelled. We can safely ignore it.
-				}
-				completed_chunks.push_back(coord);
-			}
-		}
-
-		for (const auto& coord : completed_chunks) {
-			pending_chunks_.erase(coord);
-		}
 
 		// Load chunks based on frustum and dynamic view distance
 		for (int x = current_chunk_x - dynamic_view_distance; x <= current_chunk_x + dynamic_view_distance; ++x) {
@@ -70,11 +51,10 @@ namespace Boidsish {
 						std::ranges::max(std::views::transform(biomes, &BiomeAttributes::floorLevel))
 					)) {
 					std::pair<int, int> chunk_coord = {x, z};
-					if (chunk_cache_.find(chunk_coord) == chunk_cache_.end() &&
-					    pending_chunks_.find(chunk_coord) == pending_chunks_.end()) {
-						pending_chunks_[chunk_coord] = thread_pool_->enqueue(
-							TaskPriority::HIGH, &TerrainGenerator::generateChunk, this, x, z
-						);
+					if (chunk_cache_.find(chunk_coord) == chunk_cache_.end() && pending_chunks_.find(chunk_coord) == pending_chunks_.end()) {
+						pending_chunks_[chunk_coord] = thread_pool_->enqueue(TaskPriority::MEDIUM, [this, x, z] {
+							return generateChunk(x, z);
+						});
 					}
 				}
 			}
@@ -98,6 +78,20 @@ namespace Boidsish {
 				pending_chunks_.erase(key);
 			}
 		}
+
+		// Process completed chunks
+		for (auto it = pending_chunks_.begin(); it != pending_chunks_.end(); ) {
+			if (it->second.future.wait_for(std::chrono::seconds(0)) == std::future_status::ready) {
+				auto terrain_chunk = it->second.future.get();
+				if (terrain_chunk) {
+					terrain_chunk->setupMesh();
+					chunk_cache_[it->first] = std::move(terrain_chunk);
+				}
+				it = pending_chunks_.erase(it);
+			} else {
+				++it;
+			}
+		}
 	}
 
 	auto TerrainGenerator::fbm(float x, float z, TerrainParameters params) {
@@ -106,7 +100,7 @@ namespace Boidsish {
 		float     amplitude = 1.0;
 		float     max_amplitude = 0;
 		for (int i = 0; i < octaves_; i++) {
-			total += Simplex::dnoise(glm::vec2(x * frequency, z * frequency));
+			total += control_simplex_noise_.dnoise(glm::vec2(x * frequency, z * frequency));
 			max_amplitude += amplitude;
 			amplitude *= persistence_;
 			frequency *= lacunarity_;
@@ -130,13 +124,13 @@ namespace Boidsish {
 		float     freq = 0.99f;
 
 		// Initial low-frequency pass to establish "Base Shape"
-		glm::vec3 base = Simplex::dnoise(pos * freq);
+		glm::vec3 base = control_simplex_noise_.dnoise(pos * freq);
 		height = base * amp;
 
 		for (int i = 1; i < 6; i++) {
 			amp *= 0.5f;
 			freq *= 2.0f;
-			glm::vec3 n = Simplex::dnoise(pos * freq);
+			glm::vec3 n = control_simplex_noise_.dnoise(pos * freq);
 
 			// 1. Spikiness Correction using Biome Attribute
 			float slope = glm::length(glm::vec2(n.y, n.z));
@@ -245,4 +239,9 @@ namespace Boidsish {
 		return terrain_chunk;
 	}
 
+	std::tuple<float, glm::vec3> TerrainGenerator::pointProperties(float x, float z) {
+		auto point = pointGenerate(x, z);
+		auto norm = diffToNorm(point[1], point[2]);
+		return std::tuple<float, glm::vec3>(point[0], norm);
+	}
 } // namespace Boidsish

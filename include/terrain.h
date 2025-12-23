@@ -13,14 +13,16 @@ namespace Boidsish {
 		~Terrain();
 
 		void render() const override;
+        void setupMesh();
 
 		static std::shared_ptr<Shader> terrain_shader_;
 
 	private:
-		void setupMesh(const std::vector<float>& vertexData, const std::vector<unsigned int>& indices);
-
+		std::vector<float> vertex_data_;
+        std::vector<unsigned int> indices_;
 		unsigned int vao_, vbo_, ebo_;
 		int          index_count_;
+        bool is_initialized_ = false;
 	};
 
 } // namespace Boidsish

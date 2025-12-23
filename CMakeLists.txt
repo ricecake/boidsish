@@ -39,8 +39,8 @@ set(IMGUI_INCLUDE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/${IMGUI_DIR}" CACHE PATH "" F
 add_subdirectory(external/FastNoise2)
 
 # 3. Define the Library
-# Finds all .cpp files in src/
-file(GLOB_RECURSE LIB_SOURCES "src/*.cpp")
+# Finds all .cpp files in src/ and external/src/
+file(GLOB_RECURSE LIB_SOURCES "src/*.cpp" "external/src/Simplex.cpp")
 
 add_library(boidsish STATIC ${LIB_SOURCES})
 

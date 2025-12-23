@@ -19,7 +19,7 @@ void ThreadPool::worker_loop() {
                 return this->stop_ || !this->tasks_.empty();
             });
 
-            if(this->stop_ && this->tasks_.empty()) {
+            if(this->stop_) {
                 return;
             }
 
@@ -30,9 +30,6 @@ void ThreadPool::worker_loop() {
         if(!task->cancelled) {
             task->func();
         } else {
-            // Task was cancelled. Reset the function to destroy the
-            // captured packaged_task. This will break the promise
-            // and set an exception on the associated future.
             task->func = nullptr;
         }
     }
