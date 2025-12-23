@@ -8,9 +8,12 @@
 
 #include "shape.h"
 #include "vector.h"
+#include "visual_effects.h"
 #include <glm/glm.hpp>
 
 namespace Boidsish {
+	constexpr int kMaxKeys = 1024;
+
 	struct Plane {
 		glm::vec3 normal;
 		float     distance;
@@ -19,6 +22,23 @@ namespace Boidsish {
 	struct Frustum {
 		Plane planes[6];
 	};
+
+	struct InputState {
+		bool  keys[kMaxKeys];
+		bool  key_down[kMaxKeys];
+		bool  key_up[kMaxKeys];
+		double mouse_x, mouse_y;
+		double mouse_delta_x, mouse_delta_y;
+		float delta_time;
+	};
+
+	enum class CameraMode {
+		FREE,
+		AUTO,
+		TRACKING
+	};
+
+	using InputCallback = std::function<void(const InputState&)>;
 
 	// Camera structure for 3D view control
 	struct Camera {
@@ -70,6 +90,16 @@ namespace Boidsish {
 
 		// Set camera position and orientation
 		void SetCamera(const Camera& camera);
+
+		// Set the input callback
+		void SetInputCallback(InputCallback callback);
+
+		// Set the exit key, which cannot be overridden by the input callback.
+		void SetExitKey(int key);
+
+		void SetCameraMode(CameraMode mode);
+		void TogglePause();
+		void ToggleEffect(VisualEffect effect);
 
 	private:
 		struct VisualizerImpl;
