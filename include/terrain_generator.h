@@ -2,12 +2,14 @@
 
 #include <map>
 #include <memory>
+#include <future>
 #include <tuple>
 #include <vector>
 
 #include "PerlinNoise.hpp"
 #include "Simplex.h"
 #include "graphics.h"
+#include "thread_pool.h"
 #include "terrain.h"
 
 namespace Boidsish {
@@ -71,6 +73,10 @@ namespace Boidsish {
 
 		// Cache
 		std::map<std::pair<int, int>, std::shared_ptr<Terrain>> chunk_cache_;
+
+		// Thread pool for chunk generation
+		std::unique_ptr<ThreadPool> thread_pool_;
+		std::map<std::pair<int, int>, TaskHandle<std::shared_ptr<Terrain>>> pending_chunks_;
 	};
 
 } // namespace Boidsish
