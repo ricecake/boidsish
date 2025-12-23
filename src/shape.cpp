@@ -1,13 +1,13 @@
 #include "shape.h"
 
 #include <cmath>
-#include <numbers>
 #include <vector>
 
 #include "shader.h"
 #include <GL/glew.h>
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
+#include <glm/gtc/quaternion.hpp>
 
 namespace Boidsish {
 
@@ -30,8 +30,8 @@ namespace Boidsish {
 
 		for (int lat = 0; lat <= latitude_segments; ++lat) {
 			for (int lon = 0; lon <= longitude_segments; ++lon) {
-				float theta = lat * std::numbers::pi / latitude_segments;
-				float phi = lon * 2 * std::numbers::pi / longitude_segments;
+				float theta = lat * glm::pi<float>() / latitude_segments;
+				float phi = lon * 2 * glm::pi<float>() / longitude_segments;
 				float x = radius * sin(theta) * cos(phi);
 				float y = radius * cos(theta);
 				float z = radius * sin(theta) * sin(phi);
@@ -96,14 +96,15 @@ namespace Boidsish {
 		}
 	}
 
-	void Shape::RenderSphere(const glm::vec3& position, const glm::vec3& color, float scale) {
+	void Shape::RenderSphere(const glm::vec3& position, const glm::vec3& color, const glm::vec3& scale, const glm::quat& rotation) {
 		if (sphere_vao_ == 0)
 			return;
 
 		shader->use();
 		glm::mat4 model = glm::mat4(1.0f);
 		model = glm::translate(model, position);
-		model = glm::scale(model, glm::vec3(scale));
+		model = model * glm::mat4_cast(rotation);
+		model = glm::scale(model, scale);
 		shader->setMat4("model", model);
 		shader->setVec3("objectColor", color.r, color.g, color.b);
 

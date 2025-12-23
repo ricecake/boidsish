@@ -2,10 +2,10 @@
 
 #include <algorithm>
 #include <cmath>
-#include <numbers>
 #include <vector>
 
 #include "shape.h"
+#include <glm/gtc/quaternion.hpp>
 
 namespace Boidsish {
 
@@ -141,7 +141,7 @@ namespace Boidsish {
 			float                  thickness = BASE_THICKNESS;
 
 			for (int j = 0; j <= TRAIL_SEGMENTS; ++j) {
-				float   angle = 2.0f * std::numbers::pi * j / TRAIL_SEGMENTS;
+				float   angle = 2.0f * glm::pi<float>() * j / TRAIL_SEGMENTS;
 				Vector3 offset = (normals[i] * cos(angle) + binormals[i] * sin(angle)) * thickness;
 				Vector3 pos = curve_positions[i] + offset;
 				Vector3 norm = offset.Normalized();
@@ -299,7 +299,7 @@ namespace Boidsish {
 		if (!points.empty()) {
 			const auto& end_point = points.front();
 			float       end_thickness = BASE_THICKNESS * 0.1f; // Make cap size relative to trail
-			Shape::RenderSphere(end_point.first, end_point.second, end_thickness);
+			Shape::RenderSphere(end_point.first, end_point.second, glm::vec3(end_thickness), glm::quat());
 		}
 	}
 

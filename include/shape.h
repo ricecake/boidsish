@@ -6,6 +6,7 @@
 
 #include "visual_effects.h"
 #include <glm/glm.hpp>
+#include <glm/gtc/quaternion.hpp>
 
 class Shader;
 
@@ -24,15 +25,11 @@ namespace Boidsish {
 
 		// Accessors
 		inline int GetId() const { return id_; }
-
 		inline void SetId(int id) { id_ = id; }
 
 		inline float GetX() const { return x_; }
-
 		inline float GetY() const { return y_; }
-
 		inline float GetZ() const { return z_; }
-
 		inline void SetPosition(float x, float y, float z) {
 			x_ = x;
 			y_ = y;
@@ -40,13 +37,9 @@ namespace Boidsish {
 		}
 
 		inline float GetR() const { return r_; }
-
 		inline float GetG() const { return g_; }
-
 		inline float GetB() const { return b_; }
-
 		inline float GetA() const { return a_; }
-
 		inline void SetColor(float r, float g, float b, float a = 1.0f) {
 			r_ = r;
 			g_ = g;
@@ -54,8 +47,13 @@ namespace Boidsish {
 			a_ = a;
 		}
 
-		inline int GetTrailLength() const { return trail_length_; }
+		inline const glm::quat& GetRotation() const { return rotation_; }
+		inline void SetRotation(const glm::quat& rotation) { rotation_ = rotation; }
 
+		inline const glm::vec3& GetScale() const { return scale_; }
+		inline void SetScale(const glm::vec3& scale) { scale_ = scale; }
+
+		inline int GetTrailLength() const { return trail_length_; }
 		inline void SetTrailLength(int length) { trail_length_ = length; }
 
 		// Static shader reference
@@ -64,7 +62,7 @@ namespace Boidsish {
 		// Sphere mesh generation
 		static void InitSphereMesh();
 		static void DestroySphereMesh();
-		static void RenderSphere(const glm::vec3& position, const glm::vec3& color, float scale);
+		static void RenderSphere(const glm::vec3& position, const glm::vec3& color, const glm::vec3& scale, const glm::quat& rotation);
 
 	protected:
 		// Protected constructor for derived classes
@@ -79,8 +77,12 @@ namespace Boidsish {
 			float a = 1.0f,
 			int   trail_length = 0
 		):
-			id_(id), x_(x), y_(y), z_(z), r_(r), g_(g), b_(b), a_(a), trail_length_(trail_length) {}
+			id_(id), x_(x), y_(y), z_(z), r_(r), g_(g), b_(b), a_(a),
+			rotation_(glm::quat(1.0f, 0.0f, 0.0f, 0.0f)), scale_(glm::vec3(1.0f)),
+			trail_length_(trail_length) {}
 
+		glm::quat rotation_;
+		glm::vec3 scale_;
 	private:
 		int   id_;
 		float x_, y_, z_;

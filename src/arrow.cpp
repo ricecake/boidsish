@@ -20,28 +20,10 @@ namespace Boidsish {
     void Arrow::render() const {
         shader->use();
 
-        glm::vec3 position(GetX(), GetY(), GetZ());
-        float length = glm::length(position);
-        if (length < 0.001f) return;
-
-        glm::vec3 direction = position / length;
-
-        glm::mat4 rotationMatrix;
-        glm::vec3 up(0.0f, 1.0f, 0.0f);
-        float dot = glm::dot(up, direction);
-
-        if (abs(dot - 1.0f) < 0.001f) { // Pointing up
-            rotationMatrix = glm::mat4(1.0f);
-        } else if (abs(dot + 1.0f) < 0.001f) { // Pointing down
-            rotationMatrix = glm::rotate(glm::mat4(1.0f), glm::pi<float>(), glm::vec3(1.0f, 0.0f, 0.0f));
-        } else {
-            glm::vec3 axis = glm::cross(up, direction);
-            float angle = acos(dot);
-            rotationMatrix = glm::rotate(glm::mat4(1.0f), angle, glm::normalize(axis));
-        }
-
-        glm::mat4 scaleMatrix = glm::scale(glm::mat4(1.0f), glm::vec3(1.0f, length, 1.0f));
-        glm::mat4 model = rotationMatrix * scaleMatrix;
+        glm::mat4 model = glm::mat4(1.0f);
+        model = glm::translate(model, glm::vec3(GetX(), GetY(), GetZ()));
+        model = model * glm::mat4_cast(GetRotation());
+        model = glm::scale(model, GetScale());
 
         shader->setMat4("model", model);
         shader->setVec3("objectColor", GetR(), GetG(), GetB());
