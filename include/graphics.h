@@ -54,6 +54,25 @@ namespace Boidsish {
 			float speed = 10.0f
 		):
 			x(x), y(y), z(z), pitch(pitch), yaw(yaw), roll(roll), fov(fov), speed(speed) {}
+
+		glm::vec3 front() const {
+			glm::vec3 cameraPos(x, y, z);
+			glm::vec3 front;
+			front.x = cos(glm::radians(pitch)) * sin(glm::radians(yaw));
+			front.y = sin(glm::radians(pitch));
+			front.z = -cos(glm::radians(pitch)) * cos(glm::radians(yaw));
+			return glm::normalize(front);
+		}
+
+		glm::vec3 up() const {
+			auto      front_vec = front();
+			glm::vec3 right = glm::normalize(glm::cross(front_vec, glm::vec3(0.0f, 1.0f, 0.0f)));
+			glm::vec3 up = glm::normalize(glm::cross(right, front_vec));
+			glm::mat4 roll_mat = glm::rotate(glm::mat4(1.0f), glm::radians(roll), front_vec);
+			return glm::vec3(roll_mat * glm::vec4(up, 0.0f));
+		}
+
+		glm::vec3 pos() const { return glm::vec3(x, y, z); }
 	};
 
 	// Main visualization class

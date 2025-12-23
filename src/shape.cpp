@@ -96,7 +96,12 @@ namespace Boidsish {
 		}
 	}
 
-	void Shape::RenderSphere(const glm::vec3& position, const glm::vec3& color, const glm::vec3& scale, const glm::quat& rotation) {
+	void Shape::RenderSphere(
+		const glm::vec3& position,
+		const glm::vec3& color,
+		const glm::vec3& scale,
+		const glm::quat& rotation
+	) {
 		if (sphere_vao_ == 0)
 			return;
 

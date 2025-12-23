@@ -16,7 +16,12 @@ namespace Boidsish {
 
 	void Dot::render() const {
 		glm::vec3 combined_scale = GetScale() * size_ * 0.01f;
-		RenderSphere(glm::vec3(GetX(), GetY(), GetZ()), glm::vec3(GetR(), GetG(), GetB()), combined_scale, GetRotation());
+		RenderSphere(
+			glm::vec3(GetX(), GetY(), GetZ()),
+			glm::vec3(GetR(), GetG(), GetB()),
+			combined_scale,
+			GetRotation()
+		);
 	}
 
 } // namespace Boidsish

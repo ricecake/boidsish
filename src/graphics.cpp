@@ -349,17 +349,8 @@ namespace Boidsish {
 		glm::mat4 SetupMatrices(const Camera& cam_to_use) {
 			projection = glm::perspective(glm::radians(cam_to_use.fov), (float)width / (float)height, 0.1f, 1000.0f);
 			glm::vec3 cameraPos(cam_to_use.x, cam_to_use.y, cam_to_use.z);
-			glm::vec3 front;
-			front.x = cos(glm::radians(cam_to_use.pitch)) * sin(glm::radians(cam_to_use.yaw));
-			front.y = sin(glm::radians(cam_to_use.pitch));
-			front.z = -cos(glm::radians(cam_to_use.pitch)) * cos(glm::radians(cam_to_use.yaw));
-			front = glm::normalize(front);
-			glm::vec3 right = glm::normalize(glm::cross(front, glm::vec3(0.0f, 1.0f, 0.0f)));
-			glm::vec3 up = glm::normalize(glm::cross(right, front));
-			glm::mat4 roll_mat = glm::rotate(glm::mat4(1.0f), glm::radians(cam_to_use.roll), front);
-			up = glm::vec3(roll_mat * glm::vec4(up, 0.0f));
 
-			glm::mat4 view = glm::lookAt(cameraPos, cameraPos + front, up);
+			glm::mat4 view = glm::lookAt(cameraPos, cameraPos + cam_to_use.front(), cam_to_use.up());
 			shader->use();
 			shader->setMat4("projection", projection);
 			shader->setMat4("view", view);
