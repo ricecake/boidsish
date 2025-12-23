@@ -9,11 +9,22 @@
 #include "Simplex.h"
 #include "graphics.h"
 #include "terrain.h"
+#include "thread_pool.h"
 
 namespace Boidsish {
+
+	struct TerrainGenerationResult {
+		std::vector<float>        vertex_data;
+		std::vector<unsigned int> indices;
+		int                       chunk_x;
+		int                       chunk_z;
+		bool                      has_terrain;
+	};
+
 	class TerrainGenerator {
 	public:
 		TerrainGenerator(int seed = 12345);
+		~TerrainGenerator();
 
 		void                                  update(const Frustum& frustum, const Camera& camera);
 		std::vector<std::shared_ptr<Terrain>> getVisibleChunks();
@@ -25,7 +36,7 @@ namespace Boidsish {
 		}
 
 	private:
-		std::shared_ptr<Terrain> generateChunk(int chunkX, int chunkZ);
+		TerrainGenerationResult generateChunkData(int chunkX, int chunkZ);
 
 		// Terrain parameters
 		struct TerrainParameters {
@@ -52,10 +63,9 @@ namespace Boidsish {
 		const int view_distance_ = 10;        // in chunks
 		const int kUnloadDistanceBuffer_ = 2; // in chunks
 		const int chunk_size_ = 32;
-		// Other solid values:  8, 0.05, 0.09
-		int   octaves_ = 4;
-		float lacunarity_ = 0.99f;
-		float persistence_ = 0.5f;
+		int       octaves_ = 4;
+		float     lacunarity_ = 0.99f;
+		float     persistence_ = 0.5f;
 
 		// Control noise parameters
 		constexpr static const float control_noise_scale_ = 0.01f;
@@ -69,8 +79,10 @@ namespace Boidsish {
 
 		glm::vec3 diffToNorm(float dx, float dz) { return glm::normalize(glm::vec3(-dx, 1.0f, -dz)); }
 
-		// Cache
-		std::map<std::pair<int, int>, std::shared_ptr<Terrain>> chunk_cache_;
+		// Cache and async management
+		ThreadPool                                                         thread_pool_;
+		std::map<std::pair<int, int>, std::shared_ptr<Terrain>>            chunk_cache_;
+		std::map<std::pair<int, int>, TaskHandle<TerrainGenerationResult>> pending_chunks_;
 	};
 
 } // namespace Boidsish

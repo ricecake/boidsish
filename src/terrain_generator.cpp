@@ -3,12 +3,12 @@
 #include <algorithm>
 #include <chrono>
 #include <cmath>
+#include <future>
 #include <numeric>
 #include <ranges>
 #include <vector>
 
 #include "logger.h"
-#include "task.h"
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 
@@ -32,7 +32,13 @@ namespace Boidsish {
 		return true;
 	}
 
-	TerrainGenerator::TerrainGenerator(int seed): control_perlin_noise_(seed + 1) {}
+	TerrainGenerator::TerrainGenerator(int seed): control_perlin_noise_(seed + 1), thread_pool_() {}
+
+	TerrainGenerator::~TerrainGenerator() {
+		for (auto& pair : pending_chunks_) {
+			pair.second.cancel();
+		}
+	}
 
 	void TerrainGenerator::update(const Frustum& frustum, const Camera& camera) {
 		int current_chunk_x = static_cast<int>(camera.x) / chunk_size_;
@@ -41,7 +47,7 @@ namespace Boidsish {
 		float height_factor = std::max(1.0f, camera.y / 5.0f);
 		int   dynamic_view_distance = std::min(24, static_cast<int>(view_distance_ * height_factor));
 
-		// Load chunks based on frustum and dynamic view distance
+		// Enqueue generation of new chunks
 		for (int x = current_chunk_x - dynamic_view_distance; x <= current_chunk_x + dynamic_view_distance; ++x) {
 			for (int z = current_chunk_z - dynamic_view_distance; z <= current_chunk_z + dynamic_view_distance; ++z) {
 				if (isChunkInFrustum(
@@ -52,11 +58,40 @@ namespace Boidsish {
 						std::ranges::max(std::views::transform(biomes, &BiomeAttributes::floorLevel))
 					)) {
 					std::pair<int, int> chunk_coord = {x, z};
-					if (chunk_cache_.find(chunk_coord) == chunk_cache_.end()) {
-						chunk_cache_[chunk_coord] = generateChunk(x, z);
+					if (chunk_cache_.find(chunk_coord) == chunk_cache_.end() &&
+					    pending_chunks_.find(chunk_coord) == pending_chunks_.end()) {
+						pending_chunks_.emplace(
+							chunk_coord,
+							thread_pool_.enqueue(TaskPriority::MEDIUM, &TerrainGenerator::generateChunkData, this, x, z)
+						);
 					}
 				}
 			}
+		}
+
+		// Process completed chunks
+		std::vector<std::pair<int, int>> completed_chunks;
+		for (auto& pair : pending_chunks_) {
+			try {
+				auto&                   future = const_cast<TaskHandle<TerrainGenerationResult>&>(pair.second);
+				TerrainGenerationResult result = future.get();
+				if (result.has_terrain) {
+					auto terrain_chunk = std::make_shared<Terrain>(result.vertex_data, result.indices);
+					terrain_chunk->SetPosition(result.chunk_x * chunk_size_, 0, result.chunk_z * chunk_size_);
+					terrain_chunk->setupMesh();
+					chunk_cache_[pair.first] = terrain_chunk;
+				}
+				completed_chunks.push_back(pair.first);
+			} catch (const std::future_error& e) {
+				if (e.code() == std::future_errc::no_state) {
+					// Task was cancelled, remove it.
+					completed_chunks.push_back(pair.first);
+				}
+			}
+		}
+
+		for (const auto& key : completed_chunks) {
+			pending_chunks_.erase(key);
 		}
 
 		// Unload chunks
@@ -72,6 +107,21 @@ namespace Boidsish {
 
 		for (const auto& key : to_remove) {
 			chunk_cache_.erase(key);
+		}
+
+		std::vector<std::pair<int, int>> to_cancel;
+		for (auto const& [key, val] : pending_chunks_) {
+			int dx = key.first - current_chunk_x;
+			int dz = key.second - current_chunk_z;
+			if (std::abs(dx) > dynamic_view_distance + kUnloadDistanceBuffer_ ||
+			    std::abs(dz) > dynamic_view_distance + kUnloadDistanceBuffer_) {
+				to_cancel.push_back(key);
+			}
+		}
+
+		for (const auto& key : to_cancel) {
+			pending_chunks_.at(key).cancel();
+			pending_chunks_.erase(key);
 		}
 	}
 
@@ -155,7 +205,7 @@ namespace Boidsish {
 		return biomefbm(pos, current);
 	}
 
-	std::shared_ptr<Terrain> TerrainGenerator::generateChunk(int chunkX, int chunkZ) {
+	TerrainGenerationResult TerrainGenerator::generateChunkData(int chunkX, int chunkZ) {
 		const int num_vertices_x = chunk_size_ + 1;
 		const int num_vertices_z = chunk_size_ + 1;
 
@@ -173,12 +223,12 @@ namespace Boidsish {
 				auto noise = pointGenerate(worldX, worldZ);
 
 				heightmap[i][j] = noise;
-				has_terrain = noise[0] > 0;
+				has_terrain = has_terrain || noise[0] > 0;
 			}
 		}
 
 		if (!has_terrain) {
-			return nullptr;
+			return {{}, {}, chunkX, chunkZ, false};
 		}
 
 		// Generate vertices and normals
@@ -214,10 +264,7 @@ namespace Boidsish {
 			}
 		}
 
-		auto terrain_chunk = std::make_shared<Terrain>(vertexData, indices);
-		terrain_chunk->SetPosition(chunkX * chunk_size_, 0, chunkZ * chunk_size_);
-
-		return terrain_chunk;
+		return {vertexData, indices, chunkX, chunkZ, true};
 	}
 
 } // namespace Boidsish
