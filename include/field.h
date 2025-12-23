@@ -1,5 +1,7 @@
 #include <vector>
 
+#include "entity.h"
+#include "terrain.h"
 #include <glm/glm.hpp>
 
 class WendlandLUT {
@@ -51,5 +53,39 @@ public:
 
 		float r_dot_n = glm::dot(r_vec, normal);
 		return e.term1 * normal - (r_vec * (r_dot_n * e.term2));
+	}
+};
+
+struct PatchProxy {
+	glm::vec3 center;      // Average position of all vertices in patch
+	glm::vec3 totalNormal; // Sum of all normals in patch
+	float     maxZ, minZ;  // For quick vertical culling
+	float     radiusSq;    // Bounding radius of the patch itself
+
+	void ApplyPatchInfluence(auto& bird, const auto& patch, const WendlandLUT& lut) {
+		glm::vec3 delta = bird.position - patch.proxy.center;
+		float     distSq = glm::dot(delta, delta);
+
+		// 1. Broad-phase Culling
+		// If bird is further than (Influence R + Patch Radius), skip entirely
+		float combinedRadius = lut.R + std::sqrt(patch.proxy.radiusSq);
+		if (distSq > (combinedRadius * combinedRadius))
+			return;
+
+		// 2. Far-Field Approximation
+		// If the bird is far enough that the patch subtends a small angle
+		if (distSq > patch.proxy.radiusSq * 4.0f) {
+			bird.forceAccumulator += lut.Sample(delta, distSq, patch.proxy.totalNormal);
+		}
+		// 3. Near-Field (High Precision)
+		else {
+			for (size_t i = 0; i < patch.vertices.size(); ++i) {
+				glm::vec3 r_vec = bird.position - patch.vertices[i];
+				float     r2 = glm::dot(r_vec, r_vec);
+				if (r2 < lut.R * lut.R) {
+					bird.forceAccumulator += lut.Sample(r_vec, r2, patch.normals[i]);
+				}
+			}
+		}
 	}
 };

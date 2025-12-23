@@ -2,6 +2,7 @@
 
 #include <vector>
 
+#include "field.h"
 #include "shape.h"
 #include <glm/glm.hpp>
 
