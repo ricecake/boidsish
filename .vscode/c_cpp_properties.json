@@ -4,7 +4,9 @@
             "name": "Linux",
             "includePath": [
                 "${workspaceFolder}/**",
-                "${workspaceFolder}/include/**"
+                "${workspaceFolder}/include/**",
+                "${workspaceFolder}/external/include/**",
+                "${workspaceFolder}/external/**/include/**"
             ],
             "compilerPath": "/usr/bin/gcc",
             "cStandard": "c23",

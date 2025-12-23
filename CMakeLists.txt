@@ -37,6 +37,7 @@ set(IMGUI_INCLUDE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/${IMGUI_DIR}" CACHE PATH "" F
 
 # 3. Now add FastNoise2
 add_subdirectory(external/FastNoise2)
+add_subdirectory(external/task-thread-pool)
 
 # 3. Define the Library
 # Finds all .cpp files in src/
@@ -61,6 +62,7 @@ target_link_libraries(boidsish
         glfw
         FastNoise
         imgui
+        task-thread-pool::task-thread-pool
 )
 
 # 5. Build Examples
