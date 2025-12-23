@@ -11,6 +11,10 @@
 #include "visual_effects.h"
 #include <glm/glm.hpp>
 
+namespace task_thread_pool {
+    class task_thread_pool;
+}
+
 namespace Boidsish {
 	constexpr int kMaxKeys = 1024;
 
@@ -96,6 +100,8 @@ namespace Boidsish {
 		void SetCameraMode(CameraMode mode);
 		void TogglePause();
 		void ToggleEffect(VisualEffect effect);
+
+        task_thread_pool::task_thread_pool& GetThreadPool();
 
 	private:
 		struct VisualizerImpl;

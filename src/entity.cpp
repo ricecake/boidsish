@@ -1,4 +1,6 @@
 #include "entity.h"
+#include <poolstl/poolstl.hpp>
+#include <algorithm>
 
 namespace Boidsish {
 	std::vector<std::shared_ptr<Shape>> EntityHandler::operator()(float time) {
@@ -18,12 +20,23 @@ namespace Boidsish {
 		});
 
 		// Update all entities
-		for (auto& entity : entities) {
-			entity->UpdateEntity(*this, time, delta_time);
-		}
+        std::for_each(poolstl::par.on(thread_pool_), entities.begin(), entities.end(),
+            [&](auto& entity) {
+			    entity->UpdateEntity(*this, time, delta_time);
+            }
+        );
 
 		// Call post-timestep hook
 		PostTimestep(time, delta_time);
+
+        // Process modification requests
+        {
+            std::lock_guard<std::mutex> lock(requests_mutex_);
+            for (auto& request : modification_requests_) {
+                request();
+            }
+            modification_requests_.clear();
+        }
 
 		// Generate shapes from entity states
 		std::vector<std::shared_ptr<Shape>> shapes;

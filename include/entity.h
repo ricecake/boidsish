@@ -4,10 +4,12 @@
 #include <functional>
 #include <map>
 #include <memory>
+#include <mutex>
 #include <vector>
 
 #include "dot.h"
 #include "shape.h"
+#include "task_thread_pool.hpp"
 #include "vector.h"
 
 namespace Boidsish {
@@ -29,7 +31,7 @@ namespace Boidsish {
 		virtual ~EntityBase() = default;
 
 		// Called each frame to update the entity
-		virtual void UpdateEntity(EntityHandler& handler, float time, float delta_time) = 0;
+		virtual void UpdateEntity(const EntityHandler& handler, float time, float delta_time) = 0;
 
 		// Shape management
 		virtual std::shared_ptr<Shape> GetShape() const = 0;
@@ -122,7 +124,8 @@ namespace Boidsish {
 	// Entity handler that manages entities and provides dot generation
 	class EntityHandler {
 	public:
-		EntityHandler(): last_time_(-1.0f), next_id_(0) {}
+		EntityHandler(task_thread_pool::task_thread_pool& thread_pool):
+            thread_pool_(thread_pool), last_time_(-1.0f), next_id_(0) {}
 
 		virtual ~EntityHandler() = default;
 
@@ -191,6 +194,25 @@ namespace Boidsish {
 		// Get total entity count
 		size_t GetEntityCount() const { return entities_.size(); }
 
+		// Thread-safe methods for entity modification
+		template <typename T, typename... Args>
+		void QueueAddEntity(Args&&... args) const {
+			std::lock_guard<std::mutex> lock(requests_mutex_);
+			modification_requests_.emplace_back([this, args = std::make_tuple(std::forward<Args>(args)...)]() mutable {
+				std::apply(
+					[this](auto&&... a) {
+						const_cast<EntityHandler*>(this)->AddEntity<T>(std::forward<Args>(a)...);
+					},
+					std::move(args)
+				);
+			});
+		}
+
+		void QueueRemoveEntity(int id) const {
+			std::lock_guard<std::mutex> lock(requests_mutex_);
+			modification_requests_.emplace_back([this, id]() { const_cast<EntityHandler*>(this)->RemoveEntity(id); });
+		}
+
 	protected:
 		// Override these for custom behavior
 		virtual void PreTimestep(float time, float delta_time) {
@@ -207,5 +229,8 @@ namespace Boidsish {
 		std::map<int, std::shared_ptr<EntityBase>> entities_;
 		float                                      last_time_;
 		int                                        next_id_;
+        task_thread_pool::task_thread_pool&        thread_pool_;
+		mutable std::vector<std::function<void()>> modification_requests_;
+		mutable std::mutex                         requests_mutex_;
 	};
 } // namespace Boidsish

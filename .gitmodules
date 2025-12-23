@@ -7,3 +7,6 @@
 [submodule "external/task-thread-pool"]
 	path = external/task-thread-pool
 	url = https://github.com/alugowski/task-thread-pool.git
+[submodule "external/poolSTL"]
+	path = external/poolSTL
+	url = https://github.com/alugowski/poolSTL
