@@ -10,7 +10,7 @@
 using namespace Boidsish;
 
 // Example: Simple moving dot with trail
-std::vector<std::shared_ptr<Shape>> TrailExample(float time) {
+std::vector<std::shared_ptr<Shape>> TrailExample(float time, Visualizer&) {
 	std::vector<std::shared_ptr<Shape>> shapes;
 
 	// Example: Graph with spline smoothing

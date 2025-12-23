@@ -12,6 +12,12 @@
 #include <glm/glm.hpp>
 
 namespace Boidsish {
+class Visualizer;
+using ShapeFunction = std::function<std::vector<std::shared_ptr<Shape>>(float, Visualizer&)>;
+}
+
+namespace Boidsish {
+	class Terrain;
 	constexpr int kMaxKeys = 1024;
 
 	struct Plane {
@@ -96,6 +102,8 @@ namespace Boidsish {
 		void SetCameraMode(CameraMode mode);
 		void TogglePause();
 		void ToggleEffect(VisualEffect effect);
+
+        std::vector<std::shared_ptr<Terrain>> getVisibleChunks();
 
 	private:
 		struct VisualizerImpl;

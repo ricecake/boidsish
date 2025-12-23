@@ -847,7 +847,7 @@ namespace Boidsish {
 		std::vector<std::shared_ptr<Shape>> shapes;
 		if (!impl->shape_functions.empty()) {
 			for (const auto& func : impl->shape_functions) {
-				auto new_shapes = func(impl->simulation_time);
+				auto new_shapes = func(impl->simulation_time, *this);
 				shapes.insert(shapes.end(), new_shapes.begin(), new_shapes.end());
 			}
 		}
@@ -1025,4 +1025,8 @@ namespace Boidsish {
 			break;
 		}
 	}
+
+    std::vector<std::shared_ptr<Terrain>> Visualizer::getVisibleChunks() {
+        return impl->terrain_generator->getVisibleChunks();
+    }
 } // namespace Boidsish

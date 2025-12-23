@@ -182,16 +182,23 @@ namespace Boidsish {
 
 		// Generate vertices and normals
 		vertexData.reserve(num_vertices_x * num_vertices_z * 8);
+		std::vector<glm::vec3> vertices;
+		std::vector<glm::vec3> normals;
+		vertices.reserve(num_vertices_x * num_vertices_z);
+		normals.reserve(num_vertices_x * num_vertices_z);
 		for (int i = 0; i < num_vertices_x; ++i) {
 			for (int j = 0; j < num_vertices_z; ++j) {
 				float y = heightmap[i][j][0];
 
 				// Vertex position
-				vertexData.push_back(i);
-				vertexData.push_back(y);
-				vertexData.push_back(j);
+				glm::vec3 position(i, y, j);
+				vertices.push_back(position);
+				vertexData.push_back(position.x);
+				vertexData.push_back(position.y);
+				vertexData.push_back(position.z);
 
 				glm::vec3 normal = diffToNorm(heightmap[i][j][1], heightmap[i][j][2]);
+				normals.push_back(normal);
 				vertexData.push_back(normal.x);
 				vertexData.push_back(normal.y);
 				vertexData.push_back(normal.z);
@@ -215,6 +222,8 @@ namespace Boidsish {
 
 		auto terrain_chunk = std::make_shared<Terrain>(vertexData, indices);
 		terrain_chunk->SetPosition(chunkX * chunk_size_, 0, chunkZ * chunk_size_);
+		terrain_chunk->vertices_ = vertices;
+		terrain_chunk->normals_ = normals;
 
 		return terrain_chunk;
 	}

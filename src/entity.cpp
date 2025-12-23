@@ -1,7 +1,8 @@
 #include "entity.h"
+#include "graphics.h"
 
 namespace Boidsish {
-	std::vector<std::shared_ptr<Shape>> EntityHandler::operator()(float time) {
+	std::vector<std::shared_ptr<Shape>> EntityHandler::operator()(float time, Visualizer& viz) {
 		float delta_time = 0.016f; // Default 60 FPS
 		if (last_time_ >= 0.0f) {
 			delta_time = time - last_time_;
@@ -23,7 +24,7 @@ namespace Boidsish {
 		}
 
 		// Call post-timestep hook
-		PostTimestep(time, delta_time);
+		PostTimestep(time, delta_time, viz);
 
 		// Generate shapes from entity states
 		std::vector<std::shared_ptr<Shape>> shapes;

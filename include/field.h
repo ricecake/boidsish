@@ -1,3 +1,5 @@
+#pragma once
+
 #include <vector>
 
 #include "entity.h"
@@ -62,7 +64,7 @@ struct PatchProxy {
 	float     maxZ, minZ;  // For quick vertical culling
 	float     radiusSq;    // Bounding radius of the patch itself
 
-	void ApplyPatchInfluence(auto& bird, const auto& patch, const WendlandLUT& lut) {
+	void ApplyPatchInfluence(auto& bird, const auto& patch, const WendlandLUT& lut) const {
 		glm::vec3 delta = bird.position - patch.proxy.center;
 		float     distSq = glm::dot(delta, delta);
 

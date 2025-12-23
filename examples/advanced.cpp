@@ -8,7 +8,7 @@
 using namespace Boidsish;
 
 // Example 1: Spiraling particles
-auto SpiralExample(float time) {
+auto SpiralExample(float time, Visualizer&) {
 	std::vector<std::shared_ptr<Shape>> dots;
 
 	int num_spirals = 3;
@@ -41,7 +41,7 @@ auto SpiralExample(float time) {
 }
 
 // Example 2: Random walk particles
-auto RandomWalkExample(float time) {
+auto RandomWalkExample(float time, Visualizer&) {
 	static std::vector<std::tuple<float, float, float>> positions;
 	static std::default_random_engine                   generator;
 	static bool                                         initialized = false;
@@ -91,7 +91,7 @@ auto RandomWalkExample(float time) {
 }
 
 // Example 3: Wave function
-auto WaveExample(float time) {
+auto WaveExample(float time, Visualizer&) {
 	std::vector<std::shared_ptr<Shape>> dots;
 
 	int   grid_size = 15;

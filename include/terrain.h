@@ -14,8 +14,13 @@ namespace Boidsish {
 
 		void render() const override;
 
+		const std::vector<glm::vec3>& getVertices() const { return vertices_; }
+		const std::vector<glm::vec3>& getNormals() const { return normals_; }
+
 		static std::shared_ptr<Shader> terrain_shader_;
 
+		std::vector<glm::vec3> vertices_;
+		std::vector<glm::vec3> normals_;
 	private:
 		void setupMesh(const std::vector<float>& vertexData, const std::vector<unsigned int>& indices);
 

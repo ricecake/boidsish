@@ -14,6 +14,7 @@ namespace Boidsish {
 
 	// Forward declaration for Entity class
 	class EntityHandler;
+	class Visualizer;
 
 	// Base entity class for the entity system
 	class EntityBase {
@@ -135,7 +136,7 @@ namespace Boidsish {
 		EntityHandler& operator=(EntityHandler&&) = default;
 
 		// Operator() to make this compatible with ShapeFunction
-		std::vector<std::shared_ptr<Shape>> operator()(float time);
+		std::vector<std::shared_ptr<Shape>> operator()(float time, Visualizer& viz);
 
 		// Entity management
 		template <typename T, typename... Args>
@@ -198,9 +199,10 @@ namespace Boidsish {
 			(void)delta_time;
 		}
 
-		virtual void PostTimestep(float time, float delta_time) {
+		virtual void PostTimestep(float time, float delta_time, Visualizer& viz) {
 			(void)time;
 			(void)delta_time;
+			(void)viz;
 		}
 
 	private:

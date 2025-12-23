@@ -400,7 +400,7 @@ public:
 		std::cout << "Flocking entities now automatically discover each other through the handler!" << std::endl;
 	}
 
-	void PreTimestep(float time, float delta_time) {
+	void PreTimestep(float time, float delta_time) override {
 		// logger::LOG("Time delta", delta_time);
 		float fruitRate = 2.0f;
 		auto  numFlocker = GetEntitiesByType<FlockingEntity>().size();
@@ -429,7 +429,7 @@ public:
 	}
 };
 
-std::vector<std::shared_ptr<Shape>> GraphExample(float time) {
+std::vector<std::shared_ptr<Shape>> GraphExample(float time, Visualizer&) {
 	std::vector<std::shared_ptr<Shape>> shapes;
 	auto                                graph = std::make_shared<Graph>(0, 0, 0, 0);
 

@@ -17,7 +17,9 @@ int main() {
 		visualizer.SetCamera(camera);
 
 		// No shapes, just terrain
-		visualizer.AddShapeHandler([](float /* time */) { return std::vector<std::shared_ptr<Boidsish::Shape>>(); });
+		visualizer.AddShapeHandler(
+			[](float /* time */, Boidsish::Visualizer&) { return std::vector<std::shared_ptr<Boidsish::Shape>>(); }
+		);
 
 		visualizer.Run();
 	} catch (const std::exception& e) {
