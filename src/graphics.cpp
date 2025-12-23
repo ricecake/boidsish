@@ -34,6 +34,10 @@ namespace Boidsish {
 		std::map<int, std::shared_ptr<Trail>> trails;
 		std::map<int, float>                  trail_last_update;
 
+		InputState    input_state{};
+		InputCallback input_callback;
+		int           exit_key;
+
 		std::unique_ptr<TerrainGenerator> terrain_generator;
 
 		std::shared_ptr<Shader> shader;
@@ -50,7 +54,6 @@ namespace Boidsish {
 
 		double last_mouse_x = 0.0, last_mouse_y = 0.0;
 		bool   first_mouse = true;
-		bool   keys[1024] = {false};
 
 		bool                                           paused = false;
 		float                                          simulation_time = 0.0f;
@@ -80,6 +83,9 @@ namespace Boidsish {
 		bool   wireframe_effect = false;
 
 		VisualizerImpl(int w, int h, const char* title): width(w), height(h) {
+			exit_key = GLFW_KEY_ESCAPE;
+			input_callback = [this](const InputState& state) { this->DefaultInputHandler(state); };
+
 			last_frame = std::chrono::high_resolution_clock::now();
 			if (!glfwInit())
 				throw std::runtime_error("Failed to initialize GLFW");
@@ -485,44 +491,133 @@ namespace Boidsish {
 			glBindVertexArray(0);
 		}
 
-		void ProcessInput(float delta_time) {
-			if (auto_camera_mode || single_track_mode)
-				return;
-			float     camera_speed_val = camera.speed * delta_time;
-			glm::vec3 front(
-				cos(glm::radians(camera.pitch)) * sin(glm::radians(camera.yaw)),
-				sin(glm::radians(camera.pitch)),
-				-cos(glm::radians(camera.pitch)) * cos(glm::radians(camera.yaw))
-			);
-			glm::vec3 right = glm::normalize(glm::cross(front, glm::vec3(0.0f, 1.0f, 0.0f)));
-			if (keys[GLFW_KEY_W]) {
-				camera.x += front.x * camera_speed_val;
-				camera.y += front.y * camera_speed_val;
-				camera.z += front.z * camera_speed_val;
+		void DefaultInputHandler(const InputState& state) {
+			// Camera movement
+			if (!auto_camera_mode && !single_track_mode) {
+				float     camera_speed_val = camera.speed * state.delta_time;
+				glm::vec3 front(
+					cos(glm::radians(camera.pitch)) * sin(glm::radians(camera.yaw)),
+					sin(glm::radians(camera.pitch)),
+					-cos(glm::radians(camera.pitch)) * cos(glm::radians(camera.yaw))
+				);
+				glm::vec3 right = glm::normalize(glm::cross(front, glm::vec3(0.0f, 1.0f, 0.0f)));
+
+				if (state.keys[GLFW_KEY_W]) {
+					camera.x += front.x * camera_speed_val;
+					camera.y += front.y * camera_speed_val;
+					camera.z += front.z * camera_speed_val;
+				}
+				if (state.keys[GLFW_KEY_S]) {
+					camera.x -= front.x * camera_speed_val;
+					camera.y -= front.y * camera_speed_val;
+					camera.z -= front.z * camera_speed_val;
+				}
+				if (state.keys[GLFW_KEY_A]) {
+					camera.x -= right.x * camera_speed_val;
+					camera.z -= right.z * camera_speed_val;
+				}
+				if (state.keys[GLFW_KEY_D]) {
+					camera.x += right.x * camera_speed_val;
+					camera.z += right.z * camera_speed_val;
+				}
+				if (state.keys[GLFW_KEY_SPACE])
+					camera.y += camera_speed_val;
+				if (state.keys[GLFW_KEY_LEFT_SHIFT])
+					camera.y -= camera_speed_val;
+				if (state.keys[GLFW_KEY_Q])
+					camera.roll -= kCameraRollSpeed * state.delta_time;
+				if (state.keys[GLFW_KEY_E])
+					camera.roll += kCameraRollSpeed * state.delta_time;
+				if (camera.y < kMinCameraHeight)
+					camera.y = kMinCameraHeight;
+
+				float sensitivity = 1.f;
+				float xoffset = state.mouse_delta_x * sensitivity;
+				float yoffset = state.mouse_delta_y * sensitivity;
+
+				camera.yaw += xoffset;
+				camera.pitch += yoffset;
+
+				if (camera.pitch > 89.0f)
+					camera.pitch = 89.0f;
+				if (camera.pitch < -89.0f)
+					camera.pitch = -89.0f;
 			}
-			if (keys[GLFW_KEY_S]) {
-				camera.x -= front.x * camera_speed_val;
-				camera.y -= front.y * camera_speed_val;
-				camera.z -= front.z * camera_speed_val;
+
+			// Single track camera orbit
+			if (single_track_mode) {
+				float sensitivity = 0.1f;
+				float xoffset = state.mouse_delta_x * sensitivity;
+				float yoffset = state.mouse_delta_y * sensitivity;
+
+				single_track_orbit_yaw += xoffset;
+				single_track_orbit_pitch += yoffset;
+
+				if (single_track_orbit_pitch > 89.0f)
+					single_track_orbit_pitch = 89.0f;
+				if (single_track_orbit_pitch < -89.0f)
+					single_track_orbit_pitch = -89.0f;
 			}
-			if (keys[GLFW_KEY_A]) {
-				camera.x -= right.x * camera_speed_val;
-				camera.z -= right.z * camera_speed_val;
+
+			// Camera mode switching
+			if (state.key_down[GLFW_KEY_0]) {
+				auto_camera_mode = !auto_camera_mode;
+				single_track_mode = false;
+				glfwSetInputMode(window, GLFW_CURSOR, auto_camera_mode ? GLFW_CURSOR_NORMAL : GLFW_CURSOR_DISABLED);
+				if (!auto_camera_mode)
+					first_mouse = true;
+			} else if (state.key_down[GLFW_KEY_9]) {
+				if (single_track_mode) {
+					tracked_dot_index++;
+				} else {
+					auto_camera_mode = false;
+					single_track_mode = true;
+					glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+					first_mouse = true;
+				}
+			} else if (state.key_down[GLFW_KEY_8]) {
+				auto_camera_mode = true;
+				single_track_mode = false;
+				glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
 			}
-			if (keys[GLFW_KEY_D]) {
-				camera.x += right.x * camera_speed_val;
-				camera.z += right.z * camera_speed_val;
+
+			// Single track camera zoom
+			if (state.keys[GLFW_KEY_EQUAL]) {
+				single_track_distance -= 0.5f;
+				if (single_track_distance < 1.0f)
+					single_track_distance = 1.0f;
 			}
-			if (keys[GLFW_KEY_SPACE])
-				camera.y += camera_speed_val;
-			if (keys[GLFW_KEY_LEFT_SHIFT])
-				camera.y -= camera_speed_val;
-			if (keys[GLFW_KEY_Q])
-				camera.roll -= kCameraRollSpeed * delta_time;
-			if (keys[GLFW_KEY_E])
-				camera.roll += kCameraRollSpeed * delta_time;
-			if (camera.y < kMinCameraHeight)
-				camera.y = kMinCameraHeight;
+			if (state.keys[GLFW_KEY_MINUS]) {
+				single_track_distance += 0.5f;
+			}
+
+			// Camera speed adjustment
+			if (state.key_down[GLFW_KEY_LEFT_BRACKET]) {
+				camera.speed -= kCameraSpeedStep;
+				if (camera.speed < kMinCameraSpeed)
+					camera.speed = kMinCameraSpeed;
+			}
+			if (state.key_down[GLFW_KEY_RIGHT_BRACKET]) {
+				camera.speed += kCameraSpeedStep;
+			}
+
+			// Toggles
+			if (state.key_down[GLFW_KEY_P])
+				paused = !paused;
+			if (state.key_down[GLFW_KEY_R])
+				ripple_strength = (ripple_strength > 0.0f) ? 0.0f : 0.05f;
+			if (state.key_down[GLFW_KEY_C])
+				color_shift_effect = !color_shift_effect;
+			if (state.key_down[GLFW_KEY_1])
+				black_and_white_effect = !black_and_white_effect;
+			if (state.key_down[GLFW_KEY_2])
+				negative_effect = !negative_effect;
+			if (state.key_down[GLFW_KEY_3])
+				shimmery_effect = !shimmery_effect;
+			if (state.key_down[GLFW_KEY_4])
+				glitched_effect = !glitched_effect;
+			if (state.key_down[GLFW_KEY_5])
+				wireframe_effect = !wireframe_effect;
 		}
 
 		void CleanupOldTrails(float current_time, const std::vector<std::shared_ptr<Shape>>& active_shapes) {
@@ -653,107 +748,36 @@ namespace Boidsish {
 
 		static void KeyCallback(GLFWwindow* w, int key, int /* sc */, int action, int /* mods */) {
 			auto* impl = static_cast<VisualizerImpl*>(glfwGetWindowUserPointer(w));
-			if (key >= 0 && key < 1024) {
-				if (action == GLFW_PRESS)
-					impl->keys[key] = true;
-				else if (action == GLFW_RELEASE)
-					impl->keys[key] = false;
-			}
-			if (key == GLFW_KEY_ESCAPE && action == GLFW_PRESS)
+			if (key == impl->exit_key && action == GLFW_PRESS) {
 				glfwSetWindowShouldClose(w, true);
-			if (action == GLFW_PRESS) {
-				if (key == GLFW_KEY_0) {
-					impl->single_track_mode = false;
-					impl->auto_camera_mode = !impl->auto_camera_mode;
-					glfwSetInputMode(
-						w,
-						GLFW_CURSOR,
-						impl->auto_camera_mode ? GLFW_CURSOR_NORMAL : GLFW_CURSOR_DISABLED
-					);
-					if (!impl->auto_camera_mode)
-						impl->first_mouse = true;
-				} else if (key == GLFW_KEY_9) {
-					if (impl->single_track_mode) {
-						impl->tracked_dot_index++;
-					} else {
-						impl->auto_camera_mode = false;
-						impl->single_track_mode = true;
-						glfwSetInputMode(w, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
-						impl->first_mouse = true;
-					}
-				} else if (key == GLFW_KEY_8) {
-					impl->single_track_mode = false;
-					impl->auto_camera_mode = true;
-					glfwSetInputMode(w, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
-				} else if (key == GLFW_KEY_EQUAL) {
-					impl->single_track_distance -= 0.5f;
-					if (impl->single_track_distance < 1.0f)
-						impl->single_track_distance = 1.0f;
-				} else if (key == GLFW_KEY_MINUS) {
-					impl->single_track_distance += 0.5f;
-				} else if (key == GLFW_KEY_1 && action == GLFW_PRESS) {
-					impl->black_and_white_effect = !impl->black_and_white_effect;
-				} else if (key == GLFW_KEY_2 && action == GLFW_PRESS) {
-					impl->negative_effect = !impl->negative_effect;
-				} else if (key == GLFW_KEY_3 && action == GLFW_PRESS) {
-					impl->shimmery_effect = !impl->shimmery_effect;
-				} else if (key == GLFW_KEY_4 && action == GLFW_PRESS) {
-					impl->glitched_effect = !impl->glitched_effect;
-				} else if (key == GLFW_KEY_5 && action == GLFW_PRESS) {
-					impl->wireframe_effect = !impl->wireframe_effect;
-				} else if ((key == GLFW_KEY_LEFT_BRACKET) && (action == GLFW_PRESS || action == GLFW_REPEAT)) {
-					impl->camera.speed -= kCameraSpeedStep;
-					if (impl->camera.speed < kMinCameraSpeed)
-						impl->camera.speed = kMinCameraSpeed;
-				} else if ((key == GLFW_KEY_RIGHT_BRACKET) && (action == GLFW_PRESS || action == GLFW_REPEAT)) {
-					impl->camera.speed += kCameraSpeedStep;
+				return;
+			}
+
+			if (key >= 0 && key < kMaxKeys) {
+				if (action == GLFW_PRESS) {
+					impl->input_state.keys[key] = true;
+					impl->input_state.key_down[key] = true;
+				} else if (action == GLFW_RELEASE) {
+					impl->input_state.keys[key] = false;
+					impl->input_state.key_up[key] = true;
 				}
 			}
-			if (key == GLFW_KEY_P && action == GLFW_PRESS)
-				impl->paused = !impl->paused;
-			if (key == GLFW_KEY_R && action == GLFW_PRESS)
-				impl->ripple_strength = (impl->ripple_strength > 0.0f) ? 0.0f : 0.05f;
-			if (key == GLFW_KEY_C && action == GLFW_PRESS)
-				impl->color_shift_effect = !impl->color_shift_effect;
 		}
 
 		static void MouseCallback(GLFWwindow* w, double xpos, double ypos) {
 			auto* impl = static_cast<VisualizerImpl*>(glfwGetWindowUserPointer(w));
-			if (impl->auto_camera_mode)
-				return;
-
 			if (impl->first_mouse) {
 				impl->last_mouse_x = xpos;
 				impl->last_mouse_y = ypos;
 				impl->first_mouse = false;
 			}
 
-			float xoffset = xpos - impl->last_mouse_x;
-			float yoffset = impl->last_mouse_y - ypos;
+			impl->input_state.mouse_delta_x = xpos - impl->last_mouse_x;
+			impl->input_state.mouse_delta_y = impl->last_mouse_y - ypos;
 			impl->last_mouse_x = xpos;
 			impl->last_mouse_y = ypos;
-
-			float sensitivity = 0.1f;
-			xoffset *= sensitivity;
-			yoffset *= sensitivity;
-
-			if (impl->single_track_mode) {
-				impl->single_track_orbit_yaw += xoffset;
-				impl->single_track_orbit_pitch += yoffset;
-
-				if (impl->single_track_orbit_pitch > 89.0f)
-					impl->single_track_orbit_pitch = 89.0f;
-				if (impl->single_track_orbit_pitch < -89.0f)
-					impl->single_track_orbit_pitch = -89.0f;
-			} else {
-				impl->camera.yaw += xoffset;
-				impl->camera.pitch += yoffset;
-
-				if (impl->camera.pitch > 89.0f)
-					impl->camera.pitch = 89.0f;
-				if (impl->camera.pitch < -89.0f)
-					impl->camera.pitch = -89.0f;
-			}
+			impl->input_state.mouse_x = xpos;
+			impl->input_state.mouse_y = ypos;
 		}
 
 		static void FramebufferSizeCallback(GLFWwindow* w, int width, int height) {
@@ -795,15 +819,26 @@ namespace Boidsish {
 	}
 
 	void Visualizer::Update() {
+		// Reset per-frame input state
+		std::fill_n(impl->input_state.key_down, kMaxKeys, false);
+		std::fill_n(impl->input_state.key_up, kMaxKeys, false);
+		impl->input_state.mouse_delta_x = 0;
+		impl->input_state.mouse_delta_y = 0;
+
 		glfwPollEvents();
 		auto  current_frame = std::chrono::high_resolution_clock::now();
 		float delta_time = std::chrono::duration<float>(current_frame - impl->last_frame).count();
 		impl->last_frame = current_frame;
 
+		impl->input_state.delta_time = delta_time;
+
+		if (impl->input_callback) {
+			impl->input_callback(impl->input_state);
+		}
+
 		if (!impl->paused) {
 			impl->simulation_time += delta_time;
 		}
-		impl->ProcessInput(delta_time);
 	}
 
 	void Visualizer::Render() {
@@ -929,5 +964,65 @@ namespace Boidsish {
 
 	void Visualizer::SetCamera(const Camera& camera) {
 		impl->camera = camera;
+	}
+
+	void Visualizer::SetInputCallback(InputCallback callback) {
+		impl->input_callback = callback;
+	}
+
+	void Visualizer::SetExitKey(int key) {
+		impl->exit_key = key;
+	}
+
+	void Visualizer::SetCameraMode(CameraMode mode) {
+		switch (mode) {
+		case CameraMode::FREE:
+			impl->auto_camera_mode = false;
+			impl->single_track_mode = false;
+			glfwSetInputMode(impl->window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+			impl->first_mouse = true;
+			break;
+		case CameraMode::AUTO:
+			impl->auto_camera_mode = true;
+			impl->single_track_mode = false;
+			glfwSetInputMode(impl->window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
+			break;
+		case CameraMode::TRACKING:
+			impl->auto_camera_mode = false;
+			impl->single_track_mode = true;
+			glfwSetInputMode(impl->window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+			impl->first_mouse = true;
+			break;
+		}
+	}
+
+	void Visualizer::TogglePause() {
+		impl->paused = !impl->paused;
+	}
+
+	void Visualizer::ToggleEffect(VisualEffect effect) {
+		switch (effect) {
+		case VisualEffect::RIPPLE:
+			impl->ripple_strength = (impl->ripple_strength > 0.0f) ? 0.0f : 0.05f;
+			break;
+		case VisualEffect::COLOR_SHIFT:
+			impl->color_shift_effect = !impl->color_shift_effect;
+			break;
+		case VisualEffect::BLACK_AND_WHITE:
+			impl->black_and_white_effect = !impl->black_and_white_effect;
+			break;
+		case VisualEffect::NEGATIVE:
+			impl->negative_effect = !impl->negative_effect;
+			break;
+		case VisualEffect::SHIMMERY:
+			impl->shimmery_effect = !impl->shimmery_effect;
+			break;
+		case VisualEffect::GLITCHED:
+			impl->glitched_effect = !impl->glitched_effect;
+			break;
+		case VisualEffect::WIREFRAME:
+			impl->wireframe_effect = !impl->wireframe_effect;
+			break;
+		}
 	}
 } // namespace Boidsish

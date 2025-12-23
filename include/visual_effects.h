@@ -4,7 +4,11 @@ namespace Boidsish {
 	enum class VisualEffect {
 		RIPPLE,
 		COLOR_SHIFT,
-		// Add other effects here
+		BLACK_AND_WHITE,
+		NEGATIVE,
+		SHIMMERY,
+		GLITCHED,
+		WIREFRAME,
 	};
 
 	struct VisualEffectsUbo {
