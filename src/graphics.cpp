@@ -1029,4 +1029,8 @@ namespace Boidsish {
     std::vector<std::shared_ptr<Terrain>> Visualizer::getVisibleChunks() {
         return impl->terrain_generator->getVisibleChunks();
     }
+
+    std::tuple<float, glm::vec3> Visualizer::GetTerrainProperties(float x, float z) {
+        return impl->terrain_generator->pointProperties(x, z);
+    }
 } // namespace Boidsish

@@ -4,6 +4,7 @@
 #include <functional>
 #include <map>
 #include <memory>
+#include <tuple>
 #include <vector>
 
 #include "shape.h"
@@ -104,6 +105,7 @@ namespace Boidsish {
 		void ToggleEffect(VisualEffect effect);
 
         std::vector<std::shared_ptr<Terrain>> getVisibleChunks();
+        std::tuple<float, glm::vec3> GetTerrainProperties(float x, float z);
 
 	private:
 		struct VisualizerImpl;

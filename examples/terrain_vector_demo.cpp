@@ -22,14 +22,19 @@ class TerrainDemoHandler: public SpatialEntityHandler {
 public:
 	TerrainDemoHandler() { AddEntity<DotEntity>(Vector3(16.0f, 20.0f, 16.0f)); }
 
-	void PostTimestep(float, float, Visualizer& viz) {
+	void PostTimestep(float, float delta_time, Visualizer& viz) override {
 		auto terrain_chunks = viz.getVisibleChunks();
 		if (!terrain_chunks.empty()) {
-			TerrainField terrain_field(terrain_chunks, 10.0f);
+			TerrainField terrain_field(terrain_chunks, 5.0f);
 			for (auto const& [id, entity] : GetAllEntities()) {
 				Vector3 pos = entity->GetPosition();
-				Vector3 influence = terrain_field.getInfluence(pos);
-				entity->SetVelocity(influence * 20.0f);
+				Vector3 acceleration = terrain_field.getInfluence(pos, viz);
+
+				// Apply damping
+				Vector3 new_velocity = entity->GetVelocity() * 0.98f;
+				// Apply acceleration
+				new_velocity += acceleration * delta_time * 5.0f;
+				entity->SetVelocity(new_velocity);
 			}
 		}
 	}

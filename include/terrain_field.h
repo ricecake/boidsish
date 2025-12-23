@@ -7,10 +7,12 @@
 
 namespace Boidsish {
 
+class Visualizer;
+
 class TerrainField {
 public:
     TerrainField(const std::vector<std::shared_ptr<Terrain>>& terrains, float influence_radius);
-    Vector3 getInfluence(const Vector3& position) const;
+    Vector3 getInfluence(const Vector3& position, Visualizer& viz) const;
 
 private:
     struct Patch {

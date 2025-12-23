@@ -1,5 +1,6 @@
 #include "terrain_field.h"
 
+#include "graphics.h"
 #include <glm/glm.hpp>
 #include <numeric>
 
@@ -13,6 +14,11 @@ TerrainField::TerrainField(const std::vector<std::shared_ptr<Terrain>>& terrains
         patch.normals = terrain->getNormals();
 
         if (patch.vertices.empty()) continue;
+
+        glm::vec3 terrain_pos(terrain->GetX(), terrain->GetY(), terrain->GetZ());
+        for (auto& v : patch.vertices) {
+            v += terrain_pos;
+        }
 
         // Compute center
         glm::vec3 sum_pos(0.0f);
@@ -30,6 +36,7 @@ TerrainField::TerrainField(const std::vector<std::shared_ptr<Terrain>>& terrains
             patch.proxy.minZ = std::min(patch.proxy.minZ, patch.vertices[i].z);
             patch.proxy.maxZ = std::max(patch.proxy.maxZ, patch.vertices[i].z);
         }
+        patch.proxy.totalNormal = glm::normalize(patch.proxy.totalNormal);
 
         // Compute bounding radius
         patch.proxy.radiusSq = 0.0f;
@@ -44,23 +51,40 @@ TerrainField::TerrainField(const std::vector<std::shared_ptr<Terrain>>& terrains
     }
 }
 
-Vector3 TerrainField::getInfluence(const Vector3& position) const {
-    glm::vec3 total_influence(0.0f);
+Vector3 TerrainField::getInfluence(const Vector3& position, Visualizer& viz) const {
+    glm::vec3 pos(position.x, position.y, position.z);
+    glm::vec3 total_force(0.0f);
 
-    struct BirdLike {
-        glm::vec3 position;
-        glm::vec3 forceAccumulator;
-    } bird;
-    bird.position = glm::vec3(position.x, position.y, position.z);
-
-
+    // Repulsion force
     for (const auto& patch : patches_) {
-        patch.proxy.ApplyPatchInfluence(bird, patch, lut_);
+        glm::vec3 delta = pos - patch.proxy.center;
+        float     dist_sq = glm::dot(delta, delta);
+
+        float combined_radius = lut_.R + std::sqrt(patch.proxy.radiusSq);
+        if (dist_sq > (combined_radius * combined_radius)) {
+            continue;
+        }
+
+        if (dist_sq > patch.proxy.radiusSq * 4.0f) {
+            total_force -= lut_.Sample(delta, dist_sq, patch.proxy.totalNormal);
+        } else {
+            for (size_t i = 0; i < patch.vertices.size(); ++i) {
+                glm::vec3 r_vec = pos - patch.vertices[i];
+                float     r2 = glm::dot(r_vec, r_vec);
+                if (r2 < lut_.R * lut_.R) {
+                    total_force -= lut_.Sample(r_vec, r2, patch.normals[i]);
+                }
+            }
+        }
     }
 
-    total_influence = bird.forceAccumulator;
+    // Tangential (gliding) force
+    auto [height, normal] = viz.GetTerrainProperties(pos.x, pos.z);
+    glm::vec3 gravity(0.0f, -0.1f, 0.0f);
+    glm::vec3 tangent_force = gravity - glm::dot(gravity, normal) * normal;
+    total_force += tangent_force;
 
-    return Vector3(total_influence.x, total_influence.y, total_influence.z);
+    return Vector3(total_force.x, total_force.y, total_force.z);
 }
 
 }

@@ -19,9 +19,10 @@ namespace Boidsish {
 
 		static std::shared_ptr<Shader> terrain_shader_;
 
+	private:
+        friend class TerrainGenerator;
 		std::vector<glm::vec3> vertices_;
 		std::vector<glm::vec3> normals_;
-	private:
 		void setupMesh(const std::vector<float>& vertexData, const std::vector<unsigned int>& indices);
 
 		unsigned int vao_, vbo_, ebo_;
