@@ -1,3 +1,5 @@
+#pragma once
+
 #include <vector>
 
 #include "entity.h"
@@ -220,3 +222,21 @@ struct CompositePolicy {
 		return result;
 	}
 };
+
+/*
+template <typename... TpolicyN>
+struct UnionPolicy {
+
+    float GetRadiusSq() const { return std::max(policyA.GetRadiusSq(), policyB.GetRadiusSq()); }
+
+    template <typename TSource>
+    glm::vec3 CalculateInfluence(const glm::vec3& r_vec, float r2, const TSource& source) const {
+        glm::vec3 result(0.0f);
+        if (r2 < policyA.GetRadiusSq())
+            result += policyA.CalculateInfluence(r_vec, r2, source);
+        if (r2 < policyB.GetRadiusSq())
+            result += policyB.CalculateInfluence(r_vec, r2, source);
+        return result;
+    }
+};
+*/

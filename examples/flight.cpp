@@ -4,6 +4,8 @@
 #include "arrow.h"
 #include "dot.h"
 #include "graphics.h"
+#include "field.h"
+
 using namespace Boidsish;
 
 int main() {
@@ -36,6 +38,7 @@ int main() {
 			auto arrow2 = std::make_shared<Boidsish::Arrow>(1, 0, 0, 0, 0.1f, 0.1f, 0.01f, 0.0f, 1.0f, 0.0f);
 			arrow2->SetPosition(dotPost.x, dotPost.y, dotPost.z);
 			arrow2->SetScale(glm::vec3(1.0f, 1.0f, 1.0f));
+			// arrow2->SetRotation();
 
 			shapes.push_back(arrow2);
 

@@ -1016,4 +1016,13 @@ namespace Boidsish {
 			break;
 		}
 	}
+
+	const auto Visualizer::GetTerrainPointProperties(float x, float y) {
+		return impl->terrain_generator->pointProperties(x, y);
+	};
+
+	const auto Visualizer::GetTerrainChunks() {
+		return impl->terrain_generator->getVisibleChunks();
+	};
+
 } // namespace Boidsish

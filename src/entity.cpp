@@ -43,4 +43,11 @@ namespace Boidsish {
 
 		return shapes;
 	}
+	const auto EntityHandler::GetTerrainPointProperties(float x, float y) {
+
+	};
+	const auto EntityHandler::GetTerrainChunks() {
+
+	};
+
 } // namespace Boidsish

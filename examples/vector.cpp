@@ -85,7 +85,7 @@ FruitEntity::FruitEntity(int id): Entity<>(id), value(0) {
 void FruitEntity::UpdateEntity(EntityHandler& handler, float, float delta_time) {
 	phase_ += delta_time;
 
-	auto value_modifier = (sin((4 * phase_) / 8)+1)/2;
+	auto value_modifier = (sin((4 * phase_) / 8) + 1) / 2;
 	value = value_modifier * 100;
 	SetSize(4 + 12 * value_modifier);
 

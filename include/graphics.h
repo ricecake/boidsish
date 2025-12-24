@@ -116,6 +116,9 @@ namespace Boidsish {
 		void TogglePause();
 		void ToggleEffect(VisualEffect effect);
 
+		const auto GetTerrainPointProperties(float x, float y);
+		const auto GetTerrainChunks();
+
 	private:
 		struct VisualizerImpl;
 		VisualizerImpl* impl;

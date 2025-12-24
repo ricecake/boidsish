@@ -9,6 +9,7 @@
 #include "dot.h"
 #include "shape.h"
 #include "vector.h"
+#include "graphics.h"
 
 namespace Boidsish {
 
@@ -137,6 +138,10 @@ namespace Boidsish {
 		// Operator() to make this compatible with ShapeFunction
 		std::vector<std::shared_ptr<Shape>> operator()(float time);
 
+		void SetVisualizer(auto new_vis) {
+			vis = new_vis;
+		}
+
 		// Entity management
 		template <typename T, typename... Args>
 		int AddEntity(Args&&... args) {
@@ -191,6 +196,9 @@ namespace Boidsish {
 		// Get total entity count
 		size_t GetEntityCount() const { return entities_.size(); }
 
+		const auto GetTerrainPointProperties(float x, float y);
+		const auto GetTerrainChunks();
+
 	protected:
 		// Override these for custom behavior
 		virtual void PreTimestep(float time, float delta_time) {
@@ -204,6 +212,7 @@ namespace Boidsish {
 		}
 
 	private:
+		std::shared_ptr<const Visualizer> vis;
 		std::map<int, std::shared_ptr<EntityBase>> entities_;
 		float                                      last_time_;
 		int                                        next_id_;
