@@ -1,4 +1,5 @@
 #include "entity.h"
+#include "path.h"
 
 namespace Boidsish {
 	std::vector<std::shared_ptr<Shape>> EntityHandler::operator()(float time) {
@@ -20,6 +21,11 @@ namespace Boidsish {
 		// Update all entities
 		for (auto& entity : entities) {
 			entity->UpdateEntity(*this, time, delta_time);
+			if (entity->path_) {
+				auto update = entity->path_->CalculateUpdate(entity->GetPosition(), entity->orientation_, delta_time);
+				entity->SetVelocity(update.first * entity->path_speed_);
+				entity->orientation_ = glm::slerp(entity->orientation_, update.second, 0.1f);
+			}
 		}
 
 		// Call post-timestep hook

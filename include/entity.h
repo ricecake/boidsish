@@ -10,6 +10,7 @@
 #include "shape.h"
 #include "vector.h"
 #include "graphics.h"
+#include "path.h"
 
 namespace Boidsish {
 
@@ -18,6 +19,7 @@ namespace Boidsish {
 
 	// Base entity class for the entity system
 	class EntityBase {
+		friend class EntityHandler;
 	public:
 		EntityBase(int id = 0):
 			id_(id),
@@ -88,6 +90,11 @@ namespace Boidsish {
 
 		void SetTrailLength(int length) { trail_length_ = length; }
 
+		void SetPath(std::shared_ptr<Path> path, float speed) {
+			path_ = path;
+			path_speed_ = speed;
+		}
+
 	protected:
 		int     id_;
 		Vector3 position_; // Absolute spatial position
@@ -95,6 +102,11 @@ namespace Boidsish {
 		float   size_;
 		float   color_[4]; // RGBA
 		int     trail_length_;
+		glm::quat orientation_;
+
+		// Path following
+		std::shared_ptr<Path> path_;
+		float path_speed_ = 1.0f;
 	};
 
 	// Template-based entity class that takes a shape
@@ -110,6 +122,7 @@ namespace Boidsish {
 			shape_->SetPosition(position_.x, position_.y, position_.z);
 			shape_->SetColor(color_[0], color_[1], color_[2], color_[3]);
 			shape_->SetTrailLength(trail_length_);
+			shape_->SetRotation(orientation_);
 			// For dots, we can also update the size
 			if (auto dot = std::dynamic_pointer_cast<Dot>(shape_)) {
 				dot->SetSize(size_);
