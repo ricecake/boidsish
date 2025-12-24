@@ -24,6 +24,8 @@ namespace Boidsish {
 
 		void render() const override;
 
+		void SetDirection(const glm::vec3& direction);
+
 	private:
 		void InitArrowMesh();
 		void DestroyArrowMesh();

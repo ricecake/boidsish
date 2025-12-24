@@ -8,6 +8,7 @@
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/quaternion.hpp>
+#include <glm/gtx/quaternion.hpp>
 
 namespace Boidsish {
 
@@ -116,5 +117,9 @@ namespace Boidsish {
 		glBindVertexArray(sphere_vao_);
 		glDrawElements(GL_TRIANGLES, sphere_vertex_count_, GL_UNSIGNED_INT, 0);
 		glBindVertexArray(0);
+	}
+
+	void Shape::LookAt(const glm::vec3& target, const glm::vec3& up) {
+		rotation_ = glm::quat_cast(glm::inverse(glm::lookAt(glm::vec3(x_, y_, z_), target, up)));
 	}
 } // namespace Boidsish

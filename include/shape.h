@@ -59,6 +59,8 @@ namespace Boidsish {
 
 		inline void SetRotation(const glm::quat& rotation) { rotation_ = rotation; }
 
+		void LookAt(const glm::vec3& target, const glm::vec3& up = glm::vec3(0.0f, 1.0f, 0.0f));
+
 		inline const glm::vec3& GetScale() const { return scale_; }
 
 		inline void SetScale(const glm::vec3& scale) { scale_ = scale; }
