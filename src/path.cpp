@@ -204,7 +204,11 @@ PathUpdateResult Path::CalculateUpdate(const Vector3& current_position, const gl
     // Calculate orientation
     Vector3 tangent = (Spline::CatmullRom(lookahead_t + 0.01f * new_direction, p0, p1, p2, p3) - target_position).Normalized();
     Vector3 up = w1.up * (1.0f - lookahead_t) + w2.up * lookahead_t;
-    Vector3 right = tangent.Cross(up).Normalized();
+    Vector3 right = tangent.Cross(up);
+    if (right.MagnitudeSquared() < 1e-6) {
+        right = Vector3(1, 0, 0);
+    }
+    right.Normalize();
     up = right.Cross(tangent).Normalized();
 
     glm::mat4 rotationMatrix = glm::lookAt(glm::vec3(0,0,0), glm::vec3(tangent.x, tangent.y, tangent.z), glm::vec3(up.x, up.y, up.z));

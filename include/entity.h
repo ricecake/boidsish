@@ -27,7 +27,8 @@ namespace Boidsish {
 			velocity_(0.0f, 0.0f, 0.0f),
 			size_(8.0f),
 			color_{1.0f, 1.0f, 1.0f, 1.0f},
-			trail_length_(50) {}
+			trail_length_(50),
+			orientation_(glm::quat(1.0f, 0.0f, 0.0f, 0.0f)) {}
 
 		virtual ~EntityBase() = default;
 
