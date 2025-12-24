@@ -3,6 +3,7 @@
 #include <cmath>
 #include <numbers>
 #include <vector>
+#include <map>
 
 #include "dot.h"
 #include "shader.h"
@@ -77,7 +78,13 @@ namespace Boidsish {
 			{
 				Vector3 point1 = Spline::CatmullRom(0.0f, p0, p1, p2, p3);
 				Vector3 point2 = Spline::CatmullRom(1.0f / CURVE_SEGMENTS, p0, p1, p2, p3);
-				Vector3 tangent = (point2 - point1).Normalized();
+				Vector3 tangent;
+                if ((point2 - point1).MagnitudeSquared() < 1e-6) {
+                    tangent = Vector3(0, 1, 0);
+                } else {
+				    tangent = (point2 - point1).Normalized();
+                }
+
 				if (abs(tangent.y) < 0.999)
 					last_normal = tangent.Cross(Vector3(0, 1, 0)).Normalized();
 				else
