@@ -6,16 +6,20 @@
 #include <memory>
 #include <vector>
 
-#include "imgui.h"
-#include "imgui_impl_glfw.h"
-#include "imgui_impl_opengl3.h"
 #include "shape.h"
 #include "vector.h"
 #include "visual_effects.h"
+#include "Config.h"
 #include <glm/glm.hpp>
 
 namespace task_thread_pool {
 	class task_thread_pool;
+}
+
+namespace Boidsish {
+	namespace UI {
+		class IWidget;
+	}
 }
 
 namespace Boidsish {
@@ -116,8 +120,8 @@ namespace Boidsish {
 		// Set the input callback
 		void SetInputCallback(InputCallback callback);
 
-		// Set the ImGui drawing callback
-		void SetImGuiDrawer(std::function<void()> drawer);
+		// Add a UI widget to be rendered
+		void AddWidget(std::shared_ptr<UI::IWidget> widget);
 
 		// Set the exit key, which cannot be overridden by the input callback.
 		void SetExitKey(int key);
@@ -130,9 +134,11 @@ namespace Boidsish {
 		const auto                          GetTerrainChunks();
 		task_thread_pool::task_thread_pool& GetThreadPool();
 
+		Config& GetConfig();
+
 	private:
 		struct VisualizerImpl;
-		VisualizerImpl* impl;
+		std::unique_ptr<VisualizerImpl> impl;
 	};
 
 } // namespace Boidsish

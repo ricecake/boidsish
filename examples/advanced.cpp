@@ -4,6 +4,9 @@
 
 #include "dot.h"
 #include "graphics.h"
+#include "IWidget.h"
+#include "imgui.h"
+#include "Config.h"
 
 using namespace Boidsish;
 
@@ -120,6 +123,34 @@ auto WaveExample(float time) {
 	return dots;
 }
 
+class InfoWidget : public UI::IWidget {
+public:
+    InfoWidget(Visualizer& viz, int example) : m_viz(viz), m_example(example) {}
+
+    void Draw() override {
+        ImGui::Begin("Info");
+        ImGui::Text("Current example: %d", m_example);
+        ImGui::Separator();
+        ImGui::Text("Controls:");
+        ImGui::Text("  WASD - Move camera horizontally");
+        ImGui::Text("  Space/Shift - Move camera up/down");
+        ImGui::Text("  Mouse - Look around");
+        ImGui::Text("  ESC - Exit");
+
+        bool auto_camera = m_viz.GetConfig().GetBool("auto_camera", true);
+        if (ImGui::Checkbox("Auto Camera", &auto_camera)) {
+            m_viz.GetConfig().SetBool("auto_camera", auto_camera);
+            m_viz.SetCameraMode(auto_camera ? CameraMode::AUTO : CameraMode::FREE);
+        }
+
+        ImGui::End();
+    }
+
+private:
+    Visualizer& m_viz;
+    int m_example;
+};
+
 int main(int argc, char* argv[]) {
 	int example = 1;
 
@@ -159,19 +190,10 @@ int main(int argc, char* argv[]) {
 			break;
 		}
 
-		std::cout << "Boidsish Advanced Examples" << std::endl;
-		std::cout << "Example " << example << ": "
-				  << (example == 1       ? "Spiraling Particles"
-		                  : example == 2 ? "Random Walk"
-		                                 : "Wave Function")
-				  << std::endl;
-		std::cout << "Controls:" << std::endl;
-		std::cout << "  WASD - Move camera horizontally" << std::endl;
-		std::cout << "  Space/Shift - Move camera up/down" << std::endl;
-		std::cout << "  Mouse - Look around" << std::endl;
-		std::cout << "  ESC - Exit" << std::endl;
-		std::cout << "Run with argument 1, 2, or 3 to select example" << std::endl;
-		std::cout << std::endl;
+		viz.AddWidget(std::make_shared<InfoWidget>(viz, example));
+
+		bool auto_camera = viz.GetConfig().GetBool("auto_camera", true);
+		viz.SetCameraMode(auto_camera ? CameraMode::AUTO : CameraMode::FREE);
 
 		viz.Run();
 
