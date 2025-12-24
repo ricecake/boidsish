@@ -40,6 +40,13 @@ int main(int argc, char* argv[]) {
 		arrow3->SetScale(glm::vec3(1.5f, 1.5f, 1.5f));
 		shapes.push_back(arrow3);
 
+		// Arrow 4: Pointing in a direction that changes over time
+		auto arrow4 = std::make_shared<Boidsish::Arrow>(3, 0, 0, 0, 0.2f, 0.1f, 0.05f, 1.0f, 1.0f, 0.0f);
+		arrow4->SetPosition(3.0f, 2.0f, 3.0f);
+		glm::vec3 direction(sin(time), cos(time), 0.0f);
+		arrow4->SetDirection(direction);
+		shapes.push_back(arrow4);
+
 		return shapes;
 	};
 

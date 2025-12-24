@@ -133,6 +133,27 @@ namespace Boidsish {
 		glBindVertexArray(0);
 	}
 
+	void Arrow::SetDirection(const glm::vec3& direction) {
+		glm::vec3 up(0.0f, 1.0f, 0.0f);
+		glm::vec3 norm_direction = glm::normalize(direction);
+
+		float dot = glm::dot(up, norm_direction);
+		if (abs(dot + 1.0f) < 0.000001f) {
+			// vector a and b are parallel but opposite direction
+			SetRotation(glm::angleAxis(glm::pi<float>(), glm::vec3(1.0f, 0.0f, 0.0f)));
+			return;
+		}
+		if (abs(dot - 1.0f) < 0.000001f) {
+			// vector a and b are parallel in same direction
+			SetRotation(glm::quat(1.0f, 0.0f, 0.0f, 0.0f));
+			return;
+		}
+
+		glm::vec3 axis = glm::cross(up, norm_direction);
+		float angle = acos(dot);
+		SetRotation(glm::angleAxis(angle, axis));
+	}
+
 	void Arrow::DestroyArrowMesh() {
 		if (rod_vao_ != 0) {
 			glDeleteVertexArrays(1, &rod_vao_);
