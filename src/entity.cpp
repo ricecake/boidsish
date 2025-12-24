@@ -2,6 +2,7 @@
 
 #include <algorithm>
 
+#include "path.h"
 #include <poolstl/poolstl.hpp>
 
 namespace Boidsish {
@@ -24,6 +25,17 @@ namespace Boidsish {
 		// Update all entities
 		std::for_each(poolstl::par.on(thread_pool_), entities.begin(), entities.end(), [&](auto& entity) {
 			entity->UpdateEntity(*this, time, delta_time);
+			if (entity->path_) {
+				auto update = entity->path_->CalculateUpdate(
+					entity->GetPosition(),
+					entity->orientation_,
+					entity->path_direction_,
+					delta_time
+				);
+				entity->SetVelocity(update.velocity * entity->path_speed_);
+				entity->orientation_ = glm::slerp(entity->orientation_, update.orientation, 0.1f);
+				entity->path_direction_ = update.new_direction;
+			}
 		});
 
 		// Call post-timestep hook
