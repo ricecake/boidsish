@@ -10,6 +10,14 @@
 
 namespace Boidsish {
 
+enum class PathMode { ONCE, LOOP, REVERSE };
+
+struct PathUpdateResult {
+    Vector3 velocity;
+    glm::quat orientation;
+    int new_direction;
+};
+
 class Path : public Shape, public std::enable_shared_from_this<Path> {
 public:
     struct Waypoint {
@@ -31,18 +39,21 @@ public:
         return waypoints_.back();
     }
 
-    // Returns the desired change in heading and orientation
-    std::pair<Vector3, glm::quat> CalculateUpdate(const Vector3& current_position, const glm::quat& current_orientation, float delta_time) const;
+    PathUpdateResult CalculateUpdate(const Vector3& current_position, const glm::quat& current_orientation, int current_direction, float delta_time) const;
 
-    bool IsLooping() const { return is_looping_; }
-    void SetLooping(bool looping) { is_looping_ = looping; buffers_initialized_ = false; }
+    PathMode GetMode() const { return mode_; }
+    void SetMode(PathMode mode) { mode_ = mode; buffers_initialized_ = false; }
+
+    bool IsVisible() const { return visible_; }
+    void SetVisible(bool visible) { visible_ = visible; }
 
     std::vector<Waypoint>& GetWaypoints() { return waypoints_; }
     const std::vector<Waypoint>& GetWaypoints() const { return waypoints_; }
 
 private:
     std::vector<Waypoint> waypoints_;
-    bool is_looping_ = false;
+    PathMode mode_ = PathMode::ONCE;
+    bool visible_ = false;
 
     mutable GLuint path_vao_ = 0;
     mutable GLuint path_vbo_ = 0;

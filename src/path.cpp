@@ -39,7 +39,7 @@ void Path::SetupBuffers() const {
         colors.push_back(glm::vec3(waypoint.r, waypoint.g, waypoint.b));
     }
 
-    auto all_vertices_data = Spline::GenerateTube(points, ups, sizes, colors, is_looping_);
+    auto all_vertices_data = Spline::GenerateTube(points, ups, sizes, colors, mode_ == PathMode::LOOP);
     edge_vertex_count_ = all_vertices_data.size();
 
     if (path_vao_ == 0) glGenVertexArrays(1, &path_vao_);
@@ -60,6 +60,8 @@ void Path::SetupBuffers() const {
 }
 
 void Path::render() const {
+    if (!visible_) return;
+
     if (!buffers_initialized_) {
         SetupBuffers();
     }
@@ -87,9 +89,9 @@ void Path::render() const {
     }
 }
 
-std::pair<Vector3, glm::quat> Path::CalculateUpdate(const Vector3& current_position, const glm::quat& current_orientation, float delta_time) const {
+PathUpdateResult Path::CalculateUpdate(const Vector3& current_position, const glm::quat& current_orientation, int current_direction, float delta_time) const {
     if (waypoints_.size() < 2) {
-        return {Vector3(0,0,0), glm::quat()};
+        return {Vector3(0,0,0), glm::quat(), 1};
     }
 
     // Find the closest point on the path
@@ -107,7 +109,7 @@ std::pair<Vector3, glm::quat> Path::CalculateUpdate(const Vector3& current_posit
 
         if (i > 0) {
             p0 = waypoints_[i - 1].position;
-        } else if (is_looping_) {
+        } else if (mode_ == PathMode::LOOP) {
             p0 = waypoints_.back().position;
         } else {
             p0 = w1.position - (w2.position - w1.position);
@@ -115,7 +117,7 @@ std::pair<Vector3, glm::quat> Path::CalculateUpdate(const Vector3& current_posit
 
         if (i < waypoints_.size() - 2) {
             p3 = waypoints_[i + 2].position;
-        } else if (is_looping_) {
+        } else if (mode_ == PathMode::LOOP) {
             p3 = waypoints_.front().position;
         } else {
             p3 = w2.position + (w2.position - w1.position);
@@ -136,18 +138,39 @@ std::pair<Vector3, glm::quat> Path::CalculateUpdate(const Vector3& current_posit
 
     // Now that we have the closest point, we can calculate the target position
     // a short distance ahead on the path.
-    float lookahead_t = closest_t + 0.1f;
+    float lookahead_dist = 0.1f * current_direction;
+    float lookahead_t = closest_t + lookahead_dist;
     int lookahead_segment = closest_segment;
+    int new_direction = current_direction;
 
     if (lookahead_t > 1.0f) {
         lookahead_t -= 1.0f;
         lookahead_segment++;
         if (lookahead_segment >= (int)waypoints_.size() - 1) {
-            if (is_looping_) {
+            if (mode_ == PathMode::LOOP) {
                 lookahead_segment = 0;
-            } else {
+            } else if (mode_ == PathMode::REVERSE) {
+                new_direction = -1;
                 lookahead_segment = waypoints_.size() - 2;
                 lookahead_t = 1.0f;
+            } else { // ONCE
+                lookahead_segment = waypoints_.size() - 2;
+                lookahead_t = 1.0f;
+            }
+        }
+    } else if (lookahead_t < 0.0f) {
+        lookahead_t += 1.0f;
+        lookahead_segment--;
+        if (lookahead_segment < 0) {
+            if (mode_ == PathMode::LOOP) {
+                lookahead_segment = waypoints_.size() - 2;
+            } else if (mode_ == PathMode::REVERSE) {
+                new_direction = 1;
+                lookahead_segment = 0;
+                lookahead_t = 0.0f;
+            } else { // ONCE
+                lookahead_segment = 0;
+                lookahead_t = 0.0f;
             }
         }
     }
@@ -161,7 +184,7 @@ std::pair<Vector3, glm::quat> Path::CalculateUpdate(const Vector3& current_posit
 
     if (lookahead_segment > 0) {
         p0 = waypoints_[lookahead_segment - 1].position;
-    } else if (is_looping_) {
+    } else if (mode_ == PathMode::LOOP) {
         p0 = waypoints_.back().position;
     } else {
         p0 = w1.position - (w2.position - w1.position);
@@ -169,7 +192,7 @@ std::pair<Vector3, glm::quat> Path::CalculateUpdate(const Vector3& current_posit
 
     if (lookahead_segment < (int)waypoints_.size() - 2) {
         p3 = waypoints_[lookahead_segment + 2].position;
-    } else if (is_looping_) {
+    } else if (mode_ == PathMode::LOOP) {
         p3 = waypoints_.front().position;
     } else {
         p3 = w2.position + (w2.position - w1.position);
@@ -179,7 +202,7 @@ std::pair<Vector3, glm::quat> Path::CalculateUpdate(const Vector3& current_posit
     Vector3 desired_velocity = (target_position - current_position).Normalized();
 
     // Calculate orientation
-    Vector3 tangent = (Spline::CatmullRom(lookahead_t + 0.01f, p0, p1, p2, p3) - target_position).Normalized();
+    Vector3 tangent = (Spline::CatmullRom(lookahead_t + 0.01f * new_direction, p0, p1, p2, p3) - target_position).Normalized();
     Vector3 up = w1.up * (1.0f - lookahead_t) + w2.up * lookahead_t;
     Vector3 right = tangent.Cross(up).Normalized();
     up = right.Cross(tangent).Normalized();
@@ -187,7 +210,7 @@ std::pair<Vector3, glm::quat> Path::CalculateUpdate(const Vector3& current_posit
     glm::mat4 rotationMatrix = glm::lookAt(glm::vec3(0,0,0), glm::vec3(tangent.x, tangent.y, tangent.z), glm::vec3(up.x, up.y, up.z));
     glm::quat desired_orientation = glm::conjugate(glm::quat_cast(rotationMatrix));
 
-    return {desired_velocity, desired_orientation};
+    return {desired_velocity, desired_orientation, new_direction};
 }
 
 } // namespace Boidsish

@@ -22,9 +22,10 @@ namespace Boidsish {
 		for (auto& entity : entities) {
 			entity->UpdateEntity(*this, time, delta_time);
 			if (entity->path_) {
-				auto update = entity->path_->CalculateUpdate(entity->GetPosition(), entity->orientation_, delta_time);
-				entity->SetVelocity(update.first * entity->path_speed_);
-				entity->orientation_ = glm::slerp(entity->orientation_, update.second, 0.1f);
+				auto update = entity->path_->CalculateUpdate(entity->GetPosition(), entity->orientation_, entity->path_direction_, delta_time);
+				entity->SetVelocity(update.velocity * entity->path_speed_);
+				entity->orientation_ = glm::slerp(entity->orientation_, update.orientation, 0.1f);
+				entity->path_direction_ = update.new_direction;
 			}
 		}
 

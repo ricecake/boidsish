@@ -21,7 +21,8 @@ int main(int argc, char** argv) {
 
         auto path_handler = std::make_shared<PathHandler>();
         auto path = path_handler->AddPath();
-        path->SetLooping(true);
+        path->SetMode(PathMode::LOOP);
+        path->SetVisible(false);
 
         path->AddWaypoint({-10, 0, 0}, {0, 1, 0}, 10.0f, 1, 0, 0, 1);
         path->AddWaypoint({0, 5, 5}, {0, 0, 1}, 5.0f, 0, 1, 0, 1);
@@ -46,9 +47,16 @@ int main(int argc, char** argv) {
 
         vis.SetImGuiDrawer([&]() {
             ImGui::Begin("Path Controls");
-            bool is_looping = path->IsLooping();
-            if (ImGui::Checkbox("Looping", &is_looping)) {
-                path->SetLooping(is_looping);
+
+            bool visible = path->IsVisible();
+            if (ImGui::Checkbox("Visible", &visible)) {
+                path->SetVisible(visible);
+            }
+
+            const char* modes[] = { "Once", "Loop", "Reverse" };
+            int current_mode = static_cast<int>(path->GetMode());
+            if (ImGui::Combo("Mode", &current_mode, modes, IM_ARRAYSIZE(modes))) {
+                path->SetMode(static_cast<PathMode>(current_mode));
             }
 
             int waypoint_idx = 0;
