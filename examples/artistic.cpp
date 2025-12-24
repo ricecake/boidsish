@@ -16,7 +16,10 @@ std::vector<std::shared_ptr<Boidsish::Shape>> CreateShapes(float) {
 }
 
 int main() {
-	Boidsish::Visualizer visualizer(1280, 720, "Artistic Effects Demo");
+	Boidsish::Visualizer::InitOptions options;
+	options.enable_post_processing = true;
+	options.enable_artistic_effects = true;
+	Boidsish::Visualizer visualizer(1280, 720, "Artistic Effects Demo", options);
 	visualizer.AddShapeHandler(CreateShapes);
 	visualizer.Run();
 	return 0;

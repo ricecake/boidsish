@@ -84,7 +84,14 @@ namespace Boidsish {
 		bool   glitched_effect = false;
 		bool   wireframe_effect = false;
 
-		VisualizerImpl(int w, int h, const char* title): width(w), height(h) {
+		const bool enable_post_processing;
+		const bool enable_artistic_effects;
+
+		VisualizerImpl(int w, int h, const char* title, const Visualizer::InitOptions& options):
+			width(w),
+			height(h),
+			enable_post_processing(options.enable_post_processing),
+			enable_artistic_effects(options.enable_artistic_effects) {
 			exit_key = GLFW_KEY_ESCAPE;
 			input_callback = [this](const InputState& state) { this->DefaultInputHandler(state); };
 
@@ -136,7 +143,9 @@ namespace Boidsish {
 			sky_shader = std::make_unique<Shader>("shaders/sky.vert", "shaders/sky.frag");
 			trail_shader = std::make_unique<Shader>("shaders/trail.vert", "shaders/trail.frag");
 			blur_shader = std::make_unique<Shader>("shaders/blur.vert", "shaders/blur.frag");
-			postprocess_shader = std::make_unique<Shader>("shaders/postprocess.vert", "shaders/postprocess.frag");
+			if (enable_post_processing) {
+				postprocess_shader = std::make_unique<Shader>("shaders/postprocess.vert", "shaders/postprocess.frag");
+			}
 			terrain_generator = std::make_unique<TerrainGenerator>();
 
 			glGenBuffers(1, &lighting_ubo);
@@ -165,14 +174,16 @@ namespace Boidsish {
 			glUniformBlockBinding(sky_shader->ID, glGetUniformBlockIndex(sky_shader->ID, "Lighting"), 0);
 			glUniformBlockBinding(sky_shader->ID, glGetUniformBlockIndex(sky_shader->ID, "VisualEffects"), 1);
 
-			glGenBuffers(1, &artistic_effects_ubo);
-			glBindBuffer(GL_UNIFORM_BUFFER, artistic_effects_ubo);
-			glBufferData(GL_UNIFORM_BUFFER, 20, NULL, GL_DYNAMIC_DRAW);
-			glBindBuffer(GL_UNIFORM_BUFFER, 0);
-			glBindBufferRange(GL_UNIFORM_BUFFER, 1, artistic_effects_ubo, 0, 20);
+			if (enable_artistic_effects) {
+				glGenBuffers(1, &artistic_effects_ubo);
+				glBindBuffer(GL_UNIFORM_BUFFER, artistic_effects_ubo);
+				glBufferData(GL_UNIFORM_BUFFER, 20, NULL, GL_DYNAMIC_DRAW);
+				glBindBuffer(GL_UNIFORM_BUFFER, 0);
+				glBindBufferRange(GL_UNIFORM_BUFFER, 1, artistic_effects_ubo, 0, 20);
 
-			shader->use();
-			glUniformBlockBinding(shader->ID, glGetUniformBlockIndex(shader->ID, "ArtisticEffects"), 1);
+				shader->use();
+				glUniformBlockBinding(shader->ID, glGetUniformBlockIndex(shader->ID, "ArtisticEffects"), 1);
+			}
 
 			Terrain::terrain_shader_ = std::make_shared<Shader>(
 				"shaders/terrain.vert",
@@ -281,24 +292,31 @@ namespace Boidsish {
 			}
 			glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
-			// --- Post-processing Framebuffer ---
-			glGenFramebuffers(1, &postprocess_fbo);
-			glBindFramebuffer(GL_FRAMEBUFFER, postprocess_fbo);
-			glGenTextures(1, &postprocess_texture);
-			glBindTexture(GL_TEXTURE_2D, postprocess_texture);
-			glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, width, height, 0, GL_RGB, GL_UNSIGNED_BYTE, NULL);
-			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-			glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, postprocess_texture, 0);
+			if (enable_post_processing) {
+				// --- Post-processing Framebuffer ---
+				glGenFramebuffers(1, &postprocess_fbo);
+				glBindFramebuffer(GL_FRAMEBUFFER, postprocess_fbo);
+				glGenTextures(1, &postprocess_texture);
+				glBindTexture(GL_TEXTURE_2D, postprocess_texture);
+				glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, width, height, 0, GL_RGB, GL_UNSIGNED_BYTE, NULL);
+				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+				glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, postprocess_texture, 0);
 
-			glGenRenderbuffers(1, &postprocess_rbo);
-			glBindRenderbuffer(GL_RENDERBUFFER, postprocess_rbo);
-			glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH24_STENCIL8, width, height);
-			glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_RENDERBUFFER, postprocess_rbo);
+				glGenRenderbuffers(1, &postprocess_rbo);
+				glBindRenderbuffer(GL_RENDERBUFFER, postprocess_rbo);
+				glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH24_STENCIL8, width, height);
+				glFramebufferRenderbuffer(
+					GL_FRAMEBUFFER,
+					GL_DEPTH_STENCIL_ATTACHMENT,
+					GL_RENDERBUFFER,
+					postprocess_rbo
+				);
 
-			if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
-				std::cerr << "ERROR::FRAMEBUFFER:: Post-process framebuffer is not complete!" << std::endl;
-			glBindFramebuffer(GL_FRAMEBUFFER, 0);
+				if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
+					std::cerr << "ERROR::FRAMEBUFFER:: Post-process framebuffer is not complete!" << std::endl;
+				glBindFramebuffer(GL_FRAMEBUFFER, 0);
+			}
 		}
 
 		~VisualizerImpl() {
@@ -622,18 +640,23 @@ namespace Boidsish {
 				paused = !paused;
 			if (state.key_down[GLFW_KEY_R])
 				ripple_strength = (ripple_strength > 0.0f) ? 0.0f : 0.05f;
-			if (state.key_down[GLFW_KEY_C])
-				color_shift_effect = !color_shift_effect;
-			if (state.key_down[GLFW_KEY_1])
-				black_and_white_effect = !black_and_white_effect;
-			if (state.key_down[GLFW_KEY_2])
-				negative_effect = !negative_effect;
-			if (state.key_down[GLFW_KEY_3])
-				shimmery_effect = !shimmery_effect;
-			if (state.key_down[GLFW_KEY_4])
-				glitched_effect = !glitched_effect;
-			if (state.key_down[GLFW_KEY_5])
-				wireframe_effect = !wireframe_effect;
+
+			if (enable_post_processing) {
+				if (state.key_down[GLFW_KEY_C])
+					color_shift_effect = !color_shift_effect;
+			}
+			if (enable_artistic_effects) {
+				if (state.key_down[GLFW_KEY_1])
+					black_and_white_effect = !black_and_white_effect;
+				if (state.key_down[GLFW_KEY_2])
+					negative_effect = !negative_effect;
+				if (state.key_down[GLFW_KEY_3])
+					shimmery_effect = !shimmery_effect;
+				if (state.key_down[GLFW_KEY_4])
+					glitched_effect = !glitched_effect;
+				if (state.key_down[GLFW_KEY_5])
+					wireframe_effect = !wireframe_effect;
+			}
 		}
 
 		void CleanupOldTrails(float current_time, const std::vector<std::shared_ptr<Shape>>& active_shapes) {
@@ -822,7 +845,12 @@ namespace Boidsish {
 		}
 	};
 
-	Visualizer::Visualizer(int w, int h, const char* t): impl(new VisualizerImpl(w, h, t)) {}
+	Visualizer::Visualizer(int w, int h, const char* t, const InitOptions& options):
+		impl(new VisualizerImpl(w, h, t, options)) {}
+
+	Visualizer::Visualizer(int w, int h, const char* t):
+		impl(new VisualizerImpl(w, h, t, InitOptions())) {}
+
 
 	Visualizer::~Visualizer() {
 		delete impl;
@@ -920,18 +948,20 @@ namespace Boidsish {
 		glBufferSubData(GL_UNIFORM_BUFFER, 44, sizeof(float), &impl->simulation_time);
 		glBindBuffer(GL_UNIFORM_BUFFER, 0);
 
-		glBindBuffer(GL_UNIFORM_BUFFER, impl->artistic_effects_ubo);
-		int black_and_white_int = impl->black_and_white_effect;
-		int negative_int = impl->negative_effect;
-		int shimmery_int = impl->shimmery_effect;
-		int glitched_int = impl->glitched_effect;
-		int wireframe_int = impl->wireframe_effect;
-		glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(int), &black_and_white_int);
-		glBufferSubData(GL_UNIFORM_BUFFER, 4, sizeof(int), &negative_int);
-		glBufferSubData(GL_UNIFORM_BUFFER, 8, sizeof(int), &shimmery_int);
-		glBufferSubData(GL_UNIFORM_BUFFER, 12, sizeof(int), &glitched_int);
-		glBufferSubData(GL_UNIFORM_BUFFER, 16, sizeof(int), &wireframe_int);
-		glBindBuffer(GL_UNIFORM_BUFFER, 0);
+		if (impl->enable_artistic_effects) {
+			glBindBuffer(GL_UNIFORM_BUFFER, impl->artistic_effects_ubo);
+			int black_and_white_int = impl->black_and_white_effect;
+			int negative_int = impl->negative_effect;
+			int shimmery_int = impl->shimmery_effect;
+			int glitched_int = impl->glitched_effect;
+			int wireframe_int = impl->wireframe_effect;
+			glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(int), &black_and_white_int);
+			glBufferSubData(GL_UNIFORM_BUFFER, 4, sizeof(int), &negative_int);
+			glBufferSubData(GL_UNIFORM_BUFFER, 8, sizeof(int), &shimmery_int);
+			glBufferSubData(GL_UNIFORM_BUFFER, 12, sizeof(int), &glitched_int);
+			glBufferSubData(GL_UNIFORM_BUFFER, 16, sizeof(int), &wireframe_int);
+			glBindBuffer(GL_UNIFORM_BUFFER, 0);
+		}
 
 		// --- Reflection Pass ---
 		glEnable(GL_CLIP_DISTANCE0);
@@ -961,29 +991,40 @@ namespace Boidsish {
 
 		impl->RenderBlur(10);
 
-		// --- Main Scene to Texture Pass ---
-		glBindFramebuffer(GL_FRAMEBUFFER, impl->postprocess_fbo);
-		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-		glEnable(GL_DEPTH_TEST);
+		if (impl->enable_post_processing) {
+			// --- Main Scene to Texture Pass ---
+			glBindFramebuffer(GL_FRAMEBUFFER, impl->postprocess_fbo);
+			glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+			glEnable(GL_DEPTH_TEST);
 
-		glm::mat4 view = impl->SetupMatrices();
-		impl->RenderSky(view);
-		impl->RenderPlane(view);
-		impl->RenderSceneObjects(view, impl->camera, shapes, impl->simulation_time, std::nullopt);
-		impl->RenderTerrain(view, std::nullopt);
+			glm::mat4 view = impl->SetupMatrices();
+			impl->RenderSky(view);
+			impl->RenderPlane(view);
+			impl->RenderSceneObjects(view, impl->camera, shapes, impl->simulation_time, std::nullopt);
+			impl->RenderTerrain(view, std::nullopt);
 
-		// --- Post-processing Pass ---
-		glBindFramebuffer(GL_FRAMEBUFFER, 0);
-		glClear(GL_COLOR_BUFFER_BIT);
-		glDisable(GL_DEPTH_TEST);
+			// --- Post-processing Pass ---
+			glBindFramebuffer(GL_FRAMEBUFFER, 0);
+			glClear(GL_COLOR_BUFFER_BIT);
+			glDisable(GL_DEPTH_TEST);
 
-		impl->postprocess_shader->use();
-		impl->postprocess_shader->setInt("screenTexture", 0);
-		impl->postprocess_shader->setBool("colorShift", impl->color_shift_effect);
-		glActiveTexture(GL_TEXTURE0);
-		glBindTexture(GL_TEXTURE_2D, impl->postprocess_texture);
-		glBindVertexArray(impl->blur_quad_vao);
-		glDrawArrays(GL_TRIANGLES, 0, 6);
+			impl->postprocess_shader->use();
+			impl->postprocess_shader->setInt("screenTexture", 0);
+			impl->postprocess_shader->setBool("colorShift", impl->color_shift_effect);
+			glActiveTexture(GL_TEXTURE0);
+			glBindTexture(GL_TEXTURE_2D, impl->postprocess_texture);
+			glBindVertexArray(impl->blur_quad_vao);
+			glDrawArrays(GL_TRIANGLES, 0, 6);
+		} else {
+			// --- Main Pass (no post-processing) ---
+			glBindFramebuffer(GL_FRAMEBUFFER, 0);
+			glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+			glm::mat4 view = impl->SetupMatrices();
+			impl->RenderSky(view);
+			impl->RenderPlane(view);
+			impl->RenderSceneObjects(view, impl->camera, shapes, impl->simulation_time, std::nullopt);
+			impl->RenderTerrain(view, std::nullopt);
+		}
 
 		glfwSwapBuffers(impl->window);
 	}
