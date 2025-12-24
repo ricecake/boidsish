@@ -6,6 +6,9 @@
 #include <memory>
 #include <vector>
 
+#include "imgui.h"
+#include "imgui_impl_glfw.h"
+#include "imgui_impl_opengl3.h"
 #include "shape.h"
 #include "vector.h"
 #include "visual_effects.h"
@@ -112,6 +115,9 @@ namespace Boidsish {
 
 		// Set the input callback
 		void SetInputCallback(InputCallback callback);
+
+		// Set the ImGui drawing callback
+		void SetImGuiDrawer(std::function<void()> drawer);
 
 		// Set the exit key, which cannot be overridden by the input callback.
 		void SetExitKey(int key);
