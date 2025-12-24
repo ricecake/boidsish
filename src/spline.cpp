@@ -24,44 +24,44 @@ std::vector<VertexData> GenerateTube(
     std::vector<VertexData> all_vertices_data;
     if (points.size() < 2) return all_vertices_data;
 
-    for (size_t i = 0; i < points.size() - 1; ++i) {
-        const auto& p1 = points[i];
-        const auto& p2 = points[i+1];
+    for (size_t i = 0; i < points.size() - (is_looping ? 0 : 1); ++i) {
 
-        Vector3 p0, p3;
+        int p0_idx = (i == 0) ? (is_looping ? points.size() - 1 : 0) : i - 1;
+        int p1_idx = i;
+        int p2_idx = (i + 1) % points.size();
+        int p3_idx = (i + 2) % points.size();
 
-        if (i > 0) {
-            p0 = points[i - 1];
-        } else if (is_looping) {
-            p0 = points.back();
-        } else {
-            p0 = p1 - (p2 - p1);
-        }
-
-        if (i < points.size() - 2) {
-            p3 = points[i + 2];
-        } else if (is_looping) {
-            p3 = points.front();
-        } else {
-            p3 = p2 + (p2 - p1);
-        }
+        const auto& p0 = (i==0 && !is_looping) ? points[p1_idx] - (points[p2_idx] - points[p1_idx]) : points[p0_idx];
+        const auto& p1 = points[p1_idx];
+        const auto& p2 = points[p2_idx];
+        const auto& p3 = (i >= points.size() - 2 && !is_looping) ? points[p2_idx] + (points[p2_idx] - points[p1_idx]) : points[p3_idx];
 
         std::vector<std::vector<VertexData>> rings;
-        Vector3 last_normal = ups[i];
+        Vector3 last_normal = ups[p1_idx];
 
         for (int j = 0; j <= CURVE_SEGMENTS; ++j) {
             std::vector<VertexData> ring;
             float t = (float)j / CURVE_SEGMENTS;
 
             Vector3 point = CatmullRom(t, p0, p1, p2, p3);
-            glm::vec3 color = (1 - t) * colors[i] + t * colors[i+1];
-            float r = ((1 - t) * sizes[i] + t * sizes[i+1]) * EDGE_RADIUS_SCALE;
+            glm::vec3 color = (1 - t) * colors[p1_idx] + t * colors[p2_idx];
+            float r = ((1 - t) * sizes[p1_idx] + t * sizes[p2_idx]) * EDGE_RADIUS_SCALE;
 
             Vector3 tangent;
             if (j < CURVE_SEGMENTS) {
-                tangent = (CatmullRom((float)(j + 1) / CURVE_SEGMENTS, p0, p1, p2, p3) - point).Normalized();
+                Vector3 next_point = CatmullRom((float)(j + 1) / CURVE_SEGMENTS, p0, p1, p2, p3);
+                if ((next_point - point).MagnitudeSquared() < 1e-6) {
+                    tangent = Vector3(0, 1, 0);
+                } else {
+                    tangent = (next_point - point).Normalized();
+                }
             } else {
-                tangent = (point - CatmullRom((float)(j - 1) / CURVE_SEGMENTS, p0, p1, p2, p3)).Normalized();
+                Vector3 prev_point = CatmullRom((float)(j - 1) / CURVE_SEGMENTS, p0, p1, p2, p3);
+                if ((point - prev_point).MagnitudeSquared() < 1e-6) {
+                    tangent = Vector3(0, 1, 0);
+                } else {
+                    tangent = (point - prev_point).Normalized();
+                }
             }
 
             Vector3 normal = last_normal - tangent * tangent.Dot(last_normal);
