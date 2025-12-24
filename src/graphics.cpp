@@ -45,9 +45,11 @@ namespace Boidsish {
 		std::unique_ptr<Shader> sky_shader;
 		std::unique_ptr<Shader> trail_shader;
 		std::unique_ptr<Shader> blur_shader;
+		std::unique_ptr<Shader> postprocess_shader;
 		GLuint                  plane_vao, plane_vbo, sky_vao, blur_quad_vao, blur_quad_vbo;
 		GLuint                  reflection_fbo, reflection_texture, reflection_depth_rbo;
 		GLuint                  pingpong_fbo[2], pingpong_texture[2];
+		GLuint                  postprocess_fbo, postprocess_texture, postprocess_rbo;
 		GLuint                  lighting_ubo;
 		GLuint                  visual_effects_ubo;
 		glm::mat4               projection, reflection_vp;
@@ -134,6 +136,7 @@ namespace Boidsish {
 			sky_shader = std::make_unique<Shader>("shaders/sky.vert", "shaders/sky.frag");
 			trail_shader = std::make_unique<Shader>("shaders/trail.vert", "shaders/trail.frag");
 			blur_shader = std::make_unique<Shader>("shaders/blur.vert", "shaders/blur.frag");
+			postprocess_shader = std::make_unique<Shader>("shaders/postprocess.vert", "shaders/postprocess.frag");
 			terrain_generator = std::make_unique<TerrainGenerator>();
 
 			glGenBuffers(1, &lighting_ubo);
@@ -277,6 +280,25 @@ namespace Boidsish {
 					std::cerr << "ERROR::FRAMEBUFFER:: Ping-pong Framebuffer is not complete!" << std::endl;
 			}
 			glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+			// --- Post-processing Framebuffer ---
+			glGenFramebuffers(1, &postprocess_fbo);
+			glBindFramebuffer(GL_FRAMEBUFFER, postprocess_fbo);
+			glGenTextures(1, &postprocess_texture);
+			glBindTexture(GL_TEXTURE_2D, postprocess_texture);
+			glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, width, height, 0, GL_RGB, GL_UNSIGNED_BYTE, NULL);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+			glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, postprocess_texture, 0);
+
+			glGenRenderbuffers(1, &postprocess_rbo);
+			glBindRenderbuffer(GL_RENDERBUFFER, postprocess_rbo);
+			glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH24_STENCIL8, width, height);
+			glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_RENDERBUFFER, postprocess_rbo);
+
+			if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
+				std::cerr << "ERROR::FRAMEBUFFER:: Post-process framebuffer is not complete!" << std::endl;
+			glBindFramebuffer(GL_FRAMEBUFFER, 0);
 		}
 
 		~VisualizerImpl() {
@@ -289,6 +311,9 @@ namespace Boidsish {
 			glDeleteFramebuffers(1, &reflection_fbo);
 			glDeleteTextures(1, &reflection_texture);
 			glDeleteRenderbuffers(1, &reflection_depth_rbo);
+			glDeleteFramebuffers(1, &postprocess_fbo);
+			glDeleteTextures(1, &postprocess_texture);
+			glDeleteRenderbuffers(1, &postprocess_rbo);
 			glDeleteFramebuffers(2, pingpong_fbo);
 			glDeleteTextures(2, pingpong_texture);
 			if (window)
@@ -788,6 +813,12 @@ namespace Boidsish {
 				glBindTexture(GL_TEXTURE_2D, impl->pingpong_texture[i]);
 				glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB16F, width, height, 0, GL_RGB, GL_FLOAT, NULL);
 			}
+
+			// --- Resize post-processing framebuffer ---
+			glBindTexture(GL_TEXTURE_2D, impl->postprocess_texture);
+			glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, width, height, 0, GL_RGB, GL_UNSIGNED_BYTE, NULL);
+			glBindRenderbuffer(GL_RENDERBUFFER, impl->postprocess_rbo);
+			glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH24_STENCIL8, width, height);
 		}
 	};
 
@@ -833,8 +864,6 @@ namespace Boidsish {
 	}
 
 	void Visualizer::Render() {
-		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-
 		std::vector<std::shared_ptr<Shape>> shapes;
 		if (!impl->shape_functions.empty()) {
 			for (const auto& func : impl->shape_functions) {
@@ -932,12 +961,29 @@ namespace Boidsish {
 
 		impl->RenderBlur(10);
 
-		// --- Main Pass ---
+		// --- Main Scene to Texture Pass ---
+		glBindFramebuffer(GL_FRAMEBUFFER, impl->postprocess_fbo);
+		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+		glEnable(GL_DEPTH_TEST);
+
 		glm::mat4 view = impl->SetupMatrices();
 		impl->RenderSky(view);
 		impl->RenderPlane(view);
 		impl->RenderSceneObjects(view, impl->camera, shapes, impl->simulation_time, std::nullopt);
 		impl->RenderTerrain(view, std::nullopt);
+
+		// --- Post-processing Pass ---
+		glBindFramebuffer(GL_FRAMEBUFFER, 0);
+		glClear(GL_COLOR_BUFFER_BIT);
+		glDisable(GL_DEPTH_TEST);
+
+		impl->postprocess_shader->use();
+		impl->postprocess_shader->setInt("screenTexture", 0);
+		impl->postprocess_shader->setBool("colorShift", impl->color_shift_effect);
+		glActiveTexture(GL_TEXTURE0);
+		glBindTexture(GL_TEXTURE_2D, impl->postprocess_texture);
+		glBindVertexArray(impl->blur_quad_vao);
+		glDrawArrays(GL_TRIANGLES, 0, 6);
 
 		glfwSwapBuffers(impl->window);
 	}

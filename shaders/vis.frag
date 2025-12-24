@@ -52,21 +52,6 @@ void main() {
 
 	vec3 result = (ambient + diffuse) * final_color + specular;
 
-	if (colorShift) {
-		float shift_magnitude = 0.2;
-		float shift_speed = 5.0;
-		vec3  pos_based_shift;
-		pos_based_shift.r = sin(FragPos.x * shift_speed) * shift_magnitude;
-		pos_based_shift.g = sin(FragPos.y * shift_speed) * shift_magnitude;
-		pos_based_shift.b = sin(FragPos.z * shift_speed) * shift_magnitude;
-		result += pos_based_shift;
-
-		int posterize_levels = 5;
-		result.r = floor(result.r * posterize_levels) / posterize_levels;
-		result.g = floor(result.g * posterize_levels) / posterize_levels;
-		result.b = floor(result.b * posterize_levels) / posterize_levels;
-	}
-
 	result = applyArtisticEffects(result, FragPos, barycentric, time);
 	FragColor = vec4(result, 1.0);
 }
