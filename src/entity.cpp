@@ -1,5 +1,9 @@
 #include "entity.h"
 
+#include <algorithm>
+
+#include <poolstl/poolstl.hpp>
+
 namespace Boidsish {
 	std::vector<std::shared_ptr<Shape>> EntityHandler::operator()(float time) {
 		float delta_time = 0.016f; // Default 60 FPS
@@ -18,12 +22,21 @@ namespace Boidsish {
 		});
 
 		// Update all entities
-		for (auto& entity : entities) {
+		std::for_each(poolstl::par.on(thread_pool_), entities.begin(), entities.end(), [&](auto& entity) {
 			entity->UpdateEntity(*this, time, delta_time);
-		}
+		});
 
 		// Call post-timestep hook
 		PostTimestep(time, delta_time);
+
+		// Process modification requests
+		{
+			std::lock_guard<std::mutex> lock(requests_mutex_);
+			for (auto& request : modification_requests_) {
+				request();
+			}
+			modification_requests_.clear();
+		}
 
 		// Generate shapes from entity states
 		std::vector<std::shared_ptr<Shape>> shapes;
@@ -43,6 +56,7 @@ namespace Boidsish {
 
 		return shapes;
 	}
+
 	const auto EntityHandler::GetTerrainPointProperties(float x, float y) {
 
 	};

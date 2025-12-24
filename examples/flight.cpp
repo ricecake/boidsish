@@ -3,8 +3,8 @@
 
 #include "arrow.h"
 #include "dot.h"
-#include "graphics.h"
 #include "field.h"
+#include "graphics.h"
 
 using namespace Boidsish;
 

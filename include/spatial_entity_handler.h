@@ -11,12 +11,12 @@ namespace Boidsish {
 
 	class SpatialEntityHandler: public EntityHandler {
 	public:
-		SpatialEntityHandler() = default;
+		SpatialEntityHandler(task_thread_pool::task_thread_pool& thread_pool): EntityHandler(thread_pool) {}
 
 		using EntityHandler::AddEntity;
 
 		template <typename T>
-		std::vector<std::shared_ptr<T>> GetEntitiesInRadius(const Vector3& center, float radius) {
+		std::vector<std::shared_ptr<T>> GetEntitiesInRadius(const Vector3& center, float radius) const {
 			std::vector<std::shared_ptr<T>> result;
 			float                           min[] = {center.x - radius, center.y - radius, center.z - radius};
 			float                           max[] = {center.x + radius, center.y + radius, center.z + radius};
@@ -41,7 +41,7 @@ namespace Boidsish {
 			float          initial_radius = 1.0f,
 			float          expansion_factor = 2.0f,
 			int            max_expansions = 10
-		) {
+		) const {
 			float radius = initial_radius;
 			for (int i = 0; i < max_expansions; ++i) {
 				auto entities_in_radius = GetEntitiesInRadius<T>(center, radius);
@@ -74,7 +74,7 @@ namespace Boidsish {
 		}
 
 	private:
-		RTree<int, float, 3> rtree_;
+		mutable RTree<int, float, 3> rtree_;
 	};
 
 } // namespace Boidsish

@@ -32,7 +32,7 @@ static auto fruitPlacer = MakeBranchAttractor();
 class VectorDemoEntity: public Entity<> {
 public:
 	VectorDemoEntity(int id, const Vector3& start_pos);
-	void UpdateEntity(EntityHandler& handler, float time, float delta_time) override;
+	void UpdateEntity(const EntityHandler& handler, float time, float delta_time) override;
 
 private:
 	float hunger_time = 0.0f;
@@ -44,7 +44,7 @@ private:
 class FlockingEntity: public Entity<> {
 public:
 	FlockingEntity(int id, const Vector3& start_pos);
-	void UpdateEntity(EntityHandler& handler, float time, float delta_time) override;
+	void UpdateEntity(const EntityHandler& handler, float time, float delta_time) override;
 
 	float GetValue() const { return energy; }
 
@@ -62,7 +62,7 @@ private:
 class FruitEntity: public Entity<> {
 public:
 	FruitEntity(int id);
-	void UpdateEntity(EntityHandler& handler, float time, float delta_time) override;
+	void UpdateEntity(const EntityHandler& handler, float time, float delta_time) override;
 
 	float GetValue() const { return value; }
 
@@ -82,7 +82,7 @@ FruitEntity::FruitEntity(int id): Entity<>(id), value(0) {
 	phase_ = start_pos.Magnitude();
 }
 
-void FruitEntity::UpdateEntity(EntityHandler& handler, float, float delta_time) {
+void FruitEntity::UpdateEntity(const EntityHandler& handler, float, float delta_time) {
 	phase_ += delta_time;
 
 	auto value_modifier = (sin((4 * phase_) / 8) + 1) / 2;
@@ -90,8 +90,8 @@ void FruitEntity::UpdateEntity(EntityHandler& handler, float, float delta_time) 
 	SetSize(4 + 12 * value_modifier);
 
 	if (value < 0) {
-		handler.AddEntity<FruitEntity>();
-		handler.RemoveEntity(GetId());
+		handler.QueueAddEntity<FruitEntity>();
+		handler.QueueRemoveEntity(GetId());
 	}
 	auto v = GetVelocity();
 	v.x *= 0.95f;
@@ -107,11 +107,11 @@ VectorDemoEntity::VectorDemoEntity(int id, const Vector3& start_pos): Entity<>(i
 	SetTrailLength(100);
 }
 
-void VectorDemoEntity::UpdateEntity(EntityHandler& handler, float time, float delta_time) {
+void VectorDemoEntity::UpdateEntity(const EntityHandler& handler, float time, float delta_time) {
 	(void)time; // Mark unused parameters
 	phase_ += delta_time;
 
-	auto& spatial_handler = static_cast<SpatialEntityHandler&>(handler);
+	auto& spatial_handler = static_cast<const SpatialEntityHandler&>(handler);
 	auto  current_pos = GetPosition();
 	auto  targetInstance = std::static_pointer_cast<FlockingEntity>(handler.GetEntity(target_id));
 
@@ -126,9 +126,9 @@ void VectorDemoEntity::UpdateEntity(EntityHandler& handler, float time, float de
 			hunger_time -= targetInstance->GetValue() / 100 * hunger_time;
 			hunger_time = std::max(0.0f, hunger_time);
 
-			handler.RemoveEntity(target_id);
+			handler.QueueRemoveEntity(target_id);
 			// Vector3 start_pos((rand() % 10 - 5) * 2.0f, (rand() % 6 - 3) * 2.0f, (rand() % 10 - 5) * 2.0f);
-			// handler.AddEntity<FlockingEntity>(start_pos);
+			// handler.QueueAddEntity<FlockingEntity>(start_pos);
 			return;
 		}
 	}
@@ -173,11 +173,11 @@ void VectorDemoEntity::UpdateEntity(EntityHandler& handler, float time, float de
 	if (energy < 10) {
 		logger::LOG("DEAD Preadator");
 
-		handler.RemoveEntity(GetId());
+		handler.QueueRemoveEntity(GetId());
 	} else if (energy >= 60) {
 		logger::LOG("New Preadator");
 		energy -= 25;
-		handler.AddEntity<VectorDemoEntity>(GetPosition());
+		handler.QueueAddEntity<VectorDemoEntity>(GetPosition());
 	}
 
 	// Color based on velocity magnitude and direction
@@ -201,11 +201,11 @@ FlockingEntity::FlockingEntity(int id, const Vector3& start_pos): Entity<>(id) {
 	SetVelocity(startVel);
 }
 
-void FlockingEntity::UpdateEntity(EntityHandler& handler, float time, float delta_time) {
+void FlockingEntity::UpdateEntity(const EntityHandler& handler, float time, float delta_time) {
 	(void)time;
 	(void)delta_time; // Mark unused parameters
 
-	auto& spatial_handler = static_cast<SpatialEntityHandler&>(handler);
+	auto& spatial_handler = static_cast<const SpatialEntityHandler&>(handler);
 	auto  position = GetPosition();
 
 	// Get neighbors and predators using spatial queries
@@ -235,8 +235,8 @@ void FlockingEntity::UpdateEntity(EntityHandler& handler, float time, float delt
 		hunger_time -= targetInstance->GetValue() / 100 * hunger_time;
 		hunger_time = std::max(0.0f, hunger_time);
 
-		handler.RemoveEntity(targetInstance->GetId());
-		// handler.AddEntity<FruitEntity>();
+		handler.QueueRemoveEntity(targetInstance->GetId());
+		// handler.QueueAddEntity<FruitEntity>();
 		return;
 	}
 
@@ -261,11 +261,11 @@ void FlockingEntity::UpdateEntity(EntityHandler& handler, float time, float delt
 
 	if (energy < 10) {
 		logger::LOG("DEAD Flocker");
-		handler.RemoveEntity(GetId());
+		handler.QueueRemoveEntity(GetId());
 	} else if (energy >= 60) {
 		energy -= 25;
 		logger::LOG("New Flocker");
-		handler.AddEntity<FlockingEntity>(GetPosition());
+		handler.QueueAddEntity<FlockingEntity>(GetPosition());
 	}
 
 	// Color based on dominant behavior
@@ -375,7 +375,7 @@ class VectorDemoHandler: public SpatialEntityHandler {
 	std::mt19937       eng;
 
 public:
-	VectorDemoHandler(): eng(rd()) {
+	VectorDemoHandler(task_thread_pool::task_thread_pool& thread_pool): SpatialEntityHandler(thread_pool), eng(rd()) {
 		std::cout << "=== Vector3 Operations Demo ===" << std::endl;
 
 		// Create some vector demo entities
@@ -519,7 +519,7 @@ int main() {
 		viz.SetCamera(camera);
 
 		// Create and set the vector demo handler
-		VectorDemoHandler handler;
+		VectorDemoHandler handler(viz.GetThreadPool());
 		viz.AddShapeHandler(std::ref(handler));
 		viz.AddShapeHandler(std::ref(GraphExample));
 

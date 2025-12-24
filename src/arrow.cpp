@@ -150,7 +150,7 @@ namespace Boidsish {
 		}
 
 		glm::vec3 axis = glm::cross(up, norm_direction);
-		float angle = acos(dot);
+		float     angle = acos(dot);
 		SetRotation(glm::angleAxis(angle, axis));
 	}
 

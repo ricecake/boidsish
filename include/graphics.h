@@ -11,6 +11,10 @@
 #include "visual_effects.h"
 #include <glm/glm.hpp>
 
+namespace task_thread_pool {
+	class task_thread_pool;
+}
+
 namespace Boidsish {
 	constexpr int kMaxKeys = 1024;
 
@@ -116,8 +120,9 @@ namespace Boidsish {
 		void TogglePause();
 		void ToggleEffect(VisualEffect effect);
 
-		const auto GetTerrainPointProperties(float x, float y);
-		const auto GetTerrainChunks();
+		const auto                          GetTerrainPointProperties(float x, float y);
+		const auto                          GetTerrainChunks();
+		task_thread_pool::task_thread_pool& GetThreadPool();
 
 	private:
 		struct VisualizerImpl;

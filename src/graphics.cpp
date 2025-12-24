@@ -10,6 +10,7 @@
 
 #include "dot.h"
 #include "logger.h"
+#include "task_thread_pool.hpp"
 #include "terrain.h"
 #include "terrain_generator.h"
 #include "trail.h"
@@ -81,6 +82,8 @@ namespace Boidsish {
 		bool   shimmery_effect = false;
 		bool   glitched_effect = false;
 		bool   wireframe_effect = false;
+
+		task_thread_pool::task_thread_pool thread_pool;
 
 		VisualizerImpl(int w, int h, const char* title): width(w), height(h) {
 			exit_key = GLFW_KEY_ESCAPE;
@@ -1015,6 +1018,10 @@ namespace Boidsish {
 			impl->wireframe_effect = !impl->wireframe_effect;
 			break;
 		}
+	}
+
+	task_thread_pool::task_thread_pool& Visualizer::GetThreadPool() {
+		return impl->thread_pool;
 	}
 
 	const auto Visualizer::GetTerrainPointProperties(float x, float y) {
