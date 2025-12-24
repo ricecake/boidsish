@@ -1,7 +1,7 @@
 #ifndef ARTISTIC_EFFECTS_VERT
 #define ARTISTIC_EFFECTS_VERT
 
-#include "artistic_effects.glsl"
+#include "visual_effects.glsl"
 
 vec3 getBarycentric() {
 	if (gl_VertexID % 3 == 0) {
@@ -18,7 +18,7 @@ vec3 mod289(vec3 x) {
 }
 
 vec3 applyGlitch(vec3 position, float time) {
-	if (glitched) {
+	if (glitched_enabled == 1) {
 		float glitchStrength = 0.1;
 		float glitchSpeed = 10.0;
 		// float displacement = sin(position.y * glitchSpeed + time * 10.0) * glitchStrength;

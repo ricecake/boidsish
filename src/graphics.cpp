@@ -26,14 +26,16 @@ namespace Boidsish {
 	constexpr float kCameraRollSpeed = 45.0f; // degrees per second
 	constexpr float kCameraSpeedStep = 2.5f;
 	constexpr float kMinCameraSpeed = 0.5f;
+	constexpr int kBlurPasses = 4;
 
 	struct Visualizer::VisualizerImpl {
 		GLFWwindow*                           window;
-		int                                   width, height;
-		Camera                                camera;
-		std::vector<ShapeFunction>            shape_functions;
-		std::map<int, std::shared_ptr<Trail>> trails;
-		std::map<int, float>                  trail_last_update;
+		int                                          width, height;
+		Camera                                       camera;
+		std::vector<ShapeFunction>                   shape_functions;
+		std::vector<std::shared_ptr<Shape>>          shapes;
+		std::map<int, std::shared_ptr<Trail>>        trails;
+		std::map<int, float>                         trail_last_update;
 
 		InputState    input_state{};
 		InputCallback input_callback;
@@ -76,12 +78,11 @@ namespace Boidsish {
 		bool color_shift_effect = false;
 
 		// Artistic effects
-		GLuint artistic_effects_ubo;
-		bool   black_and_white_effect = false;
-		bool   negative_effect = false;
-		bool   shimmery_effect = false;
-		bool   glitched_effect = false;
-		bool   wireframe_effect = false;
+		bool black_and_white_effect = false;
+		bool negative_effect = false;
+		bool shimmery_effect = false;
+		bool glitched_effect = false;
+		bool wireframe_effect = false;
 
 		task_thread_pool::task_thread_pool thread_pool;
 
@@ -153,26 +154,10 @@ namespace Boidsish {
 			glBindBufferRange(GL_UNIFORM_BUFFER, 1, visual_effects_ubo, 0, sizeof(VisualEffectsUbo));
 
 			shader->use();
-			glUniformBlockBinding(shader->ID, glGetUniformBlockIndex(shader->ID, "Lighting"), 0);
-			glUniformBlockBinding(shader->ID, glGetUniformBlockIndex(shader->ID, "VisualEffects"), 1);
-			plane_shader->use();
-			glUniformBlockBinding(plane_shader->ID, glGetUniformBlockIndex(plane_shader->ID, "Lighting"), 0);
-			glUniformBlockBinding(plane_shader->ID, glGetUniformBlockIndex(plane_shader->ID, "VisualEffects"), 1);
-			trail_shader->use();
-			glUniformBlockBinding(trail_shader->ID, glGetUniformBlockIndex(trail_shader->ID, "Lighting"), 0);
-			glUniformBlockBinding(trail_shader->ID, glGetUniformBlockIndex(trail_shader->ID, "VisualEffects"), 1);
-			sky_shader->use();
-			glUniformBlockBinding(sky_shader->ID, glGetUniformBlockIndex(sky_shader->ID, "Lighting"), 0);
-			glUniformBlockBinding(sky_shader->ID, glGetUniformBlockIndex(sky_shader->ID, "VisualEffects"), 1);
-
-			glGenBuffers(1, &artistic_effects_ubo);
-			glBindBuffer(GL_UNIFORM_BUFFER, artistic_effects_ubo);
-			glBufferData(GL_UNIFORM_BUFFER, 20, NULL, GL_DYNAMIC_DRAW);
-			glBindBuffer(GL_UNIFORM_BUFFER, 0);
-			glBindBufferRange(GL_UNIFORM_BUFFER, 1, artistic_effects_ubo, 0, 20);
-
-			shader->use();
-			glUniformBlockBinding(shader->ID, glGetUniformBlockIndex(shader->ID, "ArtisticEffects"), 1);
+			SetupShaderBindings(*shader);
+			SetupShaderBindings(*plane_shader);
+			SetupShaderBindings(*trail_shader);
+			SetupShaderBindings(*sky_shader);
 
 			Terrain::terrain_shader_ = std::make_shared<Shader>(
 				"shaders/terrain.vert",
@@ -181,16 +166,7 @@ namespace Boidsish {
 				"shaders/terrain.tes"
 				// , "shaders/terrain.geom"
 			);
-			glUniformBlockBinding(
-				Terrain::terrain_shader_->ID,
-				glGetUniformBlockIndex(Terrain::terrain_shader_->ID, "Lighting"),
-				0
-			);
-			glUniformBlockBinding(
-				Terrain::terrain_shader_->ID,
-				glGetUniformBlockIndex(Terrain::terrain_shader_->ID, "VisualEffects"),
-				1
-			);
+			SetupShaderBindings(*Terrain::terrain_shader_);
 
 			Shape::InitSphereMesh();
 
@@ -281,6 +257,19 @@ namespace Boidsish {
 			}
 			glBindFramebuffer(GL_FRAMEBUFFER, 0);
 		}
+		void SetupShaderBindings(Shader& shader_to_setup) {
+			shader_to_setup.use();
+			glUniformBlockBinding(
+				shader_to_setup.ID,
+				glGetUniformBlockIndex(shader_to_setup.ID, "Lighting"),
+				0
+			);
+			glUniformBlockBinding(
+				shader_to_setup.ID,
+				glGetUniformBlockIndex(shader_to_setup.ID, "VisualEffects"),
+				1
+			);
+		}
 
 		~VisualizerImpl() {
 			Shape::DestroySphereMesh();
@@ -299,6 +288,8 @@ namespace Boidsish {
 			glfwTerminate();
 		}
 
+		// TODO: Offload frustum culling to a compute shader for performance.
+		// See performance_and_quality_audit.md#1-gpu-accelerated-frustum-culling
 		Frustum CalculateFrustum(const glm::mat4& view, const glm::mat4& projection) {
 			Frustum   frustum;
 			glm::mat4 vp = projection * view;
@@ -387,6 +378,8 @@ namespace Boidsish {
 			std::set<int> current_shape_ids;
 			for (const auto& shape : shapes) {
 				current_shape_ids.insert(shape->GetId());
+				// TODO: Move trail generation to the GPU for performance.
+				// See performance_and_quality_audit.md#3-gpu-based-trail-generation
 				// Only create trails for shapes with trail_length > 0
 				if (shape->GetTrailLength() > 0 && !paused) {
 					if (trails.find(shape->GetId()) == trails.end()) {
@@ -447,6 +440,8 @@ namespace Boidsish {
 			glEnable(GL_DEPTH_TEST);
 		}
 
+		// TODO: Replace the multi-pass Gaussian blur with a more performant technique.
+		// See performance_and_quality_audit.md#2-optimized-screen-space-reflections-and-blur
 		void RenderBlur(int amount) {
 			glDisable(GL_DEPTH_TEST);
 			blur_shader->use();
@@ -831,6 +826,8 @@ namespace Boidsish {
 		}
 
 		if (!impl->paused) {
+			// TODO: Implement a fixed timestep for simulation stability.
+			// See performance_and_quality_audit.md#4-fixed-timestep-for-simulation-stability
 			impl->simulation_time += delta_time;
 		}
 	}
@@ -838,11 +835,11 @@ namespace Boidsish {
 	void Visualizer::Render() {
 		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-		std::vector<std::shared_ptr<Shape>> shapes;
+		impl->shapes.clear();
 		if (!impl->shape_functions.empty()) {
 			for (const auto& func : impl->shape_functions) {
 				auto new_shapes = func(impl->simulation_time);
-				shapes.insert(shapes.end(), new_shapes.begin(), new_shapes.end());
+				impl->shapes.insert(impl->shapes.end(), new_shapes.begin(), new_shapes.end());
 			}
 		}
 
@@ -850,19 +847,14 @@ namespace Boidsish {
 		Frustum   frustum = impl->CalculateFrustum(view_matrix, impl->projection);
 		impl->terrain_generator->update(frustum, impl->camera);
 
-		static auto last_frame_time = std::chrono::high_resolution_clock::now();
-		auto        current_frame_time = std::chrono::high_resolution_clock::now();
-		float       delta_time = std::chrono::duration<float>(current_frame_time - last_frame_time).count();
-		last_frame_time = current_frame_time;
-
 		if (impl->single_track_mode) {
-			impl->UpdateSingleTrackCamera(delta_time, shapes);
+			impl->UpdateSingleTrackCamera(impl->input_state.delta_time, impl->shapes);
 		} else {
-			impl->UpdateAutoCamera(delta_time, shapes);
+			impl->UpdateAutoCamera(impl->input_state.delta_time, impl->shapes);
 		}
 
 		VisualEffectsUbo ubo_data = {};
-		for (const auto& shape : shapes) {
+		for (const auto& shape : impl->shapes) {
 			for (const auto& effect : shape->GetActiveEffects()) {
 				if (effect == VisualEffect::RIPPLE) {
 					ubo_data.ripple_enabled = 1;
@@ -871,6 +863,12 @@ namespace Boidsish {
 				}
 			}
 		}
+
+		ubo_data.black_and_white_enabled = impl->black_and_white_effect;
+		ubo_data.negative_enabled = impl->negative_effect;
+		ubo_data.shimmery_enabled = impl->shimmery_effect;
+		ubo_data.glitched_enabled = impl->glitched_effect;
+		ubo_data.wireframe_enabled = impl->wireframe_effect;
 
 		glBindBuffer(GL_UNIFORM_BUFFER, impl->visual_effects_ubo);
 		glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(VisualEffectsUbo), &ubo_data);
@@ -894,19 +892,6 @@ namespace Boidsish {
 		glBufferSubData(GL_UNIFORM_BUFFER, 44, sizeof(float), &impl->simulation_time);
 		glBindBuffer(GL_UNIFORM_BUFFER, 0);
 
-		glBindBuffer(GL_UNIFORM_BUFFER, impl->artistic_effects_ubo);
-		int black_and_white_int = impl->black_and_white_effect;
-		int negative_int = impl->negative_effect;
-		int shimmery_int = impl->shimmery_effect;
-		int glitched_int = impl->glitched_effect;
-		int wireframe_int = impl->wireframe_effect;
-		glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(int), &black_and_white_int);
-		glBufferSubData(GL_UNIFORM_BUFFER, 4, sizeof(int), &negative_int);
-		glBufferSubData(GL_UNIFORM_BUFFER, 8, sizeof(int), &shimmery_int);
-		glBufferSubData(GL_UNIFORM_BUFFER, 12, sizeof(int), &glitched_int);
-		glBufferSubData(GL_UNIFORM_BUFFER, 16, sizeof(int), &wireframe_int);
-		glBindBuffer(GL_UNIFORM_BUFFER, 0);
-
 		// --- Reflection Pass ---
 		glEnable(GL_CLIP_DISTANCE0);
 		{
@@ -924,7 +909,7 @@ namespace Boidsish {
 			impl->RenderSceneObjects(
 				reflection_view,
 				reflection_cam,
-				shapes,
+				impl->shapes,
 				impl->simulation_time,
 				glm::vec4(0, 1, 0, 0.01)
 			);
@@ -933,13 +918,13 @@ namespace Boidsish {
 		}
 		glDisable(GL_CLIP_DISTANCE0);
 
-		impl->RenderBlur(10);
+		impl->RenderBlur(kBlurPasses);
 
 		// --- Main Pass ---
 		glm::mat4 view = impl->SetupMatrices();
 		impl->RenderSky(view);
 		impl->RenderPlane(view);
-		impl->RenderSceneObjects(view, impl->camera, shapes, impl->simulation_time, std::nullopt);
+		impl->RenderSceneObjects(view, impl->camera, impl->shapes, impl->simulation_time, std::nullopt);
 		impl->RenderTerrain(view, std::nullopt);
 
 		glfwSwapBuffers(impl->window);
