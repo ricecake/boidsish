@@ -16,5 +16,8 @@ format:
 run: all
 	@./$(BUILD_DIR)/$(X)
 
+packages:
+	sudo apt install libbullet-dev libassimp-dev libassimp5 assimp-utils libgl1-mesa-dev libglfw3-dev libglew-dev libglm-dev xvfb imagemagick
+
 clean:
 	rm -rf $(BUILD_DIR)

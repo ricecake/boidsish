@@ -13,6 +13,8 @@ find_package(OpenGL REQUIRED)
 find_package(GLEW REQUIRED)
 find_package(glfw3 REQUIRED)
 find_package(glm REQUIRED)
+find_package(Bullet REQUIRED)
+find_package(assimp REQUIRED)
 
 # 1. Define ImGui FIRST so FastNoise2 can see it
 set(IMGUI_DIR external/imgui)
@@ -39,8 +41,8 @@ set(IMGUI_INCLUDE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/${IMGUI_DIR}" CACHE PATH "" F
 add_subdirectory(external/FastNoise2)
 add_subdirectory(external/task-thread-pool)
 add_subdirectory(external/poolSTL)
-add_subdirectory(external/bullet3)
-add_subdirectory(external/assimp)
+# add_subdirectory(external/bullet3)
+# add_subdirectory(external/assimp)
 
 # 3. Define the Library
 # Finds all .cpp files in src/
