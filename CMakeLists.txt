@@ -57,6 +57,8 @@ target_include_directories(boidsish
         external/include
         ${IMGUI_DIR}/
         ${IMGUI_DIR}/backends
+        ${ASSIMP_INCLUDE_DIR}
+        ${BULLET_INCLUDE_DIRS}
 )
 
 # 4. Platform-Specific Linking
@@ -69,6 +71,8 @@ target_link_libraries(boidsish
         imgui
         task-thread-pool::task-thread-pool
         poolSTL::poolSTL
+        ${ASSIMP_LIBRARIES}
+        ${BULLET_LIBRARIES}
 )
 
 # 5. Build Examples

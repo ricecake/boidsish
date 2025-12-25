@@ -118,11 +118,17 @@ namespace Boidsish {
 	template <typename ShapeType = Dot>
 	class Entity: public EntityBase {
 	public:
-		Entity(int id = 0): EntityBase(id), shape_(std::make_shared<ShapeType>()) { UpdateShape(); }
+		Entity(int id = 0): EntityBase(id), shape_(nullptr) {
+			if constexpr (std::is_default_constructible<ShapeType>::value) {
+				shape_ = std::make_shared<ShapeType>();
+			}
+			UpdateShape();
+		}
 
 		std::shared_ptr<Shape> GetShape() const override { return shape_; }
 
 		void UpdateShape() override {
+			if (!shape_) return;
 			shape_->SetId(id_);
 			shape_->SetPosition(position_.x, position_.y, position_.z);
 			shape_->SetColor(color_[0], color_[1], color_[2], color_[3]);
