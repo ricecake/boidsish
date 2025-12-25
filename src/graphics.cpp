@@ -8,6 +8,8 @@
 #include <set>
 #include <vector>
 
+#include "Config.h"
+#include "UIManager.h"
 #include "dot.h"
 #include "logger.h"
 #include "task_thread_pool.hpp"
@@ -35,10 +37,12 @@ namespace Boidsish {
 		std::map<int, std::shared_ptr<Trail>> trails;
 		std::map<int, float>                  trail_last_update;
 
-		InputState    input_state{};
-		InputCallback input_callback;
-		std::function<void()> imgui_drawer_;
-		int           exit_key;
+		InputState                     input_state{};
+		InputCallback                  input_callback;
+		std::unique_ptr<UI::UIManager> ui_manager;
+		int                            exit_key;
+
+		Config config;
 
 		std::unique_ptr<TerrainGenerator> terrain_generator;
 
@@ -86,7 +90,10 @@ namespace Boidsish {
 
 		task_thread_pool::task_thread_pool thread_pool;
 
-		VisualizerImpl(int w, int h, const char* title): width(w), height(h) {
+		VisualizerImpl(int w, int h, const char* title): width(w), height(h), config("boidsish.ini") {
+			config.Load();
+			width = config.GetInt("window_width", w);
+			height = config.GetInt("window_height", h);
 			exit_key = GLFW_KEY_ESCAPE;
 			input_callback = [this](const InputState& state) { this->DefaultInputHandler(state); };
 
@@ -175,19 +182,7 @@ namespace Boidsish {
 			shader->use();
 			glUniformBlockBinding(shader->ID, glGetUniformBlockIndex(shader->ID, "ArtisticEffects"), 1);
 
-            // Setup Dear ImGui context
-            IMGUI_CHECKVERSION();
-            ImGui::CreateContext();
-            ImGuiIO& io = ImGui::GetIO(); (void)io;
-            io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;     // Enable Keyboard Controls
-            io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;      // Enable Gamepad Controls
-
-            // Setup Dear ImGui style
-            ImGui::StyleColorsDark();
-
-            // Setup Platform/Renderer backends
-            ImGui_ImplGlfw_InitForOpenGL(window, true);
-            ImGui_ImplOpenGL3_Init("#version 130");
+			ui_manager = std::make_unique<UI::UIManager>(window);
 
 			Terrain::terrain_shader_ = std::make_shared<Shader>(
 				"shaders/terrain.vert",
@@ -298,6 +293,13 @@ namespace Boidsish {
 		}
 
 		~VisualizerImpl() {
+			config.SetInt("window_width", width);
+			config.SetInt("window_height", height);
+			config.Save();
+
+			// Explicitly reset UI manager before destroying window context
+			ui_manager.reset();
+
 			Shape::DestroySphereMesh();
 			glDeleteVertexArrays(1, &plane_vao);
 			glDeleteBuffers(1, &plane_vbo);
@@ -811,9 +813,7 @@ namespace Boidsish {
 
 	Visualizer::Visualizer(int w, int h, const char* t): impl(new VisualizerImpl(w, h, t)) {}
 
-	Visualizer::~Visualizer() {
-		delete impl;
-	}
+	Visualizer::~Visualizer() = default;
 
 	void Visualizer::AddShapeHandler(ShapeFunction func) {
 		impl->shape_functions.push_back(func);
@@ -957,18 +957,7 @@ namespace Boidsish {
 		impl->RenderSceneObjects(view, impl->camera, shapes, impl->simulation_time, std::nullopt);
 		impl->RenderTerrain(view, std::nullopt);
 
-        // Start the Dear ImGui frame
-        ImGui_ImplOpenGL3_NewFrame();
-        ImGui_ImplGlfw_NewFrame();
-        ImGui::NewFrame();
-
-        if (impl->imgui_drawer_) {
-            impl->imgui_drawer_();
-        }
-
-        // Rendering
-        ImGui::Render();
-        ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+		impl->ui_manager->Render();
 
 		glfwSwapBuffers(impl->window);
 	}
@@ -992,8 +981,8 @@ namespace Boidsish {
 		impl->input_callback = callback;
 	}
 
-	void Visualizer::SetImGuiDrawer(std::function<void()> drawer) {
-		impl->imgui_drawer_ = drawer;
+	void Visualizer::AddWidget(std::shared_ptr<UI::IWidget> widget) {
+		impl->ui_manager->AddWidget(widget);
 	}
 
 	void Visualizer::SetExitKey(int key) {
@@ -1063,5 +1052,9 @@ namespace Boidsish {
 	const auto Visualizer::GetTerrainChunks() {
 		return impl->terrain_generator->getVisibleChunks();
 	};
+
+	Config& Visualizer::GetConfig() {
+		return impl->config;
+	}
 
 } // namespace Boidsish

@@ -9,10 +9,10 @@
 
 #include "dot.h"
 #include "graphics.h"
+#include "path.h"
 #include "shape.h"
 #include "task_thread_pool.hpp"
 #include "vector.h"
-#include "path.h"
 
 namespace Boidsish {
 
@@ -22,6 +22,7 @@ namespace Boidsish {
 	// Base entity class for the entity system
 	class EntityBase {
 		friend class EntityHandler;
+
 	public:
 		EntityBase(int id = 0):
 			id_(id),
@@ -99,18 +100,18 @@ namespace Boidsish {
 		}
 
 	protected:
-		int     id_;
-		Vector3 position_; // Absolute spatial position
-		Vector3 velocity_; // Spatial velocity per frame
-		float   size_;
-		float   color_[4]; // RGBA
-		int     trail_length_;
+		int       id_;
+		Vector3   position_; // Absolute spatial position
+		Vector3   velocity_; // Spatial velocity per frame
+		float     size_;
+		float     color_[4]; // RGBA
+		int       trail_length_;
 		glm::quat orientation_;
 
 		// Path following
 		std::shared_ptr<Path> path_;
-		float path_speed_ = 1.0f;
-		int path_direction_ = 1;
+		float                 path_speed_ = 1.0f;
+		int                   path_direction_ = 1;
 	};
 
 	// Template-based entity class that takes a shape

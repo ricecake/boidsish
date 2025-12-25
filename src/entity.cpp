@@ -2,8 +2,8 @@
 
 #include <algorithm>
 
-#include <poolstl/poolstl.hpp>
 #include "path.h"
+#include <poolstl/poolstl.hpp>
 
 namespace Boidsish {
 	std::vector<std::shared_ptr<Shape>> EntityHandler::operator()(float time) {
@@ -26,7 +26,12 @@ namespace Boidsish {
 		std::for_each(poolstl::par.on(thread_pool_), entities.begin(), entities.end(), [&](auto& entity) {
 			entity->UpdateEntity(*this, time, delta_time);
 			if (entity->path_) {
-				auto update = entity->path_->CalculateUpdate(entity->GetPosition(), entity->orientation_, entity->path_direction_, delta_time);
+				auto update = entity->path_->CalculateUpdate(
+					entity->GetPosition(),
+					entity->orientation_,
+					entity->path_direction_,
+					delta_time
+				);
 				entity->SetVelocity(update.velocity * entity->path_speed_);
 				entity->orientation_ = glm::slerp(entity->orientation_, update.orientation, 0.1f);
 				entity->path_direction_ = update.new_direction;

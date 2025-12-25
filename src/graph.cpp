@@ -1,9 +1,9 @@
 #include "graph.h"
 
 #include <cmath>
+#include <map>
 #include <numbers>
 #include <vector>
-#include <map>
 
 #include "dot.h"
 #include "shader.h"
@@ -73,17 +73,17 @@ namespace Boidsish {
 			Vector3 p0 = v0.position, p1 = v1.position, p2 = v2.position, p3 = v3.position;
 
 			std::vector<std::vector<Spline::VertexData>> rings;
-			Vector3                              last_normal;
+			Vector3                                      last_normal;
 
 			{
 				Vector3 point1 = Spline::CatmullRom(0.0f, p0, p1, p2, p3);
 				Vector3 point2 = Spline::CatmullRom(1.0f / CURVE_SEGMENTS, p0, p1, p2, p3);
 				Vector3 tangent;
-                if ((point2 - point1).MagnitudeSquared() < 1e-6) {
-                    tangent = Vector3(0, 1, 0);
-                } else {
-				    tangent = (point2 - point1).Normalized();
-                }
+				if ((point2 - point1).MagnitudeSquared() < 1e-6) {
+					tangent = Vector3(0, 1, 0);
+				} else {
+					tangent = (point2 - point1).Normalized();
+				}
 
 				if (abs(tangent.y) < 0.999)
 					last_normal = tangent.Cross(Vector3(0, 1, 0)).Normalized();
@@ -93,7 +93,7 @@ namespace Boidsish {
 
 			for (int i = 0; i <= CURVE_SEGMENTS; ++i) {
 				std::vector<Spline::VertexData> ring;
-				float                   t = (float)i / CURVE_SEGMENTS;
+				float                           t = (float)i / CURVE_SEGMENTS;
 
 				Vector3   point = Spline::CatmullRom(t, p0, p1, p2, p3);
 				glm::vec3 color = {(1 - t) * v1.r + t * v2.r, (1 - t) * v1.g + t * v2.g, (1 - t) * v1.b + t * v2.b};
@@ -163,11 +163,32 @@ namespace Boidsish {
 			GL_STATIC_DRAW
 		);
 
-		glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(Spline::VertexData), (void*)offsetof(Spline::VertexData, pos));
+		glVertexAttribPointer(
+			0,
+			3,
+			GL_FLOAT,
+			GL_FALSE,
+			sizeof(Spline::VertexData),
+			(void*)offsetof(Spline::VertexData, pos)
+		);
 		glEnableVertexAttribArray(0);
-		glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, sizeof(Spline::VertexData), (void*)offsetof(Spline::VertexData, normal));
+		glVertexAttribPointer(
+			1,
+			3,
+			GL_FLOAT,
+			GL_FALSE,
+			sizeof(Spline::VertexData),
+			(void*)offsetof(Spline::VertexData, normal)
+		);
 		glEnableVertexAttribArray(1);
-		glVertexAttribPointer(2, 3, GL_FLOAT, GL_FALSE, sizeof(Spline::VertexData), (void*)offsetof(Spline::VertexData, color));
+		glVertexAttribPointer(
+			2,
+			3,
+			GL_FLOAT,
+			GL_FALSE,
+			sizeof(Spline::VertexData),
+			(void*)offsetof(Spline::VertexData, color)
+		);
 		glEnableVertexAttribArray(2);
 
 		glBindVertexArray(0);
