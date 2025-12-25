@@ -35,6 +35,7 @@ public:
 
     Waypoint& AddWaypoint(const Vector3& pos, const Vector3& up = Vector3(0, 1, 0), float size = 1.0f, float r = 1.0f, float g = 1.0f, float b = 1.0f, float a = 1.0f) {
         waypoints_.emplace_back(Waypoint{pos, up.Normalized(), size, r, g, b, a});
+        // Mark buffers as dirty to force recalculation
         buffers_initialized_ = false;
         return waypoints_.back();
     }
@@ -59,6 +60,7 @@ private:
     mutable GLuint path_vbo_ = 0;
     mutable int    edge_vertex_count_ = 0;
     mutable bool   buffers_initialized_ = false;
+    mutable std::vector<Vector3> cached_waypoint_positions_;
 };
 
 class PathHandler {

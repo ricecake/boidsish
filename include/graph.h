@@ -73,10 +73,12 @@ namespace Boidsish {
 		void render() const override;
 
 		Vertex& AddVertex(const Vector3& pos, float Size = 0, float R = 0, float G = 0, float B = 0, float A = 0) {
+            buffers_initialized_ = false;
 			return vertices.emplace_back(weak_from_this(), vertices.size(), pos, Size, R, G, B, A);
 		}
 
 		Edge& AddEdge(const Vertex& a, const Vertex& b) {
+            buffers_initialized_ = false;
 			// 1. Create the new Edge object
 			return edges.emplace_back(weak_from_this(), edges.size(), a, b);
 		}
@@ -93,6 +95,7 @@ namespace Boidsish {
 		mutable GLuint graph_vbo_ = 0;
 		mutable int    edge_vertex_count_ = 0;
 		mutable bool   buffers_initialized_ = false;
+        mutable std::vector<Vector3> cached_vertex_positions_;
 	};
 
 } // namespace Boidsish

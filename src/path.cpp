@@ -42,9 +42,13 @@ void Path::SetupBuffers() const {
     auto all_vertices_data = Spline::GenerateTube(points, ups, sizes, colors, mode_ == PathMode::LOOP);
     edge_vertex_count_ = all_vertices_data.size();
 
-    if (path_vao_ == 0) glGenVertexArrays(1, &path_vao_);
+    if (path_vao_ == 0) {
+        glGenVertexArrays(1, &path_vao_);
+    }
     glBindVertexArray(path_vao_);
-    if (path_vbo_ == 0) glGenBuffers(1, &path_vbo_);
+    if (path_vbo_ == 0) {
+        glGenBuffers(1, &path_vbo_);
+    }
     glBindBuffer(GL_ARRAY_BUFFER, path_vbo_);
     glBufferData(GL_ARRAY_BUFFER, all_vertices_data.size() * sizeof(Spline::VertexData), all_vertices_data.data(), GL_STATIC_DRAW);
 
@@ -57,10 +61,26 @@ void Path::SetupBuffers() const {
 
     glBindVertexArray(0);
     buffers_initialized_ = true;
+    cached_waypoint_positions_.clear();
+    cached_waypoint_positions_.reserve(waypoints_.size());
+    for (const auto& w : waypoints_) {
+        cached_waypoint_positions_.push_back(w.position);
+    }
 }
 
 void Path::render() const {
     if (!visible_) return;
+
+    if (cached_waypoint_positions_.size() != waypoints_.size()) {
+        buffers_initialized_ = false;
+    } else {
+        for (size_t i = 0; i < waypoints_.size(); ++i) {
+            if ((waypoints_[i].position - cached_waypoint_positions_[i]).MagnitudeSquared() > 1e-9) {
+                buffers_initialized_ = false;
+                break;
+            }
+        }
+    }
 
     if (!buffers_initialized_) {
         SetupBuffers();
