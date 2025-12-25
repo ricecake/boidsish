@@ -1,23 +1,17 @@
 #version 330 core
 out vec4 FragColor;
 
-#include "artistic_effects.frag"
+#include "lighting.glsl"
+#include "visual_effects.glsl"
+#include "visual_effects.frag"
 
 in vec3 FragPos;
 in vec3 Normal;
 in vec3 vs_color;
 in vec3 barycentric;
 
-layout(std140) uniform Lighting {
-	vec3  lightPos;
-	vec3  viewPos;
-	vec3  lightColor;
-	float time;
-};
-
 uniform vec3 objectColor;
 uniform int  useVertexColor;
-uniform bool colorShift;
 
 void main() {
 	// Ambient
@@ -52,7 +46,7 @@ void main() {
 
 	vec3 result = (ambient + diffuse) * final_color + specular;
 
-	if (colorShift) {
+	if (color_shift_enabled == 1) {
 		float shift_magnitude = 0.2;
 		float shift_speed = 5.0;
 		vec3  pos_based_shift;
