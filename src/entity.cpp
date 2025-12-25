@@ -29,12 +29,16 @@ namespace Boidsish {
 				auto update = entity->path_->CalculateUpdate(
 					entity->GetPosition(),
 					entity->orientation_,
+					entity->path_segment_index_,
+					entity->path_t_,
 					entity->path_direction_,
 					delta_time
 				);
 				entity->SetVelocity(update.velocity * entity->path_speed_);
 				entity->orientation_ = glm::slerp(entity->orientation_, update.orientation, 0.1f);
 				entity->path_direction_ = update.new_direction;
+				entity->path_segment_index_ = update.new_segment_index;
+				entity->path_t_ = update.new_t;
 			}
 		});
 
