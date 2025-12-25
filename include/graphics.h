@@ -5,6 +5,7 @@
 #include <map>
 #include <memory>
 #include <vector>
+#include <tuple>
 
 #include "shape.h"
 #include "vector.h"
@@ -126,7 +127,7 @@ namespace Boidsish {
 		void TogglePause();
 		void ToggleEffect(VisualEffect effect);
 
-		const auto                          GetTerrainPointProperties(float x, float y);
+		std::tuple<float, glm::vec3>        GetTerrainPointProperties(float x, float y);
 		const auto                          GetTerrainChunks();
 		task_thread_pool::task_thread_pool& GetThreadPool();
 

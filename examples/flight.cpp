@@ -5,8 +5,15 @@
 #include "dot.h"
 #include "field.h"
 #include "graphics.h"
+#include <glm/gtc/quaternion.hpp>
+#include <glm/gtx/quaternion.hpp>
 
 using namespace Boidsish;
+
+struct TerrainPoint {
+	glm::vec3 position;
+	glm::vec3 normal;
+};
 
 int main() {
 	try {
@@ -38,7 +45,32 @@ int main() {
 			auto arrow2 = std::make_shared<Boidsish::Arrow>(1, 0, 0, 0, 0.1f, 0.1f, 0.01f, 0.0f, 1.0f, 0.0f);
 			arrow2->SetPosition(dotPost.x, dotPost.y, dotPost.z);
 			arrow2->SetScale(glm::vec3(1.0f, 1.0f, 1.0f));
-			// arrow2->SetRotation();
+
+			// Sample terrain points around the arrow
+			std::vector<TerrainPoint> terrain_points;
+			const int grid_size = 10;
+			const float spacing = 2.0f;
+			for (int i = -grid_size / 2; i < grid_size / 2; ++i) {
+				for (int j = -grid_size / 2; j < grid_size / 2; ++j) {
+					float x = dotPost.x + i * spacing;
+					float z = dotPost.z + j * spacing;
+					auto [height, normal] = visualizer.GetTerrainPointProperties(x, z);
+					terrain_points.push_back({{x, height, z}, normal});
+				}
+			}
+
+			DivergenceFreePolicy policy(20.0f);
+			glm::vec3            influence =
+				CalculateField(glm::vec3(dotPost.x, dotPost.y, dotPost.z), terrain_points.begin(), terrain_points.end(), policy);
+
+			if (glm::length(influence) > 0.001f) {
+				influence = glm::normalize(influence);
+				glm::vec3 up(0.0f, 1.0f, 0.0f);
+				glm::vec3 axis = glm::cross(up, influence);
+				float     angle = acos(glm::dot(up, influence));
+				glm::quat rotation = glm::angleAxis(angle, axis);
+				arrow2->SetRotation(rotation);
+			}
 
 			shapes.push_back(arrow2);
 
