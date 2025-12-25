@@ -10,6 +10,9 @@
 #include "vector.h"
 #include "visual_effects.h"
 #include <glm/glm.hpp>
+#include "imgui.h"
+#include "imgui_impl_glfw.h"
+#include "imgui_impl_opengl3.h"
 
 namespace task_thread_pool {
 	class task_thread_pool;
@@ -112,6 +115,9 @@ namespace Boidsish {
 
 		// Set the input callback
 		void SetInputCallback(InputCallback callback);
+
+		// Set the ImGui drawing callback
+		void SetImGuiDrawer(std::function<void()> drawer);
 
 		// Set the exit key, which cannot be overridden by the input callback.
 		void SetExitKey(int key);

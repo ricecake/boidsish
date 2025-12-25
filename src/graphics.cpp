@@ -37,6 +37,7 @@ namespace Boidsish {
 
 		InputState    input_state{};
 		InputCallback input_callback;
+		std::function<void()> imgui_drawer_;
 		int           exit_key;
 
 		std::unique_ptr<TerrainGenerator> terrain_generator;
@@ -173,6 +174,20 @@ namespace Boidsish {
 
 			shader->use();
 			glUniformBlockBinding(shader->ID, glGetUniformBlockIndex(shader->ID, "ArtisticEffects"), 1);
+
+            // Setup Dear ImGui context
+            IMGUI_CHECKVERSION();
+            ImGui::CreateContext();
+            ImGuiIO& io = ImGui::GetIO(); (void)io;
+            io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;     // Enable Keyboard Controls
+            io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;      // Enable Gamepad Controls
+
+            // Setup Dear ImGui style
+            ImGui::StyleColorsDark();
+
+            // Setup Platform/Renderer backends
+            ImGui_ImplGlfw_InitForOpenGL(window, true);
+            ImGui_ImplOpenGL3_Init("#version 130");
 
 			Terrain::terrain_shader_ = std::make_shared<Shader>(
 				"shaders/terrain.vert",
@@ -942,6 +957,19 @@ namespace Boidsish {
 		impl->RenderSceneObjects(view, impl->camera, shapes, impl->simulation_time, std::nullopt);
 		impl->RenderTerrain(view, std::nullopt);
 
+        // Start the Dear ImGui frame
+        ImGui_ImplOpenGL3_NewFrame();
+        ImGui_ImplGlfw_NewFrame();
+        ImGui::NewFrame();
+
+        if (impl->imgui_drawer_) {
+            impl->imgui_drawer_();
+        }
+
+        // Rendering
+        ImGui::Render();
+        ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+
 		glfwSwapBuffers(impl->window);
 	}
 
@@ -962,6 +990,10 @@ namespace Boidsish {
 
 	void Visualizer::SetInputCallback(InputCallback callback) {
 		impl->input_callback = callback;
+	}
+
+	void Visualizer::SetImGuiDrawer(std::function<void()> drawer) {
+		impl->imgui_drawer_ = drawer;
 	}
 
 	void Visualizer::SetExitKey(int key) {
