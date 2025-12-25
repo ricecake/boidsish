@@ -1045,13 +1045,13 @@ namespace Boidsish {
 		return impl->thread_pool;
 	}
 
-	const auto Visualizer::GetTerrainPointProperties(float x, float y) {
+std::tuple<float, glm::vec3> Visualizer::GetTerrainPointProperties(float x, float y) const {
 		return impl->terrain_generator->pointProperties(x, y);
-	};
+}
 
-	const auto Visualizer::GetTerrainChunks() {
+const std::vector<std::shared_ptr<Terrain>>& Visualizer::GetTerrainChunks() const {
 		return impl->terrain_generator->getVisibleChunks();
-	};
+}
 
 	Config& Visualizer::GetConfig() {
 		return impl->config;

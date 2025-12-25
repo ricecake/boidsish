@@ -1,5 +1,6 @@
 #include "terrain_generator.h"
 
+#include "graphics.h"
 #include <algorithm>
 #include <chrono>
 #include <cmath>
@@ -123,6 +124,13 @@ namespace Boidsish {
 			pending_chunks_.at(key).cancel();
 			pending_chunks_.erase(key);
 		}
+
+		visible_chunks_.clear();
+		for (auto const& [key, val] : chunk_cache_) {
+			if (val) {
+				visible_chunks_.push_back(val);
+			}
+		}
 	}
 
 	auto TerrainGenerator::fbm(float x, float z, TerrainParameters params) {
@@ -139,14 +147,8 @@ namespace Boidsish {
 		return total / max_amplitude;
 	}
 
-	std::vector<std::shared_ptr<Terrain>> TerrainGenerator::getVisibleChunks() {
-		std::vector<std::shared_ptr<Terrain>> visible_chunks;
-		for (auto const& [key, val] : chunk_cache_) {
-			if (val) {
-				visible_chunks.push_back(val);
-			}
-		}
-		return visible_chunks;
+const std::vector<std::shared_ptr<Terrain>>& TerrainGenerator::getVisibleChunks() {
+	return visible_chunks_;
 	}
 
 	auto TerrainGenerator::biomefbm(glm::vec2 pos, BiomeAttributes attr) {
