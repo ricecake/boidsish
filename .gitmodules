@@ -10,9 +10,9 @@
 [submodule "external/poolSTL"]
 	path = external/poolSTL
 	url = https://github.com/alugowski/poolSTL.git
-[submodule "examples/assimp"]
-	path = examples/assimp
-	url = https://github.com/assimp/assimp.git
 [submodule "external/bullet3"]
 	path = external/bullet3
 	url = https://github.com/bulletphysics/bullet3.git
+[submodule "external/assimp"]
+	path = external/assimp
+	url = https://github.com/assimp/assimp.git
