@@ -299,6 +299,10 @@ namespace Boidsish {
 			config.SetInt("window_width", width);
 			config.SetInt("window_height", height);
 			config.Save();
+
+			// Explicitly reset UI manager before destroying window context
+			ui_manager.reset();
+
 			Shape::DestroySphereMesh();
 			glDeleteVertexArrays(1, &plane_vao);
 			glDeleteBuffers(1, &plane_vbo);
