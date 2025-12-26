@@ -4,16 +4,16 @@
 #include "post_processing/PostProcessingManager.h"
 
 namespace Boidsish {
-namespace UI {
+	namespace UI {
 
-class PostProcessingWidget : public IWidget {
-public:
-    PostProcessingWidget(PostProcessing::PostProcessingManager& manager);
-    void Draw() override;
+		class PostProcessingWidget: public IWidget {
+		public:
+			PostProcessingWidget(PostProcessing::PostProcessingManager& manager);
+			void Draw() override;
 
-private:
-    PostProcessing::PostProcessingManager& manager_;
-};
+		private:
+			PostProcessing::PostProcessingManager& manager_;
+		};
 
-} // namespace UI
+	} // namespace UI
 } // namespace Boidsish

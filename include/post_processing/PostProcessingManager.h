@@ -1,37 +1,38 @@
 #pragma once
 
-#include "IPostProcessingEffect.h"
-#include <GL/glew.h>
 #include <memory>
 #include <vector>
+
+#include "IPostProcessingEffect.h"
+#include <GL/glew.h>
 
 class Shader; // Forward declaration
 
 namespace Boidsish {
-namespace PostProcessing {
+	namespace PostProcessing {
 
-class PostProcessingManager {
-public:
-    PostProcessingManager(int width, int height, GLuint quad_vao);
-    ~PostProcessingManager();
+		class PostProcessingManager {
+		public:
+			PostProcessingManager(int width, int height, GLuint quad_vao);
+			~PostProcessingManager();
 
-    void Initialize();
-    void AddEffect(std::shared_ptr<IPostProcessingEffect> effect);
-    GLuint ApplyEffects(GLuint sourceTexture);
-    void Resize(int width, int height);
+			void   Initialize();
+			void   AddEffect(std::shared_ptr<IPostProcessingEffect> effect);
+			GLuint ApplyEffects(GLuint sourceTexture);
+			void   Resize(int width, int height);
 
-    std::vector<std::shared_ptr<IPostProcessingEffect>>& GetEffects() { return effects_; }
+			std::vector<std::shared_ptr<IPostProcessingEffect>>& GetEffects() { return effects_; }
 
-private:
-    void InitializeFBOs();
+		private:
+			void InitializeFBOs();
 
-    int width_, height_;
-    std::vector<std::shared_ptr<IPostProcessingEffect>> effects_;
-    GLuint quad_vao_;
+			int                                                 width_, height_;
+			std::vector<std::shared_ptr<IPostProcessingEffect>> effects_;
+			GLuint                                              quad_vao_;
 
-    GLuint pingpong_fbo_[2];
-    GLuint pingpong_texture_[2];
-};
+			GLuint pingpong_fbo_[2];
+			GLuint pingpong_texture_[2];
+		};
 
-} // namespace PostProcessing
+	} // namespace PostProcessing
 } // namespace Boidsish

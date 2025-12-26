@@ -132,7 +132,8 @@ namespace Boidsish {
 		std::shared_ptr<Shape> GetShape() const override { return shape_; }
 
 		void UpdateShape() override {
-			if (!shape_) return;
+			if (!shape_)
+				return;
 			shape_->SetId(id_);
 			shape_->SetPosition(position_.x, position_.y, position_.z);
 			shape_->SetColor(color_[0], color_[1], color_[2], color_[3]);

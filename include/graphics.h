@@ -137,7 +137,7 @@ namespace Boidsish {
 		void TogglePause();
 		void ToggleEffect(VisualEffect effect);
 
-		std::tuple<float, glm::vec3> GetTerrainPointProperties(float x, float y) const;
+		std::tuple<float, glm::vec3>                 GetTerrainPointProperties(float x, float y) const;
 		const std::vector<std::shared_ptr<Terrain>>& GetTerrainChunks() const;
 		task_thread_pool::task_thread_pool&          GetThreadPool();
 

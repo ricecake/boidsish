@@ -1,28 +1,29 @@
 #pragma once
 
-#include "post_processing/IPostProcessingEffect.h"
 #include <memory>
+
+#include "post_processing/IPostProcessingEffect.h"
 
 class Shader; // Forward declaration
 
 namespace Boidsish {
-namespace PostProcessing {
+	namespace PostProcessing {
 
-class GlitchEffect : public IPostProcessingEffect {
-public:
-    GlitchEffect();
-    ~GlitchEffect();
+		class GlitchEffect: public IPostProcessingEffect {
+		public:
+			GlitchEffect();
+			~GlitchEffect();
 
-    void Apply(GLuint sourceTexture) override;
-    void Initialize(int width, int height) override;
-    void Resize(int width, int height) override;
+			void Apply(GLuint sourceTexture) override;
+			void Initialize(int width, int height) override;
+			void Resize(int width, int height) override;
 
-    void SetTime(float time) { time_ = time; }
+			void SetTime(float time) { time_ = time; }
 
-private:
-    std::unique_ptr<Shader> shader_;
-    float time_ = 0.0f;
-};
+		private:
+			std::unique_ptr<Shader> shader_;
+			float                   time_ = 0.0f;
+		};
 
-} // namespace PostProcessing
+	} // namespace PostProcessing
 } // namespace Boidsish

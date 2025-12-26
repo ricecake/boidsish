@@ -45,7 +45,7 @@ namespace Boidsish {
 			float          a = 1.0f
 		) {
 			waypoints_.emplace_back(Waypoint{pos, up.Normalized(), size, r, g, b, a});
-        // Mark buffers as dirty to force recalculation
+			// Mark buffers as dirty to force recalculation
 			buffers_initialized_ = false;
 			return waypoints_.back();
 		}
@@ -80,12 +80,12 @@ namespace Boidsish {
 		PathMode              mode_ = PathMode::ONCE;
 		bool                  visible_ = false;
 
-		mutable GLuint path_vao_ = 0;
-		mutable GLuint path_vbo_ = 0;
-		mutable int    edge_vertex_count_ = 0;
-		mutable bool   buffers_initialized_ = false;
-	    mutable std::vector<Vector3> cached_waypoint_positions_;
-};
+		mutable GLuint               path_vao_ = 0;
+		mutable GLuint               path_vbo_ = 0;
+		mutable int                  edge_vertex_count_ = 0;
+		mutable bool                 buffers_initialized_ = false;
+		mutable std::vector<Vector3> cached_waypoint_positions_;
+	};
 
 	class PathHandler {
 	public:

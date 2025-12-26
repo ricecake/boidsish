@@ -1,25 +1,26 @@
 #pragma once
 
-#include "post_processing/IPostProcessingEffect.h"
 #include <memory>
+
+#include "post_processing/IPostProcessingEffect.h"
 
 class Shader; // Forward declaration
 
 namespace Boidsish {
-namespace PostProcessing {
+	namespace PostProcessing {
 
-class NegativeEffect : public IPostProcessingEffect {
-public:
-    NegativeEffect();
-    ~NegativeEffect();
+		class NegativeEffect: public IPostProcessingEffect {
+		public:
+			NegativeEffect();
+			~NegativeEffect();
 
-    void Apply(GLuint sourceTexture) override;
-    void Initialize(int width, int height) override;
-    void Resize(int width, int height) override;
+			void Apply(GLuint sourceTexture) override;
+			void Initialize(int width, int height) override;
+			void Resize(int width, int height) override;
 
-private:
-    std::unique_ptr<Shader> shader_;
-};
+		private:
+			std::unique_ptr<Shader> shader_;
+		};
 
-} // namespace PostProcessing
+	} // namespace PostProcessing
 } // namespace Boidsish

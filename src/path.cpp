@@ -86,27 +86,27 @@ namespace Boidsish {
 
 		glBindVertexArray(0);
 		buffers_initialized_ = true;
-	    cached_waypoint_positions_.clear();
-    cached_waypoint_positions_.reserve(waypoints_.size());
-    for (const auto& w : waypoints_) {
-        cached_waypoint_positions_.push_back(w.position);
-    }
-}
+		cached_waypoint_positions_.clear();
+		cached_waypoint_positions_.reserve(waypoints_.size());
+		for (const auto& w : waypoints_) {
+			cached_waypoint_positions_.push_back(w.position);
+		}
+	}
 
 	void Path::render() const {
 		if (!visible_)
 			return;
 
-    if (cached_waypoint_positions_.size() != waypoints_.size()) {
-        buffers_initialized_ = false;
-    } else {
-        for (size_t i = 0; i < waypoints_.size(); ++i) {
-            if ((waypoints_[i].position - cached_waypoint_positions_[i]).MagnitudeSquared() > 1e-9) {
-                buffers_initialized_ = false;
-                break;
-            }
-        }
-    }
+		if (cached_waypoint_positions_.size() != waypoints_.size()) {
+			buffers_initialized_ = false;
+		} else {
+			for (size_t i = 0; i < waypoints_.size(); ++i) {
+				if ((waypoints_[i].position - cached_waypoint_positions_[i]).MagnitudeSquared() > 1e-9) {
+					buffers_initialized_ = false;
+					break;
+				}
+			}
+		}
 
 		if (!buffers_initialized_) {
 			SetupBuffers();
@@ -157,8 +157,8 @@ namespace Boidsish {
 			return {Vector3(0, 0, 0), glm::quat(), 1, 0, 0.0f};
 		}
 
-		int num_waypoints = waypoints_.size();
-		int num_segments = (mode_ == PathMode::LOOP) ? num_waypoints : num_waypoints - 1;
+		int   num_waypoints = waypoints_.size();
+		int   num_segments = (mode_ == PathMode::LOOP) ? num_waypoints : num_waypoints - 1;
 		float arrival_radius_sq = 0.05f * 0.05f;
 		float distance_to_travel = path_speed * delta_time;
 
@@ -203,7 +203,7 @@ namespace Boidsish {
 			}
 
 			float distance_remaining_on_segment = (new_direction > 0) ? (1.0f - new_t) * segment_length
-																		: new_t * segment_length;
+																	  : new_t * segment_length;
 
 			if (distance_to_travel <= distance_remaining_on_segment) {
 				float t_advance = distance_to_travel / segment_length;
@@ -242,7 +242,7 @@ namespace Boidsish {
 			}
 		}
 
-		Vector3 p0, p1, p2, p3;
+		Vector3         p0, p1, p2, p3;
 		const Waypoint *next_w1, *next_w2;
 
 		if (mode_ == PathMode::LOOP) {

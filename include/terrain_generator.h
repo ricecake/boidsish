@@ -7,10 +7,12 @@
 
 #include "PerlinNoise.hpp"
 #include "Simplex.h"
+
 namespace Boidsish {
 	struct Frustum;
 	struct Camera;
 } // namespace Boidsish
+
 #include "terrain.h"
 #include "thread_pool.h"
 
@@ -29,7 +31,7 @@ namespace Boidsish {
 		TerrainGenerator(int seed = 12345);
 		~TerrainGenerator();
 
-		void                                              update(const Frustum& frustum, const Camera& camera);
+		void                                         update(const Frustum& frustum, const Camera& camera);
 		const std::vector<std::shared_ptr<Terrain>>& getVisibleChunks();
 
 		std::tuple<float, glm::vec3> pointProperties(float x, float z) {

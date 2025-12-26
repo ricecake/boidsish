@@ -1,6 +1,5 @@
 #include "terrain_generator.h"
 
-#include "graphics.h"
 #include <algorithm>
 #include <chrono>
 #include <cmath>
@@ -9,6 +8,7 @@
 #include <ranges>
 #include <vector>
 
+#include "graphics.h"
 #include "logger.h"
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
@@ -147,8 +147,8 @@ namespace Boidsish {
 		return total / max_amplitude;
 	}
 
-const std::vector<std::shared_ptr<Terrain>>& TerrainGenerator::getVisibleChunks() {
-	return visible_chunks_;
+	const std::vector<std::shared_ptr<Terrain>>& TerrainGenerator::getVisibleChunks() {
+		return visible_chunks_;
 	}
 
 	auto TerrainGenerator::biomefbm(glm::vec2 pos, BiomeAttributes attr) {
