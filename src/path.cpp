@@ -141,7 +141,8 @@ namespace Boidsish {
 			return {Vector3(0, 0, 0), glm::quat(), 1, 0, 0.0f};
 		}
 
-		int   num_segments = waypoints_.size() - 1;
+		int num_waypoints = waypoints_.size();
+		int num_segments = (mode_ == PathMode::LOOP) ? num_waypoints : num_waypoints - 1;
 		float arrival_radius_sq = 0.05f * 0.05f;
 		float distance_to_travel = path_speed * delta_time;
 
@@ -151,27 +152,25 @@ namespace Boidsish {
 
 		// Iteratively move along the path until the frame's travel distance is used up
 		while (distance_to_travel > 1e-6) {
-			// Determine the control points for the current segment
-			const auto& w1 = waypoints_[new_segment_index];
-			const auto& w2 = waypoints_[new_segment_index + 1];
-			Vector3     p0, p1, p2, p3;
-			p1 = w1.position;
-			p2 = w2.position;
-
-			if (new_segment_index > 0) {
-				p0 = waypoints_[new_segment_index - 1].position;
-			} else if (mode_ == PathMode::LOOP) {
-				p0 = waypoints_.back().position;
+			Vector3 p0, p1, p2, p3;
+			if (mode_ == PathMode::LOOP) {
+				p0 = waypoints_[(new_segment_index - 1 + num_waypoints) % num_waypoints].position;
+				p1 = waypoints_[new_segment_index].position;
+				p2 = waypoints_[(new_segment_index + 1) % num_waypoints].position;
+				p3 = waypoints_[(new_segment_index + 2) % num_waypoints].position;
 			} else {
-				p0 = w1.position - (w2.position - w1.position);
-			}
-
-			if (new_segment_index < num_segments - 1) {
-				p3 = waypoints_[new_segment_index + 2].position;
-			} else if (mode_ == PathMode::LOOP) {
-				p3 = waypoints_.front().position;
-			} else {
-				p3 = w2.position + (w2.position - w1.position);
+				p1 = waypoints_[new_segment_index].position;
+				p2 = waypoints_[new_segment_index + 1].position;
+				if (new_segment_index > 0) {
+					p0 = waypoints_[new_segment_index - 1].position;
+				} else {
+					p0 = p1 - (p2 - p1);
+				}
+				if (new_segment_index < num_segments - 1) {
+					p3 = waypoints_[new_segment_index + 2].position;
+				} else {
+					p3 = p2 + (p2 - p1);
+				}
 			}
 
 			// Estimate segment length
@@ -184,23 +183,20 @@ namespace Boidsish {
 				prev_point = curr_point;
 			}
 			if (segment_length < 1e-6) {
-				break; // Avoid division by zero on zero-length segments
+				break;
 			}
 
 			float distance_remaining_on_segment = (new_direction > 0) ? (1.0f - new_t) * segment_length
 																		: new_t * segment_length;
 
 			if (distance_to_travel <= distance_remaining_on_segment) {
-				// Staying on the current segment
 				float t_advance = distance_to_travel / segment_length;
 				new_t += t_advance * new_direction;
-				distance_to_travel = 0.0f; // All distance used
+				distance_to_travel = 0.0f;
 			} else {
-				// Moving to the next segment
 				distance_to_travel -= distance_remaining_on_segment;
-
-				// Advance segment index
 				new_segment_index += new_direction;
+
 				if (new_segment_index >= num_segments) {
 					if (mode_ == PathMode::LOOP) {
 						new_segment_index = 0;
@@ -211,7 +207,7 @@ namespace Boidsish {
 					} else { // ONCE
 						new_segment_index = num_segments - 1;
 						new_t = 1.0f;
-						distance_to_travel = 0; // Stop at the end
+						distance_to_travel = 0;
 					}
 				} else if (new_segment_index < 0) {
 					if (mode_ == PathMode::LOOP) {
@@ -223,57 +219,56 @@ namespace Boidsish {
 					} else { // ONCE
 						new_segment_index = 0;
 						new_t = 0.0f;
-						distance_to_travel = 0; // Stop at the start
+						distance_to_travel = 0;
 					}
 				}
 				new_t = (new_direction > 0) ? 0.0f : 1.0f;
 			}
 		}
 
-
-		// Recalculate control points for the final segment
-		const auto& next_w1 = waypoints_[new_segment_index];
-		const auto& next_w2 = waypoints_[new_segment_index + 1];
 		Vector3 p0, p1, p2, p3;
-		p1 = next_w1.position;
-		p2 = next_w2.position;
+		const Waypoint *next_w1, *next_w2;
 
-		if (new_segment_index > 0) {
-			p0 = waypoints_[new_segment_index - 1].position;
-		} else if (mode_ == PathMode::LOOP) {
-			p0 = waypoints_.back().position;
+		if (mode_ == PathMode::LOOP) {
+			p0 = waypoints_[(new_segment_index - 1 + num_waypoints) % num_waypoints].position;
+			p1 = waypoints_[new_segment_index].position;
+			p2 = waypoints_[(new_segment_index + 1) % num_waypoints].position;
+			p3 = waypoints_[(new_segment_index + 2) % num_waypoints].position;
+			next_w1 = &waypoints_[new_segment_index];
+			next_w2 = &waypoints_[(new_segment_index + 1) % num_waypoints];
 		} else {
-			p0 = p1 - (p2 - p1);
+			p1 = waypoints_[new_segment_index].position;
+			p2 = waypoints_[new_segment_index + 1].position;
+			if (new_segment_index > 0) {
+				p0 = waypoints_[new_segment_index - 1].position;
+			} else {
+				p0 = p1 - (p2 - p1);
+			}
+			if (new_segment_index < num_segments - 1) {
+				p3 = waypoints_[new_segment_index + 2].position;
+			} else {
+				p3 = p2 + (p2 - p1);
+			}
+			next_w1 = &waypoints_[new_segment_index];
+			next_w2 = &waypoints_[new_segment_index + 1];
 		}
 
-		if (new_segment_index < num_segments - 1) {
-			p3 = waypoints_[new_segment_index + 2].position;
-		} else if (mode_ == PathMode::LOOP) {
-			p3 = waypoints_.front().position;
-		} else {
-			p3 = p2 + (p2 - p1);
-		}
-
-		// Calculate the new target position and desired velocity
 		Vector3 target_position = Spline::CatmullRom(new_t, p0, p1, p2, p3);
 		Vector3 desired_velocity = (target_position - current_position).Normalized();
 
-		// Arrival logic for ONCE mode
 		if (mode_ == PathMode::ONCE && new_segment_index == num_segments - 1 && new_t >= 1.0f) {
 			if ((waypoints_.back().position - current_position).MagnitudeSquared() < arrival_radius_sq) {
-				desired_velocity.Set(0, 0, 0); // Stop the entity
+				desired_velocity.Set(0, 0, 0);
 			} else {
-				// Ensure final approach is exactly to the last waypoint
 				desired_velocity = (waypoints_.back().position - current_position).Normalized();
 			}
 		}
 
-		// Calculate orientation
 		Vector3 tangent = Spline::CatmullRomDerivative(new_t, p0, p1, p2, p3).Normalized();
-		Vector3 up = next_w1.up * (1.0f - new_t) + next_w2.up * new_t;
+		Vector3 up = next_w1->up * (1.0f - new_t) + next_w2->up * new_t;
 		Vector3 right = tangent.Cross(up);
 		if (right.MagnitudeSquared() < 1e-6) {
-			right = tangent.Cross(Vector3(0, 1, 0)).Normalized(); // Fallback up vector
+			right = tangent.Cross(Vector3(0, 1, 0)).Normalized();
 			if (right.MagnitudeSquared() < 1e-6) {
 				right = Vector3(1, 0, 0);
 			}
