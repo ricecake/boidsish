@@ -11,6 +11,7 @@
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/quaternion.hpp>
+#include <glm/gtx/compatibility.hpp>
 
 namespace Boidsish {
 
@@ -146,127 +147,147 @@ namespace Boidsish {
 	PathUpdateResult Path::CalculateUpdate(
 		const Vector3&   current_position,
 		const glm::quat& current_orientation,
+		int              current_segment_index,
+		float            current_t,
 		int              current_direction,
+		float            path_speed,
 		float            delta_time
 	) const {
 		if (waypoints_.size() < 2) {
-			return {Vector3(0, 0, 0), glm::quat(), 1};
+			return {Vector3(0, 0, 0), glm::quat(), 1, 0, 0.0f};
 		}
 
-		// Find the closest point on the path
-		float min_dist_sq = -1.0f;
-		int   closest_segment = 0;
-		float closest_t = 0.0f;
+		int num_waypoints = waypoints_.size();
+		int num_segments = (mode_ == PathMode::LOOP) ? num_waypoints : num_waypoints - 1;
+		float arrival_radius_sq = 0.05f * 0.05f;
+		float distance_to_travel = path_speed * delta_time;
 
-		for (size_t i = 0; i < waypoints_.size() - 1; ++i) {
-			const auto& w1 = waypoints_[i];
-			const auto& w2 = waypoints_[i + 1];
-
-			Vector3 p0, p1, p2, p3;
-			p1 = w1.position;
-			p2 = w2.position;
-
-			if (i > 0) {
-				p0 = waypoints_[i - 1].position;
-			} else if (mode_ == PathMode::LOOP) {
-				p0 = waypoints_.back().position;
-			} else {
-				p0 = w1.position - (w2.position - w1.position);
-			}
-
-			if (i < waypoints_.size() - 2) {
-				p3 = waypoints_[i + 2].position;
-			} else if (mode_ == PathMode::LOOP) {
-				p3 = waypoints_.front().position;
-			} else {
-				p3 = w2.position + (w2.position - w1.position);
-			}
-
-			// Search for the closest point on this segment
-			for (int j = 0; j <= 20; ++j) {
-				float   t = (float)j / 20.0f;
-				Vector3 point_on_spline = Spline::CatmullRom(t, p0, p1, p2, p3);
-				float   dist_sq = (point_on_spline - current_position).MagnitudeSquared();
-				if (min_dist_sq < 0 || dist_sq < min_dist_sq) {
-					min_dist_sq = dist_sq;
-					closest_segment = i;
-					closest_t = t;
-				}
-			}
-		}
-
-		// Now that we have the closest point, we can calculate the target position
-		// a short distance ahead on the path.
-		float lookahead_dist = 0.1f * current_direction;
-		float lookahead_t = closest_t + lookahead_dist;
-		int   lookahead_segment = closest_segment;
+		int   new_segment_index = current_segment_index;
+		float new_t = current_t;
 		int   new_direction = current_direction;
 
-		if (lookahead_t > 1.0f) {
-			lookahead_t -= 1.0f;
-			lookahead_segment++;
-			if (lookahead_segment >= (int)waypoints_.size() - 1) {
-				if (mode_ == PathMode::LOOP) {
-					lookahead_segment = 0;
-				} else if (mode_ == PathMode::REVERSE) {
-					new_direction = -1;
-					lookahead_segment = waypoints_.size() - 2;
-					lookahead_t = 1.0f;
-				} else { // ONCE
-					lookahead_segment = waypoints_.size() - 2;
-					lookahead_t = 1.0f;
+		// Iteratively move along the path until the frame's travel distance is used up
+		while (distance_to_travel > 1e-6) {
+			Vector3 p0, p1, p2, p3;
+			if (mode_ == PathMode::LOOP) {
+				p0 = waypoints_[(new_segment_index - 1 + num_waypoints) % num_waypoints].position;
+				p1 = waypoints_[new_segment_index].position;
+				p2 = waypoints_[(new_segment_index + 1) % num_waypoints].position;
+				p3 = waypoints_[(new_segment_index + 2) % num_waypoints].position;
+			} else {
+				p1 = waypoints_[new_segment_index].position;
+				p2 = waypoints_[new_segment_index + 1].position;
+				if (new_segment_index > 0) {
+					p0 = waypoints_[new_segment_index - 1].position;
+				} else {
+					p0 = p1 - (p2 - p1);
+				}
+				if (new_segment_index < num_segments - 1) {
+					p3 = waypoints_[new_segment_index + 2].position;
+				} else {
+					p3 = p2 + (p2 - p1);
 				}
 			}
-		} else if (lookahead_t < 0.0f) {
-			lookahead_t += 1.0f;
-			lookahead_segment--;
-			if (lookahead_segment < 0) {
-				if (mode_ == PathMode::LOOP) {
-					lookahead_segment = waypoints_.size() - 2;
-				} else if (mode_ == PathMode::REVERSE) {
-					new_direction = 1;
-					lookahead_segment = 0;
-					lookahead_t = 0.0f;
-				} else { // ONCE
-					lookahead_segment = 0;
-					lookahead_t = 0.0f;
+
+			// Estimate segment length
+			float   segment_length = 0;
+			Vector3 prev_point = Spline::CatmullRom(0, p0, p1, p2, p3);
+			for (int i = 1; i <= 10; ++i) {
+				float   t = (float)i / 10.0f;
+				Vector3 curr_point = Spline::CatmullRom(t, p0, p1, p2, p3);
+				segment_length += (curr_point - prev_point).Magnitude();
+				prev_point = curr_point;
+			}
+			if (segment_length < 1e-6) {
+				break;
+			}
+
+			float distance_remaining_on_segment = (new_direction > 0) ? (1.0f - new_t) * segment_length
+																		: new_t * segment_length;
+
+			if (distance_to_travel <= distance_remaining_on_segment) {
+				float t_advance = distance_to_travel / segment_length;
+				new_t += t_advance * new_direction;
+				distance_to_travel = 0.0f;
+			} else {
+				distance_to_travel -= distance_remaining_on_segment;
+				new_segment_index += new_direction;
+
+				if (new_segment_index >= num_segments) {
+					if (mode_ == PathMode::LOOP) {
+						new_segment_index = 0;
+					} else if (mode_ == PathMode::REVERSE) {
+						new_direction = -1;
+						new_segment_index = num_segments - 1;
+						new_t = 1.0f;
+					} else { // ONCE
+						new_segment_index = num_segments - 1;
+						new_t = 1.0f;
+						distance_to_travel = 0;
+					}
+				} else if (new_segment_index < 0) {
+					if (mode_ == PathMode::LOOP) {
+						new_segment_index = num_segments - 1;
+					} else if (mode_ == PathMode::REVERSE) {
+						new_direction = 1;
+						new_segment_index = 0;
+						new_t = 0.0f;
+					} else { // ONCE
+						new_segment_index = 0;
+						new_t = 0.0f;
+						distance_to_travel = 0;
+					}
 				}
+				new_t = (new_direction > 0) ? 0.0f : 1.0f;
 			}
 		}
-
-		const auto& w1 = waypoints_[lookahead_segment];
-		const auto& w2 = waypoints_[lookahead_segment + 1];
 
 		Vector3 p0, p1, p2, p3;
-		p1 = w1.position;
-		p2 = w2.position;
+		const Waypoint *next_w1, *next_w2;
 
-		if (lookahead_segment > 0) {
-			p0 = waypoints_[lookahead_segment - 1].position;
-		} else if (mode_ == PathMode::LOOP) {
-			p0 = waypoints_.back().position;
+		if (mode_ == PathMode::LOOP) {
+			p0 = waypoints_[(new_segment_index - 1 + num_waypoints) % num_waypoints].position;
+			p1 = waypoints_[new_segment_index].position;
+			p2 = waypoints_[(new_segment_index + 1) % num_waypoints].position;
+			p3 = waypoints_[(new_segment_index + 2) % num_waypoints].position;
+			next_w1 = &waypoints_[new_segment_index];
+			next_w2 = &waypoints_[(new_segment_index + 1) % num_waypoints];
 		} else {
-			p0 = w1.position - (w2.position - w1.position);
+			p1 = waypoints_[new_segment_index].position;
+			p2 = waypoints_[new_segment_index + 1].position;
+			if (new_segment_index > 0) {
+				p0 = waypoints_[new_segment_index - 1].position;
+			} else {
+				p0 = p1 - (p2 - p1);
+			}
+			if (new_segment_index < num_segments - 1) {
+				p3 = waypoints_[new_segment_index + 2].position;
+			} else {
+				p3 = p2 + (p2 - p1);
+			}
+			next_w1 = &waypoints_[new_segment_index];
+			next_w2 = &waypoints_[new_segment_index + 1];
 		}
 
-		if (lookahead_segment < (int)waypoints_.size() - 2) {
-			p3 = waypoints_[lookahead_segment + 2].position;
-		} else if (mode_ == PathMode::LOOP) {
-			p3 = waypoints_.front().position;
-		} else {
-			p3 = w2.position + (w2.position - w1.position);
-		}
-
-		Vector3 target_position = Spline::CatmullRom(lookahead_t, p0, p1, p2, p3);
+		Vector3 target_position = Spline::CatmullRom(new_t, p0, p1, p2, p3);
 		Vector3 desired_velocity = (target_position - current_position).Normalized();
 
-		// Calculate orientation
-		Vector3 tangent = (Spline::CatmullRom(lookahead_t + 0.01f * new_direction, p0, p1, p2, p3) - target_position)
-							  .Normalized();
-		Vector3 up = w1.up * (1.0f - lookahead_t) + w2.up * lookahead_t;
+		if (mode_ == PathMode::ONCE && new_segment_index == num_segments - 1 && new_t >= 1.0f) {
+			if ((waypoints_.back().position - current_position).MagnitudeSquared() < arrival_radius_sq) {
+				desired_velocity.Set(0, 0, 0);
+			} else {
+				desired_velocity = (waypoints_.back().position - current_position).Normalized();
+			}
+		}
+
+		Vector3 tangent = Spline::CatmullRomDerivative(new_t, p0, p1, p2, p3).Normalized();
+		Vector3 up = next_w1->up * (1.0f - new_t) + next_w2->up * new_t;
 		Vector3 right = tangent.Cross(up);
 		if (right.MagnitudeSquared() < 1e-6) {
-			right = Vector3(1, 0, 0);
+			right = tangent.Cross(Vector3(0, 1, 0)).Normalized();
+			if (right.MagnitudeSquared() < 1e-6) {
+				right = Vector3(1, 0, 0);
+			}
 		}
 		right.Normalize();
 		up = right.Cross(tangent).Normalized();
@@ -278,7 +299,13 @@ namespace Boidsish {
 		);
 		glm::quat desired_orientation = glm::conjugate(glm::quat_cast(rotationMatrix));
 
-		return {desired_velocity, desired_orientation, new_direction};
+		return {
+			desired_velocity,
+			desired_orientation,
+			new_direction,
+			new_segment_index,
+			new_t,
+		};
 	}
 
 } // namespace Boidsish

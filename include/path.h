@@ -16,6 +16,8 @@ namespace Boidsish {
 		Vector3   velocity;
 		glm::quat orientation;
 		int       new_direction;
+		int       new_segment_index;
+		float     new_t;
 	};
 
 	class Path: public Shape, public std::enable_shared_from_this<Path> {
@@ -51,7 +53,10 @@ namespace Boidsish {
 		PathUpdateResult CalculateUpdate(
 			const Vector3&   current_position,
 			const glm::quat& current_orientation,
+			int              current_segment_index,
+			float            current_t,
 			int              current_direction,
+			float            path_speed,
 			float            delta_time
 		) const;
 

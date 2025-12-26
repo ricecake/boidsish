@@ -11,6 +11,12 @@ namespace Boidsish {
 			     (-p0 + 3.0f * p1 - 3.0f * p2 + p3) * (t * t * t));
 		}
 
+		Vector3
+		CatmullRomDerivative(float t, const Vector3& p0, const Vector3& p1, const Vector3& p2, const Vector3& p3) {
+			return 0.5f * ((-p0 + p2) + 2.0f * (2.0f * p0 - 5.0f * p1 + 4.0f * p2 - p3) * t +
+			               3.0f * (-p0 + 3.0f * p1 - 3.0f * p2 + p3) * (t * t));
+		}
+
 		const int   CYLINDER_SEGMENTS = 12;
 		const float EDGE_RADIUS_SCALE = 0.005f;
 		const int   CURVE_SEGMENTS = 10;

@@ -97,6 +97,8 @@ namespace Boidsish {
 		void SetPath(std::shared_ptr<Path> path, float speed) {
 			path_ = path;
 			path_speed_ = speed;
+			path_segment_index_ = 0;
+			path_t_ = 0.0f;
 		}
 
 	protected:
@@ -112,6 +114,8 @@ namespace Boidsish {
 		std::shared_ptr<Path> path_;
 		float                 path_speed_ = 1.0f;
 		int                   path_direction_ = 1;
+		int                   path_segment_index_ = 0;
+		float                 path_t_ = 0.0f;
 	};
 
 	// Template-based entity class that takes a shape
