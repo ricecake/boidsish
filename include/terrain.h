@@ -8,22 +8,32 @@
 
 namespace Boidsish {
 
-	class Terrain: public Shape {
-	public:
-		Terrain(const std::vector<float>& vertexData, const std::vector<unsigned int>& indices);
-		~Terrain();
+    class Terrain : public Shape {
+    public:
+        Terrain(
+            const std::vector<unsigned int>& indices,
+            const std::vector<glm::vec3>&    vertices,
+            const std::vector<glm::vec3>&    normals,
+            const PatchProxy&                proxy
+        );
+        ~Terrain();
 
-		void setupMesh();
-		void render() const override;
+        void setupMesh();
+        void render() const override;
 
-		static std::shared_ptr<Shader> terrain_shader_;
+        static std::shared_ptr<Shader> terrain_shader_;
 
-	private:
-		std::vector<float>        vertex_data_;
-		std::vector<unsigned int> indices_;
+        // Public members for field calculations
+        PatchProxy                proxy;
+        std::vector<glm::vec3>    vertices;
+        std::vector<glm::vec3>    normals;
 
-		unsigned int vao_, vbo_, ebo_;
-		int          index_count_;
-	};
+    private:
+        std::vector<float>        vertex_data_; // Interleaved for GPU
+        std::vector<unsigned int> indices_;
+
+        unsigned int vao_, vbo_, ebo_;
+        int          index_count_;
+    };
 
 } // namespace Boidsish
