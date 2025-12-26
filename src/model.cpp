@@ -2,6 +2,7 @@
 #include <iostream>
 #include <GL/glew.h>
 #include "shader.h"
+#include <glm/gtc/matrix_transform.hpp>
 
 namespace Boidsish {
 
@@ -52,6 +53,19 @@ Model::Model(const std::string& path) {
 }
 
 void Model::render() const {
+    if (!shader) {
+        std::cerr << "Model::render - Shader is not set!" << std::endl;
+        return;
+    }
+
+    // Create model matrix from shape properties
+    glm::mat4 model = glm::mat4(1.0f);
+    model = glm::translate(model, glm::vec3(GetX(), GetY(), GetZ()));
+    model *= glm::mat4_cast(GetRotation());
+    model = glm::scale(model, GetScale());
+
+    shader->setMat4("model", model);
+
     for(unsigned int i = 0; i < meshes.size(); i++) {
         meshes[i].render();
     }

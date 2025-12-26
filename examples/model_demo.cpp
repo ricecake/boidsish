@@ -1,5 +1,6 @@
 #include "graphics.h"
 #include "model.h"
+#include "dot.h"
 #include <vector>
 #include <memory>
 #include <cmath>
@@ -13,6 +14,11 @@ int main(int argc, char** argv) {
     std::vector<std::shared_ptr<Boidsish::Shape>> shapes;
     auto model = std::make_shared<Boidsish::Model>("assets/cube.obj");
     shapes.push_back(model);
+
+    auto dot = std::make_shared<Boidsish::Dot>();
+    dot->SetPosition(0.0f, 0.0f, 0.0f);
+    dot->SetColor(1.0f, 0.0f, 0.0f); // Red dot
+    shapes.push_back(dot);
 
     vis.AddShapeHandler([&](float time) {
         // --- Animate Position ---
