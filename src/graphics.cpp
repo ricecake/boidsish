@@ -94,7 +94,9 @@ namespace Boidsish {
 
 		// Artistic effects
 		bool black_and_white_effect = false;
+		bool negative_effect = false;
 		bool shimmery_effect = false;
+		bool glitched_effect = false;
 		bool wireframe_effect = false;
 
 		task_thread_pool::task_thread_pool thread_pool;
@@ -663,8 +665,12 @@ namespace Boidsish {
 				color_shift_effect = !color_shift_effect;
 			if (state.key_down[GLFW_KEY_1])
 				black_and_white_effect = !black_and_white_effect;
+			if (state.key_down[GLFW_KEY_2])
+				negative_effect = !negative_effect;
 			if (state.key_down[GLFW_KEY_3])
 				shimmery_effect = !shimmery_effect;
+			if (state.key_down[GLFW_KEY_4])
+				glitched_effect = !glitched_effect;
 			if (state.key_down[GLFW_KEY_5])
 				wireframe_effect = !wireframe_effect;
 
@@ -958,7 +964,9 @@ namespace Boidsish {
 			}
 		}
 		ubo_data.black_and_white_enabled = impl->black_and_white_effect;
+		ubo_data.negative_enabled = impl->negative_effect;
 		ubo_data.shimmery_enabled = impl->shimmery_effect;
+		ubo_data.glitched_enabled = impl->glitched_effect;
 		ubo_data.wireframe_enabled = impl->wireframe_effect;
 		glBindBuffer(GL_UNIFORM_BUFFER, impl->visual_effects_ubo);
 		glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(VisualEffectsUbo), &ubo_data);
@@ -1017,7 +1025,18 @@ namespace Boidsish {
 			}
 		}
 
-		GLuint final_texture = impl->post_processing_manager_->ApplyEffects(impl->main_fbo_texture_);
+		bool any_effect_enabled = false;
+		for(const auto& effect : impl->post_processing_manager_->GetEffects()){
+			if(effect->IsEnabled()){
+				any_effect_enabled = true;
+				break;
+			}
+		}
+
+		GLuint final_texture = impl->main_fbo_texture_;
+		if (any_effect_enabled) {
+			final_texture = impl->post_processing_manager_->ApplyEffects(impl->main_fbo_texture_);
+		}
 
 		glBindFramebuffer(GL_FRAMEBUFFER, 0);
 		glDisable(GL_DEPTH_TEST);
@@ -1101,8 +1120,14 @@ namespace Boidsish {
 		case VisualEffect::BLACK_AND_WHITE:
 			impl->black_and_white_effect = !impl->black_and_white_effect;
 			break;
+		case VisualEffect::NEGATIVE:
+			impl->negative_effect = !impl->negative_effect;
+			break;
 		case VisualEffect::SHIMMERY:
 			impl->shimmery_effect = !impl->shimmery_effect;
+			break;
+		case VisualEffect::GLITCHED:
+			impl->glitched_effect = !impl->glitched_effect;
 			break;
 		case VisualEffect::WIREFRAME:
 			impl->wireframe_effect = !impl->wireframe_effect;
