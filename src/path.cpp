@@ -141,89 +141,100 @@ namespace Boidsish {
 			return {Vector3(0, 0, 0), glm::quat(), 1, 0, 0.0f};
 		}
 
-		int num_segments = waypoints_.size() - 1;
+		int   num_segments = waypoints_.size() - 1;
 		float arrival_radius_sq = 0.05f * 0.05f;
+		float distance_to_travel = path_speed * delta_time;
 
-		// Determine the control points for the current segment
-		const auto& w1 = waypoints_[current_segment_index];
-		const auto& w2 = waypoints_[current_segment_index + 1];
-		Vector3     p0, p1, p2, p3;
-		p1 = w1.position;
-		p2 = w2.position;
-
-		if (current_segment_index > 0) {
-			p0 = waypoints_[current_segment_index - 1].position;
-		} else if (mode_ == PathMode::LOOP) {
-			p0 = waypoints_.back().position;
-		} else {
-			p0 = w1.position - (w2.position - w1.position);
-		}
-
-		if (current_segment_index < num_segments - 1) {
-			p3 = waypoints_[current_segment_index + 2].position;
-		} else if (mode_ == PathMode::LOOP) {
-			p3 = waypoints_.front().position;
-		} else {
-			p3 = w2.position + (w2.position - w1.position);
-		}
-
-		// Estimate segment length (arc length) by sampling
-		float   segment_length = 0;
-		Vector3 prev_point = Spline::CatmullRom(0, p0, p1, p2, p3);
-		for (int i = 1; i <= 10; ++i) {
-			float   t = (float)i / 10.0f;
-			Vector3 curr_point = Spline::CatmullRom(t, p0, p1, p2, p3);
-			segment_length += (curr_point - prev_point).Magnitude();
-			prev_point = curr_point;
-		}
-
-		// Calculate how far to advance `t` based on speed and segment length
-		float t_advance = 0.0f;
-		if (segment_length > 0.001f) {
-			t_advance = (path_speed * delta_time) / segment_length;
-		}
-
-		float new_t = current_t + (t_advance * current_direction);
 		int   new_segment_index = current_segment_index;
+		float new_t = current_t;
 		int   new_direction = current_direction;
 
-		// Move to the next/previous segment if needed
-		if (new_t > 1.0f) {
-			new_t -= 1.0f;
-			new_segment_index++;
-		} else if (new_t < 0.0f) {
-			new_t += 1.0f;
-			new_segment_index--;
+		// Iteratively move along the path until the frame's travel distance is used up
+		while (distance_to_travel > 1e-6) {
+			// Determine the control points for the current segment
+			const auto& w1 = waypoints_[new_segment_index];
+			const auto& w2 = waypoints_[new_segment_index + 1];
+			Vector3     p0, p1, p2, p3;
+			p1 = w1.position;
+			p2 = w2.position;
+
+			if (new_segment_index > 0) {
+				p0 = waypoints_[new_segment_index - 1].position;
+			} else if (mode_ == PathMode::LOOP) {
+				p0 = waypoints_.back().position;
+			} else {
+				p0 = w1.position - (w2.position - w1.position);
+			}
+
+			if (new_segment_index < num_segments - 1) {
+				p3 = waypoints_[new_segment_index + 2].position;
+			} else if (mode_ == PathMode::LOOP) {
+				p3 = waypoints_.front().position;
+			} else {
+				p3 = w2.position + (w2.position - w1.position);
+			}
+
+			// Estimate segment length
+			float   segment_length = 0;
+			Vector3 prev_point = Spline::CatmullRom(0, p0, p1, p2, p3);
+			for (int i = 1; i <= 10; ++i) {
+				float   t = (float)i / 10.0f;
+				Vector3 curr_point = Spline::CatmullRom(t, p0, p1, p2, p3);
+				segment_length += (curr_point - prev_point).Magnitude();
+				prev_point = curr_point;
+			}
+			if (segment_length < 1e-6) {
+				break; // Avoid division by zero on zero-length segments
+			}
+
+			float distance_remaining_on_segment = (new_direction > 0) ? (1.0f - new_t) * segment_length
+																		: new_t * segment_length;
+
+			if (distance_to_travel <= distance_remaining_on_segment) {
+				// Staying on the current segment
+				float t_advance = distance_to_travel / segment_length;
+				new_t += t_advance * new_direction;
+				distance_to_travel = 0.0f; // All distance used
+			} else {
+				// Moving to the next segment
+				distance_to_travel -= distance_remaining_on_segment;
+
+				// Advance segment index
+				new_segment_index += new_direction;
+				if (new_segment_index >= num_segments) {
+					if (mode_ == PathMode::LOOP) {
+						new_segment_index = 0;
+					} else if (mode_ == PathMode::REVERSE) {
+						new_direction = -1;
+						new_segment_index = num_segments - 1;
+						new_t = 1.0f;
+					} else { // ONCE
+						new_segment_index = num_segments - 1;
+						new_t = 1.0f;
+						distance_to_travel = 0; // Stop at the end
+					}
+				} else if (new_segment_index < 0) {
+					if (mode_ == PathMode::LOOP) {
+						new_segment_index = num_segments - 1;
+					} else if (mode_ == PathMode::REVERSE) {
+						new_direction = 1;
+						new_segment_index = 0;
+						new_t = 0.0f;
+					} else { // ONCE
+						new_segment_index = 0;
+						new_t = 0.0f;
+						distance_to_travel = 0; // Stop at the start
+					}
+				}
+				new_t = (new_direction > 0) ? 0.0f : 1.0f;
+			}
 		}
 
-		// Handle path boundaries
-		if (new_segment_index >= num_segments) {
-			if (mode_ == PathMode::LOOP) {
-				new_segment_index = 0;
-			} else if (mode_ == PathMode::REVERSE) {
-				new_direction = -1;
-				new_segment_index = num_segments - 1;
-				new_t = 1.0f;
-			} else { // ONCE
-				new_segment_index = num_segments - 1;
-				new_t = 1.0f;
-			}
-		} else if (new_segment_index < 0) {
-			if (mode_ == PathMode::LOOP) {
-				new_segment_index = num_segments - 1;
-			} else if (mode_ == PathMode::REVERSE) {
-				new_direction = 1;
-				new_segment_index = 0;
-				new_t = 0.0f;
-			} else { // ONCE
-				new_segment_index = 0;
-				new_t = 0.0f;
-			}
-		}
 
-		// Recalculate control points for the (potentially new) segment
+		// Recalculate control points for the final segment
 		const auto& next_w1 = waypoints_[new_segment_index];
 		const auto& next_w2 = waypoints_[new_segment_index + 1];
+		Vector3 p0, p1, p2, p3;
 		p1 = next_w1.position;
 		p2 = next_w2.position;
 
