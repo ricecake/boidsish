@@ -31,6 +31,7 @@ namespace Boidsish {
 	constexpr int kBlurPasses = 4;
 
 	struct Visualizer::VisualizerImpl {
+		Visualizer*                           parent;
 		GLFWwindow*                           window;
 		int                                          width, height;
 		Camera                                       camera;
@@ -68,13 +69,12 @@ namespace Boidsish {
 		float                                          ripple_strength = 0.0f;
 		std::chrono::high_resolution_clock::time_point last_frame;
 
-		bool  auto_camera_mode = true;
+		CameraMode camera_mode = CameraMode::AUTO;
 		float auto_camera_time = 0.0f;
 		float auto_camera_angle = 0.0f;
 		float auto_camera_height_offset = 0.0f;
 		float auto_camera_distance = 10.0f;
 
-		bool  single_track_mode = false;
 		int   tracked_dot_index = 0;
 		float single_track_orbit_yaw = 0.0f;
 		float single_track_orbit_pitch = 20.0f;
@@ -91,7 +91,8 @@ namespace Boidsish {
 
 		task_thread_pool::task_thread_pool thread_pool;
 
-		VisualizerImpl(int w, int h, const char* title): width(w), height(h), config("boidsish.ini") {
+		VisualizerImpl(Visualizer* p, int w, int h, const char* title):
+			parent(p), width(w), height(h), config("boidsish.ini") {
 			config.Load();
 			width = config.GetInt("window_width", w);
 			height = config.GetInt("window_height", h);
@@ -499,7 +500,7 @@ namespace Boidsish {
 
 		void DefaultInputHandler(const InputState& state) {
 			// Camera movement
-			if (!auto_camera_mode && !single_track_mode) {
+			if (camera_mode == CameraMode::FREE) {
 				float     camera_speed_val = camera.speed * state.delta_time;
 				glm::vec3 front(
 					cos(glm::radians(camera.pitch)) * sin(glm::radians(camera.yaw)),
@@ -551,7 +552,7 @@ namespace Boidsish {
 			}
 
 			// Single track camera orbit
-			if (single_track_mode) {
+			if (camera_mode == CameraMode::TRACKING) {
 				float sensitivity = 0.1f;
 				float xoffset = state.mouse_delta_x * sensitivity;
 				float yoffset = state.mouse_delta_y * sensitivity;
@@ -567,24 +568,17 @@ namespace Boidsish {
 
 			// Camera mode switching
 			if (state.key_down[GLFW_KEY_0]) {
-				auto_camera_mode = !auto_camera_mode;
-				single_track_mode = false;
-				glfwSetInputMode(window, GLFW_CURSOR, auto_camera_mode ? GLFW_CURSOR_NORMAL : GLFW_CURSOR_DISABLED);
-				if (!auto_camera_mode)
-					first_mouse = true;
+				parent->SetCameraMode(CameraMode::FREE);
 			} else if (state.key_down[GLFW_KEY_9]) {
-				if (single_track_mode) {
+				if (camera_mode == CameraMode::TRACKING) {
 					tracked_dot_index++;
 				} else {
-					auto_camera_mode = false;
-					single_track_mode = true;
-					glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
-					first_mouse = true;
+					parent->SetCameraMode(CameraMode::TRACKING);
 				}
 			} else if (state.key_down[GLFW_KEY_8]) {
-				auto_camera_mode = true;
-				single_track_mode = false;
-				glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
+				parent->SetCameraMode(CameraMode::AUTO);
+			} else if (state.key_down[GLFW_KEY_7]) {
+				parent->SetCameraMode(CameraMode::STATIONARY);
 			}
 
 			// Single track camera zoom
@@ -649,7 +643,7 @@ namespace Boidsish {
 		}
 
 		void UpdateAutoCamera(float delta_time, const std::vector<std::shared_ptr<Shape>>& shapes) {
-			if (!auto_camera_mode || shapes.empty()) {
+			if (camera_mode != CameraMode::AUTO || shapes.empty()) {
 				return;
 			}
 
@@ -717,7 +711,7 @@ namespace Boidsish {
 		}
 
 		void UpdateSingleTrackCamera(float delta_time, const std::vector<std::shared_ptr<Shape>>& shapes) {
-			if (!single_track_mode || shapes.empty()) {
+			if (camera_mode != CameraMode::TRACKING || shapes.empty()) {
 				return;
 			}
 			if (tracked_dot_index >= static_cast<int>(shapes.size())) {
@@ -806,7 +800,7 @@ namespace Boidsish {
 		}
 	};
 
-	Visualizer::Visualizer(int w, int h, const char* t): impl(new VisualizerImpl(w, h, t)) {}
+	Visualizer::Visualizer(int w, int h, const char* t): impl(new VisualizerImpl(this, w, h, t)) {}
 
 	Visualizer::~Visualizer() = default;
 
@@ -862,9 +856,9 @@ namespace Boidsish {
 		Frustum   frustum = impl->CalculateFrustum(view_matrix, impl->projection);
 		impl->terrain_generator->update(frustum, impl->camera);
 
-		if (impl->single_track_mode) {
+		if (impl->camera_mode == CameraMode::TRACKING) {
 			impl->UpdateSingleTrackCamera(impl->input_state.delta_time, impl->shapes);
-		} else {
+		} else if (impl->camera_mode == CameraMode::AUTO) {
 			impl->UpdateAutoCamera(impl->input_state.delta_time, impl->shapes);
 		}
 
@@ -975,23 +969,21 @@ namespace Boidsish {
 	}
 
 	void Visualizer::SetCameraMode(CameraMode mode) {
+		impl->camera_mode = mode;
 		switch (mode) {
 		case CameraMode::FREE:
-			impl->auto_camera_mode = false;
-			impl->single_track_mode = false;
 			glfwSetInputMode(impl->window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
 			impl->first_mouse = true;
 			break;
 		case CameraMode::AUTO:
-			impl->auto_camera_mode = true;
-			impl->single_track_mode = false;
 			glfwSetInputMode(impl->window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
 			break;
 		case CameraMode::TRACKING:
-			impl->auto_camera_mode = false;
-			impl->single_track_mode = true;
 			glfwSetInputMode(impl->window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
 			impl->first_mouse = true;
+			break;
+		case CameraMode::STATIONARY:
+			glfwSetInputMode(impl->window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
 			break;
 		}
 	}

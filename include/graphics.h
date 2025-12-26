@@ -47,7 +47,7 @@ namespace Boidsish {
 		float  delta_time;
 	};
 
-	enum class CameraMode { FREE, AUTO, TRACKING };
+	enum class CameraMode { FREE, AUTO, TRACKING, STATIONARY };
 
 	using InputCallback = std::function<void(const InputState&)>;
 
