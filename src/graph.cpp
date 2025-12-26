@@ -28,7 +28,7 @@ namespace Boidsish {
 	const int   CURVE_SEGMENTS = 10;
 
 	void Graph::SetupBuffers() const {
-		if (buffers_initialized_ || edges.empty())
+		if (edges.empty())
 			return;
 
 		std::vector<Spline::VertexData> all_vertices_data;
@@ -152,9 +152,9 @@ namespace Boidsish {
 
 		edge_vertex_count_ = all_vertices_data.size();
 
-		glGenVertexArrays(1, &graph_vao_);
+		if (graph_vao_ == 0) glGenVertexArrays(1, &graph_vao_);
 		glBindVertexArray(graph_vao_);
-		glGenBuffers(1, &graph_vbo_);
+		if (graph_vbo_ == 0) glGenBuffers(1, &graph_vbo_);
 		glBindBuffer(GL_ARRAY_BUFFER, graph_vbo_);
 		glBufferData(
 			GL_ARRAY_BUFFER,
@@ -193,9 +193,25 @@ namespace Boidsish {
 
 		glBindVertexArray(0);
 		buffers_initialized_ = true;
+        cached_vertex_positions_.clear();
+        cached_vertex_positions_.reserve(vertices.size());
+        for (const auto& v : vertices) {
+            cached_vertex_positions_.push_back(v.position);
+        }
 	}
 
 	void Graph::render() const {
+        if (cached_vertex_positions_.size() != vertices.size()) {
+            buffers_initialized_ = false;
+        } else {
+            for (size_t i = 0; i < vertices.size(); ++i) {
+                if ((vertices[i].position - cached_vertex_positions_[i]).MagnitudeSquared() > 1e-9) {
+                    buffers_initialized_ = false;
+                    break;
+                }
+            }
+        }
+
 		if (!buffers_initialized_) {
 			SetupBuffers();
 		}

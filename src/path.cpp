@@ -85,11 +85,27 @@ namespace Boidsish {
 
 		glBindVertexArray(0);
 		buffers_initialized_ = true;
-	}
+	    cached_waypoint_positions_.clear();
+    cached_waypoint_positions_.reserve(waypoints_.size());
+    for (const auto& w : waypoints_) {
+        cached_waypoint_positions_.push_back(w.position);
+    }
+}
 
 	void Path::render() const {
 		if (!visible_)
 			return;
+
+    if (cached_waypoint_positions_.size() != waypoints_.size()) {
+        buffers_initialized_ = false;
+    } else {
+        for (size_t i = 0; i < waypoints_.size(); ++i) {
+            if ((waypoints_[i].position - cached_waypoint_positions_[i]).MagnitudeSquared() > 1e-9) {
+                buffers_initialized_ = false;
+                break;
+            }
+        }
+    }
 
 		if (!buffers_initialized_) {
 			SetupBuffers();
