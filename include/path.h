@@ -55,6 +55,7 @@ namespace Boidsish {
 			int              current_segment_index,
 			float            current_t,
 			int              current_direction,
+			float            path_speed,
 			float            delta_time
 		) const;
 

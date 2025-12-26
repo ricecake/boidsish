@@ -32,6 +32,7 @@ namespace Boidsish {
 					entity->path_segment_index_,
 					entity->path_t_,
 					entity->path_direction_,
+					entity->path_speed_,
 					delta_time
 				);
 				entity->SetVelocity(update.velocity * entity->path_speed_);

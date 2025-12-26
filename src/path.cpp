@@ -134,101 +134,140 @@ namespace Boidsish {
 		int              current_segment_index,
 		float            current_t,
 		int              current_direction,
+		float            path_speed,
 		float            delta_time
 	) const {
 		if (waypoints_.size() < 2) {
 			return {Vector3(0, 0, 0), glm::quat(), 1, 0, 0.0f};
 		}
 
-		int   num_segments = waypoints_.size() - 1;
-		float lookahead_dist = 0.1f;
-		float arrival_radius = 0.05f;
+		int num_segments = waypoints_.size() - 1;
+		float arrival_radius_sq = 0.05f * 0.05f;
 
-		// Move t ahead
-		float lookahead_t = current_t + (lookahead_dist * current_direction);
-		int   lookahead_segment = current_segment_index;
-		int   new_direction = current_direction;
-
-		// Move to next/prev segment if needed
-		if (lookahead_t > 1.0f) {
-			lookahead_t -= 1.0f;
-			lookahead_segment++;
-		} else if (lookahead_t < 0.0f) {
-			lookahead_t += 1.0f;
-			lookahead_segment--;
-		}
-
-		// Handle path boundaries
-		if (lookahead_segment >= num_segments) {
-			if (mode_ == PathMode::LOOP) {
-				lookahead_segment = 0;
-			} else if (mode_ == PathMode::REVERSE) {
-				new_direction = -1;
-				lookahead_segment = num_segments - 1;
-				lookahead_t = 1.0f;
-			} else { // ONCE
-				lookahead_segment = num_segments - 1;
-				lookahead_t = 1.0f;
-
-				// Arrival logic
-				if ((waypoints_.back().position - current_position).MagnitudeSquared() < arrival_radius * arrival_radius) {
-					return {
-						Vector3(0, 0, 0),
-						current_orientation,
-						current_direction,
-						lookahead_segment,
-						lookahead_t
-					};
-				}
-			}
-		} else if (lookahead_segment < 0) {
-			if (mode_ == PathMode::LOOP) {
-				lookahead_segment = num_segments - 1;
-			} else if (mode_ == PathMode::REVERSE) {
-				new_direction = 1;
-				lookahead_segment = 0;
-				lookahead_t = 0.0f;
-			} else { // ONCE
-				lookahead_segment = 0;
-				lookahead_t = 0.0f;
-			}
-		}
-
-		// Now, calculate the target position
-		const auto& w1 = waypoints_[lookahead_segment];
-		const auto& w2 = waypoints_[lookahead_segment + 1];
-
-		Vector3 p0, p1, p2, p3;
+		// Determine the control points for the current segment
+		const auto& w1 = waypoints_[current_segment_index];
+		const auto& w2 = waypoints_[current_segment_index + 1];
+		Vector3     p0, p1, p2, p3;
 		p1 = w1.position;
 		p2 = w2.position;
 
-		if (lookahead_segment > 0) {
-			p0 = waypoints_[lookahead_segment - 1].position;
+		if (current_segment_index > 0) {
+			p0 = waypoints_[current_segment_index - 1].position;
 		} else if (mode_ == PathMode::LOOP) {
 			p0 = waypoints_.back().position;
 		} else {
 			p0 = w1.position - (w2.position - w1.position);
 		}
 
-		if (lookahead_segment < (int)waypoints_.size() - 2) {
-			p3 = waypoints_[lookahead_segment + 2].position;
+		if (current_segment_index < num_segments - 1) {
+			p3 = waypoints_[current_segment_index + 2].position;
 		} else if (mode_ == PathMode::LOOP) {
 			p3 = waypoints_.front().position;
 		} else {
 			p3 = w2.position + (w2.position - w1.position);
 		}
 
-		Vector3 target_position = Spline::CatmullRom(lookahead_t, p0, p1, p2, p3);
+		// Estimate segment length (arc length) by sampling
+		float   segment_length = 0;
+		Vector3 prev_point = Spline::CatmullRom(0, p0, p1, p2, p3);
+		for (int i = 1; i <= 10; ++i) {
+			float   t = (float)i / 10.0f;
+			Vector3 curr_point = Spline::CatmullRom(t, p0, p1, p2, p3);
+			segment_length += (curr_point - prev_point).Magnitude();
+			prev_point = curr_point;
+		}
+
+		// Calculate how far to advance `t` based on speed and segment length
+		float t_advance = 0.0f;
+		if (segment_length > 0.001f) {
+			t_advance = (path_speed * delta_time) / segment_length;
+		}
+
+		float new_t = current_t + (t_advance * current_direction);
+		int   new_segment_index = current_segment_index;
+		int   new_direction = current_direction;
+
+		// Move to the next/previous segment if needed
+		if (new_t > 1.0f) {
+			new_t -= 1.0f;
+			new_segment_index++;
+		} else if (new_t < 0.0f) {
+			new_t += 1.0f;
+			new_segment_index--;
+		}
+
+		// Handle path boundaries
+		if (new_segment_index >= num_segments) {
+			if (mode_ == PathMode::LOOP) {
+				new_segment_index = 0;
+			} else if (mode_ == PathMode::REVERSE) {
+				new_direction = -1;
+				new_segment_index = num_segments - 1;
+				new_t = 1.0f;
+			} else { // ONCE
+				new_segment_index = num_segments - 1;
+				new_t = 1.0f;
+			}
+		} else if (new_segment_index < 0) {
+			if (mode_ == PathMode::LOOP) {
+				new_segment_index = num_segments - 1;
+			} else if (mode_ == PathMode::REVERSE) {
+				new_direction = 1;
+				new_segment_index = 0;
+				new_t = 0.0f;
+			} else { // ONCE
+				new_segment_index = 0;
+				new_t = 0.0f;
+			}
+		}
+
+		// Recalculate control points for the (potentially new) segment
+		const auto& next_w1 = waypoints_[new_segment_index];
+		const auto& next_w2 = waypoints_[new_segment_index + 1];
+		p1 = next_w1.position;
+		p2 = next_w2.position;
+
+		if (new_segment_index > 0) {
+			p0 = waypoints_[new_segment_index - 1].position;
+		} else if (mode_ == PathMode::LOOP) {
+			p0 = waypoints_.back().position;
+		} else {
+			p0 = p1 - (p2 - p1);
+		}
+
+		if (new_segment_index < num_segments - 1) {
+			p3 = waypoints_[new_segment_index + 2].position;
+		} else if (mode_ == PathMode::LOOP) {
+			p3 = waypoints_.front().position;
+		} else {
+			p3 = p2 + (p2 - p1);
+		}
+
+		// Calculate the new target position and desired velocity
+		Vector3 target_position = Spline::CatmullRom(new_t, p0, p1, p2, p3);
 		Vector3 desired_velocity = (target_position - current_position).Normalized();
+
+		// Arrival logic for ONCE mode
+		if (mode_ == PathMode::ONCE && new_segment_index == num_segments - 1 && new_t >= 1.0f) {
+			if ((waypoints_.back().position - current_position).MagnitudeSquared() < arrival_radius_sq) {
+				desired_velocity.Set(0, 0, 0); // Stop the entity
+			} else {
+				// Ensure final approach is exactly to the last waypoint
+				desired_velocity = (waypoints_.back().position - current_position).Normalized();
+			}
+		}
 
 		// Calculate orientation
 		Vector3 tangent =
-			(Spline::CatmullRom(lookahead_t + 0.01f * new_direction, p0, p1, p2, p3) - target_position)
+			(Spline::CatmullRom(new_t + 0.01f * new_direction, p0, p1, p2, p3) - target_position)
 				.Normalized();
-		Vector3 up = w1.up * (1.0f - lookahead_t) + w2.up * lookahead_t;
+		Vector3 up = next_w1.up * (1.0f - new_t) + next_w2.up * new_t;
 		Vector3 right = tangent.Cross(up);
 		if (right.MagnitudeSquared() < 1e-6) {
-			right = Vector3(1, 0, 0);
+			right = tangent.Cross(Vector3(0, 1, 0)).Normalized(); // Fallback up vector
+			if (right.MagnitudeSquared() < 1e-6) {
+				right = Vector3(1, 0, 0);
+			}
 		}
 		right.Normalize();
 		up = right.Cross(tangent).Normalized();
@@ -244,8 +283,9 @@ namespace Boidsish {
 			desired_velocity,
 			desired_orientation,
 			new_direction,
-			lookahead_segment,
-			lookahead_t,
+			new_segment_index,
+			new_t,
 		};
 	}
+
 } // namespace Boidsish
