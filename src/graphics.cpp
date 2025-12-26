@@ -913,6 +913,17 @@ namespace Boidsish {
 			if (impl->effects_enabled_ && impl->post_processing_manager_) {
 				impl->post_processing_manager_->Resize(width, height);
 			}
+
+			// --- Resize main scene framebuffer ---
+			glBindTexture(GL_TEXTURE_2D, impl->main_fbo_texture_);
+			glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, width, height, 0, GL_RGB, GL_UNSIGNED_BYTE, NULL);
+			glBindRenderbuffer(GL_RENDERBUFFER, impl->main_fbo_rbo_);
+			glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH24_STENCIL8, width, height);
+
+			// --- Resize post-processing manager ---
+			if (impl->post_processing_manager_) {
+				impl->post_processing_manager_->Resize(width, height);
+			}
 		}
 	};
 
