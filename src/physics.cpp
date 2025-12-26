@@ -34,4 +34,8 @@ void PhysicsHandler::addRigidBody(btRigidBody* body) {
     dynamicsWorld->addRigidBody(body);
 }
 
+void PhysicsHandler::removeRigidBody(btRigidBody* body) {
+    dynamicsWorld->removeRigidBody(body);
+}
+
 } // namespace Boidsish

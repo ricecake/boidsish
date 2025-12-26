@@ -18,6 +18,7 @@ public:
 
     void update(float deltaTime);
     void addRigidBody(btRigidBody* body);
+    void removeRigidBody(btRigidBody* body);
 
 private:
     btBroadphaseInterface* broadphase;
@@ -48,7 +49,12 @@ public:
     }
 
     ~PhysicsEntity() {
-        // TODO: remove rigid body from dynamics world
+        if (rigidBody_) {
+            physicsHandler_.removeRigidBody(rigidBody_);
+            delete rigidBody_->getMotionState();
+            delete rigidBody_->getCollisionShape();
+            delete rigidBody_;
+        }
     }
 
     void update() {
