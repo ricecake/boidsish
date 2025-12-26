@@ -4,6 +4,7 @@
 #include <functional>
 #include <map>
 #include <memory>
+#include <tuple>
 #include <vector>
 
 #include "Config.h"
@@ -90,6 +91,9 @@ namespace Boidsish {
 	};
 
 	// Main visualization class
+	class Terrain;
+
+	// Main visualization class
 	class Visualizer {
 	public:
 		Visualizer(int width = 800, int height = 600, const char* title = "Boidsish 3D Visualizer");
@@ -133,9 +137,9 @@ namespace Boidsish {
 		void TogglePause();
 		void ToggleEffect(VisualEffect effect);
 
-		const auto                          GetTerrainPointProperties(float x, float y);
-		const auto                          GetTerrainChunks();
-		task_thread_pool::task_thread_pool& GetThreadPool();
+		std::tuple<float, glm::vec3> GetTerrainPointProperties(float x, float y) const;
+		const std::vector<std::shared_ptr<Terrain>>& GetTerrainChunks() const;
+		task_thread_pool::task_thread_pool&          GetThreadPool();
 
 		Config& GetConfig();
 
