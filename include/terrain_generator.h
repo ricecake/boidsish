@@ -7,6 +7,7 @@
 
 #include "PerlinNoise.hpp"
 #include "Simplex.h"
+#include "ResourceManager.h"
 
 namespace Boidsish {
 	struct Frustum;
@@ -15,6 +16,7 @@ namespace Boidsish {
 
 #include "terrain.h"
 #include "thread_pool.h"
+#include "shader.h"
 
 namespace Boidsish {
 
@@ -28,10 +30,11 @@ namespace Boidsish {
 
 	class TerrainGenerator {
 	public:
-		TerrainGenerator(int seed = 12345);
+		TerrainGenerator(ResourceManager& resource_manager, int seed = 12345);
 		~TerrainGenerator();
 
 		void                                         update(const Frustum& frustum, const Camera& camera);
+		void                                         Render(const glm::mat4& view, const glm::mat4& projection, const std::optional<glm::vec4>& clip_plane);
 		const std::vector<std::shared_ptr<Terrain>>& getVisibleChunks();
 
 		std::tuple<float, glm::vec3> pointProperties(float x, float z) {
@@ -86,6 +89,7 @@ namespace Boidsish {
 
 		// Cache and async management
 		ThreadPool                                                         thread_pool_;
+		std::shared_ptr<Shader>                                            shader_;
 		std::map<std::pair<int, int>, std::shared_ptr<Terrain>>            chunk_cache_;
 		std::vector<std::shared_ptr<Terrain>>                              visible_chunks_;
 		std::map<std::pair<int, int>, TaskHandle<TerrainGenerationResult>> pending_chunks_;

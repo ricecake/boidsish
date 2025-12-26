@@ -11,6 +11,7 @@
 #include "graphics.h"
 #include "logger.h"
 #include <glm/glm.hpp>
+#include <shader.h>
 #include <glm/gtc/matrix_transform.hpp>
 
 namespace Boidsish {
@@ -33,7 +34,16 @@ namespace Boidsish {
 		return true;
 	}
 
-	TerrainGenerator::TerrainGenerator(int seed): control_perlin_noise_(seed + 1), thread_pool_() {}
+	TerrainGenerator::TerrainGenerator(ResourceManager& resource_manager, int seed):
+		control_perlin_noise_(seed + 1), thread_pool_() {
+		shader_ = std::make_shared<Shader>(
+			"shaders/terrain.vert",
+			"shaders/terrain.frag",
+			"shaders/terrain.tcs",
+			"shaders/terrain.tes"
+		);
+		resource_manager.BindUBOs(*shader_);
+	}
 
 	TerrainGenerator::~TerrainGenerator() {
 		for (auto& pair : pending_chunks_) {
@@ -77,9 +87,9 @@ namespace Boidsish {
 				auto&                   future = const_cast<TaskHandle<TerrainGenerationResult>&>(pair.second);
 				TerrainGenerationResult result = future.get();
 				if (result.has_terrain) {
-					auto terrain_chunk = std::make_shared<Terrain>(result.vertex_data, result.indices);
+					auto terrain_chunk =
+						std::make_shared<Terrain>(result.vertex_data, result.indices, shader_);
 					terrain_chunk->SetPosition(result.chunk_x * chunk_size_, 0, result.chunk_z * chunk_size_);
-					terrain_chunk->setupMesh();
 					chunk_cache_[pair.first] = terrain_chunk;
 				}
 				completed_chunks.push_back(pair.first);
@@ -269,4 +279,23 @@ namespace Boidsish {
 		return {vertexData, indices, chunkX, chunkZ, true};
 	}
 
-} // namespace Boidsish
+}
+
+void TerrainGenerator::Render(const glm::mat4& view, const glm::mat4& projection, const std::optional<glm::vec4>& clip_plane) {
+    if (visible_chunks_.empty()) {
+        return;
+    }
+
+    shader_->use();
+    shader_->setMat4("view", view);
+    shader_->setMat4("projection", projection);
+    if (clip_plane) {
+        shader_->setVec4("clipPlane", *clip_plane);
+    } else {
+        shader_->setVec4("clipPlane", glm::vec4(0, 0, 0, 0));
+    }
+
+    for (const auto& chunk : visible_chunks_) {
+        chunk->render();
+    }
+}

@@ -13,7 +13,7 @@ namespace Boidsish {
 
 		class PostProcessingManager {
 		public:
-			PostProcessingManager(int width, int height, GLuint quad_vao);
+			PostProcessingManager(int width, int height);
 			~PostProcessingManager();
 
 			void   Initialize();
@@ -22,13 +22,15 @@ namespace Boidsish {
 			void   Resize(int width, int height);
 
 			std::vector<std::shared_ptr<IPostProcessingEffect>>& GetEffects() { return effects_; }
+			GLuint GetQuadVao() const { return quad_vao_; }
 
 		private:
 			void InitializeFBOs();
+			void InitializeQuad();
 
 			int                                                 width_, height_;
 			std::vector<std::shared_ptr<IPostProcessingEffect>> effects_;
-			GLuint                                              quad_vao_;
+			GLuint                                              quad_vao_, quad_vbo_;
 
 			GLuint pingpong_fbo_[2];
 			GLuint pingpong_texture_[2];

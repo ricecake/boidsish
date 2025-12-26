@@ -8,15 +8,27 @@
 
 namespace Boidsish {
 
-	std::shared_ptr<Shader> Terrain::terrain_shader_ = nullptr;
-
-	Terrain::Terrain(const std::vector<float>& vertexData, const std::vector<unsigned int>& indices):
-		vertex_data_(vertexData), indices_(indices), vao_(0), vbo_(0), ebo_(0), index_count_(indices.size()) {}
+	Terrain::Terrain(
+		const std::vector<float>&        vertexData,
+		const std::vector<unsigned int>& indices,
+		std::shared_ptr<Shader>          shader
+	):
+		vertex_data_(vertexData),
+		indices_(indices),
+		shader_(shader),
+		vao_(0),
+		vbo_(0),
+		ebo_(0),
+		index_count_(indices.size()) {
+			setupMesh();
+		}
 
 	Terrain::~Terrain() {
-		glDeleteVertexArrays(1, &vao_);
-		glDeleteBuffers(1, &vbo_);
-		glDeleteBuffers(1, &ebo_);
+		if (vao_ != 0) {
+			glDeleteVertexArrays(1, &vao_);
+			glDeleteBuffers(1, &vbo_);
+			glDeleteBuffers(1, &ebo_);
+		}
 	}
 
 	void Terrain::setupMesh() {
@@ -50,11 +62,11 @@ namespace Boidsish {
 	}
 
 	void Terrain::render() const {
-		terrain_shader_->use();
+		shader_->use();
 		// Set uniforms if necessary, e.g., model matrix
 		glm::mat4 model = glm::mat4(1.0f);
 		model = glm::translate(model, glm::vec3(GetX(), GetY(), GetZ()));
-		terrain_shader_->setMat4("model", model);
+		shader_->setMat4("model", model);
 
 		glBindVertexArray(vao_);
 		glPatchParameteri(GL_PATCH_VERTICES, 4);
@@ -62,4 +74,4 @@ namespace Boidsish {
 		glBindVertexArray(0);
 	}
 
-} // namespace Boidsish
+}

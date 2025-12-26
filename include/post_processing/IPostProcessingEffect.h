@@ -25,6 +25,7 @@ namespace Boidsish {
 		protected:
 			std::string name_;
 			bool        is_enabled_ = true;
+			std::unique_ptr<class Shader> shader_;
 		};
 
 	} // namespace PostProcessing
