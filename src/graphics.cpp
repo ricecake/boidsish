@@ -17,6 +17,10 @@
 #include "terrain_generator.h"
 #include "trail.h"
 #include "visual_effects.h"
+#include "post_processing/PostProcessingManager.h"
+#include "ui/PostProcessingWidget.h"
+#include "post_processing/effects/GlitchEffect.h"
+#include "post_processing/effects/NegativeEffect.h"
 #include <GL/glew.h>
 #include <GLFW/glfw3.h>
 #include <glm/glm.hpp>
@@ -42,6 +46,7 @@ namespace Boidsish {
 		InputState                     input_state{};
 		InputCallback                  input_callback;
 		std::unique_ptr<UI::UIManager> ui_manager;
+		std::unique_ptr<PostProcessing::PostProcessingManager> post_processing_manager_;
 		int                            exit_key;
 
 		Config config;
@@ -53,9 +58,11 @@ namespace Boidsish {
 		std::unique_ptr<Shader> sky_shader;
 		std::unique_ptr<Shader> trail_shader;
 		std::unique_ptr<Shader> blur_shader;
+		std::unique_ptr<Shader> postprocess_shader_;
 		GLuint                  plane_vao, plane_vbo, sky_vao, blur_quad_vao, blur_quad_vbo;
 		GLuint                  reflection_fbo, reflection_texture, reflection_depth_rbo;
 		GLuint                  pingpong_fbo[2], pingpong_texture[2];
+		GLuint                  main_fbo_, main_fbo_texture_, main_fbo_rbo_;
 		GLuint                  lighting_ubo;
 		GLuint                  visual_effects_ubo;
 		glm::mat4               projection, reflection_vp;
@@ -81,6 +88,9 @@ namespace Boidsish {
 		float single_track_distance = 15.0f;
 
 		bool color_shift_effect = false;
+
+		bool is_fullscreen_ = false;
+		int windowed_xpos_, windowed_ypos_, windowed_width_, windowed_height_;
 
 		// Artistic effects
 		bool black_and_white_effect = false;
@@ -146,6 +156,7 @@ namespace Boidsish {
 			sky_shader = std::make_unique<Shader>("shaders/sky.vert", "shaders/sky.frag");
 			trail_shader = std::make_unique<Shader>("shaders/trail.vert", "shaders/trail.frag");
 			blur_shader = std::make_unique<Shader>("shaders/blur.vert", "shaders/blur.frag");
+			postprocess_shader_ = std::make_unique<Shader>("shaders/postprocess.vert", "shaders/postprocess.frag");
 			terrain_generator = std::make_unique<TerrainGenerator>();
 
 			glGenBuffers(1, &lighting_ubo);
@@ -266,6 +277,44 @@ namespace Boidsish {
 					std::cerr << "ERROR::FRAMEBUFFER:: Ping-pong Framebuffer is not complete!" << std::endl;
 			}
 			glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+			// --- Main Scene Framebuffer ---
+			glGenFramebuffers(1, &main_fbo_);
+			glBindFramebuffer(GL_FRAMEBUFFER, main_fbo_);
+
+			// Color attachment
+			glGenTextures(1, &main_fbo_texture_);
+			glBindTexture(GL_TEXTURE_2D, main_fbo_texture_);
+			glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, width, height, 0, GL_RGB, GL_UNSIGNED_BYTE, NULL);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+			glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, main_fbo_texture_, 0);
+
+			// Depth and stencil renderbuffer
+			glGenRenderbuffers(1, &main_fbo_rbo_);
+			glBindRenderbuffer(GL_RENDERBUFFER, main_fbo_rbo_);
+			glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH24_STENCIL8, width, height);
+			glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_RENDERBUFFER, main_fbo_rbo_);
+
+			if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
+				std::cerr << "ERROR::FRAMEBUFFER:: Main framebuffer is not complete!" << std::endl;
+			glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+			// --- Post Processing Manager ---
+			post_processing_manager_ = std::make_unique<PostProcessing::PostProcessingManager>(width, height, blur_quad_vao);
+			post_processing_manager_->Initialize();
+
+			auto negative_effect = std::make_shared<PostProcessing::NegativeEffect>();
+			negative_effect->SetEnabled(false);
+			post_processing_manager_->AddEffect(negative_effect);
+
+			auto glitch_effect = std::make_shared<PostProcessing::GlitchEffect>();
+			glitch_effect->SetEnabled(false);
+			post_processing_manager_->AddEffect(glitch_effect);
+
+			// --- UI ---
+			auto post_processing_widget = std::make_shared<UI::PostProcessingWidget>(*post_processing_manager_);
+			ui_manager->AddWidget(post_processing_widget);
 		}
 		void SetupShaderBindings(Shader& shader_to_setup) {
 			shader_to_setup.use();
@@ -624,6 +673,27 @@ namespace Boidsish {
 				glitched_effect = !glitched_effect;
 			if (state.key_down[GLFW_KEY_5])
 				wireframe_effect = !wireframe_effect;
+
+			if (state.key_down[GLFW_KEY_F11]) {
+				ToggleFullscreen();
+			}
+		}
+
+		void ToggleFullscreen() {
+			is_fullscreen_ = !is_fullscreen_;
+			if (is_fullscreen_) {
+				// Save windowed mode size and position
+				glfwGetWindowPos(window, &windowed_xpos_, &windowed_ypos_);
+				glfwGetWindowSize(window, &windowed_width_, &windowed_height_);
+
+				// Switch to fullscreen
+				GLFWmonitor* monitor = glfwGetPrimaryMonitor();
+				const GLFWvidmode* mode = glfwGetVideoMode(monitor);
+				glfwSetWindowMonitor(window, monitor, 0, 0, mode->width, mode->height, mode->refreshRate);
+			} else {
+				// Restore windowed mode
+				glfwSetWindowMonitor(window, nullptr, windowed_xpos_, windowed_ypos_, windowed_width_, windowed_height_, 0);
+			}
 		}
 
 		void CleanupOldTrails(float current_time, const std::vector<std::shared_ptr<Shape>>& active_shapes) {
@@ -803,6 +873,17 @@ namespace Boidsish {
 				glBindTexture(GL_TEXTURE_2D, impl->pingpong_texture[i]);
 				glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB16F, width, height, 0, GL_RGB, GL_FLOAT, NULL);
 			}
+
+			// --- Resize main scene framebuffer ---
+			glBindTexture(GL_TEXTURE_2D, impl->main_fbo_texture_);
+			glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, width, height, 0, GL_RGB, GL_UNSIGNED_BYTE, NULL);
+			glBindRenderbuffer(GL_RENDERBUFFER, impl->main_fbo_rbo_);
+			glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH24_STENCIL8, width, height);
+
+			// --- Resize post-processing manager ---
+			if (impl->post_processing_manager_) {
+				impl->post_processing_manager_->Resize(width, height);
+			}
 		}
 	};
 
@@ -848,8 +929,11 @@ namespace Boidsish {
 	}
 
 	void Visualizer::Render() {
-		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+		// --- 1. RENDER SCENE TO FBO ---
+		// Note: The reflection and blur passes are pre-passes that generate textures for the main scene.
+		// They have their own FBOs. The main scene pass below is what we want to capture.
 
+		// Shape generation and updates (must happen before any rendering)
 		impl->shapes.clear();
 		if (!impl->shape_functions.empty()) {
 			for (const auto& func : impl->shape_functions) {
@@ -868,6 +952,7 @@ namespace Boidsish {
 			impl->UpdateAutoCamera(impl->input_state.delta_time, impl->shapes);
 		}
 
+		// UBO Updates
 		VisualEffectsUbo ubo_data = {};
 		for (const auto& shape : impl->shapes) {
 			for (const auto& effect : shape->GetActiveEffects()) {
@@ -878,70 +963,94 @@ namespace Boidsish {
 				}
 			}
 		}
-
 		ubo_data.black_and_white_enabled = impl->black_and_white_effect;
 		ubo_data.negative_enabled = impl->negative_effect;
 		ubo_data.shimmery_enabled = impl->shimmery_effect;
 		ubo_data.glitched_enabled = impl->glitched_effect;
 		ubo_data.wireframe_enabled = impl->wireframe_effect;
-
 		glBindBuffer(GL_UNIFORM_BUFFER, impl->visual_effects_ubo);
 		glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(VisualEffectsUbo), &ubo_data);
 		glBindBuffer(GL_UNIFORM_BUFFER, 0);
 
-		// --- Update Lighting UBO ---
 		float     light_x = 50.0f * cos(impl->simulation_time * 0.05f);
 		float     light_y = 25.0f + 1.8 * abs(sin(impl->simulation_time * 0.01));
 		float     light_z = 50.0f * sin(impl->simulation_time * 0.05f);
 		glm::vec3 lightPos(light_x, light_y, light_z);
-
 		glBindBuffer(GL_UNIFORM_BUFFER, impl->lighting_ubo);
 		glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(glm::vec3), &lightPos[0]);
 		glBufferSubData(
-			GL_UNIFORM_BUFFER,
-			16,
-			sizeof(glm::vec3),
-			&glm::vec3(impl->camera.x, impl->camera.y, impl->camera.z)[0]
+			GL_UNIFORM_BUFFER, 16, sizeof(glm::vec3), &glm::vec3(impl->camera.x, impl->camera.y, impl->camera.z)[0]
 		);
 		glBufferSubData(GL_UNIFORM_BUFFER, 32, sizeof(glm::vec3), &glm::vec3(1.0f, 1.0f, 1.0f)[0]);
 		glBufferSubData(GL_UNIFORM_BUFFER, 44, sizeof(float), &impl->simulation_time);
 		glBindBuffer(GL_UNIFORM_BUFFER, 0);
 
-		// --- Reflection Pass ---
+		// --- Reflection Pre-Pass ---
 		glEnable(GL_CLIP_DISTANCE0);
 		{
 			glBindFramebuffer(GL_FRAMEBUFFER, impl->reflection_fbo);
 			glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-
-			Camera reflection_cam = impl->camera;
+			Camera    reflection_cam = impl->camera;
 			reflection_cam.y = -reflection_cam.y;
 			reflection_cam.pitch = -reflection_cam.pitch;
-
 			glm::mat4 reflection_view = impl->SetupMatrices(reflection_cam);
 			impl->reflection_vp = impl->projection * reflection_view;
-
 			impl->RenderSky(reflection_view);
 			impl->RenderSceneObjects(
-				reflection_view,
-				reflection_cam,
-				impl->shapes,
-				impl->simulation_time,
-				glm::vec4(0, 1, 0, 0.01)
+				reflection_view, reflection_cam, impl->shapes, impl->simulation_time, glm::vec4(0, 1, 0, 0.01)
 			);
 			impl->RenderTerrain(reflection_view, glm::vec4(0, 1, 0, 0.01));
-			glBindFramebuffer(GL_FRAMEBUFFER, 0);
 		}
 		glDisable(GL_CLIP_DISTANCE0);
 
+		// --- Blur Pre-Pass ---
 		impl->RenderBlur(kBlurPasses);
 
-		// --- Main Pass ---
+		// --- Main Scene Pass (renders to our FBO) ---
+		glBindFramebuffer(GL_FRAMEBUFFER, impl->main_fbo_);
+		glEnable(GL_DEPTH_TEST);
+		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
 		glm::mat4 view = impl->SetupMatrices();
 		impl->RenderSky(view);
 		impl->RenderPlane(view);
 		impl->RenderSceneObjects(view, impl->camera, impl->shapes, impl->simulation_time, std::nullopt);
 		impl->RenderTerrain(view, std::nullopt);
 
+		// --- Post-processing Pass (renders FBO texture to screen) ---
+		// Update time-dependent effects
+		for(auto& effect : impl->post_processing_manager_->GetEffects()){
+			if(auto glitch_effect = std::dynamic_pointer_cast<PostProcessing::GlitchEffect>(effect)){
+				glitch_effect->SetTime(impl->simulation_time);
+			}
+		}
+
+		bool any_effect_enabled = false;
+		for(const auto& effect : impl->post_processing_manager_->GetEffects()){
+			if(effect->IsEnabled()){
+				any_effect_enabled = true;
+				break;
+			}
+		}
+
+		GLuint final_texture = impl->main_fbo_texture_;
+		if (any_effect_enabled) {
+			final_texture = impl->post_processing_manager_->ApplyEffects(impl->main_fbo_texture_);
+		}
+
+		glBindFramebuffer(GL_FRAMEBUFFER, 0);
+		glDisable(GL_DEPTH_TEST);
+		glClear(GL_COLOR_BUFFER_BIT);
+
+		impl->postprocess_shader_->use();
+		impl->postprocess_shader_->setInt("sceneTexture", 0);
+		glActiveTexture(GL_TEXTURE0);
+		glBindTexture(GL_TEXTURE_2D, final_texture);
+
+		glBindVertexArray(impl->blur_quad_vao);
+		glDrawArrays(GL_TRIANGLES, 0, 6);
+
+		// --- UI Pass (renders on top of the fullscreen quad) ---
 		impl->ui_manager->Render();
 
 		glfwSwapBuffers(impl->window);
