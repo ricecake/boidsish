@@ -4,7 +4,6 @@
 #include <string>
 
 #include <GL/glew.h>
-#include "shader.h"
 
 namespace Boidsish {
 	namespace PostProcessing {

@@ -95,12 +95,22 @@ namespace Boidsish {
 		bool is_fullscreen_ = false;
 		int  windowed_xpos_, windowed_ypos_, windowed_width_, windowed_height_;
 
+<<<<<<< HEAD
+		// Artistic effects
+		bool black_and_white_effect = false;
+		bool negative_effect = false;
+		bool shimmery_effect = false;
+		bool glitched_effect = false;
+		bool wireframe_effect = false;
+
 		// Adaptive Tessellation
 		glm::vec3 last_camera_pos_{0.0f, 0.0f, 0.0f};
 		float     camera_velocity_{0.0f};
 		float     avg_frame_time_{1.0f / 60.0f};
 		float     tess_quality_multiplier_{1.0f};
 
+=======
+>>>>>>> cc8cb9a (Apply patch /tmp/71e155bd-f95e-4392-a9f9-0cd1465950ef.patch)
 		// Config-driven feature flags
 		bool effects_enabled_;
 		bool terrain_enabled_;
@@ -384,8 +394,36 @@ namespace Boidsish {
 		void RenderTerrain(const glm::mat4& view, const std::optional<glm::vec4>& clip_plane) {
 			if (!terrain_enabled_)
 				return;
+<<<<<<< HEAD
+			auto& terrain_chunks = terrain_generator->getVisibleChunks();
+			if (terrain_chunks.empty()) {
+				return;
+			}
+<<<<<<< HEAD
+
+			Terrain::terrain_shader_->use();
+			Terrain::terrain_shader_->setMat4("view", view);
+			Terrain::terrain_shader_->setMat4("projection", projection);
+			Terrain::terrain_shader_->setFloat("uTessQualityMultiplier", tess_quality_multiplier_);
+			Terrain::terrain_shader_->setFloat("uTessLevelMax", 64.0f);
+			Terrain::terrain_shader_->setFloat("uTessLevelMin", 1.0f);
+
+			if (clip_plane) {
+				Terrain::terrain_shader_->setVec4("clipPlane", *clip_plane);
+			} else {
+				Terrain::terrain_shader_->setVec4("clipPlane", glm::vec4(0, 0, 0, 0)); // No clipping
+			}
+
+=======
+
+>>>>>>> cc8cb9a (Apply patch /tmp/71e155bd-f95e-4392-a9f9-0cd1465950ef.patch)
+			for (const auto& chunk : terrain_chunks) {
+				chunk->render();
+			}
+=======
 
 			terrain_generator->Render(view, projection, clip_plane);
+>>>>>>> b40e605 (Apply patch /tmp/21b832be-10dd-48c5-a302-52babcce97b9.patch)
 		}
 
 		void DefaultInputHandler(const InputState& state) {
