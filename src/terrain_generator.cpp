@@ -76,13 +76,13 @@ namespace Boidsish {
 			try {
 				auto&                   future = const_cast<TaskHandle<TerrainGenerationResult>&>(pair.second);
 				TerrainGenerationResult result = future.get();
-                if (result.has_terrain) {
-                    auto terrain_chunk =
-                        std::make_shared<Terrain>(result.indices, result.positions, result.normals, result.proxy);
-                    terrain_chunk->SetPosition(result.chunk_x * chunk_size_, 0, result.chunk_z * chunk_size_);
-                    terrain_chunk->setupMesh();
-                    chunk_cache_[pair.first] = terrain_chunk;
-                }
+				if (result.has_terrain) {
+					auto terrain_chunk =
+						std::make_shared<Terrain>(result.indices, result.positions, result.normals, result.proxy);
+					terrain_chunk->SetPosition(result.chunk_x * chunk_size_, 0, result.chunk_z * chunk_size_);
+					terrain_chunk->setupMesh();
+					chunk_cache_[pair.first] = terrain_chunk;
+				}
 				completed_chunks.push_back(pair.first);
 			} catch (const std::future_error& e) {
 				if (e.code() == std::future_errc::no_state) {
