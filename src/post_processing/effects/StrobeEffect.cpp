@@ -57,6 +57,7 @@ void StrobeEffect::Apply(GLuint sourceTexture) {
     // Capture snapshot periodically
     if (time_ - last_capture_time_ > kCaptureInterval) {
         glBindFramebuffer(GL_FRAMEBUFFER, strobe_fbo_);
+        glClear(GL_COLOR_BUFFER_BIT); // Clear previous snapshot
 
         blit_shader_->use();
         blit_shader_->setInt("sceneTexture", 0);

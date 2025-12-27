@@ -69,8 +69,6 @@ void WhispTrailEffect::Apply(GLuint sourceTexture) {
     glDrawArrays(GL_TRIANGLES, 0, 6);
 
     // 2. Blit the result to the main output
-    glBindFramebuffer(GL_FRAMEBUFFER, 0); // Or the next FBO in the chain
-
     blit_shader_->use();
     blit_shader_->setInt("sceneTexture", 0);
 

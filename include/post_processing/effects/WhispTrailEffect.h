@@ -28,8 +28,8 @@ private:
     float time_ = 0.0f;
 
     // Ping-pong buffers for the persistent trail
-    GLuint trail_fbo_[2];
-    GLuint trail_texture_[2];
+    GLuint trail_fbo_[2]{0};
+    GLuint trail_texture_[2]{0};
     int current_read_ = 0;
 
     int width_ = 0;

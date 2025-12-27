@@ -18,10 +18,5 @@ void main()
     float timeSinceCapture = time - lastCaptureTime;
     float strobeAlpha = 1.0 - smoothstep(0.0, fadeDuration, timeSinceCapture);
 
-    // Only blend if the strobe texture has some content (not black/transparent)
-    if (strobeColor.a > 0.01) {
-        FragColor = mix(sceneColor, strobeColor, strobeAlpha);
-    } else {
-        FragColor = sceneColor;
-    }
+    FragColor = sceneColor + strobeColor * strobeAlpha;
 }

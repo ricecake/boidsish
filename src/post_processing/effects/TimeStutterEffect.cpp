@@ -83,7 +83,6 @@ void TimeStutterEffect::Apply(GLuint sourceTexture) {
     // 3. Blit the chosen frame (either current or historical) to the output
     int frame_to_display_idx = (current_frame_idx_ - displayed_frame_offset_ + kFrameHistoryCount) % kFrameHistoryCount;
 
-    glBindFramebuffer(GL_FRAMEBUFFER, 0); // Or next FBO in chain
     blit_shader_->use();
     blit_shader_->setInt("sceneTexture", 0);
     glActiveTexture(GL_TEXTURE0);
