@@ -83,6 +83,12 @@ namespace Boidsish {
 			return pingpong_texture_[1 - fbo_index];
 		}
 
+		void PostProcessingManager::Render() {
+			glBindVertexArray(quad_vao_);
+			glDrawArrays(GL_TRIANGLES, 0, 6);
+			glBindVertexArray(0);
+		}
+
 		void PostProcessingManager::Resize(int width, int height) {
 			width_ = width;
 			height_ = height;

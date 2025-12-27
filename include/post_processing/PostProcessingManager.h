@@ -20,6 +20,7 @@ namespace Boidsish {
 			void   AddEffect(std::shared_ptr<IPostProcessingEffect> effect);
 			GLuint ApplyEffects(GLuint sourceTexture);
 			void   Resize(int width, int height);
+			void   Render();
 
 			std::vector<std::shared_ptr<IPostProcessingEffect>>& GetEffects() { return effects_; }
 

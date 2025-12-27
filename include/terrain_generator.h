@@ -30,7 +30,7 @@ namespace Boidsish {
 
 	class TerrainGenerator {
 	public:
-		TerrainGenerator(int seed = 12345);
+		TerrainGenerator(std::shared_ptr<Shader> shader, int seed = 12345);
 		~TerrainGenerator();
 
 		void                                         update(const Frustum& frustum, const Camera& camera);
@@ -87,6 +87,7 @@ namespace Boidsish {
 		glm::vec3 diffToNorm(float dx, float dz) { return glm::normalize(glm::vec3(-dx, 1.0f, -dz)); }
 
 		// Cache and async management
+		std::shared_ptr<Shader>                                            shader_;
 		ThreadPool                                                         thread_pool_;
 		std::map<std::pair<int, int>, std::shared_ptr<Terrain>>            chunk_cache_;
 		std::vector<std::shared_ptr<Terrain>>                              visible_chunks_;

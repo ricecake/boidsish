@@ -33,7 +33,7 @@ namespace Boidsish {
 		return true;
 	}
 
-	TerrainGenerator::TerrainGenerator(int seed): control_perlin_noise_(seed + 1), thread_pool_() {}
+	TerrainGenerator::TerrainGenerator(std::shared_ptr<Shader> shader, int seed): shader_(shader), control_perlin_noise_(seed + 1), thread_pool_() {}
 
 	TerrainGenerator::~TerrainGenerator() {
 		for (auto& pair : pending_chunks_) {
@@ -78,7 +78,7 @@ namespace Boidsish {
 				TerrainGenerationResult result = future.get();
 				if (result.has_terrain) {
 					auto terrain_chunk =
-						std::make_shared<Terrain>(result.indices, result.positions, result.normals, result.proxy);
+						std::make_shared<Terrain>(result.indices, result.positions, result.normals, result.proxy, shader_);
 					terrain_chunk->SetPosition(result.chunk_x * chunk_size_, 0, result.chunk_z * chunk_size_);
 					terrain_chunk->setupMesh();
 					chunk_cache_[pair.first] = terrain_chunk;

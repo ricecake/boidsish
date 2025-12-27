@@ -9,6 +9,9 @@
 #include <vector>
 
 #include "Config.h"
+#include "FloorManager.h"
+#include "ResourceManager.h"
+#include "SkyboxManager.h"
 #include "UIManager.h"
 #include "dot.h"
 #include "logger.h"
@@ -50,23 +53,16 @@ namespace Boidsish {
 		std::unique_ptr<PostProcessing::PostProcessingManager> post_processing_manager_;
 		int                                                    exit_key;
 
+		std::unique_ptr<ResourceManager> resource_manager_;
+		std::unique_ptr<SkyboxManager> skybox_manager_;
+		std::unique_ptr<FloorManager> floor_manager_;
+
 		Config config;
 
 		std::unique_ptr<TerrainGenerator> terrain_generator;
 
-		std::shared_ptr<Shader> shader;
-		std::unique_ptr<Shader> plane_shader;
-		std::unique_ptr<Shader> sky_shader;
-		std::unique_ptr<Shader> trail_shader;
-		std::unique_ptr<Shader> blur_shader;
-		std::unique_ptr<Shader> postprocess_shader_;
-		GLuint                  plane_vao, plane_vbo, sky_vao, blur_quad_vao, blur_quad_vbo;
-		GLuint                  reflection_fbo, reflection_texture, reflection_depth_rbo;
-		GLuint                  pingpong_fbo[2], pingpong_texture[2];
 		GLuint                  main_fbo_, main_fbo_texture_, main_fbo_rbo_;
-		GLuint                  lighting_ubo;
-		GLuint                  visual_effects_ubo;
-		glm::mat4               projection, reflection_vp;
+		glm::mat4               projection;
 
 		double last_mouse_x = 0.0, last_mouse_y = 0.0;
 		bool   first_mouse = true;
@@ -167,148 +163,25 @@ namespace Boidsish {
 			glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 			glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
 
-			shader = std::make_shared<Shader>("shaders/vis.vert", "shaders/vis.frag");
-			Shape::shader = shader;
-			trail_shader = std::make_unique<Shader>("shaders/trail.vert", "shaders/trail.frag");
+			resource_manager_ = std::make_unique<ResourceManager>();
+			resource_manager_->Initialize();
+
+			Shape::shader = resource_manager_->GetShader("boids");
+
 			if (floor_enabled_) {
-				plane_shader = std::make_unique<Shader>("shaders/plane.vert", "shaders/plane.frag");
-				sky_shader = std::make_unique<Shader>("shaders/sky.vert", "shaders/sky.frag");
-				blur_shader = std::make_unique<Shader>("shaders/blur.vert", "shaders/blur.frag");
+				skybox_manager_ = std::make_unique<SkyboxManager>();
+				skybox_manager_->Initialize(*resource_manager_);
+				floor_manager_ = std::make_unique<FloorManager>(width, height);
+				floor_manager_->Initialize(*resource_manager_);
 			}
-			if (effects_enabled_) {
-				postprocess_shader_ = std::make_unique<Shader>("shaders/postprocess.vert", "shaders/postprocess.frag");
-			}
+
 			if (terrain_enabled_) {
-				terrain_generator = std::make_unique<TerrainGenerator>();
-			}
-
-			glGenBuffers(1, &lighting_ubo);
-			glBindBuffer(GL_UNIFORM_BUFFER, lighting_ubo);
-			// Allocate space for 3 vec3s with std140 padding (each vec3 padded to 16 bytes) 16 + 16 + 16
-			glBufferData(GL_UNIFORM_BUFFER, 48, NULL, GL_STATIC_DRAW);
-			glBindBuffer(GL_UNIFORM_BUFFER, 0);
-			glBindBufferRange(GL_UNIFORM_BUFFER, 0, lighting_ubo, 0, 48);
-
-			if (effects_enabled_) {
-				glGenBuffers(1, &visual_effects_ubo);
-				glBindBuffer(GL_UNIFORM_BUFFER, visual_effects_ubo);
-				glBufferData(GL_UNIFORM_BUFFER, sizeof(VisualEffectsUbo), NULL, GL_DYNAMIC_DRAW);
-				glBindBuffer(GL_UNIFORM_BUFFER, 0);
-				glBindBufferRange(GL_UNIFORM_BUFFER, 1, visual_effects_ubo, 0, sizeof(VisualEffectsUbo));
-			}
-
-			shader->use();
-			SetupShaderBindings(*shader);
-			SetupShaderBindings(*trail_shader);
-
-			if (floor_enabled_) {
-				SetupShaderBindings(*plane_shader);
-				SetupShaderBindings(*sky_shader);
+				terrain_generator = std::make_unique<TerrainGenerator>(resource_manager_->GetShader("terrain"));
 			}
 
 			ui_manager = std::make_unique<UI::UIManager>(window);
 
-			if (terrain_enabled_) {
-				Terrain::terrain_shader_ = std::make_shared<Shader>(
-					"shaders/terrain.vert",
-					"shaders/terrain.frag",
-					"shaders/terrain.tcs",
-					"shaders/terrain.tes"
-					// , "shaders/terrain.geom"
-				);
-				SetupShaderBindings(*Terrain::terrain_shader_);
-			}
-
 			Shape::InitSphereMesh();
-
-			float blur_quad_vertices[] = {// positions   // texCoords
-			                              -1.0f, 1.0f, 0.0f, 1.0f, -1.0f, -1.0f, 0.0f, 0.0f, 1.0f, -1.0f, 1.0f, 0.0f,
-
-			                              -1.0f, 1.0f, 0.0f, 1.0f, 1.0f,  -1.0f, 1.0f, 0.0f, 1.0f, 1.0f,  1.0f, 1.0f
-			};
-			glGenVertexArrays(1, &blur_quad_vao);
-			glBindVertexArray(blur_quad_vao);
-			glGenBuffers(1, &blur_quad_vbo);
-			glBindBuffer(GL_ARRAY_BUFFER, blur_quad_vbo);
-			glBufferData(GL_ARRAY_BUFFER, sizeof(blur_quad_vertices), blur_quad_vertices, GL_STATIC_DRAW);
-			glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)0);
-			glEnableVertexAttribArray(0);
-			glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)(2 * sizeof(float)));
-			glEnableVertexAttribArray(1);
-			glBindVertexArray(0);
-
-			if (floor_enabled_) {
-				float quad_vertices[] = {
-					// Definitive CCW winding
-					-1.0f,
-					0.0f,
-					1.0f,
-					1.0f,
-					0.0f,
-					-1.0f,
-					-1.0f,
-					0.0f,
-					-1.0f,
-					-1.0f,
-					0.0f,
-					1.0f,
-					1.0f,
-					0.0f,
-					1.0f,
-					1.0f,
-					0.0f,
-					-1.0f
-				};
-				glGenVertexArrays(1, &plane_vao);
-				glBindVertexArray(plane_vao);
-				glGenBuffers(1, &plane_vbo);
-				glBindBuffer(GL_ARRAY_BUFFER, plane_vbo);
-				glBufferData(GL_ARRAY_BUFFER, sizeof(quad_vertices), quad_vertices, GL_STATIC_DRAW);
-				glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
-				glEnableVertexAttribArray(0);
-				glBindVertexArray(0);
-
-				glGenVertexArrays(1, &sky_vao);
-
-				// --- Reflection Framebuffer ---
-				glGenFramebuffers(1, &reflection_fbo);
-				glBindFramebuffer(GL_FRAMEBUFFER, reflection_fbo);
-
-				// Color attachment
-				glGenTextures(1, &reflection_texture);
-				glBindTexture(GL_TEXTURE_2D, reflection_texture);
-				glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, width, height, 0, GL_RGB, GL_UNSIGNED_BYTE, NULL);
-				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-				glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, reflection_texture, 0);
-
-				// Depth renderbuffer
-				glGenRenderbuffers(1, &reflection_depth_rbo);
-				glBindRenderbuffer(GL_RENDERBUFFER, reflection_depth_rbo);
-				glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT24, width, height);
-				glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, reflection_depth_rbo);
-
-				if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
-					std::cerr << "ERROR::FRAMEBUFFER:: Framebuffer is not complete!" << std::endl;
-				glBindFramebuffer(GL_FRAMEBUFFER, 0);
-
-				// --- Ping-pong Framebuffers for blurring ---
-				glGenFramebuffers(2, pingpong_fbo);
-				glGenTextures(2, pingpong_texture);
-				for (unsigned int i = 0; i < 2; i++) {
-					glBindFramebuffer(GL_FRAMEBUFFER, pingpong_fbo[i]);
-					glBindTexture(GL_TEXTURE_2D, pingpong_texture[i]);
-					glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB16F, width, height, 0, GL_RGB, GL_FLOAT, NULL);
-					glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-					glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-					glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-					glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-					glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, pingpong_texture[i], 0);
-					if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
-						std::cerr << "ERROR::FRAMEBUFFER:: Ping-pong Framebuffer is not complete!" << std::endl;
-				}
-				glBindFramebuffer(GL_FRAMEBUFFER, 0);
-			}
 
 			// --- Main Scene Framebuffer ---
 			glGenFramebuffers(1, &main_fbo_);
@@ -337,7 +210,7 @@ namespace Boidsish {
 				post_processing_manager_ = std::make_unique<PostProcessing::PostProcessingManager>(
 					width,
 					height,
-					blur_quad_vao
+					floor_manager_->GetBlurQuadVAO()
 				);
 				post_processing_manager_->Initialize();
 
@@ -355,12 +228,6 @@ namespace Boidsish {
 			}
 		}
 
-		void SetupShaderBindings(Shader& shader_to_setup) {
-			shader_to_setup.use();
-			glUniformBlockBinding(shader_to_setup.ID, glGetUniformBlockIndex(shader_to_setup.ID, "Lighting"), 0);
-			glUniformBlockBinding(shader_to_setup.ID, glGetUniformBlockIndex(shader_to_setup.ID, "VisualEffects"), 1);
-		}
-
 		~VisualizerImpl() {
 			config.SetInt("window_width", width);
 			config.SetInt("window_height", height);
@@ -371,18 +238,7 @@ namespace Boidsish {
 			ui_manager.reset();
 
 			Shape::DestroySphereMesh();
-			if (floor_enabled_) {
-				glDeleteVertexArrays(1, &plane_vao);
-				glDeleteBuffers(1, &plane_vbo);
-				glDeleteVertexArrays(1, &sky_vao);
-				glDeleteVertexArrays(1, &blur_quad_vao);
-				glDeleteBuffers(1, &blur_quad_vbo);
-				glDeleteFramebuffers(1, &reflection_fbo);
-				glDeleteTextures(1, &reflection_texture);
-				glDeleteRenderbuffers(1, &reflection_depth_rbo);
-				glDeleteFramebuffers(2, pingpong_fbo);
-				glDeleteTextures(2, pingpong_texture);
-			}
+
 			if (window)
 				glfwDestroyWindow(window);
 			glfwTerminate();
@@ -445,9 +301,11 @@ namespace Boidsish {
 			glm::vec3 cameraPos(cam_to_use.x, cam_to_use.y, cam_to_use.z);
 
 			glm::mat4 view = glm::lookAt(cameraPos, cameraPos + cam_to_use.front(), cam_to_use.up());
-			shader->use();
-			shader->setMat4("projection", projection);
-			shader->setMat4("view", view);
+
+			auto boids_shader = resource_manager_->GetShader("boids");
+			boids_shader->use();
+			boids_shader->setMat4("projection", projection);
+			boids_shader->setMat4("view", view);
 			return view;
 		}
 
@@ -460,14 +318,15 @@ namespace Boidsish {
 			float                                      time,
 			const std::optional<glm::vec4>&            clip_plane
 		) {
-			shader->use();
-			shader->setFloat("ripple_strength", ripple_strength);
-			shader->setBool("colorShift", color_shift_effect);
-			shader->setMat4("view", view);
+			auto boids_shader = resource_manager_->GetShader("boids");
+			boids_shader->use();
+			boids_shader->setFloat("ripple_strength", ripple_strength);
+			boids_shader->setBool("colorShift", color_shift_effect);
+			boids_shader->setMat4("view", view);
 			if (clip_plane) {
-				shader->setVec4("clipPlane", *clip_plane);
+				boids_shader->setVec4("clipPlane", *clip_plane);
 			} else {
-				shader->setVec4("clipPlane", glm::vec4(0, 0, 0, 0)); // No clipping
+				boids_shader->setVec4("clipPlane", glm::vec4(0, 0, 0, 0)); // No clipping
 			}
 
 			if (shapes.empty()) {
@@ -478,9 +337,6 @@ namespace Boidsish {
 			std::set<int> current_shape_ids;
 			for (const auto& shape : shapes) {
 				current_shape_ids.insert(shape->GetId());
-				// TODO: Move trail generation to the GPU for performance.
-				// See performance_and_quality_audit.md#3-gpu-based-trail-generation
-				// Only create trails for shapes with trail_length > 0
 				if (shape->GetTrailLength() > 0 && !paused) {
 					if (trails.find(shape->GetId()) == trails.end()) {
 						trails[shape->GetId()] = std::make_shared<Trail>(shape->GetTrailLength());
@@ -494,6 +350,7 @@ namespace Boidsish {
 				shape->render();
 			}
 
+			auto trail_shader = resource_manager_->GetShader("trail");
 			trail_shader->use();
 			trail_shader->setMat4("view", view);
 			trail_shader->setMat4("projection", projection);
@@ -517,73 +374,23 @@ namespace Boidsish {
 				return;
 			}
 
-			Terrain::terrain_shader_->use();
-			Terrain::terrain_shader_->setMat4("view", view);
-			Terrain::terrain_shader_->setMat4("projection", projection);
-			Terrain::terrain_shader_->setFloat("uTessQualityMultiplier", tess_quality_multiplier_);
-			Terrain::terrain_shader_->setFloat("uTessLevelMax", 64.0f);
-			Terrain::terrain_shader_->setFloat("uTessLevelMin", 1.0f);
+			auto terrain_shader = resource_manager_->GetShader("terrain");
+			terrain_shader->use();
+			terrain_shader->setMat4("view", view);
+			terrain_shader->setMat4("projection", projection);
+			terrain_shader->setFloat("uTessQualityMultiplier", tess_quality_multiplier_);
+			terrain_shader->setFloat("uTessLevelMax", 64.0f);
+			terrain_shader->setFloat("uTessLevelMin", 1.0f);
 
 			if (clip_plane) {
-				Terrain::terrain_shader_->setVec4("clipPlane", *clip_plane);
+				terrain_shader->setVec4("clipPlane", *clip_plane);
 			} else {
-				Terrain::terrain_shader_->setVec4("clipPlane", glm::vec4(0, 0, 0, 0)); // No clipping
+				terrain_shader->setVec4("clipPlane", glm::vec4(0, 0, 0, 0)); // No clipping
 			}
 
 			for (const auto& chunk : terrain_chunks) {
 				chunk->render();
 			}
-		}
-
-		void RenderSky(const glm::mat4& view) {
-			glDisable(GL_DEPTH_TEST);
-			sky_shader->use();
-			sky_shader->setMat4("invProjection", glm::inverse(projection));
-			sky_shader->setMat4("invView", glm::inverse(view));
-			glBindVertexArray(sky_vao);
-			glDrawArrays(GL_TRIANGLES, 0, 3);
-			glBindVertexArray(0);
-			glEnable(GL_DEPTH_TEST);
-		}
-
-		// TODO: Replace the multi-pass Gaussian blur with a more performant technique.
-		// See performance_and_quality_audit.md#2-optimized-screen-space-reflections-and-blur
-		void RenderBlur(int amount) {
-			glDisable(GL_DEPTH_TEST);
-			blur_shader->use();
-			bool horizontal = true, first_iteration = true;
-			for (int i = 0; i < amount; i++) {
-				glBindFramebuffer(GL_FRAMEBUFFER, pingpong_fbo[horizontal]);
-				blur_shader->setInt("horizontal", horizontal);
-				glActiveTexture(GL_TEXTURE0);
-				glBindTexture(GL_TEXTURE_2D, first_iteration ? reflection_texture : pingpong_texture[!horizontal]);
-				glBindVertexArray(blur_quad_vao);
-				glDrawArrays(GL_TRIANGLES, 0, 6);
-				horizontal = !horizontal;
-				if (first_iteration)
-					first_iteration = false;
-			}
-			glBindFramebuffer(GL_FRAMEBUFFER, 0);
-			glEnable(GL_DEPTH_TEST);
-		}
-
-		void RenderPlane(const glm::mat4& view) {
-			glEnable(GL_DEPTH_TEST);
-			glEnable(GL_BLEND);
-			glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-			plane_shader->use();
-			plane_shader->setInt("reflectionTexture", 0);
-			glActiveTexture(GL_TEXTURE0);
-			glBindTexture(GL_TEXTURE_2D, pingpong_texture[0]);
-			plane_shader->setMat4("reflectionViewProjection", reflection_vp);
-
-			glm::mat4 model = glm::scale(glm::mat4(1.0f), glm::vec3(600.0f));
-			plane_shader->setMat4("model", model);
-			plane_shader->setMat4("view", view);
-			plane_shader->setMat4("projection", projection);
-			glBindVertexArray(plane_vao);
-			glDrawArrays(GL_TRIANGLES, 0, 6);
-			glBindVertexArray(0);
 		}
 
 		void DefaultInputHandler(const InputState& state) {
@@ -906,17 +713,7 @@ namespace Boidsish {
 			glViewport(0, 0, width, height);
 
 			if (impl->floor_enabled_) {
-				// --- Resize reflection framebuffer ---
-				glBindTexture(GL_TEXTURE_2D, impl->reflection_texture);
-				glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, width, height, 0, GL_RGB, GL_UNSIGNED_BYTE, NULL);
-				glBindRenderbuffer(GL_RENDERBUFFER, impl->reflection_depth_rbo);
-				glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT24, width, height);
-
-				// --- Resize ping-pong framebuffers ---
-				for (unsigned int i = 0; i < 2; i++) {
-					glBindTexture(GL_TEXTURE_2D, impl->pingpong_texture[i]);
-					glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB16F, width, height, 0, GL_RGB, GL_FLOAT, NULL);
-				}
+				impl->floor_manager_->Resize(width, height);
 			}
 
 			// --- Resize main scene framebuffer ---
@@ -1054,7 +851,7 @@ namespace Boidsish {
 			ubo_data.glitched_enabled = impl->glitched_effect;
 			ubo_data.wireframe_enabled = impl->wireframe_effect;
 
-			glBindBuffer(GL_UNIFORM_BUFFER, impl->visual_effects_ubo);
+			glBindBuffer(GL_UNIFORM_BUFFER, impl->resource_manager_->GetVisualEffectsUBO());
 			glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(VisualEffectsUbo), &ubo_data);
 			glBindBuffer(GL_UNIFORM_BUFFER, 0);
 		}
@@ -1063,7 +860,7 @@ namespace Boidsish {
 		float     light_y = 25.0f + 1.8 * abs(sin(impl->simulation_time * 0.01));
 		float     light_z = 50.0f * sin(impl->simulation_time * 0.05f);
 		glm::vec3 lightPos(light_x, light_y, light_z);
-		glBindBuffer(GL_UNIFORM_BUFFER, impl->lighting_ubo);
+		glBindBuffer(GL_UNIFORM_BUFFER, impl->resource_manager_->GetLightingUBO());
 		glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(glm::vec3), &lightPos[0]);
 		glBufferSubData(
 			GL_UNIFORM_BUFFER,
@@ -1076,30 +873,22 @@ namespace Boidsish {
 		glBindBuffer(GL_UNIFORM_BUFFER, 0);
 
 		if (impl->floor_enabled_) {
-			// --- Reflection Pre-Pass ---
-			glEnable(GL_CLIP_DISTANCE0);
-			{
-				glBindFramebuffer(GL_FRAMEBUFFER, impl->reflection_fbo);
-				glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-				Camera reflection_cam = impl->camera;
-				reflection_cam.y = -reflection_cam.y;
-				reflection_cam.pitch = -reflection_cam.pitch;
-				glm::mat4 reflection_view = impl->SetupMatrices(reflection_cam);
-				impl->reflection_vp = impl->projection * reflection_view;
-				impl->RenderSky(reflection_view);
-				impl->RenderSceneObjects(
-					reflection_view,
-					reflection_cam,
-					impl->shapes,
-					impl->simulation_time,
-					glm::vec4(0, 1, 0, 0.01)
-				);
-				impl->RenderTerrain(reflection_view, glm::vec4(0, 1, 0, 0.01));
-			}
-			glDisable(GL_CLIP_DISTANCE0);
-
-			// --- Blur Pre-Pass ---
-			impl->RenderBlur(kBlurPasses);
+			impl->floor_manager_->BeginReflectionPass();
+			Camera    reflection_cam = impl->camera;
+			reflection_cam.y = -reflection_cam.y;
+			reflection_cam.pitch = -reflection_cam.pitch;
+			glm::mat4 reflection_view = impl->SetupMatrices(reflection_cam);
+			impl->floor_manager_->SetReflectionViewProjection(impl->projection * reflection_view);
+			impl->skybox_manager_->Render(reflection_view, impl->projection);
+			impl->RenderSceneObjects(
+				reflection_view,
+				reflection_cam,
+				impl->shapes,
+				impl->simulation_time,
+				glm::vec4(0, 1, 0, 0.01)
+			);
+			impl->RenderTerrain(reflection_view, glm::vec4(0, 1, 0, 0.01));
+			impl->floor_manager_->EndReflectionPass();
 		}
 
 		// --- Main Scene Pass (renders to our FBO) ---
@@ -1109,8 +898,8 @@ namespace Boidsish {
 
 		glm::mat4 view = impl->SetupMatrices();
 		if (impl->floor_enabled_) {
-			impl->RenderSky(view);
-			impl->RenderPlane(view);
+			impl->skybox_manager_->Render(view, impl->projection);
+			impl->floor_manager_->Render(view, impl->projection);
 		}
 		impl->RenderSceneObjects(view, impl->camera, impl->shapes, impl->simulation_time, std::nullopt);
 		impl->RenderTerrain(view, std::nullopt);
@@ -1141,13 +930,12 @@ namespace Boidsish {
 			glDisable(GL_DEPTH_TEST);
 			glClear(GL_COLOR_BUFFER_BIT);
 
-			impl->postprocess_shader_->use();
-			impl->postprocess_shader_->setInt("sceneTexture", 0);
+			impl->resource_manager_->GetShader("postprocess")->use();
+			impl->resource_manager_->GetShader("postprocess")->setInt("sceneTexture", 0);
 			glActiveTexture(GL_TEXTURE0);
 			glBindTexture(GL_TEXTURE_2D, final_texture);
 
-			glBindVertexArray(impl->blur_quad_vao);
-			glDrawArrays(GL_TRIANGLES, 0, 6);
+			impl->post_processing_manager_->Render();
 		} else {
 			// --- Passthrough without Post-processing ---
 			glBindFramebuffer(GL_READ_FRAMEBUFFER, impl->main_fbo_);
