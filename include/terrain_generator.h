@@ -19,8 +19,10 @@ namespace Boidsish {
 namespace Boidsish {
 
 	struct TerrainGenerationResult {
-		std::vector<float>        vertex_data;
 		std::vector<unsigned int> indices;
+		std::vector<glm::vec3>    positions;
+		std::vector<glm::vec3>    normals;
+		PatchProxy                proxy;
 		int                       chunk_x;
 		int                       chunk_z;
 		bool                      has_terrain;

@@ -76,12 +76,13 @@ namespace Boidsish {
 			try {
 				auto&                   future = const_cast<TaskHandle<TerrainGenerationResult>&>(pair.second);
 				TerrainGenerationResult result = future.get();
-				if (result.has_terrain) {
-					auto terrain_chunk = std::make_shared<Terrain>(result.vertex_data, result.indices);
-					terrain_chunk->SetPosition(result.chunk_x * chunk_size_, 0, result.chunk_z * chunk_size_);
-					terrain_chunk->setupMesh();
-					chunk_cache_[pair.first] = terrain_chunk;
-				}
+                if (result.has_terrain) {
+                    auto terrain_chunk =
+                        std::make_shared<Terrain>(result.indices, result.positions, result.normals, result.proxy);
+                    terrain_chunk->SetPosition(result.chunk_x * chunk_size_, 0, result.chunk_z * chunk_size_);
+                    terrain_chunk->setupMesh();
+                    chunk_cache_[pair.first] = terrain_chunk;
+                }
 				completed_chunks.push_back(pair.first);
 			} catch (const std::future_error& e) {
 				if (e.code() == std::future_errc::no_state) {
@@ -212,7 +213,8 @@ namespace Boidsish {
 		const int num_vertices_z = chunk_size_ + 1;
 
 		std::vector<std::vector<glm::vec3>> heightmap(num_vertices_x, std::vector<glm::vec3>(num_vertices_z));
-		std::vector<float>                  vertexData;
+		std::vector<glm::vec3>              positions;
+		std::vector<glm::vec3>              normals;
 		std::vector<unsigned int>           indices;
 		bool                                has_terrain = false;
 
@@ -221,37 +223,24 @@ namespace Boidsish {
 			for (int j = 0; j < num_vertices_z; ++j) {
 				float worldX = (chunkX * chunk_size_ + i);
 				float worldZ = (chunkZ * chunk_size_ + j);
-
-				auto noise = pointGenerate(worldX, worldZ);
-
+				auto  noise = pointGenerate(worldX, worldZ);
 				heightmap[i][j] = noise;
 				has_terrain = has_terrain || noise[0] > 0;
 			}
 		}
 
 		if (!has_terrain) {
-			return {{}, {}, chunkX, chunkZ, false};
+			return {{}, {}, {}, {}, chunkX, chunkZ, false};
 		}
 
 		// Generate vertices and normals
-		vertexData.reserve(num_vertices_x * num_vertices_z * 8);
+		positions.reserve(num_vertices_x * num_vertices_z);
+		normals.reserve(num_vertices_x * num_vertices_z);
 		for (int i = 0; i < num_vertices_x; ++i) {
 			for (int j = 0; j < num_vertices_z; ++j) {
 				float y = heightmap[i][j][0];
-
-				// Vertex position
-				vertexData.push_back(i);
-				vertexData.push_back(y);
-				vertexData.push_back(j);
-
-				glm::vec3 normal = diffToNorm(heightmap[i][j][1], heightmap[i][j][2]);
-				vertexData.push_back(normal.x);
-				vertexData.push_back(normal.y);
-				vertexData.push_back(normal.z);
-
-				// Texture coordinates
-				vertexData.push_back((float)i / chunk_size_);
-				vertexData.push_back((float)j / chunk_size_);
+				positions.emplace_back(i, y, j);
+				normals.push_back(diffToNorm(heightmap[i][j][1], heightmap[i][j][2]));
 			}
 		}
 
@@ -266,7 +255,26 @@ namespace Boidsish {
 			}
 		}
 
-		return {vertexData, indices, chunkX, chunkZ, true};
+		// Calculate aggregate data for the PatchProxy
+		PatchProxy proxy;
+		proxy.center = std::accumulate(positions.begin(), positions.end(), glm::vec3(0.0f)) / (float)positions.size();
+		proxy.totalNormal = std::accumulate(normals.begin(), normals.end(), glm::vec3(0.0f));
+
+		float max_dist_sq = 0.0f;
+		proxy.minY = std::numeric_limits<float>::max();
+		proxy.maxY = std::numeric_limits<float>::lowest();
+
+		for (const auto& pos : positions) {
+			proxy.minY = std::min(proxy.minY, pos.y);
+			proxy.maxY = std::max(proxy.maxY, pos.y);
+			float dist_sq = glm::dot(pos - proxy.center, pos - proxy.center);
+			if (dist_sq > max_dist_sq) {
+				max_dist_sq = dist_sq;
+			}
+		}
+		proxy.radiusSq = max_dist_sq;
+
+		return {indices, positions, normals, proxy, chunkX, chunkZ, true};
 	}
 
 } // namespace Boidsish
