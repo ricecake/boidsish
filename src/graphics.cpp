@@ -16,6 +16,7 @@
 #include "dot.h"
 #include "logger.h"
 #include "post_processing/PostProcessingManager.h"
+#include "post_processing/effects/BlackAndWhiteEffect.h"
 #include "post_processing/effects/GlitchEffect.h"
 #include "post_processing/effects/NegativeEffect.h"
 #include "task_thread_pool.hpp"
@@ -89,10 +90,7 @@ namespace Boidsish {
 		int  windowed_xpos_, windowed_ypos_, windowed_width_, windowed_height_;
 
 		// Artistic effects
-		bool black_and_white_effect = false;
-		bool negative_effect = false;
 		bool shimmery_effect = false;
-		bool glitched_effect = false;
 		bool wireframe_effect = false;
 
 		// Adaptive Tessellation
@@ -221,6 +219,10 @@ namespace Boidsish {
 				auto glitch_effect = std::make_shared<PostProcessing::GlitchEffect>();
 				glitch_effect->SetEnabled(false);
 				post_processing_manager_->AddEffect(glitch_effect);
+
+				auto black_and_white_effect = std::make_shared<PostProcessing::BlackAndWhiteEffect>();
+				black_and_white_effect->SetEnabled(false);
+				post_processing_manager_->AddEffect(black_and_white_effect);
 
 				// --- UI ---
 				auto post_processing_widget = std::make_shared<UI::PostProcessingWidget>(*post_processing_manager_);
@@ -505,13 +507,13 @@ namespace Boidsish {
 				if (state.key_down[GLFW_KEY_C])
 					color_shift_effect = !color_shift_effect;
 				if (state.key_down[GLFW_KEY_1])
-					black_and_white_effect = !black_and_white_effect;
+					post_processing_manager_->GetEffects()[2]->Toggle();
 				if (state.key_down[GLFW_KEY_2])
-					negative_effect = !negative_effect;
+					post_processing_manager_->GetEffects()[0]->Toggle();
 				if (state.key_down[GLFW_KEY_3])
 					shimmery_effect = !shimmery_effect;
 				if (state.key_down[GLFW_KEY_4])
-					glitched_effect = !glitched_effect;
+					post_processing_manager_->GetEffects()[1]->Toggle();
 				if (state.key_down[GLFW_KEY_5])
 					wireframe_effect = !wireframe_effect;
 			}
@@ -845,10 +847,7 @@ namespace Boidsish {
 				}
 			}
 
-			ubo_data.black_and_white_enabled = impl->black_and_white_effect;
-			ubo_data.negative_enabled = impl->negative_effect;
 			ubo_data.shimmery_enabled = impl->shimmery_effect;
-			ubo_data.glitched_enabled = impl->glitched_effect;
 			ubo_data.wireframe_enabled = impl->wireframe_effect;
 
 			glBindBuffer(GL_UNIFORM_BUFFER, impl->resource_manager_->GetVisualEffectsUBO());
@@ -1020,17 +1019,8 @@ namespace Boidsish {
 		case VisualEffect::COLOR_SHIFT:
 			impl->color_shift_effect = !impl->color_shift_effect;
 			break;
-		case VisualEffect::BLACK_AND_WHITE:
-			impl->black_and_white_effect = !impl->black_and_white_effect;
-			break;
-		case VisualEffect::NEGATIVE:
-			impl->negative_effect = !impl->negative_effect;
-			break;
 		case VisualEffect::SHIMMERY:
 			impl->shimmery_effect = !impl->shimmery_effect;
-			break;
-		case VisualEffect::GLITCHED:
-			impl->glitched_effect = !impl->glitched_effect;
 			break;
 		case VisualEffect::WIREFRAME:
 			impl->wireframe_effect = !impl->wireframe_effect;

@@ -5,6 +5,8 @@
 
 #include <GL/glew.h>
 
+class Shader;
+
 namespace Boidsish {
 	namespace PostProcessing {
 
@@ -22,9 +24,13 @@ namespace Boidsish {
 
 			void SetEnabled(bool enabled) { is_enabled_ = enabled; }
 
+			void Toggle() { is_enabled_ = !is_enabled_; }
+
 		protected:
 			std::string name_;
 			bool        is_enabled_ = true;
+			std::unique_ptr<Shader> shader_;
+			int width_, height_;
 		};
 
 	} // namespace PostProcessing

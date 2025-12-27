@@ -46,7 +46,7 @@ add_subdirectory(external/poolSTL)
 
 # 3. Define the Library
 # Finds all .cpp files in src/
-file(GLOB_RECURSE LIB_SOURCES "src/*.cpp")
+file(GLOB_RECURSE LIB_SOURCES "src/*.cpp" "src/post_processing/*.cpp")
 
 add_library(boidsish STATIC ${LIB_SOURCES})
 
