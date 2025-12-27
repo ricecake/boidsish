@@ -9,6 +9,7 @@ namespace Boidsish {
 		SHIMMERY,
 		GLITCHED,
 		WIREFRAME,
+		TWIST,
 	};
 
 	struct VisualEffectsUbo {
@@ -19,5 +20,6 @@ namespace Boidsish {
 		int shimmery_enabled;
 		int glitched_enabled;
 		int wireframe_enabled;
+	int twist_enabled;
 	};
 } // namespace Boidsish

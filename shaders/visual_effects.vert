@@ -40,4 +40,23 @@ vec3 applyGlitch(vec3 position, float time) {
 	return position;
 }
 
+vec3 applyTwist(vec3 position) {
+	if (twist_enabled == 1) {
+		float dist = length(position);
+		float twist_amount = 0.5;
+		float twist_frequency = 0.5;
+		float angle = sin(dist * twist_frequency) * twist_amount;
+
+		mat4 rotation = mat4(
+			cos(angle), 0.0, sin(angle), 0.0,
+			0.0, 1.0, 0.0, 0.0,
+			-sin(angle), 0.0, cos(angle), 0.0,
+			0.0, 0.0, 0.0, 1.0
+		);
+
+		position = (rotation * vec4(position, 1.0)).xyz;
+	}
+	return position;
+}
+
 #endif

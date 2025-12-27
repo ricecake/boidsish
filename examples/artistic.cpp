@@ -18,6 +18,7 @@ std::vector<std::shared_ptr<Boidsish::Shape>> CreateShapes(float) {
 int main() {
 	Boidsish::Visualizer visualizer(1280, 720, "Artistic Effects Demo");
 	visualizer.AddShapeHandler(CreateShapes);
+	visualizer.ToggleEffect(Boidsish::VisualEffect::TWIST);
 	visualizer.Run();
 	return 0;
 }

@@ -32,6 +32,10 @@ void main() {
 		displacedPos = applyGlitch(displacedPos, time);
 	}
 
+	if (twist_enabled == 1) {
+		displacedPos = applyTwist(displacedPos);
+	}
+
 	if (ripple_strength > 0.0) {
 		float frequency = 20.0;
 		float speed = 3.0;

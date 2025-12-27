@@ -98,6 +98,7 @@ namespace Boidsish {
 		bool shimmery_effect = false;
 		bool glitched_effect = false;
 		bool wireframe_effect = false;
+		bool twist_enabled_ = false;
 
 		// Adaptive Tessellation
 		glm::vec3 last_camera_pos_{0.0f, 0.0f, 0.0f};
@@ -1053,6 +1054,7 @@ namespace Boidsish {
 			ubo_data.shimmery_enabled = impl->shimmery_effect;
 			ubo_data.glitched_enabled = impl->glitched_effect;
 			ubo_data.wireframe_enabled = impl->wireframe_effect;
+			ubo_data.twist_enabled = impl->twist_enabled_;
 
 			glBindBuffer(GL_UNIFORM_BUFFER, impl->visual_effects_ubo);
 			glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(VisualEffectsUbo), &ubo_data);
@@ -1246,6 +1248,9 @@ namespace Boidsish {
 			break;
 		case VisualEffect::WIREFRAME:
 			impl->wireframe_effect = !impl->wireframe_effect;
+			break;
+		case VisualEffect::TWIST:
+			impl->twist_enabled_ = !impl->twist_enabled_;
 			break;
 		}
 	}
