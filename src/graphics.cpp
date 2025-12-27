@@ -99,6 +99,12 @@ namespace Boidsish {
 		bool glitched_effect = false;
 		bool wireframe_effect = false;
 
+		// Adaptive Tessellation
+		glm::vec3 last_camera_pos_{0.0f, 0.0f, 0.0f};
+		float     camera_velocity_{0.0f};
+		float     avg_frame_time_{1.0f / 60.0f};
+		float     tess_quality_multiplier_{1.0f};
+
 		// Config-driven feature flags
 		bool effects_enabled_;
 		bool terrain_enabled_;
@@ -514,6 +520,10 @@ namespace Boidsish {
 			Terrain::terrain_shader_->use();
 			Terrain::terrain_shader_->setMat4("view", view);
 			Terrain::terrain_shader_->setMat4("projection", projection);
+			Terrain::terrain_shader_->setFloat("uTessQualityMultiplier", tess_quality_multiplier_);
+			Terrain::terrain_shader_->setFloat("uTessLevelMax", 64.0f);
+			Terrain::terrain_shader_->setFloat("uTessLevelMin", 1.0f);
+
 			if (clip_plane) {
 				Terrain::terrain_shader_->setVec4("clipPlane", *clip_plane);
 			} else {
@@ -960,6 +970,42 @@ namespace Boidsish {
 			// TODO: Implement a fixed timestep for simulation stability.
 			// See performance_and_quality_audit.md#4-fixed-timestep-for-simulation-stability
 			impl->simulation_time += delta_time;
+		}
+
+		// --- Adaptive Tessellation Logic ---
+		glm::vec3 current_camera_pos(impl->camera.x, impl->camera.y, impl->camera.z);
+		if (delta_time > 0.0f) {
+			impl->camera_velocity_ = glm::distance(current_camera_pos, impl->last_camera_pos_) / delta_time;
+		}
+		impl->last_camera_pos_ = current_camera_pos;
+
+		// Simple moving average for frame time
+		impl->avg_frame_time_ = impl->avg_frame_time_ * 0.95f + delta_time * 0.05f;
+
+		// Determine target quality
+		float target_quality = 1.0f;
+		if (impl->avg_frame_time_ > 1.0f / 30.0f) { // Framerate drops below 30 FPS
+			target_quality = 0.4f;
+		} else if (impl->avg_frame_time_ > 1.0f / 45.0f) { // Framerate drops below 45 FPS
+			target_quality = 0.7f;
+		} else if (impl->camera_velocity_ > 25.0f) { // High camera speed
+			target_quality = 0.6f;
+		}
+
+		// Dampened adjustment
+		if (impl->tess_quality_multiplier_ < target_quality) {
+			// Linear increase
+			impl->tess_quality_multiplier_ += 0.5f * delta_time;
+			if (impl->tess_quality_multiplier_ > target_quality) {
+				impl->tess_quality_multiplier_ = target_quality;
+			}
+		} else if (impl->tess_quality_multiplier_ > target_quality) {
+			// Exponential decrease
+			impl->tess_quality_multiplier_ = glm::mix(
+				impl->tess_quality_multiplier_,
+				target_quality,
+				1.0f - exp(-delta_time * 5.0f)
+			);
 		}
 	}
 
