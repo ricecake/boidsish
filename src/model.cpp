@@ -48,6 +48,12 @@ namespace Boidsish {
 		glBindVertexArray(0);
 	}
 
+	void Mesh::updateGpuData() {
+		glBindBuffer(GL_ARRAY_BUFFER, VBO);
+		glBufferSubData(GL_ARRAY_BUFFER, 0, vertices.size() * sizeof(Vertex), &vertices[0]);
+		glBindBuffer(GL_ARRAY_BUFFER, 0);
+	}
+
 	// Model implementation
 	Model::Model(const std::string& path) {
 		loadModel(path);

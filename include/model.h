@@ -33,11 +33,14 @@ namespace Boidsish {
 		void render() const;
 
 	private:
+	private:
 		// Render data
 		unsigned int VBO, EBO;
 
+	public:
 		// Initializes all the buffer objects/arrays
 		void setupMesh();
+		void updateGpuData();
 	};
 
 	class Model: public Shape {
