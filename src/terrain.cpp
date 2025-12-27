@@ -9,12 +9,16 @@
 namespace Boidsish {
 
 	Terrain::Terrain(
-		const std::vector<float>&        vertexData,
 		const std::vector<unsigned int>& indices,
+		const std::vector<glm::vec3>&    vertices,
+		const std::vector<glm::vec3>&    normals,
+		const PatchProxy&                proxy,
 		std::shared_ptr<Shader>          shader
 	):
-		vertex_data_(vertexData),
 		indices_(indices),
+		vertices(vertices),
+		normals(normals),
+		proxy(proxy),
 		shader_(shader),
 		vao_(0),
 		vbo_(0),
@@ -32,6 +36,20 @@ namespace Boidsish {
 	}
 
 	void Terrain::setupMesh() {
+		// Generate interleaved vertex data for GPU upload
+		vertex_data_.reserve(vertices.size() * 8);
+		for (size_t i = 0; i < vertices.size(); ++i) {
+			vertex_data_.push_back(vertices[i].x);
+			vertex_data_.push_back(vertices[i].y);
+			vertex_data_.push_back(vertices[i].z);
+			vertex_data_.push_back(normals[i].x);
+			vertex_data_.push_back(normals[i].y);
+			vertex_data_.push_back(normals[i].z);
+			// Dummy texture coordinates
+			vertex_data_.push_back(0.0f);
+			vertex_data_.push_back(0.0f);
+		}
+
 		glGenVertexArrays(1, &vao_);
 		glGenBuffers(1, &vbo_);
 		glGenBuffers(1, &ebo_);
@@ -56,9 +74,8 @@ namespace Boidsish {
 
 		glBindVertexArray(0);
 
-		// Clear data after uploading to GPU
+		// Clear interleaved data after uploading to GPU, but keep vertices and normals for physics
 		vertex_data_.clear();
-		indices_.clear();
 	}
 
 	void Terrain::render() const {
