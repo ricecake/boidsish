@@ -15,6 +15,9 @@
 #include "post_processing/PostProcessingManager.h"
 #include "post_processing/effects/GlitchEffect.h"
 #include "post_processing/effects/NegativeEffect.h"
+#include "post_processing/effects/StrobeEffect.h"
+#include "post_processing/effects/TimeStutterEffect.h"
+#include "post_processing/effects/WhispTrailEffect.h"
 #include "task_thread_pool.hpp"
 #include "terrain.h"
 #include "terrain_generator.h"
@@ -348,6 +351,19 @@ namespace Boidsish {
 				auto glitch_effect = std::make_shared<PostProcessing::GlitchEffect>();
 				glitch_effect->SetEnabled(false);
 				post_processing_manager_->AddEffect(glitch_effect);
+
+				auto strobe_effect = std::make_shared<PostProcessing::StrobeEffect>();
+				strobe_effect->SetEnabled(false);
+				post_processing_manager_->AddEffect(strobe_effect);
+
+				auto whisp_trail_effect = std::make_shared<PostProcessing::WhispTrailEffect>();
+				whisp_trail_effect->SetEnabled(false);
+				post_processing_manager_->AddEffect(whisp_trail_effect);
+
+				auto time_stutter_effect = std::make_shared<PostProcessing::TimeStutterEffect>();
+				time_stutter_effect->SetEnabled(false);
+				post_processing_manager_->AddEffect(time_stutter_effect);
+
 
 				// --- UI ---
 				auto post_processing_widget = std::make_shared<UI::PostProcessingWidget>(*post_processing_manager_);
@@ -1119,9 +1135,7 @@ namespace Boidsish {
 			// --- Post-processing Pass (renders FBO texture to screen) ---
 			// Update time-dependent effects
 			for (auto& effect : impl->post_processing_manager_->GetEffects()) {
-				if (auto glitch_effect = std::dynamic_pointer_cast<PostProcessing::GlitchEffect>(effect)) {
-					glitch_effect->SetTime(impl->simulation_time);
-				}
+				effect->SetTime(impl->simulation_time);
 			}
 
 			bool any_effect_enabled = false;

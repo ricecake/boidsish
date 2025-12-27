@@ -18,7 +18,7 @@ namespace Boidsish {
 			void Initialize(int width, int height) override;
 			void Resize(int width, int height) override;
 
-			void SetTime(float time) { time_ = time; }
+			void SetTime(float time) override { time_ = time; }
 
 		private:
 			std::unique_ptr<Shader> shader_;
