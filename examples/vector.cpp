@@ -105,6 +105,7 @@ VectorDemoEntity::VectorDemoEntity(int id, const Vector3& start_pos): Entity<>(i
 	SetPosition(start_pos);
 	SetSize(10.0f);
 	SetTrailLength(100);
+	SetTrailIridescence(true);
 }
 
 void VectorDemoEntity::UpdateEntity(const EntityHandler& handler, float time, float delta_time) {
@@ -195,6 +196,7 @@ void VectorDemoEntity::UpdateEntity(const EntityHandler& handler, float time, fl
 FlockingEntity::FlockingEntity(int id, const Vector3& start_pos): Entity<>(id) {
 	SetPosition(start_pos);
 	SetSize(5.0f);
+	SetTrailIridescence(true);
 	SetTrailLength(25);
 	Vector3 startVel((rand() % 30 - 15) * 2.0f, (rand() % 10 - 5) * 2.0f, (rand() % 16 - 8) * 2.0f);
 
