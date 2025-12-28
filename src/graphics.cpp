@@ -15,6 +15,7 @@
 #include "post_processing/PostProcessingManager.h"
 #include "post_processing/effects/GlitchEffect.h"
 #include "post_processing/effects/NegativeEffect.h"
+#include "post_processing/effects/OpticalFlowEffect.h"
 #include "task_thread_pool.hpp"
 #include "terrain.h"
 #include "terrain_generator.h"
@@ -348,6 +349,10 @@ namespace Boidsish {
 				auto glitch_effect = std::make_shared<PostProcessing::GlitchEffect>();
 				glitch_effect->SetEnabled(false);
 				post_processing_manager_->AddEffect(glitch_effect);
+
+				auto optical_flow_effect = std::make_shared<PostProcessing::OpticalFlowEffect>();
+                optical_flow_effect->SetEnabled(false);
+                post_processing_manager_->AddEffect(optical_flow_effect);
 
 				// --- UI ---
 				auto post_processing_widget = std::make_shared<UI::PostProcessingWidget>(*post_processing_manager_);
@@ -712,6 +717,14 @@ namespace Boidsish {
 			if (state.key_down[GLFW_KEY_F11]) {
 				ToggleFullscreen();
 			}
+
+			if (state.key_down[GLFW_KEY_F1]) {
+                for (auto& effect : post_processing_manager_->GetEffects()) {
+                    if (effect->GetName() == "OpticalFlow") {
+                        effect->SetEnabled(!effect->IsEnabled());
+                    }
+                }
+            }
 		}
 
 		void ToggleFullscreen() {
