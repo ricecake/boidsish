@@ -86,8 +86,14 @@ namespace Boidsish {
 		}
 
 		Edge& E(int id) { return edges.at(id); }
+		const std::vector<Edge> AllEdges() {
+			return edges;
+		}
 
 		Vertex& V(int id) { return vertices.at(id); }
+		const std::vector<Vertex> AllVerticies() {
+			return vertices;
+		}
 
 	private:
 		std::vector<Vertex> vertices;

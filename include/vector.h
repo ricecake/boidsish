@@ -27,6 +27,11 @@ namespace Boidsish {
 			return Vector3(x + other.x, y + other.y, z + other.z);
 		}
 
+
+		constexpr bool operator==(const Vector3& o) {
+			return x == o.x && y == o.y && z == o.z;
+		}
+
 		Vector3& operator+=(const Vector3& other) {
 			x += other.x;
 			y += other.y;
