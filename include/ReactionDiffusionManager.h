@@ -14,6 +14,7 @@ namespace Boidsish {
         void Initialize();
         void Update();
         void Reset();
+        void Resize(int width, int height);
 
         GLuint GetTexture() const { return m_textures[m_current_texture_index]; }
 

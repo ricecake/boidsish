@@ -948,6 +948,10 @@ namespace Boidsish {
 			if (impl->effects_enabled_ && impl->post_processing_manager_) {
 				impl->post_processing_manager_->Resize(width, height);
 			}
+
+			if (impl->reaction_diffusion_manager) {
+				impl->reaction_diffusion_manager->Resize(width, height);
+			}
 		}
 	};
 

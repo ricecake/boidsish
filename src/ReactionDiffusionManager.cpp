@@ -75,6 +75,18 @@ namespace Boidsish {
         glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, m_width, m_height, GL_RG, GL_FLOAT, initial_data.data());
     }
 
+    void ReactionDiffusionManager::Resize(int width, int height) {
+        if (m_width == width && m_height == height) return;
+
+        m_width = width;
+        m_height = height;
+
+        glDeleteFramebuffers(2, m_fbos);
+        glDeleteTextures(2, m_textures);
+
+        InitializeFBOs();
+        Reset();
+    }
 
     void ReactionDiffusionManager::Update() {
         if (m_paused) return;

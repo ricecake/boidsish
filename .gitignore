@@ -196,4 +196,4 @@ _deps
 *.gcda
 
 # Profiling files
-gmon.out
+gmon.out\n# ImGui configuration file\nimgui.ini
