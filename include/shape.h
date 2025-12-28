@@ -69,6 +69,10 @@ namespace Boidsish {
 
 		inline void SetTrailLength(int length) { trail_length_ = length; }
 
+		inline bool IsTrailIridescent() const { return trail_iridescent_; }
+
+		inline void SetTrailIridescence(bool enabled) { trail_iridescent_ = enabled; }
+
 		// Static shader reference
 		static std::shared_ptr<Shader> shader;
 
@@ -105,7 +109,8 @@ namespace Boidsish {
 			a_(a),
 			rotation_(glm::quat(1.0f, 0.0f, 0.0f, 0.0f)),
 			scale_(glm::vec3(1.0f)),
-			trail_length_(trail_length) {}
+			trail_length_(trail_length),
+			trail_iridescent_(false) {}
 
 		glm::quat rotation_;
 		glm::vec3 scale_;
@@ -115,6 +120,7 @@ namespace Boidsish {
 		float x_, y_, z_;
 		float r_, g_, b_, a_;
 		int   trail_length_;
+		bool  trail_iridescent_;
 
 	private:
 		// Shared sphere mesh
