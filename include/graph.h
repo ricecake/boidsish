@@ -69,8 +69,10 @@ namespace Boidsish {
 		Graph(int id = 0, float x = 0.0f, float y = 0.0f, float z = 0.0f);
 		~Graph();
 
-		void SetupBuffers() const;
-		void render() const override;
+		void      SetupBuffers() const;
+		void      render() const override;
+		void render(Shader& shader, const glm::mat4& model_matrix) const override;
+		glm::mat4 GetModelMatrix() const override;
 
 		Vertex& AddVertex(const Vector3& pos, float Size = 0, float R = 0, float G = 0, float B = 0, float A = 0) {
 			buffers_initialized_ = false;

@@ -58,19 +58,26 @@ namespace Boidsish {
 			std::cerr << "Model::render - Shader is not set!" << std::endl;
 			return;
 		}
+		shader->use();
+		render(*shader, GetModelMatrix());
+	}
 
-		// Create model matrix from shape properties
-		glm::mat4 model = glm::mat4(1.0f);
-		model = glm::translate(model, glm::vec3(GetX(), GetY(), GetZ()));
-		model *= glm::mat4_cast(GetRotation());
-		model = glm::scale(model, GetScale());
-
-		shader->setMat4("model", model);
-
+	void Model::render(Shader& shader, const glm::mat4& model_matrix) const {
+		shader.setMat4("model", model_matrix);
+		shader.setVec3("objectColor", GetR(), GetG(), GetB());
 		for (unsigned int i = 0; i < meshes.size(); i++) {
 			meshes[i].render();
 		}
 	}
+
+	glm::mat4 Model::GetModelMatrix() const {
+		glm::mat4 model = glm::mat4(1.0f);
+		model = glm::translate(model, glm::vec3(GetX(), GetY(), GetZ()));
+		model *= glm::mat4_cast(GetRotation());
+		model = glm::scale(model, GetScale());
+		return model;
+	}
+
 
 	void Model::loadModel(const std::string& path) {
 		Assimp::Importer importer;

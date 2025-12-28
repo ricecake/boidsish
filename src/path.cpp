@@ -129,19 +129,38 @@ namespace Boidsish {
 		if (edge_vertex_count_ > 0) {
 			shader->use();
 			shader->setInt("useVertexColor", 1);
-
-			glm::mat4 model = glm::mat4(1.0f);
-			model = glm::translate(model, glm::vec3(GetX(), GetY(), GetZ()));
-			shader->setMat4("model", model);
+			shader->setMat4("model", GetModelMatrix());
 
 			glBindVertexArray(path_vao_);
 			glDrawArrays(GL_TRIANGLES, 0, edge_vertex_count_);
 			glBindVertexArray(0);
 
 			shader->setInt("useVertexColor", 0);
-			model = glm::mat4(1.0f);
+			glm::mat4 model = glm::mat4(1.0f);
 			shader->setMat4("model", model);
 		}
+	}
+
+
+	void Path::render(Shader& shader, const glm::mat4& model_matrix) const {
+		if (!buffers_initialized_) {
+			SetupBuffers();
+		}
+
+		shader.setMat4("model", model_matrix);
+		shader.setInt("useVertexColor", 1);
+
+		glBindVertexArray(path_vao_);
+		glDrawArrays(GL_TRIANGLES, 0, edge_vertex_count_);
+		glBindVertexArray(0);
+
+		shader.setInt("useVertexColor", 0);
+	}
+
+	glm::mat4 Path::GetModelMatrix() const {
+		glm::mat4 model = glm::mat4(1.0f);
+		model = glm::translate(model, glm::vec3(GetX(), GetY(), GetZ()));
+		return model;
 	}
 
 	PathUpdateResult Path::CalculateUpdate(

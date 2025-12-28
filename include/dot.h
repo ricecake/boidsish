@@ -27,7 +27,9 @@ namespace Boidsish {
 		inline void SetSize(float size) { size_ = size; }
 
 		// Render implementation
-		void render() const override;
+		void      render() const override;
+		void render(Shader& shader, const glm::mat4& model_matrix) const override;
+		glm::mat4 GetModelMatrix() const override;
 
 	private:
 		float size_;

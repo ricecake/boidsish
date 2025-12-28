@@ -15,13 +15,26 @@ namespace Boidsish {
 		Shape(id, x, y, z, r, g, b, a, trail_length), size_(size) {}
 
 	void Dot::render() const {
+		shader->use();
+		render(*shader, GetModelMatrix());
+	}
+
+	void Dot::render(Shader& shader, const glm::mat4& model_matrix) const {
+		shader.setMat4("model", model_matrix);
+		shader.setVec3("objectColor", GetR(), GetG(), GetB());
+
+		glBindVertexArray(sphere_vao_);
+		glDrawElements(GL_TRIANGLES, sphere_vertex_count_, GL_UNSIGNED_INT, 0);
+		glBindVertexArray(0);
+	}
+
+	glm::mat4 Dot::GetModelMatrix() const {
+		glm::mat4 model = glm::mat4(1.0f);
+		model = glm::translate(model, glm::vec3(GetX(), GetY(), GetZ()));
+		model *= glm::mat4_cast(GetRotation());
 		glm::vec3 combined_scale = GetScale() * size_ * 0.01f;
-		RenderSphere(
-			glm::vec3(GetX(), GetY(), GetZ()),
-			glm::vec3(GetR(), GetG(), GetB()),
-			combined_scale,
-			GetRotation()
-		);
+		model = glm::scale(model, combined_scale);
+		return model;
 	}
 
 } // namespace Boidsish

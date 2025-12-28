@@ -9,6 +9,7 @@ namespace Boidsish {
 		SHIMMERY,
 		GLITCHED,
 		WIREFRAME,
+		FREEZE_FRAME_TRAIL,
 	};
 
 	struct VisualEffectsUbo {

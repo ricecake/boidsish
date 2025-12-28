@@ -4,12 +4,12 @@
 #include <iostream>
 #include <map>
 #include <memory>
-#include <optional>
 #include <set>
 #include <vector>
 
 #include "Config.h"
 #include "UIManager.h"
+#include "clone_manager.h"
 #include "dot.h"
 #include "logger.h"
 #include "post_processing/PostProcessingManager.h"
@@ -41,11 +41,12 @@ namespace Boidsish {
 		Camera                                camera;
 		std::vector<ShapeFunction>            shape_functions;
 		std::vector<std::shared_ptr<Shape>>   shapes;
+		std::unique_ptr<CloneManager>         clone_manager;
 		std::map<int, std::shared_ptr<Trail>> trails;
 		std::map<int, float>                  trail_last_update;
 
 		InputState                                             input_state{};
-		InputCallback                                          input_callback;
+		std::vector<InputCallback>                             input_callbacks;
 		std::unique_ptr<UI::UIManager>                         ui_manager;
 		std::unique_ptr<PostProcessing::PostProcessingManager> post_processing_manager_;
 		int                                                    exit_key;
@@ -123,7 +124,7 @@ namespace Boidsish {
 			is_fullscreen_ = config.GetBool("fullscreen", false);
 
 			exit_key = GLFW_KEY_ESCAPE;
-			input_callback = [this](const InputState& state) { this->DefaultInputHandler(state); };
+			input_callbacks.push_back([this](const InputState& state) { this->DefaultInputHandler(state); });
 
 			last_frame = std::chrono::high_resolution_clock::now();
 			if (!glfwInit())
@@ -181,6 +182,7 @@ namespace Boidsish {
 			if (terrain_enabled_) {
 				terrain_generator = std::make_unique<TerrainGenerator>();
 			}
+			clone_manager = std::make_unique<CloneManager>();
 
 			glGenBuffers(1, &lighting_ubo);
 			glBindBuffer(GL_UNIFORM_BUFFER, lighting_ubo);
@@ -200,7 +202,6 @@ namespace Boidsish {
 			shader->use();
 			SetupShaderBindings(*shader);
 			SetupShaderBindings(*trail_shader);
-
 			if (floor_enabled_) {
 				SetupShaderBindings(*plane_shader);
 				SetupShaderBindings(*sky_shader);
@@ -510,6 +511,10 @@ namespace Boidsish {
 			for (auto& pair : trails) {
 				pair.second->Render(*trail_shader);
 			}
+
+			// Render clones
+			shader->use();
+			clone_manager->Render(*shader);
 		}
 
 		void RenderTerrain(const glm::mat4& view, const std::optional<glm::vec4>& clip_plane) {
@@ -965,8 +970,10 @@ namespace Boidsish {
 
 		impl->input_state.delta_time = delta_time;
 
-		if (impl->input_callback) {
-			impl->input_callback(impl->input_state);
+		for (const auto& callback : impl->input_callbacks) {
+			if (callback) {
+				callback(impl->input_state);
+			}
 		}
 
 		if (!impl->paused) {
@@ -1038,6 +1045,9 @@ namespace Boidsish {
 			impl->UpdateAutoCamera(impl->input_state.delta_time, impl->shapes);
 		}
 
+		// Update clone manager
+		impl->clone_manager->Update(impl->simulation_time, impl->camera.pos());
+
 		// UBO Updates
 		if (impl->effects_enabled_) {
 			VisualEffectsUbo ubo_data = {};
@@ -1047,6 +1057,8 @@ namespace Boidsish {
 						ubo_data.ripple_enabled = 1;
 					} else if (effect == VisualEffect::COLOR_SHIFT) {
 						ubo_data.color_shift_enabled = 1;
+					} else if (effect == VisualEffect::FREEZE_FRAME_TRAIL) {
+						impl->clone_manager->CaptureClone(shape, impl->simulation_time);
 					}
 				}
 			}
@@ -1191,8 +1203,8 @@ namespace Boidsish {
 		impl->camera = camera;
 	}
 
-	void Visualizer::SetInputCallback(InputCallback callback) {
-		impl->input_callback = callback;
+	void Visualizer::AddInputCallback(InputCallback callback) {
+		impl->input_callbacks.push_back(callback);
 	}
 
 	void Visualizer::AddWidget(std::shared_ptr<UI::IWidget> widget) {
@@ -1249,6 +1261,8 @@ namespace Boidsish {
 			break;
 		case VisualEffect::WIREFRAME:
 			impl->wireframe_effect = !impl->wireframe_effect;
+			break;
+		case VisualEffect::FREEZE_FRAME_TRAIL:
 			break;
 		}
 	}

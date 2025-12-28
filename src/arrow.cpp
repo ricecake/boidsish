@@ -33,14 +33,12 @@ namespace Boidsish {
 
 	void Arrow::render() const {
 		shader->use();
+		render(*shader, GetModelMatrix());
+	}
 
-		glm::mat4 model = glm::mat4(1.0f);
-		model = glm::translate(model, glm::vec3(GetX(), GetY(), GetZ()));
-		model = model * glm::mat4_cast(GetRotation());
-		model = glm::scale(model, GetScale());
-
-		shader->setMat4("model", model);
-		shader->setVec3("objectColor", GetR(), GetG(), GetB());
+	void Arrow::render(Shader& shader, const glm::mat4& model_matrix) const {
+		shader.setMat4("model", model_matrix);
+		shader.setVec3("objectColor", GetR(), GetG(), GetB());
 
 		// Render Rod
 		glBindVertexArray(rod_vao_);
@@ -52,6 +50,15 @@ namespace Boidsish {
 
 		glBindVertexArray(0);
 	}
+
+	glm::mat4 Arrow::GetModelMatrix() const {
+		glm::mat4 model = glm::mat4(1.0f);
+		model = glm::translate(model, glm::vec3(GetX(), GetY(), GetZ()));
+		model = model * glm::mat4_cast(GetRotation());
+		model = glm::scale(model, GetScale());
+		return model;
+	}
+
 
 	void Arrow::InitArrowMesh() {
 		// Rod generation
