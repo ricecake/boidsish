@@ -81,15 +81,16 @@ namespace Boidsish {
         }
 
         void OpticalFlowEffect::Apply(GLuint sourceTexture) {
-            // 1. Calculate optical flow and acceleration into our own FBO.
+            // 1. Get the currently bound FBO to restore it later
+            GLint originalFBO;
+            glGetIntegerv(GL_FRAMEBUFFER_BINDING, &originalFBO);
+
+            // 2. Calculate optical flow and acceleration into our own FBO.
             glBindFramebuffer(GL_FRAMEBUFFER, _outputFBO);
             GLuint attachments[2] = {GL_COLOR_ATTACHMENT0, GL_COLOR_ATTACHMENT1};
             glDrawBuffers(2, attachments);
             glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, _outputTexture, 0);
             glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT1, GL_TEXTURE_2D, _flowTextures[1 - _currentFlowIndex], 0);
-
-            if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
-                std::cerr << "ERROR::FRAMEBUFFER:: MRT FBO is not complete!" << std::endl;
 
             glClear(GL_COLOR_BUFFER_BIT);
 
@@ -110,7 +111,7 @@ namespace Boidsish {
 
             _currentFlowIndex = 1 - _currentFlowIndex;
 
-            // 2. Save current frame for the next iteration.
+            // 3. Save current frame for the next iteration into our history FBO.
             glBindFramebuffer(GL_FRAMEBUFFER, _previousFrameFBO);
             glClear(GL_COLOR_BUFFER_BIT);
             _passthroughShader->use();
@@ -119,7 +120,8 @@ namespace Boidsish {
             _passthroughShader->setInt("u_texture", 0);
             glDrawArrays(GL_TRIANGLES, 0, 6);
 
-            // 3. Render the result to the currently bound FBO (the one from the manager)
+            // 4. Restore the original FBO and render the result to it.
+            glBindFramebuffer(GL_FRAMEBUFFER, originalFBO);
             _passthroughShader->use();
             glActiveTexture(GL_TEXTURE0);
             glBindTexture(GL_TEXTURE_2D, _outputTexture);
