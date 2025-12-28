@@ -7,8 +7,11 @@
 namespace Boidsish {
 namespace PostProcessing {
 
-WhispTrailEffect::WhispTrailEffect() {
+WhispTrailEffect::WhispTrailEffect() : current_read_(0), width_(0), height_(0), time_(0.0f) {
     name_ = "Whisp Trail";
+    // Zero-initialize handles
+    trail_fbo_[0] = trail_fbo_[1] = 0;
+    trail_texture_[0] = trail_texture_[1] = 0;
 }
 
 WhispTrailEffect::~WhispTrailEffect() {
@@ -49,11 +52,19 @@ void WhispTrailEffect::InitializeFBOs(int width, int height) {
 }
 
 void WhispTrailEffect::Apply(GLuint sourceTexture) {
+    // Save original state
+    GLint previous_fbo;
+    glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING, &previous_fbo);
+    GLint viewport[4];
+    glGetIntegerv(GL_VIEWPORT, viewport);
+
     int read_idx = current_read_;
     int write_idx = 1 - current_read_;
 
-    // 1. Process the previous frame's trail
+    // 1. Process the previous frame's trail into our internal FBO
     glBindFramebuffer(GL_FRAMEBUFFER, trail_fbo_[write_idx]);
+    glViewport(0, 0, width_, height_);
+    glClear(GL_COLOR_BUFFER_BIT);
 
     trail_shader_->use();
     trail_shader_->setInt("sceneTexture", 0);
@@ -68,7 +79,10 @@ void WhispTrailEffect::Apply(GLuint sourceTexture) {
 
     glDrawArrays(GL_TRIANGLES, 0, 6);
 
-    // 2. Blit the result to the main output
+    // 2. Blit the result to the main output (the manager's FBO)
+    glBindFramebuffer(GL_FRAMEBUFFER, previous_fbo);
+    glViewport(viewport[0], viewport[1], viewport[2], viewport[3]); // Restore viewport
+
     blit_shader_->use();
     blit_shader_->setInt("sceneTexture", 0);
 

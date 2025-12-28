@@ -13,7 +13,9 @@ namespace {
     constexpr float kStutterDuration = 0.1f;
 }
 
-TimeStutterEffect::TimeStutterEffect(): rng_(std::random_device{}()) {
+TimeStutterEffect::TimeStutterEffect()
+    : rng_(std::random_device{}()), current_frame_idx_(0), displayed_frame_offset_(0),
+      last_stutter_time_(0.0f), stutter_end_time_(0.0f), width_(0), height_(0), time_(0.0f) {
     name_ = "Time Stutter";
 }
 
@@ -37,8 +39,8 @@ void TimeStutterEffect::InitializeFBOs(int width, int height) {
         glDeleteTextures(history_texture_.size(), history_texture_.data());
     }
 
-    history_fbo_.resize(kFrameHistoryCount);
-    history_texture_.resize(kFrameHistoryCount);
+    history_fbo_.assign(kFrameHistoryCount, 0);
+    history_texture_.assign(kFrameHistoryCount, 0);
     glGenFramebuffers(kFrameHistoryCount, history_fbo_.data());
     glGenTextures(kFrameHistoryCount, history_texture_.data());
 
@@ -57,9 +59,17 @@ void TimeStutterEffect::InitializeFBOs(int width, int height) {
 }
 
 void TimeStutterEffect::Apply(GLuint sourceTexture) {
+    // Save original state
+    GLint previous_fbo;
+    glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING, &previous_fbo);
+    GLint viewport[4];
+    glGetIntegerv(GL_VIEWPORT, viewport);
+
     // 1. Capture the current frame into our history buffer
     current_frame_idx_ = (current_frame_idx_ + 1) % kFrameHistoryCount;
     glBindFramebuffer(GL_FRAMEBUFFER, history_fbo_[current_frame_idx_]);
+    glViewport(0, 0, width_, height_);
+    glClear(GL_COLOR_BUFFER_BIT);
 
     blit_shader_->use();
     blit_shader_->setInt("sceneTexture", 0);
@@ -82,6 +92,9 @@ void TimeStutterEffect::Apply(GLuint sourceTexture) {
 
     // 3. Blit the chosen frame (either current or historical) to the output
     int frame_to_display_idx = (current_frame_idx_ - displayed_frame_offset_ + kFrameHistoryCount) % kFrameHistoryCount;
+
+    glBindFramebuffer(GL_FRAMEBUFFER, previous_fbo);
+    glViewport(viewport[0], viewport[1], viewport[2], viewport[3]); // Restore viewport
 
     blit_shader_->use();
     blit_shader_->setInt("sceneTexture", 0);

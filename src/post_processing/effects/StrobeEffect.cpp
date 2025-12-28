@@ -54,10 +54,14 @@ void StrobeEffect::InitializeFBO(int width, int height) {
 }
 
 void StrobeEffect::Apply(GLuint sourceTexture) {
-    // Capture snapshot periodically
+    GLint previous_fbo;
+    glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING, &previous_fbo);
+
+    // Capture snapshot periodically into our internal buffer
     if (time_ - last_capture_time_ > kCaptureInterval) {
         glBindFramebuffer(GL_FRAMEBUFFER, strobe_fbo_);
-        glClear(GL_COLOR_BUFFER_BIT); // Clear previous snapshot
+        glViewport(0, 0, width_, height_);
+        glClear(GL_COLOR_BUFFER_BIT);
 
         blit_shader_->use();
         blit_shader_->setInt("sceneTexture", 0);
@@ -67,11 +71,14 @@ void StrobeEffect::Apply(GLuint sourceTexture) {
 
         glDrawArrays(GL_TRIANGLES, 0, 6);
 
-        glBindFramebuffer(GL_FRAMEBUFFER, 0);
         last_capture_time_ = time_;
     }
 
-    // Apply the effect
+    // Now, render the final output to the buffer that was originally bound.
+    glBindFramebuffer(GL_FRAMEBUFFER, previous_fbo);
+    glViewport(0, 0, width_, height_); // Set viewport for the destination
+
+    // Apply the effect by blending the source texture and our strobe texture
     shader_->use();
     shader_->setInt("sceneTexture", 0);
     shader_->setInt("strobeTexture", 1);

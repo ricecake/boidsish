@@ -57,10 +57,13 @@ namespace Boidsish {
 			int    fbo_index = 0;
 			GLuint current_texture = sourceTexture;
 
+			// Ensure the viewport is set correctly for our FBOs before starting
+			glViewport(0, 0, width_, height_);
+
 			for (const auto& effect : effects_) {
 				if (effect->IsEnabled()) {
 					glBindFramebuffer(GL_FRAMEBUFFER, pingpong_fbo_[fbo_index]);
-					glClear(GL_COLOR_BUFFER_BIT); // Clear the buffer before drawing
+					glClear(GL_COLOR_BUFFER_BIT);
 
 					glBindVertexArray(quad_vao_);
 					effect->Apply(current_texture);
@@ -72,14 +75,13 @@ namespace Boidsish {
 				}
 			}
 
+			// Restore the default framebuffer, but the viewport will be restored by the caller (Visualizer)
 			glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
-			// If no effects were enabled, we just return the original scene texture
 			if (first_pass) {
 				return sourceTexture;
 			}
 
-			// The final texture is in the FBO we are NOT about to render to.
 			return pingpong_texture_[1 - fbo_index];
 		}
 
