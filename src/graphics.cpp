@@ -484,6 +484,9 @@ namespace Boidsish {
 				if (shape->GetTrailLength() > 0 && !paused) {
 					if (trails.find(shape->GetId()) == trails.end()) {
 						trails[shape->GetId()] = std::make_shared<Trail>(shape->GetTrailLength());
+						if (shape->IsTrailIridescent()) {
+							trails[shape->GetId()]->SetIridescence(true);
+						}
 					}
 					trails[shape->GetId()]->AddPoint(
 						glm::vec3(shape->GetX(), shape->GetY(), shape->GetZ()),
