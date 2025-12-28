@@ -18,7 +18,6 @@ namespace Boidsish {
 
 		void AddPoint(glm::vec3 position, glm::vec3 color);
 		void Render(Shader& shader) const;
-		void SetIridescence(bool enabled);
 
 	private:
 		struct TrailVertex {
@@ -69,7 +68,6 @@ namespace Boidsish {
 		mutable std::deque<Vector3> tangents;
 		mutable std::deque<Vector3> normals;
 		mutable std::deque<Vector3> binormals;
-		bool                                        iridescent_ = false;
 
 		// Configuration
 		const int   TRAIL_SEGMENTS = 8;     // Circular segments around trail

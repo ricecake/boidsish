@@ -237,10 +237,6 @@ namespace Boidsish {
 		mesh_dirty = true;
 	}
 
-	void Trail::SetIridescence(bool enabled) {
-		iridescent_ = enabled;
-	}
-
 	void Trail::Render(Shader& shader) const {
 		if (points.size() < 4) {
 			return;
@@ -292,7 +288,6 @@ namespace Boidsish {
 		shader.use();
 		shader.setFloat("base_thickness", BASE_THICKNESS);
 		shader.setInt("useVertexColor", 1);
-		shader.setBool("useIridescence", iridescent_);
 
 		glBindVertexArray(vao);
 		glDrawArrays(GL_TRIANGLES, 0, vertex_count);

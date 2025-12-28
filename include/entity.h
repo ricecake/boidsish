@@ -31,7 +31,6 @@ namespace Boidsish {
 			size_(8.0f),
 			color_{1.0f, 1.0f, 1.0f, 1.0f},
 			trail_length_(50),
-			trail_iridescent_(false),
 			orientation_(glm::quat(1.0f, 0.0f, 0.0f, 0.0f)) {}
 
 		virtual ~EntityBase() = default;
@@ -95,10 +94,6 @@ namespace Boidsish {
 
 		void SetTrailLength(int length) { trail_length_ = length; }
 
-		bool IsTrailIridescent() const { return trail_iridescent_; }
-
-		void SetTrailIridescence(bool enabled) { trail_iridescent_ = enabled; }
-
 		void SetPath(std::shared_ptr<Path> path, float speed) {
 			path_ = path;
 			path_speed_ = speed;
@@ -113,7 +108,6 @@ namespace Boidsish {
 		float     size_;
 		float     color_[4]; // RGBA
 		int       trail_length_;
-		bool      trail_iridescent_;
 		glm::quat orientation_;
 
 		// Path following
@@ -144,7 +138,6 @@ namespace Boidsish {
 			shape_->SetPosition(position_.x, position_.y, position_.z);
 			shape_->SetColor(color_[0], color_[1], color_[2], color_[3]);
 			shape_->SetTrailLength(trail_length_);
-			shape_->SetTrailIridescence(trail_iridescent_);
 			shape_->SetRotation(orientation_);
 			// For dots, we can also update the size
 			if (auto dot = std::dynamic_pointer_cast<Dot>(shape_)) {
