@@ -15,11 +15,13 @@
 #include "post_processing/PostProcessingManager.h"
 #include "post_processing/effects/GlitchEffect.h"
 #include "post_processing/effects/NegativeEffect.h"
+#include "ReactionDiffusionManager.h"
 #include "task_thread_pool.hpp"
 #include "terrain.h"
 #include "terrain_generator.h"
 #include "trail.h"
 #include "ui/PostProcessingWidget.h"
+#include "ui/ReactionDiffusionWidget.h"
 #include "visual_effects.h"
 #include <GL/glew.h>
 #include <GLFW/glfw3.h>
@@ -48,6 +50,7 @@ namespace Boidsish {
 		InputCallback                                          input_callback;
 		std::unique_ptr<UI::UIManager>                         ui_manager;
 		std::unique_ptr<PostProcessing::PostProcessingManager> post_processing_manager_;
+		std::unique_ptr<ReactionDiffusionManager>              reaction_diffusion_manager;
 		int                                                    exit_key;
 
 		Config config;
@@ -353,6 +356,13 @@ namespace Boidsish {
 				auto post_processing_widget = std::make_shared<UI::PostProcessingWidget>(*post_processing_manager_);
 				ui_manager->AddWidget(post_processing_widget);
 			}
+
+			if (floor_enabled_) {
+				reaction_diffusion_manager = std::make_unique<ReactionDiffusionManager>(width, height);
+				reaction_diffusion_manager->Initialize();
+				auto rd_widget = std::make_shared<UI::ReactionDiffusionWidget>(*reaction_diffusion_manager);
+				ui_manager->AddWidget(rd_widget);
+			}
 		}
 
 		void SetupShaderBindings(Shader& shader_to_setup) {
@@ -575,9 +585,15 @@ namespace Boidsish {
 			glEnable(GL_BLEND);
 			glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 			plane_shader->use();
+
 			plane_shader->setInt("reflectionTexture", 0);
 			glActiveTexture(GL_TEXTURE0);
 			glBindTexture(GL_TEXTURE_2D, pingpong_texture[0]);
+
+			plane_shader->setInt("reactionDiffusionTexture", 1);
+			glActiveTexture(GL_TEXTURE1);
+			glBindTexture(GL_TEXTURE_2D, reaction_diffusion_manager->GetTexture());
+
 			plane_shader->setMat4("reflectionViewProjection", reflection_vp);
 
 			glm::mat4 model = glm::scale(glm::mat4(1.0f), glm::vec3(600.0f));
@@ -967,6 +983,10 @@ namespace Boidsish {
 
 		if (impl->input_callback) {
 			impl->input_callback(impl->input_state);
+		}
+
+		if (impl->reaction_diffusion_manager) {
+			impl->reaction_diffusion_manager->Update();
 		}
 
 		if (!impl->paused) {

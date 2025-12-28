@@ -13,6 +13,7 @@ layout(std140) uniform Lighting {
 };
 
 uniform sampler2D reflectionTexture;
+uniform sampler2D reactionDiffusionTexture;
 
 void main() {
 	// discard;
@@ -54,9 +55,17 @@ void main() {
 	vec3 surfaceColor = vec3(0.05, 0.05, 0.08);
 	vec3 lighting = (ambient + diffuse + specular);
 
+	// --- Reaction Diffusion Sampling ---
+	vec2 rd_coords = WorldPos.xz / 600.0 + 0.5;
+	vec2 rd_val = texture(reactionDiffusionTexture, rd_coords).rg;
+	vec3 rd_color = mix(vec3(0.1, 0.1, 0.2), vec3(0.8, 0.9, 1.0), rd_val.x);
+
 	// --- Combine colors ---
 	float reflection_strength = 0.8;
-	vec3  final_color = mix(lighting * surfaceColor, reflectionColor, reflection_strength) + grid_color;
+	vec3 lit_surface = lighting * surfaceColor;
+	vec3 reflected_surface = mix(lit_surface, reflectionColor, reflection_strength);
+	vec3 rd_surface = mix(reflected_surface, rd_color, 0.8);
+	vec3 final_color = rd_surface + grid_color;
 
 	// --- Distance Fade ---
 	float dist = length(WorldPos.xz - viewPos.xz);

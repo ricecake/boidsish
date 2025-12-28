@@ -41,7 +41,7 @@ namespace Boidsish {
 			ImGui::NewFrame();
 
 			for (const auto& widget : m_widgets) {
-				widget->Draw();
+            widget->Draw();
 			}
 
 			ImGui::Render();
