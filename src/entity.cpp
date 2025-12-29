@@ -26,7 +26,7 @@ namespace {
 		// Slerp for smooth turning.
 		return glm::slerp(current_orientation, target_orientation, kTurnSpeed * delta_time);
 	}
-} // namespace
+}
 
 namespace Boidsish {
 	std::vector<std::shared_ptr<Shape>> EntityHandler::operator()(float time) {
