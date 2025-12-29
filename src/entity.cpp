@@ -7,6 +7,52 @@
 
 namespace {
 	constexpr float kTurnSpeed = 15.0f;
+
+	glm::quat OrientToVelocity(glm::quat current_orientation, const Boidsish::Vector3& vel, float delta_time) {
+		if (vel.MagnitudeSquared() < 1e-6) {
+			return current_orientation;
+		}
+
+		// The Arrow model's "forward" is its local +Y axis.
+		// glm::lookAt assumes the "forward" is the local -Z axis.
+		// We need a corrective rotation to align +Y with -Z.
+		// A -90 degree rotation around the X-axis achieves this.
+		glm::quat correction = glm::angleAxis(-glm::pi<float>() / 2.0f, glm::vec3(1.0f, 0.0f, 0.0f));
+
+		glm::vec3 forward = glm::normalize(glm::vec3(vel.x, vel.y, vel.z));
+		glm::vec3 world_up = glm::vec3(0.0f, 1.0f, 0.0f);
+
+		glm::quat target_orientation;
+
+		// Handle the edge case where the forward vector is parallel to the world up vector.
+		if (glm::abs(glm::dot(forward, world_up)) > 0.999f) {
+			// If facing straight up or down, we need a different temporary up vector
+			// to calculate the right vector. Let's use the world's X-axis.
+			glm::vec3 temp_up = glm::vec3(1.0f, 0.0f, 0.0f);
+
+			// If we're also aligned with the world X-axis, use Z-axis.
+			if (glm::abs(glm::dot(forward, temp_up)) > 0.999f) {
+				temp_up = glm::vec3(0.0f, 0.0f, 1.0f);
+			}
+
+			glm::vec3 right = glm::normalize(glm::cross(forward, temp_up));
+			glm::vec3 up = glm::normalize(glm::cross(right, forward));
+			glm::mat4 orientation_matrix = glm::mat4(
+				glm::vec4(right, 0.0f),
+				glm::vec4(up, 0.0f),
+				glm::vec4(-forward, 0.0f), // Negated forward for a right-handed system
+				glm::vec4(0.0f, 0.0f, 0.0f, 1.0f)
+			);
+			target_orientation = glm::quat_cast(orientation_matrix);
+		} else {
+			// The standard case, using glm::lookAt
+			glm::mat4 look_at = glm::lookAt(glm::vec3(0.0f), forward, world_up);
+			target_orientation = glm::quat_cast(glm::inverse(look_at));
+		}
+
+		// Apply the correction and slerp
+		return glm::slerp(current_orientation, target_orientation * correction, kTurnSpeed * delta_time);
+	}
 }
 
 namespace Boidsish {
@@ -66,26 +112,7 @@ namespace Boidsish {
 		for (auto& entity : entities) {
 			// Orient to velocity
 			if (entity->orient_to_velocity_) {
-				const auto& vel = entity->GetVelocity();
-				if (vel.MagnitudeSquared() > 1e-6) {
-					glm::vec3 forward(0.0f, 1.0f, 0.0f); // Default "forward" for Arrow
-					glm::vec3 norm_vel = glm::normalize(glm::vec3(vel.x, vel.y, vel.z));
-
-					float     dot = glm::dot(forward, norm_vel);
-					glm::quat target_rot;
-
-					if (std::abs(dot - (-1.0f)) < 1e-6) {
-						// Opposite direction, 180 degree turn
-						target_rot = glm::angleAxis(glm::pi<float>(), glm::vec3(1.0f, 0.0f, 0.0f));
-					} else {
-						glm::vec3 rotAxis = glm::cross(forward, norm_vel);
-						float     rotAngle = std::acos(dot);
-						target_rot = glm::angleAxis(rotAngle, rotAxis);
-					}
-
-					// Smoothly interpolate to the target rotation
-					entity->orientation_ = glm::slerp(entity->orientation_, target_rot, kTurnSpeed * delta_time);
-				}
+				entity->orientation_ = OrientToVelocity(entity->orientation_, entity->GetVelocity(), delta_time);
 			}
 
 			// Update entity position using its velocity
