@@ -11,6 +11,7 @@
 #include "Config.h"
 #include "UIManager.h"
 #include "dot.h"
+#include "entity.h"
 #include "logger.h"
 #include "post_processing/PostProcessingManager.h"
 #include "post_processing/effects/GlitchEffect.h"
@@ -87,6 +88,8 @@ namespace Boidsish {
 		float single_track_orbit_yaw = 0.0f;
 		float single_track_orbit_pitch = 20.0f;
 		float single_track_distance = 15.0f;
+
+		std::shared_ptr<EntityBase> chase_target_ = nullptr;
 
 		bool color_shift_effect = false;
 
@@ -595,8 +598,9 @@ namespace Boidsish {
 		}
 
 		void DefaultInputHandler(const InputState& state) {
-			// Camera movement
-			if (camera_mode == CameraMode::FREE) {
+			// Camera movement, orbit, and zoom controls
+			switch (camera_mode) {
+			case CameraMode::FREE: {
 				float     camera_speed_val = camera.speed * state.delta_time;
 				glm::vec3 front(
 					cos(glm::radians(camera.pitch)) * sin(glm::radians(camera.yaw)),
@@ -645,10 +649,9 @@ namespace Boidsish {
 					camera.pitch = 89.0f;
 				if (camera.pitch < -89.0f)
 					camera.pitch = -89.0f;
+				break;
 			}
-
-			// Single track camera orbit
-			if (camera_mode == CameraMode::TRACKING) {
+			case CameraMode::TRACKING: {
 				float sensitivity = 0.1f;
 				float xoffset = state.mouse_delta_x * sensitivity;
 				float yoffset = state.mouse_delta_y * sensitivity;
@@ -660,21 +663,28 @@ namespace Boidsish {
 					single_track_orbit_pitch = 89.0f;
 				if (single_track_orbit_pitch < -89.0f)
 					single_track_orbit_pitch = -89.0f;
+				break;
+			}
+			default:
+				// No movement controls for other modes (AUTO, STATIONARY, CHASE)
+				break;
 			}
 
-			// Camera mode switching
-			if (state.key_down[GLFW_KEY_0]) {
-				parent->SetCameraMode(CameraMode::FREE);
-			} else if (state.key_down[GLFW_KEY_9]) {
-				if (camera_mode == CameraMode::TRACKING) {
-					tracked_dot_index++;
-				} else {
-					parent->SetCameraMode(CameraMode::TRACKING);
+			// Camera mode switching (only if not in CHASE mode)
+			if (camera_mode != CameraMode::CHASE) {
+				if (state.key_down[GLFW_KEY_0]) {
+					parent->SetCameraMode(CameraMode::FREE);
+				} else if (state.key_down[GLFW_KEY_9]) {
+					if (camera_mode == CameraMode::TRACKING) {
+						tracked_dot_index++;
+					} else {
+						parent->SetCameraMode(CameraMode::TRACKING);
+					}
+				} else if (state.key_down[GLFW_KEY_8]) {
+					parent->SetCameraMode(CameraMode::AUTO);
+				} else if (state.key_down[GLFW_KEY_7]) {
+					parent->SetCameraMode(CameraMode::STATIONARY);
 				}
-			} else if (state.key_down[GLFW_KEY_8]) {
-				parent->SetCameraMode(CameraMode::AUTO);
-			} else if (state.key_down[GLFW_KEY_7]) {
-				parent->SetCameraMode(CameraMode::STATIONARY);
 			}
 
 			// Single track camera zoom
@@ -843,6 +853,54 @@ namespace Boidsish {
 			camera.yaw = atan2(dx, -dz) * 180.0f / M_PI;
 			camera.pitch = atan2(dy, distance_xz) * 180.0f / M_PI;
 			camera.pitch = std::max(-89.0f, std::min(30.0f, camera.pitch));
+		}
+
+		void UpdateChaseCamera(float delta_time) {
+			if (camera_mode != CameraMode::CHASE || !chase_target_) {
+				return;
+			}
+
+			// 1. Get target state
+			const auto& boid_pos = chase_target_->GetPosition();
+			glm::vec3 target_pos(boid_pos.x, boid_pos.y, boid_pos.z);
+			glm::quat target_orientation = chase_target_->GetOrientation();
+
+			// 2. Define camera offset and target look-at point in world space relative to target
+			glm::vec3 forward = target_orientation * glm::vec3(0.0f, 0.0f, -1.0f);
+			glm::vec3 up = target_orientation * glm::vec3(0.0f, 1.0f, 0.0f);
+
+			glm::vec3 desired_cam_pos = target_pos - forward * 15.0f + up * 5.0f;
+			glm::vec3 look_at_pos = target_pos + forward * 10.0f;
+
+			// 3. Smoothly interpolate camera position
+			// Frame-rate independent interpolation using exponential decay
+			float lerp_factor = 1.0f - exp(-delta_time * 2.5f);
+			glm::vec3 new_cam_pos = glm::mix(camera.pos(), desired_cam_pos, lerp_factor);
+
+			camera.x = new_cam_pos.x;
+			camera.y = new_cam_pos.y;
+			camera.z = new_cam_pos.z;
+			if (camera.y < kMinCameraHeight)
+				camera.y = kMinCameraHeight;
+
+			// 4. Calculate desired orientation based on look-at
+			glm::vec3 front = glm::normalize(look_at_pos - new_cam_pos);
+			float desired_yaw = glm::degrees(atan2(front.x, -front.z));
+			float desired_pitch = glm::degrees(asin(front.y));
+
+			// 5. Smoothly interpolate yaw (with wrapping) and pitch
+			float yaw_diff = desired_yaw - camera.yaw;
+			while (yaw_diff > 180.0f)
+				yaw_diff -= 360.0f;
+			while (yaw_diff < -180.0f)
+				yaw_diff += 360.0f;
+			camera.yaw += yaw_diff * lerp_factor;
+
+			camera.pitch = glm::mix(camera.pitch, desired_pitch, lerp_factor);
+			camera.pitch = std::max(-89.0f, std::min(89.0f, camera.pitch));
+
+			// 6. Smoothly interpolate roll to zero to keep the camera level
+			camera.roll = glm::mix(camera.roll, 0.0f, lerp_factor);
 		}
 
 		void UpdateSingleTrackCamera(float delta_time, const std::vector<std::shared_ptr<Shape>>& shapes) {
@@ -1049,6 +1107,8 @@ namespace Boidsish {
 			impl->UpdateSingleTrackCamera(impl->input_state.delta_time, impl->shapes);
 		} else if (impl->camera_mode == CameraMode::AUTO) {
 			impl->UpdateAutoCamera(impl->input_state.delta_time, impl->shapes);
+		} else if (impl->camera_mode == CameraMode::CHASE) {
+			impl->UpdateChaseCamera(impl->input_state.delta_time);
 		}
 
 		// UBO Updates
@@ -1208,6 +1268,16 @@ namespace Boidsish {
 		impl->input_callback = callback;
 	}
 
+	void Visualizer::SetChaseCamera(std::shared_ptr<EntityBase> target) {
+		if (target) {
+			impl->chase_target_ = target;
+			SetCameraMode(CameraMode::CHASE);
+		} else {
+			impl->chase_target_ = nullptr;
+			SetCameraMode(CameraMode::FREE);
+		}
+	}
+
 	void Visualizer::AddWidget(std::shared_ptr<UI::IWidget> widget) {
 		impl->ui_manager->AddWidget(widget);
 	}
@@ -1231,6 +1301,9 @@ namespace Boidsish {
 			impl->first_mouse = true;
 			break;
 		case CameraMode::STATIONARY:
+			glfwSetInputMode(impl->window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
+			break;
+		case CameraMode::CHASE:
 			glfwSetInputMode(impl->window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
 			break;
 		}

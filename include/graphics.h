@@ -24,6 +24,7 @@ namespace Boidsish {
 	namespace UI {
 		class IWidget;
 	}
+	class EntityBase;
 } // namespace Boidsish
 
 namespace Boidsish {
@@ -47,7 +48,7 @@ namespace Boidsish {
 		float  delta_time;
 	};
 
-	enum class CameraMode { FREE, AUTO, TRACKING, STATIONARY };
+	enum class CameraMode { FREE, AUTO, TRACKING, STATIONARY, CHASE };
 
 	using InputCallback = std::function<void(const InputState&)>;
 
@@ -126,6 +127,8 @@ namespace Boidsish {
 
 		// Set the input callback
 		void SetInputCallback(InputCallback callback);
+
+		void SetChaseCamera(std::shared_ptr<EntityBase> target);
 
 		// Add a UI widget to be rendered
 		void AddWidget(std::shared_ptr<UI::IWidget> widget);

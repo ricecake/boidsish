@@ -525,6 +525,11 @@ int main() {
 		viz.AddShapeHandler(std::ref(handler));
 		viz.AddShapeHandler(std::ref(GraphExample));
 
+		// Set the chase camera to follow the first available entity.
+		if (!handler.GetAllEntities().empty()) {
+			viz.SetChaseCamera(handler.GetAllEntities().begin()->second);
+		}
+
 		std::cout << "Vector Demo Started!" << std::endl;
 		std::cout << "Controls:" << std::endl;
 		std::cout << "  WASD - Move camera" << std::endl;

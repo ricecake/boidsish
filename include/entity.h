@@ -99,6 +99,8 @@ namespace Boidsish {
 
 		void SetTrailIridescence(bool enabled) { trail_iridescent_ = enabled; }
 
+		const glm::quat& GetOrientation() const { return orientation_; }
+
 		void SetPath(std::shared_ptr<Path> path, float speed) {
 			path_ = path;
 			path_speed_ = speed;
