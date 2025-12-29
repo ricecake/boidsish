@@ -6,6 +6,10 @@
 #include <memory>
 #include <tuple>
 #include <vector>
+#include <thread>
+#include <atomic>
+#include <mutex>
+#include <functional>
 
 #include "Config.h"
 #include "imgui.h"
