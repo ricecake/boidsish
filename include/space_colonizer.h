@@ -23,7 +23,7 @@ private:
     std::vector<Vector3>               fruits;
 
     // R-Trees for spatial indexing
-    std::unique_ptr<RTree<int, float, 3, float, 8, 4>> node_tree_;
+    std::unique_ptr<RTree<Node*, float, 3, float, 8, 4>> node_tree_;
     std::unique_ptr<RTree<int, float, 3, float, 8, 4>> fruit_tree_;
 
     // Config

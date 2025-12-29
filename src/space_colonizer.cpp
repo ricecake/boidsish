@@ -45,14 +45,14 @@ void SpaceColonizer::Initialize() {
     fruits.clear();
     isDone = false;
 
-    node_tree_ = std::make_unique<RTree<int, float, 3, float, 8, 4>>();
+    node_tree_ = std::make_unique<RTree<Node*, float, 3, float, 8, 4>>();
     fruit_tree_ = std::make_unique<RTree<int, float, 3, float, 8, 4>>();
 
     // 1. Setup Root (Trunk)
     auto root = std::make_unique<Node>(0, Vector3{0, 0, 0});
     nodePtrs.push_back(root.get());
     float pos[] = {root->pos.x, root->pos.y, root->pos.z};
-    node_tree_->Insert(pos, pos, root->id);
+    node_tree_->Insert(pos, pos, root.get());
     nodes.push_back(std::move(root));
 
     // 2. Setup Fruits (Mocking your fruitPlacer)
@@ -80,23 +80,29 @@ bool SpaceColonizer::Step() {
     bool fruitFoundNode = false;
 
     // 1. Associate Fruits -> Closest Node
-    // This loops Fruits first, preventing explosive node checks
-    for (size_t i = 0; i < fruits.size(); ++i) {
-        float fruit_pos[] = {fruits[i].x, fruits[i].y, fruits[i].z};
-        int closest_node_id = -1;
-        node_tree_->Search(fruit_pos, fruit_pos, [&](int id) {
-            closest_node_id = id;
-            return false; // Stop searching after finding one
-        });
+	for (const auto& fruit : fruits) {
+		float min_dist_sq = detectDist * detectDist;
+		Node* closest_node = nullptr;
 
-        if (closest_node_id != -1) {
-            Node* closest = nodes[closest_node_id].get();
-            Vector3 dir = (fruits[i] - closest->pos).Normalized();
-            closest->forceAccumulator += dir;
-            closest->influenceCount++;
-            fruitFoundNode = true;
-        }
-    }
+		float min_pos[] = {fruit.x - detectDist, fruit.y - detectDist, fruit.z - detectDist};
+		float max_pos[] = {fruit.x + detectDist, fruit.y + detectDist, fruit.z + detectDist};
+
+		node_tree_->Search(min_pos, max_pos, [&](Node* node) {
+			float dist_sq = (node->pos - fruit).MagnitudeSquared();
+			if (dist_sq < min_dist_sq) {
+				min_dist_sq = dist_sq;
+				closest_node = node;
+			}
+			return true; // Continue searching
+		});
+
+		if (closest_node) {
+			Vector3 dir = (fruit - closest_node->pos).Normalized();
+			closest_node->forceAccumulator += dir;
+			closest_node->influenceCount++;
+			fruitFoundNode = true;
+		}
+	}
 
     if (!fruitFoundNode) {
         isDone = true; // No fruits can reach the tree anymore
@@ -114,9 +120,8 @@ bool SpaceColonizer::Step() {
             Vector3 repulsion = {0, 0, 0};
             float min[] = {n->pos.x - repulsionDist, n->pos.y - repulsionDist, n->pos.z - repulsionDist};
             float max[] = {n->pos.x + repulsionDist, n->pos.y + repulsionDist, n->pos.z + repulsionDist};
-            node_tree_->Search(min, max, [&](int id) {
-                if (id == n->id) return true;
-                const auto& other = nodes[id];
+            node_tree_->Search(min, max, [&](Node* other) {
+                if (other->id == n->id) return true;
                 Vector3 away = n->pos - other->pos;
                 float dist = away.Magnitude();
                 if (dist > 0) {
@@ -132,7 +137,7 @@ bool SpaceColonizer::Step() {
             auto  newNode = std::make_unique<Node>(generation, newPos, n);
             Node* newNodePtr = newNode.get();
             float pos[] = {newNodePtr->pos.x, newNodePtr->pos.y, newNodePtr->pos.z};
-            node_tree_->Insert(pos, pos, newNodePtr->id);
+            node_tree_->Insert(pos, pos, newNodePtr);
 
             n->children.push_back(newNodePtr); // Link Logic
             newBatch.push_back(newNodePtr);
