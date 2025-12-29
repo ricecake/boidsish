@@ -741,6 +741,9 @@ namespace Boidsish {
 		}
 
 		void ToggleFullscreen() {
+			// Save the current cursor mode.
+			int cursor_mode = glfwGetInputMode(window, GLFW_CURSOR);
+			glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
 			is_fullscreen_ = !is_fullscreen_;
 			if (is_fullscreen_) {
 				// Save windowed mode size and position
@@ -762,6 +765,10 @@ namespace Boidsish {
 					windowed_height_,
 					0
 				);
+			}
+			// Restore the original cursor mode if it wasn't already normal.
+			if (cursor_mode != GLFW_CURSOR_NORMAL) {
+				glfwSetInputMode(window, GLFW_CURSOR, cursor_mode);
 			}
 		}
 

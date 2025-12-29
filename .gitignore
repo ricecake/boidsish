@@ -6,7 +6,7 @@ obj/
 # Compiled Object files
 *.o
 *.obj
-!assets/*.obj
+!assets/*
 
 # Precompiled Headers
 *.gch
