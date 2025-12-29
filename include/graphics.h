@@ -122,6 +122,9 @@ namespace Boidsish {
 		// Get current camera
 		Camera& GetCamera();
 
+		int GetWidth() const;
+		int GetHeight() const;
+
 		// Set camera position and orientation
 		void SetCamera(const Camera& camera);
 

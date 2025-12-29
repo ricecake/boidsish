@@ -31,7 +31,11 @@ namespace Boidsish {
 		void      render(Shader& shader, const glm::mat4& model_matrix) const override;
 		glm::mat4 GetModelMatrix() const override;
 
+		void SetVisible(bool visible) { visible_ = visible; }
+		bool IsVisible() const { return visible_; }
+
 	private:
 		float size_;
+		bool visible_ = true;
 	};
 } // namespace Boidsish
