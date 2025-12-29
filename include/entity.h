@@ -108,13 +108,9 @@ namespace Boidsish {
 			path_t_ = 0.0f;
 		}
 
-        glm::vec3 ObjectToWorld(const glm::vec3& v) const {
-            return orientation_ * v;
-        }
+		glm::vec3 ObjectToWorld(const glm::vec3& v) const { return orientation_ * v; }
 
-        glm::vec3 WorldToObject(const glm::vec3& v) const {
-            return glm::inverse(orientation_) * v;
-        }
+		glm::vec3 WorldToObject(const glm::vec3& v) const { return glm::inverse(orientation_) * v; }
 
 	protected:
 		int       id_;
