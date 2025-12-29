@@ -7,6 +7,25 @@
 
 namespace {
 	constexpr float kTurnSpeed = 15.0f;
+
+	// Orients a model to align with its velocity vector.
+	// Assumes the model's "forward" direction is -Z.
+	glm::quat OrientToVelocity(glm::quat current_orientation, const Boidsish::Vector3& vel, float delta_time) {
+		if (vel.MagnitudeSquared() < 1e-6) {
+			return current_orientation;
+		}
+
+		const glm::vec3 forward_dir = glm::normalize(glm::vec3(vel.x, vel.y, vel.z));
+		const glm::vec3 world_up = glm::vec3(0.0f, 1.0f, 0.0f);
+
+		// Create a quaternion that looks along forward_dir.
+		// glm::quatLookAt is designed to be robust, even when forward_dir is
+		// parallel to world_up. It assumes the "forward" direction is -Z.
+		glm::quat target_orientation = glm::quatLookAt(forward_dir, world_up);
+
+		// Slerp for smooth turning.
+		return glm::slerp(current_orientation, target_orientation, kTurnSpeed * delta_time);
+	}
 }
 
 namespace Boidsish {
@@ -66,26 +85,7 @@ namespace Boidsish {
 		for (auto& entity : entities) {
 			// Orient to velocity
 			if (entity->orient_to_velocity_) {
-				const auto& vel = entity->GetVelocity();
-				if (vel.MagnitudeSquared() > 1e-6) {
-					glm::vec3 forward(0.0f, 1.0f, 0.0f); // Default "forward" for Arrow
-					glm::vec3 norm_vel = glm::normalize(glm::vec3(vel.x, vel.y, vel.z));
-
-					float     dot = glm::dot(forward, norm_vel);
-					glm::quat target_rot;
-
-					if (std::abs(dot - (-1.0f)) < 1e-6) {
-						// Opposite direction, 180 degree turn
-						target_rot = glm::angleAxis(glm::pi<float>(), glm::vec3(1.0f, 0.0f, 0.0f));
-					} else {
-						glm::vec3 rotAxis = glm::cross(forward, norm_vel);
-						float     rotAngle = std::acos(dot);
-						target_rot = glm::angleAxis(rotAngle, rotAxis);
-					}
-
-					// Smoothly interpolate to the target rotation
-					entity->orientation_ = glm::slerp(entity->orientation_, target_rot, kTurnSpeed * delta_time);
-				}
+				entity->orientation_ = OrientToVelocity(entity->orientation_, entity->GetVelocity(), delta_time);
 			}
 
 			// Update entity position using its velocity
