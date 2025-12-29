@@ -77,14 +77,23 @@ class PaperPlane : public Entity<Model> {
 
 		// --- Coordinated Turn (Banking) ---
 		// Automatically roll when yawing
-		target_rot_velocity.z -= target_rot_velocity.y * kCoordinatedTurnFactor;
+		target_rot_velocity.z += target_rot_velocity.y * kCoordinatedTurnFactor;
 
-		// --- Auto-leveling Roll ---
-		// If there's no yaw or roll input, gently level the plane
-		if (glm::abs(target_rot_velocity.y) < 0.01f && glm::abs(target_rot_velocity.z) < 0.01f) {
-			glm::vec3 up_vector = orientation_ * glm::vec3(0.0f, 1.0f, 0.0f);
-			float roll_angle = asin(glm::clamp(up_vector.x, -1.0f, 1.0f));
-			target_rot_velocity.z -= roll_angle * kAutoLevelSpeed;
+		// --- Auto-leveling ---
+		// If there's no user input, gently guide the plane to a stable, level orientation.
+		if (!controller_->pitch_up && !controller_->pitch_down &&
+		    !controller_->yaw_left && !controller_->yaw_right &&
+		    !controller_->roll_left && !controller_->roll_right) {
+
+			// --- Correct Roll ---
+			// This simple, robust method corrects roll by pushing the plane's right vector to be horizontal.
+			glm::vec3 local_right_in_world = orientation_ * glm::vec3(1.0f, 0.0f, 0.0f);
+			target_rot_velocity.z -= local_right_in_world.y * kAutoLevelSpeed;
+
+			// --- Correct Pitch ---
+			// Gently push the plane's forward vector to be horizontal.
+			glm::vec3 local_fwd_in_world = orientation_ * glm::vec3(0.0f, 0.0f, -1.0f);
+			target_rot_velocity.x -= local_fwd_in_world.y * kAutoLevelSpeed;
 		}
 
 		// --- Apply Damping and Update Rotational Velocity ---
@@ -120,7 +129,6 @@ class PaperPlane : public Entity<Model> {
 		glm::vec3 new_velocity = forward_dir * forward_speed_;
 
 		SetVelocity(Vector3(new_velocity.x, new_velocity.y, new_velocity.z));
-        UpdateShape();
 	}
 
 	void UpdateShape() override {
