@@ -19,15 +19,22 @@ namespace Boidsish {
 		glm::vec2 TexCoords;
 	};
 
+	struct Texture {
+		unsigned int id;
+		std::string  type;
+		std::string  path;
+	};
+
 	class Mesh {
 	public:
 		// Mesh Data
 		std::vector<Vertex>       vertices;
 		std::vector<unsigned int> indices;
+		std::vector<Texture>      textures;
 		unsigned int              VAO;
 
 		// Constructor
-		Mesh(std::vector<Vertex> vertices, std::vector<unsigned int> indices);
+		Mesh(std::vector<Vertex> vertices, std::vector<unsigned int> indices, std::vector<Texture> textures);
 
 		// Render the mesh
 		void render() const;
@@ -43,7 +50,7 @@ namespace Boidsish {
 	class Model: public Shape {
 	public:
 		// Constructor, expects a filepath to a 3D model.
-		Model(const std::string& path);
+		Model(const std::string& path, bool no_cull = false);
 
 		// Render the model
 		void render() const override;
@@ -52,16 +59,20 @@ namespace Boidsish {
 
 	private:
 		// Model data
-		std::vector<Mesh> meshes;
-		std::string       directory;
+		std::vector<Mesh>    meshes;
+		std::string          directory;
+		bool                 no_cull_ = false;
+		std::vector<Texture> textures_loaded_;
 
 		// Loads a model with supported ASSIMP extensions from file and stores the resulting meshes in meshes vector.
 		void loadModel(const std::string& path);
 
 		// Processes a node in a recursive fashion. Processes each individual mesh located at the node and repeats this
 		// process on its children nodes (if any).
-		void processNode(aiNode* node, const aiScene* scene);
-		Mesh processMesh(aiMesh* mesh, const aiScene* scene);
+		void                       processNode(aiNode* node, const aiScene* scene);
+		Mesh                       processMesh(aiMesh* mesh, const aiScene* scene);
+		std::vector<Texture>       loadMaterialTextures(aiMaterial* mat, aiTextureType type, std::string typeName);
+		static unsigned int        TextureFromFile(const char* path, const std::string& directory, bool gamma = false);
 	};
 
 } // namespace Boidsish

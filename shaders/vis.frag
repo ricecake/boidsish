@@ -9,9 +9,13 @@ in vec3 FragPos;
 in vec3 Normal;
 in vec3 vs_color;
 in vec3 barycentric;
+in vec2 TexCoords;
 
 uniform vec3 objectColor;
 uniform int  useVertexColor;
+
+uniform sampler2D texture_diffuse1;
+uniform bool use_texture;
 
 void main() {
 	// Ambient
@@ -45,6 +49,10 @@ void main() {
 	}
 
 	vec3 result = (ambient + diffuse) * final_color + specular;
+
+	if (use_texture) {
+		result *= texture(texture_diffuse1, TexCoords).rgb;
+	}
 
 	if (color_shift_enabled == 1) {
 		float shift_magnitude = 0.2;
