@@ -233,7 +233,7 @@ void main() {
 
 	vec4 outColor = vec4(result, mix(0, fade, step(0.01, FragPos.y)));
 	// outColor.a = mix(0, fade, step(0.01, FragPos.y));
-	outColor.a = intensity + abs(nebula_noise);
+	outColor.a = 0.5 + intensity + abs(nebula_noise);
 	FragColor = mix(
 		vec4(0.0, 0.7, 0.7, mix(0, fade, step(0.01, FragPos.y))) * length(outColor),
 		outColor,

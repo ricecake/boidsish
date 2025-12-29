@@ -99,6 +99,8 @@ namespace Boidsish {
 
 		void SetTrailIridescence(bool enabled) { trail_iridescent_ = enabled; }
 
+		void SetOrientToVelocity(bool enabled) { orient_to_velocity_ = enabled; }
+
 		void SetPath(std::shared_ptr<Path> path, float speed) {
 			path_ = path;
 			path_speed_ = speed;
@@ -114,6 +116,7 @@ namespace Boidsish {
 		float     color_[4]; // RGBA
 		int       trail_length_;
 		bool      trail_iridescent_;
+		bool      orient_to_velocity_ = true;
 		glm::quat orientation_;
 
 		// Path following
@@ -128,6 +131,12 @@ namespace Boidsish {
 	template <typename ShapeType = Dot>
 	class Entity: public EntityBase {
 	public:
+		template <typename... ShapeArgs>
+		Entity(int id = 0, ShapeArgs... args): EntityBase(id), shape_(nullptr) {
+			shape_ = std::make_shared<ShapeType>(std::forward<ShapeArgs>(args)...);
+			UpdateShape();
+		}
+
 		Entity(int id = 0): EntityBase(id), shape_(nullptr) {
 			if constexpr (std::is_default_constructible<ShapeType>::value) {
 				shape_ = std::make_shared<ShapeType>();

@@ -5,6 +5,10 @@
 #include "path.h"
 #include <poolstl/poolstl.hpp>
 
+namespace {
+	constexpr float kTurnSpeed = 15.0f;
+}
+
 namespace Boidsish {
 	std::vector<std::shared_ptr<Shape>> EntityHandler::operator()(float time) {
 		float delta_time = 0.016f; // Default 60 FPS
@@ -60,6 +64,30 @@ namespace Boidsish {
 		shapes.reserve(entities_.size());
 
 		for (auto& entity : entities) {
+			// Orient to velocity
+			if (entity->orient_to_velocity_) {
+				const auto& vel = entity->GetVelocity();
+				if (vel.MagnitudeSquared() > 1e-6) {
+					glm::vec3 forward(0.0f, 1.0f, 0.0f); // Default "forward" for Arrow
+					glm::vec3 norm_vel = glm::normalize(glm::vec3(vel.x, vel.y, vel.z));
+
+					float     dot = glm::dot(forward, norm_vel);
+					glm::quat target_rot;
+
+					if (std::abs(dot - (-1.0f)) < 1e-6) {
+						// Opposite direction, 180 degree turn
+						target_rot = glm::angleAxis(glm::pi<float>(), glm::vec3(1.0f, 0.0f, 0.0f));
+					} else {
+						glm::vec3 rotAxis = glm::cross(forward, norm_vel);
+						float     rotAngle = std::acos(dot);
+						target_rot = glm::angleAxis(rotAngle, rotAxis);
+					}
+
+					// Smoothly interpolate to the target rotation
+					entity->orientation_ = glm::slerp(entity->orientation_, target_rot, kTurnSpeed * delta_time);
+				}
+			}
+
 			// Update entity position using its velocity
 			Vector3 new_position = entity->GetPosition() + entity->GetVelocity() * delta_time;
 			entity->SetPosition(new_position);
