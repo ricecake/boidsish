@@ -13,6 +13,7 @@ in vec2 TexCoords;
 
 uniform vec3 objectColor;
 uniform int  useVertexColor;
+uniform bool useLighting;
 
 uniform sampler2D texture_diffuse1;
 uniform bool use_texture;
@@ -47,8 +48,12 @@ void main() {
 	} else {
 		final_color = objectColor;
 	}
-
-	vec3 result = (ambient + diffuse) * final_color + specular;
+    vec3 result;
+    if (useLighting) {
+	    result = (ambient + diffuse) * final_color + specular;
+    } else {
+        result = final_color;
+    }
 
 	if (use_texture) {
 		result *= texture(texture_diffuse1, TexCoords).rgb;

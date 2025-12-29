@@ -1,10 +1,7 @@
 #pragma once
-
+#include "shader.h"
 #include <glm/glm.hpp>
 #include <memory>
-#include <memory>
-
-#include "shader.h"
 
 namespace Boidsish {
 

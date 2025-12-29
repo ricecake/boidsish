@@ -69,12 +69,14 @@ void Line::render(Shader& shader, const glm::mat4& model_matrix) const {
     }
 
     shader.use();
+    shader.setBool("useLighting", false);
     shader.setMat4("model", model_matrix);
     shader.setVec3("objectColor", GetR(), GetG(), GetB());
 
     glBindVertexArray(vao_);
     glDrawArrays(GL_LINES, 0, 2);
     glBindVertexArray(0);
+    shader.setBool("useLighting", true);
 }
 
 void Line::render() const {

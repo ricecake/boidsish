@@ -14,7 +14,7 @@ DebugLaser::DebugLaser(Visualizer& visualizer) : visualizer_(visualizer) {
     initial_ray_ = std::make_shared<Line>(glm::vec3(0.0f), glm::vec3(0.0f), glm::vec3(1.0f, 0.0f, 0.0f)); // Red
     reflected_ray_ = std::make_shared<Line>(glm::vec3(0.0f), glm::vec3(0.0f), glm::vec3(0.0f, 1.0f, 0.0f)); // Green
     intersection_dot_ = std::make_shared<Dot>(0, 0, 0, 0, 0.0f, 0.0f, 1.0f); // Blue
-    intersection_dot_->SetScale(glm::vec3(0.2f));
+    intersection_dot_->SetScale(glm::vec3(1.5f));
 
     initial_ray_->SetVisible(false);
     reflected_ray_->SetVisible(false);
@@ -72,6 +72,7 @@ void DebugLaser::Render(Shader& shader) {
     // The line and dot shapes use the global Shape::shader, so we don't need to pass one
     // But we will disable depth testing to make sure the lines are always visible.
     glDisable(GL_DEPTH_TEST);
+    glLineWidth(3.0f);
     if (initial_ray_ && initial_ray_->IsVisible()) {
         initial_ray_->render();
     }
@@ -81,6 +82,7 @@ void DebugLaser::Render(Shader& shader) {
     if (intersection_dot_ && intersection_dot_->IsVisible()) {
         intersection_dot_->render();
     }
+    glLineWidth(1.0f);
     glEnable(GL_DEPTH_TEST);
 }
 
@@ -88,8 +90,9 @@ void DebugLaser::Render(Shader& shader) {
 bool DebugLaser::RayTerrainIntersection(const glm::vec3& ray_origin, const glm::vec3& ray_dir, glm::vec3& out_intersection, glm::vec3& out_normal) {
     const float step_size = 0.5f;
     const int max_steps = 1000;
+    const float start_offset = 0.1f; // Start search slightly in front of the camera
 
-    float current_dist = 0.0f;
+    float current_dist = start_offset;
     for (int i = 0; i < max_steps; ++i) {
         glm::vec3 current_pos = ray_origin + ray_dir * current_dist;
 

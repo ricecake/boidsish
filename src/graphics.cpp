@@ -26,14 +26,12 @@
 #include "terrain_generator.h"
 #include "trail.h"
 #include "ui/PostProcessingWidget.h"
-#include "debug_laser.h"
-#include "ui/DebugWidget.h"
 #include "visual_effects.h"
-#include <shader.h>
 #include <GL/glew.h>
 #include <GLFW/glfw3.h>
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
+#include <shader.h>
 
 namespace Boidsish {
 	constexpr float kMinCameraHeight = 0.1f;
@@ -62,7 +60,6 @@ namespace Boidsish {
 		Config config;
 
 		std::unique_ptr<TerrainGenerator> terrain_generator;
-		std::unique_ptr<DebugLaser>       debug_laser;
 
 		std::shared_ptr<Shader> shader;
 		std::unique_ptr<Shader> plane_shader;
@@ -381,10 +378,6 @@ namespace Boidsish {
 				auto post_processing_widget = std::make_shared<UI::PostProcessingWidget>(*post_processing_manager_);
 				ui_manager->AddWidget(post_processing_widget);
 			}
-
-			debug_laser = std::make_unique<DebugLaser>(*parent);
-			auto debug_widget = std::make_shared<UI::DebugWidget>(*debug_laser);
-			ui_manager->AddWidget(debug_widget);
 		}
 
 		void SetupShaderBindings(Shader& shader_to_setup) {
@@ -1108,9 +1101,6 @@ namespace Boidsish {
 			target_quality = 0.6f;
 		}
 
-		// Update debug laser
-		impl->debug_laser->Update(impl->input_state, impl->camera);
-
 		// Dampened adjustment
 		if (impl->tess_quality_multiplier_ < target_quality) {
 			// Linear increase
@@ -1290,9 +1280,6 @@ namespace Boidsish {
 			);
 			glBindFramebuffer(GL_FRAMEBUFFER, 0);
 		}
-
-		// Render debug laser
-		impl->debug_laser->Render(*impl->shader);
 
 		// --- UI Pass (renders on top of the fullscreen quad) ---
 		impl->ui_manager->Render();
