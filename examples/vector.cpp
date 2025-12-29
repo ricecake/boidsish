@@ -519,270 +519,18 @@ std::vector<std::shared_ptr<Shape>> GraphExample(float time) {
 	return shapes;
 }
 
-#include <algorithm>
-#include <cmath>
-#include <map>
-#include <memory>
-#include <vector>
-
-struct RenderNode {
-	int                     generation;
-	int                     id;
-	Vector3                 position;
-	std::vector<RenderNode> connections; // The "list of nodes to link to"
-};
-
-class SpaceColonizer {
-private:
-	struct Node {
-		inline static int  count = 0;
-		int                generation;
-		Vector3            pos;
-		Vector3            forceAccumulator;
-		int                influenceCount = 0;
-		int                id = count++;
-		Node*              parent = nullptr;
-		std::vector<Node*> children;
-
-		Node(int gen, Vector3 p, Node* par = nullptr):
-			generation(gen), pos(p), parent(par), forceAccumulator({0, 0, 0}) {}
-	};
-
-	std::vector<std::unique_ptr<Node>> nodes;    // Owner of memory
-	std::vector<Node*>                 nodePtrs; // Quick access for iteration
-	std::vector<Vector3>               fruits;
-
-	// Config
-	float killDist = 2.0f;    // Distance to delete fruit
-	float detectDist = 20.0f; // Radius of influence
-	float growDist = 1.0f;    // Length of new branch
-	int   node_id = 0;
-
-public:
-	bool isDone = false;
-	int  generation = 0;
-
-	// DFS Helper to sort topologically
-	void TopoSortRecursive(SpaceColonizer::Node* n, std::vector<RenderNode>& out) const {
-		if (!n)
-			return;
-
-		RenderNode rn;
-		rn.position = n->pos;
-		rn.generation = n->generation;
-		rn.id = n->id;
-
-		// Collect child positions for the "links to" list
-		for (auto* child : n->children) {
-			RenderNode conn;
-			conn.position = child->pos;
-			conn.id = child->id;
-			rn.connections.push_back(conn);
-		}
-
-		out.push_back(rn);
-
-		// Continue traversal
-		for (auto* child : n->children) {
-			TopoSortRecursive(child, out);
-		}
-	}
-
-	void                    Initialize();
-	bool                    Step();
-	std::vector<RenderNode> GetTopology() const;
-
-	bool IsFinished() const { return isDone; }
-
-	// Helper to inject your fruit logic
-	void AddFruit(Vector3 pos) { fruits.push_back(pos); }
-};
-
-void SpaceColonizer::Initialize() {
-	nodes.clear();
-	nodePtrs.clear();
-	fruits.clear();
-	isDone = false;
-
-	// 1. Setup Root (Trunk)
-	auto root = std::make_unique<Node>(0, Vector3{0, 0, 0});
-	nodePtrs.push_back(root.get());
-	nodes.push_back(std::move(root));
-
-	// 2. Setup Fruits (Mocking your fruitPlacer)
-	// In your actual code, inject your 25 fruits here
-	for (int i = 0; i < 500; i++) {
-		// Random positions around the top
-		fruits.push_back({(float)(rand() % 40 - 20), (float)(rand() % 40 + 10), (float)(rand() % 40 - 20)});
-	}
-}
-
-bool SpaceColonizer::Step() {
-	generation++;
-	if (isDone || fruits.empty())
-		isDone = true;
-	return isDone;
-
-	// Reset forces
-	for (auto* n : nodePtrs) {
-		n->forceAccumulator = {0, 0, 0};
-		n->influenceCount = 0;
-	}
-
-	bool fruitFoundNode = false;
-
-	// 1. Associate Fruits -> Closest Node
-	// This loops Fruits first, preventing explosive node checks
-	for (auto& f : fruits) {
-		Node* closest = nullptr;
-		float minDst = 999999.0f;
-
-		// Optimization: In a production scenario, use an Octree here.
-		// For < 1000 nodes, linear scan is fine.
-		for (auto* n : nodePtrs) {
-			float dst = (f - n->pos).Magnitude();
-
-			// Only consider nodes within "Radius of Influence"
-			if (dst < detectDist && dst < minDst) {
-				minDst = dst;
-				closest = n;
-			}
-		}
-
-		if (closest) {
-			Vector3 dir = (f - closest->pos).Normalized();
-			closest->forceAccumulator += dir;
-			closest->influenceCount++;
-			fruitFoundNode = true;
-		}
-	}
-
-	if (!fruitFoundNode) {
-		isDone = true; // No fruits can reach the tree anymore
-		return isDone;
-	}
-
-	// 2. Grow New Nodes
-	// We capture new nodes in a temp list to avoid iterator invalidation
-	std::vector<Node*> newBatch;
-
-	for (auto* n : nodePtrs) {
-		if (n->influenceCount > 0) {
-			Vector3 avgDir = (n->forceAccumulator / (float)n->influenceCount).Normalized();
-			Vector3 newPos = n->pos + (avgDir * growDist);
-
-			auto  newNode = std::make_unique<Node>(generation, newPos, n);
-			Node* newNodePtr = newNode.get();
-
-			n->children.push_back(newNodePtr); // Link Logic
-			newBatch.push_back(newNodePtr);
-			nodes.push_back(std::move(newNode));
-		}
-	}
-
-	// Add new batch to the main pointer list
-	nodePtrs.insert(nodePtrs.end(), newBatch.begin(), newBatch.end());
-
-	// 3. Kill Fruits
-	// Remove fruits that have been reached by the NEW nodes
-	for (auto* n : newBatch) {
-		std::erase_if(fruits, [&](const Vector3& f) { return (f - n->pos).Magnitude() < killDist; });
-	}
-	return isDone;
-}
-
-std::vector<RenderNode> SpaceColonizer::GetTopology() const {
-	std::vector<RenderNode> sortedData;
-	if (!nodes.empty()) {
-		TopoSortRecursive(nodes[0].get(), sortedData);
-	}
-	return sortedData;
-}
-
-std::vector<std::shared_ptr<Shape>> TreeShape(float time) {
-	std::vector<std::shared_ptr<Shape>> shapes;
-
-	float kill = 0.03f;
-	float move = 0.02f;
-
-	struct NodeForces {
-		Graph::Vertex* node;
-		Vector3        force;
-	};
-
-	std::vector<NodeForces> nodes;
-	std::vector<Vector3>    fruits;
-	for (auto i : std::ranges::iota_view(1, 25)) {
-		fruits.push_back(fruitPlacer(10));
-	}
-
-	auto graph = std::make_shared<Graph>(0, 0, 0, 0);
-
-	auto root = graph->AddVertex(Vector3(0, 0, 0), 48.0f, 0, 0, 1, 1);
-	auto trunk = graph->AddVertex(Vector3(0, 6, 0), 16.0f, 0, 1, 1, 1);
-	root.Link(trunk);
-
-	std::vector<NodeForces> newNodes;
-	auto                    i = 100;
-	while (i >= 0 && fruits.size()) {
-		i++;
-		for (auto& f : fruits) {
-			for (auto& nf : nodes) {
-				auto dist = (f - nf.node->position);
-
-				nf.force += dist.Normalized() * 1 / dist.Magnitude();
-			}
-		}
-		for (auto& nf : nodes) {
-			auto newPos = nf.node->position + nf.force.Normalized() * move;
-			nf.force *= 0.0f;
-			auto NewNode = graph->AddVertex(newPos, 1.0f);
-			NewNode.Link(*nf.node);
-			newNodes.push_back(NodeForces(&NewNode, Vector3()));
-			for (auto& f : fruits) {
-				if ((f - newPos).Magnitude() <= kill) {
-					std::erase(fruits, f);
-					continue;
-				}
-				// if ((f-nf.node.position).Magnitude() <= kill) {
-				// 	nf.node.position = f;
-				// 	std::erase(fruits, f);
-				// 	continue;
-				// }
-			}
-		}
-		nodes.insert(nodes.end(), newNodes.begin(), newNodes.end());
-	}
-
-	shapes.push_back(graph);
-	return shapes;
-}
 
 #include <map>
 
 #include "graph.h"
-
-// Include your SpaceColonizer header where RenderNode is defined
-
-// 1. We need a comparator to use Vector3 as a std::map key.
-// Since the vectors come from the exact same memory source (SCA),
-// we can usually rely on exact float matching, but a tolerance is safer.
-struct Vector3Compare {
-	bool operator()(const Vector3& a, const Vector3& b) const {
-		if (std::abs(a.x - b.x) > 1e-6)
-			return a.x < b.x;
-		if (std::abs(a.y - b.y) > 1e-6)
-			return a.y < b.y;
-		return a.z < b.z - 1e-6;
-	}
-};
+#include "space_colonizer.h"
 
 void BuildGraphFromSCA(std::shared_ptr<Boidsish::Graph> graph, const std::vector<RenderNode>& scaNodes) {
 	if (!graph)
 		return;
 
 	// Map to keep track of Position -> Graph Vertex ID
-	std::map<Vector3, int, Vector3Compare> posToID;
+	std::map<Vector3, int> posToID;
 
 	for (const auto& node : graph->AllVerticies()) {
 		posToID[node.position] = posToID.size();
@@ -790,17 +538,19 @@ void BuildGraphFromSCA(std::shared_ptr<Boidsish::Graph> graph, const std::vector
 
 	// --- Pass 1: Create Vertices ---
 	for (const auto& node : scaNodes) {
-		// Aesthetic Tweaks:
-		// You can make size/color dependent on node.connections.size() (branching factor)
-		float size = 5.0f;
+		if (posToID.find(node.position) == posToID.end()) {
+			// Aesthetic Tweaks:
+			// You can make size/color dependent on node.connections.size() (branching factor)
+			float size = 5.0f;
 
-		// AddVertex returns a reference, but we need the ID.
-		// Since we are pushing sequentially, the ID is just the current index.
-		int id = posToID.size();
+			// AddVertex returns a reference, but we need the ID.
+			// Since we are pushing sequentially, the ID is just the current index.
+			int id = posToID.size();
 
-		graph->AddVertex(node.position, size, 1.0f, 1.0f, 1.0f, 1.0f); // White color default
+			graph->AddVertex(node.position, size, 1.0f, 1.0f, 1.0f, 1.0f); // White color default
 
-		posToID[node.position] = id;
+			posToID[node.position] = id;
+		}
 	}
 
 	// --- Pass 2: Link Edges ---
