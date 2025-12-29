@@ -862,13 +862,18 @@ namespace Boidsish {
 
 			// 1. Get target state
 			const auto& boid_pos = chase_target_->GetPosition();
+			const auto& boid_vel = chase_target_->GetVelocity();
 			glm::vec3 target_pos(boid_pos.x, boid_pos.y, boid_pos.z);
-			glm::quat target_orientation = chase_target_->GetOrientation();
+			glm::vec3 target_vel(boid_vel.x, boid_vel.y, boid_vel.z);
 
-			// 2. Define camera offset and target look-at point in world space relative to target
-			glm::vec3 forward = target_orientation * glm::vec3(0.0f, 0.0f, -1.0f);
-			glm::vec3 up = target_orientation * glm::vec3(0.0f, 1.0f, 0.0f);
+			// 2. Determine forward direction from velocity
+			glm::vec3 forward = glm::vec3(0.0f, 0.0f, -1.0f); // Default forward
+			if (glm::dot(target_vel, target_vel) > 0.0001f) {
+				forward = glm::normalize(target_vel);
+			}
 
+			// 3. Define camera offset
+			glm::vec3 up = glm::vec3(0.0f, 1.0f, 0.0f);
 			glm::vec3 desired_cam_pos = target_pos - forward * 15.0f + up * 5.0f;
 			glm::vec3 look_at_pos = target_pos + forward * 10.0f;
 
