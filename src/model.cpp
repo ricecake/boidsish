@@ -98,6 +98,7 @@ namespace Boidsish {
 		model = glm::scale(model, GetScale());
 
 		shader->setMat4("model", model);
+        shader->setVec3("objectColor", GetColor());
 
 		if (this->no_cull_) {
 			glDisable(GL_CULL_FACE);
