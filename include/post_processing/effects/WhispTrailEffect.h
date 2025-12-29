@@ -9,10 +9,10 @@ class Shader; // Forward declaration
 namespace Boidsish {
 	namespace PostProcessing {
 
-		class GlitchEffect: public IPostProcessingEffect {
+		class WhispTrailEffect: public IPostProcessingEffect {
 		public:
-			GlitchEffect();
-			~GlitchEffect();
+			WhispTrailEffect();
+			~WhispTrailEffect();
 
 			void Apply(GLuint sourceTexture) override;
 			void Initialize(int width, int height) override;
@@ -21,8 +21,20 @@ namespace Boidsish {
 			void SetTime(float time) override { time_ = time; }
 
 		private:
-			std::unique_ptr<Shader> shader_;
-			float                   time_ = 0.0f;
+			void InitializeFBOs(int width, int height);
+
+			std::unique_ptr<Shader> trail_shader_;
+			std::unique_ptr<Shader> blit_shader_;
+
+			float time_ = 0.0f;
+
+			// Ping-pong buffers for the persistent trail
+			GLuint trail_fbo_[2]{0};
+			GLuint trail_texture_[2]{0};
+			int    current_read_ = 0;
+
+			int width_ = 0;
+			int height_ = 0;
 		};
 
 	} // namespace PostProcessing

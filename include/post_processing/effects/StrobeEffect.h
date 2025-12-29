@@ -9,10 +9,10 @@ class Shader; // Forward declaration
 namespace Boidsish {
 	namespace PostProcessing {
 
-		class GlitchEffect: public IPostProcessingEffect {
+		class StrobeEffect: public IPostProcessingEffect {
 		public:
-			GlitchEffect();
-			~GlitchEffect();
+			StrobeEffect();
+			~StrobeEffect();
 
 			void Apply(GLuint sourceTexture) override;
 			void Initialize(int width, int height) override;
@@ -21,8 +21,18 @@ namespace Boidsish {
 			void SetTime(float time) override { time_ = time; }
 
 		private:
+			void InitializeFBO(int width, int height);
+
 			std::unique_ptr<Shader> shader_;
+			std::unique_ptr<Shader> blit_shader_;
 			float                   time_ = 0.0f;
+			float                   last_capture_time_ = 0.0f;
+
+			GLuint strobe_fbo_ = 0;
+			GLuint strobe_texture_ = 0;
+
+			int width_ = 0;
+			int height_ = 0;
 		};
 
 	} // namespace PostProcessing

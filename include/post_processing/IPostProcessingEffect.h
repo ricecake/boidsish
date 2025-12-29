@@ -22,6 +22,8 @@ namespace Boidsish {
 
 			void SetEnabled(bool enabled) { is_enabled_ = enabled; }
 
+			virtual void SetTime(float /* time */) {}
+
 		protected:
 			std::string name_;
 			bool        is_enabled_ = true;
