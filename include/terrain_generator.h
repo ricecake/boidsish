@@ -37,12 +37,54 @@ namespace Boidsish {
 		const std::vector<std::shared_ptr<Terrain>>& getVisibleChunks();
 
 		std::tuple<float, glm::vec3> pointProperties(float x, float z) {
-			auto point = pointGenerate(x, z);
-			auto norm = diffToNorm(point[1], point[2]);
-			return std::tuple<float, glm::vec3>(point[0], norm);
+			// Determine grid cell
+			float tx = x - floor(x);
+			float tz = z - floor(z);
+
+			// Get the 4 corner vertices of the grid cell
+			auto v0_raw = pointGenerate(floor(x), floor(z)); // Bottom-left
+			auto v1_raw = pointGenerate(ceil(x), floor(z));  // Bottom-right
+			auto v2_raw = pointGenerate(ceil(x), ceil(z));   // Top-right
+			auto v3_raw = pointGenerate(floor(x), ceil(z));  // Top-left
+
+			glm::vec3 v0 = {floor(x), v0_raw.x, floor(z)};
+			glm::vec3 v1 = {ceil(x), v1_raw.x, floor(z)};
+			glm::vec3 v2 = {ceil(x), v2_raw.x, ceil(z)};
+			glm::vec3 v3 = {floor(x), v3_raw.x, ceil(z)};
+
+			glm::vec3 n0 = diffToNorm(v0_raw.y, v0_raw.z);
+			glm::vec3 n1 = diffToNorm(v1_raw.y, v1_raw.z);
+			glm::vec3 n2 = diffToNorm(v2_raw.y, v2_raw.z);
+			glm::vec3 n3 = diffToNorm(v3_raw.y, v3_raw.z);
+
+			// The "flat" position from standard bilinear interpolation
+			glm::vec3 q = bilerp(v0, v1, v2, v3, {tx, tz});
+
+			// Phong Tessellation: Project q onto the tangent plane of each corner
+			glm::vec3 p0 = projectPointOnPlane(q, v0, n0);
+			glm::vec3 p1 = projectPointOnPlane(q, v1, n1);
+			glm::vec3 p2 = projectPointOnPlane(q, v2, n2);
+			glm::vec3 p3 = projectPointOnPlane(q, v3, n3);
+
+			// Interpolate the projected points to find the final curved position
+			glm::vec3 final_pos = bilerp(p0, p1, p2, p3, {tx, tz});
+
+			// Interpolate normals for lighting
+			glm::vec3 final_norm = glm::normalize(bilerp(n0, n1, n2, n3, {tx, tz}));
+
+			return {final_pos.y, final_norm};
 		}
 
 	private:
+		// Phong tessellation helpers (matching the shader)
+		glm::vec3 projectPointOnPlane(glm::vec3 q, glm::vec3 v, glm::vec3 n) { return q - glm::dot(q - v, n) * n; }
+
+		glm::vec3 bilerp(glm::vec3 v0, glm::vec3 v1, glm::vec3 v2, glm::vec3 v3, glm::vec2 uv) {
+			glm::vec3 bot = glm::mix(v0, v1, uv.x);
+			glm::vec3 top = glm::mix(v3, v2, uv.x);
+			return glm::mix(bot, top, uv.y);
+		}
+
 		TerrainGenerationResult generateChunkData(int chunkX, int chunkZ);
 
 		// Terrain parameters

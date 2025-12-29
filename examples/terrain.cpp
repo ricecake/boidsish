@@ -2,6 +2,7 @@
 #include <vector>
 
 #include "graphics.h"
+#include "logger.h"
 
 int main() {
 	try {
@@ -17,7 +18,14 @@ int main() {
 		visualizer.SetCamera(camera);
 
 		// No shapes, just terrain
-		visualizer.AddShapeHandler([](float /* time */) { return std::vector<std::shared_ptr<Boidsish::Shape>>(); });
+		visualizer.AddShapeHandler([&visualizer](float /* time */) {
+			auto cam = visualizer.GetCamera();
+			auto [height, norm] = visualizer.GetTerrainPointProperties(cam.x, cam.z);
+			if (cam.y < height) {
+				logger::LOG("BELOW");
+			}
+			return std::vector<std::shared_ptr<Boidsish::Shape>>();
+		});
 
 		visualizer.Run();
 	} catch (const std::exception& e) {

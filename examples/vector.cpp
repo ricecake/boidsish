@@ -36,11 +36,8 @@ public:
 	// Inherit constructors from Dot
 	using Dot::Dot;
 
-	std::vector<VisualEffect> GetActiveEffects() const override {
-		return {VisualEffect::FREEZE_FRAME_TRAIL};
-	}
+	std::vector<VisualEffect> GetActiveEffects() const override { return {VisualEffect::FREEZE_FRAME_TRAIL}; }
 };
-
 
 class VectorDemoEntity: public Entity<CloneableDot> {
 public:
@@ -114,8 +111,7 @@ void FruitEntity::UpdateEntity(const EntityHandler& handler, float, float delta_
 	SetVelocity(v);
 }
 
-VectorDemoEntity::VectorDemoEntity(int id, const Vector3& start_pos):
-	Entity<CloneableDot>(id), phase_(0.0f) {
+VectorDemoEntity::VectorDemoEntity(int id, const Vector3& start_pos): Entity<CloneableDot>(id), phase_(0.0f) {
 	SetPosition(start_pos);
 	SetSize(10.0f);
 	SetTrailLength(100);

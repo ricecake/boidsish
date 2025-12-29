@@ -59,7 +59,6 @@ namespace Boidsish {
 		return model;
 	}
 
-
 	void Arrow::InitArrowMesh() {
 		// Rod generation
 		std::vector<float> rod_vertices;
