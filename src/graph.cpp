@@ -233,19 +233,33 @@ namespace Boidsish {
 		}
 
 		shader->use();
-		shader->setInt("useVertexColor", 1);
+		render(*shader, GetModelMatrix());
 
+		// Reset model matrix for subsequent renders if needed
 		glm::mat4 model = glm::mat4(1.0f);
-		model = glm::translate(model, glm::vec3(GetX(), GetY(), GetZ()));
 		shader->setMat4("model", model);
+	}
+
+	void Graph::render(Shader& shader, const glm::mat4& model_matrix) const {
+		if (!buffers_initialized_) {
+			SetupBuffers();
+		}
+
+		shader.setMat4("model", model_matrix);
+		shader.setInt("useVertexColor", 1);
 
 		glBindVertexArray(graph_vao_);
 		glDrawArrays(GL_TRIANGLES, 0, edge_vertex_count_);
 		glBindVertexArray(0);
 
-		shader->setInt("useVertexColor", 0);
-		model = glm::mat4(1.0f);
-		shader->setMat4("model", model);
+		shader.setInt("useVertexColor", 0);
+	}
+
+	glm::mat4 Graph::GetModelMatrix() const {
+		glm::mat4 model = glm::mat4(1.0f);
+		model = glm::translate(model, glm::vec3(GetX(), GetY(), GetZ()));
+		// Graph doesn't have its own rotation or scale, so we don't apply them here.
+		return model;
 	}
 
 } // namespace Boidsish

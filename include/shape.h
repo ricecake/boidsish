@@ -18,7 +18,12 @@ namespace Boidsish {
 		virtual ~Shape() = default;
 
 		// Pure virtual function for rendering the shape
-		virtual void render() const = 0;
+		virtual void                    render() const = 0;
+		virtual void                    render(Shader& shader) const final {
+			render(shader, GetModelMatrix());
+		}
+		virtual void render(Shader& shader, const glm::mat4& model_matrix) const = 0;
+		virtual glm::mat4               GetModelMatrix() const = 0;
 
 		// Get the active visual effects for this shape
 		virtual std::vector<VisualEffect> GetActiveEffects() const { return {}; }
@@ -122,7 +127,7 @@ namespace Boidsish {
 		int   trail_length_;
 		bool  trail_iridescent_;
 
-	private:
+	protected:
 		// Shared sphere mesh
 		static unsigned int sphere_vao_;
 		static unsigned int sphere_vbo_;

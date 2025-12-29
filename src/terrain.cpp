@@ -23,7 +23,10 @@ namespace Boidsish {
 		vao_(0),
 		vbo_(0),
 		ebo_(0),
-		index_count_(indices.size()) {}
+		index_count_(indices.size()) {
+		// Constructor now only initializes member variables
+		// setupMesh() must be called explicitly to upload to GPU
+	}
 
 	Terrain::~Terrain() {
 		glDeleteVertexArrays(1, &vao_);
@@ -77,15 +80,22 @@ namespace Boidsish {
 
 	void Terrain::render() const {
 		terrain_shader_->use();
-		// Set uniforms if necessary, e.g., model matrix
-		glm::mat4 model = glm::mat4(1.0f);
-		model = glm::translate(model, glm::vec3(GetX(), GetY(), GetZ()));
-		terrain_shader_->setMat4("model", model);
+		terrain_shader_->setMat4("model", GetModelMatrix());
 
 		glBindVertexArray(vao_);
 		glPatchParameteri(GL_PATCH_VERTICES, 4);
 		glDrawElements(GL_PATCHES, index_count_, GL_UNSIGNED_INT, 0);
 		glBindVertexArray(0);
+	}
+
+	void Terrain::render(Shader& shader, const glm::mat4& model_matrix) const {
+		// Terrain is not meant to be cloned, so this is a no-op
+	}
+
+	glm::mat4 Terrain::GetModelMatrix() const {
+		glm::mat4 model = glm::mat4(1.0f);
+		model = glm::translate(model, glm::vec3(GetX(), GetY(), GetZ()));
+		return model;
 	}
 
 } // namespace Boidsish

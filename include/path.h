@@ -32,8 +32,10 @@ namespace Boidsish {
 		Path(int id = 0, float x = 0.0f, float y = 0.0f, float z = 0.0f);
 		~Path();
 
-		void SetupBuffers() const;
-		void render() const override;
+		void      SetupBuffers() const;
+		void      render() const override;
+		void render(Shader& shader, const glm::mat4& model_matrix) const override;
+		glm::mat4 GetModelMatrix() const override;
 
 		Waypoint& AddWaypoint(
 			const Vector3& pos,

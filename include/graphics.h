@@ -125,8 +125,8 @@ namespace Boidsish {
 		// Set camera position and orientation
 		void SetCamera(const Camera& camera);
 
-		// Set the input callback
-		void SetInputCallback(InputCallback callback);
+		// Add an input callback to the chain of handlers.
+		void AddInputCallback(InputCallback callback);
 
 		void SetChaseCamera(std::shared_ptr<EntityBase> target);
 

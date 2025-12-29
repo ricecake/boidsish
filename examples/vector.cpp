@@ -5,6 +5,7 @@
 #include <random>
 #include <ranges>
 
+#include "dot.h"
 #include "graph.h"
 #include "graphics.h"
 #include "logger.h"
@@ -29,7 +30,19 @@ public:
 
 static auto fruitPlacer = MakeBranchAttractor();
 
-class VectorDemoEntity: public Entity<> {
+// A new shape type that has the clone effect enabled.
+class CloneableDot: public Dot {
+public:
+	// Inherit constructors from Dot
+	using Dot::Dot;
+
+	std::vector<VisualEffect> GetActiveEffects() const override {
+		return {VisualEffect::FREEZE_FRAME_TRAIL};
+	}
+};
+
+
+class VectorDemoEntity: public Entity<CloneableDot> {
 public:
 	VectorDemoEntity(int id, const Vector3& start_pos);
 	void UpdateEntity(const EntityHandler& handler, float time, float delta_time) override;
@@ -101,7 +114,8 @@ void FruitEntity::UpdateEntity(const EntityHandler& handler, float, float delta_
 	SetVelocity(v);
 }
 
-VectorDemoEntity::VectorDemoEntity(int id, const Vector3& start_pos): Entity<>(id), phase_(0.0f) {
+VectorDemoEntity::VectorDemoEntity(int id, const Vector3& start_pos):
+	Entity<CloneableDot>(id), phase_(0.0f) {
 	SetPosition(start_pos);
 	SetSize(10.0f);
 	SetTrailLength(100);
