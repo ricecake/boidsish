@@ -13,12 +13,12 @@ using namespace Boidsish;
 
 class PaperPlane: public Entity<Model> {
 public:
-	PaperPlane(int id = 0): Entity<Model>(id, "assets/Paper Airplane.obj") {
+	PaperPlane(int id = 0): Entity<Model>(id, "assets/Paper Airplane.obj", true) {
 		SetTrailLength(100);
 		SetTrailIridescence(true);
 
 		SetColor(1.0f, 0.5f, 0.0f);
-		shape_->SetScale(glm::vec3(0.05f));
+		shape_->SetScale(glm::vec3(0.01f));
 		SetPosition(0, 4, 0);
 		SetVelocity(Vector3(2, 0, 2));
 	}

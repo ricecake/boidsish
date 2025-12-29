@@ -1,7 +1,7 @@
 #version 330 core
 layout(location = 0) in vec3 aPos;
 layout(location = 1) in vec3 aNormal;
-layout(location = 2) in vec3 aColor;
+layout(location = 2) in vec2 aTexCoords;
 
 #include "visual_effects.glsl"
 #include "visual_effects.vert"
@@ -10,6 +10,7 @@ out vec3 FragPos;
 out vec3 Normal;
 out vec3 vs_color;
 out vec3 barycentric;
+out vec2 TexCoords;
 
 uniform mat4  model;
 uniform mat4  view;
@@ -50,7 +51,7 @@ void main() {
 
 	FragPos = vec3(model * vec4(displacedPos, 1.0));
 	Normal = mat3(transpose(inverse(model))) * displacedNormal;
-	vs_color = aColor;
+	TexCoords = aTexCoords;
 	if (wireframe_enabled == 1) {
 		barycentric = getBarycentric();
 	}
