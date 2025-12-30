@@ -39,7 +39,7 @@ namespace Boidsish {
 		float GetMaxHeight() const {
 			float max_h = 0.0f;
 			for (const auto& biome : biomes) {
-				max_h += biome.floorLevel;
+				max_h = std::max(max_h, biome.floorLevel);
 			}
 			return max_h * 0.8;
 		}

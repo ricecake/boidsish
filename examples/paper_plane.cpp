@@ -256,9 +256,13 @@ public:
 				target_rot_velocity.x = -target_dir_local.y * kTurnSpeed; // Pitch
 
 				// 4. Damp and apply rotational velocity
-				std::uniform_real_distribution<float> dist(0.0f, 2.0f);
-				rotational_velocity_ += dist(eng_) * (target_rot_velocity - rotational_velocity_) * kDamping *
-					delta_time;
+				rotational_velocity_ += (target_rot_velocity - rotational_velocity_) * kDamping * delta_time;
+
+				if (lived <= 1.5f) {
+					std::uniform_real_distribution<float> dist(-4.0f, 4.0f);
+					glm::vec3                             error_vector(0.1f*dist(eng_), dist(eng_), 0);
+					rotational_velocity_ += error_vector * delta_time;
+				}
 			}
 		}
 
@@ -336,7 +340,7 @@ public:
 			extreme_h = 200.0f;
 		} else {
 			start_h = (2.0f / 3.0f) * max_h;
-			extreme_h = 2.0f * max_h;
+			extreme_h = 3.0f * max_h;
 		}
 
 		if (ppos.y < start_h)
