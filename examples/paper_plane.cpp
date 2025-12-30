@@ -9,8 +9,10 @@
 #include "guided_missile.h"
 #include "missile_launcher.h"
 #include "spatial_entity_handler.h"
+#include "terrain.h"
 #include <GLFW/glfw3.h>
 #include <glm/gtc/quaternion.hpp>
+#include <set>
 
 using namespace Boidsish;
 
@@ -50,49 +52,60 @@ private:
     }
 
     void SpawnLaunchers(const std::shared_ptr<PaperPlane>& plane) {
-        const int kSpawnAttempts = 10;
-        const float kMinSpawnDistFromPlane = 100.0f;
-        const float kMaxSpawnDistFromPlane = 450.0f;
-        const float kMinHeight = 60.0f;
-        const float kMinSpacing = 30.0f;
-        const float kMaxFlatnessDot = 0.95f; // Normal dot product with "up" must be > this value
+        if (!vis) return;
 
+        auto chunks = vis->GetTerrainChunks();
         auto existing_launchers = GetEntitiesByType<MissileLauncher>();
 
-        for (int i = 0; i < kSpawnAttempts; ++i) {
-            // 1. Pick a random point around the plane
-            std::uniform_real_distribution<float> dist_angle(0, 2 * glm::pi<float>());
-            std::uniform_real_distribution<float> dist_dist(kMinSpawnDistFromPlane, kMaxSpawnDistFromPlane);
+        // 1. Identify chunks that already have a launcher
+        std::set<std::pair<int, int>> occupied_chunks;
+        for (const auto& launcher : existing_launchers) {
+            auto pos = launcher->GetPosition();
+            occupied_chunks.insert({
+                static_cast<int>(std::floor(pos.x / 32.0f)),
+                static_cast<int>(std::floor(pos.z / 32.0f))
+            });
+        }
 
-            float angle = dist_angle(eng_);
-            float dist = dist_dist(eng_);
+        // 2. Iterate through visible chunks and filter them
+        for (const auto& chunk : chunks) {
+            if (!chunk) continue;
 
-            glm::vec3 plane_pos = {plane->GetPosition().x, plane->GetPosition().y, plane->GetPosition().z};
-            glm::vec3 spawn_pos_2d = plane_pos + glm::vec3(cos(angle) * dist, 0, sin(angle) * dist);
+            auto chunk_coords = std::make_pair(
+                static_cast<int>(std::floor(chunk->proxy.center.x / 32.0f)),
+                static_cast<int>(std::floor(chunk->proxy.center.z / 32.0f))
+            );
 
-            // 2. Get terrain properties at that point
-            auto [height, normal] = vis->GetTerrainPointProperties(spawn_pos_2d.x, spawn_pos_2d.z);
-            glm::vec3 spawn_pos_3d = {spawn_pos_2d.x, height, spawn_pos_2d.z};
+            // Skip if chunk is already occupied
+            if (occupied_chunks.count(chunk_coords)) {
+                continue;
+            }
 
-            // 3. Check if the location is suitable
-            if (height < kMinHeight) continue;
-            if (glm::dot(normal, glm::vec3(0, 1, 0)) < kMaxFlatnessDot) continue;
+            // Skip if the entire chunk is too low
+            const float kMinHeight = 60.0f;
+            if (chunk->proxy.maxY < kMinHeight) {
+                continue;
+            }
 
-            // 4. Check if it's too close to an existing launcher
-            bool too_close = false;
-            for (const auto& launcher : existing_launchers) {
-                glm::vec3 launcher_pos = {launcher->GetPosition().x, launcher->GetPosition().y, launcher->GetPosition().z};
-                if (glm::distance(spawn_pos_3d, launcher_pos) < kMinSpacing) {
-                    too_close = true;
-                    break;
+            // 3. Build a list of valid spawn points from the chunk's vertices
+            std::vector<glm::vec3> candidate_points;
+            const float kMaxFlatnessDot = 0.95f;
+            for (size_t i = 0; i < chunk->vertices.size(); ++i) {
+                const auto& vertex = chunk->vertices[i];
+                const auto& normal = chunk->normals[i];
+
+                if (vertex.y >= kMinHeight && glm::dot(normal, {0, 1, 0}) > kMaxFlatnessDot) {
+                    candidate_points.push_back(vertex);
                 }
             }
-            if (too_close) continue;
 
-            // 5. Spawn the launcher
-            AddEntity<MissileLauncher>(spawn_pos_3d);
-            // After adding one, we can just return to avoid clumping them in one frame
-            return;
+            // 4. If we have candidates, pick one and spawn a launcher
+            if (!candidate_points.empty()) {
+                std::uniform_int_distribution<size_t> dist(0, candidate_points.size() - 1);
+                const auto& spawn_point = candidate_points[dist(eng_)];
+                AddEntity<MissileLauncher>(spawn_point);
+                break; // Only spawn one launcher per check
+            }
         }
     }
 
