@@ -120,7 +120,8 @@ namespace Boidsish {
 		void Render();
 
 		// Get current camera
-		Camera& GetCamera();
+		Camera&       GetCamera();
+		const Camera& GetCamera() const;
 
 		// Set camera position and orientation
 		void SetCamera(const Camera& camera);
@@ -141,6 +142,7 @@ namespace Boidsish {
 		void ToggleEffect(VisualEffect effect);
 
 		std::tuple<float, glm::vec3>                 GetTerrainPointProperties(float x, float y) const;
+		float                                        GetTerrainMaxHeight() const;
 		const std::vector<std::shared_ptr<Terrain>>& GetTerrainChunks() const;
 		task_thread_pool::task_thread_pool&          GetThreadPool();
 

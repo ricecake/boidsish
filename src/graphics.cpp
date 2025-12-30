@@ -1302,6 +1302,10 @@ namespace Boidsish {
 		return impl->camera;
 	}
 
+	const Camera& Visualizer::GetCamera() const {
+		return impl->camera;
+	}
+
 	void Visualizer::SetCamera(const Camera& camera) {
 		impl->camera = camera;
 	}
@@ -1389,6 +1393,13 @@ namespace Boidsish {
 
 	std::tuple<float, glm::vec3> Visualizer::GetTerrainPointProperties(float x, float y) const {
 		return impl->terrain_generator->pointProperties(x, y);
+	}
+
+	float Visualizer::GetTerrainMaxHeight() const {
+		if (impl->terrain_generator) {
+			return impl->terrain_generator->GetMaxHeight();
+		}
+		return 0.0f;
 	}
 
 	const std::vector<std::shared_ptr<Terrain>>& Visualizer::GetTerrainChunks() const {
