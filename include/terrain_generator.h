@@ -36,6 +36,14 @@ namespace Boidsish {
 		void                                         update(const Frustum& frustum, const Camera& camera);
 		const std::vector<std::shared_ptr<Terrain>>& getVisibleChunks();
 
+		float GetMaxHeight() const {
+			float max_h = 0.0f;
+			for (const auto& biome : biomes) {
+				max_h += biome.floorLevel;
+			}
+			return max_h * 0.8;
+		}
+
 		std::tuple<float, glm::vec3> pointProperties(float x, float z) {
 			// Determine grid cell
 			float tx = x - floor(x);

@@ -179,10 +179,14 @@ private:
 
 class GuidedMissile: public Entity<Dot> {
 public:
-	GuidedMissile(int id = 0, Vector3 pos = {0, 0, 0}): Entity<Dot>(id) {
+	GuidedMissile(int id = 0, Vector3 pos = {0, 0, 0}):
+		Entity<Dot>(id),
+		orientation_(glm::quat(1.0f, 0.0f, 0.0f, 0.0f)),
+		rotational_velocity_(glm::vec3(0.0f)),
+		forward_speed_(0.0f) {
 		UpdateShape();
 		SetPosition(pos.x, pos.y, pos.z);
-		SetVelocity(initialVelocity);
+		SetVelocity(0, 0, 0);
 		SetTrailLength(500);
 		SetTrailRocket(true);
 	}
@@ -196,32 +200,95 @@ public:
 		if (exploded) {
 			return;
 		}
-		auto speed = GetVelocity().Magnitude();
-		speed = std::min(speed + (thrust * delta_time), 200.0f);
 
-		auto targets = handler.GetEntitiesByType<PaperPlane>();
-		if (targets.size()) {
-			auto plane = targets[0];
-			auto distanceVector = (plane->GetPosition() - GetPosition());
-			if (distanceVector.Magnitude() < 10) {
-				SetVelocity(0, 0, 0);
-				SetSize(100);
-				SetColor(1, 0, 0, 0.33f);
-				exploded = true;
-				lived = -5;
-				return;
+		// --- Flight Model Constants ---
+		const float kLaunchTime = 1.5f;
+		const float kMaxSpeed = 100.0f;
+		const float kAcceleration = 150.0f;
+
+		// --- Launch Phase ---
+		if (lived < kLaunchTime) {
+			// Set orientation to point straight up.
+			// The model's "forward" is -Z, so we rotate it to point along +Y.
+			orientation_ = glm::angleAxis(glm::radians(-90.0f), glm::vec3(1.0f, 0.0f, 0.0f));
+
+			// Accelerate
+			forward_speed_ += kAcceleration * delta_time;
+			if (forward_speed_ > kMaxSpeed) {
+				forward_speed_ = kMaxSpeed;
 			}
-			auto newVec = (distanceVector + GetVelocity()).Normalized() * speed;
-			SetVelocity(newVec);
+		} else {
+			// --- Guidance Phase ---
+			const float kTurnSpeed = 4.0f;
+			const float kDamping = 3.5f;
+
+			auto targets = handler.GetEntitiesByType<PaperPlane>();
+			if (targets.empty()) {
+				// No target, fly straight.
+				rotational_velocity_ = glm::vec3(0.0f);
+			} else {
+				auto plane = targets[0];
+
+				// --- Proximity Detonation ---
+				if ((plane->GetPosition() - GetPosition()).Magnitude() < 10) {
+					SetVelocity(0, 0, 0);
+					SetSize(100);
+					SetColor(1, 0, 0, 0.33f);
+					exploded = true;
+					lived = -5; // Used for explosion lifetime
+					return;
+				}
+
+				// --- Proportional Guidance ---
+				// 1. Get world-space direction to target
+				Vector3   target_vec = (plane->GetPosition() - GetPosition()).Normalized();
+				glm::vec3 target_dir_world = glm::vec3(target_vec.x, target_vec.y, target_vec.z);
+
+				// 2. Convert to missile's local space
+				glm::vec3 target_dir_local = glm::inverse(orientation_) * target_dir_world;
+
+				// 3. Calculate target rotational velocity
+				//    The local target's X component drives yaw, Y component drives pitch.
+				//    This creates a proportional control: the further off-axis the target is, the stronger the turn.
+				glm::vec3 target_rot_velocity = glm::vec3(0.0f);
+				target_rot_velocity.y = target_dir_local.x * kTurnSpeed; // Yaw
+				target_rot_velocity.x = -target_dir_local.y * kTurnSpeed; // Pitch
+
+				// 4. Damp and apply rotational velocity
+				rotational_velocity_ += (target_rot_velocity - rotational_velocity_) * kDamping * delta_time;
+			}
+		}
+
+		// --- Update Orientation ---
+		glm::quat pitch_delta = glm::angleAxis(rotational_velocity_.x * delta_time, glm::vec3(1.0f, 0.0f, 0.0f));
+		glm::quat yaw_delta = glm::angleAxis(rotational_velocity_.y * delta_time, glm::vec3(0.0f, 1.0f, 0.0f));
+		orientation_ = glm::normalize(orientation_ * pitch_delta * yaw_delta);
+
+		// --- Update Velocity and Position ---
+		glm::vec3 forward_dir = orientation_ * glm::vec3(0.0f, 0.0f, -1.0f);
+		glm::vec3 new_velocity = forward_dir * forward_speed_;
+		SetVelocity(Vector3(new_velocity.x, new_velocity.y, new_velocity.z));
+	}
+
+	void UpdateShape() override {
+		// First, call the base implementation
+		Entity<Dot>::UpdateShape();
+		// Then, apply our specific orientation that includes roll
+		if (shape_) {
+			shape_->SetRotation(orientation_);
 		}
 	}
 
 private:
-	constexpr static glm::vec3 initialVelocity{0, 80, 0};
-	constexpr static int       thrust{50};
-	constexpr static int       lifetime{4};
-	float                      lived = 0;
-	bool                       exploded = false;
+	constexpr static int thrust{50};
+	constexpr static int lifetime{12};
+	float                lived = 0;
+	bool                 exploded = false;
+
+	// Flight model
+	glm::quat orientation_;
+	glm::vec3 rotational_velocity_; // x: pitch, y: yaw, z: roll
+	float     forward_speed_;
 };
 
 class MakeBranchAttractor {
@@ -242,26 +309,84 @@ static auto missilePicker = MakeBranchAttractor();
 
 class PaperPlaneHandler: public SpatialEntityHandler {
 public:
-	PaperPlaneHandler(task_thread_pool::task_thread_pool& thread_pool): SpatialEntityHandler(thread_pool) {}
+	PaperPlaneHandler(task_thread_pool::task_thread_pool& thread_pool): SpatialEntityHandler(thread_pool), eng_(rd_()) {}
 
 	void PreTimestep(float time, float delta_time) {
-		if (until_launch <= 0) {
-			auto                         targets = GetEntitiesByType<PaperPlane>();
-			auto                         plane = targets[0];
-			auto                         ppos = plane->GetPosition();
-			auto                         launchPos = missilePicker(250) + ppos;
-			std::tuple<float, glm::vec3> props = vis->GetTerrainPointProperties(launchPos.x, launchPos.z);
-			launchPos.y = std::get<0>(props);
+		// --- Missile Spawning Logic ---
+		auto targets = GetEntitiesByType<PaperPlane>();
+		if (targets.empty())
+			return;
+
+		auto  plane = targets[0];
+		auto  ppos = plane->GetPosition();
+		float max_h = vis->GetTerrainMaxHeight();
+		if (max_h <= 0.0f) // Avoid division by zero if terrain isn't loaded
+			return;
+
+		const float start_h = (2.0f / 3.0f) * max_h;
+		if (ppos.y < start_h)
+			return;
+
+		const float extreme_h = 2.0f * max_h;
+		const float p_min = 0.1f; // Missiles per second at start_h
+		const float p_max = 10.0f; // Missiles per second at extreme_h
+
+		float norm_alt = (ppos.y - start_h) / (extreme_h - start_h);
+		norm_alt = std::min(std::max(norm_alt, 0.0f), 1.0f); // clamp
+
+		float missiles_per_second = p_min * pow((p_max / p_min), norm_alt);
+		float fire_probability_this_frame = missiles_per_second * delta_time;
+
+		std::uniform_real_distribution<float> dist(0.0f, 1.0f);
+		if (dist(eng_) < fire_probability_this_frame) {
+			// --- Calculate Firing Location ---
+			// We want to fire from a "rainbow" arc on the terrain that is visible to the camera.
+
+			// 1. Get camera properties
+			const Camera& camera = vis->GetCamera();
+			glm::vec3     cam_pos = glm::vec3(camera.x, camera.y, camera.z);
+
+			// This calculation ensures we get the camera's actual forward direction,
+			// even in chase cam mode.
+			glm::vec3 plane_pos_glm = glm::vec3(ppos.x, ppos.y, ppos.z);
+			glm::vec3 cam_fwd = glm::normalize(plane_pos_glm - cam_pos);
+			glm::vec3 cam_right = glm::normalize(glm::cross(cam_fwd, glm::vec3(0.0f, 1.0f, 0.0f)));
+
+			// 2. Define spawn arc parameters
+			const float kMinSpawnDist = 150.0f;
+			const float kMaxSpawnDist = 400.0f;
+			const float kSpawnFov = glm::radians(camera.fov * 0.9f); // Just under camera FOV
+
+			// 3. Generate random point in the arc
+			std::uniform_real_distribution<float> dist_dist(kMinSpawnDist, kMaxSpawnDist);
+			std::uniform_real_distribution<float> dist_angle(-kSpawnFov / 2.0f, kSpawnFov / 2.0f);
+
+			float     rand_dist = dist_dist(eng_);
+			float     rand_angle = dist_angle(eng_);
+			glm::vec3 rand_dir = glm::angleAxis(rand_angle, glm::vec3(0.0f, 1.0f, 0.0f)) * cam_fwd;
+
+			// 4. Find the point on the terrain
+			glm::vec3 ray_origin = cam_pos;
+			// We push the origin forward a bit to ensure the spawn is always in front and far away
+			ray_origin += rand_dir * rand_dist;
+
+			std::tuple<float, glm::vec3> props = vis->GetTerrainPointProperties(ray_origin.x, ray_origin.z);
+			float                        terrain_h = std::get<0>(props);
+
+			Vector3 launchPos = Vector3(ray_origin.x, terrain_h, ray_origin.z);
+
+			// Safety check: ensure missile doesn't spawn underground or too high if terrain is weird
+			if (terrain_h < 0.0f || !std::isfinite(terrain_h)) {
+				return;
+			}
 
 			AddEntity<GuidedMissile>(launchPos);
-			until_launch = 8;
-		} else {
-			until_launch -= delta_time;
 		}
 	}
 
 private:
-	float until_launch = 0;
+	std::random_device rd_;
+	std::mt19937       eng_;
 };
 
 int main() {
