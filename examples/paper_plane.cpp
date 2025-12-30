@@ -41,15 +41,16 @@ public:
 
 		SetColor(1.0f, 0.5f, 0.0f);
 		shape_->SetScale(glm::vec3(0.04f));
-		shape_->SetRotation(glm::quat(0.0f, 1.0f, 0.0f, 0.0f));
+		std::dynamic_pointer_cast<Model>(shape_)->SetBaseRotation(
+			glm::angleAxis(glm::radians(-90.0f), glm::vec3(0.0f, 1.0f, 0.0f))
+		);
 		SetPosition(0, 4, 0);
 
 		// Initial velocity for a nice takeoff
 		SetVelocity(Vector3(0, 0, 20));
 
 		// Correct the initial orientation to match the model's alignment
-		orientation_ = glm::angleAxis(glm::radians(-90.0f), glm::vec3(0.0f, 1.0f, 0.0f)) *
-			glm::angleAxis(glm::radians(25.0f), glm::vec3(1.0f, 0.0f, 0.0f));
+		orientation_ = glm::angleAxis(glm::radians(25.0f), glm::vec3(1.0f, 0.0f, 0.0f));
 	}
 
 	void SetController(std::shared_ptr<PaperPlaneInputController> controller) { controller_ = controller; }
