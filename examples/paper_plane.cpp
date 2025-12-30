@@ -89,15 +89,36 @@ public:
 		// If there's no user input, gently guide the plane to a stable, level orientation.
 		if (!controller_->pitch_up && !controller_->pitch_down && !controller_->yaw_left && !controller_->yaw_right &&
 		    !controller_->roll_left && !controller_->roll_right) {
-			// --- Correct Roll ---
-			// This simple, robust method corrects roll by pushing the plane's right vector to be horizontal.
-			glm::vec3 local_right_in_world = orientation_ * glm::vec3(1.0f, 0.0f, 0.0f);
-			target_rot_velocity.z -= local_right_in_world.y * kAutoLevelSpeed;
+			// This robust auto-leveling logic finds the shortest rotational path to bring the plane upright and level.
+			// It works by finding where the world's 'up' vector is in relation to the plane's local axes,
+			// and then applying corrective forces.
 
-			// --- Correct Pitch ---
-			// Gently push the plane's forward vector to be horizontal.
-			glm::vec3 local_fwd_in_world = orientation_ * glm::vec3(0.0f, 0.0f, -1.0f);
-			target_rot_velocity.x -= local_fwd_in_world.y * kAutoLevelSpeed;
+			glm::vec3 world_up_in_local = glm::inverse(orientation_) * glm::vec3(0.0f, 1.0f, 0.0f);
+
+			// --- Pitch Correction (Shortest Path) ---
+			// The 'z' component of world_up_in_local tells us how 'forward' or 'backward' the world's 'up' is.
+			// A positive 'z' means world 'up' is in front of our nose (i.e., we are pitched down).
+			// To correct, we pitch up (positive x rotation), correctly taking the shortest path to the horizon.
+			target_rot_velocity.x += world_up_in_local.z * kAutoLevelSpeed;
+
+			// --- Roll Correction ---
+			// The 'x' component tells us how 'right' or 'left' the world's 'up' is.
+			// A positive 'x' means world 'up' is to our right. We must roll right (negative z rotation) to level the wings.
+			float roll_correction = world_up_in_local.x * kAutoLevelSpeed;
+
+			// The 'y' component tells us if we are upright or inverted. If it's negative, we are upside down.
+			if (world_up_in_local.y < 0.0f) {
+				// This fulfills the user's request to "prefer a roll" when inverted.
+				roll_correction *= 2.0f; // Apply a stronger roll correction.
+
+				// This solves the "stuck upside down" problem. If we're perfectly inverted, the roll_correction
+				// can be zero. Here, we add a constant roll "kick" to get the plane rolling.
+				if (abs(world_up_in_local.x) < 0.1f) {
+					roll_correction += kRollSpeed * 0.5f;
+				}
+			}
+
+			target_rot_velocity.z -= roll_correction;
 		}
 
 		// --- Apply Damping and Update Rotational Velocity ---
