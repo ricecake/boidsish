@@ -49,7 +49,11 @@ private:
 // Example entity handler that manages a swarm of orbital entities
 class SwarmHandler: public EntityHandler {
 public:
-	SwarmHandler(task_thread_pool::task_thread_pool& thread_pool): EntityHandler(thread_pool) {
+	SwarmHandler(
+		task_thread_pool::task_thread_pool& thread_pool,
+		Visualizer*                         vis
+	):
+		EntityHandler(thread_pool, vis) {
 		// Create several orbital entities with different parameters
 		for (int i = 0; i < 8; ++i) {
 			float radius = 3.0f + i * 0.8f;
@@ -93,7 +97,7 @@ int main() {
 		viz.SetCamera(camera);
 
 		// Create and set the entity handler
-		SwarmHandler handler(viz.GetThreadPool());
+		SwarmHandler handler(viz.GetThreadPool(), &viz);
 		viz.AddShapeHandler(std::ref(handler));
 
 		std::cout << "Entity System Example Started!" << std::endl;

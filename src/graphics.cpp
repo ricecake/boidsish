@@ -1399,4 +1399,8 @@ namespace Boidsish {
 		return impl->config;
 	}
 
+	TerrainGenerator* Visualizer::GetTerrainGenerator() const {
+		return impl->terrain_generator.get();
+	}
+
 } // namespace Boidsish

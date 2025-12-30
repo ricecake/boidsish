@@ -36,7 +36,7 @@ namespace Boidsish {
 		void                                         update(const Frustum& frustum, const Camera& camera);
 		const std::vector<std::shared_ptr<Terrain>>& getVisibleChunks();
 
-		std::tuple<float, glm::vec3> pointProperties(float x, float z) {
+		std::tuple<float, glm::vec3> pointProperties(float x, float z) const {
 			// Determine grid cell
 			float tx = x - floor(x);
 			float tz = z - floor(z);
@@ -75,11 +75,13 @@ namespace Boidsish {
 			return {final_pos.y, final_norm};
 		}
 
+		bool Raycast(const glm::vec3& origin, const glm::vec3& dir, float max_dist, float& out_dist) const;
+
 	private:
 		// Phong tessellation helpers (matching the shader)
-		glm::vec3 projectPointOnPlane(glm::vec3 q, glm::vec3 v, glm::vec3 n) { return q - glm::dot(q - v, n) * n; }
+		glm::vec3 projectPointOnPlane(glm::vec3 q, glm::vec3 v, glm::vec3 n) const { return q - glm::dot(q - v, n) * n; }
 
-		glm::vec3 bilerp(glm::vec3 v0, glm::vec3 v1, glm::vec3 v2, glm::vec3 v3, glm::vec2 uv) {
+		glm::vec3 bilerp(glm::vec3 v0, glm::vec3 v1, glm::vec3 v2, glm::vec3 v3, glm::vec2 uv) const {
 			glm::vec3 bot = glm::mix(v0, v1, uv.x);
 			glm::vec3 top = glm::mix(v3, v2, uv.x);
 			return glm::mix(bot, top, uv.y);
@@ -122,11 +124,11 @@ namespace Boidsish {
 		// Noise generators
 		siv::PerlinNoise control_perlin_noise_;
 
-		auto      fbm(float x, float z, TerrainParameters params);
-		auto      biomefbm(glm::vec2 pos, BiomeAttributes attr);
-		glm::vec3 pointGenerate(float x, float y);
+		auto      fbm(float x, float z, TerrainParameters params) const;
+		auto      biomefbm(glm::vec2 pos, BiomeAttributes attr) const;
+		glm::vec3 pointGenerate(float x, float y) const;
 
-		glm::vec3 diffToNorm(float dx, float dz) { return glm::normalize(glm::vec3(-dx, 1.0f, -dz)); }
+		glm::vec3 diffToNorm(float dx, float dz) const { return glm::normalize(glm::vec3(-dx, 1.0f, -dz)); }
 
 		// Cache and async management
 		ThreadPool                                                         thread_pool_;

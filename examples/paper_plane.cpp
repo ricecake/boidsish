@@ -242,7 +242,11 @@ static auto missilePicker = MakeBranchAttractor();
 
 class PaperPlaneHandler: public SpatialEntityHandler {
 public:
-	PaperPlaneHandler(task_thread_pool::task_thread_pool& thread_pool): SpatialEntityHandler(thread_pool) {}
+	PaperPlaneHandler(
+		task_thread_pool::task_thread_pool& thread_pool,
+		Visualizer*                         vis
+	):
+		SpatialEntityHandler(thread_pool, vis) {}
 
 	void PreTimestep(float time, float delta_time) {
 		if (until_launch <= 0) {
@@ -250,7 +254,7 @@ public:
 			auto                         plane = targets[0];
 			auto                         ppos = plane->GetPosition();
 			auto                         launchPos = missilePicker(250) + ppos;
-			std::tuple<float, glm::vec3> props = vis->GetTerrainPointProperties(launchPos.x, launchPos.z);
+			std::tuple<float, glm::vec3> props = vis_->GetTerrainPointProperties(launchPos.x, launchPos.z);
 			launchPos.y = std::get<0>(props);
 
 			AddEntity<GuidedMissile>(launchPos);
@@ -272,8 +276,7 @@ int main() {
 		visualizer->SetCamera(camera);
 		auto [height, norm] = visualizer->GetTerrainPointProperties(0, 0);
 
-		auto handler = PaperPlaneHandler(visualizer->GetThreadPool());
-		handler.SetVisualizer(visualizer);
+		auto handler = PaperPlaneHandler(visualizer->GetThreadPool(), visualizer.get());
 		auto id = handler.AddEntity<PaperPlane>();
 		auto plane = handler.GetEntity(id);
 		plane->SetPosition(0, height + 10, 0);

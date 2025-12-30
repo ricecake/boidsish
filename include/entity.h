@@ -179,8 +179,11 @@ namespace Boidsish {
 	// Entity handler that manages entities and provides dot generation
 	class EntityHandler {
 	public:
-		EntityHandler(task_thread_pool::task_thread_pool& thread_pool):
-			thread_pool_(thread_pool), last_time_(-1.0f), next_id_(0) {}
+		EntityHandler(
+			task_thread_pool::task_thread_pool& thread_pool,
+			Visualizer*                         vis = nullptr
+		):
+			thread_pool_(thread_pool), vis_(vis), last_time_(-1.0f), next_id_(0) {}
 
 		virtual ~EntityHandler() = default;
 
@@ -195,7 +198,7 @@ namespace Boidsish {
 		// Operator() to make this compatible with ShapeFunction
 		std::vector<std::shared_ptr<Shape>> operator()(float time);
 
-		void SetVisualizer(auto& new_vis) { vis = new_vis; }
+		Visualizer* GetVisualizer() const { return vis_; }
 
 		// Entity management
 		template <typename T, typename... Args>
@@ -251,8 +254,8 @@ namespace Boidsish {
 		// Get total entity count
 		size_t GetEntityCount() const { return entities_.size(); }
 
-		const auto GetTerrainPointProperties(float x, float y);
-		const auto GetTerrainChunks();
+		std::tuple<float, glm::vec3> GetTerrainPointProperties(float x, float y);
+		const std::vector<std::shared_ptr<Terrain>>& GetTerrainChunks();
 
 		// Thread-safe methods for entity modification
 		template <typename T, typename... Args>
@@ -283,7 +286,8 @@ namespace Boidsish {
 			(void)delta_time;
 		}
 
-		std::shared_ptr<const Visualizer> vis;
+	protected:
+		Visualizer* vis_;
 
 	private:
 		std::map<int, std::shared_ptr<EntityBase>> entities_;

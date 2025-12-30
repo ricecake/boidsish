@@ -11,7 +11,11 @@ namespace Boidsish {
 
 	class SpatialEntityHandler: public EntityHandler {
 	public:
-		SpatialEntityHandler(task_thread_pool::task_thread_pool& thread_pool): EntityHandler(thread_pool) {}
+		SpatialEntityHandler(
+			task_thread_pool::task_thread_pool& thread_pool,
+			Visualizer*                         vis = nullptr
+		):
+			EntityHandler(thread_pool, vis) {}
 
 		using EntityHandler::AddEntity;
 

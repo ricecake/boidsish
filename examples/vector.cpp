@@ -387,7 +387,11 @@ class VectorDemoHandler: public SpatialEntityHandler {
 	std::mt19937       eng;
 
 public:
-	VectorDemoHandler(task_thread_pool::task_thread_pool& thread_pool): SpatialEntityHandler(thread_pool), eng(rd()) {
+	VectorDemoHandler(
+		task_thread_pool::task_thread_pool& thread_pool,
+		Visualizer*                         vis
+	):
+		SpatialEntityHandler(thread_pool, vis), eng(rd()) {
 		std::cout << "=== Vector3 Operations Demo ===" << std::endl;
 
 		// Create some vector demo entities
@@ -531,7 +535,7 @@ int main() {
 		viz.SetCamera(camera);
 
 		// Create and set the vector demo handler
-		VectorDemoHandler handler(viz.GetThreadPool());
+		VectorDemoHandler handler(viz.GetThreadPool(), &viz);
 		viz.AddShapeHandler(std::ref(handler));
 		viz.AddShapeHandler(std::ref(GraphExample));
 
