@@ -320,14 +320,21 @@ public:
 		auto  plane = targets[0];
 		auto  ppos = plane->GetPosition();
 		float max_h = vis->GetTerrainMaxHeight();
-		if (max_h <= 0.0f) // Avoid division by zero if terrain isn't loaded
-			return;
 
-		const float start_h = (2.0f / 3.0f) * max_h;
+		float start_h = 0.0f;
+		float extreme_h = 0.0f;
+
+		// If terrain is not loaded, use a fallback height.
+		if (max_h <= 0.0f) {
+			start_h = 50.0f; // Start firing when plane is reasonably high
+			extreme_h = 200.0f;
+		} else {
+			start_h = (2.0f / 3.0f) * max_h;
+			extreme_h = 2.0f * max_h;
+		}
+
 		if (ppos.y < start_h)
 			return;
-
-		const float extreme_h = 2.0f * max_h;
 		const float p_min = 0.1f; // Missiles per second at start_h
 		const float p_max = 10.0f; // Missiles per second at extreme_h
 
@@ -370,15 +377,18 @@ public:
 			// We push the origin forward a bit to ensure the spawn is always in front and far away
 			ray_origin += rand_dir * rand_dist;
 
-			std::tuple<float, glm::vec3> props = vis->GetTerrainPointProperties(ray_origin.x, ray_origin.z);
-			float                        terrain_h = std::get<0>(props);
+			float terrain_h = 0.0f;
+			if (max_h > 0.0f) {
+				std::tuple<float, glm::vec3> props = vis->GetTerrainPointProperties(ray_origin.x, ray_origin.z);
+				terrain_h = std::get<0>(props);
+
+				// Safety check: ensure missile doesn't spawn underground or too high if terrain is weird
+				if (terrain_h < 0.0f || !std::isfinite(terrain_h)) {
+					return;
+				}
+			}
 
 			Vector3 launchPos = Vector3(ray_origin.x, terrain_h, ray_origin.z);
-
-			// Safety check: ensure missile doesn't spawn underground or too high if terrain is weird
-			if (terrain_h < 0.0f || !std::isfinite(terrain_h)) {
-				return;
-			}
 
 			AddEntity<GuidedMissile>(launchPos);
 		}

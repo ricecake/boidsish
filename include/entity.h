@@ -283,7 +283,7 @@ namespace Boidsish {
 			(void)delta_time;
 		}
 
-		std::shared_ptr<Visualizer> vis;
+		std::shared_ptr<const Visualizer> vis;
 
 	private:
 		std::map<int, std::shared_ptr<EntityBase>> entities_;
