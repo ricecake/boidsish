@@ -99,6 +99,9 @@ namespace Boidsish {
 
 		void SetTrailIridescence(bool enabled) { trail_iridescent_ = enabled; }
 
+		// New method for rocket trail
+		void SetTrailRocket(bool enabled) { trail_rocket_ = enabled; }
+
 		void SetOrientToVelocity(bool enabled) { orient_to_velocity_ = enabled; }
 
 		void SetPath(std::shared_ptr<Path> path, float speed) {
@@ -120,6 +123,7 @@ namespace Boidsish {
 		float     color_[4]; // RGBA
 		int       trail_length_;
 		bool      trail_iridescent_;
+		bool      trail_rocket_ = false; // New member for rocket trail
 		bool      orient_to_velocity_ = true;
 		glm::quat orientation_;
 
@@ -158,6 +162,7 @@ namespace Boidsish {
 			shape_->SetColor(color_[0], color_[1], color_[2], color_[3]);
 			shape_->SetTrailLength(trail_length_);
 			shape_->SetTrailIridescence(trail_iridescent_);
+			shape_->SetTrailRocket(trail_rocket_); // Propagate rocket trail state
 			shape_->SetRotation(orientation_);
 			// For dots, we can also update the size
 			if (auto dot = std::dynamic_pointer_cast<Dot>(shape_)) {

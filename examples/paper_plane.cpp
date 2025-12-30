@@ -32,8 +32,10 @@ public:
 		forward_speed_(20.0f) {
 		// All entities need to have their shape updated at least once.
 		UpdateShape();
-		SetTrailLength(100);
-		SetTrailIridescence(true);
+		// SetTrailLength(100);
+		// SetTrailIridescence(true);
+		SetTrailLength(500);
+		SetTrailRocket(true);
 
 		SetColor(1.0f, 0.5f, 0.0f);
 		shape_->SetScale(glm::vec3(0.01f));
