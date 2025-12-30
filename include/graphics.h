@@ -21,6 +21,7 @@ namespace task_thread_pool {
 }
 
 namespace Boidsish {
+    class AudioManager;
 	namespace UI {
 		class IWidget;
 	}
@@ -145,6 +146,7 @@ namespace Boidsish {
 		task_thread_pool::task_thread_pool&          GetThreadPool();
 
 		Config& GetConfig();
+        AudioManager& GetAudioManager();
 
 	private:
 		struct VisualizerImpl;

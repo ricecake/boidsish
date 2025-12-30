@@ -15,6 +15,7 @@ find_package(glfw3 REQUIRED)
 find_package(glm REQUIRED)
 find_package(Bullet REQUIRED)
 find_package(assimp REQUIRED)
+find_package(Threads REQUIRED)
 
 # 1. Define ImGui FIRST so FastNoise2 can see it
 set(IMGUI_DIR external/imgui)
@@ -73,6 +74,7 @@ target_link_libraries(boidsish
         poolSTL::poolSTL
         ${ASSIMP_LIBRARIES}
         ${BULLET_LIBRARIES}
+        Threads::Threads
 )
 
 # 5. Build Examples
@@ -84,12 +86,13 @@ foreach(EXAMPLE_PATH ${EXAMPLE_SOURCES})
     add_executable(${EXAMPLE_NAME} ${EXAMPLE_PATH})
     target_link_libraries(${EXAMPLE_NAME} PRIVATE boidsish)
     set_target_properties(${EXAMPLE_NAME} PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+    if(EXAMPLE_NAME STREQUAL "audio_demo" OR EXAMPLE_NAME STREQUAL "basic")
+        add_custom_command(TARGET ${EXAMPLE_NAME} POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_directory
+            ${CMAKE_CURRENT_SOURCE_DIR}/assets $<TARGET_FILE_DIR:${EXAMPLE_NAME}>/assets
+        )
+    endif()
 endforeach()
-
-add_custom_command(TARGET basic POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy_directory
-    ${CMAKE_CURRENT_SOURCE_DIR}/assets $<TARGET_FILE_DIR:basic>/assets
-)
 
 # Find the clang-format executable
 find_program(CLANG_FORMAT_EXE NAMES clang-format)
