@@ -6,18 +6,21 @@
 
 #include <iostream>
 #include <vector>
+#include <list>
 
 namespace Boidsish {
 
 struct AudioManager::AudioManagerImpl {
     ma_engine engine;
     bool      initialized = false;
+    std::list<ma_sound> sounds;
 
     AudioManagerImpl() {
         ma_engine_config engineConfig;
         engineConfig = ma_engine_config_init();
 
-        // Use the null backend for headless environments
+        // IMPORTANT: This is enabled for headless testing.
+        // Comment out the following line to enable audio playback.
         engineConfig.noDevice = MA_TRUE;
         engineConfig.channels = 2;
         engineConfig.sampleRate = 48000;
@@ -32,6 +35,9 @@ struct AudioManager::AudioManagerImpl {
     }
 
     ~AudioManagerImpl() {
+        for (auto& sound : sounds) {
+            ma_sound_uninit(&sound);
+        }
         if (initialized) {
             ma_engine_uninit(&engine);
         }
@@ -53,10 +59,13 @@ void AudioManager::UpdateListener(const glm::vec3& position, const glm::vec3& di
 void AudioManager::PlayMusic(const std::string& filepath, bool loop) {
     if (!m_pimpl->initialized) return;
 
-    ma_sound sound;
+    m_pimpl->sounds.emplace_back();
+    ma_sound& sound = m_pimpl->sounds.back();
+
     ma_result result = ma_sound_init_from_file(&m_pimpl->engine, filepath.c_str(), 0, NULL, NULL, &sound);
     if (result != MA_SUCCESS) {
         logger::ERROR("Failed to load music file: {}", filepath);
+        m_pimpl->sounds.pop_back();
         return;
     }
 
@@ -68,10 +77,13 @@ void AudioManager::PlayMusic(const std::string& filepath, bool loop) {
 void AudioManager::PlaySound(const std::string& filepath, const glm::vec3& position, float volume) {
     if (!m_pimpl->initialized) return;
 
-    ma_sound sound;
+    m_pimpl->sounds.emplace_back();
+    ma_sound& sound = m_pimpl->sounds.back();
+
     ma_result result = ma_sound_init_from_file(&m_pimpl->engine, filepath.c_str(), 0, NULL, NULL, &sound);
     if (result != MA_SUCCESS) {
         logger::ERROR("Failed to load sound file: {}", filepath);
+        m_pimpl->sounds.pop_back();
         return;
     }
 
@@ -79,6 +91,19 @@ void AudioManager::PlaySound(const std::string& filepath, const glm::vec3& posit
     ma_sound_set_volume(&sound, volume);
     ma_sound_set_spatialization_enabled(&sound, MA_TRUE);
     ma_sound_start(&sound);
+}
+
+void AudioManager::Update() {
+    if (!m_pimpl->initialized) return;
+
+    for (auto it = m_pimpl->sounds.begin(); it != m_pimpl->sounds.end(); ) {
+        if (ma_sound_at_end(it)) {
+            ma_sound_uninit(it);
+            it = m_pimpl->sounds.erase(it);
+        } else {
+            ++it;
+        }
+    }
 }
 
 } // namespace Boidsish

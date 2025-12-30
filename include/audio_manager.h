@@ -27,6 +27,8 @@ public:
     // Play a 3D spatialized sound at a specific position
     void PlaySound(const std::string& filepath, const glm::vec3& position, float volume = 1.0f);
 
+    void Update();
+
 private:
     struct AudioManagerImpl;
     std::unique_ptr<AudioManagerImpl> m_pimpl;

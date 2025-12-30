@@ -1167,6 +1167,7 @@ namespace Boidsish {
 						ubo_data.color_shift_enabled = 1;
 					} else if (effect == VisualEffect::FREEZE_FRAME_TRAIL) {
 						impl->clone_manager->CaptureClone(shape, impl->simulation_time);
+        impl->audio_manager->Update();
 					}
 				}
 			}
