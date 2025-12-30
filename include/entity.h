@@ -255,20 +255,14 @@ namespace Boidsish {
 		const auto GetTerrainChunks();
 
 		// Thread-safe methods for entity modification
+		virtual void QueueAddEntity(std::shared_ptr<EntityBase> entity) const { (void)entity; }
+		virtual void QueueRemoveEntity(int id) const { (void)id; }
+
 		template <typename T, typename... Args>
 		void QueueAddEntity(Args&&... args) const {
-			std::lock_guard<std::mutex> lock(requests_mutex_);
-			modification_requests_.emplace_back([this, args = std::make_tuple(std::forward<Args>(args)...)]() mutable {
-				std::apply(
-					[this](auto&&... a) { const_cast<EntityHandler*>(this)->AddEntity<T>(std::forward<Args>(a)...); },
-					std::move(args)
-				);
-			});
-		}
-
-		void QueueRemoveEntity(int id) const {
-			std::lock_guard<std::mutex> lock(requests_mutex_);
-			modification_requests_.emplace_back([this, id]() { const_cast<EntityHandler*>(this)->RemoveEntity(id); });
+			int id = 0; // The handler will assign the real ID
+			auto entity = std::make_shared<T>(id, std::forward<Args>(args)...);
+			QueueAddEntity(entity);
 		}
 
 	protected:
