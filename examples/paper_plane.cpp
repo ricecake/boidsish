@@ -161,10 +161,12 @@ int main() {
 
 		Boidsish::Camera camera;
 		visualizer.SetCamera(camera);
+		auto [height, norm] = visualizer.GetTerrainPointProperties(0, 0);
 
 		auto handler = PaperPlaneHandler(visualizer.GetThreadPool());
 		auto id = handler.AddEntity<PaperPlane>();
 		auto plane = handler.GetEntity(id);
+		plane->SetPosition(0, height + 10, 0);
 
 		visualizer.AddShapeHandler(std::ref(handler));
 		visualizer.SetChaseCamera(plane);
