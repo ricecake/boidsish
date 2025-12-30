@@ -72,6 +72,8 @@ namespace Boidsish {
 
 		void SetVelocity(const Vector3& vel) { velocity_ = vel; }
 
+		void SetVelocity(const glm::vec3& vel) { velocity_.Set(vel.x, vel.y, vel.z); }
+
 		// Visual properties
 		float GetSize() const { return size_; }
 
@@ -193,7 +195,7 @@ namespace Boidsish {
 		// Operator() to make this compatible with ShapeFunction
 		std::vector<std::shared_ptr<Shape>> operator()(float time);
 
-		void SetVisualizer(auto new_vis) { vis = new_vis; }
+		void SetVisualizer(auto& new_vis) { vis = new_vis; }
 
 		// Entity management
 		template <typename T, typename... Args>
@@ -281,8 +283,9 @@ namespace Boidsish {
 			(void)delta_time;
 		}
 
+		std::shared_ptr<const Visualizer> vis;
+
 	private:
-		std::shared_ptr<const Visualizer>          vis;
 		std::map<int, std::shared_ptr<EntityBase>> entities_;
 		float                                      last_time_;
 		int                                        next_id_;

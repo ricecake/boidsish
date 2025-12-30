@@ -1,11 +1,13 @@
 #include <iostream>
 #include <memory>
+#include <random>
 #include <vector>
 
 #include "arrow.h"
 #include "dot.h"
 #include "field.h"
 #include "graphics.h"
+#include "logger.h"
 #include "model.h"
 #include "spatial_entity_handler.h"
 #include <GLFW/glfw3.h>
@@ -32,13 +34,14 @@ public:
 		forward_speed_(20.0f) {
 		// All entities need to have their shape updated at least once.
 		UpdateShape();
-		// SetTrailLength(100);
+		SetTrailLength(0);
 		// SetTrailIridescence(true);
-		SetTrailLength(500);
-		SetTrailRocket(true);
+		// SetTrailLength(500);
+		// SetTrailRocket(true);
 
 		SetColor(1.0f, 0.5f, 0.0f);
-		shape_->SetScale(glm::vec3(0.01f));
+		shape_->SetScale(glm::vec3(0.04f));
+		shape_->SetRotation(glm::quat(0.0f, 1.0f, 0.0f, 0.0f));
 		SetPosition(0, 4, 0);
 
 		// Initial velocity for a nice takeoff
@@ -105,14 +108,14 @@ public:
 
 			// --- Roll Correction ---
 			// The 'x' component tells us how 'right' or 'left' the world's 'up' is.
-			// A positive 'x' means world 'up' is to our right. We must roll right (negative z rotation) to level the wings.
+			// A positive 'x' means world 'up' is to our right. We must roll right (negative z rotation) to level the
+			// wings.
 			float roll_correction = world_up_in_local.x * kAutoLevelSpeed;
 
 			// The 'y' component tells us if we are upright or inverted. If it's negative, we are upside down.
 			if (world_up_in_local.y < 0.0f) {
 				roll_correction *= 3.0f; // Apply a stronger roll correction.
 				target_rot_velocity.x = 0;
-
 
 				// This solves the "stuck upside down" problem. If we're perfectly inverted, the roll_correction
 				// can be zero. Here, we add a constant roll "kick" to get the plane rolling.
@@ -174,31 +177,114 @@ private:
 	float                                      forward_speed_;
 };
 
+class GuidedMissile: public Entity<Dot> {
+public:
+	GuidedMissile(int id = 0, Vector3 pos = {0, 0, 0}): Entity<Dot>(id) {
+		UpdateShape();
+		SetPosition(pos.x, pos.y, pos.z);
+		SetVelocity(initialVelocity);
+		SetTrailLength(500);
+		SetTrailRocket(true);
+	}
+
+	void UpdateEntity(const EntityHandler& handler, float time, float delta_time) {
+		lived += delta_time;
+		if (lived >= lifetime) {
+			handler.QueueRemoveEntity(id_);
+			return;
+		}
+		if (exploded) {
+			return;
+		}
+		auto speed = GetVelocity().Magnitude();
+		speed = std::min(speed + (thrust * delta_time), 200.0f);
+
+		auto targets = handler.GetEntitiesByType<PaperPlane>();
+		if (targets.size()) {
+			auto plane = targets[0];
+			auto distanceVector = (plane->GetPosition() - GetPosition());
+			if (distanceVector.Magnitude() < 10) {
+				SetVelocity(0, 0, 0);
+				SetSize(100);
+				SetColor(1, 0, 0, 0.33f);
+				exploded = true;
+				lived = -5;
+				return;
+			}
+			auto newVec = (distanceVector + GetVelocity()).Normalized() * speed;
+			SetVelocity(newVec);
+		}
+	}
+
+private:
+	constexpr static glm::vec3 initialVelocity{0, 80, 0};
+	constexpr static int       thrust{50};
+	constexpr static int       lifetime{4};
+	float                      lived = 0;
+	bool                       exploded = false;
+};
+
+class MakeBranchAttractor {
+private:
+	std::random_device                    rd;
+	std::mt19937                          eng;
+	std::uniform_real_distribution<float> x;
+	std::uniform_real_distribution<float> y;
+	std::uniform_real_distribution<float> z;
+
+public:
+	MakeBranchAttractor(): eng(rd()), x(-1, 1), y(0, 1), z(-1, 1) {}
+
+	Vector3 operator()(float r) { return r * Vector3(x(eng), y(eng), z(eng)).Normalized(); }
+};
+
+static auto missilePicker = MakeBranchAttractor();
+
 class PaperPlaneHandler: public SpatialEntityHandler {
 public:
 	PaperPlaneHandler(task_thread_pool::task_thread_pool& thread_pool): SpatialEntityHandler(thread_pool) {}
+
+	void PreTimestep(float time, float delta_time) {
+		if (until_launch <= 0) {
+			auto                         targets = GetEntitiesByType<PaperPlane>();
+			auto                         plane = targets[0];
+			auto                         ppos = plane->GetPosition();
+			auto                         launchPos = missilePicker(250) + ppos;
+			std::tuple<float, glm::vec3> props = vis->GetTerrainPointProperties(launchPos.x, launchPos.z);
+			launchPos.y = std::get<0>(props);
+
+			AddEntity<GuidedMissile>(launchPos);
+			until_launch = 8;
+		} else {
+			until_launch -= delta_time;
+		}
+	}
+
+private:
+	float until_launch = 0;
 };
 
 int main() {
 	try {
-		Boidsish::Visualizer visualizer(1280, 720, "Terrain Demo");
+		auto visualizer = std::make_shared<Visualizer>(1280, 720, "Terrain Demo");
 
 		Boidsish::Camera camera;
-		visualizer.SetCamera(camera);
-		auto [height, norm] = visualizer.GetTerrainPointProperties(0, 0);
+		visualizer->SetCamera(camera);
+		auto [height, norm] = visualizer->GetTerrainPointProperties(0, 0);
 
-		auto handler = PaperPlaneHandler(visualizer.GetThreadPool());
+		auto handler = PaperPlaneHandler(visualizer->GetThreadPool());
+		handler.SetVisualizer(visualizer);
 		auto id = handler.AddEntity<PaperPlane>();
 		auto plane = handler.GetEntity(id);
 		plane->SetPosition(0, height + 10, 0);
 
-		visualizer.AddShapeHandler(std::ref(handler));
-		visualizer.SetChaseCamera(plane);
+		visualizer->AddShapeHandler(std::ref(handler));
+		visualizer->SetChaseCamera(plane);
 
 		auto controller = std::make_shared<PaperPlaneInputController>();
 		std::dynamic_pointer_cast<PaperPlane>(plane)->SetController(controller);
 
-		visualizer.AddInputCallback([&](const Boidsish::InputState& state) {
+		visualizer->AddInputCallback([&](const Boidsish::InputState& state) {
 			controller->pitch_up = state.keys[GLFW_KEY_S];
 			controller->pitch_down = state.keys[GLFW_KEY_W];
 			controller->yaw_left = state.keys[GLFW_KEY_A];
@@ -208,7 +294,7 @@ int main() {
 			controller->boost = state.keys[GLFW_KEY_SPACE];
 		});
 
-		visualizer.Run();
+		visualizer->Run();
 	} catch (const std::exception& e) {
 		std::cerr << "Error: " << e.what() << std::endl;
 		return 1;
