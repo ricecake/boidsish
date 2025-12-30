@@ -21,6 +21,9 @@ uniform mat4  view;
 uniform mat4  projection;
 uniform vec4  clipPlane;
 uniform float base_thickness;
+uniform bool  useRocketTrail;
+
+#include "helpers/noise.glsl"
 
 void main() {
 	// Calculate tapering scale based on progress
@@ -31,6 +34,19 @@ void main() {
 	// Calculate the displacement required to scale the tube's radius
 	// This moves the vertex closer to or further from the tube's spine
 	vec3 offset = aNormal * base_thickness * (taper_scale - 1.0);
+
+	if (useRocketTrail) {
+		// Billowing smoke effect
+		float noise_freq = 3.0;
+		// Noise is stronger at the tail (lower progress)
+		float noise_strength = 0.6 * (1.0 - aProgress);
+		float noise = snoise(vec2(aPos.y * noise_freq, time * 3.0));
+		offset += aNormal * noise * noise_strength * base_thickness;
+
+		// Make the trail expand as it gets older (lower progress)
+		offset += aNormal * base_thickness * (1.0 - aProgress) * 1.5;
+	}
+
 	vec3 final_pos = aPos + offset;
 
 	vs_color = aColor;

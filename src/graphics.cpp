@@ -512,6 +512,10 @@ namespace Boidsish {
 						if (shape->IsTrailIridescent()) {
 							trails[shape->GetId()]->SetIridescence(true);
 						}
+						// Set rocket trail property
+						if (shape->IsTrailRocket()) {
+							trails[shape->GetId()]->SetUseRocketTrail(true);
+						}
 					}
 					trails[shape->GetId()]->AddPoint(
 						glm::vec3(shape->GetX(), shape->GetY(), shape->GetZ()),

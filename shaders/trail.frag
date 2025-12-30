@@ -4,6 +4,7 @@ out vec4 FragColor;
 in vec3 vs_color;
 in vec3 vs_normal;
 in vec3 vs_frag_pos;
+in float vs_progress;
 
 layout(std140) uniform Lighting {
 	vec3  lightPos;
@@ -13,13 +14,50 @@ layout(std140) uniform Lighting {
 };
 
 uniform bool useIridescence;
+uniform bool useRocketTrail;
+
+#include "helpers/noise.glsl"
 
 void main() {
 	vec3 norm = normalize(vs_normal);
 	vec3 view_dir = normalize(viewPos - vs_frag_pos);
 	vec3 light_dir = normalize(lightPos - vs_frag_pos);
 
-	if (useIridescence) {
+	if (useRocketTrail) {
+		// --- Rocket Trail Effect ---
+		float flame_threshold = 0.9;
+		float flicker = snoise(vec2(time * 20.0, vs_frag_pos.x * 5.0)) * 0.5 + 0.5;
+
+		if (vs_progress > flame_threshold) {
+			// --- Flame ---
+			float flame_progress = (vs_progress - flame_threshold) / (1.0 - flame_threshold);
+
+			// Core of the flame (white hot and flickering)
+			float core_intensity = pow(flame_progress, 10.0) * flicker * 2.0;
+			vec3  flame_color = vec3(1.0, 1.0, 0.8) * core_intensity;
+
+			// Softer outer glow (orange/yellow)
+			float glow_intensity = pow(flame_progress, 2.0) * (1.0 - core_intensity) * 1.5;
+			flame_color += vec3(1.0, 0.6, 0.2) * glow_intensity;
+
+			FragColor = vec4(flame_color, 1.0);
+		} else {
+			// --- Smoke ---
+			float smoke_progress = vs_progress / flame_threshold;
+
+			// Base smoke color is a mix of entity color and grey
+			vec3 smoke_color = mix(vec3(0.5), vs_color, 0.3);
+
+			// Noise to create a cloudy/billowing texture
+			float noise = snoise(vec2(vs_frag_pos.y * 5.0, time * 2.0)) * 0.5 + 0.5;
+
+			// Alpha fades out at the tail and is modulated by noise
+			float alpha = smoothstep(0.0, 0.2, smoke_progress) * (0.4 + noise * 0.3);
+
+			FragColor = vec4(smoke_color, alpha);
+		}
+	} else if (useIridescence) {
+		// --- Iridescence Effect ---
 		// Fresnel term for the base reflectivity
 		float fresnel = pow(1.0 - abs(dot(view_dir, norm)), 5.0);
 

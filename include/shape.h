@@ -75,8 +75,11 @@ namespace Boidsish {
 		inline void SetTrailLength(int length) { trail_length_ = length; }
 
 		inline bool IsTrailIridescent() const { return trail_iridescent_; }
-
 		inline void SetTrailIridescence(bool enabled) { trail_iridescent_ = enabled; }
+
+		// New rocket trail property
+		inline bool IsTrailRocket() const { return trail_rocket_; }
+		inline void SetTrailRocket(bool enabled) { trail_rocket_ = enabled; }
 
 		// Static shader reference
 		static std::shared_ptr<Shader> shader;
@@ -126,6 +129,7 @@ namespace Boidsish {
 		float r_, g_, b_, a_;
 		int   trail_length_;
 		bool  trail_iridescent_;
+		bool  trail_rocket_;
 
 	protected:
 		// Shared sphere mesh
