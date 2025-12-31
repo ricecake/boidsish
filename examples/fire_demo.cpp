@@ -8,11 +8,11 @@ int main() {
 		Boidsish::Visualizer vis(1280, 720, "Fire Effect Demo");
 
 		// Add a fire effect at the origin
-		vis.AddFireEffect(glm::vec3(0.0f, 1.0f, 0.0f), glm::vec3(1, 0, 0));
+		vis.AddFireEffect(glm::vec3(0.0f, 3.0f, 0.0f), glm::vec3(0, -1, 0));
 
-		// You can add more fire effects if you want
-		vis.AddFireEffect(glm::vec3(5.0f, 0.0f, 0.0f), glm::vec3(0, -1, 0));
-		vis.AddFireEffect(glm::vec3(-5.0f, 0.0f, 0.0f), glm::vec3(0, 0, -1));
+		// // You can add more fire effects if you want
+		// vis.AddFireEffect(glm::vec3(5.0f, 0.0f, 0.0f), glm::vec3(0, -1, 0));
+		// vis.AddFireEffect(glm::vec3(-5.0f, 0.0f, 0.0f), glm::vec3(0, 0, -1));
 
 		vis.GetCamera().y = 5.0;
 		vis.GetCamera().z = 15.0;

@@ -105,8 +105,18 @@ void main() {
         vec3 acceleration = u_emitter_dir * (5-length(particles[index].velocity.xyz));
         particles[index].velocity.xyz += (acceleration + turbulence) * u_delta_time;
 
+        if (particles[index].position.y <= 0) {
+            particles[index].position.y = 0.1;
+            // particles[index].velocity.xz =
+            // particles[index].velocity.xz + (particles[index].velocity.y * normalize(particles[index].velocity.xz));
+            // particles[index].velocity.y = 0.1;
+
+            particles[index].velocity.y *= -0.5;
+        }
+
         // Update position
         particles[index].position.xyz += particles[index].velocity.xyz * u_delta_time;
+
 
         // Decrease lifetime
         particles[index].position.w -= u_delta_time * 0.25;//sqrt(particles[index].position.w); // Fire particles have a shorter life
