@@ -13,6 +13,7 @@
 #include <GLFW/glfw3.h>
 #include <glm/gtc/quaternion.hpp>
 #include <set>
+#include <optional>
 
 using namespace Boidsish;
 
@@ -57,7 +58,6 @@ private:
         auto chunks = vis->GetTerrainChunks();
         auto existing_launchers = GetEntitiesByType<MissileLauncher>();
 
-        // 1. Identify chunks that already have a launcher
         std::set<std::pair<int, int>> occupied_chunks;
         for (const auto& launcher : existing_launchers) {
             auto pos = launcher->GetPosition();
@@ -67,7 +67,6 @@ private:
             });
         }
 
-        // 2. Iterate through visible chunks and filter them
         for (const auto& chunk : chunks) {
             if (!chunk) continue;
 
@@ -76,35 +75,48 @@ private:
                 static_cast<int>(std::floor(chunk->proxy.center.z / 32.0f))
             );
 
-            // Skip if chunk is already occupied
-            if (occupied_chunks.count(chunk_coords)) {
-                continue;
-            }
+            if (occupied_chunks.count(chunk_coords)) continue;
 
-            // Skip if the entire chunk is too low
             const float kMinHeight = 60.0f;
-            if (chunk->proxy.maxY < kMinHeight) {
-                continue;
+            if (chunk->proxy.maxY < kMinHeight) continue;
+
+            // Check cache
+            auto it = chunk_spawn_cache_.find(chunk_coords);
+            if (it != chunk_spawn_cache_.end()) {
+                if (it->second.has_value()) {
+                    AddEntity<MissileLauncher>(*it->second);
+                    break;
+                }
+                continue; // Cached failure
             }
 
-            // 3. Build a list of valid spawn points from the chunk's vertices
-            std::vector<glm::vec3> candidate_points;
-            const float kMaxFlatnessDot = 0.95f;
-            for (size_t i = 0; i < chunk->vertices.size(); ++i) {
-                const auto& vertex = chunk->vertices[i];
-                const auto& normal = chunk->normals[i];
+            // If not in cache, calculate
+            const int kGridSize = 5;
+            const float kChunkStep = 32.0f / kGridSize;
+            const float kMaxFlatnessDot = 0.98f;
 
-                if (vertex.y >= kMinHeight && glm::dot(normal, {0, 1, 0}) > kMaxFlatnessDot) {
-                    candidate_points.push_back(vertex);
+            std::vector<glm::vec3> candidates;
+            for (int x = 0; x < kGridSize; ++x) {
+                for (int z = 0; z < kGridSize; ++z) {
+                    float world_x = chunk->proxy.center.x - 16.0f + (x * kChunkStep);
+                    float world_z = chunk->proxy.center.z - 16.0f + (z * kChunkStep);
+
+                    auto [height, normal] = vis->GetTerrainPointProperties(world_x, world_z);
+
+                    if (height >= kMinHeight && glm::dot(normal, {0, 1, 0}) > kMaxFlatnessDot) {
+                        candidates.push_back({world_x, height, world_z});
+                    }
                 }
             }
 
-            // 4. If we have candidates, pick one and spawn a launcher
-            if (!candidate_points.empty()) {
-                std::uniform_int_distribution<size_t> dist(0, candidate_points.size() - 1);
-                const auto& spawn_point = candidate_points[dist(eng_)];
+            if (!candidates.empty()) {
+                std::uniform_int_distribution<size_t> dist(0, candidates.size() - 1);
+                const auto& spawn_point = candidates[dist(eng_)];
+                chunk_spawn_cache_[chunk_coords] = spawn_point;
                 AddEntity<MissileLauncher>(spawn_point);
-                break; // Only spawn one launcher per check
+                break;
+            } else {
+                chunk_spawn_cache_[chunk_coords] = std::nullopt;
             }
         }
     }
@@ -112,6 +124,7 @@ private:
     std::random_device rd_;
     std::mt19937 eng_;
     float time_since_last_spawn_check_;
+    std::map<std::pair<int, int>, std::optional<glm::vec3>> chunk_spawn_cache_;
 };
 
 int main() {

@@ -85,7 +85,7 @@ namespace Boidsish {
                 std::lock_guard<std::mutex> lock(mutations_mutex_);
                 for (const auto& mutation : entity_mutations_) {
                     if (mutation.entity) { // Addition
-                        AddEntity(0, mutation.entity);
+                        AddEntity(next_id_++, mutation.entity);
                     } else { // Removal
                         RemoveEntity(mutation.id);
                     }

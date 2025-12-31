@@ -278,11 +278,11 @@ namespace Boidsish {
 		}
 
 		std::shared_ptr<const Visualizer> vis;
+        int next_id_;
 
 	private:
 		std::map<int, std::shared_ptr<EntityBase>> entities_;
 		float                                      last_time_;
-		int                                        next_id_;
 		task_thread_pool::task_thread_pool&        thread_pool_;
 		mutable std::vector<std::function<void()>> modification_requests_;
 		mutable std::mutex                         requests_mutex_;
