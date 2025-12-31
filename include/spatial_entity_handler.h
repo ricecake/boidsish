@@ -65,7 +65,7 @@ namespace Boidsish {
 			(void)delta_time;
 			rtree_.RemoveAll();
             std::lock_guard<std::mutex> lock(entities_mutex_);
-			for (const auto& pair : GetAllEntities()) {
+			for (const auto& pair : entities_) {
 				auto&         entity = pair.second;
 				const Vector3 pos = entity->GetPosition();
 				float         min[3] = {pos.x, pos.y, pos.z};
