@@ -265,8 +265,14 @@ namespace Boidsish {
 		proxy.maxY = std::numeric_limits<float>::lowest();
 
 		for (const auto& pos : positions) {
-			proxy.minY = std::min(proxy.minY, pos.y);
-			proxy.maxY = std::max(proxy.maxY, pos.y);
+			if (pos.y < proxy.minY) {
+				proxy.minY = pos.y;
+				proxy.lowestPoint = pos;
+			}
+			if (pos.y > proxy.maxY) {
+				proxy.maxY = pos.y;
+				proxy.highestPoint = pos;
+			}
 			float dist_sq = glm::dot(pos - proxy.center, pos - proxy.center);
 			if (dist_sq > max_dist_sq) {
 				max_dist_sq = dist_sq;
