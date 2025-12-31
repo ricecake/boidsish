@@ -23,6 +23,8 @@ struct PaperPlaneInputController {
 	bool roll_left = false;
 	bool roll_right = false;
 	bool boost = false;
+	bool brake = false;
+	bool fire = false;
 };
 
 class PaperPlane: public Entity<Model> {
@@ -64,8 +66,9 @@ public:
 		const float kAutoLevelSpeed = 1.5f;
 		const float kDamping = 2.5f;
 
-		const float kBaseSpeed = 20.0f;
+		const float kBaseSpeed = 30.0f;
 		const float kBoostSpeed = 80.0f;
+		const float kBreakSpeed = 10.0f;
 		const float kBoostAcceleration = 120.0f;
 		const float kSpeedDecay = 10.0f;
 
@@ -142,10 +145,19 @@ public:
 			forward_speed_ += kBoostAcceleration * delta_time;
 			if (forward_speed_ > kBoostSpeed)
 				forward_speed_ = kBoostSpeed;
+		} else if (controller_->brake) {
+			forward_speed_ -= kBoostAcceleration * delta_time;
+			if (forward_speed_ < kBreakSpeed)
+				forward_speed_ = kBreakSpeed;
+
 		} else {
 			if (forward_speed_ > kBaseSpeed) {
 				forward_speed_ -= kSpeedDecay * delta_time;
 				if (forward_speed_ < kBaseSpeed)
+					forward_speed_ = kBaseSpeed;
+			} else if (forward_speed_ < kBaseSpeed) {
+				forward_speed_ += kSpeedDecay * delta_time;
+				if (forward_speed_ > kBaseSpeed)
 					forward_speed_ = kBaseSpeed;
 			}
 		}
@@ -436,7 +448,9 @@ int main() {
 			controller->yaw_right = state.keys[GLFW_KEY_D];
 			controller->roll_left = state.keys[GLFW_KEY_Q];
 			controller->roll_right = state.keys[GLFW_KEY_E];
-			controller->boost = state.keys[GLFW_KEY_SPACE];
+			controller->boost = state.keys[GLFW_KEY_LEFT_SHIFT];
+			controller->brake = state.keys[GLFW_KEY_LEFT_CONTROL];
+			controller->fire = state.keys[GLFW_KEY_SPACE];
 		});
 
 		visualizer->Run();
