@@ -10,12 +10,12 @@ FireEffectManager::FireEffectManager() {
 
 FireEffectManager::~FireEffectManager() = default;
 
-size_t FireEffectManager::AddEffect(const glm::vec3& position, size_t particle_count) {
+size_t FireEffectManager::AddEffect(const glm::vec3& position, const glm::vec3& direction, size_t particle_count) {
     size_t id = m_next_id++;
     m_effects.emplace(
         std::piecewise_construct,
         std::forward_as_tuple(id),
-        std::forward_as_tuple(id, position, particle_count, m_compute_shader, m_render_shader)
+        std::forward_as_tuple(id, position, direction, particle_count, m_compute_shader, m_render_shader)
     );
     return id;
 }
@@ -24,6 +24,13 @@ void FireEffectManager::UpdateEffectPosition(size_t id, const glm::vec3& positio
     auto it = m_effects.find(id);
     if (it != m_effects.end()) {
         it->second.SetPosition(position);
+    }
+}
+
+void FireEffectManager::UpdateEffectDirection(size_t id, const glm::vec3& direction) {
+    auto it = m_effects.find(id);
+    if (it != m_effects.end()) {
+        it->second.SetDirection(direction);
     }
 }
 

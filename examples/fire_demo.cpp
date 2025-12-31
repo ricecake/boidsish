@@ -8,23 +8,31 @@ int main() {
     try {
         Boidsish::Visualizer vis(1280, 720, "Fire Effect Demo");
 
-        // Create a single fire effect and store its ID
-        size_t fire_id = vis.AddFireEffect(glm::vec3(0.0f, 0.0f, 0.0f));
+        // Initial direction is upward
+        glm::vec3 initial_direction = glm::vec3(0.0f, 1.0f, 0.0f);
+        size_t fire_id = vis.AddFireEffect(glm::vec3(0.0f, 0.0f, 0.0f), initial_direction);
 
-        // Create a dot that will move and act as the emitter
         auto moving_dot = std::make_shared<Boidsish::Dot>();
+        glm::vec3 last_pos(0.0f);
 
-        // Use a shape handler to update the dot's and the fire's position each frame
         vis.AddShapeHandler([&](float time) {
-            // Move the dot in a circle
-            float x = 5.0f * cos(time * 0.5f);
-            float z = 5.0f * sin(time * 0.5f);
-            moving_dot->SetPosition(x, 1.0f, z); // Corrected method call
+            float speed = 1.0f;
+            float x = 5.0f * cos(time * speed);
+            float z = 5.0f * sin(time * speed);
+            glm::vec3 current_pos(x, 1.0f, z);
+            moving_dot->SetPosition(current_pos.x, current_pos.y, current_pos.z);
 
-            // Update the fire effect's position to follow the dot
-            vis.UpdateFireEffectPosition(fire_id, glm::vec3(x, 1.0f, z));
+            vis.UpdateFireEffectPosition(fire_id, current_pos);
 
-            // Return the dot to be rendered
+            // Calculate direction from movement (tangent of the circular path)
+            if (time > 0.0) {
+                glm::vec3 direction = last_pos - current_pos;
+                 if (glm::length(direction) > 0.001f) {
+                    vis.UpdateFireEffectDirection(fire_id, glm::normalize(direction));
+                }
+            }
+            last_pos = current_pos;
+
             std::vector<std::shared_ptr<Boidsish::Shape>> shapes;
             shapes.push_back(moving_dot);
             return shapes;
@@ -32,7 +40,7 @@ int main() {
 
         vis.GetCamera().y = 10.0;
         vis.GetCamera().z = 20.0;
-        vis.GetCamera().pitch = -30.0; // Angle the camera down
+        vis.GetCamera().pitch = -30.0;
         vis.SetCameraMode(Boidsish::CameraMode::STATIONARY);
 
         vis.Run();

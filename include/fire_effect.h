@@ -11,8 +11,9 @@ namespace Boidsish {
 class FireEffect {
 public:
     FireEffect(
-        size_t id, // Add ID to constructor
+        size_t id,
         const glm::vec3& position,
+        const glm::vec3& direction, // Add direction to constructor
         size_t particle_count,
         std::shared_ptr<ComputeShader> compute_shader,
         std::shared_ptr<Shader> render_shader
@@ -30,6 +31,10 @@ public:
 
     void SetPosition(const glm::vec3& position);
     const glm::vec3& GetPosition() const;
+
+    void SetDirection(const glm::vec3& direction); // Add SetDirection
+    const glm::vec3& GetDirection() const;
+
     size_t GetId() const;
 
 private:
@@ -38,6 +43,7 @@ private:
 
     size_t m_id;
     glm::vec3 m_position;
+    glm::vec3 m_direction; // Add direction member
     size_t m_particle_count;
 
     std::shared_ptr<ComputeShader> m_compute_shader;

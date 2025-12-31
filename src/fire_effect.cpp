@@ -14,11 +14,13 @@ struct Particle {
 FireEffect::FireEffect(
     size_t id,
     const glm::vec3& position,
+    const glm::vec3& direction,
     size_t particle_count,
     std::shared_ptr<ComputeShader> compute_shader,
     std::shared_ptr<Shader> render_shader)
     : m_id(id),
       m_position(position),
+      m_direction(direction),
       m_particle_count(particle_count),
       m_compute_shader(std::move(compute_shader)),
       m_render_shader(std::move(render_shader)),
@@ -34,6 +36,7 @@ FireEffect::~FireEffect() {
 FireEffect::FireEffect(FireEffect&& other) noexcept
     : m_id(other.m_id),
       m_position(other.m_position),
+      m_direction(other.m_direction),
       m_particle_count(other.m_particle_count),
       m_compute_shader(std::move(other.m_compute_shader)),
       m_render_shader(std::move(other.m_render_shader)),
@@ -53,6 +56,7 @@ FireEffect& FireEffect::operator=(FireEffect&& other) noexcept {
         // Move resources from other
         m_id = other.m_id;
         m_position = other.m_position;
+        m_direction = other.m_direction;
         m_particle_count = other.m_particle_count;
         m_compute_shader = std::move(other.m_compute_shader);
         m_render_shader = std::move(other.m_render_shader);
@@ -102,11 +106,11 @@ void FireEffect::Update(float time, float delta_time) {
     m_compute_shader->setFloat("u_time", time);
     m_compute_shader->setFloat("u_delta_time", delta_time);
     m_compute_shader->setVec3("u_emitter_pos", m_position);
-    m_compute_shader->setInt("u_particle_count", m_particle_count); // Pass particle count
+    m_compute_shader->setVec3("u_direction", m_direction); // Pass direction
+    m_compute_shader->setInt("u_particle_count", m_particle_count);
 
     glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, m_particle_ssbo);
 
-    // Correctly calculate workgroup count, rounding up
     const unsigned int workgroup_size = 256;
     m_compute_shader->dispatch((m_particle_count + workgroup_size - 1) / workgroup_size, 1, 1);
 
@@ -117,7 +121,7 @@ void FireEffect::Update(float time, float delta_time) {
 
 void FireEffect::Render(const glm::mat4& view, const glm::mat4& projection) {
     glEnable(GL_PROGRAM_POINT_SIZE);
-    glBlendFunc(GL_SRC_ALPHA, GL_ONE); // Additive blending for fire
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE);
 
     m_render_shader->use();
     m_render_shader->setMat4("u_view", view);
@@ -131,7 +135,7 @@ void FireEffect::Render(const glm::mat4& view, const glm::mat4& projection) {
     glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, 0); // Unbind
     glBindVertexArray(0);
 
-    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA); // Reset blend mode
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
     glDisable(GL_PROGRAM_POINT_SIZE);
 }
 
@@ -141,6 +145,14 @@ void FireEffect::SetPosition(const glm::vec3& position) {
 
 const glm::vec3& FireEffect::GetPosition() const {
     return m_position;
+}
+
+void FireEffect::SetDirection(const glm::vec3& direction) {
+    m_direction = direction;
+}
+
+const glm::vec3& FireEffect::GetDirection() const {
+    return m_direction;
 }
 
 size_t FireEffect::GetId() const {

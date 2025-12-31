@@ -1416,12 +1416,16 @@ namespace Boidsish {
 		return impl->config;
 	}
 
-	size_t Visualizer::AddFireEffect(const glm::vec3& position) {
-		return impl->fire_effect_manager->AddEffect(position);
+	size_t Visualizer::AddFireEffect(const glm::vec3& position, const glm::vec3& direction) {
+		return impl->fire_effect_manager->AddEffect(position, direction);
 	}
 
 	void Visualizer::UpdateFireEffectPosition(size_t id, const glm::vec3& position) {
 		impl->fire_effect_manager->UpdateEffectPosition(id, position);
+	}
+
+	void Visualizer::UpdateFireEffectDirection(size_t id, const glm::vec3& direction) {
+		impl->fire_effect_manager->UpdateEffectDirection(id, direction);
 	}
 
 } // namespace Boidsish
