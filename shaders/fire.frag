@@ -15,13 +15,17 @@ void main() {
     vec3 hot_color = vec3(1.0, 1.0, 0.6);   // Bright yellow-white
     vec3 mid_color = vec3(1.0, 0.5, 0.0);   // Orange
     vec3 cool_color = vec3(0.4, 0.1, 0.0);    // Dark red/smokey
+    vec3 smoke_color = vec3(0.2, 0.2, 0.2);    // Dark red/smokey
 
-    // Interpolate color based on lifetime
-    vec3 color = mix(mid_color, hot_color, v_lifetime * v_lifetime); // Hotter when new
-    color = mix(cool_color, color, v_lifetime); // Cooler as it dies
+    vec3 color = mix(mix(smoke_color, cool_color, v_lifetime), mix(mid_color, hot_color, v_lifetime*v_lifetime), v_lifetime);
+    // // Interpolate color based on lifetime
+    // vec3 color = mix(mid_color, hot_color, v_lifetime * v_lifetime); // Hotter when new
+    // color = mix(cool_color, color, v_lifetime); // Cooler as it dies
 
     // Fade out alpha based on lifetime and distance from center
-    float alpha = (1.0 - (dist / 0.25)) * v_lifetime;
+    // float alpha = (1.0 - (dist / 0.25)) * v_lifetime;
+    // float alpha = (1.0 - (dist / 0.25)) * v_lifetime;
+    float alpha = smoothstep((1-v_lifetime), (v_lifetime), v_lifetime/2.5);
 
     FragColor = vec4(color, alpha);
 }

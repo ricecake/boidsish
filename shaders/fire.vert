@@ -34,5 +34,5 @@ void main() {
 
     // Set point size based on lifetime
     // Particles will be smaller as they age and die out
-    gl_PointSize = (v_lifetime * v_lifetime) * 25.0;
+    gl_PointSize = smoothstep(2*(1-v_lifetime), (v_lifetime), v_lifetime/2.5) * 25.0;
 }

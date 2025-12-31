@@ -42,16 +42,16 @@ namespace Boidsish {
 	constexpr int   kBlurPasses = 4;
 
 	struct Visualizer::VisualizerImpl {
-		Visualizer*                                            parent;
-		GLFWwindow*                                            window;
-		int                                                    width, height;
-		Camera                                                 camera;
-		std::vector<ShapeFunction>                             shape_functions;
-		std::vector<std::shared_ptr<Shape>>                    shapes;
-		std::unique_ptr<CloneManager>                          clone_manager;
-		std::unique_ptr<FireEffectManager>                     fire_effect_manager;
-		std::map<int, std::shared_ptr<Trail>>                  trails;
-		std::map<int, float>                                   trail_last_update;
+		Visualizer*                           parent;
+		GLFWwindow*                           window;
+		int                                   width, height;
+		Camera                                camera;
+		std::vector<ShapeFunction>            shape_functions;
+		std::vector<std::shared_ptr<Shape>>   shapes;
+		std::unique_ptr<CloneManager>         clone_manager;
+		std::unique_ptr<FireEffectManager>    fire_effect_manager;
+		std::map<int, std::shared_ptr<Trail>> trails;
+		std::map<int, float>                  trail_last_update;
 
 		InputState                                             input_state{};
 		std::vector<InputCallback>                             input_callbacks;
@@ -1416,8 +1416,8 @@ namespace Boidsish {
 		return impl->config;
 	}
 
-	void Visualizer::AddFireEffect(const glm::vec3& position) {
-		impl->fire_effect_manager->AddEffect(position);
+	void Visualizer::AddFireEffect(const glm::vec3& position, const glm::vec3& direction) {
+		impl->fire_effect_manager->AddEffect(position, direction);
 	}
 
 } // namespace Boidsish

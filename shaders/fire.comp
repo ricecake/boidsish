@@ -14,6 +14,7 @@ layout(std430, binding = 0) buffer ParticleBuffer {
 uniform float u_time;
 uniform float u_delta_time;
 uniform vec3 u_emitter_pos;
+uniform vec3 u_emitter_dir;
 
 // Simple pseudo-random number generator
 float rand(vec2 co){
@@ -81,13 +82,14 @@ void main() {
 
     if (lifetime <= 0.0) {
         // Respawn particle
-        vec2 rand_xz = vec2(rand(vec2(index, u_time)), rand(vec2(u_time, index)));
-        particles[index].position = vec4(u_emitter_pos, 1.0); // Start at emitter, lifetime = 1.0
+        vec3 rand_xyz = vec3(rand(vec2(index, u_time)), rand(vec2(u_time, index)), rand(vec2(u_time+index, u_time+index)));
+        particles[index].position = vec4(u_emitter_pos, 2.5*rand_xyz.z); // Start at emitter, lifetime = 1.0
 
-        float angle = rand_xz.x * 2.0 * 3.14159;
-        float speed = 1.0 + rand_xz.y * 1.5;
+        float angle = rand_xyz.x * 1.0 * 3.14159;
+        float speed = 1.0 + rand_xyz.y * 0.5;
 
-        particles[index].velocity = vec4(cos(angle) * 0.2, speed, sin(angle) * 0.2, 0.0);
+        // particles[index].velocity = vec4(cos(angle), speed, sin(angle), 0.0);
+        particles[index].velocity = vec4(speed * u_emitter_dir+rand_xyz, 0.0);
     } else {
         // Update existing particle
 
@@ -99,13 +101,14 @@ void main() {
         vec3 turbulence = vec3(noise_x, noise_y, noise_z) * 1.5;
 
         // Apply forces
-        vec3 acceleration = vec3(0.0, 2.0, 0.0); // Upward force (buoyancy)
+        // vec3 acceleration = vec3(0.0, 10-length(particles[index].velocity.xyz), 0.0); // Upward force (buoyancy)
+        vec3 acceleration = u_emitter_dir * (5-length(particles[index].velocity.xyz));
         particles[index].velocity.xyz += (acceleration + turbulence) * u_delta_time;
 
         // Update position
         particles[index].position.xyz += particles[index].velocity.xyz * u_delta_time;
 
         // Decrease lifetime
-        particles[index].position.w -= u_delta_time * 0.5; // Fire particles have a shorter life
+        particles[index].position.w -= u_delta_time * 0.25;//sqrt(particles[index].position.w); // Fire particles have a shorter life
     }
 }
