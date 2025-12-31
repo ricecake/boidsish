@@ -2,34 +2,18 @@
 
 #include <algorithm>
 #include <limits>
-#include <vector>
-#include <mutex>
 
 #include "entity.h"
 #include "graphics.h"
 #include <RTree.h>
 
 namespace Boidsish {
-    struct EntityMutation {
-        int id; // ID for removal, unused for addition
-        std::shared_ptr<EntityBase> entity; // Entity for addition, nullptr for removal
-    };
 
 	class SpatialEntityHandler: public EntityHandler {
 	public:
 		SpatialEntityHandler(task_thread_pool::task_thread_pool& thread_pool): EntityHandler(thread_pool) {}
 
 		using EntityHandler::AddEntity;
-
-        void QueueAddEntity(std::shared_ptr<EntityBase> entity) const override {
-            std::lock_guard<std::mutex> lock(mutations_mutex_);
-            entity_mutations_.push_back({0, entity});
-        }
-
-        void QueueRemoveEntity(int id) const override {
-            std::lock_guard<std::mutex> lock(mutations_mutex_);
-            entity_mutations_.push_back({id, nullptr});
-        }
 
 		template <typename T>
 		std::vector<std::shared_ptr<T>> GetEntitiesInRadius(const Vector3& center, float radius) const {
@@ -79,24 +63,8 @@ namespace Boidsish {
 		void PostTimestep(float time, float delta_time) override {
 			(void)time;
 			(void)delta_time;
-
-            // Process queued entity mutations
-            {
-                std::lock_guard<std::mutex> lock(mutations_mutex_);
-                std::lock_guard<std::mutex> entities_lock(entities_mutex_);
-                for (const auto& mutation : entity_mutations_) {
-                    if (mutation.entity) { // Addition
-                        int new_id = next_id_++;
-                        mutation.entity->id_ = new_id; // Set the internal ID correctly
-                        AddEntity(new_id, mutation.entity);
-                    } else { // Removal
-                        RemoveEntity(mutation.id);
-                    }
-                }
-                entity_mutations_.clear();
-            }
-
 			rtree_.RemoveAll();
+            std::lock_guard<std::mutex> lock(entities_mutex_);
 			for (const auto& pair : GetAllEntities()) {
 				auto&         entity = pair.second;
 				const Vector3 pos = entity->GetPosition();
@@ -108,8 +76,6 @@ namespace Boidsish {
 
 	private:
 		mutable RTree<int, float, 3> rtree_;
-        mutable std::vector<EntityMutation> entity_mutations_;
-        mutable std::mutex mutations_mutex_;
 	};
 
 } // namespace Boidsish

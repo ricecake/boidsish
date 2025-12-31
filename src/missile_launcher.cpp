@@ -1,59 +1,64 @@
 #include "missile_launcher.h"
-#include "guided_missile.h"
-#include "paper_plane.h"
-#include "graphics.h"
-
-#include <glm/gtc/quaternion.hpp>
-#include <random>
+#include "spatial_entity_handler.h"
 
 namespace Boidsish {
 
-MissileLauncher::MissileLauncher(int id, glm::vec3 position)
+MissileLauncher::MissileLauncher(int id, Vector3 pos)
     : Entity<Model>(id, "assets/utah_teapot.obj", false),
-      cooldown_(0.0f),
-      eng_(rd_()),
-      dist_(0.0f, 1.0f) {
-    SetPosition(position.x, position.y, position.z);
-    shape_->SetScale(glm::vec3(2.0f)); // Make the teapot a reasonable size
-    UpdateShape();
+      eng_(rd_()) {
+    SetPosition(pos.x, pos.y, pos.z);
+    SetColor(0.8f, 0.1f, 0.1f);
+    shape_->SetScale(glm::vec3(2.0f));
+    time_since_last_fire_ = 0.0f; // Start with a full cooldown
+
+    // Randomize the firing interval
+    std::uniform_real_distribution<float> dist(4.0f, 8.0f);
+    fire_interval_ = dist(eng_);
 }
 
 void MissileLauncher::UpdateEntity(const EntityHandler& handler, float time, float delta_time) {
-    if (cooldown_ > 0.0f) {
-        cooldown_ -= delta_time;
+    time_since_last_fire_ += delta_time;
+    if (time_since_last_fire_ < fire_interval_) {
         return;
     }
 
-    auto targets = handler.GetEntitiesByType<PaperPlane>();
-    if (targets.empty()) {
+    auto planes = handler.GetEntitiesByType<PaperPlane>();
+    if (planes.empty()) return;
+    auto plane = planes[0];
+
+    // Check distance to plane
+    float distance_to_plane = (plane->GetPosition() - GetPosition()).Magnitude();
+    if (distance_to_plane > 500.0f) {
         return;
     }
 
-    auto plane = targets[0];
-    auto ppos = plane->GetPosition();
+    // Calculate firing probability based on altitude
+    auto  ppos = plane->GetPosition();
+    float max_h = handler.GetTerrainMaxHeight();
+    if (max_h <= 0.0f) max_h = 200.0f; // Fallback
 
-    // Firing probability logic
     float start_h = 60.0f;
-    float extreme_h = 300.0f;
+    float extreme_h = 3.0f * max_h;
 
-    if (ppos.y < start_h) {
-        return;
-    }
+    if (ppos.y < start_h) return;
 
     const float p_min = 0.5f;
-    const float p_max = 5.0f;
+    const float p_max = 10.0f;
 
     float norm_alt = (ppos.y - start_h) / (extreme_h - start_h);
-    norm_alt = std::min(std::max(norm_alt, 0.0f), 1.0f); // clamp
+    norm_alt = std::min(std::max(norm_alt, 0.0f), 1.0f);
 
-    float missiles_per_second = p_min * pow((p_max / p_min), norm_alt);
+    float missiles_per_second = p_min + (p_max - p_min) * norm_alt;
     float fire_probability_this_frame = missiles_per_second * delta_time;
 
-    if (dist_(eng_) < fire_probability_this_frame) {
-        auto missile_pos = GetPosition();
-        handler.QueueAddEntity<GuidedMissile>(missile_pos);
-        cooldown_ = kFiringCooldown_;
+    std::uniform_real_distribution<float> dist(0.0f, 1.0f);
+    if (dist(eng_) < fire_probability_this_frame) {
+        handler.QueueAddEntity<GuidedMissile>(GetPosition());
+        time_since_last_fire_ = 0.0f;
+        // Set a new random interval for the next shot
+        std::uniform_real_distribution<float> new_dist(4.0f, 8.0f);
+        fire_interval_ = new_dist(eng_);
     }
 }
 
-} // namespace Boidsish
+}

@@ -18,12 +18,10 @@ namespace Boidsish {
 
 	// Forward declaration for Entity class
 	class EntityHandler;
-	class SpatialEntityHandler;
 
 	// Base entity class for the entity system
 	class EntityBase {
 		friend class EntityHandler;
-		friend class SpatialEntityHandler;
 
 	public:
 		EntityBase(int id = 0):
@@ -202,32 +200,45 @@ namespace Boidsish {
 		// Entity management
 		template <typename T, typename... Args>
 		int AddEntity(Args&&... args) {
+            std::lock_guard<std::mutex> lock(entities_mutex_);
 			int  id = next_id_++;
 			auto entity = std::make_shared<T>(id, std::forward<Args>(args)...);
 			AddEntity(id, entity);
 			return id;
 		}
 
-		virtual void AddEntity(int id, std::shared_ptr<EntityBase> entity) { entities_[id] = entity; }
+		virtual void AddEntity(int id, std::shared_ptr<EntityBase> entity) {
+            std::lock_guard<std::mutex> lock(entities_mutex_);
+            entities_[id] = entity;
+        }
 
-		virtual void RemoveEntity(int id) { entities_.erase(id); }
+		virtual void RemoveEntity(int id) {
+            std::lock_guard<std::mutex> lock(entities_mutex_);
+            entities_.erase(id);
+        }
 
 		auto GetEntity(int id) {
+            std::lock_guard<std::mutex> lock(entities_mutex_);
 			auto it = entities_.find(id);
 			return (it != entities_.end()) ? it->second : nullptr;
 		}
 
 		auto GetEntity(int id) const {
+            std::lock_guard<std::mutex> lock(entities_mutex_);
 			auto it = entities_.find(id);
 			return (it != entities_.end()) ? it->second : nullptr;
 		}
 
 		// Get all entities (for iteration)
-		const std::map<int, std::shared_ptr<EntityBase>>& GetAllEntities() const { return entities_; }
+		std::map<int, std::shared_ptr<EntityBase>> GetAllEntities() const {
+            std::lock_guard<std::mutex> lock(entities_mutex_);
+            return entities_;
+        }
 
 		// Get entities by type (template method)
 		template <typename T>
 		auto GetEntitiesByType() {
+            std::lock_guard<std::mutex> lock(entities_mutex_);
 			std::vector<std::shared_ptr<T>> result;
 			for (auto& pair : entities_) {
 				auto typed_entity = std::dynamic_pointer_cast<T>(pair.second);
@@ -240,6 +251,7 @@ namespace Boidsish {
 
 		template <typename T>
 		std::vector<const T*> GetEntitiesByType() const {
+            std::lock_guard<std::mutex> lock(entities_mutex_);
 			std::vector<const T*> result;
 			for (const auto& pair : entities_) {
 				const T* typed_entity = dynamic_cast<const T*>(pair.second.get());
@@ -251,18 +263,30 @@ namespace Boidsish {
 		}
 
 		// Get total entity count
-		size_t GetEntityCount() const { return entities_.size(); }
+		size_t GetEntityCount() const {
+            std::lock_guard<std::mutex> lock(entities_mutex_);
+            return entities_.size();
+        }
 
-		const auto GetTerrainPointProperties(float x, float y);
-		const auto GetTerrainChunks();
+		std::tuple<float, glm::vec3> GetTerrainPointProperties(float x, float y) const;
+		const std::vector<std::shared_ptr<Terrain>>& GetTerrainChunks() const;
+        float GetTerrainMaxHeight() const;
 
 		// Thread-safe methods for entity modification
-		virtual void QueueAddEntity(std::shared_ptr<EntityBase> entity) const { (void)entity; }
-		virtual void QueueRemoveEntity(int id) const { (void)id; }
-
 		template <typename T, typename... Args>
 		void QueueAddEntity(Args&&... args) const {
-			QueueAddEntity(std::make_shared<T>(0, std::forward<Args>(args)...));
+			std::lock_guard<std::mutex> lock(requests_mutex_);
+			modification_requests_.emplace_back([this, args = std::make_tuple(std::forward<Args>(args)...)]() mutable {
+				std::apply(
+					[this](auto&&... a) { const_cast<EntityHandler*>(this)->AddEntity<T>(std::forward<Args>(a)...); },
+					std::move(args)
+				);
+			});
+		}
+
+		void QueueRemoveEntity(int id) const {
+			std::lock_guard<std::mutex> lock(requests_mutex_);
+			modification_requests_.emplace_back([this, id]() { const_cast<EntityHandler*>(this)->RemoveEntity(id); });
 		}
 
 	protected:
@@ -278,12 +302,12 @@ namespace Boidsish {
 		}
 
 		std::shared_ptr<const Visualizer> vis;
-        int next_id_;
-        mutable std::mutex entities_mutex_;
 
-	private:
+	protected:
 		std::map<int, std::shared_ptr<EntityBase>> entities_;
+        mutable std::mutex entities_mutex_;
 		float                                      last_time_;
+		int                                        next_id_;
 		task_thread_pool::task_thread_pool&        thread_pool_;
 		mutable std::vector<std::function<void()>> modification_requests_;
 		mutable std::mutex                         requests_mutex_;

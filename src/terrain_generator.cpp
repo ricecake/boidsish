@@ -78,7 +78,7 @@ namespace Boidsish {
 				TerrainGenerationResult result = future.get();
 				if (result.has_terrain) {
 					auto terrain_chunk =
-						std::make_shared<Terrain>(result.indices, result.positions, result.normals, result.proxy);
+						std::make_shared<Terrain>(result.indices, result.positions, result.normals, result.proxy, result.chunk_x, result.chunk_z);
 					terrain_chunk->SetPosition(result.chunk_x * chunk_size_, 0, result.chunk_z * chunk_size_);
 					terrain_chunk->setupMesh();
 					chunk_cache_[pair.first] = terrain_chunk;

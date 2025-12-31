@@ -14,7 +14,9 @@ namespace Boidsish {
 			const std::vector<unsigned int>& indices,
 			const std::vector<glm::vec3>&    vertices,
 			const std::vector<glm::vec3>&    normals,
-			const PatchProxy&                proxy
+			const PatchProxy&                proxy,
+            int chunk_x,
+            int chunk_z
 		);
 		~Terrain();
 
@@ -29,6 +31,8 @@ namespace Boidsish {
 		PatchProxy             proxy;
 		std::vector<glm::vec3> vertices;
 		std::vector<glm::vec3> normals;
+        int chunk_x;
+        int chunk_z;
 
 	private:
 		std::vector<float>        vertex_data_; // Interleaved for GPU

@@ -43,9 +43,9 @@ namespace Boidsish {
 		std::vector<std::shared_ptr<EntityBase>> entities;
         {
             std::lock_guard<std::mutex> lock(entities_mutex_);
-            std::transform(entities_.begin(), entities_.end(), std::back_inserter(entities), [](const auto& pair) {
-                return pair.second;
-            });
+		    std::transform(entities_.begin(), entities_.end(), std::back_inserter(entities), [](const auto& pair) {
+			    return pair.second;
+		    });
         }
 
 		// Update all entities
@@ -108,8 +108,15 @@ namespace Boidsish {
 	// const std::tuple<float, glm::vec3> EntityHandler::GetTerrainPointProperties(float x, float y) {
 
 	// };
-	// const std::vector<std::shared_ptr<Terrain>>& EntityHandler::GetTerrainChunks() {
+	std::tuple<float, glm::vec3> EntityHandler::GetTerrainPointProperties(float x, float y) const {
+		return vis->GetTerrainPointProperties(x, y);
+	};
+	const std::vector<std::shared_ptr<Terrain>>& EntityHandler::GetTerrainChunks() const {
+		return vis->GetTerrainChunks();
+	};
 
-	// };
+    float EntityHandler::GetTerrainMaxHeight() const {
+        return vis->GetTerrainMaxHeight();
+    }
 
 } // namespace Boidsish
