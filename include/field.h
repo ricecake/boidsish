@@ -62,6 +62,8 @@ struct PatchProxy {
 	glm::vec3 totalNormal; // Sum of all normals in patch
 	float     maxY, minY;  // For quick vertical culling
 	float     radiusSq;    // Bounding radius of the patch itself
+	glm::vec3 highestPoint;
+	glm::vec3 lowestPoint;
 };
 
 template <typename TEntity, typename TPatch>
