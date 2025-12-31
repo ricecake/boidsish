@@ -260,7 +260,7 @@ public:
 
 				if (lived <= 1.5f) {
 					std::uniform_real_distribution<float> dist(-4.0f, 4.0f);
-					glm::vec3                             error_vector(0.1f*dist(eng_), dist(eng_), 0);
+					glm::vec3                             error_vector(0.1f * dist(eng_), dist(eng_), 0);
 					rotational_velocity_ += error_vector * delta_time;
 				}
 			}
