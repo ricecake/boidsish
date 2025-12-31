@@ -18,10 +18,12 @@ namespace Boidsish {
 
 	// Forward declaration for Entity class
 	class EntityHandler;
+	class SpatialEntityHandler;
 
 	// Base entity class for the entity system
 	class EntityBase {
 		friend class EntityHandler;
+		friend class SpatialEntityHandler;
 
 	public:
 		EntityBase(int id = 0):
@@ -260,9 +262,7 @@ namespace Boidsish {
 
 		template <typename T, typename... Args>
 		void QueueAddEntity(Args&&... args) const {
-			int id = 0; // The handler will assign the real ID
-			auto entity = std::make_shared<T>(id, std::forward<Args>(args)...);
-			QueueAddEntity(entity);
+			QueueAddEntity(std::make_shared<T>(0, std::forward<Args>(args)...));
 		}
 
 	protected:
@@ -279,6 +279,7 @@ namespace Boidsish {
 
 		std::shared_ptr<const Visualizer> vis;
         int next_id_;
+        mutable std::mutex entities_mutex_;
 
 	private:
 		std::map<int, std::shared_ptr<EntityBase>> entities_;

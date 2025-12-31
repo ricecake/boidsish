@@ -84,7 +84,7 @@ private:
             auto it = chunk_spawn_cache_.find(chunk_coords);
             if (it != chunk_spawn_cache_.end()) {
                 if (it->second.has_value()) {
-                    AddEntity<MissileLauncher>(*it->second);
+                    QueueAddEntity(std::make_shared<MissileLauncher>(0, *it->second));
                     break;
                 }
                 continue; // Cached failure
@@ -113,7 +113,7 @@ private:
                 std::uniform_int_distribution<size_t> dist(0, candidates.size() - 1);
                 const auto& spawn_point = candidates[dist(eng_)];
                 chunk_spawn_cache_[chunk_coords] = spawn_point;
-                AddEntity<MissileLauncher>(spawn_point);
+                QueueAddEntity(std::make_shared<MissileLauncher>(0, spawn_point));
                 break;
             } else {
                 chunk_spawn_cache_[chunk_coords] = std::nullopt;

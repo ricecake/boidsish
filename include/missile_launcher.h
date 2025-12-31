@@ -8,7 +8,7 @@ namespace Boidsish {
 
 class MissileLauncher : public Entity<Model> {
 public:
-    MissileLauncher(int id, const glm::vec3& position);
+    MissileLauncher(int id, glm::vec3 position);
 
     void UpdateEntity(const EntityHandler& handler, float time, float delta_time) override;
 

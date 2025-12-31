@@ -8,7 +8,7 @@
 
 namespace Boidsish {
 
-MissileLauncher::MissileLauncher(int id, const glm::vec3& position)
+MissileLauncher::MissileLauncher(int id, glm::vec3 position)
     : Entity<Model>(id, "assets/utah_teapot.obj", false),
       cooldown_(0.0f),
       eng_(rd_()),

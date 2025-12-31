@@ -41,9 +41,12 @@ namespace Boidsish {
 
 		// Get entities
 		std::vector<std::shared_ptr<EntityBase>> entities;
-		std::transform(entities_.begin(), entities_.end(), std::back_inserter(entities), [](const auto& pair) {
-			return pair.second;
-		});
+        {
+            std::lock_guard<std::mutex> lock(entities_mutex_);
+            std::transform(entities_.begin(), entities_.end(), std::back_inserter(entities), [](const auto& pair) {
+                return pair.second;
+            });
+        }
 
 		// Update all entities
 		std::for_each(poolstl::par.on(thread_pool_), entities.begin(), entities.end(), [&](auto& entity) {

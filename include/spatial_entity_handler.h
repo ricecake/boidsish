@@ -83,9 +83,12 @@ namespace Boidsish {
             // Process queued entity mutations
             {
                 std::lock_guard<std::mutex> lock(mutations_mutex_);
+                std::lock_guard<std::mutex> entities_lock(entities_mutex_);
                 for (const auto& mutation : entity_mutations_) {
                     if (mutation.entity) { // Addition
-                        AddEntity(next_id_++, mutation.entity);
+                        int new_id = next_id_++;
+                        mutation.entity->id_ = new_id; // Set the internal ID correctly
+                        AddEntity(new_id, mutation.entity);
                     } else { // Removal
                         RemoveEntity(mutation.id);
                     }
