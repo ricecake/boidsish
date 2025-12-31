@@ -280,6 +280,10 @@ public:
 		// delete the shaders as they're linked into our program now and no longer necessary
 		glDeleteShader(compute);
 	}
+
+	void dispatch(unsigned int x, unsigned int y, unsigned int z) {
+		glDispatchCompute(x, y, z);
+	}
 };
 
 #endif

@@ -13,6 +13,7 @@
 #include "clone_manager.h"
 #include "dot.h"
 #include "entity.h"
+#include "fire_effect_manager.h"
 #include "logger.h"
 #include "post_processing/PostProcessingManager.h"
 #include "post_processing/effects/GlitchEffect.h"
@@ -41,15 +42,16 @@ namespace Boidsish {
 	constexpr int   kBlurPasses = 4;
 
 	struct Visualizer::VisualizerImpl {
-		Visualizer*                           parent;
-		GLFWwindow*                           window;
-		int                                   width, height;
-		Camera                                camera;
-		std::vector<ShapeFunction>            shape_functions;
-		std::vector<std::shared_ptr<Shape>>   shapes;
-		std::unique_ptr<CloneManager>         clone_manager;
-		std::map<int, std::shared_ptr<Trail>> trails;
-		std::map<int, float>                  trail_last_update;
+		Visualizer*                                            parent;
+		GLFWwindow*                                            window;
+		int                                                    width, height;
+		Camera                                                 camera;
+		std::vector<ShapeFunction>                             shape_functions;
+		std::vector<std::shared_ptr<Shape>>                    shapes;
+		std::unique_ptr<CloneManager>                          clone_manager;
+		std::unique_ptr<FireEffectManager>                     fire_effect_manager;
+		std::map<int, std::shared_ptr<Trail>>                  trails;
+		std::map<int, float>                                   trail_last_update;
 
 		InputState                                             input_state{};
 		std::vector<InputCallback>                             input_callbacks;
@@ -191,6 +193,7 @@ namespace Boidsish {
 				terrain_generator = std::make_unique<TerrainGenerator>();
 			}
 			clone_manager = std::make_unique<CloneManager>();
+			fire_effect_manager = std::make_unique<FireEffectManager>();
 
 			glGenBuffers(1, &lighting_ubo);
 			glBindBuffer(GL_UNIFORM_BUFFER, lighting_ubo);
@@ -1152,6 +1155,7 @@ namespace Boidsish {
 
 		// Update clone manager
 		impl->clone_manager->Update(impl->simulation_time, impl->camera.pos());
+		impl->fire_effect_manager->Update(impl->simulation_time, impl->input_state.delta_time);
 
 		// UBO Updates
 		if (impl->effects_enabled_) {
@@ -1215,6 +1219,7 @@ namespace Boidsish {
 					glm::vec4(0, 1, 0, 0.01)
 				);
 				impl->RenderTerrain(reflection_view, glm::vec4(0, 1, 0, 0.01));
+				impl->fire_effect_manager->Render(reflection_view, impl->projection);
 			}
 			glDisable(GL_CLIP_DISTANCE0);
 
@@ -1234,6 +1239,7 @@ namespace Boidsish {
 		}
 		impl->RenderSceneObjects(view, impl->camera, impl->shapes, impl->simulation_time, std::nullopt);
 		impl->RenderTerrain(view, std::nullopt);
+		impl->fire_effect_manager->Render(view, impl->projection);
 
 		if (impl->effects_enabled_) {
 			// --- Post-processing Pass (renders FBO texture to screen) ---
@@ -1408,6 +1414,10 @@ namespace Boidsish {
 
 	Config& Visualizer::GetConfig() {
 		return impl->config;
+	}
+
+	void Visualizer::AddFireEffect(const glm::vec3& position) {
+		impl->fire_effect_manager->AddEffect(position);
 	}
 
 } // namespace Boidsish
