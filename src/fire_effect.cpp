@@ -12,11 +12,13 @@ struct Particle {
 };
 
 FireEffect::FireEffect(
+    size_t id,
     const glm::vec3& position,
     size_t particle_count,
     std::shared_ptr<ComputeShader> compute_shader,
     std::shared_ptr<Shader> render_shader)
-    : m_position(position),
+    : m_id(id),
+      m_position(position),
       m_particle_count(particle_count),
       m_compute_shader(std::move(compute_shader)),
       m_render_shader(std::move(render_shader)),
@@ -30,13 +32,15 @@ FireEffect::~FireEffect() {
 }
 
 FireEffect::FireEffect(FireEffect&& other) noexcept
-    : m_position(other.m_position),
+    : m_id(other.m_id),
+      m_position(other.m_position),
       m_particle_count(other.m_particle_count),
       m_compute_shader(std::move(other.m_compute_shader)),
       m_render_shader(std::move(other.m_render_shader)),
       m_vao(other.m_vao),
       m_particle_ssbo(other.m_particle_ssbo) {
     // Invalidate other's handles so its destructor does nothing
+    other.m_id = 0;
     other.m_vao = 0;
     other.m_particle_ssbo = 0;
 }
@@ -47,6 +51,7 @@ FireEffect& FireEffect::operator=(FireEffect&& other) noexcept {
         CleanUp();
 
         // Move resources from other
+        m_id = other.m_id;
         m_position = other.m_position;
         m_particle_count = other.m_particle_count;
         m_compute_shader = std::move(other.m_compute_shader);
@@ -55,6 +60,7 @@ FireEffect& FireEffect::operator=(FireEffect&& other) noexcept {
         m_particle_ssbo = other.m_particle_ssbo;
 
         // Invalidate other's handles
+        other.m_id = 0;
         other.m_vao = 0;
         other.m_particle_ssbo = 0;
     }
@@ -96,13 +102,14 @@ void FireEffect::Update(float time, float delta_time) {
     m_compute_shader->setFloat("u_time", time);
     m_compute_shader->setFloat("u_delta_time", delta_time);
     m_compute_shader->setVec3("u_emitter_pos", m_position);
+    m_compute_shader->setInt("u_particle_count", m_particle_count); // Pass particle count
 
     glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, m_particle_ssbo);
 
-    // Dispatch compute shader
-    m_compute_shader->dispatch((GLuint)m_particle_count / 256, 1, 1);
+    // Correctly calculate workgroup count, rounding up
+    const unsigned int workgroup_size = 256;
+    m_compute_shader->dispatch((m_particle_count + workgroup_size - 1) / workgroup_size, 1, 1);
 
-    // Ensure memory writes are finished before rendering
     glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
 
     glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, 0); // Unbind
@@ -134,6 +141,10 @@ void FireEffect::SetPosition(const glm::vec3& position) {
 
 const glm::vec3& FireEffect::GetPosition() const {
     return m_position;
+}
+
+size_t FireEffect::GetId() const {
+    return m_id;
 }
 
 } // namespace Boidsish
