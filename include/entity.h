@@ -252,8 +252,8 @@ namespace Boidsish {
 		// Get total entity count
 		size_t GetEntityCount() const { return entities_.size(); }
 
-		const auto GetTerrainPointProperties(float x, float y);
-		const auto GetTerrainChunks();
+		const auto              GetTerrainPointProperties(float x, float y);
+		const auto              GetTerrainChunks();
 		const TerrainGenerator* GetTerrainGenerator() const;
 
 		// Thread-safe methods for entity modification

@@ -1,8 +1,8 @@
 #include <iostream>
 
+#include "fire_effect.h"
 #include "graphics.h"
 #include "shape.h"
-#include "fire_effect.h"
 
 int main() {
 	try {
@@ -16,23 +16,21 @@ int main() {
 		vis.SetCameraMode(Boidsish::CameraMode::STATIONARY);
 
 		std::vector<std::shared_ptr<Boidsish::Shape>> vec;
-		vis.AddShapeHandler(
-			[&](float time) {
-				// Dynamically update the fire effect's properties over time
-				float x = sin(time) * 5.0f;
-				float z = cos(time) * 5.0f;
-				fire_effect->SetPosition(glm::vec3(x, 3.0f, z));
+		vis.AddShapeHandler([&](float time) {
+			// Dynamically update the fire effect's properties over time
+			float x = sin(time) * 5.0f;
+			float z = cos(time) * 5.0f;
+			fire_effect->SetPosition(glm::vec3(x, 3.0f, z));
 
-				// Cycle through styles
-				int style = int(time / 2.0f) % 3;
-				fire_effect->SetStyle(style);
+			// Cycle through styles
+			int style = int(time / 2.0f) % 3;
+			fire_effect->SetStyle(style);
 
-				// Make it point upwards
-				fire_effect->SetDirection(glm::vec3(sin(time), cos(time), 0));
+			// Make it point upwards
+			fire_effect->SetDirection(glm::vec3(sin(time), cos(time), 0));
 
-				return vec;
-			}
-		);
+			return vec;
+		});
 
 		vis.Run();
 	} catch (const std::exception& e) {

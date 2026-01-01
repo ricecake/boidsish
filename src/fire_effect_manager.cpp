@@ -12,8 +12,10 @@ namespace Boidsish {
 
 	FireEffectManager::~FireEffectManager() = default;
 
-	std::shared_ptr<FireEffect> FireEffectManager::AddEffect(const glm::vec3& position, const glm::vec3& direction, size_t particle_count) {
-		auto effect = std::make_shared<FireEffect>(position, direction, particle_count, m_compute_shader, m_render_shader);
+	std::shared_ptr<FireEffect>
+	FireEffectManager::AddEffect(const glm::vec3& position, const glm::vec3& direction, size_t particle_count) {
+		auto effect =
+			std::make_shared<FireEffect>(position, direction, particle_count, m_compute_shader, m_render_shader);
 		m_effects.push_back(effect);
 		return effect;
 	}

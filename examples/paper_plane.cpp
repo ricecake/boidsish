@@ -172,13 +172,16 @@ public:
 
 		SetVelocity(Vector3(new_velocity.x, new_velocity.y, new_velocity.z));
 
-		if (controller_->fire) {
+		time_to_fire -= delta_time;
+		if (controller_->fire && time_to_fire <= 0) {
 			handler.QueueAddEntity<CatMissile>(
 				GetPosition(),
 				orientation_,
-				orientation_ * glm::vec3(0, -1, 0),
+				orientation_ * glm::vec3(fire_left ? -1 : 1, -1, 0),
 				GetVelocity()
 			);
+			time_to_fire = 0.5f;
+			fire_left = !fire_left;
 		}
 	}
 
@@ -196,6 +199,8 @@ private:
 	glm::quat                                  orientation_;
 	glm::vec3                                  rotational_velocity_; // x: pitch, y: yaw, z: roll
 	float                                      forward_speed_;
+	float                                      time_to_fire = 0.5f;
+	bool                                       fire_left = true;
 };
 
 class GuidedMissile: public Entity<Model> {
@@ -405,6 +410,9 @@ public:
 
 		// --- Launch Phase ---
 		if (lived < kLaunchTime) {
+			auto velo = GetVelocity();
+			velo += Vector3(0, -0.07f, 0);
+			SetVelocity(velo);
 			return;
 		} else {
 			if (!fired) {

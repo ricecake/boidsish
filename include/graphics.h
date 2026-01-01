@@ -143,9 +143,9 @@ namespace Boidsish {
 		// Set the exit key, which cannot be overridden by the input callback.
 		void SetExitKey(int key);
 
-		void SetCameraMode(CameraMode mode);
-		void TogglePause();
-		void ToggleEffect(VisualEffect effect);
+		void                        SetCameraMode(CameraMode mode);
+		void                        TogglePause();
+		void                        ToggleEffect(VisualEffect effect);
 		std::shared_ptr<FireEffect> AddFireEffect(const glm::vec3& position, const glm::vec3& direction);
 
 		std::tuple<float, glm::vec3>                 GetTerrainPointProperties(float x, float y) const;
