@@ -12,6 +12,9 @@
 #include "UIManager.h"
 #include "clone_manager.h"
 #include "dot.h"
+#include "hud.h"
+#include "hud_manager.h"
+#include "ui/hud_widget.h"
 #include "entity.h"
 #include "logger.h"
 #include "post_processing/PostProcessingManager.h"
@@ -54,6 +57,7 @@ namespace Boidsish {
 		InputState                                             input_state{};
 		std::vector<InputCallback>                             input_callbacks;
 		std::unique_ptr<UI::UIManager>                         ui_manager;
+		std::unique_ptr<HudManager>                            hud_manager;
 		std::unique_ptr<PostProcessing::PostProcessingManager> post_processing_manager_;
 		int                                                    exit_key;
 
@@ -226,6 +230,12 @@ namespace Boidsish {
 			}
 
 			ui_manager = std::make_unique<UI::UIManager>(window);
+            logger::LOG("Initializing HudManager...");
+            hud_manager = std::make_unique<HudManager>();
+            logger::LOG("HudManager initialized. Creating HudWidget...");
+            auto hud_widget = std::make_shared<UI::HudWidget>(*hud_manager);
+            ui_manager->AddWidget(hud_widget);
+            logger::LOG("HudWidget created and added.");
 
 			if (terrain_enabled_) {
 				Terrain::terrain_shader_ = std::make_shared<Shader>(
@@ -1439,5 +1449,41 @@ namespace Boidsish {
 	Config& Visualizer::GetConfig() {
 		return impl->config;
 	}
+
+    void Visualizer::AddHudIcon(const HudIcon& icon) {
+        impl->hud_manager->AddIcon(icon);
+    }
+
+    void Visualizer::UpdateHudIcon(int id, const HudIcon& icon) {
+        impl->hud_manager->UpdateIcon(id, icon);
+    }
+
+    void Visualizer::RemoveHudIcon(int id) {
+        impl->hud_manager->RemoveIcon(id);
+    }
+
+    void Visualizer::AddHudNumber(const HudNumber& number) {
+        impl->hud_manager->AddNumber(number);
+    }
+
+    void Visualizer::UpdateHudNumber(int id, const HudNumber& number) {
+        impl->hud_manager->UpdateNumber(id, number);
+    }
+
+    void Visualizer::RemoveHudNumber(int id) {
+        impl->hud_manager->RemoveNumber(id);
+    }
+
+    void Visualizer::AddHudGauge(const HudGauge& gauge) {
+        impl->hud_manager->AddGauge(gauge);
+    }
+
+    void Visualizer::UpdateHudGauge(int id, const HudGauge& gauge) {
+        impl->hud_manager->UpdateGauge(id, gauge);
+    }
+
+    void Visualizer::RemoveHudGauge(int id) {
+        impl->hud_manager->RemoveGauge(id);
+    }
 
 } // namespace Boidsish
