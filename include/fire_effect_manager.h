@@ -20,13 +20,13 @@ namespace Boidsish {
 		FireEffectManager(const FireEffectManager&) = delete;
 		FireEffectManager& operator=(const FireEffectManager&) = delete;
 
-		void AddEffect(const glm::vec3& position, const glm::vec3& direction, size_t particle_count = 8192);
+		std::shared_ptr<FireEffect> AddEffect(const glm::vec3& position, const glm::vec3& direction, size_t particle_count = 8192);
 
 		void Update(float time, float delta_time);
 		void Render(const glm::mat4& view, const glm::mat4& projection);
 
 	private:
-		std::vector<FireEffect> m_effects;
+		std::vector<std::shared_ptr<FireEffect>> m_effects;
 
 		// Correctly typed compute shader pointer
 		std::shared_ptr<ComputeShader> m_compute_shader;

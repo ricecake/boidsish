@@ -33,6 +33,8 @@ namespace Boidsish {
 
 		void             SetPosition(const glm::vec3& position);
 		void             SetDirection(const glm::vec3& direction);
+		void             SetVelocity(const glm::vec3& velocity);
+		void             SetStyle(int style);
 		const glm::vec3& GetPosition() const;
 		const glm::vec3& GetDirection() const;
 
@@ -42,6 +44,8 @@ namespace Boidsish {
 
 		glm::vec3 m_position;
 		glm::vec3 m_direction;
+		glm::vec3 m_velocity;
+		int       m_style;
 		size_t    m_particle_count;
 
 		std::shared_ptr<ComputeShader> m_compute_shader; // Changed to ComputeShader

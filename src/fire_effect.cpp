@@ -22,6 +22,8 @@ namespace Boidsish {
 	):
 		m_position(position),
 		m_direction(direction),
+		m_velocity(glm::vec3(0.0f)),
+		m_style(0),
 		m_particle_count(particle_count),
 		m_compute_shader(std::move(compute_shader)),
 		m_render_shader(std::move(render_shader)),
@@ -36,6 +38,9 @@ namespace Boidsish {
 
 	FireEffect::FireEffect(FireEffect&& other) noexcept:
 		m_position(other.m_position),
+		m_direction(other.m_direction),
+		m_velocity(other.m_velocity),
+		m_style(other.m_style),
 		m_particle_count(other.m_particle_count),
 		m_compute_shader(std::move(other.m_compute_shader)),
 		m_render_shader(std::move(other.m_render_shader)),
@@ -53,6 +58,9 @@ namespace Boidsish {
 
 			// Move resources from other
 			m_position = other.m_position;
+			m_direction = other.m_direction;
+			m_velocity = other.m_velocity;
+			m_style = other.m_style;
 			m_particle_count = other.m_particle_count;
 			m_compute_shader = std::move(other.m_compute_shader);
 			m_render_shader = std::move(other.m_render_shader);
@@ -102,6 +110,8 @@ namespace Boidsish {
 		m_compute_shader->setFloat("u_delta_time", delta_time);
 		m_compute_shader->setVec3("u_emitter_pos", m_position);
 		m_compute_shader->setVec3("u_emitter_dir", m_direction);
+		m_compute_shader->setVec3("u_emitter_vel", m_velocity);
+		m_compute_shader->setInt("u_style", m_style);
 
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, m_particle_ssbo);
 
@@ -121,6 +131,7 @@ namespace Boidsish {
 		m_render_shader->use();
 		m_render_shader->setMat4("u_view", view);
 		m_render_shader->setMat4("u_projection", projection);
+		m_render_shader->setInt("u_style", m_style);
 
 		glBindVertexArray(m_vao);
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, m_particle_ssbo);
@@ -148,6 +159,14 @@ namespace Boidsish {
 
 	const glm::vec3& FireEffect::GetDirection() const {
 		return m_direction;
+	}
+
+	void FireEffect::SetVelocity(const glm::vec3& velocity) {
+		m_velocity = velocity;
+	}
+
+	void FireEffect::SetStyle(int style) {
+		m_style = style;
 	}
 
 } // namespace Boidsish

@@ -1416,8 +1416,8 @@ namespace Boidsish {
 		return impl->config;
 	}
 
-	void Visualizer::AddFireEffect(const glm::vec3& position, const glm::vec3& direction) {
-		impl->fire_effect_manager->AddEffect(position, direction);
+	std::shared_ptr<FireEffect> Visualizer::AddFireEffect(const glm::vec3& position, const glm::vec3& direction) {
+		return impl->fire_effect_manager->AddEffect(position, direction);
 	}
 
 } // namespace Boidsish

@@ -15,6 +15,8 @@ uniform float u_time;
 uniform float u_delta_time;
 uniform vec3 u_emitter_pos;
 uniform vec3 u_emitter_dir;
+uniform vec3 u_emitter_vel;
+uniform int u_style;
 
 // Simple pseudo-random number generator
 float rand(vec2 co){
@@ -83,13 +85,22 @@ void main() {
     if (lifetime <= 0.0) {
         // Respawn particle
         vec3 rand_xyz = vec3(rand(vec2(index, u_time)), rand(vec2(u_time, index)), rand(vec2(u_time+index, u_time+index)));
-        particles[index].position = vec4(u_emitter_pos, 2.5*rand_xyz.z); // Start at emitter, lifetime = 1.0
 
-        float angle = rand_xyz.x * 1.0 * 3.14159;
-        float speed = 1.0 + rand_xyz.y * 0.5;
+        if (u_style == 0) { // Default Fire
+            particles[index].position = vec4(u_emitter_pos, 2.5 * rand_xyz.z); // Start at emitter, lifetime
+            float speed = 1.0 + rand_xyz.y * 0.5;
+            particles[index].velocity = vec4(speed * u_emitter_dir + rand_xyz + u_emitter_vel, 0.0);
+        } else if (u_style == 1) { // Rocket Trail
+            particles[index].position = vec4(u_emitter_pos, 4.0 * rand_xyz.z); // Longer lifetime
+            float speed = 2.0 + rand_xyz.y * 1.0;
+            particles[index].velocity = vec4(speed * u_emitter_dir + (rand_xyz * 0.5) + u_emitter_vel, 0.0); // Less spread
+        } else if (u_style == 2) { // Explosion
+            particles[index].position = vec4(u_emitter_pos, 1.5 * rand_xyz.z); // Shorter lifetime
+            vec3 explosion_dir = normalize(rand_xyz - 0.5);
+            float speed = 5.0 + rand_xyz.y * 5.0;
+            particles[index].velocity = vec4(speed * explosion_dir + u_emitter_vel, 0.0);
+        }
 
-        // particles[index].velocity = vec4(cos(angle), speed, sin(angle), 0.0);
-        particles[index].velocity = vec4(speed * u_emitter_dir+rand_xyz, 0.0);
     } else {
         // Update existing particle
 
@@ -101,16 +112,21 @@ void main() {
         vec3 turbulence = vec3(noise_x, noise_y, noise_z) * 1.5;
 
         // Apply forces
-        // vec3 acceleration = vec3(0.0, 10-length(particles[index].velocity.xyz), 0.0); // Upward force (buoyancy)
-        vec3 acceleration = u_emitter_dir * (5-length(particles[index].velocity.xyz));
+        vec3 acceleration;
+        if (u_style == 0) { // Default Fire
+            acceleration = u_emitter_dir * (5.0 - length(particles[index].velocity.xyz));
+        } else if (u_style == 1) { // Rocket Trail
+            acceleration = u_emitter_dir * (2.0 - length(particles[index].velocity.xyz)); // Less buoyant
+            turbulence *= 0.2; // Less turbulence
+        } else if (u_style == 2) { // Explosion
+            acceleration = -particles[index].velocity.xyz * 0.5; // Drag/Damping
+            turbulence *= 0.5;
+        }
+
         particles[index].velocity.xyz += (acceleration + turbulence) * u_delta_time;
 
         if (particles[index].position.y <= 0) {
             particles[index].position.y = 0.1;
-            // particles[index].velocity.xz =
-            // particles[index].velocity.xz + (particles[index].velocity.y * normalize(particles[index].velocity.xz));
-            // particles[index].velocity.y = 0.1;
-
             particles[index].velocity.y *= -0.5;
         }
 
@@ -119,6 +135,10 @@ void main() {
 
 
         // Decrease lifetime
-        particles[index].position.w -= u_delta_time * 0.25;//sqrt(particles[index].position.w); // Fire particles have a shorter life
+        if (u_style == 1) { // Rocket trail
+             particles[index].position.w -= u_delta_time * 0.15;
+        } else {
+             particles[index].position.w -= u_delta_time * 0.25;
+        }
     }
 }
