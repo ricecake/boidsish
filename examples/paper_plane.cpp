@@ -10,6 +10,7 @@
 #include "logger.h"
 #include "model.h"
 #include "spatial_entity_handler.h"
+#include "terrain_generator.h"
 #include <GLFW/glfw3.h>
 #include <glm/gtc/quaternion.hpp>
 
@@ -242,6 +243,32 @@ public:
 				forward_speed_ = kMaxSpeed;
 			}
 		} else {
+			// --- Terrain Avoidance ---
+			const auto* terrain_generator = handler.GetTerrainGenerator();
+			if (terrain_generator) {
+				const float reaction_distance = 100.0f;
+				float       hit_dist = 0.0f;
+
+				Vector3 vel_vec = GetVelocity();
+				if (vel_vec.MagnitudeSquared() > 1e-6) {
+					glm::vec3 origin = {GetPosition().x, GetPosition().y, GetPosition().z};
+					glm::vec3 dir = {vel_vec.x, vel_vec.y, vel_vec.z};
+					dir = glm::normalize(dir);
+
+					if (terrain_generator->Raycast(origin, dir, reaction_distance, hit_dist)) {
+						// We have a potential collision, apply avoidance force
+						const float avoidance_strength = 250.0f;
+						float       force_magnitude = avoidance_strength * (1.0f - (hit_dist / reaction_distance));
+
+						glm::vec3 avoidance_force = glm::vec3(0.0f, 1.0f, 0.0f) * force_magnitude;
+
+						glm::vec3 current_vel_glm = {vel_vec.x, vel_vec.y, vel_vec.z};
+						glm::vec3 new_vel_glm = current_vel_glm + avoidance_force * delta_time;
+
+						SetVelocity(Vector3(new_vel_glm.x, new_vel_glm.y, new_vel_glm.z));
+					}
+				}
+			}
 			// --- Guidance Phase ---
 			const float kTurnSpeed = 4.0f;
 			const float kDamping = 2.5f;

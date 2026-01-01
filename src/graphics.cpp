@@ -1458,6 +1458,10 @@ namespace Boidsish {
 		return impl->terrain_generator->getVisibleChunks();
 	}
 
+	const TerrainGenerator* Visualizer::GetTerrainGenerator() const {
+		return impl->terrain_generator.get();
+	}
+
 	Config& Visualizer::GetConfig() {
 		return impl->config;
 	}
