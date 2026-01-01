@@ -14,7 +14,7 @@ public:
 		shape_ = std::make_shared<Boidsish::Model>(modelPath);
 	}
 
-	void UpdateEntity(const Boidsish::EntityHandler& handler, float time, float delta_time) override {
+	void UpdateEntity(Boidsish::EntityHandler& handler, float time, float delta_time) override {
 		// Physics will update the position
 	}
 };

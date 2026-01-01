@@ -1175,6 +1175,17 @@ namespace Boidsish {
 		}
 	}
 
+	void Visualizer::TogglePostProcessingEffect(const std::string& name) {
+		if (impl->post_processing_manager_) {
+			for (auto& effect : impl->post_processing_manager_->GetEffects()) {
+				if (effect->GetName() == name) {
+					effect->SetEnabled(!effect->IsEnabled());
+					break;
+				}
+			}
+		}
+	}
+
 	void Visualizer::Render() {
 		// --- 1. RENDER SCENE TO FBO ---
 		// Note: The reflection and blur passes are pre-passes that generate textures for the main scene.
