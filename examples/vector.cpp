@@ -42,7 +42,7 @@ public:
 class VectorDemoEntity: public Entity<CloneableDot> {
 public:
 	VectorDemoEntity(int id, const Vector3& start_pos);
-	void UpdateEntity(const EntityHandler& handler, float time, float delta_time) override;
+	void UpdateEntity(EntityHandler& handler, float time, float delta_time) override;
 
 private:
 	float hunger_time = 0.0f;
@@ -54,7 +54,7 @@ private:
 class FlockingEntity: public Entity<> {
 public:
 	FlockingEntity(int id, const Vector3& start_pos);
-	void UpdateEntity(const EntityHandler& handler, float time, float delta_time) override;
+	void UpdateEntity(EntityHandler& handler, float time, float delta_time) override;
 
 	float GetValue() const { return energy; }
 
@@ -72,7 +72,7 @@ private:
 class FruitEntity: public Entity<> {
 public:
 	FruitEntity(int id);
-	void UpdateEntity(const EntityHandler& handler, float time, float delta_time) override;
+	void UpdateEntity(EntityHandler& handler, float time, float delta_time) override;
 
 	float GetValue() const { return value; }
 
@@ -92,7 +92,7 @@ FruitEntity::FruitEntity(int id): Entity<>(id), value(0) {
 	phase_ = start_pos.Magnitude();
 }
 
-void FruitEntity::UpdateEntity(const EntityHandler& handler, float, float delta_time) {
+void FruitEntity::UpdateEntity(EntityHandler& handler, float, float delta_time) {
 	phase_ += delta_time;
 
 	auto value_modifier = (sin((4 * phase_) / 8) + 1) / 2;
@@ -118,7 +118,7 @@ VectorDemoEntity::VectorDemoEntity(int id, const Vector3& start_pos): Entity<Clo
 	SetTrailIridescence(false);
 }
 
-void VectorDemoEntity::UpdateEntity(const EntityHandler& handler, float time, float delta_time) {
+void VectorDemoEntity::UpdateEntity(EntityHandler& handler, float time, float delta_time) {
 	(void)time; // Mark unused parameters
 	phase_ += delta_time;
 
@@ -213,7 +213,7 @@ FlockingEntity::FlockingEntity(int id, const Vector3& start_pos): Entity<>(id) {
 	SetVelocity(startVel);
 }
 
-void FlockingEntity::UpdateEntity(const EntityHandler& handler, float time, float delta_time) {
+void FlockingEntity::UpdateEntity(EntityHandler& handler, float time, float delta_time) {
 	(void)time;
 	(void)delta_time; // Mark unused parameters
 

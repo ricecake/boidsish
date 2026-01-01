@@ -17,7 +17,7 @@ public:
 		SetTrailLength(80);
 	}
 
-	void UpdateEntity(const EntityHandler& handler, float time, float delta_time) override {
+	void UpdateEntity(EntityHandler& handler, float time, float delta_time) override {
 		(void)handler; // Mark unused for now
 		// Update orbital angle
 		angle_ += speed_ * delta_time;

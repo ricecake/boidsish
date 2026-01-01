@@ -19,7 +19,7 @@ public:
 	}
 
 	// This pure virtual function must be implemented
-	void UpdateEntity(const EntityHandler& handler, float time, float delta_time) override {
+	void UpdateEntity(EntityHandler& handler, float time, float delta_time) override {
 		// Simple circular motion based on the simulation time
 		float speed = 2.0f;
 		float radius = 6.0f;

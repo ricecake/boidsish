@@ -32,12 +32,13 @@ public:
 		orientation_(glm::quat(1.0f, 0.0f, 0.0f, 0.0f)),
 		rotational_velocity_(glm::vec3(0.0f)),
 		forward_speed_(20.0f) {
+		damage_pending_ = false;
 		SetTrailLength(150);
 		SetTrailIridescence(true);
 
 		SetColor(1.0f, 0.5f, 0.0f);
 		shape_->SetScale(glm::vec3(0.04f));
-		std::dynamic_pointer_cast<Model>(shape_)->SetBaseRotation(
+		std::static_pointer_cast<Model>(shape_)->SetBaseRotation(
 			glm::angleAxis(glm::radians(-180.0f), glm::vec3(0.0f, 1.0f, 0.0f))
 		);
 		SetPosition(0, 4, 0);
@@ -52,7 +53,7 @@ public:
 
 	void SetController(std::shared_ptr<PaperPlaneInputController> controller) { controller_ = controller; }
 
-	void UpdateEntity(const EntityHandler& handler, float time, float delta_time) {
+	void UpdateEntity(EntityHandler& handler, float time, float delta_time) {
 		if (!controller_)
 			return;
 
@@ -167,11 +168,16 @@ public:
 		}
 	}
 
+	void TriggerDamage() { damage_pending_ = true; }
+	bool IsDamagePending() { return damage_pending_; }
+	void AcknowledgeDamage() { damage_pending_ = false; }
+
 private:
 	std::shared_ptr<PaperPlaneInputController> controller_;
 	glm::quat                                  orientation_;
 	glm::vec3                                  rotational_velocity_; // x: pitch, y: yaw, z: roll
 	float                                      forward_speed_;
+	bool                                       damage_pending_;
 };
 
 class GuidedMissile: public Entity<Model> {
@@ -186,13 +192,13 @@ public:
 		SetTrailLength(500);
 		SetTrailRocket(true);
 		shape_->SetScale(glm::vec3(0.08f));
-		std::dynamic_pointer_cast<Model>(shape_)->SetBaseRotation(
+		std::static_pointer_cast<Model>(shape_)->SetBaseRotation(
 			glm::angleAxis(glm::radians(-90.0f), glm::vec3(0.0f, 1.0f, 0.0f))
 		);
 		UpdateShape();
 	}
 
-	void UpdateEntity(const EntityHandler& handler, float time, float delta_time) {
+	void UpdateEntity(EntityHandler& handler, float time, float delta_time) {
 		lived += delta_time;
 		if (lived >= lifetime) {
 			handler.QueueRemoveEntity(id_);
@@ -232,6 +238,7 @@ public:
 
 				// --- Proximity Detonation ---
 				if ((plane->GetPosition() - GetPosition()).Magnitude() < 10) {
+					plane->TriggerDamage();
 					SetVelocity(0, 0, 0);
 					SetSize(100);
 					SetColor(1, 0, 0, 0.33f);
@@ -319,15 +326,32 @@ static auto missilePicker = MakeBranchAttractor();
 class PaperPlaneHandler: public SpatialEntityHandler {
 public:
 	PaperPlaneHandler(task_thread_pool::task_thread_pool& thread_pool):
-		SpatialEntityHandler(thread_pool), eng_(rd_()) {}
+		SpatialEntityHandler(thread_pool), eng_(rd_()), damage_dist_(1.0f, 3.0f) {}
 
 	void PreTimestep(float time, float delta_time) {
+		if (damage_timer_ > 0.0f) {
+			damage_timer_ -= delta_time;
+			if (damage_timer_ <= 0.0f) {
+				vis->TogglePostProcessingEffect("Glitch");
+				vis->TogglePostProcessingEffect("TimeStutter");
+			}
+		}
+
 		// --- Missile Spawning Logic ---
 		auto targets = GetEntitiesByType<PaperPlane>();
 		if (targets.empty())
 			return;
 
-		auto  plane = targets[0];
+		auto plane = std::static_pointer_cast<PaperPlane>(targets[0]);
+		if (plane && plane->IsDamagePending()) {
+			plane->AcknowledgeDamage();
+			if (damage_timer_ <= 0.0f) { // Only trigger if not already active
+				damage_timer_ = damage_dist_(eng_);
+				vis->TogglePostProcessingEffect("Glitch");
+				vis->TogglePostProcessingEffect("TimeStutter");
+			}
+		}
+
 		auto  ppos = plane->GetPosition();
 		float max_h = vis->GetTerrainMaxHeight();
 
@@ -405,8 +429,10 @@ public:
 	}
 
 private:
-	std::random_device rd_;
-	std::mt19937       eng_;
+	std::random_device                    rd_;
+	std::mt19937                          eng_;
+	float                                 damage_timer_ = 0.0f;
+	std::uniform_real_distribution<float> damage_dist_;
 };
 
 int main() {
@@ -427,7 +453,7 @@ int main() {
 		visualizer->SetChaseCamera(plane);
 
 		auto controller = std::make_shared<PaperPlaneInputController>();
-		std::dynamic_pointer_cast<PaperPlane>(plane)->SetController(controller);
+		std::static_pointer_cast<PaperPlane>(plane)->SetController(controller);
 
 		visualizer->AddInputCallback([&](const Boidsish::InputState& state) {
 			controller->pitch_up = state.keys[GLFW_KEY_S];

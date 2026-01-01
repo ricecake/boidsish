@@ -140,6 +140,7 @@ namespace Boidsish {
 		void SetCameraMode(CameraMode mode);
 		void TogglePause();
 		void ToggleEffect(VisualEffect effect);
+		void TogglePostProcessingEffect(const std::string& name);
 		void AddFireEffect(const glm::vec3& position, const glm::vec3& direction);
 
 		std::tuple<float, glm::vec3>                 GetTerrainPointProperties(float x, float y) const;

@@ -37,7 +37,7 @@ namespace Boidsish {
 		virtual ~EntityBase() = default;
 
 		// Called each frame to update the entity
-		virtual void UpdateEntity(const EntityHandler& handler, float time, float delta_time) = 0;
+		virtual void UpdateEntity(EntityHandler& handler, float time, float delta_time) = 0;
 
 		// Shape management
 		virtual std::shared_ptr<Shape> GetShape() const = 0;
@@ -283,7 +283,7 @@ namespace Boidsish {
 			(void)delta_time;
 		}
 
-		std::shared_ptr<const Visualizer> vis;
+		std::shared_ptr<Visualizer> vis;
 
 	private:
 		std::map<int, std::shared_ptr<EntityBase>> entities_;
