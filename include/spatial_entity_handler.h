@@ -60,13 +60,15 @@ namespace Boidsish {
 		}
 
 	protected:
-		void PostTimestep(float time, float delta_time) override {
+		void PostTimestep(
+            float time,
+            float delta_time,
+            const std::vector<std::shared_ptr<EntityBase>>& entities
+        ) override {
 			(void)time;
 			(void)delta_time;
 			rtree_.RemoveAll();
-            std::lock_guard<std::mutex> lock(entities_mutex_);
-			for (const auto& pair : entities_) {
-				auto&         entity = pair.second;
+			for (const auto& entity : entities) {
 				const Vector3 pos = entity->GetPosition();
 				float         min[3] = {pos.x, pos.y, pos.z};
 				float         max[3] = {pos.x, pos.y, pos.z};

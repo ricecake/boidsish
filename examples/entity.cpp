@@ -76,7 +76,11 @@ protected:
 		}
 	}
 
-	void PostTimestep(float time, float delta_time) override {
+	void PostTimestep(
+        float time,
+        float delta_time,
+        const std::vector<std::shared_ptr<EntityBase>>& entities
+    ) override {
 		// Example: Could implement collision detection, cleanup, etc.
 		(void)time;
 		(void)delta_time; // Suppress unused warnings

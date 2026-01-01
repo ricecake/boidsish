@@ -229,12 +229,6 @@ namespace Boidsish {
 			return (it != entities_.end()) ? it->second : nullptr;
 		}
 
-		// Get all entities (for iteration)
-		std::map<int, std::shared_ptr<EntityBase>> GetAllEntities() const {
-            std::lock_guard<std::mutex> lock(entities_mutex_);
-            return entities_;
-        }
-
 		// Get entities by type (template method)
 		template <typename T>
 		auto GetEntitiesByType() {
@@ -296,14 +290,18 @@ namespace Boidsish {
 			(void)delta_time;
 		}
 
-		virtual void PostTimestep(float time, float delta_time) {
+		virtual void PostTimestep(
+            float time,
+            float delta_time,
+            const std::vector<std::shared_ptr<EntityBase>>& entities
+        ) {
 			(void)time;
 			(void)delta_time;
 		}
 
 		std::shared_ptr<const Visualizer> vis;
 
-	protected:
+	private:
 		std::map<int, std::shared_ptr<EntityBase>> entities_;
         mutable std::mutex entities_mutex_;
 		float                                      last_time_;

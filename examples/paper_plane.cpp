@@ -96,10 +96,11 @@ int main() {
 		auto handler = PaperPlaneHandler(visualizer->GetThreadPool());
 		handler.SetVisualizer(visualizer);
 		auto id = handler.AddEntity<PaperPlane>();
+        auto plane = std::dynamic_pointer_cast<PaperPlane>(handler.GetEntity(id));
+        plane->SetPosition(0, height + 10, 0);
 
 		visualizer->AddShapeHandler(std::ref(handler));
 
-        auto plane = std::dynamic_pointer_cast<PaperPlane>(handler.GetEntity(id));
 		visualizer->SetChaseCamera(plane);
 
 		auto controller = std::make_shared<PaperPlaneInputController>();

@@ -70,7 +70,7 @@ namespace Boidsish {
 		});
 
 		// Call post-timestep hook
-		PostTimestep(time, delta_time);
+		PostTimestep(time, delta_time, entities);
 
 		// Process modification requests
 		{
