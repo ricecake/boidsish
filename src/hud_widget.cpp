@@ -54,7 +54,6 @@ namespace Boidsish {
 		HudWidget::HudWidget(HudManager& hudManager): m_hudManager(hudManager) {}
 
 		void HudWidget::Draw() {
-			logger::LOG("HudWidget::Draw called.");
 			ImGui::SetNextWindowPos(ImVec2(0, 0));
 			ImGui::SetNextWindowSize(ImGui::GetIO().DisplaySize);
 			ImGui::Begin(
@@ -63,11 +62,9 @@ namespace Boidsish {
 				ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoInputs | ImGuiWindowFlags_NoBackground |
 					ImGuiWindowFlags_NoNav | ImGuiWindowFlags_NoNavFocus | ImGuiWindowFlags_NoBringToFrontOnFocus
 			);
-			logger::LOG("HUD window began.");
 
 			// Draw Icons
 			const auto& icons = m_hudManager.GetIcons();
-			logger::LOG("Number of icons to draw: " + std::to_string(icons.size()));
 			for (const auto& icon : icons) {
 				ImVec2 size = {icon.size.x, icon.size.y};
 				ImVec2 pos = GetAlignmentPosition(icon.alignment, size, {icon.position.x, icon.position.y});
@@ -75,11 +72,9 @@ namespace Boidsish {
 				ImGui::SetCursorPos(pos);
 
 				unsigned int textureId = m_hudManager.GetTextureId(icon.texture_path);
-				logger::LOG("Icon " + std::to_string(icon.id) + " texture ID: " + std::to_string(textureId));
 				if (textureId != 0) {
 					ImVec4 tint_col = icon.highlighted ? ImVec4(1.0f, 1.0f, 0.0f, 1.0f)
 													   : ImVec4(1.0f, 1.0f, 1.0f, 1.0f);
-					logger::LOG("Drawing icon " + std::to_string(icon.id));
 					ImGui::Image(
 						(void*)(intptr_t)textureId,
 						size,
@@ -88,7 +83,6 @@ namespace Boidsish {
 						tint_col,
 						ImVec4(0, 0, 0, 0)
 					);
-					logger::LOG("Icon " + std::to_string(icon.id) + " drawn.");
 				}
 			}
 

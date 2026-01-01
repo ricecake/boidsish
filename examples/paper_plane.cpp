@@ -180,7 +180,7 @@ public:
 				orientation_ * glm::vec3(fire_left ? -1 : 1, -1, 0),
 				GetVelocity()
 			);
-			time_to_fire = 0.5f;
+			time_to_fire = 0.25f;
 			fire_left = !fire_left;
 		}
 	}
@@ -199,7 +199,7 @@ private:
 	glm::quat                                  orientation_;
 	glm::vec3                                  rotational_velocity_; // x: pitch, y: yaw, z: roll
 	float                                      forward_speed_;
-	float                                      time_to_fire = 0.5f;
+	float                                      time_to_fire = 0.25f;
 	bool                                       fire_left = true;
 };
 
