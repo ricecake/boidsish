@@ -29,6 +29,7 @@ namespace Boidsish {
 		class IWidget;
 	}
 	class EntityBase;
+	class FireEffect;
 } // namespace Boidsish
 
 namespace Boidsish {
@@ -144,6 +145,7 @@ namespace Boidsish {
 		void SetCameraMode(CameraMode mode);
 		void TogglePause();
 		void ToggleEffect(VisualEffect effect);
+		std::shared_ptr<FireEffect> AddFireEffect(const glm::vec3& position, const glm::vec3& direction);
 
 		std::tuple<float, glm::vec3>                 GetTerrainPointProperties(float x, float y) const;
 		float                                        GetTerrainMaxHeight() const;
