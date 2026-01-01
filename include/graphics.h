@@ -21,6 +21,10 @@ namespace task_thread_pool {
 }
 
 namespace Boidsish {
+	struct HudIcon;
+	struct HudNumber;
+	struct HudGauge;
+
 	namespace UI {
 		class IWidget;
 	}
@@ -149,6 +153,19 @@ namespace Boidsish {
 		task_thread_pool::task_thread_pool&          GetThreadPool();
 
 		Config& GetConfig();
+
+		// HUD methods
+		void AddHudIcon(const HudIcon& icon);
+		void UpdateHudIcon(int id, const HudIcon& icon);
+		void RemoveHudIcon(int id);
+
+		void AddHudNumber(const HudNumber& number);
+		void UpdateHudNumber(int id, const HudNumber& number);
+		void RemoveHudNumber(int id);
+
+		void AddHudGauge(const HudGauge& gauge);
+		void UpdateHudGauge(int id, const HudGauge& gauge);
+		void RemoveHudGauge(int id);
 
 	private:
 		struct VisualizerImpl;

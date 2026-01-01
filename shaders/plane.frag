@@ -13,12 +13,16 @@ layout(std140) uniform Lighting {
 };
 
 uniform sampler2D reflectionTexture;
+uniform bool      useReflection;
 
 void main() {
 	// discard;
 	// --- Reflection sampling ---
-	vec2 texCoords = ReflectionClipSpacePos.xy / ReflectionClipSpacePos.w / 2.0 + 0.5;
-	vec3 reflectionColor = texture(reflectionTexture, texCoords).rgb;
+	vec3 reflectionColor = vec3(0.0);
+	if (useReflection) {
+		vec2 texCoords = ReflectionClipSpacePos.xy / ReflectionClipSpacePos.w / 2.0 + 0.5;
+		reflectionColor = texture(reflectionTexture, texCoords).rgb;
+	}
 
 	// --- Grid logic ---
 	float grid_spacing = 1.0;

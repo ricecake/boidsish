@@ -15,6 +15,8 @@
 
 using namespace Boidsish;
 
+class CatMissile;
+
 struct PaperPlaneInputController {
 	bool pitch_up = false;
 	bool pitch_down = false;
@@ -23,6 +25,8 @@ struct PaperPlaneInputController {
 	bool roll_left = false;
 	bool roll_right = false;
 	bool boost = false;
+	bool brake = false;
+	bool fire = false;
 };
 
 class PaperPlane: public Entity<Model> {
@@ -31,7 +35,7 @@ public:
 		Entity<Model>(id, "assets/Mesh_Cat.obj", true),
 		orientation_(glm::quat(1.0f, 0.0f, 0.0f, 0.0f)),
 		rotational_velocity_(glm::vec3(0.0f)),
-		forward_speed_(20.0f) {
+		forward_speed_(30.0f) {
 		SetTrailLength(150);
 		SetTrailIridescence(true);
 
@@ -43,7 +47,7 @@ public:
 		SetPosition(0, 4, 0);
 
 		// Initial velocity for a nice takeoff
-		SetVelocity(Vector3(0, 0, 20));
+		SetVelocity(Vector3(0, 0, 30));
 
 		// Correct the initial orientation to match the model's alignment
 		orientation_ = glm::angleAxis(glm::radians(25.0f), glm::vec3(1.0f, 0.0f, 0.0f));
@@ -64,8 +68,9 @@ public:
 		const float kAutoLevelSpeed = 1.5f;
 		const float kDamping = 2.5f;
 
-		const float kBaseSpeed = 20.0f;
+		const float kBaseSpeed = 30.0f;
 		const float kBoostSpeed = 80.0f;
+		const float kBreakSpeed = 10.0f;
 		const float kBoostAcceleration = 120.0f;
 		const float kSpeedDecay = 10.0f;
 
@@ -142,10 +147,19 @@ public:
 			forward_speed_ += kBoostAcceleration * delta_time;
 			if (forward_speed_ > kBoostSpeed)
 				forward_speed_ = kBoostSpeed;
+		} else if (controller_->brake) {
+			forward_speed_ -= kBoostAcceleration * delta_time;
+			if (forward_speed_ < kBreakSpeed)
+				forward_speed_ = kBreakSpeed;
+
 		} else {
 			if (forward_speed_ > kBaseSpeed) {
 				forward_speed_ -= kSpeedDecay * delta_time;
 				if (forward_speed_ < kBaseSpeed)
+					forward_speed_ = kBaseSpeed;
+			} else if (forward_speed_ < kBaseSpeed) {
+				forward_speed_ += kSpeedDecay * delta_time;
+				if (forward_speed_ > kBaseSpeed)
 					forward_speed_ = kBaseSpeed;
 			}
 		}
@@ -156,6 +170,15 @@ public:
 		glm::vec3 new_velocity = forward_dir * forward_speed_;
 
 		SetVelocity(Vector3(new_velocity.x, new_velocity.y, new_velocity.z));
+
+		if (controller_->fire) {
+			handler.QueueAddEntity<CatMissile>(
+				GetPosition(),
+				orientation_,
+				orientation_ * glm::vec3(0, -1, 0),
+				GetVelocity()
+			);
+		}
 	}
 
 	void UpdateShape() override {
@@ -291,6 +314,148 @@ private:
 	constexpr static int lifetime{12};
 	float                lived = 0;
 	bool                 exploded = false;
+
+	// Flight model
+	glm::quat          orientation_;
+	glm::vec3          rotational_velocity_; // x: pitch, y: yaw, z: roll
+	float              forward_speed_;
+	std::random_device rd_;
+	std::mt19937       eng_;
+};
+
+class CatMissile: public Entity<Model> {
+public:
+	CatMissile(
+		int       id = 0,
+		Vector3   pos = {0, 0, 0},
+		glm::quat orientation = {0, {0, 0, 0}},
+		glm::vec3 dir = {0, 0, 0},
+		Vector3   vel = {0, 0, 0}
+	):
+		Entity<Model>(id, "assets/Missile.obj", true),
+		rotational_velocity_(glm::vec3(0.0f)),
+		forward_speed_(0.0f),
+		eng_(rd_()),
+		orientation_(orientation) {
+		SetOrientToVelocity(false);
+		SetPosition(pos.x, pos.y, pos.z);
+		auto netVelocity = glm::vec3(vel.x, vel.y, vel.z) + 5.0f * glm::normalize(glm::vec3(dir.x, dir.y, dir.z));
+		SetVelocity(netVelocity.x, netVelocity.y, netVelocity.z);
+
+		SetTrailLength(0);
+		SetTrailRocket(false);
+		shape_->SetScale(glm::vec3(0.05f));
+		std::dynamic_pointer_cast<Model>(shape_)->SetBaseRotation(
+			glm::angleAxis(glm::radians(90.0f), glm::vec3(0.0f, 1.0f, 0.0f))
+		);
+		UpdateShape();
+	}
+
+	void UpdateEntity(const EntityHandler& handler, float time, float delta_time) {
+		lived += delta_time;
+		if (lived >= lifetime) {
+			handler.QueueRemoveEntity(id_);
+			return;
+		}
+		if (exploded) {
+			return;
+		}
+
+		// --- Flight Model Constants ---
+		const float kLaunchTime = 1.0f;
+		const float kMaxSpeed = 150.0f;
+		const float kAcceleration = 150.0f;
+
+		// --- Launch Phase ---
+		if (lived < kLaunchTime) {
+			return;
+		} else {
+			if (!fired) {
+				SetTrailLength(500);
+				SetTrailRocket(true);
+				SetOrientToVelocity(false);
+
+				fired = true;
+			}
+
+			forward_speed_ += kAcceleration * delta_time;
+			if (forward_speed_ > kMaxSpeed) {
+				forward_speed_ = kMaxSpeed;
+			}
+
+			// --- Guidance Phase ---
+			const float kTurnSpeed = 4.0f;
+			const float kDamping = 2.5f;
+
+			auto targets = handler.GetEntitiesByType<PaperPlane>();
+			targets.clear();
+			if (targets.empty()) {
+				// No target, fly straight.
+				rotational_velocity_ = glm::vec3(0.0f);
+			} else {
+				auto plane = targets[0];
+
+				// --- Proximity Detonation ---
+				if ((plane->GetPosition() - GetPosition()).Magnitude() < 10) {
+					SetVelocity(0, 0, 0);
+					SetSize(100);
+					SetColor(1, 0, 0, 0.33f);
+					exploded = true;
+					lived = -5; // Used for explosion lifetime
+					return;
+				}
+
+				// --- Proportional Guidance ---
+				// 1. Get world-space direction to target
+				Vector3   target_vec = (plane->GetPosition() - GetPosition()).Normalized();
+				glm::vec3 target_dir_world = glm::vec3(target_vec.x, target_vec.y, target_vec.z);
+
+				// 2. Convert to missile's local space
+				glm::vec3 target_dir_local = glm::inverse(orientation_) * target_dir_world;
+
+				// 3. Calculate target rotational velocity
+				//    The local target's X component drives yaw, Y component drives pitch.
+				//    This creates a proportional control: the further off-axis the target is, the stronger the turn.
+				glm::vec3 target_rot_velocity = glm::vec3(0.0f);
+				target_rot_velocity.y = target_dir_local.x * kTurnSpeed;  // Yaw
+				target_rot_velocity.x = -target_dir_local.y * kTurnSpeed; // Pitch
+
+				// 4. Damp and apply rotational velocity
+				rotational_velocity_ += (target_rot_velocity - rotational_velocity_) * kDamping * delta_time;
+			}
+			if (lived <= 1.5f) {
+				std::uniform_real_distribution<float> dist(-4.0f, 4.0f);
+				glm::vec3                             error_vector(0.1f * dist(eng_), dist(eng_), 0);
+				rotational_velocity_ += error_vector * delta_time;
+			}
+		}
+
+		// --- Update Orientation ---
+		glm::quat pitch_delta = glm::angleAxis(rotational_velocity_.x * delta_time, glm::vec3(1.0f, 0.0f, 0.0f));
+		glm::quat yaw_delta = glm::angleAxis(rotational_velocity_.y * delta_time, glm::vec3(0.0f, 1.0f, 0.0f));
+		orientation_ = glm::normalize(orientation_ * pitch_delta * yaw_delta);
+
+		// --- Update Velocity and Position ---
+		glm::vec3 forward_dir = orientation_ * glm::vec3(0.0f, 0.0f, -1.0f);
+		glm::vec3 new_velocity = forward_dir * forward_speed_;
+		SetVelocity(Vector3(new_velocity.x, new_velocity.y, new_velocity.z));
+	}
+
+	void UpdateShape() override {
+		// First, call the base implementation
+		Entity<Model>::UpdateShape();
+		// Then, apply our specific orientation that includes roll
+		if (shape_) {
+			shape_->SetRotation(orientation_);
+		}
+	}
+
+private:
+	constexpr static int thrust{50};
+	constexpr static int lifetime{12};
+	float                lived = 0;
+	bool                 exploded = false;
+	bool                 fired = false;
 
 	// Flight model
 	glm::quat          orientation_;
@@ -436,7 +601,9 @@ int main() {
 			controller->yaw_right = state.keys[GLFW_KEY_D];
 			controller->roll_left = state.keys[GLFW_KEY_Q];
 			controller->roll_right = state.keys[GLFW_KEY_E];
-			controller->boost = state.keys[GLFW_KEY_SPACE];
+			controller->boost = state.keys[GLFW_KEY_LEFT_SHIFT];
+			controller->brake = state.keys[GLFW_KEY_LEFT_CONTROL];
+			controller->fire = state.keys[GLFW_KEY_SPACE];
 		});
 
 		visualizer->Run();

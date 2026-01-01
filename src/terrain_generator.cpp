@@ -152,7 +152,7 @@ namespace Boidsish {
 		return visible_chunks_;
 	}
 
-	auto TerrainGenerator::biomefbm(glm::vec2 pos, BiomeAttributes attr) {
+	auto TerrainGenerator::biomefbm(glm::vec2 pos, BiomeAttributes attr) const {
 		glm::vec3 height(0, 0, 0);
 		float     amp = 0.5f;
 		float     freq = 0.99f;
@@ -189,7 +189,7 @@ namespace Boidsish {
 		return height;
 	};
 
-	glm::vec3 TerrainGenerator::pointGenerate(float x, float z) {
+	glm::vec3 TerrainGenerator::pointGenerate(float x, float z) const {
 		// Get control value to determine biome
 		float control_value = control_perlin_noise_.octave2D_01(x * control_noise_scale_, z * control_noise_scale_, 2);
 
@@ -265,8 +265,14 @@ namespace Boidsish {
 		proxy.maxY = std::numeric_limits<float>::lowest();
 
 		for (const auto& pos : positions) {
-			proxy.minY = std::min(proxy.minY, pos.y);
-			proxy.maxY = std::max(proxy.maxY, pos.y);
+			if (pos.y < proxy.minY) {
+				proxy.minY = pos.y;
+				proxy.lowestPoint = pos;
+			}
+			if (pos.y > proxy.maxY) {
+				proxy.maxY = pos.y;
+				proxy.highestPoint = pos;
+			}
 			float dist_sq = glm::dot(pos - proxy.center, pos - proxy.center);
 			if (dist_sq > max_dist_sq) {
 				max_dist_sq = dist_sq;
@@ -277,4 +283,43 @@ namespace Boidsish {
 		return {indices, positions, normals, proxy, chunkX, chunkZ, true};
 	}
 
+	bool
+	TerrainGenerator::Raycast(const glm::vec3& origin, const glm::vec3& dir, float max_dist, float& out_dist) const {
+		constexpr float step_size = 1.0f; // Initial step for ray marching
+		float           current_dist = 0.0f;
+		glm::vec3       current_pos = origin;
+
+		// Ray marching to find a segment that contains the intersection
+		while (current_dist < max_dist) {
+			current_pos = origin + dir * current_dist;
+			float terrain_height = std::get<0>(pointProperties(current_pos.x, current_pos.z));
+
+			if (current_pos.y < terrain_height) {
+				// We found an intersection between the previous and current step.
+				// Now refine with a binary search.
+				float start_dist = std::max(0.0f, current_dist - step_size);
+				float end_dist = current_dist;
+
+				constexpr int binary_search_steps = 10; // 10 steps for good precision
+				for (int i = 0; i < binary_search_steps; ++i) {
+					float     mid_dist = (start_dist + end_dist) / 2.0f;
+					glm::vec3 mid_pos = origin + dir * mid_dist;
+					float     mid_terrain_height = std::get<0>(pointProperties(mid_pos.x, mid_pos.z));
+
+					if (mid_pos.y < mid_terrain_height) {
+						end_dist = mid_dist; // Intersection is in the first half
+					} else {
+						start_dist = mid_dist; // Intersection is in the second half
+					}
+				}
+
+				out_dist = (start_dist + end_dist) / 2.0f;
+				return true; // Hit
+			}
+
+			current_dist += step_size;
+		}
+
+		return false; // No hit
+	}
 } // namespace Boidsish
