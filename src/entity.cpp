@@ -109,4 +109,8 @@ namespace Boidsish {
 
 	// };
 
+	const TerrainGenerator* EntityHandler::GetTerrainGenerator() const {
+		return vis->GetTerrainGenerator();
+	}
+
 } // namespace Boidsish

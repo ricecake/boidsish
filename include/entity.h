@@ -18,6 +18,7 @@ namespace Boidsish {
 
 	// Forward declaration for Entity class
 	class EntityHandler;
+	class TerrainGenerator;
 
 	// Base entity class for the entity system
 	class EntityBase {
@@ -253,6 +254,7 @@ namespace Boidsish {
 
 		const auto GetTerrainPointProperties(float x, float y);
 		const auto GetTerrainChunks();
+		const TerrainGenerator* GetTerrainGenerator() const;
 
 		// Thread-safe methods for entity modification
 		template <typename T, typename... Args>

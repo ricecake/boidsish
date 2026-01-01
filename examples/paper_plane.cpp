@@ -10,6 +10,7 @@
 #include "logger.h"
 #include "model.h"
 #include "spatial_entity_handler.h"
+#include "terrain_generator.h"
 #include <GLFW/glfw3.h>
 #include <glm/gtc/quaternion.hpp>
 
@@ -286,6 +287,42 @@ public:
 					glm::vec3                             error_vector(0.1f * dist(eng_), dist(eng_), 0);
 					rotational_velocity_ += error_vector * delta_time;
 				}
+				// --- Terrain Avoidance ---
+				const auto* terrain_generator = handler.GetTerrainGenerator();
+				if (terrain_generator) {
+					const float reaction_distance = 100.0f;
+					float       hit_dist = 0.0f;
+
+					Vector3 vel_vec = GetVelocity();
+					if (vel_vec.MagnitudeSquared() > 1e-6) {
+						glm::vec3 origin = {GetPosition().x, GetPosition().y, GetPosition().z};
+						glm::vec3 dir = {vel_vec.x, vel_vec.y, vel_vec.z};
+						dir = glm::normalize(dir);
+
+						if (terrain_generator->Raycast(origin, dir, reaction_distance, hit_dist)) {
+							auto hit_coord = vel_vec.Normalized() * hit_dist;
+							auto [terrain_h, terrain_normal] = terrain_generator->pointProperties(
+								hit_coord.x,
+								hit_coord.z
+							);
+
+							// We have a potential collision, apply avoidance force
+							const float avoidance_strength = 20.0f;
+							const float kUpAlignmentThreshold = 0.5f;
+							float force_magnitude = avoidance_strength * (1.0f - ((10 + hit_dist) / reaction_distance));
+
+							glm::vec3 local_up = glm::vec3(0.0f, 1.0f, 0.0f);
+							auto      away = terrain_normal;
+							if (glm::dot(away, local_up) < kUpAlignmentThreshold) {
+								away = local_up;
+							}
+							glm::vec3 avoidance_force = away * force_magnitude;
+							glm::vec3 avoidance_local = glm::inverse(orientation_) * avoidance_force;
+							rotational_velocity_.y += avoidance_local.x * avoidance_strength * delta_time; // Yaw
+							rotational_velocity_.x += avoidance_local.y * avoidance_strength * delta_time; // Pitch
+						}
+					}
+				}
 			}
 		}
 
@@ -382,7 +419,6 @@ public:
 			if (forward_speed_ > kMaxSpeed) {
 				forward_speed_ = kMaxSpeed;
 			}
-
 			// --- Guidance Phase ---
 			const float kTurnSpeed = 4.0f;
 			const float kDamping = 2.5f;
@@ -427,6 +463,39 @@ public:
 				std::uniform_real_distribution<float> dist(-4.0f, 4.0f);
 				glm::vec3                             error_vector(0.1f * dist(eng_), dist(eng_), 0);
 				rotational_velocity_ += error_vector * delta_time;
+			}
+			// --- Terrain Avoidance ---
+			const auto* terrain_generator = handler.GetTerrainGenerator();
+			if (terrain_generator) {
+				const float reaction_distance = 100.0f;
+				float       hit_dist = 0.0f;
+
+				Vector3 vel_vec = GetVelocity();
+				if (vel_vec.MagnitudeSquared() > 1e-6) {
+					glm::vec3 origin = {GetPosition().x, GetPosition().y, GetPosition().z};
+					glm::vec3 dir = {vel_vec.x, vel_vec.y, vel_vec.z};
+					dir = glm::normalize(dir);
+
+					if (terrain_generator->Raycast(origin, dir, reaction_distance, hit_dist)) {
+						auto hit_coord = vel_vec.Normalized() * hit_dist;
+						auto [terrain_h, terrain_normal] = terrain_generator->pointProperties(hit_coord.x, hit_coord.z);
+
+						// We have a potential collision, apply avoidance force
+						const float avoidance_strength = 20.0f;
+						const float kUpAlignmentThreshold = 0.5f;
+						float force_magnitude = avoidance_strength * (1.0f - ((10 + hit_dist) / reaction_distance));
+
+						glm::vec3 local_up = glm::vec3(0.0f, 1.0f, 0.0f);
+						auto      away = terrain_normal;
+						if (glm::dot(away, local_up) < kUpAlignmentThreshold) {
+							away = local_up;
+						}
+						glm::vec3 avoidance_force = away * force_magnitude;
+						glm::vec3 avoidance_local = glm::inverse(orientation_) * avoidance_force;
+						rotational_velocity_.y += avoidance_local.x * avoidance_strength * delta_time; // Yaw
+						rotational_velocity_.x += avoidance_local.y * avoidance_strength * delta_time; // Pitch
+					}
+				}
 			}
 		}
 
