@@ -12,7 +12,7 @@ class PathDemoEntity: public Entity<Dot> {
 public:
 	PathDemoEntity(int id): Entity(id) {}
 
-	void UpdateEntity(const EntityHandler& handler, float time, float delta_time) override {
+	void UpdateEntity(const EntityHandler& handler, float time, float delta_time, const Visualizer* vis) override {
 		// Nothing to do here, the path following is handled by the EntityHandler
 	}
 };

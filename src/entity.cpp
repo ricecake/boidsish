@@ -47,7 +47,7 @@ namespace Boidsish {
 
 		// Update all entities
 		std::for_each(poolstl::par.on(thread_pool_), entities.begin(), entities.end(), [&](auto& entity) {
-			entity->UpdateEntity(*this, time, delta_time);
+			entity->UpdateEntity(*this, time, delta_time, vis.get());
 			if (entity->path_) {
 				auto update = entity->path_->CalculateUpdate(
 					entity->GetPosition(),

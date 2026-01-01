@@ -18,6 +18,7 @@ namespace Boidsish {
 
 	// Forward declaration for Entity class
 	class EntityHandler;
+	class Visualizer;
 
 	// Base entity class for the entity system
 	class EntityBase {
@@ -37,7 +38,7 @@ namespace Boidsish {
 		virtual ~EntityBase() = default;
 
 		// Called each frame to update the entity
-		virtual void UpdateEntity(const EntityHandler& handler, float time, float delta_time) = 0;
+		virtual void UpdateEntity(const EntityHandler& handler, float time, float delta_time, const Visualizer* vis) = 0;
 
 		// Shape management
 		virtual std::shared_ptr<Shape> GetShape() const = 0;

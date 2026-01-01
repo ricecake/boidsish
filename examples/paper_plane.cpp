@@ -52,7 +52,7 @@ public:
 
 	void SetController(std::shared_ptr<PaperPlaneInputController> controller) { controller_ = controller; }
 
-	void UpdateEntity(const EntityHandler& handler, float time, float delta_time) {
+	void UpdateEntity(const EntityHandler& handler, float time, float delta_time, const Visualizer* vis) {
 		if (!controller_)
 			return;
 
@@ -192,7 +192,7 @@ public:
 		UpdateShape();
 	}
 
-	void UpdateEntity(const EntityHandler& handler, float time, float delta_time) {
+	void UpdateEntity(const EntityHandler& handler, float time, float delta_time, const Visualizer* vis) {
 		lived += delta_time;
 		if (lived >= lifetime) {
 			handler.QueueRemoveEntity(id_);
@@ -262,6 +262,38 @@ public:
 					std::uniform_real_distribution<float> dist(-4.0f, 4.0f);
 					glm::vec3                             error_vector(0.1f * dist(eng_), dist(eng_), 0);
 					rotational_velocity_ += error_vector * delta_time;
+				}
+			}
+
+			// --- Terrain Avoidance ---
+			if (vis && lived > 1.0f) { // Only avoid after launch phase
+				const float kLookaheadTime = 1.5f;
+				const float kAvoidanceStrength = 20.0f;
+				const float kTerrainClearance = 5.0f;
+				const float kUpAlignmentThreshold = 0.7f;
+
+				glm::vec3 current_pos_glm = glm::vec3(position_.x, position_.y, position_.z);
+				glm::vec3 velocity_glm = glm::vec3(velocity_.x, velocity_.y, velocity_.z);
+				glm::vec3 predicted_pos = current_pos_glm + velocity_glm * kLookaheadTime;
+
+				auto [terrain_h, terrain_normal] = vis->GetTerrainPointProperties(predicted_pos.x, predicted_pos.z);
+
+				if (predicted_pos.y < terrain_h + kTerrainClearance) { // Check if we're predicted to be too low
+					glm::vec3 avoidance_force = terrain_normal;
+
+					// This logic makes the missile prefer turning "up" relative to its own orientation,
+					// rather than just blindly following the terrain normal. This prevents jerky snaps
+					// when flying perpendicular to a slope.
+					glm::vec3 local_up = orientation_ * glm::vec3(0.0f, 1.0f, 0.0f);
+					if (glm::dot(avoidance_force, local_up) < kUpAlignmentThreshold) { // If normal is not mostly aligned with our up
+						avoidance_force = local_up; // Just pull up
+					}
+
+					// Apply the avoidance force to rotational velocity.
+					// We convert the world-space force into a local-space rotational command.
+					glm::vec3 avoidance_local = glm::inverse(orientation_) * avoidance_force;
+					rotational_velocity_.y += avoidance_local.x * kAvoidanceStrength * delta_time; // Yaw
+					rotational_velocity_.x -= avoidance_local.y * kAvoidanceStrength * delta_time; // Pitch
 				}
 			}
 		}
