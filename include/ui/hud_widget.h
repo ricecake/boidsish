@@ -1,22 +1,23 @@
 #pragma once
 
-#include "IWidget.h"
 #include <memory>
+
+#include "IWidget.h"
 
 namespace Boidsish {
 
-class HudManager;
+	class HudManager;
 
-namespace UI {
+	namespace UI {
 
-class HudWidget : public IWidget {
-public:
-    HudWidget(HudManager& hudManager);
-    void Draw() override;
+		class HudWidget: public IWidget {
+		public:
+			HudWidget(HudManager& hudManager);
+			void Draw() override;
 
-private:
-    HudManager& m_hudManager;
-};
+		private:
+			HudManager& m_hudManager;
+		};
 
-} // namespace UI
+	} // namespace UI
 } // namespace Boidsish

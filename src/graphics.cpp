@@ -12,10 +12,9 @@
 #include "UIManager.h"
 #include "clone_manager.h"
 #include "dot.h"
+#include "entity.h"
 #include "hud.h"
 #include "hud_manager.h"
-#include "ui/hud_widget.h"
-#include "entity.h"
 #include "logger.h"
 #include "post_processing/PostProcessingManager.h"
 #include "post_processing/effects/GlitchEffect.h"
@@ -29,6 +28,7 @@
 #include "terrain_generator.h"
 #include "trail.h"
 #include "ui/PostProcessingWidget.h"
+#include "ui/hud_widget.h"
 #include "visual_effects.h"
 #include <GL/glew.h>
 #include <GLFW/glfw3.h>
@@ -230,12 +230,12 @@ namespace Boidsish {
 			}
 
 			ui_manager = std::make_unique<UI::UIManager>(window);
-            logger::LOG("Initializing HudManager...");
-            hud_manager = std::make_unique<HudManager>();
-            logger::LOG("HudManager initialized. Creating HudWidget...");
-            auto hud_widget = std::make_shared<UI::HudWidget>(*hud_manager);
-            ui_manager->AddWidget(hud_widget);
-            logger::LOG("HudWidget created and added.");
+			logger::LOG("Initializing HudManager...");
+			hud_manager = std::make_unique<HudManager>();
+			logger::LOG("HudManager initialized. Creating HudWidget...");
+			auto hud_widget = std::make_shared<UI::HudWidget>(*hud_manager);
+			ui_manager->AddWidget(hud_widget);
+			logger::LOG("HudWidget created and added.");
 
 			if (terrain_enabled_) {
 				Terrain::terrain_shader_ = std::make_shared<Shader>(
@@ -251,10 +251,11 @@ namespace Boidsish {
 			Shape::InitSphereMesh();
 
 			if (effects_enabled_ || (floor_enabled_ && floor_reflection_enabled_)) {
-				float blur_quad_vertices[] = {// positions   // texCoords
-											-1.0f, 1.0f, 0.0f, 1.0f, -1.0f, -1.0f, 0.0f, 0.0f, 1.0f, -1.0f, 1.0f, 0.0f,
+				float blur_quad_vertices[] = {
+					// positions   // texCoords
+					-1.0f, 1.0f, 0.0f, 1.0f, -1.0f, -1.0f, 0.0f, 0.0f, 1.0f, -1.0f, 1.0f, 0.0f,
 
-											-1.0f, 1.0f, 0.0f, 1.0f, 1.0f,  -1.0f, 1.0f, 0.0f, 1.0f, 1.0f,  1.0f, 1.0f
+					-1.0f, 1.0f, 0.0f, 1.0f, 1.0f,  -1.0f, 1.0f, 0.0f, 1.0f, 1.0f,  1.0f, 1.0f
 				};
 				glGenVertexArrays(1, &blur_quad_vao);
 				glBindVertexArray(blur_quad_vao);
@@ -308,40 +309,51 @@ namespace Boidsish {
 					glGenFramebuffers(1, &reflection_fbo);
 					glBindFramebuffer(GL_FRAMEBUFFER, reflection_fbo);
 
-				// Color attachment
-				glGenTextures(1, &reflection_texture);
-				glBindTexture(GL_TEXTURE_2D, reflection_texture);
-				glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, width, height, 0, GL_RGB, GL_UNSIGNED_BYTE, NULL);
-				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-				glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, reflection_texture, 0);
-
-				// Depth renderbuffer
-				glGenRenderbuffers(1, &reflection_depth_rbo);
-				glBindRenderbuffer(GL_RENDERBUFFER, reflection_depth_rbo);
-				glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT24, width, height);
-				glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, reflection_depth_rbo);
-
-				if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
-					std::cerr << "ERROR::FRAMEBUFFER:: Framebuffer is not complete!" << std::endl;
-				glBindFramebuffer(GL_FRAMEBUFFER, 0);
-
-				// --- Ping-pong Framebuffers for blurring ---
-				glGenFramebuffers(2, pingpong_fbo);
-				glGenTextures(2, pingpong_texture);
-				for (unsigned int i = 0; i < 2; i++) {
-					glBindFramebuffer(GL_FRAMEBUFFER, pingpong_fbo[i]);
-					glBindTexture(GL_TEXTURE_2D, pingpong_texture[i]);
-					glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB16F, width, height, 0, GL_RGB, GL_FLOAT, NULL);
+					// Color attachment
+					glGenTextures(1, &reflection_texture);
+					glBindTexture(GL_TEXTURE_2D, reflection_texture);
+					glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, width, height, 0, GL_RGB, GL_UNSIGNED_BYTE, NULL);
 					glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
 					glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-					glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-					glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-					glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, pingpong_texture[i], 0);
+					glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, reflection_texture, 0);
+
+					// Depth renderbuffer
+					glGenRenderbuffers(1, &reflection_depth_rbo);
+					glBindRenderbuffer(GL_RENDERBUFFER, reflection_depth_rbo);
+					glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT24, width, height);
+					glFramebufferRenderbuffer(
+						GL_FRAMEBUFFER,
+						GL_DEPTH_ATTACHMENT,
+						GL_RENDERBUFFER,
+						reflection_depth_rbo
+					);
+
 					if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
-						std::cerr << "ERROR::FRAMEBUFFER:: Ping-pong Framebuffer is not complete!" << std::endl;
-				}
-				glBindFramebuffer(GL_FRAMEBUFFER, 0);
+						std::cerr << "ERROR::FRAMEBUFFER:: Framebuffer is not complete!" << std::endl;
+					glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+					// --- Ping-pong Framebuffers for blurring ---
+					glGenFramebuffers(2, pingpong_fbo);
+					glGenTextures(2, pingpong_texture);
+					for (unsigned int i = 0; i < 2; i++) {
+						glBindFramebuffer(GL_FRAMEBUFFER, pingpong_fbo[i]);
+						glBindTexture(GL_TEXTURE_2D, pingpong_texture[i]);
+						glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB16F, width, height, 0, GL_RGB, GL_FLOAT, NULL);
+						glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+						glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+						glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+						glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+						glFramebufferTexture2D(
+							GL_FRAMEBUFFER,
+							GL_COLOR_ATTACHMENT0,
+							GL_TEXTURE_2D,
+							pingpong_texture[i],
+							0
+						);
+						if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
+							std::cerr << "ERROR::FRAMEBUFFER:: Ping-pong Framebuffer is not complete!" << std::endl;
+					}
+					glBindFramebuffer(GL_FRAMEBUFFER, 0);
 				}
 			}
 
@@ -1450,40 +1462,40 @@ namespace Boidsish {
 		return impl->config;
 	}
 
-    void Visualizer::AddHudIcon(const HudIcon& icon) {
-        impl->hud_manager->AddIcon(icon);
-    }
+	void Visualizer::AddHudIcon(const HudIcon& icon) {
+		impl->hud_manager->AddIcon(icon);
+	}
 
-    void Visualizer::UpdateHudIcon(int id, const HudIcon& icon) {
-        impl->hud_manager->UpdateIcon(id, icon);
-    }
+	void Visualizer::UpdateHudIcon(int id, const HudIcon& icon) {
+		impl->hud_manager->UpdateIcon(id, icon);
+	}
 
-    void Visualizer::RemoveHudIcon(int id) {
-        impl->hud_manager->RemoveIcon(id);
-    }
+	void Visualizer::RemoveHudIcon(int id) {
+		impl->hud_manager->RemoveIcon(id);
+	}
 
-    void Visualizer::AddHudNumber(const HudNumber& number) {
-        impl->hud_manager->AddNumber(number);
-    }
+	void Visualizer::AddHudNumber(const HudNumber& number) {
+		impl->hud_manager->AddNumber(number);
+	}
 
-    void Visualizer::UpdateHudNumber(int id, const HudNumber& number) {
-        impl->hud_manager->UpdateNumber(id, number);
-    }
+	void Visualizer::UpdateHudNumber(int id, const HudNumber& number) {
+		impl->hud_manager->UpdateNumber(id, number);
+	}
 
-    void Visualizer::RemoveHudNumber(int id) {
-        impl->hud_manager->RemoveNumber(id);
-    }
+	void Visualizer::RemoveHudNumber(int id) {
+		impl->hud_manager->RemoveNumber(id);
+	}
 
-    void Visualizer::AddHudGauge(const HudGauge& gauge) {
-        impl->hud_manager->AddGauge(gauge);
-    }
+	void Visualizer::AddHudGauge(const HudGauge& gauge) {
+		impl->hud_manager->AddGauge(gauge);
+	}
 
-    void Visualizer::UpdateHudGauge(int id, const HudGauge& gauge) {
-        impl->hud_manager->UpdateGauge(id, gauge);
-    }
+	void Visualizer::UpdateHudGauge(int id, const HudGauge& gauge) {
+		impl->hud_manager->UpdateGauge(id, gauge);
+	}
 
-    void Visualizer::RemoveHudGauge(int id) {
-        impl->hud_manager->RemoveGauge(id);
-    }
+	void Visualizer::RemoveHudGauge(int id) {
+		impl->hud_manager->RemoveGauge(id);
+	}
 
 } // namespace Boidsish
