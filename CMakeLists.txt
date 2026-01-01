@@ -84,11 +84,14 @@ foreach(EXAMPLE_PATH ${EXAMPLE_SOURCES})
     add_executable(${EXAMPLE_NAME} ${EXAMPLE_PATH})
     target_link_libraries(${EXAMPLE_NAME} PRIVATE boidsish)
     set_target_properties(${EXAMPLE_NAME} PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
 endforeach()
 
-add_custom_command(TARGET basic POST_BUILD
+# Copy assets to the root of the build directory
+add_custom_command(TARGET boidsish POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_directory
-    ${CMAKE_CURRENT_SOURCE_DIR}/assets $<TARGET_FILE_DIR:basic>/assets
+    ${CMAKE_CURRENT_SOURCE_DIR}/assets
+    ${CMAKE_BINARY_DIR}/assets
 )
 
 # Find the clang-format executable
