@@ -175,7 +175,7 @@ public:
 			handler.QueueAddEntity<CatMissile>(
 				GetPosition(),
 				orientation_,
-				ObjectToWorld(glm::vec3(0, -1, 0)),
+				orientation_ * glm::vec3(0, -1, 0),
 				GetVelocity()
 			);
 		}
