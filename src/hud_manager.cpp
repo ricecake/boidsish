@@ -41,14 +41,10 @@ namespace Boidsish {
 	}
 
 	unsigned int HudManager::GetTextureId(const std::string& path) {
-		logger::LOG("HudManager::GetTextureId called for path: " + path);
 		if (m_texture_cache.find(path) != m_texture_cache.end()) {
-			logger::LOG("Texture found in cache.");
 			return m_texture_cache[path];
 		}
-		logger::LOG("Texture not in cache. Loading...");
 		unsigned int textureId = LoadTexture(path);
-		logger::LOG("LoadTexture returned: " + std::to_string(textureId));
 		if (textureId != 0) {
 			m_texture_cache[path] = textureId;
 		}

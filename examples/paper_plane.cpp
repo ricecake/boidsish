@@ -7,6 +7,7 @@
 #include "dot.h"
 #include "field.h"
 #include "graphics.h"
+#include "hud.h"
 #include "logger.h"
 #include "model.h"
 #include "spatial_entity_handler.h"
@@ -18,6 +19,8 @@
 using namespace Boidsish;
 
 class CatMissile;
+
+static int selected_weapon = 0;
 
 struct PaperPlaneInputController {
 	bool pitch_up = false;
@@ -736,6 +739,12 @@ private:
 int main() {
 	try {
 		auto visualizer = std::make_shared<Visualizer>(1280, 720, "Terrain Demo");
+		visualizer->AddHudIcon(
+			{1, "assets/missile-icon.png", HudAlignment::TOP_LEFT, {10, 10}, {64, 64}, selected_weapon == 0}
+		);
+		visualizer->AddHudIcon(
+			{2, "assets/bomb-icon.png", HudAlignment::TOP_LEFT, {84, 10}, {64, 64}, selected_weapon == 1}
+		);
 
 		Boidsish::Camera camera;
 		visualizer->SetCamera(camera);
@@ -763,6 +772,17 @@ int main() {
 			controller->boost = state.keys[GLFW_KEY_LEFT_SHIFT];
 			controller->brake = state.keys[GLFW_KEY_LEFT_CONTROL];
 			controller->fire = state.keys[GLFW_KEY_SPACE];
+			if (state.key_down[GLFW_KEY_F]) {
+				selected_weapon = (selected_weapon + 1) % 2;
+				visualizer->UpdateHudIcon(
+					1,
+					{1, "assets/missile-icon.png", HudAlignment::TOP_LEFT, {10, 10}, {64, 64}, selected_weapon == 0}
+				);
+				visualizer->UpdateHudIcon(
+					2,
+					{2, "assets/bomb-icon.png", HudAlignment::TOP_LEFT, {84, 10}, {64, 64}, selected_weapon == 1}
+				);
+			}
 		});
 
 		visualizer->Run();
