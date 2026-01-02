@@ -253,14 +253,13 @@ public:
 		lived += delta_time;
 		if (lived >= lifetime) {
 			if (exploded) {
-				// handler.EnqueueVisualizerAction([&]() {
-				// 	fire->Remove();
-				// });
+				handler.EnqueueVisualizerAction([&]() { handler.vis->RemoveFireEffect(fire); });
 				handler.QueueRemoveEntity(id_);
 				return;
 			}
-			lived = -2;
+			lived = lifetime - 2;
 			exploded = true;
+			SetVelocity(glm::vec3(0, 0, 0));
 			handler.EnqueueVisualizerAction([&]() { fire->SetStyle(2); });
 		}
 		if (exploded) {
@@ -316,7 +315,7 @@ public:
 					SetSize(100);
 					SetColor(1, 0, 0, 0.33f);
 					exploded = true;
-					lived = -5; // Used for explosion lifetime
+					lived = lifetime - 5; // Used for explosion lifetime
 					handler.EnqueueVisualizerAction([&]() { fire->SetStyle(2); });
 					plane->TriggerDamage();
 
@@ -453,15 +452,19 @@ public:
 		lived += delta_time;
 		if (lived >= lifetime) {
 			if (exploded) {
-				// handler.EnqueueVisualizerAction([&]() {
-				// 	fire->Remove();
-				// });
+				handler.EnqueueVisualizerAction([&]() { handler.vis->RemoveFireEffect(fire); });
 				handler.QueueRemoveEntity(id_);
 				return;
 			}
-			lived = -2;
+			lived = lifetime - 5;
 			exploded = true;
-			handler.EnqueueVisualizerAction([&]() { fire->SetStyle(2); });
+			SetVelocity(glm::vec3(0, 0, 0));
+			// handler.EnqueueVisualizerAction([&]() { fire->SetStyle(2); });
+			auto pos = GetPosition();
+			handler.EnqueueVisualizerAction([&]() {
+				fire = handler.vis->AddFireEffect(glm::vec3(pos.x, pos.y, pos.z), orientation_ * glm::vec3(0, 0, -1));
+				fire->SetStyle(2);
+			});
 		}
 		if (exploded) {
 			return;
@@ -486,18 +489,18 @@ public:
 				SetOrientToVelocity(true);
 
 				fired = true;
-				handler.EnqueueVisualizerAction([&]() {
-					fire = handler.vis->AddFireEffect(
-						glm::vec3(pos.x, pos.y, pos.z),
-						orientation_ * glm::vec3(0, 0, -1)
-					);
-					fire->SetStyle(1);
-				});
-			} else {
-				handler.EnqueueVisualizerAction([&]() {
-					fire->SetPosition({pos.x, pos.y, pos.z});
-					fire->SetDirection(orientation_ * glm::vec3(0, 0, -1));
-				});
+				// handler.EnqueueVisualizerAction([&]() {
+				// 	fire = handler.vis->AddFireEffect(
+				// 		glm::vec3(pos.x, pos.y, pos.z),
+				// 		orientation_ * glm::vec3(0, 0, -1)
+				// 	);
+				// 	fire->SetStyle(1);
+				// });
+				// } else {
+				// 	handler.EnqueueVisualizerAction([&]() {
+				// 		fire->SetPosition({pos.x, pos.y, pos.z});
+				// 		fire->SetDirection(orientation_ * glm::vec3(0, 0, -1));
+				// 	});
 			}
 
 			forward_speed_ += kAcceleration * delta_time;
@@ -522,7 +525,7 @@ public:
 					SetSize(100);
 					SetColor(1, 0, 0, 0.33f);
 					exploded = true;
-					lived = -5; // Used for explosion lifetime
+					lived = lifetime - 5; // Used for explosion lifetime
 					return;
 				}
 
