@@ -195,11 +195,11 @@ public:
 		}
 	}
 
-	void TriggerDamage() { damage_pending_ = true; }
+	void TriggerDamage() { damage_pending_++; }
 
-	bool IsDamagePending() { return damage_pending_; }
+	bool IsDamagePending() { return bool(damage_pending_); }
 
-	void AcknowledgeDamage() { damage_pending_ = false; }
+	void AcknowledgeDamage() { damage_pending_--; }
 
 private:
 	std::shared_ptr<PaperPlaneInputController> controller_;
@@ -208,7 +208,7 @@ private:
 	float                                      forward_speed_;
 	float                                      time_to_fire = 0.25f;
 	bool                                       fire_left = true;
-	bool                                       damage_pending_;
+	int                                        damage_pending_;
 };
 
 class GuidedMissile: public Entity<Model> {
@@ -627,7 +627,7 @@ public:
 			damage_timer_ -= delta_time;
 			if (damage_timer_ <= 0.0f) {
 				vis->TogglePostProcessingEffect("Glitch");
-				vis->TogglePostProcessingEffect("TimeStutter");
+				vis->TogglePostProcessingEffect("Time Stutter");
 			}
 		}
 
@@ -639,11 +639,14 @@ public:
 		auto plane = std::static_pointer_cast<PaperPlane>(targets[0]);
 		if (plane && plane->IsDamagePending()) {
 			plane->AcknowledgeDamage();
+			auto new_time = damage_dist_(eng_);
+
 			if (damage_timer_ <= 0.0f) { // Only trigger if not already active
-				damage_timer_ = damage_dist_(eng_);
 				vis->TogglePostProcessingEffect("Glitch");
-				vis->TogglePostProcessingEffect("TimeStutter");
+				vis->TogglePostProcessingEffect("Time Stutter");
 			}
+
+			damage_timer_ = std::min(damage_timer_ + new_time, 5.0f);
 		}
 
 		auto  ppos = plane->GetPosition();
