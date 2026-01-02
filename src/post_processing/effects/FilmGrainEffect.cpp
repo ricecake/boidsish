@@ -11,7 +11,7 @@ FilmGrainEffect::FilmGrainEffect() : intensity_(0.5f) {
 }
 
 void FilmGrainEffect::Initialize(int width, int height) {
-    shader_ = std::make_unique<Shader>("shaders/post_processing/passthrough.vert", "shaders/post_processing/film_grain.frag");
+    shader_ = std::make_unique<Shader>("shaders/postprocess.vert", "shaders/post_processing/film_grain.frag");
     shader_->use();
     shader_->setInt("screenTexture", 0);
 }
