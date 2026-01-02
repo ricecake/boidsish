@@ -195,6 +195,12 @@ public:
 		}
 	}
 
+	void TriggerDamage() { damage_pending_ = true; }
+
+	bool IsDamagePending() { return damage_pending_; }
+
+	void AcknowledgeDamage() { damage_pending_ = false; }
+
 private:
 	std::shared_ptr<PaperPlaneInputController> controller_;
 	glm::quat                                  orientation_;
@@ -202,6 +208,7 @@ private:
 	float                                      forward_speed_;
 	float                                      time_to_fire = 0.25f;
 	bool                                       fire_left = true;
+	bool                                       damage_pending_;
 };
 
 class GuidedMissile: public Entity<Model> {
@@ -292,6 +299,8 @@ public:
 					exploded = true;
 					lived = -5; // Used for explosion lifetime
 					handler.EnqueueVisualizerAction([&]() { fire->SetStyle(2); });
+					plane->TriggerDamage();
+
 					return;
 				}
 
@@ -614,12 +623,29 @@ public:
 		SpatialEntityHandler(thread_pool), eng_(rd_()) {}
 
 	void PreTimestep(float time, float delta_time) {
+		if (damage_timer_ > 0.0f) {
+			damage_timer_ -= delta_time;
+			if (damage_timer_ <= 0.0f) {
+				vis->TogglePostProcessingEffect("Glitch");
+				vis->TogglePostProcessingEffect("TimeStutter");
+			}
+		}
+
 		// --- Missile Spawning Logic ---
 		auto targets = GetEntitiesByType<PaperPlane>();
 		if (targets.empty())
 			return;
 
-		auto  plane = targets[0];
+		auto plane = std::static_pointer_cast<PaperPlane>(targets[0]);
+		if (plane && plane->IsDamagePending()) {
+			plane->AcknowledgeDamage();
+			if (damage_timer_ <= 0.0f) { // Only trigger if not already active
+				damage_timer_ = damage_dist_(eng_);
+				vis->TogglePostProcessingEffect("Glitch");
+				vis->TogglePostProcessingEffect("TimeStutter");
+			}
+		}
+
 		auto  ppos = plane->GetPosition();
 		float max_h = vis->GetTerrainMaxHeight();
 
@@ -698,8 +724,10 @@ public:
 	}
 
 private:
-	std::random_device rd_;
-	std::mt19937       eng_;
+	std::random_device                    rd_;
+	std::mt19937                          eng_;
+	float                                 damage_timer_ = 0.0f;
+	std::uniform_real_distribution<float> damage_dist_;
 };
 
 int main() {

@@ -239,10 +239,10 @@ namespace Boidsish {
 		}
 
 		template <typename T>
-		std::vector<const T*> GetEntitiesByType() const {
-			std::vector<const T*> result;
+		std::vector<T*> GetEntitiesByType() const {
+			std::vector<T*> result;
 			for (const auto& pair : entities_) {
-				const T* typed_entity = dynamic_cast<const T*>(pair.second.get());
+				T* typed_entity = dynamic_cast<T*>(pair.second.get());
 				if (typed_entity) {
 					result.push_back(typed_entity);
 				}

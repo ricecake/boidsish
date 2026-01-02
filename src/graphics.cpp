@@ -1512,4 +1512,15 @@ namespace Boidsish {
 		return impl->fire_effect_manager->AddEffect(position, direction);
 	}
 
+	void Visualizer::TogglePostProcessingEffect(const std::string& name) {
+		if (impl->post_processing_manager_) {
+			for (auto& effect : impl->post_processing_manager_->GetEffects()) {
+				if (effect->GetName() == name) {
+					effect->SetEnabled(!effect->IsEnabled());
+					break;
+				}
+			}
+		}
+	}
+
 } // namespace Boidsish
