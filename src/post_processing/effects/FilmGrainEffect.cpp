@@ -24,7 +24,7 @@ void FilmGrainEffect::Apply(GLuint sourceTexture) {
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, sourceTexture);
 
-    glDrawArrays(GL_TRIANGLES, 0, 3);
+    glDrawArrays(GL_TRIANGLES, 0, 6);
 }
 
 void FilmGrainEffect::Resize(int width, int height) {
