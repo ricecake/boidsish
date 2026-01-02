@@ -4,6 +4,7 @@
 #include <iostream>
 #include <random>
 #include <ranges>
+#include <GLFW/glfw3.h>
 
 #include "dot.h"
 #include "graph.h"
@@ -542,6 +543,12 @@ int main() {
 		std::cout << "  Mouse - Look around" << std::endl;
 		std::cout << "  0 - Toggle auto-camera" << std::endl;
 		std::cout << "  ESC - Exit" << std::endl;
+
+        viz.AddInputCallback([&](const InputState& state) {
+            if (state.key_down[GLFW_KEY_G]) {
+                viz.TogglePostProcessingEffect("Film Grain");
+            }
+        });
 
 		// Main loop
 		while (!viz.ShouldClose()) {

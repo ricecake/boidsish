@@ -148,6 +148,7 @@ namespace Boidsish {
 		void                        ToggleEffect(VisualEffect effect);
 		std::shared_ptr<FireEffect> AddFireEffect(const glm::vec3& position, const glm::vec3& direction) const;
 		void                        TogglePostProcessingEffect(const std::string& name);
+        void                        SetFilmGrainIntensity(float intensity);
 
 		std::tuple<float, glm::vec3>                 GetTerrainPointProperties(float x, float y) const;
 		float                                        GetTerrainMaxHeight() const;
