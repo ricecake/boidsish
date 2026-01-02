@@ -14,6 +14,7 @@
 #include "shape.h"
 #include "vector.h"
 #include "visual_effects.h"
+#include "fire_effect.h"
 #include <glm/glm.hpp>
 
 namespace task_thread_pool {
@@ -146,7 +147,12 @@ namespace Boidsish {
 		void                        SetCameraMode(CameraMode mode);
 		void                        TogglePause();
 		void                        ToggleEffect(VisualEffect effect);
-		std::shared_ptr<FireEffect> AddFireEffect(const glm::vec3& position, const glm::vec3& direction) const;
+		FireEffect* AddFireEffect(
+			const glm::vec3& position,
+			FireEffectStyle  style,
+			const glm::vec3& direction = glm::vec3(0.0f),
+			const glm::vec3& velocity = glm::vec3(0.0f)
+		);
 
 		std::tuple<float, glm::vec3>                 GetTerrainPointProperties(float x, float y) const;
 		float                                        GetTerrainMaxHeight() const;

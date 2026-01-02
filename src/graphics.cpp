@@ -1205,7 +1205,7 @@ namespace Boidsish {
 
 		// Update clone manager
 		impl->clone_manager->Update(impl->simulation_time, impl->camera.pos());
-		impl->fire_effect_manager->Update(impl->simulation_time, impl->input_state.delta_time);
+		impl->fire_effect_manager->Update(impl->input_state.delta_time, impl->simulation_time);
 
 		// UBO Updates
 		if (impl->effects_enabled_) {
@@ -1269,7 +1269,7 @@ namespace Boidsish {
 					glm::vec4(0, 1, 0, 0.01)
 				);
 				impl->RenderTerrain(reflection_view, glm::vec4(0, 1, 0, 0.01));
-				impl->fire_effect_manager->Render(reflection_view, impl->projection);
+				impl->fire_effect_manager->Render(reflection_view, impl->projection, reflection_cam.pos());
 			}
 			glDisable(GL_CLIP_DISTANCE0);
 
@@ -1291,7 +1291,7 @@ namespace Boidsish {
 		}
 		impl->RenderSceneObjects(view, impl->camera, impl->shapes, impl->simulation_time, std::nullopt);
 		impl->RenderTerrain(view, std::nullopt);
-		impl->fire_effect_manager->Render(view, impl->projection);
+		impl->fire_effect_manager->Render(view, impl->projection, impl->camera.pos());
 
 		if (impl->effects_enabled_) {
 			// --- Post-processing Pass (renders FBO texture to screen) ---
@@ -1508,8 +1508,13 @@ namespace Boidsish {
 		impl->hud_manager->RemoveGauge(id);
 	}
 
-	std::shared_ptr<FireEffect> Visualizer::AddFireEffect(const glm::vec3& position, const glm::vec3& direction) const {
-		return impl->fire_effect_manager->AddEffect(position, direction);
+	FireEffect* Visualizer::AddFireEffect(
+		const glm::vec3& position,
+		FireEffectStyle  style,
+		const glm::vec3& direction,
+		const glm::vec3& velocity
+	) {
+		return impl->fire_effect_manager->AddEffect(position, style, direction, velocity);
 	}
 
 } // namespace Boidsish
