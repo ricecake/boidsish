@@ -235,7 +235,7 @@ public:
 			}
 			lived = -2;
 			exploded = true;
-			handler.EnqueueVisualizerAction([&]() { fire->SetStyle(2); });
+			handler.EnqueueVisualizerAction([&]() { fire->SetStyle(FireEffectStyle::Explosion); });
 		}
 		if (exploded) {
 			return;
@@ -243,8 +243,8 @@ public:
 		auto pos = GetPosition();
 		if (fire == nullptr) {
 			handler.EnqueueVisualizerAction([&]() {
-				fire = handler.vis->AddFireEffect(glm::vec3(pos.x, pos.y, pos.z), orientation_ * glm::vec3(0, 0, -1));
-				fire->SetStyle(1);
+				fire = handler.vis->AddFireEffect(glm::vec3(pos.x, pos.y, pos.z), FireEffectStyle::MissileExhaust, orientation_ * glm::vec3(0, 0, -1));
+				fire->SetStyle(FireEffectStyle::MissileExhaust);
 			});
 		} else {
 			handler.EnqueueVisualizerAction([&]() {
@@ -291,7 +291,7 @@ public:
 					SetColor(1, 0, 0, 0.33f);
 					exploded = true;
 					lived = -5; // Used for explosion lifetime
-					handler.EnqueueVisualizerAction([&]() { fire->SetStyle(2); });
+					handler.EnqueueVisualizerAction([&]() { fire->SetStyle(FireEffectStyle::Explosion); });
 					return;
 				}
 
@@ -383,7 +383,7 @@ private:
 	float                       lived = 0;
 	bool                        exploded = false;
 	bool                        fired = false;
-	std::shared_ptr<FireEffect> fire;
+	FireEffect*                 fire = nullptr;
 
 	// Flight model
 	glm::quat          orientation_;
@@ -433,7 +433,7 @@ public:
 			}
 			lived = -2;
 			exploded = true;
-			handler.EnqueueVisualizerAction([&]() { fire->SetStyle(2); });
+			handler.EnqueueVisualizerAction([&]() { fire->SetStyle(FireEffectStyle::Explosion); });
 		}
 		if (exploded) {
 			return;
@@ -461,9 +461,9 @@ public:
 				handler.EnqueueVisualizerAction([&]() {
 					fire = handler.vis->AddFireEffect(
 						glm::vec3(pos.x, pos.y, pos.z),
+						FireEffectStyle::MissileExhaust,
 						orientation_ * glm::vec3(0, 0, -1)
 					);
-					fire->SetStyle(1);
 				});
 			} else {
 				handler.EnqueueVisualizerAction([&]() {
@@ -582,7 +582,7 @@ private:
 	float                       lived = 0;
 	bool                        exploded = false;
 	bool                        fired = false;
-	std::shared_ptr<FireEffect> fire;
+	FireEffect*                 fire = nullptr;
 
 	// Flight model
 	glm::quat          orientation_;
@@ -691,7 +691,7 @@ public:
 			}
 
 			Vector3 launchPos = Vector3(ray_origin.x, terrain_h, ray_origin.z);
-			auto    fire_effect = vis->AddFireEffect(glm::vec3(0.0f, 3.0f, 0.0f), glm::vec3(0, 1, 0));
+			auto    fire_effect = vis->AddFireEffect(glm::vec3(0.0f, 3.0f, 0.0f), FireEffectStyle::Fire, glm::vec3(0, 1, 0));
 
 			AddEntity<GuidedMissile>(launchPos);
 		}

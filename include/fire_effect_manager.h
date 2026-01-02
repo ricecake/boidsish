@@ -41,7 +41,6 @@ private:
 
     GLuint particle_buffer_{0};
     GLuint emitter_buffer_{0};
-    GLuint atomic_counter_buffer_{0};
     GLuint dummy_vao_{0};
 
     bool initialized_{false};

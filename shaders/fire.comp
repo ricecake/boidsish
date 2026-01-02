@@ -28,11 +28,6 @@ layout(std430, binding = 1) buffer EmitterBuffer {
     Emitter emitters[];
 };
 
-layout(std430, binding = 2) buffer AtomicCounter {
-    atomic_uint next_particle_index;
-};
-
-
 uniform float u_delta_time;
 uniform float u_time;
 uniform int   u_num_emitters;
@@ -64,101 +59,61 @@ const float kFireSpeed = 1.0;
 const float kFireSpread = 0.8;
 const float kFireLifetime = 2.0;
 
-// Number of particles to spawn per emitter per frame
-const int kParticlesPerEmitter = 10;
-
 
 layout(local_size_x = 256, local_size_y = 1, local_size_z = 1) in;
 
 void main() {
     uint gid = gl_GlobalInvocationID.x;
 
-    // --- 1. Update existing particles ---
-    if (gid < particles.length()) {
-        Particle p = particles[gid];
-
-        // Decrease lifetime
-        p.pos.w -= u_delta_time;
-
-        // Apply physics based on style
-        if (p.pos.w > 0.0) {
-            // Missile Exhaust Style
-            if (p.style == 0) {
-                // No extra physics for exhaust, it's a simple trail
-            }
-            // Explosion Style
-            else if (p.style == 1) {
-                // Apply air resistance/drag
-                p.vel.xyz -= p.vel.xyz * kExplosionDrag * u_delta_time;
-            }
-            // Fire Style
-            else if (p.style == 2) {
-                 // Rise and flicker
-                p.vel.y += kFireSpeed * u_delta_time;
-                p.vel.x += (rand(p.pos.xy + u_time) - 0.5) * kFireSpread * u_delta_time;
-                p.vel.z += (rand(p.pos.yz + u_time) - 0.5) * kFireSpread * u_delta_time;
-            }
-
-            p.pos.xyz += p.vel.xyz * u_delta_time;
-        } else {
-			// This is a dead particle. If it's chosen for respawning, its
-			// data will be overwritten. Otherwise, do nothing.
-			// To be safe, ensure its lifetime remains 0.
-			p.pos.w = 0.0;
-		}
-
-        particles[gid] = p;
+    if (gid >= particles.length() || u_num_emitters == 0) {
+        return;
     }
 
+    Particle p = particles[gid];
 
-    // --- 2. Spawn new particles ---
-    // Use a subset of threads to act as spawners to avoid contention on the atomic counter
-    if (gid < u_num_emitters * kParticlesPerEmitter) {
-        int emitter_index = int(gid) / kParticlesPerEmitter;
-        if (emitter_index >= u_num_emitters) {
-            return;
-        }
+    // Decrease lifetime
+    p.pos.w -= u_delta_time;
 
+    // If particle is dead, try to respawn it
+    if (p.pos.w <= 0.0) {
+        // Deterministic mapping from particle to emitter
+        int emitter_index = int(gid % u_num_emitters);
         Emitter emitter = emitters[emitter_index];
 
-        // Atomically get the next available particle index.
-        uint particle_idx = atomicCounterIncrement(next_particle_index);
-
-        // Check for wrap-around. If we've gone past the end of the buffer,
-        // reset the counter and start from the beginning.
-        if (particle_idx >= particles.length()) {
-            // This exchange ensures that only one thread resets the counter.
-            atomicExchange(next_particle_index, 1);
-            particle_idx = 0; // This thread will write to the first particle.
-        }
-
-        Particle p;
         p.emitter_index = emitter_index;
         p.style = emitter.style;
-
 
         vec2 seed = vec2(float(gid), u_time);
         vec3 random_vec = rand3(seed) * 2.0 - 1.0;
 
         // Initialize based on style
-        // Missile Exhaust Style
-        if (p.style == 0) {
+        if (p.style == 0) { // MissileExhaust
             p.pos = vec4(emitter.position, kExhaustLifetime);
             vec3 perpendicular = normalize(cross(emitter.direction, random_vec));
             vec3 spread_dir = mix(emitter.direction, perpendicular, kExhaustSpread * rand(seed.yx));
             p.vel = vec4(emitter.velocity + normalize(spread_dir) * kExhaustSpeed, 0.0);
         }
-        // Explosion Style
-        else if (p.style == 1) {
+        else if (p.style == 1) { // Explosion
             p.pos = vec4(emitter.position, kExplosionLifetime * rand(seed));
             p.vel = vec4(normalize(random_vec) * kExplosionSpeed * rand(seed.yx), 0.0);
         }
-        // Fire Style
-        else if (p.style == 2) {
+        else if (p.style == 2) { // Fire
             p.pos = vec4(emitter.position + random_vec * 0.1, kFireLifetime * rand(seed));
             p.vel = vec4(0, kFireSpeed, 0, 0); // Start with upward velocity
         }
-
-        particles[particle_idx] = p;
     }
+    // If particle is alive, update it
+    else {
+        if (p.style == 1) { // Explosion
+            p.vel.xyz -= p.vel.xyz * kExplosionDrag * u_delta_time;
+        }
+        else if (p.style == 2) { // Fire
+            p.vel.y += kFireSpeed * u_delta_time;
+            p.vel.x += (rand(p.pos.xy + u_time) - 0.5) * kFireSpread * u_delta_time;
+            p.vel.z += (rand(p.pos.yz + u_time) - 0.5) * kFireSpread * u_delta_time;
+        }
+        p.pos.xyz += p.vel.xyz * u_delta_time;
+    }
+
+    particles[gid] = p;
 }

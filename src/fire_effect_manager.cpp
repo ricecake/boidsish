@@ -23,9 +23,6 @@ FireEffectManager::~FireEffectManager() {
     if (emitter_buffer_ != 0) {
         glDeleteBuffers(1, &emitter_buffer_);
     }
-    if (atomic_counter_buffer_ != 0) {
-        glDeleteBuffers(1, &atomic_counter_buffer_);
-    }
     if (dummy_vao_ != 0) {
         glDeleteVertexArrays(1, &dummy_vao_);
     }
@@ -50,15 +47,7 @@ void FireEffectManager::_EnsureShaderAndBuffers() {
     // Max of 100 emitters for now, can be resized if needed
     glBufferData(GL_SHADER_STORAGE_BUFFER, 100 * sizeof(Emitter), nullptr, GL_DYNAMIC_DRAW);
 
-    glGenBuffers(1, &atomic_counter_buffer_);
-    glBindBuffer(GL_ATOMIC_COUNTER_BUFFER, atomic_counter_buffer_);
-    glBufferData(GL_ATOMIC_COUNTER_BUFFER, sizeof(GLuint), nullptr, GL_DYNAMIC_DRAW);
-    GLuint zero = 0;
-    glBufferSubData(GL_ATOMIC_COUNTER_BUFFER, 0, sizeof(GLuint), &zero);
-
-
     glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
-    glBindBuffer(GL_ATOMIC_COUNTER_BUFFER, 0);
 
     // A dummy VAO is required by OpenGL 4.2 core profile for drawing arrays.
     glGenVertexArrays(1, &dummy_vao_);
@@ -102,18 +91,15 @@ void FireEffectManager::Update(float delta_time, float time) {
 
     glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, particle_buffer_);
     glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, emitter_buffer_);
-    glBindBufferBase(GL_ATOMIC_COUNTER_BUFFER, 2, atomic_counter_buffer_);
-
 
     // Dispatch enough groups to cover all particles
     glDispatchCompute((kMaxParticles / 256) + 1, 1, 1);
 
     // Ensure memory operations are finished before rendering
-    glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT | GL_ATOMIC_COUNTER_BARRIER_BIT);
+    glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
 
     glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, 0);
     glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, 0);
-    glBindBufferBase(GL_ATOMIC_COUNTER_BUFFER, 2, 0);
 }
 
 void FireEffectManager::Render(const glm::mat4& view, const glm::mat4& projection, const glm::vec3& camera_pos) {
