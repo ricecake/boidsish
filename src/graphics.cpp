@@ -1512,6 +1512,10 @@ namespace Boidsish {
 		return impl->fire_effect_manager->AddEffect(position, direction);
 	}
 
+	void Visualizer::RemoveFireEffect(const std::shared_ptr<FireEffect>& effect) const {
+		impl->fire_effect_manager->RemoveEffect(effect);
+	}
+
 	void Visualizer::TogglePostProcessingEffect(const std::string& name) {
 		if (impl->post_processing_manager_) {
 			for (auto& effect : impl->post_processing_manager_->GetEffects()) {

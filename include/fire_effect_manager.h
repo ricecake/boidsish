@@ -22,6 +22,7 @@ namespace Boidsish {
 
 		std::shared_ptr<FireEffect>
 		AddEffect(const glm::vec3& position, const glm::vec3& direction, size_t particle_count = 8192);
+		void RemoveEffect(const std::shared_ptr<FireEffect>& effect);
 
 		void Update(float time, float delta_time);
 		void Render(const glm::mat4& view, const glm::mat4& projection);

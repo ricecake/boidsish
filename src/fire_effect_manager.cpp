@@ -21,6 +21,10 @@ namespace Boidsish {
 		return effect;
 	}
 
+	void FireEffectManager::RemoveEffect(const std::shared_ptr<FireEffect>& effect) {
+		std::erase_if(m_effects, [&](const auto& e) { return e == effect; });
+	}
+
 	void FireEffectManager::Update(float time, float delta_time) {
 		for (auto& effect : m_effects) {
 			effect->Update(time, delta_time);
