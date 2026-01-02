@@ -12,6 +12,7 @@
 #include "spatial_entity_handler.h"
 #include "terrain_generator.h"
 #include <GLFW/glfw3.h>
+#include <fire_effect.h>
 #include <glm/gtc/quaternion.hpp>
 
 using namespace Boidsish;
@@ -218,17 +219,38 @@ public:
 		std::dynamic_pointer_cast<Model>(shape_)->SetBaseRotation(
 			glm::angleAxis(glm::radians(-90.0f), glm::vec3(0.0f, 1.0f, 0.0f))
 		);
+
 		UpdateShape();
 	}
 
 	void UpdateEntity(const EntityHandler& handler, float time, float delta_time) {
 		lived += delta_time;
 		if (lived >= lifetime) {
-			handler.QueueRemoveEntity(id_);
-			return;
+			if (exploded) {
+				// handler.EnqueueVisualizerAction([&]() {
+				// 	fire->Remove();
+				// });
+				handler.QueueRemoveEntity(id_);
+				return;
+			}
+			lived = -2;
+			exploded = true;
+			handler.EnqueueVisualizerAction([&]() { fire->SetStyle(2); });
 		}
 		if (exploded) {
 			return;
+		}
+		auto pos = GetPosition();
+		if (fire == nullptr) {
+			handler.EnqueueVisualizerAction([&]() {
+				fire = handler.vis->AddFireEffect(glm::vec3(pos.x, pos.y, pos.z), orientation_ * glm::vec3(0, 0, -1));
+				fire->SetStyle(1);
+			});
+		} else {
+			handler.EnqueueVisualizerAction([&]() {
+				fire->SetPosition({pos.x, pos.y, pos.z});
+				fire->SetDirection(orientation_ * glm::vec3(0, 0, -1));
+			});
 		}
 
 		// --- Flight Model Constants ---
@@ -247,7 +269,10 @@ public:
 			if (forward_speed_ > kMaxSpeed) {
 				forward_speed_ = kMaxSpeed;
 			}
-		} else {
+
+		}
+
+		else {
 			// --- Guidance Phase ---
 			const float kTurnSpeed = 4.0f;
 			const float kDamping = 2.5f;
@@ -266,6 +291,7 @@ public:
 					SetColor(1, 0, 0, 0.33f);
 					exploded = true;
 					lived = -5; // Used for explosion lifetime
+					handler.EnqueueVisualizerAction([&]() { fire->SetStyle(2); });
 					return;
 				}
 
@@ -352,10 +378,12 @@ public:
 	}
 
 private:
-	constexpr static int thrust{50};
-	constexpr static int lifetime{12};
-	float                lived = 0;
-	bool                 exploded = false;
+	constexpr static int        thrust{50};
+	constexpr static int        lifetime{12};
+	float                       lived = 0;
+	bool                        exploded = false;
+	bool                        fired = false;
+	std::shared_ptr<FireEffect> fire;
 
 	// Flight model
 	glm::quat          orientation_;
@@ -396,8 +424,16 @@ public:
 	void UpdateEntity(const EntityHandler& handler, float time, float delta_time) {
 		lived += delta_time;
 		if (lived >= lifetime) {
-			handler.QueueRemoveEntity(id_);
-			return;
+			if (exploded) {
+				// handler.EnqueueVisualizerAction([&]() {
+				// 	fire->Remove();
+				// });
+				handler.QueueRemoveEntity(id_);
+				return;
+			}
+			lived = -2;
+			exploded = true;
+			handler.EnqueueVisualizerAction([&]() { fire->SetStyle(2); });
 		}
 		if (exploded) {
 			return;
@@ -415,12 +451,25 @@ public:
 			SetVelocity(velo);
 			return;
 		} else {
+			auto pos = GetPosition();
 			if (!fired) {
 				SetTrailLength(500);
 				SetTrailRocket(true);
-				SetOrientToVelocity(false);
+				SetOrientToVelocity(true);
 
 				fired = true;
+				handler.EnqueueVisualizerAction([&]() {
+					fire = handler.vis->AddFireEffect(
+						glm::vec3(pos.x, pos.y, pos.z),
+						orientation_ * glm::vec3(0, 0, -1)
+					);
+					fire->SetStyle(1);
+				});
+			} else {
+				handler.EnqueueVisualizerAction([&]() {
+					fire->SetPosition({pos.x, pos.y, pos.z});
+					fire->SetDirection(orientation_ * glm::vec3(0, 0, -1));
+				});
 			}
 
 			forward_speed_ += kAcceleration * delta_time;
@@ -528,11 +577,12 @@ public:
 	}
 
 private:
-	constexpr static int thrust{50};
-	constexpr static int lifetime{12};
-	float                lived = 0;
-	bool                 exploded = false;
-	bool                 fired = false;
+	constexpr static int        thrust{50};
+	constexpr static int        lifetime{12};
+	float                       lived = 0;
+	bool                        exploded = false;
+	bool                        fired = false;
+	std::shared_ptr<FireEffect> fire;
 
 	// Flight model
 	glm::quat          orientation_;
@@ -641,6 +691,7 @@ public:
 			}
 
 			Vector3 launchPos = Vector3(ray_origin.x, terrain_h, ray_origin.z);
+			auto    fire_effect = vis->AddFireEffect(glm::vec3(0.0f, 3.0f, 0.0f), glm::vec3(0, 1, 0));
 
 			AddEntity<GuidedMissile>(launchPos);
 		}

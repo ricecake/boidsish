@@ -1,5 +1,6 @@
 #include "fire_effect_manager.h"
 
+#include "logger.h"
 #include "shader.h"
 
 namespace Boidsish {

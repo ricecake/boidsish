@@ -78,6 +78,15 @@ namespace Boidsish {
 			modification_requests_.clear();
 		}
 
+		// Process main thread requests
+		{
+			std::lock_guard<std::mutex> lock(visualizer_mutex_);
+			for (auto& request : post_frame_requests_) {
+				request();
+			}
+			post_frame_requests_.clear();
+		}
+
 		// Generate shapes from entity states
 		std::vector<std::shared_ptr<Shape>> shapes;
 		shapes.reserve(entities_.size());

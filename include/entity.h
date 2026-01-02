@@ -9,6 +9,7 @@
 
 #include "dot.h"
 #include "graphics.h"
+#include "logger.h"
 #include "path.h"
 #include "shape.h"
 #include "task_thread_pool.hpp"
@@ -273,6 +274,13 @@ namespace Boidsish {
 			modification_requests_.emplace_back([this, id]() { const_cast<EntityHandler*>(this)->RemoveEntity(id); });
 		}
 
+		void EnqueueVisualizerAction(std::function<void()> callback) const {
+			std::lock_guard<std::mutex> lock(visualizer_mutex_);
+			post_frame_requests_.push_back(callback);
+		}
+
+		std::shared_ptr<Visualizer> vis;
+
 	protected:
 		// Override these for custom behavior
 		virtual void PreTimestep(float time, float delta_time) {
@@ -285,14 +293,14 @@ namespace Boidsish {
 			(void)delta_time;
 		}
 
-		std::shared_ptr<const Visualizer> vis;
-
 	private:
 		std::map<int, std::shared_ptr<EntityBase>> entities_;
 		float                                      last_time_;
 		int                                        next_id_;
 		task_thread_pool::task_thread_pool&        thread_pool_;
 		mutable std::vector<std::function<void()>> modification_requests_;
+		mutable std::vector<std::function<void()>> post_frame_requests_;
 		mutable std::mutex                         requests_mutex_;
+		mutable std::mutex                         visualizer_mutex_;
 	};
 } // namespace Boidsish
