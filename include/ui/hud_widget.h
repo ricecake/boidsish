@@ -14,6 +14,7 @@ namespace Boidsish {
 		public:
 			HudWidget(HudManager& hudManager);
 			void Draw() override;
+			bool IsHud() const override { return true; }
 
 		private:
 			HudManager& m_hudManager;

@@ -41,7 +41,9 @@ namespace Boidsish {
 			ImGui::NewFrame();
 
 			for (const auto& widget : m_widgets) {
-				widget->Draw();
+				if (widget->IsHud() || m_show_menus) {
+					widget->Draw();
+				}
 			}
 
 			ImGui::Render();

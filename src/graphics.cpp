@@ -786,6 +786,8 @@ namespace Boidsish {
 			}
 
 			// Toggles
+			if (state.key_down[GLFW_KEY_GRAVE_ACCENT])
+				parent->ToggleMenus();
 			if (state.key_down[GLFW_KEY_P])
 				paused = !paused;
 			if (effects_enabled_) {
@@ -1443,6 +1445,10 @@ namespace Boidsish {
 		case VisualEffect::FREEZE_FRAME_TRAIL:
 			break;
 		}
+	}
+
+	void Visualizer::ToggleMenus() {
+		impl->ui_manager->ToggleMenus();
 	}
 
 	task_thread_pool::task_thread_pool& Visualizer::GetThreadPool() {
