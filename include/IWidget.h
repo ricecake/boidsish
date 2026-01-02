@@ -6,6 +6,7 @@ namespace Boidsish {
 		public:
 			virtual ~IWidget() = default;
 			virtual void Draw() = 0;
+
 			virtual bool IsHud() const { return false; }
 		};
 	} // namespace UI

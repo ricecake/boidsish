@@ -640,7 +640,7 @@ public:
 		SetVelocity(netVelocity.x, netVelocity.y, netVelocity.z);
 
 		SetTrailLength(50);
-		shape_->SetScale(glm::vec3(0.015f));
+		shape_->SetScale(glm::vec3(0.01f));
 		std::dynamic_pointer_cast<Model>(shape_)->SetBaseRotation(
 			glm::angleAxis(glm::radians(90.0f), glm::vec3(1.0f, 0.0f, 0.0f))
 		);
@@ -661,8 +661,9 @@ public:
 			return;
 		}
 		auto velo = GetVelocity();
-		velo += Vector3(0, -0.07f, 0);
+		velo += Vector3(0, -0.15f, 0);
 		SetVelocity(velo);
+		shape_->LookAt({velo.x, velo.y, velo.z});
 		return;
 	}
 
@@ -810,7 +811,6 @@ public:
 			}
 
 			Vector3 launchPos = Vector3(ray_origin.x, terrain_h, ray_origin.z);
-			auto    fire_effect = vis->AddFireEffect(glm::vec3(0.0f, 3.0f, 0.0f), glm::vec3(0, 1, 0));
 
 			AddEntity<GuidedMissile>(launchPos);
 		}

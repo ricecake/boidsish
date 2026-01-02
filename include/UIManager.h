@@ -17,11 +17,12 @@ namespace Boidsish {
 
 			void AddWidget(std::shared_ptr<IWidget> widget);
 			void Render();
+
 			void ToggleMenus() { m_show_menus = !m_show_menus; }
 
 		private:
 			std::vector<std::shared_ptr<IWidget>> m_widgets;
-			bool m_show_menus = false;
+			bool                                  m_show_menus = false;
 		};
 	} // namespace UI
 } // namespace Boidsish
