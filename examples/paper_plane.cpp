@@ -19,6 +19,7 @@
 using namespace Boidsish;
 
 class CatMissile;
+class CatBomb;
 
 static int selected_weapon = 0;
 
@@ -178,14 +179,29 @@ public:
 
 		time_to_fire -= delta_time;
 		if (controller_->fire && time_to_fire <= 0) {
-			handler.QueueAddEntity<CatMissile>(
-				GetPosition(),
-				orientation_,
-				orientation_ * glm::vec3(fire_left ? -1 : 1, -1, 0),
-				GetVelocity()
-			);
-			time_to_fire = 0.25f;
-			fire_left = !fire_left;
+			switch (selected_weapon) {
+			case 0: {
+				handler.QueueAddEntity<CatMissile>(
+					GetPosition(),
+					orientation_,
+					orientation_ * glm::vec3(fire_left ? -1 : 1, -1, 0),
+					GetVelocity()
+				);
+				time_to_fire = 0.25f;
+				fire_left = !fire_left;
+				break;
+			}
+			case 1: {
+				handler.QueueAddEntity<CatBomb>(
+					GetPosition(),
+					orientation_,
+					orientation_ * glm::vec3(0, -1, 0),
+					GetVelocity()
+				);
+				time_to_fire = 0.25f;
+				break;
+			}
+			}
 		}
 	}
 
@@ -577,6 +593,77 @@ public:
 		glm::vec3 forward_dir = orientation_ * glm::vec3(0.0f, 0.0f, -1.0f);
 		glm::vec3 new_velocity = forward_dir * forward_speed_;
 		SetVelocity(Vector3(new_velocity.x, new_velocity.y, new_velocity.z));
+	}
+
+	void UpdateShape() override {
+		// First, call the base implementation
+		Entity<Model>::UpdateShape();
+		// Then, apply our specific orientation that includes roll
+		if (shape_) {
+			shape_->SetRotation(orientation_);
+		}
+	}
+
+private:
+	constexpr static int        thrust{50};
+	constexpr static int        lifetime{12};
+	float                       lived = 0;
+	bool                        exploded = false;
+	bool                        fired = false;
+	std::shared_ptr<FireEffect> fire;
+
+	// Flight model
+	glm::quat          orientation_;
+	glm::vec3          rotational_velocity_; // x: pitch, y: yaw, z: roll
+	float              forward_speed_;
+	std::random_device rd_;
+	std::mt19937       eng_;
+};
+
+class CatBomb: public Entity<Model> {
+public:
+	CatBomb(
+		int       id = 0,
+		Vector3   pos = {0, 0, 0},
+		glm::quat orientation = {0, {0, 0, 0}},
+		glm::vec3 dir = {0, 0, 0},
+		Vector3   vel = {0, 0, 0}
+	):
+		Entity<Model>(id, "assets/bomb_shading_v005.obj", true),
+		rotational_velocity_(glm::vec3(0.0f)),
+		forward_speed_(0.0f),
+		eng_(rd_()),
+		orientation_(orientation) {
+		SetOrientToVelocity(true);
+		SetPosition(pos.x, pos.y, pos.z);
+		auto netVelocity = glm::vec3(vel.x, vel.y, vel.z) + 2.5f * glm::normalize(glm::vec3(dir.x, dir.y, dir.z));
+		SetVelocity(netVelocity.x, netVelocity.y, netVelocity.z);
+
+		SetTrailLength(50);
+		shape_->SetScale(glm::vec3(0.015f));
+		std::dynamic_pointer_cast<Model>(shape_)->SetBaseRotation(
+			glm::angleAxis(glm::radians(90.0f), glm::vec3(1.0f, 0.0f, 0.0f))
+		);
+		UpdateShape();
+	}
+
+	void UpdateEntity(const EntityHandler& handler, float time, float delta_time) {
+		auto pos = GetPosition();
+		lived += delta_time;
+
+		if (pos.y < 0 && !exploded) {
+			lived = -2;
+			exploded = true;
+			// handler.EnqueueVisualizerAction([&]() { fire->SetStyle(2); });
+		}
+		if (exploded && lived >= 0) {
+			handler.QueueRemoveEntity(id_);
+			return;
+		}
+		auto velo = GetVelocity();
+		velo += Vector3(0, -0.07f, 0);
+		SetVelocity(velo);
+		return;
 	}
 
 	void UpdateShape() override {
