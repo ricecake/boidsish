@@ -34,19 +34,80 @@ void main() {
         v_lifetime = p.pos.w;
         v_style = p.style;
 
-        // Base size on style
-        float base_size = 10.0;
-        if (p.style == 0) { // Exhaust
-            base_size = 15.0;
+        // // Base size on style
+        // float base_size = 10.0;
+        // if (p.style == 0) { // Exhaust
+        //     base_size = 15.0;
+        // } else if (p.style == 1) { // Explosion
+        //     base_size = 40.0;
+        // } else { // Fire
+        //     base_size = 25.0;
+        // }
+
+        // // Attenuate size by distance and lifetime
+        // float distance_factor = 1.0 / (-view_pos.z * 0.1);
+        // float lifetime_factor = p.pos.w; // Fades out as lifetime decreases
+        // gl_PointSize = base_size * distance_factor * lifetime_factor;
+
+        // Set point size based on lifetime and style
+        if (p.style == 0) { // Rocket Trail
+            gl_PointSize = smoothstep((1.0 - v_lifetime), v_lifetime, v_lifetime / 2.0) * 15.0; // Smaller, more consistent size
         } else if (p.style == 1) { // Explosion
-            base_size = 40.0;
-        } else { // Fire
-            base_size = 25.0;
+            gl_PointSize = (1.0 - (1.0 - v_lifetime) * (1.0 - v_lifetime)) * 30.0; // Starts large, shrinks fast
+        } else {
+            gl_PointSize = smoothstep(2.0 * (1.0 - v_lifetime), v_lifetime, v_lifetime / 2.5) * 25.0;
         }
 
-        // Attenuate size by distance and lifetime
-        float distance_factor = 1.0 / (-view_pos.z * 0.1);
-        float lifetime_factor = p.pos.w; // Fades out as lifetime decreases
-        gl_PointSize = base_size * distance_factor * lifetime_factor;
     }
 }
+
+
+
+/*
+#version 430 core
+
+// No vertex attributes needed, we'll get data from the SSBO
+
+struct Particle {
+    vec4 position; // w component is lifetime
+    vec4 velocity;
+};
+
+// Corrected SSBO layout
+layout(std430, binding = 0) readonly buffer ParticleBuffer {
+    Particle particles[];
+};
+
+uniform mat4 u_view;
+uniform mat4 u_projection;
+uniform int u_style;
+
+out float v_lifetime;
+
+void main() {
+    // Get the particle for the current vertex
+    Particle p = particles[gl_VertexID];
+
+    // Pass lifetime to the fragment shader
+    v_lifetime = p.position.w;
+
+    // If the particle is dead, move it off-screen to avoid rendering artifacts
+    if (v_lifetime <= 0.0) {
+        gl_Position = vec4(-1000.0, -1000.0, -1000.0, 1.0);
+    } else {
+        // Transform the world position to clip space
+        gl_Position = u_projection * u_view * vec4(p.position.xyz, 1.0);
+    }
+
+    // Set point size based on lifetime and style
+    if (u_style == 0) { // Default Fire
+        gl_PointSize = smoothstep(2.0 * (1.0 - v_lifetime), v_lifetime, v_lifetime / 2.5) * 25.0;
+    } else if (u_style == 1) { // Rocket Trail
+        gl_PointSize = smoothstep((1.0 - v_lifetime), v_lifetime, v_lifetime / 2.0) * 15.0; // Smaller, more consistent size
+    } else if (u_style == 2) { // Explosion
+        gl_PointSize = (1.0 - (1.0 - v_lifetime) * (1.0 - v_lifetime)) * 30.0; // Starts large, shrinks fast
+    } else {
+        gl_PointSize = 25.0; // Default size
+    }
+}
+*/

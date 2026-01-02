@@ -5,12 +5,12 @@ flat in int v_style;
 out vec4 FragColor;
 
 void main() {
-    // Shape the point into a circle and discard fragments outside the circle
-    vec2 circ = gl_PointCoord - vec2(0.5);
-    float dist = dot(circ, circ);
-    if (dist > 0.25) {
-        discard;
-    }
+    // // Shape the point into a circle and discard fragments outside the circle
+    // vec2 circ = gl_PointCoord - vec2(0.5);
+    // float dist = dot(circ, circ);
+    // if (dist > 0.25) {
+    //     discard;
+    // }
 
     vec3 color;
     if (v_style == 0) { // Default Fire
