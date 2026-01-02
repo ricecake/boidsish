@@ -1,37 +1,53 @@
 #pragma once
 
+#include "fire_effect.h"
+#include "shader.h"
 #include <memory>
 #include <vector>
 
-#include "fire_effect.h"
-#include <glm/glm.hpp>
-
-class Shader;
-class ComputeShader; // Forward declare ComputeShader
-
 namespace Boidsish {
 
-	class FireEffectManager {
-	public:
-		FireEffectManager();
-		~FireEffectManager();
+// This struct is mirrored in the compute shader.
+// It must match the layout and padding there.
+struct Emitter {
+    glm::vec3 position;
+    int style;
+    glm::vec3 direction;
+    float _padding1;
+    glm::vec3 velocity;
+    float _padding2;
+};
 
-		// Non-copyable
-		FireEffectManager(const FireEffectManager&) = delete;
-		FireEffectManager& operator=(const FireEffectManager&) = delete;
+class FireEffectManager {
+public:
+    FireEffectManager();
+    ~FireEffectManager();
 
-		std::shared_ptr<FireEffect>
-		AddEffect(const glm::vec3& position, const glm::vec3& direction, size_t particle_count = 8192);
+    void Update(float delta_time, float time);
+    void Render(const glm::mat4& view, const glm::mat4& projection, const glm::vec3& camera_pos);
 
-		void Update(float time, float delta_time);
-		void Render(const glm::mat4& view, const glm::mat4& projection);
+    // Add a new fire effect and return a pointer to it
+    FireEffect* AddEffect(const glm::vec3& position, FireEffectStyle style,
+                          const glm::vec3& direction = glm::vec3(0.0f),
+                          const glm::vec3& velocity = glm::vec3(0.0f));
 
-	private:
-		std::vector<std::shared_ptr<FireEffect>> m_effects;
+private:
+    void _EnsureShaderAndBuffers();
 
-		// Correctly typed compute shader pointer
-		std::shared_ptr<ComputeShader> m_compute_shader;
-		std::shared_ptr<Shader>        m_render_shader;
-	};
+    std::vector<std::unique_ptr<FireEffect>> effects_;
+
+    std::unique_ptr<ComputeShader> compute_shader_;
+    std::unique_ptr<Shader> render_shader_;
+
+    GLuint particle_buffer_{0};
+    GLuint emitter_buffer_{0};
+    GLuint atomic_counter_buffer_{0};
+    GLuint dummy_vao_{0};
+
+    bool initialized_{false};
+    float time_{0.0f};
+
+    static const int kMaxParticles = 50000;
+};
 
 } // namespace Boidsish
