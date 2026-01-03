@@ -453,6 +453,11 @@ public:
 
 	void UpdateEntity(const EntityHandler& handler, float time, float delta_time) {
 		lived += delta_time;
+		auto pos = GetPosition();
+		if (fire != nullptr) {
+			auto p = fire->GetPosition();
+			logger::LOG("WHY", p.x, p.y, p.z, pos.x, pos.y, pos.z);
+		}
 		if (lived >= lifetime) {
 			if (exploded) {
 				handler.EnqueueVisualizerAction([&]() { handler.vis->RemoveFireEffect(fire); });
@@ -465,7 +470,8 @@ public:
 			handler.EnqueueVisualizerAction([&]() { fire->SetStyle(FireEffectStyle::Explosion); });
 			// auto pos = GetPosition();
 			// handler.EnqueueVisualizerAction([&]() {
-			// 	fire = handler.vis->AddFireEffect(glm::vec3(pos.x, pos.y, pos.z), FireEffectStyle::Explosion, orientation_ * glm::vec3(0, 0, -1));
+			// 	fire = handler.vis->AddFireEffect(glm::vec3(pos.x, pos.y, pos.z), FireEffectStyle::Explosion,
+			// orientation_ * glm::vec3(0, 0, -1));
 			// });
 		}
 		if (exploded) {
@@ -500,7 +506,7 @@ public:
 				});
 			} else {
 				handler.EnqueueVisualizerAction([&]() {
-					fire->SetPosition({pos.x, pos.y, pos.z});
+					fire->SetPosition(glm::vec3(pos.x, pos.y, pos.z));
 					fire->SetDirection(orientation_ * glm::vec3(0, 0, -1));
 				});
 			}
@@ -615,7 +621,7 @@ private:
 	float                       lived = 0;
 	bool                        exploded = false;
 	bool                        fired = false;
-	std::shared_ptr<FireEffect> fire;
+	std::shared_ptr<FireEffect> fire = nullptr;
 
 	// Flight model
 	glm::quat          orientation_;

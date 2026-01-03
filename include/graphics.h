@@ -8,13 +8,13 @@
 #include <vector>
 
 #include "Config.h"
+#include "fire_effect.h"
 #include "imgui.h"
 #include "imgui_impl_glfw.h"
 #include "imgui_impl_opengl3.h"
 #include "shape.h"
 #include "vector.h"
 #include "visual_effects.h"
-#include "fire_effect.h"
 #include <glm/glm.hpp>
 
 namespace task_thread_pool {
@@ -154,9 +154,9 @@ namespace Boidsish {
 			const glm::vec3& direction = glm::vec3(0.0f),
 			const glm::vec3& velocity = glm::vec3(0.0f)
 		);
-		void                        RemoveFireEffect(const std::shared_ptr<FireEffect>& effect) const;
-		void                        TogglePostProcessingEffect(const std::string& name);
-		void                        SetFilmGrainIntensity(float intensity);
+		void RemoveFireEffect(const std::shared_ptr<FireEffect>& effect) const;
+		void TogglePostProcessingEffect(const std::string& name);
+		void SetFilmGrainIntensity(float intensity);
 
 		std::tuple<float, glm::vec3>                 GetTerrainPointProperties(float x, float y) const;
 		float                                        GetTerrainMaxHeight() const;

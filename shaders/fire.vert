@@ -25,7 +25,7 @@ void main() {
 
     if (p.pos.w <= 0.0) {
         // Don't draw dead particles
-        gl_Position = vec4(0.0, -1000.0, 0.0, 0.0);
+        gl_Position = vec4(-1000.0, -1000.0, -1000.0, 1.0);
         gl_PointSize = 0.0;
         v_style = -1; // A dead particle has no style
     } else {
