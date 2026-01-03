@@ -18,6 +18,7 @@
 #include "hud_manager.h"
 #include "logger.h"
 #include "post_processing/PostProcessingManager.h"
+#include "post_processing/effects/FilmGrainEffect.h"
 #include "post_processing/effects/GlitchEffect.h"
 #include "post_processing/effects/NegativeEffect.h"
 #include "post_processing/effects/OpticalFlowEffect.h"
@@ -414,6 +415,10 @@ namespace Boidsish {
 				auto time_stutter_effect = std::make_shared<PostProcessing::TimeStutterEffect>();
 				time_stutter_effect->SetEnabled(false);
 				post_processing_manager_->AddEffect(time_stutter_effect);
+
+				auto film_grain_effect = std::make_shared<PostProcessing::FilmGrainEffect>();
+				film_grain_effect->SetEnabled(false);
+				post_processing_manager_->AddEffect(film_grain_effect);
 
 				// --- UI ---
 				auto post_processing_widget = std::make_shared<UI::PostProcessingWidget>(*post_processing_manager_);
@@ -1533,4 +1538,14 @@ namespace Boidsish {
 		}
 	}
 
+	void Visualizer::SetFilmGrainIntensity(float intensity) {
+		if (impl->post_processing_manager_) {
+			for (auto& effect : impl->post_processing_manager_->GetEffects()) {
+				if (auto film_grain = std::dynamic_pointer_cast<PostProcessing::FilmGrainEffect>(effect)) {
+					film_grain->SetIntensity(intensity);
+					break;
+				}
+			}
+		}
+	}
 } // namespace Boidsish

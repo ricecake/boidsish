@@ -10,6 +10,7 @@
 #include "graphics.h"
 #include "logger.h"
 #include "spatial_entity_handler.h"
+#include <GLFW/glfw3.h>
 #include <RTree.h>
 
 using namespace Boidsish;
@@ -542,6 +543,12 @@ int main() {
 		std::cout << "  Mouse - Look around" << std::endl;
 		std::cout << "  0 - Toggle auto-camera" << std::endl;
 		std::cout << "  ESC - Exit" << std::endl;
+
+		viz.AddInputCallback([&](const InputState& state) {
+			if (state.key_down[GLFW_KEY_G]) {
+				viz.TogglePostProcessingEffect("Film Grain");
+			}
+		});
 
 		// Main loop
 		while (!viz.ShouldClose()) {

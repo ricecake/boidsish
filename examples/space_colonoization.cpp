@@ -210,7 +210,7 @@ int main() {
 
 	// Run for set iterations or until stable
 	for (int i = 0; i < 5000; ++i) {
-		if(!algo.iterate()) {
+		if (!algo.iterate()) {
 			break;
 		}
 	}
