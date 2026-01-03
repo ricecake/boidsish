@@ -243,7 +243,11 @@ public:
 		auto pos = GetPosition();
 		if (fire == nullptr) {
 			handler.EnqueueVisualizerAction([&]() {
-				fire = handler.vis->AddFireEffect(glm::vec3(pos.x, pos.y, pos.z), FireEffectStyle::MissileExhaust, orientation_ * glm::vec3(0, 0, -1));
+				fire = handler.vis->AddFireEffect(
+					glm::vec3(pos.x, pos.y, pos.z),
+					FireEffectStyle::MissileExhaust,
+					orientation_ * glm::vec3(0, 0, -1)
+				);
 				fire->SetStyle(FireEffectStyle::MissileExhaust);
 			});
 		} else {
@@ -383,7 +387,7 @@ private:
 	float                       lived = 0;
 	bool                        exploded = false;
 	bool                        fired = false;
-	FireEffect*                 fire = nullptr;
+	std::shared_ptr<FireEffect> fire = nullptr;
 
 	// Flight model
 	glm::quat          orientation_;
@@ -582,7 +586,7 @@ private:
 	float                       lived = 0;
 	bool                        exploded = false;
 	bool                        fired = false;
-	FireEffect*                 fire = nullptr;
+	std::shared_ptr<FireEffect> fire = nullptr;
 
 	// Flight model
 	glm::quat          orientation_;

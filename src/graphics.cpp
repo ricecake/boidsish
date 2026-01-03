@@ -1509,7 +1509,7 @@ namespace Boidsish {
 		impl->hud_manager->RemoveGauge(id);
 	}
 
-	FireEffect* Visualizer::AddFireEffect(
+	std::shared_ptr<FireEffect> Visualizer::AddFireEffect(
 		const glm::vec3& position,
 		FireEffectStyle  style,
 		const glm::vec3& direction,

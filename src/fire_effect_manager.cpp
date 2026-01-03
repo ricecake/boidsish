@@ -56,15 +56,16 @@ namespace Boidsish {
 		initialized_ = true;
 	}
 
-	FireEffect* FireEffectManager::AddEffect(
+	std::shared_ptr<FireEffect> FireEffectManager::AddEffect(
 		const glm::vec3& position,
 		FireEffectStyle  style,
 		const glm::vec3& direction,
 		const glm::vec3& velocity
 	) {
 		_EnsureShaderAndBuffers();
-		effects_.push_back(std::make_unique<FireEffect>(position, style, direction, velocity));
-		return effects_.back().get();
+		auto effect = std::make_shared<FireEffect>(position, style, direction, velocity);
+		effects_.push_back(effect);
+		return effect;
 	}
 
 	void FireEffectManager::Update(float delta_time, float time) {

@@ -27,14 +27,14 @@ public:
     void Render(const glm::mat4& view, const glm::mat4& projection, const glm::vec3& camera_pos);
 
     // Add a new fire effect and return a pointer to it
-    FireEffect* AddEffect(const glm::vec3& position, FireEffectStyle style,
+    std::shared_ptr<FireEffect> AddEffect(const glm::vec3& position, FireEffectStyle style,
                           const glm::vec3& direction = glm::vec3(0.0f),
                           const glm::vec3& velocity = glm::vec3(0.0f));
 
 private:
     void _EnsureShaderAndBuffers();
 
-    std::vector<std::unique_ptr<FireEffect>> effects_;
+    std::vector<std::shared_ptr<FireEffect>> effects_;
 
     std::unique_ptr<ComputeShader> compute_shader_;
     std::unique_ptr<Shader> render_shader_;

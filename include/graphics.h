@@ -147,7 +147,7 @@ namespace Boidsish {
 		void                        SetCameraMode(CameraMode mode);
 		void                        TogglePause();
 		void                        ToggleEffect(VisualEffect effect);
-		FireEffect* AddFireEffect(
+		std::shared_ptr<FireEffect> AddFireEffect(
 			const glm::vec3& position,
 			FireEffectStyle  style,
 			const glm::vec3& direction = glm::vec3(0.0f),
