@@ -225,6 +225,12 @@ void main() {
     }
     // If particle is alive, update it
     else {
+        // If this particle's emitter no longer exists, kill the particle
+        // so it can be respawned by a valid emitter.
+        if (p.emitter_index >= u_num_emitters) {
+            p.pos.w = 0.0;
+        }
+
         float maxSpeed;
         if (p.style == 0) {
             maxSpeed = kExhaustSpeed;

@@ -267,7 +267,7 @@ public:
 		}
 		auto pos = GetPosition();
 		if (fire == nullptr) {
-			handler.EnqueueVisualizerAction([&]() {
+			handler.EnqueueVisualizerAction([this, &handler, pos]() {
 				fire = handler.vis->AddFireEffect(
 					glm::vec3(pos.x, pos.y, pos.z),
 					FireEffectStyle::MissileExhaust,
@@ -275,7 +275,7 @@ public:
 				);
 			});
 		} else {
-			handler.EnqueueVisualizerAction([&]() {
+			handler.EnqueueVisualizerAction([this, pos]() {
 				fire->SetPosition({pos.x, pos.y, pos.z});
 				fire->SetDirection(orientation_ * glm::vec3(0, 0, -1));
 			});
@@ -497,7 +497,7 @@ public:
 				SetOrientToVelocity(true);
 
 				fired = true;
-				handler.EnqueueVisualizerAction([&]() {
+				handler.EnqueueVisualizerAction([this, &handler, pos]() {
 					fire = handler.vis->AddFireEffect(
 						glm::vec3(pos.x, pos.y, pos.z),
 						FireEffectStyle::MissileExhaust,
@@ -505,7 +505,7 @@ public:
 					);
 				});
 			} else {
-				handler.EnqueueVisualizerAction([&]() {
+				handler.EnqueueVisualizerAction([this, pos]() {
 					fire->SetPosition(glm::vec3(pos.x, pos.y, pos.z));
 					fire->SetDirection(orientation_ * glm::vec3(0, 0, -1));
 				});
