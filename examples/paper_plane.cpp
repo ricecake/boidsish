@@ -691,7 +691,6 @@ public:
 			}
 
 			Vector3 launchPos = Vector3(ray_origin.x, terrain_h, ray_origin.z);
-			auto    fire_effect = vis->AddFireEffect(glm::vec3(0.0f, 3.0f, 0.0f), FireEffectStyle::Fire, glm::vec3(0, 1, 0));
 
 			AddEntity<GuidedMissile>(launchPos);
 		}

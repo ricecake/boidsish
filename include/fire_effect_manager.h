@@ -46,7 +46,7 @@ private:
     bool initialized_{false};
     float time_{0.0f};
 
-    static const int kMaxParticles = 32000;
+    static const int kMaxParticles = 64000;
 };
 
 } // namespace Boidsish
