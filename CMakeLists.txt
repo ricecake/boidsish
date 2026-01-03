@@ -38,7 +38,7 @@ target_include_directories(imgui PUBLIC ${IMGUI_DIR} ${IMGUI_DIR}/backends)
 set(IMGUI_INCLUDE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/${IMGUI_DIR}" CACHE PATH "" FORCE)
 
 # 3. Now add FastNoise2
-add_subdirectory(external/FastNoise2)
+# add_subdirectory(external/FastNoise2)
 add_subdirectory(external/task-thread-pool)
 add_subdirectory(external/poolSTL)
 # add_subdirectory(external/bullet3)
@@ -67,7 +67,6 @@ target_link_libraries(boidsish
         OpenGL::GL
         GLEW::GLEW
         glfw
-        FastNoise
         imgui
         task-thread-pool::task-thread-pool
         poolSTL::poolSTL
