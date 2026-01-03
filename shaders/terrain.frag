@@ -170,7 +170,7 @@ vec3 getFlowField(vec3 pos, vec3 normal, float time) {
 }
 
 void main() {
-	// discard;
+	discard;
 	// FragColor = vec4(1,1,1, 1);
 
 	vec3  warp = vec3(fbm(FragPos / 50 + time * 0.05));

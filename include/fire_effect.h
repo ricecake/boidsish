@@ -1,58 +1,46 @@
 #pragma once
 
-#include <memory>
-
 #include <glm/glm.hpp>
 
-class Shader;        // Forward declaration
-class ComputeShader; // Forward declaration for compute shaders
-
 namespace Boidsish {
+
+	enum class FireEffectStyle { MissileExhaust, Explosion, Fire, Null };
 
 	class FireEffect {
 	public:
 		FireEffect(
-			const glm::vec3&               position,
-			const glm::vec3&               direction,
-			size_t                         particle_count,
-			std::shared_ptr<ComputeShader> compute_shader, // Changed to ComputeShader
-			std::shared_ptr<Shader>        render_shader
+			const glm::vec3& position,
+			FireEffectStyle  style,
+			const glm::vec3& direction = glm::vec3(0.0f),
+			const glm::vec3& velocity = glm::vec3(0.0f)
 		);
-		~FireEffect();
 
-		// Non-copyable
-		FireEffect(const FireEffect&) = delete;
-		FireEffect& operator=(const FireEffect&) = delete;
+		void SetPosition(const glm::vec3& pos) { position_ = pos; }
 
-		// Movable
-		FireEffect(FireEffect&&) noexcept;
-		FireEffect& operator=(FireEffect&&) noexcept;
+		void SetStyle(FireEffectStyle style) { style_ = style; }
 
-		void Update(float time, float delta_time);
-		void Render(const glm::mat4& view, const glm::mat4& projection);
+		void SetDirection(const glm::vec3& dir) { direction_ = dir; }
 
-		void             SetPosition(const glm::vec3& position);
-		void             SetDirection(const glm::vec3& direction);
-		void             SetVelocity(const glm::vec3& velocity);
-		void             SetStyle(int style);
-		const glm::vec3& GetPosition() const;
-		const glm::vec3& GetDirection() const;
+		void SetVelocity(const glm::vec3& vel) { velocity_ = vel; }
+
+		void SetActive(bool active) { active_ = active; }
+
+		const glm::vec3& GetPosition() const { return position_; }
+
+		FireEffectStyle GetStyle() const { return style_; }
+
+		const glm::vec3& GetDirection() const { return direction_; }
+
+		const glm::vec3& GetVelocity() const { return velocity_; }
+
+		bool IsActive() const { return active_; }
 
 	private:
-		void InitializeBuffers();
-		void CleanUp();
-
-		glm::vec3 m_position;
-		glm::vec3 m_direction;
-		glm::vec3 m_velocity;
-		int       m_style;
-		size_t    m_particle_count;
-
-		std::shared_ptr<ComputeShader> m_compute_shader; // Changed to ComputeShader
-		std::shared_ptr<Shader>        m_render_shader;
-
-		unsigned int m_vao;
-		unsigned int m_particle_ssbo;
+		glm::vec3       position_;
+		FireEffectStyle style_;
+		glm::vec3       direction_;
+		glm::vec3       velocity_;
+		bool            active_{true};
 	};
 
 } // namespace Boidsish
