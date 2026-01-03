@@ -273,7 +273,6 @@ public:
 					FireEffectStyle::MissileExhaust,
 					orientation_ * glm::vec3(0, 0, -1)
 				);
-				fire->SetStyle(FireEffectStyle::MissileExhaust);
 			});
 		} else {
 			handler.EnqueueVisualizerAction([&]() {
