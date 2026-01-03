@@ -152,7 +152,7 @@ namespace Boidsish {
 		glDepthMask(GL_TRUE); // Re-enable depth writing
 		// glDisable(GL_BLEND);
 		glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA); // Reset blend mode
-														   // glDisable(GL_PROGRAM_POINT_SIZE);
+		                                                   // glDisable(GL_PROGRAM_POINT_SIZE);
 	}
 
 } // namespace Boidsish

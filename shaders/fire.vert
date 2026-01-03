@@ -18,6 +18,7 @@ uniform mat4 u_projection;
 uniform vec3 u_camera_pos;
 
 out float v_lifetime;
+out vec4 view_pos;
 flat out int v_style;
 
 void main() {
@@ -29,7 +30,7 @@ void main() {
         gl_PointSize = 0.0;
         v_style = -1; // A dead particle has no style
     } else {
-        vec4 view_pos = u_view * vec4(p.pos.xyz, 1.0);
+        view_pos = u_view * vec4(p.pos.xyz, 1.0);
         gl_Position = u_projection * view_pos;
         v_lifetime = p.pos.w;
         v_style = p.style;

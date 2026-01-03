@@ -11,15 +11,15 @@ int main() {
 
 		// Add a fire effect at the origin and store the pointer
 		auto fire1 = vis.AddFireEffect(
-			glm::vec3(-20.0f, 5.0f, 0.0f),
+			glm::vec3(-10.0f, 5.0f, 0.0f),
 			Boidsish::FireEffectStyle::MissileExhaust,
-			{0.01f, -1.0f, 1.0f}
+			{0.01f, -1.0f, 0.0f}
 		);
-		auto fire2 = vis.AddFireEffect(glm::vec3(20.0f, 3.0f, 0.0f), Boidsish::FireEffectStyle::Explosion);
-		auto fire3 = vis.AddFireEffect(glm::vec3(0.0f, 3.0f, 0.0f), Boidsish::FireEffectStyle::Fire);
+		auto fire2 = vis.AddFireEffect(glm::vec3(10.0f, 2.0f, 0.0f), Boidsish::FireEffectStyle::Explosion);
+		auto fire3 = vis.AddFireEffect(glm::vec3(0.0f, 2.0f, 0.0f), Boidsish::FireEffectStyle::Fire);
 
 		vis.GetCamera().y = 5.0;
-		vis.GetCamera().z = 20.0;
+		vis.GetCamera().z = 30.0;
 		vis.SetCameraMode(Boidsish::CameraMode::STATIONARY);
 
 		std::vector<std::shared_ptr<Boidsish::Shape>> vec;
@@ -35,6 +35,7 @@ int main() {
 
 			// // Make it point in a moving direction
 			// fire_effect->SetDirection(glm::vec3(cos(time * 0.8f), sin(time * 0.8f), 1.0f));
+			// fire1->SetDirection(glm::vec3(cos(time), sin(time), 1.0f));
 
 			return vec;
 		});

@@ -216,7 +216,7 @@ void main() {
         }
         else if (p.style == 1) { // Explosion
             p.pos = vec4(emitter.position, kExplosionLifetime * lifeTimeModifier);
-            p.vel = vec4(normalize(random_vec) * kExplosionSpeed * rand(seed.yx), 0.0);
+            p.vel = vec4(normalize(random_vec) * kExplosionSpeed * 0.5+rand(seed.yx), 0.0);
         }
         else if (p.style == 2) { // Fire
             p.pos = vec4(emitter.position + random_vec * 0.1, kFireLifetime * lifeTimeModifier);
@@ -231,7 +231,7 @@ void main() {
         float maxSpeed;
         if (p.style == 0) {
             maxSpeed = kExhaustSpeed;
-            p.vel.xyz -= p.vel.xyz * kExhaustDrag * u_delta_time;
+            p.vel.xyz -= p.vel.xyz * kExhaustDrag * 2*(1-(p.vel.xyz/30)) * u_delta_time;
         }
         else if (p.style == 1) { // Explosion
             maxSpeed = kExplosionSpeed;
@@ -251,7 +251,8 @@ void main() {
 
         if (p.pos.y <= 0 && p.pos.w > 0) {
             p.pos.y = 0.1;
-            p.vel.y *= -0.5;
+			p.vel.xz += p.vel.y * vec2(0.5, 0.5);
+            p.vel.y *= -0.25;
         }
     }
 

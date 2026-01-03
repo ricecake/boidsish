@@ -506,13 +506,13 @@ public:
 					fire = handler.vis->AddFireEffect(
 						glm::vec3(pos.x, pos.y, pos.z),
 						FireEffectStyle::MissileExhaust,
-						orientation_ * glm::vec3(0, 0, -1)
+						orientation_ * glm::vec3(0, 0, 1)
 					);
 				});
 			} else {
 				handler.EnqueueVisualizerAction([this, pos]() {
 					fire->SetPosition(glm::vec3(pos.x, pos.y, pos.z));
-					fire->SetDirection(orientation_ * glm::vec3(0, 0, -1));
+					fire->SetDirection(orientation_ * glm::vec3(0, 0, 1));
 				});
 			}
 
