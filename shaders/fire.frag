@@ -14,10 +14,14 @@ void main() {
 
     vec3 color;
     if (v_style == 0) { // Rocket Trail
-        vec3 hot_color = vec3(0.8, 0.8, 1.0);   // Bright blue-white
-        vec3 mid_color = vec3(0.5, 0.5, 1.0);   // Blue
-        vec3 cool_color = vec3(0.1, 0.1, 0.3);    // Dark blue
-        vec3 smoke_color = vec3(0.3, 0.3, 0.3);
+        vec3 hot_color = vec3(1.0, 0.8, 0.8);   // Bright blue-white
+        // vec3 mid_color = vec3(0.5, 0.5, 1.0);   // Blue
+        // vec3 cool_color = vec3(0.1, 0.1, 0.3);    // Dark blue
+        // vec3 smoke_color = vec3(0.3, 0.3, 0.3);
+        vec3 mid_color = vec3(1.0, 0.5, 0.0);   // Orange
+        vec3 cool_color = vec3(0.4, 0.1, 0.0);    // Dark red/smokey
+        vec3 smoke_color = vec3(0.2, 0.2, 0.2);    // Dark red/smokey
+
         color = mix(mix(smoke_color, cool_color, v_lifetime), mix(mid_color, hot_color, v_lifetime * v_lifetime), v_lifetime);
         // color = vec3(0, 0, 1);
     } else if (v_style == 1) { // Explosion

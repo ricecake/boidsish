@@ -166,10 +166,10 @@ vec3 curlNoise(vec3 p, float time) {
 
 
 // Simulation parameters
-const float kExhaustSpeed = 25.0;
-const float kExhaustSpread = 0.3;
-const float kExhaustLifetime = 2.5;
-const float kExhaustDrag = 1.0;
+const float kExhaustSpeed = 30.0;
+const float kExhaustSpread = 0.1;
+const float kExhaustLifetime = 2.0;
+const float kExhaustDrag = 1.5;
 
 const float kExplosionSpeed = 30.0;
 const float kExplosionLifetime = 2.5;

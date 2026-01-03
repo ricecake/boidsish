@@ -1526,7 +1526,6 @@ namespace Boidsish {
 		const glm::vec3& direction,
 		const glm::vec3& velocity
 	) {
-		logger::LOG("ADDING FIRE EFFECT", position.x, position.y, position.z, (int)style);
 		return impl->fire_effect_manager->AddEffect(position, style, direction, velocity);
 	}
 

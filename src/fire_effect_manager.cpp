@@ -64,7 +64,6 @@ namespace Boidsish {
 		const glm::vec3& velocity
 	) {
 		_EnsureShaderAndBuffers();
-		logger::LOG("ADDDDING");
 		auto effect = std::make_shared<FireEffect>(position, style, direction, velocity);
 		effects_.push_back(effect);
 		return effect;

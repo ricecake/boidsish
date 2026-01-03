@@ -459,7 +459,6 @@ public:
 		auto pos = GetPosition();
 		if (fire != nullptr) {
 			auto p = fire->GetPosition();
-			logger::LOG("WHY", p.x, p.y, p.z, pos.x, pos.y, pos.z);
 		}
 		if (lived >= lifetime) {
 			if (exploded) {
