@@ -5,6 +5,7 @@
 #include "Config.h"
 #include "IWidget.h"
 #include "dot.h"
+#include "ConfigManager.h"
 #include "graphics.h"
 #include "imgui.h"
 
@@ -137,9 +138,9 @@ public:
 		ImGui::Text("  Mouse - Look around");
 		ImGui::Text("  ESC - Exit");
 
-		bool auto_camera = m_viz.GetConfig().GetBool("auto_camera", true);
+		bool auto_camera = Boidsish::ConfigManager::GetInstance().GetAppSettingBool("auto_camera", true);
 		if (ImGui::Checkbox("Auto Camera", &auto_camera)) {
-			m_viz.GetConfig().SetBool("auto_camera", auto_camera);
+			Boidsish::ConfigManager::GetInstance().SetBool("auto_camera", auto_camera);
 			m_viz.SetCameraMode(auto_camera ? CameraMode::AUTO : CameraMode::FREE);
 		}
 
@@ -192,7 +193,7 @@ int main(int argc, char* argv[]) {
 
 		viz.AddWidget(std::make_shared<InfoWidget>(viz, example));
 
-		bool auto_camera = viz.GetConfig().GetBool("auto_camera", true);
+		bool auto_camera = Boidsish::ConfigManager::GetInstance().GetAppSettingBool("auto_camera", true);
 		viz.SetCameraMode(auto_camera ? CameraMode::AUTO : CameraMode::FREE);
 
 		viz.Run();

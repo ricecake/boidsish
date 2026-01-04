@@ -8,7 +8,7 @@
 #include <glm/gtx/quaternion.hpp>
 
 int main(int argc, char* argv[]) {
-	Boidsish::Visualizer vis;
+	Boidsish::Visualizer vis(1280, 960, "Boidsish Arrow Demo");
 
 	auto shape_function = [](float time) {
 		std::vector<std::shared_ptr<Boidsish::Shape>> shapes;

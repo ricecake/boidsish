@@ -104,7 +104,7 @@ namespace Boidsish {
 	// Main visualization class
 	class Visualizer {
 	public:
-		Visualizer(int width = 800, int height = 600, const char* title = "Boidsish 3D Visualizer");
+	Visualizer(int w, int h, const char* title);
 		~Visualizer();
 
 		// Set the function/handler that generates shapes for each frame
@@ -163,8 +163,6 @@ namespace Boidsish {
 		const TerrainGenerator*                      GetTerrainGenerator() const;
 		const std::vector<std::shared_ptr<Terrain>>& GetTerrainChunks() const;
 		task_thread_pool::task_thread_pool&          GetThreadPool();
-
-		Config& GetConfig();
 
 		// HUD methods
 		void AddHudIcon(const HudIcon& icon);

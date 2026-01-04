@@ -8,7 +8,7 @@
 #include <set>
 #include <vector>
 
-#include "Config.h"
+#include "ConfigManager.h"
 #include "UIManager.h"
 #include "clone_manager.h"
 #include "dot.h"
@@ -29,6 +29,7 @@
 #include "terrain.h"
 #include "terrain_generator.h"
 #include "trail.h"
+#include "ui/ConfigWidget.h"
 #include "ui/PostProcessingWidget.h"
 #include "ui/hud_widget.h"
 #include "visual_effects.h"
@@ -40,8 +41,6 @@
 
 namespace Boidsish {
 	constexpr float kMinCameraHeight = 0.1f;
-	constexpr float kCameraRollSpeed = 45.0f; // degrees per second
-	constexpr float kCameraSpeedStep = 2.5f;
 	constexpr float kMinCameraSpeed = 0.5f;
 	constexpr int   kBlurPasses = 4;
 
@@ -63,8 +62,6 @@ namespace Boidsish {
 		std::unique_ptr<HudManager>                            hud_manager;
 		std::unique_ptr<PostProcessing::PostProcessingManager> post_processing_manager_;
 		int                                                    exit_key;
-
-		Config config;
 
 		std::unique_ptr<TerrainGenerator> terrain_generator;
 
@@ -131,16 +128,16 @@ namespace Boidsish {
 		task_thread_pool::task_thread_pool thread_pool;
 
 		VisualizerImpl(Visualizer* p, int w, int h, const char* title):
-			parent(p), width(w), height(h), config("boidsish.ini") {
-			config.Load();
-			width = config.GetInt("window_width", w);
-			height = config.GetInt("window_height", h);
-			effects_enabled_ = config.GetBool("enable_effects", true);
-			terrain_enabled_ = config.GetBool("enable_terrain", true);
-			floor_enabled_ = config.GetBool("enable_floor", true);
-			skybox_enabled_ = config.GetBool("enable_skybox", true);
-			floor_reflection_enabled_ = config.GetBool("enable_floor_reflection", true);
-			is_fullscreen_ = config.GetBool("fullscreen", false);
+			parent(p), width(w), height(h) {
+            ConfigManager::GetInstance().Initialize(title);
+			width = ConfigManager::GetInstance().GetAppSettingInt("window_width", w);
+			height = ConfigManager::GetInstance().GetAppSettingInt("window_height", h);
+			effects_enabled_ = ConfigManager::GetInstance().GetAppSettingBool("enable_effects", true);
+			terrain_enabled_ = ConfigManager::GetInstance().GetAppSettingBool("enable_terrain", true);
+			floor_enabled_ = ConfigManager::GetInstance().GetAppSettingBool("enable_floor", true);
+			skybox_enabled_ = ConfigManager::GetInstance().GetAppSettingBool("enable_skybox", true);
+			floor_reflection_enabled_ = ConfigManager::GetInstance().GetAppSettingBool("enable_floor_reflection", true);
+			is_fullscreen_ = ConfigManager::GetInstance().GetAppSettingBool("fullscreen", false);
 
 			exit_key = GLFW_KEY_ESCAPE;
 			input_callbacks.push_back([this](const InputState& state) { this->DefaultInputHandler(state); });
@@ -425,6 +422,9 @@ namespace Boidsish {
 				auto post_processing_widget = std::make_shared<UI::PostProcessingWidget>(*post_processing_manager_);
 				ui_manager->AddWidget(post_processing_widget);
 			}
+
+			auto config_widget = std::make_shared<UI::ConfigWidget>();
+			ui_manager->AddWidget(config_widget);
 		}
 
 		void SetupShaderBindings(Shader& shader_to_setup) {
@@ -434,10 +434,10 @@ namespace Boidsish {
 		}
 
 		~VisualizerImpl() {
-			config.SetInt("window_width", width);
-			config.SetInt("window_height", height);
-			config.SetBool("fullscreen", is_fullscreen_);
-			config.Save();
+			ConfigManager::GetInstance().SetInt("window_width", width);
+			ConfigManager::GetInstance().SetInt("window_height", height);
+			ConfigManager::GetInstance().SetBool("fullscreen", is_fullscreen_);
+			ConfigManager::GetInstance().Shutdown();
 
 			// Explicitly reset UI manager before destroying window context
 			ui_manager.reset();
@@ -716,9 +716,9 @@ namespace Boidsish {
 				if (state.keys[GLFW_KEY_LEFT_SHIFT])
 					camera.y -= camera_speed_val;
 				if (state.keys[GLFW_KEY_Q])
-					camera.roll -= kCameraRollSpeed * state.delta_time;
+					camera.roll -= ConfigManager::GetInstance().GetGlobalSettingFloat("camera_roll_speed", 45.0f) * state.delta_time;
 				if (state.keys[GLFW_KEY_E])
-					camera.roll += kCameraRollSpeed * state.delta_time;
+					camera.roll += ConfigManager::GetInstance().GetGlobalSettingFloat("camera_roll_speed", 45.0f) * state.delta_time;
 				if (camera.y < kMinCameraHeight)
 					camera.y = kMinCameraHeight;
 
@@ -783,12 +783,12 @@ namespace Boidsish {
 
 			// Camera speed adjustment
 			if (state.key_down[GLFW_KEY_LEFT_BRACKET]) {
-				camera.speed -= kCameraSpeedStep;
+				camera.speed -= ConfigManager::GetInstance().GetGlobalSettingFloat("camera_speed_step", 2.5f);
 				if (camera.speed < kMinCameraSpeed)
 					camera.speed = kMinCameraSpeed;
 			}
 			if (state.key_down[GLFW_KEY_RIGHT_BRACKET]) {
-				camera.speed += kCameraSpeedStep;
+				camera.speed += ConfigManager::GetInstance().GetGlobalSettingFloat("camera_speed_step", 2.5f);
 			}
 
 			// Toggles
@@ -1478,10 +1478,6 @@ namespace Boidsish {
 
 	const TerrainGenerator* Visualizer::GetTerrainGenerator() const {
 		return impl->terrain_generator.get();
-	}
-
-	Config& Visualizer::GetConfig() {
-		return impl->config;
 	}
 
 	void Visualizer::AddHudIcon(const HudIcon& icon) {

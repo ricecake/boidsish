@@ -9,7 +9,7 @@
 #include <glm/gtc/quaternion.hpp>
 
 int main(int argc, char** argv) {
-	Boidsish::Visualizer vis;
+	Boidsish::Visualizer vis(1280, 960, "Boidsish Model Demo");
 
 	std::vector<std::shared_ptr<Boidsish::Shape>> shapes;
 	auto                                          model = std::make_shared<Boidsish::Model>("assets/utah_teapot.obj");
