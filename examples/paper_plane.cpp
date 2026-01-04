@@ -15,6 +15,7 @@
 #include <GLFW/glfw3.h>
 #include <fire_effect.h>
 #include <glm/gtc/quaternion.hpp>
+#include <glm/gtx/quaternion.hpp>
 #include <set>
 
 using namespace Boidsish;
@@ -38,10 +39,11 @@ struct PaperPlaneInputController {
 
 class GuidedMissileLauncher : public Entity<Model> {
 public:
-    GuidedMissileLauncher(int id = 0, Vector3 pos = {0, 0, 0})
+    GuidedMissileLauncher(int id, Vector3 pos, glm::quat orientation)
         : Entity<Model>(id, "assets/utah_teapot.obj", false) {
         SetPosition(pos.x, pos.y, pos.z);
         shape_->SetScale(glm::vec3(2.0f)); // Set a visible scale
+        shape_->SetRotation(orientation);
         UpdateShape();
     }
 
@@ -764,8 +766,26 @@ public:
                 if (spawned_launchers_.find(chunk.get()) == spawned_launchers_.end()) {
                     glm::vec3 chunk_pos = glm::vec3(chunk->GetX(), chunk->GetY(), chunk->GetZ());
                     glm::vec3 world_pos = chunk_pos + chunk->proxy.highestPoint;
-                    int id = AddEntity<GuidedMissileLauncher>(Vector3(world_pos.x, world_pos.y, world_pos.z));
-                    spawned_launchers_[chunk.get()] = id;
+
+                    const float kMinSeparationDistance = 20.0f;
+                    auto nearby = GetEntitiesInRadius<EntityBase>(Vector3(world_pos.x, world_pos.y, world_pos.z), kMinSeparationDistance);
+                    bool too_close = false;
+                    for (const auto& entity : nearby) {
+                        if (dynamic_cast<GuidedMissileLauncher*>(entity.get())) {
+                            too_close = true;
+                            break;
+                        }
+                    }
+
+                    if (!too_close) {
+                        auto [terrain_h, terrain_normal] = vis->GetTerrainPointProperties(world_pos.x, world_pos.z);
+
+                        glm::vec3 up_vector = glm::vec3(0.0f, 1.0f, 0.0f);
+                        glm::quat orientation = glm::rotation(up_vector, terrain_normal);
+
+                        int id = AddEntity<GuidedMissileLauncher>(Vector3(world_pos.x, world_pos.y, world_pos.z), orientation);
+                        spawned_launchers_[chunk.get()] = id;
+                    }
                 }
             }
 
