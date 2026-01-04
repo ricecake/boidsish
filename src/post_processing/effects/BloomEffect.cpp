@@ -115,6 +115,9 @@ void BloomEffect::Apply(GLuint sourceTexture) {
     glBindTexture(GL_TEXTURE_2D, _pingpongTexture[!horizontal]);
     glDrawArrays(GL_TRIANGLES, 0, 6);
 
+    // Unbind textures from texture units
+    glActiveTexture(GL_TEXTURE1);
+    glBindTexture(GL_TEXTURE_2D, 0);
     glActiveTexture(GL_TEXTURE0);
 }
 
