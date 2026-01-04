@@ -32,7 +32,10 @@ private:
     std::unique_ptr<Shader> _brightPassShader;
     std::unique_ptr<Shader> _blurShader;
     std::unique_ptr<Shader> _compositeShader;
+    std::unique_ptr<Shader> _passthroughShader;
 
+    GLuint _outputFBO;
+    GLuint _outputTexture;
     GLuint _brightPassFBO;
     GLuint _brightPassTexture;
 
