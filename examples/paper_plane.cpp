@@ -1,6 +1,7 @@
 #include <iostream>
 #include <memory>
 #include <random>
+#include <set>
 #include <vector>
 
 #include "arrow.h"
@@ -14,7 +15,9 @@
 #include "terrain_generator.h"
 #include <GLFW/glfw3.h>
 #include <fire_effect.h>
+#include <glm/gtc/constants.hpp>
 #include <glm/gtc/quaternion.hpp>
+#include <glm/gtx/quaternion.hpp>
 
 using namespace Boidsish;
 
@@ -33,6 +36,21 @@ struct PaperPlaneInputController {
 	bool boost = false;
 	bool brake = false;
 	bool fire = false;
+};
+
+class GuidedMissileLauncher: public Entity<Model> {
+public:
+	GuidedMissileLauncher(int id, Vector3 pos, glm::quat orientation):
+		Entity<Model>(id, "assets/utah_teapot.obj", false) {
+		SetPosition(pos.x, pos.y, pos.z);
+		shape_->SetScale(glm::vec3(2.0f)); // Set a visible scale
+		shape_->SetRotation(orientation);
+		UpdateShape();
+	}
+
+	void UpdateEntity(const EntityHandler& handler, float time, float delta_time) override {
+		// Initially does nothing, as requested.
+	}
 };
 
 class PaperPlane: public Entity<Model> {
@@ -113,7 +131,9 @@ public:
 			// --- Calculate Pitch Error ---
 			// Project the plane's forward vector onto the world's XZ plane to get a horizon-level vector.
 			// The angle between the actual forward vector and this projected vector is our pitch error.
-			glm::vec3 forward_on_horizon = glm::normalize(glm::vec3(plane_forward_world.x, 0.0f, plane_forward_world.z));
+			glm::vec3 forward_on_horizon = glm::normalize(
+				glm::vec3(plane_forward_world.x, 0.0f, plane_forward_world.z)
+			);
 			float pitch_error = glm::asin(glm::dot(plane_forward_world, world_up));
 
 			// --- Calculate Roll Error ---
@@ -193,11 +213,7 @@ public:
 				break;
 			}
 			case 1: {
-				handler.QueueAddEntity<CatBomb>(
-					GetPosition(),
-					orientation_ * glm::vec3(0, -1, 0),
-					GetVelocity()
-				);
+				handler.QueueAddEntity<CatBomb>(GetPosition(), orientation_ * glm::vec3(0, -1, 0), GetVelocity());
 				time_to_fire = 0.25f;
 				break;
 			}
@@ -638,12 +654,7 @@ private:
 
 class CatBomb: public Entity<Model> {
 public:
-	CatBomb(
-		int       id = 0,
-		Vector3   pos = {0, 0, 0},
-		glm::vec3 dir = {0, 0, 0},
-		Vector3   vel = {0, 0, 0}
-	):
+	CatBomb(int id = 0, Vector3 pos = {0, 0, 0}, glm::vec3 dir = {0, 0, 0}, Vector3 vel = {0, 0, 0}):
 		Entity<Model>(id, "assets/bomb_shading_v005.obj", true),
 		rotational_velocity_(glm::vec3(0.0f)),
 		forward_speed_(0.0f),
@@ -665,14 +676,36 @@ public:
 		lived += delta_time;
 
 		if (pos.y < 0 && !exploded) {
-			lived = -2;
+			lived = lifetime - 2;
 			exploded = true;
-			// handler.EnqueueVisualizerAction([this, &handler]() { fire->SetStyle(2); });
 		}
-		if (exploded && lived >= 0) {
+
+		if (exploded && lived >= lifetime) {
+			handler.EnqueueVisualizerAction([this, &handler]() { handler.vis->RemoveFireEffect(fire); });
 			handler.QueueRemoveEntity(id_);
 			return;
 		}
+		if (exploded) {
+			if ((lifetime - lived) < 2) {
+				handler.EnqueueVisualizerAction([this, &handler]() { fire->SetStyle(FireEffectStyle::Null); });
+			}
+			return;
+		}
+		auto [height, norm] = handler.vis->GetTerrainPointProperties(pos.x, pos.z);
+		if (height >= pos.y) {
+			handler.EnqueueVisualizerAction([this, &handler, pos]() {
+				fire = handler.vis->AddFireEffect(
+					glm::vec3(pos.x, pos.y, pos.z),
+					FireEffectStyle::Explosion,
+					orientation_ * glm::vec3(0, 0, 1)
+				);
+			});
+			exploded = true;
+			lived = lifetime - 2;
+			SetVelocity(Vector3(0, 0, 0));
+			return;
+		}
+
 		auto velo = GetVelocity();
 		velo += Vector3(0, -0.15f, 0);
 		SetVelocity(velo);
@@ -721,6 +754,85 @@ public:
 			if (damage_timer_ <= 0.0f) {
 				vis->TogglePostProcessingEffect("Glitch");
 				vis->TogglePostProcessingEffect("Time Stutter");
+			}
+		}
+
+		// --- Guided Missile Launcher Spawning/Despawning ---
+		if (vis && vis->GetTerrainGenerator()) {
+			const auto&              visible_chunks = vis->GetTerrainGenerator()->getVisibleChunks();
+			std::set<const Terrain*> visible_chunk_set;
+			std::vector<glm::vec3>   newly_spawned_positions;
+
+			// Spawn new launchers
+			for (const auto& chunk : visible_chunks) {
+				// if (chunk->proxy.maxY <= 30.0f) {
+				// 	continue;
+				// }
+				visible_chunk_set.insert(chunk.get());
+				if (spawned_launchers_.find(chunk.get()) == spawned_launchers_.end()) {
+					glm::vec3 chunk_pos = glm::vec3(chunk->GetX(), chunk->GetY(), chunk->GetZ());
+					glm::vec3 world_pos = chunk_pos + chunk->proxy.highestPoint;
+
+					const float kMinSeperationDistance = 75.0f;
+					const float kMinSeparationDistanceSq = kMinSeperationDistance * kMinSeperationDistance;
+
+					// Check against entities from previous frames
+					auto nearby_entities = GetEntitiesInRadius<EntityBase>(
+						Vector3(world_pos.x, world_pos.y, world_pos.z),
+						kMinSeperationDistance
+					);
+					bool too_close = false;
+					for (const auto& entity : nearby_entities) {
+						if (dynamic_cast<GuidedMissileLauncher*>(entity.get())) {
+							too_close = true;
+							break;
+						}
+					}
+					if (too_close)
+						continue;
+
+					// Check against entities spawned in this frame
+					for (const auto& new_pos : newly_spawned_positions) {
+						if (glm::distance2(world_pos, new_pos) < kMinSeparationDistanceSq) {
+							too_close = true;
+							break;
+						}
+					}
+
+					if (!too_close) {
+						auto [terrain_h, terrain_normal] = vis->GetTerrainPointProperties(world_pos.x, world_pos.z);
+
+						if (terrain_h < 40) {
+							continue;
+						}
+
+						// Base rotation to orient the teapot correctly (assuming Z is up in model space)
+						glm::quat base_rotation = glm::angleAxis(glm::pi<float>() / -2.0f, glm::vec3(1.0f, 0.0f, 0.0f));
+
+						// Rotation to align with terrain normal
+						glm::vec3 up_vector = glm::vec3(0.0f, 1.0f, 0.0f);
+						glm::quat terrain_alignment = glm::rotation(up_vector, terrain_normal);
+
+						glm::quat final_orientation = terrain_alignment * base_rotation;
+
+						int id = AddEntity<GuidedMissileLauncher>(
+							Vector3(world_pos.x, world_pos.y, world_pos.z),
+							final_orientation
+						);
+						spawned_launchers_[chunk.get()] = id;
+						newly_spawned_positions.push_back(world_pos);
+					}
+				}
+			}
+
+			// Despawn old launchers
+			for (auto it = spawned_launchers_.begin(); it != spawned_launchers_.end(); /* no increment */) {
+				if (visible_chunk_set.find(it->first) == visible_chunk_set.end()) {
+					QueueRemoveEntity(it->second);
+					it = spawned_launchers_.erase(it);
+				} else {
+					++it;
+				}
 			}
 		}
 
@@ -819,6 +931,7 @@ public:
 	}
 
 private:
+	std::map<const Terrain*, int>         spawned_launchers_;
 	std::random_device                    rd_;
 	std::mt19937                          eng_;
 	float                                 damage_timer_ = 0.0f;

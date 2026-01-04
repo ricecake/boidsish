@@ -145,7 +145,7 @@ namespace Boidsish {
 
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, 0);
 
-		glDepthMask(GL_TRUE); // Re-enable depth writing
+		glDepthMask(GL_TRUE);                              // Re-enable depth writing
 		glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA); // Reset blend mode
 	}
 

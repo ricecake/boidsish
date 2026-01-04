@@ -70,5 +70,19 @@ void main() {
 	}
 
 	result = applyArtisticEffects(result, FragPos, barycentric, time);
-	FragColor = vec4(result, 1.0);
+
+	float dist = length(FragPos.xz - viewPos.xz);
+	float fade_start = 540.0;
+	float fade_end = 550.0;
+	float fade = 1.0 - smoothstep(fade_start, fade_end, dist);
+
+	vec4 outColor = vec4(result, mix(0, fade, step(0.01, FragPos.y)));
+	FragColor = mix(
+		vec4(0.0, 0.7, 0.7, mix(0, fade, step(0.01, FragPos.y))) * length(outColor),
+		outColor,
+		step(1, fade)
+	);
+
+
+	// FragColor = vec4(result, 1.0);
 }

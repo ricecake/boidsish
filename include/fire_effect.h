@@ -39,12 +39,12 @@ namespace Boidsish {
 
 	private:
 		inline static int count = 1;
-		glm::vec3       position_;
-		FireEffectStyle style_;
-		glm::vec3       direction_;
-		int id_;
-		glm::vec3       velocity_;
-		bool            active_{true};
+		glm::vec3         position_;
+		FireEffectStyle   style_;
+		glm::vec3         direction_;
+		int               id_;
+		glm::vec3         velocity_;
+		bool              active_{true};
 	};
 
 } // namespace Boidsish
