@@ -4,6 +4,7 @@
 #include <vector>
 
 #include "post_processing/IPostProcessingEffect.h"
+#include <glm/glm.hpp>
 
 // Forward declarations
 class Shader;
