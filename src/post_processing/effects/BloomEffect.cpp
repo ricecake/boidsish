@@ -114,6 +114,8 @@ void BloomEffect::Apply(GLuint sourceTexture) {
     glActiveTexture(GL_TEXTURE1);
     glBindTexture(GL_TEXTURE_2D, _pingpongTexture[!horizontal]);
     glDrawArrays(GL_TRIANGLES, 0, 6);
+
+    glActiveTexture(GL_TEXTURE0);
 }
 
 void BloomEffect::Resize(int width, int height) {
