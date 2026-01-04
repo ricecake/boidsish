@@ -18,6 +18,7 @@
 #include "hud_manager.h"
 #include "logger.h"
 #include "post_processing/PostProcessingManager.h"
+#include "post_processing/effects/BloomEffect.h"
 #include "post_processing/effects/FilmGrainEffect.h"
 #include "post_processing/effects/GlitchEffect.h"
 #include "post_processing/effects/NegativeEffect.h"
@@ -420,6 +421,10 @@ namespace Boidsish {
 				auto film_grain_effect = std::make_shared<PostProcessing::FilmGrainEffect>();
 				film_grain_effect->SetEnabled(false);
 				post_processing_manager_->AddEffect(film_grain_effect);
+
+				auto bloom_effect = std::make_shared<PostProcessing::BloomEffect>(width, height);
+				bloom_effect->SetEnabled(false);
+				post_processing_manager_->AddEffect(bloom_effect);
 
 				// --- UI ---
 				auto post_processing_widget = std::make_shared<UI::PostProcessingWidget>(*post_processing_manager_);
