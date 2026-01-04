@@ -2,24 +2,21 @@
 
 #include "logger.h"
 #include "shader.h"
+#include <glm/gtc/matrix_transform.hpp>
 
 namespace Boidsish {
 namespace PostProcessing {
 
 BloomEffect::BloomEffect(int width, int height)
-    : _width(width), _height(height), _brightPassFBO(0), _brightPassTexture(0), _outputFBO(0), _outputTexture(0) {
-    _pingpongFBO[0] = 0;
-    _pingpongFBO[1] = 0;
+    : _width(width), _height(height) {
     name_ = "Bloom";
 }
 
 BloomEffect::~BloomEffect() {
-    glDeleteFramebuffers(1, &_brightPassFBO);
-    glDeleteTextures(1, &_brightPassTexture);
-    glDeleteFramebuffers(2, _pingpongFBO);
-    glDeleteTextures(2, _pingpongTexture);
-    glDeleteFramebuffers(1, &_outputFBO);
-    glDeleteTextures(1, &_outputTexture);
+    for (const auto& mip : _mipChain) {
+        glDeleteFramebuffers(1, &mip.fbo);
+        glDeleteTextures(1, &mip.texture);
+    }
 }
 
 void BloomEffect::Initialize(int width, int height) {
@@ -28,75 +25,54 @@ void BloomEffect::Initialize(int width, int height) {
 
     _brightPassShader = std::make_unique<Shader>("shaders/postprocess.vert", "shaders/effects/bright_pass.frag");
     _blurShader = std::make_unique<Shader>("shaders/postprocess.vert", "shaders/effects/gaussian_blur.frag");
+    _upsampleShader = std::make_unique<Shader>("shaders/postprocess.vert", "shaders/effects/bloom_upsample.frag");
     _compositeShader = std::make_unique<Shader>("shaders/postprocess.vert", "shaders/effects/bloom_composite.frag");
-    _passthroughShader = std::make_unique<Shader>("shaders/postprocess.vert", "shaders/postprocess.frag");
 
     InitializeFBOs();
 }
 
 void BloomEffect::InitializeFBOs() {
-    // Clean up existing resources
-    glDeleteFramebuffers(1, &_brightPassFBO);
-    glDeleteTextures(1, &_brightPassTexture);
-    glDeleteFramebuffers(2, _pingpongFBO);
-    glDeleteTextures(2, _pingpongTexture);
-    glDeleteFramebuffers(1, &_outputFBO);
-    glDeleteTextures(1, &_outputTexture);
-
-    // Bright pass FBO
-    glGenFramebuffers(1, &_brightPassFBO);
-    glBindFramebuffer(GL_FRAMEBUFFER, _brightPassFBO);
-    glGenTextures(1, &_brightPassTexture);
-    glBindTexture(GL_TEXTURE_2D, _brightPassTexture);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB16F, _width, _height, 0, GL_RGB, GL_FLOAT, NULL);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, _brightPassTexture, 0);
-    if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
-        logger::ERROR("Bloom Bright Pass FBO is not complete!");
-
-    // Ping-pong FBOs for blurring
-    glGenFramebuffers(2, _pingpongFBO);
-    glGenTextures(2, _pingpongTexture);
-    for (unsigned int i = 0; i < 2; i++) {
-        glBindFramebuffer(GL_FRAMEBUFFER, _pingpongFBO[i]);
-        glBindTexture(GL_TEXTURE_2D, _pingpongTexture[i]);
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB16F, _width, _height, 0, GL_RGB, GL_FLOAT, NULL);
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, _pingpongTexture[i], 0);
-        if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
-            logger::ERROR("Bloom Ping-Pong FBO " + std::to_string(i) + " is not complete!");
+    for (const auto& mip : _mipChain) {
+        glDeleteFramebuffers(1, &mip.fbo);
+        glDeleteTextures(1, &mip.texture);
     }
+    _mipChain.clear();
 
-    // Output FBO
-    glGenFramebuffers(1, &_outputFBO);
-    glBindFramebuffer(GL_FRAMEBUFFER, _outputFBO);
-    glGenTextures(1, &_outputTexture);
-    glBindTexture(GL_TEXTURE_2D, _outputTexture);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB16F, _width, _height, 0, GL_RGB, GL_FLOAT, NULL);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, _outputTexture, 0);
-    if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
-        logger::ERROR("Bloom Output FBO is not complete!");
+    glm::vec2 mipSize((float)_width, (float)_height);
+
+    for (int i = 0; i < 5; i++) {
+        BloomMip mip;
+        mipSize /= 2.0f;
+        mip.size = mipSize;
+
+        glGenFramebuffers(1, &mip.fbo);
+        glBindFramebuffer(GL_FRAMEBUFFER, mip.fbo);
+
+        glGenTextures(1, &mip.texture);
+        glBindTexture(GL_TEXTURE_2D, mip.texture);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB16F, (int)mip.size.x, (int)mip.size.y, 0, GL_RGB, GL_FLOAT, nullptr);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+
+        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, mip.texture, 0);
+
+        if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
+            logger::ERROR("Bloom mip FBO " + std::to_string(i) + " is not complete!");
+        }
+    }
 
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
 }
 
 void BloomEffect::Apply(GLuint sourceTexture) {
-    // 1. Get the currently bound FBO to restore it later
     GLint originalFBO;
     glGetIntegerv(GL_FRAMEBUFFER_BINDING, &originalFBO);
 
-    // 2. Bright pass
-    glBindFramebuffer(GL_FRAMEBUFFER, _brightPassFBO);
+    // 1. Bright pass
+    glBindFramebuffer(GL_FRAMEBUFFER, _mipChain[0].fbo);
+    glViewport(0, 0, _mipChain[0].size.x, _mipChain[0].size.y);
     _brightPassShader->use();
     _brightPassShader->setInt("sceneTexture", 0);
     _brightPassShader->setFloat("threshold", threshold_);
@@ -104,23 +80,43 @@ void BloomEffect::Apply(GLuint sourceTexture) {
     glBindTexture(GL_TEXTURE_2D, sourceTexture);
     glDrawArrays(GL_TRIANGLES, 0, 6);
 
-    // 3. Gaussian blur
-    bool horizontal = true, first_iteration = true;
+    // 2. Downsample and blur
     _blurShader->use();
-    _blurShader->setInt("image", 0);
-    for (unsigned int i = 0; i < _blurAmount; i++) {
-        glBindFramebuffer(GL_FRAMEBUFFER, _pingpongFBO[horizontal]);
-        _blurShader->setBool("horizontal", horizontal);
+    for (size_t i = 1; i < _mipChain.size(); i++) {
+        const auto& mip = _mipChain[i];
+        const auto& prevMip = _mipChain[i-1];
+
+        glBindFramebuffer(GL_FRAMEBUFFER, mip.fbo);
+        glViewport(0, 0, mip.size.x, mip.size.y);
+
+        _blurShader->setBool("horizontal", true);
         glActiveTexture(GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_2D, first_iteration ? _brightPassTexture : _pingpongTexture[!horizontal]);
+        glBindTexture(GL_TEXTURE_2D, prevMip.texture);
         glDrawArrays(GL_TRIANGLES, 0, 6);
-        horizontal = !horizontal;
-        if (first_iteration)
-            first_iteration = false;
     }
 
-    // 4. Composite into our output FBO
-    glBindFramebuffer(GL_FRAMEBUFFER, _outputFBO);
+    // 3. Upsample and blend
+    _upsampleShader->use();
+    for (size_t i = _mipChain.size() - 1; i > 0; i--) {
+        const auto& mip = _mipChain[i];
+        const auto& nextMip = _mipChain[i-1];
+
+        glBindFramebuffer(GL_FRAMEBUFFER, nextMip.fbo);
+        glViewport(0, 0, nextMip.size.x, nextMip.size.y);
+
+        _upsampleShader->setInt("originalTexture", 0);
+        _upsampleShader->setInt("blurTexture", 1);
+
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, _mipChain[i-1].texture); // original is the next mip in the chain
+        glActiveTexture(GL_TEXTURE1);
+        glBindTexture(GL_TEXTURE_2D, mip.texture); // blur is the current mip
+
+        glDrawArrays(GL_TRIANGLES, 0, 6);
+    }
+
+    // 4. Final composite
+    glBindFramebuffer(GL_FRAMEBUFFER, originalFBO);
     _compositeShader->use();
     _compositeShader->setInt("sceneTexture", 0);
     _compositeShader->setInt("bloomBlur", 1);
@@ -128,21 +124,14 @@ void BloomEffect::Apply(GLuint sourceTexture) {
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, sourceTexture);
     glActiveTexture(GL_TEXTURE1);
-    glBindTexture(GL_TEXTURE_2D, _pingpongTexture[!horizontal]);
+    glBindTexture(GL_TEXTURE_2D, _mipChain[0].texture);
     glDrawArrays(GL_TRIANGLES, 0, 6);
 
-    // 5. Restore the original FBO and render the result to it.
-    glBindFramebuffer(GL_FRAMEBUFFER, originalFBO);
-    _passthroughShader->use();
-    _passthroughShader->setInt("sceneTexture", 0);
-    glActiveTexture(GL_TEXTURE0);
-    glBindTexture(GL_TEXTURE_2D, _outputTexture);
-    glDrawArrays(GL_TRIANGLES, 0, 6);
-
-    // Cleanup state
+    // Cleanup
     glActiveTexture(GL_TEXTURE1);
     glBindTexture(GL_TEXTURE_2D, 0);
     glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, 0);
 }
 
 void BloomEffect::Resize(int width, int height) {

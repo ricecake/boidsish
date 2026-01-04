@@ -11,6 +11,12 @@ class Shader;
 namespace Boidsish {
 namespace PostProcessing {
 
+struct BloomMip {
+    glm::vec2 size;
+    GLuint fbo;
+    GLuint texture;
+};
+
 class BloomEffect : public IPostProcessingEffect {
 public:
     BloomEffect(int width, int height);
@@ -31,21 +37,14 @@ private:
 
     std::unique_ptr<Shader> _brightPassShader;
     std::unique_ptr<Shader> _blurShader;
+    std::unique_ptr<Shader> _upsampleShader;
     std::unique_ptr<Shader> _compositeShader;
-    std::unique_ptr<Shader> _passthroughShader;
 
-    GLuint _outputFBO;
-    GLuint _outputTexture;
-    GLuint _brightPassFBO;
-    GLuint _brightPassTexture;
-
-    GLuint _pingpongFBO[2];
-    GLuint _pingpongTexture[2];
+    std::vector<BloomMip> _mipChain;
 
     int _width, _height;
-    float intensity_ = 0.8f;
-    float threshold_ = 1.0f;
-    unsigned int _blurAmount = 10;
+    float intensity_ = 0.4f;
+    float threshold_ = 0.8f;
 };
 
 } // namespace PostProcessing
