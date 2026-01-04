@@ -25,8 +25,17 @@ namespace Boidsish {
 		virtual void      render(Shader& shader, const glm::mat4& model_matrix) const = 0;
 		virtual glm::mat4 GetModelMatrix() const = 0;
 
-		// Get the active visual effects for this shape
-		virtual std::vector<VisualEffect> GetActiveEffects() const { return {}; }
+		// Effect management
+		virtual std::vector<VisualEffect> GetActiveEffects() const { return active_effects_; }
+		void AddEffect(VisualEffect effect) {
+			if (std::find(active_effects_.begin(), active_effects_.end(), effect) == active_effects_.end()) {
+				active_effects_.push_back(effect);
+			}
+		}
+		void RemoveEffect(VisualEffect effect) {
+			active_effects_.erase(std::remove(active_effects_.begin(), active_effects_.end(), effect), active_effects_.end());
+		}
+		void ClearEffects() { active_effects_.clear(); }
 
 		// Accessors
 		inline int GetId() const { return id_; }
@@ -124,6 +133,7 @@ namespace Boidsish {
 
 		glm::quat rotation_;
 		glm::vec3 scale_;
+		std::vector<VisualEffect> active_effects_;
 
 	private:
 		int   id_;

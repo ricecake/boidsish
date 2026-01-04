@@ -48,6 +48,11 @@ namespace Boidsish {
 		// Get the active visual effects for this entity
 		virtual std::vector<VisualEffect> GetActiveEffects() const = 0;
 
+		// Effect management
+		virtual void AddEffect(VisualEffect effect) = 0;
+		virtual void RemoveEffect(VisualEffect effect) = 0;
+		virtual void ClearEffects() = 0;
+
 		// Getters and setters
 		int GetId() const { return id_; }
 
@@ -162,6 +167,10 @@ namespace Boidsish {
 		std::shared_ptr<Shape> GetShape() const override { return shape_; }
 
 		std::vector<VisualEffect> GetActiveEffects() const override { return shape_->GetActiveEffects(); }
+
+		void AddEffect(VisualEffect effect) override { shape_->AddEffect(effect); }
+		void RemoveEffect(VisualEffect effect) override { shape_->RemoveEffect(effect); }
+		void ClearEffects() override { shape_->ClearEffects(); }
 
 		void UpdateShape() override {
 			if (!shape_)
