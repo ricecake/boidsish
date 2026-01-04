@@ -41,11 +41,11 @@ void main() {
 
         color = mix(mix(smoke_color, cool_color, v_lifetime/5), mix(mid_color, hot_color, v_lifetime/5), v_lifetime/10);
     } else if (v_style == 2) { // Default Fire
-        vec3 hot_color = vec3(1.0, 1.0, 0.6);   // Bright yellow-white
-        vec3 mid_color = vec3(1.0, 0.5, 0.0);   // Orange
+        vec3 hot_color = vec3(0.7, 0.7, 0.4);   // Bright yellow-white
+        vec3 mid_color = vec3(0.7, 0.5, 0.0);   // Orange
         vec3 cool_color = vec3(0.4, 0.1, 0.0);    // Dark red/smokey
-        vec3 smoke_color = vec3(0.2, 0.2, 0.2);    // Dark red/smokey
-        color = mix(mix(smoke_color, cool_color, v_lifetime), mix(mid_color, hot_color, v_lifetime*v_lifetime), v_lifetime);
+        vec3 smoke_color = vec3(0.2, 0.2, 0.0);    // Dark red/smokey
+        color = mix(mix(smoke_color, cool_color, v_lifetime/2.5), mix(mid_color, hot_color, v_lifetime/2.5), v_lifetime/10.5);
     }
 
     if (v_style == 28) {
@@ -76,7 +76,7 @@ void main() {
 
 		FragColor = vec4(final_color, 0.75); // Semi-transparent
     } else if (v_style == 0) {
-        float alpha = 1 - length(color - vec3(0.3, 0.3, 0.3));
+        float alpha = 1 - length(color - vec3(0.1, 0.0, 0.0)); // whatever smoke color is
         FragColor = vec4(color, alpha);
 	} else {
         // float alpha = smoothstep((1.0 - v_lifetime), (v_lifetime), dist*v_lifetime / 2.5);
