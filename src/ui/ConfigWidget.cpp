@@ -61,11 +61,9 @@ namespace Boidsish {
                 RenderSection("global");
 
                 auto& config_manager = ConfigManager::GetInstance();
-                auto sections = config_manager.GetSections();
-                for(const auto& section : sections) {
-                    if (section != "global") {
-                        RenderSection(section);
-                    }
+                const std::string& app_section = config_manager.GetAppSectionName();
+                if (!app_section.empty()) {
+                    RenderSection(app_section);
                 }
             }
             ImGui::End();

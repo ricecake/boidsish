@@ -44,6 +44,7 @@ namespace Boidsish {
         void SetBool(const std::string& key, bool value);
 
         // For UI
+        const std::string& GetAppSectionName() const;
         std::vector<std::string> GetSections() const;
         std::map<std::string, std::string> GetSectionContents(const std::string& section) const;
         std::map<std::string, ConfigValue> GetRegisteredValues(const std::string& section);

@@ -113,6 +113,10 @@ namespace Boidsish {
 
     // --- UI Helpers ---
 
+    const std::string& ConfigManager::GetAppSectionName() const {
+        return m_appSection;
+    }
+
     std::vector<std::string> ConfigManager::GetSections() const {
         return m_config.GetSections();
     }
@@ -124,8 +128,10 @@ namespace Boidsish {
     std::map<std::string, ConfigValue> ConfigManager::GetRegisteredValues(const std::string& section) {
         if (section == "global") {
             return m_registeredGlobalKeys;
+        } else if (section == m_appSection) {
+            return m_registeredAppKeys;
         }
-        return m_registeredAppKeys;
+        return {};
     }
 
     // --- Private Methods ---
