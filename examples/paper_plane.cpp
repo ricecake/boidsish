@@ -195,7 +195,6 @@ public:
 			case 1: {
 				handler.QueueAddEntity<CatBomb>(
 					GetPosition(),
-					orientation_,
 					orientation_ * glm::vec3(0, -1, 0),
 					GetVelocity()
 				);
@@ -642,15 +641,13 @@ public:
 	CatBomb(
 		int       id = 0,
 		Vector3   pos = {0, 0, 0},
-		glm::quat orientation = {0, {0, 0, 0}},
 		glm::vec3 dir = {0, 0, 0},
 		Vector3   vel = {0, 0, 0}
 	):
 		Entity<Model>(id, "assets/bomb_shading_v005.obj", true),
 		rotational_velocity_(glm::vec3(0.0f)),
 		forward_speed_(0.0f),
-		eng_(rd_()),
-		orientation_(orientation) {
+		eng_(rd_()) {
 		SetOrientToVelocity(true);
 		SetPosition(pos.x, pos.y, pos.z);
 		auto netVelocity = glm::vec3(vel.x, vel.y, vel.z) + 2.5f * glm::normalize(glm::vec3(dir.x, dir.y, dir.z));
@@ -659,9 +656,8 @@ public:
 		SetTrailLength(50);
 		shape_->SetScale(glm::vec3(0.01f));
 		std::dynamic_pointer_cast<Model>(shape_)->SetBaseRotation(
-			glm::angleAxis(glm::radians(90.0f), glm::vec3(1.0f, 0.0f, 0.0f))
+			glm::angleAxis(glm::radians(-90.0f), glm::vec3(1.0f, 0.0f, 0.0f))
 		);
-		UpdateShape();
 	}
 
 	void UpdateEntity(const EntityHandler& handler, float time, float delta_time) {
@@ -680,17 +676,7 @@ public:
 		auto velo = GetVelocity();
 		velo += Vector3(0, -0.15f, 0);
 		SetVelocity(velo);
-		shape_->LookAt({velo.x, velo.y, velo.z});
 		return;
-	}
-
-	void UpdateShape() override {
-		// First, call the base implementation
-		Entity<Model>::UpdateShape();
-		// Then, apply our specific orientation that includes roll
-		if (shape_) {
-			shape_->SetRotation(orientation_);
-		}
 	}
 
 private:
@@ -702,7 +688,6 @@ private:
 	std::shared_ptr<FireEffect> fire = nullptr;
 
 	// Flight model
-	glm::quat          orientation_;
 	glm::vec3          rotational_velocity_; // x: pitch, y: yaw, z: roll
 	float              forward_speed_;
 	std::random_device rd_;
