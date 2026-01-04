@@ -126,12 +126,8 @@ namespace Boidsish {
 			return;
 		}
 
-		// glEnable(GL_PROGRAM_POINT_SIZE);
 		glBlendFunc(GL_SRC_ALPHA, GL_ONE); // Additive blending for fire
-
-		// glEnable(GL_BLEND);
-		// glBlendFunc(GL_SRC_ALPHA, GL_ONE); // Additive blending for fire
-		glDepthMask(GL_FALSE); // Disable depth writing
+		glDepthMask(GL_FALSE);             // Disable depth writing
 
 		render_shader_->use();
 		render_shader_->setMat4("u_view", view);
@@ -150,9 +146,7 @@ namespace Boidsish {
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, 0);
 
 		glDepthMask(GL_TRUE); // Re-enable depth writing
-		// glDisable(GL_BLEND);
 		glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA); // Reset blend mode
-		                                                   // glDisable(GL_PROGRAM_POINT_SIZE);
 	}
 
 } // namespace Boidsish

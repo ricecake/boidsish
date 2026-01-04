@@ -33,12 +33,16 @@ namespace Boidsish {
 
 		const glm::vec3& GetVelocity() const { return velocity_; }
 
+		const int GetId() const { return id_; }
+
 		bool IsActive() const { return active_; }
 
 	private:
+		inline static int count = 1;
 		glm::vec3       position_;
 		FireEffectStyle style_;
 		glm::vec3       direction_;
+		int id_;
 		glm::vec3       velocity_;
 		bool            active_{true};
 	};

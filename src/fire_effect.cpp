@@ -8,6 +8,6 @@ namespace Boidsish {
 		const glm::vec3& direction,
 		const glm::vec3& velocity
 	):
-		position_(position), style_(style), direction_(direction), velocity_(velocity) {}
+		position_(position), style_(style), direction_(direction), id_(count++), velocity_(velocity) {}
 
 } // namespace Boidsish
