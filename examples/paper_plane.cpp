@@ -102,37 +102,38 @@ public:
 		// --- Auto-leveling ---
 		if (!controller_->pitch_up && !controller_->pitch_down && !controller_->yaw_left && !controller_->yaw_right &&
 		    !controller_->roll_left && !controller_->roll_right) {
-			// This robust auto-leveling logic finds the shortest rotational path to bring the plane upright and level.
-			// It works by finding where the world's 'up' vector is in relation to the plane's local axes,
-			// and then applying corrective forces.
+			// This robust auto-leveling logic finds the shortest rotational path to bring the plane upright and level
+			// simultaneously.
 
-			glm::vec3 world_up_in_local = glm::inverse(orientation_) * glm::vec3(0.0f, 1.0f, 0.0f);
+			// --- Get Orientation Vectors ---
+			glm::vec3 world_up = glm::vec3(0.0f, 1.0f, 0.0f);
+			glm::vec3 plane_forward_world = orientation_ * glm::vec3(0.0f, 0.0f, -1.0f);
+			glm::vec3 world_up_in_local = glm::inverse(orientation_) * world_up;
 
-			// --- Pitch Correction (Shortest Path) ---
-			// The 'z' component of world_up_in_local tells us how 'forward' or 'backward' the world's 'up' is.
-			// A positive 'z' means world 'up' is in front of our nose (i.e., we are pitched down).
-			// To correct, we pitch up (positive x rotation), correctly taking the shortest path to the horizon.
-			target_rot_velocity.x += world_up_in_local.z * kAutoLevelSpeed;
+			// --- Calculate Pitch Error ---
+			// Project the plane's forward vector onto the world's XZ plane to get a horizon-level vector.
+			// The angle between the actual forward vector and this projected vector is our pitch error.
+			glm::vec3 forward_on_horizon = glm::normalize(glm::vec3(plane_forward_world.x, 0.0f, plane_forward_world.z));
+			float pitch_error = glm::asin(glm::dot(plane_forward_world, world_up));
 
-			// --- Roll Correction ---
-			// The 'x' component tells us how 'right' or 'left' the world's 'up' is.
-			// A positive 'x' means world 'up' is to our right. We must roll right (negative z rotation) to level the
-			// wings.
-			float roll_correction = world_up_in_local.x * kAutoLevelSpeed;
+			// --- Calculate Roll Error ---
+			// The angle of the world's 'up' vector projected onto our local YZ plane gives us the roll error.
+			// atan2 provides the shortest angle, correctly handling inverted flight.
+			float roll_error = atan2(world_up_in_local.x, world_up_in_local.y);
 
-			// The 'y' component tells us if we are upright or inverted. If it's negative, we are upside down.
-			if (world_up_in_local.y < 0.0f) {
-				roll_correction *= 3.0f; // Apply a stronger roll correction.
-				target_rot_velocity.x = 0;
-
-				// This solves the "stuck upside down" problem. If we're perfectly inverted, the roll_correction
-				// can be zero. Here, we add a constant roll "kick" to get the plane rolling.
-				if (abs(world_up_in_local.x) < 0.1f) {
-					roll_correction += kRollSpeed * 0.5f;
-				}
+			// --- Handle Vertical Flight Edge Case ---
+			// If the plane is pointing nearly straight up or down, the concept of "roll" is unstable.
+			// In this case, we disable roll correction and focus on pitching back to the horizon.
+			// The threshold (0.99) corresponds to about 8 degrees from vertical.
+			if (abs(glm::dot(plane_forward_world, world_up)) > 0.99f) {
+				roll_error = 0.0f;
 			}
 
-			target_rot_velocity.z -= roll_correction;
+			// --- Apply Proportional Corrections ---
+			// Apply forces proportional to the error angles. This makes the correction smooth
+			// and ensures both roll and pitch complete at roughly the same time.
+			target_rot_velocity.x -= pitch_error * kAutoLevelSpeed;
+			target_rot_velocity.z -= roll_error * kAutoLevelSpeed;
 		}
 
 		// --- Apply Damping and Update Rotational Velocity ---
