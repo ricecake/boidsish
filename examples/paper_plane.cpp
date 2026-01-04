@@ -14,6 +14,7 @@
 #include "terrain_generator.h"
 #include <GLFW/glfw3.h>
 #include <fire_effect.h>
+#include <glm/gtc/constants.hpp>
 #include <glm/gtc/quaternion.hpp>
 #include <glm/gtx/quaternion.hpp>
 #include <set>
@@ -759,6 +760,7 @@ public:
         if (vis && vis->GetTerrainGenerator()) {
             const auto& visible_chunks = vis->GetTerrainGenerator()->getVisibleChunks();
             std::set<const Terrain*> visible_chunk_set;
+            std::vector<glm::vec3> newly_spawned_positions;
 
             // Spawn new launchers
             for (const auto& chunk : visible_chunks) {
@@ -767,11 +769,22 @@ public:
                     glm::vec3 chunk_pos = glm::vec3(chunk->GetX(), chunk->GetY(), chunk->GetZ());
                     glm::vec3 world_pos = chunk_pos + chunk->proxy.highestPoint;
 
-                    const float kMinSeparationDistance = 20.0f;
-                    auto nearby = GetEntitiesInRadius<EntityBase>(Vector3(world_pos.x, world_pos.y, world_pos.z), kMinSeparationDistance);
+                    const float kMinSeparationDistanceSq = 20.0f * 20.0f;
+
+                    // Check against entities from previous frames
+                    auto nearby_entities = GetEntitiesInRadius<EntityBase>(Vector3(world_pos.x, world_pos.y, world_pos.z), 20.0f);
                     bool too_close = false;
-                    for (const auto& entity : nearby) {
+                    for (const auto& entity : nearby_entities) {
                         if (dynamic_cast<GuidedMissileLauncher*>(entity.get())) {
+                            too_close = true;
+                            break;
+                        }
+                    }
+                    if (too_close) continue;
+
+                    // Check against entities spawned in this frame
+                    for (const auto& new_pos : newly_spawned_positions) {
+                        if (glm::distance2(world_pos, new_pos) < kMinSeparationDistanceSq) {
                             too_close = true;
                             break;
                         }
@@ -780,11 +793,18 @@ public:
                     if (!too_close) {
                         auto [terrain_h, terrain_normal] = vis->GetTerrainPointProperties(world_pos.x, world_pos.z);
 
-                        glm::vec3 up_vector = glm::vec3(0.0f, 1.0f, 0.0f);
-                        glm::quat orientation = glm::rotation(up_vector, terrain_normal);
+                        // Base rotation to orient the teapot correctly (assuming Z is up in model space)
+                        glm::quat base_rotation = glm::angleAxis(glm::pi<float>() / -2.0f, glm::vec3(1.0f, 0.0f, 0.0f));
 
-                        int id = AddEntity<GuidedMissileLauncher>(Vector3(world_pos.x, world_pos.y, world_pos.z), orientation);
+                        // Rotation to align with terrain normal
+                        glm::vec3 up_vector = glm::vec3(0.0f, 1.0f, 0.0f);
+                        glm::quat terrain_alignment = glm::rotation(up_vector, terrain_normal);
+
+                        glm::quat final_orientation = terrain_alignment * base_rotation;
+
+                        int id = AddEntity<GuidedMissileLauncher>(Vector3(world_pos.x, world_pos.y, world_pos.z), final_orientation);
                         spawned_launchers_[chunk.get()] = id;
+                        newly_spawned_positions.push_back(world_pos);
                     }
                 }
             }
