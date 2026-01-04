@@ -658,7 +658,7 @@ public:
 		SetTrailLength(50);
 		shape_->SetScale(glm::vec3(0.01f));
 		std::dynamic_pointer_cast<Model>(shape_)->SetBaseRotation(
-			glm::angleAxis(glm::radians(90.0f), glm::vec3(1.0f, 0.0f, 0.0f))
+			glm::angleAxis(glm::radians(-90.0f), glm::vec3(1.0f, 0.0f, 0.0f))
 		);
 		UpdateShape();
 	}
@@ -679,7 +679,6 @@ public:
 		auto velo = GetVelocity();
 		velo += Vector3(0, -0.15f, 0);
 		SetVelocity(velo);
-		shape_->LookAt({velo.x, velo.y, velo.z});
 		return;
 	}
 
