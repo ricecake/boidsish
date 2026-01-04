@@ -762,8 +762,9 @@ public:
             for (const auto& chunk : visible_chunks) {
                 visible_chunk_set.insert(chunk.get());
                 if (spawned_launchers_.find(chunk.get()) == spawned_launchers_.end()) {
-                    glm::vec3 pos = chunk->proxy.highestPoint;
-                    int id = AddEntity<GuidedMissileLauncher>(Vector3(pos.x, pos.y, pos.z));
+                    glm::vec3 chunk_pos = glm::vec3(chunk->GetX(), chunk->GetY(), chunk->GetZ());
+                    glm::vec3 world_pos = chunk_pos + chunk->proxy.highestPoint;
+                    int id = AddEntity<GuidedMissileLauncher>(Vector3(world_pos.x, world_pos.y, world_pos.z));
                     spawned_launchers_[chunk.get()] = id;
                 }
             }
