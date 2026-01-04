@@ -8,11 +8,13 @@ namespace Boidsish {
 namespace PostProcessing {
 
 BloomEffect::BloomEffect(int width, int height)
-    : _width(width), _height(height) {
+    : _width(width), _height(height), _brightPassFBO(0), _brightPassTexture(0) {
     name_ = "Bloom";
 }
 
 BloomEffect::~BloomEffect() {
+    glDeleteFramebuffers(1, &_brightPassFBO);
+    glDeleteTextures(1, &_brightPassTexture);
     for (const auto& mip : _mipChain) {
         glDeleteFramebuffers(1, &mip.fbo);
         glDeleteTextures(1, &mip.texture);
@@ -32,11 +34,27 @@ void BloomEffect::Initialize(int width, int height) {
 }
 
 void BloomEffect::InitializeFBOs() {
+    glDeleteFramebuffers(1, &_brightPassFBO);
+    glDeleteTextures(1, &_brightPassTexture);
     for (const auto& mip : _mipChain) {
         glDeleteFramebuffers(1, &mip.fbo);
         glDeleteTextures(1, &mip.texture);
     }
     _mipChain.clear();
+
+    // Bright pass FBO
+    glGenFramebuffers(1, &_brightPassFBO);
+    glBindFramebuffer(GL_FRAMEBUFFER, _brightPassFBO);
+    glGenTextures(1, &_brightPassTexture);
+    glBindTexture(GL_TEXTURE_2D, _brightPassTexture);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB16F, _width, _height, 0, GL_RGB, GL_FLOAT, NULL);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, _brightPassTexture, 0);
+    if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
+        logger::ERROR("Bloom Bright Pass FBO is not complete!");
 
     glm::vec2 mipSize((float)_width, (float)_height);
 
@@ -61,6 +79,7 @@ void BloomEffect::InitializeFBOs() {
         if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
             logger::ERROR("Bloom mip FBO " + std::to_string(i) + " is not complete!");
         }
+        _mipChain.push_back(mip);
     }
 
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
@@ -71,8 +90,7 @@ void BloomEffect::Apply(GLuint sourceTexture) {
     glGetIntegerv(GL_FRAMEBUFFER_BINDING, &originalFBO);
 
     // 1. Bright pass
-    glBindFramebuffer(GL_FRAMEBUFFER, _mipChain[0].fbo);
-    glViewport(0, 0, _mipChain[0].size.x, _mipChain[0].size.y);
+    glBindFramebuffer(GL_FRAMEBUFFER, _brightPassFBO);
     _brightPassShader->use();
     _brightPassShader->setInt("sceneTexture", 0);
     _brightPassShader->setFloat("threshold", threshold_);
@@ -82,6 +100,13 @@ void BloomEffect::Apply(GLuint sourceTexture) {
 
     // 2. Downsample and blur
     _blurShader->use();
+    glBindFramebuffer(GL_FRAMEBUFFER, _mipChain[0].fbo);
+    glViewport(0, 0, _mipChain[0].size.x, _mipChain[0].size.y);
+    _blurShader->setBool("horizontal", true);
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, _brightPassTexture);
+    glDrawArrays(GL_TRIANGLES, 0, 6);
+
     for (size_t i = 1; i < _mipChain.size(); i++) {
         const auto& mip = _mipChain[i];
         const auto& prevMip = _mipChain[i-1];
@@ -89,7 +114,6 @@ void BloomEffect::Apply(GLuint sourceTexture) {
         glBindFramebuffer(GL_FRAMEBUFFER, mip.fbo);
         glViewport(0, 0, mip.size.x, mip.size.y);
 
-        _blurShader->setBool("horizontal", true);
         glActiveTexture(GL_TEXTURE0);
         glBindTexture(GL_TEXTURE_2D, prevMip.texture);
         glDrawArrays(GL_TRIANGLES, 0, 6);
@@ -108,9 +132,9 @@ void BloomEffect::Apply(GLuint sourceTexture) {
         _upsampleShader->setInt("blurTexture", 1);
 
         glActiveTexture(GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_2D, _mipChain[i-1].texture); // original is the next mip in the chain
+        glBindTexture(GL_TEXTURE_2D, _mipChain[i-1].texture);
         glActiveTexture(GL_TEXTURE1);
-        glBindTexture(GL_TEXTURE_2D, mip.texture); // blur is the current mip
+        glBindTexture(GL_TEXTURE_2D, mip.texture);
 
         glDrawArrays(GL_TRIANGLES, 0, 6);
     }

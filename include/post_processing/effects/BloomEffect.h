@@ -41,6 +41,8 @@ private:
     std::unique_ptr<Shader> _upsampleShader;
     std::unique_ptr<Shader> _compositeShader;
 
+    GLuint _brightPassFBO;
+    GLuint _brightPassTexture;
     std::vector<BloomMip> _mipChain;
 
     int _width, _height;
