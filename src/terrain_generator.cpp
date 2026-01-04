@@ -148,7 +148,7 @@ namespace Boidsish {
 		return total / max_amplitude;
 	}
 
-	const std::vector<std::shared_ptr<Terrain>>& TerrainGenerator::getVisibleChunks() {
+	const std::vector<std::shared_ptr<Terrain>>& TerrainGenerator::getVisibleChunks() const {
 		return visible_chunks_;
 	}
 

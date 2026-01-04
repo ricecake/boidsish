@@ -34,7 +34,7 @@ namespace Boidsish {
 		~TerrainGenerator();
 
 		void                                         update(const Frustum& frustum, const Camera& camera);
-		const std::vector<std::shared_ptr<Terrain>>& getVisibleChunks();
+		const std::vector<std::shared_ptr<Terrain>>& getVisibleChunks() const;
 
 		float GetMaxHeight() const {
 			float max_h = 0.0f;

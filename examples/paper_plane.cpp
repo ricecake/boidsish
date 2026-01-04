@@ -15,6 +15,7 @@
 #include <GLFW/glfw3.h>
 #include <fire_effect.h>
 #include <glm/gtc/quaternion.hpp>
+#include <set>
 
 using namespace Boidsish;
 
@@ -33,6 +34,20 @@ struct PaperPlaneInputController {
 	bool boost = false;
 	bool brake = false;
 	bool fire = false;
+};
+
+class GuidedMissileLauncher : public Entity<Model> {
+public:
+    GuidedMissileLauncher(int id = 0, Vector3 pos = {0, 0, 0})
+        : Entity<Model>(id, "assets/utah_teapot.obj", false) {
+        SetPosition(pos.x, pos.y, pos.z);
+        shape_->SetScale(glm::vec3(2.0f)); // Set a visible scale
+        UpdateShape();
+    }
+
+    void UpdateEntity(const EntityHandler& handler, float time, float delta_time) override {
+        // Initially does nothing, as requested.
+    }
 };
 
 class PaperPlane: public Entity<Model> {
@@ -738,6 +753,32 @@ public:
 			}
 		}
 
+		// --- Guided Missile Launcher Spawning/Despawning ---
+        if (vis && vis->GetTerrainGenerator()) {
+            const auto& visible_chunks = vis->GetTerrainGenerator()->getVisibleChunks();
+            std::set<const Terrain*> visible_chunk_set;
+
+            // Spawn new launchers
+            for (const auto& chunk : visible_chunks) {
+                visible_chunk_set.insert(chunk.get());
+                if (spawned_launchers_.find(chunk.get()) == spawned_launchers_.end()) {
+                    glm::vec3 pos = chunk->proxy.highestPoint;
+                    int id = AddEntity<GuidedMissileLauncher>(Vector3(pos.x, pos.y, pos.z));
+                    spawned_launchers_[chunk.get()] = id;
+                }
+            }
+
+            // Despawn old launchers
+            for (auto it = spawned_launchers_.begin(); it != spawned_launchers_.end(); /* no increment */) {
+                if (visible_chunk_set.find(it->first) == visible_chunk_set.end()) {
+                    QueueRemoveEntity(it->second);
+                    it = spawned_launchers_.erase(it);
+                } else {
+                    ++it;
+                }
+            }
+        }
+
 		// --- Missile Spawning Logic ---
 		auto targets = GetEntitiesByType<PaperPlane>();
 		if (targets.empty())
@@ -833,6 +874,7 @@ public:
 	}
 
 private:
+    std::map<const Terrain*, int>         spawned_launchers_;
 	std::random_device                    rd_;
 	std::mt19937                          eng_;
 	float                                 damage_timer_ = 0.0f;
