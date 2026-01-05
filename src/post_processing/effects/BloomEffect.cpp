@@ -88,6 +88,8 @@ void BloomEffect::InitializeFBOs() {
 void BloomEffect::Apply(GLuint sourceTexture) {
     GLint originalFBO;
     glGetIntegerv(GL_FRAMEBUFFER_BINDING, &originalFBO);
+    GLint originalViewport[4];
+    glGetIntegerv(GL_VIEWPORT, originalViewport);
 
     // 1. Bright pass
     glBindFramebuffer(GL_FRAMEBUFFER, _brightPassFBO);
@@ -156,6 +158,7 @@ void BloomEffect::Apply(GLuint sourceTexture) {
     glBindTexture(GL_TEXTURE_2D, 0);
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, 0);
+    glViewport(originalViewport[0], originalViewport[1], originalViewport[2], originalViewport[3]);
 }
 
 void BloomEffect::Resize(int width, int height) {
