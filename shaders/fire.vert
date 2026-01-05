@@ -54,7 +54,8 @@ void main() {
         if (p.style == 0) { // Rocket Trail
             gl_PointSize = smoothstep((1.0 - v_lifetime), v_lifetime, v_lifetime / 2.0) * 15.0; // Smaller, more consistent size
         } else if (p.style == 1) { // Explosion
-            gl_PointSize = (1.0 - (1.0 - v_lifetime) * (1.0 - v_lifetime)) * 30.0; // Starts large, shrinks fast
+            // gl_PointSize = (1.0 - (1.0 - v_lifetime) * (1.0 - v_lifetime)) * 30.0; // Starts large, shrinks fast
+            gl_PointSize = 30 * (1-v_lifetime/10000);
         } else {
             gl_PointSize = smoothstep(2.0 * (1.0 - v_lifetime), v_lifetime, v_lifetime / 2.5) * 25.0;
         }
