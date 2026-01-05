@@ -164,8 +164,8 @@ namespace Boidsish {
 		const TerrainGenerator*                      GetTerrainGenerator() const;
 		const std::vector<std::shared_ptr<Terrain>>& GetTerrainChunks() const;
 		task_thread_pool::task_thread_pool&          GetThreadPool();
-		FireEffectManager* GetFireEffectManager();
-		float GetLastFrameTime() const;
+		FireEffectManager*                           GetFireEffectManager();
+		float                                        GetLastFrameTime() const;
 
 		Config& GetConfig();
 

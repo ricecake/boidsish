@@ -1,12 +1,13 @@
 #include "fire_effect_manager.h"
 
+#include <algorithm>
+#include <numeric>
+#include <queue>
+
 #include "graphics.h" // For logger
 #include "logger.h"
 #include <GL/glew.h>
-#include <algorithm>
 #include <glm/gtc/type_ptr.hpp>
-#include <numeric>
-#include <queue>
 
 namespace Boidsish {
 
@@ -145,7 +146,10 @@ namespace Boidsish {
 
 		glBindBuffer(GL_SHADER_STORAGE_BUFFER, indirection_buffer_);
 		glBufferSubData(
-			GL_SHADER_STORAGE_BUFFER, 0, particle_to_emitter_map_.size() * sizeof(int), particle_to_emitter_map_.data()
+			GL_SHADER_STORAGE_BUFFER,
+			0,
+			particle_to_emitter_map_.size() * sizeof(int),
+			particle_to_emitter_map_.data()
 		);
 
 		// --- Dispatch Compute Shader ---
@@ -233,8 +237,8 @@ namespace Boidsish {
 		}
 
 		// --- 3. Identify Over/Under Budget Emitters ---
-		std::vector<int> to_reclaim; // Particle indices to take from over-budget emitters
-		std::priority_queue<std::pair<float, int>> to_fill; // {need, index} for under-budget emitters
+		std::vector<int>                           to_reclaim; // Particle indices to take from over-budget emitters
+		std::priority_queue<std::pair<float, int>> to_fill;    // {need, index} for under-budget emitters
 
 		for (size_t i = 0; i < effects_.size(); ++i) {
 			int diff = ideal_counts[i] - current_counts[i];
@@ -256,32 +260,32 @@ namespace Boidsish {
 		// --- 4. Perform Stable Re-mapping ---
 		// First, use null particles to fill under-budget emitters
 		while (!to_fill.empty() && !null_particles.empty()) {
-			int   emitter_index = to_fill.top().second;
+			int emitter_index = to_fill.top().second;
 			to_fill.pop();
-			int   particle_index = null_particles.back();
+			int particle_index = null_particles.back();
 			null_particles.pop_back();
 
 			particle_to_emitter_map_[particle_index] = emitter_index;
 			ideal_counts[emitter_index]--;
 			if (ideal_counts[emitter_index] > current_counts[emitter_index]) {
-				float need =
-					(float)(ideal_counts[emitter_index] - current_counts[emitter_index]) / ideal_counts[emitter_index];
+				float need = (float)(ideal_counts[emitter_index] - current_counts[emitter_index]) /
+					ideal_counts[emitter_index];
 				to_fill.push({need, emitter_index});
 			}
 		}
 
 		// Second, use reclaimed particles to fill the rest
 		while (!to_fill.empty() && !to_reclaim.empty()) {
-			int   emitter_index = to_fill.top().second;
+			int emitter_index = to_fill.top().second;
 			to_fill.pop();
-			int   particle_index = to_reclaim.back();
+			int particle_index = to_reclaim.back();
 			to_reclaim.pop_back();
 
 			particle_to_emitter_map_[particle_index] = emitter_index;
 			ideal_counts[emitter_index]--;
 			if (ideal_counts[emitter_index] > current_counts[emitter_index]) {
-				float need =
-					(float)(ideal_counts[emitter_index] - current_counts[emitter_index]) / ideal_counts[emitter_index];
+				float need = (float)(ideal_counts[emitter_index] - current_counts[emitter_index]) /
+					ideal_counts[emitter_index];
 				to_fill.push({need, emitter_index});
 			}
 		}

@@ -7,7 +7,7 @@ namespace Boidsish {
 		FireEffectStyle  style,
 		const glm::vec3& direction,
 		const glm::vec3& velocity,
-		int max_particles
+		int              max_particles
 	):
 		position_(position),
 		style_(style),
