@@ -3,7 +3,10 @@
 #include "graphics.h" // For logger
 #include "logger.h"
 #include <GL/glew.h>
+#include <algorithm>
 #include <glm/gtc/type_ptr.hpp>
+#include <numeric>
+#include <queue>
 
 namespace Boidsish {
 
@@ -24,6 +27,9 @@ namespace Boidsish {
 		}
 		if (emitter_buffer_ != 0) {
 			glDeleteBuffers(1, &emitter_buffer_);
+		}
+		if (indirection_buffer_ != 0) {
+			glDeleteBuffers(1, &indirection_buffer_);
 		}
 		if (dummy_vao_ != 0) {
 			glDeleteVertexArrays(1, &dummy_vao_);
@@ -46,10 +52,15 @@ namespace Boidsish {
 
 		glGenBuffers(1, &emitter_buffer_);
 		glBindBuffer(GL_SHADER_STORAGE_BUFFER, emitter_buffer_);
-		// Max of 100 emitters for now, can be resized if needed
-		glBufferData(GL_SHADER_STORAGE_BUFFER, 100 * sizeof(Emitter), nullptr, GL_DYNAMIC_DRAW);
+		glBufferData(GL_SHADER_STORAGE_BUFFER, kMaxEmitters * sizeof(Emitter), nullptr, GL_DYNAMIC_DRAW);
+
+		glGenBuffers(1, &indirection_buffer_);
+		glBindBuffer(GL_SHADER_STORAGE_BUFFER, indirection_buffer_);
+		glBufferData(GL_SHADER_STORAGE_BUFFER, kMaxParticles * sizeof(int), nullptr, GL_DYNAMIC_DRAW);
 
 		glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
+
+		particle_to_emitter_map_.resize(kMaxParticles, -1);
 
 		// A dummy VAO is required by OpenGL 4.2 core profile for drawing arrays.
 		glGenVertexArrays(1, &dummy_vao_);
@@ -61,20 +72,46 @@ namespace Boidsish {
 		const glm::vec3& position,
 		FireEffectStyle  style,
 		const glm::vec3& direction,
-		const glm::vec3& velocity
+		const glm::vec3& velocity,
+		int              max_particles
 	) {
 		_EnsureShaderAndBuffers();
-		auto effect = std::make_shared<FireEffect>(position, style, direction, velocity);
-		effects_.push_back(effect);
-		return effect;
+
+		// Find an inactive slot to reuse
+		for (size_t i = 0; i < effects_.size(); ++i) {
+			if (!effects_[i]) {
+				effects_[i] = std::make_shared<FireEffect>(position, style, direction, velocity, max_particles);
+				_UpdateParticleAllocation();
+				return effects_[i];
+			}
+		}
+
+		// If no inactive slots, add a new one if under capacity
+		if (effects_.size() < kMaxEmitters) {
+			auto effect = std::make_shared<FireEffect>(position, style, direction, velocity, max_particles);
+			effects_.push_back(effect);
+			_UpdateParticleAllocation();
+			return effect;
+		}
+
+		logger::ERROR("Maximum number of fire effects reached.");
+		return nullptr;
 	}
 
 	void FireEffectManager::RemoveEffect(const std::shared_ptr<FireEffect>& effect) {
-		std::erase_if(effects_, [&](const auto& e) { return e == effect; });
+		if (effect) {
+			for (size_t i = 0; i < effects_.size(); ++i) {
+				if (effects_[i] == effect) {
+					effects_[i] = nullptr; // Mark as inactive
+					_UpdateParticleAllocation();
+					return;
+				}
+			}
+		}
 	}
 
 	void FireEffectManager::Update(float delta_time, float time) {
-		if (!initialized_ || effects_.empty()) {
+		if (!initialized_) {
 			return;
 		}
 
@@ -82,16 +119,20 @@ namespace Boidsish {
 
 		// --- Update Emitters ---
 		std::vector<Emitter> emitters;
+		emitters.reserve(effects_.size());
 		for (const auto& effect : effects_) {
-			if (effect->IsActive()) {
+			if (effect) {
 				emitters.push_back(
 					{effect->GetPosition(),
 				     (int)effect->GetStyle(),
 				     effect->GetDirection(),
-				     0.0f,
+				     1, // is_active
 				     effect->GetVelocity(),
 				     0.0f}
 				);
+			} else {
+				// Add a placeholder for inactive emitters to maintain indexing
+				emitters.push_back({glm::vec3(0), 0, glm::vec3(0), 0, glm::vec3(0), 0.0f});
 			}
 		}
 
@@ -102,6 +143,11 @@ namespace Boidsish {
 		glBindBuffer(GL_SHADER_STORAGE_BUFFER, emitter_buffer_);
 		glBufferData(GL_SHADER_STORAGE_BUFFER, emitters.size() * sizeof(Emitter), emitters.data(), GL_DYNAMIC_DRAW);
 
+		glBindBuffer(GL_SHADER_STORAGE_BUFFER, indirection_buffer_);
+		glBufferSubData(
+			GL_SHADER_STORAGE_BUFFER, 0, particle_to_emitter_map_.size() * sizeof(int), particle_to_emitter_map_.data()
+		);
+
 		// --- Dispatch Compute Shader ---
 		compute_shader_->use();
 		compute_shader_->setFloat("u_delta_time", delta_time);
@@ -110,6 +156,7 @@ namespace Boidsish {
 
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, particle_buffer_);
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, emitter_buffer_);
+		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 2, indirection_buffer_);
 
 		// Dispatch enough groups to cover all particles
 		glDispatchCompute((kMaxParticles / 256) + 1, 1, 1);
@@ -119,6 +166,125 @@ namespace Boidsish {
 
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, 0);
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, 0);
+		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 2, 0);
+	}
+
+	void FireEffectManager::_UpdateParticleAllocation() {
+		// --- 1. Calculate Ideal Distribution ---
+		std::vector<int> ideal_counts(effects_.size(), 0);
+		int              total_particle_demand = 0;
+		int              num_unlimited_emitters = 0;
+		int              num_active_emitters = 0;
+
+		for (const auto& effect : effects_) {
+			if (effect) {
+				num_active_emitters++;
+				int max_p = effect->GetMaxParticles();
+				if (max_p != -1) {
+					total_particle_demand += max_p;
+				} else {
+					num_unlimited_emitters++;
+				}
+			}
+		}
+
+		if (num_active_emitters == 0)
+			return;
+
+		int avg_particles_per_unlimited = 0;
+		if (num_unlimited_emitters > 0) {
+			int available_for_unlimited = kMaxParticles - total_particle_demand;
+			if (available_for_unlimited > 0) {
+				avg_particles_per_unlimited = available_for_unlimited / num_unlimited_emitters;
+			}
+		}
+
+		for (size_t i = 0; i < effects_.size(); ++i) {
+			if (effects_[i]) {
+				int max_p = effects_[i]->GetMaxParticles();
+				if (max_p != -1) {
+					ideal_counts[i] = max_p;
+				} else {
+					ideal_counts[i] = avg_particles_per_unlimited;
+				}
+			}
+		}
+
+		// Distribute any remainder due to integer division
+		int current_total = std::accumulate(ideal_counts.begin(), ideal_counts.end(), 0);
+		int remainder = kMaxParticles - current_total;
+		for (size_t i = 0; i < effects_.size() && remainder > 0; ++i) {
+			if (effects_[i]) {
+				ideal_counts[i]++;
+				remainder--;
+			}
+		}
+
+		// --- 2. Calculate Current Distribution ---
+		std::vector<int> current_counts(effects_.size(), 0);
+		std::vector<int> null_particles;
+		for (int i = 0; i < kMaxParticles; ++i) {
+			int emitter_index = particle_to_emitter_map_[i];
+			if (emitter_index != -1 && emitter_index < (int)effects_.size()) {
+				current_counts[emitter_index]++;
+			} else {
+				null_particles.push_back(i);
+			}
+		}
+
+		// --- 3. Identify Over/Under Budget Emitters ---
+		std::vector<int> to_reclaim; // Particle indices to take from over-budget emitters
+		std::priority_queue<std::pair<float, int>> to_fill; // {need, index} for under-budget emitters
+
+		for (size_t i = 0; i < effects_.size(); ++i) {
+			int diff = ideal_counts[i] - current_counts[i];
+			if (diff > 0) {
+				float need = (float)diff / ideal_counts[i];
+				to_fill.push({need, (int)i});
+			} else if (diff < 0) {
+				// Find -diff particles to reclaim
+				int count = -diff;
+				for (int p_idx = 0; p_idx < kMaxParticles && count > 0; ++p_idx) {
+					if (particle_to_emitter_map_[p_idx] == (int)i) {
+						to_reclaim.push_back(p_idx);
+						count--;
+					}
+				}
+			}
+		}
+
+		// --- 4. Perform Stable Re-mapping ---
+		// First, use null particles to fill under-budget emitters
+		while (!to_fill.empty() && !null_particles.empty()) {
+			int   emitter_index = to_fill.top().second;
+			to_fill.pop();
+			int   particle_index = null_particles.back();
+			null_particles.pop_back();
+
+			particle_to_emitter_map_[particle_index] = emitter_index;
+			ideal_counts[emitter_index]--;
+			if (ideal_counts[emitter_index] > current_counts[emitter_index]) {
+				float need =
+					(float)(ideal_counts[emitter_index] - current_counts[emitter_index]) / ideal_counts[emitter_index];
+				to_fill.push({need, emitter_index});
+			}
+		}
+
+		// Second, use reclaimed particles to fill the rest
+		while (!to_fill.empty() && !to_reclaim.empty()) {
+			int   emitter_index = to_fill.top().second;
+			to_fill.pop();
+			int   particle_index = to_reclaim.back();
+			to_reclaim.pop_back();
+
+			particle_to_emitter_map_[particle_index] = emitter_index;
+			ideal_counts[emitter_index]--;
+			if (ideal_counts[emitter_index] > current_counts[emitter_index]) {
+				float need =
+					(float)(ideal_counts[emitter_index] - current_counts[emitter_index]) / ideal_counts[emitter_index];
+				to_fill.push({need, emitter_index});
+			}
+		}
 	}
 
 	void FireEffectManager::Render(const glm::mat4& view, const glm::mat4& projection, const glm::vec3& camera_pos) {

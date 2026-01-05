@@ -12,7 +12,8 @@ namespace Boidsish {
 			const glm::vec3& position,
 			FireEffectStyle  style,
 			const glm::vec3& direction = glm::vec3(0.0f),
-			const glm::vec3& velocity = glm::vec3(0.0f)
+			const glm::vec3& velocity = glm::vec3(0.0f),
+			int max_particles = -1
 		);
 
 		void SetPosition(const glm::vec3& pos) { position_ = pos; }
@@ -35,16 +36,19 @@ namespace Boidsish {
 
 		const int GetId() const { return id_; }
 
+		int GetMaxParticles() const { return max_particles_; }
+
 		bool IsActive() const { return active_; }
 
 	private:
 		inline static int count = 1;
-		glm::vec3         position_;
-		FireEffectStyle   style_;
-		glm::vec3         direction_;
-		int               id_;
-		glm::vec3         velocity_;
-		bool              active_{true};
+		glm::vec3       position_;
+		FireEffectStyle style_;
+		glm::vec3       direction_;
+		int id_;
+		glm::vec3       velocity_;
+		int             max_particles_;
+		bool            active_{true};
 	};
 
 } // namespace Boidsish

@@ -14,7 +14,7 @@ struct Emitter {
     vec3  position;
     int   style;
     vec3  direction;
-    float _padding1;
+	int   is_active;
     vec3  velocity;
     float _padding2;
 };
@@ -26,6 +26,10 @@ layout(std430, binding = 0) buffer ParticleBuffer {
 
 layout(std430, binding = 1) buffer EmitterBuffer {
     Emitter emitters[];
+};
+
+layout(std430, binding = 2) buffer IndirectionBuffer {
+    int particle_to_emitter_map[];
 };
 
 uniform float u_delta_time;
@@ -196,9 +200,22 @@ void main() {
 
     // If particle is dead, try to respawn it
     if (p.pos.w <= 0.0) {
-        // Deterministic mapping from particle to emitter
-        int emitter_index = int(gid % u_num_emitters);
+        // Look up the assigned emitter from the indirection map
+        int emitter_index = particle_to_emitter_map[gid];
+
+        // If the emitter index is -1, this particle is inactive
+        if (emitter_index == -1 || emitter_index >= u_num_emitters) {
+            p.pos.w = 0.0; // Ensure it stays dead
+            particles[gid] = p;
+            return;
+        }
+
         Emitter emitter = emitters[emitter_index];
+        if (emitter.is_active == 0) {
+            p.pos.w = 0.0; // Emitter is no longer active
+            particles[gid] = p;
+            return;
+        }
 
         p.emitter_index = emitter_index;
         p.style = emitter.style;
