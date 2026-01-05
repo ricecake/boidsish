@@ -1524,9 +1524,10 @@ namespace Boidsish {
 		const glm::vec3& position,
 		FireEffectStyle  style,
 		const glm::vec3& direction,
-		const glm::vec3& velocity
+		const glm::vec3& velocity,
+		int max_particles
 	) {
-		return impl->fire_effect_manager->AddEffect(position, style, direction, velocity, -1);
+		return impl->fire_effect_manager->AddEffect(position, style, direction, velocity, max_particles);
 	}
 
 	FireEffectManager* Visualizer::GetFireEffectManager() {

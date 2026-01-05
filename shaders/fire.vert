@@ -19,6 +19,8 @@ uniform vec3 u_camera_pos;
 
 out float v_lifetime;
 out vec4 view_pos;
+out vec3 v_velocity;
+out vec3 v_view_velocity;
 flat out int v_style;
 
 void main() {
@@ -34,6 +36,8 @@ void main() {
         gl_Position = u_projection * view_pos;
         v_lifetime = p.pos.w;
         v_style = p.style;
+        v_velocity = p.vel.xyz;
+        v_view_velocity = (u_view * vec4(p.vel.xyz, 0.0)).xyz;
 
         // // Base size on style
         // float base_size = 10.0;

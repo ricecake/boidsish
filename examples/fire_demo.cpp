@@ -17,6 +17,13 @@ int main() {
 		);
 		auto fire2 = vis.AddFireEffect(glm::vec3(10.0f, 2.0f, 0.0f), Boidsish::FireEffectStyle::Explosion);
 		auto fire3 = vis.AddFireEffect(glm::vec3(0.0f, 2.0f, 0.0f), Boidsish::FireEffectStyle::Fire);
+		auto tracer = vis.AddFireEffect(
+			glm::vec3(0.0f, 2.0f, 10.0f),
+			Boidsish::FireEffectStyle::Tracer,
+			{0.0f, 0.5f, -1.0f},
+			glm::vec3(0),
+			10
+		);
 
 		vis.GetCamera().y = 5.0;
 		vis.GetCamera().z = 30.0;
