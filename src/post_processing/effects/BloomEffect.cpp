@@ -93,6 +93,7 @@ void BloomEffect::Apply(GLuint sourceTexture) {
 
     // 1. Bright pass
     glBindFramebuffer(GL_FRAMEBUFFER, _brightPassFBO);
+    glViewport(0, 0, _width, _height);
     _brightPassShader->use();
     _brightPassShader->setInt("sceneTexture", 0);
     _brightPassShader->setFloat("threshold", threshold_);
@@ -143,6 +144,7 @@ void BloomEffect::Apply(GLuint sourceTexture) {
 
     // 4. Final composite
     glBindFramebuffer(GL_FRAMEBUFFER, originalFBO);
+    glViewport(originalViewport[0], originalViewport[1], originalViewport[2], originalViewport[3]);
     _compositeShader->use();
     _compositeShader->setInt("sceneTexture", 0);
     _compositeShader->setInt("bloomBlur", 1);
@@ -158,7 +160,6 @@ void BloomEffect::Apply(GLuint sourceTexture) {
     glBindTexture(GL_TEXTURE_2D, 0);
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, 0);
-    glViewport(originalViewport[0], originalViewport[1], originalViewport[2], originalViewport[3]);
 }
 
 void BloomEffect::Resize(int width, int height) {
