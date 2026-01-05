@@ -266,28 +266,28 @@ public:
 	}
 
 	void UpdateEntity(const EntityHandler& handler, float time, float delta_time) {
-		lived += delta_time;
-		if (lived >= lifetime) {
-			if (exploded) {
-				handler.EnqueueVisualizerAction([this, &handler]() { handler.vis->RemoveFireEffect(fire); });
+		lived_ += delta_time;
+		auto pos = GetPosition();
+
+		// --- Lifetime & Explosion ---
+		if (exploded_) {
+			if (lived_ >= kExplosionDisplayTime) {
 				handler.QueueRemoveEntity(id_);
-				return;
-			}
-			lived = lifetime - 2;
-			exploded = true;
-			SetVelocity(glm::vec3(0, 0, 0));
-			handler.EnqueueVisualizerAction([this, &handler]() { fire->SetStyle(FireEffectStyle::Explosion); });
-		}
-		if (exploded) {
-			if ((lifetime - lived) < 2) {
-				handler.EnqueueVisualizerAction([this, &handler]() { fire->SetStyle(FireEffectStyle::Null); });
 			}
 			return;
 		}
-		auto pos = GetPosition();
-		if (fire == nullptr) {
+
+		if (lived_ >= lifetime_) {
+			Explode(handler, false); // Explode at end of life
+			return;
+		}
+
+		// --- Manage Exhaust Fire Effect ---
+		// This is done via lambda capture to ensure the effect is updated
+		// and eventually terminated correctly, even if the missile is destroyed.
+		if (exhaust_effect_ == nullptr) {
 			handler.EnqueueVisualizerAction([this, &handler, pos]() {
-				fire = handler.vis->AddFireEffect(
+				exhaust_effect_ = handler.vis->AddFireEffect(
 					glm::vec3(pos.x, pos.y, pos.z),
 					FireEffectStyle::MissileExhaust,
 					orientation_ * glm::vec3(0, 0, -1)
@@ -295,10 +295,13 @@ public:
 			});
 		} else {
 			handler.EnqueueVisualizerAction([this, pos]() {
-				fire->SetPosition({pos.x, pos.y, pos.z});
-				fire->SetDirection(orientation_ * glm::vec3(0, 0, -1));
+				if (exhaust_effect_) {
+					exhaust_effect_->SetPosition({pos.x, pos.y, pos.z});
+					exhaust_effect_->SetDirection(orientation_ * glm::vec3(0, 0, -1));
+				}
 			});
 		}
+
 
 		// --- Flight Model Constants ---
 		const float kLaunchTime = 0.5f;
@@ -333,14 +336,8 @@ public:
 
 				// --- Proximity Detonation ---
 				if ((plane->GetPosition() - GetPosition()).Magnitude() < 10) {
-					SetVelocity(0, 0, 0);
-					SetSize(100);
-					SetColor(1, 0, 0, 0.33f);
-					exploded = true;
-					lived = lifetime - 5; // Used for explosion lifetime
-					handler.EnqueueVisualizerAction([this, &handler]() { fire->SetStyle(FireEffectStyle::Explosion); });
+					Explode(handler, true);
 					plane->TriggerDamage();
-
 					return;
 				}
 
@@ -426,16 +423,54 @@ public:
 		}
 	}
 
+	void Explode(const EntityHandler& handler, bool hit_target) {
+		if (exploded_)
+			return;
+
+		// --- Create Explosion Effect ---
+		auto pos = GetPosition();
+		handler.EnqueueVisualizerAction([=, &handler]() {
+			handler.vis->AddFireEffect(
+				glm::vec3(pos.x, pos.y, pos.z),
+				FireEffectStyle::Explosion,
+				glm::vec3(0, 1, 0),
+				glm::vec3(0, 0, 0),
+				-1,
+				2.0f
+			);
+		});
+
+		// --- Clean Up Exhaust ---
+		// Give the exhaust a short lifetime to fizzle out
+		handler.EnqueueVisualizerAction([exhaust = exhaust_effect_]() {
+			if (exhaust) {
+				exhaust->SetLifetime(0.25f);
+				exhaust->SetLived(0.0f);
+			}
+		});
+
+
+		exploded_ = true;
+		lived_ = 0.0f;
+		SetVelocity(Vector3(0, 0, 0));
+
+		if (hit_target) {
+			SetSize(100);
+			SetColor(1, 0, 0, 0.33f);
+		}
+	}
+
 private:
-	constexpr static int        thrust{50};
-	constexpr static int        lifetime{12};
-	float                       lived = 0;
-	bool                        exploded = false;
-	bool                        fired = false;
-	std::shared_ptr<FireEffect> fire = nullptr;
+	// Constants
+	static constexpr float               lifetime_ = 12.0f;
+	static constexpr float               kExplosionDisplayTime = 2.0f;
+	// State
+	float                                lived_ = 0.0f;
+	bool                                 exploded_ = false;
+	std::shared_ptr<FireEffect>          exhaust_effect_ = nullptr;
 
 	// Flight model
-	glm::quat          orientation_;
+	glm::quat                            orientation_;
 	glm::vec3          rotational_velocity_; // x: pitch, y: yaw, z: roll
 	float              forward_speed_;
 	std::random_device rd_;
@@ -471,33 +506,22 @@ public:
 	}
 
 	void UpdateEntity(const EntityHandler& handler, float time, float delta_time) {
-		lived += delta_time;
+		lived_ += delta_time;
 		auto pos = GetPosition();
-		if (fire != nullptr) {
-			auto p = fire->GetPosition();
-		}
-		if (lived >= lifetime) {
-			if (exploded) {
-				handler.EnqueueVisualizerAction([this, &handler]() { handler.vis->RemoveFireEffect(fire); });
+
+		// --- Lifetime & Explosion ---
+		if (exploded_) {
+			if (lived_ >= kExplosionDisplayTime) {
 				handler.QueueRemoveEntity(id_);
-				return;
-			}
-			lived = lifetime - 5;
-			exploded = true;
-			SetVelocity(glm::vec3(0, 0, 0));
-			handler.EnqueueVisualizerAction([this, &handler]() { fire->SetStyle(FireEffectStyle::Explosion); });
-			// auto pos = GetPosition();
-			// handler.EnqueueVisualizerAction([this, &handler]() {
-			// 	fire = handler.vis->AddFireEffect(glm::vec3(pos.x, pos.y, pos.z), FireEffectStyle::Explosion,
-			// orientation_ * glm::vec3(0, 0, -1));
-			// });
-		}
-		if (exploded) {
-			if ((lifetime - lived) < 2) {
-				handler.EnqueueVisualizerAction([this, &handler]() { fire->SetStyle(FireEffectStyle::Null); });
 			}
 			return;
 		}
+
+		if (lived_ >= lifetime_) {
+			Explode(handler, false); // Explode at end of life
+			return;
+		}
+
 
 		// --- Flight Model Constants ---
 		const float kLaunchTime = 1.0f;
@@ -505,21 +529,24 @@ public:
 		const float kAcceleration = 150.0f;
 
 		// --- Launch Phase ---
-		if (lived < kLaunchTime) {
+		if (lived_ < kLaunchTime) {
 			auto velo = GetVelocity();
 			velo += Vector3(0, -0.07f, 0);
 			SetVelocity(velo);
 			return;
 		} else {
-			auto pos = GetPosition();
-			if (!fired) {
+			// --- Post-Launch ---
+			if (!fired_) {
 				SetTrailLength(500);
 				SetTrailRocket(true);
 				SetOrientToVelocity(true);
+				fired_ = true;
+			}
 
-				fired = true;
+			// --- Manage Exhaust Fire Effect ---
+			if (exhaust_effect_ == nullptr) {
 				handler.EnqueueVisualizerAction([this, &handler, pos]() {
-					fire = handler.vis->AddFireEffect(
+					exhaust_effect_ = handler.vis->AddFireEffect(
 						glm::vec3(pos.x, pos.y, pos.z),
 						FireEffectStyle::MissileExhaust,
 						orientation_ * glm::vec3(0, 0, 1)
@@ -527,8 +554,10 @@ public:
 				});
 			} else {
 				handler.EnqueueVisualizerAction([this, pos]() {
-					fire->SetPosition(glm::vec3(pos.x, pos.y, pos.z));
-					fire->SetDirection(orientation_ * glm::vec3(0, 0, 1));
+					if (exhaust_effect_) {
+						exhaust_effect_->SetPosition(glm::vec3(pos.x, pos.y, pos.z));
+						exhaust_effect_->SetDirection(orientation_ * glm::vec3(0, 0, 1));
+					}
 				});
 			}
 
@@ -550,11 +579,7 @@ public:
 
 				// --- Proximity Detonation ---
 				if ((plane->GetPosition() - GetPosition()).Magnitude() < 10) {
-					SetVelocity(0, 0, 0);
-					SetSize(100);
-					SetColor(1, 0, 0, 0.33f);
-					exploded = true;
-					lived = lifetime - 5; // Used for explosion lifetime
+					Explode(handler, true);
 					return;
 				}
 
@@ -636,16 +661,54 @@ public:
 		}
 	}
 
+	void Explode(const EntityHandler& handler, bool hit_target) {
+		if (exploded_)
+			return;
+
+		// --- Create Explosion Effect ---
+		auto pos = GetPosition();
+		handler.EnqueueVisualizerAction([=, &handler]() {
+			handler.vis->AddFireEffect(
+				glm::vec3(pos.x, pos.y, pos.z),
+				FireEffectStyle::Explosion,
+				glm::vec3(0, 1, 0),
+				glm::vec3(0, 0, 0),
+				-1,
+				5.0f // lifetime
+			);
+		});
+
+		// --- Clean Up Exhaust ---
+		handler.EnqueueVisualizerAction([exhaust = exhaust_effect_]() {
+			if (exhaust) {
+				exhaust->SetLifetime(0.25f);
+				exhaust->SetLived(0.0f);
+			}
+		});
+
+		exploded_ = true;
+		lived_ = 0.0f;
+		SetVelocity(Vector3(0, 0, 0));
+
+		if (hit_target) {
+			SetSize(100);
+			SetColor(1, 0, 0, 0.33f);
+		}
+	}
+
 private:
-	constexpr static int        thrust{50};
-	constexpr static int        lifetime{12};
-	float                       lived = 0;
-	bool                        exploded = false;
-	bool                        fired = false;
-	std::shared_ptr<FireEffect> fire = nullptr;
+	// Constants
+	static constexpr float               lifetime_ = 12.0f;
+	static constexpr float               kExplosionDisplayTime = 2.0f;
+	// State
+	float                                lived_ = 0.0f;
+	bool                                 exploded_ = false;
+	bool                                 fired_ = false;
+	std::shared_ptr<FireEffect>          exhaust_effect_ = nullptr;
+
 
 	// Flight model
-	glm::quat          orientation_;
+	glm::quat                            orientation_;
 	glm::vec3          rotational_velocity_; // x: pitch, y: yaw, z: roll
 	float              forward_speed_;
 	std::random_device rd_;
@@ -655,10 +718,7 @@ private:
 class CatBomb: public Entity<Model> {
 public:
 	CatBomb(int id = 0, Vector3 pos = {0, 0, 0}, glm::vec3 dir = {0, 0, 0}, Vector3 vel = {0, 0, 0}):
-		Entity<Model>(id, "assets/bomb_shading_v005.obj", true),
-		rotational_velocity_(glm::vec3(0.0f)),
-		forward_speed_(0.0f),
-		eng_(rd_()) {
+		Entity<Model>(id, "assets/bomb_shading_v005.obj", true) {
 		SetOrientToVelocity(true);
 		SetPosition(pos.x, pos.y, pos.z);
 		auto netVelocity = glm::vec3(vel.x, vel.y, vel.z) + 2.5f * glm::normalize(glm::vec3(dir.x, dir.y, dir.z));
@@ -673,58 +733,59 @@ public:
 
 	void UpdateEntity(const EntityHandler& handler, float time, float delta_time) {
 		auto pos = GetPosition();
-		lived += delta_time;
+		lived_ += delta_time;
 
-		if (pos.y < 0 && !exploded) {
-			lived = lifetime - 2;
-			exploded = true;
-		}
-
-		if (exploded && lived >= lifetime) {
-			handler.EnqueueVisualizerAction([this, &handler]() { handler.vis->RemoveFireEffect(fire); });
-			handler.QueueRemoveEntity(id_);
-			return;
-		}
-		if (exploded) {
-			if ((lifetime - lived) < 2) {
-				handler.EnqueueVisualizerAction([this, &handler]() { fire->SetStyle(FireEffectStyle::Null); });
+		if (exploded_) {
+			// If exploded, just wait to be removed
+			if (lived_ >= kExplosionDisplayTime) {
+				handler.QueueRemoveEntity(id_);
 			}
 			return;
 		}
+
+		// --- Ground/Terrain Collision ---
 		auto [height, norm] = handler.vis->GetTerrainPointProperties(pos.x, pos.z);
-		if (height >= pos.y) {
-			handler.EnqueueVisualizerAction([this, &handler, pos]() {
-				fire = handler.vis->AddFireEffect(
-					glm::vec3(pos.x, pos.y, pos.z),
-					FireEffectStyle::Explosion,
-					orientation_ * glm::vec3(0, 0, 1)
-				);
-			});
-			exploded = true;
-			lived = lifetime - 2;
-			SetVelocity(Vector3(0, 0, 0));
+		if (pos.y <= height) {
+			Explode(handler);
 			return;
 		}
 
+		// --- Gravity ---
 		auto velo = GetVelocity();
-		velo += Vector3(0, -0.15f, 0);
+		velo += Vector3(0, -kGravity, 0);
 		SetVelocity(velo);
-		return;
 	}
 
 private:
-	constexpr static int        thrust{50};
-	constexpr static int        lifetime{12};
-	float                       lived = 0;
-	bool                        exploded = false;
-	bool                        fired = false;
-	std::shared_ptr<FireEffect> fire = nullptr;
+	void Explode(const EntityHandler& handler) {
+		if (exploded_)
+			return;
 
-	// Flight model
-	glm::vec3          rotational_velocity_; // x: pitch, y: yaw, z: roll
-	float              forward_speed_;
-	std::random_device rd_;
-	std::mt19937       eng_;
+		auto pos = GetPosition();
+		handler.EnqueueVisualizerAction([=, &handler]() {
+			handler.vis->AddFireEffect(
+				glm::vec3(pos.x, pos.y, pos.z),
+				FireEffectStyle::Explosion,
+				glm::vec3(0, 1, 0), // direction
+				glm::vec3(0, 0, 0), // velocity
+				-1,                 // max_particles
+				2.0f                // lifetime
+			);
+		});
+
+		exploded_ = true;
+		lived_ = 0.0f; // Reset lived timer for explosion phase
+		SetVelocity(Vector3(0, 0, 0));
+		SetTrailLength(0); // Stop emitting trail
+	}
+
+	// Constants
+	static constexpr float kGravity = 0.15f;
+	static constexpr float kExplosionDisplayTime = 2.0f; // How long the bomb object sticks around after exploding
+
+	// State
+	float lived_ = 0.0f;
+	bool  exploded_ = false;
 };
 
 class MakeBranchAttractor {
