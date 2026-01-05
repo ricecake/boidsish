@@ -7,7 +7,7 @@ namespace Boidsish {
 
         ConfigWidget::ConfigWidget() {}
 
-        void RenderSection(const std::string& section_name) {
+        void RenderSection(const std::string& section_name, bool is_global) {
             if (ImGui::CollapsingHeader(section_name.c_str(), ImGuiTreeNodeFlags_DefaultOpen)) {
                 auto& config_manager = ConfigManager::GetInstance();
                 auto registered_values = config_manager.GetRegisteredValues(section_name);
@@ -18,21 +18,21 @@ namespace Boidsish {
 
                     switch (val_info.type) {
                         case ConfigValue::Type::BOOL: {
-                            bool value = config_manager.GetAppSettingBool(key, val_info.bool_value);
+                            bool value = is_global ? config_manager.GetGlobalSettingBool(key, val_info.bool_value) : config_manager.GetAppSettingBool(key, val_info.bool_value);
                             if (ImGui::Checkbox(key.c_str(), &value)) {
                                 config_manager.SetBool(key, value);
                             }
                             break;
                         }
                         case ConfigValue::Type::INT: {
-                            int value = config_manager.GetAppSettingInt(key, val_info.int_value);
+                            int value = is_global ? config_manager.GetGlobalSettingInt(key, val_info.int_value) : config_manager.GetAppSettingInt(key, val_info.int_value);
                             if (ImGui::InputInt(key.c_str(), &value)) {
                                 config_manager.SetInt(key, value);
                             }
                             break;
                         }
                         case ConfigValue::Type::FLOAT: {
-                            float value = config_manager.GetAppSettingFloat(key, val_info.float_value);
+                            float value = is_global ? config_manager.GetGlobalSettingFloat(key, val_info.float_value) : config_manager.GetAppSettingFloat(key, val_info.float_value);
                             if (ImGui::InputFloat(key.c_str(), &value)) {
                                 config_manager.SetFloat(key, value);
                             }
@@ -40,7 +40,7 @@ namespace Boidsish {
                         }
                         case ConfigValue::Type::STRING: {
                             char buffer[256];
-                            std::string current_val = config_manager.GetAppSettingString(key, val_info.string_value);
+                            std::string current_val = is_global ? config_manager.GetGlobalSettingString(key, val_info.string_value) : config_manager.GetAppSettingString(key, val_info.string_value);
                             strncpy(buffer, current_val.c_str(), sizeof(buffer) - 1);
                             buffer[sizeof(buffer) - 1] = '\0';
 
@@ -58,12 +58,12 @@ namespace Boidsish {
             if (!m_show) return;
 
             if (ImGui::Begin("Configuration", &m_show)) {
-                RenderSection("global");
+                RenderSection("global", true);
 
                 auto& config_manager = ConfigManager::GetInstance();
                 const std::string& app_section = config_manager.GetAppSectionName();
                 if (!app_section.empty()) {
-                    RenderSection(app_section);
+                    RenderSection(app_section, false);
                 }
             }
             ImGui::End();
