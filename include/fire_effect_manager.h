@@ -14,7 +14,7 @@ namespace Boidsish {
 		glm::vec3 position;
 		int       style;
 		glm::vec3 direction;
-		float     _padding1;
+		int       is_active;
 		glm::vec3 velocity;
 		float     _padding2;
 	};
@@ -32,26 +32,31 @@ namespace Boidsish {
 			const glm::vec3& position,
 			FireEffectStyle  style,
 			const glm::vec3& direction = glm::vec3(0.0f),
-			const glm::vec3& velocity = glm::vec3(0.0f)
+			const glm::vec3& velocity = glm::vec3(0.0f),
+			int max_particles = -1
 		);
 		void RemoveEffect(const std::shared_ptr<FireEffect>& effect);
 
 	private:
 		void _EnsureShaderAndBuffers();
+		void _UpdateParticleAllocation();
 
 		std::vector<std::shared_ptr<FireEffect>> effects_;
+		std::vector<int>                         particle_to_emitter_map_;
 
 		std::unique_ptr<ComputeShader> compute_shader_;
 		std::unique_ptr<Shader>        render_shader_;
 
 		GLuint particle_buffer_{0};
 		GLuint emitter_buffer_{0};
+		GLuint indirection_buffer_{0};
 		GLuint dummy_vao_{0};
 
 		bool  initialized_{false};
 		float time_{0.0f};
 
 		static const int kMaxParticles = 32000;
+		static const int kMaxEmitters = 100;
 	};
 
 } // namespace Boidsish

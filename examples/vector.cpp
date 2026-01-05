@@ -8,6 +8,7 @@
 #include "dot.h"
 #include "graph.h"
 #include "graphics.h"
+#include "fire_effect_manager.h"
 #include "logger.h"
 #include "spatial_entity_handler.h"
 #include <GLFW/glfw3.h>
@@ -551,9 +552,27 @@ int main() {
 		});
 
 		// Main loop
+		auto fire_manager = viz.GetFireEffectManager();
+		auto emitter1 = fire_manager->AddEffect(
+			glm::vec3(0, 5, 0), FireEffectStyle::Fire, glm::vec3(0, 1, 0), glm::vec3(0, 0, 0), 5000
+		);
+		auto emitter2 = fire_manager->AddEffect(
+			glm::vec3(5, 5, 0), FireEffectStyle::Fire, glm::vec3(0, 1, 0), glm::vec3(0, 0, 0), 10000
+		);
+		auto emitter3 = fire_manager->AddEffect(
+			glm::vec3(-5, 5, 0), FireEffectStyle::Fire, glm::vec3(0, 1, 0), glm::vec3(0, 0, 0), 2500
+		);
+
+		float start_time = 0.0f;
+		bool  emitter_removed = false;
 		while (!viz.ShouldClose()) {
 			viz.Update();
 			viz.Render();
+			start_time += viz.GetLastFrameTime();
+			if (start_time > 5.0f && !emitter_removed) {
+				fire_manager->RemoveEffect(emitter2);
+				emitter_removed = true;
+			}
 		}
 
 		std::cout << "Vector demo ended." << std::endl;

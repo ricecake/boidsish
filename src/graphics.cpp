@@ -1526,7 +1526,15 @@ namespace Boidsish {
 		const glm::vec3& direction,
 		const glm::vec3& velocity
 	) {
-		return impl->fire_effect_manager->AddEffect(position, style, direction, velocity);
+		return impl->fire_effect_manager->AddEffect(position, style, direction, velocity, -1);
+	}
+
+	FireEffectManager* Visualizer::GetFireEffectManager() {
+		return impl->fire_effect_manager.get();
+	}
+
+	float Visualizer::GetLastFrameTime() const {
+		return impl->input_state.delta_time;
 	}
 
 	void Visualizer::RemoveFireEffect(const std::shared_ptr<FireEffect>& effect) const {
