@@ -1,6 +1,8 @@
 #include "ui/PostProcessingWidget.h"
 
 #include "imgui.h"
+
+#include "post_processing/effects/BloomEffect.h"
 #include "post_processing/effects/FilmGrainEffect.h"
 
 namespace Boidsish {
@@ -23,6 +25,20 @@ namespace Boidsish {
 						float intensity = film_grain_effect->GetIntensity();
 						if (ImGui::SliderFloat("Intensity", &intensity, 0.0f, 1.0f)) {
 							film_grain_effect->SetIntensity(intensity);
+						}
+					}
+				}
+
+				if (effect->GetName() == "Bloom" && is_enabled) {
+					auto bloom_effect = std::dynamic_pointer_cast<PostProcessing::BloomEffect>(effect);
+					if (bloom_effect) {
+						float intensity = bloom_effect->GetIntensity();
+						if (ImGui::SliderFloat("Intensity##Bloom", &intensity, 0.0f, 2.0f)) {
+							bloom_effect->SetIntensity(intensity);
+						}
+						float threshold = bloom_effect->GetThreshold();
+						if (ImGui::SliderFloat("Threshold", &threshold, 0.0f, 5.0f)) {
+							bloom_effect->SetThreshold(threshold);
 						}
 					}
 				}
