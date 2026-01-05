@@ -208,6 +208,14 @@ namespace Boidsish {
 			return id;
 		}
 
+		template <typename T, typename... Args>
+		int AddEntity(int id, Args&&... args) {
+			// int  id = next_id_++;
+			auto entity = std::make_shared<T>(id, std::forward<Args>(args)...);
+			AddEntity(id, entity);
+			return id;
+		}
+
 		virtual void AddEntity(int id, std::shared_ptr<EntityBase> entity) { entities_[id] = entity; }
 
 		virtual void RemoveEntity(int id) { entities_.erase(id); }

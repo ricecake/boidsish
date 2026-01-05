@@ -667,7 +667,7 @@ public:
 		SetTrailLength(50);
 		shape_->SetScale(glm::vec3(0.01f));
 		std::dynamic_pointer_cast<Model>(shape_)->SetBaseRotation(
-			glm::angleAxis(glm::radians(-90.0f), glm::vec3(1.0f, 0.0f, 0.0f))
+			glm::angleAxis(glm::radians(90.0f), glm::vec3(1.0f, 0.0f, 0.0f))
 		);
 	}
 
@@ -815,7 +815,9 @@ public:
 
 						glm::quat final_orientation = terrain_alignment * base_rotation;
 
-						int id = AddEntity<GuidedMissileLauncher>(
+						int id = chunk_pos.x + 10 * chunk_pos.y + 100 * chunk_pos.z;
+						QueueAddEntity<GuidedMissileLauncher>(
+							id,
 							Vector3(world_pos.x, world_pos.y, world_pos.z),
 							final_orientation
 						);
@@ -926,7 +928,7 @@ public:
 
 			Vector3 launchPos = Vector3(ray_origin.x, terrain_h, ray_origin.z);
 
-			AddEntity<GuidedMissile>(launchPos);
+			QueueAddEntity<GuidedMissile>(launchPos);
 		}
 	}
 
