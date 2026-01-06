@@ -1,7 +1,6 @@
 #include "graphics.h"
 #include "terrain_generator.h"
 #include "pathfinder.h"
-#include "chunk_graph.h"
 #include "path.h"
 #include "dot.h"
 #include <iostream>
@@ -30,11 +29,7 @@ private:
         std::vector<std::shared_ptr<Boidsish::Shape>> shapes;
 
         if (!_path_calculated) {
-            const int worldSizeChunks = 10;
-            Boidsish::ChunkGraph chunkGraph(*_terrain, worldSizeChunks);
-            std::cout << "Building chunk graph..." << std::endl;
-            chunkGraph.BuildGraph(40.0f);
-            std::cout << "Chunk graph built." << std::endl;
+            Boidsish::Pathfinder pathfinder(*_terrain);
 
             glm::vec3 start(10.0f, 0.0f, 10.0f);
             float startY = std::get<0>(_terrain->pointProperties(start.x, start.z));
@@ -44,30 +39,20 @@ private:
             float endY = std::get<0>(_terrain->pointProperties(end.x, end.z));
             end.y = endY;
 
-            std::cout << "Finding chunk path from (" << start.x << ", " << start.z << ") to (" << end.x << ", " << end.z << ")" << std::endl;
-            auto chunk_path_vec = chunkGraph.FindChunkPath(start, end);
+            std::cout << "Calculating path from (" << start.x << ", " << start.z << ") to (" << end.x << ", " << end.z << ") by refinement..." << std::endl;
 
-            if (!chunk_path_vec.empty()) {
-                std::cout << "Chunk path found. Finding detailed path..." << std::endl;
-                std::unordered_set<glm::ivec2, Boidsish::IVec2Hash> chunk_path(chunk_path_vec.begin(), chunk_path_vec.end());
-                Boidsish::Pathfinder pathfinder(*_terrain);
-                auto path_points = pathfinder.findPath(start, end, chunk_path);
+            auto path_points = pathfinder.findPathByRefinement(start, end, 10, 20, 3);
 
-                if (!path_points.empty()) {
-                std::cout << "Path found, smoothing..." << std::endl;
-                pathfinder.smoothPath(path_points);
-                std::cout << "Path smoothed." << std::endl;
+            if (!path_points.empty()) {
+                std::cout << "Path found." << std::endl;
 
                 _path = std::make_shared<Boidsish::Path>();
                 for (const auto& p : path_points) {
                     _path->AddWaypoint({p.x, p.y, p.z});
                 }
                 _path->SetVisible(true);
-                } else {
-                    std::cout << "No detailed path found." << std::endl;
-                }
             } else {
-                std::cout << "No chunk path found." << std::endl;
+                std::cout << "No path found." << std::endl;
             }
 
             _start_dot = std::make_shared<Boidsish::Dot>(0, start.x, start.y, start.z, 2.0f, 1.0f, 0.0f, 0.0f);

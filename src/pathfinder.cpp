@@ -1,140 +1,71 @@
 #include "pathfinder.h"
-#include <iostream>
-#include <queue>
-#include <unordered_map>
-#include <cmath>
-#include <algorithm>
 
 namespace Boidsish {
-
-// Node for A* search
-struct Node {
-    glm::ivec2 pos; // Discretized position
-    float gCost = 0.0f;
-    float hCost = 0.0f;
-    float fCost = 0.0f;
-    glm::ivec2 parent;
-
-    bool operator>(const Node& other) const {
-        return fCost > other.fCost;
-    }
-};
-
 
 Pathfinder::Pathfinder(const TerrainGenerator& terrain)
     : _terrain(terrain) {}
 
-std::vector<glm::vec3> Pathfinder::findPath(const glm::vec3& start, const glm::vec3& end, const std::unordered_set<glm::ivec2, IVec2Hash>& chunkCorridor) {
-    if (chunkCorridor.empty()) return {};
+std::vector<glm::vec3> Pathfinder::findPathByRefinement(
+    const glm::vec3& start,
+    const glm::vec3& end,
+    int numWaypoints,
+    int numIterations,
+    int numSubdivisions
+) {
+    std::vector<glm::vec3> path;
+    glm::vec3 direction = end - start;
+    float totalDist = glm::length(direction);
+    direction = glm::normalize(direction);
 
-    glm::ivec2 startPos(static_cast<int>(start.x), static_cast<int>(start.z));
-    glm::ivec2 endPos(static_cast<int>(end.x), static_cast<int>(end.z));
+    // Initial path generation
+    for (int i = 0; i < numWaypoints; ++i) {
+        float frac = static_cast<float>(i) / (numWaypoints - 1);
+        glm::vec3 point = start + direction * (totalDist * frac);
 
-    std::priority_queue<Node, std::vector<Node>, std::greater<Node>> openList;
-    std::unordered_map<glm::ivec2, Node, IVec2Hash> allNodes;
+        // Lifting
+        float terrainHeight = std::get<0>(_terrain.pointProperties(point.x, point.z));
+        point.y = terrainHeight + 1.0f; // Lift 1 unit above terrain
+        path.push_back(point);
+    }
 
-    Node startNode;
-    startNode.pos = startPos;
-    startNode.hCost = glm::distance(glm::vec2(startPos), glm::vec2(endPos));
-    startNode.fCost = startNode.hCost;
-    openList.push(startNode);
-    allNodes[startPos] = startNode;
+    for (int sub = 0; sub < numSubdivisions; ++sub) {
+        // Downhill refinement
+        for (int iter = 0; iter < numIterations; ++iter) {
+            for (size_t i = 1; i < path.size() - 1; ++i) { // Exclude start and end
+                glm::vec3& point = path[i];
 
-    const float altitudePenalty = 10.0f;
+                // Get terrain normal (derivative information)
+                glm::vec3 normal = std::get<1>(_terrain.pointProperties(point.x, point.z));
 
-    while (!openList.empty()) {
-        Node currentNode = openList.top();
-        openList.pop();
-
-        if (currentNode.pos == endPos) {
-            std::vector<glm::vec3> path;
-            Node temp = currentNode;
-            while (temp.pos != startPos) {
-                float y = std::get<0>(_terrain.pointProperties(temp.pos.x, temp.pos.y));
-                path.push_back(glm::vec3(temp.pos.x, y, temp.pos.y));
-                temp = allNodes[temp.parent];
+            // Move "downhill" by moving in the opposite direction of the horizontal gradient
+            glm::vec3 horizontal_gradient(normal.x, 0.0f, normal.z);
+            if (glm::dot(horizontal_gradient, horizontal_gradient) > 0.000001f) {
+                glm::vec3 uphill = glm::normalize(horizontal_gradient);
+                point -= uphill * 0.5f; // Step size of 0.5
             }
-            float startY = std::get<0>(_terrain.pointProperties(startPos.x, startPos.y));
-            path.push_back(glm::vec3(startPos.x, startY, startPos.y));
-            std::reverse(path.begin(), path.end());
-            return path;
+
+                // Re-lift
+                float terrainHeight = std::get<0>(_terrain.pointProperties(point.x, point.z));
+                point.y = terrainHeight + 1.0f;
+            }
         }
 
-        for (int dx = -1; dx <= 1; ++dx) {
-            for (int dz = -1; dz <= 1; ++dz) {
-                if (dx == 0 && dz == 0) continue;
-
-                glm::ivec2 neighborPos = currentNode.pos + glm::ivec2(dx, dz);
-
-                // Constrain search to the chunk corridor
-                const int chunkSize = 32;
-                glm::ivec2 neighborChunk = {neighborPos.x / chunkSize, neighborPos.y / chunkSize};
-                if (chunkCorridor.find(neighborChunk) == chunkCorridor.end()) continue;
-
-                float currentAltitude = std::get<0>(_terrain.pointProperties(currentNode.pos.x, currentNode.pos.y));
-                float neighborAltitude = std::get<0>(_terrain.pointProperties(neighborPos.x, neighborPos.y));
-
-                float dist = glm::distance(glm::vec2(currentNode.pos), glm::vec2(neighborPos));
-                float altitudeChange = std::abs(neighborAltitude - currentAltitude);
-                float moveCost = dist + altitudePenalty * altitudeChange;
-
-                float newGCost = currentNode.gCost + moveCost;
-
-                if (allNodes.find(neighborPos) == allNodes.end() || newGCost < allNodes[neighborPos].gCost) {
-                    Node neighborNode;
-                    neighborNode.pos = neighborPos;
-                    neighborNode.gCost = newGCost;
-                    neighborNode.hCost = glm::distance(glm::vec2(neighborPos), glm::vec2(endPos));
-                    neighborNode.fCost = newGCost + neighborNode.hCost;
-                    neighborNode.parent = currentNode.pos;
-                    allNodes[neighborPos] = neighborNode;
-                    openList.push(neighborNode);
-                }
+        // Subdivision
+        if (sub < numSubdivisions - 1) { // Don't subdivide on the last run
+            std::vector<glm::vec3> newPath;
+            newPath.push_back(path.front());
+            for (size_t i = 0; i < path.size() - 1; ++i) {
+                glm::vec3 midPoint = (path[i] + path[i+1]) * 0.5f;
+                float terrainHeight = std::get<0>(_terrain.pointProperties(midPoint.x, midPoint.z));
+                midPoint.y = terrainHeight + 1.0f;
+                newPath.push_back(midPoint);
+                newPath.push_back(path[i+1]);
             }
+            path = newPath;
         }
     }
 
-    return std::vector<glm::vec3>(); // No path found
+    return path;
 }
 
-void Pathfinder::smoothPath(std::vector<glm::vec3>& path) {
-    if (path.size() < 3) {
-        return;
-    }
-
-    std::vector<glm::vec3> smoothedPath;
-    smoothedPath.push_back(path.front());
-
-    size_t currentIndex = 0;
-    while (currentIndex < path.size() - 1) {
-        size_t nextIndex = currentIndex + 1;
-        for (size_t i = currentIndex + 2; i < path.size(); ++i) {
-            glm::vec3 start = path[currentIndex];
-            glm::vec3 end = path[i];
-            glm::vec3 dir = glm::normalize(end - start);
-            float dist = glm::distance(start, end);
-            bool clear = true;
-
-            for (float d = 1.0f; d < dist; d += 1.0f) {
-                glm::vec3 p = start + dir * d;
-                float terrainHeight = std::get<0>(_terrain.pointProperties(p.x, p.z));
-                if (terrainHeight > p.y + 2.0f) { // Allow some tolerance
-                    clear = false;
-                    break;
-                }
-            }
-
-            if (clear) {
-                nextIndex = i;
-            } else {
-                break;
-            }
-        }
-        smoothedPath.push_back(path[nextIndex]);
-        currentIndex = nextIndex;
-    }
-
-    path = smoothedPath;
-}
-
-}
+} // namespace Boidsish
