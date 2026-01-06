@@ -20,17 +20,13 @@ struct Node {
     }
 };
 
-// Hash for glm::ivec2
-struct IVec2Hash {
-    std::size_t operator()(const glm::ivec2& v) const {
-        return std::hash<int>()(v.x) ^ std::hash<int>()(v.y);
-    }
-};
 
 Pathfinder::Pathfinder(const TerrainGenerator& terrain)
     : _terrain(terrain) {}
 
-std::vector<glm::vec3> Pathfinder::findPath(const glm::vec3& start, const glm::vec3& end) {
+std::vector<glm::vec3> Pathfinder::findPath(const glm::vec3& start, const glm::vec3& end, const std::unordered_set<glm::ivec2, IVec2Hash>& chunkCorridor) {
+    if (chunkCorridor.empty()) return {};
+
     glm::ivec2 startPos(static_cast<int>(start.x), static_cast<int>(start.z));
     glm::ivec2 endPos(static_cast<int>(end.x), static_cast<int>(end.z));
 
@@ -69,6 +65,11 @@ std::vector<glm::vec3> Pathfinder::findPath(const glm::vec3& start, const glm::v
                 if (dx == 0 && dz == 0) continue;
 
                 glm::ivec2 neighborPos = currentNode.pos + glm::ivec2(dx, dz);
+
+                // Constrain search to the chunk corridor
+                const int chunkSize = 32;
+                glm::ivec2 neighborChunk = {neighborPos.x / chunkSize, neighborPos.y / chunkSize};
+                if (chunkCorridor.find(neighborChunk) == chunkCorridor.end()) continue;
 
                 float currentAltitude = std::get<0>(_terrain.pointProperties(currentNode.pos.x, currentNode.pos.y));
                 float neighborAltitude = std::get<0>(_terrain.pointProperties(neighborPos.x, neighborPos.y));
