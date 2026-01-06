@@ -778,7 +778,6 @@ public:
 		SpatialEntityHandler(thread_pool), eng_(rd_()) {}
 
 	void PreTimestep(float time, float delta_time) {
-		processed_chunks_.clear();
 		if (damage_timer_ > 0.0f) {
 			damage_timer_ -= delta_time;
 			if (damage_timer_ <= 0.0f) {
@@ -793,11 +792,19 @@ public:
 			std::set<const Terrain*> visible_chunk_set;
 			std::vector<glm::vec3>   newly_spawned_positions;
 
+			// --- Pass 1: Candidate Gathering ---
+			struct SpawnCandidate {
+				const Terrain* chunk;
+				glm::vec3      point;
+				float          height;
+			};
+			std::vector<SpawnCandidate> candidates;
+			std::set<const Terrain*>    processed_chunks;
+
 			for (const auto& chunk_ptr : visible_chunks) {
 				const Terrain* chunk = chunk_ptr.get();
 				visible_chunk_set.insert(chunk);
-
-				if (processed_chunks_.count(chunk)) {
+				if (processed_chunks.count(chunk)) {
 					continue;
 				}
 
@@ -805,20 +812,6 @@ public:
 				std::vector<const Terrain*> current_grid = neighbors;
 				current_grid.push_back(chunk);
 
-				bool has_launcher = false;
-				for (const auto& grid_chunk : current_grid) {
-					if (spawned_launchers_.count(grid_chunk)) {
-						has_launcher = true;
-						break;
-					}
-				}
-
-				if (has_launcher) {
-					for (const auto& grid_chunk : current_grid) {
-						processed_chunks_.insert(grid_chunk);
-					}
-					continue;
-				}
 				const Terrain* best_chunk = nullptr;
 				glm::vec3      highest_point = {0, -std::numeric_limits<float>::infinity(), 0};
 
@@ -827,33 +820,48 @@ public:
 						highest_point = grid_chunk->proxy.highestPoint;
 						best_chunk = grid_chunk;
 					}
+					processed_chunks.insert(grid_chunk);
 				}
+
 				if (best_chunk) {
-					glm::vec3 chunk_pos = glm::vec3(best_chunk->GetX(), best_chunk->GetY(), best_chunk->GetZ());
-					glm::vec3 world_pos = chunk_pos + highest_point;
-
-					auto [terrain_h, terrain_normal] = vis->GetTerrainPointProperties(world_pos.x, world_pos.z);
-
-					if (terrain_h >= 40) {
-						glm::quat base_rotation = glm::angleAxis(
-							glm::pi<float>() / -2.0f,
-							glm::vec3(1.0f, 0.0f, 0.0f)
-						);
-						glm::vec3 up_vector = glm::vec3(0.0f, 1.0f, 0.0f);
-						glm::quat terrain_alignment = glm::rotation(up_vector, terrain_normal);
-						glm::quat final_orientation = terrain_alignment * base_rotation;
-
-						int id = chunk_pos.x + 10 * chunk_pos.y + 100 * chunk_pos.z;
-						QueueAddEntity<GuidedMissileLauncher>(
-							id,
-							Vector3(world_pos.x, world_pos.y, world_pos.z),
-							final_orientation
-						);
-						spawned_launchers_[best_chunk] = id;
-					}
+					candidates.push_back({best_chunk, highest_point, highest_point.y});
 				}
-				for (const auto& grid_chunk : current_grid) {
-					processed_chunks_.insert(grid_chunk);
+			}
+
+			// --- Pass 2: Greedy Placement ---
+			std::sort(candidates.begin(), candidates.end(), [](const auto& a, const auto& b) {
+				return a.height > b.height;
+			});
+
+			std::set<const Terrain*> forbidden_chunks;
+			for (const auto& candidate : candidates) {
+				if (forbidden_chunks.count(candidate.chunk) || spawned_launchers_.count(candidate.chunk)) {
+					continue;
+				}
+
+				glm::vec3 chunk_pos = glm::vec3(candidate.chunk->GetX(), candidate.chunk->GetY(), candidate.chunk->GetZ());
+				glm::vec3 world_pos = chunk_pos + candidate.point;
+				auto [terrain_h, terrain_normal] = vis->GetTerrainPointProperties(world_pos.x, world_pos.z);
+
+				if (terrain_h >= 40) {
+					// Spawn it
+					glm::quat base_rotation = glm::angleAxis(glm::pi<float>() / -2.0f, glm::vec3(1.0f, 0.0f, 0.0f));
+					glm::vec3 up_vector = glm::vec3(0.0f, 1.0f, 0.0f);
+					glm::quat terrain_alignment = glm::rotation(up_vector, terrain_normal);
+					glm::quat final_orientation = terrain_alignment * base_rotation;
+
+					int id = chunk_pos.x + 10 * chunk_pos.y + 100 * chunk_pos.z;
+					QueueAddEntity<GuidedMissileLauncher>(
+						id,
+						Vector3(world_pos.x, world_pos.y, world_pos.z),
+						final_orientation
+					);
+					spawned_launchers_[candidate.chunk] = id;
+
+					// Forbid spawning in neighbors
+					auto neighbors = get_neighbors(candidate.chunk, visible_chunks);
+					forbidden_chunks.insert(neighbors.begin(), neighbors.end());
+					forbidden_chunks.insert(candidate.chunk);
 				}
 			}
 
@@ -964,7 +972,6 @@ public:
 
 private:
 	std::map<const Terrain*, int>         spawned_launchers_;
-	std::set<const Terrain*>              processed_chunks_;
 	std::random_device                    rd_;
 	std::mt19937                          eng_;
 	float                                 damage_timer_ = 0.0f;
