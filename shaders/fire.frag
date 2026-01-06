@@ -4,6 +4,7 @@ in float v_lifetime;
 in vec4 view_pos;
 in vec3 v_velocity;
 in vec3 v_view_velocity;
+in vec3 v_view_dir;
 flat in int v_style;
 out vec4 FragColor;
 
@@ -13,16 +14,19 @@ void main() {
 
     if (v_style == 3) { // Tracer
         vec2 vel_dir = normalize(v_view_velocity.xy);
-        float speed = length(v_view_velocity.xy);
-        float stretch = 1.0 + speed * 0.1;
+
+        // Foreshortening based on view angle
+        float foreshortening = 1.0 - abs(dot(normalize(v_velocity), v_view_dir));
+        float speed_stretch = 1.0 + length(v_velocity) * 0.05;
+        float final_stretch = speed_stretch * foreshortening;
 
         // Rotate point coordinate to align with velocity
         mat2 rot = mat2(vel_dir.x, -vel_dir.y, vel_dir.y, vel_dir.x);
         vec2 rotated_p = rot * p;
 
         // Stretch and narrow the shape
-        rotated_p.x *= stretch;
-        rotated_p.y *= 0.2 / stretch; // Narrow as it stretches
+        rotated_p.x *= final_stretch;
+        rotated_p.y *= 0.5 / max(final_stretch, 0.1); // Ensure it doesn't get too wide
 
         float new_dist_sq = dot(rotated_p, rotated_p);
         if (new_dist_sq > 0.25) {
