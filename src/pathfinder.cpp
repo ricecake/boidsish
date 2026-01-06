@@ -29,20 +29,31 @@ std::vector<glm::vec3> Pathfinder::findPathByRefinement(
     }
 
     for (int sub = 0; sub < numSubdivisions; ++sub) {
-        // Downhill refinement
+        // Downhill refinement with smoothing
         for (int iter = 0; iter < numIterations; ++iter) {
+            std::vector<glm::vec3> path_copy = path;
             for (size_t i = 1; i < path.size() - 1; ++i) { // Exclude start and end
                 glm::vec3& point = path[i];
 
                 // Get terrain normal (derivative information)
                 glm::vec3 normal = std::get<1>(_terrain.pointProperties(point.x, point.z));
 
-            // Move "downhill" by moving in the opposite direction of the horizontal gradient
-            glm::vec3 horizontal_gradient(normal.x, 0.0f, normal.z);
-            if (glm::dot(horizontal_gradient, horizontal_gradient) > 0.000001f) {
-                glm::vec3 uphill = glm::normalize(horizontal_gradient);
-                point -= uphill * 0.5f; // Step size of 0.5
-            }
+                // Calculate downhill movement
+                glm::vec3 downhill_movement(0.0f);
+                glm::vec3 horizontal_gradient(normal.x, 0.0f, normal.z);
+                if (glm::dot(horizontal_gradient, horizontal_gradient) > 0.000001f) {
+                    downhill_movement = -glm::normalize(horizontal_gradient) * 0.5f; // Step size of 0.5
+                }
+
+                // Calculate smoothing force
+                glm::vec3 prev = path_copy[i-1];
+                glm::vec3 next = path_copy[i+1];
+                glm::vec3 midpoint = prev + 0.5f * (next - prev);
+                glm::vec3 smoothing_force = (midpoint - point) * 0.25f; // Smoothing factor of 0.25
+
+                // Apply blended movement
+                point.x += downhill_movement.x + smoothing_force.x;
+                point.z += downhill_movement.z + smoothing_force.z;
 
                 // Re-lift
                 float terrainHeight = std::get<0>(_terrain.pointProperties(point.x, point.z));
