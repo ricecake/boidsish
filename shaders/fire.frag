@@ -11,21 +11,22 @@ out vec4 FragColor;
 
 void main() {
     vec2 p = gl_PointCoord - vec2(0.5);
-    float dist_sq = dot(p, p);
+    float dist = dot(p, p);
 
     if (v_style == 3) { // Tracer
         // Foreshortening based on view angle (world space)
         float foreshortening = 1.0 - abs(dot(normalize(v_velocity), v_view_dir));
         float speed_stretch = 1.0 + length(v_velocity) * 0.05;
-        float final_stretch = speed_stretch * foreshortening;
 
         // Rotate point coordinate to align with screen-space velocity
         mat2 rot = mat2(v_screen_vel_dir.x, -v_screen_vel_dir.y, v_screen_vel_dir.y, v_screen_vel_dir.x);
         vec2 rotated_p = rot * p;
 
-        // Stretch and narrow the shape
-        rotated_p.x *= final_stretch;
-        rotated_p.y *= 0.5 / max(final_stretch, 0.1); // Ensure it doesn't get too wide
+        // Interpolate scaling factors to transition between a circle and a bar
+        float scale_x = mix(1.0, speed_stretch, foreshortening);
+        float scale_y = mix(1.0, 0.2, foreshortening);
+        rotated_p.x *= scale_x;
+        rotated_p.y *= scale_y;
 
         float new_dist_sq = dot(rotated_p, rotated_p);
         if (new_dist_sq > 0.25) {
@@ -47,7 +48,7 @@ void main() {
 
 
     // Shape the point into a circle and discard fragments outside the circle
-    if (dist_sq > 0.25) {
+    if (dist > 0.25) {
         discard;
     }
 
@@ -89,10 +90,10 @@ void main() {
     if (v_style == 28) {
 		// --- Iridescence Effect ---
 		// Fresnel term for the base reflectivity
-		float fresnel = pow(1.0 - dist_sq, 5.0);
+		float fresnel = pow(1.0 - dist, 5.0);
 
 		// Use view angle to create a color shift
-		float angle_factor = 1.0 - dist_sq;
+		float angle_factor = 1.0 - dist;
 		angle_factor = pow(angle_factor, 2.0);
 
 		// Use time and fragment position to create a swirling effect
@@ -106,7 +107,7 @@ void main() {
 		);
 
 		// Add a strong specular highlight
-		vec3  reflect_dir = reflect(-view_pos+vec4(0,20,0,0), vec4(dist_sq)).xyz;
+		vec3  reflect_dir = reflect(-view_pos+vec4(0,20,0,0), vec4(dist)).xyz;
 		float spec = pow(max(dot(view_pos.xyz, reflect_dir), 0.0), 128.0);
 		vec3  specular = 1.5 * spec * vec3(1.0); // white highlight
 
@@ -117,8 +118,8 @@ void main() {
         float alpha = 1 - length(color - vec3(0.1, 0.0, 0.0)); // whatever smoke color is
         FragColor = vec4(color, alpha);
 	} else {
-        // float alpha = smoothstep((1.0 - v_lifetime), (v_lifetime), dist_sq*v_lifetime / 2.5);
-        // float alpha = smoothstep(0.25, 0.75, dist_sq * v_lifetime);
+        // float alpha = smoothstep((1.0 - v_lifetime), (v_lifetime), dist*v_lifetime / 2.5);
+        // float alpha = smoothstep(0.25, 0.75, dist * v_lifetime);
         float alpha = smoothstep(0.25, 0.75, v_lifetime/2.5);
         FragColor = vec4(color, alpha);
     }

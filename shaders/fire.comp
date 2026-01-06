@@ -276,11 +276,9 @@ void main() {
             maxSpeed = kTracerSpeed;
             p.vel.y -= kTracerGravity * u_delta_time;
             p.vel.xyz -= p.vel.xyz * kTracerDrag * u_delta_time;
-        }
-
-        if (p.style != 3) { // No curl noise for tracers
-            p.vel.y -= 0.05 * u_delta_time;
-            p.vel += vec4(mix(curlNoise(p.pos.xyz, u_time)*3, vec3(0,0,0), length(p.vel)/maxSpeed), 0) * u_delta_time;
+        } else { // All other styles
+             p.vel.y -= 0.05 * u_delta_time;
+             p.vel += vec4(mix(curlNoise(p.pos.xyz, u_time)*3, vec3(0,0,0), length(p.vel)/maxSpeed), 0) * u_delta_time;
         }
 
         p.pos.xyz += p.vel.xyz * u_delta_time;
