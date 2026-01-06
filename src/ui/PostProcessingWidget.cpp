@@ -1,7 +1,6 @@
 #include "ui/PostProcessingWidget.h"
 
 #include "imgui.h"
-
 #include "post_processing/effects/BloomEffect.h"
 #include "post_processing/effects/FilmGrainEffect.h"
 

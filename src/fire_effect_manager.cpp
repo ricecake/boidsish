@@ -82,7 +82,8 @@ namespace Boidsish {
 		// Find an inactive slot to reuse
 		for (size_t i = 0; i < effects_.size(); ++i) {
 			if (!effects_[i]) {
-				effects_[i] = std::make_shared<FireEffect>(position, style, direction, velocity, max_particles, lifetime);
+				effects_[i] =
+					std::make_shared<FireEffect>(position, style, direction, velocity, max_particles, lifetime);
 				_UpdateParticleAllocation();
 				return effects_[i];
 			}
@@ -138,7 +139,6 @@ namespace Boidsish {
 		if (needs_reallocation) {
 			_UpdateParticleAllocation();
 		}
-
 
 		// --- Update Emitters ---
 		std::vector<Emitter> emitters;

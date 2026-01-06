@@ -21,33 +21,30 @@
 
 using namespace Boidsish;
 
-std::vector<const Terrain*> get_neighbors(
-    const Terrain*                                                  chunk,
-    const std::vector<std::shared_ptr<Terrain>>&                    all_chunks
-) {
-    std::vector<const Terrain*> neighbors;
-    int                         center_x = chunk->GetX();
-    int                         center_z = chunk->GetZ();
-    float                       chunk_size = std::sqrt(chunk->proxy.radiusSq) * 2.0f;
+std::vector<const Terrain*>
+get_neighbors(const Terrain* chunk, const std::vector<std::shared_ptr<Terrain>>& all_chunks) {
+	std::vector<const Terrain*> neighbors;
+	int                         center_x = chunk->GetX();
+	int                         center_z = chunk->GetZ();
+	float                       chunk_size = std::sqrt(chunk->proxy.radiusSq) * 2.0f;
 
-    for (const auto& other_chunk_ptr : all_chunks) {
-        const Terrain* other_chunk = other_chunk_ptr.get();
-        if (other_chunk == chunk) {
-            continue;
-        }
+	for (const auto& other_chunk_ptr : all_chunks) {
+		const Terrain* other_chunk = other_chunk_ptr.get();
+		if (other_chunk == chunk) {
+			continue;
+		}
 
-        int other_x = other_chunk->GetX();
-        int other_z = other_chunk->GetZ();
+		int other_x = other_chunk->GetX();
+		int other_z = other_chunk->GetZ();
 
-        bool is_neighbor = std::abs(other_x - center_x) <= chunk_size &&
-                           std::abs(other_z - center_z) <= chunk_size;
+		bool is_neighbor = std::abs(other_x - center_x) <= chunk_size && std::abs(other_z - center_z) <= chunk_size;
 
-        if (is_neighbor) {
-            neighbors.push_back(other_chunk);
-        }
-    }
+		if (is_neighbor) {
+			neighbors.push_back(other_chunk);
+		}
+	}
 
-    return neighbors;
+	return neighbors;
 }
 
 class CatMissile;
@@ -331,7 +328,6 @@ public:
 			});
 		}
 
-
 		// --- Flight Model Constants ---
 		const float kLaunchTime = 0.5f;
 		const float kMaxSpeed = 150.0f;
@@ -478,7 +474,6 @@ public:
 			}
 		});
 
-
 		exploded_ = true;
 		lived_ = 0.0f;
 		SetVelocity(Vector3(0, 0, 0));
@@ -491,15 +486,15 @@ public:
 
 private:
 	// Constants
-	static constexpr float               lifetime_ = 12.0f;
-	static constexpr float               kExplosionDisplayTime = 2.0f;
+	static constexpr float lifetime_ = 12.0f;
+	static constexpr float kExplosionDisplayTime = 2.0f;
 	// State
-	float                                lived_ = 0.0f;
-	bool                                 exploded_ = false;
-	std::shared_ptr<FireEffect>          exhaust_effect_ = nullptr;
+	float                       lived_ = 0.0f;
+	bool                        exploded_ = false;
+	std::shared_ptr<FireEffect> exhaust_effect_ = nullptr;
 
 	// Flight model
-	glm::quat                            orientation_;
+	glm::quat          orientation_;
 	glm::vec3          rotational_velocity_; // x: pitch, y: yaw, z: roll
 	float              forward_speed_;
 	std::random_device rd_;
@@ -550,7 +545,6 @@ public:
 			Explode(handler, false); // Explode at end of life
 			return;
 		}
-
 
 		// --- Flight Model Constants ---
 		const float kLaunchTime = 1.0f;
@@ -727,17 +721,16 @@ public:
 
 private:
 	// Constants
-	static constexpr float               lifetime_ = 12.0f;
-	static constexpr float               kExplosionDisplayTime = 2.0f;
+	static constexpr float lifetime_ = 12.0f;
+	static constexpr float kExplosionDisplayTime = 2.0f;
 	// State
-	float                                lived_ = 0.0f;
-	bool                                 exploded_ = false;
-	bool                                 fired_ = false;
-	std::shared_ptr<FireEffect>          exhaust_effect_ = nullptr;
-
+	float                       lived_ = 0.0f;
+	bool                        exploded_ = false;
+	bool                        fired_ = false;
+	std::shared_ptr<FireEffect> exhaust_effect_ = nullptr;
 
 	// Flight model
-	glm::quat                            orientation_;
+	glm::quat          orientation_;
 	glm::vec3          rotational_velocity_; // x: pitch, y: yaw, z: roll
 	float              forward_speed_;
 	std::random_device rd_;
@@ -866,6 +859,7 @@ public:
 				glm::vec3      point;
 				float          height;
 			};
+
 			std::vector<SpawnCandidate> candidates;
 			std::set<const Terrain*>    processed_chunks;
 
@@ -876,7 +870,7 @@ public:
 					continue;
 				}
 
-				auto neighbors = get_neighbors(chunk, visible_chunks);
+				auto                        neighbors = get_neighbors(chunk, visible_chunks);
 				std::vector<const Terrain*> current_grid = neighbors;
 				current_grid.push_back(chunk);
 
@@ -906,7 +900,11 @@ public:
 					continue;
 				}
 
-				glm::vec3 chunk_pos = glm::vec3(candidate.chunk->GetX(), candidate.chunk->GetY(), candidate.chunk->GetZ());
+				glm::vec3 chunk_pos = glm::vec3(
+					candidate.chunk->GetX(),
+					candidate.chunk->GetY(),
+					candidate.chunk->GetZ()
+				);
 				glm::vec3 world_pos = chunk_pos + candidate.point;
 				auto [terrain_h, terrain_normal] = vis->GetTerrainPointProperties(world_pos.x, world_pos.z);
 
