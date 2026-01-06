@@ -21,6 +21,35 @@
 
 using namespace Boidsish;
 
+std::vector<const Terrain*> get_neighbors(
+    const Terrain*                                                  chunk,
+    const std::vector<std::shared_ptr<Terrain>>&                    all_chunks
+) {
+    std::vector<const Terrain*> neighbors;
+    int                         center_x = chunk->GetX();
+    int                         center_z = chunk->GetZ();
+    float                       chunk_size = std::sqrt(chunk->proxy.radiusSq) * 2.0f;
+
+    for (const auto& other_chunk_ptr : all_chunks) {
+        const Terrain* other_chunk = other_chunk_ptr.get();
+        if (other_chunk == chunk) {
+            continue;
+        }
+
+        int other_x = other_chunk->GetX();
+        int other_z = other_chunk->GetZ();
+
+        bool is_neighbor = std::abs(other_x - center_x) <= chunk_size &&
+                           std::abs(other_z - center_z) <= chunk_size;
+
+        if (is_neighbor) {
+            neighbors.push_back(other_chunk);
+        }
+    }
+
+    return neighbors;
+}
+
 class CatMissile;
 class CatBomb;
 
@@ -749,6 +778,7 @@ public:
 		SpatialEntityHandler(thread_pool), eng_(rd_()) {}
 
 	void PreTimestep(float time, float delta_time) {
+		processed_chunks_.clear();
 		if (damage_timer_ > 0.0f) {
 			damage_timer_ -= delta_time;
 			if (damage_timer_ <= 0.0f) {
@@ -763,56 +793,54 @@ public:
 			std::set<const Terrain*> visible_chunk_set;
 			std::vector<glm::vec3>   newly_spawned_positions;
 
-			// Spawn new launchers
-			for (const auto& chunk : visible_chunks) {
-				// if (chunk->proxy.maxY <= 30.0f) {
-				// 	continue;
-				// }
-				visible_chunk_set.insert(chunk.get());
-				if (spawned_launchers_.find(chunk.get()) == spawned_launchers_.end()) {
-					glm::vec3 chunk_pos = glm::vec3(chunk->GetX(), chunk->GetY(), chunk->GetZ());
-					glm::vec3 world_pos = chunk_pos + chunk->proxy.highestPoint;
+			for (const auto& chunk_ptr : visible_chunks) {
+				const Terrain* chunk = chunk_ptr.get();
+				visible_chunk_set.insert(chunk);
 
-					const float kMinSeperationDistance = 75.0f;
-					const float kMinSeparationDistanceSq = kMinSeperationDistance * kMinSeperationDistance;
+				if (processed_chunks_.count(chunk)) {
+					continue;
+				}
 
-					// Check against entities from previous frames
-					auto nearby_entities = GetEntitiesInRadius<EntityBase>(
-						Vector3(world_pos.x, world_pos.y, world_pos.z),
-						kMinSeperationDistance
-					);
-					bool too_close = false;
-					for (const auto& entity : nearby_entities) {
-						if (dynamic_cast<GuidedMissileLauncher*>(entity.get())) {
-							too_close = true;
-							break;
-						}
+				auto neighbors = get_neighbors(chunk, visible_chunks);
+				std::vector<const Terrain*> current_grid = neighbors;
+				current_grid.push_back(chunk);
+
+				bool has_launcher = false;
+				for (const auto& grid_chunk : current_grid) {
+					if (spawned_launchers_.count(grid_chunk)) {
+						has_launcher = true;
+						break;
 					}
-					if (too_close)
-						continue;
+				}
 
-					// Check against entities spawned in this frame
-					for (const auto& new_pos : newly_spawned_positions) {
-						if (glm::distance2(world_pos, new_pos) < kMinSeparationDistanceSq) {
-							too_close = true;
-							break;
-						}
+				if (has_launcher) {
+					for (const auto& grid_chunk : current_grid) {
+						processed_chunks_.insert(grid_chunk);
 					}
+					continue;
+				}
+				const Terrain* best_chunk = nullptr;
+				glm::vec3      highest_point = {0, -std::numeric_limits<float>::infinity(), 0};
 
-					if (!too_close) {
-						auto [terrain_h, terrain_normal] = vis->GetTerrainPointProperties(world_pos.x, world_pos.z);
+				for (const auto& grid_chunk : current_grid) {
+					if (grid_chunk->proxy.highestPoint.y > highest_point.y) {
+						highest_point = grid_chunk->proxy.highestPoint;
+						best_chunk = grid_chunk;
+					}
+				}
+				if (best_chunk) {
+					glm::vec3 chunk_pos = glm::vec3(best_chunk->GetX(), best_chunk->GetY(), best_chunk->GetZ());
+					glm::vec3 world_pos = chunk_pos + highest_point;
 
-						if (terrain_h < 40) {
-							continue;
-						}
+					auto [terrain_h, terrain_normal] = vis->GetTerrainPointProperties(world_pos.x, world_pos.z);
 
-						// Base rotation to orient the teapot correctly (assuming Z is up in model space)
-						glm::quat base_rotation = glm::angleAxis(glm::pi<float>() / -2.0f, glm::vec3(1.0f, 0.0f, 0.0f));
-
-						// Rotation to align with terrain normal
+					if (terrain_h >= 40) {
+						glm::quat base_rotation = glm::angleAxis(
+							glm::pi<float>() / -2.0f,
+							glm::vec3(1.0f, 0.0f, 0.0f)
+						);
 						glm::vec3 up_vector = glm::vec3(0.0f, 1.0f, 0.0f);
 						glm::quat terrain_alignment = glm::rotation(up_vector, terrain_normal);
-
 						glm::quat final_orientation = terrain_alignment * base_rotation;
 
 						int id = chunk_pos.x + 10 * chunk_pos.y + 100 * chunk_pos.z;
@@ -821,9 +849,11 @@ public:
 							Vector3(world_pos.x, world_pos.y, world_pos.z),
 							final_orientation
 						);
-						spawned_launchers_[chunk.get()] = id;
-						newly_spawned_positions.push_back(world_pos);
+						spawned_launchers_[best_chunk] = id;
 					}
+				}
+				for (const auto& grid_chunk : current_grid) {
+					processed_chunks_.insert(grid_chunk);
 				}
 			}
 
@@ -934,6 +964,7 @@ public:
 
 private:
 	std::map<const Terrain*, int>         spawned_launchers_;
+	std::set<const Terrain*>              processed_chunks_;
 	std::random_device                    rd_;
 	std::mt19937                          eng_;
 	float                                 damage_timer_ = 0.0f;
