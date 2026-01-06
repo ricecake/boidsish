@@ -1,5 +1,7 @@
 # Performance and Quality Audit
 
+This is my personal laundry list of fun, nerdy challenges and performance puzzles I'd like to tackle in this project. It's a collection of "what ifs" and "wouldn't it be cool ifs" that serve as a roadmap for future tinkering. No promises on timelines, but this is where I'm heading.
+
 This document outlines key areas for performance enhancement and code quality improvements within the application. Each section details a specific issue, its impact, a proposed solution, and the relevant code location for future refactoring.
 
 ## 1. GPU-Accelerated Frustum Culling

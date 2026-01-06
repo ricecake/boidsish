@@ -1,213 +1,86 @@
-# Boidsish - Simple 3D Visualization Framework
+# Boidsish - A Surprisingly Serious 3D Playground
 
-A lightweight, cross-platform 3D visualization framework designed for creating interactive particle and dot-based visualizations in C++. Perfect for simulating flocking behaviors, particle systems, mathematical visualizations, and other dynamic 3D scenes.
+Have you ever wanted to render a truly absurd number of dots, particles, or other simple shapes, and then make them do interesting things?
 
-## Features
+Me too.
 
-- **Simple Interface**: Define your visualization with a single function that returns dot positions, colors, and trails
-- **Cross-Platform**: Works on Linux and macOS with simple make commands
-- **Real-time Rendering**: Smooth OpenGL-based 3D rendering with depth testing and transparency
-- **Trail System**: Automatic trail rendering with customizable length and fade effects
-- **Camera Controls**: WASD movement and mouse look controls
-- **Lightweight**: Minimal dependencies - just OpenGL, GLFW, and GLEW
+That's why I built Boidsish. It started as a simple C++ framework for creating flocking simulations (hence the name), but it quickly spiraled into a surprisingly robust playground for all sorts of GPU-accelerated visual experiments. It's a bit niche, a bit nerdy, and probably a bit over-engineered, but it's a lot of fun.
 
-## Dependencies
+## How It Works (The Gist)
 
-### Linux (Ubuntu/Debian)
+At its core, Boidsish is a lean, mean, 3D rendering machine. It's built on a modern OpenGL pipeline and is designed to handle a *lot* of things on the screen at once. Here’s a peek under the hood:
+
+-   **The "Engine":** A C++ application that wrangles OpenGL, GLFW, and Dear ImGui to create a flexible environment for visualization. It handles the low-level stuff like windowing, input, and shader management so you can focus on the fun parts.
+
+-   **The "Shapes":** The framework is built around a simple idea: you give it a list of shapes (dots, spheres, arrows, etc.), and it renders them. Fast. This is managed through a system of `Entity` and `Shape` classes, which lets you easily create and manipulate objects in the scene.
+
+-   **The "Magic":** The real power comes from the GPU. Boidsish is designed to offload as much work as possible to shaders. This includes everything from calculating lighting and color to generating complex geometry on the fly with tessellation shaders.
+
+-   **The "UI":** Thanks to Dear ImGui, most examples come with a simple UI that lets you tweak parameters, toggle effects, and switch camera modes in real-time. It's not always pretty, but it gets the job done.
+
+## Frequently Asked Questions
+
+### Isn't this massively too complicated for rendering a few dots?
+Yes. Next question.
+
+### What's with all the C++23 features?
+Because life's too short to write C++ like it's 2003. Also, `std::views` is pretty neat.
+
+### Why is the camera so fast/slow?
+You can adjust the camera speed with the `[` and `]` keys. I probably should have put that in the UI.
+
+### I ran an example and now my laptop is hot. Why?
+You're probably rendering a few hundred thousand particles, each with its own trail, and running a particle simulation on a compute shader. It's a bit demanding.
+
+### What's the deal with the `performance_and_quality_audit.md` file?
+That's my laundry list of things I know I could be doing better. It's a mix of "this is a real bottleneck" and "this would be a fun challenge." It's a good place to look if you want to understand the project's future direction.
+
+## Getting Your Hands Dirty
+
+Ready to render some dots? Here’s how to get started.
+
+### Dependencies
+
+**Linux (Ubuntu/Debian):**
 ```bash
-sudo apt-get install libglfw3-dev libglew-dev libgl1-mesa-dev
+sudo apt-get update && sudo apt-get install -y \
+    libgl1-mesa-dev libglew-dev libglfw3-dev libglm-dev \
+    libbullet-dev libassimp-dev xvfb imagemagick x11-apps
 ```
 
-### macOS
-```bash
-brew install glfw glew
-```
+**macOS:**
+Good luck. It probably works, but I haven't tried in a while. You'll need `brew` and the equivalent packages.
 
-## Quick Start
+### Building and Running
 
-1. **Install dependencies** (see above)
+1.  **Clone the repo (with submodules!):**
+    ```bash
+    git clone --recursive https://github.com/your-username/boidsish.git
+    cd boidsish
+    ```
 
-2. **Clone and build**:
-```bash
-cd boidsish
-make
-```
+2.  **Build it:**
+    ```bash
+    make all
+    ```
+    This will build the core library and all the examples.
 
-3. **Run the example**:
-```bash
-./boidsish
-```
+3.  **Run an example:**
+    ```bash
+    ./build/terrain
+    ```
+    This one is a personal favorite. It generates infinite, procedurally-generated terrain on the GPU.
 
-## Building
+## What's Next?
 
-- `make` - Build the main example program
-- `make examples` - Build additional example programs
-- `make clean` - Clean build artifacts
-- `make help` - Show all available targets
+I'm always tinkering with this project. Here are a few of the things I'm thinking about, most of which are shamelessly stolen from the performance audit file:
 
-## Usage
+-   **GPU All the Things:** I want to move more logic to the GPU. This includes frustum culling, trail generation, and maybe even some of the core simulation logic. The CPU should be for thinking, not for number crunching.
 
-### Basic Example
+-   **Prettier Reflections:** The current planar reflection effect is a bit of a brute-force hack. I'd like to replace it with something more efficient and, well, prettier.
 
-```cpp
-#include "boidsish.h"
-#include <cmath>
+-   **Stable Simulation:** Right now, the simulation speed is tied to the frame rate. This is fine for pretty pictures, but it's not great for physics. A fixed timestep is on the to-do list.
 
-using namespace Boidsish;
+## Disclaimer
 
-// Define a function that returns dots for each frame
-std::vector<Dot> MyVisualization(float time) {
-    std::vector<Dot> dots;
-
-    // Create a rotating dot
-    float x = cos(time) * 3.0f;
-    float y = sin(time * 0.5f);
-    float z = sin(time) * 3.0f;
-
-    // Dot parameters: position, size, color (RGBA), trail_length
-    dots.emplace_back(x, y, z, 8.0f, 1.0f, 0.5f, 0.0f, 1.0f, 15);
-
-    return dots;
-}
-
-int main() {
-    Visualizer viz(800, 600, "My Visualization");
-    viz.SetDotFunction(MyVisualization);
-    viz.Run();
-    return 0;
-}
-```
-
-### Dot Structure
-
-```cpp
-struct Dot {
-    float x, y, z;           // Position in 3D space
-    float size;              // Size of the dot (in pixels)
-    float r, g, b, a;        // Color (red, green, blue, alpha)
-    int trail_length;        // Number of trail segments
-};
-```
-
-### Camera Controls
-
-The visualization includes built-in first-person camera controls:
-
-- **WASD** - Move horizontally (forward, left, back, right)
-- **Space** - Move up
-- **Shift** - Move down
-- **Mouse** - Look around
-- **ESC** - Exit
-
-### Advanced Usage
-
-```cpp
-// Set custom camera position
-Camera camera(x, y, z, pitch, yaw, fov);
-viz.SetCamera(camera);
-
-// Update loop for custom control
-while (!viz.ShouldClose()) {
-    viz.Update();  // Handle input and timing
-    viz.Render();  // Render the frame
-}
-```
-
-## Examples
-
-The `examples/` directory contains several demonstrations:
-
-### Example 1: Spiral Particles
-Multiple colored particles following spiral paths with varying trail lengths.
-
-### Example 2: Random Walk
-Particles performing random walks with boundary constraints and distance-based coloring.
-
-### Example 3: Wave Function
-Grid-based wave simulation showing mathematical function visualization.
-
-**Run examples:**
-```bash
-cd examples
-make
-./advanced_examples 1  # Spiral particles
-./advanced_examples 2  # Random walk
-./advanced_examples 3  # Wave function
-```
-
-## Architecture
-
-### Core Components
-
-- **Visualizer**: Main class handling window, rendering, and input
-- **Dot**: Structure representing a single particle/point
-- **Camera**: 3D camera with position and orientation
-- **DotFunction**: User-defined function type for generating dots
-
-### Rendering Pipeline
-
-1. User function generates dots for current time
-2. Trail system updates position history
-3. OpenGL renders trails (lines) and dots (points)
-4. Camera transformation applied
-5. Grid overlay for spatial reference
-
-### Platform Abstraction
-
-The Makefile automatically detects the platform and configures:
-- OpenGL linking (Linux vs macOS frameworks)
-- Library paths (Homebrew on macOS)
-- Compiler flags for compatibility
-
-## Customization
-
-### Grid and Environment
-
-Modify `RenderGrid()` in `src/boidsish.cpp` to change the spatial reference grid.
-
-### Rendering Style
-
-- Point sizes, line widths, and colors can be customized per dot
-- Alpha blending is enabled for transparency effects
-- Depth testing provides proper 3D occlusion
-
-### Performance
-
-- Dots are rendered as OpenGL points for efficiency
-- Trails use line strips for smooth curves
-- No complex geometry or textures for maximum performance
-
-## Troubleshooting
-
-### Build Issues
-
-1. **Missing headers**: Ensure development packages are installed
-2. **Library not found**: Check library paths in Makefile
-3. **OpenGL version**: Requires OpenGL 3.3+ compatible drivers
-
-### Runtime Issues
-
-1. **Black screen**: Check OpenGL drivers and version
-2. **No response**: Verify GLFW initialization
-3. **Crashes**: Enable debug builds with `-g -DDEBUG`
-
-### Platform-Specific
-
-**macOS**: If Homebrew libraries aren't found, manually set paths:
-```bash
-export CPPFLAGS=-I$(brew --prefix)/include
-export LDFLAGS=-L$(brew --prefix)/lib
-make
-```
-
-**Linux**: For different distributions, package names may vary:
-- Fedora: `mesa-libGL-devel glfw-devel glew-devel`
-- Arch: `mesa glfw-x11 glew`
-
-## License
-
-This project is provided as example code for educational and development purposes.
-
-## Contributing
-
-Feel free to submit issues and enhancement requests. This framework is designed to be simple and focused - complex features should be implemented in user code rather than the core library.
+This is a hobby project. It's provided as-is, without warranty of any kind. If you manage to set your GPU on fire, I'm not responsible. But I would be slightly impressed.
