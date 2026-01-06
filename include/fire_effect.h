@@ -42,6 +42,7 @@ namespace Boidsish {
 		bool IsActive() const { return active_; }
 
 		float GetLifetime() const { return lifetime_; }
+		void  SetLifetime(float lifetime) { lifetime_ = lifetime; }
 		float GetLived() const { return lived_; }
 		void  SetLived(float lived) { lived_ = lived; }
 

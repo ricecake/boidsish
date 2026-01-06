@@ -309,7 +309,7 @@ public:
 		const float kAcceleration = 150.0f;
 
 		// --- Launch Phase ---
-		if (lived < kLaunchTime) {
+		if (lived_ < kLaunchTime) {
 			// Set orientation to point straight up.
 			// The model's "forward" is -Z, so we rotate it to point along +Y.
 			orientation_ = glm::angleAxis(glm::radians(-90.0f), glm::vec3(1.0f, 0.0f, 0.0f));
@@ -359,7 +359,7 @@ public:
 				// 4. Damp and apply rotational velocity
 				rotational_velocity_ += (target_rot_velocity - rotational_velocity_) * kDamping * delta_time;
 
-				if (lived <= 1.5f) {
+				if (lived_ <= 1.5f) {
 					std::uniform_real_distribution<float> dist(-4.0f, 4.0f);
 					glm::vec3                             error_vector(0.1f * dist(eng_), dist(eng_), 0);
 					rotational_velocity_ += error_vector * delta_time;
@@ -601,7 +601,7 @@ public:
 				// 4. Damp and apply rotational velocity
 				rotational_velocity_ += (target_rot_velocity - rotational_velocity_) * kDamping * delta_time;
 			}
-			if (lived <= 1.5f) {
+			if (lived_ <= 1.5f) {
 				std::uniform_real_distribution<float> dist(-4.0f, 4.0f);
 				glm::vec3                             error_vector(0.1f * dist(eng_), dist(eng_), 0);
 				rotational_velocity_ += error_vector * delta_time;
