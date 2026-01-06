@@ -86,6 +86,8 @@ namespace Boidsish {
 		bool Raycast(const glm::vec3& origin, const glm::vec3& dir, float max_dist, float& out_dist) const;
 
 	private:
+		glm::vec3 getPathInfluence(float x, float z) const;
+
 		// Phong tessellation helpers (matching the shader)
 		glm::vec3 projectPointOnPlane(glm::vec3 q, glm::vec3 v, glm::vec3 n) const {
 			return q - glm::dot(q - v, n) * n;

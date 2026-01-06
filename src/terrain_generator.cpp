@@ -190,7 +190,16 @@ namespace Boidsish {
 	};
 
 	glm::vec3 TerrainGenerator::pointGenerate(float x, float z) const {
-		// Get control value to determine biome
+		glm::vec3 path_data = getPathInfluence(x, z);
+		float     path_factor = path_data.x;
+
+		glm::vec2 push_dir = glm::normalize(glm::vec2(path_data.y, path_data.z));
+
+		float warp_strength = (1.0f - path_factor) * 20.0f;
+
+		glm::vec2 pos = glm::vec2(x, z);
+		glm::vec2 warped_pos = pos + (push_dir * warp_strength);
+
 		float control_value = control_perlin_noise_.octave2D_01(x * control_noise_scale_, z * control_noise_scale_, 2);
 
 		BiomeAttributes current;
@@ -204,8 +213,12 @@ namespace Boidsish {
 		current.detailMasking = std::lerp(low_item.detailMasking, high_item.detailMasking, t);
 		current.floorLevel = std::lerp(low_item.floorLevel, high_item.floorLevel, t);
 
-		auto pos = glm::vec2(x, z);
-		return biomefbm(pos, current);
+		glm::vec3 terrain_height = biomefbm(warped_pos, current);
+
+		float path_floor_level = -0.10f;
+		terrain_height.x = glm::mix(path_floor_level, terrain_height.x, path_factor);
+
+		return terrain_height;
 	}
 
 	TerrainGenerationResult TerrainGenerator::generateChunkData(int chunkX, int chunkZ) {
@@ -321,5 +334,15 @@ namespace Boidsish {
 		}
 
 		return false; // No hit
+	}
+
+	glm::vec3 TerrainGenerator::getPathInfluence(float x, float z) const {
+		float     path_freq = 0.002f;
+		glm::vec3 noise = Simplex::dnoise(glm::vec2(x, z) * path_freq);
+		float     distance_from_spine = std::abs(noise.x);
+		float     corridor_width = 0.15f; // Adjust for wider/narrower paths
+		float     path_factor = glm::smoothstep(0.0f, corridor_width, distance_from_spine);
+
+		return glm::vec3(path_factor, noise.y, noise.z);
 	}
 } // namespace Boidsish
