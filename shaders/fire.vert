@@ -22,6 +22,7 @@ out vec4 view_pos;
 out vec3 v_velocity;
 out vec3 v_view_velocity;
 out vec3 v_view_dir;
+out vec2 v_screen_vel_dir;
 flat out int v_style;
 
 void main() {
@@ -40,6 +41,15 @@ void main() {
         v_velocity = p.vel.xyz;
         v_view_velocity = (u_view * vec4(p.vel.xyz, 0.0)).xyz;
         v_view_dir = normalize(u_camera_pos - p.pos.xyz);
+
+        // Project to screen space for stable orientation
+        vec4 current_pos_clip = gl_Position;
+        vec4 next_pos_clip = u_projection * u_view * vec4(p.pos.xyz + p.vel.xyz * 0.01, 1.0);
+
+        vec2 current_pos_ndc = current_pos_clip.xy / current_pos_clip.w;
+        vec2 next_pos_ndc = next_pos_clip.xy / next_pos_clip.w;
+
+        v_screen_vel_dir = normalize(next_pos_ndc - current_pos_ndc);
 
         // // Base size on style
         // float base_size = 10.0;
