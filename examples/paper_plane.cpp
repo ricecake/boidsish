@@ -790,7 +790,14 @@ public:
 		if (vis && vis->GetTerrainGenerator()) {
 			const auto&              visible_chunks = vis->GetTerrainGenerator()->getVisibleChunks();
 			std::set<const Terrain*> visible_chunk_set;
-			std::vector<glm::vec3>   newly_spawned_positions;
+			// --- Pre-populate forbidden zones from existing launchers ---
+			std::set<const Terrain*> forbidden_chunks;
+			for (const auto& pair : spawned_launchers_) {
+				const Terrain* existing_chunk = pair.first;
+				auto           neighbors = get_neighbors(existing_chunk, visible_chunks);
+				forbidden_chunks.insert(neighbors.begin(), neighbors.end());
+				forbidden_chunks.insert(existing_chunk);
+			}
 
 			// --- Pass 1: Candidate Gathering ---
 			struct SpawnCandidate {
@@ -833,9 +840,8 @@ public:
 				return a.height > b.height;
 			});
 
-			std::set<const Terrain*> forbidden_chunks;
 			for (const auto& candidate : candidates) {
-				if (forbidden_chunks.count(candidate.chunk) || spawned_launchers_.count(candidate.chunk)) {
+				if (forbidden_chunks.count(candidate.chunk)) {
 					continue;
 				}
 
@@ -858,7 +864,7 @@ public:
 					);
 					spawned_launchers_[candidate.chunk] = id;
 
-					// Forbid spawning in neighbors
+					// Forbid spawning in neighbors for the rest of this frame
 					auto neighbors = get_neighbors(candidate.chunk, visible_chunks);
 					forbidden_chunks.insert(neighbors.begin(), neighbors.end());
 					forbidden_chunks.insert(candidate.chunk);
