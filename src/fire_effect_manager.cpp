@@ -44,7 +44,7 @@ namespace Boidsish {
 
 		// Create shaders
 		compute_shader_ = std::make_unique<ComputeShader>("shaders/fire.comp");
-		render_shader_ = std::make_unique<Shader>("shaders/fire.vert", "shaders/fire.frag");
+		render_shader_ = std::make_unique<Shader>("shaders/fire.vert", "shaders/fire.frag", "shaders/fire.geom");
 
 		// Create buffers
 		glGenBuffers(1, &particle_buffer_);

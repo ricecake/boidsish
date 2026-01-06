@@ -17,65 +17,34 @@ uniform mat4 u_view;
 uniform mat4 u_projection;
 uniform vec3 u_camera_pos;
 
+// To Geometry Shader
+out vec3 v_pos;
+out vec3 v_vel;
 out float v_lifetime;
-out vec4 view_pos;
-out vec3 v_velocity;
-out vec3 v_view_velocity;
-out vec3 v_view_dir;
-out vec2 v_screen_vel_dir;
+out float v_point_size;
 flat out int v_style;
 
 void main() {
     Particle p = particles[gl_VertexID];
 
-    if (p.pos.w <= 0.0) {
-        // Don't draw dead particles
-        gl_Position = vec4(-1000.0, -1000.0, -1000.0, 1.0);
-        gl_PointSize = 0.0;
-        v_style = -1; // A dead particle has no style
-    } else {
-        view_pos = u_view * vec4(p.pos.xyz, 1.0);
-        gl_Position = u_projection * view_pos;
-        v_lifetime = p.pos.w;
-        v_style = p.style;
-        v_velocity = p.vel.xyz;
-        v_view_velocity = (u_view * vec4(p.vel.xyz, 0.0)).xyz;
-        v_view_dir = normalize(u_camera_pos - p.pos.xyz);
+    // Pass particle data to the geometry shader
+    v_pos = p.pos.xyz;
+    v_vel = p.vel.xyz;
+    v_lifetime = p.pos.w;
+    v_style = p.style;
 
-        // Project to screen space for stable orientation
-        vec4 current_pos_clip = gl_Position;
-        vec4 next_pos_clip = u_projection * u_view * vec4(p.pos.xyz + p.vel.xyz * 0.01, 1.0);
-
-        vec2 current_pos_ndc = current_pos_clip.xy / current_pos_clip.w;
-        vec2 next_pos_ndc = next_pos_clip.xy / next_pos_clip.w;
-
-        v_screen_vel_dir = normalize(next_pos_ndc - current_pos_ndc);
-
-        // // Base size on style
-        // float base_size = 10.0;
-        // if (p.style == 0) { // Exhaust
-        //     base_size = 15.0;
-        // } else if (p.style == 1) { // Explosion
-        //     base_size = 40.0;
-        // } else { // Fire
-        //     base_size = 25.0;
-        // }
-
-        // // Attenuate size by distance and lifetime
-        // float distance_factor = 1.0 / (-view_pos.z * 0.1);
-        // float lifetime_factor = p.pos.w; // Fades out as lifetime decreases
-        // gl_PointSize = base_size * distance_factor * lifetime_factor;
-
-        // Set point size based on lifetime and style
-        if (p.style == 0) { // Rocket Trail
-            gl_PointSize = smoothstep((1.0 - v_lifetime), v_lifetime, v_lifetime / 2.0) * 15.0; // Smaller, more consistent size
-        } else if (p.style == 1) { // Explosion
-            gl_PointSize = (1.0 - (1.0 - v_lifetime) * (1.0 - v_lifetime)) * 30.0; // Starts large, shrinks fast
-        } else {
-            gl_PointSize = smoothstep(2.0 * (1.0 - v_lifetime), v_lifetime, v_lifetime / 2.5) * 25.0;
-        }
-
+    // Calculate point size, as it's still needed for non-tracer particles
+    if (p.style == 0) { // Rocket Trail
+        v_point_size = smoothstep((1.0 - v_lifetime), v_lifetime, v_lifetime / 2.0) * 15.0;
+    } else if (p.style == 1) { // Explosion
+        v_point_size = (1.0 - (1.0 - v_lifetime) * (1.0 - v_lifetime)) * 30.0;
+    } else { // Fire and Tracer (base size)
+        v_point_size = smoothstep(2.0 * (1.0 - v_lifetime), v_lifetime, v_lifetime / 2.5) * 25.0;
     }
+
+    // The vertex shader now only outputs points to the geometry shader.
+    // gl_Position is minimal as the geometry shader will calculate the final positions.
+    gl_Position = vec4(p.pos.xyz, 1.0);
 }
 
 
