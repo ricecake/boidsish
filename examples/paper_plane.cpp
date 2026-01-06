@@ -70,13 +70,14 @@ public:
 		Entity<Model>(id, "assets/utah_teapot.obj", false) {
 		SetPosition(pos.x, pos.y, pos.z);
 		shape_->SetScale(glm::vec3(2.0f)); // Set a visible scale
+		shape_->SetBaseRotation(glm::angleAxis(glm::radians(0.0f), glm::vec3(0.0f, 1.0f, 0.0f)));
 		shape_->SetRotation(orientation);
+		// shape_->SetBaseRotation(orientation);
+
 		UpdateShape();
 	}
 
-	void UpdateEntity(const EntityHandler& handler, float time, float delta_time) override {
-		// Initially does nothing, as requested.
-	}
+	void UpdateEntity(const EntityHandler& handler, float time, float delta_time) override {}
 };
 
 class PaperPlane: public Entity<Model> {
@@ -910,7 +911,7 @@ public:
 
 				if (terrain_h >= 40) {
 					// Spawn it
-					glm::quat base_rotation = glm::angleAxis(glm::pi<float>() / -2.0f, glm::vec3(1.0f, 0.0f, 0.0f));
+					glm::quat base_rotation = glm::angleAxis(glm::radians(90.0f), glm::vec3(1.0f, 0.0f, 0.0f));
 					glm::vec3 up_vector = glm::vec3(0.0f, 1.0f, 0.0f);
 					glm::quat terrain_alignment = glm::rotation(up_vector, terrain_normal);
 					glm::quat final_orientation = terrain_alignment * base_rotation;
@@ -1053,8 +1054,6 @@ int main() {
 			{2, "assets/bomb-icon.png", HudAlignment::TOP_LEFT, {84, 10}, {64, 64}, selected_weapon == 1}
 		);
 
-		Boidsish::Camera camera;
-		visualizer->SetCamera(camera);
 		auto [height, norm] = visualizer->GetTerrainPointProperties(0, 0);
 
 		auto handler = PaperPlaneHandler(visualizer->GetThreadPool());
@@ -1062,6 +1061,8 @@ int main() {
 		auto id = handler.AddEntity<PaperPlane>();
 		auto plane = handler.GetEntity(id);
 		plane->SetPosition(0, height + 10, 0);
+		Boidsish::Camera camera(0.0f, height + 15, -10.0f);
+		visualizer->SetCamera(camera);
 
 		visualizer->AddShapeHandler(std::ref(handler));
 		visualizer->SetChaseCamera(plane);
