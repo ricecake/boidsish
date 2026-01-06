@@ -573,6 +573,16 @@ namespace Boidsish {
 				shape->render();
 			}
 
+			// Render clones
+			shader->use();
+			clone_manager->Render(*shader);
+		}
+
+		void RenderTransparentTrails(
+			const glm::mat4& view,
+			const Camera& /* cam */,
+			const std::optional<glm::vec4>&            clip_plane
+		) {
 			trail_shader->use();
 			trail_shader->setMat4("view", view);
 			trail_shader->setMat4("projection", projection);
@@ -586,10 +596,6 @@ namespace Boidsish {
 			for (auto& pair : trails) {
 				pair.second->Render(*trail_shader);
 			}
-
-			// Render clones
-			shader->use();
-			clone_manager->Render(*shader);
 		}
 
 		void RenderTerrain(const glm::mat4& view, const std::optional<glm::vec4>& clip_plane) {
@@ -1269,6 +1275,7 @@ namespace Boidsish {
 					glm::vec4(0, 1, 0, 0.01)
 				);
 				impl->RenderTerrain(reflection_view, glm::vec4(0, 1, 0, 0.01));
+				impl->RenderTransparentTrails(reflection_view, reflection_cam, glm::vec4(0, 1, 0, 0.01));
 				impl->fire_effect_manager->Render(reflection_view, impl->projection);
 			}
 			glDisable(GL_CLIP_DISTANCE0);
@@ -1291,6 +1298,7 @@ namespace Boidsish {
 		}
 		impl->RenderSceneObjects(view, impl->camera, impl->shapes, impl->simulation_time, std::nullopt);
 		impl->RenderTerrain(view, std::nullopt);
+		impl->RenderTransparentTrails(view, impl->camera, std::nullopt);
 		impl->fire_effect_manager->Render(view, impl->projection);
 
 		if (impl->effects_enabled_) {

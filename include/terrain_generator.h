@@ -5,7 +5,7 @@
 #include <tuple>
 #include <vector>
 
-#include "PerlinNoise.hpp"
+#include "FastNoise/FastNoise.h"
 #include "Simplex.h"
 
 namespace Boidsish {
@@ -44,45 +44,7 @@ namespace Boidsish {
 			return max_h * 0.8;
 		}
 
-		std::tuple<float, glm::vec3> pointProperties(float x, float z) const {
-			// Determine grid cell
-			float tx = x - floor(x);
-			float tz = z - floor(z);
-
-			// Get the 4 corner vertices of the grid cell
-			auto v0_raw = pointGenerate(floor(x), floor(z)); // Bottom-left
-			auto v1_raw = pointGenerate(ceil(x), floor(z));  // Bottom-right
-			auto v2_raw = pointGenerate(ceil(x), ceil(z));   // Top-right
-			auto v3_raw = pointGenerate(floor(x), ceil(z));  // Top-left
-
-			glm::vec3 v0 = {floor(x), v0_raw.x, floor(z)};
-			glm::vec3 v1 = {ceil(x), v1_raw.x, floor(z)};
-			glm::vec3 v2 = {ceil(x), v2_raw.x, ceil(z)};
-			glm::vec3 v3 = {floor(x), v3_raw.x, ceil(z)};
-
-			glm::vec3 n0 = diffToNorm(v0_raw.y, v0_raw.z);
-			glm::vec3 n1 = diffToNorm(v1_raw.y, v1_raw.z);
-			glm::vec3 n2 = diffToNorm(v2_raw.y, v2_raw.z);
-			glm::vec3 n3 = diffToNorm(v3_raw.y, v3_raw.z);
-
-			// The "flat" position from standard bilinear interpolation
-			glm::vec3 q = bilerp(v0, v1, v2, v3, {tx, tz});
-
-			// Phong Tessellation: Project q onto the tangent plane of each corner
-			glm::vec3 p0 = projectPointOnPlane(q, v0, n0);
-			glm::vec3 p1 = projectPointOnPlane(q, v1, n1);
-			glm::vec3 p2 = projectPointOnPlane(q, v2, n2);
-			glm::vec3 p3 = projectPointOnPlane(q, v3, n3);
-
-			// Interpolate the projected points to find the final curved position
-			glm::vec3 final_pos = bilerp(p0, p1, p2, p3, {tx, tz});
-
-			// Interpolate normals for lighting
-			glm::vec3 final_norm = glm::normalize(bilerp(n0, n1, n2, n3, {tx, tz}));
-
-			return {final_pos.y, final_norm};
-		}
-
+		std::tuple<float, glm::vec3> pointProperties(float x, float z) const;
 		bool Raycast(const glm::vec3& origin, const glm::vec3& dir, float max_dist, float& out_dist) const;
 
 	private:
@@ -127,12 +89,13 @@ namespace Boidsish {
 		int       octaves_ = 4;
 		float     lacunarity_ = 0.99f;
 		float     persistence_ = 0.5f;
+        int       seed_;
 
 		// Control noise parameters
 		constexpr static const float control_noise_scale_ = 0.01f;
 
 		// Noise generators
-		siv::PerlinNoise control_perlin_noise_;
+        FastNoise::SmartNode<> control_noise_generator_;
 
 		auto      fbm(float x, float z, TerrainParameters params);
 		auto      biomefbm(glm::vec2 pos, BiomeAttributes attr) const;
