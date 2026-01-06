@@ -74,14 +74,15 @@ namespace Boidsish {
 		FireEffectStyle  style,
 		const glm::vec3& direction,
 		const glm::vec3& velocity,
-		int              max_particles
+		int              max_particles,
+		float            lifetime
 	) {
 		_EnsureShaderAndBuffers();
 
 		// Find an inactive slot to reuse
 		for (size_t i = 0; i < effects_.size(); ++i) {
 			if (!effects_[i]) {
-				effects_[i] = std::make_shared<FireEffect>(position, style, direction, velocity, max_particles);
+				effects_[i] = std::make_shared<FireEffect>(position, style, direction, velocity, max_particles, lifetime);
 				_UpdateParticleAllocation();
 				return effects_[i];
 			}
@@ -89,7 +90,7 @@ namespace Boidsish {
 
 		// If no inactive slots, add a new one if under capacity
 		if (effects_.size() < kMaxEmitters) {
-			auto effect = std::make_shared<FireEffect>(position, style, direction, velocity, max_particles);
+			auto effect = std::make_shared<FireEffect>(position, style, direction, velocity, max_particles, lifetime);
 			effects_.push_back(effect);
 			_UpdateParticleAllocation();
 			return effect;
@@ -117,6 +118,27 @@ namespace Boidsish {
 		}
 
 		time_ = time;
+		// --- Effect Lifetime Management ---
+		bool needs_reallocation = false;
+		for (auto& effect : effects_) {
+			if (effect) {
+				float lifetime = effect->GetLifetime();
+				if (lifetime > 0.0f) {
+					float lived = effect->GetLived();
+					lived += delta_time;
+					effect->SetLived(lived);
+					if (lived >= lifetime) {
+						effect = nullptr; // Mark for removal
+						needs_reallocation = true;
+					}
+				}
+			}
+		}
+
+		if (needs_reallocation) {
+			_UpdateParticleAllocation();
+		}
+
 
 		// --- Update Emitters ---
 		std::vector<Emitter> emitters;
