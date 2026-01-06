@@ -49,6 +49,8 @@ get_neighbors(const Terrain* chunk, const std::vector<std::shared_ptr<Terrain>>&
 
 class CatMissile;
 class CatBomb;
+class GuidedMissile;
+class PaperPlane;
 
 static int selected_weapon = 0;
 
@@ -62,22 +64,6 @@ struct PaperPlaneInputController {
 	bool boost = false;
 	bool brake = false;
 	bool fire = false;
-};
-
-class GuidedMissileLauncher: public Entity<Model> {
-public:
-	GuidedMissileLauncher(int id, Vector3 pos, glm::quat orientation):
-		Entity<Model>(id, "assets/utah_teapot.obj", false) {
-		SetPosition(pos.x, pos.y, pos.z);
-		shape_->SetScale(glm::vec3(2.0f)); // Set a visible scale
-		shape_->SetBaseRotation(glm::angleAxis(glm::radians(0.0f), glm::vec3(0.0f, 1.0f, 0.0f)));
-		shape_->SetRotation(orientation);
-		// shape_->SetBaseRotation(orientation);
-
-		UpdateShape();
-	}
-
-	void UpdateEntity(const EntityHandler& handler, float time, float delta_time) override {}
 };
 
 class PaperPlane: public Entity<Model> {
@@ -498,6 +484,77 @@ private:
 	glm::quat          orientation_;
 	glm::vec3          rotational_velocity_; // x: pitch, y: yaw, z: roll
 	float              forward_speed_;
+	std::random_device rd_;
+	std::mt19937       eng_;
+};
+
+class GuidedMissileLauncher: public Entity<Model> {
+public:
+	GuidedMissileLauncher(int id, Vector3 pos, glm::quat orientation):
+		Entity<Model>(id, "assets/utah_teapot.obj", false), eng_(rd_()) {
+		SetPosition(pos.x, pos.y, pos.z);
+		shape_->SetScale(glm::vec3(2.0f)); // Set a visible scale
+		shape_->SetBaseRotation(glm::angleAxis(glm::radians(0.0f), glm::vec3(0.0f, 1.0f, 0.0f)));
+		shape_->SetRotation(orientation);
+		// shape_->SetBaseRotation(orientation);
+		std::uniform_real_distribution<float> dist(4.0f, 8.0f);
+		fire_interval_ = dist(eng_);
+
+		UpdateShape();
+	}
+
+	void UpdateEntity(const EntityHandler& handler, float time, float delta_time) override {
+		time_since_last_fire_ += delta_time;
+		if (time_since_last_fire_ < fire_interval_) {
+			return;
+		}
+
+		auto planes = handler.GetEntitiesByType<PaperPlane>();
+		if (planes.empty())
+			return;
+		auto plane = planes[0];
+
+		// Check distance to plane
+		float distance_to_plane = (plane->GetPosition() - GetPosition()).Magnitude();
+		if (distance_to_plane > 500.0f) {
+			return;
+		}
+
+		// Calculate firing probability based on altitude
+		auto  ppos = plane->GetPosition();
+		float max_h = handler.vis->GetTerrainMaxHeight();
+		// float max_h = handler.GetTerrainMaxHeight();
+		if (max_h <= 0.0f)
+			max_h = 200.0f; // Fallback
+
+		float start_h = 60.0f;
+		float extreme_h = 3.0f * max_h;
+
+		if (ppos.y < start_h)
+			return;
+
+		const float p_min = 0.5f;
+		const float p_max = 10.0f;
+
+		float norm_alt = (ppos.y - start_h) / (extreme_h - start_h);
+		norm_alt = std::min(std::max(norm_alt, 0.0f), 1.0f);
+
+		float missiles_per_second = p_min + (p_max - p_min) * norm_alt;
+		float fire_probability_this_frame = missiles_per_second * delta_time;
+
+		std::uniform_real_distribution<float> dist(0.0f, 1.0f);
+		if (dist(eng_) < fire_probability_this_frame) {
+			handler.QueueAddEntity<GuidedMissile>(GetPosition());
+			time_since_last_fire_ = 0.0f;
+			// Set a new random interval for the next shot
+			std::uniform_real_distribution<float> new_dist(4.0f, 8.0f);
+			fire_interval_ = new_dist(eng_);
+		}
+	}
+
+	float time_since_last_fire_ = 0.0f;
+	float fire_interval_ = 5.0f; // Fire every 5 seconds, will be randomized
+
 	std::random_device rd_;
 	std::mt19937       eng_;
 };
@@ -957,83 +1014,87 @@ public:
 				vis->TogglePostProcessingEffect("Time Stutter");
 			}
 
-			damage_timer_ = std::min(damage_timer_ + new_time, 5.0f);
+			damage_timer_ = damage_timer_ + new_time;
 		}
 
-		auto  ppos = plane->GetPosition();
-		float max_h = vis->GetTerrainMaxHeight();
+		damage_timer_ = std::min(damage_timer_, 5.0f);
 
-		float start_h = 0.0f;
-		float extreme_h = 0.0f;
+		/*
+		        auto  ppos = plane->GetPosition();
+		        float max_h = vis->GetTerrainMaxHeight();
 
-		// If terrain is not loaded, use a fallback height.
-		if (max_h <= 0.0f) {
-			start_h = 50.0f; // Start firing when plane is reasonably high
-			extreme_h = 200.0f;
-		} else {
-			start_h = (2.0f / 3.0f) * max_h;
-			extreme_h = 3.0f * max_h;
-		}
+		        float start_h = 0.0f;
+		        float extreme_h = 0.0f;
 
-		if (ppos.y < start_h)
-			return;
-		const float p_min = 0.5f;  // Missiles per second at start_h
-		const float p_max = 10.0f; // Missiles per second at extreme_h
+		        // If terrain is not loaded, use a fallback height.
+		        if (max_h <= 0.0f) {
+		            start_h = 50.0f; // Start firing when plane is reasonably high
+		            extreme_h = 200.0f;
+		        } else {
+		            start_h = (2.0f / 3.0f) * max_h;
+		            extreme_h = 3.0f * max_h;
+		        }
 
-		float norm_alt = (ppos.y - start_h) / (extreme_h - start_h);
-		norm_alt = std::min(std::max(norm_alt, 0.0f), 1.0f); // clamp
+		        if (ppos.y < start_h)
+		            return;
+		        const float p_min = 0.5f;  // Missiles per second at start_h
+		        const float p_max = 10.0f; // Missiles per second at extreme_h
 
-		float missiles_per_second = p_min * pow((p_max / p_min), norm_alt);
-		float fire_probability_this_frame = missiles_per_second * delta_time;
+		        float norm_alt = (ppos.y - start_h) / (extreme_h - start_h);
+		        norm_alt = std::min(std::max(norm_alt, 0.0f), 1.0f); // clamp
 
-		std::uniform_real_distribution<float> dist(0.0f, 1.0f);
-		if (dist(eng_) < fire_probability_this_frame) {
-			// --- Calculate Firing Location ---
-			// We want to fire from a "rainbow" arc on the terrain that is visible to the camera.
+		        float missiles_per_second = p_min * pow((p_max / p_min), norm_alt);
+		        float fire_probability_this_frame = missiles_per_second * delta_time;
 
-			// 1. Get camera properties
-			const Camera& camera = vis->GetCamera();
-			glm::vec3     cam_pos = glm::vec3(camera.x, camera.y, camera.z);
+		        std::uniform_real_distribution<float> dist(0.0f, 1.0f);
+		        if (dist(eng_) < fire_probability_this_frame) {
+		            // --- Calculate Firing Location ---
+		            // We want to fire from a "rainbow" arc on the terrain that is visible to the camera.
 
-			// This calculation ensures we get the camera's actual forward direction,
-			// even in chase cam mode.
-			glm::vec3 plane_pos_glm = glm::vec3(ppos.x, ppos.y, ppos.z);
-			glm::vec3 cam_fwd = glm::normalize(plane_pos_glm - cam_pos);
-			glm::vec3 cam_right = glm::normalize(glm::cross(cam_fwd, glm::vec3(0.0f, 1.0f, 0.0f)));
+		            // 1. Get camera properties
+		            const Camera& camera = vis->GetCamera();
+		            glm::vec3     cam_pos = glm::vec3(camera.x, camera.y, camera.z);
 
-			// 2. Define spawn arc parameters
-			const float kMinSpawnDist = 250.0f;
-			const float kMaxSpawnDist = 400.0f;
-			const float kSpawnFov = glm::radians(camera.fov * 0.9f); // Just under camera FOV
+		            // This calculation ensures we get the camera's actual forward direction,
+		            // even in chase cam mode.
+		            glm::vec3 plane_pos_glm = glm::vec3(ppos.x, ppos.y, ppos.z);
+		            glm::vec3 cam_fwd = glm::normalize(plane_pos_glm - cam_pos);
+		            glm::vec3 cam_right = glm::normalize(glm::cross(cam_fwd, glm::vec3(0.0f, 1.0f, 0.0f)));
 
-			// 3. Generate random point in the arc
-			std::uniform_real_distribution<float> dist_dist(kMinSpawnDist, kMaxSpawnDist);
-			std::uniform_real_distribution<float> dist_angle(-kSpawnFov / 2.0f, kSpawnFov / 2.0f);
+		            // 2. Define spawn arc parameters
+		            const float kMinSpawnDist = 250.0f;
+		            const float kMaxSpawnDist = 400.0f;
+		            const float kSpawnFov = glm::radians(camera.fov * 0.9f); // Just under camera FOV
 
-			float     rand_dist = dist_dist(eng_);
-			float     rand_angle = dist_angle(eng_);
-			glm::vec3 rand_dir = glm::angleAxis(rand_angle, glm::vec3(0.0f, 1.0f, 0.0f)) * cam_fwd;
+		            // 3. Generate random point in the arc
+		            std::uniform_real_distribution<float> dist_dist(kMinSpawnDist, kMaxSpawnDist);
+		            std::uniform_real_distribution<float> dist_angle(-kSpawnFov / 2.0f, kSpawnFov / 2.0f);
 
-			// 4. Find the point on the terrain
-			glm::vec3 ray_origin = cam_pos;
-			// We push the origin forward a bit to ensure the spawn is always in front and far away
-			ray_origin += rand_dir * rand_dist;
+		            float     rand_dist = dist_dist(eng_);
+		            float     rand_angle = dist_angle(eng_);
+		            glm::vec3 rand_dir = glm::angleAxis(rand_angle, glm::vec3(0.0f, 1.0f, 0.0f)) * cam_fwd;
 
-			float terrain_h = 0.0f;
-			if (max_h > 0.0f) {
-				std::tuple<float, glm::vec3> props = vis->GetTerrainPointProperties(ray_origin.x, ray_origin.z);
-				terrain_h = std::get<0>(props);
+		            // 4. Find the point on the terrain
+		            glm::vec3 ray_origin = cam_pos;
+		            // We push the origin forward a bit to ensure the spawn is always in front and far away
+		            ray_origin += rand_dir * rand_dist;
 
-				// Safety check: ensure missile doesn't spawn underground or too high if terrain is weird
-				if (terrain_h < 0.0f || !std::isfinite(terrain_h)) {
-					return;
-				}
-			}
+		            float terrain_h = 0.0f;
+		            if (max_h > 0.0f) {
+		                std::tuple<float, glm::vec3> props = vis->GetTerrainPointProperties(ray_origin.x, ray_origin.z);
+		                terrain_h = std::get<0>(props);
 
-			Vector3 launchPos = Vector3(ray_origin.x, terrain_h, ray_origin.z);
+		                // Safety check: ensure missile doesn't spawn underground or too high if terrain is weird
+		                if (terrain_h < 0.0f || !std::isfinite(terrain_h)) {
+		                    return;
+		                }
+		            }
 
-			QueueAddEntity<GuidedMissile>(launchPos);
-		}
+		            Vector3 launchPos = Vector3(ray_origin.x, terrain_h, ray_origin.z);
+
+		            QueueAddEntity<GuidedMissile>(launchPos);
+		        }
+		*/
 	}
 
 private:
