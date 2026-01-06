@@ -17,6 +17,7 @@ uniform mat4  view;
 uniform mat4  projection;
 uniform vec4  clipPlane;
 uniform float ripple_strength;
+uniform bool  isColossal;
 
 layout(std140) uniform Lighting {
 	vec3  lightPos;
@@ -55,6 +56,33 @@ void main() {
 	if (wireframe_enabled == 1) {
 		barycentric = getBarycentric();
 	}
-	gl_Position = projection * view * vec4(FragPos, 1.0);
+
+	if (isColossal) {
+		// --- Colossal Object Logic ---
+		// 1. Greatly increase the scale
+		mat4 scaled_model = model;
+		scaled_model[0][0] *= 500.0;
+		scaled_model[1][1] *= 500.0;
+		scaled_model[2][2] *= 500.0;
+
+		// 2. Place it far away, relative to the camera's rotation but not its position
+		// This makes it look like it's infinitely far away.
+		// We extract the camera's forward direction from the view matrix.
+		vec3 cam_forward = -normalize(view[2].xyz);
+		vec3 pos = cam_forward * 990.0; // Push it just inside the far clip plane
+
+		// 3. Apply the final transformation
+		vec4 worldPos = scaled_model * vec4(displacedPos, 1.0);
+		worldPos.xyz += pos;
+		gl_Position = projection * view * worldPos;
+
+		// 4. Force depth to be the furthest possible value, ensuring it's behind everything.
+		gl_Position.z = gl_Position.w;
+		FragPos = worldPos.xyz; // Still pass world position for lighting
+	} else {
+		// --- Standard Object Logic ---
+		gl_Position = projection * view * vec4(FragPos, 1.0);
+	}
+
 	gl_ClipDistance[0] = dot(vec4(FragPos, 1.0), clipPlane);
 }

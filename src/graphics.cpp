@@ -560,6 +560,7 @@ namespace Boidsish {
 			CleanupOldTrails(time, shapes);
 			std::set<int> current_shape_ids;
 			for (const auto& shape : shapes) {
+				shader->setBool("isColossal", shape->IsColossal());
 				current_shape_ids.insert(shape->GetId());
 				// TODO: Move trail generation to the GPU for performance.
 				// See performance_and_quality_audit.md#3-gpu-based-trail-generation

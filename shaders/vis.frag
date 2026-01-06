@@ -13,6 +13,7 @@ in vec2 TexCoords;
 
 uniform vec3 objectColor;
 uniform int  useVertexColor;
+uniform bool isColossal;
 
 uniform sampler2D texture_diffuse1;
 uniform bool use_texture;
@@ -76,13 +77,26 @@ void main() {
 	float fade_end = 550.0;
 	float fade = 1.0 - smoothstep(fade_start, fade_end, dist);
 
-	vec4 outColor = vec4(result, mix(0, fade, step(0.01, FragPos.y)));
-	FragColor = mix(
-		vec4(0.0, 0.7, 0.7, mix(0, fade, step(0.01, FragPos.y))) * length(outColor),
-		outColor,
-		step(1, fade)
-	);
+	vec4 outColor;
 
+	if (isColossal) {
+		// --- Colossal Object Atmospheric Haze ---
+		vec3 skyColor = vec3(0.0, 0.1, 0.2); // A deep blue, change as needed
+		float haze_start = -200.0;           // World y-coordinate where haze begins
+		float haze_end = -500.0;             // World y-coordinate where haze is total
+		float haze_factor = smoothstep(haze_start, haze_end, FragPos.y);
 
-	// FragColor = vec4(result, 1.0);
+		vec3 final_haze_color = mix(result, skyColor, haze_factor);
+		outColor = vec4(final_haze_color, 1.0);
+	} else {
+		// --- Standard Object Fading ---
+		outColor = vec4(result, mix(0, fade, step(0.01, FragPos.y)));
+		outColor = mix(
+			vec4(0.0, 0.7, 0.7, mix(0, fade, step(0.01, FragPos.y))) * length(outColor),
+			outColor,
+			step(1, fade)
+		);
+	}
+
+	FragColor = outColor;
 }
