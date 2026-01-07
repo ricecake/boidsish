@@ -111,12 +111,13 @@ namespace Boidsish {
 		return shapes;
 	}
 
-	// const std::tuple<float, glm::vec3> EntityHandler::GetTerrainPointProperties(float x, float y) {
+	std::tuple<float, glm::vec3> EntityHandler::GetTerrainPointProperties(float x, float y) const {
+		return vis->GetTerrainPointProperties(x, y);
+	}
 
-	// };
-	// const std::vector<std::shared_ptr<Terrain>>& EntityHandler::GetTerrainChunks() {
-
-	// };
+	const std::vector<std::shared_ptr<Terrain>>& EntityHandler::GetTerrainChunks() const {
+		return vis->GetTerrainChunks();
+	}
 
 	const TerrainGenerator* EntityHandler::GetTerrainGenerator() const {
 		return vis->GetTerrainGenerator();
