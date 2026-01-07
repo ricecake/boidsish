@@ -59,20 +59,14 @@ void main() {
 
 	if (isColossal) {
 		// --- Colossal Object Logic (View Space) ---
-		// 1. Transform the object's vertex into view space.
 		vec4 view_pos = view * vec4(FragPos, 1.0);
-
-		// 2. In view space, massively scale X and Y, and set Z to a fixed large distance.
-		// This creates the illusion of size and distance without perspective distortion.
 		view_pos.xy *= 500.0;
-		view_pos.z = -990.0; // Place just in front of the 1000.0 far plane
-
-		// 3. Project the modified view-space position to clip space.
+		view_pos.z = -500.0;
 		gl_Position = projection * view_pos;
 
-		// 4. Calculate a "fake" world position for the fragment shader so lighting works.
-		// We transform our manipulated view_pos back into world space.
-		FragPos = vec3(inverse(view) * view_pos);
+		// --- Safer FragPos Calculation ---
+		vec3 view_dir = normalize(view_pos.xyz);
+		FragPos = viewPos + view_dir * 500.0;
 
 	} else {
 		// --- Standard Object Logic ---
