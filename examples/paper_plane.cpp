@@ -106,7 +106,7 @@ public:
 		const float kDamping = 2.5f;
 
 		const float kBaseSpeed = 60.0f;
-		const float kBoostSpeed = 100.0f;
+		const float kBoostSpeed = 90.0f;
 		const float kBreakSpeed = 10.0f;
 		const float kBoostAcceleration = 120.0f;
 		const float kSpeedDecay = 20.0f;
@@ -243,11 +243,18 @@ public:
 		}
 	}
 
-	void TriggerDamage() { damage_pending_++; }
+	void TriggerDamage() {
+		health -= 5;
+		damage_pending_++;
+	}
 
 	bool IsDamagePending() { return bool(damage_pending_); }
 
 	void AcknowledgeDamage() { damage_pending_--; }
+
+	float GetHealth() const { return health; }
+
+	float GetShield() const { return shield; }
 
 private:
 	std::shared_ptr<PaperPlaneInputController> controller_;
@@ -257,6 +264,8 @@ private:
 	float                                      time_to_fire = 0.25f;
 	bool                                       fire_left = true;
 	int                                        damage_pending_;
+	float                                      health = 100.0f;
+	float                                      shield = 100.0f;
 };
 
 class GuidedMissile: public Entity<Model> {
@@ -317,7 +326,7 @@ public:
 
 		// --- Flight Model Constants ---
 		const float kLaunchTime = 0.5f;
-		const float kMaxSpeed = 150.0f;
+		const float kMaxSpeed = 170.0f;
 		const float kAcceleration = 150.0f;
 
 		// --- Launch Phase ---
@@ -1011,6 +1020,8 @@ public:
 		auto plane = std::static_pointer_cast<PaperPlane>(targets[0]);
 		if (plane && plane->IsDamagePending()) {
 			plane->AcknowledgeDamage();
+			vis->UpdateHudGauge(3, {3, plane->GetHealth(), "Health", HudAlignment::BOTTOM_CENTER, {0, -50}, {200, 20}});
+
 			auto new_time = damage_dist_(eng_);
 
 			if (damage_timer_ <= 0.0f) { // Only trigger if not already active
@@ -1131,6 +1142,8 @@ int main() {
 
 		visualizer->AddShapeHandler(std::ref(handler));
 		visualizer->SetChaseCamera(plane);
+
+		visualizer->AddHudGauge({3, 100.0f, "Health", HudAlignment::BOTTOM_CENTER, {0, -50}, {200, 20}});
 
 		auto controller = std::make_shared<PaperPlaneInputController>();
 		std::dynamic_pointer_cast<PaperPlane>(plane)->SetController(controller);
