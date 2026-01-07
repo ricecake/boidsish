@@ -340,7 +340,7 @@ namespace Boidsish {
 		float     path_freq = 0.002f;
 		glm::vec3 noise = Simplex::dnoise(glm::vec2(x, z) * path_freq);
 		float     distance_from_spine = std::abs(noise.x);
-		float     corridor_width = 0.15f; // Adjust for wider/narrower paths
+		float     corridor_width = 0.35f; // Adjust for wider/narrower paths
 		float     path_factor = glm::smoothstep(0.0f, corridor_width, distance_from_spine);
 
 		return glm::vec3(path_factor, noise.y, noise.z);
