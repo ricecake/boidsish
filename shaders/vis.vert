@@ -58,27 +58,22 @@ void main() {
 	}
 
 	if (isColossal) {
-		// --- Colossal Object Logic ---
-		// 1. Greatly increase the scale
-		mat4 scaled_model = model;
-		scaled_model[0][0] *= 500.0;
-		scaled_model[1][1] *= 500.0;
-		scaled_model[2][2] *= 500.0;
+		// --- Colossal Object Logic (View Space) ---
+		// 1. Transform the object's vertex into view space.
+		vec4 view_pos = view * vec4(FragPos, 1.0);
 
-		// 2. Place it far away, relative to the camera's rotation but not its position
-		// This makes it look like it's infinitely far away.
-		// We extract the camera's forward direction from the view matrix.
-		vec3 cam_forward = -normalize(view[2].xyz);
-		vec3 pos = cam_forward * 990.0; // Push it just inside the far clip plane
+		// 2. In view space, massively scale X and Y, and set Z to a fixed large distance.
+		// This creates the illusion of size and distance without perspective distortion.
+		view_pos.xy *= 500.0;
+		view_pos.z = -990.0; // Place just in front of the 1000.0 far plane
 
-		// 3. Apply the final transformation
-		vec4 worldPos = scaled_model * vec4(displacedPos, 1.0);
-		worldPos.xyz += pos;
-		gl_Position = projection * view * worldPos;
+		// 3. Project the modified view-space position to clip space.
+		gl_Position = projection * view_pos;
 
-		// 4. Force depth to be the furthest possible value, ensuring it's behind everything.
-		gl_Position.z = gl_Position.w;
-		FragPos = worldPos.xyz; // Still pass world position for lighting
+		// 4. Calculate a "fake" world position for the fragment shader so lighting works.
+		// We transform our manipulated view_pos back into world space.
+		FragPos = vec3(inverse(view) * view_pos);
+
 	} else {
 		// --- Standard Object Logic ---
 		gl_Position = projection * view * vec4(FragPos, 1.0);
