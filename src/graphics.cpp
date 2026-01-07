@@ -1559,6 +1559,17 @@ namespace Boidsish {
 		}
 	}
 
+	void Visualizer::TogglePostProcessingEffect(const std::string& name, const bool newState) {
+		if (impl->post_processing_manager_) {
+			for (auto& effect : impl->post_processing_manager_->GetEffects()) {
+				if (effect->GetName() == name) {
+					effect->SetEnabled(newState);
+					break;
+				}
+			}
+		}
+	}
+
 	void Visualizer::SetFilmGrainIntensity(float intensity) {
 		if (impl->post_processing_manager_) {
 			for (auto& effect : impl->post_processing_manager_->GetEffects()) {

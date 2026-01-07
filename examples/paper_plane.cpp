@@ -105,11 +105,11 @@ public:
 		const float kAutoLevelSpeed = 1.5f;
 		const float kDamping = 2.5f;
 
-		const float kBaseSpeed = 30.0f;
-		const float kBoostSpeed = 80.0f;
+		const float kBaseSpeed = 60.0f;
+		const float kBoostSpeed = 100.0f;
 		const float kBreakSpeed = 10.0f;
 		const float kBoostAcceleration = 120.0f;
-		const float kSpeedDecay = 10.0f;
+		const float kSpeedDecay = 20.0f;
 
 		// --- Handle Rotational Input ---
 		glm::vec3 target_rot_velocity = glm::vec3(0.0f);
@@ -298,22 +298,22 @@ public:
 		// --- Manage Exhaust Fire Effect ---
 		// This is done via lambda capture to ensure the effect is updated
 		// and eventually terminated correctly, even if the missile is destroyed.
-		if (exhaust_effect_ == nullptr) {
-			handler.EnqueueVisualizerAction([this, &handler, pos]() {
-				exhaust_effect_ = handler.vis->AddFireEffect(
-					glm::vec3(pos.x, pos.y, pos.z),
-					FireEffectStyle::MissileExhaust,
-					orientation_ * glm::vec3(0, 0, -1)
-				);
-			});
-		} else {
-			handler.EnqueueVisualizerAction([this, pos]() {
-				if (exhaust_effect_) {
-					exhaust_effect_->SetPosition({pos.x, pos.y, pos.z});
-					exhaust_effect_->SetDirection(orientation_ * glm::vec3(0, 0, -1));
-				}
-			});
-		}
+		// if (exhaust_effect_ == nullptr) {
+		// 	handler.EnqueueVisualizerAction([this, &handler, pos]() {
+		// 		exhaust_effect_ = handler.vis->AddFireEffect(
+		// 			glm::vec3(pos.x, pos.y, pos.z),
+		// 			FireEffectStyle::MissileExhaust,
+		// 			orientation_ * glm::vec3(0, 0, -1)
+		// 		);
+		// 	});
+		// } else {
+		// 	handler.EnqueueVisualizerAction([this, pos]() {
+		// 		if (exhaust_effect_) {
+		// 			exhaust_effect_->SetPosition({pos.x, pos.y, pos.z});
+		// 			exhaust_effect_->SetDirection(orientation_ * glm::vec3(0, 0, -1));
+		// 		}
+		// 	});
+		// }
 
 		// --- Flight Model Constants ---
 		const float kLaunchTime = 0.5f;
@@ -628,23 +628,23 @@ public:
 				fired_ = true;
 			}
 
-			// --- Manage Exhaust Fire Effect ---
-			if (exhaust_effect_ == nullptr) {
-				handler.EnqueueVisualizerAction([this, &handler, pos]() {
-					exhaust_effect_ = handler.vis->AddFireEffect(
-						glm::vec3(pos.x, pos.y, pos.z),
-						FireEffectStyle::MissileExhaust,
-						orientation_ * glm::vec3(0, 0, 1)
-					);
-				});
-			} else {
-				handler.EnqueueVisualizerAction([this, pos]() {
-					if (exhaust_effect_) {
-						exhaust_effect_->SetPosition(glm::vec3(pos.x, pos.y, pos.z));
-						exhaust_effect_->SetDirection(orientation_ * glm::vec3(0, 0, 1));
-					}
-				});
-			}
+			// // --- Manage Exhaust Fire Effect ---
+			// if (exhaust_effect_ == nullptr) {
+			// 	handler.EnqueueVisualizerAction([this, &handler, pos]() {
+			// 		exhaust_effect_ = handler.vis->AddFireEffect(
+			// 			glm::vec3(pos.x, pos.y, pos.z),
+			// 			FireEffectStyle::MissileExhaust,
+			// 			orientation_ * glm::vec3(0, 0, 1)
+			// 		);
+			// 	});
+			// } else {
+			// 	handler.EnqueueVisualizerAction([this, pos]() {
+			// 		if (exhaust_effect_) {
+			// 			exhaust_effect_->SetPosition(glm::vec3(pos.x, pos.y, pos.z));
+			// 			exhaust_effect_->SetDirection(orientation_ * glm::vec3(0, 0, 1));
+			// 		}
+			// 	});
+			// }
 
 			forward_speed_ += kAcceleration * delta_time;
 			if (forward_speed_ > kMaxSpeed) {
@@ -897,8 +897,8 @@ public:
 		if (damage_timer_ > 0.0f) {
 			damage_timer_ -= delta_time;
 			if (damage_timer_ <= 0.0f) {
-				vis->TogglePostProcessingEffect("Glitch");
-				vis->TogglePostProcessingEffect("Time Stutter");
+				vis->TogglePostProcessingEffect("Glitch", false);
+				vis->TogglePostProcessingEffect("Time Stutter", false);
 			}
 		}
 
@@ -1014,8 +1014,8 @@ public:
 			auto new_time = damage_dist_(eng_);
 
 			if (damage_timer_ <= 0.0f) { // Only trigger if not already active
-				vis->TogglePostProcessingEffect("Glitch");
-				vis->TogglePostProcessingEffect("Time Stutter");
+				vis->TogglePostProcessingEffect("Glitch", true);
+				vis->TogglePostProcessingEffect("Time Stutter", true);
 			}
 
 			damage_timer_ = damage_timer_ + new_time;
