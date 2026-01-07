@@ -81,10 +81,13 @@ void main() {
 
 	if (isColossal) {
 		// --- Colossal Object Atmospheric Haze ---
-		vec3 skyColor = vec3(0.0, 0.1, 0.2); // A deep blue, change as needed
-		float haze_start = -200.0;           // World y-coordinate where haze begins
-		float haze_end = -500.0;             // World y-coordinate where haze is total
-		float haze_factor = smoothstep(haze_start, haze_end, FragPos.y);
+		// A slightly brighter blue to contrast with the black background
+		vec3 skyColor = vec3(0.1, 0.2, 0.3);
+		// Fade the object in as it rises above the horizon (Y=0)
+		float haze_start = 0.0;
+		float haze_end = 150.0;
+		// We use 1.0 - smoothstep to fade *in* (reduce haze) as Y increases
+		float haze_factor = 1.0 - smoothstep(haze_start, haze_end, FragPos.y);
 
 		vec3 final_haze_color = mix(result, skyColor, haze_factor);
 		outColor = vec4(final_haze_color, 1.0);
