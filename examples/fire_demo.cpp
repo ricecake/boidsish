@@ -31,6 +31,9 @@ int main() {
 
 		std::vector<std::shared_ptr<Boidsish::Shape>> vec;
 		vis.AddShapeHandler([&](float time) {
+			auto camera = vis.GetCamera();
+			tracer->SetDirection({camera.x, camera.y, camera.z});
+
 			// // Dynamically update the fire effect's properties over time
 			// float x = sin(time) * 5.0f;
 			// float z = cos(time) * 5.0f;
@@ -42,7 +45,7 @@ int main() {
 
 			// // Make it point in a moving direction
 			// fire_effect->SetDirection(glm::vec3(cos(time * 0.8f), sin(time * 0.8f), 1.0f));
-			// fire1->SetDirection(glm::vec3(cos(time), sin(time), 1.0f));
+			fire1->SetDirection(glm::vec3(cos(time), sin(time), 1.0f));
 
 			return vec;
 		});

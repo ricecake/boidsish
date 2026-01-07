@@ -13,38 +13,71 @@ void main() {
     vec2 p = gl_PointCoord - vec2(0.5);
     float dist = dot(p, p);
 
-    if (v_style == 3) { // Tracer
-        // Foreshortening based on view angle (world space)
-        float foreshortening = 1.0 - abs(dot(normalize(v_velocity), v_view_dir));
-        float speed_stretch = 1.0 + length(v_velocity) * 0.05;
+// if (v_style == 3) { // Tracer
+//     // 1. Center coordinates
+//     vec2 p = gl_PointCoord - vec2(0.5);
 
-        // Rotate point coordinate to align with screen-space velocity
-        mat2 rot = mat2(v_screen_vel_dir.x, -v_screen_vel_dir.y, v_screen_vel_dir.y, v_screen_vel_dir.x);
-        vec2 rotated_p = rot * p;
+//     // 2. Define the segment in local "billboard space"
+//     // We align the segment with the screen-space velocity direction
+//     vec2 dir = normalize(v_screen_vel_dir);
 
-        // Interpolate scaling factors to transition between a circle and a bar
-        float scale_x = mix(1.0, speed_stretch, foreshortening);
-        float scale_y = mix(1.0, 0.2, foreshortening);
-        rotated_p.x *= scale_x;
-        rotated_p.y *= scale_y;
+//     // Adjust length based on speed or a fixed constant
+//     float halfLength = 20.2 / dot(v_velocity, v_view_dir);
+//     vec2 a = -dir * halfLength;
+//     vec2 b =  dir * halfLength;
+//     float radius = 0.05;
 
-        float new_dist_sq = dot(rotated_p, rotated_p);
-        if (new_dist_sq > 0.25) {
-            discard;
-        }
+//     // 3. Capsule SDF Calculation
+//     vec2 pa = p - a, ba = b - a;
+//     float h = clamp(dot(pa, ba) / dot(ba, ba), 0.0, 1.0);
+//     float dist = length(pa - ba * h) - radius;
 
-        vec3 hot_color = vec3(1.0, 1.0, 0.8);
-        vec3 mid_color = vec3(1.0, 0.5, 0.0);
-        vec3 cool_color = vec3(0.8, 0.1, 0.0);
+//     // 4. Shaping and Coloring
+//     if (dist > 0.0) discard;
 
-        float color_mix = smoothstep(0.0, 0.25, rotated_p.x + 0.5);
-        vec3 color = mix(hot_color, mid_color, color_mix);
-        color = mix(color, cool_color, v_lifetime / 1.5);
+//     float edgeAlpha = smoothstep(0.0, -0.02, dist);
+//     vec3 hot_color = vec3(1.0, 1.0, 0.8);
+//     vec3 mid_color = vec3(1.0, 0.5, 0.0);
 
-        float alpha = (1.0 - new_dist_sq / 0.25) * (v_lifetime / 1.5);
-        FragColor = vec4(color, alpha);
-        return;
-    }
+//     // Gradient along the length of the tracer (using 'h' from above)
+//     vec3 color = mix(mid_color, hot_color, h);
+
+//     FragColor = vec4(color, edgeAlpha * (v_lifetime / 1.5));
+//     return;
+// }
+
+
+if (v_style == 3) { // Tracer
+    vec2 p = gl_PointCoord - vec2(0.5);
+    vec2 dir = normalize(v_screen_vel_dir);
+
+    float halfLength = 0.45; // Fixed or velocity-based length
+    vec2 a = -dir * halfLength; // Tail
+    vec2 b =  dir * halfLength;  // Head
+
+    vec2 pa = p - a, ba = b - a;
+    float h = clamp(dot(pa, ba) / dot(ba, ba), 0.0, 1.0);
+
+    // TAPER: Head is thicker than the tail
+    float radius = mix(0.01, 0.06, h);
+
+    float dist = length(pa - ba * h) - radius;
+    if (dist > 0.0) discard;
+
+    // BRIGHTNESS: The head is white-hot, tail is orange-red
+    float edgeAlpha = smoothstep(0.0, -0.01, dist);
+    vec3 leadingColor = vec3(1.0, 1.0, 0.9); // White-hot head
+    vec3 trailingColor = vec3(1.0, 0.2, 0.0); // Red-orange tail
+
+    vec3 color = mix(trailingColor, leadingColor, pow(h, 2.0));
+
+    // Add a core "glow" that is tighter at the head
+    float core = smoothstep(0.02, 0.0, dist);
+    color += core * 0.5;
+
+    FragColor = vec4(color, edgeAlpha * (v_lifetime / 1.5));
+    return;
+}
 
 
     // Shape the point into a circle and discard fragments outside the circle

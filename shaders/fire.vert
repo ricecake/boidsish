@@ -42,14 +42,14 @@ void main() {
         v_view_velocity = (u_view * vec4(p.vel.xyz, 0.0)).xyz;
         v_view_dir = normalize(u_camera_pos - p.pos.xyz);
 
-        // Project to screen space for stable orientation
-        vec4 current_pos_clip = gl_Position;
-        vec4 next_pos_clip = u_projection * u_view * vec4(p.pos.xyz + p.vel.xyz * 0.01, 1.0);
+vec3 v_view_vel = (u_view * vec4(p.vel.xyz, 0.0)).xyz; // [cite: 11]
+vec3 v_view_dir_vec = normalize(view_pos.xyz);
+vec3 v_view_right = normalize(cross(v_view_vel, v_view_dir_vec));
+float cosAngle = dot(normalize(v_view_vel), v_view_dir_vec);
+float foreshortening = sqrt(1.0 - cosAngle * cosAngle); //
+vec4 projected_vel = u_projection * vec4(v_view_vel, 0.0);
+v_screen_vel_dir = normalize(projected_vel.xy); // [cite: 14]
 
-        vec2 current_pos_ndc = current_pos_clip.xy / current_pos_clip.w;
-        vec2 next_pos_ndc = next_pos_clip.xy / next_pos_clip.w;
-
-        v_screen_vel_dir = normalize(next_pos_ndc - current_pos_ndc);
 
         // // Base size on style
         // float base_size = 10.0;
