@@ -5,7 +5,6 @@ in vec2 TexCoords;
 
 uniform sampler2D sceneTexture;
 
-void main()
-{
-    FragColor = texture(sceneTexture, TexCoords);
+void main() {
+	FragColor = texture(sceneTexture, TexCoords);
 }

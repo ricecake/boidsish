@@ -1,9 +1,9 @@
 #version 330 core
 out vec4 FragColor;
 
-in vec3 vs_color;
-in vec3 vs_normal;
-in vec3 vs_frag_pos;
+in vec3  vs_color;
+in vec3  vs_normal;
+in vec3  vs_frag_pos;
 in float vs_progress;
 
 layout(std140) uniform Lighting {

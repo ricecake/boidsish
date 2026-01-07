@@ -2,34 +2,33 @@
 
 // Must match the C++ struct layout in fire_effect.h
 struct Particle {
-    vec4 pos;           // Position (w is lifetime)
-    vec4 vel;           // Velocity (w is unused)
-    int  style;
-    int  emitter_index; // Index of the emitter that spawned this particle
-    vec2 _padding;      // Explicit padding to align to 16 bytes
+	vec4 pos; // Position (w is lifetime)
+	vec4 vel; // Velocity (w is unused)
+	int  style;
+	int  emitter_index; // Index of the emitter that spawned this particle
+	vec2 _padding;      // Explicit padding to align to 16 bytes
 };
 
 // Must match the C++ Emitter struct in fire_effect_manager.h
 struct Emitter {
-    vec3  position;
-    int   style;
-    vec3  direction;
+	vec3  position;
+	int   style;
+	vec3  direction;
 	int   is_active;
-    vec3  velocity;
-    float _padding2;
+	vec3  velocity;
+	float _padding2;
 };
 
-
 layout(std430, binding = 0) buffer ParticleBuffer {
-    Particle particles[];
+	Particle particles[];
 };
 
 layout(std430, binding = 1) buffer EmitterBuffer {
-    Emitter emitters[];
+	Emitter emitters[];
 };
 
 layout(std430, binding = 2) buffer IndirectionBuffer {
-    int particle_to_emitter_map[];
+	int particle_to_emitter_map[];
 };
 
 uniform float u_delta_time;
@@ -38,16 +37,12 @@ uniform int   u_num_emitters;
 
 // Basic pseudo-random number generator
 float rand(vec2 co) {
-    return fract(sin(dot(co.xy, vec2(12.9898, 78.233))) * 43758.5453);
+	return fract(sin(dot(co.xy, vec2(12.9898, 78.233))) * 43758.5453);
 }
 
 // 3D random number generator
 vec3 rand3(vec2 co) {
-    return vec3(
-        rand(co + vec2(0.1, 0.2)),
-        rand(co + vec2(0.3, 0.4)),
-        rand(co + vec2(0.5, 0.6))
-    );
+	return vec3(rand(co + vec2(0.1, 0.2)), rand(co + vec2(0.3, 0.4)), rand(co + vec2(0.5, 0.6)));
 }
 
 vec3 mod289(vec3 x) {
@@ -168,7 +163,6 @@ vec3 curlNoise(vec3 p, float time) {
 	return normalize(vec3(cx, cy, cz));
 }
 
-
 // Simulation parameters
 const float kExhaustSpeed = 30.0;
 const float kExhaustSpread = 0.1;
@@ -183,95 +177,90 @@ const float kFireSpeed = 1.0;
 const float kFireSpread = 4.2;
 const float kFireLifetime = 5.0;
 
-
 layout(local_size_x = 256, local_size_y = 1, local_size_z = 1) in;
 
 void main() {
-    uint gid = gl_GlobalInvocationID.x;
+	uint gid = gl_GlobalInvocationID.x;
 
-    if (gid >= particles.length() || u_num_emitters == 0) {
-        return;
-    }
+	if (gid >= particles.length() || u_num_emitters == 0) {
+		return;
+	}
 
-    Particle p = particles[gid];
+	Particle p = particles[gid];
 
-    // Decrease lifetime
-    p.pos.w -= u_delta_time;
+	// Decrease lifetime
+	p.pos.w -= u_delta_time;
 
-    // If particle is dead, try to respawn it
-    if (p.pos.w <= 0.0) {
-        // Look up the assigned emitter from the indirection map
-        int emitter_index = particle_to_emitter_map[gid];
+	// If particle is dead, try to respawn it
+	if (p.pos.w <= 0.0) {
+		// Look up the assigned emitter from the indirection map
+		int emitter_index = particle_to_emitter_map[gid];
 
-        // If the emitter index is -1, this particle is inactive
-        if (emitter_index == -1 || emitter_index >= u_num_emitters) {
-            p.pos.w = 0.0; // Ensure it stays dead
-            particles[gid] = p;
-            return;
-        }
+		// If the emitter index is -1, this particle is inactive
+		if (emitter_index == -1 || emitter_index >= u_num_emitters) {
+			p.pos.w = 0.0; // Ensure it stays dead
+			particles[gid] = p;
+			return;
+		}
 
-        Emitter emitter = emitters[emitter_index];
-        if (emitter.is_active == 0) {
-            p.pos.w = 0.0; // Emitter is no longer active
-            particles[gid] = p;
-            return;
-        }
+		Emitter emitter = emitters[emitter_index];
+		if (emitter.is_active == 0) {
+			p.pos.w = 0.0; // Emitter is no longer active
+			particles[gid] = p;
+			return;
+		}
 
-        p.emitter_index = emitter_index;
-        p.style = emitter.style;
+		p.emitter_index = emitter_index;
+		p.style = emitter.style;
 
-        vec2 seed = vec2(float(gid), u_time);
-        vec3 random_vec = rand3(seed) * 2.0 - 1.0;
+		vec2 seed = vec2(float(gid), u_time);
+		vec3 random_vec = rand3(seed) * 2.0 - 1.0;
 
-        float lifeTimeModifier = rand(seed);// * 0.25 + 0.75;
-        // Initialize based on style
-        if (p.style == 0) { // MissileExhaust
-            p.pos = vec4(emitter.position, kExhaustLifetime * lifeTimeModifier);
-            vec3 perpendicular = normalize(cross(emitter.direction, random_vec));
-            vec3 spread_dir = mix(emitter.direction, perpendicular, kExhaustSpread * rand(seed.yx));
-            p.vel = vec4(emitter.velocity + normalize(spread_dir) * kExhaustSpeed * rand(seed), 0.0);
-        }
-        else if (p.style == 1) { // Explosion
-            p.pos = vec4(emitter.position, kExplosionLifetime * lifeTimeModifier);
-            p.vel = vec4(normalize(random_vec) * kExplosionSpeed * 0.5+rand(seed.yx), 0.0);
-        }
-        else if (p.style == 2) { // Fire
-            p.pos = vec4(emitter.position + random_vec * 0.1, kFireLifetime * lifeTimeModifier);
-            p.vel = vec4(0, kFireSpeed, 0, 0); // Start with upward velocity
-        }
-    }
-    // If particle is alive, update it
-    else {
-        if (p.emitter_index >= u_num_emitters) {
-            p.pos.w = 0.0;
-        }
-        float maxSpeed;
-        if (p.style == 0) {
-            maxSpeed = kExhaustSpeed;
-            p.vel.xyz -= p.vel.xyz * kExhaustDrag * 2*(1-(p.vel.xyz/30)) * u_delta_time;
-        }
-        else if (p.style == 1) { // Explosion
-            maxSpeed = kExplosionSpeed;
-            p.vel.xyz -= p.vel.xyz * kExplosionDrag * u_delta_time;
-        }
-        else if (p.style == 2) { // Fire
-            maxSpeed = kFireSpeed;
-            p.vel.y += kFireSpeed * u_delta_time;
-            p.vel.x += (rand(p.pos.xy + u_time) - 0.5) * kFireSpread * u_delta_time;
-            p.vel.z += (rand(p.pos.yz + u_time) - 0.5) * kFireSpread * u_delta_time;
-        }
-        p.vel.y -= 0.05 * u_delta_time;
+		float lifeTimeModifier = rand(seed); // * 0.25 + 0.75;
+		// Initialize based on style
+		if (p.style == 0) { // MissileExhaust
+			p.pos = vec4(emitter.position, kExhaustLifetime * lifeTimeModifier);
+			vec3 perpendicular = normalize(cross(emitter.direction, random_vec));
+			vec3 spread_dir = mix(emitter.direction, perpendicular, kExhaustSpread * rand(seed.yx));
+			p.vel = vec4(emitter.velocity + normalize(spread_dir) * kExhaustSpeed * rand(seed), 0.0);
+		} else if (p.style == 1) { // Explosion
+			p.pos = vec4(emitter.position, kExplosionLifetime * lifeTimeModifier);
+			p.vel = vec4(normalize(random_vec) * kExplosionSpeed * 0.5 + rand(seed.yx), 0.0);
+		} else if (p.style == 2) { // Fire
+			p.pos = vec4(emitter.position + random_vec * 0.1, kFireLifetime * lifeTimeModifier);
+			p.vel = vec4(0, kFireSpeed, 0, 0); // Start with upward velocity
+		}
+	}
+	// If particle is alive, update it
+	else {
+		if (p.emitter_index >= u_num_emitters) {
+			p.pos.w = 0.0;
+		}
+		float maxSpeed;
+		if (p.style == 0) {
+			maxSpeed = kExhaustSpeed;
+			p.vel.xyz -= p.vel.xyz * kExhaustDrag * 2 * (1 - (p.vel.xyz / 30)) * u_delta_time;
+		} else if (p.style == 1) { // Explosion
+			maxSpeed = kExplosionSpeed;
+			p.vel.xyz -= p.vel.xyz * kExplosionDrag * u_delta_time;
+		} else if (p.style == 2) { // Fire
+			maxSpeed = kFireSpeed;
+			p.vel.y += kFireSpeed * u_delta_time;
+			p.vel.x += (rand(p.pos.xy + u_time) - 0.5) * kFireSpread * u_delta_time;
+			p.vel.z += (rand(p.pos.yz + u_time) - 0.5) * kFireSpread * u_delta_time;
+		}
+		p.vel.y -= 0.05 * u_delta_time;
 
-        p.vel += vec4(mix(curlNoise(p.pos.xyz, u_time)*3, vec3(0,0,0), length(p.vel)/maxSpeed), 0) * u_delta_time;
+		p.vel += vec4(mix(curlNoise(p.pos.xyz, u_time) * 3, vec3(0, 0, 0), length(p.vel) / maxSpeed), 0) * u_delta_time;
 
-        p.pos.xyz += p.vel.xyz * u_delta_time;
+		p.pos.xyz += p.vel.xyz * u_delta_time;
 
-        if (p.pos.y <= 0 && p.pos.w > 0) {
-            p.pos.y = 0.1;
+		if (p.pos.y <= 0 && p.pos.w > 0) {
+			p.pos.y = 0.1;
 			p.vel.xz += p.vel.y * vec2(0.5, 0.5);
-            p.vel.y *= -0.25;
-        }
-    }
+			p.vel.y *= -0.25;
+		}
+	}
 
-    particles[gid] = p;
+	particles[gid] = p;
 }

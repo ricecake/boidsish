@@ -2,8 +2,8 @@
 out vec4 FragColor;
 
 #include "lighting.glsl"
-#include "visual_effects.glsl"
 #include "visual_effects.frag"
+#include "visual_effects.glsl"
 
 in vec3 FragPos;
 in vec3 Normal;
@@ -15,7 +15,7 @@ uniform vec3 objectColor;
 uniform int  useVertexColor;
 
 uniform sampler2D texture_diffuse1;
-uniform bool use_texture;
+uniform bool      use_texture;
 
 void main() {
 	// Ambient
@@ -82,7 +82,6 @@ void main() {
 		outColor,
 		step(1, fade)
 	);
-
 
 	// FragColor = vec4(result, 1.0);
 }
