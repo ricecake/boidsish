@@ -337,12 +337,48 @@ namespace Boidsish {
 	}
 
 	glm::vec3 TerrainGenerator::getPathInfluence(float x, float z) const {
-		float     path_freq = 0.002f;
-		glm::vec3 noise = Simplex::dnoise(glm::vec2(x, z) * path_freq);
+		glm::vec3 noise = Simplex::dnoise(glm::vec2(x, z) * kPathFrequency);
 		float     distance_from_spine = std::abs(noise.x);
 		float     corridor_width = 0.35f; // Adjust for wider/narrower paths
 		float     path_factor = glm::smoothstep(0.0f, corridor_width, distance_from_spine);
 
 		return glm::vec3(path_factor, noise.y, noise.z);
+	}
+
+	glm::vec2 TerrainGenerator::findClosestPointOnPath(glm::vec2 sample_pos) const {
+		constexpr int kGradientDescentSteps = 5;
+		constexpr float kStepSize = 0.1f;
+
+		for (int i = 0; i < kGradientDescentSteps; ++i) {
+			glm::vec3 path_data = Simplex::dnoise(sample_pos * kPathFrequency);
+			glm::vec2 gradient = glm::vec2(path_data.y, path_data.z);
+			sample_pos -= gradient * path_data.x * kStepSize;
+	}
+
+	return sample_pos;
+	}
+
+	std::vector<glm::vec3> TerrainGenerator::GetPath(glm::vec2 start_pos, int num_points, float step_size) const {
+	std::vector<glm::vec3> path;
+	path.reserve(num_points);
+
+	glm::vec2 current_pos = findClosestPointOnPath(start_pos);
+
+	for (int i = 0; i < num_points; ++i) {
+	    float height = std::get<0>(pointProperties(current_pos.x, current_pos.y));
+	    path.emplace_back(current_pos.x, height, current_pos.y);
+
+	    // Get path tangent
+	    glm::vec3 path_data = Simplex::dnoise(current_pos * kPathFrequency);
+	    glm::vec2 tangent = glm::normalize(glm::vec2(path_data.z, -path_data.y));
+
+	    // Move along the tangent
+	    current_pos += tangent * step_size;
+
+	    // Correct position to stay on the path
+	    current_pos = findClosestPointOnPath(current_pos);
+	}
+
+	return path;
 	}
 } // namespace Boidsish
