@@ -6,17 +6,13 @@ layout(location = 2) in vec2 aTexCoords;
 #include "visual_effects.glsl"
 #include "visual_effects.vert"
 
-out vec3 FragPos;
-out vec3 Normal;
-out vec3 vs_color;
-out vec3 barycentric;
-out vec2 TexCoords;
+out vec3 WorldPos_VS_out;
+out vec2 TexCoords_VS_out;
+out vec3 Normal_VS_out;
+out vec3 viewForward_in;
 
-uniform mat4  model;
-uniform mat4  view;
-uniform mat4  projection;
-uniform vec4  clipPlane;
-uniform float ripple_strength;
+uniform mat4 model;
+uniform vec3 viewForward;
 
 layout(std140) uniform Lighting {
 	vec3  lightPos;
@@ -26,35 +22,12 @@ layout(std140) uniform Lighting {
 };
 
 void main() {
-	vec3 displacedPos = aPos;
-	vec3 displacedNormal = aNormal;
+	WorldPos_VS_out = vec3(model * vec4(aPos, 1.0));
+	TexCoords_VS_out = aTexCoords;
+	Normal_VS_out = mat3(transpose(inverse(model))) * aNormal;
 
-	if (glitched_enabled == 1) {
-		displacedPos = applyGlitch(displacedPos, time);
-	}
+	// Forward vector for focus culling in TCS
+	viewForward_in = viewForward;
 
-	if (ripple_strength > 0.0) {
-		float frequency = 20.0;
-		float speed = 3.0;
-		float amplitude = ripple_strength;
-
-		float wave = sin(frequency * (aPos.x + aPos.z) + time * speed);
-		displacedPos = aPos + aNormal * wave * amplitude;
-
-		vec3 gradient = vec3(
-			cos(frequency * (aPos.x + aPos.z) + time * speed) * frequency * amplitude,
-			0.0,
-			cos(frequency * (aPos.x + aPos.z) + time * speed) * frequency * amplitude
-		);
-		displacedNormal = normalize(aNormal - gradient);
-	}
-
-	FragPos = vec3(model * vec4(displacedPos, 1.0));
-	Normal = mat3(transpose(inverse(model))) * displacedNormal;
-	TexCoords = aTexCoords;
-	if (wireframe_enabled == 1) {
-		barycentric = getBarycentric();
-	}
-	gl_Position = projection * view * vec4(FragPos, 1.0);
-	gl_ClipDistance[0] = dot(vec4(FragPos, 1.0), clipPlane);
+	gl_Position = vec4(aPos, 1.0); // Pass-through, TES will do the projection
 }

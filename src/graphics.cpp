@@ -115,6 +115,7 @@ namespace Boidsish {
 		bool shimmery_effect = false;
 		bool glitched_effect = false;
 		bool wireframe_effect = false;
+		bool tessellation_enabled = true;
 
 		// Adaptive Tessellation
 		glm::vec3 last_camera_pos_{0.0f, 0.0f, 0.0f};
@@ -189,7 +190,12 @@ namespace Boidsish {
 			glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 			glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
 
-			shader = std::make_shared<Shader>("shaders/vis.vert", "shaders/vis.frag");
+			shader = std::make_shared<Shader>(
+				"shaders/vis.vert",
+				"shaders/vis.frag",
+				"shaders/vis.tcs",
+				"shaders/vis.tes"
+			);
 			Shape::shader = shader;
 			trail_shader = std::make_unique<Shader>("shaders/trail.vert", "shaders/trail.frag");
 			if (floor_enabled_) {
@@ -547,6 +553,13 @@ namespace Boidsish {
 			shader->setFloat("ripple_strength", ripple_strength);
 			shader->setBool("colorShift", color_shift_effect);
 			shader->setMat4("view", view);
+			shader->setMat4("projection", projection);
+			shader->setVec3("viewForward", camera.front());
+			if (tessellation_enabled) {
+				shader->setFloat("uTessQualityMultiplier", tess_quality_multiplier_);
+			} else {
+				shader->setFloat("uTessQualityMultiplier", 0.0f);
+			}
 			if (clip_plane) {
 				shader->setVec4("clipPlane", *clip_plane);
 			} else {
@@ -816,6 +829,8 @@ namespace Boidsish {
 					glitched_effect = !glitched_effect;
 				if (state.key_down[GLFW_KEY_5])
 					wireframe_effect = !wireframe_effect;
+				if (state.key_down[GLFW_KEY_6])
+					tessellation_enabled = !tessellation_enabled;
 			}
 
 			if (state.key_down[GLFW_KEY_F11]) {
