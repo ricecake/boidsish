@@ -32,16 +32,7 @@ public:
 
 static auto fruitPlacer = MakeBranchAttractor();
 
-// A new shape type that has the clone effect enabled.
-class CloneableDot: public Dot {
-public:
-	// Inherit constructors from Dot
-	using Dot::Dot;
-
-	std::vector<VisualEffect> GetActiveEffects() const override { return {VisualEffect::FREEZE_FRAME_TRAIL}; }
-};
-
-class VectorDemoEntity: public Entity<CloneableDot> {
+class VectorDemoEntity: public Entity<> {
 public:
 	VectorDemoEntity(int id, const Vector3& start_pos);
 	void UpdateEntity(const EntityHandler& handler, float time, float delta_time) override;
@@ -113,7 +104,7 @@ void FruitEntity::UpdateEntity(const EntityHandler& handler, float, float delta_
 	SetVelocity(v);
 }
 
-VectorDemoEntity::VectorDemoEntity(int id, const Vector3& start_pos): Entity<CloneableDot>(id), phase_(0.0f) {
+VectorDemoEntity::VectorDemoEntity(int id, const Vector3& start_pos): Entity<>(id), phase_(0.0f) {
 	SetPosition(start_pos);
 	SetSize(10.0f);
 	SetTrailLength(100);
@@ -551,40 +542,11 @@ int main() {
 			}
 		});
 
-		// Main loop
-		auto fire_manager = viz.GetFireEffectManager();
-		auto emitter1 = fire_manager->AddEffect(
-			glm::vec3(0, 5, 0),
-			FireEffectStyle::Fire,
-			glm::vec3(0, 1, 0),
-			glm::vec3(0, 0, 0),
-			5000
-		);
-		auto emitter2 = fire_manager->AddEffect(
-			glm::vec3(5, 5, 0),
-			FireEffectStyle::Fire,
-			glm::vec3(0, 1, 0),
-			glm::vec3(0, 0, 0),
-			10000
-		);
-		auto emitter3 = fire_manager->AddEffect(
-			glm::vec3(-5, 5, 0),
-			FireEffectStyle::Fire,
-			glm::vec3(0, 1, 0),
-			glm::vec3(0, 0, 0),
-			25
-		);
-
 		float start_time = 0.0f;
 		bool  emitter_removed = false;
 		while (!viz.ShouldClose()) {
 			viz.Update();
 			viz.Render();
-			start_time += viz.GetLastFrameTime();
-			if (start_time > 5.0f && !emitter_removed) {
-				fire_manager->RemoveEffect(emitter2);
-				emitter_removed = true;
-			}
 		}
 
 		std::cout << "Vector demo ended." << std::endl;

@@ -105,11 +105,11 @@ public:
 		const float kAutoLevelSpeed = 1.5f;
 		const float kDamping = 2.5f;
 
-		const float kBaseSpeed = 30.0f;
-		const float kBoostSpeed = 80.0f;
+		const float kBaseSpeed = 60.0f;
+		const float kBoostSpeed = 100.0f;
 		const float kBreakSpeed = 10.0f;
 		const float kBoostAcceleration = 120.0f;
-		const float kSpeedDecay = 10.0f;
+		const float kSpeedDecay = 20.0f;
 
 		// --- Handle Rotational Input ---
 		glm::vec3 target_rot_velocity = glm::vec3(0.0f);
@@ -886,6 +886,198 @@ public:
 	Vector3 operator()(float r) { return r * Vector3(x(eng), y(eng), z(eng)).Normalized(); }
 };
 
+class FlockingEntity: public Entity<> {
+public:
+	FlockingEntity(int id, const Vector3& start_pos);
+	void UpdateEntity(const EntityHandler& handler, float time, float delta_time) override;
+
+	float GetValue() const { return energy; }
+
+private:
+	float   hunger_time = 0.0f;
+	float   energy = 50.0f;
+	Vector3 CalculateSeparation(
+		const std::vector<std::shared_ptr<FlockingEntity>>& neighbors,
+		const std::vector<std::shared_ptr<PaperPlane>>&     cats
+	);
+	Vector3 CalculateAlignment(
+		const std::vector<std::shared_ptr<FlockingEntity>>& neighbors,
+		const std::vector<std::shared_ptr<PaperPlane>>&     cats
+	);
+	Vector3 CalculateCohesion(
+		const std::vector<std::shared_ptr<FlockingEntity>>& neighbors,
+		const std::vector<std::shared_ptr<PaperPlane>>&     cats
+	);
+};
+
+FlockingEntity::FlockingEntity(int id, const Vector3& start_pos): Entity<>(id) {
+	SetPosition(start_pos);
+	SetSize(5.0f);
+	SetTrailIridescence(true);
+	SetTrailLength(25);
+	Vector3 startVel((rand() % 30 - 15) * 2.0f, (rand() % 10 - 5) * 2.0f, (rand() % 16 - 8) * 2.0f);
+
+	SetVelocity(startVel);
+}
+
+void FlockingEntity::UpdateEntity(const EntityHandler& handler, float time, float delta_time) {
+	(void)time;
+	(void)delta_time; // Mark unused parameters
+
+	auto& spatial_handler = static_cast<const SpatialEntityHandler&>(handler);
+	auto  position = GetPosition();
+
+	// Get neighbors and predators using spatial queries
+	auto neighbors = spatial_handler.GetEntitiesInRadius<FlockingEntity>(position, 6.0f);
+	auto catPlane = spatial_handler.GetEntitiesInRadius<PaperPlane>(position, 60.0f);
+
+	Vector3 separation = CalculateSeparation(neighbors, catPlane);
+	Vector3 alignment = CalculateAlignment(neighbors, catPlane);
+	Vector3 cohesion = CalculateCohesion(neighbors, catPlane);
+	Vector3 total_force = separation * 2.0f + alignment * 0.50f + cohesion * 1.30f;
+
+	auto newVel = (GetVelocity() + total_force.Normalized()).Normalized();
+	SetVelocity(newVel * 3);
+
+	hunger_time += delta_time;
+	hunger_time = std::min(100.0f, hunger_time);
+	if (hunger_time < 5) {
+		energy += delta_time;
+	} else if (hunger_time > 15) {
+		energy -= delta_time;
+	}
+
+	if (energy < 10) {
+		logger::LOG("DEAD Flocker");
+		handler.QueueRemoveEntity(GetId());
+	} else if (energy >= 60) {
+		energy -= 25;
+		logger::LOG("New Flocker");
+		handler.QueueAddEntity<FlockingEntity>(GetPosition());
+	}
+
+	// Color based on dominant behavior
+	float sep_mag = separation.Magnitude();
+	float align_mag = alignment.Magnitude();
+	float coh_mag = cohesion.Magnitude();
+
+	float b = (sep_mag + align_mag + coh_mag) / (sep_mag + align_mag + coh_mag + 0.1f);
+	SetColor(b, b, b, 1.0f);
+	SetTrailLength(energy);
+}
+
+Vector3 FlockingEntity::CalculateSeparation(
+	const std::vector<std::shared_ptr<FlockingEntity>>& neighbors,
+	const std::vector<std::shared_ptr<PaperPlane>>&     cats
+) {
+	Vector3 separation = Vector3::Zero();
+	Vector3 my_pos = GetPosition();
+	int     count = 0;
+	float   separation_radius = 2.50f;
+
+	auto total_distance = 0.0f;
+	separation_radius *= std::max(1.0f, total_distance);
+
+	for (auto neighbor : neighbors) {
+		if (neighbor.get() != this) {
+			Vector3 neighbor_pos = neighbor->GetPosition();
+			float   distance = my_pos.DistanceTo(neighbor_pos);
+
+			if (distance < separation_radius && distance > 0) {
+				Vector3 away = (my_pos - neighbor_pos).Normalized() / distance;
+				separation += away;
+				count++;
+			}
+		}
+	}
+
+	for (auto neighbor : cats) {
+		Vector3 neighbor_pos = neighbor->GetPosition();
+		float   distance = my_pos.DistanceTo(neighbor_pos);
+
+		Vector3 away = (my_pos - neighbor_pos).Normalized() / distance;
+		separation += away;
+		count++;
+	}
+
+	if (count > 0) {
+		separation /= count;
+	}
+	return separation;
+}
+
+Vector3 FlockingEntity::CalculateAlignment(
+	const std::vector<std::shared_ptr<FlockingEntity>>& neighbors,
+	const std::vector<std::shared_ptr<PaperPlane>>&     cats
+) {
+	Vector3 average_velocity = Vector3::Zero();
+	int     count = 0;
+	float   alignment_radius = 3.50f;
+
+	Vector3 my_pos = GetPosition();
+	for (auto neighbor : neighbors) {
+		if (neighbor.get() != this) {
+			Vector3 neighbor_pos = neighbor->GetPosition();
+			float   distance = my_pos.DistanceTo(neighbor_pos);
+
+			if (distance < alignment_radius) {
+				average_velocity += neighbor->GetVelocity();
+				count++;
+			}
+		}
+	}
+
+	for (auto neighbor : cats) {
+		Vector3 neighbor_pos = neighbor->GetPosition();
+
+		average_velocity += 5 * neighbor->GetVelocity();
+		count++;
+	}
+
+	if (count > 0) {
+		average_velocity /= count;
+		return average_velocity.Normalized();
+	}
+	return Vector3::Zero();
+}
+
+Vector3 FlockingEntity::CalculateCohesion(
+	const std::vector<std::shared_ptr<FlockingEntity>>& neighbors,
+	const std::vector<std::shared_ptr<PaperPlane>>&     cats
+) {
+	Vector3 center_of_mass = Vector3::Zero();
+	int     count = 0;
+	float   cohesion_radius = 6.0f;
+
+	Vector3 my_pos = GetPosition();
+	for (auto neighbor : neighbors) {
+		if (neighbor.get() != this) {
+			Vector3 neighbor_pos = neighbor->GetPosition();
+			float   distance = my_pos.DistanceTo(neighbor_pos);
+
+			if (distance < cohesion_radius) {
+				center_of_mass += neighbor_pos;
+				count++;
+			}
+		}
+	}
+
+	for (auto neighbor : cats) {
+		Vector3 neighbor_pos = neighbor->GetPosition();
+		auto    neighbor_vel = neighbor->GetVelocity();
+		float   distance = my_pos.DistanceTo(neighbor_pos);
+
+		center_of_mass += 10 * (neighbor_pos + 2 * neighbor_vel);
+		count++;
+	}
+
+	if (count > 0) {
+		center_of_mass /= count;
+		return (center_of_mass - my_pos).Normalized() * 0.5f;
+	}
+	return Vector3::Zero();
+}
+
 static auto missilePicker = MakeBranchAttractor();
 
 class PaperPlaneHandler: public SpatialEntityHandler {
@@ -1022,6 +1214,14 @@ public:
 		}
 
 		damage_timer_ = std::min(damage_timer_, 5.0f);
+
+		auto flockers = GetEntitiesByType<FlockingEntity>();
+		auto spawnCenter = plane->GetPosition() - 10.0f * glm::normalize(plane->GetVelocity());
+		for (int i = 0; i < 32 - flockers.size(); i++) {
+			Vector3 start_pos((rand() % 10 - 5) * 2.0f, 0, (rand() % 10 - 5) * 2.0f);
+
+			QueueAddEntity<FlockingEntity>(start_pos + spawnCenter);
+		}
 
 		/*
 		        auto  ppos = plane->GetPosition();
