@@ -113,6 +113,7 @@ namespace Boidsish {
 		int                   path_direction_ = 1;
 		float                 path_speed_ = 20.0f; // TODO: make configurable
 		glm::quat             path_orientation_ = glm::quat(1.0f, 0.0f, 0.0f, 0.0f);
+		float                 path_auto_bank_angle_ = 0.0f;
 
 		bool color_shift_effect = false;
 
@@ -1097,7 +1098,27 @@ namespace Boidsish {
 			camera.z = new_cam_pos.z;
 
 			glm::quat desired_orientation = update_result.orientation;
-			path_orientation_ = glm::slerp(path_orientation_, desired_orientation, lerp_factor);
+
+			// --- Auto-banking logic ---
+			float yaw_diff = glm::yaw(desired_orientation) - glm::yaw(path_orientation_);
+			// Wrap yaw difference to the range [-PI, PI]
+			if (yaw_diff > glm::pi<float>())
+				yaw_diff -= 2.0f * glm::pi<float>();
+			if (yaw_diff < -glm::pi<float>())
+				yaw_diff += 2.0f * glm::pi<float>();
+
+			const float kBankFactor = 0.8f;   // How much to bank in response to a turn
+			const float kBankSpeed = 2.5f;    // How quickly the banking adjusts
+			float       target_bank_angle = -yaw_diff * kBankFactor;
+
+			// Smoothly interpolate the bank angle
+			path_auto_bank_angle_ =
+				glm::mix(path_auto_bank_angle_, target_bank_angle, 1.0f - exp(-delta_time * kBankSpeed));
+
+			glm::quat bank_rotation = glm::angleAxis(path_auto_bank_angle_, glm::vec3(0.0f, 0.0f, 1.0f));
+			glm::quat final_orientation = desired_orientation * bank_rotation;
+
+			path_orientation_ = glm::slerp(path_orientation_, final_orientation, lerp_factor);
 
 			// Ensure camera stays above a minimum height
 			if (camera.y < kMinCameraHeight)
