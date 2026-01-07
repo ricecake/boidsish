@@ -520,10 +520,12 @@ public:
 			return;
 		}
 
+		auto pos = GetPosition();
 		// Calculate firing probability based on altitude
 		auto  ppos = plane->GetPosition();
+		auto  pvel = plane->GetVelocity();
 		float max_h = handler.vis->GetTerrainMaxHeight();
-		// float max_h = handler.GetTerrainMaxHeight();
+
 		if (max_h <= 0.0f)
 			max_h = 200.0f; // Fallback
 
@@ -536,11 +538,13 @@ public:
 		const float p_min = 0.5f;
 		const float p_max = 10.0f;
 
+		auto directionWeight = glm::dot(glm::normalize(pvel), glm::normalize(pos - ppos));
+
 		float norm_alt = (ppos.y - start_h) / (extreme_h - start_h);
 		norm_alt = std::min(std::max(norm_alt, 0.0f), 1.0f);
 
 		float missiles_per_second = p_min + (p_max - p_min) * norm_alt;
-		float fire_probability_this_frame = missiles_per_second * delta_time;
+		float fire_probability_this_frame = missiles_per_second * directionWeight * delta_time;
 
 		std::uniform_real_distribution<float> dist(0.0f, 1.0f);
 		if (dist(eng_) < fire_probability_this_frame) {

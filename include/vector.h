@@ -6,17 +6,21 @@
 #include <memory>
 #include <vector>
 
+#include <glm/glm.hpp>
+
 namespace Boidsish {
 
 	// Generic 3D vector class with basic operations
-	class Vector3 {
+	class Vector3: public glm::vec3 {
 	public:
-		float x, y, z;
+		// float x, y, z;
 
 		// Constructors
-		constexpr Vector3(): x(0.0f), y(0.0f), z(0.0f) {}
+		constexpr Vector3(): glm::vec3(0) {} // x(0.0f), y(0.0f), z(0.0f) {}
 
-		constexpr Vector3(float x, float y, float z): x(x), y(y), z(z) {}
+		constexpr Vector3(float x, float y, float z): glm::vec3(x, y, z) {} //: x(x), y(y), z(z) {}
+
+		// operator glm::vec3() const { return glm::vec3(x, y, z); }
 
 		// Copy constructor and assignment
 		Vector3(const Vector3& other) = default;
