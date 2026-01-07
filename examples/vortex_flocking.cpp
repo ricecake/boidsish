@@ -125,19 +125,20 @@ public:
 
 int main() {
     try {
-        // Create the visualizer
-        Visualizer viz(1200, 800, "Boidsish - Vortex Flocking Example");
+        // Create the visualizer as a shared_ptr to manage its lifetime
+        auto viz = std::make_shared<Visualizer>(1200, 800, "Boidsish - Vortex Flocking Example");
 
         // Set up camera
         Camera camera(0.0f, 50.0f, 150.0f, -30.0f, -90.0f, 45.0f);
-        viz.SetCamera(camera);
+        viz->SetCamera(camera);
 
         // Create and set the entity handler
-        VortexFlockingHandler handler(viz.GetThreadPool());
-        viz.AddShapeHandler(std::ref(handler));
+        VortexFlockingHandler handler(viz->GetThreadPool());
+        handler.vis = viz; // Set the visualizer pointer to prevent segfault
+        viz->AddShapeHandler(std::ref(handler));
 
         // Run the visualization
-        viz.Run();
+        viz->Run();
 
     } catch (const std::exception& e) {
         std::cerr << "Error: " << e.what() << std::endl;
