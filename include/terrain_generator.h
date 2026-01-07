@@ -85,7 +85,10 @@ namespace Boidsish {
 
 		bool Raycast(const glm::vec3& origin, const glm::vec3& dir, float max_dist, float& out_dist) const;
 
+		std::vector<glm::vec3> GetPath(glm::vec2 start_pos, int num_points, float step_size) const;
+
 	private:
+		glm::vec2 findClosestPointOnPath(glm::vec2 sample_pos) const;
 		glm::vec3 getPathInfluence(float x, float z) const;
 
 		// Phong tessellation helpers (matching the shader)
@@ -132,6 +135,7 @@ namespace Boidsish {
 
 		// Control noise parameters
 		constexpr static const float control_noise_scale_ = 0.01f;
+		constexpr static const float kPathFrequency = 0.002f;
 
 		// Noise generators
 		siv::PerlinNoise control_perlin_noise_;
