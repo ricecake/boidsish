@@ -27,9 +27,9 @@
 #include "post_processing/effects/StrobeEffect.h"
 #include "post_processing/effects/TimeStutterEffect.h"
 #include "post_processing/effects/WhispTrailEffect.h"
+#include "spline.h"
 #include "task_thread_pool.hpp"
 #include "terrain.h"
-#include "spline.h"
 #include "terrain_generator.h"
 #include "trail.h"
 #include "ui/PostProcessingWidget.h"
@@ -574,6 +574,7 @@ namespace Boidsish {
 				// TODO: Move trail generation to the GPU for performance.
 				// See performance_and_quality_audit.md#3-gpu-based-trail-generation
 				// Only create trails for shapes with trail_length > 0
+				shader->setBool("isColossal", shape->IsColossal());
 				if (shape->GetTrailLength() > 0 && !paused) {
 					if (trails.find(shape->GetId()) == trails.end()) {
 						trails[shape->GetId()] = std::make_shared<Trail>(shape->GetTrailLength());
@@ -1058,8 +1059,9 @@ namespace Boidsish {
 			}
 
 			// 1. Get current camera state as a quaternion for slerp
-			glm::quat current_orientation =
-				glm::quat(glm::vec3(glm::radians(camera.pitch), glm::radians(camera.yaw), glm::radians(camera.roll)));
+			glm::quat current_orientation = glm::quat(
+				glm::vec3(glm::radians(camera.pitch), glm::radians(camera.yaw), glm::radians(camera.roll))
+			);
 
 			// 2. Call path update logic
 			auto update_result = path_target_->CalculateUpdate(
@@ -1078,11 +1080,7 @@ namespace Boidsish {
 			path_direction_ = update_result.new_direction;
 
 			// 4. Get target position from the result
-			glm::vec3 target_pos_glm(
-				update_result.position.x,
-				update_result.position.y,
-				update_result.position.z
-			);
+			glm::vec3 target_pos_glm(update_result.position.x, update_result.position.y, update_result.position.z);
 
 			// 5. Smoothly interpolate position and orientation
 			float lerp_factor = 1.0f - exp(-delta_time * 5.0f); // Similar to chase camera for smoothness
@@ -1471,8 +1469,7 @@ namespace Boidsish {
 
 			// Initialize camera position and orientation to the start of the path
 			const auto& start_waypoint = path->GetWaypoints()[0];
-			auto          initial_state =
-				path->CalculateUpdate(start_waypoint.position, glm::quat(), 0, 0.0f, 1, 0.0f, 0.0f);
+			auto initial_state = path->CalculateUpdate(start_waypoint.position, glm::quat(), 0, 0.0f, 1, 0.0f, 0.0f);
 
 			impl->camera.x = start_waypoint.position.x;
 			impl->camera.y = start_waypoint.position.y;

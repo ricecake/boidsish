@@ -113,7 +113,7 @@ if (isColossal) {
 		// 3. Apply the offset to the vertex position
 		//    We apply 'model' first to handle rotation/scale of the mesh itself,
 		//    then add our sky offset.
-		vec4 world_pos = model * vec4(displacedPos*500, 1.0);
+		vec4 world_pos = model * vec4(displacedPos*50, 1.0);
 		world_pos.xyz += skyPositionOffset;
 
 		// 4. Project using the static view
