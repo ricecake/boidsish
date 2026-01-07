@@ -112,6 +112,7 @@ namespace Boidsish {
 		float                 path_t_ = 0.0f;
 		int                   path_direction_ = 1;
 		float                 path_speed_ = 20.0f; // TODO: make configurable
+		glm::quat             path_orientation_ = glm::quat(1.0f, 0.0f, 0.0f, 0.0f);
 
 		bool color_shift_effect = false;
 
@@ -535,8 +536,16 @@ namespace Boidsish {
 		glm::mat4 SetupMatrices(const Camera& cam_to_use) {
 			projection = glm::perspective(glm::radians(cam_to_use.fov), (float)width / (float)height, 0.1f, 1000.0f);
 			glm::vec3 cameraPos(cam_to_use.x, cam_to_use.y, cam_to_use.z);
+			glm::mat4 view;
 
-			glm::mat4 view = glm::lookAt(cameraPos, cameraPos + cam_to_use.front(), cam_to_use.up());
+			if (camera_mode == CameraMode::PATH_FOLLOW) {
+				glm::vec3 front = path_orientation_ * glm::vec3(0.0f, 0.0f, -1.0f);
+				glm::vec3 up = path_orientation_ * glm::vec3(0.0f, 1.0f, 0.0f);
+				view = glm::lookAt(cameraPos, cameraPos + front, up);
+			} else {
+				view = glm::lookAt(cameraPos, cameraPos + cam_to_use.front(), cam_to_use.up());
+			}
+
 			shader->use();
 			shader->setMat4("projection", projection);
 			shader->setMat4("view", view);
@@ -1056,14 +1065,10 @@ namespace Boidsish {
 				return;
 			}
 
-			// 1. Get current camera state as a quaternion for slerp
-			glm::quat current_orientation =
-				glm::quat(glm::vec3(glm::radians(camera.pitch), glm::radians(camera.yaw), glm::radians(camera.roll)));
-
-			// 2. Call path update logic
+			// 1. Call path update logic
 			auto update_result = path_target_->CalculateUpdate(
 				Vector3(camera.x, camera.y, camera.z),
-				current_orientation,
+				path_orientation_,
 				path_segment_index_,
 				path_t_,
 				path_direction_,
@@ -1092,13 +1097,7 @@ namespace Boidsish {
 			camera.z = new_cam_pos.z;
 
 			glm::quat desired_orientation = update_result.orientation;
-			glm::quat new_orientation = glm::slerp(current_orientation, desired_orientation, lerp_factor);
-
-			// Decompose quaternion to get Euler angles for the camera
-			glm::vec3 euler_angles = glm::eulerAngles(new_orientation);
-			camera.yaw = glm::degrees(euler_angles.y);
-			camera.pitch = glm::degrees(euler_angles.x);
-			camera.roll = glm::degrees(euler_angles.z);
+			path_orientation_ = glm::slerp(path_orientation_, desired_orientation, lerp_factor);
 
 			// Ensure camera stays above a minimum height
 			if (camera.y < kMinCameraHeight)
@@ -1265,12 +1264,6 @@ namespace Boidsish {
 			}
 		}
 
-		glm::mat4 view_matrix = impl->SetupMatrices();
-		if (impl->terrain_enabled_) {
-			Frustum frustum = impl->CalculateFrustum(view_matrix, impl->projection);
-			impl->terrain_generator->update(frustum, impl->camera);
-		}
-
 		if (impl->camera_mode == CameraMode::TRACKING) {
 			impl->UpdateSingleTrackCamera(impl->input_state.delta_time, impl->shapes);
 		} else if (impl->camera_mode == CameraMode::AUTO) {
@@ -1279,6 +1272,11 @@ namespace Boidsish {
 			impl->UpdateChaseCamera(impl->input_state.delta_time);
 		} else if (impl->camera_mode == CameraMode::PATH_FOLLOW) {
 			impl->UpdatePathFollowCamera(impl->input_state.delta_time);
+		}
+		glm::mat4 view_matrix = impl->SetupMatrices();
+		if (impl->terrain_enabled_) {
+			Frustum frustum = impl->CalculateFrustum(view_matrix, impl->projection);
+			impl->terrain_generator->update(frustum, impl->camera);
 		}
 
 		// Update clone manager
@@ -1476,12 +1474,7 @@ namespace Boidsish {
 			impl->camera.x = start_waypoint.position.x;
 			impl->camera.y = start_waypoint.position.y;
 			impl->camera.z = start_waypoint.position.z;
-
-			// Decompose the quaternion to get Euler angles for the camera
-			glm::vec3 euler_angles = glm::eulerAngles(initial_state.orientation);
-			impl->camera.yaw = glm::degrees(euler_angles.y);
-			impl->camera.pitch = glm::degrees(euler_angles.x);
-			impl->camera.roll = glm::degrees(euler_angles.z);
+			impl->path_orientation_ = initial_state.orientation;
 
 		} else {
 			impl->path_target_ = nullptr;
