@@ -101,6 +101,20 @@ namespace Boidsish {
 			Vector3 new_position = entity->GetPosition() + entity->GetVelocity() * delta_time;
 			entity->SetPosition(new_position);
 
+			// Apply path constraint
+			if (entity->constraint_path_) {
+				glm::vec3 closest_point_glm = entity->constraint_path_->FindClosestPoint(entity->GetPosition());
+				Vector3 closest_point(closest_point_glm.x, closest_point_glm.y, closest_point_glm.z);
+				Vector3 to_path = closest_point - entity->GetPosition();
+				float distance_from_path = to_path.Magnitude();
+
+				if (distance_from_path > entity->constraint_radius_) {
+					Vector3 from_path = to_path.Normalized() * -1.0f;
+					Vector3 corrected_position = closest_point + from_path * entity->constraint_radius_;
+					entity->SetPosition(corrected_position);
+				}
+			}
+
 			// Update the entity's shape
 			entity->UpdateShape();
 
