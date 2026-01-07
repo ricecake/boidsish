@@ -10,6 +10,8 @@
 
 namespace Boidsish {
 
+	class EntityBase;
+
 	class PhysicsHandler {
 	public:
 		PhysicsHandler();
@@ -18,6 +20,7 @@ namespace Boidsish {
 		void update(float deltaTime);
 		void addRigidBody(btRigidBody* body);
 		void removeRigidBody(btRigidBody* body);
+		EntityBase* rayIntersects(const btVector3& from, const btVector3& to, float radius);
 
 	private:
 		btBroadphaseInterface*               broadphase;
@@ -45,6 +48,7 @@ namespace Boidsish {
             ));
 			btRigidBody::btRigidBodyConstructionInfo rbInfo(mass, motionState, shape, localInertia);
 			rigidBody_ = new btRigidBody(rbInfo);
+			rigidBody_->setUserPointer(entity.get());
 			physicsHandler_.addRigidBody(rigidBody_);
 		}
 

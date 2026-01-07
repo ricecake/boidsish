@@ -1,4 +1,5 @@
 #include "physics.h"
+#include "entity.h"
 
 namespace Boidsish {
 
@@ -36,6 +37,24 @@ namespace Boidsish {
 
 	void PhysicsHandler::removeRigidBody(btRigidBody* body) {
 		dynamicsWorld->removeRigidBody(body);
+	}
+
+	EntityBase* PhysicsHandler::rayIntersects(const btVector3& from, const btVector3& to, float radius) {
+		btSphereShape sphere(radius);
+		btTransform start, end;
+		start.setIdentity();
+		end.setIdentity();
+		start.setOrigin(from);
+		end.setOrigin(to);
+
+		btCollisionWorld::ClosestConvexResultCallback callback(from, to);
+		dynamicsWorld->convexSweepTest(&sphere, start, end, callback);
+
+		if (callback.hasHit()) {
+			return static_cast<EntityBase*>(callback.m_hitCollisionObject->getUserPointer());
+		}
+
+		return nullptr;
 	}
 
 } // namespace Boidsish
