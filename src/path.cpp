@@ -172,7 +172,7 @@ namespace Boidsish {
 		float            delta_time
 	) const {
 		if (waypoints_.size() < 2) {
-			return {Vector3(0, 0, 0), glm::quat(), 1, 0, 0.0f};
+			return {Vector3(0, 0, 0), Vector3(0, 0, 0), glm::quat(), 1, 0, 0.0f};
 		}
 
 		int   num_waypoints = waypoints_.size();
@@ -318,6 +318,7 @@ namespace Boidsish {
 		glm::quat desired_orientation = glm::conjugate(glm::quat_cast(rotationMatrix));
 
 		return {
+			target_position,
 			desired_velocity,
 			desired_orientation,
 			new_direction,

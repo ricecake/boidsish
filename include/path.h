@@ -13,6 +13,7 @@ namespace Boidsish {
 	enum class PathMode { ONCE, LOOP, REVERSE };
 
 	struct PathUpdateResult {
+		Vector3   position;
 		Vector3   velocity;
 		glm::quat orientation;
 		int       new_direction;
