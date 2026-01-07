@@ -2,8 +2,8 @@
 out vec4 FragColor;
 
 #include "lighting.glsl"
-#include "visual_effects.frag"
 #include "visual_effects.glsl"
+#include "visual_effects.frag"
 
 in vec3 FragPos;
 in vec3 Normal;
@@ -13,9 +13,10 @@ in vec2 TexCoords;
 
 uniform vec3 objectColor;
 uniform int  useVertexColor;
+uniform bool isColossal = true;
 
 uniform sampler2D texture_diffuse1;
-uniform bool      use_texture;
+uniform bool use_texture;
 
 void main() {
 	// Ambient
@@ -76,12 +77,30 @@ void main() {
 	float fade_end = 550.0;
 	float fade = 1.0 - smoothstep(fade_start, fade_end, dist);
 
-	vec4 outColor = vec4(result, mix(0, fade, step(0.01, FragPos.y)));
-	FragColor = mix(
-		vec4(0.0, 0.7, 0.7, mix(0, fade, step(0.01, FragPos.y))) * length(outColor),
-		outColor,
-		step(1, fade)
-	);
+	vec4 outColor;
 
-	// FragColor = vec4(result, 1.0);
+	if (isColossal) {
+		// --- Colossal Object Atmospheric Haze ---
+		// A brighter, more visible haze color
+		vec3 skyColor = vec3(0.5, 0.6, 0.7);
+		// Fade the object in as it rises above the horizon (Y=0)
+		float haze_start = 0.0;
+		// Make the fade happen more quickly so the object is visible
+		float haze_end = 75.0;
+		// We use 1.0 - smoothstep to fade *in* (reduce haze) as Y increases
+		float haze_factor = 1.0 - smoothstep(haze_start, haze_end, FragPos.y);
+
+		vec3 final_haze_color = mix(result, skyColor, haze_factor);
+		outColor = vec4(final_haze_color, 1.0);
+	} else {
+		// --- Standard Object Fading ---
+		outColor = vec4(result, mix(0, fade, step(0.01, FragPos.y)));
+		outColor = mix(
+			vec4(0.0, 0.7, 0.7, mix(0, fade, step(0.01, FragPos.y))) * length(outColor),
+			outColor,
+			step(1, fade)
+		);
+	}
+
+	FragColor = outColor;
 }
