@@ -62,6 +62,8 @@ namespace Boidsish {
 			float            delta_time
 		) const;
 
+        glm::vec3 FindClosestPoint(const Vector3& point) const;
+
 		PathMode GetMode() const { return mode_; }
 
 		void SetMode(PathMode mode) {
