@@ -36,6 +36,8 @@ namespace Boidsish {
 		void                                         update(const Frustum& frustum, const Camera& camera);
 		const std::vector<std::shared_ptr<Terrain>>& getVisibleChunks() const;
 
+		std::vector<uint16_t> GenerateSuperChunkTexture(int superChunkX, int superChunkZ);
+
 		float GetMaxHeight() const {
 			float max_h = 0.0f;
 			for (const auto& biome : biomes) {

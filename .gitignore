@@ -2,6 +2,7 @@
 build/
 bin/
 obj/
+terrain_cache/
 
 # Compiled Object files
 *.o

@@ -3,9 +3,13 @@
 #include <algorithm>
 #include <chrono>
 #include <cmath>
+#include <filesystem>
+#include <fstream>
 #include <future>
+#include <iostream>
 #include <numeric>
 #include <ranges>
+#include <string>
 #include <vector>
 
 #include "graphics.h"
@@ -380,5 +384,68 @@ namespace Boidsish {
 		}
 
 		return path;
+	}
+
+	std::vector<uint16_t> TerrainGenerator::GenerateSuperChunkTexture(int superChunkX, int superChunkZ) {
+		std::filesystem::create_directory("terrain_cache");
+		std::string filename = "terrain_cache/superchunk_" + std::to_string(superChunkX) + "_" +
+			std::to_string(superChunkZ) + ".dat";
+		if (std::filesystem::exists(filename)) {
+			std::ifstream infile(filename, std::ios::binary);
+			int           width = 0, height = 0;
+			infile.read(reinterpret_cast<char*>(&width), sizeof(int));
+			infile.read(reinterpret_cast<char*>(&height), sizeof(int));
+
+			// Sanity check the dimensions from the file
+			const int kMaxSize = 8192;
+			if (width > 0 && height > 0 && width <= kMaxSize && height <= kMaxSize) {
+				std::vector<uint16_t> pixels(width * height * 4);
+				infile.read(reinterpret_cast<char*>(pixels.data()), pixels.size() * sizeof(uint16_t));
+				infile.close();
+				if (infile.gcount() == pixels.size() * sizeof(uint16_t)) {
+					logger::LOG("Loaded superchunk from cache: " + filename);
+					return pixels;
+				}
+			}
+
+			// If we're here, the file was invalid.
+			logger::LOG("Corrupted superchunk cache file, deleting: " + filename);
+			infile.close();
+			std::filesystem::remove(filename);
+		}
+
+		const int             kSuperChunkSizeInChunks = 4;
+		const int             texture_dim = kSuperChunkSizeInChunks * chunk_size_;
+		std::vector<uint16_t> pixels(texture_dim * texture_dim * 4);
+		float                 max_height = GetMaxHeight();
+
+		for (int y = 0; y < texture_dim; ++y) {
+			for (int x = 0; x < texture_dim; ++x) {
+				float worldX = (superChunkX * texture_dim + x);
+				float worldZ = (superChunkZ * texture_dim + y);
+
+				auto [height, normal] = pointProperties(worldX, worldZ);
+
+				int index = (y * texture_dim + x) * 4;
+
+				// Normals are in [-1, 1], so map to [0, 65535]
+				pixels[index + 0] = static_cast<uint16_t>((normal.x * 0.5f + 0.5f) * 65535.0f);
+				pixels[index + 1] = static_cast<uint16_t>((normal.y * 0.5f + 0.5f) * 65535.0f);
+				pixels[index + 2] = static_cast<uint16_t>((normal.z * 0.5f + 0.5f) * 65535.0f);
+
+				// Height is in [0, maxHeight], so map to [0, 65535]
+				float normalized_height = std::max(0.0f, std::min(1.0f, height / max_height));
+				pixels[index + 3] = static_cast<uint16_t>(normalized_height * 65535.0f);
+			}
+		}
+
+		std::ofstream outfile(filename, std::ios::binary);
+		int           width = texture_dim;
+		int           height = texture_dim;
+		outfile.write(reinterpret_cast<const char*>(&width), sizeof(int));
+		outfile.write(reinterpret_cast<const char*>(&height), sizeof(int));
+		outfile.write(reinterpret_cast<const char*>(pixels.data()), pixels.size() * sizeof(uint16_t));
+		outfile.close();
+		return pixels;
 	}
 } // namespace Boidsish
