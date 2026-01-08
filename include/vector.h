@@ -23,9 +23,7 @@ namespace Boidsish {
 		constexpr Vector3(float x, float y, float z): glm::vec3(x, y, z) {} //: x(x), y(y), z(z) {}
 
 		// operator glm::vec3() const { return glm::vec3(x, y, z); }
-		glm::vec3 Toglm() {
-			return glm::vec3(x, y, z);
-		}
+		glm::vec3 Toglm() { return glm::vec3(x, y, z); }
 
 		// Copy constructor and assignment
 		Vector3(const Vector3& other) = default;

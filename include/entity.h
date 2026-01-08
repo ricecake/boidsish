@@ -263,7 +263,7 @@ namespace Boidsish {
 
 		std::tuple<float, glm::vec3>                 GetTerrainPointProperties(float x, float y) const;
 		const std::vector<std::shared_ptr<Terrain>>& GetTerrainChunks() const;
-		const TerrainGenerator* GetTerrainGenerator() const;
+		const TerrainGenerator*                      GetTerrainGenerator() const;
 
 		// Thread-safe methods for entity modification
 		template <typename T, typename... Args>
