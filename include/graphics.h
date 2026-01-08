@@ -32,6 +32,7 @@ namespace Boidsish {
 	class EntityBase;
 	class FireEffect;
 	class FireEffectManager;
+	class Path;
 } // namespace Boidsish
 
 namespace Boidsish {
@@ -55,7 +56,7 @@ namespace Boidsish {
 		float  delta_time;
 	};
 
-	enum class CameraMode { FREE, AUTO, TRACKING, STATIONARY, CHASE };
+	enum class CameraMode { FREE, AUTO, TRACKING, STATIONARY, CHASE, PATH_FOLLOW };
 
 	using InputCallback = std::function<void(const InputState&)>;
 
@@ -138,6 +139,7 @@ namespace Boidsish {
 		void AddInputCallback(InputCallback callback);
 
 		void SetChaseCamera(std::shared_ptr<EntityBase> target);
+		void SetPathCamera(std::shared_ptr<Path> path);
 
 		// Add a UI widget to be rendered
 		void AddWidget(std::shared_ptr<UI::IWidget> widget);

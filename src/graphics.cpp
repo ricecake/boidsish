@@ -17,6 +17,7 @@
 #include "hud.h"
 #include "hud_manager.h"
 #include "logger.h"
+#include "path.h"
 #include "post_processing/PostProcessingManager.h"
 #include "post_processing/effects/BloomEffect.h"
 #include "post_processing/effects/FilmGrainEffect.h"
@@ -26,6 +27,7 @@
 #include "post_processing/effects/StrobeEffect.h"
 #include "post_processing/effects/TimeStutterEffect.h"
 #include "post_processing/effects/WhispTrailEffect.h"
+#include "spline.h"
 #include "task_thread_pool.hpp"
 #include "terrain.h"
 #include "terrain_generator.h"
@@ -103,6 +105,15 @@ namespace Boidsish {
 		float single_track_distance = 15.0f;
 
 		std::shared_ptr<EntityBase> chase_target_ = nullptr;
+
+		// Path following camera state
+		std::shared_ptr<Path> path_target_ = nullptr;
+		int                   path_segment_index_ = 0;
+		float                 path_t_ = 0.0f;
+		int                   path_direction_ = 1;
+		float                 path_speed_ = 20.0f; // TODO: make configurable
+		glm::quat             path_orientation_ = glm::quat(1.0f, 0.0f, 0.0f, 0.0f);
+		float                 path_auto_bank_angle_ = 0.0f;
 
 		bool color_shift_effect = false;
 
@@ -526,8 +537,16 @@ namespace Boidsish {
 		glm::mat4 SetupMatrices(const Camera& cam_to_use) {
 			projection = glm::perspective(glm::radians(cam_to_use.fov), (float)width / (float)height, 0.1f, 1000.0f);
 			glm::vec3 cameraPos(cam_to_use.x, cam_to_use.y, cam_to_use.z);
+			glm::mat4 view;
 
-			glm::mat4 view = glm::lookAt(cameraPos, cameraPos + cam_to_use.front(), cam_to_use.up());
+			if (camera_mode == CameraMode::PATH_FOLLOW) {
+				glm::vec3 front = path_orientation_ * glm::vec3(0.0f, 0.0f, -1.0f);
+				glm::vec3 up = path_orientation_ * glm::vec3(0.0f, 1.0f, 0.0f);
+				view = glm::lookAt(cameraPos, cameraPos + front, up);
+			} else {
+				view = glm::lookAt(cameraPos, cameraPos + cam_to_use.front(), cam_to_use.up());
+			}
+
 			shader->use();
 			shader->setMat4("projection", projection);
 			shader->setMat4("view", view);
@@ -1042,6 +1061,69 @@ namespace Boidsish {
 			camera.pitch = std::max(-89.0f, std::min(89.0f, camera.pitch));
 		}
 
+		void UpdatePathFollowCamera(float delta_time) {
+			if (camera_mode != CameraMode::PATH_FOLLOW || !path_target_) {
+				return;
+			}
+
+			// 1. Call path update logic
+			auto update_result = path_target_->CalculateUpdate(
+				Vector3(camera.x, camera.y, camera.z),
+				path_orientation_,
+				path_segment_index_,
+				path_t_,
+				path_direction_,
+				path_speed_,
+				delta_time
+			);
+
+			// 3. Update path state for the next frame
+			path_segment_index_ = update_result.new_segment_index;
+			path_t_ = update_result.new_t;
+			path_direction_ = update_result.new_direction;
+
+			// 4. Get target position from the result
+			glm::vec3 target_pos_glm(update_result.position.x, update_result.position.y, update_result.position.z);
+
+			// 5. Smoothly interpolate position and orientation
+			float lerp_factor = 1.0f - exp(-delta_time * 5.0f); // Similar to chase camera for smoothness
+
+			glm::vec3 new_cam_pos = glm::mix(camera.pos(), target_pos_glm, lerp_factor);
+			camera.x = new_cam_pos.x;
+			camera.y = new_cam_pos.y;
+			camera.z = new_cam_pos.z;
+
+			glm::quat desired_orientation = update_result.orientation;
+
+			// --- Auto-banking logic ---
+			float yaw_diff = glm::yaw(desired_orientation) - glm::yaw(path_orientation_);
+			// Wrap yaw difference to the range [-PI, PI]
+			if (yaw_diff > glm::pi<float>())
+				yaw_diff -= 2.0f * glm::pi<float>();
+			if (yaw_diff < -glm::pi<float>())
+				yaw_diff += 2.0f * glm::pi<float>();
+
+			const float kBankFactor = 1.8f; // How much to bank in response to a turn
+			const float kBankSpeed = 3.5f;  // How quickly the banking adjusts
+			float       target_bank_angle = yaw_diff * kBankFactor;
+
+			// Smoothly interpolate the bank angle
+			path_auto_bank_angle_ = glm::mix(
+				path_auto_bank_angle_,
+				target_bank_angle,
+				1.0f - exp(-delta_time * kBankSpeed)
+			);
+
+			glm::quat bank_rotation = glm::angleAxis(path_auto_bank_angle_, glm::vec3(0.0f, 0.0f, 1.0f));
+			glm::quat final_orientation = desired_orientation * bank_rotation;
+
+			path_orientation_ = glm::slerp(path_orientation_, final_orientation, lerp_factor);
+
+			// Ensure camera stays above a minimum height
+			if (camera.y < kMinCameraHeight)
+				camera.y = kMinCameraHeight;
+		}
+
 		static void KeyCallback(GLFWwindow* w, int key, int /* sc */, int action, int /* mods */) {
 			auto* impl = static_cast<VisualizerImpl*>(glfwGetWindowUserPointer(w));
 			if (key == impl->exit_key && action == GLFW_PRESS) {
@@ -1202,18 +1284,19 @@ namespace Boidsish {
 			}
 		}
 
-		glm::mat4 view_matrix = impl->SetupMatrices();
-		if (impl->terrain_enabled_) {
-			Frustum frustum = impl->CalculateFrustum(view_matrix, impl->projection);
-			impl->terrain_generator->update(frustum, impl->camera);
-		}
-
 		if (impl->camera_mode == CameraMode::TRACKING) {
 			impl->UpdateSingleTrackCamera(impl->input_state.delta_time, impl->shapes);
 		} else if (impl->camera_mode == CameraMode::AUTO) {
 			impl->UpdateAutoCamera(impl->input_state.delta_time, impl->shapes);
 		} else if (impl->camera_mode == CameraMode::CHASE) {
 			impl->UpdateChaseCamera(impl->input_state.delta_time);
+		} else if (impl->camera_mode == CameraMode::PATH_FOLLOW) {
+			impl->UpdatePathFollowCamera(impl->input_state.delta_time);
+		}
+		glm::mat4 view_matrix = impl->SetupMatrices();
+		if (impl->terrain_enabled_) {
+			Frustum frustum = impl->CalculateFrustum(view_matrix, impl->projection);
+			impl->terrain_generator->update(frustum, impl->camera);
 		}
 
 		// Update clone manager
@@ -1395,6 +1478,29 @@ namespace Boidsish {
 		}
 	}
 
+	void Visualizer::SetPathCamera(std::shared_ptr<Path> path) {
+		if (path && !path->GetWaypoints().empty()) {
+			impl->path_target_ = path;
+			impl->path_segment_index_ = 0;
+			impl->path_t_ = 0.0f;
+			impl->path_direction_ = 1;
+			SetCameraMode(CameraMode::PATH_FOLLOW);
+
+			// Initialize camera position and orientation to the start of the path
+			const auto& start_waypoint = path->GetWaypoints()[0];
+			auto initial_state = path->CalculateUpdate(start_waypoint.position, glm::quat(), 0, 0.0f, 1, 0.0f, 0.0f);
+
+			impl->camera.x = start_waypoint.position.x;
+			impl->camera.y = start_waypoint.position.y;
+			impl->camera.z = start_waypoint.position.z;
+			impl->path_orientation_ = initial_state.orientation;
+
+		} else {
+			impl->path_target_ = nullptr;
+			SetCameraMode(CameraMode::FREE);
+		}
+	}
+
 	void Visualizer::AddWidget(std::shared_ptr<UI::IWidget> widget) {
 		impl->ui_manager->AddWidget(widget);
 	}
@@ -1421,6 +1527,9 @@ namespace Boidsish {
 			glfwSetInputMode(impl->window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
 			break;
 		case CameraMode::CHASE:
+			glfwSetInputMode(impl->window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
+			break;
+		case CameraMode::PATH_FOLLOW:
 			glfwSetInputMode(impl->window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
 			break;
 		}
