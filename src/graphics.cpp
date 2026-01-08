@@ -198,6 +198,7 @@ namespace Boidsish {
 			glEnable(GL_MULTISAMPLE);
 			glEnable(GL_PROGRAM_POINT_SIZE);
 			glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+			glDepthFunc(GL_LEQUAL);
 			glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
 
 			shader = std::make_shared<Shader>("shaders/vis.vert", "shaders/vis.frag");
@@ -583,6 +584,7 @@ namespace Boidsish {
 				// TODO: Move trail generation to the GPU for performance.
 				// See performance_and_quality_audit.md#3-gpu-based-trail-generation
 				// Only create trails for shapes with trail_length > 0
+				shader->setBool("isColossal", shape->IsColossal());
 				if (shape->GetTrailLength() > 0 && !paused) {
 					if (trails.find(shape->GetId()) == trails.end()) {
 						trails[shape->GetId()] = std::make_shared<Trail>(shape->GetTrailLength());

@@ -17,6 +17,7 @@ uniform mat4  view;
 uniform mat4  projection;
 uniform vec4  clipPlane;
 uniform float ripple_strength;
+uniform bool  isColossal = true;
 
 layout(std140) uniform Lighting {
 	vec3  lightPos;
@@ -55,6 +56,18 @@ void main() {
 	if (wireframe_enabled == 1) {
 		barycentric = getBarycentric();
 	}
-	gl_Position = projection * view * vec4(FragPos, 1.0);
+
+if (isColossal) {
+		mat4 staticView = mat4(mat3(view));
+		vec3 skyPositionOffset = vec3(0.0, -10.0, -500.0);
+		vec4 world_pos = model * vec4(displacedPos*50, 1.0);
+		world_pos.xyz += skyPositionOffset;
+		gl_Position = projection * staticView * world_pos;
+		gl_Position = gl_Position.xyww;
+		FragPos = world_pos.xyz;
+	} else {
+		gl_Position = projection * view * vec4(FragPos, 1.0);
+	}
+
 	gl_ClipDistance[0] = dot(vec4(FragPos, 1.0), clipPlane);
 }

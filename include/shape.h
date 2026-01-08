@@ -83,6 +83,10 @@ namespace Boidsish {
 
 		inline void SetTrailRocket(bool enabled) { trail_rocket_ = enabled; }
 
+		inline bool IsColossal() const { return is_colossal_; }
+
+		inline void SetColossal(bool is_colossal) { is_colossal_ = is_colossal; }
+
 		// Static shader reference
 		static std::shared_ptr<Shader> shader;
 
@@ -120,7 +124,8 @@ namespace Boidsish {
 			rotation_(glm::quat(1.0f, 0.0f, 0.0f, 0.0f)),
 			scale_(glm::vec3(1.0f)),
 			trail_length_(trail_length),
-			trail_iridescent_(false) {}
+			trail_iridescent_(false),
+			is_colossal_(false) {}
 
 		glm::quat rotation_;
 		glm::vec3 scale_;
@@ -132,6 +137,7 @@ namespace Boidsish {
 		int   trail_length_;
 		bool  trail_iridescent_;
 		bool  trail_rocket_;
+		bool  is_colossal_;
 
 	protected:
 		// Shared sphere mesh
