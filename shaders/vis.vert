@@ -12,6 +12,8 @@ out vec3 Normal_VS_out;
 out vec3 viewForward_in;
 
 uniform mat4 model;
+uniform mat4 view;
+uniform mat4 projection;
 uniform vec3 viewForward;
 
 layout(std140) uniform Lighting {
@@ -29,5 +31,6 @@ void main() {
 	// Forward vector for focus culling in TCS
 	viewForward_in = viewForward;
 
-	gl_Position = vec4(aPos, 1.0); // Pass-through, TES will do the projection
+	// gl_Position must be in clip space for the tessellator to work correctly.
+	gl_Position = projection * view * vec4(WorldPos_VS_out, 1.0);
 }
