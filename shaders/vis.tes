@@ -3,17 +3,18 @@
 layout(triangles, fractional_odd_spacing, cw) in;
 
 #include "visual_effects.glsl"
-#include "visual_effects.vert" // For applyGlitch
 
 // Input from Tessellation Control Shader
 in vec3 WorldPos_TC_out[];
 in vec2 TexCoords_TC_out[];
 in vec3 Normal_TC_out[];
+in vec3 Color_TC_out[];
 
 // Output to Fragment Shader
 out vec3  FragPos;
 out vec3  Normal;
 out vec2  TexCoords;
+out vec3  vs_color;
 out vec3  barycentric; // Used for wireframe effect in fragment shader
 out float gl_ClipDistance[1];
 
@@ -69,6 +70,9 @@ void main() {
 
 	// Interpolate texture coordinates
 	TexCoords = barycentric_interp(TexCoords_TC_out[0], TexCoords_TC_out[1], TexCoords_TC_out[2]);
+
+	// Interpolate color
+	vs_color = barycentric_interp(Color_TC_out[0], Color_TC_out[1], Color_TC_out[2]);
 
 	// 2. Phong Tessellation for smooth surfaces
 	// Project the control points onto the tangent plane at the interpolated position 'q'
