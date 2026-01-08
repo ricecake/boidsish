@@ -7,6 +7,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS ON) # Corresponds to -std=gnu++23
 set(FASTNOISE2_NOISETOOL OFF CACHE BOOL "Enable NoiseTool build" FORCE)
 set(IMGUI_DIR external/imgui)
+set(STB_DIR "${CMAKE_SOURCE_DIR}/external/stb")
 
 # 2. Dependency Discovery
 find_package(OpenGL REQUIRED)
@@ -17,7 +18,6 @@ find_package(Bullet REQUIRED)
 find_package(assimp REQUIRED)
 
 # 1. Define ImGui FIRST so FastNoise2 can see it
-set(IMGUI_DIR external/imgui)
 add_library(imgui STATIC
     ${IMGUI_DIR}/imgui.cpp
     ${IMGUI_DIR}/imgui_demo.cpp
@@ -28,21 +28,14 @@ add_library(imgui STATIC
     ${IMGUI_DIR}/backends/imgui_impl_opengl3.cpp
 )
 
-# Important: NoiseTool needs to find the headers within the imgui target
 target_include_directories(imgui PUBLIC ${IMGUI_DIR} ${IMGUI_DIR}/backends)
 
 # 2. Tell FastNoise2 where the ImGui headers are explicitly
-# set(FASTNOISE2_NOISETOOL_GLFW OFF CACHE BOOL "" FORCE)
-# set(FASTNOISE2_NOISETOOL_IMGUI OFF CACHE BOOL "" FORCE)
-# set(FASTNOISE2_NOISETOOL ON CACHE BOOL "Enable NoiseTool build" FORCE)
 set(IMGUI_INCLUDE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/${IMGUI_DIR}" CACHE PATH "" FORCE)
 
-# 3. Now add FastNoise2
 add_subdirectory(external/FastNoise2)
 add_subdirectory(external/task-thread-pool)
 add_subdirectory(external/poolSTL)
-# add_subdirectory(external/bullet3)
-# add_subdirectory(external/assimp)
 
 # 3. Define the Library
 # Finds all .cpp files in src/
@@ -57,6 +50,7 @@ target_include_directories(boidsish
         external/include
         ${IMGUI_DIR}/
         ${IMGUI_DIR}/backends
+        ${STB_DIR}/
         ${ASSIMP_INCLUDE_DIR}
         ${BULLET_INCLUDE_DIRS}
 )

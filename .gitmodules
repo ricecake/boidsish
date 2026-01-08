@@ -10,3 +10,6 @@
 [submodule "external/poolSTL"]
 	path = external/poolSTL
 	url = https://github.com/alugowski/poolSTL.git
+[submodule "external/stb"]
+	path = external/stb
+	url = https://github.com/nothings/stb.git
