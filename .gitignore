@@ -197,3 +197,6 @@ _deps
 
 # Profiling files
 gmon.out
+
+# Custom cache directories
+terrain_cache/
