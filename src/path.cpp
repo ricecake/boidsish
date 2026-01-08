@@ -327,4 +327,46 @@ namespace Boidsish {
 		};
 	}
 
+	glm::vec3 Path::FindClosestPoint(const Vector3& point) const {
+		if (waypoints_.empty()) {
+			return glm::vec3(0.0f);
+		}
+
+		if (waypoints_.size() == 1) {
+			return glm::vec3(waypoints_[0].position.x, waypoints_[0].position.y, waypoints_[0].position.z);
+		}
+
+		float     min_dist_sq = std::numeric_limits<float>::max();
+		glm::vec3 closest_point;
+
+		int num_segments = (mode_ == PathMode::LOOP) ? waypoints_.size() : waypoints_.size() - 1;
+
+		for (int i = 0; i < num_segments; ++i) {
+			Vector3 p0, p1, p2, p3;
+			if (mode_ == PathMode::LOOP) {
+				p0 = waypoints_[(i - 1 + waypoints_.size()) % waypoints_.size()].position;
+				p1 = waypoints_[i].position;
+				p2 = waypoints_[(i + 1) % waypoints_.size()].position;
+				p3 = waypoints_[(i + 2) % waypoints_.size()].position;
+			} else {
+				p1 = waypoints_[i].position;
+				p2 = waypoints_[i + 1].position;
+				p0 = (i > 0) ? waypoints_[i - 1].position : (p1 - (p2 - p1));
+				p3 = (i < (int)waypoints_.size() - 2) ? waypoints_[i + 2].position : (p2 + (p2 - p1));
+			}
+
+			// Iterate along the segment to find the closest point
+			for (int j = 0; j <= 20; ++j) {
+				float   t = (float)j / 20.0f;
+				Vector3 spline_point = Spline::CatmullRom(t, p0, p1, p2, p3);
+				float   dist_sq = (spline_point - point).MagnitudeSquared();
+				if (dist_sq < min_dist_sq) {
+					min_dist_sq = dist_sq;
+					closest_point = glm::vec3(spline_point.x, spline_point.y, spline_point.z);
+				}
+			}
+		}
+		return closest_point;
+	}
+
 } // namespace Boidsish
