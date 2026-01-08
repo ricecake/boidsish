@@ -70,15 +70,26 @@ target_link_libraries(boidsish
 )
 
 # 5. Build Examples
-file(GLOB EXAMPLE_SOURCES "examples/*.cpp")
+file(GLOB EXAMPLE_DIRS "examples/*")
 
-foreach(EXAMPLE_PATH ${EXAMPLE_SOURCES})
-    get_filename_component(EXAMPLE_NAME ${EXAMPLE_PATH} NAME_WE)
+foreach(EXAMPLE_DIR ${EXAMPLE_DIRS})
+    if(IS_DIRECTORY ${EXAMPLE_DIR})
+        get_filename_component(EXAMPLE_NAME ${EXAMPLE_DIR} NAME)
 
-    add_executable(${EXAMPLE_NAME} ${EXAMPLE_PATH})
-    target_link_libraries(${EXAMPLE_NAME} PRIVATE boidsish)
-    set_target_properties(${EXAMPLE_NAME} PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+        # Find all source files in the example's directory
+        file(GLOB EXAMPLE_SOURCES
+            "${EXAMPLE_DIR}/main.cpp"
+            "${EXAMPLE_DIR}/src/*.cpp"
+        )
 
+        add_executable(${EXAMPLE_NAME} ${EXAMPLE_SOURCES})
+        target_link_libraries(${EXAMPLE_NAME} PRIVATE boidsish)
+
+        # Add the example's include directory
+        target_include_directories(${EXAMPLE_NAME} PRIVATE "${EXAMPLE_DIR}/include")
+
+        set_target_properties(${EXAMPLE_NAME} PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+    endif()
 endforeach()
 
 # Copy assets to the root of the build directory
