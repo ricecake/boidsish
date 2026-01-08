@@ -263,7 +263,7 @@ private:
 	float                                      forward_speed_;
 	float                                      time_to_fire = 0.25f;
 	bool                                       fire_left = true;
-	int                                        damage_pending_;
+	int                                        damage_pending_ = false;
 	float                                      health = 100.0f;
 	float                                      shield = 100.0f;
 };
