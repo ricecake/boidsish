@@ -414,7 +414,7 @@ namespace Boidsish {
 			std::filesystem::remove(filename);
 		}
 
-		const int             kSuperChunkSizeInChunks = 4;
+		const int             kSuperChunkSizeInChunks = chunk_size_;
 		const int             texture_dim = kSuperChunkSizeInChunks * chunk_size_;
 		std::vector<uint16_t> pixels(texture_dim * texture_dim * 4);
 		float                 max_height = GetMaxHeight();
