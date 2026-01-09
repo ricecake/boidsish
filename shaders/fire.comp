@@ -35,6 +35,12 @@ uniform float u_delta_time;
 uniform float u_time;
 uniform int   u_num_emitters;
 
+uniform sampler2D u_terrain_texture;
+uniform vec3      u_terrain_texture_origin;
+uniform int       u_terrain_texture_range;
+uniform float     u_terrain_max_height;
+
+
 // Basic pseudo-random number generator
 float rand(vec2 co) {
 	return fract(sin(dot(co.xy, vec2(12.9898, 78.233))) * 43758.5453);
@@ -255,10 +261,27 @@ void main() {
 
 		p.pos.xyz += p.vel.xyz * u_delta_time;
 
-		if (p.pos.y <= 0 && p.pos.w > 0) {
-			p.pos.y = 0.1;
-			p.vel.xz += p.vel.y * vec2(0.5, 0.5);
-			p.vel.y *= -0.25;
+		vec2 texture_size = textureSize(u_terrain_texture, 0);
+		if (texture_size.x > 0 && texture_size.y > 0) {
+			vec2 relative_pos = p.pos.xz - u_terrain_texture_origin.xz;
+			vec2 uv = relative_pos / (u_terrain_texture_range * 2.0);
+
+			if (uv.x >= 0.0 && uv.x <= 1.0 && uv.y >= 0.0 && uv.y <= 1.0) {
+				vec4 terrain_data = texture(u_terrain_texture, uv);
+				float terrain_height = terrain_data.a * u_terrain_max_height;
+
+				if (p.pos.y < terrain_height) {
+					p.pos.y = terrain_height;
+					vec3 terrain_normal = terrain_data.rgb * 2.0 - 1.0;
+					p.vel.xyz = reflect(p.vel.xyz, terrain_normal) * 0.5;
+				}
+			}
+		} else {
+			if (p.pos.y <= 0 && p.pos.w > 0) {
+				p.pos.y = 0.1;
+				p.vel.xz += p.vel.y * vec2(0.5, 0.5);
+				p.vel.y *= -0.25;
+			}
 		}
 	}
 

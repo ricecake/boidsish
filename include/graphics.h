@@ -167,6 +167,12 @@ namespace Boidsish {
 		std::tuple<float, glm::vec3>                 GetTerrainPointProperties(float x, float y) const;
 		float                                        GetTerrainMaxHeight() const;
 		const TerrainGenerator*                      GetTerrainGenerator() const;
+		std::vector<uint16_t>                        GetTerrainTexture(
+			const glm::vec3& center,
+			int              range,
+			glm::vec3&       out_origin,
+			float&           out_max_height
+		);
 		const std::vector<std::shared_ptr<Terrain>>& GetTerrainChunks() const;
 		task_thread_pool::task_thread_pool&          GetThreadPool();
 		FireEffectManager*                           GetFireEffectManager();

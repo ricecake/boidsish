@@ -7,6 +7,7 @@
 #include "shader.h"
 
 namespace Boidsish {
+	class Visualizer;
 
 	// This struct is mirrored in the compute shader.
 	// It must match the layout and padding there.
@@ -24,7 +25,7 @@ namespace Boidsish {
 		FireEffectManager();
 		~FireEffectManager();
 
-		void Update(float delta_time, float time);
+		void Update(float delta_time, float time, Visualizer& visualizer);
 		void Render(const glm::mat4& view, const glm::mat4& projection, const glm::vec3& camera_pos);
 
 		// Add a new fire effect and return a pointer to it
@@ -51,10 +52,12 @@ namespace Boidsish {
 		GLuint particle_buffer_{0};
 		GLuint emitter_buffer_{0};
 		GLuint indirection_buffer_{0};
+		GLuint terrain_texture_{0};
 		GLuint dummy_vao_{0};
 
-		bool  initialized_{false};
-		float time_{0.0f};
+		bool      initialized_{false};
+		float     time_{0.0f};
+		glm::vec3 last_terrain_query_center_{0.0f};
 
 		static const int kMaxParticles = 32000;
 		static const int kMaxEmitters = 100;

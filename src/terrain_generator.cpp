@@ -473,4 +473,57 @@ namespace Boidsish {
 
 		stbi_write_png(png_filepath.c_str(), width, height, 4, pixels8.data(), width * 4);
 	}
+
+	std::vector<uint16_t> TerrainGenerator::GetTerrainTextureData(
+		const glm::vec3& center,
+		int              range,
+		glm::vec3&       out_origin,
+		float&           out_max_height
+	) {
+		const int kSuperChunkSizeInChunks = chunk_size_;
+		const int texture_dim = kSuperChunkSizeInChunks * chunk_size_;
+		const int sub_texture_dim = range * 2;
+
+		std::vector<uint16_t> sub_texture_data(sub_texture_dim * sub_texture_dim * 4);
+		std::map<std::pair<int, int>, std::vector<uint16_t>> superchunk_cache;
+
+		for (int y = 0; y < sub_texture_dim; ++y) {
+			for (int x = 0; x < sub_texture_dim; ++x) {
+				int world_x = center.x - range + x;
+				int world_z = center.z - range + y;
+
+				int superChunkX = floor((float)world_x / texture_dim);
+				int superChunkZ = floor((float)world_z / texture_dim);
+
+				if (superchunk_cache.find({superChunkX, superChunkZ}) == superchunk_cache.end()) {
+					superchunk_cache[{superChunkX, superChunkZ}] = GenerateSuperChunkTexture(superChunkX, superChunkZ);
+				}
+				const auto& superchunk_data = superchunk_cache.at({superChunkX, superChunkZ});
+
+				int local_x = world_x - superChunkX * texture_dim;
+				int local_z = world_z - superChunkZ * texture_dim;
+
+				int dst_index = (y * sub_texture_dim + x) * 4;
+
+				if (local_x >= 0 && local_x < texture_dim && local_z >= 0 && local_z < texture_dim) {
+					int src_index = (local_z * texture_dim + local_x) * 4;
+					sub_texture_data[dst_index + 0] = superchunk_data[src_index + 0];
+					sub_texture_data[dst_index + 1] = superchunk_data[src_index + 1];
+					sub_texture_data[dst_index + 2] = superchunk_data[src_index + 2];
+					sub_texture_data[dst_index + 3] = superchunk_data[src_index + 3];
+				} else {
+					// This should not happen with the new logic, but as a fallback
+					sub_texture_data[dst_index + 0] = 32767;
+					sub_texture_data[dst_index + 1] = 65535;
+					sub_texture_data[dst_index + 2] = 32767;
+					sub_texture_data[dst_index + 3] = 0;
+				}
+			}
+		}
+
+		out_origin = glm::vec3(center.x - range, 0, center.z - range);
+		out_max_height = GetMaxHeight();
+
+		return sub_texture_data;
+	}
 } // namespace Boidsish

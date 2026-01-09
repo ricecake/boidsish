@@ -111,9 +111,12 @@ namespace Boidsish {
 				}
 			}
 		}
+		if (terrain_texture_ != 0) {
+			glDeleteTextures(1, &terrain_texture_);
+		}
 	}
 
-	void FireEffectManager::Update(float delta_time, float time) {
+	void FireEffectManager::Update(float delta_time, float time, Visualizer& visualizer) {
 		if (!initialized_) {
 			return;
 		}
@@ -179,6 +182,50 @@ namespace Boidsish {
 		compute_shader_->setFloat("u_delta_time", delta_time);
 		compute_shader_->setFloat("u_time", time_);
 		compute_shader_->setInt("u_num_emitters", emitters.size());
+
+		// Get terrain texture
+		if (effects_.size() > 0 && effects_[0]) {
+			glm::vec3 out_origin;
+			float     out_max_height;
+			int       range = 100;
+
+			if (glm::distance(effects_[0]->GetPosition(), last_terrain_query_center_) > range / 2) {
+				last_terrain_query_center_ = effects_[0]->GetPosition();
+				auto texture_data = visualizer.GetTerrainTexture(
+					effects_[0]->GetPosition(),
+					range,
+					out_origin,
+					out_max_height
+				);
+
+				if (texture_data.size() > 0) {
+					if (terrain_texture_ == 0) {
+						glGenTextures(1, &terrain_texture_);
+					}
+					glActiveTexture(GL_TEXTURE0);
+					glBindTexture(GL_TEXTURE_2D, terrain_texture_);
+					glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+					glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+					glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+					glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+					glTexImage2D(
+						GL_TEXTURE_2D,
+						0,
+						GL_RGBA16F,
+						range * 2,
+						range * 2,
+						0,
+						GL_RGBA,
+						GL_UNSIGNED_SHORT,
+						texture_data.data()
+					);
+					compute_shader_->setInt("u_terrain_texture", 0);
+					compute_shader_->setVec3("u_terrain_texture_origin", out_origin);
+					compute_shader_->setInt("u_terrain_texture_range", range);
+					compute_shader_->setFloat("u_terrain_max_height", out_max_height);
+				}
+			}
+		}
 
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, particle_buffer_);
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, emitter_buffer_);

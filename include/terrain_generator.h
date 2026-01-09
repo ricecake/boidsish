@@ -37,7 +37,13 @@ namespace Boidsish {
 		const std::vector<std::shared_ptr<Terrain>>& getVisibleChunks() const;
 
 		std::vector<uint16_t> GenerateSuperChunkTexture(int superChunkX, int superChunkZ);
-		void                  ConvertDatToPng(const std::string& dat_filepath, const std::string& png_filepath);
+		std::vector<uint16_t> GetTerrainTextureData(
+			const glm::vec3& center,
+			int              range,
+			glm::vec3&       out_origin,
+			float&           out_max_height
+		);
+		void ConvertDatToPng(const std::string& dat_filepath, const std::string& png_filepath);
 
 		float GetMaxHeight() const {
 			float max_h = 0.0f;

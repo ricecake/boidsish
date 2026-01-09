@@ -1303,7 +1303,7 @@ namespace Boidsish {
 
 		// Update clone manager
 		impl->clone_manager->Update(impl->simulation_time, impl->camera.pos());
-		impl->fire_effect_manager->Update(impl->input_state.delta_time, impl->simulation_time);
+		impl->fire_effect_manager->Update(impl->input_state.delta_time, impl->simulation_time, *this);
 
 		// UBO Updates
 		if (impl->effects_enabled_) {
@@ -1571,6 +1571,18 @@ namespace Boidsish {
 
 	void Visualizer::ToggleMenus() {
 		impl->ui_manager->ToggleMenus();
+	}
+
+	std::vector<uint16_t> Visualizer::GetTerrainTexture(
+		const glm::vec3& center,
+		int              range,
+		glm::vec3&       out_origin,
+		float&           out_max_height
+	) {
+		if (impl->terrain_generator) {
+			return impl->terrain_generator->GetTerrainTextureData(center, range, out_origin, out_max_height);
+		}
+		return {};
 	}
 
 	task_thread_pool::task_thread_pool& Visualizer::GetThreadPool() {
