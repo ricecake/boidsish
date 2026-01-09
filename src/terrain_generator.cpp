@@ -387,13 +387,17 @@ namespace Boidsish {
 		return path;
 	}
 
-	std::vector<uint16_t> TerrainGenerator::GenerateSuperChunkTexture(int superChunkX, int superChunkZ) {
+	std::vector<uint16_t> TerrainGenerator::GenerateSuperChunkTexture(int requested_x, int requested_z) {
 		const int kSuperChunkSizeInChunks = chunk_size_;
 		const int texture_dim = kSuperChunkSizeInChunks * chunk_size_;
 
+		// Map world coordinates to a consistent grid index
+		const int super_chunk_x = floor(static_cast<float>(requested_x) / texture_dim);
+		const int super_chunk_z = floor(static_cast<float>(requested_z) / texture_dim);
+
 		std::filesystem::create_directory("terrain_cache");
-		std::string filename = "terrain_cache/superchunk_" + std::to_string(superChunkX) + "_" +
-			std::to_string(superChunkZ) + ".dat";
+		std::string filename = "terrain_cache/superchunk_" + std::to_string(super_chunk_x) + "_" +
+			std::to_string(super_chunk_z) + ".dat";
 		if (std::filesystem::exists(filename)) {
 			std::ifstream infile(filename, std::ios::binary);
 			int           width = 0, height = 0;
@@ -423,8 +427,8 @@ namespace Boidsish {
 
 		for (int y = 0; y < texture_dim; ++y) {
 			for (int x = 0; x < texture_dim; ++x) {
-				float worldX = (superChunkX * texture_dim + x);
-				float worldZ = (superChunkZ * texture_dim + y);
+				float worldX = (super_chunk_x * texture_dim + x);
+				float worldZ = (super_chunk_z * texture_dim + y);
 
 				auto [height, normal] = pointProperties(worldX, worldZ);
 
@@ -472,5 +476,52 @@ namespace Boidsish {
 		}
 
 		stbi_write_png(png_filepath.c_str(), width, height, 4, pixels8.data(), width * 4);
+	}
+
+	std::vector<uint16_t> TerrainGenerator::GenerateTextureForArea(int world_x, int world_z, int size) {
+		const int kSuperChunkSizeInChunks = chunk_size_;
+		const int texture_dim = kSuperChunkSizeInChunks * chunk_size_;
+
+		// Determine the range of superchunks needed
+		int start_chunk_x = floor(static_cast<float>(world_x) / texture_dim);
+		int end_chunk_x = floor(static_cast<float>(world_x + size - 1) / texture_dim);
+		int start_chunk_z = floor(static_cast<float>(world_z) / texture_dim);
+		int end_chunk_z = floor(static_cast<float>(world_z + size - 1) / texture_dim);
+
+		// Create the destination texture
+		std::vector<uint16_t> stitched_texture(size * size * 4);
+
+		// Iterate over the needed superchunks and stitch them together
+		for (int cz = start_chunk_z; cz <= end_chunk_z; ++cz) {
+			for (int cx = start_chunk_x; cx <= end_chunk_x; ++cx) {
+				std::vector<uint16_t> superchunk = GenerateSuperChunkTexture(cx * texture_dim, cz * texture_dim);
+
+				// Calculate the region to copy from the superchunk
+				int src_start_x = std::max(0, world_x - cx * texture_dim);
+				int src_end_x = std::min(texture_dim, world_x + size - cx * texture_dim);
+				int src_start_z = std::max(0, world_z - cz * texture_dim);
+				int src_end_z = std::min(texture_dim, world_z + size - cz * texture_dim);
+
+				// Calculate the region to copy to in the destination texture
+				int dest_start_x = std::max(0, cx * texture_dim - world_x);
+				int dest_start_z = std::max(0, cz * texture_dim - world_z);
+
+				for (int z = src_start_z; z < src_end_z; ++z) {
+					for (int x = src_start_x; x < src_end_x; ++x) {
+						int src_index = (z * texture_dim + x) * 4;
+						int dest_index = ((dest_start_z + z - src_start_z) * size + (dest_start_x + x - src_start_x)) * 4;
+
+						if (dest_index + 3 < stitched_texture.size()) {
+							stitched_texture[dest_index + 0] = superchunk[src_index + 0];
+							stitched_texture[dest_index + 1] = superchunk[src_index + 1];
+							stitched_texture[dest_index + 2] = superchunk[src_index + 2];
+							stitched_texture[dest_index + 3] = superchunk[src_index + 3];
+						}
+					}
+				}
+			}
+		}
+
+		return stitched_texture;
 	}
 } // namespace Boidsish
