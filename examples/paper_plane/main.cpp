@@ -1171,6 +1171,12 @@ int main() {
 			}
 		});
 
+		std::vector<std::shared_ptr<Boidsish::Shape>> shapes;
+		visualizer->AddShapeHandler([&](float time) { return shapes; });
+		auto model = std::make_shared<Boidsish::Model>("assets/utah_teapot.obj");
+		model->SetColossal(true);
+		shapes.push_back(model);
+
 		visualizer->Run();
 	} catch (const std::exception& e) {
 		std::cerr << "Error: " << e.what() << std::endl;
