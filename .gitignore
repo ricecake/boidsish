@@ -1,8 +1,9 @@
-# Build directories
+# Build artifacts
 build/
 bin/
 obj/
 terrain_cache/
+*.png
 
 # Compiled Object files
 *.o
@@ -40,7 +41,7 @@ boidsish
 *.idb
 *.pdb
 
-# IDE files
+# IDE specific files
 .vscode/
 .vs/
 *.vcxproj*
@@ -49,6 +50,7 @@ boidsish
 *.user
 *.userosscache
 *.sln.docstates
+*.ini
 
 # Qt-es
 object_script.*.Release

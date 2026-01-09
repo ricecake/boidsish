@@ -199,13 +199,13 @@ namespace Boidsish {
 		float     path_factor = path_data.x;
 
 		glm::vec2 push_dir = glm::normalize(glm::vec2(path_data.y, path_data.z));
-
-		float warp_strength = (1.0f - path_factor) * 20.0f;
+		float     warp_strength = (1.0f - path_factor) * 20.0f;
+		glm::vec2 warp = push_dir * warp_strength;
 
 		glm::vec2 pos = glm::vec2(x, z);
-		glm::vec2 warped_pos = pos + (push_dir * warp_strength);
+		glm::vec2 warped_pos = pos + warp;
 
-		float control_value = control_perlin_noise_.octave2D_01(x * control_noise_scale_, z * control_noise_scale_, 2);
+		float control_value = getBiomeControlValue(x, z);
 
 		BiomeAttributes current;
 		auto            low_threshold = (floor(control_value * biomes.size()) / biomes.size());
@@ -455,6 +455,18 @@ namespace Boidsish {
 		return pixels;
 	}
 
+	float TerrainGenerator::getBiomeControlValue(float x, float z) const {
+		return control_perlin_noise_.octave2D_01(x * control_noise_scale_, z * control_noise_scale_, 2);
+	}
+
+	glm::vec2 TerrainGenerator::getDomainWarp(float x, float z) const {
+		glm::vec3 path_data = getPathInfluence(x, z);
+		float     path_factor = path_data.x;
+		glm::vec2 push_dir = glm::normalize(glm::vec2(path_data.y, path_data.z));
+		float     warp_strength = (1.0f - path_factor) * 20.0f;
+		return push_dir * warp_strength;
+	}
+
 	void TerrainGenerator::ConvertDatToPng(const std::string& dat_filepath, const std::string& png_filepath) {
 		std::ifstream infile(dat_filepath, std::ios::binary);
 		if (!infile) {
@@ -509,7 +521,8 @@ namespace Boidsish {
 				for (int z = src_start_z; z < src_end_z; ++z) {
 					for (int x = src_start_x; x < src_end_x; ++x) {
 						int src_index = (z * texture_dim + x) * 4;
-						int dest_index = ((dest_start_z + z - src_start_z) * size + (dest_start_x + x - src_start_x)) * 4;
+						int dest_index = ((dest_start_z + z - src_start_z) * size + (dest_start_x + x - src_start_x)) *
+							4;
 
 						if (dest_index + 3 < stitched_texture.size()) {
 							stitched_texture[dest_index + 0] = superchunk[src_index + 0];
