@@ -8,6 +8,7 @@
 #include <vector>
 
 #include "Config.h"
+#include "hud.h"
 #include "fire_effect.h"
 #include "imgui.h"
 #include "imgui_impl_glfw.h"
