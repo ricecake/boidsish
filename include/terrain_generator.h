@@ -156,10 +156,12 @@ namespace Boidsish {
 		glm::vec3 diffToNorm(float dx, float dz) const { return glm::normalize(glm::vec3(-dx, 1.0f, -dz)); }
 
 		// Cache and async management
-		ThreadPool                                                         thread_pool_;
-		std::map<std::pair<int, int>, std::shared_ptr<Terrain>>            chunk_cache_;
-		std::vector<std::shared_ptr<Terrain>>                              visible_chunks_;
-		std::map<std::pair<int, int>, TaskHandle<TerrainGenerationResult>> pending_chunks_;
+		ThreadPool                                                                 thread_pool_;
+		std::map<std::pair<int, int>, std::shared_ptr<Terrain>>                    chunk_cache_;
+		std::vector<std::shared_ptr<Terrain>>                                      visible_chunks_;
+		std::map<std::pair<int, int>, TaskHandle<TerrainGenerationResult>>         pending_chunks_;
+		std::map<std::pair<int, int>, TaskHandle<std::vector<uint16_t>>>           pending_superchunks_;
+		mutable std::map<std::pair<int, int>, std::vector<uint16_t>>                superchunk_ram_cache_;
 	};
 
 } // namespace Boidsish

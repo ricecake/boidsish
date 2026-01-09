@@ -137,6 +137,49 @@ namespace Boidsish {
 				visible_chunks_.push_back(val);
 			}
 		}
+
+		// --- Superchunk pre-generation ---
+		const int superchunk_texture_dim = chunk_size_ * chunk_size_;
+		int       current_superchunk_x = static_cast<int>(camera.x) / superchunk_texture_dim;
+		int       current_superchunk_z = static_cast<int>(camera.z) / superchunk_texture_dim;
+		int       superchunk_view_distance = 1;
+
+		for (int x = current_superchunk_x - superchunk_view_distance;
+		     x <= current_superchunk_x + superchunk_view_distance;
+		     ++x) {
+			for (int z = current_superchunk_z - superchunk_view_distance;
+			     z <= current_superchunk_z + superchunk_view_distance;
+			     ++z) {
+				std::pair<int, int> chunk_coord = {x, z};
+				std::string         filename =
+					"terrain_cache/superchunk_" + std::to_string(x) + "_" + std::to_string(z) + ".dat";
+
+				if (!std::filesystem::exists(filename) && pending_superchunks_.find(chunk_coord) == pending_superchunks_.end()) {
+					pending_superchunks_.emplace(
+						chunk_coord,
+						thread_pool_.enqueue(
+							TaskPriority::LOW,
+							&TerrainGenerator::GenerateSuperChunkTexture,
+							this,
+							x,
+							z
+						)
+					);
+				}
+			}
+		}
+
+		// Process completed superchunks
+		std::vector<std::pair<int, int>> completed_superchunks;
+		for (auto& pair : pending_superchunks_) {
+			if (pair.second.is_ready()) {
+				superchunk_ram_cache_[pair.first] = pair.second.get();
+				completed_superchunks.push_back(pair.first);
+			}
+		}
+		for (const auto& key : completed_superchunks) {
+			pending_superchunks_.erase(key);
+		}
 	}
 
 	auto TerrainGenerator::fbm(float x, float z, TerrainParameters params) {
@@ -485,7 +528,6 @@ namespace Boidsish {
 		const int sub_texture_dim = range * 2;
 
 		std::vector<uint16_t> sub_texture_data(sub_texture_dim * sub_texture_dim * 4);
-		std::map<std::pair<int, int>, std::vector<uint16_t>> superchunk_cache;
 
 		for (int y = 0; y < sub_texture_dim; ++y) {
 			for (int x = 0; x < sub_texture_dim; ++x) {
@@ -495,10 +537,11 @@ namespace Boidsish {
 				int superChunkX = floor((float)world_x / texture_dim);
 				int superChunkZ = floor((float)world_z / texture_dim);
 
-				if (superchunk_cache.find({superChunkX, superChunkZ}) == superchunk_cache.end()) {
-					superchunk_cache[{superChunkX, superChunkZ}] = GenerateSuperChunkTexture(superChunkX, superChunkZ);
+				if (superchunk_ram_cache_.find({superChunkX, superChunkZ}) == superchunk_ram_cache_.end()) {
+					// If not in RAM, and not pending, then we can't get it this frame.
+					return {};
 				}
-				const auto& superchunk_data = superchunk_cache.at({superChunkX, superChunkZ});
+				const auto& superchunk_data = superchunk_ram_cache_.at({superChunkX, superChunkZ});
 
 				int local_x = world_x - superChunkX * texture_dim;
 				int local_z = world_z - superChunkZ * texture_dim;
