@@ -16,6 +16,7 @@ find_package(glfw3 REQUIRED)
 find_package(glm REQUIRED)
 find_package(Bullet REQUIRED)
 find_package(assimp REQUIRED)
+find_package(ZLIB REQUIRED)
 
 # 1. Define ImGui FIRST so FastNoise2 can see it
 add_library(imgui STATIC
@@ -67,6 +68,7 @@ target_link_libraries(boidsish
         poolSTL::poolSTL
         ${ASSIMP_LIBRARIES}
         ${BULLET_LIBRARIES}
+        ZLIB::ZLIB
 )
 
 # 5. Build Examples

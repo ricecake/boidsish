@@ -7,6 +7,7 @@
 #include <fstream>
 #include <future>
 #include <iostream>
+#include "zstr.hpp"
 #include <numeric>
 #include <ranges>
 #include <string>
@@ -394,28 +395,58 @@ namespace Boidsish {
 		std::filesystem::create_directory("terrain_cache");
 		std::string filename = "terrain_cache/superchunk_" + std::to_string(superChunkX) + "_" +
 			std::to_string(superChunkZ) + ".dat";
+		const uint32_t kMagicNumber = 0x1F9D48E1;
 		if (std::filesystem::exists(filename)) {
 			std::ifstream infile(filename, std::ios::binary);
-			int           width = 0, height = 0;
-			infile.read(reinterpret_cast<char*>(&width), sizeof(int));
-			infile.read(reinterpret_cast<char*>(&height), sizeof(int));
+			if (!infile) {
+				logger::LOG("Failed to open superchunk cache file for reading: " + filename);
+				std::filesystem::remove(filename);
+			} else {
+				uint32_t magic_number = 0;
+				infile.read(reinterpret_cast<char*>(&magic_number), sizeof(uint32_t));
 
-			// Sanity check the dimensions from the file
-			const int kMaxSize = 8192;
-			if (width > 0 && height > 0 && width <= kMaxSize && height <= kMaxSize) {
-				std::vector<uint16_t> pixels(width * height * 4);
-				infile.read(reinterpret_cast<char*>(pixels.data()), pixels.size() * sizeof(uint16_t));
-				infile.close();
-				if (infile.gcount() == pixels.size() * sizeof(uint16_t)) {
-					logger::LOG("Loaded superchunk from cache", filename, width, height, pixels.size());
-					return pixels;
+				if (magic_number == kMagicNumber) {
+					// COMPRESSED PATH
+					int width = 0, height = 0;
+					infile.read(reinterpret_cast<char*>(&width), sizeof(int));
+					infile.read(reinterpret_cast<char*>(&height), sizeof(int));
+
+					const int kMaxSize = 8192;
+					if (width > 0 && height > 0 && width <= kMaxSize && height <= kMaxSize) {
+						zstr::istream z_infile(infile.rdbuf());
+						std::vector<uint16_t> pixels(width * height * 4);
+						z_infile.read(reinterpret_cast<char*>(pixels.data()), pixels.size() * sizeof(uint16_t));
+
+						if (z_infile.good()) {
+							logger::LOG("Loaded compressed superchunk from cache", filename, width, height, pixels.size());
+							infile.close();
+							return pixels;
+						}
+					}
+				} else {
+					// UNCOMPRESSED (legacy) PATH
+					infile.seekg(0);
+					int width = 0, height = 0;
+					infile.read(reinterpret_cast<char*>(&width), sizeof(int));
+					infile.read(reinterpret_cast<char*>(&height), sizeof(int));
+
+					const int kMaxSize = 8192;
+					if (width > 0 && height > 0 && width <= kMaxSize && height <= kMaxSize) {
+						std::vector<uint16_t> pixels(width * height * 4);
+						infile.read(reinterpret_cast<char*>(pixels.data()), pixels.size() * sizeof(uint16_t));
+						if (infile.gcount() == pixels.size() * sizeof(uint16_t)) {
+							logger::LOG("Loaded superchunk from cache", filename, width, height, pixels.size());
+							infile.close();
+							return pixels;
+						}
+					}
 				}
-			}
 
-			// If we're here, the file was invalid.
-			logger::LOG("Corrupted superchunk cache file, deleting: " + filename);
-			infile.close();
-			std::filesystem::remove(filename);
+				// If we reach here, either path failed.
+				logger::LOG("Corrupted superchunk cache file, deleting: " + filename);
+				infile.close();
+				std::filesystem::remove(filename);
+			}
 		}
 
 		std::vector<uint16_t> pixels(texture_dim * texture_dim * 4);
@@ -442,28 +473,42 @@ namespace Boidsish {
 		}
 
 		std::ofstream outfile(filename, std::ios::binary);
-		int           width = texture_dim;
-		int           height = texture_dim;
+		int            width = texture_dim;
+		int            height = texture_dim;
+		outfile.write(reinterpret_cast<const char*>(&kMagicNumber), sizeof(uint32_t));
 		outfile.write(reinterpret_cast<const char*>(&width), sizeof(int));
 		outfile.write(reinterpret_cast<const char*>(&height), sizeof(int));
-		outfile.write(reinterpret_cast<const char*>(pixels.data()), pixels.size() * sizeof(uint16_t));
-		outfile.close();
+		zstr::ostream z_outfile(outfile.rdbuf());
+		z_outfile.write(reinterpret_cast<const char*>(pixels.data()), pixels.size() * sizeof(uint16_t));
 		return pixels;
 	}
 
 	void TerrainGenerator::ConvertDatToPng(const std::string& dat_filepath, const std::string& png_filepath) {
-		std::ifstream infile(dat_filepath, std::ios::binary);
+		const uint32_t kMagicNumber = 0x1F9D48E1;
+		std::ifstream  infile(dat_filepath, std::ios::binary);
 		if (!infile) {
 			logger::ERROR("Failed to open .dat file: " + dat_filepath);
 			return;
 		}
+		uint32_t magic_number = 0;
+		infile.read(reinterpret_cast<char*>(&magic_number), sizeof(uint32_t));
 
-		int width, height;
-		infile.read(reinterpret_cast<char*>(&width), sizeof(int));
-		infile.read(reinterpret_cast<char*>(&height), sizeof(int));
+		int                   width, height;
+		std::vector<uint16_t> pixels16;
 
-		std::vector<uint16_t> pixels16(width * height * 4);
-		infile.read(reinterpret_cast<char*>(pixels16.data()), pixels16.size() * sizeof(uint16_t));
+		if (magic_number == kMagicNumber) {
+			infile.read(reinterpret_cast<char*>(&width), sizeof(int));
+			infile.read(reinterpret_cast<char*>(&height), sizeof(int));
+			pixels16.resize(width * height * 4);
+			zstr::istream z_infile(infile.rdbuf());
+			z_infile.read(reinterpret_cast<char*>(pixels16.data()), pixels16.size() * sizeof(uint16_t));
+		} else {
+			infile.seekg(0);
+			infile.read(reinterpret_cast<char*>(&width), sizeof(int));
+			infile.read(reinterpret_cast<char*>(&height), sizeof(int));
+			pixels16.resize(width * height * 4);
+			infile.read(reinterpret_cast<char*>(pixels16.data()), pixels16.size() * sizeof(uint16_t));
+		}
 		infile.close();
 
 		std::vector<uint8_t> pixels8(width * height * 4);
