@@ -14,6 +14,7 @@
 
 #include "graphics.h"
 #include "logger.h"
+#include "stb_image_write.h"
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 
@@ -387,6 +388,9 @@ namespace Boidsish {
 	}
 
 	std::vector<uint16_t> TerrainGenerator::GenerateSuperChunkTexture(int superChunkX, int superChunkZ) {
+		const int kSuperChunkSizeInChunks = chunk_size_;
+		const int texture_dim = kSuperChunkSizeInChunks * chunk_size_;
+
 		std::filesystem::create_directory("terrain_cache");
 		std::string filename = "terrain_cache/superchunk_" + std::to_string(superChunkX) + "_" +
 			std::to_string(superChunkZ) + ".dat";
@@ -403,7 +407,7 @@ namespace Boidsish {
 				infile.read(reinterpret_cast<char*>(pixels.data()), pixels.size() * sizeof(uint16_t));
 				infile.close();
 				if (infile.gcount() == pixels.size() * sizeof(uint16_t)) {
-					logger::LOG("Loaded superchunk from cache: " + filename);
+					logger::LOG("Loaded superchunk from cache", filename, width, height, pixels.size());
 					return pixels;
 				}
 			}
@@ -414,8 +418,6 @@ namespace Boidsish {
 			std::filesystem::remove(filename);
 		}
 
-		const int             kSuperChunkSizeInChunks = chunk_size_;
-		const int             texture_dim = kSuperChunkSizeInChunks * chunk_size_;
 		std::vector<uint16_t> pixels(texture_dim * texture_dim * 4);
 		float                 max_height = GetMaxHeight();
 
@@ -447,5 +449,28 @@ namespace Boidsish {
 		outfile.write(reinterpret_cast<const char*>(pixels.data()), pixels.size() * sizeof(uint16_t));
 		outfile.close();
 		return pixels;
+	}
+
+	void TerrainGenerator::ConvertDatToPng(const std::string& dat_filepath, const std::string& png_filepath) {
+		std::ifstream infile(dat_filepath, std::ios::binary);
+		if (!infile) {
+			logger::ERROR("Failed to open .dat file: " + dat_filepath);
+			return;
+		}
+
+		int width, height;
+		infile.read(reinterpret_cast<char*>(&width), sizeof(int));
+		infile.read(reinterpret_cast<char*>(&height), sizeof(int));
+
+		std::vector<uint16_t> pixels16(width * height * 4);
+		infile.read(reinterpret_cast<char*>(pixels16.data()), pixels16.size() * sizeof(uint16_t));
+		infile.close();
+
+		std::vector<uint8_t> pixels8(width * height * 4);
+		for (size_t i = 0; i < pixels16.size(); ++i) {
+			pixels8[i] = static_cast<uint8_t>(pixels16[i] / 256);
+		}
+
+		stbi_write_png(png_filepath.c_str(), width, height, 4, pixels8.data(), width * 4);
 	}
 } // namespace Boidsish
