@@ -90,6 +90,9 @@ namespace Boidsish {
 
 		std::vector<glm::vec3> GetPath(glm::vec2 start_pos, int num_points, float step_size) const;
 
+		float getBiomeControlValue(float x, float z) const;
+        glm::vec2 getDomainWarp(float x, float z) const;
+
 	private:
 		glm::vec2 findClosestPointOnPath(glm::vec2 sample_pos) const;
 		glm::vec3 getPathInfluence(float x, float z) const;

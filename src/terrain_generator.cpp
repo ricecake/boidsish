@@ -195,36 +195,36 @@ namespace Boidsish {
 	};
 
 	glm::vec3 TerrainGenerator::pointGenerate(float x, float z) const {
-		glm::vec3 path_data = getPathInfluence(x, z);
-		float     path_factor = path_data.x;
+    glm::vec3 path_data = getPathInfluence(x, z);
+    float     path_factor = path_data.x;
 
-		glm::vec2 push_dir = glm::normalize(glm::vec2(path_data.y, path_data.z));
+    glm::vec2 push_dir = glm::normalize(glm::vec2(path_data.y, path_data.z));
+    float     warp_strength = (1.0f - path_factor) * 20.0f;
+    glm::vec2 warp = push_dir * warp_strength;
 
-		float warp_strength = (1.0f - path_factor) * 20.0f;
+    glm::vec2 pos = glm::vec2(x, z);
+    glm::vec2 warped_pos = pos + warp;
 
-		glm::vec2 pos = glm::vec2(x, z);
-		glm::vec2 warped_pos = pos + (push_dir * warp_strength);
+    float control_value = getBiomeControlValue(x, z);
 
-		float control_value = control_perlin_noise_.octave2D_01(x * control_noise_scale_, z * control_noise_scale_, 2);
+    BiomeAttributes current;
+    auto            low_threshold = (floor(control_value * biomes.size()) / biomes.size());
+    auto            high_threshold = (ceil(control_value * biomes.size()) / biomes.size());
+    auto            low_item = biomes[int(floor(control_value * biomes.size()))];
+    auto            high_item = biomes[int(ceil(control_value * biomes.size()))];
+    auto            t = glm::smoothstep(low_threshold, high_threshold, control_value);
 
-		BiomeAttributes current;
-		auto            low_threshold = (floor(control_value * biomes.size()) / biomes.size());
-		auto            high_threshold = (ceil(control_value * biomes.size()) / biomes.size());
-		auto            low_item = biomes[int(floor(control_value * biomes.size()))];
-		auto            high_item = biomes[int(ceil(control_value * biomes.size()))];
-		auto            t = glm::smoothstep(low_threshold, high_threshold, control_value);
+    current.spikeDamping = std::lerp(low_item.spikeDamping, high_item.spikeDamping, t);
+    current.detailMasking = std::lerp(low_item.detailMasking, high_item.detailMasking, t);
+    current.floorLevel = std::lerp(low_item.floorLevel, high_item.floorLevel, t);
 
-		current.spikeDamping = std::lerp(low_item.spikeDamping, high_item.spikeDamping, t);
-		current.detailMasking = std::lerp(low_item.detailMasking, high_item.detailMasking, t);
-		current.floorLevel = std::lerp(low_item.floorLevel, high_item.floorLevel, t);
+    glm::vec3 terrain_height = biomefbm(warped_pos, current);
 
-		glm::vec3 terrain_height = biomefbm(warped_pos, current);
+    float path_floor_level = -0.10f;
+    terrain_height.x = glm::mix(path_floor_level, terrain_height.x, path_factor);
 
-		float path_floor_level = -0.10f;
-		terrain_height.x = glm::mix(path_floor_level, terrain_height.x, path_factor);
-
-		return terrain_height;
-	}
+    return terrain_height;
+}
 
 	TerrainGenerationResult TerrainGenerator::generateChunkData(int chunkX, int chunkZ) {
 		const int num_vertices_x = chunk_size_ + 1;
@@ -449,6 +449,18 @@ namespace Boidsish {
 		outfile.write(reinterpret_cast<const char*>(pixels.data()), pixels.size() * sizeof(uint16_t));
 		outfile.close();
 		return pixels;
+	}
+
+	float TerrainGenerator::getBiomeControlValue(float x, float z) const {
+		return control_perlin_noise_.octave2D_01(x * control_noise_scale_, z * control_noise_scale_, 2);
+	}
+
+	glm::vec2 TerrainGenerator::getDomainWarp(float x, float z) const {
+		glm::vec3 path_data = getPathInfluence(x, z);
+		float     path_factor = path_data.x;
+		glm::vec2 push_dir = glm::normalize(glm::vec2(path_data.y, path_data.z));
+		float     warp_strength = (1.0f - path_factor) * 20.0f;
+		return push_dir * warp_strength;
 	}
 
 	void TerrainGenerator::ConvertDatToPng(const std::string& dat_filepath, const std::string& png_filepath) {
