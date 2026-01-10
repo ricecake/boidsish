@@ -1,8 +1,8 @@
 #include <functional>
 #include <iostream>
 
-#include "graphics.h"
 #include "VortexFlockingHandler.h"
+#include "graphics.h"
 
 using namespace Boidsish;
 

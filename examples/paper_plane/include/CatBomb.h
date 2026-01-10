@@ -6,22 +6,22 @@
 
 namespace Boidsish {
 
-class CatBomb : public Entity<Model> {
-public:
-    CatBomb(int id = 0, Vector3 pos = {0, 0, 0}, glm::vec3 dir = {0, 0, 0}, Vector3 vel = {0, 0, 0});
+	class CatBomb: public Entity<Model> {
+	public:
+		CatBomb(int id = 0, Vector3 pos = {0, 0, 0}, glm::vec3 dir = {0, 0, 0}, Vector3 vel = {0, 0, 0});
 
-    void UpdateEntity(const EntityHandler& handler, float time, float delta_time) override;
+		void UpdateEntity(const EntityHandler& handler, float time, float delta_time) override;
 
-private:
-    void Explode(const EntityHandler& handler);
+	private:
+		void Explode(const EntityHandler& handler);
 
-    // Constants
-    static constexpr float kGravity = 0.15f;
-    static constexpr float kExplosionDisplayTime = 2.0f;
+		// Constants
+		static constexpr float kGravity = 0.15f;
+		static constexpr float kExplosionDisplayTime = 2.0f;
 
-    // State
-    float lived_ = 0.0f;
-    bool  exploded_ = false;
-};
+		// State
+		float lived_ = 0.0f;
+		bool  exploded_ = false;
+	};
 
 } // namespace Boidsish

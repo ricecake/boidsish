@@ -15,6 +15,7 @@
 #include "graphics.h"
 #include "logger.h"
 #include "stb_image_write.h"
+#include <FastNoise/FastNoise.h>
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 
@@ -38,8 +39,24 @@ namespace Boidsish {
 		return true;
 	}
 
-	TerrainGenerator::TerrainGenerator(int seed): control_perlin_noise_(seed + 1), thread_pool_() {}
+	TerrainGenerator::TerrainGenerator(int seed): seed_(seed), thread_pool_() {
+		// CyAF@BOAI@BE
+		// CiAF@BBA==
+		// CyAF@BOAI@BE
+		// Cg@ACBBIAU@BoAQ@BQ=
+		// LQIKE@DgBQ@BtmZmY/E5qZGT8ECg8AB@CkGE@DECv8@Aw=
+		// FwkKE@DgBQ@BtmZmY/E5qZGT8EAg8AB@CkGE@DECv8@Aw=
+		// Ch@DIAU@BLZmZmPxOamRk/BA==
+		// Cg@ACBBE@DgBQ@BtmZmY/E5qZGT8E
+		// Kg@AMBACR@CWQzAB@BCQsQ@CC@DDAM@ABABA==
+		// Eg@APBBCQcQ@Dw=
+		// Eg@APBBCQc@BgQR@DDA==
+		control_noise_generator_ = FastNoise::NewFromEncodedNodeTree("Eg@APBBCQc@BgQR@DDA==");
+	}
 
+	// ricecake@microlambda:~/Projects/boidsish$ git  show
+	// 934ace647d54dede0fcc25cd6ca0de209ea74cd3:src/terrain_generator.cpp ricecake@microlambda:~/Projects/boidsish$ git
+	// stash show 934ace647d54dede0fcc25cd6ca0de209ea74cd3 -p
 	TerrainGenerator::~TerrainGenerator() {
 		for (auto& pair : pending_chunks_) {
 			pair.second.cancel();
@@ -456,7 +473,8 @@ namespace Boidsish {
 	}
 
 	float TerrainGenerator::getBiomeControlValue(float x, float z) const {
-		return control_perlin_noise_.octave2D_01(x * control_noise_scale_, z * control_noise_scale_, 2);
+		return control_noise_generator_->GenSingle2D(x * control_noise_scale_, z * control_noise_scale_, seed_);
+		// return control_perlin_noise_.octave2D_01(x * control_noise_scale_, z * control_noise_scale_, 2);
 	}
 
 	glm::vec2 TerrainGenerator::getDomainWarp(float x, float z) const {

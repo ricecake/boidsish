@@ -7,6 +7,7 @@
 
 #include "PerlinNoise.hpp"
 #include "Simplex.h"
+#include <FastNoise/FastNoise.h>
 
 namespace Boidsish {
 	struct Frustum;
@@ -139,13 +140,15 @@ namespace Boidsish {
 		int       octaves_ = 4;
 		float     lacunarity_ = 0.99f;
 		float     persistence_ = 0.5f;
+		int       seed_;
 
 		// Control noise parameters
 		constexpr static const float control_noise_scale_ = 0.01f;
 		constexpr static const float kPathFrequency = 0.002f;
 
 		// Noise generators
-		siv::PerlinNoise control_perlin_noise_;
+		// siv::PerlinNoise control_perlin_noise_;
+		FastNoise::SmartNode<> control_noise_generator_;
 
 		auto      fbm(float x, float z, TerrainParameters params);
 		auto      biomefbm(glm::vec2 pos, BiomeAttributes attr) const;

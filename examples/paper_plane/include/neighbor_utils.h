@@ -1,13 +1,13 @@
 #pragma once
 
-#include <vector>
 #include <memory>
+#include <vector>
 
 namespace Boidsish {
 
-class Terrain; // Forward declaration
+	class Terrain; // Forward declaration
 
-std::vector<const Terrain*>
-get_neighbors(const Terrain* chunk, const std::vector<std::shared_ptr<Terrain>>& all_chunks);
+	std::vector<const Terrain*>
+	get_neighbors(const Terrain* chunk, const std::vector<std::shared_ptr<Terrain>>& all_chunks);
 
 } // namespace Boidsish

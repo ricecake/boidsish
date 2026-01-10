@@ -6,26 +6,36 @@
 #include <glm/glm.hpp>
 
 // Function to map a value to a color using a gradient
-glm::vec3 getColor(float value) {
+glm::vec3 getColor(float control_value) {
 	// A simple gradient from blue to green to brown to white
-	glm::vec3 colors[] = {
-		{0.0f, 0.0f, 0.5f}, // Deep water
-		{0.0f, 0.5f, 0.5f}, // Shallow water
-		{0.0f, 0.5f, 0.0f}, // Low land
-		{0.5f, 0.5f, 0.0f}, // Mid land
-		{1.0f, 1.0f, 1.0f}  // High land (snow)
+	std::array<glm::vec3, 6> colors = {
+		glm::vec3{0.0f, 0.0f, 0.5f}, // Deep water
+		glm::vec3{0.0f, 0.5f, 0.5f}, // Shallow water
+		glm::vec3{0.0f, 0.5f, 0.0f}, // Low land
+		glm::vec3{0.5f, 0.5f, 0.0f}, // Mid land
+		glm::vec3{0.5f, 0.5f, 0.5f},
+		glm::vec3{1.0f, 1.0f, 1.0f} // High land (snow)
 	};
-	float positions[] = {0.0f, 0.2f, 0.4f, 0.7f, 1.0f};
+	// float positions[] = {0.0f, 0.2f, 0.4f, 0.7f, 1.0f};
 
-	if (value <= positions[0])
-		return colors[0];
-	for (size_t i = 0; i < 4; ++i) {
-		if (value < positions[i + 1]) {
-			float t = (value - positions[i]) / (positions[i + 1] - positions[i]);
-			return glm::mix(colors[i], colors[i + 1], t);
-		}
-	}
-	return colors[4];
+	auto low_threshold = (floor(control_value * colors.size()) / colors.size());
+	auto high_threshold = (ceil(control_value * colors.size()) / colors.size());
+	auto low_item = colors[int(floor(control_value * colors.size()))];
+	auto high_item = colors[int(ceil(control_value * colors.size()))];
+	auto t = glm::smoothstep(low_threshold, high_threshold, control_value);
+	return glm::mix(low_item, high_item, t);
+
+	// current.spikeDamping = std::lerp(low_item.spikeDamping, high_item.spikeDamping, t);
+
+	// if (value <= positions[0])
+	// 	return colors[0];
+	// for (size_t i = 0; i < 4; ++i) {
+	// 	if (value < positions[i + 1]) {
+	// 		float t = (value - positions[i]) / (positions[i + 1] - positions[i]);
+	// 		return glm::mix(colors[i], colors[i + 1], t);
+	// 	}
+	// }
+	// return colors[4];
 }
 
 void generateHeightmap(const Boidsish::TerrainGenerator& generator, int width, int height) {
@@ -115,12 +125,12 @@ void generateDomainWarpMap(const Boidsish::TerrainGenerator& generator, int widt
 
 int main() {
 	Boidsish::TerrainGenerator generator;
-	const int                  width = 1024;
-	const int                  height = 1024;
+	const int                  width = 2048;
+	const int                  height = 2048;
 
-	generateHeightmap(generator, width, height);
+	// generateDomainWarpMap(generator, width, height);
 	generateBiomeMap(generator, width, height);
-	generateDomainWarpMap(generator, width, height);
+	generateHeightmap(generator, width, height);
 
 	return 0;
 }

@@ -1,12 +1,12 @@
 #pragma once
 
-#include <vector>
 #include <memory>
+#include <vector>
 
 namespace Boidsish {
 
-class Shape; // Forward declaration
+	class Shape; // Forward declaration
 
-std::vector<std::shared_ptr<Shape>> GraphExample(float time);
+	std::vector<std::shared_ptr<Shape>> GraphExample(float time);
 
 } // namespace Boidsish

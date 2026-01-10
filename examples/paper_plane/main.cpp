@@ -2,12 +2,12 @@
 #include <memory>
 #include <vector>
 
+#include "PaperPlane.h"
+#include "PaperPlaneHandler.h"
+#include "PaperPlaneInputController.h"
 #include "graphics.h"
 #include "hud.h"
 #include "model.h"
-#include "PaperPlaneHandler.h"
-#include "PaperPlane.h"
-#include "PaperPlaneInputController.h"
 #include <GLFW/glfw3.h>
 
 using namespace Boidsish;

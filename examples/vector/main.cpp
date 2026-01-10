@@ -1,11 +1,11 @@
-#include <iostream>
 #include <functional>
+#include <iostream>
 
-#include "graphics.h"
-#include "fire_effect_manager.h"
-#include <GLFW/glfw3.h>
-#include "VectorDemoHandler.h"
 #include "GraphExample.h"
+#include "VectorDemoHandler.h"
+#include "fire_effect_manager.h"
+#include "graphics.h"
+#include <GLFW/glfw3.h>
 
 using namespace Boidsish;
 
