@@ -5,17 +5,15 @@
 #include <tuple>
 #include <vector>
 
-#include "PerlinNoise.hpp"
 #include "Simplex.h"
+#include "terrain.h"
+#include "thread_pool.h"
 #include <FastNoise/FastNoise.h>
 
 namespace Boidsish {
 	struct Frustum;
 	struct Camera;
 } // namespace Boidsish
-
-#include "terrain.h"
-#include "thread_pool.h"
 
 namespace Boidsish {
 
@@ -147,7 +145,6 @@ namespace Boidsish {
 		constexpr static const float kPathFrequency = 0.002f;
 
 		// Noise generators
-		// siv::PerlinNoise control_perlin_noise_;
 		FastNoise::SmartNode<> control_noise_generator_;
 
 		auto      fbm(float x, float z, TerrainParameters params);
