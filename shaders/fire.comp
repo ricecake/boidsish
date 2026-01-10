@@ -11,12 +11,13 @@ struct Particle {
 
 // Must match the C++ Emitter struct in fire_effect_manager.h
 struct Emitter {
-	vec3  position;
-	int   style;
+	vec4  position;
 	vec3  direction;
-	int   is_active;
+	int   style;
 	vec3  velocity;
-	float _padding2;
+	int   is_active;
+	vec3  terrain_texture_origin;
+	int   terrain_texture_layer;
 };
 
 layout(std430, binding = 0) buffer ParticleBuffer {
@@ -35,10 +36,9 @@ uniform float u_delta_time;
 uniform float u_time;
 uniform int   u_num_emitters;
 
-uniform sampler2D u_terrain_texture;
-uniform vec3      u_terrain_texture_origin;
-uniform int       u_terrain_texture_range;
-uniform float     u_terrain_max_height;
+uniform sampler2DArray u_terrain_texture;
+uniform int            u_terrain_texture_range;
+uniform float          u_terrain_max_height;
 
 
 // Basic pseudo-random number generator
@@ -225,15 +225,15 @@ void main() {
 		float lifeTimeModifier = rand(seed); // * 0.25 + 0.75;
 		// Initialize based on style
 		if (p.style == 0) { // MissileExhaust
-			p.pos = vec4(emitter.position, kExhaustLifetime * lifeTimeModifier);
+			p.pos = vec4(emitter.position.xyz, kExhaustLifetime * lifeTimeModifier);
 			vec3 perpendicular = normalize(cross(emitter.direction, random_vec));
 			vec3 spread_dir = mix(emitter.direction, perpendicular, kExhaustSpread * rand(seed.yx));
 			p.vel = vec4(emitter.velocity + normalize(spread_dir) * kExhaustSpeed * rand(seed), 0.0);
 		} else if (p.style == 1) { // Explosion
-			p.pos = vec4(emitter.position, kExplosionLifetime * lifeTimeModifier);
+			p.pos = vec4(emitter.position.xyz, kExplosionLifetime * lifeTimeModifier);
 			p.vel = vec4(normalize(random_vec) * kExplosionSpeed * 0.5 + rand(seed.yx), 0.0);
 		} else if (p.style == 2) { // Fire
-			p.pos = vec4(emitter.position + random_vec * 0.1, kFireLifetime * lifeTimeModifier);
+			p.pos = vec4(emitter.position.xyz + random_vec * 0.1, kFireLifetime * lifeTimeModifier);
 			p.vel = vec4(0, kFireSpeed, 0, 0); // Start with upward velocity
 		}
 	}
@@ -261,13 +261,13 @@ void main() {
 
 		p.pos.xyz += p.vel.xyz * u_delta_time;
 
-		vec2 texture_size = textureSize(u_terrain_texture, 0);
-		if (texture_size.x > 0 && texture_size.y > 0) {
-			vec2 relative_pos = p.pos.xz - u_terrain_texture_origin.xz;
+		Emitter emitter = emitters[p.emitter_index];
+		if (emitter.terrain_texture_layer != -1) {
+			vec2 relative_pos = p.pos.xz - emitter.terrain_texture_origin.xz;
 			vec2 uv = relative_pos / (u_terrain_texture_range * 2.0);
 
 			if (uv.x >= 0.0 && uv.x <= 1.0 && uv.y >= 0.0 && uv.y <= 1.0) {
-				vec4 terrain_data = texture(u_terrain_texture, uv);
+				vec4 terrain_data = texture(u_terrain_texture, vec3(uv, emitter.terrain_texture_layer));
 				float terrain_height = terrain_data.a * u_terrain_max_height;
 
 				if (p.pos.y < terrain_height) {

@@ -14,7 +14,8 @@ namespace Boidsish {
 			const glm::vec3& direction = glm::vec3(0.0f),
 			const glm::vec3& velocity = glm::vec3(0.0f),
 			int              max_particles = -1,
-			float            lifetime = -1.0f
+			float            lifetime = -1.0f,
+			bool             needs_terrain_data = false
 		);
 
 		void SetPosition(const glm::vec3& pos) { position_ = pos; }
@@ -49,6 +50,20 @@ namespace Boidsish {
 
 		void SetLived(float lived) { lived_ = lived; }
 
+		bool GetNeedsTerrainData() const { return needs_terrain_data_; }
+
+		int GetTerrainTextureLayer() const { return terrain_texture_layer_; }
+
+		void SetTerrainTextureLayer(int layer) { terrain_texture_layer_ = layer; }
+
+		const glm::vec3& GetTerrainTextureOrigin() const { return terrain_texture_origin_; }
+
+		void SetTerrainTextureOrigin(const glm::vec3& origin) { terrain_texture_origin_ = origin; }
+
+		const glm::vec3& GetLastTerrainQueryCenter() const { return last_terrain_query_center_; }
+
+		void SetLastTerrainQueryCenter(const glm::vec3& center) { last_terrain_query_center_ = center; }
+
 	private:
 		inline static int count = 1;
 		glm::vec3         position_;
@@ -60,6 +75,10 @@ namespace Boidsish {
 		bool              active_{true};
 		float             lifetime_ = -1.0f;
 		float             lived_ = 0.0f;
+		bool              needs_terrain_data_{false};
+		int               terrain_texture_layer_{-1};
+		glm::vec3         terrain_texture_origin_{0.0f};
+		glm::vec3         last_terrain_query_center_{0.0f};
 	};
 
 } // namespace Boidsish

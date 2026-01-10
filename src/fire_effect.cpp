@@ -8,7 +8,8 @@ namespace Boidsish {
 		const glm::vec3& direction,
 		const glm::vec3& velocity,
 		int              max_particles,
-		float            lifetime
+		float            lifetime,
+		bool             needs_terrain_data
 	):
 		position_(position),
 		style_(style),
@@ -16,6 +17,7 @@ namespace Boidsish {
 		id_(count++),
 		velocity_(velocity),
 		max_particles_(max_particles),
-		lifetime_(lifetime) {}
+		lifetime_(lifetime),
+		needs_terrain_data_(needs_terrain_data) {}
 
 } // namespace Boidsish

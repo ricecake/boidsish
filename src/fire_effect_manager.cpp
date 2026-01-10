@@ -66,6 +66,29 @@ namespace Boidsish {
 		// A dummy VAO is required by OpenGL 4.2 core profile for drawing arrays.
 		glGenVertexArrays(1, &dummy_vao_);
 
+		glGenTextures(1, &terrain_texture_);
+		glBindTexture(GL_TEXTURE_2D_ARRAY, terrain_texture_);
+		glTexImage3D(
+			GL_TEXTURE_2D_ARRAY,
+			0,
+			GL_RGBA16F,
+			kTerrainTextureRange * 2,
+			kTerrainTextureRange * 2,
+			kMaxEmitters,
+			0,
+			GL_RGBA,
+			GL_UNSIGNED_SHORT,
+			nullptr
+		);
+		glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+		glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+		glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+		glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+
+		for (int i = 0; i < kMaxEmitters; ++i) {
+			available_texture_layers_.push(i);
+		}
+
 		initialized_ = true;
 	}
 
@@ -75,15 +98,31 @@ namespace Boidsish {
 		const glm::vec3& direction,
 		const glm::vec3& velocity,
 		int              max_particles,
-		float            lifetime
+		float            lifetime,
+		bool             needs_terrain_data
 	) {
 		_EnsureShaderAndBuffers();
 
 		// Find an inactive slot to reuse
 		for (size_t i = 0; i < effects_.size(); ++i) {
 			if (!effects_[i]) {
-				effects_[i] =
-					std::make_shared<FireEffect>(position, style, direction, velocity, max_particles, lifetime);
+				effects_[i] = std::make_shared<FireEffect>(
+					position,
+					style,
+					direction,
+					velocity,
+					max_particles,
+					lifetime,
+					needs_terrain_data
+				);
+				if (needs_terrain_data) {
+					if (!available_texture_layers_.empty()) {
+						effects_[i]->SetTerrainTextureLayer(available_texture_layers_.front());
+						available_texture_layers_.pop();
+					} else {
+						logger::ERROR("No available texture layers for fire effect.");
+					}
+				}
 				_UpdateParticleAllocation();
 				return effects_[i];
 			}
@@ -91,7 +130,23 @@ namespace Boidsish {
 
 		// If no inactive slots, add a new one if under capacity
 		if (effects_.size() < kMaxEmitters) {
-			auto effect = std::make_shared<FireEffect>(position, style, direction, velocity, max_particles, lifetime);
+			auto effect = std::make_shared<FireEffect>(
+				position,
+				style,
+				direction,
+				velocity,
+				max_particles,
+				lifetime,
+				needs_terrain_data
+			);
+			if (needs_terrain_data) {
+				if (!available_texture_layers_.empty()) {
+					effect->SetTerrainTextureLayer(available_texture_layers_.front());
+					available_texture_layers_.pop();
+				} else {
+					logger::ERROR("No available texture layers for fire effect.");
+				}
+			}
 			effects_.push_back(effect);
 			_UpdateParticleAllocation();
 			return effect;
@@ -105,14 +160,14 @@ namespace Boidsish {
 		if (effect) {
 			for (size_t i = 0; i < effects_.size(); ++i) {
 				if (effects_[i] == effect) {
+					if (effects_[i]->GetTerrainTextureLayer() != -1) {
+						available_texture_layers_.push(effects_[i]->GetTerrainTextureLayer());
+					}
 					effects_[i] = nullptr; // Mark as inactive
 					_UpdateParticleAllocation();
 					return;
 				}
 			}
-		}
-		if (terrain_texture_ != 0) {
-			glDeleteTextures(1, &terrain_texture_);
 		}
 	}
 
@@ -148,17 +203,52 @@ namespace Boidsish {
 		emitters.reserve(effects_.size());
 		for (const auto& effect : effects_) {
 			if (effect) {
+				if (effect->GetNeedsTerrainData() &&
+				    glm::distance(effect->GetPosition(), effect->GetLastTerrainQueryCenter()) > kTerrainTextureRange / 2) {
+					effect->SetLastTerrainQueryCenter(effect->GetPosition());
+					glm::vec3 out_origin;
+					float     out_max_height;
+					auto      texture_data = visualizer.GetTerrainTexture(
+						effect->GetPosition(),
+						kTerrainTextureRange,
+						out_origin,
+						out_max_height
+					);
+
+					if (texture_data.size() > 0) {
+						glActiveTexture(GL_TEXTURE0);
+						glBindTexture(GL_TEXTURE_2D_ARRAY, terrain_texture_);
+						glTexSubImage3D(
+							GL_TEXTURE_2D_ARRAY,
+							0,
+							0,
+							0,
+							effect->GetTerrainTextureLayer(),
+							kTerrainTextureRange * 2,
+							kTerrainTextureRange * 2,
+							1,
+							GL_RGBA,
+							GL_UNSIGNED_SHORT,
+							texture_data.data()
+						);
+						effect->SetTerrainTextureOrigin(out_origin);
+					}
+				}
+
 				emitters.push_back(
-					{effect->GetPosition(),
-				     (int)effect->GetStyle(),
-				     effect->GetDirection(),
-				     1, // is_active
-				     effect->GetVelocity(),
-				     0.0f}
+					Emitter{
+						glm::vec4(effect->GetPosition(), 1.0f),
+						effect->GetDirection(),
+						(int)effect->GetStyle(),
+						effect->GetVelocity(),
+						1, // is_active
+						effect->GetTerrainTextureOrigin(),
+						effect->GetTerrainTextureLayer()
+					}
 				);
 			} else {
 				// Add a placeholder for inactive emitters to maintain indexing
-				emitters.push_back({glm::vec3(0), 0, glm::vec3(0), 0, glm::vec3(0), 0.0f});
+				emitters.push_back(Emitter{});
 			}
 		}
 
@@ -183,49 +273,9 @@ namespace Boidsish {
 		compute_shader_->setFloat("u_time", time_);
 		compute_shader_->setInt("u_num_emitters", emitters.size());
 
-		// Get terrain texture
-		if (effects_.size() > 0 && effects_[0]) {
-			glm::vec3 out_origin;
-			float     out_max_height;
-			int       range = 100;
-
-			if (glm::distance(effects_[0]->GetPosition(), last_terrain_query_center_) > range / 2) {
-				last_terrain_query_center_ = effects_[0]->GetPosition();
-				auto texture_data = visualizer.GetTerrainTexture(
-					effects_[0]->GetPosition(),
-					range,
-					out_origin,
-					out_max_height
-				);
-
-				if (texture_data.size() > 0) {
-					if (terrain_texture_ == 0) {
-						glGenTextures(1, &terrain_texture_);
-					}
-					glActiveTexture(GL_TEXTURE0);
-					glBindTexture(GL_TEXTURE_2D, terrain_texture_);
-					glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-					glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-					glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-					glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-					glTexImage2D(
-						GL_TEXTURE_2D,
-						0,
-						GL_RGBA16F,
-						range * 2,
-						range * 2,
-						0,
-						GL_RGBA,
-						GL_UNSIGNED_SHORT,
-						texture_data.data()
-					);
-					compute_shader_->setInt("u_terrain_texture", 0);
-					compute_shader_->setVec3("u_terrain_texture_origin", out_origin);
-					compute_shader_->setInt("u_terrain_texture_range", range);
-					compute_shader_->setFloat("u_terrain_max_height", out_max_height);
-				}
-			}
-		}
+		compute_shader_->setInt("u_terrain_texture", 0);
+		glActiveTexture(GL_TEXTURE0);
+		glBindTexture(GL_TEXTURE_2D_ARRAY, terrain_texture_);
 
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, particle_buffer_);
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, emitter_buffer_);
@@ -386,6 +436,12 @@ namespace Boidsish {
 
 		glDepthMask(GL_TRUE);                              // Re-enable depth writing
 		glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA); // Reset blend mode
+	}
+
+	void FireEffectManager::PreloadTerrainData(const glm::vec3& center, Visualizer& visualizer) {
+		glm::vec3 out_origin;
+		float     out_max_height;
+		visualizer.GetTerrainTexture(center, kTerrainTextureRange, out_origin, out_max_height);
 	}
 
 } // namespace Boidsish

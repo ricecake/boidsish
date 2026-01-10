@@ -1,6 +1,7 @@
 #pragma once
 
 #include <memory>
+#include <queue>
 #include <vector>
 
 #include "fire_effect.h"
@@ -11,14 +12,17 @@ namespace Boidsish {
 
 	// This struct is mirrored in the compute shader.
 	// It must match the layout and padding there.
-	struct Emitter {
-		glm::vec3 position;
-		int       style;
+	struct alignas(16) Emitter {
+		glm::vec4 position;
 		glm::vec3 direction;
-		int       is_active;
+		int       style;
 		glm::vec3 velocity;
-		float     _padding2;
+		int       is_active;
+		glm::vec3 terrain_texture_origin;
+		int       terrain_texture_layer;
 	};
+
+	constexpr int kTerrainTextureRange = 100;
 
 	class FireEffectManager {
 	public:
@@ -35,9 +39,11 @@ namespace Boidsish {
 			const glm::vec3& direction = glm::vec3(0.0f),
 			const glm::vec3& velocity = glm::vec3(0.0f),
 			int              max_particles = -1,
-			float            lifetime = -1.0f
+			float            lifetime = -1.0f,
+			bool             needs_terrain_data = false
 		);
 		void RemoveEffect(const std::shared_ptr<FireEffect>& effect);
+		void PreloadTerrainData(const glm::vec3& center, Visualizer& visualizer);
 
 	private:
 		void _EnsureShaderAndBuffers();
@@ -45,6 +51,7 @@ namespace Boidsish {
 
 		std::vector<std::shared_ptr<FireEffect>> effects_;
 		std::vector<int>                         particle_to_emitter_map_;
+		std::queue<int>                          available_texture_layers_;
 
 		std::unique_ptr<ComputeShader> compute_shader_;
 		std::unique_ptr<Shader>        render_shader_;
@@ -57,7 +64,6 @@ namespace Boidsish {
 
 		bool      initialized_{false};
 		float     time_{0.0f};
-		glm::vec3 last_terrain_query_center_{0.0f};
 
 		static const int kMaxParticles = 32000;
 		static const int kMaxEmitters = 100;
