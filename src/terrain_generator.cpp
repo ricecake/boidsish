@@ -51,7 +51,11 @@ namespace Boidsish {
 		// Kg@AMBACR@CWQzAB@BCQsQ@CC@DDAM@ABABA==
 		// Eg@APBBCQcQ@Dw=
 		// Eg@APBBCQc@BgQR@DDA==
-		control_noise_generator_ = FastNoise::NewFromEncodedNodeTree("Eg@APBBCQc@BgQR@DDA==");
+		// LQIVCQ8AB@CgAAIA/CQc@ABwQQQDAACAPgsAAIA/BAIJDAsAAIA/BA==  --- best so far, needs a min-smooth
+		// HAktAhUJDwAE@BC@AgD8JBw@AHBBBAMAAIA+CwAAgD8EAgkMCwAAgD8EAv8DAAQ= -- the min smooth
+		// KBEKBBwJLQIVCQ8AB@CgAAIA/CQc@ABwQQQDAACAPgsAAIA/BAIJDAsAAIA/BAL/BAAEAv8DAAQ=
+		// HQkKBAIcCS0CFQkPAAQ@BIAACAPwkH@BcEEEAwAAgD4LAACAPwQCCQwLAACAPwQC/wQABAsAAIA/BA==
+		control_noise_generator_ = FastNoise::NewFromEncodedNodeTree("HAktAhUJDwAE@BC@AgD8JBw@AHBBBAMAAIA+CwAAgD8EAgkMCwAAgD8EAv8DAAQ=");
 	}
 
 	// ricecake@microlambda:~/Projects/boidsish$ git  show
