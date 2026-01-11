@@ -12,6 +12,7 @@
 #include "imgui.h"
 #include "imgui_impl_glfw.h"
 #include "imgui_impl_opengl3.h"
+#include "renderer_command_queue.h"
 #include "shape.h"
 #include "vector.h"
 #include "visual_effects.h"
@@ -30,6 +31,7 @@ namespace Boidsish {
 		class IWidget;
 	}
 	class EntityBase;
+	class EntityHandler;
 	class FireEffect;
 	class FireEffectManager;
 	class Path;
@@ -110,11 +112,9 @@ namespace Boidsish {
 		~Visualizer();
 
 		// Set the function/handler that generates shapes for each frame
-		void AddShapeHandler(ShapeFunction func);
-		void ClearShapeHandlers();
+		void AddEntityHandler(std::shared_ptr<EntityHandler> handler);
 
-		// Legacy method name for compatibility
-		void SetDotFunction(ShapeFunction func) { AddShapeHandler(func); }
+		Renderer::CommandQueue& GetCommandQueue();
 
 		// Start the visualization loop
 		void Run();
