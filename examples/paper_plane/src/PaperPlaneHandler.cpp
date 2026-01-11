@@ -24,7 +24,7 @@ namespace Boidsish {
 			damage_timer_ -= delta_time;
 			if (damage_timer_ <= 0.0f) {
 				vis->TogglePostProcessingEffect("Glitch", false);
-				vis->TogglePostProcessingEffect("Time Stutter", false);
+				// vis->TogglePostProcessingEffect("Time Stutter", false);
 			}
 		}
 
@@ -136,7 +136,7 @@ namespace Boidsish {
 
 			if (damage_timer_ <= 0.0f) {
 				vis->TogglePostProcessingEffect("Glitch", true);
-				vis->TogglePostProcessingEffect("Time Stutter", true);
+				// vis->TogglePostProcessingEffect("Time Stutter", true);
 			}
 
 			damage_timer_ = damage_timer_ + new_time;

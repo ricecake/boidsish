@@ -1,8 +1,10 @@
 #include "CatMissile.h"
 
+#include "GuidedMissileLauncher.h"
 #include "PaperPlane.h"
 #include "fire_effect.h"
 #include "graphics.h"
+#include "spatial_entity_handler.h"
 #include "terrain_generator.h"
 #include <glm/gtx/quaternion.hpp>
 
@@ -53,79 +55,79 @@ namespace Boidsish {
 			velo += Vector3(0, -0.07f, 0);
 			SetVelocity(velo);
 			return;
-		} else {
-			if (!fired_) {
-				SetTrailLength(500);
-				SetTrailRocket(true);
-				SetOrientToVelocity(true);
-				fired_ = true;
-			}
+		}
 
-			forward_speed_ += kAcceleration * delta_time;
-			if (forward_speed_ > kMaxSpeed) {
-				forward_speed_ = kMaxSpeed;
-			}
+		if (!fired_) {
+			SetTrailLength(500);
+			SetTrailRocket(true);
+			SetOrientToVelocity(true);
+			fired_ = true;
+		}
 
-			const float kTurnSpeed = 4.0f;
-			const float kDamping = 2.5f;
+		forward_speed_ += kAcceleration * delta_time;
+		if (forward_speed_ > kMaxSpeed) {
+			forward_speed_ = kMaxSpeed;
+		}
 
-			auto targets = handler.GetEntitiesByType<PaperPlane>();
-			if (targets.empty()) {
-				rotational_velocity_ = glm::vec3(0.0f);
-			} else {
-				auto plane = targets[0];
+		const float kTurnSpeed = 4.0f;
+		const float kDamping = 2.5f;
 
-				if ((plane->GetPosition() - GetPosition()).Magnitude() < 10) {
-					Explode(handler, true);
-					return;
-				}
+		auto& spatial_handler = static_cast<const SpatialEntityHandler&>(handler);
+		auto target = spatial_handler.FindNearest<GuidedMissileLauncher>(this->GetPosition(), 32.0f);
+		if (target == nullptr) {
+			rotational_velocity_ = glm::vec3(0.0f);
+			return;
+		}
 
-				Vector3   target_vec = (plane->GetPosition() - GetPosition()).Normalized();
-				glm::vec3 target_dir_world = glm::vec3(target_vec.x, target_vec.y, target_vec.z);
-				glm::vec3 target_dir_local = glm::inverse(orientation_) * target_dir_world;
+		if ((target->GetPosition() - GetPosition()).Magnitude() < 10) {
+			Explode(handler, true);
+			return;
+		}
 
-				glm::vec3 target_rot_velocity = glm::vec3(0.0f);
-				target_rot_velocity.y = target_dir_local.x * kTurnSpeed;
-				target_rot_velocity.x = -target_dir_local.y * kTurnSpeed;
+		Vector3   target_vec = (target->GetPosition() - GetPosition()).Normalized();
+		glm::vec3 target_dir_world = glm::vec3(target_vec.x, target_vec.y, target_vec.z);
+		glm::vec3 target_dir_local = glm::inverse(orientation_) * target_dir_world;
 
-				rotational_velocity_ += (target_rot_velocity - rotational_velocity_) * kDamping * delta_time;
-			}
+		glm::vec3 target_rot_velocity = glm::vec3(0.0f);
+		target_rot_velocity.y = target_dir_local.x * kTurnSpeed;
+		target_rot_velocity.x = -target_dir_local.y * kTurnSpeed;
 
-			if (lived_ <= 1.5f) {
-				std::uniform_real_distribution<float> dist(-4.0f, 4.0f);
-				glm::vec3                             error_vector(0.1f * dist(eng_), dist(eng_), 0);
-				rotational_velocity_ += error_vector * delta_time;
-			}
+		rotational_velocity_ += (target_rot_velocity - rotational_velocity_) * kDamping * delta_time;
 
-			const auto* terrain_generator = handler.GetTerrainGenerator();
-			if (terrain_generator) {
-				const float reaction_distance = 100.0f;
-				float       hit_dist = 0.0f;
+		if (lived_ <= 1.5f) {
+			std::uniform_real_distribution<float> dist(-4.0f, 4.0f);
+			glm::vec3                             error_vector(0.1f * dist(eng_), dist(eng_), 0);
+			rotational_velocity_ += error_vector * delta_time;
+		}
 
-				Vector3 vel_vec = GetVelocity();
-				if (vel_vec.MagnitudeSquared() > 1e-6) {
-					glm::vec3 origin = {GetPosition().x, GetPosition().y, GetPosition().z};
-					glm::vec3 dir = {vel_vec.x, vel_vec.y, vel_vec.z};
-					dir = glm::normalize(dir);
+		const auto* terrain_generator = handler.GetTerrainGenerator();
+		if (terrain_generator) {
+			const float reaction_distance = 100.0f;
+			float       hit_dist = 0.0f;
 
-					if (terrain_generator->Raycast(origin, dir, reaction_distance, hit_dist)) {
-						auto hit_coord = vel_vec.Normalized() * hit_dist;
-						auto [terrain_h, terrain_normal] = terrain_generator->pointProperties(hit_coord.x, hit_coord.z);
+			Vector3 vel_vec = GetVelocity();
+			if (vel_vec.MagnitudeSquared() > 1e-6) {
+				glm::vec3 origin = {GetPosition().x, GetPosition().y, GetPosition().z};
+				glm::vec3 dir = {vel_vec.x, vel_vec.y, vel_vec.z};
+				dir = glm::normalize(dir);
 
-						const float avoidance_strength = 20.0f;
-						const float kUpAlignmentThreshold = 0.5f;
-						float force_magnitude = avoidance_strength * (1.0f - ((10 + hit_dist) / reaction_distance));
+				if (terrain_generator->Raycast(origin, dir, reaction_distance, hit_dist)) {
+					auto hit_coord = vel_vec.Normalized() * hit_dist;
+					auto [terrain_h, terrain_normal] = terrain_generator->pointProperties(hit_coord.x, hit_coord.z);
 
-						glm::vec3 local_up = glm::vec3(0.0f, 1.0f, 0.0f);
-						auto      away = terrain_normal;
-						if (glm::dot(away, local_up) < kUpAlignmentThreshold) {
-							away = local_up;
-						}
-						glm::vec3 avoidance_force = away * force_magnitude;
-						glm::vec3 avoidance_local = glm::inverse(orientation_) * avoidance_force;
-						rotational_velocity_.y += avoidance_local.x * avoidance_strength * delta_time;
-						rotational_velocity_.x += avoidance_local.y * avoidance_strength * delta_time;
+					const float avoidance_strength = 5.0f;
+					const float kUpAlignmentThreshold = 0.5f;
+					float       force_magnitude = avoidance_strength * (1.0f - ((10 + hit_dist) / reaction_distance));
+
+					glm::vec3 local_up = glm::vec3(0.0f, 1.0f, 0.0f);
+					auto      away = terrain_normal;
+					if (glm::dot(away, local_up) < kUpAlignmentThreshold) {
+						away = local_up;
 					}
+					glm::vec3 avoidance_force = away * force_magnitude;
+					glm::vec3 avoidance_local = glm::inverse(orientation_) * avoidance_force;
+					rotational_velocity_.y += avoidance_local.x * avoidance_strength * delta_time;
+					rotational_velocity_.x += avoidance_local.y * avoidance_strength * delta_time;
 				}
 			}
 		}
