@@ -98,7 +98,7 @@ namespace Boidsish {
 				if (frontNess < 0.85) {
 					continue;
 				}
-				auto rank = distance * (4.0 - 3.5*frontNess);
+				auto rank = distance * (4.0 - 3.5 * frontNess);
 				if (candidate == target_) {
 					rank *= stickiness;
 				}

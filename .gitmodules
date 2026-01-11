@@ -19,3 +19,6 @@
 [submodule "external/alure"]
 	path = external/alure
 	url = https://github.com/kcat/alure.git
+[submodule "external/libmorton"]
+	path = external/libmorton
+	url = https://github.com/Forceflow/libmorton.git
