@@ -39,6 +39,11 @@ namespace Boidsish {
 			Explode(handler, false);
 			return;
 		}
+		auto [height, norm] = handler.vis->GetTerrainPointProperties(pos.x, pos.z);
+		if (pos.y <= height) {
+			Explode(handler, false);
+			return;
+		}
 
 		// --- Flight Model Constants ---
 		const float kLaunchTime = 0.5f;

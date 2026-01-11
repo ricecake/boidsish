@@ -45,6 +45,12 @@ namespace Boidsish {
 			return;
 		}
 
+		auto [height, norm] = handler.vis->GetTerrainPointProperties(pos.x, pos.z);
+		if (pos.y <= height) {
+			Explode(handler, false);
+			return;
+		}
+
 		const float kLaunchTime = 1.0f;
 		const float kMaxSpeed = 150.0f;
 		const float kAcceleration = 150.0f;
