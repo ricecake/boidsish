@@ -35,6 +35,7 @@ namespace Boidsish {
 
 		// Constructor
 		Mesh(std::vector<Vertex> vertices, std::vector<unsigned int> indices, std::vector<Texture> textures);
+		// ~Mesh();
 
 		// Render the mesh
 		void render() const;

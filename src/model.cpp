@@ -18,6 +18,12 @@ namespace Boidsish {
 		setupMesh();
 	}
 
+	// Mesh::~Mesh() {
+	// 	glDeleteVertexArrays(1, &VAO);
+	// 	glDeleteBuffers(1, &VBO);
+	// 	glDeleteBuffers(1, &EBO);
+	// }
+
 	void Mesh::setupMesh() {
 		glGenVertexArrays(1, &VAO);
 		glGenBuffers(1, &VBO);

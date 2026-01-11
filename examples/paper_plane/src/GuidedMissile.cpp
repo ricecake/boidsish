@@ -40,7 +40,7 @@ namespace Boidsish {
 			return;
 		}
 		auto [height, norm] = handler.vis->GetTerrainPointProperties(pos.x, pos.z);
-		if (pos.y <= height) {
+		if (pos.y < height) {
 			Explode(handler, false);
 			return;
 		}

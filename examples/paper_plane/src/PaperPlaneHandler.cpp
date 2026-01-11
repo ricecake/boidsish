@@ -5,6 +5,7 @@
 
 #include "GuidedMissileLauncher.h"
 #include "PaperPlane.h"
+#include "VortexFlockingEntity.h"
 #include "graphics.h"
 #include "hud.h"
 #include "neighbor_utils.h"
@@ -17,7 +18,18 @@ namespace Boidsish {
 	int selected_weapon = 0;
 
 	PaperPlaneHandler::PaperPlaneHandler(task_thread_pool::task_thread_pool& thread_pool):
-		SpatialEntityHandler(thread_pool), eng_(rd_()) {}
+		SpatialEntityHandler(thread_pool), eng_(rd_()) {
+		// std::uniform_real_distribution<> dis_pos(-40.0, 40.0);
+		// std::uniform_real_distribution<> dis_y(30.0, 90.0);
+		// std::uniform_real_distribution<> dis_vel(-5.0, 5.0);
+
+		// for (int i = 0; i < 100; ++i) {
+		// 	auto entity = std::make_shared<VortexFlockingEntity>(i);
+		// 	entity->SetPosition(dis_pos(eng_), dis_y(eng_), dis_pos(eng_));
+		// 	entity->SetVelocity(dis_vel(eng_), dis_vel(eng_), dis_vel(eng_));
+		// 	AddEntity(i, entity);
+		// }
+	}
 
 	void PaperPlaneHandler::PreTimestep(float time, float delta_time) {
 		if (damage_timer_ > 0.0f) {
