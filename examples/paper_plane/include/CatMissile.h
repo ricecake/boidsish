@@ -3,6 +3,7 @@
 #include <memory>
 #include <random>
 
+#include "GuidedMissileLauncher.h"
 #include "entity.h"
 #include "model.h"
 #include <glm/gtc/quaternion.hpp>
@@ -31,10 +32,11 @@ namespace Boidsish {
 		static constexpr float lifetime_ = 12.0f;
 		static constexpr float kExplosionDisplayTime = 2.0f;
 		// State
-		float                       lived_ = 0.0f;
-		bool                        exploded_ = false;
-		bool                        fired_ = false;
-		std::shared_ptr<FireEffect> exhaust_effect_ = nullptr;
+		float                                  lived_ = 0.0f;
+		bool                                   exploded_ = false;
+		bool                                   fired_ = false;
+		std::shared_ptr<FireEffect>            exhaust_effect_ = nullptr;
+		std::shared_ptr<GuidedMissileLauncher> target_ = nullptr;
 
 		// Flight model
 		glm::quat          orientation_;

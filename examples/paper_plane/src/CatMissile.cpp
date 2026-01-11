@@ -1,6 +1,5 @@
 #include "CatMissile.h"
 
-#include "GuidedMissileLauncher.h"
 #include "PaperPlane.h"
 #include "fire_effect.h"
 #include "graphics.h"
@@ -72,25 +71,60 @@ namespace Boidsish {
 		const float kTurnSpeed = 4.0f;
 		const float kDamping = 2.5f;
 
-		auto& spatial_handler = static_cast<const SpatialEntityHandler&>(handler);
-		auto target = spatial_handler.FindNearest<GuidedMissileLauncher>(this->GetPosition(), 32.0f);
-		if (target == nullptr) {
-			rotational_velocity_ = glm::vec3(0.0f);
-			return;
+		if (true || target_ == nullptr) {
+			auto& spatial_handler = static_cast<const SpatialEntityHandler&>(handler);
+			auto  targets = spatial_handler.GetEntitiesInRadius<GuidedMissileLauncher>(
+                pos,
+                kMaxSpeed * (lifetime_ - lived_) * 0.5f
+            );
+
+			const float stickiness = 0.65f;
+			auto        minRank = INFINITY;
+			for (auto& candidate : targets) {
+				auto target_pos = candidate->GetPosition().Toglm();
+				auto missile_pos = pos.Toglm();
+
+				auto world_fwd = orientation_ * glm::vec3(0, 0, -1);
+				auto to_target = normalize(target_pos - missile_pos);
+				auto distance = glm::length(missile_pos - target_pos);
+
+				auto frontNess = glm::dot(world_fwd, to_target);
+				if (frontNess < 0.85) {
+					continue;
+				}
+				auto rank = distance * (2.0 - frontNess);
+				if (candidate == target_) {
+					rank *= stickiness;
+				}
+				// logger::LOG("Checking", candidate->GetId(), rank, frontNess, distance);
+
+				if (rank < minRank) {
+					minRank = rank;
+					target_ = candidate;
+					// logger::LOG("Seeking", candidate->GetId(), rank, frontNess, distance);
+				}
+			}
+
+			if (target_ == nullptr) {
+				rotational_velocity_ = glm::vec3(0.0f);
+				return;
+			}
 		}
 
-		if ((target->GetPosition() - GetPosition()).Magnitude() < 10) {
+		if ((target_->GetPosition() - GetPosition()).Magnitude() < 10) {
 			Explode(handler, true);
 			return;
 		}
 
-		Vector3   target_vec = (target->GetPosition() - GetPosition()).Normalized();
+		// logger::LOG("Seeking", target_->GetId(), glm::length(pos.Toglm() - target_->GetPosition().Toglm()));
+
+		Vector3   target_vec = (target_->GetPosition() - GetPosition()).Normalized();
 		glm::vec3 target_dir_world = glm::vec3(target_vec.x, target_vec.y, target_vec.z);
 		glm::vec3 target_dir_local = glm::inverse(orientation_) * target_dir_world;
 
 		glm::vec3 target_rot_velocity = glm::vec3(0.0f);
-		target_rot_velocity.y = target_dir_local.x * kTurnSpeed;
-		target_rot_velocity.x = -target_dir_local.y * kTurnSpeed;
+		target_rot_velocity.y = -target_dir_local.x * kTurnSpeed;
+		target_rot_velocity.x = target_dir_local.y * kTurnSpeed;
 
 		rotational_velocity_ += (target_rot_velocity - rotational_velocity_) * kDamping * delta_time;
 
@@ -124,7 +158,10 @@ namespace Boidsish {
 					if (glm::dot(away, local_up) < kUpAlignmentThreshold) {
 						away = local_up;
 					}
-					glm::vec3 avoidance_force = away * force_magnitude;
+
+					away = target_dir_world - (glm::dot(target_dir_world, away)) * away;
+
+					glm::vec3 avoidance_force = away * force_magnitude * (1 - glm::dot(dir, target_dir_world));
 					glm::vec3 avoidance_local = glm::inverse(orientation_) * avoidance_force;
 					rotational_velocity_.y += avoidance_local.x * avoidance_strength * delta_time;
 					rotational_velocity_.x += avoidance_local.y * avoidance_strength * delta_time;
