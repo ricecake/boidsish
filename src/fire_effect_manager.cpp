@@ -251,7 +251,7 @@ namespace Boidsish {
 		std::vector<int> null_particles;
 		for (int i = 0; i < kMaxParticles; ++i) {
 			int emitter_index = particle_to_emitter_map_[i];
-			if (emitter_index != -1 && emitter_index < (int)effects_.size()) {
+			if (emitter_index != -1 && emitter_index < (int)effects_.size() && effects_[emitter_index]) {
 				current_counts[emitter_index]++;
 			} else {
 				null_particles.push_back(i);
