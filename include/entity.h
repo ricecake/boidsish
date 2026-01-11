@@ -244,9 +244,9 @@ namespace Boidsish {
 
 		// Get entities by type (template method)
 		template <typename T>
-		auto GetEntitiesByType() {
+		auto GetEntitiesByType() const {
 			std::vector<std::shared_ptr<T>> result;
-			for (auto& pair : entities_) {
+			for (const auto& pair : entities_) {
 				auto typed_entity = std::dynamic_pointer_cast<T>(pair.second);
 				if (typed_entity) {
 					result.push_back(typed_entity);
@@ -256,9 +256,9 @@ namespace Boidsish {
 		}
 
 		template <typename T>
-		std::vector<T*> GetEntitiesByType() const {
+		std::vector<T*> GetEntitiesByType() {
 			std::vector<T*> result;
-			for (const auto& pair : entities_) {
+			for (auto& pair : entities_) {
 				T* typed_entity = dynamic_cast<T*>(pair.second.get());
 				if (typed_entity) {
 					result.push_back(typed_entity);

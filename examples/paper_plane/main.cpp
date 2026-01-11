@@ -21,13 +21,17 @@ int main() {
 		visualizer->AddHudIcon(
 			{2, "assets/bomb-icon.png", HudAlignment::TOP_LEFT, {84, 10}, {64, 64}, selected_weapon == 1}
 		);
+		visualizer->AddHudIcon(
+			{4, "assets/machine-gun-icon.png", HudAlignment::TOP_LEFT, {158, 10}, {64, 64}, selected_weapon == 2}
+		);
 
 		auto [height, norm] = visualizer->GetTerrainPointProperties(0, 0);
 
 		auto handler = PaperPlaneHandler(visualizer->GetThreadPool());
 		handler.SetVisualizer(visualizer);
 		auto id = handler.AddEntity<PaperPlane>();
-		auto plane = handler.GetEntity(id);
+		auto plane = std::dynamic_pointer_cast<PaperPlane>(handler.GetEntity(id));
+        plane->Initialize();
 		plane->SetPosition(0, height + 10, 0);
 		Boidsish::Camera camera(0.0f, height + 15, -10.0f);
 		visualizer->SetCamera(camera);
@@ -51,7 +55,7 @@ int main() {
 			controller->brake = state.keys[GLFW_KEY_LEFT_CONTROL];
 			controller->fire = state.keys[GLFW_KEY_SPACE];
 			if (state.key_down[GLFW_KEY_F]) {
-				selected_weapon = (selected_weapon + 1) % 2;
+				selected_weapon = (selected_weapon + 1) % 3;
 				visualizer->UpdateHudIcon(
 					1,
 					{1, "assets/missile-icon.png", HudAlignment::TOP_LEFT, {10, 10}, {64, 64}, selected_weapon == 0}
@@ -59,6 +63,10 @@ int main() {
 				visualizer->UpdateHudIcon(
 					2,
 					{2, "assets/bomb-icon.png", HudAlignment::TOP_LEFT, {84, 10}, {64, 64}, selected_weapon == 1}
+				);
+				visualizer->UpdateHudIcon(
+					4,
+					{4, "assets/machine-gun-icon.png", HudAlignment::TOP_LEFT, {158, 10}, {64, 64}, selected_weapon == 2}
 				);
 			}
 		});

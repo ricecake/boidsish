@@ -31,6 +31,10 @@ namespace Boidsish {
 		UpdateShape();
 	}
 
+    void PaperPlane::Initialize() {
+        cannon_ = std::make_shared<PointDefenseCannon>(shared_from_this());
+    }
+
 	void PaperPlane::SetController(std::shared_ptr<PaperPlaneInputController> controller) {
 		controller_ = controller;
 	}
@@ -140,8 +144,13 @@ namespace Boidsish {
 				handler.QueueAddEntity<CatBomb>(GetPosition(), orientation_ * glm::vec3(0, -1, 0), GetVelocity());
 				time_to_fire = 0.25f;
 				break;
+            case 2:
+                // Machine gun is handled by the cannon update below
+                break;
 			}
 		}
+
+        cannon_->Update(handler, delta_time, controller_->fire && selected_weapon == 2);
 	}
 
 	void PaperPlane::UpdateShape() {
@@ -171,5 +180,9 @@ namespace Boidsish {
 	float PaperPlane::GetShield() const {
 		return shield;
 	}
+
+    std::shared_ptr<PointDefenseCannon> PaperPlane::GetCannon() const {
+        return cannon_;
+    }
 
 } // namespace Boidsish

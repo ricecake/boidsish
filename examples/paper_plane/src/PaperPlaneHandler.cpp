@@ -5,6 +5,8 @@
 
 #include "GuidedMissileLauncher.h"
 #include "PaperPlane.h"
+#include "TracerRound.h"
+#include "GuidedMissile.h"
 #include "graphics.h"
 #include "hud.h"
 #include "neighbor_utils.h"
@@ -127,10 +129,10 @@ namespace Boidsish {
 		if (targets.empty())
 			return;
 
-		auto plane = std::static_pointer_cast<PaperPlane>(targets[0]);
+		auto plane = targets[0];
 		if (plane && plane->IsDamagePending()) {
 			plane->AcknowledgeDamage();
-			vis->UpdateHudGauge(3, {3, plane->GetHealth(), "Health", HudAlignment::BOTTOM_CENTER, {0, -50}, {200, 20}});
+            vis->UpdateHudGauge(3, HudGauge{3, plane->GetHealth(), "Health", HudAlignment::BOTTOM_CENTER, {0, -50}, {200, 20}});
 
 			auto new_time = damage_dist_(eng_);
 
@@ -144,5 +146,57 @@ namespace Boidsish {
 
 		damage_timer_ = std::min(damage_timer_, 5.0f);
 	}
+
+    void PaperPlaneHandler::AddEntity(int id, std::shared_ptr<EntityBase> entity) {
+        SpatialEntityHandler::AddEntity(id, entity);
+        if (auto launcher = std::dynamic_pointer_cast<GuidedMissileLauncher>(entity)) {
+            launcher->Initialize();
+        }
+    }
+
+    void PaperPlaneHandler::PostTimestep(float time, float delta_time) {
+        SpatialEntityHandler::PostTimestep(time, delta_time);
+        // Collision detection between tracer rounds and missiles
+        auto tracers = GetEntitiesByType<TracerRound>();
+        auto missiles = GetEntitiesByType<GuidedMissile>();
+
+        for (const auto& tracer : tracers) {
+            for (const auto& missile : missiles) {
+                if ((tracer->GetPosition() - missile->GetPosition()).MagnitudeSquared() < 10.0f * 10.0f) {
+                    // Collision detected
+                    QueueRemoveEntity(tracer->GetId());
+                    QueueRemoveEntity(missile->GetId());
+
+                    // Create explosion
+                    vis->AddFireEffect(
+                        missile->GetPosition().Toglm(),
+                        FireEffectStyle::Explosion,
+                        glm::vec3(0.0f, 1.0f, 0.0f),
+                        glm::vec3(0.0f),
+                        1000,
+                        2.0f
+                    );
+                }
+            }
+        }
+    }
+
+    std::vector<std::shared_ptr<Shape>> PaperPlaneHandler::operator()(float time) {
+        // First, run the base class operator to get the initial list of shapes
+        auto shapes = EntityHandler::operator()(time);
+
+        // Add lasers from paper plane and missile launchers
+        auto planes = GetEntitiesByType<PaperPlane>();
+        if (!planes.empty()) {
+            shapes.push_back(planes[0]->GetCannon()->GetLaser());
+        }
+
+        auto launchers = GetEntitiesByType<GuidedMissileLauncher>();
+        for (const auto& launcher : launchers) {
+            shapes.push_back(launcher->GetCannon()->GetLaser());
+        }
+
+        return shapes;
+    }
 
 } // namespace Boidsish

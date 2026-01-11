@@ -21,6 +21,10 @@ namespace Boidsish {
 		UpdateShape();
 	}
 
+    void GuidedMissileLauncher::Initialize() {
+        cannon_ = std::make_shared<PointDefenseCannon>(shared_from_this());
+    }
+
 	void GuidedMissileLauncher::UpdateEntity(const EntityHandler& handler, float time, float delta_time) {
 		time_since_last_fire_ += delta_time;
 		if (time_since_last_fire_ < fire_interval_) {
@@ -69,6 +73,32 @@ namespace Boidsish {
 			std::uniform_real_distribution<float> new_dist(4.0f, 8.0f);
 			fire_interval_ = new_dist(eng_);
 		}
+
+        // Cannon logic...
+        // Find nearby missiles to shoot at
+        auto missiles = handler.GetEntitiesByType<GuidedMissile>();
+        std::shared_ptr<GuidedMissile> closest_missile = nullptr;
+        float min_dist_sq = 1000.0f * 1000.0f;
+
+        for (auto& missile : missiles) {
+            float dist_sq = (missile->GetPosition() - GetPosition()).MagnitudeSquared();
+            if (dist_sq < min_dist_sq) {
+                min_dist_sq = dist_sq;
+                closest_missile = missile;
+            }
+        }
+
+        if (closest_missile) {
+            cannon_->SetTarget(closest_missile);
+            cannon_->Update(handler, delta_time, true); // Always try to fire at missiles
+        } else {
+            cannon_->SetTarget(nullptr);
+            cannon_->Update(handler, delta_time, false);
+        }
 	}
+
+    std::shared_ptr<PointDefenseCannon> GuidedMissileLauncher::GetCannon() const {
+        return cannon_;
+    }
 
 } // namespace Boidsish

@@ -3,16 +3,18 @@
 #include <memory>
 
 #include "PaperPlaneInputController.h"
+#include "PointDefenseCannon.h"
 #include "entity.h"
 #include "model.h"
 #include <glm/gtc/quaternion.hpp>
 
 namespace Boidsish {
 
-	class PaperPlane: public Entity<Model> {
+	class PaperPlane: public Entity<Model>, public std::enable_shared_from_this<PaperPlane> {
 	public:
 		PaperPlane(int id = 0);
 
+        void Initialize();
 		void SetController(std::shared_ptr<PaperPlaneInputController> controller);
 		void UpdateEntity(const EntityHandler& handler, float time, float delta_time) override;
 		void UpdateShape() override;
@@ -23,6 +25,7 @@ namespace Boidsish {
 
 		float GetHealth() const;
 		float GetShield() const;
+        std::shared_ptr<PointDefenseCannon> GetCannon() const;
 
 	private:
 		std::shared_ptr<PaperPlaneInputController> controller_;
@@ -34,6 +37,7 @@ namespace Boidsish {
 		int                                        damage_pending_ = 0;
 		float                                      health = 100.0f;
 		float                                      shield = 100.0f;
+        std::shared_ptr<PointDefenseCannon> cannon_;
 	};
 
 } // namespace Boidsish
