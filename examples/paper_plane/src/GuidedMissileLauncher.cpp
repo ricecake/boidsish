@@ -9,7 +9,8 @@
 namespace Boidsish {
 
 	GuidedMissileLauncher::GuidedMissileLauncher(int id, Vector3 pos, glm::quat orientation):
-		Entity<Model>(id, "assets/utah_teapot.obj", false), eng_(rd_()) {
+		DamageableEntity(id, 0.0f, 50.0f, 200.0f), eng_(rd_()) {
+		shape_ = std::make_shared<Model>("assets/utah_teapot.obj", false);
 		SetPosition(pos.x, pos.y, pos.z);
 		shape_->SetScale(glm::vec3(2.0f));
 		shape_->SetBaseRotation(glm::angleAxis(glm::radians(0.0f), glm::vec3(0.0f, 1.0f, 0.0f)));

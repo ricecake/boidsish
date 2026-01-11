@@ -2,13 +2,13 @@
 
 #include <random>
 
-#include "entity.h"
+#include "DamageableEntity.h"
 #include "model.h"
 #include <glm/gtc/quaternion.hpp>
 
 namespace Boidsish {
 
-	class GuidedMissileLauncher: public Entity<Model> {
+	class GuidedMissileLauncher: public DamageableEntity {
 	public:
 		GuidedMissileLauncher(int id, Vector3 pos, glm::quat orientation);
 

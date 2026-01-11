@@ -1,5 +1,5 @@
 #include "GuidedMissile.h"
-
+#include "DamageableEntity.h"
 #include "PaperPlane.h"
 #include "fire_effect.h"
 #include "graphics.h" // For Visualizer access in EntityHandler
@@ -156,6 +156,19 @@ namespace Boidsish {
 				2.0f
 			);
 		});
+
+		// --- Area-of-Effect Damage ---
+		const float explosionRadius = 50.0f;
+		const float maxDamage = 100.0f;
+
+		auto entities = handler.GetEntitiesByType<DamageableEntity>();
+		for (auto& entity : entities) {
+			float distance = (entity->GetPosition() - pos).Magnitude();
+			if (distance < explosionRadius) {
+				float damage = maxDamage * (1.0f - (distance / explosionRadius));
+				entity->ApplyDamage(handler, damage);
+			}
+		}
 
 		handler.EnqueueVisualizerAction([exhaust = exhaust_effect_]() {
 			if (exhaust) {

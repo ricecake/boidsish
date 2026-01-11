@@ -9,10 +9,11 @@
 namespace Boidsish {
 
 	PaperPlane::PaperPlane(int id):
-		Entity<Model>(id, "assets/Mesh_Cat.obj", true),
+		DamageableEntity(id, 100.0f, 25.0f, 100.0f),
 		orientation_(glm::quat(1.0f, 0.0f, 0.0f, 0.0f)),
 		rotational_velocity_(glm::vec3(0.0f)),
 		forward_speed_(20.0f) {
+		shape_ = std::make_shared<Model>("assets/Mesh_Cat.obj", true);
 		SetTrailLength(150);
 		SetTrailIridescence(true);
 
@@ -152,7 +153,7 @@ namespace Boidsish {
 	}
 
 	void PaperPlane::TriggerDamage() {
-		health -= 5;
+		// This will be replaced by ApplyDamage
 		damage_pending_++;
 	}
 
@@ -164,12 +165,9 @@ namespace Boidsish {
 		damage_pending_--;
 	}
 
-	float PaperPlane::GetHealth() const {
-		return health;
-	}
-
-	float PaperPlane::GetShield() const {
-		return shield;
+	void PaperPlane::OnDamage(const EntityHandler& handler, float damage) {
+		// Only trigger effects for the plane
+		TriggerDamage();
 	}
 
 } // namespace Boidsish
