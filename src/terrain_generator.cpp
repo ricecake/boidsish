@@ -89,12 +89,16 @@ namespace Boidsish {
 						std::ranges::max(std::views::transform(biomes, &BiomeAttributes::floorLevel))
 					)) {
 					std::pair<int, int> chunk_coord = {x, z};
-					if (chunk_cache_.find(chunk_coord) == chunk_cache_.end() &&
-					    pending_chunks_.find(chunk_coord) == pending_chunks_.end()) {
-						pending_chunks_.emplace(
-							chunk_coord,
-							thread_pool_.enqueue(TaskPriority::MEDIUM, &TerrainGenerator::generateChunkData, this, x, z)
-						);
+					if (chunk_cache_.find(chunk_coord) == chunk_cache_.end()) {
+						std::lock_guard<std::mutex> lock(pending_chunks_mutex_);
+						if (pending_chunks_.find(chunk_coord) == pending_chunks_.end()) {
+							pending_chunks_.emplace(
+								chunk_coord,
+								thread_pool_.enqueue(
+									TaskPriority::MEDIUM, &TerrainGenerator::generateChunkData, this, x, z
+								)
+							);
+						}
 					}
 				}
 			}
@@ -263,16 +267,18 @@ namespace Boidsish {
 
 		if (SuperChunkCacheExists(chunkX * chunk_size_, chunkZ * chunk_size_)) {
 			logger::LOG("CACHE HIT");
-			auto cached = GenerateTextureForArea(chunkX * chunk_size_, chunkZ * chunk_size_, chunk_size_);
+			auto cached = GenerateTextureForArea(
+				chunkX * chunk_size_, chunkZ * chunk_size_, chunk_size_ + 1
+			);
 			auto converted = SuperChunkTextureToVec(cached);
-			for (int i = 0; i < chunk_size_; i++) {
-				for (int j = 0; j < chunk_size_; j++) {
-					// logger::LOG("DOING", i, j, i*chunk_size_+j);
-					auto [h, n] = converted.at(j*chunk_size_+i);
+			for (int i = 0; i < num_vertices_x; i++) {
+				for (int j = 0; j < num_vertices_z; j++) {
+					auto [h, n] = converted.at(j * num_vertices_x + i);
 					positions.emplace_back(i, h, j);
 					normals.push_back(n);
 				}
 			}
+			has_terrain = true;
 		} else {
 			logger::LOG("CACHE MISS");
 			thread_pool_.enqueue(TaskPriority::MEDIUM, &TerrainGenerator::GenerateTextureForArea, this, chunkX * chunk_size_, chunkZ * chunk_size_, chunk_size_);
@@ -463,20 +469,28 @@ namespace Boidsish {
 		const int super_chunk_x = floor(static_cast<float>(requested_x) / texture_dim);
 		const int super_chunk_z = floor(static_cast<float>(requested_z) / texture_dim);
 
-		std::filesystem::create_directory("terrain_cache");
-		// Offset coordinates to be non-negative for Morton encoding
-		// constexpr uint32_t kMortonOffset = 32768;
-		// const uint64_t     morton_code = libmorton::m2D_e_magicbits<uint64_t, uint32_t>(
-		// 	super_chunk_x + kMortonOffset,
-		// 	super_chunk_z + kMortonOffset
-		// );
 		const uint64_t morton_code = libmorton::morton2D_64_encode(
 			static_cast<uint32_t>(super_chunk_x),
 			static_cast<uint32_t>(super_chunk_z)
 		);
 
+	// Check cache first
+	{
+		std::lock_guard<std::mutex> lock(superchunk_cache_mutex_);
+		if (superchunk_cache_.count(morton_code)) {
+			// Move to front of LRU list
+			superchunk_lru_.remove(morton_code);
+			superchunk_lru_.push_front(morton_code);
+			return *superchunk_cache_[morton_code];
+		}
+	}
+
+		std::filesystem::create_directory("terrain_cache");
 		std::string    filename = "terrain_cache/superchunk_" + std::to_string(morton_code) + ".dat";
-		const uint32_t kMagicNumber = 0x1F9D48E2; // Bump magic number due to format change
+		const uint32_t kMagicNumber = 0x1F9D48E2;
+
+		auto pixels = std::make_shared<std::vector<uint16_t>>();
+
 		if (std::filesystem::exists(filename)) {
 			std::ifstream infile(filename, std::ios::binary);
 			if (!infile) {
@@ -487,13 +501,11 @@ namespace Boidsish {
 				infile.read(reinterpret_cast<char*>(&magic_number), sizeof(uint32_t));
 
 				if (magic_number == kMagicNumber) {
-					// Z-ORDERED COMPRESSED PATH
 					int width = 0, height = 0;
 					infile.read(reinterpret_cast<char*>(&width), sizeof(int));
 					infile.read(reinterpret_cast<char*>(&height), sizeof(int));
 
-					const int kMaxSize = 8192;
-					if (width > 0 && height > 0 && width <= kMaxSize && height <= kMaxSize) {
+					if (width > 0 && height > 0 && width == texture_dim && height == texture_dim) {
 						zstr::istream         z_infile(infile.rdbuf());
 						std::vector<uint16_t> z_ordered_pixels(width * height * 4);
 						z_infile.read(
@@ -502,133 +514,85 @@ namespace Boidsish {
 						);
 
 						if (z_infile.good()) {
-							logger::LOG(
-								"Loaded Z-ordered compressed superchunk from cache",
-								filename,
-								width,
-								height,
-								z_ordered_pixels.size()
-							);
 							infile.close();
-
-							// Convert from Z-order to linear
-							std::vector<uint16_t> pixels(width * height * 4);
+							pixels->resize(width * height * 4);
 							for (uint32_t y = 0; y < height; ++y) {
 								for (uint32_t x = 0; x < width; ++x) {
 									uint64_t morton_index = libmorton::morton2D_64_encode(x, y);
 									int      linear_index = (y * width + x) * 4;
 									memcpy(
-										&pixels[linear_index],
+										&(*pixels)[linear_index],
 										&z_ordered_pixels[morton_index * 4],
 										4 * sizeof(uint16_t)
 									);
 								}
 							}
-							return pixels;
-						}
-					}
-				} else if (magic_number == 0x1F9D48E1) {
-					// LINEAR COMPRESSED (legacy) PATH
-					int width = 0, height = 0;
-					infile.read(reinterpret_cast<char*>(&width), sizeof(int));
-					infile.read(reinterpret_cast<char*>(&height), sizeof(int));
-
-					const int kMaxSize = 8192;
-					if (width > 0 && height > 0 && width <= kMaxSize && height <= kMaxSize) {
-						zstr::istream         z_infile(infile.rdbuf());
-						std::vector<uint16_t> pixels(width * height * 4);
-						z_infile.read(reinterpret_cast<char*>(pixels.data()), pixels.size() * sizeof(uint16_t));
-
-						if (z_infile.good()) {
-							logger::LOG(
-								"Loaded linear compressed superchunk from cache",
-								filename,
-								width,
-								height,
-								pixels.size()
-							);
-							infile.close();
-							return pixels;
-						}
-					}
-				} else {
-					// UNCOMPRESSED (very legacy) PATH
-					infile.seekg(0);
-					int width = 0, height = 0;
-					infile.read(reinterpret_cast<char*>(&width), sizeof(int));
-					infile.read(reinterpret_cast<char*>(&height), sizeof(int));
-
-					const int kMaxSize = 8192;
-					if (width > 0 && height > 0 && width <= kMaxSize && height <= kMaxSize) {
-						std::vector<uint16_t> pixels(width * height * 4);
-						infile.read(reinterpret_cast<char*>(pixels.data()), pixels.size() * sizeof(uint16_t));
-						if (infile.gcount() == pixels.size() * sizeof(uint16_t)) {
-							logger::LOG(
-								"Loaded uncompressed superchunk from cache",
-								filename,
-								width,
-								height,
-								pixels.size()
-							);
-							infile.close();
-							return pixels;
 						}
 					}
 				}
-
-				// If we reach here, either path failed.
-				logger::LOG("Corrupted superchunk cache file, deleting: " + filename);
-				infile.close();
-				std::filesystem::remove(filename);
+				if (pixels->empty()) {
+					logger::LOG("Corrupted superchunk cache file, deleting: " + filename);
+					infile.close();
+					std::filesystem::remove(filename);
+				}
 			}
 		}
 
-		std::vector<uint16_t> pixels(texture_dim * texture_dim * 4);
-		float                 max_height = GetMaxHeight();
+		if (pixels->empty()) {
+			pixels->resize(texture_dim * texture_dim * 4);
+			float max_height = GetMaxHeight();
 
-		for (int y = 0; y < texture_dim; ++y) {
-			for (int x = 0; x < texture_dim; ++x) {
-				float worldX = (super_chunk_x * texture_dim + x);
-				float worldZ = (super_chunk_z * texture_dim + y);
+			for (int y = 0; y < texture_dim; ++y) {
+				for (int x = 0; x < texture_dim; ++x) {
+					float worldX = (super_chunk_x * texture_dim + x);
+					float worldZ = (super_chunk_z * texture_dim + y);
+					auto [height, normal] = pointProperties(worldX, worldZ);
+					int index = (y * texture_dim + x) * 4;
+					(*pixels)[index + 0] = static_cast<uint16_t>((normal.x * 0.5f + 0.5f) * 65535.0f);
+					(*pixels)[index + 1] = static_cast<uint16_t>((normal.y * 0.5f + 0.5f) * 65535.0f);
+					(*pixels)[index + 2] = static_cast<uint16_t>((normal.z * 0.5f + 0.5f) * 65535.0f);
+					float normalized_height = std::max(0.0f, std::min(1.0f, height / max_height));
+					(*pixels)[index + 3] = static_cast<uint16_t>(normalized_height * 65535.0f);
+				}
+			}
 
-				auto [height, normal] = pointProperties(worldX, worldZ);
+			// Convert to Z-order for storage
+			std::vector<uint16_t> z_ordered_pixels(texture_dim * texture_dim * 4);
+			for (uint32_t y = 0; y < texture_dim; ++y) {
+				for (uint32_t x = 0; x < texture_dim; ++x) {
+					uint64_t morton_index = libmorton::morton2D_64_encode(x, y);
+					int      linear_index = (y * texture_dim + x) * 4;
+					memcpy(&z_ordered_pixels[morton_index * 4], &(*pixels)[linear_index], 4 * sizeof(uint16_t));
+				}
+			}
 
-				int index = (y * texture_dim + x) * 4;
+			std::ofstream outfile(filename, std::ios::binary);
+			int           width = texture_dim;
+			int           height = texture_dim;
+			outfile.write(reinterpret_cast<const char*>(&kMagicNumber), sizeof(uint32_t));
+			outfile.write(reinterpret_cast<const char*>(&width), sizeof(int));
+			outfile.write(reinterpret_cast<const char*>(&height), sizeof(int));
+			zstr::ostream z_outfile(outfile.rdbuf());
+			z_outfile.write(
+				reinterpret_cast<const char*>(z_ordered_pixels.data()),
+				z_ordered_pixels.size() * sizeof(uint16_t)
+			);
+		}
 
-				// Normals are in [-1, 1], so map to [0, 65535]
-				// Maybe this should just use memcpy?
-				pixels[index + 0] = static_cast<uint16_t>((normal.x * 0.5f + 0.5f) * 65535.0f);
-				pixels[index + 1] = static_cast<uint16_t>((normal.y * 0.5f + 0.5f) * 65535.0f);
-				pixels[index + 2] = static_cast<uint16_t>((normal.z * 0.5f + 0.5f) * 65535.0f);
+		// Add to cache
+		{
+			std::lock_guard<std::mutex> lock(superchunk_cache_mutex_);
+			superchunk_cache_[morton_code] = pixels;
+			superchunk_lru_.push_front(morton_code);
 
-				// Height is in [0, maxHeight], so map to [0, 65535]
-				float normalized_height = std::max(0.0f, std::min(1.0f, height / max_height));
-				pixels[index + 3] = static_cast<uint16_t>(normalized_height * 65535.0f);
+			if (superchunk_lru_.size() > kMaxSuperchunks) {
+				uint64_t lru_morton_code = superchunk_lru_.back();
+				superchunk_lru_.pop_back();
+				superchunk_cache_.erase(lru_morton_code);
 			}
 		}
 
-		// Convert to Z-order for storage
-		std::vector<uint16_t> z_ordered_pixels(texture_dim * texture_dim * 4);
-		for (uint32_t y = 0; y < texture_dim; ++y) {
-			for (uint32_t x = 0; x < texture_dim; ++x) {
-				uint64_t morton_index = libmorton::morton2D_64_encode(x, y);
-				int      linear_index = (y * texture_dim + x) * 4;
-				memcpy(&z_ordered_pixels[morton_index * 4], &pixels[linear_index], 4 * sizeof(uint16_t));
-			}
-		}
-
-		std::ofstream outfile(filename, std::ios::binary);
-		int           width = texture_dim;
-		int           height = texture_dim;
-		outfile.write(reinterpret_cast<const char*>(&kMagicNumber), sizeof(uint32_t));
-		outfile.write(reinterpret_cast<const char*>(&width), sizeof(int));
-		outfile.write(reinterpret_cast<const char*>(&height), sizeof(int));
-		zstr::ostream z_outfile(outfile.rdbuf());
-		z_outfile.write(
-			reinterpret_cast<const char*>(z_ordered_pixels.data()),
-			z_ordered_pixels.size() * sizeof(uint16_t)
-		);
-		return pixels;
+		return *pixels;
 	}
 
 	float TerrainGenerator::getBiomeControlValue(float x, float z) const {
@@ -698,23 +662,26 @@ namespace Boidsish {
 			for (int cx = start_chunk_x; cx <= end_chunk_x; ++cx) {
 				std::vector<uint16_t> superchunk = GenerateSuperChunkTexture(cx * texture_dim, cz * texture_dim);
 
-				// Calculate the region to copy from the superchunk
-				int src_start_x = std::max(0, world_x - cx * texture_dim);
-				int src_end_x = std::min(texture_dim, world_x + size - cx * texture_dim);
-				int src_start_z = std::max(0, world_z - cz * texture_dim);
-				int src_end_z = std::min(texture_dim, world_z + size - cz * texture_dim);
+				for (int z = 0; z < size; ++z) {
+					for (int x = 0; x < size; ++x) {
+						int global_x = world_x + x;
+						int global_z = world_z + z;
 
-				// Calculate the region to copy to in the destination texture
-				int dest_start_x = std::max(0, cx * texture_dim - world_x);
-				int dest_start_z = std::max(0, cz * texture_dim - world_z);
+						// Check if this point belongs to the current superchunk
+						if (floor(static_cast<float>(global_x) / texture_dim) != cx ||
+						    floor(static_cast<float>(global_z) / texture_dim) != cz) {
+							continue;
+						}
 
-				for (int z = src_start_z; z < src_end_z; ++z) {
-					for (int x = src_start_x; x < src_end_x; ++x) {
-						int src_index = (z * texture_dim + x) * 4;
-						int dest_index = ((dest_start_z + z - src_start_z) * size + (dest_start_x + x - src_start_x)) *
-							4;
 
-						if (dest_index + 3 < stitched_texture.size()) {
+						// Coordinates within the superchunk
+						int src_x = (global_x % texture_dim + texture_dim) % texture_dim;
+						int src_z = (global_z % texture_dim + texture_dim) % texture_dim;
+
+						int src_index = (src_z * texture_dim + src_x) * 4;
+						int dest_index = (z * size + x) * 4;
+
+						if (dest_index + 3 < stitched_texture.size() && src_index + 3 < superchunk.size()) {
 							stitched_texture[dest_index + 0] = superchunk[src_index + 0];
 							stitched_texture[dest_index + 1] = superchunk[src_index + 1];
 							stitched_texture[dest_index + 2] = superchunk[src_index + 2];

@@ -1,7 +1,9 @@
 #pragma once
 
+#include <list>
 #include <map>
 #include <memory>
+#include <mutex>
 #include <tuple>
 #include <vector>
 
@@ -160,6 +162,13 @@ namespace Boidsish {
 		std::map<std::pair<int, int>, std::shared_ptr<Terrain>>            chunk_cache_;
 		std::vector<std::shared_ptr<Terrain>>                              visible_chunks_;
 		std::map<std::pair<int, int>, TaskHandle<TerrainGenerationResult>> pending_chunks_;
+		std::mutex                                                         pending_chunks_mutex_;
+
+		// Superchunk cache
+		constexpr static const size_t                                                 kMaxSuperchunks = 16;
+		std::map<uint64_t, std::shared_ptr<std::vector<uint16_t>>>                    superchunk_cache_;
+		std::list<uint64_t>                                                          superchunk_lru_;
+		std::mutex                                                                   superchunk_cache_mutex_;
 	};
 
 } // namespace Boidsish
