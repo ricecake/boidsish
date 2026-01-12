@@ -261,29 +261,44 @@ namespace Boidsish {
 		std::vector<unsigned int>           indices;
 		bool                                has_terrain = false;
 
-		// Generate heightmap
-		for (int i = 0; i < num_vertices_x; ++i) {
-			for (int j = 0; j < num_vertices_z; ++j) {
-				float worldX = (chunkX * chunk_size_ + i);
-				float worldZ = (chunkZ * chunk_size_ + j);
-				auto  noise = pointGenerate(worldX, worldZ);
-				heightmap[i][j] = noise;
-				has_terrain = has_terrain || noise[0] > 0;
+		if (SuperChunkCacheExists(chunkX * chunk_size_, chunkZ * chunk_size_)) {
+			logger::LOG("CACHE HIT");
+			auto cached = GenerateTextureForArea(chunkX * chunk_size_, chunkZ * chunk_size_, chunk_size_);
+			auto converted = SuperChunkTextureToVec(cached);
+			for (int i = 0; i < chunk_size_; i++) {
+				for (int j = 0; j < chunk_size_; j++) {
+					// logger::LOG("DOING", i, j, i*chunk_size_+j);
+					auto [h, n] = converted.at(j*chunk_size_+i);
+					positions.emplace_back(i, h, j);
+					normals.push_back(n);
+				}
 			}
-		}
+		} else {
+			logger::LOG("CACHE MISS");
+			thread_pool_.enqueue(TaskPriority::MEDIUM, &TerrainGenerator::GenerateTextureForArea, this, chunkX * chunk_size_, chunkZ * chunk_size_, chunk_size_);
+			// Generate heightmap
+			for (int i = 0; i < num_vertices_x; ++i) {
+				for (int j = 0; j < num_vertices_z; ++j) {
+					float worldX = (chunkX * chunk_size_ + i);
+					float worldZ = (chunkZ * chunk_size_ + j);
+					auto  noise = pointGenerate(worldX, worldZ);
+					heightmap[i][j] = noise;
+					has_terrain = has_terrain || noise[0] > 0;
+				}
+			}
 
-		if (!has_terrain) {
-			return {{}, {}, {}, {}, chunkX, chunkZ, false};
-		}
-
-		// Generate vertices and normals
-		positions.reserve(num_vertices_x * num_vertices_z);
-		normals.reserve(num_vertices_x * num_vertices_z);
-		for (int i = 0; i < num_vertices_x; ++i) {
-			for (int j = 0; j < num_vertices_z; ++j) {
-				float y = heightmap[i][j][0];
-				positions.emplace_back(i, y, j);
-				normals.push_back(diffToNorm(heightmap[i][j][1], heightmap[i][j][2]));
+			if (!has_terrain) {
+				return {{}, {}, {}, {}, chunkX, chunkZ, false};
+			}
+			// Generate vertices and normals
+			positions.reserve(num_vertices_x * num_vertices_z);
+			normals.reserve(num_vertices_x * num_vertices_z);
+			for (int i = 0; i < num_vertices_x; ++i) {
+				for (int j = 0; j < num_vertices_z; ++j) {
+					float y = heightmap[i][j][0];
+					positions.emplace_back(i, y, j);
+					normals.push_back(diffToNorm(heightmap[i][j][1], heightmap[i][j][2]));
+				}
 			}
 		}
 
@@ -410,6 +425,34 @@ namespace Boidsish {
 		}
 
 		return path;
+	}
+
+	bool TerrainGenerator::SuperChunkCacheExists(int requested_x, int requested_z) {
+		const int kSuperChunkSizeInChunks = chunk_size_;
+		const int texture_dim = kSuperChunkSizeInChunks * chunk_size_;
+
+		// Map world coordinates to a consistent grid index
+		const int super_chunk_x = floor(static_cast<float>(requested_x) / texture_dim);
+		const int super_chunk_z = floor(static_cast<float>(requested_z) / texture_dim);
+
+		std::string filename = "terrain_cache/superchunk_" + std::to_string(super_chunk_x) + "_" +
+			std::to_string(super_chunk_z) + ".dat";
+		const uint32_t kMagicNumber = 0x1F9D48E1;
+		return std::filesystem::exists(filename);
+	}
+
+	std::vector<std::tuple<float, glm::vec3>>
+	TerrainGenerator::SuperChunkTextureToVec(const std::vector<uint16_t>& tex) {
+		const float                               max_height = GetMaxHeight();
+		std::vector<std::tuple<float, glm::vec3>> converted;
+		for (auto i = 0; i < tex.size(); i += 4) {
+			auto vX = tex.at(i + 0) / float(65535.0f) * 2 - 1;
+			auto vY = tex.at(i + 1) / float(65535.0f) * 2 - 1;
+			auto vZ = tex.at(i + 2) / float(65535.0f) * 2 - 1;
+			auto Ht = tex.at(i + 3) / float(65535.0f) * float(max_height);
+			converted.push_back({Ht, glm::vec3{vX, vY, vZ}});
+		};
+		return converted;
 	}
 
 	std::vector<uint16_t> TerrainGenerator::GenerateSuperChunkTexture(int requested_x, int requested_z) {
@@ -553,6 +596,7 @@ namespace Boidsish {
 				int index = (y * texture_dim + x) * 4;
 
 				// Normals are in [-1, 1], so map to [0, 65535]
+				// Maybe this should just use memcpy?
 				pixels[index + 0] = static_cast<uint16_t>((normal.x * 0.5f + 0.5f) * 65535.0f);
 				pixels[index + 1] = static_cast<uint16_t>((normal.y * 0.5f + 0.5f) * 65535.0f);
 				pixels[index + 2] = static_cast<uint16_t>((normal.z * 0.5f + 0.5f) * 65535.0f);
