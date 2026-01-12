@@ -34,9 +34,13 @@ target_include_directories(imgui PUBLIC ${IMGUI_DIR} ${IMGUI_DIR}/backends)
 # 2. Tell FastNoise2 where the ImGui headers are explicitly
 set(IMGUI_INCLUDE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/${IMGUI_DIR}" CACHE PATH "" FORCE)
 
+get_directory_property(OLD_COMPILE_OPTIONS COMPILE_OPTIONS)
+add_compile_options(-w) # Disable all warnings for GCC/Clang for external libraries
 add_subdirectory(external/FastNoise2)
 add_subdirectory(external/task-thread-pool)
 add_subdirectory(external/poolSTL)
+add_subdirectory(external/libmorton)
+set_directory_properties(PROPERTIES COMPILE_OPTIONS "${OLD_COMPILE_OPTIONS}")
 
 # 3. Define the Library
 # Finds all .cpp files in src/
@@ -69,6 +73,7 @@ target_link_libraries(boidsish
         ${ASSIMP_LIBRARIES}
         ${BULLET_LIBRARIES}
         ZLIB::ZLIB
+        libmorton::libmorton
 )
 
 # 5. Build Examples
