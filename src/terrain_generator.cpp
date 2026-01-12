@@ -1,5 +1,7 @@
 #include "terrain_generator.h"
 
+#include <libmorton/morton.h>
+
 #include <algorithm>
 #include <chrono>
 #include <cmath>
@@ -420,9 +422,14 @@ namespace Boidsish {
 		const int super_chunk_z = floor(static_cast<float>(requested_z) / texture_dim);
 
 		std::filesystem::create_directory("terrain_cache");
-		std::string filename = "terrain_cache/superchunk_" + std::to_string(super_chunk_x) + "_" +
-			std::to_string(super_chunk_z) + ".dat";
-		const uint32_t kMagicNumber = 0x1F9D48E1;
+		// Offset coordinates to be non-negative for Morton encoding
+		constexpr uint32_t kMortonOffset = 32768;
+		const uint64_t     morton_code = libmorton::m2D_e_magicbits<uint64_t, uint32_t>(
+			super_chunk_x + kMortonOffset,
+			super_chunk_z + kMortonOffset
+		);
+		std::string filename = "terrain_cache/superchunk_" + std::to_string(morton_code) + ".dat";
+		const uint32_t kMagicNumber = 0x1F9D48E2; // Bump magic number due to format change
 		if (std::filesystem::exists(filename)) {
 			std::ifstream infile(filename, std::ios::binary);
 			if (!infile) {
@@ -433,7 +440,48 @@ namespace Boidsish {
 				infile.read(reinterpret_cast<char*>(&magic_number), sizeof(uint32_t));
 
 				if (magic_number == kMagicNumber) {
-					// COMPRESSED PATH
+					// Z-ORDERED COMPRESSED PATH
+					int width = 0, height = 0;
+					infile.read(reinterpret_cast<char*>(&width), sizeof(int));
+					infile.read(reinterpret_cast<char*>(&height), sizeof(int));
+
+					const int kMaxSize = 8192;
+					if (width > 0 && height > 0 && width <= kMaxSize && height <= kMaxSize) {
+						zstr::istream         z_infile(infile.rdbuf());
+						std::vector<uint16_t> z_ordered_pixels(width * height * 4);
+						z_infile.read(
+							reinterpret_cast<char*>(z_ordered_pixels.data()),
+							z_ordered_pixels.size() * sizeof(uint16_t)
+						);
+
+						if (z_infile.good()) {
+							logger::LOG(
+								"Loaded Z-ordered compressed superchunk from cache",
+								filename,
+								width,
+								height,
+								z_ordered_pixels.size()
+							);
+							infile.close();
+
+							// Convert from Z-order to linear
+							std::vector<uint16_t> pixels(width * height * 4);
+							for (uint32_t y = 0; y < height; ++y) {
+								for (uint32_t x = 0; x < width; ++x) {
+									uint64_t morton_index = libmorton::m2D_e_magicbits<uint64_t, uint32_t>(x, y);
+									int      linear_index = (y * width + x) * 4;
+									memcpy(
+										&pixels[linear_index],
+										&z_ordered_pixels[morton_index * 4],
+										4 * sizeof(uint16_t)
+									);
+								}
+							}
+							return pixels;
+						}
+					}
+				} else if (magic_number == 0x1F9D48E1) {
+					// LINEAR COMPRESSED (legacy) PATH
 					int width = 0, height = 0;
 					infile.read(reinterpret_cast<char*>(&width), sizeof(int));
 					infile.read(reinterpret_cast<char*>(&height), sizeof(int));
@@ -446,7 +494,7 @@ namespace Boidsish {
 
 						if (z_infile.good()) {
 							logger::LOG(
-								"Loaded compressed superchunk from cache",
+								"Loaded linear compressed superchunk from cache",
 								filename,
 								width,
 								height,
@@ -457,7 +505,7 @@ namespace Boidsish {
 						}
 					}
 				} else {
-					// UNCOMPRESSED (legacy) PATH
+					// UNCOMPRESSED (very legacy) PATH
 					infile.seekg(0);
 					int width = 0, height = 0;
 					infile.read(reinterpret_cast<char*>(&width), sizeof(int));
@@ -468,7 +516,13 @@ namespace Boidsish {
 						std::vector<uint16_t> pixels(width * height * 4);
 						infile.read(reinterpret_cast<char*>(pixels.data()), pixels.size() * sizeof(uint16_t));
 						if (infile.gcount() == pixels.size() * sizeof(uint16_t)) {
-							logger::LOG("Loaded superchunk from cache", filename, width, height, pixels.size());
+							logger::LOG(
+								"Loaded uncompressed superchunk from cache",
+								filename,
+								width,
+								height,
+								pixels.size()
+							);
 							infile.close();
 							return pixels;
 						}
@@ -505,6 +559,20 @@ namespace Boidsish {
 			}
 		}
 
+		// Convert to Z-order for storage
+		std::vector<uint16_t> z_ordered_pixels(texture_dim * texture_dim * 4);
+		for (uint32_t y = 0; y < texture_dim; ++y) {
+			for (uint32_t x = 0; x < texture_dim; ++x) {
+				uint64_t morton_index = libmorton::m2D_e_magicbits<uint64_t, uint32_t>(x, y);
+				int      linear_index = (y * texture_dim + x) * 4;
+				memcpy(
+					&z_ordered_pixels[morton_index * 4],
+					&pixels[linear_index],
+					4 * sizeof(uint16_t)
+				);
+			}
+		}
+
 		std::ofstream outfile(filename, std::ios::binary);
 		int           width = texture_dim;
 		int           height = texture_dim;
@@ -512,7 +580,10 @@ namespace Boidsish {
 		outfile.write(reinterpret_cast<const char*>(&width), sizeof(int));
 		outfile.write(reinterpret_cast<const char*>(&height), sizeof(int));
 		zstr::ostream z_outfile(outfile.rdbuf());
-		z_outfile.write(reinterpret_cast<const char*>(pixels.data()), pixels.size() * sizeof(uint16_t));
+		z_outfile.write(
+			reinterpret_cast<const char*>(z_ordered_pixels.data()),
+			z_ordered_pixels.size() * sizeof(uint16_t)
+		);
 		return pixels;
 	}
 
