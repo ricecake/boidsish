@@ -276,25 +276,39 @@ namespace Boidsish {
 			return {{}, {}, {}, {}, chunkX, chunkZ, false};
 		}
 
-		// Generate vertices and normals
+		// Generate vertices and normals in Z-order (dense)
+		std::vector<std::pair<uint32_t, uint32_t>> coords;
+		coords.reserve(num_vertices_x * num_vertices_z);
+		for (uint32_t i = 0; i < num_vertices_x; ++i) {
+			for (uint32_t j = 0; j < num_vertices_z; ++j) {
+				coords.emplace_back(i, j);
+			}
+		}
+
+		std::sort(coords.begin(), coords.end(), [](const auto& a, const auto& b) {
+			return libmorton::morton2D_64_encode(a.first, a.second) < libmorton::morton2D_64_encode(b.first, b.second);
+		});
+
 		positions.reserve(num_vertices_x * num_vertices_z);
 		normals.reserve(num_vertices_x * num_vertices_z);
-		for (int i = 0; i < num_vertices_x; ++i) {
-			for (int j = 0; j < num_vertices_z; ++j) {
-				float y = heightmap[i][j][0];
-				positions.emplace_back(i, y, j);
-				normals.push_back(diffToNorm(heightmap[i][j][1], heightmap[i][j][2]));
-			}
+		std::vector<std::vector<int>> coord_to_dense_idx(num_vertices_x, std::vector<int>(num_vertices_z));
+
+		for (int dense_idx = 0; dense_idx < coords.size(); ++dense_idx) {
+			auto [i, j] = coords[dense_idx];
+			coord_to_dense_idx[i][j] = dense_idx;
+			float y = heightmap[i][j][0];
+			positions.emplace_back(i, y, j);
+			normals.push_back(diffToNorm(heightmap[i][j][1], heightmap[i][j][2]));
 		}
 
 		// Generate indices for a grid of quads
 		indices.reserve(chunk_size_ * chunk_size_ * 4);
-		for (int i = 0; i < chunk_size_; ++i) {
-			for (int j = 0; j < chunk_size_; ++j) {
-				indices.push_back(i * num_vertices_z + j);
-				indices.push_back((i + 1) * num_vertices_z + j);
-				indices.push_back((i + 1) * num_vertices_z + j + 1);
-				indices.push_back(i * num_vertices_z + j + 1);
+		for (uint32_t i = 0; i < chunk_size_; ++i) {
+			for (uint32_t j = 0; j < chunk_size_; ++j) {
+				indices.push_back(coord_to_dense_idx[i][j]);
+				indices.push_back(coord_to_dense_idx[i + 1][j]);
+				indices.push_back(coord_to_dense_idx[i + 1][j + 1]);
+				indices.push_back(coord_to_dense_idx[i][j + 1]);
 			}
 		}
 
