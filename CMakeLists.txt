@@ -53,6 +53,7 @@ target_include_directories(boidsish
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
         $<INSTALL_INTERFACE:include>
         external/include
+        external/libmorton/include
         ${IMGUI_DIR}/
         ${IMGUI_DIR}/backends
         ${STB_DIR}/
