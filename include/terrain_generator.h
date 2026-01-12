@@ -4,6 +4,7 @@
 #include <map>
 #include <memory>
 #include <mutex>
+#include <set>
 #include <tuple>
 #include <vector>
 
@@ -37,11 +38,11 @@ namespace Boidsish {
 		void                                         update(const Frustum& frustum, const Camera& camera);
 		const std::vector<std::shared_ptr<Terrain>>& getVisibleChunks() const;
 
-		std::vector<uint16_t> GenerateSuperChunkTexture(int requested_x, int requested_z);
-		bool SuperChunkCacheExists(int requested_x, int requested_z);
+		std::vector<uint16_t>                     GenerateSuperChunkTexture(int requested_x, int requested_z);
+		bool                                      SuperChunkCacheExists(int requested_x, int requested_z);
 		std::vector<std::tuple<float, glm::vec3>> SuperChunkTextureToVec(const std::vector<uint16_t>& tex);
-		std::vector<uint16_t> GenerateTextureForArea(int world_x, int world_z, int size);
-		void                  ConvertDatToPng(const std::string& dat_filepath, const std::string& png_filepath);
+		std::vector<uint16_t>                     GenerateTextureForArea(int world_x, int world_z, int size);
+		void ConvertDatToPng(const std::string& dat_filepath, const std::string& png_filepath);
 
 		float GetMaxHeight() const {
 			float max_h = 0.0f;
@@ -157,6 +158,16 @@ namespace Boidsish {
 
 		glm::vec3 diffToNorm(float dx, float dz) const { return glm::normalize(glm::vec3(-dx, 1.0f, -dz)); }
 
+		bool ClaimChunkProcessTicket(uint64_t id) {
+			std::lock_guard<std::mutex> set_lock(in_flight_chunks_set_mutex_);
+			auto                        inProgress = in_flight_chunks.contains(id);
+			if (!inProgress) {
+				return false;
+			}
+			in_flight_chunks.insert(id);
+			return true;
+		}
+
 		// Cache and async management
 		ThreadPool                                                         thread_pool_;
 		std::map<std::pair<int, int>, std::shared_ptr<Terrain>>            chunk_cache_;
@@ -165,10 +176,12 @@ namespace Boidsish {
 		std::mutex                                                         pending_chunks_mutex_;
 
 		// Superchunk cache
-		constexpr static const size_t                                                 kMaxSuperchunks = 16;
-		std::map<uint64_t, std::shared_ptr<std::vector<uint16_t>>>                    superchunk_cache_;
-		std::list<uint64_t>                                                          superchunk_lru_;
-		std::mutex                                                                   superchunk_cache_mutex_;
+		constexpr static const size_t                              kMaxSuperchunks = 16;
+		std::map<uint64_t, std::shared_ptr<std::vector<uint16_t>>> superchunk_cache_;
+		std::list<uint64_t>                                        superchunk_lru_;
+		std::mutex                                                 superchunk_cache_mutex_;
+		std::mutex                                                 in_flight_chunks_set_mutex_;
+		std::set<uint64_t>                                         in_flight_chunks;
 	};
 
 } // namespace Boidsish

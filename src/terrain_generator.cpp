@@ -90,14 +90,15 @@ namespace Boidsish {
 					)) {
 					std::pair<int, int> chunk_coord = {x, z};
 					if (chunk_cache_.find(chunk_coord) == chunk_cache_.end()) {
-						std::lock_guard<std::mutex> lock(pending_chunks_mutex_);
 						if (pending_chunks_.find(chunk_coord) == pending_chunks_.end()) {
-							pending_chunks_.emplace(
-								chunk_coord,
-								thread_pool_.enqueue(
-									TaskPriority::MEDIUM, &TerrainGenerator::generateChunkData, this, x, z
-								)
-							);
+							if (pending_chunks_mutex_.try_lock()) {
+								std::lock_guard<std::mutex> lock(pending_chunks_mutex_, std::adopt_lock);
+								pending_chunks_.emplace(
+									chunk_coord,
+									thread_pool_
+										.enqueue(TaskPriority::MEDIUM, &TerrainGenerator::generateChunkData, this, x, z)
+								);
+							}
 						}
 					}
 				}
@@ -266,10 +267,8 @@ namespace Boidsish {
 		bool                                has_terrain = false;
 
 		if (SuperChunkCacheExists(chunkX * chunk_size_, chunkZ * chunk_size_)) {
-			logger::LOG("CACHE HIT");
-			auto cached = GenerateTextureForArea(
-				chunkX * chunk_size_, chunkZ * chunk_size_, chunk_size_ + 1
-			);
+			// logger::LOG("CACHE HIT");
+			auto cached = GenerateTextureForArea(chunkX * chunk_size_, chunkZ * chunk_size_, chunk_size_ + 1);
 			auto converted = SuperChunkTextureToVec(cached);
 			for (int i = 0; i < num_vertices_x; i++) {
 				for (int j = 0; j < num_vertices_z; j++) {
@@ -280,8 +279,18 @@ namespace Boidsish {
 			}
 			has_terrain = true;
 		} else {
-			logger::LOG("CACHE MISS");
-			thread_pool_.enqueue(TaskPriority::MEDIUM, &TerrainGenerator::GenerateTextureForArea, this, chunkX * chunk_size_, chunkZ * chunk_size_, chunk_size_);
+			// logger::LOG("CACHE MISS");
+			if (pending_chunks_mutex_.try_lock()) {
+				std::lock_guard<std::mutex> lock(pending_chunks_mutex_, std::adopt_lock);
+				thread_pool_.enqueue(
+					TaskPriority::MEDIUM,
+					&TerrainGenerator::GenerateTextureForArea,
+					this,
+					chunkX * chunk_size_,
+					chunkZ * chunk_size_,
+					chunk_size_
+				);
+			}
 			// Generate heightmap
 			for (int i = 0; i < num_vertices_x; ++i) {
 				for (int j = 0; j < num_vertices_z; ++j) {
@@ -441,9 +450,14 @@ namespace Boidsish {
 		const int super_chunk_x = floor(static_cast<float>(requested_x) / texture_dim);
 		const int super_chunk_z = floor(static_cast<float>(requested_z) / texture_dim);
 
-		std::string filename = "terrain_cache/superchunk_" + std::to_string(super_chunk_x) + "_" +
-			std::to_string(super_chunk_z) + ".dat";
-		const uint32_t kMagicNumber = 0x1F9D48E1;
+		const uint64_t morton_code = libmorton::morton2D_64_encode(
+			static_cast<uint32_t>(super_chunk_x),
+			static_cast<uint32_t>(super_chunk_z)
+		);
+
+		std::filesystem::create_directory("terrain_cache");
+		std::string filename = "terrain_cache/superchunk_" + std::to_string(morton_code) + ".dat";
+
 		return std::filesystem::exists(filename);
 	}
 
@@ -474,16 +488,16 @@ namespace Boidsish {
 			static_cast<uint32_t>(super_chunk_z)
 		);
 
-	// Check cache first
-	{
-		std::lock_guard<std::mutex> lock(superchunk_cache_mutex_);
-		if (superchunk_cache_.count(morton_code)) {
-			// Move to front of LRU list
-			superchunk_lru_.remove(morton_code);
-			superchunk_lru_.push_front(morton_code);
-			return *superchunk_cache_[morton_code];
+		// Check cache first
+		{
+			std::lock_guard<std::mutex> lock(superchunk_cache_mutex_);
+			if (superchunk_cache_.count(morton_code)) {
+				// Move to front of LRU list
+				superchunk_lru_.remove(morton_code);
+				superchunk_lru_.push_front(morton_code);
+				return *superchunk_cache_[morton_code];
+			}
 		}
-	}
 
 		std::filesystem::create_directory("terrain_cache");
 		std::string    filename = "terrain_cache/superchunk_" + std::to_string(morton_code) + ".dat";
@@ -672,7 +686,6 @@ namespace Boidsish {
 						    floor(static_cast<float>(global_z) / texture_dim) != cz) {
 							continue;
 						}
-
 
 						// Coordinates within the superchunk
 						int src_x = (global_x % texture_dim + texture_dim) % texture_dim;
