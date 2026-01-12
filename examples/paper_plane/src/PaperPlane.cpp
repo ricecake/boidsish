@@ -53,6 +53,25 @@ namespace Boidsish {
 		const float kBoostAcceleration = 120.0f;
 		const float kSpeedDecay = 20.0f;
 
+		auto pos = GetPosition();
+		auto [height, norm] = handler.vis->GetTerrainPointProperties(pos.x, pos.z);
+		if (pos.y < height) {
+			TriggerDamage();
+			// pos = height;
+			auto newPos = glm::vec3{pos.x, height, pos.z} + norm * 0.1f;
+			SetPosition(newPos);
+			glm::vec3 forward_dir = orientation_ * glm::vec3(0.0f, 0.0f, -1.0f);
+			// glm::quat pitch_delta = glm::angleAxis(glm::radians(90.0f), glm::normalize(glm::cross(forward_dir,
+			// norm))); orientation_ = glm::normalize(orientation_ * pitch_delta);
+			auto new_forward = glm::reflect(forward_dir, norm);
+			orientation_ = glm::lookAt(pos.Toglm(), pos.Toglm() + new_forward, glm::vec3(0, 1, 0));
+			forward_dir = orientation_ * glm::vec3(0.0f, 0.0f, -1.0f);
+			glm::vec3 new_velocity = forward_dir * forward_speed_ * 0.150f;
+			SetVelocity(Vector3(new_velocity.x, new_velocity.y, new_velocity.z));
+
+			return;
+		}
+
 		// --- Handle Rotational Input ---
 		glm::vec3 target_rot_velocity = glm::vec3(0.0f);
 		if (controller_->pitch_up)
@@ -128,7 +147,7 @@ namespace Boidsish {
 			switch (selected_weapon) {
 			case 0:
 				handler.QueueAddEntity<CatMissile>(
-					GetPosition(),
+					pos,
 					orientation_,
 					orientation_ * glm::vec3(fire_left ? -1 : 1, -1, 0),
 					GetVelocity()
@@ -137,7 +156,7 @@ namespace Boidsish {
 				fire_left = !fire_left;
 				break;
 			case 1:
-				handler.QueueAddEntity<CatBomb>(GetPosition(), orientation_ * glm::vec3(0, -1, 0), GetVelocity());
+				handler.QueueAddEntity<CatBomb>(pos, orientation_ * glm::vec3(0, -1, 0), GetVelocity());
 				time_to_fire = 0.25f;
 				break;
 			}

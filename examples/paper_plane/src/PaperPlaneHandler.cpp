@@ -18,7 +18,7 @@ namespace Boidsish {
 	int selected_weapon = 0;
 
 	PaperPlaneHandler::PaperPlaneHandler(task_thread_pool::task_thread_pool& thread_pool):
-		SpatialEntityHandler(thread_pool), eng_(rd_()) {
+		SpatialEntityHandler(thread_pool), eng_(rd_()), damage_dist_(0.25f, 0.5f) {
 		// std::uniform_real_distribution<> dis_pos(-40.0, 40.0);
 		// std::uniform_real_distribution<> dis_y(30.0, 90.0);
 		// std::uniform_real_distribution<> dis_vel(-5.0, 5.0);
@@ -154,7 +154,7 @@ namespace Boidsish {
 			damage_timer_ = damage_timer_ + new_time;
 		}
 
-		damage_timer_ = std::min(damage_timer_, 5.0f);
+		damage_timer_ = std::min(damage_timer_, 2.0f);
 	}
 
 } // namespace Boidsish
