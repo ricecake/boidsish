@@ -17,6 +17,7 @@ find_package(glm REQUIRED)
 find_package(Bullet REQUIRED)
 find_package(assimp REQUIRED)
 find_package(ZLIB REQUIRED)
+find_package(Threads REQUIRED)
 
 # 1. Define ImGui FIRST so FastNoise2 can see it
 add_library(imgui STATIC
@@ -75,6 +76,7 @@ target_link_libraries(boidsish
         ${BULLET_LIBRARIES}
         ZLIB::ZLIB
         libmorton::libmorton
+        Threads::Threads
 )
 
 # 5. Build Examples

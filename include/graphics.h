@@ -16,6 +16,7 @@
 #include "vector.h"
 #include "visual_effects.h"
 #include <glm/glm.hpp>
+#include "audio_manager.h"
 
 namespace task_thread_pool {
 	class task_thread_pool;
@@ -25,6 +26,8 @@ namespace Boidsish {
 	struct HudIcon;
 	struct HudNumber;
 	struct HudGauge;
+
+	// class AudioManager;
 
 	namespace UI {
 		class IWidget;
@@ -172,7 +175,8 @@ namespace Boidsish {
 		FireEffectManager*                           GetFireEffectManager();
 		float                                        GetLastFrameTime() const;
 
-		Config& GetConfig();
+		Config&       GetConfig();
+		AudioManager& GetAudioManager();
 
 		// HUD methods
 		void AddHudIcon(const HudIcon& icon);

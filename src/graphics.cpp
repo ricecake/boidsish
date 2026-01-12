@@ -10,6 +10,7 @@
 
 #include "Config.h"
 #include "UIManager.h"
+#include "audio_manager.h"
 #include "clone_manager.h"
 #include "dot.h"
 #include "entity.h"
@@ -141,9 +142,11 @@ namespace Boidsish {
 		bool floor_reflection_enabled_;
 
 		task_thread_pool::task_thread_pool thread_pool;
+		std::unique_ptr<AudioManager>      audio_manager;
 
 		VisualizerImpl(Visualizer* p, int w, int h, const char* title):
 			parent(p), width(w), height(h), config("boidsish.ini") {
+			audio_manager = std::make_unique<AudioManager>();
 			config.Load();
 			width = config.GetInt("window_width", w);
 			height = config.GetInt("window_height", h);
@@ -1286,6 +1289,7 @@ namespace Boidsish {
 			}
 		}
 
+
 		if (impl->camera_mode == CameraMode::TRACKING) {
 			impl->UpdateSingleTrackCamera(impl->input_state.delta_time, impl->shapes);
 		} else if (impl->camera_mode == CameraMode::AUTO) {
@@ -1295,6 +1299,10 @@ namespace Boidsish {
 		} else if (impl->camera_mode == CameraMode::PATH_FOLLOW) {
 			impl->UpdatePathFollowCamera(impl->input_state.delta_time);
 		}
+
+		impl->audio_manager->UpdateListener(impl->camera.pos(), impl->camera.front(), impl->camera.up());
+		impl->audio_manager->Update();
+
 		glm::mat4 view_matrix = impl->SetupMatrices();
 		if (impl->terrain_enabled_) {
 			Frustum frustum = impl->CalculateFrustum(view_matrix, impl->projection);
@@ -1690,5 +1698,9 @@ namespace Boidsish {
 				}
 			}
 		}
+	}
+
+	AudioManager& Visualizer::GetAudioManager() {
+		return *impl->audio_manager;
 	}
 } // namespace Boidsish
