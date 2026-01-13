@@ -66,7 +66,11 @@ namespace Boidsish {
 			SetTrailLength(500);
 			SetTrailRocket(true);
 			SetOrientToVelocity(true);
+			launch_sound_ = handler.vis->AddSoundEffect("assets/rocket.wav", pos.Toglm(), GetVelocity().Toglm(), 10.0f);
+
 			fired_ = true;
+		} else if (launch_sound_) {
+			launch_sound_->SetPosition(pos.Toglm());
 		}
 
 		forward_speed_ += kAcceleration * delta_time;
@@ -98,7 +102,9 @@ namespace Boidsish {
 				if (frontNess < 0.85) {
 					continue;
 				}
-				auto rank = distance * (4.0 - 3.5 * frontNess);
+
+				// auto rank = distance * (4.0 - 3.5 * frontNess);
+				auto rank = distance * (2.0 - 1.75f * frontNess);
 				if (candidate == target_) {
 					rank *= stickiness;
 				}
@@ -217,6 +223,8 @@ namespace Boidsish {
 		exploded_ = true;
 		lived_ = 0.0f;
 		SetVelocity(Vector3(0, 0, 0));
+		explode_sound_ = handler.vis
+							 ->AddSoundEffect("assets/rocket_explosion.wav", pos.Toglm(), GetVelocity().Toglm(), 20.0f);
 
 		if (hit_target) {
 			SetSize(100);

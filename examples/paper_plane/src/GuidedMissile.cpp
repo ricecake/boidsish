@@ -167,6 +167,8 @@ namespace Boidsish {
 		exploded_ = true;
 		lived_ = 0.0f;
 		SetVelocity(Vector3(0, 0, 0));
+		explode_sound_ = handler.vis
+							 ->AddSoundEffect("assets/rocket_explosion.wav", pos.Toglm(), GetVelocity().Toglm(), 20.0f);
 
 		if (hit_target) {
 			SetSize(100);

@@ -69,6 +69,8 @@ int main() {
 		model->SetColossal(true);
 		shapes.push_back(model);
 
+		visualizer->GetAudioManager().PlayMusic("assets/kazoom.mp3", true);
+
 		visualizer->Run();
 	} catch (const std::exception& e) {
 		std::cerr << "Error: " << e.what() << std::endl;

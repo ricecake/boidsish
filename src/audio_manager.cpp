@@ -71,7 +71,7 @@ namespace Boidsish {
 		if (!m_pimpl->initialized)
 			return;
 
-		auto sound = std::make_shared<Sound>(&m_pimpl->engine, filepath, loop, 1.0f, false);
+		auto sound = std::make_shared<Sound>(&m_pimpl->engine, filepath, loop, 15.0f, false);
 		m_pimpl->sounds.push_back(sound);
 	}
 

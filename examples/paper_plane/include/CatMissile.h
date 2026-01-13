@@ -6,6 +6,7 @@
 #include "GuidedMissileLauncher.h"
 #include "entity.h"
 #include "model.h"
+#include "sound_effect.h"
 #include <glm/gtc/quaternion.hpp>
 
 namespace Boidsish {
@@ -37,6 +38,8 @@ namespace Boidsish {
 		bool                                   fired_ = false;
 		std::shared_ptr<FireEffect>            exhaust_effect_ = nullptr;
 		std::shared_ptr<GuidedMissileLauncher> target_ = nullptr;
+		std::shared_ptr<SoundEffect>           launch_sound_ = nullptr;
+		std::shared_ptr<SoundEffect>           explode_sound_ = nullptr;
 
 		// Flight model
 		glm::quat          orientation_;

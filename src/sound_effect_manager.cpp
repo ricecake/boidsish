@@ -36,7 +36,7 @@ namespace Boidsish {
 	void SoundEffectManager::RemoveEffect(const std::shared_ptr<SoundEffect>& effect) {
 		if (effect) {
 			effect->SetActive(false); // Mark as inactive
-			// The main update loop will remove it.
+			                          // The main update loop will remove it.
 		}
 	}
 

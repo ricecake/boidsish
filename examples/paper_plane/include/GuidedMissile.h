@@ -4,6 +4,7 @@
 
 #include "entity.h"
 #include "model.h"
+#include "sound_effect.h"
 #include <glm/gtc/quaternion.hpp>
 
 namespace Boidsish {
@@ -24,9 +25,11 @@ namespace Boidsish {
 		static constexpr float lifetime_ = 12.0f;
 		static constexpr float kExplosionDisplayTime = 2.0f;
 		// State
-		float                       lived_ = 0.0f;
-		bool                        exploded_ = false;
-		std::shared_ptr<FireEffect> exhaust_effect_ = nullptr;
+		float                        lived_ = 0.0f;
+		bool                         exploded_ = false;
+		std::shared_ptr<FireEffect>  exhaust_effect_ = nullptr;
+		std::shared_ptr<SoundEffect> launch_sound_ = nullptr;
+		std::shared_ptr<SoundEffect> explode_sound_ = nullptr;
 
 		// Flight model
 		glm::quat          orientation_;
