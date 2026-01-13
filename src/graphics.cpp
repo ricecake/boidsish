@@ -55,7 +55,9 @@ namespace Boidsish {
 		int                                   width, height;
 		Camera                                camera;
 		std::vector<ShapeFunction>            shape_functions;
-		std::vector<std::shared_ptr<Shape>>   shapes;
+		std::vector<std::shared_ptr<Shape>>   shapes; // Legacy shapes from callbacks
+        std::map<int, std::shared_ptr<Shape>> persistent_shapes; // New persistent shapes
+        ConcurrentQueue<ShapeCommand>         shape_command_queue;
 		std::unique_ptr<CloneManager>         clone_manager;
 		std::unique_ptr<FireEffectManager>    fire_effect_manager;
 		std::map<int, std::shared_ptr<Trail>> trails;
@@ -1204,6 +1206,14 @@ namespace Boidsish {
 		impl->shape_functions.push_back(func);
 	}
 
+    void Visualizer::AddShape(std::shared_ptr<Shape> shape) {
+        impl->shape_command_queue.push({ShapeCommandType::Add, shape, shape->GetId()});
+    }
+
+    void Visualizer::RemoveShape(int shape_id) {
+        impl->shape_command_queue.push({ShapeCommandType::Remove, nullptr, shape_id});
+    }
+
 	void Visualizer::ClearShapeHandlers() {
 		impl->shape_functions.clear();
 	}
@@ -1281,6 +1291,18 @@ namespace Boidsish {
 		// They have their own FBOs. The main scene pass below is what we want to capture.
 
 		// Shape generation and updates (must happen before any rendering)
+        ShapeCommand command;
+        while (impl->shape_command_queue.try_pop(command)) {
+            switch (command.type) {
+                case ShapeCommandType::Add:
+                    impl->persistent_shapes[command.shape->GetId()] = command.shape;
+                    break;
+                case ShapeCommandType::Remove:
+                    impl->persistent_shapes.erase(command.shape_id);
+                    break;
+            }
+        }
+
 		impl->shapes.clear();
 		if (!impl->shape_functions.empty()) {
 			for (const auto& func : impl->shape_functions) {
@@ -1288,6 +1310,10 @@ namespace Boidsish {
 				impl->shapes.insert(impl->shapes.end(), new_shapes.begin(), new_shapes.end());
 			}
 		}
+
+        for (const auto& pair : impl->persistent_shapes) {
+            impl->shapes.push_back(pair.second);
+        }
 
 
 		if (impl->camera_mode == CameraMode::TRACKING) {

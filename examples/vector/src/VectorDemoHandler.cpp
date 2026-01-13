@@ -6,11 +6,12 @@
 #include "FlockingEntity.h"
 #include "FruitEntity.h"
 #include "VectorDemoEntity.h"
+#include "graphics.h"
 
 namespace Boidsish {
 
-	VectorDemoHandler::VectorDemoHandler(task_thread_pool::task_thread_pool& thread_pool):
-		SpatialEntityHandler(thread_pool), eng(rd()) {
+	VectorDemoHandler::VectorDemoHandler(task_thread_pool::task_thread_pool& thread_pool, Visualizer& viz):
+		SpatialEntityHandler(thread_pool), eng(rd()), viz_(viz) {
 		std::cout << "=== Vector3 Operations Demo ===" << std::endl;
 
 		// Create some vector demo entities
@@ -34,6 +35,16 @@ namespace Boidsish {
 		std::cout << "dot product, cross product, magnitude, and distance calculations!" << std::endl;
 		std::cout << "Flocking entities now automatically discover each other through the handler!" << std::endl;
 	}
+
+    void VectorDemoHandler::AddEntity(int id, std::shared_ptr<EntityBase> entity) {
+        SpatialEntityHandler::AddEntity(id, entity);
+        viz_.AddShape(entity->GetShape());
+    }
+
+    void VectorDemoHandler::RemoveEntity(int id) {
+        SpatialEntityHandler::RemoveEntity(id);
+        viz_.RemoveShape(id);
+    }
 
 	void VectorDemoHandler::PreTimestep(float time, float delta_time) {
 		(void)time;

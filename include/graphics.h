@@ -15,6 +15,7 @@
 #include "shape.h"
 #include "vector.h"
 #include "visual_effects.h"
+#include "concurrent_queue.h"
 #include <glm/glm.hpp>
 #include "audio_manager.h"
 
@@ -39,6 +40,14 @@ namespace Boidsish {
 } // namespace Boidsish
 
 namespace Boidsish {
+    enum class ShapeCommandType { Add, Remove };
+
+    struct ShapeCommand {
+        ShapeCommandType type;
+        std::shared_ptr<Shape> shape;
+        int shape_id;
+    };
+
 	constexpr int kMaxKeys = 1024;
 
 	struct Plane {
@@ -115,6 +124,9 @@ namespace Boidsish {
 		// Set the function/handler that generates shapes for each frame
 		void AddShapeHandler(ShapeFunction func);
 		void ClearShapeHandlers();
+
+		void AddShape(std::shared_ptr<Shape> shape);
+        void RemoveShape(int shape_id);
 
 		// Legacy method name for compatibility
 		void SetDotFunction(ShapeFunction func) { AddShapeHandler(func); }

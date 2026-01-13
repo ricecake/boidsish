@@ -23,8 +23,7 @@ int main() {
 		viz.SetCamera(camera);
 
 		// Create and set the vector demo handler
-		VectorDemoHandler handler(viz.GetThreadPool());
-		viz.AddShapeHandler(std::ref(handler));
+		VectorDemoHandler handler(viz.GetThreadPool(), viz);
 		viz.AddShapeHandler(std::ref(GraphExample));
 
 		std::cout << "Vector Demo Started!" << std::endl;
