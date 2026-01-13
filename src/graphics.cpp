@@ -1291,6 +1291,14 @@ namespace Boidsish {
 		// They have their own FBOs. The main scene pass below is what we want to capture.
 
 		// Shape generation and updates (must happen before any rendering)
+		impl->shapes.clear();
+		if (!impl->shape_functions.empty()) {
+			for (const auto& func : impl->shape_functions) {
+				auto new_shapes = func(impl->simulation_time);
+				impl->shapes.insert(impl->shapes.end(), new_shapes.begin(), new_shapes.end());
+			}
+		}
+
         ShapeCommand command;
         while (impl->shape_command_queue.try_pop(command)) {
             switch (command.type) {
@@ -1302,14 +1310,6 @@ namespace Boidsish {
                     break;
             }
         }
-
-		impl->shapes.clear();
-		if (!impl->shape_functions.empty()) {
-			for (const auto& func : impl->shape_functions) {
-				auto new_shapes = func(impl->simulation_time);
-				impl->shapes.insert(impl->shapes.end(), new_shapes.begin(), new_shapes.end());
-			}
-		}
 
         for (const auto& pair : impl->persistent_shapes) {
             impl->shapes.push_back(pair.second);

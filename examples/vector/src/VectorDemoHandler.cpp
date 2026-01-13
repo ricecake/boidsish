@@ -17,17 +17,17 @@ namespace Boidsish {
 		// Create some vector demo entities
 		for (int i = 0; i < 4; i++) {
 			Vector3 start_pos(10 * sin(i / 4.0f), 1.0f, 10 * cos(i / 6.0f));
-			AddEntity<VectorDemoEntity>(start_pos);
+			this->AddEntity<VectorDemoEntity>(start_pos);
 		}
 
 		// Create a flock of entities
 		for (int i = 0; i < 32; i++) {
 			Vector3 start_pos((rand() % 10 - 5) * 2.0f, -1, (rand() % 10 - 5) * 2.0f);
-			AddEntity<FlockingEntity>(start_pos);
+			this->AddEntity<FlockingEntity>(start_pos);
 		}
 
 		for (int i = 0; i < 8; i++) {
-			AddEntity<FruitEntity>();
+			this->AddEntity<FruitEntity>();
 		}
 
 		std::cout << "Created 32 flocking entities and 4 target-seeking entities" << std::endl;
@@ -38,12 +38,16 @@ namespace Boidsish {
 
     void VectorDemoHandler::AddEntity(int id, std::shared_ptr<EntityBase> entity) {
         SpatialEntityHandler::AddEntity(id, entity);
-        viz_.AddShape(entity->GetShape());
+        EnqueueVisualizerAction([this, shape = entity->GetShape()]() {
+            viz_.AddShape(shape);
+        });
     }
 
     void VectorDemoHandler::RemoveEntity(int id) {
         SpatialEntityHandler::RemoveEntity(id);
-        viz_.RemoveShape(id);
+        EnqueueVisualizerAction([this, id]() {
+            viz_.RemoveShape(id);
+        });
     }
 
 	void VectorDemoHandler::PreTimestep(float time, float delta_time) {
@@ -52,7 +56,7 @@ namespace Boidsish {
 		auto  numFlocker = GetEntitiesByType<FlockingEntity>().size();
 		if (numFlocker <= 4) {
 			Vector3 start_pos((rand() % 10 - 5) * 2.0f, (rand() % 6 - 3) * 2.0f, (rand() % 10 - 5) * 2.0f);
-			AddEntity<FlockingEntity>(start_pos);
+			this->AddEntity<FlockingEntity>(start_pos);
 			fruitRate++;
 		} else if (numFlocker > 96) {
 			fruitRate--;
@@ -62,7 +66,7 @@ namespace Boidsish {
 
 		if (GetEntitiesByType<VectorDemoEntity>().size() < 1) {
 			Vector3 start_pos(10 * sin(rand() / 4.0f), 1.0f, 10 * cos(rand() / 6.0f));
-			AddEntity<VectorDemoEntity>(start_pos);
+			this->AddEntity<VectorDemoEntity>(start_pos);
 		}
 
 		float weightedOdds = delta_time * fruitRate *
@@ -70,7 +74,7 @@ namespace Boidsish {
 		std::bernoulli_distribution dist(weightedOdds);
 		bool                        makeFruit = dist(eng);
 		if (makeFruit) {
-			AddEntity<FruitEntity>();
+			this->AddEntity<FruitEntity>();
 		}
 	}
 
