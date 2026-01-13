@@ -32,8 +32,6 @@ namespace Boidsish {
 
 		void Update();
 
-		ma_engine* GetEngine();
-
 	private:
 		struct AudioManagerImpl;
 		std::unique_ptr<AudioManagerImpl> m_pimpl;

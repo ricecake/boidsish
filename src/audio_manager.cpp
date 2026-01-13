@@ -13,9 +13,9 @@
 namespace Boidsish {
 
 	struct AudioManager::AudioManagerImpl {
-		ma_engine                  engine;
-		bool                       initialized = false;
-		std::list<std::shared_ptr<Sound>> sounds;
+		ma_engine engine;
+		bool      initialized = false;
+		std::list<std::weak_ptr<Sound>> sounds;
 
 		AudioManagerImpl() {
 			ma_engine_config engineConfig;
@@ -81,14 +81,12 @@ namespace Boidsish {
 		if (!m_pimpl->initialized)
 			return;
 
-		m_pimpl->sounds.remove_if([](const std::shared_ptr<Sound>& sound) {
-			return sound->IsDone();
+		m_pimpl->sounds.remove_if([](const std::weak_ptr<Sound>& weak_sound) {
+			if (auto sound = weak_sound.lock()) {
+				return sound->IsDone();
+			}
+			return true; // Remove if the object is expired
 		});
 	}
-
-    ma_engine* AudioManager::GetEngine() {
-        if (!m_pimpl->initialized) return nullptr;
-        return &m_pimpl->engine;
-    }
 
 } // namespace Boidsish
