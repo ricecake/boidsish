@@ -38,8 +38,9 @@ namespace Boidsish {
 
     void VectorDemoHandler::AddEntity(int id, std::shared_ptr<EntityBase> entity) {
         SpatialEntityHandler::AddEntity(id, entity);
-        EnqueueVisualizerAction([this, shape = entity->GetShape()]() {
-            viz_.AddShape(shape);
+        EnqueueVisualizerAction([this, entity]() {
+            entity->UpdateShape();
+            viz_.AddShape(entity->GetShape());
         });
     }
 
