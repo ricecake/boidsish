@@ -31,8 +31,8 @@ private:
 // Custom handler for the audio demo
 class AudioDemoHandler: public EntityHandler {
 public:
-	AudioDemoHandler(task_thread_pool::task_thread_pool& thread_pool, AudioManager& audio_manager):
-		EntityHandler(thread_pool), m_audio_manager(audio_manager), m_sound_timer(0.0f) {
+	AudioDemoHandler(task_thread_pool::task_thread_pool& thread_pool, Visualizer& visualizer):
+		EntityHandler(thread_pool), m_visualizer(visualizer), m_sound_timer(0.0f) {
 		AddEntity<MovingSoundEntity>(5.0f);
 	}
 
@@ -44,12 +44,12 @@ protected:
 			// There's only one entity, so this is safe for the demo
 			const auto& entity = GetAllEntities().begin()->second;
 			const auto& pos = entity->GetPosition();
-			m_audio_manager.PlaySound("assets/test_sound.wav", glm::vec3(pos.x, pos.y, pos.z));
+			m_visualizer.AddSoundEffect("assets/test_sound.wav", glm::vec3(pos.x, pos.y, pos.z));
 		}
 	}
 
 private:
-	AudioManager& m_audio_manager;
+	Visualizer& m_visualizer;
 	float         m_sound_timer;
 };
 
@@ -62,7 +62,7 @@ int main() {
 		viz.SetCameraMode(CameraMode::FREE);
 
 		// Create the handler
-		AudioDemoHandler handler(viz.GetThreadPool(), viz.GetAudioManager());
+		AudioDemoHandler handler(viz.GetThreadPool(), viz);
 
 		// Play background music
 		viz.GetAudioManager().PlayMusic("assets/background_music.ogg", true);

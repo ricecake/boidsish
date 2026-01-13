@@ -34,6 +34,7 @@ namespace Boidsish {
 	}
 	class EntityBase;
 	class FireEffect;
+	class SoundEffect;
 	class FireEffectManager;
 	class Path;
 } // namespace Boidsish
@@ -163,6 +164,15 @@ namespace Boidsish {
 			float            lifetime = -1.0f
 		);
 		void RemoveFireEffect(const std::shared_ptr<FireEffect>& effect) const;
+		std::shared_ptr<SoundEffect> AddSoundEffect(
+			const std::string& filepath,
+			const glm::vec3& position,
+			const glm::vec3& velocity = glm::vec3(0.0f),
+			float volume = 1.0f,
+			bool loop = false,
+			float lifetime = -1.0f
+		);
+		void RemoveSoundEffect(const std::shared_ptr<SoundEffect>& effect) const;
 		void TogglePostProcessingEffect(const std::string& name);
 		void TogglePostProcessingEffect(const std::string& name, const bool newState);
 		void SetFilmGrainIntensity(float intensity);

@@ -6,10 +6,11 @@
 #include <glm/glm.hpp>
 
 // Forward declarations for miniaudio types
-typedef struct ma_engine ma_engine;
-typedef struct ma_sound  ma_sound;
+struct ma_engine;
 
 namespace Boidsish {
+
+	class Sound; // Forward declaration
 
 	class AudioManager {
 	public:
@@ -25,10 +26,13 @@ namespace Boidsish {
 		// Play a sound that is not spatialized, good for background music
 		void PlayMusic(const std::string& filepath, bool loop = true);
 
-		// Play a 3D spatialized sound at a specific position
-		void PlaySound(const std::string& filepath, const glm::vec3& position, float volume = 1.0f);
+		// Create a 3D spatialized sound that can be updated later
+		std::shared_ptr<Sound>
+		CreateSound(const std::string& filepath, const glm::vec3& position, float volume = 1.0f, bool loop = false);
 
 		void Update();
+
+		ma_engine* GetEngine();
 
 	private:
 		struct AudioManagerImpl;
