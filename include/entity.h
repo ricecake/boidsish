@@ -167,9 +167,7 @@ namespace Boidsish {
 
 		std::shared_ptr<Shape> GetShape() const override { return shape_; }
 
-		void SetOrientation(glm::quat orientation) {
-			orientation_ = orientation;
-		}
+		void SetOrientation(glm::quat orientation) { orientation_ = orientation; }
 
 		void UpdateShape() override {
 			if (!shape_)

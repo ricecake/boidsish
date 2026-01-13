@@ -1,6 +1,7 @@
 #include "audio_manager.h"
 
 #include "logger.h"
+#include "sound.h"
 
 #define MINIAUDIO_IMPLEMENTATION
 #include <iostream>
@@ -12,9 +13,9 @@
 namespace Boidsish {
 
 	struct AudioManager::AudioManagerImpl {
-		ma_engine           engine;
-		bool                initialized = false;
-		std::list<ma_sound> sounds;
+		ma_engine                       engine;
+		bool                            initialized = false;
+		std::list<std::weak_ptr<Sound>> sounds;
 
 		AudioManagerImpl() {
 			ma_engine_config engineConfig;
@@ -36,9 +37,7 @@ namespace Boidsish {
 		}
 
 		~AudioManagerImpl() {
-			for (auto& sound : sounds) {
-				ma_sound_uninit(&sound);
-			}
+			// smart pointers will handle cleanup
 			if (initialized) {
 				ma_engine_uninit(&engine);
 			}
@@ -49,12 +48,22 @@ namespace Boidsish {
 
 	AudioManager::~AudioManager() = default;
 
-	void AudioManager::UpdateListener(const glm::vec3& position, const glm::vec3& direction, const glm::vec3& up) {
+	void AudioManager::UpdateListener(
+		const glm::vec3& position,
+		const glm::vec3& direction,
+		const glm::vec3& up,
+		const float      speed,
+		const float      fov
+	) {
 		if (!m_pimpl->initialized)
 			return;
 
+		auto vel = speed * direction;
+
 		ma_engine_listener_set_position(&m_pimpl->engine, 0, position.x, position.y, position.z);
 		ma_engine_listener_set_direction(&m_pimpl->engine, 0, direction.x, direction.y, direction.z);
+		ma_engine_listener_set_cone(&m_pimpl->engine, 0, glm::radians(fov), glm::radians(fov) * 2, 0.75f);
+		ma_engine_listener_set_velocity(&m_pimpl->engine, 0, vel.x, vel.y, vel.z);
 		ma_engine_listener_set_world_up(&m_pimpl->engine, 0, up.x, up.y, up.z);
 	}
 
@@ -62,53 +71,32 @@ namespace Boidsish {
 		if (!m_pimpl->initialized)
 			return;
 
-		m_pimpl->sounds.emplace_back();
-		ma_sound& sound = m_pimpl->sounds.back();
-
-		ma_result result = ma_sound_init_from_file(&m_pimpl->engine, filepath.c_str(), 0, NULL, NULL, &sound);
-		if (result != MA_SUCCESS) {
-			logger::ERROR("Failed to load music file: {}", filepath, result);
-			m_pimpl->sounds.pop_back();
-			return;
-		}
-
-		ma_sound_set_spatialization_enabled(&sound, MA_FALSE);
-		ma_sound_set_looping(&sound, loop ? MA_TRUE : MA_FALSE);
-		ma_sound_start(&sound);
+		auto sound = std::make_shared<Sound>(&m_pimpl->engine, filepath, loop, 1.0f, false);
+		m_pimpl->sounds.push_back(sound);
 	}
 
-	void AudioManager::PlaySound(const std::string& filepath, const glm::vec3& position, float volume) {
-		if (!m_pimpl->initialized)
-			return;
-
-		m_pimpl->sounds.emplace_back();
-		ma_sound& sound = m_pimpl->sounds.back();
-
-		ma_result result = ma_sound_init_from_file(&m_pimpl->engine, filepath.c_str(), 0, NULL, NULL, &sound);
-		if (result != MA_SUCCESS) {
-			logger::ERROR("Failed to load sound file: {}", filepath);
-			m_pimpl->sounds.pop_back();
-			return;
+	std::shared_ptr<Sound>
+	AudioManager::CreateSound(const std::string& filepath, const glm::vec3& position, float volume, bool loop) {
+		if (!m_pimpl->initialized) {
+			return nullptr;
 		}
 
-		ma_sound_set_position(&sound, position.x, position.y, position.z);
-		ma_sound_set_volume(&sound, volume);
-		ma_sound_set_spatialization_enabled(&sound, MA_TRUE);
-		ma_sound_start(&sound);
+		auto sound = std::make_shared<Sound>(&m_pimpl->engine, filepath, loop, volume, true);
+		sound->SetPosition(position);
+		m_pimpl->sounds.push_back(sound);
+		return sound;
 	}
 
 	void AudioManager::Update() {
 		if (!m_pimpl->initialized)
 			return;
 
-		for (auto it = m_pimpl->sounds.begin(); it != m_pimpl->sounds.end();) {
-			if (ma_sound_at_end(&*it)) {
-				ma_sound_uninit(&*it);
-				it = m_pimpl->sounds.erase(it);
-			} else {
-				++it;
+		m_pimpl->sounds.remove_if([](const std::weak_ptr<Sound>& weak_sound) {
+			if (auto sound = weak_sound.lock()) {
+				return sound->IsDone();
 			}
-		}
+			return true; // Remove if the object is expired
+		});
 	}
 
 } // namespace Boidsish

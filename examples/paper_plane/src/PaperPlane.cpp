@@ -61,7 +61,7 @@ namespace Boidsish {
 			auto newPos = glm::vec3{pos.x, height, pos.z} + norm * 0.1f;
 			SetPosition(newPos);
 			glm::vec3 forward_dir = orientation_ * glm::vec3(0.0f, 0.0f, -1.0f);
-			auto new_forward = glm::reflect(forward_dir, norm);
+			auto      new_forward = glm::reflect(forward_dir, norm);
 			orientation_ = glm::lookAt(pos.Toglm(), pos.Toglm() + new_forward, glm::vec3(0, 1, 0));
 			forward_dir = orientation_ * glm::vec3(0.0f, 0.0f, -1.0f);
 			glm::vec3 new_velocity = forward_dir * forward_speed_ * 0.150f;

@@ -108,7 +108,7 @@ namespace Boidsish {
 				if (terrain_h >= 0) {
 					glm::vec3 up_vector = glm::vec3(0.0f, 1.0f, 0.0f);
 					glm::quat terrain_alignment = glm::rotation(up_vector, terrain_normal);
-					terrain_alignment = glm::lookAt(world_pos, world_pos+terrain_normal, glm::vec3(0, 1, 0));
+					terrain_alignment = glm::lookAt(world_pos, world_pos + terrain_normal, glm::vec3(0, 1, 0));
 
 					int id = chunk_pos.x + 10 * chunk_pos.y + 100 * chunk_pos.z;
 					QueueAddEntity<GuidedMissileLauncher>(

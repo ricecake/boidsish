@@ -8,6 +8,7 @@
 #include "dot.h"
 #include "entity.h"
 #include "graphics.h"
+#include "sound_effect.h"
 
 using namespace Boidsish;
 
@@ -31,26 +32,32 @@ private:
 // Custom handler for the audio demo
 class AudioDemoHandler: public EntityHandler {
 public:
-	AudioDemoHandler(task_thread_pool::task_thread_pool& thread_pool, AudioManager& audio_manager):
-		EntityHandler(thread_pool), m_audio_manager(audio_manager), m_sound_timer(0.0f) {
+	AudioDemoHandler(task_thread_pool::task_thread_pool& thread_pool, Visualizer& visualizer):
+		EntityHandler(thread_pool), m_visualizer(visualizer) {
 		AddEntity<MovingSoundEntity>(5.0f);
+		// Create a looping sound that we can move
+		m_moving_sound = m_visualizer.AddSoundEffect(
+			"assets/test_sound.wav",
+			glm::vec3(0.0f), // Initial position
+			glm::vec3(0.0f), // No velocity, we'll set position directly
+			1.0f,            // Volume
+			true             // Loop = true
+		);
 	}
 
 protected:
-	void PostTimestep(float, float delta_time) override {
-		m_sound_timer += delta_time;
-		if (m_sound_timer > 1.0f) {
-			m_sound_timer = 0.0f;
+	void PostTimestep(float, float) override {
+		if (m_moving_sound) {
 			// There's only one entity, so this is safe for the demo
 			const auto& entity = GetAllEntities().begin()->second;
 			const auto& pos = entity->GetPosition();
-			m_audio_manager.PlaySound("assets/test_sound.wav", glm::vec3(pos.x, pos.y, pos.z));
+			m_moving_sound->SetPosition(glm::vec3(pos.x, pos.y, pos.z));
 		}
 	}
 
 private:
-	AudioManager& m_audio_manager;
-	float         m_sound_timer;
+	Visualizer&                  m_visualizer;
+	std::shared_ptr<SoundEffect> m_moving_sound;
 };
 
 int main() {
@@ -62,7 +69,7 @@ int main() {
 		viz.SetCameraMode(CameraMode::FREE);
 
 		// Create the handler
-		AudioDemoHandler handler(viz.GetThreadPool(), viz.GetAudioManager());
+		AudioDemoHandler handler(viz.GetThreadPool(), viz);
 
 		// Play background music
 		viz.GetAudioManager().PlayMusic("assets/background_music.ogg", true);

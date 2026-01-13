@@ -28,6 +28,7 @@
 #include "post_processing/effects/StrobeEffect.h"
 #include "post_processing/effects/TimeStutterEffect.h"
 #include "post_processing/effects/WhispTrailEffect.h"
+#include "sound_effect_manager.h"
 #include "spline.h"
 #include "task_thread_pool.hpp"
 #include "terrain.h"
@@ -58,6 +59,7 @@ namespace Boidsish {
 		std::vector<std::shared_ptr<Shape>>   shapes;
 		std::unique_ptr<CloneManager>         clone_manager;
 		std::unique_ptr<FireEffectManager>    fire_effect_manager;
+		std::unique_ptr<SoundEffectManager>   sound_effect_manager;
 		std::map<int, std::shared_ptr<Trail>> trails;
 		std::map<int, float>                  trail_last_update;
 
@@ -224,6 +226,7 @@ namespace Boidsish {
 			}
 			clone_manager = std::make_unique<CloneManager>();
 			fire_effect_manager = std::make_unique<FireEffectManager>();
+			sound_effect_manager = std::make_unique<SoundEffectManager>(audio_manager.get());
 
 			glGenBuffers(1, &lighting_ubo);
 			glBindBuffer(GL_UNIFORM_BUFFER, lighting_ubo);
@@ -1289,7 +1292,6 @@ namespace Boidsish {
 			}
 		}
 
-
 		if (impl->camera_mode == CameraMode::TRACKING) {
 			impl->UpdateSingleTrackCamera(impl->input_state.delta_time, impl->shapes);
 		} else if (impl->camera_mode == CameraMode::AUTO) {
@@ -1300,7 +1302,13 @@ namespace Boidsish {
 			impl->UpdatePathFollowCamera(impl->input_state.delta_time);
 		}
 
-		impl->audio_manager->UpdateListener(impl->camera.pos(), impl->camera.front(), impl->camera.up());
+		impl->audio_manager->UpdateListener(
+			impl->camera.pos(),
+			impl->camera.front(),
+			impl->camera.up(),
+			impl->camera_velocity_,
+			impl->camera.fov
+		);
 		impl->audio_manager->Update();
 
 		glm::mat4 view_matrix = impl->SetupMatrices();
@@ -1312,6 +1320,7 @@ namespace Boidsish {
 		// Update clone manager
 		impl->clone_manager->Update(impl->simulation_time, impl->camera.pos());
 		impl->fire_effect_manager->Update(impl->input_state.delta_time, impl->simulation_time);
+		impl->sound_effect_manager->Update(impl->input_state.delta_time);
 
 		// UBO Updates
 		if (impl->effects_enabled_) {
@@ -1665,6 +1674,21 @@ namespace Boidsish {
 
 	void Visualizer::RemoveFireEffect(const std::shared_ptr<FireEffect>& effect) const {
 		impl->fire_effect_manager->RemoveEffect(effect);
+	}
+
+	std::shared_ptr<SoundEffect> Visualizer::AddSoundEffect(
+		const std::string& filepath,
+		const glm::vec3&   position,
+		const glm::vec3&   velocity,
+		float              volume,
+		bool               loop,
+		float              lifetime
+	) {
+		return impl->sound_effect_manager->AddEffect(filepath, position, velocity, volume, loop, lifetime);
+	}
+
+	void Visualizer::RemoveSoundEffect(const std::shared_ptr<SoundEffect>& effect) const {
+		impl->sound_effect_manager->RemoveEffect(effect);
 	}
 
 	void Visualizer::TogglePostProcessingEffect(const std::string& name) {

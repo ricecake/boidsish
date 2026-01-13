@@ -8,6 +8,7 @@
 #include <vector>
 
 #include "Config.h"
+#include "audio_manager.h"
 #include "fire_effect.h"
 #include "imgui.h"
 #include "imgui_impl_glfw.h"
@@ -16,7 +17,6 @@
 #include "vector.h"
 #include "visual_effects.h"
 #include <glm/glm.hpp>
-#include "audio_manager.h"
 
 namespace task_thread_pool {
 	class task_thread_pool;
@@ -34,6 +34,7 @@ namespace Boidsish {
 	}
 	class EntityBase;
 	class FireEffect;
+	class SoundEffect;
 	class FireEffectManager;
 	class Path;
 } // namespace Boidsish
@@ -162,7 +163,16 @@ namespace Boidsish {
 			int              max_particles = -1,
 			float            lifetime = -1.0f
 		);
-		void RemoveFireEffect(const std::shared_ptr<FireEffect>& effect) const;
+		void                         RemoveFireEffect(const std::shared_ptr<FireEffect>& effect) const;
+		std::shared_ptr<SoundEffect> AddSoundEffect(
+			const std::string& filepath,
+			const glm::vec3&   position,
+			const glm::vec3&   velocity = glm::vec3(0.0f),
+			float              volume = 1.0f,
+			bool               loop = false,
+			float              lifetime = -1.0f
+		);
+		void RemoveSoundEffect(const std::shared_ptr<SoundEffect>& effect) const;
 		void TogglePostProcessingEffect(const std::string& name);
 		void TogglePostProcessingEffect(const std::string& name, const bool newState);
 		void SetFilmGrainIntensity(float intensity);
