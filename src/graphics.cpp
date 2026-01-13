@@ -562,7 +562,7 @@ namespace Boidsish {
 
 		glm::mat4 SetupMatrices() { return SetupMatrices(camera); }
 
-		void RenderSceneObjects(
+		void UpdateTrailsAndRenderShapes(
 			const glm::mat4& view,
 			const Camera& /* cam */,
 			const std::vector<std::shared_ptr<Shape>>& shapes,
@@ -611,6 +611,12 @@ namespace Boidsish {
 				shape->render();
 			}
 
+			// Render clones
+			shader->use();
+			clone_manager->Render(*shader);
+		}
+
+		void RenderTrails(const glm::mat4& view, const std::optional<glm::vec4>& clip_plane) {
 			trail_shader->use();
 			trail_shader->setMat4("view", view);
 			trail_shader->setMat4("projection", projection);
@@ -624,10 +630,6 @@ namespace Boidsish {
 			for (auto& pair : trails) {
 				pair.second->Render(*trail_shader);
 			}
-
-			// Render clones
-			shader->use();
-			clone_manager->Render(*shader);
 		}
 
 		void RenderTerrain(const glm::mat4& view, const std::optional<glm::vec4>& clip_plane) {
@@ -1376,14 +1378,15 @@ namespace Boidsish {
 				glm::mat4 reflection_view = impl->SetupMatrices(reflection_cam);
 				impl->reflection_vp = impl->projection * reflection_view;
 				impl->RenderSky(reflection_view);
-				impl->RenderSceneObjects(
+				impl->RenderTerrain(reflection_view, glm::vec4(0, 1, 0, 0.01));
+				impl->UpdateTrailsAndRenderShapes(
 					reflection_view,
 					reflection_cam,
 					impl->shapes,
 					impl->simulation_time,
 					glm::vec4(0, 1, 0, 0.01)
 				);
-				impl->RenderTerrain(reflection_view, glm::vec4(0, 1, 0, 0.01));
+				impl->RenderTrails(reflection_view, glm::vec4(0, 1, 0, 0.01));
 				impl->fire_effect_manager->Render(reflection_view, impl->projection, reflection_cam.pos());
 			}
 			glDisable(GL_CLIP_DISTANCE0);
@@ -1404,8 +1407,9 @@ namespace Boidsish {
 		if (impl->floor_enabled_) {
 			impl->RenderPlane(view);
 		}
-		impl->RenderSceneObjects(view, impl->camera, impl->shapes, impl->simulation_time, std::nullopt);
 		impl->RenderTerrain(view, std::nullopt);
+		impl->UpdateTrailsAndRenderShapes(view, impl->camera, impl->shapes, impl->simulation_time, std::nullopt);
+		impl->RenderTrails(view, std::nullopt);
 		impl->fire_effect_manager->Render(view, impl->projection, impl->camera.pos());
 
 		if (impl->effects_enabled_) {
