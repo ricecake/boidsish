@@ -32,6 +32,12 @@ namespace Boidsish {
 		// Play a sound that is not spatialized, good for background music
 		void PlayMusic(const std::string& filepath, bool loop = true);
 
+		void PlayAmbientSound(
+			const std::string& name, const std::string& filepath, bool loop = true, float volume = 1.0f
+		);
+		void StopAmbientSound(const std::string& name);
+		void SetAmbientSoundVolume(const std::string& name, float volume);
+
 		// Create a 3D spatialized sound that can be updated later
 		std::shared_ptr<Sound>
 		CreateSound(const std::string& filepath, const glm::vec3& position, float volume = 1.0f, bool loop = false);

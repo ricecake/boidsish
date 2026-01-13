@@ -41,7 +41,7 @@ namespace Boidsish {
 	}
 
 	void Sound::SetLooping(bool loop) {
-		if (!_initialized) {
+		if (_initialized) {
 			ma_sound_set_looping(&_sound, loop ? MA_TRUE : MA_FALSE);
 		}
 	}

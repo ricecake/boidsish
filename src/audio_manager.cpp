@@ -6,6 +6,7 @@
 #define MINIAUDIO_IMPLEMENTATION
 #include <iostream>
 #include <list>
+#include <map>
 #include <vector>
 
 #include "miniaudio.h"
@@ -14,8 +15,10 @@ namespace Boidsish {
 
 	struct AudioManager::AudioManagerImpl {
 		ma_engine                       engine;
-		bool                            initialized = false;
-		std::list<std::weak_ptr<Sound>> sounds;
+		bool                                           initialized = false;
+		std::list<std::weak_ptr<Sound>>                sounds;
+		std::shared_ptr<Sound>                         m_music;
+		std::map<std::string, std::shared_ptr<Sound>> m_ambient_sounds;
 
 		AudioManagerImpl() {
 			ma_engine_config engineConfig;
@@ -23,7 +26,7 @@ namespace Boidsish {
 
 			// IMPORTANT: This is enabled for headless testing.
 			// Comment out the following line to enable audio playback.
-			// engineConfig.noDevice = MA_TRUE;
+			// engineConfig.noDevice = MA_TRUE; // MA_TRUE means no audio device will be used.
 			engineConfig.channels = 2;
 			engineConfig.sampleRate = 48000;
 
@@ -70,9 +73,30 @@ namespace Boidsish {
 	void AudioManager::PlayMusic(const std::string& filepath, bool loop) {
 		if (!m_pimpl->initialized)
 			return;
+		m_pimpl->m_music = std::make_shared<Sound>(&m_pimpl->engine, filepath, loop, 1.0f, false);
+	}
 
-		auto sound = std::make_shared<Sound>(&m_pimpl->engine, filepath, loop, 15.0f, false);
-		m_pimpl->sounds.push_back(sound);
+	void AudioManager::PlayAmbientSound(
+		const std::string& name, const std::string& filepath, bool loop, float volume
+	) {
+		if (!m_pimpl->initialized)
+			return;
+		m_pimpl->m_ambient_sounds[name] =
+			std::make_shared<Sound>(&m_pimpl->engine, filepath, loop, volume, false);
+	}
+
+	void AudioManager::StopAmbientSound(const std::string& name) {
+		if (!m_pimpl->initialized)
+			return;
+		m_pimpl->m_ambient_sounds.erase(name);
+	}
+
+	void AudioManager::SetAmbientSoundVolume(const std::string& name, float volume) {
+		if (!m_pimpl->initialized)
+			return;
+		if (m_pimpl->m_ambient_sounds.count(name)) {
+			m_pimpl->m_ambient_sounds[name]->SetVolume(volume);
+		}
 	}
 
 	std::shared_ptr<Sound>
