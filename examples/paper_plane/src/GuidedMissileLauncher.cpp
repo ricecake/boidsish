@@ -9,11 +9,12 @@
 namespace Boidsish {
 
 	GuidedMissileLauncher::GuidedMissileLauncher(int id, Vector3 pos, glm::quat orientation):
-		Entity<Model>(id, "assets/utah_teapot.obj", false), eng_(rd_()) {
+		// Entity<Model>(id, "assets/utah_teapot.obj", false), eng_(rd_()) {
+		Entity<Model>(id, "assets/quickMissileLauncher.obj", false), eng_(rd_()) {
 		SetPosition(pos.x, pos.y, pos.z);
-		shape_->SetScale(glm::vec3(2.0f));
-		shape_->SetBaseRotation(glm::angleAxis(glm::radians(0.0f), glm::vec3(0.0f, 1.0f, 0.0f)));
-		shape_->SetRotation(orientation);
+		shape_->SetScale(glm::vec3(0.50f));
+		// shape_->SetRotation(orientation);
+		SetOrientation(orientation);
 
 		std::uniform_real_distribution<float> dist(4.0f, 8.0f);
 		fire_interval_ = dist(eng_);

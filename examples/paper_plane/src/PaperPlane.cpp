@@ -47,11 +47,11 @@ namespace Boidsish {
 		const float kAutoLevelSpeed = 1.5f;
 		const float kDamping = 2.5f;
 
-		const float kBaseSpeed = 60.0f;
-		const float kBoostSpeed = 90.0f;
+		const float kBaseSpeed = 50.0f;
+		const float kBoostSpeed = 80.0f;
 		const float kBreakSpeed = 10.0f;
-		const float kBoostAcceleration = 120.0f;
-		const float kSpeedDecay = 20.0f;
+		const float kBoostAcceleration = 100.0f;
+		const float kSpeedDecay = 30.0f;
 
 		auto pos = GetPosition();
 		auto [height, norm] = handler.vis->GetTerrainPointProperties(pos.x, pos.z);
@@ -61,8 +61,6 @@ namespace Boidsish {
 			auto newPos = glm::vec3{pos.x, height, pos.z} + norm * 0.1f;
 			SetPosition(newPos);
 			glm::vec3 forward_dir = orientation_ * glm::vec3(0.0f, 0.0f, -1.0f);
-			// glm::quat pitch_delta = glm::angleAxis(glm::radians(90.0f), glm::normalize(glm::cross(forward_dir,
-			// norm))); orientation_ = glm::normalize(orientation_ * pitch_delta);
 			auto new_forward = glm::reflect(forward_dir, norm);
 			orientation_ = glm::lookAt(pos.Toglm(), pos.Toglm() + new_forward, glm::vec3(0, 1, 0));
 			forward_dir = orientation_ * glm::vec3(0.0f, 0.0f, -1.0f);
