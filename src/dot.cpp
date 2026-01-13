@@ -15,7 +15,6 @@ namespace Boidsish {
 		Shape(id, x, y, z, r, g, b, a, trail_length), size_(size) {}
 
 	void Dot::render() const {
-		shader->use();
 		render(*shader, GetModelMatrix());
 	}
 

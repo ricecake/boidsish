@@ -246,7 +246,6 @@ namespace Boidsish {
 
 		shader.setMat4("model", model_matrix);
 		shader.setInt("useVertexColor", 1);
-        shader.setVec3("objectColor", glm::vec3(1.0f, 1.0f, 1.0f));
 
 		glBindVertexArray(graph_vao_);
 		glDrawArrays(GL_TRIANGLES, 0, edge_vertex_count_);

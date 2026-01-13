@@ -582,6 +582,7 @@ namespace Boidsish {
 				return;
 			}
 
+            shader->setInt("useVertexColor", 0);
 			CleanupOldTrails(time, shapes);
 			std::set<int> current_shape_ids;
 			for (const auto& shape : shapes) {
@@ -1286,12 +1287,12 @@ namespace Boidsish {
 	}
 
 	void Visualizer::Render() {
+        impl->shapes.clear();
 		// --- 1. RENDER SCENE TO FBO ---
 		// Note: The reflection and blur passes are pre-passes that generate textures for the main scene.
 		// They have their own FBOs. The main scene pass below is what we want to capture.
 
 		// Shape generation and updates (must happen before any rendering)
-		impl->shapes.clear();
 		if (!impl->shape_functions.empty()) {
 			for (const auto& func : impl->shape_functions) {
 				auto new_shapes = func(impl->simulation_time);
