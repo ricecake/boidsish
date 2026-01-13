@@ -178,7 +178,7 @@ void main() {
 	vec3  warpNoise = nebula_noise * warp;
 
 	vec3 objectColor = mix(vec3(0.09, 0.09, 0.16), vec3(0.5, 0.8, 0.8), warpNoise); // A deep blue
-	objectColor += warpNoise;
+	objectColor += mix(warpNoise, objectColor, nebula_noise);
 
 	// Ambient
 	float ambientStrength = 0.2;
@@ -210,59 +210,20 @@ void main() {
 	float line_major = min(grid_major.x, grid_major.y);
 	float C_major = 1.0 - min(line_major, 1.0);
 
-	vec3  warp2 = vec3(fbm(fwidth(FragPos / 20) + time * 0.07));
-	float nebula_noise2 = fbm(fwidth(FragPos / 20) + warp * 0.55);
 	float intensity = max(C_minor, C_major * 1.5) * length(fwidth(FragPos));
-	// vec3  grid_color = normalize(abs(fwidth(FragPos.yxz))) * intensity+nebula_noise*warp;
-	vec3 grid_color = vec3(
-		normalize(abs(fwidth(FragPos.zxy))) * intensity + nebula_noise2 * warp2
-	); //*(1-dot(Normal, vec3(0,1,0))*(nebula_noise2*0.5+0.5));
-	// grid_color.a = abs(dot(FragPos, viewDir));
-
+	vec3 grid_color = vec3(normalize(abs(fwidth(FragPos.zxy))) * intensity);
 	vec3 result = vec3((ambient + diffuse) * objectColor + specular) + grid_color; // Add specular on top
+
 	// --- Distance Fade ---
 	float dist = length(FragPos.xz - viewPos.xz);
-	float fade_start = 540.0;
-	float fade_end = 550.0;
-	float fade = 1.0 - smoothstep(fade_start, fade_end, dist);
-
-	// result = smoothstep(fade_start, fade_end, dist)*vec3(0.0, 0.1, 0.4);
-
-	// vec4 outColor = vec4(result, mix(0, fade, step(0.01, FragPos.y)));
-	// FragColor = mix(vec4(0.0, 0.1, 0.4, 0.5)*length(outColor), outColor, step(1, fade));
+	float fade_start = 560.0;
+	float fade_end = 570.0;
+	float fade = 1.0 - smoothstep(fade_start, fade_end, dist+nebula_noise*40);
 
 	vec4 outColor = vec4(result, mix(0, fade, step(0.01, FragPos.y)));
-	// outColor.a = mix(0, fade, step(0.01, FragPos.y));
-	// outColor.a = 0.5 + intensity + abs(nebula_noise);
 	FragColor = mix(
 		vec4(0.0, 0.7, 0.7, mix(0, fade, step(0.01, FragPos.y))) * length(outColor),
 		outColor,
 		step(1, fade)
 	);
-
-	// FragColor = result;
-	// FragColor[3] = mix(0, fade, step(0.01, FragPos.y));
-
-	// // --- FLOW FIELD DEBUG VISUALIZATION ---
-	//     vec3 N = normalize(Normal);
-	//     vec3 flow = getFlowField(FragPos, N, time);
-
-	//     // OPTION A: Moving Streamlines
-	//     // Creates a moving sawtooth wave aligned with the flow direction
-	//     float streamSpeed = 4.0;
-	//     float streamFreq = 2.0;
-	//     float streamline = fract(dot(FragPos, flow) * streamFreq - time * streamSpeed);
-
-	//     // Sharpen the line
-	//     streamline = smoothstep(0.4, 0.5, streamline);
-
-	//     // OPTION B: Directional Color Map (0..1 range)
-	//     vec3 flowColor = flow * 0.5 + 0.5;
-
-	//     // Composite Debug Output
-	//     // Mix the terrain color with the flow data
-	//     vec3 debugOutput = mix(result, flowColor, 0.5); // Blend with lighting
-	//     debugOutput *= (0.5 + 0.5 * streamline);        // Apply moving bands
-
-	//     FragColor = vec4(debugOutput, 1.0);
 }
