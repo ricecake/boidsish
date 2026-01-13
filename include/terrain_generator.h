@@ -143,13 +143,15 @@ namespace Boidsish {
 		// Control noise parameters
 		constexpr static const float control_noise_scale_ = 0.01f;
 		constexpr static const float kPathFrequency = 0.002f;
+		constexpr static const float kEpsilon = 0.001f;
 
 		// Noise generators
 		FastNoise::SmartNode<> control_noise_generator_;
 
 		auto      fbm(float x, float z, TerrainParameters params);
 		auto      biomefbm(glm::vec2 pos, BiomeAttributes attr) const;
-		glm::vec3 pointGenerate(float x, float y) const;
+		glm::vec3 pointGenerate(float x, float z) const;
+		glm::vec2 getDomainWarp(float x, float z) const;
 
 		glm::vec3 diffToNorm(float dx, float dz) const { return glm::normalize(glm::vec3(-dx, 1.0f, -dz)); }
 

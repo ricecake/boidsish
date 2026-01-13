@@ -220,35 +220,107 @@ namespace Boidsish {
 	};
 
 	glm::vec3 TerrainGenerator::pointGenerate(float x, float z) const {
-		glm::vec3 path_data = getPathInfluence(x, z);
-		float     path_factor = path_data.x;
+		// --- Domain Warping ---
+		// The height is a function of a warped position: H(W(p)).
+		// By the chain rule, the derivative is dH/dp = dH/dW * dW/dp,
+		// where dW/dp is the Jacobian of the warp function.
 
-		glm::vec2 push_dir = glm::normalize(glm::vec2(path_data.y, path_data.z));
-		float     warp_strength = (1.0f - path_factor) * 20.0f;
-		glm::vec2 warp = push_dir * warp_strength;
+		glm::vec2 warp = getDomainWarp(x, z);
+		glm::vec2 warped_pos = glm::vec2(x, z) + warp;
 
-		glm::vec2 pos = glm::vec2(x, z);
-		glm::vec2 warped_pos = pos + warp;
+		// Calculate Jacobian of the warp function dW/dp using finite differences
+		glm::vec2 warp_dx = getDomainWarp(x + kEpsilon, z);
+		glm::vec2 warp_dz = getDomainWarp(x, z + kEpsilon);
+		float     dWx_dx = (warp_dx.x - warp.x) / kEpsilon;
+		float     dWx_dz = (warp_dz.x - warp.x) / kEpsilon;
+		float     dWy_dx = (warp_dx.y - warp.y) / kEpsilon;
+		float     dWy_dz = (warp_dz.y - warp.y) / kEpsilon;
 
-		float control_value = getBiomeControlValue(x, z);
+		glm::mat2 jacobian_W = glm::mat2(1.0f + dWx_dx, dWy_dx, dWx_dz, 1.0f + dWy_dz);
 
-		BiomeAttributes current;
-		auto            low_threshold = (floor(control_value * biomes.size()) / biomes.size());
-		auto            high_threshold = (ceil(control_value * biomes.size()) / biomes.size());
-		auto            low_item = biomes[int(floor(control_value * biomes.size()))];
-		auto            high_item = biomes[int(ceil(control_value * biomes.size()))];
-		auto            t = glm::smoothstep(low_threshold, high_threshold, control_value);
+		// --- Biome Blending ---
+		glm::vec3 terrain_height_warped;
+		glm::vec2 blend_derivative_world = glm::vec2(0.0f);
 
-		current.spikeDamping = std::lerp(low_item.spikeDamping, high_item.spikeDamping, t);
-		current.detailMasking = std::lerp(low_item.detailMasking, high_item.detailMasking, t);
-		current.floorLevel = std::lerp(low_item.floorLevel, high_item.floorLevel, t);
+		if (biomes.size() < 2) {
+			// No blending needed, just use the first biome or a default.
+			BiomeAttributes biome = biomes.empty() ? BiomeAttributes() : biomes[0];
+			terrain_height_warped = biomefbm(warped_pos, biome);
+		} else {
+			// Instead of blending attributes, we blend the final results from each biome.
+			// This requires calculating the terrain height for both candidate biomes.
+			float control_value = getBiomeControlValue(x, z);
+			int   low_idx = glm::clamp(
+				int(floor(control_value * (biomes.size() - 1))),
+				0,
+				(int)biomes.size() - 2
+			);
+			int high_idx = low_idx + 1;
 
-		glm::vec3 terrain_height = biomefbm(warped_pos, current);
+			BiomeAttributes low_item = biomes[low_idx];
+			BiomeAttributes high_item = biomes[high_idx];
 
+			glm::vec3 height_low = biomefbm(warped_pos, low_item);
+			glm::vec3 height_high = biomefbm(warped_pos, high_item);
+
+			// Calculate the derivative of the blend factor 't'
+			float control_value_dx = getBiomeControlValue(x + kEpsilon, z);
+			float control_value_dz = getBiomeControlValue(x, z + kEpsilon);
+			float dc_dx = (control_value_dx - control_value) / kEpsilon;
+			float dc_dz = (control_value_dz - control_value) / kEpsilon;
+
+			// Derivative of the C2-continuous smoothstep polynomial f(x) = 6x^5 - 15x^4 + 10x^3
+			float low_threshold = float(low_idx) / (biomes.size() - 1);
+			float high_threshold = float(high_idx) / (biomes.size() - 1);
+			float t = glm::smoothstep(low_threshold, high_threshold, control_value);
+			// This is the analytical derivative of the smoothstep function.
+			// The 30.0 comes from d/dx(6x^5 - 15x^4 + 10x^3) = 30x^4 - 60x^3 + 30x^2
+			// which, when adapted to the normalized range of smoothstep, gives this formula.
+			float dt_dc = 30.0f *
+				glm::pow(glm::max(0.0f, control_value - low_threshold), 2.0f) *
+				glm::pow(glm::max(0.0f, high_threshold - control_value), 2.0f) /
+				glm::pow(high_threshold - low_threshold, 5.0f);
+
+			// Final blended terrain height (value and derivative in warped space)
+			terrain_height_warped = glm::mix(height_low, height_high, t);
+
+			// --- Apply chain rule for the biome blending ---
+			// Now, calculate the derivative contribution from the blend factor itself in world space.
+			// dH_total/dp = dH_terrain/dp + (H_high - H_low) * dt/dp
+			float dt_dx = dt_dc * dc_dx;
+			float dt_dz = dt_dc * dc_dz;
+			blend_derivative_world = glm::vec2((height_high.x - height_low.x) * dt_dx, (height_high.x - height_low.x) * dt_dz);
+		}
+
+
+		// --- Transform derivative from warped space to world space ---
+		// First, transform the warped-space derivative of the blended terrain back to world space.
+		glm::vec2 terrain_derivative_world = glm::transpose(jacobian_W) * glm::vec2(terrain_height_warped.y, terrain_height_warped.z);
+
+		// And add the contribution from the blend factor.
+		glm::vec2 final_derivative = terrain_derivative_world + blend_derivative_world;
+
+		// --- Path Influence Blending ---
+		// This is another interpolation that needs the chain rule for its derivative.
 		float path_floor_level = -0.10f;
-		terrain_height.x = glm::mix(path_floor_level, terrain_height.x, path_factor);
+		glm::vec3 path_data = getPathInfluence(x, z);
+		float path_factor = path_data.x;
 
-		return terrain_height;
+		// Derivative of path_factor using finite differences
+		glm::vec3 path_data_dx = getPathInfluence(x + kEpsilon, z);
+		glm::vec3 path_data_dz = getPathInfluence(x, z + kEpsilon);
+		float     df_dx = (path_data_dx.x - path_factor) / kEpsilon;
+		float     df_dz = (path_data_dz.x - path_factor) / kEpsilon;
+
+		// H_final = mix(H_floor, H_terrain, f) = H_floor * (1-f) + H_terrain * f
+		// dH_final/dx = (H_terrain - H_floor) * df/dx + dH_terrain/dx * f
+		float height_diff = terrain_height_warped.x - path_floor_level;
+		final_derivative.x = height_diff * df_dx + final_derivative.x * path_factor;
+		final_derivative.y = height_diff * df_dz + final_derivative.y * path_factor;
+
+		float final_height = glm::mix(path_floor_level, terrain_height_warped.x, path_factor);
+
+		return glm::vec3(final_height, final_derivative.x, final_derivative.y);
 	}
 
 	TerrainGenerationResult TerrainGenerator::generateChunkData(int chunkX, int chunkZ) {
