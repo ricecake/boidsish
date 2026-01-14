@@ -211,14 +211,14 @@ void main() {
 	float C_major = 1.0 - min(line_major, 1.0);
 
 	float intensity = max(C_minor, C_major * 1.5) * length(fwidth(FragPos));
-	vec3 grid_color = vec3(normalize(abs(fwidth(FragPos.zxy))) * intensity);
-	vec3 result = vec3((ambient + diffuse) * objectColor + specular) + grid_color; // Add specular on top
+	vec3  grid_color = vec3(normalize(abs(fwidth(FragPos.zxy))) * intensity);
+	vec3  result = vec3((ambient + diffuse) * objectColor + specular) + grid_color; // Add specular on top
 
 	// --- Distance Fade ---
 	float dist = length(FragPos.xz - viewPos.xz);
 	float fade_start = 560.0;
 	float fade_end = 570.0;
-	float fade = 1.0 - smoothstep(fade_start, fade_end, dist+nebula_noise*40);
+	float fade = 1.0 - smoothstep(fade_start, fade_end, dist + nebula_noise * 40);
 
 	vec4 outColor = vec4(result, mix(0, fade, step(0.01, FragPos.y)));
 	FragColor = mix(

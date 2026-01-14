@@ -107,7 +107,6 @@ float fbm(vec3 p) {
 	return value;
 }
 
-
 void main() {
 	// discard;
 	// --- Reflection sampling ---
@@ -162,7 +161,7 @@ void main() {
 	float dist = length(WorldPos.xz - viewPos.xz);
 	float fade_start = 580.0;
 	float fade_end = 600.0;
-	float fade = 1.0 - smoothstep(fade_start, fade_end, dist+nebula_noise*50);
+	float fade = 1.0 - smoothstep(fade_start, fade_end, dist + nebula_noise * 50);
 
 	vec4 outColor = vec4(final_color, fade);
 	FragColor = mix(vec4(0.7, 0.1, 0.7, fade) * length(outColor), outColor, step(1, fade));
