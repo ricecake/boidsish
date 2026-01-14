@@ -562,7 +562,29 @@ namespace Boidsish {
 
 		glm::mat4 SetupMatrices() { return SetupMatrices(camera); }
 
-		void RenderSceneObjects(
+		void UpdateTrails(const std::vector<std::shared_ptr<Shape>>& shapes, float time) {
+			CleanupOldTrails(time, shapes);
+			for (const auto& shape : shapes) {
+				if (shape->GetTrailLength() > 0 && !paused) {
+					if (trails.find(shape->GetId()) == trails.end()) {
+						trails[shape->GetId()] = std::make_shared<Trail>(shape->GetTrailLength());
+						if (shape->IsTrailIridescent()) {
+							trails[shape->GetId()]->SetIridescence(true);
+						}
+						if (shape->IsTrailRocket()) {
+							trails[shape->GetId()]->SetUseRocketTrail(true);
+						}
+					}
+					trails[shape->GetId()]->AddPoint(
+						glm::vec3(shape->GetX(), shape->GetY(), shape->GetZ()),
+						glm::vec3(shape->GetR(), shape->GetG(), shape->GetB())
+					);
+					trail_last_update[shape->GetId()] = time;
+				}
+			}
+		}
+
+		void RenderShapes(
 			const glm::mat4& view,
 			const Camera& /* cam */,
 			const std::vector<std::shared_ptr<Shape>>& shapes,
@@ -583,34 +605,19 @@ namespace Boidsish {
 				return;
 			}
 
-			CleanupOldTrails(time, shapes);
 			std::set<int> current_shape_ids;
 			for (const auto& shape : shapes) {
 				current_shape_ids.insert(shape->GetId());
-				// TODO: Move trail generation to the GPU for performance.
-				// See performance_and_quality_audit.md#3-gpu-based-trail-generation
-				// Only create trails for shapes with trail_length > 0
 				shader->setBool("isColossal", shape->IsColossal());
-				if (shape->GetTrailLength() > 0 && !paused) {
-					if (trails.find(shape->GetId()) == trails.end()) {
-						trails[shape->GetId()] = std::make_shared<Trail>(shape->GetTrailLength());
-						if (shape->IsTrailIridescent()) {
-							trails[shape->GetId()]->SetIridescence(true);
-						}
-						// Set rocket trail property
-						if (shape->IsTrailRocket()) {
-							trails[shape->GetId()]->SetUseRocketTrail(true);
-						}
-					}
-					trails[shape->GetId()]->AddPoint(
-						glm::vec3(shape->GetX(), shape->GetY(), shape->GetZ()),
-						glm::vec3(shape->GetR(), shape->GetG(), shape->GetB())
-					);
-					trail_last_update[shape->GetId()] = time;
-				}
 				shape->render();
 			}
 
+			// Render clones
+			shader->use();
+			clone_manager->Render(*shader);
+		}
+
+		void RenderTrails(const glm::mat4& view, const std::optional<glm::vec4>& clip_plane) {
 			trail_shader->use();
 			trail_shader->setMat4("view", view);
 			trail_shader->setMat4("projection", projection);
@@ -624,10 +631,6 @@ namespace Boidsish {
 			for (auto& pair : trails) {
 				pair.second->Render(*trail_shader);
 			}
-
-			// Render clones
-			shader->use();
-			clone_manager->Render(*shader);
 		}
 
 		void RenderTerrain(const glm::mat4& view, const std::optional<glm::vec4>& clip_plane) {
@@ -1292,6 +1295,8 @@ namespace Boidsish {
 			}
 		}
 
+		impl->UpdateTrails(impl->shapes, impl->simulation_time);
+
 		if (impl->camera_mode == CameraMode::TRACKING) {
 			impl->UpdateSingleTrackCamera(impl->input_state.delta_time, impl->shapes);
 		} else if (impl->camera_mode == CameraMode::AUTO) {
@@ -1376,14 +1381,15 @@ namespace Boidsish {
 				glm::mat4 reflection_view = impl->SetupMatrices(reflection_cam);
 				impl->reflection_vp = impl->projection * reflection_view;
 				impl->RenderSky(reflection_view);
-				impl->RenderSceneObjects(
+				impl->RenderTerrain(reflection_view, glm::vec4(0, 1, 0, 0.01));
+				impl->RenderShapes(
 					reflection_view,
 					reflection_cam,
 					impl->shapes,
 					impl->simulation_time,
 					glm::vec4(0, 1, 0, 0.01)
 				);
-				impl->RenderTerrain(reflection_view, glm::vec4(0, 1, 0, 0.01));
+				impl->RenderTrails(reflection_view, glm::vec4(0, 1, 0, 0.01));
 				impl->fire_effect_manager->Render(reflection_view, impl->projection, reflection_cam.pos());
 			}
 			glDisable(GL_CLIP_DISTANCE0);
@@ -1404,8 +1410,9 @@ namespace Boidsish {
 		if (impl->floor_enabled_) {
 			impl->RenderPlane(view);
 		}
-		impl->RenderSceneObjects(view, impl->camera, impl->shapes, impl->simulation_time, std::nullopt);
 		impl->RenderTerrain(view, std::nullopt);
+		impl->RenderShapes(view, impl->camera, impl->shapes, impl->simulation_time, std::nullopt);
+		impl->RenderTrails(view, std::nullopt);
 		impl->fire_effect_manager->Render(view, impl->projection, impl->camera.pos());
 
 		if (impl->effects_enabled_) {
