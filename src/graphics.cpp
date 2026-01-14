@@ -208,14 +208,7 @@ namespace Boidsish {
 			glDepthFunc(GL_LEQUAL);
 			glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
 
-			// shader = std::make_shared<Shader>("shaders/vis.vert", "shaders/vis.frag");
-			shader = std::make_shared<Shader>(
-				"shaders/vis.vert",
-				"shaders/vis.frag",
-				"shaders/vis.tcs",
-				"shaders/vis.tes"
-				// , "shaders/terrain.geom"
-			);
+			shader = std::make_shared<Shader>("shaders/vis.vert", "shaders/vis.frag", "shaders/vis.tcs", "shaders/vis.tes");
 
 			Shape::shader = shader;
 			trail_shader = std::make_unique<Shader>("shaders/trail.vert", "shaders/trail.frag");
@@ -602,6 +595,10 @@ namespace Boidsish {
 			const std::optional<glm::vec4>&            clip_plane
 		) {
 			shader->use();
+			shader->setFloat("uTessLevelMax", 64.0f);
+			shader->setFloat("uTessLevelMin", 1.0f);
+			shader->setFloat("uTessQualityMultiplier", 1.0f);
+			shader->setFloat("uPhongAlpha", 1.0f);
 			shader->setFloat("ripple_strength", ripple_strength);
 			shader->setBool("colorShift", color_shift_effect);
 			shader->setMat4("view", view);
@@ -1359,10 +1356,25 @@ namespace Boidsish {
 
 		// Update clone manager
 		impl->clone_manager->Update(impl->simulation_time, impl->camera.pos());
-		impl->fire_effect_manager->Update(impl->input_state.delta_time, impl->simulation_time);
 		impl->sound_effect_manager->Update(impl->input_state.delta_time);
 
 		// UBO Updates
+		float     light_x = 50.0f * cos(impl->simulation_time * 0.05f);
+		float     light_y = 25.0f + 1.8 * abs(sin(impl->simulation_time * 0.01));
+		float     light_z = 50.0f * sin(impl->simulation_time * 0.05f);
+		glm::vec3 lightPos(light_x, light_y, light_z);
+		glBindBuffer(GL_UNIFORM_BUFFER, impl->lighting_ubo);
+		glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(glm::vec3), &lightPos[0]);
+		glBufferSubData(
+			GL_UNIFORM_BUFFER,
+			16,
+			sizeof(glm::vec3),
+			&glm::vec3(impl->camera.x, impl->camera.y, impl->camera.z)[0]
+		);
+		glBufferSubData(GL_UNIFORM_BUFFER, 32, sizeof(glm::vec3), &glm::vec3(1.0f, 1.0f, 1.0f)[0]);
+		glBufferSubData(GL_UNIFORM_BUFFER, 44, sizeof(float), &impl->simulation_time);
+		glBindBuffer(GL_UNIFORM_BUFFER, 0);
+		impl->fire_effect_manager->Update(impl->input_state.delta_time, impl->simulation_time);
 		if (impl->effects_enabled_) {
 			VisualEffectsUbo ubo_data = {};
 			for (const auto& shape : impl->shapes) {
@@ -1387,22 +1399,6 @@ namespace Boidsish {
 			glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(VisualEffectsUbo), &ubo_data);
 			glBindBuffer(GL_UNIFORM_BUFFER, 0);
 		}
-
-		float     light_x = 50.0f * cos(impl->simulation_time * 0.05f);
-		float     light_y = 25.0f + 1.8 * abs(sin(impl->simulation_time * 0.01));
-		float     light_z = 50.0f * sin(impl->simulation_time * 0.05f);
-		glm::vec3 lightPos(light_x, light_y, light_z);
-		glBindBuffer(GL_UNIFORM_BUFFER, impl->lighting_ubo);
-		glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(glm::vec3), &lightPos[0]);
-		glBufferSubData(
-			GL_UNIFORM_BUFFER,
-			16,
-			sizeof(glm::vec3),
-			&glm::vec3(impl->camera.x, impl->camera.y, impl->camera.z)[0]
-		);
-		glBufferSubData(GL_UNIFORM_BUFFER, 32, sizeof(glm::vec3), &glm::vec3(1.0f, 1.0f, 1.0f)[0]);
-		glBufferSubData(GL_UNIFORM_BUFFER, 44, sizeof(float), &impl->simulation_time);
-		glBindBuffer(GL_UNIFORM_BUFFER, 0);
 
 		if (impl->floor_enabled_ && impl->floor_reflection_enabled_) {
 			// --- Reflection Pre-Pass ---

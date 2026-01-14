@@ -6,7 +6,8 @@ struct Particle {
 	vec4 vel; // Velocity (w is unused)
 	int  style;
 	int  emitter_index; // Index of the emitter that spawned this particle
-	vec2 _padding;      // Explicit padding to align to 16 bytes
+	float temperature;
+	float _padding;      // Explicit padding to align to 16 bytes
 };
 
 // Must match the C++ Emitter struct in fire_effect_manager.h
@@ -34,6 +35,13 @@ layout(std430, binding = 2) buffer IndirectionBuffer {
 uniform float u_delta_time;
 uniform float u_time;
 uniform int   u_num_emitters;
+
+layout(std140, binding = 0) uniform Lighting {
+	vec3  lightPos;
+	vec3  viewPos;
+	vec3  lightColor;
+	float time;
+};
 
 // Basic pseudo-random number generator
 float rand(vec2 co) {
@@ -223,12 +231,15 @@ void main() {
 			vec3 perpendicular = normalize(cross(emitter.direction, random_vec));
 			vec3 spread_dir = mix(emitter.direction, perpendicular, kExhaustSpread * rand(seed.yx));
 			p.vel = vec4(emitter.velocity + normalize(spread_dir) * kExhaustSpeed * rand(seed), 0.0);
+			p.temperature = 1.0;
 		} else if (p.style == 1) { // Explosion
 			p.pos = vec4(emitter.position, kExplosionLifetime * lifeTimeModifier);
 			p.vel = vec4(normalize(random_vec) * kExplosionSpeed * 0.5 + rand(seed.yx), 0.0);
+			p.temperature = 1.0;
 		} else if (p.style == 2) { // Fire
 			p.pos = vec4(emitter.position + random_vec * 0.1, kFireLifetime * lifeTimeModifier);
 			p.vel = vec4(0, kFireSpeed, 0, 0); // Start with upward velocity
+			p.temperature = 1.0;
 		}
 	}
 	// If particle is alive, update it
@@ -250,6 +261,17 @@ void main() {
 			p.vel.z += (rand(p.pos.yz + u_time) - 0.5) * kFireSpread * u_delta_time;
 		}
 		p.vel.y -= 0.05 * u_delta_time;
+
+		// Buoyancy
+		p.vel.y += p.temperature * 10.0 * u_delta_time;
+		// Temperature-based drag
+		p.vel.xyz *= (1.0 - (1.0 - p.temperature) * 0.5 * u_delta_time);
+		p.temperature = max(0.0, p.temperature - 0.5 * u_delta_time);
+
+		// Lighting
+		vec3 to_light = normalize(lightPos - p.pos.xyz);
+		float light_dist = length(lightPos - p.pos.xyz);
+		p.vel.xyz += to_light * (100.0 / (light_dist * light_dist)) * u_delta_time;
 
 		p.vel += vec4(mix(curlNoise(p.pos.xyz, u_time) * 3, vec3(0, 0, 0), length(p.vel) / maxSpeed), 0) * u_delta_time;
 

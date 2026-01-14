@@ -17,7 +17,8 @@ namespace Boidsish {
 		glm::vec4 vel;
 		int       style;
 		int       emitter_index;
-		glm::vec2 _padding;
+		float     temperature;
+		float     _padding;
 	};
 
 	FireEffectManager::FireEffectManager() {}
