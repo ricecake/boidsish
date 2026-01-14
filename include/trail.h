@@ -32,10 +32,6 @@ namespace Boidsish {
 		// Catmull-Rom interpolation for smooth curves
 		Vector3 CatmullRom(float t, const Vector3& p0, const Vector3& p1, const Vector3& p2, const Vector3& p3) const;
 
-		// (Re)calculates the entire trail's geometry from scratch
-		void GenerateTrailGeometry();
-		// Builds the renderable mesh from the cached geometry
-		void BuildMeshFromGeometryCache();
 		// Appends a new segment to the geometry cache
 		void AppendToGeometryCache(
 			const Vector3& p0,
@@ -49,6 +45,7 @@ namespace Boidsish {
 		);
 		// Removes the oldest segment from the geometry cache
 		void PopFromGeometryCache();
+		void UpdateAndAppendSegment();
 
 		// Frame transport for maintaining smooth normal orientation
 		Vector3
@@ -63,6 +60,10 @@ namespace Boidsish {
 		mutable std::vector<TrailVertex> mesh_vertices;
 		mutable int                      vertex_count;
 		mutable bool                     mesh_dirty;
+		mutable size_t                   head = 0;
+		mutable size_t                   tail = 0;
+		mutable size_t                   old_tail = 0;
+		mutable bool                     full = false;
 
 		// Cached geometry data for incremental updates
 		mutable std::deque<Vector3> curve_positions;
@@ -70,6 +71,8 @@ namespace Boidsish {
 		mutable std::deque<Vector3> tangents;
 		mutable std::deque<Vector3> normals;
 		mutable std::deque<Vector3> binormals;
+		mutable std::deque<std::vector<glm::vec3>> ring_positions;
+		mutable std::deque<std::vector<glm::vec3>> ring_normals;
 		bool                        iridescent_ = false;
 		bool                        useRocketTrail_ = false;
 
