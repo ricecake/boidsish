@@ -232,7 +232,6 @@ namespace Boidsish {
 				.render();
 		}
 
-		shader->use();
 		render(*shader, GetModelMatrix());
 
 		// Reset model matrix for subsequent renders if needed

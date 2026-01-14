@@ -89,7 +89,9 @@ namespace Boidsish {
 
 		// Generate shapes from entity states
 		std::vector<std::shared_ptr<Shape>> shapes;
-		shapes.reserve(entities_.size());
+		if (!persistent_mode_) {
+			shapes.reserve(entities_.size());
+		}
 
 		for (auto& entity : entities) {
 			// Orient to velocity
@@ -119,9 +121,14 @@ namespace Boidsish {
 			entity->UpdateShape();
 
 			// Add shape to the list
-			shapes.push_back(entity->GetShape());
+			if (!persistent_mode_) {
+				shapes.push_back(entity->GetShape());
+			}
 		}
 
+		if (persistent_mode_) {
+			return {};
+		}
 		return shapes;
 	}
 

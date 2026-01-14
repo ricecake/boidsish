@@ -23,7 +23,8 @@ int main() {
 		viz.SetCamera(camera);
 
 		// Create and set the vector demo handler
-		VectorDemoHandler handler(viz.GetThreadPool());
+		VectorDemoHandler handler(viz.GetThreadPool(), viz);
+		handler.SetPersistentMode(true);
 		viz.AddShapeHandler(std::ref(handler));
 		viz.AddShapeHandler(std::ref(GraphExample));
 
@@ -35,48 +36,7 @@ int main() {
 		std::cout << "  0 - Toggle auto-camera" << std::endl;
 		std::cout << "  ESC - Exit" << std::endl;
 
-		viz.AddInputCallback([&](const InputState& state) {
-			if (state.key_down[GLFW_KEY_G]) {
-				viz.TogglePostProcessingEffect("Film Grain");
-			}
-		});
-
-		// Main loop
-		auto fire_manager = viz.GetFireEffectManager();
-		auto emitter1 = fire_manager->AddEffect(
-			glm::vec3(0, 5, 0),
-			FireEffectStyle::Fire,
-			glm::vec3(0, 1, 0),
-			glm::vec3(0, 0, 0),
-			5000
-		);
-		auto emitter2 = fire_manager->AddEffect(
-			glm::vec3(5, 5, 0),
-			FireEffectStyle::Fire,
-			glm::vec3(0, 1, 0),
-			glm::vec3(0, 0, 0),
-			10000
-		);
-		auto emitter3 = fire_manager->AddEffect(
-			glm::vec3(-5, 5, 0),
-			FireEffectStyle::Fire,
-			glm::vec3(0, 1, 0),
-			glm::vec3(0, 0, 0),
-			25
-		);
-
-		float start_time = 0.0f;
-		bool  emitter_removed = false;
-		while (!viz.ShouldClose()) {
-			viz.Update();
-			viz.Render();
-			start_time += viz.GetLastFrameTime();
-			if (start_time > 5.0f && !emitter_removed) {
-				fire_manager->RemoveEffect(emitter2);
-				emitter_removed = true;
-			}
-		}
-
+		viz.Run();
 		std::cout << "Vector demo ended." << std::endl;
 
 	} catch (const std::exception& e) {

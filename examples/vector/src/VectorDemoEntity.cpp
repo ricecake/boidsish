@@ -6,7 +6,7 @@
 
 namespace Boidsish {
 
-	VectorDemoEntity::VectorDemoEntity(int id, const Vector3& start_pos): Entity<CloneableDot>(id), phase_(0.0f) {
+	VectorDemoEntity::VectorDemoEntity(int id, const Vector3& start_pos): Entity<>(id), phase_(0.0f) {
 		SetPosition(start_pos);
 		SetSize(10.0f);
 		SetTrailLength(100);

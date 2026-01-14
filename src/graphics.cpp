@@ -56,7 +56,9 @@ namespace Boidsish {
 		int                                   width, height;
 		Camera                                camera;
 		std::vector<ShapeFunction>            shape_functions;
-		std::vector<std::shared_ptr<Shape>>   shapes;
+		std::vector<std::shared_ptr<Shape>>   shapes;            // Legacy shapes from callbacks
+		std::map<int, std::shared_ptr<Shape>> persistent_shapes; // New persistent shapes
+		ConcurrentQueue<ShapeCommand>         shape_command_queue;
 		std::unique_ptr<CloneManager>         clone_manager;
 		std::unique_ptr<FireEffectManager>    fire_effect_manager;
 		std::unique_ptr<SoundEffectManager>   sound_effect_manager;
@@ -605,6 +607,7 @@ namespace Boidsish {
 				return;
 			}
 
+			shader->setInt("useVertexColor", 0);
 			std::set<int> current_shape_ids;
 			for (const auto& shape : shapes) {
 				current_shape_ids.insert(shape->GetId());
@@ -1210,6 +1213,14 @@ namespace Boidsish {
 		impl->shape_functions.push_back(func);
 	}
 
+	void Visualizer::AddShape(std::shared_ptr<Shape> shape) {
+		impl->shape_command_queue.push({ShapeCommandType::Add, shape, shape->GetId()});
+	}
+
+	void Visualizer::RemoveShape(int shape_id) {
+		impl->shape_command_queue.push({ShapeCommandType::Remove, nullptr, shape_id});
+	}
+
 	void Visualizer::ClearShapeHandlers() {
 		impl->shape_functions.clear();
 	}
@@ -1282,17 +1293,33 @@ namespace Boidsish {
 	}
 
 	void Visualizer::Render() {
+		impl->shapes.clear();
 		// --- 1. RENDER SCENE TO FBO ---
 		// Note: The reflection and blur passes are pre-passes that generate textures for the main scene.
 		// They have their own FBOs. The main scene pass below is what we want to capture.
 
 		// Shape generation and updates (must happen before any rendering)
-		impl->shapes.clear();
 		if (!impl->shape_functions.empty()) {
 			for (const auto& func : impl->shape_functions) {
 				auto new_shapes = func(impl->simulation_time);
 				impl->shapes.insert(impl->shapes.end(), new_shapes.begin(), new_shapes.end());
 			}
+		}
+
+		ShapeCommand command;
+		while (impl->shape_command_queue.try_pop(command)) {
+			switch (command.type) {
+			case ShapeCommandType::Add:
+				impl->persistent_shapes[command.shape->GetId()] = command.shape;
+				break;
+			case ShapeCommandType::Remove:
+				impl->persistent_shapes.erase(command.shape_id);
+				break;
+			}
+		}
+
+		for (const auto& pair : impl->persistent_shapes) {
+			impl->shapes.push_back(pair.second);
 		}
 
 		impl->UpdateTrails(impl->shapes, impl->simulation_time);

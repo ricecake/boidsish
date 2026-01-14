@@ -3,6 +3,7 @@
 #include <cmath>
 
 #include "graph.h"
+#include "logger.h"
 
 #ifndef M_PI
 	#define M_PI 3.14159265358979323846
@@ -22,9 +23,9 @@ namespace Boidsish {
 			->AddVertex(
 				Vector3(0, 11, 0),
 				24.0f,
-				abs(sin(time / 2)),
-				abs(sin(time / 3 + M_PI / 3)),
-				abs(sin(time / 5 + (2 * M_PI / 3))),
+				fabs(sin(time / 2)),
+				fabs(sin(time / 3 + M_PI / 3)),
+				fabs(sin(time / 5 + (2 * M_PI / 3))),
 				1
 			)
 			.Link(trunk);
@@ -32,9 +33,9 @@ namespace Boidsish {
 			->AddVertex(
 				Vector3(3, 10 + sin(time), cos(time)),
 				24.0f,
-				abs(sin(time / 2)),
-				abs(sin(time / 5 + (2 * M_PI / 3))),
-				abs(sin(time / 3 + M_PI / 3)),
+				fabs(sin(time / 2)),
+				fabs(sin(time / 5 + (2 * M_PI / 3))),
+				fabs(sin(time / 3 + M_PI / 3)),
 				1
 			)
 			.Link(trunk);
@@ -42,9 +43,9 @@ namespace Boidsish {
 			->AddVertex(
 				Vector3(-3, 10 + sin(time), cos(time)),
 				24.0f,
-				abs(sin(time / 3 + (2 * M_PI / 3))),
-				abs(sin(time / 2 + M_PI / 3)),
-				abs(sin(time / 5)),
+				fabs(sin(time / 3 + (2 * M_PI / 3))),
+				fabs(sin(time / 2 + M_PI / 3)),
+				fabs(sin(time / 5)),
 				1
 			)
 			.Link(trunk);
@@ -52,9 +53,9 @@ namespace Boidsish {
 			->AddVertex(
 				Vector3(cos(time), 10 + sin(time), 3),
 				24.0f,
-				abs(sin(time / 3 + M_PI / 3)),
-				abs(sin(time / 5)),
-				abs(sin(time / 2 + (2 * M_PI / 3))),
+				fabs(sin(time / 3 + M_PI / 3)),
+				fabs(sin(time / 5)),
+				fabs(sin(time / 2 + (2 * M_PI / 3))),
 				1
 			)
 			.Link(trunk);
@@ -62,9 +63,9 @@ namespace Boidsish {
 			->AddVertex(
 				Vector3(cos(time), 10 + sin(time), -3),
 				24.0f,
-				abs(sin(time / 5 + (2 * M_PI / 3))),
-				abs(sin(time / 3 + M_PI / 3)),
-				abs(sin(time / 2)),
+				fabs(sin(time / 5 + (2 * M_PI / 3))),
+				fabs(sin(time / 3 + M_PI / 3)),
+				fabs(sin(time / 2)),
 				1
 			)
 			.Link(trunk);

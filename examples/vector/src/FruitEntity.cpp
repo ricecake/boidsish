@@ -30,9 +30,16 @@ namespace Boidsish {
 			handler.QueueRemoveEntity(GetId());
 		}
 		auto v = GetVelocity();
+		auto p = GetPosition();
 		v.x *= 0.95f;
 		v.z *= 0.95f;
 		v.y *= 1.0005f;
+		if (p.y > 12) {
+			v.y /= 2;
+		} else if (p.y <= 0) {
+			p.y = 0.1f;
+			v.y = 0;
+		}
 		v += Vector3(sin(rand()), sin(rand()), sin(rand())).Normalized() / 4;
 		SetVelocity(v);
 	}
