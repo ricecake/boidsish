@@ -69,7 +69,7 @@ int main() {
 		model->SetColossal(true);
 		shapes.push_back(model);
 
-		visualizer->GetAudioManager().PlayMusic("assets/kazoom.mp3", true);
+		visualizer->GetAudioManager().PlayMusic("assets/kazoom.mp3", true, 0.25f);
 
 		visualizer->Run();
 	} catch (const std::exception& e) {

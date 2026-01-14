@@ -4,7 +4,14 @@
 
 namespace Boidsish {
 
-	Sound::Sound(ma_engine* engine, const std::string& filepath, bool loop, float volume, bool spatialized) {
+	Sound::Sound(
+		ma_engine*         engine,
+		const std::string& filepath,
+		bool               loop,
+		float              volume,
+		bool               spatialized,
+		const glm::vec3&   position
+	) {
 		if (!engine) {
 			logger::ERROR("Sound created with null audio engine.");
 			return;
@@ -16,9 +23,12 @@ namespace Boidsish {
 			return;
 		}
 
-		SetVolume(volume);
-		SetLooping(loop);
+		ma_sound_set_volume(&_sound, volume);
+		ma_sound_set_looping(&_sound, loop ? MA_TRUE : MA_FALSE);
 		ma_sound_set_spatialization_enabled(&_sound, spatialized ? MA_TRUE : MA_FALSE);
+		if (spatialized) {
+			ma_sound_set_position(&_sound, position.x, position.y, position.z);
+		}
 
 		ma_sound_start(&_sound);
 		_initialized = true;
@@ -41,7 +51,7 @@ namespace Boidsish {
 	}
 
 	void Sound::SetLooping(bool loop) {
-		if (!_initialized) {
+		if (_initialized) {
 			ma_sound_set_looping(&_sound, loop ? MA_TRUE : MA_FALSE);
 		}
 	}

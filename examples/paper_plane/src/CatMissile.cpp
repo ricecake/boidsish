@@ -224,7 +224,7 @@ namespace Boidsish {
 		lived_ = 0.0f;
 		SetVelocity(Vector3(0, 0, 0));
 		explode_sound_ = handler.vis
-							 ->AddSoundEffect("assets/rocket_explosion.wav", pos.Toglm(), GetVelocity().Toglm(), 20.0f);
+							 ->AddSoundEffect("assets/rocket_explosion.wav", pos.Toglm(), GetVelocity().Toglm(), 25.0f);
 
 		if (hit_target) {
 			SetSize(100);

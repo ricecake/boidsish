@@ -14,7 +14,8 @@ namespace Boidsish {
 			const std::string& filepath,
 			bool               loop = false,
 			float              volume = 1.0f,
-			bool               spatialized = true
+			bool               spatialized = true,
+			const glm::vec3&   position = {0, 0, 0}
 		);
 		~Sound();
 

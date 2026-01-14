@@ -30,7 +30,7 @@ namespace Boidsish {
 
 		if (!launch_sound_) {
 			launch_sound_ = handler.vis
-								->AddSoundEffect("assets/sam_launch.wav", pos.Toglm(), GetVelocity().Toglm(), 10.0f);
+								->AddSoundEffect("assets/sam_launch.wav", pos.Toglm(), GetVelocity().Toglm(), 30.0f);
 		}
 
 		if (exploded_) {
