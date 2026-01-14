@@ -20,8 +20,9 @@ namespace Boidsish {
 		static constexpr float kExplosionDisplayTime = 2.0f;
 
 		// State
-		float lived_ = 0.0f;
-		bool  exploded_ = false;
+		float                        lived_ = 0.0f;
+		bool                         exploded_ = false;
+		std::shared_ptr<SoundEffect> explode_sound_ = nullptr;
 	};
 
 } // namespace Boidsish
