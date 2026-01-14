@@ -51,13 +51,22 @@ void main() {
 		// gl_PointSize = base_size * distance_factor * lifetime_factor;
 
 		// Set point size based on lifetime and style
+		// if (p.style == 0) { // Rocket Trail
+		// 	gl_PointSize = smoothstep((1.0 - v_lifetime), v_lifetime, v_lifetime / 2.0) *
+		// 		15.0;                                                              // Smaller, more consistent size
+		// } else if (p.style == 1) {                                                 // Explosion
+		// 	gl_PointSize = (1.0 - (1.0 - v_lifetime) * (1.0 - v_lifetime)) * 30.0; // Starts large, shrinks fast
+		// } else {
+		// 	gl_PointSize = smoothstep(2.0 * (1.0 - v_lifetime), v_lifetime, v_lifetime / 2.5) * 25.0;
+		// }
+
 		if (p.style == 0) { // Rocket Trail
-			gl_PointSize = smoothstep((1.0 - v_lifetime), v_lifetime, v_lifetime / 2.0) *
+			gl_PointSize = smoothstep(v_lifetime, (1.0 - v_lifetime), v_lifetime / 2.0) *
 				15.0;                                                              // Smaller, more consistent size
 		} else if (p.style == 1) {                                                 // Explosion
 			gl_PointSize = (1.0 - (1.0 - v_lifetime) * (1.0 - v_lifetime)) * 30.0; // Starts large, shrinks fast
 		} else {
-			gl_PointSize = smoothstep(2.0 * (1.0 - v_lifetime), v_lifetime, v_lifetime / 2.5) * 25.0;
+			gl_PointSize = smoothstep(v_lifetime, 2.0 * (1.0 - v_lifetime), v_lifetime / 2.5) * 25.0;
 		}
 	}
 }
