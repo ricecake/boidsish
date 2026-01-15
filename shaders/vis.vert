@@ -6,15 +6,13 @@ layout(location = 2) in vec2 aTexCoords;
 #include "visual_effects.glsl"
 #include "visual_effects.vert"
 
-out vec3 FragPos;
-out vec3 Normal;
+out vec3 WorldPos_VS_out;
+out vec3 Normal_VS_out;
+out vec2 TexCoords_VS_out;
+out vec3 viewForward;
+
 out vec3 vs_color;
 out vec3 barycentric;
-out vec2 TexCoords;
-out vec3 WorldPos_VS_out;
-out vec2 TexCoords_VS_out;
-out vec3 Normal_VS_out;
-out vec3 viewForward;
 
 uniform mat4  model;
 uniform mat4  view;
@@ -54,9 +52,11 @@ void main() {
 		displacedNormal = normalize(aNormal - gradient);
 	}
 
-	FragPos = vec3(model * vec4(displacedPos, 1.0));
-	Normal = mat3(transpose(inverse(model))) * displacedNormal;
-	TexCoords = aTexCoords;
+	WorldPos_VS_out = vec3(model * vec4(displacedPos, 1.0));
+	Normal_VS_out = mat3(transpose(inverse(model))) * displacedNormal;
+	TexCoords_VS_out = aTexCoords;
+	viewForward = normalize(vec3(inverse(view)[2]));
+
 	if (wireframe_enabled == 1) {
 		barycentric = getBarycentric();
 	}
@@ -68,15 +68,10 @@ void main() {
 		world_pos.xyz += skyPositionOffset;
 		gl_Position = projection * staticView * world_pos;
 		gl_Position = gl_Position.xyww;
-		FragPos = world_pos.xyz;
+		WorldPos_VS_out = world_pos.xyz;
 	} else {
-		gl_Position = projection * view * vec4(FragPos, 1.0);
+		gl_Position = projection * view * vec4(WorldPos_VS_out, 1.0);
 	}
 
-	WorldPos_VS_out = FragPos;
-	TexCoords_VS_out = aTexCoords;
-	Normal_VS_out = Normal;
-	mat3 viewMat3 = mat3(view);
-	viewForward = viewMat3 * vec3(0, 0, -1);
-	gl_ClipDistance[0] = dot(vec4(FragPos, 1.0), clipPlane);
+	gl_ClipDistance[0] = dot(vec4(WorldPos_VS_out, 1.0), clipPlane);
 }

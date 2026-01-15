@@ -33,6 +33,9 @@ namespace Boidsish {
 		if (indirection_buffer_ != 0) {
 			glDeleteBuffers(1, &indirection_buffer_);
 		}
+		if (lighting_ubo_ != 0) {
+			glDeleteBuffers(1, &lighting_ubo_);
+		}
 		if (dummy_vao_ != 0) {
 			glDeleteVertexArrays(1, &dummy_vao_);
 		}
@@ -60,7 +63,12 @@ namespace Boidsish {
 		glBindBuffer(GL_SHADER_STORAGE_BUFFER, indirection_buffer_);
 		glBufferData(GL_SHADER_STORAGE_BUFFER, kMaxParticles * sizeof(int), nullptr, GL_DYNAMIC_DRAW);
 
+		glGenBuffers(1, &lighting_ubo_);
+		glBindBuffer(GL_UNIFORM_BUFFER, lighting_ubo_);
+		glBufferData(GL_UNIFORM_BUFFER, sizeof(Lighting), nullptr, GL_DYNAMIC_DRAW);
+
 		glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
+		glBindBuffer(GL_UNIFORM_BUFFER, 0);
 
 		particle_to_emitter_map_.resize(kMaxParticles, -1);
 
@@ -114,7 +122,7 @@ namespace Boidsish {
 		}
 	}
 
-	void FireEffectManager::Update(float delta_time, float time) {
+	void FireEffectManager::Update(float delta_time, float time, const glm::vec3& camera_pos) {
 		if (!initialized_) {
 			return;
 		}
@@ -184,6 +192,16 @@ namespace Boidsish {
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, particle_buffer_);
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, emitter_buffer_);
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 2, indirection_buffer_);
+
+		// --- Update Lighting UBO ---
+		Lighting lighting_data;
+		lighting_data.lightPos = glm::vec3(sin(time_) * 15.0f, 10.0f, cos(time_) * 15.0f);
+		lighting_data.viewPos = camera_pos;
+		lighting_data.lightColor = glm::vec3(1.0f, 1.0f, 1.0f);
+		lighting_data.time = time_;
+		glBindBuffer(GL_UNIFORM_BUFFER, lighting_ubo_);
+		glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(Lighting), &lighting_data);
+		glBindBufferBase(GL_UNIFORM_BUFFER, 0, lighting_ubo_);
 
 		// Dispatch enough groups to cover all particles
 		glDispatchCompute((kMaxParticles / 256) + 1, 1, 1);

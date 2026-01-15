@@ -19,12 +19,25 @@ namespace Boidsish {
 		float     _padding2;
 	};
 
+    struct alignas(16) Lighting {
+        glm::vec3 lightPos;
+        // std140 padding
+        float     _padding1;
+        glm::vec3 viewPos;
+        // std140 padding
+        float     _padding2;
+        glm::vec3 lightColor;
+        // std140 padding
+        float     _padding3;
+        float     time;
+    };
+
 	class FireEffectManager {
 	public:
 		FireEffectManager();
 		~FireEffectManager();
 
-		void Update(float delta_time, float time);
+		void Update(float delta_time, float time, const glm::vec3& camera_pos);
 		void Render(const glm::mat4& view, const glm::mat4& projection, const glm::vec3& camera_pos);
 
 		// Add a new fire effect and return a pointer to it
@@ -51,6 +64,7 @@ namespace Boidsish {
 		GLuint particle_buffer_{0};
 		GLuint emitter_buffer_{0};
 		GLuint indirection_buffer_{0};
+		GLuint lighting_ubo_{0};
 		GLuint dummy_vao_{0};
 
 		bool  initialized_{false};
