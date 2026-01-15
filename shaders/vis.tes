@@ -7,11 +7,15 @@ in vec3 WorldPos_TC_out[];
 in vec2 TexCoords_TC_out[];
 in vec3 Normal_TC_out[];
 in vec3 viewForward_TC_out[];
+in vec3 vs_color_TC_out[];
+in vec3 barycentric_TC_out[];
 
 // Output to Fragment Shader
 out vec3 FragPos;
 out vec3 Normal;
 out vec2 TexCoords;
+out vec3 vs_color;
+out vec3 barycentric;
 
 uniform mat4 view;
 uniform mat4 projection;
@@ -30,6 +34,14 @@ void main() {
     vec2 tex1 = mix(TexCoords_TC_out[0], TexCoords_TC_out[1], uv.x);
     vec2 tex2 = mix(TexCoords_TC_out[3], TexCoords_TC_out[2], uv.x);
     TexCoords = mix(tex1, tex2, uv.y);
+
+    vec3 color1 = mix(vs_color_TC_out[0], vs_color_TC_out[1], uv.x);
+    vec3 color2 = mix(vs_color_TC_out[3], vs_color_TC_out[2], uv.x);
+    vs_color = mix(color1, color2, uv.y);
+
+    vec3 bary1 = mix(barycentric_TC_out[0], barycentric_TC_out[1], uv.x);
+    vec3 bary2 = mix(barycentric_TC_out[3], barycentric_TC_out[2], uv.x);
+    barycentric = mix(bary1, bary2, uv.y);
 
     // Final vertex position
     gl_Position = projection * view * vec4(FragPos, 1.0);
