@@ -33,7 +33,7 @@ public:
 
 int main() {
 	try {
-		Visualizer viz;
+		Visualizer viz(1280, 960, "Boidsish Rocket Trail Demo");
 
 		auto&         thread_pool = viz.GetThreadPool();
 		EntityHandler entity_handler(thread_pool);

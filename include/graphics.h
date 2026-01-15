@@ -119,7 +119,7 @@ namespace Boidsish {
 	// Main visualization class
 	class Visualizer {
 	public:
-		Visualizer(int width = 800, int height = 600, const char* title = "Boidsish 3D Visualizer");
+		Visualizer(int w, int h, const char* title);
 		~Visualizer();
 
 		// Set the function/handler that generates shapes for each frame

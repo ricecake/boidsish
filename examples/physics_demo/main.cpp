@@ -20,7 +20,7 @@ public:
 };
 
 int main(int argc, char** argv) {
-	Boidsish::Visualizer     vis;
+	Boidsish::Visualizer     vis(1280, 960, "Boidsish Physics Demo");
 	Boidsish::PhysicsHandler physicsHandler;
 
 	std::vector<std::shared_ptr<Boidsish::Shape>>                            shapes;

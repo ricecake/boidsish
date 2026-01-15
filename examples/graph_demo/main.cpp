@@ -7,7 +7,7 @@ using namespace Boidsish;
 
 int main(int argc, char** argv) {
 	try {
-		Visualizer vis;
+		Visualizer vis(1280, 960, "Boidsish Graph Demo");
 
 		auto graph = std::make_shared<Graph>(0, 0, 0, 0);
 

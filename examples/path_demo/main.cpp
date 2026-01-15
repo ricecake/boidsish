@@ -51,7 +51,7 @@ private:
 
 int main(int argc, char** argv) {
 	try {
-		Visualizer vis;
+		Visualizer vis(1280, 960, "Boidsish Path Demo");
 
 		auto path_handler = std::make_shared<PathHandler>();
 		auto path = path_handler->AddPath();
