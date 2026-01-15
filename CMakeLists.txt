@@ -44,13 +44,14 @@ add_subdirectory(external/libmorton)
 set_directory_properties(PROPERTIES COMPILE_OPTIONS "${OLD_COMPILE_OPTIONS}")
 
 # 3. Define the Library
-# Finds all .cpp files in src/
-file(GLOB_RECURSE LIB_SOURCES "src/*.cpp")
+# Finds all .cpp files in src/ and its subdirectories
+file(GLOB_RECURSE LIB_SOURCES "src/*.cpp" "src/*/*.cpp")
 
 add_library(boidsish STATIC ${LIB_SOURCES})
 
 target_include_directories(boidsish
     PUBLIC
+        ${CMAKE_CURRENT_SOURCE_DIR}/include
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
         $<INSTALL_INTERFACE:include>
         external/include

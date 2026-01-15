@@ -34,7 +34,9 @@
 #include "terrain.h"
 #include "terrain_generator.h"
 #include "trail.h"
+#include "TreeManager.h"
 #include "ui/PostProcessingWidget.h"
+#include "ui/TreeWidget.h"
 #include "ui/hud_widget.h"
 #include "visual_effects.h"
 #include <GL/glew.h>
@@ -62,6 +64,7 @@ namespace Boidsish {
 		std::unique_ptr<CloneManager>         clone_manager;
 		std::unique_ptr<FireEffectManager>    fire_effect_manager;
 		std::unique_ptr<SoundEffectManager>   sound_effect_manager;
+        std::unique_ptr<TreeManager>          tree_manager;
 		std::map<int, std::shared_ptr<Trail>> trails;
 		std::map<int, float>                  trail_last_update;
 
@@ -229,6 +232,7 @@ namespace Boidsish {
 			clone_manager = std::make_unique<CloneManager>();
 			fire_effect_manager = std::make_unique<FireEffectManager>();
 			sound_effect_manager = std::make_unique<SoundEffectManager>(audio_manager.get());
+            tree_manager = std::make_unique<TreeManager>();
 
 			glGenBuffers(1, &lighting_ubo);
 			glBindBuffer(GL_UNIFORM_BUFFER, lighting_ubo);
@@ -262,6 +266,9 @@ namespace Boidsish {
 			auto hud_widget = std::make_shared<UI::HudWidget>(*hud_manager);
 			ui_manager->AddWidget(hud_widget);
 			logger::LOG("HudWidget created and added.");
+
+            auto tree_widget = std::make_shared<UI::TreeWidget>(*tree_manager);
+            ui_manager->AddWidget(tree_widget);
 
 			if (terrain_enabled_) {
 				Terrain::terrain_shader_ = std::make_shared<Shader>(
@@ -1353,6 +1360,7 @@ namespace Boidsish {
 		impl->clone_manager->Update(impl->simulation_time, impl->camera.pos());
 		impl->fire_effect_manager->Update(impl->input_state.delta_time, impl->simulation_time);
 		impl->sound_effect_manager->Update(impl->input_state.delta_time);
+        impl->tree_manager->update();
 
 		// UBO Updates
 		if (impl->effects_enabled_) {
@@ -1441,6 +1449,7 @@ namespace Boidsish {
 		impl->RenderShapes(view, impl->camera, impl->shapes, impl->simulation_time, std::nullopt);
 		impl->RenderTrails(view, std::nullopt);
 		impl->fire_effect_manager->Render(view, impl->projection, impl->camera.pos());
+        impl->tree_manager->render();
 
 		if (impl->effects_enabled_) {
 			// --- Post-processing Pass (renders FBO texture to screen) ---

@@ -38,6 +38,7 @@ namespace Boidsish {
 	class SoundEffect;
 	class FireEffectManager;
 	class Path;
+    class TreeManager;
 } // namespace Boidsish
 
 namespace Boidsish {
