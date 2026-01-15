@@ -125,6 +125,10 @@ namespace Boidsish {
 		bool skybox_enabled_;
 		bool floor_reflection_enabled_;
 
+		// Cached global settings
+		float camera_roll_speed_;
+		float camera_speed_step_;
+
 		task_thread_pool::task_thread_pool thread_pool;
 
 		VisualizerImpl(Visualizer* p, int w, int h, const char* title):
@@ -138,6 +142,10 @@ namespace Boidsish {
 			skybox_enabled_ = ConfigManager::GetInstance().GetAppSettingBool("enable_skybox", true);
 			floor_reflection_enabled_ = ConfigManager::GetInstance().GetAppSettingBool("enable_floor_reflection", true);
 			is_fullscreen_ = ConfigManager::GetInstance().GetAppSettingBool("fullscreen", false);
+
+			// Cache global settings
+			camera_roll_speed_ = ConfigManager::GetInstance().GetGlobalSettingFloat("camera_roll_speed", 45.0f);
+			camera_speed_step_ = ConfigManager::GetInstance().GetGlobalSettingFloat("camera_speed_step", 2.5f);
 
 			exit_key = GLFW_KEY_ESCAPE;
 			input_callbacks.push_back([this](const InputState& state) { this->DefaultInputHandler(state); });
@@ -716,9 +724,9 @@ namespace Boidsish {
 				if (state.keys[GLFW_KEY_LEFT_SHIFT])
 					camera.y -= camera_speed_val;
 				if (state.keys[GLFW_KEY_Q])
-					camera.roll -= ConfigManager::GetInstance().GetGlobalSettingFloat("camera_roll_speed", 45.0f) * state.delta_time;
+					camera.roll -= camera_roll_speed_ * state.delta_time;
 				if (state.keys[GLFW_KEY_E])
-					camera.roll += ConfigManager::GetInstance().GetGlobalSettingFloat("camera_roll_speed", 45.0f) * state.delta_time;
+					camera.roll += camera_roll_speed_ * state.delta_time;
 				if (camera.y < kMinCameraHeight)
 					camera.y = kMinCameraHeight;
 
@@ -783,12 +791,12 @@ namespace Boidsish {
 
 			// Camera speed adjustment
 			if (state.key_down[GLFW_KEY_LEFT_BRACKET]) {
-				camera.speed -= ConfigManager::GetInstance().GetGlobalSettingFloat("camera_speed_step", 2.5f);
+				camera.speed -= camera_speed_step_;
 				if (camera.speed < kMinCameraSpeed)
 					camera.speed = kMinCameraSpeed;
 			}
 			if (state.key_down[GLFW_KEY_RIGHT_BRACKET]) {
-				camera.speed += ConfigManager::GetInstance().GetGlobalSettingFloat("camera_speed_step", 2.5f);
+				camera.speed += camera_speed_step_;
 			}
 
 			// Toggles
