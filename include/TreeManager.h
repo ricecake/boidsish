@@ -5,6 +5,7 @@
 #include <vector>
 #include <GL/glew.h>
 #include <glm/glm.hpp>
+#include "TreeTypes.h"
 
 // Forward declare classes in the global namespace
 class ComputeShader;
@@ -18,8 +19,9 @@ public:
     ~TreeManager();
 
     void update();
-    void render();
+    void render(const glm::mat4& view, const glm::mat4& projection);
     void regenerate();
+    void SetPosition(const glm::vec3& position);
 
     // Generation Parameters
     int   m_numAttractionPoints = 500;
@@ -29,8 +31,10 @@ public:
     glm::vec3 m_canopyCenter = glm::vec3(0, 30, 0);
     float m_canopyRadius = 20.0f;
     int m_maxBranches = 5000;
+    bool m_showAttractionPoints = false;
 
 private:
+    glm::vec3 m_position = glm::vec3(0.0f);
     void initShaders();
     void initBuffers();
 

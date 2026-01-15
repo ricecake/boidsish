@@ -1449,7 +1449,7 @@ namespace Boidsish {
 		impl->RenderShapes(view, impl->camera, impl->shapes, impl->simulation_time, std::nullopt);
 		impl->RenderTrails(view, std::nullopt);
 		impl->fire_effect_manager->Render(view, impl->projection, impl->camera.pos());
-        impl->tree_manager->render();
+        impl->tree_manager->render(view, impl->projection);
 
 		if (impl->effects_enabled_) {
 			// --- Post-processing Pass (renders FBO texture to screen) ---
