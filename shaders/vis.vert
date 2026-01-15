@@ -11,6 +11,10 @@ out vec3 Normal;
 out vec3 vs_color;
 out vec3 barycentric;
 out vec2 TexCoords;
+out vec3 WorldPos_VS_out;
+out vec2 TexCoords_VS_out;
+out vec3 Normal_VS_out;
+out vec3 viewForward;
 
 uniform mat4  model;
 uniform mat4  view;
@@ -69,5 +73,10 @@ void main() {
 		gl_Position = projection * view * vec4(FragPos, 1.0);
 	}
 
+	WorldPos_VS_out = FragPos;
+	TexCoords_VS_out = aTexCoords;
+	Normal_VS_out = Normal;
+	mat3 viewMat3 = mat3(view);
+	viewForward = viewMat3 * vec3(0, 0, -1);
 	gl_ClipDistance[0] = dot(vec4(FragPos, 1.0), clipPlane);
 }
