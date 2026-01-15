@@ -21,6 +21,9 @@ int main() {
 		visualizer->AddHudIcon(
 			{2, "assets/bomb-icon.png", HudAlignment::TOP_LEFT, {84, 10}, {64, 64}, selected_weapon == 1}
 		);
+		visualizer->AddHudIcon(
+			{3, "assets/bullet-icon.png", HudAlignment::TOP_LEFT, {84 + 10 + 64, 10}, {64, 64}, selected_weapon == 2}
+		);
 
 		auto [height, norm] = visualizer->GetTerrainPointProperties(0, 0);
 
@@ -51,7 +54,7 @@ int main() {
 			controller->brake = state.keys[GLFW_KEY_LEFT_CONTROL];
 			controller->fire = state.keys[GLFW_KEY_SPACE];
 			if (state.key_down[GLFW_KEY_F]) {
-				selected_weapon = (selected_weapon + 1) % 2;
+				selected_weapon = (selected_weapon + 1) % 3;
 				visualizer->UpdateHudIcon(
 					1,
 					{1, "assets/missile-icon.png", HudAlignment::TOP_LEFT, {10, 10}, {64, 64}, selected_weapon == 0}
@@ -59,6 +62,15 @@ int main() {
 				visualizer->UpdateHudIcon(
 					2,
 					{2, "assets/bomb-icon.png", HudAlignment::TOP_LEFT, {84, 10}, {64, 64}, selected_weapon == 1}
+				);
+				visualizer->UpdateHudIcon(
+					3,
+					{3,
+				     "assets/bullet-icon.png",
+				     HudAlignment::TOP_LEFT,
+				     {84 + 10 + 64, 10},
+				     {64, 64},
+				     selected_weapon == 2}
 				);
 			}
 		});
