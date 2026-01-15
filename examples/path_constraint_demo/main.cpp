@@ -59,9 +59,9 @@ int main() {
 	Boidsish::Visualizer vis(800, 600, "Path Constraint Demo");
 
 	// Simplify the environment for a clean test
-	vis.GetConfig().SetBool("enable_terrain", false);
-	vis.GetConfig().SetBool("enable_skybox", false);
-	vis.GetConfig().SetBool("enable_floor", false);
+	vis.GetConfig().SetBool("boidsish", "enable_terrain", false);
+	vis.GetConfig().SetBool("boidsish", "enable_skybox", false);
+	vis.GetConfig().SetBool("boidsish", "enable_floor", false);
 
 	task_thread_pool::task_thread_pool thread_pool;
 	auto                               handler = std::make_shared<PathConstraintDemoHandler>(thread_pool);

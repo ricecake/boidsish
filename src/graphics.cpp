@@ -35,6 +35,7 @@
 #include "terrain_generator.h"
 #include "trail.h"
 #include "ui/ConfigWidget.h"
+#include "ui/EffectsWidget.h"
 #include "ui/PostProcessingWidget.h"
 #include "ui/hud_widget.h"
 #include "visual_effects.h"
@@ -455,8 +456,11 @@ namespace Boidsish {
 				ui_manager->AddWidget(post_processing_widget);
 			}
 
-			auto config_widget = std::make_shared<UI::ConfigWidget>();
+			auto config_widget = std::make_shared<UI::ConfigWidget>(*parent);
 			ui_manager->AddWidget(config_widget);
+
+			auto effects_widget = std::make_shared<UI::EffectsWidget>(*parent);
+			ui_manager->AddWidget(effects_widget);
 		}
 
 		void SetupShaderBindings(Shader& shader_to_setup) {
@@ -842,22 +846,6 @@ namespace Boidsish {
 				parent->ToggleMenus();
 			if (state.key_down[GLFW_KEY_P])
 				paused = !paused;
-			if (effects_enabled_) {
-				if (state.key_down[GLFW_KEY_R])
-					ripple_strength = (ripple_strength > 0.0f) ? 0.0f : 0.05f;
-				if (state.key_down[GLFW_KEY_C])
-					color_shift_effect = !color_shift_effect;
-				if (state.key_down[GLFW_KEY_1])
-					black_and_white_effect = !black_and_white_effect;
-				if (state.key_down[GLFW_KEY_2])
-					negative_effect = !negative_effect;
-				if (state.key_down[GLFW_KEY_3])
-					shimmery_effect = !shimmery_effect;
-				if (state.key_down[GLFW_KEY_4])
-					glitched_effect = !glitched_effect;
-				if (state.key_down[GLFW_KEY_5])
-					wireframe_effect = !wireframe_effect;
-			}
 
 			if (state.key_down[GLFW_KEY_F11]) {
 				ToggleFullscreen();
@@ -1570,6 +1558,10 @@ namespace Boidsish {
 		impl->exit_key = key;
 	}
 
+	CameraMode Visualizer::GetCameraMode() const {
+		return impl->camera_mode;
+	}
+
 	void Visualizer::SetCameraMode(CameraMode mode) {
 		impl->camera_mode = mode;
 		switch (mode) {
@@ -1764,5 +1756,33 @@ namespace Boidsish {
 
 	AudioManager& Visualizer::GetAudioManager() {
 		return *impl->audio_manager;
+	}
+
+	bool Visualizer::IsRippleEffectEnabled() const {
+		return impl->ripple_strength > 0.0f;
+	}
+
+	bool Visualizer::IsColorShiftEffectEnabled() const {
+		return impl->color_shift_effect;
+	}
+
+	bool Visualizer::IsBlackAndWhiteEffectEnabled() const {
+		return impl->black_and_white_effect;
+	}
+
+	bool Visualizer::IsNegativeEffectEnabled() const {
+		return impl->negative_effect;
+	}
+
+	bool Visualizer::IsShimmeryEffectEnabled() const {
+		return impl->shimmery_effect;
+	}
+
+	bool Visualizer::IsGlitchedEffectEnabled() const {
+		return impl->glitched_effect;
+	}
+
+	bool Visualizer::IsWireframeEffectEnabled() const {
+		return impl->wireframe_effect;
 	}
 } // namespace Boidsish
