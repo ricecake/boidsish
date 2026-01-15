@@ -12,6 +12,19 @@ namespace Boidsish {
 	Trail::Trail(int max_length): max_length(max_length), vertex_count(0), mesh_dirty(false) {
 		glGenVertexArrays(1, &vao);
 		glGenBuffers(1, &vbo);
+		glGenBuffers(1, &ebo);
+
+		glBindBuffer(GL_ARRAY_BUFFER, vbo);
+		glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ebo);
+
+		mesh_vertices.resize(max_length * CURVE_SEGMENTS * VERTS_PER_STEP);
+		indices.resize(max_length * CURVE_SEGMENTS * VERTS_PER_STEP);
+		for (unsigned int i = 0; i < indices.size(); ++i) {
+			indices[i] = i;
+		}
+
+		glBufferData(GL_ARRAY_BUFFER, mesh_vertices.size() * sizeof(TrailVertex), nullptr, GL_DYNAMIC_DRAW);
+		glBufferData(GL_ELEMENT_ARRAY_BUFFER, indices.size() * sizeof(unsigned int), indices.data(), GL_STATIC_DRAW);
 	}
 
 	Trail::~Trail() {
@@ -47,95 +60,47 @@ namespace Boidsish {
 		return rotated.Normalized();
 	}
 
-	void Trail::GenerateTrailGeometry() {
-		curve_positions.clear();
-		curve_colors.clear();
-		tangents.clear();
-		normals.clear();
-		binormals.clear();
-
-		if (points.size() < 4) {
-			return;
+	void Trail::UpdateAndAppendSegment() {
+		// Get the last 4 points to calculate the new segment
+		int                  size = points.size();
+		std::vector<Vector3> p(4);
+		std::vector<Vector3> c(4);
+		for (int i = 0; i < 4; ++i) {
+			p[i] = Vector3(points[size - 4 + i].first.x, points[size - 4 + i].first.y, points[size - 4 + i].first.z);
+			c[i] = Vector3(points[size - 4 + i].second.x, points[size - 4 + i].second.y, points[size - 4 + i].second.z);
 		}
 
-		std::vector<Vector3> positions;
-		std::vector<Vector3> colors;
-		for (const auto& point : points) {
-			positions.emplace_back(point.first.x, point.first.y, point.first.z);
-			colors.emplace_back(point.second.x, point.second.y, point.second.z);
-		}
+		// Append to the geometry cache
+		AppendToGeometryCache(p[0], p[1], p[2], p[3], c[0], c[1], c[2], c[3]);
 
-		for (int i = 0; i < (int)positions.size() - 3; ++i) {
-			AppendToGeometryCache(
-				positions[i],
-				positions[i + 1],
-				positions[i + 2],
-				positions[i + 3],
-				colors[i],
-				colors[i + 1],
-				colors[i + 2],
-				colors[i + 3]
-			);
-		}
-	}
-
-	void Trail::BuildMeshFromGeometryCache() {
-		mesh_vertices.clear();
-
-		if (curve_positions.size() < 2) {
-			vertex_count = 0;
-			return;
-		}
-
-		std::vector<float> curve_progress;
-		for (int i = 0; i < curve_positions.size(); ++i) {
-			curve_progress.push_back((float)i / (curve_positions.size() - 1));
-		}
-
-		if (curve_positions.size() < 2) {
-			vertex_count = 0;
-			return;
-		}
-
-		tangents.clear();
-		normals.clear();
-		binormals.clear();
-
-		for (int i = 0; i < (int)curve_positions.size(); ++i) {
+		// Calculate tangents, normals, and binormals for the new segment
+		size_t start_index = curve_positions.size() - CURVE_SEGMENTS;
+		for (size_t i = start_index; i < curve_positions.size(); ++i) {
 			Vector3 tangent;
 			if (i == 0) {
 				tangent = (curve_positions[i + 1] - curve_positions[i]).Normalized();
-			} else if (i == (int)curve_positions.size() - 1) {
-				tangent = (curve_positions[i] - curve_positions[i - 1]).Normalized();
 			} else {
-				tangent = (curve_positions[i + 1] - curve_positions[i - 1]).Normalized();
+				tangent = (curve_positions[i] - curve_positions[i - 1]).Normalized();
 			}
 			tangents.push_back(tangent);
+
+			Vector3 normal;
+			if (i == 0) {
+				if (abs(tangents[i].y) < 0.999f) {
+					normal = tangents[i].Cross(Vector3(0, 1, 0)).Normalized();
+				} else {
+					normal = tangents[i].Cross(Vector3(1, 0, 0)).Normalized();
+				}
+			} else {
+				normal = TransportFrame(normals.back(), tangents[i - 1], tangents[i]);
+			}
+			normals.push_back(normal);
+			binormals.push_back(tangents[i].Cross(normal).Normalized());
 		}
 
-		// Initialize first frame
-		Vector3 initial_normal;
-		if (abs(tangents[0].y) < 0.999f) {
-			initial_normal = tangents[0].Cross(Vector3(0, 1, 0)).Normalized();
-		} else {
-			initial_normal = tangents[0].Cross(Vector3(1, 0, 0)).Normalized();
-		}
-
-		normals.push_back(initial_normal);
-		binormals.push_back(tangents[0].Cross(initial_normal).Normalized());
-
-		// Transport frame along the curve
-		for (int i = 1; i < (int)curve_positions.size(); ++i) {
-			Vector3 transported_normal = TransportFrame(normals[i - 1], tangents[i - 1], tangents[i]);
-			normals.push_back(transported_normal);
-			binormals.push_back(tangents[i].Cross(transported_normal).Normalized());
-		}
-
-		std::vector<std::vector<glm::vec3>> ring_positions;
-		std::vector<std::vector<glm::vec3>> ring_normals;
-
-		// Precompute all rings to ensure seamless connections
-		for (size_t i = 0; i < curve_positions.size(); ++i) {
+		// Generate rings for the new segment
+		size_t ring_start_index = curve_positions.size() - CURVE_SEGMENTS;
+		for (size_t i = ring_start_index; i < curve_positions.size(); ++i) {
 			std::vector<glm::vec3> current_ring_pos;
 			std::vector<glm::vec3> current_ring_norm;
 			float                  thickness = BASE_THICKNESS;
@@ -152,57 +117,46 @@ namespace Boidsish {
 			ring_normals.push_back(current_ring_norm);
 		}
 
-		// Generate cylindrical mesh from precomputed rings
-		for (int i = 0; i < (int)curve_positions.size() - 1; ++i) {
+		// Generate the mesh for the new segment
+		size_t segment_start_index = (curve_positions.size() == CURVE_SEGMENTS)
+			? 0
+			: curve_positions.size() - CURVE_SEGMENTS - 1;
+		for (size_t i = segment_start_index; i < curve_positions.size() - 1; ++i) {
 			const auto& ring1_positions = ring_positions[i];
 			const auto& ring1_normals = ring_normals[i];
 			const auto& ring2_positions = ring_positions[i + 1];
 			const auto& ring2_normals = ring_normals[i + 1];
 
-			for (int j = 0; j < TRAIL_SEGMENTS; ++j) {
-				// First triangle (CCW)
-				mesh_vertices.push_back(
-					{ring1_positions[j],
-				     ring1_normals[j],
-				     glm::vec3(curve_colors[i].x, curve_colors[i].y, curve_colors[i].z),
-				     curve_progress[i]}
-				);
-				mesh_vertices.push_back(
-					{ring1_positions[j + 1],
-				     ring1_normals[j + 1],
-				     glm::vec3(curve_colors[i].x, curve_colors[i].y, curve_colors[i].z),
-				     curve_progress[i]}
-				);
-				mesh_vertices.push_back(
-					{ring2_positions[j],
-				     ring2_normals[j],
-				     glm::vec3(curve_colors[i + 1].x, curve_colors[i + 1].y, curve_colors[i + 1].z),
-				     curve_progress[i + 1]}
-				);
+			for (int j = 0; j <= TRAIL_SEGMENTS; ++j) {
+				int idx = j % (TRAIL_SEGMENTS + 1);
 
-				// Second triangle (CCW)
-				mesh_vertices.push_back(
-					{ring1_positions[j + 1],
-				     ring1_normals[j + 1],
-				     glm::vec3(curve_colors[i].x, curve_colors[i].y, curve_colors[i].z),
-				     curve_progress[i]}
-				);
-				mesh_vertices.push_back(
-					{ring2_positions[j + 1],
-				     ring2_normals[j + 1],
-				     glm::vec3(curve_colors[i + 1].x, curve_colors[i + 1].y, curve_colors[i + 1].z),
-				     curve_progress[i + 1]}
-				);
-				mesh_vertices.push_back(
-					{ring2_positions[j],
-				     ring2_normals[j],
-				     glm::vec3(curve_colors[i + 1].x, curve_colors[i + 1].y, curve_colors[i + 1].z),
-				     curve_progress[i + 1]}
-				);
+				// Vertex from the PREVIOUS ring
+				mesh_vertices[tail] = {
+					ring1_positions[idx],
+					ring1_normals[idx],
+					glm::vec3(curve_colors[i].x, curve_colors[i].y, curve_colors[i].z),
+				};
+				tail = (tail + 1) % mesh_vertices.size();
+
+				// Vertex from the CURRENT ring
+				mesh_vertices[tail] = {
+					ring2_positions[idx],
+					ring2_normals[idx],
+					glm::vec3(curve_colors[i].x, curve_colors[i].y, curve_colors[i].z),
+				};
+				tail = (tail + 1) % mesh_vertices.size();
 			}
 		}
-
-		vertex_count = mesh_vertices.size();
+		if (full) {
+			vertex_count = mesh_vertices.size();
+		} else if (tail > head) {
+			vertex_count = tail - head;
+		} else {
+			vertex_count = mesh_vertices.size() - head + tail;
+		}
+		if (tail == head && points.size() > 4) {
+			full = true;
+		}
 	}
 
 	void Trail::AddPoint(glm::vec3 position, glm::vec3 color) {
@@ -214,24 +168,7 @@ namespace Boidsish {
 		}
 
 		if (points.size() >= 4) {
-			int                  size = points.size();
-			std::vector<Vector3> p(4);
-			std::vector<Vector3> c(4);
-
-			for (int i = 0; i < 4; ++i) {
-				p[i] = Vector3(
-					points[size - 4 + i].first.x,
-					points[size - 4 + i].first.y,
-					points[size - 4 + i].first.z
-				);
-				c[i] = Vector3(
-					points[size - 4 + i].second.x,
-					points[size - 4 + i].second.y,
-					points[size - 4 + i].second.z
-				);
-			}
-
-			AppendToGeometryCache(p[0], p[1], p[2], p[3], c[0], c[1], c[2], c[3]);
+			UpdateAndAppendSegment();
 		}
 
 		mesh_dirty = true;
@@ -251,21 +188,28 @@ namespace Boidsish {
 		}
 
 		if (mesh_dirty) {
-			if (curve_positions.empty() && points.size() >= 4) {
-				const_cast<Trail*>(this)->GenerateTrailGeometry();
-			}
-			const_cast<Trail*>(this)->BuildMeshFromGeometryCache();
 			const_cast<Trail*>(this)->mesh_dirty = false;
 
 			// Upload mesh to GPU
 			glBindVertexArray(vao);
 			glBindBuffer(GL_ARRAY_BUFFER, vbo);
-			glBufferData(
-				GL_ARRAY_BUFFER,
-				mesh_vertices.size() * sizeof(TrailVertex),
-				mesh_vertices.data(),
-				GL_DYNAMIC_DRAW
-			);
+			if (tail > old_tail) {
+				glBufferSubData(
+					GL_ARRAY_BUFFER,
+					old_tail * sizeof(TrailVertex),
+					(tail - old_tail) * sizeof(TrailVertex),
+					&mesh_vertices[old_tail]
+				);
+			} else if (tail < old_tail) { // Buffer has wrapped
+				glBufferSubData(
+					GL_ARRAY_BUFFER,
+					old_tail * sizeof(TrailVertex),
+					(mesh_vertices.size() - old_tail) * sizeof(TrailVertex),
+					&mesh_vertices[old_tail]
+				);
+				glBufferSubData(GL_ARRAY_BUFFER, 0, tail * sizeof(TrailVertex), &mesh_vertices[0]);
+			}
+			const_cast<Trail*>(this)->old_tail = tail;
 
 			// Position
 			glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(TrailVertex), (void*)0);
@@ -279,18 +223,14 @@ namespace Boidsish {
 			glVertexAttribPointer(2, 3, GL_FLOAT, GL_FALSE, sizeof(TrailVertex), (void*)offsetof(TrailVertex, color));
 			glEnableVertexAttribArray(2);
 
-			// Progress
-			glVertexAttribPointer(
-				3,
-				1,
-				GL_FLOAT,
-				GL_FALSE,
-				sizeof(TrailVertex),
-				(void*)offsetof(TrailVertex, progress)
-			);
-			glEnableVertexAttribArray(3);
-
 			glBindVertexArray(0);
+		}
+
+		float trailSize = 0;
+		if (tail > head) {
+			trailSize = tail - head;
+		} else {
+			trailSize = tail + mesh_vertices.size() - head;
 		}
 
 		shader.use();
@@ -298,9 +238,26 @@ namespace Boidsish {
 		shader.setInt("useVertexColor", 1);
 		shader.setBool("useIridescence", iridescent_);
 		shader.setBool("useRocketTrail", useRocketTrail_);
+		shader.setFloat("trailHead", head);
+		shader.setFloat("trailSize", trailSize);
 
 		glBindVertexArray(vao);
-		glDrawArrays(GL_TRIANGLES, 0, vertex_count);
+		glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ebo);
+
+		if (!full && tail > head) {
+			glDrawElements(
+				GL_TRIANGLE_STRIP,
+				(GLsizei)(tail - head),
+				GL_UNSIGNED_INT,
+				(void*)(head * sizeof(unsigned int))
+			);
+		} else {
+			GLsizei firstPartCount = (GLsizei)(mesh_vertices.size() - head);
+			glDrawElements(GL_TRIANGLE_STRIP, firstPartCount, GL_UNSIGNED_INT, (void*)(head * sizeof(unsigned int)));
+			if (tail > 0) {
+				glDrawElements(GL_TRIANGLE_STRIP, (GLsizei)tail, GL_UNSIGNED_INT, (void*)0);
+			}
+		}
 		glBindVertexArray(0);
 
 		shader.setInt("useVertexColor", 0);
@@ -337,7 +294,14 @@ namespace Boidsish {
 		for (int i = 0; i < CURVE_SEGMENTS; ++i) {
 			curve_positions.pop_front();
 			curve_colors.pop_front();
+			tangents.pop_front();
+			normals.pop_front();
+			binormals.pop_front();
+			ring_positions.pop_front();
+			ring_normals.pop_front();
 		}
+		head = (head + CURVE_SEGMENTS * VERTS_PER_STEP) % mesh_vertices.size();
+		full = false;
 	}
 
 } // namespace Boidsish

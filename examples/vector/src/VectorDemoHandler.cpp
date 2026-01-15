@@ -15,13 +15,13 @@ namespace Boidsish {
 		std::cout << "=== Vector3 Operations Demo ===" << std::endl;
 
 		// Create some vector demo entities
-		for (int i = 0; i < 4; i++) {
+		for (int i = 0; i < 8; i++) {
 			Vector3 start_pos(10 * sin(i / 4.0f), 1.0f, 10 * cos(i / 6.0f));
 			this->AddEntity<VectorDemoEntity>(start_pos);
 		}
 
 		// Create a flock of entities
-		for (int i = 0; i < 32; i++) {
+		for (int i = 0; i < 64; i++) {
 			Vector3 start_pos((rand() % 10 - 5) * 2.0f, -1, (rand() % 10 - 5) * 2.0f);
 			this->AddEntity<FlockingEntity>(start_pos);
 		}

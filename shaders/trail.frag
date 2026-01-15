@@ -19,6 +19,8 @@ uniform bool useRocketTrail;
 #include "helpers/noise.glsl"
 
 void main() {
+	// FragColor = vec4(vs_progress, 0, 0, 1);
+	// return;
 	vec3 norm = normalize(vs_normal);
 	vec3 view_dir = normalize(viewPos - vs_frag_pos);
 	vec3 light_dir = normalize(lightPos - vs_frag_pos);

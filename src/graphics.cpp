@@ -631,6 +631,7 @@ namespace Boidsish {
 			} else {
 				trail_shader->setVec4("clipPlane", glm::vec4(0, 0, 0, 0));
 			}
+
 			for (auto& pair : trails) {
 				pair.second->Render(*trail_shader);
 			}
@@ -1416,8 +1417,8 @@ namespace Boidsish {
 					impl->simulation_time,
 					glm::vec4(0, 1, 0, 0.01)
 				);
-				impl->RenderTrails(reflection_view, glm::vec4(0, 1, 0, 0.01));
 				impl->fire_effect_manager->Render(reflection_view, impl->projection, reflection_cam.pos());
+				impl->RenderTrails(reflection_view, glm::vec4(0, 1, 0, 0.01));
 			}
 			glDisable(GL_CLIP_DISTANCE0);
 
@@ -1439,8 +1440,8 @@ namespace Boidsish {
 		}
 		impl->RenderTerrain(view, std::nullopt);
 		impl->RenderShapes(view, impl->camera, impl->shapes, impl->simulation_time, std::nullopt);
-		impl->RenderTrails(view, std::nullopt);
 		impl->fire_effect_manager->Render(view, impl->projection, impl->camera.pos());
+		impl->RenderTrails(view, std::nullopt);
 
 		if (impl->effects_enabled_) {
 			// --- Post-processing Pass (renders FBO texture to screen) ---
