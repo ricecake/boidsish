@@ -1,6 +1,5 @@
 #pragma once
 
-#include "Tree.h"
 #include <memory>
 #include <vector>
 #include <GL/glew.h>
@@ -22,6 +21,7 @@ public:
     void render(const glm::mat4& view, const glm::mat4& projection);
     void regenerate();
     void SetPosition(const glm::vec3& position);
+    void SetScale(float scale);
 
     // Generation Parameters
     int   m_numAttractionPoints = 500;
@@ -35,10 +35,10 @@ public:
 
 private:
     glm::vec3 m_position = glm::vec3(0.0f);
+    float m_scale = 1.0f;
     void initShaders();
     void initBuffers();
 
-    std::vector<std::unique_ptr<Tree>> m_trees;
     int m_branchCount = 0;
 
     std::unique_ptr<ComputeShader> m_computeShader;
@@ -49,6 +49,7 @@ private:
     GLuint m_atomicCounterSSBO;
     GLuint m_branchGrownLockSSBO;
     GLuint m_vao;
+    GLuint m_attractionPointVao;
 };
 
 } // namespace Boidsish

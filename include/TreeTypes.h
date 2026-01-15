@@ -7,7 +7,7 @@ namespace Boidsish {
 // GLSL-compatible structs (std140/std430 layout)
 struct AttractionPoint {
     glm::vec4 position;
-    int is_active;
+    int isActive;
     glm::vec3 padding; // Explicit padding for alignment
 };
 

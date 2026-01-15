@@ -5,7 +5,7 @@ layout (local_size_x = 256, local_size_y = 1, local_size_z = 1) in;
 // === Structs (must match C++ layout) ===
 struct AttractionPoint {
     vec4 position;
-    int active;
+    int isActive;
     vec3 padding;
 };
 
@@ -40,19 +40,19 @@ uniform float branch_length;
 uniform int max_branches;
 
 // === Shared Memory ===
-// Used by a workgroup to find the closest branch to an attraction point
-shared int closest_branch_index;
-shared float min_dist_sq;
-// Used by a workgroup to accumulate influence vectors
-shared vec3 accumulated_direction;
-shared int influence_count;
+// Note: The following variables were previously marked as 'shared', which was incorrect
+// as it created a race condition. They are now thread-local variables.
+int closest_branch_index;
+float min_dist_sq;
+vec3 accumulated_direction;
+int influence_count;
 
 void main() {
     uint global_id = gl_GlobalInvocationID.x;
 
     // --- Part 1: Deactivate nearby attraction points ---
     // Each thread checks one attraction point
-    if (global_id < num_attraction_points && attraction_points[global_id].active > 0) {
+    if (global_id < num_attraction_points && attraction_points[global_id].isActive > 0) {
         uint branch_count = atomicCounter(branch_counter);
         for (int i = 0; i < branch_count; ++i) {
             float dist_sq = dot(
@@ -60,7 +60,7 @@ void main() {
                 attraction_points[global_id].position.xyz - tree_branches[i].position.xyz
             );
             if (dist_sq < kill_radius_sq) {
-                attraction_points[global_id].active = 0;
+                attraction_points[global_id].isActive = 0;
                 break; // Move to the next attraction point
             }
         }
@@ -72,7 +72,7 @@ void main() {
 
     // --- Part 2: Find closest branch for each attraction point ---
     // Each thread still works on one attraction point
-    if (global_id < num_attraction_points && attraction_points[global_id].active > 0) {
+    if (global_id < num_attraction_points && attraction_points[global_id].isActive > 0) {
         min_dist_sq = attraction_radius_sq;
         closest_branch_index = -1;
         uint branch_count = atomicCounter(branch_counter);
@@ -100,7 +100,7 @@ void main() {
                 influence_count = 1;
 
                 for (int j = 0; j < num_attraction_points; ++j) {
-                    if (j != global_id && attraction_points[j].active > 0) {
+                    if (j != global_id && attraction_points[j].isActive > 0) {
                          float dist_sq_to_branch = dot(
                             attraction_points[j].position.xyz - tree_branches[closest_branch_index].position.xyz,
                             attraction_points[j].position.xyz - tree_branches[closest_branch_index].position.xyz

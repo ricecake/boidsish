@@ -12,17 +12,26 @@ TreeManager::TreeManager() : m_attractionPointsSSBO(0), m_treeBranchesSSBO(0), m
     initShaders();
     initBuffers();
     glGenVertexArrays(1, &m_vao);
+    glGenVertexArrays(1, &m_attractionPointVao);
 
+    // Branch VAO
     glBindVertexArray(m_vao);
     glBindBuffer(GL_ARRAY_BUFFER, m_treeBranchesSSBO);
     glEnableVertexAttribArray(0);
     glVertexAttribPointer(0, 4, GL_FLOAT, GL_FALSE, sizeof(Boidsish::Branch), (void*)offsetof(Boidsish::Branch, position));
+
+    // Attraction Point VAO
+    glBindVertexArray(m_attractionPointVao);
+    glBindBuffer(GL_ARRAY_BUFFER, m_attractionPointsSSBO);
+    glEnableVertexAttribArray(0);
+    glVertexAttribPointer(0, 4, GL_FLOAT, GL_FALSE, sizeof(Boidsish::AttractionPoint), (void*)offsetof(Boidsish::AttractionPoint, position));
+
     glBindVertexArray(0);
 
     regenerate();
 
     // Pre-grow the tree so it's visible on startup
-    for (int i = 0; i < 10000; ++i) {
+    for (int i = 0; i < 200; ++i) {
         update();
     }
 }
@@ -33,11 +42,12 @@ TreeManager::~TreeManager() {
     glDeleteBuffers(1, &m_atomicCounterSSBO);
     glDeleteBuffers(1, &m_branchGrownLockSSBO);
     glDeleteVertexArrays(1, &m_vao);
+    glDeleteVertexArrays(1, &m_attractionPointVao);
 }
 
 void TreeManager::initShaders() {
     m_computeShader = std::make_unique<ComputeShader>("shaders/tree_compute.glsl");
-    m_renderShader = std::make_unique<Shader>("shaders/tree_vertex.glsl", "shaders/tree_fragment.glsl");
+    m_renderShader = std::make_unique<Shader>("shaders/tree_vertex.glsl", "shaders/tree_fragment.glsl", nullptr, nullptr, "shaders/tree_geometry.glsl");
 }
 
 void TreeManager::initBuffers() {
@@ -122,13 +132,19 @@ void TreeManager::SetPosition(const glm::vec3& position) {
     this->m_position = position;
 }
 
+void TreeManager::SetScale(float scale) {
+    this->m_scale = scale;
+}
+
 void TreeManager::render(const glm::mat4& view, const glm::mat4& projection) {
     m_renderShader->use();
 
     glm::mat4 model = glm::translate(glm::mat4(1.0f), this->m_position);
+    model = glm::scale(model, glm::vec3(m_scale));
     m_renderShader->setMat4("model", model);
     m_renderShader->setMat4("view", view);
     m_renderShader->setMat4("projection", projection);
+    m_renderShader->setFloat("scale", m_scale);
 
     // Draw the tree branches
     m_renderShader->setInt("render_mode", 0); // 0 for branches
@@ -139,7 +155,7 @@ void TreeManager::render(const glm::mat4& view, const glm::mat4& projection) {
     // Optionally draw the attraction points
     if (this->m_showAttractionPoints) {
         m_renderShader->setInt("render_mode", 1); // 1 for attraction points
-        glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, m_attractionPointsSSBO);
+        glBindVertexArray(m_attractionPointVao);
         glDrawArrays(GL_POINTS, 0, m_numAttractionPoints);
     }
 

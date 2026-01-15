@@ -234,6 +234,13 @@ namespace Boidsish {
 			sound_effect_manager = std::make_unique<SoundEffectManager>(audio_manager.get());
             tree_manager = std::make_unique<TreeManager>();
 
+            if (terrain_enabled_) {
+                glm::vec3 tree_pos(50.0f, 0.0f, 50.0f);
+                tree_pos.y = std::get<0>(terrain_generator->pointProperties(tree_pos.x, tree_pos.z));
+                tree_manager->SetPosition(tree_pos);
+                tree_manager->SetScale(5.0f);
+            }
+
 			glGenBuffers(1, &lighting_ubo);
 			glBindBuffer(GL_UNIFORM_BUFFER, lighting_ubo);
 			// Allocate space for 3 vec3s with std140 padding (each vec3 padded to 16 bytes) 16 + 16 + 16
