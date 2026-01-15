@@ -163,6 +163,7 @@ namespace Boidsish {
 		// Set the exit key, which cannot be overridden by the input callback.
 		void SetExitKey(int key);
 
+		CameraMode                  GetCameraMode() const;
 		void                        SetCameraMode(CameraMode mode);
 		void                        TogglePause();
 		void                        ToggleEffect(VisualEffect effect);
@@ -204,6 +205,14 @@ namespace Boidsish {
 		void AddHudIcon(const HudIcon& icon);
 		void UpdateHudIcon(int id, const HudIcon& icon);
 		void RemoveHudIcon(int id);
+
+		bool IsRippleEffectEnabled() const;
+		bool IsColorShiftEffectEnabled() const;
+		bool IsBlackAndWhiteEffectEnabled() const;
+		bool IsNegativeEffectEnabled() const;
+		bool IsShimmeryEffectEnabled() const;
+		bool IsGlitchedEffectEnabled() const;
+		bool IsWireframeEffectEnabled() const;
 
 		void AddHudNumber(const HudNumber& number);
 		void UpdateHudNumber(int id, const HudNumber& number);

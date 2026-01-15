@@ -1,12 +1,13 @@
 #include "ui/ConfigWidget.h"
 
 #include "ConfigManager.h"
+#include "graphics.h"
 #include "imgui.h"
 
 namespace Boidsish {
 	namespace UI {
 
-		ConfigWidget::ConfigWidget() {}
+		ConfigWidget::ConfigWidget(Visualizer& visualizer): m_visualizer(visualizer) {}
 
 		void RenderSection(const std::string& section_name, bool is_global) {
 			if (ImGui::CollapsingHeader(section_name.c_str(), ImGuiTreeNodeFlags_DefaultOpen)) {
@@ -65,6 +66,23 @@ namespace Boidsish {
 				return;
 
 			if (ImGui::Begin("Configuration", &m_show)) {
+				if (ImGui::CollapsingHeader("Camera", ImGuiTreeNodeFlags_DefaultOpen)) {
+					// Camera speed slider
+					float camera_speed = m_visualizer.GetCamera().speed;
+					if (ImGui::SliderFloat("Speed", &camera_speed, 0.5f, 100.0f)) {
+						Camera cam = m_visualizer.GetCamera();
+						cam.speed = camera_speed;
+						m_visualizer.SetCamera(cam);
+					}
+
+					// Camera mode dropdown
+					const char* modes[] = {"Free", "Auto", "Tracking", "Stationary", "Chase", "Path Follow"};
+					int         current_mode = static_cast<int>(m_visualizer.GetCameraMode());
+					if (ImGui::Combo("Mode", &current_mode, modes, IM_ARRAYSIZE(modes))) {
+						m_visualizer.SetCameraMode(static_cast<CameraMode>(current_mode));
+					}
+				}
+
 				RenderSection("global", true);
 
 				auto&              config_manager = ConfigManager::GetInstance();
