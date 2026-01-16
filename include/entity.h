@@ -190,7 +190,7 @@ namespace Boidsish {
 		):
 			thread_pool_(thread_pool), vis(visualizer), last_time_(-1.0f), next_id_(0) {}
 
-		virtual ~EntityHandler() = default;
+		virtual ~EntityHandler();
 
 		// Delete copy constructor and assignment operator since we contain shared_ptr
 		EntityHandler(const EntityHandler&) = delete;
