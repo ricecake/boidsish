@@ -95,43 +95,31 @@ void main() {
             if (atomicCompSwap(branch_grown[closest_branch_index], 0, 1) == 0) {
 
                 // This thread won the race and is responsible for growing the branch.
-                // First, find all other attraction points influencing this same branch.
-                accumulated_direction = normalize(attraction_points[global_id].position.xyz - tree_branches[closest_branch_index].position.xyz);
-                influence_count = 1;
+                // It now accumulates influence from all nearby attraction points.
+                accumulated_direction = vec3(0.0);
+                influence_count = 0;
 
                 for (int j = 0; j < num_attraction_points; ++j) {
-                    if (j != global_id && attraction_points[j].isActive > 0) {
+                    if (attraction_points[j].isActive > 0) {
                          float dist_sq_to_branch = dot(
                             attraction_points[j].position.xyz - tree_branches[closest_branch_index].position.xyz,
                             attraction_points[j].position.xyz - tree_branches[closest_branch_index].position.xyz
                         );
-                        if(dist_sq_to_branch < attraction_radius_sq) {
-                            // Simple check to see if this is the *closest* branch for point j
-                            bool is_closest = true;
-                            for(int k=0; k < branch_count; ++k) {
-                                float other_dist_sq = dot(
-                                    attraction_points[j].position.xyz - tree_branches[k].position.xyz,
-                                    attraction_points[j].position.xyz - tree_branches[k].position.xyz
-                                );
-                                if(other_dist_sq < dist_sq_to_branch) {
-                                    is_closest = false;
-                                    break;
-                                }
-                            }
 
-                            if(is_closest) {
-                                accumulated_direction += normalize(attraction_points[j].position.xyz - tree_branches[closest_branch_index].position.xyz);
-                                influence_count++;
-                            }
+                        // If the point is within the influence radius, add its direction.
+                        if(dist_sq_to_branch < attraction_radius_sq) {
+                            accumulated_direction += normalize(attraction_points[j].position.xyz - tree_branches[closest_branch_index].position.xyz);
+                            influence_count++;
                         }
                     }
                 }
 
-                // Average the direction
-                vec3 avg_dir = normalize(accumulated_direction / float(influence_count));
+                // Average the direction if any points had influence.
+                if (influence_count > 0) {
+                    vec3 avg_dir = normalize(accumulated_direction);
 
-                // Get a new index for our branch
-                uint new_branch_index = atomicCounterIncrement(branch_counter);
+                    // Get a new index for our branch.
+                    uint new_branch_index = atomicCounterIncrement(branch_counter);
 
                 if (new_branch_index < max_branches) {
                     Branch parent_branch = tree_branches[closest_branch_index];

@@ -13,6 +13,7 @@ uniform int render_mode; // 0 for branches, 1 for attraction points
 // Data from the vertex shader
 in VS_OUT {
     vec4 parent_position;
+    float thickness;
 } gs_in[];
 
 // Output to the fragment shader
@@ -42,8 +43,8 @@ void main() {
         // Calculate the vector orthogonal to the branch direction and the up vector (the "side" vector)
         vec3 side_view = normalize(cross(dir_view, up_view));
 
-        // Thickness of the branch
-        float thickness = 0.1 * scale;
+        // Thickness of the branch, using the value passed from the vertex shader
+        float thickness = gs_in[0].thickness * 0.5 * scale;
 
         // Calculate the four vertices of the quad in view space
         vec3 v0_view = p1_view - side_view * thickness;
