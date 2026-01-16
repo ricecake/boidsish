@@ -9,11 +9,23 @@ set(FASTNOISE2_NOISETOOL OFF CACHE BOOL "Enable NoiseTool build" FORCE)
 set(IMGUI_DIR external/imgui)
 set(STB_DIR "${CMAKE_SOURCE_DIR}/external/stb")
 
+
+include(FetchContent)
+
+FetchContent_Declare(
+	glm
+	GIT_REPOSITORY	https://github.com/g-truc/glm.git
+	GIT_TAG 	0af55ccecd98d4e5a8d1fad7de25ba429d60e863 #refs/tags/1.0.1
+)
+
+FetchContent_MakeAvailable(glm)
+
+
 # 2. Dependency Discovery
 find_package(OpenGL REQUIRED)
 find_package(GLEW REQUIRED)
 find_package(glfw3 REQUIRED)
-find_package(glm REQUIRED)
+# find_package(glm REQUIRED)
 find_package(Bullet REQUIRED)
 find_package(assimp REQUIRED)
 find_package(ZLIB REQUIRED)
@@ -61,6 +73,7 @@ target_include_directories(boidsish
         ${ASSIMP_INCLUDE_DIR}
         ${BULLET_INCLUDE_DIRS}
 )
+target_compile_definitions(boidsish PRIVATE GLM_ENABLE_EXPERIMENTAL)
 
 # 4. Platform-Specific Linking
 target_link_libraries(boidsish
@@ -77,6 +90,7 @@ target_link_libraries(boidsish
         ZLIB::ZLIB
         libmorton::libmorton
         Threads::Threads
+        glm::glm
 )
 
 # 5. Build Examples
@@ -93,11 +107,11 @@ foreach(EXAMPLE_DIR ${EXAMPLE_DIRS})
         )
 
         add_executable(${EXAMPLE_NAME} ${EXAMPLE_SOURCES})
-        target_link_libraries(${EXAMPLE_NAME} PRIVATE boidsish)
 
-        # Add the example's include directory
+        target_link_libraries(${EXAMPLE_NAME} PRIVATE boidsish)
         target_include_directories(${EXAMPLE_NAME} PRIVATE "${EXAMPLE_DIR}/include")
 
+        target_compile_definitions(${EXAMPLE_NAME} PRIVATE GLM_ENABLE_EXPERIMENTAL)
         set_target_properties(${EXAMPLE_NAME} PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
     endif()
 endforeach()
@@ -118,6 +132,7 @@ if(CLANG_FORMAT_EXE)
         "src/*.cpp" "src/*.h" "src/*.hpp"
         "include/*.cpp" "include/*.h" "include/*.hpp"
         "examples/*.cpp" "examples/*.h" "examples/*.hpp"
+        "shaders/*"
     )
 
     add_custom_target(format
