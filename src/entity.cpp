@@ -88,11 +88,6 @@ namespace Boidsish {
 		}
 
 		// Generate shapes from entity states
-		std::vector<std::shared_ptr<Shape>> shapes;
-		if (!persistent_mode_) {
-			shapes.reserve(entities_.size());
-		}
-
 		for (auto& entity : entities) {
 			// Orient to velocity
 			if (entity->orient_to_velocity_) {
@@ -119,17 +114,9 @@ namespace Boidsish {
 
 			// Update the entity's shape
 			entity->UpdateShape();
-
-			// Add shape to the list
-			if (!persistent_mode_) {
-				shapes.push_back(entity->GetShape());
-			}
 		}
 
-		if (persistent_mode_) {
-			return {};
-		}
-		return shapes;
+		return {};
 	}
 
 	std::tuple<float, glm::vec3> EntityHandler::GetTerrainPointProperties(float x, float y) const {

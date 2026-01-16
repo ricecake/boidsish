@@ -604,6 +604,10 @@ namespace Boidsish {
 			float                                      time,
 			const std::optional<glm::vec4>&            clip_plane
 		) {
+			if (shapes.empty()) {
+				return;
+			}
+
 			shader->use();
 			shader->setFloat("ripple_strength", ripple_strength);
 			shader->setBool("colorShift", color_shift_effect);
@@ -614,14 +618,8 @@ namespace Boidsish {
 				shader->setVec4("clipPlane", glm::vec4(0, 0, 0, 0)); // No clipping
 			}
 
-			if (shapes.empty()) {
-				return;
-			}
-
 			shader->setInt("useVertexColor", 0);
-			std::set<int> current_shape_ids;
 			for (const auto& shape : shapes) {
-				current_shape_ids.insert(shape->GetId());
 				shader->setBool("isColossal", shape->IsColossal());
 				shape->render();
 			}
