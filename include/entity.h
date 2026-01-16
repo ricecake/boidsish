@@ -14,6 +14,7 @@
 #include "shape.h"
 #include "task_thread_pool.hpp"
 #include "vector.h"
+#include "rigid_body.h"
 
 namespace Boidsish {
 
@@ -28,13 +29,11 @@ namespace Boidsish {
 	public:
 		EntityBase(int id = 0):
 			id_(id),
-			position_(0.0f, 0.0f, 0.0f),
-			velocity_(0.0f, 0.0f, 0.0f),
 			size_(8.0f),
 			color_{1.0f, 1.0f, 1.0f, 1.0f},
 			trail_length_(50),
-			trail_iridescent_(false),
-			orientation_(glm::quat(1.0f, 0.0f, 0.0f, 0.0f)) {}
+			trail_iridescent_(false)
+			{}
 
 		virtual ~EntityBase() = default;
 
@@ -49,32 +48,27 @@ namespace Boidsish {
 		int GetId() const { return id_; }
 
 		// Absolute spatial position
-		float GetXPos() const { return position_.x; }
-
-		float GetYPos() const { return position_.y; }
-
-		float GetZPos() const { return position_.z; }
-
-		const Vector3& GetPosition() const { return position_; }
-
-		void SetPosition(float x, float y, float z) { position_.Set(x, y, z); }
-
-		void SetPosition(const Vector3& pos) { position_ = pos; }
+		float GetXPos() const { return rigid_body_.GetPosition().x; }
+		float GetYPos() const { return rigid_body_.GetPosition().y; }
+		float GetZPos() const { return rigid_body_.GetPosition().z; }
+		Vector3 GetPosition() const {
+			glm::vec3 pos = rigid_body_.GetPosition();
+			return Vector3(pos.x, pos.y, pos.z);
+		}
+		void SetPosition(float x, float y, float z) { rigid_body_.SetPosition(glm::vec3(x, y, z)); }
+		void SetPosition(const Vector3& pos) { rigid_body_.SetPosition(glm::vec3(pos.x, pos.y, pos.z)); }
 
 		// Spatial velocity per frame
-		float GetXVel() const { return velocity_.x; }
-
-		float GetYVel() const { return velocity_.y; }
-
-		float GetZVel() const { return velocity_.z; }
-
-		const Vector3& GetVelocity() const { return velocity_; }
-
-		void SetVelocity(float vx, float vy, float vz) { velocity_.Set(vx, vy, vz); }
-
-		void SetVelocity(const Vector3& vel) { velocity_ = vel; }
-
-		void SetVelocity(const glm::vec3& vel) { velocity_.Set(vel.x, vel.y, vel.z); }
+		float GetXVel() const { return rigid_body_.GetLinearVelocity().x; }
+		float GetYVel() const { return rigid_body_.GetLinearVelocity().y; }
+		float GetZVel() const { return rigid_body_.GetLinearVelocity().z; }
+		Vector3 GetVelocity() const {
+			glm::vec3 vel = rigid_body_.GetLinearVelocity();
+			return Vector3(vel.x, vel.y, vel.z);
+		}
+		void SetVelocity(float vx, float vy, float vz) { rigid_body_.SetLinearVelocity(glm::vec3(vx, vy, vz)); }
+		void SetVelocity(const Vector3& vel) { rigid_body_.SetLinearVelocity(glm::vec3(vel.x, vel.y, vel.z)); }
+		void SetVelocity(const glm::vec3& vel) { rigid_body_.SetLinearVelocity(vel); }
 
 		// Visual properties
 		float GetSize() const { return size_; }
@@ -120,21 +114,19 @@ namespace Boidsish {
 			constraint_radius_ = radius;
 		}
 
-		glm::vec3 ObjectToWorld(const glm::vec3& v) const { return orientation_ * v; }
+		glm::vec3 ObjectToWorld(const glm::vec3& v) const { return rigid_body_.GetOrientation() * v; }
 
-		glm::vec3 WorldToObject(const glm::vec3& v) const { return glm::inverse(orientation_) * v; }
+		glm::vec3 WorldToObject(const glm::vec3& v) const { return glm::inverse(rigid_body_.GetOrientation()) * v; }
 
 	protected:
 		int       id_;
-		Vector3   position_; // Absolute spatial position
-		Vector3   velocity_; // Spatial velocity per frame
+		RigidBody rigid_body_;
 		float     size_;
 		float     color_[4]; // RGBA
 		int       trail_length_;
 		bool      trail_iridescent_;
 		bool      trail_rocket_ = false; // New member for rocket trail
 		bool      orient_to_velocity_ = true;
-		glm::quat orientation_;
 
 		// Path following
 		std::shared_ptr<Path> path_;
@@ -167,18 +159,18 @@ namespace Boidsish {
 
 		std::shared_ptr<Shape> GetShape() const override { return shape_; }
 
-		void SetOrientation(glm::quat orientation) { orientation_ = orientation; }
+		void SetOrientation(glm::quat orientation) { rigid_body_.SetOrientation(orientation); }
 
 		void UpdateShape() override {
 			if (!shape_)
 				return;
 			shape_->SetId(id_);
-			shape_->SetPosition(position_.x, position_.y, position_.z);
+			shape_->SetPosition(GetXPos(), GetYPos(), GetZPos());
 			shape_->SetColor(color_[0], color_[1], color_[2], color_[3]);
 			shape_->SetTrailLength(trail_length_);
 			shape_->SetTrailIridescence(trail_iridescent_);
 			shape_->SetTrailRocket(trail_rocket_); // Propagate rocket trail state
-			shape_->SetRotation(orientation_);
+			shape_->SetRotation(rigid_body_.GetOrientation());
 			// For dots, we can also update the size
 			if (auto dot = std::dynamic_pointer_cast<Dot>(shape_)) {
 				dot->SetSize(size_);
