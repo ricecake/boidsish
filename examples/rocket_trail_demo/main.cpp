@@ -25,9 +25,11 @@ public:
 		float radius = 6.0f;
 
 		// Use the protected member position_
-		position_.x = cos(time * speed) * radius;
-		position_.z = sin(time * speed) * radius;
-		position_.y = time / 2;
+		Vector3 pos = GetPosition();
+		pos.x = cos(time * speed) * radius;
+		pos.z = sin(time * speed) * radius;
+		pos.y = time / 2;
+		SetPosition(pos);
 	}
 };
 
