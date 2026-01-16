@@ -60,6 +60,7 @@ set_directory_properties(PROPERTIES COMPILE_OPTIONS "${OLD_COMPILE_OPTIONS}")
 file(GLOB_RECURSE LIB_SOURCES "src/*.cpp")
 
 add_library(boidsish STATIC ${LIB_SOURCES})
+target_compile_definitions(boidsish PUBLIC GLM_ENABLE_EXPERIMENTAL)
 
 target_include_directories(boidsish
     PUBLIC
@@ -73,7 +74,6 @@ target_include_directories(boidsish
         ${ASSIMP_INCLUDE_DIR}
         ${BULLET_INCLUDE_DIRS}
 )
-target_compile_definitions(boidsish PRIVATE GLM_ENABLE_EXPERIMENTAL)
 
 # 4. Platform-Specific Linking
 target_link_libraries(boidsish
