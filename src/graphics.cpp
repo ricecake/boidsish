@@ -93,6 +93,7 @@ namespace Boidsish {
 
 		bool                                           paused = false;
 		float                                          simulation_time = 0.0f;
+		float                                          time_scale = 1.0f;
 		float                                          ripple_strength = 0.0f;
 		std::chrono::high_resolution_clock::time_point last_frame;
 
@@ -1231,11 +1232,12 @@ namespace Boidsish {
 		impl->input_state.mouse_delta_y = 0;
 
 		glfwPollEvents();
+
 		auto  current_frame = std::chrono::high_resolution_clock::now();
 		float delta_time = std::chrono::duration<float>(current_frame - impl->last_frame).count();
 		impl->last_frame = current_frame;
 
-		impl->input_state.delta_time = delta_time;
+		impl->input_state.delta_time = impl->time_scale * delta_time;
 
 		for (const auto& callback : impl->input_callbacks) {
 			if (callback) {
@@ -1246,7 +1248,7 @@ namespace Boidsish {
 		if (!impl->paused) {
 			// TODO: Implement a fixed timestep for simulation stability.
 			// See performance_and_quality_audit.md#4-fixed-timestep-for-simulation-stability
-			impl->simulation_time += delta_time;
+			impl->simulation_time += impl->time_scale * delta_time;
 		}
 
 		// --- Adaptive Tessellation Logic ---
@@ -1591,6 +1593,14 @@ namespace Boidsish {
 		impl->paused = !impl->paused;
 	}
 
+	bool Visualizer::GetPause() {
+		return impl->paused;
+	}
+
+	void Visualizer::SetPause(bool p) {
+		impl->paused = p;
+	}
+
 	void Visualizer::ToggleEffect(VisualEffect effect) {
 		switch (effect) {
 		case VisualEffect::RIPPLE:
@@ -1751,6 +1761,14 @@ namespace Boidsish {
 				}
 			}
 		}
+	}
+
+	void Visualizer::SetTimeScale(float ts) {
+		impl->time_scale = ts;
+	}
+
+	float Visualizer::GetTimeScale() {
+		return impl->time_scale;
 	}
 
 	AudioManager& Visualizer::GetAudioManager() {

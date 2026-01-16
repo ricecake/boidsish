@@ -166,6 +166,10 @@ namespace Boidsish {
 		CameraMode                  GetCameraMode() const;
 		void                        SetCameraMode(CameraMode mode);
 		void                        TogglePause();
+		void                        SetPause(bool);
+		bool                        GetPause();
+		void                        SetTimeScale(float);
+		float                       GetTimeScale();
 		void                        ToggleEffect(VisualEffect effect);
 		void                        ToggleMenus();
 		std::shared_ptr<FireEffect> AddFireEffect(

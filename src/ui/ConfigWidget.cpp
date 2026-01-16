@@ -83,6 +83,19 @@ namespace Boidsish {
 					}
 				}
 
+				if (ImGui::CollapsingHeader("Time", ImGuiTreeNodeFlags_DefaultOpen)) {
+					// Camera speed slider
+					float time_scale = m_visualizer.GetTimeScale();
+					if (ImGui::SliderFloat("Time Scale", &time_scale, 0.01f, 5.0f)) {
+						m_visualizer.SetTimeScale(time_scale);
+					}
+
+					bool paused = m_visualizer.GetPause();
+					if (ImGui::Checkbox("Paused", &paused)) {
+						m_visualizer.SetPause(paused);
+					}
+				}
+
 				RenderSection("global", true);
 
 				auto&              config_manager = ConfigManager::GetInstance();
