@@ -51,7 +51,7 @@ namespace Boidsish {
 			if (entity->path_) {
 				auto update = entity->path_->CalculateUpdate(
 					entity->GetPosition(),
-					entity->orientation_,
+					entity->rigid_body_.GetOrientation(),
 					entity->path_segment_index_,
 					entity->path_t_,
 					entity->path_direction_,
@@ -59,7 +59,7 @@ namespace Boidsish {
 					delta_time
 				);
 				entity->SetVelocity(update.velocity * entity->path_speed_);
-				entity->orientation_ = glm::slerp(entity->orientation_, update.orientation, 0.1f);
+				entity->rigid_body_.SetOrientation(glm::slerp(entity->rigid_body_.GetOrientation(), update.orientation, 0.1f));
 				entity->path_direction_ = update.new_direction;
 				entity->path_segment_index_ = update.new_segment_index;
 				entity->path_t_ = update.new_t;
@@ -91,12 +91,10 @@ namespace Boidsish {
 		for (auto& entity : entities) {
 			// Orient to velocity
 			if (entity->orient_to_velocity_) {
-				entity->orientation_ = OrientToVelocity(entity->orientation_, entity->GetVelocity(), delta_time);
+				entity->rigid_body_.FaceVelocity();
 			}
 
-			// Update entity position using its velocity
-			Vector3 new_position = entity->GetPosition() + entity->GetVelocity() * delta_time;
-			entity->SetPosition(new_position);
+			entity->rigid_body_.Update(delta_time);
 
 			// Apply path constraint
 			if (entity->constraint_path_) {
