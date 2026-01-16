@@ -142,3 +142,11 @@ if(CLANG_FORMAT_EXE)
 else()
     message(WARNING "clang-format not found. The 'format' target will not be available.")
 endif()
+
+# 6. Build Tests
+find_package(GTest REQUIRED)
+include_directories(${GTEST_INCLUDE_DIRS})
+
+add_executable(run_tests tests/test_rigid_body.cpp)
+target_link_libraries(run_tests PRIVATE boidsish GTest::GTest GTest::Main)
+set_target_properties(run_tests PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
