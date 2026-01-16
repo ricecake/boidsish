@@ -1,8 +1,6 @@
 #include <gtest/gtest.h>
 #include "rigid_body.h"
 #include <glm/gtx/string_cast.hpp>
-
-#define GLM_ENABLE_EXPERIMENTAL
 #include <glm/gtx/euler_angles.hpp>
 
 const float THRESHOLD = 0.001f;
