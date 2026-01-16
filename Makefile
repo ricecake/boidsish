@@ -1,7 +1,7 @@
 BUILD_DIR = build
 CONFIG = Release
 
-.PHONY: all clean format run
+.PHONY: all clean format run clean-build
 
 all:
 	@cmake -B $(BUILD_DIR) -DCMAKE_BUILD_TYPE=$(CONFIG)
@@ -18,6 +18,10 @@ run: all
 
 packages:
 	sudo apt install libbullet-dev libassimp-dev libassimp5 assimp-utils libgl1-mesa-dev libglfw3-dev libglew-dev libglm-dev xvfb imagemagick
+
+clean-build:
+	@cmake -B $(BUILD_DIR) -DCMAKE_BUILD_TYPE=$(CONFIG)
+	@cmake --build $(BUILD_DIR) --parallel --clean-first
 
 clean:
 	rm -rf $(BUILD_DIR)
