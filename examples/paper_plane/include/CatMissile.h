@@ -25,7 +25,6 @@ namespace Boidsish {
 		);
 
 		void UpdateEntity(const EntityHandler& handler, float time, float delta_time) override;
-		void UpdateShape() override;
 		void Explode(const EntityHandler& handler, bool hit_target);
 
 	private:
@@ -42,9 +41,6 @@ namespace Boidsish {
 		std::shared_ptr<SoundEffect>           explode_sound_ = nullptr;
 
 		// Flight model
-		glm::quat          orientation_;
-		glm::vec3          rotational_velocity_; // x: pitch, y: yaw, z: roll
-		float              forward_speed_;
 		std::random_device rd_;
 		std::mt19937       eng_;
 	};

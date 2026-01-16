@@ -132,4 +132,17 @@ namespace Boidsish {
 		return vis->GetTerrainGenerator();
 	}
 
+	EntityHandler::~EntityHandler() {
+		std::lock_guard<std::mutex> lock(requests_mutex_);
+		for (auto& request : modification_requests_) {
+			request();
+		}
+		modification_requests_.clear();
+
+		std::lock_guard<std::mutex> lock2(visualizer_mutex_);
+		for (auto& request : post_frame_requests_) {
+			request();
+		}
+		post_frame_requests_.clear();
+	}
 } // namespace Boidsish
