@@ -41,9 +41,8 @@ public:
 	}
 
 	std::vector<std::shared_ptr<Boidsish::Shape>> operator()(float time) {
-		// First, get the entity shapes from the base handler
-		auto shapes = Boidsish::EntityHandler::operator()(time);
-
+		Boidsish::EntityHandler::operator()(time);
+		std::vector<std::shared_ptr<Boidsish::Shape>> shapes;
 		// Then, add the path shapes
 		for (const auto& path : paths_) {
 			shapes.push_back(path);

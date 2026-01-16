@@ -208,8 +208,6 @@ namespace Boidsish {
 		// Operator() to make this compatible with ShapeFunction
 		std::vector<std::shared_ptr<Shape>> operator()(float time);
 
-		void SetPersistentMode(bool enabled) { persistent_mode_ = enabled; }
-
 		void SetVisualizer(auto& new_vis) { vis = new_vis; }
 
 		// Entity management
@@ -229,16 +227,33 @@ namespace Boidsish {
 			return id;
 		}
 
-		virtual void AddEntity(int id, std::shared_ptr<EntityBase> entity) { entities_[id] = entity; }
+		virtual void AddEntity(int id, std::shared_ptr<EntityBase> entity) {
+			entities_[id] = entity;
+			if (vis) {
+				EnqueueVisualizerAction([this, entity]() {
+					entity->UpdateShape();
+					vis->AddShape(entity->GetShape());
+				});
+			}
+		}
 
-		virtual void RemoveEntity(int id) { entities_.erase(id); }
+		virtual void RemoveEntity(int id) {
+			if (vis) {
+				if (auto entity = GetEntity(id)) {
+					if (auto shape = entity->GetShape()) {
+						EnqueueVisualizerAction([this, id = shape->GetId()]() { vis->RemoveShape(id); });
+					}
+				}
+			}
+			entities_.erase(id);
+		}
 
-		auto GetEntity(int id) {
+		std::shared_ptr<EntityBase> GetEntity(int id) {
 			auto it = entities_.find(id);
 			return (it != entities_.end()) ? it->second : nullptr;
 		}
 
-		auto GetEntity(int id) const {
+		std::shared_ptr<EntityBase> GetEntity(int id) const {
 			auto it = entities_.find(id);
 			return (it != entities_.end()) ? it->second : nullptr;
 		}
@@ -318,7 +333,6 @@ namespace Boidsish {
 		std::map<int, std::shared_ptr<EntityBase>> entities_;
 		float                                      last_time_;
 		int                                        next_id_;
-		bool                                       persistent_mode_ = false;
 		task_thread_pool::task_thread_pool&        thread_pool_;
 		mutable std::vector<std::function<void()>> modification_requests_;
 		mutable std::vector<std::function<void()>> post_frame_requests_;

@@ -24,7 +24,6 @@ int main() {
 
 		// Create and set the vector demo handler
 		VectorDemoHandler handler(viz.GetThreadPool(), viz);
-		handler.SetPersistentMode(true);
 		viz.AddShapeHandler(std::ref(handler));
 		viz.AddShapeHandler(std::ref(GraphExample));
 
