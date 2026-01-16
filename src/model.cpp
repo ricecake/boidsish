@@ -78,7 +78,8 @@ namespace Boidsish {
 
 		// draw mesh
 		glBindVertexArray(VAO);
-		glDrawElements(GL_TRIANGLES, static_cast<unsigned int>(indices.size()), GL_UNSIGNED_INT, 0);
+		glPatchParameteri(GL_PATCH_VERTICES, 3);
+		glDrawElements(GL_PATCHES, static_cast<unsigned int>(indices.size()), GL_UNSIGNED_INT, 0);
 		glBindVertexArray(0);
 
 		// always good practice to set everything back to defaults once configured.

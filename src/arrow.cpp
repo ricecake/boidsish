@@ -42,11 +42,13 @@ namespace Boidsish {
 
 		// Render Rod
 		glBindVertexArray(rod_vao_);
-		glDrawArrays(GL_TRIANGLES, 0, rod_vertex_count_);
+		glPatchParameteri(GL_PATCH_VERTICES, 3);
+		glDrawArrays(GL_PATCHES, 0, rod_vertex_count_);
 
 		// Render Cone
 		glBindVertexArray(cone_vao_);
-		glDrawArrays(GL_TRIANGLES, 0, cone_vertex_count_);
+		glPatchParameteri(GL_PATCH_VERTICES, 3);
+		glDrawArrays(GL_PATCHES, 0, cone_vertex_count_);
 
 		glBindVertexArray(0);
 	}

@@ -23,7 +23,8 @@ namespace Boidsish {
 		shader.setVec3("objectColor", GetR(), GetG(), GetB());
 
 		glBindVertexArray(sphere_vao_);
-		glDrawElements(GL_TRIANGLES, sphere_vertex_count_, GL_UNSIGNED_INT, 0);
+		glPatchParameteri(GL_PATCH_VERTICES, 3);
+		glDrawElements(GL_PATCHES, sphere_vertex_count_, GL_UNSIGNED_INT, 0);
 		glBindVertexArray(0);
 	}
 

@@ -132,7 +132,8 @@ namespace Boidsish {
 			shader->setMat4("model", GetModelMatrix());
 
 			glBindVertexArray(path_vao_);
-			glDrawArrays(GL_TRIANGLES, 0, edge_vertex_count_);
+			glPatchParameteri(GL_PATCH_VERTICES, 3);
+			glDrawArrays(GL_PATCHES, 0, edge_vertex_count_);
 			glBindVertexArray(0);
 
 			shader->setInt("useVertexColor", 0);
