@@ -130,6 +130,14 @@ namespace Boidsish {
 			for (int j = 0; j <= TRAIL_SEGMENTS; ++j) {
 				int idx = j % (TRAIL_SEGMENTS + 1);
 
+				// Vertex from the CURRENT ring
+				mesh_vertices[tail] = {
+					ring2_positions[idx],
+					ring2_normals[idx],
+					glm::vec3(curve_colors[i].x, curve_colors[i].y, curve_colors[i].z),
+				};
+				tail = (tail + 1) % mesh_vertices.size();
+
 				// Vertex from the PREVIOUS ring
 				mesh_vertices[tail] = {
 					ring1_positions[idx],
@@ -138,13 +146,6 @@ namespace Boidsish {
 				};
 				tail = (tail + 1) % mesh_vertices.size();
 
-				// Vertex from the CURRENT ring
-				mesh_vertices[tail] = {
-					ring2_positions[idx],
-					ring2_normals[idx],
-					glm::vec3(curve_colors[i].x, curve_colors[i].y, curve_colors[i].z),
-				};
-				tail = (tail + 1) % mesh_vertices.size();
 			}
 		}
 		if (full) {

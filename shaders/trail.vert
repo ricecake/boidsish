@@ -30,7 +30,7 @@ void main() {
 	// Convert vertex ID to a sequential Ring Index (0, 1, 2... N)
 	float vertsPerStep = 18.0;
 	float segmentIndex = floor(float(gl_VertexID) / vertsPerStep);
-	float isBottomRing = mod(float(gl_VertexID), 2.0);
+	float isBottomRing = mod(float(gl_VertexID)+1.0, 2.0);
 	float logicalRingIndex = segmentIndex + isBottomRing;
 
 	// Convert raw "vertex counts" into "ring counts" so units match
