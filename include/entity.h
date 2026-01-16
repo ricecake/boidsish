@@ -192,8 +192,11 @@ namespace Boidsish {
 	// Entity handler that manages entities and provides dot generation
 	class EntityHandler {
 	public:
-		EntityHandler(task_thread_pool::task_thread_pool& thread_pool):
-			thread_pool_(thread_pool), last_time_(-1.0f), next_id_(0) {}
+		EntityHandler(
+			task_thread_pool::task_thread_pool& thread_pool,
+			std::shared_ptr<Visualizer>         visualizer = nullptr
+		):
+			thread_pool_(thread_pool), vis(visualizer), last_time_(-1.0f), next_id_(0) {}
 
 		virtual ~EntityHandler() = default;
 

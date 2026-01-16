@@ -118,6 +118,7 @@ if(CLANG_FORMAT_EXE)
         "src/*.cpp" "src/*.h" "src/*.hpp"
         "include/*.cpp" "include/*.h" "include/*.hpp"
         "examples/*.cpp" "examples/*.h" "examples/*.hpp"
+        "shaders/*"
     )
 
     add_custom_target(format

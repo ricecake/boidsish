@@ -6,8 +6,11 @@
 
 namespace Boidsish {
 
-	VortexFlockingHandler::VortexFlockingHandler(task_thread_pool::task_thread_pool& thread_pool):
-		EntityHandler(thread_pool) {
+	VortexFlockingHandler::VortexFlockingHandler(
+		task_thread_pool::task_thread_pool& thread_pool,
+		std::shared_ptr<Visualizer>&        visualizer
+	):
+		EntityHandler(thread_pool, visualizer) {
 		std::random_device               rd;
 		std::mt19937                     gen(rd());
 		std::uniform_real_distribution<> dis_pos(-40.0, 40.0);

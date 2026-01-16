@@ -16,8 +16,7 @@ int main() {
 		viz->SetCamera(camera);
 
 		// Create and set the entity handler
-		VortexFlockingHandler handler(viz->GetThreadPool());
-		handler.vis = viz; // Set the visualizer pointer to prevent segfault
+		VortexFlockingHandler handler(viz->GetThreadPool(), viz);
 		viz->AddShapeHandler(std::ref(handler));
 
 		// Run the visualization
