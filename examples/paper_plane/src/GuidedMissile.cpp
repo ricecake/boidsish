@@ -9,10 +9,7 @@
 namespace Boidsish {
 
 	GuidedMissile::GuidedMissile(int id, Vector3 pos):
-		Entity<Model>(id, "assets/Missile.obj", true),
-		rotational_velocity_(glm::vec3(0.0f)),
-		forward_speed_(0.0f),
-		eng_(rd_()) {
+		Entity<Model>(id, "assets/Missile.obj", true), eng_(rd_()) {
 		SetPosition(pos.x, pos.y, pos.z);
 		SetVelocity(0, 0, 0);
 		SetTrailLength(500);
@@ -21,7 +18,9 @@ namespace Boidsish {
 		std::dynamic_pointer_cast<Model>(shape_)->SetBaseRotation(
 			glm::angleAxis(glm::radians(-90.0f), glm::vec3(0.0f, 1.0f, 0.0f))
 		);
-		UpdateShape();
+
+		rigid_body_.SetOrientation(glm::angleAxis(glm::radians(-90.0f), glm::vec3(1.0f, 0.0f, 0.0f)));
+		rigid_body_.SetLinearVelocity(ObjectToWorld(glm::vec3(0, 0, 100)));
 	}
 
 	void GuidedMissile::UpdateEntity(const EntityHandler& handler, float time, float delta_time) {
@@ -56,20 +55,16 @@ namespace Boidsish {
 		const float kAcceleration = 150.0f;
 
 		if (lived_ < kLaunchTime) {
-			orientation_ = glm::angleAxis(glm::radians(-90.0f), glm::vec3(1.0f, 0.0f, 0.0f));
-			forward_speed_ += kAcceleration * delta_time;
-			if (forward_speed_ > kMaxSpeed) {
-				forward_speed_ = kMaxSpeed;
-			}
+			rigid_body_.AddRelativeForce(glm::vec3(0, 0, 5000));
 		} else {
 			const float kTurnSpeed = 4.0f;
 			const float kDamping = 2.5f;
 
 			auto targets = handler.GetEntitiesByType<PaperPlane>();
 			if (targets.empty()) {
-				rotational_velocity_ = glm::vec3(0.0f);
 			} else {
-				auto plane = targets[0];
+				auto  plane = targets[0];
+				auto& r = rigid_body_;
 
 				if ((plane->GetPosition() - GetPosition()).Magnitude() < 10) {
 					Explode(handler, true);
@@ -77,21 +72,15 @@ namespace Boidsish {
 					return;
 				}
 
+				r.AddRelativeForce(glm::vec3(0, 0, 10000));
+
 				Vector3   target_vec = (plane->GetPosition() - GetPosition()).Normalized();
 				glm::vec3 target_dir_world = glm::vec3(target_vec.x, target_vec.y, target_vec.z);
-				glm::vec3 target_dir_local = glm::inverse(orientation_) * target_dir_world;
 
-				glm::vec3 target_rot_velocity = glm::vec3(0.0f);
-				target_rot_velocity.y = target_dir_local.x * kTurnSpeed;
-				target_rot_velocity.x = -target_dir_local.y * kTurnSpeed;
-
-				rotational_velocity_ += (target_rot_velocity - rotational_velocity_) * kDamping * delta_time;
-
-				if (lived_ <= 1.5f) {
-					std::uniform_real_distribution<float> dist(-4.0f, 4.0f);
-					glm::vec3                             error_vector(0.1f * dist(eng_), dist(eng_), 0);
-					rotational_velocity_ += error_vector * delta_time;
-				}
+				glm::vec3 target_dir_local = WorldToObject(target_dir_world);
+				glm::vec3 P = glm::vec3(0, 0, 1);
+				glm::vec3 torque = glm::cross(P, target_dir_local);
+				r.AddRelativeTorque(torque * kTurnSpeed);
 
 				const auto* terrain_generator = handler.GetTerrainGenerator();
 				if (terrain_generator) {
@@ -120,29 +109,15 @@ namespace Boidsish {
 							if (glm::dot(away, local_up) < kUpAlignmentThreshold) {
 								away = local_up;
 							}
-							glm::vec3 avoidance_force = away * force_magnitude;
-							glm::vec3 avoidance_local = glm::inverse(orientation_) * avoidance_force;
-							rotational_velocity_.y += avoidance_local.x * avoidance_strength * delta_time;
-							rotational_velocity_.x += avoidance_local.y * avoidance_strength * delta_time;
+
+							glm::vec3 target_dir_local = WorldToObject(away);
+							glm::vec3 P = glm::vec3(0, 0, 1);
+							glm::vec3 torque = glm::cross(P, target_dir_local);
+							r.AddRelativeTorque(torque * kTurnSpeed);
 						}
 					}
 				}
 			}
-		}
-
-		glm::quat pitch_delta = glm::angleAxis(rotational_velocity_.x * delta_time, glm::vec3(1.0f, 0.0f, 0.0f));
-		glm::quat yaw_delta = glm::angleAxis(rotational_velocity_.y * delta_time, glm::vec3(0.0f, 1.0f, 0.0f));
-		orientation_ = glm::normalize(orientation_ * pitch_delta * yaw_delta);
-
-		glm::vec3 forward_dir = orientation_ * glm::vec3(0.0f, 0.0f, 1.0f);
-		glm::vec3 new_velocity = forward_dir * forward_speed_;
-		SetVelocity(Vector3(new_velocity.x, new_velocity.y, new_velocity.z));
-	}
-
-	void GuidedMissile::UpdateShape() {
-		Entity<Model>::UpdateShape();
-		if (shape_) {
-			shape_->SetRotation(orientation_);
 		}
 	}
 

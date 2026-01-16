@@ -10,15 +10,12 @@
 namespace Boidsish {
 
 	CatMissile::CatMissile(int id, Vector3 pos, glm::quat orientation, glm::vec3 dir, Vector3 vel):
-		Entity<Model>(id, "assets/Missile.obj", true),
-		rotational_velocity_(glm::vec3(0.0f)),
-		forward_speed_(0.0f),
-		eng_(rd_()),
-		orientation_(orientation) {
+		Entity<Model>(id, "assets/Missile.obj", true), eng_(rd_()) {
 		SetOrientToVelocity(false);
 		SetPosition(pos.x, pos.y, pos.z);
-		auto netVelocity = glm::vec3(vel.x, vel.y, vel.z) + 5.0f * glm::normalize(glm::vec3(dir.x, dir.y, dir.z));
-		SetVelocity(netVelocity.x, netVelocity.y, netVelocity.z);
+
+		rigid_body_.SetOrientation(orientation);
+		rigid_body_.SetLinearVelocity(glm::vec3(vel.x, vel.y, vel.z) + 5.0f * dir);
 
 		SetTrailLength(0);
 		SetTrailRocket(false);
@@ -26,7 +23,6 @@ namespace Boidsish {
 		std::dynamic_pointer_cast<Model>(shape_)->SetBaseRotation(
 			glm::angleAxis(glm::radians(90.0f), glm::vec3(0.0f, 1.0f, 0.0f))
 		);
-		UpdateShape();
 	}
 
 	void CatMissile::UpdateEntity(const EntityHandler& handler, float time, float delta_time) {
@@ -56,9 +52,9 @@ namespace Boidsish {
 		const float kAcceleration = 150.0f;
 
 		if (lived_ < kLaunchTime) {
-			auto velo = GetVelocity();
-			velo += Vector3(0, -0.07f, 0);
-			SetVelocity(velo);
+			// auto velo = GetVelocity();
+			// velo += Vector3(0, -0.07f, 0);
+			// SetVelocity(velo);
 			return;
 		}
 
@@ -73,10 +69,12 @@ namespace Boidsish {
 			launch_sound_->SetPosition(pos.Toglm());
 		}
 
-		forward_speed_ += kAcceleration * delta_time;
-		if (forward_speed_ > kMaxSpeed) {
-			forward_speed_ = kMaxSpeed;
-		}
+		// forward_speed_ += kAcceleration * delta_time;
+		// if (forward_speed_ > kMaxSpeed) {
+		// 	forward_speed_ = kMaxSpeed;
+		// }
+
+		rigid_body_.AddRelativeForce(glm::vec3(0, 0, -2000));
 
 		const float kTurnSpeed = 4.0f;
 		const float kDamping = 2.5f;
@@ -94,7 +92,7 @@ namespace Boidsish {
 				auto target_pos = candidate->GetPosition().Toglm();
 				auto missile_pos = pos.Toglm();
 
-				auto world_fwd = orientation_ * glm::vec3(0, 0, -1);
+				auto world_fwd = rigid_body_.GetOrientation() * glm::vec3(0, 0, -1);
 				auto to_target = normalize(target_pos - missile_pos);
 				auto distance = glm::length(missile_pos - target_pos);
 
@@ -118,7 +116,6 @@ namespace Boidsish {
 			}
 
 			if (target_ == nullptr) {
-				rotational_velocity_ = glm::vec3(0.0f);
 				return;
 			}
 		}
@@ -132,19 +129,11 @@ namespace Boidsish {
 
 		Vector3   target_vec = (target_->GetPosition() - GetPosition()).Normalized();
 		glm::vec3 target_dir_world = glm::vec3(target_vec.x, target_vec.y, target_vec.z);
-		glm::vec3 target_dir_local = glm::inverse(orientation_) * target_dir_world;
 
-		glm::vec3 target_rot_velocity = glm::vec3(0.0f);
-		target_rot_velocity.y = -target_dir_local.x * kTurnSpeed;
-		target_rot_velocity.x = target_dir_local.y * kTurnSpeed;
-
-		rotational_velocity_ += (target_rot_velocity - rotational_velocity_) * kDamping * delta_time;
-
-		if (lived_ <= 1.5f) {
-			std::uniform_real_distribution<float> dist(-4.0f, 4.0f);
-			glm::vec3                             error_vector(0.1f * dist(eng_), dist(eng_), 0);
-			rotational_velocity_ += error_vector * delta_time;
-		}
+		glm::vec3 target_dir_local = WorldToObject(target_dir_world);
+		glm::vec3 P = glm::vec3(0, 0, -1);
+		glm::vec3 torque = glm::cross(P, target_dir_local);
+		rigid_body_.AddRelativeTorque(torque * kTurnSpeed);
 
 		const auto* terrain_generator = handler.GetTerrainGenerator();
 		if (terrain_generator) {
@@ -161,9 +150,7 @@ namespace Boidsish {
 					auto hit_coord = vel_vec.Normalized() * hit_dist;
 					auto [terrain_h, terrain_normal] = terrain_generator->pointProperties(hit_coord.x, hit_coord.z);
 
-					const float avoidance_strength = 5.0f;
 					const float kUpAlignmentThreshold = 0.5f;
-					float       force_magnitude = avoidance_strength * (1.0f - ((10 + hit_dist) / reaction_distance));
 
 					glm::vec3 local_up = glm::vec3(0.0f, 1.0f, 0.0f);
 					auto      away = terrain_normal;
@@ -173,27 +160,12 @@ namespace Boidsish {
 
 					away = target_dir_world - (glm::dot(target_dir_world, away)) * away;
 
-					glm::vec3 avoidance_force = away * force_magnitude * (1 - glm::dot(dir, target_dir_world));
-					glm::vec3 avoidance_local = glm::inverse(orientation_) * avoidance_force;
-					rotational_velocity_.y += avoidance_local.x * avoidance_strength * delta_time;
-					rotational_velocity_.x += avoidance_local.y * avoidance_strength * delta_time;
+					glm::vec3 target_dir_local = WorldToObject(away);
+					glm::vec3 P = glm::vec3(0, 0, -1);
+					glm::vec3 torque = glm::cross(P, target_dir_local);
+					rigid_body_.AddRelativeTorque(torque * kTurnSpeed);
 				}
 			}
-		}
-
-		glm::quat pitch_delta = glm::angleAxis(rotational_velocity_.x * delta_time, glm::vec3(1.0f, 0.0f, 0.0f));
-		glm::quat yaw_delta = glm::angleAxis(rotational_velocity_.y * delta_time, glm::vec3(0.0f, 1.0f, 0.0f));
-		orientation_ = glm::normalize(orientation_ * pitch_delta * yaw_delta);
-
-		glm::vec3 forward_dir = orientation_ * glm::vec3(0.0f, 0.0f, -1.0f);
-		glm::vec3 new_velocity = forward_dir * forward_speed_;
-		SetVelocity(Vector3(new_velocity.x, new_velocity.y, new_velocity.z));
-	}
-
-	void CatMissile::UpdateShape() {
-		Entity<Model>::UpdateShape();
-		if (shape_) {
-			shape_->SetRotation(orientation_);
 		}
 	}
 
