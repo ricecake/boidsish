@@ -1,6 +1,6 @@
 #version 420 core
 
-layout(vertices = 4) out;
+layout(vertices = 3) out;
 
 // Input from Vertex Shader
 in vec3 WorldPos_VS_out[];
@@ -32,8 +32,6 @@ void main() {
         gl_TessLevelOuter[0] = 1.0;
         gl_TessLevelOuter[1] = 1.0;
         gl_TessLevelOuter[2] = 1.0;
-        gl_TessLevelOuter[3] = 1.0;
         gl_TessLevelInner[0] = 1.0;
-        gl_TessLevelInner[1] = 1.0;
     }
 }

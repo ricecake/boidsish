@@ -1,6 +1,6 @@
 #version 420 core
 
-layout(quads, fractional_odd_spacing, cw) in;
+layout(triangles, equal_spacing, cw) in;
 
 // Input from Tessellation Control Shader
 in vec3 WorldPos_TC_out[];
@@ -21,27 +21,31 @@ uniform mat4 view;
 uniform mat4 projection;
 
 void main() {
-    // Bilinear interpolation of vertex attributes
-    vec2 uv = gl_TessCoord.xy;
-    vec3 pos1 = mix(WorldPos_TC_out[0], WorldPos_TC_out[1], uv.x);
-    vec3 pos2 = mix(WorldPos_TC_out[3], WorldPos_TC_out[2], uv.x);
-    FragPos = mix(pos1, pos2, uv.y);
+    // Barycentric interpolation of vertex attributes
+    vec3 p0 = WorldPos_TC_out[0];
+    vec3 p1 = WorldPos_TC_out[1];
+    vec3 p2 = WorldPos_TC_out[2];
+    FragPos = gl_TessCoord.x * p0 + gl_TessCoord.y * p1 + gl_TessCoord.z * p2;
 
-    vec3 norm1 = mix(Normal_TC_out[0], Normal_TC_out[1], uv.x);
-    vec3 norm2 = mix(Normal_TC_out[3], Normal_TC_out[2], uv.x);
-    Normal = normalize(mix(norm1, norm2, uv.y));
+    vec3 n0 = Normal_TC_out[0];
+    vec3 n1 = Normal_TC_out[1];
+    vec3 n2 = Normal_TC_out[2];
+    Normal = normalize(gl_TessCoord.x * n0 + gl_TessCoord.y * n1 + gl_TessCoord.z * n2);
 
-    vec2 tex1 = mix(TexCoords_TC_out[0], TexCoords_TC_out[1], uv.x);
-    vec2 tex2 = mix(TexCoords_TC_out[3], TexCoords_TC_out[2], uv.x);
-    TexCoords = mix(tex1, tex2, uv.y);
+    vec2 t0 = TexCoords_TC_out[0];
+    vec2 t1 = TexCoords_TC_out[1];
+    vec2 t2 = TexCoords_TC_out[2];
+    TexCoords = gl_TessCoord.x * t0 + gl_TessCoord.y * t1 + gl_TessCoord.z * t2;
 
-    vec3 color1 = mix(vs_color_TC_out[0], vs_color_TC_out[1], uv.x);
-    vec3 color2 = mix(vs_color_TC_out[3], vs_color_TC_out[2], uv.x);
-    vs_color = mix(color1, color2, uv.y);
+    vec3 c0 = vs_color_TC_out[0];
+    vec3 c1 = vs_color_TC_out[1];
+    vec3 c2 = vs_color_TC_out[2];
+    vs_color = gl_TessCoord.x * c0 + gl_TessCoord.y * c1 + gl_TessCoord.z * c2;
 
-    vec3 bary1 = mix(barycentric_TC_out[0], barycentric_TC_out[1], uv.x);
-    vec3 bary2 = mix(barycentric_TC_out[3], barycentric_TC_out[2], uv.x);
-    barycentric = mix(bary1, bary2, uv.y);
+    vec3 b0 = barycentric_TC_out[0];
+    vec3 b1 = barycentric_TC_out[1];
+    vec3 b2 = barycentric_TC_out[2];
+    barycentric = gl_TessCoord.x * b0 + gl_TessCoord.y * b1 + gl_TessCoord.z * b2;
 
     // Final vertex position
     gl_Position = projection * view * vec4(FragPos, 1.0);
