@@ -1,12 +1,12 @@
 #include "ui/EffectsWidget.h"
 
-#include "graphics.h"
+#include "ConfigManager.h"
 #include "imgui.h"
 
 namespace Boidsish {
 	namespace UI {
 
-		EffectsWidget::EffectsWidget(Visualizer& visualizer): m_visualizer(visualizer) {}
+		EffectsWidget::EffectsWidget() {}
 
 		void EffectsWidget::Draw() {
 			if (!m_show) {
@@ -15,39 +15,41 @@ namespace Boidsish {
 
 			ImGui::Begin("Artistic Effects", &m_show);
 
-			bool ripple_enabled = m_visualizer.IsRippleEffectEnabled();
+			auto& config = ConfigManager::GetInstance();
+
+			bool ripple_enabled = config.GetAppSettingBool("artistic_effect_ripple", false);
 			if (ImGui::Checkbox("Ripple", &ripple_enabled)) {
-				m_visualizer.ToggleEffect(VisualEffect::RIPPLE);
+				config.SetBool("artistic_effect_ripple", ripple_enabled);
 			}
 
-			bool color_shift_enabled = m_visualizer.IsColorShiftEffectEnabled();
+			bool color_shift_enabled = config.GetAppSettingBool("artistic_effect_color_shift", false);
 			if (ImGui::Checkbox("Color Shift", &color_shift_enabled)) {
-				m_visualizer.ToggleEffect(VisualEffect::COLOR_SHIFT);
+				config.SetBool("artistic_effect_color_shift", color_shift_enabled);
 			}
 
-			bool bnw_enabled = m_visualizer.IsBlackAndWhiteEffectEnabled();
+			bool bnw_enabled = config.GetAppSettingBool("artistic_effect_black_and_white", false);
 			if (ImGui::Checkbox("Black and White", &bnw_enabled)) {
-				m_visualizer.ToggleEffect(VisualEffect::BLACK_AND_WHITE);
+				config.SetBool("artistic_effect_black_and_white", bnw_enabled);
 			}
 
-			bool negative_enabled = m_visualizer.IsNegativeEffectEnabled();
+			bool negative_enabled = config.GetAppSettingBool("artistic_effect_negative", false);
 			if (ImGui::Checkbox("Negative", &negative_enabled)) {
-				m_visualizer.ToggleEffect(VisualEffect::NEGATIVE);
+				config.SetBool("artistic_effect_negative", negative_enabled);
 			}
 
-			bool shimmery_enabled = m_visualizer.IsShimmeryEffectEnabled();
+			bool shimmery_enabled = config.GetAppSettingBool("artistic_effect_shimmery", false);
 			if (ImGui::Checkbox("Shimmery", &shimmery_enabled)) {
-				m_visualizer.ToggleEffect(VisualEffect::SHIMMERY);
+				config.SetBool("artistic_effect_shimmery", shimmery_enabled);
 			}
 
-			bool glitched_enabled = m_visualizer.IsGlitchedEffectEnabled();
+			bool glitched_enabled = config.GetAppSettingBool("artistic_effect_glitched", false);
 			if (ImGui::Checkbox("Glitched", &glitched_enabled)) {
-				m_visualizer.ToggleEffect(VisualEffect::GLITCHED);
+				config.SetBool("artistic_effect_glitched", glitched_enabled);
 			}
 
-			bool wireframe_enabled = m_visualizer.IsWireframeEffectEnabled();
+			bool wireframe_enabled = config.GetAppSettingBool("artistic_effect_wireframe", false);
 			if (ImGui::Checkbox("Wireframe", &wireframe_enabled)) {
-				m_visualizer.ToggleEffect(VisualEffect::WIREFRAME);
+				config.SetBool("artistic_effect_wireframe", wireframe_enabled);
 			}
 
 			ImGui::End();

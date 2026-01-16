@@ -5,18 +5,15 @@
 
 namespace Boidsish {
 
-	class Visualizer; // Forward declaration
-
 	namespace UI {
 
 		class EffectsWidget: public IWidget {
 		public:
-			EffectsWidget(Visualizer& visualizer);
+			EffectsWidget();
 			void Draw() override;
 
 		private:
-			Visualizer& m_visualizer;
-			bool        m_show = true;
+			bool m_show = true;
 		};
 
 	} // namespace UI

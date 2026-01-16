@@ -93,7 +93,6 @@ namespace Boidsish {
 
 		bool                                           paused = false;
 		float                                          simulation_time = 0.0f;
-		float                                          ripple_strength = 0.0f;
 		std::chrono::high_resolution_clock::time_point last_frame;
 
 		CameraMode camera_mode = CameraMode::AUTO;
@@ -118,30 +117,14 @@ namespace Boidsish {
 		glm::quat             path_orientation_ = glm::quat(1.0f, 0.0f, 0.0f, 0.0f);
 		float                 path_auto_bank_angle_ = 0.0f;
 
-		bool color_shift_effect = false;
-
 		bool is_fullscreen_ = false;
 		int  windowed_xpos_, windowed_ypos_, windowed_width_, windowed_height_;
-
-		// Artistic effects
-		bool black_and_white_effect = false;
-		bool negative_effect = false;
-		bool shimmery_effect = false;
-		bool glitched_effect = false;
-		bool wireframe_effect = false;
 
 		// Adaptive Tessellation
 		glm::vec3 last_camera_pos_{0.0f, 0.0f, 0.0f};
 		float     camera_velocity_{0.0f};
 		float     avg_frame_time_{1.0f / 60.0f};
 		float     tess_quality_multiplier_{1.0f};
-
-		// Config-driven feature flags
-		bool effects_enabled_;
-		bool terrain_enabled_;
-		bool floor_enabled_;
-		bool skybox_enabled_;
-		bool floor_reflection_enabled_;
 
 		// Cached global settings
 		float camera_roll_speed_;
@@ -154,11 +137,6 @@ namespace Boidsish {
 			ConfigManager::GetInstance().Initialize(title);
 			width = ConfigManager::GetInstance().GetAppSettingInt("window_width", w);
 			height = ConfigManager::GetInstance().GetAppSettingInt("window_height", h);
-			effects_enabled_ = ConfigManager::GetInstance().GetAppSettingBool("enable_effects", true);
-			terrain_enabled_ = ConfigManager::GetInstance().GetAppSettingBool("enable_terrain", true);
-			floor_enabled_ = ConfigManager::GetInstance().GetAppSettingBool("enable_floor", true);
-			skybox_enabled_ = ConfigManager::GetInstance().GetAppSettingBool("enable_skybox", true);
-			floor_reflection_enabled_ = ConfigManager::GetInstance().GetAppSettingBool("enable_floor_reflection", true);
 			is_fullscreen_ = ConfigManager::GetInstance().GetAppSettingBool("fullscreen", false);
 
 			// Cache global settings
@@ -215,19 +193,19 @@ namespace Boidsish {
 			shader = std::make_shared<Shader>("shaders/vis.vert", "shaders/vis.frag");
 			Shape::shader = shader;
 			trail_shader = std::make_unique<Shader>("shaders/trail.vert", "shaders/trail.frag");
-			if (floor_enabled_) {
+			if (ConfigManager::GetInstance().GetAppSettingBool("enable_floor", true)) {
 				plane_shader = std::make_unique<Shader>("shaders/plane.vert", "shaders/plane.frag");
 			}
-			if (skybox_enabled_) {
+			if (ConfigManager::GetInstance().GetAppSettingBool("enable_skybox", true)) {
 				sky_shader = std::make_unique<Shader>("shaders/sky.vert", "shaders/sky.frag");
 			}
-			if (floor_enabled_ && floor_reflection_enabled_) {
+			if (ConfigManager::GetInstance().GetAppSettingBool("enable_floor", true) && ConfigManager::GetInstance().GetAppSettingBool("enable_floor_reflection", true)) {
 				blur_shader = std::make_unique<Shader>("shaders/blur.vert", "shaders/blur.frag");
 			}
-			if (effects_enabled_) {
+			if (ConfigManager::GetInstance().GetAppSettingBool("enable_effects", true)) {
 				postprocess_shader_ = std::make_unique<Shader>("shaders/postprocess.vert", "shaders/postprocess.frag");
 			}
-			if (terrain_enabled_) {
+			if (ConfigManager::GetInstance().GetAppSettingBool("enable_terrain", true)) {
 				terrain_generator = std::make_unique<TerrainGenerator>();
 			}
 			clone_manager = std::make_unique<CloneManager>();
@@ -459,7 +437,7 @@ namespace Boidsish {
 			auto config_widget = std::make_shared<UI::ConfigWidget>(*parent);
 			ui_manager->AddWidget(config_widget);
 
-			auto effects_widget = std::make_shared<UI::EffectsWidget>(*parent);
+			auto effects_widget = std::make_shared<UI::EffectsWidget>();
 			ui_manager->AddWidget(effects_widget);
 		}
 
@@ -605,8 +583,10 @@ namespace Boidsish {
 			const std::optional<glm::vec4>&            clip_plane
 		) {
 			shader->use();
-			shader->setFloat("ripple_strength", ripple_strength);
-			shader->setBool("colorShift", color_shift_effect);
+			shader->setFloat(
+				"ripple_strength",
+				ConfigManager::GetInstance().GetAppSettingBool("artistic_effect_ripple", false) ? 0.05f : 0.0f
+			);
 			shader->setMat4("view", view);
 			if (clip_plane) {
 				shader->setVec4("clipPlane", *clip_plane);
@@ -649,7 +629,7 @@ namespace Boidsish {
 		}
 
 		void RenderTerrain(const glm::mat4& view, const std::optional<glm::vec4>& clip_plane) {
-			if (!terrain_enabled_)
+			if (!ConfigManager::GetInstance().GetAppSettingBool("enable_terrain", true) || !ConfigManager::GetInstance().GetAppSettingBool("render_terrain", true))
 				return;
 			auto terrain_chunks = terrain_generator->getVisibleChunks();
 			if (terrain_chunks.empty()) {
@@ -675,7 +655,7 @@ namespace Boidsish {
 		}
 
 		void RenderSky(const glm::mat4& view) {
-			if (!sky_shader) {
+			if (!sky_shader || !ConfigManager::GetInstance().GetAppSettingBool("render_skybox", true)) {
 				return;
 			}
 			glDisable(GL_DEPTH_TEST);
@@ -710,6 +690,9 @@ namespace Boidsish {
 		}
 
 		void RenderPlane(const glm::mat4& view) {
+			if (!ConfigManager::GetInstance().GetAppSettingBool("render_floor", true)) {
+				return;
+			}
 			glEnable(GL_DEPTH_TEST);
 			glEnable(GL_BLEND);
 			glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
@@ -1351,8 +1334,8 @@ namespace Boidsish {
 		impl->sound_effect_manager->Update(impl->input_state.delta_time);
 
 		// UBO Updates
-		if (impl->effects_enabled_) {
-			VisualEffectsUbo ubo_data = {};
+		if (ConfigManager::GetInstance().GetAppSettingBool("enable_effects", true)) {
+			VisualEffectsUbo ubo_data{};
 			for (const auto& shape : impl->shapes) {
 				for (const auto& effect : shape->GetActiveEffects()) {
 					if (effect == VisualEffect::RIPPLE) {
@@ -1365,12 +1348,17 @@ namespace Boidsish {
 				}
 			}
 
-			ubo_data.black_and_white_enabled = impl->black_and_white_effect;
-			ubo_data.negative_enabled = impl->negative_effect;
-			ubo_data.shimmery_enabled = impl->shimmery_effect;
-			ubo_data.glitched_enabled = impl->glitched_effect;
-			ubo_data.wireframe_enabled = impl->wireframe_effect;
-			ubo_data.color_shift_enabled = impl->color_shift_effect;
+			auto& config = ConfigManager::GetInstance();
+			ubo_data.black_and_white_enabled = config.GetAppSettingBool("artistic_effect_black_and_white", false);
+			ubo_data.negative_enabled = config.GetAppSettingBool("artistic_effect_negative", false);
+			ubo_data.shimmery_enabled = config.GetAppSettingBool("artistic_effect_shimmery", false);
+			ubo_data.glitched_enabled = config.GetAppSettingBool("artistic_effect_glitched", false);
+			ubo_data.wireframe_enabled = config.GetAppSettingBool("artistic_effect_wireframe", false);
+			ubo_data.color_shift_enabled = config.GetAppSettingBool("artistic_effect_color_shift", false);
+			if (config.GetAppSettingBool("artistic_effect_ripple", false)) {
+				ubo_data.ripple_enabled = 1;
+			}
+
 
 			glBindBuffer(GL_UNIFORM_BUFFER, impl->visual_effects_ubo);
 			glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(VisualEffectsUbo), &ubo_data);
@@ -1439,7 +1427,7 @@ namespace Boidsish {
 		impl->fire_effect_manager->Render(view, impl->projection, impl->camera.pos());
 		impl->RenderTrails(view, std::nullopt);
 
-		if (impl->effects_enabled_) {
+		if (ConfigManager::GetInstance().GetAppSettingBool("enable_effects", true)) {
 			// --- Post-processing Pass (renders FBO texture to screen) ---
 			// Update time-dependent effects
 			for (auto& effect : impl->post_processing_manager_->GetEffects()) {
@@ -1594,39 +1582,55 @@ namespace Boidsish {
 	}
 
 	void Visualizer::ToggleEffect(VisualEffect effect) {
+		auto& config = ConfigManager::GetInstance();
 		switch (effect) {
 		case VisualEffect::RIPPLE:
-			impl->ripple_strength = (impl->ripple_strength > 0.0f) ? 0.0f : 0.05f;
+			config.SetBool("artistic_effect_ripple", !config.GetAppSettingBool("artistic_effect_ripple", false));
 			break;
 		case VisualEffect::COLOR_SHIFT:
-			impl->color_shift_effect = !impl->color_shift_effect;
+			config.SetBool(
+				"artistic_effect_color_shift",
+				!config.GetAppSettingBool("artistic_effect_color_shift", false)
+			);
 			break;
 		case VisualEffect::BLACK_AND_WHITE:
-			impl->black_and_white_effect = !impl->black_and_white_effect;
+			config.SetBool(
+				"artistic_effect_black_and_white",
+				!config.GetAppSettingBool("artistic_effect_black_and_white", false)
+			);
 			break;
 		case VisualEffect::NEGATIVE:
-			impl->negative_effect = !impl->negative_effect;
+			config.SetBool(
+				"artistic_effect_negative",
+				!config.GetAppSettingBool("artistic_effect_negative", false)
+			);
 			break;
 		case VisualEffect::SHIMMERY:
-			impl->shimmery_effect = !impl->shimmery_effect;
+			config.SetBool(
+				"artistic_effect_shimmery",
+				!config.GetAppSettingBool("artistic_effect_shimmery", false)
+			);
 			break;
 		case VisualEffect::GLITCHED:
-			impl->glitched_effect = !impl->glitched_effect;
+			config.SetBool(
+				"artistic_effect_glitched",
+				!config.GetAppSettingBool("artistic_effect_glitched", false)
+			);
 			break;
 		case VisualEffect::WIREFRAME:
-			impl->wireframe_effect = !impl->wireframe_effect;
+			config.SetBool(
+				"artistic_effect_wireframe",
+				!config.GetAppSettingBool("artistic_effect_wireframe", false)
+			);
 			break;
 		case VisualEffect::FREEZE_FRAME_TRAIL:
+			// This one doesn't have a toggle, it's event-driven
 			break;
 		}
 	}
 
 	void Visualizer::ToggleMenus() {
 		impl->ui_manager->ToggleMenus();
-	}
-
-	void Visualizer::SetMenusVisible(bool visible) {
-		impl->ui_manager->SetMenusVisible(visible);
 	}
 
 	task_thread_pool::task_thread_pool& Visualizer::GetThreadPool() {
@@ -1764,30 +1768,30 @@ namespace Boidsish {
 	}
 
 	bool Visualizer::IsRippleEffectEnabled() const {
-		return impl->ripple_strength > 0.0f;
+		return ConfigManager::GetInstance().GetAppSettingBool("artistic_effect_ripple", false);
 	}
 
 	bool Visualizer::IsColorShiftEffectEnabled() const {
-		return impl->color_shift_effect;
+		return ConfigManager::GetInstance().GetAppSettingBool("artistic_effect_color_shift", false);
 	}
 
 	bool Visualizer::IsBlackAndWhiteEffectEnabled() const {
-		return impl->black_and_white_effect;
+		return ConfigManager::GetInstance().GetAppSettingBool("artistic_effect_black_and_white", false);
 	}
 
 	bool Visualizer::IsNegativeEffectEnabled() const {
-		return impl->negative_effect;
+		return ConfigManager::GetInstance().GetAppSettingBool("artistic_effect_negative", false);
 	}
 
 	bool Visualizer::IsShimmeryEffectEnabled() const {
-		return impl->shimmery_effect;
+		return ConfigManager::GetInstance().GetAppSettingBool("artistic_effect_shimmery", false);
 	}
 
 	bool Visualizer::IsGlitchedEffectEnabled() const {
-		return impl->glitched_effect;
+		return ConfigManager::GetInstance().GetAppSettingBool("artistic_effect_glitched", false);
 	}
 
 	bool Visualizer::IsWireframeEffectEnabled() const {
-		return impl->wireframe_effect;
+		return ConfigManager::GetInstance().GetAppSettingBool("artistic_effect_wireframe", false);
 	}
 } // namespace Boidsish

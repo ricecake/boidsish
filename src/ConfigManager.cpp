@@ -45,6 +45,23 @@ namespace Boidsish {
 			std::unique(m_appSection.begin(), m_appSection.end(), [](char a, char b) { return a == '_' && b == '_'; }),
 			m_appSection.end()
 		);
+
+		// Pre-register app-specific keys to ensure they appear in the UI
+		GetAppSettingBool("enable_terrain", true);
+		GetAppSettingBool("enable_floor", true);
+		GetAppSettingBool("enable_skybox", true);
+		GetAppSettingBool("enable_effects", true);
+		GetAppSettingBool("enable_floor_reflection", true);
+		GetAppSettingBool("render_terrain", true);
+		GetAppSettingBool("render_floor", true);
+		GetAppSettingBool("render_skybox", true);
+		GetAppSettingBool("artistic_effect_ripple", false);
+		GetAppSettingBool("artistic_effect_color_shift", false);
+		GetAppSettingBool("artistic_effect_black_and_white", false);
+		GetAppSettingBool("artistic_effect_negative", false);
+		GetAppSettingBool("artistic_effect_shimmery", false);
+		GetAppSettingBool("artistic_effect_glitched", false);
+		GetAppSettingBool("artistic_effect_wireframe", false);
 	}
 
 	void ConfigManager::Shutdown() {

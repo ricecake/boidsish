@@ -168,7 +168,6 @@ namespace Boidsish {
 		void                        TogglePause();
 		void                        ToggleEffect(VisualEffect effect);
 		void                        ToggleMenus();
-		void                        SetMenusVisible(bool visible);
 		std::shared_ptr<FireEffect> AddFireEffect(
 			const glm::vec3& position,
 			FireEffectStyle  style,
