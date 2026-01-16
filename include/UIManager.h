@@ -19,6 +19,7 @@ namespace Boidsish {
 			void Render();
 
 			void ToggleMenus() { m_show_menus = !m_show_menus; }
+			void SetMenusVisible(bool visible) { m_show_menus = visible; }
 
 		private:
 			std::vector<std::shared_ptr<IWidget>> m_widgets;

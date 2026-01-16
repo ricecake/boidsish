@@ -1625,6 +1625,10 @@ namespace Boidsish {
 		impl->ui_manager->ToggleMenus();
 	}
 
+	void Visualizer::SetMenusVisible(bool visible) {
+		impl->ui_manager->SetMenusVisible(visible);
+	}
+
 	task_thread_pool::task_thread_pool& Visualizer::GetThreadPool() {
 		return impl->thread_pool;
 	}

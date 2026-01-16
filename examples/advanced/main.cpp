@@ -196,6 +196,7 @@ int main(int argc, char* argv[]) {
 		bool auto_camera = Boidsish::ConfigManager::GetInstance().GetAppSettingBool("auto_camera", true);
 		viz.SetCameraMode(auto_camera ? CameraMode::AUTO : CameraMode::FREE);
 
+		viz.SetMenusVisible(true);
 		viz.Run();
 
 	} catch (const std::exception& e) {
