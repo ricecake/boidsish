@@ -220,7 +220,7 @@ namespace Boidsish {
 			glBindBuffer(GL_UNIFORM_BUFFER, 0);
 			glBindBufferRange(GL_UNIFORM_BUFFER, 0, lighting_ubo, 0, 48);
 
-			if (effects_enabled_) {
+			if (ConfigManager::GetInstance().GetAppSettingBool("enable_effects", true)) {
 				glGenBuffers(1, &visual_effects_ubo);
 				glBindBuffer(GL_UNIFORM_BUFFER, visual_effects_ubo);
 				glBufferData(GL_UNIFORM_BUFFER, sizeof(VisualEffectsUbo), NULL, GL_DYNAMIC_DRAW);
@@ -231,10 +231,10 @@ namespace Boidsish {
 			shader->use();
 			SetupShaderBindings(*shader);
 			SetupShaderBindings(*trail_shader);
-			if (floor_enabled_) {
+			if (plane_shader) {
 				SetupShaderBindings(*plane_shader);
 			}
-			if (skybox_enabled_) {
+			if (sky_shader) {
 				SetupShaderBindings(*sky_shader);
 			}
 
@@ -246,7 +246,7 @@ namespace Boidsish {
 			ui_manager->AddWidget(hud_widget);
 			logger::LOG("HudWidget created and added.");
 
-			if (terrain_enabled_) {
+			if (terrain_generator) {
 				Terrain::terrain_shader_ = std::make_shared<Shader>(
 					"shaders/terrain.vert",
 					"shaders/terrain.frag",
@@ -259,7 +259,7 @@ namespace Boidsish {
 
 			Shape::InitSphereMesh();
 
-			if (effects_enabled_ || (floor_enabled_ && floor_reflection_enabled_)) {
+			if (postprocess_shader_ || blur_shader) {
 				float blur_quad_vertices[] = {
 					// positions   // texCoords
 					-1.0f, 1.0f, 0.0f, 1.0f, -1.0f, -1.0f, 0.0f, 0.0f, 1.0f, -1.0f, 1.0f, 0.0f,
@@ -278,11 +278,11 @@ namespace Boidsish {
 				glBindVertexArray(0);
 			}
 
-			if (skybox_enabled_) {
+			if (sky_shader) {
 				glGenVertexArrays(1, &sky_vao);
 			}
 
-			if (floor_enabled_) {
+			if (plane_shader) {
 				float quad_vertices[] = {
 					// Definitive CCW winding
 					-1.0f,
@@ -313,7 +313,7 @@ namespace Boidsish {
 				glEnableVertexAttribArray(0);
 				glBindVertexArray(0);
 
-				if (floor_reflection_enabled_) {
+				if (blur_shader) {
 					// --- Reflection Framebuffer ---
 					glGenFramebuffers(1, &reflection_fbo);
 					glBindFramebuffer(GL_FRAMEBUFFER, reflection_fbo);
@@ -388,7 +388,7 @@ namespace Boidsish {
 				std::cerr << "ERROR::FRAMEBUFFER:: Main framebuffer is not complete!" << std::endl;
 			glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
-			if (effects_enabled_) {
+			if (postprocess_shader_) {
 				// --- Post Processing Manager ---
 				post_processing_manager_ = std::make_unique<PostProcessing::PostProcessingManager>(
 					width,
@@ -461,14 +461,14 @@ namespace Boidsish {
 				glDeleteVertexArrays(1, &blur_quad_vao);
 			if (blur_quad_vbo)
 				glDeleteBuffers(1, &blur_quad_vbo);
-			if (floor_enabled_) {
+			if (plane_vao) {
 				glDeleteVertexArrays(1, &plane_vao);
 				glDeleteBuffers(1, &plane_vbo);
 			}
-			if (skybox_enabled_) {
+			if (sky_vao) {
 				glDeleteVertexArrays(1, &sky_vao);
 			}
-			if (floor_enabled_ && floor_reflection_enabled_) {
+			if (reflection_fbo) {
 				glDeleteFramebuffers(1, &reflection_fbo);
 				glDeleteTextures(1, &reflection_texture);
 				glDeleteRenderbuffers(1, &reflection_depth_rbo);
@@ -629,7 +629,7 @@ namespace Boidsish {
 		}
 
 		void RenderTerrain(const glm::mat4& view, const std::optional<glm::vec4>& clip_plane) {
-			if (!ConfigManager::GetInstance().GetAppSettingBool("enable_terrain", true) || !ConfigManager::GetInstance().GetAppSettingBool("render_terrain", true))
+			if (!terrain_generator || !ConfigManager::GetInstance().GetAppSettingBool("render_terrain", true))
 				return;
 			auto terrain_chunks = terrain_generator->getVisibleChunks();
 			if (terrain_chunks.empty()) {
@@ -690,15 +690,15 @@ namespace Boidsish {
 		}
 
 		void RenderPlane(const glm::mat4& view) {
-			if (!ConfigManager::GetInstance().GetAppSettingBool("render_floor", true)) {
+			if (!plane_shader || !ConfigManager::GetInstance().GetAppSettingBool("render_floor", true)) {
 				return;
 			}
 			glEnable(GL_DEPTH_TEST);
 			glEnable(GL_BLEND);
 			glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 			plane_shader->use();
-			plane_shader->setBool("useReflection", floor_reflection_enabled_);
-			if (floor_reflection_enabled_) {
+			plane_shader->setBool("useReflection", ConfigManager::GetInstance().GetAppSettingBool("enable_floor_reflection", true));
+			if (ConfigManager::GetInstance().GetAppSettingBool("enable_floor_reflection", true)) {
 				plane_shader->setInt("reflectionTexture", 0);
 				glActiveTexture(GL_TEXTURE0);
 				glBindTexture(GL_TEXTURE_2D, pingpong_texture[0]);
@@ -1157,7 +1157,7 @@ namespace Boidsish {
 			impl->height = height;
 			glViewport(0, 0, width, height);
 
-			if (impl->floor_enabled_) {
+			if (impl->reflection_fbo) {
 				// --- Resize reflection framebuffer ---
 				glBindTexture(GL_TEXTURE_2D, impl->reflection_texture);
 				glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, width, height, 0, GL_RGB, GL_UNSIGNED_BYTE, NULL);
@@ -1178,7 +1178,7 @@ namespace Boidsish {
 			glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH24_STENCIL8, width, height);
 
 			// --- Resize post-processing manager ---
-			if (impl->effects_enabled_ && impl->post_processing_manager_) {
+			if (impl->post_processing_manager_) {
 				impl->post_processing_manager_->Resize(width, height);
 			}
 		}
@@ -1323,7 +1323,7 @@ namespace Boidsish {
 		impl->audio_manager->Update();
 
 		glm::mat4 view_matrix = impl->SetupMatrices();
-		if (impl->terrain_enabled_) {
+		if (impl->terrain_generator) {
 			Frustum frustum = impl->CalculateFrustum(view_matrix, impl->projection);
 			impl->terrain_generator->update(frustum, impl->camera);
 		}
@@ -1381,7 +1381,7 @@ namespace Boidsish {
 		glBufferSubData(GL_UNIFORM_BUFFER, 44, sizeof(float), &impl->simulation_time);
 		glBindBuffer(GL_UNIFORM_BUFFER, 0);
 
-		if (impl->floor_enabled_ && impl->floor_reflection_enabled_) {
+		if (impl->reflection_fbo) {
 			// --- Reflection Pre-Pass ---
 			glEnable(GL_CLIP_DISTANCE0);
 			{
@@ -1416,12 +1416,8 @@ namespace Boidsish {
 		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
 		glm::mat4 view = impl->SetupMatrices();
-		if (impl->skybox_enabled_) {
-			impl->RenderSky(view);
-		}
-		if (impl->floor_enabled_) {
-			impl->RenderPlane(view);
-		}
+		impl->RenderSky(view);
+		impl->RenderPlane(view);
 		impl->RenderTerrain(view, std::nullopt);
 		impl->RenderShapes(view, impl->camera, impl->shapes, impl->simulation_time, std::nullopt);
 		impl->fire_effect_manager->Render(view, impl->projection, impl->camera.pos());
