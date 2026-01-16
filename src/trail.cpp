@@ -145,6 +145,7 @@ namespace Boidsish {
 					glm::vec3(curve_colors[i].x, curve_colors[i].y, curve_colors[i].z),
 				};
 				tail = (tail + 1) % mesh_vertices.size();
+
 			}
 		}
 		if (full) {
