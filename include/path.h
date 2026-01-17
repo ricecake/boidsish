@@ -33,7 +33,6 @@ namespace Boidsish {
 		Path(int id = 0, float x = 0.0f, float y = 0.0f, float z = 0.0f);
 		~Path();
 
-		void      SetupBuffers() const;
 		void      render() const override;
 		void      render(Shader& shader, const glm::mat4& model_matrix) const override;
 		glm::mat4 GetModelMatrix() const override;
@@ -80,16 +79,17 @@ namespace Boidsish {
 
 		const std::vector<Waypoint>& GetWaypoints() const { return waypoints_; }
 
-	private:
+	protected:
+		void      SetupBuffers() const;
 		std::vector<Waypoint> waypoints_;
-		PathMode              mode_ = PathMode::ONCE;
-		bool                  visible_ = false;
-
 		mutable GLuint               path_vao_ = 0;
 		mutable GLuint               path_vbo_ = 0;
 		mutable int                  edge_vertex_count_ = 0;
 		mutable bool                 buffers_initialized_ = false;
 		mutable std::vector<Vector3> cached_waypoint_positions_;
+	private:
+		PathMode              mode_ = PathMode::ONCE;
+		bool                  visible_ = false;
 	};
 
 	class PathHandler {
