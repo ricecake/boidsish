@@ -2,6 +2,8 @@
 
 #include <algorithm>
 #include <limits>
+#include <memory>
+#include <mutex>
 
 #include "entity.h"
 #include "graphics.h"
@@ -15,7 +17,9 @@ namespace Boidsish {
 			task_thread_pool::task_thread_pool& thread_pool,
 			std::shared_ptr<Visualizer>         visualizer = nullptr
 		):
-			EntityHandler(thread_pool, visualizer) {}
+			EntityHandler(thread_pool, visualizer),
+			read_rtree_(std::make_unique<RTree<int, float, 3>>()),
+			write_rtree_(std::make_unique<RTree<int, float, 3>>()) {}
 
 		using EntityHandler::AddEntity;
 
@@ -25,7 +29,7 @@ namespace Boidsish {
 			float                           min[] = {center.x - radius, center.y - radius, center.z - radius};
 			float                           max[] = {center.x + radius, center.y + radius, center.z + radius};
 
-			rtree_.Search(min, max, [&](int id) {
+			read_rtree_->Search(min, max, [&](int id) {
 				auto entity = GetEntity(id);
 				if (entity && entity->GetPosition().DistanceTo(center) <= radius) {
 					auto typed_entity = std::dynamic_pointer_cast<T>(entity);
@@ -64,21 +68,25 @@ namespace Boidsish {
 		}
 
 	protected:
+		void OnEntityUpdated(std::shared_ptr<EntityBase> entity) override {
+			const Vector3               pos = entity->GetPosition();
+			float                       min[3] = {pos.x, pos.y, pos.z};
+			float                       max[3] = {pos.x, pos.y, pos.z};
+			std::lock_guard<std::mutex> lock(write_mutex_);
+			write_rtree_->Insert(min, max, entity->GetId());
+		}
+
 		void PostTimestep(float time, float delta_time) override {
 			(void)time;
 			(void)delta_time;
-			rtree_.RemoveAll();
-			for (const auto& pair : GetAllEntities()) {
-				auto&         entity = pair.second;
-				const Vector3 pos = entity->GetPosition();
-				float         min[3] = {pos.x, pos.y, pos.z};
-				float         max[3] = {pos.x, pos.y, pos.z};
-				rtree_.Insert(min, max, entity->GetId());
-			}
+			read_rtree_.swap(write_rtree_);
+			write_rtree_->RemoveAll();
 		}
 
 	private:
-		mutable RTree<int, float, 3> rtree_;
+		mutable std::unique_ptr<RTree<int, float, 3>> read_rtree_;
+		mutable std::unique_ptr<RTree<int, float, 3>> write_rtree_;
+		mutable std::mutex                            write_mutex_;
 	};
 
 } // namespace Boidsish

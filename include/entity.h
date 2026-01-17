@@ -330,6 +330,8 @@ namespace Boidsish {
 			(void)delta_time;
 		}
 
+		virtual void OnEntityUpdated(std::shared_ptr<EntityBase> entity) { (void)entity; }
+
 	private:
 		std::map<int, std::shared_ptr<EntityBase>> entities_;
 		float                                      last_time_;

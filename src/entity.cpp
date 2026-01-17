@@ -114,6 +114,9 @@ namespace Boidsish {
 
 			// Update the entity's shape
 			entity->UpdateShape();
+
+			// Call the OnEntityUpdated hook
+			OnEntityUpdated(entity);
 		}
 
 		return {};
