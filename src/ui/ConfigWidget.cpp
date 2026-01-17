@@ -18,6 +18,10 @@ namespace Boidsish {
 					const std::string& key = pair.first;
 					const ConfigValue& val_info = pair.second;
 
+					if (key.contains("artistic_effect_")) {
+						continue;
+					}
+
 					switch (val_info.type) {
 					case ConfigValue::Type::BOOL: {
 						bool value = is_global ? config_manager.GetGlobalSettingBool(key, val_info.bool_value)
