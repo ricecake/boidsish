@@ -23,6 +23,7 @@
 #include "post_processing/effects/BloomEffect.h"
 #include "post_processing/effects/FilmGrainEffect.h"
 #include "post_processing/effects/GlitchEffect.h"
+#include "post_processing/effects/MetaArtisticEffect.h"
 #include "post_processing/effects/NegativeEffect.h"
 #include "post_processing/effects/OpticalFlowEffect.h"
 #include "post_processing/effects/StrobeEffect.h"
@@ -431,6 +432,10 @@ namespace Boidsish {
 				auto bloom_effect = std::make_shared<PostProcessing::BloomEffect>(width, height);
 				bloom_effect->SetEnabled(false);
 				post_processing_manager_->AddEffect(bloom_effect);
+
+				auto meta_artistic_effect = std::make_shared<PostProcessing::MetaArtisticEffect>();
+				meta_artistic_effect->SetEnabled(false);
+				post_processing_manager_->AddEffect(meta_artistic_effect);
 
 				// --- UI ---
 				auto post_processing_widget = std::make_shared<UI::PostProcessingWidget>(*post_processing_manager_);
