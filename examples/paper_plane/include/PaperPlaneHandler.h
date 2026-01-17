@@ -21,6 +21,7 @@ namespace Boidsish {
 		std::random_device                    rd_;
 		std::mt19937                          eng_;
 		float                                 damage_timer_ = 0.0f;
+		float                                 spiral_spawn_timer_ = 0.0f;
 		std::uniform_real_distribution<float> damage_dist_;
 	};
 

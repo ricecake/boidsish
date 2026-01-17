@@ -6,6 +6,7 @@
 #include "GuidedMissileLauncher.h"
 #include "PaperPlane.h"
 #include "VortexFlockingEntity.h"
+#include "SpiralingEntity.h"
 #include "graphics.h"
 #include "hud.h"
 #include "neighbor_utils.h"
@@ -154,6 +155,20 @@ namespace Boidsish {
 		}
 
 		damage_timer_ = std::min(damage_timer_, 2.0f);
+        spiral_spawn_timer_ -= delta_time;
+        if (spiral_spawn_timer_ <= 0.0f) {
+            spiral_spawn_timer_ = 10.0f;
+
+            auto targets = GetEntitiesByType<PaperPlane>();
+            if (!targets.empty()) {
+                auto plane = targets[0];
+                Vector3 spawn_pos = plane->GetPosition() + Vector3(500, 100, 0);
+                QueueAddEntity<SpiralingEntity>(
+                    -1,
+                    spawn_pos
+                );
+            }
+        }
 	}
 
 } // namespace Boidsish
