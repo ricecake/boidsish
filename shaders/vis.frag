@@ -12,6 +12,7 @@ in vec3 barycentric;
 in vec2 TexCoords;
 in vec4 InstanceColor;
 
+uniform bool useGlowEffect = false;
 uniform vec3  objectColor;
 uniform float objectAlpha = 1.0;
 uniform int   useVertexColor;
@@ -147,4 +148,10 @@ void main() {
 	}
 
 	FragColor = outColor;
+
+    if (useGlowEffect) {
+        float distance = length(viewPos - FragPos);
+        float alpha = smoothstep(100.0, 200.0, distance);
+        FragColor = vec4(0, 1, 0, alpha);
+    }
 }
