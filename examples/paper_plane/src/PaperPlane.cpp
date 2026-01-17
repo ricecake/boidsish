@@ -1,5 +1,6 @@
 #include "PaperPlane.h"
 
+#include "Bullet.h"
 #include "CatBomb.h"
 #include "CatMissile.h"
 #include "PaperPlaneHandler.h" // For selected_weapon
@@ -156,6 +157,14 @@ namespace Boidsish {
 			case 1:
 				handler.QueueAddEntity<CatBomb>(pos, orientation_ * glm::vec3(0, -1, 0), GetVelocity());
 				time_to_fire = 0.25f;
+				break;
+			case 2:
+                {
+                    glm::vec3 forward_dir = orientation_ * glm::vec3(0.0f, 0.0f, -1.0f);
+                    glm::vec3 bullet_velocity = forward_dir * 100.0f;
+                    handler.QueueAddEntity<Bullet>(pos, GetVelocity() + Vector3(bullet_velocity.x, bullet_velocity.y, bullet_velocity.z));
+                    time_to_fire = 0.1f;
+                }
 				break;
 			}
 		}
