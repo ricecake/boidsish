@@ -10,6 +10,6 @@ uniform vec3 viewPos;
 void main()
 {
     float distance = length(viewPos - FragPos);
-    float alpha = smoothstep(20.0, 60.0, distance);
+    float alpha = 1.0 - smoothstep(20.0, 60.0, distance);
     FragColor = vec4(VertexColor, alpha);
 }

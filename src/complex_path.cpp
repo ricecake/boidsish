@@ -52,7 +52,7 @@ void ComplexPath::SetHeight(float height)
 
 void ComplexPath::render() const
 {
-    if (GetWaypoints().size() < 2)
+    if (!IsVisible() || GetWaypoints().size() < 2)
         return;
 
     if (!buffers_initialized_) {
