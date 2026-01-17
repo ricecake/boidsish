@@ -5,18 +5,11 @@
 
 namespace Boidsish {
 
-std::shared_ptr<Shader> ComplexPath::complex_path_shader_ = nullptr;
-
 ComplexPath::ComplexPath(int id, const TerrainGenerator* terrain_generator, Camera* camera)
     : Path(id)
     , terrain_generator_(terrain_generator)
     , camera_(camera)
 {
-    if (complex_path_shader_ == nullptr) {
-        complex_path_shader_ = std::make_shared<Shader>(
-            "shaders/complex_path.vert", "shaders/complex_path.frag"
-        );
-    }
     Update();
 }
 
@@ -59,13 +52,16 @@ void ComplexPath::render() const
         SetupBuffers();
     }
 
-    complex_path_shader_->use();
-    complex_path_shader_->setMat4("model", GetModelMatrix());
-    complex_path_shader_->setVec3("viewPos", glm::vec3(camera_->x, camera_->y, camera_->z));
+    shader->use();
+    shader->setMat4("model", GetModelMatrix());
+    shader->setBool("useGlowEffect", true);
+    shader->setVec3("viewPos", glm::vec3(camera_->x, camera_->y, camera_->z));
 
     glBindVertexArray(path_vao_);
     glDrawArrays(GL_TRIANGLES, 0, edge_vertex_count_);
     glBindVertexArray(0);
+
+    shader->setBool("useGlowEffect", false);
 }
 
 } // namespace Boidsish

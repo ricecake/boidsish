@@ -24,8 +24,6 @@ private:
     float path_length_ = 200.0f;
     float segment_distance_ = 5.0f;
 
-    // Shader for the glow effect
-    static std::shared_ptr<Shader> complex_path_shader_;
 };
 
 } // namespace Boidsish

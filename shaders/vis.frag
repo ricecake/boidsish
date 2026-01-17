@@ -14,6 +14,7 @@ in vec2 TexCoords;
 uniform vec3 objectColor;
 uniform int  useVertexColor;
 uniform bool isColossal = true;
+uniform bool useGlowEffect = false;
 
 uniform sampler2D texture_diffuse1;
 uniform bool      use_texture;
@@ -81,4 +82,10 @@ void main() {
 	}
 
 	FragColor = outColor;
+
+    if (useGlowEffect) {
+        float distance = length(viewPos - FragPos);
+        float alpha = 1.0 - smoothstep(20.0, 60.0, distance);
+        FragColor.a = alpha;
+    }
 }
