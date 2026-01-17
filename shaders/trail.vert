@@ -21,6 +21,7 @@ uniform mat4  projection;
 uniform vec4  clipPlane;
 uniform float base_thickness;
 uniform bool  useRocketTrail;
+uniform bool  useCondensationTrail;
 uniform float trailHead;
 uniform float trailSize;
 
@@ -55,7 +56,16 @@ void main() {
 	// This moves the vertex closer to or further from the tube's spine
 	vec3 offset = aNormal * base_thickness * (taper_scale - 1.0);
 
-	if (useRocketTrail) {
+	if (useCondensationTrail) {
+		// Apply vertical compression
+		offset.y *= 0.2;
+
+		// Add a gentle wavy effect
+		float wave_frequency = 5.0;
+		float wave_amplitude = 0.1;
+		float wave = sin(Progress * wave_frequency + time) * wave_amplitude;
+		offset += aNormal * wave * base_thickness;
+	} else if (useRocketTrail) {
 		offset = vec3(0);
 		// Billowing smoke effect
 		float noise_freq = 3.0;

@@ -174,12 +174,8 @@ namespace Boidsish {
 		mesh_dirty = true;
 	}
 
-	void Trail::SetIridescence(bool enabled) {
-		iridescent_ = enabled;
-	}
-
-	void Trail::SetUseRocketTrail(bool enabled) {
-		useRocketTrail_ = enabled;
+	void Trail::SetTrailType(TrailType type) {
+		trail_type_ = type;
 	}
 
 	void Trail::Render(Shader& shader) const {
@@ -236,8 +232,9 @@ namespace Boidsish {
 		shader.use();
 		shader.setFloat("base_thickness", BASE_THICKNESS);
 		shader.setInt("useVertexColor", 1);
-		shader.setBool("useIridescence", iridescent_);
-		shader.setBool("useRocketTrail", useRocketTrail_);
+		shader.setBool("useIridescence", trail_type_ == IRIDESCENT);
+		shader.setBool("useRocketTrail", trail_type_ == ROCKET);
+		shader.setBool("useCondensationTrail", trail_type_ == CONDENSATION);
 		shader.setFloat("trailHead", head);
 		shader.setFloat("trailSize", trailSize);
 

@@ -148,6 +148,7 @@ namespace Boidsish {
 		float camera_roll_speed_;
 		float camera_speed_step_;
 
+		Trail::TrailType                   trail_type_ = Trail::TrailType::DEFAULT;
 		task_thread_pool::task_thread_pool thread_pool;
 		std::unique_ptr<AudioManager>      audio_manager;
 
@@ -582,12 +583,7 @@ namespace Boidsish {
 				if (shape->GetTrailLength() > 0 && !paused) {
 					if (trails.find(shape->GetId()) == trails.end()) {
 						trails[shape->GetId()] = std::make_shared<Trail>(shape->GetTrailLength());
-						if (shape->IsTrailIridescent()) {
-							trails[shape->GetId()]->SetIridescence(true);
-						}
-						if (shape->IsTrailRocket()) {
-							trails[shape->GetId()]->SetUseRocketTrail(true);
-						}
+						trails[shape->GetId()]->SetTrailType(trail_type_);
 					}
 					trails[shape->GetId()]->AddPoint(
 						glm::vec3(shape->GetX(), shape->GetY(), shape->GetZ()),
@@ -1801,5 +1797,16 @@ namespace Boidsish {
 
 	bool Visualizer::IsWireframeEffectEnabled() const {
 		return impl->wireframe_effect;
+	}
+
+	void Visualizer::SetTrailType(Trail::TrailType type) {
+		impl->trail_type_ = type;
+		for (auto& pair : impl->trails) {
+			pair.second->SetTrailType(type);
+		}
+	}
+
+	Trail::TrailType Visualizer::GetTrailType() const {
+		return impl->trail_type_;
 	}
 } // namespace Boidsish

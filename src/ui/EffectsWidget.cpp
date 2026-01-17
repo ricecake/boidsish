@@ -50,6 +50,12 @@ namespace Boidsish {
 				m_visualizer.ToggleEffect(VisualEffect::WIREFRAME);
 			}
 
+			const char* trail_types[] = {"Default", "Iridescent", "Rocket", "Condensation"};
+			int current_trail_type = static_cast<int>(m_visualizer.GetTrailType());
+			if (ImGui::Combo("Trail Type", &current_trail_type, trail_types, 4)) {
+				m_visualizer.SetTrailType(static_cast<Trail::TrailType>(current_trail_type));
+			}
+
 			ImGui::End();
 		}
 

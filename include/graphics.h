@@ -15,6 +15,7 @@
 #include "imgui_impl_glfw.h"
 #include "imgui_impl_opengl3.h"
 #include "shape.h"
+#include "trail.h"
 #include "vector.h"
 #include "visual_effects.h"
 #include <glm/glm.hpp>
@@ -217,6 +218,10 @@ namespace Boidsish {
 		bool IsShimmeryEffectEnabled() const;
 		bool IsGlitchedEffectEnabled() const;
 		bool IsWireframeEffectEnabled() const;
+
+		// Trail methods
+		void SetTrailType(Trail::TrailType type);
+		Trail::TrailType GetTrailType() const;
 
 		void AddHudNumber(const HudNumber& number);
 		void UpdateHudNumber(int id, const HudNumber& number);

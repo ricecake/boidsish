@@ -18,8 +18,13 @@ namespace Boidsish {
 
 		void AddPoint(glm::vec3 position, glm::vec3 color);
 		void Render(Shader& shader) const;
-		void SetIridescence(bool enabled);
-		void SetUseRocketTrail(bool enabled);
+                enum TrailType {
+                  DEFAULT,
+                  IRIDESCENT,
+                  ROCKET,
+                  CONDENSATION,
+                };
+                void SetTrailType(TrailType type);
 
 	private:
 		struct TrailVertex {
@@ -74,8 +79,7 @@ namespace Boidsish {
 		mutable std::deque<Vector3>                binormals;
 		mutable std::deque<std::vector<glm::vec3>> ring_positions;
 		mutable std::deque<std::vector<glm::vec3>> ring_normals;
-		bool                                       iridescent_ = false;
-		bool                                       useRocketTrail_ = false;
+                TrailType trail_type_ = DEFAULT;
 
 		// Configuration
 		const int   TRAIL_SEGMENTS = 8;                        // Circular segments around trail
