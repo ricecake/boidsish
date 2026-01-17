@@ -622,7 +622,33 @@ namespace Boidsish {
 			shader->setInt("useVertexColor", 0);
 			for (const auto& shape : shapes) {
 				shader->setBool("isColossal", shape->IsColossal());
+
+                auto uniforms = shape->GetRenderUniforms();
+                for (const auto& pair : uniforms) {
+                    std::visit([&](auto&& arg) {
+                        using T = std::decay_t<decltype(arg)>;
+                        if constexpr (std::is_same_v<T, bool>)
+                            shader->setBool(pair.first, arg);
+                        else if constexpr (std::is_same_v<T, int>)
+                            shader->setInt(pair.first, arg);
+                        else if constexpr (std::is_same_v<T, float>)
+                            shader->setFloat(pair.first, arg);
+                        else if constexpr (std::is_same_v<T, glm::vec3>)
+                            shader->setVec3(pair.first, arg);
+                        else if constexpr (std::is_same_v<T, glm::vec4>)
+                            shader->setVec4(pair.first, arg);
+                    }, pair.second);
+                }
+
 				shape->render();
+
+                for (const auto& pair : uniforms) {
+                    std::visit([&](auto&& arg) {
+                        using T = std::decay_t<decltype(arg)>;
+                        if constexpr (std::is_same_v<T, bool>)
+                            shader->setBool(pair.first, false);
+                    }, pair.second);
+                }
 			}
 
 			// Render clones

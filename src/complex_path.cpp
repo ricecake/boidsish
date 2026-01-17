@@ -33,7 +33,7 @@ void ComplexPath::Update()
     waypoints_.clear();
     buffers_initialized_ = false;
     for (const auto& point : terrainPath) {
-        waypoints_.emplace_back(Waypoint{{point.x, point.y + height_, point.z}, {0, 1, 0}, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f});
+        waypoints_.emplace_back(Waypoint{{point.x, point.y + height_, point.z}, {0, 1, 0}, 5.0f, 1.0f, 1.0f, 1.0f, 1.0f});
     }
 }
 
@@ -54,14 +54,18 @@ void ComplexPath::render() const
 
     shader->use();
     shader->setMat4("model", GetModelMatrix());
-    shader->setBool("useGlowEffect", true);
-    shader->setVec3("viewPos", glm::vec3(camera_->x, camera_->y, camera_->z));
 
     glBindVertexArray(path_vao_);
     glDrawArrays(GL_TRIANGLES, 0, edge_vertex_count_);
     glBindVertexArray(0);
+}
 
-    shader->setBool("useGlowEffect", false);
+std::map<std::string, UniformValue> ComplexPath::GetRenderUniforms() const
+{
+    std::map<std::string, UniformValue> uniforms;
+    uniforms["useGlowEffect"] = true;
+    uniforms["viewPos"] = glm::vec3(camera_->x, camera_->y, camera_->z);
+    return uniforms;
 }
 
 } // namespace Boidsish

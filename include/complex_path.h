@@ -16,6 +16,7 @@ public:
     void Update();
     void SetHeight(float height);
     void render() const override;
+    std::map<std::string, UniformValue> GetRenderUniforms() const override;
 
 private:
     const TerrainGenerator* terrain_generator_;

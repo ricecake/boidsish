@@ -7,10 +7,16 @@
 #include "visual_effects.h"
 #include <glm/glm.hpp>
 #include <glm/gtc/quaternion.hpp>
+#include <map>
+#include <string>
+#include <variant>
 
 class Shader;
 
 namespace Boidsish {
+
+    // A variant type for uniform values
+    using UniformValue = std::variant<bool, int, float, glm::vec3, glm::vec4>;
 
 	// Base class for all renderable shapes
 	class Shape {
@@ -19,6 +25,10 @@ namespace Boidsish {
 
 		// Pure virtual function for rendering the shape
 		virtual void render() const = 0;
+
+        virtual std::map<std::string, UniformValue> GetRenderUniforms() const {
+            return {};
+        }
 
 		virtual void render(Shader& shader) const final { render(shader, GetModelMatrix()); }
 
