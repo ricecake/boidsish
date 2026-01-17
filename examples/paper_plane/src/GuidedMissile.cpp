@@ -21,8 +21,8 @@ namespace Boidsish {
 		std::dynamic_pointer_cast<Model>(shape_)->SetBaseRotation(
 			glm::angleAxis(glm::radians(-90.0f), glm::vec3(0.0f, 1.0f, 0.0f))
 		);
-		// orientation_ *= glm::angleAxis(glm::radians(0.0f), glm::vec3(1.0f, 0.0f, 0.0f));
-		orientation_ = glm::quatLookAt(glm::vec3(0, 1, 0), glm::vec3(0, 1, 0));
+		// The missile model's forward is +Z. To make it point "up" (+Y), we need to rotate it.
+		orientation_ = glm::rotation(glm::vec3(0.0f, 0.0f, 1.0f), glm::vec3(0.0f, 1.0f, 0.0f));
 		UpdateShape();
 	}
 
@@ -59,9 +59,8 @@ namespace Boidsish {
 		const float kAcceleration = 150.0f;
 
 		if (lived_ < kLaunchTime) {
-					orientation_ = glm::quatLookAt(glm::vec3(0, 1, 0), glm::vec3(0, 1, 0));
-
-			// orientation_ = glm::angleAxis(glm::radians(-90.0f), glm::vec3(1.0f, 0.0f, 0.0f));
+			// The missile model's forward is +Z. To make it point "up" (+Y), we need to rotate it.
+			orientation_ = glm::rotation(glm::vec3(0.0f, 0.0f, 1.0f), glm::vec3(0.0f, 1.0f, 0.0f));
 			forward_speed_ += kAcceleration * delta_time;
 			if (forward_speed_ > kMaxSpeed) {
 				forward_speed_ = kMaxSpeed;
