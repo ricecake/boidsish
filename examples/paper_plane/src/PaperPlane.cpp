@@ -47,9 +47,9 @@ namespace Boidsish {
 		const float kAutoLevelSpeed = 1.5f;
 		const float kDamping = 2.5f;
 
-		const float kBaseSpeed = 50.0f;
-		const float kBoostSpeed = 80.0f;
-		const float kBreakSpeed = 10.0f;
+		const float kBaseSpeed = 1;//50.0f;
+		const float kBoostSpeed = 800.0f;
+		const float kBreakSpeed = 0;//10.0f;
 		const float kBoostAcceleration = 100.0f;
 		const float kSpeedDecay = 30.0f;
 
