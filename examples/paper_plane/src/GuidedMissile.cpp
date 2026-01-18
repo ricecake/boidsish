@@ -17,7 +17,6 @@ namespace Boidsish {
 
 
 		orientation_ = glm::angleAxis(glm::radians(-90.0f), glm::vec3(1.0f, 0.0f, 0.0f));
-		// orientation_ = glm::quatLookAt(glm::vec3(0, 1, 0), glm::vec3(0, 0, 1));
 		SetPosition(pos.x, pos.y+0.5f, pos.z);
 		SetVelocity(0, 50, 0);
 		SetTrailLength(500);
@@ -26,12 +25,10 @@ namespace Boidsish {
 		std::dynamic_pointer_cast<Model>(shape_)->SetBaseRotation(
 			glm::angleAxis(glm::radians(-90.0f), glm::vec3(0.0f, 1.0f, 0.0f))
 		);
-		// orientation_ *= glm::angleAxis(glm::radians(0.0f), glm::vec3(1.0f, 0.0f, 0.0f));
 		UpdateShape();
 	}
 
 	void GuidedMissile::UpdateEntity(const EntityHandler& handler, float time, float delta_time) {
-		logger::LOG(rigid_body_.ToString());
 		lived_ += delta_time;
 		auto pos = GetPosition();
 
