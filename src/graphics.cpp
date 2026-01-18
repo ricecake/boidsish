@@ -36,9 +36,11 @@
 #include "trail.h"
 #include "ui/ConfigWidget.h"
 #include "ui/EffectsWidget.h"
+#include "ui/PerfCounterWidget.h"
 #include "ui/PostProcessingWidget.h"
 #include "ui/hud_widget.h"
 #include "visual_effects.h"
+#include "perf_counter.h"
 #include <GL/glew.h>
 #include <GLFW/glfw3.h>
 #include <glm/glm.hpp>
@@ -442,6 +444,11 @@ namespace Boidsish {
 
 			auto effects_widget = std::make_shared<UI::EffectsWidget>();
 			ui_manager->AddWidget(effects_widget);
+
+			if (ConfigManager::GetInstance().GetDebugSettingBool("show_perf_counter", false)) {
+				auto perf_counter_widget = std::make_shared<PerfCounterWidget>();
+				ui_manager->AddWidget(perf_counter_widget);
+			}
 		}
 
 		void SetupShaderBindings(Shader& shader_to_setup) {
@@ -1213,6 +1220,8 @@ namespace Boidsish {
 	}
 
 	void Visualizer::Update() {
+		PERF_SCOPE("Update");
+		PerfCounter::Reset();
 		// Reset per-frame input state
 		std::fill_n(impl->input_state.key_down, kMaxKeys, false);
 		std::fill_n(impl->input_state.key_up, kMaxKeys, false);
@@ -1277,6 +1286,7 @@ namespace Boidsish {
 	}
 
 	void Visualizer::Render() {
+		PERF_SCOPE("Render");
 		impl->shapes.clear();
 		// --- 1. RENDER SCENE TO FBO ---
 		// Note: The reflection and blur passes are pre-passes that generate textures for the main scene.

@@ -5,6 +5,10 @@ project(Boidsish VERSION 1.0 LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS ON) # Corresponds to -std=gnu++23
+
+# Option to enable performance counter
+option(ENABLE_PERFORMANCE_COUNTER "Enable performance counter" ON)
+
 set(FASTNOISE2_NOISETOOL OFF CACHE BOOL "Enable NoiseTool build" FORCE)
 set(IMGUI_DIR external/imgui)
 set(STB_DIR "${CMAKE_SOURCE_DIR}/external/stb")
@@ -48,6 +52,10 @@ set_directory_properties(PROPERTIES COMPILE_OPTIONS "${OLD_COMPILE_OPTIONS}")
 file(GLOB_RECURSE LIB_SOURCES "src/*.cpp")
 
 add_library(boidsish STATIC ${LIB_SOURCES})
+
+if(ENABLE_PERFORMANCE_COUNTER)
+    target_compile_definitions(boidsish PUBLIC ENABLE_PERF_COUNTER)
+endif()
 
 target_include_directories(boidsish
     PUBLIC
