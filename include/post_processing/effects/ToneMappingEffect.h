@@ -19,6 +19,9 @@ public:
 
 private:
     std::unique_ptr<Shader> _shader;
+    int width_ = 0;
+    int height_ = 0;
+
 };
 
 } // namespace PostProcessing
