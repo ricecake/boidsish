@@ -74,9 +74,9 @@ namespace Boidsish {
 		// 	forward_speed_ = kMaxSpeed;
 		// }
 
-		rigid_body_.AddRelativeForce(glm::vec3(0, 0, -2000));
+		rigid_body_.AddRelativeForce(glm::vec3(0, 0, -500));
 
-		const float kTurnSpeed = 4.0f;
+		const float kTurnSpeed = 100.0f;
 		const float kDamping = 2.5f;
 
 		if (true || target_ == nullptr) {
