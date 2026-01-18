@@ -16,7 +16,7 @@ namespace Boidsish {
 		auto orientation = glm::angleAxis(glm::radians(-90.0f), glm::vec3(1.0f, 0.0f, 0.0f));
 
 		SetOrientToVelocity(false);
-		SetPosition(pos.x, pos.y, pos.z);
+		SetPosition(pos.x, pos.y+0.5f, pos.z);
 
 		rigid_body_.SetOrientation(orientation);
 		rigid_body_.SetLinearVelocity(glm::vec3(0, 100, 0));
@@ -50,15 +50,15 @@ namespace Boidsish {
 			return;
 		}
 
-		if (lived_ >= lifetime_) {
-			Explode(handler, false);
-			return;
-		}
-		auto [height, norm] = handler.vis->GetTerrainPointProperties(pos.x, pos.z);
-		if (pos.y < height) {
-			Explode(handler, false);
-			return;
-		}
+		// if (lived_ >= lifetime_) {
+		// 	Explode(handler, false);
+		// 	return;
+		// }
+		// auto [height, norm] = handler.vis->GetTerrainPointProperties(pos.x, pos.z);
+		// if (pos.y < height) {
+		// 	Explode(handler, false);
+		// 	return;
+		// }
 
 		// --- Flight Model Constants ---
 		const float kLaunchTime = 0.5f;
@@ -77,11 +77,11 @@ namespace Boidsish {
 				auto  plane = targets[0];
 				auto& r = rigid_body_;
 
-				if ((plane->GetPosition() - GetPosition()).Magnitude() < 10) {
-					Explode(handler, true);
-					// plane->TriggerDamage();
-					return;
-				}
+				// if ((plane->GetPosition() - GetPosition()).Magnitude() < 10) {
+				// 	Explode(handler, true);
+				// 	// plane->TriggerDamage();
+				// 	return;
+				// }
 
 				r.AddRelativeForce(glm::vec3(0, 0, 300));
 
