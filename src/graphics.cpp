@@ -27,6 +27,7 @@
 #include "post_processing/effects/OpticalFlowEffect.h"
 #include "post_processing/effects/StrobeEffect.h"
 #include "post_processing/effects/TimeStutterEffect.h"
+#include "post_processing/effects/ToneMappingEffect.h"
 #include "post_processing/effects/WhispTrailEffect.h"
 #include "sound_effect_manager.h"
 #include "spline.h"
@@ -131,12 +132,14 @@ namespace Boidsish {
 		// Cached global settings
 		float camera_roll_speed_;
 		float camera_speed_step_;
+		bool  enable_hdr_ = false;
 
 		task_thread_pool::task_thread_pool thread_pool;
 		std::unique_ptr<AudioManager>      audio_manager;
 
 		VisualizerImpl(Visualizer* p, int w, int h, const char* title): parent(p), width(w), height(h) {
 			ConfigManager::GetInstance().Initialize(title);
+			enable_hdr_ = ConfigManager::GetInstance().GetAppSettingBool("enable_hdr", false);
 			width = ConfigManager::GetInstance().GetAppSettingInt("window_width", w);
 			height = ConfigManager::GetInstance().GetAppSettingInt("window_height", h);
 			is_fullscreen_ = ConfigManager::GetInstance().GetAppSettingBool("fullscreen", false);
@@ -376,7 +379,11 @@ namespace Boidsish {
 			// Color attachment
 			glGenTextures(1, &main_fbo_texture_);
 			glBindTexture(GL_TEXTURE_2D, main_fbo_texture_);
-			glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, width, height, 0, GL_RGB, GL_UNSIGNED_BYTE, NULL);
+			if (enable_hdr_) {
+				glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB16F, width, height, 0, GL_RGB, GL_FLOAT, NULL);
+			} else {
+				glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, width, height, 0, GL_RGB, GL_UNSIGNED_BYTE, NULL);
+			}
 			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
 			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 			glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, main_fbo_texture_, 0);
@@ -431,6 +438,12 @@ namespace Boidsish {
 				auto bloom_effect = std::make_shared<PostProcessing::BloomEffect>(width, height);
 				bloom_effect->SetEnabled(false);
 				post_processing_manager_->AddEffect(bloom_effect);
+
+				if (enable_hdr_) {
+					auto tone_mapping_effect = std::make_shared<PostProcessing::ToneMappingEffect>();
+					tone_mapping_effect->SetEnabled(true);
+					post_processing_manager_->AddEffect(tone_mapping_effect);
+				}
 
 				// --- UI ---
 				auto post_processing_widget = std::make_shared<UI::PostProcessingWidget>(*post_processing_manager_);
@@ -1177,7 +1190,11 @@ namespace Boidsish {
 
 			// --- Resize main scene framebuffer ---
 			glBindTexture(GL_TEXTURE_2D, impl->main_fbo_texture_);
-			glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, width, height, 0, GL_RGB, GL_UNSIGNED_BYTE, NULL);
+			if (impl->enable_hdr_) {
+				glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB16F, width, height, 0, GL_RGB, GL_FLOAT, NULL);
+			} else {
+				glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, width, height, 0, GL_RGB, GL_UNSIGNED_BYTE, NULL);
+			}
 			glBindRenderbuffer(GL_RENDERBUFFER, impl->main_fbo_rbo_);
 			glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH24_STENCIL8, width, height);
 
