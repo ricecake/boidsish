@@ -10,15 +10,19 @@ namespace Boidsish {
 
 	GuidedMissile::GuidedMissile(int id, Vector3 pos):
 		Entity<Model>(id, "assets/Missile.obj", true), eng_(rd_()) {
-		SetPosition(pos.x, pos.y, pos.z);
-		SetVelocity(0, 50, 0); // Initial upward velocity
+		SetOrientToVelocity(true);
+		SetOrientToVelocity(false);
 		SetTrailLength(500);
 		SetTrailRocket(true);
 		shape_->SetScale(glm::vec3(0.08f));
 		std::dynamic_pointer_cast<Model>(shape_)->SetBaseRotation(
 			glm::angleAxis(glm::radians(-90.0f), glm::vec3(0.0f, 1.0f, 0.0f))
 		);
-		SetOrientToVelocity(true);
+
+		SetPosition(pos.x, pos.y+0.5f, pos.z);
+		SetOrientation(glm::angleAxis(glm::radians(-90.0f), glm::vec3(1.0f, 0.0f, 0.0f)));
+		// SetOrientation(glm::quatLookAt(glm::vec3(0, 1, 0), glm::vec3(0, 1, 0)));
+		SetVelocity(0, 5, 0); // Initial upward velocity
 	}
 
 	void GuidedMissile::UpdateEntity(const EntityHandler& handler, float time, float delta_time) {
@@ -38,10 +42,10 @@ namespace Boidsish {
 			return;
 		}
 
-		if (lived_ >= lifetime_) {
-			Explode(handler, false);
-			return;
-		}
+		// if (lived_ >= lifetime_) {
+		// 	Explode(handler, false);
+		// 	return;
+		// }
 		auto [height, norm] = handler.vis->GetTerrainPointProperties(pos.x, pos.z);
 		if (pos.y < height) {
 			Explode(handler, false);
@@ -54,7 +58,7 @@ namespace Boidsish {
 		const float kAcceleration = 150.0f;
 
 		if (lived_ < kLaunchTime) {
-			rigid_body_.AddRelativeForce({0, 0, 1 * kAcceleration});
+			rigid_body_.AddRelativeForce({0, 0, 0.1f * kAcceleration});
 		} else {
 			auto targets = handler.GetEntitiesByType<PaperPlane>();
 			if (targets.empty()) {
@@ -80,16 +84,16 @@ namespace Boidsish {
 			// Apply torque to align velocity with the target
 			Vector3 forward = rigid_body_.GetOrientation() * glm::vec3(0, 0, 1);
 			Vector3 torque = forward.Cross(omega.Normalized());
-			rigid_body_.AddTorque(torque * 100.0f);
+			rigid_body_.AddTorque(torque * -900.0f);
 
 			// Apply forward thrust
 			rigid_body_.AddRelativeForce({0, 0, 1 * kAcceleration});
 		}
 
 		// Clamp velocity to max speed
-		if (GetVelocity().Magnitude() > kMaxSpeed) {
-			rigid_body_.SetLinearVelocity(GetVelocity().Normalized() * kMaxSpeed);
-		}
+		// if (GetVelocity().Magnitude() > kMaxSpeed) {
+		// 	rigid_body_.SetLinearVelocity(GetVelocity().Normalized() * kMaxSpeed);
+		// }
 
 		// Terrain avoidance
 		const auto* terrain_generator = handler.GetTerrainGenerator();
