@@ -149,8 +149,10 @@ namespace Boidsish {
 			input_callbacks.push_back([this](const InputState& state) { this->DefaultInputHandler(state); });
 
 			last_frame = std::chrono::high_resolution_clock::now();
+			std::cout << "Initializing GLFW..." << std::endl;
 			if (!glfwInit())
 				throw std::runtime_error("Failed to initialize GLFW");
+			std::cout << "GLFW initialized." << std::endl;
 
 			glfwSetErrorCallback([](int error, const char* description) {
 				std::cerr << "GLFW Error " << error << ": " << description << std::endl;
