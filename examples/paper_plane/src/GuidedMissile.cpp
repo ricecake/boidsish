@@ -13,8 +13,13 @@ namespace Boidsish {
 		rotational_velocity_(glm::vec3(0.0f)),
 		forward_speed_(0.0f),
 		eng_(rd_()) {
-		SetPosition(pos.x, pos.y, pos.z);
-		SetVelocity(0, 0, 0);
+		SetOrientToVelocity(false);
+
+
+		orientation_ = glm::angleAxis(glm::radians(-90.0f), glm::vec3(1.0f, 0.0f, 0.0f));
+		// orientation_ = glm::quatLookAt(glm::vec3(0, 1, 0), glm::vec3(0, 0, 1));
+		SetPosition(pos.x, pos.y+0.5f, pos.z);
+		SetVelocity(0, 50, 0);
 		SetTrailLength(500);
 		SetTrailRocket(true);
 		shape_->SetScale(glm::vec3(0.08f));
@@ -22,7 +27,6 @@ namespace Boidsish {
 			glm::angleAxis(glm::radians(-90.0f), glm::vec3(0.0f, 1.0f, 0.0f))
 		);
 		// orientation_ *= glm::angleAxis(glm::radians(0.0f), glm::vec3(1.0f, 0.0f, 0.0f));
-		orientation_ = glm::quatLookAt(glm::vec3(0, 1, 0), glm::vec3(0, 1, 0));
 		UpdateShape();
 	}
 
@@ -59,7 +63,7 @@ namespace Boidsish {
 		const float kAcceleration = 150.0f;
 
 		if (lived_ < kLaunchTime) {
-					orientation_ = glm::quatLookAt(glm::vec3(0, 1, 0), glm::vec3(0, 1, 0));
+					// orientation_ = glm::quatLookAt(glm::vec3(0, 1, 0), glm::vec3(0, 1, 0));
 
 			// orientation_ = glm::angleAxis(glm::radians(-90.0f), glm::vec3(1.0f, 0.0f, 0.0f));
 			forward_speed_ += kAcceleration * delta_time;
@@ -78,7 +82,7 @@ namespace Boidsish {
 
 				if ((plane->GetPosition() - GetPosition()).Magnitude() < 10) {
 					Explode(handler, true);
-					plane->TriggerDamage();
+					// plane->TriggerDamage();
 					return;
 				}
 
