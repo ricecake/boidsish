@@ -9,6 +9,7 @@ layout(std140) uniform VisualEffects {
 	int shimmery_enabled;
 	int glitched_enabled;
 	int wireframe_enabled;
+uniform int patchwork_enabled;
 };
 
 #endif

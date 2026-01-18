@@ -2,6 +2,7 @@
 #define ARTISTIC_EFFECTS_FRAG
 
 #include "visual_effects.glsl"
+#include "helpers/noise.glsl"
 
 vec3 applyBlackAndWhite(vec3 color) {
 	if (black_and_white_enabled == 1) {
@@ -74,7 +75,25 @@ vec3 applyWireframe(vec3 color, vec3 barycentric) {
 	return color;
 }
 
+vec3 applyPatchwork(vec3 color, vec3 fragPos, vec3 barycentric, float time) {
+	float noise = (snoise(fragPos.xy * 0.5 + time * 0.5) + 1.0) / 2.0;
+
+	if (noise < 0.25) {
+		return applyNegative(color);
+	} else if (noise < 0.5) {
+		return applyGlitched(color, fragPos, time);
+	} else if (noise < 0.75) {
+		return applyShimmery(color, time);
+	} else {
+		return applyColorShift(color, fragPos, time);
+	}
+}
+
 vec3 applyArtisticEffects(vec3 color, vec3 fragPos, vec3 barycentric, float time) {
+	if (patchwork_enabled == 1) {
+		return applyPatchwork(color, fragPos, barycentric, time);
+	}
+
 	color = applyBlackAndWhite(color);
 	color = applyColorShift(color, fragPos, time);
 	color = applyNegative(color);
