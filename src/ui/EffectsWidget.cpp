@@ -52,6 +52,11 @@ namespace Boidsish {
 				config.SetBool("artistic_effect_wireframe", wireframe_enabled);
 			}
 
+			bool curl_noise_enabled = config.GetAppSettingBool("artistic_effect_curl_noise", false);
+			if (ImGui::Checkbox("Curl Noise", &curl_noise_enabled)) {
+				config.SetBool("artistic_effect_curl_noise", curl_noise_enabled);
+			}
+
 			ImGui::End();
 		}
 

@@ -5,6 +5,7 @@ layout(location = 2) in vec2 aTexCoords;
 
 #include "visual_effects.glsl"
 #include "visual_effects.vert"
+#include "helpers/curl.glsl"
 
 out vec3 FragPos;
 out vec3 Normal;
@@ -32,6 +33,11 @@ void main() {
 
 	if (glitched_enabled == 1) {
 		displacedPos = applyGlitch(displacedPos, time);
+	}
+
+	if (curl_noise_enabled == 1) {
+		float strength = 0.5;
+		displacedPos += curlNoise(aPos, time) * strength;
 	}
 
 	if (ripple_strength > 0.0) {

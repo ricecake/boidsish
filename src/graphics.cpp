@@ -1359,6 +1359,7 @@ namespace Boidsish {
 			ubo_data.shimmery_enabled = config.GetAppSettingBool("artistic_effect_shimmery", false);
 			ubo_data.glitched_enabled = config.GetAppSettingBool("artistic_effect_glitched", false);
 			ubo_data.wireframe_enabled = config.GetAppSettingBool("artistic_effect_wireframe", false);
+			ubo_data.curl_noise_enabled = config.GetAppSettingBool("artistic_effect_curl_noise", false);
 			ubo_data.color_shift_enabled = config.GetAppSettingBool("artistic_effect_color_shift", false);
 			if (config.GetAppSettingBool("artistic_effect_ripple", false)) {
 				ubo_data.ripple_enabled = 1;
@@ -1619,6 +1620,9 @@ namespace Boidsish {
 		case VisualEffect::WIREFRAME:
 			config.SetBool("artistic_effect_wireframe", !config.GetAppSettingBool("artistic_effect_wireframe", false));
 			break;
+		case VisualEffect::CURL_NOISE:
+			config.SetBool("artistic_effect_curl_noise", !config.GetAppSettingBool("artistic_effect_curl_noise", false));
+			break;
 		case VisualEffect::FREEZE_FRAME_TRAIL:
 			// This one doesn't have a toggle, it's event-driven
 			break;
@@ -1797,5 +1801,9 @@ namespace Boidsish {
 
 	bool Visualizer::IsWireframeEffectEnabled() const {
 		return ConfigManager::GetInstance().GetAppSettingBool("artistic_effect_wireframe", false);
+	}
+
+	bool Visualizer::IsCurlNoiseEffectEnabled() const {
+		return ConfigManager::GetInstance().GetAppSettingBool("artistic_effect_curl_noise", false);
 	}
 } // namespace Boidsish

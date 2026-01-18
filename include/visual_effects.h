@@ -10,6 +10,7 @@ namespace Boidsish {
 		GLITCHED,
 		WIREFRAME,
 		FREEZE_FRAME_TRAIL,
+		CURL_NOISE,
 	};
 
 	struct VisualEffectsUbo {
@@ -20,5 +21,6 @@ namespace Boidsish {
 		int shimmery_enabled;
 		int glitched_enabled;
 		int wireframe_enabled;
+		int curl_noise_enabled;
 	};
 } // namespace Boidsish

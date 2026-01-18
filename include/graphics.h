@@ -217,6 +217,7 @@ namespace Boidsish {
 		bool IsShimmeryEffectEnabled() const;
 		bool IsGlitchedEffectEnabled() const;
 		bool IsWireframeEffectEnabled() const;
+		bool IsCurlNoiseEffectEnabled() const;
 
 		void AddHudNumber(const HudNumber& number);
 		void UpdateHudNumber(int id, const HudNumber& number);
