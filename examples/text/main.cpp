@@ -2,6 +2,7 @@
 
 #include "graphics.h"
 #include "text.h"
+#include <GLFW/glfw3.h>
 
 int main() {
 	Boidsish::Visualizer visualizer(1280, 720, "Text Example");
@@ -27,13 +28,25 @@ int main() {
 	text_shape->SetScale(glm::vec3(0.5f));
 	visualizer.AddShape(text_shape);
 
-	// visualizer.GetCamera().z = 200.0f;
+	double      last_time = glfwGetTime();
+	int         frame_count = 0;
+	std::string original_text = "Hello, World!";
+
+	std::vector<std::shared_ptr<Boidsish::Shape>> shapes;
+	visualizer.AddShapeHandler([&](float time) {
+		frame_count++;
+		double current_time = glfwGetTime();
+
+		if (current_time - last_time >= 1.0) {
+			std::string new_text = original_text + " " + std::to_string(frame_count);
+			text_shape->SetText(new_text);
+			frame_count = 0;
+			last_time = current_time;
+		}
+
+		return shapes;
+	});
 
 	visualizer.Run();
-
-	// while (!visualizer.ShouldClose()) {
-	// 	visualizer.Update();
-	// }
-
 	return 0;
 }
