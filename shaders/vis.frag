@@ -10,22 +10,30 @@ in vec3 Normal;
 in vec3 vs_color;
 in vec3 barycentric;
 in vec2 TexCoords;
+in vec4 FragPosLightSpace;
 
-uniform vec3 objectColor;
+uniform sampler2D shadow_map;
+uniform vec3      objectColor;
 uniform int  useVertexColor;
 uniform bool isColossal = true;
 
 uniform sampler2D texture_diffuse1;
 uniform bool      use_texture;
 
+#include "shadow.glsl"
+
 void main() {
+    vec3 norm = normalize(Normal);
+    vec3 lightDir = normalize(lightPos - FragPos);
+
+    // Shadow
+    float shadow = ShadowCalculation(FragPosLightSpace, norm, lightDir);
+
 	// Ambient
 	float ambientStrength = 0.1;
 	vec3  ambient = ambientStrength * lightColor;
 
 	// Diffuse
-	vec3  norm = normalize(Normal);
-	vec3  lightDir = normalize(lightPos - FragPos);
 	float diff = max(dot(norm, lightDir), 0.0);
 	vec3  diffuse = diff * lightColor;
 
@@ -49,7 +57,7 @@ void main() {
 		final_color = objectColor;
 	}
 
-	vec3 result = (ambient + diffuse) * final_color + specular;
+	vec3 result = (ambient + (1.0 - shadow) * (diffuse + specular)) * final_color;
 
 	if (use_texture) {
 		result *= texture(texture_diffuse1, TexCoords).rgb;

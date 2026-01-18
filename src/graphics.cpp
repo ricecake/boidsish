@@ -80,13 +80,18 @@ namespace Boidsish {
 		std::unique_ptr<Shader> trail_shader;
 		std::unique_ptr<Shader> blur_shader;
 		std::unique_ptr<Shader> postprocess_shader_;
+        std::unique_ptr<Shader> shadow_shader;
+        std::unique_ptr<Shader> shadow_terrain_shader;
 		GLuint                  plane_vao{0}, plane_vbo{0}, sky_vao{0}, blur_quad_vao{0}, blur_quad_vbo{0};
 		GLuint                  reflection_fbo{0}, reflection_texture{0}, reflection_depth_rbo{0};
 		GLuint                  pingpong_fbo[2]{0}, pingpong_texture[2]{0};
 		GLuint                  main_fbo_{0}, main_fbo_texture_{0}, main_fbo_rbo_{0};
+        GLuint                  shadow_fbo{0}, shadow_texture{0};
 		GLuint                  lighting_ubo{0};
 		GLuint                  visual_effects_ubo{0};
-		glm::mat4               projection, reflection_vp;
+		glm::mat4               projection, reflection_vp, light_space_matrix;
+
+        const unsigned int SHADOW_WIDTH = 4096, SHADOW_HEIGHT = 4096;
 
 		double last_mouse_x = 0.0, last_mouse_y = 0.0;
 		bool   first_mouse = true;
@@ -208,6 +213,8 @@ namespace Boidsish {
 			if (ConfigManager::GetInstance().GetAppSettingBool("enable_effects", true)) {
 				postprocess_shader_ = std::make_unique<Shader>("shaders/postprocess.vert", "shaders/postprocess.frag");
 			}
+            shadow_shader = std::make_unique<Shader>("shaders/shadow_map.vert", "shaders/shadow_map.frag");
+            shadow_terrain_shader = std::make_unique<Shader>("shaders/shadow_map.vert", "shaders/shadow_map.frag", "shaders/terrain.tcs", "shaders/terrain.tes");
 			if (ConfigManager::GetInstance().GetAppSettingBool("enable_terrain", true)) {
 				terrain_generator = std::make_unique<TerrainGenerator>();
 			}
@@ -391,6 +398,29 @@ namespace Boidsish {
 				std::cerr << "ERROR::FRAMEBUFFER:: Main framebuffer is not complete!" << std::endl;
 			glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
+            // --- Shadow Framebuffer ---
+            glGenFramebuffers(1, &shadow_fbo);
+            glBindFramebuffer(GL_FRAMEBUFFER, shadow_fbo);
+
+            glGenTextures(1, &shadow_texture);
+            glBindTexture(GL_TEXTURE_2D, shadow_texture);
+            glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT, SHADOW_WIDTH, SHADOW_HEIGHT, 0, GL_DEPTH_COMPONENT, GL_FLOAT, NULL);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_BORDER);
+            float borderColor[] = { 1.0f, 1.0f, 1.0f, 1.0f };
+            glTexParameterfv(GL_TEXTURE_2D, GL_TEXTURE_BORDER_COLOR, borderColor);
+
+            glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, shadow_texture, 0);
+            glDrawBuffer(GL_NONE);
+            glReadBuffer(GL_NONE);
+
+            if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
+                std::cerr << "ERROR::FRAMEBUFFER:: Shadow framebuffer is not complete!" << std::endl;
+            glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+
 			if (postprocess_shader_) {
 				// --- Post Processing Manager ---
 				post_processing_manager_ = std::make_unique<PostProcessing::PostProcessingManager>(
@@ -478,6 +508,10 @@ namespace Boidsish {
 				glDeleteFramebuffers(2, pingpong_fbo);
 				glDeleteTextures(2, pingpong_texture);
 			}
+            if (shadow_fbo) {
+                glDeleteFramebuffers(1, &shadow_fbo);
+                glDeleteTextures(1, &shadow_texture);
+            }
 			if (window)
 				glfwDestroyWindow(window);
 			glfwTerminate();
@@ -595,6 +629,12 @@ namespace Boidsish {
 				ConfigManager::GetInstance().GetAppSettingBool("artistic_effect_ripple", false) ? 0.05f : 0.0f
 			);
 			shader->setMat4("view", view);
+            shader->setMat4("lightSpaceMatrix", light_space_matrix);
+
+            glActiveTexture(GL_TEXTURE1);
+            glBindTexture(GL_TEXTURE_2D, shadow_texture);
+            shader->setInt("shadow_map", 1);
+
 			if (clip_plane) {
 				shader->setVec4("clipPlane", *clip_plane);
 			} else {
@@ -640,6 +680,10 @@ namespace Boidsish {
 			Terrain::terrain_shader_->use();
 			Terrain::terrain_shader_->setMat4("view", view);
 			Terrain::terrain_shader_->setMat4("projection", projection);
+            Terrain::terrain_shader_->setMat4("lightSpaceMatrix", light_space_matrix);
+            glActiveTexture(GL_TEXTURE1);
+            glBindTexture(GL_TEXTURE_2D, shadow_texture);
+            Terrain::terrain_shader_->setInt("shadow_map", 1);
 			Terrain::terrain_shader_->setFloat("uTessQualityMultiplier", tess_quality_multiplier_);
 			Terrain::terrain_shader_->setFloat("uTessLevelMax", 64.0f);
 			Terrain::terrain_shader_->setFloat("uTessLevelMin", 1.0f);
@@ -1305,6 +1349,58 @@ namespace Boidsish {
 		for (const auto& pair : impl->persistent_shapes) {
 			impl->shapes.push_back(pair.second);
 		}
+
+        // --- Shadow Pass ---
+        {
+            float near_plane = 1.0f, far_plane = 100.0f;
+            glm::mat4 light_projection = glm::ortho(-50.0f, 50.0f, -50.0f, 50.0f, near_plane, far_plane);
+
+            float     light_x = 50.0f * cos(impl->simulation_time * 0.05f);
+            float     light_y = 25.0f + 1.8 * abs(sin(impl->simulation_time * 0.01));
+            float     light_z = 50.0f * sin(impl->simulation_time * 0.05f);
+            glm::vec3 light_pos(light_x, light_y, light_z);
+
+            glm::mat4 light_view = glm::lookAt(light_pos, glm::vec3(0.0f), glm::vec3(0.0, 1.0, 0.0));
+            impl->light_space_matrix = light_projection * light_view;
+
+            logger::LOG("Light Pos: " + std::to_string(light_pos.x) + ", " + std::to_string(light_pos.y) + ", " + std::to_string(light_pos.z));
+            // logger::LOG("Light View Matrix: " + glm::to_string(light_view));
+            // logger::LOG("Light Space Matrix: " + glm::to_string(impl->light_space_matrix));
+
+            glViewport(0, 0, impl->SHADOW_WIDTH, impl->SHADOW_HEIGHT);
+            glBindFramebuffer(GL_FRAMEBUFFER, impl->shadow_fbo);
+            glClear(GL_DEPTH_BUFFER_BIT);
+
+            // Slope-based depth bias to prevent shadow acne.
+            glEnable(GL_POLYGON_OFFSET_FILL);
+            glPolygonOffset(4.0f, 4.0f);
+
+
+            impl->shadow_shader->use();
+            impl->shadow_shader->setMat4("lightSpaceMatrix", impl->light_space_matrix);
+
+            // Render entities
+            for (const auto& shape : impl->shapes) {
+                impl->shadow_shader->setMat4("model", shape->GetModelMatrix());
+                shape->render();
+            }
+
+            // Render terrain
+            if (impl->terrain_generator && ConfigManager::GetInstance().GetAppSettingBool("render_terrain", true)) {
+                impl->shadow_terrain_shader->use();
+                impl->shadow_terrain_shader->setMat4("lightSpaceMatrix", impl->light_space_matrix);
+                auto terrain_chunks = impl->terrain_generator->getVisibleChunks();
+                for (const auto& chunk : terrain_chunks) {
+                    chunk->render();
+                }
+            }
+
+            glDisable(GL_POLYGON_OFFSET_FILL);
+            glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+            // Reset viewport
+            glViewport(0, 0, impl->width, impl->height);
+        }
 
 		impl->UpdateTrails(impl->shapes, impl->simulation_time);
 

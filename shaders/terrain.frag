@@ -4,6 +4,9 @@ out vec4 FragColor;
 in vec3 Normal;
 in vec3 FragPos;
 in vec2 TexCoords;
+in vec4 FragPosLightSpace;
+
+uniform sampler2D shadow_map;
 
 layout(std140, binding = 0) uniform Lighting {
 	vec3  lightPos;
@@ -169,6 +172,8 @@ vec3 getFlowField(vec3 pos, vec3 normal, float time) {
 	return normalize(flow);
 }
 
+#include "shadow.glsl"
+
 void main() {
 	// discard;
 	// FragColor = vec4(1,1,1, 1);
@@ -197,6 +202,8 @@ void main() {
 	float spec = pow(max(dot(viewDir, reflectDir), 0.0), 64);
 	vec3  specular = specularStrength * spec * lightColor;
 
+    float shadow = ShadowCalculation(FragPosLightSpace, norm, lightDir);
+
 	// --- Grid logic ---
 	float grid_spacing = 1.0;
 	vec2  coord = FragPos.xz / grid_spacing;
@@ -212,7 +219,7 @@ void main() {
 
 	float intensity = max(C_minor, C_major * 1.5) * length(fwidth(FragPos));
 	vec3  grid_color = vec3(normalize(abs(fwidth(FragPos.zxy))) * intensity);
-	vec3  result = vec3((ambient + diffuse) * objectColor + specular) + grid_color; // Add specular on top
+	vec3  result = vec3((ambient + (1.0 - shadow) * (diffuse + specular)) * objectColor) + grid_color; // Add specular on top
 
 	// --- Distance Fade ---
 	float dist = length(FragPos.xz - viewPos.xz);

@@ -11,10 +11,12 @@ out vec3 Normal;
 out vec3 vs_color;
 out vec3 barycentric;
 out vec2 TexCoords;
+out vec4 FragPosLightSpace;
 
 uniform mat4  model;
 uniform mat4  view;
 uniform mat4  projection;
+uniform mat4  lightSpaceMatrix;
 uniform vec4  clipPlane;
 uniform float ripple_strength;
 uniform bool  isColossal = true;
@@ -69,5 +71,6 @@ void main() {
 		gl_Position = projection * view * vec4(FragPos, 1.0);
 	}
 
+    FragPosLightSpace = lightSpaceMatrix * vec4(FragPos, 1.0);
 	gl_ClipDistance[0] = dot(vec4(FragPos, 1.0), clipPlane);
 }

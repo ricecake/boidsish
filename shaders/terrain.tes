@@ -6,9 +6,11 @@ layout(quads, fractional_odd_spacing, cw) in;
 in vec3 WorldPos_TC_out[];
 in vec2 TexCoords_TC_out[];
 in vec3 Normal_TC_out[];
+in vec4 FragPosLightSpace_TC_out[];
 
 // Output to Fragment Shader
 out vec3 FragPos;
+out vec4 FragPosLightSpace;
 out vec3 Normal;
 out vec2 TexCoords;
 
@@ -65,4 +67,13 @@ void main() {
 
 	// Final vertex position
 	gl_Position = projection * view * vec4(FragPos, 1.0);
+
+    vec4 p0_light = FragPosLightSpace_TC_out[0];
+    vec4 p1_light = FragPosLightSpace_TC_out[1];
+    vec4 p2_light = FragPosLightSpace_TC_out[2];
+    vec4 p3_light = FragPosLightSpace_TC_out[3];
+
+    vec4 light_pos1 = mix(p0_light, p1_light, uv.x);
+    vec4 light_pos2 = mix(p3_light, p2_light, uv.x);
+    FragPosLightSpace = mix(light_pos1, light_pos2, uv.y);
 }
