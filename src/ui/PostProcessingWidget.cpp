@@ -12,7 +12,7 @@ namespace Boidsish {
 		void PostProcessingWidget::Draw() {
 			ImGui::Begin("Post-Processing Effects");
 
-			for (auto& effect : manager_.GetEffects()) {
+			for (auto& effect : manager_.GetPreToneMappingEffects()) {
 				bool is_enabled = effect->IsEnabled();
 				if (ImGui::Checkbox(effect->GetName().c_str(), &is_enabled)) {
 					effect->SetEnabled(is_enabled);
@@ -41,6 +41,15 @@ namespace Boidsish {
 						}
 					}
 				}
+			}
+
+			if (auto tone_mapping_effect = manager_.GetToneMappingEffect()) {
+				ImGui::Separator();
+				bool is_enabled = tone_mapping_effect->IsEnabled();
+				// The tone mapping effect should not be disable-able from the UI
+				// if (ImGui::Checkbox(tone_mapping_effect->GetName().c_str(), &is_enabled)) {
+				// 	tone_mapping_effect->SetEnabled(is_enabled);
+				// }
 			}
 
 			ImGui::End();

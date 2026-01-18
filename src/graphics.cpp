@@ -409,40 +409,40 @@ namespace Boidsish {
 
 				auto negative_effect = std::make_shared<PostProcessing::NegativeEffect>();
 				negative_effect->SetEnabled(false);
-				post_processing_manager_->AddEffect(negative_effect);
+				post_processing_manager_->AddPreToneMappingEffect(negative_effect);
 
 				auto glitch_effect = std::make_shared<PostProcessing::GlitchEffect>();
 				glitch_effect->SetEnabled(false);
-				post_processing_manager_->AddEffect(glitch_effect);
+				post_processing_manager_->AddPreToneMappingEffect(glitch_effect);
 
 				auto optical_flow_effect = std::make_shared<PostProcessing::OpticalFlowEffect>();
 				optical_flow_effect->SetEnabled(false);
-				post_processing_manager_->AddEffect(optical_flow_effect);
+				post_processing_manager_->AddPreToneMappingEffect(optical_flow_effect);
 
 				auto strobe_effect = std::make_shared<PostProcessing::StrobeEffect>();
 				strobe_effect->SetEnabled(false);
-				post_processing_manager_->AddEffect(strobe_effect);
+				post_processing_manager_->AddPreToneMappingEffect(strobe_effect);
 
 				auto whisp_trail_effect = std::make_shared<PostProcessing::WhispTrailEffect>();
 				whisp_trail_effect->SetEnabled(false);
-				post_processing_manager_->AddEffect(whisp_trail_effect);
+				post_processing_manager_->AddPreToneMappingEffect(whisp_trail_effect);
 
 				auto time_stutter_effect = std::make_shared<PostProcessing::TimeStutterEffect>();
 				time_stutter_effect->SetEnabled(false);
-				post_processing_manager_->AddEffect(time_stutter_effect);
+				post_processing_manager_->AddPreToneMappingEffect(time_stutter_effect);
 
 				auto film_grain_effect = std::make_shared<PostProcessing::FilmGrainEffect>();
 				film_grain_effect->SetEnabled(false);
-				post_processing_manager_->AddEffect(film_grain_effect);
+				post_processing_manager_->AddPreToneMappingEffect(film_grain_effect);
 
 				auto bloom_effect = std::make_shared<PostProcessing::BloomEffect>(width, height);
 				bloom_effect->SetEnabled(false);
-				post_processing_manager_->AddEffect(bloom_effect);
+				post_processing_manager_->AddPreToneMappingEffect(bloom_effect);
 
 				if (enable_hdr_) {
 					auto tone_mapping_effect = std::make_shared<PostProcessing::ToneMappingEffect>();
 					tone_mapping_effect->SetEnabled(true);
-					post_processing_manager_->AddEffect(tone_mapping_effect);
+					post_processing_manager_->SetToneMappingEffect(tone_mapping_effect);
 				}
 
 				// --- UI ---
@@ -852,7 +852,7 @@ namespace Boidsish {
 			}
 
 			if (state.key_down[GLFW_KEY_F1]) {
-				for (auto& effect : post_processing_manager_->GetEffects()) {
+				for (auto& effect : post_processing_manager_->GetPreToneMappingEffects()) {
 					if (effect->GetName() == "OpticalFlow") {
 						effect->SetEnabled(!effect->IsEnabled());
 					}
@@ -1447,22 +1447,12 @@ namespace Boidsish {
 		if (ConfigManager::GetInstance().GetAppSettingBool("enable_effects", true)) {
 			// --- Post-processing Pass (renders FBO texture to screen) ---
 			// Update time-dependent effects
-			for (auto& effect : impl->post_processing_manager_->GetEffects()) {
+			for (auto& effect : impl->post_processing_manager_->GetPreToneMappingEffects()) {
 				effect->SetTime(impl->simulation_time);
 			}
 
-			bool any_effect_enabled = false;
-			for (const auto& effect : impl->post_processing_manager_->GetEffects()) {
-				if (effect->IsEnabled()) {
-					any_effect_enabled = true;
-					break;
-				}
-			}
-
-			GLuint final_texture = impl->main_fbo_texture_;
-			if (any_effect_enabled) {
-				final_texture = impl->post_processing_manager_->ApplyEffects(impl->main_fbo_texture_);
-			}
+			// No need to check if any effect is enabled, the manager handles it.
+			GLuint final_texture = impl->post_processing_manager_->ApplyEffects(impl->main_fbo_texture_);
 
 			glBindFramebuffer(GL_FRAMEBUFFER, 0);
 			glDisable(GL_DEPTH_TEST);
@@ -1745,7 +1735,7 @@ namespace Boidsish {
 
 	void Visualizer::TogglePostProcessingEffect(const std::string& name) {
 		if (impl->post_processing_manager_) {
-			for (auto& effect : impl->post_processing_manager_->GetEffects()) {
+			for (auto& effect : impl->post_processing_manager_->GetPreToneMappingEffects()) {
 				if (effect->GetName() == name) {
 					effect->SetEnabled(!effect->IsEnabled());
 					break;
@@ -1756,7 +1746,7 @@ namespace Boidsish {
 
 	void Visualizer::TogglePostProcessingEffect(const std::string& name, const bool newState) {
 		if (impl->post_processing_manager_) {
-			for (auto& effect : impl->post_processing_manager_->GetEffects()) {
+			for (auto& effect : impl->post_processing_manager_->GetPreToneMappingEffects()) {
 				if (effect->GetName() == name) {
 					effect->SetEnabled(newState);
 					break;
@@ -1767,7 +1757,7 @@ namespace Boidsish {
 
 	void Visualizer::SetFilmGrainIntensity(float intensity) {
 		if (impl->post_processing_manager_) {
-			for (auto& effect : impl->post_processing_manager_->GetEffects()) {
+			for (auto& effect : impl->post_processing_manager_->GetPreToneMappingEffects()) {
 				if (auto film_grain = std::dynamic_pointer_cast<PostProcessing::FilmGrainEffect>(effect)) {
 					film_grain->SetIntensity(intensity);
 					break;
