@@ -192,7 +192,13 @@ namespace Boidsish {
 			glDepthFunc(GL_LEQUAL);
 			glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
 
-			shader = std::make_shared<Shader>("shaders/vis.vert", "shaders/vis.frag");
+			shader = std::make_shared<Shader>(
+				"shaders/vis.vert",
+				"shaders/vis.frag",
+				"shaders/vis.tesc",
+				"shaders/vis.tese",
+				"shaders/vis.geom"
+			);
 			Shape::shader = shader;
 			trail_shader = std::make_unique<Shader>("shaders/trail.vert", "shaders/trail.frag");
 			if (ConfigManager::GetInstance().GetAppSettingBool("enable_floor", true)) {
