@@ -3,6 +3,7 @@
 #include <memory>
 #include <string>
 #include <vector>
+#include <map>
 
 #include "shape.h"
 #include <glm/glm.hpp>
@@ -33,12 +34,14 @@ namespace Boidsish {
 		void      render() const override;
 		void      render(Shader& shader, const glm::mat4& model_matrix) const override;
 		glm::mat4 GetModelMatrix() const override;
+        void SetText(const std::string& text);
 
 	private:
 		void LoadFont(const std::string& font_path);
 		void GenerateMesh(const std::string& text, float font_size, float depth);
 
 		std::string text_;
+        std::map<char, std::vector<float>> glyph_cache_;
 		std::string font_path_;
 		float       font_size_;
 		float       depth_;
