@@ -105,6 +105,7 @@ namespace Boidsish {
 		model = glm::translate(model, glm::vec3(GetX(), GetY(), GetZ()));
 		model *= glm::mat4_cast(GetRotation());
 		model *= glm::mat4_cast(base_rotation_);
+		model = glm::translate(model, base_offset_);
 		model = glm::scale(model, GetScale());
 
 		shader.setMat4("model", model);
@@ -128,6 +129,7 @@ namespace Boidsish {
 		model = glm::translate(model, glm::vec3(GetX(), GetY(), GetZ()));
 		model *= glm::mat4_cast(GetRotation());
 		model *= glm::mat4_cast(base_rotation_);
+		model = glm::translate(model, base_offset_);
 		model = glm::scale(model, GetScale());
 		return model;
 	}

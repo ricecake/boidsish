@@ -61,10 +61,12 @@ namespace Boidsish {
 		const std::vector<Mesh>& getMeshes() const { return meshes; }
 
 		void SetBaseRotation(const glm::quat& rotation) { base_rotation_ = rotation; }
+		void SetBaseOffset(const glm::vec3& offset) { base_offset_ = offset; }
 
 	private:
 		// Model data
 		glm::quat            base_rotation_ = glm::quat(1.0f, 0.0f, 0.0f, 0.0f);
+		glm::vec3            base_offset_ = glm::vec3(0.0f);
 		std::vector<Mesh>    meshes;
 		std::string          directory;
 		bool                 no_cull_ = false;
