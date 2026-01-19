@@ -22,7 +22,7 @@ namespace Boidsish {
 		rigid_body_.SetLinearVelocity(glm::vec3(0, 100, 0));
 
 
-		SetTrailLength(500);
+		SetTrailLength(100);
 		SetTrailRocket(true);
 		shape_->SetScale(glm::vec3(0.08f));
 		std::dynamic_pointer_cast<Model>(shape_)->SetBaseRotation(
@@ -50,15 +50,15 @@ namespace Boidsish {
 			return;
 		}
 
-		// if (lived_ >= lifetime_) {
-		// 	Explode(handler, false);
-		// 	return;
-		// }
-		// auto [height, norm] = handler.vis->GetTerrainPointProperties(pos.x, pos.z);
-		// if (pos.y < height) {
-		// 	Explode(handler, false);
-		// 	return;
-		// }
+		if (lived_ >= lifetime_) {
+			Explode(handler, false);
+			return;
+		}
+		auto [height, norm] = handler.vis->GetTerrainPointProperties(pos.x, pos.z);
+		if (pos.y < height) {
+			Explode(handler, false);
+			return;
+		}
 
 		// --- Flight Model Constants ---
 		const float kLaunchTime = 0.5f;
@@ -66,7 +66,7 @@ namespace Boidsish {
 		const float kAcceleration = 150.0f;
 
 		if (lived_ < kLaunchTime) {
-			rigid_body_.AddRelativeForce(glm::vec3(0, 0, 150));
+			rigid_body_.AddRelativeForce(glm::vec3(0, 0, 250));
 		} else {
 			const float kTurnSpeed = 100.0f;
 			const float kDamping = 2.5f;
@@ -77,27 +77,28 @@ namespace Boidsish {
 				auto  plane = targets[0];
 				auto& r = rigid_body_;
 
-				// if ((plane->GetPosition() - GetPosition()).Magnitude() < 10) {
-				// 	Explode(handler, true);
-				// 	// plane->TriggerDamage();
-				// 	return;
-				// }
+				if ((plane->GetPosition() - GetPosition()).Magnitude() < 10) {
+					Explode(handler, true);
+					// plane->TriggerDamage();
+					return;
+				}
 
-				r.AddRelativeForce(glm::vec3(0, 0, 300));
+				r.AddRelativeForce(glm::vec3(0, 0, 500));
 
-				Vector3   target_vec = (plane->GetPosition() - GetPosition()).Normalized();
-				glm::vec3 target_dir_world = glm::vec3(target_vec.x, target_vec.y, target_vec.z);
+
+				glm::vec3   target_vec = (plane->GetPosition() - GetPosition()).Toglm();
+				glm::vec3 target_dir_world = glm::normalize(glm::vec3(target_vec.x, target_vec.y, target_vec.z));
 
 				glm::vec3 target_dir_local = WorldToObject(target_dir_world);
 				glm::vec3 P = glm::vec3(0, 0, 1);
 
 				glm::vec3 torque = glm::cross(P, target_dir_local);
 
-				if (lived_ <= 2.5f) {
+				if (lived_ <= 6.0f) {
 					std::uniform_real_distribution<float> dist(-1.0f, 1.0f);
 					glm::vec3                             error_vector(dist(eng_), dist(eng_), dist(eng_));
-					float error_scale = 1.0f - lived_/2.5f;
-					torque = glm::normalize(torque + error_scale * error_vector);
+					float error_scale = 1.0f - lived_/6.0f;
+					torque = glm::normalize(torque + error_scale * std::log(std::min(150, target_vec.length())) * error_vector);
 				}
 
 
@@ -147,16 +148,16 @@ namespace Boidsish {
 			return;
 
 		auto pos = GetPosition();
-		handler.EnqueueVisualizerAction([=, &handler]() {
-			handler.vis->AddFireEffect(
-				glm::vec3(pos.x, pos.y, pos.z),
-				FireEffectStyle::Explosion,
-				glm::vec3(0, 1, 0),
-				glm::vec3(0, 0, 0),
-				-1,
-				2.0f
-			);
-		});
+		// handler.EnqueueVisualizerAction([=, &handler]() {
+		// 	handler.vis->AddFireEffect(
+		// 		glm::vec3(pos.x, pos.y, pos.z),
+		// 		FireEffectStyle::Explosion,
+		// 		glm::vec3(0, 1, 0),
+		// 		glm::vec3(0, 0, 0),
+		// 		-1,
+		// 		2.0f
+		// 	);
+		// });
 
 		handler.EnqueueVisualizerAction([exhaust = exhaust_effect_]() {
 			if (exhaust) {
