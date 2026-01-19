@@ -11,6 +11,7 @@ namespace Boidsish {
 
 	CatMissile::CatMissile(int id, Vector3 pos, glm::quat orientation, glm::vec3 dir, Vector3 vel):
 		Entity<Model>(id, "assets/Missile.obj", true), eng_(rd_()) {
+		// rigid_body_.linear_friction_ = 0.0f;
 		SetOrientToVelocity(false);
 
 		rigid_body_.SetOrientation(orientation);
