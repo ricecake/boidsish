@@ -126,7 +126,7 @@ namespace Boidsish {
 		int       trail_length_;
 		bool      trail_iridescent_;
 		bool      trail_rocket_ = false; // New member for rocket trail
-		bool      orient_to_velocity_ = true;
+		bool      orient_to_velocity_ = false;
 
 		// Path following
 		std::shared_ptr<Path> path_;
