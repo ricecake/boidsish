@@ -14,11 +14,11 @@ void main() {
 	// Additive blending
 	vec3 result = sceneColor + bloomColor * intensity;
 
-	// Tone mapping to prevent oversaturation
-	result = vec3(1.0) - exp(-result * 1.0);
+	// // Tone mapping to prevent oversaturation
+	// result = vec3(1.0) - exp(-result * 1.0);
 
-	// Gamma correction
-	result = pow(result, vec3(1.0 / 2.2));
+	// // Gamma correction
+	// result = pow(result, vec3(1.0 / 2.2));
 
 	FragColor = vec4(result, 1.0);
 }
