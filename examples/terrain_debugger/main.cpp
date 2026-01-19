@@ -2,6 +2,7 @@
 #include <vector>
 
 #include "stb_image_write.h"
+#include "i_terrain_generator.h"
 #include "terrain_generator.h"
 #include <glm/glm.hpp>
 
@@ -38,7 +39,7 @@ glm::vec3 getColor(float control_value) {
 	// return colors[4];
 }
 
-void generateHeightmap(const Boidsish::TerrainGenerator& generator, int width, int height) {
+void generateHeightmap(const Boidsish::ITerrainGenerator& generator, int width, int height) {
 	std::vector<unsigned char> pixels(width * height * 3);
 	float                      max_height = generator.GetMaxHeight();
 
@@ -68,7 +69,7 @@ void generateHeightmap(const Boidsish::TerrainGenerator& generator, int width, i
 	std::cout << "Generated heightmap.png" << std::endl;
 }
 
-void generateBiomeMap(const Boidsish::TerrainGenerator& generator, int width, int height) {
+void generateBiomeMap(const Boidsish::ITerrainGenerator& generator, int width, int height) {
 	std::vector<unsigned char> pixels(width * height * 3);
 	glm::vec3                  biome_colors[] = {
         {0.0f, 0.0f, 1.0f}, // Blue
@@ -99,7 +100,7 @@ void generateBiomeMap(const Boidsish::TerrainGenerator& generator, int width, in
 	std::cout << "Generated biome_map.png" << std::endl;
 }
 
-void generateDomainWarpMap(const Boidsish::TerrainGenerator& generator, int width, int height) {
+void generateDomainWarpMap(const Boidsish::ITerrainGenerator& generator, int width, int height) {
 	std::vector<unsigned char> pixels(width * height * 3);
 
 	for (int y = 0; y < height; ++y) {

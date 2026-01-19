@@ -32,6 +32,7 @@
 #include "spline.h"
 #include "task_thread_pool.hpp"
 #include "terrain.h"
+#include "i_terrain_generator.h"
 #include "terrain_generator.h"
 #include "trail.h"
 #include "ui/ConfigWidget.h"
@@ -72,7 +73,7 @@ namespace Boidsish {
 		std::unique_ptr<PostProcessing::PostProcessingManager> post_processing_manager_;
 		int                                                    exit_key;
 
-		std::unique_ptr<TerrainGenerator> terrain_generator;
+		std::unique_ptr<ITerrainGenerator> terrain_generator;
 
 		std::shared_ptr<Shader> shader;
 		std::unique_ptr<Shader> plane_shader;
@@ -1648,7 +1649,7 @@ namespace Boidsish {
 		return impl->terrain_generator->getVisibleChunks();
 	}
 
-	const TerrainGenerator* Visualizer::GetTerrainGenerator() const {
+	const ITerrainGenerator* Visualizer::GetTerrainGenerator() const {
 		return impl->terrain_generator.get();
 	}
 

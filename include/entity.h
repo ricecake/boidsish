@@ -20,7 +20,7 @@ namespace Boidsish {
 
 	// Forward declaration for Entity class
 	class EntityHandler;
-	class TerrainGenerator;
+	class ITerrainGenerator;
 
 	// Base entity class for the entity system
 	class EntityBase {
@@ -284,7 +284,7 @@ namespace Boidsish {
 
 		std::tuple<float, glm::vec3>                 GetTerrainPointProperties(float x, float y) const;
 		const std::vector<std::shared_ptr<Terrain>>& GetTerrainChunks() const;
-		const TerrainGenerator*                      GetTerrainGenerator() const;
+		const ITerrainGenerator*                     GetTerrainGenerator() const;
 
 		// Thread-safe methods for entity modification
 		template <typename T, typename... Args>

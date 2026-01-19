@@ -3,6 +3,7 @@
 #include "dot.h"
 #include "graphics.h"
 #include "path.h"
+#include "i_terrain_generator.h"
 #include "terrain_generator.h"
 
 using namespace Boidsish;
@@ -11,7 +12,7 @@ int main(int argc, char** argv) {
 	Boidsish::Visualizer visualizer(1024, 768, "Terrain Path Demo");
 
 	// Get the terrain generator from the visualizer
-	const Boidsish::TerrainGenerator* terrain_generator = visualizer.GetTerrainGenerator();
+	const Boidsish::ITerrainGenerator* terrain_generator = visualizer.GetTerrainGenerator();
 
 	// Get the path
 	auto terrainPath = terrain_generator->GetPath({0, 0}, 200, 5.0f);

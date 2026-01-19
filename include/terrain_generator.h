@@ -6,6 +6,7 @@
 #include <vector>
 
 #include "Simplex.h"
+#include "i_terrain_generator.h"
 #include "terrain.h"
 #include "thread_pool.h"
 #include <FastNoise/FastNoise.h>
@@ -27,19 +28,19 @@ namespace Boidsish {
 		bool                      has_terrain;
 	};
 
-	class TerrainGenerator {
+	class TerrainGenerator : public ITerrainGenerator {
 	public:
 		TerrainGenerator(int seed = 12345);
 		~TerrainGenerator();
 
-		void                                         update(const Frustum& frustum, const Camera& camera);
-		const std::vector<std::shared_ptr<Terrain>>& getVisibleChunks() const;
+		void                                         update(const Frustum& frustum, const Camera& camera) override;
+		const std::vector<std::shared_ptr<Terrain>>& getVisibleChunks() const override;
 
-		std::vector<uint16_t> GenerateSuperChunkTexture(int requested_x, int requested_z);
-		std::vector<uint16_t> GenerateTextureForArea(int world_x, int world_z, int size);
-		void                  ConvertDatToPng(const std::string& dat_filepath, const std::string& png_filepath);
+		std::vector<uint16_t> GenerateSuperChunkTexture(int requested_x, int requested_z) override;
+		std::vector<uint16_t> GenerateTextureForArea(int world_x, int world_z, int size) override;
+		void                  ConvertDatToPng(const std::string& dat_filepath, const std::string& png_filepath) override;
 
-		float GetMaxHeight() const {
+		float GetMaxHeight() const override {
 			float max_h = 0.0f;
 			for (const auto& biome : biomes) {
 				max_h = std::max(max_h, biome.floorLevel);
@@ -47,7 +48,7 @@ namespace Boidsish {
 			return max_h * 0.8;
 		}
 
-		std::tuple<float, glm::vec3> pointProperties(float x, float z) const {
+		std::tuple<float, glm::vec3> pointProperties(float x, float z) const override {
 			// Determine grid cell
 			float tx = x - floor(x);
 			float tz = z - floor(z);
@@ -86,12 +87,12 @@ namespace Boidsish {
 			return {final_pos.y, final_norm};
 		}
 
-		bool Raycast(const glm::vec3& origin, const glm::vec3& dir, float max_dist, float& out_dist) const;
+		bool Raycast(const glm::vec3& origin, const glm::vec3& dir, float max_dist, float& out_dist) const override;
 
-		std::vector<glm::vec3> GetPath(glm::vec2 start_pos, int num_points, float step_size) const;
+		std::vector<glm::vec3> GetPath(glm::vec2 start_pos, int num_points, float step_size) const override;
 
-		float     getBiomeControlValue(float x, float z) const;
-		glm::vec2 getDomainWarp(float x, float z) const;
+		float     getBiomeControlValue(float x, float z) const override;
+		glm::vec2 getDomainWarp(float x, float z) const override;
 
 	private:
 		glm::vec2 findClosestPointOnPath(glm::vec2 sample_pos) const;

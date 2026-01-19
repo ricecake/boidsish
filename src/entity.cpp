@@ -128,7 +128,7 @@ namespace Boidsish {
 		return vis->GetTerrainChunks();
 	}
 
-	const TerrainGenerator* EntityHandler::GetTerrainGenerator() const {
+	const ITerrainGenerator* EntityHandler::GetTerrainGenerator() const {
 		return vis->GetTerrainGenerator();
 	}
 
