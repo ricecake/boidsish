@@ -90,7 +90,17 @@ namespace Boidsish {
 
 				glm::vec3 target_dir_local = WorldToObject(target_dir_world);
 				glm::vec3 P = glm::vec3(0, 0, 1);
+
 				glm::vec3 torque = glm::cross(P, target_dir_local);
+
+				if (lived_ <= 2.5f) {
+					std::uniform_real_distribution<float> dist(-1.0f, 1.0f);
+					glm::vec3                             error_vector(dist(eng_), dist(eng_), dist(eng_));
+					float error_scale = 1.0f - lived_/2.5f;
+					torque = glm::normalize(torque + error_scale * error_vector);
+				}
+
+
 				r.AddRelativeTorque(torque * kTurnSpeed);
 
 				const auto* terrain_generator = handler.GetTerrainGenerator();
