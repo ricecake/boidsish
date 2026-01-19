@@ -27,6 +27,7 @@
 #include "post_processing/effects/OpticalFlowEffect.h"
 #include "post_processing/effects/StrobeEffect.h"
 #include "post_processing/effects/TimeStutterEffect.h"
+#include "post_processing/effects/ToneMappingEffect.h"
 #include "post_processing/effects/WhispTrailEffect.h"
 #include "sound_effect_manager.h"
 #include "spline.h"
@@ -131,12 +132,14 @@ namespace Boidsish {
 		// Cached global settings
 		float camera_roll_speed_;
 		float camera_speed_step_;
+		bool  enable_hdr_ = false;
 
 		task_thread_pool::task_thread_pool thread_pool;
 		std::unique_ptr<AudioManager>      audio_manager;
 
 		VisualizerImpl(Visualizer* p, int w, int h, const char* title): parent(p), width(w), height(h) {
 			ConfigManager::GetInstance().Initialize(title);
+			enable_hdr_ = ConfigManager::GetInstance().GetAppSettingBool("enable_hdr", false);
 			width = ConfigManager::GetInstance().GetAppSettingInt("window_width", w);
 			height = ConfigManager::GetInstance().GetAppSettingInt("window_height", h);
 			is_fullscreen_ = ConfigManager::GetInstance().GetAppSettingBool("fullscreen", false);
@@ -376,7 +379,11 @@ namespace Boidsish {
 			// Color attachment
 			glGenTextures(1, &main_fbo_texture_);
 			glBindTexture(GL_TEXTURE_2D, main_fbo_texture_);
-			glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, width, height, 0, GL_RGB, GL_UNSIGNED_BYTE, NULL);
+			if (enable_hdr_) {
+				glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB16F, width, height, 0, GL_RGB, GL_FLOAT, NULL);
+			} else {
+				glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, width, height, 0, GL_RGB, GL_UNSIGNED_BYTE, NULL);
+			}
 			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
 			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 			glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, main_fbo_texture_, 0);
@@ -431,6 +438,12 @@ namespace Boidsish {
 				auto bloom_effect = std::make_shared<PostProcessing::BloomEffect>(width, height);
 				bloom_effect->SetEnabled(false);
 				post_processing_manager_->AddEffect(bloom_effect);
+
+				if (enable_hdr_) {
+					auto tone_mapping_effect = std::make_shared<PostProcessing::ToneMappingEffect>();
+					tone_mapping_effect->SetEnabled(true);
+					post_processing_manager_->SetToneMappingEffect(tone_mapping_effect);
+				}
 
 				// --- UI ---
 				auto post_processing_widget = std::make_shared<UI::PostProcessingWidget>(*post_processing_manager_);
@@ -839,7 +852,7 @@ namespace Boidsish {
 			}
 
 			if (state.key_down[GLFW_KEY_F1]) {
-				for (auto& effect : post_processing_manager_->GetEffects()) {
+				for (auto& effect : post_processing_manager_->GetPreToneMappingEffects()) {
 					if (effect->GetName() == "OpticalFlow") {
 						effect->SetEnabled(!effect->IsEnabled());
 					}
@@ -1177,7 +1190,11 @@ namespace Boidsish {
 
 			// --- Resize main scene framebuffer ---
 			glBindTexture(GL_TEXTURE_2D, impl->main_fbo_texture_);
-			glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, width, height, 0, GL_RGB, GL_UNSIGNED_BYTE, NULL);
+			if (impl->enable_hdr_) {
+				glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB16F, width, height, 0, GL_RGB, GL_FLOAT, NULL);
+			} else {
+				glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, width, height, 0, GL_RGB, GL_UNSIGNED_BYTE, NULL);
+			}
 			glBindRenderbuffer(GL_RENDERBUFFER, impl->main_fbo_rbo_);
 			glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH24_STENCIL8, width, height);
 
@@ -1430,22 +1447,12 @@ namespace Boidsish {
 		if (ConfigManager::GetInstance().GetAppSettingBool("enable_effects", true)) {
 			// --- Post-processing Pass (renders FBO texture to screen) ---
 			// Update time-dependent effects
-			for (auto& effect : impl->post_processing_manager_->GetEffects()) {
+			for (auto& effect : impl->post_processing_manager_->GetPreToneMappingEffects()) {
 				effect->SetTime(impl->simulation_time);
 			}
 
-			bool any_effect_enabled = false;
-			for (const auto& effect : impl->post_processing_manager_->GetEffects()) {
-				if (effect->IsEnabled()) {
-					any_effect_enabled = true;
-					break;
-				}
-			}
-
-			GLuint final_texture = impl->main_fbo_texture_;
-			if (any_effect_enabled) {
-				final_texture = impl->post_processing_manager_->ApplyEffects(impl->main_fbo_texture_);
-			}
+			// No need to check if any effect is enabled, the manager handles it.
+			GLuint final_texture = impl->post_processing_manager_->ApplyEffects(impl->main_fbo_texture_);
 
 			glBindFramebuffer(GL_FRAMEBUFFER, 0);
 			glDisable(GL_DEPTH_TEST);
@@ -1728,7 +1735,7 @@ namespace Boidsish {
 
 	void Visualizer::TogglePostProcessingEffect(const std::string& name) {
 		if (impl->post_processing_manager_) {
-			for (auto& effect : impl->post_processing_manager_->GetEffects()) {
+			for (auto& effect : impl->post_processing_manager_->GetPreToneMappingEffects()) {
 				if (effect->GetName() == name) {
 					effect->SetEnabled(!effect->IsEnabled());
 					break;
@@ -1739,7 +1746,7 @@ namespace Boidsish {
 
 	void Visualizer::TogglePostProcessingEffect(const std::string& name, const bool newState) {
 		if (impl->post_processing_manager_) {
-			for (auto& effect : impl->post_processing_manager_->GetEffects()) {
+			for (auto& effect : impl->post_processing_manager_->GetPreToneMappingEffects()) {
 				if (effect->GetName() == name) {
 					effect->SetEnabled(newState);
 					break;
@@ -1750,7 +1757,7 @@ namespace Boidsish {
 
 	void Visualizer::SetFilmGrainIntensity(float intensity) {
 		if (impl->post_processing_manager_) {
-			for (auto& effect : impl->post_processing_manager_->GetEffects()) {
+			for (auto& effect : impl->post_processing_manager_->GetPreToneMappingEffects()) {
 				if (auto film_grain = std::dynamic_pointer_cast<PostProcessing::FilmGrainEffect>(effect)) {
 					film_grain->SetIntensity(intensity);
 					break;

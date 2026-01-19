@@ -27,9 +27,6 @@ void main() {
 	// --- 2. Add the current scene ---
 	vec4 sceneColor = texture(sceneTexture, TexCoords);
 
-	// sceneColor = length(sceneColor) * normalize(normalize(vec4(vec3(1.0) - sceneColor.rgb, 0.9) - sceneColor)*0.2 + normalize(sceneColor));
-	sceneColor = length(sceneColor) * normalize(normalize(vec4(vec3(1.0) - sceneColor.rgb, 0.9) - sceneColor)*0.2 + normalize(sceneColor));
-
 	// Blend the new scene on top of the faded trail.
 	// Use max to keep the brightest parts, creating a persistent glow.
 	FragColor = max(sceneColor, prevTrailColor);

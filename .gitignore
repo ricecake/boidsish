@@ -200,3 +200,6 @@ _deps
 
 # Profiling files
 gmon.out
+
+# XWD files
+*.xwd
