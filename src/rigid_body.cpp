@@ -273,14 +273,26 @@ void RigidBody::Update(float dt) {
     torque_accumulator_ = glm::vec3(0.0f);
 }
 
-void RigidBody::FaceVelocity() {
-    glm::vec3 linVel = GetLinearVelocity();
-    if (glm::length(linVel) > 0.001f) {
-        glm::vec3 direction = glm::normalize(linVel);
-        glm::quat targetRot = glm::quatLookAt(direction, glm::vec3(0, 1, 0));
-        SetOrientation(targetRot);
-    }
-}
+// void RigidBody::FaceVelocity() {
+	void RigidBody::FaceVelocity() {
+		glm::vec3 linVel = glm::vec3(twist_.dual.x, twist_.dual.y, twist_.dual.z);
+
+		if (glm::length(linVel) > 0.001f) {
+			glm::vec3 direction = glm::normalize(linVel);
+			glm::quat targetRot = glm::quatLookAt(direction, glm::vec3(0, 1, 0.01f));
+			glm::vec3 currentPos = GetTranslation(pose_);
+			pose_ = glm::dualquat(targetRot, currentPos);
+		}
+	}
+
+
+//     glm::vec3 linVel = GetLinearVelocity();
+//     if (glm::length(linVel) > 0.001f) {
+//         glm::vec3 direction = glm::normalize(linVel);
+//         glm::quat targetRot = glm::quatLookAt(direction, glm::vec3(0, 1, 0));
+//         SetOrientation(targetRot);
+//     }
+// }
 
 /*
 

@@ -11,8 +11,8 @@ namespace Boidsish {
 
 	CatMissile::CatMissile(int id, Vector3 pos, glm::quat orientation, glm::vec3 dir, Vector3 vel):
 		Entity<Model>(id, "assets/Missile.obj", true), eng_(rd_()) {
-		// rigid_body_.linear_friction_ = 0.0f;
-		SetOrientToVelocity(false);
+		rigid_body_.linear_friction_ = 0.0f;
+		rigid_body_.angular_friction_ = 0.0f;
 
 		rigid_body_.SetOrientation(orientation);
 		SetPosition(pos.x, pos.y, pos.z);
@@ -76,7 +76,7 @@ namespace Boidsish {
 		// 	forward_speed_ = kMaxSpeed;
 		// }
 
-		rigid_body_.AddRelativeForce(glm::vec3(0, 0, -400));
+		rigid_body_.AddRelativeForce(glm::vec3(0, 0, -300));
 
 		const float kTurnSpeed = 100.0f;
 		const float kDamping = 2.5f;
@@ -136,7 +136,7 @@ namespace Boidsish {
 
 		const auto* terrain_generator = handler.GetTerrainGenerator();
 		if (terrain_generator) {
-			const float reaction_distance = 50.0f;
+			const float reaction_distance = 100.0f;
 			float       hit_dist = 0.0f;
 
 			Vector3 vel_vec = GetVelocity();

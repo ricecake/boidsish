@@ -12,10 +12,15 @@ namespace Boidsish {
 		Entity<Model>(id, "assets/Missile.obj", true), eng_(rd_()) {
 		auto orientation = glm::angleAxis(glm::radians(-90.0f), glm::vec3(1.0f, 0.0f, 0.0f));
 
-		SetOrientToVelocity(false);
-		SetPosition(pos.x, pos.y+0.5f, pos.z);
+		auto dist = std::uniform_int_distribution(0, 1);
+		auto wobbleDist = std::uniform_real_distribution<float>(0.75f, 1.50f);
+		handedness = dist(eng_)? 1 : -1;
+		wobble = wobbleDist(eng_);
 
+		// SetOrientToVelocity(true);
+		SetPosition(pos.x, pos.y+0.5f, pos.z);
 		rigid_body_.SetOrientation(orientation);
+		rigid_body_.SetAngularVelocity(glm::vec3(0,0,0));
 		rigid_body_.SetLinearVelocity(glm::vec3(0, 100, 0));
 
 
@@ -80,7 +85,7 @@ namespace Boidsish {
 					return;
 				}
 
-				r.AddRelativeForce(glm::vec3(0, 0, 500));
+				r.AddRelativeForce(glm::vec3(0, 0, 1000));
 
 
 				glm::vec3 velocity = rigid_body_.GetLinearVelocity();
@@ -89,16 +94,17 @@ namespace Boidsish {
 
 
 				// log10(x/10+1)/2
-				std::uniform_real_distribution<float> dist(0.5f, 0.75f);
+				std::uniform_real_distribution<float> dist(0.25f, 0.5f);
 				auto distance = glm::length(target_vec);
 				auto distance_scale = log10(distance/50.0f+1);
 				float error_scale = (1.0f - lived_/lifetime_) * distance_scale;
 				glm::vec3 right = glm::cross(target_dir_world, glm::vec3(0,1,0));
 				glm::vec3 up = glm::cross(right, target_dir_world);
-				auto theta = lived_ * (2.0f+2*(1.0f-distance_scale));
-				auto offset=(right*cos(theta))+(up*0.75f*sin(theta));
+				auto theta = handedness * lived_ * (2.0f+2*(1.0f-distance_scale));
+				// auto offset=(right*cos(theta))+(up*0.75f*sin(theta));
+				auto offset=(right*sin(theta/3)*cos(theta))+(up*cos(theta/2)*sin(theta));
 
-				auto adjusted_target_dir_world = glm::normalize(target_vec + offset*dist(eng_)*distance*error_scale*error_scale);
+				auto adjusted_target_dir_world = glm::normalize(target_vec + wobble*offset*dist(eng_)*distance*error_scale*error_scale);
 
 				glm::vec3 target_dir_local = WorldToObject(adjusted_target_dir_world);
 				glm::vec3 P = glm::vec3(0, 0, 1);
