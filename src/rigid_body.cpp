@@ -241,8 +241,10 @@ void RigidBody::Update(float dt) {
     glm::vec3 new_angular_velocity = initial_angular_velocity + angular_acceleration * dt;
 
     // Apply friction to new velocities
-    new_linear_velocity *= (1.0f - linear_friction_);
-    new_angular_velocity *= (1.0f - angular_friction_);
+    float linear_damping = 1.0f - (linear_friction_ * dt);
+    float angular_damping = 1.0f - (angular_friction_ * dt);
+    new_linear_velocity *= (linear_damping > 0.0f ? linear_damping : 0.0f);
+    new_angular_velocity *= (angular_damping > 0.0f ? angular_damping : 0.0f);
 
     // Update position and orientation using average velocities
     glm::vec3 avg_linear_velocity = (initial_linear_velocity + new_linear_velocity) * 0.5f;
