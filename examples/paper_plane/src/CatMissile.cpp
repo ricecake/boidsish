@@ -12,9 +12,9 @@ namespace Boidsish {
 	CatMissile::CatMissile(int id, Vector3 pos, glm::quat orientation, glm::vec3 dir, Vector3 vel):
 		Entity<Model>(id, "assets/Missile.obj", true), eng_(rd_()) {
 		SetOrientToVelocity(false);
-		SetPosition(pos.x, pos.y, pos.z);
 
 		rigid_body_.SetOrientation(orientation);
+		SetPosition(pos.x, pos.y, pos.z);
 		rigid_body_.SetLinearVelocity(glm::vec3(vel.x, vel.y, vel.z) + 5.0f * dir);
 
 		SetTrailLength(0);
@@ -55,13 +55,14 @@ namespace Boidsish {
 			// auto velo = GetVelocity();
 			// velo += Vector3(0, -0.07f, 0);
 			// SetVelocity(velo);
+			rigid_body_.AddForce(glm::vec3(0, -1.0, 0));
 			return;
 		}
 
 		if (!fired_) {
 			SetTrailLength(500);
 			SetTrailRocket(true);
-			SetOrientToVelocity(true);
+			// SetOrientToVelocity(true);
 			launch_sound_ = handler.vis->AddSoundEffect("assets/rocket.wav", pos.Toglm(), GetVelocity().Toglm(), 10.0f);
 
 			fired_ = true;
@@ -74,12 +75,11 @@ namespace Boidsish {
 		// 	forward_speed_ = kMaxSpeed;
 		// }
 
-		rigid_body_.AddRelativeForce(glm::vec3(0, 0, -500));
+		rigid_body_.AddRelativeForce(glm::vec3(0, 0, -400));
 
 		const float kTurnSpeed = 100.0f;
 		const float kDamping = 2.5f;
 
-		if (true || target_ == nullptr) {
 			auto& spatial_handler = static_cast<const SpatialEntityHandler&>(handler);
 			auto  targets = spatial_handler.GetEntitiesInRadius<GuidedMissileLauncher>(
                 pos,
@@ -115,29 +115,27 @@ namespace Boidsish {
 				}
 			}
 
-			if (target_ == nullptr) {
+		glm::vec3 target_dir_world;
+		if (target_ != nullptr) {
+			if ((target_->GetPosition() - GetPosition()).Magnitude() < 10) {
+				Explode(handler, true);
 				return;
 			}
-		}
-
-		if ((target_->GetPosition() - GetPosition()).Magnitude() < 10) {
-			Explode(handler, true);
-			return;
-		}
 
 		// logger::LOG("Seeking", target_->GetId(), glm::length(pos.Toglm() - target_->GetPosition().Toglm()));
 
-		Vector3   target_vec = (target_->GetPosition() - GetPosition()).Normalized();
-		glm::vec3 target_dir_world = glm::vec3(target_vec.x, target_vec.y, target_vec.z);
+			Vector3   target_vec = (target_->GetPosition() - GetPosition()).Normalized();
+			target_dir_world = glm::vec3(target_vec.x, target_vec.y, target_vec.z);
 
-		glm::vec3 target_dir_local = WorldToObject(target_dir_world);
-		glm::vec3 P = glm::vec3(0, 0, -1);
-		glm::vec3 torque = glm::cross(P, target_dir_local);
-		rigid_body_.AddRelativeTorque(torque * kTurnSpeed);
+			glm::vec3 target_dir_local = WorldToObject(target_dir_world);
+			glm::vec3 P = glm::vec3(0, 0, -1);
+			glm::vec3 torque = glm::cross(P, target_dir_local);
+			rigid_body_.AddRelativeTorque(torque * kTurnSpeed);
+		}
 
 		const auto* terrain_generator = handler.GetTerrainGenerator();
 		if (terrain_generator) {
-			const float reaction_distance = 100.0f;
+			const float reaction_distance = 50.0f;
 			float       hit_dist = 0.0f;
 
 			Vector3 vel_vec = GetVelocity();
@@ -158,7 +156,9 @@ namespace Boidsish {
 						away = local_up;
 					}
 
-					away = target_dir_world - (glm::dot(target_dir_world, away)) * away;
+					if(target_ != nullptr) {
+						away = target_dir_world - (glm::dot(target_dir_world, away)) * away;
+					}
 
 					glm::vec3 target_dir_local = WorldToObject(away);
 					glm::vec3 P = glm::vec3(0, 0, -1);
