@@ -3,6 +3,7 @@
 #include "imgui.h"
 #include "post_processing/effects/BloomEffect.h"
 #include "post_processing/effects/FilmGrainEffect.h"
+#include "post_processing/effects/ToneMappingEffect.h"
 
 namespace Boidsish {
 	namespace UI {
@@ -36,20 +37,27 @@ namespace Boidsish {
 							bloom_effect->SetIntensity(intensity);
 						}
 						float threshold = bloom_effect->GetThreshold();
-						if (ImGui::SliderFloat("Threshold", &threshold, 0.0f, 5.0f)) {
+						if (ImGui::SliderFloat("Threshold", &threshold, 0.0f, 3.0f)) {
 							bloom_effect->SetThreshold(threshold);
 						}
 					}
 				}
 			}
 
-			if (auto tone_mapping_effect = manager_.GetToneMappingEffect()) {
+			if (auto effect = manager_.GetToneMappingEffect()) {
+				auto tone_mapping_effect = std::dynamic_pointer_cast<PostProcessing::ToneMappingEffect>(effect);
 				ImGui::Separator();
 				bool is_enabled = tone_mapping_effect->IsEnabled();
-				// The tone mapping effect should not be disable-able from the UI
-				// if (ImGui::Checkbox(tone_mapping_effect->GetName().c_str(), &is_enabled)) {
-				// 	tone_mapping_effect->SetEnabled(is_enabled);
-				// }
+				if (is_enabled) {
+					// Camera mode dropdown
+					const char* modes[] = {"ACES", "Filmic", "Lottes", "Reinhard", "Reinhard II", "Uchimura", "Uncharted 2", "Unreal 3"};
+					int         current_mode = tone_mapping_effect->GetMode();
+					if (ImGui::Combo("Mode", &current_mode, modes, IM_ARRAYSIZE(modes))) {
+						tone_mapping_effect->SetMode(current_mode);
+					}
+				}
+
+
 			}
 
 			ImGui::End();
@@ -57,3 +65,4 @@ namespace Boidsish {
 
 	} // namespace UI
 } // namespace Boidsish
+

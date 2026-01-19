@@ -1,7 +1,5 @@
 #version 330 core
-#extension GL_ARB_shading_language_include : require
 
-// #version 330 core
 out vec4 FragColor;
 
 in vec2 TexCoords;
@@ -9,23 +7,6 @@ in vec2 TexCoords;
 uniform sampler2D sceneTexture;
 uniform vec2 resolution;
 uniform int toneMapMode = 2;
-
-// void main()
-// {
-//     // Sample the HDR texture
-//     vec3 hdrColor = texture(sceneTexture, TexCoords).rgb;
-
-//     // Apply Reinhard tone mapping
-//     // This maps the color to a range of [0, 1]
-//     vec3 mappedColor = hdrColor / (hdrColor + vec3(1.0));
-
-//     // The output is now in LDR.
-//     FragColor = vec4(mappedColor, 1.0);
-// }
-
-
-// #version 330 core
-// #extension GL_ARB_shading_language_include : require
 
 ////////////////////////////////////////////////////////////////////////////////
 // Narkowicz 2015, "ACES Filmic Tone Mapping Curve"
@@ -205,66 +186,34 @@ void main()
     vec2 uv = vec2(gl_FragCoord.xy / resolution);
     vec3 tex = texture(sceneTexture, uv).rgb;
 
-    if (toneMapMode == 0){
-FragColor = vec4(aces(tex), 1.0f);
+    if (toneMapMode == 0) {
+        FragColor = vec4(aces(tex), 1.0f);
     }
-    else if (toneMapMode == 1){
-FragColor = vec4(tonemapFilmic(tex), 1.0f);
+    else if (toneMapMode == 1) {
+        FragColor = vec4(tonemapFilmic(tex), 1.0f);
     }
-    else if (toneMapMode == 2){
-FragColor = vec4(lottes(tex), 1.0f);
+    else if (toneMapMode == 2) {
+        FragColor = vec4(lottes(tex), 1.0f);
     }
-    else if (toneMapMode == 3){
-FragColor = vec4(reinhard(tex), 1.0f);
+    else if (toneMapMode == 3) {
+        FragColor = vec4(reinhard(tex), 1.0f);
     }
-    else if (toneMapMode == 4){
-FragColor = vec4(reinhard2(tex), 1.0f);
+    else if (toneMapMode == 4) {
+        FragColor = vec4(reinhard2(tex), 1.0f);
     }
-    else if (toneMapMode == 5){
-FragColor = vec4(uchimura(tex), 1.0f);
+    else if (toneMapMode == 5) {
+        FragColor = vec4(uchimura(tex), 1.0f);
     }
-    else if (toneMapMode == 6){
-FragColor = vec4(uncharted2(tex), 1.0f);
+    else if (toneMapMode == 6) {
+        FragColor = vec4(uncharted2(tex), 1.0f);
     }
-    else if (toneMapMode == 7){
-FragColor = vec4(unreal(tex), 1.0f);
+    else if (toneMapMode == 7) {
+        FragColor = vec4(unreal(tex), 1.0f);
     }
-    else if (toneMapMode == 8){
-FragColor = vec4(tex, 1.0f);
+    else if (toneMapMode == 8) {
+        FragColor = vec4(tex, 1.0f);
     }
     else {
-FragColor = vec4(tonemapFilmic(tex), 1.0f);
+        FragColor = vec4(tonemapFilmic(tex), 1.0f);
     }
-
-    // switch(toneMapMode)
-    // {
-    //     case 0:
-    //         FragColor = vec4(aces(tex), 1.0f);
-    //         break;
-    //     case 1:
-    //         FragColor = vec4(tonemapFilmic(tex), 1.0f);
-    //         break;
-    //     case 2:
-    //         FragColor = vec4(lottes(tex), 1.0f);
-    //         break;
-    //     case 3:
-    //         FragColor = vec4(reinhard(tex), 1.0f);
-    //         break;
-    //     case 4:
-    //         FragColor = vec4(reinhard2(tex), 1.0f);
-    //         break;
-    //     case 5:
-    //         FragColor = vec4(uchimura(tex), 1.0f);
-    //         break;
-    //     case 6:
-    //         FragColor = vec4(uncharted2(tex), 1.0f);
-    //         break;
-    //     case 7:
-    //         FragColor = vec4(unreal(tex), 1.0f);
-    //         break;
-    //     case 8:
-    //         FragColor = vec4(tex, 1.0f);
-    //         break;
-    // }
-
 }

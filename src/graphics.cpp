@@ -409,35 +409,35 @@ namespace Boidsish {
 
 				auto negative_effect = std::make_shared<PostProcessing::NegativeEffect>();
 				negative_effect->SetEnabled(false);
-				post_processing_manager_->AddPreToneMappingEffect(negative_effect);
+				post_processing_manager_->AddEffect(negative_effect);
 
 				auto glitch_effect = std::make_shared<PostProcessing::GlitchEffect>();
 				glitch_effect->SetEnabled(false);
-				post_processing_manager_->AddPreToneMappingEffect(glitch_effect);
+				post_processing_manager_->AddEffect(glitch_effect);
 
 				auto optical_flow_effect = std::make_shared<PostProcessing::OpticalFlowEffect>();
 				optical_flow_effect->SetEnabled(false);
-				post_processing_manager_->AddPreToneMappingEffect(optical_flow_effect);
+				post_processing_manager_->AddEffect(optical_flow_effect);
 
 				auto strobe_effect = std::make_shared<PostProcessing::StrobeEffect>();
 				strobe_effect->SetEnabled(false);
-				post_processing_manager_->AddPreToneMappingEffect(strobe_effect);
+				post_processing_manager_->AddEffect(strobe_effect);
 
 				auto whisp_trail_effect = std::make_shared<PostProcessing::WhispTrailEffect>();
 				whisp_trail_effect->SetEnabled(false);
-				post_processing_manager_->AddPreToneMappingEffect(whisp_trail_effect);
+				post_processing_manager_->AddEffect(whisp_trail_effect);
 
 				auto time_stutter_effect = std::make_shared<PostProcessing::TimeStutterEffect>();
 				time_stutter_effect->SetEnabled(false);
-				post_processing_manager_->AddPreToneMappingEffect(time_stutter_effect);
+				post_processing_manager_->AddEffect(time_stutter_effect);
 
 				auto film_grain_effect = std::make_shared<PostProcessing::FilmGrainEffect>();
 				film_grain_effect->SetEnabled(false);
-				post_processing_manager_->AddPreToneMappingEffect(film_grain_effect);
+				post_processing_manager_->AddEffect(film_grain_effect);
 
 				auto bloom_effect = std::make_shared<PostProcessing::BloomEffect>(width, height);
 				bloom_effect->SetEnabled(false);
-				post_processing_manager_->AddPreToneMappingEffect(bloom_effect);
+				post_processing_manager_->AddEffect(bloom_effect);
 
 				if (enable_hdr_) {
 					auto tone_mapping_effect = std::make_shared<PostProcessing::ToneMappingEffect>();

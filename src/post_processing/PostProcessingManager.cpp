@@ -47,7 +47,7 @@ namespace Boidsish {
 			glBindFramebuffer(GL_FRAMEBUFFER, 0);
 		}
 
-void PostProcessingManager::AddPreToneMappingEffect(std::shared_ptr<IPostProcessingEffect> effect) {
+void PostProcessingManager::AddEffect(std::shared_ptr<IPostProcessingEffect> effect) {
 			effect->Initialize(width_, height_);
 	pre_tone_mapping_effects_.push_back(effect);
 }

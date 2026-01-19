@@ -21,6 +21,7 @@ void ToneMappingEffect::Initialize(int width, int height) {
 void ToneMappingEffect::Apply(GLuint sourceTexture) {
     _shader->use();
     _shader->setInt("sceneTexture", 0);
+    _shader->setInt("toneMapMode", toneMode_);
     _shader->setVec2("resolution", (float)width_, (float)height_);
 
     glActiveTexture(GL_TEXTURE0);

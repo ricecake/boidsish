@@ -16,11 +16,14 @@ public:
     void Initialize(int width, int height) override;
     void Apply(GLuint sourceTexture) override;
     void Resize(int width, int height) override;
+    void SetMode(float toneMode) { toneMode_ = toneMode; }
+    int GetMode() const { return toneMode_; }
 
 private:
     std::unique_ptr<Shader> _shader;
     int width_ = 0;
     int height_ = 0;
+    int toneMode_ = 2;
 
 };
 

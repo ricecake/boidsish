@@ -17,7 +17,7 @@ namespace Boidsish {
 			~PostProcessingManager();
 
 			void   Initialize();
-			void   AddPreToneMappingEffect(std::shared_ptr<IPostProcessingEffect> effect);
+			void   AddEffect(std::shared_ptr<IPostProcessingEffect> effect);
 			void   SetToneMappingEffect(std::shared_ptr<IPostProcessingEffect> effect);
 			GLuint ApplyEffects(GLuint sourceTexture);
 			void   Resize(int width, int height);

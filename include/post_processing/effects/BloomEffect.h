@@ -48,8 +48,8 @@ namespace Boidsish {
 			std::vector<BloomMip> _mipChain;
 
 			int   _width, _height;
-			float intensity_ = 0.4f;
-			float threshold_ = 0.8f;
+			float intensity_ = 0.1f;
+			float threshold_ = 1.0f;
 		};
 
 	} // namespace PostProcessing
