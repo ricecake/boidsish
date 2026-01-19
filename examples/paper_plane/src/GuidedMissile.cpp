@@ -10,9 +10,6 @@ namespace Boidsish {
 
 	GuidedMissile::GuidedMissile(int id, Vector3 pos):
 		Entity<Model>(id, "assets/Missile.obj", true), eng_(rd_()) {
-		// SetPosition(pos.x, pos.y, pos.z);
-		// SetVelocity(0, 0, 0);
-
 		auto orientation = glm::angleAxis(glm::radians(-90.0f), glm::vec3(1.0f, 0.0f, 0.0f));
 
 		SetOrientToVelocity(false);
@@ -66,7 +63,7 @@ namespace Boidsish {
 		const float kAcceleration = 150.0f;
 
 		if (lived_ < kLaunchTime) {
-			rigid_body_.AddRelativeForce(glm::vec3(0, 0, 250));
+			rigid_body_.AddRelativeForce(glm::vec3(0, 0, 600));
 		} else {
 			const float kTurnSpeed = 100.0f;
 			const float kDamping = 2.5f;
@@ -86,23 +83,63 @@ namespace Boidsish {
 				r.AddRelativeForce(glm::vec3(0, 0, 500));
 
 
+				glm::vec3 velocity = rigid_body_.GetLinearVelocity();
 				glm::vec3   target_vec = (plane->GetPosition() - GetPosition()).Toglm();
-				glm::vec3 target_dir_world = glm::normalize(glm::vec3(target_vec.x, target_vec.y, target_vec.z));
+				glm::vec3 target_dir_world = glm::normalize(target_vec);
 
-				glm::vec3 target_dir_local = WorldToObject(target_dir_world);
+
+				// log10(x/10+1)/2
+				std::uniform_real_distribution<float> dist(0.5f, 0.75f);
+				auto distance = glm::length(target_vec);
+				auto distance_scale = log10(distance/50.0f+1);
+				float error_scale = (1.0f - lived_/lifetime_) * distance_scale;
+				glm::vec3 right = glm::cross(target_dir_world, glm::vec3(0,1,0));
+				glm::vec3 up = glm::cross(right, target_dir_world);
+				auto theta = lived_ * (2.0f+2*(1.0f-distance_scale));
+				auto offset=(right*cos(theta))+(up*0.75f*sin(theta));
+
+				auto adjusted_target_dir_world = glm::normalize(target_vec + offset*dist(eng_)*distance*error_scale*error_scale);
+
+				glm::vec3 target_dir_local = WorldToObject(adjusted_target_dir_world);
 				glm::vec3 P = glm::vec3(0, 0, 1);
-
 				glm::vec3 torque = glm::cross(P, target_dir_local);
 
-				if (lived_ <= 6.0f) {
-					std::uniform_real_distribution<float> dist(-1.0f, 1.0f);
-					glm::vec3                             error_vector(dist(eng_), dist(eng_), dist(eng_));
-					float error_scale = 1.0f - lived_/6.0f;
-					torque = glm::normalize(torque + error_scale * std::log(std::min(150, target_vec.length())) * error_vector);
-				}
+
+/*
+
+use something like this for spiral attacker!
+				float error_scale = 1;//1.0f - lived_/lifetime_;
+				// log10(x/10+1)/2
+				error_scale *= log10(glm::length(target_vec)/25.0f+1);
+				glm::vec3 right = glm::cross(target_dir_world, glm::vec3(0,1,0));
+				glm::vec3 up = glm::cross(right, target_dir_world);
+				auto theta = lived_ * 5.0f/error_scale;
+				auto offset=(right*cos(theta))+(up*sin(theta));
+
+				auto adjusted_target_dir_world = glm::normalize(target_vec + offset*200.0f*error_scale);
+
+				glm::vec3 target_dir_local = WorldToObject(adjusted_target_dir_world);
+				glm::vec3 P = glm::vec3(0, 0, 1);
+				glm::vec3 torque = glm::cross(P, target_dir_local);
+
+*/
 
 
+
+				// if (lived_ < 5.0f) {
+				// std::uniform_real_distribution<float> dist(-1.0f, 1.0f);
+				// glm::vec3                             error_vector = glm::cross(velocity, glm::vec3(dist(eng_), dist(eng_), dist(eng_)));
+				// float error_scale = 1.0f - lived_/lifetime_;
+				// float disalignment = 1.0f - glm::dot(target_dir_world, glm::normalize(velocity))*0.5f+0.5f;
+				// torque = glm::length(torque) * glm::normalize(torque + disalignment * error_scale * error_vector);
+				// torque = glm::length(torque) * glm::normalize(torque + error_scale * std::log2(std::min(10.0f, glm::length(target_vec))) * error_vector);
+				// torque = glm::length(torque) * glm::normalize(torque + disalignment * error_scale * error_vector);
+				// torque = glm::length(torque) * glm::normalize(torque + disalignment * (error_scale/std::log2(std::min(10.0f, glm::length(target_vec)))) * error_vector);
 				r.AddRelativeTorque(torque * kTurnSpeed);
+
+					// }
+
+
 
 				const auto* terrain_generator = handler.GetTerrainGenerator();
 				if (terrain_generator) {
