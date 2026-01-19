@@ -12,14 +12,27 @@ public:
     float linear_friction_ = 7.5f;
     float angular_friction_ = 7.5f;
 
+    // Optional limits
+    bool limit_force_ = false;
+    float max_force_ = 100.0f;
+    bool limit_torque_ = false;
+    float max_torque_ = 100.0f;
+    bool limit_linear_velocity_ = false;
+    float max_linear_velocity_ = 100.0f;
+    bool limit_angular_velocity_ = false;
+    float max_angular_velocity_ = 100.0f;
+
+    // Persistent forces and torques (wrench) in local coordinates
+    glm::dualquat wrench_ = glm::dualquat(glm::quat(0, 0, 0, 0), glm::quat(0, 0, 0, 0));
+
 private:
-	// Position + Orientation (Pose)
+	// Position + Orientation (Pose) in world coordinates
 	glm::dualquat pose_;
 
-	// Linear + Angular Velocity (Twist)
+	// Linear + Angular Velocity (Twist) in world coordinates
 	glm::dualquat twist_;
 
-    // Accumulated forces and torques for this frame
+    // Accumulated forces and torques for this frame in world coordinates
     glm::vec3 force_accumulator_ = glm::vec3(0.0f);
     glm::vec3 torque_accumulator_ = glm::vec3(0.0f);
 
@@ -30,17 +43,17 @@ public:
 	RigidBody(const glm::vec3& position, const glm::quat& orientation): pose_(orientation, position), twist_(glm::quat(0, 0, 0, 0), glm::vec3(0)) {};
 
     // Getters
-    glm::vec3 GetPosition() const;
-    glm::quat GetOrientation() const;
-    glm::vec3 GetLinearVelocity() const;
-    glm::vec3 GetAngularVelocity() const;
+    glm::vec3 GetPosition() const; // Returns position in world coordinates
+    glm::quat GetOrientation() const; // Returns orientation in world coordinates
+    glm::vec3 GetLinearVelocity() const; // Returns linear velocity in world coordinates
+    glm::vec3 GetAngularVelocity() const; // Returns angular velocity in world coordinates
 	std::string ToString() const;
 
     // Setters
-    void SetPosition(const glm::vec3& position);
-    void SetOrientation(const glm::quat& orientation);
-    void SetLinearVelocity(const glm::vec3& velocity);
-    void SetAngularVelocity(const glm::vec3& velocity);
+    void SetPosition(const glm::vec3& position); // Sets position in world coordinates
+    void SetOrientation(const glm::quat& orientation); // Sets orientation in world coordinates
+    void SetLinearVelocity(const glm::vec3& velocity); // Sets linear velocity in world coordinates
+    void SetAngularVelocity(const glm::vec3& velocity); // Sets angular velocity in world coordinates
 
 
 	// Force and Torque Application

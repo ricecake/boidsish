@@ -229,6 +229,21 @@ void RigidBody::AddRelativeTorque(const glm::vec3& torque) {
 }
 
 void RigidBody::Update(float dt) {
+    // Apply wrench
+    glm::vec3 local_torque(wrench_.real.x, wrench_.real.y, wrench_.real.z);
+    glm::vec3 local_force(wrench_.dual.x, wrench_.dual.y, wrench_.dual.z);
+
+    torque_accumulator_ += pose_.real * local_torque;
+    force_accumulator_ += pose_.real * local_force;
+
+    // Clamp accumulated forces and torques if limits are enabled
+    if (limit_force_ && glm::length(force_accumulator_) > max_force_) {
+        force_accumulator_ = glm::normalize(force_accumulator_) * max_force_;
+    }
+    if (limit_torque_ && glm::length(torque_accumulator_) > max_torque_) {
+        torque_accumulator_ = glm::normalize(torque_accumulator_) * max_torque_;
+    }
+
     // Store initial velocities
     glm::vec3 initial_linear_velocity = GetLinearVelocity();
     glm::vec3 initial_angular_velocity = GetAngularVelocity();
@@ -245,6 +260,14 @@ void RigidBody::Update(float dt) {
     float angular_damping = 1.0f - (angular_friction_ * dt);
     new_linear_velocity *= (linear_damping > 0.0f ? linear_damping : 0.0f);
     new_angular_velocity *= (angular_damping > 0.0f ? angular_damping : 0.0f);
+
+    // Clamp velocities if limits are enabled
+    if (limit_linear_velocity_ && glm::length(new_linear_velocity) > max_linear_velocity_) {
+        new_linear_velocity = glm::normalize(new_linear_velocity) * max_linear_velocity_;
+    }
+    if (limit_angular_velocity_ && glm::length(new_angular_velocity) > max_angular_velocity_) {
+        new_angular_velocity = glm::normalize(new_angular_velocity) * max_angular_velocity_;
+    }
 
     // Update position and orientation using average velocities
     glm::vec3 avg_linear_velocity = (initial_linear_velocity + new_linear_velocity) * 0.5f;
@@ -267,6 +290,7 @@ void RigidBody::Update(float dt) {
 
     pose_.real = new_orientation;
     pose_.dual = 0.5f * glm::quat(0, new_position.x, new_position.y, new_position.z) * new_orientation;
+    pose_ = normalizeDualQuat(pose_);
 
     // Clear accumulators
     force_accumulator_ = glm::vec3(0.0f);
