@@ -46,7 +46,7 @@ namespace Boidsish {
 		if (max_h <= 0.0f)
 			max_h = 200.0f;
 
-		float start_h = 60.0f;
+		float start_h = 0.0f;
 		float extreme_h = 3.0f * max_h;
 
 		if (ppos.y < start_h)
