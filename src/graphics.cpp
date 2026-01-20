@@ -450,6 +450,7 @@ namespace Boidsish {
 				if (enable_hdr_) {
 					auto tone_mapping_effect = std::make_shared<PostProcessing::ToneMappingEffect>();
 					tone_mapping_effect->SetEnabled(true);
+					bloom_effect->SetEnabled(true);
 					post_processing_manager_->SetToneMappingEffect(tone_mapping_effect);
 				}
 
