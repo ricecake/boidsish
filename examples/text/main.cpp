@@ -20,6 +20,7 @@ int main() {
 		"external/imgui/misc/fonts/Roboto-Medium.ttf",
 		16.0f,
 		2.0f,
+        Boidsish::Text::CENTER,
 		0,
 		0.0f,
 		10.0f,
