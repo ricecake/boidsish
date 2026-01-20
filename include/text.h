@@ -12,14 +12,16 @@
 struct stbtt_fontinfo;
 
 namespace Boidsish {
-
 	class Text: public Shape {
 	public:
+		enum Justification { LEFT, CENTER, RIGHT };
+
 		Text(
 			const std::string& text,
 			const std::string& font_path,
 			float              font_size,
 			float              depth,
+			Justification      justification = LEFT,
 			int                id = 0,
 			float              x = 0.0f,
 			float              y = 0.0f,
@@ -35,6 +37,7 @@ namespace Boidsish {
 		void      render(Shader& shader, const glm::mat4& model_matrix) const override;
 		glm::mat4 GetModelMatrix() const override;
 		void      SetText(const std::string& text);
+		void      SetJustification(Justification justification);
 
 	private:
 		void LoadFont(const std::string& font_path);
@@ -45,6 +48,7 @@ namespace Boidsish {
 		std::string                        font_path_;
 		float                              font_size_;
 		float                              depth_;
+		Justification                      justification_;
 
 		unsigned int vao_ = 0;
 		unsigned int vbo_ = 0;

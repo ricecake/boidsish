@@ -17,9 +17,10 @@ int main() {
 
 	auto text_shape = std::make_shared<Boidsish::Text>(
 		"Hello, World!",
-		"external/imgui/misc/fonts/Roboto-Medium.ttf",
+		"assets/Roboto-Medium.ttf",
 		16.0f,
 		2.0f,
+		Boidsish::Text::CENTER,
 		0,
 		0.0f,
 		10.0f,

@@ -19,6 +19,7 @@ namespace Boidsish {
 		const std::string& font_path,
 		float              font_size,
 		float              depth,
+		Justification      justification,
 		int                id,
 		float              x,
 		float              y,
@@ -28,7 +29,12 @@ namespace Boidsish {
 		float              b,
 		float              a
 	):
-		Shape(id, x, y, z, r, g, b, a), text_(text), font_path_(font_path), font_size_(font_size), depth_(depth) {
+		Shape(id, x, y, z, r, g, b, a),
+		text_(text),
+		font_path_(font_path),
+		font_size_(font_size),
+		depth_(depth),
+		justification_(justification) {
 		font_info_ = std::make_unique<stbtt_fontinfo>();
 		LoadFont(font_path_);
 		GenerateMesh(text_, font_size_, depth_);
@@ -44,8 +50,8 @@ namespace Boidsish {
 	void Text::LoadFont(const std::string& font_path) {
 		std::ifstream file(font_path, std::ios::binary | std::ios::ate);
 		if (!file.is_open()) {
-			std::cerr << "Failed to open font file: " << font_path << std::endl;
-			return;
+			std::cerr << "FATAL: Failed to open font file: " << font_path << std::endl;
+			exit(1);
 		}
 
 		std::streamsize size = file.tellg();
@@ -67,6 +73,11 @@ namespace Boidsish {
 		GenerateMesh(text_, font_size_, depth_);
 	}
 
+	void Text::SetJustification(Justification justification) {
+		justification_ = justification;
+		GenerateMesh(text_, font_size_, depth_);
+	}
+
 	void Text::GenerateMesh(const std::string& text, float font_size, float depth) {
 		if (font_buffer_.empty()) {
 			return;
@@ -78,146 +89,186 @@ namespace Boidsish {
 		}
 
 		std::vector<float> vertices;
-		float              x_offset = 0.0f;
-
-		float scale = stbtt_ScaleForPixelHeight(font_info_.get(), font_size);
+		float              scale = stbtt_ScaleForPixelHeight(font_info_.get(), font_size);
 
 		int ascent, descent, line_gap;
 		stbtt_GetFontVMetrics(font_info_.get(), &ascent, &descent, &line_gap);
-		ascent = ascent * scale;
-		descent = descent * scale;
+		float line_height = (ascent - descent + line_gap) * scale;
 
+		std::vector<std::string> lines;
+		std::string              current_line;
 		for (char c : text) {
-			if (glyph_cache_.find(c) == glyph_cache_.end()) {
-				int glyph_index = stbtt_FindGlyphIndex(font_info_.get(), c);
-
-				stbtt_vertex* stb_vertices;
-				int           num_vertices = stbtt_GetGlyphShape(font_info_.get(), glyph_index, &stb_vertices);
-
-				std::vector<float> glyph_vertices;
-
-				if (num_vertices > 0) {
-					std::vector<std::vector<std::array<float, 2>>> polygon;
-					std::vector<std::array<float, 2>>              current_contour;
-
-					for (int i = 0; i < num_vertices; ++i) {
-						stbtt_vertex v = stb_vertices[i];
-						current_contour.push_back({(v.x * scale), v.y * scale + ascent});
-
-						if (i < num_vertices - 1 && stb_vertices[i + 1].type == STBTT_vmove) {
-							polygon.push_back(current_contour);
-							current_contour.clear();
-						}
-					}
-					polygon.push_back(current_contour);
-
-					std::vector<std::array<float, 2>> flat_vertices;
-					for (const auto& contour : polygon) {
-						flat_vertices.insert(flat_vertices.end(), contour.begin(), contour.end());
-					}
-
-					std::vector<uint32_t> indices = mapbox::earcut<uint32_t>(polygon);
-
-					for (size_t i = 0; i < indices.size(); i += 3) {
-						const auto& v1 = flat_vertices[indices[i]];
-						const auto& v2 = flat_vertices[indices[i + 1]];
-						const auto& v3 = flat_vertices[indices[i + 2]];
-
-						// Front face
-						glyph_vertices.insert(
-							glyph_vertices.end(),
-							{v1[0], v1[1], depth / 2.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f}
-						);
-						glyph_vertices.insert(
-							glyph_vertices.end(),
-							{v2[0], v2[1], depth / 2.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f}
-						);
-						glyph_vertices.insert(
-							glyph_vertices.end(),
-							{v3[0], v3[1], depth / 2.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f}
-						);
-
-						// Back face (winding order reversed for correct normal)
-						glyph_vertices.insert(
-							glyph_vertices.end(),
-							{v1[0], v1[1], -depth / 2.0f, 0.0f, 0.0f, -1.0f, 0.0f, 0.0f}
-						);
-						glyph_vertices.insert(
-							glyph_vertices.end(),
-							{v3[0], v3[1], -depth / 2.0f, 0.0f, 0.0f, -1.0f, 0.0f, 0.0f}
-						);
-						glyph_vertices.insert(
-							glyph_vertices.end(),
-							{v2[0], v2[1], -depth / 2.0f, 0.0f, 0.0f, -1.0f, 0.0f, 0.0f}
-						);
-					}
-
-					for (const auto& contour : polygon) {
-						for (size_t i = 0; i < contour.size(); ++i) {
-							size_t    next_i = (i + 1) % contour.size();
-							glm::vec3 p1_front = {contour[i][0], contour[i][1], depth / 2.0f};
-							glm::vec3 p2_front = {contour[next_i][0], contour[next_i][1], depth / 2.0f};
-							glm::vec3 p1_back = {contour[i][0], contour[i][1], -depth / 2.0f};
-							glm::vec3 p2_back = {contour[next_i][0], contour[next_i][1], -depth / 2.0f};
-
-							glm::vec3 normal = glm::normalize(glm::cross(p2_front - p1_front, p1_back - p1_front));
-
-							glyph_vertices.insert(
-								glyph_vertices.end(),
-								{p1_front.x, p1_front.y, p1_front.z, normal.x, normal.y, normal.z, 0.0f, 0.0f}
-							);
-							glyph_vertices.insert(
-								glyph_vertices.end(),
-								{p2_front.x, p2_front.y, p2_front.z, normal.x, normal.y, normal.z, 0.0f, 0.0f}
-							);
-							glyph_vertices.insert(
-								glyph_vertices.end(),
-								{p1_back.x, p1_back.y, p1_back.z, normal.x, normal.y, normal.z, 0.0f, 0.0f}
-							);
-
-							glyph_vertices.insert(
-								glyph_vertices.end(),
-								{p1_back.x, p1_back.y, p1_back.z, normal.x, normal.y, normal.z, 0.0f, 0.0f}
-							);
-							glyph_vertices.insert(
-								glyph_vertices.end(),
-								{p2_front.x, p2_front.y, p2_front.z, normal.x, normal.y, normal.z, 0.0f, 0.0f}
-							);
-							glyph_vertices.insert(
-								glyph_vertices.end(),
-								{p2_back.x, p2_back.y, p2_back.z, normal.x, normal.y, normal.z, 0.0f, 0.0f}
-							);
-						}
-					}
-
-					stbtt_FreeShape(font_info_.get(), stb_vertices);
-				}
-				glyph_cache_[c] = glyph_vertices;
+			if (c == '\n') {
+				lines.push_back(current_line);
+				current_line.clear();
+			} else {
+				current_line += c;
 			}
+		}
+		lines.push_back(current_line);
 
-			const std::vector<float>& cached_vertices = glyph_cache_[c];
-			for (size_t i = 0; i < cached_vertices.size(); i += 8) {
-				vertices.insert(
-					vertices.end(),
-					{cached_vertices[i] + x_offset,
-				     cached_vertices[i + 1],
-				     cached_vertices[i + 2],
-				     cached_vertices[i + 3],
-				     cached_vertices[i + 4],
-				     cached_vertices[i + 5],
-				     cached_vertices[i + 6],
-				     cached_vertices[i + 7]}
+		float y_offset = 0.0f;
+
+		for (const auto& line : lines) {
+			float line_width = 0.0f;
+			for (char c : line) {
+				int advance_width, left_side_bearing;
+				stbtt_GetGlyphHMetrics(
+					font_info_.get(),
+					stbtt_FindGlyphIndex(font_info_.get(), c),
+					&advance_width,
+					&left_side_bearing
 				);
+				line_width += advance_width * scale;
 			}
 
-			int advance_width, left_side_bearing;
-			stbtt_GetGlyphHMetrics(
-				font_info_.get(),
-				stbtt_FindGlyphIndex(font_info_.get(), c),
-				&advance_width,
-				&left_side_bearing
-			);
-			x_offset += advance_width * scale;
+			float x_offset = 0.0f;
+			switch (justification_) {
+			case CENTER:
+				x_offset = -line_width / 2.0f;
+				break;
+			case RIGHT:
+				x_offset = -line_width;
+				break;
+			case LEFT:
+			default:
+				x_offset = 0.0f;
+				break;
+			}
+
+			for (char c : line) {
+				if (glyph_cache_.find(c) == glyph_cache_.end()) {
+					int glyph_index = stbtt_FindGlyphIndex(font_info_.get(), c);
+
+					stbtt_vertex* stb_vertices;
+					int           num_vertices = stbtt_GetGlyphShape(font_info_.get(), glyph_index, &stb_vertices);
+
+					std::vector<float> glyph_vertices;
+
+					if (num_vertices > 0) {
+						std::vector<std::vector<std::array<float, 2>>> polygon;
+						std::vector<std::array<float, 2>>              current_contour;
+
+						for (int i = 0; i < num_vertices; ++i) {
+							stbtt_vertex v = stb_vertices[i];
+							current_contour.push_back({(v.x * scale), (v.y * scale) + (ascent * scale)});
+
+							if (i < num_vertices - 1 && stb_vertices[i + 1].type == STBTT_vmove) {
+								polygon.push_back(current_contour);
+								current_contour.clear();
+							}
+						}
+						polygon.push_back(current_contour);
+
+						std::vector<std::array<float, 2>> flat_vertices;
+						for (const auto& contour : polygon) {
+							flat_vertices.insert(flat_vertices.end(), contour.begin(), contour.end());
+						}
+
+						std::vector<uint32_t> indices = mapbox::earcut<uint32_t>(polygon);
+
+						for (size_t i = 0; i < indices.size(); i += 3) {
+							const auto& v1 = flat_vertices[indices[i]];
+							const auto& v2 = flat_vertices[indices[i + 1]];
+							const auto& v3 = flat_vertices[indices[i + 2]];
+
+							// Front face
+							glyph_vertices.insert(
+								glyph_vertices.end(),
+								{v1[0], v1[1], depth / 2.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f}
+							);
+							glyph_vertices.insert(
+								glyph_vertices.end(),
+								{v2[0], v2[1], depth / 2.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f}
+							);
+							glyph_vertices.insert(
+								glyph_vertices.end(),
+								{v3[0], v3[1], depth / 2.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f}
+							);
+
+							// Back face
+							glyph_vertices.insert(
+								glyph_vertices.end(),
+								{v1[0], v1[1], -depth / 2.0f, 0.0f, 0.0f, -1.0f, 0.0f, 0.0f}
+							);
+							glyph_vertices.insert(
+								glyph_vertices.end(),
+								{v3[0], v3[1], -depth / 2.0f, 0.0f, 0.0f, -1.0f, 0.0f, 0.0f}
+							);
+							glyph_vertices.insert(
+								glyph_vertices.end(),
+								{v2[0], v2[1], -depth / 2.0f, 0.0f, 0.0f, -1.0f, 0.0f, 0.0f}
+							);
+						}
+
+						for (const auto& contour : polygon) {
+							for (size_t i = 0; i < contour.size(); ++i) {
+								size_t    next_i = (i + 1) % contour.size();
+								glm::vec3 p1_front = {contour[i][0], contour[i][1], depth / 2.0f};
+								glm::vec3 p2_front = {contour[next_i][0], contour[next_i][1], depth / 2.0f};
+								glm::vec3 p1_back = {contour[i][0], contour[i][1], -depth / 2.0f};
+								glm::vec3 p2_back = {contour[next_i][0], contour[next_i][1], -depth / 2.0f};
+
+								glm::vec3 normal = glm::normalize(glm::cross(p2_front - p1_front, p1_back - p1_front));
+
+								glyph_vertices.insert(
+									glyph_vertices.end(),
+									{p1_front.x, p1_front.y, p1_front.z, normal.x, normal.y, normal.z, 0.0f, 0.0f}
+								);
+								glyph_vertices.insert(
+									glyph_vertices.end(),
+									{p2_front.x, p2_front.y, p2_front.z, normal.x, normal.y, normal.z, 0.0f, 0.0f}
+								);
+								glyph_vertices.insert(
+									glyph_vertices.end(),
+									{p1_back.x, p1_back.y, p1_back.z, normal.x, normal.y, normal.z, 0.0f, 0.0f}
+								);
+
+								glyph_vertices.insert(
+									glyph_vertices.end(),
+									{p1_back.x, p1_back.y, p1_back.z, normal.x, normal.y, normal.z, 0.0f, 0.0f}
+								);
+								glyph_vertices.insert(
+									glyph_vertices.end(),
+									{p2_front.x, p2_front.y, p2_front.z, normal.x, normal.y, normal.z, 0.0f, 0.0f}
+								);
+								glyph_vertices.insert(
+									glyph_vertices.end(),
+									{p2_back.x, p2_back.y, p2_back.z, normal.x, normal.y, normal.z, 0.0f, 0.0f}
+								);
+							}
+						}
+
+						stbtt_FreeShape(font_info_.get(), stb_vertices);
+					}
+					glyph_cache_[c] = glyph_vertices;
+				}
+
+				const std::vector<float>& cached_vertices = glyph_cache_[c];
+				for (size_t i = 0; i < cached_vertices.size(); i += 8) {
+					vertices.insert(
+						vertices.end(),
+						{cached_vertices[i] + x_offset,
+					     cached_vertices[i + 1] - y_offset,
+					     cached_vertices[i + 2],
+					     cached_vertices[i + 3],
+					     cached_vertices[i + 4],
+					     cached_vertices[i + 5],
+					     cached_vertices[i + 6],
+					     cached_vertices[i + 7]}
+					);
+				}
+
+				int advance_width, left_side_bearing;
+				stbtt_GetGlyphHMetrics(
+					font_info_.get(),
+					stbtt_FindGlyphIndex(font_info_.get(), c),
+					&advance_width,
+					&left_side_bearing
+				);
+				x_offset += advance_width * scale;
+			}
+			y_offset += line_height;
 		}
 
 		vertex_count_ = vertices.size() / 8;
