@@ -10,12 +10,7 @@ uniform mat4 view;
 uniform mat4 projection;
 uniform mat4 reflectionViewProjection;
 
-layout(std140) uniform Lighting {
-	vec3  lightPos;
-	vec3  viewPos;
-	vec3  lightColor;
-	float time;
-};
+#include "lighting.glsl"
 
 void main() {
 	WorldPos = vec3(model * vec4(aPos, 1.0));

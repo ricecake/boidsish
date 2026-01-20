@@ -122,7 +122,7 @@ protected:
 
 	// utility function for checking shader compilation/linking errors.
 	// ------------------------------------------------------------------------
-	void checkCompileErrors(GLuint shader, std::string type) {
+	void checkCompileErrors(GLuint shader, std::string type, std::string filePath) {
 		GLint  success;
 		GLchar infoLog[1024];
 		if (type != "PROGRAM") {
@@ -130,6 +130,7 @@ protected:
 			if (!success) {
 				glGetShaderInfoLog(shader, 1024, NULL, infoLog);
 				std::cerr << "ERROR::SHADER_COMPILATION_ERROR of type: " << type << "\n"
+						  << filePath << std::endl
 						  << infoLog << "\n -- --------------------------------------------------- -- " << std::endl;
 			}
 		} else {
@@ -187,12 +188,12 @@ public:
 		vertex = glCreateShader(GL_VERTEX_SHADER);
 		glShaderSource(vertex, 1, &vShaderCode, NULL);
 		glCompileShader(vertex);
-		checkCompileErrors(vertex, "VERTEX");
+		checkCompileErrors(vertex, "VERTEX", vertexPath);
 		// fragment Shader
 		fragment = glCreateShader(GL_FRAGMENT_SHADER);
 		glShaderSource(fragment, 1, &fShaderCode, NULL);
 		glCompileShader(fragment);
-		checkCompileErrors(fragment, "FRAGMENT");
+		checkCompileErrors(fragment, "FRAGMENT", fragmentPath);
 
 		unsigned int tessControl, tessEvaluation;
 		if (tessControlPath != nullptr && tessEvaluationPath != nullptr) {
@@ -200,13 +201,13 @@ public:
 			tessControl = glCreateShader(GL_TESS_CONTROL_SHADER);
 			glShaderSource(tessControl, 1, &tcShaderCode, NULL);
 			glCompileShader(tessControl);
-			checkCompileErrors(tessControl, "TESS_CONTROL");
+			checkCompileErrors(tessControl, "TESS_CONTROL", tessControlPath);
 
 			const char* teShaderCode = tessEvaluationCode.c_str();
 			tessEvaluation = glCreateShader(GL_TESS_EVALUATION_SHADER);
 			glShaderSource(tessEvaluation, 1, &teShaderCode, NULL);
 			glCompileShader(tessEvaluation);
-			checkCompileErrors(tessEvaluation, "TESS_EVALUATION");
+			checkCompileErrors(tessEvaluation, "TESS_EVALUATION", tessEvaluationPath);
 		}
 
 		// if geometry shader is given, compile geometry shader
@@ -216,7 +217,7 @@ public:
 			geometry = glCreateShader(GL_GEOMETRY_SHADER);
 			glShaderSource(geometry, 1, &gShaderCode, NULL);
 			glCompileShader(geometry);
-			checkCompileErrors(geometry, "GEOMETRY");
+			checkCompileErrors(geometry, "GEOMETRY", geometryPath);
 		}
 
 		// shader Program
@@ -232,7 +233,7 @@ public:
 		}
 
 		glLinkProgram(ID);
-		checkCompileErrors(ID, "PROGRAM");
+		checkCompileErrors(ID, "PROGRAM", vertexPath);
 
 		// delete the shaders as they're linked into our program now and no longer necessary
 		glDeleteShader(vertex);
@@ -268,14 +269,14 @@ public:
 		compute = glCreateShader(GL_COMPUTE_SHADER);
 		glShaderSource(compute, 1, &gShaderCode, NULL);
 		glCompileShader(compute);
-		checkCompileErrors(compute, "COMPUTE");
+		checkCompileErrors(compute, "COMPUTE", computePath);
 
 		// shader Program
 		ID = glCreateProgram();
 		glAttachShader(ID, compute);
 
 		glLinkProgram(ID);
-		checkCompileErrors(ID, "PROGRAM");
+		checkCompileErrors(ID, "PROGRAM", computePath);
 
 		// delete the shaders as they're linked into our program now and no longer necessary
 		glDeleteShader(compute);

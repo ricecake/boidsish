@@ -5,12 +5,7 @@ in vec3 Normal;
 in vec3 FragPos;
 in vec2 TexCoords;
 
-layout(std140, binding = 0) uniform Lighting {
-	vec3  lightPos;
-	vec3  viewPos;
-	vec3  lightColor;
-	float time;
-};
+#include "helpers/lighting.glsl"
 
 vec3 mod289(vec3 x) {
 	return x - floor(x * (1.0 / 289.0)) * 289.0;
@@ -180,22 +175,8 @@ void main() {
 	vec3 objectColor = mix(vec3(0.09, 0.09, 0.16), vec3(0.5, 0.8, 0.8), warpNoise); // A deep blue
 	objectColor += mix(warpNoise, objectColor, nebula_noise);
 
-	// Ambient
-	float ambientStrength = 0.2;
-	vec3  ambient = ambientStrength * lightColor;
-
-	// Diffuse
-	vec3  norm = normalize(Normal);
-	vec3  lightDir = normalize(lightPos - FragPos);
-	float diff = max(dot(norm, lightDir), 0.0);
-	vec3  diffuse = diff * lightColor;
-
-	// Specular
-	float specularStrength = 0.8;
-	vec3  viewDir = normalize(viewPos - FragPos);
-	vec3  reflectDir = reflect(-lightDir, norm);
-	float spec = pow(max(dot(viewDir, reflectDir), 0.0), 64);
-	vec3  specular = specularStrength * spec * lightColor;
+	vec3 norm = normalize(Normal);
+	vec3 lighting = apply_lighting(FragPos, norm, objectColor, 0.2, 0.8);
 
 	// --- Grid logic ---
 	float grid_spacing = 1.0;
@@ -212,7 +193,7 @@ void main() {
 
 	float intensity = max(C_minor, C_major * 1.5) * length(fwidth(FragPos));
 	vec3  grid_color = vec3(normalize(abs(fwidth(FragPos.zxy))) * intensity);
-	vec3  result = vec3((ambient + diffuse) * objectColor + specular) + grid_color; // Add specular on top
+	vec3  result = lighting + grid_color;
 
 	// --- Distance Fade ---
 	float dist = length(FragPos.xz - viewPos.xz);

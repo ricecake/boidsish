@@ -11,12 +11,7 @@ out vec3 WorldPos_TC_out[];
 out vec2 TexCoords_TC_out[];
 out vec3 Normal_TC_out[];
 
-layout(std140, binding = 0) uniform Lighting {
-	vec3  lightPos;
-	vec3  viewPos;
-	vec3  lightColor;
-	float time;
-};
+#include "helpers/lighting.glsl"
 
 uniform float uTessLevelMax = 64.0;
 uniform float uTessLevelMin = 1.0;

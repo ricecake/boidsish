@@ -14,6 +14,7 @@
 #include "imgui.h"
 #include "imgui_impl_glfw.h"
 #include "imgui_impl_opengl3.h"
+#include "light_manager.h"
 #include "shape.h"
 #include "vector.h"
 #include "visual_effects.h"
@@ -199,6 +200,7 @@ namespace Boidsish {
 		const TerrainGenerator*                      GetTerrainGenerator() const;
 		const std::vector<std::shared_ptr<Terrain>>& GetTerrainChunks() const;
 		task_thread_pool::task_thread_pool&          GetThreadPool();
+		LightManager&                                GetLightManager();
 		FireEffectManager*                           GetFireEffectManager();
 		float                                        GetLastFrameTime() const;
 

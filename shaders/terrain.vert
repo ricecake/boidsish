@@ -11,13 +11,6 @@ out vec3 viewForward;
 uniform mat4 model;
 uniform mat4 view;
 
-layout(std140, binding = 0) uniform Lighting {
-	vec3  lightPos;
-	vec3  viewPos;
-	vec3  lightColor;
-	float time;
-};
-
 void main() {
 	viewForward = vec3(-view[0][2], -view[1][2], -view[2][2]);
 	gl_Position = vec4(aPos, 1.0);

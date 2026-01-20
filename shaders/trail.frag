@@ -6,12 +6,7 @@ in vec3  vs_normal;
 in vec3  vs_frag_pos;
 in float vs_progress;
 
-layout(std140) uniform Lighting {
-	vec3  lightPos;
-	vec3  viewPos;
-	vec3  lightColor;
-	float time;
-};
+#include "helpers/lighting.glsl"
 
 uniform bool useIridescence;
 uniform bool useRocketTrail;
@@ -23,7 +18,6 @@ void main() {
 	// return;
 	vec3 norm = normalize(vs_normal);
 	vec3 view_dir = normalize(viewPos - vs_frag_pos);
-	vec3 light_dir = normalize(lightPos - vs_frag_pos);
 
 	if (useRocketTrail) {
 		// --- Rocket Trail Effect ---
@@ -77,31 +71,21 @@ void main() {
 			sin(angle_factor * 10.0 + swirl * 5.0 + 4.0) * 0.5 + 0.5
 		);
 
+		// if (num_lights > 0) {
+		vec3 light_dir = normalize(lights[0].position - vs_frag_pos);
 		// Add a strong specular highlight
 		vec3  reflect_dir = reflect(-light_dir, norm);
 		float spec = pow(max(dot(view_dir, reflect_dir), 0.0), 128.0);
-		vec3  specular = 1.5 * spec * vec3(1.0); // white highlight
+		vec3  specular = 1.5 * spec * lights[0].color; // white highlight
+		iridescent_color += specular;
+		// }
 
-		vec3 final_color = mix(iridescent_color, vec3(1.0), fresnel) + specular;
+		vec3 final_color = mix(iridescent_color, vec3(1.0), fresnel);
 
 		FragColor = vec4(final_color, 0.75); // Semi-transparent
 	} else {
 		// --- Original Phong Lighting ---
-		// Ambient
-		float ambient_strength = 0.2;
-		vec3  ambient = ambient_strength * lightColor;
-
-		// Diffuse
-		float diff = max(dot(norm, light_dir), 0.0);
-		vec3  diffuse = diff * lightColor;
-
-		// Specular
-		float specular_strength = 0.5;
-		vec3  reflect_dir = reflect(-light_dir, norm);
-		float spec = pow(max(dot(view_dir, reflect_dir), 0.0), 32);
-		vec3  specular = specular_strength * spec * lightColor;
-
-		vec3 result = (ambient + diffuse) * vs_color + specular;
+		vec3 result = apply_lighting(vs_frag_pos, norm, vs_color, 0.2, 0.5);
 		FragColor = vec4(result, 1.0);
 	}
 }

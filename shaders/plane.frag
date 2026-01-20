@@ -5,12 +5,7 @@ in vec3 WorldPos;
 in vec3 Normal;
 in vec4 ReflectionClipSpacePos;
 
-layout(std140) uniform Lighting {
-	vec3  lightPos;
-	vec3  viewPos;
-	vec3  lightColor;
-	float time;
-};
+#include "helpers/lighting.glsl"
 
 uniform sampler2D reflectionTexture;
 uniform bool      useReflection;
@@ -133,22 +128,9 @@ void main() {
 	vec3  grid_color = vec3(0.0, 0.8, 0.8) * intensity;
 
 	// --- Plane lighting ---
-	float ambientStrength = 0.05;
-	vec3  ambient = ambientStrength * lightColor;
-
-	vec3  norm = normalize(Normal);
-	vec3  lightDir = normalize(lightPos - WorldPos);
-	float diff = max(dot(norm, lightDir), 0.0);
-	vec3  diffuse = diff * lightColor;
-
-	float specularStrength = 0.8;
-	vec3  viewDir = normalize(viewPos - WorldPos);
-	vec3  reflectDir = reflect(-lightDir, norm);
-	float spec = pow(max(dot(viewDir, reflectDir), 0.0), 32);
-	vec3  specular = specularStrength * spec * lightColor;
-
+	vec3 norm = normalize(Normal);
 	vec3 surfaceColor = vec3(0.05, 0.05, 0.08);
-	vec3 lighting = (ambient + diffuse + specular);
+	vec3 lighting = apply_lighting(WorldPos, norm, surfaceColor, 0.05, 0.8);
 
 	// --- Combine colors ---
 	float reflection_strength = 0.8;

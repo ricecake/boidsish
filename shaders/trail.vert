@@ -3,13 +3,6 @@ layout(location = 0) in vec3 aPos;
 layout(location = 1) in vec3 aNormal;
 layout(location = 2) in vec3 aColor;
 
-layout(std140) uniform Lighting {
-	vec3  lightPos;
-	vec3  viewPos;
-	vec3  lightColor;
-	float time;
-};
-
 out vec3  vs_color;
 out float vs_progress;
 out vec3  vs_normal;
@@ -24,6 +17,7 @@ uniform bool  useRocketTrail;
 uniform float trailHead;
 uniform float trailSize;
 
+#include "helpers/lighting.glsl"
 #include "helpers/noise.glsl"
 
 void main() {

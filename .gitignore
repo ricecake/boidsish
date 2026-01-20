@@ -203,3 +203,5 @@ gmon.out
 
 # XWD files
 *.xwd
+
+core.*

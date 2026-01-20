@@ -2,7 +2,7 @@
 layout(location = 0) in vec3 aPos;
 layout(location = 1) in vec3 aNormal;
 layout(location = 2) in vec2 aTexCoords;
-
+#include "lighting.glsl"
 #include "visual_effects.glsl"
 #include "visual_effects.vert"
 
@@ -18,13 +18,6 @@ uniform mat4  projection;
 uniform vec4  clipPlane;
 uniform float ripple_strength;
 uniform bool  isColossal = true;
-
-layout(std140) uniform Lighting {
-	vec3  lightPos;
-	vec3  viewPos;
-	vec3  lightColor;
-	float time;
-};
 
 void main() {
 	vec3 displacedPos = aPos;
