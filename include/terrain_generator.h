@@ -53,6 +53,8 @@ namespace Boidsish {
 			float tx = x - floor(x);
 			float tz = z - floor(z);
 
+			// logger
+
 			// Get the 4 corner vertices of the grid cell
 			auto v0_raw = pointGenerate(floor(x), floor(z)); // Bottom-left
 			auto v1_raw = pointGenerate(ceil(x), floor(z));  // Bottom-right

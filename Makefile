@@ -1,5 +1,6 @@
 BUILD_DIR = build
-CONFIG = Release
+# CONFIG = Release
+CONFIG = RelWithDebInfo
 
 .PHONY: all clean format run clean-build
 

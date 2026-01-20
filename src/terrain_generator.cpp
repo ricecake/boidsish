@@ -12,6 +12,8 @@
 #include <string>
 #include <vector>
 
+#include <cpptrace/from_current.hpp>
+
 #include "graphics.h"
 #include "logger.h"
 #include "stb_image_write.h"
@@ -103,7 +105,7 @@ namespace Boidsish {
 		// Process completed chunks
 		std::vector<std::pair<int, int>> completed_chunks;
 		for (auto& pair : pending_chunks_) {
-			try {
+			CPPTRACE_TRY {
 				auto&                   future = const_cast<TaskHandle<TerrainGenerationResult>&>(pair.second);
 				TerrainGenerationResult result = future.get();
 				if (result.has_terrain) {
@@ -114,11 +116,18 @@ namespace Boidsish {
 					chunk_cache_[pair.first] = terrain_chunk;
 				}
 				completed_chunks.push_back(pair.first);
-			} catch (const std::future_error& e) {
-				if (e.code() == std::future_errc::no_state) {
-					// Task was cancelled, remove it.
-					completed_chunks.push_back(pair.first);
-				}
+			}
+			// CPPTRACE_CATCH (const std::future_error& e) {
+			// 	if (e.code() == std::future_errc::no_state) {
+			// 		// Task was cancelled, remove it.
+			// 		        cpptrace::from_current_exception().print();
+			// 		completed_chunks.push_back(pair.first);
+			// 	}
+			// }
+			CPPTRACE_CATCH (const std::exception& e) {
+				std::cerr << "Error: " << e.what() << std::endl;
+				        cpptrace::from_current_exception().print();
+				// completed_chunks.push_back(pair.first);
 			}
 		}
 
@@ -232,6 +241,7 @@ namespace Boidsish {
 
 		float control_value = getBiomeControlValue(x, z);
 
+		CPPTRACE_TRY {
 		BiomeAttributes current;
 		auto            low_threshold = (floor(control_value * (biomes.size() - 1)) / (biomes.size() - 1));
 		auto            high_threshold = (ceil(control_value * (biomes.size() - 1)) / (biomes.size() - 1));
@@ -249,9 +259,16 @@ namespace Boidsish {
 		terrain_height.x = glm::mix(path_floor_level, terrain_height.x, path_factor);
 
 		return terrain_height;
+		}
+			CPPTRACE_CATCH (const std::exception& e) {
+				std::cerr << "Error: " << e.what() << std::endl;
+				        cpptrace::from_current_exception().print();
+				// completed_chunks.push_back(pair.first);
+			}
 	}
 
 	TerrainGenerationResult TerrainGenerator::generateChunkData(int chunkX, int chunkZ) {
+		CPPTRACE_TRY {
 		const int num_vertices_x = chunk_size_ + 1;
 		const int num_vertices_z = chunk_size_ + 1;
 
@@ -324,6 +341,13 @@ namespace Boidsish {
 		proxy.radiusSq = max_dist_sq;
 
 		return {indices, positions, normals, proxy, chunkX, chunkZ, true};
+	}
+			CPPTRACE_CATCH (const std::exception& e) {
+				std::cerr << "Error: " << e.what() << std::endl;
+				        cpptrace::from_current_exception().print();
+				// completed_chunks.push_back(pair.first);
+			}
+
 	}
 
 	bool

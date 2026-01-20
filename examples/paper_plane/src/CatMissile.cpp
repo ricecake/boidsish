@@ -9,6 +9,31 @@
 
 namespace Boidsish {
 
+// Calculates the torque needed to rotate 'current_forward' to align with 'desired_direction'
+// using a PD controller to prevent overshoot.
+glm::vec3 CalculateSteeringTorque(
+    const glm::vec3& current_forward,
+    const glm::vec3& desired_direction,
+    const glm::vec3& current_angular_velocity,
+    float kP, // Proportional Gain (Strength of the turn)
+    float kD  // Derivative Gain (Damping/Stability)
+) {
+    // 1. Calculate the Error (The "P" term)
+    // The cross product gives us the axis of rotation perpendicular to both vectors.
+    // The length of this vector is proportional to the sin(angle) between them.
+    glm::vec3 error_vector = glm::cross(current_forward, desired_direction);
+
+    // 2. Calculate the "Braking" (The "D" term)
+    // We want to oppose the current rotation speed.
+    // We only care about the angular velocity relative to our turning plane,
+    // but typically using the whole vector works fine for missiles.
+    glm::vec3 derivative_term = current_angular_velocity;
+
+    // 3. Combine them
+    // Torque = (Strength * Error) - (Damping * Velocity)
+    return (error_vector * kP) - (derivative_term * kD);
+}
+
 	CatMissile::CatMissile(int id, Vector3 pos, glm::quat orientation, glm::vec3 dir, Vector3 vel):
 		Entity<Model>(id, "assets/Missile.obj", true), eng_(rd_()) {
 		rigid_body_.linear_friction_ = 0.0f;
@@ -125,6 +150,7 @@ namespace Boidsish {
 			}
 
 		glm::vec3 target_dir_world;
+		glm::vec3 target_dir_local = glm::vec3(0,0,-1);
 		if (target_ != nullptr) {
 			if ((target_->GetPosition() - GetPosition()).Magnitude() < 10) {
 				Explode(handler, true);
@@ -136,10 +162,7 @@ namespace Boidsish {
 			Vector3   target_vec = (target_->GetPosition() - GetPosition()).Normalized();
 			target_dir_world = glm::vec3(target_vec.x, target_vec.y, target_vec.z);
 
-			glm::vec3 target_dir_local = WorldToObject(target_dir_world);
-			glm::vec3 P = glm::vec3(0, 0, -1);
-			glm::vec3 torque = glm::cross(P, target_dir_local);
-			rigid_body_.AddRelativeTorque(torque * kTurnSpeed);
+			target_dir_local = WorldToObject(target_dir_world);
 		}
 
 		const auto* terrain_generator = handler.GetTerrainGenerator();
@@ -175,23 +198,14 @@ namespace Boidsish {
 					float target_priority = 1.0f - glm::clamp(alignment_with_target, 0.0f, 1.0f);
 					float avoidance_weight = distance_factor * target_priority;
 					glm::vec3 final_desired_dir = glm::normalize(target_dir_world + (away * avoidance_weight * kAvoidanceStrength));
-					glm::vec3 local_desired = WorldToObject(final_desired_dir);
-					glm::vec3 P = glm::vec3(0, 0, -1);
-					glm::vec3 torque = glm::cross(P, local_desired);
-
-					rigid_body_.AddRelativeTorque(torque * kTurnSpeed);
+					target_dir_local = WorldToObject(final_desired_dir);
 
 					/*
 
-					glm::vec3 target_dir_local = WorldToObject(away);
-
-					glm::vec3 final_desired_dir = glm::normalize(target_dir_world + (away * avoidance_weight * kAvoidanceStrength));
-
+				glm::vec3 target_dir_local = WorldToObject(away);
 					glm::vec3 P = glm::vec3(0, 0, -1);
 					glm::vec3 torque = glm::cross(P, target_dir_local);
 					rigid_body_.AddRelativeTorque(torque * kTurnSpeed);
-
-
 
 
 					away = target_dir_world - (glm::dot(target_dir_world, away)) * away;
@@ -206,7 +220,22 @@ namespace Boidsish {
 
 				}
 			}
+
+
+
 		}
+
+			glm::vec3 local_forward = glm::vec3(0, 0, -1);
+			glm::vec3 pid_torque = CalculateSteeringTorque(
+					local_forward,
+					target_dir_local,
+					rigid_body_.GetAngularVelocity(),
+					200.0f, //kP,
+					50.0f//kD
+				);
+
+			rigid_body_.AddRelativeTorque(pid_torque);
+
 	}
 
 	void CatMissile::Explode(const EntityHandler& handler, bool hit_target) {

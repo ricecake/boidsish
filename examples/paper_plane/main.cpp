@@ -13,7 +13,7 @@
 using namespace Boidsish;
 
 int main() {
-	try {
+	// try {
 		auto visualizer = std::make_shared<Visualizer>(1280, 720, "Paper Plane Demo");
 		visualizer->AddHudIcon(
 			{1, "assets/missile-icon.png", HudAlignment::TOP_LEFT, {10, 10}, {64, 64}, selected_weapon == 0}
@@ -84,9 +84,9 @@ int main() {
 		visualizer->GetAudioManager().PlayMusic("assets/kazoom.mp3", true, 0.25f);
 
 		visualizer->Run();
-	} catch (const std::exception& e) {
-		std::cerr << "Error: " << e.what() << std::endl;
-		return 1;
-	}
+	// } catch (const std::exception& e) {
+	// 	std::cerr << "Error: " << e.what() << std::endl;
+	// 	return 1;
+	// }
 	return 0;
 }
