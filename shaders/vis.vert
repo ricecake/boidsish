@@ -19,12 +19,7 @@ uniform vec4  clipPlane;
 uniform float ripple_strength;
 uniform bool  isColossal = true;
 
-layout(std140) uniform Lighting {
-	vec3  lightPos;
-	vec3  viewPos;
-	vec3  lightColor;
-	float time;
-};
+#include "lighting.glsl"
 
 void main() {
 	vec3 displacedPos = aPos;

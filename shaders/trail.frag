@@ -18,7 +18,6 @@ void main() {
 	// return;
 	vec3 norm = normalize(vs_normal);
 	vec3 view_dir = normalize(viewPos - vs_frag_pos);
-	vec3 light_dir = normalize(lightPos - vs_frag_pos);
 
 	if (useRocketTrail) {
 		// --- Rocket Trail Effect ---
@@ -72,8 +71,16 @@ void main() {
 			sin(angle_factor * 10.0 + swirl * 5.0 + 4.0) * 0.5 + 0.5
 		);
 
-		vec3 lighting = apply_lighting(vs_frag_pos, norm, iridescent_color, 1.0, 1.5);
-		vec3 final_color = mix(iridescent_color, lighting, fresnel);
+		if (num_lights > 0) {
+			vec3 light_dir = normalize(lights[0].position - vs_frag_pos);
+			// Add a strong specular highlight
+			vec3  reflect_dir = reflect(-light_dir, norm);
+			float spec = pow(max(dot(view_dir, reflect_dir), 0.0), 128.0);
+			vec3  specular = 1.5 * spec * lights[0].color; // white highlight
+			iridescent_color += specular;
+		}
+
+		vec3 final_color = mix(iridescent_color, vec3(1.0), fresnel);
 
 		FragColor = vec4(final_color, 0.75); // Semi-transparent
 	} else {
