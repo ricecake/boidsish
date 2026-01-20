@@ -16,10 +16,10 @@ int main() {
 		// Set up camera
 		Camera camera;
 		camera.x = 0.0f;
-		camera.y = 50.0f;
-		camera.z = 50.0f;
+		camera.y = 5.0f;
+		camera.z = 15.0f;
 		camera.yaw = 0.0f;
-		camera.pitch = -45.0f;
+		camera.pitch = -15.0f;
 		viz.SetCamera(camera);
 
 		// Create and set the vector demo handler

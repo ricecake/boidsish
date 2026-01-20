@@ -30,16 +30,13 @@ void main() {
 		tempWorldPos.xz += viewPos.xz;
 
 		float dist = length(tempWorldPos.xz - viewPos.xz);
-		float fade_start = 580.0;
-		float fade_end = 600.0;
-		float curl_intensity = smoothstep(fade_start, fade_end, dist);
+		float curl_intensity = smoothstep(distant_curl_fade_start, distant_curl_fade_end, dist);
 
 		if (curl_intensity > 0.01) { // Epsilon check to avoid unnecessary calculations
 			float radial_dist = length(aPos.xz);
-			float curl_strength = 800.0;
 
 			// Apply y-offset in model space
-			modifiedPos.y += curl_intensity * pow(radial_dist, 2.0) * curl_strength;
+			modifiedPos.y += curl_intensity * pow(radial_dist, 2.0) * distant_curl_strength;
 
 			// Calculate the derivative of the y-offset function: f(x,z) = C * (x^2 + z^2)
 			// where C = curl_intensity * curl_strength

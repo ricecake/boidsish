@@ -459,8 +459,15 @@ namespace Boidsish {
 
 		void SetupShaderBindings(Shader& shader_to_setup) {
 			shader_to_setup.use();
-			glUniformBlockBinding(shader_to_setup.ID, glGetUniformBlockIndex(shader_to_setup.ID, "Lighting"), 0);
-			glUniformBlockBinding(shader_to_setup.ID, glGetUniformBlockIndex(shader_to_setup.ID, "VisualEffects"), 1);
+			GLuint lighting_block_index = glGetUniformBlockIndex(shader_to_setup.ID, "Lighting");
+			if (lighting_block_index != GL_INVALID_INDEX) {
+				glUniformBlockBinding(shader_to_setup.ID, lighting_block_index, 0);
+			}
+
+			GLuint visual_effects_block_index = glGetUniformBlockIndex(shader_to_setup.ID, "VisualEffects");
+			if (visual_effects_block_index != GL_INVALID_INDEX) {
+				glUniformBlockBinding(shader_to_setup.ID, visual_effects_block_index, 1);
+			}
 		}
 
 		~VisualizerImpl() {
@@ -1378,6 +1385,15 @@ namespace Boidsish {
 			ubo_data.wireframe_enabled = config.GetAppSettingBool("artistic_effect_wireframe", false);
 			ubo_data.color_shift_enabled = config.GetAppSettingBool("artistic_effect_color_shift", false);
 			ubo_data.distant_curl_enabled = config.GetAppSettingBool("artistic_effect_distant_curl", false);
+			if (ubo_data.distant_curl_enabled) {
+				ubo_data.distant_curl_fade_start =
+					config.GetAppSettingFloat("artistic_effect_distant_curl_fade_start", 580.0f);
+				ubo_data.distant_curl_fade_end =
+					config.GetAppSettingFloat("artistic_effect_distant_curl_fade_end", 600.0f);
+				ubo_data.distant_curl_strength =
+					config.GetAppSettingFloat("artistic_effect_distant_curl_strength", 0.2f);
+			}
+
 			if (config.GetAppSettingBool("artistic_effect_ripple", false)) {
 				ubo_data.ripple_enabled = 1;
 			}

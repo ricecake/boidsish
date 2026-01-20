@@ -57,6 +57,23 @@ namespace Boidsish {
 				config.SetBool("artistic_effect_distant_curl", distant_curl_enabled);
 			}
 
+			if (distant_curl_enabled) {
+				float fade_start = config.GetAppSettingFloat("artistic_effect_distant_curl_fade_start", 580.0f);
+				if (ImGui::SliderFloat("Fade Start", &fade_start, 0.0f, 1000.0f)) {
+					config.SetFloat("artistic_effect_distant_curl_fade_start", fade_start);
+				}
+
+				float fade_end = config.GetAppSettingFloat("artistic_effect_distant_curl_fade_end", 600.0f);
+				if (ImGui::SliderFloat("Fade End", &fade_end, 0.0f, 1000.0f)) {
+					config.SetFloat("artistic_effect_distant_curl_fade_end", fade_end);
+				}
+
+				float strength = config.GetAppSettingFloat("artistic_effect_distant_curl_strength", 0.2f);
+				if (ImGui::SliderFloat("Strength", &strength, 0.0f, 1.0f)) {
+					config.SetFloat("artistic_effect_distant_curl_strength", strength);
+				}
+			}
+
 			ImGui::End();
 		}
 
