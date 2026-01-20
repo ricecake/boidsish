@@ -96,7 +96,7 @@ foreach(EXAMPLE_DIR ${EXAMPLE_DIRS})
         target_link_libraries(${EXAMPLE_NAME} PRIVATE boidsish)
 
         # Add the example's include directory
-        target_include_directories(${EXAMPLE_NAME} PRIVATE "${EXAMPLE_DIR}/include")
+        target_include_directories(${EXAMPLE_NAME} PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/include" "${EXAMPLE_DIR}/include")
 
         set_target_properties(${EXAMPLE_NAME} PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
     endif()

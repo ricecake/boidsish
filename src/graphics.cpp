@@ -17,6 +17,7 @@
 #include "fire_effect_manager.h"
 #include "hud.h"
 #include "hud_manager.h"
+#include "light_manager.h"
 #include "logger.h"
 #include "path.h"
 #include "post_processing/PostProcessingManager.h"
@@ -65,6 +66,7 @@ namespace Boidsish {
 		std::unique_ptr<SoundEffectManager>   sound_effect_manager;
 		std::map<int, std::shared_ptr<Trail>> trails;
 		std::map<int, float>                  trail_last_update;
+		LightManager                          light_manager;
 
 		InputState                                             input_state{};
 		std::vector<InputCallback>                             input_callbacks;
@@ -219,12 +221,12 @@ namespace Boidsish {
 			audio_manager = std::make_unique<AudioManager>();
 			sound_effect_manager = std::make_unique<SoundEffectManager>(audio_manager.get());
 
+			const int MAX_LIGHTS = 10;
 			glGenBuffers(1, &lighting_ubo);
 			glBindBuffer(GL_UNIFORM_BUFFER, lighting_ubo);
-			// Allocate space for 3 vec3s with std140 padding (each vec3 padded to 16 bytes) 16 + 16 + 16
-			glBufferData(GL_UNIFORM_BUFFER, 48, NULL, GL_STATIC_DRAW);
+			glBufferData(GL_UNIFORM_BUFFER, 352, NULL, GL_DYNAMIC_DRAW);
 			glBindBuffer(GL_UNIFORM_BUFFER, 0);
-			glBindBufferRange(GL_UNIFORM_BUFFER, 0, lighting_ubo, 0, 48);
+			glBindBufferRange(GL_UNIFORM_BUFFER, 0, lighting_ubo, 0, 352);
 
 			if (ConfigManager::GetInstance().GetAppSettingBool("enable_effects", true)) {
 				glGenBuffers(1, &visual_effects_ubo);
@@ -1386,20 +1388,18 @@ namespace Boidsish {
 			glBindBuffer(GL_UNIFORM_BUFFER, 0);
 		}
 
-		float     light_x = 50.0f * cos(impl->simulation_time * 0.05f);
-		float     light_y = 25.0f + 1.8 * abs(sin(impl->simulation_time * 0.01));
-		float     light_z = 50.0f * sin(impl->simulation_time * 0.05f);
-		glm::vec3 lightPos(light_x, light_y, light_z);
 		glBindBuffer(GL_UNIFORM_BUFFER, impl->lighting_ubo);
-		glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(glm::vec3), &lightPos[0]);
+		const auto& lights = impl->light_manager.GetLights();
+		int num_lights = lights.size();
+		glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(Light) * num_lights, lights.data());
+		glBufferSubData(GL_UNIFORM_BUFFER, 320, sizeof(int), &num_lights);
 		glBufferSubData(
 			GL_UNIFORM_BUFFER,
-			16,
+			336,
 			sizeof(glm::vec3),
 			&glm::vec3(impl->camera.x, impl->camera.y, impl->camera.z)[0]
 		);
-		glBufferSubData(GL_UNIFORM_BUFFER, 32, sizeof(glm::vec3), &glm::vec3(1.0f, 1.0f, 1.0f)[0]);
-		glBufferSubData(GL_UNIFORM_BUFFER, 44, sizeof(float), &impl->simulation_time);
+		glBufferSubData(GL_UNIFORM_BUFFER, 352 - 4, sizeof(float), &impl->simulation_time);
 		glBindBuffer(GL_UNIFORM_BUFFER, 0);
 
 		if (impl->reflection_fbo) {
@@ -1638,6 +1638,10 @@ namespace Boidsish {
 
 	task_thread_pool::task_thread_pool& Visualizer::GetThreadPool() {
 		return impl->thread_pool;
+	}
+
+	LightManager& Visualizer::GetLightManager() {
+		return impl->light_manager;
 	}
 
 	std::tuple<float, glm::vec3> Visualizer::GetTerrainPointProperties(float x, float y) const {
