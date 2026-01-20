@@ -66,9 +66,18 @@ namespace Boidsish {
 			// SetOrientToVelocity(true);
 			launch_sound_ = handler.vis->AddSoundEffect("assets/rocket.wav", pos.Toglm(), GetVelocity().Toglm(), 10.0f);
 
+			rigid_body_.linear_friction_ = 7.5f;
+			rigid_body_.angular_friction_ = 7.5f;
+
 			fired_ = true;
 		} else if (launch_sound_) {
 			launch_sound_->SetPosition(pos.Toglm());
+		}
+
+		rigid_body_.AddRelativeForce(glm::vec3(0, 0, -2000));
+
+		if (lived_ <= kLaunchTime + 0.5f) {
+			return;
 		}
 
 		// forward_speed_ += kAcceleration * delta_time;
@@ -76,7 +85,6 @@ namespace Boidsish {
 		// 	forward_speed_ = kMaxSpeed;
 		// }
 
-		rigid_body_.AddRelativeForce(glm::vec3(0, 0, -300));
 
 		const float kTurnSpeed = 100.0f;
 		const float kDamping = 2.5f;
@@ -137,7 +145,8 @@ namespace Boidsish {
 		const auto* terrain_generator = handler.GetTerrainGenerator();
 		if (terrain_generator) {
 			const float reaction_distance = 100.0f;
-			float       hit_dist = 0.0f;
+			const float kAvoidanceStrength = 5.0f;
+			const float kUpAlignmentThreshold = 0.5f;
 
 			Vector3 vel_vec = GetVelocity();
 			if (vel_vec.MagnitudeSquared() > 1e-6) {
@@ -145,11 +154,11 @@ namespace Boidsish {
 				glm::vec3 dir = {vel_vec.x, vel_vec.y, vel_vec.z};
 				dir = glm::normalize(dir);
 
+				float       hit_dist = 0.0f;
 				if (terrain_generator->Raycast(origin, dir, reaction_distance, hit_dist)) {
 					auto hit_coord = vel_vec.Normalized() * hit_dist;
 					auto [terrain_h, terrain_normal] = terrain_generator->pointProperties(hit_coord.x, hit_coord.z);
 
-					const float kUpAlignmentThreshold = 0.5f;
 
 					glm::vec3 local_up = glm::vec3(0.0f, 1.0f, 0.0f);
 					auto      away = terrain_normal;
@@ -161,10 +170,40 @@ namespace Boidsish {
 						away = target_dir_world - (glm::dot(target_dir_world, away)) * away;
 					}
 
+					float distance_factor = 1.0f - (hit_dist / reaction_distance);
+					float alignment_with_target = glm::dot(dir, target_dir_world);
+					float target_priority = 1.0f - glm::clamp(alignment_with_target, 0.0f, 1.0f);
+					float avoidance_weight = distance_factor * target_priority;
+					glm::vec3 final_desired_dir = glm::normalize(target_dir_world + (away * avoidance_weight * kAvoidanceStrength));
+					glm::vec3 local_desired = WorldToObject(final_desired_dir);
+					glm::vec3 P = glm::vec3(0, 0, -1);
+					glm::vec3 torque = glm::cross(P, local_desired);
+
+					rigid_body_.AddRelativeTorque(torque * kTurnSpeed);
+
+					/*
+
 					glm::vec3 target_dir_local = WorldToObject(away);
+
+					glm::vec3 final_desired_dir = glm::normalize(target_dir_world + (away * avoidance_weight * kAvoidanceStrength));
+
 					glm::vec3 P = glm::vec3(0, 0, -1);
 					glm::vec3 torque = glm::cross(P, target_dir_local);
 					rigid_body_.AddRelativeTorque(torque * kTurnSpeed);
+
+
+
+
+					away = target_dir_world - (glm::dot(target_dir_world, away)) * away;
+
+					const float avoidance_strength = 5.0f;
+					float force_magnitude = avoidance_strength * (1.0f - ((10 + hit_dist) / reaction_distance));
+					glm::vec3 avoidance_force = away * force_magnitude * (1 - glm::dot(dir, target_dir_world));
+					glm::vec3 avoidance_local = glm::inverse(orientation_) * avoidance_force;
+					rotational_velocity_.y += avoidance_local.x * avoidance_strength * delta_time;
+					rotational_velocity_.x += avoidance_local.y * avoidance_strength * delta_time;
+					*/
+
 				}
 			}
 		}
