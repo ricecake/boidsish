@@ -241,6 +241,11 @@ namespace Boidsish {
 
 		float control_value = getBiomeControlValue(x, z);
 
+		if (std::isnan(control_value)) {
+			logger::LOG("WJY");
+			control_value = 0.5f;
+		}
+
 		CPPTRACE_TRY {
 		BiomeAttributes current;
 		auto            low_threshold = (floor(control_value * (biomes.size() - 1)) / (biomes.size() - 1));
@@ -359,7 +364,7 @@ namespace Boidsish {
 		// Ray marching to find a segment that contains the intersection
 		while (current_dist < max_dist) {
 			current_pos = origin + dir * current_dist;
-			float terrain_height = std::get<0>(pointProperties(current_pos.x, current_pos.z));
+			float terrain_height = pointGenerate(current_pos.x, current_pos.z).x;
 
 			if (current_pos.y < terrain_height) {
 				// We found an intersection between the previous and current step.
@@ -371,7 +376,7 @@ namespace Boidsish {
 				for (int i = 0; i < binary_search_steps; ++i) {
 					float     mid_dist = (start_dist + end_dist) / 2.0f;
 					glm::vec3 mid_pos = origin + dir * mid_dist;
-					float     mid_terrain_height = std::get<0>(pointProperties(mid_pos.x, mid_pos.z));
+					float     mid_terrain_height = pointGenerate(mid_pos.x, mid_pos.z).x;
 
 					if (mid_pos.y < mid_terrain_height) {
 						end_dist = mid_dist; // Intersection is in the first half
