@@ -14,7 +14,8 @@ namespace Boidsish {
 			const std::vector<unsigned int>& indices,
 			const std::vector<glm::vec3>&    vertices,
 			const std::vector<glm::vec3>&    normals,
-			const PatchProxy&                proxy
+			const PatchProxy&                proxy,
+			int                              chunk_size
 		);
 		~Terrain();
 
@@ -22,6 +23,8 @@ namespace Boidsish {
 		void      render() const override;
 		void      render(Shader& shader, const glm::mat4& model_matrix) const override;
 		glm::mat4 GetModelMatrix() const override;
+
+		float GetHeight(float local_x, float local_z) const;
 
 		static std::shared_ptr<Shader> terrain_shader_;
 
@@ -33,6 +36,7 @@ namespace Boidsish {
 	private:
 		std::vector<float>        vertex_data_; // Interleaved for GPU
 		std::vector<unsigned int> indices_;
+		int                       chunk_size_;
 
 		unsigned int vao_, vbo_, ebo_;
 		int          index_count_;

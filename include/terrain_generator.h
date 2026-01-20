@@ -86,7 +86,8 @@ namespace Boidsish {
 			return {final_pos.y, final_norm};
 		}
 
-		bool Raycast(const glm::vec3& origin, const glm::vec3& dir, float max_dist, float& out_dist) const;
+		bool Raycast(const glm::vec3& origin, const glm::vec3& dir, float max_dist, float& out_dist, bool allow_recompute = true) const;
+		bool IsBelowTerrainCached(const glm::vec3& point) const;
 
 		std::vector<glm::vec3> GetPath(glm::vec2 start_pos, int num_points, float step_size) const;
 
@@ -150,6 +151,7 @@ namespace Boidsish {
 		auto      fbm(float x, float z, TerrainParameters params);
 		auto      biomefbm(glm::vec2 pos, BiomeAttributes attr) const;
 		glm::vec3 pointGenerate(float x, float y) const;
+		std::optional<float> _GetHeightFromCache(float world_x, float world_z) const;
 
 		glm::vec3 diffToNorm(float dx, float dz) const { return glm::normalize(glm::vec3(-dx, 1.0f, -dz)); }
 

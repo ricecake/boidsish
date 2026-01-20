@@ -8,6 +8,7 @@
 #include <future>
 #include <iostream>
 #include <numeric>
+#include <optional>
 #include <ranges>
 #include <string>
 #include <vector>
@@ -108,7 +109,7 @@ namespace Boidsish {
 				TerrainGenerationResult result = future.get();
 				if (result.has_terrain) {
 					auto terrain_chunk =
-						std::make_shared<Terrain>(result.indices, result.positions, result.normals, result.proxy);
+						std::make_shared<Terrain>(result.indices, result.positions, result.normals, result.proxy, chunk_size_);
 					terrain_chunk->SetPosition(result.chunk_x * chunk_size_, 0, result.chunk_z * chunk_size_);
 					terrain_chunk->setupMesh();
 					chunk_cache_[pair.first] = terrain_chunk;
@@ -327,15 +328,33 @@ namespace Boidsish {
 	}
 
 	bool
-	TerrainGenerator::Raycast(const glm::vec3& origin, const glm::vec3& dir, float max_dist, float& out_dist) const {
+	TerrainGenerator::Raycast(const glm::vec3& origin, const glm::vec3& dir, float max_dist, float& out_dist, bool allow_recompute) const {
 		constexpr float step_size = 1.0f; // Initial step for ray marching
 		float           current_dist = 0.0f;
 		glm::vec3       current_pos = origin;
 
+		auto get_terrain_height = [&](float x, float z) -> std::optional<float> {
+			auto cached_height = _GetHeightFromCache(x, z);
+			if (cached_height) {
+				return cached_height;
+			}
+			if (allow_recompute) {
+				return std::get<0>(pointProperties(x, z));
+			}
+			return std::nullopt;
+		};
+
 		// Ray marching to find a segment that contains the intersection
 		while (current_dist < max_dist) {
 			current_pos = origin + dir * current_dist;
-			float terrain_height = std::get<0>(pointProperties(current_pos.x, current_pos.z));
+			auto terrain_height_opt = get_terrain_height(current_pos.x, current_pos.z);
+
+			if (!terrain_height_opt) {
+				current_dist += step_size;
+				continue;
+			}
+			float terrain_height = *terrain_height_opt;
+
 
 			if (current_pos.y < terrain_height) {
 				// We found an intersection between the previous and current step.
@@ -347,7 +366,16 @@ namespace Boidsish {
 				for (int i = 0; i < binary_search_steps; ++i) {
 					float     mid_dist = (start_dist + end_dist) / 2.0f;
 					glm::vec3 mid_pos = origin + dir * mid_dist;
-					float     mid_terrain_height = std::get<0>(pointProperties(mid_pos.x, mid_pos.z));
+
+					auto mid_terrain_height_opt = get_terrain_height(mid_pos.x, mid_pos.z);
+
+					if (!mid_terrain_height_opt) {
+						// This should ideally not be reached if the initial check passed without recompute
+						start_dist = mid_dist;
+						continue;
+					}
+					float mid_terrain_height = *mid_terrain_height_opt;
+
 
 					if (mid_pos.y < mid_terrain_height) {
 						end_dist = mid_dist; // Intersection is in the first half
@@ -364,6 +392,27 @@ namespace Boidsish {
 		}
 
 		return false; // No hit
+	}
+
+	std::optional<float> TerrainGenerator::_GetHeightFromCache(float world_x, float world_z) const {
+		int chunk_x = static_cast<int>(floor(world_x / chunk_size_));
+		int chunk_z = static_cast<int>(floor(world_z / chunk_size_));
+		auto it = chunk_cache_.find({chunk_x, chunk_z});
+
+		if (it != chunk_cache_.end()) {
+			float local_x = world_x - chunk_x * chunk_size_;
+			float local_z = world_z - chunk_z * chunk_size_;
+			return it->second->GetHeight(local_x, local_z);
+		}
+		return std::nullopt;
+	}
+
+	bool TerrainGenerator::IsBelowTerrainCached(const glm::vec3& point) const {
+		auto height = _GetHeightFromCache(point.x, point.z);
+		if (height) {
+			return point.y < *height;
+		}
+		return false;
 	}
 
 	glm::vec3 TerrainGenerator::getPathInfluence(float x, float z) const {

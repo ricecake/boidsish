@@ -14,12 +14,14 @@ namespace Boidsish {
 		const std::vector<unsigned int>& indices,
 		const std::vector<glm::vec3>&    vertices,
 		const std::vector<glm::vec3>&    normals,
-		const PatchProxy&                proxy
+		const PatchProxy&                proxy,
+		int                              chunk_size
 	):
 		indices_(indices),
 		vertices(vertices),
 		normals(normals),
 		proxy(proxy),
+		chunk_size_(chunk_size),
 		vao_(0),
 		vbo_(0),
 		ebo_(0),
@@ -96,6 +98,35 @@ namespace Boidsish {
 		glm::mat4 model = glm::mat4(1.0f);
 		model = glm::translate(model, glm::vec3(GetX(), GetY(), GetZ()));
 		return model;
+	}
+
+	float Terrain::GetHeight(float local_x, float local_z) const {
+		// Clamp coordinates to be within the chunk bounds
+		local_x = std::max(0.0f, std::min(local_x, (float)chunk_size_));
+		local_z = std::max(0.0f, std::min(local_z, (float)chunk_size_));
+
+		int x_floor = static_cast<int>(floor(local_x));
+		int z_floor = static_cast<int>(floor(local_z));
+
+		// Ensure we don't go out of bounds for the ceiling
+		int x_ceil = std::min(x_floor + 1, chunk_size_);
+		int z_ceil = std::min(z_floor + 1, chunk_size_);
+
+		float tx = local_x - x_floor;
+		float tz = local_z - z_floor;
+
+		int num_vertices_dim = chunk_size_ + 1;
+
+		// Get the heights of the 4 corner vertices
+		float h00 = vertices[x_floor * num_vertices_dim + z_floor].y;
+		float h10 = vertices[x_ceil * num_vertices_dim + z_floor].y;
+		float h01 = vertices[x_floor * num_vertices_dim + z_ceil].y;
+		float h11 = vertices[x_ceil * num_vertices_dim + z_ceil].y;
+
+		// Bilinear interpolation
+		float h_bot = glm::mix(h00, h10, tx);
+		float h_top = glm::mix(h01, h11, tx);
+		return glm::mix(h_bot, h_top, tz);
 	}
 
 } // namespace Boidsish
