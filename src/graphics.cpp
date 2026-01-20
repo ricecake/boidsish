@@ -1377,6 +1377,7 @@ namespace Boidsish {
 			ubo_data.glitched_enabled = config.GetAppSettingBool("artistic_effect_glitched", false);
 			ubo_data.wireframe_enabled = config.GetAppSettingBool("artistic_effect_wireframe", false);
 			ubo_data.color_shift_enabled = config.GetAppSettingBool("artistic_effect_color_shift", false);
+			ubo_data.distant_curl_enabled = config.GetAppSettingBool("artistic_effect_distant_curl", false);
 			if (config.GetAppSettingBool("artistic_effect_ripple", false)) {
 				ubo_data.ripple_enabled = 1;
 			}

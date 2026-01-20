@@ -10,6 +10,8 @@ uniform mat4 view;
 uniform mat4 projection;
 uniform mat4 reflectionViewProjection;
 
+#include "visual_effects.glsl"
+
 layout(std140) uniform Lighting {
 	vec3  lightPos;
 	vec3  viewPos;
@@ -18,9 +20,44 @@ layout(std140) uniform Lighting {
 };
 
 void main() {
-	WorldPos = vec3(model * vec4(aPos, 1.0));
+	vec3 modifiedPos = aPos;
+	vec3 modifiedNormal = vec3(0.0, 1.0, 0.0);
+
+	if (distant_curl_enabled == 1) {
+		// We need to know the world position to calculate distance fade, but we need to modify the model position.
+		// So we do a temporary transform to get world pos.
+		vec3 tempWorldPos = vec3(model * vec4(aPos, 1.0));
+		tempWorldPos.xz += viewPos.xz;
+
+		float dist = length(tempWorldPos.xz - viewPos.xz);
+		float fade_start = 580.0;
+		float fade_end = 600.0;
+		float curl_intensity = smoothstep(fade_start, fade_end, dist);
+
+		if (curl_intensity > 0.01) { // Epsilon check to avoid unnecessary calculations
+			float radial_dist = length(aPos.xz);
+			float curl_strength = 800.0;
+
+			// Apply y-offset in model space
+			modifiedPos.y += curl_intensity * pow(radial_dist, 2.0) * curl_strength;
+
+			// Calculate the derivative of the y-offset function: f(x,z) = C * (x^2 + z^2)
+			// where C = curl_intensity * curl_strength
+			float C = curl_intensity * curl_strength;
+			float df_dx = 2.0 * C * aPos.x;
+			float df_dz = 2.0 * C * aPos.z;
+
+			// The normal in model space is normalize(vec3(-df_dx, 1.0, -df_dz))
+			modifiedNormal = normalize(vec3(-df_dx, 1.0, -df_dz));
+		}
+	}
+
+	WorldPos = vec3(model * vec4(modifiedPos, 1.0));
 	WorldPos.xz += viewPos.xz;
-	Normal = vec3(0.0, 1.0, 0.0);
+
+	// Transform normal to world space
+	Normal = mat3(transpose(inverse(model))) * modifiedNormal;
+
 	ReflectionClipSpacePos = reflectionViewProjection * vec4(WorldPos, 1.0);
 	gl_Position = projection * view * vec4(WorldPos, 1.0);
 }

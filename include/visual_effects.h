@@ -20,5 +20,6 @@ namespace Boidsish {
 		int shimmery_enabled;
 		int glitched_enabled;
 		int wireframe_enabled;
+		int distant_curl_enabled;
 	};
 } // namespace Boidsish

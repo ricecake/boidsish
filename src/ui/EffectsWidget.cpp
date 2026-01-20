@@ -52,6 +52,11 @@ namespace Boidsish {
 				config.SetBool("artistic_effect_wireframe", wireframe_enabled);
 			}
 
+			bool distant_curl_enabled = config.GetAppSettingBool("artistic_effect_distant_curl", false);
+			if (ImGui::Checkbox("Distant Curl", &distant_curl_enabled)) {
+				config.SetBool("artistic_effect_distant_curl", distant_curl_enabled);
+			}
+
 			ImGui::End();
 		}
 
