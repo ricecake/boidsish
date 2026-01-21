@@ -1,0 +1,3 @@
+[LOG] Initializing HudManager... (/app/src/graphics.cpp:248)
+[LOG] HudManager initialized. Creating HudWidget... (/app/src/graphics.cpp:250)
+[LOG] HudWidget created and added. (/app/src/graphics.cpp:253)

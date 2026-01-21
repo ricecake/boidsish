@@ -12,9 +12,18 @@ out vec3 FragPos;
 out vec3 Normal;
 out vec2 TexCoords;
 
-uniform mat4  view;
-uniform mat4  projection;
+#include "visual_effects.glsl"
+
+uniform mat4 view;
+uniform mat4 projection;
 uniform float uPhongAlpha = 1; // Controls the "puffiness" (0.0 = flat, 1.0 = full phong)
+
+layout(std140) uniform Lighting {
+	vec3  lightPos;
+	vec3  viewPos; // Camera position
+	vec3  lightColor;
+	float time;
+};
 
 // Helper: Projects point q onto the plane defined by vertex v and normal n
 // Formula: pi(q) = q - ((q - v) . n) * n
@@ -61,7 +70,21 @@ void main() {
 
 	// 3. Mix flat and curved positions
 	// This blend is often necessary because full Phong Tessellation can look too "ballooned"
-	FragPos = mix(q, posCurved, uPhongAlpha);
+	vec3 finalPos = mix(q, posCurved, uPhongAlpha);
+
+	// 4. Distant Curl Effect
+	if (distant_curl_enabled == 1 && distant_curl_strength > 0.0) {
+		float distance = length(finalPos.xz - viewPos.xz);
+		float fade_factor = smoothstep(
+			distant_curl_fade_start,
+			distant_curl_fade_end,
+			distance
+		);
+		float curl = pow(distance, 2.0) * 0.00001 * distant_curl_strength * fade_factor;
+		finalPos.y += curl;
+	}
+
+	FragPos = finalPos;
 
 	// Final vertex position
 	gl_Position = projection * view * vec4(FragPos, 1.0);

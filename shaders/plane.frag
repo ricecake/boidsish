@@ -108,7 +108,6 @@ float fbm(vec3 p) {
 }
 
 void main() {
-	// discard;
 	// --- Reflection sampling ---
 	vec3 reflectionColor = vec3(0.0);
 	if (useReflection) {
