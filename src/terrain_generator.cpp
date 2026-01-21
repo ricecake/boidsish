@@ -289,8 +289,8 @@ namespace Boidsish {
 
 		float control_value = getBiomeControlValue(x, z);
 
-		if (std::isnan(control_value)) {
-			logger::LOG("WJY");
+		// getBiomeControlValue now handles NaN internally, but keep defensive check
+		if (std::isnan(control_value) || std::isinf(control_value)) {
 			control_value = 0.5f;
 		}
 
@@ -653,7 +653,9 @@ namespace Boidsish {
 		// return Simplex::worleyfBm(glm::vec2(x * control_noise_scale_, z * control_noise_scale_));
 		glm::vec2 pos(x, z);
 		pos *= control_noise_scale_;
-		return Simplex::fBm (pos + Simplex::curlNoise(pos))  * 0.5f + 0.5f;
+		float result = Simplex::fBm (pos + Simplex::curlNoise(pos))  * 0.5f + 0.5f;
+		return std::clamp(result, 0.0f, 1.0f);
+
 		// return Simplex::worleyfBm(pos);
 		// // return control_noise_generator_->GenSingle2D(x * control_noise_scale_, z * control_noise_scale_, seed_);
 		// return Simplex::worleyNoise(glm::vec2(x * control_noise_scale_, z * control_noise_scale_), 4) * 0.5f + 0.5f;
