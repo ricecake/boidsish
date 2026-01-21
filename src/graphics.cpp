@@ -83,10 +83,13 @@ namespace Boidsish {
 		std::unique_ptr<Shader> trail_shader;
 		std::unique_ptr<Shader> blur_shader;
 		std::unique_ptr<Shader> postprocess_shader_;
+		std::shared_ptr<Shader> depth_shader;
 		GLuint                  plane_vao{0}, plane_vbo{0}, sky_vao{0}, blur_quad_vao{0}, blur_quad_vbo{0};
 		GLuint                  reflection_fbo{0}, reflection_texture{0}, reflection_depth_rbo{0};
 		GLuint                  pingpong_fbo[2]{0}, pingpong_texture[2]{0};
 		GLuint                  main_fbo_{0}, main_fbo_texture_{0}, main_fbo_rbo_{0};
+		GLuint                  depth_map_fbo{0}, depth_map_texture{0};
+		const unsigned int      SHADOW_WIDTH = 1024, SHADOW_HEIGHT = 1024;
 		GLuint                  lighting_ubo{0};
 		GLuint                  visual_effects_ubo{0};
 		glm::mat4               projection, reflection_vp;
@@ -213,6 +216,7 @@ namespace Boidsish {
 			if (ConfigManager::GetInstance().GetAppSettingBool("enable_effects", true)) {
 				postprocess_shader_ = std::make_unique<Shader>("shaders/postprocess.vert", "shaders/postprocess.frag");
 			}
+			depth_shader = std::make_shared<Shader>("shaders/depth.vert", "shaders/depth.frag");
 			if (ConfigManager::GetInstance().GetAppSettingBool("enable_terrain", true)) {
 				terrain_generator = std::make_unique<TerrainGenerator>();
 			}
@@ -224,9 +228,10 @@ namespace Boidsish {
 			const int MAX_LIGHTS = 10;
 			glGenBuffers(1, &lighting_ubo);
 			glBindBuffer(GL_UNIFORM_BUFFER, lighting_ubo);
-			glBufferData(GL_UNIFORM_BUFFER, 352, NULL, GL_DYNAMIC_DRAW);
+			// Corrected UBO size
+			glBufferData(GL_UNIFORM_BUFFER, 992, NULL, GL_DYNAMIC_DRAW);
 			glBindBuffer(GL_UNIFORM_BUFFER, 0);
-			glBindBufferRange(GL_UNIFORM_BUFFER, 0, lighting_ubo, 0, 352);
+			glBindBufferRange(GL_UNIFORM_BUFFER, 0, lighting_ubo, 0, 992);
 
 			if (ConfigManager::GetInstance().GetAppSettingBool("enable_effects", true)) {
 				glGenBuffers(1, &visual_effects_ubo);
@@ -451,6 +456,21 @@ namespace Boidsish {
 				auto post_processing_widget = std::make_shared<UI::PostProcessingWidget>(*post_processing_manager_);
 				ui_manager->AddWidget(post_processing_widget);
 			}
+
+		glGenFramebuffers(1, &depth_map_fbo);
+		glGenTextures(1, &depth_map_texture);
+		glBindTexture(GL_TEXTURE_2D, depth_map_texture);
+		glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT, SHADOW_WIDTH, SHADOW_HEIGHT, 0, GL_DEPTH_COMPONENT, GL_FLOAT, NULL);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+
+		glBindFramebuffer(GL_FRAMEBUFFER, depth_map_fbo);
+		glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, depth_map_texture, 0);
+		glDrawBuffer(GL_NONE);
+		glReadBuffer(GL_NONE);
+		glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
 			auto config_widget = std::make_shared<UI::ConfigWidget>(*parent);
 			ui_manager->AddWidget(config_widget);
@@ -703,6 +723,45 @@ namespace Boidsish {
 			}
 			glBindFramebuffer(GL_FRAMEBUFFER, 0);
 			glEnable(GL_DEPTH_TEST);
+		}
+
+		void RenderShadowPass() {
+			int shadow_caster_index = light_manager.GetShadowCasterIndex();
+			if (shadow_caster_index == -1) {
+				return;
+			}
+			auto& shadow_caster = light_manager.GetLights()[shadow_caster_index];
+
+			// Configure projection and view matrix for the light
+			float near_plane = 1.0f, far_plane = 550.0f; // These values might need tweaking
+			glm::mat4 lightProjection = glm::ortho(-150.0f, 150.0f, -150.0f, 150.0f, near_plane, far_plane);
+			glm::mat4 lightView = glm::lookAt(shadow_caster.position, glm::vec3(0.0f), glm::vec3(0.0, 1.0, 0.0));
+			shadow_caster.lightSpaceMatrix = lightProjection * lightView;
+
+			// --- Render scene to depth map ---
+			glViewport(0, 0, SHADOW_WIDTH, SHADOW_HEIGHT);
+			glBindFramebuffer(GL_FRAMEBUFFER, depth_map_fbo);
+			glClear(GL_DEPTH_BUFFER_BIT);
+
+			auto original_shader = Shape::shader;
+			Shape::shader = depth_shader;
+			depth_shader->use();
+			depth_shader->setMat4("lightSpaceMatrix", shadow_caster.lightSpaceMatrix);
+
+			// Render shapes
+			for (const auto& shape : shapes) {
+				shape->render();
+			}
+			// Render clones
+			clone_manager->Render(*depth_shader);
+
+			// Restore original shader
+			Shape::shader = original_shader;
+
+			glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+			// Restore viewport for the main render pass
+			glViewport(0, 0, width, height);
 		}
 
 		void RenderPlane(const glm::mat4& view) {
@@ -1391,16 +1450,23 @@ namespace Boidsish {
 		glBindBuffer(GL_UNIFORM_BUFFER, impl->lighting_ubo);
 		const auto& lights = impl->light_manager.GetLights();
 		int         num_lights = lights.size();
+		int         shadow_caster_index = impl->light_manager.GetShadowCasterIndex();
 		glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(Light) * num_lights, lights.data());
-		glBufferSubData(GL_UNIFORM_BUFFER, 320, sizeof(int), &num_lights);
+
+		size_t base_offset = sizeof(Light) * 10;
+		glBufferSubData(GL_UNIFORM_BUFFER, base_offset, sizeof(int), &num_lights);
+		glBufferSubData(GL_UNIFORM_BUFFER, base_offset + 4, sizeof(int), &shadow_caster_index);
 		glBufferSubData(
 			GL_UNIFORM_BUFFER,
-			336,
+			base_offset + 16,
 			sizeof(glm::vec3),
 			&glm::vec3(impl->camera.x, impl->camera.y, impl->camera.z)[0]
 		);
-		glBufferSubData(GL_UNIFORM_BUFFER, 352 - 4, sizeof(float), &impl->simulation_time);
+		glBufferSubData(GL_UNIFORM_BUFFER, base_offset + 28, sizeof(float), &impl->simulation_time);
 		glBindBuffer(GL_UNIFORM_BUFFER, 0);
+
+		// --- Shadow Pass ---
+		impl->RenderShadowPass();
 
 		if (impl->reflection_fbo) {
 			// --- Reflection Pre-Pass ---
@@ -1435,6 +1501,11 @@ namespace Boidsish {
 		glBindFramebuffer(GL_FRAMEBUFFER, impl->main_fbo_);
 		glEnable(GL_DEPTH_TEST);
 		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+		glActiveTexture(GL_TEXTURE1);
+		glBindTexture(GL_TEXTURE_2D, impl->depth_map_texture);
+		impl->shader->use();
+		impl->shader->setInt("shadowMap", 1);
 
 		glm::mat4 view = impl->SetupMatrices();
 		impl->RenderSky(view);

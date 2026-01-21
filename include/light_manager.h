@@ -9,12 +9,14 @@ namespace Boidsish {
 
 	class LightManager {
 	public:
+		LightManager();
 		void                AddLight(const Light& light);
 		std::vector<Light>& GetLights();
+		int                 GetShadowCasterIndex() const;
 		void                Update(float deltaTime);
 
 	private:
-		std::vector<Light> _lights{{{0, 50, -500}, 10.0f, {1, 0.5f, 0.25f}}};
+		std::vector<Light> _lights;
 	};
 
 } // namespace Boidsish

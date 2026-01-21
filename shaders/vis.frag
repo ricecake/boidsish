@@ -15,8 +15,31 @@ uniform vec3 objectColor;
 uniform int  useVertexColor;
 uniform bool isColossal = true;
 
+uniform sampler2D shadowMap;
 uniform sampler2D texture_diffuse1;
 uniform bool      use_texture;
+
+float calculate_shadow(vec3 fragPos) {
+    if (shadow_caster_index < 0) {
+        return 0.0;
+    }
+    // Transform fragment position to light space
+    vec4 fragPosLightSpace = lights[shadow_caster_index].lightSpaceMatrix * vec4(fragPos, 1.0);
+    // Perspective division
+    vec3 projCoords = fragPosLightSpace.xyz / fragPosLightSpace.w;
+    // Transform to [0,1] range
+    projCoords = projCoords * 0.5 + 0.5;
+    // Get closest depth value from light's perspective (using light's orthographic projection)
+    float closestDepth = texture(shadowMap, projCoords.xy).r;
+    // Get depth of current fragment from light's perspective
+    float currentDepth = projCoords.z;
+    // Add a bias to prevent shadow acne
+    float bias = 0.005;
+    // Check if fragment is in shadow
+    float shadow = currentDepth - bias > closestDepth ? 1.0 : 0.0;
+
+    return shadow;
+}
 
 void main() {
 	vec3 final_color;
@@ -28,6 +51,8 @@ void main() {
 
 	vec3 norm = normalize(Normal);
 	vec3 result = apply_lighting(FragPos, norm, final_color, 0.1, 1.0);
+	float shadow = calculate_shadow(FragPos);
+	result *= (1.0 - shadow * 0.5); // Simple shadow application
 
 	if (use_texture) {
 		result *= texture(texture_diffuse1, TexCoords).rgb;

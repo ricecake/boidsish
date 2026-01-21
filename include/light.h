@@ -9,7 +9,8 @@ namespace Boidsish {
 		glm::vec3 position;
 		float     intensity;
 		glm::vec3 color;
-		float     padding; // for std140 alignment
+		int       casts_shadow; // Using int for bool
+		glm::mat4 lightSpaceMatrix;
 	};
 
 } // namespace Boidsish
