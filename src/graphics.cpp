@@ -472,6 +472,15 @@ namespace Boidsish {
 			ConfigManager::GetInstance().SetBool("fullscreen", is_fullscreen_);
 			ConfigManager::GetInstance().Shutdown();
 
+			// Explicitly reset managers in correct order to avoid use-after-free
+			// SoundEffectManager holds Sound objects that reference AudioManager's engine
+			sound_effect_manager.reset();
+			// AudioManager must be destroyed after all Sound objects
+			audio_manager.reset();
+
+			// TerrainGenerator must be destroyed before thread pool stops
+			terrain_generator.reset();
+
 			// Explicitly reset UI manager before destroying window context
 			ui_manager.reset();
 

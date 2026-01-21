@@ -40,9 +40,15 @@ namespace Boidsish {
 		}
 
 		~AudioManagerImpl() {
-			// smart pointers will handle cleanup
+			// IMPORTANT: Clear all sound references BEFORE uninitializing the engine
+			// Sound destructors call ma_sound_uninit which requires a valid engine
+			m_music.reset();
+			m_ambient_sounds.clear();
+			sounds.clear();
+
 			if (initialized) {
 				ma_engine_uninit(&engine);
+				initialized = false;
 			}
 		}
 	};

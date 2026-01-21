@@ -9,7 +9,11 @@ namespace Boidsish {
 
 	SoundEffectManager::SoundEffectManager(AudioManager* audio_manager): _audio_manager(audio_manager) {}
 
-	SoundEffectManager::~SoundEffectManager() {}
+	SoundEffectManager::~SoundEffectManager() {
+		// Clear all effects before destruction to ensure Sound objects
+		// are released while AudioManager is still valid
+		_effects.clear();
+	}
 
 	std::shared_ptr<SoundEffect> SoundEffectManager::AddEffect(
 		const std::string& filepath,
