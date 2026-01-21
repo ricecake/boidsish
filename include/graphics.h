@@ -196,6 +196,7 @@ namespace Boidsish {
 		void SetFilmGrainIntensity(float intensity);
 
 		std::tuple<float, glm::vec3>                 GetTerrainPointProperties(float x, float y) const;
+		std::tuple<float, glm::vec3>                 GetTerrainPointPropertiesThreadSafe(float x, float y) const;
 		float                                        GetTerrainMaxHeight() const;
 		const TerrainGenerator*                      GetTerrainGenerator() const;
 		const std::vector<std::shared_ptr<Terrain>>& GetTerrainChunks() const;

@@ -283,6 +283,7 @@ namespace Boidsish {
 		size_t GetEntityCount() const { return entities_.size(); }
 
 		std::tuple<float, glm::vec3>                 GetTerrainPointProperties(float x, float y) const;
+		std::tuple<float, glm::vec3>                 GetTerrainPointPropertiesThreadSafe(float x, float y) const;
 		const std::vector<std::shared_ptr<Terrain>>& GetTerrainChunks() const;
 		const TerrainGenerator*                      GetTerrainGenerator() const;
 

@@ -41,7 +41,7 @@ namespace Boidsish {
 		}
 
 		if (vis && vis->GetTerrainGenerator()) {
-			const auto&              visible_chunks = vis->GetTerrainGenerator()->getVisibleChunks();
+			const auto visible_chunks = vis->GetTerrainGenerator()->getVisibleChunksCopy();
 			std::set<const Terrain*> visible_chunk_set;
 			std::set<const Terrain*> forbidden_chunks;
 
@@ -103,7 +103,7 @@ namespace Boidsish {
 					candidate.chunk->GetZ()
 				);
 				glm::vec3 world_pos = chunk_pos + candidate.point;
-				auto [terrain_h, terrain_normal] = vis->GetTerrainPointProperties(world_pos.x, world_pos.z);
+				auto [terrain_h, terrain_normal] = vis->GetTerrainPointPropertiesThreadSafe(world_pos.x, world_pos.z);
 
 				if (terrain_h >= 40) {
 					glm::vec3 up_vector = glm::vec3(0.0f, 1.0f, 0.0f);

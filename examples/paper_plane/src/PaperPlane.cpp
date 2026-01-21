@@ -54,7 +54,7 @@ namespace Boidsish {
 		const float kSpeedDecay = 30.0f;
 
 		auto pos = GetPosition();
-		auto [height, norm] = handler.vis->GetTerrainPointProperties(pos.x, pos.z);
+		auto [height, norm] = handler.vis->GetTerrainPointPropertiesThreadSafe(pos.x, pos.z);
 		if (pos.y < height) {
 			TriggerDamage();
 			// pos = height;

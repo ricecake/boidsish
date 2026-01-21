@@ -124,6 +124,13 @@ namespace Boidsish {
 		return vis->GetTerrainPointProperties(x, y);
 	}
 
+	std::tuple<float, glm::vec3> EntityHandler::GetTerrainPointPropertiesThreadSafe(float x, float y) const {
+		if (vis) {
+			return vis->GetTerrainPointPropertiesThreadSafe(x, y);
+		}
+		return {0.0f, glm::vec3(0, 1, 0)};
+	}
+
 	const std::vector<std::shared_ptr<Terrain>>& EntityHandler::GetTerrainChunks() const {
 		return vis->GetTerrainChunks();
 	}
