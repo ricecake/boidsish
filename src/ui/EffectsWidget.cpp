@@ -68,8 +68,8 @@ namespace Boidsish {
 					config.SetFloat("artistic_effect_distant_curl_fade_end", fade_end);
 				}
 
-				float strength = config.GetAppSettingFloat("artistic_effect_distant_curl_strength", 0.2f);
-				if (ImGui::SliderFloat("Strength", &strength, 0.0f, 1.0f)) {
+				float strength = config.GetAppSettingFloat("artistic_effect_distant_curl_strength", 100.0f);
+				if (ImGui::SliderFloat("Strength", &strength, 0.0f, 500.0f)) {
 					config.SetFloat("artistic_effect_distant_curl_strength", strength);
 				}
 			}

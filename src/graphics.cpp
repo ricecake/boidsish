@@ -1391,7 +1391,7 @@ namespace Boidsish {
 				ubo_data.distant_curl_fade_end =
 					config.GetAppSettingFloat("artistic_effect_distant_curl_fade_end", 600.0f);
 				ubo_data.distant_curl_strength =
-					config.GetAppSettingFloat("artistic_effect_distant_curl_strength", 0.2f);
+					config.GetAppSettingFloat("artistic_effect_distant_curl_strength", 100.0f);
 			}
 
 			if (config.GetAppSettingBool("artistic_effect_ripple", false)) {
