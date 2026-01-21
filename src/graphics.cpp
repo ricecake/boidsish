@@ -587,7 +587,8 @@ namespace Boidsish {
 					}
 					trails[shape->GetId()]->AddPoint(
 						glm::vec3(shape->GetX(), shape->GetY(), shape->GetZ()),
-						glm::vec3(shape->GetR(), shape->GetG(), shape->GetB())
+						glm::vec3(shape->GetR(), shape->GetG(), shape->GetB()),
+						shape->GetRotation()
 					);
 					trail_last_update[shape->GetId()] = time;
 				}

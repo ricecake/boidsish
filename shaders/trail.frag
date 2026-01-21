@@ -5,6 +5,7 @@ in vec3  vs_color;
 in vec3  vs_normal;
 in vec3  vs_frag_pos;
 in float vs_progress;
+in vec3  vs_trail_up;
 
 layout(std140) uniform Lighting {
 	vec3  lightPos;
@@ -92,7 +93,7 @@ void main() {
 		vec3 base_color = vec3(0.8, 0.9, 1.0);
 
 		// Make the trail more transparent at the top and bottom
-		float transparency = 1.0 - abs(vs_normal.y);
+		float transparency = 1.0 - abs(dot(vs_normal, vs_trail_up));
 		transparency = pow(transparency, 2.0);
 
 		// Add some gentle noise to the transparency

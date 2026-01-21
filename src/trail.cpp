@@ -62,12 +62,14 @@ namespace Boidsish {
 
 	void Trail::UpdateAndAppendSegment() {
 		// Get the last 4 points to calculate the new segment
-		int                  size = points.size();
+		int size = points.size();
 		std::vector<Vector3> p(4);
 		std::vector<Vector3> c(4);
+		std::vector<glm::quat> q(4);
 		for (int i = 0; i < 4; ++i) {
-			p[i] = Vector3(points[size - 4 + i].first.x, points[size - 4 + i].first.y, points[size - 4 + i].first.z);
-			c[i] = Vector3(points[size - 4 + i].second.x, points[size - 4 + i].second.y, points[size - 4 + i].second.z);
+			p[i] = Vector3(std::get<0>(points[size - 4 + i]).x, std::get<0>(points[size - 4 + i]).y, std::get<0>(points[size - 4 + i]).z);
+			c[i] = Vector3(std::get<1>(points[size - 4 + i]).x, std::get<1>(points[size - 4 + i]).y, std::get<1>(points[size - 4 + i]).z);
+			q[i] = std::get<2>(points[size - 4 + i]);
 		}
 
 		// Append to the geometry cache
@@ -127,6 +129,11 @@ namespace Boidsish {
 			const auto& ring2_positions = ring_positions[i + 1];
 			const auto& ring2_normals = ring_normals[i + 1];
 
+			// Interpolate orientation to find the 'up' vector for this segment
+			float t = (float)(i % CURVE_SEGMENTS) / CURVE_SEGMENTS;
+			glm::quat q_interp = glm::slerp(q[1], q[2], t);
+			glm::vec3 trail_up = q_interp * glm::vec3(0, 1, 0);
+
 			for (int j = 0; j <= TRAIL_SEGMENTS; ++j) {
 				int idx = j % (TRAIL_SEGMENTS + 1);
 
@@ -135,6 +142,7 @@ namespace Boidsish {
 					ring2_positions[idx],
 					ring2_normals[idx],
 					glm::vec3(curve_colors[i].x, curve_colors[i].y, curve_colors[i].z),
+					trail_up,
 				};
 				tail = (tail + 1) % mesh_vertices.size();
 
@@ -143,6 +151,7 @@ namespace Boidsish {
 					ring1_positions[idx],
 					ring1_normals[idx],
 					glm::vec3(curve_colors[i].x, curve_colors[i].y, curve_colors[i].z),
+					trail_up,
 				};
 				tail = (tail + 1) % mesh_vertices.size();
 			}
@@ -159,8 +168,8 @@ namespace Boidsish {
 		}
 	}
 
-	void Trail::AddPoint(glm::vec3 position, glm::vec3 color) {
-		points.push_back({position, color});
+	void Trail::AddPoint(glm::vec3 position, glm::vec3 color, glm::quat orientation) {
+		points.push_back({position, color, orientation});
 
 		if (points.size() > static_cast<size_t>(max_length)) {
 			points.pop_front();
@@ -219,6 +228,10 @@ namespace Boidsish {
 			glVertexAttribPointer(2, 3, GL_FLOAT, GL_FALSE, sizeof(TrailVertex), (void*)offsetof(TrailVertex, color));
 			glEnableVertexAttribArray(2);
 
+			// Trail Up
+			glVertexAttribPointer(3, 3, GL_FLOAT, GL_FALSE, sizeof(TrailVertex), (void*)offsetof(TrailVertex, trail_up));
+			glEnableVertexAttribArray(3);
+
 			glBindVertexArray(0);
 		}
 
@@ -261,9 +274,10 @@ namespace Boidsish {
 
 		// Render a cap at the end of the trail
 		if (!points.empty()) {
-			const auto& end_point = points.front();
+			const auto& end_point = std::get<0>(points.front());
+			const auto& end_color = std::get<1>(points.front());
 			float       end_thickness = BASE_THICKNESS * 0.1f; // Make cap size relative to trail
-			Shape::RenderSphere(end_point.first, end_point.second, glm::vec3(end_thickness), glm::quat());
+			Shape::RenderSphere(end_point, end_color, glm::vec3(end_thickness), glm::quat());
 		}
 	}
 

@@ -16,7 +16,7 @@ namespace Boidsish {
 		Trail(int max_length = 250);
 		~Trail();
 
-		void AddPoint(glm::vec3 position, glm::vec3 color);
+		void AddPoint(glm::vec3 position, glm::vec3 color, glm::quat orientation);
 		void Render(Shader& shader) const;
                 enum TrailType {
                   DEFAULT,
@@ -31,6 +31,7 @@ namespace Boidsish {
 			glm::vec3 pos;
 			glm::vec3 normal;
 			glm::vec3 color;
+			glm::vec3 trail_up;
 		};
 
 		// Catmull-Rom interpolation for smooth curves
@@ -55,7 +56,7 @@ namespace Boidsish {
 		Vector3
 		TransportFrame(const Vector3& prev_normal, const Vector3& prev_tangent, const Vector3& curr_tangent) const;
 
-		std::deque<std::pair<glm::vec3, glm::vec3>> points;
+		std::deque<std::tuple<glm::vec3, glm::vec3, glm::quat>> points;
 		int                                         max_length;
 		GLuint                                      vao;
 		GLuint                                      vbo;

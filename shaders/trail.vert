@@ -2,6 +2,7 @@
 layout(location = 0) in vec3 aPos;
 layout(location = 1) in vec3 aNormal;
 layout(location = 2) in vec3 aColor;
+layout(location = 3) in vec3 aTrailUp;
 
 layout(std140) uniform Lighting {
 	vec3  lightPos;
@@ -14,6 +15,7 @@ out vec3  vs_color;
 out float vs_progress;
 out vec3  vs_normal;
 out vec3  vs_frag_pos;
+out vec3  vs_trail_up;
 
 uniform mat4  model;
 uniform mat4  view;
@@ -57,8 +59,10 @@ void main() {
 	vec3 offset = aNormal * base_thickness * (taper_scale - 1.0);
 
 	if (useCondensationTrail) {
-		// Apply vertical compression
-		offset.y *= 0.2;
+		// Apply vertical compression along the trail's up vector
+		float compression_factor = 0.2;
+		float vertical_component = dot(offset, aTrailUp);
+		offset -= aTrailUp * vertical_component * (1.0 - compression_factor);
 
 		// Add a gentle wavy effect
 		float wave_frequency = 5.0;
@@ -87,6 +91,7 @@ void main() {
 	vs_color = aColor;
 	vs_progress = Progress; // Pass progress along, might be useful later
 	vs_normal = mat3(transpose(inverse(model))) * aNormal;
+	vs_trail_up = mat3(transpose(inverse(model))) * aTrailUp;
 	vs_frag_pos = vec3(model * vec4(final_pos, 1.0));
 
 	vec4 world_pos = model * vec4(final_pos, 1.0);
