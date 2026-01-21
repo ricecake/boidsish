@@ -233,10 +233,10 @@ namespace Boidsish {
 		float control_value = getBiomeControlValue(x, z);
 
 		BiomeAttributes current;
-		auto            low_threshold = (floor(control_value * biomes.size()) / biomes.size());
-		auto            high_threshold = (ceil(control_value * biomes.size()) / biomes.size());
-		auto            low_item = biomes[int(floor(control_value * biomes.size()))];
-		auto            high_item = biomes[int(ceil(control_value * biomes.size()))];
+		auto            low_threshold = (floor(control_value * (biomes.size()-1)) / (biomes.size()-1));
+		auto            high_threshold = (ceil(control_value * (biomes.size()-1)) / (biomes.size()-1));
+		auto            low_item = biomes[int(floor(control_value * (biomes.size()-1)))];
+		auto            high_item = biomes[int(ceil(control_value * (biomes.size()-1)))];
 		auto            t = glm::smoothstep(low_threshold, high_threshold, control_value);
 
 		current.spikeDamping = std::lerp(low_item.spikeDamping, high_item.spikeDamping, t);
@@ -588,7 +588,11 @@ namespace Boidsish {
 	}
 
 	float TerrainGenerator::getBiomeControlValue(float x, float z) const {
-		return Simplex::worleyfBm(glm::vec2(x * control_noise_scale_, z * control_noise_scale_));
+		// return Simplex::worleyfBm(glm::vec2(x * control_noise_scale_, z * control_noise_scale_));
+		glm::vec2 pos(x, z);
+		pos *= control_noise_scale_;
+		return Simplex::fBm (pos + Simplex::curlNoise(pos));
+		// return Simplex::worleyfBm(pos);
 		// return control_noise_generator_->GenSingle2D(x * control_noise_scale_, z * control_noise_scale_, seed_);
 		// return control_perlin_noise_.octave2D_01(x * control_noise_scale_, z * control_noise_scale_, 2);
 	}

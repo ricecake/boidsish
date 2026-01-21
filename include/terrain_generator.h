@@ -123,13 +123,14 @@ namespace Boidsish {
 			float floorLevel;    // The height at which flattening occurs
 		};
 
-		std::array<BiomeAttributes, 6> biomes = {
-			BiomeAttributes{1.00, 1.0, -0.10},
-			BiomeAttributes{0.80, 0.5, 2.0},
-			BiomeAttributes{0.05, 0.9, 1.0},
-			BiomeAttributes{0.30, 0.2, 8.00},
-			BiomeAttributes{0.10, 0.1, 64.0},
-			BiomeAttributes{0.05, 0.5, 128}
+		std::array<BiomeAttributes, 7> biomes = {
+			BiomeAttributes{1.0, 0.9, 5.0},
+			BiomeAttributes{0.80, 0.5, 16.0},
+			BiomeAttributes{0.05, 0.6, 36.0},
+			BiomeAttributes{0.30, 0.2, 42.00},
+			BiomeAttributes{0.30, 0.2, 94.00},
+			BiomeAttributes{0.10, 0.1, 128.0},
+			BiomeAttributes{0.05, 0.5, 256}
 		};
 
 		const int view_distance_ = 10;        // in chunks
@@ -141,7 +142,7 @@ namespace Boidsish {
 		int       seed_;
 
 		// Control noise parameters
-		constexpr static const float control_noise_scale_ = 0.01f;
+		constexpr static const float control_noise_scale_ = 0.001f;
 		constexpr static const float kPathFrequency = 0.002f;
 
 		// Noise generators
