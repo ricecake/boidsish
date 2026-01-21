@@ -123,14 +123,15 @@ namespace Boidsish {
 			float floorLevel;    // The height at which flattening occurs
 		};
 
-		std::array<BiomeAttributes, 7> biomes = {
-			BiomeAttributes{1.0, 0.9, 5.0},
-			BiomeAttributes{0.80, 0.5, 16.0},
-			BiomeAttributes{0.05, 0.6, 36.0},
-			BiomeAttributes{0.30, 0.2, 42.00},
-			BiomeAttributes{0.30, 0.2, 94.00},
-			BiomeAttributes{0.10, 0.1, 128.0},
-			BiomeAttributes{0.05, 0.5, 256}
+		std::array<BiomeAttributes, 8> biomes = {
+			BiomeAttributes{1.0, 0.9, 10.0},
+			BiomeAttributes{0.80, 0.5, 20.0},
+			BiomeAttributes{0.05, 0.6, 40.0},
+			BiomeAttributes{0.30, 0.5, 60.00},
+			BiomeAttributes{0.40, 0.4, 80.00},
+			BiomeAttributes{0.30, 0.2, 100.00},
+			BiomeAttributes{0.10, 0.1, 150.0},
+			BiomeAttributes{0.05, 0.5, 225.0}
 		};
 
 		const int view_distance_ = 10;        // in chunks
