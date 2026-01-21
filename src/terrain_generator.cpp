@@ -16,7 +16,7 @@
 #include "logger.h"
 #include "stb_image_write.h"
 #include "zstr.hpp"
-#include <FastNoise/FastNoise.h>
+// #include <FastNoise/FastNoise.h>
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <libmorton/morton.h>
@@ -57,9 +57,9 @@ namespace Boidsish {
 		// HAktAhUJDwAE@BC@AgD8JBw@AHBBBAMAAIA+CwAAgD8EAgkMCwAAgD8EAv8DAAQ= -- the min smooth
 		// KBEKBBwJLQIVCQ8AB@CgAAIA/CQc@ABwQQQDAACAPgsAAIA/BAIJDAsAAIA/BAL/BAAEAv8DAAQ=
 		// HQkKBAIcCS0CFQkPAAQ@BIAACAPwkH@BcEEEAwAAgD4LAACAPwQCCQwLAACAPwQC/wQABAsAAIA/BA==
-		control_noise_generator_ = FastNoise::NewFromEncodedNodeTree(
-			"HAktAhUJDwAE@BC@AgD8JBw@AHBBBAMAAIA+CwAAgD8EAgkMCwAAgD8EAv8DAAQ="
-		);
+		// control_noise_generator_ = FastNoise::NewFromEncodedNodeTree(
+		// 	"HAktAhUJDwAE@BC@AgD8JBw@AHBBBAMAAIA+CwAAgD8EAgkMCwAAgD8EAv8DAAQ="
+		// );
 	}
 
 	// ricecake@microlambda:~/Projects/boidsish$ git  show
@@ -588,7 +588,8 @@ namespace Boidsish {
 	}
 
 	float TerrainGenerator::getBiomeControlValue(float x, float z) const {
-		return control_noise_generator_->GenSingle2D(x * control_noise_scale_, z * control_noise_scale_, seed_);
+		return Simplex::worleyfBm(glm::vec2(x * control_noise_scale_, z * control_noise_scale_));
+		// return control_noise_generator_->GenSingle2D(x * control_noise_scale_, z * control_noise_scale_, seed_);
 		// return control_perlin_noise_.octave2D_01(x * control_noise_scale_, z * control_noise_scale_, 2);
 	}
 

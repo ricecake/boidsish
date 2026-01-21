@@ -37,7 +37,7 @@ set(IMGUI_INCLUDE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/${IMGUI_DIR}" CACHE PATH "" F
 
 get_directory_property(OLD_COMPILE_OPTIONS COMPILE_OPTIONS)
 add_compile_options(-w) # Disable all warnings for GCC/Clang for external libraries
-add_subdirectory(external/FastNoise2)
+# add_subdirectory(external/FastNoise2)
 add_subdirectory(external/task-thread-pool)
 add_subdirectory(external/poolSTL)
 add_subdirectory(external/libmorton)
@@ -68,7 +68,7 @@ target_link_libraries(boidsish
         OpenGL::GL
         GLEW::GLEW
         glfw
-        FastNoise
+        # FastNoise
         imgui
         task-thread-pool::task-thread-pool
         poolSTL::poolSTL

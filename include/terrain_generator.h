@@ -8,7 +8,7 @@
 #include "Simplex.h"
 #include "terrain.h"
 #include "thread_pool.h"
-#include <FastNoise/FastNoise.h>
+// #include <FastNoise/FastNoise.h>
 
 namespace Boidsish {
 	struct Frustum;
@@ -145,7 +145,7 @@ namespace Boidsish {
 		constexpr static const float kPathFrequency = 0.002f;
 
 		// Noise generators
-		FastNoise::SmartNode<> control_noise_generator_;
+		// FastNoise::SmartNode<> control_noise_generator_;
 
 		auto      fbm(float x, float z, TerrainParameters params);
 		auto      biomefbm(glm::vec2 pos, BiomeAttributes attr) const;
