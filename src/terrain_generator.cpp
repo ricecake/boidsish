@@ -12,8 +12,6 @@
 #include <string>
 #include <vector>
 
-#include <cpptrace/from_current.hpp>
-
 #include "graphics.h"
 #include "logger.h"
 #include "stb_image_write.h"
@@ -59,9 +57,9 @@ namespace Boidsish {
 		// HAktAhUJDwAE@BC@AgD8JBw@AHBBBAMAAIA+CwAAgD8EAgkMCwAAgD8EAv8DAAQ= -- the min smooth
 		// KBEKBBwJLQIVCQ8AB@CgAAIA/CQc@ABwQQQDAACAPgsAAIA/BAIJDAsAAIA/BAL/BAAEAv8DAAQ=
 		// HQkKBAIcCS0CFQkPAAQ@BIAACAPwkH@BcEEEAwAAgD4LAACAPwQCCQwLAACAPwQC/wQABAsAAIA/BA==
-		// control_noise_generator_ = FastNoise::NewFromEncodedNodeTree(
-		// 	"HAktAhUJDwAE@BC@AgD8JBw@AHBBBAMAAIA+CwAAgD8EAgkMCwAAgD8EAv8DAAQ="
-		// );
+	// 	control_noise_generator_ = FastNoise::NewFromEncodedNodeTree(
+	// 		"HAktAhUJDwAE@BC@AgD8JBw@AHBBBAMAAIA+CwAAgD8EAgkMCwAAgD8EAv8DAAQ="
+	// 	);
 	}
 
 	// ricecake@microlambda:~/Projects/boidsish$ git  show
@@ -105,7 +103,7 @@ namespace Boidsish {
 		// Process completed chunks
 		std::vector<std::pair<int, int>> completed_chunks;
 		for (auto& pair : pending_chunks_) {
-			CPPTRACE_TRY {
+			try {
 				auto&                   future = const_cast<TaskHandle<TerrainGenerationResult>&>(pair.second);
 				TerrainGenerationResult result = future.get();
 				if (result.has_terrain) {
@@ -117,17 +115,11 @@ namespace Boidsish {
 				}
 				completed_chunks.push_back(pair.first);
 			}
-			// CPPTRACE_CATCH (const std::future_error& e) {
-			// 	if (e.code() == std::future_errc::no_state) {
-			// 		// Task was cancelled, remove it.
-			// 		        cpptrace::from_current_exception().print();
-			// 		completed_chunks.push_back(pair.first);
-			// 	}
-			// }
-			CPPTRACE_CATCH (const std::exception& e) {
-				std::cerr << "Error: " << e.what() << std::endl;
-				        cpptrace::from_current_exception().print();
-				// completed_chunks.push_back(pair.first);
+			catch (const std::future_error& e) {
+				if (e.code() == std::future_errc::no_state) {
+					// Task was cancelled, remove it.
+					completed_chunks.push_back(pair.first);
+				}
 			}
 		}
 
@@ -246,7 +238,6 @@ namespace Boidsish {
 			control_value = 0.5f;
 		}
 
-		CPPTRACE_TRY {
 		BiomeAttributes current;
 		auto raw_biome_index = std::clamp(control_value * (biomes.size() - 1), 0.0f, float((biomes.size() - 1)));
 		auto            low_threshold = (floor(raw_biome_index) / biomes.size()-1);
@@ -265,16 +256,9 @@ namespace Boidsish {
 		terrain_height.x = glm::mix(path_floor_level, terrain_height.x, path_factor);
 
 		return terrain_height;
-		}
-			CPPTRACE_CATCH (const std::exception& e) {
-				std::cerr << "Error: " << e.what() << std::endl;
-				        cpptrace::from_current_exception().print();
-				// completed_chunks.push_back(pair.first);
-			}
 	}
 
 	TerrainGenerationResult TerrainGenerator::generateChunkData(int chunkX, int chunkZ) {
-		CPPTRACE_TRY {
 		const int num_vertices_x = chunk_size_ + 1;
 		const int num_vertices_z = chunk_size_ + 1;
 
@@ -347,13 +331,6 @@ namespace Boidsish {
 		proxy.radiusSq = max_dist_sq;
 
 		return {indices, positions, normals, proxy, chunkX, chunkZ, true};
-	}
-			CPPTRACE_CATCH (const std::exception& e) {
-				std::cerr << "Error: " << e.what() << std::endl;
-				        cpptrace::from_current_exception().print();
-				// completed_chunks.push_back(pair.first);
-			}
-
 	}
 
 	bool
@@ -621,11 +598,17 @@ namespace Boidsish {
 		// return Simplex::worleyfBm(glm::vec2(x * control_noise_scale_, z * control_noise_scale_));
 		glm::vec2 pos(x, z);
 		pos *= control_noise_scale_;
-		return Simplex::fBm (pos + Simplex::curlNoise(pos));
+		return Simplex::fBm (pos + Simplex::curlNoise(pos))  * 0.5f + 0.5f;
 		// return Simplex::worleyfBm(pos);
-		// return control_noise_generator_->GenSingle2D(x * control_noise_scale_, z * control_noise_scale_, seed_);
+		// // return control_noise_generator_->GenSingle2D(x * control_noise_scale_, z * control_noise_scale_, seed_);
+		// return Simplex::worleyNoise(glm::vec2(x * control_noise_scale_, z * control_noise_scale_), 10) * 0.5f + 0.5f;
 		// return control_perlin_noise_.octave2D_01(x * control_noise_scale_, z * control_noise_scale_, 2);
 	}
+
+	// float TerrainGenerator::getBiomeControlValue(float x, float z) const {
+	// 	return control_noise_generator_->GenSingle2D(x * control_noise_scale_, z * control_noise_scale_, seed_);
+	// 	// return control_perlin_noise_.octave2D_01(x * control_noise_scale_, z * control_noise_scale_, 2);
+	// }
 
 	glm::vec2 TerrainGenerator::getDomainWarp(float x, float z) const {
 		glm::vec3 path_data = getPathInfluence(x, z);

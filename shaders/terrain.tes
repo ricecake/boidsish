@@ -14,7 +14,7 @@ out vec2 TexCoords;
 
 uniform mat4  view;
 uniform mat4  projection;
-uniform float uPhongAlpha = 1; // Controls the "puffiness" (0.0 = flat, 1.0 = full phong)
+uniform float uPhongAlpha = 0.0; // Controls the "puffiness" (0.0 = flat, 1.0 = full phong)
 
 // Helper: Projects point q onto the plane defined by vertex v and normal n
 // Formula: pi(q) = q - ((q - v) . n) * n

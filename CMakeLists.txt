@@ -10,28 +10,28 @@ set(IMGUI_DIR external/imgui)
 set(STB_DIR "${CMAKE_SOURCE_DIR}/external/stb")
 
 
-include(FetchContent)
+# include(FetchContent)
 
-FetchContent_Declare(
-	glm
-	GIT_REPOSITORY	https://github.com/g-truc/glm.git
-	GIT_TAG 	0af55ccecd98d4e5a8d1fad7de25ba429d60e863 #refs/tags/1.0.1
-)
+# FetchContent_Declare(
+# 	glm
+# 	GIT_REPOSITORY	https://github.com/g-truc/glm.git
+# 	GIT_TAG 	0af55ccecd98d4e5a8d1fad7de25ba429d60e863 #refs/tags/1.0.1
+# )
 
-FetchContent_Declare(
-  cpptrace
-  GIT_REPOSITORY https://github.com/jeremy-rifkin/cpptrace.git
-  GIT_TAG        v1.0.4 # <HASH or TAG>
-)
-FetchContent_MakeAvailable(cpptrace)
-FetchContent_MakeAvailable(glm)
+# FetchContent_Declare(
+#   cpptrace
+#   GIT_REPOSITORY https://github.com/jeremy-rifkin/cpptrace.git
+#   GIT_TAG        v1.0.4 # <HASH or TAG>
+# )
+# FetchContent_MakeAvailable(cpptrace)
+# FetchContent_MakeAvailable(glm)
 
 
 # 2. Dependency Discovery
 find_package(OpenGL REQUIRED)
 find_package(GLEW REQUIRED)
 find_package(glfw3 REQUIRED)
-# find_package(glm REQUIRED)
+find_package(glm REQUIRED)
 find_package(Bullet REQUIRED)
 find_package(assimp REQUIRED)
 find_package(ZLIB REQUIRED)
@@ -97,7 +97,7 @@ target_link_libraries(boidsish
         libmorton::libmorton
         Threads::Threads
         glm::glm
-        cpptrace::cpptrace
+        # cpptrace::cpptrace
 )
 
 # 5. Build Examples
