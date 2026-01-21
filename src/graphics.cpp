@@ -1689,6 +1689,13 @@ namespace Boidsish {
 		return impl->terrain_generator->pointProperties(x, y);
 	}
 
+	std::tuple<float, glm::vec3> Visualizer::GetTerrainPointPropertiesThreadSafe(float x, float y) const {
+		if (impl->terrain_generator) {
+			return impl->terrain_generator->pointProperties(x, y);
+		}
+		return {0.0f, glm::vec3(0, 1, 0)};
+	}
+
 	float Visualizer::GetTerrainMaxHeight() const {
 		if (impl->terrain_generator) {
 			return impl->terrain_generator->GetMaxHeight();

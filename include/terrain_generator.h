@@ -35,6 +35,7 @@ namespace Boidsish {
 
 		void                                         update(const Frustum& frustum, const Camera& camera);
 		const std::vector<std::shared_ptr<Terrain>>& getVisibleChunks() const;
+		std::vector<std::shared_ptr<Terrain>>        getVisibleChunksCopy() const;
 
 		std::vector<uint16_t> GenerateSuperChunkTexture(int requested_x, int requested_z);
 		std::vector<uint16_t> GenerateTextureForArea(int world_x, int world_z, int size);
@@ -49,6 +50,7 @@ namespace Boidsish {
 		}
 
 		std::tuple<float, glm::vec3> pointProperties(float x, float z) const {
+			std::lock_guard<std::mutex> lock(point_generation_mutex_);
 			// Determine grid cell
 			float tx = x - floor(x);
 			float tz = z - floor(z);
@@ -163,6 +165,9 @@ namespace Boidsish {
 		std::map<std::pair<int, int>, std::shared_ptr<Terrain>>            chunk_cache_;
 		std::vector<std::shared_ptr<Terrain>>                              visible_chunks_;
 		std::map<std::pair<int, int>, TaskHandle<TerrainGenerationResult>> pending_chunks_;
+		mutable std::mutex                                                 chunk_cache_mutex_;
+		mutable std::mutex                                                 visible_chunks_mutex_;
+		mutable std::mutex                                                 point_generation_mutex_;
 	};
 
 } // namespace Boidsish

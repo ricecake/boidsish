@@ -5,34 +5,15 @@ project(Boidsish VERSION 1.0 LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS ON) # Corresponds to -std=gnu++23
-set(FASTNOISE2_NOISETOOL OFF CACHE BOOL "Enable NoiseTool build" FORCE)
+
 set(IMGUI_DIR external/imgui)
 set(STB_DIR "${CMAKE_SOURCE_DIR}/external/stb")
-
-
-# include(FetchContent)
-
-# FetchContent_Declare(
-# 	glm
-# 	GIT_REPOSITORY	https://github.com/g-truc/glm.git
-# 	GIT_TAG 	0af55ccecd98d4e5a8d1fad7de25ba429d60e863 #refs/tags/1.0.1
-# )
-
-# FetchContent_Declare(
-#   cpptrace
-#   GIT_REPOSITORY https://github.com/jeremy-rifkin/cpptrace.git
-#   GIT_TAG        v1.0.4 # <HASH or TAG>
-# )
-# FetchContent_MakeAvailable(cpptrace)
-# FetchContent_MakeAvailable(glm)
-
 
 # 2. Dependency Discovery
 find_package(OpenGL REQUIRED)
 find_package(GLEW REQUIRED)
 find_package(glfw3 REQUIRED)
 find_package(glm REQUIRED)
-find_package(Bullet REQUIRED)
 find_package(assimp REQUIRED)
 find_package(ZLIB REQUIRED)
 find_package(Threads REQUIRED)
@@ -55,7 +36,6 @@ set(IMGUI_INCLUDE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/${IMGUI_DIR}" CACHE PATH "" F
 
 get_directory_property(OLD_COMPILE_OPTIONS COMPILE_OPTIONS)
 add_compile_options(-w) # Disable all warnings for GCC/Clang for external libraries
-# add_subdirectory(external/FastNoise2)
 add_subdirectory(external/task-thread-pool)
 add_subdirectory(external/poolSTL)
 add_subdirectory(external/libmorton)
@@ -87,17 +67,14 @@ target_link_libraries(boidsish
         OpenGL::GL
         GLEW::GLEW
         glfw
-        # FastNoise
         imgui
         task-thread-pool::task-thread-pool
         poolSTL::poolSTL
         ${ASSIMP_LIBRARIES}
-        ${BULLET_LIBRARIES}
         ZLIB::ZLIB
         libmorton::libmorton
         Threads::Threads
         glm::glm
-        # cpptrace::cpptrace
 )
 
 # 5. Build Examples
