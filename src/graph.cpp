@@ -240,6 +240,20 @@ namespace Boidsish {
 	}
 
 	void Graph::render(Shader& shader, const glm::mat4& model_matrix) const {
+		for (const auto& vertex : vertices) {
+			Dot dot(0,
+			    vertex.position.x + GetX(),
+			    vertex.position.y + GetY(),
+			    vertex.position.z + GetZ(),
+			    vertex.size,
+			    vertex.r,
+			    vertex.g,
+			    vertex.b,
+			    vertex.a,
+			    0);
+			dot.render(shader, dot.GetModelMatrix());
+		}
+
 		if (!buffers_initialized_) {
 			SetupBuffers();
 		}

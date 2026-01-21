@@ -84,6 +84,7 @@ namespace Boidsish {
 		std::unique_ptr<Shader> blur_shader;
 		std::unique_ptr<Shader> postprocess_shader_;
 		std::shared_ptr<Shader> depth_shader;
+		std::shared_ptr<Shader> terrain_depth_shader;
 		GLuint                  plane_vao{0}, plane_vbo{0}, sky_vao{0}, blur_quad_vao{0}, blur_quad_vbo{0};
 		GLuint                  reflection_fbo{0}, reflection_texture{0}, reflection_depth_rbo{0};
 		GLuint                  pingpong_fbo[2]{0}, pingpong_texture[2]{0};
@@ -217,6 +218,7 @@ namespace Boidsish {
 				postprocess_shader_ = std::make_unique<Shader>("shaders/postprocess.vert", "shaders/postprocess.frag");
 			}
 			depth_shader = std::make_shared<Shader>("shaders/depth.vert", "shaders/depth.frag");
+			terrain_depth_shader = std::make_shared<Shader>("shaders/terrain_depth.vert", "shaders/terrain_depth.frag", "shaders/terrain_depth.tcs", "shaders/terrain_depth.tes");
 			if (ConfigManager::GetInstance().GetAppSettingBool("enable_terrain", true)) {
 				terrain_generator = std::make_unique<TerrainGenerator>();
 			}

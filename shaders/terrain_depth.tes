@@ -1,0 +1,13 @@
+#version 420 core
+layout (quads, fractional_odd_spacing, cw) in;
+
+uniform mat4 lightSpaceMatrix;
+
+void main()
+{
+    vec3 pos1 = mix(gl_in[0].gl_Position.xyz, gl_in[1].gl_Position.xyz, gl_TessCoord.x);
+    vec3 pos2 = mix(gl_in[3].gl_Position.xyz, gl_in[2].gl_Position.xyz, gl_TessCoord.x);
+    vec3 finalPos = mix(pos1, pos2, gl_TessCoord.y);
+
+    gl_Position = lightSpaceMatrix * vec4(finalPos, 1.0);
+}
