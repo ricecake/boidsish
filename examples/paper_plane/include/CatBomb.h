@@ -16,7 +16,7 @@ namespace Boidsish {
 		void Explode(const EntityHandler& handler);
 
 		// Constants
-		static constexpr float kGravity = 0.15f;
+		static constexpr float kGravity = 1.0f;
 		static constexpr float kExplosionDisplayTime = 2.0f;
 
 		// State
