@@ -9,7 +9,7 @@
 using namespace std::literals; // required for ""sv
 
 namespace logger {
-	enum class LogLevel : uint8_t { LOG, ERROR, DEBUG };
+	enum class LogLevel : uint8_t { LOG, INFO, WARNING, ERROR, DEBUG };
 
 	constexpr std::string_view levelString(const LogLevel& level) {
 		switch (level) {
@@ -98,6 +98,15 @@ namespace logger {
 		};
 
 		template <typename... Ts>
+		void INFO(LogSource& src, Ts&&... flags) {
+			doLogging(LogLevel::INFO, src, std::forward<Ts>(flags)...);
+		};
+		template <typename... Ts>
+		void WARNING(LogSource& src, Ts&&... flags) {
+			doLogging(LogLevel::WARNING, src, std::forward<Ts>(flags)...);
+		};
+
+		template <typename... Ts>
 		void ERROR(LogSource& src, Ts&&... flags) {
 			doLogging(LogLevel::ERROR, src, std::forward<Ts>(flags)...);
 		};
@@ -124,6 +133,17 @@ namespace logger {
 	void DEBUG(LogSource src, Ts&&... flags) {
 		defaultLogger.DEBUG(src, std::forward<Ts>(flags)...);
 	};
+
+	template <typename... Ts>
+	void INFO(LogSource src, Ts&&... flags) {
+		defaultLogger.INFO(src, std::forward<Ts>(flags)...);
+	};
+
+	template <typename... Ts>
+	void WARNING(LogSource src, Ts&&... flags) {
+		defaultLogger.WARNING(src, std::forward<Ts>(flags)...);
+	};
+
 
 	// What if these were classes, whose initializers did the logging?  A lot more would be definitively known at
 	// compile time...

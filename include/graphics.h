@@ -38,6 +38,7 @@ namespace Boidsish {
 	class FireEffect;
 	class SoundEffect;
 	class FireEffectManager;
+	class ShockwaveManager;
 	class Path;
 } // namespace Boidsish
 
@@ -194,6 +195,40 @@ namespace Boidsish {
 		void TogglePostProcessingEffect(const std::string& name);
 		void TogglePostProcessingEffect(const std::string& name, const bool newState);
 		void SetFilmGrainIntensity(float intensity);
+
+		// Shockwave effect methods
+		/**
+		 * @brief Add a shockwave effect at the given position.
+		 *
+		 * Creates a dramatic expanding ring distortion effect, ideal for explosions.
+		 *
+		 * @param position World-space center of the shockwave
+		 * @param max_radius Maximum radius the wave will expand to (world units)
+		 * @param duration Time for the wave to reach max_radius (seconds)
+		 * @param intensity Distortion strength (0.0 to 1.0, default 0.5)
+		 * @param ring_width Width of the distortion ring in world units (default 3.0)
+		 * @param color Color tint for the shockwave glow (default orange)
+		 * @return true if added, false if at capacity
+		 */
+		bool AddShockwave(
+			const glm::vec3& position,
+			float            max_radius,
+			float            duration,
+			float            intensity = 0.5f,
+			float            ring_width = 3.0f,
+			const glm::vec3& color = glm::vec3(1.0f, 0.6f, 0.2f)
+		);
+
+		/**
+		 * @brief Create an explosion with fire particles and shockwave.
+		 *
+		 * Convenience method that combines fire effect with shockwave for
+		 * a complete explosion visual.
+		 *
+		 * @param position World-space center of the explosion
+		 * @param intensity Scale factor for effect strength (default 1.0)
+		 */
+		void CreateExplosion(const glm::vec3& position, float intensity = 1.0f);
 
 		std::tuple<float, glm::vec3>                 GetTerrainPointProperties(float x, float y) const;
 		float                                        GetTerrainMaxHeight() const;
