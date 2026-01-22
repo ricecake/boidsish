@@ -34,14 +34,29 @@ glm::vec3 CalculateSteeringTorque(
     return (error_vector * kP) - (derivative_term * kD);
 }
 
+glm::vec3 GetInterceptPoint(glm::vec3 shooter_pos, float shooter_speed,
+                            glm::vec3 target_pos, glm::vec3 target_vel) {
+    glm::vec3 target_dir = target_pos - shooter_pos;
+    float dist = glm::length(target_dir);
+
+    // Simple time-to-impact estimation
+    // (You can make this more complex with quadratic equations, but this works for games)
+    float time_to_impact = dist / shooter_speed;
+
+    // Predict where the target will be
+    return target_pos + (target_vel * time_to_impact);
+}
+
 	CatMissile::CatMissile(int id, Vector3 pos, glm::quat orientation, glm::vec3 dir, Vector3 vel):
 		Entity<Model>(id, "assets/Missile.obj", true), eng_(rd_()) {
-		rigid_body_.linear_friction_ = 0.0f;
-		rigid_body_.angular_friction_ = 0.0f;
+		rigid_body_.linear_friction_ = 0.01f;
+		rigid_body_.angular_friction_ = 0.01f;
 
 		rigid_body_.SetOrientation(orientation);
 		SetPosition(pos.x, pos.y, pos.z);
-		rigid_body_.SetLinearVelocity(glm::vec3(vel.x, vel.y, vel.z) + (5.0f * dir));
+
+		glm::vec3 world_eject = orientation * dir;
+		rigid_body_.SetLinearVelocity(glm::vec3(vel.x, vel.y, vel.z) + (5.0f * world_eject));
 
 		SetTrailLength(0);
 		SetTrailRocket(false);
@@ -160,9 +175,21 @@ glm::vec3 CalculateSteeringTorque(
 		// logger::LOG("Seeking", target_->GetId(), glm::length(pos.Toglm() - target_->GetPosition().Toglm()));
 
 			Vector3   target_vec = (target_->GetPosition() - GetPosition()).Normalized();
-			target_dir_world = glm::vec3(target_vec.x, target_vec.y, target_vec.z);
 
-			target_dir_local = WorldToObject(target_dir_world);
+			float missile_speed = glm::length(rigid_body_.GetLinearVelocity());
+
+			// PREDICT
+			glm::vec3 aim_point = GetInterceptPoint(
+				GetPosition(),
+				missile_speed,
+				target_->GetPosition(),
+				target_->GetVelocity()
+			);
+
+		    target_dir_local = WorldToObject(glm::normalize(aim_point - GetPosition()));
+
+			// target_dir_world = glm::vec3(target_vec.x, target_vec.y, target_vec.z);
+			// target_dir_local = WorldToObject(target_dir_world);
 		}
 
 		const auto* terrain_generator = handler.GetTerrainGenerator();
@@ -226,12 +253,15 @@ glm::vec3 CalculateSteeringTorque(
 		}
 
 			glm::vec3 local_forward = glm::vec3(0, 0, -1);
+			target_dir_local.x += sin(lived_ * 20.0f) * 0.075f;
+			target_dir_local.y += cos(lived_ * 15.0f) * 0.075f;
 			glm::vec3 pid_torque = CalculateSteeringTorque(
 					local_forward,
 					target_dir_local,
 					rigid_body_.GetAngularVelocity(),
 					100.0f, //kP,
-					20.0f//kD
+					glm::mix(0.0f, 10.0f, std::clamp(2*lived_/lifetime_, 0.0f, 1.0f))
+					// 20.0f * std::clamp((lived_-kLaunchTime)/(kLaunchTime+3.0f), 0.0f, 1.0f)//kD
 				);
 
 			rigid_body_.AddRelativeTorque(pid_torque);
