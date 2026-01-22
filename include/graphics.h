@@ -212,6 +212,7 @@ namespace Boidsish {
 		 */
 		bool AddShockwave(
 			const glm::vec3& position,
+			const glm::vec3& normal,
 			float            max_radius,
 			float            duration,
 			float            intensity = 0.5f,

@@ -1812,13 +1812,14 @@ namespace Boidsish {
 
 	bool Visualizer::AddShockwave(
 		const glm::vec3& position,
+		const glm::vec3& normal,
 		float            max_radius,
 		float            duration,
 		float            intensity,
 		float            ring_width,
 		const glm::vec3& color
 	) {
-		return impl->shockwave_manager->AddShockwave(position, max_radius, duration, intensity, ring_width, color);
+		return impl->shockwave_manager->AddShockwave(position, normal, max_radius, duration, intensity, ring_width, color);
 	}
 
 	void Visualizer::CreateExplosion(const glm::vec3& position, float intensity) {
@@ -1839,7 +1840,10 @@ namespace Boidsish {
 		float ring_width = 4.0f * intensity;
 		glm::vec3 color(1.0f, 0.5f, 0.1f);  // Orange-ish explosion color
 
-		impl->shockwave_manager->AddShockwave(position, max_radius, duration, wave_intensity, ring_width, color);
+		// Assume explosion is on a flat surface for the shockwave plane
+		glm::vec3 normal(0.0f, 1.0f, 0.0f);
+
+		impl->shockwave_manager->AddShockwave(position, normal, max_radius, duration, wave_intensity, ring_width, color);
 	}
 
 	void Visualizer::SetTimeScale(float ts) {

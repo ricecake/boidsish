@@ -18,6 +18,7 @@ namespace Boidsish {
 	 */
 	struct Shockwave {
 		glm::vec3 center;          ///< World-space origin of the shockwave
+		glm::vec3 normal;          ///< World-space normal of the shockwave plane
 		float     max_radius;      ///< Maximum radius the wave will expand to
 		float     current_radius;  ///< Current expansion radius
 		float     duration;        ///< Total lifetime of the shockwave in seconds
@@ -56,11 +57,12 @@ namespace Boidsish {
 	 */
 	struct ShockwaveGPUData {
 		glm::vec4 center_radius;     ///< xyz = center, w = current_radius
+		glm::vec4 normal_unused;     ///< xyz = normal, w = unused
 		glm::vec4 params;            ///< x = intensity, y = ring_width, z = max_radius, w = normalized_age
 		glm::vec4 color_unused;      ///< xyz = color, w = unused
 	};
 
-	static_assert(sizeof(ShockwaveGPUData) == 48, "ShockwaveGPUData must be 48 bytes for std140 alignment");
+	static_assert(sizeof(ShockwaveGPUData) == 64, "ShockwaveGPUData must be 64 bytes for std140 alignment");
 
 	/**
 	 * @brief Manages active shockwave effects and their GPU rendering.
@@ -92,6 +94,7 @@ namespace Boidsish {
 		 */
 		bool AddShockwave(
 			const glm::vec3& center,
+			const glm::vec3& normal,
 			float            max_radius,
 			float            duration,
 			float            intensity = 0.5f,

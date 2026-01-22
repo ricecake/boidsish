@@ -95,6 +95,7 @@ namespace Boidsish {
 
 	bool ShockwaveManager::AddShockwave(
 		const glm::vec3& center,
+		const glm::vec3& normal,
 		float            max_radius,
 		float            duration,
 		float            intensity,
@@ -120,6 +121,7 @@ namespace Boidsish {
 
 		Shockwave wave{};
 		wave.center = center;
+		wave.normal = normal;
 		wave.max_radius = max_radius;
 		wave.current_radius = 0.0f;
 		wave.duration = duration;
@@ -168,6 +170,7 @@ namespace Boidsish {
 		for (const auto& wave : shockwaves_) {
 			ShockwaveGPUData data{};
 			data.center_radius = glm::vec4(wave.center, wave.current_radius);
+			data.normal_unused = glm::vec4(wave.normal, 0.0f);
 			data.params = glm::vec4(
 				wave.GetEffectiveIntensity() * global_intensity_,
 				wave.ring_width,

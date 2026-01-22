@@ -16,6 +16,7 @@ uniform mat4      projMatrix;
 // Shockwave data structure (matches ShockwaveGPUData in C++)
 struct ShockwaveData {
 	vec4 center_radius;     // xyz = center, w = current_radius
+	vec4 normal_unused;     // xyz = normal, w = unused
 	vec4 params;            // x = intensity, y = ring_width, z = max_radius, w = normalized_age
 	vec4 color_unused;      // xyz = color, w = unused
 };
@@ -28,31 +29,44 @@ layout(std140, binding = 3) uniform Shockwaves {
 };
 
 /**
- * Project a world position to screen-space UV coordinates
+ * Calculate a view ray in world space from the camera through the current fragment
  */
-vec2 worldToScreen(vec3 worldPos) {
-	vec4 clipPos = projMatrix * viewMatrix * vec4(worldPos, 1.0);
-	vec3 ndc = clipPos.xyz / clipPos.w;
-	return ndc.xy * 0.5 + 0.5;
+vec3 getViewRay(vec2 texCoords) {
+	// Convert texture coordinates to NDC
+	vec2 ndc = texCoords * 2.0 - 1.0;
+
+	// Convert NDC to clip space
+	vec4 clip = vec4(ndc, -1.0, 1.0); // -1.0 z for forward direction
+
+	// Convert clip space to view space
+	vec4 view = inverse(projMatrix) * clip;
+	view = vec4(view.xy, -1.0, 0.0); // Ensure z is forward, ignore translation
+
+	// Convert view space to world space
+	vec3 worldDir = (inverse(viewMatrix) * view).xyz;
+	return normalize(worldDir);
 }
 
 /**
- * Calculate the apparent screen radius of a shockwave
- * This projects the 3D radius to 2D screen space for proper distortion
+ * Calculate intersection of a ray with a plane
+ * Returns distance along the ray, or -1.0 if no intersection
  */
-float getScreenRadius(vec3 center, float worldRadius) {
-	// Project center and a point on the edge to screen space
-	vec2 centerScreen = worldToScreen(center);
-	vec2 edgeScreen = worldToScreen(center + vec3(worldRadius, 0.0, 0.0));
-
-	// Calculate screen-space distance (approximate)
-	return length(edgeScreen - centerScreen);
+float rayPlaneIntersect(vec3 rayOrigin, vec3 rayDir, vec3 planeCenter, vec3 planeNormal) {
+	float denom = dot(planeNormal, rayDir);
+	if (abs(denom) > 0.0001) {
+		float t = dot(planeCenter - rayOrigin, planeNormal) / denom;
+		if (t >= 0.0) { // Intersection must be in front of the camera
+			return t;
+		}
+	}
+	return -1.0;
 }
 
+
 /**
- * Calculate shockwave distortion based on screen-space distance
+ * Calculate shockwave distortion based on world-space intersection
  *
- * The shockwave creates a ring of distortion that:
+ * The shockwave creates a disc of distortion in world space that:
  * 1. Pushes pixels outward from the projected center
  * 2. Creates a refraction-like visual effect
  * 3. Adds color tinting at the wavefront for visibility
@@ -68,8 +82,12 @@ void main() {
 	vec3  totalGlow = vec3(0.0);
 	float totalGlowWeight = 0.0;
 
+	// Get the view ray for this fragment
+	vec3 viewRay = getViewRay(TexCoords);
+
 	for (int i = 0; i < shockwave_count && i < MAX_SHOCKWAVES; ++i) {
 		vec3  center = shockwaves[i].center_radius.xyz;
+		vec3  normal = shockwaves[i].normal_unused.xyz;
 		float currentRadius = shockwaves[i].center_radius.w;
 		float intensity = shockwaves[i].params.x;
 		float ringWidth = shockwaves[i].params.y;
@@ -77,48 +95,58 @@ void main() {
 		float age = shockwaves[i].params.w;
 		vec3  waveColor = shockwaves[i].color_unused.xyz;
 
-		// Skip if radius is too small
-		if (currentRadius < 0.01) continue;
+		// Skip if radius is too small or normal is invalid
+		if (currentRadius < 0.01 || length(normal) < 0.1) continue;
 
-		// Project shockwave center to screen space
-		vec4 clipCenter = projMatrix * viewMatrix * vec4(center, 1.0);
+		// Find where the view ray intersects the shockwave's plane
+		float t = rayPlaneIntersect(cameraPos, viewRay, center, normal);
+		if (t < 0.0) continue; // No intersection in front of camera
 
-		// Skip if behind camera
-		if (clipCenter.w <= 0.0) continue;
+		// Calculate world-space intersection point
+		vec3 intersectPos = cameraPos + viewRay * t;
 
-		vec2 screenCenter = (clipCenter.xy / clipCenter.w) * 0.5 + 0.5;
+		// Calculate world-space distance from shockwave center
+		float worldDist = length(intersectPos - center);
 
-		// Calculate approximate screen-space radius
-		// Account for perspective by using distance to camera
-		float distToCamera = length(center - cameraPos);
-		float screenRadius = (currentRadius / distToCamera) * 0.8;  // Perspective scaling factor
-		float screenRingWidth = (ringWidth / distToCamera) * 0.8;
-
-		// Calculate screen-space distance from center
-		vec2 toPixel = TexCoords - screenCenter;
-		float pixelDist = length(toPixel);
+		// Skip if outside the shockwave's max radius
+		if (worldDist > maxRadius) continue;
 
 		// Calculate how close we are to the wavefront ring
-		float distFromRing = abs(pixelDist - screenRadius);
+		float distFromRing = abs(worldDist - currentRadius);
 
 		// Gaussian falloff for ring width - creates smooth distortion band
-		float ringFactor = exp(-distFromRing * distFromRing / (2.0 * screenRingWidth * screenRingWidth));
+		float ringFactor = exp(-distFromRing * distFromRing / (2.0 * ringWidth * ringWidth));
 
 		// Skip if outside the ring's influence
 		if (ringFactor < 0.001) continue;
 
-		// Calculate distortion direction (radially outward from center)
-		vec2 distortDir = pixelDist > 0.001 ? normalize(toPixel) : vec2(0.0);
+		// Project the intersection point and a point slightly offset
+		// back to screen space to find the distortion direction.
+		vec4 clipPos = projMatrix * viewMatrix * vec4(intersectPos, 1.0);
+		vec2 screenPos = (clipPos.xy / clipPos.w) * 0.5 + 0.5;
+
+		// The direction of distortion should be from the screen projection
+		// of the shockwave center towards the current fragment.
+		vec4 clipCenter = projMatrix * viewMatrix * vec4(center, 1.0);
+		if (clipCenter.w <= 0.0) continue; // Should be rare due to plane intersection
+		vec2 screenCenter = (clipCenter.xy / clipCenter.w) * 0.5 + 0.5;
+
+		vec2 distortDir = TexCoords - screenCenter;
+		if (length(distortDir) > 0.001) {
+			distortDir = normalize(distortDir);
+		} else {
+			// If we're at the center, pick an arbitrary direction
+			distortDir = normalize(TexCoords - vec2(0.5));
+		}
+
 
 		// The distortion should create a "lens" or "pressure wave" effect
-		// Positive distortion on the leading edge (push outward)
-		// Slight negative distortion on the trailing edge (pull back)
-		float inside = smoothstep(screenRadius - screenRingWidth, screenRadius, pixelDist);
-		float outside = smoothstep(screenRadius, screenRadius + screenRingWidth, pixelDist);
+		float inside = smoothstep(currentRadius - ringWidth, currentRadius, worldDist);
+		float outside = smoothstep(currentRadius, currentRadius + ringWidth, worldDist);
 
 		// Create an asymmetric distortion profile for realistic pressure wave
 		float distortProfile;
-		if (pixelDist < screenRadius) {
+		if (worldDist < currentRadius) {
 			// Inside the ring - slight inward pull
 			distortProfile = -0.3 * (1.0 - inside);
 		} else {
@@ -127,14 +155,17 @@ void main() {
 		}
 
 		// Combine factors for final distortion strength
-		float distortStrength = ringFactor * intensity * distortProfile * 0.05;
+		// Reduce distortion effect further away from the camera
+		float distToCamera = length(center - cameraPos);
+		float perspectiveFactor = 1.0 / (1.0 + distToCamera * 0.1);
+		float distortStrength = ringFactor * intensity * distortProfile * 0.05 * perspectiveFactor;
 
 		totalDistortion += distortDir * distortStrength;
 
 		// Add glow at the wavefront
 		// Creates a visible bright ring that's characteristic of shockwaves
 		float glowIntensity = ringFactor * intensity * (1.0 - age * age);
-		float edgeGlow = exp(-distFromRing * distFromRing / (screenRingWidth * screenRingWidth * 0.5));
+		float edgeGlow = exp(-distFromRing * distFromRing / (ringWidth * ringWidth * 0.5));
 
 		totalGlow += waveColor * glowIntensity * edgeGlow * 0.6;
 		totalGlowWeight += glowIntensity * edgeGlow;
