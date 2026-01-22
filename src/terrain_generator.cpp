@@ -299,8 +299,8 @@ namespace Boidsish {
 
 		BiomeAttributes current;
 		auto raw_biome_index = std::clamp(control_value * (biomes.size() - 1), 0.0f, float((biomes.size() - 1)));
-		auto            low_threshold = (floor(raw_biome_index) / biomes.size()-1);
-		auto            high_threshold = (ceil(raw_biome_index) / biomes.size()-1);
+		auto            low_threshold = floor(raw_biome_index) / (biomes.size() - 1);
+		auto            high_threshold = ceil(raw_biome_index) / (biomes.size() - 1);
 		auto            low_item = biomes.at(int(floor(raw_biome_index)));
 		auto            high_item = biomes.at(int(ceil(raw_biome_index)));
 		auto            t = glm::smoothstep(low_threshold, high_threshold, control_value);
