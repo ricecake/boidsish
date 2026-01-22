@@ -22,3 +22,6 @@
 [submodule "external/libmorton"]
 	path = external/libmorton
 	url = https://github.com/Forceflow/libmorton.git
+[submodule "external/glm"]
+	path = external/glm
+	url = https://github.com/g-truc/glm.git
