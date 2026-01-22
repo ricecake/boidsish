@@ -41,7 +41,7 @@ glm::vec3 CalculateSteeringTorque(
 
 		rigid_body_.SetOrientation(orientation);
 		SetPosition(pos.x, pos.y, pos.z);
-		rigid_body_.SetLinearVelocity(glm::vec3(vel.x, vel.y, vel.z) + 5.0f * dir);
+		rigid_body_.SetLinearVelocity(glm::vec3(vel.x, vel.y, vel.z) + (5.0f * dir));
 
 		SetTrailLength(0);
 		SetTrailRocket(false);
