@@ -29,7 +29,10 @@ namespace Boidsish {
 				"shaders/postprocess.vert",
 				"shaders/effects/bright_pass.frag"
 			);
-			_blurShader = std::make_unique<Shader>("shaders/postprocess.vert", "shaders/effects/gaussian_blur.frag");
+			_downsampleShader = std::make_unique<Shader>(
+				"shaders/postprocess.vert",
+				"shaders/effects/bloom_downsample.frag"
+			);
 			_upsampleShader = std::make_unique<Shader>(
 				"shaders/postprocess.vert",
 				"shaders/effects/bloom_upsample.frag"
@@ -110,7 +113,7 @@ namespace Boidsish {
 			GLint originalViewport[4];
 			glGetIntegerv(GL_VIEWPORT, originalViewport);
 
-			// 1. Bright pass
+			// 1. Bright pass - extract bright pixels
 			glBindFramebuffer(GL_FRAMEBUFFER, _brightPassFBO);
 			glViewport(0, 0, _width, _height);
 			_brightPassShader->use();
@@ -120,48 +123,50 @@ namespace Boidsish {
 			glBindTexture(GL_TEXTURE_2D, sourceTexture);
 			glDrawArrays(GL_TRIANGLES, 0, 6);
 
-			// 2. Downsample and blur
-			_blurShader->use();
-			glBindFramebuffer(GL_FRAMEBUFFER, _mipChain[0].fbo);
-			glViewport(0, 0, _mipChain[0].size.x, _mipChain[0].size.y);
-			_blurShader->setBool("horizontal", true);
-			glActiveTexture(GL_TEXTURE0);
-			glBindTexture(GL_TEXTURE_2D, _brightPassTexture);
-			glDrawArrays(GL_TRIANGLES, 0, 6);
+			// 2. Progressive downsample with blur
+			_downsampleShader->use();
+			GLuint    currentTexture = _brightPassTexture;
+			glm::vec2 currentSize(_width, _height);
 
-			for (size_t i = 1; i < _mipChain.size(); i++) {
+			for (size_t i = 0; i < _mipChain.size(); i++) {
 				const auto& mip = _mipChain[i];
-				const auto& prevMip = _mipChain[i - 1];
 
 				glBindFramebuffer(GL_FRAMEBUFFER, mip.fbo);
 				glViewport(0, 0, mip.size.x, mip.size.y);
 
+				_downsampleShader->setVec2("srcResolution", currentSize.x, currentSize.y);
 				glActiveTexture(GL_TEXTURE0);
-				glBindTexture(GL_TEXTURE_2D, prevMip.texture);
+				glBindTexture(GL_TEXTURE_2D, currentTexture);
 				glDrawArrays(GL_TRIANGLES, 0, 6);
+
+				currentTexture = mip.texture;
+				currentSize = mip.size;
 			}
 
-			// 3. Upsample and blend
+			// 3. Progressive upsample and accumulate
 			_upsampleShader->use();
-			for (size_t i = _mipChain.size() - 1; i > 0; i--) {
-				const auto& mip = _mipChain[i];
-				const auto& nextMip = _mipChain[i - 1];
+			_upsampleShader->setFloat("filterRadius", 1.0f);
 
-				glBindFramebuffer(GL_FRAMEBUFFER, nextMip.fbo);
-				glViewport(0, 0, nextMip.size.x, nextMip.size.y);
+			glEnable(GL_BLEND);
+			glBlendFunc(GL_ONE, GL_ONE);
+			glBlendEquation(GL_FUNC_ADD);
 
-				_upsampleShader->setInt("originalTexture", 0);
-				_upsampleShader->setInt("blurTexture", 1);
+			for (int i = (int)_mipChain.size() - 1; i > 0; i--) {
+				const auto& srcMip = _mipChain[i];
+				const auto& dstMip = _mipChain[i - 1];
 
+				glBindFramebuffer(GL_FRAMEBUFFER, dstMip.fbo);
+				glViewport(0, 0, dstMip.size.x, dstMip.size.y);
+
+				_upsampleShader->setVec2("srcResolution", srcMip.size.x, srcMip.size.y);
 				glActiveTexture(GL_TEXTURE0);
-				glBindTexture(GL_TEXTURE_2D, _mipChain[i - 1].texture);
-				glActiveTexture(GL_TEXTURE1);
-				glBindTexture(GL_TEXTURE_2D, mip.texture);
-
+				glBindTexture(GL_TEXTURE_2D, srcMip.texture);
 				glDrawArrays(GL_TRIANGLES, 0, 6);
 			}
 
-			// 4. Final composite
+			glDisable(GL_BLEND);
+
+			// 4. Final composite with scene
 			glBindFramebuffer(GL_FRAMEBUFFER, originalFBO);
 			glViewport(originalViewport[0], originalViewport[1], originalViewport[2], originalViewport[3]);
 			_compositeShader->use();

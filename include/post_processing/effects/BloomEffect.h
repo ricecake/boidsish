@@ -39,7 +39,7 @@ namespace Boidsish {
 			void InitializeFBOs();
 
 			std::unique_ptr<Shader> _brightPassShader;
-			std::unique_ptr<Shader> _blurShader;
+			std::unique_ptr<Shader> _downsampleShader;
 			std::unique_ptr<Shader> _upsampleShader;
 			std::unique_ptr<Shader> _compositeShader;
 
