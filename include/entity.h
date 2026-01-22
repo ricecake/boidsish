@@ -28,7 +28,14 @@ namespace Boidsish {
 
 	public:
 		EntityBase(int id = 0):
-			id_(id), size_(8.0f), color_{1.0f, 1.0f, 1.0f, 1.0f}, trail_length_(50), trail_iridescent_(false) {}
+			id_(id),
+			size_(8.0f),
+			color_{1.0f, 1.0f, 1.0f, 1.0f},
+			trail_length_(50),
+			trail_iridescent_(false),
+			trail_pbr_(false),
+			trail_roughness_(0.3f),
+			trail_metallic_(0.0f) {}
 
 		virtual ~EntityBase() = default;
 
@@ -106,6 +113,19 @@ namespace Boidsish {
 		// New method for rocket trail
 		void SetTrailRocket(bool enabled) { trail_rocket_ = enabled; }
 
+		// PBR trail settings
+		void SetTrailPBR(bool enabled) { trail_pbr_ = enabled; }
+
+		void SetTrailRoughness(float roughness) { trail_roughness_ = roughness; }
+
+		void SetTrailMetallic(float metallic) { trail_metallic_ = metallic; }
+
+		bool GetTrailPBR() const { return trail_pbr_; }
+
+		float GetTrailRoughness() const { return trail_roughness_; }
+
+		float GetTrailMetallic() const { return trail_metallic_; }
+
 		void SetOrientToVelocity(bool enabled) { orient_to_velocity_ = enabled; }
 
 		void SetPath(std::shared_ptr<Path> path, float speed) {
@@ -132,6 +152,9 @@ namespace Boidsish {
 		int       trail_length_;
 		bool      trail_iridescent_;
 		bool      trail_rocket_ = false; // New member for rocket trail
+		bool      trail_pbr_ = false;    // Enable PBR lighting on trails
+		float     trail_roughness_ = 0.3f;
+		float     trail_metallic_ = 0.0f;
 		bool      orient_to_velocity_ = false;
 
 		// Path following
@@ -176,6 +199,9 @@ namespace Boidsish {
 			shape_->SetTrailLength(trail_length_);
 			shape_->SetTrailIridescence(trail_iridescent_);
 			shape_->SetTrailRocket(trail_rocket_); // Propagate rocket trail state
+			shape_->SetTrailPBR(trail_pbr_);       // Propagate PBR trail state
+			shape_->SetTrailRoughness(trail_roughness_);
+			shape_->SetTrailMetallic(trail_metallic_);
 			shape_->SetRotation(rigid_body_.GetOrientation());
 			// For dots, we can also update the size
 			if (auto dot = std::dynamic_pointer_cast<Dot>(shape_)) {

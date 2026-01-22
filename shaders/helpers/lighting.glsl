@@ -63,6 +63,162 @@ float calculateShadow(int shadow_index, vec3 frag_pos) {
 	return shadow;
 }
 
+// ============================================================================
+// PBR Functions (Cook-Torrance BRDF)
+// ============================================================================
+
+const float PI = 3.14159265359;
+
+// Normal Distribution Function (GGX/Trowbridge-Reitz)
+float DistributionGGX(vec3 N, vec3 H, float roughness) {
+	// Clamp roughness to avoid singularity at 0 (causes black surfaces)
+	float r = max(roughness, 0.04);
+	float a = r * r;
+	float a2 = a * a;
+	float NdotH = max(dot(N, H), 0.0);
+	float NdotH2 = NdotH * NdotH;
+
+	float nom = a2;
+	float denom = (NdotH2 * (a2 - 1.0) + 1.0);
+	denom = PI * denom * denom;
+
+	return nom / max(denom, 0.0001);
+}
+
+// Geometry function (Schlick-GGX)
+float GeometrySchlickGGX(float NdotV, float roughness) {
+	float r = (roughness + 1.0);
+	float k = (r * r) / 8.0;
+
+	float nom = NdotV;
+	float denom = NdotV * (1.0 - k) + k;
+
+	return nom / max(denom, 0.0001);
+}
+
+// Smith's method for geometry obstruction and shadowing
+float GeometrySmith(vec3 N, vec3 V, vec3 L, float roughness) {
+	float NdotV = max(dot(N, V), 0.0);
+	float NdotL = max(dot(N, L), 0.0);
+	float ggx2 = GeometrySchlickGGX(NdotV, roughness);
+	float ggx1 = GeometrySchlickGGX(NdotL, roughness);
+
+	return ggx1 * ggx2;
+}
+
+// Fresnel-Schlick approximation
+vec3 fresnelSchlick(float cosTheta, vec3 F0) {
+	return F0 + (1.0 - F0) * pow(clamp(1.0 - cosTheta, 0.0, 1.0), 5.0);
+}
+
+// Fresnel-Schlick with roughness - for environment reflections
+// Rough surfaces have less pronounced Fresnel effect
+vec3 fresnelSchlickRoughness(float cosTheta, vec3 F0, float roughness) {
+	return F0 + (max(vec3(1.0 - roughness), F0) - F0) * pow(clamp(1.0 - cosTheta, 0.0, 1.0), 5.0);
+}
+
+/**
+ * PBR lighting with Cook-Torrance BRDF.
+ *
+ * @param frag_pos Fragment world position
+ * @param normal Surface normal (must be normalized)
+ * @param albedo Base color of the material
+ * @param roughness Surface roughness [0=smooth, 1=rough]
+ * @param metallic Metallic property [0=dielectric, 1=metal]
+ * @param ao Ambient occlusion [0=fully occluded, 1=no occlusion]
+ */
+// PBR intensity multiplier to compensate for energy conservation
+// PBR is inherently darker than legacy Phong, so we boost it
+const float PBR_INTENSITY_BOOST = 4.0;
+
+vec3 apply_lighting_pbr(vec3 frag_pos, vec3 normal, vec3 albedo, float roughness, float metallic, float ao) {
+	vec3 N = normalize(normal);
+	vec3 V = normalize(viewPos - frag_pos);
+
+	// Calculate reflectance at normal incidence
+	// For dielectrics use 0.04, for metals use albedo color
+	vec3 F0 = vec3(0.04);
+	F0 = mix(F0, albedo, metallic);
+
+	vec3 Lo = vec3(0.0);
+
+	for (int i = 0; i < num_lights; ++i) {
+		// Calculate per-light radiance
+		vec3  L = normalize(lights[i].position - frag_pos);
+		vec3  H = normalize(V + L);
+		float distance = length(lights[i].position - frag_pos);
+
+		// Use practical attenuation with PBR intensity boost
+		// PBR's energy conservation makes it darker, so we compensate
+		float attenuation = (lights[i].intensity * PBR_INTENSITY_BOOST) /
+			(1.0 + 0.09 * distance + 0.032 * distance * distance);
+		vec3 radiance = lights[i].color * attenuation;
+
+		// Cook-Torrance BRDF
+		float NDF = DistributionGGX(N, H, roughness);
+		float G = GeometrySmith(N, V, L, roughness);
+		vec3  F = fresnelSchlick(max(dot(H, V), 0.0), F0);
+
+		vec3  numerator = NDF * G * F;
+		float denominator = 4.0 * max(dot(N, V), 0.0) * max(dot(N, L), 0.0) + 0.0001;
+		vec3  specular = numerator / denominator;
+
+		// kS is Fresnel (specular component)
+		vec3 kS = F;
+		// kD is diffuse component (energy conservation: kD + kS = 1.0)
+		vec3 kD = vec3(1.0) - kS;
+		// Metals don't have diffuse lighting
+		kD *= 1.0 - metallic;
+
+		float NdotL = max(dot(N, L), 0.0);
+
+		// Calculate shadow
+		float shadow = calculateShadow(lightShadowIndices[i], frag_pos);
+
+		// Add to outgoing radiance Lo
+		Lo += (kD * albedo / PI + specular) * radiance * NdotL * shadow;
+	}
+
+	// Ambient lighting for PBR
+	// Basic diffuse ambient for non-metallic parts
+	vec3 ambientDiffuse = vec3(0.08) * albedo * ao;
+
+	// Environment reflection approximation for glossy surfaces
+	// Without actual IBL, smooth surfaces would be too dark because they have
+	// nothing to reflect. This simulates a bright environment being reflected.
+	vec3 R = reflect(-V, normal);
+
+	// Fresnel at grazing angles - smooth surfaces reflect more at edges
+	vec3  F0_env = mix(vec3(0.04), albedo, metallic);
+	float NdotV = max(dot(normal, V), 0.0);
+	vec3  F_env = fresnelSchlickRoughness(NdotV, F0_env, roughness);
+
+	// Fake environment color - gradient from horizon to sky
+	// This gives smooth surfaces something to "reflect"
+	float upAmount = R.y * 0.5 + 0.5; // 0 = down, 1 = up
+	vec3  envColor = mix(
+        vec3(0.3, 0.35, 0.4), // Horizon/ground color (grayish)
+        vec3(0.6, 0.7, 0.9),  // Sky color (bluish white)
+        smoothstep(0.0, 0.7, upAmount)
+    );
+
+	// Environment reflection strength based on smoothness
+	// Rough surfaces get little env reflection, smooth surfaces get a lot
+	float smoothness = 1.0 - roughness;
+	float envStrength = smoothness * smoothness * 0.8; // Up to 0.8 for perfect mirror
+
+	// Metallic surfaces should reflect the environment color tinted by albedo
+	// Non-metallic surfaces reflect environment but less strongly
+	vec3 ambientSpecular = F_env * envColor * envStrength * ao;
+
+	// Combine diffuse and specular ambient
+	// For metals, reduce diffuse ambient (they don't have diffuse reflection)
+	vec3 ambient = ambientDiffuse * (1.0 - metallic * 0.9) + ambientSpecular;
+	vec3 color = ambient + Lo;
+
+	return color;
+}
+
 /**
  * Apply lighting with shadow support.
  * This version checks each light for shadow casting capability.
@@ -75,6 +231,10 @@ vec3 apply_lighting(vec3 frag_pos, vec3 normal, vec3 albedo, float ambient_stren
 		// Calculate shadow factor for this light
 		float shadow = calculateShadow(lightShadowIndices[i], frag_pos);
 
+		// Distance attenuation (prevents oversaturation at close range)
+		float distance = length(lights[i].position - frag_pos);
+		float attenuation = lights[i].intensity / (1.0 + 0.045 * distance + 0.0075 * distance * distance);
+
 		// Diffuse
 		vec3  light_dir = normalize(lights[i].position - frag_pos);
 		float diff = max(dot(normal, light_dir), 0.0);
@@ -86,8 +246,8 @@ vec3 apply_lighting(vec3 frag_pos, vec3 normal, vec3 albedo, float ambient_stren
 		float spec = pow(max(dot(view_dir, reflect_dir), 0.0), 32);
 		vec3  specular = lights[i].color * spec * specular_strength;
 
-		// Apply shadow to diffuse and specular, but not ambient
-		result += (diffuse + specular) * lights[i].intensity * shadow;
+		// Apply shadow and attenuation to diffuse and specular, but not ambient
+		result += (diffuse + specular) * attenuation * shadow;
 	}
 
 	return result;
@@ -108,6 +268,10 @@ vec3 apply_lighting_no_shadows(
 	vec3 result = ambient;
 
 	for (int i = 0; i < num_lights; ++i) {
+		// Distance attenuation (prevents oversaturation at close range)
+		float distance = length(lights[i].position - frag_pos);
+		float attenuation = lights[i].intensity / (1.0 + 0.045 * distance + 0.0075 * distance * distance);
+
 		// Diffuse
 		vec3  light_dir = normalize(lights[i].position - frag_pos);
 		float diff = max(dot(normal, light_dir), 0.0);
@@ -119,7 +283,7 @@ vec3 apply_lighting_no_shadows(
 		float spec = pow(max(dot(view_dir, reflect_dir), 0.0), 32);
 		vec3  specular = lights[i].color * spec * specular_strength;
 
-		result += (diffuse + specular) * lights[i].intensity;
+		result += (diffuse + specular) * attenuation;
 	}
 
 	return result;

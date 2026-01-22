@@ -83,9 +83,39 @@ namespace Boidsish {
 
 		inline void SetTrailRocket(bool enabled) { trail_rocket_ = enabled; }
 
+		// Trail PBR properties
+		inline bool GetTrailPBR() const { return trail_pbr_; }
+
+		inline void SetTrailPBR(bool enabled) { trail_pbr_ = enabled; }
+
+		inline float GetTrailRoughness() const { return trail_roughness_; }
+
+		inline void SetTrailRoughness(float roughness) { trail_roughness_ = glm::clamp(roughness, 0.0f, 1.0f); }
+
+		inline float GetTrailMetallic() const { return trail_metallic_; }
+
+		inline void SetTrailMetallic(float metallic) { trail_metallic_ = glm::clamp(metallic, 0.0f, 1.0f); }
+
 		inline bool IsColossal() const { return is_colossal_; }
 
 		inline void SetColossal(bool is_colossal) { is_colossal_ = is_colossal; }
+
+		// PBR material properties
+		inline float GetRoughness() const { return roughness_; }
+
+		inline void SetRoughness(float roughness) { roughness_ = glm::clamp(roughness, 0.0f, 1.0f); }
+
+		inline float GetMetallic() const { return metallic_; }
+
+		inline void SetMetallic(float metallic) { metallic_ = glm::clamp(metallic, 0.0f, 1.0f); }
+
+		inline float GetAO() const { return ao_; }
+
+		inline void SetAO(float ao) { ao_ = glm::clamp(ao, 0.0f, 1.0f); }
+
+		inline bool UsePBR() const { return use_pbr_; }
+
+		inline void SetUsePBR(bool use_pbr) { use_pbr_ = use_pbr; }
 
 		// Static shader reference
 		static std::shared_ptr<Shader> shader;
@@ -125,7 +155,14 @@ namespace Boidsish {
 			scale_(glm::vec3(1.0f)),
 			trail_length_(trail_length),
 			trail_iridescent_(false),
-			is_colossal_(false) {}
+			is_colossal_(false),
+			trail_pbr_(false),
+			trail_roughness_(0.3f),
+			trail_metallic_(0.0f),
+			roughness_(0.5f),
+			metallic_(0.0f),
+			ao_(1.0f),
+			use_pbr_(false) {}
 
 		glm::quat rotation_;
 		glm::vec3 scale_;
@@ -138,6 +175,13 @@ namespace Boidsish {
 		bool  trail_iridescent_;
 		bool  trail_rocket_;
 		bool  is_colossal_;
+		bool  trail_pbr_;
+		float trail_roughness_;
+		float trail_metallic_;
+		float roughness_;
+		float metallic_;
+		float ao_;
+		bool  use_pbr_;
 
 	protected:
 		// Shared sphere mesh

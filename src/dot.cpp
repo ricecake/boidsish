@@ -22,6 +22,14 @@ namespace Boidsish {
 		shader.setMat4("model", model_matrix);
 		shader.setVec3("objectColor", GetR(), GetG(), GetB());
 
+		// Set PBR material properties
+		shader.setBool("usePBR", UsePBR());
+		if (UsePBR()) {
+			shader.setFloat("roughness", GetRoughness());
+			shader.setFloat("metallic", GetMetallic());
+			shader.setFloat("ao", GetAO());
+		}
+
 		glBindVertexArray(sphere_vao_);
 		glDrawElements(GL_TRIANGLES, sphere_vertex_count_, GL_UNSIGNED_INT, 0);
 		glBindVertexArray(0);

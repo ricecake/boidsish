@@ -21,6 +21,18 @@ namespace Boidsish {
 		void SetIridescence(bool enabled);
 		void SetUseRocketTrail(bool enabled);
 
+		void SetUsePBR(bool enabled) { usePBR_ = enabled; }
+
+		void SetRoughness(float roughness) { roughness_ = roughness; }
+
+		void SetMetallic(float metallic) { metallic_ = metallic; }
+
+		bool GetUsePBR() const { return usePBR_; }
+
+		float GetRoughness() const { return roughness_; }
+
+		float GetMetallic() const { return metallic_; }
+
 	private:
 		struct TrailVertex {
 			glm::vec3 pos;
@@ -76,6 +88,9 @@ namespace Boidsish {
 		mutable std::deque<std::vector<glm::vec3>> ring_normals;
 		bool                                       iridescent_ = false;
 		bool                                       useRocketTrail_ = false;
+		bool                                       usePBR_ = false;
+		float                                      roughness_ = 0.3f;
+		float                                      metallic_ = 0.0f;
 
 		// Configuration
 		const int   TRAIL_SEGMENTS = 8;                        // Circular segments around trail

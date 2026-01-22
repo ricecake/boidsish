@@ -238,6 +238,9 @@ namespace Boidsish {
 		shader.setInt("useVertexColor", 1);
 		shader.setBool("useIridescence", iridescent_);
 		shader.setBool("useRocketTrail", useRocketTrail_);
+		shader.setBool("usePBR", usePBR_);
+		shader.setFloat("trailRoughness", roughness_);
+		shader.setFloat("trailMetallic", metallic_);
 		shader.setFloat("trailHead", head);
 		shader.setFloat("trailSize", trailSize);
 
