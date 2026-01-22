@@ -127,7 +127,7 @@ namespace Boidsish {
 			float floorLevel;    // The height at which flattening occurs
 		};
 
-		std::array<BiomeAttributes, 8> biomes = {
+		inline static const std::array<BiomeAttributes, 8> biomes = {
 			BiomeAttributes{1.0, 0.9, 10.0},
 			BiomeAttributes{0.80, 0.5, 20.0},
 			BiomeAttributes{0.05, 0.6, 40.0},

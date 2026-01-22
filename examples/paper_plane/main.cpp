@@ -31,8 +31,9 @@ int main() {
 		handler.SetVisualizer(visualizer);
 		auto id = handler.AddEntity<PaperPlane>();
 		auto plane = handler.GetEntity(id);
-		plane->SetPosition(0, height + 10, 0);
-		Boidsish::Camera camera(0.0f, height + 15, -10.0f);
+		plane->SetPosition(0, height + 50, 0);
+		// visualizer->GetTerrainGenerator()->Raycast();
+		Boidsish::Camera camera(0.0f, height + 55, -10.0f);
 		visualizer->SetCamera(camera);
 
 		visualizer->AddShapeHandler(std::ref(handler));
