@@ -265,8 +265,12 @@ void RigidBody::Update(float dt) {
     SetLinearVelocity(new_linear_velocity);
     SetAngularVelocity(new_angular_velocity);
 
+    new_orientation = glm::normalize(new_orientation);
+
     pose_.real = new_orientation;
     pose_.dual = 0.5f * glm::quat(0, new_position.x, new_position.y, new_position.z) * new_orientation;
+
+    pose_ = normalizeDualQuat(pose_);
 
     // Clear accumulators
     force_accumulator_ = glm::vec3(0.0f);

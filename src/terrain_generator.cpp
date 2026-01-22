@@ -289,6 +289,10 @@ namespace Boidsish {
 		glm::vec2 pos = glm::vec2(x, z);
 		glm::vec2 warped_pos = pos + warp;
 
+		if (std::isnan(x) || std::isnan(z)) {
+			logger::LOG("WHAT", x, z);
+		}
+
 		float control_value = getBiomeControlValue(x, z);
 
 		// getBiomeControlValue now handles NaN internally, but keep defensive check
@@ -298,10 +302,16 @@ namespace Boidsish {
 		}
 
 		BiomeAttributes current;
-		auto            low_threshold = (floor(control_value * (biomes.size() - 1)) / (biomes.size() - 1));
-		auto            high_threshold = (ceil(control_value * (biomes.size() - 1)) / (biomes.size() - 1));
-		auto            low_item = biomes[int(floor(control_value * (biomes.size() - 1)))];
-		auto            high_item = biomes[int(ceil(control_value * (biomes.size() - 1)))];
+		auto            low_threshold = (floor(control_value * (biomes.size()-1)) / (biomes.size()-1));
+		auto            high_threshold = (ceil(control_value * (biomes.size()-1)) / (biomes.size()-1));
+		auto            low_item = biomes[int(floor(control_value * (biomes.size()-1)))];
+		auto            high_item = biomes[int(ceil(control_value * (biomes.size()-1)))];
+
+		// auto raw_biome_index = std::clamp(control_value * (biomes.size() - 1), 0.0f, float((biomes.size() - 1)));
+		// auto            low_threshold = (floor(raw_biome_index) / biomes.size()-1);
+		// auto            high_threshold = (ceil(raw_biome_index) / biomes.size()-1);
+		// auto            low_item = biomes.at(int(floor(raw_biome_index)));
+		// auto            high_item = biomes.at(int(ceil(raw_biome_index)));
 		auto            t = glm::smoothstep(low_threshold, high_threshold, control_value);
 
 		current.spikeDamping = std::lerp(low_item.spikeDamping, high_item.spikeDamping, t);
@@ -400,6 +410,9 @@ namespace Boidsish {
 		// Ray marching to find a segment that contains the intersection
 		while (current_dist < max_dist) {
 			current_pos = origin + dir * current_dist;
+			if (std::isnan(current_pos.x) || std::isnan(current_pos.z)) {
+				logger::LOG("AHA", origin.x, origin.y, origin.z);
+			}
 			float terrain_height = pointGenerate(current_pos.x, current_pos.z).x;
 
 			if (current_pos.y < terrain_height) {
@@ -412,6 +425,10 @@ namespace Boidsish {
 				for (int i = 0; i < binary_search_steps; ++i) {
 					float     mid_dist = (start_dist + end_dist) / 2.0f;
 					glm::vec3 mid_pos = origin + dir * mid_dist;
+					if (std::isnan(mid_pos.x) || std::isnan(mid_pos.z)) {
+						logger::LOG("AHA2", origin.x, origin.y, origin.z);
+					}
+
 					float     mid_terrain_height = pointGenerate(mid_pos.x, mid_pos.z).x;
 
 					if (mid_pos.y < mid_terrain_height) {
@@ -656,9 +673,12 @@ namespace Boidsish {
 		// return Simplex::worleyfBm(glm::vec2(x * control_noise_scale_, z * control_noise_scale_));
 		glm::vec2 pos(x, z);
 		pos *= control_noise_scale_;
-		// float result = Simplex::noise (pos + Simplex::curlNoise(pos))  * 0.5f + 0.5f;
-		float result = Simplex::noise( pos + glm::vec2( Simplex::curlNoise( pos, control_noise_scale_ ).x ) ) * 0.5f + 0.5f;
+		float result = Simplex::noise (pos + Simplex::curlNoise(pos))  * 0.5f + 0.5f;
+		// float result = Simplex::noise( pos + glm::vec2( Simplex::curlNoise( pos, control_noise_scale_ ).x ) ) * 0.5f + 0.5f;
 		// float result = Simplex::worleyfBm(pos+Simplex::curlNoise(pos)) * 0.5f + 0.5f;
+		if (std::isnan(result)) {
+			logger::LOG("IT's NAN!", x, z, control_noise_scale_, result);
+		}
 		return std::clamp(result, 0.0f, 1.0f);
 
 		// return Simplex::worleyfBm(pos);
