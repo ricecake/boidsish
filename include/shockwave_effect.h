@@ -116,6 +116,7 @@ namespace Boidsish {
 		 * using screen-space projection of shockwave positions.
 		 *
 		 * @param source_texture The scene color texture to distort
+		 * @param depth_texture The scene depth texture for occlusion testing
 		 * @param view_matrix The current view matrix
 		 * @param proj_matrix The current projection matrix
 		 * @param camera_pos The camera world position
@@ -123,6 +124,7 @@ namespace Boidsish {
 		 */
 		void ApplyScreenSpaceEffect(
 			GLuint           source_texture,
+			GLuint           depth_texture,
 			const glm::mat4& view_matrix,
 			const glm::mat4& proj_matrix,
 			const glm::vec3& camera_pos,

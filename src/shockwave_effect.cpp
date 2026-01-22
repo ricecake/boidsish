@@ -200,6 +200,7 @@ namespace Boidsish {
 
 	void ShockwaveManager::ApplyScreenSpaceEffect(
 		GLuint           source_texture,
+		GLuint           depth_texture,
 		const glm::mat4& view_matrix,
 		const glm::mat4& proj_matrix,
 		const glm::vec3& camera_pos,
@@ -218,10 +219,20 @@ namespace Boidsish {
 
 		// Set uniforms (count is in UBO, so we don't need numShockwaves uniform)
 		shader_->setInt("sceneTexture", 0);
+		shader_->setInt("depthTexture", 1);
 		shader_->setVec2("screenSize", glm::vec2(screen_width_, screen_height_));
 		shader_->setVec3("cameraPos", camera_pos);
 		shader_->setMat4("viewMatrix", view_matrix);
 		shader_->setMat4("projMatrix", proj_matrix);
+
+		// Calculate near/far planes from projection matrix for depth linearization
+		// For a perspective projection: proj[2][2] = -(far+near)/(far-near), proj[3][2] = -2*far*near/(far-near)
+		float A = proj_matrix[2][2];
+		float B = proj_matrix[3][2];
+		float near_plane = B / (A - 1.0f);
+		float far_plane = B / (A + 1.0f);
+		shader_->setFloat("nearPlane", near_plane);
+		shader_->setFloat("farPlane", far_plane);
 
 		// Bind shockwave UBO to binding point 3 (after Lighting=0, VisualEffects=1, other=2)
 		BindUBO(3);
@@ -230,6 +241,10 @@ namespace Boidsish {
 		// Bind scene texture
 		glActiveTexture(GL_TEXTURE0);
 		glBindTexture(GL_TEXTURE_2D, source_texture);
+
+		// Bind depth texture
+		glActiveTexture(GL_TEXTURE1);
+		glBindTexture(GL_TEXTURE_2D, depth_texture);
 
 		// Render full-screen quad
 		glBindVertexArray(quad_vao);

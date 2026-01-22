@@ -5,10 +5,13 @@ out vec4 FragColor;
 in vec2 TexCoords;
 
 uniform sampler2D sceneTexture;
+uniform sampler2D depthTexture;
 uniform vec2      screenSize;
 uniform vec3      cameraPos;
 uniform mat4      viewMatrix;
 uniform mat4      projMatrix;
+uniform float     nearPlane;
+uniform float     farPlane;
 
 // Maximum number of simultaneous shockwaves (must match C++ kMaxShockwaves)
 #define MAX_SHOCKWAVES 16
@@ -29,6 +32,15 @@ layout(std140, binding = 3) uniform Shockwaves {
 };
 
 /**
+ * Linearize depth from the depth buffer
+ * Converts from non-linear depth buffer value to linear view-space distance
+ */
+float linearizeDepth(float depth) {
+	float z = depth * 2.0 - 1.0; // Back to NDC
+	return (2.0 * nearPlane * farPlane) / (farPlane + nearPlane - z * (farPlane - nearPlane));
+}
+
+/**
  * Calculate a view ray in world space from the camera through the current fragment
  */
 vec3 getViewRay(vec2 texCoords) {
@@ -45,6 +57,26 @@ vec3 getViewRay(vec2 texCoords) {
 	// Convert view space to world space
 	vec3 worldDir = (inverse(viewMatrix) * view).xyz;
 	return normalize(worldDir);
+}
+
+/**
+ * Reconstruct world position from depth buffer
+ */
+vec3 reconstructWorldPos(vec2 texCoords, float depth) {
+	// Convert to NDC
+	vec2  ndc = texCoords * 2.0 - 1.0;
+	float z_ndc = depth * 2.0 - 1.0;
+
+	// Reconstruct clip space position
+	vec4 clipPos = vec4(ndc, z_ndc, 1.0);
+
+	// Transform to view space
+	vec4 viewPos = inverse(projMatrix) * clipPos;
+	viewPos /= viewPos.w;
+
+	// Transform to world space
+	vec4 worldPos = inverse(viewMatrix) * viewPos;
+	return worldPos.xyz;
 }
 
 /**
@@ -69,6 +101,8 @@ float rayPlaneIntersect(vec3 rayOrigin, vec3 rayDir, vec3 planeCenter, vec3 plan
  * 1. Pushes pixels outward from the projected center
  * 2. Creates a refraction-like visual effect
  * 3. Adds color tinting at the wavefront for visibility
+ * 4. Is occluded by scene geometry (respects depth buffer)
+ * 5. Wraps around scene geometry instead of passing through it
  */
 void main() {
 	// Early out if no shockwaves (using UBO shockwave_count)
@@ -76,6 +110,13 @@ void main() {
 		FragColor = texture(sceneTexture, TexCoords);
 		return;
 	}
+
+	// Get scene depth at this pixel and convert to linear distance
+	float sceneDepth = texture(depthTexture, TexCoords).r;
+	float sceneLinearDepth = linearizeDepth(sceneDepth);
+
+	// Reconstruct world position of scene geometry at this pixel
+	vec3 sceneWorldPos = reconstructWorldPos(TexCoords, sceneDepth);
 
 	vec2  totalDistortion = vec2(0.0);
 	vec3  totalGlow = vec3(0.0);
@@ -103,18 +144,51 @@ void main() {
 		if (t < 0.0)
 			continue; // No intersection in front of camera
 
-		// Calculate world-space intersection point
-		vec3 intersectPos = cameraPos + viewRay * t;
+		// Calculate world-space intersection point on the shockwave plane
+		vec3 planeIntersectPos = cameraPos + viewRay * t;
 
-		// Calculate world-space distance from shockwave center
-		float worldDist = length(intersectPos - center);
+		// Calculate distance from shockwave center on the plane
+		float planeWorldDist = length(planeIntersectPos - center);
+
+		// Calculate distance from scene geometry to shockwave center
+		// This is the actual 3D distance, used for "wrapping" effect
+		float sceneDistFromCenter = length(sceneWorldPos - center);
+
+		// Project scene geometry onto the shockwave plane to get planar distance
+		vec3  sceneToCenter = sceneWorldPos - center;
+		float sceneDistAlongNormal = dot(sceneToCenter, normal);
+		vec3  sceneProjectedOnPlane = sceneWorldPos - sceneDistAlongNormal * normal;
+		float scenePlanarDist = length(sceneProjectedOnPlane - center);
+
+		// Determine which distance to use for the ring effect:
+		// - If the plane intersection is in front of geometry, use the plane
+		// - If geometry is in front of the plane, the shockwave "wraps" onto geometry
+		float effectiveDist;
+		bool  showOnGeometry = false;
+
+		if (t > sceneLinearDepth) {
+			// Scene geometry is in front of the shockwave plane
+			// Check if the geometry is close enough to the plane to show the effect on it
+			// (shockwave wraps around obstacles)
+			if (abs(sceneDistAlongNormal) < currentRadius * 1.5) {
+				// Use the scene geometry's planar distance - the shockwave wraps onto it
+				effectiveDist = scenePlanarDist;
+				showOnGeometry = true;
+			} else {
+				// Geometry is too far from the plane, skip this shockwave for this pixel
+				continue;
+			}
+		} else {
+			// Shockwave plane is in front - use plane intersection
+			effectiveDist = planeWorldDist;
+		}
 
 		// Skip if outside the shockwave's max radius
-		if (worldDist > maxRadius)
+		if (effectiveDist > maxRadius)
 			continue;
 
 		// Calculate how close we are to the wavefront ring
-		float distFromRing = abs(worldDist - currentRadius);
+		float distFromRing = abs(effectiveDist - currentRadius);
 
 		// Gaussian falloff for ring width - creates smooth distortion band
 		float ringFactor = exp(-distFromRing * distFromRing / (2.0 * ringWidth * ringWidth));
@@ -123,9 +197,11 @@ void main() {
 		if (ringFactor < 0.001)
 			continue;
 
-		// Project the intersection point and a point slightly offset
-		// back to screen space to find the distortion direction.
-		vec4 clipPos = projMatrix * viewMatrix * vec4(intersectPos, 1.0);
+		// Choose the appropriate position for screen-space calculations
+		vec3 effectPos = showOnGeometry ? sceneWorldPos : planeIntersectPos;
+
+		// Project the effect position to screen space for distortion direction
+		vec4 clipPos = projMatrix * viewMatrix * vec4(effectPos, 1.0);
 		vec2 screenPos = (clipPos.xy / clipPos.w) * 0.5 + 0.5;
 
 		// The direction of distortion should be from the screen projection
@@ -144,12 +220,12 @@ void main() {
 		}
 
 		// The distortion should create a "lens" or "pressure wave" effect
-		float inside = smoothstep(currentRadius - ringWidth, currentRadius, worldDist);
-		float outside = smoothstep(currentRadius, currentRadius + ringWidth, worldDist);
+		float inside = smoothstep(currentRadius - ringWidth, currentRadius, effectiveDist);
+		float outside = smoothstep(currentRadius, currentRadius + ringWidth, effectiveDist);
 
 		// Create an asymmetric distortion profile for realistic pressure wave
 		float distortProfile;
-		if (worldDist < currentRadius) {
+		if (effectiveDist < currentRadius) {
 			// Inside the ring - slight inward pull
 			distortProfile = -0.3 * (1.0 - inside);
 		} else {

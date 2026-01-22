@@ -88,7 +88,7 @@ namespace Boidsish {
 		GLuint                  plane_vao{0}, plane_vbo{0}, sky_vao{0}, blur_quad_vao{0}, blur_quad_vbo{0};
 		GLuint                  reflection_fbo{0}, reflection_texture{0}, reflection_depth_rbo{0};
 		GLuint                  pingpong_fbo[2]{0}, pingpong_texture[2]{0};
-		GLuint                  main_fbo_{0}, main_fbo_texture_{0}, main_fbo_rbo_{0};
+		GLuint                  main_fbo_{0}, main_fbo_texture_{0}, main_fbo_depth_texture_{0}, main_fbo_rbo_{0};
 		GLuint                  lighting_ubo{0};
 		GLuint                  visual_effects_ubo{0};
 		glm::mat4               projection, reflection_vp;
@@ -393,11 +393,32 @@ namespace Boidsish {
 			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 			glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, main_fbo_texture_, 0);
 
-			// Depth and stencil renderbuffer
-			glGenRenderbuffers(1, &main_fbo_rbo_);
-			glBindRenderbuffer(GL_RENDERBUFFER, main_fbo_rbo_);
-			glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH24_STENCIL8, width, height);
-			glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_RENDERBUFFER, main_fbo_rbo_);
+			// Depth-stencil texture (for shockwave depth testing and stencil operations)
+			// Using GL_DEPTH24_STENCIL8 allows sampling depth while also providing stencil
+			glGenTextures(1, &main_fbo_depth_texture_);
+			glBindTexture(GL_TEXTURE_2D, main_fbo_depth_texture_);
+			glTexImage2D(
+				GL_TEXTURE_2D,
+				0,
+				GL_DEPTH24_STENCIL8,
+				width,
+				height,
+				0,
+				GL_DEPTH_STENCIL,
+				GL_UNSIGNED_INT_24_8,
+				NULL
+			);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+			glFramebufferTexture2D(
+				GL_FRAMEBUFFER,
+				GL_DEPTH_STENCIL_ATTACHMENT,
+				GL_TEXTURE_2D,
+				main_fbo_depth_texture_,
+				0
+			);
 
 			if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
 				std::cerr << "ERROR::FRAMEBUFFER:: Main framebuffer is not complete!" << std::endl;
@@ -1203,8 +1224,19 @@ namespace Boidsish {
 			} else {
 				glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, width, height, 0, GL_RGB, GL_UNSIGNED_BYTE, NULL);
 			}
-			glBindRenderbuffer(GL_RENDERBUFFER, impl->main_fbo_rbo_);
-			glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH24_STENCIL8, width, height);
+			// Resize depth-stencil texture
+			glBindTexture(GL_TEXTURE_2D, impl->main_fbo_depth_texture_);
+			glTexImage2D(
+				GL_TEXTURE_2D,
+				0,
+				GL_DEPTH24_STENCIL8,
+				width,
+				height,
+				0,
+				GL_DEPTH_STENCIL,
+				GL_UNSIGNED_INT_24_8,
+				NULL
+			);
 
 			// --- Resize post-processing manager ---
 			if (impl->post_processing_manager_) {
@@ -1475,6 +1507,7 @@ namespace Boidsish {
 			if (impl->shockwave_manager->HasActiveShockwaves()) {
 				impl->shockwave_manager->ApplyScreenSpaceEffect(
 					final_texture,
+					impl->main_fbo_depth_texture_,
 					view,
 					impl->projection,
 					impl->camera.pos(),
@@ -1500,6 +1533,7 @@ namespace Boidsish {
 
 				impl->shockwave_manager->ApplyScreenSpaceEffect(
 					impl->main_fbo_texture_,
+					impl->main_fbo_depth_texture_,
 					view,
 					impl->projection,
 					impl->camera.pos(),
