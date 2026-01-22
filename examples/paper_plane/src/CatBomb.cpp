@@ -48,14 +48,15 @@ namespace Boidsish {
 
 		auto pos = GetPosition();
 		handler.EnqueueVisualizerAction([=, &handler]() {
-			handler.vis->AddFireEffect(
-				glm::vec3(pos.x, pos.y, pos.z),
-				FireEffectStyle::Explosion,
-				glm::vec3(0, 1, 0),
-				glm::vec3(0, 0, 0),
-				-1,
-				2.0f
-			);
+			handler.vis->CreateExplosion(glm::vec3(pos.x, pos.y, pos.z), 2.5f);
+			// handler.vis->AddFireEffect(
+			// 	glm::vec3(pos.x, pos.y, pos.z),
+			// 	FireEffectStyle::Explosion,
+			// 	glm::vec3(0, 1, 0),
+			// 	glm::vec3(0, 0, 0),
+			// 	-1,
+			// 	2.0f
+			// );
 		});
 
 		exploded_ = true;

@@ -15,15 +15,20 @@ int main() {
 			Boidsish::FireEffectStyle::MissileExhaust,
 			{0.01f, -1.0f, 0.0f}
 		);
-		auto fire2 = vis.AddFireEffect(glm::vec3(10.0f, 2.0f, 0.0f), Boidsish::FireEffectStyle::Explosion);
+		// auto fire2 = vis.AddFireEffect(glm::vec3(10.0f, 2.0f, 0.0f), Boidsish::FireEffectStyle::Explosion);
 		auto fire3 = vis.AddFireEffect(glm::vec3(0.0f, 2.0f, 0.0f), Boidsish::FireEffectStyle::Fire);
 
 		vis.GetCamera().y = 5.0;
 		vis.GetCamera().z = 30.0;
 		vis.SetCameraMode(Boidsish::CameraMode::STATIONARY);
 
+		float                                         boomTime = 0;
 		std::vector<std::shared_ptr<Boidsish::Shape>> vec;
 		vis.AddShapeHandler([&](float time) {
+			if ((time - boomTime) > 5) {
+				vis.CreateExplosion({5, 1, 5}, 2.0f);
+				boomTime = time;
+			}
 			// // Dynamically update the fire effect's properties over time
 			// float x = sin(time) * 5.0f;
 			// float z = cos(time) * 5.0f;

@@ -30,6 +30,7 @@
 #include "post_processing/effects/TimeStutterEffect.h"
 #include "post_processing/effects/ToneMappingEffect.h"
 #include "post_processing/effects/WhispTrailEffect.h"
+#include "shockwave_effect.h"
 #include "sound_effect_manager.h"
 #include "spline.h"
 #include "task_thread_pool.hpp"
@@ -64,6 +65,7 @@ namespace Boidsish {
 		std::unique_ptr<CloneManager>         clone_manager;
 		std::unique_ptr<FireEffectManager>    fire_effect_manager;
 		std::unique_ptr<SoundEffectManager>   sound_effect_manager;
+		std::unique_ptr<ShockwaveManager>     shockwave_manager;
 		std::map<int, std::shared_ptr<Trail>> trails;
 		std::map<int, float>                  trail_last_update;
 		LightManager                          light_manager;
@@ -218,6 +220,7 @@ namespace Boidsish {
 			}
 			clone_manager = std::make_unique<CloneManager>();
 			fire_effect_manager = std::make_unique<FireEffectManager>();
+			shockwave_manager = std::make_unique<ShockwaveManager>();
 			audio_manager = std::make_unique<AudioManager>();
 			sound_effect_manager = std::make_unique<SoundEffectManager>(audio_manager.get());
 
@@ -408,6 +411,9 @@ namespace Boidsish {
 					blur_quad_vao
 				);
 				post_processing_manager_->Initialize();
+
+				// --- Shockwave Manager ---
+				shockwave_manager->Initialize(width, height);
 
 				auto negative_effect = std::make_shared<PostProcessing::NegativeEffect>();
 				negative_effect->SetEnabled(false);
@@ -1204,6 +1210,11 @@ namespace Boidsish {
 			if (impl->post_processing_manager_) {
 				impl->post_processing_manager_->Resize(width, height);
 			}
+
+			// --- Resize shockwave manager ---
+			if (impl->shockwave_manager) {
+				impl->shockwave_manager->Resize(width, height);
+			}
 		}
 	};
 
@@ -1356,6 +1367,7 @@ namespace Boidsish {
 		impl->clone_manager->Update(impl->simulation_time, impl->camera.pos());
 		impl->fire_effect_manager->Update(impl->input_state.delta_time, impl->simulation_time);
 		impl->sound_effect_manager->Update(impl->input_state.delta_time);
+		impl->shockwave_manager->Update(impl->input_state.delta_time);
 
 		// UBO Updates
 		if (ConfigManager::GetInstance().GetAppSettingBool("enable_effects", true)) {
@@ -1451,37 +1463,65 @@ namespace Boidsish {
 				effect->SetTime(impl->simulation_time);
 			}
 
-			// No need to check if any effect is enabled, the manager handles it.
+			// Apply standard post-processing effects
 			GLuint final_texture = impl->post_processing_manager_->ApplyEffects(impl->main_fbo_texture_);
 
 			glBindFramebuffer(GL_FRAMEBUFFER, 0);
 			glDisable(GL_DEPTH_TEST);
 			glClear(GL_COLOR_BUFFER_BIT);
 
-			impl->postprocess_shader_->use();
-			impl->postprocess_shader_->setInt("sceneTexture", 0);
-			glActiveTexture(GL_TEXTURE0);
-			glBindTexture(GL_TEXTURE_2D, final_texture);
+			// Apply shockwave effect as the final pass (after other post-processing)
+			// This ensures the distortion is visible and not processed by other effects
+			if (impl->shockwave_manager->HasActiveShockwaves()) {
+				impl->shockwave_manager->ApplyScreenSpaceEffect(
+					final_texture,
+					view,
+					impl->projection,
+					impl->camera.pos(),
+					impl->blur_quad_vao
+				);
+			} else {
+				// No shockwaves - just render the post-processed texture
+				impl->postprocess_shader_->use();
+				impl->postprocess_shader_->setInt("sceneTexture", 0);
+				glActiveTexture(GL_TEXTURE0);
+				glBindTexture(GL_TEXTURE_2D, final_texture);
 
-			glBindVertexArray(impl->blur_quad_vao);
-			glDrawArrays(GL_TRIANGLES, 0, 6);
+				glBindVertexArray(impl->blur_quad_vao);
+				glDrawArrays(GL_TRIANGLES, 0, 6);
+			}
 		} else {
 			// --- Passthrough without Post-processing ---
-			glBindFramebuffer(GL_READ_FRAMEBUFFER, impl->main_fbo_);
-			glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
-			glBlitFramebuffer(
-				0,
-				0,
-				impl->width,
-				impl->height,
-				0,
-				0,
-				impl->width,
-				impl->height,
-				GL_COLOR_BUFFER_BIT,
-				GL_NEAREST
-			);
-			glBindFramebuffer(GL_FRAMEBUFFER, 0);
+			// Still apply shockwave if active
+			if (impl->shockwave_manager->HasActiveShockwaves()) {
+				glBindFramebuffer(GL_FRAMEBUFFER, 0);
+				glDisable(GL_DEPTH_TEST);
+				glClear(GL_COLOR_BUFFER_BIT);
+
+				impl->shockwave_manager->ApplyScreenSpaceEffect(
+					impl->main_fbo_texture_,
+					view,
+					impl->projection,
+					impl->camera.pos(),
+					impl->blur_quad_vao
+				);
+			} else {
+				glBindFramebuffer(GL_READ_FRAMEBUFFER, impl->main_fbo_);
+				glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
+				glBlitFramebuffer(
+					0,
+					0,
+					impl->width,
+					impl->height,
+					0,
+					0,
+					impl->width,
+					impl->height,
+					GL_COLOR_BUFFER_BIT,
+					GL_NEAREST
+				);
+				glBindFramebuffer(GL_FRAMEBUFFER, 0);
+			}
 		}
 
 		// --- UI Pass (renders on top of the fullscreen quad) ---
@@ -1768,6 +1808,44 @@ namespace Boidsish {
 				}
 			}
 		}
+	}
+
+	bool Visualizer::AddShockwave(
+		const glm::vec3& position,
+		const glm::vec3& normal,
+		float            max_radius,
+		float            duration,
+		float            intensity,
+		float            ring_width,
+		const glm::vec3& color
+	) {
+		return impl->shockwave_manager
+			->AddShockwave(position, normal, max_radius, duration, intensity, ring_width, color);
+	}
+
+	void Visualizer::CreateExplosion(const glm::vec3& position, float intensity) {
+		// Add fire effect for the explosion visuals
+		impl->fire_effect_manager->AddEffect(
+			position,
+			FireEffectStyle::Explosion,
+			glm::vec3(0.0f), // No specific direction
+			glm::vec3(0.0f), // No velocity
+			-1,
+			0.5f
+		);
+
+		// Add the shockwave effect
+		float     max_radius = 30.0f * intensity;
+		float     duration = 1.2f * intensity;
+		float     wave_intensity = 0.5f * intensity;
+		float     ring_width = 4.0f * intensity;
+		glm::vec3 color(1.0f, 0.5f, 0.1f); // Orange-ish explosion color
+
+		// Assume explosion is on a flat surface for the shockwave plane
+		glm::vec3 normal(0.0f, 1.0f, 0.0f);
+
+		impl->shockwave_manager
+			->AddShockwave(position, normal, max_radius, duration, wave_intensity, ring_width, color);
 	}
 
 	void Visualizer::SetTimeScale(float ts) {
