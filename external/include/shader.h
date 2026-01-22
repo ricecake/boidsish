@@ -76,6 +76,11 @@ public:
 		glUniformMatrix4fv(glGetUniformLocation(ID, name.c_str()), 1, GL_FALSE, &mat[0][0]);
 	}
 
+	// ------------------------------------------------------------------------
+	void setIntArray(const std::string& name, const int* values, int count) const {
+		glUniform1iv(glGetUniformLocation(ID, name.c_str()), count, values);
+	}
+
 protected:
 	std::string loadShaderSource(const std::string& path, std::set<std::string>& includedFiles) {
 		if (includedFiles.count(path)) {

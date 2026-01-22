@@ -15,4 +15,24 @@ namespace Boidsish {
 		// In the future, we could update light positions, colors, etc. here.
 	}
 
+	std::vector<Light*> LightManager::GetShadowCastingLights() {
+		std::vector<Light*> shadow_lights;
+		for (auto& light : _lights) {
+			if (light.casts_shadow) {
+				shadow_lights.push_back(&light);
+			}
+		}
+		return shadow_lights;
+	}
+
+	int LightManager::GetShadowCastingLightCount() const {
+		int count = 0;
+		for (const auto& light : _lights) {
+			if (light.casts_shadow) {
+				++count;
+			}
+		}
+		return count;
+	}
+
 } // namespace Boidsish

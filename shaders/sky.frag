@@ -4,7 +4,7 @@ out vec4 FragColor;
 
 in vec2 TexCoords;
 
-#include "helpers/lighting.glsl"
+#include "helpers/lighting_simple.glsl"
 
 uniform mat4 invProjection;
 uniform mat4 invView;

@@ -6,7 +6,7 @@ in vec3  vs_normal;
 in vec3  vs_frag_pos;
 in float vs_progress;
 
-#include "helpers/lighting.glsl"
+#include "helpers/lighting_simple.glsl"
 
 uniform bool useIridescence;
 uniform bool useRocketTrail;

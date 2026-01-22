@@ -5,7 +5,7 @@ in vec3 WorldPos;
 in vec3 Normal;
 in vec4 ReflectionClipSpacePos;
 
-#include "helpers/lighting.glsl"
+#include "helpers/lighting_simple.glsl"
 
 uniform sampler2D reflectionTexture;
 uniform bool      useReflection;

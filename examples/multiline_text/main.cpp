@@ -48,6 +48,15 @@ int main() {
 	visualizer.AddShape(center_text);
 	visualizer.AddShape(right_text);
 
+	Boidsish::Light light1;
+	light1.position = glm::vec3(0, 40, 70);
+	light1.color = glm::vec3(1, 0, 0);
+	light1.intensity = 1.0f;
+	light1.casts_shadow = true;
+	visualizer.GetLightManager().AddLight(light1);
+
+	visualizer.GetLightManager().GetLights()[0].intensity = 0.03f;
+
 	double start_time = glfwGetTime();
 	bool   justification_changed = false;
 

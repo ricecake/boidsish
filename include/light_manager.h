@@ -13,8 +13,20 @@ namespace Boidsish {
 		std::vector<Light>& GetLights();
 		void                Update(float deltaTime);
 
+		/**
+		 * @brief Get lights that cast shadows.
+		 * @return Vector of pointers to shadow-casting lights
+		 */
+		std::vector<Light*> GetShadowCastingLights();
+
+		/**
+		 * @brief Get number of shadow-casting lights.
+		 */
+		int GetShadowCastingLightCount() const;
+
 	private:
-		std::vector<Light> _lights{{{0, 50, -500}, 10.0f, {1, 0.5f, 0.25f}}};
+		// Default light casts shadows
+		std::vector<Light> _lights{Light::Create({0, 50, -500}, 10.0f, {1, 0.5f, 0.25f}, true)};
 	};
 
 } // namespace Boidsish

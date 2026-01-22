@@ -1,5 +1,6 @@
 #include "graphics.h"
 
+#include <array>
 #include <chrono>
 #include <iostream>
 #include <map>
@@ -30,6 +31,7 @@
 #include "post_processing/effects/TimeStutterEffect.h"
 #include "post_processing/effects/ToneMappingEffect.h"
 #include "post_processing/effects/WhispTrailEffect.h"
+#include "shadow_manager.h"
 #include "shockwave_effect.h"
 #include "sound_effect_manager.h"
 #include "spline.h"
@@ -66,6 +68,7 @@ namespace Boidsish {
 		std::unique_ptr<FireEffectManager>    fire_effect_manager;
 		std::unique_ptr<SoundEffectManager>   sound_effect_manager;
 		std::unique_ptr<ShockwaveManager>     shockwave_manager;
+		std::unique_ptr<ShadowManager>        shadow_manager;
 		std::map<int, std::shared_ptr<Trail>> trails;
 		std::map<int, float>                  trail_last_update;
 		LightManager                          light_manager;
@@ -221,6 +224,7 @@ namespace Boidsish {
 			clone_manager = std::make_unique<CloneManager>();
 			fire_effect_manager = std::make_unique<FireEffectManager>();
 			shockwave_manager = std::make_unique<ShockwaveManager>();
+			shadow_manager = std::make_unique<ShadowManager>();
 			audio_manager = std::make_unique<AudioManager>();
 			sound_effect_manager = std::make_unique<SoundEffectManager>(audio_manager.get());
 
@@ -424,6 +428,9 @@ namespace Boidsish {
 				std::cerr << "ERROR::FRAMEBUFFER:: Main framebuffer is not complete!" << std::endl;
 			glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
+			// --- Shadow Manager (initialize unconditionally) ---
+			shadow_manager->Initialize();
+
 			if (postprocess_shader_) {
 				// --- Post Processing Manager ---
 				post_processing_manager_ = std::make_unique<PostProcessing::PostProcessingManager>(
@@ -488,8 +495,18 @@ namespace Boidsish {
 
 		void SetupShaderBindings(Shader& shader_to_setup) {
 			shader_to_setup.use();
-			glUniformBlockBinding(shader_to_setup.ID, glGetUniformBlockIndex(shader_to_setup.ID, "Lighting"), 0);
-			glUniformBlockBinding(shader_to_setup.ID, glGetUniformBlockIndex(shader_to_setup.ID, "VisualEffects"), 1);
+			GLuint lighting_idx = glGetUniformBlockIndex(shader_to_setup.ID, "Lighting");
+			if (lighting_idx != GL_INVALID_INDEX) {
+				glUniformBlockBinding(shader_to_setup.ID, lighting_idx, 0);
+			}
+			GLuint effects_idx = glGetUniformBlockIndex(shader_to_setup.ID, "VisualEffects");
+			if (effects_idx != GL_INVALID_INDEX) {
+				glUniformBlockBinding(shader_to_setup.ID, effects_idx, 1);
+			}
+			GLuint shadows_idx = glGetUniformBlockIndex(shader_to_setup.ID, "Shadows");
+			if (shadows_idx != GL_INVALID_INDEX) {
+				glUniformBlockBinding(shader_to_setup.ID, shadows_idx, 2);
+			}
 		}
 
 		~VisualizerImpl() {
@@ -1435,7 +1452,14 @@ namespace Boidsish {
 		glBindBuffer(GL_UNIFORM_BUFFER, impl->lighting_ubo);
 		const auto& lights = impl->light_manager.GetLights();
 		int         num_lights = lights.size();
-		glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(Light) * num_lights, lights.data());
+
+		// Convert lights to GPU-compatible format (32 bytes each, matching GLSL struct)
+		std::vector<LightGPU> gpu_lights;
+		gpu_lights.reserve(num_lights);
+		for (const auto& light : lights) {
+			gpu_lights.push_back(light.ToGPU());
+		}
+		glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(LightGPU) * num_lights, gpu_lights.data());
 		glBufferSubData(GL_UNIFORM_BUFFER, 320, sizeof(int), &num_lights);
 		glBufferSubData(
 			GL_UNIFORM_BUFFER,
@@ -1475,6 +1499,52 @@ namespace Boidsish {
 			impl->RenderBlur(kBlurPasses);
 		}
 
+		// Reset all light shadow indices to -1 before the shadow pass
+		// This prevents stale indices from causing undefined behavior
+		for (auto& light : impl->light_manager.GetLights()) {
+			light.shadow_map_index = -1;
+		}
+
+		// --- Shadow Pass (render depth from each shadow-casting light) ---
+		std::vector<Light*> shadow_lights; // Declare outside the if block
+
+		if (impl->shadow_manager && impl->shadow_manager->IsInitialized()) {
+			shadow_lights = impl->light_manager.GetShadowCastingLights();
+			for (size_t i = 0; i < shadow_lights.size() && i < ShadowManager::kMaxShadowLights; ++i) {
+				Light* light = shadow_lights[i];
+
+				// Assign shadow map index to this light
+				light->shadow_map_index = static_cast<int>(i);
+
+				// Calculate scene center from shapes (or use origin if no shapes)
+				glm::vec3 scene_center(0.0f);
+				if (!impl->shapes.empty()) {
+					for (const auto& shape : impl->shapes) {
+						scene_center += glm::vec3(shape->GetX(), shape->GetY(), shape->GetZ());
+					}
+					scene_center /= static_cast<float>(impl->shapes.size());
+				}
+
+				impl->shadow_manager->BeginShadowPass(static_cast<int>(i), *light, scene_center);
+
+				// Render shapes to shadow map (depth-only)
+				Shader& shadow_shader = impl->shadow_manager->GetShadowShader();
+				shadow_shader.use(); // Ensure shadow shader is active
+				for (const auto& shape : impl->shapes) {
+					shape->render(shadow_shader);
+				}
+
+				// Skip terrain shadows for now - tessellation makes this complex
+				// TODO: Implement depth-only terrain shadow shader
+
+				impl->shadow_manager->EndShadowPass();
+			}
+
+			// ALWAYS update shadow UBO (even with 0 shadow lights)
+			// This ensures numShadowLights is correctly set to 0
+			impl->shadow_manager->UpdateShadowUBO(shadow_lights);
+		}
+
 		// --- Main Scene Pass (renders to our FBO) ---
 		glBindFramebuffer(GL_FRAMEBUFFER, impl->main_fbo_);
 		glEnable(GL_DEPTH_TEST);
@@ -1484,6 +1554,28 @@ namespace Boidsish {
 		impl->RenderSky(view);
 		impl->RenderPlane(view);
 		impl->RenderTerrain(view, std::nullopt);
+
+		// Always set shadow indices to -1 for proper lighting
+		// This must happen even if shadow_manager isn't active
+		impl->shader->use();
+		std::array<int, 10> shadow_indices;
+		shadow_indices.fill(-1);
+
+		// ALWAYS bind shadow maps (even if empty) to prevent sampler errors
+		// An unbound sampler2DArrayShadow can cause shader failures on some GPUs
+		if (impl->shadow_manager && impl->shadow_manager->IsInitialized()) {
+			impl->shadow_manager->BindForRendering(*impl->shader);
+			// Build shadow index array mapping light index to shadow map layer
+			const auto& all_lights = impl->light_manager.GetLights();
+			for (size_t j = 0; j < all_lights.size() && j < 10; ++j) {
+				shadow_indices[j] = all_lights[j].shadow_map_index;
+			}
+		} else {
+			// Shadow manager not available - bind placeholder values
+			impl->shader->setInt("shadowMaps", 4); // Texture unit 4, even if nothing bound
+		}
+		impl->shader->setIntArray("lightShadowIndices", shadow_indices.data(), 10);
+
 		impl->RenderShapes(view, impl->camera, impl->shapes, impl->simulation_time, std::nullopt);
 		impl->fire_effect_manager->Render(view, impl->projection, impl->camera.pos());
 		impl->RenderTrails(view, std::nullopt);
