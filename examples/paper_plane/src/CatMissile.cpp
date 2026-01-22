@@ -230,8 +230,8 @@ glm::vec3 CalculateSteeringTorque(
 					local_forward,
 					target_dir_local,
 					rigid_body_.GetAngularVelocity(),
-					200.0f, //kP,
-					50.0f//kD
+					100.0f, //kP,
+					20.0f//kD
 				);
 
 			rigid_body_.AddRelativeTorque(pid_torque);

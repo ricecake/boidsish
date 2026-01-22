@@ -1,5 +1,6 @@
 #include "rigid_body.h"
 #include <glm/gtx/string_cast.hpp>
+#include <glm/gtx/norm.hpp>
 #include <iostream>
 
 namespace {
@@ -229,53 +230,59 @@ void RigidBody::AddRelativeTorque(const glm::vec3& torque) {
 }
 
 void RigidBody::Update(float dt) {
-    // Store initial velocities
-    glm::vec3 initial_linear_velocity = GetLinearVelocity();
-    glm::vec3 initial_angular_velocity = GetAngularVelocity();
+    // 1. Update Velocities (Semi-Implicit Euler)
+    // Linear
+    glm::vec3 linear_accel = force_accumulator_ / mass_;
+    glm::vec3 linear_vel = GetLinearVelocity() + linear_accel * dt;
 
-    // Integrate for new velocities
-    glm::vec3 linear_acceleration = force_accumulator_ / mass_;
-    glm::vec3 new_linear_velocity = initial_linear_velocity + linear_acceleration * dt;
+    // Angular
+    glm::vec3 angular_accel = torque_accumulator_ / inertia_;
+    glm::vec3 angular_vel = GetAngularVelocity() + angular_accel * dt;
 
-    glm::vec3 angular_acceleration = torque_accumulator_ / inertia_;
-    glm::vec3 new_angular_velocity = initial_angular_velocity + angular_acceleration * dt;
+    // 2. Apply Damping (Friction)
+    float lin_damping = glm::clamp(1.0f - (linear_friction_ * dt), 0.0f, 1.0f);
+    float ang_damping = glm::clamp(1.0f - (angular_friction_ * dt), 0.0f, 1.0f);
 
-    // Apply friction to new velocities
-    float linear_damping = 1.0f - (linear_friction_ * dt);
-    float angular_damping = 1.0f - (angular_friction_ * dt);
-    new_linear_velocity *= (linear_damping > 0.0f ? linear_damping : 0.0f);
-    new_angular_velocity *= (angular_damping > 0.0f ? angular_damping : 0.0f);
+    linear_vel *= lin_damping;
+    angular_vel *= ang_damping;
 
-    // Update position and orientation using average velocities
-    glm::vec3 avg_linear_velocity = (initial_linear_velocity + new_linear_velocity) * 0.5f;
-    glm::vec3 new_position = GetPosition() + avg_linear_velocity * dt;
+    // 3. Update Position
+    glm::vec3 current_pos = GetPosition();
+    glm::vec3 new_pos = current_pos + linear_vel * dt;
 
-    glm::vec3 avg_angular_velocity = (initial_angular_velocity + new_angular_velocity) * 0.5f;
-    float angle = glm::length(avg_angular_velocity) * dt;
-    glm::quat new_orientation;
-    if (angle > 0.0001f) {
-        glm::vec3 axis = glm::normalize(avg_angular_velocity);
-        glm::quat delta_rotation = glm::angleAxis(angle, axis);
-        new_orientation = delta_rotation * GetOrientation();
-    } else {
-        new_orientation = GetOrientation();
+    // 4. Update Orientation (Quaternion Derivative)
+    glm::quat current_orient = GetOrientation();
+    glm::quat new_orient = current_orient;
+
+    // Only integrate if we have significant angular velocity
+    if (glm::length2(angular_vel) > 0.000001f) { // length2 avoids sqrt
+        // w * q * 0.5 * dt
+        glm::quat omega_q(0, angular_vel.x, angular_vel.y, angular_vel.z);
+        glm::quat spin = 0.5f * omega_q * current_orient;
+
+        new_orient = current_orient + (spin * dt);
+        new_orient = glm::normalize(new_orient); // Normalize immediately
     }
 
-    // Now, update state
-    SetLinearVelocity(new_linear_velocity);
-    SetAngularVelocity(new_angular_velocity);
+    // 5. Update State
+    // Store Velocities
+    SetLinearVelocity(linear_vel);
+    SetAngularVelocity(angular_vel);
 
-    new_orientation = glm::normalize(new_orientation);
+    // Reconstruct Pose
+    pose_.real = new_orient;
+    // P_dual = 0.5 * t * r
+    pose_.dual = 0.5f * glm::quat(0, new_pos.x, new_pos.y, new_pos.z) * new_orient;
 
-    pose_.real = new_orientation;
-    pose_.dual = 0.5f * glm::quat(0, new_position.x, new_position.y, new_position.z) * new_orientation;
-
+    // 6. FINAL SAFETY NORMALIZATION
+    // This catches any drift from the position reconstruction
     pose_ = normalizeDualQuat(pose_);
 
     // Clear accumulators
     force_accumulator_ = glm::vec3(0.0f);
     torque_accumulator_ = glm::vec3(0.0f);
 }
+
 
 // void RigidBody::FaceVelocity() {
 	void RigidBody::FaceVelocity() {
