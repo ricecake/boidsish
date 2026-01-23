@@ -124,18 +124,21 @@ namespace Boidsish {
 			float spikeDamping;  // How aggressively to cut off sharp gradients
 			float detailMasking; // How much valleys should hide high-frequency noise
 			float floorLevel;    // The height at which flattening occurs
+			float weight = 1.0f; // How much weight to give this Biome
 		};
 
 		inline static const std::array<BiomeAttributes, 8> biomes = {
-			BiomeAttributes{1.0, 0.9, 10.0},
-			BiomeAttributes{0.80, 0.5, 20.0},
-			BiomeAttributes{0.05, 0.6, 40.0},
-			BiomeAttributes{0.30, 0.5, 60.00},
-			BiomeAttributes{0.40, 0.4, 80.00},
-			BiomeAttributes{0.30, 0.2, 100.00},
-			BiomeAttributes{0.10, 0.1, 150.0},
-			BiomeAttributes{0.05, 0.5, 225.0}
+			BiomeAttributes{1.0, 0.9, 5.0, 5.0f},
+			BiomeAttributes{0.80, 0.5, 20.0, 3.0f},
+			BiomeAttributes{0.05, 0.6, 40.0, 2.0f},
+			BiomeAttributes{0.30, 0.5, 60.00, 1.0f},
+			BiomeAttributes{0.40, 0.4, 80.00, 6.0f},
+			BiomeAttributes{0.30, 0.2, 100.00, 1.0f},
+			BiomeAttributes{0.10, 0.1, 150.0, 3.0f},
+			BiomeAttributes{0.05, 0.5, 225.0, 1.0f}
 		};
+
+		void ApplyWeightedBiome(float control_value, BiomeAttributes& current) const;
 
 		const int view_distance_ = 10;        // in chunks
 		const int kUnloadDistanceBuffer_ = 2; // in chunks
@@ -166,6 +169,8 @@ namespace Boidsish {
 		mutable std::mutex                                                 chunk_cache_mutex_;
 		mutable std::mutex                                                 visible_chunks_mutex_;
 		mutable std::mutex                                                 point_generation_mutex_;
+		std::random_device                                                 rd_;
+		std::mt19937                                                       eng_;
 	};
 
 } // namespace Boidsish

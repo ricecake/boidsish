@@ -40,7 +40,7 @@ namespace Boidsish {
 		return true;
 	}
 
-	TerrainGenerator::TerrainGenerator(int seed): seed_(seed), thread_pool_() {
+	TerrainGenerator::TerrainGenerator(int seed): seed_(seed), thread_pool_(), eng_(rd_()) {
 		Simplex::seed(seed_);
 	}
 
@@ -251,6 +251,47 @@ namespace Boidsish {
 		return height;
 	};
 
+	void TerrainGenerator::ApplyWeightedBiome(float control_value, BiomeAttributes& current) const {
+		if (biomes.empty())
+			return;
+		if (biomes.size() == 1) {
+			current = biomes[0];
+			return;
+		}
+
+		// Ideally, cache this
+		std::vector<float> cdf;
+		cdf.reserve(biomes.size());
+		float totalWeight = 0.0f;
+		for (const auto& b : biomes) {
+			totalWeight += b.weight;
+			cdf.push_back(totalWeight);
+		}
+
+		float target = std::clamp(control_value, 0.0f, 1.0f) * totalWeight;
+
+		auto it = std::upper_bound(cdf.begin(), cdf.end(), target);
+
+		int high_idx = std::distance(cdf.begin(), it);
+		int low_idx = std::max(0, high_idx - 1);
+
+		high_idx = std::min(high_idx, (int)biomes.size() - 1);
+
+		float weight_high = cdf[high_idx];
+		float weight_low = (high_idx == 0) ? 0.0f : cdf[high_idx - 1];
+
+		float segment_width = weight_high - weight_low;
+		float t = (segment_width > 0.0001f) ? (target - weight_low) / segment_width : 0.0f;
+
+
+		const auto& low_item = biomes[low_idx];
+		const auto& high_item = biomes[high_idx];
+
+		current.spikeDamping = std::lerp(low_item.spikeDamping, high_item.spikeDamping, t);
+		current.detailMasking = std::lerp(low_item.detailMasking, high_item.detailMasking, t);
+		current.floorLevel = std::lerp(low_item.floorLevel, high_item.floorLevel, t);
+	}
+
 	glm::vec3 TerrainGenerator::pointGenerate(float x, float z) const {
 		glm::vec3 path_data = getPathInfluence(x, z);
 		float     path_factor = path_data.x;
@@ -269,15 +310,7 @@ namespace Boidsish {
 		}
 
 		BiomeAttributes current;
-		auto            low_threshold = (floor(control_value * (biomes.size() - 1)) / (biomes.size() - 1));
-		auto            high_threshold = (ceil(control_value * (biomes.size() - 1)) / (biomes.size() - 1));
-		auto            low_item = biomes[int(floor(control_value * (biomes.size() - 1)))];
-		auto            high_item = biomes[int(ceil(control_value * (biomes.size() - 1)))];
-		auto            t = glm::smoothstep(low_threshold, high_threshold, control_value);
-
-		current.spikeDamping = std::lerp(low_item.spikeDamping, high_item.spikeDamping, t);
-		current.detailMasking = std::lerp(low_item.detailMasking, high_item.detailMasking, t);
-		current.floorLevel = std::lerp(low_item.floorLevel, high_item.floorLevel, t);
+		ApplyWeightedBiome(control_value, current);
 
 		glm::vec3 terrain_height = biomefbm(warped_pos, current);
 
