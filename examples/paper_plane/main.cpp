@@ -8,7 +8,10 @@
 #include "graphics.h"
 #include "hud.h"
 #include "model.h"
+#include "ui/CoordinateWidget.h"
+#include "terrain_generator.h"
 #include <GLFW/glfw3.h>
+#include <glm/ext/matrix_projection.hpp>
 
 using namespace Boidsish;
 
@@ -44,7 +47,45 @@ int main() {
 		auto controller = std::make_shared<PaperPlaneInputController>();
 		std::dynamic_pointer_cast<PaperPlane>(plane)->SetController(controller);
 
+		auto coordinate_widget = std::make_shared<UI::CoordinateWidget>();
+		visualizer->AddWidget(coordinate_widget);
+
 		visualizer->AddInputCallback([&](const Boidsish::InputState& state) {
+			if (state.mouse_button_down[GLFW_MOUSE_BUTTON_LEFT]) {
+				int width, height;
+				glfwGetWindowSize(visualizer->GetWindow(), &width, &height);
+
+				glm::vec3 screen_pos(state.mouse_x, height - state.mouse_y, 0.0f);
+
+				glm::vec4 viewport(0.0f, 0.0f, width, height);
+
+				glm::vec3 world_pos = glm::unProject(
+					screen_pos,
+					visualizer->GetViewMatrix(),
+					visualizer->GetProjectionMatrix(),
+					viewport
+				);
+
+				const auto& cam = visualizer->GetCamera();
+				glm::vec3 ray_origin = cam.pos();
+
+				screen_pos.z = 1.0f;
+				glm::vec3 far_plane_pos = glm::unProject(
+					screen_pos,
+					visualizer->GetViewMatrix(),
+					visualizer->GetProjectionMatrix(),
+					viewport
+				);
+
+				glm::vec3 ray_dir = glm::normalize(far_plane_pos - ray_origin);
+
+				float distance;
+				if (visualizer->GetTerrainGenerator()->Raycast(ray_origin, ray_dir, 1000.0f, distance)) {
+					glm::vec3 intersection_point = ray_origin + ray_dir * distance;
+					coordinate_widget->SetWorldPosition(intersection_point);
+				}
+			}
+
 			controller->pitch_up = state.keys[GLFW_KEY_S];
 			controller->pitch_down = state.keys[GLFW_KEY_W];
 			controller->yaw_left = state.keys[GLFW_KEY_A];

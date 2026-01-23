@@ -68,6 +68,9 @@ namespace Boidsish {
 		bool   key_up[kMaxKeys];
 		double mouse_x, mouse_y;
 		double mouse_delta_x, mouse_delta_y;
+		bool   mouse_buttons[8];
+		bool   mouse_button_down[8];
+		bool   mouse_button_up[8];
 		float  delta_time;
 	};
 
@@ -149,6 +152,10 @@ namespace Boidsish {
 		// Get current camera
 		Camera&       GetCamera();
 		const Camera& GetCamera() const;
+
+		glm::mat4 GetProjectionMatrix() const;
+		glm::mat4 GetViewMatrix() const;
+		GLFWwindow* GetWindow() const;
 
 		// Set camera position and orientation
 		void SetCamera(const Camera& camera);

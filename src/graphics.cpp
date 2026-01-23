@@ -188,6 +188,7 @@ namespace Boidsish {
 			glfwSetWindowUserPointer(window, this);
 			glfwSetKeyCallback(window, KeyCallback);
 			glfwSetCursorPosCallback(window, MouseCallback);
+			glfwSetMouseButtonCallback(window, MouseButtonCallback);
 			glfwSetFramebufferSizeCallback(window, FramebufferSizeCallback);
 			glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
 
@@ -1224,6 +1225,19 @@ namespace Boidsish {
 			impl->input_state.mouse_y = ypos;
 		}
 
+		static void MouseButtonCallback(GLFWwindow* w, int button, int action, int mods) {
+			auto* impl = static_cast<VisualizerImpl*>(glfwGetWindowUserPointer(w));
+			if (button >= 0 && button < 8) {
+				if (action == GLFW_PRESS) {
+					impl->input_state.mouse_buttons[button] = true;
+					impl->input_state.mouse_button_down[button] = true;
+				} else if (action == GLFW_RELEASE) {
+					impl->input_state.mouse_buttons[button] = false;
+					impl->input_state.mouse_button_up[button] = true;
+				}
+			}
+		}
+
 		static void FramebufferSizeCallback(GLFWwindow* w, int width, int height) {
 			auto* impl = static_cast<VisualizerImpl*>(glfwGetWindowUserPointer(w));
 			impl->width = width;
@@ -1305,6 +1319,8 @@ namespace Boidsish {
 		// Reset per-frame input state
 		std::fill_n(impl->input_state.key_down, kMaxKeys, false);
 		std::fill_n(impl->input_state.key_up, kMaxKeys, false);
+		std::fill_n(impl->input_state.mouse_button_down, 8, false);
+		std::fill_n(impl->input_state.mouse_button_up, 8, false);
 		impl->input_state.mouse_delta_x = 0;
 		impl->input_state.mouse_delta_y = 0;
 
@@ -1679,6 +1695,18 @@ namespace Boidsish {
 
 	const Camera& Visualizer::GetCamera() const {
 		return impl->camera;
+	}
+
+	glm::mat4 Visualizer::GetProjectionMatrix() const {
+		return impl->projection;
+	}
+
+	glm::mat4 Visualizer::GetViewMatrix() const {
+		return impl->SetupMatrices(impl->camera);
+	}
+
+	GLFWwindow* Visualizer::GetWindow() const {
+		return impl->window;
 	}
 
 	void Visualizer::SetCamera(const Camera& camera) {
