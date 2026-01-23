@@ -139,7 +139,14 @@ namespace Boidsish {
 		float     tess_quality_multiplier_{1.0f};
 
 		// Megatexture update tracking
-		glm::vec2 last_texture_update_pos_{0.0f, 0.0f};
+		struct MegaTextureResult {
+			std::vector<uint16_t> height_data;
+			std::vector<uint8_t>  biome_data;
+			glm::vec2             position;
+		};
+
+		glm::vec2                                    current_megatexture_pos_{-1, -1};
+		std::optional<std::future<MegaTextureResult>> pending_megatexture_ = std::nullopt;
 
 		// Cached global settings
 		float camera_roll_speed_;
@@ -751,47 +758,6 @@ namespace Boidsish {
 			int       snapped_x = floor(camera.x / texture_size) * texture_size;
 			int       snapped_z = floor(camera.z / texture_size) * texture_size;
 			glm::vec2 snapped_pos(snapped_x, snapped_z);
-
-			if (snapped_pos != last_texture_update_pos_) {
-				std::vector<uint16_t> texture_data =
-					terrain_generator
-						->GenerateTextureForArea(snapped_x, snapped_z, texture_size);
-				std::vector<uint8_t> biome_texture_data =
-					terrain_generator->GenerateBiomeDataTexture(
-						snapped_x,
-						snapped_z,
-						texture_size
-					);
-
-				glBindTexture(GL_TEXTURE_2D, megatexture_id_);
-				glTexSubImage2D(
-					GL_TEXTURE_2D,
-					0,
-					0,
-					0,
-					texture_size,
-					texture_size,
-					GL_RGBA,
-					GL_UNSIGNED_SHORT,
-					texture_data.data()
-				);
-				glGenerateMipmap(GL_TEXTURE_2D);
-
-				glBindTexture(GL_TEXTURE_2D, biome_texture_id_);
-				glTexSubImage2D(
-					GL_TEXTURE_2D,
-					0,
-					0,
-					0,
-					texture_size,
-					texture_size,
-					GL_RGBA,
-					GL_UNSIGNED_BYTE,
-					biome_texture_data.data()
-				);
-
-				last_texture_update_pos_ = snapped_pos;
-			}
 
 			Terrain::terrain_shader_->use();
 			Terrain::terrain_shader_->setMat4("view", view);
@@ -1463,6 +1429,68 @@ namespace Boidsish {
 				1.0f - exp(-delta_time * 5.0f)
 			);
 		}
+
+		if (impl->terrain_generator) {
+			const int texture_size = 1024;
+			const int prefetch_distance = 256;
+
+			glm::vec3 camera_fwd = impl->camera.front();
+			glm::vec2 camera_pos(impl->camera.x, impl->camera.z);
+			glm::vec2 look_ahead_pos = camera_pos + glm::vec2(camera_fwd.x, camera_fwd.z) * (float)prefetch_distance;
+
+			int snapped_x = floor(look_ahead_pos.x / texture_size) * texture_size;
+			int snapped_z = floor(look_ahead_pos.y / texture_size) * texture_size;
+
+			if (glm::vec2(snapped_x, snapped_z) != impl->current_megatexture_pos_) {
+				if (!impl->pending_megatexture_.has_value()) {
+					impl->pending_megatexture_ = impl->thread_pool.submit(
+						[this, snapped_x, snapped_z, texture_size]() {
+							return VisualizerImpl::MegaTextureResult{
+								impl->terrain_generator->GenerateTextureForArea(snapped_x, snapped_z, texture_size),
+								impl->terrain_generator->GenerateBiomeDataTexture(snapped_x, snapped_z, texture_size),
+								glm::vec2(snapped_x, snapped_z)
+							};
+						}
+					);
+				}
+			}
+
+			if (impl->pending_megatexture_.has_value()) {
+				if (impl->pending_megatexture_->wait_for(std::chrono::seconds(0)) == std::future_status::ready) {
+					VisualizerImpl::MegaTextureResult result = impl->pending_megatexture_->get();
+					impl->current_megatexture_pos_ = result.position;
+
+					glBindTexture(GL_TEXTURE_2D, impl->megatexture_id_);
+					glTexSubImage2D(
+						GL_TEXTURE_2D,
+						0,
+						0,
+						0,
+						texture_size,
+						texture_size,
+						GL_RGBA,
+						GL_UNSIGNED_SHORT,
+						result.height_data.data()
+					);
+					glGenerateMipmap(GL_TEXTURE_2D);
+
+					glBindTexture(GL_TEXTURE_2D, impl->biome_texture_id_);
+					glTexSubImage2D(
+						GL_TEXTURE_2D,
+						0,
+						0,
+						0,
+						texture_size,
+						texture_size,
+						GL_RGBA,
+						GL_UNSIGNED_BYTE,
+						result.biome_data.data()
+					);
+
+					impl->pending_megatexture_ = std::nullopt;
+				}
+			}
+		}
 	}
 
 	void Visualizer::Render() {
@@ -1517,10 +1545,6 @@ namespace Boidsish {
 		impl->audio_manager->Update();
 
 		glm::mat4 view_matrix = impl->SetupMatrices();
-		if (impl->terrain_generator) {
-			Frustum frustum = impl->CalculateFrustum(view_matrix, impl->projection);
-			impl->terrain_generator->update(frustum, impl->camera);
-		}
 
 		// Update clone manager
 		impl->clone_manager->Update(impl->simulation_time, impl->camera.pos());
