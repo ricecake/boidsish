@@ -56,6 +56,10 @@ void main() {
 				15.0;                                                              // Smaller, more consistent size
 		} else if (p.style == 1) {                                                 // Explosion
 			gl_PointSize = (1.0 - (1.0 - v_lifetime) * (1.0 - v_lifetime)) * 30.0; // Starts large, shrinks fast
+		} else if (p.style == 3) { // MushroomCloud
+			float lifetime_progress = 1.0 - (v_lifetime / 10.0);
+			float size = 20.0 + lifetime_progress * 150.0;
+			gl_PointSize = size * (1.0 - pow(lifetime_progress, 3.0)); // Grow fast, shrink slow
 		} else {
 			gl_PointSize = smoothstep(2.0 * (1.0 - v_lifetime), v_lifetime, v_lifetime / 2.5) * 25.0;
 		}

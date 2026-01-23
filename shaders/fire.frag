@@ -57,6 +57,13 @@ void main() {
 			mix(mid_color, hot_color, v_lifetime / 2.5),
 			v_lifetime / 10.5
 		);
+	} else if (v_style == 3) { // MushroomCloud
+		float lifetime_progress = 1.0 - (v_lifetime / 10.0);
+		vec3 hot_color = vec3(1.0, 0.8, 0.2);
+		vec3 mid_color = vec3(0.5, 0.2, 0.1);
+		vec3 smoke_color = vec3(0.1, 0.1, 0.1);
+		color = mix(hot_color, mid_color, lifetime_progress * 2.0);
+		color = mix(color, smoke_color, lifetime_progress * 1.5 - 0.5);
 	}
 
 	if (v_style == 28) {

@@ -177,6 +177,12 @@ const float kFireSpeed = 1.0;
 const float kFireSpread = 4.2;
 const float kFireLifetime = 5.0;
 
+const float kMushroomCloudInitialSpeed = 45.0;
+const float kMushroomCloudRiseSpeed = 15.0;
+const float kMushroomCloudLifetime = 10.0;
+const float kMushroomCloudDrag = 1.0;
+const float kMushroomCloudExpansionFactor = 2.0;
+
 layout(local_size_x = 256, local_size_y = 1, local_size_z = 1) in;
 
 void main() {
@@ -229,6 +235,10 @@ void main() {
 		} else if (p.style == 2) { // Fire
 			p.pos = vec4(emitter.position + random_vec * 0.1, kFireLifetime * lifeTimeModifier);
 			p.vel = vec4(0, kFireSpeed, 0, 0); // Start with upward velocity
+		} else if (p.style == 3) { // MushroomCloud
+			p.pos = vec4(emitter.position, kMushroomCloudLifetime * lifeTimeModifier);
+			vec3 explosion_dir = normalize(vec3(random_vec.x, abs(random_vec.y), random_vec.z));
+			p.vel = vec4(explosion_dir * kMushroomCloudInitialSpeed * (0.5 + rand(seed.yx) * 0.5), 0.0);
 		}
 	}
 	// If particle is alive, update it
@@ -248,6 +258,19 @@ void main() {
 			p.vel.y += kFireSpeed * u_delta_time;
 			p.vel.x += (rand(p.pos.xy + u_time) - 0.5) * kFireSpread * u_delta_time;
 			p.vel.z += (rand(p.pos.yz + u_time) - 0.5) * kFireSpread * u_delta_time;
+		} else if (p.style == 3) { // MushroomCloud
+			maxSpeed = kMushroomCloudInitialSpeed;
+			float lifetime_progress = 1.0 - (p.pos.w / kMushroomCloudLifetime);
+
+			// Rising stem
+			p.vel.y += kMushroomCloudRiseSpeed * (1.0 - lifetime_progress) * u_delta_time;
+
+			// Expanding cap
+			if (lifetime_progress > 0.2) {
+				vec3 center_to_particle = p.pos.xyz - emitters[p.emitter_index].position;
+				p.vel.xz += normalize(center_to_particle.xz) * kMushroomCloudExpansionFactor * (lifetime_progress - 0.2) * u_delta_time;
+			}
+			p.vel.xyz -= p.vel.xyz * kMushroomCloudDrag * u_delta_time;
 		}
 		p.vel.y -= 0.05 * u_delta_time;
 
