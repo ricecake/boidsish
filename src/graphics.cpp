@@ -2,6 +2,7 @@
 
 #include <array>
 #include <chrono>
+#include <glm/ext/matrix_projection.hpp>
 #include <iostream>
 #include <map>
 #include <memory>
@@ -491,7 +492,7 @@ namespace Boidsish {
 			auto config_widget = std::make_shared<UI::ConfigWidget>(*parent);
 			ui_manager->AddWidget(config_widget);
 
-			auto effects_widget = std::make_shared<UI::EffectsWidget>();
+			auto effects_widget = std::make_shared<UI::EffectsWidget>(parent);
 			ui_manager->AddWidget(effects_widget);
 		}
 
@@ -1715,6 +1716,31 @@ namespace Boidsish {
 
 	void Visualizer::AddInputCallback(InputCallback callback) {
 		impl->input_callbacks.push_back(callback);
+	}
+
+	std::optional<glm::vec3> Visualizer::ScreenToWorld(double screen_x, double screen_y) const {
+		glm::vec3 screen_pos(screen_x, impl->height - screen_y, 0.0f);
+
+		glm::vec4 viewport(0.0f, 0.0f, impl->width, impl->height);
+
+		glm::mat4 view = impl->SetupMatrices(impl->camera);
+
+		glm::vec3 world_pos = glm::unProject(screen_pos, view, impl->projection, viewport);
+
+		const auto& cam = impl->camera;
+		glm::vec3   ray_origin = cam.pos();
+
+		screen_pos.z = 1.0f;
+		glm::vec3 far_plane_pos = glm::unProject(screen_pos, view, impl->projection, viewport);
+
+		glm::vec3 ray_dir = glm::normalize(far_plane_pos - ray_origin);
+
+		float distance;
+		if (impl->terrain_generator->Raycast(ray_origin, ray_dir, 1000.0f, distance)) {
+			return ray_origin + ray_dir * distance;
+		}
+
+		return std::nullopt;
 	}
 
 	void Visualizer::SetChaseCamera(std::shared_ptr<EntityBase> target) {

@@ -4,6 +4,7 @@
 #include <functional>
 #include <map>
 #include <memory>
+#include <optional>
 #include <tuple>
 #include <vector>
 
@@ -162,6 +163,8 @@ namespace Boidsish {
 
 		// Add an input callback to the chain of handlers.
 		void AddInputCallback(InputCallback callback);
+
+		std::optional<glm::vec3> ScreenToWorld(double screen_x, double screen_y) const;
 
 		void SetChaseCamera(std::shared_ptr<EntityBase> target);
 		void SetPathCamera(std::shared_ptr<Path> path);
