@@ -18,6 +18,7 @@ using namespace Boidsish;
 int main() {
 	try {
 		auto visualizer = std::make_shared<Visualizer>(1280, 720, "Paper Plane Demo");
+		visualizer->ToggleMenus();
 		visualizer->AddHudIcon(
 			{1, "assets/missile-icon.png", HudAlignment::TOP_LEFT, {10, 10}, {64, 64}, selected_weapon == 0}
 		);
