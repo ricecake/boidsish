@@ -14,12 +14,14 @@ namespace Boidsish {
 		const std::vector<unsigned int>& indices,
 		const std::vector<glm::vec3>&    vertices,
 		const std::vector<glm::vec3>&    normals,
+		const BiomeInfo&                 biome_info,
 		const PatchProxy&                proxy
 	):
 		indices_(indices),
 		vertices(vertices),
 		normals(normals),
 		proxy(proxy),
+		biome_info_(biome_info),
 		vao_(0),
 		vbo_(0),
 		ebo_(0),
@@ -36,7 +38,7 @@ namespace Boidsish {
 
 	void Terrain::setupMesh() {
 		// Generate interleaved vertex data for GPU upload
-		vertex_data_.reserve(vertices.size() * 8);
+		vertex_data_.reserve(vertices.size() * 12);
 		for (size_t i = 0; i < vertices.size(); ++i) {
 			vertex_data_.push_back(vertices[i].x);
 			vertex_data_.push_back(vertices[i].y);
@@ -47,6 +49,12 @@ namespace Boidsish {
 			// Dummy texture coordinates
 			vertex_data_.push_back(0.0f);
 			vertex_data_.push_back(0.0f);
+
+			// Biome information
+			vertex_data_.push_back(static_cast<float>(biome_info_.biome_indices[0]));
+			vertex_data_.push_back(static_cast<float>(biome_info_.biome_indices[1]));
+			vertex_data_.push_back(biome_info_.blend);
+			vertex_data_.push_back(0.0f); // Padding
 		}
 
 		glGenVertexArrays(1, &vao_);
@@ -62,14 +70,17 @@ namespace Boidsish {
 		glBufferData(GL_ELEMENT_ARRAY_BUFFER, indices_.size() * sizeof(unsigned int), &indices_[0], GL_STATIC_DRAW);
 
 		// Position attribute
-		glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)0);
+		glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 12 * sizeof(float), (void*)0);
 		glEnableVertexAttribArray(0);
 		// Normal attribute
-		glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)(3 * sizeof(float)));
+		glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 12 * sizeof(float), (void*)(3 * sizeof(float)));
 		glEnableVertexAttribArray(1);
 		// Texture coordinate attribute
-		glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)(6 * sizeof(float)));
+		glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, 12 * sizeof(float), (void*)(6 * sizeof(float)));
 		glEnableVertexAttribArray(2);
+		// Biome information attribute
+		glVertexAttribPointer(3, 4, GL_FLOAT, GL_FALSE, 12 * sizeof(float), (void*)(8 * sizeof(float)));
+		glEnableVertexAttribArray(3);
 
 		glBindVertexArray(0);
 

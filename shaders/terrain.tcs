@@ -5,11 +5,13 @@ layout(vertices = 4) out;
 in vec3 WorldPos_VS_out[];
 in vec2 TexCoords_VS_out[];
 in vec3 Normal_VS_out[];
+in vec4 BiomeInfo_VS_out[];
 in vec3 viewForward[];
 
 out vec3 WorldPos_TC_out[];
 out vec2 TexCoords_TC_out[];
 out vec3 Normal_TC_out[];
+out vec4 BiomeInfo_TC_out[];
 
 #include "helpers/lighting.glsl"
 
@@ -62,6 +64,7 @@ void main() {
 	WorldPos_TC_out[gl_InvocationID] = WorldPos_VS_out[gl_InvocationID];
 	TexCoords_TC_out[gl_InvocationID] = TexCoords_VS_out[gl_InvocationID];
 	Normal_TC_out[gl_InvocationID] = Normal_VS_out[gl_InvocationID];
+	BiomeInfo_TC_out[gl_InvocationID] = BiomeInfo_VS_out[gl_InvocationID];
 
 	if (gl_InvocationID == 0) {
 		// --- Curvature-based Tessellation ---

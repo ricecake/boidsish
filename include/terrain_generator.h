@@ -6,7 +6,8 @@
 #include <vector>
 
 #include "Simplex.h"
-#include "terrain.h"
+#include "biome.h"
+#include "field.h"
 #include "thread_pool.h"
 
 // #include <FastNoise/FastNoise.h>
@@ -14,6 +15,7 @@
 namespace Boidsish {
 	struct Frustum;
 	struct Camera;
+	class Terrain;
 } // namespace Boidsish
 
 namespace Boidsish {
@@ -22,6 +24,7 @@ namespace Boidsish {
 		std::vector<unsigned int> indices;
 		std::vector<glm::vec3>    positions;
 		std::vector<glm::vec3>    normals;
+        BiomeInfo                 biome_info;
 		PatchProxy                proxy;
 		int                       chunk_x;
 		int                       chunk_z;
@@ -112,6 +115,7 @@ namespace Boidsish {
 		}
 
 		TerrainGenerationResult generateChunkData(int chunkX, int chunkZ);
+		BiomeInfo               getBiomeInfo(float control_value) const;
 
 		// Terrain parameters
 		struct TerrainParameters {

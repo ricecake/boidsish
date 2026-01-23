@@ -4,6 +4,7 @@ out vec4 FragColor;
 in vec3 Normal;
 in vec3 FragPos;
 in vec2 TexCoords;
+in vec4 BiomeInfo_TE_out;
 
 #include "helpers/lighting.glsl"
 
@@ -168,12 +169,24 @@ void main() {
 	// discard;
 	// FragColor = vec4(1,1,1, 1);
 
-	vec3  warp = vec3(fbm(FragPos / 50 + time * 0.05));
-	float nebula_noise = fbm(FragPos / 50 + warp * 0.5);
-	vec3  warpNoise = nebula_noise * warp;
+	vec3 biome_colors[8] = vec3[](
+		vec3(0.3, 0.4, 0.2), // Forest
+		vec3(0.7, 0.6, 0.4), // Desert
+		vec3(0.2, 0.5, 0.3), // Plains
+		vec3(0.8, 0.8, 0.8), // Mountains
+		vec3(0.1, 0.2, 0.4), // Ocean
+		vec3(0.9, 0.2, 0.1), // Volcanic
+		vec3(1.0, 1.0, 1.0), // Arctic
+		vec3(0.5, 0.3, 0.6)  // Swamp
+	);
 
-	vec3 objectColor = mix(vec3(0.09, 0.09, 0.16), vec3(0.5, 0.8, 0.8), warpNoise); // A deep blue
-	objectColor += mix(warpNoise, objectColor, nebula_noise);
+	int biome1_idx = int(BiomeInfo_TE_out.x);
+	int biome2_idx = int(BiomeInfo_TE_out.y);
+	float blend_factor = BiomeInfo_TE_out.z;
+
+	vec3 color1 = biome_colors[biome1_idx];
+	vec3 color2 = biome_colors[biome2_idx];
+	vec3 objectColor = mix(color1, color2, blend_factor);
 
 	vec3 norm = normalize(Normal);
 	vec3 lighting = apply_lighting(FragPos, norm, objectColor, 0.2, 0.8);

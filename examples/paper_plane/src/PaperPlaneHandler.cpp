@@ -9,6 +9,7 @@
 #include "graphics.h"
 #include "hud.h"
 #include "neighbor_utils.h"
+#include "terrain.h"
 #include "terrain_generator.h"
 #include <glm/gtx/quaternion.hpp>
 
