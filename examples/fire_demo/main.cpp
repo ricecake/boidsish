@@ -21,7 +21,7 @@ int main() {
 		float                                         last_trigger_time = 0.0f;
 		std::vector<std::shared_ptr<Boidsish::Shape>> vec;
 		vis.AddShapeHandler([&](float time) {
-			if (time - last_trigger_time > 10.0f) {
+			if (time - last_trigger_time > 15.0f) {
 				vis.RemoveFireEffect(mushroom_cloud);
 				mushroom_cloud = vis.AddFireEffect(
 					glm::vec3(0.0f, 2.0f, 0.0f),

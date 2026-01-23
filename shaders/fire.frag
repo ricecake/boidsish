@@ -59,11 +59,18 @@ void main() {
 		);
 	} else if (v_style == 3) { // MushroomCloud
 		float lifetime_progress = 1.0 - (v_lifetime / 10.0);
-		vec3 hot_color = vec3(1.0, 0.8, 0.2);
-		vec3 mid_color = vec3(0.5, 0.2, 0.1);
-		vec3 smoke_color = vec3(0.1, 0.1, 0.1);
-		color = mix(hot_color, mid_color, lifetime_progress * 2.0);
-		color = mix(color, smoke_color, lifetime_progress * 1.5 - 0.5);
+
+		vec3 fire_core = vec3(1.0, 0.9, 0.7);
+		vec3 fire_mid = vec3(1.0, 0.5, 0.0);
+		vec3 smoke_dark = vec3(0.15, 0.1, 0.1);
+		vec3 smoke_light = vec3(0.3, 0.3, 0.3);
+
+		// Blend from fire to smoke over the particle's lifetime
+		float fire_to_smoke = smoothstep(0.0, 0.6, lifetime_progress);
+		vec3 fire_color = mix(fire_core, fire_mid, dist * 2.0);
+		vec3 smoke_color = mix(smoke_dark, smoke_light, dist * 3.0);
+
+		color = mix(fire_color, smoke_color, fire_to_smoke);
 	}
 
 	if (v_style == 28) {

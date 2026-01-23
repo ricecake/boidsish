@@ -261,16 +261,43 @@ void main() {
 		} else if (p.style == 3) { // MushroomCloud
 			maxSpeed = kMushroomCloudInitialSpeed;
 			float lifetime_progress = 1.0 - (p.pos.w / kMushroomCloudLifetime);
+			vec3 emitter_pos = emitters[p.emitter_index].position;
 
-			// Rising stem
-			p.vel.y += kMushroomCloudRiseSpeed * (1.0 - lifetime_progress) * u_delta_time;
+			// --- Forces ---
+			vec3 rise_force = vec3(0.0, kMushroomCloudRiseSpeed, 0.0);
+			vec3 gravity = vec3(0.0, -9.8 * 0.5, 0.0);
+			vec3 drag_force = -p.vel.xyz * kMushroomCloudDrag * (1.0 + lifetime_progress * 2.0);
 
-			// Expanding cap
-			if (lifetime_progress > 0.2) {
-				vec3 center_to_particle = p.pos.xyz - emitters[p.emitter_index].position;
-				p.vel.xz += normalize(center_to_particle.xz) * kMushroomCloudExpansionFactor * (lifetime_progress - 0.2) * u_delta_time;
+			// --- Stem vs Cap behavior ---
+			float cap_height = emitter_pos.y + 15.0 * lifetime_progress;
+			float is_in_cap = smoothstep(cap_height - 5.0, cap_height + 5.0, p.pos.y);
+
+			rise_force *= (1.0 - is_in_cap);
+
+			vec3 radial_dir = p.pos.xyz - vec3(emitter_pos.x, p.pos.y, emitter_pos.z);
+			if (length(radial_dir) > 0.001) {
+				radial_dir = normalize(radial_dir);
 			}
-			p.vel.xyz -= p.vel.xyz * kMushroomCloudDrag * u_delta_time;
+			vec3 expansion_force = radial_dir * kMushroomCloudExpansionFactor * is_in_cap * 20.0;
+
+			// --- Suck-back force to define the stem ---
+			vec3 suck_back_force = vec3(0.0);
+			if (p.pos.y < cap_height) {
+				vec3 to_center = vec3(emitter_pos.x, p.pos.y, emitter_pos.z) - p.pos.xyz;
+				suck_back_force = to_center * 0.5 * (1.0 - is_in_cap);
+			}
+
+			// --- Turbulence ---
+			vec3 turbulence = curlNoise(p.pos.xyz * 0.1 + u_time * 0.1, u_time) * 15.0 * (0.5 + is_in_cap);
+
+			// --- Integration ---
+			if (lifetime_progress < 0.15) {
+				// In the initial blast, just apply drag to the initial velocity
+				p.vel.xyz -= p.vel.xyz * kMushroomCloudDrag * 2.0 * u_delta_time;
+			} else {
+				vec3 total_force = rise_force + gravity + drag_force + expansion_force + suck_back_force + turbulence;
+				p.vel.xyz += total_force * u_delta_time;
+			}
 		}
 		p.vel.y -= 0.05 * u_delta_time;
 
