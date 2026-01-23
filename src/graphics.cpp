@@ -41,6 +41,7 @@
 #include "trail.h"
 #include "ui/ConfigWidget.h"
 #include "ui/EffectsWidget.h"
+#include "ui/LightingWidget.h"
 #include "ui/PostProcessingWidget.h"
 #include "ui/hud_widget.h"
 #include "visual_effects.h"
@@ -492,6 +493,9 @@ namespace Boidsish {
 
 			auto effects_widget = std::make_shared<UI::EffectsWidget>();
 			ui_manager->AddWidget(effects_widget);
+
+			auto lighting_widget = std::make_shared<UI::LightingWidget>(*parent);
+			ui_manager->AddWidget(lighting_widget);
 		}
 
 		void SetupShaderBindings(Shader& shader_to_setup) {
