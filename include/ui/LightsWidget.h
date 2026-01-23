@@ -14,6 +14,7 @@ public:
 
 private:
     LightManager& _lightManager;
+    bool m_show;
 };
 
 } // namespace UI

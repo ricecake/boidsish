@@ -5,7 +5,9 @@ namespace Boidsish {
 namespace UI {
 
 LightsWidget::LightsWidget(LightManager& lightManager)
-    : _lightManager(lightManager) {}
+    : _lightManager(lightManager) {
+        m_show = true;
+    }
 
 void LightsWidget::Draw() {
     if (!m_show) {
