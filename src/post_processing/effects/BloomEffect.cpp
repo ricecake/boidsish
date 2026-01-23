@@ -134,7 +134,6 @@ namespace Boidsish {
 				glBindFramebuffer(GL_FRAMEBUFFER, mip.fbo);
 				glViewport(0, 0, mip.size.x, mip.size.y);
 
-				_downsampleShader->setVec2("srcResolution", currentSize.x, currentSize.y);
 				glActiveTexture(GL_TEXTURE0);
 				glBindTexture(GL_TEXTURE_2D, currentTexture);
 				glDrawArrays(GL_TRIANGLES, 0, 6);
