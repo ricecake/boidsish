@@ -16,7 +16,6 @@
 #include "logger.h"
 #include "stb_image_write.h"
 #include "zstr.hpp"
-// #include <FastNoise/FastNoise.h>
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <libmorton/morton.h>
@@ -42,32 +41,39 @@ namespace Boidsish {
 	}
 
 	TerrainGenerator::TerrainGenerator(int seed): seed_(seed), thread_pool_() {
-		// CyAF@BOAI@BE
-		// CiAF@BBA==
-		// CyAF@BOAI@BE
-		// Cg@ACBBIAU@BoAQ@BQ=
-		// LQIKE@DgBQ@BtmZmY/E5qZGT8ECg8AB@CkGE@DECv8@Aw=
-		// FwkKE@DgBQ@BtmZmY/E5qZGT8EAg8AB@CkGE@DECv8@Aw=
-		// Ch@DIAU@BLZmZmPxOamRk/BA==
-		// Cg@ACBBE@DgBQ@BtmZmY/E5qZGT8E
-		// Kg@AMBACR@CWQzAB@BCQsQ@CC@DDAM@ABABA==
-		// Eg@APBBCQcQ@Dw=
-		// Eg@APBBCQc@BgQR@DDA==
-		// LQIVCQ8AB@CgAAIA/CQc@ABwQQQDAACAPgsAAIA/BAIJDAsAAIA/BA==  --- best so far, needs a min-smooth
-		// HAktAhUJDwAE@BC@AgD8JBw@AHBBBAMAAIA+CwAAgD8EAgkMCwAAgD8EAv8DAAQ= -- the min smooth
-		// KBEKBBwJLQIVCQ8AB@CgAAIA/CQc@ABwQQQDAACAPgsAAIA/BAIJDAsAAIA/BAL/BAAEAv8DAAQ=
-		// HQkKBAIcCS0CFQkPAAQ@BIAACAPwkH@BcEEEAwAAgD4LAACAPwQCCQwLAACAPwQC/wQABAsAAIA/BA==
-		// control_noise_generator_ = FastNoise::NewFromEncodedNodeTree(
-		// 	"HAktAhUJDwAE@BC@AgD8JBw@AHBBBAMAAIA+CwAAgD8EAgkMCwAAgD8EAv8DAAQ="
-		// );
+		Simplex::seed(seed_);
 	}
 
-	// ricecake@microlambda:~/Projects/boidsish$ git  show
-	// 934ace647d54dede0fcc25cd6ca0de209ea74cd3:src/terrain_generator.cpp ricecake@microlambda:~/Projects/boidsish$ git
-	// stash show 934ace647d54dede0fcc25cd6ca0de209ea74cd3 -p
 	TerrainGenerator::~TerrainGenerator() {
-		for (auto& pair : pending_chunks_) {
-			pair.second.cancel();
+		{
+			std::lock_guard<std::mutex> lock(chunk_cache_mutex_);
+			for (auto& pair : pending_chunks_) {
+				pair.second.cancel();
+			}
+		}
+
+		// Wait for any in-flight tasks to complete (they may have started before cancel)
+		// This prevents use-after-free when tasks reference 'this'
+		{
+			std::lock_guard<std::mutex> lock(chunk_cache_mutex_);
+			for (auto& pair : pending_chunks_) {
+				try {
+					auto& handle = const_cast<TaskHandle<TerrainGenerationResult>&>(pair.second);
+					handle.get(); // Wait for completion, ignore result
+				} catch (...) {
+					// Ignore exceptions from cancelled/failed tasks
+				}
+			}
+			pending_chunks_.clear();
+		}
+
+		{
+			std::lock_guard<std::mutex> lock(chunk_cache_mutex_);
+			chunk_cache_.clear();
+		}
+		{
+			std::lock_guard<std::mutex> lock(visible_chunks_mutex_);
+			visible_chunks_.clear();
 		}
 	}
 
@@ -89,12 +95,16 @@ namespace Boidsish {
 						std::ranges::max(std::views::transform(biomes, &BiomeAttributes::floorLevel))
 					)) {
 					std::pair<int, int> chunk_coord = {x, z};
-					if (chunk_cache_.find(chunk_coord) == chunk_cache_.end() &&
-					    pending_chunks_.find(chunk_coord) == pending_chunks_.end()) {
-						pending_chunks_.emplace(
-							chunk_coord,
-							thread_pool_.enqueue(TaskPriority::MEDIUM, &TerrainGenerator::generateChunkData, this, x, z)
-						);
+					{
+						std::lock_guard<std::mutex> cache_lock(chunk_cache_mutex_);
+						if (chunk_cache_.find(chunk_coord) == chunk_cache_.end() &&
+						    pending_chunks_.find(chunk_coord) == pending_chunks_.end()) {
+							pending_chunks_.emplace(
+								chunk_coord,
+								thread_pool_
+									.enqueue(TaskPriority::MEDIUM, &TerrainGenerator::generateChunkData, this, x, z)
+							);
+						}
 					}
 				}
 			}
@@ -102,64 +112,80 @@ namespace Boidsish {
 
 		// Process completed chunks
 		std::vector<std::pair<int, int>> completed_chunks;
-		for (auto& pair : pending_chunks_) {
-			try {
-				auto&                   future = const_cast<TaskHandle<TerrainGenerationResult>&>(pair.second);
-				TerrainGenerationResult result = future.get();
-				if (result.has_terrain) {
-					auto terrain_chunk =
-						std::make_shared<Terrain>(result.indices, result.positions, result.normals, result.proxy);
-					terrain_chunk->SetPosition(result.chunk_x * chunk_size_, 0, result.chunk_z * chunk_size_);
-					terrain_chunk->setupMesh();
-					chunk_cache_[pair.first] = terrain_chunk;
-				}
-				completed_chunks.push_back(pair.first);
-			} catch (const std::future_error& e) {
-				if (e.code() == std::future_errc::no_state) {
-					// Task was cancelled, remove it.
+		{
+			std::lock_guard<std::mutex> cache_lock(chunk_cache_mutex_);
+			for (auto& pair : pending_chunks_) {
+				try {
+					auto&                   future = const_cast<TaskHandle<TerrainGenerationResult>&>(pair.second);
+					TerrainGenerationResult result = future.get();
+					if (result.has_terrain) {
+						auto terrain_chunk =
+							std::make_shared<Terrain>(result.indices, result.positions, result.normals, result.proxy);
+						terrain_chunk->SetPosition(result.chunk_x * chunk_size_, 0, result.chunk_z * chunk_size_);
+						terrain_chunk->setupMesh();
+						chunk_cache_[pair.first] = terrain_chunk;
+					}
 					completed_chunks.push_back(pair.first);
+				} catch (const std::future_error& e) {
+					if (e.code() == std::future_errc::no_state) {
+						completed_chunks.push_back(pair.first);
+					}
 				}
 			}
 		}
 
-		for (const auto& key : completed_chunks) {
-			pending_chunks_.erase(key);
+		{
+			std::lock_guard<std::mutex> cache_lock(chunk_cache_mutex_);
+			for (const auto& key : completed_chunks) {
+				pending_chunks_.erase(key);
+			}
 		}
 
 		// Unload chunks
 		std::vector<std::pair<int, int>> to_remove;
-		for (auto const& [key, val] : chunk_cache_) {
-			int dx = key.first - current_chunk_x;
-			int dz = key.second - current_chunk_z;
-			if (std::abs(dx) > dynamic_view_distance + kUnloadDistanceBuffer_ ||
-			    std::abs(dz) > dynamic_view_distance + kUnloadDistanceBuffer_) {
-				to_remove.push_back(key);
+		{
+			std::lock_guard<std::mutex> cache_lock(chunk_cache_mutex_);
+			for (auto const& [key, val] : chunk_cache_) {
+				int dx = key.first - current_chunk_x;
+				int dz = key.second - current_chunk_z;
+				if (std::abs(dx) > dynamic_view_distance + kUnloadDistanceBuffer_ ||
+				    std::abs(dz) > dynamic_view_distance + kUnloadDistanceBuffer_) {
+					to_remove.push_back(key);
+				}
+			}
+
+			for (const auto& key : to_remove) {
+				chunk_cache_.erase(key);
 			}
 		}
 
-		for (const auto& key : to_remove) {
-			chunk_cache_.erase(key);
-		}
-
 		std::vector<std::pair<int, int>> to_cancel;
-		for (auto const& [key, val] : pending_chunks_) {
-			int dx = key.first - current_chunk_x;
-			int dz = key.second - current_chunk_z;
-			if (std::abs(dx) > dynamic_view_distance + kUnloadDistanceBuffer_ ||
-			    std::abs(dz) > dynamic_view_distance + kUnloadDistanceBuffer_) {
-				to_cancel.push_back(key);
+		{
+			std::lock_guard<std::mutex> cache_lock(chunk_cache_mutex_);
+			for (auto const& [key, val] : pending_chunks_) {
+				int dx = key.first - current_chunk_x;
+				int dz = key.second - current_chunk_z;
+				if (std::abs(dx) > dynamic_view_distance + kUnloadDistanceBuffer_ ||
+				    std::abs(dz) > dynamic_view_distance + kUnloadDistanceBuffer_) {
+					to_cancel.push_back(key);
+				}
 			}
 		}
 
 		for (const auto& key : to_cancel) {
+			std::lock_guard<std::mutex> cache_lock(chunk_cache_mutex_);
 			pending_chunks_.at(key).cancel();
 			pending_chunks_.erase(key);
 		}
 
-		visible_chunks_.clear();
-		for (auto const& [key, val] : chunk_cache_) {
-			if (val) {
-				visible_chunks_.push_back(val);
+		{
+			std::lock_guard<std::mutex> visible_lock(visible_chunks_mutex_);
+			std::lock_guard<std::mutex> cache_lock(chunk_cache_mutex_);
+			visible_chunks_.clear();
+			for (auto const& [key, val] : chunk_cache_) {
+				if (val) {
+					visible_chunks_.push_back(val);
+				}
 			}
 		}
 	}
@@ -179,6 +205,12 @@ namespace Boidsish {
 	}
 
 	const std::vector<std::shared_ptr<Terrain>>& TerrainGenerator::getVisibleChunks() const {
+		std::lock_guard<std::mutex> lock(visible_chunks_mutex_);
+		return visible_chunks_;
+	}
+
+	std::vector<std::shared_ptr<Terrain>> TerrainGenerator::getVisibleChunksCopy() const {
+		std::lock_guard<std::mutex> lock(visible_chunks_mutex_);
 		return visible_chunks_;
 	}
 
@@ -231,6 +263,10 @@ namespace Boidsish {
 		glm::vec2 warped_pos = pos + warp;
 
 		float control_value = getBiomeControlValue(x, z);
+
+		if (std::isnan(control_value) || std::isinf(control_value)) {
+			control_value = 0.0f;
+		}
 
 		BiomeAttributes current;
 		auto            low_threshold = (floor(control_value * (biomes.size() - 1)) / (biomes.size() - 1));
@@ -335,7 +371,7 @@ namespace Boidsish {
 		// Ray marching to find a segment that contains the intersection
 		while (current_dist < max_dist) {
 			current_pos = origin + dir * current_dist;
-			float terrain_height = std::get<0>(pointProperties(current_pos.x, current_pos.z));
+			float terrain_height = pointGenerate(current_pos.x, current_pos.z).x;
 
 			if (current_pos.y < terrain_height) {
 				// We found an intersection between the previous and current step.
@@ -347,7 +383,8 @@ namespace Boidsish {
 				for (int i = 0; i < binary_search_steps; ++i) {
 					float     mid_dist = (start_dist + end_dist) / 2.0f;
 					glm::vec3 mid_pos = origin + dir * mid_dist;
-					float     mid_terrain_height = std::get<0>(pointProperties(mid_pos.x, mid_pos.z));
+
+					float mid_terrain_height = pointGenerate(mid_pos.x, mid_pos.z).x;
 
 					if (mid_pos.y < mid_terrain_height) {
 						end_dist = mid_dist; // Intersection is in the first half
@@ -421,12 +458,6 @@ namespace Boidsish {
 		const int super_chunk_z = floor(static_cast<float>(requested_z) / texture_dim);
 
 		std::filesystem::create_directory("terrain_cache");
-		// Offset coordinates to be non-negative for Morton encoding
-		// constexpr uint32_t kMortonOffset = 32768;
-		// const uint64_t     morton_code = libmorton::m2D_e_magicbits<uint64_t, uint32_t>(
-		// 	super_chunk_x + kMortonOffset,
-		// 	super_chunk_z + kMortonOffset
-		// );
 		const uint64_t morton_code = libmorton::morton2D_64_encode(
 			static_cast<uint32_t>(super_chunk_x),
 			static_cast<uint32_t>(super_chunk_z)
@@ -588,13 +619,17 @@ namespace Boidsish {
 	}
 
 	float TerrainGenerator::getBiomeControlValue(float x, float z) const {
-		// return Simplex::worleyfBm(glm::vec2(x * control_noise_scale_, z * control_noise_scale_));
 		glm::vec2 pos(x, z);
 		pos *= control_noise_scale_;
-		return Simplex::fBm(pos + Simplex::curlNoise(pos));
-		// return Simplex::worleyfBm(pos);
-		// return control_noise_generator_->GenSingle2D(x * control_noise_scale_, z * control_noise_scale_, seed_);
-		// return control_perlin_noise_.octave2D_01(x * control_noise_scale_, z * control_noise_scale_, 2);
+		float result = Simplex::noise(pos + Simplex::curlNoise(pos)) * 0.5f + 0.5f;
+
+		return std::clamp(result, 0.0f, 1.0f);
+
+		// return Simplex::worleyfBm(glm::vec2(x * control_noise_scale_, z * control_noise_scale_));
+		// float result = Simplex::noise( pos + glm::vec2( Simplex::curlNoise( pos, control_noise_scale_ ).x ) ) * 0.5f
+		// + 0.5f; float result = Simplex::worleyfBm(pos+Simplex::curlNoise(pos)) * 0.5f + 0.5f; return
+		// Simplex::worleyfBm(pos); return Simplex::worleyNoise(glm::vec2(x * control_noise_scale_, z *
+		// control_noise_scale_), 4) * 0.5f + 0.5f;
 	}
 
 	glm::vec2 TerrainGenerator::getDomainWarp(float x, float z) const {

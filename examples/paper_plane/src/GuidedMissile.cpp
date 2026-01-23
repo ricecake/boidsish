@@ -2,26 +2,31 @@
 
 #include "PaperPlane.h"
 #include "fire_effect.h"
-#include "graphics.h" // For Visualizer access in EntityHandler
+#include "graphics.h"
 #include "terrain_generator.h"
 #include <glm/gtx/quaternion.hpp>
 
 namespace Boidsish {
 
-	GuidedMissile::GuidedMissile(int id, Vector3 pos):
-		Entity<Model>(id, "assets/Missile.obj", true),
-		rotational_velocity_(glm::vec3(0.0f)),
-		forward_speed_(0.0f),
-		eng_(rd_()) {
-		SetPosition(pos.x, pos.y, pos.z);
-		SetVelocity(0, 0, 0);
-		SetTrailLength(500);
+	GuidedMissile::GuidedMissile(int id, Vector3 pos): Entity<Model>(id, "assets/Missile.obj", true), eng_(rd_()) {
+		auto orientation = glm::angleAxis(glm::radians(-90.0f), glm::vec3(1.0f, 0.0f, 0.0f));
+
+		auto dist = std::uniform_int_distribution(0, 1);
+		auto wobbleDist = std::uniform_real_distribution<float>(0.75f, 1.50f);
+		handedness = dist(eng_) ? 1 : -1;
+		wobble = wobbleDist(eng_);
+
+		SetPosition(pos.x, pos.y + 0.5f, pos.z);
+		rigid_body_.SetOrientation(orientation);
+		rigid_body_.SetAngularVelocity(glm::vec3(0, 0, 0));
+		rigid_body_.SetLinearVelocity(glm::vec3(0, 100, 0));
+
+		SetTrailLength(100);
 		SetTrailRocket(true);
 		shape_->SetScale(glm::vec3(0.08f));
 		std::dynamic_pointer_cast<Model>(shape_)->SetBaseRotation(
 			glm::angleAxis(glm::radians(-90.0f), glm::vec3(0.0f, 1.0f, 0.0f))
 		);
-		UpdateShape();
 	}
 
 	void GuidedMissile::UpdateEntity(const EntityHandler& handler, float time, float delta_time) {
@@ -44,7 +49,7 @@ namespace Boidsish {
 			Explode(handler, false);
 			return;
 		}
-		auto [height, norm] = handler.vis->GetTerrainPointProperties(pos.x, pos.z);
+		auto [height, norm] = handler.vis->GetTerrainPointPropertiesThreadSafe(pos.x, pos.z);
 		if (pos.y < height) {
 			Explode(handler, false);
 			return;
@@ -56,20 +61,16 @@ namespace Boidsish {
 		const float kAcceleration = 150.0f;
 
 		if (lived_ < kLaunchTime) {
-			orientation_ = glm::angleAxis(glm::radians(-90.0f), glm::vec3(1.0f, 0.0f, 0.0f));
-			forward_speed_ += kAcceleration * delta_time;
-			if (forward_speed_ > kMaxSpeed) {
-				forward_speed_ = kMaxSpeed;
-			}
+			rigid_body_.AddRelativeForce(glm::vec3(0, 0, 600));
 		} else {
-			const float kTurnSpeed = 4.0f;
+			const float kTurnSpeed = 100.0f;
 			const float kDamping = 2.5f;
 
 			auto targets = handler.GetEntitiesByType<PaperPlane>();
 			if (targets.empty()) {
-				rotational_velocity_ = glm::vec3(0.0f);
 			} else {
-				auto plane = targets[0];
+				auto  plane = targets[0];
+				auto& r = rigid_body_;
 
 				if ((plane->GetPosition() - GetPosition()).Magnitude() < 10) {
 					Explode(handler, true);
@@ -77,21 +78,47 @@ namespace Boidsish {
 					return;
 				}
 
-				Vector3   target_vec = (plane->GetPosition() - GetPosition()).Normalized();
-				glm::vec3 target_dir_world = glm::vec3(target_vec.x, target_vec.y, target_vec.z);
-				glm::vec3 target_dir_local = glm::inverse(orientation_) * target_dir_world;
+				r.AddRelativeForce(glm::vec3(0, 0, 1000));
 
-				glm::vec3 target_rot_velocity = glm::vec3(0.0f);
-				target_rot_velocity.y = target_dir_local.x * kTurnSpeed;
-				target_rot_velocity.x = -target_dir_local.y * kTurnSpeed;
+				glm::vec3 velocity = rigid_body_.GetLinearVelocity();
+				glm::vec3 target_vec = (plane->GetPosition() - GetPosition()).Toglm();
+				glm::vec3 target_dir_world = glm::normalize(target_vec);
 
-				rotational_velocity_ += (target_rot_velocity - rotational_velocity_) * kDamping * delta_time;
+				std::uniform_real_distribution<float> dist(0.25f, 0.5f);
+				auto                                  distance = glm::length(target_vec);
+				auto                                  distance_scale = log10(distance / 50.0f + 1);
+				float                                 error_scale = (1.0f - lived_ / lifetime_) * distance_scale;
+				glm::vec3                             right = glm::cross(target_dir_world, glm::vec3(0, 1, 0));
+				glm::vec3                             up = glm::cross(right, target_dir_world);
+				auto theta = handedness * lived_ * (2.0f + 2 * (1.0f - distance_scale));
+				auto offset = (right * sin(theta / 3) * cos(theta)) + (up * cos(theta / 2) * sin(theta));
 
-				if (lived_ <= 1.5f) {
-					std::uniform_real_distribution<float> dist(-4.0f, 4.0f);
-					glm::vec3                             error_vector(0.1f * dist(eng_), dist(eng_), 0);
-					rotational_velocity_ += error_vector * delta_time;
-				}
+				auto adjusted_target_dir_world = glm::normalize(
+					target_vec + wobble * offset * dist(eng_) * distance * error_scale * error_scale
+				);
+
+				glm::vec3 target_dir_local = WorldToObject(adjusted_target_dir_world);
+				glm::vec3 P = glm::vec3(0, 0, 1);
+				glm::vec3 torque = glm::cross(P, target_dir_local);
+
+				r.AddRelativeTorque(torque * kTurnSpeed);
+
+				/*
+				    use something like this for spiral attacker!
+				    float error_scale = 1;//1.0f - lived_/lifetime_;
+				    // log10(x/10+1)/2
+				    error_scale *= log10(glm::length(target_vec)/25.0f+1);
+				    glm::vec3 right = glm::cross(target_dir_world, glm::vec3(0,1,0));
+				    glm::vec3 up = glm::cross(right, target_dir_world);
+				    auto theta = lived_ * 5.0f/error_scale;
+				    auto offset=(right*cos(theta))+(up*sin(theta));
+
+				    auto adjusted_target_dir_world = glm::normalize(target_vec + offset*200.0f*error_scale);
+
+				    glm::vec3 target_dir_local = WorldToObject(adjusted_target_dir_world);
+				    glm::vec3 P = glm::vec3(0, 0, 1);
+				    glm::vec3 torque = glm::cross(P, target_dir_local);
+				*/
 
 				const auto* terrain_generator = handler.GetTerrainGenerator();
 				if (terrain_generator) {
@@ -120,29 +147,15 @@ namespace Boidsish {
 							if (glm::dot(away, local_up) < kUpAlignmentThreshold) {
 								away = local_up;
 							}
-							glm::vec3 avoidance_force = away * force_magnitude;
-							glm::vec3 avoidance_local = glm::inverse(orientation_) * avoidance_force;
-							rotational_velocity_.y += avoidance_local.x * avoidance_strength * delta_time;
-							rotational_velocity_.x += avoidance_local.y * avoidance_strength * delta_time;
+
+							glm::vec3 target_dir_local = WorldToObject(away);
+							glm::vec3 P = glm::vec3(0, 0, 1);
+							glm::vec3 torque = glm::cross(P, target_dir_local);
+							r.AddRelativeTorque(torque * kTurnSpeed);
 						}
 					}
 				}
 			}
-		}
-
-		glm::quat pitch_delta = glm::angleAxis(rotational_velocity_.x * delta_time, glm::vec3(1.0f, 0.0f, 0.0f));
-		glm::quat yaw_delta = glm::angleAxis(rotational_velocity_.y * delta_time, glm::vec3(0.0f, 1.0f, 0.0f));
-		orientation_ = glm::normalize(orientation_ * pitch_delta * yaw_delta);
-
-		glm::vec3 forward_dir = orientation_ * glm::vec3(0.0f, 0.0f, 1.0f);
-		glm::vec3 new_velocity = forward_dir * forward_speed_;
-		SetVelocity(Vector3(new_velocity.x, new_velocity.y, new_velocity.z));
-	}
-
-	void GuidedMissile::UpdateShape() {
-		Entity<Model>::UpdateShape();
-		if (shape_) {
-			shape_->SetRotation(orientation_);
 		}
 	}
 

@@ -478,6 +478,7 @@ namespace Boidsish {
 				if (enable_hdr_) {
 					auto tone_mapping_effect = std::make_shared<PostProcessing::ToneMappingEffect>();
 					tone_mapping_effect->SetEnabled(true);
+					bloom_effect->SetEnabled(true);
 					post_processing_manager_->SetToneMappingEffect(tone_mapping_effect);
 				}
 
@@ -514,6 +515,15 @@ namespace Boidsish {
 			ConfigManager::GetInstance().SetInt("window_height", height);
 			ConfigManager::GetInstance().SetBool("fullscreen", is_fullscreen_);
 			ConfigManager::GetInstance().Shutdown();
+
+			// SoundEffectManager holds Sound objects that reference AudioManager's engine
+			sound_effect_manager.reset();
+
+			// AudioManager must be destroyed after all Sound objects
+			audio_manager.reset();
+
+			// TerrainGenerator must be destroyed before thread pool stops
+			terrain_generator.reset();
 
 			// Explicitly reset UI manager before destroying window context
 			ui_manager.reset();
@@ -1812,6 +1822,13 @@ namespace Boidsish {
 
 	std::tuple<float, glm::vec3> Visualizer::GetTerrainPointProperties(float x, float y) const {
 		return impl->terrain_generator->pointProperties(x, y);
+	}
+
+	std::tuple<float, glm::vec3> Visualizer::GetTerrainPointPropertiesThreadSafe(float x, float y) const {
+		if (impl->terrain_generator) {
+			return impl->terrain_generator->pointProperties(x, y);
+		}
+		return {0.0f, glm::vec3(0, 1, 0)};
 	}
 
 	float Visualizer::GetTerrainMaxHeight() const {

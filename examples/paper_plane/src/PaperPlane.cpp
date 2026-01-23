@@ -13,6 +13,9 @@ namespace Boidsish {
 		orientation_(glm::quat(1.0f, 0.0f, 0.0f, 0.0f)),
 		rotational_velocity_(glm::vec3(0.0f)),
 		forward_speed_(20.0f) {
+		rigid_body_.linear_friction_ = 0.01f;
+		rigid_body_.angular_friction_ = 0.01f;
+
 		SetTrailLength(150);
 		SetTrailIridescence(true);
 
@@ -54,7 +57,7 @@ namespace Boidsish {
 		const float kSpeedDecay = 30.0f;
 
 		auto pos = GetPosition();
-		auto [height, norm] = handler.vis->GetTerrainPointProperties(pos.x, pos.z);
+		auto [height, norm] = handler.vis->GetTerrainPointPropertiesThreadSafe(pos.x, pos.z);
 		if (pos.y < height) {
 			TriggerDamage();
 			// pos = height;
@@ -147,7 +150,7 @@ namespace Boidsish {
 				handler.QueueAddEntity<CatMissile>(
 					pos,
 					orientation_,
-					orientation_ * glm::vec3(fire_left ? -1 : 1, -1, 0),
+					glm::normalize(glm::vec3(fire_left ? -1.0f : 1.0f, -1.0f, 0.0f)),
 					GetVelocity()
 				);
 				time_to_fire = 0.25f;

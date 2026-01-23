@@ -8,9 +8,12 @@ namespace Boidsish {
 
 	CatBomb::CatBomb(int id, Vector3 pos, glm::vec3 dir, Vector3 vel):
 		Entity<Model>(id, "assets/bomb_shading_v005.obj", true) {
+		rigid_body_.linear_friction_ = 0.01f;
+		rigid_body_.angular_friction_ = 0.01f;
+
 		SetOrientToVelocity(true);
 		SetPosition(pos.x, pos.y, pos.z);
-		auto netVelocity = glm::vec3(vel.x, vel.y, vel.z) + 2.5f * glm::normalize(glm::vec3(dir.x, dir.y, dir.z));
+		auto netVelocity = glm::vec3(vel.x, vel.y, vel.z) + 0.5f * glm::normalize(glm::vec3(dir.x, dir.y, dir.z));
 		SetVelocity(netVelocity.x, netVelocity.y, netVelocity.z);
 
 		SetTrailLength(50);
@@ -31,7 +34,7 @@ namespace Boidsish {
 			return;
 		}
 
-		auto [height, norm] = handler.vis->GetTerrainPointProperties(pos.x, pos.z);
+		auto [height, norm] = handler.vis->GetTerrainPointPropertiesThreadSafe(pos.x, pos.z);
 		if (pos.y <= height) {
 			Explode(handler);
 			return;
