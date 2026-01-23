@@ -178,7 +178,7 @@ void main() {
 	objectColor += mix(warpNoise, objectColor, nebula_noise);
 
 	vec3 norm = normalize(Normal);
-	vec3 lighting = apply_lighting(FragPos, norm, objectColor, 0.2, 0.8);
+	vec3 lighting = apply_lighting_pbr(FragPos, norm, objectColor, 0.8, 0.1, 1.0);
 
 	// --- Grid logic ---
 	float grid_spacing = 1.0;
