@@ -100,6 +100,10 @@ foreach(EXAMPLE_DIR ${EXAMPLE_DIRS})
     endif()
 endforeach()
 
+add_executable(noise_generator examples/noise_generator.cpp)
+target_link_libraries(noise_generator PRIVATE boidsish)
+set_target_properties(noise_generator PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
 # Copy assets to the root of the build directory
 add_custom_command(TARGET boidsish POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_directory

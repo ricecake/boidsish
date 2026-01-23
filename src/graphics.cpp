@@ -50,7 +50,44 @@
 #include <glm/gtc/matrix_transform.hpp>
 #include <shader.h>
 
+#include "stb_image.h"
+
 namespace Boidsish {
+	// Function to load a 3D texture from a series of 2D images
+	GLuint load3DTexture(const std::string& dir, int width, int height, int depth) {
+			GLuint textureID;
+			glGenTextures(1, &textureID);
+			glBindTexture(GL_TEXTURE_3D, textureID);
+
+			glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+			glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+			glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_R, GL_REPEAT);
+			glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+			glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+
+			// Allocate storage for the 3D texture
+			glTexImage3D(GL_TEXTURE_3D, 0, GL_RED, width, height, depth, 0, GL_RED, GL_UNSIGNED_BYTE, NULL);
+
+			for (int z = 0; z < depth; ++z) {
+					char filepath[100];
+					snprintf(filepath, sizeof(filepath), "%s/noise_slice_%03d.png", dir.c_str(), z);
+
+					int texWidth, texHeight, nrChannels;
+					unsigned char* data = stbi_load(filepath, &texWidth, &texHeight, &nrChannels, 1);
+					if (data) {
+							// Upload the 2D slice to the 3D texture
+							glTexSubImage3D(GL_TEXTURE_3D, 0, 0, 0, z, width, height, 1, GL_RED, GL_UNSIGNED_BYTE, data);
+							stbi_image_free(data);
+					} else {
+							std::cerr << "Failed to load texture slice: " << filepath << std::endl;
+					}
+			}
+
+			glGenerateMipmap(GL_TEXTURE_3D);
+			glBindTexture(GL_TEXTURE_3D, 0);
+
+			return textureID;
+	}
 	constexpr float kMinCameraHeight = 0.1f;
 	constexpr float kMinCameraSpeed = 0.5f;
 	constexpr int   kBlurPasses = 4;
@@ -94,6 +131,7 @@ namespace Boidsish {
 		GLuint                  main_fbo_{0}, main_fbo_texture_{0}, main_fbo_depth_texture_{0}, main_fbo_rbo_{0};
 		GLuint                  lighting_ubo{0};
 		GLuint                  visual_effects_ubo{0};
+		GLuint                  noise_texture_id{0};
 		glm::mat4               projection, reflection_vp;
 
 		double last_mouse_x = 0.0, last_mouse_y = 0.0;
@@ -492,6 +530,10 @@ namespace Boidsish {
 
 			auto effects_widget = std::make_shared<UI::EffectsWidget>();
 			ui_manager->AddWidget(effects_widget);
+
+			// Load the 3D noise texture
+			stbi_set_flip_vertically_on_load(true);
+			noise_texture_id = load3DTexture("assets/textures/noise", 128, 128, 128);
 		}
 
 		void SetupShaderBindings(Shader& shader_to_setup) {
@@ -508,6 +550,7 @@ namespace Boidsish {
 			if (shadows_idx != GL_INVALID_INDEX) {
 				glUniformBlockBinding(shader_to_setup.ID, shadows_idx, 2);
 			}
+			shader_to_setup.setInt("noiseTexture", 1);
 		}
 
 		~VisualizerImpl() {
@@ -730,6 +773,8 @@ namespace Boidsish {
 			}
 			glDisable(GL_DEPTH_TEST);
 			sky_shader->use();
+			glActiveTexture(GL_TEXTURE1);
+			glBindTexture(GL_TEXTURE_3D, noise_texture_id);
 			sky_shader->setMat4("invProjection", glm::inverse(projection));
 			sky_shader->setMat4("invView", glm::inverse(view));
 			glBindVertexArray(sky_vao);
@@ -777,6 +822,10 @@ namespace Boidsish {
 				glBindTexture(GL_TEXTURE_2D, pingpong_texture[0]);
 				plane_shader->setMat4("reflectionViewProjection", reflection_vp);
 			}
+
+			// Bind the 3D noise texture
+			glActiveTexture(GL_TEXTURE1);
+			glBindTexture(GL_TEXTURE_3D, noise_texture_id);
 
 			glm::mat4 model = glm::scale(glm::mat4(1.0f), glm::vec3(600.0f));
 			plane_shader->setMat4("model", model);
