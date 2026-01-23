@@ -94,6 +94,8 @@ namespace Boidsish {
 		GLuint                  main_fbo_{0}, main_fbo_texture_{0}, main_fbo_depth_texture_{0}, main_fbo_rbo_{0};
 		GLuint                  lighting_ubo{0};
 		GLuint                  visual_effects_ubo{0};
+		GLuint                  megatexture_id_ = 0;
+		GLuint                  biome_texture_id_ = 0;
 		glm::mat4               projection, reflection_vp;
 
 		double last_mouse_x = 0.0, last_mouse_y = 0.0;
@@ -135,6 +137,10 @@ namespace Boidsish {
 		float     camera_velocity_{0.0f};
 		float     avg_frame_time_{1.0f / 60.0f};
 		float     tess_quality_multiplier_{1.0f};
+
+		// Megatexture update tracking
+		glm::vec2 last_texture_update_pos_{0.0f, 0.0f};
+		float     texture_update_threshold_ = 512.0f;
 
 		// Cached global settings
 		float camera_roll_speed_;
@@ -270,6 +276,42 @@ namespace Boidsish {
 					// , "shaders/terrain.geom"
 				);
 				SetupShaderBindings(*Terrain::terrain_shader_);
+
+				glGenTextures(1, &megatexture_id_);
+				glBindTexture(GL_TEXTURE_2D, megatexture_id_);
+				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER);
+				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_BORDER);
+				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+				glTexImage2D(
+					GL_TEXTURE_2D,
+					0,
+					GL_RGBA16F,
+					1024,
+					1024,
+					0,
+					GL_RGBA,
+					GL_HALF_FLOAT,
+					NULL
+				);
+
+				glGenTextures(1, &biome_texture_id_);
+				glBindTexture(GL_TEXTURE_2D, biome_texture_id_);
+				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER);
+				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_BORDER);
+				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+				glTexImage2D(
+					GL_TEXTURE_2D,
+					0,
+					GL_RGBA,
+					1024,
+					1024,
+					0,
+					GL_RGBA,
+					GL_UNSIGNED_BYTE,
+					NULL
+				);
 			}
 
 			Shape::InitSphereMesh();
@@ -706,12 +748,68 @@ namespace Boidsish {
 				return;
 			}
 
+			const int texture_size = 1024;
+			glm::vec2 current_pos(camera.x, camera.z);
+			if (glm::distance(current_pos, last_texture_update_pos_) > texture_update_threshold_) {
+				std::vector<uint16_t> texture_data =
+					terrain_generator
+						->GenerateTextureForArea(camera.x - texture_size / 2, camera.z - texture_size / 2, texture_size);
+				std::vector<uint8_t> biome_texture_data =
+					terrain_generator->GenerateBiomeDataTexture(
+						camera.x - texture_size / 2,
+						camera.z - texture_size / 2,
+						texture_size
+					);
+
+				glBindTexture(GL_TEXTURE_2D, megatexture_id_);
+				glTexSubImage2D(
+					GL_TEXTURE_2D,
+					0,
+					0,
+					0,
+					texture_size,
+					texture_size,
+					GL_RGBA,
+					GL_UNSIGNED_SHORT,
+					texture_data.data()
+				);
+				glGenerateMipmap(GL_TEXTURE_2D);
+
+				glBindTexture(GL_TEXTURE_2D, biome_texture_id_);
+				glTexSubImage2D(
+					GL_TEXTURE_2D,
+					0,
+					0,
+					0,
+					texture_size,
+					texture_size,
+					GL_RGBA,
+					GL_UNSIGNED_BYTE,
+					biome_texture_data.data()
+				);
+
+				last_texture_update_pos_ = current_pos;
+			}
+
 			Terrain::terrain_shader_->use();
 			Terrain::terrain_shader_->setMat4("view", view);
 			Terrain::terrain_shader_->setMat4("projection", projection);
 			Terrain::terrain_shader_->setFloat("uTessQualityMultiplier", tess_quality_multiplier_);
 			Terrain::terrain_shader_->setFloat("uTessLevelMax", 64.0f);
 			Terrain::terrain_shader_->setFloat("uTessLevelMin", 1.0f);
+			Terrain::terrain_shader_->setInt("uMegaTexture", 0);
+			Terrain::terrain_shader_->setInt("uBiomeTexture", 1);
+			Terrain::terrain_shader_->setFloat("uMegaTextureSize", texture_size);
+			Terrain::terrain_shader_->setVec2(
+				"uMegaTextureOffset",
+				camera.x - texture_size / 2,
+				camera.z - texture_size / 2
+			);
+
+			glActiveTexture(GL_TEXTURE0);
+			glBindTexture(GL_TEXTURE_2D, megatexture_id_);
+			glActiveTexture(GL_TEXTURE1);
+			glBindTexture(GL_TEXTURE_2D, biome_texture_id_);
 
 			if (clip_plane) {
 				Terrain::terrain_shader_->setVec4("clipPlane", *clip_plane);

@@ -6,13 +6,11 @@ layout(quads, fractional_odd_spacing, cw) in;
 in vec3 WorldPos_TC_out[];
 in vec2 TexCoords_TC_out[];
 in vec3 Normal_TC_out[];
-in vec4 BiomeInfo_TC_out[];
 
 // Output to Fragment Shader
 out vec3 FragPos;
 out vec3 Normal;
 out vec2 TexCoords;
-out vec4 BiomeInfo_TE_out;
 
 uniform mat4  view;
 uniform mat4  projection;
@@ -44,10 +42,6 @@ void main() {
 	vec3 pos1 = mix(WorldPos_TC_out[0], WorldPos_TC_out[1], uv.x);
 	vec3 pos2 = mix(WorldPos_TC_out[3], WorldPos_TC_out[2], uv.x);
 	vec3 q = mix(pos1, pos2, uv.y); // The flat position
-
-	vec4 biome_info1 = mix(BiomeInfo_TC_out[0], BiomeInfo_TC_out[1], uv.x);
-	vec4 biome_info2 = mix(BiomeInfo_TC_out[3], BiomeInfo_TC_out[2], uv.x);
-	BiomeInfo_TE_out = mix(biome_info1, biome_info2, uv.y);
 
 	vec3 norm1 = mix(Normal_TC_out[0], Normal_TC_out[1], uv.x);
 	vec3 norm2 = mix(Normal_TC_out[3], Normal_TC_out[2], uv.x);

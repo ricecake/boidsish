@@ -6,8 +6,7 @@
 #include <vector>
 
 #include "Simplex.h"
-#include "biome.h"
-#include "field.h"
+#include "terrain.h"
 #include "thread_pool.h"
 
 // #include <FastNoise/FastNoise.h>
@@ -15,7 +14,6 @@
 namespace Boidsish {
 	struct Frustum;
 	struct Camera;
-	class Terrain;
 } // namespace Boidsish
 
 namespace Boidsish {
@@ -24,7 +22,6 @@ namespace Boidsish {
 		std::vector<unsigned int> indices;
 		std::vector<glm::vec3>    positions;
 		std::vector<glm::vec3>    normals;
-        BiomeInfo                 biome_info;
 		PatchProxy                proxy;
 		int                       chunk_x;
 		int                       chunk_z;
@@ -42,6 +39,7 @@ namespace Boidsish {
 
 		std::vector<uint16_t> GenerateSuperChunkTexture(int requested_x, int requested_z);
 		std::vector<uint16_t> GenerateTextureForArea(int world_x, int world_z, int size);
+		std::vector<uint8_t>  GenerateBiomeDataTexture(int world_x, int world_z, int size) const;
 		void                  ConvertDatToPng(const std::string& dat_filepath, const std::string& png_filepath);
 
 		float GetMaxHeight() const {
@@ -100,6 +98,11 @@ namespace Boidsish {
 		glm::vec2 getDomainWarp(float x, float z) const;
 
 	private:
+		struct BiomeInfo {
+			int   biome_indices[2];
+			float blend;
+		};
+		BiomeInfo getBiomeInfo(float control_value) const;
 		glm::vec2 findClosestPointOnPath(glm::vec2 sample_pos) const;
 		glm::vec3 getPathInfluence(float x, float z) const;
 
@@ -115,7 +118,6 @@ namespace Boidsish {
 		}
 
 		TerrainGenerationResult generateChunkData(int chunkX, int chunkZ);
-		BiomeInfo               getBiomeInfo(float control_value) const;
 
 		// Terrain parameters
 		struct TerrainParameters {
@@ -175,6 +177,7 @@ namespace Boidsish {
 		mutable std::mutex                                                 point_generation_mutex_;
 		std::random_device                                                 rd_;
 		std::mt19937                                                       eng_;
+		std::vector<float>                                                 biome_cdf_;
 	};
 
 } // namespace Boidsish

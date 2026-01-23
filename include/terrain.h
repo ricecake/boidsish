@@ -2,7 +2,6 @@
 
 #include <vector>
 
-#include "biome.h"
 #include "field.h"
 #include "shape.h"
 #include <glm/glm.hpp>
@@ -15,7 +14,6 @@ namespace Boidsish {
 			const std::vector<unsigned int>& indices,
 			const std::vector<glm::vec3>&    vertices,
 			const std::vector<glm::vec3>&    normals,
-			const BiomeInfo&                 biome_info,
 			const PatchProxy&                proxy
 		);
 		~Terrain();
@@ -35,7 +33,6 @@ namespace Boidsish {
 	private:
 		std::vector<float>        vertex_data_; // Interleaved for GPU
 		std::vector<unsigned int> indices_;
-		BiomeInfo                 biome_info_;
 
 		unsigned int vao_, vbo_, ebo_;
 		int          index_count_;

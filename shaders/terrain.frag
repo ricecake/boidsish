@@ -4,7 +4,10 @@ out vec4 FragColor;
 in vec3 Normal;
 in vec3 FragPos;
 in vec2 TexCoords;
-in vec4 BiomeInfo_TE_out;
+
+uniform sampler2D uBiomeTexture;
+uniform float     uMegaTextureSize;
+uniform vec2      uMegaTextureOffset;
 
 #include "helpers/lighting.glsl"
 
@@ -169,6 +172,9 @@ void main() {
 	// discard;
 	// FragColor = vec4(1,1,1, 1);
 
+	vec2 mega_uv = (FragPos.xz - uMegaTextureOffset) / uMegaTextureSize;
+	vec4 biome_sample = texture(uBiomeTexture, mega_uv);
+
 	vec3 biome_colors[8] = vec3[](
 		vec3(0.3, 0.4, 0.2), // Forest
 		vec3(0.7, 0.6, 0.4), // Desert
@@ -180,9 +186,9 @@ void main() {
 		vec3(0.5, 0.3, 0.6)  // Swamp
 	);
 
-	int biome1_idx = int(BiomeInfo_TE_out.x);
-	int biome2_idx = int(BiomeInfo_TE_out.y);
-	float blend_factor = BiomeInfo_TE_out.z;
+	int biome1_idx = int(biome_sample.r * 255.0);
+	int biome2_idx = int(biome_sample.g * 255.0);
+	float blend_factor = biome_sample.b;
 
 	vec3 color1 = biome_colors[biome1_idx];
 	vec3 color2 = biome_colors[biome2_idx];
