@@ -41,6 +41,7 @@
 #include "trail.h"
 #include "ui/ConfigWidget.h"
 #include "ui/EffectsWidget.h"
+#include "ui/LightsWidget.h"
 #include "ui/PostProcessingWidget.h"
 #include "ui/hud_widget.h"
 #include "visual_effects.h"
@@ -231,9 +232,9 @@ namespace Boidsish {
 			const int MAX_LIGHTS = 10;
 			glGenBuffers(1, &lighting_ubo);
 			glBindBuffer(GL_UNIFORM_BUFFER, lighting_ubo);
-			glBufferData(GL_UNIFORM_BUFFER, 352, NULL, GL_DYNAMIC_DRAW);
+			glBufferData(GL_UNIFORM_BUFFER, 704, NULL, GL_DYNAMIC_DRAW);
 			glBindBuffer(GL_UNIFORM_BUFFER, 0);
-			glBindBufferRange(GL_UNIFORM_BUFFER, 0, lighting_ubo, 0, 352);
+			glBindBufferRange(GL_UNIFORM_BUFFER, 0, lighting_ubo, 0, 704);
 
 			if (ConfigManager::GetInstance().GetAppSettingBool("enable_effects", true)) {
 				glGenBuffers(1, &visual_effects_ubo);
@@ -492,6 +493,9 @@ namespace Boidsish {
 
 			auto effects_widget = std::make_shared<UI::EffectsWidget>();
 			ui_manager->AddWidget(effects_widget);
+
+			auto lights_widget = std::make_shared<UI::LightsWidget>(light_manager);
+			ui_manager->AddWidget(lights_widget);
 		}
 
 		void SetupShaderBindings(Shader& shader_to_setup) {
@@ -1469,15 +1473,22 @@ namespace Boidsish {
 		for (const auto& light : lights) {
 			gpu_lights.push_back(light.ToGPU());
 		}
+        const int MAX_LIGHTS = 10;
 		glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(LightGPU) * num_lights, gpu_lights.data());
-		glBufferSubData(GL_UNIFORM_BUFFER, 320, sizeof(int), &num_lights);
+        size_t offset = 640;
+		glBufferSubData(GL_UNIFORM_BUFFER, offset, sizeof(int), &num_lights);
+        offset += 16;
 		glBufferSubData(
 			GL_UNIFORM_BUFFER,
-			336,
+			offset,
 			sizeof(glm::vec3),
 			&glm::vec3(impl->camera.x, impl->camera.y, impl->camera.z)[0]
 		);
-		glBufferSubData(GL_UNIFORM_BUFFER, 352 - 4, sizeof(float), &impl->simulation_time);
+        offset += 16;
+        glm::vec3 ambient_light = impl->light_manager.GetAmbientLight();
+        glBufferSubData(GL_UNIFORM_BUFFER, offset, sizeof(glm::vec3), &ambient_light[0]);
+        offset += 12;
+        glBufferSubData(GL_UNIFORM_BUFFER, offset, sizeof(float), &impl->simulation_time);
 		glBindBuffer(GL_UNIFORM_BUFFER, 0);
 
 		if (impl->reflection_fbo) {

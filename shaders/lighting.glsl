@@ -2,10 +2,13 @@
 #define LIGHTING_GLSL
 
 struct Light {
-	vec3  position;
-	float intensity;
-	vec3  color;
-	float padding; // for std140 alignment
+    vec3 position;
+    float intensity;
+    vec3 color;
+    int type;
+    vec3 direction;
+    float inner_cutoff;
+    float outer_cutoff;
 };
 
 const int MAX_LIGHTS = 10;
@@ -15,6 +18,7 @@ layout(std140) uniform Lighting {
 	Light lights[MAX_LIGHTS];
 	int   num_lights;
 	vec3  viewPos;
+    vec3 ambient_light;
 	float time;
 };
 

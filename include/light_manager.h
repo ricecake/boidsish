@@ -12,6 +12,8 @@ namespace Boidsish {
 		void                AddLight(const Light& light);
 		std::vector<Light>& GetLights();
 		void                Update(float deltaTime);
+        glm::vec3           GetAmbientLight() const;
+        void                SetAmbientLight(const glm::vec3& ambient);
 
 		/**
 		 * @brief Get lights that cast shadows.
@@ -27,6 +29,7 @@ namespace Boidsish {
 	private:
 		// Default light casts shadows
 		std::vector<Light> _lights{Light::Create({0, 50, -500}, 10.0f, {1, 0.5f, 0.25f}, true)};
+        glm::vec3          _ambient_light = glm::vec3(0.1f);
 	};
 
 } // namespace Boidsish

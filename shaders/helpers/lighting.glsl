@@ -3,6 +3,10 @@
 
 #include "../lighting.glsl"
 
+const int LIGHT_TYPE_POINT = 0;
+const int LIGHT_TYPE_DIRECTIONAL = 1;
+const int LIGHT_TYPE_SPOT = 2;
+
 /**
  * Calculate shadow factor for a fragment position using a specific shadow map.
  * Returns 0.0 if fully in shadow, 1.0 if fully lit.
@@ -68,15 +72,30 @@ float calculateShadow(int shadow_index, vec3 frag_pos) {
  * This version checks each light for shadow casting capability.
  */
 vec3 apply_lighting(vec3 frag_pos, vec3 normal, vec3 albedo, float ambient_strength, float specular_strength) {
-	vec3 ambient = ambient_strength * albedo;
-	vec3 result = ambient;
+	vec3 result = ambient_light * albedo;
 
 	for (int i = 0; i < num_lights; ++i) {
+        vec3 light_dir;
+        float attenuation = 1.0;
+
+        if (lights[i].type == LIGHT_TYPE_POINT) { // Point light
+            light_dir = normalize(lights[i].position - frag_pos);
+            float distance = length(lights[i].position - frag_pos);
+            attenuation = 1.0 / (1.0 + 0.09 * distance + 0.032 * (distance * distance));
+        } else if (lights[i].type == LIGHT_TYPE_DIRECTIONAL) { // Directional light
+            light_dir = normalize(-lights[i].direction);
+        } else if (lights[i].type == LIGHT_TYPE_SPOT) { // Spot light
+            light_dir = normalize(lights[i].position - frag_pos);
+            float theta = dot(light_dir, normalize(-lights[i].direction));
+            float epsilon = lights[i].inner_cutoff - lights[i].outer_cutoff;
+            float intensity = clamp((theta - lights[i].outer_cutoff) / epsilon, 0.0, 1.0);
+            attenuation *= intensity;
+        }
+
 		// Calculate shadow factor for this light
 		float shadow = calculateShadow(lightShadowIndices[i], frag_pos);
 
 		// Diffuse
-		vec3  light_dir = normalize(lights[i].position - frag_pos);
 		float diff = max(dot(normal, light_dir), 0.0);
 		vec3  diffuse = lights[i].color * diff * albedo;
 
@@ -87,7 +106,7 @@ vec3 apply_lighting(vec3 frag_pos, vec3 normal, vec3 albedo, float ambient_stren
 		vec3  specular = lights[i].color * spec * specular_strength;
 
 		// Apply shadow to diffuse and specular, but not ambient
-		result += (diffuse + specular) * lights[i].intensity * shadow;
+		result += (diffuse + specular) * lights[i].intensity * shadow * attenuation;
 	}
 
 	return result;

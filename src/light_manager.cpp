@@ -15,6 +15,14 @@ namespace Boidsish {
 		// In the future, we could update light positions, colors, etc. here.
 	}
 
+    glm::vec3 LightManager::GetAmbientLight() const {
+        return _ambient_light;
+    }
+
+    void LightManager::SetAmbientLight(const glm::vec3& ambient) {
+        _ambient_light = ambient;
+    }
+
 	std::vector<Light*> LightManager::GetShadowCastingLights() {
 		std::vector<Light*> shadow_lights;
 		for (auto& light : _lights) {
