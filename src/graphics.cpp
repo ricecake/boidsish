@@ -140,7 +140,6 @@ namespace Boidsish {
 
 		// Megatexture update tracking
 		glm::vec2 last_texture_update_pos_{0.0f, 0.0f};
-		float     texture_update_threshold_ = 512.0f;
 
 		// Cached global settings
 		float camera_roll_speed_;
@@ -749,15 +748,18 @@ namespace Boidsish {
 			}
 
 			const int texture_size = 1024;
-			glm::vec2 current_pos(camera.x, camera.z);
-			if (glm::distance(current_pos, last_texture_update_pos_) > texture_update_threshold_) {
+			int       snapped_x = floor(camera.x / texture_size) * texture_size;
+			int       snapped_z = floor(camera.z / texture_size) * texture_size;
+			glm::vec2 snapped_pos(snapped_x, snapped_z);
+
+			if (snapped_pos != last_texture_update_pos_) {
 				std::vector<uint16_t> texture_data =
 					terrain_generator
-						->GenerateTextureForArea(camera.x - texture_size / 2, camera.z - texture_size / 2, texture_size);
+						->GenerateTextureForArea(snapped_x, snapped_z, texture_size);
 				std::vector<uint8_t> biome_texture_data =
 					terrain_generator->GenerateBiomeDataTexture(
-						camera.x - texture_size / 2,
-						camera.z - texture_size / 2,
+						snapped_x,
+						snapped_z,
 						texture_size
 					);
 
@@ -788,7 +790,7 @@ namespace Boidsish {
 					biome_texture_data.data()
 				);
 
-				last_texture_update_pos_ = current_pos;
+				last_texture_update_pos_ = snapped_pos;
 			}
 
 			Terrain::terrain_shader_->use();
@@ -802,8 +804,8 @@ namespace Boidsish {
 			Terrain::terrain_shader_->setFloat("uMegaTextureSize", texture_size);
 			Terrain::terrain_shader_->setVec2(
 				"uMegaTextureOffset",
-				camera.x - texture_size / 2,
-				camera.z - texture_size / 2
+				floor(camera.x / texture_size) * texture_size,
+				floor(camera.z / texture_size) * texture_size
 			);
 
 			glActiveTexture(GL_TEXTURE0);
