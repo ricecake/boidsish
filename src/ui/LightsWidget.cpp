@@ -24,6 +24,7 @@ namespace Boidsish {
 
 			ImGui::Separator();
 
+			int light_to_remove = -1;
 			// Lights
 			auto& lights = _lightManager.GetLights();
 			for (int i = 0; i < lights.size(); ++i) {
@@ -69,9 +70,22 @@ namespace Boidsish {
 						}
 					}
 
+					if (lights.size() > 1) {
+						if (ImGui::Button("Remove")) {
+							light_to_remove = i;
+						}
+					}
+
 					ImGui::TreePop();
 				}
 				ImGui::PopID();
+			}
+			if (light_to_remove != -1) {
+				lights.erase(lights.begin() + light_to_remove);
+			}
+
+			if (ImGui::Button("Add Light")) {
+				_lightManager.AddLight(Light::Create({0, 10, 0}, 5.0f, {1, 1, 1}, false));
 			}
 
 			ImGui::End();
