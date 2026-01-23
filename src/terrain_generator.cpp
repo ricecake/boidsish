@@ -283,7 +283,6 @@ namespace Boidsish {
 		float segment_width = weight_high - weight_low;
 		float t = (segment_width > 0.0001f) ? (target - weight_low) / segment_width : 0.0f;
 
-
 		const auto& low_item = biomes[low_idx];
 		const auto& high_item = biomes[high_idx];
 
