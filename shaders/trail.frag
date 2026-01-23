@@ -6,7 +6,7 @@ in vec3  vs_normal;
 in vec3  vs_frag_pos;
 in float vs_progress;
 
-#include "helpers/lighting_simple.glsl"
+#include "helpers/lighting.glsl"
 
 uniform bool useIridescence;
 uniform bool useRocketTrail;
@@ -85,7 +85,7 @@ void main() {
 		FragColor = vec4(final_color, 0.75); // Semi-transparent
 	} else {
 		// --- Original Phong Lighting ---
-		vec3 result = apply_lighting(vs_frag_pos, norm, vs_color, 0.2, 0.5);
+		vec3 result = apply_lighting_no_shadows(vs_frag_pos, norm, vs_color, 0.5);
 		FragColor = vec4(result, 1.0);
 	}
 }

@@ -70,6 +70,22 @@ namespace Boidsish {
 			l.shadow_map_index = -1;
 			return l;
 		}
+
+		static Light CreateDirectional(const glm::vec3& dir, float intens, const glm::vec3& col, bool shadows = false) {
+			Light l = Create({0, 0, 0}, intens, col, shadows);
+			l.type = DIRECTIONAL_LIGHT;
+			l.direction = dir;
+			return l;
+		}
+
+		static Light CreateSpot(const glm::vec3& pos, const glm::vec3& dir, float intens, const glm::vec3& col, float inner_angle, float outer_angle, bool shadows = false) {
+			Light l = Create(pos, intens, col, shadows);
+			l.type = SPOT_LIGHT;
+			l.direction = dir;
+			l.inner_cutoff = glm::cos(glm::radians(inner_angle));
+			l.outer_cutoff = glm::cos(glm::radians(outer_angle));
+			return l;
+		}
 	};
 
 	/**
