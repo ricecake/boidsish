@@ -10,7 +10,7 @@ uniform mat4 view;
 uniform mat4 projection;
 uniform mat4 reflectionViewProjection;
 
-#include "helpers/lighting_simple.glsl"
+#include "helpers/lighting.glsl"
 
 void main() {
 	WorldPos = vec3(model * vec4(aPos, 1.0));

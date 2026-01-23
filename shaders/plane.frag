@@ -5,7 +5,7 @@ in vec3 WorldPos;
 in vec3 Normal;
 in vec4 ReflectionClipSpacePos;
 
-#include "helpers/lighting_simple.glsl"
+#include "helpers/lighting.glsl"
 
 uniform sampler2D reflectionTexture;
 uniform bool      useReflection;
@@ -130,7 +130,7 @@ void main() {
 	// --- Plane lighting ---
 	vec3 norm = normalize(Normal);
 	vec3 surfaceColor = vec3(0.05, 0.05, 0.08);
-	vec3 lighting = apply_lighting(WorldPos, norm, surfaceColor, 0.05, 0.8);
+	vec3 lighting = apply_lighting_no_shadows(WorldPos, norm, surfaceColor, 0.8);
 
 	// --- Combine colors ---
 	float reflection_strength = 0.8;

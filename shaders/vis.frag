@@ -27,7 +27,7 @@ void main() {
 	}
 
 	vec3 norm = normalize(Normal);
-	vec3 result = apply_lighting(FragPos, norm, final_color, 0.1, 1.0);
+	vec3 result = apply_lighting(FragPos, norm, final_color, 1.0);
 
 	if (use_texture) {
 		result *= texture(texture_diffuse1, TexCoords).rgb;

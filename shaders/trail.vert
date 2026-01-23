@@ -17,7 +17,7 @@ uniform bool  useRocketTrail;
 uniform float trailHead;
 uniform float trailSize;
 
-#include "helpers/lighting_simple.glsl"
+#include "helpers/lighting.glsl"
 #include "helpers/noise.glsl"
 
 void main() {
