@@ -26,7 +26,7 @@ namespace Boidsish {
 
 	private:
 		// Default light casts shadows
-		std::vector<Light> _lights{Light::Create({0, 50, -500}, 10.0f, {1, 0.5f, 0.25f}, true)};
+		std::vector<Light> _lights{Light::Create({0, 200, 200}, 1.0f, {1, 0.5f, 0.25f}, true)};
 	};
 
 } // namespace Boidsish

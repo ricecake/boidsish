@@ -186,51 +186,41 @@ void main() {
 	}
 
 	vec3 biome_colors[8] = vec3[](
-		vec3(0.3, 0.4, 0.2), // Forest
+		vec3(0.5, 0.3, 0.6),  // Swamp
 		vec3(0.7, 0.6, 0.4), // Desert
 		vec3(0.2, 0.5, 0.3), // Plains
+		vec3(0.3, 0.4, 0.2), // Forest
+		vec3(0.1, 0.4, 0.5), // Ocean
 		vec3(0.8, 0.8, 0.8), // Mountains
-		vec3(0.1, 0.2, 0.4), // Ocean
 		vec3(0.9, 0.2, 0.1), // Volcanic
-		vec3(1.0, 1.0, 1.0), // Arctic
-		vec3(0.5, 0.3, 0.6)  // Swamp
+		vec3(0.8, 0.8, 0.8) // Arctic
 	);
 
 	int biome1_idx = int(biome_sample.r * 255.0);
 	int biome2_idx = int(biome_sample.g * 255.0);
-	float blend_factor = biome_sample.b;
+	float blend_factor = biome_sample.b * fbm(FragPos.xyz*3);
 
 	vec3 color1 = biome_colors[biome1_idx];
 	vec3 color2 = biome_colors[biome2_idx];
 	vec3 objectColor = mix(color1, color2, blend_factor);
 
 	vec3 norm = normalize(Normal);
+
+	vec3 bonusColor = mix(vec3(0.1, 0.4, 0.2), vec3(0.5), FragPos.y / 250);
+	objectColor = mix(objectColor, bonusColor, 0.5);
+	// objectColor = mix(vec3(0.2), objectColor, 5*dot(norm, vec3(0,1,0)));
+	objectColor = mix(objectColor, vec3(1,0.5,0.25), fwidth(norm));
+	// objectColor = mix(objectColor, vec3(1,0.5,0.25), fwidth(norm)); // need something that can be a biome specific "flower"
+
 	vec3 lighting = apply_lighting(FragPos, norm, objectColor, 0.2, 0.8);
-
-	// --- Grid logic ---
-	float grid_spacing = 1.0;
-	vec2  coord = FragPos.xz / grid_spacing;
-	vec2  f = fwidth(coord);
-
-	vec2  grid_minor = abs(fract(coord - 0.5) - 0.5) / f;
-	float line_minor = min(grid_minor.x, grid_minor.y);
-	float C_minor = 1.0 - min(line_minor, 1.0);
-
-	vec2  grid_major = abs(fract(coord / 5.0 - 0.5) - 0.5) / f;
-	float line_major = min(grid_major.x, grid_major.y);
-	float C_major = 1.0 - min(line_major, 1.0);
-
-	float intensity = max(C_minor, C_major * 1.5) * length(fwidth(FragPos));
-	vec3  grid_color = vec3(normalize(abs(fwidth(FragPos.zxy))) * intensity);
-	vec3  result = lighting + grid_color;
 
 	// --- Distance Fade ---
 	float dist = length(FragPos.xz - viewPos.xz);
 	float fade_start = 560.0;
 	float fade_end = 570.0;
-	float fade = 1.0 - smoothstep(fade_start, fade_end, dist + nebula_noise * 40);
+	float fade = 1.0 - smoothstep(fade_start, fade_end, dist + 1 * 40);
 
-	vec4 outColor = vec4(result, mix(0, fade, step(0.01, FragPos.y)));
+	vec4 outColor = vec4(lighting, mix(0, fade, step(0.01, FragPos.y)));
 	FragColor = mix(
 		vec4(0.0, 0.7, 0.7, mix(0, fade, step(0.01, FragPos.y))) * length(outColor),
 		outColor,
