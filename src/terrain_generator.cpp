@@ -332,8 +332,8 @@ namespace Boidsish {
 
 		for (int y = 0; y < new_size; ++y) {
 			for (int x = 0; x < new_size; ++x) {
-				float worldX = (world_x - gutter + x);
-				float worldZ = (world_z - gutter + y);
+				float worldX = (world_x + x - gutter);
+				float worldZ = (world_z + y - gutter);
 
 				float     control_value = getBiomeControlValue(worldX, worldZ);
 				BiomeInfo biome_info = getBiomeInfo(control_value);

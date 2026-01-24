@@ -215,24 +215,26 @@ void main() {
 	vec3 color2 = biome_colors[biome2_idx];
 	vec3 color3 = biome_colors[biome3_idx];
 	vec3 objectColorA = mix(color1, color2, blend_factor);
-	vec3 objectColorB = mix(color2, color3, 1 - blend_factor);
+	vec3 objectColorB = mix(color1, color2, blend_factor);
 
-	vec3 objectColor = mix(objectColorB, objectColorA, step(0, fwidth(blend_factor)));
+	vec3 objectColor = mix(objectColorA, objectColorB, step(1, biome1_idx % 2));
 
 	// objectColor = mix(mix(color1, color2, 1-blend_factor), mix(color1, color2, blend_factor), step(0, biome1_idx %
 	// 2));
 
 	vec3 norm = normalize(Normal);
-
+/*
 	vec3 bonusColor = mix(vec3(0.1, 0.4, 0.2), vec3(0.5), FragPos.y / 50);
 	objectColor = mix(objectColor, bonusColor, fbm(FragPos.xyz / 50));
+
 	// objectColor = mix(vec3(0.2), objectColor, 1-abs(dot(Normal, vec3(0,1,0))));
 	// objectColor = mix(objectColor, vec3(1,0.5,0.25), fwidth(norm));
 	// objectColor = mix(objectColor, vec3(1,0.5,0.25), fwidth(norm)); // need something that can be a biome specific
 	// "flower"
+
 	objectColor = mix(objectColor, vec3(1, 0.5, 0.25), fwidth(FragPos.y));
 	objectColor = mix(vec3(0.25), objectColor, fwidth(FragPos.y));
-
+*/
 	vec3 lighting = apply_lighting(FragPos, norm, objectColor, 0.2, 0.8);
 
 	// --- Distance Fade ---
