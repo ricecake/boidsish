@@ -16,6 +16,7 @@
 #include "imgui_impl_opengl3.h"
 #include "light_manager.h"
 #include "shape.h"
+#include "shader.h"
 #include "vector.h"
 #include "visual_effects.h"
 #include <glm/glm.hpp>
@@ -117,6 +118,7 @@ namespace Boidsish {
 	// Main visualization class
 	class Terrain;
 	class TerrainGenerator;
+	class TerrainRenderer;
 
 	// Main visualization class
 	class Visualizer {
@@ -265,6 +267,7 @@ namespace Boidsish {
 		void UpdateHudGauge(int id, const HudGauge& gauge);
 		void RemoveHudGauge(int id);
 
+        void SetupShaderBindings(Shader& shader);
 	private:
 		struct VisualizerImpl;
 		std::unique_ptr<VisualizerImpl> impl;

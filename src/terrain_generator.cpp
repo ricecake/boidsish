@@ -119,10 +119,9 @@ namespace Boidsish {
 					auto&                   future = const_cast<TaskHandle<TerrainGenerationResult>&>(pair.second);
 					TerrainGenerationResult result = future.get();
 					if (result.has_terrain) {
+                        glm::vec3 chunk_position(result.chunk_x * chunk_size_, 0, result.chunk_z * chunk_size_);
 						auto terrain_chunk =
-							std::make_shared<Terrain>(result.indices, result.positions, result.normals, result.proxy);
-						terrain_chunk->SetPosition(result.chunk_x * chunk_size_, 0, result.chunk_z * chunk_size_);
-						terrain_chunk->setupMesh();
+							std::make_shared<Terrain>(result.indices, result.positions, result.normals, result.proxy, chunk_position, result.chunk_x, result.chunk_z);
 						chunk_cache_[pair.first] = terrain_chunk;
 					}
 					completed_chunks.push_back(pair.first);
@@ -155,6 +154,9 @@ namespace Boidsish {
 			}
 
 			for (const auto& key : to_remove) {
+                if(m_terrain_renderer) {
+                    m_terrain_renderer->RemoveChunk(key.first, key.second);
+                }
 				chunk_cache_.erase(key);
 			}
 		}

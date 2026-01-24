@@ -8,6 +8,7 @@
 #include "Simplex.h"
 #include "terrain.h"
 #include "thread_pool.h"
+#include "terrain_renderer.h"
 
 // #include <FastNoise/FastNoise.h>
 
@@ -33,6 +34,7 @@ namespace Boidsish {
 		TerrainGenerator(int seed = 12345);
 		~TerrainGenerator();
 
+        void SetTerrainRenderer(TerrainRenderer* renderer) { m_terrain_renderer = renderer; }
 		void                                         update(const Frustum& frustum, const Camera& camera);
 		const std::vector<std::shared_ptr<Terrain>>& getVisibleChunks() const;
 		std::vector<std::shared_ptr<Terrain>>        getVisibleChunksCopy() const;
@@ -162,6 +164,7 @@ namespace Boidsish {
 		glm::vec3 diffToNorm(float dx, float dz) const { return glm::normalize(glm::vec3(-dx, 1.0f, -dz)); }
 
 		// Cache and async management
+        TerrainRenderer*                                                   m_terrain_renderer = nullptr;
 		ThreadPool                                                         thread_pool_;
 		std::map<std::pair<int, int>, std::shared_ptr<Terrain>>            chunk_cache_;
 		std::vector<std::shared_ptr<Terrain>>                              visible_chunks_;

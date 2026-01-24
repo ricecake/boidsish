@@ -38,6 +38,7 @@
 #include "task_thread_pool.hpp"
 #include "terrain.h"
 #include "terrain_generator.h"
+#include "terrain_renderer.h"
 #include "trail.h"
 #include "ui/ConfigWidget.h"
 #include "ui/EffectsWidget.h"
@@ -82,6 +83,7 @@ namespace Boidsish {
 		int                                                    exit_key;
 
 		std::unique_ptr<TerrainGenerator> terrain_generator;
+		std::unique_ptr<TerrainRenderer>  terrain_renderer;
 
 		std::shared_ptr<Shader> shader;
 		std::unique_ptr<Shader> plane_shader;
@@ -221,6 +223,8 @@ namespace Boidsish {
 			}
 			if (ConfigManager::GetInstance().GetAppSettingBool("enable_terrain", true)) {
 				terrain_generator = std::make_unique<TerrainGenerator>();
+				terrain_renderer = std::make_unique<TerrainRenderer>(parent);
+                terrain_generator->SetTerrainRenderer(terrain_renderer.get());
 			}
 			clone_manager = std::make_unique<CloneManager>();
 			fire_effect_manager = std::make_unique<FireEffectManager>();
@@ -245,13 +249,13 @@ namespace Boidsish {
 			}
 
 			shader->use();
-			SetupShaderBindings(*shader);
-			SetupShaderBindings(*trail_shader);
+			parent->SetupShaderBindings(*shader);
+			parent->SetupShaderBindings(*trail_shader);
 			if (plane_shader) {
-				SetupShaderBindings(*plane_shader);
+				parent->SetupShaderBindings(*plane_shader);
 			}
 			if (sky_shader) {
-				SetupShaderBindings(*sky_shader);
+				parent->SetupShaderBindings(*sky_shader);
 			}
 
 			ui_manager = std::make_unique<UI::UIManager>(window);
@@ -263,14 +267,11 @@ namespace Boidsish {
 			logger::LOG("HudWidget created and added.");
 
 			if (terrain_generator) {
-				Terrain::terrain_shader_ = std::make_shared<Shader>(
-					"shaders/terrain.vert",
-					"shaders/terrain.frag",
-					"shaders/terrain.tcs",
-					"shaders/terrain.tes"
-					// , "shaders/terrain.geom"
-				);
-				SetupShaderBindings(*Terrain::terrain_shader_);
+				// The terrain shader is now managed by the TerrainRenderer class.
+				// We still need to ensure the shader is configured correctly.
+				// This might involve passing a setup function or ensuring the
+				// TerrainRenderer can access necessary uniform block bindings.
+				// For now, we assume the TerrainRenderer handles its own shader setup.
 			}
 
 			Shape::InitSphereMesh();
@@ -498,22 +499,6 @@ namespace Boidsish {
 			ui_manager->AddWidget(lights_widget);
 		}
 
-		void SetupShaderBindings(Shader& shader_to_setup) {
-			shader_to_setup.use();
-			GLuint lighting_idx = glGetUniformBlockIndex(shader_to_setup.ID, "Lighting");
-			if (lighting_idx != GL_INVALID_INDEX) {
-				glUniformBlockBinding(shader_to_setup.ID, lighting_idx, 0);
-			}
-			GLuint effects_idx = glGetUniformBlockIndex(shader_to_setup.ID, "VisualEffects");
-			if (effects_idx != GL_INVALID_INDEX) {
-				glUniformBlockBinding(shader_to_setup.ID, effects_idx, 1);
-			}
-			GLuint shadows_idx = glGetUniformBlockIndex(shader_to_setup.ID, "Shadows");
-			if (shadows_idx != GL_INVALID_INDEX) {
-				glUniformBlockBinding(shader_to_setup.ID, shadows_idx, 2);
-			}
-		}
-
 		~VisualizerImpl() {
 			ConfigManager::GetInstance().SetInt("window_width", width);
 			ConfigManager::GetInstance().SetInt("window_height", height);
@@ -703,28 +688,16 @@ namespace Boidsish {
 		}
 
 		void RenderTerrain(const glm::mat4& view, const std::optional<glm::vec4>& clip_plane) {
-			if (!terrain_generator || !ConfigManager::GetInstance().GetAppSettingBool("render_terrain", true))
+			if (!terrain_generator || !terrain_renderer || !ConfigManager::GetInstance().GetAppSettingBool("render_terrain", true))
 				return;
+
 			auto terrain_chunks = terrain_generator->getVisibleChunks();
 			if (terrain_chunks.empty()) {
 				return;
 			}
 
-			Terrain::terrain_shader_->use();
-			Terrain::terrain_shader_->setMat4("view", view);
-			Terrain::terrain_shader_->setMat4("projection", projection);
-			Terrain::terrain_shader_->setFloat("uTessQualityMultiplier", tess_quality_multiplier_);
-			Terrain::terrain_shader_->setFloat("uTessLevelMax", 64.0f);
-			Terrain::terrain_shader_->setFloat("uTessLevelMin", 1.0f);
-
-			if (clip_plane) {
-				Terrain::terrain_shader_->setVec4("clipPlane", *clip_plane);
-			} else {
-				Terrain::terrain_shader_->setVec4("clipPlane", glm::vec4(0, 0, 0, 0)); // No clipping
-			}
-
 			for (const auto& chunk : terrain_chunks) {
-				chunk->render();
+				terrain_renderer->Render(*chunk, view, projection, tess_quality_multiplier_, clip_plane);
 			}
 		}
 
@@ -1284,6 +1257,22 @@ namespace Boidsish {
 	Visualizer::Visualizer(int w, int h, const char* t): impl(new VisualizerImpl(this, w, h, t)) {}
 
 	Visualizer::~Visualizer() = default;
+
+    void Visualizer::SetupShaderBindings(Shader& shader_to_setup) {
+        shader_to_setup.use();
+        GLuint lighting_idx = glGetUniformBlockIndex(shader_to_setup.ID, "Lighting");
+        if (lighting_idx != GL_INVALID_INDEX) {
+            glUniformBlockBinding(shader_to_setup.ID, lighting_idx, 0);
+        }
+        GLuint effects_idx = glGetUniformBlockIndex(shader_to_setup.ID, "VisualEffects");
+        if (effects_idx != GL_INVALID_INDEX) {
+            glUniformBlockBinding(shader_to_setup.ID, effects_idx, 1);
+        }
+        GLuint shadows_idx = glGetUniformBlockIndex(shader_to_setup.ID, "Shadows");
+        if (shadows_idx != GL_INVALID_INDEX) {
+            glUniformBlockBinding(shader_to_setup.ID, shadows_idx, 2);
+        }
+    }
 
 	void Visualizer::AddShapeHandler(ShapeFunction func) {
 		impl->shape_functions.push_back(func);

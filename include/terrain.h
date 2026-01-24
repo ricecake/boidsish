@@ -3,39 +3,36 @@
 #include <vector>
 
 #include "field.h"
-#include "shape.h"
 #include <glm/glm.hpp>
 
 namespace Boidsish {
 
-	class Terrain: public Shape {
-	public:
-		Terrain(
-			const std::vector<unsigned int>& indices,
-			const std::vector<glm::vec3>&    vertices,
-			const std::vector<glm::vec3>&    normals,
-			const PatchProxy&                proxy
-		);
-		~Terrain();
+    class Terrain {
+    public:
+        Terrain(
+            const std::vector<unsigned int>& indices,
+            const std::vector<glm::vec3>&    vertices,
+            const std::vector<glm::vec3>&    normals,
+            const PatchProxy&                proxy,
+            const glm::vec3&                 position,
+            int                              chunk_x,
+            int                              chunk_z
+        );
+        ~Terrain();
 
-		void      setupMesh();
-		void      render() const override;
-		void      render(Shader& shader, const glm::mat4& model_matrix) const override;
-		glm::mat4 GetModelMatrix() const override;
+        // Public members for field calculations and rendering data access
+        PatchProxy                      proxy;
+        std::vector<glm::vec3>          vertices;
+        std::vector<glm::vec3>          normals;
+        std::vector<unsigned int>       indices;
+        glm::vec3                       position;
+        int                             chunk_x;
+        int                             chunk_z;
 
-		static std::shared_ptr<Shader> terrain_shader_;
 
-		// Public members for field calculations
-		PatchProxy             proxy;
-		std::vector<glm::vec3> vertices;
-		std::vector<glm::vec3> normals;
-
-	private:
-		std::vector<float>        vertex_data_; // Interleaved for GPU
-		std::vector<unsigned int> indices_;
-
-		unsigned int vao_, vbo_, ebo_;
-		int          index_count_;
-	};
+        float GetX() const { return position.x; }
+        float GetY() const { return position.y; }
+        float GetZ() const { return position.z; }
+    };
 
 } // namespace Boidsish
