@@ -5,7 +5,6 @@ out vec4 FragColor;
 in vec2 TexCoords;
 
 uniform sampler2D sourceTexture;
-uniform int       mipLevel;
 
 void main() {
     vec2 texelSize = 1.0 / textureSize(sourceTexture, 0);

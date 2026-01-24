@@ -37,7 +37,7 @@ namespace Boidsish {
 				glBindFramebuffer(GL_FRAMEBUFFER, fbo);
 				glGenTextures(1, &texture);
 				glBindTexture(GL_TEXTURE_2D, texture);
-				glTexImage2D(GL_TEXTURE_2D, 0, GL_RG16F, mip_width, mip_height, 0, GL_RG, GL_FLOAT, NULL);
+				glTexImage2D(GL_TEXTURE_2D, 0, GL_R16F, mip_width, mip_height, 0, GL_RED, GL_FLOAT, NULL);
 				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
 				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 				glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, texture, 0);
@@ -55,10 +55,16 @@ namespace Boidsish {
 				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
 				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 				glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, _lumPingPongTexture[i], 0);
+
+				// Initialize with default exposure of 1.0
+				glClearColor(0.5f, 1.0f, 0.0f, 1.0f);
+				glClear(GL_COLOR_BUFFER_BIT);
 			}
 		}
 
 		void ToneMappingEffect::Apply(GLuint sourceTexture, float delta_time) {
+			GLint originalFBO;
+			glGetIntegerv(GL_FRAMEBUFFER_BINDING, &originalFBO);
 			GLint originalViewport[4];
 			glGetIntegerv(GL_VIEWPORT, originalViewport);
 
@@ -68,11 +74,17 @@ namespace Boidsish {
 			glActiveTexture(GL_TEXTURE0);
 
 			GLuint current_texture = sourceTexture;
+			int mip_width = width_;
+			int mip_height = height_;
 			for (size_t i = 0; i < _mipChainFBO.size(); i++) {
+				mip_width /= 2;
+				mip_height /= 2;
+				if (mip_width < 1) mip_width = 1;
+				if (mip_height < 1) mip_height = 1;
+
 				glBindFramebuffer(GL_FRAMEBUFFER, _mipChainFBO[i]);
-				glViewport(0, 0, width_ >> (i + 1), height_ >> (i + 1));
+				glViewport(0, 0, mip_width, mip_height);
 				glBindTexture(GL_TEXTURE_2D, current_texture);
-				_downsampleShader->setInt("mipLevel", i);
 				glDrawArrays(GL_TRIANGLES, 0, 6);
 				current_texture = _mipChainTexture[i];
 			}
@@ -100,8 +112,6 @@ namespace Boidsish {
 			_lumPingPongIndex = write_index;
 
 			// --- Tone mapping ---
-			GLint originalFBO;
-			glGetIntegerv(GL_FRAMEBUFFER_BINDING, &originalFBO);
 			glBindFramebuffer(GL_FRAMEBUFFER, originalFBO);
 			glViewport(0, 0, width_, height_);
 
@@ -125,6 +135,8 @@ namespace Boidsish {
 			height_ = height;
 			glDeleteFramebuffers(_mipChainFBO.size(), _mipChainFBO.data());
 			glDeleteTextures(_mipChainTexture.size(), _mipChainTexture.data());
+			glDeleteFramebuffers(2, _lumPingPongFBO);
+			glDeleteTextures(2, _lumPingPongTexture);
 			_mipChainFBO.clear();
 			_mipChainTexture.clear();
 			Initialize(width, height);
