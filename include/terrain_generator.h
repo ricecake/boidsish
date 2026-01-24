@@ -102,6 +102,7 @@ namespace Boidsish {
 			int   biome_indices[2];
 			float blend;
 		};
+
 		BiomeInfo getBiomeInfo(float control_value) const;
 		glm::vec2 findClosestPointOnPath(glm::vec2 sample_pos) const;
 		glm::vec3 getPathInfluence(float x, float z) const;

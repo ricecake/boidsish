@@ -52,11 +52,13 @@
 
 namespace glm {
 	bool operator<(const glm::vec2& a, const glm::vec2& b) {
-		if (a.x < b.x) return true;
-		if (a.x > b.x) return false;
+		if (a.x < b.x)
+			return true;
+		if (a.x > b.x)
+			return false;
 		return a.y < b.y;
 	}
-}
+} // namespace glm
 
 namespace Boidsish {
 	constexpr float kMinCameraHeight = 0.1f;
@@ -116,6 +118,7 @@ namespace Boidsish {
 			GLuint height_texture_id;
 			GLuint biome_texture_id;
 		};
+
 		std::map<glm::vec2, MegaTexture> megatexture_cache_;
 
 		double last_mouse_x = 0.0, last_mouse_y = 0.0;
@@ -1341,7 +1344,8 @@ namespace Boidsish {
 			int       current_z = floor(camera.z / texture_size + 0.5f) * texture_size;
 
 			for (auto it = megatexture_cache_.begin(); it != megatexture_cache_.end();) {
-				if (abs(it->first.x - current_x) > texture_size * 2 || abs(it->first.y - current_z) > texture_size * 2) {
+				if (abs(it->first.x - current_x) > texture_size * 2 ||
+				    abs(it->first.y - current_z) > texture_size * 2) {
 					glDeleteTextures(1, &it->second.height_texture_id);
 					glDeleteTextures(1, &it->second.biome_texture_id);
 					it = megatexture_cache_.erase(it);
@@ -1450,15 +1454,13 @@ namespace Boidsish {
 					glm::vec2 pos(snapped_x + x * texture_size, snapped_z + z * texture_size);
 					if (impl->megatexture_cache_.find(pos) == impl->megatexture_cache_.end() &&
 					    impl->pending_megatextures_.find(pos) == impl->pending_megatextures_.end()) {
-						impl->pending_megatextures_[pos] = impl->thread_pool.submit(
-							[this, pos, texture_size]() {
-								return MegaTextureResult{
-									impl->terrain_generator->GenerateTextureForArea(pos.x, pos.y, texture_size),
-									impl->terrain_generator->GenerateBiomeDataTexture(pos.x, pos.y, texture_size),
-									pos
-								};
-							}
-						);
+						impl->pending_megatextures_[pos] = impl->thread_pool.submit([this, pos, texture_size]() {
+							return MegaTextureResult{
+								impl->terrain_generator->GenerateTextureForArea(pos.x, pos.y, texture_size),
+								impl->terrain_generator->GenerateBiomeDataTexture(pos.x, pos.y, texture_size),
+								pos
+							};
+						});
 					}
 				}
 			}

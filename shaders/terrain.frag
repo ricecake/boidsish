@@ -5,7 +5,7 @@ in vec3 Normal;
 in vec3 FragPos;
 in vec2 TexCoords;
 
-const int kNumMegaTextures = 9;
+const int         kNumMegaTextures = 9;
 uniform sampler2D uMegaTextures[kNumMegaTextures];
 uniform sampler2D uBiomeTextures[kNumMegaTextures];
 uniform vec2      uMegaTextureOffsets[kNumMegaTextures];
@@ -186,39 +186,63 @@ void main() {
 	}
 
 	vec3 biome_colors[8] = vec3[](
-		vec3(0.5, 0.3, 0.6),  // Swamp
-		vec3(0.7, 0.6, 0.4), // Desert
-		vec3(0.2, 0.5, 0.3), // Plains
-		vec3(0.3, 0.4, 0.2), // Forest
-		vec3(0.1, 0.4, 0.5), // Ocean
-		vec3(0.8, 0.8, 0.8), // Mountains
-		vec3(0.9, 0.2, 0.1), // Volcanic
-		vec3(0.8, 0.8, 0.8) // Arctic
+		// vec3(0.5, 0.3, 0.6),  // Swamp
+	    // vec3(0.7, 0.6, 0.4), // Desert
+	    // vec3(0.2, 0.5, 0.3), // Plains
+	    // vec3(0.3, 0.4, 0.2), // Forest
+	    // vec3(0.1, 0.4, 0.5), // Ocean
+	    // vec3(0.8, 0.8, 0.8), // Mountains
+	    // vec3(0.9, 0.2, 0.1), // Volcanic
+	    // vec3(0.8, 0.8, 0.8) // Arctic
+
+		vec3(0.0, 0.0, 0.0), // Swamp
+		vec3(0.0, 0.0, 1.0), // Desert
+		vec3(0.0, 1.0, 0.0), // Plains
+		vec3(0.0, 1.0, 1.0), // Forest
+		vec3(1.0, 0.0, 0.0), // Ocean
+		vec3(1.0, 0.0, 1.0), // Mountains
+		vec3(1.0, 1.0, 0.0), // Volcanic
+		vec3(1.0, 1.0, 1.0)  // Arctic
+
 	);
 
-	int biome1_idx = int(biome_sample.r * 255.0);
-	int biome2_idx = int(biome_sample.g * 255.0);
-	float blend_factor = biome_sample.b * fbm(FragPos.xyz*3);
+	int   biome1_idx = int(biome_sample.r * 255.0);
+	int   biome2_idx = int(biome_sample.g * 255.0);
+	int   biome3_idx = biome2_idx + 1;
+	float blend_factor = biome_sample.b;
 
 	vec3 color1 = biome_colors[biome1_idx];
 	vec3 color2 = biome_colors[biome2_idx];
-	vec3 objectColor = mix(color1, color2, blend_factor);
+	vec3 color3 = biome_colors[biome3_idx];
+	vec3 objectColorA = mix(color1, color2, blend_factor);
+	vec3 objectColorB = mix(color2, color3, 1 - blend_factor);
+
+	vec3 objectColor = mix(objectColorB, objectColorA, step(0, fwidth(blend_factor)));
+
+	// objectColor = mix(mix(color1, color2, 1-blend_factor), mix(color1, color2, blend_factor), step(0, biome1_idx %
+	// 2));
 
 	vec3 norm = normalize(Normal);
 
-	vec3 bonusColor = mix(vec3(0.1, 0.4, 0.2), vec3(0.5), FragPos.y / 250);
-	objectColor = mix(objectColor, bonusColor, 0.5);
-	// objectColor = mix(vec3(0.2), objectColor, 5*dot(norm, vec3(0,1,0)));
-	objectColor = mix(objectColor, vec3(1,0.5,0.25), fwidth(norm));
-	// objectColor = mix(objectColor, vec3(1,0.5,0.25), fwidth(norm)); // need something that can be a biome specific "flower"
+	vec3 bonusColor = mix(vec3(0.1, 0.4, 0.2), vec3(0.5), FragPos.y / 50);
+	objectColor = mix(objectColor, bonusColor, fbm(FragPos.xyz / 50));
+	// objectColor = mix(vec3(0.2), objectColor, 1-abs(dot(Normal, vec3(0,1,0))));
+	// objectColor = mix(objectColor, vec3(1,0.5,0.25), fwidth(norm));
+	// objectColor = mix(objectColor, vec3(1,0.5,0.25), fwidth(norm)); // need something that can be a biome specific
+	// "flower"
+	objectColor = mix(objectColor, vec3(1, 0.5, 0.25), fwidth(FragPos.y));
+	objectColor = mix(vec3(0.25), objectColor, fwidth(FragPos.y));
 
 	vec3 lighting = apply_lighting(FragPos, norm, objectColor, 0.2, 0.8);
 
 	// --- Distance Fade ---
+	vec3  warp = vec3(fbm(FragPos / 50 + time * 0.08));
+	float nebula_noise = fbm(FragPos / 50 + warp * 0.8);
+
 	float dist = length(FragPos.xz - viewPos.xz);
 	float fade_start = 560.0;
 	float fade_end = 570.0;
-	float fade = 1.0 - smoothstep(fade_start, fade_end, dist + 1 * 40);
+	float fade = 1.0 - smoothstep(fade_start, fade_end, dist + nebula_noise * 40);
 
 	vec4 outColor = vec4(lighting, mix(0, fade, step(0.01, FragPos.y)));
 	FragColor = mix(
