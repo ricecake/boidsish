@@ -50,6 +50,14 @@
 #include <glm/gtc/matrix_transform.hpp>
 #include <shader.h>
 
+namespace glm {
+	bool operator<(const glm::vec2& a, const glm::vec2& b) {
+		if (a.x < b.x) return true;
+		if (a.x > b.x) return false;
+		return a.y < b.y;
+	}
+}
+
 namespace Boidsish {
 	constexpr float kMinCameraHeight = 0.1f;
 	constexpr float kMinCameraSpeed = 0.5f;
@@ -82,6 +90,14 @@ namespace Boidsish {
 
 		std::unique_ptr<TerrainGenerator> terrain_generator;
 
+		MegaTextureResult GenerateMegaTexture(int x, int z, int size) {
+			return {
+				terrain_generator->GenerateTextureForArea(x, z, size),
+				terrain_generator->GenerateBiomeDataTexture(x, z, size),
+				glm::vec2(x, z)
+			};
+		}
+
 		std::shared_ptr<Shader> shader;
 		std::unique_ptr<Shader> plane_shader;
 		std::unique_ptr<Shader> sky_shader;
@@ -94,9 +110,13 @@ namespace Boidsish {
 		GLuint                  main_fbo_{0}, main_fbo_texture_{0}, main_fbo_depth_texture_{0}, main_fbo_rbo_{0};
 		GLuint                  lighting_ubo{0};
 		GLuint                  visual_effects_ubo{0};
-		GLuint                  megatexture_id_ = 0;
-		GLuint                  biome_texture_id_ = 0;
 		glm::mat4               projection, reflection_vp;
+
+		struct MegaTexture {
+			GLuint height_texture_id;
+			GLuint biome_texture_id;
+		};
+		std::map<glm::vec2, MegaTexture> megatexture_cache_;
 
 		double last_mouse_x = 0.0, last_mouse_y = 0.0;
 		bool   first_mouse = true;
@@ -139,14 +159,7 @@ namespace Boidsish {
 		float     tess_quality_multiplier_{1.0f};
 
 		// Megatexture update tracking
-		struct MegaTextureResult {
-			std::vector<uint16_t> height_data;
-			std::vector<uint8_t>  biome_data;
-			glm::vec2             position;
-		};
-
-		glm::vec2                                    current_megatexture_pos_{-1, -1};
-		std::optional<std::future<MegaTextureResult>> pending_megatexture_ = std::nullopt;
+		std::map<glm::vec2, std::future<MegaTextureResult>> pending_megatextures_;
 
 		// Cached global settings
 		float camera_roll_speed_;
@@ -282,42 +295,6 @@ namespace Boidsish {
 					// , "shaders/terrain.geom"
 				);
 				SetupShaderBindings(*Terrain::terrain_shader_);
-
-				glGenTextures(1, &megatexture_id_);
-				glBindTexture(GL_TEXTURE_2D, megatexture_id_);
-				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER);
-				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_BORDER);
-				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
-				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-				glTexImage2D(
-					GL_TEXTURE_2D,
-					0,
-					GL_R16F,
-					1024,
-					1024,
-					0,
-					GL_RED,
-					GL_HALF_FLOAT,
-					NULL
-				);
-
-				glGenTextures(1, &biome_texture_id_);
-				glBindTexture(GL_TEXTURE_2D, biome_texture_id_);
-				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER);
-				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_BORDER);
-				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-				glTexImage2D(
-					GL_TEXTURE_2D,
-					0,
-					GL_RGBA,
-					1024,
-					1024,
-					0,
-					GL_RGBA,
-					GL_UNSIGNED_BYTE,
-					NULL
-				);
 			}
 
 			Shape::InitSphereMesh();
@@ -755,8 +732,8 @@ namespace Boidsish {
 			}
 
 			const int texture_size = 1024;
-			int       snapped_x = floor(camera.x / texture_size) * texture_size;
-			int       snapped_z = floor(camera.z / texture_size) * texture_size;
+			int       snapped_x = floor(camera.x / texture_size + 0.5f) * texture_size;
+			int       snapped_z = floor(camera.z / texture_size + 0.5f) * texture_size;
 			glm::vec2 snapped_pos(snapped_x, snapped_z);
 
 			Terrain::terrain_shader_->use();
@@ -765,19 +742,35 @@ namespace Boidsish {
 			Terrain::terrain_shader_->setFloat("uTessQualityMultiplier", tess_quality_multiplier_);
 			Terrain::terrain_shader_->setFloat("uTessLevelMax", 64.0f);
 			Terrain::terrain_shader_->setFloat("uTessLevelMin", 1.0f);
-			Terrain::terrain_shader_->setInt("uMegaTexture", 0);
-			Terrain::terrain_shader_->setInt("uBiomeTexture", 1);
-			Terrain::terrain_shader_->setFloat("uMegaTextureSize", texture_size);
-			Terrain::terrain_shader_->setVec2(
-				"uMegaTextureOffset",
-				floor(camera.x / texture_size) * texture_size,
-				floor(camera.z / texture_size) * texture_size
-			);
 
-			glActiveTexture(GL_TEXTURE0);
-			glBindTexture(GL_TEXTURE_2D, megatexture_id_);
-			glActiveTexture(GL_TEXTURE1);
-			glBindTexture(GL_TEXTURE_2D, biome_texture_id_);
+			std::vector<glm::vec2> offsets;
+			std::vector<int>       texture_indices;
+			int                    texture_unit = 0;
+			for (int x = -1; x <= 1; ++x) {
+				for (int z = -1; z <= 1; ++z) {
+					glm::vec2 pos(snapped_x + x * texture_size, snapped_z + z * texture_size);
+					if (megatexture_cache_.count(pos)) {
+						const auto& tex = megatexture_cache_.at(pos);
+						glActiveTexture(GL_TEXTURE0 + texture_unit);
+						glBindTexture(GL_TEXTURE_2D, tex.height_texture_id);
+						texture_indices.push_back(texture_unit);
+
+						glActiveTexture(GL_TEXTURE0 + 9 + texture_unit);
+						glBindTexture(GL_TEXTURE_2D, tex.biome_texture_id);
+						texture_indices.push_back(9 + texture_unit);
+
+						offsets.push_back(pos);
+						texture_unit++;
+					}
+				}
+			}
+
+			Terrain::terrain_shader_->setFloat("uMegaTextureSize", texture_size);
+			for (size_t i = 0; i < offsets.size(); ++i) {
+				Terrain::terrain_shader_->setVec2("uMegaTextureOffsets[" + std::to_string(i) + "]", offsets[i]);
+				Terrain::terrain_shader_->setInt("uMegaTextures[" + std::to_string(i) + "]", i);
+				Terrain::terrain_shader_->setInt("uBiomeTextures[" + std::to_string(i) + "]", i + 9);
+			}
 
 			if (clip_plane) {
 				Terrain::terrain_shader_->setVec4("clipPlane", *clip_plane);
@@ -1341,6 +1334,22 @@ namespace Boidsish {
 				impl->shockwave_manager->Resize(width, height);
 			}
 		}
+
+		void CleanupMegaTextures(const Camera& camera) {
+			const int texture_size = 1024;
+			int       current_x = floor(camera.x / texture_size + 0.5f) * texture_size;
+			int       current_z = floor(camera.z / texture_size + 0.5f) * texture_size;
+
+			for (auto it = megatexture_cache_.begin(); it != megatexture_cache_.end();) {
+				if (abs(it->first.x - current_x) > texture_size * 2 || abs(it->first.y - current_z) > texture_size * 2) {
+					glDeleteTextures(1, &it->second.height_texture_id);
+					glDeleteTextures(1, &it->second.biome_texture_id);
+					it = megatexture_cache_.erase(it);
+				} else {
+					++it;
+				}
+			}
+		}
 	};
 
 	Visualizer::Visualizer(int w, int h, const char* t): impl(new VisualizerImpl(this, w, h, t)) {}
@@ -1432,64 +1441,78 @@ namespace Boidsish {
 
 		if (impl->terrain_generator) {
 			const int texture_size = 1024;
-			const int prefetch_distance = 256;
 
-			glm::vec3 camera_fwd = impl->camera.front();
-			glm::vec2 camera_pos(impl->camera.x, impl->camera.z);
-			glm::vec2 look_ahead_pos = camera_pos + glm::vec2(camera_fwd.x, camera_fwd.z) * (float)prefetch_distance;
+			int snapped_x = floor(impl->camera.x / texture_size + 0.5f) * texture_size;
+			int snapped_z = floor(impl->camera.z / texture_size + 0.5f) * texture_size;
 
-			int snapped_x = floor(look_ahead_pos.x / texture_size) * texture_size;
-			int snapped_z = floor(look_ahead_pos.y / texture_size) * texture_size;
-
-			if (glm::vec2(snapped_x, snapped_z) != impl->current_megatexture_pos_) {
-				if (!impl->pending_megatexture_.has_value()) {
-					impl->pending_megatexture_ = impl->thread_pool.submit(
-						[this, snapped_x, snapped_z, texture_size]() {
-							return VisualizerImpl::MegaTextureResult{
-								impl->terrain_generator->GenerateTextureForArea(snapped_x, snapped_z, texture_size),
-								impl->terrain_generator->GenerateBiomeDataTexture(snapped_x, snapped_z, texture_size),
-								glm::vec2(snapped_x, snapped_z)
-							};
-						}
-					);
+			for (int x = -1; x <= 1; ++x) {
+				for (int z = -1; z <= 1; ++z) {
+					glm::vec2 pos(snapped_x + x * texture_size, snapped_z + z * texture_size);
+					if (impl->megatexture_cache_.find(pos) == impl->megatexture_cache_.end() &&
+					    impl->pending_megatextures_.find(pos) == impl->pending_megatextures_.end()) {
+						impl->pending_megatextures_[pos] = impl->thread_pool.submit(
+							[this, pos, texture_size]() {
+								return MegaTextureResult{
+									impl->terrain_generator->GenerateTextureForArea(pos.x, pos.y, texture_size),
+									impl->terrain_generator->GenerateBiomeDataTexture(pos.x, pos.y, texture_size),
+									pos
+								};
+							}
+						);
+					}
 				}
 			}
 
-			if (impl->pending_megatexture_.has_value()) {
-				if (impl->pending_megatexture_->wait_for(std::chrono::seconds(0)) == std::future_status::ready) {
-					VisualizerImpl::MegaTextureResult result = impl->pending_megatexture_->get();
-					impl->current_megatexture_pos_ = result.position;
+			for (auto it = impl->pending_megatextures_.begin(); it != impl->pending_megatextures_.end();) {
+				if (it->second.wait_for(std::chrono::seconds(0)) == std::future_status::ready) {
+					MegaTextureResult result = it->second.get();
 
-					glBindTexture(GL_TEXTURE_2D, impl->megatexture_id_);
-					glTexSubImage2D(
+					GLuint height_texture_id, biome_texture_id;
+					glGenTextures(1, &height_texture_id);
+					glBindTexture(GL_TEXTURE_2D, height_texture_id);
+					glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER);
+					glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_BORDER);
+					glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+					glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+					glTexImage2D(
 						GL_TEXTURE_2D,
 						0,
-						0,
-						0,
+						GL_R16F,
 						texture_size,
 						texture_size,
+						0,
 						GL_RED,
 						GL_UNSIGNED_SHORT,
 						result.height_data.data()
 					);
 					glGenerateMipmap(GL_TEXTURE_2D);
 
-					glBindTexture(GL_TEXTURE_2D, impl->biome_texture_id_);
-					glTexSubImage2D(
+					glGenTextures(1, &biome_texture_id);
+					glBindTexture(GL_TEXTURE_2D, biome_texture_id);
+					glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER);
+					glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_BORDER);
+					glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+					glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+					glTexImage2D(
 						GL_TEXTURE_2D,
 						0,
-						0,
-						0,
+						GL_RGBA,
 						texture_size,
 						texture_size,
+						0,
 						GL_RGBA,
 						GL_UNSIGNED_BYTE,
 						result.biome_data.data()
 					);
 
-					impl->pending_megatexture_ = std::nullopt;
+					impl->megatexture_cache_[result.position] = {height_texture_id, biome_texture_id};
+					it = impl->pending_megatextures_.erase(it);
+				} else {
+					++it;
 				}
 			}
+
+			impl->CleanupMegaTextures(impl->camera);
 		}
 	}
 

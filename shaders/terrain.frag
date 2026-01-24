@@ -5,9 +5,11 @@ in vec3 Normal;
 in vec3 FragPos;
 in vec2 TexCoords;
 
-uniform sampler2D uBiomeTexture;
+const int kNumMegaTextures = 9;
+uniform sampler2D uMegaTextures[kNumMegaTextures];
+uniform sampler2D uBiomeTextures[kNumMegaTextures];
+uniform vec2      uMegaTextureOffsets[kNumMegaTextures];
 uniform float     uMegaTextureSize;
-uniform vec2      uMegaTextureOffset;
 
 #include "helpers/lighting.glsl"
 
@@ -172,8 +174,14 @@ void main() {
 	// discard;
 	// FragColor = vec4(1,1,1, 1);
 
-	vec2 mega_uv = (FragPos.xz - uMegaTextureOffset) / uMegaTextureSize;
-	vec4 biome_sample = texture(uBiomeTexture, mega_uv);
+	vec4 biome_sample = vec4(0.0);
+	for (int i = 0; i < kNumMegaTextures; ++i) {
+		vec2 mega_uv = (FragPos.xz - uMegaTextureOffsets[i]) / uMegaTextureSize;
+		if (mega_uv.x >= 0.0 && mega_uv.x <= 1.0 && mega_uv.y >= 0.0 && mega_uv.y <= 1.0) {
+			biome_sample = texture(uBiomeTextures[i], mega_uv);
+			break;
+		}
+	}
 
 	vec3 biome_colors[8] = vec3[](
 		vec3(0.3, 0.4, 0.2), // Forest

@@ -118,6 +118,12 @@ namespace Boidsish {
 	class Terrain;
 	class TerrainGenerator;
 
+	struct MegaTextureResult {
+		std::vector<uint16_t> height_data;
+		std::vector<uint8_t>  biome_data;
+		glm::vec2             position;
+	};
+
 	// Main visualization class
 	class Visualizer {
 	public:
