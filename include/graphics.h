@@ -4,6 +4,7 @@
 #include <functional>
 #include <map>
 #include <memory>
+#include <optional>
 #include <tuple>
 #include <vector>
 
@@ -68,6 +69,9 @@ namespace Boidsish {
 		bool   key_up[kMaxKeys];
 		double mouse_x, mouse_y;
 		double mouse_delta_x, mouse_delta_y;
+		bool   mouse_buttons[8];
+		bool   mouse_button_down[8];
+		bool   mouse_button_up[8];
 		float  delta_time;
 	};
 
@@ -150,11 +154,17 @@ namespace Boidsish {
 		Camera&       GetCamera();
 		const Camera& GetCamera() const;
 
+		glm::mat4   GetProjectionMatrix() const;
+		glm::mat4   GetViewMatrix() const;
+		GLFWwindow* GetWindow() const;
+
 		// Set camera position and orientation
 		void SetCamera(const Camera& camera);
 
 		// Add an input callback to the chain of handlers.
 		void AddInputCallback(InputCallback callback);
+
+		std::optional<glm::vec3> ScreenToWorld(double screen_x, double screen_y) const;
 
 		void SetChaseCamera(std::shared_ptr<EntityBase> target);
 		void SetPathCamera(std::shared_ptr<Path> path);

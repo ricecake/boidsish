@@ -47,6 +47,7 @@
 #include "visual_effects.h"
 #include <GL/glew.h>
 #include <GLFW/glfw3.h>
+#include <glm/ext/matrix_projection.hpp>
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <shader.h>
@@ -189,6 +190,7 @@ namespace Boidsish {
 			glfwSetWindowUserPointer(window, this);
 			glfwSetKeyCallback(window, KeyCallback);
 			glfwSetCursorPosCallback(window, MouseCallback);
+			glfwSetMouseButtonCallback(window, MouseButtonCallback);
 			glfwSetFramebufferSizeCallback(window, FramebufferSizeCallback);
 			glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
 
@@ -491,7 +493,7 @@ namespace Boidsish {
 			auto config_widget = std::make_shared<UI::ConfigWidget>(*parent);
 			ui_manager->AddWidget(config_widget);
 
-			auto effects_widget = std::make_shared<UI::EffectsWidget>();
+			auto effects_widget = std::make_shared<UI::EffectsWidget>(parent);
 			ui_manager->AddWidget(effects_widget);
 
 			auto lights_widget = std::make_shared<UI::LightsWidget>(light_manager);
@@ -1228,6 +1230,19 @@ namespace Boidsish {
 			impl->input_state.mouse_y = ypos;
 		}
 
+		static void MouseButtonCallback(GLFWwindow* w, int button, int action, int mods) {
+			auto* impl = static_cast<VisualizerImpl*>(glfwGetWindowUserPointer(w));
+			if (button >= 0 && button < 8) {
+				if (action == GLFW_PRESS) {
+					impl->input_state.mouse_buttons[button] = true;
+					impl->input_state.mouse_button_down[button] = true;
+				} else if (action == GLFW_RELEASE) {
+					impl->input_state.mouse_buttons[button] = false;
+					impl->input_state.mouse_button_up[button] = true;
+				}
+			}
+		}
+
 		static void FramebufferSizeCallback(GLFWwindow* w, int width, int height) {
 			auto* impl = static_cast<VisualizerImpl*>(glfwGetWindowUserPointer(w));
 			impl->width = width;
@@ -1309,6 +1324,8 @@ namespace Boidsish {
 		// Reset per-frame input state
 		std::fill_n(impl->input_state.key_down, kMaxKeys, false);
 		std::fill_n(impl->input_state.key_up, kMaxKeys, false);
+		std::fill_n(impl->input_state.mouse_button_down, 8, false);
+		std::fill_n(impl->input_state.mouse_button_up, 8, false);
 		impl->input_state.mouse_delta_x = 0;
 		impl->input_state.mouse_delta_y = 0;
 
@@ -1692,12 +1709,49 @@ namespace Boidsish {
 		return impl->camera;
 	}
 
+	glm::mat4 Visualizer::GetProjectionMatrix() const {
+		return impl->projection;
+	}
+
+	glm::mat4 Visualizer::GetViewMatrix() const {
+		return impl->SetupMatrices(impl->camera);
+	}
+
+	GLFWwindow* Visualizer::GetWindow() const {
+		return impl->window;
+	}
+
 	void Visualizer::SetCamera(const Camera& camera) {
 		impl->camera = camera;
 	}
 
 	void Visualizer::AddInputCallback(InputCallback callback) {
 		impl->input_callbacks.push_back(callback);
+	}
+
+	std::optional<glm::vec3> Visualizer::ScreenToWorld(double screen_x, double screen_y) const {
+		glm::vec3 screen_pos(screen_x, impl->height - screen_y, 0.0f);
+
+		glm::vec4 viewport(0.0f, 0.0f, impl->width, impl->height);
+
+		glm::mat4 view = impl->SetupMatrices(impl->camera);
+
+		glm::vec3 world_pos = glm::unProject(screen_pos, view, impl->projection, viewport);
+
+		const auto& cam = impl->camera;
+		glm::vec3   ray_origin = cam.pos();
+
+		screen_pos.z = 1.0f;
+		glm::vec3 far_plane_pos = glm::unProject(screen_pos, view, impl->projection, viewport);
+
+		glm::vec3 ray_dir = glm::normalize(far_plane_pos - ray_origin);
+
+		float distance;
+		if (impl->terrain_generator->Raycast(ray_origin, ray_dir, 1000.0f, distance)) {
+			return ray_origin + ray_dir * distance;
+		}
+
+		return std::nullopt;
 	}
 
 	void Visualizer::SetChaseCamera(std::shared_ptr<EntityBase> target) {

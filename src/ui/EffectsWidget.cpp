@@ -1,12 +1,13 @@
 #include "ui/EffectsWidget.h"
 
 #include "ConfigManager.h"
+#include "graphics.h"
 #include "imgui.h"
 
 namespace Boidsish {
 	namespace UI {
 
-		EffectsWidget::EffectsWidget() {}
+		EffectsWidget::EffectsWidget(Visualizer* visualizer): m_visualizer(visualizer) {}
 
 		void EffectsWidget::Draw() {
 			if (!m_show) {
@@ -14,6 +15,30 @@ namespace Boidsish {
 			}
 
 			ImGui::Begin("Artistic Effects", &m_show);
+
+			if (ImGui::Button("Get World Coordinates")) {
+				m_is_picking_enabled = true;
+			}
+
+			if (m_is_picking_enabled) {
+				ImGui::Text("Click anywhere on the terrain to get the world coordinates.");
+				if (ImGui::IsMouseClicked(0) && !ImGui::IsWindowHovered(ImGuiHoveredFlags_AnyWindow)) {
+					ImGuiIO& io = ImGui::GetIO();
+					m_last_picked_pos = m_visualizer->ScreenToWorld(io.MousePos.x, io.MousePos.y);
+					m_is_picking_enabled = false;
+				}
+			}
+
+			if (m_last_picked_pos) {
+				ImGui::Text(
+					"Last Picked Position: X: %.2f, Y: %.2f, Z: %.2f",
+					m_last_picked_pos->x,
+					m_last_picked_pos->y,
+					m_last_picked_pos->z
+				);
+			}
+
+			ImGui::Separator();
 
 			auto& config = ConfigManager::GetInstance();
 
