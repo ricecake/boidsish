@@ -292,11 +292,11 @@ namespace Boidsish {
 				glTexImage2D(
 					GL_TEXTURE_2D,
 					0,
-					GL_RGBA16F,
+					GL_R16F,
 					1024,
 					1024,
 					0,
-					GL_RGBA,
+					GL_RED,
 					GL_HALF_FLOAT,
 					NULL
 				);
@@ -1468,7 +1468,7 @@ namespace Boidsish {
 						0,
 						texture_size,
 						texture_size,
-						GL_RGBA,
+						GL_RED,
 						GL_UNSIGNED_SHORT,
 						result.height_data.data()
 					);
@@ -1545,6 +1545,10 @@ namespace Boidsish {
 		impl->audio_manager->Update();
 
 		glm::mat4 view_matrix = impl->SetupMatrices();
+		if (impl->terrain_generator) {
+			Frustum frustum = impl->CalculateFrustum(view_matrix, impl->projection);
+			impl->terrain_generator->update(frustum, impl->camera);
+		}
 
 		// Update clone manager
 		impl->clone_manager->Update(impl->simulation_time, impl->camera.pos());
