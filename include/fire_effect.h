@@ -14,8 +14,9 @@ namespace Boidsish {
 			const glm::vec3& direction = glm::vec3(0.0f),
 			const glm::vec3& velocity = glm::vec3(0.0f),
 			int              max_particles = -1,
-			float            lifetime = -1.0f
-		);
+			float            lifetime = -1.0f,
+			float            cone_angle = 90.0f,
+			bool             use_geometry_shader = false);
 
 		void SetPosition(const glm::vec3& pos) { position_ = pos; }
 
@@ -26,6 +27,10 @@ namespace Boidsish {
 		void SetVelocity(const glm::vec3& vel) { velocity_ = vel; }
 
 		void SetActive(bool active) { active_ = active; }
+
+		void SetConeAngle(float angle) { cone_angle_ = angle; }
+
+		void SetUseGeometryShader(bool use) { use_geometry_shader_ = use; }
 
 		const glm::vec3& GetPosition() const { return position_; }
 
@@ -49,6 +54,10 @@ namespace Boidsish {
 
 		void SetLived(float lived) { lived_ = lived; }
 
+		float GetConeAngle() const { return cone_angle_; }
+
+		bool GetUseGeometryShader() const { return use_geometry_shader_; }
+
 	private:
 		inline static int count = 1;
 		glm::vec3         position_;
@@ -60,6 +69,8 @@ namespace Boidsish {
 		bool              active_{true};
 		float             lifetime_ = -1.0f;
 		float             lived_ = 0.0f;
+		float             cone_angle_;
+		bool              use_geometry_shader_;
 	};
 
 } // namespace Boidsish

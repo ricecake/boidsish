@@ -45,6 +45,8 @@ namespace Boidsish {
 		// Create shaders
 		compute_shader_ = std::make_unique<ComputeShader>("shaders/fire.comp");
 		render_shader_ = std::make_unique<Shader>("shaders/fire.vert", "shaders/fire.frag");
+		render_shader_geom_ =
+			std::make_unique<Shader>("shaders/fire.vert", "shaders/fire.geom", "shaders/fire_geom.frag");
 
 		// Create buffers
 		glGenBuffers(1, &particle_buffer_);
@@ -75,15 +77,25 @@ namespace Boidsish {
 		const glm::vec3& direction,
 		const glm::vec3& velocity,
 		int              max_particles,
-		float            lifetime
+		float            lifetime,
+		float            cone_angle,
+		bool             use_geometry_shader
 	) {
 		_EnsureShaderAndBuffers();
 
 		// Find an inactive slot to reuse
 		for (size_t i = 0; i < effects_.size(); ++i) {
 			if (!effects_[i]) {
-				effects_[i] =
-					std::make_shared<FireEffect>(position, style, direction, velocity, max_particles, lifetime);
+				effects_[i] = std::make_shared<FireEffect>(
+					position,
+					style,
+					direction,
+					velocity,
+					max_particles,
+					lifetime,
+					cone_angle,
+					use_geometry_shader
+				);
 				_UpdateParticleAllocation();
 				return effects_[i];
 			}
@@ -91,7 +103,16 @@ namespace Boidsish {
 
 		// If no inactive slots, add a new one if under capacity
 		if (effects_.size() < kMaxEmitters) {
-			auto effect = std::make_shared<FireEffect>(position, style, direction, velocity, max_particles, lifetime);
+			auto effect = std::make_shared<FireEffect>(
+				position,
+				style,
+				direction,
+				velocity,
+				max_particles,
+				lifetime,
+				cone_angle,
+				use_geometry_shader
+			);
 			effects_.push_back(effect);
 			_UpdateParticleAllocation();
 			return effect;
@@ -145,13 +166,17 @@ namespace Boidsish {
 		emitters.reserve(effects_.size());
 		for (const auto& effect : effects_) {
 			if (effect) {
+				int style = (int)effect->GetStyle();
+				if (effect->GetUseGeometryShader()) {
+					style |= 0x80000000; // Pack the flag into the high bit
+				}
 				emitters.push_back(
 					{effect->GetPosition(),
-				     (int)effect->GetStyle(),
+				     style,
 				     effect->GetDirection(),
 				     1, // is_active
 				     effect->GetVelocity(),
-				     0.0f}
+				     effect->GetConeAngle()}
 				);
 			} else {
 				// Add a placeholder for inactive emitters to maintain indexing
@@ -322,22 +347,28 @@ namespace Boidsish {
 		glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA); // Additive blending for fire
 		glDepthMask(GL_FALSE);                       // Disable depth writing
 
+		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, particle_buffer_);
+		glBindVertexArray(dummy_vao_);
+
+		// --- Pass 1: Render standard particles ---
 		render_shader_->use();
 		render_shader_->setMat4("u_view", view);
 		render_shader_->setMat4("u_projection", projection);
 		render_shader_->setVec3("u_camera_pos", camera_pos);
-
-		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, particle_buffer_);
-
-		// We don't have a VAO for the particles since we generate them in the shader.
-		// We can just draw the number of particles we have.
-		// A dummy VAO is required by OpenGL 4.2 core profile.
-		glBindVertexArray(dummy_vao_);
+		render_shader_->setBool("u_render_geom", false); // Tell the vertex shader to render non-geom particles
 		glDrawArrays(GL_POINTS, 0, kMaxParticles);
+
+		// --- Pass 2: Render geometry-enhanced particles ---
+		render_shader_geom_->use();
+		render_shader_geom_->setMat4("u_view", view);
+		render_shader_geom_->setMat4("u_projection", projection);
+		render_shader_geom_->setVec3("u_camera_pos", camera_pos);
+		render_shader_geom_->setBool("u_render_geom", true); // Tell the vertex shader to render geom particles
+		glDrawArrays(GL_POINTS, 0, kMaxParticles);
+
+		// --- Cleanup ---
 		glBindVertexArray(0);
-
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, 0);
-
 		glDepthMask(GL_TRUE);                              // Re-enable depth writing
 		glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA); // Reset blend mode
 	}

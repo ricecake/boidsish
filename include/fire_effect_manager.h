@@ -16,7 +16,7 @@ namespace Boidsish {
 		glm::vec3 direction;
 		int       is_active;
 		glm::vec3 velocity;
-		float     _padding2;
+		float     cone_angle;
 	};
 
 	class FireEffectManager {
@@ -34,8 +34,9 @@ namespace Boidsish {
 			const glm::vec3& direction = glm::vec3(0.0f),
 			const glm::vec3& velocity = glm::vec3(0.0f),
 			int              max_particles = -1,
-			float            lifetime = -1.0f
-		);
+			float            lifetime = -1.0f,
+			float            cone_angle = 90.0f,
+			bool             use_geometry_shader = false);
 		void RemoveEffect(const std::shared_ptr<FireEffect>& effect);
 
 	private:
@@ -47,6 +48,7 @@ namespace Boidsish {
 
 		std::unique_ptr<ComputeShader> compute_shader_;
 		std::unique_ptr<Shader>        render_shader_;
+		std::unique_ptr<Shader>        render_shader_geom_;
 
 		GLuint particle_buffer_{0};
 		GLuint emitter_buffer_{0};

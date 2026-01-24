@@ -13,9 +13,10 @@ layout(std430, binding = 0) buffer ParticleBuffer {
 	Particle particles[];
 };
 
-uniform mat4 u_view;
-uniform mat4 u_projection;
-uniform vec3 u_camera_pos;
+uniform mat4  u_view;
+uniform mat4  u_projection;
+uniform vec3  u_camera_pos;
+uniform bool  u_render_geom; // True to render particles for the geometry shader pass
 
 out float    v_lifetime;
 out vec4     view_pos;
@@ -24,16 +25,21 @@ flat out int v_style;
 void main() {
 	Particle p = particles[gl_VertexID];
 
-	if (p.pos.w <= 0.0) {
-		// Don't draw dead particles
+	bool use_geom = (p.style & 0x80000000) != 0; // Unpack the flag from the high bit
+	int  style = p.style & 0x7FFFFFFF;           // Get the actual style by removing the flag
+
+	// Filter particles based on the rendering pass
+	if (p.pos.w <= 0.0 || u_render_geom != use_geom) {
+		// Don't draw dead particles or particles for the wrong pass
 		gl_Position = vec4(-1000.0, -1000.0, -1000.0, 1.0);
 		gl_PointSize = 0.0;
-		v_style = -1; // A dead particle has no style
+		v_style = -1;
+		return;
 	} else {
 		view_pos = u_view * vec4(p.pos.xyz, 1.0);
 		gl_Position = u_projection * view_pos;
 		v_lifetime = p.pos.w;
-		v_style = p.style;
+		v_style = style;
 
 		// // Base size on style
 		// float base_size = 10.0;
