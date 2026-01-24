@@ -128,6 +128,7 @@ namespace Boidsish {
 			glDrawArrays(GL_TRIANGLES, 0, 6);
 
 			glViewport(originalViewport[0], originalViewport[1], originalViewport[2], originalViewport[3]);
+			glActiveTexture(GL_TEXTURE0);
 		}
 
 		void ToneMappingEffect::Resize(int width, int height) {
