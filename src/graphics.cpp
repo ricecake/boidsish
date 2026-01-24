@@ -142,6 +142,11 @@ namespace Boidsish {
 		float camera_speed_step_;
 		bool  enable_hdr_ = false;
 
+		// Shadow optimization state
+		bool  any_shadow_caster_moved = true;
+		bool  camera_is_close_to_scene = true;
+		float shadow_update_distance_threshold = 200.0f;
+
 		task_thread_pool::task_thread_pool thread_pool;
 		std::unique_ptr<AudioManager>      audio_manager;
 
@@ -1399,6 +1404,23 @@ namespace Boidsish {
 			impl->shapes.push_back(pair.second);
 		}
 
+		// --- Shadow Optimization: Check for object movement and camera proximity ---
+		impl->any_shadow_caster_moved = false;
+		glm::vec3 scene_center(0.0f);
+		if (!impl->shapes.empty()) {
+			for (const auto& shape : impl->shapes) {
+				scene_center += glm::vec3(shape->GetX(), shape->GetY(), shape->GetZ());
+				float distance_moved = glm::distance(shape->GetLastPosition(), glm::vec3(shape->GetX(), shape->GetY(), shape->GetZ()));
+				if (distance_moved > 0.01f) { // Movement threshold
+					impl->any_shadow_caster_moved = true;
+				}
+			}
+			scene_center /= static_cast<float>(impl->shapes.size());
+		}
+
+		float distance_to_scene = glm::distance(impl->camera.pos(), scene_center);
+		impl->camera_is_close_to_scene = (distance_to_scene < impl->shadow_update_distance_threshold);
+
 		impl->UpdateTrails(impl->shapes, impl->simulation_time);
 
 		if (impl->camera_mode == CameraMode::TRACKING) {
@@ -1533,36 +1555,27 @@ namespace Boidsish {
 			shadow_lights = impl->light_manager.GetShadowCastingLights();
 			for (size_t i = 0; i < shadow_lights.size() && i < ShadowManager::kMaxShadowLights; ++i) {
 				Light* light = shadow_lights[i];
-
-				// Assign shadow map index to this light
 				light->shadow_map_index = static_cast<int>(i);
 
-				// Calculate scene center from shapes (or use origin if no shapes)
-				glm::vec3 scene_center(0.0f);
-				if (!impl->shapes.empty()) {
+				bool light_has_moved = glm::distance(light->position, light->last_position) > 0.1f ||
+				                       glm::distance(light->direction, light->last_direction) > 0.1f;
+
+				if (impl->camera_is_close_to_scene && (impl->any_shadow_caster_moved || light_has_moved)) {
+					impl->shadow_manager->BeginShadowPass(static_cast<int>(i), *light, scene_center);
+
+					Shader& shadow_shader = impl->shadow_manager->GetShadowShader();
+					shadow_shader.use();
 					for (const auto& shape : impl->shapes) {
-						scene_center += glm::vec3(shape->GetX(), shape->GetY(), shape->GetZ());
+						shape->render(shadow_shader);
 					}
-					scene_center /= static_cast<float>(impl->shapes.size());
+
+					impl->shadow_manager->EndShadowPass();
+
+					light->last_position = light->position;
+					light->last_direction = light->direction;
 				}
-
-				impl->shadow_manager->BeginShadowPass(static_cast<int>(i), *light, scene_center);
-
-				// Render shapes to shadow map (depth-only)
-				Shader& shadow_shader = impl->shadow_manager->GetShadowShader();
-				shadow_shader.use(); // Ensure shadow shader is active
-				for (const auto& shape : impl->shapes) {
-					shape->render(shadow_shader);
-				}
-
-				// Skip terrain shadows for now - tessellation makes this complex
-				// TODO: Implement depth-only terrain shadow shader
-
-				impl->shadow_manager->EndShadowPass();
 			}
 
-			// ALWAYS update shadow UBO (even with 0 shadow lights)
-			// This ensures numShadowLights is correctly set to 0
 			impl->shadow_manager->UpdateShadowUBO(shadow_lights);
 		}
 
@@ -1669,6 +1682,11 @@ namespace Boidsish {
 				);
 				glBindFramebuffer(GL_FRAMEBUFFER, 0);
 			}
+		}
+
+		// --- Shadow Optimization: Update last known positions for the next frame ---
+		for (const auto& shape : impl->shapes) {
+			shape->UpdateLastPosition();
 		}
 
 		// --- UI Pass (renders on top of the fullscreen quad) ---

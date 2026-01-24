@@ -45,6 +45,9 @@ namespace Boidsish {
 			z_ = z;
 		}
 
+		inline glm::vec3 GetLastPosition() const { return last_position_; }
+		inline void UpdateLastPosition() { last_position_ = glm::vec3(x_, y_, z_); }
+
 		inline float GetR() const { return r_; }
 
 		inline float GetG() const { return g_; }
@@ -125,7 +128,8 @@ namespace Boidsish {
 			scale_(glm::vec3(1.0f)),
 			trail_length_(trail_length),
 			trail_iridescent_(false),
-			is_colossal_(false) {}
+			is_colossal_(false),
+			last_position_(x, y, z) {}
 
 		glm::quat rotation_;
 		glm::vec3 scale_;
@@ -133,6 +137,7 @@ namespace Boidsish {
 	private:
 		int   id_;
 		float x_, y_, z_;
+		glm::vec3 last_position_;
 		float r_, g_, b_, a_;
 		int   trail_length_;
 		bool  trail_iridescent_;
