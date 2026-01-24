@@ -7,6 +7,43 @@
 #include <glm/gtx/quaternion.hpp>
 
 namespace Boidsish {
+	// Calculates the torque needed to rotate 'current_forward' to align with 'desired_direction'
+	// using a PD controller to prevent overshoot.
+	glm::vec3 CalculateSteeringTorque2(
+		const glm::vec3& current_forward,
+		const glm::vec3& desired_direction,
+		const glm::vec3& current_angular_velocity,
+		float            kP, // Proportional Gain (Strength of the turn)
+		float            kD  // Derivative Gain (Damping/Stability)
+	) {
+		// 1. Calculate the Error (The "P" term)
+		// The cross product gives us the axis of rotation perpendicular to both vectors.
+		// The length of this vector is proportional to the sin(angle) between them.
+		glm::vec3 error_vector = glm::cross(current_forward, desired_direction);
+
+		// 2. Calculate the "Braking" (The "D" term)
+		// We want to oppose the current rotation speed.
+		// We only care about the angular velocity relative to our turning plane,
+		// but typically using the whole vector works fine for missiles.
+		glm::vec3 derivative_term = current_angular_velocity;
+
+		// 3. Combine them
+		// Torque = (Strength * Error) - (Damping * Velocity)
+		return (error_vector * kP) - (derivative_term * kD);
+	}
+
+	glm::vec3
+	GetInterceptPoint2(glm::vec3 shooter_pos, float shooter_speed, glm::vec3 target_pos, glm::vec3 target_vel) {
+		glm::vec3 target_dir = target_pos - shooter_pos;
+		float     dist = glm::length(target_dir);
+
+		// Simple time-to-impact estimation
+		// (You can make this more complex with quadratic equations, but this works for games)
+		float time_to_impact = dist / shooter_speed;
+
+		// Predict where the target will be
+		return target_pos + (target_vel * time_to_impact);
+	}
 
 	GuidedMissile::GuidedMissile(int id, Vector3 pos): Entity<Model>(id, "assets/Missile.obj", true), eng_(rd_()) {
 		auto orientation = glm::angleAxis(glm::radians(-90.0f), glm::vec3(1.0f, 0.0f, 0.0f));
@@ -67,8 +104,7 @@ namespace Boidsish {
 			const float kDamping = 2.5f;
 
 			auto targets = handler.GetEntitiesByType<PaperPlane>();
-			if (targets.empty()) {
-			} else {
+			if (!targets.empty()) {
 				auto  plane = targets[0];
 				auto& r = rigid_body_;
 
@@ -79,6 +115,9 @@ namespace Boidsish {
 				}
 
 				r.AddRelativeForce(glm::vec3(0, 0, 1000));
+
+		glm::vec3 target_dir_local = glm::vec3(0, 0, -1);
+
 
 				glm::vec3 velocity = rigid_body_.GetLinearVelocity();
 				glm::vec3 target_vec = (plane->GetPosition() - GetPosition()).Toglm();
@@ -91,17 +130,19 @@ namespace Boidsish {
 				glm::vec3                             right = glm::cross(target_dir_world, glm::vec3(0, 1, 0));
 				glm::vec3                             up = glm::cross(right, target_dir_world);
 				auto theta = handedness * lived_ * (2.0f + 2 * (1.0f - distance_scale));
-				auto offset = (right * sin(theta / 3) * cos(theta)) + (up * cos(theta / 2) * sin(theta));
+				auto offset = 0;//(right * sin(theta / 3) * cos(theta)) + (up * cos(theta / 2) * sin(theta));
 
 				auto adjusted_target_dir_world = glm::normalize(
-					target_vec + wobble * offset * dist(eng_) * distance * error_scale * error_scale
+					target_vec// + wobble * offset * dist(eng_) * distance * error_scale * error_scale
 				);
 
-				glm::vec3 target_dir_local = WorldToObject(adjusted_target_dir_world);
-				glm::vec3 P = glm::vec3(0, 0, 1);
-				glm::vec3 torque = glm::cross(P, target_dir_local);
+			float missile_speed = glm::length(rigid_body_.GetLinearVelocity());
 
-				r.AddRelativeTorque(torque * kTurnSpeed);
+			// PREDICT
+			target_dir_world =
+				GetInterceptPoint2(GetPosition(), missile_speed, adjusted_target_dir_world, plane->GetVelocity());
+			target_dir_local = WorldToObject(glm::normalize(target_dir_world - GetPosition()));
+
 
 				/*
 				    use something like this for spiral attacker!
@@ -148,13 +189,36 @@ namespace Boidsish {
 								away = local_up;
 							}
 
-							glm::vec3 target_dir_local = WorldToObject(away);
-							glm::vec3 P = glm::vec3(0, 0, 1);
-							glm::vec3 torque = glm::cross(P, target_dir_local);
-							r.AddRelativeTorque(torque * kTurnSpeed);
+							target_dir_local = WorldToObject(away);
+						away = target_dir_world - (glm::dot(target_dir_world, away)) * away;
+
+					float     distance_factor = 1.0f - (hit_dist / reaction_distance);
+					float     alignment_with_target = glm::dot(dir, target_dir_world);
+					float     target_priority = 1.0f - glm::clamp(alignment_with_target, 0.0f, 1.0f);
+					float     avoidance_weight = distance_factor * target_priority;
+					glm::vec3 final_desired_dir = glm::normalize(
+						target_dir_world + (away * avoidance_weight * avoidance_strength)
+					);
+					target_dir_local = WorldToObject(final_desired_dir);
 						}
 					}
 				}
+
+		glm::vec3 local_forward = glm::vec3(0, 0, 1);
+		// target_dir_local.x += sin(lived_ * 20.0f) * 0.075f;
+		// target_dir_local.y += cos(lived_ * 15.0f) * 0.075f;
+		glm::vec3 pid_torque = CalculateSteeringTorque2(
+			local_forward,
+			target_dir_local,
+			rigid_body_.GetAngularVelocity(),
+			50.0f, // kP,
+			5.0f
+			// glm::mix(0.0f, 100.0f, std::clamp(2 * lived_ / lifetime_, 0.0f, 1.0f))
+		);
+
+		rigid_body_.AddRelativeTorque(-1*pid_torque);
+
+
 			}
 		}
 	}
