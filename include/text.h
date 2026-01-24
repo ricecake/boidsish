@@ -22,6 +22,7 @@ namespace Boidsish {
 			float              font_size,
 			float              depth,
 			Justification      justification = LEFT,
+			float              flatness = 0.5f,
 			int                id = 0,
 			float              x = 0.0f,
 			float              y = 0.0f,
@@ -49,6 +50,7 @@ namespace Boidsish {
 		float                              font_size_;
 		float                              depth_;
 		Justification                      justification_;
+		float                              flatness_squared_;
 
 		unsigned int vao_ = 0;
 		unsigned int vbo_ = 0;
