@@ -1470,16 +1470,16 @@ namespace Boidsish {
 					GLuint height_texture_id, biome_texture_id;
 					glGenTextures(1, &height_texture_id);
 					glBindTexture(GL_TEXTURE_2D, height_texture_id);
-					glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER);
-					glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_BORDER);
+					glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+					glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 					glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
 					glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 					glTexImage2D(
 						GL_TEXTURE_2D,
 						0,
 						GL_R16F,
-						texture_size,
-						texture_size,
+						texture_size + 2,
+						texture_size + 2,
 						0,
 						GL_RED,
 						GL_UNSIGNED_SHORT,
@@ -1489,21 +1489,22 @@ namespace Boidsish {
 
 					glGenTextures(1, &biome_texture_id);
 					glBindTexture(GL_TEXTURE_2D, biome_texture_id);
-					glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER);
-					glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_BORDER);
-					glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+					glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+					glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+					glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
 					glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 					glTexImage2D(
 						GL_TEXTURE_2D,
 						0,
 						GL_RGBA,
-						texture_size,
-						texture_size,
+						texture_size + 2,
+						texture_size + 2,
 						0,
 						GL_RGBA,
 						GL_UNSIGNED_BYTE,
 						result.biome_data.data()
 					);
+					glGenerateMipmap(GL_TEXTURE_2D);
 
 					impl->megatexture_cache_[result.position] = {height_texture_id, biome_texture_id};
 					it = impl->pending_megatextures_.erase(it);

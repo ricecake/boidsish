@@ -326,17 +326,19 @@ namespace Boidsish {
 
 	std::vector<uint8_t>
 	TerrainGenerator::GenerateBiomeDataTexture(int world_x, int world_z, int size) const {
-		std::vector<uint8_t> pixels(size * size * 4);
+		const int gutter = 1;
+		const int new_size = size + gutter * 2;
+		std::vector<uint8_t> pixels(new_size * new_size * 4);
 
-		for (int y = 0; y < size; ++y) {
-			for (int x = 0; x < size; ++x) {
-				float worldX = (world_x + x);
-				float worldZ = (world_z + y);
+		for (int y = 0; y < new_size; ++y) {
+			for (int x = 0; x < new_size; ++x) {
+				float worldX = (world_x - gutter + x);
+				float worldZ = (world_z - gutter + y);
 
 				float     control_value = getBiomeControlValue(worldX, worldZ);
 				BiomeInfo biome_info = getBiomeInfo(control_value);
 
-				int index = (y * size + x) * 4;
+				int index = (y * new_size + x) * 4;
 
 				pixels[index + 0] = static_cast<uint8_t>(biome_info.biome_indices[0]);
 				pixels[index + 1] = static_cast<uint8_t>(biome_info.biome_indices[1]);
@@ -768,15 +770,17 @@ namespace Boidsish {
 	std::vector<uint16_t> TerrainGenerator::GenerateTextureForArea(int world_x, int world_z, int size) {
 		const int kSuperChunkSizeInChunks = chunk_size_;
 		const int texture_dim = kSuperChunkSizeInChunks * chunk_size_;
+		const int gutter = 1;
+		const int new_size = size + gutter * 2;
 
 		// Determine the range of superchunks needed
-		int start_chunk_x = floor(static_cast<float>(world_x) / texture_dim);
-		int end_chunk_x = floor(static_cast<float>(world_x + size - 1) / texture_dim);
-		int start_chunk_z = floor(static_cast<float>(world_z) / texture_dim);
-		int end_chunk_z = floor(static_cast<float>(world_z + size - 1) / texture_dim);
+		int start_chunk_x = floor(static_cast<float>(world_x - gutter) / texture_dim);
+		int end_chunk_x = floor(static_cast<float>(world_x + size + gutter - 1) / texture_dim);
+		int start_chunk_z = floor(static_cast<float>(world_z - gutter) / texture_dim);
+		int end_chunk_z = floor(static_cast<float>(world_z + size + gutter - 1) / texture_dim);
 
 		// Create the destination texture
-		std::vector<uint16_t> stitched_texture(size * size * 4);
+		std::vector<uint16_t> stitched_texture(new_size * new_size);
 
 		// Iterate over the needed superchunks and stitch them together
 		for (int cz = start_chunk_z; cz <= end_chunk_z; ++cz) {
@@ -784,26 +788,22 @@ namespace Boidsish {
 				std::vector<uint16_t> superchunk = GenerateSuperChunkTexture(cx * texture_dim, cz * texture_dim);
 
 				// Calculate the region to copy from the superchunk
-				int src_start_x = std::max(0, world_x - cx * texture_dim);
-				int src_end_x = std::min(texture_dim, world_x + size - cx * texture_dim);
-				int src_start_z = std::max(0, world_z - cz * texture_dim);
-				int src_end_z = std::min(texture_dim, world_z + size - cz * texture_dim);
+				int src_start_x = std::max(0, world_x - gutter - cx * texture_dim);
+				int src_end_x = std::min(texture_dim, world_x + size + gutter - cx * texture_dim);
+				int src_start_z = std::max(0, world_z - gutter - cz * texture_dim);
+				int src_end_z = std::min(texture_dim, world_z + size + gutter - cz * texture_dim);
 
 				// Calculate the region to copy to in the destination texture
-				int dest_start_x = std::max(0, cx * texture_dim - world_x);
-				int dest_start_z = std::max(0, cz * texture_dim - world_z);
+				int dest_start_x = std::max(0, cx * texture_dim - (world_x - gutter));
+				int dest_start_z = std::max(0, cz * texture_dim - (world_z - gutter));
 
 				for (int z = src_start_z; z < src_end_z; ++z) {
 					for (int x = src_start_x; x < src_end_x; ++x) {
 						int src_index = (z * texture_dim + x) * 4;
-						int dest_index = ((dest_start_z + z - src_start_z) * size + (dest_start_x + x - src_start_x)) *
-							4;
+						int dest_index = (dest_start_z + z - src_start_z) * new_size + (dest_start_x + x - src_start_x);
 
-						if (dest_index + 3 < stitched_texture.size()) {
-							stitched_texture[dest_index + 0] = superchunk[src_index + 0];
-							stitched_texture[dest_index + 1] = superchunk[src_index + 1];
-							stitched_texture[dest_index + 2] = superchunk[src_index + 2];
-							stitched_texture[dest_index + 3] = superchunk[src_index + 3];
+						if (dest_index < stitched_texture.size()) {
+							stitched_texture[dest_index] = superchunk[src_index + 3];
 						}
 					}
 				}

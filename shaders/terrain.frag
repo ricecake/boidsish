@@ -178,7 +178,9 @@ void main() {
 	for (int i = 0; i < kNumMegaTextures; ++i) {
 		vec2 mega_uv = (FragPos.xz - uMegaTextureOffsets[i]) / uMegaTextureSize;
 		if (mega_uv.x >= 0.0 && mega_uv.x <= 1.0 && mega_uv.y >= 0.0 && mega_uv.y <= 1.0) {
-			biome_sample = texture(uBiomeTextures[i], mega_uv);
+			float physical_size = uMegaTextureSize + 2.0;
+			vec2  physical_uv = (mega_uv * uMegaTextureSize + 1.0) / physical_size;
+			biome_sample = texture(uBiomeTextures[i], physical_uv);
 			break;
 		}
 	}
