@@ -4,12 +4,11 @@ out vec4 FragColor;
 in vec2 TexCoords;
 
 uniform sampler2D srcTexture;
-uniform vec2      srcResolution;
 
 // Dual Kawase blur downsample
 // Samples in a 3x3 pattern with wider spacing for better blur quality
 void main() {
-	vec2 texelSize = 1.0 / srcResolution;
+	vec2 texelSize = 1.0 / vec2(textureSize(srcTexture, 0));
 
 	// Sample center
 	vec3 result = texture(srcTexture, TexCoords).rgb * 4.0;
