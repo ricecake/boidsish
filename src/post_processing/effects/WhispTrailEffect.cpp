@@ -51,7 +51,7 @@ namespace Boidsish {
 			glBindFramebuffer(GL_FRAMEBUFFER, 0);
 		}
 
-		void WhispTrailEffect::Apply(GLuint sourceTexture) {
+		void WhispTrailEffect::Apply(GLuint sourceTexture, float /* delta_time */) {
 			// Save original state
 			GLint previous_fbo;
 			glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING, &previous_fbo);

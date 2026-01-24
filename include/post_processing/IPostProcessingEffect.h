@@ -12,7 +12,7 @@ namespace Boidsish {
 		public:
 			virtual ~IPostProcessingEffect() = default;
 
-			virtual void Apply(GLuint sourceTexture) = 0;
+			virtual void Apply(GLuint sourceTexture, float delta_time) = 0;
 			virtual void Initialize(int width, int height) = 0;
 			virtual void Resize(int width, int height) = 0;
 

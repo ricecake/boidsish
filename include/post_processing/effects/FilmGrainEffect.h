@@ -14,7 +14,7 @@ namespace Boidsish {
 			FilmGrainEffect();
 
 			void Initialize(int width, int height) override;
-			void Apply(GLuint sourceTexture) override;
+			void Apply(GLuint sourceTexture, float delta_time) override;
 			void Resize(int width, int height) override;
 
 			void SetIntensity(float intensity) { intensity_ = intensity; }

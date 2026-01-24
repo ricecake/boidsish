@@ -17,7 +17,7 @@ namespace Boidsish {
 			shader_->setInt("screenTexture", 0);
 		}
 
-		void FilmGrainEffect::Apply(GLuint sourceTexture) {
+		void FilmGrainEffect::Apply(GLuint sourceTexture, float /* delta_time */) {
 			shader_->use();
 			shader_->setFloat("intensity", intensity_);
 			shader_->setFloat("time", static_cast<float>(glfwGetTime()));

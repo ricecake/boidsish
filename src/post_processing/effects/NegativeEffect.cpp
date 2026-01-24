@@ -17,7 +17,7 @@ namespace Boidsish {
 			shader_ = std::make_unique<Shader>("shaders/postprocess.vert", "shaders/effects/negative.frag");
 		}
 
-		void NegativeEffect::Apply(GLuint sourceTexture) {
+		void NegativeEffect::Apply(GLuint sourceTexture, float /* delta_time */) {
 			shader_->use();
 			shader_->setInt("sceneTexture", 0);
 			glActiveTexture(GL_TEXTURE0);

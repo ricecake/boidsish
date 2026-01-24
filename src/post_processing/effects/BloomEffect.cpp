@@ -107,7 +107,7 @@ namespace Boidsish {
 			glBindFramebuffer(GL_FRAMEBUFFER, 0);
 		}
 
-		void BloomEffect::Apply(GLuint sourceTexture) {
+		void BloomEffect::Apply(GLuint sourceTexture, float /* delta_time */) {
 			GLint originalFBO;
 			glGetIntegerv(GL_FRAMEBUFFER_BINDING, &originalFBO);
 			GLint originalViewport[4];

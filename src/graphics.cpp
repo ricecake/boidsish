@@ -1609,7 +1609,7 @@ namespace Boidsish {
 			}
 
 			// Apply standard post-processing effects
-			GLuint final_texture = impl->post_processing_manager_->ApplyEffects(impl->main_fbo_texture_);
+			GLuint final_texture = impl->post_processing_manager_->ApplyEffects(impl->main_fbo_texture_, impl->input_state.delta_time);
 
 			glBindFramebuffer(GL_FRAMEBUFFER, 0);
 			glDisable(GL_DEPTH_TEST);

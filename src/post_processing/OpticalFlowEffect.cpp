@@ -88,7 +88,7 @@ namespace Boidsish {
 			InitializeFBO(width, height);
 		}
 
-		void OpticalFlowEffect::Apply(GLuint sourceTexture) {
+		void OpticalFlowEffect::Apply(GLuint sourceTexture, float /* delta_time */) {
 			// 1. Get the currently bound FBO to restore it later
 			GLint originalFBO;
 			glGetIntegerv(GL_FRAMEBUFFER_BINDING, &originalFBO);

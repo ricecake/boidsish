@@ -16,7 +16,7 @@ namespace Boidsish {
 			TimeStutterEffect();
 			~TimeStutterEffect();
 
-			void Apply(GLuint sourceTexture) override;
+			void Apply(GLuint sourceTexture, float delta_time) override;
 			void Initialize(int width, int height) override;
 			void Resize(int width, int height) override;
 

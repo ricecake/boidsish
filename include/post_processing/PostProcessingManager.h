@@ -19,7 +19,7 @@ namespace Boidsish {
 			void   Initialize();
 			void   AddEffect(std::shared_ptr<IPostProcessingEffect> effect);
 			void   SetToneMappingEffect(std::shared_ptr<IPostProcessingEffect> effect);
-			GLuint ApplyEffects(GLuint sourceTexture);
+			GLuint ApplyEffects(GLuint sourceTexture, float delta_time);
 			void   Resize(int width, int height);
 
 			std::vector<std::shared_ptr<IPostProcessingEffect>>& GetPreToneMappingEffects() {

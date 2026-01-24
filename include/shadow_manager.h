@@ -2,6 +2,7 @@
 
 #include <memory>
 #include <vector>
+#include <array>
 
 #include <GL/glew.h>
 #include <glm/glm.hpp>

@@ -5,6 +5,7 @@ out vec4 FragColor;
 in vec2 TexCoords;
 
 uniform sampler2D sceneTexture;
+uniform sampler2D lumTexture;
 uniform vec2      resolution;
 uniform int       toneMapMode = 2;
 
@@ -180,7 +181,8 @@ float unreal(float x) {
 
 void main() {
 	vec2 uv = vec2(gl_FragCoord.xy / resolution);
-	vec3 tex = texture(sceneTexture, uv).rgb;
+	float exposure = texture(lumTexture, vec2(0.5)).g;
+	vec3 tex = texture(sceneTexture, uv).rgb * exposure;
 
 	if (toneMapMode == 0) {
 		FragColor = vec4(aces(tex), 1.0f);

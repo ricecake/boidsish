@@ -65,7 +65,7 @@ namespace Boidsish {
 			glBindFramebuffer(GL_FRAMEBUFFER, 0);
 		}
 
-		void TimeStutterEffect::Apply(GLuint sourceTexture) {
+		void TimeStutterEffect::Apply(GLuint sourceTexture, float /* delta_time */) {
 			// Save original state
 			GLint previous_fbo;
 			glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING, &previous_fbo);

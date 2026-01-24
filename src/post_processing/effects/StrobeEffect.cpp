@@ -53,7 +53,7 @@ namespace Boidsish {
 			glBindFramebuffer(GL_FRAMEBUFFER, 0);
 		}
 
-		void StrobeEffect::Apply(GLuint sourceTexture) {
+		void StrobeEffect::Apply(GLuint sourceTexture, float /* delta_time */) {
 			GLint previous_fbo;
 			glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING, &previous_fbo);
 

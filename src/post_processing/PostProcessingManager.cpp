@@ -59,7 +59,7 @@ namespace Boidsish {
 			tone_mapping_effect_ = effect;
 		}
 
-		GLuint PostProcessingManager::ApplyEffects(GLuint sourceTexture) {
+		GLuint PostProcessingManager::ApplyEffects(GLuint sourceTexture, float delta_time) {
 			bool   effect_applied = false;
 			int    fbo_index = 0;
 			GLuint current_texture = sourceTexture;
@@ -74,7 +74,7 @@ namespace Boidsish {
 					glClear(GL_COLOR_BUFFER_BIT);
 
 					glBindVertexArray(quad_vao_);
-					effect->Apply(current_texture);
+					effect->Apply(current_texture, delta_time);
 					glBindVertexArray(0);
 
 					current_texture = pingpong_texture_[fbo_index];
@@ -89,7 +89,7 @@ namespace Boidsish {
 				glClear(GL_COLOR_BUFFER_BIT);
 
 				glBindVertexArray(quad_vao_);
-				tone_mapping_effect_->Apply(current_texture);
+				tone_mapping_effect_->Apply(current_texture, delta_time);
 				glBindVertexArray(0);
 
 				current_texture = pingpong_texture_[fbo_index];
