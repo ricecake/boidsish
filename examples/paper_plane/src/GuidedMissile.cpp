@@ -46,7 +46,7 @@ namespace Boidsish {
 	}
 
 	GuidedMissile::GuidedMissile(int id, Vector3 pos): Entity<Model>(id, "assets/Missile.obj", true), eng_(rd_()) {
-		auto orientation = glm::angleAxis(glm::radians(-90.0f), glm::vec3(1.0f, 0.0f, 0.0f));
+		auto orientation = glm::angleAxis(glm::radians(0.0f), glm::vec3(1.0f, 0.0f, 0.0f));
 
 		auto dist = std::uniform_int_distribution(0, 1);
 		auto wobbleDist = std::uniform_real_distribution<float>(0.75f, 1.50f);
@@ -56,13 +56,13 @@ namespace Boidsish {
 		SetPosition(pos.x, pos.y + 0.5f, pos.z);
 		rigid_body_.SetOrientation(orientation);
 		rigid_body_.SetAngularVelocity(glm::vec3(0, 0, 0));
-		rigid_body_.SetLinearVelocity(glm::vec3(0, 100, 0));
+		rigid_body_.SetLinearVelocity(glm::vec3(0, 0, 0));
 
 		SetTrailLength(100);
 		SetTrailRocket(true);
 		shape_->SetScale(glm::vec3(0.08f));
 		std::dynamic_pointer_cast<Model>(shape_)->SetBaseRotation(
-			glm::angleAxis(glm::radians(-90.0f), glm::vec3(0.0f, 1.0f, 0.0f))
+			glm::angleAxis(glm::radians(90.0f), glm::vec3(0.0f, 1.0f, 0.0f))
 		);
 	}
 
@@ -98,7 +98,7 @@ namespace Boidsish {
 		const float kAcceleration = 150.0f;
 
 		if (lived_ < kLaunchTime) {
-			rigid_body_.AddRelativeForce(glm::vec3(0, 0, 600));
+			rigid_body_.AddRelativeForce(glm::vec3(0, 0, -600));
 		} else {
 			const float kTurnSpeed = 100.0f;
 			const float kDamping = 2.5f;
@@ -114,33 +114,20 @@ namespace Boidsish {
 					return;
 				}
 
-				r.AddRelativeForce(glm::vec3(0, 0, 1000));
+				r.AddRelativeForce(glm::vec3(0, 0, -1000));
 
 		glm::vec3 target_dir_local = glm::vec3(0, 0, -1);
-
 
 				glm::vec3 velocity = rigid_body_.GetLinearVelocity();
 				glm::vec3 target_vec = (plane->GetPosition() - GetPosition()).Toglm();
 				glm::vec3 target_dir_world = glm::normalize(target_vec);
 
-				std::uniform_real_distribution<float> dist(0.25f, 0.5f);
-				auto                                  distance = glm::length(target_vec);
-				auto                                  distance_scale = log10(distance / 50.0f + 1);
-				float                                 error_scale = (1.0f - lived_ / lifetime_) * distance_scale;
-				glm::vec3                             right = glm::cross(target_dir_world, glm::vec3(0, 1, 0));
-				glm::vec3                             up = glm::cross(right, target_dir_world);
-				auto theta = handedness * lived_ * (2.0f + 2 * (1.0f - distance_scale));
-				auto offset = 0;//(right * sin(theta / 3) * cos(theta)) + (up * cos(theta / 2) * sin(theta));
-
-				auto adjusted_target_dir_world = glm::normalize(
-					target_vec// + wobble * offset * dist(eng_) * distance * error_scale * error_scale
-				);
-
 			float missile_speed = glm::length(rigid_body_.GetLinearVelocity());
 
 			// PREDICT
 			target_dir_world =
-				GetInterceptPoint2(GetPosition(), missile_speed, adjusted_target_dir_world, plane->GetVelocity());
+				GetInterceptPoint2(GetPosition(), missile_speed, plane->GetPosition(), plane->GetVelocity());
+
 			target_dir_local = WorldToObject(glm::normalize(target_dir_world - GetPosition()));
 
 
@@ -164,7 +151,8 @@ namespace Boidsish {
 				const auto* terrain_generator = handler.GetTerrainGenerator();
 				if (terrain_generator) {
 					const float reaction_distance = 100.0f;
-					float       hit_dist = 0.0f;
+					const float kAvoidanceStrength = 5.0f;
+					const float kUpAlignmentThreshold = 0.5f;
 
 					Vector3 vel_vec = GetVelocity();
 					if (vel_vec.MagnitudeSquared() > 1e-6) {
@@ -172,16 +160,10 @@ namespace Boidsish {
 						glm::vec3 dir = {vel_vec.x, vel_vec.y, vel_vec.z};
 						dir = glm::normalize(dir);
 
+						float hit_dist = 0.0f;
 						if (terrain_generator->Raycast(origin, dir, reaction_distance, hit_dist)) {
 							auto hit_coord = vel_vec.Normalized() * hit_dist;
-							auto [terrain_h, terrain_normal] = terrain_generator->pointProperties(
-								hit_coord.x,
-								hit_coord.z
-							);
-
-							const float avoidance_strength = 20.0f;
-							const float kUpAlignmentThreshold = 0.5f;
-							float force_magnitude = avoidance_strength * (1.0f - ((10 + hit_dist) / reaction_distance));
+							auto [terrain_h, terrain_normal] = terrain_generator->pointProperties(hit_coord.x, hit_coord.z);
 
 							glm::vec3 local_up = glm::vec3(0.0f, 1.0f, 0.0f);
 							auto      away = terrain_normal;
@@ -189,34 +171,32 @@ namespace Boidsish {
 								away = local_up;
 							}
 
-							target_dir_local = WorldToObject(away);
-						away = target_dir_world - (glm::dot(target_dir_world, away)) * away;
+							away = target_dir_world - (glm::dot(target_dir_world, away)) * away;
 
-					float     distance_factor = 1.0f - (hit_dist / reaction_distance);
-					float     alignment_with_target = glm::dot(dir, target_dir_world);
-					float     target_priority = 1.0f - glm::clamp(alignment_with_target, 0.0f, 1.0f);
-					float     avoidance_weight = distance_factor * target_priority;
-					glm::vec3 final_desired_dir = glm::normalize(
-						target_dir_world + (away * avoidance_weight * avoidance_strength)
-					);
-					target_dir_local = WorldToObject(final_desired_dir);
+							float     distance_factor = 1.0f - (hit_dist / reaction_distance);
+							float     alignment_with_target = glm::dot(dir, target_dir_world);
+							float     target_priority = 1.0f - glm::clamp(alignment_with_target, 0.0f, 1.0f);
+							float     avoidance_weight = distance_factor * target_priority;
+							glm::vec3 final_desired_dir = glm::normalize(
+								target_dir_world + (away * avoidance_weight * kAvoidanceStrength)
+							);
+							target_dir_local = WorldToObject(final_desired_dir);
 						}
 					}
 				}
 
-		glm::vec3 local_forward = glm::vec3(0, 0, 1);
-		// target_dir_local.x += sin(lived_ * 20.0f) * 0.075f;
-		// target_dir_local.y += cos(lived_ * 15.0f) * 0.075f;
+		glm::vec3 local_forward = glm::vec3(0, 0, -1);
+		target_dir_local.x += sin(lived_ * 20.0f) * 0.075f;
+		target_dir_local.y += cos(lived_ * 15.0f) * 0.075f;
 		glm::vec3 pid_torque = CalculateSteeringTorque2(
 			local_forward,
 			target_dir_local,
 			rigid_body_.GetAngularVelocity(),
 			50.0f, // kP,
-			5.0f
-			// glm::mix(0.0f, 100.0f, std::clamp(2 * lived_ / lifetime_, 0.0f, 1.0f))
+			glm::mix(0.0f, 5.0f, std::clamp(2 * lived_ / lifetime_, 0.0f, 1.0f))
 		);
 
-		rigid_body_.AddRelativeTorque(-1*pid_torque);
+		rigid_body_.AddRelativeTorque(pid_torque);
 
 
 			}
