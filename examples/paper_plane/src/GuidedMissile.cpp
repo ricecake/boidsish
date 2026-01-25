@@ -186,8 +186,8 @@ namespace Boidsish {
 				}
 
 		glm::vec3 local_forward = glm::vec3(0, 0, -1);
-		target_dir_local.x += sin(lived_ * 20.0f) * 0.075f;
-		target_dir_local.y += cos(lived_ * 15.0f) * 0.075f;
+		target_dir_local.x += sin(handedness * lived_ * 20.0f) * 0.075f;
+		target_dir_local.y += cos(handedness * lived_ * 15.0f) * 0.075f;
 		glm::vec3 pid_torque = CalculateSteeringTorque2(
 			local_forward,
 			target_dir_local,
