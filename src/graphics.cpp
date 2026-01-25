@@ -46,17 +46,10 @@
 #include "visual_effects.h"
 #include <GL/glew.h>
 #include <GLFW/glfw3.h>
+#include "glm_utils.h"
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <shader.h>
-
-namespace glm {
-	bool operator<(const glm::vec2& a, const glm::vec2& b) {
-		if (a.x < b.x) return true;
-		if (a.x > b.x) return false;
-		return a.y < b.y;
-	}
-}
 
 namespace Boidsish {
 	constexpr float kMinCameraHeight = 0.1f;
@@ -89,14 +82,6 @@ namespace Boidsish {
 		int                                                    exit_key;
 
 		std::unique_ptr<TerrainGenerator> terrain_generator;
-
-		MegaTextureResult GenerateMegaTexture(int x, int z, int size) {
-			return {
-				terrain_generator->GenerateTextureForArea(x, z, size),
-				terrain_generator->GenerateBiomeDataTexture(x, z, size),
-				glm::vec2(x, z)
-			};
-		}
 
 		std::shared_ptr<Shader> shader;
 		std::unique_ptr<Shader> plane_shader;

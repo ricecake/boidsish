@@ -288,14 +288,23 @@ namespace Boidsish {
 		float weight_low = (high_idx == 0) ? 0.0f : cdf[high_idx - 1];
 
 		float segment_width = weight_high - weight_low;
-		float t = (segment_width > 0.0001f) ? (target - weight_low) / segment_width : 0.0f;
+		float t_linear = (segment_width > 0.0001f) ? (target - weight_low) / segment_width : 0.0f;
 
-		const auto& low_item = biomes[low_idx];
+		const float TRANSITION_WIDTH = 0.1f;
+		float       blend = 0.0f;
+		int         final_low_idx = high_idx;
+
+		if (t_linear < TRANSITION_WIDTH && high_idx > 0) {
+			final_low_idx = high_idx - 1;
+			blend = glm::smoothstep(0.0f, TRANSITION_WIDTH, t_linear);
+		}
+
+		const auto& low_item = biomes[final_low_idx];
 		const auto& high_item = biomes[high_idx];
 
-		current.spikeDamping = std::lerp(low_item.spikeDamping, high_item.spikeDamping, t);
-		current.detailMasking = std::lerp(low_item.detailMasking, high_item.detailMasking, t);
-		current.floorLevel = std::lerp(low_item.floorLevel, high_item.floorLevel, t);
+		current.spikeDamping = std::lerp(low_item.spikeDamping, high_item.spikeDamping, blend);
+		current.detailMasking = std::lerp(low_item.detailMasking, high_item.detailMasking, blend);
+		current.floorLevel = std::lerp(low_item.floorLevel, high_item.floorLevel, blend);
 	}
 
 	TerrainGenerator::BiomeInfo TerrainGenerator::getBiomeInfo(float control_value) const {
@@ -311,17 +320,25 @@ namespace Boidsish {
 		auto it = std::upper_bound(biome_cdf_.begin(), biome_cdf_.end(), target);
 
 		int high_idx = std::distance(biome_cdf_.begin(), it);
-		int low_idx = std::max(0, high_idx - 1);
-
 		high_idx = std::min(high_idx, (int)biomes.size() - 1);
 
 		float weight_high = biome_cdf_[high_idx];
 		float weight_low = (high_idx == 0) ? 0.0f : biome_cdf_[high_idx - 1];
 
 		float segment_width = weight_high - weight_low;
-		float t = (segment_width > 0.0001f) ? (target - weight_low) / segment_width : 0.0f;
+		float t_linear = (segment_width > 0.0001f) ? (target - weight_low) / segment_width : 0.0f;
 
-		return {{low_idx, high_idx}, t};
+		const float TRANSITION_WIDTH = 0.1f;
+		float       blend = 0.0f;
+		int         final_low_idx = high_idx;
+		int         final_high_idx = high_idx;
+
+		if (t_linear < TRANSITION_WIDTH && high_idx > 0) {
+			final_low_idx = high_idx - 1;
+			blend = glm::smoothstep(0.0f, TRANSITION_WIDTH, t_linear);
+		}
+
+		return {{final_low_idx, final_high_idx}, blend};
 	}
 
 	std::vector<uint8_t>
