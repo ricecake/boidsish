@@ -67,8 +67,8 @@ namespace Boidsish {
 			return l;
 		}
 
-		static Light CreateDirectional(const glm::vec3& dir, float intens, const glm::vec3& col, bool shadows = false) {
-			Light l = Create({0, 0, 0}, intens, col, shadows);
+		static Light CreateDirectional(const glm::vec3& pos, const glm::vec3& dir, float intens, const glm::vec3& col, bool shadows = false) {
+			Light l = Create(pos, intens, col, shadows);
 			l.type = DIRECTIONAL_LIGHT;
 			l.direction = dir;
 			return l;
