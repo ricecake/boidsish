@@ -46,7 +46,7 @@ namespace Boidsish {
 	}
 
 	GuidedMissile::GuidedMissile(int id, Vector3 pos): Entity<Model>(id, "assets/Missile.obj", true), eng_(rd_()) {
-		auto orientation = glm::angleAxis(glm::radians(0.0f), glm::vec3(1.0f, 0.0f, 0.0f));
+		auto orientation = glm::angleAxis(glm::radians(90.0f), glm::vec3(1.0f, 0.0f, 0.0f));
 
 		auto dist = std::uniform_int_distribution(0, 1);
 		auto wobbleDist = std::uniform_real_distribution<float>(0.75f, 1.50f);
@@ -56,7 +56,7 @@ namespace Boidsish {
 		SetPosition(pos.x, pos.y + 0.5f, pos.z);
 		rigid_body_.SetOrientation(orientation);
 		rigid_body_.SetAngularVelocity(glm::vec3(0, 0, 0));
-		rigid_body_.SetLinearVelocity(glm::vec3(0, 0, 0));
+		rigid_body_.SetLinearVelocity(glm::vec3(0, 0, -100));
 
 		SetTrailLength(100);
 		SetTrailRocket(true);
