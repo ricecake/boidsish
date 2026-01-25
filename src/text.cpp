@@ -54,8 +54,10 @@ namespace Boidsish {
 			float                                     flatness,
 			std::vector<std::array<float, 2>>& tessellated_points
 		) {
-			if (level > 10)
+			if (level > 10) {
+				tessellated_points.push_back({x3, y3});
 				return;
+			}
 
 			float x12 = (x1 + x2) / 2;
 			float y12 = (y1 + y2) / 2;
