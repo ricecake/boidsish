@@ -87,6 +87,10 @@ namespace Boidsish {
 
 		inline void SetColossal(bool is_colossal) { is_colossal_ = is_colossal; }
 
+		inline bool IsInstanced() const { return is_instanced_; }
+
+		inline void SetInstanced(bool is_instanced) { is_instanced_ = is_instanced; }
+
 		// Static shader reference
 		static std::shared_ptr<Shader> shader;
 
@@ -138,6 +142,7 @@ namespace Boidsish {
 		bool  trail_iridescent_;
 		bool  trail_rocket_;
 		bool  is_colossal_;
+		bool  is_instanced_ = false;
 
 	protected:
 		// Shared sphere mesh

@@ -39,6 +39,7 @@ namespace Boidsish {
 
 		// Render the mesh
 		void render() const;
+		void render_instanced(int count) const;
 
 	private:
 		// Render data
@@ -61,6 +62,7 @@ namespace Boidsish {
 		const std::vector<Mesh>& getMeshes() const { return meshes; }
 
 		void SetBaseRotation(const glm::quat& rotation) { base_rotation_ = rotation; }
+		void SetInstanced(bool is_instanced) { Shape::SetInstanced(is_instanced); }
 
 	private:
 		// Model data

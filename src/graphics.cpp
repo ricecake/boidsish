@@ -18,6 +18,7 @@
 #include "fire_effect_manager.h"
 #include "hud.h"
 #include "hud_manager.h"
+#include "instance_manager.h"
 #include "light_manager.h"
 #include "logger.h"
 #include "path.h"
@@ -67,6 +68,7 @@ namespace Boidsish {
 		std::map<int, std::shared_ptr<Shape>> persistent_shapes; // New persistent shapes
 		ConcurrentQueue<ShapeCommand>         shape_command_queue;
 		std::unique_ptr<CloneManager>         clone_manager;
+		std::unique_ptr<InstanceManager>      instance_manager;
 		std::unique_ptr<FireEffectManager>    fire_effect_manager;
 		std::unique_ptr<SoundEffectManager>   sound_effect_manager;
 		std::unique_ptr<ShockwaveManager>     shockwave_manager;
@@ -225,6 +227,7 @@ namespace Boidsish {
 				terrain_generator = std::make_unique<TerrainGenerator>();
 			}
 			clone_manager = std::make_unique<CloneManager>();
+			instance_manager = std::make_unique<InstanceManager>();
 			fire_effect_manager = std::make_unique<FireEffectManager>();
 			shockwave_manager = std::make_unique<ShockwaveManager>();
 			shadow_manager = std::make_unique<ShadowManager>();
@@ -678,12 +681,17 @@ namespace Boidsish {
 
 			shader->setInt("useVertexColor", 0);
 			for (const auto& shape : shapes) {
-				shader->setBool("isColossal", shape->IsColossal());
-				shape->render();
+				if (shape->IsInstanced()) {
+					instance_manager->AddInstance(shape);
+				} else {
+					shader->setBool("isColossal", shape->IsColossal());
+					shape->render();
+				}
 			}
 
+			instance_manager->Render(*shader);
+
 			// Render clones
-			shader->use();
 			clone_manager->Render(*shader);
 		}
 

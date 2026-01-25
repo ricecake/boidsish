@@ -85,6 +85,12 @@ namespace Boidsish {
 		glActiveTexture(GL_TEXTURE0);
 	}
 
+	void Mesh::render_instanced(int count) const {
+		glBindVertexArray(VAO);
+		glDrawElementsInstanced(GL_TRIANGLES, static_cast<unsigned int>(indices.size()), GL_UNSIGNED_INT, 0, count);
+		glBindVertexArray(0);
+	}
+
 	// Model implementation
 	Model::Model(const std::string& path, bool no_cull): no_cull_(no_cull) {
 		loadModel(path);

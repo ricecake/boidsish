@@ -63,6 +63,7 @@ namespace Boidsish {
 		std::dynamic_pointer_cast<Model>(shape_)->SetBaseRotation(
 			glm::angleAxis(glm::radians(90.0f), glm::vec3(0.0f, 1.0f, 0.0f))
 		);
+		shape_->SetInstanced(true);
 	}
 
 	void CatMissile::UpdateEntity(const EntityHandler& handler, float time, float delta_time) {
