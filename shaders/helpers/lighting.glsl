@@ -3,6 +3,10 @@
 
 #include "../lighting.glsl"
 
+const int LIGHT_TYPE_POINT = 0;
+const int LIGHT_TYPE_DIRECTIONAL = 1;
+const int LIGHT_TYPE_SPOT = 2;
+
 /**
  * Calculate shadow factor for a fragment position using a specific shadow map.
  * Returns 0.0 if fully in shadow, 1.0 if fully lit.
@@ -127,10 +131,6 @@ vec3 fresnelSchlickRoughness(float cosTheta, vec3 F0, float roughness) {
  * @param metallic Metallic property [0=dielectric, 1=metal]
  * @param ao Ambient occlusion [0=fully occluded, 1=no occlusion]
  */
-// PBR intensity multiplier to compensate for energy conservation
-// PBR is inherently darker than legacy Phong, so we boost it
-const float PBR_INTENSITY_BOOST = 4.0;
-
 vec3 apply_lighting_pbr(vec3 frag_pos, vec3 normal, vec3 albedo, float roughness, float metallic, float ao) {
 	vec3 N = normalize(normal);
 	vec3 V = normalize(viewPos - frag_pos);
@@ -140,21 +140,35 @@ vec3 apply_lighting_pbr(vec3 frag_pos, vec3 normal, vec3 albedo, float roughness
 	vec3 F0 = vec3(0.04);
 	F0 = mix(F0, albedo, metallic);
 
+	// Outgoing radiance
 	vec3 Lo = vec3(0.0);
 
 	for (int i = 0; i < num_lights; ++i) {
-		// Calculate per-light radiance
-		vec3  L = normalize(lights[i].position - frag_pos);
-		vec3  H = normalize(V + L);
-		float distance = length(lights[i].position - frag_pos);
+		vec3  L;
+		float attenuation = 1.0;
 
-		// Use practical attenuation with PBR intensity boost
-		// PBR's energy conservation makes it darker, so we compensate
-		float attenuation = (lights[i].intensity * PBR_INTENSITY_BOOST) /
-			(1.0 + 0.09 * distance + 0.032 * distance * distance);
-		vec3 radiance = lights[i].color * attenuation;
+		if (lights[i].type == LIGHT_TYPE_POINT) { // Point light
+			L = normalize(lights[i].position - frag_pos);
+			float distance = length(lights[i].position - frag_pos);
+			attenuation = 1.0 / (1.0 + 0.09 * distance + 0.032 * (distance * distance));
+		} else if (lights[i].type == LIGHT_TYPE_DIRECTIONAL) { // Directional light
+			L = normalize(-lights[i].direction);
+			// Directional lights have no distance attenuation
+		} else if (lights[i].type == LIGHT_TYPE_SPOT) { // Spot light
+			L = normalize(lights[i].position - frag_pos);
+			float distance = length(lights[i].position - frag_pos);
+			attenuation = 1.0 / (1.0 + 0.09 * distance + 0.032 * (distance * distance));
+			float theta = dot(L, normalize(-lights[i].direction));
+			float epsilon = lights[i].inner_cutoff - lights[i].outer_cutoff;
+			float intensity_spot = clamp((theta - lights[i].outer_cutoff) / epsilon, 0.0, 1.0);
+			attenuation *= intensity_spot;
+		}
+
+		// Per-light radiance (light color * intensity)
+		vec3 radiance = lights[i].color * lights[i].intensity;
 
 		// Cook-Torrance BRDF
+		vec3  H = normalize(V + L);
 		float NDF = DistributionGGX(N, H, roughness);
 		float G = GeometrySmith(N, V, L, roughness);
 		vec3  F = fresnelSchlick(max(dot(H, V), 0.0), F0);
@@ -176,44 +190,11 @@ vec3 apply_lighting_pbr(vec3 frag_pos, vec3 normal, vec3 albedo, float roughness
 		float shadow = calculateShadow(lightShadowIndices[i], frag_pos);
 
 		// Add to outgoing radiance Lo
-		Lo += (kD * albedo / PI + specular) * radiance * NdotL * shadow;
+		Lo += (kD * albedo / PI + specular) * radiance * NdotL * shadow * attenuation;
 	}
 
-	// Ambient lighting for PBR
-	// Basic diffuse ambient for non-metallic parts
-	vec3 ambientDiffuse = vec3(0.08) * albedo * ao;
-
-	// Environment reflection approximation for glossy surfaces
-	// Without actual IBL, smooth surfaces would be too dark because they have
-	// nothing to reflect. This simulates a bright environment being reflected.
-	vec3 R = reflect(-V, normal);
-
-	// Fresnel at grazing angles - smooth surfaces reflect more at edges
-	vec3  F0_env = mix(vec3(0.04), albedo, metallic);
-	float NdotV = max(dot(normal, V), 0.0);
-	vec3  F_env = fresnelSchlickRoughness(NdotV, F0_env, roughness);
-
-	// Fake environment color - gradient from horizon to sky
-	// This gives smooth surfaces something to "reflect"
-	float upAmount = R.y * 0.5 + 0.5; // 0 = down, 1 = up
-	vec3  envColor = mix(
-        vec3(0.3, 0.35, 0.4), // Horizon/ground color (grayish)
-        vec3(0.6, 0.7, 0.9),  // Sky color (bluish white)
-        smoothstep(0.0, 0.7, upAmount)
-    );
-
-	// Environment reflection strength based on smoothness
-	// Rough surfaces get little env reflection, smooth surfaces get a lot
-	float smoothness = 1.0 - roughness;
-	float envStrength = smoothness * smoothness * 0.8; // Up to 0.8 for perfect mirror
-
-	// Metallic surfaces should reflect the environment color tinted by albedo
-	// Non-metallic surfaces reflect environment but less strongly
-	vec3 ambientSpecular = F_env * envColor * envStrength * ao;
-
-	// Combine diffuse and specular ambient
-	// For metals, reduce diffuse ambient (they don't have diffuse reflection)
-	vec3 ambient = ambientDiffuse * (1.0 - metallic * 0.9) + ambientSpecular;
+	// Ambient lighting using the global ambient term
+	vec3 ambient = ambient_light * albedo * ao;
 	vec3 color = ambient + Lo;
 
 	return color;
