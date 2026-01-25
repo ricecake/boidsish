@@ -34,19 +34,40 @@ namespace Boidsish {
 
 	glm::vec3
 	GetInterceptPoint2(glm::vec3 shooter_pos, float shooter_speed, glm::vec3 target_pos, glm::vec3 target_vel) {
-		glm::vec3 target_dir = target_pos - shooter_pos;
-		float     dist = glm::length(target_dir);
+		glm::vec3 to_target = target_pos - shooter_pos;
+		float     dist = glm::length(to_target);
 
-		// Simple time-to-impact estimation
-		// (You can make this more complex with quadratic equations, but this works for games)
-		float time_to_impact = dist / shooter_speed;
+		if (dist < 1e-6f) {
+			return target_pos;
+		}
+		glm::vec3 to_target_dir = to_target / dist;
+
+		// Calculate the closing speed. This is the missile's speed towards the target
+		// minus the target's speed away from the missile.
+		float target_speed_away = glm::dot(target_vel, to_target_dir);
+		float closing_speed = shooter_speed - target_speed_away;
+
+		// If the target is faster and moving away, we'll never catch it.
+		// In this case, just aim at the target's current position.
+		if (closing_speed <= 0.0f) {
+			return target_pos;
+		}
+
+		// Estimate time to impact
+		float time_to_impact = dist / closing_speed;
+
+		// To prevent over-prediction (which can cause instability), cap the prediction time.
+		// A value of 1.0 seconds seems reasonable; it means we won't predict more than
+		// one second into the future.
+		const float max_prediction_time = 1.0f;
+		time_to_impact = glm::min(time_to_impact, max_prediction_time);
 
 		// Predict where the target will be
 		return target_pos + (target_vel * time_to_impact);
 	}
 
 	GuidedMissile::GuidedMissile(int id, Vector3 pos): Entity<Model>(id, "assets/Missile.obj", true), eng_(rd_()) {
-		auto orientation = glm::angleAxis(glm::radians(90.0f), glm::vec3(1.0f, 0.0f, 0.0f));
+		auto orientation = glm::angleAxis(glm::radians(0.0f), glm::vec3(1.0f, 0.0f, 0.0f));
 
 		auto dist = std::uniform_int_distribution(0, 1);
 		auto wobbleDist = std::uniform_real_distribution<float>(0.75f, 1.50f);
@@ -56,7 +77,7 @@ namespace Boidsish {
 		SetPosition(pos.x, pos.y + 0.5f, pos.z);
 		rigid_body_.SetOrientation(orientation);
 		rigid_body_.SetAngularVelocity(glm::vec3(0, 0, 0));
-		rigid_body_.SetLinearVelocity(glm::vec3(0, 0, -100));
+		rigid_body_.SetLinearVelocity(glm::vec3(0, 0, 0));
 
 		SetTrailLength(100);
 		SetTrailRocket(true);
@@ -186,8 +207,8 @@ namespace Boidsish {
 				}
 
 		glm::vec3 local_forward = glm::vec3(0, 0, -1);
-		target_dir_local.x += sin(handedness * lived_ * 20.0f) * 0.075f;
-		target_dir_local.y += cos(handedness * lived_ * 15.0f) * 0.075f;
+		target_dir_local.x += sin(lived_ * 20.0f) * 0.075f;
+		target_dir_local.y += cos(lived_ * 15.0f) * 0.075f;
 		glm::vec3 pid_torque = CalculateSteeringTorque2(
 			local_forward,
 			target_dir_local,
