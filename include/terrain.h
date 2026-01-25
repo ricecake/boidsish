@@ -20,6 +20,7 @@ namespace Boidsish {
 
 		void      setupMesh();
 		void      render() const override;
+        void      renderSimple() const;
 		void      render(Shader& shader, const glm::mat4& model_matrix) const override;
 		glm::mat4 GetModelMatrix() const override;
 

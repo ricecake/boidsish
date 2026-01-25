@@ -88,6 +88,12 @@ namespace Boidsish {
 		glBindVertexArray(0);
 	}
 
+	void Terrain::renderSimple() const {
+		glBindVertexArray(vao_);
+		glDrawElements(GL_TRIANGLES, index_count_, GL_UNSIGNED_INT, 0);
+		glBindVertexArray(0);
+	}
+
 	void Terrain::render(Shader& shader, const glm::mat4& model_matrix) const {
 		// Terrain is not meant to be cloned, so this is a no-op
 	}

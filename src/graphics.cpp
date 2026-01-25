@@ -1572,8 +1572,13 @@ namespace Boidsish {
 					shape->render(shadow_shader);
 				}
 
-				// Skip terrain shadows for now - tessellation makes this complex
-				// TODO: Implement depth-only terrain shadow shader
+				// Render terrain to shadow map
+                if (impl->terrain_generator) {
+                    for (const auto& chunk : impl->terrain_generator->getVisibleChunks()) {
+                        shadow_shader.setMat4("model", chunk->GetModelMatrix());
+                        chunk->renderSimple();
+                    }
+                }
 
 				impl->shadow_manager->EndShadowPass();
 			}
