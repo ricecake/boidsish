@@ -15,6 +15,12 @@ uniform vec3 objectColor;
 uniform int  useVertexColor;
 uniform bool isColossal = true;
 
+// PBR material properties
+uniform bool  usePBR = false;
+uniform float roughness = 0.5;
+uniform float metallic = 0.0;
+uniform float ao = 1.0;
+
 uniform sampler2D texture_diffuse1;
 uniform bool      use_texture;
 
@@ -27,7 +33,14 @@ void main() {
 	}
 
 	vec3 norm = normalize(Normal);
-	vec3 result = apply_lighting(FragPos, norm, final_color, 1.0);
+
+	// Choose between PBR and legacy lighting
+	vec3 result;
+	if (usePBR) {
+		result = apply_lighting_pbr(FragPos, norm, final_color, roughness, metallic, ao);
+	} else {
+		result = apply_lighting(FragPos, norm, final_color, 1.0);
+	}
 
 	if (use_texture) {
 		result *= texture(texture_diffuse1, TexCoords).rgb;

@@ -8,81 +8,87 @@ in float vs_progress;
 
 #include "helpers/lighting.glsl"
 
-uniform bool useIridescence;
-uniform bool useRocketTrail;
+uniform bool  useIridescence;
+uniform bool  useRocketTrail;
+uniform bool  usePBR;         // Enable PBR lighting for trails
+uniform float trailRoughness; // PBR roughness [0=mirror, 1=matte]
+uniform float trailMetallic;  // PBR metallic [0=dielectric, 1=metal]
 
 #include "helpers/noise.glsl"
 
 void main() {
-	// FragColor = vec4(vs_progress, 0, 0, 1);
-	// return;
 	vec3 norm = normalize(vs_normal);
 	vec3 view_dir = normalize(viewPos - vs_frag_pos);
 
 	if (useRocketTrail) {
-		// --- Rocket Trail Effect ---
+		// --- Rocket Trail Effect with Emissive Glow ---
 		float flame_threshold = 0.9;
 		float flicker = snoise(vec2(time * 20.0, vs_frag_pos.x * 5.0)) * 0.5 + 0.5;
 
 		if (vs_progress > flame_threshold) {
-			// --- Flame ---
+			// --- Flame (Emissive) ---
 			float flame_progress = (vs_progress - flame_threshold) / (1.0 - flame_threshold);
 
-			// Core of the flame (white hot and flickering)
-			float core_intensity = pow(flame_progress, 10.0) * flicker * 2.0;
-			vec3  flame_color = vec3(1.0, 1.0, 0.8) * core_intensity;
+			// Core of the flame (white hot, emissive)
+			float core_intensity = pow(flame_progress, 8.0) * flicker;
+			vec3  core_color = vec3(1.0, 1.0, 0.9);                   // White-hot
+			vec3  flame_emission = core_color * core_intensity * 3.0; // HDR emissive
 
-			// Softer outer glow (orange/yellow)
-			float glow_intensity = pow(flame_progress, 2.0) * (1.0 - core_intensity) * 1.5;
-			flame_color += vec3(1.0, 0.6, 0.2) * glow_intensity;
+			// Outer flame glow (orange/yellow, also emissive)
+			float outer_intensity = pow(flame_progress, 2.0) * (1.0 - core_intensity * 0.5);
+			vec3  outer_color = vec3(1.0, 0.5, 0.1); // Orange
+			flame_emission += outer_color * outer_intensity * 2.0;
 
-			FragColor = vec4(flame_color, 1.0);
+			// Add subtle blue at the very base (hottest part)
+			float blue_intensity = pow(flame_progress, 12.0) * 0.3;
+			flame_emission += vec3(0.3, 0.5, 1.0) * blue_intensity;
+
+			FragColor = vec4(flame_emission, 1.0);
 		} else {
-			// --- Smoke ---
+			// --- Smoke with subtle lighting ---
 			float smoke_progress = vs_progress / flame_threshold;
 
-			// Base smoke color is a mix of entity color and grey
-			vec3 smoke_color = mix(vec3(0.5), vs_color, 0.3);
+			// Base smoke color
+			vec3 smoke_color = mix(vec3(0.4, 0.4, 0.45), vs_color * 0.5, 0.2);
 
-			// Noise to create a cloudy/billowing texture
+			// Apply simple lighting to smoke for depth (no shadows needed for trails)
+			vec3 lit_smoke = apply_lighting_no_shadows(vs_frag_pos, norm, smoke_color, 0.1);
+
+			// Noise for cloudy texture
 			float noise = snoise(vec2(vs_progress * 5.0, time * 2.0)) * 0.5 + 0.5;
 
-			// Alpha fades out at the tail and is modulated by noise
-			float alpha = smoothstep(0.0, 0.2, smoke_progress) * (0.4 + noise * 0.3);
+			// Alpha fades out at the tail
+			float alpha = smoothstep(0.0, 0.2, smoke_progress) * (0.35 + noise * 0.25);
 
-			FragColor = vec4(smoke_color, alpha);
+			// Subtle inner glow near the flame
+			float glow = smoothstep(0.7, 0.9, smoke_progress) * 0.3;
+			lit_smoke += vec3(1.0, 0.4, 0.1) * glow;
+
+			FragColor = vec4(lit_smoke, alpha);
 		}
 	} else if (useIridescence) {
-		// --- Iridescence Effect ---
-		// Fresnel term for the base reflectivity
-		float fresnel = pow(1.0 - abs(dot(view_dir, norm)), 5.0);
+		// --- PBR Iridescent Trail ---
+		// Low roughness for sharp, mirror-like reflections
+		float roughness = usePBR ? trailRoughness : 0.15;
 
-		// Use view angle to create a color shift
-		float angle_factor = 1.0 - abs(dot(view_dir, norm));
-		angle_factor = pow(angle_factor, 2.0);
-
-		// Use time and fragment position to create a swirling effect
-		float swirl = sin(time * 0.5 + vs_frag_pos.y * 2.0) * 0.5 + 0.5;
-
-		// Combine for final color using a rainbow palette shifted by the swirl and angle
-		vec3 iridescent_color = vec3(
-			sin(angle_factor * 10.0 + swirl * 5.0) * 0.5 + 0.5,
-			sin(angle_factor * 10.0 + swirl * 5.0 + 2.0) * 0.5 + 0.5,
-			sin(angle_factor * 10.0 + swirl * 5.0 + 4.0) * 0.5 + 0.5
+		// Apply PBR iridescent lighting (no shadows for trail effects)
+		vec3 iridescent_result = apply_lighting_pbr_iridescent_no_shadows(
+			vs_frag_pos,
+			norm,
+			vs_color,
+			roughness,
+			1.0 // Full iridescence strength
 		);
 
-		// if (num_lights > 0) {
-		vec3 light_dir = normalize(lights[0].position - vs_frag_pos);
-		// Add a strong specular highlight
-		vec3  reflect_dir = reflect(-light_dir, norm);
-		float spec = pow(max(dot(view_dir, reflect_dir), 0.0), 128.0);
-		vec3  specular = 1.5 * spec * lights[0].color; // white highlight
-		iridescent_color += specular;
-		// }
+		// Add Fresnel rim for extra pop at grazing angles
+		float fresnel = pow(1.0 - abs(dot(view_dir, norm)), 5.0);
+		vec3  final_color = mix(iridescent_result, vec3(1.0), fresnel * 0.3);
 
-		vec3 final_color = mix(iridescent_color, vec3(1.0), fresnel);
-
-		FragColor = vec4(final_color, 0.75); // Semi-transparent
+		FragColor = vec4(final_color, 0.85); // Slightly more opaque for better visibility
+	} else if (usePBR) {
+		// --- Standard PBR Trail (no shadows for trails) ---
+		vec3 result = apply_lighting_pbr_no_shadows(vs_frag_pos, norm, vs_color, trailRoughness, trailMetallic, 1.0);
+		FragColor = vec4(result, 1.0);
 	} else {
 		// --- Original Phong Lighting ---
 		vec3 result = apply_lighting_no_shadows(vs_frag_pos, norm, vs_color, 0.5);

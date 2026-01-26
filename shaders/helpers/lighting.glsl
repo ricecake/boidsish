@@ -6,6 +6,8 @@
 const int LIGHT_TYPE_POINT = 0;
 const int LIGHT_TYPE_DIRECTIONAL = 1;
 const int LIGHT_TYPE_SPOT = 2;
+const int LIGHT_TYPE_EMISSIVE = 3; // Glowing object light (can cast shadows)
+const int LIGHT_TYPE_FLASH = 4;    // Explosion/flash light (rapid falloff)
 
 /**
  * Calculate shadow factor for a fragment position using a specific shadow map.
@@ -67,8 +69,312 @@ float calculateShadow(int shadow_index, vec3 frag_pos) {
 	return shadow;
 }
 
+// ============================================================================
+// PBR Functions (Cook-Torrance BRDF)
+// ============================================================================
+
+const float PI = 3.14159265359;
+
+// Normal Distribution Function (GGX/Trowbridge-Reitz)
+float DistributionGGX(vec3 N, vec3 H, float roughness) {
+	// Clamp roughness to avoid singularity at 0 (causes black surfaces)
+	float r = max(roughness, 0.04);
+	float a = r * r;
+	float a2 = a * a;
+	float NdotH = max(dot(N, H), 0.0);
+	float NdotH2 = NdotH * NdotH;
+
+	float nom = a2;
+	float denom = (NdotH2 * (a2 - 1.0) + 1.0);
+	denom = PI * denom * denom;
+
+	return nom / max(denom, 0.0001);
+}
+
+// Geometry function (Schlick-GGX)
+float GeometrySchlickGGX(float NdotV, float roughness) {
+	float r = (roughness + 1.0);
+	float k = (r * r) / 8.0;
+
+	float nom = NdotV;
+	float denom = NdotV * (1.0 - k) + k;
+
+	return nom / max(denom, 0.0001);
+}
+
+// Smith's method for geometry obstruction and shadowing
+float GeometrySmith(vec3 N, vec3 V, vec3 L, float roughness) {
+	float NdotV = max(dot(N, V), 0.0);
+	float NdotL = max(dot(N, L), 0.0);
+	float ggx2 = GeometrySchlickGGX(NdotV, roughness);
+	float ggx1 = GeometrySchlickGGX(NdotL, roughness);
+
+	return ggx1 * ggx2;
+}
+
+// Fresnel-Schlick approximation
+vec3 fresnelSchlick(float cosTheta, vec3 F0) {
+	return F0 + (1.0 - F0) * pow(clamp(1.0 - cosTheta, 0.0, 1.0), 5.0);
+}
+
+// Fresnel-Schlick with roughness - for environment reflections
+// Rough surfaces have less pronounced Fresnel effect
+vec3 fresnelSchlickRoughness(float cosTheta, vec3 F0, float roughness) {
+	return F0 + (max(vec3(1.0 - roughness), F0) - F0) * pow(clamp(1.0 - cosTheta, 0.0, 1.0), 5.0);
+}
+
+// ============================================================================
+// Attenuation Helpers for Light Types
+// ============================================================================
+
 /**
- * Apply lighting with shadow support.
+ * Calculate light direction and attenuation for any light type.
+ * @param light_index Index into the lights array
+ * @param frag_pos Fragment world position
+ * @param light_dir Output: normalized direction from fragment to light
+ * @param attenuation Output: combined distance and angular attenuation
+ */
+void calculateLightContribution(int light_index, vec3 frag_pos, out vec3 light_dir, out float attenuation) {
+	attenuation = 1.0;
+
+	if (lights[light_index].type == LIGHT_TYPE_POINT) {
+		// Point light: attenuates with distance
+		light_dir = normalize(lights[light_index].position - frag_pos);
+		float distance = length(lights[light_index].position - frag_pos);
+		// Practical attenuation curve (inverse square falloff with linear term)
+		attenuation = 1.0 / (1.0 + 0.09 * distance + 0.032 * distance * distance);
+
+	} else if (lights[light_index].type == LIGHT_TYPE_DIRECTIONAL) {
+		// Directional light: no attenuation, parallel rays
+		light_dir = normalize(-lights[light_index].direction);
+		attenuation = 1.0;
+
+	} else if (lights[light_index].type == LIGHT_TYPE_SPOT) {
+		// Spot light: distance attenuation + angular falloff
+		light_dir = normalize(lights[light_index].position - frag_pos);
+		float distance = length(lights[light_index].position - frag_pos);
+		attenuation = 1.0 / (1.0 + 0.09 * distance + 0.032 * distance * distance);
+
+		// Angular falloff using inner/outer cutoff angles
+		float theta = dot(light_dir, normalize(-lights[light_index].direction));
+		float epsilon = lights[light_index].inner_cutoff - lights[light_index].outer_cutoff;
+		float angular_intensity = clamp((theta - lights[light_index].outer_cutoff) / epsilon, 0.0, 1.0);
+		attenuation *= angular_intensity;
+
+	} else if (lights[light_index].type == LIGHT_TYPE_EMISSIVE) {
+		// Emissive/glowing object light: similar to point light but with soft near-field
+		// inner_cutoff stores the emissive object radius for soft falloff
+		light_dir = normalize(lights[light_index].position - frag_pos);
+		float distance = length(lights[light_index].position - frag_pos);
+		float emissive_radius = lights[light_index].inner_cutoff;
+
+		// Soft falloff that accounts for the size of the glowing object
+		// Avoids harsh falloff when very close to the light source
+		float effective_dist = max(distance - emissive_radius * 0.5, 0.0);
+		attenuation = 1.0 / (1.0 + 0.09 * effective_dist + 0.032 * effective_dist * effective_dist);
+
+		// Boost intensity when inside or near the emissive radius
+		float proximity_boost = smoothstep(emissive_radius * 2.0, 0.0, distance);
+		attenuation = mix(attenuation, 1.0, proximity_boost * 0.5);
+
+	} else if (lights[light_index].type == LIGHT_TYPE_FLASH) {
+		// Flash/explosion light: very bright with rapid falloff
+		// inner_cutoff = flash radius, outer_cutoff = falloff exponent
+		light_dir = normalize(lights[light_index].position - frag_pos);
+		float distance = length(lights[light_index].position - frag_pos);
+		float flash_radius = lights[light_index].inner_cutoff;
+		float falloff_exp = lights[light_index].outer_cutoff;
+
+		// Normalized distance (0 at center, 1 at radius edge)
+		float norm_dist = distance / max(flash_radius, 0.001);
+
+		// Sharp inverse-power falloff for explosive effect
+		// Falls off rapidly but smoothly
+		attenuation = 1.0 / pow(1.0 + norm_dist, falloff_exp);
+
+		// Hard cutoff at 2x radius to prevent distant influence
+		attenuation *= smoothstep(2.0, 1.5, norm_dist);
+	}
+}
+
+// ============================================================================
+// PBR Lighting Functions
+// ============================================================================
+
+// PBR intensity multiplier to compensate for energy conservation
+// PBR is inherently darker than legacy Phong, so we boost it
+const float PBR_INTENSITY_BOOST = 4.0;
+
+/**
+ * PBR lighting with Cook-Torrance BRDF - supports all light types.
+ *
+ * @param frag_pos Fragment world position
+ * @param normal Surface normal (must be normalized)
+ * @param albedo Base color of the material
+ * @param roughness Surface roughness [0=smooth, 1=rough]
+ * @param metallic Metallic property [0=dielectric, 1=metal]
+ * @param ao Ambient occlusion [0=fully occluded, 1=no occlusion]
+ */
+vec3 apply_lighting_pbr(vec3 frag_pos, vec3 normal, vec3 albedo, float roughness, float metallic, float ao) {
+	vec3 N = normalize(normal);
+	vec3 V = normalize(viewPos - frag_pos);
+
+	// Calculate reflectance at normal incidence
+	// For dielectrics use 0.04, for metals use albedo color
+	vec3 F0 = vec3(0.04);
+	F0 = mix(F0, albedo, metallic);
+
+	vec3 Lo = vec3(0.0);
+
+	for (int i = 0; i < num_lights; ++i) {
+		// Get light direction and attenuation based on light type
+		vec3  L;
+		float base_attenuation;
+		calculateLightContribution(i, frag_pos, L, base_attenuation);
+
+		vec3  H = normalize(V + L);
+		float distance = length(lights[i].position - frag_pos);
+
+		// For PBR, we apply intensity boost to compensate for energy conservation
+		// Note: directional lights don't use distance attenuation
+		float attenuation;
+		if (lights[i].type == LIGHT_TYPE_DIRECTIONAL) {
+			attenuation = lights[i].intensity * PBR_INTENSITY_BOOST;
+		} else {
+			attenuation = (lights[i].intensity * PBR_INTENSITY_BOOST) * base_attenuation;
+		}
+		vec3 radiance = lights[i].color * attenuation;
+
+		// Cook-Torrance BRDF
+		float NDF = DistributionGGX(N, H, roughness);
+		float G = GeometrySmith(N, V, L, roughness);
+		vec3  F = fresnelSchlick(max(dot(H, V), 0.0), F0);
+
+		vec3  numerator = NDF * G * F;
+		float denominator = 4.0 * max(dot(N, V), 0.0) * max(dot(N, L), 0.0) + 0.0001;
+		vec3  specular = numerator / denominator;
+
+		// kS is Fresnel (specular component)
+		vec3 kS = F;
+		// kD is diffuse component (energy conservation: kD + kS = 1.0)
+		vec3 kD = vec3(1.0) - kS;
+		// Metals don't have diffuse lighting
+		kD *= 1.0 - metallic;
+
+		float NdotL = max(dot(N, L), 0.0);
+
+		// Calculate shadow
+		float shadow = calculateShadow(lightShadowIndices[i], frag_pos);
+
+		// Add to outgoing radiance Lo
+		Lo += (kD * albedo / PI + specular) * radiance * NdotL * shadow;
+	}
+
+	// Ambient lighting for PBR (uses ambient_light uniform from main branch)
+	vec3 ambientDiffuse = ambient_light * albedo * ao;
+
+	// Environment reflection approximation for glossy surfaces
+	// Without actual IBL, smooth surfaces would be too dark because they have
+	// nothing to reflect. This simulates a bright environment being reflected.
+	vec3 R = reflect(-V, N);
+
+	// Fresnel at grazing angles - smooth surfaces reflect more at edges
+	vec3  F0_env = mix(vec3(0.04), albedo, metallic);
+	float NdotV = max(dot(N, V), 0.0);
+	vec3  F_env = fresnelSchlickRoughness(NdotV, F0_env, roughness);
+
+	// Fake environment color - gradient from horizon to sky
+	// This gives smooth surfaces something to "reflect"
+	float upAmount = R.y * 0.5 + 0.5; // 0 = down, 1 = up
+	vec3  envColor = mix(
+        vec3(0.3, 0.35, 0.4), // Horizon/ground color (grayish)
+        vec3(0.6, 0.7, 0.9),  // Sky color (bluish white)
+        smoothstep(0.0, 0.7, upAmount)
+    );
+
+	// Environment reflection strength based on smoothness
+	// Rough surfaces get little env reflection, smooth surfaces get a lot
+	float smoothness = 1.0 - roughness;
+	float envStrength = smoothness * smoothness * 0.8; // Up to 0.8 for perfect mirror
+
+	// Metallic surfaces should reflect the environment color tinted by albedo
+	// Non-metallic surfaces reflect environment but less strongly
+	vec3 ambientSpecular = F_env * envColor * envStrength * ao;
+
+	// Combine diffuse and specular ambient
+	// For metals, reduce diffuse ambient (they don't have diffuse reflection)
+	vec3 ambient = ambientDiffuse * (1.0 - metallic * 0.9) + ambientSpecular;
+	vec3 color = ambient + Lo;
+
+	return color;
+}
+
+/**
+ * PBR lighting without shadows - for shaders that don't need shadow calculations.
+ * Supports all light types (point, directional, spot).
+ */
+vec3 apply_lighting_pbr_no_shadows(vec3 frag_pos, vec3 normal, vec3 albedo, float roughness, float metallic, float ao) {
+	vec3 N = normalize(normal);
+	vec3 V = normalize(viewPos - frag_pos);
+
+	vec3 F0 = vec3(0.04);
+	F0 = mix(F0, albedo, metallic);
+
+	vec3 Lo = vec3(0.0);
+
+	for (int i = 0; i < num_lights; ++i) {
+		vec3  L;
+		float base_attenuation;
+		calculateLightContribution(i, frag_pos, L, base_attenuation);
+
+		vec3 H = normalize(V + L);
+
+		float attenuation;
+		if (lights[i].type == LIGHT_TYPE_DIRECTIONAL) {
+			attenuation = lights[i].intensity * PBR_INTENSITY_BOOST;
+		} else {
+			attenuation = (lights[i].intensity * PBR_INTENSITY_BOOST) * base_attenuation;
+		}
+		vec3 radiance = lights[i].color * attenuation;
+
+		float NDF = DistributionGGX(N, H, roughness);
+		float G = GeometrySmith(N, V, L, roughness);
+		vec3  F = fresnelSchlick(max(dot(H, V), 0.0), F0);
+
+		vec3  numerator = NDF * G * F;
+		float denominator = 4.0 * max(dot(N, V), 0.0) * max(dot(N, L), 0.0) + 0.0001;
+		vec3  specular = numerator / denominator;
+
+		vec3 kS = F;
+		vec3 kD = vec3(1.0) - kS;
+		kD *= 1.0 - metallic;
+
+		float NdotL = max(dot(N, L), 0.0);
+		Lo += (kD * albedo / PI + specular) * radiance * NdotL;
+	}
+
+	// Ambient (same as shadowed version)
+	vec3  ambientDiffuse = ambient_light * albedo * ao;
+	vec3  R = reflect(-V, N);
+	vec3  F0_env = mix(vec3(0.04), albedo, metallic);
+	float NdotV = max(dot(N, V), 0.0);
+	vec3  F_env = fresnelSchlickRoughness(NdotV, F0_env, roughness);
+	float upAmount = R.y * 0.5 + 0.5;
+	vec3  envColor = mix(vec3(0.3, 0.35, 0.4), vec3(0.6, 0.7, 0.9), smoothstep(0.0, 0.7, upAmount));
+	float smoothness = 1.0 - roughness;
+	float envStrength = smoothness * smoothness * 0.8;
+	vec3  ambientSpecular = F_env * envColor * envStrength * ao;
+	vec3  ambient = ambientDiffuse * (1.0 - metallic * 0.9) + ambientSpecular;
+
+	return ambient + Lo;
+}
+
+// ============================================================================
+// Legacy/Phong Lighting Functions
+// ============================================================================
+
+/**
+ * Apply lighting with shadow support - supports all light types.
  * This version checks each light for shadow casting capability.
  */
 vec3 apply_lighting(vec3 frag_pos, vec3 normal, vec3 albedo, float specular_strength) {
@@ -76,23 +382,8 @@ vec3 apply_lighting(vec3 frag_pos, vec3 normal, vec3 albedo, float specular_stre
 
 	for (int i = 0; i < num_lights; ++i) {
 		vec3  light_dir;
-		float attenuation = 1.0;
-
-		if (lights[i].type == LIGHT_TYPE_POINT) { // Point light
-			light_dir = normalize(lights[i].position - frag_pos);
-			float distance = length(lights[i].position - frag_pos);
-			attenuation = 1.0 / (1.0 + 0.09 * distance + 0.032 * (distance * distance));
-		} else if (lights[i].type == LIGHT_TYPE_DIRECTIONAL) { // Directional light
-			light_dir = normalize(-lights[i].direction);
-		} else if (lights[i].type == LIGHT_TYPE_SPOT) { // Spot light
-			light_dir = normalize(lights[i].position - frag_pos);
-			float distance = length(lights[i].position - frag_pos);
-			attenuation = 1.0 / (1.0 + 0.09 * distance + 0.032 * (distance * distance));
-			float theta = dot(light_dir, normalize(-lights[i].direction));
-			float epsilon = lights[i].inner_cutoff - lights[i].outer_cutoff;
-			float intensity = clamp((theta - lights[i].outer_cutoff) / epsilon, 0.0, 1.0);
-			attenuation *= intensity;
-		}
+		float attenuation;
+		calculateLightContribution(i, frag_pos, light_dir, attenuation);
 
 		// Calculate shadow factor for this light
 		float shadow = calculateShadow(lightShadowIndices[i], frag_pos);
@@ -101,13 +392,13 @@ vec3 apply_lighting(vec3 frag_pos, vec3 normal, vec3 albedo, float specular_stre
 		float diff = max(dot(normal, light_dir), 0.0);
 		vec3  diffuse = lights[i].color * diff * albedo;
 
-		// Specular
+		// Specular (Blinn-Phong)
 		vec3  view_dir = normalize(viewPos - frag_pos);
 		vec3  reflect_dir = reflect(-light_dir, normal);
 		float spec = pow(max(dot(view_dir, reflect_dir), 0.0), 32);
 		vec3  specular = lights[i].color * spec * specular_strength;
 
-		// Apply shadow to diffuse and specular, but not ambient
+		// Apply shadow and attenuation to diffuse and specular, but not ambient
 		result += (diffuse + specular) * lights[i].intensity * shadow * attenuation;
 	}
 
@@ -115,7 +406,7 @@ vec3 apply_lighting(vec3 frag_pos, vec3 normal, vec3 albedo, float specular_stre
 }
 
 /**
- * Apply lighting without shadows.
+ * Apply lighting without shadows - supports all light types.
  * Use this for shaders that don't need shadows (sky, trails, etc.)
  */
 vec3 apply_lighting_no_shadows(vec3 frag_pos, vec3 normal, vec3 albedo, float specular_strength) {
@@ -123,23 +414,8 @@ vec3 apply_lighting_no_shadows(vec3 frag_pos, vec3 normal, vec3 albedo, float sp
 
 	for (int i = 0; i < num_lights; ++i) {
 		vec3  light_dir;
-		float attenuation = 1.0;
-
-		if (lights[i].type == LIGHT_TYPE_POINT) { // Point light
-			light_dir = normalize(lights[i].position - frag_pos);
-			float distance = length(lights[i].position - frag_pos);
-			attenuation = 1.0 / (1.0 + 0.09 * distance + 0.032 * (distance * distance));
-		} else if (lights[i].type == LIGHT_TYPE_DIRECTIONAL) { // Directional light
-			light_dir = normalize(-lights[i].direction);
-		} else if (lights[i].type == LIGHT_TYPE_SPOT) { // Spot light
-			light_dir = normalize(lights[i].position - frag_pos);
-			float distance = length(lights[i].position - frag_pos);
-			attenuation = 1.0 / (1.0 + 0.09 * distance + 0.032 * (distance * distance));
-			float theta = dot(light_dir, normalize(-lights[i].direction));
-			float epsilon = lights[i].inner_cutoff - lights[i].outer_cutoff;
-			float intensity = clamp((theta - lights[i].outer_cutoff) / epsilon, 0.0, 1.0);
-			attenuation *= intensity;
-		}
+		float attenuation;
+		calculateLightContribution(i, frag_pos, light_dir, attenuation);
 
 		// Diffuse
 		float diff = max(dot(normal, light_dir), 0.0);
@@ -153,6 +429,288 @@ vec3 apply_lighting_no_shadows(vec3 frag_pos, vec3 normal, vec3 albedo, float sp
 
 		result += (diffuse + specular) * lights[i].intensity * attenuation;
 	}
+
+	return result;
+}
+
+// ============================================================================
+// Iridescent/Special Effect Lighting
+// ============================================================================
+
+/**
+ * Calculate iridescent color based on view angle and surface normal.
+ * Returns a rainbow-shifted color that changes with viewing angle.
+ *
+ * @param view_dir Normalized view direction
+ * @param normal Normalized surface normal
+ * @param base_color Optional base color to blend with
+ * @param time_offset Animation time for swirling effect
+ */
+vec3 calculate_iridescence(vec3 view_dir, vec3 normal, vec3 base_color, float time_offset) {
+	// Fresnel-based angle factor
+	float NdotV = abs(dot(view_dir, normal));
+	float angle_factor = 1.0 - NdotV;
+	angle_factor = pow(angle_factor, 2.0);
+
+	// Add time-based swirl for animation
+	float swirl = sin(time_offset * 0.5) * 0.5 + 0.5;
+	vec3  iridescent = vec3(
+        sin(angle_factor * 10.0 + swirl * 5.0) * 0.5 + 0.5,
+        sin(angle_factor * 10.0 + swirl * 5.0 + 2.0) * 0.5 + 0.5,
+        sin(angle_factor * 10.0 + swirl * 5.0 + 4.0) * 0.5 + 0.5
+    );
+
+	// Blend with base color based on angle
+	return mix(base_color, iridescent, angle_factor * 0.8 + 0.2);
+}
+
+/**
+ * PBR iridescent material - combines PBR lighting with thin-film interference.
+ * Creates a metallic, color-shifting surface like oil on water or beetle shells.
+ * Supports all light types. No shadows (typically used for effects).
+ *
+ * @param frag_pos Fragment world position
+ * @param normal Surface normal
+ * @param base_color Base/underlying color
+ * @param roughness Surface roughness [0=mirror, 1=matte]
+ * @param iridescence_strength How much iridescence to apply [0-1]
+ */
+vec3 apply_lighting_pbr_iridescent_no_shadows(
+	vec3  frag_pos,
+	vec3  normal,
+	vec3  base_color,
+	float roughness,
+	float iridescence_strength
+) {
+	vec3  N = normalize(normal);
+	vec3  V = normalize(viewPos - frag_pos);
+	float NdotV = max(dot(N, V), 0.0);
+
+	// Calculate iridescent color based on view angle
+	vec3 iridescent_color = calculate_iridescence(V, N, base_color, time + frag_pos.y * 2.0);
+
+	// Base iridescent appearance (always visible, angle-dependent)
+	float angle_factor = 1.0 - NdotV;
+	vec3  base_iridescent = iridescent_color * (0.4 + angle_factor * 0.6);
+
+	// Add specular highlights from lights
+	vec3 specular_total = vec3(0.0);
+
+	for (int i = 0; i < num_lights; ++i) {
+		vec3  L;
+		float base_attenuation;
+		calculateLightContribution(i, frag_pos, L, base_attenuation);
+
+		vec3  H = normalize(V + L);
+		float NdotL = max(dot(N, L), 0.0);
+		float HdotV = max(dot(H, V), 0.0);
+
+		float attenuation;
+		if (lights[i].type == LIGHT_TYPE_DIRECTIONAL) {
+			attenuation = lights[i].intensity * PBR_INTENSITY_BOOST;
+		} else {
+			attenuation = (lights[i].intensity * PBR_INTENSITY_BOOST) * base_attenuation;
+		}
+		vec3 radiance = lights[i].color * attenuation;
+
+		// GGX specular for sharp highlights
+		float NDF = DistributionGGX(N, H, roughness);
+		float G = GeometrySmith(N, V, L, roughness);
+
+		// Fresnel with iridescent F0
+		vec3 F0 = iridescent_color * 0.8 + vec3(0.2);
+		vec3 F = fresnelSchlick(HdotV, F0);
+
+		vec3  numerator = NDF * G * F;
+		float denominator = 4.0 * NdotV * NdotL + 0.0001;
+		vec3  specular = numerator / denominator;
+
+		specular_total += specular * radiance * NdotL;
+	}
+
+	// Fresnel rim - strong white/iridescent edge glow
+	float fresnel_rim = pow(1.0 - NdotV, 4.0);
+	vec3  rim_color = mix(vec3(1.0), iridescent_color, 0.5) * fresnel_rim * 0.8;
+
+	// Combine: base iridescent appearance + specular highlights + rim
+	return base_iridescent + specular_total + rim_color;
+}
+
+// ============================================================================
+// Emissive and Flash Effect Functions
+// ============================================================================
+
+/**
+ * Emissive glow calculation for rocket/flame trails.
+ * Creates a hot, glowing effect that emits light.
+ *
+ * @param base_emission Base emissive color (e.g., orange for flames)
+ * @param intensity Glow intensity multiplier
+ * @param falloff How quickly the glow fades [0=sharp, 1=soft]
+ */
+vec3 calculate_emission(vec3 base_emission, float intensity, float falloff) {
+	// HDR emission - can exceed 1.0 for bloom effects
+	return base_emission * intensity * (1.0 + falloff);
+}
+
+/**
+ * Render a glowing/emissive object surface.
+ * Combines emissive self-illumination with optional environmental lighting.
+ * Use this for objects that ARE the light source (lamps, magic orbs, etc.)
+ *
+ * @param frag_pos Fragment world position
+ * @param normal Surface normal
+ * @param emissive_color The glow color of the object
+ * @param emissive_intensity How bright the glow is (can exceed 1.0 for HDR/bloom)
+ * @param base_albedo Optional base color for non-emissive parts
+ * @param emissive_coverage How much of surface is emissive [0=none, 1=fully glowing]
+ */
+vec3 apply_emissive_surface(
+	vec3  frag_pos,
+	vec3  normal,
+	vec3  emissive_color,
+	float emissive_intensity,
+	vec3  base_albedo,
+	float emissive_coverage
+) {
+	vec3 N = normalize(normal);
+	vec3 V = normalize(viewPos - frag_pos);
+
+	// The emissive part - self-illuminated, not affected by external lighting
+	vec3 emission = emissive_color * emissive_intensity;
+
+	// Add subtle Fresnel glow at edges for a more volumetric feel
+	float fresnel = pow(1.0 - max(dot(N, V), 0.0), 3.0);
+	emission += emissive_color * fresnel * emissive_intensity * 0.5;
+
+	// The non-emissive part gets regular lighting
+	vec3 lit_surface = vec3(0.0);
+	if (emissive_coverage < 1.0) {
+		lit_surface = apply_lighting_no_shadows(frag_pos, normal, base_albedo, 0.5);
+	}
+
+	// Blend between emissive and lit surface
+	return mix(lit_surface, emission, emissive_coverage);
+}
+
+/**
+ * Render a glowing object with PBR properties for non-emissive regions.
+ * The emissive parts glow while other parts use PBR lighting.
+ *
+ * @param frag_pos Fragment world position
+ * @param normal Surface normal
+ * @param emissive_color The glow color
+ * @param emissive_intensity Glow brightness (HDR, can exceed 1.0)
+ * @param base_albedo Base color for non-emissive parts
+ * @param roughness PBR roughness for non-emissive parts
+ * @param metallic PBR metallic for non-emissive parts
+ * @param emissive_mask Per-fragment emissive coverage [0-1]
+ */
+vec3 apply_emissive_surface_pbr(
+	vec3  frag_pos,
+	vec3  normal,
+	vec3  emissive_color,
+	float emissive_intensity,
+	vec3  base_albedo,
+	float roughness,
+	float metallic,
+	float emissive_mask
+) {
+	vec3 N = normalize(normal);
+	vec3 V = normalize(viewPos - frag_pos);
+
+	// Emissive component
+	vec3  emission = emissive_color * emissive_intensity;
+	float fresnel = pow(1.0 - max(dot(N, V), 0.0), 3.0);
+	emission += emissive_color * fresnel * emissive_intensity * 0.3;
+
+	// PBR lit component for non-emissive parts
+	vec3 pbr_lit = apply_lighting_pbr_no_shadows(frag_pos, normal, base_albedo, roughness, metallic, 1.0);
+
+	// Blend based on emissive mask
+	return mix(pbr_lit, emission, emissive_mask);
+}
+
+/**
+ * Calculate flash/explosion illumination contribution to a surface.
+ * Call this in addition to regular lighting for surfaces hit by a flash.
+ * Returns additive light contribution.
+ *
+ * @param frag_pos Fragment world position
+ * @param normal Surface normal
+ * @param flash_pos Explosion/flash center position
+ * @param flash_color Flash color (typically warm white/orange)
+ * @param flash_intensity Flash brightness (can be very high, e.g., 10-50)
+ * @param flash_radius Effective radius of the flash
+ * @param flash_time Normalized time since flash [0=peak, 1=faded]
+ */
+vec3 calculate_flash_contribution(
+	vec3  frag_pos,
+	vec3  normal,
+	vec3  flash_pos,
+	vec3  flash_color,
+	float flash_intensity,
+	float flash_radius,
+	float flash_time
+) {
+	vec3  L = normalize(flash_pos - frag_pos);
+	float distance = length(flash_pos - frag_pos);
+	float NdotL = max(dot(normalize(normal), L), 0.0);
+
+	// Distance attenuation with sharp falloff
+	float norm_dist = distance / max(flash_radius, 0.001);
+	float dist_atten = 1.0 / pow(1.0 + norm_dist, 2.0);
+	dist_atten *= smoothstep(2.0, 1.0, norm_dist); // Hard cutoff
+
+	// Time-based fade (flash decays rapidly)
+	// Starts bright, fades quickly, with slight persistence
+	float time_atten = pow(1.0 - clamp(flash_time, 0.0, 1.0), 3.0);
+
+	// Combine for final flash contribution
+	return flash_color * flash_intensity * dist_atten * time_atten * NdotL;
+}
+
+/**
+ * Full flash effect - returns both the flash illumination and suggested bloom.
+ * Use the bloom value to drive post-processing bloom intensity.
+ *
+ * @param frag_pos Fragment world position
+ * @param normal Surface normal
+ * @param albedo Surface base color
+ * @param flash_pos Flash center
+ * @param flash_color Flash color
+ * @param flash_intensity Flash brightness
+ * @param flash_radius Flash radius
+ * @param flash_time Normalized time [0=peak, 1=faded]
+ * @param out_bloom Output: suggested bloom intensity for post-processing
+ */
+vec3 apply_flash_lighting(
+	vec3      frag_pos,
+	vec3      normal,
+	vec3      albedo,
+	vec3      flash_pos,
+	vec3      flash_color,
+	float     flash_intensity,
+	float     flash_radius,
+	float     flash_time,
+	out float out_bloom
+) {
+	vec3 flash = calculate_flash_contribution(
+		frag_pos,
+		normal,
+		flash_pos,
+		flash_color,
+		flash_intensity,
+		flash_radius,
+		flash_time
+	);
+
+	// Flash contribution adds to surface color
+	vec3 result = albedo * flash;
+
+	// Calculate bloom intensity based on flash brightness at this point
+	// Surfaces closer to flash should bloom more
+	out_bloom = length(flash) * 0.1; // Scale for bloom post-process
 
 	return result;
 }

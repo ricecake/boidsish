@@ -33,7 +33,7 @@ float GetVertexTessLevel(vec3 worldPos, vec3 normal, vec3 forward) {
 	// If facing camera, use 1.0x the DistanceLevel.
 	// If silhouette, use 3.0x the DistanceLevel (up to Max).
 	// This ensures flat ground is still smooth, but edges are SUPER smooth.
-	float silhouetteBoost = mix(1.0, 3.0, isSilhouette * (1 - dist / 500.0));
+	float silhouetteBoost = mix(1.0, 2.0, isSilhouette * (1 - dist / 500.0));
 
 	// 3. FOCUS FACTOR (The Cull)
 	// Vector from Camera -> Vertex
@@ -43,7 +43,7 @@ float GetVertexTessLevel(vec3 worldPos, vec3 normal, vec3 forward) {
 
 	// Drop detail rapidly if it's not in front of the camera
 	// If align < 0.7 (approx 45 degrees), detail drops to 0
-	float focusCull = smoothstep(0.8, 1.0, align);
+	float focusCull = smoothstep(0.85, 1.0, align);
 
 	// COMBINE
 	// We multiply the Base Distance Level by the Silhouette Boost

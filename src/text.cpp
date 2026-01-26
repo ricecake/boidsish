@@ -298,6 +298,14 @@ namespace Boidsish {
 		shader->setMat4("model", GetModelMatrix());
 		shader->setVec3("objectColor", GetR(), GetG(), GetB());
 
+		// Set PBR material properties
+		shader->setBool("usePBR", UsePBR());
+		if (UsePBR()) {
+			shader->setFloat("roughness", GetRoughness());
+			shader->setFloat("metallic", GetMetallic());
+			shader->setFloat("ao", GetAO());
+		}
+
 		glBindVertexArray(vao_);
 		glDrawArrays(GL_TRIANGLES, 0, vertex_count_);
 		glBindVertexArray(0);
@@ -310,6 +318,14 @@ namespace Boidsish {
 		shader.use();
 		shader.setMat4("model", model_matrix);
 		shader.setVec3("objectColor", GetR(), GetG(), GetB());
+
+		// Set PBR material properties
+		shader.setBool("usePBR", UsePBR());
+		if (UsePBR()) {
+			shader.setFloat("roughness", GetRoughness());
+			shader.setFloat("metallic", GetMetallic());
+			shader.setFloat("ao", GetAO());
+		}
 
 		glBindVertexArray(vao_);
 		glDrawArrays(GL_TRIANGLES, 0, vertex_count_);

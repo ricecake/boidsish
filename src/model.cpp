@@ -110,6 +110,14 @@ namespace Boidsish {
 		shader.setMat4("model", model);
 		shader.setVec3("objectColor", GetR(), GetG(), GetB());
 
+		// Set PBR material properties
+		shader.setBool("usePBR", UsePBR());
+		if (UsePBR()) {
+			shader.setFloat("roughness", GetRoughness());
+			shader.setFloat("metallic", GetMetallic());
+			shader.setFloat("ao", GetAO());
+		}
+
 		if (this->no_cull_) {
 			glDisable(GL_CULL_FACE);
 		}

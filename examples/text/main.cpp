@@ -27,6 +27,9 @@ int main() {
 		0.0f
 	);
 	text_shape->SetScale(glm::vec3(0.5f));
+	text_shape->SetUsePBR(true);
+	text_shape->SetMetallic(0.76);
+	text_shape->SetRoughness(0.01);
 	visualizer.AddShape(text_shape);
 
 	double      last_time = glfwGetTime();

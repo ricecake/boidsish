@@ -7,8 +7,8 @@ struct Light {
 	vec3  color;
 	int   type;
 	vec3  direction;
-	float inner_cutoff;
-	float outer_cutoff;
+	float inner_cutoff; // Also: emissive_radius (EMISSIVE), flash_radius (FLASH)
+	float outer_cutoff; // Also: falloff_exp (FLASH)
 };
 
 const int MAX_LIGHTS = 10;

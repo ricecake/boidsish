@@ -99,112 +99,277 @@ float fbm(vec3 p) {
 	return value;
 }
 
-// --- Insert after snoise() ---
-
-// Calculate Curl Noise by sampling the potential field derivatives
-vec3 curlNoise(vec3 p, float time) {
-	const float e = 0.1; // Epsilon for finite difference
-
-	// We create a vector potential (psi) by sampling noise at offsets.
-	// We animate it by adding time to the input.
-	vec3 dx = vec3(e, 0.0, 0.0);
-	vec3 dy = vec3(0.0, e, 0.0);
-	vec3 dz = vec3(0.0, 0.0, e);
-
-	// Helper to sample our potential field (just 3 arbitrary noise lookups)
-	// We use large offsets (100.0) to decorrelate the axes
-	vec3 p_t = p + vec3(0, 0, time * 0.5);
-
-	float x0 = snoise(p_t - dy);
-	float x1 = snoise(p_t + dy);
-	float x2 = snoise(p_t - dz);
-	float x3 = snoise(p_t + dz);
-
-	float y0 = snoise(p_t - dz);
-	float y1 = snoise(p_t + dz);
-	float y2 = snoise(p_t - dx);
-	float y3 = snoise(p_t + dx);
-
-	float z0 = snoise(p_t - dx);
-	float z1 = snoise(p_t + dx);
-	float z2 = snoise(p_t - dy);
-	float z3 = snoise(p_t + dy);
-
-	// Finite difference approximation of curl
-	float cx = (x1 - x0) - (y1 - y0); // dPsi_z/dy - dPsi_y/dz (simplified mapping)
-	float cy = (y1 - y0) - (z1 - z0);
-	float cz = (z1 - z0) - (x1 - x0);
-
-	return normalize(vec3(cx, cy, cz));
+// Higher octave FBM for fine detail
+float fbm_detail(vec3 p) {
+	float value = 0.0;
+	float amplitude = 0.5;
+	for (int i = 0; i < 6; i++) {
+		value += amplitude * snoise(p);
+		p *= 2.0;
+		amplitude *= 0.5;
+	}
+	return value;
 }
 
-vec3 getFlowField(vec3 pos, vec3 normal, float time) {
-	// 1. Base Wind (Global direction)
-	vec3 wind = normalize(vec3(0.2, 0.0, 1.0)); // Blowing roughly Z-forward
+// ============================================================================
+// Terrain Biome System
+// ============================================================================
 
-	// 2. Downhill Vector (Gravity projected onto tangent plane)
-	// This makes critters swoop into valleys.
-	vec3 up = vec3(0, 1, 0);
-	// Project 'down' (-up) onto the surface defined by 'normal'
-	vec3 downhill = normalize((dot(normal, up) * normal) - up);
+// Color palette - realistic terrain tones
+const vec3 COL_SAND_WET = vec3(0.55, 0.45, 0.35);      // Wet sand near water
+const vec3 COL_SAND_DRY = vec3(0.76, 0.70, 0.55);      // Dry beach sand
+const vec3 COL_GRASS_LUSH = vec3(0.20, 0.45, 0.15);    // Lush valley grass
+const vec3 COL_GRASS_DRY = vec3(0.45, 0.50, 0.25);     // Drier upland grass
+const vec3 COL_FOREST = vec3(0.12, 0.28, 0.10);        // Dense forest
+const vec3 COL_ALPINE_MEADOW = vec3(0.35, 0.45, 0.25); // High alpine grass
+const vec3 COL_ROCK_BROWN = vec3(0.35, 0.30, 0.25);    // Brown cliff rock
+const vec3 COL_ROCK_GREY = vec3(0.45, 0.45, 0.48);     // Grey mountain rock
+const vec3 COL_ROCK_DARK = vec3(0.25, 0.23, 0.22);     // Dark wet rock
+const vec3 COL_SNOW_FRESH = vec3(0.95, 0.97, 1.00);    // Fresh snow
+const vec3 COL_SNOW_OLD = vec3(0.85, 0.88, 0.92);      // Older packed snow
+const vec3 COL_DIRT = vec3(0.35, 0.25, 0.18);          // Exposed dirt
 
-	// Fix for perfectly flat ground (downhill becomes 0)
-	if (length(downhill) < 0.01)
-		downhill = vec3(0);
+// Height thresholds (0 = water level, ~100 = typical peaks)
+const float HEIGHT_BEACH_END = 3.0;
+const float HEIGHT_LOWLAND_END = 20.0;
+const float HEIGHT_FOREST_END = 50.0;
+const float HEIGHT_ALPINE_START = 60.0;
+const float HEIGHT_TREELINE = 80.0;
+const float HEIGHT_SNOW_START = 90.0;
+const float HEIGHT_PEAK = 100.0;
 
-	// 3. Curl Noise (Turbulence)
-	// Scale position to control feature size of the swirls
-	vec3 curl = curlNoise(pos * 0.2, time);
+/**
+ * Calculate valley/ridge factor using noise-based curvature approximation.
+ * Valleys tend to accumulate moisture and be more lush.
+ * Returns: negative = valley (concave), positive = ridge (convex)
+ */
+float calculateValleyFactor(vec3 pos) {
+	// Sample noise at different scales to approximate local curvature
+	float scale = 0.02;
+	float center = fbm(pos * scale);
 
-	// 4. Composite
-	// Heavy weight on downhill to force valley following
-	// Curl adds local variation
-	vec3 flow = wind * 0.5 + downhill * 1.5 + curl * 0.8;
+	// Sample neighbors
+	float dx = 5.0;
+	float north = fbm((pos + vec3(0, 0, dx)) * scale);
+	float south = fbm((pos - vec3(0, 0, dx)) * scale);
+	float east = fbm((pos + vec3(dx, 0, 0)) * scale);
+	float west = fbm((pos - vec3(dx, 0, 0)) * scale);
 
-	return normalize(flow);
+	// Laplacian approximation - negative means we're lower than surroundings (valley)
+	float laplacian = (north + south + east + west) / 4.0 - center;
+
+	return laplacian * 10.0; // Scale for usability
+}
+
+/**
+ * Calculate moisture based on height, valley factor, and noise
+ */
+float calculateMoisture(float height, float valleyFactor, vec3 pos) {
+	// Base moisture decreases with altitude (less rain at high elevations)
+	float baseMoisture = 1.0 - smoothstep(0.0, HEIGHT_PEAK, height) * 0.6;
+
+	// Valleys are more moist (water collects there)
+	float valleyMoisture = clamp(-valleyFactor * 0.5, 0.0, 0.4);
+
+	// Add some noise variation
+	float noiseMoisture = fbm(pos * 0.03) * 0.2;
+
+	return clamp(baseMoisture + valleyMoisture + noiseMoisture, 0.0, 1.0);
+}
+
+/**
+ * Get the base biome color based on height
+ */
+vec3 getBiomeColor(float height, float moisture, float noise) {
+	// Distort height with noise for natural boundaries
+	float h = height + noise * 8.0;
+
+	// Beach zone (0 - 3)
+	if (h < HEIGHT_BEACH_END) {
+		float wetness = 1.0 - smoothstep(0.0, HEIGHT_BEACH_END, h);
+		return mix(COL_SAND_DRY, COL_SAND_WET, wetness);
+	}
+
+	// Lowland zone (3 - 25): grass/meadow, lusher in valleys
+	if (h < HEIGHT_LOWLAND_END) {
+		float t = smoothstep(HEIGHT_BEACH_END, HEIGHT_LOWLAND_END, h);
+		vec3  grassColor = mix(COL_GRASS_LUSH, COL_GRASS_DRY, t * (1.0 - moisture));
+		// Blend from sand to grass
+		float sandFade = smoothstep(HEIGHT_BEACH_END, HEIGHT_BEACH_END + 5.0, h);
+		return mix(COL_SAND_DRY, grassColor, sandFade);
+	}
+
+	// Forest zone (25 - 80): trees dominate
+	if (h < HEIGHT_FOREST_END) {
+		float t = smoothstep(HEIGHT_LOWLAND_END, HEIGHT_FOREST_END, h);
+		// More moisture = denser forest
+		vec3 forestColor = mix(COL_GRASS_LUSH, COL_FOREST, moisture);
+		// Higher = sparser forest
+		return mix(forestColor, COL_GRASS_DRY, t * 0.3);
+	}
+
+	// Transition to alpine (80 - 100)
+	if (h < HEIGHT_ALPINE_START) {
+		float t = smoothstep(HEIGHT_FOREST_END, HEIGHT_ALPINE_START, h);
+		return mix(COL_FOREST, COL_ALPINE_MEADOW, t);
+	}
+
+	// Alpine meadow (100 - 130): above treeline
+	if (h < HEIGHT_TREELINE) {
+		float t = smoothstep(HEIGHT_ALPINE_START, HEIGHT_TREELINE, h);
+		// Grass becomes sparser, more rock showing through
+		vec3 alpineColor = mix(COL_ALPINE_MEADOW, COL_ROCK_GREY, t * 0.4);
+		return alpineColor;
+	}
+
+	// High alpine / rocky (130 - 160)
+	if (h < HEIGHT_SNOW_START) {
+		float t = smoothstep(HEIGHT_TREELINE, HEIGHT_SNOW_START, h);
+		// Mostly rock with patches of hardy vegetation
+		vec3 rockColor = mix(COL_ROCK_BROWN, COL_ROCK_GREY, noise * 0.5 + 0.5);
+		vec3 patchColor = mix(rockColor, COL_ALPINE_MEADOW, moisture * 0.3);
+		// Gradual snow patches appearing
+		return mix(patchColor, COL_SNOW_OLD, t * 0.3);
+	}
+
+	// Snow zone (160+)
+	float t = smoothstep(HEIGHT_SNOW_START, HEIGHT_PEAK, h);
+	// Higher = fresher/whiter snow
+	vec3 snowColor = mix(COL_SNOW_OLD, COL_SNOW_FRESH, t);
+	// Some rock still pokes through at lower snow zone
+	float rockShow = (1.0 - t) * 0.2 * (1.0 - moisture);
+	return mix(snowColor, COL_ROCK_GREY, rockShow);
+}
+
+/**
+ * Calculate cliff/steep surface coloring
+ * Steep surfaces are barren rock, with color varying by altitude
+ */
+vec3 getCliffColor(float height, float noise) {
+	float h = height + noise * 5.0;
+
+	// Low altitude cliffs: brown/dark rock (often wet)
+	if (h < HEIGHT_FOREST_END) {
+		float wetness = 0.3 + noise * 0.2;
+		return mix(COL_ROCK_BROWN, COL_ROCK_DARK, wetness);
+	}
+
+	// Mid altitude: mixed brown/grey
+	if (h < HEIGHT_SNOW_START) {
+		float t = smoothstep(HEIGHT_FOREST_END, HEIGHT_SNOW_START, h);
+		return mix(COL_ROCK_BROWN, COL_ROCK_GREY, t + noise * 0.2);
+	}
+
+	// High altitude cliffs: grey rock with snow patches
+	float snowPatch = smoothstep(HEIGHT_SNOW_START, HEIGHT_PEAK, h) * 0.4;
+	vec3  highRock = mix(COL_ROCK_GREY, COL_ROCK_DARK, noise * 0.3);
+	return mix(highRock, COL_SNOW_OLD, snowPatch);
 }
 
 void main() {
-	// discard;
-	// FragColor = vec4(1,1,1, 1);
-
-	vec3  warp = vec3(fbm(FragPos / 50 + time * 0.05));
-	float nebula_noise = fbm(FragPos / 50 + warp * 0.5);
-	vec3  warpNoise = nebula_noise * warp;
-
-	vec3 objectColor = mix(vec3(0.09, 0.09, 0.16), vec3(0.5, 0.8, 0.8), warpNoise); // A deep blue
-	objectColor += mix(warpNoise, objectColor, nebula_noise);
-
 	vec3 norm = normalize(Normal);
-	vec3 lighting = apply_lighting(FragPos, norm, objectColor, 0.8);
 
-	// --- Grid logic ---
-	float grid_spacing = 1.0;
-	vec2  coord = FragPos.xz / grid_spacing;
-	vec2  f = fwidth(coord);
+	// ========================================================================
+	// Noise Generation
+	// ========================================================================
 
-	vec2  grid_minor = abs(fract(coord - 0.5) - 0.5) / f;
-	float line_minor = min(grid_minor.x, grid_minor.y);
-	float C_minor = 1.0 - min(line_minor, 1.0);
+	// Large scale domain warping for natural variation
+	vec3  warp = vec3(fbm(FragPos * 0.01 + time * 0.02));
+	float largeNoise = fbm(FragPos * 0.015 + warp * 0.3);
 
-	vec2  grid_major = abs(fract(coord / 5.0 - 0.5) - 0.5) / f;
-	float line_major = min(grid_major.x, grid_major.y);
-	float C_major = 1.0 - min(line_major, 1.0);
+	// Medium scale noise for biome boundaries
+	float medNoise = fbm_detail(FragPos * 0.05);
 
-	float intensity = max(C_minor, C_major * 1.5) * length(fwidth(FragPos));
-	vec3  grid_color = vec3(normalize(abs(fwidth(FragPos.zxy))) * intensity);
-	vec3  result = lighting + grid_color;
+	// Fine detail noise for texture
+	float fineNoise = fbm_detail(FragPos * 0.2);
 
-	// --- Distance Fade ---
+	// Combined noise for various effects
+	float combinedNoise = largeNoise * 0.6 + medNoise * 0.3 + fineNoise * 0.1;
+
+	// ========================================================================
+	// Terrain Analysis
+	// ========================================================================
+
+	// Height with noise distortion for natural boundaries
+	float baseHeight = FragPos.y;
+	float distortedHeight = baseHeight + largeNoise * 5.0;
+
+	// Slope analysis: 1.0 = flat horizontal, 0.0 = vertical cliff
+	float slope = dot(norm, vec3(0.0, 1.0, 0.0));
+	float distortedSlope = slope + medNoise * 0.08;
+
+	// Valley/ridge detection
+	float valleyFactor = calculateValleyFactor(FragPos);
+
+	// Moisture calculation
+	float moisture = calculateMoisture(baseHeight, valleyFactor, FragPos);
+
+	// Valley lushness boost
+	float valleyLushness = clamp(-valleyFactor, 0.0, 1.0);
+	moisture = mix(moisture, min(moisture + 0.3, 1.0), valleyLushness);
+
+	// ========================================================================
+	// Color Calculation
+	// ========================================================================
+
+	// Get base biome color
+	vec3 biomeColor = getBiomeColor(distortedHeight, moisture, combinedNoise);
+
+	// Get cliff color
+	vec3 cliffColor = getCliffColor(baseHeight, combinedNoise);
+
+	// Cliff mask: steep surfaces become rocky
+	// Threshold varies with altitude (snow sticks to steeper surfaces at high alt)
+	// Lower threshold = only steeper surfaces become cliffs (0.5 = ~60° from horizontal)
+	float cliffThreshold = mix(0.4, 0.3, smoothstep(HEIGHT_SNOW_START, HEIGHT_PEAK, baseHeight));
+	float cliffMask = smoothstep(cliffThreshold, cliffThreshold - 0.15, distortedSlope);
+
+	// Near-vertical surfaces (slope < 0.2, ~78° from horizontal) are always cliff-like
+	float verticalMask = smoothstep(0.25, 0.1, slope);
+	cliffMask = max(cliffMask, verticalMask);
+
+	// Add noise to cliff boundaries for natural look
+	cliffMask += (medNoise - 0.5) * 0.15;
+	cliffMask = clamp(cliffMask, 0.0, 1.0);
+
+	// Don't make beach areas into cliffs
+	float beachMask = 1.0 - smoothstep(0.0, HEIGHT_BEACH_END + 2.0, baseHeight);
+	cliffMask *= (1.0 - beachMask);
+
+	// Blend biome with cliff
+	vec3 finalAlbedo = mix(biomeColor, cliffColor, cliffMask);
+
+	// ========================================================================
+	// Detail Variation
+	// ========================================================================
+
+	// Add subtle color variation based on fine noise
+	float colorVar = fineNoise * 0.1;
+	finalAlbedo *= (1.0 + colorVar);
+
+	// Darken valleys slightly (shadow accumulation)
+	float valleyShadow = clamp(-valleyFactor * 0.15, 0.0, 0.1);
+	finalAlbedo *= (1.0 - valleyShadow);
+
+	// ========================================================================
+	// Lighting
+	// ========================================================================
+
+	vec3 lighting = apply_lighting(FragPos, norm, finalAlbedo, 0.8);
+
+	// ========================================================================
+	// Distance Fade
+	// ========================================================================
+
 	float dist = length(FragPos.xz - viewPos.xz);
 	float fade_start = 560.0;
 	float fade_end = 570.0;
-	float fade = 1.0 - smoothstep(fade_start, fade_end, dist + nebula_noise * 40);
+	float fade = 1.0 - smoothstep(fade_start, fade_end, dist + largeNoise * 40.0);
 
-	vec4 outColor = vec4(result, mix(0, fade, step(0.01, FragPos.y)));
+	vec4 outColor = vec4(lighting, mix(0.0, fade, step(0.01, FragPos.y)));
 	FragColor = mix(
-		vec4(0.0, 0.7, 0.7, mix(0, fade, step(0.01, FragPos.y))) * length(outColor),
+		vec4(0.0, 0.7, 0.7, mix(0.0, fade, step(0.01, FragPos.y))) * length(outColor),
 		outColor,
-		step(1, fade)
+		step(1.0, fade)
 	);
 }

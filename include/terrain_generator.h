@@ -135,7 +135,7 @@ namespace Boidsish {
 			BiomeAttributes{0.40, 0.4, 80.00, 6.0f},
 			BiomeAttributes{0.30, 0.2, 100.00, 1.0f},
 			BiomeAttributes{0.10, 0.1, 150.0, 3.0f},
-			BiomeAttributes{0.05, 0.5, 225.0, 1.0f}
+			BiomeAttributes{0.05, 0.5, 250.0, 5.0f}
 		};
 
 		void ApplyWeightedBiome(float control_value, BiomeAttributes& current) const;

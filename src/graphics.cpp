@@ -643,6 +643,11 @@ namespace Boidsish {
 						if (shape->IsTrailRocket()) {
 							trails[shape->GetId()]->SetUseRocketTrail(true);
 						}
+						if (shape->GetTrailPBR()) {
+							trails[shape->GetId()]->SetUsePBR(true);
+							trails[shape->GetId()]->SetRoughness(shape->GetTrailRoughness());
+							trails[shape->GetId()]->SetMetallic(shape->GetTrailMetallic());
+						}
 					}
 					trails[shape->GetId()]->AddPoint(
 						glm::vec3(shape->GetX(), shape->GetY(), shape->GetZ()),

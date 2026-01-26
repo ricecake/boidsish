@@ -4,7 +4,13 @@
 #include <glm/glm.hpp>
 
 namespace Boidsish {
-	enum LightType { POINT_LIGHT, DIRECTIONAL_LIGHT, SPOT_LIGHT };
+	enum LightType {
+		POINT_LIGHT,
+		DIRECTIONAL_LIGHT,
+		SPOT_LIGHT,
+		EMISSIVE_LIGHT, // Glowing object - point light with emissive surface, can cast shadows
+		FLASH_LIGHT     // Explosion/flash - very bright, rapid falloff, typically no shadows
+	};
 
 	/**
 	 * @brief GPU-compatible light data for UBO upload (std140 layout).
@@ -94,6 +100,58 @@ namespace Boidsish {
 			l.direction = dir;
 			l.inner_cutoff = glm::cos(glm::radians(inner_angle));
 			l.outer_cutoff = glm::cos(glm::radians(outer_angle));
+			return l;
+		}
+
+		/**
+		 * Create an emissive/glowing object light.
+		 * This is a point light that also indicates the object itself should glow.
+		 * The inner_cutoff is repurposed as the emissive radius (object size).
+		 * Can cast shadows like a regular point light.
+		 *
+		 * @param pos Light/object position
+		 * @param intens Light intensity (also affects emissive brightness)
+		 * @param col Light/emissive color
+		 * @param emissive_radius Size of the glowing object for soft falloff
+		 * @param shadows Whether this light casts shadows
+		 */
+		static Light CreateEmissive(
+			const glm::vec3& pos,
+			float            intens,
+			const glm::vec3& col,
+			float            emissive_radius = 1.0f,
+			bool             shadows = false
+		) {
+			Light l = Create(pos, intens, col, shadows);
+			l.type = EMISSIVE_LIGHT;
+			l.inner_cutoff = emissive_radius; // Repurpose for emissive object radius
+			l.outer_cutoff = 0.0f;
+			return l;
+		}
+
+		/**
+		 * Create an explosion/flash light.
+		 * Very bright, rapid inverse-square falloff, short-lived.
+		 * The inner_cutoff stores the flash radius, outer_cutoff stores falloff exponent.
+		 * Typically doesn't cast shadows (too brief and expensive).
+		 *
+		 * @param pos Flash epicenter
+		 * @param intens Flash intensity (can be very high, e.g., 10-100)
+		 * @param col Flash color (typically warm white/orange for explosions)
+		 * @param radius Effective radius of the flash
+		 * @param falloff_exp Falloff exponent (higher = sharper falloff, default 2.0)
+		 */
+		static Light CreateFlash(
+			const glm::vec3& pos,
+			float            intens,
+			const glm::vec3& col,
+			float            radius = 50.0f,
+			float            falloff_exp = 2.0f
+		) {
+			Light l = Create(pos, intens, col, false); // Flashes typically don't cast shadows
+			l.type = FLASH_LIGHT;
+			l.inner_cutoff = radius;      // Flash radius
+			l.outer_cutoff = falloff_exp; // Falloff exponent
 			return l;
 		}
 	};
