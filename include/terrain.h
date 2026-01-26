@@ -12,6 +12,7 @@ namespace Boidsish {
 	public:
 		Terrain(
 			const std::vector<unsigned int>& indices,
+            const std::vector<unsigned int>& triangle_indices,
 			const std::vector<glm::vec3>&    vertices,
 			const std::vector<glm::vec3>&    normals,
 			const PatchProxy&                proxy
@@ -34,9 +35,11 @@ namespace Boidsish {
 	private:
 		std::vector<float>        vertex_data_; // Interleaved for GPU
 		std::vector<unsigned int> indices_;
+		std::vector<unsigned int> triangle_indices_;
 
-		unsigned int vao_, vbo_, ebo_;
+		unsigned int vao_, vbo_, ebo_, triangle_ebo_;
 		int          index_count_;
+        int          triangle_index_count_;
 	};
 
 } // namespace Boidsish

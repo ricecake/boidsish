@@ -120,7 +120,7 @@ namespace Boidsish {
 					TerrainGenerationResult result = future.get();
 					if (result.has_terrain) {
 						auto terrain_chunk =
-							std::make_shared<Terrain>(result.indices, result.positions, result.normals, result.proxy);
+							std::make_shared<Terrain>(result.indices, result.triangle_indices, result.positions, result.normals, result.proxy);
 						terrain_chunk->SetPosition(result.chunk_x * chunk_size_, 0, result.chunk_z * chunk_size_);
 						terrain_chunk->setupMesh();
 						chunk_cache_[pair.first] = terrain_chunk;
@@ -341,7 +341,7 @@ namespace Boidsish {
 		}
 
 		if (!has_terrain) {
-			return {{}, {}, {}, {}, chunkX, chunkZ, false};
+            return {{}, {}, {}, {}, PatchProxy(), chunkX, chunkZ, false};
 		}
 
 		// Generate vertices and normals
@@ -365,6 +365,27 @@ namespace Boidsish {
 				indices.push_back(i * num_vertices_z + j + 1);
 			}
 		}
+
+        std::vector<unsigned int> triangle_indices;
+        triangle_indices.reserve(chunk_size_ * chunk_size_ * 6);
+        for (int i = 0; i < chunk_size_; ++i) {
+            for (int j = 0; j < chunk_size_; ++j) {
+                unsigned int topLeft = i * num_vertices_z + j;
+                unsigned int bottomLeft = (i + 1) * num_vertices_z + j;
+                unsigned int topRight = i * num_vertices_z + j + 1;
+                unsigned int bottomRight = (i + 1) * num_vertices_z + j + 1;
+
+                // Triangle 1
+                triangle_indices.push_back(topLeft);
+                triangle_indices.push_back(bottomLeft);
+                triangle_indices.push_back(topRight);
+
+                // Triangle 2
+                triangle_indices.push_back(bottomLeft);
+                triangle_indices.push_back(bottomRight);
+                triangle_indices.push_back(topRight);
+            }
+        }
 
 		// Calculate aggregate data for the PatchProxy
 		PatchProxy proxy;
@@ -391,7 +412,7 @@ namespace Boidsish {
 		}
 		proxy.radiusSq = max_dist_sq;
 
-		return {indices, positions, normals, proxy, chunkX, chunkZ, true};
+		return {indices, triangle_indices, positions, normals, proxy, chunkX, chunkZ, true};
 	}
 
 	bool

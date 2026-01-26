@@ -12,18 +12,22 @@ namespace Boidsish {
 
 	Terrain::Terrain(
 		const std::vector<unsigned int>& indices,
+        const std::vector<unsigned int>& triangle_indices,
 		const std::vector<glm::vec3>&    vertices,
 		const std::vector<glm::vec3>&    normals,
 		const PatchProxy&                proxy
 	):
 		indices_(indices),
+        triangle_indices_(triangle_indices),
 		vertices(vertices),
 		normals(normals),
 		proxy(proxy),
 		vao_(0),
 		vbo_(0),
 		ebo_(0),
-		index_count_(indices.size()) {
+        triangle_ebo_(0),
+		index_count_(indices.size()),
+        triangle_index_count_(triangle_indices.size()) {
 		// Constructor now only initializes member variables
 		// setupMesh() must be called explicitly to upload to GPU
 	}
@@ -32,6 +36,7 @@ namespace Boidsish {
 		glDeleteVertexArrays(1, &vao_);
 		glDeleteBuffers(1, &vbo_);
 		glDeleteBuffers(1, &ebo_);
+		glDeleteBuffers(1, &triangle_ebo_);
 	}
 
 	void Terrain::setupMesh() {
@@ -60,6 +65,10 @@ namespace Boidsish {
 
 		glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ebo_);
 		glBufferData(GL_ELEMENT_ARRAY_BUFFER, indices_.size() * sizeof(unsigned int), &indices_[0], GL_STATIC_DRAW);
+
+        glGenBuffers(1, &triangle_ebo_);
+        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, triangle_ebo_);
+        glBufferData(GL_ELEMENT_ARRAY_BUFFER, triangle_indices_.size() * sizeof(unsigned int), &triangle_indices_[0], GL_STATIC_DRAW);
 
 		// Position attribute
 		glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)0);
@@ -90,7 +99,8 @@ namespace Boidsish {
 
 	void Terrain::renderSimple() const {
 		glBindVertexArray(vao_);
-		glDrawElements(GL_TRIANGLES, index_count_, GL_UNSIGNED_INT, 0);
+        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, triangle_ebo_);
+		glDrawElements(GL_TRIANGLES, triangle_index_count_, GL_UNSIGNED_INT, 0);
 		glBindVertexArray(0);
 	}
 
