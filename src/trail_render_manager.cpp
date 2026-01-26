@@ -2,7 +2,6 @@
 
 #include <algorithm>
 #include <iostream>
-#include <optional>
 
 #include <shader.h>
 

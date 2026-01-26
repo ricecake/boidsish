@@ -2,330 +2,361 @@
 
 #include <algorithm>
 #include <iostream>
-#include <optional>
 
-#include "terrain.h"
+#include "graphics.h"  // For Frustum
 #include <shader.h>
 
 namespace Boidsish {
 
-	TerrainRenderManager::TerrainRenderManager() {
-		// Create VAO
-		glGenVertexArrays(1, &vao_);
-		glBindVertexArray(vao_);
+	TerrainRenderManager::TerrainRenderManager(int chunk_size, int max_chunks)
+		: chunk_size_(chunk_size)
+		, max_chunks_(max_chunks)
+		, heightmap_resolution_(chunk_size + 1)
+	{
+		// Create instance buffer first so we can set up VAO attributes
+		// Pre-allocate for max_chunks to avoid reallocation
+		glGenBuffers(1, &instance_vbo_);
+		glBindBuffer(GL_ARRAY_BUFFER, instance_vbo_);
+		instance_buffer_capacity_ = max_chunks * sizeof(InstanceData);
+		glBufferData(GL_ARRAY_BUFFER, instance_buffer_capacity_, nullptr, GL_DYNAMIC_DRAW);
 
-		// Create VBO with initial capacity
-		glGenBuffers(1, &vbo_);
-		glBindBuffer(GL_ARRAY_BUFFER, vbo_);
-		glBufferData(
-			GL_ARRAY_BUFFER,
-			INITIAL_VERTEX_CAPACITY * FLOATS_PER_VERTEX * sizeof(float),
-			nullptr,
-			GL_DYNAMIC_DRAW
-		);
-		vertex_capacity_ = INITIAL_VERTEX_CAPACITY;
-
-		// Create EBO with initial capacity
-		glGenBuffers(1, &ebo_);
-		glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ebo_);
-		glBufferData(
-			GL_ELEMENT_ARRAY_BUFFER,
-			INITIAL_INDEX_CAPACITY * sizeof(unsigned int),
-			nullptr,
-			GL_DYNAMIC_DRAW
-		);
-		index_capacity_ = INITIAL_INDEX_CAPACITY;
-
-		// Set up vertex attributes
-		// Position attribute (location 0)
-		glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, FLOATS_PER_VERTEX * sizeof(float), (void*)0);
-		glEnableVertexAttribArray(0);
-		// Normal attribute (location 1)
-		glVertexAttribPointer(
-			1, 3, GL_FLOAT, GL_FALSE, FLOATS_PER_VERTEX * sizeof(float), (void*)(3 * sizeof(float))
-		);
-		glEnableVertexAttribArray(1);
-		// Texture coordinate attribute (location 2)
-		glVertexAttribPointer(
-			2, 2, GL_FLOAT, GL_FALSE, FLOATS_PER_VERTEX * sizeof(float), (void*)(6 * sizeof(float))
-		);
-		glEnableVertexAttribArray(2);
-
-		glBindVertexArray(0);
-
-		// Create indirect draw command buffer
-		glGenBuffers(1, &draw_command_buffer_);
+		CreateGridMesh();
+		EnsureTextureCapacity(max_chunks);
 	}
 
 	TerrainRenderManager::~TerrainRenderManager() {
-		if (vao_) glDeleteVertexArrays(1, &vao_);
-		if (vbo_) glDeleteBuffers(1, &vbo_);
-		if (ebo_) glDeleteBuffers(1, &ebo_);
-		if (draw_command_buffer_) glDeleteBuffers(1, &draw_command_buffer_);
+		if (grid_vao_) glDeleteVertexArrays(1, &grid_vao_);
+		if (grid_vbo_) glDeleteBuffers(1, &grid_vbo_);
+		if (grid_ebo_) glDeleteBuffers(1, &grid_ebo_);
+		if (instance_vbo_) glDeleteBuffers(1, &instance_vbo_);
+		if (heightmap_texture_) glDeleteTextures(1, &heightmap_texture_);
+	}
+
+	void TerrainRenderManager::CreateGridMesh() {
+		// Create a flat grid of quads for one chunk
+		// Vertices are at integer coordinates [0, chunk_size] in XZ plane, Y=0
+		// The tessellation/vertex shader will displace Y based on heightmap lookup
+
+		const int num_verts = heightmap_resolution_ * heightmap_resolution_;
+		const int num_quads = chunk_size_ * chunk_size_;
+
+		// Vertex data: position (x, y, z) + texcoord (u, v) = 5 floats per vertex
+		std::vector<float> vertices;
+		vertices.reserve(num_verts * 5);
+
+		for (int z = 0; z < heightmap_resolution_; ++z) {
+			for (int x = 0; x < heightmap_resolution_; ++x) {
+				// Position (flat grid, Y=0)
+				vertices.push_back(static_cast<float>(x));
+				vertices.push_back(0.0f);
+				vertices.push_back(static_cast<float>(z));
+				// Texcoord (normalized 0-1 for heightmap sampling)
+				vertices.push_back(static_cast<float>(x) / chunk_size_);
+				vertices.push_back(static_cast<float>(z) / chunk_size_);
+			}
+		}
+
+		// Indices for quads (4 vertices per quad for GL_PATCHES)
+		std::vector<unsigned int> indices;
+		indices.reserve(num_quads * 4);
+
+		for (int z = 0; z < chunk_size_; ++z) {
+			for (int x = 0; x < chunk_size_; ++x) {
+				int i0 = z * heightmap_resolution_ + x;
+				int i1 = z * heightmap_resolution_ + (x + 1);
+				int i2 = (z + 1) * heightmap_resolution_ + (x + 1);
+				int i3 = (z + 1) * heightmap_resolution_ + x;
+				indices.push_back(i0);
+				indices.push_back(i1);
+				indices.push_back(i2);
+				indices.push_back(i3);
+			}
+		}
+
+		grid_index_count_ = indices.size();
+
+		// Create VAO
+		glGenVertexArrays(1, &grid_vao_);
+		glBindVertexArray(grid_vao_);
+
+		// Vertex buffer
+		glGenBuffers(1, &grid_vbo_);
+		glBindBuffer(GL_ARRAY_BUFFER, grid_vbo_);
+		glBufferData(GL_ARRAY_BUFFER, vertices.size() * sizeof(float), vertices.data(), GL_STATIC_DRAW);
+
+		// Position attribute (location 0)
+		glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void*)0);
+		glEnableVertexAttribArray(0);
+
+		// Texcoord attribute (location 1) - will be used for heightmap sampling
+		glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void*)(3 * sizeof(float)));
+		glEnableVertexAttribArray(1);
+
+		// Index buffer
+		glGenBuffers(1, &grid_ebo_);
+		glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, grid_ebo_);
+		glBufferData(GL_ELEMENT_ARRAY_BUFFER, indices.size() * sizeof(unsigned int), indices.data(), GL_STATIC_DRAW);
+
+		// Set up instance attributes (from instance_vbo_ created in constructor)
+		glBindBuffer(GL_ARRAY_BUFFER, instance_vbo_);
+
+		// Instance attribute: world_offset_and_slice (location 3)
+		glVertexAttribPointer(3, 4, GL_FLOAT, GL_FALSE, sizeof(InstanceData),
+		                      (void*)offsetof(InstanceData, world_offset_and_slice));
+		glEnableVertexAttribArray(3);
+		glVertexAttribDivisor(3, 1);  // Per-instance
+
+		// Instance attribute: bounds (location 4)
+		glVertexAttribPointer(4, 4, GL_FLOAT, GL_FALSE, sizeof(InstanceData),
+		                      (void*)offsetof(InstanceData, bounds));
+		glEnableVertexAttribArray(4);
+		glVertexAttribDivisor(4, 1);  // Per-instance
+
+		glBindVertexArray(0);
+	}
+
+	void TerrainRenderManager::EnsureTextureCapacity(int required_slices) {
+		if (heightmap_texture_ && required_slices <= max_chunks_) {
+			return;  // Already have enough capacity
+		}
+
+		if (heightmap_texture_) {
+			glDeleteTextures(1, &heightmap_texture_);
+		}
+
+		max_chunks_ = std::max(max_chunks_, required_slices);
+
+		// Create 2D texture array for heightmaps
+		// Format: RG32F - R = height, G = packed normal (or use RGBA for full normal)
+		// Actually, let's use RGBA16F: R=height, GBA=normal.xyz
+		glGenTextures(1, &heightmap_texture_);
+		glBindTexture(GL_TEXTURE_2D_ARRAY, heightmap_texture_);
+
+		// Allocate storage for all slices
+		glTexImage3D(
+			GL_TEXTURE_2D_ARRAY,
+			0,                          // mip level
+			GL_RGBA16F,                 // internal format (height + normal)
+			heightmap_resolution_,      // width
+			heightmap_resolution_,      // height
+			max_chunks_,                // depth (number of slices)
+			0,                          // border
+			GL_RGBA,                    // format
+			GL_FLOAT,                   // type
+			nullptr                     // no initial data
+		);
+
+		// Filtering for smooth interpolation
+		glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+		glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+		glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+		glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+
+		glBindTexture(GL_TEXTURE_2D_ARRAY, 0);
+	}
+
+	void TerrainRenderManager::UploadHeightmapSlice(
+		int slice,
+		const std::vector<float>& heightmap,
+		const std::vector<glm::vec3>& normals
+	) {
+		const int num_pixels = heightmap_resolution_ * heightmap_resolution_;
+
+		// Pack height + normal into RGBA16F format
+		std::vector<float> packed_data;
+		packed_data.reserve(num_pixels * 4);
+
+		for (int i = 0; i < num_pixels; ++i) {
+			packed_data.push_back(heightmap[i]);        // R = height
+			packed_data.push_back(normals[i].x);        // G = normal.x
+			packed_data.push_back(normals[i].y);        // B = normal.y
+			packed_data.push_back(normals[i].z);        // A = normal.z
+		}
+
+		glBindTexture(GL_TEXTURE_2D_ARRAY, heightmap_texture_);
+		glTexSubImage3D(
+			GL_TEXTURE_2D_ARRAY,
+			0,                          // mip level
+			0, 0, slice,                // x, y, z offset
+			heightmap_resolution_,      // width
+			heightmap_resolution_,      // height
+			1,                          // depth (one slice)
+			GL_RGBA,
+			GL_FLOAT,
+			packed_data.data()
+		);
+		glBindTexture(GL_TEXTURE_2D_ARRAY, 0);
 	}
 
 	void TerrainRenderManager::RegisterChunk(
-		std::pair<int, int>               chunk_key,
-		const std::vector<float>&         vertices,
-		const std::vector<unsigned int>&  indices,
-		const glm::vec3&                  world_offset
+		std::pair<int, int>              chunk_key,
+		const std::vector<glm::vec3>&    positions,
+		const std::vector<glm::vec3>&    normals,
+		const std::vector<unsigned int>& indices,  // Not used in this implementation
+		float                            min_y,
+		float                            max_y,
+		const glm::vec3&                 world_offset
 	) {
+		// The positions array from TerrainGenerator is in X-major order:
+		//   positions[x * num_z + z] = position at local (x, y, z)
+		// But OpenGL textures are row-major (Y/V axis is rows), so we need:
+		//   texture[z * num_x + x] = height at local (x, z)
+		// This means we need to transpose the data.
+
+		const int res = heightmap_resolution_;
+		std::vector<float> heightmap(res * res);
+		std::vector<glm::vec3> reordered_normals(res * res);
+
+		for (int x = 0; x < res; ++x) {
+			for (int z = 0; z < res; ++z) {
+				int src_idx = x * res + z;   // X-major (how terrain generator stores it)
+				int dst_idx = z * res + x;   // Z-major / row-major (for texture)
+
+				heightmap[dst_idx] = positions[src_idx].y;
+				reordered_normals[dst_idx] = normals[src_idx];
+			}
+		}
+
 		std::lock_guard<std::mutex> lock(mutex_);
 
-		// If chunk already exists, unregister it first
-		if (chunk_allocations_.count(chunk_key)) {
-			// Store data for re-registration after unregister
-			pending_chunk_data_[chunk_key] = {vertices, indices, world_offset};
+		// If chunk already exists, update it
+		auto it = chunks_.find(chunk_key);
+		if (it != chunks_.end()) {
+			// Update existing chunk's heightmap
+			UploadHeightmapSlice(it->second.texture_slice, heightmap, reordered_normals);
+			it->second.min_y = min_y;
+			it->second.max_y = max_y;
 			return;
 		}
 
-		// Calculate vertex and index counts
-		size_t vertex_count = vertices.size() / FLOATS_PER_VERTEX;
-		size_t index_count = indices.size();
-
-		// Try to find space in free lists
-		size_t vertex_offset = vertex_usage_;
-		size_t index_offset = index_usage_;
-
-		// Simple first-fit allocation from free list for vertices
-		for (auto it = vertex_free_list_.begin(); it != vertex_free_list_.end(); ++it) {
-			if (it->size >= vertex_count) {
-				vertex_offset = it->offset;
-				if (it->size == vertex_count) {
-					vertex_free_list_.erase(it);
-				} else {
-					it->offset += vertex_count;
-					it->size -= vertex_count;
-				}
-				break;
+		// Allocate a texture slice
+		int slice;
+		if (!free_slices_.empty()) {
+			slice = free_slices_.back();
+			free_slices_.pop_back();
+		} else {
+			if (next_slice_ >= max_chunks_) {
+				// Need to grow texture array
+				EnsureTextureCapacity(max_chunks_ * 2);
 			}
+			slice = next_slice_++;
 		}
 
-		// If no free block found, allocate at end
-		if (vertex_offset == vertex_usage_) {
-			vertex_usage_ += vertex_count;
-		}
+		// Upload heightmap data
+		UploadHeightmapSlice(slice, heightmap, reordered_normals);
 
-		// Same for indices
-		for (auto it = index_free_list_.begin(); it != index_free_list_.end(); ++it) {
-			if (it->size >= index_count) {
-				index_offset = it->offset;
-				if (it->size == index_count) {
-					index_free_list_.erase(it);
-				} else {
-					it->offset += index_count;
-					it->size -= index_count;
-				}
-				break;
-			}
-		}
+		// Store chunk info
+		ChunkInfo info{};
+		info.texture_slice = slice;
+		info.min_y = min_y;
+		info.max_y = max_y;
+		info.world_offset = glm::vec2(world_offset.x, world_offset.z);
 
-		if (index_offset == index_usage_) {
-			index_usage_ += index_count;
-		}
-
-		// Ensure buffer capacity
-		if (vertex_usage_ > vertex_capacity_ || index_usage_ > index_capacity_) {
-			needs_rebuild_ = true;
-		}
-
-		// Store allocation info
-		ChunkAllocation allocation{};
-		allocation.vertex_offset = vertex_offset;
-		allocation.vertex_count = vertex_count;
-		allocation.index_offset = index_offset;
-		allocation.index_count = index_count;
-		allocation.world_offset = world_offset;
-
-		chunk_allocations_[chunk_key] = allocation;
-
-		// Store pending data for upload
-		pending_chunk_data_[chunk_key] = {vertices, indices, world_offset};
-		pending_registrations_.push_back(chunk_key);
-
-		draw_commands_dirty_ = true;
+		chunks_[chunk_key] = info;
 	}
 
 	void TerrainRenderManager::UnregisterChunk(std::pair<int, int> chunk_key) {
 		std::lock_guard<std::mutex> lock(mutex_);
 
-		auto it = chunk_allocations_.find(chunk_key);
-		if (it == chunk_allocations_.end()) {
+		auto it = chunks_.find(chunk_key);
+		if (it == chunks_.end()) {
 			return;
 		}
 
-		const auto& alloc = it->second;
-
-		// Add to free lists (could merge adjacent blocks for better memory reuse)
-		vertex_free_list_.push_back({alloc.vertex_offset, alloc.vertex_count});
-		index_free_list_.push_back({alloc.index_offset, alloc.index_count});
-
-		chunk_allocations_.erase(it);
-		pending_chunk_data_.erase(chunk_key);
-
-		draw_commands_dirty_ = true;
+		// Return slice to free list
+		free_slices_.push_back(it->second.texture_slice);
+		chunks_.erase(it);
 	}
 
 	bool TerrainRenderManager::HasChunk(std::pair<int, int> chunk_key) const {
 		std::lock_guard<std::mutex> lock(mutex_);
-		return chunk_allocations_.count(chunk_key) > 0;
+		return chunks_.count(chunk_key) > 0;
 	}
 
-	void TerrainRenderManager::EnsureBufferCapacity(size_t required_vertices, size_t required_indices) {
-		bool need_vertex_resize = required_vertices > vertex_capacity_;
-		bool need_index_resize = required_indices > index_capacity_;
-
-		if (!need_vertex_resize && !need_index_resize) {
-			return;
-		}
-
-		if (need_vertex_resize) {
-			size_t new_capacity = static_cast<size_t>(vertex_capacity_ * GROWTH_FACTOR);
-			while (new_capacity < required_vertices) {
-				new_capacity = static_cast<size_t>(new_capacity * GROWTH_FACTOR);
-			}
-
-			// Create new buffer
-			GLuint new_vbo;
-			glGenBuffers(1, &new_vbo);
-			glBindBuffer(GL_ARRAY_BUFFER, new_vbo);
-			glBufferData(
-				GL_ARRAY_BUFFER,
-				new_capacity * FLOATS_PER_VERTEX * sizeof(float),
-				nullptr,
-				GL_DYNAMIC_DRAW
-			);
-
-			// Copy old data
-			glBindBuffer(GL_COPY_READ_BUFFER, vbo_);
-			glCopyBufferSubData(
-				GL_COPY_READ_BUFFER,
-				GL_ARRAY_BUFFER,
-				0,
-				0,
-				vertex_capacity_ * FLOATS_PER_VERTEX * sizeof(float)
-			);
-
-			glDeleteBuffers(1, &vbo_);
-			vbo_ = new_vbo;
-			vertex_capacity_ = new_capacity;
-
-			// Update VAO binding
-			glBindVertexArray(vao_);
-			glBindBuffer(GL_ARRAY_BUFFER, vbo_);
-
-			// Re-setup vertex attributes
-			glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, FLOATS_PER_VERTEX * sizeof(float), (void*)0);
-			glEnableVertexAttribArray(0);
-			glVertexAttribPointer(
-				1, 3, GL_FLOAT, GL_FALSE, FLOATS_PER_VERTEX * sizeof(float), (void*)(3 * sizeof(float))
-			);
-			glEnableVertexAttribArray(1);
-			glVertexAttribPointer(
-				2, 2, GL_FLOAT, GL_FALSE, FLOATS_PER_VERTEX * sizeof(float), (void*)(6 * sizeof(float))
-			);
-			glEnableVertexAttribArray(2);
-			glBindVertexArray(0);
-		}
-
-		if (need_index_resize) {
-			size_t new_capacity = static_cast<size_t>(index_capacity_ * GROWTH_FACTOR);
-			while (new_capacity < required_indices) {
-				new_capacity = static_cast<size_t>(new_capacity * GROWTH_FACTOR);
-			}
-
-			GLuint new_ebo;
-			glGenBuffers(1, &new_ebo);
-			glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, new_ebo);
-			glBufferData(
-				GL_ELEMENT_ARRAY_BUFFER,
-				new_capacity * sizeof(unsigned int),
-				nullptr,
-				GL_DYNAMIC_DRAW
-			);
-
-			// Copy old data
-			glBindBuffer(GL_COPY_READ_BUFFER, ebo_);
-			glCopyBufferSubData(
-				GL_COPY_READ_BUFFER,
-				GL_ELEMENT_ARRAY_BUFFER,
-				0,
-				0,
-				index_capacity_ * sizeof(unsigned int)
-			);
-
-			glDeleteBuffers(1, &ebo_);
-			ebo_ = new_ebo;
-			index_capacity_ = new_capacity;
-
-			// Update VAO EBO binding
-			glBindVertexArray(vao_);
-			glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ebo_);
-			glBindVertexArray(0);
-		}
-	}
-
-	void TerrainRenderManager::UploadChunkData(
-		const ChunkAllocation&           allocation,
-		const std::vector<float>&        vertices,
-		const std::vector<unsigned int>& indices
-	) {
-		// Pre-transform vertices to world space so we don't need per-chunk model matrix
-		// This enables true single draw call via glMultiDrawElementsIndirect
-		std::vector<float> world_vertices = vertices;
-		size_t vertex_count = vertices.size() / FLOATS_PER_VERTEX;
-		for (size_t i = 0; i < vertex_count; ++i) {
-			size_t base = i * FLOATS_PER_VERTEX;
-			// Transform position (first 3 floats)
-			world_vertices[base + 0] += allocation.world_offset.x;
-			world_vertices[base + 1] += allocation.world_offset.y;
-			world_vertices[base + 2] += allocation.world_offset.z;
-			// Normals (next 3 floats) don't need transformation for translation
-			// Texcoords (last 2 floats) stay the same
-		}
-
-		// Upload vertex data (now in world space)
-		glBindBuffer(GL_ARRAY_BUFFER, vbo_);
-		glBufferSubData(
-			GL_ARRAY_BUFFER,
-			allocation.vertex_offset * FLOATS_PER_VERTEX * sizeof(float),
-			world_vertices.size() * sizeof(float),
-			world_vertices.data()
+	bool TerrainRenderManager::IsChunkVisible(const ChunkInfo& chunk, const Frustum& frustum) const {
+		// Build AABB for this chunk
+		glm::vec3 min_corner(
+			chunk.world_offset.x,
+			chunk.min_y,
+			chunk.world_offset.y
+		);
+		glm::vec3 max_corner(
+			chunk.world_offset.x + chunk_size_,
+			chunk.max_y,
+			chunk.world_offset.y + chunk_size_
 		);
 
-		// Upload index data
-		glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ebo_);
-		glBufferSubData(
-			GL_ELEMENT_ARRAY_BUFFER,
-			allocation.index_offset * sizeof(unsigned int),
-			indices.size() * sizeof(unsigned int),
-			indices.data()
-		);
+		glm::vec3 center = (min_corner + max_corner) * 0.5f;
+		glm::vec3 half_size = (max_corner - min_corner) * 0.5f;
+
+		// Test against all 6 frustum planes
+		for (int i = 0; i < 6; ++i) {
+			// Compute the "positive vertex" distance
+			float r = half_size.x * std::abs(frustum.planes[i].normal.x) +
+			          half_size.y * std::abs(frustum.planes[i].normal.y) +
+			          half_size.z * std::abs(frustum.planes[i].normal.z);
+
+			float d = glm::dot(center, frustum.planes[i].normal) + frustum.planes[i].distance;
+
+			if (d < -r) {
+				return false;  // Completely outside this plane
+			}
+		}
+
+		return true;  // Inside or intersecting all planes
 	}
 
-	void TerrainRenderManager::CommitUpdates() {
+	void TerrainRenderManager::PrepareForRender(const Frustum& frustum, const glm::vec3& camera_pos) {
 		std::lock_guard<std::mutex> lock(mutex_);
 
-		if (pending_registrations_.empty() && !needs_rebuild_) {
-			return;
+		visible_instances_.clear();
+		visible_instances_.reserve(chunks_.size());
+
+		for (const auto& [key, chunk] : chunks_) {
+			// Always include all registered chunks - no frustum culling for now
+			// to debug the rendering issue
+			InstanceData instance{};
+			instance.world_offset_and_slice = glm::vec4(
+				chunk.world_offset.x,
+				0.0f,  // Y offset is always 0 (height comes from heightmap)
+				chunk.world_offset.y,  // This is the Z world coordinate
+				static_cast<float>(chunk.texture_slice)
+			);
+			instance.bounds = glm::vec4(chunk.min_y, chunk.max_y, 0.0f, 0.0f);
+
+			visible_instances_.push_back(instance);
 		}
 
-		// Ensure buffer capacity
-		EnsureBufferCapacity(vertex_usage_, index_usage_);
+		// Upload instance data to GPU
+		if (!visible_instances_.empty()) {
+			glBindBuffer(GL_ARRAY_BUFFER, instance_vbo_);
 
-		// Upload pending chunk data
-		for (const auto& chunk_key : pending_registrations_) {
-			auto data_it = pending_chunk_data_.find(chunk_key);
-			auto alloc_it = chunk_allocations_.find(chunk_key);
-			if (data_it != pending_chunk_data_.end() && alloc_it != chunk_allocations_.end()) {
-				const auto& [vertices, indices, world_offset] = data_it->second;
-				UploadChunkData(alloc_it->second, vertices, indices);
+			size_t required_size = visible_instances_.size() * sizeof(InstanceData);
+			if (required_size > instance_buffer_capacity_) {
+				// Grow buffer - need to re-bind VAO attributes after this!
+				instance_buffer_capacity_ = required_size * 2;
+				glBufferData(GL_ARRAY_BUFFER, instance_buffer_capacity_, nullptr, GL_DYNAMIC_DRAW);
+
+				// Re-bind instance attributes to VAO since buffer was reallocated
+				glBindVertexArray(grid_vao_);
+				glBindBuffer(GL_ARRAY_BUFFER, instance_vbo_);
+
+				glVertexAttribPointer(3, 4, GL_FLOAT, GL_FALSE, sizeof(InstanceData),
+				                      (void*)offsetof(InstanceData, world_offset_and_slice));
+				glEnableVertexAttribArray(3);
+				glVertexAttribDivisor(3, 1);
+
+				glVertexAttribPointer(4, 4, GL_FLOAT, GL_FALSE, sizeof(InstanceData),
+				                      (void*)offsetof(InstanceData, bounds));
+				glEnableVertexAttribArray(4);
+				glVertexAttribDivisor(4, 1);
+
+				glBindVertexArray(0);
 			}
-		}
 
-		pending_registrations_.clear();
-		pending_chunk_data_.clear();
-		needs_rebuild_ = false;
+			glBufferSubData(GL_ARRAY_BUFFER, 0, required_size, visible_instances_.data());
+			glBindBuffer(GL_ARRAY_BUFFER, 0);
+		}
 	}
 
 	void TerrainRenderManager::Render(
@@ -337,18 +368,18 @@ namespace Boidsish {
 	) {
 		std::lock_guard<std::mutex> lock(mutex_);
 
-		if (chunk_allocations_.empty()) {
+		if (visible_instances_.empty()) {
 			return;
 		}
 
 		shader.use();
-		// Identity model matrix - vertices are already in world space
-		shader.setMat4("model", glm::mat4(1.0f));
 		shader.setMat4("view", view);
 		shader.setMat4("projection", projection);
+		shader.setMat4("model", glm::mat4(1.0f));  // Identity - instances provide world offset
 		shader.setFloat("uTessQualityMultiplier", tess_quality_multiplier);
 		shader.setFloat("uTessLevelMax", 64.0f);
 		shader.setFloat("uTessLevelMin", 1.0f);
+		shader.setInt("uChunkSize", chunk_size_);
 
 		if (clip_plane) {
 			shader.setVec4("clipPlane", *clip_plane);
@@ -356,63 +387,38 @@ namespace Boidsish {
 			shader.setVec4("clipPlane", glm::vec4(0, 0, 0, 0));
 		}
 
-		glBindVertexArray(vao_);
+		// Bind heightmap texture array
+		glActiveTexture(GL_TEXTURE0);
+		glBindTexture(GL_TEXTURE_2D_ARRAY, heightmap_texture_);
+		shader.setInt("uHeightmap", 0);
+
+		// Bind VAO (instance attributes already configured during initialization)
+		glBindVertexArray(grid_vao_);
+
+		// Set patch vertices for tessellation
 		glPatchParameteri(GL_PATCH_VERTICES, 4);
 
-		// Build draw commands if dirty
-		if (draw_commands_dirty_) {
-			draw_commands_.clear();
-			draw_commands_.reserve(chunk_allocations_.size());
-
-			for (const auto& [key, alloc] : chunk_allocations_) {
-				DrawCommand cmd{};
-				cmd.count = static_cast<GLuint>(alloc.index_count);
-				cmd.instanceCount = 1;
-				cmd.firstIndex = static_cast<GLuint>(alloc.index_offset);
-				cmd.baseVertex = static_cast<GLint>(alloc.vertex_offset);
-				cmd.baseInstance = 0;
-				draw_commands_.push_back(cmd);
-			}
-
-			// Upload draw commands to GPU buffer
-			glBindBuffer(GL_DRAW_INDIRECT_BUFFER, draw_command_buffer_);
-			glBufferData(
-				GL_DRAW_INDIRECT_BUFFER,
-				draw_commands_.size() * sizeof(DrawCommand),
-				draw_commands_.data(),
-				GL_DYNAMIC_DRAW
-			);
-
-			draw_commands_dirty_ = false;
-		}
-
-		// Single API call renders all terrain chunks!
-		// GPU reads draw parameters from the indirect buffer
-		glBindBuffer(GL_DRAW_INDIRECT_BUFFER, draw_command_buffer_);
-		glMultiDrawElementsIndirect(
+		// Single instanced draw call for all visible chunks!
+		glDrawElementsInstanced(
 			GL_PATCHES,
+			static_cast<GLsizei>(grid_index_count_),
 			GL_UNSIGNED_INT,
-			nullptr,  // offset into indirect buffer
-			static_cast<GLsizei>(draw_commands_.size()),
-			sizeof(DrawCommand)
+			nullptr,
+			static_cast<GLsizei>(visible_instances_.size())
 		);
 
 		glBindVertexArray(0);
+		glBindTexture(GL_TEXTURE_2D_ARRAY, 0);
 	}
 
 	size_t TerrainRenderManager::GetRegisteredChunkCount() const {
 		std::lock_guard<std::mutex> lock(mutex_);
-		return chunk_allocations_.size();
+		return chunks_.size();
 	}
 
-	size_t TerrainRenderManager::GetTotalVertexCount() const {
+	size_t TerrainRenderManager::GetVisibleChunkCount() const {
 		std::lock_guard<std::mutex> lock(mutex_);
-		return vertex_usage_;
-	}
-
-	size_t TerrainRenderManager::GetTotalIndexCount() const {
-		std::lock_guard<std::mutex> lock(mutex_);
-		return index_usage_;
+		return visible_instances_.size();
 	}
 
 } // namespace Boidsish

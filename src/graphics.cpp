@@ -86,9 +86,9 @@ namespace Boidsish {
 		std::unique_ptr<PostProcessing::PostProcessingManager> post_processing_manager_;
 		int                                                    exit_key;
 
-		std::unique_ptr<TerrainGenerator> terrain_generator;
+		std::unique_ptr<TerrainGenerator>    terrain_generator;
 		std::shared_ptr<TerrainRenderManager> terrain_render_manager;
-		std::unique_ptr<TrailRenderManager> trail_render_manager;
+		std::unique_ptr<TrailRenderManager>  trail_render_manager;
 
 		std::shared_ptr<Shader> shader;
 		std::unique_ptr<Shader> plane_shader;
@@ -278,17 +278,17 @@ namespace Boidsish {
 			logger::LOG("HudWidget created and added.");
 
 			if (terrain_generator) {
+				// Use terrain shaders with heightmap texture lookup
 				Terrain::terrain_shader_ = std::make_shared<Shader>(
 					"shaders/terrain.vert",
 					"shaders/terrain.frag",
 					"shaders/terrain.tcs",
 					"shaders/terrain.tes"
-					// , "shaders/terrain.geom"
 				);
 				SetupShaderBindings(*Terrain::terrain_shader_);
 
-				// Create the terrain render manager for batched terrain rendering
-				terrain_render_manager = std::make_shared<TerrainRenderManager>();
+				// Create the terrain render manager
+				terrain_render_manager = std::make_shared<TerrainRenderManager>(32, 512);
 				terrain_generator->SetRenderManager(terrain_render_manager);
 			}
 
@@ -778,6 +778,12 @@ namespace Boidsish {
 
 			// Use batched render manager if available (single draw call for all chunks)
 			if (terrain_render_manager) {
+				// Calculate frustum for culling
+				Frustum frustum = CalculateFrustum(view, projection);
+
+				// Prepare for rendering (frustum culling for instanced renderer)
+				terrain_render_manager->PrepareForRender(frustum, camera.pos());
+
 				terrain_render_manager->Render(
 					*Terrain::terrain_shader_,
 					view,

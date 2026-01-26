@@ -5,7 +5,6 @@
 #include <mutex>
 #include <vector>
 #include <optional>
-
 #include <GL/glew.h>
 #include <glm/glm.hpp>
 

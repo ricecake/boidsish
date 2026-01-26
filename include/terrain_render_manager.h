@@ -3,8 +3,8 @@
 #include <map>
 #include <memory>
 #include <mutex>
-#include <vector>
 #include <optional>
+#include <vector>
 
 #include <GL/glew.h>
 #include <glm/glm.hpp>
@@ -13,24 +13,35 @@ class Shader;
 
 namespace Boidsish {
 
-	class Terrain;
+	struct Frustum;
 
 	/**
-	 * @brief Manages batched terrain rendering for improved performance.
+	 * @brief High-performance instanced terrain rendering with heightmap lookup.
 	 *
-	 * Instead of each terrain chunk having its own VAO/VBO and being rendered
-	 * with separate draw calls, this manager consolidates all terrain data into
-	 * large persistent buffers and renders everything in a single draw call.
+	 * Architecture:
+	 * - Single flat grid mesh (NxN quads) instanced for all visible chunks
+	 * - Heightmap stored in texture array (one slice per chunk)
+	 * - Per-instance data: world offset + heightmap slice index + bounds
+	 * - CPU frustum culling filters visible chunks before rendering
+	 * - Tessellation shader samples heightmap for vertex displacement
 	 *
-	 * Data layout:
-	 * - Vertex buffer: interleaved [position(3) + normal(3) + texcoord(2)] = 8 floats per vertex
-	 * - Index buffer: unsigned int indices with baseVertex offset per chunk
+	 * Benefits:
+	 * - Single instanced draw call for all terrain
+	 * - Efficient frustum culling on CPU before draw
+	 * - Minimal vertex buffer (just one flat grid)
+	 * - Heightmap data doesn't need mesh-layout ordering
+	 * - GPU does displacement, reducing CPU→GPU bandwidth
 	 *
-	 * When chunks are added/removed, only the affected regions of the buffers are updated.
+	 * Data flow:
+	 * 1. TerrainGenerator produces heightmap data per chunk
+	 * 2. RegisterChunk() uploads heightmap to texture array slice
+	 * 3. Each frame: PrepareForRender() builds visible instance list
+	 * 4. Render() issues single instanced draw call
+	 * 5. TES shader samples heightmap to displace flat grid vertices
 	 */
 	class TerrainRenderManager {
 	public:
-		TerrainRenderManager();
+		TerrainRenderManager(int chunk_size = 32, int max_chunks = 512);
 		~TerrainRenderManager();
 
 		// Non-copyable
@@ -38,24 +49,22 @@ namespace Boidsish {
 		TerrainRenderManager& operator=(const TerrainRenderManager&) = delete;
 
 		/**
-		 * @brief Register a terrain chunk for batched rendering.
+		 * @brief Register a terrain chunk for rendering.
 		 *
-		 * @param chunk_key Unique identifier for this chunk (e.g., {chunk_x, chunk_z})
-		 * @param vertices Interleaved vertex data (position + normal + texcoord)
-		 * @param indices Index data for this chunk
-		 * @param world_offset World position offset for this chunk
+		 * Extracts heights from positions and uploads to texture array.
 		 */
 		void RegisterChunk(
-			std::pair<int, int>               chunk_key,
-			const std::vector<float>&         vertices,
-			const std::vector<unsigned int>&  indices,
-			const glm::vec3&                  world_offset
+			std::pair<int, int>              chunk_key,
+			const std::vector<glm::vec3>&    positions,
+			const std::vector<glm::vec3>&    normals,
+			const std::vector<unsigned int>& indices,
+			float                            min_y,
+			float                            max_y,
+			const glm::vec3&                 world_offset
 		);
 
 		/**
-		 * @brief Unregister a terrain chunk, freeing its buffer space.
-		 *
-		 * @param chunk_key The chunk identifier to remove
+		 * @brief Unregister a terrain chunk, freeing its texture slice.
 		 */
 		void UnregisterChunk(std::pair<int, int> chunk_key);
 
@@ -65,13 +74,12 @@ namespace Boidsish {
 		bool HasChunk(std::pair<int, int> chunk_key) const;
 
 		/**
-		 * @brief Render all registered terrain chunks in a single draw call.
-		 *
-		 * @param shader The terrain shader to use
-		 * @param view The view matrix
-		 * @param projection The projection matrix
-		 * @param clip_plane Optional clip plane for reflection rendering
-		 * @param tess_quality_multiplier Tessellation quality multiplier
+		 * @brief Perform frustum culling and prepare instance buffer.
+		 */
+		void PrepareForRender(const Frustum& frustum, const glm::vec3& camera_pos);
+
+		/**
+		 * @brief Render all visible terrain chunks with single instanced draw.
 		 */
 		void Render(
 			Shader&                         shader,
@@ -82,87 +90,76 @@ namespace Boidsish {
 		);
 
 		/**
-		 * @brief Commit any pending buffer updates to the GPU.
-		 *
-		 * Call this once per frame after all chunk registrations/unregistrations.
+		 * @brief Commit any pending updates (no-op for this implementation).
 		 */
-		void CommitUpdates();
+		void CommitUpdates() {}
 
 		/**
-		 * @brief Get statistics for debugging/profiling.
+		 * @brief Get statistics.
 		 */
 		size_t GetRegisteredChunkCount() const;
-		size_t GetTotalVertexCount() const;
-		size_t GetTotalIndexCount() const;
+		size_t GetVisibleChunkCount() const;
+		int    GetChunkSize() const { return chunk_size_; }
+
+		/**
+		 * @brief Get the heightmap texture array for shader binding.
+		 */
+		GLuint GetHeightmapTexture() const { return heightmap_texture_; }
 
 	private:
-		struct ChunkAllocation {
-			size_t    vertex_offset;   // Offset in vertices (not bytes)
-			size_t    vertex_count;
-			size_t    index_offset;    // Offset in indices (not bytes)
-			size_t    index_count;
-			glm::vec3 world_offset;
+		// Per-chunk metadata (CPU side)
+		struct ChunkInfo {
+			int       texture_slice;   // Index into texture array
+			float     min_y;           // For frustum culling
+			float     max_y;           // For frustum culling
+			glm::vec2 world_offset;    // (chunk_x * chunk_size, chunk_z * chunk_size)
 		};
 
-		// Buffer management
-		void EnsureBufferCapacity(size_t required_vertices, size_t required_indices);
-		void RebuildBuffers();
-		void UploadChunkData(
-			const ChunkAllocation&           allocation,
-			const std::vector<float>&        vertices,
-			const std::vector<unsigned int>& indices
-		);
+		// Per-instance data sent to GPU (std140 layout)
+		struct alignas(16) InstanceData {
+			glm::vec4 world_offset_and_slice;  // xyz = world offset, w = texture slice index
+			glm::vec4 bounds;                   // xy = min/max Y for this chunk (for shader LOD)
+		};
+
+		// Frustum culling helper
+		bool IsChunkVisible(const ChunkInfo& chunk, const Frustum& frustum) const;
+
+		// Create the flat grid mesh
+		void CreateGridMesh();
+
+		// Create/resize the heightmap texture array
+		void EnsureTextureCapacity(int required_slices);
+
+		// Upload heightmap data to a texture slice
+		void UploadHeightmapSlice(int slice, const std::vector<float>& heightmap,
+		                          const std::vector<glm::vec3>& normals);
+
+		// Configuration
+		int chunk_size_;           // Grid size per chunk (e.g., 32)
+		int max_chunks_;           // Maximum chunks in texture array
+		int heightmap_resolution_; // (chunk_size + 1) for vertex corners
 
 		// OpenGL resources
-		GLuint vao_ = 0;
-		GLuint vbo_ = 0;
-		GLuint ebo_ = 0;
+		GLuint grid_vao_ = 0;
+		GLuint grid_vbo_ = 0;
+		GLuint grid_ebo_ = 0;
+		GLuint instance_vbo_ = 0;
+		GLuint heightmap_texture_ = 0;  // GL_TEXTURE_2D_ARRAY
 
-		// Buffer capacities (in elements, not bytes)
-		size_t vertex_capacity_ = 0;
-		size_t index_capacity_ = 0;
+		// Grid mesh data
+		size_t grid_index_count_ = 0;
 
-		// Current usage
-		size_t vertex_usage_ = 0;
-		size_t index_usage_ = 0;
+		// Chunk management
+		std::map<std::pair<int, int>, ChunkInfo> chunks_;
+		std::vector<int> free_slices_;  // Available texture slices
+		int next_slice_ = 0;
 
-		// Chunk allocations
-		std::map<std::pair<int, int>, ChunkAllocation> chunk_allocations_;
-
-		// Free list for reusing deallocated space
-		struct FreeBlock {
-			size_t offset;
-			size_t size;
-		};
-		std::vector<FreeBlock> vertex_free_list_;
-		std::vector<FreeBlock> index_free_list_;
-
-		// Pending updates
-		bool needs_rebuild_ = false;
-		std::vector<std::pair<int, int>> pending_registrations_;
-		std::map<std::pair<int, int>, std::tuple<std::vector<float>, std::vector<unsigned int>, glm::vec3>>
-			pending_chunk_data_;
+		// Per-frame instance data
+		std::vector<InstanceData> visible_instances_;
+		size_t instance_buffer_capacity_ = 0;
 
 		// Thread safety
 		mutable std::mutex mutex_;
-
-		// Draw command for multi-draw
-		struct DrawCommand {
-			GLuint count;
-			GLuint instanceCount;
-			GLuint firstIndex;
-			GLint  baseVertex;
-			GLuint baseInstance;
-		};
-		std::vector<DrawCommand> draw_commands_;
-		GLuint                   draw_command_buffer_ = 0;
-		bool                     draw_commands_dirty_ = true;
-
-		// Constants
-		static constexpr size_t FLOATS_PER_VERTEX = 8;  // pos(3) + normal(3) + texcoord(2)
-		static constexpr size_t INITIAL_VERTEX_CAPACITY = 1024 * 1024;  // 1M vertices
-		static constexpr size_t INITIAL_INDEX_CAPACITY = 4 * 1024 * 1024;  // 4M indices
-		static constexpr float  GROWTH_FACTOR = 1.5f;
 	};
 
 } // namespace Boidsish

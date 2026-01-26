@@ -126,11 +126,13 @@ namespace Boidsish {
 						// Register with render manager if available
 						if (render_manager_) {
 							terrain_chunk->SetManagedByRenderManager(true);
-							auto vertex_data = terrain_chunk->GetInterleavedVertexData();
 							render_manager_->RegisterChunk(
 								pair.first,
-								vertex_data,
+								result.positions,
+								result.normals,
 								result.indices,
+								result.proxy.minY,
+								result.proxy.maxY,
 								glm::vec3(result.chunk_x * chunk_size_, 0, result.chunk_z * chunk_size_)
 							);
 						} else {

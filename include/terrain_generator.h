@@ -192,7 +192,7 @@ namespace Boidsish {
 		std::random_device                                                 rd_;
 		std::mt19937                                                       eng_;
 
-		// Batched rendering manager (optional, when set uses batched rendering)
+		// Instanced terrain render manager (optional, when set uses GPU heightmap lookup)
 		std::shared_ptr<TerrainRenderManager> render_manager_;
 	};
 
