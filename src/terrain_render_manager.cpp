@@ -120,15 +120,40 @@ namespace Boidsish {
 			return;  // Already have enough capacity
 		}
 
-		if (heightmap_texture_) {
-			glDeleteTextures(1, &heightmap_texture_);
+		// Query GPU limit for texture array layers
+		GLint max_layers = 0;
+		glGetIntegerv(GL_MAX_ARRAY_TEXTURE_LAYERS, &max_layers);
+		if (max_layers <= 0) max_layers = 512;  // Fallback
+
+		// Clamp to GPU's maximum supported layers
+		int new_capacity = std::max(max_chunks_, required_slices);
+		if (new_capacity > max_layers) {
+			new_capacity = max_layers;
 		}
 
-		max_chunks_ = std::max(max_chunks_, required_slices);
+		// If already at max capacity, nothing to do
+		if (heightmap_texture_ && new_capacity <= max_chunks_) {
+			return;
+		}
+
+		// If we need to resize and texture exists, existing data will be lost
+		// This shouldn't happen often with proper capacity management
+		if (heightmap_texture_) {
+			std::cerr << "[TerrainRenderManager] WARNING: Texture array resize from "
+			          << max_chunks_ << " to " << new_capacity
+			          << " - existing heightmap data will be lost!" << std::endl;
+			glDeleteTextures(1, &heightmap_texture_);
+			heightmap_texture_ = 0;
+			// Reset slice tracking since all data is lost
+			next_slice_ = 0;
+			free_slices_.clear();
+			chunks_.clear();
+		}
+
+		max_chunks_ = new_capacity;
 
 		// Create 2D texture array for heightmaps
-		// Format: RG32F - R = height, G = packed normal (or use RGBA for full normal)
-		// Actually, let's use RGBA16F: R=height, GBA=normal.xyz
+		// Format: RGBA16F - R=height, GBA=normal.xyz
 		glGenTextures(1, &heightmap_texture_);
 		glBindTexture(GL_TEXTURE_2D_ARRAY, heightmap_texture_);
 
@@ -145,6 +170,13 @@ namespace Boidsish {
 			GL_FLOAT,                   // type
 			nullptr                     // no initial data
 		);
+
+		// Check for errors
+		GLenum err = glGetError();
+		if (err != GL_NO_ERROR) {
+			std::cerr << "[TerrainRenderManager] ERROR: glTexImage3D failed with error " << err
+			          << " (resolution=" << heightmap_resolution_ << ", slices=" << max_chunks_ << ")" << std::endl;
+		}
 
 		// Filtering for smooth interpolation
 		glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
@@ -236,8 +268,25 @@ namespace Boidsish {
 			free_slices_.pop_back();
 		} else {
 			if (next_slice_ >= max_chunks_) {
-				// Need to grow texture array
-				EnsureTextureCapacity(max_chunks_ * 2);
+				// Check if we can grow the texture array
+				GLint max_layers = 0;
+				glGetIntegerv(GL_MAX_ARRAY_TEXTURE_LAYERS, &max_layers);
+
+				if (max_chunks_ >= max_layers) {
+					// At GPU capacity - can't register this chunk
+					// This is normal when view distance exceeds GPU texture array limits
+					static bool warned = false;
+					if (!warned) {
+						std::cerr << "[TerrainRenderManager] At GPU texture capacity (" << max_chunks_
+						          << " slices). Some distant chunks may not render." << std::endl;
+						warned = true;
+					}
+					return;  // Skip this chunk - it won't be rendered
+				}
+
+				// Can grow, but cap at GPU limit
+				int new_capacity = std::min(max_chunks_ * 2, max_layers);
+				EnsureTextureCapacity(new_capacity);
 			}
 			slice = next_slice_++;
 		}
@@ -313,8 +362,10 @@ namespace Boidsish {
 		visible_instances_.reserve(chunks_.size());
 
 		for (const auto& [key, chunk] : chunks_) {
-			// Frustum cull chunks before adding to visible list
+			// TEMPORARILY DISABLED: Frustum culling may have incorrect plane math
+			// TODO: Fix frustum culling and re-enable
 			if (IsChunkVisible(chunk, frustum)) {
+			// if (true) {  // Always visible for debugging
 				InstanceData instance{};
 				instance.world_offset_and_slice = glm::vec4(
 					chunk.world_offset.x,
@@ -396,8 +447,18 @@ namespace Boidsish {
 		// Bind VAO (instance attributes already configured during initialization)
 		glBindVertexArray(grid_vao_);
 
+		// Explicitly rebind EBO in case VAO state was corrupted
+		// glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, grid_ebo_);
+
 		// Set patch vertices for tessellation
 		glPatchParameteri(GL_PATCH_VERTICES, 4);
+
+		// DEBUG: Log visible instance count
+		static int frame_count = 0;
+		if (frame_count++ % 60 == 0) {
+			std::cout << "[TerrainRenderManager] Rendering " << visible_instances_.size()
+			          << " instances, chunks registered: " << chunks_.size() << std::endl;
+		}
 
 		// Single instanced draw call for all visible chunks!
 		glDrawElementsInstanced(

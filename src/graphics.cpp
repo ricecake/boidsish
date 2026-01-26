@@ -288,7 +288,14 @@ namespace Boidsish {
 				SetupShaderBindings(*Terrain::terrain_shader_);
 
 				// Create the terrain render manager
-				terrain_render_manager = std::make_shared<TerrainRenderManager>(32, 512);
+				// Query GPU for max texture array layers and use a safe initial allocation
+				// Chunk size 64 = heightmap resolution 65x65, matches terrain_generator.h
+				GLint max_layers = 0;
+				glGetIntegerv(GL_MAX_ARRAY_TEXTURE_LAYERS, &max_layers);
+				int initial_chunks = std::min(2048, max_layers > 0 ? max_layers : 512);
+				logger::LOG("Terrain render manager: GPU supports " + std::to_string(max_layers) +
+				            " texture array layers, using " + std::to_string(initial_chunks));
+				terrain_render_manager = std::make_shared<TerrainRenderManager>(64, initial_chunks);
 				terrain_generator->SetRenderManager(terrain_render_manager);
 			}
 

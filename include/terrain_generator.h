@@ -162,7 +162,7 @@ namespace Boidsish {
 
 		const int view_distance_ = 10;        // in chunks
 		const int kUnloadDistanceBuffer_ = 2; // in chunks
-		const int chunk_size_ = 32;
+	const int chunk_size_ = 64;           // Larger chunks = fewer texture slices needed
 		int       octaves_ = 4;
 		float     lacunarity_ = 0.99f;
 		float     persistence_ = 0.5f;
