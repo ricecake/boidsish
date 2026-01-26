@@ -31,6 +31,9 @@ namespace Boidsish {
 		void      render(Shader& shader, const glm::mat4& model_matrix) const override;
 		glm::mat4 GetModelMatrix() const override;
 
+		// All Dots share the same sphere mesh, so they can be instanced together
+		std::string GetInstanceKey() const override { return "Dot"; }
+
 	private:
 		float size_;
 	};

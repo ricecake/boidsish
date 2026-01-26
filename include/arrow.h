@@ -26,6 +26,9 @@ namespace Boidsish {
 		void      render(Shader& shader, const glm::mat4& model_matrix) const override;
 		glm::mat4 GetModelMatrix() const override;
 
+		// Arrows are not instanced (each has unique geometry)
+		std::string GetInstanceKey() const override { return "Arrow:" + std::to_string(GetId()); }
+
 		void SetDirection(const glm::vec3& direction);
 
 	private:

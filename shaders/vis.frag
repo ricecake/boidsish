@@ -10,10 +10,12 @@ in vec3 Normal;
 in vec3 vs_color;
 in vec3 barycentric;
 in vec2 TexCoords;
+in vec4 InstanceColor;
 
 uniform vec3 objectColor;
 uniform int  useVertexColor;
 uniform bool isColossal = true;
+uniform bool useInstanceColor = false;
 
 // PBR material properties
 uniform bool  usePBR = false;
@@ -26,7 +28,9 @@ uniform bool      use_texture;
 
 void main() {
 	vec3 final_color;
-	if (useVertexColor == 1) {
+	if (useInstanceColor) {
+		final_color = InstanceColor.rgb;
+	} else if (useVertexColor == 1) {
 		final_color = vs_color;
 	} else {
 		final_color = objectColor;

@@ -74,6 +74,9 @@ namespace Boidsish {
 		void      render(Shader& shader, const glm::mat4& model_matrix) const override;
 		glm::mat4 GetModelMatrix() const override;
 
+		// Graphs are not instanced (each has unique geometry)
+		std::string GetInstanceKey() const override { return "Graph:" + std::to_string(GetId()); }
+
 		Vertex& AddVertex(const Vector3& pos, float Size = 0, float R = 0, float G = 0, float B = 0, float A = 0) {
 			buffers_initialized_ = false;
 			return vertices.emplace_back(weak_from_this(), vertices.size(), pos, Size, R, G, B, A);

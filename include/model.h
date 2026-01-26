@@ -65,11 +65,18 @@ namespace Boidsish {
 
 		void SetInstanced(bool is_instanced) { Shape::SetInstanced(is_instanced); }
 
+		// Returns unique key for this model file - models loaded from the same file can be instanced together
+		std::string GetInstanceKey() const override { return "Model:" + model_path_; }
+
+		// Get the model path
+		const std::string& GetModelPath() const { return model_path_; }
+
 	private:
 		// Model data
 		glm::quat            base_rotation_ = glm::quat(1.0f, 0.0f, 0.0f, 0.0f);
 		std::vector<Mesh>    meshes;
 		std::string          directory;
+		std::string          model_path_;  // Full path to the model file for instancing identification
 		bool                 no_cull_ = false;
 		std::vector<Texture> textures_loaded_;
 

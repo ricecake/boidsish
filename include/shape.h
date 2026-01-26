@@ -108,6 +108,10 @@ namespace Boidsish {
 
 		inline void SetInstanced(bool is_instanced) { is_instanced_ = is_instanced; }
 
+		// Returns a key identifying what shapes can be instanced together
+		// Shapes with the same key share the same mesh data
+		virtual std::string GetInstanceKey() const = 0;
+
 		// PBR material properties
 		inline float GetRoughness() const { return roughness_; }
 
@@ -194,8 +198,8 @@ namespace Boidsish {
 		float     ao_;
 		bool      use_pbr_;
 
-	protected:
-		// Shared sphere mesh
+	public:
+		// Shared sphere mesh (public for instancing support)
 		static unsigned int sphere_vao_;
 		static unsigned int sphere_vbo_;
 		static int          sphere_vertex_count_;

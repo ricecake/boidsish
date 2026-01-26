@@ -92,7 +92,7 @@ namespace Boidsish {
 	}
 
 	// Model implementation
-	Model::Model(const std::string& path, bool no_cull): no_cull_(no_cull) {
+	Model::Model(const std::string& path, bool no_cull): no_cull_(no_cull), model_path_(path) {
 		loadModel(path);
 	}
 
