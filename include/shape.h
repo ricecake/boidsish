@@ -45,6 +45,10 @@ namespace Boidsish {
 			z_ = z;
 		}
 
+		inline glm::vec3 GetLastPosition() const { return last_position_; }
+
+		inline void UpdateLastPosition() { last_position_ = glm::vec3(x_, y_, z_); }
+
 		inline float GetR() const { return r_; }
 
 		inline float GetG() const { return g_; }
@@ -160,6 +164,7 @@ namespace Boidsish {
 			trail_length_(trail_length),
 			trail_iridescent_(false),
 			is_colossal_(false),
+			last_position_(x, y, z),
 			trail_pbr_(false),
 			trail_roughness_(0.3f),
 			trail_metallic_(0.0f),
@@ -172,21 +177,22 @@ namespace Boidsish {
 		glm::vec3 scale_;
 
 	private:
-		int   id_;
-		float x_, y_, z_;
-		float r_, g_, b_, a_;
-		int   trail_length_;
-		bool  trail_iridescent_;
-		bool  trail_rocket_;
-		bool  is_colossal_;
-		bool  is_instanced_ = false;
-		bool  trail_pbr_;
-		float trail_roughness_;
-		float trail_metallic_;
-		float roughness_;
-		float metallic_;
-		float ao_;
-		bool  use_pbr_;
+		int       id_;
+		float     x_, y_, z_;
+		glm::vec3 last_position_;
+		float     r_, g_, b_, a_;
+		int       trail_length_;
+		bool      trail_iridescent_;
+		bool      trail_rocket_;
+		bool      is_colossal_;
+		bool      is_instanced_ = false;
+		bool      trail_pbr_;
+		float     trail_roughness_;
+		float     trail_metallic_;
+		float     roughness_;
+		float     metallic_;
+		float     ao_;
+		bool      use_pbr_;
 
 	protected:
 		// Shared sphere mesh

@@ -45,6 +45,10 @@ namespace Boidsish {
 		bool casts_shadow = false;
 		int  shadow_map_index = -1;
 
+		// State tracking for shadow optimization
+		glm::vec3 last_position;
+		glm::vec3 last_direction;
+
 		// Convert to GPU-compatible struct for UBO upload
 		LightGPU ToGPU() const {
 			LightGPU gpu;
@@ -70,6 +74,9 @@ namespace Boidsish {
 			l.outer_cutoff = glm::cos(glm::radians(17.5f));
 			l.casts_shadow = shadows;
 			l.shadow_map_index = -1;
+			// Initialize last state for shadow optimization
+			l.last_position = l.position;
+			l.last_direction = l.direction;
 			return l;
 		}
 

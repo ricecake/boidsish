@@ -19,6 +19,8 @@ namespace Boidsish {
 		std::uniform_real_distribution<float> dist(4.0f, 8.0f);
 		fire_interval_ = dist(eng_);
 
+		shape_->SetInstanced(true);
+
 		UpdateShape();
 	}
 
