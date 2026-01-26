@@ -8,7 +8,6 @@
 #include <glm/gtx/quaternion.hpp>
 
 namespace Boidsish {
-
 	// Calculates the torque needed to rotate 'current_forward' to align with 'desired_direction'
 	// using a PD controller to prevent overshoot.
 	glm::vec3 CalculateSteeringTorque(
@@ -164,10 +163,10 @@ namespace Boidsish {
 			float missile_speed = glm::length(rigid_body_.GetLinearVelocity());
 
 			// PREDICT
-			glm::vec3 aim_point =
+			target_dir_world =
 				GetInterceptPoint(GetPosition(), missile_speed, target_->GetPosition(), target_->GetVelocity());
 
-			target_dir_local = WorldToObject(glm::normalize(aim_point - GetPosition()));
+			target_dir_local = WorldToObject(glm::normalize(target_dir_world - GetPosition()));
 		}
 
 		const auto* terrain_generator = handler.GetTerrainGenerator();
@@ -216,8 +215,8 @@ namespace Boidsish {
 			local_forward,
 			target_dir_local,
 			rigid_body_.GetAngularVelocity(),
-			100.0f, // kP,
-			glm::mix(0.0f, 10.0f, std::clamp(2 * lived_ / lifetime_, 0.0f, 1.0f))
+			50.0f, // kP,
+			glm::mix(0.0f, 5.0f, std::clamp(2 * lived_ / lifetime_, 0.0f, 1.0f))
 		);
 
 		rigid_body_.AddRelativeTorque(pid_torque);
