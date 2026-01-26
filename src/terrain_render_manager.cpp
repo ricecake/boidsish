@@ -313,18 +313,19 @@ namespace Boidsish {
 		visible_instances_.reserve(chunks_.size());
 
 		for (const auto& [key, chunk] : chunks_) {
-			// Always include all registered chunks - no frustum culling for now
-			// to debug the rendering issue
-			InstanceData instance{};
-			instance.world_offset_and_slice = glm::vec4(
-				chunk.world_offset.x,
-				0.0f,  // Y offset is always 0 (height comes from heightmap)
-				chunk.world_offset.y,  // This is the Z world coordinate
-				static_cast<float>(chunk.texture_slice)
-			);
-			instance.bounds = glm::vec4(chunk.min_y, chunk.max_y, 0.0f, 0.0f);
+			// Frustum cull chunks before adding to visible list
+			if (IsChunkVisible(chunk, frustum)) {
+				InstanceData instance{};
+				instance.world_offset_and_slice = glm::vec4(
+					chunk.world_offset.x,
+					0.0f,  // Y offset is always 0 (height comes from heightmap)
+					chunk.world_offset.y,  // This is the Z world coordinate
+					static_cast<float>(chunk.texture_slice)
+				);
+				instance.bounds = glm::vec4(chunk.min_y, chunk.max_y, 0.0f, 0.0f);
 
-			visible_instances_.push_back(instance);
+				visible_instances_.push_back(instance);
+			}
 		}
 
 		// Upload instance data to GPU

@@ -78,33 +78,28 @@ namespace Boidsish {
 	}
 
 	void TerrainGenerator::update(const Frustum& frustum, const Camera& camera) {
-		int current_chunk_x = static_cast<int>(camera.x) / chunk_size_;
-		int current_chunk_z = static_cast<int>(camera.z) / chunk_size_;
+		// Use floor division for correct negative coordinate handling
+		int current_chunk_x = static_cast<int>(std::floor(camera.x / static_cast<float>(chunk_size_)));
+		int current_chunk_z = static_cast<int>(std::floor(camera.z / static_cast<float>(chunk_size_)));
 
 		float height_factor = std::max(1.0f, camera.y / 5.0f);
 		int   dynamic_view_distance = std::min(24, static_cast<int>(view_distance_ * height_factor));
 
 		// Enqueue generation of new chunks
+		// Generate all chunks within view distance, regardless of frustum
+		// (frustum culling happens at render time, not generation time)
 		for (int x = current_chunk_x - dynamic_view_distance; x <= current_chunk_x + dynamic_view_distance; ++x) {
 			for (int z = current_chunk_z - dynamic_view_distance; z <= current_chunk_z + dynamic_view_distance; ++z) {
-				if (isChunkInFrustum(
-						frustum,
-						x,
-						z,
-						chunk_size_,
-						std::ranges::max(std::views::transform(biomes, &BiomeAttributes::floorLevel))
-					)) {
-					std::pair<int, int> chunk_coord = {x, z};
-					{
-						std::lock_guard<std::mutex> cache_lock(chunk_cache_mutex_);
-						if (chunk_cache_.find(chunk_coord) == chunk_cache_.end() &&
-						    pending_chunks_.find(chunk_coord) == pending_chunks_.end()) {
-							pending_chunks_.emplace(
-								chunk_coord,
-								thread_pool_
-									.enqueue(TaskPriority::MEDIUM, &TerrainGenerator::generateChunkData, this, x, z)
-							);
-						}
+				std::pair<int, int> chunk_coord = {x, z};
+				{
+					std::lock_guard<std::mutex> cache_lock(chunk_cache_mutex_);
+					if (chunk_cache_.find(chunk_coord) == chunk_cache_.end() &&
+					    pending_chunks_.find(chunk_coord) == pending_chunks_.end()) {
+						pending_chunks_.emplace(
+							chunk_coord,
+							thread_pool_
+								.enqueue(TaskPriority::MEDIUM, &TerrainGenerator::generateChunkData, this, x, z)
+						);
 					}
 				}
 			}

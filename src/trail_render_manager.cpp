@@ -369,7 +369,9 @@ namespace Boidsish {
 			shader.setBool("usePBR", alloc.use_pbr);
 			shader.setFloat("trailRoughness", alloc.roughness);
 			shader.setFloat("trailMetallic", alloc.metallic);
-			shader.setFloat("trailHead", static_cast<float>(alloc.head));
+			// trailHead must include vertex_offset because gl_VertexID sees the global index
+			// when we call glDrawArrays(mode, vertex_offset + head, count)
+			shader.setFloat("trailHead", static_cast<float>(alloc.vertex_offset + alloc.head));
 			shader.setFloat("trailSize", static_cast<float>(alloc.vertex_count));
 
 			// Handle ring buffer rendering
