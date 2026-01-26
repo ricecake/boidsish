@@ -129,6 +129,39 @@ namespace Boidsish {
 		}
 	}
 
+	void Model::render_instanced(Shader& shader, int count) const {
+		shader.setBool("isColossal", IsColossal());
+
+		if (this->no_cull_) {
+			glDisable(GL_CULL_FACE);
+		}
+
+		for (const auto& mesh : meshes) {
+			unsigned int diffuseNr = 1;
+			unsigned int specularNr = 1;
+			for (unsigned int i = 0; i < mesh.textures.size(); i++) {
+				glActiveTexture(GL_TEXTURE0 + i);
+				std::string number;
+				std::string name = mesh.textures[i].type;
+				if (name == "texture_diffuse")
+					number = std::to_string(diffuseNr++);
+				else if (name == "texture_specular")
+					number = std::to_string(specularNr++);
+				shader.setInt(("material." + name + number).c_str(), i);
+				glBindTexture(GL_TEXTURE_2D, mesh.textures[i].id);
+			}
+			glActiveTexture(GL_TEXTURE0);
+
+			ConfigureInstancing(mesh.VAO);
+			mesh.render_instanced(count);
+			UnconfigureInstancing(mesh.VAO);
+		}
+
+		if (this->no_cull_) {
+			glEnable(GL_CULL_FACE);
+		}
+	}
+
 	glm::mat4 Model::GetModelMatrix() const {
 		glm::mat4 model = glm::mat4(1.0f);
 		model = glm::translate(model, glm::vec3(GetX(), GetY(), GetZ()));

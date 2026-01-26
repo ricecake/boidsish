@@ -27,6 +27,14 @@ namespace Boidsish {
 		glBindVertexArray(0);
 	}
 
+	void Dot::render_instanced(Shader& shader, int count) const {
+		ConfigureInstancing(sphere_vao_);
+		glBindVertexArray(sphere_vao_);
+		glDrawElementsInstanced(GL_TRIANGLES, sphere_vertex_count_, GL_UNSIGNED_INT, 0, count);
+		glBindVertexArray(0);
+		UnconfigureInstancing(sphere_vao_);
+	}
+
 	glm::mat4 Dot::GetModelMatrix() const {
 		glm::mat4 model = glm::mat4(1.0f);
 		model = glm::translate(model, glm::vec3(GetX(), GetY(), GetZ()));

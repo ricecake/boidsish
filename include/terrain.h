@@ -21,6 +21,7 @@ namespace Boidsish {
 		void      setupMesh();
 		void      render() const override;
 		void      render(Shader& shader, const glm::mat4& model_matrix) const override;
+		void      render_instanced(Shader& shader, int count) const override {}
 		glm::mat4 GetModelMatrix() const override;
 
 		static std::shared_ptr<Shader> terrain_shader_;

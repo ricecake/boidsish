@@ -3,6 +3,7 @@ layout(location = 0) in vec3 aPos;
 layout(location = 1) in vec3 aNormal;
 layout(location = 2) in vec2 aTexCoords;
 layout(location = 3) in mat4 aInstanceMatrix;
+layout(location = 7) in vec4 aInstanceColor;
 #include "helpers/lighting.glsl"
 #include "visual_effects.glsl"
 #include "visual_effects.vert"
@@ -51,6 +52,10 @@ void main() {
 	TexCoords = aTexCoords;
 	if (wireframe_enabled == 1) {
 		barycentric = getBarycentric();
+	}
+
+	if (is_instanced) {
+		vs_color = aInstanceColor.rgb;
 	}
 
 	if (isColossal) {

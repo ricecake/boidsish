@@ -3,6 +3,7 @@
 #include <cmath>
 #include <vector>
 
+#include "instance_manager.h"
 #include "shader.h"
 #include <GL/glew.h>
 #include <glm/glm.hpp>
@@ -17,6 +18,43 @@ namespace Boidsish {
 	unsigned int            Shape::sphere_vbo_ = 0;
 	int                     Shape::sphere_vertex_count_ = 0;
 	std::shared_ptr<Shader> Shape::shader = nullptr;
+
+	void Shape::ConfigureInstancing(unsigned int vao) const {
+		glBindVertexArray(vao);
+		glEnableVertexAttribArray(3);
+		glVertexAttribPointer(3, 4, GL_FLOAT, GL_FALSE, sizeof(InstanceData), (void*)0);
+		glEnableVertexAttribArray(4);
+		glVertexAttribPointer(4, 4, GL_FLOAT, GL_FALSE, sizeof(InstanceData), (void*)(sizeof(glm::vec4)));
+		glEnableVertexAttribArray(5);
+		glVertexAttribPointer(5, 4, GL_FLOAT, GL_FALSE, sizeof(InstanceData), (void*)(2 * sizeof(glm::vec4)));
+		glEnableVertexAttribArray(6);
+		glVertexAttribPointer(6, 4, GL_FLOAT, GL_FALSE, sizeof(InstanceData), (void*)(3 * sizeof(glm::vec4)));
+		glEnableVertexAttribArray(7);
+		glVertexAttribPointer(7, 4, GL_FLOAT, GL_FALSE, sizeof(InstanceData), (void*)(4 * sizeof(glm::vec4)));
+
+		glVertexAttribDivisor(3, 1);
+		glVertexAttribDivisor(4, 1);
+		glVertexAttribDivisor(5, 1);
+		glVertexAttribDivisor(6, 1);
+		glVertexAttribDivisor(7, 1);
+		glBindVertexArray(0);
+	}
+
+	void Shape::UnconfigureInstancing(unsigned int vao) const {
+		glBindVertexArray(vao);
+		glVertexAttribDivisor(3, 0);
+		glVertexAttribDivisor(4, 0);
+		glVertexAttribDivisor(5, 0);
+		glVertexAttribDivisor(6, 0);
+		glVertexAttribDivisor(7, 0);
+
+		glDisableVertexAttribArray(3);
+		glDisableVertexAttribArray(4);
+		glDisableVertexAttribArray(5);
+		glDisableVertexAttribArray(6);
+		glDisableVertexAttribArray(7);
+		glBindVertexArray(0);
+	}
 
 	void Shape::InitSphereMesh() {
 		if (sphere_vao_ != 0)

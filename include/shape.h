@@ -23,6 +23,7 @@ namespace Boidsish {
 		virtual void render(Shader& shader) const final { render(shader, GetModelMatrix()); }
 
 		virtual void      render(Shader& shader, const glm::mat4& model_matrix) const = 0;
+		virtual void      render_instanced(Shader& shader, int count) const = 0;
 		virtual glm::mat4 GetModelMatrix() const = 0;
 
 		// Get the active visual effects for this shape
@@ -105,6 +106,8 @@ namespace Boidsish {
 		);
 
 	protected:
+		void ConfigureInstancing(unsigned int vao) const;
+		void UnconfigureInstancing(unsigned int vao) const;
 		// Protected constructor for derived classes
 		Shape(
 			int   id = 0,

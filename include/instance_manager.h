@@ -10,6 +10,11 @@
 
 namespace Boidsish {
 
+struct InstanceData {
+    glm::mat4 model_matrix;
+    glm::vec4 color;
+};
+
 class InstanceManager {
 public:
     void AddInstance(std::shared_ptr<Shape> shape);
@@ -18,6 +23,7 @@ public:
 private:
     struct InstanceGroup {
         std::vector<std::shared_ptr<Shape>> shapes;
+        std::vector<InstanceData> instance_data_;
         unsigned int instance_vbo_ = 0;
         size_t capacity_ = 0;
     };
