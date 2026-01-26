@@ -273,22 +273,46 @@ namespace Boidsish {
 				glGetIntegerv(GL_MAX_ARRAY_TEXTURE_LAYERS, &max_layers);
 
 				if (max_chunks_ >= max_layers) {
-					// At GPU capacity - can't register this chunk
-					// This is normal when view distance exceeds GPU texture array limits
-					static bool warned = false;
-					if (!warned) {
-						std::cerr << "[TerrainRenderManager] At GPU texture capacity (" << max_chunks_
-						          << " slices). Some distant chunks may not render." << std::endl;
-						warned = true;
-					}
-					return;  // Skip this chunk - it won't be rendered
-				}
+					// At GPU capacity - use LRU eviction
+					// Find the chunk farthest from the new chunk's position and evict it
+					glm::vec2 new_chunk_center(world_offset.x + chunk_size_ * 0.5f,
+					                           world_offset.z + chunk_size_ * 0.5f);
 
-				// Can grow, but cap at GPU limit
-				int new_capacity = std::min(max_chunks_ * 2, max_layers);
-				EnsureTextureCapacity(new_capacity);
+					float max_dist_sq = -1.0f;
+					std::pair<int, int> farthest_key;
+
+					for (const auto& [key, chunk] : chunks_) {
+						glm::vec2 chunk_center(chunk.world_offset.x + chunk_size_ * 0.5f,
+						                       chunk.world_offset.y + chunk_size_ * 0.5f);
+						float dist_sq = glm::dot(chunk_center - new_chunk_center,
+						                         chunk_center - new_chunk_center);
+						if (dist_sq > max_dist_sq) {
+							max_dist_sq = dist_sq;
+							farthest_key = key;
+						}
+					}
+
+					if (max_dist_sq >= 0) {
+						// Evict the farthest chunk and reuse its slice
+						auto evict_it = chunks_.find(farthest_key);
+						if (evict_it != chunks_.end()) {
+							slice = evict_it->second.texture_slice;
+							chunks_.erase(evict_it);
+						} else {
+							return;  // Shouldn't happen, but safety check
+						}
+					} else {
+						return;  // No chunks to evict
+					}
+				} else {
+					// Can grow, but cap at GPU limit
+					int new_capacity = std::min(max_chunks_ * 2, max_layers);
+					EnsureTextureCapacity(new_capacity);
+					slice = next_slice_++;
+				}
+			} else {
+				slice = next_slice_++;
 			}
-			slice = next_slice_++;
 		}
 
 		// Upload heightmap data
