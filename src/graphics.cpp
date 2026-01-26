@@ -39,6 +39,7 @@
 #include "task_thread_pool.hpp"
 #include "terrain.h"
 #include "terrain_generator.h"
+#include "terrain_render_manager.h"
 #include "trail.h"
 #include "ui/ConfigWidget.h"
 #include "ui/EffectsWidget.h"
@@ -85,6 +86,7 @@ namespace Boidsish {
 		int                                                    exit_key;
 
 		std::unique_ptr<TerrainGenerator> terrain_generator;
+		std::shared_ptr<TerrainRenderManager> terrain_render_manager;
 
 		std::shared_ptr<Shader> shader;
 		std::unique_ptr<Shader> plane_shader;
@@ -281,6 +283,10 @@ namespace Boidsish {
 					// , "shaders/terrain.geom"
 				);
 				SetupShaderBindings(*Terrain::terrain_shader_);
+
+				// Create the terrain render manager for batched terrain rendering
+				terrain_render_manager = std::make_shared<TerrainRenderManager>();
+				terrain_generator->SetRenderManager(terrain_render_manager);
 			}
 
 			Shape::InitSphereMesh();
@@ -725,26 +731,35 @@ namespace Boidsish {
 		void RenderTerrain(const glm::mat4& view, const std::optional<glm::vec4>& clip_plane) {
 			if (!terrain_generator || !ConfigManager::GetInstance().GetAppSettingBool("render_terrain", true))
 				return;
-			auto terrain_chunks = terrain_generator->getVisibleChunks();
-			if (terrain_chunks.empty()) {
-				return;
-			}
 
-			Terrain::terrain_shader_->use();
-			Terrain::terrain_shader_->setMat4("view", view);
-			Terrain::terrain_shader_->setMat4("projection", projection);
-			Terrain::terrain_shader_->setFloat("uTessQualityMultiplier", tess_quality_multiplier_);
-			Terrain::terrain_shader_->setFloat("uTessLevelMax", 64.0f);
-			Terrain::terrain_shader_->setFloat("uTessLevelMin", 1.0f);
-
-			if (clip_plane) {
-				Terrain::terrain_shader_->setVec4("clipPlane", *clip_plane);
+			// Use batched render manager if available (single draw call for all chunks)
+			if (terrain_render_manager) {
+				terrain_render_manager->Render(
+					*Terrain::terrain_shader_,
+					view,
+					projection,
+					clip_plane,
+					tess_quality_multiplier_
+				);
 			} else {
-				Terrain::terrain_shader_->setVec4("clipPlane", glm::vec4(0, 0, 0, 0)); // No clipping
-			}
+				// Fallback to per-chunk rendering
+				Terrain::terrain_shader_->use();
+				Terrain::terrain_shader_->setMat4("view", view);
+				Terrain::terrain_shader_->setMat4("projection", projection);
+				Terrain::terrain_shader_->setFloat("uTessQualityMultiplier", tess_quality_multiplier_);
+				Terrain::terrain_shader_->setFloat("uTessLevelMax", 64.0f);
+				Terrain::terrain_shader_->setFloat("uTessLevelMin", 1.0f);
 
-			for (const auto& chunk : terrain_chunks) {
-				chunk->render();
+				if (clip_plane) {
+					Terrain::terrain_shader_->setVec4("clipPlane", *clip_plane);
+				} else {
+					Terrain::terrain_shader_->setVec4("clipPlane", glm::vec4(0, 0, 0, 0));
+				}
+
+				auto terrain_chunks = terrain_generator->getVisibleChunks();
+				for (const auto& chunk : terrain_chunks) {
+					chunk->render();
+				}
 			}
 		}
 

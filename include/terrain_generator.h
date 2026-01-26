@@ -7,6 +7,7 @@
 
 #include "Simplex.h"
 #include "terrain.h"
+#include "terrain_render_manager.h"
 #include "thread_pool.h"
 
 // #include <FastNoise/FastNoise.h>
@@ -36,6 +37,25 @@ namespace Boidsish {
 		void                                         update(const Frustum& frustum, const Camera& camera);
 		const std::vector<std::shared_ptr<Terrain>>& getVisibleChunks() const;
 		std::vector<std::shared_ptr<Terrain>>        getVisibleChunksCopy() const;
+
+		/**
+		 * @brief Set the terrain render manager for batched rendering.
+		 *
+		 * When set, the TerrainGenerator will register/unregister chunks with the
+		 * render manager instead of using per-chunk GPU resources.
+		 *
+		 * @param manager The render manager (can be nullptr to disable batched rendering)
+		 */
+		void SetRenderManager(std::shared_ptr<TerrainRenderManager> manager) {
+			render_manager_ = manager;
+		}
+
+		/**
+		 * @brief Get the render manager.
+		 */
+		std::shared_ptr<TerrainRenderManager> GetRenderManager() const {
+			return render_manager_;
+		}
 
 		std::vector<uint16_t> GenerateSuperChunkTexture(int requested_x, int requested_z);
 		std::vector<uint16_t> GenerateTextureForArea(int world_x, int world_z, int size);
@@ -171,6 +191,9 @@ namespace Boidsish {
 		mutable std::mutex                                                 point_generation_mutex_;
 		std::random_device                                                 rd_;
 		std::mt19937                                                       eng_;
+
+		// Batched rendering manager (optional, when set uses batched rendering)
+		std::shared_ptr<TerrainRenderManager> render_manager_;
 	};
 
 } // namespace Boidsish

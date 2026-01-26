@@ -122,7 +122,22 @@ namespace Boidsish {
 						auto terrain_chunk =
 							std::make_shared<Terrain>(result.indices, result.positions, result.normals, result.proxy);
 						terrain_chunk->SetPosition(result.chunk_x * chunk_size_, 0, result.chunk_z * chunk_size_);
-						terrain_chunk->setupMesh();
+
+						// Register with render manager if available
+						if (render_manager_) {
+							terrain_chunk->SetManagedByRenderManager(true);
+							auto vertex_data = terrain_chunk->GetInterleavedVertexData();
+							render_manager_->RegisterChunk(
+								pair.first,
+								vertex_data,
+								result.indices,
+								glm::vec3(result.chunk_x * chunk_size_, 0, result.chunk_z * chunk_size_)
+							);
+						} else {
+							// Legacy per-chunk GPU setup
+							terrain_chunk->setupMesh();
+						}
+
 						chunk_cache_[pair.first] = terrain_chunk;
 					}
 					completed_chunks.push_back(pair.first);
@@ -155,6 +170,10 @@ namespace Boidsish {
 			}
 
 			for (const auto& key : to_remove) {
+				// Unregister from render manager if available
+				if (render_manager_) {
+					render_manager_->UnregisterChunk(key);
+				}
 				chunk_cache_.erase(key);
 			}
 		}
@@ -176,6 +195,11 @@ namespace Boidsish {
 			std::lock_guard<std::mutex> cache_lock(chunk_cache_mutex_);
 			pending_chunks_.at(key).cancel();
 			pending_chunks_.erase(key);
+		}
+
+		// Commit any pending buffer updates to the render manager
+		if (render_manager_) {
+			render_manager_->CommitUpdates();
 		}
 
 		{

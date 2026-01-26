@@ -23,31 +23,44 @@ namespace Boidsish {
 		vao_(0),
 		vbo_(0),
 		ebo_(0),
-		index_count_(indices.size()) {
+		index_count_(indices.size()),
+		managed_by_render_manager_(false) {
 		// Constructor now only initializes member variables
-		// setupMesh() must be called explicitly to upload to GPU
+		// setupMesh() must be called explicitly to upload to GPU (legacy mode)
+		// Or use TerrainRenderManager for batched rendering (preferred)
 	}
 
 	Terrain::~Terrain() {
-		glDeleteVertexArrays(1, &vao_);
-		glDeleteBuffers(1, &vbo_);
-		glDeleteBuffers(1, &ebo_);
+		if (vao_) glDeleteVertexArrays(1, &vao_);
+		if (vbo_) glDeleteBuffers(1, &vbo_);
+		if (ebo_) glDeleteBuffers(1, &ebo_);
+	}
+
+	std::vector<float> Terrain::GetInterleavedVertexData() const {
+		std::vector<float> data;
+		data.reserve(vertices.size() * 8);
+		for (size_t i = 0; i < vertices.size(); ++i) {
+			data.push_back(vertices[i].x);
+			data.push_back(vertices[i].y);
+			data.push_back(vertices[i].z);
+			data.push_back(normals[i].x);
+			data.push_back(normals[i].y);
+			data.push_back(normals[i].z);
+			// Dummy texture coordinates
+			data.push_back(0.0f);
+			data.push_back(0.0f);
+		}
+		return data;
 	}
 
 	void Terrain::setupMesh() {
-		// Generate interleaved vertex data for GPU upload
-		vertex_data_.reserve(vertices.size() * 8);
-		for (size_t i = 0; i < vertices.size(); ++i) {
-			vertex_data_.push_back(vertices[i].x);
-			vertex_data_.push_back(vertices[i].y);
-			vertex_data_.push_back(vertices[i].z);
-			vertex_data_.push_back(normals[i].x);
-			vertex_data_.push_back(normals[i].y);
-			vertex_data_.push_back(normals[i].z);
-			// Dummy texture coordinates
-			vertex_data_.push_back(0.0f);
-			vertex_data_.push_back(0.0f);
+		if (managed_by_render_manager_) {
+			// Skip legacy GPU setup when managed by render manager
+			return;
 		}
+
+		// Generate interleaved vertex data for GPU upload
+		vertex_data_ = GetInterleavedVertexData();
 
 		glGenVertexArrays(1, &vao_);
 		glGenBuffers(1, &vbo_);
@@ -79,6 +92,11 @@ namespace Boidsish {
 	}
 
 	void Terrain::render() const {
+		if (managed_by_render_manager_) {
+			// Rendering handled by TerrainRenderManager
+			return;
+		}
+
 		terrain_shader_->use();
 		terrain_shader_->setMat4("model", GetModelMatrix());
 
