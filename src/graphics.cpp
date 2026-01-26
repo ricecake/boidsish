@@ -41,6 +41,7 @@
 #include "terrain_generator.h"
 #include "terrain_render_manager.h"
 #include "trail.h"
+#include "trail_render_manager.h"
 #include "ui/ConfigWidget.h"
 #include "ui/EffectsWidget.h"
 #include "ui/LightsWidget.h"
@@ -87,6 +88,7 @@ namespace Boidsish {
 
 		std::unique_ptr<TerrainGenerator> terrain_generator;
 		std::shared_ptr<TerrainRenderManager> terrain_render_manager;
+		std::unique_ptr<TrailRenderManager> trail_render_manager;
 
 		std::shared_ptr<Shader> shader;
 		std::unique_ptr<Shader> plane_shader;
@@ -240,6 +242,7 @@ namespace Boidsish {
 			shadow_manager = std::make_unique<ShadowManager>();
 			audio_manager = std::make_unique<AudioManager>();
 			sound_effect_manager = std::make_unique<SoundEffectManager>(audio_manager.get());
+			trail_render_manager = std::make_unique<TrailRenderManager>();
 
 			const int MAX_LIGHTS = 10;
 			glGenBuffers(1, &lighting_ubo);
@@ -712,19 +715,60 @@ namespace Boidsish {
 		}
 
 		void RenderTrails(const glm::mat4& view, const std::optional<glm::vec4>& clip_plane) {
-			trail_shader->use();
-			trail_shader->setMat4("view", view);
-			trail_shader->setMat4("projection", projection);
-			glm::mat4 model = glm::mat4(1.0f);
-			trail_shader->setMat4("model", model);
-			if (clip_plane) {
-				trail_shader->setVec4("clipPlane", *clip_plane);
-			} else {
-				trail_shader->setVec4("clipPlane", glm::vec4(0, 0, 0, 0));
-			}
+			// Use batched render manager if available
+			if (trail_render_manager) {
+				// Update trail data in the render manager
+				for (auto& [trail_id, trail] : trails) {
+					if (!trail_render_manager->HasTrail(trail_id)) {
+						// Register new trail
+						trail_render_manager->RegisterTrail(trail_id, trail->GetMaxVertexCount());
+						trail->SetManagedByRenderManager(true);
+					}
 
-			for (auto& pair : trails) {
-				pair.second->Render(*trail_shader);
+					// Update trail parameters
+					trail_render_manager->SetTrailParams(
+						trail_id,
+						trail->GetIridescent(),
+						trail->GetUseRocketTrail(),
+						trail->GetUsePBR(),
+						trail->GetRoughness(),
+						trail->GetMetallic(),
+						trail->GetBaseThickness()
+					);
+
+					// Update vertex data if dirty
+					if (trail->IsDirty()) {
+						trail_render_manager->UpdateTrailData(
+							trail_id,
+							trail->GetInterleavedVertexData(),
+							trail->GetHead(),
+							trail->GetTail(),
+							trail->GetVertexCount(),
+							trail->IsFull()
+						);
+						trail->ClearDirty();
+					}
+				}
+
+				// Commit updates and render all trails
+				trail_render_manager->CommitUpdates();
+				trail_render_manager->Render(*trail_shader, view, projection, clip_plane);
+			} else {
+				// Fallback to per-trail rendering
+				trail_shader->use();
+				trail_shader->setMat4("view", view);
+				trail_shader->setMat4("projection", projection);
+				glm::mat4 model = glm::mat4(1.0f);
+				trail_shader->setMat4("model", model);
+				if (clip_plane) {
+					trail_shader->setVec4("clipPlane", *clip_plane);
+				} else {
+					trail_shader->setVec4("clipPlane", glm::vec4(0, 0, 0, 0));
+				}
+
+				for (auto& pair : trails) {
+					pair.second->Render(*trail_shader);
+				}
 			}
 		}
 
@@ -1000,6 +1044,10 @@ namespace Boidsish {
 					auto update_it = trail_last_update.find(trail_id);
 					if (update_it != trail_last_update.end() &&
 					    (current_time - update_it->second) > 2.0f) { // 2 second timeout
+						// Unregister from render manager before erasing
+						if (trail_render_manager) {
+							trail_render_manager->UnregisterTrail(trail_id);
+						}
 						trail_it = trails.erase(trail_it);
 						trail_last_update.erase(trail_id);
 						continue;
