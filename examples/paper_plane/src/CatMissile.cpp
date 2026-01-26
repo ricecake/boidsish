@@ -1,6 +1,7 @@
 #include "CatMissile.h"
 
 #include "PaperPlane.h"
+#include "PaperPlaneHandler.h"
 #include "fire_effect.h"
 #include "graphics.h"
 #include "spatial_entity_handler.h"
@@ -118,8 +119,8 @@ namespace Boidsish {
 		const float kTurnSpeed = 100.0f;
 		const float kDamping = 2.5f;
 
-		auto& spatial_handler = static_cast<const SpatialEntityHandler&>(handler);
-		auto  targets = spatial_handler.GetEntitiesInRadius<GuidedMissileLauncher>(
+		auto& pp_handler = static_cast<const PaperPlaneHandler&>(handler);
+		auto  targets = pp_handler.GetEntitiesInRadius<GuidedMissileLauncher>(
             pos,
             kMaxSpeed * (lifetime_ - lived_) * 0.5f
         );
@@ -139,7 +140,8 @@ namespace Boidsish {
 				continue;
 			}
 
-			auto rank = distance * (2.0 - 1.75f * frontNess);
+			int  target_count = pp_handler.GetTargetCount(candidate);
+			auto rank = distance * (2.0 - 1.75f * frontNess) * (1.0f + 0.5f * target_count);
 			if (candidate == target_) {
 				rank *= stickiness;
 			}
@@ -149,6 +151,8 @@ namespace Boidsish {
 				target_ = candidate;
 			}
 		}
+
+		pp_handler.RecordTarget(target_);
 
 		glm::vec3 target_dir_world;
 		glm::vec3 target_dir_local = glm::vec3(0, 0, -1);
