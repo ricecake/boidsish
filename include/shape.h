@@ -100,6 +100,10 @@ namespace Boidsish {
 
 		inline void SetColossal(bool is_colossal) { is_colossal_ = is_colossal; }
 
+		inline bool IsInstanced() const { return is_instanced_; }
+
+		inline void SetInstanced(bool is_instanced) { is_instanced_ = is_instanced; }
+
 		// PBR material properties
 		inline float GetRoughness() const { return roughness_; }
 
@@ -175,6 +179,7 @@ namespace Boidsish {
 		bool  trail_iridescent_;
 		bool  trail_rocket_;
 		bool  is_colossal_;
+		bool  is_instanced_ = false;
 		bool  trail_pbr_;
 		float trail_roughness_;
 		float trail_metallic_;
