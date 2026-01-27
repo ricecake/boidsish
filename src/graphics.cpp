@@ -20,6 +20,7 @@
 #include "hud_manager.h"
 #include "instance_manager.h"
 #include "light_manager.h"
+#include "line.h"
 #include "logger.h"
 #include "path.h"
 #include "post_processing/PostProcessingManager.h"
@@ -284,6 +285,7 @@ namespace Boidsish {
 			}
 
 			Shape::InitSphereMesh();
+			Line::InitLineMesh();
 
 			if (postprocess_shader_ || blur_shader) {
 				float blur_quad_vertices[] = {
@@ -543,6 +545,8 @@ namespace Boidsish {
 			ui_manager.reset();
 
 			Shape::DestroySphereMesh();
+			Line::DestroyLineMesh();
+
 			if (blur_quad_vao)
 				glDeleteVertexArrays(1, &blur_quad_vao);
 			if (blur_quad_vbo)

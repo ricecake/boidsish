@@ -14,6 +14,8 @@ in vec2 TexCoords;
 uniform vec3 objectColor;
 uniform int  useVertexColor;
 uniform bool isColossal = true;
+uniform bool isLine = false;
+uniform int  lineStyle = 0; // 0: SOLID, 1: LASER
 
 // PBR material properties
 uniform bool  usePBR = false;
@@ -48,6 +50,28 @@ void main() {
 
 	result = applyArtisticEffects(result, FragPos, barycentric, time);
 
+	if (isLine && lineStyle == 1) { // LASER style
+		float distToCenter = abs(TexCoords.x - 0.5) * 2.0;
+
+		// Solid core
+		float core = smoothstep(0.15, 0.08, distToCenter);
+
+		// Outer glow
+		float glow = exp(-distToCenter * 3.0) * 0.8;
+
+		// Inner glow for extra brightness
+		float innerGlow = exp(-distToCenter * 10.0) * 0.5;
+
+		vec3 coreColor = vec4(1.0, 1.0, 1.0, 1.0).rgb; // Core is white
+		vec3 glowColor = final_color;                  // Glow is the object color
+
+		vec3 laserColor = mix(glowColor, coreColor, core);
+		laserColor += glowColor * glow;
+		laserColor += coreColor * innerGlow;
+
+		result = laserColor;
+	}
+
 	float dist = length(FragPos.xz - viewPos.xz);
 	float fade_start = 540.0;
 	float fade_end = 550.0;
@@ -62,6 +86,10 @@ void main() {
 		float haze_factor = 1.0 - smoothstep(haze_start, haze_end, FragPos.y);
 		vec3  final_haze_color = mix(result, skyColor, haze_factor * 2);
 		outColor = vec4(final_haze_color, mix(0, 1, 1 - (haze_factor)));
+	} else if (isLine && lineStyle == 1) {
+		float distToCenter = abs(TexCoords.x - 0.5) * 2.0;
+		float alpha = max(smoothstep(0.15, 0.08, distToCenter), exp(-distToCenter * 3.0) * 0.8);
+		outColor = vec4(result, alpha * fade);
 	} else {
 		outColor = vec4(result, mix(0, fade, step(0.01, FragPos.y)));
 		outColor = mix(
