@@ -33,23 +33,6 @@ namespace Boidsish {
 
 		float GetMetallic() const { return metallic_; }
 
-		// Batched rendering support
-		void SetManagedByRenderManager(bool managed) { managed_by_render_manager_ = managed; }
-		bool IsManagedByRenderManager() const { return managed_by_render_manager_; }
-
-		// Get vertex data for batched rendering (interleaved pos + normal + color)
-		std::vector<float> GetInterleavedVertexData() const;
-		size_t             GetMaxVertexCount() const { return mesh_vertices.size(); }
-		size_t             GetHead() const { return head; }
-		size_t             GetTail() const { return tail; }
-		size_t             GetVertexCount() const { return vertex_count; }
-		bool               IsFull() const { return full; }
-		bool               GetIridescent() const { return iridescent_; }
-		bool               GetUseRocketTrail() const { return useRocketTrail_; }
-		float              GetBaseThickness() const { return BASE_THICKNESS; }
-		bool               IsDirty() const { return mesh_dirty; }
-		void               ClearDirty() { mesh_dirty = false; }
-
 	private:
 		struct TrailVertex {
 			glm::vec3 pos;
@@ -108,7 +91,6 @@ namespace Boidsish {
 		bool                                       usePBR_ = false;
 		float                                      roughness_ = 0.3f;
 		float                                      metallic_ = 0.0f;
-		bool                                       managed_by_render_manager_ = false;
 
 		// Configuration
 		const int   TRAIL_SEGMENTS = 8;                        // Circular segments around trail

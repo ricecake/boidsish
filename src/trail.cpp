@@ -10,20 +10,18 @@
 namespace Boidsish {
 
 	Trail::Trail(int max_length): max_length(max_length), vertex_count(0), mesh_dirty(false) {
-		// Pre-allocate mesh data regardless of render mode
-		mesh_vertices.resize(max_length * CURVE_SEGMENTS * VERTS_PER_STEP);
-		indices.resize(max_length * CURVE_SEGMENTS * VERTS_PER_STEP);
-		for (unsigned int i = 0; i < indices.size(); ++i) {
-			indices[i] = i;
-		}
-
-		// Create GPU resources (may not be used if managed by render manager)
 		glGenVertexArrays(1, &vao);
 		glGenBuffers(1, &vbo);
 		glGenBuffers(1, &ebo);
 
 		glBindBuffer(GL_ARRAY_BUFFER, vbo);
 		glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ebo);
+
+		mesh_vertices.resize(max_length * CURVE_SEGMENTS * VERTS_PER_STEP);
+		indices.resize(max_length * CURVE_SEGMENTS * VERTS_PER_STEP);
+		for (unsigned int i = 0; i < indices.size(); ++i) {
+			indices[i] = i;
+		}
 
 		glBufferData(GL_ARRAY_BUFFER, mesh_vertices.size() * sizeof(TrailVertex), nullptr, GL_DYNAMIC_DRAW);
 		glBufferData(GL_ELEMENT_ARRAY_BUFFER, indices.size() * sizeof(unsigned int), indices.data(), GL_STATIC_DRAW);
@@ -185,11 +183,6 @@ namespace Boidsish {
 	}
 
 	void Trail::Render(Shader& shader) const {
-		// Skip rendering if managed by TrailRenderManager
-		if (managed_by_render_manager_) {
-			return;
-		}
-
 		if (points.size() < 4) {
 			return;
 		}
@@ -312,27 +305,6 @@ namespace Boidsish {
 		}
 		head = (head + CURVE_SEGMENTS * VERTS_PER_STEP) % mesh_vertices.size();
 		full = false;
-	}
-
-	std::vector<float> Trail::GetInterleavedVertexData() const {
-		// Convert TrailVertex array to interleaved float array
-		// Format: [pos.x, pos.y, pos.z, normal.x, normal.y, normal.z, color.x, color.y, color.z] per vertex
-		std::vector<float> data;
-		data.reserve(mesh_vertices.size() * 9);
-
-		for (const auto& v : mesh_vertices) {
-			data.push_back(v.pos.x);
-			data.push_back(v.pos.y);
-			data.push_back(v.pos.z);
-			data.push_back(v.normal.x);
-			data.push_back(v.normal.y);
-			data.push_back(v.normal.z);
-			data.push_back(v.color.x);
-			data.push_back(v.color.y);
-			data.push_back(v.color.z);
-		}
-
-		return data;
 	}
 
 } // namespace Boidsish
