@@ -268,8 +268,11 @@ namespace Boidsish {
 		if (height[0] > 0) {
 			float floorScale = attr.floorLevel;
 			height.x *= floorScale;
-			height.y *= floorScale;
-			height.z *= floorScale;
+			// Dampen normal steepness to prevent extreme lighting artifacts in depressions
+			// while keeping the visual height the same.
+			float normalScale = floorScale * 0.2f;
+			height.y *= normalScale;
+			height.z *= normalScale;
 		}
 
 		return height;

@@ -365,8 +365,9 @@ void main() {
        vec3 bonusColor = mix(vec3(0.1, 0.4, 0.2), vec3(0.1, 0.5, 0.2), FragPos.y / 100);
        finalAlbedo = mix(finalAlbedo, bonusColor, nebula_noise);
        // finalAlbedo = mix(vec3(0.2), finalAlbedo, 5*dot(norm, vec3(0,1,0)));
-       finalAlbedo = mix(finalAlbedo, vec3(1,0.5,0.25), fwidth(norm));
-       // finalAlbedo = mix(finalAlbedo, vec3(1,0.5,0.25), fwidth(norm)); // need something that can be a biome specific "flower"
+       // Curvature highlighting - clamped and dampened to avoid extreme artifacts in depressions
+       float curvature = clamp(length(fwidth(norm)), 0.0, 1.0);
+       finalAlbedo = mix(finalAlbedo, vec3(1,0.5,0.25), curvature * 0.3);
 
 	vec3 lighting = apply_lighting(FragPos, norm, finalAlbedo, 0.8);
 	// vec3 lighting = apply_lighting_pbr(FragPos, norm, finalAlbedo, 0.5, 0.1, 1.0);
