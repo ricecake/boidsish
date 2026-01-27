@@ -229,6 +229,11 @@ namespace Boidsish {
 		float                            max_y,
 		const glm::vec3&                 world_offset
 	) {
+		// Deferred eviction callback to avoid deadlock
+		// (caller may hold terrain generator's mutex, and callback needs that mutex)
+		bool should_notify_eviction = false;
+		std::pair<int, int> evicted_chunk_key;
+
 		// The positions array from TerrainGenerator is in X-major order:
 		//   positions[x * num_z + z] = position at local (x, y, z)
 		// But OpenGL textures are row-major (Y/V axis is rows), so we need:
@@ -249,87 +254,95 @@ namespace Boidsish {
 			}
 		}
 
-		std::lock_guard<std::mutex> lock(mutex_);
+		// Scoped lock - released before calling eviction callback to avoid deadlock
+		{
+			std::lock_guard<std::mutex> lock(mutex_);
 
-		// If chunk already exists, update it
-		auto it = chunks_.find(chunk_key);
-		if (it != chunks_.end()) {
-			// Update existing chunk's heightmap
-			UploadHeightmapSlice(it->second.texture_slice, heightmap, reordered_normals);
-			it->second.min_y = min_y;
-			it->second.max_y = max_y;
-			return;
-		}
+			// If chunk already exists, update it
+			auto it = chunks_.find(chunk_key);
+			if (it != chunks_.end()) {
+				// Update existing chunk's heightmap
+				UploadHeightmapSlice(it->second.texture_slice, heightmap, reordered_normals);
+				it->second.min_y = min_y;
+				it->second.max_y = max_y;
+				return;
+			}
 
-		// Allocate a texture slice
-		int slice;
-		if (!free_slices_.empty()) {
-			slice = free_slices_.back();
-			free_slices_.pop_back();
-		} else {
-			if (next_slice_ >= max_chunks_) {
-				// Check if we can grow the texture array
-				GLint max_layers = 0;
-				glGetIntegerv(GL_MAX_ARRAY_TEXTURE_LAYERS, &max_layers);
+			// Allocate a texture slice
+			int slice;
+			if (!free_slices_.empty()) {
+				slice = free_slices_.back();
+				free_slices_.pop_back();
+			} else {
+				if (next_slice_ >= max_chunks_) {
+					// Check if we can grow the texture array
+					GLint max_layers = 0;
+					glGetIntegerv(GL_MAX_ARRAY_TEXTURE_LAYERS, &max_layers);
 
-				if (max_chunks_ >= max_layers) {
-					// At GPU capacity - use LRU eviction
-					// Find the chunk farthest from the new chunk's position and evict it
-					glm::vec2 new_chunk_center(world_offset.x + chunk_size_ * 0.5f,
-					                           world_offset.z + chunk_size_ * 0.5f);
+					if (max_chunks_ >= max_layers) {
+						// At GPU capacity - use LRU eviction
+						// Find the chunk farthest from the new chunk's position and evict it
+						glm::vec2 new_chunk_center(world_offset.x + chunk_size_ * 0.5f,
+						                           world_offset.z + chunk_size_ * 0.5f);
 
-					float max_dist_sq = -1.0f;
-					std::pair<int, int> farthest_key;
+						float max_dist_sq = -1.0f;
+						std::pair<int, int> farthest_key;
 
-					for (const auto& [key, chunk] : chunks_) {
-						glm::vec2 chunk_center(chunk.world_offset.x + chunk_size_ * 0.5f,
-						                       chunk.world_offset.y + chunk_size_ * 0.5f);
-						float dist_sq = glm::dot(chunk_center - new_chunk_center,
-						                         chunk_center - new_chunk_center);
-						if (dist_sq > max_dist_sq) {
-							max_dist_sq = dist_sq;
-							farthest_key = key;
+						for (const auto& [key, chunk] : chunks_) {
+							glm::vec2 chunk_center(chunk.world_offset.x + chunk_size_ * 0.5f,
+							                       chunk.world_offset.y + chunk_size_ * 0.5f);
+							float dist_sq = glm::dot(chunk_center - new_chunk_center,
+							                         chunk_center - new_chunk_center);
+							if (dist_sq > max_dist_sq) {
+								max_dist_sq = dist_sq;
+								farthest_key = key;
+							}
 						}
-					}
 
-					if (max_dist_sq >= 0) {
-						// Evict the farthest chunk and reuse its slice
-						auto evict_it = chunks_.find(farthest_key);
-						if (evict_it != chunks_.end()) {
-							slice = evict_it->second.texture_slice;
-							chunks_.erase(evict_it);
-							// Notify the terrain generator so it can re-queue generation
-							if (eviction_callback_) {
-								eviction_callback_(farthest_key);
+						if (max_dist_sq >= 0) {
+							// Evict the farthest chunk and reuse its slice
+							auto evict_it = chunks_.find(farthest_key);
+							if (evict_it != chunks_.end()) {
+								slice = evict_it->second.texture_slice;
+								chunks_.erase(evict_it);
+								// Queue callback to be called after we finish registration
+								// (avoids deadlock if callback tries to acquire terrain generator's mutex)
+								evicted_chunk_key = farthest_key;
+								should_notify_eviction = true;
+							} else {
+								return;  // Shouldn't happen, but safety check
 							}
 						} else {
-							return;  // Shouldn't happen, but safety check
+							return;  // No chunks to evict
 						}
 					} else {
-						return;  // No chunks to evict
+						// Can grow, but cap at GPU limit
+						int new_capacity = std::min(max_chunks_ * 2, max_layers);
+						EnsureTextureCapacity(new_capacity);
+						slice = next_slice_++;
 					}
 				} else {
-					// Can grow, but cap at GPU limit
-					int new_capacity = std::min(max_chunks_ * 2, max_layers);
-					EnsureTextureCapacity(new_capacity);
 					slice = next_slice_++;
 				}
-			} else {
-				slice = next_slice_++;
 			}
+
+			// Upload heightmap data
+			UploadHeightmapSlice(slice, heightmap, reordered_normals);
+
+			// Store chunk info
+			ChunkInfo info{};
+			info.texture_slice = slice;
+			info.min_y = min_y;
+			info.max_y = max_y;
+			info.world_offset = glm::vec2(world_offset.x, world_offset.z);
+
+			chunks_[chunk_key] = info;
+		} // mutex released here
+
+		// Call eviction callback outside the lock to avoid deadlock
+		if (should_notify_eviction && eviction_callback_) {
+			eviction_callback_(evicted_chunk_key);
 		}
-
-		// Upload heightmap data
-		UploadHeightmapSlice(slice, heightmap, reordered_normals);
-
-		// Store chunk info
-		ChunkInfo info{};
-		info.texture_slice = slice;
-		info.min_y = min_y;
-		info.max_y = max_y;
-		info.world_offset = glm::vec2(world_offset.x, world_offset.z);
-
-		chunks_[chunk_key] = info;
 	}
 
 	void TerrainRenderManager::UnregisterChunk(std::pair<int, int> chunk_key) {
