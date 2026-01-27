@@ -13,9 +13,12 @@ in vec2 TexCoords;
 in vec4 InstanceColor;
 
 uniform vec3 objectColor;
+uniform float objectAlpha = 1.0;
 uniform int  useVertexColor;
 uniform bool isColossal = true;
 uniform bool useInstanceColor = false;
+uniform bool isLine = false;
+uniform int  lineStyle = 0; // 0: SOLID, 1: LASER
 
 // PBR material properties
 uniform bool  usePBR = false;
@@ -52,6 +55,29 @@ void main() {
 
 	result = applyArtisticEffects(result, FragPos, barycentric, time);
 
+	if (isLine && lineStyle == 1) { // LASER style
+		// Use Y axis for radial glow as defined in Line::InitLineMesh
+		float distToCenter = abs(TexCoords.y - 0.5) * 2.0;
+
+		// Solid core
+		float core = smoothstep(0.15, 0.08, distToCenter);
+
+		// Outer glow
+		float glow = exp(-distToCenter * 3.0) * 0.8;
+
+		// Inner glow for extra brightness
+		float innerGlow = exp(-distToCenter * 10.0) * 0.5;
+
+		vec3 coreColor = vec3(1.0, 1.0, 1.0); // Core is white
+		vec3 glowColor = final_color;         // Glow is the object color
+
+		vec3 laserColor = mix(glowColor, coreColor, core);
+		laserColor += glowColor * glow;
+		laserColor += coreColor * innerGlow;
+
+		result = laserColor;
+	}
+
 	float dist = length(FragPos.xz - viewPos.xz);
 	float fade_start = 540.0;
 	float fade_end = 550.0;
@@ -59,7 +85,12 @@ void main() {
 
 	vec4 outColor;
 
-	if (isColossal) {
+	// Check for laser style first to ensure transparency/glow is handled correctly
+	if (isLine && lineStyle == 1) {
+		float distToCenter = abs(TexCoords.y - 0.5) * 2.0;
+		float alpha = max(smoothstep(0.15, 0.08, distToCenter), exp(-distToCenter * 3.0) * 0.8);
+		outColor = vec4(result, alpha * fade * objectAlpha);
+	} else if (isColossal) {
 		vec3  skyColor = vec3(0.2, 0.4, 0.8);
 		float haze_start = 0.0;
 		float haze_end = 75.0;
@@ -67,9 +98,9 @@ void main() {
 		vec3  final_haze_color = mix(result, skyColor, haze_factor * 2);
 		outColor = vec4(final_haze_color, mix(0, 1, 1 - (haze_factor)));
 	} else {
-		outColor = vec4(result, mix(0, fade, step(0.01, FragPos.y)));
+		outColor = vec4(result, mix(0, fade * objectAlpha, step(0.01, FragPos.y)));
 		outColor = mix(
-			vec4(0.0, 0.7, 0.7, mix(0, fade, step(0.01, FragPos.y))) * length(outColor),
+			vec4(0.0, 0.7, 0.7, mix(0, fade * objectAlpha, step(0.01, FragPos.y))) * length(outColor),
 			outColor,
 			step(1, fade)
 		);

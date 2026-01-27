@@ -23,6 +23,7 @@ uniform float ripple_strength;
 uniform bool  isColossal = true;
 uniform bool  is_instanced = false;
 uniform bool  useInstanceColor = false;
+uniform bool  isLine = false;
 
 void main() {
 	vec3 displacedPos = aPos;
