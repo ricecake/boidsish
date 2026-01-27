@@ -15,6 +15,7 @@ flat out float TextureSlice_VS_out;  // Which slice in texture array
 flat out vec3 WorldOffset_VS_out;    // World offset for this chunk
 
 uniform mat4 view;
+uniform bool uIsShadowPass = false;
 
 void main() {
     // Extract camera forward vector

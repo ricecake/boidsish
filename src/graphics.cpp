@@ -1685,6 +1685,16 @@ namespace Boidsish {
 					}
 
 					if (impl->terrain_render_manager) {
+						// Calculate frustum from light's perspective for terrain culling
+						Frustum light_frustum = impl->CalculateFrustum(
+							glm::mat4(1.0f),
+							impl->shadow_manager->GetLightSpaceMatrix(static_cast<int>(i))
+						);
+						impl->terrain_render_manager->PrepareForRender(light_frustum, light->position);
+
+						// Disable culling for terrain (single-sided heightmap)
+						glDisable(GL_CULL_FACE);
+
 						impl->terrain_render_manager->Render(
 							*Terrain::terrain_shader_,
 							glm::mat4(1.0f),  // Identity view
@@ -1693,6 +1703,10 @@ namespace Boidsish {
 							0.01f, // Minimal tessellation
 							true   // is_shadow_pass
 						);
+
+						// Restore culling for subsequent shapes or passes
+						glEnable(GL_CULL_FACE);
+						glCullFace(GL_FRONT);
 					}
 
 					impl->shadow_manager->EndShadowPass();
