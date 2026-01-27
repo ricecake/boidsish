@@ -785,13 +785,15 @@ namespace Boidsish {
 			}
 		}
 
-		void RenderTerrain(const glm::mat4& view, const std::optional<glm::vec4>& clip_plane) {
+		void RenderTerrain(const glm::mat4& view, const glm::mat4& proj, const std::optional<glm::vec4>& clip_plane, bool is_shadow_pass = false) {
 			if (!terrain_generator || !ConfigManager::GetInstance().GetAppSettingBool("render_terrain", true))
 				return;
 
 			// Set up shadow uniforms for terrain shader
 			Terrain::terrain_shader_->use();
-			if (shadow_manager && shadow_manager->IsInitialized()) {
+			Terrain::terrain_shader_->setBool("uIsShadowPass", is_shadow_pass);
+
+			if (!is_shadow_pass && shadow_manager && shadow_manager->IsInitialized()) {
 				shadow_manager->BindForRendering(*Terrain::terrain_shader_);
 				std::array<int, 10> shadow_indices;
 				shadow_indices.fill(-1);
@@ -805,7 +807,7 @@ namespace Boidsish {
 			// Use batched render manager if available (single draw call for all chunks)
 			if (terrain_render_manager) {
 				// Calculate frustum for culling
-				Frustum frustum = CalculateFrustum(view, projection);
+				Frustum frustum = CalculateFrustum(view, proj);
 
 				// Prepare for rendering (frustum culling for instanced renderer)
 				terrain_render_manager->PrepareForRender(frustum, camera.pos());
@@ -813,7 +815,7 @@ namespace Boidsish {
 				terrain_render_manager->Render(
 					*Terrain::terrain_shader_,
 					view,
-					projection,
+					proj,
 					clip_plane,
 					tess_quality_multiplier_
 				);
@@ -821,7 +823,7 @@ namespace Boidsish {
 				// Fallback to per-chunk rendering
 				Terrain::terrain_shader_->use();
 				Terrain::terrain_shader_->setMat4("view", view);
-				Terrain::terrain_shader_->setMat4("projection", projection);
+				Terrain::terrain_shader_->setMat4("projection", proj);
 				Terrain::terrain_shader_->setFloat("uTessQualityMultiplier", tess_quality_multiplier_);
 				Terrain::terrain_shader_->setFloat("uTessLevelMax", 64.0f);
 				Terrain::terrain_shader_->setFloat("uTessLevelMin", 1.0f);
@@ -1653,7 +1655,7 @@ namespace Boidsish {
 				glm::mat4 reflection_view = impl->SetupMatrices(reflection_cam);
 				impl->reflection_vp = impl->projection * reflection_view;
 				impl->RenderSky(reflection_view);
-				impl->RenderTerrain(reflection_view, glm::vec4(0, 1, 0, 0.01));
+				impl->RenderTerrain(reflection_view, impl->projection, glm::vec4(0, 1, 0, 0.01));
 				impl->RenderShapes(
 					reflection_view,
 					reflection_cam,
@@ -1697,6 +1699,9 @@ namespace Boidsish {
 						shape->render(shadow_shader);
 					}
 
+					// Also render terrain to shadow map
+					impl->RenderTerrain(impl->shadow_manager->GetLightSpaceMatrix(static_cast<int>(i)), glm::mat4(1.0f), std::nullopt, true);
+
 					impl->shadow_manager->EndShadowPass();
 
 					light->last_position = light->position;
@@ -1715,7 +1720,7 @@ namespace Boidsish {
 		glm::mat4 view = impl->SetupMatrices();
 		impl->RenderSky(view);
 		impl->RenderPlane(view);
-		impl->RenderTerrain(view, std::nullopt);
+		impl->RenderTerrain(view, impl->projection, std::nullopt);
 
 		// Always set shadow indices to -1 for proper lighting
 		// This must happen even if shadow_manager isn't active

@@ -240,12 +240,17 @@ namespace Boidsish {
 
 		// Initial low-frequency pass to establish "Base Shape"
 		glm::vec3 base = Simplex::dnoise(pos * freq);
+		// Account for frequency in analytical derivatives
+		base.y *= freq;
+		base.z *= freq;
 		height = base * amp;
 
 		for (int i = 1; i < 6; i++) {
 			amp *= 0.5f;
 			freq *= 2.0f;
 			glm::vec3 n = Simplex::dnoise(pos * freq);
+			n.y *= freq;
+			n.z *= freq;
 
 			// 1. Spikiness Correction using Biome Attribute
 			float slope = glm::length(glm::vec2(n.y, n.z));
@@ -258,19 +263,23 @@ namespace Boidsish {
 
 		// 3. Final Floor Shaping
 		if (height.x < attr.floorLevel) {
-			height.x = glm::smoothstep(attr.floorLevel - 0.1f, attr.floorLevel, height.x) * attr.floorLevel;
+			float t = glm::smoothstep(attr.floorLevel - 0.1f, attr.floorLevel, height.x);
+			height.x = t * attr.floorLevel;
+			height.y *= t;
+			height.z *= t;
 		}
 
 		height.x = height.x * 0.5f + 0.5f;
 		height.y = height.y * 0.5f;
 		height.z = height.z * 0.5f;
 
-		if (height[0] > 0) {
+		if (height.x > 0) {
 			float floorScale = attr.floorLevel;
 			height.x *= floorScale;
 			// Dampen normal steepness to prevent extreme lighting artifacts in depressions
-			// while keeping the visual height the same.
-			float normalScale = floorScale * 0.2f;
+			// while keeping the visual height the same. Simplex noise derivatives are
+			// very aggressive at this scale.
+			float normalScale = floorScale * 0.1f;
 			height.y *= normalScale;
 			height.z *= normalScale;
 		}
