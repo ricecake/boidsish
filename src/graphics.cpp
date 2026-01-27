@@ -152,7 +152,7 @@ namespace Boidsish {
 		// Shadow optimization state
 		bool  any_shadow_caster_moved = true;
 		bool  camera_is_close_to_scene = true;
-		float shadow_update_distance_threshold = 200.0f;
+		float shadow_update_distance_threshold = 5.0f;
 
 		task_thread_pool::task_thread_pool thread_pool;
 		std::unique_ptr<AudioManager>      audio_manager;
@@ -788,6 +788,19 @@ namespace Boidsish {
 		void RenderTerrain(const glm::mat4& view, const std::optional<glm::vec4>& clip_plane) {
 			if (!terrain_generator || !ConfigManager::GetInstance().GetAppSettingBool("render_terrain", true))
 				return;
+
+			// Set up shadow uniforms for terrain shader
+			Terrain::terrain_shader_->use();
+			if (shadow_manager && shadow_manager->IsInitialized()) {
+				shadow_manager->BindForRendering(*Terrain::terrain_shader_);
+				std::array<int, 10> shadow_indices;
+				shadow_indices.fill(-1);
+				const auto& all_lights = light_manager.GetLights();
+				for (size_t j = 0; j < all_lights.size() && j < 10; ++j) {
+					shadow_indices[j] = all_lights[j].shadow_map_index;
+				}
+				Terrain::terrain_shader_->setIntArray("lightShadowIndices", shadow_indices.data(), 10);
+			}
 
 			// Use batched render manager if available (single draw call for all chunks)
 			if (terrain_render_manager) {

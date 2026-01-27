@@ -267,6 +267,8 @@ vec3 getCliffColor(float height, float noise) {
 }
 
 void main() {
+		// FragColor = vec4(fwidth(Normal.xyz), 1.0);
+		// return;
 	vec3 norm = normalize(Normal);
 /*
 	// ========================================================================
@@ -358,18 +360,18 @@ void main() {
 	float nebula_noise = fbm(FragPos / 50 + warp * 0.8);
 	float funky_noise = fbm(FragPos / 20 + warp.zxy * 1.8);
 
-	vec3 finalAlbedo = getBiomeColor(FragPos.y + nebula_noise, nebula_noise, nebula_noise);
+	vec3 finalAlbedo = getBiomeColor(FragPos.y + nebula_noise, funky_noise, nebula_noise);
 
 
 
-       vec3 bonusColor = mix(vec3(0.1, 0.4, 0.2), vec3(0.1, 0.5, 0.2), FragPos.y / 100);
-       finalAlbedo = mix(finalAlbedo, bonusColor, nebula_noise);
+    //    vec3 bonusColor = mix(vec3(0.1, 0.4, 0.2), vec3(0.1, 0.5, 0.2), FragPos.y / 100);
+    //    finalAlbedo = mix(finalAlbedo, bonusColor, nebula_noise);
        // finalAlbedo = mix(vec3(0.2), finalAlbedo, 5*dot(norm, vec3(0,1,0)));
-       finalAlbedo = mix(finalAlbedo, vec3(1,0.5,0.25), fwidth(norm));
+    //    finalAlbedo = mix(finalAlbedo, vec3(1,0.5,0.25), fwidth(norm));
        // finalAlbedo = mix(finalAlbedo, vec3(1,0.5,0.25), fwidth(norm)); // need something that can be a biome specific "flower"
 
-	vec3 lighting = apply_lighting(FragPos, norm, finalAlbedo, 0.8);
-	// vec3 lighting = apply_lighting_pbr(FragPos, norm, finalAlbedo, 0.5, 0.1, 1.0);
+	// vec3 lighting = apply_lighting(FragPos, norm, finalAlbedo, 0.8);
+	vec3 lighting = apply_lighting_pbr(FragPos, norm, finalAlbedo, 0.5, 0.1, 1.0);
 
 	// ========================================================================
 	// Distance Fade
@@ -387,4 +389,10 @@ void main() {
 		outColor,
 		step(1.0, fade)
 	);
+	// vec4 outColor = vec4(lighting, fade);
+	// FragColor = mix(
+	// 	vec4(0.0, 0.7, 0.7, fade) * length(outColor),
+	// 	outColor,
+	// 	step(1.0, fade)
+	// );
 }

@@ -258,13 +258,18 @@ namespace Boidsish {
 
 		// 3. Final Floor Shaping
 		if (height.x < attr.floorLevel) {
-			height = glm::smoothstep(attr.floorLevel - 0.1f, attr.floorLevel, height) * attr.floorLevel;
+			height.x = glm::smoothstep(attr.floorLevel - 0.1f, attr.floorLevel, height.x) * attr.floorLevel;
 		}
 
-		height = height * 0.5f + 0.5f;
+		height.x = height.x * 0.5f + 0.5f;
+		height.y = height.y * 0.5f;
+		height.z = height.z * 0.5f;
 
 		if (height[0] > 0) {
-			height *= attr.floorLevel;
+			float floorScale = attr.floorLevel;
+			height.x *= floorScale;
+			height.y *= floorScale;
+			height.z *= floorScale;
 		}
 
 		return height;
