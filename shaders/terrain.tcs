@@ -72,14 +72,16 @@ void main() {
 
     if (gl_InvocationID == 0) {
         if (uIsShadowPass) {
-            // For shadow pass, use minimum tessellation to save performance
-            gl_TessLevelOuter[0] = uTessLevelMin;
-            gl_TessLevelOuter[1] = uTessLevelMin;
-            gl_TessLevelOuter[2] = uTessLevelMin;
-            gl_TessLevelOuter[3] = uTessLevelMin;
+            // For shadow pass, use a reasonable tessellation to capture terrain shape
+            // but keep it low enough for performance. 8.0 is a good compromise.
+            float shadowTess = max(8.0, uTessLevelMin);
+            gl_TessLevelOuter[0] = shadowTess;
+            gl_TessLevelOuter[1] = shadowTess;
+            gl_TessLevelOuter[2] = shadowTess;
+            gl_TessLevelOuter[3] = shadowTess;
 
-            gl_TessLevelInner[0] = uTessLevelMin;
-            gl_TessLevelInner[1] = uTessLevelMin;
+            gl_TessLevelInner[0] = shadowTess;
+            gl_TessLevelInner[1] = shadowTess;
             return;
         }
 
@@ -108,10 +110,15 @@ void main() {
         float l2 = GetVertexTessLevel(worldPos2, normal2, viewForward[2]);
         float l3 = GetVertexTessLevel(worldPos3, normal3, viewForward[3]);
 
-        float edge0 = (l0 + l1) * 0.5 * curvatureFactor;
-        float edge1 = (l1 + l2) * 0.5 * curvatureFactor;
-        float edge2 = (l2 + l3) * 0.5 * curvatureFactor;
-        float edge3 = (l3 + l0) * 0.5 * curvatureFactor;
+        // Correct edge mapping for quad tessellation:
+        // Edge 0: Left (u=0, connects p0 and p3)
+        // Edge 1: Bottom (v=0, connects p0 and p1)
+        // Edge 2: Right (u=1, connects p1 and p2)
+        // Edge 3: Top (v=1, connects p2 and p3)
+        float edge0 = (l0 + l3) * 0.5 * curvatureFactor;
+        float edge1 = (l0 + l1) * 0.5 * curvatureFactor;
+        float edge2 = (l1 + l2) * 0.5 * curvatureFactor;
+        float edge3 = (l2 + l3) * 0.5 * curvatureFactor;
 
         gl_TessLevelOuter[0] = clamp(edge0, uTessLevelMin, uTessLevelMax);
         gl_TessLevelOuter[1] = clamp(edge1, uTessLevelMin, uTessLevelMax);

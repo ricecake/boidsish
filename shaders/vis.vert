@@ -20,7 +20,7 @@ uniform mat4  view;
 uniform mat4  projection;
 uniform vec4  clipPlane;
 uniform float ripple_strength;
-uniform bool  isColossal = true;
+uniform bool  isColossal = false;
 uniform bool  is_instanced = false;
 uniform bool  useInstanceColor = false;
 

@@ -276,10 +276,9 @@ namespace Boidsish {
 		if (height.x > 0) {
 			float floorScale = attr.floorLevel;
 			height.x *= floorScale;
-			// Dampen normal steepness to prevent extreme lighting artifacts in depressions
-			// while keeping the visual height the same. Simplex noise derivatives are
-			// very aggressive at this scale.
-			float normalScale = floorScale * 0.1f;
+			// Dampen normal steepness slightly to prevent extreme lighting artifacts in depressions
+			// while keeping the visual height the same. 0.4f provides a good balance.
+			float normalScale = floorScale * 0.4f;
 			height.y *= normalScale;
 			height.z *= normalScale;
 		}
@@ -652,14 +651,16 @@ namespace Boidsish {
 
 				int index = (y * texture_dim + x) * 4;
 
-				// Normals are in [-1, 1], so map to [0, 65535]
-				pixels[index + 0] = static_cast<uint16_t>((normal.x * 0.5f + 0.5f) * 65535.0f);
-				pixels[index + 1] = static_cast<uint16_t>((normal.y * 0.5f + 0.5f) * 65535.0f);
-				pixels[index + 2] = static_cast<uint16_t>((normal.z * 0.5f + 0.5f) * 65535.0f);
-
 				// Height is in [0, maxHeight], so map to [0, 65535]
+				// This MUST be the first component (R) as expected by shaders
 				float normalized_height = std::max(0.0f, std::min(1.0f, height / max_height));
-				pixels[index + 3] = static_cast<uint16_t>(normalized_height * 65535.0f);
+				pixels[index + 0] = static_cast<uint16_t>(normalized_height * 65535.0f);
+
+				// Normals are in [-1, 1], so map to [0, 65535]
+				// These are the next three components (GBA)
+				pixels[index + 1] = static_cast<uint16_t>((normal.x * 0.5f + 0.5f) * 65535.0f);
+				pixels[index + 2] = static_cast<uint16_t>((normal.y * 0.5f + 0.5f) * 65535.0f);
+				pixels[index + 3] = static_cast<uint16_t>((normal.z * 0.5f + 0.5f) * 65535.0f);
 			}
 		}
 
