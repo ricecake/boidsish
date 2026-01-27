@@ -234,7 +234,7 @@ namespace Boidsish {
 		// Apply Steering
 		glm::vec3 local_fwd(0, 0, -1);
 		glm::vec3 desired_dir_local = WorldToObject(desired_dir_world);
-		glm::vec3 torque = CalculateSteeringTorque(local_fwd, desired_dir_local, rigid_body_.GetAngularVelocity(), 40.0f, 5.0f);
+		glm::vec3 torque = CalculateSteeringTorque(local_fwd, desired_dir_local, rigid_body_.GetAngularVelocity(), 40.0f, 10.0f);
 		rigid_body_.AddRelativeTorque(torque);
 
 		// Speed control

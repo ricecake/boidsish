@@ -35,9 +35,9 @@ namespace Boidsish {
 		std::mt19937       eng_;
 
 		// Behavior constants
-		static constexpr float kSlowSpeed = 40.0f;
-		static constexpr float kFastSpeed = 100.0f;
-		static constexpr float kDetectionRadius = 300.0f;
+		static constexpr float kSlowSpeed = 20.0f;
+		static constexpr float kFastSpeed = 30.0f;
+		static constexpr float kDetectionRadius = 100.0f;
 		static constexpr float kChaseDistance = 30.0f;
 		static constexpr float kKillDistance = 60.0f;
 		static constexpr float kKillAngle = 0.95f;      // cos(theta)

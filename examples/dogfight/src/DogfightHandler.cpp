@@ -34,14 +34,14 @@ namespace Boidsish {
 	}
 
 	void DogfightHandler::SpawnPlane(Team team) {
-		float x = (float)(rand() % 1000 - 500);
-		float z = (float)(rand() % 1000 - 500);
+		float x = (float)(rand() % 500 - 250);
+		float z = (float)(rand() % 500 - 250);
 
 		// We can't easily get terrain height here if generator isn't ready or visible
 		// but EntityHandler has GetTerrainPointPropertiesThreadSafe
 		auto [h, n] = GetTerrainPointPropertiesThreadSafe(x, z);
 
-		QueueAddEntity<DogfightPlane>(team, Vector3(x, h + 150.0f, z));
+		QueueAddEntity<DogfightPlane>(team, Vector3(x, h + 75.0f, z));
 	}
 
 } // namespace Boidsish
