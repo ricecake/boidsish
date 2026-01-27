@@ -22,6 +22,13 @@ int main() {
 		vis.GetCamera().z = 30.0;
 		vis.SetCameraMode(Boidsish::CameraMode::STATIONARY);
 
+		auto fire4 = vis.AddFireEffect(
+			glm::vec3(0.0f, 10.0f, 10.0f),
+			Boidsish::FireEffectStyle::Sparks,
+			{0.01f, 1.0f, 0.0f},
+			glm::vec3(0), 20
+		);
+
 		float                                         boomTime = 0;
 		std::vector<std::shared_ptr<Boidsish::Shape>> vec;
 		vis.AddShapeHandler([&](float time) {
