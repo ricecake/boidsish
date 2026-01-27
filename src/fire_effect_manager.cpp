@@ -326,6 +326,7 @@ namespace Boidsish {
 		render_shader_->setMat4("u_view", view);
 		render_shader_->setMat4("u_projection", projection);
 		render_shader_->setVec3("u_camera_pos", camera_pos);
+		render_shader_->setFloat("u_time", time_);
 
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, particle_buffer_);
 
