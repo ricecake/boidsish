@@ -321,6 +321,7 @@ namespace Boidsish {
 
 		glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA); // Additive blending for fire
 		glDepthMask(GL_FALSE);                       // Disable depth writing
+		glEnable(GL_PROGRAM_POINT_SIZE);
 
 		render_shader_->use();
 		render_shader_->setMat4("u_view", view);

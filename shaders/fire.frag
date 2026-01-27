@@ -57,6 +57,18 @@ void main() {
 			mix(mid_color, hot_color, v_lifetime / 2.5),
 			v_lifetime / 10.5
 		);
+	} else if (v_style == 3) {                // Sparks
+		vec3 hot_color = vec3(1.0, 1.0, 1.0); // White
+		vec3 mid_color = vec3(1.0, 0.8, 0.3); // Bright Yellow/Orange
+		color = mix(mid_color, hot_color, smoothstep(0.0, 0.5, v_lifetime));
+
+		// Popping/flickering effect
+		float pop = sin(v_lifetime * 600.0);
+		if (pop > 0.0) {
+			color *= 3.0;
+		} else {
+			color *= 0.3;
+		}
 	}
 
 	if (v_style == 28) {
@@ -88,6 +100,9 @@ void main() {
 		FragColor = vec4(final_color, 0.75); // Semi-transparent
 	} else if (v_style == 0) {
 		float alpha = 1 - length(color - vec3(0.1, 0.0, 0.0)); // whatever smoke color is
+		FragColor = vec4(color, alpha);
+	} else if (v_style == 3) {
+		float alpha = smoothstep(0.0, 0.1, v_lifetime);
 		FragColor = vec4(color, alpha);
 	} else {
 		// float alpha = smoothstep((1.0 - v_lifetime), (v_lifetime), dist*v_lifetime / 2.5);

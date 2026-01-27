@@ -177,6 +177,11 @@ const float kFireSpeed = 1.0;
 const float kFireSpread = 4.2;
 const float kFireLifetime = 5.0;
 
+const float kSparksSpeed = 40.0;
+const float kSparksLifetime = 0.8;
+const float kSparksDrag = 1.0;
+const float kSparksGravity = 15.0;
+
 layout(local_size_x = 256, local_size_y = 1, local_size_z = 1) in;
 
 void main() {
@@ -229,6 +234,9 @@ void main() {
 		} else if (p.style == 2) { // Fire
 			p.pos = vec4(emitter.position + random_vec * 0.1, kFireLifetime * lifeTimeModifier);
 			p.vel = vec4(0, kFireSpeed, 0, 0); // Start with upward velocity
+		} else if (p.style == 3) { // Sparks
+			p.pos = vec4(emitter.position, kSparksLifetime * (rand(seed) * 0.5 + 0.5));
+			p.vel = vec4(emitter.velocity + normalize(random_vec) * kSparksSpeed * rand(seed.yx), 0.0);
 		}
 	}
 	// If particle is alive, update it
@@ -248,8 +256,15 @@ void main() {
 			p.vel.y += kFireSpeed * u_delta_time;
 			p.vel.x += (rand(p.pos.xy + u_time) - 0.5) * kFireSpread * u_delta_time;
 			p.vel.z += (rand(p.pos.yz + u_time) - 0.5) * kFireSpread * u_delta_time;
+		} else if (p.style == 3) { // Sparks
+			maxSpeed = kSparksSpeed;
+			p.vel.xyz -= p.vel.xyz * kSparksDrag * u_delta_time;
+			p.vel.y -= kSparksGravity * u_delta_time;
 		}
-		p.vel.y -= 0.05 * u_delta_time;
+
+		if (p.style != 3) {
+			p.vel.y -= 0.05 * u_delta_time;
+		}
 
 		p.vel += vec4(mix(curlNoise(p.pos.xyz, u_time) * 3, vec3(0, 0, 0), length(p.vel) / maxSpeed), 0) * u_delta_time;
 

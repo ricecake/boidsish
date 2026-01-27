@@ -2076,6 +2076,16 @@ namespace Boidsish {
 			0.5f
 		);
 
+		// Add some sparks for extra drama
+		impl->fire_effect_manager->AddEffect(
+			position,
+			FireEffectStyle::Sparks,
+			glm::vec3(0.0f, 1.0f, 0.0f),
+			glm::vec3(0.0f),
+			static_cast<int>(300 * intensity),
+			0.4f
+		);
+
 		// Add the shockwave effect
 		float     max_radius = 30.0f * intensity;
 		float     duration = 1.2f * intensity;
