@@ -2,6 +2,8 @@
 #define LIGHT_H
 
 #include <glm/glm.hpp>
+#include <string>
+#include <vector>
 
 namespace Boidsish {
 	enum LightType {
@@ -32,9 +34,39 @@ namespace Boidsish {
 	/**
 	 * @brief Light source data structure for rendering.
 	 */
+	enum class LightBehaviorType {
+		NONE,
+		BLINK,
+		PULSE,
+		EASE_IN,
+		EASE_OUT,
+		EASE_IN_OUT,
+		FLICKER,
+		MORSE
+	};
+
+	struct LightBehavior {
+		LightBehaviorType type = LightBehaviorType::NONE;
+		float             period = 1.0f;
+		float             amplitude = 1.0f;
+		float             duty_cycle = 0.5f;
+		float             flicker_intensity = 0.0f; // 0-5
+		std::string       message;
+		float             timer = 0.0f;
+		bool              loop = true;
+
+		// Internal state
+		std::vector<bool> morse_sequence;
+		int               morse_index = -1;
+	};
+
+	/**
+	 * @brief Light source data structure for rendering.
+	 */
 	struct Light {
 		glm::vec3 position;
 		float     intensity;
+		float     base_intensity; // Original intensity before behaviors
 		glm::vec3 color;
 		int       type;
 		glm::vec3 direction;
@@ -49,6 +81,9 @@ namespace Boidsish {
 		glm::vec3 last_position;
 		glm::vec3 last_direction;
 
+		// Animation/Behavior state
+		LightBehavior behavior;
+
 		// Convert to GPU-compatible struct for UBO upload
 		LightGPU ToGPU() const {
 			LightGPU gpu;
@@ -62,11 +97,54 @@ namespace Boidsish {
 			return gpu;
 		}
 
+		void SetBlink(float period, float duty_cycle = 0.5f) {
+			behavior.type = LightBehaviorType::BLINK;
+			behavior.period = period;
+			behavior.duty_cycle = duty_cycle;
+		}
+
+		void SetPulse(float period, float amplitude = 1.0f) {
+			behavior.type = LightBehaviorType::PULSE;
+			behavior.period = period;
+			behavior.amplitude = amplitude;
+		}
+
+		void SetEaseIn(float duration) {
+			behavior.type = LightBehaviorType::EASE_IN;
+			behavior.period = duration;
+			behavior.timer = 0.0f;
+		}
+
+		void SetEaseOut(float duration) {
+			behavior.type = LightBehaviorType::EASE_OUT;
+			behavior.period = duration;
+			behavior.timer = 0.0f;
+		}
+
+		void SetEaseInOut(float duration) {
+			behavior.type = LightBehaviorType::EASE_IN_OUT;
+			behavior.period = duration;
+			behavior.timer = 0.0f;
+		}
+
+		void SetFlicker(float intensity = 1.0f) {
+			behavior.type = LightBehaviorType::FLICKER;
+			behavior.flicker_intensity = intensity;
+		}
+
+		void SetMorse(const std::string& msg, float unit_time = 0.2f) {
+			behavior.type = LightBehaviorType::MORSE;
+			behavior.message = msg;
+			behavior.period = unit_time;
+			behavior.morse_index = -1; // Trigger sequence generation
+		}
+
 		// Construct a light with optional shadow casting
 		static Light Create(const glm::vec3& pos, float intens, const glm::vec3& col, bool shadows = false) {
 			Light l;
 			l.position = pos;
 			l.intensity = intens;
+			l.base_intensity = intens;
 			l.color = col;
 			l.type = POINT_LIGHT;
 			l.direction = glm::vec3(0.0f, -1.0f, 0.0f);
@@ -77,6 +155,7 @@ namespace Boidsish {
 			// Initialize last state for shadow optimization
 			l.last_position = l.position;
 			l.last_direction = l.direction;
+			l.behavior.type = LightBehaviorType::NONE;
 			return l;
 		}
 

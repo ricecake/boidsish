@@ -1462,6 +1462,8 @@ namespace Boidsish {
 			impl->simulation_time += impl->time_scale * delta_time;
 		}
 
+		impl->light_manager.Update(impl->input_state.delta_time);
+
 		// --- Adaptive Tessellation Logic ---
 		glm::vec3 current_camera_pos(impl->camera.x, impl->camera.y, impl->camera.z);
 		if (delta_time > 0.0f) {
