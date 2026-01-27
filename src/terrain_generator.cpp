@@ -87,15 +87,23 @@ namespace Boidsish {
 		// (frustum culling happens at render time, not generation time)
 		for (int x = current_chunk_x - dynamic_view_distance; x <= current_chunk_x + dynamic_view_distance; ++x) {
 			for (int z = current_chunk_z - dynamic_view_distance; z <= current_chunk_z + dynamic_view_distance; ++z) {
-				std::pair<int, int> chunk_coord = {x, z};
-				{
-					if (chunk_cache_.find(chunk_coord) == chunk_cache_.end() &&
-					    pending_chunks_.find(chunk_coord) == pending_chunks_.end()) {
-						pending_chunks_.emplace(
-							chunk_coord,
-							thread_pool_
-								.enqueue(TaskPriority::MEDIUM, &TerrainGenerator::generateChunkData, this, x, z)
-						);
+				if (isChunkInFrustum(
+						frustum,
+						x,
+						z,
+						chunk_size_,
+						std::ranges::max(std::views::transform(biomes, &BiomeAttributes::floorLevel))
+					)) {
+					std::pair<int, int> chunk_coord = {x, z};
+					{
+						if (chunk_cache_.find(chunk_coord) == chunk_cache_.end() &&
+							pending_chunks_.find(chunk_coord) == pending_chunks_.end()) {
+							pending_chunks_.emplace(
+								chunk_coord,
+								thread_pool_
+									.enqueue(TaskPriority::MEDIUM, &TerrainGenerator::generateChunkData, this, x, z)
+							);
+						}
 					}
 				}
 			}
@@ -331,6 +339,7 @@ namespace Boidsish {
 	}
 
 	TerrainGenerationResult TerrainGenerator::generateChunkData(int chunkX, int chunkZ) {
+		logger::LOG("Geenrating chunk");
 		const int num_vertices_x = chunk_size_ + 1;
 		const int num_vertices_z = chunk_size_ + 1;
 
