@@ -24,6 +24,7 @@ uniform int uChunkSize;
 uniform float uTessLevelMax = 64.0;
 uniform float uTessLevelMin = 1.0;
 uniform float uTessQualityMultiplier = 1.0;
+uniform bool  uIsShadowPass = false;
 
 // Sample heightmap to get world position and normal
 void sampleHeightmap(vec2 uv, float slice, vec3 worldOffset, out vec3 worldPos, out vec3 normal) {
@@ -100,12 +101,21 @@ void main() {
         float edge2 = (l2 + l3) * 0.5 * curvatureFactor;
         float edge3 = (l3 + l0) * 0.5 * curvatureFactor;
 
-        gl_TessLevelOuter[0] = clamp(edge0, uTessLevelMin, uTessLevelMax);
-        gl_TessLevelOuter[1] = clamp(edge1, uTessLevelMin, uTessLevelMax);
-        gl_TessLevelOuter[2] = clamp(edge2, uTessLevelMin, uTessLevelMax);
-        gl_TessLevelOuter[3] = clamp(edge3, uTessLevelMin, uTessLevelMax);
+        if (uIsShadowPass) {
+            gl_TessLevelOuter[0] = uTessLevelMin;
+            gl_TessLevelOuter[1] = uTessLevelMin;
+            gl_TessLevelOuter[2] = uTessLevelMin;
+            gl_TessLevelOuter[3] = uTessLevelMin;
+            gl_TessLevelInner[0] = uTessLevelMin;
+            gl_TessLevelInner[1] = uTessLevelMin;
+        } else {
+            gl_TessLevelOuter[0] = clamp(edge0, uTessLevelMin, uTessLevelMax);
+            gl_TessLevelOuter[1] = clamp(edge1, uTessLevelMin, uTessLevelMax);
+            gl_TessLevelOuter[2] = clamp(edge2, uTessLevelMin, uTessLevelMax);
+            gl_TessLevelOuter[3] = clamp(edge3, uTessLevelMin, uTessLevelMax);
 
-        gl_TessLevelInner[0] = max(gl_TessLevelOuter[0], gl_TessLevelOuter[2]);
-        gl_TessLevelInner[1] = max(gl_TessLevelOuter[1], gl_TessLevelOuter[3]);
+            gl_TessLevelInner[0] = max(gl_TessLevelOuter[0], gl_TessLevelOuter[2]);
+            gl_TessLevelInner[1] = max(gl_TessLevelOuter[1], gl_TessLevelOuter[3]);
+        }
     }
 }

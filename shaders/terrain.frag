@@ -7,6 +7,8 @@ in vec2 TexCoords;
 
 #include "helpers/lighting.glsl"
 
+uniform bool uIsShadowPass = false;
+
 vec3 mod289(vec3 x) {
 	return x - floor(x * (1.0 / 289.0)) * 289.0;
 }
@@ -267,6 +269,8 @@ vec3 getCliffColor(float height, float noise) {
 }
 
 void main() {
+	if (uIsShadowPass) return;
+
 	vec3 norm = normalize(Normal);
 /*
 	// ========================================================================

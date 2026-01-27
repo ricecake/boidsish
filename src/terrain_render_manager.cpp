@@ -457,7 +457,8 @@ namespace Boidsish {
 		const glm::mat4&                view,
 		const glm::mat4&                projection,
 		const std::optional<glm::vec4>& clip_plane,
-		float                           tess_quality_multiplier
+		float                           tess_quality_multiplier,
+		bool                            is_shadow_pass
 	) {
 		std::lock_guard<std::mutex> lock(mutex_);
 
@@ -470,6 +471,7 @@ namespace Boidsish {
 		shader.setMat4("projection", projection);
 		shader.setMat4("model", glm::mat4(1.0f));  // Identity - instances provide world offset
 		shader.setFloat("uTessQualityMultiplier", tess_quality_multiplier);
+		shader.setBool("uIsShadowPass", is_shadow_pass);
 		shader.setFloat("uTessLevelMax", 64.0f);
 		shader.setFloat("uTessLevelMin", 1.0f);
 		shader.setInt("uChunkSize", chunk_size_);

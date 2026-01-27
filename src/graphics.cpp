@@ -1684,6 +1684,17 @@ namespace Boidsish {
 						shape->render(shadow_shader);
 					}
 
+					if (impl->terrain_render_manager) {
+						impl->terrain_render_manager->Render(
+							*Terrain::terrain_shader_,
+							glm::mat4(1.0f),  // Identity view
+							impl->shadow_manager->GetLightSpaceMatrix(static_cast<int>(i)), // Combined projection
+							std::nullopt,
+							0.01f, // Minimal tessellation
+							true   // is_shadow_pass
+						);
+					}
+
 					impl->shadow_manager->EndShadowPass();
 
 					light->last_position = light->position;
