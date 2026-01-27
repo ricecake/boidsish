@@ -5,11 +5,13 @@ in vec4     view_pos;
 flat in int v_style;
 out vec4    FragColor;
 
+uniform float u_time;
+
 void main() {
 	// Shape the point into a circle and discard fragments outside the circle
 	vec2  circ = gl_PointCoord - vec2(0.5);
 	float dist = dot(circ, circ);
-	if (dist > 0.25) {
+	if (v_style != 3 && dist > 0.25) {
 		discard;
 	}
 
@@ -69,6 +71,19 @@ void main() {
 		} else {
 			color *= 0.3;
 		}
+	} else if (v_style == 4) { // Glitter
+		// Glitter uses a colorful rainbow shift
+		// We use u_time and v_lifetime to create motion in the color space
+		float hue = u_time * 2.0 + v_lifetime * 1.5 + float(gl_PrimitiveID) * 0.1;
+		color = 0.6 + 0.4 * cos(hue + vec3(0, 2, 4));
+
+		// Add a bit of "twinkle" based on time and position
+		float twinkle = sin(u_time * 15.0 + v_lifetime * 5.0 + gl_PointCoord.x * 10.0) * 0.5 + 0.5;
+		color *= 0.6 + 0.4 * twinkle;
+
+		// Add a "sparkle" highlight
+		float sparkle = pow(twinkle, 10.0) * 2.0;
+		color += vec3(sparkle);
 	}
 
 	if (v_style == 28) {
@@ -103,6 +118,9 @@ void main() {
 		FragColor = vec4(color, alpha);
 	} else if (v_style == 3) {
 		float alpha = smoothstep(0.0, 0.1, v_lifetime);
+		FragColor = vec4(color, alpha);
+	} else if (v_style == 4) { // Glitter
+		float alpha = clamp(v_lifetime, 0.0, 1.0);
 		FragColor = vec4(color, alpha);
 	} else {
 		// float alpha = smoothstep((1.0 - v_lifetime), (v_lifetime), dist*v_lifetime / 2.5);
