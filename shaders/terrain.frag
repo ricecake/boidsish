@@ -268,7 +268,7 @@ vec3 getCliffColor(float height, float noise) {
 
 void main() {
 	vec3 norm = normalize(Normal);
-
+/*
 	// ========================================================================
 	// Noise Generation
 	// ========================================================================
@@ -338,7 +338,6 @@ void main() {
 
 	// Blend biome with cliff
 	vec3 finalAlbedo = mix(biomeColor, cliffColor, cliffMask);
-
 	// ========================================================================
 	// Detail Variation
 	// ========================================================================
@@ -354,17 +353,33 @@ void main() {
 	// ========================================================================
 	// Lighting
 	// ========================================================================
+*/
+	vec3  warp = vec3(fbm(FragPos / 50 + time * 0.08));
+	float nebula_noise = fbm(FragPos / 50 + warp * 0.8);
+	float funky_noise = fbm(FragPos / 20 + warp.zxy * 1.8);
+
+	vec3 finalAlbedo = getBiomeColor(FragPos.y + nebula_noise, nebula_noise, nebula_noise);
+
+
+
+       vec3 bonusColor = mix(vec3(0.1, 0.4, 0.2), vec3(0.1, 0.5, 0.2), FragPos.y / 100);
+       finalAlbedo = mix(finalAlbedo, bonusColor, nebula_noise);
+       // finalAlbedo = mix(vec3(0.2), finalAlbedo, 5*dot(norm, vec3(0,1,0)));
+       finalAlbedo = mix(finalAlbedo, vec3(1,0.5,0.25), fwidth(norm));
+       // finalAlbedo = mix(finalAlbedo, vec3(1,0.5,0.25), fwidth(norm)); // need something that can be a biome specific "flower"
 
 	vec3 lighting = apply_lighting(FragPos, norm, finalAlbedo, 0.8);
+	// vec3 lighting = apply_lighting_pbr(FragPos, norm, finalAlbedo, 0.5, 0.1, 1.0);
 
 	// ========================================================================
 	// Distance Fade
 	// ========================================================================
 
+
 	float dist = length(FragPos.xz - viewPos.xz);
 	float fade_start = 560.0;
 	float fade_end = 570.0;
-	float fade = 1.0 - smoothstep(fade_start, fade_end, dist + largeNoise * 40.0);
+	float fade = 1.0 - smoothstep(fade_start, fade_end, dist + nebula_noise * 40.0);
 
 	vec4 outColor = vec4(lighting, mix(0.0, fade, step(0.01, FragPos.y)));
 	FragColor = mix(
