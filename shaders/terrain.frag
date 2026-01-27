@@ -381,9 +381,9 @@ void main() {
 	float fade_end = 570.0;
 	float fade = 1.0 - smoothstep(fade_start, fade_end, dist + nebula_noise * 40.0);
 
-	vec4 outColor = vec4(lighting, mix(0.0, fade, step(0.01, FragPos.y)));
+	vec4 outColor = vec4(lighting, fade);
 	FragColor = mix(
-		vec4(0.0, 0.7, 0.7, mix(0.0, fade, step(0.01, FragPos.y))) * length(outColor),
+		vec4(0.0, 0.7, 0.7, fade) * length(outColor),
 		outColor,
 		step(1.0, fade)
 	);
