@@ -72,9 +72,9 @@ namespace Boidsish {
 		auto      nearby = spatial_handler.GetEntitiesInRadius<DogfightPlane>(pos, kDetectionRadius);
 		glm::vec3 my_fwd = ObjectToWorld(glm::vec3(0, 0, -1));
 
-		std::shared_ptr<DogfightPlane> target = nullptr;
-		std::shared_ptr<DogfightPlane> chaser = nullptr;
-		bool                           is_being_chased = false;
+		target_ = nullptr;
+		chaser_ = nullptr;
+		bool is_being_chased = false;
 
 		// 1. Analyze situation
 		for (auto& other : nearby) {
@@ -96,39 +96,30 @@ namespace Boidsish {
 
 				if (dot_me < -0.5f && dot_other > 0.7f) {
 					is_being_chased = true;
-					chaser = other;
+					chaser_ = other;
 				}
 
 				// Basic target selection (closest enemy)
-				if (!target || dist < pos.DistanceTo(target->GetPosition())) {
-					target = other;
+				if (!target_ || dist < pos.DistanceTo(target_->GetPosition())) {
+					target_ = other;
 				}
 			}
 		}
 
-		// 2. Counter-chase: If an enemy is chasing an ally, prioritize that enemy
+		// 2. Optimized Counter-chase: If an enemy is chasing an ally, prioritize that enemy
 		for (auto& other : nearby) {
 			if (other->GetTeam() == team_)
 				continue;
-			// 'other' is an enemy. Is it chasing any of our allies?
-			glm::vec3 other_fwd = other->ObjectToWorld(glm::vec3(0, 0, -1));
-
-			for (auto& ally : nearby) {
-				if (ally->GetTeam() != team_)
-					continue;
-				glm::vec3 to_ally = ally->GetPosition().Toglm() - other->GetPosition().Toglm();
-				float     dist_to_ally = glm::length(to_ally);
-				if (dist_to_ally < 1e-6f)
-					continue;
-				if (glm::dot(other_fwd, to_ally / dist_to_ally) > 0.8f) {
-					// This enemy is chasing our ally!
-					target = other;
-					break;
-				}
+			// 'other' is an enemy. Who are they chasing?
+			auto enemy_target = other->GetTarget();
+			if (enemy_target && enemy_target->GetTeam() == team_) {
+				// This enemy is chasing one of our allies!
+				target_ = other;
+				break;
 			}
 		}
 
-		// 2. Determine desired direction and speed
+		// 3. Determine desired direction and speed
 		glm::vec3 desired_dir_world = my_fwd;
 		float     target_speed = kSlowSpeed;
 
@@ -137,7 +128,7 @@ namespace Boidsish {
 			target_speed = kFastSpeed;
 			maneuver_time_ += delta_time;
 			// Evasive: mix of away from chaser and random maneuvers
-			glm::vec3 away = glm::normalize(pos.Toglm() - chaser->GetPosition().Toglm());
+			glm::vec3 away = glm::normalize(pos.Toglm() - chaser_->GetPosition().Toglm());
 			desired_dir_world = away;
 
 			// Add loop/roll/bank
@@ -154,10 +145,10 @@ namespace Boidsish {
 			being_chased_timer_ = std::max(0.0f, being_chased_timer_ - delta_time);
 		}
 
-		if (target) {
+		if (target_) {
 			target_speed = kFastSpeed;
-			glm::vec3 target_pos = target->GetPosition().Toglm();
-			glm::vec3 target_fwd = target->ObjectToWorld(glm::vec3(0, 0, -1));
+			glm::vec3 target_pos = target_->GetPosition().Toglm();
+			glm::vec3 target_fwd = target_->ObjectToWorld(glm::vec3(0, 0, -1));
 			glm::vec3 chase_pos = target_pos - target_fwd * kChaseDistance;
 
 			glm::vec3 to_chase_pos = chase_pos - pos.Toglm();
@@ -179,7 +170,7 @@ namespace Boidsish {
 			if (dist_to_target < kKillDistance && aim_dot > kKillAngle && victim_dot > kKillBehindAngle) {
 				fire_timer_ += delta_time;
 				if (fire_timer_ > kKillTimeThreshold) {
-					target->Explode(handler);
+					target_->Explode(handler);
 					fire_timer_ = 0.0f;
 				}
 			} else {
