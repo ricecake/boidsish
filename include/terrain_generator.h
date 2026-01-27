@@ -51,6 +51,20 @@ namespace Boidsish {
 		}
 
 		/**
+		 * @brief Invalidate a chunk that was evicted from the render manager.
+		 *
+		 * Called by the render manager when a chunk is LRU-evicted due to GPU
+		 * texture array capacity limits. This removes the chunk from our cache
+		 * so it will be regenerated when it comes back into view.
+		 *
+		 * @param chunk_key The (chunk_x, chunk_z) key of the evicted chunk
+		 */
+		void InvalidateChunk(std::pair<int, int> chunk_key) {
+			std::lock_guard<std::recursive_mutex> lock(chunk_cache_mutex_);
+			chunk_cache_.erase(chunk_key);
+		}
+
+		/**
 		 * @brief Get the render manager.
 		 */
 		std::shared_ptr<TerrainRenderManager> GetRenderManager() const {
@@ -186,7 +200,7 @@ namespace Boidsish {
 		std::map<std::pair<int, int>, std::shared_ptr<Terrain>>            chunk_cache_;
 		std::vector<std::shared_ptr<Terrain>>                              visible_chunks_;
 		std::map<std::pair<int, int>, TaskHandle<TerrainGenerationResult>> pending_chunks_;
-		mutable std::mutex                                                 chunk_cache_mutex_;
+		mutable std::recursive_mutex                                       chunk_cache_mutex_;  // Recursive to allow eviction callback
 		mutable std::mutex                                                 visible_chunks_mutex_;
 		mutable std::mutex                                                 point_generation_mutex_;
 		std::random_device                                                 rd_;

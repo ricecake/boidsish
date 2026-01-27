@@ -1,5 +1,6 @@
 #pragma once
 
+#include <functional>
 #include <map>
 #include <memory>
 #include <mutex>
@@ -95,6 +96,16 @@ namespace Boidsish {
 		void CommitUpdates() {}
 
 		/**
+		 * @brief Set a callback to be notified when a chunk is evicted due to LRU.
+		 *
+		 * This allows TerrainGenerator to remove the chunk from its cache
+		 * so it will be regenerated when needed.
+		 */
+		void SetEvictionCallback(std::function<void(std::pair<int, int>)> callback) {
+			eviction_callback_ = callback;
+		}
+
+		/**
 		 * @brief Get statistics.
 		 */
 		size_t GetRegisteredChunkCount() const;
@@ -160,6 +171,9 @@ namespace Boidsish {
 
 		// Thread safety
 		mutable std::mutex mutex_;
+
+		// Eviction callback for notifying TerrainGenerator
+		std::function<void(std::pair<int, int>)> eviction_callback_;
 	};
 
 } // namespace Boidsish

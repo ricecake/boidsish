@@ -46,7 +46,7 @@ namespace Boidsish {
 
 	TerrainGenerator::~TerrainGenerator() {
 		{
-			std::scoped_lock<std::recursive_mutex> lock(chunk_cache_mutex_);
+			std::lock_guard<std::recursive_mutex> lock(chunk_cache_mutex_);
 			for (auto& pair : pending_chunks_) {
 				pair.second.cancel();
 			}
@@ -55,7 +55,7 @@ namespace Boidsish {
 		// Wait for any in-flight tasks to complete (they may have started before cancel)
 		// This prevents use-after-free when tasks reference 'this'
 		{
-			std::scoped_lock<std::recursive_mutex> lock(chunk_cache_mutex_);
+			std::lock_guard<std::recursive_mutex> lock(chunk_cache_mutex_);
 			for (auto& pair : pending_chunks_) {
 				try {
 					auto& handle = const_cast<TaskHandle<TerrainGenerationResult>&>(pair.second);
@@ -68,7 +68,7 @@ namespace Boidsish {
 		}
 
 		{
-			std::scoped_lock<std::recursive_mutex> lock(chunk_cache_mutex_);
+			std::lock_guard<std::recursive_mutex> lock(chunk_cache_mutex_);
 			chunk_cache_.clear();
 		}
 		{
@@ -92,7 +92,7 @@ namespace Boidsish {
 			for (int z = current_chunk_z - dynamic_view_distance; z <= current_chunk_z + dynamic_view_distance; ++z) {
 				std::pair<int, int> chunk_coord = {x, z};
 				{
-					std::scoped_lock<std::recursive_mutex> cache_lock(chunk_cache_mutex_);
+					std::lock_guard<std::recursive_mutex> cache_lock(chunk_cache_mutex_);
 					if (chunk_cache_.find(chunk_coord) == chunk_cache_.end() &&
 					    pending_chunks_.find(chunk_coord) == pending_chunks_.end()) {
 						pending_chunks_.emplace(
@@ -108,7 +108,7 @@ namespace Boidsish {
 		// Process completed chunks
 		std::vector<std::pair<int, int>> completed_chunks;
 		{
-			std::scoped_lock<std::recursive_mutex> cache_lock(chunk_cache_mutex_);
+			std::lock_guard<std::recursive_mutex> cache_lock(chunk_cache_mutex_);
 			for (auto& pair : pending_chunks_) {
 				try {
 					auto&                   future = const_cast<TaskHandle<TerrainGenerationResult>&>(pair.second);
@@ -147,7 +147,7 @@ namespace Boidsish {
 		}
 
 		{
-			std::scoped_lock<std::recursive_mutex> cache_lock(chunk_cache_mutex_);
+			std::lock_guard<std::recursive_mutex> cache_lock(chunk_cache_mutex_);
 			for (const auto& key : completed_chunks) {
 				pending_chunks_.erase(key);
 			}
@@ -156,7 +156,7 @@ namespace Boidsish {
 		// Unload chunks
 		std::vector<std::pair<int, int>> to_remove;
 		{
-			std::scoped_lock<std::recursive_mutex> cache_lock(chunk_cache_mutex_);
+			std::lock_guard<std::recursive_mutex> cache_lock(chunk_cache_mutex_);
 			for (auto const& [key, val] : chunk_cache_) {
 				int dx = key.first - current_chunk_x;
 				int dz = key.second - current_chunk_z;
@@ -177,7 +177,7 @@ namespace Boidsish {
 
 		std::vector<std::pair<int, int>> to_cancel;
 		{
-			std::scoped_lock<std::recursive_mutex> cache_lock(chunk_cache_mutex_);
+			std::lock_guard<std::recursive_mutex> cache_lock(chunk_cache_mutex_);
 			for (auto const& [key, val] : pending_chunks_) {
 				int dx = key.first - current_chunk_x;
 				int dz = key.second - current_chunk_z;
@@ -189,7 +189,7 @@ namespace Boidsish {
 		}
 
 		for (const auto& key : to_cancel) {
-			std::scoped_lock<std::recursive_mutex> cache_lock(chunk_cache_mutex_);
+			std::lock_guard<std::recursive_mutex> cache_lock(chunk_cache_mutex_);
 			pending_chunks_.at(key).cancel();
 			pending_chunks_.erase(key);
 		}
@@ -201,7 +201,7 @@ namespace Boidsish {
 
 		{
 			std::lock_guard<std::mutex> visible_lock(visible_chunks_mutex_);
-			std::scoped_lock<std::recursive_mutex> cache_lock(chunk_cache_mutex_);
+			std::lock_guard<std::recursive_mutex> cache_lock(chunk_cache_mutex_);
 			visible_chunks_.clear();
 			for (auto const& [key, val] : chunk_cache_) {
 				if (val) {

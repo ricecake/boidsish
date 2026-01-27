@@ -3,8 +3,9 @@
 #include <map>
 #include <memory>
 #include <mutex>
-#include <vector>
 #include <optional>
+#include <vector>
+
 #include <GL/glew.h>
 #include <glm/glm.hpp>
 

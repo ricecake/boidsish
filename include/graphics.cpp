@@ -299,6 +299,7 @@ namespace Boidsish {
 				terrain_generator->SetRenderManager(terrain_render_manager);
 
 				// Set up eviction callback so terrain generator knows when chunks are LRU-evicted
+				// Capture raw pointer since terrain_generator is a unique_ptr with same lifetime
 				terrain_render_manager->SetEvictionCallback([gen = terrain_generator.get()](std::pair<int, int> key) {
 					gen->InvalidateChunk(key);
 				});
