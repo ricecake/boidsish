@@ -26,12 +26,20 @@ namespace Boidsish {
 		// Quads go from (0,-0.5, 0) to (1, 0.5, 0) and (0, 0, -0.5) to (1, 0, 0.5)
 		float vertices[] = {
 			// Quad 1 (XY plane) - Position (x,y,z), TexCoords (u,v)
-			0.0f, -0.5f, 0.0f, 0.0f, 0.0f, 1.0f, -0.5f, 0.0f, 1.0f, 0.0f, 1.0f, 0.5f, 0.0f, 1.0f, 1.0f,
-			0.0f, -0.5f, 0.0f, 0.0f, 0.0f, 1.0f, 0.5f, 0.0f, 1.0f, 1.0f, 0.0f, 0.5f, 0.0f, 0.0f, 1.0f,
+			0.0f, -0.5f, 0.0f, 0.0f, 0.0f,
+			1.0f, -0.5f, 0.0f, 1.0f, 0.0f,
+			1.0f, 0.5f, 0.0f, 1.0f, 1.0f,
+			0.0f, -0.5f, 0.0f, 0.0f, 0.0f,
+			1.0f, 0.5f, 0.0f, 1.0f, 1.0f,
+			0.0f, 0.5f, 0.0f, 0.0f, 1.0f,
 
 			// Quad 2 (XZ plane)
-			0.0f, 0.0f, -0.5f, 0.0f, 0.0f, 1.0f, 0.0f, -0.5f, 1.0f, 0.0f, 1.0f, 0.0f, 0.5f, 1.0f, 1.0f,
-			0.0f, 0.0f, -0.5f, 0.0f, 0.0f, 1.0f, 0.0f, 0.5f, 1.0f, 1.0f, 0.0f, 0.0f, 0.5f, 0.0f, 1.0f
+			0.0f, 0.0f, -0.5f, 0.0f, 0.0f,
+			1.0f, 0.0f, -0.5f, 1.0f, 0.0f,
+			1.0f, 0.0f, 0.5f, 1.0f, 1.0f,
+			0.0f, 0.0f, -0.5f, 0.0f, 0.0f,
+			1.0f, 0.0f, 0.5f, 1.0f, 1.0f,
+			0.0f, 0.0f, 0.5f, 0.0f, 1.0f
 		};
 
 		line_vertex_count_ = 12;
@@ -72,14 +80,23 @@ namespace Boidsish {
 	void Line::render(Shader& s, const glm::mat4& model_matrix) const {
 		s.use();
 		s.setMat4("model", model_matrix);
-		s.setVec4("vColor", glm::vec4(GetR(), GetG(), GetB(), GetA()));
+
+		// Use standard uniforms for color and alpha
+		s.setVec3("objectColor", glm::vec3(GetR(), GetG(), GetB()));
+		s.setFloat("objectAlpha", GetA());
+
+		// Set Line-specific uniforms
 		s.setBool("isLine", true);
 		s.setInt("lineStyle", static_cast<int>(style_));
+
+		// Pass through isColossal from base class
+		s.setBool("isColossal", IsColossal());
 
 		glBindVertexArray(line_vao_);
 		glDrawArrays(GL_TRIANGLES, 0, line_vertex_count_);
 		glBindVertexArray(0);
 
+		// Reset uniforms to avoid affecting other shapes
 		s.setBool("isLine", false);
 	}
 
