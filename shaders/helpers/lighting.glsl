@@ -14,7 +14,7 @@ const int LIGHT_TYPE_FLASH = 4;    // Explosion/flash light (rapid falloff)
  * Returns 0.0 if fully in shadow, 1.0 if fully lit.
  * Uses PCF (Percentage Closer Filtering) for soft shadow edges.
  */
-float calculateShadow(int shadow_index, vec3 frag_pos) {
+float calculateShadow(int shadow_index, vec3 frag_pos, vec3 normal, vec3 light_dir) {
 	// Early out for invalid indices or when no shadow lights are active
 	// This MUST return before any texture operations to avoid driver issues
 	if (shadow_index < 0) {
@@ -48,8 +48,9 @@ float calculateShadow(int shadow_index, vec3 frag_pos) {
 	// Current depth from light's perspective
 	float current_depth = proj_coords.z;
 
-	// Bias to prevent shadow acne (adjust based on surface angle)
-	float bias = 0.002;
+	// Slope-scaled bias to prevent shadow acne on steep surfaces (the "leopard print" issue)
+	// Bias increases as the angle between normal and light direction increases
+	float bias = max(0.01 * (1.0 - dot(normal, light_dir)), 0.001);
 
 	// PCF - sample multiple texels for soft shadows
 	float shadow = 0.0;
@@ -263,8 +264,8 @@ vec3 apply_lighting_pbr(vec3 frag_pos, vec3 normal, vec3 albedo, float roughness
 
 		float NdotL = max(dot(N, L), 0.0);
 
-		// Calculate shadow
-		float shadow = calculateShadow(lightShadowIndices[i], frag_pos);
+		// Calculate shadow with slope-scaled bias
+		float shadow = calculateShadow(lightShadowIndices[i], frag_pos, N, L);
 
 		// Add to outgoing radiance Lo
 		Lo += (kD * albedo / PI + specular) * radiance * NdotL * shadow;
@@ -385,8 +386,8 @@ vec3 apply_lighting(vec3 frag_pos, vec3 normal, vec3 albedo, float specular_stre
 		float attenuation;
 		calculateLightContribution(i, frag_pos, light_dir, attenuation);
 
-		// Calculate shadow factor for this light
-		float shadow = calculateShadow(lightShadowIndices[i], frag_pos);
+		// Calculate shadow factor for this light with slope-scaled bias
+		float shadow = calculateShadow(lightShadowIndices[i], frag_pos, normal, light_dir);
 
 		// Diffuse
 		float diff = max(dot(normal, light_dir), 0.0);

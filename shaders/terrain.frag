@@ -365,9 +365,10 @@ void main() {
        vec3 bonusColor = mix(vec3(0.1, 0.4, 0.2), vec3(0.1, 0.5, 0.2), FragPos.y / 100);
        finalAlbedo = mix(finalAlbedo, bonusColor, nebula_noise);
        // finalAlbedo = mix(vec3(0.2), finalAlbedo, 5*dot(norm, vec3(0,1,0)));
-       // Curvature highlighting - clamped and dampened to avoid extreme artifacts in depressions
+       // Curvature highlighting - clamped and significantly dampened to avoid extreme artifacts in depressions
+       // fwidth(norm) can be noisy on steep tessellated slopes, contributing to "leopard print" artifacts.
        float curvature = clamp(length(fwidth(norm)), 0.0, 1.0);
-       finalAlbedo = mix(finalAlbedo, vec3(1,0.5,0.25), curvature * 0.3);
+       finalAlbedo = mix(finalAlbedo, vec3(1,0.5,0.25), curvature * 0.05);
 
 	vec3 lighting = apply_lighting(FragPos, norm, finalAlbedo, 0.8);
 	// vec3 lighting = apply_lighting_pbr(FragPos, norm, finalAlbedo, 0.5, 0.1, 1.0);
