@@ -66,6 +66,7 @@ namespace Boidsish {
 		}
 
 		shader.setBool("isColossal", model->IsColossal());
+		shader.setFloat("objectAlpha", model->GetA());
 		shader.setBool("useInstanceColor", false);  // Models use textures, not per-instance colors
 
 		for (const auto& mesh : model->getMeshes()) {
