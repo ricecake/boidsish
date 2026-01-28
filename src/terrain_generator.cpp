@@ -112,7 +112,7 @@ namespace Boidsish {
 		for (auto& pair : pending_chunks_) {
 			if (pair.second.is_ready()) {
 				try {
-					auto&                   future = pair.second;
+					auto&                   future = const_cast<TaskHandle<TerrainGenerationResult>&>(pair.second);
 					TerrainGenerationResult result = future.get();
 					if (result.has_terrain) {
 						auto terrain_chunk =

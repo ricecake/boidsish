@@ -144,7 +144,10 @@ namespace Boidsish {
 
 		// Adaptive Tessellation
 		glm::vec3 last_camera_pos_{0.0f, 0.0f, 0.0f};
+		float     last_camera_yaw_{0.0f};
+		float     last_camera_pitch_{0.0f};
 		float     camera_velocity_{0.0f};
+		glm::vec2 camera_angular_velocity_{0.0f, 0.0f};
 		float     avg_frame_time_{1.0f / 60.0f};
 		float     tess_quality_multiplier_{1.0f};
 
@@ -239,6 +242,8 @@ namespace Boidsish {
 			}
 			if (ConfigManager::GetInstance().GetAppSettingBool("enable_terrain", true)) {
 				terrain_generator = std::make_unique<TerrainGenerator>();
+				last_camera_yaw_ = camera.yaw;
+				last_camera_pitch_ = camera.pitch;
 			}
 			clone_manager = std::make_unique<CloneManager>();
 			instance_manager = std::make_unique<InstanceManager>();
@@ -1483,8 +1488,19 @@ namespace Boidsish {
 		glm::vec3 current_camera_pos(impl->camera.x, impl->camera.y, impl->camera.z);
 		if (delta_time > 0.0f) {
 			impl->camera_velocity_ = glm::distance(current_camera_pos, impl->last_camera_pos_) / delta_time;
+
+			float yaw_diff = impl->camera.yaw - impl->last_camera_yaw_;
+			while (yaw_diff > 180.0f)
+				yaw_diff -= 360.0f;
+			while (yaw_diff < -180.0f)
+				yaw_diff += 360.0f;
+
+			float pitch_diff = impl->camera.pitch - impl->last_camera_pitch_;
+			impl->camera_angular_velocity_ = glm::vec2(yaw_diff, pitch_diff) / delta_time;
 		}
 		impl->last_camera_pos_ = current_camera_pos;
+		impl->last_camera_yaw_ = impl->camera.yaw;
+		impl->last_camera_pitch_ = impl->camera.pitch;
 
 		// Simple moving average for frame time
 		impl->avg_frame_time_ = impl->avg_frame_time_ * 0.95f + delta_time * 0.05f;
@@ -1603,8 +1619,26 @@ namespace Boidsish {
 
 		glm::mat4 view_matrix = impl->SetupMatrices();
 		if (impl->terrain_generator) {
-			Frustum frustum = impl->CalculateFrustum(view_matrix, impl->projection);
-			impl->terrain_generator->update(frustum, impl->camera);
+			// Create a widened and predictive frustum for the generator
+			// This helps pre-generate chunks just out of view and in the direction of rotation
+			float    generator_fov = impl->camera.fov + 15.0f; // 15 degrees wider FOV
+			glm::mat4 generator_proj =
+				glm::perspective(glm::radians(generator_fov), (float)impl->width / (float)impl->height, 0.1f, 1000.0f);
+
+			// Predictive orientation based on current angular velocity
+			float lead_time = 0.4f; // Look 0.4 seconds into the future
+			float predicted_yaw = impl->camera.yaw + impl->camera_angular_velocity_.x * lead_time;
+			float predicted_pitch = impl->camera.pitch + impl->camera_angular_velocity_.y * lead_time;
+
+			Camera predicted_cam = impl->camera;
+			predicted_cam.yaw = predicted_yaw;
+			predicted_cam.pitch = predicted_pitch;
+
+			glm::vec3 cameraPos(predicted_cam.x, predicted_cam.y, predicted_cam.z);
+			glm::mat4 predicted_view = glm::lookAt(cameraPos, cameraPos + predicted_cam.front(), predicted_cam.up());
+
+			Frustum generator_frustum = impl->CalculateFrustum(predicted_view, generator_proj);
+			impl->terrain_generator->update(generator_frustum, impl->camera);
 		}
 
 		// Update clone manager
