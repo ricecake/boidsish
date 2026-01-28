@@ -61,7 +61,7 @@ namespace Boidsish {
 	}
 
 	std::string
-	Config::GetString(const std::string& section, const std::string& key, const std::string& default_value) {
+	Config::GetString(const std::string& section, const std::string& key, const std::string& default_value) const {
 		auto section_it = m_data.find(section);
 		if (section_it != m_data.end()) {
 			auto key_it = section_it->second.find(key);
@@ -72,7 +72,7 @@ namespace Boidsish {
 		return default_value;
 	}
 
-	int Config::GetInt(const std::string& section, const std::string& key, int default_value) {
+	int Config::GetInt(const std::string& section, const std::string& key, int default_value) const {
 		auto section_it = m_data.find(section);
 		if (section_it != m_data.end()) {
 			auto key_it = section_it->second.find(key);
@@ -83,7 +83,7 @@ namespace Boidsish {
 		return default_value;
 	}
 
-	float Config::GetFloat(const std::string& section, const std::string& key, float default_value) {
+	float Config::GetFloat(const std::string& section, const std::string& key, float default_value) const {
 		auto section_it = m_data.find(section);
 		if (section_it != m_data.end()) {
 			auto key_it = section_it->second.find(key);
@@ -94,7 +94,7 @@ namespace Boidsish {
 		return default_value;
 	}
 
-	bool Config::GetBool(const std::string& section, const std::string& key, bool default_value) {
+	bool Config::GetBool(const std::string& section, const std::string& key, bool default_value) const {
 		auto section_it = m_data.find(section);
 		if (section_it != m_data.end()) {
 			auto key_it = section_it->second.find(key);

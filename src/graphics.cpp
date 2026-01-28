@@ -49,6 +49,7 @@
 #include "ui/EffectsWidget.h"
 #include "ui/LightsWidget.h"
 #include "ui/PostProcessingWidget.h"
+#include "ui/SceneWidget.h"
 #include "ui/hud_widget.h"
 #include "visual_effects.h"
 #include <GL/glew.h>
@@ -75,6 +76,7 @@ namespace Boidsish {
 		std::unique_ptr<SoundEffectManager>   sound_effect_manager;
 		std::unique_ptr<ShockwaveManager>     shockwave_manager;
 		std::unique_ptr<ShadowManager>        shadow_manager;
+		std::unique_ptr<SceneManager>         scene_manager;
 		std::map<int, std::shared_ptr<Trail>> trails;
 		std::map<int, float>                  trail_last_update;
 		LightManager                          light_manager;
@@ -247,6 +249,7 @@ namespace Boidsish {
 			mesh_explosion_manager = std::make_unique<MeshExplosionManager>();
 			shockwave_manager = std::make_unique<ShockwaveManager>();
 			shadow_manager = std::make_unique<ShadowManager>();
+			scene_manager = std::make_unique<SceneManager>("scenes");
 			audio_manager = std::make_unique<AudioManager>();
 			sound_effect_manager = std::make_unique<SoundEffectManager>(audio_manager.get());
 			trail_render_manager = std::make_unique<TrailRenderManager>();
@@ -540,6 +543,9 @@ namespace Boidsish {
 
 			auto lights_widget = std::make_shared<UI::LightsWidget>(light_manager);
 			ui_manager->AddWidget(lights_widget);
+
+			auto scene_widget = std::make_shared<UI::SceneWidget>(*scene_manager, *parent);
+			ui_manager->AddWidget(scene_widget);
 		}
 
 		void SetupShaderBindings(Shader& shader_to_setup) {
