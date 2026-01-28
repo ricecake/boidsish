@@ -494,13 +494,6 @@ namespace Boidsish {
 		// Set patch vertices for tessellation
 		glPatchParameteri(GL_PATCH_VERTICES, 4);
 
-		// DEBUG: Log visible instance count
-		static int frame_count = 0;
-		if (frame_count++ % 60 == 0) {
-			std::cout << "[TerrainRenderManager] Rendering " << visible_instances_.size()
-			          << " instances, chunks registered: " << chunks_.size() << std::endl;
-		}
-
 		// Single instanced draw call for all visible chunks!
 		glDrawElementsInstanced(
 			GL_PATCHES,

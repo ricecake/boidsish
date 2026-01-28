@@ -278,7 +278,7 @@ namespace Boidsish {
 			height.x *= floorScale;
 			// Dampen normal steepness slightly to prevent extreme lighting artifacts in depressions
 			// while keeping the visual height the same. 0.4f provides a good balance.
-			float normalScale = floorScale * 0.4f;
+			float normalScale = floorScale;// * 0.4f;
 			height.y *= normalScale;
 			height.z *= normalScale;
 		}
@@ -355,7 +355,6 @@ namespace Boidsish {
 	}
 
 	TerrainGenerationResult TerrainGenerator::generateChunkData(int chunkX, int chunkZ) {
-		logger::LOG("Geenrating chunk");
 		const int num_vertices_x = chunk_size_ + 1;
 		const int num_vertices_z = chunk_size_ + 1;
 

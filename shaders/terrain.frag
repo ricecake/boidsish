@@ -361,12 +361,14 @@ void main() {
 	// Lighting
 	// ========================================================================
 */
-	vec3  warp = vec3(fbm(FragPos / 50 + time * 0.08));
-	float nebula_noise = fbm(FragPos / 50 + warp * 0.8);
-	float funky_noise = fbm(FragPos / 20 + warp.zxy * 1.8);
+	// vec3  warp = vec3(fbm(FragPos / 50 + time * 0.08));
+	// float nebula_noise = fbm(FragPos / 50 + warp * 0.8);
+	// float funky_noise = fbm(FragPos / 20 + warp.zxy * 1.8);
 
-	vec3 finalAlbedo = getBiomeColor(FragPos.y + nebula_noise, funky_noise, nebula_noise);
-
+	float n1 = snoise(vec3(FragPos.xy/5, time*0.25));
+	float n2 = snoise(vec3(FragPos.xy/25, time*0.08));
+	float n3 = snoise(vec3(FragPos.xy/50, time*0.04));
+	vec3 finalAlbedo = getBiomeColor(FragPos.y + n1, n2, n3);
 
 
     //    vec3 bonusColor = mix(vec3(0.1, 0.4, 0.2), vec3(0.1, 0.5, 0.2), FragPos.y / 100);
@@ -377,8 +379,8 @@ void main() {
        // Curvature highlighting - clamped and dampened to avoid extreme artifacts in depressions
        // Curvature highlighting - clamped and significantly dampened to avoid extreme artifacts in depressions
        // fwidth(norm) can be noisy on steep tessellated slopes, contributing to "leopard print" artifacts.
-       float curvature = clamp(length(fwidth(norm)), 0.0, 1.0);
-       finalAlbedo = mix(finalAlbedo, vec3(1,0.5,0.25), curvature * 0.05);
+    //    float curvature = clamp(length(fwidth(norm)), 0.0, 1.0);
+    //    finalAlbedo = mix(finalAlbedo, vec3(1,0.5,0.25), curvature * 0.05);
 
 	// vec3 lighting = apply_lighting(FragPos, norm, finalAlbedo, 0.8);
 	vec3 lighting = apply_lighting_pbr(FragPos, norm, finalAlbedo, 0.5, 0.1, 1.0);
@@ -391,7 +393,7 @@ void main() {
 	float dist = length(FragPos.xz - viewPos.xz);
 	float fade_start = 560.0;
 	float fade_end = 570.0;
-	float fade = 1.0 - smoothstep(fade_start, fade_end, dist + nebula_noise * 40.0);
+	float fade = 1.0 - smoothstep(fade_start, fade_end, dist + n2 * 40.0);
 
        vec4 outColor = vec4(lighting, mix(0.0, fade, step(0.01, FragPos.y)));
         FragColor = mix(

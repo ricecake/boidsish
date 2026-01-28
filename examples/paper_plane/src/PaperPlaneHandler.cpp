@@ -41,6 +41,7 @@ namespace Boidsish {
 		}
 
 		if (vis && vis->GetTerrainGenerator()) {
+			logger::LOG("Searching for launchsite");
 			const auto               visible_chunks = vis->GetTerrainGenerator()->getVisibleChunksCopy();
 			std::set<const Terrain*> visible_chunk_set;
 			std::set<const Terrain*> forbidden_chunks;
@@ -111,6 +112,7 @@ namespace Boidsish {
 					terrain_alignment = glm::lookAt(world_pos, world_pos + terrain_normal, glm::vec3(0, 1, 0));
 
 					int id = chunk_pos.x + 10 * chunk_pos.y + 100 * chunk_pos.z;
+					logger::LOG("Found for launchsite -- adding");
 					QueueAddEntity<GuidedMissileLauncher>(
 						id,
 						Vector3(world_pos.x, world_pos.y, world_pos.z),
@@ -128,6 +130,7 @@ namespace Boidsish {
 				if (visible_chunk_set.find(it->first) == visible_chunk_set.end()) {
 					QueueRemoveEntity(it->second);
 					it = spawned_launchers_.erase(it);
+					logger::LOG("Erasing?!");
 				} else {
 					++it;
 				}

@@ -28,8 +28,8 @@ namespace Boidsish {
 
 	private:
 		// Default light casts shadows
-		std::vector<Light> _lights{Light::CreateDirectional({0, 100, -500}, {0, -1, 1}, 5.0f, {1, 0.5f, 0.25f}, true)};
-		glm::vec3          _ambient_light = glm::vec3(0.1f);
+		std::vector<Light> _lights{Light::CreateDirectional({0, 100, -500}, {0, -1, 1}, 1.0f, {1, 0.5f, 0.25f}, true)};
+		glm::vec3          _ambient_light = glm::vec3(90.0f/255.0f, 81.0f/255.0f, 62.0f/255.0f);
 	};
 } // namespace Boidsish
 
