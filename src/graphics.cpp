@@ -157,6 +157,7 @@ namespace Boidsish {
 		bool      camera_is_close_to_scene = true;
 		float     shadow_update_distance_threshold = 200.0f;
 		glm::vec3 last_shadow_update_camera_pos{0.0f, -1000.0f, 0.0f};
+		glm::vec3 last_shadow_update_camera_front{0.0f, 0.0f, -1.0f};
 		uint64_t  frame_count_ = 0;
 
 		struct ShadowMapState {
@@ -1759,6 +1760,7 @@ namespace Boidsish {
 
 			// 2. Identify maps that need update and calculate priorities
 			bool  camera_moved = glm::distance(impl->camera.pos(), impl->last_shadow_update_camera_pos) > 2.0f;
+			bool  camera_rotated = glm::dot(impl->camera.front(), impl->last_shadow_update_camera_front) < 0.99f;
 			int   best_map_to_update = -1;
 			float max_debt = -1.0f;
 
@@ -1767,7 +1769,7 @@ namespace Boidsish {
 				bool  light_moved = glm::distance(info.light->position, info.light->last_position) > 0.1f ||
 				                   glm::distance(info.light->direction, info.light->last_direction) > 0.1f;
 
-				bool movement_detected = impl->any_shadow_caster_moved || light_moved || (has_terrain && camera_moved);
+				bool movement_detected = impl->any_shadow_caster_moved || light_moved || (has_terrain && (camera_moved || camera_rotated));
 				bool should_update = impl->camera_is_close_to_scene && movement_detected;
 
 				if (should_update) {
@@ -1827,6 +1829,7 @@ namespace Boidsish {
 				info.light->last_position = info.light->position;
 				info.light->last_direction = info.light->direction;
 				impl->last_shadow_update_camera_pos = impl->camera.pos();
+				impl->last_shadow_update_camera_front = impl->camera.front();
 			}
 
 			impl->shadow_manager->UpdateShadowUBO(shadow_lights);

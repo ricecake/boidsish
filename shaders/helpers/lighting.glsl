@@ -27,10 +27,11 @@ float calculateShadow(int light_index, vec3 frag_pos, vec3 normal, vec3 light_di
 	}
 
 	// Handle Cascaded Shadow Maps for directional lights
+	int cascade = 0;
 	if (lights[light_index].type == LIGHT_TYPE_DIRECTIONAL) {
 		// Use linear depth along camera forward for more consistent splits
 		float depth = dot(frag_pos - viewPos, viewDir);
-		int   cascade = -1;
+		cascade = -1;
 		for (int i = 0; i < MAX_CASCADES; ++i) {
 			if (depth < cascadeSplits[i]) {
 				cascade = i;
@@ -38,13 +39,12 @@ float calculateShadow(int light_index, vec3 frag_pos, vec3 normal, vec3 light_di
 			}
 		}
 
-		if (cascade != -1) {
-			shadow_index += cascade;
-		} else {
+		if (cascade == -1) {
 			// Fallback to the last cascade for distant shadows
 			// This ensures we still get shadows even if beyond the intended split range
-			shadow_index += MAX_CASCADES - 1;
+			cascade = MAX_CASCADES - 1;
 		}
+		shadow_index += cascade;
 	}
 
 	if (shadow_index >= MAX_SHADOW_MAPS) {
@@ -73,8 +73,10 @@ float calculateShadow(int light_index, vec3 frag_pos, vec3 normal, vec3 light_di
 	float current_depth = proj_coords.z;
 
 	// Slope-scaled bias to prevent shadow acne on steep surfaces (the "leopard print" issue)
-	// Bias increases as the angle between normal and light direction increases
-	float bias = max(0.01 * (1.0 - dot(normal, light_dir)), 0.001);
+	// Bias increases as the angle between normal and light direction increases.
+	// We scale it based on the cascade to account for decreasing resolution in the distance.
+	float bias = max(0.005 * (1.0 - dot(normal, light_dir)), 0.0005);
+	bias *= (1.0 + float(cascade) * 5.0);
 
 	// PCF - sample multiple texels for soft shadows
 	float shadow = 0.0;
