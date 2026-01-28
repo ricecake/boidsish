@@ -72,8 +72,9 @@ void main() {
 
     if (gl_InvocationID == 0) {
         if (uIsShadowPass) {
-            // For shadow pass, use a reasonable tessellation to capture terrain shape
-            // but keep it low enough for performance. 8.0 is a good compromise.
+            // For shadow pass, we need high enough tessellation to ensure the shadow-casting
+            // silhouette matches the rendered geometry, otherwise we get light leaking ("wrapping").
+            // We still use a bit of distance-based scaling but with a much higher floor.
             float slice = TextureSlice_VS_out[0];
             vec3 worldOffset = WorldOffset_VS_out[0];
             vec3 worldPos;
@@ -81,10 +82,7 @@ void main() {
             sampleHeightmap(TexCoords_VS_out[0], slice, worldOffset, worldPos, normal);
             float dist = distance(viewPos, worldPos);
 
-            vec3  viewDir = normalize(viewPos - worldPos);
-            float dotProd = dot(normalize(normal), viewDir);
-            float isSilhouette = 1.0 - abs(dotProd);
-            float shadowTess = mix(8.0, 16.0, isSilhouette * (1.0 - clamp(dist / 500.0, 0.0, 1.0)));
+            float shadowTess = mix(32.0, 16.0, clamp(dist / 1000.0, 0.0, 1.0));
 
             gl_TessLevelOuter[0] = shadowTess;
             gl_TessLevelOuter[1] = shadowTess;
