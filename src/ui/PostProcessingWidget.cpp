@@ -1,6 +1,7 @@
 #include "ui/PostProcessingWidget.h"
 
 #include "imgui.h"
+#include "post_processing/effects/AtmosphereEffect.h"
 #include "post_processing/effects/BloomEffect.h"
 #include "post_processing/effects/FilmGrainEffect.h"
 #include "post_processing/effects/ToneMappingEffect.h"
@@ -25,6 +26,32 @@ namespace Boidsish {
 						float intensity = film_grain_effect->GetIntensity();
 						if (ImGui::SliderFloat("Intensity", &intensity, 0.0f, 1.0f)) {
 							film_grain_effect->SetIntensity(intensity);
+						}
+					}
+				}
+
+				if (effect->GetName() == "Atmosphere" && is_enabled) {
+					auto atmosphere_effect = std::dynamic_pointer_cast<PostProcessing::AtmosphereEffect>(effect);
+					if (atmosphere_effect) {
+						float haze_density = atmosphere_effect->GetHazeDensity();
+						if (ImGui::SliderFloat("Haze Density", &haze_density, 0.0f, 0.05f, "%.4f")) {
+							atmosphere_effect->SetHazeDensity(haze_density);
+						}
+						float haze_height = atmosphere_effect->GetHazeHeight();
+						if (ImGui::SliderFloat("Haze Height", &haze_height, 0.0f, 100.0f)) {
+							atmosphere_effect->SetHazeHeight(haze_height);
+						}
+						float cloud_density = atmosphere_effect->GetCloudDensity();
+						if (ImGui::SliderFloat("Cloud Density", &cloud_density, 0.0f, 1.0f)) {
+							atmosphere_effect->SetCloudDensity(cloud_density);
+						}
+						float cloud_altitude = atmosphere_effect->GetCloudAltitude();
+						if (ImGui::SliderFloat("Cloud Altitude", &cloud_altitude, 0.0f, 200.0f)) {
+							atmosphere_effect->SetCloudAltitude(cloud_altitude);
+						}
+						float cloud_thickness = atmosphere_effect->GetCloudThickness();
+						if (ImGui::SliderFloat("Cloud Thickness", &cloud_thickness, 0.0f, 50.0f)) {
+							atmosphere_effect->SetCloudThickness(cloud_thickness);
 						}
 					}
 				}

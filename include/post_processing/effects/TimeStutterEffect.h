@@ -16,7 +16,7 @@ namespace Boidsish {
 			TimeStutterEffect();
 			~TimeStutterEffect();
 
-			void Apply(GLuint sourceTexture) override;
+			void Apply(GLuint sourceTexture, GLuint depthTexture, const glm::mat4& viewMatrix, const glm::mat4& projectionMatrix, const glm::vec3& cameraPos) override;
 			void Initialize(int width, int height) override;
 			void Resize(int width, int height) override;
 
