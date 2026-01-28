@@ -1556,7 +1556,11 @@ namespace Boidsish {
 		// For terrain, we should ensure the shadow map covers the camera area.
 		// If we are far from the shapes, or if terrain is the focus, center on camera.
 		if (has_terrain || distance_to_scene > impl->shadow_update_distance_threshold) {
-			scene_center = impl->camera.pos();
+			// Snap scene_center to a grid to reduce shadow flickering when camera moves
+			float grid_size = 10.0f;
+			scene_center.x = std::floor(impl->camera.pos().x / grid_size) * grid_size;
+			scene_center.y = std::floor(impl->camera.pos().y / grid_size) * grid_size;
+			scene_center.z = std::floor(impl->camera.pos().z / grid_size) * grid_size;
 			impl->camera_is_close_to_scene = true;
 		} else {
 			impl->camera_is_close_to_scene = (distance_to_scene < impl->shadow_update_distance_threshold);
