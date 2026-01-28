@@ -7,6 +7,8 @@ in vec2 TexCoords;
 
 #include "helpers/lighting.glsl"
 
+uniform bool uIsShadowPass = false;
+
 vec3 mod289(vec3 x) {
 	return x - floor(x * (1.0 / 289.0)) * 289.0;
 }
@@ -267,8 +269,11 @@ vec3 getCliffColor(float height, float noise) {
 }
 
 void main() {
-		// FragColor = vec4(fwidth(Normal.xyz), 1.0);
-		// return;
+	if (uIsShadowPass) {
+		// Output only depth (handled by hardware)
+		return;
+	}
+
 	vec3 norm = normalize(Normal);
 /*
 	// ========================================================================
@@ -369,6 +374,11 @@ void main() {
        // finalAlbedo = mix(vec3(0.2), finalAlbedo, 5*dot(norm, vec3(0,1,0)));
     //    finalAlbedo = mix(finalAlbedo, vec3(1,0.5,0.25), fwidth(norm));
        // finalAlbedo = mix(finalAlbedo, vec3(1,0.5,0.25), fwidth(norm)); // need something that can be a biome specific "flower"
+       // Curvature highlighting - clamped and dampened to avoid extreme artifacts in depressions
+       // Curvature highlighting - clamped and significantly dampened to avoid extreme artifacts in depressions
+       // fwidth(norm) can be noisy on steep tessellated slopes, contributing to "leopard print" artifacts.
+       float curvature = clamp(length(fwidth(norm)), 0.0, 1.0);
+       finalAlbedo = mix(finalAlbedo, vec3(1,0.5,0.25), curvature * 0.05);
 
 	// vec3 lighting = apply_lighting(FragPos, norm, finalAlbedo, 0.8);
 	vec3 lighting = apply_lighting_pbr(FragPos, norm, finalAlbedo, 0.5, 0.1, 1.0);
@@ -383,16 +393,17 @@ void main() {
 	float fade_end = 570.0;
 	float fade = 1.0 - smoothstep(fade_start, fade_end, dist + nebula_noise * 40.0);
 
-	vec4 outColor = vec4(lighting, mix(0.0, fade, step(0.01, FragPos.y)));
-	FragColor = mix(
-		vec4(0.0, 0.7, 0.7, mix(0.0, fade, step(0.01, FragPos.y))) * length(outColor),
-		outColor,
-		step(1.0, fade)
-	);
-	// vec4 outColor = vec4(lighting, fade);
-	// FragColor = mix(
-	// 	vec4(0.0, 0.7, 0.7, fade) * length(outColor),
-	// 	outColor,
-	// 	step(1.0, fade)
-	// );
+       vec4 outColor = vec4(lighting, mix(0.0, fade, step(0.01, FragPos.y)));
+        FragColor = mix(
+               vec4(0.0, 0.7, 0.7, mix(0.0, fade, step(0.01, FragPos.y))) * length(outColor),
+                outColor,
+                step(1.0, fade)
+        );
+
+       // vec4 outColor = vec4(lighting, fade);
+       // FragColor = mix(
+       //      vec4(0.0, 0.7, 0.7, fade) * length(outColor),
+       //      outColor,
+       //      step(1.0, fade)
+       // );
 }

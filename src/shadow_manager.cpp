@@ -108,23 +108,44 @@ namespace Boidsish {
 		glGetIntegerv(GL_VIEWPORT, prev_viewport_);
 
 		// Calculate light-space matrix
-		// For a point light, we use an orthographic projection looking at the scene
-		// This creates directional-light-style shadows from the light position
-		glm::vec3 light_dir = glm::normalize(scene_center - light.position);
-		glm::vec3 up = glm::vec3(0.0f, 1.0f, 0.0f);
+		glm::vec3 light_dir;
+		glm::vec3 look_at_pos;
+		glm::vec3 light_pos = light.position;
 
+		// Handle different light types
+		if (light.type == DIRECTIONAL_LIGHT) {
+			// Directional light: use light direction, position is irrelevant
+			// We place the "virtual" light position far enough back to cover the scene
+			light_dir = glm::normalize(light.direction);
+			light_pos = scene_center - light_dir * scene_radius;
+			look_at_pos = scene_center;
+		} else if (light.type == SPOT_LIGHT) {
+			// Spot light: use light position and direction
+			light_dir = glm::normalize(light.direction);
+			look_at_pos = light_pos + light_dir;
+		} else {
+			// Point/Emissive light: use light position, look towards scene center
+			light_dir = glm::normalize(scene_center - light_pos);
+			look_at_pos = scene_center;
+		}
+
+		glm::vec3 up = glm::vec3(0.0f, 1.0f, 0.0f);
 		// Handle case where light is directly above/below
 		if (std::abs(glm::dot(light_dir, up)) > 0.99f) {
 			up = glm::vec3(0.0f, 0.0f, 1.0f);
 		}
 
-		glm::mat4 light_view = glm::lookAt(light.position, scene_center, up);
+		glm::mat4 light_view = glm::lookAt(light_pos, look_at_pos, up);
 
 		// Calculate orthographic frustum that encompasses the scene
-		// Expand radius to ensure full coverage
-		float ortho_size = scene_radius * 1.5f;
-		float near_plane = 0.1f;
-		float far_plane = glm::length(light.position - scene_center) + scene_radius * 2.0f;
+		// We use the radius directly as the half-extents of the orthographic box
+		float ortho_size = scene_radius;
+		float light_to_center_dist = glm::length(light_pos - scene_center);
+
+		// Ensure near and far planes cover the entire scene volume
+		// We start from the light and go through the scene
+		float near_plane = std::max(0.1f, light_to_center_dist - scene_radius * 1.5f);
+		float far_plane = light_to_center_dist + scene_radius * 1.5f;
 
 		glm::mat4 light_projection =
 			glm::ortho(-ortho_size, ortho_size, -ortho_size, ortho_size, near_plane, far_plane);

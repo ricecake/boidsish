@@ -153,9 +153,10 @@ namespace Boidsish {
 		bool  enable_hdr_ = false;
 
 		// Shadow optimization state
-		bool  any_shadow_caster_moved = true;
-		bool  camera_is_close_to_scene = true;
-		float shadow_update_distance_threshold = 5.0f;
+		bool      any_shadow_caster_moved = true;
+		bool      camera_is_close_to_scene = true;
+		float     shadow_update_distance_threshold = 200.0f;
+		glm::vec3 last_shadow_update_camera_pos{0.0f, -1000.0f, 0.0f};
 
 		task_thread_pool::task_thread_pool thread_pool;
 		std::unique_ptr<AudioManager>      audio_manager;
@@ -792,13 +793,15 @@ namespace Boidsish {
 			}
 		}
 
-		void RenderTerrain(const glm::mat4& view, const std::optional<glm::vec4>& clip_plane) {
+		void RenderTerrain(const glm::mat4& view, const glm::mat4& proj, const std::optional<glm::vec4>& clip_plane, bool is_shadow_pass = false) {
 			if (!terrain_generator || !ConfigManager::GetInstance().GetAppSettingBool("render_terrain", true))
 				return;
 
 			// Set up shadow uniforms for terrain shader
 			Terrain::terrain_shader_->use();
-			if (shadow_manager && shadow_manager->IsInitialized()) {
+			Terrain::terrain_shader_->setBool("uIsShadowPass", is_shadow_pass);
+
+			if (!is_shadow_pass && shadow_manager && shadow_manager->IsInitialized()) {
 				shadow_manager->BindForRendering(*Terrain::terrain_shader_);
 				std::array<int, 10> shadow_indices;
 				shadow_indices.fill(-1);
@@ -812,7 +815,7 @@ namespace Boidsish {
 			// Use batched render manager if available (single draw call for all chunks)
 			if (terrain_render_manager) {
 				// Calculate frustum for culling
-				Frustum frustum = CalculateFrustum(view, projection);
+				Frustum frustum = CalculateFrustum(view, proj);
 
 				// Prepare for rendering (frustum culling for instanced renderer)
 				terrain_render_manager->PrepareForRender(frustum, camera.pos());
@@ -820,7 +823,7 @@ namespace Boidsish {
 				terrain_render_manager->Render(
 					*Terrain::terrain_shader_,
 					view,
-					projection,
+					proj,
 					clip_plane,
 					tess_quality_multiplier_
 				);
@@ -828,7 +831,7 @@ namespace Boidsish {
 				// Fallback to per-chunk rendering
 				Terrain::terrain_shader_->use();
 				Terrain::terrain_shader_->setMat4("view", view);
-				Terrain::terrain_shader_->setMat4("projection", projection);
+				Terrain::terrain_shader_->setMat4("projection", proj);
 				Terrain::terrain_shader_->setFloat("uTessQualityMultiplier", tess_quality_multiplier_);
 				Terrain::terrain_shader_->setFloat("uTessLevelMax", 64.0f);
 				Terrain::terrain_shader_->setFloat("uTessLevelMin", 1.0f);
@@ -1541,7 +1544,8 @@ namespace Boidsish {
 		// --- Shadow Optimization: Check for object movement and camera proximity ---
 		impl->any_shadow_caster_moved = false;
 		glm::vec3 scene_center(0.0f);
-		if (!impl->shapes.empty()) {
+		bool has_shapes = !impl->shapes.empty();
+		if (has_shapes) {
 			for (const auto& shape : impl->shapes) {
 				scene_center += glm::vec3(shape->GetX(), shape->GetY(), shape->GetZ());
 				float distance_moved = glm::distance(
@@ -1555,8 +1559,21 @@ namespace Boidsish {
 			scene_center /= static_cast<float>(impl->shapes.size());
 		}
 
-		float distance_to_scene = glm::distance(impl->camera.pos(), scene_center);
-		impl->camera_is_close_to_scene = (distance_to_scene < impl->shadow_update_distance_threshold);
+		float distance_to_scene = has_shapes ? glm::distance(impl->camera.pos(), scene_center) : 0.0f;
+		bool has_terrain = (impl->terrain_generator != nullptr);
+
+		// For terrain, we should ensure the shadow map covers the camera area.
+		// If we are far from the shapes, or if terrain is the focus, center on camera.
+		if (has_terrain || distance_to_scene > impl->shadow_update_distance_threshold) {
+			// Snap scene_center to a grid to reduce shadow flickering when camera moves
+			float grid_size = 10.0f;
+			scene_center.x = std::floor(impl->camera.pos().x / grid_size) * grid_size;
+			scene_center.y = std::floor(impl->camera.pos().y / grid_size) * grid_size;
+			scene_center.z = std::floor(impl->camera.pos().z / grid_size) * grid_size;
+			impl->camera_is_close_to_scene = true;
+		} else {
+			impl->camera_is_close_to_scene = (distance_to_scene < impl->shadow_update_distance_threshold);
+		}
 
 		impl->UpdateTrails(impl->shapes, impl->simulation_time);
 
@@ -1663,7 +1680,7 @@ namespace Boidsish {
 				glm::mat4 reflection_view = impl->SetupMatrices(reflection_cam);
 				impl->reflection_vp = impl->projection * reflection_view;
 				impl->RenderSky(reflection_view);
-				impl->RenderTerrain(reflection_view, glm::vec4(0, 1, 0, 0.01));
+				impl->RenderTerrain(reflection_view, impl->projection, glm::vec4(0, 1, 0, 0.01));
 				impl->RenderShapes(
 					reflection_view,
 					reflection_cam,
@@ -1697,8 +1714,9 @@ namespace Boidsish {
 
 				bool light_has_moved = glm::distance(light->position, light->last_position) > 0.1f ||
 					glm::distance(light->direction, light->last_direction) > 0.1f;
+				bool camera_moved = glm::distance(impl->camera.pos(), impl->last_shadow_update_camera_pos) > 2.0f;
 
-				if (impl->camera_is_close_to_scene && (impl->any_shadow_caster_moved || light_has_moved)) {
+				if (impl->camera_is_close_to_scene && (impl->any_shadow_caster_moved || light_has_moved || (has_terrain && camera_moved))) {
 					impl->shadow_manager->BeginShadowPass(static_cast<int>(i), *light, scene_center);
 
 					Shader& shadow_shader = impl->shadow_manager->GetShadowShader();
@@ -1707,10 +1725,18 @@ namespace Boidsish {
 						shape->render(shadow_shader);
 					}
 
+					// Also render terrain to shadow map
+					// Disable culling for terrain because it's single-sided and we want it to cast shadows
+					glDisable(GL_CULL_FACE);
+					impl->RenderTerrain(impl->shadow_manager->GetLightSpaceMatrix(static_cast<int>(i)), glm::mat4(1.0f), std::nullopt, true);
+					glEnable(GL_CULL_FACE);
+					glCullFace(GL_FRONT);
+
 					impl->shadow_manager->EndShadowPass();
 
 					light->last_position = light->position;
 					light->last_direction = light->direction;
+					impl->last_shadow_update_camera_pos = impl->camera.pos();
 				}
 			}
 
@@ -1725,7 +1751,7 @@ namespace Boidsish {
 		glm::mat4 view = impl->SetupMatrices();
 		impl->RenderSky(view);
 		impl->RenderPlane(view);
-		impl->RenderTerrain(view, std::nullopt);
+		impl->RenderTerrain(view, impl->projection, std::nullopt);
 
 		// Always set shadow indices to -1 for proper lighting
 		// This must happen even if shadow_manager isn't active

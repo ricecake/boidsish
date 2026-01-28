@@ -90,15 +90,20 @@ namespace Boidsish {
 			float tz = z - floor(z);
 
 			// Get the 4 corner vertices of the grid cell
-			auto v0_raw = pointGenerate(floor(x), floor(z)); // Bottom-left
-			auto v1_raw = pointGenerate(ceil(x), floor(z));  // Bottom-right
-			auto v2_raw = pointGenerate(ceil(x), ceil(z));   // Top-right
-			auto v3_raw = pointGenerate(floor(x), ceil(z));  // Top-left
+			float x0 = floor(x);
+			float x1 = x0 + 1.0f;
+			float z0 = floor(z);
+			float z1 = z0 + 1.0f;
 
-			glm::vec3 v0 = {floor(x), v0_raw.x, floor(z)};
-			glm::vec3 v1 = {ceil(x), v1_raw.x, floor(z)};
-			glm::vec3 v2 = {ceil(x), v2_raw.x, ceil(z)};
-			glm::vec3 v3 = {floor(x), v3_raw.x, ceil(z)};
+			auto v0_raw = pointGenerate(x0, z0); // Bottom-left
+			auto v1_raw = pointGenerate(x1, z0); // Bottom-right
+			auto v2_raw = pointGenerate(x1, z1); // Top-right
+			auto v3_raw = pointGenerate(x0, z1); // Top-left
+
+			glm::vec3 v0 = {x0, v0_raw.x, z0};
+			glm::vec3 v1 = {x1, v1_raw.x, z0};
+			glm::vec3 v2 = {x1, v2_raw.x, z1};
+			glm::vec3 v3 = {x0, v3_raw.x, z1};
 
 			glm::vec3 n0 = diffToNorm(v0_raw.y, v0_raw.z);
 			glm::vec3 n1 = diffToNorm(v1_raw.y, v1_raw.z);

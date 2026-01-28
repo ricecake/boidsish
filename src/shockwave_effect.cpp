@@ -215,6 +215,9 @@ namespace Boidsish {
 		// Update UBO data first
 		UpdateShaderData();
 
+		// Set viewport to match the screen size for this post-processing stage
+		glViewport(0, 0, screen_width_, screen_height_);
+
 		shader_->use();
 
 		// Set uniforms (count is in UBO, so we don't need numShockwaves uniform)

@@ -15,7 +15,7 @@ in vec4 InstanceColor;
 uniform vec3 objectColor;
 uniform float objectAlpha = 1.0;
 uniform int  useVertexColor;
-uniform bool isColossal = true;
+uniform bool isColossal = false;
 uniform bool useInstanceColor = false;
 uniform bool isLine = false;
 uniform int  lineStyle = 0; // 0: SOLID, 1: LASER
