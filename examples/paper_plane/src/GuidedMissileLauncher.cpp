@@ -58,13 +58,22 @@ namespace Boidsish {
 		const float p_min = 0.5f;
 		const float p_max = 10.0f;
 
-		auto directionWeight = glm::dot(glm::normalize(pvel), glm::normalize(pos - ppos));
+		glm::vec3 pvel_n = (glm::length(pvel.Toglm()) > 0.001f) ? glm::normalize(pvel) : glm::vec3(0, 0, 1);
+		glm::vec3 to_launcher_n = (glm::length(pos.Toglm() - ppos) > 0.001f) ? glm::normalize(pos.Toglm() - ppos) : glm::vec3(0, 1, 0);
+		auto      directionWeight = glm::dot(pvel_n, to_launcher_n);
 
 		float norm_alt = (ppos.y - start_h) / (extreme_h - start_h);
 		norm_alt = std::min(std::max(norm_alt, 0.0f), 1.0f);
 
 		float missiles_per_second = p_min + (p_max - p_min) * norm_alt;
-		float fire_probability_this_frame = missiles_per_second * directionWeight * delta_time;
+
+		// Ensure we have a minimum firing probability even if the plane is flying away,
+		// and handle potential zero velocity/direction vectors
+		float effectiveWeight = std::max(0.1f, directionWeight);
+		if (std::isnan(effectiveWeight))
+			effectiveWeight = 0.1f;
+
+		float fire_probability_this_frame = missiles_per_second * effectiveWeight * delta_time;
 
 		std::uniform_real_distribution<float> dist(0.0f, 1.0f);
 		if (dist(eng_) < fire_probability_this_frame) {
