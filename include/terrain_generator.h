@@ -60,8 +60,9 @@ namespace Boidsish {
 		 * @param chunk_key The (chunk_x, chunk_z) key of the evicted chunk
 		 */
 		void InvalidateChunk(std::pair<int, int> chunk_key) {
-			std::lock_guard<std::recursive_mutex> lock(chunk_cache_mutex_);
-			chunk_cache_.erase(chunk_key);
+			// No-op: we want to keep the chunk in our CPU cache even if it's
+			// evicted from GPU memory, to avoid expensive re-generation.
+			// It will be re-registered with the renderer when next visible.
 		}
 
 		/**
@@ -179,8 +180,8 @@ namespace Boidsish {
 
 		void ApplyWeightedBiome(float control_value, BiomeAttributes& current) const;
 
-		const int view_distance_ = 10;        // in chunks
-		const int kUnloadDistanceBuffer_ = 2; // in chunks
+		const int view_distance_ = 10;         // in chunks
+		const int kUnloadDistanceBuffer_ = 12; // in chunks
 	const int chunk_size_ = 32;           // Keep at 32 for performance
 		int       octaves_ = 4;
 		float     lacunarity_ = 0.99f;
