@@ -726,6 +726,9 @@ namespace Boidsish {
 
 			shader->setInt("useVertexColor", 0);
 			for (const auto& shape : shapes) {
+				if (shape->IsHidden()) {
+					continue;
+				}
 				if (shape->IsInstanced()) {
 					instance_manager->AddInstance(shape);
 				} else {
@@ -1727,7 +1730,9 @@ namespace Boidsish {
 					Shader& shadow_shader = impl->shadow_manager->GetShadowShader();
 					shadow_shader.use();
 					for (const auto& shape : impl->shapes) {
-						shape->render(shadow_shader);
+						if (!shape->IsHidden()) {
+							shape->render(shadow_shader);
+						}
 					}
 
 					// Also render terrain to shadow map
@@ -2225,10 +2230,7 @@ namespace Boidsish {
 		impl->mesh_explosion_manager->ExplodeShape(shape, intensity, velocity);
 
 		// 2. Hide original shape
-		// Try to remove from persistent shapes
-		RemoveShape(shape->GetId());
-		// Also set alpha to 0 to hide it immediately if it's still in the current frame's shape list
-		shape->SetColor(shape->GetR(), shape->GetG(), shape->GetB(), 0.0f);
+		shape->SetHidden(true);
 
 		// 3. Fire/Glitter effect
 		impl->fire_effect_manager->AddEffect(

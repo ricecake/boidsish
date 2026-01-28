@@ -6,80 +6,74 @@
 #include <iostream>
 #include <memory>
 #include <vector>
-#include <glm/gtc/random.hpp>
+#include <algorithm>
 
 using namespace Boidsish;
 
 int main() {
-    std::cout << "Starting Complex Explosion Test..." << std::endl;
+    std::cout << "Starting Complex Explosion Test (Canonical)..." << std::endl;
     Visualizer visualizer(1024, 768, "Complex Explosion Test");
+
+    std::vector<std::shared_ptr<Shape>> shapes;
 
     // Create a teapot model
     auto teapot = std::make_shared<Model>("assets/utah_teapot.obj");
     teapot->SetColor(1.0f, 0.5f, 0.0f, 1.0f); // Orange teapot
     teapot->SetScale(glm::vec3(5.0f));
     teapot->SetPosition(0.0f, 10.0f, 0.0f);
-    visualizer.AddShape(teapot);
+    shapes.push_back(teapot);
 
     // Create a dot (procedural sphere)
     auto dot = std::make_shared<Dot>();
     dot->SetColor(0.0f, 0.8f, 1.0f, 1.0f); // Cyan dot
     dot->SetSize(10.0f);
     dot->SetPosition(30.0f, 10.0f, 0.0f);
-    visualizer.AddShape(dot);
+    shapes.push_back(dot);
 
     auto glitter_dot = std::make_shared<Dot>();
     glitter_dot->SetColor(1.0f, 0.0f, 1.0f, 1.0f); // Magenta dot
     glitter_dot->SetSize(8.0f);
     glitter_dot->SetPosition(-30.0f, 10.0f, 0.0f);
-    visualizer.AddShape(glitter_dot);
+    shapes.push_back(glitter_dot);
 
-    bool exploded_teapot = false;
-    bool exploded_dot = false;
-    bool exploded_glitter = false;
+    visualizer.AddShapeHandler([&](float t) {
+        return shapes;
+    });
 
     visualizer.AddInputCallback([&](const InputState& state) {
-        if (state.key_down[GLFW_KEY_1] && !exploded_teapot) {
+        if (state.key_down[GLFW_KEY_1] && !teapot->IsHidden()) {
             std::cout << "Exploding Teapot with Standard Explosion!" << std::endl;
             visualizer.TriggerComplexExplosion(teapot, glm::vec3(0.0f, 1.0f, 0.0f), 2.0f, FireEffectStyle::Explosion);
-            exploded_teapot = true;
         }
-        if (state.key_down[GLFW_KEY_2] && !exploded_dot) {
+        if (state.key_down[GLFW_KEY_2] && !dot->IsHidden()) {
             std::cout << "Exploding Cyan Dot with Sparks!" << std::endl;
             visualizer.TriggerComplexExplosion(dot, glm::vec3(1.0f, 0.5f, 0.0f), 1.5f, FireEffectStyle::Sparks);
-            exploded_dot = true;
         }
-        if (state.key_down[GLFW_KEY_3] && !exploded_glitter) {
+        if (state.key_down[GLFW_KEY_3] && !glitter_dot->IsHidden()) {
             std::cout << "Exploding Magenta Dot with GLITTER!" << std::endl;
             visualizer.TriggerComplexExplosion(glitter_dot, glm::vec3(-1.0f, 1.0f, 0.0f), 3.0f, FireEffectStyle::Glitter);
-            exploded_glitter = true;
         }
         if (state.key_down[GLFW_KEY_R]) {
             std::cout << "Resetting shapes..." << std::endl;
-            if (exploded_teapot) {
-                teapot = std::make_shared<Model>("assets/utah_teapot.obj");
-                teapot->SetColor(1.0f, 0.5f, 0.0f, 1.0f);
-                teapot->SetScale(glm::vec3(5.0f));
-                teapot->SetPosition(0.0f, 10.0f, 0.0f);
-                visualizer.AddShape(teapot);
-                exploded_teapot = false;
-            }
-            if (exploded_dot) {
-                dot = std::make_shared<Dot>();
-                dot->SetColor(0.0f, 0.8f, 1.0f, 1.0f);
-                dot->SetSize(10.0f);
-                dot->SetPosition(30.0f, 10.0f, 0.0f);
-                visualizer.AddShape(dot);
-                exploded_dot = false;
-            }
-            if (exploded_glitter) {
-                glitter_dot = std::make_shared<Dot>();
-                glitter_dot->SetColor(1.0f, 0.0f, 1.0f, 1.0f);
-                glitter_dot->SetSize(8.0f);
-                glitter_dot->SetPosition(-30.0f, 10.0f, 0.0f);
-                visualizer.AddShape(glitter_dot);
-                exploded_glitter = false;
-            }
+            shapes.clear();
+
+            teapot = std::make_shared<Model>("assets/utah_teapot.obj");
+            teapot->SetColor(1.0f, 0.5f, 0.0f, 1.0f);
+            teapot->SetScale(glm::vec3(5.0f));
+            teapot->SetPosition(0.0f, 10.0f, 0.0f);
+            shapes.push_back(teapot);
+
+            dot = std::make_shared<Dot>();
+            dot->SetColor(0.0f, 0.8f, 1.0f, 1.0f);
+            dot->SetSize(10.0f);
+            dot->SetPosition(30.0f, 10.0f, 0.0f);
+            shapes.push_back(dot);
+
+            glitter_dot = std::make_shared<Dot>();
+            glitter_dot->SetColor(1.0f, 0.0f, 1.0f, 1.0f);
+            glitter_dot->SetSize(8.0f);
+            glitter_dot->SetPosition(-30.0f, 10.0f, 0.0f);
+            shapes.push_back(glitter_dot);
         }
     });
 
