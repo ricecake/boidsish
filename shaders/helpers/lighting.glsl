@@ -14,7 +14,9 @@ const int LIGHT_TYPE_FLASH = 4;    // Explosion/flash light (rapid falloff)
  * Returns 0.0 if fully in shadow, 1.0 if fully lit.
  * Uses PCF (Percentage Closer Filtering) for soft shadow edges.
  */
-float calculateShadow(int shadow_index, vec3 frag_pos, vec3 normal, vec3 light_dir) {
+float calculateShadow(int light_index, vec3 frag_pos, vec3 normal, vec3 light_dir) {
+	int shadow_index = lightShadowIndices[light_index];
+
 	// Early out for invalid indices or when no shadow lights are active
 	// This MUST return before any texture operations to avoid driver issues
 	if (shadow_index < 0) {
@@ -23,7 +25,25 @@ float calculateShadow(int shadow_index, vec3 frag_pos, vec3 normal, vec3 light_d
 	if (numShadowLights <= 0) {
 		return 1.0; // No shadow maps active at all
 	}
-	if (shadow_index >= MAX_SHADOW_LIGHTS || shadow_index >= numShadowLights) {
+
+	// Handle Cascaded Shadow Maps for directional lights
+	if (lights[light_index].type == LIGHT_TYPE_DIRECTIONAL) {
+		float depth = length(viewPos - frag_pos);
+		int cascade = -1;
+		for (int i = 0; i < MAX_CASCADES; ++i) {
+			if (depth < cascadeSplits[i]) {
+				cascade = i;
+				break;
+			}
+		}
+		if (cascade != -1) {
+			shadow_index += cascade;
+		} else {
+			return 1.0; // Beyond last cascade
+		}
+	}
+
+	if (shadow_index >= MAX_SHADOW_MAPS) {
 		return 1.0; // Index out of bounds
 	}
 
@@ -275,7 +295,7 @@ vec4 apply_lighting_pbr(vec3 frag_pos, vec3 normal, vec3 albedo, float roughness
 		float NdotL = max(dot(N, L), 0.0);
 
 		// Calculate shadow with slope-scaled bias
-		float shadow = calculateShadow(lightShadowIndices[i], frag_pos, N, L);
+		float shadow = calculateShadow(i, frag_pos, N, L);
 
 		// Add to outgoing radiance Lo
 		vec3 specular_radiance = specular * radiance * NdotL * shadow;
@@ -400,7 +420,7 @@ vec4 apply_lighting(vec3 frag_pos, vec3 normal, vec3 albedo, float specular_stre
 		calculateLightContribution(i, frag_pos, light_dir, attenuation);
 
 		// Calculate shadow factor for this light with slope-scaled bias
-		float shadow = calculateShadow(lightShadowIndices[i], frag_pos, normal, light_dir);
+		float shadow = calculateShadow(i, frag_pos, normal, light_dir);
 
 		// Diffuse
 		float diff = max(dot(normal, light_dir), 0.0);
