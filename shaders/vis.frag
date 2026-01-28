@@ -14,7 +14,7 @@ in vec4 InstanceColor;
 
 uniform vec3 objectColor;
 uniform int  useVertexColor;
-uniform bool isColossal = true;
+uniform bool isColossal = false;
 uniform bool useInstanceColor = false;
 
 // PBR material properties

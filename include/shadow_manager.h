@@ -61,7 +61,7 @@ namespace Boidsish {
 			int              light_index,
 			const Light&     light,
 			const glm::vec3& scene_center,
-			float            scene_radius = 100.0f
+			float            scene_radius = 500.0f
 		);
 
 		/**

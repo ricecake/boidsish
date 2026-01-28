@@ -121,10 +121,14 @@ namespace Boidsish {
 		glm::mat4 light_view = glm::lookAt(light.position, scene_center, up);
 
 		// Calculate orthographic frustum that encompasses the scene
-		// Expand radius to ensure full coverage
-		float ortho_size = scene_radius * 1.5f;
-		float near_plane = 0.1f;
-		float far_plane = glm::length(light.position - scene_center) + scene_radius * 2.0f;
+		// We use the radius directly as the half-extents of the orthographic box
+		float ortho_size = scene_radius;
+		float light_to_center_dist = glm::length(light.position - scene_center);
+
+		// Ensure near and far planes cover the entire scene volume
+		// We start from the light and go through the scene
+		float near_plane = std::max(0.1f, light_to_center_dist - scene_radius * 2.0f);
+		float far_plane = light_to_center_dist + scene_radius * 2.0f;
 
 		glm::mat4 light_projection =
 			glm::ortho(-ortho_size, ortho_size, -ortho_size, ortho_size, near_plane, far_plane);

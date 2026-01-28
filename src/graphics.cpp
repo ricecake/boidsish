@@ -150,9 +150,10 @@ namespace Boidsish {
 		bool  enable_hdr_ = false;
 
 		// Shadow optimization state
-		bool  any_shadow_caster_moved = true;
-		bool  camera_is_close_to_scene = true;
-		float shadow_update_distance_threshold = 200.0f;
+		bool      any_shadow_caster_moved = true;
+		bool      camera_is_close_to_scene = true;
+		float     shadow_update_distance_threshold = 200.0f;
+		glm::vec3 last_shadow_update_camera_pos{0.0f, -1000.0f, 0.0f};
 
 		task_thread_pool::task_thread_pool thread_pool;
 		std::unique_ptr<AudioManager>      audio_manager;
@@ -1534,7 +1535,8 @@ namespace Boidsish {
 		// --- Shadow Optimization: Check for object movement and camera proximity ---
 		impl->any_shadow_caster_moved = false;
 		glm::vec3 scene_center(0.0f);
-		if (!impl->shapes.empty()) {
+		bool has_shapes = !impl->shapes.empty();
+		if (has_shapes) {
 			for (const auto& shape : impl->shapes) {
 				scene_center += glm::vec3(shape->GetX(), shape->GetY(), shape->GetZ());
 				float distance_moved = glm::distance(
@@ -1548,8 +1550,17 @@ namespace Boidsish {
 			scene_center /= static_cast<float>(impl->shapes.size());
 		}
 
-		float distance_to_scene = glm::distance(impl->camera.pos(), scene_center);
-		impl->camera_is_close_to_scene = (distance_to_scene < impl->shadow_update_distance_threshold);
+		float distance_to_scene = has_shapes ? glm::distance(impl->camera.pos(), scene_center) : 0.0f;
+		bool has_terrain = (impl->terrain_generator != nullptr);
+
+		// For terrain, we should ensure the shadow map covers the camera area.
+		// If we are far from the shapes, or if terrain is the focus, center on camera.
+		if (has_terrain || distance_to_scene > impl->shadow_update_distance_threshold) {
+			scene_center = impl->camera.pos();
+			impl->camera_is_close_to_scene = true;
+		} else {
+			impl->camera_is_close_to_scene = (distance_to_scene < impl->shadow_update_distance_threshold);
+		}
 
 		impl->UpdateTrails(impl->shapes, impl->simulation_time);
 
@@ -1689,8 +1700,9 @@ namespace Boidsish {
 
 				bool light_has_moved = glm::distance(light->position, light->last_position) > 0.1f ||
 					glm::distance(light->direction, light->last_direction) > 0.1f;
+				bool camera_moved = glm::distance(impl->camera.pos(), impl->last_shadow_update_camera_pos) > 2.0f;
 
-				if (impl->camera_is_close_to_scene && (impl->any_shadow_caster_moved || light_has_moved)) {
+				if (impl->camera_is_close_to_scene && (impl->any_shadow_caster_moved || light_has_moved || (has_terrain && camera_moved))) {
 					impl->shadow_manager->BeginShadowPass(static_cast<int>(i), *light, scene_center);
 
 					Shader& shadow_shader = impl->shadow_manager->GetShadowShader();
@@ -1700,12 +1712,17 @@ namespace Boidsish {
 					}
 
 					// Also render terrain to shadow map
+					// Disable culling for terrain because it's single-sided and we want it to cast shadows
+					glDisable(GL_CULL_FACE);
 					impl->RenderTerrain(impl->shadow_manager->GetLightSpaceMatrix(static_cast<int>(i)), glm::mat4(1.0f), std::nullopt, true);
+					glEnable(GL_CULL_FACE);
+					glCullFace(GL_FRONT);
 
 					impl->shadow_manager->EndShadowPass();
 
 					light->last_position = light->position;
 					light->last_direction = light->direction;
+					impl->last_shadow_update_camera_pos = impl->camera.pos();
 				}
 			}
 
