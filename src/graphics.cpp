@@ -157,6 +157,7 @@ namespace Boidsish {
 		bool      camera_is_close_to_scene = true;
 		float     shadow_update_distance_threshold = 200.0f;
 		glm::vec3 last_shadow_update_camera_pos{0.0f, -1000.0f, 0.0f};
+		uint64_t  frame_count_ = 0;
 
 		task_thread_pool::task_thread_pool thread_pool;
 		std::unique_ptr<AudioManager>      audio_manager;
@@ -1444,6 +1445,8 @@ namespace Boidsish {
 	}
 
 	void Visualizer::Update() {
+		impl->frame_count_++;
+
 		// Reset per-frame input state
 		std::fill_n(impl->input_state.key_down, kMaxKeys, false);
 		std::fill_n(impl->input_state.key_up, kMaxKeys, false);
@@ -1545,18 +1548,26 @@ namespace Boidsish {
 		impl->any_shadow_caster_moved = false;
 		glm::vec3 scene_center(0.0f);
 		bool has_shapes = !impl->shapes.empty();
+		int  shadow_caster_count = 0;
 		if (has_shapes) {
 			for (const auto& shape : impl->shapes) {
-				scene_center += glm::vec3(shape->GetX(), shape->GetY(), shape->GetZ());
-				float distance_moved = glm::distance(
-					shape->GetLastPosition(),
-					glm::vec3(shape->GetX(), shape->GetY(), shape->GetZ())
-				);
-				if (distance_moved > 0.01f) { // Movement threshold
-					impl->any_shadow_caster_moved = true;
+				if (shape->CastsShadows()) {
+					scene_center += glm::vec3(shape->GetX(), shape->GetY(), shape->GetZ());
+					shadow_caster_count++;
+					float distance_moved = glm::distance(
+						shape->GetLastPosition(),
+						glm::vec3(shape->GetX(), shape->GetY(), shape->GetZ())
+					);
+					if (distance_moved > 0.01f) { // Movement threshold
+						impl->any_shadow_caster_moved = true;
+					}
 				}
 			}
-			scene_center /= static_cast<float>(impl->shapes.size());
+			if (shadow_caster_count > 0) {
+				scene_center /= static_cast<float>(shadow_caster_count);
+			} else {
+				scene_center = impl->camera.pos();
+			}
 		}
 
 		float distance_to_scene = has_shapes ? glm::distance(impl->camera.pos(), scene_center) : 0.0f;
@@ -1708,32 +1719,76 @@ namespace Boidsish {
 
 		if (impl->shadow_manager && impl->shadow_manager->IsInitialized()) {
 			shadow_lights = impl->light_manager.GetShadowCastingLights();
-			for (size_t i = 0; i < shadow_lights.size() && i < ShadowManager::kMaxShadowLights; ++i) {
+			int current_map_index = 0;
+
+			for (size_t i = 0; i < shadow_lights.size() && current_map_index < ShadowManager::kMaxShadowMaps; ++i) {
 				Light* light = shadow_lights[i];
-				light->shadow_map_index = static_cast<int>(i);
+				light->shadow_map_index = current_map_index;
 
 				bool light_has_moved = glm::distance(light->position, light->last_position) > 0.1f ||
 					glm::distance(light->direction, light->last_direction) > 0.1f;
 				bool camera_moved = glm::distance(impl->camera.pos(), impl->last_shadow_update_camera_pos) > 2.0f;
+				bool should_update_any = impl->camera_is_close_to_scene &&
+					(impl->any_shadow_caster_moved || light_has_moved || (has_terrain && camera_moved));
 
-				if (impl->camera_is_close_to_scene && (impl->any_shadow_caster_moved || light_has_moved || (has_terrain && camera_moved))) {
-					impl->shadow_manager->BeginShadowPass(static_cast<int>(i), *light, scene_center);
+				if (light->type == DIRECTIONAL_LIGHT) {
+					// Cascaded Shadow Maps
+					static const int cascade_intervals[] = {1, 2, 5, 10};
 
-					Shader& shadow_shader = impl->shadow_manager->GetShadowShader();
-					shadow_shader.use();
-					for (const auto& shape : impl->shapes) {
-						shape->render(shadow_shader);
+					for (int cascade = 0; cascade < ShadowManager::kMaxCascades && current_map_index < ShadowManager::kMaxShadowMaps; ++cascade) {
+						if (should_update_any && (impl->frame_count_ % cascade_intervals[cascade] == 0)) {
+							impl->shadow_manager->BeginShadowPass(
+								current_map_index,
+								*light,
+								scene_center,
+								500.0f,
+								cascade,
+								view_matrix,
+								impl->camera.fov,
+								(float)impl->width / (float)impl->height
+							);
+
+							Shader& shadow_shader = impl->shadow_manager->GetShadowShader();
+							shadow_shader.use();
+							for (const auto& shape : impl->shapes) {
+								if (shape->CastsShadows()) {
+									shape->render(shadow_shader);
+								}
+							}
+
+							glDisable(GL_CULL_FACE);
+							impl->RenderTerrain(impl->shadow_manager->GetLightSpaceMatrix(current_map_index), glm::mat4(1.0f), std::nullopt, true);
+							glEnable(GL_CULL_FACE);
+							glCullFace(GL_FRONT);
+
+							impl->shadow_manager->EndShadowPass();
+						}
+						current_map_index++;
 					}
+				} else {
+					// Standard Shadow Map
+					if (should_update_any) {
+						impl->shadow_manager->BeginShadowPass(current_map_index, *light, scene_center);
 
-					// Also render terrain to shadow map
-					// Disable culling for terrain because it's single-sided and we want it to cast shadows
-					glDisable(GL_CULL_FACE);
-					impl->RenderTerrain(impl->shadow_manager->GetLightSpaceMatrix(static_cast<int>(i)), glm::mat4(1.0f), std::nullopt, true);
-					glEnable(GL_CULL_FACE);
-					glCullFace(GL_FRONT);
+						Shader& shadow_shader = impl->shadow_manager->GetShadowShader();
+						shadow_shader.use();
+						for (const auto& shape : impl->shapes) {
+							if (shape->CastsShadows()) {
+								shape->render(shadow_shader);
+							}
+						}
 
-					impl->shadow_manager->EndShadowPass();
+						glDisable(GL_CULL_FACE);
+						impl->RenderTerrain(impl->shadow_manager->GetLightSpaceMatrix(current_map_index), glm::mat4(1.0f), std::nullopt, true);
+						glEnable(GL_CULL_FACE);
+						glCullFace(GL_FRONT);
 
+						impl->shadow_manager->EndShadowPass();
+					}
+					current_map_index++;
+				}
+
+				if (should_update_any) {
 					light->last_position = light->position;
 					light->last_direction = light->direction;
 					impl->last_shadow_update_camera_pos = impl->camera.pos();
