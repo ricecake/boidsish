@@ -2205,8 +2205,53 @@ namespace Boidsish {
 			->AddShockwave(position, normal, max_radius, duration, intensity, ring_width, color);
 	}
 
-	void Visualizer::ExplodeShape(std::shared_ptr<Shape> shape, float intensity) {
-		impl->mesh_explosion_manager->ExplodeShape(shape, intensity);
+	void Visualizer::ExplodeShape(std::shared_ptr<Shape> shape, float intensity, const glm::vec3& velocity) {
+		impl->mesh_explosion_manager->ExplodeShape(shape, intensity, velocity);
+	}
+
+	void Visualizer::TriggerComplexExplosion(
+		std::shared_ptr<Shape> shape,
+		const glm::vec3&       direction,
+		float                  intensity,
+		FireEffectStyle        fire_style
+	) {
+		if (!shape)
+			return;
+
+		glm::vec3 position(shape->GetX(), shape->GetY(), shape->GetZ());
+		glm::vec3 velocity = direction * 20.0f * intensity;
+
+		// 1. Mesh explosion
+		impl->mesh_explosion_manager->ExplodeShape(shape, intensity, velocity);
+
+		// 2. Hide original shape
+		// Try to remove from persistent shapes
+		RemoveShape(shape->GetId());
+		// Also set alpha to 0 to hide it immediately if it's still in the current frame's shape list
+		shape->SetColor(shape->GetR(), shape->GetG(), shape->GetB(), 0.0f);
+
+		// 3. Fire/Glitter effect
+		impl->fire_effect_manager->AddEffect(
+			position,
+			fire_style,
+			direction,
+			velocity * 0.5f,
+			-1, // default particles
+			0.5f * intensity
+		);
+
+		// 4. Shockwave
+		glm::vec3 normal =
+			(glm::length(direction) > 0.001f) ? glm::normalize(direction) : glm::vec3(0.0f, 1.0f, 0.0f);
+		impl->shockwave_manager->AddShockwave(
+			position,
+			normal,
+			30.0f * intensity,
+			1.2f * intensity,
+			0.5f * intensity,
+			4.0f * intensity,
+			glm::vec3(shape->GetR(), shape->GetG(), shape->GetB())
+		);
 	}
 
 	void Visualizer::CreateExplosion(const glm::vec3& position, float intensity) {
