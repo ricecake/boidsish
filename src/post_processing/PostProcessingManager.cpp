@@ -64,7 +64,8 @@ namespace Boidsish {
 			GLuint           depthTexture,
 			const glm::mat4& viewMatrix,
 			const glm::mat4& projectionMatrix,
-			const glm::vec3& cameraPos
+			const glm::vec3& cameraPos,
+			float            time
 		) {
 			bool   effect_applied = false;
 			int    fbo_index = 0;
@@ -76,6 +77,7 @@ namespace Boidsish {
 			// Pre-tone-mapping effects chain
 			for (const auto& effect : pre_tone_mapping_effects_) {
 				if (effect->IsEnabled()) {
+					effect->SetTime(time);
 					glBindFramebuffer(GL_FRAMEBUFFER, pingpong_fbo_[fbo_index]);
 					glClear(GL_COLOR_BUFFER_BIT);
 
@@ -91,6 +93,7 @@ namespace Boidsish {
 
 			// Apply the tone mapping effect as the final step
 			if (tone_mapping_effect_ && tone_mapping_effect_->IsEnabled()) {
+				tone_mapping_effect_->SetTime(time);
 				glBindFramebuffer(GL_FRAMEBUFFER, pingpong_fbo_[fbo_index]);
 				glClear(GL_COLOR_BUFFER_BIT);
 

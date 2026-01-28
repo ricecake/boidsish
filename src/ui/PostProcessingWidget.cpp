@@ -41,6 +41,10 @@ namespace Boidsish {
 						if (ImGui::SliderFloat("Haze Height", &haze_height, 0.0f, 100.0f)) {
 							atmosphere_effect->SetHazeHeight(haze_height);
 						}
+						glm::vec3 haze_color = atmosphere_effect->GetHazeColor();
+						if (ImGui::ColorEdit3("Haze Color", &haze_color[0])) {
+							atmosphere_effect->SetHazeColor(haze_color);
+						}
 						float cloud_density = atmosphere_effect->GetCloudDensity();
 						if (ImGui::SliderFloat("Cloud Density", &cloud_density, 0.0f, 1.0f)) {
 							atmosphere_effect->SetCloudDensity(cloud_density);
@@ -52,6 +56,10 @@ namespace Boidsish {
 						float cloud_thickness = atmosphere_effect->GetCloudThickness();
 						if (ImGui::SliderFloat("Cloud Thickness", &cloud_thickness, 0.0f, 50.0f)) {
 							atmosphere_effect->SetCloudThickness(cloud_thickness);
+						}
+						glm::vec3 cloud_color = atmosphere_effect->GetCloudColor();
+						if (ImGui::ColorEdit3("Cloud Color", &cloud_color[0])) {
+							atmosphere_effect->SetCloudColor(cloud_color);
 						}
 					}
 				}

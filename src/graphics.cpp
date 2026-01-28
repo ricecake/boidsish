@@ -1654,10 +1654,6 @@ namespace Boidsish {
 
 		if (ConfigManager::GetInstance().GetAppSettingBool("enable_effects", true)) {
 			// --- Post-processing Pass (renders FBO texture to screen) ---
-			// Update time-dependent effects
-			for (auto& effect : impl->post_processing_manager_->GetPreToneMappingEffects()) {
-				effect->SetTime(impl->simulation_time);
-			}
 
 			// Apply standard post-processing effects
 			GLuint final_texture = impl->post_processing_manager_->ApplyEffects(
@@ -1665,7 +1661,8 @@ namespace Boidsish {
 				impl->main_fbo_depth_texture_,
 				view,
 				impl->projection,
-				impl->camera.pos()
+				impl->camera.pos(),
+				impl->simulation_time
 			);
 
 			glBindFramebuffer(GL_FRAMEBUFFER, 0);

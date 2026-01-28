@@ -24,7 +24,8 @@ namespace Boidsish {
 				GLuint           depthTexture,
 				const glm::mat4& viewMatrix,
 				const glm::mat4& projectionMatrix,
-				const glm::vec3& cameraPos
+				const glm::vec3& cameraPos,
+				float            time
 			);
 			void Resize(int width, int height);
 
