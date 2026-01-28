@@ -13,12 +13,6 @@ class Shader;
 
 namespace Boidsish {
 
-	struct Vertex {
-		glm::vec3 Position;
-		glm::vec3 Normal;
-		glm::vec2 TexCoords;
-	};
-
 	struct Texture {
 		unsigned int id;
 		std::string  type;
@@ -58,6 +52,8 @@ namespace Boidsish {
 		void      render() const override;
 		void      render(Shader& shader, const glm::mat4& model_matrix) const override;
 		glm::mat4 GetModelMatrix() const override;
+
+		void GetGeometry(std::vector<Vertex>& vertices, std::vector<unsigned int>& indices) const override;
 
 		const std::vector<Mesh>& getMeshes() const { return meshes; }
 

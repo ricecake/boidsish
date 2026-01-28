@@ -18,16 +18,59 @@ namespace Boidsish {
 	int                     Shape::sphere_vertex_count_ = 0;
 	std::shared_ptr<Shader> Shape::shader = nullptr;
 
-	void Shape::InitSphereMesh() {
-		if (sphere_vao_ != 0)
-			return; // Already initialized
-
+	void Shape::GetGeometry(std::vector<Vertex>& vertices, std::vector<unsigned int>& indices) const {
 		const int   latitude_segments = 16;
 		const int   longitude_segments = 32;
 		const float radius = 1.0f;
 
-		std::vector<float>        vertices;
+		for (int lat = 0; lat <= latitude_segments; ++lat) {
+			for (int lon = 0; lon <= longitude_segments; ++lon) {
+				float  theta = lat * glm::pi<float>() / latitude_segments;
+				float  phi = lon * 2 * glm::pi<float>() / longitude_segments;
+				float  x = radius * sin(theta) * cos(phi);
+				float  y = radius * cos(theta);
+				float  z = radius * sin(theta) * sin(phi);
+				Vertex v;
+				v.Position = glm::vec3(x, y, z);
+				v.Normal = glm::vec3(x, y, z);
+				v.TexCoords = glm::vec2((float)lon / longitude_segments, (float)lat / latitude_segments);
+				vertices.push_back(v);
+			}
+		}
+
+		for (int lat = 0; lat < latitude_segments; ++lat) {
+			for (int lon = 0; lon < longitude_segments; ++lon) {
+				int first = (lat * (longitude_segments + 1)) + lon;
+				int second = first + longitude_segments + 1;
+				// CCW winding
+				indices.push_back(first);
+				indices.push_back(first + 1);
+				indices.push_back(second);
+
+				indices.push_back(second);
+				indices.push_back(first + 1);
+				indices.push_back(second + 1);
+			}
+		}
+	}
+
+	void Shape::InitSphereMesh() {
+		if (sphere_vao_ != 0)
+			return; // Already initialized
+
+		std::vector<Vertex>       vertices;
 		std::vector<unsigned int> indices;
+
+		// We use a dummy instance to call the virtual GetGeometry,
+		// but since Shape is abstract, we just use the logic directly or
+		// we can make a temporary concrete class if we really wanted to.
+		// However, Shape's GetGeometry is already the sphere logic.
+		// Since InitSphereMesh is static, we can't use 'this'.
+		// I'll just keep the logic here but I could have made it a static helper.
+
+		const int   latitude_segments = 16;
+		const int   longitude_segments = 32;
+		const float radius = 1.0f;
 
 		for (int lat = 0; lat <= latitude_segments; ++lat) {
 			for (int lon = 0; lon <= longitude_segments; ++lon) {
@@ -36,14 +79,11 @@ namespace Boidsish {
 				float x = radius * sin(theta) * cos(phi);
 				float y = radius * cos(theta);
 				float z = radius * sin(theta) * sin(phi);
-				// Position
-				vertices.push_back(x);
-				vertices.push_back(y);
-				vertices.push_back(z);
-				// Normal
-				vertices.push_back(x);
-				vertices.push_back(y);
-				vertices.push_back(z);
+				Vertex v;
+				v.Position = glm::vec3(x, y, z);
+				v.Normal = glm::vec3(x, y, z);
+				v.TexCoords = glm::vec2((float)lon / longitude_segments, (float)lat / latitude_segments);
+				vertices.push_back(v);
 			}
 		}
 
@@ -69,16 +109,18 @@ namespace Boidsish {
 
 		glGenBuffers(1, &sphere_vbo_);
 		glBindBuffer(GL_ARRAY_BUFFER, sphere_vbo_);
-		glBufferData(GL_ARRAY_BUFFER, vertices.size() * sizeof(float), &vertices[0], GL_STATIC_DRAW);
+		glBufferData(GL_ARRAY_BUFFER, vertices.size() * sizeof(Vertex), &vertices[0], GL_STATIC_DRAW);
 
 		glGenBuffers(1, &sphere_ebo);
 		glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, sphere_ebo);
 		glBufferData(GL_ELEMENT_ARRAY_BUFFER, indices.size() * sizeof(unsigned int), &indices[0], GL_STATIC_DRAW);
 
-		glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void*)0);
+		glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)0);
 		glEnableVertexAttribArray(0);
-		glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void*)(3 * sizeof(float)));
+		glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)offsetof(Vertex, Normal));
 		glEnableVertexAttribArray(1);
+		glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)offsetof(Vertex, TexCoords));
+		glEnableVertexAttribArray(2);
 
 		glBindVertexArray(0);
 		// EBO is not needed after this, but we're not deleting it.
