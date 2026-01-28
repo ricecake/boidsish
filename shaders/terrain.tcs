@@ -48,19 +48,25 @@ float GetVertexTessLevel(vec3 worldPos, vec3 normal, vec3 forward) {
     vec3  viewDir = normalize(viewPos - worldPos);
     float dotProd = dot(normalize(normal), viewDir);
     float isSilhouette = 1.0 - abs(dotProd);
-    float silhouetteBoost = mix(1.0, 2.0, isSilhouette * (1 - dist / 500.0));
+    float silhouetteBoost = mix(1.0, 2.0, isSilhouette * (1.0 - clamp(dist / 500.0, 0.0, 1.0)));
 
     // 3. FOCUS FACTOR (The Cull)
-    vec3 dirCamToVertex = normalize(worldPos - viewPos);
-    float align = dot(dirCamToVertex, forward);
-    float focusCull = smoothstep(0.85, 1.0, align);
+    float focusCull = 1.0;
+    if (!uIsShadowPass) {
+        vec3  dirCamToVertex = normalize(worldPos - viewPos);
+        float align = dot(dirCamToVertex, forward);
+        focusCull = smoothstep(0.85, 1.0, align);
+    }
 
     // COMBINE
     float finalLevel = distanceLevel * silhouetteBoost;
     finalLevel *= focusCull;
     finalLevel *= uTessQualityMultiplier;
 
-    return step(0, finalLevel) * max(finalLevel, uTessLevelMin);
+    // For shadow pass, ensure a minimum level to prevent light leaking
+    float minLevel = uIsShadowPass ? max(uTessLevelMin, 8.0) : uTessLevelMin;
+
+    return step(0.0, finalLevel) * max(finalLevel, minLevel);
 }
 
 void main() {
@@ -71,29 +77,6 @@ void main() {
     WorldOffset_TC_out[gl_InvocationID] = WorldOffset_VS_out[gl_InvocationID];
 
     if (gl_InvocationID == 0) {
-        if (uIsShadowPass) {
-            // For shadow pass, we need high enough tessellation to ensure the shadow-casting
-            // silhouette matches the rendered geometry, otherwise we get light leaking ("wrapping").
-            // We still use a bit of distance-based scaling but with a much higher floor.
-            float slice = TextureSlice_VS_out[0];
-            vec3 worldOffset = WorldOffset_VS_out[0];
-            vec3 worldPos;
-            vec3 normal;
-            sampleHeightmap(TexCoords_VS_out[0], slice, worldOffset, worldPos, normal);
-            float dist = distance(viewPos, worldPos);
-
-            float shadowTess = mix(32.0, 16.0, clamp(dist / 1000.0, 0.0, 1.0));
-
-            gl_TessLevelOuter[0] = shadowTess;
-            gl_TessLevelOuter[1] = shadowTess;
-            gl_TessLevelOuter[2] = shadowTess;
-            gl_TessLevelOuter[3] = shadowTess;
-
-            gl_TessLevelInner[0] = shadowTess;
-            gl_TessLevelInner[1] = shadowTess;
-            return;
-        }
-
         // Sample heightmap for all 4 corners to get world positions and normals
         float slice = TextureSlice_VS_out[0];
         vec3 worldOffset = WorldOffset_VS_out[0];

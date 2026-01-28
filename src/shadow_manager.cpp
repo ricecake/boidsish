@@ -143,6 +143,10 @@ namespace Boidsish {
 			}
 			center /= (float)corners.size();
 
+			// Snap center to a grid to reduce shadow shimmering during camera movement
+			float grid_size = 5.0f;
+			center = glm::floor(center / grid_size) * grid_size;
+
 			glm::vec3 up = glm::vec3(0.0f, 1.0f, 0.0f);
 			if (std::abs(glm::dot(light_dir, up)) > 0.99f) {
 				up = glm::vec3(0.0f, 0.0f, 1.0f);
@@ -150,7 +154,7 @@ namespace Boidsish {
 
 			// Pull the shadow camera back significantly to avoid clipping tall objects (mountains)
 			// that are between the light and the frustum.
-			float pull_back = scene_radius * 2.0f;
+			float pull_back = scene_radius;
 			light_view = glm::lookAt(center - light_dir * pull_back, center, up);
 
 			float minX = std::numeric_limits<float>::max();
@@ -166,22 +170,21 @@ namespace Boidsish {
 			}
 
 			// Expand the ortho bounds to include casters that are outside the frustum
-			// but could cast shadows into it. For terrain, we need significant padding.
-			float padding = 250.0f;
+			// but could cast shadows into it. Padding should be balanced with resolution.
+			float padding = 100.0f;
 			minX -= padding;
 			maxX += padding;
 			minY -= padding;
 			maxY += padding;
 
-			// Increase the depth range (Z) to accommodate the increased pull-back and large terrain height.
-			// The light is positioned at Z=0 and looking towards -Z.
-			// center is at Z = -pull_back.
-			light_projection = glm::ortho(minX, maxX, minY, maxY, -pull_back * 2.0f, pull_back * 2.0f);
+			// Use a tighter depth range to improve precision.
+			// Center is at distance 'pull_back'. Range should cover 'center' +/- scene_radius.
+			light_projection = glm::ortho(minX, maxX, minY, maxY, 0.0f, pull_back + scene_radius);
 		} else {
 			// Standard shadow map
 			glm::vec3 look_at_pos;
 			glm::vec3 light_pos = light.position;
-			float pull_back = scene_radius * 2.0f;
+			float     pull_back = scene_radius;
 
 			if (light.type == DIRECTIONAL_LIGHT) {
 				light_pos = scene_center - light_dir * pull_back;
@@ -199,9 +202,9 @@ namespace Boidsish {
 
 			light_view = glm::lookAt(light_pos, look_at_pos, up);
 
-			float ortho_size = scene_radius + 250.0f; // Add padding to standard ortho as well
-			// Use the same large symmetric depth range for standard shadow maps
-			light_projection = glm::ortho(-ortho_size, ortho_size, -ortho_size, ortho_size, -pull_back * 2.0f, pull_back * 2.0f);
+			float ortho_size = scene_radius + 100.0f; // Add padding to standard ortho as well
+			// Use a tighter depth range to improve precision.
+			light_projection = glm::ortho(-ortho_size, ortho_size, -ortho_size, ortho_size, 0.0f, pull_back + scene_radius);
 		}
 
 		light_space_matrices_[map_index] = light_projection * light_view;
