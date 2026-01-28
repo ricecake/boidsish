@@ -43,6 +43,8 @@ namespace Boidsish {
 	class Path;
 } // namespace Boidsish
 
+#include "frustum.h"
+
 namespace Boidsish {
 	enum class ShapeCommandType { Add, Remove };
 
@@ -53,15 +55,6 @@ namespace Boidsish {
 	};
 
 	constexpr int kMaxKeys = 1024;
-
-	struct Plane {
-		glm::vec3 normal;
-		float     distance;
-	};
-
-	struct Frustum {
-		Plane planes[6];
-	};
 
 	struct InputState {
 		bool   keys[kMaxKeys];

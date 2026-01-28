@@ -28,18 +28,22 @@ float calculateShadow(int light_index, vec3 frag_pos, vec3 normal, vec3 light_di
 
 	// Handle Cascaded Shadow Maps for directional lights
 	if (lights[light_index].type == LIGHT_TYPE_DIRECTIONAL) {
-		float depth = length(viewPos - frag_pos);
-		int cascade = -1;
+		// Use linear depth along camera forward for more consistent splits
+		float depth = dot(frag_pos - viewPos, viewDir);
+		int   cascade = -1;
 		for (int i = 0; i < MAX_CASCADES; ++i) {
 			if (depth < cascadeSplits[i]) {
 				cascade = i;
 				break;
 			}
 		}
+
 		if (cascade != -1) {
 			shadow_index += cascade;
 		} else {
-			return 1.0; // Beyond last cascade
+			// Fallback to the last cascade for distant shadows
+			// This ensures we still get shadows even if beyond the intended split range
+			shadow_index += MAX_CASCADES - 1;
 		}
 	}
 

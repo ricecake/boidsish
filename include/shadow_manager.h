@@ -4,6 +4,7 @@
 #include <memory>
 #include <vector>
 
+#include "frustum.h"
 #include <GL/glew.h>
 #include <glm/glm.hpp>
 
@@ -133,6 +134,11 @@ namespace Boidsish {
 		 */
 		int GetActiveShadowCount() const { return active_shadow_count_; }
 
+		/**
+		 * @brief Get the world-space frustum for a given shadow map.
+		 */
+		Frustum GetShadowFrustum(int map_index) const;
+
 	private:
 		bool                    initialized_ = false;
 		GLuint                  shadow_fbo_ = 0;
@@ -142,7 +148,7 @@ namespace Boidsish {
 
 		int                                   active_shadow_count_ = 0;
 		std::array<glm::mat4, kMaxShadowMaps> light_space_matrices_;
-		std::array<float, kMaxCascades>       cascade_splits_ = {10.0f, 50.0f, 150.0f, 500.0f};
+		std::array<float, kMaxCascades>       cascade_splits_ = {15.0f, 60.0f, 200.0f, 600.0f};
 
 		// Previous viewport for restoration
 		GLint prev_viewport_[4];

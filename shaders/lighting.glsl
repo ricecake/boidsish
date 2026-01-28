@@ -21,6 +21,7 @@ layout(std140) uniform Lighting {
 	vec3  viewPos;
 	vec3  ambient_light;
 	float time;
+	vec3  viewDir;
 };
 
 // Shadow mapping UBO (binding set via glUniformBlockBinding to point 2)

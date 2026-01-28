@@ -159,6 +159,13 @@ namespace Boidsish {
 		glm::vec3 last_shadow_update_camera_pos{0.0f, -1000.0f, 0.0f};
 		uint64_t  frame_count_ = 0;
 
+		struct ShadowMapState {
+			float debt = 0.0f;
+			int   last_update_frame = 0;
+			bool  needs_update = false;
+		};
+		std::array<ShadowMapState, 16> shadow_map_states_;
+
 		task_thread_pool::task_thread_pool thread_pool;
 		std::unique_ptr<AudioManager>      audio_manager;
 
@@ -253,9 +260,9 @@ namespace Boidsish {
 			const int MAX_LIGHTS = 10;
 			glGenBuffers(1, &lighting_ubo);
 			glBindBuffer(GL_UNIFORM_BUFFER, lighting_ubo);
-			glBufferData(GL_UNIFORM_BUFFER, 688, NULL, GL_DYNAMIC_DRAW);
+			glBufferData(GL_UNIFORM_BUFFER, 704, NULL, GL_DYNAMIC_DRAW);
 			glBindBuffer(GL_UNIFORM_BUFFER, 0);
-			glBindBufferRange(GL_UNIFORM_BUFFER, 0, lighting_ubo, 0, 688);
+			glBindBufferRange(GL_UNIFORM_BUFFER, 0, lighting_ubo, 0, 704);
 
 			if (ConfigManager::GetInstance().GetAppSettingBool("enable_effects", true)) {
 				glGenBuffers(1, &visual_effects_ubo);
@@ -794,7 +801,13 @@ namespace Boidsish {
 			}
 		}
 
-		void RenderTerrain(const glm::mat4& view, const glm::mat4& proj, const std::optional<glm::vec4>& clip_plane, bool is_shadow_pass = false) {
+		void RenderTerrain(
+			const glm::mat4&                view,
+			const glm::mat4&                proj,
+			const std::optional<glm::vec4>& clip_plane,
+			bool                            is_shadow_pass = false,
+			std::optional<Frustum>          shadow_frustum = std::nullopt
+		) {
 			if (!terrain_generator || !ConfigManager::GetInstance().GetAppSettingBool("render_terrain", true))
 				return;
 
@@ -816,21 +829,10 @@ namespace Boidsish {
 			// Use batched render manager if available (single draw call for all chunks)
 			if (terrain_render_manager) {
 				// Calculate frustum for culling
-				Frustum frustum = CalculateFrustum(view, proj);
+				Frustum frustum = shadow_frustum.has_value() ? *shadow_frustum : CalculateFrustum(view, proj);
 
 				// Prepare for rendering (frustum culling for instanced renderer)
-				// For shadow pass, we skip culling to ensure all shadow casters are rendered
-				if (is_shadow_pass) {
-					// Use a very large frustum to effectively disable culling
-					Frustum large_frustum;
-					for (int i = 0; i < 6; ++i) {
-						large_frustum.planes[i].normal = glm::vec3(0, 1, 0);
-						large_frustum.planes[i].distance = 1e6f;
-					}
-					terrain_render_manager->PrepareForRender(large_frustum, camera.pos());
-				} else {
-					terrain_render_manager->PrepareForRender(frustum, camera.pos());
-				}
+				terrain_render_manager->PrepareForRender(frustum, camera.pos());
 
 				terrain_render_manager->Render(
 					*Terrain::terrain_shader_,
@@ -1688,6 +1690,9 @@ namespace Boidsish {
 		glBufferSubData(GL_UNIFORM_BUFFER, offset, sizeof(glm::vec3), &ambient_light[0]);
 		offset += 12;
 		glBufferSubData(GL_UNIFORM_BUFFER, offset, sizeof(float), &impl->simulation_time);
+		offset += 4;
+		offset = (offset + 15) & ~15; // align to 16
+		glBufferSubData(GL_UNIFORM_BUFFER, offset, sizeof(glm::vec3), &impl->camera.front()[0]);
 		glBindBuffer(GL_UNIFORM_BUFFER, 0);
 
 		if (impl->reflection_fbo) {
@@ -1719,91 +1724,109 @@ namespace Boidsish {
 			impl->RenderBlur(kBlurPasses);
 		}
 
-		// Reset all light shadow indices to -1 before the shadow pass
-		// This prevents stale indices from causing undefined behavior
-		for (auto& light : impl->light_manager.GetLights()) {
-			light.shadow_map_index = -1;
-		}
-
 		// --- Shadow Pass (render depth from each shadow-casting light) ---
-		std::vector<Light*> shadow_lights; // Declare outside the if block
-
 		if (impl->shadow_manager && impl->shadow_manager->IsInitialized()) {
-			shadow_lights = impl->light_manager.GetShadowCastingLights();
-			int current_map_index = 0;
+			std::vector<Light*> shadow_lights = impl->light_manager.GetShadowCastingLights();
 
-			for (size_t i = 0; i < shadow_lights.size() && current_map_index < ShadowManager::kMaxShadowMaps; ++i) {
-				Light* light = shadow_lights[i];
-				light->shadow_map_index = current_map_index;
+			// 1. Assign stable map indices and identify maps
+			for (auto& light : impl->light_manager.GetLights()) {
+				light.shadow_map_index = -1;
+			}
 
-				bool light_has_moved = glm::distance(light->position, light->last_position) > 0.1f ||
-					glm::distance(light->direction, light->last_direction) > 0.1f;
-				bool camera_moved = glm::distance(impl->camera.pos(), impl->last_shadow_update_camera_pos) > 2.0f;
-				bool should_update_any = impl->camera_is_close_to_scene &&
-					(impl->any_shadow_caster_moved || light_has_moved || (has_terrain && camera_moved));
-
+			struct MapUpdateInfo {
+				int    map_index;
+				Light* light;
+				int    cascade_index; // -1 for standard
+				float  weight;
+			};
+			std::vector<MapUpdateInfo> shadow_map_registry;
+			int                        next_map_idx = 0;
+			for (auto light : shadow_lights) {
+				if (next_map_idx >= ShadowManager::kMaxShadowMaps)
+					break;
+				light->shadow_map_index = next_map_idx;
 				if (light->type == DIRECTIONAL_LIGHT) {
-					// Cascaded Shadow Maps
-					static const int cascade_intervals[] = {1, 2, 5, 10};
-
-					for (int cascade = 0; cascade < ShadowManager::kMaxCascades && current_map_index < ShadowManager::kMaxShadowMaps; ++cascade) {
-						if (should_update_any && (impl->frame_count_ % cascade_intervals[cascade] == 0)) {
-							impl->shadow_manager->BeginShadowPass(
-								current_map_index,
-								*light,
-								scene_center,
-								500.0f,
-								cascade,
-								view_matrix,
-								impl->camera.fov,
-								(float)impl->width / (float)impl->height
-							);
-
-							Shader& shadow_shader = impl->shadow_manager->GetShadowShader();
-							shadow_shader.use();
-							for (const auto& shape : impl->shapes) {
-								if (shape->CastsShadows()) {
-									shape->render(shadow_shader);
-								}
-							}
-
-							glDisable(GL_CULL_FACE);
-							impl->RenderTerrain(impl->shadow_manager->GetLightSpaceMatrix(current_map_index), glm::mat4(1.0f), std::nullopt, true);
-							glEnable(GL_CULL_FACE);
-							glCullFace(GL_FRONT);
-
-							impl->shadow_manager->EndShadowPass();
+					for (int c = 0; c < ShadowManager::kMaxCascades; ++c) {
+						if (next_map_idx < ShadowManager::kMaxShadowMaps) {
+							float weight = (c == 0) ? 10.0f : (c == 1) ? 5.0f : (c == 2) ? 2.0f : 1.0f;
+							shadow_map_registry.push_back({next_map_idx++, light, c, weight});
 						}
-						current_map_index++;
 					}
 				} else {
-					// Standard Shadow Map
-					if (should_update_any) {
-						impl->shadow_manager->BeginShadowPass(current_map_index, *light, scene_center);
+					shadow_map_registry.push_back({next_map_idx++, light, -1, 5.0f});
+				}
+			}
 
-						Shader& shadow_shader = impl->shadow_manager->GetShadowShader();
-						shadow_shader.use();
-						for (const auto& shape : impl->shapes) {
-							if (shape->CastsShadows()) {
-								shape->render(shadow_shader);
-							}
-						}
+			// 2. Identify maps that need update and calculate priorities
+			bool  camera_moved = glm::distance(impl->camera.pos(), impl->last_shadow_update_camera_pos) > 2.0f;
+			int   best_map_to_update = -1;
+			float max_debt = -1.0f;
 
-						glDisable(GL_CULL_FACE);
-						impl->RenderTerrain(impl->shadow_manager->GetLightSpaceMatrix(current_map_index), glm::mat4(1.0f), std::nullopt, true);
-						glEnable(GL_CULL_FACE);
-						glCullFace(GL_FRONT);
+			for (const auto& info : shadow_map_registry) {
+				auto& state = impl->shadow_map_states_[info.map_index];
+				bool  light_moved = glm::distance(info.light->position, info.light->last_position) > 0.1f ||
+				                   glm::distance(info.light->direction, info.light->last_direction) > 0.1f;
 
-						impl->shadow_manager->EndShadowPass();
+				bool movement_detected = impl->any_shadow_caster_moved || light_moved || (has_terrain && camera_moved);
+				bool should_update = impl->camera_is_close_to_scene && movement_detected;
+
+				if (should_update) {
+					state.debt += info.weight;
+				} else {
+					// Even if no movement, slowly increment debt to eventually refresh if it hasn't been updated in forever
+					state.debt += 0.01f;
+				}
+
+				if (state.debt > max_debt && state.debt >= 10.0f) {
+					max_debt = state.debt;
+					best_map_to_update = info.map_index;
+				}
+			}
+
+			// 3. Update at most ONE map per frame
+			if (best_map_to_update != -1) {
+				const auto& info = shadow_map_registry[best_map_to_update];
+				auto&       state = impl->shadow_map_states_[best_map_to_update];
+
+				impl->shadow_manager->BeginShadowPass(
+					info.map_index,
+					*info.light,
+					scene_center,
+					500.0f,
+					info.cascade_index,
+					view_matrix,
+					impl->camera.fov,
+					(float)impl->width / (float)impl->height
+				);
+
+				Shader& shadow_shader = impl->shadow_manager->GetShadowShader();
+				shadow_shader.use();
+				for (const auto& shape : impl->shapes) {
+					if (shape->CastsShadows()) {
+						shape->render(shadow_shader);
 					}
-					current_map_index++;
 				}
 
-				if (should_update_any) {
-					light->last_position = light->position;
-					light->last_direction = light->direction;
-					impl->last_shadow_update_camera_pos = impl->camera.pos();
-				}
+				glDisable(GL_CULL_FACE);
+				impl->RenderTerrain(
+					impl->shadow_manager->GetLightSpaceMatrix(info.map_index),
+					glm::mat4(1.0f),
+					std::nullopt,
+					true,
+					impl->shadow_manager->GetShadowFrustum(info.map_index)
+				);
+				glEnable(GL_CULL_FACE);
+				glCullFace(GL_FRONT);
+
+				impl->shadow_manager->EndShadowPass();
+
+				state.debt = 0.0f;
+				state.last_update_frame = impl->frame_count_;
+
+				// Update last known positions if any light was updated
+				info.light->last_position = info.light->position;
+				info.light->last_direction = info.light->direction;
+				impl->last_shadow_update_camera_pos = impl->camera.pos();
 			}
 
 			impl->shadow_manager->UpdateShadowUBO(shadow_lights);
