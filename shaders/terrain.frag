@@ -383,7 +383,7 @@ void main() {
     //    finalAlbedo = mix(finalAlbedo, vec3(1,0.5,0.25), curvature * 0.05);
 
 	// vec3 lighting = apply_lighting(FragPos, norm, finalAlbedo, 0.8);
-	vec3 lighting = apply_lighting_pbr(FragPos, norm, finalAlbedo, 0.5, 0.1, 1.0);
+	vec3 lighting = apply_lighting_pbr(FragPos, norm, finalAlbedo, 0.5, 0.1, 1.0).rgb;
 
 	// ========================================================================
 	// Distance Fade

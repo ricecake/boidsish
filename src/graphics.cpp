@@ -26,6 +26,7 @@
 #include "path.h"
 #include "post_processing/PostProcessingManager.h"
 #include "post_processing/effects/BloomEffect.h"
+#include "post_processing/effects/AtmosphereEffect.h"
 #include "post_processing/effects/FilmGrainEffect.h"
 #include "post_processing/effects/GlitchEffect.h"
 #include "post_processing/effects/NegativeEffect.h"
@@ -509,6 +510,10 @@ namespace Boidsish {
 				auto film_grain_effect = std::make_shared<PostProcessing::FilmGrainEffect>();
 				film_grain_effect->SetEnabled(false);
 				post_processing_manager_->AddEffect(film_grain_effect);
+
+				auto atmosphere_effect = std::make_shared<PostProcessing::AtmosphereEffect>();
+				atmosphere_effect->SetEnabled(true);
+				post_processing_manager_->AddEffect(atmosphere_effect);
 
 				auto bloom_effect = std::make_shared<PostProcessing::BloomEffect>(width, height);
 				bloom_effect->SetEnabled(false);
@@ -1781,13 +1786,16 @@ namespace Boidsish {
 
 		if (ConfigManager::GetInstance().GetAppSettingBool("enable_effects", true)) {
 			// --- Post-processing Pass (renders FBO texture to screen) ---
-			// Update time-dependent effects
-			for (auto& effect : impl->post_processing_manager_->GetPreToneMappingEffects()) {
-				effect->SetTime(impl->simulation_time);
-			}
 
 			// Apply standard post-processing effects
-			GLuint final_texture = impl->post_processing_manager_->ApplyEffects(impl->main_fbo_texture_);
+			GLuint final_texture = impl->post_processing_manager_->ApplyEffects(
+				impl->main_fbo_texture_,
+				impl->main_fbo_depth_texture_,
+				view,
+				impl->projection,
+				impl->camera.pos(),
+				impl->simulation_time
+			);
 
 			glBindFramebuffer(GL_FRAMEBUFFER, 0);
 			glDisable(GL_DEPTH_TEST);

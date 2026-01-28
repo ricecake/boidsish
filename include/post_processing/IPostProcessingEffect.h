@@ -4,6 +4,7 @@
 #include <string>
 
 #include <GL/glew.h>
+#include <glm/glm.hpp>
 
 namespace Boidsish {
 	namespace PostProcessing {
@@ -12,7 +13,13 @@ namespace Boidsish {
 		public:
 			virtual ~IPostProcessingEffect() = default;
 
-			virtual void Apply(GLuint sourceTexture) = 0;
+			virtual void Apply(
+				GLuint           sourceTexture,
+				GLuint           depthTexture,
+				const glm::mat4& viewMatrix,
+				const glm::mat4& projectionMatrix,
+				const glm::vec3& cameraPos
+			) = 0;
 			virtual void Initialize(int width, int height) = 0;
 			virtual void Resize(int width, int height) = 0;
 
