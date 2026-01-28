@@ -140,8 +140,8 @@ namespace Boidsish {
 
 		void ApplyWeightedBiome(float control_value, BiomeAttributes& current) const;
 
-		const int view_distance_ = 10;        // in chunks
-		const int kUnloadDistanceBuffer_ = 2; // in chunks
+		const int view_distance_ = 10;         // in chunks
+		const int kUnloadDistanceBuffer_ = 12; // in chunks
 		const int chunk_size_ = 32;
 		int       octaves_ = 4;
 		float     lacunarity_ = 0.99f;

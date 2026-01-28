@@ -85,26 +85,47 @@ namespace Boidsish {
 		int   dynamic_view_distance = std::min(24, static_cast<int>(view_distance_ * height_factor));
 
 		// Enqueue generation of new chunks
+		const float max_amplitude = std::ranges::max(std::views::transform(biomes, &BiomeAttributes::floorLevel));
 		for (int x = current_chunk_x - dynamic_view_distance; x <= current_chunk_x + dynamic_view_distance; ++x) {
 			for (int z = current_chunk_z - dynamic_view_distance; z <= current_chunk_z + dynamic_view_distance; ++z) {
-				if (isChunkInFrustum(
-						frustum,
-						x,
-						z,
-						chunk_size_,
-						std::ranges::max(std::views::transform(biomes, &BiomeAttributes::floorLevel))
-					)) {
-					std::pair<int, int> chunk_coord = {x, z};
-					{
-						std::lock_guard<std::mutex> cache_lock(chunk_cache_mutex_);
-						if (chunk_cache_.find(chunk_coord) == chunk_cache_.end() &&
-						    pending_chunks_.find(chunk_coord) == pending_chunks_.end()) {
-							pending_chunks_.emplace(
-								chunk_coord,
-								thread_pool_
-									.enqueue(TaskPriority::MEDIUM, &TerrainGenerator::generateChunkData, this, x, z)
+				bool in_frustum = isChunkInFrustum(frustum, x, z, chunk_size_, max_amplitude);
+
+				// We enqueue chunks within dynamic_view_distance regardless of frustum
+				// to pre-warm the cache, but with different priorities.
+				std::pair<int, int> chunk_coord = {x, z};
+				{
+					std::lock_guard<std::mutex> cache_lock(chunk_cache_mutex_);
+					if (chunk_cache_.find(chunk_coord) == chunk_cache_.end() &&
+					    pending_chunks_.find(chunk_coord) == pending_chunks_.end()) {
+
+						TaskPriority priority = TaskPriority::LOW;
+						if (in_frustum) {
+							glm::vec3 chunk_center(
+								x * chunk_size_ + chunk_size_ / 2.0f,
+								0.0f,
+								z * chunk_size_ + chunk_size_ / 2.0f
 							);
+							glm::vec3 cam_pos(camera.x, 0.0f, camera.z);
+							glm::vec3 to_chunk = chunk_center - cam_pos;
+							float     dist_sq = glm::dot(to_chunk, to_chunk);
+
+							if (dist_sq < (chunk_size_ * chunk_size_ * 4)) { // Within ~2 chunks
+								priority = TaskPriority::HIGH;
+							} else {
+								glm::vec3 dir = glm::normalize(to_chunk);
+								float     dot = glm::dot(camera.front(), dir);
+								if (dot > 0.707f) { // Within ~45 degrees of camera front
+									priority = TaskPriority::HIGH;
+								} else {
+									priority = TaskPriority::MEDIUM;
+								}
+							}
 						}
+
+						pending_chunks_.emplace(
+							chunk_coord,
+							thread_pool_.enqueue(priority, &TerrainGenerator::generateChunkData, this, x, z)
+						);
 					}
 				}
 			}
@@ -183,7 +204,7 @@ namespace Boidsish {
 			std::lock_guard<std::mutex> cache_lock(chunk_cache_mutex_);
 			visible_chunks_.clear();
 			for (auto const& [key, val] : chunk_cache_) {
-				if (val) {
+				if (val && isChunkInFrustum(frustum, key.first, key.second, chunk_size_, max_amplitude)) {
 					visible_chunks_.push_back(val);
 				}
 			}
