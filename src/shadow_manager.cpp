@@ -143,30 +143,28 @@ namespace Boidsish {
 			}
 			center /= (float)corners.size();
 
-			light_view = glm::lookAt(center - light_dir * scene_radius, center, glm::vec3(0.0f, 1.0f, 0.0f));
+			glm::vec3 up = glm::vec3(0.0f, 1.0f, 0.0f);
+			if (std::abs(glm::dot(light_dir, up)) > 0.99f) {
+				up = glm::vec3(0.0f, 0.0f, 1.0f);
+			}
+			light_view = glm::lookAt(center - light_dir * scene_radius, center, up);
 
 			float minX = std::numeric_limits<float>::max();
 			float maxX = std::numeric_limits<float>::lowest();
 			float minY = std::numeric_limits<float>::max();
 			float maxY = std::numeric_limits<float>::lowest();
-			float minZ = std::numeric_limits<float>::max();
-			float maxZ = std::numeric_limits<float>::lowest();
 			for (const auto& v : corners) {
 				const auto trf = light_view * v;
 				minX = std::min(minX, trf.x);
 				maxX = std::max(maxX, trf.x);
 				minY = std::min(minY, trf.y);
 				maxY = std::max(maxY, trf.y);
-				minZ = std::min(minZ, trf.z);
-				maxZ = std::max(maxZ, trf.z);
 			}
 
-			// Tune these factors to ensure all geometry is included
-			float zMult = 10.0f;
-			if (minZ < 0) minZ *= zMult; else minZ /= zMult;
-			if (maxZ < 0) maxZ /= zMult; else maxZ *= zMult;
-
-			light_projection = glm::ortho(minX, maxX, minY, maxY, minZ, maxZ);
+			// Use a fixed large depth range to include all potential casters
+			// The light is positioned at Z=0 and looking towards -Z.
+			// center is at Z=-scene_radius.
+			light_projection = glm::ortho(minX, maxX, minY, maxY, -scene_radius * 2.0f, scene_radius * 2.0f);
 		} else {
 			// Standard shadow map
 			glm::vec3 look_at_pos;
@@ -189,11 +187,8 @@ namespace Boidsish {
 			light_view = glm::lookAt(light_pos, look_at_pos, up);
 
 			float ortho_size = scene_radius;
-			float light_to_center_dist = glm::length(light_pos - scene_center);
-			float near_plane = std::max(0.1f, light_to_center_dist - scene_radius * 1.5f);
-			float far_plane = light_to_center_dist + scene_radius * 1.5f;
-
-			light_projection = glm::ortho(-ortho_size, ortho_size, -ortho_size, ortho_size, near_plane, far_plane);
+			// Use the same large symmetric depth range for standard shadow maps
+			light_projection = glm::ortho(-ortho_size, ortho_size, -ortho_size, ortho_size, -scene_radius * 2.0f, scene_radius * 2.0f);
 		}
 
 		light_space_matrices_[map_index] = light_projection * light_view;

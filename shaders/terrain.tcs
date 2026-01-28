@@ -81,11 +81,10 @@ void main() {
             sampleHeightmap(TexCoords_VS_out[0], slice, worldOffset, worldPos, normal);
             float dist = distance(viewPos, worldPos);
 
-
             vec3  viewDir = normalize(viewPos - worldPos);
             float dotProd = dot(normalize(normal), viewDir);
             float isSilhouette = 1.0 - abs(dotProd);
-            float shadowTess = mix(1.0, max(8.0, uTessLevelMin), isSilhouette * (1 - dist / 500.0));
+            float shadowTess = mix(8.0, 16.0, isSilhouette * (1.0 - clamp(dist / 500.0, 0.0, 1.0)));
 
             gl_TessLevelOuter[0] = shadowTess;
             gl_TessLevelOuter[1] = shadowTess;
@@ -116,36 +115,25 @@ void main() {
         float dot30 = abs(dot(normal3, normal0));
 
 		// Create curvature factors per-edge to ensure consistency between adjacent patches.
-		// If the factor used only two vertices of the edge, it will be identical for the same edge in both patches.
-		float curv01 = 1.0 - smoothstep(0.95, 0.99, dot01) * 0.9;
-		float curv12 = 1.0 - smoothstep(0.95, 0.99, dot12) * 0.9;
-		float curv23 = 1.0 - smoothstep(0.95, 0.99, dot23) * 0.9;
-		float curv30 = 1.0 - smoothstep(0.95, 0.99, dot30) * 0.9;
+		float curv01 = 1.0 + (1.0 - smoothstep(0.95, 0.99, dot01)) * 2.0;
+		float curv12 = 1.0 + (1.0 - smoothstep(0.95, 0.99, dot12)) * 2.0;
+		float curv23 = 1.0 + (1.0 - smoothstep(0.95, 0.99, dot23)) * 2.0;
+		float curv30 = 1.0 + (1.0 - smoothstep(0.95, 0.99, dot30)) * 2.0;
 
         float l0 = GetVertexTessLevel(worldPos0, normal0, viewForward[0]);
         float l1 = GetVertexTessLevel(worldPos1, normal1, viewForward[1]);
         float l2 = GetVertexTessLevel(worldPos2, normal2, viewForward[2]);
         float l3 = GetVertexTessLevel(worldPos3, normal3, viewForward[3]);
 
-        // Correct edge mapping for quad tessellation:
-        // Edge 0: Left (u=0, connects p0 and p3)
-        // Edge 1: Bottom (v=0, connects p0 and p1)
-        // Edge 2: Right (u=1, connects p1 and p2)
-        // Edge 3: Top (v=1, connects p2 and p3)
-        float edge0 = (l0 + l3) * 0.5 * curvatureFactor;
-        float edge1 = (l0 + l1) * 0.5 * curvatureFactor;
-        float edge2 = (l1 + l2) * 0.5 * curvatureFactor;
-        float edge3 = (l2 + l3) * 0.5 * curvatureFactor;
-
 		// Correct Mapping for Quads:
 		// gl_TessLevelOuter[0] -> u=0 (edge 3-0)
 		// gl_TessLevelOuter[1] -> v=0 (edge 0-1)
 		// gl_TessLevelOuter[2] -> u=1 (edge 1-2)
 		// gl_TessLevelOuter[3] -> v=1 (edge 2-3)
-		gl_TessLevelOuter[0] = clamp(level30, uTessLevelMin, uTessLevelMax);
-		gl_TessLevelOuter[1] = clamp(level01, uTessLevelMin, uTessLevelMax);
-		gl_TessLevelOuter[2] = clamp(level12, uTessLevelMin, uTessLevelMax);
-		gl_TessLevelOuter[3] = clamp(level23, uTessLevelMin, uTessLevelMax);
+		gl_TessLevelOuter[0] = clamp((l3 + l0) * 0.5 * curv30, uTessLevelMin, uTessLevelMax);
+		gl_TessLevelOuter[1] = clamp((l0 + l1) * 0.5 * curv01, uTessLevelMin, uTessLevelMax);
+		gl_TessLevelOuter[2] = clamp((l1 + l2) * 0.5 * curv12, uTessLevelMin, uTessLevelMax);
+		gl_TessLevelOuter[3] = clamp((l2 + l3) * 0.5 * curv23, uTessLevelMin, uTessLevelMax);
 
 		gl_TessLevelInner[0] = max(gl_TessLevelOuter[0], gl_TessLevelOuter[2]);
 		gl_TessLevelInner[1] = max(gl_TessLevelOuter[1], gl_TessLevelOuter[3]);
