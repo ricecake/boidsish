@@ -829,7 +829,18 @@ namespace Boidsish {
 				Frustum frustum = CalculateFrustum(view, proj);
 
 				// Prepare for rendering (frustum culling for instanced renderer)
-				terrain_render_manager->PrepareForRender(frustum, camera.pos());
+				// For shadow pass, we skip culling to ensure all shadow casters are rendered
+				if (is_shadow_pass) {
+					// Use a very large frustum to effectively disable culling
+					Frustum large_frustum;
+					for (int i = 0; i < 6; ++i) {
+						large_frustum.planes[i].normal = glm::vec3(0, 1, 0);
+						large_frustum.planes[i].distance = 1e6f;
+					}
+					terrain_render_manager->PrepareForRender(large_frustum, camera.pos());
+				} else {
+					terrain_render_manager->PrepareForRender(frustum, camera.pos());
+				}
 
 				terrain_render_manager->Render(
 					*Terrain::terrain_shader_,
