@@ -59,10 +59,6 @@
 #include <shader.h>
 
 namespace Boidsish {
-	constexpr float kMinCameraHeight = 0.1f;
-	constexpr float kMinCameraSpeed = 0.5f;
-	constexpr int   kBlurPasses = 4;
-
 	struct Visualizer::VisualizerImpl {
 		Visualizer*                           parent;
 		GLFWwindow*                           window;
@@ -135,7 +131,7 @@ namespace Boidsish {
 		int                   path_segment_index_ = 0;
 		float                 path_t_ = 0.0f;
 		int                   path_direction_ = 1;
-		float                 path_speed_ = 20.0f; // TODO: make configurable
+		float                 path_speed_ = Constants::Project::Camera::DefaultPathSpeed();
 		glm::quat             path_orientation_ = glm::quat(1.0f, 0.0f, 0.0f, 0.0f);
 		float                 path_auto_bank_angle_ = 0.0f;
 
@@ -159,7 +155,7 @@ namespace Boidsish {
 		// Shadow optimization state
 		bool      any_shadow_caster_moved = true;
 		bool      camera_is_close_to_scene = true;
-		float     shadow_update_distance_threshold = 200.0f;
+		float     shadow_update_distance_threshold = Constants::Class::Shadows::UpdateDistanceThreshold();
 		glm::vec3 last_shadow_update_camera_pos{0.0f, -1000.0f, 0.0f};
 
 		task_thread_pool::task_thread_pool thread_pool;
@@ -173,8 +169,8 @@ namespace Boidsish {
 			is_fullscreen_ = ConfigManager::GetInstance().GetAppSettingBool("fullscreen", false);
 
 			// Cache global settings
-			camera_roll_speed_ = ConfigManager::GetInstance().GetGlobalSettingFloat("camera_roll_speed", 45.0f);
-			camera_speed_step_ = ConfigManager::GetInstance().GetGlobalSettingFloat("camera_speed_step", 2.5f);
+			camera_roll_speed_ = ConfigManager::GetInstance().GetGlobalSettingFloat("camera_roll_speed", Constants::Project::Camera::RollSpeed());
+			camera_speed_step_ = ConfigManager::GetInstance().GetGlobalSettingFloat("camera_speed_step", Constants::Project::Camera::SpeedStep());
 
 			exit_key = GLFW_KEY_ESCAPE;
 			input_callbacks.push_back([this](const InputState& state) { this->DefaultInputHandler(state); });
@@ -960,8 +956,8 @@ namespace Boidsish {
 					camera.roll -= camera_roll_speed_ * state.delta_time;
 				if (state.keys[GLFW_KEY_E])
 					camera.roll += camera_roll_speed_ * state.delta_time;
-				if (camera.y < kMinCameraHeight)
-					camera.y = kMinCameraHeight;
+				if (camera.y < Constants::Project::Camera::MinHeight())
+					camera.y = Constants::Project::Camera::MinHeight();
 
 				float sensitivity = 1.f;
 				float xoffset = state.mouse_delta_x * sensitivity;
@@ -1025,8 +1021,8 @@ namespace Boidsish {
 			// Camera speed adjustment
 			if (state.key_down[GLFW_KEY_LEFT_BRACKET]) {
 				camera.speed -= camera_speed_step_;
-				if (camera.speed < kMinCameraSpeed)
-					camera.speed = kMinCameraSpeed;
+				if (camera.speed < Constants::Project::Camera::MinSpeed())
+					camera.speed = Constants::Project::Camera::MinSpeed();
 			}
 			if (state.key_down[GLFW_KEY_RIGHT_BRACKET]) {
 				camera.speed += camera_speed_step_;
@@ -1163,8 +1159,8 @@ namespace Boidsish {
 			camera.y = new_pos.y;
 			camera.z = new_pos.z;
 
-			if (camera.y < kMinCameraHeight)
-				camera.y = kMinCameraHeight;
+			if (camera.y < Constants::Project::Camera::MinHeight())
+				camera.y = Constants::Project::Camera::MinHeight();
 
 			float dx = mean_x - camera.x;
 			float dy = mean_y - camera.y;
@@ -1172,8 +1168,8 @@ namespace Boidsish {
 
 			float distance_xz = sqrt(dx * dx + dz * dz);
 
-			camera.yaw = atan2(dx, -dz) * 180.0f / M_PI;
-			camera.pitch = atan2(dy, distance_xz) * 180.0f / M_PI;
+			camera.yaw = atan2(dx, -dz) * 180.0f / Constants::General::Math::Pi();
+			camera.pitch = atan2(dy, distance_xz) * 180.0f / Constants::General::Math::Pi();
 			camera.pitch = std::max(-89.0f, std::min(30.0f, camera.pitch));
 		}
 
@@ -1207,8 +1203,8 @@ namespace Boidsish {
 			camera.x = new_cam_pos.x;
 			camera.y = new_cam_pos.y;
 			camera.z = new_cam_pos.z;
-			if (camera.y < kMinCameraHeight)
-				camera.y = kMinCameraHeight;
+			if (camera.y < Constants::Project::Camera::MinHeight())
+				camera.y = Constants::Project::Camera::MinHeight();
 
 			// 4. Calculate desired orientation based on look-at
 			glm::vec3 front = glm::normalize(look_at_pos - new_cam_pos);
@@ -1256,8 +1252,8 @@ namespace Boidsish {
 			camera.y = camera_pos.y;
 			camera.z = camera_pos.z;
 
-			if (camera.y < kMinCameraHeight)
-				camera.y = kMinCameraHeight;
+			if (camera.y < Constants::Project::Camera::MinHeight())
+				camera.y = Constants::Project::Camera::MinHeight();
 
 			glm::vec3 front = glm::normalize(target_pos - camera_pos);
 
@@ -1325,8 +1321,8 @@ namespace Boidsish {
 			path_orientation_ = glm::slerp(path_orientation_, final_orientation, lerp_factor);
 
 			// Ensure camera stays above a minimum height
-			if (camera.y < kMinCameraHeight)
-				camera.y = kMinCameraHeight;
+			if (camera.y < Constants::Project::Camera::MinHeight())
+				camera.y = Constants::Project::Camera::MinHeight();
 		}
 
 		static void KeyCallback(GLFWwindow* w, int key, int /* sc */, int action, int /* mods */) {
@@ -1336,7 +1332,7 @@ namespace Boidsish {
 				return;
 			}
 
-			if (key >= 0 && key < kMaxKeys) {
+			if (key >= 0 && key < Constants::Library::Input::MaxKeys()) {
 				if (action == GLFW_PRESS) {
 					impl->input_state.keys[key] = true;
 					impl->input_state.key_down[key] = true;
@@ -1365,7 +1361,7 @@ namespace Boidsish {
 
 		static void MouseButtonCallback(GLFWwindow* w, int button, int action, int mods) {
 			auto* impl = static_cast<VisualizerImpl*>(glfwGetWindowUserPointer(w));
-			if (button >= 0 && button < 8) {
+			if (button >= 0 && button < Constants::Library::Input::MaxMouseButtons()) {
 				if (action == GLFW_PRESS) {
 					impl->input_state.mouse_buttons[button] = true;
 					impl->input_state.mouse_button_down[button] = true;
@@ -1455,10 +1451,10 @@ namespace Boidsish {
 
 	void Visualizer::Update() {
 		// Reset per-frame input state
-		std::fill_n(impl->input_state.key_down, kMaxKeys, false);
-		std::fill_n(impl->input_state.key_up, kMaxKeys, false);
-		std::fill_n(impl->input_state.mouse_button_down, 8, false);
-		std::fill_n(impl->input_state.mouse_button_up, 8, false);
+		std::fill_n(impl->input_state.key_down, Constants::Library::Input::MaxKeys(), false);
+		std::fill_n(impl->input_state.key_up, Constants::Library::Input::MaxKeys(), false);
+		std::fill_n(impl->input_state.mouse_button_down, Constants::Library::Input::MaxMouseButtons(), false);
+		std::fill_n(impl->input_state.mouse_button_up, Constants::Library::Input::MaxMouseButtons(), false);
 		impl->input_state.mouse_delta_x = 0;
 		impl->input_state.mouse_delta_y = 0;
 
@@ -1587,7 +1583,7 @@ namespace Boidsish {
 		// If we are far from the shapes, or if terrain is the focus, center on camera.
 		if (has_terrain || distance_to_scene > impl->shadow_update_distance_threshold) {
 			// Snap scene_center to a grid to reduce shadow flickering when camera moves
-			float grid_size = 10.0f;
+			float grid_size = Constants::Class::Shadows::GridSnappingSize();
 			scene_center.x = std::floor(impl->camera.pos().x / grid_size) * grid_size;
 			scene_center.y = std::floor(impl->camera.pos().y / grid_size) * grid_size;
 			scene_center.z = std::floor(impl->camera.pos().z / grid_size) * grid_size;
@@ -1733,7 +1729,7 @@ namespace Boidsish {
 			glDisable(GL_CLIP_DISTANCE0);
 
 			// --- Blur Pre-Pass ---
-			impl->RenderBlur(kBlurPasses);
+			impl->RenderBlur(Constants::Class::Rendering::BlurPasses());
 		}
 
 		// Reset all light shadow indices to -1 before the shadow pass
@@ -2266,10 +2262,10 @@ namespace Boidsish {
 
 		// Add the shockwave effect
 		float     max_radius = 30.0f * intensity;
-		float     duration = 1.2f * intensity;
-		float     wave_intensity = 0.5f * intensity;
-		float     ring_width = 4.0f * intensity;
-		glm::vec3 color(1.0f, 0.5f, 0.1f); // Orange-ish explosion color
+		float     duration = Constants::Class::Shockwaves::DefaultDuration() * intensity;
+		float     wave_intensity = Constants::Class::Shockwaves::DefaultIntensity() * intensity;
+		float     ring_width = (Constants::Class::Shockwaves::DefaultRingWidth() + 1.0f) * intensity;
+		glm::vec3 color = Constants::Class::Shockwaves::DefaultColor();
 
 		// Assume explosion is on a flat surface for the shockwave plane
 		glm::vec3 normal(0.0f, 1.0f, 0.0f);

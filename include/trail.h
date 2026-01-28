@@ -6,6 +6,7 @@
 
 #include "shader.h"
 #include "vector.h"
+#include "constants.h"
 #include <GL/glew.h>
 #include <glm/glm.hpp>
 
@@ -13,7 +14,7 @@ namespace Boidsish {
 
 	class Trail {
 	public:
-		Trail(int max_length = 250);
+		Trail(int max_length = Constants::Class::Trails::DefaultMaxLength());
 		~Trail();
 
 		void AddPoint(glm::vec3 position, glm::vec3 color);
@@ -106,15 +107,15 @@ namespace Boidsish {
 		bool                                       iridescent_ = false;
 		bool                                       useRocketTrail_ = false;
 		bool                                       usePBR_ = false;
-		float                                      roughness_ = 0.3f;
-		float                                      metallic_ = 0.0f;
+		float                                      roughness_ = Constants::Class::Trails::DefaultRoughness();
+		float                                      metallic_ = Constants::Class::Trails::DefaultMetallic();
 		bool                                       managed_by_render_manager_ = false;
 
 		// Configuration
-		const int   TRAIL_SEGMENTS = 8;                        // Circular segments around trail
-		const int   CURVE_SEGMENTS = 4;                        // Interpolation segments per point
+		const int   TRAIL_SEGMENTS = Constants::Class::Trails::Segments();                        // Circular segments around trail
+		const int   CURVE_SEGMENTS = Constants::Class::Trails::CurveSegments();                        // Interpolation segments per point
 		const int   VERTS_PER_STEP = (TRAIL_SEGMENTS + 1) * 2; // For 8 segments, this is 18
-		const float BASE_THICKNESS = 0.06f;                    // Maximum thickness at trail start
+		const float BASE_THICKNESS = Constants::Class::Trails::BaseThickness();                    // Maximum thickness at trail start
 	};
 
 } // namespace Boidsish

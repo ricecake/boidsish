@@ -1,6 +1,7 @@
 #pragma once
 
 #include "shape.h"
+#include "constants.h"
 #include <GL/glew.h>
 
 namespace Boidsish {
@@ -12,9 +13,9 @@ namespace Boidsish {
 			float x = 0.0f,
 			float y = 0.0f,
 			float z = 0.0f,
-			float cone_height = 0.2f,
-			float cone_radius = 0.1f,
-			float rod_radius = 0.05f,
+			float cone_height = Constants::Class::Shapes::Arrow::DefaultConeHeight(),
+			float cone_radius = Constants::Class::Shapes::Arrow::DefaultConeRadius(),
+			float rod_radius = Constants::Class::Shapes::Arrow::DefaultRodRadius(),
 			float r = 1.0f,
 			float g = 1.0f,
 			float b = 1.0f,
