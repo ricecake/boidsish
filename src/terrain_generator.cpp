@@ -82,37 +82,35 @@ namespace Boidsish {
 		float height_factor = std::max(1.0f, camera.y / 5.0f);
 		int   dynamic_view_distance = std::min(24, static_cast<int>(view_distance_ * height_factor));
 
-		// Enqueue generation of new chunks
-		// Generate all chunks within view distance, regardless of frustum
-		// (frustum culling happens at render time, not generation time)
+		float max_h = 0.0f;
+		for (const auto& b : biomes) {
+			max_h = std::max(max_h, b.floorLevel);
+		}
+
+		std::lock_guard<std::recursive_mutex> lock(chunk_cache_mutex_);
+
+		// 1. Enqueue generation of new chunks within view distance
+		// Priority is HIGH for chunks in the frustum, and LOW for those outside
 		for (int x = current_chunk_x - dynamic_view_distance; x <= current_chunk_x + dynamic_view_distance; ++x) {
 			for (int z = current_chunk_z - dynamic_view_distance; z <= current_chunk_z + dynamic_view_distance; ++z) {
-				if (isChunkInFrustum(
-						frustum,
-						x,
-						z,
-						chunk_size_,
-						std::ranges::max(std::views::transform(biomes, &BiomeAttributes::floorLevel))
-					)) {
-					std::pair<int, int> chunk_coord = {x, z};
-					{
-						if (chunk_cache_.find(chunk_coord) == chunk_cache_.end() &&
-							pending_chunks_.find(chunk_coord) == pending_chunks_.end()) {
-							pending_chunks_.emplace(
-								chunk_coord,
-								thread_pool_
-									.enqueue(TaskPriority::MEDIUM, &TerrainGenerator::generateChunkData, this, x, z)
-							);
-						}
-					}
+				std::pair<int, int> chunk_coord = {x, z};
+				if (chunk_cache_.find(chunk_coord) == chunk_cache_.end() &&
+				    pending_chunks_.find(chunk_coord) == pending_chunks_.end()) {
+					bool         in_frustum = isChunkInFrustum(frustum, x, z, chunk_size_, max_h);
+					TaskPriority priority = in_frustum ? TaskPriority::HIGH : TaskPriority::LOW;
+
+					pending_chunks_.emplace(
+						chunk_coord,
+						thread_pool_.enqueue(priority, &TerrainGenerator::generateChunkData, this, x, z)
+					);
 				}
 			}
 		}
 
-		// Process completed chunks
+		// 2. Process completed chunks (without blocking the main thread)
 		std::vector<std::pair<int, int>> completed_chunks;
-		{
-			for (auto& pair : pending_chunks_) {
+		for (auto& pair : pending_chunks_) {
+			if (pair.second.is_ready()) {
 				try {
 					auto&                   future = const_cast<TaskHandle<TerrainGenerationResult>&>(pair.second);
 					TerrainGenerationResult result = future.get();
@@ -121,20 +119,10 @@ namespace Boidsish {
 							std::make_shared<Terrain>(result.indices, result.positions, result.normals, result.proxy);
 						terrain_chunk->SetPosition(result.chunk_x * chunk_size_, 0, result.chunk_z * chunk_size_);
 
-						// Register with render manager if available
 						if (render_manager_) {
 							terrain_chunk->SetManagedByRenderManager(true);
-							render_manager_->RegisterChunk(
-								pair.first,
-								result.positions,
-								result.normals,
-								result.indices,
-								result.proxy.minY,
-								result.proxy.maxY,
-								glm::vec3(result.chunk_x * chunk_size_, 0, result.chunk_z * chunk_size_)
-							);
+							// Registration is deferred to the registration pass below
 						} else {
-							// Legacy per-chunk GPU setup
 							terrain_chunk->setupMesh();
 						}
 
@@ -149,42 +137,61 @@ namespace Boidsish {
 			}
 		}
 
-		{
-			for (const auto& key : completed_chunks) {
-				pending_chunks_.erase(key);
+		for (const auto& key : completed_chunks) {
+			pending_chunks_.erase(key);
+		}
+
+		// 3. Registration Pass: Register chunks that are in frustum but not in renderer
+		if (render_manager_) {
+			int       registrations_this_frame = 0;
+			const int max_registrations_per_frame = 10;
+
+			for (auto const& [key, terrain_chunk] : chunk_cache_) {
+				if (registrations_this_frame >= max_registrations_per_frame)
+					break;
+
+				if (isChunkInFrustum(frustum, key.first, key.second, chunk_size_, max_h)) {
+					if (!render_manager_->HasChunk(key)) {
+						render_manager_->RegisterChunk(
+							key,
+							terrain_chunk->vertices,
+							terrain_chunk->normals,
+							terrain_chunk->GetIndices(),
+							terrain_chunk->proxy.minY,
+							terrain_chunk->proxy.maxY,
+							glm::vec3(key.first * chunk_size_, 0, key.second * chunk_size_)
+						);
+						registrations_this_frame++;
+					}
+				}
 			}
 		}
 
-		// Unload chunks
+		// 4. Unload chunks
 		std::vector<std::pair<int, int>> to_remove;
-		{
-			for (auto const& [key, val] : chunk_cache_) {
-				int dx = key.first - current_chunk_x;
-				int dz = key.second - current_chunk_z;
-				if (std::abs(dx) > dynamic_view_distance + kUnloadDistanceBuffer_ ||
-				    std::abs(dz) > dynamic_view_distance + kUnloadDistanceBuffer_) {
-					to_remove.push_back(key);
-				}
+		for (auto const& [key, val] : chunk_cache_) {
+			int dx = std::abs(key.first - current_chunk_x);
+			int dz = std::abs(key.second - current_chunk_z);
+			int limit = dynamic_view_distance + kUnloadDistanceBuffer_;
+			if (dx > limit || dz > limit) {
+				to_remove.push_back(key);
 			}
+		}
 
-			for (const auto& key : to_remove) {
-				// Unregister from render manager if available
-				if (render_manager_) {
-					render_manager_->UnregisterChunk(key);
-				}
-				chunk_cache_.erase(key);
+		for (const auto& key : to_remove) {
+			if (render_manager_) {
+				render_manager_->UnregisterChunk(key);
 			}
+			chunk_cache_.erase(key);
 		}
 
 		std::vector<std::pair<int, int>> to_cancel;
-		{
-			for (auto const& [key, val] : pending_chunks_) {
-				int dx = key.first - current_chunk_x;
-				int dz = key.second - current_chunk_z;
-				if (std::abs(dx) > dynamic_view_distance + kUnloadDistanceBuffer_ ||
-				    std::abs(dz) > dynamic_view_distance + kUnloadDistanceBuffer_) {
-					to_cancel.push_back(key);
-				}
+		for (auto const& [key, val] : pending_chunks_) {
+			int dx = std::abs(key.first - current_chunk_x);
+			int dz = std::abs(key.second - current_chunk_z);
+			int limit = dynamic_view_distance + kUnloadDistanceBuffer_;
+			if (dx > limit || dz > limit) {
+				to_cancel.push_back(key);
 			}
 		}
 
@@ -202,7 +209,7 @@ namespace Boidsish {
 			std::lock_guard<std::mutex> visible_lock(visible_chunks_mutex_);
 			visible_chunks_.clear();
 			for (auto const& [key, val] : chunk_cache_) {
-				if (val) {
+				if (val && isChunkInFrustum(frustum, key.first, key.second, chunk_size_, max_h)) {
 					visible_chunks_.push_back(val);
 				}
 			}
