@@ -12,9 +12,10 @@ in vec3 barycentric;
 in vec2 TexCoords;
 in vec4 InstanceColor;
 
-uniform vec3 objectColor;
-uniform int  useVertexColor;
-uniform bool isColossal = true;
+uniform vec3  objectColor;
+uniform float objectAlpha = 1.0;
+uniform int   useVertexColor;
+uniform bool  isColossal = true;
 uniform bool useInstanceColor = false;
 
 // PBR material properties
@@ -38,13 +39,21 @@ void main() {
 
 	vec3 norm = normalize(Normal);
 
-	// Choose between PBR and legacy lighting
-	vec3 result;
-	if (usePBR) {
-		result = apply_lighting_pbr(FragPos, norm, final_color, roughness, metallic, ao);
-	} else {
-		result = apply_lighting(FragPos, norm, final_color, 1.0);
+	float baseAlpha = objectAlpha;
+	if (useInstanceColor) {
+		baseAlpha = InstanceColor.a;
 	}
+
+	// Choose between PBR and legacy lighting
+	vec4 lightResult;
+	if (usePBR) {
+		lightResult = apply_lighting_pbr(FragPos, norm, final_color * baseAlpha, roughness, metallic, ao);
+	} else {
+		lightResult = apply_lighting(FragPos, norm, final_color * baseAlpha, 1.0);
+	}
+
+	vec3  result = lightResult.rgb;
+	float spec_lum = lightResult.a;
 
 	if (use_texture) {
 		result *= texture(texture_diffuse1, TexCoords).rgb;
@@ -67,9 +76,12 @@ void main() {
 		vec3  final_haze_color = mix(result, skyColor, haze_factor * 2);
 		outColor = vec4(final_haze_color, mix(0, 1, 1 - (haze_factor)));
 	} else {
-		outColor = vec4(result, mix(0, fade, step(0.01, FragPos.y)));
+		float final_alpha = clamp((baseAlpha + spec_lum) * fade, 0.0, 1.0);
+		final_alpha = mix(0.0, final_alpha, step(0.01, FragPos.y));
+
+		outColor = vec4(result, final_alpha);
 		outColor = mix(
-			vec4(0.0, 0.7, 0.7, mix(0, fade, step(0.01, FragPos.y))) * length(outColor),
+			vec4(0.0, 0.7, 0.7, final_alpha) * length(outColor),
 			outColor,
 			step(1, fade)
 		);

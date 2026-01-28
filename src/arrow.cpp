@@ -39,6 +39,7 @@ namespace Boidsish {
 	void Arrow::render(Shader& shader, const glm::mat4& model_matrix) const {
 		shader.setMat4("model", model_matrix);
 		shader.setVec3("objectColor", GetR(), GetG(), GetB());
+		shader.setFloat("objectAlpha", GetA());
 
 		// Render Rod
 		glBindVertexArray(rod_vao_);

@@ -113,6 +113,7 @@ namespace Boidsish {
 		model = glm::scale(model, scale);
 		shader->setMat4("model", model);
 		shader->setVec3("objectColor", color.r, color.g, color.b);
+		shader->setFloat("objectAlpha", 1.0f); // Default to opaque for this static helper
 
 		glBindVertexArray(sphere_vao_);
 		glDrawElements(GL_TRIANGLES, sphere_vertex_count_, GL_UNSIGNED_INT, 0);

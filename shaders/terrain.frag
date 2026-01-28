@@ -368,8 +368,8 @@ void main() {
        finalAlbedo = mix(finalAlbedo, vec3(1,0.5,0.25), fwidth(norm));
        // finalAlbedo = mix(finalAlbedo, vec3(1,0.5,0.25), fwidth(norm)); // need something that can be a biome specific "flower"
 
-	vec3 lighting = apply_lighting(FragPos, norm, finalAlbedo, 0.8);
-	// vec3 lighting = apply_lighting_pbr(FragPos, norm, finalAlbedo, 0.5, 0.1, 1.0);
+	vec3 lighting = apply_lighting(FragPos, norm, finalAlbedo, 0.8).rgb;
+	// vec3 lighting = apply_lighting_pbr(FragPos, norm, finalAlbedo, 0.5, 0.1, 1.0).rgb;
 
 	// ========================================================================
 	// Distance Fade
