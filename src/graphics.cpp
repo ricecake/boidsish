@@ -161,9 +161,13 @@ namespace Boidsish {
 		uint64_t  frame_count_ = 0;
 
 		struct ShadowMapState {
-			float debt = 0.0f;
-			int   last_update_frame = 0;
-			bool  needs_update = false;
+			float     debt = 0.0f;
+			int       last_update_frame = 0;
+			bool      needs_update = false;
+			glm::vec3 last_pos{0.0f, -1000.0f, 0.0f};
+			glm::vec3 last_front{0.0f, 0.0f, -1.0f};
+			glm::vec3 last_light_pos{0.0f};
+			glm::vec3 last_light_dir{0.0f, -1.0f, 0.0f};
 		};
 		std::array<ShadowMapState, 16> shadow_map_states_;
 
@@ -1749,27 +1753,29 @@ namespace Boidsish {
 				if (light->type == DIRECTIONAL_LIGHT) {
 					for (int c = 0; c < ShadowManager::kMaxCascades; ++c) {
 						if (next_map_idx < ShadowManager::kMaxShadowMaps) {
-							float weight = (c == 0) ? 10.0f : (c == 1) ? 5.0f : (c == 2) ? 2.0f : 1.0f;
+							float weight = (c == 0) ? 5.0f : (c == 1) ? 2.0f : (c == 2) ? 1.0f : 0.5f;
 							shadow_map_registry.push_back({next_map_idx++, light, c, weight});
 						}
 					}
 				} else {
-					shadow_map_registry.push_back({next_map_idx++, light, -1, 5.0f});
+					shadow_map_registry.push_back({next_map_idx++, light, -1, 2.0f});
 				}
 			}
 
 			// 2. Identify maps that need update and calculate priorities
-			bool  camera_moved = glm::distance(impl->camera.pos(), impl->last_shadow_update_camera_pos) > 2.0f;
-			bool  camera_rotated = glm::dot(impl->camera.front(), impl->last_shadow_update_camera_front) < 0.99f;
 			int   best_map_to_update = -1;
 			float max_debt = -1.0f;
 
 			for (const auto& info : shadow_map_registry) {
 				auto& state = impl->shadow_map_states_[info.map_index];
-				bool  light_moved = glm::distance(info.light->position, info.light->last_position) > 0.1f ||
-				                   glm::distance(info.light->direction, info.light->last_direction) > 0.1f;
 
-				bool movement_detected = impl->any_shadow_caster_moved || light_moved || (has_terrain && (camera_moved || camera_rotated));
+				bool camera_moved = glm::distance(impl->camera.pos(), state.last_pos) > 1.0f;
+				bool camera_rotated = glm::dot(impl->camera.front(), state.last_front) < 0.9999f;
+				bool light_moved = glm::distance(info.light->position, state.last_light_pos) > 0.1f ||
+				                   glm::distance(info.light->direction, state.last_light_dir) > 0.1f;
+
+				bool movement_detected = impl->any_shadow_caster_moved || light_moved ||
+				                        (has_terrain && (camera_moved || camera_rotated));
 				bool should_update = impl->camera_is_close_to_scene && movement_detected;
 
 				if (should_update) {
@@ -1779,7 +1785,7 @@ namespace Boidsish {
 					state.debt += 0.01f;
 				}
 
-				if (state.debt > max_debt && state.debt >= 10.0f) {
+				if (state.debt > max_debt && state.debt >= 5.0f) {
 					max_debt = state.debt;
 					best_map_to_update = info.map_index;
 				}
@@ -1825,11 +1831,11 @@ namespace Boidsish {
 				state.debt = 0.0f;
 				state.last_update_frame = impl->frame_count_;
 
-				// Update last known positions if any light was updated
-				info.light->last_position = info.light->position;
-				info.light->last_direction = info.light->direction;
-				impl->last_shadow_update_camera_pos = impl->camera.pos();
-				impl->last_shadow_update_camera_front = impl->camera.front();
+				// Update last known positions for this specific shadow map
+				state.last_pos = impl->camera.pos();
+				state.last_front = impl->camera.front();
+				state.last_light_pos = info.light->position;
+				state.last_light_dir = info.light->direction;
 			}
 
 			impl->shadow_manager->UpdateShadowUBO(shadow_lights);
