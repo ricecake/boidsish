@@ -21,6 +21,7 @@
 #include "instance_manager.h"
 #include "light_manager.h"
 #include "line.h"
+#include "mesh_explosion_manager.h"
 #include "logger.h"
 #include "path.h"
 #include "post_processing/PostProcessingManager.h"
@@ -73,6 +74,7 @@ namespace Boidsish {
 		std::unique_ptr<CloneManager>         clone_manager;
 		std::unique_ptr<InstanceManager>      instance_manager;
 		std::unique_ptr<FireEffectManager>    fire_effect_manager;
+		std::unique_ptr<MeshExplosionManager> mesh_explosion_manager;
 		std::unique_ptr<SoundEffectManager>   sound_effect_manager;
 		std::unique_ptr<ShockwaveManager>     shockwave_manager;
 		std::unique_ptr<ShadowManager>        shadow_manager;
@@ -239,6 +241,7 @@ namespace Boidsish {
 			clone_manager = std::make_unique<CloneManager>();
 			instance_manager = std::make_unique<InstanceManager>();
 			fire_effect_manager = std::make_unique<FireEffectManager>();
+			mesh_explosion_manager = std::make_unique<MeshExplosionManager>();
 			shockwave_manager = std::make_unique<ShockwaveManager>();
 			shadow_manager = std::make_unique<ShadowManager>();
 			audio_manager = std::make_unique<AudioManager>();
@@ -1585,6 +1588,7 @@ namespace Boidsish {
 		// Update clone manager
 		impl->clone_manager->Update(impl->simulation_time, impl->camera.pos());
 		impl->fire_effect_manager->Update(impl->input_state.delta_time, impl->simulation_time);
+		impl->mesh_explosion_manager->Update(impl->input_state.delta_time, impl->simulation_time);
 		impl->sound_effect_manager->Update(impl->input_state.delta_time);
 		impl->shockwave_manager->Update(impl->input_state.delta_time);
 
@@ -1746,6 +1750,7 @@ namespace Boidsish {
 
 		impl->RenderShapes(view, impl->camera, impl->shapes, impl->simulation_time, std::nullopt);
 		impl->fire_effect_manager->Render(view, impl->projection, impl->camera.pos());
+		impl->mesh_explosion_manager->Render(view, impl->projection, impl->camera.pos());
 		impl->RenderTrails(view, std::nullopt);
 
 		if (ConfigManager::GetInstance().GetAppSettingBool("enable_effects", true)) {
@@ -2164,6 +2169,10 @@ namespace Boidsish {
 	) {
 		return impl->shockwave_manager
 			->AddShockwave(position, normal, max_radius, duration, intensity, ring_width, color);
+	}
+
+	void Visualizer::ExplodeShape(std::shared_ptr<Shape> shape, float intensity) {
+		impl->mesh_explosion_manager->ExplodeShape(shape, intensity);
 	}
 
 	void Visualizer::CreateExplosion(const glm::vec3& position, float intensity) {

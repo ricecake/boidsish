@@ -146,6 +146,19 @@ namespace Boidsish {
 		return model;
 	}
 
+	void Model::GetGeometry(std::vector<Vertex>& vertices, std::vector<unsigned int>& indices) const {
+		unsigned int vertex_offset = 0;
+		for (const auto& mesh : meshes) {
+			for (const auto& vertex : mesh.vertices) {
+				vertices.push_back(vertex);
+			}
+			for (unsigned int index : mesh.indices) {
+				indices.push_back(index + vertex_offset);
+			}
+			vertex_offset += mesh.vertices.size();
+		}
+	}
+
 	void Model::loadModel(const std::string& path) {
 		Assimp::Importer importer;
 		const aiScene*   scene = importer.ReadFile(

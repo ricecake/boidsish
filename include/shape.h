@@ -12,6 +12,12 @@ class Shader;
 
 namespace Boidsish {
 
+	struct Vertex {
+		glm::vec3 Position;
+		glm::vec3 Normal;
+		glm::vec2 TexCoords;
+	};
+
 	// Base class for all renderable shapes
 	class Shape {
 	public:
@@ -27,6 +33,8 @@ namespace Boidsish {
 
 		// Get the active visual effects for this shape
 		virtual std::vector<VisualEffect> GetActiveEffects() const { return {}; }
+
+		virtual void GetGeometry(std::vector<Vertex>& vertices, std::vector<unsigned int>& indices) const;
 
 		// Accessors
 		inline int GetId() const { return id_; }
