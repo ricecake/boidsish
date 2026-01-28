@@ -8,6 +8,7 @@
 
 #include <GL/glew.h>
 #include <glm/glm.hpp>
+#include "constants.h"
 
 class Shader;
 
@@ -139,9 +140,9 @@ namespace Boidsish {
 			bool  iridescent = false;
 			bool  rocket_trail = false;
 			bool  use_pbr = false;
-			float roughness = 0.3f;
-			float metallic = 0.0f;
-			float base_thickness = 0.06f;
+			float roughness = Constants::Class::Trails::DefaultRoughness();
+			float metallic = Constants::Class::Trails::DefaultMetallic();
+			float base_thickness = Constants::Class::Trails::BaseThickness();
 
 			bool needs_upload = false;
 		};
@@ -187,9 +188,9 @@ namespace Boidsish {
 		mutable std::mutex mutex_;
 
 		// Constants
-		static constexpr size_t FLOATS_PER_VERTEX = 9;              // pos(3) + normal(3) + color(3)
-		static constexpr size_t INITIAL_VERTEX_CAPACITY = 500000;   // 500k vertices
-		static constexpr float  GROWTH_FACTOR = 1.5f;
+		static constexpr size_t FLOATS_PER_VERTEX = Constants::Class::Trails::FloatsPerVertex();              // pos(3) + normal(3) + color(3)
+		static constexpr size_t INITIAL_VERTEX_CAPACITY = Constants::Class::Trails::InitialVertexCapacity();   // 500k vertices
+		static constexpr float  GROWTH_FACTOR = Constants::Class::Trails::GrowthFactor();
 	};
 
 } // namespace Boidsish

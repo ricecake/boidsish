@@ -5,6 +5,7 @@
 
 #include "shader.h"
 #include "shape.h"
+#include "constants.h"
 #include <glm/glm.hpp>
 
 namespace Boidsish {
@@ -42,7 +43,7 @@ namespace Boidsish {
 		std::unique_ptr<ComputeShader> compute_shader_;
 		float                   time_ = 0.0f;
 
-		static constexpr int kMaxFragments = 50000;
+		static constexpr int kMaxFragments = Constants::Class::Explosions::MaxFragments();
 		int                  current_fragment_index_ = 0;
 	};
 

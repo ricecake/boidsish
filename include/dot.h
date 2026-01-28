@@ -2,6 +2,7 @@
 
 #include "shape.h"
 #include "vector.h"
+#include "constants.h"
 #include <GL/glew.h>
 
 namespace Boidsish {
@@ -19,7 +20,7 @@ namespace Boidsish {
 		    float g = 1.0f,
 		    float b = 1.0f,
 		    float a = 1.0f,
-		    int   trail_length = 10);
+		    int   trail_length = Constants::Class::Trails::DefaultTrailLength());
 
 		// Size accessor/mutator
 		inline float GetSize() const { return size_; }

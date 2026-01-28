@@ -95,13 +95,13 @@ namespace Boidsish {
 			outward = glm::normalize(normal_matrix * outward);
 
 			f.vel = glm::vec4(
-				velocity + outward * 10.0f * intensity +
-					glm::vec3(dist(gen), dist(gen), dist(gen)) * 5.0f * intensity,
+				velocity + outward * Constants::Class::Explosions::DefaultVelocity() * intensity +
+					glm::vec3(dist(gen), dist(gen), dist(gen)) * Constants::Class::Explosions::DefaultRandomVelocity() * intensity,
 				0.0f
 			);
 			f.rot = glm::vec4(0.0f, 0.0f, 0.0f, 1.0f); // identity quat
 			f.angVel =
-				glm::vec4(glm::normalize(glm::vec3(dist(gen), dist(gen), dist(gen))), 5.0f * intensity);
+				glm::vec4(glm::normalize(glm::vec3(dist(gen), dist(gen), dist(gen))), Constants::Class::Explosions::DefaultRandomVelocity() * intensity);
 			f.color = color;
 
 			new_fragments.push_back(f);
@@ -152,7 +152,7 @@ namespace Boidsish {
 		compute_shader_->setFloat("u_delta_time", delta_time);
 
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, ssbo_);
-		glDispatchCompute((kMaxFragments / 64) + 1, 1, 1);
+		glDispatchCompute((kMaxFragments / Constants::Class::Explosions::ComputeGroupSize()) + 1, 1, 1);
 		glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, 0);
 	}

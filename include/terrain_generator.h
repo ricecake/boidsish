@@ -6,6 +6,7 @@
 #include <vector>
 
 #include "Simplex.h"
+#include "constants.h"
 #include "terrain.h"
 #include "terrain_render_manager.h"
 #include "thread_pool.h"
@@ -179,17 +180,17 @@ namespace Boidsish {
 
 		void ApplyWeightedBiome(float control_value, BiomeAttributes& current) const;
 
-		const int view_distance_ = 10;        // in chunks
-		const int kUnloadDistanceBuffer_ = 2; // in chunks
-	const int chunk_size_ = 32;           // Keep at 32 for performance
-		int       octaves_ = 4;
-		float     lacunarity_ = 0.99f;
-		float     persistence_ = 0.5f;
+		const int view_distance_ = Constants::Class::Terrain::DefaultViewDistance();        // in chunks
+		const int kUnloadDistanceBuffer_ = Constants::Class::Terrain::UnloadDistanceBuffer(); // in chunks
+		const int chunk_size_ = Constants::Class::Terrain::ChunkSize();           // Keep at 32 for performance
+		int       octaves_ = Constants::Class::Terrain::DefaultOctaves();
+		float     lacunarity_ = Constants::Class::Terrain::DefaultLacunarity();
+		float     persistence_ = Constants::Class::Terrain::DefaultPersistence();
 		int       seed_;
 
 		// Control noise parameters
-		constexpr static const float control_noise_scale_ = 0.001f;
-		constexpr static const float kPathFrequency = 0.002f;
+		constexpr static const float control_noise_scale_ = Constants::Class::Terrain::ControlNoiseScale();
+		constexpr static const float kPathFrequency = Constants::Class::Terrain::PathFrequency();
 
 		// Noise generators
 		// FastNoise::SmartNode<> control_noise_generator_;

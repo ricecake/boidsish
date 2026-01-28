@@ -18,6 +18,7 @@
 #include "light_manager.h"
 #include "shape.h"
 #include "vector.h"
+#include "constants.h"
 #include "visual_effects.h"
 #include <glm/glm.hpp>
 
@@ -52,8 +53,6 @@ namespace Boidsish {
 		int                    shape_id;
 	};
 
-	constexpr int kMaxKeys = 1024;
-
 	struct Plane {
 		glm::vec3 normal;
 		float     distance;
@@ -64,14 +63,14 @@ namespace Boidsish {
 	};
 
 	struct InputState {
-		bool   keys[kMaxKeys];
-		bool   key_down[kMaxKeys];
-		bool   key_up[kMaxKeys];
+		bool   keys[Constants::Library::Input::MaxKeys()];
+		bool   key_down[Constants::Library::Input::MaxKeys()];
+		bool   key_up[Constants::Library::Input::MaxKeys()];
 		double mouse_x, mouse_y;
 		double mouse_delta_x, mouse_delta_y;
-		bool   mouse_buttons[8];
-		bool   mouse_button_down[8];
-		bool   mouse_button_up[8];
+		bool   mouse_buttons[Constants::Library::Input::MaxMouseButtons()];
+		bool   mouse_button_down[Constants::Library::Input::MaxMouseButtons()];
+		bool   mouse_button_up[Constants::Library::Input::MaxMouseButtons()];
 		float  delta_time;
 	};
 
@@ -93,8 +92,8 @@ namespace Boidsish {
 			float pitch = 0.0f,
 			float yaw = 0.0f,
 			float roll = 0.0f,
-			float fov = 45.0f,
-			float speed = 10.0f
+			float fov = Constants::Project::Camera::DefaultFOV(),
+			float speed = Constants::Project::Camera::DefaultSpeed()
 		):
 			x(x), y(y), z(z), pitch(pitch), yaw(yaw), roll(roll), fov(fov), speed(speed) {}
 
@@ -225,9 +224,9 @@ namespace Boidsish {
 			const glm::vec3& normal,
 			float            max_radius,
 			float            duration,
-			float            intensity = 0.5f,
-			float            ring_width = 3.0f,
-			const glm::vec3& color = glm::vec3(1.0f, 0.6f, 0.2f)
+			float            intensity = Constants::Class::Shockwaves::DefaultIntensity(),
+			float            ring_width = Constants::Class::Shockwaves::DefaultRingWidth(),
+			const glm::vec3& color = Constants::Class::Shockwaves::DefaultColor()
 		);
 
 		/**

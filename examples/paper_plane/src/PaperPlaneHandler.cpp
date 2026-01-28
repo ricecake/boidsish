@@ -10,6 +10,7 @@
 #include "hud.h"
 #include "neighbor_utils.h"
 #include "terrain_generator.h"
+#include "constants.h"
 #include <glm/gtx/quaternion.hpp>
 
 namespace Boidsish {
@@ -111,8 +112,8 @@ namespace Boidsish {
 					glm::quat terrain_alignment = glm::rotation(up_vector, terrain_normal);
 
 					// Use a more robust ID based on chunk indices to avoid collisions and NaNs
-					int ix = static_cast<int>(std::round(chunk_pos.x / 32.0f));
-					int iz = static_cast<int>(std::round(chunk_pos.z / 32.0f));
+					int ix = static_cast<int>(std::round(chunk_pos.x / static_cast<float>(Constants::Class::Terrain::ChunkSize())));
+					int iz = static_cast<int>(std::round(chunk_pos.z / static_cast<float>(Constants::Class::Terrain::ChunkSize())));
 					int id = 0x50000000 | ((ix + 1024) << 11) | (iz + 1024);
 
 					QueueAddEntity<GuidedMissileLauncher>(

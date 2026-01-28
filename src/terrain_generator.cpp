@@ -80,7 +80,7 @@ namespace Boidsish {
 		int current_chunk_z = static_cast<int>(std::floor(camera.z / static_cast<float>(chunk_size_)));
 
 		float height_factor = std::max(1.0f, camera.y / 5.0f);
-		int   dynamic_view_distance = std::min(24, static_cast<int>(view_distance_ * height_factor));
+		int   dynamic_view_distance = std::min(Constants::Class::Terrain::MaxViewDistance(), static_cast<int>(view_distance_ * height_factor));
 
 		// Enqueue generation of new chunks
 		// Generate all chunks within view distance, regardless of frustum
@@ -331,7 +331,7 @@ namespace Boidsish {
 		float     path_factor = path_data.x;
 
 		glm::vec2 push_dir = glm::normalize(glm::vec2(path_data.y, path_data.z));
-		float     warp_strength = (1.0f - path_factor) * 20.0f;
+		float     warp_strength = (1.0f - path_factor) * Constants::Class::Terrain::WarpStrength();
 		glm::vec2 warp = push_dir * warp_strength;
 
 		glm::vec2 pos = glm::vec2(x, z);
@@ -473,7 +473,7 @@ namespace Boidsish {
 	glm::vec3 TerrainGenerator::getPathInfluence(float x, float z) const {
 		glm::vec3 noise = Simplex::dnoise(glm::vec2(x, z) * kPathFrequency);
 		float     distance_from_spine = std::abs(noise.x);
-		float     corridor_width = 0.35f; // Adjust for wider/narrower paths
+		float     corridor_width = Constants::Class::Terrain::PathCorridorWidth(); // Adjust for wider/narrower paths
 		float     path_factor = glm::smoothstep(0.0f, corridor_width, distance_from_spine);
 
 		return glm::vec3(path_factor, noise.y, noise.z);

@@ -6,6 +6,7 @@
 
 #include <GL/glew.h>
 #include <glm/glm.hpp>
+#include "constants.h"
 
 class Shader;
 
@@ -26,10 +27,10 @@ namespace Boidsish {
 	class ShadowManager {
 	public:
 		/// Maximum number of shadow-casting lights supported
-		static constexpr int kMaxShadowLights = 4;
+		static constexpr int kMaxShadowLights = Constants::Class::Shadows::MaxLights();
 
 		/// Shadow map resolution (width and height)
-		static constexpr int kShadowMapSize = 2048;
+		static constexpr int kShadowMapSize = Constants::Class::Shadows::MapSize();
 
 		ShadowManager();
 		~ShadowManager();
@@ -61,7 +62,7 @@ namespace Boidsish {
 			int              light_index,
 			const Light&     light,
 			const glm::vec3& scene_center,
-			float            scene_radius = 500.0f
+			float            scene_radius = Constants::Class::Shadows::DefaultSceneRadius()
 		);
 
 		/**
