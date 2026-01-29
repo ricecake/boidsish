@@ -49,7 +49,7 @@ void main() {
 	t[1] = f.t01.zw;
 	t[2] = f.t2_age.xy;
 
-	int vert = gl_VertexID; // 0, 1, or 2
+	int vert = gl_VertexID % 3; // 0, 1, or 2
 
 	vs_out.FragPos = f.pos.xyz + rotate_vector(v[vert], f.rot);
 	vs_out.Normal = rotate_vector(f.normal.xyz, f.rot);
