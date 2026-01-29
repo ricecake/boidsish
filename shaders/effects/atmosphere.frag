@@ -106,8 +106,8 @@ void main() {
 		for (int i = 0; i < samples; i++) {
 			float t = mix(t_start, t_end, (float(i) + 0.5) / float(samples));
 			vec3  p = cameraPos + rayDir * t;
-			float noise = fbm(p.xz * 0.015 + time * 0.015 + p.y * 0.02);
-			float d = smoothstep(0.2, 0.6, noise) * cloudDensity;
+			float noise = fbm(p.xz * 0.015 + time * 0.02 * (i+1) + p.y * 0.02);
+			float d = smoothstep(0.2, 0.6, noise*(i+1)) * cloudDensity;
 			cloudAcc += d;
 		}
 		cloudFactor = 1.0 - exp(-cloudAcc * (t_end - t_start) * 0.05 / float(samples));

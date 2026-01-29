@@ -172,7 +172,7 @@ namespace Boidsish {
 
 		const auto* terrain_generator = handler.GetTerrainGenerator();
 		if (terrain_generator) {
-			const float reaction_distance = 100.0f;
+			const float reaction_distance = 150.0f;
 			const float kAvoidanceStrength = 5.0f;
 			const float kUpAlignmentThreshold = 0.5f;
 
@@ -202,7 +202,7 @@ namespace Boidsish {
 					float     target_priority = 1.0f - glm::clamp(alignment_with_target, 0.0f, 1.0f);
 					float     avoidance_weight = distance_factor * target_priority;
 					glm::vec3 final_desired_dir = glm::normalize(
-						target_dir_world + (away * avoidance_weight * kAvoidanceStrength)
+						target_dir_world + (away * avoidance_weight * kAvoidanceStrength  /* * (1-lived_/lifetime_)    */ )
 					);
 					target_dir_local = WorldToObject(final_desired_dir);
 				}
