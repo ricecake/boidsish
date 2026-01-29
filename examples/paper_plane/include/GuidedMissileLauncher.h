@@ -15,6 +15,8 @@ namespace Boidsish {
 
 		void UpdateEntity(const EntityHandler& handler, float time, float delta_time) override;
 
+		static constexpr int kMaxInFlightMissiles = 50;
+
 	private:
 		float time_since_last_fire_ = 0.0f;
 		float fire_interval_ = 5.0f; // Fire every 5 seconds, will be randomized

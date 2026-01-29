@@ -77,10 +77,12 @@ namespace Boidsish {
 
 		std::uniform_real_distribution<float> dist(0.0f, 1.0f);
 		if (dist(eng_) < fire_probability_this_frame) {
-			handler.QueueAddEntity<GuidedMissile>(GetPosition());
-			time_since_last_fire_ = 0.0f;
-			std::uniform_real_distribution<float> new_dist(4.0f, 8.0f);
-			fire_interval_ = new_dist(eng_);
+			if (handler.GetEntitiesByType<GuidedMissile>().size() < kMaxInFlightMissiles) {
+				handler.QueueAddEntity<GuidedMissile>(GetPosition());
+				time_since_last_fire_ = 0.0f;
+				std::uniform_real_distribution<float> new_dist(4.0f, 8.0f);
+				fire_interval_ = new_dist(eng_);
+			}
 		}
 	}
 
