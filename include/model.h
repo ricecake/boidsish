@@ -41,6 +41,8 @@ namespace Boidsish {
 		void render() const;
 		void render_instanced(int count) const;
 
+		void bindTextures(Shader& shader) const;
+
 	private:
 		// Render data
 		unsigned int VBO, EBO;

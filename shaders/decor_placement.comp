@@ -57,7 +57,7 @@ void main() {
 	if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0)
 		return;
 
-	vec4  terrainSample = texture(u_heightmap, uv);
+	vec4  terrainSample = textureLod(u_heightmap, uv, 0.0);
 	float height = terrainSample.a * u_maxTerrainHeight;
 	vec3  normal = terrainSample.rgb * 2.0 - 1.0;
 

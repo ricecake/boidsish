@@ -3,6 +3,7 @@
 #include <GL/glew.h>
 #include <glm/gtc/type_ptr.hpp>
 
+#include "ConfigManager.h"
 #include "graphics.h"
 #include "logger.h"
 #include "terrain_generator.h"
@@ -132,8 +133,6 @@ namespace Boidsish {
 		if (!enabled_ || !initialized_ || decor_types_.empty())
 			return;
 
-		// We need a shader that supports instancing via SSBO
-		// For now, let's assume we use Shape::shader and it's already set up.
 		auto shader = Shape::shader;
 		if (!shader)
 			return;
@@ -142,9 +141,18 @@ namespace Boidsish {
 		shader->setMat4("view", view);
 		shader->setMat4("projection", projection);
 		shader->setBool("useSSBOInstancing", true);
+		shader->setBool("isColossal", false);
+		shader->setBool("is_instanced", false);
+		shader->setVec3("objectColor", 1.0f, 1.0f, 1.0f);
+		shader->setBool("usePBR", false);
+		shader->setVec4("clipPlane", 0.0f, 0.0f, 0.0f, 0.0f); // Disable clipping for main pass
+		shader->setFloat(
+			"ripple_strength",
+			ConfigManager::GetInstance().GetAppSettingBool("artistic_effect_ripple", false) ? 0.05f : 0.0f
+		);
 
 		for (auto& type : decor_types_) {
-			// Read back count (or use indirect draw)
+			// Read back count
 			unsigned int count = 0;
 			glBindBuffer(GL_ATOMIC_COUNTER_BUFFER, type.count_buffer);
 			glGetBufferSubData(GL_ATOMIC_COUNTER_BUFFER, 0, sizeof(unsigned int), &count);
@@ -159,6 +167,7 @@ namespace Boidsish {
 			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 10, type.ssbo);
 
 			for (const auto& mesh : type.model->getMeshes()) {
+				mesh.bindTextures(*shader);
 				mesh.render_instanced((int)count);
 			}
 		}
