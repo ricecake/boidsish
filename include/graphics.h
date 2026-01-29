@@ -47,6 +47,8 @@ namespace Boidsish {
 	}
 } // namespace Boidsish
 
+#include "frustum.h"
+
 namespace Boidsish {
 	enum class ShapeCommandType { Add, Remove };
 
@@ -54,15 +56,6 @@ namespace Boidsish {
 		ShapeCommandType       type;
 		std::shared_ptr<Shape> shape;
 		int                    shape_id;
-	};
-
-	struct Plane {
-		glm::vec3 normal;
-		float     distance;
-	};
-
-	struct Frustum {
-		Plane planes[6];
 	};
 
 	struct InputState {

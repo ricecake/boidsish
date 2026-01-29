@@ -12,7 +12,8 @@ struct Light {
 };
 
 const int MAX_LIGHTS = 10;
-const int MAX_SHADOW_LIGHTS = 4;
+const int MAX_SHADOW_MAPS = 16;
+const int MAX_CASCADES = 4;
 
 layout(std140) uniform Lighting {
 	Light lights[MAX_LIGHTS];
@@ -20,12 +21,14 @@ layout(std140) uniform Lighting {
 	vec3  viewPos;
 	vec3  ambient_light;
 	float time;
+	vec3  viewDir;
 };
 
 // Shadow mapping UBO (binding set via glUniformBlockBinding to point 2)
 layout(std140) uniform Shadows {
-	mat4 lightSpaceMatrices[MAX_SHADOW_LIGHTS];
-	int  numShadowLights;
+	mat4  lightSpaceMatrices[MAX_SHADOW_MAPS];
+	vec4  cascadeSplits;
+	int   numShadowLights;
 };
 
 // Shadow map texture array - bound to texture unit 4

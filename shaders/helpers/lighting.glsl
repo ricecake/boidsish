@@ -14,7 +14,9 @@ const int LIGHT_TYPE_FLASH = 4;    // Explosion/flash light (rapid falloff)
  * Returns 0.0 if fully in shadow, 1.0 if fully lit.
  * Uses PCF (Percentage Closer Filtering) for soft shadow edges.
  */
-float calculateShadow(int shadow_index, vec3 frag_pos, vec3 normal, vec3 light_dir) {
+float calculateShadow(int light_index, vec3 frag_pos, vec3 normal, vec3 light_dir) {
+	int shadow_index = lightShadowIndices[light_index];
+
 	// Early out for invalid indices or when no shadow lights are active
 	// This MUST return before any texture operations to avoid driver issues
 	if (shadow_index < 0) {
@@ -23,7 +25,50 @@ float calculateShadow(int shadow_index, vec3 frag_pos, vec3 normal, vec3 light_d
 	if (numShadowLights <= 0) {
 		return 1.0; // No shadow maps active at all
 	}
-	if (shadow_index >= MAX_SHADOW_LIGHTS || shadow_index >= numShadowLights) {
+
+	// Handle Cascaded Shadow Maps for directional lights
+	int cascade = 0;
+	float cascade_blend = 0.0; // Blend factor for smooth cascade transitions
+	int next_cascade = -1;
+
+	if (lights[light_index].type == LIGHT_TYPE_DIRECTIONAL) {
+		// Use linear depth along camera forward for more consistent splits
+		float depth = dot(frag_pos - viewPos, viewDir);
+		cascade = -1;
+		for (int i = 0; i < MAX_CASCADES; ++i) {
+			if (depth < cascadeSplits[i]) {
+				cascade = i;
+				break;
+			}
+		}
+
+		if (cascade == -1) {
+			// Beyond all cascade splits - use the last cascade as catchall
+			// The far cascade is configured with extended range specifically for this
+			cascade = MAX_CASCADES - 1;
+		}
+
+		// Calculate blend zone for smooth cascade transitions
+		// This eliminates the harsh "perspective shift" at cascade boundaries
+		// Note: Don't blend for the last cascade since it's the catchall
+		if (cascade < MAX_CASCADES - 1) {
+			float cascade_start = (cascade == 0) ? 0.0 : cascadeSplits[cascade - 1];
+			float cascade_end = cascadeSplits[cascade];
+			float cascade_range = cascade_end - cascade_start;
+
+			// Blend zone is the last 15% of each cascade
+			float blend_zone_start = cascade_end - cascade_range * 0.15;
+			if (depth > blend_zone_start) {
+				cascade_blend = (depth - blend_zone_start) / (cascade_end - blend_zone_start);
+				cascade_blend = smoothstep(0.0, 1.0, cascade_blend); // Smooth the transition
+				next_cascade = cascade + 1;
+			}
+		}
+
+		shadow_index += cascade;
+	}
+
+	if (shadow_index >= MAX_SHADOW_MAPS) {
 		return 1.0; // Index out of bounds
 	}
 
@@ -48,24 +93,90 @@ float calculateShadow(int shadow_index, vec3 frag_pos, vec3 normal, vec3 light_d
 	// Current depth from light's perspective
 	float current_depth = proj_coords.z;
 
-	// Slope-scaled bias to prevent shadow acne on steep surfaces (the "leopard print" issue)
-	// Bias increases as the angle between normal and light direction increases
-	float bias = max(0.01 * (1.0 - dot(normal, light_dir)), 0.001);
+	// Improved bias calculation to prevent shadow acne while keeping shadows connected to geometry
+	// The key insight: larger cascades have lower resolution (larger texels), so need larger bias
+	// But the bias should NOT be so large that shadows appear "floating" above terrain
+	float slope_factor = max(1.0 - dot(normal, light_dir), 0.0); // 0 when facing light, 1 when perpendicular
+
+	// Base bias: very small for direct facing surfaces
+	float base_bias = 0.0002;
+
+	// Slope bias: increases for steep angles relative to light
+	float slope_bias = 0.002 * slope_factor;
+
+	// Cascade-specific bias: accounts for texel size differences
+	// CRITICAL: This should be modest - previous 5x multiplier was too aggressive
+	// Near cascade (0): finest resolution, minimal extra bias needed
+	// Far cascade (3): coarsest resolution, but still shouldn't be huge
+	float cascade_bias_scale = 1.0 + float(cascade) * 0.8; // Was 5.0, now 0.8
+
+	// Calculate texel size in world units for this cascade (approximate)
+	vec2 texel_size = 1.0 / vec2(textureSize(shadowMaps, 0).xy);
+
+	// Final bias combines all factors
+	float bias = (base_bias + slope_bias) * cascade_bias_scale;
+
+	// Clamp to prevent over-biasing that causes disconnected shadows
+	bias = clamp(bias, 0.0001, 0.01);
 
 	// PCF - sample multiple texels for soft shadows
+	// Use larger kernel for distant cascades to match their lower resolution
 	float shadow = 0.0;
-	vec2  texel_size = 1.0 / vec2(textureSize(shadowMaps, 0).xy);
+	int kernel_size = (cascade < 2) ? 1 : 2; // 3x3 for near, 5x5 for far
+	float sample_count = 0.0;
 
-	// 3x3 PCF kernel
-	for (int x = -1; x <= 1; ++x) {
-		for (int y = -1; y <= 1; ++y) {
+	for (int x = -kernel_size; x <= kernel_size; ++x) {
+		for (int y = -kernel_size; y <= kernel_size; ++y) {
 			vec2 offset = vec2(x, y) * texel_size;
 			// sampler2DArrayShadow expects (u, v, layer, compare_value)
 			vec4 shadow_coord = vec4(proj_coords.xy + offset, float(shadow_index), current_depth - bias);
 			shadow += texture(shadowMaps, shadow_coord);
+			sample_count += 1.0;
 		}
 	}
-	shadow /= 9.0;
+	shadow /= sample_count;
+
+	// Blend with next cascade if in transition zone
+	// This smooths the visual transition and eliminates the "perspective shift" artifact
+	if (cascade_blend > 0.0 && next_cascade >= 0 && next_cascade < MAX_CASCADES) {
+		int next_shadow_index = shadow_index - cascade + next_cascade;
+		if (next_shadow_index < MAX_SHADOW_MAPS) {
+			// Sample from next cascade with its own bias
+			float next_cascade_bias_scale = 1.0 + float(next_cascade) * 0.8;
+			float next_bias = (base_bias + slope_bias) * next_cascade_bias_scale;
+			next_bias = clamp(next_bias, 0.0001, 0.01);
+
+			// Transform to next cascade's light space
+			vec4 next_frag_pos_light_space = lightSpaceMatrices[next_shadow_index] * vec4(frag_pos, 1.0);
+			if (abs(next_frag_pos_light_space.w) > 0.0001) {
+				vec3 next_proj_coords = next_frag_pos_light_space.xyz / next_frag_pos_light_space.w;
+				next_proj_coords = next_proj_coords * 0.5 + 0.5;
+
+				// Only blend if also within next cascade's valid range
+				if (next_proj_coords.x >= 0.0 && next_proj_coords.x <= 1.0 &&
+				    next_proj_coords.y >= 0.0 && next_proj_coords.y <= 1.0 &&
+				    next_proj_coords.z >= 0.0 && next_proj_coords.z <= 1.0) {
+
+					float next_shadow = 0.0;
+					int next_kernel_size = (next_cascade < 2) ? 1 : 2;
+					float next_sample_count = 0.0;
+
+					for (int x = -next_kernel_size; x <= next_kernel_size; ++x) {
+						for (int y = -next_kernel_size; y <= next_kernel_size; ++y) {
+							vec2 offset = vec2(x, y) * texel_size;
+							vec4 shadow_coord = vec4(next_proj_coords.xy + offset, float(next_shadow_index), next_proj_coords.z - next_bias);
+							next_shadow += texture(shadowMaps, shadow_coord);
+							next_sample_count += 1.0;
+						}
+					}
+					next_shadow /= next_sample_count;
+
+					// Blend between cascades
+					shadow = mix(shadow, next_shadow, cascade_blend);
+				}
+			}
+		}
+	}
 
 	return shadow;
 }
@@ -275,7 +386,7 @@ vec4 apply_lighting_pbr(vec3 frag_pos, vec3 normal, vec3 albedo, float roughness
 		float NdotL = max(dot(N, L), 0.0);
 
 		// Calculate shadow with slope-scaled bias
-		float shadow = calculateShadow(lightShadowIndices[i], frag_pos, N, L);
+		float shadow = calculateShadow(i, frag_pos, N, L);
 
 		// Add to outgoing radiance Lo
 		vec3 specular_radiance = specular * radiance * NdotL * shadow;
@@ -400,7 +511,7 @@ vec4 apply_lighting(vec3 frag_pos, vec3 normal, vec3 albedo, float specular_stre
 		calculateLightContribution(i, frag_pos, light_dir, attenuation);
 
 		// Calculate shadow factor for this light with slope-scaled bias
-		float shadow = calculateShadow(lightShadowIndices[i], frag_pos, normal, light_dir);
+		float shadow = calculateShadow(i, frag_pos, normal, light_dir);
 
 		// Diffuse
 		float diff = max(dot(normal, light_dir), 0.0);

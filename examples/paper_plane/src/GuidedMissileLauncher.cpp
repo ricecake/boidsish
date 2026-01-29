@@ -11,7 +11,6 @@ namespace Boidsish {
 	GuidedMissileLauncher::GuidedMissileLauncher(int id, Vector3 pos, glm::quat orientation):
 		// Entity<Model>(id, "assets/utah_teapot.obj", false), eng_(rd_()) {
 		Entity<Model>(id, "assets/quickMissileLauncher.obj", false), eng_(rd_()) {
-			logger::LOG("CREATING LAUNCHER!");
 		SetPosition(pos.x, pos.y, pos.z);
 		shape_->SetScale(glm::vec3(0.50f));
 		// shape_->SetRotation(orientation);

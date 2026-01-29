@@ -112,6 +112,8 @@ namespace Boidsish {
 
 		inline void SetColossal(bool is_colossal) { is_colossal_ = is_colossal; }
 
+		virtual bool CastsShadows() const { return !is_colossal_; }
+
 		inline bool IsInstanced() const { return is_instanced_; }
 
 		inline void SetInstanced(bool is_instanced) { is_instanced_ = is_instanced; }

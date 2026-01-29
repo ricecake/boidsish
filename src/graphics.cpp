@@ -159,6 +159,22 @@ namespace Boidsish {
 		bool      camera_is_close_to_scene = true;
 		float     shadow_update_distance_threshold = Constants::Class::Shadows::UpdateDistanceThreshold();
 		glm::vec3 last_shadow_update_camera_pos{0.0f, -1000.0f, 0.0f};
+		glm::vec3 last_shadow_update_camera_front{0.0f, 0.0f, -1.0f};
+		uint64_t  frame_count_ = 0;
+
+		struct ShadowMapState {
+			float     debt = 0.0f;
+			int       last_update_frame = 0;
+			bool      needs_update = false;
+			glm::vec3 last_pos{0.0f, -1000.0f, 0.0f};
+			glm::vec3 last_front{0.0f, 0.0f, -1.0f};
+			glm::vec3 last_light_pos{0.0f};
+			glm::vec3 last_light_dir{0.0f, -1.0f, 0.0f};
+			glm::mat4 last_light_space_matrix{1.0f}; // Cache for temporal stability
+			float     rotation_accumulator = 0.0f;    // Track cumulative rotation
+		};
+		std::array<ShadowMapState, 16> shadow_map_states_;
+		int shadow_update_round_robin_ = 0; // For ensuring all cascades get updated periodically
 
 		task_thread_pool::task_thread_pool thread_pool;
 		std::unique_ptr<AudioManager>      audio_manager;
@@ -257,9 +273,9 @@ namespace Boidsish {
 			const int MAX_LIGHTS = 10;
 			glGenBuffers(1, &lighting_ubo);
 			glBindBuffer(GL_UNIFORM_BUFFER, lighting_ubo);
-			glBufferData(GL_UNIFORM_BUFFER, 688, NULL, GL_DYNAMIC_DRAW);
+			glBufferData(GL_UNIFORM_BUFFER, 704, NULL, GL_DYNAMIC_DRAW);
 			glBindBuffer(GL_UNIFORM_BUFFER, 0);
-			glBindBufferRange(GL_UNIFORM_BUFFER, 0, lighting_ubo, 0, 688);
+			glBindBufferRange(GL_UNIFORM_BUFFER, 0, lighting_ubo, 0, 704);
 
 			if (ConfigManager::GetInstance().GetAppSettingBool("enable_effects", true)) {
 				glGenBuffers(1, &visual_effects_ubo);
@@ -808,7 +824,13 @@ namespace Boidsish {
 			}
 		}
 
-		void RenderTerrain(const glm::mat4& view, const glm::mat4& proj, const std::optional<glm::vec4>& clip_plane, bool is_shadow_pass = false) {
+		void RenderTerrain(
+			const glm::mat4&                view,
+			const glm::mat4&                proj,
+			const std::optional<glm::vec4>& clip_plane,
+			bool                            is_shadow_pass = false,
+			std::optional<Frustum>          shadow_frustum = std::nullopt
+		) {
 			if (!terrain_generator || !ConfigManager::GetInstance().GetAppSettingBool("render_terrain", true))
 				return;
 
@@ -830,7 +852,7 @@ namespace Boidsish {
 			// Use batched render manager if available (single draw call for all chunks)
 			if (terrain_render_manager) {
 				// Calculate frustum for culling
-				Frustum frustum = CalculateFrustum(view, proj);
+				Frustum frustum = shadow_frustum.has_value() ? *shadow_frustum : CalculateFrustum(view, proj);
 
 				// Prepare for rendering (frustum culling for instanced renderer)
 				terrain_render_manager->PrepareForRender(frustum, camera.pos());
@@ -1459,6 +1481,8 @@ namespace Boidsish {
 	}
 
 	void Visualizer::Update() {
+		impl->frame_count_++;
+
 		// Reset per-frame input state
 		std::fill_n(impl->input_state.key_down, Constants::Library::Input::MaxKeys(), false);
 		std::fill_n(impl->input_state.key_up, Constants::Library::Input::MaxKeys(), false);
@@ -1571,18 +1595,26 @@ namespace Boidsish {
 		impl->any_shadow_caster_moved = false;
 		glm::vec3 scene_center(0.0f);
 		bool has_shapes = !impl->shapes.empty();
+		int  shadow_caster_count = 0;
 		if (has_shapes) {
 			for (const auto& shape : impl->shapes) {
-				scene_center += glm::vec3(shape->GetX(), shape->GetY(), shape->GetZ());
-				float distance_moved = glm::distance(
-					shape->GetLastPosition(),
-					glm::vec3(shape->GetX(), shape->GetY(), shape->GetZ())
-				);
-				if (distance_moved > 0.01f) { // Movement threshold
-					impl->any_shadow_caster_moved = true;
+				if (shape->CastsShadows()) {
+					scene_center += glm::vec3(shape->GetX(), shape->GetY(), shape->GetZ());
+					shadow_caster_count++;
+					float distance_moved = glm::distance(
+						shape->GetLastPosition(),
+						glm::vec3(shape->GetX(), shape->GetY(), shape->GetZ())
+					);
+					if (distance_moved > 0.01f) { // Movement threshold
+						impl->any_shadow_caster_moved = true;
+					}
 				}
 			}
-			scene_center /= static_cast<float>(impl->shapes.size());
+			if (shadow_caster_count > 0) {
+				scene_center /= static_cast<float>(shadow_caster_count);
+			} else {
+				scene_center = impl->camera.pos();
+			}
 		}
 
 		float distance_to_scene = has_shapes ? glm::distance(impl->camera.pos(), scene_center) : 0.0f;
@@ -1710,6 +1742,9 @@ namespace Boidsish {
 		glBufferSubData(GL_UNIFORM_BUFFER, offset, sizeof(glm::vec3), &ambient_light[0]);
 		offset += 12;
 		glBufferSubData(GL_UNIFORM_BUFFER, offset, sizeof(float), &impl->simulation_time);
+		offset += 4;
+		offset = (offset + 15) & ~15; // align to 16
+		glBufferSubData(GL_UNIFORM_BUFFER, offset, sizeof(glm::vec3), &impl->camera.front()[0]);
 		glBindBuffer(GL_UNIFORM_BUFFER, 0);
 
 		if (impl->reflection_fbo) {
@@ -1741,50 +1776,187 @@ namespace Boidsish {
 			impl->RenderBlur(Constants::Class::Rendering::BlurPasses());
 		}
 
-		// Reset all light shadow indices to -1 before the shadow pass
-		// This prevents stale indices from causing undefined behavior
-		for (auto& light : impl->light_manager.GetLights()) {
-			light.shadow_map_index = -1;
-		}
-
 		// --- Shadow Pass (render depth from each shadow-casting light) ---
-		std::vector<Light*> shadow_lights; // Declare outside the if block
-
 		if (impl->shadow_manager && impl->shadow_manager->IsInitialized()) {
-			shadow_lights = impl->light_manager.GetShadowCastingLights();
-			for (size_t i = 0; i < shadow_lights.size() && i < ShadowManager::kMaxShadowLights; ++i) {
-				Light* light = shadow_lights[i];
-				light->shadow_map_index = static_cast<int>(i);
+			std::vector<Light*> shadow_lights = impl->light_manager.GetShadowCastingLights();
 
-				bool light_has_moved = glm::distance(light->position, light->last_position) > 0.1f ||
-					glm::distance(light->direction, light->last_direction) > 0.1f;
-				bool camera_moved = glm::distance(impl->camera.pos(), impl->last_shadow_update_camera_pos) > 2.0f;
+			// 1. Assign stable map indices and identify maps
+			for (auto& light : impl->light_manager.GetLights()) {
+				light.shadow_map_index = -1;
+			}
 
-				if (impl->camera_is_close_to_scene && (impl->any_shadow_caster_moved || light_has_moved || (has_terrain && camera_moved))) {
-					impl->shadow_manager->BeginShadowPass(static_cast<int>(i), *light, scene_center);
-
-					Shader& shadow_shader = impl->shadow_manager->GetShadowShader();
-					shadow_shader.use();
-					for (const auto& shape : impl->shapes) {
-						if (!shape->IsHidden()) {
-							shape->render(shadow_shader);
+			struct MapUpdateInfo {
+				int    map_index;
+				Light* light;
+				int    cascade_index; // -1 for standard
+				float  weight;
+			};
+			std::vector<MapUpdateInfo> shadow_map_registry;
+			int                        next_map_idx = 0;
+			for (auto light : shadow_lights) {
+				if (next_map_idx >= ShadowManager::kMaxShadowMaps)
+					break;
+				light->shadow_map_index = next_map_idx;
+				if (light->type == DIRECTIONAL_LIGHT) {
+					for (int c = 0; c < ShadowManager::kMaxCascades; ++c) {
+						if (next_map_idx < ShadowManager::kMaxShadowMaps) {
+							// Cascade 0 (near) needs updates most frequently for close detail
+							// Cascade 3 (far) can tolerate more staleness but still needs rotation updates
+							float weight = (c == 0) ? 8.0f : (c == 1) ? 4.0f : (c == 2) ? 2.0f : 1.0f;
+							shadow_map_registry.push_back({next_map_idx++, light, c, weight});
 						}
 					}
-
-					// Also render terrain to shadow map
-					// Disable culling for terrain because it's single-sided and we want it to cast shadows
-					glDisable(GL_CULL_FACE);
-					impl->RenderTerrain(impl->shadow_manager->GetLightSpaceMatrix(static_cast<int>(i)), glm::mat4(1.0f), std::nullopt, true);
-					glEnable(GL_CULL_FACE);
-					glCullFace(GL_FRONT);
-
-					impl->shadow_manager->EndShadowPass();
-
-					light->last_position = light->position;
-					light->last_direction = light->direction;
-					impl->last_shadow_update_camera_pos = impl->camera.pos();
+				} else {
+					shadow_map_registry.push_back({next_map_idx++, light, -1, 4.0f});
 				}
 			}
+
+			// 2. Calculate camera rotation delta for rotation-sensitive updates
+			// Rotation affects ALL cascades because the frustum shape changes
+			float camera_rotation_delta = 1.0f - glm::dot(impl->camera.front(), impl->last_shadow_update_camera_front);
+			bool significant_rotation = camera_rotation_delta > 0.001f; // ~2.5 degrees
+			bool major_rotation = camera_rotation_delta > 0.01f; // ~8 degrees
+
+			// 3. Identify maps that need update with improved priority calculation
+			std::vector<int> maps_to_update;
+			// Allow more updates per frame during rotation to prevent stale far cascades
+			const int max_updates_per_frame = major_rotation ? 4 : (significant_rotation ? 3 : 2);
+
+			for (const auto& info : shadow_map_registry) {
+				auto& state = impl->shadow_map_states_[info.map_index];
+
+				float camera_move_dist = glm::distance(impl->camera.pos(), state.last_pos);
+				float rotation_change = 1.0f - glm::dot(impl->camera.front(), state.last_front);
+				bool light_moved = glm::distance(info.light->position, state.last_light_pos) > 0.1f ||
+				                   glm::distance(info.light->direction, state.last_light_dir) > 0.01f;
+
+				// CRITICAL: Far cascades are MORE sensitive to rotation, not less!
+				// A small camera rotation causes the far frustum to sweep across large world areas
+				// Cascade 3 frustum corner can move 100s of units from a few degrees of rotation
+				float rotation_sensitivity = (info.cascade_index == 0) ? 50.0f :
+				                              (info.cascade_index == 1) ? 100.0f :
+				                              (info.cascade_index == 2) ? 200.0f : 400.0f;
+				state.rotation_accumulator += rotation_change * rotation_sensitivity;
+
+				// Movement thresholds: near cascades need fine updates, far can be coarser
+				float movement_threshold = (info.cascade_index == 0) ? 0.5f :
+				                           (info.cascade_index == 1) ? 2.0f :
+				                           (info.cascade_index == 2) ? 5.0f : 10.0f;
+
+				// Rotation threshold: far cascades should update on smaller rotation changes
+				float rotation_threshold = (info.cascade_index == 0) ? 1.0f :
+				                           (info.cascade_index == 1) ? 0.7f :
+				                           (info.cascade_index == 2) ? 0.5f : 0.3f;
+
+				bool needs_movement_update = camera_move_dist > movement_threshold;
+				bool needs_rotation_update = state.rotation_accumulator > rotation_threshold;
+				bool movement_detected = impl->any_shadow_caster_moved || light_moved ||
+				                        (has_terrain && (needs_movement_update || needs_rotation_update));
+
+				if (movement_detected && impl->camera_is_close_to_scene) {
+					// Weight by cascade importance
+					float urgency = info.weight;
+					// Rotation urgency scales with cascade distance (far cascades are more affected)
+					if (needs_rotation_update) {
+						float rotation_multiplier = 1.5f + info.cascade_index * 0.5f;
+						urgency *= rotation_multiplier;
+					}
+					if (impl->any_shadow_caster_moved) urgency *= 1.5f;
+					state.debt += urgency;
+				} else {
+					// Background refresh rate - far cascades refresh slightly faster
+					// to catch distant terrain changes
+					float background_rate = 0.02f + info.cascade_index * 0.005f;
+					state.debt += background_rate;
+				}
+			}
+
+			// 4. Select cascades to update - prioritize by debt but ensure round-robin fairness
+			std::vector<std::pair<float, int>> debt_sorted;
+			// Lower threshold during rotation for faster convergence
+			float debt_threshold = significant_rotation ? 1.5f : 2.5f;
+			for (const auto& info : shadow_map_registry) {
+				auto& state = impl->shadow_map_states_[info.map_index];
+				if (state.debt >= debt_threshold) {
+					debt_sorted.push_back({state.debt, info.map_index});
+				}
+			}
+			std::sort(debt_sorted.begin(), debt_sorted.end(), std::greater<>());
+
+			for (int i = 0; i < std::min((int)debt_sorted.size(), max_updates_per_frame); ++i) {
+				maps_to_update.push_back(debt_sorted[i].second);
+			}
+
+			// Force immediate update of ALL cascades on major rotation
+			// This prevents the jarring "stale cascade" effect when turning quickly
+			if (major_rotation && maps_to_update.size() < shadow_map_registry.size()) {
+				for (const auto& info : shadow_map_registry) {
+					if (std::find(maps_to_update.begin(), maps_to_update.end(), info.map_index) == maps_to_update.end()) {
+						maps_to_update.push_back(info.map_index);
+					}
+				}
+			}
+
+			// Ensure at least one cascade gets updated via round-robin if nothing urgent
+			if (maps_to_update.empty() && !shadow_map_registry.empty()) {
+				impl->shadow_update_round_robin_ = (impl->shadow_update_round_robin_ + 1) % shadow_map_registry.size();
+				// Every other frame, force a background update (was every 4th)
+				if (impl->frame_count_ % 2 == 0) {
+					maps_to_update.push_back(shadow_map_registry[impl->shadow_update_round_robin_].map_index);
+				}
+			}
+
+			// 5. Update selected maps
+			for (int map_idx : maps_to_update) {
+				const auto& info = shadow_map_registry[map_idx];
+				auto&       state = impl->shadow_map_states_[map_idx];
+
+				impl->shadow_manager->BeginShadowPass(
+					info.map_index,
+					*info.light,
+					scene_center,
+					500.0f,
+					info.cascade_index,
+					view_matrix,
+					impl->camera.fov,
+					(float)impl->width / (float)impl->height
+				);
+
+				Shader& shadow_shader = impl->shadow_manager->GetShadowShader();
+				shadow_shader.use();
+				for (const auto& shape : impl->shapes) {
+					if (shape->CastsShadows()) {
+						shape->render(shadow_shader);
+					}
+				}
+
+				glDisable(GL_CULL_FACE);
+				impl->RenderTerrain(
+					impl->shadow_manager->GetLightSpaceMatrix(info.map_index),
+					glm::mat4(1.0f),
+					std::nullopt,
+					true,
+					impl->shadow_manager->GetShadowFrustum(info.map_index)
+				);
+				glEnable(GL_CULL_FACE);
+				glCullFace(GL_FRONT);
+
+				impl->shadow_manager->EndShadowPass();
+
+				state.debt = 0.0f;
+				state.rotation_accumulator = 0.0f;
+				state.last_update_frame = impl->frame_count_;
+				state.last_light_space_matrix = impl->shadow_manager->GetLightSpaceMatrix(info.map_index);
+
+				// Update last known positions for this specific shadow map
+				state.last_pos = impl->camera.pos();
+				state.last_front = impl->camera.front();
+				state.last_light_pos = info.light->position;
+				state.last_light_dir = info.light->direction;
+			}
+
+			// Update global last shadow camera state
+			impl->last_shadow_update_camera_front = impl->camera.front();
 
 			impl->shadow_manager->UpdateShadowUBO(shadow_lights);
 		}

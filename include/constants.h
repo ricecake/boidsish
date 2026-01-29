@@ -53,11 +53,24 @@ namespace Boidsish {
 
 		namespace Class {
 			namespace Shadows {
-				consteval int   MaxLights() { return 4; }
+				consteval int   MaxLights() { return 10; }
+				consteval int   MaxCascades() { return 4; }
+				consteval int   MaxShadowMaps() { return 16; }
 				consteval int   MapSize() { return 2048; }
 				consteval float DefaultSceneRadius() { return 500.0f; }
-				consteval float UpdateDistanceThreshold() { return 200.0f; }
-				consteval float GridSnappingSize() { return 10.0f; }
+				consteval float DefaultFOV() { return 45.0f; }
+				// Cascade split distances (logarithmic distribution)
+				// Near splits are tighter for crisp close shadows
+				// Far cascade acts as catchall for distant terrain
+				consteval float CascadeSplit0() { return 20.0f; }
+				consteval float CascadeSplit1() { return 50.0f; }
+				consteval float CascadeSplit2() { return 150.0f; }
+				consteval float CascadeSplit3() { return 700.0f; }
+				// Grid snapping sizes per cascade (finer for near, coarser for far)
+				consteval float GridSnapCascade0() { return 0.25f; }
+				consteval float GridSnapCascade1() { return 1.0f; }
+				consteval float GridSnapCascade2() { return 4.0f; }
+				consteval float GridSnapCascade3() { return 8.0f; }
 			}
 
 			namespace Terrain {
