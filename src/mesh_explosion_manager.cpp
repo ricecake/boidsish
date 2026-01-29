@@ -167,7 +167,7 @@ namespace Boidsish {
 
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, ssbo_);
 		glBindVertexArray(vao_);
-		glDrawArraysInstanced(GL_TRIANGLES, 0, 3, kMaxFragments);
+		glDrawArraysInstanced(GL_TRIANGLES, 0, 12, kMaxFragments);
 		glBindVertexArray(0);
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, 0);
 	}
