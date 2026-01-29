@@ -21,6 +21,8 @@ namespace Boidsish {
 			char m_saveName[128];
 			bool m_saveCamera;
 			bool m_moveCamera;
+			bool m_saveEffects;
+			bool m_applyEffects;
 
 			char m_newDictName[128];
 		};

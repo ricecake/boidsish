@@ -2056,34 +2056,56 @@ namespace Boidsish {
 		auto& config = ConfigManager::GetInstance();
 		switch (effect) {
 		case VisualEffect::RIPPLE:
-			config.SetBool("artistic_effect_ripple", !config.GetAppSettingBool("artistic_effect_ripple", false));
+			SetEffectEnabled(effect, !config.GetAppSettingBool("artistic_effect_ripple", false));
 			break;
 		case VisualEffect::COLOR_SHIFT:
-			config.SetBool(
-				"artistic_effect_color_shift",
-				!config.GetAppSettingBool("artistic_effect_color_shift", false)
-			);
+			SetEffectEnabled(effect, !config.GetAppSettingBool("artistic_effect_color_shift", false));
 			break;
 		case VisualEffect::BLACK_AND_WHITE:
-			config.SetBool(
-				"artistic_effect_black_and_white",
-				!config.GetAppSettingBool("artistic_effect_black_and_white", false)
-			);
+			SetEffectEnabled(effect, !config.GetAppSettingBool("artistic_effect_black_and_white", false));
 			break;
 		case VisualEffect::NEGATIVE:
-			config.SetBool("artistic_effect_negative", !config.GetAppSettingBool("artistic_effect_negative", false));
+			SetEffectEnabled(effect, !config.GetAppSettingBool("artistic_effect_negative", false));
 			break;
 		case VisualEffect::SHIMMERY:
-			config.SetBool("artistic_effect_shimmery", !config.GetAppSettingBool("artistic_effect_shimmery", false));
+			SetEffectEnabled(effect, !config.GetAppSettingBool("artistic_effect_shimmery", false));
 			break;
 		case VisualEffect::GLITCHED:
-			config.SetBool("artistic_effect_glitched", !config.GetAppSettingBool("artistic_effect_glitched", false));
+			SetEffectEnabled(effect, !config.GetAppSettingBool("artistic_effect_glitched", false));
 			break;
 		case VisualEffect::WIREFRAME:
-			config.SetBool("artistic_effect_wireframe", !config.GetAppSettingBool("artistic_effect_wireframe", false));
+			SetEffectEnabled(effect, !config.GetAppSettingBool("artistic_effect_wireframe", false));
 			break;
 		case VisualEffect::FREEZE_FRAME_TRAIL:
-			// This one doesn't have a toggle, it's event-driven
+			break;
+		}
+	}
+
+	void Visualizer::SetEffectEnabled(VisualEffect effect, bool enabled) {
+		auto& config = ConfigManager::GetInstance();
+		switch (effect) {
+		case VisualEffect::RIPPLE:
+			config.SetBool("artistic_effect_ripple", enabled);
+			break;
+		case VisualEffect::COLOR_SHIFT:
+			config.SetBool("artistic_effect_color_shift", enabled);
+			break;
+		case VisualEffect::BLACK_AND_WHITE:
+			config.SetBool("artistic_effect_black_and_white", enabled);
+			break;
+		case VisualEffect::NEGATIVE:
+			config.SetBool("artistic_effect_negative", enabled);
+			break;
+		case VisualEffect::SHIMMERY:
+			config.SetBool("artistic_effect_shimmery", enabled);
+			break;
+		case VisualEffect::GLITCHED:
+			config.SetBool("artistic_effect_glitched", enabled);
+			break;
+		case VisualEffect::WIREFRAME:
+			config.SetBool("artistic_effect_wireframe", enabled);
+			break;
+		case VisualEffect::FREEZE_FRAME_TRAIL:
 			break;
 		}
 	}
@@ -2175,6 +2197,10 @@ namespace Boidsish {
 
 	FireEffectManager* Visualizer::GetFireEffectManager() {
 		return impl->fire_effect_manager.get();
+	}
+
+	PostProcessing::PostProcessingManager& Visualizer::GetPostProcessingManager() {
+		return *impl->post_processing_manager_;
 	}
 
 	float Visualizer::GetLastFrameTime() const {
