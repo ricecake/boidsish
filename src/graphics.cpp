@@ -157,7 +157,7 @@ namespace Boidsish {
 		// Shadow optimization state
 		bool      any_shadow_caster_moved = true;
 		bool      camera_is_close_to_scene = true;
-		float     shadow_update_distance_threshold = Constants::Class::Shadows::UpdateDistanceThreshold();
+		float     shadow_update_distance_threshold = 200.0f;
 		glm::vec3 last_shadow_update_camera_pos{0.0f, -1000.0f, 0.0f};
 		glm::vec3 last_shadow_update_camera_front{0.0f, 0.0f, -1.0f};
 		uint64_t  frame_count_ = 0;
@@ -1628,7 +1628,7 @@ namespace Boidsish {
 		// If we are far from the shapes, or if terrain is the focus, center on camera.
 		if (has_terrain || distance_to_scene > impl->shadow_update_distance_threshold) {
 			// Snap scene_center to a grid to reduce shadow flickering when camera moves
-			float grid_size = Constants::Class::Shadows::GridSnappingSize();
+			float grid_size = 10.0f;
 			scene_center.x = std::floor(impl->camera.pos().x / grid_size) * grid_size;
 			scene_center.y = std::floor(impl->camera.pos().y / grid_size) * grid_size;
 			scene_center.z = std::floor(impl->camera.pos().z / grid_size) * grid_size;
