@@ -26,7 +26,7 @@ namespace Boidsish {
 		if (initialized_)
 			return;
 
-		render_shader_ = std::make_unique<Shader>("shaders/mesh_explosion.vert", "shaders/mesh_explosion.frag");
+		render_shader_ = std::make_unique<Shader>("shaders/mesh_explosion.vert", "shaders/mesh_explosion.frag", nullptr, nullptr, "shaders/mesh_explosion.geom");
 		compute_shader_ = std::make_unique<ComputeShader>("shaders/mesh_explosion.comp");
 
 		glGenBuffers(1, &ssbo_);
@@ -167,7 +167,7 @@ namespace Boidsish {
 
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, ssbo_);
 		glBindVertexArray(vao_);
-		glDrawArraysInstanced(GL_TRIANGLES, 0, 12, kMaxFragments);
+		glDrawArraysInstanced(GL_TRIANGLES, 0, 3, kMaxFragments);
 		glBindVertexArray(0);
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, 0);
 	}
