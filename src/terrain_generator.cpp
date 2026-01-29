@@ -63,6 +63,15 @@ namespace Boidsish {
 				}
 			}
 			pending_chunks_.clear();
+
+			std::lock_guard<std::mutex> lock(superchunk_mutex_);
+			for (auto& pair : pending_superchunk_tasks_) {
+				try {
+					pair.second.get();
+				} catch (...) {
+				}
+			}
+			pending_superchunk_tasks_.clear();
 		}
 
 		{
@@ -139,6 +148,20 @@ namespace Boidsish {
 
 		for (const auto& key : completed_chunks) {
 			pending_chunks_.erase(key);
+		}
+
+		// 2.5 Clean up completed superchunk tasks
+		{
+			std::lock_guard<std::mutex>      lock(superchunk_mutex_);
+			std::vector<uint64_t> completed_superchunks;
+			for (auto& pair : pending_superchunk_tasks_) {
+				if (pair.second.is_ready()) {
+					completed_superchunks.push_back(pair.first);
+				}
+			}
+			for (auto morton : completed_superchunks) {
+				pending_superchunk_tasks_.erase(morton);
+			}
 		}
 
 		// 3. Registration Pass: Register chunks that are in frustum but not in renderer
@@ -371,12 +394,63 @@ namespace Boidsish {
 		std::vector<unsigned int>           indices;
 		bool                                has_terrain = false;
 
+		auto      info = getSuperChunkInfo(chunkX * chunk_size_, chunkZ * chunk_size_);
+		bool      use_superchunk = false;
+		float     max_height = GetMaxHeight();
+		const int texture_dim = chunk_size_ * chunk_size_;
+
+		std::vector<uint16_t> pixels;
+		if (std::filesystem::exists(info.filename)) {
+			pixels = GenerateSuperChunkTexture(chunkX * chunk_size_, chunkZ * chunk_size_);
+			if (pixels.size() == texture_dim * texture_dim * 4) {
+				use_superchunk = true;
+			}
+		} else {
+			// Dispatch superchunk generation if not already pending
+			std::lock_guard<std::mutex> lock(superchunk_mutex_);
+			if (pending_superchunk_tasks_.find(info.morton) == pending_superchunk_tasks_.end()) {
+				pending_superchunk_tasks_.emplace(
+					info.morton,
+					thread_pool_.enqueue(
+						TaskPriority::LOW,
+						&TerrainGenerator::GenerateSuperChunkTexture,
+						this,
+						chunkX * chunk_size_,
+						chunkZ * chunk_size_
+					)
+				);
+			}
+		}
+
 		// Generate heightmap
 		for (int i = 0; i < num_vertices_x; ++i) {
 			for (int j = 0; j < num_vertices_z; ++j) {
 				float worldX = (chunkX * chunk_size_ + i);
 				float worldZ = (chunkZ * chunk_size_ + j);
-				auto  noise = pointGenerate(worldX, worldZ);
+
+				if (use_superchunk) {
+					int relX = static_cast<int>(std::floor(worldX)) - info.super_x * texture_dim;
+					int relZ = static_cast<int>(std::floor(worldZ)) - info.super_z * texture_dim;
+
+					if (relX >= 0 && relX < texture_dim && relZ >= 0 && relZ < texture_dim) {
+						int       index = (relZ * texture_dim + relX) * 4;
+						float     h = (static_cast<float>(pixels[index + 0]) / 65535.0f) * max_height;
+						glm::vec3 n;
+						n.x = (static_cast<float>(pixels[index + 1]) / 65535.0f) * 2.0f - 1.0f;
+						n.y = (static_cast<float>(pixels[index + 2]) / 65535.0f) * 2.0f - 1.0f;
+						n.z = (static_cast<float>(pixels[index + 3]) / 65535.0f) * 2.0f - 1.0f;
+
+						// Reconstruct dx, dz for diffToNorm
+						float dx = -n.x / std::max(0.0001f, n.y);
+						float dz = -n.z / std::max(0.0001f, n.y);
+
+						heightmap[i][j] = glm::vec3(h, dx, dz);
+						has_terrain = has_terrain || h > 0;
+						continue;
+					}
+				}
+
+				auto noise = pointGenerate(worldX, worldZ);
 				heightmap[i][j] = noise;
 				has_terrain = has_terrain || noise[0] > 0;
 			}
@@ -523,21 +597,31 @@ namespace Boidsish {
 		return path;
 	}
 
-	std::vector<uint16_t> TerrainGenerator::GenerateSuperChunkTexture(int requested_x, int requested_z) {
-		const int kSuperChunkSizeInChunks = chunk_size_;
-		const int texture_dim = kSuperChunkSizeInChunks * chunk_size_;
+	TerrainGenerator::SuperChunkInfo TerrainGenerator::getSuperChunkInfo(int world_x, int world_z) const {
+		const int texture_dim = chunk_size_ * chunk_size_;
+		const int super_x = floor(static_cast<float>(world_x) / texture_dim);
+		const int super_z = floor(static_cast<float>(world_z) / texture_dim);
 
-		// Map world coordinates to a consistent grid index
-		const int super_chunk_x = floor(static_cast<float>(requested_x) / texture_dim);
-		const int super_chunk_z = floor(static_cast<float>(requested_z) / texture_dim);
-
-		std::filesystem::create_directory("terrain_cache");
 		const uint64_t morton_code = libmorton::morton2D_64_encode(
-			static_cast<uint32_t>(super_chunk_x),
-			static_cast<uint32_t>(super_chunk_z)
+			static_cast<uint32_t>(super_x),
+			static_cast<uint32_t>(super_z)
 		);
 
-		std::string    filename = "terrain_cache/superchunk_" + std::to_string(morton_code) + ".dat";
+		return {
+			morton_code,
+			"terrain_cache/superchunk_" + std::to_string(morton_code) + ".dat",
+			super_x,
+			super_z};
+	}
+
+	std::vector<uint16_t> TerrainGenerator::GenerateSuperChunkTexture(int requested_x, int requested_z) {
+		const int texture_dim = chunk_size_ * chunk_size_;
+		auto      info = getSuperChunkInfo(requested_x, requested_z);
+
+		std::filesystem::create_directory("terrain_cache");
+		const uint64_t morton_code = info.morton;
+		std::string    filename = info.filename;
+
 		const uint32_t kMagicNumber = 0x1F9D48E2; // Bump magic number due to format change
 		if (std::filesystem::exists(filename)) {
 			std::ifstream infile(filename, std::ios::binary);
@@ -650,8 +734,8 @@ namespace Boidsish {
 
 		for (int y = 0; y < texture_dim; ++y) {
 			for (int x = 0; x < texture_dim; ++x) {
-				float worldX = (super_chunk_x * texture_dim + x);
-				float worldZ = (super_chunk_z * texture_dim + y);
+				float worldX = (info.super_x * texture_dim + x);
+				float worldZ = (info.super_z * texture_dim + y);
 
 				auto [height, normal] = pointProperties(worldX, worldZ);
 
@@ -680,17 +764,23 @@ namespace Boidsish {
 			}
 		}
 
-		std::ofstream outfile(filename, std::ios::binary);
+		std::string   temp_filename = filename + ".tmp";
+		std::ofstream outfile(temp_filename, std::ios::binary);
 		int           width = texture_dim;
 		int           height = texture_dim;
 		outfile.write(reinterpret_cast<const char*>(&kMagicNumber), sizeof(uint32_t));
 		outfile.write(reinterpret_cast<const char*>(&width), sizeof(int));
 		outfile.write(reinterpret_cast<const char*>(&height), sizeof(int));
-		zstr::ostream z_outfile(outfile.rdbuf());
-		z_outfile.write(
-			reinterpret_cast<const char*>(z_ordered_pixels.data()),
-			z_ordered_pixels.size() * sizeof(uint16_t)
-		);
+		{
+			zstr::ostream z_outfile(outfile.rdbuf());
+			z_outfile.write(
+				reinterpret_cast<const char*>(z_ordered_pixels.data()),
+				z_ordered_pixels.size() * sizeof(uint16_t)
+			);
+		}
+		outfile.close();
+		std::filesystem::rename(temp_filename, filename);
+
 		return pixels;
 	}
 

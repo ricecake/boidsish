@@ -200,6 +200,14 @@ namespace Boidsish {
 		auto      biomefbm(glm::vec2 pos, BiomeAttributes attr) const;
 		glm::vec3 pointGenerate(float x, float y) const;
 
+		struct SuperChunkInfo {
+			uint64_t    morton;
+			std::string filename;
+			int         super_x; // in superchunk grid
+			int         super_z; // in superchunk grid
+		};
+		SuperChunkInfo getSuperChunkInfo(int world_x, int world_z) const;
+
 		glm::vec3 diffToNorm(float dx, float dz) const { return glm::normalize(glm::vec3(-dx, 1.0f, -dz)); }
 
 		// Cache and async management
@@ -207,9 +215,11 @@ namespace Boidsish {
 		std::map<std::pair<int, int>, std::shared_ptr<Terrain>>            chunk_cache_;
 		std::vector<std::shared_ptr<Terrain>>                              visible_chunks_;
 		std::map<std::pair<int, int>, TaskHandle<TerrainGenerationResult>> pending_chunks_;
+		mutable std::map<uint64_t, TaskHandle<std::vector<uint16_t>>>      pending_superchunk_tasks_;
 		mutable std::recursive_mutex                                       chunk_cache_mutex_;  // Recursive to allow eviction callback
 		mutable std::mutex                                                 visible_chunks_mutex_;
 		mutable std::mutex                                                 point_generation_mutex_;
+		mutable std::mutex                                                 superchunk_mutex_;
 		std::random_device                                                 rd_;
 		std::mt19937                                                       eng_;
 
