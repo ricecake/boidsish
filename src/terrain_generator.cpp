@@ -481,7 +481,7 @@ namespace Boidsish {
 		return path;
 	}
 
-	std::vector<uint16_t> TerrainGenerator::GenerateSuperChunkTexture(int requested_x, int requested_z) {
+	std::vector<uint16_t> TerrainGenerator::GenerateSuperChunkTexture(int requested_x, int requested_z) const {
 		const int kSuperChunkSizeInChunks = chunk_size_;
 		const int texture_dim = kSuperChunkSizeInChunks * chunk_size_;
 
@@ -708,7 +708,7 @@ namespace Boidsish {
 		stbi_write_png(png_filepath.c_str(), width, height, 4, pixels8.data(), width * 4);
 	}
 
-	std::vector<uint16_t> TerrainGenerator::GenerateTextureForArea(int world_x, int world_z, int size) {
+	std::vector<uint16_t> TerrainGenerator::GenerateTextureForArea(int world_x, int world_z, int size) const {
 		const int kSuperChunkSizeInChunks = chunk_size_;
 		const int texture_dim = kSuperChunkSizeInChunks * chunk_size_;
 

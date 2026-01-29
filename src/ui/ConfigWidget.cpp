@@ -1,6 +1,7 @@
 #include "ui/ConfigWidget.h"
 
 #include "ConfigManager.h"
+#include "decor_manager.h"
 #include "graphics.h"
 #include "imgui.h"
 
@@ -84,6 +85,16 @@ namespace Boidsish {
 					int         current_mode = static_cast<int>(m_visualizer.GetCameraMode());
 					if (ImGui::Combo("Mode", &current_mode, modes, IM_ARRAYSIZE(modes))) {
 						m_visualizer.SetCameraMode(static_cast<CameraMode>(current_mode));
+					}
+				}
+
+				if (ImGui::CollapsingHeader("Foliage", ImGuiTreeNodeFlags_DefaultOpen)) {
+					auto decor_manager = m_visualizer.GetDecorManager();
+					if (decor_manager) {
+						bool enabled = decor_manager->IsEnabled();
+						if (ImGui::Checkbox("Enable Foliage", &enabled)) {
+							decor_manager->SetEnabled(enabled);
+						}
 					}
 				}
 
