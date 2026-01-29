@@ -26,7 +26,7 @@ namespace Boidsish {
 		if (initialized_)
 			return;
 
-		render_shader_ = std::make_unique<Shader>("shaders/mesh_explosion.vert", "shaders/mesh_explosion.frag", nullptr, nullptr, "shaders/mesh_explosion.geom");
+		render_shader_ = std::make_unique<Shader>("shaders/mesh_explosion.vert", "shaders/mesh_explosion.frag");
 		compute_shader_ = std::make_unique<ComputeShader>("shaders/mesh_explosion.comp");
 
 		glGenBuffers(1, &ssbo_);

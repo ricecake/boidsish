@@ -18,12 +18,13 @@ layout(std430, binding = 0) buffer FragmentBuffer {
 	Fragment fragments[];
 };
 
-out VS_OUT {
-    vec3 FragPos;
-    vec3 Normal;
-    vec2 TexCoords;
-    vec4 Color;
-} vs_out;
+uniform mat4 u_view;
+uniform mat4 u_projection;
+
+out vec3 FragPos;
+out vec3 Normal;
+out vec2 TexCoords;
+out vec4 Color;
 
 vec3 rotate_vector(vec3 v, vec4 q) {
 	return v + 2.0 * cross(q.xyz, cross(q.xyz, v) + q.w * v);
@@ -34,27 +35,26 @@ void main() {
 	Fragment f = fragments[fid];
 
 	if (f.t2_age.w <= 0.0) {
-		vs_out.FragPos = vec3(0);
-        gl_Position = vec4(0, 0, 0, 0);
+		gl_Position = vec4(0, 0, 0, 0);
 		return;
 	}
 
-	vec3 v[3];
-	v[0] = f.v0.xyz;
-	v[1] = f.v1.xyz;
-	v[2] = f.v2.xyz;
+	vec3 localPos;
+	if (gl_VertexID == 0) {
+		localPos = f.v0.xyz;
+		TexCoords = f.t01.xy;
+	} else if (gl_VertexID == 1) {
+		localPos = f.v1.xyz;
+		TexCoords = f.t01.zw;
+	} else {
+		localPos = f.v2.xyz;
+		TexCoords = f.t2_age.xy;
+	}
 
-	vec2 t[3];
-	t[0] = f.t01.xy;
-	t[1] = f.t01.zw;
-	t[2] = f.t2_age.xy;
+	vec3 worldPos = f.pos.xyz + rotate_vector(localPos, f.rot);
+	Normal = rotate_vector(f.normal.xyz, f.rot);
+	FragPos = worldPos;
+	Color = f.color;
 
-	int vert = gl_VertexID % 3; // 0, 1, or 2
-
-	vs_out.FragPos = f.pos.xyz + rotate_vector(v[vert], f.rot);
-	vs_out.Normal = rotate_vector(f.normal.xyz, f.rot);
-	vs_out.Color = f.color;
-	vs_out.TexCoords = t[vert];
-
-	gl_Position = vec4(vs_out.FragPos, 1.0);
+	gl_Position = u_projection * u_view * vec4(worldPos, 1.0);
 }
