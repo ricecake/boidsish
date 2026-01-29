@@ -116,6 +116,10 @@ namespace Boidsish {
 
 		inline void SetInstanced(bool is_instanced) { is_instanced_ = is_instanced; }
 
+		inline bool IsHidden() const { return is_hidden_; }
+
+		inline void SetHidden(bool hidden) { is_hidden_ = hidden; }
+
 		// Returns a key identifying what shapes can be instanced together
 		// Shapes with the same key share the same mesh data
 		virtual std::string GetInstanceKey() const = 0;
@@ -198,6 +202,7 @@ namespace Boidsish {
 		bool      trail_rocket_;
 		bool      is_colossal_;
 		bool      is_instanced_ = false;
+		bool      is_hidden_ = false;
 		bool      trail_pbr_;
 		float     trail_roughness_;
 		float     trail_metallic_;

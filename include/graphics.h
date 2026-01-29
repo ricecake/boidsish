@@ -240,7 +240,23 @@ namespace Boidsish {
 		 */
 		void CreateExplosion(const glm::vec3& position, float intensity = 1.0f);
 
-		void ExplodeShape(std::shared_ptr<Shape> shape, float intensity = 1.0f);
+		void ExplodeShape(std::shared_ptr<Shape> shape, float intensity = 1.0f, const glm::vec3& velocity = glm::vec3(0.0f));
+
+		/**
+		 * @brief A high-level effect helper that combines mesh explosion, hiding the original shape,
+		 * and spawning fire/shockwave effects.
+		 *
+		 * @param shape The shape to explode and hide
+		 * @param direction The primary direction of the explosion and shockwave normal
+		 * @param intensity Scaling factor for all combined effects
+		 * @param fire_style The style of fire particles to spawn (e.g., Explosion, Glitter)
+		 */
+		void TriggerComplexExplosion(
+			std::shared_ptr<Shape> shape,
+			const glm::vec3& direction,
+			float            intensity = 1.0f,
+			FireEffectStyle  fire_style = FireEffectStyle::Explosion
+		);
 
 		std::tuple<float, glm::vec3>                 GetTerrainPointProperties(float x, float y) const;
 		std::tuple<float, glm::vec3>                 GetTerrainPointPropertiesThreadSafe(float x, float y) const;
