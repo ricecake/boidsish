@@ -396,88 +396,43 @@ namespace Boidsish {
 
 	bool
 	TerrainGenerator::Raycast(const glm::vec3& origin, const glm::vec3& dir, float max_dist, float& out_dist) const {
-		std::lock_guard<std::mutex> lock(visible_chunks_mutex_);
-
-		float           closest_t = max_dist;
-		bool            hit = false;
-		Octree<size_t>::Ray ray(origin, dir);
-
-		// 1. Collect chunks that the ray might intersect, sorted by distance
-		struct ChunkHit {
-			std::shared_ptr<Terrain> chunk;
-			float                    t_min;
-		};
-		std::vector<ChunkHit> candidates;
-		candidates.reserve(visible_chunks_.size());
-
-		for (const auto& chunk : visible_chunks_) {
-			// We can use the proxy radius or the Octree's root boundary
-			// For now, let's just use a simple AABB check if possible, or just call raycast
-			// but to optimize we want to avoid the full octree traversal if possible.
-			// Actually, Terrain::raycast already does the root AABB check.
-			// Let's just gather them and sort.
-
-			// To get t_min without full traversal, we can expose a simple AABB check.
-			// But for now, let's just do it simply.
-			candidates.push_back({chunk, 0.0f}); // We don't have t_min easily here yet
-		}
-
-		// If we had t_min, we could sort:
-		// std::sort(candidates.begin(), candidates.end(), [](const auto& a, const auto& b) {
-		//     return a.t_min < b.t_min;
-		// });
-
-		for (const auto& cand : candidates) {
-			float dist;
-			glm::vec3 normal;
-			if (cand.chunk->raycast(ray, dist, normal)) {
-				if (dist < closest_t) {
-					closest_t = dist;
-					hit = true;
-					// If we were sorted by t_min, we could potentially break early here
-					// if closest_t < next_cand.t_min
-				}
-			}
-		}
-
-		if (hit) {
-			out_dist = closest_t;
-			return true;
-		}
-
-		// Fallback to procedural raycast if no mesh hit (e.g. outside visible range or hitting "floor" gaps)
 		constexpr float step_size = 1.0f; // Initial step for ray marching
 		float           current_dist = 0.0f;
 		glm::vec3       current_pos = origin;
 
+		// Ray marching to find a segment that contains the intersection
 		while (current_dist < max_dist) {
 			current_pos = origin + dir * current_dist;
 			float terrain_height = pointGenerate(current_pos.x, current_pos.z).x;
 
 			if (current_pos.y < terrain_height) {
+				// We found an intersection between the previous and current step.
+				// Now refine with a binary search.
 				float start_dist = std::max(0.0f, current_dist - step_size);
 				float end_dist = current_dist;
 
-				constexpr int binary_search_steps = 10;
+				constexpr int binary_search_steps = 10; // 10 steps for good precision
 				for (int i = 0; i < binary_search_steps; ++i) {
 					float     mid_dist = (start_dist + end_dist) / 2.0f;
 					glm::vec3 mid_pos = origin + dir * mid_dist;
-					float     mid_terrain_height = pointGenerate(mid_pos.x, mid_pos.z).x;
+
+					float mid_terrain_height = pointGenerate(mid_pos.x, mid_pos.z).x;
 
 					if (mid_pos.y < mid_terrain_height) {
-						end_dist = mid_dist;
+						end_dist = mid_dist; // Intersection is in the first half
 					} else {
-						start_dist = mid_dist;
+						start_dist = mid_dist; // Intersection is in the second half
 					}
 				}
 
 				out_dist = (start_dist + end_dist) / 2.0f;
-				return true;
+				return true; // Hit
 			}
+
 			current_dist += step_size;
 		}
 
-		return false;
+		return false; // No hit
 	}
 
 	glm::vec3 TerrainGenerator::getPathInfluence(float x, float z) const {
