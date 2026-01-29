@@ -1,61 +1,57 @@
-#include <iostream>
-#include <memory>
-#include <vector>
 
-#include "dot.h"
 #include "graphics.h"
 #include "model.h"
-#include "shape.h"
-#include <glm/gtc/random.hpp>
+#include "constants.h"
+#include <iostream>
+#include <memory>
+#include <glm/glm.hpp>
+#include <glm/gtc/matrix_transform.hpp>
 
 using namespace Boidsish;
 
 int main() {
-	std::cout << "Starting Mesh Explosion Test..." << std::endl;
-	Visualizer visualizer(1024, 768, "Mesh Explosion Test");
+    try {
+        Visualizer visualizer(1024, 768, "Mesh Explosion Test");
 
-	// Create a teapot model
-	auto teapot = std::make_shared<Model>("assets/utah_teapot.obj");
-	teapot->SetColor(1.0f, 0.0f, 0.0f, 1.0f); // Red teapot
-	teapot->SetScale(glm::vec3(5.0f));
+        auto teapot = std::make_shared<Model>("assets/utah_teapot.obj");
+        teapot->SetPosition(0.0f, 0.0f, 0.0f);
+        teapot->SetScale(glm::vec3(0.6f)); // Doubled scale
+        teapot->SetColor(0.8f, 0.4f, 0.1f, 1.0f); // Bronze/Orange color
+        visualizer.AddShape(teapot);
 
-	// Create a dot (procedural sphere)
-	auto dot = std::make_shared<Dot>();
-	dot->SetColor(0.0f, 0.0f, 1.0f, 1.0f); // Blue dot
-	dot->SetSize(10.0f);
+        Camera& cam = visualizer.GetCamera();
+        cam.x = 0.0f; cam.y = 1.0f; cam.z = 2.0f; // Moved camera closer
+        cam.pitch = -10.0f; cam.yaw = -90.0f;
 
-	std::vector<std::shared_ptr<Shape>> shapes;
+        Light sun;
+        sun.position = glm::vec3(5.0f, 5.0f, 5.0f);
+        sun.color = glm::vec3(1.0f, 1.0f, 1.0f);
+        sun.intensity = 100.0f;
+        sun.base_intensity = 100.0f;
+        sun.type = 0;
+        visualizer.GetLightManager().AddLight(sun);
 
-	auto handler = [&](float t) {
-		static float last_explode = -10.0f;
-		if (t - last_explode > 3.0f) {
-			last_explode = t;
-			static int count = 0;
-			if (count % 2 == 0) {
-				std::cout << "Exploding Red Teapot!" << std::endl;
-				visualizer.ExplodeShape(teapot, 5.0f);
-			} else {
-				std::cout << "Exploding Blue Dot!" << std::endl;
-				visualizer.ExplodeShape(dot, 1.0f);
-			}
-			count++;
-		}
-		return shapes;
-	};
+        bool exploded = false;
+        float timer = 0.0f;
+        float explosion_time = 0.5f;
 
-	visualizer.AddShapeHandler(handler);
+        visualizer.TogglePostProcessingEffect("Atmosphere", false);
 
-	// Set a good camera position
-	Camera cam;
-	cam.x = 0.0f;
-	cam.y = 40.0f;
-	cam.z = 100.0f;
-	cam.pitch = -20.0f;
-	cam.yaw = 0.0f;
-	visualizer.SetCamera(cam);
+        visualizer.AddShapeHandler([&](float dt) -> std::vector<std::shared_ptr<Shape>> {
+            timer += dt;
+            if (!exploded && timer >= explosion_time) {
+                std::cout << "[INFO] Triggering explosion" << std::endl;
+                visualizer.ExplodeShape(teapot, 2.0f);
+                teapot->SetColor(0.8f, 0.4f, 0.1f, 0.0f); // Hide the teapot
+                exploded = true;
+            }
+            return {};
+        });
 
-	std::cout << "Running visualizer loop..." << std::endl;
-	visualizer.Run();
-
-	return 0;
+        visualizer.Run();
+    } catch (const std::exception& e) {
+        std::cerr << "Error: " << e.what() << std::endl;
+        return 1;
+    }
+    return 0;
 }

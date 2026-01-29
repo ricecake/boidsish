@@ -1,21 +1,30 @@
-#version 430 core
+#version 420 core
 
-in vec3 FragPos;
-in vec3 Normal;
-in vec2 TexCoords;
-in vec4 Color;
+#include "helpers/lighting.glsl"
+
+in vec3 fFragPos;
+in vec3 fNormal;
+in vec2 fTexCoords;
+in vec4 fColor;
 
 out vec4 FragColor;
 
-uniform vec3 u_camera_pos;
+uniform sampler2D u_texture;
+uniform bool u_useTexture;
 
 void main() {
-	if (Color.a <= 0.0)
-		discard;
+    if (fColor.a <= 0.0) discard;
 
-	vec3  norm = normalize(Normal);
-	vec3  lightDir = normalize(vec3(1.0, 1.0, 1.0)); // Simple directional light
-	float diff = max(dot(norm, lightDir), 0.3);
+    vec3 baseColor = fColor.rgb;
+    if (u_useTexture) {
+        baseColor *= texture(u_texture, fTexCoords).rgb;
+    }
 
-	FragColor = vec4(Color.rgb * diff, Color.a);
+    vec3 norm = normalize(fNormal);
+
+    // Use apply_lighting_no_shadows for better performance on many fragments
+    // but still getting all scene lights and ambient light.
+    vec4 lightResult = apply_lighting_no_shadows(fFragPos, norm, baseColor, 0.5);
+
+    FragColor = vec4(lightResult.rgb, fColor.a);
 }

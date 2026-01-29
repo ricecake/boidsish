@@ -26,8 +26,19 @@ namespace Boidsish {
 		if (initialized_)
 			return;
 
-		render_shader_ = std::make_unique<Shader>("shaders/mesh_explosion.vert", "shaders/mesh_explosion.frag");
+		render_shader_ = std::make_unique<Shader>("shaders/mesh_explosion.vert", "shaders/mesh_explosion.frag", nullptr, nullptr, "shaders/mesh_explosion.geom");
 		compute_shader_ = std::make_unique<ComputeShader>("shaders/mesh_explosion.comp");
+
+		// Setup UBO bindings
+		render_shader_->use();
+		GLuint lighting_idx = glGetUniformBlockIndex(render_shader_->ID, "Lighting");
+		if (lighting_idx != GL_INVALID_INDEX) {
+			glUniformBlockBinding(render_shader_->ID, lighting_idx, 0);
+		}
+		GLuint shadows_idx = glGetUniformBlockIndex(render_shader_->ID, "Shadows");
+		if (shadows_idx != GL_INVALID_INDEX) {
+			glUniformBlockBinding(render_shader_->ID, shadows_idx, 2);
+		}
 
 		glGenBuffers(1, &ssbo_);
 		glBindBuffer(GL_SHADER_STORAGE_BUFFER, ssbo_);
@@ -77,9 +88,23 @@ namespace Boidsish {
 			glm::vec3 tri_center = (glm::vec3(world_v1) + glm::vec3(world_v2) + glm::vec3(world_v3)) / 3.0f;
 
 			MeshExplosionFragment f;
+			// Random barycentric coordinates for apex base
+			float u = (dist(gen) + 1.0f) * 0.5f;
+			float v = (dist(gen) + 1.0f) * 0.5f;
+			if (u + v > 1.0f) {
+				u = 1.0f - u;
+				v = 1.0f - v;
+			}
+			float thickness_scale = (dist(gen) + 1.0f) * 0.5f * 1.0f + 1.0f; // 1.0 to 2.0
+
 			f.v0 = world_v1 - glm::vec4(tri_center, 0.0f);
 			f.v1 = world_v2 - glm::vec4(tri_center, 0.0f);
 			f.v2 = world_v3 - glm::vec4(tri_center, 0.0f);
+
+			f.v0.w = u;
+			f.v1.w = v;
+			f.v2.w = thickness_scale;
+
 			f.t01 = glm::vec4(v1.TexCoords.x, v1.TexCoords.y, v2.TexCoords.x, v2.TexCoords.y);
 			f.t2_age = glm::vec4(v3.TexCoords.x, v3.TexCoords.y, 0.0f, 2.0f); // age=0, lifetime=2s
 			f.normal = glm::vec4(normal_matrix * glm::normalize(v1.Normal + v2.Normal + v3.Normal), 0.0f);
