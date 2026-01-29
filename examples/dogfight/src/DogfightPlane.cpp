@@ -22,7 +22,7 @@ namespace Boidsish {
 		return (error_vector * kP) - (derivative_term * kD);
 	}
 
-	DogfightPlane::DogfightPlane(int id, Team team, Vector3 pos): Entity<Dot>(id), team_(team), eng_(rd_()) {
+	DogfightPlane::DogfightPlane(int id, Team team, Vector3 pos): Entity<Model>(id, "assets/dogplane.obj", true), team_(team), eng_(rd_()) {
 		SetPosition(pos);
 		if (team == Team::RED) {
 			SetColor(1.0f, 0.1f, 0.1f, 1.0f);
@@ -45,6 +45,13 @@ namespace Boidsish {
 			axis = glm::vec3(0, 1, 0);
 		rigid_body_.SetOrientation(glm::angleAxis(dist(eng_) * 3.14f, glm::normalize(axis)));
 		rigid_body_.SetLinearVelocity(ObjectToWorld(glm::vec3(0, 0, -kSlowSpeed)));
+
+		shape_->SetScale(glm::vec3(5.0f));
+		std::dynamic_pointer_cast<Model>(shape_)->SetBaseRotation(
+			glm::angleAxis(glm::radians(90.0f), glm::vec3(0.0f, 1.0f, 0.0f))
+		);
+		shape_->SetInstanced(true);
+
 		UpdateShape();
 	}
 

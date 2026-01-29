@@ -4,12 +4,13 @@
 
 #include "dot.h"
 #include "entity.h"
+#include "model.h"
 
 namespace Boidsish {
 
 	enum class Team { RED, BLUE };
 
-	class DogfightPlane: public Entity<Dot> {
+	class DogfightPlane: public Entity<Model> {
 	public:
 		DogfightPlane(int id, Team team, Vector3 pos);
 
