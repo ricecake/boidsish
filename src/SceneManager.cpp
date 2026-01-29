@@ -75,6 +75,43 @@ namespace Boidsish {
 		config.SetFloat(section, "ambient_g", scene.ambient_light.g);
 		config.SetFloat(section, "ambient_b", scene.ambient_light.b);
 
+		// Object Effects
+		std::string obj_section = section + "_ObjectEffects";
+		config.SetBool(obj_section, "ripple", scene.object_effects.ripple);
+		config.SetBool(obj_section, "color_shift", scene.object_effects.color_shift);
+		config.SetBool(obj_section, "black_and_white", scene.object_effects.black_and_white);
+		config.SetBool(obj_section, "negative", scene.object_effects.negative);
+		config.SetBool(obj_section, "shimmery", scene.object_effects.shimmery);
+		config.SetBool(obj_section, "glitched", scene.object_effects.glitched);
+		config.SetBool(obj_section, "wireframe", scene.object_effects.wireframe);
+
+		// Post Processing
+		std::string pp_section = section + "_PostProcessing";
+		config.SetBool(pp_section, "bloom_enabled", scene.post_processing.bloom_enabled);
+		config.SetFloat(pp_section, "bloom_intensity", scene.post_processing.bloom_intensity);
+		config.SetFloat(pp_section, "bloom_threshold", scene.post_processing.bloom_threshold);
+		config.SetBool(pp_section, "atmosphere_enabled", scene.post_processing.atmosphere_enabled);
+		config.SetFloat(pp_section, "haze_density", scene.post_processing.haze_density);
+		config.SetFloat(pp_section, "haze_height", scene.post_processing.haze_height);
+		config.SetFloat(pp_section, "haze_r", scene.post_processing.haze_color.r);
+		config.SetFloat(pp_section, "haze_g", scene.post_processing.haze_color.g);
+		config.SetFloat(pp_section, "haze_b", scene.post_processing.haze_color.b);
+		config.SetFloat(pp_section, "cloud_density", scene.post_processing.cloud_density);
+		config.SetFloat(pp_section, "cloud_altitude", scene.post_processing.cloud_altitude);
+		config.SetFloat(pp_section, "cloud_thickness", scene.post_processing.cloud_thickness);
+		config.SetFloat(pp_section, "cloud_r", scene.post_processing.cloud_color.r);
+		config.SetFloat(pp_section, "cloud_g", scene.post_processing.cloud_color.g);
+		config.SetFloat(pp_section, "cloud_b", scene.post_processing.cloud_color.b);
+		config.SetBool(pp_section, "tone_mapping_enabled", scene.post_processing.tone_mapping_enabled);
+		config.SetBool(pp_section, "film_grain_enabled", scene.post_processing.film_grain_enabled);
+		config.SetFloat(pp_section, "film_grain_intensity", scene.post_processing.film_grain_intensity);
+		config.SetBool(pp_section, "negative_enabled", scene.post_processing.negative_enabled);
+		config.SetBool(pp_section, "glitch_enabled", scene.post_processing.glitch_enabled);
+		config.SetBool(pp_section, "optical_flow_enabled", scene.post_processing.optical_flow_enabled);
+		config.SetBool(pp_section, "strobe_enabled", scene.post_processing.strobe_enabled);
+		config.SetBool(pp_section, "whisp_trail_enabled", scene.post_processing.whisp_trail_enabled);
+		config.SetBool(pp_section, "time_stutter_enabled", scene.post_processing.time_stutter_enabled);
+
 		if (scene.camera) {
 			std::string cam_section = section + "_Camera";
 			config.SetFloat(cam_section, "x", scene.camera->x);
@@ -131,6 +168,43 @@ namespace Boidsish {
 		scene.ambient_light.r = config.GetFloat(section, "ambient_r", 0.1f);
 		scene.ambient_light.g = config.GetFloat(section, "ambient_g", 0.1f);
 		scene.ambient_light.b = config.GetFloat(section, "ambient_b", 0.1f);
+
+		// Object Effects
+		std::string obj_section = section + "_ObjectEffects";
+		scene.object_effects.ripple = config.GetBool(obj_section, "ripple", false);
+		scene.object_effects.color_shift = config.GetBool(obj_section, "color_shift", false);
+		scene.object_effects.black_and_white = config.GetBool(obj_section, "black_and_white", false);
+		scene.object_effects.negative = config.GetBool(obj_section, "negative", false);
+		scene.object_effects.shimmery = config.GetBool(obj_section, "shimmery", false);
+		scene.object_effects.glitched = config.GetBool(obj_section, "glitched", false);
+		scene.object_effects.wireframe = config.GetBool(obj_section, "wireframe", false);
+
+		// Post Processing
+		std::string pp_section = section + "_PostProcessing";
+		scene.post_processing.bloom_enabled = config.GetBool(pp_section, "bloom_enabled", false);
+		scene.post_processing.bloom_intensity = config.GetFloat(pp_section, "bloom_intensity", 0.1f);
+		scene.post_processing.bloom_threshold = config.GetFloat(pp_section, "bloom_threshold", 1.0f);
+		scene.post_processing.atmosphere_enabled = config.GetBool(pp_section, "atmosphere_enabled", true);
+		scene.post_processing.haze_density = config.GetFloat(pp_section, "haze_density", 0.005f);
+		scene.post_processing.haze_height = config.GetFloat(pp_section, "haze_height", 20.0f);
+		scene.post_processing.haze_color.r = config.GetFloat(pp_section, "haze_r", 0.6f);
+		scene.post_processing.haze_color.g = config.GetFloat(pp_section, "haze_g", 0.7f);
+		scene.post_processing.haze_color.b = config.GetFloat(pp_section, "haze_b", 0.8f);
+		scene.post_processing.cloud_density = config.GetFloat(pp_section, "cloud_density", 0.5f);
+		scene.post_processing.cloud_altitude = config.GetFloat(pp_section, "cloud_altitude", 95.0f);
+		scene.post_processing.cloud_thickness = config.GetFloat(pp_section, "cloud_thickness", 10.0f);
+		scene.post_processing.cloud_color.r = config.GetFloat(pp_section, "cloud_r", 0.95f);
+		scene.post_processing.cloud_color.g = config.GetFloat(pp_section, "cloud_g", 0.95f);
+		scene.post_processing.cloud_color.b = config.GetFloat(pp_section, "cloud_b", 1.0f);
+		scene.post_processing.tone_mapping_enabled = config.GetBool(pp_section, "tone_mapping_enabled", false);
+		scene.post_processing.film_grain_enabled = config.GetBool(pp_section, "film_grain_enabled", false);
+		scene.post_processing.film_grain_intensity = config.GetFloat(pp_section, "film_grain_intensity", 0.02f);
+		scene.post_processing.negative_enabled = config.GetBool(pp_section, "negative_enabled", false);
+		scene.post_processing.glitch_enabled = config.GetBool(pp_section, "glitch_enabled", false);
+		scene.post_processing.optical_flow_enabled = config.GetBool(pp_section, "optical_flow_enabled", false);
+		scene.post_processing.strobe_enabled = config.GetBool(pp_section, "strobe_enabled", false);
+		scene.post_processing.whisp_trail_enabled = config.GetBool(pp_section, "whisp_trail_enabled", false);
+		scene.post_processing.time_stutter_enabled = config.GetBool(pp_section, "time_stutter_enabled", false);
 
 		if (has_camera) {
 			std::string cam_section = section + "_Camera";

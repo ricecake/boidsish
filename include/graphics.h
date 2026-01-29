@@ -42,6 +42,9 @@ namespace Boidsish {
 	class FireEffectManager;
 	class ShockwaveManager;
 	class Path;
+	namespace PostProcessing {
+		class PostProcessingManager;
+	}
 } // namespace Boidsish
 
 namespace Boidsish {
@@ -182,6 +185,7 @@ namespace Boidsish {
 		void                        SetTimeScale(float);
 		float                       GetTimeScale();
 		void                        ToggleEffect(VisualEffect effect);
+		void                        SetEffectEnabled(VisualEffect effect, bool enabled);
 		void                        ToggleMenus();
 		std::shared_ptr<FireEffect> AddFireEffect(
 			const glm::vec3& position,
@@ -250,6 +254,7 @@ namespace Boidsish {
 		task_thread_pool::task_thread_pool&          GetThreadPool();
 		LightManager&                                GetLightManager();
 		FireEffectManager*                           GetFireEffectManager();
+		PostProcessing::PostProcessingManager&       GetPostProcessingManager();
 		float                                        GetLastFrameTime() const;
 
 		Config&       GetConfig();

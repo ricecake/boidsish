@@ -1,5 +1,9 @@
 #include "ui/SceneWidget.h"
 #include "imgui.h"
+#include "post_processing/PostProcessingManager.h"
+#include "post_processing/effects/BloomEffect.h"
+#include "post_processing/effects/AtmosphereEffect.h"
+#include "post_processing/effects/FilmGrainEffect.h"
 #include <ctime>
 #include <iomanip>
 #include <sstream>
@@ -13,6 +17,8 @@ namespace Boidsish {
 			m_saveName[0] = '\0';
 			m_saveCamera = true;
 			m_moveCamera = true;
+			m_saveEffects = true;
+			m_applyEffects = true;
 			m_newDictName[0] = '\0';
 		}
 
@@ -50,6 +56,7 @@ namespace Boidsish {
 				ImGui::Text("Save Current Scene");
 				ImGui::InputText("Scene Name", m_saveName, sizeof(m_saveName));
 				ImGui::Checkbox("Save Camera", &m_saveCamera);
+				ImGui::Checkbox("Save Effects", &m_saveEffects);
 				if (ImGui::Button("Save")) {
 					Scene scene;
 					scene.name = m_saveName;
@@ -59,6 +66,55 @@ namespace Boidsish {
 					if (m_saveCamera) {
 						scene.camera = _visualizer.GetCamera();
 					}
+
+					if (m_saveEffects) {
+						// Object Effects
+						scene.object_effects.ripple = _visualizer.IsRippleEffectEnabled();
+						scene.object_effects.color_shift = _visualizer.IsColorShiftEffectEnabled();
+						scene.object_effects.black_and_white = _visualizer.IsBlackAndWhiteEffectEnabled();
+						scene.object_effects.negative = _visualizer.IsNegativeEffectEnabled();
+						scene.object_effects.shimmery = _visualizer.IsShimmeryEffectEnabled();
+						scene.object_effects.glitched = _visualizer.IsGlitchedEffectEnabled();
+						scene.object_effects.wireframe = _visualizer.IsWireframeEffectEnabled();
+
+						// Post Processing
+						auto& ppm = _visualizer.GetPostProcessingManager();
+						for (auto& effect : ppm.GetPreToneMappingEffects()) {
+							if (auto bloom = std::dynamic_pointer_cast<PostProcessing::BloomEffect>(effect)) {
+								scene.post_processing.bloom_enabled = bloom->IsEnabled();
+								scene.post_processing.bloom_intensity = bloom->GetIntensity();
+								scene.post_processing.bloom_threshold = bloom->GetThreshold();
+							} else if (auto atmos = std::dynamic_pointer_cast<PostProcessing::AtmosphereEffect>(effect)) {
+								scene.post_processing.atmosphere_enabled = atmos->IsEnabled();
+								scene.post_processing.haze_density = atmos->GetHazeDensity();
+								scene.post_processing.haze_height = atmos->GetHazeHeight();
+								scene.post_processing.haze_color = atmos->GetHazeColor();
+								scene.post_processing.cloud_density = atmos->GetCloudDensity();
+								scene.post_processing.cloud_altitude = atmos->GetCloudAltitude();
+								scene.post_processing.cloud_thickness = atmos->GetCloudThickness();
+								scene.post_processing.cloud_color = atmos->GetCloudColor();
+							} else if (auto fg = std::dynamic_pointer_cast<PostProcessing::FilmGrainEffect>(effect)) {
+								scene.post_processing.film_grain_enabled = fg->IsEnabled();
+								scene.post_processing.film_grain_intensity = fg->GetIntensity();
+							} else if (effect->GetName() == "Negative") {
+								scene.post_processing.negative_enabled = effect->IsEnabled();
+							} else if (effect->GetName() == "Glitch") {
+								scene.post_processing.glitch_enabled = effect->IsEnabled();
+							} else if (effect->GetName() == "OpticalFlow") {
+								scene.post_processing.optical_flow_enabled = effect->IsEnabled();
+							} else if (effect->GetName() == "Strobe") {
+								scene.post_processing.strobe_enabled = effect->IsEnabled();
+							} else if (effect->GetName() == "WhispTrail") {
+								scene.post_processing.whisp_trail_enabled = effect->IsEnabled();
+							} else if (effect->GetName() == "TimeStutter") {
+								scene.post_processing.time_stutter_enabled = effect->IsEnabled();
+							}
+						}
+						if (auto tm = ppm.GetToneMappingEffect()) {
+							scene.post_processing.tone_mapping_enabled = tm->IsEnabled();
+						}
+					}
+
 					_sceneManager.AddScene(scene);
 					_sceneManager.SaveDictionary(currentDict);
 					m_saveName[0] = '\0';
@@ -105,12 +161,61 @@ namespace Boidsish {
 				}
 
 				ImGui::Checkbox("Move Camera", &m_moveCamera);
+				ImGui::Checkbox("Apply Effects", &m_applyEffects);
 				if (ImGui::Button("Load") && selectedScene >= 0) {
 					const auto& scene = scenes[selectedScene];
 					_visualizer.GetLightManager().GetLights() = scene.lights;
 					_visualizer.GetLightManager().SetAmbientLight(scene.ambient_light);
 					if (m_moveCamera && scene.camera) {
 						_visualizer.SetCamera(*scene.camera);
+					}
+
+					if (m_applyEffects) {
+						// Object Effects
+						_visualizer.SetEffectEnabled(VisualEffect::RIPPLE, scene.object_effects.ripple);
+						_visualizer.SetEffectEnabled(VisualEffect::COLOR_SHIFT, scene.object_effects.color_shift);
+						_visualizer.SetEffectEnabled(VisualEffect::BLACK_AND_WHITE, scene.object_effects.black_and_white);
+						_visualizer.SetEffectEnabled(VisualEffect::NEGATIVE, scene.object_effects.negative);
+						_visualizer.SetEffectEnabled(VisualEffect::SHIMMERY, scene.object_effects.shimmery);
+						_visualizer.SetEffectEnabled(VisualEffect::GLITCHED, scene.object_effects.glitched);
+						_visualizer.SetEffectEnabled(VisualEffect::WIREFRAME, scene.object_effects.wireframe);
+
+						// Post Processing
+						auto& ppm = _visualizer.GetPostProcessingManager();
+						for (auto& effect : ppm.GetPreToneMappingEffects()) {
+							if (auto bloom = std::dynamic_pointer_cast<PostProcessing::BloomEffect>(effect)) {
+								bloom->SetEnabled(scene.post_processing.bloom_enabled);
+								bloom->SetIntensity(scene.post_processing.bloom_intensity);
+								bloom->SetThreshold(scene.post_processing.bloom_threshold);
+							} else if (auto atmos = std::dynamic_pointer_cast<PostProcessing::AtmosphereEffect>(effect)) {
+								atmos->SetEnabled(scene.post_processing.atmosphere_enabled);
+								atmos->SetHazeDensity(scene.post_processing.haze_density);
+								atmos->SetHazeHeight(scene.post_processing.haze_height);
+								atmos->SetHazeColor(scene.post_processing.haze_color);
+								atmos->SetCloudDensity(scene.post_processing.cloud_density);
+								atmos->SetCloudAltitude(scene.post_processing.cloud_altitude);
+								atmos->SetCloudThickness(scene.post_processing.cloud_thickness);
+								atmos->SetCloudColor(scene.post_processing.cloud_color);
+							} else if (auto fg = std::dynamic_pointer_cast<PostProcessing::FilmGrainEffect>(effect)) {
+								fg->SetEnabled(scene.post_processing.film_grain_enabled);
+								fg->SetIntensity(scene.post_processing.film_grain_intensity);
+							} else if (effect->GetName() == "Negative") {
+								effect->SetEnabled(scene.post_processing.negative_enabled);
+							} else if (effect->GetName() == "Glitch") {
+								effect->SetEnabled(scene.post_processing.glitch_enabled);
+							} else if (effect->GetName() == "OpticalFlow") {
+								effect->SetEnabled(scene.post_processing.optical_flow_enabled);
+							} else if (effect->GetName() == "Strobe") {
+								effect->SetEnabled(scene.post_processing.strobe_enabled);
+							} else if (effect->GetName() == "WhispTrail") {
+								effect->SetEnabled(scene.post_processing.whisp_trail_enabled);
+							} else if (effect->GetName() == "TimeStutter") {
+								effect->SetEnabled(scene.post_processing.time_stutter_enabled);
+							}
+						}
+						if (auto tm = ppm.GetToneMappingEffect()) {
+							tm->SetEnabled(scene.post_processing.tone_mapping_enabled);
+						}
 					}
 				}
 				ImGui::SameLine();
