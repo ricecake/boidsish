@@ -251,6 +251,72 @@ namespace Boidsish {
 		return height;
 	};
 
+	std::pair<float, glm::vec3> TerrainGenerator::getPointData(float x, float z) const {
+		int ix = static_cast<int>(std::floor(x + 0.5f));
+		int iz = static_cast<int>(std::floor(z + 0.5f));
+
+		int chunkX = static_cast<int>(std::floor(static_cast<float>(ix) / chunk_size_));
+		int chunkZ = static_cast<int>(std::floor(static_cast<float>(iz) / chunk_size_));
+
+		{
+			std::lock_guard<std::mutex> lock(chunk_cache_mutex_);
+			auto                        it = chunk_cache_.find({chunkX, chunkZ});
+			if (it != chunk_cache_.end() && it->second) {
+				int    lx = ix - chunkX * chunk_size_;
+				int    lz = iz - chunkZ * chunk_size_;
+				int    num_vertices_z = chunk_size_ + 1;
+				size_t index = static_cast<size_t>(lx) * num_vertices_z + static_cast<size_t>(lz);
+				if (index < it->second->vertices.size()) {
+					return {it->second->vertices[index].y, it->second->normals[index]};
+				}
+			}
+		}
+
+		// Cache miss: generate the point data
+		std::lock_guard<std::recursive_mutex> lock(point_generation_mutex_);
+		auto                                  raw = pointGenerate(x, z);
+		return {raw.x, diffToNorm(raw.y, raw.z)};
+	}
+
+	std::tuple<float, glm::vec3> TerrainGenerator::pointProperties(float x, float z) const {
+		// Determine grid cell
+		float tx = x - std::floor(x);
+		float tz = z - std::floor(z);
+
+		// Get the 4 corner vertices of the grid cell
+		auto p0_data = getPointData(std::floor(x), std::floor(z)); // Bottom-left
+		auto p1_data = getPointData(std::ceil(x), std::floor(z));  // Bottom-right
+		auto p2_data = getPointData(std::ceil(x), std::ceil(z));   // Top-right
+		auto p3_data = getPointData(std::floor(x), std::ceil(z));  // Top-left
+
+		glm::vec3 v0 = {std::floor(x), p0_data.first, std::floor(z)};
+		glm::vec3 v1 = {std::ceil(x), p1_data.first, std::floor(z)};
+		glm::vec3 v2 = {std::ceil(x), p2_data.first, std::ceil(z)};
+		glm::vec3 v3 = {std::floor(x), p3_data.first, std::ceil(z)};
+
+		glm::vec3 n0 = p0_data.second;
+		glm::vec3 n1 = p1_data.second;
+		glm::vec3 n2 = p2_data.second;
+		glm::vec3 n3 = p3_data.second;
+
+		// The "flat" position from standard bilinear interpolation
+		glm::vec3 q = bilerp(v0, v1, v2, v3, {tx, tz});
+
+		// Phong Tessellation: Project q onto the tangent plane of each corner
+		glm::vec3 p0 = projectPointOnPlane(q, v0, n0);
+		glm::vec3 p1 = projectPointOnPlane(q, v1, n1);
+		glm::vec3 p2 = projectPointOnPlane(q, v2, n2);
+		glm::vec3 p3 = projectPointOnPlane(q, v3, n3);
+
+		// Interpolate the projected points to find the final curved position
+		glm::vec3 final_pos = bilerp(p0, p1, p2, p3, {tx, tz});
+
+		// Interpolate normals for lighting
+		glm::vec3 final_norm = glm::normalize(bilerp(n0, n1, n2, n3, {tx, tz}));
+
+		return {final_pos.y, final_norm};
+	}
+
 	void TerrainGenerator::ApplyWeightedBiome(float control_value, BiomeAttributes& current) const {
 		if (biomes.empty())
 			return;
@@ -330,13 +396,16 @@ namespace Boidsish {
 		bool                                has_terrain = false;
 
 		// Generate heightmap
-		for (int i = 0; i < num_vertices_x; ++i) {
-			for (int j = 0; j < num_vertices_z; ++j) {
-				float worldX = (chunkX * chunk_size_ + i);
-				float worldZ = (chunkZ * chunk_size_ + j);
-				auto  noise = pointGenerate(worldX, worldZ);
-				heightmap[i][j] = noise;
-				has_terrain = has_terrain || noise[0] > 0;
+		{
+			std::lock_guard<std::recursive_mutex> lock(point_generation_mutex_);
+			for (int i = 0; i < num_vertices_x; ++i) {
+				for (int j = 0; j < num_vertices_z; ++j) {
+					float worldX = (chunkX * chunk_size_ + i);
+					float worldZ = (chunkZ * chunk_size_ + j);
+					auto  noise = pointGenerate(worldX, worldZ);
+					heightmap[i][j] = noise;
+					has_terrain = has_terrain || noise[0] > 0;
+				}
 			}
 		}
 
@@ -396,7 +465,8 @@ namespace Boidsish {
 
 	bool
 	TerrainGenerator::Raycast(const glm::vec3& origin, const glm::vec3& dir, float max_dist, float& out_dist) const {
-		constexpr float step_size = 1.0f; // Initial step for ray marching
+		std::lock_guard<std::recursive_mutex> lock(point_generation_mutex_);
+		constexpr float                       step_size = 1.0f; // Initial step for ray marching
 		float           current_dist = 0.0f;
 		glm::vec3       current_pos = origin;
 
@@ -458,7 +528,8 @@ namespace Boidsish {
 	}
 
 	std::vector<glm::vec3> TerrainGenerator::GetPath(glm::vec2 start_pos, int num_points, float step_size) const {
-		std::vector<glm::vec3> path;
+		std::lock_guard<std::recursive_mutex> lock(point_generation_mutex_);
+		std::vector<glm::vec3>                path;
 		path.reserve(num_points);
 
 		glm::vec2 current_pos = findClosestPointOnPath(start_pos);
@@ -651,7 +722,8 @@ namespace Boidsish {
 	}
 
 	float TerrainGenerator::getBiomeControlValue(float x, float z) const {
-		glm::vec2 pos(x, z);
+		std::lock_guard<std::recursive_mutex> lock(point_generation_mutex_);
+		glm::vec2                             pos(x, z);
 		pos *= control_noise_scale_;
 		float result = Simplex::noise(pos + Simplex::curlNoise(pos)) * 0.5f + 0.5f;
 
@@ -665,7 +737,8 @@ namespace Boidsish {
 	}
 
 	glm::vec2 TerrainGenerator::getDomainWarp(float x, float z) const {
-		glm::vec3 path_data = getPathInfluence(x, z);
+		std::lock_guard<std::recursive_mutex> lock(point_generation_mutex_);
+		glm::vec3                             path_data = getPathInfluence(x, z);
 		float     path_factor = path_data.x;
 		glm::vec2 push_dir = glm::normalize(glm::vec2(path_data.y, path_data.z));
 		float     warp_strength = (1.0f - path_factor) * 20.0f;
