@@ -1,3 +1,5 @@
+*.patch
+
 # Build artifacts
 build/
 bin/
@@ -206,3 +208,5 @@ gmon.out
 
 core.*
 *.ini
+
+scenes/*.dict

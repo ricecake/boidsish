@@ -297,6 +297,7 @@ namespace Boidsish {
 		shader->use();
 		shader->setMat4("model", GetModelMatrix());
 		shader->setVec3("objectColor", GetR(), GetG(), GetB());
+		shader->setFloat("objectAlpha", GetA());
 
 		// Set PBR material properties
 		shader->setBool("usePBR", UsePBR());
@@ -318,6 +319,7 @@ namespace Boidsish {
 		shader.use();
 		shader.setMat4("model", model_matrix);
 		shader.setVec3("objectColor", GetR(), GetG(), GetB());
+		shader.setFloat("objectAlpha", GetA());
 
 		// Set PBR material properties
 		shader.setBool("usePBR", UsePBR());

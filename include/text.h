@@ -36,8 +36,12 @@ namespace Boidsish {
 		void      render() const override;
 		void      render(Shader& shader, const glm::mat4& model_matrix) const override;
 		glm::mat4 GetModelMatrix() const override;
-		void      SetText(const std::string& text);
-		void      SetJustification(Justification justification);
+
+		// Text objects are not instanced (each has unique geometry)
+		std::string GetInstanceKey() const override { return "Text:" + std::to_string(GetId()); }
+
+		void SetText(const std::string& text);
+		void SetJustification(Justification justification);
 
 	private:
 		void LoadFont(const std::string& font_path);

@@ -14,7 +14,9 @@ const int LIGHT_TYPE_FLASH = 4;    // Explosion/flash light (rapid falloff)
  * Returns 0.0 if fully in shadow, 1.0 if fully lit.
  * Uses PCF (Percentage Closer Filtering) for soft shadow edges.
  */
-float calculateShadow(int shadow_index, vec3 frag_pos) {
+float calculateShadow(int light_index, vec3 frag_pos, vec3 normal, vec3 light_dir) {
+	int shadow_index = lightShadowIndices[light_index];
+
 	// Early out for invalid indices or when no shadow lights are active
 	// This MUST return before any texture operations to avoid driver issues
 	if (shadow_index < 0) {
@@ -23,7 +25,50 @@ float calculateShadow(int shadow_index, vec3 frag_pos) {
 	if (numShadowLights <= 0) {
 		return 1.0; // No shadow maps active at all
 	}
-	if (shadow_index >= MAX_SHADOW_LIGHTS || shadow_index >= numShadowLights) {
+
+	// Handle Cascaded Shadow Maps for directional lights
+	int   cascade = 0;
+	float cascade_blend = 0.0; // Blend factor for smooth cascade transitions
+	int   next_cascade = -1;
+
+	if (lights[light_index].type == LIGHT_TYPE_DIRECTIONAL) {
+		// Use linear depth along camera forward for more consistent splits
+		float depth = dot(frag_pos - viewPos, viewDir);
+		cascade = -1;
+		for (int i = 0; i < MAX_CASCADES; ++i) {
+			if (depth < cascadeSplits[i]) {
+				cascade = i;
+				break;
+			}
+		}
+
+		if (cascade == -1) {
+			// Beyond all cascade splits - use the last cascade as catchall
+			// The far cascade is configured with extended range specifically for this
+			cascade = MAX_CASCADES - 1;
+		}
+
+		// Calculate blend zone for smooth cascade transitions
+		// This eliminates the harsh "perspective shift" at cascade boundaries
+		// Note: Don't blend for the last cascade since it's the catchall
+		if (cascade < MAX_CASCADES - 1) {
+			float cascade_start = (cascade == 0) ? 0.0 : cascadeSplits[cascade - 1];
+			float cascade_end = cascadeSplits[cascade];
+			float cascade_range = cascade_end - cascade_start;
+
+			// Blend zone is the last 15% of each cascade
+			float blend_zone_start = cascade_end - cascade_range * 0.15;
+			if (depth > blend_zone_start) {
+				cascade_blend = (depth - blend_zone_start) / (cascade_end - blend_zone_start);
+				cascade_blend = smoothstep(0.0, 1.0, cascade_blend); // Smooth the transition
+				next_cascade = cascade + 1;
+			}
+		}
+
+		shadow_index += cascade;
+	}
+
+	if (shadow_index >= MAX_SHADOW_MAPS) {
 		return 1.0; // Index out of bounds
 	}
 
@@ -48,25 +93,102 @@ float calculateShadow(int shadow_index, vec3 frag_pos) {
 	// Current depth from light's perspective
 	float current_depth = proj_coords.z;
 
-	// Bias to prevent shadow acne (adjust based on surface angle)
-	float bias = 0.002;
+	// Improved bias calculation to prevent shadow acne while keeping shadows connected to geometry
+	// The key insight: larger cascades have lower resolution (larger texels), so need larger bias
+	// But the bias should NOT be so large that shadows appear "floating" above terrain
+	float slope_factor = max(1.0 - dot(normal, light_dir), 0.0); // 0 when facing light, 1 when perpendicular
+
+	// Base bias: very small for direct facing surfaces
+	float base_bias = 0.0002;
+
+	// Slope bias: increases for steep angles relative to light
+	float slope_bias = 0.002 * slope_factor;
+
+	// Cascade-specific bias: accounts for texel size differences
+	// CRITICAL: This should be modest - previous 5x multiplier was too aggressive
+	// Near cascade (0): finest resolution, minimal extra bias needed
+	// Far cascade (3): coarsest resolution, but still shouldn't be huge
+	float cascade_bias_scale = 1.0 + float(cascade) * 0.8; // Was 5.0, now 0.8
+
+	// Calculate texel size in world units for this cascade (approximate)
+	vec2 texel_size = 1.0 / vec2(textureSize(shadowMaps, 0).xy);
+
+	// Final bias combines all factors
+	float bias = (base_bias + slope_bias) * cascade_bias_scale;
+
+	// Clamp to prevent over-biasing that causes disconnected shadows
+	bias = clamp(bias, 0.0001, 0.01);
 
 	// PCF - sample multiple texels for soft shadows
+	// Use larger kernel for distant cascades to match their lower resolution
 	float shadow = 0.0;
-	vec2  texel_size = 1.0 / vec2(textureSize(shadowMaps, 0).xy);
+	int   kernel_size = (cascade < 2) ? 1 : 2; // 3x3 for near, 5x5 for far
+	float sample_count = 0.0;
 
-	// 3x3 PCF kernel
-	for (int x = -1; x <= 1; ++x) {
-		for (int y = -1; y <= 1; ++y) {
+	for (int x = -kernel_size; x <= kernel_size; ++x) {
+		for (int y = -kernel_size; y <= kernel_size; ++y) {
 			vec2 offset = vec2(x, y) * texel_size;
 			// sampler2DArrayShadow expects (u, v, layer, compare_value)
 			vec4 shadow_coord = vec4(proj_coords.xy + offset, float(shadow_index), current_depth - bias);
 			shadow += texture(shadowMaps, shadow_coord);
+			sample_count += 1.0;
 		}
 	}
-	shadow /= 9.0;
+	shadow /= sample_count;
+
+	// Blend with next cascade if in transition zone
+	// This smooths the visual transition and eliminates the "perspective shift" artifact
+	if (cascade_blend > 0.0 && next_cascade >= 0 && next_cascade < MAX_CASCADES) {
+		int next_shadow_index = shadow_index - cascade + next_cascade;
+		if (next_shadow_index < MAX_SHADOW_MAPS) {
+			// Sample from next cascade with its own bias
+			float next_cascade_bias_scale = 1.0 + float(next_cascade) * 0.8;
+			float next_bias = (base_bias + slope_bias) * next_cascade_bias_scale;
+			next_bias = clamp(next_bias, 0.0001, 0.01);
+
+			// Transform to next cascade's light space
+			vec4 next_frag_pos_light_space = lightSpaceMatrices[next_shadow_index] * vec4(frag_pos, 1.0);
+			if (abs(next_frag_pos_light_space.w) > 0.0001) {
+				vec3 next_proj_coords = next_frag_pos_light_space.xyz / next_frag_pos_light_space.w;
+				next_proj_coords = next_proj_coords * 0.5 + 0.5;
+
+				// Only blend if also within next cascade's valid range
+				if (next_proj_coords.x >= 0.0 && next_proj_coords.x <= 1.0 && next_proj_coords.y >= 0.0 &&
+				    next_proj_coords.y <= 1.0 && next_proj_coords.z >= 0.0 && next_proj_coords.z <= 1.0) {
+					float next_shadow = 0.0;
+					int   next_kernel_size = (next_cascade < 2) ? 1 : 2;
+					float next_sample_count = 0.0;
+
+					for (int x = -next_kernel_size; x <= next_kernel_size; ++x) {
+						for (int y = -next_kernel_size; y <= next_kernel_size; ++y) {
+							vec2 offset = vec2(x, y) * texel_size;
+							vec4 shadow_coord = vec4(
+								next_proj_coords.xy + offset,
+								float(next_shadow_index),
+								next_proj_coords.z - next_bias
+							);
+							next_shadow += texture(shadowMaps, shadow_coord);
+							next_sample_count += 1.0;
+						}
+					}
+					next_shadow /= next_sample_count;
+
+					// Blend between cascades
+					shadow = mix(shadow, next_shadow, cascade_blend);
+				}
+			}
+		}
+	}
 
 	return shadow;
+}
+
+/**
+ * Calculate the relative luminance of a color.
+ * Used for determining how much a specular highlight should contribute to fragment opacity.
+ */
+float get_luminance(vec3 color) {
+	return dot(color, vec3(0.2126, 0.7152, 0.0722));
 }
 
 // ============================================================================
@@ -207,6 +329,7 @@ const float PBR_INTENSITY_BOOST = 4.0;
 
 /**
  * PBR lighting with Cook-Torrance BRDF - supports all light types.
+ * Returns vec4(color.rgb, specular_luminance).
  *
  * @param frag_pos Fragment world position
  * @param normal Surface normal (must be normalized)
@@ -215,7 +338,7 @@ const float PBR_INTENSITY_BOOST = 4.0;
  * @param metallic Metallic property [0=dielectric, 1=metal]
  * @param ao Ambient occlusion [0=fully occluded, 1=no occlusion]
  */
-vec3 apply_lighting_pbr(vec3 frag_pos, vec3 normal, vec3 albedo, float roughness, float metallic, float ao) {
+vec4 apply_lighting_pbr(vec3 frag_pos, vec3 normal, vec3 albedo, float roughness, float metallic, float ao) {
 	vec3 N = normalize(normal);
 	vec3 V = normalize(viewPos - frag_pos);
 
@@ -224,7 +347,8 @@ vec3 apply_lighting_pbr(vec3 frag_pos, vec3 normal, vec3 albedo, float roughness
 	vec3 F0 = vec3(0.04);
 	F0 = mix(F0, albedo, metallic);
 
-	vec3 Lo = vec3(0.0);
+	vec3  Lo = vec3(0.0);
+	float spec_lum = 0.0;
 
 	for (int i = 0; i < num_lights; ++i) {
 		// Get light direction and attenuation based on light type
@@ -263,19 +387,19 @@ vec3 apply_lighting_pbr(vec3 frag_pos, vec3 normal, vec3 albedo, float roughness
 
 		float NdotL = max(dot(N, L), 0.0);
 
-		// Calculate shadow
-		float shadow = calculateShadow(lightShadowIndices[i], frag_pos);
+		// Calculate shadow with slope-scaled bias
+		float shadow = calculateShadow(i, frag_pos, N, L);
 
 		// Add to outgoing radiance Lo
-		Lo += (kD * albedo / PI + specular) * radiance * NdotL * shadow;
+		vec3 specular_radiance = specular * radiance * NdotL * shadow;
+		Lo += (kD * albedo / PI) * radiance * NdotL * shadow + specular_radiance;
+		spec_lum += get_luminance(specular_radiance);
 	}
 
 	// Ambient lighting for PBR (uses ambient_light uniform from main branch)
 	vec3 ambientDiffuse = ambient_light * albedo * ao;
 
 	// Environment reflection approximation for glossy surfaces
-	// Without actual IBL, smooth surfaces would be too dark because they have
-	// nothing to reflect. This simulates a bright environment being reflected.
 	vec3 R = reflect(-V, N);
 
 	// Fresnel at grazing angles - smooth surfaces reflect more at edges
@@ -284,43 +408,42 @@ vec3 apply_lighting_pbr(vec3 frag_pos, vec3 normal, vec3 albedo, float roughness
 	vec3  F_env = fresnelSchlickRoughness(NdotV, F0_env, roughness);
 
 	// Fake environment color - gradient from horizon to sky
-	// This gives smooth surfaces something to "reflect"
-	float upAmount = R.y * 0.5 + 0.5; // 0 = down, 1 = up
+	float upAmount = R.y * 0.5 + 0.5;
 	vec3  envColor = mix(
-        vec3(0.3, 0.35, 0.4), // Horizon/ground color (grayish)
-        vec3(0.6, 0.7, 0.9),  // Sky color (bluish white)
+        vec3(0.3, 0.35, 0.4), // Horizon/ground color
+        vec3(0.6, 0.7, 0.9),  // Sky color
         smoothstep(0.0, 0.7, upAmount)
     );
 
 	// Environment reflection strength based on smoothness
-	// Rough surfaces get little env reflection, smooth surfaces get a lot
 	float smoothness = 1.0 - roughness;
-	float envStrength = smoothness * smoothness * 0.8; // Up to 0.8 for perfect mirror
+	float envStrength = smoothness * smoothness * 0.8;
 
 	// Metallic surfaces should reflect the environment color tinted by albedo
 	// Non-metallic surfaces reflect environment but less strongly
 	vec3 ambientSpecular = F_env * envColor * envStrength * ao;
 
 	// Combine diffuse and specular ambient
-	// For metals, reduce diffuse ambient (they don't have diffuse reflection)
 	vec3 ambient = ambientDiffuse * (1.0 - metallic * 0.9) + ambientSpecular;
 	vec3 color = ambient + Lo;
 
-	return color;
+	return vec4(color, spec_lum + get_luminance(ambientSpecular));
 }
 
 /**
  * PBR lighting without shadows - for shaders that don't need shadow calculations.
  * Supports all light types (point, directional, spot).
+ * Returns vec4(color.rgb, specular_luminance).
  */
-vec3 apply_lighting_pbr_no_shadows(vec3 frag_pos, vec3 normal, vec3 albedo, float roughness, float metallic, float ao) {
+vec4 apply_lighting_pbr_no_shadows(vec3 frag_pos, vec3 normal, vec3 albedo, float roughness, float metallic, float ao) {
 	vec3 N = normalize(normal);
 	vec3 V = normalize(viewPos - frag_pos);
 
 	vec3 F0 = vec3(0.04);
 	F0 = mix(F0, albedo, metallic);
 
-	vec3 Lo = vec3(0.0);
+	vec3  Lo = vec3(0.0);
+	float spec_lum = 0.0;
 
 	for (int i = 0; i < num_lights; ++i) {
 		vec3  L;
@@ -350,7 +473,10 @@ vec3 apply_lighting_pbr_no_shadows(vec3 frag_pos, vec3 normal, vec3 albedo, floa
 		kD *= 1.0 - metallic;
 
 		float NdotL = max(dot(N, L), 0.0);
-		Lo += (kD * albedo / PI + specular) * radiance * NdotL;
+
+		vec3 specular_radiance = specular * radiance * NdotL;
+		Lo += (kD * albedo / PI) * radiance * NdotL + specular_radiance;
+		spec_lum += get_luminance(specular_radiance);
 	}
 
 	// Ambient (same as shadowed version)
@@ -366,7 +492,7 @@ vec3 apply_lighting_pbr_no_shadows(vec3 frag_pos, vec3 normal, vec3 albedo, floa
 	vec3  ambientSpecular = F_env * envColor * envStrength * ao;
 	vec3  ambient = ambientDiffuse * (1.0 - metallic * 0.9) + ambientSpecular;
 
-	return ambient + Lo;
+	return vec4(ambient + Lo, spec_lum + get_luminance(ambientSpecular));
 }
 
 // ============================================================================
@@ -375,18 +501,19 @@ vec3 apply_lighting_pbr_no_shadows(vec3 frag_pos, vec3 normal, vec3 albedo, floa
 
 /**
  * Apply lighting with shadow support - supports all light types.
- * This version checks each light for shadow casting capability.
+ * Returns vec4(color.rgb, specular_luminance).
  */
-vec3 apply_lighting(vec3 frag_pos, vec3 normal, vec3 albedo, float specular_strength) {
-	vec3 result = ambient_light * albedo;
+vec4 apply_lighting(vec3 frag_pos, vec3 normal, vec3 albedo, float specular_strength) {
+	vec3  result = ambient_light * albedo;
+	float spec_lum = 0.0;
 
 	for (int i = 0; i < num_lights; ++i) {
 		vec3  light_dir;
 		float attenuation;
 		calculateLightContribution(i, frag_pos, light_dir, attenuation);
 
-		// Calculate shadow factor for this light
-		float shadow = calculateShadow(lightShadowIndices[i], frag_pos);
+		// Calculate shadow factor for this light with slope-scaled bias
+		float shadow = calculateShadow(i, frag_pos, normal, light_dir);
 
 		// Diffuse
 		float diff = max(dot(normal, light_dir), 0.0);
@@ -396,21 +523,24 @@ vec3 apply_lighting(vec3 frag_pos, vec3 normal, vec3 albedo, float specular_stre
 		vec3  view_dir = normalize(viewPos - frag_pos);
 		vec3  reflect_dir = reflect(-light_dir, normal);
 		float spec = pow(max(dot(view_dir, reflect_dir), 0.0), 32);
-		vec3  specular = lights[i].color * spec * specular_strength;
+		vec3  specular_contribution = lights[i].color * spec * specular_strength * lights[i].intensity * shadow *
+			attenuation;
 
 		// Apply shadow and attenuation to diffuse and specular, but not ambient
-		result += (diffuse + specular) * lights[i].intensity * shadow * attenuation;
+		result += (diffuse * lights[i].intensity * shadow * attenuation) + specular_contribution;
+		spec_lum += get_luminance(specular_contribution);
 	}
 
-	return result;
+	return vec4(result, spec_lum);
 }
 
 /**
  * Apply lighting without shadows - supports all light types.
- * Use this for shaders that don't need shadows (sky, trails, etc.)
+ * Returns vec4(color.rgb, specular_luminance).
  */
-vec3 apply_lighting_no_shadows(vec3 frag_pos, vec3 normal, vec3 albedo, float specular_strength) {
-	vec3 result = ambient_light * albedo;
+vec4 apply_lighting_no_shadows(vec3 frag_pos, vec3 normal, vec3 albedo, float specular_strength) {
+	vec3  result = ambient_light * albedo;
+	float spec_lum = 0.0;
 
 	for (int i = 0; i < num_lights; ++i) {
 		vec3  light_dir;
@@ -425,12 +555,13 @@ vec3 apply_lighting_no_shadows(vec3 frag_pos, vec3 normal, vec3 albedo, float sp
 		vec3  view_dir = normalize(viewPos - frag_pos);
 		vec3  reflect_dir = reflect(-light_dir, normal);
 		float spec = pow(max(dot(view_dir, reflect_dir), 0.0), 32);
-		vec3  specular = lights[i].color * spec * specular_strength;
+		vec3  specular_contribution = lights[i].color * spec * specular_strength * lights[i].intensity * attenuation;
 
-		result += (diffuse + specular) * lights[i].intensity * attenuation;
+		result += (diffuse * lights[i].intensity * attenuation) + specular_contribution;
+		spec_lum += get_luminance(specular_contribution);
 	}
 
-	return result;
+	return vec4(result, spec_lum);
 }
 
 // ============================================================================
@@ -466,8 +597,7 @@ vec3 calculate_iridescence(vec3 view_dir, vec3 normal, vec3 base_color, float ti
 
 /**
  * PBR iridescent material - combines PBR lighting with thin-film interference.
- * Creates a metallic, color-shifting surface like oil on water or beetle shells.
- * Supports all light types. No shadows (typically used for effects).
+ * Returns vec4(color.rgb, specular_luminance).
  *
  * @param frag_pos Fragment world position
  * @param normal Surface normal
@@ -475,7 +605,7 @@ vec3 calculate_iridescence(vec3 view_dir, vec3 normal, vec3 base_color, float ti
  * @param roughness Surface roughness [0=mirror, 1=matte]
  * @param iridescence_strength How much iridescence to apply [0-1]
  */
-vec3 apply_lighting_pbr_iridescent_no_shadows(
+vec4 apply_lighting_pbr_iridescent_no_shadows(
 	vec3  frag_pos,
 	vec3  normal,
 	vec3  base_color,
@@ -494,7 +624,8 @@ vec3 apply_lighting_pbr_iridescent_no_shadows(
 	vec3  base_iridescent = iridescent_color * (0.4 + angle_factor * 0.6);
 
 	// Add specular highlights from lights
-	vec3 specular_total = vec3(0.0);
+	vec3  specular_total = vec3(0.0);
+	float spec_lum = 0.0;
 
 	for (int i = 0; i < num_lights; ++i) {
 		vec3  L;
@@ -525,7 +656,9 @@ vec3 apply_lighting_pbr_iridescent_no_shadows(
 		float denominator = 4.0 * NdotV * NdotL + 0.0001;
 		vec3  specular = numerator / denominator;
 
-		specular_total += specular * radiance * NdotL;
+		vec3 specular_contribution = specular * radiance * NdotL;
+		specular_total += specular_contribution;
+		spec_lum += get_luminance(specular_contribution);
 	}
 
 	// Fresnel rim - strong white/iridescent edge glow
@@ -533,7 +666,7 @@ vec3 apply_lighting_pbr_iridescent_no_shadows(
 	vec3  rim_color = mix(vec3(1.0), iridescent_color, 0.5) * fresnel_rim * 0.8;
 
 	// Combine: base iridescent appearance + specular highlights + rim
-	return base_iridescent + specular_total + rim_color;
+	return vec4(base_iridescent + specular_total + rim_color, spec_lum + get_luminance(rim_color));
 }
 
 // ============================================================================
@@ -557,6 +690,7 @@ vec3 calculate_emission(vec3 base_emission, float intensity, float falloff) {
  * Render a glowing/emissive object surface.
  * Combines emissive self-illumination with optional environmental lighting.
  * Use this for objects that ARE the light source (lamps, magic orbs, etc.)
+ * Returns vec4(color.rgb, specular_luminance).
  *
  * @param frag_pos Fragment world position
  * @param normal Surface normal
@@ -565,7 +699,7 @@ vec3 calculate_emission(vec3 base_emission, float intensity, float falloff) {
  * @param base_albedo Optional base color for non-emissive parts
  * @param emissive_coverage How much of surface is emissive [0=none, 1=fully glowing]
  */
-vec3 apply_emissive_surface(
+vec4 apply_emissive_surface(
 	vec3  frag_pos,
 	vec3  normal,
 	vec3  emissive_color,
@@ -584,29 +718,31 @@ vec3 apply_emissive_surface(
 	emission += emissive_color * fresnel * emissive_intensity * 0.5;
 
 	// The non-emissive part gets regular lighting
-	vec3 lit_surface = vec3(0.0);
+	vec4 lit_surface = vec4(0.0);
 	if (emissive_coverage < 1.0) {
 		lit_surface = apply_lighting_no_shadows(frag_pos, normal, base_albedo, 0.5);
 	}
 
 	// Blend between emissive and lit surface
-	return mix(lit_surface, emission, emissive_coverage);
+	// Emissions are considered fully opaque specular-like contributors for alpha purposes
+	return mix(lit_surface, vec4(emission, get_luminance(emission)), emissive_coverage);
 }
 
 /**
  * Render a glowing object with PBR properties for non-emissive regions.
  * The emissive parts glow while other parts use PBR lighting.
+ * Returns vec4(color.rgb, specular_luminance).
  *
  * @param frag_pos Fragment world position
  * @param normal Surface normal
  * @param emissive_color The glow color
- * @param emissive_intensity Glow brightness (HDR, can exceed 1.0)
+ * @param emissive_intensity Glow brightness (box HDR, can exceed 1.0)
  * @param base_albedo Base color for non-emissive parts
  * @param roughness PBR roughness for non-emissive parts
  * @param metallic PBR metallic for non-emissive parts
  * @param emissive_mask Per-fragment emissive coverage [0-1]
  */
-vec3 apply_emissive_surface_pbr(
+vec4 apply_emissive_surface_pbr(
 	vec3  frag_pos,
 	vec3  normal,
 	vec3  emissive_color,
@@ -625,10 +761,10 @@ vec3 apply_emissive_surface_pbr(
 	emission += emissive_color * fresnel * emissive_intensity * 0.3;
 
 	// PBR lit component for non-emissive parts
-	vec3 pbr_lit = apply_lighting_pbr_no_shadows(frag_pos, normal, base_albedo, roughness, metallic, 1.0);
+	vec4 pbr_lit = apply_lighting_pbr_no_shadows(frag_pos, normal, base_albedo, roughness, metallic, 1.0);
 
 	// Blend based on emissive mask
-	return mix(pbr_lit, emission, emissive_mask);
+	return mix(pbr_lit, vec4(emission, get_luminance(emission)), emissive_mask);
 }
 
 /**

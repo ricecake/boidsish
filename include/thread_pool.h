@@ -38,6 +38,10 @@ namespace Boidsish {
 
 		R get() { return future_.get(); }
 
+		bool is_ready() const {
+			return future_.valid() && future_.wait_for(std::chrono::seconds(0)) == std::future_status::ready;
+		}
+
 		void cancel() {
 			if (cancelled_flag_) {
 				cancelled_flag_->store(true, std::memory_order_relaxed);

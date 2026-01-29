@@ -52,7 +52,7 @@ void main() {
 			vec3 smoke_color = mix(vec3(0.4, 0.4, 0.45), vs_color * 0.5, 0.2);
 
 			// Apply simple lighting to smoke for depth (no shadows needed for trails)
-			vec3 lit_smoke = apply_lighting_no_shadows(vs_frag_pos, norm, smoke_color, 0.1);
+			vec3 lit_smoke = apply_lighting_no_shadows(vs_frag_pos, norm, smoke_color, 0.1).rgb;
 
 			// Noise for cloudy texture
 			float noise = snoise(vec2(vs_progress * 5.0, time * 2.0)) * 0.5 + 0.5;
@@ -72,13 +72,14 @@ void main() {
 		float roughness = usePBR ? trailRoughness : 0.15;
 
 		// Apply PBR iridescent lighting (no shadows for trail effects)
-		vec3 iridescent_result = apply_lighting_pbr_iridescent_no_shadows(
+		vec4 iridescent_result_vec = apply_lighting_pbr_iridescent_no_shadows(
 			vs_frag_pos,
 			norm,
 			vs_color,
 			roughness,
 			1.0 // Full iridescence strength
 		);
+		vec3 iridescent_result = iridescent_result_vec.rgb;
 
 		// Add Fresnel rim for extra pop at grazing angles
 		float fresnel = pow(1.0 - abs(dot(view_dir, norm)), 5.0);
@@ -87,11 +88,12 @@ void main() {
 		FragColor = vec4(final_color, 0.85); // Slightly more opaque for better visibility
 	} else if (usePBR) {
 		// --- Standard PBR Trail (no shadows for trails) ---
-		vec3 result = apply_lighting_pbr_no_shadows(vs_frag_pos, norm, vs_color, trailRoughness, trailMetallic, 1.0);
+		vec3 result = apply_lighting_pbr_no_shadows(vs_frag_pos, norm, vs_color, trailRoughness, trailMetallic, 1.0)
+						  .rgb;
 		FragColor = vec4(result, 1.0);
 	} else {
 		// --- Original Phong Lighting ---
-		vec3 result = apply_lighting_no_shadows(vs_frag_pos, norm, vs_color, 0.5);
+		vec3 result = apply_lighting_no_shadows(vs_frag_pos, norm, vs_color, 0.5).rgb;
 		FragColor = vec4(result, 1.0);
 	}
 }

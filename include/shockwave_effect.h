@@ -3,6 +3,7 @@
 #include <memory>
 #include <vector>
 
+#include "constants.h"
 #include <GL/glew.h>
 #include <glm/glm.hpp>
 
@@ -74,7 +75,7 @@ namespace Boidsish {
 	class ShockwaveManager {
 	public:
 		/// Maximum number of simultaneous shockwaves (limited by UBO size)
-		static constexpr int kMaxShockwaves = 16;
+		static constexpr int kMaxShockwaves = Constants::Class::Shockwaves::MaxShockwaves();
 
 		ShockwaveManager();
 		~ShockwaveManager();
@@ -95,9 +96,9 @@ namespace Boidsish {
 			const glm::vec3& normal,
 			float            max_radius,
 			float            duration,
-			float            intensity = 0.5f,
-			float            ring_width = 3.0f,
-			const glm::vec3& color = glm::vec3(1.0f, 0.6f, 0.2f)
+			float            intensity = Constants::Class::Shockwaves::DefaultIntensity(),
+			float            ring_width = Constants::Class::Shockwaves::DefaultRingWidth(),
+			const glm::vec3& color = Constants::Class::Shockwaves::DefaultColor()
 		);
 
 		/**

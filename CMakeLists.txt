@@ -134,3 +134,7 @@ include_directories(${GTEST_INCLUDE_DIRS})
 add_executable(run_tests tests/test_rigid_body.cpp)
 target_link_libraries(run_tests PRIVATE boidsish GTest::GTest GTest::Main)
 set_target_properties(run_tests PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+
+add_executable(test_terrain tests/test_terrain.cpp)
+target_link_libraries(test_terrain PRIVATE boidsish GTest::GTest GTest::Main)
+set_target_properties(test_terrain PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")

@@ -185,7 +185,7 @@ namespace Boidsish {
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 2, indirection_buffer_);
 
 		// Dispatch enough groups to cover all particles
-		glDispatchCompute((kMaxParticles / 256) + 1, 1, 1);
+		glDispatchCompute((kMaxParticles / Constants::Class::Particles::ComputeGroupSize()) + 1, 1, 1);
 
 		// Ensure memory operations are finished before rendering
 		glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
@@ -321,11 +321,13 @@ namespace Boidsish {
 
 		glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA); // Additive blending for fire
 		glDepthMask(GL_FALSE);                       // Disable depth writing
+		glEnable(GL_PROGRAM_POINT_SIZE);
 
 		render_shader_->use();
 		render_shader_->setMat4("u_view", view);
 		render_shader_->setMat4("u_projection", projection);
 		render_shader_->setVec3("u_camera_pos", camera_pos);
+		render_shader_->setFloat("u_time", time_);
 
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, particle_buffer_);
 

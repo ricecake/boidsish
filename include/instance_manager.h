@@ -2,7 +2,7 @@
 
 #include <map>
 #include <memory>
-#include <typeindex>
+#include <string>
 #include <vector>
 
 #include "shape.h"
@@ -18,11 +18,17 @@ namespace Boidsish {
 	private:
 		struct InstanceGroup {
 			std::vector<std::shared_ptr<Shape>> shapes;
-			unsigned int                        instance_vbo_ = 0;
-			size_t                              capacity_ = 0;
+			unsigned int                        instance_matrix_vbo_ = 0;
+			unsigned int                        instance_color_vbo_ = 0;
+			size_t                              matrix_capacity_ = 0;
+			size_t                              color_capacity_ = 0;
 		};
 
-		std::map<std::type_index, InstanceGroup> m_instance_groups;
+		// Group by instance key (model path for Models, "Dot" for Dots, etc.)
+		std::map<std::string, InstanceGroup> m_instance_groups;
+
+		void RenderModelGroup(Shader& shader, InstanceGroup& group);
+		void RenderDotGroup(Shader& shader, InstanceGroup& group);
 	};
 
 } // namespace Boidsish

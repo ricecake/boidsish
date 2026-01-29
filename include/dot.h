@@ -1,5 +1,6 @@
 #pragma once
 
+#include "constants.h"
 #include "shape.h"
 #include "vector.h"
 #include <GL/glew.h>
@@ -19,7 +20,7 @@ namespace Boidsish {
 		    float g = 1.0f,
 		    float b = 1.0f,
 		    float a = 1.0f,
-		    int   trail_length = 10);
+		    int   trail_length = Constants::Class::Trails::DefaultTrailLength());
 
 		// Size accessor/mutator
 		inline float GetSize() const { return size_; }
@@ -30,6 +31,11 @@ namespace Boidsish {
 		void      render() const override;
 		void      render(Shader& shader, const glm::mat4& model_matrix) const override;
 		glm::mat4 GetModelMatrix() const override;
+
+		bool CastsShadows() const override { return false; }
+
+		// All Dots share the same sphere mesh, so they can be instanced together
+		std::string GetInstanceKey() const override { return "Dot"; }
 
 	private:
 		float size_;

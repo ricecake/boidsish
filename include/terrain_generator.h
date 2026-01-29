@@ -6,7 +6,9 @@
 #include <vector>
 
 #include "Simplex.h"
+#include "constants.h"
 #include "terrain.h"
+#include "terrain_render_manager.h"
 #include "thread_pool.h"
 
 // #include <FastNoise/FastNoise.h>
@@ -37,6 +39,36 @@ namespace Boidsish {
 		const std::vector<std::shared_ptr<Terrain>>& getVisibleChunks() const;
 		std::vector<std::shared_ptr<Terrain>>        getVisibleChunksCopy() const;
 
+		/**
+		 * @brief Set the terrain render manager for batched rendering.
+		 *
+		 * When set, the TerrainGenerator will register/unregister chunks with the
+		 * render manager instead of using per-chunk GPU resources.
+		 *
+		 * @param manager The render manager (can be nullptr to disable batched rendering)
+		 */
+		void SetRenderManager(std::shared_ptr<TerrainRenderManager> manager) { render_manager_ = manager; }
+
+		/**
+		 * @brief Invalidate a chunk that was evicted from the render manager.
+		 *
+		 * Called by the render manager when a chunk is LRU-evicted due to GPU
+		 * texture array capacity limits. This removes the chunk from our cache
+		 * so it will be regenerated when it comes back into view.
+		 *
+		 * @param chunk_key The (chunk_x, chunk_z) key of the evicted chunk
+		 */
+		void InvalidateChunk(std::pair<int, int> chunk_key) {
+			// No-op: we want to keep the chunk in our CPU cache even if it's
+			// evicted from GPU memory, to avoid expensive re-generation.
+			// It will be re-registered with the renderer when next visible.
+		}
+
+		/**
+		 * @brief Get the render manager.
+		 */
+		std::shared_ptr<TerrainRenderManager> GetRenderManager() const { return render_manager_; }
+
 		std::vector<uint16_t> GenerateSuperChunkTexture(int requested_x, int requested_z);
 		std::vector<uint16_t> GenerateTextureForArea(int world_x, int world_z, int size);
 		void                  ConvertDatToPng(const std::string& dat_filepath, const std::string& png_filepath);
@@ -56,15 +88,20 @@ namespace Boidsish {
 			float tz = z - floor(z);
 
 			// Get the 4 corner vertices of the grid cell
-			auto v0_raw = pointGenerate(floor(x), floor(z)); // Bottom-left
-			auto v1_raw = pointGenerate(ceil(x), floor(z));  // Bottom-right
-			auto v2_raw = pointGenerate(ceil(x), ceil(z));   // Top-right
-			auto v3_raw = pointGenerate(floor(x), ceil(z));  // Top-left
+			float x0 = floor(x);
+			float x1 = x0 + 1.0f;
+			float z0 = floor(z);
+			float z1 = z0 + 1.0f;
 
-			glm::vec3 v0 = {floor(x), v0_raw.x, floor(z)};
-			glm::vec3 v1 = {ceil(x), v1_raw.x, floor(z)};
-			glm::vec3 v2 = {ceil(x), v2_raw.x, ceil(z)};
-			glm::vec3 v3 = {floor(x), v3_raw.x, ceil(z)};
+			auto v0_raw = pointGenerate(x0, z0); // Bottom-left
+			auto v1_raw = pointGenerate(x1, z0); // Bottom-right
+			auto v2_raw = pointGenerate(x1, z1); // Top-right
+			auto v3_raw = pointGenerate(x0, z1); // Top-left
+
+			glm::vec3 v0 = {x0, v0_raw.x, z0};
+			glm::vec3 v1 = {x1, v1_raw.x, z0};
+			glm::vec3 v2 = {x1, v2_raw.x, z1};
+			glm::vec3 v3 = {x0, v3_raw.x, z1};
 
 			glm::vec3 n0 = diffToNorm(v0_raw.y, v0_raw.z);
 			glm::vec3 n1 = diffToNorm(v1_raw.y, v1_raw.z);
@@ -140,17 +177,17 @@ namespace Boidsish {
 
 		void ApplyWeightedBiome(float control_value, BiomeAttributes& current) const;
 
-		const int view_distance_ = 10;        // in chunks
-		const int kUnloadDistanceBuffer_ = 2; // in chunks
-		const int chunk_size_ = 32;
-		int       octaves_ = 4;
-		float     lacunarity_ = 0.99f;
-		float     persistence_ = 0.5f;
+		const int view_distance_ = Constants::Class::Terrain::DefaultViewDistance();          // in chunks
+		const int kUnloadDistanceBuffer_ = Constants::Class::Terrain::UnloadDistanceBuffer(); // in chunks
+		const int chunk_size_ = Constants::Class::Terrain::ChunkSize(); // Keep at 32 for performance
+		int       octaves_ = Constants::Class::Terrain::DefaultOctaves();
+		float     lacunarity_ = Constants::Class::Terrain::DefaultLacunarity();
+		float     persistence_ = Constants::Class::Terrain::DefaultPersistence();
 		int       seed_;
 
 		// Control noise parameters
-		constexpr static const float control_noise_scale_ = 0.001f;
-		constexpr static const float kPathFrequency = 0.002f;
+		constexpr static const float control_noise_scale_ = Constants::Class::Terrain::ControlNoiseScale();
+		constexpr static const float kPathFrequency = Constants::Class::Terrain::PathFrequency();
 
 		// Noise generators
 		// FastNoise::SmartNode<> control_noise_generator_;
@@ -166,11 +203,14 @@ namespace Boidsish {
 		std::map<std::pair<int, int>, std::shared_ptr<Terrain>>            chunk_cache_;
 		std::vector<std::shared_ptr<Terrain>>                              visible_chunks_;
 		std::map<std::pair<int, int>, TaskHandle<TerrainGenerationResult>> pending_chunks_;
-		mutable std::mutex                                                 chunk_cache_mutex_;
-		mutable std::mutex                                                 visible_chunks_mutex_;
-		mutable std::mutex                                                 point_generation_mutex_;
-		std::random_device                                                 rd_;
-		std::mt19937                                                       eng_;
+		mutable std::recursive_mutex chunk_cache_mutex_; // Recursive to allow eviction callback
+		mutable std::mutex           visible_chunks_mutex_;
+		mutable std::mutex           point_generation_mutex_;
+		std::random_device           rd_;
+		std::mt19937                 eng_;
+
+		// Instanced terrain render manager (optional, when set uses GPU heightmap lookup)
+		std::shared_ptr<TerrainRenderManager> render_manager_;
 	};
 
 } // namespace Boidsish

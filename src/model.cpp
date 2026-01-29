@@ -92,7 +92,7 @@ namespace Boidsish {
 	}
 
 	// Model implementation
-	Model::Model(const std::string& path, bool no_cull): no_cull_(no_cull) {
+	Model::Model(const std::string& path, bool no_cull): no_cull_(no_cull), model_path_(path) {
 		loadModel(path);
 	}
 
@@ -115,6 +115,7 @@ namespace Boidsish {
 
 		shader.setMat4("model", model);
 		shader.setVec3("objectColor", GetR(), GetG(), GetB());
+		shader.setFloat("objectAlpha", GetA());
 
 		// Set PBR material properties
 		shader.setBool("usePBR", UsePBR());
@@ -144,6 +145,19 @@ namespace Boidsish {
 		model *= glm::mat4_cast(base_rotation_);
 		model = glm::scale(model, GetScale());
 		return model;
+	}
+
+	void Model::GetGeometry(std::vector<Vertex>& vertices, std::vector<unsigned int>& indices) const {
+		unsigned int vertex_offset = 0;
+		for (const auto& mesh : meshes) {
+			for (const auto& vertex : mesh.vertices) {
+				vertices.push_back(vertex);
+			}
+			for (unsigned int index : mesh.indices) {
+				indices.push_back(index + vertex_offset);
+			}
+			vertex_offset += mesh.vertices.size();
+		}
 	}
 
 	void Model::loadModel(const std::string& path) {

@@ -3,6 +3,7 @@
 #include <memory>
 #include <vector>
 
+#include "constants.h"
 #include "fire_effect.h"
 #include "shader.h"
 
@@ -56,8 +57,8 @@ namespace Boidsish {
 		bool  initialized_{false};
 		float time_{0.0f};
 
-		static const int kMaxParticles = 64000;
-		static const int kMaxEmitters = 100;
+		static const int kMaxParticles = Constants::Class::Particles::MaxParticles();
+		static const int kMaxEmitters = Constants::Class::Particles::MaxEmitters();
 	};
 
 } // namespace Boidsish

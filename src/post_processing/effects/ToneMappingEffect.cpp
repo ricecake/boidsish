@@ -17,11 +17,16 @@ namespace Boidsish {
 			height_ = height;
 		}
 
-		void ToneMappingEffect::Apply(GLuint sourceTexture) {
+		void ToneMappingEffect::Apply(
+			GLuint           sourceTexture,
+			GLuint           depthTexture,
+			const glm::mat4& viewMatrix,
+			const glm::mat4& projectionMatrix,
+			const glm::vec3& cameraPos
+		) {
 			_shader->use();
 			_shader->setInt("sceneTexture", 0);
 			_shader->setInt("toneMapMode", toneMode_);
-			_shader->setVec2("resolution", (float)width_, (float)height_);
 
 			glActiveTexture(GL_TEXTURE0);
 			glBindTexture(GL_TEXTURE_2D, sourceTexture);
@@ -29,7 +34,8 @@ namespace Boidsish {
 		}
 
 		void ToneMappingEffect::Resize(int width, int height) {
-			// No-op
+			width_ = width;
+			height_ = height;
 		}
 
 	} // namespace PostProcessing

@@ -12,6 +12,12 @@ class Shader;
 
 namespace Boidsish {
 
+	struct Vertex {
+		glm::vec3 Position;
+		glm::vec3 Normal;
+		glm::vec2 TexCoords;
+	};
+
 	// Base class for all renderable shapes
 	class Shape {
 	public:
@@ -27,6 +33,8 @@ namespace Boidsish {
 
 		// Get the active visual effects for this shape
 		virtual std::vector<VisualEffect> GetActiveEffects() const { return {}; }
+
+		virtual void GetGeometry(std::vector<Vertex>& vertices, std::vector<unsigned int>& indices) const;
 
 		// Accessors
 		inline int GetId() const { return id_; }
@@ -104,9 +112,19 @@ namespace Boidsish {
 
 		inline void SetColossal(bool is_colossal) { is_colossal_ = is_colossal; }
 
+		virtual bool CastsShadows() const { return !is_colossal_; }
+
 		inline bool IsInstanced() const { return is_instanced_; }
 
 		inline void SetInstanced(bool is_instanced) { is_instanced_ = is_instanced; }
+
+		inline bool IsHidden() const { return is_hidden_; }
+
+		inline void SetHidden(bool hidden) { is_hidden_ = hidden; }
+
+		// Returns a key identifying what shapes can be instanced together
+		// Shapes with the same key share the same mesh data
+		virtual std::string GetInstanceKey() const = 0;
 
 		// PBR material properties
 		inline float GetRoughness() const { return roughness_; }
@@ -186,6 +204,7 @@ namespace Boidsish {
 		bool      trail_rocket_;
 		bool      is_colossal_;
 		bool      is_instanced_ = false;
+		bool      is_hidden_ = false;
 		bool      trail_pbr_;
 		float     trail_roughness_;
 		float     trail_metallic_;
@@ -194,8 +213,8 @@ namespace Boidsish {
 		float     ao_;
 		bool      use_pbr_;
 
-	protected:
-		// Shared sphere mesh
+	public:
+		// Shared sphere mesh (public for instancing support)
 		static unsigned int sphere_vao_;
 		static unsigned int sphere_vbo_;
 		static int          sphere_vertex_count_;

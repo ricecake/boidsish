@@ -43,7 +43,7 @@ namespace Boidsish {
 			GL_DEPTH_COMPONENT24,
 			kShadowMapSize,
 			kShadowMapSize,
-			kMaxShadowLights,
+			kMaxShadowMaps,
 			0,
 			GL_DEPTH_COMPONENT,
 			GL_FLOAT,
@@ -69,7 +69,7 @@ namespace Boidsish {
 
 		// Clear all shadow map layers to max depth (1.0)
 		// This ensures unused layers don't cause artifacts
-		for (int i = 0; i < kMaxShadowLights; ++i) {
+		for (int i = 0; i < kMaxShadowMaps; ++i) {
 			glFramebufferTextureLayer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, shadow_map_array_, 0, i);
 			glClearDepth(1.0);
 			glClear(GL_DEPTH_BUFFER_BIT);
@@ -78,10 +78,13 @@ namespace Boidsish {
 		glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
 		// Create shadow UBO for light-space matrices
-		// Layout: mat4 lightSpaceMatrices[MAX_SHADOW_LIGHTS], int numShadowLights, padding
+		// Layout:
+		// mat4 lightSpaceMatrices[kMaxShadowMaps]
+		// vec4 cascadeSplits
+		// int numShadowLights
 		glGenBuffers(1, &shadow_ubo_);
 		glBindBuffer(GL_UNIFORM_BUFFER, shadow_ubo_);
-		size_t ubo_size = sizeof(glm::mat4) * kMaxShadowLights + 16; // matrices + count + padding
+		size_t ubo_size = sizeof(glm::mat4) * kMaxShadowMaps + 16 + 16; // matrices + splits + count + padding
 
 		// Initialize UBO with zeros to prevent garbage data
 		std::vector<char> zero_data(ubo_size, 0);
@@ -91,16 +94,20 @@ namespace Boidsish {
 		glBindBuffer(GL_UNIFORM_BUFFER, 0);
 
 		initialized_ = true;
-		logger::INFO("ShadowManager initialized with {} shadow map slots", kMaxShadowLights);
+		logger::INFO("ShadowManager initialized with {} shadow map slots", kMaxShadowMaps);
 	}
 
 	void ShadowManager::BeginShadowPass(
-		int              light_index,
+		int              map_index,
 		const Light&     light,
 		const glm::vec3& scene_center,
-		float            scene_radius
+		float            scene_radius,
+		int              cascade_index,
+		const glm::mat4& view,
+		float            fov,
+		float            aspect
 	) {
-		if (!initialized_ || light_index >= kMaxShadowLights) {
+		if (!initialized_ || map_index >= kMaxShadowMaps) {
 			return;
 		}
 
@@ -108,36 +115,146 @@ namespace Boidsish {
 		glGetIntegerv(GL_VIEWPORT, prev_viewport_);
 
 		// Calculate light-space matrix
-		// For a point light, we use an orthographic projection looking at the scene
-		// This creates directional-light-style shadows from the light position
-		glm::vec3 light_dir = glm::normalize(scene_center - light.position);
-		glm::vec3 up = glm::vec3(0.0f, 1.0f, 0.0f);
-
-		// Handle case where light is directly above/below
-		if (std::abs(glm::dot(light_dir, up)) > 0.99f) {
-			up = glm::vec3(0.0f, 0.0f, 1.0f);
+		glm::vec3 light_dir = glm::normalize(light.direction);
+		if (light.type != DIRECTIONAL_LIGHT && light.type != SPOT_LIGHT) {
+			light_dir = glm::normalize(scene_center - light.position);
 		}
 
-		glm::mat4 light_view = glm::lookAt(light.position, scene_center, up);
+		glm::mat4 light_view;
+		glm::mat4 light_projection;
 
-		// Calculate orthographic frustum that encompasses the scene
-		// Expand radius to ensure full coverage
-		float ortho_size = scene_radius * 1.5f;
-		float near_plane = 0.1f;
-		float far_plane = glm::length(light.position - scene_center) + scene_radius * 2.0f;
+		if (light.type == DIRECTIONAL_LIGHT && cascade_index >= 0) {
+			// CSM for directional light
+			float near_split = (cascade_index == 0) ? 0.1f : cascade_splits_[cascade_index - 1];
+			float far_split = cascade_splits_[cascade_index];
 
-		glm::mat4 light_projection =
-			glm::ortho(-ortho_size, ortho_size, -ortho_size, ortho_size, near_plane, far_plane);
+			glm::mat4 cascade_proj = glm::perspective(glm::radians(fov), aspect, near_split, far_split);
 
-		light_space_matrices_[light_index] = light_projection * light_view;
+			auto corners = GetFrustumCornersWorldSpace(cascade_proj, view);
+
+			glm::vec3 center = glm::vec3(0, 0, 0);
+			for (const auto& v : corners) {
+				center += glm::vec3(v);
+			}
+			center /= (float)corners.size();
+
+			// Use cascade-dependent grid snapping to reduce shadow shimmering
+			// Near cascades need finer grid for detail, far cascades can be coarser
+			// Cascade 3 now covers a huge area (150-1500) so needs larger grid
+			float grid_size = (cascade_index == 0) ? 0.25f
+				: (cascade_index == 1)             ? 1.0f
+				: (cascade_index == 2)             ? 4.0f
+												   : 8.0f;
+			center = glm::floor(center / grid_size) * grid_size;
+
+			glm::vec3 up = glm::vec3(0.0f, 1.0f, 0.0f);
+			if (std::abs(glm::dot(light_dir, up)) > 0.99f) {
+				up = glm::vec3(0.0f, 0.0f, 1.0f);
+			}
+
+			// Calculate the cascade frustum radius for proper light camera placement
+			float frustum_radius = 0.0f;
+			for (const auto& v : corners) {
+				float dist = glm::length(glm::vec3(v) - center);
+				frustum_radius = std::max(frustum_radius, dist);
+			}
+
+			// Pull the shadow camera back to include casters outside the view frustum
+			// Use cascade-dependent pull-back to balance precision vs coverage
+			float pull_back = frustum_radius + scene_radius * 0.5f;
+			light_view = glm::lookAt(center - light_dir * pull_back, center, up);
+
+			// Calculate tight ortho bounds in light space
+			float minX = std::numeric_limits<float>::max();
+			float maxX = std::numeric_limits<float>::lowest();
+			float minY = std::numeric_limits<float>::max();
+			float maxY = std::numeric_limits<float>::lowest();
+			float minZ = std::numeric_limits<float>::max();
+			float maxZ = std::numeric_limits<float>::lowest();
+
+			for (const auto& v : corners) {
+				const auto trf = light_view * v;
+				minX = std::min(minX, trf.x);
+				maxX = std::max(maxX, trf.x);
+				minY = std::min(minY, trf.y);
+				maxY = std::max(maxY, trf.y);
+				minZ = std::min(minZ, trf.z);
+				maxZ = std::max(maxZ, trf.z);
+			}
+
+			// CRITICAL FIX: Make the ortho projection square AND texel-aligned
+			// This prevents the "perspective shift" artifact where shadows appear
+			// to slide or disconnect from geometry at different distances
+			float extentX = (maxX - minX) * 0.5f;
+			float extentY = (maxY - minY) * 0.5f;
+			float maxExtent = std::max(extentX, extentY);
+
+			// Add PROPORTIONAL padding based on frustum size, not fixed amounts
+			// This ensures consistent texel coverage across all cascades
+			// 5% padding is enough for edge filtering without wasting resolution
+			float padding = maxExtent * 0.05f;
+			maxExtent += padding;
+
+			// Calculate texel size BEFORE snapping to get consistent world-space coverage
+			float texel_size = (maxExtent * 2.0f) / kShadowMapSize;
+
+			// Snap extent to texel boundary to eliminate sub-texel jitter
+			maxExtent = std::ceil(maxExtent / texel_size) * texel_size;
+
+			// Also snap the ortho center to texel grid to prevent shadow swimming
+			float centerX = (minX + maxX) * 0.5f;
+			float centerY = (minY + maxY) * 0.5f;
+			centerX = std::floor(centerX / texel_size) * texel_size;
+			centerY = std::floor(centerY / texel_size) * texel_size;
+
+			// Use the calculated depth range but extend backward for terrain below the frustum
+			float depth_range = maxZ - minZ + scene_radius;
+
+			light_projection = glm::ortho(
+				centerX - maxExtent,
+				centerX + maxExtent,
+				centerY - maxExtent,
+				centerY + maxExtent,
+				0.0f,
+				depth_range + pull_back
+			);
+		} else {
+			// Standard shadow map
+			glm::vec3 look_at_pos;
+			glm::vec3 light_pos = light.position;
+			float     pull_back = scene_radius;
+
+			if (light.type == DIRECTIONAL_LIGHT) {
+				light_pos = scene_center - light_dir * pull_back;
+				look_at_pos = scene_center;
+			} else if (light.type == SPOT_LIGHT) {
+				look_at_pos = light_pos + light_dir;
+			} else {
+				look_at_pos = scene_center;
+			}
+
+			glm::vec3 up = glm::vec3(0.0f, 1.0f, 0.0f);
+			if (std::abs(glm::dot(light_dir, up)) > 0.99f) {
+				up = glm::vec3(0.0f, 0.0f, 1.0f);
+			}
+
+			light_view = glm::lookAt(light_pos, look_at_pos, up);
+
+			float ortho_size = scene_radius + 100.0f; // Add padding to standard ortho as well
+			// Use a tighter depth range to improve precision.
+			light_projection =
+				glm::ortho(-ortho_size, ortho_size, -ortho_size, ortho_size, 0.0f, pull_back + scene_radius);
+		}
+
+		light_space_matrices_[map_index] = light_projection * light_view;
 
 		// Set up framebuffer for this shadow map layer
 		glBindFramebuffer(GL_FRAMEBUFFER, shadow_fbo_);
-		glFramebufferTextureLayer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, shadow_map_array_, 0, light_index);
+		glFramebufferTextureLayer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, shadow_map_array_, 0, map_index);
 
 		GLenum status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
 		if (status != GL_FRAMEBUFFER_COMPLETE) {
-			logger::ERROR("Shadow FBO incomplete for light {}: {}", light_index, status);
+			logger::ERROR("Shadow FBO incomplete for map {}: {}", map_index, status);
 		}
 
 		glViewport(0, 0, kShadowMapSize, kShadowMapSize);
@@ -149,7 +266,7 @@ namespace Boidsish {
 
 		// Set up shadow shader
 		shadow_shader_->use();
-		shadow_shader_->setMat4("lightSpaceMatrix", light_space_matrices_[light_index]);
+		shadow_shader_->setMat4("lightSpaceMatrix", light_space_matrices_[map_index]);
 	}
 
 	void ShadowManager::EndShadowPass() {
@@ -163,12 +280,62 @@ namespace Boidsish {
 		glBindFramebuffer(GL_FRAMEBUFFER, 0);
 	}
 
-	const glm::mat4& ShadowManager::GetLightSpaceMatrix(int light_index) const {
-		if (light_index >= 0 && light_index < kMaxShadowLights) {
-			return light_space_matrices_[light_index];
+	const glm::mat4& ShadowManager::GetLightSpaceMatrix(int map_index) const {
+		if (map_index >= 0 && map_index < kMaxShadowMaps) {
+			return light_space_matrices_[map_index];
 		}
 		static glm::mat4 identity(1.0f);
 		return identity;
+	}
+
+	Frustum ShadowManager::GetShadowFrustum(int map_index) const {
+		Frustum          frustum;
+		const glm::mat4& vp = GetLightSpaceMatrix(map_index);
+
+		// Left plane
+		frustum.planes[0].normal.x = vp[0][3] + vp[0][0];
+		frustum.planes[0].normal.y = vp[1][3] + vp[1][0];
+		frustum.planes[0].normal.z = vp[2][3] + vp[2][0];
+		frustum.planes[0].distance = vp[3][3] + vp[3][0];
+
+		// Right plane
+		frustum.planes[1].normal.x = vp[0][3] - vp[0][0];
+		frustum.planes[1].normal.y = vp[1][3] - vp[1][0];
+		frustum.planes[1].normal.z = vp[2][3] - vp[2][0];
+		frustum.planes[1].distance = vp[3][3] - vp[3][0];
+
+		// Bottom plane
+		frustum.planes[2].normal.x = vp[0][3] + vp[0][1];
+		frustum.planes[2].normal.y = vp[1][3] + vp[1][1];
+		frustum.planes[2].normal.z = vp[2][3] + vp[2][1];
+		frustum.planes[2].distance = vp[3][3] + vp[3][1];
+
+		// Top plane
+		frustum.planes[3].normal.x = vp[0][3] - vp[0][1];
+		frustum.planes[3].normal.y = vp[1][3] - vp[1][1];
+		frustum.planes[3].normal.z = vp[2][3] - vp[2][1];
+		frustum.planes[3].distance = vp[3][3] - vp[3][1];
+
+		// Near plane
+		frustum.planes[4].normal.x = vp[0][3] + vp[0][2];
+		frustum.planes[4].normal.y = vp[1][3] + vp[1][2];
+		frustum.planes[4].normal.z = vp[2][3] + vp[2][2];
+		frustum.planes[4].distance = vp[3][3] + vp[3][2];
+
+		// Far plane
+		frustum.planes[5].normal.x = vp[0][3] - vp[0][2];
+		frustum.planes[5].normal.y = vp[1][3] - vp[1][2];
+		frustum.planes[5].normal.z = vp[2][3] - vp[2][2];
+		frustum.planes[5].distance = vp[3][3] - vp[3][2];
+
+		// Normalize the planes
+		for (int i = 0; i < 6; ++i) {
+			float length = glm::length(frustum.planes[i].normal);
+			frustum.planes[i].normal /= length;
+			frustum.planes[i].distance /= length;
+		}
+
+		return frustum;
 	}
 
 	void ShadowManager::BindForRendering(Shader& shader, int texture_unit) {
@@ -179,20 +346,40 @@ namespace Boidsish {
 	}
 
 	void ShadowManager::UpdateShadowUBO(const std::vector<Light*>& shadow_lights) {
-		active_shadow_count_ = std::min(static_cast<int>(shadow_lights.size()), kMaxShadowLights);
+		// Active shadow maps might be more than shadow lights due to CSM
+		// But for the UBO, we just want to upload all used matrices
 
 		glBindBuffer(GL_UNIFORM_BUFFER, shadow_ubo_);
 
-		// Upload light-space matrices
-		for (int i = 0; i < active_shadow_count_; ++i) {
-			glBufferSubData(GL_UNIFORM_BUFFER, i * sizeof(glm::mat4), sizeof(glm::mat4), &light_space_matrices_[i]);
-		}
+		// Upload all light-space matrices
+		glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(glm::mat4) * kMaxShadowMaps, light_space_matrices_.data());
 
-		// Upload shadow count (at offset after all matrices)
-		size_t count_offset = sizeof(glm::mat4) * kMaxShadowLights;
+		// Upload cascade splits
+		size_t splits_offset = sizeof(glm::mat4) * kMaxShadowMaps;
+		glBufferSubData(GL_UNIFORM_BUFFER, splits_offset, sizeof(float) * kMaxCascades, cascade_splits_.data());
+
+		// Upload shadow count (at offset after all matrices and splits)
+		size_t count_offset = splits_offset + 16; // align to 16 bytes
+		active_shadow_count_ = kMaxShadowMaps;    // Just indicate we have slots
 		glBufferSubData(GL_UNIFORM_BUFFER, count_offset, sizeof(int), &active_shadow_count_);
 
 		glBindBuffer(GL_UNIFORM_BUFFER, 0);
+	}
+
+	std::vector<glm::vec4> ShadowManager::GetFrustumCornersWorldSpace(const glm::mat4& proj, const glm::mat4& view) {
+		const auto inv = glm::inverse(proj * view);
+
+		std::vector<glm::vec4> frustumCorners;
+		for (unsigned int x = 0; x < 2; ++x) {
+			for (unsigned int y = 0; y < 2; ++y) {
+				for (unsigned int z = 0; z < 2; ++z) {
+					const glm::vec4 pt = inv * glm::vec4(2.0f * x - 1.0f, 2.0f * y - 1.0f, 2.0f * z - 1.0f, 1.0f);
+					frustumCorners.push_back(pt / pt.w);
+				}
+			}
+		}
+
+		return frustumCorners;
 	}
 
 } // namespace Boidsish

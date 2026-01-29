@@ -46,7 +46,6 @@ namespace Boidsish {
 
 	TerrainGenerator::~TerrainGenerator() {
 		{
-			std::lock_guard<std::mutex> lock(chunk_cache_mutex_);
 			for (auto& pair : pending_chunks_) {
 				pair.second.cancel();
 			}
@@ -55,7 +54,6 @@ namespace Boidsish {
 		// Wait for any in-flight tasks to complete (they may have started before cancel)
 		// This prevents use-after-free when tasks reference 'this'
 		{
-			std::lock_guard<std::mutex> lock(chunk_cache_mutex_);
 			for (auto& pair : pending_chunks_) {
 				try {
 					auto& handle = const_cast<TaskHandle<TerrainGenerationResult>&>(pair.second);
@@ -68,7 +66,6 @@ namespace Boidsish {
 		}
 
 		{
-			std::lock_guard<std::mutex> lock(chunk_cache_mutex_);
 			chunk_cache_.clear();
 		}
 		{
@@ -78,43 +75,45 @@ namespace Boidsish {
 	}
 
 	void TerrainGenerator::update(const Frustum& frustum, const Camera& camera) {
-		int current_chunk_x = static_cast<int>(camera.x) / chunk_size_;
-		int current_chunk_z = static_cast<int>(camera.z) / chunk_size_;
+		// Use floor division for correct negative coordinate handling
+		int current_chunk_x = static_cast<int>(std::floor(camera.x / static_cast<float>(chunk_size_)));
+		int current_chunk_z = static_cast<int>(std::floor(camera.z / static_cast<float>(chunk_size_)));
 
 		float height_factor = std::max(1.0f, camera.y / 5.0f);
-		int   dynamic_view_distance = std::min(24, static_cast<int>(view_distance_ * height_factor));
+		int   dynamic_view_distance = std::min(
+            Constants::Class::Terrain::MaxViewDistance(),
+            static_cast<int>(view_distance_ * height_factor)
+        );
 
-		// Enqueue generation of new chunks
+		float max_h = 0.0f;
+		for (const auto& b : biomes) {
+			max_h = std::max(max_h, b.floorLevel);
+		}
+
+		std::lock_guard<std::recursive_mutex> lock(chunk_cache_mutex_);
+
+		// 1. Enqueue generation of new chunks within view distance
+		// Priority is HIGH for chunks in the frustum, and LOW for those outside
 		for (int x = current_chunk_x - dynamic_view_distance; x <= current_chunk_x + dynamic_view_distance; ++x) {
 			for (int z = current_chunk_z - dynamic_view_distance; z <= current_chunk_z + dynamic_view_distance; ++z) {
-				if (isChunkInFrustum(
-						frustum,
-						x,
-						z,
-						chunk_size_,
-						std::ranges::max(std::views::transform(biomes, &BiomeAttributes::floorLevel))
-					)) {
-					std::pair<int, int> chunk_coord = {x, z};
-					{
-						std::lock_guard<std::mutex> cache_lock(chunk_cache_mutex_);
-						if (chunk_cache_.find(chunk_coord) == chunk_cache_.end() &&
-						    pending_chunks_.find(chunk_coord) == pending_chunks_.end()) {
-							pending_chunks_.emplace(
-								chunk_coord,
-								thread_pool_
-									.enqueue(TaskPriority::MEDIUM, &TerrainGenerator::generateChunkData, this, x, z)
-							);
-						}
-					}
+				std::pair<int, int> chunk_coord = {x, z};
+				if (chunk_cache_.find(chunk_coord) == chunk_cache_.end() &&
+				    pending_chunks_.find(chunk_coord) == pending_chunks_.end()) {
+					bool         in_frustum = isChunkInFrustum(frustum, x, z, chunk_size_, max_h);
+					TaskPriority priority = in_frustum ? TaskPriority::HIGH : TaskPriority::LOW;
+
+					pending_chunks_.emplace(
+						chunk_coord,
+						thread_pool_.enqueue(priority, &TerrainGenerator::generateChunkData, this, x, z)
+					);
 				}
 			}
 		}
 
-		// Process completed chunks
+		// 2. Process completed chunks (without blocking the main thread)
 		std::vector<std::pair<int, int>> completed_chunks;
-		{
-			std::lock_guard<std::mutex> cache_lock(chunk_cache_mutex_);
-			for (auto& pair : pending_chunks_) {
+		for (auto& pair : pending_chunks_) {
+			if (pair.second.is_ready()) {
 				try {
 					auto&                   future = const_cast<TaskHandle<TerrainGenerationResult>&>(pair.second);
 					TerrainGenerationResult result = future.get();
@@ -122,7 +121,14 @@ namespace Boidsish {
 						auto terrain_chunk =
 							std::make_shared<Terrain>(result.indices, result.positions, result.normals, result.proxy);
 						terrain_chunk->SetPosition(result.chunk_x * chunk_size_, 0, result.chunk_z * chunk_size_);
-						terrain_chunk->setupMesh();
+
+						if (render_manager_) {
+							terrain_chunk->SetManagedByRenderManager(true);
+							// Registration is deferred to the registration pass below
+						} else {
+							terrain_chunk->setupMesh();
+						}
+
 						chunk_cache_[pair.first] = terrain_chunk;
 					}
 					completed_chunks.push_back(pair.first);
@@ -134,56 +140,79 @@ namespace Boidsish {
 			}
 		}
 
-		{
-			std::lock_guard<std::mutex> cache_lock(chunk_cache_mutex_);
-			for (const auto& key : completed_chunks) {
-				pending_chunks_.erase(key);
+		for (const auto& key : completed_chunks) {
+			pending_chunks_.erase(key);
+		}
+
+		// 3. Registration Pass: Register chunks that are in frustum but not in renderer
+		if (render_manager_) {
+			int       registrations_this_frame = 0;
+			const int max_registrations_per_frame = 10;
+
+			for (auto const& [key, terrain_chunk] : chunk_cache_) {
+				if (registrations_this_frame >= max_registrations_per_frame)
+					break;
+
+				if (isChunkInFrustum(frustum, key.first, key.second, chunk_size_, max_h)) {
+					if (!render_manager_->HasChunk(key)) {
+						render_manager_->RegisterChunk(
+							key,
+							terrain_chunk->vertices,
+							terrain_chunk->normals,
+							terrain_chunk->GetIndices(),
+							terrain_chunk->proxy.minY,
+							terrain_chunk->proxy.maxY,
+							glm::vec3(key.first * chunk_size_, 0, key.second * chunk_size_)
+						);
+						registrations_this_frame++;
+					}
+				}
 			}
 		}
 
-		// Unload chunks
+		// 4. Unload chunks
 		std::vector<std::pair<int, int>> to_remove;
-		{
-			std::lock_guard<std::mutex> cache_lock(chunk_cache_mutex_);
-			for (auto const& [key, val] : chunk_cache_) {
-				int dx = key.first - current_chunk_x;
-				int dz = key.second - current_chunk_z;
-				if (std::abs(dx) > dynamic_view_distance + kUnloadDistanceBuffer_ ||
-				    std::abs(dz) > dynamic_view_distance + kUnloadDistanceBuffer_) {
-					to_remove.push_back(key);
-				}
+		for (auto const& [key, val] : chunk_cache_) {
+			int dx = std::abs(key.first - current_chunk_x);
+			int dz = std::abs(key.second - current_chunk_z);
+			int limit = dynamic_view_distance + kUnloadDistanceBuffer_;
+			if (dx > limit || dz > limit) {
+				to_remove.push_back(key);
 			}
+		}
 
-			for (const auto& key : to_remove) {
-				chunk_cache_.erase(key);
+		for (const auto& key : to_remove) {
+			if (render_manager_) {
+				render_manager_->UnregisterChunk(key);
 			}
+			chunk_cache_.erase(key);
 		}
 
 		std::vector<std::pair<int, int>> to_cancel;
-		{
-			std::lock_guard<std::mutex> cache_lock(chunk_cache_mutex_);
-			for (auto const& [key, val] : pending_chunks_) {
-				int dx = key.first - current_chunk_x;
-				int dz = key.second - current_chunk_z;
-				if (std::abs(dx) > dynamic_view_distance + kUnloadDistanceBuffer_ ||
-				    std::abs(dz) > dynamic_view_distance + kUnloadDistanceBuffer_) {
-					to_cancel.push_back(key);
-				}
+		for (auto const& [key, val] : pending_chunks_) {
+			int dx = std::abs(key.first - current_chunk_x);
+			int dz = std::abs(key.second - current_chunk_z);
+			int limit = dynamic_view_distance + kUnloadDistanceBuffer_;
+			if (dx > limit || dz > limit) {
+				to_cancel.push_back(key);
 			}
 		}
 
 		for (const auto& key : to_cancel) {
-			std::lock_guard<std::mutex> cache_lock(chunk_cache_mutex_);
 			pending_chunks_.at(key).cancel();
 			pending_chunks_.erase(key);
 		}
 
+		// Commit any pending buffer updates to the render manager
+		if (render_manager_) {
+			render_manager_->CommitUpdates();
+		}
+
 		{
 			std::lock_guard<std::mutex> visible_lock(visible_chunks_mutex_);
-			std::lock_guard<std::mutex> cache_lock(chunk_cache_mutex_);
 			visible_chunks_.clear();
 			for (auto const& [key, val] : chunk_cache_) {
-				if (val) {
+				if (val && isChunkInFrustum(frustum, key.first, key.second, chunk_size_, max_h)) {
 					visible_chunks_.push_back(val);
 				}
 			}
@@ -221,12 +250,17 @@ namespace Boidsish {
 
 		// Initial low-frequency pass to establish "Base Shape"
 		glm::vec3 base = Simplex::dnoise(pos * freq);
+		// Account for frequency in analytical derivatives
+		base.y *= freq;
+		base.z *= freq;
 		height = base * amp;
 
 		for (int i = 1; i < 6; i++) {
 			amp *= 0.5f;
 			freq *= 2.0f;
 			glm::vec3 n = Simplex::dnoise(pos * freq);
+			n.y *= freq;
+			n.z *= freq;
 
 			// 1. Spikiness Correction using Biome Attribute
 			float slope = glm::length(glm::vec2(n.y, n.z));
@@ -239,13 +273,24 @@ namespace Boidsish {
 
 		// 3. Final Floor Shaping
 		if (height.x < attr.floorLevel) {
-			height = glm::smoothstep(attr.floorLevel - 0.1f, attr.floorLevel, height) * attr.floorLevel;
+			float t = glm::smoothstep(attr.floorLevel - 0.1f, attr.floorLevel, height.x);
+			height.x = t * attr.floorLevel;
+			height.y *= t;
+			height.z *= t;
 		}
 
-		height = height * 0.5f + 0.5f;
+		height.x = height.x * 0.5f + 0.5f;
+		height.y = height.y * 0.5f;
+		height.z = height.z * 0.5f;
 
-		if (height[0] > 0) {
-			height *= attr.floorLevel;
+		if (height.x > 0) {
+			float floorScale = attr.floorLevel;
+			height.x *= floorScale;
+			// Dampen normal steepness slightly to prevent extreme lighting artifacts in depressions
+			// while keeping the visual height the same. 0.4f provides a good balance.
+			float normalScale = floorScale; // * 0.4f;
+			height.y *= normalScale;
+			height.z *= normalScale;
 		}
 
 		return height;
@@ -296,7 +341,7 @@ namespace Boidsish {
 		float     path_factor = path_data.x;
 
 		glm::vec2 push_dir = glm::normalize(glm::vec2(path_data.y, path_data.z));
-		float     warp_strength = (1.0f - path_factor) * 20.0f;
+		float     warp_strength = (1.0f - path_factor) * Constants::Class::Terrain::WarpStrength();
 		glm::vec2 warp = push_dir * warp_strength;
 
 		glm::vec2 pos = glm::vec2(x, z);
@@ -438,7 +483,7 @@ namespace Boidsish {
 	glm::vec3 TerrainGenerator::getPathInfluence(float x, float z) const {
 		glm::vec3 noise = Simplex::dnoise(glm::vec2(x, z) * kPathFrequency);
 		float     distance_from_spine = std::abs(noise.x);
-		float     corridor_width = 0.35f; // Adjust for wider/narrower paths
+		float     corridor_width = Constants::Class::Terrain::PathCorridorWidth(); // Adjust for wider/narrower paths
 		float     path_factor = glm::smoothstep(0.0f, corridor_width, distance_from_spine);
 
 		return glm::vec3(path_factor, noise.y, noise.z);
@@ -615,14 +660,16 @@ namespace Boidsish {
 
 				int index = (y * texture_dim + x) * 4;
 
-				// Normals are in [-1, 1], so map to [0, 65535]
-				pixels[index + 0] = static_cast<uint16_t>((normal.x * 0.5f + 0.5f) * 65535.0f);
-				pixels[index + 1] = static_cast<uint16_t>((normal.y * 0.5f + 0.5f) * 65535.0f);
-				pixels[index + 2] = static_cast<uint16_t>((normal.z * 0.5f + 0.5f) * 65535.0f);
-
 				// Height is in [0, maxHeight], so map to [0, 65535]
+				// This MUST be the first component (R) as expected by shaders
 				float normalized_height = std::max(0.0f, std::min(1.0f, height / max_height));
-				pixels[index + 3] = static_cast<uint16_t>(normalized_height * 65535.0f);
+				pixels[index + 0] = static_cast<uint16_t>(normalized_height * 65535.0f);
+
+				// Normals are in [-1, 1], so map to [0, 65535]
+				// These are the next three components (GBA)
+				pixels[index + 1] = static_cast<uint16_t>((normal.x * 0.5f + 0.5f) * 65535.0f);
+				pixels[index + 2] = static_cast<uint16_t>((normal.y * 0.5f + 0.5f) * 65535.0f);
+				pixels[index + 3] = static_cast<uint16_t>((normal.z * 0.5f + 0.5f) * 65535.0f);
 			}
 		}
 

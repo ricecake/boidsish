@@ -5,6 +5,7 @@
 #include "PaperPlane.h"
 #include "PaperPlaneHandler.h"
 #include "PaperPlaneInputController.h"
+#include "constants.h"
 #include "graphics.h"
 #include "hud.h"
 #include "model.h"
@@ -14,7 +15,11 @@ using namespace Boidsish;
 
 int main() {
 	try {
-		auto visualizer = std::make_shared<Visualizer>(1280, 720, "Paper Plane Demo");
+		auto visualizer = std::make_shared<Visualizer>(
+			Constants::Project::Window::DefaultWidth(),
+			Constants::Project::Window::DefaultHeight(),
+			"Paper Plane Demo"
+		);
 		visualizer->AddHudIcon(
 			{1, "assets/missile-icon.png", HudAlignment::TOP_LEFT, {10, 10}, {64, 64}, selected_weapon == 0}
 		);

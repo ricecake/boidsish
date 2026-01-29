@@ -12,7 +12,9 @@
 namespace Boidsish {
 
 	Dot::Dot(int id, float x, float y, float z, float size, float r, float g, float b, float a, int trail_length):
-		Shape(id, x, y, z, r, g, b, a, trail_length), size_(size) {}
+		Shape(id, x, y, z, r, g, b, a, trail_length), size_(size) {
+		// SetInstanced(true);
+	}
 
 	void Dot::render() const {
 		render(*shader, GetModelMatrix());
@@ -21,6 +23,7 @@ namespace Boidsish {
 	void Dot::render(Shader& shader, const glm::mat4& model_matrix) const {
 		shader.setMat4("model", model_matrix);
 		shader.setVec3("objectColor", GetR(), GetG(), GetB());
+		shader.setFloat("objectAlpha", GetA());
 
 		// Set PBR material properties
 		shader.setBool("usePBR", UsePBR());

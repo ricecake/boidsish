@@ -11,6 +11,7 @@
 #include "Config.h"
 #include "audio_manager.h"
 #include "concurrent_queue.h"
+#include "constants.h"
 #include "fire_effect.h"
 #include "imgui.h"
 #include "imgui_impl_glfw.h"
@@ -41,7 +42,13 @@ namespace Boidsish {
 	class FireEffectManager;
 	class ShockwaveManager;
 	class Path;
+
+	namespace PostProcessing {
+		class PostProcessingManager;
+	}
 } // namespace Boidsish
+
+#include "frustum.h"
 
 namespace Boidsish {
 	enum class ShapeCommandType { Add, Remove };
@@ -52,26 +59,15 @@ namespace Boidsish {
 		int                    shape_id;
 	};
 
-	constexpr int kMaxKeys = 1024;
-
-	struct Plane {
-		glm::vec3 normal;
-		float     distance;
-	};
-
-	struct Frustum {
-		Plane planes[6];
-	};
-
 	struct InputState {
-		bool   keys[kMaxKeys];
-		bool   key_down[kMaxKeys];
-		bool   key_up[kMaxKeys];
+		bool   keys[Constants::Library::Input::MaxKeys()];
+		bool   key_down[Constants::Library::Input::MaxKeys()];
+		bool   key_up[Constants::Library::Input::MaxKeys()];
 		double mouse_x, mouse_y;
 		double mouse_delta_x, mouse_delta_y;
-		bool   mouse_buttons[8];
-		bool   mouse_button_down[8];
-		bool   mouse_button_up[8];
+		bool   mouse_buttons[Constants::Library::Input::MaxMouseButtons()];
+		bool   mouse_button_down[Constants::Library::Input::MaxMouseButtons()];
+		bool   mouse_button_up[Constants::Library::Input::MaxMouseButtons()];
 		float  delta_time;
 	};
 
@@ -93,8 +89,8 @@ namespace Boidsish {
 			float pitch = 0.0f,
 			float yaw = 0.0f,
 			float roll = 0.0f,
-			float fov = 45.0f,
-			float speed = 10.0f
+			float fov = Constants::Project::Camera::DefaultFOV(),
+			float speed = Constants::Project::Camera::DefaultSpeed()
 		):
 			x(x), y(y), z(z), pitch(pitch), yaw(yaw), roll(roll), fov(fov), speed(speed) {}
 
@@ -183,6 +179,7 @@ namespace Boidsish {
 		void                        SetTimeScale(float);
 		float                       GetTimeScale();
 		void                        ToggleEffect(VisualEffect effect);
+		void                        SetEffectEnabled(VisualEffect effect, bool enabled);
 		void                        ToggleMenus();
 		std::shared_ptr<FireEffect> AddFireEffect(
 			const glm::vec3& position,
@@ -225,9 +222,9 @@ namespace Boidsish {
 			const glm::vec3& normal,
 			float            max_radius,
 			float            duration,
-			float            intensity = 0.5f,
-			float            ring_width = 3.0f,
-			const glm::vec3& color = glm::vec3(1.0f, 0.6f, 0.2f)
+			float            intensity = Constants::Class::Shockwaves::DefaultIntensity(),
+			float            ring_width = Constants::Class::Shockwaves::DefaultRingWidth(),
+			const glm::vec3& color = Constants::Class::Shockwaves::DefaultColor()
 		);
 
 		/**
@@ -241,6 +238,25 @@ namespace Boidsish {
 		 */
 		void CreateExplosion(const glm::vec3& position, float intensity = 1.0f);
 
+		void
+		ExplodeShape(std::shared_ptr<Shape> shape, float intensity = 1.0f, const glm::vec3& velocity = glm::vec3(0.0f));
+
+		/**
+		 * @brief A high-level effect helper that combines mesh explosion, hiding the original shape,
+		 * and spawning fire/shockwave effects.
+		 *
+		 * @param shape The shape to explode and hide
+		 * @param direction The primary direction of the explosion and shockwave normal
+		 * @param intensity Scaling factor for all combined effects
+		 * @param fire_style The style of fire particles to spawn (e.g., Explosion, Glitter)
+		 */
+		void TriggerComplexExplosion(
+			std::shared_ptr<Shape> shape,
+			const glm::vec3&       direction,
+			float                  intensity = 1.0f,
+			FireEffectStyle        fire_style = FireEffectStyle::Explosion
+		);
+
 		std::tuple<float, glm::vec3>                 GetTerrainPointProperties(float x, float y) const;
 		std::tuple<float, glm::vec3>                 GetTerrainPointPropertiesThreadSafe(float x, float y) const;
 		float                                        GetTerrainMaxHeight() const;
@@ -249,6 +265,7 @@ namespace Boidsish {
 		task_thread_pool::task_thread_pool&          GetThreadPool();
 		LightManager&                                GetLightManager();
 		FireEffectManager*                           GetFireEffectManager();
+		PostProcessing::PostProcessingManager&       GetPostProcessingManager();
 		float                                        GetLastFrameTime() const;
 
 		Config&       GetConfig();

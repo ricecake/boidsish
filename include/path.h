@@ -38,6 +38,9 @@ namespace Boidsish {
 		void      render(Shader& shader, const glm::mat4& model_matrix) const override;
 		glm::mat4 GetModelMatrix() const override;
 
+		// Paths are not instanced (each has unique geometry)
+		std::string GetInstanceKey() const override { return "Path:" + std::to_string(GetId()); }
+
 		Waypoint& AddWaypoint(
 			const Vector3& pos,
 			const Vector3& up = Vector3(0, 1, 0),

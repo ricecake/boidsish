@@ -13,12 +13,6 @@ class Shader;
 
 namespace Boidsish {
 
-	struct Vertex {
-		glm::vec3 Position;
-		glm::vec3 Normal;
-		glm::vec2 TexCoords;
-	};
-
 	struct Texture {
 		unsigned int id;
 		std::string  type;
@@ -59,17 +53,26 @@ namespace Boidsish {
 		void      render(Shader& shader, const glm::mat4& model_matrix) const override;
 		glm::mat4 GetModelMatrix() const override;
 
+		void GetGeometry(std::vector<Vertex>& vertices, std::vector<unsigned int>& indices) const override;
+
 		const std::vector<Mesh>& getMeshes() const { return meshes; }
 
 		void SetBaseRotation(const glm::quat& rotation) { base_rotation_ = rotation; }
 
 		void SetInstanced(bool is_instanced) { Shape::SetInstanced(is_instanced); }
 
+		// Returns unique key for this model file - models loaded from the same file can be instanced together
+		std::string GetInstanceKey() const override { return "Model:" + model_path_; }
+
+		// Get the model path
+		const std::string& GetModelPath() const { return model_path_; }
+
 	private:
 		// Model data
 		glm::quat            base_rotation_ = glm::quat(1.0f, 0.0f, 0.0f, 0.0f);
 		std::vector<Mesh>    meshes;
 		std::string          directory;
+		std::string          model_path_; // Full path to the model file for instancing identification
 		bool                 no_cull_ = false;
 		std::vector<Texture> textures_loaded_;
 

@@ -4,7 +4,7 @@
 
 namespace Boidsish {
 
-	enum class FireEffectStyle { MissileExhaust, Explosion, Fire, Null };
+	enum class FireEffectStyle { MissileExhaust, Explosion, Fire, Sparks, Glitter, Null };
 
 	class FireEffect {
 	public:

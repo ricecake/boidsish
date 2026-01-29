@@ -3,6 +3,7 @@ layout(location = 0) in vec3 aPos;
 layout(location = 1) in vec3 aNormal;
 layout(location = 2) in vec2 aTexCoords;
 layout(location = 3) in mat4 aInstanceMatrix;
+layout(location = 7) in vec4 aInstanceColor;
 #include "helpers/lighting.glsl"
 #include "visual_effects.glsl"
 #include "visual_effects.vert"
@@ -12,14 +13,17 @@ out vec3 Normal;
 out vec3 vs_color;
 out vec3 barycentric;
 out vec2 TexCoords;
+out vec4 InstanceColor;
 
 uniform mat4  model;
 uniform mat4  view;
 uniform mat4  projection;
 uniform vec4  clipPlane;
 uniform float ripple_strength;
-uniform bool  isColossal = true;
+uniform bool  isColossal = false;
 uniform bool  is_instanced = false;
+uniform bool  useInstanceColor = false;
+uniform bool  isLine = false;
 
 void main() {
 	vec3 displacedPos = aPos;
@@ -49,6 +53,7 @@ void main() {
 	FragPos = vec3(modelMatrix * vec4(displacedPos, 1.0));
 	Normal = mat3(transpose(inverse(modelMatrix))) * displacedNormal;
 	TexCoords = aTexCoords;
+	InstanceColor = useInstanceColor ? aInstanceColor : vec4(1.0);
 	if (wireframe_enabled == 1) {
 		barycentric = getBarycentric();
 	}

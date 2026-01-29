@@ -4,6 +4,7 @@
 #include <tuple>
 #include <vector>
 
+#include "constants.h"
 #include "shader.h"
 #include "vector.h"
 #include <GL/glew.h>
@@ -13,7 +14,7 @@ namespace Boidsish {
 
 	class Trail {
 	public:
-		Trail(int max_length = 250);
+		Trail(int max_length = Constants::Class::Trails::DefaultMaxLength());
 		~Trail();
 
 		void AddPoint(glm::vec3 position, glm::vec3 color);
@@ -32,6 +33,34 @@ namespace Boidsish {
 		float GetRoughness() const { return roughness_; }
 
 		float GetMetallic() const { return metallic_; }
+
+		// Batched rendering support
+		void SetManagedByRenderManager(bool managed) { managed_by_render_manager_ = managed; }
+
+		bool IsManagedByRenderManager() const { return managed_by_render_manager_; }
+
+		// Get vertex data for batched rendering (interleaved pos + normal + color)
+		std::vector<float> GetInterleavedVertexData() const;
+
+		size_t GetMaxVertexCount() const { return mesh_vertices.size(); }
+
+		size_t GetHead() const { return head; }
+
+		size_t GetTail() const { return tail; }
+
+		size_t GetVertexCount() const { return vertex_count; }
+
+		bool IsFull() const { return full; }
+
+		bool GetIridescent() const { return iridescent_; }
+
+		bool GetUseRocketTrail() const { return useRocketTrail_; }
+
+		float GetBaseThickness() const { return BASE_THICKNESS; }
+
+		bool IsDirty() const { return mesh_dirty; }
+
+		void ClearDirty() { mesh_dirty = false; }
 
 	private:
 		struct TrailVertex {
@@ -89,14 +118,15 @@ namespace Boidsish {
 		bool                                       iridescent_ = false;
 		bool                                       useRocketTrail_ = false;
 		bool                                       usePBR_ = false;
-		float                                      roughness_ = 0.3f;
-		float                                      metallic_ = 0.0f;
+		float                                      roughness_ = Constants::Class::Trails::DefaultRoughness();
+		float                                      metallic_ = Constants::Class::Trails::DefaultMetallic();
+		bool                                       managed_by_render_manager_ = false;
 
 		// Configuration
-		const int   TRAIL_SEGMENTS = 8;                        // Circular segments around trail
-		const int   CURVE_SEGMENTS = 4;                        // Interpolation segments per point
-		const int   VERTS_PER_STEP = (TRAIL_SEGMENTS + 1) * 2; // For 8 segments, this is 18
-		const float BASE_THICKNESS = 0.06f;                    // Maximum thickness at trail start
+		const int   TRAIL_SEGMENTS = Constants::Class::Trails::Segments();      // Circular segments around trail
+		const int   CURVE_SEGMENTS = Constants::Class::Trails::CurveSegments(); // Interpolation segments per point
+		const int   VERTS_PER_STEP = (TRAIL_SEGMENTS + 1) * 2;                  // For 8 segments, this is 18
+		const float BASE_THICKNESS = Constants::Class::Trails::BaseThickness(); // Maximum thickness at trail start
 	};
 
 } // namespace Boidsish
