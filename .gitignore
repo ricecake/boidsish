@@ -208,3 +208,5 @@ gmon.out
 
 core.*
 *.ini
+
+scenes/*.dict

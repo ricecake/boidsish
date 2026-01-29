@@ -12,10 +12,10 @@ namespace Boidsish {
 		void Load();
 		void Save();
 
-		std::string GetString(const std::string& section, const std::string& key, const std::string& default_value);
-		int         GetInt(const std::string& section, const std::string& key, int default_value);
-		float       GetFloat(const std::string& section, const std::string& key, float default_value);
-		bool        GetBool(const std::string& section, const std::string& key, bool default_value);
+		std::string GetString(const std::string& section, const std::string& key, const std::string& default_value) const;
+		int         GetInt(const std::string& section, const std::string& key, int default_value) const;
+		float       GetFloat(const std::string& section, const std::string& key, float default_value) const;
+		bool        GetBool(const std::string& section, const std::string& key, bool default_value) const;
 
 		void SetString(const std::string& section, const std::string& key, const std::string& value);
 		void SetInt(const std::string& section, const std::string& key, int value);
