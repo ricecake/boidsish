@@ -143,8 +143,12 @@ namespace Boidsish {
 			}
 			center /= (float)corners.size();
 
-			// Snap center to a grid to reduce shadow shimmering during camera movement
-			float grid_size = 5.0f;
+			// Use cascade-dependent grid snapping to reduce shadow shimmering
+			// Near cascades need finer grid for detail, far cascades can be coarser
+			// Cascade 3 now covers a huge area (150-1500) so needs larger grid
+			float grid_size = (cascade_index == 0) ? 0.25f :
+			                  (cascade_index == 1) ? 1.0f :
+			                  (cascade_index == 2) ? 4.0f : 8.0f;
 			center = glm::floor(center / grid_size) * grid_size;
 
 			glm::vec3 up = glm::vec3(0.0f, 1.0f, 0.0f);
@@ -152,34 +156,69 @@ namespace Boidsish {
 				up = glm::vec3(0.0f, 0.0f, 1.0f);
 			}
 
-			// Pull the shadow camera back significantly to avoid clipping tall objects (mountains)
-			// that are between the light and the frustum.
-			float pull_back = scene_radius;
+			// Calculate the cascade frustum radius for proper light camera placement
+			float frustum_radius = 0.0f;
+			for (const auto& v : corners) {
+				float dist = glm::length(glm::vec3(v) - center);
+				frustum_radius = std::max(frustum_radius, dist);
+			}
+
+			// Pull the shadow camera back to include casters outside the view frustum
+			// Use cascade-dependent pull-back to balance precision vs coverage
+			float pull_back = frustum_radius + scene_radius * 0.5f;
 			light_view = glm::lookAt(center - light_dir * pull_back, center, up);
 
+			// Calculate tight ortho bounds in light space
 			float minX = std::numeric_limits<float>::max();
 			float maxX = std::numeric_limits<float>::lowest();
 			float minY = std::numeric_limits<float>::max();
 			float maxY = std::numeric_limits<float>::lowest();
+			float minZ = std::numeric_limits<float>::max();
+			float maxZ = std::numeric_limits<float>::lowest();
+
 			for (const auto& v : corners) {
 				const auto trf = light_view * v;
 				minX = std::min(minX, trf.x);
 				maxX = std::max(maxX, trf.x);
 				minY = std::min(minY, trf.y);
 				maxY = std::max(maxY, trf.y);
+				minZ = std::min(minZ, trf.z);
+				maxZ = std::max(maxZ, trf.z);
 			}
 
-			// Expand the ortho bounds to include casters that are outside the frustum
-			// but could cast shadows into it. Padding should be balanced with resolution.
-			float padding = 100.0f;
-			minX -= padding;
-			maxX += padding;
-			minY -= padding;
-			maxY += padding;
+			// CRITICAL FIX: Make the ortho projection square AND texel-aligned
+			// This prevents the "perspective shift" artifact where shadows appear
+			// to slide or disconnect from geometry at different distances
+			float extentX = (maxX - minX) * 0.5f;
+			float extentY = (maxY - minY) * 0.5f;
+			float maxExtent = std::max(extentX, extentY);
 
-			// Use a tighter depth range to improve precision.
-			// Center is at distance 'pull_back'. Range should cover 'center' +/- scene_radius.
-			light_projection = glm::ortho(minX, maxX, minY, maxY, 0.0f, pull_back + scene_radius);
+			// Add PROPORTIONAL padding based on frustum size, not fixed amounts
+			// This ensures consistent texel coverage across all cascades
+			// 5% padding is enough for edge filtering without wasting resolution
+			float padding = maxExtent * 0.05f;
+			maxExtent += padding;
+
+			// Calculate texel size BEFORE snapping to get consistent world-space coverage
+			float texel_size = (maxExtent * 2.0f) / kShadowMapSize;
+
+			// Snap extent to texel boundary to eliminate sub-texel jitter
+			maxExtent = std::ceil(maxExtent / texel_size) * texel_size;
+
+			// Also snap the ortho center to texel grid to prevent shadow swimming
+			float centerX = (minX + maxX) * 0.5f;
+			float centerY = (minY + maxY) * 0.5f;
+			centerX = std::floor(centerX / texel_size) * texel_size;
+			centerY = std::floor(centerY / texel_size) * texel_size;
+
+			// Use the calculated depth range but extend backward for terrain below the frustum
+			float depth_range = maxZ - minZ + scene_radius;
+
+			light_projection = glm::ortho(
+				centerX - maxExtent, centerX + maxExtent,
+				centerY - maxExtent, centerY + maxExtent,
+				0.0f, depth_range + pull_back
+			);
 		} else {
 			// Standard shadow map
 			glm::vec3 look_at_pos;

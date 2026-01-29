@@ -324,7 +324,6 @@ namespace Boidsish {
 		void QueueAddEntity(Args&&... args) const {
 			std::lock_guard<std::mutex> lock(requests_mutex_);
 			modification_requests_.emplace_back([this, args = std::make_tuple(std::forward<Args>(args)...)]() mutable {
-				logger::LOG("READY TO ADD");
 				std::apply(
 					[this](auto&&... a) { const_cast<EntityHandler*>(this)->AddEntity<T>(std::forward<Args>(a)...); },
 					std::move(args)

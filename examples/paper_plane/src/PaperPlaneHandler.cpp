@@ -41,7 +41,6 @@ namespace Boidsish {
 		}
 
 		if (vis && vis->GetTerrainGenerator()) {
-			logger::LOG("Searching for launchsite");
 			const auto               visible_chunks = vis->GetTerrainGenerator()->getVisibleChunksCopy();
 			std::set<const Terrain*> visible_chunk_set;
 			std::set<const Terrain*> forbidden_chunks;
@@ -132,7 +131,6 @@ namespace Boidsish {
 				if (visible_chunk_set.find(it->first) == visible_chunk_set.end()) {
 					QueueRemoveEntity(it->second);
 					it = spawned_launchers_.erase(it);
-					logger::LOG("Erasing?!");
 				} else {
 					++it;
 				}

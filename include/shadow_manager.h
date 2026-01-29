@@ -148,7 +148,10 @@ namespace Boidsish {
 
 		int                                   active_shadow_count_ = 0;
 		std::array<glm::mat4, kMaxShadowMaps> light_space_matrices_;
-		std::array<float, kMaxCascades>       cascade_splits_ = {15.0f, 60.0f, 200.0f, 600.0f};
+		// Cascade splits: logarithmic distribution for better near-field detail
+		// Near splits are tighter for crisp close shadows
+		// Far cascade (3) acts as catchall extending to very distant terrain
+		std::array<float, kMaxCascades>       cascade_splits_ = {20.0f, 50.0f, 150.0f, 700.0f};
 
 		// Previous viewport for restoration
 		GLint prev_viewport_[4];

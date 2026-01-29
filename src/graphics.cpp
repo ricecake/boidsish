@@ -172,8 +172,11 @@ namespace Boidsish {
 			glm::vec3 last_front{0.0f, 0.0f, -1.0f};
 			glm::vec3 last_light_pos{0.0f};
 			glm::vec3 last_light_dir{0.0f, -1.0f, 0.0f};
+			glm::mat4 last_light_space_matrix{1.0f}; // Cache for temporal stability
+			float     rotation_accumulator = 0.0f;    // Track cumulative rotation
 		};
 		std::array<ShadowMapState, 16> shadow_map_states_;
+		int shadow_update_round_robin_ = 0; // For ensuring all cascades get updated periodically
 
 		task_thread_pool::task_thread_pool thread_pool;
 		std::unique_ptr<AudioManager>      audio_manager;
@@ -1792,48 +1795,116 @@ namespace Boidsish {
 				if (light->type == DIRECTIONAL_LIGHT) {
 					for (int c = 0; c < ShadowManager::kMaxCascades; ++c) {
 						if (next_map_idx < ShadowManager::kMaxShadowMaps) {
-							float weight = (c == 0) ? 5.0f : (c == 1) ? 2.0f : (c == 2) ? 1.0f : 0.5f;
+							// Cascade 0 (near) needs updates most frequently for close detail
+							// Cascade 3 (far) can tolerate more staleness but still needs rotation updates
+							float weight = (c == 0) ? 8.0f : (c == 1) ? 4.0f : (c == 2) ? 2.0f : 1.0f;
 							shadow_map_registry.push_back({next_map_idx++, light, c, weight});
 						}
 					}
 				} else {
-					shadow_map_registry.push_back({next_map_idx++, light, -1, 2.0f});
+					shadow_map_registry.push_back({next_map_idx++, light, -1, 4.0f});
 				}
 			}
 
-			// 2. Identify maps that need update and calculate priorities
-			int   best_map_to_update = -1;
-			float max_debt = -1.0f;
+			// 2. Calculate camera rotation delta for rotation-sensitive updates
+			// Rotation affects ALL cascades because the frustum shape changes
+			float camera_rotation_delta = 1.0f - glm::dot(impl->camera.front(), impl->last_shadow_update_camera_front);
+			bool significant_rotation = camera_rotation_delta > 0.001f; // ~2.5 degrees
+			bool major_rotation = camera_rotation_delta > 0.01f; // ~8 degrees
+
+			// 3. Identify maps that need update with improved priority calculation
+			std::vector<int> maps_to_update;
+			// Allow more updates per frame during rotation to prevent stale far cascades
+			const int max_updates_per_frame = major_rotation ? 4 : (significant_rotation ? 3 : 2);
 
 			for (const auto& info : shadow_map_registry) {
 				auto& state = impl->shadow_map_states_[info.map_index];
 
-				bool camera_moved = glm::distance(impl->camera.pos(), state.last_pos) > 1.0f;
-				bool camera_rotated = glm::dot(impl->camera.front(), state.last_front) < 0.9999f;
+				float camera_move_dist = glm::distance(impl->camera.pos(), state.last_pos);
+				float rotation_change = 1.0f - glm::dot(impl->camera.front(), state.last_front);
 				bool light_moved = glm::distance(info.light->position, state.last_light_pos) > 0.1f ||
-				                   glm::distance(info.light->direction, state.last_light_dir) > 0.1f;
+				                   glm::distance(info.light->direction, state.last_light_dir) > 0.01f;
 
+				// CRITICAL: Far cascades are MORE sensitive to rotation, not less!
+				// A small camera rotation causes the far frustum to sweep across large world areas
+				// Cascade 3 frustum corner can move 100s of units from a few degrees of rotation
+				float rotation_sensitivity = (info.cascade_index == 0) ? 50.0f :
+				                              (info.cascade_index == 1) ? 100.0f :
+				                              (info.cascade_index == 2) ? 200.0f : 400.0f;
+				state.rotation_accumulator += rotation_change * rotation_sensitivity;
+
+				// Movement thresholds: near cascades need fine updates, far can be coarser
+				float movement_threshold = (info.cascade_index == 0) ? 0.5f :
+				                           (info.cascade_index == 1) ? 2.0f :
+				                           (info.cascade_index == 2) ? 5.0f : 10.0f;
+
+				// Rotation threshold: far cascades should update on smaller rotation changes
+				float rotation_threshold = (info.cascade_index == 0) ? 1.0f :
+				                           (info.cascade_index == 1) ? 0.7f :
+				                           (info.cascade_index == 2) ? 0.5f : 0.3f;
+
+				bool needs_movement_update = camera_move_dist > movement_threshold;
+				bool needs_rotation_update = state.rotation_accumulator > rotation_threshold;
 				bool movement_detected = impl->any_shadow_caster_moved || light_moved ||
-				                        (has_terrain && (camera_moved || camera_rotated));
-				bool should_update = impl->camera_is_close_to_scene && movement_detected;
+				                        (has_terrain && (needs_movement_update || needs_rotation_update));
 
-				if (should_update) {
-					state.debt += info.weight;
+				if (movement_detected && impl->camera_is_close_to_scene) {
+					// Weight by cascade importance
+					float urgency = info.weight;
+					// Rotation urgency scales with cascade distance (far cascades are more affected)
+					if (needs_rotation_update) {
+						float rotation_multiplier = 1.5f + info.cascade_index * 0.5f;
+						urgency *= rotation_multiplier;
+					}
+					if (impl->any_shadow_caster_moved) urgency *= 1.5f;
+					state.debt += urgency;
 				} else {
-					// Even if no movement, slowly increment debt to eventually refresh if it hasn't been updated in forever
-					state.debt += 0.01f;
-				}
-
-				if (state.debt > max_debt && state.debt >= 5.0f) {
-					max_debt = state.debt;
-					best_map_to_update = info.map_index;
+					// Background refresh rate - far cascades refresh slightly faster
+					// to catch distant terrain changes
+					float background_rate = 0.02f + info.cascade_index * 0.005f;
+					state.debt += background_rate;
 				}
 			}
 
-			// 3. Update at most ONE map per frame
-			if (best_map_to_update != -1) {
-				const auto& info = shadow_map_registry[best_map_to_update];
-				auto&       state = impl->shadow_map_states_[best_map_to_update];
+			// 4. Select cascades to update - prioritize by debt but ensure round-robin fairness
+			std::vector<std::pair<float, int>> debt_sorted;
+			// Lower threshold during rotation for faster convergence
+			float debt_threshold = significant_rotation ? 1.5f : 2.5f;
+			for (const auto& info : shadow_map_registry) {
+				auto& state = impl->shadow_map_states_[info.map_index];
+				if (state.debt >= debt_threshold) {
+					debt_sorted.push_back({state.debt, info.map_index});
+				}
+			}
+			std::sort(debt_sorted.begin(), debt_sorted.end(), std::greater<>());
+
+			for (int i = 0; i < std::min((int)debt_sorted.size(), max_updates_per_frame); ++i) {
+				maps_to_update.push_back(debt_sorted[i].second);
+			}
+
+			// Force immediate update of ALL cascades on major rotation
+			// This prevents the jarring "stale cascade" effect when turning quickly
+			if (major_rotation && maps_to_update.size() < shadow_map_registry.size()) {
+				for (const auto& info : shadow_map_registry) {
+					if (std::find(maps_to_update.begin(), maps_to_update.end(), info.map_index) == maps_to_update.end()) {
+						maps_to_update.push_back(info.map_index);
+					}
+				}
+			}
+
+			// Ensure at least one cascade gets updated via round-robin if nothing urgent
+			if (maps_to_update.empty() && !shadow_map_registry.empty()) {
+				impl->shadow_update_round_robin_ = (impl->shadow_update_round_robin_ + 1) % shadow_map_registry.size();
+				// Every other frame, force a background update (was every 4th)
+				if (impl->frame_count_ % 2 == 0) {
+					maps_to_update.push_back(shadow_map_registry[impl->shadow_update_round_robin_].map_index);
+				}
+			}
+
+			// 5. Update selected maps
+			for (int map_idx : maps_to_update) {
+				const auto& info = shadow_map_registry[map_idx];
+				auto&       state = impl->shadow_map_states_[map_idx];
 
 				impl->shadow_manager->BeginShadowPass(
 					info.map_index,
@@ -1868,7 +1939,9 @@ namespace Boidsish {
 				impl->shadow_manager->EndShadowPass();
 
 				state.debt = 0.0f;
+				state.rotation_accumulator = 0.0f;
 				state.last_update_frame = impl->frame_count_;
+				state.last_light_space_matrix = impl->shadow_manager->GetLightSpaceMatrix(info.map_index);
 
 				// Update last known positions for this specific shadow map
 				state.last_pos = impl->camera.pos();
@@ -1876,6 +1949,9 @@ namespace Boidsish {
 				state.last_light_pos = info.light->position;
 				state.last_light_dir = info.light->direction;
 			}
+
+			// Update global last shadow camera state
+			impl->last_shadow_update_camera_front = impl->camera.front();
 
 			impl->shadow_manager->UpdateShadowUBO(shadow_lights);
 		}
