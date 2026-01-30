@@ -29,6 +29,13 @@ namespace Boidsish {
 
 		placement_shader_ = std::make_unique<ComputeShader>("shaders/decor_placement.comp");
 
+		// Check if compute shader compiled successfully
+		if (!placement_shader_->isValid()) {
+			logger::ERROR("Failed to compile decor placement compute shader - decor will be disabled");
+			initialized_ = true; // Mark as initialized to prevent repeated attempts
+			return;
+		}
+
 		initialized_ = true;
 	}
 
@@ -65,6 +72,9 @@ namespace Boidsish {
 		std::shared_ptr<TerrainRenderManager> render_manager
 	) {
 		if (!enabled_ || !initialized_ || decor_types_.empty())
+			return;
+
+		if (!placement_shader_ || !placement_shader_->isValid())
 			return;
 
 		if (!render_manager)

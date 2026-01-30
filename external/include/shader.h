@@ -1,6 +1,7 @@
 #ifndef SHADER_H
 #define SHADER_H
 
+#include <cstdio>
 #include <fstream>
 #include <iostream>
 #include <set>
@@ -126,8 +127,9 @@ protected:
 	}
 
 	// utility function for checking shader compilation/linking errors.
+	// Returns true if successful, false if error occurred.
 	// ------------------------------------------------------------------------
-	void checkCompileErrors(GLuint shader, std::string type, std::string filePath) {
+	bool checkCompileErrors(GLuint shader, std::string type, std::string filePath) {
 		GLint  success;
 		GLchar infoLog[1024];
 		if (type != "PROGRAM") {
@@ -137,6 +139,7 @@ protected:
 				std::cerr << "ERROR::SHADER_COMPILATION_ERROR of type: " << type << "\n"
 						  << filePath << std::endl
 						  << infoLog << "\n -- --------------------------------------------------- -- " << std::endl;
+				return false;
 			}
 		} else {
 			glGetProgramiv(shader, GL_LINK_STATUS, &success);
@@ -144,8 +147,10 @@ protected:
 				glGetProgramInfoLog(shader, 1024, NULL, infoLog);
 				std::cerr << "ERROR::PROGRAM_LINKING_ERROR of type: " << type << "\n"
 						  << infoLog << "\n -- --------------------------------------------------- -- " << std::endl;
+				return false;
 			}
 		}
+		return true;
 	}
 };
 
@@ -255,40 +260,86 @@ public:
 
 class ComputeShader: public ShaderBase {
 public:
-	ComputeShader(const char* computePath) {
-		// 1. retrieve the vertex/fragment source code from filePath
-		std::string vertexCode;
-		std::string fragmentCode;
-		std::string tessControlCode;
-		std::string tessEvaluationCode;
-		std::string geometryCode;
-		std::string computeCode;
+	bool valid_{false}; // Track if shader compiled successfully
 
+	ComputeShader(const char* computePath) {
+		std::string           computeCode;
 		std::set<std::string> includedFiles;
 
 		computeCode = loadShaderSource(computePath, includedFiles);
 
-		// if compute shader is given, compile geometry shader
+		if (computeCode.empty()) {
+			std::cerr << "ERROR::COMPUTE_SHADER::FILE_NOT_FOUND: " << computePath << std::endl;
+			ID = 0;
+			return;
+		}
+
+		// Check if compute shaders are supported
+		// Use glGetString which is more reliable on some drivers (especially Mesa)
+		int majorVersion = 0, minorVersion = 0;
+		const char* versionStr = reinterpret_cast<const char*>(glGetString(GL_VERSION));
+		if (versionStr && versionStr[0] != '\0') {
+			if (sscanf(versionStr, "%d.%d", &majorVersion, &minorVersion) != 2) {
+				std::cerr << "ERROR::COMPUTE_SHADER::VERSION_PARSE_FAILED: Could not parse GL_VERSION: '"
+				          << versionStr << "'" << std::endl;
+			}
+		} else {
+			std::cerr << "ERROR::COMPUTE_SHADER::NO_CONTEXT: glGetString(GL_VERSION) returned "
+			          << (versionStr ? "empty string" : "NULL")
+			          << " - is there an active OpenGL context?" << std::endl;
+		}
+		if (majorVersion < 4 || (majorVersion == 4 && minorVersion < 3)) {
+			std::cerr << "ERROR::COMPUTE_SHADER::UNSUPPORTED: OpenGL " << majorVersion << "." << minorVersion
+			          << " does not support compute shaders (requires 4.3+)\n"
+			          << "  File: " << computePath << std::endl;
+			ID = 0;
+			return;
+		}
+
+		// Compile compute shader
 		unsigned int compute;
 		const char*  gShaderCode = computeCode.c_str();
 		compute = glCreateShader(GL_COMPUTE_SHADER);
+		if (compute == 0) {
+			std::cerr << "ERROR::COMPUTE_SHADER::CREATE_FAILED: glCreateShader returned 0\n"
+			          << "  File: " << computePath << "\n"
+			          << "  GL Error: " << glGetError() << std::endl;
+			ID = 0;
+			return;
+		}
+
 		glShaderSource(compute, 1, &gShaderCode, NULL);
 		glCompileShader(compute);
-		checkCompileErrors(compute, "COMPUTE", computePath);
+
+		if (!checkCompileErrors(compute, "COMPUTE", computePath)) {
+			glDeleteShader(compute);
+			ID = 0;
+			return;
+		}
 
 		// shader Program
 		ID = glCreateProgram();
 		glAttachShader(ID, compute);
 
 		glLinkProgram(ID);
-		checkCompileErrors(ID, "PROGRAM", computePath);
+		if (!checkCompileErrors(ID, "PROGRAM", computePath)) {
+			glDeleteShader(compute);
+			glDeleteProgram(ID);
+			ID = 0;
+			return;
+		}
 
 		// delete the shaders as they're linked into our program now and no longer necessary
 		glDeleteShader(compute);
+		valid_ = true;
 	}
 
+	bool isValid() const { return valid_ && ID != 0; }
+
 	void dispatch(unsigned int x, unsigned int y, unsigned int z) {
-		glDispatchCompute(x, y, z);
+		if (valid_) {
+			glDispatchCompute(x, y, z);
+		}
 	}
 };
 

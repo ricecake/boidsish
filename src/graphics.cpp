@@ -61,6 +61,101 @@
 #include <shader.h>
 
 namespace Boidsish {
+
+	// OpenGL Debug callback for diagnosing GPU errors
+	static void GLAPIENTRY OpenGLDebugCallback(
+		GLenum        source,
+		GLenum        type,
+		GLuint        id,
+		GLenum        severity,
+		GLsizei       length,
+		const GLchar* message,
+		const void*   userParam
+	) {
+		// Ignore non-significant notifications
+		if (severity == GL_DEBUG_SEVERITY_NOTIFICATION)
+			return;
+
+		const char* sourceStr = "UNKNOWN";
+		switch (source) {
+		case GL_DEBUG_SOURCE_API:
+			sourceStr = "API";
+			break;
+		case GL_DEBUG_SOURCE_WINDOW_SYSTEM:
+			sourceStr = "WINDOW_SYSTEM";
+			break;
+		case GL_DEBUG_SOURCE_SHADER_COMPILER:
+			sourceStr = "SHADER_COMPILER";
+			break;
+		case GL_DEBUG_SOURCE_THIRD_PARTY:
+			sourceStr = "THIRD_PARTY";
+			break;
+		case GL_DEBUG_SOURCE_APPLICATION:
+			sourceStr = "APPLICATION";
+			break;
+		case GL_DEBUG_SOURCE_OTHER:
+			sourceStr = "OTHER";
+			break;
+		}
+
+		const char* typeStr = "UNKNOWN";
+		switch (type) {
+		case GL_DEBUG_TYPE_ERROR:
+			typeStr = "ERROR";
+			break;
+		case GL_DEBUG_TYPE_DEPRECATED_BEHAVIOR:
+			typeStr = "DEPRECATED_BEHAVIOR";
+			break;
+		case GL_DEBUG_TYPE_UNDEFINED_BEHAVIOR:
+			typeStr = "UNDEFINED_BEHAVIOR";
+			break;
+		case GL_DEBUG_TYPE_PORTABILITY:
+			typeStr = "PORTABILITY";
+			break;
+		case GL_DEBUG_TYPE_PERFORMANCE:
+			typeStr = "PERFORMANCE";
+			break;
+		case GL_DEBUG_TYPE_MARKER:
+			typeStr = "MARKER";
+			break;
+		case GL_DEBUG_TYPE_PUSH_GROUP:
+			typeStr = "PUSH_GROUP";
+			break;
+		case GL_DEBUG_TYPE_POP_GROUP:
+			typeStr = "POP_GROUP";
+			break;
+		case GL_DEBUG_TYPE_OTHER:
+			typeStr = "OTHER";
+			break;
+		}
+
+		const char* severityStr = "UNKNOWN";
+		switch (severity) {
+		case GL_DEBUG_SEVERITY_HIGH:
+			severityStr = "HIGH";
+			break;
+		case GL_DEBUG_SEVERITY_MEDIUM:
+			severityStr = "MEDIUM";
+			break;
+		case GL_DEBUG_SEVERITY_LOW:
+			severityStr = "LOW";
+			break;
+		case GL_DEBUG_SEVERITY_NOTIFICATION:
+			severityStr = "NOTIFICATION";
+			break;
+		}
+
+		std::cerr << "\n[OpenGL Debug] " << severityStr << " | " << typeStr << " | " << sourceStr << "\n"
+				  << "  ID: " << id << "\n"
+				  << "  Message: " << message << "\n"
+				  << std::endl;
+
+		// Break into debugger on high severity errors (optional)
+		if (severity == GL_DEBUG_SEVERITY_HIGH && type == GL_DEBUG_TYPE_ERROR) {
+			std::cerr << "  *** HIGH SEVERITY ERROR - Check shader compilation or GL state ***\n" << std::endl;
+		}
+	}
+
 	struct Visualizer::VisualizerImpl {
 		Visualizer*                           parent;
 		GLFWwindow*                           window;
@@ -212,11 +307,16 @@ namespace Boidsish {
 			});
 
 			glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
-			glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 2);
+			glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3); // Updated to 4.3 for compute shader support
 			glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
 #ifdef __APPLE__
 			glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE);
 #endif
+
+			// Request debug context if debug mode is enabled
+			if (ConfigManager::GetInstance().GetAppSettingBool("enable_gl_debug", false)) {
+				glfwWindowHint(GLFW_OPENGL_DEBUG_CONTEXT, GL_TRUE);
+			}
 
 			window = glfwCreateWindow(width, height, title, nullptr, nullptr);
 			if (!window) {
@@ -225,8 +325,34 @@ namespace Boidsish {
 			}
 			glfwMakeContextCurrent(window);
 
+			// Required for modern OpenGL on some drivers (especially Mesa)
+			glewExperimental = GL_TRUE;
 			if (glewInit() != GLEW_OK) {
 				throw std::runtime_error("Failed to initialize GLEW");
+			}
+			// Clear any GL errors from glewExperimental
+			while (glGetError() != GL_NO_ERROR) {
+			}
+
+			// Enable OpenGL debug output if configured
+			if (ConfigManager::GetInstance().GetAppSettingBool("enable_gl_debug", false)) {
+				GLint flags;
+				glGetIntegerv(GL_CONTEXT_FLAGS, &flags);
+				if (flags & GL_CONTEXT_FLAG_DEBUG_BIT) {
+					glEnable(GL_DEBUG_OUTPUT);
+					glEnable(GL_DEBUG_OUTPUT_SYNCHRONOUS);
+					glDebugMessageCallback(OpenGLDebugCallback, nullptr);
+					// Enable all messages
+					glDebugMessageControl(GL_DONT_CARE, GL_DONT_CARE, GL_DONT_CARE, 0, nullptr, GL_TRUE);
+					std::cout << "[OpenGL] Debug output enabled - errors will be reported in real-time\n";
+
+					// Print GL version info for debugging
+					std::cout << "[OpenGL] Version: " << glGetString(GL_VERSION) << "\n";
+					std::cout << "[OpenGL] Renderer: " << glGetString(GL_RENDERER) << "\n";
+					std::cout << "[OpenGL] GLSL Version: " << glGetString(GL_SHADING_LANGUAGE_VERSION) << "\n";
+				} else {
+					std::cerr << "[OpenGL] Warning: Debug context requested but not available\n";
+				}
 			}
 
 			glfwWindowHint(GLFW_SAMPLES, 4);
@@ -272,7 +398,9 @@ namespace Boidsish {
 			clone_manager = std::make_unique<CloneManager>();
 			instance_manager = std::make_unique<InstanceManager>();
 			fire_effect_manager = std::make_unique<FireEffectManager>();
+			fire_effect_manager->Initialize(); // Must initialize on main thread with GL context
 			mesh_explosion_manager = std::make_unique<MeshExplosionManager>();
+			mesh_explosion_manager->Initialize(); // Must initialize on main thread with GL context
 			shockwave_manager = std::make_unique<ShockwaveManager>();
 			shadow_manager = std::make_unique<ShadowManager>();
 			scene_manager = std::make_unique<SceneManager>("scenes");

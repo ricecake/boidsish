@@ -13,6 +13,10 @@ namespace Boidsish {
 
 	MeshExplosionManager::MeshExplosionManager() {}
 
+	void MeshExplosionManager::Initialize() {
+		_Initialize();
+	}
+
 	MeshExplosionManager::~MeshExplosionManager() {
 		if (ssbo_ != 0) {
 			glDeleteBuffers(1, &ssbo_);
@@ -34,6 +38,12 @@ namespace Boidsish {
 			"shaders/mesh_explosion.geom"
 		);
 		compute_shader_ = std::make_unique<ComputeShader>("shaders/mesh_explosion.comp");
+		// Check if compute shader compiled successfully
+		if (!compute_shader_->isValid()) {
+			logger::ERROR("Failed to compile mesh explosion compute shader - mesh explosions will be disabled");
+			initialized_ = true; // Mark as initialized to prevent repeated attempts
+			return;
+		}
 
 		// Setup UBO bindings
 		render_shader_->use();
@@ -65,7 +75,7 @@ namespace Boidsish {
 
 	void MeshExplosionManager::ExplodeShape(std::shared_ptr<Shape> shape, float intensity, const glm::vec3& velocity) {
 		_Initialize();
-		if (!shape)
+		if (!shape || !compute_shader_ || !compute_shader_->isValid())
 			return;
 
 		std::vector<Vertex>       vertices;
@@ -179,7 +189,7 @@ namespace Boidsish {
 	}
 
 	void MeshExplosionManager::Update(float delta_time, float time) {
-		if (!initialized_)
+		if (!initialized_ || !compute_shader_ || !compute_shader_->isValid())
 			return;
 		time_ = time;
 
@@ -193,7 +203,7 @@ namespace Boidsish {
 	}
 
 	void MeshExplosionManager::Render(const glm::mat4& view, const glm::mat4& projection, const glm::vec3& camera_pos) {
-		if (!initialized_)
+		if (!initialized_ || !compute_shader_ || !compute_shader_->isValid())
 			return;
 
 		render_shader_->use();

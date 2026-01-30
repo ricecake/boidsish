@@ -166,22 +166,14 @@ namespace Boidsish {
 			}
 		}
 
-		if (true || controller_->chaff) {
-			// handler.vis->AddFireEffect(
-			// 	pos.Toglm() - forward_dir,
-			// 	FireEffectStyle::Glitter,
-			// 	glm::normalize(-1*forward_dir),
-			// 	glm::vec3(0, 0, 0),
-			// 	500,
-			// 	3.0f
-			// );
+		if (controller_->chaff) {
 			handler.vis->AddFireEffect(
-				glm::vec3(0, 5, 0),
+				pos.Toglm() - forward_dir,
 				FireEffectStyle::Glitter,
-				glm::vec3(0, 1, 0),
-				glm::vec3(0, 0, 0),
-				500,
-				3.0f
+				glm::normalize(-1 * forward_dir),
+				glm::normalize(-5 * forward_dir),
+				1500,
+				1.0f
 			);
 		}
 	}

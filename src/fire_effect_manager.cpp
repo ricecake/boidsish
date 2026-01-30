@@ -22,6 +22,10 @@ namespace Boidsish {
 
 	FireEffectManager::FireEffectManager() {}
 
+	void FireEffectManager::Initialize() {
+		_EnsureShaderAndBuffers();
+	}
+
 	FireEffectManager::~FireEffectManager() {
 		if (particle_buffer_ != 0) {
 			glDeleteBuffers(1, &particle_buffer_);
@@ -44,6 +48,12 @@ namespace Boidsish {
 
 		// Create shaders
 		compute_shader_ = std::make_unique<ComputeShader>("shaders/fire.comp");
+		if (!compute_shader_->isValid()) {
+			logger::ERROR("Failed to compile fire compute shader - fire effects will be disabled");
+			initialized_ = true; // Mark as initialized to prevent repeated attempts
+			return;
+		}
+
 		render_shader_ = std::make_unique<Shader>("shaders/fire.vert", "shaders/fire.frag");
 
 		// Set up UBO bindings for the render shader
@@ -70,7 +80,7 @@ namespace Boidsish {
 
 		particle_to_emitter_map_.resize(kMaxParticles, -1);
 
-		// A dummy VAO is required by OpenGL 4.2 core profile for drawing arrays.
+		// A dummy VAO is required by OpenGL 4.3 core profile for drawing arrays.
 		glGenVertexArrays(1, &dummy_vao_);
 
 		initialized_ = true;
@@ -85,6 +95,11 @@ namespace Boidsish {
 		float            lifetime
 	) {
 		_EnsureShaderAndBuffers();
+
+		// If compute shader failed, fire effects are disabled
+		if (!compute_shader_ || !compute_shader_->isValid()) {
+			return nullptr;
+		}
 
 		// Find an inactive slot to reuse
 		for (size_t i = 0; i < effects_.size(); ++i) {
@@ -121,7 +136,7 @@ namespace Boidsish {
 	}
 
 	void FireEffectManager::Update(float delta_time, float time) {
-		if (!initialized_) {
+		if (!initialized_ || !compute_shader_ || !compute_shader_->isValid()) {
 			return;
 		}
 
@@ -322,7 +337,7 @@ namespace Boidsish {
 	}
 
 	void FireEffectManager::Render(const glm::mat4& view, const glm::mat4& projection, const glm::vec3& camera_pos) {
-		if (!initialized_ || effects_.empty()) {
+		if (!initialized_ || effects_.empty() || !compute_shader_ || !compute_shader_->isValid()) {
 			return;
 		}
 
@@ -344,7 +359,7 @@ namespace Boidsish {
 
 		// We don't have a VAO for the particles since we generate them in the shader.
 		// We can just draw the number of particles we have.
-		// A dummy VAO is required by OpenGL 4.2 core profile.
+		// A dummy VAO is required by OpenGL 4.3 core profile.
 		glBindVertexArray(dummy_vao_);
 		glDrawArrays(GL_POINTS, 0, kMaxParticles);
 		glBindVertexArray(0);

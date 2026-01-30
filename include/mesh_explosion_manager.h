@@ -29,6 +29,9 @@ namespace Boidsish {
 		MeshExplosionManager();
 		~MeshExplosionManager();
 
+		// Initialize shaders and buffers. Must be called from main thread with OpenGL context.
+		void Initialize();
+
 		void
 		ExplodeShape(std::shared_ptr<Shape> shape, float intensity = 1.0f, const glm::vec3& velocity = glm::vec3(0.0f));
 		void Update(float delta_time, float time);
