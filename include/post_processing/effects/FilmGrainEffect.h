@@ -12,6 +12,7 @@ namespace Boidsish {
 		class FilmGrainEffect: public IPostProcessingEffect {
 		public:
 			FilmGrainEffect();
+			~FilmGrainEffect();
 
 			void Initialize(int width, int height) override;
 			void Apply(
