@@ -111,10 +111,9 @@ void main() {
 			float h = (p.y - cloudAltitude) / max(cloudThickness, 0.001);
 			float tapering = smoothstep(0.0, 0.2, h) * smoothstep(1.0, 0.5, h);
 
-
 			float noise = fbm(p.xz * 0.015 + jitter * time * 0.0001 + p.y * 0.02);
 			// float d = smoothstep(0.2, 0.6, noise * (i + 1)) * cloudDensity;
-			float d = smoothstep(0.2, 0.6, noise* (i + (1-noise))) * cloudDensity * tapering;
+			float d = smoothstep(0.2, 0.6, noise * (i + (1 - noise))) * cloudDensity * tapering;
 
 			cloudAcc += d;
 		}

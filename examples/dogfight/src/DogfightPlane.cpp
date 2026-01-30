@@ -22,7 +22,8 @@ namespace Boidsish {
 		return (error_vector * kP) - (derivative_term * kD);
 	}
 
-	DogfightPlane::DogfightPlane(int id, Team team, Vector3 pos): Entity<Model>(id, "assets/dogplane.obj", true), team_(team), eng_(rd_()) {
+	DogfightPlane::DogfightPlane(int id, Team team, Vector3 pos):
+		Entity<Model>(id, "assets/dogplane.obj", true), team_(team), eng_(rd_()) {
 		SetPosition(pos);
 		if (team == Team::RED) {
 			SetColor(1.0f, 0.1f, 0.1f, 1.0f);
@@ -38,12 +39,10 @@ namespace Boidsish {
 		rigid_body_.linear_friction_ = 1.0f;
 		rigid_body_.angular_friction_ = 5.0f;
 
-		// Random initial orientation
-		std::uniform_real_distribution<float> dist(-1.0f, 1.0f);
-		glm::vec3                             axis(dist(eng_), dist(eng_), dist(eng_));
-		if (glm::length(axis) < 0.1f)
-			axis = glm::vec3(0, 1, 0);
-		rigid_body_.SetOrientation(glm::angleAxis(dist(eng_) * 3.14f, glm::normalize(axis)));
+		// Initial orientation: upright with random yaw
+		std::uniform_real_distribution<float> dist(0.0f, 6.28f);
+		float                                 random_yaw = dist(eng_);
+		rigid_body_.SetOrientation(glm::angleAxis(random_yaw, glm::vec3(0, 1, 0)));
 		rigid_body_.SetLinearVelocity(ObjectToWorld(glm::vec3(0, 0, -kSlowSpeed)));
 
 		shape_->SetScale(glm::vec3(5.0f));
@@ -138,10 +137,10 @@ namespace Boidsish {
 			glm::vec3 away = glm::normalize(pos.Toglm() - chaser_->GetPosition().Toglm());
 			desired_dir_world = away;
 
-			// Add loop/roll/bank
-			float loop = sin(maneuver_time_ * 3.0f) * 100.0f;
-			float roll = cos(maneuver_time_ * 4.0f) * 150.0f;
-			float bank = sin(maneuver_time_ * 2.0f) * 80.0f;
+			// Add loop/roll/bank for drama
+			float loop = sin(maneuver_time_ * 3.0f) * 40.0f;
+			float roll = cos(maneuver_time_ * 4.0f) * 60.0f;
+			float bank = sin(maneuver_time_ * 2.0f) * 30.0f;
 			rigid_body_.AddRelativeTorque(glm::vec3(loop, bank, roll));
 
 			if (being_chased_timer_ > kBeingChasedThreshold) {
@@ -238,11 +237,34 @@ namespace Boidsish {
 			}
 		}
 
-		// Apply Steering
+		// Apply Steering (Pitch/Yaw)
 		glm::vec3 local_fwd(0, 0, -1);
 		glm::vec3 desired_dir_local = WorldToObject(desired_dir_world);
-		glm::vec3 torque =
-			CalculateSteeringTorque(local_fwd, desired_dir_local, rigid_body_.GetAngularVelocity(), 50.0f, 6.0f);
+		glm::vec3 local_angular_vel = WorldToObject(rigid_body_.GetAngularVelocity());
+		glm::vec3 torque = CalculateSteeringTorque(local_fwd, desired_dir_local, local_angular_vel, 50.0f, 6.0f);
+
+		// Upright stabilization and banking
+		glm::vec3 world_up(0, 1, 0);
+		glm::vec3 bank_axis = glm::cross(my_fwd, world_up); // World Right
+		if (glm::length(bank_axis) > 0.001f) {
+			bank_axis = glm::normalize(bank_axis);
+			// How much are we trying to turn left/right?
+			float turn_amount = glm::dot(desired_dir_world, bank_axis);
+
+			// Target up tilts into the turn (dramatic swoop)
+			float     lean_scale = 1.5f;
+			glm::vec3 target_up_world = glm::normalize(world_up + bank_axis * turn_amount * lean_scale);
+			glm::vec3 target_up_local = WorldToObject(target_up_world);
+			glm::vec3 local_up(0, 1, 0);
+
+			glm::vec3 up_error = glm::cross(local_up, target_up_local);
+
+			// Apply roll torque to align local up with target up
+			float roll_kp = 100.0f;
+			float roll_kd = 10.0f;
+			torque.z += (up_error.z * roll_kp) - (local_angular_vel.z * roll_kd);
+		}
+
 		rigid_body_.AddRelativeTorque(torque);
 
 		// Speed control
