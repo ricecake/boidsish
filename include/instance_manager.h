@@ -12,7 +12,6 @@ namespace Boidsish {
 
 	class InstanceManager {
 	public:
-		~InstanceManager();
 		void AddInstance(std::shared_ptr<Shape> shape);
 		void Render(Shader& shader);
 
