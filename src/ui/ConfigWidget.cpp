@@ -1,6 +1,7 @@
 #include "ui/ConfigWidget.h"
 
 #include "ConfigManager.h"
+#include "decor_manager.h"
 #include "graphics.h"
 #include "imgui.h"
 
@@ -97,6 +98,16 @@ namespace Boidsish {
 					bool paused = m_visualizer.GetPause();
 					if (ImGui::Checkbox("Paused", &paused)) {
 						m_visualizer.SetPause(paused);
+					}
+				}
+
+				if (ImGui::CollapsingHeader("Foliage", ImGuiTreeNodeFlags_DefaultOpen)) {
+					auto decor_manager = m_visualizer.GetDecorManager();
+					if (decor_manager) {
+						bool enabled = decor_manager->IsEnabled();
+						if (ImGui::Checkbox("Enable Foliage", &enabled)) {
+							decor_manager->SetEnabled(enabled);
+						}
 					}
 				}
 

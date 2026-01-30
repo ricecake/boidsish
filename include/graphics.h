@@ -41,6 +41,7 @@ namespace Boidsish {
 	class SoundEffect;
 	class FireEffectManager;
 	class ShockwaveManager;
+	class DecorManager;
 	class Path;
 
 	namespace PostProcessing {
@@ -265,6 +266,7 @@ namespace Boidsish {
 		task_thread_pool::task_thread_pool&          GetThreadPool();
 		LightManager&                                GetLightManager();
 		FireEffectManager*                           GetFireEffectManager();
+		DecorManager*                                GetDecorManager();
 		PostProcessing::PostProcessingManager&       GetPostProcessingManager();
 		float                                        GetLastFrameTime() const;
 

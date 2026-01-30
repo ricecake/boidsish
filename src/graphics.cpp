@@ -13,6 +13,7 @@
 #include "UIManager.h"
 #include "audio_manager.h"
 #include "clone_manager.h"
+#include "decor_manager.h"
 #include "dot.h"
 #include "entity.h"
 #include "fire_effect_manager.h"
@@ -77,6 +78,7 @@ namespace Boidsish {
 		std::unique_ptr<ShockwaveManager>     shockwave_manager;
 		std::unique_ptr<ShadowManager>        shadow_manager;
 		std::unique_ptr<SceneManager>         scene_manager;
+		std::unique_ptr<DecorManager>         decor_manager;
 		std::map<int, std::shared_ptr<Trail>> trails;
 		std::map<int, float>                  trail_last_update;
 		LightManager                          light_manager;
@@ -273,6 +275,7 @@ namespace Boidsish {
 			shockwave_manager = std::make_unique<ShockwaveManager>();
 			shadow_manager = std::make_unique<ShadowManager>();
 			scene_manager = std::make_unique<SceneManager>("scenes");
+			decor_manager = std::make_unique<DecorManager>();
 			audio_manager = std::make_unique<AudioManager>();
 			sound_effect_manager = std::make_unique<SoundEffectManager>(audio_manager.get());
 			trail_render_manager = std::make_unique<TrailRenderManager>();
@@ -1659,6 +1662,9 @@ namespace Boidsish {
 		impl->audio_manager->Update();
 
 		glm::mat4 view_matrix = impl->SetupMatrices();
+
+		// Calculate frustum for terrain generation and decor placement
+		Frustum generator_frustum;
 		if (impl->terrain_generator) {
 			// Create a widened and predictive frustum for the generator
 			// This helps pre-generate chunks just out of view and in the direction of rotation
@@ -1678,7 +1684,7 @@ namespace Boidsish {
 			glm::vec3 cameraPos(predicted_cam.x, predicted_cam.y, predicted_cam.z);
 			glm::mat4 predicted_view = glm::lookAt(cameraPos, cameraPos + predicted_cam.front(), predicted_cam.up());
 
-			Frustum generator_frustum = impl->CalculateFrustum(predicted_view, generator_proj);
+			generator_frustum = impl->CalculateFrustum(predicted_view, generator_proj);
 			impl->terrain_generator->update(generator_frustum, impl->camera);
 		}
 
@@ -1688,6 +1694,15 @@ namespace Boidsish {
 		impl->mesh_explosion_manager->Update(impl->input_state.delta_time, impl->simulation_time);
 		impl->sound_effect_manager->Update(impl->input_state.delta_time);
 		impl->shockwave_manager->Update(impl->input_state.delta_time);
+		if (impl->decor_manager && impl->terrain_generator && impl->terrain_render_manager) {
+			impl->decor_manager->Update(
+				impl->input_state.delta_time,
+				impl->camera,
+				generator_frustum,
+				*impl->terrain_generator,
+				impl->terrain_render_manager
+			);
+		}
 
 		// UBO Updates
 		if (ConfigManager::GetInstance().GetAppSettingBool("enable_effects", true)) {
@@ -2006,6 +2021,9 @@ namespace Boidsish {
 		impl->fire_effect_manager->Render(view, impl->projection, impl->camera.pos());
 		impl->mesh_explosion_manager->Render(view, impl->projection, impl->camera.pos());
 		impl->RenderTrails(view, std::nullopt);
+		if (impl->decor_manager) {
+			impl->decor_manager->Render(view, impl->projection);
+		}
 
 		if (ConfigManager::GetInstance().GetAppSettingBool("enable_effects", true)) {
 			// --- Post-processing Pass (renders FBO texture to screen) ---
@@ -2379,6 +2397,10 @@ namespace Boidsish {
 
 	FireEffectManager* Visualizer::GetFireEffectManager() {
 		return impl->fire_effect_manager.get();
+	}
+
+	DecorManager* Visualizer::GetDecorManager() {
+		return impl->decor_manager.get();
 	}
 
 	PostProcessing::PostProcessingManager& Visualizer::GetPostProcessingManager() {

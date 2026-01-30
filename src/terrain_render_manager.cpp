@@ -532,4 +532,21 @@ namespace Boidsish {
 		return visible_instances_.size();
 	}
 
+	std::vector<glm::vec4> TerrainRenderManager::GetChunkInfo() const {
+		std::lock_guard<std::mutex> lock(mutex_);
+		std::vector<glm::vec4>      result;
+		result.reserve(chunks_.size());
+		for (const auto& [key, chunk] : chunks_) {
+			result.push_back(
+				glm::vec4(
+					chunk.world_offset.x, // x world offset
+					chunk.world_offset.y, // z world offset (stored as y in vec2)
+					static_cast<float>(chunk.texture_slice),
+					static_cast<float>(chunk_size_)
+				)
+			);
+		}
+		return result;
+	}
+
 } // namespace Boidsish

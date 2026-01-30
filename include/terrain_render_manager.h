@@ -116,6 +116,12 @@ namespace Boidsish {
 		 */
 		GLuint GetHeightmapTexture() const { return heightmap_texture_; }
 
+		/**
+		 * @brief Get info about all registered chunks for external use (e.g., decor placement).
+		 * Returns a vector of (world_offset_x, world_offset_z, texture_slice, chunk_size).
+		 */
+		std::vector<glm::vec4> GetChunkInfo() const;
+
 	private:
 		// Per-chunk metadata (CPU side)
 		struct ChunkInfo {

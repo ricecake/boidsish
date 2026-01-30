@@ -35,6 +35,9 @@ namespace Boidsish {
 		void render() const;
 		void render_instanced(int count) const;
 
+		// Bind textures for external rendering (e.g., instanced rendering with custom shaders)
+		void bindTextures(Shader& shader) const;
+
 	private:
 		// Render data
 		unsigned int VBO, EBO;

@@ -1,0 +1,181 @@
+#version 430 core
+
+layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
+
+layout(std430, binding = 0) buffer DecorInstances {
+	mat4 instances[];
+};
+
+layout(binding = 0) uniform atomic_uint instanceCount;
+
+// Heightmap texture array from TerrainRenderManager
+// Format: RGBA16F where R=height, G=normal.x, B=normal.y, A=normal.z
+uniform sampler2DArray u_heightmapArray;
+uniform vec2           u_cameraPos;
+uniform float          u_maxTerrainHeight;
+
+// Frustum planes for culling (vec4: xyz=normal, w=distance)
+uniform vec4 u_frustumPlanes[6];
+
+// Per-chunk uniforms
+uniform vec2  u_chunkWorldOffset;
+uniform float u_chunkSlice;
+uniform float u_chunkSize;
+
+uniform float u_density;
+uniform float u_baseScale;
+uniform float u_scaleVariance;
+uniform float u_minHeight;
+uniform float u_maxHeight;
+uniform float u_minSlope;
+uniform float u_maxSlope;
+uniform vec3  u_baseRotation;   // Base rotation in radians (pitch, yaw, roll)
+uniform bool  u_randomYaw;      // Whether to apply random Y rotation
+uniform bool  u_alignToTerrain; // If true, align to terrain normal; if false, use world up
+uniform int   u_typeIndex;
+
+// Simple hash for random values
+float hash(uint x) {
+	x = ((x >> 16) ^ x) * 0x45d9f3b;
+	x = ((x >> 16) ^ x) * 0x45d9f3b;
+	x = (x >> 16) ^ x;
+	return float(x) / 4294967295.0;
+}
+
+// Check if a point is inside the frustum
+bool isInFrustum(vec3 pos) {
+	for (int i = 0; i < 6; i++) {
+		if (dot(u_frustumPlanes[i].xyz, pos) + u_frustumPlanes[i].w < -5.0) {
+			return false; // Small margin for decor size
+		}
+	}
+	return true;
+}
+
+// Build rotation matrix from Euler angles (XYZ order)
+mat3 rotationFromEuler(vec3 angles) {
+	float cx = cos(angles.x), sx = sin(angles.x);
+	float cy = cos(angles.y), sy = sin(angles.y);
+	float cz = cos(angles.z), sz = sin(angles.z);
+
+	mat3 rx = mat3(1, 0, 0, 0, cx, -sx, 0, sx, cx);
+	mat3 ry = mat3(cy, 0, sy, 0, 1, 0, -sy, 0, cy);
+	mat3 rz = mat3(cz, -sz, 0, sz, cz, 0, 0, 0, 1);
+
+	return ry * rx * rz; // YXZ order (typical for games)
+}
+
+void main() {
+	uint x = gl_GlobalInvocationID.x;
+	uint y = gl_GlobalInvocationID.y;
+
+	// Grid size is determined by dispatch (4x4 groups of 8x8 = 32x32 placement points per chunk)
+	float gridSize = 32.0;
+	float step = u_chunkSize / gridSize;
+
+	// Calculate world position within this chunk
+	vec2 localOffset = vec2(float(x), float(y)) * step;
+	vec2 worldPos = u_chunkWorldOffset + localOffset;
+
+	// Use world position for stable seeding
+	uint seedX = uint(abs(worldPos.x));
+	uint seedY = uint(abs(worldPos.y));
+	uint seed = (seedX * 1973 + seedY * 9277 + uint(u_typeIndex) * 26699) | 1u;
+
+	// Add some jitter within the cell
+	worldPos += vec2(hash(seed), hash(seed + 1234u)) * step * 0.9;
+
+	// Clamp to chunk bounds
+	if (worldPos.x < u_chunkWorldOffset.x || worldPos.x >= u_chunkWorldOffset.x + u_chunkSize ||
+	    worldPos.y < u_chunkWorldOffset.y || worldPos.y >= u_chunkWorldOffset.y + u_chunkSize)
+		return;
+
+	// Map local position within chunk to UV [0,1]
+	vec2 uv = (worldPos - u_chunkWorldOffset) / u_chunkSize;
+
+	// Sample heightmap array texture
+	// Format: R=height (raw), G=normal.x, B=normal.y, A=normal.z
+	vec4 terrainSample = textureLod(u_heightmapArray, vec3(uv, u_chunkSlice), 0.0);
+
+	// Height is stored directly (not normalized) in TerrainRenderManager
+	float height = terrainSample.r;
+	vec3  normal = vec3(terrainSample.g, terrainSample.b, terrainSample.a);
+
+	// Check constraints
+	if (height < u_minHeight || height > u_maxHeight)
+		return;
+	float slope = 1.0 - normal.y; // 0 is flat, 1 is vertical
+	if (slope < u_minSlope || slope > u_maxSlope)
+		return;
+
+	// Random density check
+	if (hash(seed + 5678) > u_density)
+		return;
+
+	// Create world position for frustum check
+	vec3 worldPos3D = vec3(worldPos.x, height, worldPos.y);
+
+	// Frustum cull individual instances
+	if (!isInFrustum(worldPos3D))
+		return;
+
+	// We want to place it!
+	uint index = atomicCounterIncrement(instanceCount);
+	if (index >= 10000)
+		return; // Hardcoded max for now
+
+	// Create model matrix with scale and rotation
+	float s = u_baseScale + (hash(seed + 9012) * 2.0 - 1.0) * u_scaleVariance;
+
+	// Build rotation: base rotation + optional random yaw
+	vec3 rotation = u_baseRotation;
+	if (u_randomYaw) {
+		rotation.y += hash(seed + 3456) * 6.28318;
+	}
+	mat3 rotMat = rotationFromEuler(rotation);
+
+	// Apply terrain alignment if enabled
+	if (u_alignToTerrain) {
+		// Build a rotation matrix that aligns Y-up to terrain normal
+		vec3 up = vec3(0.0, 1.0, 0.0);
+		vec3 terrainUp = normalize(normal);
+
+		// Handle edge case where normal is already up or down
+		if (abs(dot(up, terrainUp)) < 0.999) {
+			vec3  axis = normalize(cross(up, terrainUp));
+			float angle = acos(clamp(dot(up, terrainUp), -1.0, 1.0));
+
+			// Rodrigues' rotation formula
+			float c = cos(angle);
+			float s_angle = sin(angle);
+			float t = 1.0 - c;
+
+			mat3 terrainRot = mat3(
+				t * axis.x * axis.x + c,
+				t * axis.x * axis.y - s_angle * axis.z,
+				t * axis.x * axis.z + s_angle * axis.y,
+				t * axis.x * axis.y + s_angle * axis.z,
+				t * axis.y * axis.y + c,
+				t * axis.y * axis.z - s_angle * axis.x,
+				t * axis.x * axis.z - s_angle * axis.y,
+				t * axis.y * axis.z + s_angle * axis.x,
+				t * axis.z * axis.z + c
+			);
+
+			// Apply terrain alignment after base rotation
+			rotMat = terrainRot * rotMat;
+		}
+	}
+
+	// Apply scale to rotation matrix
+	mat3 scaledRot = rotMat * s;
+
+	// Build final model matrix
+	mat4 m = mat4(1.0);
+	m[0] = vec4(scaledRot[0], 0.0);
+	m[1] = vec4(scaledRot[1], 0.0);
+	m[2] = vec4(scaledRot[2], 0.0);
+	m[3] = vec4(worldPos3D, 1.0);
+
+	instances[index] = m;
+}
