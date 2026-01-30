@@ -2,7 +2,7 @@ BUILD_DIR = build
 CONFIG = Release
 # CONFIG = RelWithDebInfo
 
-.PHONY: all clean format run clean-build
+.PHONY: all clean format run clean-build test check
 
 all:
 	@cmake -B $(BUILD_DIR) -DCMAKE_BUILD_TYPE=$(CONFIG)
@@ -12,6 +12,15 @@ all:
 format:
 	@cmake -B $(BUILD_DIR)
 	@cmake --build $(BUILD_DIR) --target format
+
+# Runs all tests
+test: all
+	@cd $(BUILD_DIR) && ctest --output-on-failure
+
+# Performs a compile-only check
+check:
+	@cmake -B $(BUILD_DIR) -DCMAKE_BUILD_TYPE=$(CONFIG)
+	@cmake --build $(BUILD_DIR) --target check
 
 # Runs a specific example (e.g., 'make run X=boid_sim')
 run: all
@@ -26,7 +35,3 @@ clean-build:
 
 clean:
 	rm -rf $(BUILD_DIR)
-
-clean-build:
-	@cmake -B $(BUILD_DIR) -DCMAKE_BUILD_TYPE=$(CONFIG)
-	@cmake --build $(BUILD_DIR) --parallel --clean-first
