@@ -128,13 +128,29 @@ else()
 endif()
 
 # 6. Build Tests
+enable_testing()
 find_package(GTest REQUIRED)
-include_directories(${GTEST_INCLUDE_DIRS})
 
-add_executable(run_tests tests/test_rigid_body.cpp)
-target_link_libraries(run_tests PRIVATE boidsish GTest::GTest GTest::Main)
-set_target_properties(run_tests PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+set(TEST_FILES
+    tests/test_rigid_body.cpp
+    tests/test_terrain.cpp
+    tests/test_config.cpp
+    tests/test_concurrent_queue.cpp
+    tests/test_thread_pool.cpp
+    tests/test_spline.cpp
+)
 
-add_executable(test_terrain tests/test_terrain.cpp)
-target_link_libraries(test_terrain PRIVATE boidsish GTest::GTest GTest::Main)
-set_target_properties(test_terrain PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+foreach(TEST_SRC ${TEST_FILES})
+    get_filename_component(TEST_NAME ${TEST_SRC} NAME_WE)
+    add_executable(${TEST_NAME} ${TEST_SRC})
+    target_link_libraries(${TEST_NAME} PRIVATE boidsish GTest::GTest GTest::Main)
+    set_target_properties(${TEST_NAME} PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+    add_test(NAME ${TEST_NAME} COMMAND ${TEST_NAME})
+endforeach()
+
+# 7. Check target (compile only)
+# This target compiles all source files to object files but does not link them.
+# This is useful for verifying code integrity in environments without full graphics libraries.
+add_library(compile_check OBJECT EXCLUDE_FROM_ALL ${LIB_SOURCES})
+target_link_libraries(compile_check PRIVATE boidsish)
+add_custom_target(check DEPENDS compile_check)
