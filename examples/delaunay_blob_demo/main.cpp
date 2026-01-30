@@ -29,7 +29,7 @@ public:
 		SetSize(0.5f);
 		SetColor(1.0f, 0.3f, 0.1f);
 		SetTrailLength(0); // No trails for cleaner look
-		// SetHidden(true);    // Hide the dots, just show the blob
+		                   // SetHidden(true);    // Hide the dots, just show the blob
 	}
 
 	void UpdateEntity(const EntityHandler& handler, float time, float delta_time) override {
@@ -55,6 +55,7 @@ public:
 		glm::vec3 cohesion_sum(0.0f);
 		glm::vec3 alignment_sum(0.0f);
 		glm::vec3 separation_sum(0.0f);
+		glm::vec3 waypoint_sum(0.0f);
 		int       cohesion_count = 0;
 		int       separation_count = 0;
 
@@ -168,6 +169,8 @@ public:
 			blob_->SetPointColor(point_id_, color);
 		}
 
+		blob_center_ = glm::vec3(10 * sin(time * 0.1), 15, 15 * cos(time * 0.1));
+
 		UpdateShape();
 	}
 
@@ -230,7 +233,7 @@ int main() {
 		auto boid = std::make_shared<BlobBoid>(i + 1, blob, point_id);
 		boid->SetPosition(pos);
 		boid->SetBlobCenter(blob_center);
-		boid->SetMaxRadius(12.0f);
+		boid->SetMaxRadius(22.0f);
 
 		// Random initial velocity
 		boid->SetVelocity(glm::vec3(dist(gen) * 5.0f, 0.0f, dist(gen) * 0.5f));
@@ -245,7 +248,7 @@ int main() {
 	visualizer->AddShape(blob);
 
 	// Add entity update function
-	visualizer->AddShapeHandler([&handler](float time) { return handler(time); });
+	visualizer->AddShapeHandler([&](float time) { return handler(time); });
 
 	// Add lighting
 	Light sun;
