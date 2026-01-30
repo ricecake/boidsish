@@ -106,6 +106,7 @@ namespace Boidsish {
 		GLuint                  main_fbo_{0}, main_fbo_texture_{0}, main_fbo_depth_texture_{0}, main_fbo_rbo_{0};
 		GLuint                  lighting_ubo{0};
 		GLuint                  visual_effects_ubo{0};
+		GLuint                  frustum_ubo{0};
 		glm::mat4               projection, reflection_vp;
 
 		double last_mouse_x = 0.0, last_mouse_y = 0.0;
@@ -294,6 +295,14 @@ namespace Boidsish {
 				glBindBuffer(GL_UNIFORM_BUFFER, 0);
 				glBindBufferRange(GL_UNIFORM_BUFFER, 1, visual_effects_ubo, 0, sizeof(VisualEffectsUbo));
 			}
+
+			// Frustum UBO for GPU-side culling (binding point 3)
+			// Layout: 6 vec4 planes (96 bytes) + vec3 camera pos + padding (16 bytes) = 112 bytes
+			glGenBuffers(1, &frustum_ubo);
+			glBindBuffer(GL_UNIFORM_BUFFER, frustum_ubo);
+			glBufferData(GL_UNIFORM_BUFFER, 112, NULL, GL_DYNAMIC_DRAW);
+			glBindBuffer(GL_UNIFORM_BUFFER, 0);
+			glBindBufferRange(GL_UNIFORM_BUFFER, 3, frustum_ubo, 0, 112);
 
 			shader->use();
 			SetupShaderBindings(*shader);
@@ -590,6 +599,10 @@ namespace Boidsish {
 			if (shadows_idx != GL_INVALID_INDEX) {
 				glUniformBlockBinding(shader_to_setup.ID, shadows_idx, 2);
 			}
+			GLuint frustum_idx = glGetUniformBlockIndex(shader_to_setup.ID, "FrustumData");
+			if (frustum_idx != GL_INVALID_INDEX) {
+				glUniformBlockBinding(shader_to_setup.ID, frustum_idx, 3);
+			}
 		}
 
 		~VisualizerImpl() {
@@ -759,6 +772,10 @@ namespace Boidsish {
 				shader->setVec4("clipPlane", glm::vec4(0, 0, 0, 0)); // No clipping
 			}
 
+			// Enable GPU frustum culling for instanced rendering
+			shader->setBool("enableFrustumCulling", true);
+			shader->setFloat("frustumCullRadius", 5.0f); // Default radius, can be adjusted per-object
+
 			shader->setInt("useVertexColor", 0);
 			for (const auto& shape : shapes) {
 				if (shape->IsHidden()) {
@@ -768,6 +785,9 @@ namespace Boidsish {
 					instance_manager->AddInstance(shape);
 				} else {
 					shader->setBool("isColossal", shape->IsColossal());
+					// Set cull radius based on shape size if available
+					float size = 5; // shape->GetSize();
+					shader->setFloat("frustumCullRadius", size > 0 ? size : 5.0f);
 					shape->render();
 				}
 			}
@@ -776,6 +796,9 @@ namespace Boidsish {
 
 			// Render clones
 			clone_manager->Render(*shader);
+
+			// Disable frustum culling after shapes are rendered
+			shader->setBool("enableFrustumCulling", false);
 		}
 
 		void RenderTrails(const glm::mat4& view, const std::optional<glm::vec4>& clip_plane) {
@@ -841,10 +864,14 @@ namespace Boidsish {
 			const glm::mat4&                proj,
 			const std::optional<glm::vec4>& clip_plane,
 			bool                            is_shadow_pass = false,
-			std::optional<Frustum>          shadow_frustum = std::nullopt
+			std::optional<Frustum>          shadow_frustum = std::nullopt,
+			float                           quality_override = -1.0f
 		) {
 			if (!terrain_generator || !ConfigManager::GetInstance().GetAppSettingBool("render_terrain", true))
 				return;
+
+			// Use quality override if provided, otherwise use default multiplier
+			float effective_quality = (quality_override > 0.0f) ? quality_override : tess_quality_multiplier_;
 
 			// Set up shadow uniforms for terrain shader
 			Terrain::terrain_shader_->use();
@@ -869,14 +896,13 @@ namespace Boidsish {
 				// Prepare for rendering (frustum culling for instanced renderer)
 				terrain_render_manager->PrepareForRender(frustum, camera.pos());
 
-				terrain_render_manager
-					->Render(*Terrain::terrain_shader_, view, proj, clip_plane, tess_quality_multiplier_);
+				terrain_render_manager->Render(*Terrain::terrain_shader_, view, proj, clip_plane, effective_quality);
 			} else {
 				// Fallback to per-chunk rendering
 				Terrain::terrain_shader_->use();
 				Terrain::terrain_shader_->setMat4("view", view);
 				Terrain::terrain_shader_->setMat4("projection", proj);
-				Terrain::terrain_shader_->setFloat("uTessQualityMultiplier", tess_quality_multiplier_);
+				Terrain::terrain_shader_->setFloat("uTessQualityMultiplier", effective_quality);
 				Terrain::terrain_shader_->setFloat("uTessLevelMax", 64.0f);
 				Terrain::terrain_shader_->setFloat("uTessLevelMin", 1.0f);
 
@@ -897,14 +923,22 @@ namespace Boidsish {
 			if (!sky_shader || !ConfigManager::GetInstance().GetAppSettingBool("render_skybox", true)) {
 				return;
 			}
-			glDisable(GL_DEPTH_TEST);
+			// Enable depth test with LEQUAL to allow sky at depth 1.0 to pass
+			// but be rejected where opaque geometry already exists (early-Z optimization)
+			glEnable(GL_DEPTH_TEST);
+			glDepthFunc(GL_LEQUAL);
+			glDepthMask(GL_FALSE); // Don't write to depth buffer
+
 			sky_shader->use();
 			sky_shader->setMat4("invProjection", glm::inverse(projection));
 			sky_shader->setMat4("invView", glm::inverse(view));
 			glBindVertexArray(sky_vao);
 			glDrawArrays(GL_TRIANGLES, 0, 3);
 			glBindVertexArray(0);
-			glEnable(GL_DEPTH_TEST);
+
+			// Restore depth state
+			glDepthFunc(GL_LESS);
+			glDepthMask(GL_TRUE);
 		}
 
 		// TODO: Replace the multi-pass Gaussian blur with a more performant technique.
@@ -1766,6 +1800,28 @@ namespace Boidsish {
 		glBufferSubData(GL_UNIFORM_BUFFER, offset, sizeof(glm::vec3), &impl->camera.front()[0]);
 		glBindBuffer(GL_UNIFORM_BUFFER, 0);
 
+		// Update Frustum UBO for GPU-side culling
+		{
+			glm::mat4 view = glm::lookAt(
+				impl->camera.pos(),
+				impl->camera.pos() + impl->camera.front(),
+				impl->camera.up()
+			);
+			Frustum render_frustum = impl->CalculateFrustum(view, impl->projection);
+
+			// Pack frustum planes into vec4 array (normal.xyz, distance.w)
+			glm::vec4 frustum_planes[6];
+			for (int i = 0; i < 6; ++i) {
+				frustum_planes[i] = glm::vec4(render_frustum.planes[i].normal, render_frustum.planes[i].distance);
+			}
+
+			glBindBuffer(GL_UNIFORM_BUFFER, impl->frustum_ubo);
+			glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(frustum_planes), frustum_planes);
+			glm::vec3 cam_pos = impl->camera.pos();
+			glBufferSubData(GL_UNIFORM_BUFFER, 96, sizeof(glm::vec3), &cam_pos[0]);
+			glBindBuffer(GL_UNIFORM_BUFFER, 0);
+		}
+
 		if (impl->reflection_fbo) {
 			// --- Reflection Pre-Pass ---
 			glEnable(GL_CLIP_DISTANCE0);
@@ -1777,8 +1833,16 @@ namespace Boidsish {
 				reflection_cam.pitch = -reflection_cam.pitch;
 				glm::mat4 reflection_view = impl->SetupMatrices(reflection_cam);
 				impl->reflection_vp = impl->projection * reflection_view;
-				impl->RenderSky(reflection_view);
-				impl->RenderTerrain(reflection_view, impl->projection, glm::vec4(0, 1, 0, 0.01));
+				// Render opaque geometry first for early-Z benefit
+				// Use reduced tessellation (25%) for reflection pass - it's blurred anyway
+				impl->RenderTerrain(
+					reflection_view,
+					impl->projection,
+					glm::vec4(0, 1, 0, 0.01),
+					false,
+					std::nullopt,
+					0.25f
+				);
 				impl->RenderShapes(
 					reflection_view,
 					reflection_cam,
@@ -1786,6 +1850,9 @@ namespace Boidsish {
 					impl->simulation_time,
 					glm::vec4(0, 1, 0, 0.01)
 				);
+				// Sky after opaque geometry
+				impl->RenderSky(reflection_view);
+				// Transparent effects last
 				impl->fire_effect_manager->Render(reflection_view, impl->projection, reflection_cam.pos());
 				impl->RenderTrails(reflection_view, glm::vec4(0, 1, 0, 0.01));
 			}
@@ -1992,7 +2059,8 @@ namespace Boidsish {
 		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
 		glm::mat4 view = impl->SetupMatrices();
-		impl->RenderSky(view);
+
+		// Render opaque geometry first (terrain, plane, shapes) to populate depth buffer
 		impl->RenderPlane(view);
 		impl->RenderTerrain(view, impl->projection, std::nullopt);
 
@@ -2018,12 +2086,18 @@ namespace Boidsish {
 		impl->shader->setIntArray("lightShadowIndices", shadow_indices.data(), 10);
 
 		impl->RenderShapes(view, impl->camera, impl->shapes, impl->simulation_time, std::nullopt);
-		impl->fire_effect_manager->Render(view, impl->projection, impl->camera.pos());
-		impl->mesh_explosion_manager->Render(view, impl->projection, impl->camera.pos());
-		impl->RenderTrails(view, std::nullopt);
 		if (impl->decor_manager) {
 			impl->decor_manager->Render(view, impl->projection);
 		}
+
+		// Render sky AFTER opaque geometry so early-Z rejects covered fragments
+		// This avoids expensive noise calculations for pixels already drawn
+		impl->RenderSky(view);
+
+		// Render transparent/particle effects last
+		impl->fire_effect_manager->Render(view, impl->projection, impl->camera.pos());
+		impl->mesh_explosion_manager->Render(view, impl->projection, impl->camera.pos());
+		impl->RenderTrails(view, std::nullopt);
 
 		if (ConfigManager::GetInstance().GetAppSettingBool("enable_effects", true)) {
 			// --- Post-processing Pass (renders FBO texture to screen) ---

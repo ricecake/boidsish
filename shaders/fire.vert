@@ -1,5 +1,7 @@
 #version 430 core
 
+#include "frustum.glsl"
+
 // Must match the C++ struct layout in fire_effect.h
 struct Particle {
 	vec4 pos; // Position (w is lifetime)
@@ -13,9 +15,11 @@ layout(std430, binding = 0) buffer ParticleBuffer {
 	Particle particles[];
 };
 
-uniform mat4 u_view;
-uniform mat4 u_projection;
-uniform vec3 u_camera_pos;
+uniform mat4  u_view;
+uniform mat4  u_projection;
+uniform vec3  u_camera_pos;
+uniform bool  enableFrustumCulling = false;
+uniform float frustumCullRadius = 1.0;
 
 out float    v_lifetime;
 out vec4     view_pos;
@@ -29,6 +33,11 @@ void main() {
 		gl_Position = vec4(-1000.0, -1000.0, -1000.0, 1.0);
 		gl_PointSize = 0.0;
 		v_style = -1; // A dead particle has no style
+	} else if (enableFrustumCulling && !isSphereInFrustum(p.pos.xyz, frustumCullRadius)) {
+		// Frustum culling - particle is outside view
+		gl_Position = vec4(-1000.0, -1000.0, -1000.0, 1.0);
+		gl_PointSize = 0.0;
+		v_style = -1;
 	} else {
 		view_pos = u_view * vec4(p.pos.xyz, 1.0);
 		gl_Position = u_projection * view_pos;

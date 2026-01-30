@@ -10,6 +10,7 @@ layout(std430, binding = 10) buffer SSBOInstances {
 	mat4 ssboInstanceMatrices[];
 };
 
+#include "frustum.glsl"
 #include "helpers/lighting.glsl"
 #include "visual_effects.glsl"
 #include "visual_effects.vert"
@@ -31,6 +32,8 @@ uniform bool  is_instanced = false;
 uniform bool  useInstanceColor = false;
 uniform bool  useSSBOInstancing = false;
 uniform bool  isLine = false;
+uniform bool  enableFrustumCulling = false;
+uniform float frustumCullRadius = 5.0; // Approximate object radius for sphere test
 
 void main() {
 	vec3 displacedPos = aPos;
@@ -64,6 +67,29 @@ void main() {
 	} else {
 		modelMatrix = model;
 	}
+
+	// Extract world position (translation from model matrix)
+	vec3 instanceCenter = vec3(modelMatrix[3]);
+
+	// GPU frustum culling - output degenerate triangle if outside frustum
+	if (enableFrustumCulling && !isColossal) {
+		// Use sphere test with approximate radius based on scale
+		float scale = length(vec3(modelMatrix[0])); // Approximate scale from first column
+		float effectiveRadius = frustumCullRadius * scale;
+
+		if (!isSphereInFrustum(instanceCenter, effectiveRadius)) {
+			// Output degenerate triangle (all vertices at same point)
+			// GPU will automatically cull this
+			gl_Position = vec4(0.0, 0.0, -2.0, 1.0); // Behind near plane
+			FragPos = vec3(0.0);
+			Normal = vec3(0.0, 1.0, 0.0);
+			TexCoords = vec2(0.0);
+			InstanceColor = vec4(0.0);
+			gl_ClipDistance[0] = -1.0; // Clip it
+			return;
+		}
+	}
+
 	FragPos = vec3(modelMatrix * vec4(displacedPos, 1.0));
 	Normal = mat3(transpose(inverse(modelMatrix))) * displacedNormal;
 	TexCoords = aTexCoords;

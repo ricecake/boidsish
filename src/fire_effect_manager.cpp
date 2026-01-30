@@ -46,6 +46,13 @@ namespace Boidsish {
 		compute_shader_ = std::make_unique<ComputeShader>("shaders/fire.comp");
 		render_shader_ = std::make_unique<Shader>("shaders/fire.vert", "shaders/fire.frag");
 
+		// Set up UBO bindings for the render shader
+		render_shader_->use();
+		GLuint frustum_idx = glGetUniformBlockIndex(render_shader_->ID, "FrustumData");
+		if (frustum_idx != GL_INVALID_INDEX) {
+			glUniformBlockBinding(render_shader_->ID, frustum_idx, 3);
+		}
+
 		// Create buffers
 		glGenBuffers(1, &particle_buffer_);
 		glBindBuffer(GL_SHADER_STORAGE_BUFFER, particle_buffer_);
@@ -328,6 +335,10 @@ namespace Boidsish {
 		render_shader_->setMat4("u_projection", projection);
 		render_shader_->setVec3("u_camera_pos", camera_pos);
 		render_shader_->setFloat("u_time", time_);
+
+		// Enable GPU frustum culling for particles
+		render_shader_->setBool("enableFrustumCulling", true);
+		render_shader_->setFloat("frustumCullRadius", 2.0f); // Particle cull radius
 
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, particle_buffer_);
 
