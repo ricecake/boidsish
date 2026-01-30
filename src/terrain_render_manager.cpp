@@ -289,12 +289,9 @@ namespace Boidsish {
 					glGetIntegerv(GL_MAX_ARRAY_TEXTURE_LAYERS, &max_layers);
 
 					if (max_chunks_ >= max_layers) {
-						// At GPU capacity - use LRU eviction
-						// Find the chunk farthest from the new chunk's position and evict it
-						glm::vec2 new_chunk_center(
-							world_offset.x + chunk_size_ * 0.5f,
-							world_offset.z + chunk_size_ * 0.5f
-						);
+						// At GPU capacity - use LRU eviction based on distance from camera
+						// Use last known camera position for eviction decisions
+						glm::vec2 camera_pos_2d(last_camera_pos_.x, last_camera_pos_.z);
 
 						float               max_dist_sq = -1.0f;
 						std::pair<int, int> farthest_key;
@@ -304,7 +301,7 @@ namespace Boidsish {
 								chunk.world_offset.x + chunk_size_ * 0.5f,
 								chunk.world_offset.y + chunk_size_ * 0.5f
 							);
-							float dist_sq = glm::dot(chunk_center - new_chunk_center, chunk_center - new_chunk_center);
+							float dist_sq = glm::dot(chunk_center - camera_pos_2d, chunk_center - camera_pos_2d);
 							if (dist_sq > max_dist_sq) {
 								max_dist_sq = dist_sq;
 								farthest_key = key;
@@ -402,14 +399,25 @@ namespace Boidsish {
 	void TerrainRenderManager::PrepareForRender(const Frustum& frustum, const glm::vec3& camera_pos) {
 		std::lock_guard<std::mutex> lock(mutex_);
 
+		// Store camera position for LRU eviction decisions in RegisterChunk
+		last_camera_pos_ = camera_pos;
+
 		visible_instances_.clear();
 		visible_instances_.reserve(chunks_.size());
 
+		// Collect visible chunks with distance info
+		struct VisibleChunk {
+			InstanceData instance;
+			float        distance_sq;
+		};
+
+		std::vector<VisibleChunk> visible_chunks;
+		visible_chunks.reserve(chunks_.size());
+
+		glm::vec2 camera_pos_2d(camera_pos.x, camera_pos.z);
+
 		for (const auto& [key, chunk] : chunks_) {
-			// TEMPORARILY DISABLED: Frustum culling may have incorrect plane math
-			// TODO: Fix frustum culling and re-enable
 			if (IsChunkVisible(chunk, frustum)) {
-				// if (true) {  // Always visible for debugging
 				InstanceData instance{};
 				instance.world_offset_and_slice = glm::vec4(
 					chunk.world_offset.x,
@@ -419,8 +427,25 @@ namespace Boidsish {
 				);
 				instance.bounds = glm::vec4(chunk.min_y, chunk.max_y, 0.0f, 0.0f);
 
-				visible_instances_.push_back(instance);
+				// Calculate distance from chunk center to camera
+				glm::vec2 chunk_center(
+					chunk.world_offset.x + chunk_size_ * 0.5f,
+					chunk.world_offset.y + chunk_size_ * 0.5f
+				);
+				float dist_sq = glm::dot(chunk_center - camera_pos_2d, chunk_center - camera_pos_2d);
+
+				visible_chunks.push_back({instance, dist_sq});
 			}
+		}
+
+		// Sort by distance (front-to-back for better early-Z rejection)
+		std::sort(visible_chunks.begin(), visible_chunks.end(), [](const VisibleChunk& a, const VisibleChunk& b) {
+			return a.distance_sq < b.distance_sq;
+		});
+
+		// Build final instance list
+		for (const auto& vc : visible_chunks) {
+			visible_instances_.push_back(vc.instance);
 		}
 
 		// Upload instance data to GPU

@@ -174,6 +174,9 @@ namespace Boidsish {
 		std::vector<InstanceData> visible_instances_;
 		size_t                    instance_buffer_capacity_ = 0;
 
+		// Camera position for LRU eviction (updated by PrepareForRender)
+		glm::vec3 last_camera_pos_{0.0f, 0.0f, 0.0f};
+
 		// Thread safety
 		mutable std::mutex mutex_;
 
