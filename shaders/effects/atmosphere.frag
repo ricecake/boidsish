@@ -102,12 +102,20 @@ void main() {
 
 	if (t_start < t_end) {
 		float cloudAcc = 0.0;
-		int   samples = 4;
+		int   samples = 6;
+		float jitter = fract(sin(dot(TexCoords, vec2(12.9898, 78.233))) * 43758.5453);
+
 		for (int i = 0; i < samples; i++) {
-			float t = mix(t_start, t_end, (float(i) + 0.5) / float(samples));
+			float t = mix(t_start, t_end, (float(i) + jitter) / float(samples));
 			vec3  p = cameraPos + rayDir * t;
-			float noise = fbm(p.xz * 0.015 + time * 0.02 * (i + 1) + p.y * 0.02);
-			float d = smoothstep(0.2, 0.6, noise * (i + 1)) * cloudDensity;
+			float h = (p.y - cloudAltitude) / max(cloudThickness, 0.001);
+			float tapering = smoothstep(0.0, 0.2, h) * smoothstep(1.0, 0.5, h);
+
+
+			float noise = fbm(p.xz * 0.015 + jitter * time * 0.0001 + p.y * 0.02);
+			// float d = smoothstep(0.2, 0.6, noise * (i + 1)) * cloudDensity;
+			float d = smoothstep(0.2, 0.6, noise* (i + (1-noise))) * cloudDensity * tapering;
+
 			cloudAcc += d;
 		}
 		cloudFactor = 1.0 - exp(-cloudAcc * (t_end - t_start) * 0.05 / float(samples));
@@ -118,7 +126,9 @@ void main() {
 		for (int i = 0; i < num_lights; i++) {
 			vec3  L = normalize(lights[i].position - intersect);
 			float d = max(0.0, dot(vec3(0, 1, 0), L)); // Simple top-lighting
-			cloudScattering += lights[i].color * (d * 0.5 + 0.5) * lights[i].intensity;
+			float silver = pow(max(0.0, dot(rayDir, L)), 4.0) * 0.5;
+
+			cloudScattering += lights[i].color * (d * 0.5 + 0.5 + silver) * lights[i].intensity;
 		}
 
 		cloudColor = cloudColorUniform * (ambient_light + cloudScattering * 0.5);
