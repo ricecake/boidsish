@@ -13,7 +13,6 @@
 #include "UIManager.h"
 #include "audio_manager.h"
 #include "clone_manager.h"
-#include "decor_manager.h"
 #include "dot.h"
 #include "entity.h"
 #include "fire_effect_manager.h"
@@ -74,7 +73,6 @@ namespace Boidsish {
 		std::unique_ptr<SoundEffectManager>   sound_effect_manager;
 		std::unique_ptr<ShockwaveManager>     shockwave_manager;
 		std::unique_ptr<ShadowManager>        shadow_manager;
-		std::unique_ptr<DecorManager>         decor_manager;
 		std::map<int, std::shared_ptr<Trail>> trails;
 		std::map<int, float>                  trail_last_update;
 		LightManager                          light_manager;
@@ -238,7 +236,6 @@ namespace Boidsish {
 			fire_effect_manager = std::make_unique<FireEffectManager>();
 			shockwave_manager = std::make_unique<ShockwaveManager>();
 			shadow_manager = std::make_unique<ShadowManager>();
-			decor_manager = std::make_unique<DecorManager>();
 			audio_manager = std::make_unique<AudioManager>();
 			sound_effect_manager = std::make_unique<SoundEffectManager>(audio_manager.get());
 
@@ -722,12 +719,6 @@ namespace Boidsish {
 
 			for (auto& pair : trails) {
 				pair.second->Render(*trail_shader);
-			}
-		}
-
-		void RenderDecor(const glm::mat4& view, const glm::mat4& projection) {
-			if (decor_manager) {
-				decor_manager->Render(view, projection);
 			}
 		}
 
@@ -1488,9 +1479,6 @@ namespace Boidsish {
 		if (impl->terrain_generator) {
 			Frustum frustum = impl->CalculateFrustum(view_matrix, impl->projection);
 			impl->terrain_generator->update(frustum, impl->camera);
-			if (impl->decor_manager) {
-				impl->decor_manager->Update(impl->input_state.delta_time, impl->camera, *impl->terrain_generator);
-			}
 		}
 
 		// Update clone manager
@@ -1633,7 +1621,6 @@ namespace Boidsish {
 		impl->RenderSky(view);
 		impl->RenderPlane(view);
 		impl->RenderTerrain(view, std::nullopt);
-		impl->RenderDecor(view, impl->projection);
 
 		// Always set shadow indices to -1 for proper lighting
 		// This must happen even if shadow_manager isn't active
@@ -2007,10 +1994,6 @@ namespace Boidsish {
 
 	FireEffectManager* Visualizer::GetFireEffectManager() {
 		return impl->fire_effect_manager.get();
-	}
-
-	DecorManager* Visualizer::GetDecorManager() {
-		return impl->decor_manager.get();
 	}
 
 	float Visualizer::GetLastFrameTime() const {

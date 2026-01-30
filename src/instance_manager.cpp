@@ -46,7 +46,20 @@ namespace Boidsish {
 			if (model) {
 				shader.setBool("isColossal", model->IsColossal());
 				for (const auto& mesh : model->getMeshes()) {
-					mesh.bindTextures(shader);
+					unsigned int diffuseNr = 1;
+					unsigned int specularNr = 1;
+					for (unsigned int i = 0; i < mesh.textures.size(); i++) {
+						glActiveTexture(GL_TEXTURE0 + i);
+						std::string number;
+						std::string name = mesh.textures[i].type;
+						if (name == "texture_diffuse")
+							number = std::to_string(diffuseNr++);
+						else if (name == "texture_specular")
+							number = std::to_string(specularNr++);
+						shader.setInt(("material." + name + number).c_str(), i);
+						glBindTexture(GL_TEXTURE_2D, mesh.textures[i].id);
+					}
+					glActiveTexture(GL_TEXTURE0);
 
 					glBindVertexArray(mesh.VAO);
 					glEnableVertexAttribArray(3);

@@ -1,4 +1,4 @@
-#version 430 core
+#version 420 core
 layout(location = 0) in vec3 aPos;
 layout(location = 1) in vec3 aNormal;
 layout(location = 2) in vec2 aTexCoords;
@@ -20,11 +20,6 @@ uniform vec4  clipPlane;
 uniform float ripple_strength;
 uniform bool  isColossal = true;
 uniform bool  is_instanced = false;
-uniform bool  useSSBOInstancing = false;
-
-layout(std430, binding = 10) buffer InstanceMatrices {
-	mat4 ssboInstanceMatrices[];
-};
 
 void main() {
 	vec3 displacedPos = aPos;
@@ -50,13 +45,7 @@ void main() {
 		displacedNormal = normalize(aNormal - gradient);
 	}
 
-	mat4 modelMatrix;
-	if (useSSBOInstancing) {
-		modelMatrix = ssboInstanceMatrices[gl_InstanceID];
-	} else {
-		modelMatrix = is_instanced ? aInstanceMatrix : model;
-	}
-
+	mat4 modelMatrix = is_instanced ? aInstanceMatrix : model;
 	FragPos = vec3(modelMatrix * vec4(displacedPos, 1.0));
 	Normal = mat3(transpose(inverse(modelMatrix))) * displacedNormal;
 	TexCoords = aTexCoords;

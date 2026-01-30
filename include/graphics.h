@@ -40,7 +40,6 @@ namespace Boidsish {
 	class SoundEffect;
 	class FireEffectManager;
 	class ShockwaveManager;
-	class DecorManager;
 	class Path;
 } // namespace Boidsish
 
@@ -250,7 +249,6 @@ namespace Boidsish {
 		task_thread_pool::task_thread_pool&          GetThreadPool();
 		LightManager&                                GetLightManager();
 		FireEffectManager*                           GetFireEffectManager();
-		DecorManager*                                GetDecorManager();
 		float                                        GetLastFrameTime() const;
 
 		Config&       GetConfig();
