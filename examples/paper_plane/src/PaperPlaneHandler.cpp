@@ -32,7 +32,29 @@ namespace Boidsish {
 		// }
 	}
 
+	void PaperPlaneHandler::RecordTarget(std::shared_ptr<GuidedMissileLauncher> target) const {
+		if (target) {
+			std::lock_guard<std::mutex> lock(target_mutex_);
+			target_counts_[target->GetId()]++;
+		}
+	}
+
+	int PaperPlaneHandler::GetTargetCount(std::shared_ptr<GuidedMissileLauncher> target) const {
+		if (target) {
+			std::lock_guard<std::mutex> lock(target_mutex_);
+			auto                        it = target_counts_.find(target->GetId());
+			if (it != target_counts_.end()) {
+				return it->second;
+			}
+		}
+		return 0;
+	}
+
 	void PaperPlaneHandler::PreTimestep(float time, float delta_time) {
+		{
+			std::lock_guard<std::mutex> lock(target_mutex_);
+			target_counts_.clear();
+		}
 		if (damage_timer_ > 0.0f) {
 			damage_timer_ -= delta_time;
 			if (damage_timer_ <= 0.0f) {

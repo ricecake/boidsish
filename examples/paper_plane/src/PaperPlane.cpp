@@ -155,12 +155,35 @@ namespace Boidsish {
 				);
 				time_to_fire = 0.25f;
 				fire_left = !fire_left;
+				if (fire_left) {
+					time_to_fire = 1.0f;
+				}
 				break;
 			case 1:
 				handler.QueueAddEntity<CatBomb>(pos, orientation_ * glm::vec3(0, -1, 0), GetVelocity());
-				time_to_fire = 0.25f;
+				time_to_fire = 1.25f;
 				break;
 			}
+		}
+
+		if (true || controller_->chaff) {
+				// handler.vis->AddFireEffect(
+				// 	pos.Toglm() - forward_dir,
+				// 	FireEffectStyle::Glitter,
+				// 	glm::normalize(-1*forward_dir),
+				// 	glm::vec3(0, 0, 0),
+				// 	500,
+				// 	3.0f
+				// );
+				handler.vis->AddFireEffect(
+					glm::vec3(0, 5, 0),
+					FireEffectStyle::Glitter,
+glm::vec3(0, 1, 0),
+					glm::vec3(0, 0, 0),
+					500,
+					3.0f
+				);
+
 		}
 	}
 
