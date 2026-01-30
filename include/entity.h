@@ -319,6 +319,64 @@ namespace Boidsish {
 		const std::vector<std::shared_ptr<Terrain>>& GetTerrainChunks() const;
 		const TerrainGenerator*                      GetTerrainGenerator() const;
 
+		// ========== Cache-Preferring Terrain Queries ==========
+		// These methods use cached terrain chunk data when available, which is much
+		// faster than procedural generation for positions within the visible area.
+
+		/**
+		 * @brief Get terrain properties at a point, preferring cached data.
+		 * @param x World X coordinate
+		 * @param z World Z coordinate
+		 * @return Tuple of (height, surface_normal)
+		 */
+		std::tuple<float, glm::vec3> GetCachedTerrainProperties(float x, float z) const;
+
+		/**
+		 * @brief Check if a 3D point is below the terrain surface.
+		 * @param point The 3D world position to check
+		 * @return true if the point is below terrain
+		 */
+		bool IsPointBelowTerrain(const glm::vec3& point) const;
+
+		/**
+		 * @brief Get signed distance above terrain (positive = above, negative = below).
+		 * @param point The 3D world position
+		 * @return Vertical distance from terrain surface
+		 */
+		float GetDistanceAboveTerrain(const glm::vec3& point) const;
+
+		/**
+		 * @brief Get distance and direction to closest terrain point.
+		 * @param point The 3D world position
+		 * @return Tuple of (distance, direction_to_terrain)
+		 */
+		std::tuple<float, glm::vec3> GetClosestTerrainInfo(const glm::vec3& point) const;
+
+		/**
+		 * @brief Raycast against terrain using cached data when possible.
+		 * @param origin Ray start position
+		 * @param direction Ray direction (should be normalized)
+		 * @param max_distance Maximum raycast distance
+		 * @param out_distance Output: distance to hit (if hit)
+		 * @param out_normal Output: surface normal at hit (if hit)
+		 * @return true if terrain was hit
+		 */
+		bool RaycastTerrain(
+			const glm::vec3& origin,
+			const glm::vec3& direction,
+			float            max_distance,
+			float&           out_distance,
+			glm::vec3&       out_normal
+		) const;
+
+		/**
+		 * @brief Check if a position is within the cached terrain area.
+		 * @param x World X coordinate
+		 * @param z World Z coordinate
+		 * @return true if position is in a cached chunk
+		 */
+		bool IsTerrainCached(float x, float z) const;
+
 		// Thread-safe methods for entity modification
 		template <typename T, typename... Args>
 		void QueueAddEntity(Args&&... args) const {

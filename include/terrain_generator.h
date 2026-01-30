@@ -2,6 +2,7 @@
 
 #include <map>
 #include <memory>
+#include <optional>
 #include <tuple>
 #include <vector>
 
@@ -133,9 +134,90 @@ namespace Boidsish {
 		float     getBiomeControlValue(float x, float z) const;
 		glm::vec2 getDomainWarp(float x, float z) const;
 
+		// ========== Cache-Preferring Terrain Queries ==========
+		// These methods attempt to use cached chunk data first, falling back to
+		// procedural generation only when the query location is outside cached chunks.
+		// Much faster for locations within the visible/cached terrain area.
+
+		/**
+		 * @brief Get terrain properties at a point, preferring cached chunk data.
+		 *
+		 * @param x World X coordinate
+		 * @param z World Z coordinate
+		 * @return Tuple of (height, surface_normal). Returns (0, up) if no data available.
+		 */
+		std::tuple<float, glm::vec3> GetCachedPointProperties(float x, float z) const;
+
+		/**
+		 * @brief Check if a 3D point is below the terrain surface.
+		 *
+		 * Uses cached chunk data when available for fast queries.
+		 *
+		 * @param point The 3D world position to check
+		 * @return true if point.y is below the terrain height at (point.x, point.z)
+		 */
+		bool IsPointBelowTerrain(const glm::vec3& point) const;
+
+		/**
+		 * @brief Get the signed distance from a point to the terrain surface.
+		 *
+		 * Positive = above terrain, Negative = below terrain.
+		 * Uses cached chunk data when available.
+		 *
+		 * @param point The 3D world position
+		 * @return Signed vertical distance (point.y - terrain_height)
+		 */
+		float GetDistanceAboveTerrain(const glm::vec3& point) const;
+
+		/**
+		 * @brief Get distance and direction to the closest terrain point.
+		 *
+		 * Uses cached chunk data for fast approximate queries. The result is
+		 * the vector from the input point to the nearest terrain surface point.
+		 *
+		 * @param point The 3D world position
+		 * @return Tuple of (distance, direction_to_terrain). Direction is normalized.
+		 *         If point is below terrain, direction points upward.
+		 */
+		std::tuple<float, glm::vec3> GetClosestTerrainInfo(const glm::vec3& point) const;
+
+		/**
+		 * @brief Raycast against terrain, preferring cached chunk data.
+		 *
+		 * Faster than full Raycast() when the ray is within cached terrain bounds.
+		 *
+		 * @param origin Ray origin point
+		 * @param direction Ray direction (should be normalized)
+		 * @param max_distance Maximum distance to check
+		 * @param out_distance Output: distance to hit point (if hit)
+		 * @param out_normal Output: surface normal at hit point (if hit)
+		 * @return true if terrain was hit within max_distance
+		 */
+		bool RaycastCached(
+			const glm::vec3& origin,
+			const glm::vec3& direction,
+			float            max_distance,
+			float&           out_distance,
+			glm::vec3&       out_normal
+		) const;
+
+		/**
+		 * @brief Check if a world position is within the currently cached terrain area.
+		 *
+		 * Useful for determining whether cache-preferring queries will be fast.
+		 *
+		 * @param x World X coordinate
+		 * @param z World Z coordinate
+		 * @return true if the position is within a cached chunk
+		 */
+		bool IsPositionCached(float x, float z) const;
+
 	private:
 		glm::vec2 findClosestPointOnPath(glm::vec2 sample_pos) const;
 		glm::vec3 getPathInfluence(float x, float z) const;
+
+		// Helper for cache-based interpolation
+		std::optional<std::tuple<float, glm::vec3>> InterpolateFromCachedChunk(float x, float z) const;
 
 		// Phong tessellation helpers (matching the shader)
 		glm::vec3 projectPointOnPlane(glm::vec3 q, glm::vec3 v, glm::vec3 n) const {

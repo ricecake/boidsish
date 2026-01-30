@@ -908,4 +908,228 @@ namespace Boidsish {
 
 		return stitched_texture;
 	}
+
+	// ========== Cache-Preferring Terrain Query Implementations ==========
+
+	std::optional<std::tuple<float, glm::vec3>> TerrainGenerator::InterpolateFromCachedChunk(float x, float z) const {
+		// Determine which chunk this position belongs to
+		int chunk_x = static_cast<int>(std::floor(x / static_cast<float>(chunk_size_)));
+		int chunk_z = static_cast<int>(std::floor(z / static_cast<float>(chunk_size_)));
+
+		std::lock_guard<std::recursive_mutex> lock(chunk_cache_mutex_);
+
+		auto it = chunk_cache_.find({chunk_x, chunk_z});
+		if (it == chunk_cache_.end() || !it->second) {
+			return std::nullopt; // Chunk not cached
+		}
+
+		const auto& terrain = it->second;
+		const auto& vertices = terrain->vertices;
+		const auto& normals = terrain->normals;
+
+		if (vertices.empty()) {
+			return std::nullopt;
+		}
+
+		// Convert world position to local chunk coordinates
+		float chunk_origin_x = chunk_x * static_cast<float>(chunk_size_);
+		float chunk_origin_z = chunk_z * static_cast<float>(chunk_size_);
+		float local_x = x - chunk_origin_x;
+		float local_z = z - chunk_origin_z;
+
+		// Terrain mesh is generated with 1-unit spacing between vertices
+		// The chunk has (chunk_size_ + 1) vertices along each edge
+		int grid_size = chunk_size_ + 1;
+
+		// Find the grid cell
+		int ix = static_cast<int>(std::floor(local_x));
+		int iz = static_cast<int>(std::floor(local_z));
+
+		// Clamp to valid range
+		ix = std::clamp(ix, 0, chunk_size_ - 1);
+		iz = std::clamp(iz, 0, chunk_size_ - 1);
+
+		// Get the 4 corner vertex indices
+		int idx00 = iz * grid_size + ix;
+		int idx10 = iz * grid_size + (ix + 1);
+		int idx01 = (iz + 1) * grid_size + ix;
+		int idx11 = (iz + 1) * grid_size + (ix + 1);
+
+		// Bounds check
+		if (idx11 >= static_cast<int>(vertices.size())) {
+			return std::nullopt;
+		}
+
+		// Bilinear interpolation factors
+		float fx = local_x - static_cast<float>(ix);
+		float fz = local_z - static_cast<float>(iz);
+		fx = std::clamp(fx, 0.0f, 1.0f);
+		fz = std::clamp(fz, 0.0f, 1.0f);
+
+		// Interpolate position (we really just need height, Y component)
+		glm::vec3 v00 = vertices[idx00];
+		glm::vec3 v10 = vertices[idx10];
+		glm::vec3 v01 = vertices[idx01];
+		glm::vec3 v11 = vertices[idx11];
+
+		float h00 = v00.y;
+		float h10 = v10.y;
+		float h01 = v01.y;
+		float h11 = v11.y;
+
+		float height = h00 * (1 - fx) * (1 - fz) + h10 * fx * (1 - fz) + h01 * (1 - fx) * fz + h11 * fx * fz;
+
+		// Interpolate normal
+		glm::vec3 n00 = normals[idx00];
+		glm::vec3 n10 = normals[idx10];
+		glm::vec3 n01 = normals[idx01];
+		glm::vec3 n11 = normals[idx11];
+
+		glm::vec3 normal = n00 * (1 - fx) * (1 - fz) + n10 * fx * (1 - fz) + n01 * (1 - fx) * fz + n11 * fx * fz;
+		normal = glm::normalize(normal);
+
+		return std::make_tuple(height, normal);
+	}
+
+	bool TerrainGenerator::IsPositionCached(float x, float z) const {
+		int chunk_x = static_cast<int>(std::floor(x / static_cast<float>(chunk_size_)));
+		int chunk_z = static_cast<int>(std::floor(z / static_cast<float>(chunk_size_)));
+
+		std::lock_guard<std::recursive_mutex> lock(chunk_cache_mutex_);
+		return chunk_cache_.find({chunk_x, chunk_z}) != chunk_cache_.end();
+	}
+
+	std::tuple<float, glm::vec3> TerrainGenerator::GetCachedPointProperties(float x, float z) const {
+		// Try cache first
+		auto cached = InterpolateFromCachedChunk(x, z);
+		if (cached.has_value()) {
+			return cached.value();
+		}
+
+		// Fall back to procedural generation
+		return pointProperties(x, z);
+	}
+
+	bool TerrainGenerator::IsPointBelowTerrain(const glm::vec3& point) const {
+		auto [height, normal] = GetCachedPointProperties(point.x, point.z);
+		return point.y < height;
+	}
+
+	float TerrainGenerator::GetDistanceAboveTerrain(const glm::vec3& point) const {
+		auto [height, normal] = GetCachedPointProperties(point.x, point.z);
+		return point.y - height;
+	}
+
+	std::tuple<float, glm::vec3> TerrainGenerator::GetClosestTerrainInfo(const glm::vec3& point) const {
+		auto [height, normal] = GetCachedPointProperties(point.x, point.z);
+
+		// The closest point on terrain directly below/above the query point
+		glm::vec3 terrain_point(point.x, height, point.z);
+		glm::vec3 to_terrain = terrain_point - point;
+		float     distance = glm::length(to_terrain);
+
+		if (distance < 0.0001f) {
+			// Point is essentially on the terrain surface
+			return {0.0f, normal};
+		}
+
+		// Direction to the closest terrain point
+		glm::vec3 direction = to_terrain / distance;
+
+		// If point is below terrain, we want to point upward (toward the surface)
+		// The normal already points "up" from the terrain surface
+		if (point.y < height) {
+			// Below terrain - use the surface normal as the escape direction
+			direction = normal;
+			distance = height - point.y; // Vertical distance to surface
+		}
+
+		return {distance, direction};
+	}
+
+	bool TerrainGenerator::RaycastCached(
+		const glm::vec3& origin,
+		const glm::vec3& direction,
+		float            max_distance,
+		float&           out_distance,
+		glm::vec3&       out_normal
+	) const {
+		// Use smaller step size for more precision, adaptive based on terrain scale
+		constexpr float step_size = 0.5f;
+		float           current_dist = 0.0f;
+		glm::vec3       dir = glm::normalize(direction);
+
+		// Track if we're using cached data or not
+		bool all_cached = true;
+
+		// Ray marching with cache-preferring height queries
+		glm::vec3 prev_pos = origin;
+		float     prev_height = 0.0f;
+		bool      prev_valid = false;
+
+		while (current_dist < max_distance) {
+			glm::vec3 current_pos = origin + dir * current_dist;
+
+			// Try to get height from cache
+			auto cached = InterpolateFromCachedChunk(current_pos.x, current_pos.z);
+
+			float     terrain_height;
+			glm::vec3 surface_normal;
+
+			if (cached.has_value()) {
+				std::tie(terrain_height, surface_normal) = cached.value();
+			} else {
+				// Fall back to procedural - note we're no longer fully cached
+				all_cached = false;
+				std::tie(terrain_height, surface_normal) = pointProperties(current_pos.x, current_pos.z);
+			}
+
+			if (current_pos.y < terrain_height) {
+				// We found an intersection - refine with binary search
+				float start_dist = prev_valid ? (current_dist - step_size) : 0.0f;
+				float end_dist = current_dist;
+
+				constexpr int binary_search_steps = 8;
+				for (int i = 0; i < binary_search_steps; ++i) {
+					float     mid_dist = (start_dist + end_dist) * 0.5f;
+					glm::vec3 mid_pos = origin + dir * mid_dist;
+
+					auto  mid_cached = InterpolateFromCachedChunk(mid_pos.x, mid_pos.z);
+					float mid_height;
+					if (mid_cached.has_value()) {
+						mid_height = std::get<0>(mid_cached.value());
+					} else {
+						mid_height = std::get<0>(pointProperties(mid_pos.x, mid_pos.z));
+					}
+
+					if (mid_pos.y < mid_height) {
+						end_dist = mid_dist;
+					} else {
+						start_dist = mid_dist;
+					}
+				}
+
+				out_distance = (start_dist + end_dist) * 0.5f;
+
+				// Get the normal at the hit point
+				glm::vec3 hit_pos = origin + dir * out_distance;
+				auto      hit_cached = InterpolateFromCachedChunk(hit_pos.x, hit_pos.z);
+				if (hit_cached.has_value()) {
+					out_normal = std::get<1>(hit_cached.value());
+				} else {
+					out_normal = std::get<1>(pointProperties(hit_pos.x, hit_pos.z));
+				}
+
+				return true;
+			}
+
+			prev_pos = current_pos;
+			prev_height = terrain_height;
+			prev_valid = true;
+			current_dist += step_size;
+		}
+
+		return false; // No hit
+	}
+
 } // namespace Boidsish
