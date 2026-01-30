@@ -51,11 +51,23 @@ namespace Boidsish {
 	}
 
 	void Mesh::render() const {
+		// Check if Shape::shader is valid before rendering
+		if (!Shape::shader || !Shape::shader->isValid())
+			return;
+
+		// Ensure VAO is valid
+		if (VAO == 0 || indices.empty())
+			return;
+
 		// bind appropriate textures
 		unsigned int diffuseNr = 1;
 		unsigned int specularNr = 1;
 		unsigned int normalNr = 1;
 		unsigned int heightNr = 1;
+
+		// Ensure the correct shader is bound before setting uniforms
+		Shape::shader->use();
+
 		for (unsigned int i = 0; i < textures.size(); i++) {
 			glActiveTexture(GL_TEXTURE0 + i); // active proper texture unit before binding
 			// retrieve texture number (the N in diffuse_textureN)

@@ -100,6 +100,10 @@ namespace Boidsish {
 			return;
 		}
 
+		// Ensure VAO and shader are valid
+		if (vao_ == 0 || !terrain_shader_ || !terrain_shader_->isValid())
+			return;
+
 		terrain_shader_->use();
 		terrain_shader_->setMat4("model", GetModelMatrix());
 

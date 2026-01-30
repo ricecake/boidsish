@@ -156,6 +156,8 @@ protected:
 
 class Shader: public ShaderBase {
 public:
+	bool valid_{false}; // Track if shader compiled successfully
+
 	// constructor generates the shader on the fly
 	// ------------------------------------------------------------------------
 	Shader(
@@ -198,12 +200,21 @@ public:
 		vertex = glCreateShader(GL_VERTEX_SHADER);
 		glShaderSource(vertex, 1, &vShaderCode, NULL);
 		glCompileShader(vertex);
-		checkCompileErrors(vertex, "VERTEX", vertexPath);
+		if (!checkCompileErrors(vertex, "VERTEX", vertexPath)) {
+			glDeleteShader(vertex);
+			ID = 0;
+			return;
+		}
 		// fragment Shader
 		fragment = glCreateShader(GL_FRAGMENT_SHADER);
 		glShaderSource(fragment, 1, &fShaderCode, NULL);
 		glCompileShader(fragment);
-		checkCompileErrors(fragment, "FRAGMENT", fragmentPath);
+		if (!checkCompileErrors(fragment, "FRAGMENT", fragmentPath)) {
+			glDeleteShader(vertex);
+			glDeleteShader(fragment);
+			ID = 0;
+			return;
+		}
 
 		unsigned int tessControl, tessEvaluation;
 		if (tessControlPath != nullptr && tessEvaluationPath != nullptr) {
@@ -211,13 +222,26 @@ public:
 			tessControl = glCreateShader(GL_TESS_CONTROL_SHADER);
 			glShaderSource(tessControl, 1, &tcShaderCode, NULL);
 			glCompileShader(tessControl);
-			checkCompileErrors(tessControl, "TESS_CONTROL", tessControlPath);
+			if (!checkCompileErrors(tessControl, "TESS_CONTROL", tessControlPath)) {
+				glDeleteShader(vertex);
+				glDeleteShader(fragment);
+				glDeleteShader(tessControl);
+				ID = 0;
+				return;
+			}
 
 			const char* teShaderCode = tessEvaluationCode.c_str();
 			tessEvaluation = glCreateShader(GL_TESS_EVALUATION_SHADER);
 			glShaderSource(tessEvaluation, 1, &teShaderCode, NULL);
 			glCompileShader(tessEvaluation);
-			checkCompileErrors(tessEvaluation, "TESS_EVALUATION", tessEvaluationPath);
+			if (!checkCompileErrors(tessEvaluation, "TESS_EVALUATION", tessEvaluationPath)) {
+				glDeleteShader(vertex);
+				glDeleteShader(fragment);
+				glDeleteShader(tessControl);
+				glDeleteShader(tessEvaluation);
+				ID = 0;
+				return;
+			}
 		}
 
 		// if geometry shader is given, compile geometry shader
@@ -227,7 +251,17 @@ public:
 			geometry = glCreateShader(GL_GEOMETRY_SHADER);
 			glShaderSource(geometry, 1, &gShaderCode, NULL);
 			glCompileShader(geometry);
-			checkCompileErrors(geometry, "GEOMETRY", geometryPath);
+			if (!checkCompileErrors(geometry, "GEOMETRY", geometryPath)) {
+				glDeleteShader(vertex);
+				glDeleteShader(fragment);
+				if (tessControlPath != nullptr && tessEvaluationPath != nullptr) {
+					glDeleteShader(tessControl);
+					glDeleteShader(tessEvaluation);
+				}
+				glDeleteShader(geometry);
+				ID = 0;
+				return;
+			}
 		}
 
 		// shader Program
@@ -243,7 +277,20 @@ public:
 		}
 
 		glLinkProgram(ID);
-		checkCompileErrors(ID, "PROGRAM", vertexPath);
+		if (!checkCompileErrors(ID, "PROGRAM", vertexPath)) {
+			glDeleteShader(vertex);
+			glDeleteShader(fragment);
+			if (tessControlPath != nullptr && tessEvaluationPath != nullptr) {
+				glDeleteShader(tessControl);
+				glDeleteShader(tessEvaluation);
+			}
+			if (geometryPath != nullptr) {
+				glDeleteShader(geometry);
+			}
+			glDeleteProgram(ID);
+			ID = 0;
+			return;
+		}
 
 		// delete the shaders as they're linked into our program now and no longer necessary
 		glDeleteShader(vertex);
@@ -255,7 +302,11 @@ public:
 		if (geometryPath != nullptr) {
 			glDeleteShader(geometry);
 		}
+
+		valid_ = true;
 	}
+
+	bool isValid() const { return valid_ && ID != 0; }
 };
 
 class ComputeShader: public ShaderBase {

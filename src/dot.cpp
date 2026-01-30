@@ -21,6 +21,10 @@ namespace Boidsish {
 	}
 
 	void Dot::render(Shader& shader, const glm::mat4& model_matrix) const {
+		// Ensure sphere VAO is initialized
+		if (sphere_vao_ == 0)
+			return;
+
 		shader.setMat4("model", model_matrix);
 		shader.setVec3("objectColor", GetR(), GetG(), GetB());
 		shader.setFloat("objectAlpha", GetA());

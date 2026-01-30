@@ -501,7 +501,7 @@ namespace Boidsish {
 	) {
 		std::lock_guard<std::mutex> lock(mutex_);
 
-		if (visible_instances_.empty()) {
+		if (visible_instances_.empty() || grid_vao_ == 0 || grid_index_count_ == 0) {
 			return;
 		}
 

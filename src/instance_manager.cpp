@@ -120,6 +120,10 @@ namespace Boidsish {
 	}
 
 	void InstanceManager::RenderDotGroup(Shader& shader, InstanceGroup& group) {
+		// Ensure sphere VAO is initialized before rendering
+		if (Shape::sphere_vao_ == 0)
+			return;
+
 		// Build instance matrices and colors
 		std::vector<glm::mat4> model_matrices;
 		std::vector<glm::vec4> colors;
