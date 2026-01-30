@@ -28,6 +28,9 @@ namespace Boidsish {
 		// Initialize shaders and buffers. Must be called from main thread with OpenGL context.
 		void Initialize();
 
+		// Returns true if fire effects are available (compute shader compiled successfully)
+		bool IsAvailable() const;
+
 		void Update(float delta_time, float time);
 		void Render(const glm::mat4& view, const glm::mat4& projection, const glm::vec3& camera_pos);
 

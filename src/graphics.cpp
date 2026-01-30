@@ -7,6 +7,7 @@
 #include <memory>
 #include <optional>
 #include <set>
+#include <thread>
 #include <vector>
 
 #include "ConfigManager.h"
@@ -180,6 +181,8 @@ namespace Boidsish {
 
 		InputState                                             input_state{};
 		std::vector<InputCallback>                             input_callbacks;
+		std::vector<PrepareCallback>                           prepare_callbacks;
+		bool                                                   prepared_{false};
 		std::unique_ptr<UI::UIManager>                         ui_manager;
 		std::unique_ptr<HudManager>                            hud_manager;
 		std::unique_ptr<PostProcessing::PostProcessingManager> post_processing_manager_;
@@ -2311,7 +2314,81 @@ namespace Boidsish {
 		glfwSwapBuffers(impl->window);
 	}
 
+	void Visualizer::Prepare() {
+		if (impl->prepared_) {
+			return; // Already prepared
+		}
+
+		logger::LOG("Preparing visualizer...");
+
+		// --- Pre-flight validation ---
+		// Verify critical systems are initialized
+		if (!impl->shader || impl->shader->ID == 0) {
+			logger::ERROR("Main shader failed to compile - visualization may not work correctly");
+		}
+
+		// --- Warm up terrain cache ---
+		if (impl->terrain_generator) {
+			logger::LOG("Warming up terrain cache around camera position...");
+
+			// Construct view and projection matrices from camera state
+			glm::vec3 cameraPos(impl->camera.x, impl->camera.y, impl->camera.z);
+			glm::mat4 view = glm::lookAt(cameraPos, cameraPos + impl->camera.front(), impl->camera.up());
+			glm::mat4 proj = glm::perspective(
+				glm::radians(impl->camera.fov),
+				(float)impl->width / (float)impl->height,
+				0.1f,
+				1000.0f
+			);
+
+			// Update terrain once to start chunk loading around the camera
+			impl->terrain_generator->update(impl->CalculateFrustum(view, proj), impl->camera);
+
+			// Process any pending async chunk loads
+			// Give terrain generation a head start
+			for (int i = 0; i < 10; ++i) {
+				impl->terrain_generator->update(impl->CalculateFrustum(view, proj), impl->camera);
+				std::this_thread::sleep_for(std::chrono::milliseconds(10));
+			}
+		}
+
+		// --- Verify GPU features ---
+		if (impl->fire_effect_manager) {
+			logger::LOG(
+				"Fire effect system: " +
+				std::string(
+					impl->fire_effect_manager->IsAvailable() ? "ready" : "disabled (compute shader unavailable)"
+				)
+			);
+		}
+		if (impl->mesh_explosion_manager) {
+			logger::LOG(
+				"Mesh explosion system: " +
+				std::string(
+					impl->mesh_explosion_manager->IsAvailable() ? "ready" : "disabled (compute shader unavailable)"
+				)
+			);
+		}
+
+		// --- Invoke user prepare callbacks ---
+		if (!impl->prepare_callbacks.empty()) {
+			logger::LOG("Invoking " + std::to_string(impl->prepare_callbacks.size()) + " prepare callback(s)...");
+			for (auto& callback : impl->prepare_callbacks) {
+				callback(*this);
+			}
+		}
+
+		impl->prepared_ = true;
+		logger::LOG("Visualizer prepared and ready");
+	}
+
+	void Visualizer::AddPrepareCallback(PrepareCallback callback) {
+		impl->prepare_callbacks.push_back(std::move(callback));
+	}
+
 	void Visualizer::Run() {
+		Prepare(); // Ensure system is ready before starting main loop
+
 		while (!ShouldClose()) {
 			Update();
 			Render();

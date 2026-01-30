@@ -17,6 +17,10 @@ namespace Boidsish {
 		_Initialize();
 	}
 
+	bool MeshExplosionManager::IsAvailable() const {
+		return initialized_ && compute_shader_ && compute_shader_->isValid();
+	}
+
 	MeshExplosionManager::~MeshExplosionManager() {
 		if (ssbo_ != 0) {
 			glDeleteBuffers(1, &ssbo_);

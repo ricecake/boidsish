@@ -74,7 +74,11 @@ namespace Boidsish {
 
 	enum class CameraMode { FREE, AUTO, TRACKING, STATIONARY, CHASE, PATH_FOLLOW };
 
+	// Forward declaration for PrepareCallback
+	class Visualizer;
+
 	using InputCallback = std::function<void(const InputState&)>;
+	using PrepareCallback = std::function<void(Visualizer&)>;
 
 	// Camera structure for 3D view control
 	struct Camera {
@@ -137,6 +141,23 @@ namespace Boidsish {
 
 		// Start the visualization loop
 		void Run();
+
+		// Prepare the visualizer for running. Called automatically by Run(), but can be called
+		// manually if you need to ensure all systems are ready before starting.
+		// This handles:
+		// - Pre-flight checks and validation
+		// - Cache warming (terrain chunks, textures)
+		// - Invoking registered prepare callbacks
+		// Safe to call multiple times (will only prepare once).
+		void Prepare();
+
+		// Add a callback to be invoked during Prepare(), after all internal systems
+		// are ready but before the main loop starts. Useful for:
+		// - Loading additional resources
+		// - Setting up initial game state
+		// - Pre-spawning entities
+		// Callbacks are invoked in the order they were added.
+		void AddPrepareCallback(PrepareCallback callback);
 
 		// Check if the window should close
 		bool ShouldClose() const;

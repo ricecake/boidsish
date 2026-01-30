@@ -26,6 +26,10 @@ namespace Boidsish {
 		_EnsureShaderAndBuffers();
 	}
 
+	bool FireEffectManager::IsAvailable() const {
+		return initialized_ && compute_shader_ && compute_shader_->isValid();
+	}
+
 	FireEffectManager::~FireEffectManager() {
 		if (particle_buffer_ != 0) {
 			glDeleteBuffers(1, &particle_buffer_);

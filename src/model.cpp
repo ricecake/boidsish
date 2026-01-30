@@ -182,7 +182,7 @@ namespace Boidsish {
 		}
 
 		for (unsigned int i = 0; i < meshes.size(); i++) {
-			meshes[i].render(shader);  // Use the passed shader, not Shape::shader
+			meshes[i].render(shader); // Use the passed shader, not Shape::shader
 		}
 
 		if (this->no_cull_) {
