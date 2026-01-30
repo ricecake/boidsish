@@ -6,6 +6,17 @@
 
 namespace Boidsish {
 
+	InstanceManager::~InstanceManager() {
+		for (auto& [key, group] : m_instance_groups) {
+			if (group.instance_matrix_vbo_ != 0) {
+				glDeleteBuffers(1, &group.instance_matrix_vbo_);
+			}
+			if (group.instance_color_vbo_ != 0) {
+				glDeleteBuffers(1, &group.instance_color_vbo_);
+			}
+		}
+	}
+
 	void InstanceManager::AddInstance(std::shared_ptr<Shape> shape) {
 		// Group by instance key - same key means shapes can be instanced together
 		m_instance_groups[shape->GetInstanceKey()].shapes.push_back(shape);
