@@ -97,6 +97,23 @@ namespace Boidsish {
 		glActiveTexture(GL_TEXTURE0);
 	}
 
+	void Mesh::render(Shader& shader) const {
+		// Ensure VAO is valid
+		if (VAO == 0 || indices.empty())
+			return;
+
+		// Bind textures using the provided shader
+		bindTextures(shader);
+
+		// draw mesh
+		glBindVertexArray(VAO);
+		glDrawElements(GL_TRIANGLES, static_cast<unsigned int>(indices.size()), GL_UNSIGNED_INT, 0);
+		glBindVertexArray(0);
+
+		// always good practice to set everything back to defaults once configured.
+		glActiveTexture(GL_TEXTURE0);
+	}
+
 	void Mesh::render_instanced(int count) const {
 		glBindVertexArray(VAO);
 		glDrawElementsInstanced(GL_TRIANGLES, static_cast<unsigned int>(indices.size()), GL_UNSIGNED_INT, 0, count);
@@ -165,7 +182,7 @@ namespace Boidsish {
 		}
 
 		for (unsigned int i = 0; i < meshes.size(); i++) {
-			meshes[i].render();
+			meshes[i].render(shader);  // Use the passed shader, not Shape::shader
 		}
 
 		if (this->no_cull_) {
