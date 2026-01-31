@@ -14,6 +14,7 @@ namespace Boidsish {
 		GuidedMissileLauncher(int id, Vector3 pos, glm::quat orientation);
 
 		void UpdateEntity(const EntityHandler& handler, float time, float delta_time) override;
+		void Destroy(const EntityHandler& handler);
 
 	private:
 		float                time_since_last_fire_ = 0.0f;

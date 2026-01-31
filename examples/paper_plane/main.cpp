@@ -32,6 +32,15 @@ int main() {
 		teapot_props.align_to_terrain = true; // Align to slope
 		decor->AddDecorType("assets/tree01.obj", teapot_props);
 
+		/*
+		Want to admust the foliage so that it picks a density between min and max for each chunk as the target density.
+		Then it should distribute items such that each one gets placed correctly.
+		Need to consider it from the compute angle though.
+		Need to use a deterministic function to figure out the weight for each chunk.
+		Then need to use a deterministic function to figure out where each item goes.
+		Similar to the fire system balancing, but everything has a uniform density...density.
+		*/
+
 		visualizer->AddHudIcon(
 			{1, "assets/missile-icon.png", HudAlignment::TOP_LEFT, {10, 10}, {64, 64}, selected_weapon == 0}
 		);

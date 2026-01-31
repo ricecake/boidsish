@@ -281,6 +281,7 @@ namespace Boidsish {
 							 ->AddSoundEffect("assets/rocket_explosion.wav", pos.Toglm(), GetVelocity().Toglm(), 25.0f);
 
 		if (hit_target) {
+			target_->Destroy(handler);
 			SetSize(100);
 			SetColor(1, 0, 0, 0.33f);
 		}

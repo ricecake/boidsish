@@ -86,4 +86,9 @@ namespace Boidsish {
 		}
 	}
 
+	void GuidedMissileLauncher::Destroy(const EntityHandler& handler) {
+		handler.vis->TriggerComplexExplosion(shape_, glm::vec3(0.0f, 1.0f, 0.0f), 2.0f, FireEffectStyle::Explosion);
+		handler.QueueRemoveEntity(GetId());
+	}
+
 } // namespace Boidsish
