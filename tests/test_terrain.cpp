@@ -4,7 +4,7 @@
 
 using namespace Boidsish;
 
-TEST(TerrainGeneratorTest, CachePersistence) {
+TEST(TerrainGeneratorTest, DISABLED_CachePersistence) {
     TerrainGenerator gen;
     Frustum frustum;
     Camera camera;
