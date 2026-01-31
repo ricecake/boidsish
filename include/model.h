@@ -8,6 +8,9 @@
 #include <assimp/postprocess.h>
 #include <assimp/scene.h>
 #include <glm/glm.hpp>
+#include <map>
+#include "anim_data.h"
+#include "assimp_glm_helpers.h"
 
 class Shader;
 
@@ -75,6 +78,9 @@ namespace Boidsish {
 		// Get the model path
 		const std::string& GetModelPath() const { return model_path_; }
 
+		auto& GetBoneInfoMap() { return m_BoneInfoMap; }
+		int&  GetBoneCount() { return m_BoneCount; }
+
 	private:
 		// Model data
 		glm::quat            base_rotation_ = glm::quat(1.0f, 0.0f, 0.0f, 0.0f);
@@ -84,8 +90,15 @@ namespace Boidsish {
 		bool                 no_cull_ = false;
 		std::vector<Texture> textures_loaded_;
 
+		std::map<std::string, BoneInfo> m_BoneInfoMap;
+		int                             m_BoneCount = 0;
+
 		// Loads a model with supported ASSIMP extensions from file and stores the resulting meshes in meshes vector.
 		void loadModel(const std::string& path);
+
+		void SetVertexBoneDataToDefault(Vertex& vertex);
+		void SetVertexBoneData(Vertex& vertex, int boneID, float weight);
+		void ExtractBoneWeightForVertices(std::vector<Vertex>& vertices, aiMesh* mesh, const aiScene* scene);
 
 		// Processes a node in a recursive fashion. Processes each individual mesh located at the node and repeats this
 		// process on its children nodes (if any).

@@ -1,5 +1,6 @@
 #include "model.h"
 
+#include "animation.h"
 #include <algorithm>
 #include <iostream>
 
@@ -47,6 +48,13 @@ namespace Boidsish {
 		// Vertex Texture Coords
 		glEnableVertexAttribArray(2);
 		glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)offsetof(Vertex, TexCoords));
+		// ids
+		glEnableVertexAttribArray(8);
+		glVertexAttribIPointer(8, 4, GL_INT, sizeof(Vertex), (void*)offsetof(Vertex, m_BoneIDs));
+
+		// weights
+		glEnableVertexAttribArray(9);
+		glVertexAttribPointer(9, 4, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)offsetof(Vertex, m_Weights));
 
 		glBindVertexArray(0);
 	}
@@ -276,6 +284,7 @@ namespace Boidsish {
 
 		for (unsigned int i = 0; i < mesh->mNumVertices; i++) {
 			Vertex    vertex;
+			SetVertexBoneDataToDefault(vertex);
 			glm::vec3 vector;
 			// positions
 			vector.x = mesh->mVertices[i].x;
@@ -300,6 +309,8 @@ namespace Boidsish {
 			}
 			vertices.push_back(vertex);
 		}
+
+		ExtractBoneWeightForVertices(vertices, mesh, scene);
 		// now wak all of the mesh's faces (a face is a mesh its triangle) and retrieve the corresponding vertex
 		// indices.
 		for (unsigned int i = 0; i < mesh->mNumFaces; i++) {
@@ -389,6 +400,53 @@ namespace Boidsish {
 			}
 		}
 		return textures;
+	}
+
+	void Model::SetVertexBoneDataToDefault(Vertex& vertex) {
+		for (int i = 0; i < MAX_BONE_INFLUENCE; i++) {
+			vertex.m_BoneIDs[i] = -1;
+			vertex.m_Weights[i] = 0.0f;
+		}
+	}
+
+	void Model::SetVertexBoneData(Vertex& vertex, int boneID, float weight) {
+		for (int i = 0; i < MAX_BONE_INFLUENCE; i++) {
+			if (vertex.m_BoneIDs[i] < 0) {
+				vertex.m_Weights[i] = weight;
+				vertex.m_BoneIDs[i] = boneID;
+				break;
+			}
+		}
+	}
+
+	void Model::ExtractBoneWeightForVertices(std::vector<Vertex>& vertices, aiMesh* mesh, const aiScene* scene) {
+		auto& boneInfoMap = m_BoneInfoMap;
+		int&  boneCount = m_BoneCount;
+
+		for (int boneIndex = 0; boneIndex < mesh->mNumBones; ++boneIndex) {
+			int         boneID = -1;
+			std::string boneName = mesh->mBones[boneIndex]->mName.C_Str();
+			if (boneInfoMap.find(boneName) == boneInfoMap.end()) {
+				BoneInfo newBoneInfo;
+				newBoneInfo.id = boneCount;
+				newBoneInfo.offset = AssimpGLMHelpers::ConvertMatrixToGLMFormat(mesh->mBones[boneIndex]->mOffsetMatrix);
+				boneInfoMap[boneName] = newBoneInfo;
+				boneID = boneCount;
+				boneCount++;
+			} else {
+				boneID = boneInfoMap[boneName].id;
+			}
+			assert(boneID != -1);
+			auto weights = mesh->mBones[boneIndex]->mWeights;
+			int  numWeights = mesh->mBones[boneIndex]->mNumWeights;
+
+			for (int weightIndex = 0; weightIndex < numWeights; ++weightIndex) {
+				int   vertexId = weights[weightIndex].mVertexId;
+				float weight = weights[weightIndex].mWeight;
+				assert(vertexId < vertices.size());
+				SetVertexBoneData(vertices[vertexId], boneID, weight);
+			}
+		}
 	}
 
 	unsigned int Model::TextureFromFile(const char* path, const std::string& directory, bool /* gamma */) {
