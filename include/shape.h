@@ -217,6 +217,7 @@ namespace Boidsish {
 		// Shared sphere mesh (public for instancing support)
 		static unsigned int sphere_vao_;
 		static unsigned int sphere_vbo_;
+		static unsigned int sphere_ebo_;
 		static int          sphere_vertex_count_;
 	};
 
