@@ -63,6 +63,29 @@
 
 namespace Boidsish {
 
+	/**
+	 * @brief Registers core C++ constants for use within shaders.
+	 * This ensures that shader-side buffers and loops always match C++ expectations.
+	 */
+	static void RegisterShaderConstants() {
+		static bool registered = false;
+		if (registered)
+			return;
+
+		// Lighting and Shadows
+		ShaderBase::RegisterConstant("MAX_LIGHTS", Constants::Class::Shadows::MaxLights());
+		ShaderBase::RegisterConstant("MAX_SHADOW_MAPS", Constants::Class::Shadows::MaxShadowMaps());
+		ShaderBase::RegisterConstant("MAX_CASCADES", Constants::Class::Shadows::MaxCascades());
+
+		// Terrain and Decor
+		ShaderBase::RegisterConstant("CHUNK_SIZE", Constants::Class::Terrain::ChunkSize());
+
+		// Effects
+		ShaderBase::RegisterConstant("MAX_SHOCKWAVES", Constants::Class::Shockwaves::MaxShockwaves());
+
+		registered = true;
+	}
+
 	// OpenGL Debug callback for diagnosing GPU errors
 	static void GLAPIENTRY OpenGLDebugCallback(
 		GLenum        source,
@@ -282,6 +305,7 @@ namespace Boidsish {
 		std::unique_ptr<AudioManager>      audio_manager;
 
 		VisualizerImpl(Visualizer* p, int w, int h, const char* title): parent(p), width(w), height(h) {
+			RegisterShaderConstants();
 			ConfigManager::GetInstance().Initialize(title);
 			enable_hdr_ = ConfigManager::GetInstance().GetAppSettingBool("enable_hdr", false);
 			width = ConfigManager::GetInstance().GetAppSettingInt("window_width", w);
