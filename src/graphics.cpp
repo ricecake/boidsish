@@ -433,7 +433,7 @@ namespace Boidsish {
 				);
 			}
 
-			// Frustum UBO for GPU-side culling (binding point 3)
+			// Frustum UBO for GPU-side culling
 			// Layout: 6 vec4 planes (96 bytes) + vec3 camera pos + padding (16 bytes) = 112 bytes
 			glGenBuffers(1, &frustum_ubo);
 			glBindBuffer(GL_UNIFORM_BUFFER, frustum_ubo);
