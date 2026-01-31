@@ -21,8 +21,8 @@ int main() {
 
 		// Missiles - always point up regardless of terrain (like trees)
 		DecorProperties missile_props;
-		teapot_props.min_density = 0.01f;
-		teapot_props.max_density = 0.2f;
+		missile_props.min_density = 0.01f;
+		missile_props.max_density = 0.2f;
 		missile_props.base_scale = 0.001f;
 		missile_props.scale_variance = 0.005f;
 		missile_props.base_rotation = glm::vec3(-90.0f, 0.0f, 0.0f); // Point upward (rotate -90 on X)
@@ -37,7 +37,10 @@ int main() {
 	cam.pitch = -30.0f;
 	vis.SetCamera(cam);
 
-	vis.Run();
+	while (!vis.ShouldClose()) {
+		vis.Update();
+		vis.Render();
+	}
 
 	return 0;
 }
