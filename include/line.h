@@ -1,5 +1,6 @@
 #pragma once
 
+#include <string>
 #include "shape.h"
 #include <glm/glm.hpp>
 

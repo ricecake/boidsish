@@ -37,6 +37,7 @@ set(IMGUI_INCLUDE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/${IMGUI_DIR}" CACHE PATH "" F
 
 get_directory_property(OLD_COMPILE_OPTIONS COMPILE_OPTIONS)
 add_compile_options(-w) # Disable all warnings for GCC/Clang for external libraries
+set(BUILD_TESTING OFF CACHE BOOL "Disable submodule tests" FORCE)
 add_subdirectory(external/task-thread-pool)
 add_subdirectory(external/poolSTL)
 add_subdirectory(external/libmorton)
@@ -129,13 +130,48 @@ else()
 endif()
 
 # 6. Build Tests
+enable_testing()
 find_package(GTest REQUIRED)
 include_directories(${GTEST_INCLUDE_DIRS})
 
-add_executable(run_tests tests/test_rigid_body.cpp)
-target_link_libraries(run_tests PRIVATE boidsish GTest::GTest GTest::Main)
-set_target_properties(run_tests PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+# Compile-only check target
+# Using STATIC library ensures it compiles but doesn't link into a binary.
+# Linking to boidsish ensures it inherits all necessary include paths and definitions.
+add_library(check STATIC ${LIB_SOURCES})
+target_compile_definitions(check PRIVATE GLM_ENABLE_EXPERIMENTAL)
+target_link_libraries(check PRIVATE boidsish)
+
+add_executable(test_rigid_body tests/test_rigid_body.cpp)
+target_link_libraries(test_rigid_body PRIVATE boidsish GTest::GTest GTest::Main)
+set_target_properties(test_rigid_body PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+add_test(NAME test_rigid_body COMMAND test_rigid_body)
 
 add_executable(test_terrain tests/test_terrain.cpp)
 target_link_libraries(test_terrain PRIVATE boidsish GTest::GTest GTest::Main)
 set_target_properties(test_terrain PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+add_test(NAME test_terrain COMMAND test_terrain)
+
+add_executable(test_config tests/test_config.cpp)
+target_link_libraries(test_config PRIVATE boidsish GTest::GTest GTest::Main)
+set_target_properties(test_config PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+add_test(NAME test_config COMMAND test_config)
+
+add_executable(test_concurrent_queue tests/test_concurrent_queue.cpp)
+target_link_libraries(test_concurrent_queue PRIVATE boidsish GTest::GTest GTest::Main)
+set_target_properties(test_concurrent_queue PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+add_test(NAME test_concurrent_queue COMMAND test_concurrent_queue)
+
+add_executable(test_vector tests/test_vector.cpp)
+target_link_libraries(test_vector PRIVATE boidsish GTest::GTest GTest::Main)
+set_target_properties(test_vector PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+add_test(NAME test_vector COMMAND test_vector)
+
+add_executable(test_thread_pool tests/test_thread_pool.cpp)
+target_link_libraries(test_thread_pool PRIVATE boidsish GTest::GTest GTest::Main)
+set_target_properties(test_thread_pool PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+add_test(NAME test_thread_pool COMMAND test_thread_pool)
+
+add_executable(test_spline tests/test_spline.cpp)
+target_link_libraries(test_spline PRIVATE boidsish GTest::GTest GTest::Main)
+set_target_properties(test_spline PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+add_test(NAME test_spline COMMAND test_spline)
