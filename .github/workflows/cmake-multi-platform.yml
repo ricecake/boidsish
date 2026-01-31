@@ -46,6 +46,19 @@ jobs:
 
     steps:
     - uses: actions/checkout@v4
+      with:
+        submodules: recursive
+
+    - name: Install Dependencies (Ubuntu)
+      if: matrix.os == 'ubuntu-latest'
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y mesa-common-dev libgl1-mesa-dev libglu1-mesa-dev libglfw3-dev libglew-dev libglm-dev libassimp-dev libgtest-dev zlib1g-dev libgl-dev libglx-dev libopengl-dev xvfb imagemagick x11-utils x11-apps
+
+    - name: Install Dependencies (Windows)
+      if: matrix.os == 'windows-latest'
+      run: |
+        vcpkg install glew:x64-windows glfw3:x64-windows glm:x64-windows assimp:x64-windows gtest:x64-windows zlib:x64-windows
 
     - name: Set reusable strings
       # Turn repeated input strings (such as the build output directory) into step outputs. These step outputs can be used throughout the workflow file.
@@ -57,11 +70,13 @@ jobs:
     - name: Configure CMake
       # Configure CMake in a 'build' subdirectory. `CMAKE_BUILD_TYPE` is only required if you are using a single-configuration generator such as make.
       # See https://cmake.org/cmake/help/latest/variable/CMAKE_BUILD_TYPE.html?highlight=cmake_build_type
+      shell: bash
       run: >
         cmake -B ${{ steps.strings.outputs.build-output-dir }}
         -DCMAKE_CXX_COMPILER=${{ matrix.cpp_compiler }}
         -DCMAKE_C_COMPILER=${{ matrix.c_compiler }}
         -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
+        $([[ "${{ matrix.os }}" == "windows-latest" ]] && echo "-DCMAKE_TOOLCHAIN_FILE=${VCPKG_INSTALLATION_ROOT//\\//}/scripts/buildsystems/vcpkg.cmake")
         -S ${{ github.workspace }}
 
     - name: Build
@@ -72,4 +87,10 @@ jobs:
       working-directory: ${{ steps.strings.outputs.build-output-dir }}
       # Execute tests defined by the CMake configuration. Note that --build-config is needed because the default Windows generator is a multi-config generator (Visual Studio generator).
       # See https://cmake.org/cmake/help/latest/manual/ctest.1.html for more detail
-      run: ctest --build-config ${{ matrix.build_type }}
+      shell: bash
+      run: |
+        if [[ "${{ matrix.os }}" == "ubuntu-latest" ]]; then
+          xvfb-run ctest --build-config ${{ matrix.build_type }}
+        else
+          ctest --build-config ${{ matrix.build_type }}
+        fi
