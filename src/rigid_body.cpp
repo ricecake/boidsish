@@ -210,44 +210,109 @@ void RigidBody::SetAngularVelocity(const glm::vec3& velocity) {
 	twist_.real = glm::quat(0, velocity.x, velocity.y, velocity.z);
 }
 
+void RigidBody::AddWrench(const glm::dualquat& wrench) {
+	wrench_accumulator_.real += wrench.real;
+	wrench_accumulator_.dual += wrench.dual;
+}
+
+void RigidBody::SetPersistentWrench(const glm::dualquat& wrench) {
+	persistent_wrench_ = wrench;
+}
+
+void RigidBody::ClearWrench() {
+	wrench_accumulator_ = glm::dualquat(glm::quat(0, 0, 0, 0), glm::quat(0, 0, 0, 0));
+	persistent_wrench_ = glm::dualquat(glm::quat(0, 0, 0, 0), glm::quat(0, 0, 0, 0));
+}
+
 void RigidBody::AddForce(const glm::vec3& force) {
-	force_accumulator_ += force;
+	wrench_accumulator_.dual += glm::quat(0, force.x, force.y, force.z);
 }
 
 void RigidBody::AddRelativeForce(const glm::vec3& force) {
 	glm::vec3 world_force = pose_.real * force;
-	force_accumulator_ += world_force;
+	AddForce(world_force);
 }
 
 void RigidBody::AddTorque(const glm::vec3& torque) {
-	torque_accumulator_ += torque;
+	wrench_accumulator_.real += glm::quat(0, torque.x, torque.y, torque.z);
 }
 
 void RigidBody::AddRelativeTorque(const glm::vec3& torque) {
 	glm::vec3 world_torque = pose_.real * torque;
-	torque_accumulator_ += world_torque;
+	AddTorque(world_torque);
 }
 
 void RigidBody::Update(float dt) {
-	// 1. Update Velocities (Semi-Implicit Euler)
-	glm::vec3 linear_accel = force_accumulator_ / mass_;
+	// 0. High-level movement behaviors
+	if (movement_mode_ == MovementMode::BANKING) {
+		glm::quat q = GetOrientation();
+		glm::vec3 world_ang_vel = GetAngularVelocity();
+		glm::vec3 local_ang_vel = glm::inverse(q) * world_ang_vel;
+
+		// Target roll proportional to yaw rate
+		float yaw_rate = local_ang_vel.y;
+		float target_roll = -yaw_rate * banking_amount_;
+		target_roll = glm::clamp(target_roll, -max_banking_angle_, max_banking_angle_);
+
+		// Current roll (angle between local Y and world UP projected into local space)
+		glm::vec3 world_up_in_local = glm::inverse(q) * glm::vec3(0, 1, 0);
+
+		// Roll is approximately the angle in the local XY plane
+		float current_roll = atan2(-world_up_in_local.x, world_up_in_local.y);
+
+		// PD Controller for roll torque
+		float roll_error = target_roll - current_roll;
+		float roll_torque = roll_error * banking_kp_ - local_ang_vel.z * banking_kd_;
+
+		AddRelativeTorque(glm::vec3(0, 0, roll_torque));
+	}
+
+	// 1. Extract Force and Torque from Wrench
+	glm::dualquat total_wrench = persistent_wrench_ + wrench_accumulator_;
+	glm::vec3     force = glm::vec3(total_wrench.dual.x, total_wrench.dual.y, total_wrench.dual.z);
+	glm::vec3     torque = glm::vec3(total_wrench.real.x, total_wrench.real.y, total_wrench.real.z);
+
+	// Apply Torque Limit
+	if (max_torque_ > 0.0f) {
+		float torque_len = glm::length(torque);
+		if (torque_len > max_torque_) {
+			torque = (torque / torque_len) * max_torque_;
+		}
+	}
+
+	// 2. Update Velocities (Semi-Implicit Euler)
+	glm::vec3 linear_accel = force / mass_;
 	glm::vec3 linear_vel = GetLinearVelocity() + linear_accel * dt;
 
-	glm::vec3 angular_accel = torque_accumulator_ / inertia_;
+	glm::vec3 angular_accel = torque / inertia_;
 	glm::vec3 angular_vel = GetAngularVelocity() + angular_accel * dt;
 
-	// 2. Apply Damping (Friction)
+	// 3. Apply Damping (Friction)
 	float lin_damping = glm::clamp(1.0f - (linear_friction_ * dt), 0.0f, 1.0f);
 	float ang_damping = glm::clamp(1.0f - (angular_friction_ * dt), 0.0f, 1.0f);
 
 	linear_vel *= lin_damping;
 	angular_vel *= ang_damping;
 
-	// 3. Update Position
+	// 4. Apply Velocity Limits
+	if (max_linear_velocity_ > 0.0f) {
+		float speed = glm::length(linear_vel);
+		if (speed > max_linear_velocity_) {
+			linear_vel = (linear_vel / speed) * max_linear_velocity_;
+		}
+	}
+	if (max_angular_velocity_ > 0.0f) {
+		float ang_speed = glm::length(angular_vel);
+		if (ang_speed > max_angular_velocity_) {
+			angular_vel = (angular_vel / ang_speed) * max_angular_velocity_;
+		}
+	}
+
+	// 5. Update Position
 	glm::vec3 current_pos = GetPosition();
 	glm::vec3 new_pos = current_pos + linear_vel * dt;
 
-	// 4. Update Orientation (Quaternion Derivative)
+	// 6. Update Orientation (Quaternion Derivative)
 	glm::quat current_orient = GetOrientation();
 	glm::quat new_orient = current_orient;
 
@@ -261,7 +326,7 @@ void RigidBody::Update(float dt) {
 		new_orient = glm::normalize(new_orient); // Normalize immediately
 	}
 
-	// 5. Update State
+	// 7. Update State
 	SetLinearVelocity(linear_vel);
 	SetAngularVelocity(angular_vel);
 
@@ -270,13 +335,12 @@ void RigidBody::Update(float dt) {
 	// P_dual = 0.5 * t * r
 	pose_.dual = 0.5f * glm::quat(0, new_pos.x, new_pos.y, new_pos.z) * new_orient;
 
-	// 6. FINAL SAFETY NORMALIZATION
+	// 8. FINAL SAFETY NORMALIZATION
 	// This catches any drift from the position reconstruction
 	pose_ = normalizeDualQuat(pose_);
 
-	// Clear accumulators
-	force_accumulator_ = glm::vec3(0.0f);
-	torque_accumulator_ = glm::vec3(0.0f);
+	// Clear frame accumulator
+	wrench_accumulator_ = glm::dualquat(glm::quat(0, 0, 0, 0), glm::quat(0, 0, 0, 0));
 }
 
 void RigidBody::FaceVelocity() {
