@@ -283,11 +283,11 @@ void main() {
 
 	// Large scale domain warping for natural variation
 	// vec3  warp = vec3(fbm(FragPos * 0.01 + FragPos.x * 0.02));
-	vec3 warp = vec3(noise[3]);
+	vec3  warp = vec3(noise[3]);
 	float largeNoise = fbm(FragPos * 0.015 + warp * 0.3);
 
 	// Medium scale noise for biome boundaries
-	float medNoise = noise[4];//fbm_detail(FragPos * 0.05);
+	float medNoise = noise[4]; // fbm_detail(FragPos * 0.05);
 
 	// Fine detail noise for texture
 	// float fineNoise = fbm_detail(FragPos * 0.2);
@@ -295,7 +295,6 @@ void main() {
 
 	// Combined noise for various effects
 	float combinedNoise = largeNoise * 0.6 + medNoise * 0.3 + fineNoise * 0.1;
-
 
 	// float n1 = snoise(vec3(FragPos.xy / 5, FragPos.z * 0.25));
 	float n2 = snoise(vec3(FragPos.xy / 25, time * 0.08));
@@ -320,73 +319,73 @@ void main() {
 	    // ========================================================================
 */
 
-		// float largeNoise = n1;
-		// float medNoise =  n2;
-		// float fineNoise = n3;
-		// float combinedNoise = largeNoise * 0.6 + medNoise * 0.3 + fineNoise * 0.1;
-	    // Height with noise distortion for natural boundaries
-	    float baseHeight = FragPos.y;
-	    float distortedHeight = baseHeight + largeNoise * 5.0;
+	// float largeNoise = n1;
+	// float medNoise =  n2;
+	// float fineNoise = n3;
+	// float combinedNoise = largeNoise * 0.6 + medNoise * 0.3 + fineNoise * 0.1;
+	// Height with noise distortion for natural boundaries
+	float baseHeight = FragPos.y;
+	float distortedHeight = baseHeight + largeNoise * 5.0;
 
-	    // Slope analysis: 1.0 = flat horizontal, 0.0 = vertical cliff
-	    float slope = dot(norm, vec3(0.0, 1.0, 0.0));
-	    float distortedSlope = slope + medNoise * 0.08;
+	// Slope analysis: 1.0 = flat horizontal, 0.0 = vertical cliff
+	float slope = dot(norm, vec3(0.0, 1.0, 0.0));
+	float distortedSlope = slope + medNoise * 0.08;
 
-	    // Valley/ridge detection
-	    float valleyFactor = calculateValleyFactor(FragPos);
+	// Valley/ridge detection
+	float valleyFactor = calculateValleyFactor(FragPos);
 
-	    // Moisture calculation
-	    float moisture = calculateMoisture(baseHeight, valleyFactor, FragPos);
+	// Moisture calculation
+	float moisture = calculateMoisture(baseHeight, valleyFactor, FragPos);
 
-	    // Valley lushness boost
-	    float valleyLushness = clamp(-valleyFactor, 0.0, 1.0);
-	    moisture = mix(moisture, min(moisture + 0.3, 1.0), valleyLushness);
+	// Valley lushness boost
+	float valleyLushness = clamp(-valleyFactor, 0.0, 1.0);
+	moisture = mix(moisture, min(moisture + 0.3, 1.0), valleyLushness);
 
-	    // ========================================================================
-	    // Color Calculation
-	    // ========================================================================
+	// ========================================================================
+	// Color Calculation
+	// ========================================================================
 
-	    // Get base biome color
-	    vec3 biomeColor = getBiomeColor(distortedHeight, moisture, combinedNoise);
+	// Get base biome color
+	vec3 biomeColor = getBiomeColor(distortedHeight, moisture, combinedNoise);
 
-	    // Get cliff color
-	    vec3 cliffColor = getCliffColor(baseHeight, combinedNoise);
+	// Get cliff color
+	vec3 cliffColor = getCliffColor(baseHeight, combinedNoise);
 
-	    // Cliff mask: steep surfaces become rocky
-	    // Threshold varies with altitude (snow sticks to steeper surfaces at high alt)
-	    // Lower threshold = only steeper surfaces become cliffs (0.5 = ~60° from horizontal)
-	    float cliffThreshold = mix(0.4, 0.3, smoothstep(HEIGHT_SNOW_START, HEIGHT_PEAK, baseHeight));
-	    float cliffMask = smoothstep(cliffThreshold, cliffThreshold - 0.15, distortedSlope);
+	// Cliff mask: steep surfaces become rocky
+	// Threshold varies with altitude (snow sticks to steeper surfaces at high alt)
+	// Lower threshold = only steeper surfaces become cliffs (0.5 = ~60° from horizontal)
+	float cliffThreshold = mix(0.4, 0.3, smoothstep(HEIGHT_SNOW_START, HEIGHT_PEAK, baseHeight));
+	float cliffMask = smoothstep(cliffThreshold, cliffThreshold - 0.15, distortedSlope);
 
-	    // Near-vertical surfaces (slope < 0.2, ~78° from horizontal) are always cliff-like
-	    float verticalMask = smoothstep(0.25, 0.1, slope);
-	    cliffMask = max(cliffMask, verticalMask);
+	// Near-vertical surfaces (slope < 0.2, ~78° from horizontal) are always cliff-like
+	float verticalMask = smoothstep(0.25, 0.1, slope);
+	cliffMask = max(cliffMask, verticalMask);
 
-	    // Add noise to cliff boundaries for natural look
-	    cliffMask += (medNoise - 0.5) * 0.15;
-	    cliffMask = clamp(cliffMask, 0.0, 1.0);
+	// Add noise to cliff boundaries for natural look
+	cliffMask += (medNoise - 0.5) * 0.15;
+	cliffMask = clamp(cliffMask, 0.0, 1.0);
 
-	    // Don't make beach areas into cliffs
-	    float beachMask = 1.0 - smoothstep(0.0, HEIGHT_BEACH_END + 2.0, baseHeight);
-	    cliffMask *= (1.0 - beachMask);
+	// Don't make beach areas into cliffs
+	float beachMask = 1.0 - smoothstep(0.0, HEIGHT_BEACH_END + 2.0, baseHeight);
+	cliffMask *= (1.0 - beachMask);
 
-	    // Blend biome with cliff
-	    vec3 finalAlbedo = mix(biomeColor, cliffColor, cliffMask);
-	    // ========================================================================
-	    // Detail Variation
-	    // ========================================================================
+	// Blend biome with cliff
+	vec3 finalAlbedo = mix(biomeColor, cliffColor, cliffMask);
+	// ========================================================================
+	// Detail Variation
+	// ========================================================================
 
-	    // Add subtle color variation based on fine noise
-	    float colorVar = fineNoise * 0.1;
-	    finalAlbedo *= (1.0 + colorVar);
+	// Add subtle color variation based on fine noise
+	float colorVar = fineNoise * 0.1;
+	finalAlbedo *= (1.0 + colorVar);
 
-	    // Darken valleys slightly (shadow accumulation)
-	    float valleyShadow = clamp(-valleyFactor * 0.15, 0.0, 0.1);
-	    finalAlbedo *= (1.0 - valleyShadow);
+	// Darken valleys slightly (shadow accumulation)
+	float valleyShadow = clamp(-valleyFactor * 0.15, 0.0, 0.1);
+	finalAlbedo *= (1.0 - valleyShadow);
 
-	    // ========================================================================
-	    // Lighting
-	    // ========================================================================
+	// ========================================================================
+	// Lighting
+	// ========================================================================
 	// */
 
 	// vec3  warp = vec3(fbm(FragPos / 50 + time * 0.08));

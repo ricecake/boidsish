@@ -1,7 +1,7 @@
 #include "sound.h"
 
 #ifdef ERROR
-#undef ERROR
+	#undef ERROR
 #endif
 
 #include "logger.h"

@@ -27,6 +27,10 @@ namespace Boidsish {
 		std::vector<Texture>      textures;
 		unsigned int              VAO;
 
+		// Material Data
+		glm::vec3 diffuseColor = glm::vec3(1.0f);
+		float     opacity = 1.0f;
+
 		// Constructor
 		Mesh(std::vector<Vertex> vertices, std::vector<unsigned int> indices, std::vector<Texture> textures);
 		// ~Mesh();

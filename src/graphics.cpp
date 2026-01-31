@@ -439,13 +439,7 @@ namespace Boidsish {
 			glBindBuffer(GL_UNIFORM_BUFFER, frustum_ubo);
 			glBufferData(GL_UNIFORM_BUFFER, 112, NULL, GL_DYNAMIC_DRAW);
 			glBindBuffer(GL_UNIFORM_BUFFER, 0);
-			glBindBufferRange(
-				GL_UNIFORM_BUFFER,
-				Constants::UboBinding::FrustumData(),
-				frustum_ubo,
-				0,
-				112
-			);
+			glBindBufferRange(GL_UNIFORM_BUFFER, Constants::UboBinding::FrustumData(), frustum_ubo, 0, 112);
 
 			shader->use();
 			SetupShaderBindings(*shader);

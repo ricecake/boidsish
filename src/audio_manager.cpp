@@ -12,7 +12,7 @@
 #include "miniaudio.h"
 
 #ifdef ERROR
-#undef ERROR
+	#undef ERROR
 #endif
 
 namespace Boidsish {
