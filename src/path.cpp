@@ -298,7 +298,7 @@ namespace Boidsish {
 			}
 		}
 
-		Vector3 tangent = Spline::CatmullRomDerivative(new_t, p0, p1, p2, p3).Normalized();
+		Vector3 tangent = Spline::CatmullRomDerivative(new_t, p0, p1, p2, p3).Normalized() * (float)new_direction;
 		Vector3 up = next_w1->up * (1.0f - new_t) + next_w2->up * new_t;
 		Vector3 right = tangent.Cross(up);
 		if (right.MagnitudeSquared() < 1e-6) {

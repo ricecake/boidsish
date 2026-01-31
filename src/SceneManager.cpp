@@ -125,6 +125,13 @@ namespace Boidsish {
 			config.SetFloat(cam_section, "yaw", scene.camera->yaw);
 			config.SetFloat(cam_section, "roll", scene.camera->roll);
 			config.SetFloat(cam_section, "fov", scene.camera->fov);
+			config.SetFloat(cam_section, "follow_distance", scene.camera->follow_distance);
+			config.SetFloat(cam_section, "follow_elevation", scene.camera->follow_elevation);
+			config.SetFloat(cam_section, "follow_look_ahead", scene.camera->follow_look_ahead);
+			config.SetFloat(cam_section, "follow_responsiveness", scene.camera->follow_responsiveness);
+			config.SetFloat(cam_section, "path_smoothing", scene.camera->path_smoothing);
+			config.SetFloat(cam_section, "path_bank_factor", scene.camera->path_bank_factor);
+			config.SetFloat(cam_section, "path_bank_speed", scene.camera->path_bank_speed);
 		}
 
 		for (int i = 0; i < (int)scene.lights.size(); ++i) {
@@ -220,6 +227,41 @@ namespace Boidsish {
 			cam.yaw = config.GetFloat(cam_section, "yaw", 0.0f);
 			cam.roll = config.GetFloat(cam_section, "roll", 0.0f);
 			cam.fov = config.GetFloat(cam_section, "fov", 45.0f);
+			cam.follow_distance = config.GetFloat(
+				cam_section,
+				"follow_distance",
+				Constants::Project::Camera::ChaseTrailBehind()
+			);
+			cam.follow_elevation = config.GetFloat(
+				cam_section,
+				"follow_elevation",
+				Constants::Project::Camera::ChaseElevation()
+			);
+			cam.follow_look_ahead = config.GetFloat(
+				cam_section,
+				"follow_look_ahead",
+				Constants::Project::Camera::ChaseLookAhead()
+			);
+			cam.follow_responsiveness = config.GetFloat(
+				cam_section,
+				"follow_responsiveness",
+				Constants::Project::Camera::ChaseResponsiveness()
+			);
+			cam.path_smoothing = config.GetFloat(
+				cam_section,
+				"path_smoothing",
+				Constants::Project::Camera::PathFollowSmoothing()
+			);
+			cam.path_bank_factor = config.GetFloat(
+				cam_section,
+				"path_bank_factor",
+				Constants::Project::Camera::PathBankFactor()
+			);
+			cam.path_bank_speed = config.GetFloat(
+				cam_section,
+				"path_bank_speed",
+				Constants::Project::Camera::PathBankSpeed()
+			);
 			scene.camera = cam;
 		}
 

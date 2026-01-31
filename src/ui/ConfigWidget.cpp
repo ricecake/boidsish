@@ -86,6 +86,37 @@ namespace Boidsish {
 					if (ImGui::Combo("Mode", &current_mode, modes, IM_ARRAYSIZE(modes))) {
 						m_visualizer.SetCameraMode(static_cast<CameraMode>(current_mode));
 					}
+
+					if (ImGui::Button("Next Chase Target")) {
+						m_visualizer.CycleChaseTarget();
+					}
+				}
+
+				if (ImGui::CollapsingHeader("Follow Camera", ImGuiTreeNodeFlags_DefaultOpen)) {
+					Camera& cam = m_visualizer.GetCamera();
+					bool    changed = false;
+
+					if (ImGui::SliderFloat("Trail Distance", &cam.follow_distance, 0.0f, 50.0f))
+						changed = true;
+					if (ImGui::SliderFloat("Elevation", &cam.follow_elevation, -20.0f, 20.0f))
+						changed = true;
+					if (ImGui::SliderFloat("Look Ahead", &cam.follow_look_ahead, 0.0f, 50.0f))
+						changed = true;
+					if (ImGui::SliderFloat("Responsiveness", &cam.follow_responsiveness, 0.1f, 20.0f))
+						changed = true;
+
+					ImGui::Separator();
+					ImGui::Text("Path Following");
+					if (ImGui::SliderFloat("Path Smoothing", &cam.path_smoothing, 0.1f, 20.0f))
+						changed = true;
+					if (ImGui::SliderFloat("Bank Factor", &cam.path_bank_factor, 0.0f, 5.0f))
+						changed = true;
+					if (ImGui::SliderFloat("Bank Speed", &cam.path_bank_speed, 0.1f, 20.0f))
+						changed = true;
+
+					if (changed) {
+						m_visualizer.SetCamera(cam);
+					}
 				}
 
 				if (ImGui::CollapsingHeader("Time", ImGuiTreeNodeFlags_DefaultOpen)) {

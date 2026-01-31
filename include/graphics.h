@@ -87,6 +87,17 @@ namespace Boidsish {
 		float fov;              // Field of view
 		float speed;
 
+		// Follow camera settings
+		float follow_distance;
+		float follow_elevation;
+		float follow_look_ahead;
+		float follow_responsiveness;
+
+		// Path following settings
+		float path_smoothing;
+		float path_bank_factor;
+		float path_bank_speed;
+
 		constexpr Camera(
 			float x = 0.0f,
 			float y = 0.0f,
@@ -95,9 +106,30 @@ namespace Boidsish {
 			float yaw = 0.0f,
 			float roll = 0.0f,
 			float fov = Constants::Project::Camera::DefaultFOV(),
-			float speed = Constants::Project::Camera::DefaultSpeed()
+			float speed = Constants::Project::Camera::DefaultSpeed(),
+			float follow_dist = Constants::Project::Camera::ChaseTrailBehind(),
+			float follow_elev = Constants::Project::Camera::ChaseElevation(),
+			float follow_ahead = Constants::Project::Camera::ChaseLookAhead(),
+			float follow_resp = Constants::Project::Camera::ChaseResponsiveness(),
+			float path_smooth = Constants::Project::Camera::PathFollowSmoothing(),
+			float path_bank_f = Constants::Project::Camera::PathBankFactor(),
+			float path_bank_s = Constants::Project::Camera::PathBankSpeed()
 		):
-			x(x), y(y), z(z), pitch(pitch), yaw(yaw), roll(roll), fov(fov), speed(speed) {}
+			x(x),
+			y(y),
+			z(z),
+			pitch(pitch),
+			yaw(yaw),
+			roll(roll),
+			fov(fov),
+			speed(speed),
+			follow_distance(follow_dist),
+			follow_elevation(follow_elev),
+			follow_look_ahead(follow_ahead),
+			follow_responsiveness(follow_resp),
+			path_smoothing(path_smooth),
+			path_bank_factor(path_bank_f),
+			path_bank_speed(path_bank_s) {}
 
 		glm::vec3 front() const {
 			glm::vec3 cameraPos(x, y, z);
@@ -185,6 +217,8 @@ namespace Boidsish {
 		std::optional<glm::vec3> ScreenToWorld(double screen_x, double screen_y) const;
 
 		void SetChaseCamera(std::shared_ptr<EntityBase> target);
+		void AddChaseTarget(std::shared_ptr<EntityBase> target);
+		void CycleChaseTarget();
 		void SetPathCamera(std::shared_ptr<Path> path);
 
 		// Add a UI widget to be rendered

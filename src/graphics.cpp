@@ -227,7 +227,9 @@ namespace Boidsish {
 		float single_track_orbit_pitch = 20.0f;
 		float single_track_distance = 15.0f;
 
-		std::shared_ptr<EntityBase> chase_target_ = nullptr;
+		std::shared_ptr<EntityBase>            chase_target_ = nullptr;
+		std::vector<std::weak_ptr<EntityBase>> chase_targets_;
+		int                                    current_chase_target_index_ = -1;
 
 		// Path following camera state
 		std::shared_ptr<Path> path_target_ = nullptr;
@@ -296,6 +298,36 @@ namespace Boidsish {
 			camera_speed_step_ = ConfigManager::GetInstance().GetGlobalSettingFloat(
 				"camera_speed_step",
 				Constants::Project::Camera::SpeedStep()
+			);
+
+			// Initialize camera follow settings from config
+			camera.follow_distance = ConfigManager::GetInstance().GetAppSettingFloat(
+				"camera_follow_distance",
+				Constants::Project::Camera::ChaseTrailBehind()
+			);
+			camera.follow_elevation = ConfigManager::GetInstance().GetAppSettingFloat(
+				"camera_follow_elevation",
+				Constants::Project::Camera::ChaseElevation()
+			);
+			camera.follow_look_ahead = ConfigManager::GetInstance().GetAppSettingFloat(
+				"camera_follow_look_ahead",
+				Constants::Project::Camera::ChaseLookAhead()
+			);
+			camera.follow_responsiveness = ConfigManager::GetInstance().GetAppSettingFloat(
+				"camera_follow_responsiveness",
+				Constants::Project::Camera::ChaseResponsiveness()
+			);
+			camera.path_smoothing = ConfigManager::GetInstance().GetAppSettingFloat(
+				"camera_path_smoothing",
+				Constants::Project::Camera::PathFollowSmoothing()
+			);
+			camera.path_bank_factor = ConfigManager::GetInstance().GetAppSettingFloat(
+				"camera_path_bank_factor",
+				Constants::Project::Camera::PathBankFactor()
+			);
+			camera.path_bank_speed = ConfigManager::GetInstance().GetAppSettingFloat(
+				"camera_path_bank_speed",
+				Constants::Project::Camera::PathBankSpeed()
 			);
 
 			exit_key = GLFW_KEY_ESCAPE;
@@ -752,6 +784,15 @@ namespace Boidsish {
 			ConfigManager::GetInstance().SetInt("window_width", width);
 			ConfigManager::GetInstance().SetInt("window_height", height);
 			ConfigManager::GetInstance().SetBool("fullscreen", is_fullscreen_);
+
+			ConfigManager::GetInstance().SetFloat("camera_follow_distance", camera.follow_distance);
+			ConfigManager::GetInstance().SetFloat("camera_follow_elevation", camera.follow_elevation);
+			ConfigManager::GetInstance().SetFloat("camera_follow_look_ahead", camera.follow_look_ahead);
+			ConfigManager::GetInstance().SetFloat("camera_follow_responsiveness", camera.follow_responsiveness);
+			ConfigManager::GetInstance().SetFloat("camera_path_smoothing", camera.path_smoothing);
+			ConfigManager::GetInstance().SetFloat("camera_path_bank_factor", camera.path_bank_factor);
+			ConfigManager::GetInstance().SetFloat("camera_path_bank_speed", camera.path_bank_speed);
+
 			ConfigManager::GetInstance().Shutdown();
 
 			// SoundEffectManager holds Sound objects that reference AudioManager's engine
@@ -1425,12 +1466,12 @@ namespace Boidsish {
 
 			// 3. Define camera offset
 			glm::vec3 up = glm::vec3(0.0f, 1.0f, 0.0f);
-			glm::vec3 desired_cam_pos = target_pos - forward * 0.050f + up * 0.50f;
-			glm::vec3 look_at_pos = target_pos + forward * 2.0f;
+			glm::vec3 desired_cam_pos = target_pos - forward * camera.follow_distance + up * camera.follow_elevation;
+			glm::vec3 look_at_pos = target_pos + forward * camera.follow_look_ahead;
 
 			// 3. Smoothly interpolate camera position
 			// Frame-rate independent interpolation using exponential decay
-			float     lerp_factor = 1.0f - exp(-delta_time * 4.5f);
+			float     lerp_factor = 1.0f - exp(-delta_time * camera.follow_responsiveness);
 			glm::vec3 new_cam_pos = glm::mix(camera.pos(), desired_cam_pos, lerp_factor);
 
 			camera.x = new_cam_pos.x;
@@ -1520,7 +1561,7 @@ namespace Boidsish {
 			glm::vec3 target_pos_glm(update_result.position.x, update_result.position.y, update_result.position.z);
 
 			// 5. Smoothly interpolate position and orientation
-			float lerp_factor = 1.0f - exp(-delta_time * 5.0f); // Similar to chase camera for smoothness
+			float lerp_factor = 1.0f - exp(-delta_time * camera.path_smoothing); // Similar to chase camera for smoothness
 
 			glm::vec3 new_cam_pos = glm::mix(camera.pos(), target_pos_glm, lerp_factor);
 			camera.x = new_cam_pos.x;
@@ -1537,15 +1578,13 @@ namespace Boidsish {
 			if (yaw_diff < -glm::pi<float>())
 				yaw_diff += 2.0f * glm::pi<float>();
 
-			const float kBankFactor = 1.8f; // How much to bank in response to a turn
-			const float kBankSpeed = 3.5f;  // How quickly the banking adjusts
-			float       target_bank_angle = yaw_diff * kBankFactor;
+			float target_bank_angle = yaw_diff * camera.path_bank_factor;
 
 			// Smoothly interpolate the bank angle
 			path_auto_bank_angle_ = glm::mix(
 				path_auto_bank_angle_,
 				target_bank_angle,
-				1.0f - exp(-delta_time * kBankSpeed)
+				1.0f - exp(-delta_time * camera.path_bank_speed)
 			);
 
 			glm::quat bank_rotation = glm::angleAxis(path_auto_bank_angle_, glm::vec3(0.0f, 0.0f, 1.0f));
@@ -2485,6 +2524,45 @@ namespace Boidsish {
 		} else {
 			impl->chase_target_ = nullptr;
 			SetCameraMode(CameraMode::FREE);
+		}
+	}
+
+	void Visualizer::AddChaseTarget(std::shared_ptr<EntityBase> target) {
+		if (!target)
+			return;
+		impl->chase_targets_.push_back(target);
+		if (impl->chase_target_ == nullptr) {
+			SetChaseCamera(target);
+			impl->current_chase_target_index_ = impl->chase_targets_.size() - 1;
+		}
+	}
+
+	void Visualizer::CycleChaseTarget() {
+		if (impl->chase_targets_.empty())
+			return;
+
+		// Optional: Periodically clean up expired targets to prevent vector growth
+		if (impl->chase_targets_.size() > 100 && (impl->frame_count_ % 1000 == 0)) {
+			auto it = std::remove_if(impl->chase_targets_.begin(), impl->chase_targets_.end(), [](const auto& wp) {
+				return wp.expired();
+			});
+			impl->chase_targets_.erase(it, impl->chase_targets_.end());
+		}
+
+		int num_targets = static_cast<int>(impl->chase_targets_.size());
+		int start_index = impl->current_chase_target_index_;
+
+		// Determine starting point for the search
+		int search_start = (start_index == -1) ? 0 : (start_index + 1) % num_targets;
+
+		// Search for the next valid target in one full cycle
+		for (int i = 0; i < num_targets; ++i) {
+			int index = (search_start + i) % num_targets;
+			if (auto target = impl->chase_targets_[index].lock()) {
+				impl->current_chase_target_index_ = index;
+				SetChaseCamera(target);
+				return;
+			}
 		}
 	}
 
