@@ -3,6 +3,7 @@
 #include <vector>
 
 #include "graphics.h"
+#include "shader.h"
 #include "model.h"
 #include "animation.h"
 #include "animator.h"
