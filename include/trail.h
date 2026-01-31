@@ -14,7 +14,10 @@ namespace Boidsish {
 
 	class Trail {
 	public:
-		Trail(int max_length = Constants::Class::Trails::DefaultMaxLength());
+		Trail(
+			int   max_length = Constants::Class::Trails::DefaultMaxLength(),
+			float thickness = Constants::Class::Trails::BaseThickness()
+		);
 		~Trail();
 
 		void AddPoint(glm::vec3 position, glm::vec3 color);
@@ -93,6 +96,7 @@ namespace Boidsish {
 
 		std::deque<std::pair<glm::vec3, glm::vec3>> points;
 		int                                         max_length;
+		float                                       thickness;
 		GLuint                                      vao;
 		GLuint                                      vbo;
 		GLuint                                      ebo;

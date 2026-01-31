@@ -1,0 +1,21 @@
+diff a/src/decor_manager.cpp b/src/decor_manager.cpp	(rejected hunks)
+@@ -147,7 +152,7 @@ namespace Boidsish {
+ 			glm::vec2 chunk_center = chunk_offset + glm::vec2(chunk_size * 0.5f);
+ 
+ 			float dist = glm::distance(cam_pos, chunk_center);
+-			if (dist > 300.0f)
++			if (dist > max_decor_distance_)
+ 				continue;
+ 
+ 			// Frustum cull the chunk (approximate as AABB)
+@@ -244,8 +250,8 @@ namespace Boidsish {
+ 			if (type.cached_count > kMaxInstancesPerType)
+ 				type.cached_count = kMaxInstancesPerType;
+ 
+-			LOG_DEBUG("DecorManager: Type {} generated {} instances (density={})",
+-			          i, type.cached_count, type.density);
++			LOG_DEBUG("DecorManager: Type {} generated {} instances (density={}-{})",
++			          i, type.cached_count, type.props.min_density, type.props.max_density);
+ 		}
+ 	}
+ 

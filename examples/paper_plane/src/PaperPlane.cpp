@@ -16,11 +16,13 @@ namespace Boidsish {
 		rigid_body_.linear_friction_ = 0.01f;
 		rigid_body_.angular_friction_ = 0.01f;
 
-		SetTrailLength(150);
+		SetSize(0.1f);
+		SetTrailLength(10);
+		shape_->SetTrailThickness(0.001f);
 		SetTrailIridescence(true);
 
 		SetColor(1.0f, 0.5f, 0.0f);
-		shape_->SetScale(glm::vec3(0.04f));
+		shape_->SetScale(glm::vec3(0.005f));
 		std::dynamic_pointer_cast<Model>(shape_)->SetBaseRotation(
 			glm::angleAxis(glm::radians(-180.0f), glm::vec3(0.0f, 1.0f, 0.0f))
 		);
@@ -43,14 +45,14 @@ namespace Boidsish {
 			return;
 
 		// --- Constants for flight model ---
-		const float kPitchSpeed = 1.5f;
-		const float kYawSpeed = 1.5f;
-		const float kRollSpeed = 3.0f;
+		const float kPitchSpeed = 1.5f * 0.5f;
+		const float kYawSpeed = 1.5f * 0.5f;
+		const float kRollSpeed = 3.0f * 0.5f;
 		const float kCoordinatedTurnFactor = 0.8f;
 		const float kAutoLevelSpeed = 1.5f;
 		const float kDamping = 2.5f;
 
-		const float kBaseSpeed = 50.0f;
+		const float kBaseSpeed = 40.0f;
 		const float kBoostSpeed = 80.0f;
 		const float kBreakSpeed = 10.0f;
 		const float kBoostAcceleration = 100.0f;

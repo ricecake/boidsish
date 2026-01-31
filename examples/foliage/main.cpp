@@ -12,7 +12,8 @@ int main() {
 
 		// Teapots - aligned to terrain normal (like bushes on a cliff)
 		DecorProperties teapot_props;
-		teapot_props.density = 0.1f;
+		teapot_props.min_density = 0.1f;
+		teapot_props.max_density = 0.3f;
 		teapot_props.base_scale = 0.005f;
 		teapot_props.scale_variance = 0.001f;
 		teapot_props.align_to_terrain = true; // Align to slope
@@ -20,7 +21,8 @@ int main() {
 
 		// Missiles - always point up regardless of terrain (like trees)
 		DecorProperties missile_props;
-		missile_props.density = 0.002f;
+		teapot_props.min_density = 0.01f;
+		teapot_props.max_density = 0.2f;
 		missile_props.base_scale = 0.001f;
 		missile_props.scale_variance = 0.005f;
 		missile_props.base_rotation = glm::vec3(-90.0f, 0.0f, 0.0f); // Point upward (rotate -90 on X)

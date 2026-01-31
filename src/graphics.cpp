@@ -858,7 +858,10 @@ namespace Boidsish {
 			for (const auto& shape : shapes) {
 				if (shape->GetTrailLength() > 0 && !paused) {
 					if (trails.find(shape->GetId()) == trails.end()) {
-						trails[shape->GetId()] = std::make_shared<Trail>(shape->GetTrailLength());
+						trails[shape->GetId()] = std::make_shared<Trail>(
+							shape->GetTrailLength(),
+							shape->GetTrailThickness()
+						);
 						if (shape->IsTrailIridescent()) {
 							trails[shape->GetId()]->SetIridescence(true);
 						}
@@ -1395,12 +1398,12 @@ namespace Boidsish {
 
 			// 3. Define camera offset
 			glm::vec3 up = glm::vec3(0.0f, 1.0f, 0.0f);
-			glm::vec3 desired_cam_pos = target_pos - forward * 15.0f + up * 5.0f;
-			glm::vec3 look_at_pos = target_pos + forward * 10.0f;
+			glm::vec3 desired_cam_pos = target_pos - forward * 0.050f + up * 0.50f;
+			glm::vec3 look_at_pos = target_pos + forward * 2.0f;
 
 			// 3. Smoothly interpolate camera position
 			// Frame-rate independent interpolation using exponential decay
-			float     lerp_factor = 1.0f - exp(-delta_time * 2.5f);
+			float     lerp_factor = 1.0f - exp(-delta_time * 4.5f);
 			glm::vec3 new_cam_pos = glm::mix(camera.pos(), desired_cam_pos, lerp_factor);
 
 			camera.x = new_cam_pos.x;

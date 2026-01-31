@@ -41,7 +41,7 @@ namespace Boidsish {
 
 	void DecorManager::AddDecorType(const std::string& model_path, float density) {
 		DecorProperties props;
-		props.density = density;
+		props.SetDensity(density);
 		AddDecorType(model_path, props);
 	}
 
@@ -121,6 +121,11 @@ namespace Boidsish {
 		placement_shader_->setVec2("u_cameraPos", cam_pos);
 		placement_shader_->setFloat("u_maxTerrainHeight", terrain_gen.GetMaxHeight());
 
+		// Distance-based density falloff parameters
+		placement_shader_->setFloat("u_densityFalloffStart", density_falloff_start_);
+		placement_shader_->setFloat("u_densityFalloffEnd", density_falloff_end_);
+		placement_shader_->setFloat("u_maxDecorDistance", max_decor_distance_);
+
 		// Pass frustum planes for GPU-side culling
 		for (int p = 0; p < 6; ++p) {
 			placement_shader_->setVec4(
@@ -146,7 +151,7 @@ namespace Boidsish {
 			glm::vec2   chunk_center = chunk_offset + glm::vec2(chunk_size * 0.5f);
 
 			float dist = glm::distance(cam_pos, chunk_center);
-			if (dist > 300.0f)
+			if (dist > max_decor_distance_)
 				continue;
 
 			// Frustum cull the chunk (approximate as AABB)
@@ -203,7 +208,8 @@ namespace Boidsish {
 		for (size_t i = 0; i < decor_types_.size(); ++i) {
 			auto& type = decor_types_[i];
 
-			placement_shader_->setFloat("u_density", type.props.density);
+			placement_shader_->setFloat("u_minDensity", type.props.min_density);
+			placement_shader_->setFloat("u_maxDensity", type.props.max_density);
 			placement_shader_->setFloat("u_baseScale", type.props.base_scale);
 			placement_shader_->setFloat("u_scaleVariance", type.props.scale_variance);
 			placement_shader_->setFloat("u_minHeight", type.props.min_height);

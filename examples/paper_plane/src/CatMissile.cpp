@@ -56,11 +56,11 @@ namespace Boidsish {
 		SetPosition(pos.x, pos.y, pos.z);
 
 		glm::vec3 world_eject = orientation * dir;
-		rigid_body_.SetLinearVelocity(glm::vec3(vel.x, vel.y, vel.z) + (5.0f * world_eject));
+		rigid_body_.SetLinearVelocity(glm::vec3(vel.x, vel.y, vel.z) + (1.0f * world_eject));
 
 		SetTrailLength(0);
 		SetTrailRocket(false);
-		shape_->SetScale(glm::vec3(0.05f));
+		shape_->SetScale(glm::vec3(0.015f));
 		std::dynamic_pointer_cast<Model>(shape_)->SetBaseRotation(
 			glm::angleAxis(glm::radians(90.0f), glm::vec3(0.0f, 1.0f, 0.0f))
 		);
@@ -94,12 +94,12 @@ namespace Boidsish {
 		const float kAcceleration = 150.0f;
 
 		if (lived_ < kLaunchTime) {
-			rigid_body_.AddForce(glm::vec3(0, -1.0, 0));
+			rigid_body_.AddForce(glm::vec3(0, -0.70, 0));
 			return;
 		}
 
 		if (!fired_) {
-			SetTrailLength(500);
+			SetTrailLength(300);
 			SetTrailRocket(true);
 			launch_sound_ = handler.vis->AddSoundEffect("assets/rocket.wav", pos.Toglm(), GetVelocity().Toglm(), 10.0f);
 
@@ -126,8 +126,11 @@ namespace Boidsish {
             kMaxSpeed * (lifetime_ - lived_) * 0.5f
         );
 
-		const float stickiness = 0.65f;
+		const float stickiness = 0.30f;
 		auto        minRank = INFINITY;
+		float       target_distance = 0.0f;
+		const float reaction_distance = 250.0f;
+
 		for (auto& candidate : targets) {
 			auto target_pos = candidate->GetPosition().Toglm();
 			auto missile_pos = pos.Toglm();
@@ -141,6 +144,12 @@ namespace Boidsish {
 				continue;
 			}
 
+			float     hit_dist = 0.0f;
+			glm::vec3 terrain_normal;
+			if (handler.RaycastTerrain(missile_pos, to_target, distance, hit_dist, terrain_normal)) {
+				continue;
+			}
+
 			int  target_count = pp_handler.GetTargetCount(candidate);
 			auto rank = distance * (2.0 - 1.75f * frontNess) * (1.0f + 0.5f * target_count);
 			if (candidate == target_) {
@@ -148,6 +157,7 @@ namespace Boidsish {
 			}
 
 			if (rank < minRank) {
+				target_distance = distance;
 				minRank = rank;
 				target_ = candidate;
 			}
@@ -158,12 +168,10 @@ namespace Boidsish {
 		glm::vec3 target_dir_world;
 		glm::vec3 target_dir_local = glm::vec3(0, 0, -1);
 		if (target_ != nullptr) {
-			if ((target_->GetPosition() - GetPosition()).Magnitude() < 10) {
+			if (target_distance < 10) {
 				Explode(handler, true);
 				return;
 			}
-
-			Vector3 target_vec = (target_->GetPosition() - GetPosition()).Normalized();
 
 			float missile_speed = glm::length(rigid_body_.GetLinearVelocity());
 
@@ -176,7 +184,6 @@ namespace Boidsish {
 
 		const auto* terrain_generator = handler.GetTerrainGenerator();
 		if (terrain_generator) {
-			const float reaction_distance = 150.0f;
 			const float kAvoidanceStrength = 5.0f;
 			const float kUpAlignmentThreshold = 0.5f;
 
@@ -186,10 +193,13 @@ namespace Boidsish {
 				glm::vec3 dir = {vel_vec.x, vel_vec.y, vel_vec.z};
 				dir = glm::normalize(dir);
 
-				float hit_dist = 0.0f;
-				if (terrain_generator->Raycast(origin, dir, reaction_distance, hit_dist)) {
+				float     hit_dist = 0.0f;
+				glm::vec3 terrain_normal;
+				// if (terrain_generator->Raycast(origin, dir, reaction_distance, hit_dist)) {
+				if (handler.RaycastTerrain(origin, dir, reaction_distance, hit_dist, terrain_normal)) {
 					auto hit_coord = vel_vec.Normalized() * hit_dist;
-					auto [terrain_h, terrain_normal] = terrain_generator->pointProperties(hit_coord.x, hit_coord.z);
+					// auto [terrain_h, terrain_normal] = handler.GetCachedTerrainProperties(hit_coord.x, hit_coord.z);
+					// auto [terrain_h, terrain_normal] = terrain_generator->pointProperties(hit_coord.x, hit_coord.z);
 
 					glm::vec3 local_up = glm::vec3(0.0f, 1.0f, 0.0f);
 					auto      away = terrain_normal;
@@ -201,14 +211,27 @@ namespace Boidsish {
 						away = target_dir_world - (glm::dot(target_dir_world, away)) * away;
 					}
 
-					float     distance_factor = 1.0f - (hit_dist / reaction_distance);
-					float     alignment_with_target = glm::dot(dir, target_dir_world);
-					float     target_priority = 1.0f - glm::clamp(alignment_with_target, 0.0f, 1.0f);
-					float     avoidance_weight = distance_factor * target_priority;
-					glm::vec3 final_desired_dir = glm::normalize(
-						target_dir_world +
-						(away * avoidance_weight * kAvoidanceStrength /* * (1-lived_/lifetime_)    */)
-					);
+					float distance_factor = 1.0f - (hit_dist / reaction_distance);
+					float alignment_with_target = glm::dot(dir, target_dir_world);
+					float target_priority = 1.0f - glm::clamp(alignment_with_target, 0.0f, 1.0f);
+					// float     avoidance_weight = distance_factor * target_priority;
+					// float     avoidance_weight = distance_factor * target_priority * (1-lived_/lifetime_) *
+					// (target_distance/reaction_distance) * abs(hit_dist - target_distance);
+					// float avoidance_weight = distance_factor * target_priority * (1 - lived_ / lifetime_) *
+					// 	(target_distance / reaction_distance);
+
+					float avoidance_weight = distance_factor * target_priority * (target_distance / reaction_distance);
+
+					// glm::vec3 final_desired_dir = glm::normalize(
+					// 	target_dir_world +
+					// 	(away * avoidance_weight * kAvoidanceStrength /* * (1-lived_/lifetime_)    */)
+					// );
+
+					// glm::vec3 final_desired_dir = glm::normalize( glm::mix(away, target_dir_world,
+					// 4*alignment_with_target+1*(hit_dist/reaction_distance)) ); glm::vec3 final_desired_dir =
+					// glm::normalize( glm::mix(away, target_dir_world, (2-1.75*target_priority) *
+					// (1-0.5*distance_factor)   ));
+					glm::vec3 final_desired_dir = glm::normalize(glm::mix(target_dir_world, away, avoidance_weight));
 					target_dir_local = WorldToObject(final_desired_dir);
 				}
 			}
@@ -221,7 +244,7 @@ namespace Boidsish {
 			local_forward,
 			target_dir_local,
 			rigid_body_.GetAngularVelocity(),
-			50.0f, // kP,
+			60.0f, // kP,
 			glm::mix(0.0f, 5.0f, std::clamp(2 * lived_ / lifetime_, 0.0f, 1.0f))
 		);
 

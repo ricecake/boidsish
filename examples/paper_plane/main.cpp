@@ -6,6 +6,7 @@
 #include "PaperPlaneHandler.h"
 #include "PaperPlaneInputController.h"
 #include "constants.h"
+#include "decor_manager.h"
 #include "graphics.h"
 #include "hud.h"
 #include "model.h"
@@ -20,6 +21,17 @@ int main() {
 			Constants::Project::Window::DefaultHeight(),
 			"Paper Plane Demo"
 		);
+
+		auto decor = visualizer->GetDecorManager();
+
+		DecorProperties teapot_props;
+		teapot_props.min_density = 0.1f;
+		teapot_props.max_density = 0.3f;
+		teapot_props.base_scale = 0.005f;
+		teapot_props.scale_variance = 0.001f;
+		teapot_props.align_to_terrain = true; // Align to slope
+		decor->AddDecorType("assets/tree01.obj", teapot_props);
+
 		visualizer->AddHudIcon(
 			{1, "assets/missile-icon.png", HudAlignment::TOP_LEFT, {10, 10}, {64, 64}, selected_weapon == 0}
 		);

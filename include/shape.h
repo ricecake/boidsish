@@ -4,6 +4,7 @@
 #include <memory>
 #include <vector>
 
+#include "constants.h"
 #include "visual_effects.h"
 #include <glm/glm.hpp>
 #include <glm/gtc/quaternion.hpp>
@@ -86,6 +87,10 @@ namespace Boidsish {
 
 		inline void SetTrailLength(int length) { trail_length_ = length; }
 
+		inline float GetTrailThickness() const { return trail_thickness_; }
+
+		inline void SetTrailThickness(float Thickness) { trail_thickness_ = Thickness; }
+
 		inline bool IsTrailIridescent() const { return trail_iridescent_; }
 
 		inline void SetTrailIridescence(bool enabled) { trail_iridescent_ = enabled; }
@@ -167,7 +172,8 @@ namespace Boidsish {
 			float g = 1.0f,
 			float b = 1.0f,
 			float a = 1.0f,
-			int   trail_length = 0
+			int   trail_length = 0,
+			float trail_thickness = Constants::Class::Trails::BaseThickness()
 		):
 			id_(id),
 			x_(x),
@@ -180,6 +186,7 @@ namespace Boidsish {
 			rotation_(glm::quat(1.0f, 0.0f, 0.0f, 0.0f)),
 			scale_(glm::vec3(1.0f)),
 			trail_length_(trail_length),
+			trail_thickness_(trail_thickness),
 			trail_iridescent_(false),
 			is_colossal_(false),
 			last_position_(x, y, z),
@@ -200,6 +207,7 @@ namespace Boidsish {
 		glm::vec3 last_position_;
 		float     r_, g_, b_, a_;
 		int       trail_length_;
+		float     trail_thickness_;
 		bool      trail_iridescent_;
 		bool      trail_rocket_;
 		bool      is_colossal_;

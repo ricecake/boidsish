@@ -17,7 +17,8 @@ namespace Boidsish {
 
 	// Properties for configuring decor placement and appearance
 	struct DecorProperties {
-		float     density = 1.0f;                  // Probability of placement (0-1)
+		float     min_density = 0.1f;              // Minimum density (ensures all visible areas get some decor)
+		float     max_density = 1.0f;              // Maximum density at close range
 		float     base_scale = 1.0f;               // Base scale factor
 		float     scale_variance = 0.2f;           // Random scale variation (+/-)
 		float     min_height = -100.0f;            // Minimum terrain height for placement
@@ -28,6 +29,11 @@ namespace Boidsish {
 		bool      random_yaw = true;               // Apply random Y rotation
 		bool      align_to_terrain =
 			false; // If true, align to terrain normal (bush on cliff); if false, align to world up (tree)
+
+		void SetDensity(float d) {
+			min_density = d * 0.2f;
+			max_density = d;
+		}
 	};
 
 	struct DecorType {
@@ -47,7 +53,7 @@ namespace Boidsish {
 		DecorManager();
 		~DecorManager();
 
-		// Simple overload for basic usage
+		// Simple overload for basic usage (sets max_density, min_density = max * 0.2)
 		void AddDecorType(const std::string& model_path, float density);
 
 		// Full overload with all properties
@@ -65,6 +71,15 @@ namespace Boidsish {
 		void SetEnabled(bool enabled) { enabled_ = enabled; }
 
 		bool IsEnabled() const { return enabled_; }
+
+		// Distance at which density starts to fall off from max toward min
+		void SetDensityFalloffStart(float distance) { density_falloff_start_ = distance; }
+
+		// Distance at which density reaches minimum
+		void SetDensityFalloffEnd(float distance) { density_falloff_end_ = distance; }
+
+		// Maximum distance at which decor is placed at all
+		void SetMaxDistance(float distance) { max_decor_distance_ = distance; }
 
 	private:
 		void _Initialize();
@@ -86,7 +101,12 @@ namespace Boidsish {
 		glm::vec3              last_camera_front_ = glm::vec3(0.0f, 0.0f, -1.0f);
 		bool                   needs_regeneration_ = true;
 		static constexpr float kRegenerationDistance = 20.0f; // Regenerate when camera moves this far
-		static constexpr float kRegenerationAngle = 0.15f;    // ~8.5 degrees (1 - cos(angle))
+		static constexpr float kRegenerationAngle = 0.05f;    // ~8.5 degrees (1 - cos(angle))
+
+		// Distance-based density parameters
+		float density_falloff_start_ = 10.0f; // Full density within this range
+		float density_falloff_end_ = 300.0f;  // Minimum density beyond this range
+		float max_decor_distance_ = 600.0f;   // No decor beyond this distance
 
 		static constexpr int kMaxInstancesPerType = 10000;
 	};

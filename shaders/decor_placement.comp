@@ -17,12 +17,19 @@ uniform float          u_maxTerrainHeight;
 // Frustum planes for culling (vec4: xyz=normal, w=distance)
 uniform vec4 u_frustumPlanes[6];
 
+// Distance-based density falloff
+uniform float u_densityFalloffStart; // Full density within this distance
+uniform float u_densityFalloffEnd;   // Minimum density beyond this distance
+uniform float u_maxDecorDistance;    // No decor beyond this distance
+
 // Per-chunk uniforms
 uniform vec2  u_chunkWorldOffset;
 uniform float u_chunkSlice;
 uniform float u_chunkSize;
 
-uniform float u_density;
+// Per-type uniforms
+uniform float u_minDensity; // Minimum density (at far distance)
+uniform float u_maxDensity; // Maximum density (at close distance)
 uniform float u_baseScale;
 uniform float u_scaleVariance;
 uniform float u_minHeight;
@@ -108,8 +115,24 @@ void main() {
 	if (slope < u_minSlope || slope > u_maxSlope)
 		return;
 
-	// Random density check
-	if (hash(seed + 5678) > u_density)
+	// Calculate distance-based density
+	// Use the position within the cell (before jitter) for stable distance calculation
+	vec2  baseWorldPos = u_chunkWorldOffset + vec2(float(x), float(y)) * (u_chunkSize / 32.0);
+	float distToCamera = distance(baseWorldPos, u_cameraPos);
+
+	// No decor beyond max distance
+	if (distToCamera > u_maxDecorDistance)
+		return;
+
+	// Interpolate density based on distance
+	// Within falloff start: use max density
+	// Beyond falloff end: use min density
+	// In between: smooth interpolation
+	float distanceFactor = smoothstep(u_densityFalloffStart, u_densityFalloffEnd, distToCamera);
+	float effectiveDensity = mix(u_maxDensity, u_minDensity, distanceFactor);
+
+	// Random density check using effective density
+	if (hash(seed + 5678) > effectiveDensity)
 		return;
 
 	// Create world position for frustum check

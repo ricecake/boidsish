@@ -9,7 +9,8 @@
 
 namespace Boidsish {
 
-	Trail::Trail(int max_length): max_length(max_length), vertex_count(0), mesh_dirty(false) {
+	Trail::Trail(int max_length, float thickness):
+		max_length(max_length), thickness(thickness), vertex_count(0), mesh_dirty(false) {
 		// Pre-allocate mesh data regardless of render mode
 		mesh_vertices.resize(max_length * CURVE_SEGMENTS * VERTS_PER_STEP);
 		indices.resize(max_length * CURVE_SEGMENTS * VERTS_PER_STEP);
@@ -105,7 +106,7 @@ namespace Boidsish {
 		for (size_t i = ring_start_index; i < curve_positions.size(); ++i) {
 			std::vector<glm::vec3> current_ring_pos;
 			std::vector<glm::vec3> current_ring_norm;
-			float                  thickness = BASE_THICKNESS;
+			// float                  thickness = BASE_THICKNESS;
 
 			for (int j = 0; j <= TRAIL_SEGMENTS; ++j) {
 				float   angle = 2.0f * glm::pi<float>() * j / TRAIL_SEGMENTS;
@@ -241,7 +242,7 @@ namespace Boidsish {
 		}
 
 		shader.use();
-		shader.setFloat("base_thickness", BASE_THICKNESS);
+		shader.setFloat("base_thickness", thickness);
 		shader.setInt("useVertexColor", 1);
 		shader.setBool("useIridescence", iridescent_);
 		shader.setBool("useRocketTrail", useRocketTrail_);
@@ -275,7 +276,7 @@ namespace Boidsish {
 		// Render a cap at the end of the trail
 		if (!points.empty()) {
 			const auto& end_point = points.front();
-			float       end_thickness = BASE_THICKNESS * 0.1f; // Make cap size relative to trail
+			float       end_thickness = thickness * 0.1f; // Make cap size relative to trail
 			Shape::RenderSphere(end_point.first, end_point.second, glm::vec3(end_thickness), glm::quat());
 		}
 	}
