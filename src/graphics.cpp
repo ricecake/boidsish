@@ -2348,7 +2348,7 @@ namespace Boidsish {
 		// --- Pre-flight validation ---
 		// Verify critical systems are initialized
 		if (!impl->shader || impl->shader->ID == 0) {
-			logger::ERROR("Main shader failed to compile - visualization may not work correctly");
+			logger::ERR("Main shader failed to compile - visualization may not work correctly");
 		}
 
 		// --- Warm up terrain cache ---

@@ -9,13 +9,13 @@
 using namespace std::literals; // required for ""sv
 
 namespace logger {
-	enum class LogLevel : uint8_t { LOG, INFO, WARNING, ERROR, DEBUG };
+	enum class LogLevel : uint8_t { LOG, INFO, WARNING, ERR, DEBUG };
 
 	constexpr std::string_view levelString(const LogLevel& level) {
 		switch (level) {
 		case LogLevel::LOG:
 			return "LOG"sv;
-		case LogLevel::ERROR:
+		case LogLevel::ERR:
 			return "ERROR"sv;
 		case LogLevel::DEBUG:
 			return "DEBUG"sv;
@@ -108,8 +108,8 @@ namespace logger {
 		};
 
 		template <typename... Ts>
-		void ERROR(LogSource& src, Ts&&... flags) {
-			doLogging(LogLevel::ERROR, src, std::forward<Ts>(flags)...);
+		void ERR(LogSource& src, Ts&&... flags) {
+			doLogging(LogLevel::ERR, src, std::forward<Ts>(flags)...);
 		};
 
 		template <typename... Ts>
@@ -126,8 +126,8 @@ namespace logger {
 	};
 
 	template <typename... Ts>
-	void ERROR(LogSource src, Ts&&... flags) {
-		defaultLogger.ERROR(src, std::forward<Ts>(flags)...);
+	void ERR(LogSource src, Ts&&... flags) {
+		defaultLogger.ERR(src, std::forward<Ts>(flags)...);
 	};
 
 	template <typename... Ts>

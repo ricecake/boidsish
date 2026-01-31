@@ -829,7 +829,7 @@ namespace Boidsish {
 		const uint32_t kMagicNumber = 0x1F9D48E1;
 		std::ifstream  infile(dat_filepath, std::ios::binary);
 		if (!infile) {
-			logger::ERROR("Failed to open .dat file: " + dat_filepath);
+			logger::ERR("Failed to open .dat file: " + dat_filepath);
 			return;
 		}
 		uint32_t magic_number = 0;

@@ -31,7 +31,7 @@ namespace Boidsish {
 
 		// Check if compute shader compiled successfully
 		if (!placement_shader_->isValid()) {
-			logger::ERROR("Failed to compile decor placement compute shader - decor will be disabled");
+			logger::ERR("Failed to compile decor placement compute shader - decor will be disabled");
 			initialized_ = true; // Mark as initialized to prevent repeated attempts
 			return;
 		}

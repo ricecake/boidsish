@@ -24,3 +24,8 @@
 - **Fix 1**: Add missing `glDelete*` calls to `VisualizerImpl` destructor to ensure all main scene resources are freed.
 - **Fix 2**: Implement a destructor for `InstanceManager` (and ideally `InstanceGroup`) to clean up VBOs. Modify `InstanceManager::Render` to reuse VBOs by clearing only the shapes vector instead of the entire map.
 - **Fix 3**: Add missing `glDeleteBuffers(1, &ebo)` to `Trail::~Trail`.
+
+### 4. Sparse Octree for Volumetric Fields
+- **Pattern**: Sparse Spatial Octree
+- **Rationale**: Storing scent trails or volumetric clouds using a dense grid is memory-intensive. A pointer-based sparse octree provides an efficient way to store and query these fields, especially for sparse data like entity trails.
+- **Learning**: Implementing diffusion in a sparse octree can be complex. A "collect leaves and redistribute" approach is a good trade-off between correctness and complexity for real-time visualization. Using a sliding or shifting center for the octree allows for O(1) uniform drift (e.g., wind) without re-keying all data.

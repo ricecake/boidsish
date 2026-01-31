@@ -27,7 +27,7 @@ int main() {
 			std::vector<std::shared_ptr<Boidsish::Shape>> shapes;
 
 			// 1. Opaque PBR Sphere
-			auto opaque = std::make_shared<Boidsish::Dot>(0, -6.0f, 2.0f, 0.0f, 30);
+			auto opaque = std::make_shared<Boidsish::Dot>(0, -6.0f, 2.0f, 0.0f, 30.0f);
 			opaque->SetColor(0.8f, 0.1f, 0.1f, 1.0f);
 			opaque->SetUsePBR(true);
 			opaque->SetRoughness(0.2f);
@@ -35,7 +35,7 @@ int main() {
 			shapes.push_back(opaque);
 
 			// 2. Translucent PBR Sphere (Glass-like)
-			auto glass = std::make_shared<Boidsish::Dot>(1, 0.0f, 2.0f, 0.0f, 30);
+			auto glass = std::make_shared<Boidsish::Dot>(1, 0.0f, 2.0f, 0.0f, 30.0f);
 			glass->SetColor(0.1f, 0.4f, 0.8f, 0.2f); // Low alpha
 			glass->SetUsePBR(true);
 			glass->SetRoughness(0.05f); // Very smooth
@@ -43,7 +43,7 @@ int main() {
 			shapes.push_back(glass);
 
 			// 3. Nearly Transparent PBR Sphere
-			auto ghost = std::make_shared<Boidsish::Dot>(2, 6.0f, 2.0f, 0.0f, 30);
+			auto ghost = std::make_shared<Boidsish::Dot>(2, 6.0f, 2.0f, 0.0f, 30.0f);
 			ghost->SetColor(1.0f, 1.0f, 1.0f, 0.05f); // Very low alpha
 			ghost->SetUsePBR(true);
 			ghost->SetRoughness(0.1f);

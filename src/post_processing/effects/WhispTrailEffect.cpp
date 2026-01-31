@@ -45,7 +45,7 @@ namespace Boidsish {
 				glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, trail_texture_[i], 0);
 
 				if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
-					logger::ERROR("WhispTrailEffect FBO not complete!");
+					logger::ERR("WhispTrailEffect FBO not complete!");
 				}
 			}
 			glBindFramebuffer(GL_FRAMEBUFFER, 0);

@@ -254,7 +254,7 @@ namespace Boidsish {
 
 		GLenum status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
 		if (status != GL_FRAMEBUFFER_COMPLETE) {
-			logger::ERROR("Shadow FBO incomplete for map {}: {}", map_index, status);
+			logger::ERR("Shadow FBO incomplete for map {}: {}", map_index, status);
 		}
 
 		glViewport(0, 0, kShadowMapSize, kShadowMapSize);

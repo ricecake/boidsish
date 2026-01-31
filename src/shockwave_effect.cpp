@@ -59,7 +59,7 @@ namespace Boidsish {
 		glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, output_texture_, 0);
 
 		if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
-			logger::ERROR("Shockwave FBO incomplete!");
+			logger::ERR("Shockwave FBO incomplete!");
 		}
 
 		glBindFramebuffer(GL_FRAMEBUFFER, 0);

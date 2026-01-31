@@ -32,7 +32,7 @@ int main() {
 				float z = start_z + 0 * spacing;
 				float roughness = (float)col / (cols - 1);
 
-				auto sphere = std::make_shared<Boidsish::Dot>(id++, x, 2.0f, z, 20);
+				auto sphere = std::make_shared<Boidsish::Dot>(id++, x, 2.0f, z, 20.0f);
 				sphere->SetColor(0.8f, 0.1f, 0.1f); // Red base color
 				sphere->SetUsePBR(true);
 				sphere->SetRoughness(roughness);
@@ -46,7 +46,7 @@ int main() {
 				float z = start_z + 1 * spacing;
 				float roughness = (float)col / (cols - 1);
 
-				auto sphere = std::make_shared<Boidsish::Dot>(id++, x, 2.0f, z, 20);
+				auto sphere = std::make_shared<Boidsish::Dot>(id++, x, 2.0f, z, 20.0f);
 				sphere->SetColor(0.1f, 0.8f, 0.1f); // Green base color
 				sphere->SetUsePBR(true);
 				sphere->SetRoughness(roughness);
@@ -60,7 +60,7 @@ int main() {
 				float z = start_z + 2 * spacing;
 				float roughness = (float)col / (cols - 1);
 
-				auto sphere = std::make_shared<Boidsish::Dot>(id++, x, 2.0f, z, 20);
+				auto sphere = std::make_shared<Boidsish::Dot>(id++, x, 2.0f, z, 20.0f);
 				sphere->SetColor(0.1f, 0.1f, 0.8f); // Blue base color
 				sphere->SetUsePBR(true);
 				sphere->SetRoughness(roughness);
@@ -74,7 +74,7 @@ int main() {
 				float z = start_z + 3 * spacing;
 				float roughness = (float)col / (cols - 1);
 
-				auto sphere = std::make_shared<Boidsish::Dot>(id++, x, 2.0f, z, 20);
+				auto sphere = std::make_shared<Boidsish::Dot>(id++, x, 2.0f, z, 20.0f);
 				sphere->SetColor(1.0f, 0.85f, 0.0f); // Gold color
 				sphere->SetUsePBR(true);
 				sphere->SetRoughness(roughness);
@@ -83,7 +83,7 @@ int main() {
 			}
 
 			// Add one non-PBR sphere for comparison
-			auto legacy_sphere = std::make_shared<Boidsish::Dot>(id++, 0.0f, 6.0f, 0.0f, 15);
+			auto legacy_sphere = std::make_shared<Boidsish::Dot>(id++, 0.0f, 6.0f, 0.0f, 15.0f);
 			legacy_sphere->SetColor(1.0f, 1.0f, 1.0f); // White
 			legacy_sphere->SetUsePBR(false);           // Use legacy lighting
 			shapes.push_back(legacy_sphere);
