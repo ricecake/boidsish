@@ -13,6 +13,13 @@ format:
 	@cmake -B $(BUILD_DIR)
 	@cmake --build $(BUILD_DIR) --target format
 
+check:
+	@cmake -B $(BUILD_DIR) -DCMAKE_BUILD_TYPE=$(CONFIG)
+	@cmake --build $(BUILD_DIR) --target check
+
+test: all
+	@cd $(BUILD_DIR) && ctest --output-on-failure
+
 # Runs a specific example (e.g., 'make run X=boid_sim')
 run: all
 	@./$(BUILD_DIR)/$(X)

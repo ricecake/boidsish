@@ -37,6 +37,7 @@ set(IMGUI_INCLUDE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/${IMGUI_DIR}" CACHE PATH "" F
 
 get_directory_property(OLD_COMPILE_OPTIONS COMPILE_OPTIONS)
 add_compile_options(-w) # Disable all warnings for GCC/Clang for external libraries
+set(BUILD_TESTING OFF CACHE BOOL "Disable submodule tests" FORCE)
 add_subdirectory(external/task-thread-pool)
 add_subdirectory(external/poolSTL)
 add_subdirectory(external/libmorton)
@@ -134,17 +135,11 @@ find_package(GTest REQUIRED)
 include_directories(${GTEST_INCLUDE_DIRS})
 
 # Compile-only check target
-add_library(check OBJECT ${LIB_SOURCES})
-target_include_directories(check PRIVATE
-    include
-    external/include
-    external/task-thread-pool/include
-    external/poolSTL/include
-    external/libmorton/include
-    ${IMGUI_DIR}/
-    ${IMGUI_DIR}/backends
-    ${STB_DIR}/
-)
+# Using STATIC library ensures it compiles but doesn't link into a binary.
+# Linking to boidsish ensures it inherits all necessary include paths and definitions.
+add_library(check STATIC ${LIB_SOURCES})
+target_compile_definitions(check PRIVATE GLM_ENABLE_EXPERIMENTAL)
+target_link_libraries(check PRIVATE boidsish)
 
 add_executable(test_rigid_body tests/test_rigid_body.cpp)
 target_link_libraries(test_rigid_body PRIVATE boidsish GTest::GTest GTest::Main)
