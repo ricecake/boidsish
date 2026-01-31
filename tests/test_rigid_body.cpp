@@ -95,6 +95,70 @@ TEST(RigidBody, AddRelativeTorque) {
     ASSERT_NEAR(angular_velocity.z, expected_angular_velocity.z, THRESHOLD);
 }
 
+TEST(RigidBody, PersistentWrench) {
+	RigidBody rb;
+	rb.mass_ = 1.0f;
+	rb.linear_friction_ = 0.0f;
+
+	glm::dualquat persistent;
+	persistent.real = glm::quat(0, 0, 0, 0);
+	persistent.dual = glm::quat(0, 10.0f, 0, 0); // Force of 10 in X
+	rb.SetPersistentWrench(persistent);
+
+	rb.Update(1.0f);
+	ASSERT_NEAR(rb.GetLinearVelocity().x, 10.0f, THRESHOLD);
+
+	rb.Update(1.0f);
+	ASSERT_NEAR(rb.GetLinearVelocity().x, 20.0f, THRESHOLD);
+}
+
+TEST(RigidBody, VelocityLimits) {
+	RigidBody rb;
+	rb.mass_ = 1.0f;
+	rb.linear_friction_ = 0.0f;
+	rb.SetMaxLinearVelocity(5.0f);
+
+	rb.AddForce(glm::vec3(10.0f, 0.0f, 0.0f));
+	rb.Update(1.0f);
+
+	// v = 0 + 10*1 = 10, but limited to 5
+	ASSERT_NEAR(rb.GetLinearVelocity().x, 5.0f, THRESHOLD);
+}
+
+TEST(RigidBody, TorqueLimits) {
+	RigidBody rb;
+	rb.inertia_ = glm::vec3(1.0f);
+	rb.angular_friction_ = 0.0f;
+	rb.SetMaxTorque(2.0f);
+
+	rb.AddTorque(glm::vec3(10.0f, 0.0f, 0.0f));
+	rb.Update(1.0f);
+
+	// torque 10 limited to 2 -> accel = 2 -> angVel = 2
+	ASSERT_NEAR(rb.GetAngularVelocity().x, 2.0f, THRESHOLD);
+}
+
+TEST(RigidBody, Banking) {
+	RigidBody rb;
+	rb.inertia_ = glm::vec3(1.0f);
+	rb.angular_friction_ = 0.0f;
+	rb.SetMovementMode(MovementMode::BANKING);
+	rb.SetBankingAmount(1.0f);
+	rb.SetBankingPD(10.0f, 0.0f); // Just P for simplicity
+
+	// Give it some yaw velocity
+	rb.SetAngularVelocity(glm::vec3(0, 1.0f, 0));
+
+	// Update should apply a roll torque
+	rb.Update(0.1f);
+
+	// Target roll should be -1.0 * yaw_rate = -1.0
+	// Current roll is 0
+	// Roll torque should be (target - current) * kp = -1.0 * 10 = -10
+	// AngVel.z should decrease
+	ASSERT_LT(rb.GetAngularVelocity().z, 0.0f);
+}
+
 int main(int argc, char **argv) {
     ::testing::InitGoogleTest(&argc, argv);
     return RUN_ALL_TESTS();
