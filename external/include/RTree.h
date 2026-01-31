@@ -15,6 +15,13 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+#ifndef M_PI
+	#define M_PI 3.14159265358979323846
+#endif
+#ifndef M_E
+	#define M_E 2.71828182845904523536
+#endif
+
 #define RTREE_ASSERT assert // RTree uses RTREE_ASSERT( condition )
 #ifdef Min
 	#define RTREE_MIN Min

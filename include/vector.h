@@ -2,6 +2,7 @@
 
 #include <cmath>
 #include <functional>
+#include <ostream>
 #include <map>
 #include <memory>
 #include <ostream>

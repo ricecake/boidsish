@@ -1,5 +1,9 @@
 #include "sound.h"
 
+#ifdef ERROR
+#undef ERROR
+#endif
+
 #include "logger.h"
 
 namespace Boidsish {

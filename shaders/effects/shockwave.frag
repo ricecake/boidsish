@@ -24,8 +24,8 @@ struct ShockwaveData {
 	vec4 color_unused;  // xyz = color, w = unused
 };
 
-// Shockwave UBO (binding point 3)
-layout(std140, binding = 3) uniform Shockwaves {
+// Shockwave UBO (binding point 4)
+layout(std140, binding = 4) uniform Shockwaves {
 	int           shockwave_count; // Padded to 16 bytes
 	int           _pad1, _pad2, _pad3;
 	ShockwaveData shockwaves[MAX_SHOCKWAVES];

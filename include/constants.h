@@ -4,6 +4,24 @@
 
 namespace Boidsish {
 	namespace Constants {
+		namespace UboBinding {
+			consteval int Lighting() {
+				return 0;
+			}
+			consteval int VisualEffects() {
+				return 1;
+			}
+			consteval int Shadows() {
+				return 2;
+			}
+			consteval int FrustumData() {
+				return 3;
+			}
+			consteval int Shockwaves() {
+				return 4;
+			}
+		} // namespace UboBinding
+
 		namespace General {
 			namespace Math {
 				consteval float Pi() {

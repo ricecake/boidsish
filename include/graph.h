@@ -79,13 +79,22 @@ namespace Boidsish {
 
 		Vertex& AddVertex(const Vector3& pos, float Size = 0, float R = 0, float G = 0, float B = 0, float A = 0) {
 			buffers_initialized_ = false;
-			return vertices.emplace_back(weak_from_this(), vertices.size(), pos, Size, R, G, B, A);
+			return vertices.emplace_back(
+				weak_from_this(),
+				static_cast<int>(vertices.size()),
+				pos,
+				Size,
+				R,
+				G,
+				B,
+				A
+			);
 		}
 
 		Edge& AddEdge(const Vertex& a, const Vertex& b) {
 			buffers_initialized_ = false;
 			// 1. Create the new Edge object
-			return edges.emplace_back(weak_from_this(), edges.size(), a, b);
+			return edges.emplace_back(weak_from_this(), static_cast<int>(edges.size()), a, b);
 		}
 
 		Edge& E(int id) { return edges.at(id); }

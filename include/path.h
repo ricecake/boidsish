@@ -101,7 +101,7 @@ namespace Boidsish {
 		PathHandler() = default;
 
 		std::shared_ptr<Path> AddPath() {
-			auto path = std::make_shared<Path>(paths_.size());
+			auto path = std::make_shared<Path>(static_cast<int>(paths_.size()));
 			paths_.push_back(path);
 			return path;
 		}
