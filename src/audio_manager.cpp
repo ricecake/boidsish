@@ -11,6 +11,10 @@
 
 #include "miniaudio.h"
 
+#ifdef ERROR
+#undef ERROR
+#endif
+
 namespace Boidsish {
 
 	struct AudioManager::AudioManagerImpl {
