@@ -30,6 +30,7 @@ add_library(imgui STATIC
 )
 
 target_include_directories(imgui PUBLIC ${IMGUI_DIR} ${IMGUI_DIR}/backends)
+target_link_libraries(imgui PUBLIC glfw)
 
 # 2. Tell FastNoise2 where the ImGui headers are explicitly
 set(IMGUI_INCLUDE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/${IMGUI_DIR}" CACHE PATH "" FORCE)
