@@ -237,9 +237,13 @@ namespace Boidsish {
 		shader_->setFloat("nearPlane", near_plane);
 		shader_->setFloat("farPlane", far_plane);
 
-		// Bind shockwave UBO to binding point 3 (after Lighting=0, VisualEffects=1, other=2)
-		BindUBO(3);
-		glUniformBlockBinding(shader_->ID, glGetUniformBlockIndex(shader_->ID, "Shockwaves"), 3);
+		// Bind shockwave UBO to centralized binding point
+		BindUBO(Constants::UboBinding::Shockwaves());
+		glUniformBlockBinding(
+			shader_->ID,
+			glGetUniformBlockIndex(shader_->ID, "Shockwaves"),
+			Constants::UboBinding::Shockwaves()
+		);
 
 		// Bind scene texture
 		glActiveTexture(GL_TEXTURE0);

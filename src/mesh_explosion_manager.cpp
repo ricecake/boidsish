@@ -53,11 +53,11 @@ namespace Boidsish {
 		render_shader_->use();
 		GLuint lighting_idx = glGetUniformBlockIndex(render_shader_->ID, "Lighting");
 		if (lighting_idx != GL_INVALID_INDEX) {
-			glUniformBlockBinding(render_shader_->ID, lighting_idx, 0);
+			glUniformBlockBinding(render_shader_->ID, lighting_idx, Constants::UboBinding::Lighting());
 		}
 		GLuint shadows_idx = glGetUniformBlockIndex(render_shader_->ID, "Shadows");
 		if (shadows_idx != GL_INVALID_INDEX) {
-			glUniformBlockBinding(render_shader_->ID, shadows_idx, 2);
+			glUniformBlockBinding(render_shader_->ID, shadows_idx, Constants::UboBinding::Shadows());
 		}
 
 		glGenBuffers(1, &ssbo_);

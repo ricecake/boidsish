@@ -417,14 +417,20 @@ namespace Boidsish {
 			glBindBuffer(GL_UNIFORM_BUFFER, lighting_ubo);
 			glBufferData(GL_UNIFORM_BUFFER, 704, NULL, GL_DYNAMIC_DRAW);
 			glBindBuffer(GL_UNIFORM_BUFFER, 0);
-			glBindBufferRange(GL_UNIFORM_BUFFER, 0, lighting_ubo, 0, 704);
+			glBindBufferRange(GL_UNIFORM_BUFFER, Constants::UboBinding::Lighting(), lighting_ubo, 0, 704);
 
 			if (ConfigManager::GetInstance().GetAppSettingBool("enable_effects", true)) {
 				glGenBuffers(1, &visual_effects_ubo);
 				glBindBuffer(GL_UNIFORM_BUFFER, visual_effects_ubo);
 				glBufferData(GL_UNIFORM_BUFFER, sizeof(VisualEffectsUbo), NULL, GL_DYNAMIC_DRAW);
 				glBindBuffer(GL_UNIFORM_BUFFER, 0);
-				glBindBufferRange(GL_UNIFORM_BUFFER, 1, visual_effects_ubo, 0, sizeof(VisualEffectsUbo));
+				glBindBufferRange(
+					GL_UNIFORM_BUFFER,
+					Constants::UboBinding::VisualEffects(),
+					visual_effects_ubo,
+					0,
+					sizeof(VisualEffectsUbo)
+				);
 			}
 
 			// Frustum UBO for GPU-side culling (binding point 3)
@@ -433,7 +439,13 @@ namespace Boidsish {
 			glBindBuffer(GL_UNIFORM_BUFFER, frustum_ubo);
 			glBufferData(GL_UNIFORM_BUFFER, 112, NULL, GL_DYNAMIC_DRAW);
 			glBindBuffer(GL_UNIFORM_BUFFER, 0);
-			glBindBufferRange(GL_UNIFORM_BUFFER, 3, frustum_ubo, 0, 112);
+			glBindBufferRange(
+				GL_UNIFORM_BUFFER,
+				Constants::UboBinding::FrustumData(),
+				frustum_ubo,
+				0,
+				112
+			);
 
 			shader->use();
 			SetupShaderBindings(*shader);
@@ -720,19 +732,19 @@ namespace Boidsish {
 			shader_to_setup.use();
 			GLuint lighting_idx = glGetUniformBlockIndex(shader_to_setup.ID, "Lighting");
 			if (lighting_idx != GL_INVALID_INDEX) {
-				glUniformBlockBinding(shader_to_setup.ID, lighting_idx, 0);
+				glUniformBlockBinding(shader_to_setup.ID, lighting_idx, Constants::UboBinding::Lighting());
 			}
 			GLuint effects_idx = glGetUniformBlockIndex(shader_to_setup.ID, "VisualEffects");
 			if (effects_idx != GL_INVALID_INDEX) {
-				glUniformBlockBinding(shader_to_setup.ID, effects_idx, 1);
+				glUniformBlockBinding(shader_to_setup.ID, effects_idx, Constants::UboBinding::VisualEffects());
 			}
 			GLuint shadows_idx = glGetUniformBlockIndex(shader_to_setup.ID, "Shadows");
 			if (shadows_idx != GL_INVALID_INDEX) {
-				glUniformBlockBinding(shader_to_setup.ID, shadows_idx, 2);
+				glUniformBlockBinding(shader_to_setup.ID, shadows_idx, Constants::UboBinding::Shadows());
 			}
 			GLuint frustum_idx = glGetUniformBlockIndex(shader_to_setup.ID, "FrustumData");
 			if (frustum_idx != GL_INVALID_INDEX) {
-				glUniformBlockBinding(shader_to_setup.ID, frustum_idx, 3);
+				glUniformBlockBinding(shader_to_setup.ID, frustum_idx, Constants::UboBinding::FrustumData());
 			}
 		}
 

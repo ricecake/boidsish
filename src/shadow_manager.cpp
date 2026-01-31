@@ -90,7 +90,7 @@ namespace Boidsish {
 		std::vector<char> zero_data(ubo_size, 0);
 		glBufferData(GL_UNIFORM_BUFFER, ubo_size, zero_data.data(), GL_DYNAMIC_DRAW);
 
-		glBindBufferBase(GL_UNIFORM_BUFFER, 2, shadow_ubo_); // Binding point 2 for shadows
+		glBindBufferBase(GL_UNIFORM_BUFFER, Constants::UboBinding::Shadows(), shadow_ubo_);
 		glBindBuffer(GL_UNIFORM_BUFFER, 0);
 
 		initialized_ = true;

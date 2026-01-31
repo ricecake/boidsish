@@ -64,7 +64,7 @@ namespace Boidsish {
 		render_shader_->use();
 		GLuint frustum_idx = glGetUniformBlockIndex(render_shader_->ID, "FrustumData");
 		if (frustum_idx != GL_INVALID_INDEX) {
-			glUniformBlockBinding(render_shader_->ID, frustum_idx, 3);
+			glUniformBlockBinding(render_shader_->ID, frustum_idx, Constants::UboBinding::FrustumData());
 		}
 
 		// Create buffers
