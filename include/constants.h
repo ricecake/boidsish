@@ -315,6 +315,24 @@ namespace Boidsish {
 				} // namespace Arrow
 			} // namespace Shapes
 
+			namespace SpatialOctree {
+				consteval float DefaultSize() {
+					return 100.0f;
+				}
+
+				consteval int DefaultMaxDepth() {
+					return 7; // ~0.78 unit resolution for 100 unit size
+				}
+
+				consteval float DefaultDiffusionRate() {
+					return 0.1f;
+				}
+
+				consteval float DefaultDecayRate() {
+					return 0.05f;
+				}
+			} // namespace SpatialOctree
+
 			namespace Rendering {
 				consteval int BlurPasses() {
 					return 4;
