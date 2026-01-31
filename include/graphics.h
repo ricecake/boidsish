@@ -41,6 +41,8 @@ namespace Boidsish {
 	class SoundEffect;
 	class FireEffectManager;
 	class ShockwaveManager;
+	class SdfVolumeManager;
+	struct SdfSource;
 	class DecorManager;
 	class Path;
 
@@ -282,6 +284,13 @@ namespace Boidsish {
 			float            ring_width = Constants::Class::Shockwaves::DefaultRingWidth(),
 			const glm::vec3& color = Constants::Class::Shockwaves::DefaultColor()
 		);
+
+		/**
+		 * @brief SDF Volume management
+		 */
+		int  AddSdfSource(const SdfSource& source);
+		void UpdateSdfSource(int id, const SdfSource& source);
+		void RemoveSdfSource(int id);
 
 		/**
 		 * @brief Create an explosion with fire particles and shockwave.

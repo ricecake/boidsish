@@ -24,6 +24,10 @@ namespace Boidsish {
 			consteval int Shockwaves() {
 				return 4;
 			}
+
+			consteval int SdfVolumes() {
+				return 5;
+			}
 		} // namespace UboBinding
 
 		namespace General {
@@ -298,6 +302,20 @@ namespace Boidsish {
 					return glm::vec3(1.0f, 0.6f, 0.2f);
 				}
 			} // namespace Shockwaves
+
+			namespace SdfVolumes {
+				consteval int MaxSources() {
+					return 128;
+				}
+
+				consteval float DefaultRadius() {
+					return 5.0f;
+				}
+
+				consteval float DefaultSmoothness() {
+					return 2.0f;
+				}
+			} // namespace SdfVolumes
 
 			namespace Trails {
 				consteval int DefaultMaxLength() {
