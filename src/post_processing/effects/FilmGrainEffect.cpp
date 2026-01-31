@@ -11,6 +11,8 @@ namespace Boidsish {
 			is_enabled_ = false; // Disabled by default
 		}
 
+		FilmGrainEffect::~FilmGrainEffect() {}
+
 		void FilmGrainEffect::Initialize(int width, int height) {
 			shader_ = std::make_unique<Shader>("shaders/postprocess.vert", "shaders/post_processing/film_grain.frag");
 			shader_->use();

@@ -775,6 +775,21 @@ namespace Boidsish {
 				glDeleteFramebuffers(2, pingpong_fbo);
 				glDeleteTextures(2, pingpong_texture);
 			}
+
+			if (main_fbo_) {
+				glDeleteFramebuffers(1, &main_fbo_);
+				glDeleteTextures(1, &main_fbo_texture_);
+				glDeleteTextures(1, &main_fbo_depth_texture_);
+			}
+
+			if (lighting_ubo) {
+				glDeleteBuffers(1, &lighting_ubo);
+			}
+
+			if (visual_effects_ubo) {
+				glDeleteBuffers(1, &visual_effects_ubo);
+			}
+
 			if (window)
 				glfwDestroyWindow(window);
 			glfwTerminate();
