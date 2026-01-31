@@ -30,6 +30,15 @@ uniform sampler2D texture_diffuse1;
 uniform bool      use_texture;
 
 void main() {
+	float dist = length(FragPos.xz - viewPos.xz);
+	float fade_start = 540.0;
+	float fade_end = 550.0;
+	float fade = 1.0 - smoothstep(fade_start, fade_end, dist);
+
+	if (fade < 0.2) {
+		discard;
+	}
+
 	vec3 final_color;
 	if (useInstanceColor) {
 		final_color = InstanceColor.rgb;
@@ -85,11 +94,6 @@ void main() {
 
 		result = laserColor;
 	}
-
-	float dist = length(FragPos.xz - viewPos.xz);
-	float fade_start = 540.0;
-	float fade_end = 550.0;
-	float fade = 1.0 - smoothstep(fade_start, fade_end, dist);
 
 	vec4 outColor;
 

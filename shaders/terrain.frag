@@ -274,6 +274,21 @@ void main() {
 		return;
 	}
 
+	float n1 = snoise(vec3(FragPos.xy / 5, time * 0.25));
+	float n2 = snoise(vec3(FragPos.xy / 25, time * 0.08));
+	float n3 = snoise(vec3(FragPos.xy / 50, time * 0.04));
+	// ========================================================================
+	// Distance Fade -- precalc
+	// ========================================================================
+	float dist = length(FragPos.xz - viewPos.xz);
+	float fade_start = 560.0;
+	float fade_end = 570.0;
+	float fade = 1.0 - smoothstep(fade_start, fade_end, dist + n2 * 40.0);
+
+	if (fade < 0.2) {
+		discard;
+	}
+
 	vec3 norm = normalize(Normal);
 	/*
 	    // ========================================================================
@@ -365,10 +380,7 @@ void main() {
 	// float nebula_noise = fbm(FragPos / 50 + warp * 0.8);
 	// float funky_noise = fbm(FragPos / 20 + warp.zxy * 1.8);
 
-	float n1 = snoise(vec3(FragPos.xy / 5, time * 0.25));
-	float n2 = snoise(vec3(FragPos.xy / 25, time * 0.08));
-	float n3 = snoise(vec3(FragPos.xy / 50, time * 0.04));
-	vec3  finalAlbedo = getBiomeColor(FragPos.y + n1, n2, n3);
+	vec3 finalAlbedo = getBiomeColor(FragPos.y + n1, n2, n3);
 
 	//    vec3 bonusColor = mix(vec3(0.1, 0.4, 0.2), vec3(0.1, 0.5, 0.2), FragPos.y / 100);
 	//    finalAlbedo = mix(finalAlbedo, bonusColor, nebula_noise);
@@ -387,13 +399,7 @@ void main() {
 	// ========================================================================
 	// Distance Fade
 	// ========================================================================
-
-	float dist = length(FragPos.xz - viewPos.xz);
-	float fade_start = 560.0;
-	float fade_end = 570.0;
-	float fade = 1.0 - smoothstep(fade_start, fade_end, dist + n2 * 40.0);
-
-	vec4 outColor = vec4(lighting, mix(0.0, fade, step(0.01, FragPos.y)));
+	vec4 outColor = vec4(lighting, mix(0.0, fade, step(0.01, FragPos.y))) + vec4(smoothstep(0.2, 0.5, 1 - fade));
 	FragColor = mix(
 		vec4(0.0, 0.7, 0.7, mix(0.0, fade, step(0.01, FragPos.y))) * length(outColor),
 		outColor,

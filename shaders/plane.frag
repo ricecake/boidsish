@@ -103,6 +103,18 @@ float fbm(vec3 p) {
 }
 
 void main() {
+	// --- Distance Fade - Precalc ---
+	vec3  warp = vec3(fbm(WorldPos / 50 + time * 0.08));
+	float nebula_noise = fbm(WorldPos / 50 + warp * 0.8);
+	float dist = length(WorldPos.xz - viewPos.xz);
+	float fade_start = 580.0;
+	float fade_end = 600.0;
+	float fade = 1.0 - smoothstep(fade_start, fade_end, dist + nebula_noise * 50);
+
+	if (fade < 0.2) {
+		discard;
+	}
+
 	// discard;
 	// --- Reflection sampling ---
 	vec3 reflectionColor = vec3(0.0);
@@ -137,14 +149,6 @@ void main() {
 	vec3  final_color = mix(lighting * surfaceColor, reflectionColor, reflection_strength) + grid_color;
 
 	// --- Distance Fade ---
-	vec3  warp = vec3(fbm(WorldPos / 50 + time * 0.08));
-	float nebula_noise = fbm(WorldPos / 50 + warp * 0.8);
-
-	float dist = length(WorldPos.xz - viewPos.xz);
-	float fade_start = 580.0;
-	float fade_end = 600.0;
-	float fade = 1.0 - smoothstep(fade_start, fade_end, dist + nebula_noise * 50);
-
 	vec4 outColor = vec4(final_color, fade);
 	FragColor = mix(vec4(0.7, 0.1, 0.7, fade) * length(outColor), outColor, step(1, fade));
 }

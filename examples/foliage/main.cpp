@@ -20,7 +20,7 @@ int main() {
 
 		// Missiles - always point up regardless of terrain (like trees)
 		DecorProperties missile_props;
-		missile_props.density = 0.02f;
+		missile_props.density = 0.002f;
 		missile_props.base_scale = 0.1f;
 		missile_props.scale_variance = 0.5f;
 		missile_props.base_rotation = glm::vec3(-90.0f, 0.0f, 0.0f); // Point upward (rotate -90 on X)
