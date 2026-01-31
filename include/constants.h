@@ -101,6 +101,26 @@ namespace Boidsish {
 				consteval float PathBankSpeed() {
 					return 3.5f;
 				}
+
+				consteval float ChaseTrailBehind() {
+					return 5.0f;
+				}
+
+				consteval float ChaseElevation() {
+					return 2.0f;
+				}
+
+				consteval float ChaseLookAhead() {
+					return 5.0f;
+				}
+
+				consteval float ChaseResponsiveness() {
+					return 4.5f;
+				}
+
+				consteval float PathFollowSmoothing() {
+					return 5.0f;
+				}
 			} // namespace Camera
 		} // namespace Project
 
