@@ -102,15 +102,17 @@ float fbm(vec3 p) {
 }
 
 // Higher octave FBM for fine detail
-float fbm_detail(vec3 p) {
+float[6] fbm_detail(vec3 p) {
+	float values[6];
 	float value = 0.0;
 	float amplitude = 0.5;
 	for (int i = 0; i < 6; i++) {
 		value += amplitude * snoise(p);
 		p *= 2.0;
 		amplitude *= 0.5;
+		values[i] = value;
 	}
-	return value;
+	return values;
 }
 
 // ============================================================================
@@ -148,14 +150,14 @@ const float HEIGHT_PEAK = 100.0;
 float calculateValleyFactor(vec3 pos) {
 	// Sample noise at different scales to approximate local curvature
 	float scale = 0.02;
-	float center = fbm(pos * scale);
+	float center = length(pos * scale);
 
 	// Sample neighbors
 	float dx = 5.0;
-	float north = fbm((pos + vec3(0, 0, dx)) * scale);
-	float south = fbm((pos - vec3(0, 0, dx)) * scale);
-	float east = fbm((pos + vec3(dx, 0, 0)) * scale);
-	float west = fbm((pos - vec3(dx, 0, 0)) * scale);
+	float north = length((pos + vec3(0, 0, dx)) * scale);
+	float south = length((pos - vec3(0, 0, dx)) * scale);
+	float east = length((pos + vec3(dx, 0, 0)) * scale);
+	float west = length((pos - vec3(dx, 0, 0)) * scale);
 
 	// Laplacian approximation - negative means we're lower than surroundings (valley)
 	float laplacian = (north + south + east + west) / 4.0 - center;
@@ -274,9 +276,30 @@ void main() {
 		return;
 	}
 
-	float n1 = snoise(vec3(FragPos.xy / 5, time * 0.25));
+	// ========================================================================
+	// Noise Generation
+	// ========================================================================
+	float[6] noise = fbm_detail(FragPos * 0.2);
+
+	// Large scale domain warping for natural variation
+	// vec3  warp = vec3(fbm(FragPos * 0.01 + FragPos.x * 0.02));
+	vec3 warp = vec3(noise[3]);
+	float largeNoise = fbm(FragPos * 0.015 + warp * 0.3);
+
+	// Medium scale noise for biome boundaries
+	float medNoise = noise[4];//fbm_detail(FragPos * 0.05);
+
+	// Fine detail noise for texture
+	// float fineNoise = fbm_detail(FragPos * 0.2);
+	float fineNoise = noise[5];
+
+	// Combined noise for various effects
+	float combinedNoise = largeNoise * 0.6 + medNoise * 0.3 + fineNoise * 0.1;
+
+
+	// float n1 = snoise(vec3(FragPos.xy / 5, FragPos.z * 0.25));
 	float n2 = snoise(vec3(FragPos.xy / 25, time * 0.08));
-	float n3 = snoise(vec3(FragPos.xy / 50, time * 0.04));
+	// float n3 = snoise(vec3(FragPos.xy / 50, FragPos.x * 0.04));
 	// ========================================================================
 	// Distance Fade -- precalc
 	// ========================================================================
@@ -291,27 +314,16 @@ void main() {
 
 	vec3 norm = normalize(Normal);
 	/*
-	    // ========================================================================
-	    // Noise Generation
-	    // ========================================================================
-
-	    // Large scale domain warping for natural variation
-	    vec3  warp = vec3(fbm(FragPos * 0.01 + time * 0.02));
-	    float largeNoise = fbm(FragPos * 0.015 + warp * 0.3);
-
-	    // Medium scale noise for biome boundaries
-	    float medNoise = fbm_detail(FragPos * 0.05);
-
-	    // Fine detail noise for texture
-	    float fineNoise = fbm_detail(FragPos * 0.2);
-
-	    // Combined noise for various effects
-	    float combinedNoise = largeNoise * 0.6 + medNoise * 0.3 + fineNoise * 0.1;
-
+/*
 	    // ========================================================================
 	    // Terrain Analysis
 	    // ========================================================================
+*/
 
+		// float largeNoise = n1;
+		// float medNoise =  n2;
+		// float fineNoise = n3;
+		// float combinedNoise = largeNoise * 0.6 + medNoise * 0.3 + fineNoise * 0.1;
 	    // Height with noise distortion for natural boundaries
 	    float baseHeight = FragPos.y;
 	    float distortedHeight = baseHeight + largeNoise * 5.0;
@@ -375,12 +387,13 @@ void main() {
 	    // ========================================================================
 	    // Lighting
 	    // ========================================================================
-	*/
+	// */
+
 	// vec3  warp = vec3(fbm(FragPos / 50 + time * 0.08));
 	// float nebula_noise = fbm(FragPos / 50 + warp * 0.8);
 	// float funky_noise = fbm(FragPos / 20 + warp.zxy * 1.8);
 
-	vec3 finalAlbedo = getBiomeColor(FragPos.y + n1, n2, n3);
+	// vec3 finalAlbedo = getBiomeColor(FragPos.y + n1, n1+n3, n3);
 
 	//    vec3 bonusColor = mix(vec3(0.1, 0.4, 0.2), vec3(0.1, 0.5, 0.2), FragPos.y / 100);
 	//    finalAlbedo = mix(finalAlbedo, bonusColor, nebula_noise);

@@ -19,7 +19,7 @@ uniform int            uChunkSize;
 
 uniform mat4  view;
 uniform mat4  projection;
-uniform float uPhongAlpha = 1.0;
+uniform float uPhongAlpha = 0.0;
 uniform vec4  clipPlane;
 
 // Sample heightmap to get world position and normal
