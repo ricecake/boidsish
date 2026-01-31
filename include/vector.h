@@ -4,6 +4,7 @@
 #include <functional>
 #include <map>
 #include <memory>
+#include <ostream>
 #include <vector>
 
 #include <glm/glm.hpp>
