@@ -5,6 +5,7 @@
 #include <ostream>
 #include <map>
 #include <memory>
+#include <ostream>
 #include <vector>
 
 #include <glm/glm.hpp>
