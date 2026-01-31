@@ -48,7 +48,7 @@ namespace Boidsish {
 			glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, strobe_texture_, 0);
 
 			if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
-				logger::ERROR("StrobeEffect FBO not complete!");
+				logger::ERR("StrobeEffect FBO not complete!");
 			}
 			glBindFramebuffer(GL_FRAMEBUFFER, 0);
 		}

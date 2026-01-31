@@ -66,7 +66,7 @@ namespace Boidsish {
 			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 			glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, _brightPassTexture, 0);
 			if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
-				logger::ERROR("Bloom Bright Pass FBO is not complete!");
+				logger::ERR("Bloom Bright Pass FBO is not complete!");
 
 			glm::vec2 mipSize((float)_width, (float)_height);
 
@@ -99,7 +99,7 @@ namespace Boidsish {
 				glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, mip.texture, 0);
 
 				if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
-					logger::ERROR("Bloom mip FBO " + std::to_string(i) + " is not complete!");
+					logger::ERR("Bloom mip FBO " + std::to_string(i) + " is not complete!");
 				}
 				_mipChain.push_back(mip);
 			}

@@ -53,7 +53,7 @@ namespace Boidsish {
 		// Create shaders
 		compute_shader_ = std::make_unique<ComputeShader>("shaders/fire.comp");
 		if (!compute_shader_->isValid()) {
-			logger::ERROR("Failed to compile fire compute shader - fire effects will be disabled");
+			logger::ERR("Failed to compile fire compute shader - fire effects will be disabled");
 			initialized_ = true; // Mark as initialized to prevent repeated attempts
 			return;
 		}
@@ -123,7 +123,7 @@ namespace Boidsish {
 			return effect;
 		}
 
-		logger::ERROR("Maximum number of fire effects reached.");
+		logger::ERR("Maximum number of fire effects reached.");
 		return nullptr;
 	}
 

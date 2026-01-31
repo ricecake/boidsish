@@ -32,7 +32,7 @@ namespace Boidsish {
 
 			ma_result result = ma_engine_init(&engineConfig, &engine);
 			if (result != MA_SUCCESS) {
-				logger::ERROR("Failed to initialize audio engine.");
+				logger::ERR("Failed to initialize audio engine.");
 				initialized = false;
 			} else {
 				initialized = true;

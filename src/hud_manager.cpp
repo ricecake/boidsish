@@ -112,7 +112,7 @@ namespace Boidsish {
 			else if (nrComponents == 4)
 				format = GL_RGBA;
 			else {
-				logger::ERROR("Unsupported number of components in texture: " + std::to_string(nrComponents));
+				logger::ERR("Unsupported number of components in texture: " + std::to_string(nrComponents));
 				stbi_image_free(data);
 				return 0;
 			}
@@ -128,7 +128,7 @@ namespace Boidsish {
 
 			stbi_image_free(data);
 		} else {
-			logger::ERROR("Texture failed to load", path, stbi_failure_reason());
+			logger::ERR("Texture failed to load", path, stbi_failure_reason());
 			return 0;
 		}
 

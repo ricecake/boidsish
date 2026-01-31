@@ -13,13 +13,13 @@ namespace Boidsish {
 		const glm::vec3&   position
 	) {
 		if (!engine) {
-			logger::ERROR("Sound created with null audio engine.");
+			logger::ERR("Sound created with null audio engine.");
 			return;
 		}
 
 		ma_result result = ma_sound_init_from_file(engine, filepath.c_str(), 0, NULL, NULL, &_sound);
 		if (result != MA_SUCCESS) {
-			logger::ERROR("Failed to load sound file: {}", filepath);
+			logger::ERR("Failed to load sound file: {}", filepath);
 			return;
 		}
 

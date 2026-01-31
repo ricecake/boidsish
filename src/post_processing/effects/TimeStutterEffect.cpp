@@ -59,7 +59,7 @@ namespace Boidsish {
 				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 				glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, history_texture_[i], 0);
 				if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
-					logger::ERROR("TimeStutterEffect FBO not complete!");
+					logger::ERR("TimeStutterEffect FBO not complete!");
 				}
 			}
 			glBindFramebuffer(GL_FRAMEBUFFER, 0);

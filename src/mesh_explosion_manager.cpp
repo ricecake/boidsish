@@ -44,7 +44,7 @@ namespace Boidsish {
 		compute_shader_ = std::make_unique<ComputeShader>("shaders/mesh_explosion.comp");
 		// Check if compute shader compiled successfully
 		if (!compute_shader_->isValid()) {
-			logger::ERROR("Failed to compile mesh explosion compute shader - mesh explosions will be disabled");
+			logger::ERR("Failed to compile mesh explosion compute shader - mesh explosions will be disabled");
 			initialized_ = true; // Mark as initialized to prevent repeated attempts
 			return;
 		}
