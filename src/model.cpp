@@ -1,5 +1,6 @@
 #include "model.h"
 
+#include <algorithm>
 #include <iostream>
 
 #include "shader.h"
@@ -68,6 +69,18 @@ namespace Boidsish {
 		// Ensure the correct shader is bound before setting uniforms
 		Shape::shader->use();
 
+		bool hasDiffuse = false;
+		for (const auto& t : textures) {
+			if (t.type == "texture_diffuse") {
+				hasDiffuse = true;
+				break;
+			}
+		}
+		Shape::shader->setBool("use_texture", hasDiffuse);
+
+		Shape::shader->setVec3("objectColor", diffuseColor);
+		Shape::shader->setFloat("objectAlpha", opacity);
+
 		for (unsigned int i = 0; i < textures.size(); i++) {
 			glActiveTexture(GL_TEXTURE0 + i); // active proper texture unit before binding
 			// retrieve texture number (the N in diffuse_textureN)
@@ -101,6 +114,18 @@ namespace Boidsish {
 		// Ensure VAO is valid
 		if (VAO == 0 || indices.empty())
 			return;
+
+		bool hasDiffuse = false;
+		for (const auto& t : textures) {
+			if (t.type == "texture_diffuse") {
+				hasDiffuse = true;
+				break;
+			}
+		}
+		shader.setBool("use_texture", hasDiffuse);
+
+		shader.setVec3("objectColor", diffuseColor);
+		shader.setFloat("objectAlpha", opacity);
 
 		// Bind textures using the provided shader
 		bindTextures(shader);
@@ -223,7 +248,13 @@ namespace Boidsish {
 			std::cerr << "ERROR::ASSIMP::" << importer.GetErrorString() << std::endl;
 			return;
 		}
-		directory = path.substr(0, path.find_last_of('/'));
+
+		size_t last_slash = path.find_last_of("/\\");
+		if (last_slash != std::string::npos) {
+			directory = path.substr(0, last_slash);
+		} else {
+			directory = ".";
+		}
 
 		processNode(scene->mRootNode, scene);
 	}
@@ -316,7 +347,20 @@ namespace Boidsish {
 		textures.insert(textures.end(), heightMaps.begin(), heightMaps.end());
 
 		// return a mesh object created from the extracted mesh data
-		return Mesh(vertices, indices, textures);
+		Mesh out_mesh(vertices, indices, textures);
+
+		// Extract material properties
+		aiColor3D color(1.0f, 1.0f, 1.0f);
+		if (material->Get(AI_MATKEY_COLOR_DIFFUSE, color) == AI_SUCCESS) {
+			out_mesh.diffuseColor = glm::vec3(color.r, color.g, color.b);
+		}
+
+		float opacity = 1.0f;
+		if (material->Get(AI_MATKEY_OPACITY, opacity) == AI_SUCCESS) {
+			out_mesh.opacity = opacity;
+		}
+
+		return out_mesh;
 	}
 
 	std::vector<Boidsish::Texture>
@@ -349,6 +393,9 @@ namespace Boidsish {
 
 	unsigned int Model::TextureFromFile(const char* path, const std::string& directory, bool /* gamma */) {
 		std::string filename = std::string(path);
+		// Replace backslashes with forward slashes for cross-platform compatibility
+		std::replace(filename.begin(), filename.end(), '\\', '/');
+
 		filename = directory + '/' + filename;
 
 		unsigned int textureID;
@@ -357,7 +404,7 @@ namespace Boidsish {
 		int            width, height, nrComponents;
 		unsigned char* data = stbi_load(filename.c_str(), &width, &height, &nrComponents, 0);
 		if (data) {
-			GLenum format;
+			GLenum format = GL_RGB;
 			if (nrComponents == 1)
 				format = GL_RED;
 			else if (nrComponents == 3)
@@ -366,6 +413,7 @@ namespace Boidsish {
 				format = GL_RGBA;
 
 			glBindTexture(GL_TEXTURE_2D, textureID);
+			glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
 			glTexImage2D(GL_TEXTURE_2D, 0, format, width, height, 0, format, GL_UNSIGNED_BYTE, data);
 			glGenerateMipmap(GL_TEXTURE_2D);
 
