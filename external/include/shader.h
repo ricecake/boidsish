@@ -4,6 +4,7 @@
 #include <cstdio>
 #include <fstream>
 #include <iostream>
+#include <map>
 #include <set>
 #include <sstream>
 #include <string>
@@ -14,6 +15,31 @@
 class ShaderBase {
 public:
 	unsigned int ID;
+
+	/**
+	 * @brief Static registry for shader variable replacements.
+	 * Allows synchronizing C++ constants with shader code using [[VAR_NAME]] syntax.
+	 */
+	static std::map<std::string, std::string>& GetReplacements() {
+		static std::map<std::string, std::string> replacements;
+		return replacements;
+	}
+
+	/**
+	 * @brief Register a constant for use in shaders.
+	 * In the shader, use [[name]] to reference this constant.
+	 */
+	static void RegisterConstant(const std::string& name, const std::string& value) {
+		GetReplacements()["[[" + name + "]]"] = value;
+	}
+
+	/**
+	 * @brief Register a numeric constant for use in shaders.
+	 */
+	template<typename T>
+	static void RegisterConstant(const std::string& name, T value) {
+		RegisterConstant(name, std::to_string(value));
+	}
 
 	// activate the shader
 	// ------------------------------------------------------------------------
@@ -117,12 +143,37 @@ protected:
 
 		while (std::getline(iss, line)) {
 			if (line.substr(0, 8) == "#include") {
-				std::string includePath = line.substr(line.find('"') + 1, line.rfind('"') - line.find('"') - 1);
-				finalSource += loadShaderSource(directory + "/" + includePath, includedFiles);
+				size_t firstQuote = line.find('"');
+				size_t lastQuote = line.rfind('"');
+				if (firstQuote != std::string::npos && lastQuote != std::string::npos && firstQuote < lastQuote) {
+					std::string includePath = line.substr(firstQuote + 1, lastQuote - firstQuote - 1);
+					std::string fullPath = directory.empty() ? includePath : directory + "/" + includePath;
+
+					// Check if file exists relative to current file
+					std::ifstream checkFile(fullPath);
+					if (!checkFile.is_open()) {
+						// Try relative to 'external' directory
+						fullPath = "external/" + includePath;
+					} else {
+						checkFile.close();
+					}
+
+					finalSource += loadShaderSource(fullPath, includedFiles);
+				}
 			} else {
 				finalSource += line + "\n";
 			}
 		}
+
+		// Apply variable replacements (e.g., [[MAX_LIGHTS]])
+		for (auto const& [placeholder, value] : GetReplacements()) {
+			size_t pos = 0;
+			while ((pos = finalSource.find(placeholder, pos)) != std::string::npos) {
+				finalSource.replace(pos, placeholder.length(), value);
+				pos += value.length();
+			}
+		}
+
 		return finalSource;
 	}
 
