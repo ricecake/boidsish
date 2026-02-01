@@ -902,6 +902,10 @@ namespace Boidsish {
 				glDeleteBuffers(1, &visual_effects_ubo);
 			}
 
+			if (frustum_ubo) {
+				glDeleteBuffers(1, &frustum_ubo);
+			}
+
 			if (window)
 				glfwDestroyWindow(window);
 			glfwTerminate();
