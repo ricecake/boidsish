@@ -34,6 +34,7 @@
 #include "post_processing/effects/NegativeEffect.h"
 #include "post_processing/effects/OpticalFlowEffect.h"
 #include "post_processing/effects/SdfVolumeEffect.h"
+#include "post_processing/effects/SsaoEffect.h"
 #include "post_processing/effects/StrobeEffect.h"
 #include "post_processing/effects/TimeStutterEffect.h"
 #include "post_processing/effects/ToneMappingEffect.h"
@@ -722,6 +723,10 @@ namespace Boidsish {
 				// --- Shockwave Manager ---
 				shockwave_manager->Initialize(width, height);
 
+				auto ssao_effect = std::make_shared<PostProcessing::SsaoEffect>();
+				ssao_effect->SetEnabled(false);
+				post_processing_manager_->AddEffect(ssao_effect);
+
 				auto negative_effect = std::make_shared<PostProcessing::NegativeEffect>();
 				negative_effect->SetEnabled(false);
 				post_processing_manager_->AddEffect(negative_effect);
@@ -785,6 +790,25 @@ namespace Boidsish {
 
 			auto scene_widget = std::make_shared<UI::SceneWidget>(*scene_manager, *parent);
 			ui_manager->AddWidget(scene_widget);
+		}
+
+		void BindShadows(Shader& s) {
+			s.use();
+			if (shadow_manager && shadow_manager->IsInitialized()) {
+				shadow_manager->BindForRendering(s);
+				std::array<int, 10> shadow_indices;
+				shadow_indices.fill(-1);
+				const auto& all_lights = light_manager.GetLights();
+				for (size_t j = 0; j < all_lights.size() && j < 10; ++j) {
+					shadow_indices[j] = all_lights[j].shadow_map_index;
+				}
+				s.setIntArray("lightShadowIndices", shadow_indices.data(), 10);
+			} else {
+				s.setInt("shadowMaps", 4);
+				std::array<int, 10> shadow_indices;
+				shadow_indices.fill(-1);
+				s.setIntArray("lightShadowIndices", shadow_indices.data(), 10);
+			}
 		}
 
 		void SetupShaderBindings(Shader& shader_to_setup) {
@@ -1114,15 +1138,8 @@ namespace Boidsish {
 			Terrain::terrain_shader_->use();
 			Terrain::terrain_shader_->setBool("uIsShadowPass", is_shadow_pass);
 
-			if (!is_shadow_pass && shadow_manager && shadow_manager->IsInitialized()) {
-				shadow_manager->BindForRendering(*Terrain::terrain_shader_);
-				std::array<int, 10> shadow_indices;
-				shadow_indices.fill(-1);
-				const auto& all_lights = light_manager.GetLights();
-				for (size_t j = 0; j < all_lights.size() && j < 10; ++j) {
-					shadow_indices[j] = all_lights[j].shadow_map_index;
-				}
-				Terrain::terrain_shader_->setIntArray("lightShadowIndices", shadow_indices.data(), 10);
+			if (!is_shadow_pass) {
+				BindShadows(*Terrain::terrain_shader_);
 			}
 
 			// Use batched render manager if available (single draw call for all chunks)
@@ -1203,6 +1220,9 @@ namespace Boidsish {
 			if (!plane_shader || !ConfigManager::GetInstance().GetAppSettingBool("render_floor", true)) {
 				return;
 			}
+
+			BindShadows(*plane_shader);
+
 			glEnable(GL_DEPTH_TEST);
 			glEnable(GL_BLEND);
 			glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
@@ -1225,6 +1245,7 @@ namespace Boidsish {
 			glBindVertexArray(plane_vao);
 			glDrawArrays(GL_TRIANGLES, 0, 6);
 			glBindVertexArray(0);
+			glDisable(GL_BLEND);
 		}
 
 		void DefaultInputHandler(const InputState& state) {
@@ -2305,26 +2326,9 @@ namespace Boidsish {
 		impl->RenderPlane(view);
 		impl->RenderTerrain(view, impl->projection, std::nullopt);
 
-		// Always set shadow indices to -1 for proper lighting
-		// This must happen even if shadow_manager isn't active
-		impl->shader->use();
-		std::array<int, 10> shadow_indices;
-		shadow_indices.fill(-1);
-
 		// ALWAYS bind shadow maps (even if empty) to prevent sampler errors
 		// An unbound sampler2DArrayShadow can cause shader failures on some GPUs
-		if (impl->shadow_manager && impl->shadow_manager->IsInitialized()) {
-			impl->shadow_manager->BindForRendering(*impl->shader);
-			// Build shadow index array mapping light index to shadow map layer
-			const auto& all_lights = impl->light_manager.GetLights();
-			for (size_t j = 0; j < all_lights.size() && j < 10; ++j) {
-				shadow_indices[j] = all_lights[j].shadow_map_index;
-			}
-		} else {
-			// Shadow manager not available - bind placeholder values
-			impl->shader->setInt("shadowMaps", 4); // Texture unit 4, even if nothing bound
-		}
-		impl->shader->setIntArray("lightShadowIndices", shadow_indices.data(), 10);
+		impl->BindShadows(*impl->shader);
 
 		impl->RenderShapes(view, impl->camera, impl->shapes, impl->simulation_time, std::nullopt);
 		if (impl->decor_manager) {

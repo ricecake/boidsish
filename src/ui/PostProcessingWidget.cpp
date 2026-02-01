@@ -4,6 +4,7 @@
 #include "post_processing/effects/AtmosphereEffect.h"
 #include "post_processing/effects/BloomEffect.h"
 #include "post_processing/effects/FilmGrainEffect.h"
+#include "post_processing/effects/SsaoEffect.h"
 #include "post_processing/effects/ToneMappingEffect.h"
 
 namespace Boidsish {
@@ -60,6 +61,28 @@ namespace Boidsish {
 						glm::vec3 cloud_color = atmosphere_effect->GetCloudColor();
 						if (ImGui::ColorEdit3("Cloud Color", &cloud_color[0])) {
 							atmosphere_effect->SetCloudColor(cloud_color);
+						}
+					}
+				}
+
+				if (effect->GetName() == "SSAO" && is_enabled) {
+					auto ssao_effect = std::dynamic_pointer_cast<PostProcessing::SsaoEffect>(effect);
+					if (ssao_effect) {
+						float radius = ssao_effect->GetRadius();
+						if (ImGui::SliderFloat("Radius", &radius, 0.01f, 2.0f)) {
+							ssao_effect->SetRadius(radius);
+						}
+						float bias = ssao_effect->GetBias();
+						if (ImGui::SliderFloat("Bias", &bias, 0.001f, 0.1f)) {
+							ssao_effect->SetBias(bias);
+						}
+						float intensity = ssao_effect->GetIntensity();
+						if (ImGui::SliderFloat("Intensity##SSAO", &intensity, 0.0f, 5.0f)) {
+							ssao_effect->SetIntensity(intensity);
+						}
+						float power = ssao_effect->GetPower();
+						if (ImGui::SliderFloat("Power##SSAO", &power, 0.1f, 5.0f)) {
+							ssao_effect->SetPower(power);
 						}
 					}
 				}
