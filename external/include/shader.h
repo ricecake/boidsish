@@ -8,6 +8,7 @@
 #include <set>
 #include <sstream>
 #include <string>
+#include <unordered_map>
 
 #include <GL/glew.h>
 #include <glm/glm.hpp>
@@ -15,6 +16,34 @@
 class ShaderBase {
 public:
 	unsigned int ID;
+
+	// Rule of Five: Disallow copying due to manual OpenGL resource management.
+	// Moving is supported to allow transferring ownership of shader programs.
+	ShaderBase() = default;
+	ShaderBase(const ShaderBase&) = delete;
+	ShaderBase& operator=(const ShaderBase&) = delete;
+
+	ShaderBase(ShaderBase&& other) noexcept :
+		ID(other.ID), m_UniformLocationCache(std::move(other.m_UniformLocationCache)) {
+		other.ID = 0;
+	}
+
+	ShaderBase& operator=(ShaderBase&& other) noexcept {
+		if (this != &other) {
+			if (ID != 0)
+				glDeleteProgram(ID);
+			ID = other.ID;
+			m_UniformLocationCache = std::move(other.m_UniformLocationCache);
+			other.ID = 0;
+		}
+		return *this;
+	}
+
+	virtual ~ShaderBase() {
+		if (ID != 0) {
+			glDeleteProgram(ID);
+		}
+	}
 
 	/**
 	 * @brief Static registry for shader variable replacements.
@@ -48,67 +77,79 @@ public:
 	// utility uniform functions
 	// ------------------------------------------------------------------------
 	void setBool(const std::string& name, bool value) const {
-		glUniform1i(glGetUniformLocation(ID, name.c_str()), (int)value);
+		glUniform1i(getUniformLocation(name), (int)value);
 	}
 
 	// ------------------------------------------------------------------------
 	void setInt(const std::string& name, int value) const {
-		glUniform1i(glGetUniformLocation(ID, name.c_str()), value);
+		glUniform1i(getUniformLocation(name), value);
 	}
 
 	// ------------------------------------------------------------------------
 	void setFloat(const std::string& name, float value) const {
-		glUniform1f(glGetUniformLocation(ID, name.c_str()), value);
+		glUniform1f(getUniformLocation(name), value);
 	}
 
 	// ------------------------------------------------------------------------
 	void setVec2(const std::string& name, const glm::vec2& value) const {
-		glUniform2fv(glGetUniformLocation(ID, name.c_str()), 1, &value[0]);
+		glUniform2fv(getUniformLocation(name), 1, &value[0]);
 	}
 
 	void setVec2(const std::string& name, float x, float y) const {
-		glUniform2f(glGetUniformLocation(ID, name.c_str()), x, y);
+		glUniform2f(getUniformLocation(name), x, y);
 	}
 
 	// ------------------------------------------------------------------------
 	void setVec3(const std::string& name, const glm::vec3& value) const {
-		glUniform3fv(glGetUniformLocation(ID, name.c_str()), 1, &value[0]);
+		glUniform3fv(getUniformLocation(name), 1, &value[0]);
 	}
 
 	void setVec3(const std::string& name, float x, float y, float z) const {
-		glUniform3f(glGetUniformLocation(ID, name.c_str()), x, y, z);
+		glUniform3f(getUniformLocation(name), x, y, z);
 	}
 
 	// ------------------------------------------------------------------------
 	void setVec4(const std::string& name, const glm::vec4& value) const {
-		glUniform4fv(glGetUniformLocation(ID, name.c_str()), 1, &value[0]);
+		glUniform4fv(getUniformLocation(name), 1, &value[0]);
 	}
 
 	void setVec4(const std::string& name, float x, float y, float z, float w) {
-		glUniform4f(glGetUniformLocation(ID, name.c_str()), x, y, z, w);
+		glUniform4f(getUniformLocation(name), x, y, z, w);
 	}
 
 	// ------------------------------------------------------------------------
 	void setMat2(const std::string& name, const glm::mat2& mat) const {
-		glUniformMatrix2fv(glGetUniformLocation(ID, name.c_str()), 1, GL_FALSE, &mat[0][0]);
+		glUniformMatrix2fv(getUniformLocation(name), 1, GL_FALSE, &mat[0][0]);
 	}
 
 	// ------------------------------------------------------------------------
 	void setMat3(const std::string& name, const glm::mat3& mat) const {
-		glUniformMatrix3fv(glGetUniformLocation(ID, name.c_str()), 1, GL_FALSE, &mat[0][0]);
+		glUniformMatrix3fv(getUniformLocation(name), 1, GL_FALSE, &mat[0][0]);
 	}
 
 	// ------------------------------------------------------------------------
 	void setMat4(const std::string& name, const glm::mat4& mat) const {
-		glUniformMatrix4fv(glGetUniformLocation(ID, name.c_str()), 1, GL_FALSE, &mat[0][0]);
+		glUniformMatrix4fv(getUniformLocation(name), 1, GL_FALSE, &mat[0][0]);
 	}
 
 	// ------------------------------------------------------------------------
 	void setIntArray(const std::string& name, const int* values, int count) const {
-		glUniform1iv(glGetUniformLocation(ID, name.c_str()), count, values);
+		glUniform1iv(getUniformLocation(name), count, values);
 	}
 
 protected:
+	int getUniformLocation(const std::string& name) const {
+		auto it = m_UniformLocationCache.find(name);
+		if (it != m_UniformLocationCache.end()) {
+			return it->second;
+		}
+
+		int location = glGetUniformLocation(ID, name.c_str());
+		m_UniformLocationCache[name] = location;
+		return location;
+	}
+
+	mutable std::unordered_map<std::string, int> m_UniformLocationCache;
 	std::string loadShaderSource(const std::string& path, std::set<std::string>& includedFiles) {
 		if (includedFiles.count(path)) {
 			// Prevent circular inclusion
