@@ -13,7 +13,7 @@ uniform mat4  projection;
 uniform mat4  invProjection;
 uniform vec2  noiseScale;
 uniform float radius = 0.5;
-uniform float bias = 0.05;
+uniform float bias = 0.1;
 
 vec3 getPos(vec2 uv) {
 	float depth = texture(gDepth, uv).r;
@@ -47,6 +47,14 @@ void main() {
 
 	vec3 fragPos = getPos(TexCoords);
 	vec3 normal  = reconstructNormal(TexCoords, fragPos);
+
+    // Skip occlusion for perfectly flat surfaces (like the floor plane)
+    // Most glitching happens when small depth variations on large flat surfaces
+    // are incorrectly interpreted as occlusion.
+    if (abs(normal.y) > 0.99 && abs(fragPos.y) < 0.1) {
+        FragColor = 1.0;
+        return;
+    }
 
     // Robust normal fallback
     if (any(isnan(normal)) || length(normal) < 0.01) {

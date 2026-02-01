@@ -1192,7 +1192,6 @@ namespace Boidsish {
 				return;
 			}
 			glEnable(GL_DEPTH_TEST);
-			glDepthMask(GL_FALSE); // Floor has transparency, don't write to depth buffer to avoid artifacts
 			glEnable(GL_BLEND);
 			glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 			plane_shader->use();
@@ -1214,7 +1213,6 @@ namespace Boidsish {
 			glBindVertexArray(plane_vao);
 			glDrawArrays(GL_TRIANGLES, 0, 6);
 			glBindVertexArray(0);
-			glDepthMask(GL_TRUE);
 		}
 
 		void DefaultInputHandler(const InputState& state) {
@@ -2048,7 +2046,7 @@ namespace Boidsish {
 			glBindBuffer(GL_UNIFORM_BUFFER, 0);
 		}
 
-		if (impl->reflection_fbo && ConfigManager::GetInstance().GetAppSettingBool("render_floor", true)) {
+		if (impl->reflection_fbo) {
 			// --- Reflection Pre-Pass ---
 			glEnable(GL_CLIP_DISTANCE0);
 			{
@@ -2248,17 +2246,6 @@ namespace Boidsish {
 					}
 				}
 
-				glDisable(GL_CULL_FACE);
-				impl->RenderTerrain(
-					impl->shadow_manager->GetLightSpaceMatrix(info.map_index),
-					glm::mat4(1.0f),
-					std::nullopt,
-					true,
-					impl->shadow_manager->GetShadowFrustum(info.map_index)
-				);
-				glEnable(GL_CULL_FACE);
-				glCullFace(GL_FRONT);
-
 				impl->shadow_manager->EndShadowPass();
 
 				state.debt = 0.0f;
@@ -2286,7 +2273,8 @@ namespace Boidsish {
 
 		glm::mat4 view = impl->SetupMatrices();
 
-		// Render opaque geometry first (terrain, shapes) to populate depth buffer
+		// Render opaque geometry first (terrain, plane, shapes) to populate depth buffer
+		impl->RenderPlane(view);
 		impl->RenderTerrain(view, impl->projection, std::nullopt);
 
 		// Always set shadow indices to -1 for proper lighting
@@ -2314,9 +2302,6 @@ namespace Boidsish {
 		if (impl->decor_manager) {
 			impl->decor_manager->Render(view, impl->projection);
 		}
-
-		// Render the floor after other opaque geometry to handle transparency and Z-fighting better
-		impl->RenderPlane(view);
 
 		// Render sky AFTER opaque geometry so early-Z rejects covered fragments
 		// This avoids expensive noise calculations for pixels already drawn
