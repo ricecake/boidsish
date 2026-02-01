@@ -18,6 +18,8 @@ struct SdfSource {
 };
 
 layout(std140) uniform SdfVolumes {
+	vec4      minBound;
+	vec4      maxBound;
 	int       numSources;
 	SdfSource sources[128];
 };
@@ -101,7 +103,21 @@ void main() {
 	vec4 target = invProjection * vec4(TexCoords * 2.0 - 1.0, 1.0, 1.0);
 	vec3 rayDir = normalize((invView * vec4(normalize(target.xyz), 0.0)).xyz);
 
-	float t = 0.0;
+    // Fast ray-AABB intersection
+    vec3 invRd = 1.0 / (rayDir + 1e-6);
+    vec3 t0 = (minBound.xyz - cameraPos) * invRd;
+    vec3 t1 = (maxBound.xyz - cameraPos) * invRd;
+    vec3 tmin_v = min(t0, t1);
+    vec3 tmax_v = max(t0, t1);
+    float tAABBMin = max(max(tmin_v.x, tmin_v.y), tmin_v.z);
+    float tAABBMax = min(min(tmax_v.x, tmax_v.y), tmax_v.z);
+
+    if (tAABBMax <= max(tAABBMin, 0.0)) {
+        FragColor = vec4(sceneColor, 1.0);
+        return;
+    }
+
+	float t = max(tAABBMin, 0.0);
 	vec4  res;
 	bool  hit = false;
 
@@ -113,7 +129,7 @@ void main() {
 			break;
 		}
 		t += res.a;
-		if (t > sceneDistance || t > 1500.0)
+		if (t > sceneDistance || t > tAABBMax)
 			break;
 	}
 

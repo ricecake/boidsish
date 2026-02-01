@@ -34,6 +34,7 @@
 #include "post_processing/effects/NegativeEffect.h"
 #include "post_processing/effects/OpticalFlowEffect.h"
 #include "post_processing/effects/SdfVolumeEffect.h"
+#include "post_processing/effects/VolumetricCloudEffect.h"
 #include "post_processing/effects/StrobeEffect.h"
 #include "post_processing/effects/TimeStutterEffect.h"
 #include "post_processing/effects/ToneMappingEffect.h"
@@ -761,6 +762,10 @@ namespace Boidsish {
 				auto sdf_volume_effect = std::make_shared<PostProcessing::SdfVolumeEffect>();
 				sdf_volume_effect->SetEnabled(true);
 				post_processing_manager_->AddEffect(sdf_volume_effect);
+
+				auto volumetric_cloud_effect = std::make_shared<PostProcessing::VolumetricCloudEffect>();
+				volumetric_cloud_effect->SetEnabled(true);
+				post_processing_manager_->AddEffect(volumetric_cloud_effect);
 
 				if (enable_hdr_) {
 					auto tone_mapping_effect = std::make_shared<PostProcessing::ToneMappingEffect>();
