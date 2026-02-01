@@ -9,6 +9,7 @@
 #include "post_processing/effects/AtmosphereEffect.h"
 #include "post_processing/effects/BloomEffect.h"
 #include "post_processing/effects/FilmGrainEffect.h"
+#include "post_processing/effects/SsaoEffect.h"
 
 namespace Boidsish {
 	namespace UI {
@@ -102,6 +103,11 @@ namespace Boidsish {
 							} else if (auto fg = std::dynamic_pointer_cast<PostProcessing::FilmGrainEffect>(effect)) {
 								scene.post_processing.film_grain_enabled = fg->IsEnabled();
 								scene.post_processing.film_grain_intensity = fg->GetIntensity();
+							} else if (auto ssao = std::dynamic_pointer_cast<PostProcessing::SsaoEffect>(effect)) {
+								scene.post_processing.ssao_enabled = ssao->IsEnabled();
+								scene.post_processing.ssao_radius = ssao->GetRadius();
+								scene.post_processing.ssao_bias = ssao->GetBias();
+								scene.post_processing.ssao_intensity = ssao->GetIntensity();
 							} else if (effect->GetName() == "Negative") {
 								scene.post_processing.negative_enabled = effect->IsEnabled();
 							} else if (effect->GetName() == "Glitch") {
@@ -210,6 +216,11 @@ namespace Boidsish {
 							} else if (auto fg = std::dynamic_pointer_cast<PostProcessing::FilmGrainEffect>(effect)) {
 								fg->SetEnabled(scene.post_processing.film_grain_enabled);
 								fg->SetIntensity(scene.post_processing.film_grain_intensity);
+							} else if (auto ssao = std::dynamic_pointer_cast<PostProcessing::SsaoEffect>(effect)) {
+								ssao->SetEnabled(scene.post_processing.ssao_enabled);
+								ssao->SetRadius(scene.post_processing.ssao_radius);
+								ssao->SetBias(scene.post_processing.ssao_bias);
+								ssao->SetIntensity(scene.post_processing.ssao_intensity);
 							} else if (effect->GetName() == "Negative") {
 								effect->SetEnabled(scene.post_processing.negative_enabled);
 							} else if (effect->GetName() == "Glitch") {

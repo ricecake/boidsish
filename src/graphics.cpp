@@ -33,6 +33,7 @@
 #include "post_processing/effects/GlitchEffect.h"
 #include "post_processing/effects/NegativeEffect.h"
 #include "post_processing/effects/OpticalFlowEffect.h"
+#include "post_processing/effects/SsaoEffect.h"
 #include "post_processing/effects/StrobeEffect.h"
 #include "post_processing/effects/TimeStutterEffect.h"
 #include "post_processing/effects/ToneMappingEffect.h"
@@ -716,6 +717,10 @@ namespace Boidsish {
 
 				// --- Shockwave Manager ---
 				shockwave_manager->Initialize(width, height);
+
+				auto ssao_effect = std::make_shared<PostProcessing::SsaoEffect>();
+				ssao_effect->SetEnabled(false);
+				post_processing_manager_->AddEffect(ssao_effect);
 
 				auto negative_effect = std::make_shared<PostProcessing::NegativeEffect>();
 				negative_effect->SetEnabled(false);
