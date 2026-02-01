@@ -33,10 +33,12 @@
 #include "post_processing/effects/GlitchEffect.h"
 #include "post_processing/effects/NegativeEffect.h"
 #include "post_processing/effects/OpticalFlowEffect.h"
+#include "post_processing/effects/SdfVolumeEffect.h"
 #include "post_processing/effects/StrobeEffect.h"
 #include "post_processing/effects/TimeStutterEffect.h"
 #include "post_processing/effects/ToneMappingEffect.h"
 #include "post_processing/effects/WhispTrailEffect.h"
+#include "sdf_volume_manager.h"
 #include "shadow_manager.h"
 #include "shockwave_effect.h"
 #include "sound_effect_manager.h"
@@ -195,6 +197,7 @@ namespace Boidsish {
 		std::unique_ptr<MeshExplosionManager> mesh_explosion_manager;
 		std::unique_ptr<SoundEffectManager>   sound_effect_manager;
 		std::unique_ptr<ShockwaveManager>     shockwave_manager;
+		std::unique_ptr<SdfVolumeManager>     sdf_volume_manager;
 		std::unique_ptr<ShadowManager>        shadow_manager;
 		std::unique_ptr<SceneManager>         scene_manager;
 		std::unique_ptr<DecorManager>         decor_manager;
@@ -461,6 +464,8 @@ namespace Boidsish {
 			mesh_explosion_manager = std::make_unique<MeshExplosionManager>();
 			mesh_explosion_manager->Initialize(); // Must initialize on main thread with GL context
 			shockwave_manager = std::make_unique<ShockwaveManager>();
+			sdf_volume_manager = std::make_unique<SdfVolumeManager>();
+			sdf_volume_manager->Initialize();
 			shadow_manager = std::make_unique<ShadowManager>();
 			scene_manager = std::make_unique<SceneManager>("scenes");
 			decor_manager = std::make_unique<DecorManager>();
@@ -753,6 +758,10 @@ namespace Boidsish {
 				bloom_effect->SetEnabled(false);
 				post_processing_manager_->AddEffect(bloom_effect);
 
+				auto sdf_volume_effect = std::make_shared<PostProcessing::SdfVolumeEffect>();
+				sdf_volume_effect->SetEnabled(true);
+				post_processing_manager_->AddEffect(sdf_volume_effect);
+
 				if (enable_hdr_) {
 					auto tone_mapping_effect = std::make_shared<PostProcessing::ToneMappingEffect>();
 					tone_mapping_effect->SetEnabled(true);
@@ -780,6 +789,10 @@ namespace Boidsish {
 
 		void SetupShaderBindings(Shader& shader_to_setup) {
 			shader_to_setup.use();
+			GLuint sdf_volumes_idx = glGetUniformBlockIndex(shader_to_setup.ID, "SdfVolumes");
+			if (sdf_volumes_idx != GL_INVALID_INDEX) {
+				glUniformBlockBinding(shader_to_setup.ID, sdf_volumes_idx, Constants::UboBinding::SdfVolumes());
+			}
 			GLuint lighting_idx = glGetUniformBlockIndex(shader_to_setup.ID, "Lighting");
 			if (lighting_idx != GL_INVALID_INDEX) {
 				glUniformBlockBinding(shader_to_setup.ID, lighting_idx, Constants::UboBinding::Lighting());
@@ -1947,6 +1960,8 @@ namespace Boidsish {
 		impl->mesh_explosion_manager->Update(impl->input_state.delta_time, impl->simulation_time);
 		impl->sound_effect_manager->Update(impl->input_state.delta_time);
 		impl->shockwave_manager->Update(impl->input_state.delta_time);
+		impl->sdf_volume_manager->UpdateUBO();
+		impl->sdf_volume_manager->BindUBO(Constants::UboBinding::SdfVolumes());
 		if (impl->decor_manager && impl->terrain_generator && impl->terrain_render_manager) {
 			impl->decor_manager->Update(
 				impl->input_state.delta_time,
@@ -2880,6 +2895,18 @@ namespace Boidsish {
 	) {
 		return impl->shockwave_manager
 			->AddShockwave(position, normal, max_radius, duration, intensity, ring_width, color);
+	}
+
+	int Visualizer::AddSdfSource(const SdfSource& source) {
+		return impl->sdf_volume_manager->AddSource(source);
+	}
+
+	void Visualizer::UpdateSdfSource(int id, const SdfSource& source) {
+		impl->sdf_volume_manager->UpdateSource(id, source);
+	}
+
+	void Visualizer::RemoveSdfSource(int id) {
+		impl->sdf_volume_manager->RemoveSource(id);
 	}
 
 	void Visualizer::ExplodeShape(std::shared_ptr<Shape> shape, float intensity, const glm::vec3& velocity) {
