@@ -17,9 +17,9 @@ uniform float cloudDensity;
 uniform float cloudAltitude;
 uniform float cloudThickness;
 uniform vec3  cloudColorUniform;
-// uniform float time;
+uniform float time; // Re-added just in case, though UBO has it
 
-#include "../helpers/lighting.glsl"
+#include "../helpers/atmosphere.glsl"
 #include "../helpers/noise.glsl"
 
 float getHeightFog(vec3 start, vec3 end, float density, float heightFalloff) {
@@ -35,7 +35,7 @@ float getHeightFog(vec3 start, vec3 end, float density, float heightFalloff) {
 	return 1.0 - exp(-max(0.0, fog));
 }
 
-float fbm(vec2 p) {
+float fbm_clouds(vec2 p) {
 	float v = 0.0;
 	float a = 0.5;
 	for (int i = 0; i < 4; i++) {
@@ -44,12 +44,6 @@ float fbm(vec2 p) {
 		a *= 0.5;
 	}
 	return v;
-}
-
-// Simple Mie scattering approximation
-float scatter(vec3 lightDir, vec3 viewDir, float g) {
-	float g2 = g * g;
-	return (1.0 - g2) / (4.0 * 3.14159 * pow(1.0 + g2 - 2.0 * g * dot(lightDir, viewDir), 1.5));
 }
 
 void main() {
@@ -74,14 +68,18 @@ void main() {
 	float fogFactor = getHeightFog(cameraPos, worldPos, hazeDensity, 1.0 / (hazeHeight + 0.001));
 	vec3  currentHazeColor = hazeColor;
 
-	// Add light scattering to fog
+	// Add light scattering to fog using the realistic model
+	// Use cameraPos as ray origin for consistency with height fog
+	vec3 ro = vec3(0.0, Re + max(1.0, cameraPos.y), 0.0);
 	vec3 scattering = vec3(0.0);
 	for (int i = 0; i < num_lights; i++) {
-		vec3  lightDir = normalize(lights[i].position - cameraPos);
-		float s = scatter(lightDir, rayDir, 0.7);
-		scattering += lights[i].color * s * lights[i].intensity * 0.05;
+		if (lights[i].type == 1) { // DIRECTIONAL_LIGHT
+			vec3 lightDir = normalize(-lights[i].direction);
+			vec3 lightColor = lights[i].color * lights[i].intensity;
+			scattering += calculateScattering(ro, rayDir, dist, lightDir, lightColor, 4);
+		}
 	}
-	currentHazeColor += scattering;
+	currentHazeColor = mix(currentHazeColor, scattering * 2.0, 0.5); // Blend with uniform haze color
 
 	// 2. Cloud Layer
 	float cloudFactor = 0.0;
@@ -111,8 +109,7 @@ void main() {
 			float h = (p.y - cloudAltitude) / max(cloudThickness, 0.001);
 			float tapering = smoothstep(0.0, 0.2, h) * smoothstep(1.0, 0.5, h);
 
-			float noise = fbm(p.xz * 0.015 + jitter * time * 0.0001 + p.y * 0.02);
-			// float d = smoothstep(0.2, 0.6, noise * (i + 1)) * cloudDensity;
+			float noise = fbm_clouds(p.xz * 0.015 + jitter * time * 0.0001 + p.y * 0.02);
 			float d = smoothstep(0.2, 0.6, noise * (i + (1 - noise))) * cloudDensity * tapering;
 
 			cloudAcc += d;
@@ -123,11 +120,17 @@ void main() {
 		vec3 intersect = cameraPos + rayDir * mix(t_start, t_end, 0.5);
 		vec3 cloudScattering = vec3(0.0);
 		for (int i = 0; i < num_lights; i++) {
-			vec3  L = normalize(lights[i].position - intersect);
-			float d = max(0.0, dot(vec3(0, 1, 0), L)); // Simple top-lighting
-			float silver = pow(max(0.0, dot(rayDir, L)), 4.0) * 0.5;
+			if (lights[i].type == 1) {
+				vec3  L = normalize(-lights[i].direction);
+				float d = max(0.0, dot(vec3(0, 1, 0), L)); // Simple top-lighting
+				float silver = pow(max(0.0, dot(rayDir, L)), 4.0) * 0.5;
 
-			cloudScattering += lights[i].color * (d * 0.5 + 0.5 + silver) * lights[i].intensity;
+				// Use scattering model for cloud illumination
+				vec2 odCloud = opticalDepth(ro + rayDir * t_start, L, 500.0, 2);
+				vec3 cloudAtten = exp(-(betaR * odCloud.x + betaM * 1.1 * odCloud.y));
+
+				cloudScattering += lights[i].color * (d * 0.5 + 0.5 + silver) * lights[i].intensity * cloudAtten;
+			}
 		}
 
 		cloudColor = cloudColorUniform * (ambient_light + cloudScattering * 0.5);
