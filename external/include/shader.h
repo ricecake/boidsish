@@ -8,6 +8,7 @@
 #include <set>
 #include <sstream>
 #include <string>
+#include <vector>
 
 #include <GL/glew.h>
 #include <glm/glm.hpp>
@@ -147,18 +148,33 @@ protected:
 				size_t lastQuote = line.rfind('"');
 				if (firstQuote != std::string::npos && lastQuote != std::string::npos && firstQuote < lastQuote) {
 					std::string includePath = line.substr(firstQuote + 1, lastQuote - firstQuote - 1);
-					std::string fullPath = directory.empty() ? includePath : directory + "/" + includePath;
 
-					// Check if file exists relative to current file
-					std::ifstream checkFile(fullPath);
-					if (!checkFile.is_open()) {
-						// Try relative to 'external' directory
-						fullPath = "external/" + includePath;
+					// Search order: 1. Relative to current file, 2. relative to 'shaders/', 3. relative to 'external/'
+					std::vector<std::string> searchPaths;
+					if (!directory.empty()) {
+						searchPaths.push_back(directory + "/" + includePath);
 					} else {
-						checkFile.close();
+						searchPaths.push_back(includePath);
+					}
+					searchPaths.push_back("shaders/" + includePath);
+					searchPaths.push_back("external/" + includePath);
+
+					std::string fullPath = "";
+					for (const auto& candidate : searchPaths) {
+						std::ifstream checkFile(candidate);
+						if (checkFile.is_open()) {
+							fullPath = candidate;
+							checkFile.close();
+							break;
+						}
 					}
 
-					finalSource += loadShaderSource(fullPath, includedFiles);
+					if (!fullPath.empty()) {
+						finalSource += loadShaderSource(fullPath, includedFiles);
+					} else {
+						std::cerr << "ERROR::SHADER::INCLUDE_NOT_FOUND: " << includePath
+								  << " (searched in relative, shaders/, and external/)" << std::endl;
+					}
 				}
 			} else {
 				finalSource += line + "\n";
