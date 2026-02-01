@@ -64,6 +64,14 @@ namespace Boidsish {
 
 			float GetCloudG() const { return cloud_g_; }
 
+			void SetCloudScatteringBoost(float boost) { cloud_scattering_boost_ = boost; }
+
+			float GetCloudScatteringBoost() const { return cloud_scattering_boost_; }
+
+			void SetCloudPowderStrength(float strength) { cloud_powder_strength_ = strength; }
+
+			float GetCloudPowderStrength() const { return cloud_powder_strength_; }
+
 		private:
 			std::unique_ptr<Shader> shader_;
 			float                   time_ = 0.0f;
@@ -77,6 +85,8 @@ namespace Boidsish {
 			float     cloud_thickness_ = 10.0f;
 			glm::vec3 cloud_color_ = glm::vec3(0.95f, 0.95f, 1.0f);
 			float     cloud_g_ = 0.8f;
+			float     cloud_scattering_boost_ = 1.0f;
+			float     cloud_powder_strength_ = 2.0f;
 
 			int width_ = 0;
 			int height_ = 0;

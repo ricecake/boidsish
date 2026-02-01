@@ -69,6 +69,14 @@ namespace Boidsish {
 						if (ImGui::SliderFloat("Cloud Anisotropy", &cloud_g, 0.0f, 0.99f)) {
 							atmosphere_effect->SetCloudG(cloud_g);
 						}
+						float cloud_boost = atmosphere_effect->GetCloudScatteringBoost();
+						if (ImGui::SliderFloat("Cloud Scatter Boost", &cloud_boost, 0.0f, 10.0f)) {
+							atmosphere_effect->SetCloudScatteringBoost(cloud_boost);
+						}
+						float cloud_powder = atmosphere_effect->GetCloudPowderStrength();
+						if (ImGui::SliderFloat("Cloud Powder Strength", &cloud_powder, 0.0f, 10.0f)) {
+							atmosphere_effect->SetCloudPowderStrength(cloud_powder);
+						}
 					}
 				}
 

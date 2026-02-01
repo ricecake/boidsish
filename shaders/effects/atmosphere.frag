@@ -26,6 +26,8 @@ uniform vec3  cloudColorUniform;
 
 uniform float hazeG;
 uniform float cloudG;
+uniform float cloudScatteringBoost;
+uniform float cloudPowderStrength;
 
 // Henyey-Greenstein phase function
 float phaseHG(float g, float cosTheta) {
@@ -68,9 +70,12 @@ void main() {
 	// 1. Height Fog (Haze)
 	float fogFactor = getHeightFog(cameraPos, worldPos, hazeDensity, 1.0 / (hazeHeight + 0.001));
 
-	// Add gentle texture to fog using 3D noise
-	float fogTexture = fbm(worldPos * 0.02 + time * 0.01);
-	fogFactor *= (0.7 + 0.6 * fogTexture);
+	// Add gentle texture to fog using 3D noise sampled at a stable position
+	// Capping the distance prevents the noise from "swimming" too fast when looking at the sky
+	float textureDist = min(dist, 100.0);
+	vec3  texturePos = cameraPos + rayDir * textureDist;
+	float fogTexture = fbm(texturePos * 0.01 + time * 0.005);
+	fogFactor *= (0.8 + 0.4 * fogTexture);
 
 	vec3 currentHazeColor = hazeColor;
 
@@ -115,8 +120,11 @@ void main() {
 			float h = (p.y - cloudAltitude) / max(cloudThickness, 0.001);
 			float tapering = smoothstep(0.0, 0.2, h) * smoothstep(1.0, 0.5, h);
 
-			// Improved 3D noise for organic shape
-			float noise = fbm(p * 0.015 + time * 0.01);
+			// Improved 3D noise for organic shape (multi-octave for finer detail)
+			float baseNoise = fbm(p * 0.015 + time * 0.01);
+			float detailNoise = fbm(p * 0.04 - time * 0.02);
+			float noise = baseNoise * 0.8 + detailNoise * 0.2;
+
 			float density = smoothstep(0.3, 0.7, noise) * cloudDensity * tapering;
 
 			if (density > 0.01) {
@@ -125,7 +133,7 @@ void main() {
 				if (num_lights > 0) {
 					int   shadowSamples = 4;
 					vec3  L = normalize(lights[0].position - p);
-					float shadowStepSize = 1.5;
+					float shadowStepSize = 2.0;
 					for (int j = 1; j <= shadowSamples; j++) {
 						vec3  sp = p + L * float(j) * shadowStepSize;
 						float sh = (sp.y - cloudAltitude) / max(cloudThickness, 0.001);
@@ -134,7 +142,7 @@ void main() {
 						shadowAcc += smoothstep(0.3, 0.7, snoise) * cloudDensity * stapering;
 					}
 				}
-				float shadowTransmittance = exp(-shadowAcc * 0.5);
+				float shadowTransmittance = exp(-shadowAcc * 1.0);
 
 				// Light scattering
 				vec3 lightScattering = vec3(0.0);
@@ -144,9 +152,15 @@ void main() {
 					float s = phaseHG(cloudG, cosTheta);
 
 					// Rim lighting approximation for that "silver lining" effect
-					float rim = pow(max(0.0, dot(rayDir, L_li)), 8.0) * 0.5;
+					// Increased exponent and intensity for more noticeable effect
+					float rim = pow(max(0.0, dot(rayDir, L_li)), 12.0) * 0.8;
 
-					lightScattering += lights[li].color * (s * 0.5 + rim) * lights[li].intensity;
+					// Powder effect (Beer-Powder Law)
+					// Simulates light trapped near the edges of high-density areas
+					float powder = 1.0 - exp(-density * cloudPowderStrength);
+
+					lightScattering +=
+						lights[li].color * (s * cloudScatteringBoost + rim) * lights[li].intensity * powder;
 				}
 
 				vec3 stepColor = cloudColorUniform * (ambient_light + lightScattering * shadowTransmittance);
