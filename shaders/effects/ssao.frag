@@ -22,9 +22,19 @@ vec3 getPos(vec2 uv) {
 	return viewSpacePosition.xyz / viewSpacePosition.w;
 }
 
-// Improved normal reconstruction: use dFdx/dFdy for stability across depth jumps
-vec3 reconstructNormal(vec3 p) {
-    return normalize(cross(dFdx(p), dFdy(p)));
+// Improved normal reconstruction: 4-sample cross for better stability
+vec3 reconstructNormal(vec2 uv, vec3 p) {
+    vec2 texelSize = 1.0 / textureSize(gDepth, 0);
+
+    vec3 left  = getPos(uv + vec2(-texelSize.x, 0.0));
+    vec3 right = getPos(uv + vec2( texelSize.x, 0.0));
+    vec3 down  = getPos(uv + vec2(0.0, -texelSize.y));
+    vec3 up    = getPos(uv + vec2(0.0,  texelSize.y));
+
+    vec3 dx = (abs(left.z - p.z) < abs(right.z - p.z)) ? (p - left) : (right - p);
+    vec3 dy = (abs(down.z - p.z) < abs(up.z    - p.z)) ? (p - down) : (up    - p);
+
+    return normalize(cross(dx, dy));
 }
 
 void main() {
@@ -36,7 +46,7 @@ void main() {
     }
 
 	vec3 fragPos = getPos(TexCoords);
-	vec3 normal  = reconstructNormal(fragPos);
+	vec3 normal  = reconstructNormal(TexCoords, fragPos);
 
     // Robust normal fallback
     if (any(isnan(normal)) || length(normal) < 0.01) {
