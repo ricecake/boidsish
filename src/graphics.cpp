@@ -2246,6 +2246,17 @@ namespace Boidsish {
 					}
 				}
 
+				glDisable(GL_CULL_FACE);
+				impl->RenderTerrain(
+					impl->shadow_manager->GetLightSpaceMatrix(info.map_index),
+					glm::mat4(1.0f),
+					std::nullopt,
+					true,
+					impl->shadow_manager->GetShadowFrustum(info.map_index)
+				);
+				glEnable(GL_CULL_FACE);
+				glCullFace(GL_FRONT);
+
 				impl->shadow_manager->EndShadowPass();
 
 				state.debt = 0.0f;

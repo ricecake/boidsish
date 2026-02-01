@@ -56,7 +56,7 @@ namespace Boidsish {
 			std::vector<glm::vec3> ssao_kernel_;
 
 			float radius_ = 0.5f;
-			float bias_ = 0.05f;
+			float bias_ = 0.1f;
 			float intensity_ = 1.0f;
 			float power_ = 1.0f;
 

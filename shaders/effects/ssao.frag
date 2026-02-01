@@ -22,19 +22,9 @@ vec3 getPos(vec2 uv) {
 	return viewSpacePosition.xyz / viewSpacePosition.w;
 }
 
-// Improved normal reconstruction: 4-sample cross for better stability
-vec3 reconstructNormal(vec2 uv, vec3 p) {
-    vec2 texelSize = 1.0 / textureSize(gDepth, 0);
-
-    vec3 left  = getPos(uv + vec2(-texelSize.x, 0.0));
-    vec3 right = getPos(uv + vec2( texelSize.x, 0.0));
-    vec3 down  = getPos(uv + vec2(0.0, -texelSize.y));
-    vec3 up    = getPos(uv + vec2(0.0,  texelSize.y));
-
-    vec3 dx = (abs(left.z - p.z) < abs(right.z - p.z)) ? (p - left) : (right - p);
-    vec3 dy = (abs(down.z - p.z) < abs(up.z    - p.z)) ? (p - down) : (up    - p);
-
-    return normalize(cross(dx, dy));
+// Improved normal reconstruction: use dFdx/dFdy for stability across depth jumps
+vec3 reconstructNormal(vec3 p) {
+    return normalize(cross(dFdx(p), dFdy(p)));
 }
 
 void main() {
@@ -46,25 +36,11 @@ void main() {
     }
 
 	vec3 fragPos = getPos(TexCoords);
-	vec3 normal  = reconstructNormal(TexCoords, fragPos);
-
-    // Skip occlusion for perfectly flat surfaces (like the floor plane)
-    // Most glitching happens when small depth variations on large flat surfaces
-    // are incorrectly interpreted as occlusion.
-    if (abs(normal.y) > 0.99 && abs(fragPos.y) < 0.1) {
-        FragColor = 1.0;
-        return;
-    }
+	vec3 normal  = reconstructNormal(fragPos);
 
     // Robust normal fallback
     if (any(isnan(normal)) || length(normal) < 0.01) {
-        vec3 fdx = dFdx(fragPos);
-        vec3 fdy = dFdy(fragPos);
-        if (length(cross(fdx, fdy)) > 1e-6) {
-            normal = normalize(cross(fdx, fdy));
-        } else {
-            normal = vec3(0.0, 0.0, 1.0); // Facing camera
-        }
+        normal = vec3(0.0, 0.0, 1.0); // Facing camera
     }
 
     // Combine tiled noise with pixel-specific jitter to break up banding
@@ -93,7 +69,8 @@ void main() {
 
 		float sampleDepth = getPos(offset.xy).z;
 
-		float rangeCheck = smoothstep(0.0, 1.0, radius / (abs(fragPos.z - sampleDepth) + 0.001));
+        // Sharper range check to prevent haloes around foreground objects
+		float rangeCheck = smoothstep(1.0, 0.0, abs(fragPos.z - sampleDepth) / radius);
 		occlusion += (sampleDepth >= samplePos.z + bias ? 1.0 : 0.0) * rangeCheck;
 	}
 

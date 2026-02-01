@@ -217,7 +217,7 @@ namespace Boidsish {
 		scene.post_processing.film_grain_intensity = config.GetFloat(pp_section, "film_grain_intensity", 0.02f);
 		scene.post_processing.ssao_enabled = config.GetBool(pp_section, "ssao_enabled", false);
 		scene.post_processing.ssao_radius = config.GetFloat(pp_section, "ssao_radius", 0.5f);
-		scene.post_processing.ssao_bias = config.GetFloat(pp_section, "ssao_bias", 0.05f);
+		scene.post_processing.ssao_bias = config.GetFloat(pp_section, "ssao_bias", 0.1f);
 		scene.post_processing.ssao_intensity = config.GetFloat(pp_section, "ssao_intensity", 1.0f);
 		scene.post_processing.ssao_power = config.GetFloat(pp_section, "ssao_power", 1.0f);
 		scene.post_processing.negative_enabled = config.GetBool(pp_section, "negative_enabled", false);
