@@ -40,14 +40,14 @@ namespace Boidsish {
 			if (blur_fbo_) glDeleteFramebuffers(1, &blur_fbo_);
 			if (blur_texture_) glDeleteTextures(1, &blur_texture_);
 
-			// SSAO buffer (single channel for occlusion factor)
+			// SSAO buffer (single channel for occlusion factor) - Use R16F for precision to avoid banding
 			glGenFramebuffers(1, &ssao_fbo_);
 			glBindFramebuffer(GL_FRAMEBUFFER, ssao_fbo_);
 			glGenTextures(1, &ssao_texture_);
 			glBindTexture(GL_TEXTURE_2D, ssao_texture_);
-			glTexImage2D(GL_TEXTURE_2D, 0, GL_RED, width_, height_, 0, GL_RED, GL_FLOAT, NULL);
-			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+			glTexImage2D(GL_TEXTURE_2D, 0, GL_R16F, width_, height_, 0, GL_RED, GL_FLOAT, NULL);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 			glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, ssao_texture_, 0);
 			if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
 				logger::ERROR("SSAO FBO is not complete!");
@@ -57,9 +57,9 @@ namespace Boidsish {
 			glBindFramebuffer(GL_FRAMEBUFFER, blur_fbo_);
 			glGenTextures(1, &blur_texture_);
 			glBindTexture(GL_TEXTURE_2D, blur_texture_);
-			glTexImage2D(GL_TEXTURE_2D, 0, GL_RED, width_, height_, 0, GL_RED, GL_FLOAT, NULL);
-			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+			glTexImage2D(GL_TEXTURE_2D, 0, GL_R16F, width_, height_, 0, GL_RED, GL_FLOAT, NULL);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 			glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, blur_texture_, 0);
 			if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
 				logger::ERROR("SSAO Blur FBO is not complete!");
@@ -140,13 +140,17 @@ namespace Boidsish {
 			glBindTexture(GL_TEXTURE_2D, noise_texture_);
 			glDrawArrays(GL_TRIANGLES, 0, 6);
 
-			// 2. Blur SSAO
+			// 2. Blur SSAO - Use Bilateral Blur
 			glBindFramebuffer(GL_FRAMEBUFFER, blur_fbo_);
 			glClear(GL_COLOR_BUFFER_BIT);
 			blur_shader_->use();
 			blur_shader_->setInt("ssaoInput", 0);
+			blur_shader_->setInt("gDepth", 1);
+			blur_shader_->setMat4("invProjection", glm::inverse(projectionMatrix));
 			glActiveTexture(GL_TEXTURE0);
 			glBindTexture(GL_TEXTURE_2D, ssao_texture_);
+			glActiveTexture(GL_TEXTURE1);
+			glBindTexture(GL_TEXTURE_2D, depthTexture);
 			glDrawArrays(GL_TRIANGLES, 0, 6);
 
 			// 3. Composite

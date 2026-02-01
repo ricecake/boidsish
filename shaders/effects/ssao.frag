@@ -26,13 +26,21 @@ void main() {
 
     // If depth is too far (skybox), don't do SSAO
     float depth = texture(gDepth, TexCoords).r;
-    if (depth >= 0.999) {
+    if (depth >= 0.9999) {
         FragColor = 1.0;
         return;
     }
 
-	// Reconstruct normal from depth derivatives
-	vec3 normal = normalize(cross(dFdx(fragPos), dFdy(fragPos)));
+	// Improved normal reconstruction: Sample 3 points to avoid derivative artifacts
+    vec2 texelSize = 1.0 / textureSize(gDepth, 0);
+    vec3 posRight = getPos(TexCoords + vec2(texelSize.x, 0.0));
+    vec3 posUp = getPos(TexCoords + vec2(0.0, texelSize.y));
+    vec3 normal = normalize(cross(posRight - fragPos, posUp - fragPos));
+
+    // Fallback if cross product fails (e.g. at edge)
+    if (length(normal) < 0.1) {
+        normal = normalize(cross(dFdx(fragPos), dFdy(fragPos)));
+    }
 
 	vec3 randomVec = normalize(texture(texNoise, TexCoords * noiseScale).xyz);
 
@@ -41,6 +49,9 @@ void main() {
 	mat3 TBN = mat3(tangent, bitangent, normal);
 
 	float occlusion = 0.0;
+
+    // Add a small randomized rotation per pixel to further break up banding
+    // (In addition to the noise texture)
 	for (int i = 0; i < 64; ++i) {
 		// get sample position
 		vec3 samplePos = TBN * samples[i]; // from tangent to view-space
