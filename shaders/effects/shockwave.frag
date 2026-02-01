@@ -13,23 +13,7 @@ uniform mat4      projMatrix;
 uniform float     nearPlane;
 uniform float     farPlane;
 
-// Maximum number of simultaneous shockwaves (must match C++ kMaxShockwaves)
-#define MAX_SHOCKWAVES [[MAX_SHOCKWAVES]]
-
-// Shockwave data structure (matches ShockwaveGPUData in C++)
-struct ShockwaveData {
-	vec4 center_radius; // xyz = center, w = current_radius
-	vec4 normal_unused; // xyz = normal, w = unused
-	vec4 params;        // x = intensity, y = ring_width, z = max_radius, w = normalized_age
-	vec4 color_unused;  // xyz = color, w = unused
-};
-
-// Shockwave UBO (binding point 4)
-layout(std140, binding = 4) uniform Shockwaves {
-	int           shockwave_count; // Padded to 16 bytes
-	int           _pad1, _pad2, _pad3;
-	ShockwaveData shockwaves[MAX_SHOCKWAVES];
-};
+#include "../helpers/shockwave.glsl"
 
 /**
  * Linearize depth from the depth buffer
@@ -127,7 +111,7 @@ void main() {
 
 	for (int i = 0; i < shockwave_count && i < MAX_SHOCKWAVES; ++i) {
 		vec3  center = shockwaves[i].center_radius.xyz;
-		vec3  normal = shockwaves[i].normal_unused.xyz;
+		vec3  normal = shockwaves[i].normal.xyz;
 		float currentRadius = shockwaves[i].center_radius.w;
 		float intensity = shockwaves[i].params.x;
 		float ringWidth = shockwaves[i].params.y;

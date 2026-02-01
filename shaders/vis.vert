@@ -14,6 +14,7 @@ layout(std430, binding = 10) buffer SSBOInstances {
 #include "helpers/lighting.glsl"
 #include "visual_effects.glsl"
 #include "visual_effects.vert"
+#include "helpers/shockwave.glsl"
 
 out vec3 FragPos;
 out vec3 Normal;
@@ -91,6 +92,12 @@ void main() {
 	}
 
 	FragPos = vec3(modelMatrix * vec4(displacedPos, 1.0));
+
+	// Apply shockwave displacement (sway for decor)
+	if (useSSBOInstancing) {
+		FragPos += getShockwaveDisplacement(FragPos, aPos.y, true);
+	}
+
 	Normal = mat3(transpose(inverse(modelMatrix))) * displacedNormal;
 	TexCoords = aTexCoords;
 	InstanceColor = useInstanceColor ? aInstanceColor : vec4(1.0);

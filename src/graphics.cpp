@@ -796,6 +796,10 @@ namespace Boidsish {
 			if (frustum_idx != GL_INVALID_INDEX) {
 				glUniformBlockBinding(shader_to_setup.ID, frustum_idx, Constants::UboBinding::FrustumData());
 			}
+			GLuint shockwaves_idx = glGetUniformBlockIndex(shader_to_setup.ID, "Shockwaves");
+			if (shockwaves_idx != GL_INVALID_INDEX) {
+				glUniformBlockBinding(shader_to_setup.ID, shockwaves_idx, Constants::UboBinding::Shockwaves());
+			}
 		}
 
 		~VisualizerImpl() {
@@ -1947,6 +1951,9 @@ namespace Boidsish {
 		impl->mesh_explosion_manager->Update(impl->input_state.delta_time, impl->simulation_time);
 		impl->sound_effect_manager->Update(impl->input_state.delta_time);
 		impl->shockwave_manager->Update(impl->input_state.delta_time);
+		impl->shockwave_manager->UpdateShaderData();
+		impl->shockwave_manager->BindUBO(Constants::UboBinding::Shockwaves());
+
 		if (impl->decor_manager && impl->terrain_generator && impl->terrain_render_manager) {
 			impl->decor_manager->Update(
 				impl->input_state.delta_time,
