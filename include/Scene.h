@@ -49,6 +49,11 @@ namespace Boidsish {
 			bool  film_grain_enabled = false;
 			float film_grain_intensity = 0.02f;
 
+			bool  ssao_enabled = false;
+			float ssao_radius = 0.5f;
+			float ssao_bias = 0.025f;
+			float ssao_intensity = 1.0f;
+
 			bool negative_enabled = false;
 			bool glitch_enabled = false;
 			bool optical_flow_enabled = false;
