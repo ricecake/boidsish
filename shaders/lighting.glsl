@@ -11,9 +11,9 @@ struct Light {
 	float outer_cutoff; // Also: falloff_exp (FLASH)
 };
 
-const int MAX_LIGHTS = 10;
-const int MAX_SHADOW_MAPS = 16;
-const int MAX_CASCADES = 4;
+const int MAX_LIGHTS = [[MAX_LIGHTS]];
+const int MAX_SHADOW_MAPS = [[MAX_SHADOW_MAPS]];
+const int MAX_CASCADES = [[MAX_CASCADES]];
 
 layout(std140) uniform Lighting {
 	Light lights[MAX_LIGHTS];

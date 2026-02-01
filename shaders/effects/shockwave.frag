@@ -14,7 +14,7 @@ uniform float     nearPlane;
 uniform float     farPlane;
 
 // Maximum number of simultaneous shockwaves (must match C++ kMaxShockwaves)
-#define MAX_SHOCKWAVES 16
+#define MAX_SHOCKWAVES [[MAX_SHOCKWAVES]]
 
 // Shockwave data structure (matches ShockwaveGPUData in C++)
 struct ShockwaveData {
