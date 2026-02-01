@@ -14,7 +14,7 @@ namespace Boidsish {
 
     void Animator::UpdateAnimation(float dt) {
         m_DeltaTime = dt;
-        if (m_CurrentAnimation) {
+        if (m_CurrentAnimation && m_CurrentAnimation->IsValid()) {
             m_CurrentTime += m_CurrentAnimation->GetTicksPerSecond() * dt;
             m_CurrentTime = fmod(m_CurrentTime, m_CurrentAnimation->GetDuration());
             CalculateBoneTransform(&m_CurrentAnimation->GetRootNode(), glm::mat4(1.0f));

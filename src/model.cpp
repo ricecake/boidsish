@@ -1,6 +1,7 @@
 #include "model.h"
 
 #include "animation.h"
+#include "logger.h"
 #include <algorithm>
 #include <iostream>
 
@@ -246,9 +247,12 @@ namespace Boidsish {
 	}
 
 	void Model::loadModel(const std::string& path) {
+		std::string normalized_path = path;
+		std::replace(normalized_path.begin(), normalized_path.end(), '\\', '/');
+
 		Assimp::Importer importer;
 		const aiScene*   scene = importer.ReadFile(
-            path,
+            normalized_path,
             aiProcess_Triangulate | aiProcess_FlipUVs | aiProcess_GenNormals
         );
 
@@ -257,9 +261,9 @@ namespace Boidsish {
 			return;
 		}
 
-		size_t last_slash = path.find_last_of("/\\");
+		size_t last_slash = normalized_path.find_last_of('/');
 		if (last_slash != std::string::npos) {
-			directory = path.substr(0, last_slash);
+			directory = normalized_path.substr(0, last_slash);
 		} else {
 			directory = ".";
 		}
@@ -454,7 +458,10 @@ namespace Boidsish {
 		// Replace backslashes with forward slashes for cross-platform compatibility
 		std::replace(filename.begin(), filename.end(), '\\', '/');
 
-		filename = directory + '/' + filename;
+		std::string normalized_directory = directory;
+		std::replace(normalized_directory.begin(), normalized_directory.end(), '\\', '/');
+
+		filename = normalized_directory + '/' + filename;
 
 		unsigned int textureID;
 		glGenTextures(1, &textureID);
@@ -482,7 +489,7 @@ namespace Boidsish {
 
 			stbi_image_free(data);
 		} else {
-			std::cout << "Texture failed to load at path: " << path << std::endl;
+			logger::ERROR("Texture failed to load at path: " + filename);
 			stbi_image_free(data);
 		}
 

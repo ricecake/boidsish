@@ -31,17 +31,19 @@ namespace Boidsish {
         inline float GetDuration() { return m_Duration; }
         inline const AssimpNodeData& GetRootNode() { return m_RootNode; }
         inline const std::map<std::string, BoneInfo>& GetBoneIDMap() { return m_BoneInfoMap; }
+        inline bool  IsValid() const { return m_IsValid; }
 
     private:
         void ReadMissingBones(const aiAnimation* animation, Model& model);
 
         void ReadHierarchyData(AssimpNodeData& dest, const aiNode* src);
 
-        float m_Duration;
-        int m_TicksPerSecond;
+        float m_Duration = 0.0f;
+        int   m_TicksPerSecond = 0;
         std::vector<Bone> m_Bones;
         AssimpNodeData m_RootNode;
         std::map<std::string, BoneInfo> m_BoneInfoMap;
+        bool m_IsValid = false;
     };
 
 }
