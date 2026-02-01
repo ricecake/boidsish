@@ -23,7 +23,11 @@ namespace Boidsish {
 			unsigned int                        instance_color_vbo_ = 0;
 			size_t                              matrix_capacity_ = 0;
 			size_t                              color_capacity_ = 0;
+			void*                               matrix_ptr_ = nullptr;
+			void*                               color_ptr_ = nullptr;
 		};
+
+		unsigned int m_indirect_buffer = 0;
 
 		// Group by instance key (model path for Models, "Dot" for Dots, etc.)
 		std::map<std::string, InstanceGroup> m_instance_groups;

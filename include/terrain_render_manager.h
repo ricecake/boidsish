@@ -160,6 +160,7 @@ namespace Boidsish {
 		GLuint grid_vbo_ = 0;
 		GLuint grid_ebo_ = 0;
 		GLuint instance_vbo_ = 0;
+		void*  instance_vbo_ptr_ = nullptr;
 		GLuint heightmap_texture_ = 0; // GL_TEXTURE_2D_ARRAY
 
 		// Grid mesh data
