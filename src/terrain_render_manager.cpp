@@ -2,7 +2,9 @@
 
 #include <algorithm>
 #include <iostream>
+#include <cstring>
 
+#include "profiler.h"
 #include "graphics.h" // For Frustum
 #include <shader.h>
 
@@ -12,10 +14,12 @@ namespace Boidsish {
 		chunk_size_(chunk_size), max_chunks_(max_chunks), heightmap_resolution_(chunk_size + 1) {
 		// Create instance buffer first so we can set up VAO attributes
 		// Pre-allocate for max_chunks to avoid reallocation
+		const GLbitfield flags = GL_MAP_WRITE_BIT | GL_MAP_PERSISTENT_BIT | GL_MAP_COHERENT_BIT;
 		glGenBuffers(1, &instance_vbo_);
 		glBindBuffer(GL_ARRAY_BUFFER, instance_vbo_);
 		instance_buffer_capacity_ = max_chunks * sizeof(InstanceData);
-		glBufferData(GL_ARRAY_BUFFER, instance_buffer_capacity_, nullptr, GL_DYNAMIC_DRAW);
+		glBufferStorage(GL_ARRAY_BUFFER, instance_buffer_capacity_, nullptr, flags);
+		instance_vbo_ptr_ = glMapBufferRange(GL_ARRAY_BUFFER, 0, instance_buffer_capacity_, flags);
 
 		CreateGridMesh();
 		EnsureTextureCapacity(max_chunks);
@@ -28,8 +32,13 @@ namespace Boidsish {
 			glDeleteBuffers(1, &grid_vbo_);
 		if (grid_ebo_)
 			glDeleteBuffers(1, &grid_ebo_);
-		if (instance_vbo_)
+		if (instance_vbo_) {
+			if (instance_vbo_ptr_) {
+				glBindBuffer(GL_ARRAY_BUFFER, instance_vbo_);
+				glUnmapBuffer(GL_ARRAY_BUFFER);
+			}
 			glDeleteBuffers(1, &instance_vbo_);
+		}
 		if (heightmap_texture_)
 			glDeleteTextures(1, &heightmap_texture_);
 	}
@@ -450,13 +459,23 @@ namespace Boidsish {
 
 		// Upload instance data to GPU
 		if (!visible_instances_.empty()) {
-			glBindBuffer(GL_ARRAY_BUFFER, instance_vbo_);
-
 			size_t required_size = visible_instances_.size() * sizeof(InstanceData);
+			const GLbitfield flags = GL_MAP_WRITE_BIT | GL_MAP_PERSISTENT_BIT | GL_MAP_COHERENT_BIT;
+
 			if (required_size > instance_buffer_capacity_) {
 				// Grow buffer - need to re-bind VAO attributes after this!
+				if (instance_vbo_ptr_) {
+					glBindBuffer(GL_ARRAY_BUFFER, instance_vbo_);
+					glUnmapBuffer(GL_ARRAY_BUFFER);
+				}
+
+				glDeleteBuffers(1, &instance_vbo_);
+				glGenBuffers(1, &instance_vbo_);
+				glBindBuffer(GL_ARRAY_BUFFER, instance_vbo_);
+
 				instance_buffer_capacity_ = required_size * 2;
-				glBufferData(GL_ARRAY_BUFFER, instance_buffer_capacity_, nullptr, GL_DYNAMIC_DRAW);
+				glBufferStorage(GL_ARRAY_BUFFER, instance_buffer_capacity_, nullptr, flags);
+				instance_vbo_ptr_ = glMapBufferRange(GL_ARRAY_BUFFER, 0, instance_buffer_capacity_, flags);
 
 				// Re-bind instance attributes to VAO since buffer was reallocated
 				glBindVertexArray(grid_vao_);
@@ -487,8 +506,9 @@ namespace Boidsish {
 				glBindVertexArray(0);
 			}
 
-			glBufferSubData(GL_ARRAY_BUFFER, 0, required_size, visible_instances_.data());
-			glBindBuffer(GL_ARRAY_BUFFER, 0);
+			if (instance_vbo_ptr_) {
+				memcpy(instance_vbo_ptr_, visible_instances_.data(), required_size);
+			}
 		}
 	}
 
@@ -499,6 +519,7 @@ namespace Boidsish {
 		const std::optional<glm::vec4>& clip_plane,
 		float                           tess_quality_multiplier
 	) {
+		PROJECT_PROFILE_SCOPE("TerrainRenderManager::Render");
 		std::lock_guard<std::mutex> lock(mutex_);
 
 		if (visible_instances_.empty() || grid_vao_ == 0 || grid_index_count_ == 0) {
@@ -527,9 +548,6 @@ namespace Boidsish {
 
 		// Bind VAO (instance attributes already configured during initialization)
 		glBindVertexArray(grid_vao_);
-
-		// Explicitly rebind EBO in case VAO state was corrupted
-		// glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, grid_ebo_);
 
 		// Set patch vertices for tessellation
 		glPatchParameteri(GL_PATCH_VERTICES, 4);

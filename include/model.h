@@ -2,6 +2,7 @@
 
 #include <string>
 #include <vector>
+#include <cstdint>
 
 #include "shape.h"
 #include <assimp/Importer.hpp>
@@ -17,6 +18,7 @@ namespace Boidsish {
 		unsigned int id;
 		std::string  type;
 		std::string  path;
+		uint64_t     handle = 0;
 	};
 
 	class Mesh {
@@ -65,6 +67,11 @@ namespace Boidsish {
 
 		const std::vector<Mesh>& getMeshes() const { return meshes; }
 
+		unsigned int GetVAO() const { return model_vao_; }
+		const std::vector<unsigned int>& GetMeshIndicesCount() const { return mesh_indices_count_; }
+		const std::vector<unsigned int>& GetMeshIndicesOffset() const { return mesh_indices_offset_; }
+		const std::vector<unsigned int>& GetMeshVerticesOffset() const { return mesh_vertices_offset_; }
+
 		void SetBaseRotation(const glm::quat& rotation) { base_rotation_ = rotation; }
 
 		void SetInstanced(bool is_instanced) { Shape::SetInstanced(is_instanced); }
@@ -83,6 +90,16 @@ namespace Boidsish {
 		std::string          model_path_; // Full path to the model file for instancing identification
 		bool                 no_cull_ = false;
 		std::vector<Texture> textures_loaded_;
+
+		// MDI support
+		unsigned int              model_vao_ = 0;
+		unsigned int              model_vbo_ = 0;
+		unsigned int              model_ebo_ = 0;
+		std::vector<unsigned int> mesh_indices_count_;
+		std::vector<unsigned int> mesh_indices_offset_;
+		std::vector<unsigned int> mesh_vertices_offset_;
+
+		void setupMDI();
 
 		// Loads a model with supported ASSIMP extensions from file and stores the resulting meshes in meshes vector.
 		void loadModel(const std::string& path);

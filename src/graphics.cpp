@@ -12,6 +12,7 @@
 
 #include "ConfigManager.h"
 #include "UIManager.h"
+#include "profiler.h"
 #include "audio_manager.h"
 #include "clone_manager.h"
 #include "decor_manager.h"
@@ -52,6 +53,7 @@
 #include "ui/ConfigWidget.h"
 #include "ui/EffectsWidget.h"
 #include "ui/LightsWidget.h"
+#include "ui/PerformanceWidget.h"
 #include "ui/PostProcessingWidget.h"
 #include "ui/SceneWidget.h"
 #include "ui/hud_widget.h"
@@ -231,6 +233,9 @@ namespace Boidsish {
 		GLuint                  lighting_ubo{0};
 		GLuint                  visual_effects_ubo{0};
 		GLuint                  frustum_ubo{0};
+		void*                   lighting_ptr{nullptr};
+		void*                   visual_effects_ptr{nullptr};
+		void*                   frustum_ptr{nullptr};
 		glm::mat4               projection, reflection_vp;
 
 		double last_mouse_x = 0.0, last_mouse_y = 0.0;
@@ -396,6 +401,12 @@ namespace Boidsish {
 			while (glGetError() != GL_NO_ERROR) {
 			}
 
+			if (glewIsSupported("GL_ARB_bindless_texture")) {
+				std::cout << "[OpenGL] Bindless textures supported\n";
+			} else {
+				std::cout << "[OpenGL] Bindless textures NOT supported\n";
+			}
+
 			// Enable OpenGL debug output if configured
 			if (ConfigManager::GetInstance().GetAppSettingBool("enable_gl_debug", false)) {
 				GLint flags;
@@ -474,17 +485,19 @@ namespace Boidsish {
 			trail_render_manager = std::make_unique<TrailRenderManager>();
 
 			const int MAX_LIGHTS = 10;
+			const GLbitfield ubo_flags = GL_MAP_WRITE_BIT | GL_MAP_PERSISTENT_BIT | GL_MAP_COHERENT_BIT;
+
 			glGenBuffers(1, &lighting_ubo);
 			glBindBuffer(GL_UNIFORM_BUFFER, lighting_ubo);
-			glBufferData(GL_UNIFORM_BUFFER, 704, NULL, GL_DYNAMIC_DRAW);
-			glBindBuffer(GL_UNIFORM_BUFFER, 0);
+			glBufferStorage(GL_UNIFORM_BUFFER, 704, NULL, ubo_flags);
+			lighting_ptr = glMapBufferRange(GL_UNIFORM_BUFFER, 0, 704, ubo_flags);
 			glBindBufferRange(GL_UNIFORM_BUFFER, Constants::UboBinding::Lighting(), lighting_ubo, 0, 704);
 
 			if (ConfigManager::GetInstance().GetAppSettingBool("enable_effects", true)) {
 				glGenBuffers(1, &visual_effects_ubo);
 				glBindBuffer(GL_UNIFORM_BUFFER, visual_effects_ubo);
-				glBufferData(GL_UNIFORM_BUFFER, sizeof(VisualEffectsUbo), NULL, GL_DYNAMIC_DRAW);
-				glBindBuffer(GL_UNIFORM_BUFFER, 0);
+				glBufferStorage(GL_UNIFORM_BUFFER, sizeof(VisualEffectsUbo), NULL, ubo_flags);
+				visual_effects_ptr = glMapBufferRange(GL_UNIFORM_BUFFER, 0, sizeof(VisualEffectsUbo), ubo_flags);
 				glBindBufferRange(
 					GL_UNIFORM_BUFFER,
 					Constants::UboBinding::VisualEffects(),
@@ -498,9 +511,10 @@ namespace Boidsish {
 			// Layout: 6 vec4 planes (96 bytes) + vec3 camera pos + padding (16 bytes) = 112 bytes
 			glGenBuffers(1, &frustum_ubo);
 			glBindBuffer(GL_UNIFORM_BUFFER, frustum_ubo);
-			glBufferData(GL_UNIFORM_BUFFER, 112, NULL, GL_DYNAMIC_DRAW);
-			glBindBuffer(GL_UNIFORM_BUFFER, 0);
+			glBufferStorage(GL_UNIFORM_BUFFER, 112, NULL, ubo_flags);
+			frustum_ptr = glMapBufferRange(GL_UNIFORM_BUFFER, 0, 112, ubo_flags);
 			glBindBufferRange(GL_UNIFORM_BUFFER, Constants::UboBinding::FrustumData(), frustum_ubo, 0, 112);
+			glBindBuffer(GL_UNIFORM_BUFFER, 0);
 
 			shader->use();
 			SetupShaderBindings(*shader);
@@ -785,6 +799,11 @@ namespace Boidsish {
 
 			auto scene_widget = std::make_shared<UI::SceneWidget>(*scene_manager, *parent);
 			ui_manager->AddWidget(scene_widget);
+
+#ifdef PROFILING_ENABLED
+			auto perf_widget = std::make_shared<UI::PerformanceWidget>();
+			ui_manager->AddWidget(perf_widget);
+#endif
 		}
 
 		void SetupShaderBindings(Shader& shader_to_setup) {
@@ -871,11 +890,27 @@ namespace Boidsish {
 			}
 
 			if (lighting_ubo) {
+				if (lighting_ptr) {
+					glBindBuffer(GL_UNIFORM_BUFFER, lighting_ubo);
+					glUnmapBuffer(GL_UNIFORM_BUFFER);
+				}
 				glDeleteBuffers(1, &lighting_ubo);
 			}
 
 			if (visual_effects_ubo) {
+				if (visual_effects_ptr) {
+					glBindBuffer(GL_UNIFORM_BUFFER, visual_effects_ubo);
+					glUnmapBuffer(GL_UNIFORM_BUFFER);
+				}
 				glDeleteBuffers(1, &visual_effects_ubo);
+			}
+
+			if (frustum_ubo) {
+				if (frustum_ptr) {
+					glBindBuffer(GL_UNIFORM_BUFFER, frustum_ubo);
+					glUnmapBuffer(GL_UNIFORM_BUFFER);
+				}
+				glDeleteBuffers(1, &frustum_ubo);
 			}
 
 			if (window)
@@ -1758,6 +1793,7 @@ namespace Boidsish {
 	}
 
 	void Visualizer::Update() {
+		PROJECT_PROFILE_SCOPE("Visualizer::Update");
 		impl->frame_count_++;
 
 		// Reset per-frame input state
@@ -1839,6 +1875,7 @@ namespace Boidsish {
 	}
 
 	void Visualizer::Render() {
+		PROJECT_PROFILE_SCOPE("Visualizer::Render");
 		impl->shapes.clear();
 		// --- 1. RENDER SCENE TO FBO ---
 		// Note: The reflection and blur passes are pre-passes that generate textures for the main scene.
@@ -2005,44 +2042,43 @@ namespace Boidsish {
 				ubo_data.ripple_enabled = 1;
 			}
 
-			glBindBuffer(GL_UNIFORM_BUFFER, impl->visual_effects_ubo);
-			glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(VisualEffectsUbo), &ubo_data);
-			glBindBuffer(GL_UNIFORM_BUFFER, 0);
+			if (impl->visual_effects_ptr) {
+				memcpy(impl->visual_effects_ptr, &ubo_data, sizeof(VisualEffectsUbo));
+			}
 		}
 
-		glBindBuffer(GL_UNIFORM_BUFFER, impl->lighting_ubo);
-		const auto& lights = impl->light_manager.GetLights();
-		int         num_lights = lights.size();
+		if (impl->lighting_ptr) {
+			const auto& lights = impl->light_manager.GetLights();
+			int         num_lights = lights.size();
 
-		// Convert lights to GPU-compatible format (32 bytes each, matching GLSL struct)
-		std::vector<LightGPU> gpu_lights;
-		gpu_lights.reserve(num_lights);
-		for (const auto& light : lights) {
-			gpu_lights.push_back(light.ToGPU());
+			// Convert lights to GPU-compatible format (32 bytes each, matching GLSL struct)
+			std::vector<LightGPU> gpu_lights;
+			gpu_lights.reserve(num_lights);
+			for (const auto& light : lights) {
+				gpu_lights.push_back(light.ToGPU());
+			}
+
+			uint8_t* base_ptr = static_cast<uint8_t*>(impl->lighting_ptr);
+			memcpy(base_ptr, gpu_lights.data(), sizeof(LightGPU) * num_lights);
+
+			size_t offset = 640;
+			memcpy(base_ptr + offset, &num_lights, sizeof(int));
+			offset += 16;
+			glm::vec3 cam_pos(impl->camera.x, impl->camera.y, impl->camera.z);
+			memcpy(base_ptr + offset, &cam_pos, sizeof(glm::vec3));
+			offset += 16;
+			glm::vec3 ambient_light = impl->light_manager.GetAmbientLight();
+			memcpy(base_ptr + offset, &ambient_light, sizeof(glm::vec3));
+			offset += 12;
+			memcpy(base_ptr + offset, &impl->simulation_time, sizeof(float));
+			offset += 4;
+			offset = (offset + 15) & ~15; // align to 16
+			glm::vec3 cam_front = impl->camera.front();
+			memcpy(base_ptr + offset, &cam_front, sizeof(glm::vec3));
 		}
-		const int MAX_LIGHTS = 10;
-		glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(LightGPU) * num_lights, gpu_lights.data());
-		size_t offset = 640;
-		glBufferSubData(GL_UNIFORM_BUFFER, offset, sizeof(int), &num_lights);
-		offset += 16;
-		glBufferSubData(
-			GL_UNIFORM_BUFFER,
-			offset,
-			sizeof(glm::vec3),
-			&glm::vec3(impl->camera.x, impl->camera.y, impl->camera.z)[0]
-		);
-		offset += 16;
-		glm::vec3 ambient_light = impl->light_manager.GetAmbientLight();
-		glBufferSubData(GL_UNIFORM_BUFFER, offset, sizeof(glm::vec3), &ambient_light[0]);
-		offset += 12;
-		glBufferSubData(GL_UNIFORM_BUFFER, offset, sizeof(float), &impl->simulation_time);
-		offset += 4;
-		offset = (offset + 15) & ~15; // align to 16
-		glBufferSubData(GL_UNIFORM_BUFFER, offset, sizeof(glm::vec3), &impl->camera.front()[0]);
-		glBindBuffer(GL_UNIFORM_BUFFER, 0);
 
 		// Update Frustum UBO for GPU-side culling
-		{
+		if (impl->frustum_ptr) {
 			glm::mat4 view = glm::lookAt(
 				impl->camera.pos(),
 				impl->camera.pos() + impl->camera.front(),
@@ -2056,11 +2092,10 @@ namespace Boidsish {
 				frustum_planes[i] = glm::vec4(render_frustum.planes[i].normal, render_frustum.planes[i].distance);
 			}
 
-			glBindBuffer(GL_UNIFORM_BUFFER, impl->frustum_ubo);
-			glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(frustum_planes), frustum_planes);
+			uint8_t* base_ptr = static_cast<uint8_t*>(impl->frustum_ptr);
+			memcpy(base_ptr, frustum_planes, sizeof(frustum_planes));
 			glm::vec3 cam_pos = impl->camera.pos();
-			glBufferSubData(GL_UNIFORM_BUFFER, 96, sizeof(glm::vec3), &cam_pos[0]);
-			glBindBuffer(GL_UNIFORM_BUFFER, 0);
+			memcpy(base_ptr + 96, &cam_pos, sizeof(glm::vec3));
 		}
 
 		if (impl->reflection_fbo) {

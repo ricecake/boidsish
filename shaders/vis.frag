@@ -26,8 +26,17 @@ uniform float roughness = 0.5;
 uniform float metallic = 0.0;
 uniform float ao = 1.0;
 
+#extension GL_ARB_bindless_texture : enable
+
 uniform sampler2D texture_diffuse1;
 uniform bool      use_texture;
+
+#ifdef GL_ARB_bindless_texture
+layout(bindless_sampler) uniform sampler2D diffuseHandle;
+uniform bool      use_bindless = false;
+#else
+const bool use_bindless = false;
+#endif
 
 void main() {
 	float dist = length(FragPos.xz - viewPos.xz);
@@ -67,7 +76,13 @@ void main() {
 	float spec_lum = lightResult.a;
 
 	if (use_texture) {
-		result *= texture(texture_diffuse1, TexCoords).rgb;
+		if (use_bindless) {
+#ifdef GL_ARB_bindless_texture
+			result *= texture(diffuseHandle, TexCoords).rgb;
+#endif
+		} else {
+			result *= texture(texture_diffuse1, TexCoords).rgb;
+		}
 	}
 
 	result = applyArtisticEffects(result, FragPos, barycentric, time);

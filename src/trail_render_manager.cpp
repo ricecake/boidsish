@@ -2,7 +2,9 @@
 
 #include <algorithm>
 #include <iostream>
+#include <cstring>
 
+#include "profiler.h"
 #include <shader.h>
 
 namespace Boidsish {
@@ -12,14 +14,22 @@ namespace Boidsish {
 		glGenVertexArrays(1, &vao_);
 		glBindVertexArray(vao_);
 
+		const GLbitfield flags = GL_MAP_WRITE_BIT | GL_MAP_PERSISTENT_BIT | GL_MAP_COHERENT_BIT;
+
 		// Create VBO with initial capacity
 		glGenBuffers(1, &vbo_);
 		glBindBuffer(GL_ARRAY_BUFFER, vbo_);
-		glBufferData(
+		glBufferStorage(
 			GL_ARRAY_BUFFER,
 			INITIAL_VERTEX_CAPACITY * FLOATS_PER_VERTEX * sizeof(float),
 			nullptr,
-			GL_DYNAMIC_DRAW
+			flags
+		);
+		vbo_ptr_ = glMapBufferRange(
+			GL_ARRAY_BUFFER,
+			0,
+			INITIAL_VERTEX_CAPACITY * FLOATS_PER_VERTEX * sizeof(float),
+			flags
 		);
 		vertex_capacity_ = INITIAL_VERTEX_CAPACITY;
 
@@ -43,8 +53,13 @@ namespace Boidsish {
 	TrailRenderManager::~TrailRenderManager() {
 		if (vao_)
 			glDeleteVertexArrays(1, &vao_);
-		if (vbo_)
+		if (vbo_) {
+			if (vbo_ptr_) {
+				glBindBuffer(GL_ARRAY_BUFFER, vbo_);
+				glUnmapBuffer(GL_ARRAY_BUFFER);
+			}
 			glDeleteBuffers(1, &vbo_);
+		}
 		if (draw_command_buffer_)
 			glDeleteBuffers(1, &draw_command_buffer_);
 	}
@@ -183,24 +198,25 @@ namespace Boidsish {
 			new_capacity = static_cast<size_t>(new_capacity * GROWTH_FACTOR);
 		}
 
+		const GLbitfield flags = GL_MAP_WRITE_BIT | GL_MAP_PERSISTENT_BIT | GL_MAP_COHERENT_BIT;
+
 		// Create new buffer
 		GLuint new_vbo;
 		glGenBuffers(1, &new_vbo);
 		glBindBuffer(GL_ARRAY_BUFFER, new_vbo);
-		glBufferData(GL_ARRAY_BUFFER, new_capacity * FLOATS_PER_VERTEX * sizeof(float), nullptr, GL_DYNAMIC_DRAW);
+		glBufferStorage(GL_ARRAY_BUFFER, new_capacity * FLOATS_PER_VERTEX * sizeof(float), nullptr, flags);
+		void* new_ptr = glMapBufferRange(GL_ARRAY_BUFFER, 0, new_capacity * FLOATS_PER_VERTEX * sizeof(float), flags);
 
 		// Copy old data
-		glBindBuffer(GL_COPY_READ_BUFFER, vbo_);
-		glCopyBufferSubData(
-			GL_COPY_READ_BUFFER,
-			GL_ARRAY_BUFFER,
-			0,
-			0,
-			vertex_capacity_ * FLOATS_PER_VERTEX * sizeof(float)
-		);
+		if (vbo_ptr_) {
+			memcpy(new_ptr, vbo_ptr_, vertex_capacity_ * FLOATS_PER_VERTEX * sizeof(float));
+			glBindBuffer(GL_ARRAY_BUFFER, vbo_);
+			glUnmapBuffer(GL_ARRAY_BUFFER);
+		}
 
 		glDeleteBuffers(1, &vbo_);
 		vbo_ = new_vbo;
+		vbo_ptr_ = new_ptr;
 		vertex_capacity_ = new_capacity;
 
 		// Update VAO binding
@@ -220,11 +236,9 @@ namespace Boidsish {
 	void TrailRenderManager::CommitUpdates() {
 		std::lock_guard<std::mutex> lock(mutex_);
 
-		if (pending_vertex_data_.empty()) {
+		if (pending_vertex_data_.empty() || !vbo_ptr_) {
 			return;
 		}
-
-		glBindBuffer(GL_ARRAY_BUFFER, vbo_);
 
 		// Upload pending vertex data
 		for (auto& [trail_id, vertices] : pending_vertex_data_) {
@@ -244,7 +258,7 @@ namespace Boidsish {
 			size_t byte_size = vertices.size() * sizeof(float);
 
 			if (byte_size > 0) {
-				glBufferSubData(GL_ARRAY_BUFFER, byte_offset, byte_size, vertices.data());
+				memcpy(static_cast<uint8_t*>(vbo_ptr_) + byte_offset, vertices.data(), byte_size);
 			}
 
 			alloc.needs_upload = false;
@@ -259,6 +273,7 @@ namespace Boidsish {
 		const glm::mat4&                projection,
 		const std::optional<glm::vec4>& clip_plane
 	) {
+		PROJECT_PROFILE_SCOPE("TrailRenderManager::Render");
 		std::lock_guard<std::mutex> lock(mutex_);
 
 		if (trail_allocations_.empty()) {
@@ -335,17 +350,6 @@ namespace Boidsish {
 
 			draw_commands_dirty_ = false;
 		}
-
-		// Unfortunately, GL_TRIANGLE_STRIP doesn't work well with MultiDrawArraysIndirect
-		// because primitive restart isn't supported in indirect mode.
-		// We need to render each trail segment separately to maintain strip continuity.
-		// However, we still benefit from:
-		// 1. Single VAO bind
-		// 2. Single shader setup
-		// 3. All data in one VBO
-
-		// For proper single-call rendering, we'd need to convert to indexed triangles.
-		// For now, iterate but with shared state (still much faster than separate VAO binds)
 
 		for (const auto& [trail_id, alloc] : trail_allocations_) {
 			if (alloc.vertex_count == 0) {
