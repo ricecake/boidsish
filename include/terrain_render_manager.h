@@ -7,6 +7,7 @@
 #include <optional>
 #include <vector>
 
+#include "opengl_helpers.h"
 #include <GL/glew.h>
 #include <glm/glm.hpp>
 
@@ -159,8 +160,7 @@ namespace Boidsish {
 		GLuint grid_vao_ = 0;
 		GLuint grid_vbo_ = 0;
 		GLuint grid_ebo_ = 0;
-		GLuint instance_vbo_ = 0;
-		void*  instance_vbo_ptr_ = nullptr;
+		std::unique_ptr<PersistentRingBuffer> instance_vbo_ring_;
 		GLuint heightmap_texture_ = 0; // GL_TEXTURE_2D_ARRAY
 
 		// Grid mesh data

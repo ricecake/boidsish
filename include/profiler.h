@@ -25,7 +25,7 @@ namespace Boidsish {
                 return instance;
             }
 
-            void AddResult(const std::string& name, double duration_ms) {
+            void AddResult(const char* name, double duration_ms) {
                 std::lock_guard<std::mutex> lock(mutex_);
                 auto& stats = stats_[name];
                 stats.total_ms += duration_ms;
@@ -66,12 +66,14 @@ namespace Boidsish {
     }
 }
 
-#define PROJECT_PROFILE_SCOPE(name) Boidsish::Profiler::Timer timer_##__LINE__(name)
+#define PROJECT_CONCAT_IMPL(x, y) x##y
+#define PROJECT_CONCAT(x, y) PROJECT_CONCAT_IMPL(x, y)
+#define PROJECT_PROFILE_SCOPE(name) Boidsish::Profiler::Timer PROJECT_CONCAT(timer_, __COUNTER__)(name)
 #define PROJECT_MARKER(name) do {} while(0)
 
 #else
 
-#define PROJECT_PROFILE_SCOPE(name)
+#define PROJECT_PROFILE_SCOPE(name) do {} while(0)
 #define PROJECT_MARKER(name) do {} while(0)
 
 #endif

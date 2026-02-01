@@ -5,6 +5,7 @@
 #include <cstring>
 
 #include "profiler.h"
+#include "opengl_helpers.h"
 #include "graphics.h" // For Frustum
 #include <shader.h>
 
@@ -12,14 +13,9 @@ namespace Boidsish {
 
 	TerrainRenderManager::TerrainRenderManager(int chunk_size, int max_chunks):
 		chunk_size_(chunk_size), max_chunks_(max_chunks), heightmap_resolution_(chunk_size + 1) {
-		// Create instance buffer first so we can set up VAO attributes
-		// Pre-allocate for max_chunks to avoid reallocation
-		const GLbitfield flags = GL_MAP_WRITE_BIT | GL_MAP_PERSISTENT_BIT | GL_MAP_COHERENT_BIT;
-		glGenBuffers(1, &instance_vbo_);
-		glBindBuffer(GL_ARRAY_BUFFER, instance_vbo_);
+
+		instance_vbo_ring_ = std::make_unique<PersistentRingBuffer>(GL_ARRAY_BUFFER, max_chunks * sizeof(InstanceData));
 		instance_buffer_capacity_ = max_chunks * sizeof(InstanceData);
-		glBufferStorage(GL_ARRAY_BUFFER, instance_buffer_capacity_, nullptr, flags);
-		instance_vbo_ptr_ = glMapBufferRange(GL_ARRAY_BUFFER, 0, instance_buffer_capacity_, flags);
 
 		CreateGridMesh();
 		EnsureTextureCapacity(max_chunks);
@@ -32,13 +28,7 @@ namespace Boidsish {
 			glDeleteBuffers(1, &grid_vbo_);
 		if (grid_ebo_)
 			glDeleteBuffers(1, &grid_ebo_);
-		if (instance_vbo_) {
-			if (instance_vbo_ptr_) {
-				glBindBuffer(GL_ARRAY_BUFFER, instance_vbo_);
-				glUnmapBuffer(GL_ARRAY_BUFFER);
-			}
-			glDeleteBuffers(1, &instance_vbo_);
-		}
+		instance_vbo_ring_.reset();
 		if (heightmap_texture_)
 			glDeleteTextures(1, &heightmap_texture_);
 	}
@@ -108,8 +98,8 @@ namespace Boidsish {
 		glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, grid_ebo_);
 		glBufferData(GL_ELEMENT_ARRAY_BUFFER, indices.size() * sizeof(unsigned int), indices.data(), GL_STATIC_DRAW);
 
-		// Set up instance attributes (from instance_vbo_ created in constructor)
-		glBindBuffer(GL_ARRAY_BUFFER, instance_vbo_);
+		// Set up instance attributes (from instance_vbo_ ring created in constructor)
+		glBindBuffer(GL_ARRAY_BUFFER, instance_vbo_ring_->GetVBO());
 
 		// Instance attribute: world_offset_and_slice (location 3)
 		glVertexAttribPointer(
@@ -252,12 +242,6 @@ namespace Boidsish {
 		bool                should_notify_eviction = false;
 		std::pair<int, int> evicted_chunk_key;
 
-		// The positions array from TerrainGenerator is in X-major order:
-		//   positions[x * num_z + z] = position at local (x, y, z)
-		// But OpenGL textures are row-major (Y/V axis is rows), so we need:
-		//   texture[z * num_x + x] = height at local (x, z)
-		// This means we need to transpose the data.
-
 		const int              res = heightmap_resolution_;
 		std::vector<float>     heightmap(res * res);
 		std::vector<glm::vec3> reordered_normals(res * res);
@@ -323,12 +307,10 @@ namespace Boidsish {
 							if (evict_it != chunks_.end()) {
 								slice = evict_it->second.texture_slice;
 								chunks_.erase(evict_it);
-								// Queue callback to be called after we finish registration
-								// (avoids deadlock if callback tries to acquire terrain generator's mutex)
 								evicted_chunk_key = farthest_key;
 								should_notify_eviction = true;
 							} else {
-								return; // Shouldn't happen, but safety check
+								return; // Shouldn't happen
 							}
 						} else {
 							return; // No chunks to evict
@@ -460,54 +442,30 @@ namespace Boidsish {
 		// Upload instance data to GPU
 		if (!visible_instances_.empty()) {
 			size_t required_size = visible_instances_.size() * sizeof(InstanceData);
-			const GLbitfield flags = GL_MAP_WRITE_BIT | GL_MAP_PERSISTENT_BIT | GL_MAP_COHERENT_BIT;
 
-			if (required_size > instance_buffer_capacity_) {
-				// Grow buffer - need to re-bind VAO attributes after this!
-				if (instance_vbo_ptr_) {
-					glBindBuffer(GL_ARRAY_BUFFER, instance_vbo_);
-					glUnmapBuffer(GL_ARRAY_BUFFER);
-				}
+			instance_vbo_ring_->EnsureCapacity(required_size);
 
-				glDeleteBuffers(1, &instance_vbo_);
-				glGenBuffers(1, &instance_vbo_);
-				glBindBuffer(GL_ARRAY_BUFFER, instance_vbo_);
-
-				instance_buffer_capacity_ = required_size * 2;
-				glBufferStorage(GL_ARRAY_BUFFER, instance_buffer_capacity_, nullptr, flags);
-				instance_vbo_ptr_ = glMapBufferRange(GL_ARRAY_BUFFER, 0, instance_buffer_capacity_, flags);
-
-				// Re-bind instance attributes to VAO since buffer was reallocated
+			// If buffer was reallocated, we need to re-setup VAO
+			static GLuint last_vbo = 0;
+			if (instance_vbo_ring_->GetVBO() != last_vbo) {
 				glBindVertexArray(grid_vao_);
-				glBindBuffer(GL_ARRAY_BUFFER, instance_vbo_);
+				glBindBuffer(GL_ARRAY_BUFFER, instance_vbo_ring_->GetVBO());
 
-				glVertexAttribPointer(
-					3,
-					4,
-					GL_FLOAT,
-					GL_FALSE,
-					sizeof(InstanceData),
-					(void*)offsetof(InstanceData, world_offset_and_slice)
-				);
+				glVertexAttribPointer(3, 4, GL_FLOAT, GL_FALSE, sizeof(InstanceData), (void*)offsetof(InstanceData, world_offset_and_slice));
 				glEnableVertexAttribArray(3);
 				glVertexAttribDivisor(3, 1);
 
-				glVertexAttribPointer(
-					4,
-					4,
-					GL_FLOAT,
-					GL_FALSE,
-					sizeof(InstanceData),
-					(void*)offsetof(InstanceData, bounds)
-				);
+				glVertexAttribPointer(4, 4, GL_FLOAT, GL_FALSE, sizeof(InstanceData), (void*)offsetof(InstanceData, bounds));
 				glEnableVertexAttribArray(4);
 				glVertexAttribDivisor(4, 1);
 
 				glBindVertexArray(0);
+				last_vbo = instance_vbo_ring_->GetVBO();
 			}
 
-			if (instance_vbo_ptr_) {
-				memcpy(instance_vbo_ptr_, visible_instances_.data(), required_size);
+			void* ptr = instance_vbo_ring_->GetCurrentPtr();
+			if (ptr) {
+				memcpy(ptr, visible_instances_.data(), required_size);
 			}
 		}
 	}
@@ -522,7 +480,7 @@ namespace Boidsish {
 		PROJECT_PROFILE_SCOPE("TerrainRenderManager::Render");
 		std::lock_guard<std::mutex> lock(mutex_);
 
-		if (visible_instances_.empty() || grid_vao_ == 0 || grid_index_count_ == 0) {
+		if (visible_instances_.empty() || grid_vao_ == 0 || grid_index_count_ == 0 || !instance_vbo_ring_) {
 			return;
 		}
 
@@ -546,8 +504,14 @@ namespace Boidsish {
 		glBindTexture(GL_TEXTURE_2D_ARRAY, heightmap_texture_);
 		shader.setInt("uHeightmap", 0);
 
-		// Bind VAO (instance attributes already configured during initialization)
+		// Bind VAO
 		glBindVertexArray(grid_vao_);
+
+		// Update attribute pointers for the current ring buffer offset
+		size_t offset = instance_vbo_ring_->GetOffset();
+		glBindBuffer(GL_ARRAY_BUFFER, instance_vbo_ring_->GetVBO());
+		glVertexAttribPointer(3, 4, GL_FLOAT, GL_FALSE, sizeof(InstanceData), (void*)(offset + offsetof(InstanceData, world_offset_and_slice)));
+		glVertexAttribPointer(4, 4, GL_FLOAT, GL_FALSE, sizeof(InstanceData), (void*)(offset + offsetof(InstanceData, bounds)));
 
 		// Set patch vertices for tessellation
 		glPatchParameteri(GL_PATCH_VERTICES, 4);
@@ -563,6 +527,8 @@ namespace Boidsish {
 
 		glBindVertexArray(0);
 		glBindTexture(GL_TEXTURE_2D_ARRAY, 0);
+
+		instance_vbo_ring_->AdvanceFrame();
 	}
 
 	size_t TerrainRenderManager::GetRegisteredChunkCount() const {

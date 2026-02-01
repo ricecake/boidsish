@@ -53,6 +53,7 @@
 #include "ui/ConfigWidget.h"
 #include "ui/EffectsWidget.h"
 #include "ui/LightsWidget.h"
+#include "opengl_helpers.h"
 #include "ui/PerformanceWidget.h"
 #include "ui/PostProcessingWidget.h"
 #include "ui/SceneWidget.h"
@@ -230,12 +231,9 @@ namespace Boidsish {
 		GLuint                  reflection_fbo{0}, reflection_texture{0}, reflection_depth_rbo{0};
 		GLuint                  pingpong_fbo[2]{0}, pingpong_texture[2]{0};
 		GLuint                  main_fbo_{0}, main_fbo_texture_{0}, main_fbo_depth_texture_{0}, main_fbo_rbo_{0};
-		GLuint                  lighting_ubo{0};
-		GLuint                  visual_effects_ubo{0};
-		GLuint                  frustum_ubo{0};
-		void*                   lighting_ptr{nullptr};
-		void*                   visual_effects_ptr{nullptr};
-		void*                   frustum_ptr{nullptr};
+		std::unique_ptr<PersistentRingBuffer> lighting_ring;
+		std::unique_ptr<PersistentRingBuffer> visual_effects_ring;
+		std::unique_ptr<PersistentRingBuffer> frustum_ring;
 		glm::mat4               projection, reflection_vp;
 
 		double last_mouse_x = 0.0, last_mouse_y = 0.0;
@@ -484,37 +482,11 @@ namespace Boidsish {
 			sound_effect_manager = std::make_unique<SoundEffectManager>(audio_manager.get());
 			trail_render_manager = std::make_unique<TrailRenderManager>();
 
-			const int MAX_LIGHTS = 10;
-			const GLbitfield ubo_flags = GL_MAP_WRITE_BIT | GL_MAP_PERSISTENT_BIT | GL_MAP_COHERENT_BIT;
-
-			glGenBuffers(1, &lighting_ubo);
-			glBindBuffer(GL_UNIFORM_BUFFER, lighting_ubo);
-			glBufferStorage(GL_UNIFORM_BUFFER, 704, NULL, ubo_flags);
-			lighting_ptr = glMapBufferRange(GL_UNIFORM_BUFFER, 0, 704, ubo_flags);
-			glBindBufferRange(GL_UNIFORM_BUFFER, Constants::UboBinding::Lighting(), lighting_ubo, 0, 704);
-
+			lighting_ring = std::make_unique<PersistentRingBuffer>(GL_UNIFORM_BUFFER, 704);
 			if (ConfigManager::GetInstance().GetAppSettingBool("enable_effects", true)) {
-				glGenBuffers(1, &visual_effects_ubo);
-				glBindBuffer(GL_UNIFORM_BUFFER, visual_effects_ubo);
-				glBufferStorage(GL_UNIFORM_BUFFER, sizeof(VisualEffectsUbo), NULL, ubo_flags);
-				visual_effects_ptr = glMapBufferRange(GL_UNIFORM_BUFFER, 0, sizeof(VisualEffectsUbo), ubo_flags);
-				glBindBufferRange(
-					GL_UNIFORM_BUFFER,
-					Constants::UboBinding::VisualEffects(),
-					visual_effects_ubo,
-					0,
-					sizeof(VisualEffectsUbo)
-				);
+				visual_effects_ring = std::make_unique<PersistentRingBuffer>(GL_UNIFORM_BUFFER, sizeof(VisualEffectsUbo));
 			}
-
-			// Frustum UBO for GPU-side culling
-			// Layout: 6 vec4 planes (96 bytes) + vec3 camera pos + padding (16 bytes) = 112 bytes
-			glGenBuffers(1, &frustum_ubo);
-			glBindBuffer(GL_UNIFORM_BUFFER, frustum_ubo);
-			glBufferStorage(GL_UNIFORM_BUFFER, 112, NULL, ubo_flags);
-			frustum_ptr = glMapBufferRange(GL_UNIFORM_BUFFER, 0, 112, ubo_flags);
-			glBindBufferRange(GL_UNIFORM_BUFFER, Constants::UboBinding::FrustumData(), frustum_ubo, 0, 112);
-			glBindBuffer(GL_UNIFORM_BUFFER, 0);
+			frustum_ring = std::make_unique<PersistentRingBuffer>(GL_UNIFORM_BUFFER, 112);
 
 			shader->use();
 			SetupShaderBindings(*shader);
@@ -889,29 +861,9 @@ namespace Boidsish {
 				glDeleteTextures(1, &main_fbo_depth_texture_);
 			}
 
-			if (lighting_ubo) {
-				if (lighting_ptr) {
-					glBindBuffer(GL_UNIFORM_BUFFER, lighting_ubo);
-					glUnmapBuffer(GL_UNIFORM_BUFFER);
-				}
-				glDeleteBuffers(1, &lighting_ubo);
-			}
-
-			if (visual_effects_ubo) {
-				if (visual_effects_ptr) {
-					glBindBuffer(GL_UNIFORM_BUFFER, visual_effects_ubo);
-					glUnmapBuffer(GL_UNIFORM_BUFFER);
-				}
-				glDeleteBuffers(1, &visual_effects_ubo);
-			}
-
-			if (frustum_ubo) {
-				if (frustum_ptr) {
-					glBindBuffer(GL_UNIFORM_BUFFER, frustum_ubo);
-					glUnmapBuffer(GL_UNIFORM_BUFFER);
-				}
-				glDeleteBuffers(1, &frustum_ubo);
-			}
+			lighting_ring.reset();
+			visual_effects_ring.reset();
+			frustum_ring.reset();
 
 			if (window)
 				glfwDestroyWindow(window);
@@ -2042,12 +1994,15 @@ namespace Boidsish {
 				ubo_data.ripple_enabled = 1;
 			}
 
-			if (impl->visual_effects_ptr) {
-				memcpy(impl->visual_effects_ptr, &ubo_data, sizeof(VisualEffectsUbo));
+			if (impl->visual_effects_ring) {
+				void* ptr = impl->visual_effects_ring->GetCurrentPtr();
+				memcpy(ptr, &ubo_data, sizeof(VisualEffectsUbo));
+				impl->visual_effects_ring->BindRange(Constants::UboBinding::VisualEffects());
 			}
 		}
 
-		if (impl->lighting_ptr) {
+		if (impl->lighting_ring) {
+			void* lighting_ptr = impl->lighting_ring->GetCurrentPtr();
 			const auto& lights = impl->light_manager.GetLights();
 			int         num_lights = lights.size();
 
@@ -2058,7 +2013,7 @@ namespace Boidsish {
 				gpu_lights.push_back(light.ToGPU());
 			}
 
-			uint8_t* base_ptr = static_cast<uint8_t*>(impl->lighting_ptr);
+			uint8_t* base_ptr = static_cast<uint8_t*>(lighting_ptr);
 			memcpy(base_ptr, gpu_lights.data(), sizeof(LightGPU) * num_lights);
 
 			size_t offset = 640;
@@ -2075,10 +2030,13 @@ namespace Boidsish {
 			offset = (offset + 15) & ~15; // align to 16
 			glm::vec3 cam_front = impl->camera.front();
 			memcpy(base_ptr + offset, &cam_front, sizeof(glm::vec3));
+
+			impl->lighting_ring->BindRange(Constants::UboBinding::Lighting());
 		}
 
 		// Update Frustum UBO for GPU-side culling
-		if (impl->frustum_ptr) {
+		if (impl->frustum_ring) {
+			void* frustum_ptr = impl->frustum_ring->GetCurrentPtr();
 			glm::mat4 view = glm::lookAt(
 				impl->camera.pos(),
 				impl->camera.pos() + impl->camera.front(),
@@ -2092,10 +2050,12 @@ namespace Boidsish {
 				frustum_planes[i] = glm::vec4(render_frustum.planes[i].normal, render_frustum.planes[i].distance);
 			}
 
-			uint8_t* base_ptr = static_cast<uint8_t*>(impl->frustum_ptr);
+			uint8_t* base_ptr = static_cast<uint8_t*>(frustum_ptr);
 			memcpy(base_ptr, frustum_planes, sizeof(frustum_planes));
 			glm::vec3 cam_pos = impl->camera.pos();
 			memcpy(base_ptr + 96, &cam_pos, sizeof(glm::vec3));
+
+			impl->frustum_ring->BindRange(Constants::UboBinding::FrustumData());
 		}
 
 		if (impl->reflection_fbo) {
@@ -2455,6 +2415,10 @@ namespace Boidsish {
 
 		// --- UI Pass (renders on top of the fullscreen quad) ---
 		impl->ui_manager->Render();
+
+		if (impl->lighting_ring) impl->lighting_ring->AdvanceFrame();
+		if (impl->visual_effects_ring) impl->visual_effects_ring->AdvanceFrame();
+		if (impl->frustum_ring) impl->frustum_ring->AdvanceFrame();
 
 		glfwSwapBuffers(impl->window);
 	}

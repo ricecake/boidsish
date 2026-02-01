@@ -6,6 +6,7 @@
 #include <vector>
 
 #include "shape.h"
+#include "opengl_helpers.h"
 #include <shader.h>
 
 namespace Boidsish {
@@ -18,13 +19,9 @@ namespace Boidsish {
 
 	private:
 		struct InstanceGroup {
-			std::vector<std::shared_ptr<Shape>> shapes;
-			unsigned int                        instance_matrix_vbo_ = 0;
-			unsigned int                        instance_color_vbo_ = 0;
-			size_t                              matrix_capacity_ = 0;
-			size_t                              color_capacity_ = 0;
-			void*                               matrix_ptr_ = nullptr;
-			void*                               color_ptr_ = nullptr;
+			std::vector<std::shared_ptr<Shape>>   shapes;
+			std::unique_ptr<PersistentRingBuffer> matrix_ring;
+			std::unique_ptr<PersistentRingBuffer> color_ring;
 		};
 
 		unsigned int m_indirect_buffer = 0;
