@@ -108,6 +108,7 @@ namespace Boidsish {
 								scene.post_processing.ssao_radius = ssao->GetRadius();
 								scene.post_processing.ssao_bias = ssao->GetBias();
 								scene.post_processing.ssao_intensity = ssao->GetIntensity();
+								scene.post_processing.ssao_power = ssao->GetPower();
 							} else if (effect->GetName() == "Negative") {
 								scene.post_processing.negative_enabled = effect->IsEnabled();
 							} else if (effect->GetName() == "Glitch") {
@@ -221,6 +222,7 @@ namespace Boidsish {
 								ssao->SetRadius(scene.post_processing.ssao_radius);
 								ssao->SetBias(scene.post_processing.ssao_bias);
 								ssao->SetIntensity(scene.post_processing.ssao_intensity);
+								ssao->SetPower(scene.post_processing.ssao_power);
 							} else if (effect->GetName() == "Negative") {
 								effect->SetEnabled(scene.post_processing.negative_enabled);
 							} else if (effect->GetName() == "Glitch") {

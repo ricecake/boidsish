@@ -35,6 +35,9 @@ namespace Boidsish {
 			void SetIntensity(float intensity) { intensity_ = intensity; }
 			float GetIntensity() const { return intensity_; }
 
+			void SetPower(float power) { power_ = power; }
+			float GetPower() const { return power_; }
+
 		private:
 			void InitializeFBOs();
 			void GenerateKernel();
@@ -53,8 +56,9 @@ namespace Boidsish {
 			std::vector<glm::vec3> ssao_kernel_;
 
 			float radius_ = 0.5f;
-			float bias_ = 0.025f;
+			float bias_ = 0.05f;
 			float intensity_ = 1.0f;
+			float power_ = 1.0f;
 
 			int width_ = 0;
 			int height_ = 0;

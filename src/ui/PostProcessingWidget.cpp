@@ -80,6 +80,10 @@ namespace Boidsish {
 						if (ImGui::SliderFloat("Intensity##SSAO", &intensity, 0.0f, 5.0f)) {
 							ssao_effect->SetIntensity(intensity);
 						}
+						float power = ssao_effect->GetPower();
+						if (ImGui::SliderFloat("Power##SSAO", &power, 0.1f, 5.0f)) {
+							ssao_effect->SetPower(power);
+						}
 					}
 				}
 

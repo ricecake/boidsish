@@ -13,7 +13,7 @@ uniform mat4  projection;
 uniform mat4  invProjection;
 uniform vec2  noiseScale;
 uniform float radius = 0.5;
-uniform float bias = 0.025;
+uniform float bias = 0.05;
 
 vec3 getPos(vec2 uv) {
 	float depth = texture(gDepth, uv).r;
