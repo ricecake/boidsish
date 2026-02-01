@@ -12,6 +12,7 @@ layout(std430, binding = 10) buffer SSBOInstances {
 
 #include "frustum.glsl"
 #include "helpers/lighting.glsl"
+#include "helpers/shockwave.glsl"
 #include "visual_effects.glsl"
 #include "visual_effects.vert"
 
@@ -69,13 +70,13 @@ void main() {
 	}
 
 	// Extract world position (translation from model matrix)
-	vec3 instanceCenter = vec3(modelMatrix[3]);
+	vec3  instanceCenter = vec3(modelMatrix[3]);
+	float instanceScale = length(vec3(modelMatrix[0])); // Approximate scale from first column
 
 	// GPU frustum culling - output degenerate triangle if outside frustum
 	if (enableFrustumCulling && !isColossal) {
 		// Use sphere test with approximate radius based on scale
-		float scale = length(vec3(modelMatrix[0])); // Approximate scale from first column
-		float effectiveRadius = frustumCullRadius * scale;
+		float effectiveRadius = frustumCullRadius * instanceScale;
 
 		if (!isSphereInFrustum(instanceCenter, effectiveRadius)) {
 			// Output degenerate triangle (all vertices at same point)
@@ -91,6 +92,13 @@ void main() {
 	}
 
 	FragPos = vec3(modelMatrix * vec4(displacedPos, 1.0));
+
+	// Apply shockwave displacement (sway for decor)
+	// Calculate at instanceCenter to prevent warping, scale by world-relative height
+	if (useSSBOInstancing) {
+		FragPos += getShockwaveDisplacement(instanceCenter, aPos.y * instanceScale, true);
+	}
+
 	Normal = mat3(transpose(inverse(modelMatrix))) * displacedNormal;
 	TexCoords = aTexCoords;
 	InstanceColor = useInstanceColor ? aInstanceColor : vec4(1.0);
