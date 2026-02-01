@@ -25,6 +25,7 @@ int main() {
 		auto decor = visualizer->GetDecorManager();
 
 		DecorProperties teapot_props;
+		teapot_props.min_height = 0.01;
 		teapot_props.min_density = 0.1f;
 		teapot_props.max_density = 0.3f;
 		teapot_props.base_scale = 0.005f;

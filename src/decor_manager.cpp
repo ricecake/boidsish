@@ -120,11 +120,7 @@ namespace Boidsish {
 		placement_shader_->use();
 		placement_shader_->setVec2("u_cameraPos", cam_pos);
 		placement_shader_->setFloat("u_maxTerrainHeight", terrain_gen.GetMaxHeight());
-
-		// Distance-based density falloff parameters
-		placement_shader_->setFloat("u_densityFalloffStart", density_falloff_start_);
-		placement_shader_->setFloat("u_densityFalloffEnd", density_falloff_end_);
-		placement_shader_->setFloat("u_maxDecorDistance", max_decor_distance_);
+		placement_shader_->setInt("u_maxInstances", kMaxInstancesPerType);
 
 		// Pass frustum planes for GPU-side culling
 		for (int p = 0; p < 6; ++p) {
@@ -144,6 +140,8 @@ namespace Boidsish {
 		std::vector<std::pair<float, size_t>> chunk_priorities;
 		chunk_priorities.reserve(chunk_info.size());
 
+		const float kPreloadRadius = 128.0f; // Chunks within this radius always get decor
+
 		for (size_t ci = 0; ci < chunk_info.size(); ++ci) {
 			const auto& chunk = chunk_info[ci];
 			glm::vec2   chunk_offset(chunk.x, chunk.y);
@@ -151,11 +149,8 @@ namespace Boidsish {
 			glm::vec2   chunk_center = chunk_offset + glm::vec2(chunk_size * 0.5f);
 
 			float dist = glm::distance(cam_pos, chunk_center);
-			if (dist > max_decor_distance_)
-				continue;
 
 			// Frustum cull the chunk (approximate as AABB)
-			// Use a generous height range since we don't know exact decor heights
 			glm::vec3 chunk_min(chunk_offset.x, -50.0f, chunk_offset.y);
 			glm::vec3 chunk_max(
 				chunk_offset.x + chunk_size,
@@ -163,34 +158,18 @@ namespace Boidsish {
 				chunk_offset.y + chunk_size
 			);
 
-			bool inside = true;
-			for (int p = 0; p < 6 && inside; ++p) {
-				const auto& plane = frustum.planes[p];
-				// Find the corner most in the direction of the plane normal
-				glm::vec3 positive_vertex(
-					plane.normal.x >= 0 ? chunk_max.x : chunk_min.x,
-					plane.normal.y >= 0 ? chunk_max.y : chunk_min.y,
-					plane.normal.z >= 0 ? chunk_max.z : chunk_min.z
-				);
-				if (glm::dot(plane.normal, positive_vertex) + plane.distance < 0) {
-					inside = false;
-				}
-			}
-			if (!inside)
+			bool in_preload = dist < kPreloadRadius;
+			bool in_frustum = frustum.IsBoxInFrustum(chunk_min, chunk_max);
+
+			if (!in_preload && !in_frustum)
 				continue;
 
-			// Direction to chunk center
-			glm::vec2 to_chunk = chunk_center - cam_pos;
-			float     to_chunk_len = glm::length(to_chunk);
-			if (to_chunk_len > 0.001f) {
-				to_chunk /= to_chunk_len;
-			}
-			float dot = glm::dot(cam_front_xz, to_chunk);
-
-			// Priority: lower is better
-			// - Closer chunks get lower priority value
-			// - Chunks in front of camera (dot > 0) get lower priority
-			float priority = dist * (1.0f - dot * 0.5f);
+			// Priority:
+			// We want a deterministic and "even" distribution.
+			// Instead of sorting by distance (which might cause budget stealing by closer chunks),
+			// we just want to ensure that if they are visible or preloading, they get processed.
+			// Sorting by chunk index (ci) is deterministic.
+			float priority = (float)ci;
 
 			chunk_priorities.emplace_back(priority, ci);
 		}

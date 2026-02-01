@@ -83,7 +83,7 @@ namespace Boidsish {
 			return;
 		}
 
-		auto [height, norm] = handler.vis->GetTerrainPointPropertiesThreadSafe(pos.x, pos.z);
+		auto [height, norm] = handler.GetCachedTerrainProperties(pos.x, pos.z);
 		if (pos.y <= height) {
 			Explode(handler, false);
 			return;
@@ -140,6 +140,12 @@ namespace Boidsish {
 			auto distance = glm::length(missile_pos - target_pos);
 
 			auto frontNess = glm::dot(world_fwd, to_target);
+
+			if (distance <= 5 && frontNess < 0.75 || distance <= 10 && frontNess < 0.85) {
+				Explode(handler, true);
+				return;
+			}
+
 			if (frontNess < 0.85) {
 				continue;
 			}
@@ -163,16 +169,11 @@ namespace Boidsish {
 			}
 		}
 
-		pp_handler.RecordTarget(target_);
+		// pp_handler.RecordTarget(target_);
 
 		glm::vec3 target_dir_world;
 		glm::vec3 target_dir_local = glm::vec3(0, 0, -1);
 		if (target_ != nullptr) {
-			if (target_distance < 10) {
-				Explode(handler, true);
-				return;
-			}
-
 			float missile_speed = glm::length(rigid_body_.GetLinearVelocity());
 
 			// PREDICT
@@ -255,7 +256,24 @@ namespace Boidsish {
 		if (exploded_)
 			return;
 
+		exploded_ = true;
+		lived_ = 0.0f;
+		SetVelocity(Vector3(0, 0, 0));
+
+		shape_->SetHidden(true);
+
+		if (hit_target) {
+			target_->Destroy(handler);
+		}
+
 		auto pos = GetPosition();
+		handler.EnqueueVisualizerAction([exhaust = exhaust_effect_]() {
+			if (exhaust) {
+				exhaust->SetLifetime(0.25f);
+				exhaust->SetLived(0.0f);
+			}
+		});
+
 		handler.EnqueueVisualizerAction([=, &handler]() {
 			handler.vis->AddFireEffect(
 				glm::vec3(pos.x, pos.y, pos.z),
@@ -267,24 +285,8 @@ namespace Boidsish {
 			);
 		});
 
-		handler.EnqueueVisualizerAction([exhaust = exhaust_effect_]() {
-			if (exhaust) {
-				exhaust->SetLifetime(0.25f);
-				exhaust->SetLived(0.0f);
-			}
-		});
-
-		exploded_ = true;
-		lived_ = 0.0f;
-		SetVelocity(Vector3(0, 0, 0));
 		explode_sound_ = handler.vis
 							 ->AddSoundEffect("assets/rocket_explosion.wav", pos.Toglm(), GetVelocity().Toglm(), 25.0f);
-
-		if (hit_target) {
-			target_->Destroy(handler);
-			SetSize(100);
-			SetColor(1, 0, 0, 0.33f);
-		}
 	}
 
 } // namespace Boidsish

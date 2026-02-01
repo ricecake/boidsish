@@ -2,6 +2,7 @@
 
 #include <random>
 
+#include "PaperPlane.h"
 #include "entity.h"
 #include "model.h"
 #include "sound_effect.h"
@@ -31,6 +32,7 @@ namespace Boidsish {
 		std::shared_ptr<SoundEffect> explode_sound_ = nullptr;
 		int                          handedness = 1;
 		int                          wobble = 1;
+		PaperPlane*                  target_ = nullptr;
 
 		// Flight model
 		std::random_device rd_;

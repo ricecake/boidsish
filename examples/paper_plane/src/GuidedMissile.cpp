@@ -127,12 +127,12 @@ namespace Boidsish {
 
 			auto targets = handler.GetEntitiesByType<PaperPlane>();
 			if (!targets.empty()) {
-				auto  plane = targets[0];
+				auto plane = targets[0];
+				target_ = plane;
 				auto& r = rigid_body_;
 
 				if ((plane->GetPosition() - GetPosition()).Magnitude() < 10) {
 					Explode(handler, true);
-					plane->TriggerDamage();
 					return;
 				}
 
@@ -229,6 +229,7 @@ namespace Boidsish {
 		if (exploded_)
 			return;
 
+		shape_->SetHidden(true);
 		auto pos = GetPosition();
 		handler.EnqueueVisualizerAction([=, &handler]() {
 			handler.vis->AddFireEffect(
@@ -255,8 +256,7 @@ namespace Boidsish {
 							 ->AddSoundEffect("assets/rocket_explosion.wav", pos.Toglm(), GetVelocity().Toglm(), 20.0f);
 
 		if (hit_target) {
-			SetSize(100);
-			SetColor(1, 0, 0, 0.33f);
+			target_->TriggerDamage();
 		}
 	}
 

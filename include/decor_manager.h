@@ -108,7 +108,7 @@ namespace Boidsish {
 		float density_falloff_end_ = 300.0f;  // Minimum density beyond this range
 		float max_decor_distance_ = 600.0f;   // No decor beyond this distance
 
-		static constexpr int kMaxInstancesPerType = 10000;
+		static constexpr int kMaxInstancesPerType = 131072;
 	};
 
 } // namespace Boidsish
