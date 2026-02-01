@@ -39,7 +39,8 @@ vec3 reconstructNormal(vec2 uv, vec3 p) {
 
 void main() {
 	float depth = texture(gDepth, TexCoords).r;
-    if (depth >= 0.9999) {
+    // Don't process far plane (skybox)
+    if (depth >= 0.99999) {
         FragColor = 1.0;
         return;
     }
@@ -47,17 +48,20 @@ void main() {
 	vec3 fragPos = getPos(TexCoords);
 	vec3 normal  = reconstructNormal(TexCoords, fragPos);
 
-    // Fallback if reconstruction is noisy
-    if (length(normal) < 0.1) {
-        normal = normalize(cross(dFdx(fragPos), dFdy(fragPos)));
+    // Robust normal fallback
+    if (any(isnan(normal)) || length(normal) < 0.01) {
+        vec3 fdx = dFdx(fragPos);
+        vec3 fdy = dFdy(fragPos);
+        if (length(cross(fdx, fdy)) > 1e-6) {
+            normal = normalize(cross(fdx, fdy));
+        } else {
+            normal = vec3(0.0, 0.0, 1.0); // Facing camera
+        }
     }
 
     // Combine tiled noise with pixel-specific jitter to break up banding
 	vec3 randomVec = texture(texNoise, TexCoords * noiseScale).xyz;
     float jitter = random(TexCoords);
-
-    // Rotate randomVec around normal using jitter
-    // (A simple way to add more randomness)
     randomVec = normalize(randomVec + normal * (jitter - 0.5) * 0.1);
 
 	vec3 tangent   = normalize(randomVec - normal * dot(randomVec, normal));
@@ -66,23 +70,31 @@ void main() {
 
 	float occlusion = 0.0;
 	for (int i = 0; i < 64; ++i) {
-		// add jitter to sample radius
-        float sampleRadius = radius * (0.8 + 0.4 * random(vec3(TexCoords, float(i))));
-
         vec3 samplePos = TBN * samples[i];
-		samplePos = fragPos + samplePos * sampleRadius;
+		samplePos = fragPos + samplePos * radius;
 
 		vec4 offset = vec4(samplePos, 1.0);
 		offset = projection * offset;
 		offset.xyz /= offset.w;
 		offset.xyz = offset.xyz * 0.5 + 0.5;
 
+        // Skip samples outside of the screen
+        if (offset.x < 0.0 || offset.x > 1.0 || offset.y < 0.0 || offset.y > 1.0) {
+            continue;
+        }
+
 		float sampleDepth = getPos(offset.xy).z;
 
-		float rangeCheck = smoothstep(0.0, 1.0, radius / abs(fragPos.z - sampleDepth));
+		float rangeCheck = smoothstep(0.0, 1.0, radius / (abs(fragPos.z - sampleDepth) + 0.001));
 		occlusion += (sampleDepth >= samplePos.z + bias ? 1.0 : 0.0) * rangeCheck;
 	}
 
-    occlusion = clamp(1.0 - (occlusion / 64.0), 0.0, 1.0);
-	FragColor = occlusion;
+    occlusion = 1.0 - (occlusion / 64.0);
+
+    // Distance fade-out to prevent artifacts on horizon
+    float dist = length(fragPos);
+    float fade = smoothstep(150.0, 300.0, dist);
+    occlusion = mix(occlusion, 1.0, fade);
+
+	FragColor = clamp(occlusion, 0.0, 1.0);
 }
