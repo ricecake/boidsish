@@ -83,6 +83,9 @@ namespace Boidsish {
 		// Effects
 		ShaderBase::RegisterConstant("MAX_SHOCKWAVES", Constants::Class::Shockwaves::MaxShockwaves());
 
+		// Animation
+		ShaderBase::RegisterConstant("MAX_BONES", 100);
+
 		registered = true;
 	}
 

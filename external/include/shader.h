@@ -8,6 +8,7 @@
 #include <set>
 #include <sstream>
 #include <string>
+#include <vector>
 
 #include <GL/glew.h>
 #include <glm/glm.hpp>
@@ -101,6 +102,10 @@ public:
 	// ------------------------------------------------------------------------
 	void setMat4(const std::string& name, const glm::mat4& mat) const {
 		glUniformMatrix4fv(glGetUniformLocation(ID, name.c_str()), 1, GL_FALSE, &mat[0][0]);
+	}
+
+	void setMat4Array(const std::string& name, const std::vector<glm::mat4>& mats) const {
+		glUniformMatrix4fv(glGetUniformLocation(ID, name.c_str()), (GLsizei)mats.size(), GL_FALSE, &mats[0][0][0]);
 	}
 
 	// ------------------------------------------------------------------------

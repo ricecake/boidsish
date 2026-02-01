@@ -3,7 +3,9 @@ layout(location = 0) in vec3 aPos;
 layout(location = 1) in vec3 aNormal;
 layout(location = 2) in vec2 aTexCoords;
 layout(location = 3) in mat4 aInstanceMatrix;
-layout(location = 7) in vec4 aInstanceColor;
+layout(location = 7) in vec4  aInstanceColor;
+layout(location = 8) in ivec4 boneIds;
+layout(location = 9) in vec4  weights;
 
 // SSBO for decor/foliage instancing (binding 10)
 layout(std430, binding = 10) buffer SSBOInstances {
@@ -35,9 +37,35 @@ uniform bool  isLine = false;
 uniform bool  enableFrustumCulling = false;
 uniform float frustumCullRadius = 5.0; // Approximate object radius for sphere test
 
+const int MAX_BONES = [[MAX_BONES]];
+const int MAX_BONE_INFLUENCE = 4;
+uniform mat4 finalBonesMatrices[MAX_BONES];
+
 void main() {
-	vec3 displacedPos = aPos;
-	vec3 displacedNormal = aNormal;
+	vec4 totalPosition = vec4(0.0f);
+	vec3 totalNormal = vec3(0.0f);
+
+	bool hasBones = false;
+	for (int i = 0; i < MAX_BONE_INFLUENCE; i++) {
+		if (boneIds[i] != -1) {
+			hasBones = true;
+			vec4 localPosition = finalBonesMatrices[boneIds[i]] * vec4(aPos, 1.0f);
+			totalPosition += localPosition * weights[i];
+			vec3 localNormal = mat3(finalBonesMatrices[boneIds[i]]) * aNormal;
+			totalNormal += localNormal * weights[i];
+		}
+	}
+
+	vec3 displacedPos;
+	vec3 displacedNormal;
+
+	if (hasBones) {
+		displacedPos = totalPosition.xyz;
+		displacedNormal = normalize(totalNormal);
+	} else {
+		displacedPos = aPos;
+		displacedNormal = aNormal;
+	}
 
 	if (glitched_enabled == 1) {
 		displacedPos = applyGlitch(displacedPos, time);
