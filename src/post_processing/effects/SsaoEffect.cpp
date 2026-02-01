@@ -92,7 +92,8 @@ namespace Boidsish {
 			std::uniform_real_distribution<float> randomFloats(0.0, 1.0);
 			std::default_random_engine generator;
 			std::vector<glm::vec3> ssaoNoise;
-			for (unsigned int i = 0; i < 16; i++) {
+			// Increase noise texture size to 16x16 (256 samples) to reduce tiling
+			for (unsigned int i = 0; i < 256; i++) {
 				glm::vec3 noise(
 					randomFloats(generator) * 2.0 - 1.0,
 					randomFloats(generator) * 2.0 - 1.0,
@@ -102,7 +103,7 @@ namespace Boidsish {
 			}
 			glGenTextures(1, &noise_texture_);
 			glBindTexture(GL_TEXTURE_2D, noise_texture_);
-			glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB32F, 4, 4, 0, GL_RGB, GL_FLOAT, &ssaoNoise[0]);
+			glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB32F, 16, 16, 0, GL_RGB, GL_FLOAT, &ssaoNoise[0]);
 			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
 			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
@@ -130,7 +131,7 @@ namespace Boidsish {
 			ssao_shader_->setMat4("invProjection", glm::inverse(projectionMatrix));
 			ssao_shader_->setInt("gDepth", 0);
 			ssao_shader_->setInt("texNoise", 1);
-			ssao_shader_->setVec2("noiseScale", (float)width_ / 4.0f, (float)height_ / 4.0f);
+			ssao_shader_->setVec2("noiseScale", (float)width_ / 16.0f, (float)height_ / 16.0f);
 			ssao_shader_->setFloat("radius", radius_);
 			ssao_shader_->setFloat("bias", bias_);
 

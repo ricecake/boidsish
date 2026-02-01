@@ -3,13 +3,14 @@ out float FragColor;
 
 in vec2 TexCoords;
 
+#include "lygia/generative/random.glsl"
+
 uniform sampler2D gDepth;
 uniform sampler2D texNoise;
 
-uniform vec3 samples[64];
-uniform mat4 projection;
-uniform mat4 invProjection;
-
+uniform vec3  samples[64];
+uniform mat4  projection;
+uniform mat4  invProjection;
 uniform vec2  noiseScale;
 uniform float radius = 0.5;
 uniform float bias = 0.025;
@@ -21,56 +22,67 @@ vec3 getPos(vec2 uv) {
 	return viewSpacePosition.xyz / viewSpacePosition.w;
 }
 
-void main() {
-	vec3 fragPos = getPos(TexCoords);
+// Improved normal reconstruction: 4-sample cross for better stability
+vec3 reconstructNormal(vec2 uv, vec3 p) {
+    vec2 texelSize = 1.0 / textureSize(gDepth, 0);
 
-    // If depth is too far (skybox), don't do SSAO
-    float depth = texture(gDepth, TexCoords).r;
+    vec3 left  = getPos(uv + vec2(-texelSize.x, 0.0));
+    vec3 right = getPos(uv + vec2( texelSize.x, 0.0));
+    vec3 down  = getPos(uv + vec2(0.0, -texelSize.y));
+    vec3 up    = getPos(uv + vec2(0.0,  texelSize.y));
+
+    vec3 dx = (abs(left.z - p.z) < abs(right.z - p.z)) ? (p - left) : (right - p);
+    vec3 dy = (abs(down.z - p.z) < abs(up.z    - p.z)) ? (p - down) : (up    - p);
+
+    return normalize(cross(dx, dy));
+}
+
+void main() {
+	float depth = texture(gDepth, TexCoords).r;
     if (depth >= 0.9999) {
         FragColor = 1.0;
         return;
     }
 
-	// Improved normal reconstruction: Sample 3 points to avoid derivative artifacts
-    vec2 texelSize = 1.0 / textureSize(gDepth, 0);
-    vec3 posRight = getPos(TexCoords + vec2(texelSize.x, 0.0));
-    vec3 posUp = getPos(TexCoords + vec2(0.0, texelSize.y));
-    vec3 normal = normalize(cross(posRight - fragPos, posUp - fragPos));
+	vec3 fragPos = getPos(TexCoords);
+	vec3 normal  = reconstructNormal(TexCoords, fragPos);
 
-    // Fallback if cross product fails (e.g. at edge)
+    // Fallback if reconstruction is noisy
     if (length(normal) < 0.1) {
         normal = normalize(cross(dFdx(fragPos), dFdy(fragPos)));
     }
 
-	vec3 randomVec = normalize(texture(texNoise, TexCoords * noiseScale).xyz);
+    // Combine tiled noise with pixel-specific jitter to break up banding
+	vec3 randomVec = texture(texNoise, TexCoords * noiseScale).xyz;
+    float jitter = random(TexCoords);
 
-	vec3 tangent = normalize(randomVec - normal * dot(randomVec, normal));
+    // Rotate randomVec around normal using jitter
+    // (A simple way to add more randomness)
+    randomVec = normalize(randomVec + normal * (jitter - 0.5) * 0.1);
+
+	vec3 tangent   = normalize(randomVec - normal * dot(randomVec, normal));
 	vec3 bitangent = cross(normal, tangent);
-	mat3 TBN = mat3(tangent, bitangent, normal);
+	mat3 TBN       = mat3(tangent, bitangent, normal);
 
 	float occlusion = 0.0;
-
-    // Add a small randomized rotation per pixel to further break up banding
-    // (In addition to the noise texture)
 	for (int i = 0; i < 64; ++i) {
-		// get sample position
-		vec3 samplePos = TBN * samples[i]; // from tangent to view-space
-		samplePos = fragPos + samplePos * radius;
+		// add jitter to sample radius
+        float sampleRadius = radius * (0.8 + 0.4 * random(vec3(TexCoords, float(i))));
 
-		// project sample position
+        vec3 samplePos = TBN * samples[i];
+		samplePos = fragPos + samplePos * sampleRadius;
+
 		vec4 offset = vec4(samplePos, 1.0);
-		offset = projection * offset;   // from view to clip-space
-		offset.xyz /= offset.w;         // perspective divide
-		offset.xyz = offset.xyz * 0.5 + 0.5; // transform to range 0.0 - 1.0
+		offset = projection * offset;
+		offset.xyz /= offset.w;
+		offset.xyz = offset.xyz * 0.5 + 0.5;
 
-		// get sample depth
 		float sampleDepth = getPos(offset.xy).z;
 
-		// range check & accumulate
 		float rangeCheck = smoothstep(0.0, 1.0, radius / abs(fragPos.z - sampleDepth));
 		occlusion += (sampleDepth >= samplePos.z + bias ? 1.0 : 0.0) * rangeCheck;
 	}
-	occlusion = 1.0 - (occlusion / 64.0);
 
+    occlusion = clamp(1.0 - (occlusion / 64.0), 0.0, 1.0);
 	FragColor = occlusion;
 }

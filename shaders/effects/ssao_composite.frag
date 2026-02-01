@@ -11,5 +11,8 @@ void main() {
 	vec4  color = texture(sceneTexture, TexCoords);
 	float ao = texture(ssaoTexture, TexCoords).r;
 
-	FragColor = vec4(color.rgb * mix(1.0, ao, intensity), color.a);
+    // Ensure the multiplier never exceeds 1.0 to prevent highlighting
+    float multiplier = clamp(mix(1.0, ao, intensity), 0.0, 1.0);
+
+	FragColor = vec4(color.rgb * multiplier, color.a);
 }

@@ -26,11 +26,15 @@ void main() {
 			float sampleAO = texture(ssaoInput, TexCoords + offset).r;
 			vec3  samplePos = getPos(TexCoords + offset);
 
-			// Bilateral weight: only blur if samples are at similar depth
-			float weight = 1.0 / (0.0001 + abs(centerPos.z - samplePos.z));
+			// Bilateral weight with exponential falloff
+            // We use the depth difference relative to the point distance
+            float depthDiff = abs(centerPos.z - samplePos.z);
+			float weight = exp(-depthDiff * 5.0); // 5.0 is sharpness factor
+
 			result += sampleAO * weight;
 			weightSum += weight;
 		}
 	}
-	FragColor = result / weightSum;
+
+	FragColor = result / max(weightSum, 0.0001);
 }
