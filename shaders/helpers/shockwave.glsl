@@ -57,7 +57,7 @@ vec3 getShockwaveDisplacement(vec3 worldPos, float localHeight, bool useSway) {
 				profile = 1.0 * (1.0 - smoothstep(currentRadius, currentRadius + ringWidth, dist));
 			}
 
-			float strength = ringFactor * intensity * profile * 2.5;
+			float strength = ringFactor * intensity * profile * 0.8;
 
 			if (useSway) {
 				// Sway effect: displacement scales with height
