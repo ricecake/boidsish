@@ -149,7 +149,11 @@ namespace Boidsish {
                 return;
             }
 
-            const GLbitfield flags = GL_MAP_WRITE_BIT | GL_MAP_PERSISTENT_BIT | GL_MAP_COHERENT_BIT;
+            // Flags for glBufferStorage and glMapBufferRange
+            // Including GL_CLIENT_STORAGE_BIT may help some drivers optimize persistent mapping
+            const GLbitfield storage_flags = GL_MAP_WRITE_BIT | GL_MAP_READ_BIT | GL_MAP_PERSISTENT_BIT |
+                                           GL_MAP_COHERENT_BIT | GL_DYNAMIC_STORAGE_BIT | GL_CLIENT_STORAGE_BIT;
+            const GLbitfield map_flags = GL_MAP_WRITE_BIT | GL_MAP_READ_BIT | GL_MAP_PERSISTENT_BIT | GL_MAP_COHERENT_BIT;
 
             glGenBuffers(1, &vbo_);
             if (vbo_ == 0) {
@@ -158,7 +162,11 @@ namespace Boidsish {
             }
 
             glBindBuffer(target_, vbo_);
-            glBufferStorage(target_, total_size_, nullptr, flags);
+            logger::INFO("PersistentRingBuffer::Init target=" + std::to_string(target_) +
+                         " size=" + std::to_string(total_size_) +
+                         " count=" + std::to_string(count_) +
+                         " storage_flags=" + std::to_string(storage_flags));
+            glBufferStorage(target_, total_size_, nullptr, storage_flags);
 
             GLenum err = glGetError();
             if (err != GL_NO_ERROR) {
@@ -168,7 +176,7 @@ namespace Boidsish {
                 return;
             }
 
-            ptr_ = glMapBufferRange(target_, 0, total_size_, flags);
+            ptr_ = glMapBufferRange(target_, 0, total_size_, map_flags);
             if (!ptr_) {
                 logger::ERROR("PersistentRingBuffer: glMapBufferRange failed for target " + std::to_string(target_));
                 glDeleteBuffers(1, &vbo_);

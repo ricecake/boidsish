@@ -163,25 +163,41 @@ namespace Boidsish {
 		glGenTextures(1, &heightmap_texture_);
 		glBindTexture(GL_TEXTURE_2D_ARRAY, heightmap_texture_);
 
-		// Allocate storage for all slices
-		glTexImage3D(
+		std::cout << "[TerrainRenderManager] GL_MAX_ARRAY_TEXTURE_LAYERS=" << max_layers << " requested=" << max_chunks_ << std::endl;
+
+		// Allocate storage for all slices using immutable storage for better driver compatibility
+		glTexStorage3D(
 			GL_TEXTURE_2D_ARRAY,
-			0,                     // mip level
-			GL_RGBA16F,            // internal format (height + normal)
+			1,                     // levels
+			GL_RGBA16F,            // internal format
 			heightmap_resolution_, // width
 			heightmap_resolution_, // height
-			max_chunks_,           // depth (number of slices)
-			0,                     // border
-			GL_RGBA,               // format
-			GL_FLOAT,              // type
-			nullptr                // no initial data
+			max_chunks_            // depth
 		);
 
 		// Check for errors
 		GLenum err = glGetError();
 		if (err != GL_NO_ERROR) {
-			std::cerr << "[TerrainRenderManager] ERROR: glTexImage3D failed with error " << err
+			std::cerr << "[TerrainRenderManager] ERROR: glTexStorage3D failed with error " << err
 					  << " (resolution=" << heightmap_resolution_ << ", slices=" << max_chunks_ << ")" << std::endl;
+
+			// Fallback to glTexImage3D if glTexStorage3D is not supported or fails
+			glTexImage3D(
+				GL_TEXTURE_2D_ARRAY,
+				0,
+				GL_RGBA16F,
+				heightmap_resolution_,
+				heightmap_resolution_,
+				max_chunks_,
+				0,
+				GL_RGBA,
+				GL_FLOAT,
+				nullptr
+			);
+			err = glGetError();
+			if (err != GL_NO_ERROR) {
+				std::cerr << "[TerrainRenderManager] CRITICAL ERROR: glTexImage3D fallback also failed with error " << err << std::endl;
+			}
 		}
 
 		// Filtering for smooth interpolation

@@ -1,4 +1,7 @@
 #version 420 core
+
+#extension GL_ARB_bindless_texture : enable
+
 out vec4 FragColor;
 
 #include "helpers/lighting.glsl"
@@ -25,8 +28,6 @@ uniform bool  usePBR = false;
 uniform float roughness = 0.5;
 uniform float metallic = 0.0;
 uniform float ao = 1.0;
-
-#extension GL_ARB_bindless_texture : enable
 
 uniform sampler2D texture_diffuse1;
 uniform bool      use_texture;
