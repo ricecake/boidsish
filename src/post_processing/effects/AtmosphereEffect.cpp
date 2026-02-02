@@ -53,6 +53,7 @@ namespace Boidsish {
 			shader_->setFloat("scatteringStrength", scattering_strength_);
 			shader_->setFloat("atmosphereExposure", atmosphere_exposure_);
 			shader_->setIntArray("lightShadowIndices", shadow_indices_, 10);
+			shader_->setInt("shadowMaps", 4);
 
 			glActiveTexture(GL_TEXTURE0);
 			glBindTexture(GL_TEXTURE_2D, sourceTexture);

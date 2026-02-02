@@ -127,6 +127,8 @@ float fbm_sky(vec3 p) {
 	return value;
 }
 
+const float SUN_INTENSITY_MULT = 10.0;
+
 void main() {
 	// Reconstruct world ray
 	vec4 clip = vec4(TexCoords * 2.0 - 1.0, 1.0, 1.0);
@@ -174,7 +176,7 @@ void main() {
 
 					vec2 odSun = opticalDepth(ro, world_ray, st1, 4);
 					vec3 sunAtten = getAttenuation(odSun);
-					scattering += sun * lightColor * sunAtten * 10.0 * shadow;
+					scattering += sun * lightColor * sunAtten * SUN_INTENSITY_MULT * shadow;
 				}
 			}
 		}

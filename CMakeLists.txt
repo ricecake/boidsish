@@ -134,13 +134,6 @@ enable_testing()
 find_package(GTest REQUIRED)
 include_directories(${GTEST_INCLUDE_DIRS})
 
-# Compile-only check target
-# Using STATIC library ensures it compiles but doesn't link into a binary.
-# Linking to boidsish ensures it inherits all necessary include paths and definitions.
-add_library(check STATIC ${LIB_SOURCES})
-target_compile_definitions(check PRIVATE GLM_ENABLE_EXPERIMENTAL)
-target_link_libraries(check PRIVATE boidsish)
-
 add_executable(test_rigid_body tests/test_rigid_body.cpp)
 target_link_libraries(test_rigid_body PRIVATE boidsish GTest::GTest GTest::Main)
 set_target_properties(test_rigid_body PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
