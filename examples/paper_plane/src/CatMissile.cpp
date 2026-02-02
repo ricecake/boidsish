@@ -172,7 +172,8 @@ namespace Boidsish {
 
 		// pp_handler.RecordTarget(target_);
 
-		glm::vec3 target_dir_world;
+		glm::vec3 world_fwd = rigid_body_.GetOrientation() * glm::vec3(0, 0, -1);
+		glm::vec3 target_dir_world = GetPosition().Toglm() + world_fwd * 100.0f;
 		glm::vec3 target_dir_local = glm::vec3(0, 0, -1);
 		if (target_ != nullptr) {
 			float missile_speed = glm::length(rigid_body_.GetLinearVelocity());
@@ -186,26 +187,17 @@ namespace Boidsish {
 
 		const auto* terrain_generator = handler.GetTerrainGenerator();
 		if (terrain_generator) {
-			const float kAvoidanceStrength = 5.0f;
-			const float kUpAlignmentThreshold = 0.5f;
-
 			Vector3 vel_vec = GetVelocity();
 			if (vel_vec.MagnitudeSquared() > 1e-6) {
-				glm::vec3 origin = {GetPosition().x, GetPosition().y, GetPosition().z};
-				glm::vec3 dir = {vel_vec.x, vel_vec.y, vel_vec.z};
-				dir = glm::normalize(dir);
+				glm::vec3 origin = GetPosition().Toglm();
+				glm::vec3 dir = glm::normalize(vel_vec.Toglm());
 
 				float     hit_dist = 0.0f;
 				glm::vec3 terrain_normal;
-				// if (terrain_generator->Raycast(origin, dir, reaction_distance, hit_dist)) {
 				if (handler.RaycastTerrain(origin, dir, reaction_distance, hit_dist, terrain_normal)) {
-					auto hit_coord = vel_vec.Normalized() * hit_dist;
-					// auto [terrain_h, terrain_normal] = handler.GetCachedTerrainProperties(hit_coord.x, hit_coord.z);
-					// auto [terrain_h, terrain_normal] = terrain_generator->pointProperties(hit_coord.x, hit_coord.z);
-
 					glm::vec3 local_up = glm::vec3(0.0f, 1.0f, 0.0f);
 					auto      away = terrain_normal;
-					if (glm::dot(away, local_up) < kUpAlignmentThreshold) {
+					if (glm::dot(away, local_up) < 0.5f) {
 						away = local_up;
 					}
 
@@ -214,22 +206,23 @@ namespace Boidsish {
 					}
 
 					float distance_factor = 1.0f - (hit_dist / reaction_distance);
-					float alignment_with_target = glm::dot(dir, target_dir_world);
+					float alignment_with_target = glm::dot(dir, glm::normalize(target_dir_world - origin));
 					float target_priority = 1.0f - glm::clamp(alignment_with_target, 0.0f, 1.0f);
-					// float     avoidance_weight = distance_factor * target_priority;
-					// float     avoidance_weight = distance_factor * target_priority * (1-lived_/lifetime_) *
-					// (target_distance/reaction_distance) * abs(hit_dist - target_distance);
-					// float avoidance_weight = distance_factor * target_priority * (1 - lived_ / lifetime_) *
-					// 	(target_distance / reaction_distance);
 
-					float avoidance_weight = distance_factor * target_priority * (target_distance / reaction_distance);
-
-					// Further dampen avoidance when very close to target or well-aligned
-					if (target_distance < 100.0f) {
-						avoidance_weight *= (target_distance / 100.0f);
+					float avoidance_weight = distance_factor;
+					if (target_ != nullptr) {
+						avoidance_weight *= target_priority * (target_distance / reaction_distance);
+						// Further dampen avoidance when very close to target
+						if (target_distance < 100.0f) {
+							avoidance_weight *= (target_distance / 100.0f);
+						}
 					}
 
-					glm::vec3 final_desired_dir = glm::normalize(glm::mix(target_dir_world, away, avoidance_weight));
+					glm::vec3 current_desired_dir = (target_ != nullptr)
+						? glm::normalize(target_dir_world - origin)
+						: world_fwd;
+
+					glm::vec3 final_desired_dir = glm::normalize(glm::mix(current_desired_dir, away, avoidance_weight));
 					target_dir_local = WorldToObject(final_desired_dir);
 				}
 			}

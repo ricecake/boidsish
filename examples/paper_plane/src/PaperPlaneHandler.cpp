@@ -1,7 +1,10 @@
 #include "PaperPlaneHandler.h"
 
 #include <algorithm>
+#include <cmath>
 #include <set>
+
+#include <glm/gtc/constants.hpp>
 
 #include "GuidedMissileLauncher.h"
 #include "PaperPlane.h"
