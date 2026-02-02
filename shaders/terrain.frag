@@ -411,9 +411,9 @@ void main() {
 	// ========================================================================
 	// Distance Fade
 	// ========================================================================
-	vec4 outColor = vec4(lighting, mix(0.0, fade, step(0.01, FragPos.y))) + vec4(smoothstep(0.2, 0.5, 1 - fade));
+	vec4 outColor = vec4(lighting, fade) + vec4(smoothstep(0.2, 0.5, 1 - fade));
 	FragColor = mix(
-		vec4(0.0, 0.7, 0.7, mix(0.0, fade, step(0.01, FragPos.y))) * length(outColor),
+		vec4(0.0, 0.7, 0.7, fade) * length(outColor),
 		outColor,
 		step(1.0, fade)
 	);

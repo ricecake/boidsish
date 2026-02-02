@@ -111,7 +111,6 @@ void main() {
 		outColor = vec4(final_haze_color, mix(0, 1, 1 - (haze_factor)));
 	} else {
 		float final_alpha = clamp((baseAlpha + spec_lum) * fade, 0.0, 1.0);
-		final_alpha = mix(0.0, final_alpha, step(0.01, FragPos.y));
 
 		outColor = vec4(result, final_alpha);
 		outColor = mix(vec4(0.0, 0.7, 0.7, final_alpha) * length(outColor), outColor, step(1, fade));
