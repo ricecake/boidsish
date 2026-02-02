@@ -7,6 +7,8 @@
 #include <cstring>
 #include <cstdint>
 #include <numeric>
+#include <string>
+#include "logger.h"
 
 namespace Boidsish {
 
@@ -33,7 +35,7 @@ namespace Boidsish {
      * Uses persistent mapped triple buffering with fences.
      * Templated on type T and optional compile-time Capacity.
      */
-    template <typename T, size_t Capacity = 0>
+    template <typename T, size_t Capacity = 1>
     class PersistentRingBuffer {
     public:
         /**
@@ -58,6 +60,7 @@ namespace Boidsish {
          */
         void EnsureCapacity(size_t required_count) {
             if (required_count > count_) {
+                logger::INFO("PersistentRingBuffer::EnsureCapacity increasing to " + std::to_string(required_count * 2) + " for target " + std::to_string(target_));
                 Cleanup();
                 count_ = (required_count * 2); // Double for headroom
                 CalculateStride();
@@ -76,7 +79,7 @@ namespace Boidsish {
             if (fences_[current_frame_]) {
                 GLenum wait_res = glClientWaitSync(fences_[current_frame_], GL_SYNC_FLUSH_COMMANDS_BIT, 1000000000); // 1s timeout
                 if (wait_res == GL_WAIT_FAILED || wait_res == GL_TIMEOUT_EXPIRED) {
-                    // std::cerr << "[OpenGL] Sync wait failed or timed out!" << std::endl;
+                    logger::ERROR("PersistentRingBuffer sync wait failed or timed out for target " + std::to_string(target_));
                 }
                 glDeleteSync(fences_[current_frame_]);
                 fences_[current_frame_] = nullptr;
@@ -89,20 +92,26 @@ namespace Boidsish {
          * @brief Binds the current frame's range to a binding point (for UBOs/SSBOs).
          */
         void BindRange(GLuint binding) {
-            glBindBufferRange(target_, binding, vbo_, current_frame_ * size_per_frame_, size_per_frame_);
+            if (vbo_ != 0) {
+                glBindBufferRange(target_, binding, vbo_, current_frame_ * size_per_frame_, size_per_frame_);
+            }
         }
 
         /**
          * @brief Binds the current frame's range to a specific target and binding point.
          */
         void BindRange(GLenum target, GLuint binding) {
-             glBindBufferRange(target, binding, vbo_, current_frame_ * size_per_frame_, size_per_frame_);
+            if (vbo_ != 0) {
+                glBindBufferRange(target, binding, vbo_, current_frame_ * size_per_frame_, size_per_frame_);
+            }
         }
 
         /**
          * @brief Advance to the next frame in the ring, placing a fence for the current one.
          */
         void AdvanceFrame() {
+            if (!ptr_) return;
+
             // Lock this range
             if (fences_[current_frame_]) glDeleteSync(fences_[current_frame_]);
             fences_[current_frame_] = glFenceSync(GL_SYNC_GPU_COMMANDS_COMPLETE, 0);
@@ -139,31 +148,57 @@ namespace Boidsish {
 
         void Init() {
             total_size_ = size_per_frame_ * buffering_count_;
-            if (total_size_ == 0) return;
+            if (total_size_ == 0) {
+                return;
+            }
 
             const GLbitfield flags = GL_MAP_WRITE_BIT | GL_MAP_PERSISTENT_BIT | GL_MAP_COHERENT_BIT;
 
             glGenBuffers(1, &vbo_);
+            if (vbo_ == 0) {
+                logger::ERROR("PersistentRingBuffer: glGenBuffers failed for target " + std::to_string(target_));
+                return;
+            }
+
             glBindBuffer(target_, vbo_);
             glBufferStorage(target_, total_size_, nullptr, flags);
 
+            GLenum err = glGetError();
+            if (err != GL_NO_ERROR) {
+                logger::ERROR("PersistentRingBuffer: glBufferStorage failed for target " + std::to_string(target_) + " with error " + std::to_string(err));
+                glDeleteBuffers(1, &vbo_);
+                vbo_ = 0;
+                return;
+            }
+
             ptr_ = glMapBufferRange(target_, 0, total_size_, flags);
+            if (!ptr_) {
+                logger::ERROR("PersistentRingBuffer: glMapBufferRange failed for target " + std::to_string(target_));
+                glDeleteBuffers(1, &vbo_);
+                vbo_ = 0;
+                return;
+            }
+
             fences_.assign(buffering_count_, nullptr);
             current_frame_ = 0;
+            logger::INFO("PersistentRingBuffer initialized for target " + std::to_string(target_) + ". VBO=" + std::to_string(vbo_) + ", total_size=" + std::to_string(total_size_) + ", count=" + std::to_string(count_));
         }
 
         void Cleanup() {
-            if (vbo_) {
+            if (vbo_ != 0) {
                 glBindBuffer(target_, vbo_);
-                if (ptr_) glUnmapBuffer(target_);
+                if (ptr_) {
+                    glUnmapBuffer(target_);
+                    ptr_ = nullptr;
+                }
                 glDeleteBuffers(1, &vbo_);
                 vbo_ = 0;
-                ptr_ = nullptr;
             }
             for (auto fence : fences_) {
                 if (fence) glDeleteSync(fence);
             }
             fences_.clear();
+            logger::INFO("PersistentRingBuffer cleaned up for target " + std::to_string(target_));
         }
 
         GLenum target_;
