@@ -386,6 +386,10 @@ namespace Boidsish {
 				glfwTerminate();
 				throw std::runtime_error("Failed to create GLFW window");
 			}
+
+			// Immediately query actual pixel dimensions to handle High-DPI/Retina displays.
+			// This ensures FBOs and viewports are sized correctly regardless of OS scaling.
+			glfwGetFramebufferSize(window, &width, &height);
 			glfwMakeContextCurrent(window);
 
 			// Required for modern OpenGL on some drivers (especially Mesa)
@@ -2093,6 +2097,7 @@ namespace Boidsish {
 			glEnable(GL_CLIP_DISTANCE0);
 			{
 				glBindFramebuffer(GL_FRAMEBUFFER, impl->reflection_fbo);
+				glViewport(0, 0, impl->width, impl->height);
 				glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 				Camera reflection_cam = impl->camera;
 				reflection_cam.y = -reflection_cam.y;
@@ -2321,6 +2326,7 @@ namespace Boidsish {
 
 		// --- Main Scene Pass (renders to our FBO) ---
 		glBindFramebuffer(GL_FRAMEBUFFER, impl->main_fbo_);
+		glViewport(0, 0, impl->width, impl->height);
 		glEnable(GL_DEPTH_TEST);
 		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
@@ -2368,6 +2374,8 @@ namespace Boidsish {
 			// Apply shockwave effect as the final pass (after other post-processing)
 			// This ensures the distortion is visible and not processed by other effects
 			if (impl->shockwave_manager->HasActiveShockwaves()) {
+				glBindFramebuffer(GL_FRAMEBUFFER, 0);
+				glViewport(0, 0, impl->width, impl->height);
 				impl->shockwave_manager->ApplyScreenSpaceEffect(
 					final_texture,
 					impl->main_fbo_depth_texture_,
@@ -2378,6 +2386,8 @@ namespace Boidsish {
 				);
 			} else {
 				// No shockwaves - just render the post-processed texture
+				glBindFramebuffer(GL_FRAMEBUFFER, 0);
+				glViewport(0, 0, impl->width, impl->height);
 				impl->postprocess_shader_->use();
 				impl->postprocess_shader_->setInt("sceneTexture", 0);
 				glActiveTexture(GL_TEXTURE0);
@@ -2391,6 +2401,7 @@ namespace Boidsish {
 			// Still apply shockwave if active
 			if (impl->shockwave_manager->HasActiveShockwaves()) {
 				glBindFramebuffer(GL_FRAMEBUFFER, 0);
+				glViewport(0, 0, impl->width, impl->height);
 				glDisable(GL_DEPTH_TEST);
 				glClear(GL_COLOR_BUFFER_BIT);
 
@@ -2403,6 +2414,8 @@ namespace Boidsish {
 					impl->blur_quad_vao
 				);
 			} else {
+				glBindFramebuffer(GL_FRAMEBUFFER, 0);
+				glViewport(0, 0, impl->width, impl->height);
 				glBindFramebuffer(GL_READ_FRAMEBUFFER, impl->main_fbo_);
 				glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
 				glBlitFramebuffer(
