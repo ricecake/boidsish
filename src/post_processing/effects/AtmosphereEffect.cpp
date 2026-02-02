@@ -45,6 +45,8 @@ namespace Boidsish {
 			shader_->setFloat("cloudAltitude", cloud_altitude_);
 			shader_->setFloat("cloudThickness", cloud_thickness_);
 			shader_->setVec3("cloudColorUniform", cloud_color_);
+			shader_->setFloat("scatteringStrength", scattering_strength_);
+			shader_->setFloat("atmosphereExposure", atmosphere_exposure_);
 
 			glActiveTexture(GL_TEXTURE0);
 			glBindTexture(GL_TEXTURE_2D, sourceTexture);

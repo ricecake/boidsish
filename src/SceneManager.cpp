@@ -106,6 +106,8 @@ namespace Boidsish {
 		config.SetFloat(pp_section, "cloud_r", scene.post_processing.cloud_color.r);
 		config.SetFloat(pp_section, "cloud_g", scene.post_processing.cloud_color.g);
 		config.SetFloat(pp_section, "cloud_b", scene.post_processing.cloud_color.b);
+		config.SetFloat(pp_section, "scattering_strength", scene.post_processing.scattering_strength);
+		config.SetFloat(pp_section, "atmosphere_exposure", scene.post_processing.atmosphere_exposure);
 		config.SetBool(pp_section, "tone_mapping_enabled", scene.post_processing.tone_mapping_enabled);
 		config.SetBool(pp_section, "film_grain_enabled", scene.post_processing.film_grain_enabled);
 		config.SetFloat(pp_section, "film_grain_intensity", scene.post_processing.film_grain_intensity);
@@ -207,6 +209,8 @@ namespace Boidsish {
 		scene.post_processing.cloud_color.r = config.GetFloat(pp_section, "cloud_r", 0.95f);
 		scene.post_processing.cloud_color.g = config.GetFloat(pp_section, "cloud_g", 0.95f);
 		scene.post_processing.cloud_color.b = config.GetFloat(pp_section, "cloud_b", 1.0f);
+		scene.post_processing.scattering_strength = config.GetFloat(pp_section, "scattering_strength", 0.5f);
+		scene.post_processing.atmosphere_exposure = config.GetFloat(pp_section, "atmosphere_exposure", 0.5f);
 		scene.post_processing.tone_mapping_enabled = config.GetBool(pp_section, "tone_mapping_enabled", false);
 		scene.post_processing.film_grain_enabled = config.GetBool(pp_section, "film_grain_enabled", false);
 		scene.post_processing.film_grain_intensity = config.GetFloat(pp_section, "film_grain_intensity", 0.02f);

@@ -1169,6 +1169,21 @@ namespace Boidsish {
 			sky_shader->use();
 			sky_shader->setMat4("invProjection", glm::inverse(projection));
 			sky_shader->setMat4("invView", glm::inverse(view));
+
+			float exposure = 0.5f; // Default matching include/Scene.h
+			if (post_processing_manager_) {
+				for (const auto& effect : post_processing_manager_->GetPreToneMappingEffects()) {
+					if (effect->GetName() == "Atmosphere") {
+						auto atmosphere = std::dynamic_pointer_cast<PostProcessing::AtmosphereEffect>(effect);
+						if (atmosphere) {
+							exposure = atmosphere->GetExposure();
+						}
+						break;
+					}
+				}
+			}
+			sky_shader->setFloat("atmosphereExposure", exposure);
+
 			glBindVertexArray(sky_vao);
 			glDrawArrays(GL_TRIANGLES, 0, 3);
 			glBindVertexArray(0);

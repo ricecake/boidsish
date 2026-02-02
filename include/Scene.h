@@ -43,6 +43,8 @@ namespace Boidsish {
 			float     cloud_altitude = 95.0f;
 			float     cloud_thickness = 10.0f;
 			glm::vec3 cloud_color = glm::vec3(0.95f, 0.95f, 1.0f);
+			float     scattering_strength = 0.5f;
+			float     atmosphere_exposure = 0.5f;
 
 			bool tone_mapping_enabled = false;
 

@@ -56,6 +56,14 @@ namespace Boidsish {
 
 			glm::vec3 GetCloudColor() const { return cloud_color_; }
 
+			void SetScatteringStrength(float strength) { scattering_strength_ = strength; }
+
+			float GetScatteringStrength() const { return scattering_strength_; }
+
+			void SetExposure(float exposure) { atmosphere_exposure_ = exposure; }
+
+			float GetExposure() const { return atmosphere_exposure_; }
+
 		private:
 			std::unique_ptr<Shader> shader_;
 			float                   time_ = 0.0f;
@@ -67,6 +75,8 @@ namespace Boidsish {
 			float     cloud_altitude_ = 95.0f;
 			float     cloud_thickness_ = 10.0f;
 			glm::vec3 cloud_color_ = glm::vec3(0.95f, 0.95f, 1.0f);
+			float     scattering_strength_ = 0.5f;
+			float     atmosphere_exposure_ = 0.5f;
 
 			int width_ = 0;
 			int height_ = 0;
