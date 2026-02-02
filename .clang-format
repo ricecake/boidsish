@@ -76,7 +76,6 @@ QualifierAlignment: Leave
 ReferenceAlignment: Pointer
 ReflowComments: true
 RemoveBracesLLVM: false
-RequiresClausePosition: OwnLineWithBrace
 SeparateDefinitionBlocks: Always
 ShortNamespaceLines: 1
 SortUsingDeclarations: true

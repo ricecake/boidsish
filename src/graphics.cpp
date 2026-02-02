@@ -1190,6 +1190,33 @@ namespace Boidsish {
 			sky_shader->use();
 			sky_shader->setMat4("invProjection", glm::inverse(projection));
 			sky_shader->setMat4("invView", glm::inverse(view));
+
+			float exposure = 0.3f; // Default matching include/Scene.h revised
+			if (post_processing_manager_) {
+				for (const auto& effect : post_processing_manager_->GetPreToneMappingEffects()) {
+					if (effect->GetName() == "Atmosphere") {
+						auto atmosphere = std::dynamic_pointer_cast<PostProcessing::AtmosphereEffect>(effect);
+						if (atmosphere) {
+							exposure = atmosphere->GetExposure();
+						}
+						break;
+					}
+				}
+			}
+			sky_shader->setFloat("atmosphereExposure", exposure);
+
+			// Bind shadow maps for sun occlusion
+			std::array<int, 10> shadow_indices;
+			shadow_indices.fill(-1);
+			if (shadow_manager && shadow_manager->IsInitialized()) {
+				shadow_manager->BindForRendering(*sky_shader);
+				const auto& all_lights = light_manager.GetLights();
+				for (size_t j = 0; j < all_lights.size() && j < 10; ++j) {
+					shadow_indices[j] = all_lights[j].shadow_map_index;
+				}
+			}
+			sky_shader->setIntArray("lightShadowIndices", shadow_indices.data(), 10);
+
 			glBindVertexArray(sky_vao);
 			glDrawArrays(GL_TRIANGLES, 0, 3);
 			glBindVertexArray(0);
@@ -2050,20 +2077,20 @@ namespace Boidsish {
 		size_t offset = 640;
 		glBufferSubData(GL_UNIFORM_BUFFER, offset, sizeof(int), &num_lights);
 		offset += 16;
-		glBufferSubData(
-			GL_UNIFORM_BUFFER,
-			offset,
-			sizeof(glm::vec3),
-			&glm::vec3(impl->camera.x, impl->camera.y, impl->camera.z)[0]
-		);
+		glm::vec3 camera_pos(impl->camera.x, impl->camera.y, impl->camera.z);
+		glBufferSubData(GL_UNIFORM_BUFFER, offset, sizeof(glm::vec3), &camera_pos[0]);
+
 		offset += 16;
 		glm::vec3 ambient_light = impl->light_manager.GetAmbientLight();
 		glBufferSubData(GL_UNIFORM_BUFFER, offset, sizeof(glm::vec3), &ambient_light[0]);
+
 		offset += 12;
 		glBufferSubData(GL_UNIFORM_BUFFER, offset, sizeof(float), &impl->simulation_time);
+
 		offset += 4;
 		offset = (offset + 15) & ~15; // align to 16
-		glBufferSubData(GL_UNIFORM_BUFFER, offset, sizeof(glm::vec3), &impl->camera.front()[0]);
+		glm::vec3 camera_front = impl->camera.front();
+		glBufferSubData(GL_UNIFORM_BUFFER, offset, sizeof(glm::vec3), &camera_front[0]);
 		glBindBuffer(GL_UNIFORM_BUFFER, 0);
 
 		// Update Frustum UBO for GPU-side culling
@@ -2350,6 +2377,31 @@ namespace Boidsish {
 
 		if (ConfigManager::GetInstance().GetAppSettingBool("enable_effects", true)) {
 			// --- Post-processing Pass (renders FBO texture to screen) ---
+
+			// Prepare effects that need extra data
+			std::array<int, 10> shadow_indices;
+			shadow_indices.fill(-1);
+			const auto&         all_lights = impl->light_manager.GetLights();
+			for (size_t j = 0; j < all_lights.size() && j < 10; ++j) {
+				shadow_indices[j] = all_lights[j].shadow_map_index;
+			}
+
+			if (impl->post_processing_manager_) {
+				for (auto& effect : impl->post_processing_manager_->GetPreToneMappingEffects()) {
+					if (effect->GetName() == "Atmosphere") {
+						auto atmosphere = std::dynamic_pointer_cast<PostProcessing::AtmosphereEffect>(effect);
+						if (atmosphere) {
+							atmosphere->SetShadowIndices(shadow_indices.data(), 10);
+						}
+					}
+				}
+			}
+
+			// Bind shadow maps for post-processing effects that need them (like Atmosphere)
+			if (impl->shadow_manager && impl->shadow_manager->IsInitialized()) {
+				glActiveTexture(GL_TEXTURE4);
+				glBindTexture(GL_TEXTURE_2D_ARRAY, impl->shadow_manager->GetShadowMapArray());
+			}
 
 			// Apply standard post-processing effects
 			GLuint final_texture = impl->post_processing_manager_->ApplyEffects(

@@ -62,6 +62,14 @@ namespace Boidsish {
 						if (ImGui::ColorEdit3("Cloud Color", &cloud_color[0])) {
 							atmosphere_effect->SetCloudColor(cloud_color);
 						}
+						float scattering_strength = atmosphere_effect->GetScatteringStrength();
+						if (ImGui::SliderFloat("Scattering Strength", &scattering_strength, 0.0f, 2.0f)) {
+							atmosphere_effect->SetScatteringStrength(scattering_strength);
+						}
+						float exposure = atmosphere_effect->GetExposure();
+						if (ImGui::SliderFloat("Atmosphere Exposure", &exposure, 0.0f, 2.0f)) {
+							atmosphere_effect->SetExposure(exposure);
+						}
 					}
 				}
 
