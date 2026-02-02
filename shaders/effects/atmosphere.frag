@@ -19,7 +19,6 @@ uniform float cloudThickness;
 uniform vec3  cloudColorUniform;
 uniform float scatteringStrength;
 uniform float atmosphereExposure;
-uniform float time; // Re-added just in case, though UBO has it
 
 #include "../helpers/atmosphere.glsl"
 #include "../helpers/noise.glsl"
@@ -74,11 +73,22 @@ void main() {
 	// Use cameraPos as ray origin for consistency with height fog
 	vec3 ro = vec3(0.0, Re + max(1.0, cameraPos.y), 0.0);
 	vec3 scattering = vec3(0.0);
+
+	// Check if camera is inside planet (sanity check)
+	float tp0, tp1;
+	bool  hitPlanetNear = intersectSphere(ro, rayDir, Re, tp0, tp1) && tp0 > 0.0;
+
 	for (int i = 0; i < num_lights; i++) {
 		if (lights[i].type == 1) { // DIRECTIONAL_LIGHT
 			vec3 lightDir = normalize(-lights[i].direction);
 			vec3 lightColor = lights[i].color * lights[i].intensity;
-			scattering += calculateScattering(ro, rayDir, dist, lightDir, lightColor, 4);
+
+			float maxDist = dist;
+			if (hitPlanetNear) {
+				maxDist = min(maxDist, tp0);
+			}
+
+			scattering += calculateScattering(ro, rayDir, maxDist, lightDir, lightColor, 4);
 		}
 	}
 	currentHazeColor = mix(currentHazeColor, scattering * scatteringStrength, 0.5); // Blend with uniform haze color

@@ -67,7 +67,10 @@ vec3 calculateScattering(vec3 ro, vec3 rd, float L, vec3 lightDir, vec3 lightCol
 		odView += d;
 
 		float t0, t1;
-		if (intersectSphere(p, lightDir, Ra, t0, t1) && t1 > 0.0) {
+		float tp0, tp1;
+		bool  lightBlocked = intersectSphere(p, lightDir, Re, tp0, tp1) && tp0 > 0.0;
+
+		if (!lightBlocked && intersectSphere(p, lightDir, Ra, t0, t1) && t1 > 0.0) {
 			vec2 odLight = opticalDepth(p, lightDir, t1, 4);
 			vec3 tau = betaR * (odView.x + odLight.x) + betaM * 1.1 * (odView.y + odLight.y);
 			vec3 attenuation = exp(-tau);

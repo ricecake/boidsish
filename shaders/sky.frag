@@ -162,9 +162,12 @@ void main() {
 			// Sun disc
 			float cosTheta = dot(world_ray, lightDir);
 			float sun = smoothstep(0.9995, 0.9998, cosTheta);
-			if (sun > 0.0) {
+			if (sun > 0.0 && !hitPlanet) {
 				float st0, st1;
-				if (intersectSphere(ro, world_ray, Ra, st0, st1)) {
+				float stp0, stp1;
+				bool  sunBlocked = intersectSphere(ro, world_ray, Re, stp0, stp1) && stp0 > 0.0;
+
+				if (!sunBlocked && intersectSphere(ro, world_ray, Ra, st0, st1)) {
 					vec2 odSun = opticalDepth(ro, world_ray, st1, 4);
 					vec3 sunAtten = exp(-(betaR * odSun.x + betaM * 1.1 * odSun.y));
 					scattering += sun * lightColor * sunAtten * 10.0;

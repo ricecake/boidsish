@@ -28,7 +28,7 @@ int main() {
 		Boidsish::Light sun = Boidsish::Light::CreateDirectional(
 			glm::vec3(0, 500, 0),
 			glm::vec3(0, -1, 0),
-			10.0f,
+			5.0f,
 			glm::vec3(1.0f, 0.95f, 0.8f),
 			true
 		);
@@ -65,9 +65,9 @@ int main() {
 				time_of_day += 1.0f;
 
 			// Convert time of day [0,1] to sun direction
-			// 0.25 = Noon, 0.5 = Sunset, 0.75 = Midnight, 0.0 = Sunrise
-			float     angle = (time_of_day - 0.25f) * 2.0f * 3.14159f;
-			glm::vec3 dir(0.0f, -cos(angle), -sin(angle));
+			// 0.0 = Sunrise (East), 0.25 = Noon (Zenith), 0.5 = Sunset (West), 0.75 = Midnight (Nadir)
+			float     angle = time_of_day * 2.0f * 3.14159f;
+			glm::vec3 dir(cos(angle), -sin(angle), 0.0f);
 
 			auto& lights = vis.GetLightManager().GetLights();
 			if (!lights.empty()) {
@@ -80,7 +80,7 @@ int main() {
 					glm::vec3 sunset_color(1.0f, 0.4f, 0.1f);
 					glm::vec3 day_color(1.0f, 0.95f, 0.85f);
 					lights[0].color = sunset_color + (day_color - sunset_color) * t;
-					lights[0].intensity = 10.0f * smoothstep_val(-0.1f, 0.1f, elevation);
+					lights[0].intensity = 5.0f * smoothstep_val(-0.1f, 0.1f, elevation);
 				} else {
 					lights[0].intensity = 0.0f;
 				}
