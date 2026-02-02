@@ -22,7 +22,7 @@ void main() {
 
 	// Distance-based fade to prevent blocking the camera
 	float dist_to_cam = length(viewPos - vs_frag_pos);
-	float camera_fade = smoothstep(1.5, 4.0, dist_to_cam);
+	float camera_fade = smoothstep(3.0, 10.0, dist_to_cam);
 
 	if (useRocketTrail) {
 		// --- Rocket Trail Effect with Emissive Glow ---

@@ -150,13 +150,25 @@ namespace Boidsish {
 				return;
 			}
 
-			if (frontNess < 0.60) {
+			if (frontNess < 0.80) {
 				continue;
 			}
 
 			float     hit_dist = 0.0f;
 			glm::vec3 terrain_normal;
-			if (handler.RaycastTerrain(missile_pos, to_target, distance, hit_dist, terrain_normal)) {
+			bool      target_blocked = handler.RaycastTerrain(missile_pos, to_target, distance, hit_dist, terrain_normal);
+			bool      sector_blocked = true;
+
+			if (target_blocked) {
+				glm::vec3 approach_p = candidate->GetApproachPoint();
+				glm::vec3 to_approach = glm::normalize(approach_p - missile_pos);
+				float     dist_to_approach = glm::length(approach_p - missile_pos);
+				sector_blocked = handler.RaycastTerrain(missile_pos, to_approach, dist_to_approach, hit_dist, terrain_normal);
+			} else {
+				sector_blocked = false;
+			}
+
+			if (target_blocked && sector_blocked) {
 				continue;
 			}
 
@@ -179,13 +191,29 @@ namespace Boidsish {
 		glm::vec3 target_dir_world = GetPosition().Toglm() + world_fwd * 100.0f;
 		glm::vec3 target_dir_local = glm::vec3(0, 0, -1);
 		if (target_ != nullptr) {
-			float missile_speed = glm::length(rigid_body_.GetLinearVelocity());
+			float     missile_speed = glm::length(rigid_body_.GetLinearVelocity());
+			glm::vec3 missile_pos = GetPosition().Toglm();
 
 			// PREDICT
 			target_dir_world =
-				GetInterceptPoint(GetPosition(), missile_speed, target_->GetPosition(), target_->GetVelocity());
+				GetInterceptPoint(missile_pos, missile_speed, target_->GetPosition(), target_->GetVelocity());
 
-			target_dir_local = WorldToObject(glm::normalize(target_dir_world - GetPosition()));
+			// Check LOS to target
+			float     hit_dist;
+			glm::vec3 terrain_normal;
+			glm::vec3 to_target = glm::normalize(target_dir_world - missile_pos);
+			if (handler.RaycastTerrain(
+					missile_pos,
+					to_target,
+					glm::length(target_dir_world - missile_pos),
+					hit_dist,
+					terrain_normal
+				)) {
+				// Aim for approach point instead if launcher is obscured
+				target_dir_world = target_->GetApproachPoint();
+			}
+
+			target_dir_local = WorldToObject(glm::normalize(target_dir_world - missile_pos));
 		}
 
 		const auto* terrain_generator = handler.GetTerrainGenerator();
@@ -240,17 +268,17 @@ namespace Boidsish {
 		glm::vec3 local_forward = glm::vec3(0, 0, -1);
 
 		// Spiral movement that tightens as it approaches target
-		float spiral_amplitude = 0.15f;
+		float spiral_amplitude = 0.25f;
 		if (target_ != nullptr) {
-			spiral_amplitude = glm::mix(0.0f, 0.15f, std::clamp(target_distance / 200.0f, 0.0f, 1.0f));
+			spiral_amplitude = glm::mix(0.0f, 0.25f, std::clamp(target_distance / 300.0f, 0.0f, 1.0f));
 		}
-		target_dir_local.x += sin(lived_ * 25.0f) * spiral_amplitude;
-		target_dir_local.y += cos(lived_ * 20.0f) * spiral_amplitude;
+		target_dir_local.x += sin(lived_ * 10.0f) * spiral_amplitude;
+		target_dir_local.y += cos(lived_ * 8.0f) * spiral_amplitude;
 
 		// Terminal hard swing
 		float kP = 60.0f;
-		if (target_ != nullptr && target_distance < 50.0f) {
-			kP = 150.0f; // Increase gain for terminal swing
+		if (target_ != nullptr && target_distance < 80.0f) {
+			kP = 250.0f; // Increase gain for terminal swing
 		}
 
 		glm::vec3 pid_torque = CalculateSteeringTorque(
