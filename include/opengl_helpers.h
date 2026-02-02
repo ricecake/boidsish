@@ -5,19 +5,47 @@
 #include <iostream>
 #include <algorithm>
 #include <cstring>
+#include <cstdint>
+#include <numeric>
 
 namespace Boidsish {
 
     /**
+     * @brief OpenGL indirect draw command structures.
+     */
+    struct DrawElementsIndirectCommand {
+        uint32_t count;
+        uint32_t instanceCount;
+        uint32_t firstIndex;
+        int32_t  baseVertex;
+        uint32_t baseInstance;
+    };
+
+    struct DrawArraysIndirectCommand {
+        uint32_t count;
+        uint32_t instanceCount;
+        uint32_t first;
+        uint32_t baseInstance;
+    };
+
+    /**
      * @brief Helper for approached-zero driver overhead (AZDO) buffer management.
      * Uses persistent mapped triple buffering with fences.
+     * Templated on type T and optional compile-time Capacity.
      */
+    template <typename T, size_t Capacity = 0>
     class PersistentRingBuffer {
     public:
-        PersistentRingBuffer(GLenum target, size_t initial_size_per_frame, int buffering_count = 3)
-            : target_(target), size_per_frame_(initial_size_per_frame), buffering_count_(buffering_count) {
+        /**
+         * @brief Construct a new Persistent Ring Buffer
+         * @param target OpenGL buffer target (e.g., GL_ARRAY_BUFFER, GL_UNIFORM_BUFFER)
+         * @param count Number of elements of type T per frame. Defaults to Capacity template arg.
+         * @param buffering_count Number of frames to buffer (triple buffering recommended).
+         */
+        PersistentRingBuffer(GLenum target, size_t count = Capacity, int buffering_count = 3)
+            : target_(target), count_(count), buffering_count_(buffering_count) {
 
-            size_per_frame_ = (size_per_frame_ + 255) & ~255;
+            CalculateStride();
             Init();
         }
 
@@ -25,15 +53,23 @@ namespace Boidsish {
             Cleanup();
         }
 
-        void EnsureCapacity(size_t required_size_per_frame) {
-            if (required_size_per_frame > size_per_frame_) {
+        /**
+         * @brief Reallocates the buffer if the required count exceeds current capacity.
+         */
+        void EnsureCapacity(size_t required_count) {
+            if (required_count > count_) {
                 Cleanup();
-                size_per_frame_ = (required_size_per_frame * 2 + 255) & ~255;
+                count_ = (required_count * 2); // Double for headroom
+                CalculateStride();
                 Init();
             }
         }
 
-        void* GetCurrentPtr() {
+        /**
+         * @brief Get a pointer to the current frame's memory region.
+         * Blocks if the GPU is still using this specific region (triple buffering minimizes this).
+         */
+        T* GetCurrentPtr() {
             if (!ptr_) return nullptr;
 
             // Wait for GPU to finish with this frame's part of the buffer
@@ -46,17 +82,26 @@ namespace Boidsish {
                 fences_[current_frame_] = nullptr;
             }
 
-            return static_cast<uint8_t*>(ptr_) + (current_frame_ * size_per_frame_);
+            return reinterpret_cast<T*>(static_cast<uint8_t*>(ptr_) + (current_frame_ * size_per_frame_));
         }
 
+        /**
+         * @brief Binds the current frame's range to a binding point (for UBOs/SSBOs).
+         */
         void BindRange(GLuint binding) {
             glBindBufferRange(target_, binding, vbo_, current_frame_ * size_per_frame_, size_per_frame_);
         }
 
+        /**
+         * @brief Binds the current frame's range to a specific target and binding point.
+         */
         void BindRange(GLenum target, GLuint binding) {
              glBindBufferRange(target, binding, vbo_, current_frame_ * size_per_frame_, size_per_frame_);
         }
 
+        /**
+         * @brief Advance to the next frame in the ring, placing a fence for the current one.
+         */
         void AdvanceFrame() {
             // Lock this range
             if (fences_[current_frame_]) glDeleteSync(fences_[current_frame_]);
@@ -68,10 +113,34 @@ namespace Boidsish {
         GLuint GetVBO() const { return vbo_; }
         size_t GetOffset() const { return current_frame_ * size_per_frame_; }
         size_t GetSizePerFrame() const { return size_per_frame_; }
+        size_t GetCount() const { return count_; }
 
     private:
+        void CalculateStride() {
+            size_t raw_size = count_ * sizeof(T);
+            if (raw_size == 0) {
+                size_per_frame_ = 0;
+                return;
+            }
+
+            // size_per_frame must be:
+            // 1. Multiple of 256 (for UBO alignment)
+            // 2. Multiple of sizeof(T) (so vertex pointers remain aligned to element boundaries)
+
+            if constexpr (sizeof(T) == 0) {
+                size_per_frame_ = (raw_size + 255) & ~255;
+            } else {
+                size_t alignment = 256;
+                // Use lcm to find the smallest common multiple of alignment and sizeof(T)
+                size_t unit_alignment = std::lcm(sizeof(T), alignment);
+                size_per_frame_ = (raw_size + unit_alignment - 1) / unit_alignment * unit_alignment;
+            }
+        }
+
         void Init() {
             total_size_ = size_per_frame_ * buffering_count_;
+            if (total_size_ == 0) return;
+
             const GLbitfield flags = GL_MAP_WRITE_BIT | GL_MAP_PERSISTENT_BIT | GL_MAP_COHERENT_BIT;
 
             glGenBuffers(1, &vbo_);
@@ -100,9 +169,10 @@ namespace Boidsish {
         GLenum target_;
         GLuint vbo_ = 0;
         void* ptr_ = nullptr;
-        size_t size_per_frame_;
-        size_t total_size_;
-        int buffering_count_;
+        size_t count_ = 0;
+        size_t size_per_frame_ = 0;
+        size_t total_size_ = 0;
+        int buffering_count_ = 3;
         int current_frame_ = 0;
         std::vector<GLsync> fences_;
     };

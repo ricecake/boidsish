@@ -160,7 +160,7 @@ namespace Boidsish {
 		GLuint grid_vao_ = 0;
 		GLuint grid_vbo_ = 0;
 		GLuint grid_ebo_ = 0;
-		std::unique_ptr<PersistentRingBuffer> instance_vbo_ring_;
+		std::unique_ptr<PersistentRingBuffer<InstanceData>> instance_vbo_ring_;
 		GLuint heightmap_texture_ = 0; // GL_TEXTURE_2D_ARRAY
 
 		// Grid mesh data
@@ -174,6 +174,7 @@ namespace Boidsish {
 		// Per-frame instance data
 		std::vector<InstanceData> visible_instances_;
 		size_t                    instance_buffer_capacity_ = 0;
+		GLuint                    last_vbo_ = 0;
 
 		// Camera position for LRU eviction (updated by PrepareForRender)
 		glm::vec3 last_camera_pos_{0.0f, 0.0f, 0.0f};

@@ -34,8 +34,20 @@ namespace Boidsish {
 	 * 1. Strip continuity between trails would connect unrelated geometry
 	 * 2. Per-trail shader parameters (iridescent, rocket trail, etc.)
 	 * 3. Progress calculation in shader based on gl_VertexID
-	 *
-	 * Data layout:
+	 */
+
+	/**
+	 * @brief Vertex data for trails.
+	 * Matches the layout expected by the trail shader.
+	 */
+	struct TrailVertex {
+		glm::vec3 position;
+		glm::vec3 normal;
+		glm::vec3 color;
+	};
+
+	/**
+	 * @brief Data layout:
 	 * - Vertex buffer: interleaved [position(3) + normal(3) + color(3)] = 9 floats per vertex
 	 */
 	class TrailRenderManager {
@@ -148,21 +160,13 @@ namespace Boidsish {
 			bool needs_upload = false;
 		};
 
-		// OpenGL indirect draw command structure
-		struct DrawArraysIndirectCommand {
-			GLuint count;
-			GLuint instanceCount;
-			GLuint first;
-			GLuint baseInstance;
-		};
-
 		// Buffer management
 		void EnsureBufferCapacity(size_t required_vertices);
 
 		// OpenGL resources
 		GLuint vao_ = 0;
-		std::unique_ptr<PersistentRingBuffer> vbo_ring_;
-		GLuint draw_command_buffer_ = 0;
+		std::unique_ptr<PersistentRingBuffer<TrailVertex>> vbo_ring_;
+		std::unique_ptr<PersistentRingBuffer<DrawArraysIndirectCommand>> draw_command_ring_;
 
 		// Buffer capacity (in vertices, not bytes)
 		size_t vertex_capacity_ = 0;

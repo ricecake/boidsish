@@ -29,4 +29,13 @@ namespace Boidsish {
 		}
 	};
 
+	/**
+	 * @brief GPU-compatible frustum data for UBO upload.
+	 */
+	struct FrustumUboData {
+		glm::vec4 planes[6];    // 96 bytes (normal.xyz, distance.w)
+		glm::vec3 camera_pos;   // 12 bytes
+		float     _pad;         // 4 bytes
+	};
+
 } // namespace Boidsish

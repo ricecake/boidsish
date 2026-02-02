@@ -19,12 +19,12 @@ namespace Boidsish {
 
 	private:
 		struct InstanceGroup {
-			std::vector<std::shared_ptr<Shape>>   shapes;
-			std::unique_ptr<PersistentRingBuffer> matrix_ring;
-			std::unique_ptr<PersistentRingBuffer> color_ring;
+			std::vector<std::shared_ptr<Shape>>               shapes;
+			std::unique_ptr<PersistentRingBuffer<glm::mat4>> matrix_ring;
+			std::unique_ptr<PersistentRingBuffer<glm::vec4>> color_ring;
 		};
 
-		unsigned int m_indirect_buffer = 0;
+		std::unique_ptr<PersistentRingBuffer<DrawElementsIndirectCommand>> m_indirect_ring;
 
 		// Group by instance key (model path for Models, "Dot" for Dots, etc.)
 		std::map<std::string, InstanceGroup> m_instance_groups;

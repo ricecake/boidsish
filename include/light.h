@@ -248,6 +248,22 @@ namespace Boidsish {
 		int       padding2, padding3, padding4;
 	};
 
+	/**
+	 * @brief Complete data structure for the Lighting UBO.
+	 * Matches the std140 layout in lighting.glsl.
+	 */
+	struct LightingUboData {
+		LightGPU  lights[10];       // 0-639 (640 bytes)
+		int       num_lights;       // 640-643
+		float     _pad1[3];         // 644-655 (padding to 16-byte alignment)
+		glm::vec3 camera_pos;       // 656-667
+		float     _pad2;            // 668-671 (padding to 16-byte alignment)
+		glm::vec3 ambient_light;    // 672-683
+		float     simulation_time;  // 684-687
+		glm::vec3 camera_front;     // 688-699 (already 16-byte aligned from 688)
+		float     _pad3;            // 700-703 (padding to 16-byte alignment / total size 704)
+	};
+
 } // namespace Boidsish
 
 #endif // LIGHT_H

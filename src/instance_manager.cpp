@@ -10,18 +10,8 @@
 
 namespace Boidsish {
 
-	struct DrawElementsIndirectCommand {
-		unsigned int count;
-		unsigned int instanceCount;
-		unsigned int firstIndex;
-		int          baseVertex;
-		unsigned int baseInstance;
-	};
-
 	InstanceManager::~InstanceManager() {
-		if (m_indirect_buffer != 0) {
-			glDeleteBuffers(1, &m_indirect_buffer);
-		}
+		m_indirect_ring.reset();
 		m_instance_groups.clear(); // ring buffers reset automatically
 	}
 
@@ -53,6 +43,8 @@ namespace Boidsish {
 			group.shapes.clear();
 		}
 
+		if (m_indirect_ring) m_indirect_ring->AdvanceFrame();
+
 		shader.setBool("is_instanced", false);
 	}
 
@@ -65,11 +57,11 @@ namespace Boidsish {
 		}
 
 		if (!group.matrix_ring) {
-			group.matrix_ring = std::make_unique<PersistentRingBuffer>(GL_ARRAY_BUFFER, std::max(static_cast<size_t>(100), model_matrices.size()) * sizeof(glm::mat4));
+			group.matrix_ring = std::make_unique<PersistentRingBuffer<glm::mat4>>(GL_ARRAY_BUFFER, std::max(static_cast<size_t>(100), model_matrices.size()));
 		}
 
-		group.matrix_ring->EnsureCapacity(model_matrices.size() * sizeof(glm::mat4));
-		void* ptr = group.matrix_ring->GetCurrentPtr();
+		group.matrix_ring->EnsureCapacity(model_matrices.size());
+		glm::mat4* ptr = group.matrix_ring->GetCurrentPtr();
 		if (ptr && !model_matrices.empty()) {
 			memcpy(ptr, model_matrices.data(), model_matrices.size() * sizeof(glm::mat4));
 		}
@@ -125,15 +117,21 @@ namespace Boidsish {
 				commands.push_back(cmd);
 			}
 
-			if (m_indirect_buffer == 0) {
-				glGenBuffers(1, &m_indirect_buffer);
+			if (!m_indirect_ring) {
+				m_indirect_ring = std::make_unique<PersistentRingBuffer<DrawElementsIndirectCommand>>(GL_DRAW_INDIRECT_BUFFER, commands.size());
 			}
-			glBindBuffer(GL_DRAW_INDIRECT_BUFFER, m_indirect_buffer);
-			glBufferData(GL_DRAW_INDIRECT_BUFFER, commands.size() * sizeof(DrawElementsIndirectCommand), commands.data(), GL_STREAM_DRAW);
+			m_indirect_ring->EnsureCapacity(commands.size());
+
+			DrawElementsIndirectCommand* ptr = m_indirect_ring->GetCurrentPtr();
+			if (ptr) {
+				memcpy(ptr, commands.data(), commands.size() * sizeof(DrawElementsIndirectCommand));
+			}
+
+			glBindBuffer(GL_DRAW_INDIRECT_BUFFER, m_indirect_ring->GetVBO());
 
 			model->getMeshes()[0].bindTextures(shader);
 
-			glMultiDrawElementsIndirect(GL_TRIANGLES, GL_UNSIGNED_INT, 0, commands.size(), 0);
+			glMultiDrawElementsIndirect(GL_TRIANGLES, GL_UNSIGNED_INT, (void*)m_indirect_ring->GetOffset(), commands.size(), 0);
 		} else {
 			// Fallback to regular instanced rendering
 			for (size_t i = 0; i < model->getMeshes().size(); ++i) {
@@ -171,19 +169,19 @@ namespace Boidsish {
 		}
 
 		if (!group.matrix_ring) {
-			group.matrix_ring = std::make_unique<PersistentRingBuffer>(GL_ARRAY_BUFFER, std::max(static_cast<size_t>(100), model_matrices.size()) * sizeof(glm::mat4));
+			group.matrix_ring = std::make_unique<PersistentRingBuffer<glm::mat4>>(GL_ARRAY_BUFFER, std::max(static_cast<size_t>(100), model_matrices.size()));
 		}
-		group.matrix_ring->EnsureCapacity(model_matrices.size() * sizeof(glm::mat4));
-		void* m_ptr = group.matrix_ring->GetCurrentPtr();
+		group.matrix_ring->EnsureCapacity(model_matrices.size());
+		glm::mat4* m_ptr = group.matrix_ring->GetCurrentPtr();
 		if (m_ptr && !model_matrices.empty()) {
 			memcpy(m_ptr, model_matrices.data(), model_matrices.size() * sizeof(glm::mat4));
 		}
 
 		if (!group.color_ring) {
-			group.color_ring = std::make_unique<PersistentRingBuffer>(GL_ARRAY_BUFFER, std::max(static_cast<size_t>(100), colors.size()) * sizeof(glm::vec4));
+			group.color_ring = std::make_unique<PersistentRingBuffer<glm::vec4>>(GL_ARRAY_BUFFER, std::max(static_cast<size_t>(100), colors.size()));
 		}
-		group.color_ring->EnsureCapacity(colors.size() * sizeof(glm::vec4));
-		void* c_ptr = group.color_ring->GetCurrentPtr();
+		group.color_ring->EnsureCapacity(colors.size());
+		glm::vec4* c_ptr = group.color_ring->GetCurrentPtr();
 		if (c_ptr && !colors.empty()) {
 			memcpy(c_ptr, colors.data(), colors.size() * sizeof(glm::vec4));
 		}

@@ -231,9 +231,9 @@ namespace Boidsish {
 		GLuint                  reflection_fbo{0}, reflection_texture{0}, reflection_depth_rbo{0};
 		GLuint                  pingpong_fbo[2]{0}, pingpong_texture[2]{0};
 		GLuint                  main_fbo_{0}, main_fbo_texture_{0}, main_fbo_depth_texture_{0}, main_fbo_rbo_{0};
-		std::unique_ptr<PersistentRingBuffer> lighting_ring;
-		std::unique_ptr<PersistentRingBuffer> visual_effects_ring;
-		std::unique_ptr<PersistentRingBuffer> frustum_ring;
+		std::unique_ptr<PersistentRingBuffer<LightingUboData>>   lighting_ring;
+		std::unique_ptr<PersistentRingBuffer<VisualEffectsUbo>> visual_effects_ring;
+		std::unique_ptr<PersistentRingBuffer<FrustumUboData>>    frustum_ring;
 		glm::mat4               projection, reflection_vp;
 
 		double last_mouse_x = 0.0, last_mouse_y = 0.0;
@@ -482,11 +482,11 @@ namespace Boidsish {
 			sound_effect_manager = std::make_unique<SoundEffectManager>(audio_manager.get());
 			trail_render_manager = std::make_unique<TrailRenderManager>();
 
-			lighting_ring = std::make_unique<PersistentRingBuffer>(GL_UNIFORM_BUFFER, 704);
+			lighting_ring = std::make_unique<PersistentRingBuffer<LightingUboData>>(GL_UNIFORM_BUFFER);
 			if (ConfigManager::GetInstance().GetAppSettingBool("enable_effects", true)) {
-				visual_effects_ring = std::make_unique<PersistentRingBuffer>(GL_UNIFORM_BUFFER, sizeof(VisualEffectsUbo));
+				visual_effects_ring = std::make_unique<PersistentRingBuffer<VisualEffectsUbo>>(GL_UNIFORM_BUFFER);
 			}
-			frustum_ring = std::make_unique<PersistentRingBuffer>(GL_UNIFORM_BUFFER, 112);
+			frustum_ring = std::make_unique<PersistentRingBuffer<FrustumUboData>>(GL_UNIFORM_BUFFER);
 
 			shader->use();
 			SetupShaderBindings(*shader);
@@ -1995,67 +1995,51 @@ namespace Boidsish {
 			}
 
 			if (impl->visual_effects_ring) {
-				void* ptr = impl->visual_effects_ring->GetCurrentPtr();
-				memcpy(ptr, &ubo_data, sizeof(VisualEffectsUbo));
+					VisualEffectsUbo* ptr = impl->visual_effects_ring->GetCurrentPtr();
+					if (ptr) *ptr = ubo_data;
 				impl->visual_effects_ring->BindRange(Constants::UboBinding::VisualEffects());
 			}
 		}
 
 		if (impl->lighting_ring) {
-			void* lighting_ptr = impl->lighting_ring->GetCurrentPtr();
-			const auto& lights = impl->light_manager.GetLights();
-			int         num_lights = lights.size();
+				LightingUboData* data = impl->lighting_ring->GetCurrentPtr();
+				if (data) {
+					const auto& lights = impl->light_manager.GetLights();
+					int         num_lights = std::min(static_cast<int>(lights.size()), 10);
 
-			// Convert lights to GPU-compatible format (32 bytes each, matching GLSL struct)
-			std::vector<LightGPU> gpu_lights;
-			gpu_lights.reserve(num_lights);
-			for (const auto& light : lights) {
-				gpu_lights.push_back(light.ToGPU());
-			}
+					for (int i = 0; i < num_lights; ++i) {
+						data->lights[i] = lights[i].ToGPU();
+					}
 
-			uint8_t* base_ptr = static_cast<uint8_t*>(lighting_ptr);
-			memcpy(base_ptr, gpu_lights.data(), sizeof(LightGPU) * num_lights);
+					data->num_lights = num_lights;
+					data->camera_pos = impl->camera.pos();
+					data->ambient_light = impl->light_manager.GetAmbientLight();
+					data->simulation_time = impl->simulation_time;
+					data->camera_front = impl->camera.front();
 
-			size_t offset = 640;
-			memcpy(base_ptr + offset, &num_lights, sizeof(int));
-			offset += 16;
-			glm::vec3 cam_pos(impl->camera.x, impl->camera.y, impl->camera.z);
-			memcpy(base_ptr + offset, &cam_pos, sizeof(glm::vec3));
-			offset += 16;
-			glm::vec3 ambient_light = impl->light_manager.GetAmbientLight();
-			memcpy(base_ptr + offset, &ambient_light, sizeof(glm::vec3));
-			offset += 12;
-			memcpy(base_ptr + offset, &impl->simulation_time, sizeof(float));
-			offset += 4;
-			offset = (offset + 15) & ~15; // align to 16
-			glm::vec3 cam_front = impl->camera.front();
-			memcpy(base_ptr + offset, &cam_front, sizeof(glm::vec3));
-
-			impl->lighting_ring->BindRange(Constants::UboBinding::Lighting());
+					impl->lighting_ring->BindRange(Constants::UboBinding::Lighting());
+				}
 		}
 
 		// Update Frustum UBO for GPU-side culling
 		if (impl->frustum_ring) {
-			void* frustum_ptr = impl->frustum_ring->GetCurrentPtr();
-			glm::mat4 view = glm::lookAt(
-				impl->camera.pos(),
-				impl->camera.pos() + impl->camera.front(),
-				impl->camera.up()
-			);
-			Frustum render_frustum = impl->CalculateFrustum(view, impl->projection);
+				FrustumUboData* data = impl->frustum_ring->GetCurrentPtr();
+				if (data) {
+					glm::mat4 view = glm::lookAt(
+						impl->camera.pos(),
+						impl->camera.pos() + impl->camera.front(),
+						impl->camera.up()
+					);
+					Frustum render_frustum = impl->CalculateFrustum(view, impl->projection);
 
-			// Pack frustum planes into vec4 array (normal.xyz, distance.w)
-			glm::vec4 frustum_planes[6];
-			for (int i = 0; i < 6; ++i) {
-				frustum_planes[i] = glm::vec4(render_frustum.planes[i].normal, render_frustum.planes[i].distance);
+					// Pack frustum planes into vec4 array (normal.xyz, distance.w)
+					for (int i = 0; i < 6; ++i) {
+						data->planes[i] = glm::vec4(render_frustum.planes[i].normal, render_frustum.planes[i].distance);
+					}
+					data->camera_pos = impl->camera.pos();
+
+					impl->frustum_ring->BindRange(Constants::UboBinding::FrustumData());
 			}
-
-			uint8_t* base_ptr = static_cast<uint8_t*>(frustum_ptr);
-			memcpy(base_ptr, frustum_planes, sizeof(frustum_planes));
-			glm::vec3 cam_pos = impl->camera.pos();
-			memcpy(base_ptr + 96, &cam_pos, sizeof(glm::vec3));
-
-			impl->frustum_ring->BindRange(Constants::UboBinding::FrustumData());
 		}
 
 		if (impl->reflection_fbo) {

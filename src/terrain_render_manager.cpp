@@ -14,8 +14,8 @@ namespace Boidsish {
 	TerrainRenderManager::TerrainRenderManager(int chunk_size, int max_chunks):
 		chunk_size_(chunk_size), max_chunks_(max_chunks), heightmap_resolution_(chunk_size + 1) {
 
-		instance_vbo_ring_ = std::make_unique<PersistentRingBuffer>(GL_ARRAY_BUFFER, max_chunks * sizeof(InstanceData));
-		instance_buffer_capacity_ = max_chunks * sizeof(InstanceData);
+		instance_vbo_ring_ = std::make_unique<PersistentRingBuffer<InstanceData>>(GL_ARRAY_BUFFER, max_chunks);
+		instance_buffer_capacity_ = max_chunks;
 
 		CreateGridMesh();
 		EnsureTextureCapacity(max_chunks);
@@ -441,13 +441,10 @@ namespace Boidsish {
 
 		// Upload instance data to GPU
 		if (!visible_instances_.empty()) {
-			size_t required_size = visible_instances_.size() * sizeof(InstanceData);
-
-			instance_vbo_ring_->EnsureCapacity(required_size);
+			instance_vbo_ring_->EnsureCapacity(visible_instances_.size());
 
 			// If buffer was reallocated, we need to re-setup VAO
-			static GLuint last_vbo = 0;
-			if (instance_vbo_ring_->GetVBO() != last_vbo) {
+			if (instance_vbo_ring_->GetVBO() != last_vbo_) {
 				glBindVertexArray(grid_vao_);
 				glBindBuffer(GL_ARRAY_BUFFER, instance_vbo_ring_->GetVBO());
 
@@ -460,12 +457,12 @@ namespace Boidsish {
 				glVertexAttribDivisor(4, 1);
 
 				glBindVertexArray(0);
-				last_vbo = instance_vbo_ring_->GetVBO();
+				last_vbo_ = instance_vbo_ring_->GetVBO();
 			}
 
-			void* ptr = instance_vbo_ring_->GetCurrentPtr();
+			InstanceData* ptr = instance_vbo_ring_->GetCurrentPtr();
 			if (ptr) {
-				memcpy(ptr, visible_instances_.data(), required_size);
+				memcpy(ptr, visible_instances_.data(), visible_instances_.size() * sizeof(InstanceData));
 			}
 		}
 	}
