@@ -2389,6 +2389,12 @@ namespace Boidsish {
 				}
 			}
 
+			// Bind shadow maps for post-processing effects that need them (like Atmosphere)
+			if (impl->shadow_manager && impl->shadow_manager->IsInitialized()) {
+				glActiveTexture(GL_TEXTURE4);
+				glBindTexture(GL_TEXTURE_2D_ARRAY, impl->shadow_manager->GetShadowMapArray());
+			}
+
 			// Apply standard post-processing effects
 			GLuint final_texture = impl->post_processing_manager_->ApplyEffects(
 				impl->main_fbo_texture_,

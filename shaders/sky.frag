@@ -6,33 +6,34 @@ in vec2 TexCoords;
 
 #include "helpers/atmosphere.glsl"
 
+// Note: 'time' and 'viewPos' are provided by the Lighting UBO included via atmosphere.glsl
 uniform mat4  invProjection;
 uniform mat4  invView;
 uniform float atmosphereExposure;
 
-// --- Existing Noise Functions ---
+// --- Internal Noise Functions (Renamed to avoid collisions) ---
 
-vec3 mod289(vec3 x) {
+vec3 sky_mod289(vec3 x) {
 	return x - floor(x * (1.0 / 289.0)) * 289.0;
 }
 
-vec4 mod289(vec4 x) {
+vec4 sky_mod289(vec4 x) {
 	return x - floor(x * (1.0 / 289.0)) * 289.0;
 }
 
-vec4 permute(vec4 x) {
-	return mod289(((x * 34.0) + 1.0) * x);
+vec4 sky_permute(vec4 x) {
+	return sky_mod289(((x * 34.0) + 1.0) * x);
 }
 
-vec4 taylorInvSqrt(vec4 r) {
+vec4 sky_taylorInvSqrt(vec4 r) {
 	return 1.79284291400159 - 0.85373472095314 * r;
 }
 
-vec2 fade(vec2 t) {
+vec2 sky_fade(vec2 t) {
 	return t * t * t * (t * (t * 6.0 - 15.0) + 10.0);
 }
 
-float snoise(vec3 v) {
+float snoise3D(vec3 v) {
 	const vec2 C = vec2(1.0 / 6.0, 1.0 / 3.0);
 	const vec4 D = vec4(0.0, 0.5, 1.0, 2.0);
 
@@ -51,9 +52,9 @@ float snoise(vec3 v) {
 	vec3 x3 = x0 - D.yyy;
 
 	// Permutations
-	i = mod289(i);
-	vec4 p = permute(
-		permute(permute(i.z + vec4(0.0, i1.z, i2.z, 1.0)) + i.y + vec4(0.0, i1.y, i2.y, 1.0)) + i.x +
+	i = sky_mod289(i);
+	vec4 p = sky_permute(
+		sky_permute(sky_permute(i.z + vec4(0.0, i1.z, i2.z, 1.0)) + i.y + vec4(0.0, i1.y, i2.y, 1.0)) + i.x +
 		vec4(0.0, i1.x, i2.x, 1.0)
 	);
 
@@ -85,7 +86,7 @@ float snoise(vec3 v) {
 	vec3 p3 = vec3(a1.zw, h.w);
 
 	// Normalise gradients
-	vec4 norm = taylorInvSqrt(vec4(dot(p0, p0), dot(p1, p1), dot(p2, p2), dot(p3, p3)));
+	vec4 norm = sky_taylorInvSqrt(vec4(dot(p0, p0), dot(p1, p1), dot(p2, p2), dot(p3, p3)));
 	p0 *= norm.x;
 	p1 *= norm.y;
 	p2 *= norm.z;
@@ -97,7 +98,7 @@ float snoise(vec3 v) {
 	return 42.0 * dot(m * m, vec4(dot(p0, x0), dot(p1, x1), dot(p2, x2), dot(p3, x3)));
 }
 
-vec3 hash33(vec3 p) {
+vec3 sky_hash33(vec3 p) {
 	p = fract(p * vec3(443.897, 441.423, 437.195));
 	p += dot(p, p.yxz + 19.19);
 	return fract((p.xxy + p.yxx) * p.zyx);
@@ -107,7 +108,7 @@ float starLayer(vec3 dir) {
 	float scale = 100.0;
 	vec3  id = floor(dir * scale);
 	vec3  local_uv = fract(dir * scale);
-	vec3  star_pos = hash33(id);
+	vec3  star_pos = sky_hash33(id);
 	float brightness = abs(sin(time / 2.0 + star_pos.x * 100.0));
 	vec3  center = vec3(0.5) + (star_pos - 0.5) * 0.8;
 	float dist = length(local_uv - center);
@@ -119,7 +120,7 @@ float fbm_sky(vec3 p) {
 	float value = 0.0;
 	float amplitude = 0.5;
 	for (int i = 0; i < 4; i++) {
-		value += amplitude * snoise(p);
+		value += amplitude * snoise3D(p);
 		p *= 2.0;
 		amplitude *= 0.5;
 	}
@@ -172,7 +173,7 @@ void main() {
 					float shadow = calculateShadow(i, viewPos, lightDir, lightDir);
 
 					vec2 odSun = opticalDepth(ro, world_ray, st1, 4);
-					vec3 sunAtten = exp(-(betaR * odSun.x + betaM * 1.1 * odSun.y));
+					vec3 sunAtten = getAttenuation(odSun);
 					scattering += sun * lightColor * sunAtten * 10.0 * shadow;
 				}
 			}
@@ -181,7 +182,7 @@ void main() {
 
 	// Calculate view transmittance for background elements
 	vec2 odViewTotal = opticalDepth(ro, world_ray, t1 - t0, 12);
-	vec3 transmittance = exp(-(betaR * odViewTotal.x + betaM * 1.1 * odViewTotal.y));
+	vec3 transmittance = getAttenuation(odViewTotal);
 
 	// Background Layer (Stars and Nebula)
 	vec3 background_color = vec3(0.0);
@@ -200,10 +201,6 @@ void main() {
 
 	vec3 final_color = (scattering + background_color * transmittance) * atmosphereExposure;
 
-	// HDR Tone Mapping (simple Reinhard)
-	final_color = final_color / (final_color + vec3(1.0));
-	// Gamma correction
-	final_color = pow(final_color, vec3(1.0 / 2.2));
-
+	// Note: Tone mapping and gamma correction are handled by the main post-processing pipeline
 	FragColor = vec4(final_color, 1.0);
 }

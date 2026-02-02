@@ -23,6 +23,8 @@ uniform float atmosphereExposure;
 #include "../helpers/atmosphere.glsl"
 #include "../helpers/noise.glsl"
 
+// Note: 'time' and 'viewPos' are provided by the Lighting UBO included via atmosphere.glsl
+
 float getHeightFog(vec3 start, vec3 end, float density, float heightFalloff) {
 	float dist = length(end - start);
 	vec3  dir = (end - start) / dist;
@@ -136,7 +138,7 @@ void main() {
 
 				// Use scattering model for cloud illumination
 				vec2 odCloud = opticalDepth(ro + rayDir * t_start, L, 500.0, 2);
-				vec3 cloudAtten = exp(-(betaR * odCloud.x + betaM * 1.1 * odCloud.y));
+				vec3 cloudAtten = getAttenuation(odCloud);
 
 				// Check shadows for clouds
 				float shadow = calculateShadow(i, intersect, L, L);

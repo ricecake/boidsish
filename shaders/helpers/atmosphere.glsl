@@ -9,8 +9,8 @@ const float Ra = 6471e3; // Atmosphere radius
 const float Hr = 8e3;    // Rayleigh scale height
 const float Hm = 1.2e3;  // Mie scale height
 
-const vec3  betaR = vec3(5.8e-6, 13.5e-6, 33.1e-6); // Rayleigh scattering coefficients
-const float betaM = 21e-6;                         // Mie scattering coefficient
+const vec3 betaR = vec3(5.8e-6, 13.5e-6, 33.1e-6); // Rayleigh scattering coefficients
+const vec3 betaM = vec3(21e-6);                   // Mie scattering coefficient (vec3 for math consistency)
 
 float rayleighPhase(float cosTheta) {
 	// PI is defined in helpers/lighting.glsl
@@ -50,6 +50,11 @@ vec2 opticalDepth(vec3 ro, vec3 rd, float L, int samples) {
 	return od;
 }
 
+// Helper for unified attenuation calculation
+vec3 getAttenuation(vec2 od) {
+	return exp(-(betaR * od.x + betaM * od.y * 1.1));
+}
+
 vec3 calculateScattering(vec3 ro, vec3 rd, float L, int lightIndex, int samples) {
 	vec3  lightDir = normalize(-lights[lightIndex].direction);
 	vec3  lightColor = lights[lightIndex].color * lights[lightIndex].intensity;
@@ -76,12 +81,15 @@ vec3 calculateScattering(vec3 ro, vec3 rd, float L, int lightIndex, int samples)
 			// Engine coordinate offset for shadow sampling
 			vec3 engineP = p - vec3(0.0, Re, 0.0);
 
-			// Check terrain shadows
-			float shadow = calculateShadow(lightIndex, engineP, lightDir, lightDir);
+			// Optimize: check terrain shadows only if near the surface
+			// This saves significant processing and prevents NaNs from extreme coords
+			float shadow = 1.0;
+			if (h < 2000.0) {
+				shadow = calculateShadow(lightIndex, engineP, lightDir, lightDir);
+			}
 
 			vec2 odLight = opticalDepth(p, lightDir, t1, 4);
-			vec3 tau = betaR * (odView.x + odLight.x) + betaM * 1.1 * (odView.y + odLight.y);
-			vec3 attenuation = exp(-tau);
+			vec3 attenuation = getAttenuation(odView + odLight);
 			totalR += d.x * attenuation * shadow;
 			totalM += d.y * attenuation * shadow;
 		}
