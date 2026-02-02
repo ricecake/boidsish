@@ -19,6 +19,11 @@ namespace Boidsish {
 				glUniformBlockBinding(shader_->ID, lighting_idx, 0);
 			}
 
+			GLuint shadows_idx = glGetUniformBlockIndex(shader_->ID, "Shadows");
+			if (shadows_idx != GL_INVALID_INDEX) {
+				glUniformBlockBinding(shader_->ID, shadows_idx, 2);
+			}
+
 			width_ = width;
 			height_ = height;
 		}
@@ -47,11 +52,17 @@ namespace Boidsish {
 			shader_->setVec3("cloudColorUniform", cloud_color_);
 			shader_->setFloat("scatteringStrength", scattering_strength_);
 			shader_->setFloat("atmosphereExposure", atmosphere_exposure_);
+			shader_->setIntArray("lightShadowIndices", shadow_indices_, 10);
 
 			glActiveTexture(GL_TEXTURE0);
 			glBindTexture(GL_TEXTURE_2D, sourceTexture);
 			glActiveTexture(GL_TEXTURE1);
 			glBindTexture(GL_TEXTURE_2D, depthTexture);
+
+			// Note: Shadow maps should be bound to unit 4 by the ShadowManager
+			// before this effect is applied, or we can do it here if we have a reference to it.
+			// Currently, VisualizerImpl::Render applies effects after shadow pass,
+			// but we need to ensure the uniforms are set.
 
 			glDrawArrays(GL_TRIANGLES, 0, 6);
 		}

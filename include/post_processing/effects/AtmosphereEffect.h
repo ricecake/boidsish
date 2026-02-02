@@ -64,6 +64,12 @@ namespace Boidsish {
 
 			float GetExposure() const { return atmosphere_exposure_; }
 
+			void SetShadowIndices(const int* indices, int count) {
+				for (int i = 0; i < count && i < 10; ++i) {
+					shadow_indices_[i] = indices[i];
+				}
+			}
+
 		private:
 			std::unique_ptr<Shader> shader_;
 			float                   time_ = 0.0f;
@@ -75,8 +81,9 @@ namespace Boidsish {
 			float     cloud_altitude_ = 95.0f;
 			float     cloud_thickness_ = 10.0f;
 			glm::vec3 cloud_color_ = glm::vec3(0.95f, 0.95f, 1.0f);
-			float     scattering_strength_ = 0.5f;
-			float     atmosphere_exposure_ = 0.5f;
+			float     scattering_strength_ = 0.2f;
+			float     atmosphere_exposure_ = 0.3f;
+			int       shadow_indices_[10] = {-1, -1, -1, -1, -1, -1, -1, -1, -1, -1};
 
 			int width_ = 0;
 			int height_ = 0;

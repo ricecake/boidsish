@@ -2,6 +2,7 @@
 #define HELPERS_ATMOSPHERE_GLSL
 
 #include "../lighting.glsl"
+#include "lighting.glsl"
 
 const float PI = 3.14159265359;
 
@@ -50,7 +51,9 @@ vec2 opticalDepth(vec3 ro, vec3 rd, float L, int samples) {
 	return od;
 }
 
-vec3 calculateScattering(vec3 ro, vec3 rd, float L, vec3 lightDir, vec3 lightColor, int samples) {
+vec3 calculateScattering(vec3 ro, vec3 rd, float L, int lightIndex, int samples) {
+	vec3  lightDir = normalize(-lights[lightIndex].direction);
+	vec3  lightColor = lights[lightIndex].color * lights[lightIndex].intensity;
 	float stepSize = L / float(samples);
 	vec2  odView = vec2(0.0);
 	vec3  totalR = vec3(0.0);
@@ -68,14 +71,22 @@ vec3 calculateScattering(vec3 ro, vec3 rd, float L, vec3 lightDir, vec3 lightCol
 
 		float t0, t1;
 		float tp0, tp1;
-		bool  lightBlocked = intersectSphere(p, lightDir, Re, tp0, tp1) && tp0 > 0.0;
+		bool  planetBlocked = intersectSphere(p, lightDir, Re, tp0, tp1) && tp0 > 0.0;
 
-		if (!lightBlocked && intersectSphere(p, lightDir, Ra, t0, t1) && t1 > 0.0) {
+		if (!planetBlocked && intersectSphere(p, lightDir, Ra, t0, t1) && t1 > 0.0) {
+			// Atmospheric scattering sample
+			// Correct world position for shadow mapping: ro is centered at planet center.
+			// We need to bring it back to engine coordinates (near 0,0,0).
+			vec3 engineP = p - vec3(0.0, Re, 0.0);
+
+			// Check shadows from terrain/objects
+			float shadow = calculateShadow(lightIndex, engineP, lightDir, lightDir);
+
 			vec2 odLight = opticalDepth(p, lightDir, t1, 4);
 			vec3 tau = betaR * (odView.x + odLight.x) + betaM * 1.1 * (odView.y + odLight.y);
 			vec3 attenuation = exp(-tau);
-			totalR += d.x * attenuation;
-			totalM += d.y * attenuation;
+			totalR += d.x * attenuation * shadow;
+			totalM += d.y * attenuation * shadow;
 		}
 	}
 

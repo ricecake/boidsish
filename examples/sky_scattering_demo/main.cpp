@@ -44,7 +44,7 @@ int main() {
 
 		// Interaction to control time of day
 		vis.AddInputCallback([&](const Boidsish::InputState& state) {
-			static float time_of_day = 0.25f; // Start at Noon
+			static float time_of_day = 0.15f; // Start early morning
 			static bool  auto_advance = true;
 
 			if (state.key_down[GLFW_KEY_T])

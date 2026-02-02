@@ -80,15 +80,12 @@ void main() {
 
 	for (int i = 0; i < num_lights; i++) {
 		if (lights[i].type == 1) { // DIRECTIONAL_LIGHT
-			vec3 lightDir = normalize(-lights[i].direction);
-			vec3 lightColor = lights[i].color * lights[i].intensity;
-
 			float maxDist = dist;
 			if (hitPlanetNear) {
 				maxDist = min(maxDist, tp0);
 			}
 
-			scattering += calculateScattering(ro, rayDir, maxDist, lightDir, lightColor, 4);
+			scattering += calculateScattering(ro, rayDir, maxDist, i, 4);
 		}
 	}
 	currentHazeColor = mix(currentHazeColor, scattering * scatteringStrength, 0.5); // Blend with uniform haze color
@@ -141,7 +138,10 @@ void main() {
 				vec2 odCloud = opticalDepth(ro + rayDir * t_start, L, 500.0, 2);
 				vec3 cloudAtten = exp(-(betaR * odCloud.x + betaM * 1.1 * odCloud.y));
 
-				cloudScattering += lights[i].color * (d * 0.5 + 0.5 + silver) * lights[i].intensity * cloudAtten;
+				// Check shadows for clouds
+				float shadow = calculateShadow(i, intersect, L, L);
+
+				cloudScattering += lights[i].color * (d * 0.5 + 0.5 + silver) * lights[i].intensity * cloudAtten * shadow;
 			}
 		}
 

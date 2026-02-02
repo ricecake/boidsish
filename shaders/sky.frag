@@ -155,9 +155,9 @@ void main() {
 
 	for (int i = 0; i < num_lights; i++) {
 		if (lights[i].type == 1) { // DIRECTIONAL_LIGHT
-			vec3  lightDir = normalize(-lights[i].direction);
-			vec3  lightColor = lights[i].color * lights[i].intensity;
-			scattering += calculateScattering(ro, world_ray, t1 - t0, lightDir, lightColor, 16);
+			vec3 lightDir = normalize(-lights[i].direction);
+			vec3 lightColor = lights[i].color * lights[i].intensity;
+			scattering += calculateScattering(ro, world_ray, t1 - t0, i, 16);
 
 			// Sun disc
 			float cosTheta = dot(world_ray, lightDir);
@@ -165,12 +165,15 @@ void main() {
 			if (sun > 0.0 && !hitPlanet) {
 				float st0, st1;
 				float stp0, stp1;
-				bool  sunBlocked = intersectSphere(ro, world_ray, Re, stp0, stp1) && stp0 > 0.0;
+				bool  sunBlockedPlanet = intersectSphere(ro, world_ray, Re, stp0, stp1) && stp0 > 0.0;
 
-				if (!sunBlocked && intersectSphere(ro, world_ray, Ra, st0, st1)) {
+				if (!sunBlockedPlanet && intersectSphere(ro, world_ray, Ra, st0, st1)) {
+					// Check terrain occlusion for sun disc
+					float shadow = calculateShadow(i, viewPos, lightDir, lightDir);
+
 					vec2 odSun = opticalDepth(ro, world_ray, st1, 4);
 					vec3 sunAtten = exp(-(betaR * odSun.x + betaM * 1.1 * odSun.y));
-					scattering += sun * lightColor * sunAtten * 10.0;
+					scattering += sun * lightColor * sunAtten * 10.0 * shadow;
 				}
 			}
 		}
