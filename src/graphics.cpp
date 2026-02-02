@@ -2052,20 +2052,20 @@ namespace Boidsish {
 		size_t offset = 640;
 		glBufferSubData(GL_UNIFORM_BUFFER, offset, sizeof(int), &num_lights);
 		offset += 16;
-		glBufferSubData(
-			GL_UNIFORM_BUFFER,
-			offset,
-			sizeof(glm::vec3),
-			&glm::vec3(impl->camera.x, impl->camera.y, impl->camera.z)[0]
-		);
+		glm::vec3 camera_pos(impl->camera.x, impl->camera.y, impl->camera.z);
+		glBufferSubData(GL_UNIFORM_BUFFER, offset, sizeof(glm::vec3), &camera_pos[0]);
+
 		offset += 16;
 		glm::vec3 ambient_light = impl->light_manager.GetAmbientLight();
 		glBufferSubData(GL_UNIFORM_BUFFER, offset, sizeof(glm::vec3), &ambient_light[0]);
+
 		offset += 12;
 		glBufferSubData(GL_UNIFORM_BUFFER, offset, sizeof(float), &impl->simulation_time);
+
 		offset += 4;
 		offset = (offset + 15) & ~15; // align to 16
-		glBufferSubData(GL_UNIFORM_BUFFER, offset, sizeof(glm::vec3), &impl->camera.front()[0]);
+		glm::vec3 camera_front = impl->camera.front();
+		glBufferSubData(GL_UNIFORM_BUFFER, offset, sizeof(glm::vec3), &camera_front[0]);
 		glBindBuffer(GL_UNIFORM_BUFFER, 0);
 
 		// Update Frustum UBO for GPU-side culling
