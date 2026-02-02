@@ -215,6 +215,10 @@ namespace Boidsish {
 		// Update UBO data first
 		UpdateShaderData();
 
+		// Save current viewport to restore it later, preventing state leakage to other passes
+		GLint last_viewport[4];
+		glGetIntegerv(GL_VIEWPORT, last_viewport);
+
 		// Set viewport to match the screen size for this post-processing stage
 		glViewport(0, 0, screen_width_, screen_height_);
 
@@ -257,6 +261,9 @@ namespace Boidsish {
 		glBindVertexArray(quad_vao);
 		glDrawArrays(GL_TRIANGLES, 0, 6);
 		glBindVertexArray(0);
+
+		// Restore viewport
+		glViewport(last_viewport[0], last_viewport[1], last_viewport[2], last_viewport[3]);
 
 		glActiveTexture(GL_TEXTURE0);
 	}
