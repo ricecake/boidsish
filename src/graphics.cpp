@@ -863,7 +863,7 @@ namespace Boidsish {
 
 			lighting_ring.reset();
 			visual_effects_ring.reset();
-			frustum_ring.reset();
+				frustum_ring.reset(); // Final cleanup of persistent mapped buffers
 
 			if (window)
 				glfwDestroyWindow(window);
