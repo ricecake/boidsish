@@ -14,6 +14,7 @@ out vec3       LocalPos_TC_out[];
 out vec2       TexCoords_TC_out[];
 flat out float TextureSlice_TC_out[];
 flat out vec3  WorldOffset_TC_out[];
+out float      perturbFactor_TC_out[];
 
 // Heightmap texture array: R=height, GBA=normal
 uniform sampler2DArray uHeightmap;
@@ -69,6 +70,27 @@ float GetVertexTessLevel(vec3 worldPos, vec3 normal, vec3 forward) {
 	return step(0.0, finalLevel) * max(finalLevel, minLevel);
 }
 
+float perturbLevel(vec3 worldPos, vec3 forward) {
+	if (uIsShadowPass) {
+		return 0;
+	}
+
+	// 1. DISTANCE FACTOR (The Base)
+	float dist = distance(viewPos, worldPos);
+	float distanceLevel = uTessLevelMax * exp(-dist * 0.08);
+	distanceLevel = clamp(distanceLevel, uTessLevelMin, uTessLevelMax);
+
+	// 2. FOCUS FACTOR (The Cull)
+	vec3  dirCamToVertex = normalize(worldPos - viewPos);
+	float align = dot(dirCamToVertex, forward);
+	float focusCull = smoothstep(0.65, 1.0, align);
+
+	// COMBINE
+	float finalLevel = distanceLevel * focusCull;
+
+	return finalLevel / uTessLevelMax;
+}
+
 void main() {
 	// Pass through local position and UVs
 	LocalPos_TC_out[gl_InvocationID] = LocalPos_VS_out[gl_InvocationID];
@@ -76,15 +98,20 @@ void main() {
 	TextureSlice_TC_out[gl_InvocationID] = TextureSlice_VS_out[gl_InvocationID];
 	WorldOffset_TC_out[gl_InvocationID] = WorldOffset_VS_out[gl_InvocationID];
 
+	vec3  worldPos0, normal0;
+	float slice = TextureSlice_VS_out[0];
+	vec3  worldOffset = WorldOffset_VS_out[0];
+
+	sampleHeightmap(TexCoords_VS_out[0], slice, worldOffset, worldPos0, normal0);
+	perturbFactor_TC_out[gl_InvocationID] = perturbLevel(worldPos0, viewForward[gl_InvocationID]);
+
 	if (gl_InvocationID == 0) {
 		// Sample heightmap for all 4 corners to get world positions and normals
-		float slice = TextureSlice_VS_out[0];
-		vec3  worldOffset = WorldOffset_VS_out[0];
 
-		vec3 worldPos0, worldPos1, worldPos2, worldPos3;
-		vec3 normal0, normal1, normal2, normal3;
+		vec3 worldPos1, worldPos2, worldPos3;
+		vec3 normal1, normal2, normal3;
 
-		sampleHeightmap(TexCoords_VS_out[0], slice, worldOffset, worldPos0, normal0);
+		// sampleHeightmap(TexCoords_VS_out[0], slice, worldOffset, worldPos0, normal0);
 		sampleHeightmap(TexCoords_VS_out[1], slice, worldOffset, worldPos1, normal1);
 		sampleHeightmap(TexCoords_VS_out[2], slice, worldOffset, worldPos2, normal2);
 		sampleHeightmap(TexCoords_VS_out[3], slice, worldOffset, worldPos3, normal3);
@@ -118,5 +145,10 @@ void main() {
 
 		gl_TessLevelInner[0] = max(gl_TessLevelOuter[0], gl_TessLevelOuter[2]);
 		gl_TessLevelInner[1] = max(gl_TessLevelOuter[1], gl_TessLevelOuter[3]);
+
+		// perturbFactor_TC_out[0] = perturbLevel(worldPos0, viewForward[0]);
+		// perturbFactor_TC_out[1] = perturbLevel(worldPos1, viewForward[1]);
+		// perturbFactor_TC_out[2] = perturbLevel(worldPos2, viewForward[2]);
+		// perturbFactor_TC_out[3] = perturbLevel(worldPos3, viewForward[3]);
 	}
 }

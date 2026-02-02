@@ -7,11 +7,13 @@ in vec3       LocalPos_TC_out[];
 in vec2       TexCoords_TC_out[];
 flat in float TextureSlice_TC_out[];
 flat in vec3  WorldOffset_TC_out[];
+in float      perturbFactor_TC_out[];
 
 // Output to Fragment Shader
-out vec3 FragPos;
-out vec3 Normal;
-out vec2 TexCoords;
+out vec3  FragPos;
+out vec3  Normal;
+out vec2  TexCoords;
+out float perturbFactor;
 
 // Heightmap texture array: R=height, GBA=normal
 uniform sampler2DArray uHeightmap;
@@ -23,6 +25,7 @@ uniform float uPhongAlpha = 0.0;
 uniform vec4  clipPlane;
 
 #include "helpers/shockwave.glsl"
+#include "helpers/terrain_noise.glsl"
 
 // Sample heightmap to get world position and normal
 void sampleHeightmap(vec2 uv, float slice, vec3 worldOffset, out vec3 worldPos, out vec3 normal) {
@@ -94,6 +97,11 @@ void main() {
 
 	// Clip plane for reflections
 	gl_ClipDistance[0] = dot(FragPos, clipPlane.xyz) + clipPlane.w;
+
+	// How much to perturb normal
+	float perturbFactor1 = mix(perturbFactor_TC_out[0], perturbFactor_TC_out[1], uv.x);
+	float perturbFactor2 = mix(perturbFactor_TC_out[3], perturbFactor_TC_out[2], uv.x);
+	perturbFactor = mix(perturbFactor1, perturbFactor2, uv.y);
 
 	// Final vertex position
 	gl_Position = projection * view * vec4(FragPos, 1.0);
