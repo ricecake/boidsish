@@ -1,5 +1,8 @@
 #include "CatMissile.h"
 
+#include <algorithm>
+#include <cmath>
+
 #include "PaperPlane.h"
 #include "PaperPlaneHandler.h"
 #include "fire_effect.h"
