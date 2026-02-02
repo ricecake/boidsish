@@ -202,7 +202,13 @@ namespace Boidsish {
 					}
 
 					if (target_ != nullptr) {
-						away = target_dir_world - (glm::dot(target_dir_world, away)) * away;
+						glm::vec3 to_target = glm::normalize(target_dir_world - origin);
+						away = to_target - (glm::dot(to_target, away)) * away;
+						if (glm::length(away) > 1e-4f) {
+							away = glm::normalize(away);
+						} else {
+							away = terrain_normal;
+						}
 					}
 
 					float distance_factor = 1.0f - (hit_dist / reaction_distance);
