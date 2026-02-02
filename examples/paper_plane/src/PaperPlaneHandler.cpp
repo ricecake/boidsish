@@ -50,6 +50,61 @@ namespace Boidsish {
 		return 0;
 	}
 
+	void PaperPlaneHandler::PreparePlane(std::shared_ptr<PaperPlane> plane) {
+		if (!plane || !vis)
+			return;
+
+		float     best_score = -1e10f;
+		glm::vec3 best_pos(0, 100, 0);
+		glm::vec3 best_dir(0, 0, -1);
+
+		// Sample a grid around the starting area
+		for (float x = -300; x <= 300; x += 30) {
+			for (float z = -300; z <= 300; z += 30) {
+				auto [h, norm] = vis->GetTerrainPointPropertiesThreadSafe(x, z);
+				if (h < 15.0f)
+					continue; // Avoid valleys/water
+
+				// Test 8 directions
+				for (int i = 0; i < 8; ++i) {
+					float     angle = i * (glm::pi<float>() / 4.0f);
+					glm::vec3 dir(sin(angle), 0, cos(angle));
+
+					// Look ahead to check gradient
+					float check_dist = 60.0f;
+					auto [h_ahead, norm_ahead] = vis->GetTerrainPointPropertiesThreadSafe(
+						x + dir.x * check_dist,
+						z + dir.z * check_dist
+					);
+
+					float gradient = h - h_ahead; // positive is downslope
+					float score = h * 0.5f + gradient * 2.0f;
+
+					// Penalize if pointing directly into a steep uphill
+					if (gradient < -10.0f)
+						score -= 100.0f;
+
+					if (score > best_score) {
+						best_score = score;
+						best_pos = glm::vec3(x, h + 60.0f, z);
+						best_dir = dir;
+					}
+				}
+			}
+		}
+
+		plane->SetPosition(best_pos.x, best_pos.y, best_pos.z);
+		glm::quat orient = glm::quatLookAt(glm::normalize(best_dir), glm::vec3(0, 1, 0));
+		plane->SetOrientation(orient);
+		plane->SetVelocity(best_dir * 40.0f); // Set a good starting speed
+		plane->UpdateShape();
+
+		// Update camera to follow
+		vis->GetCamera().x = best_pos.x;
+		vis->GetCamera().y = best_pos.y + 5;
+		vis->GetCamera().z = best_pos.z + 10;
+	}
+
 	void PaperPlaneHandler::PreTimestep(float time, float delta_time) {
 		{
 			std::lock_guard<std::mutex> lock(target_mutex_);
@@ -68,11 +123,19 @@ namespace Boidsish {
 			std::set<const Terrain*> visible_chunk_set;
 			std::set<const Terrain*> forbidden_chunks;
 
+			auto exclude_neighborhood = [&](const Terrain* chunk) {
+				forbidden_chunks.insert(chunk);
+				auto neighbors = get_neighbors(chunk, visible_chunks);
+				for (const auto& neighbor : neighbors) {
+					forbidden_chunks.insert(neighbor);
+					// Also exclude neighbors of neighbors for a wider "one per hilltop" effect
+					auto n2 = get_neighbors(neighbor, visible_chunks);
+					forbidden_chunks.insert(n2.begin(), n2.end());
+				}
+			};
+
 			for (const auto& pair : spawned_launchers_) {
-				const Terrain* existing_chunk = pair.first;
-				auto           neighbors = get_neighbors(existing_chunk, visible_chunks);
-				forbidden_chunks.insert(neighbors.begin(), neighbors.end());
-				forbidden_chunks.insert(existing_chunk);
+				exclude_neighborhood(pair.first);
 			}
 
 			struct SpawnCandidate {
@@ -143,14 +206,11 @@ namespace Boidsish {
 
 					QueueAddEntity<GuidedMissileLauncher>(
 						id,
-						Vector3(world_pos.x, world_pos.y, world_pos.z),
+						Vector3(world_pos.x, terrain_h, world_pos.z),
 						terrain_alignment
 					);
 					spawned_launchers_[candidate.chunk] = id;
-
-					auto neighbors = get_neighbors(candidate.chunk, visible_chunks);
-					forbidden_chunks.insert(neighbors.begin(), neighbors.end());
-					forbidden_chunks.insert(candidate.chunk);
+					exclude_neighborhood(candidate.chunk);
 				}
 			}
 

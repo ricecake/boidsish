@@ -142,11 +142,12 @@ namespace Boidsish {
 			auto frontNess = glm::dot(world_fwd, to_target);
 
 			if (distance <= 5 && frontNess < 0.75 || distance <= 10 && frontNess < 0.85) {
+				target_ = candidate;
 				Explode(handler, true);
 				return;
 			}
 
-			if (frontNess < 0.85) {
+			if (frontNess < 0.60) {
 				continue;
 			}
 
@@ -223,15 +224,11 @@ namespace Boidsish {
 
 					float avoidance_weight = distance_factor * target_priority * (target_distance / reaction_distance);
 
-					// glm::vec3 final_desired_dir = glm::normalize(
-					// 	target_dir_world +
-					// 	(away * avoidance_weight * kAvoidanceStrength /* * (1-lived_/lifetime_)    */)
-					// );
+					// Further dampen avoidance when very close to target or well-aligned
+					if (target_distance < 100.0f) {
+						avoidance_weight *= (target_distance / 100.0f);
+					}
 
-					// glm::vec3 final_desired_dir = glm::normalize( glm::mix(away, target_dir_world,
-					// 4*alignment_with_target+1*(hit_dist/reaction_distance)) ); glm::vec3 final_desired_dir =
-					// glm::normalize( glm::mix(away, target_dir_world, (2-1.75*target_priority) *
-					// (1-0.5*distance_factor)   ));
 					glm::vec3 final_desired_dir = glm::normalize(glm::mix(target_dir_world, away, avoidance_weight));
 					target_dir_local = WorldToObject(final_desired_dir);
 				}
@@ -239,13 +236,26 @@ namespace Boidsish {
 		}
 
 		glm::vec3 local_forward = glm::vec3(0, 0, -1);
-		target_dir_local.x += sin(lived_ * 20.0f) * 0.075f;
-		target_dir_local.y += cos(lived_ * 15.0f) * 0.075f;
+
+		// Spiral movement that tightens as it approaches target
+		float spiral_amplitude = 0.15f;
+		if (target_ != nullptr) {
+			spiral_amplitude = glm::mix(0.0f, 0.15f, std::clamp(target_distance / 200.0f, 0.0f, 1.0f));
+		}
+		target_dir_local.x += sin(lived_ * 25.0f) * spiral_amplitude;
+		target_dir_local.y += cos(lived_ * 20.0f) * spiral_amplitude;
+
+		// Terminal hard swing
+		float kP = 60.0f;
+		if (target_ != nullptr && target_distance < 50.0f) {
+			kP = 150.0f; // Increase gain for terminal swing
+		}
+
 		glm::vec3 pid_torque = CalculateSteeringTorque(
 			local_forward,
 			target_dir_local,
 			rigid_body_.GetAngularVelocity(),
-			60.0f, // kP,
+			kP,
 			glm::mix(0.0f, 5.0f, std::clamp(2 * lived_ / lifetime_, 0.0f, 1.0f))
 		);
 
@@ -262,7 +272,7 @@ namespace Boidsish {
 
 		shape_->SetHidden(true);
 
-		if (hit_target) {
+		if (hit_target && target_) {
 			target_->Destroy(handler);
 		}
 
