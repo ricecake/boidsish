@@ -1,0 +1,54 @@
+#version 430 core
+
+layout(local_size_x = 4, local_size_y = 4, local_size_z = 4) in;
+
+layout(rgba16f, binding = 0) uniform writeonly image3D u_noiseImage;
+
+#include "lygia/generative/psrdnoise.glsl"
+
+float tiled_snoise(vec3 p, float freq) {
+	return psrdnoise(p * freq, vec3(freq));
+}
+
+float tiled_fbm(vec3 p, float freq, int octaves) {
+	float v = 0.0;
+	float a = 0.5;
+	for (int i = 0; i < octaves; i++) {
+		v += a * tiled_snoise(p, freq);
+		freq *= 2.0;
+		a *= 0.5;
+	}
+	return v;
+}
+
+void main() {
+	ivec3 pos = ivec3(gl_GlobalInvocationID.xyz);
+	ivec3 size = imageSize(u_noiseImage);
+	if (pos.x >= size.x || pos.y >= size.y || pos.z >= size.z)
+		return;
+
+	// Use normalized coordinates for tiling
+	vec3 p = vec3(pos) / vec3(size);
+
+	// We no longer animate in the compute shader to allow static world objects.
+	// Animation can be handled by the consumer by offsetting sampling coordinates.
+
+	// R: Simplex noise (Base frequency 1.0)
+	float s = tiled_snoise(p, 1.0);
+
+	// G: FBM (4 octaves, base 1.0)
+	float f = tiled_fbm(p, 1.0, 4);
+
+	// B: Warped FBM (base 1.0)
+	vec3  warp = vec3(
+		tiled_snoise(p, 1.0),
+		tiled_snoise(fract(p + 0.33), 1.0),
+		tiled_snoise(fract(p + 0.66), 1.0)
+	);
+	float wf = tiled_fbm(fract(p + warp * 0.1), 1.0, 4);
+
+	// A: Detail Noise (6 octaves, base 1.0)
+	float d = tiled_fbm(p, 1.0, 6);
+
+	imageStore(u_noiseImage, pos, vec4(s, f, wf, d));
+}

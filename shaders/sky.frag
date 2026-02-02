@@ -5,6 +5,7 @@ out vec4 FragColor;
 in vec2 TexCoords;
 
 #include "helpers/lighting.glsl"
+#include "helpers/noise_tex.glsl"
 
 uniform mat4 invProjection;
 uniform mat4 invView;
@@ -292,9 +293,9 @@ void main() {
 	// This concentrates the orange glow around the sun
 	float glow_mask = pow(sun_alignment, 4.0) * atmosphere_thickness;
 
-	// 6. Adding "Sunset Wisps" using your Noise
+	// 6. Adding "Sunset Wisps" using pre-calculated noise
 	// We sample noise based on the ray direction, but squash it horizontally
-	float sunset_noise = snoise(vec3(world_ray.x * 10.0, world_ray.y * 40.0, world_ray.z * 10.0));
+	float sunset_noise = getSimplex(vec3(world_ray.x * 10.0, world_ray.y * 40.0, world_ray.z * 10.0));
 	float final_glow = glow_mask * (1.0 + sunset_noise * 0.4);
 
 	// 7. Final Mixing
@@ -304,10 +305,8 @@ void main() {
 	float top_mix = smoothstep(0.1, 0.6, world_ray.y);
 	vec3  final_color = mix(sunset_final, top_sky_color, top_mix);
 
-	// --- 2. Nebula/Haze Layer (Domain Warping + FBM) ---
-	vec3  p = world_ray * 4.0;
-	vec3  warp_offset = vec3(fbm(p + time * 0.05));
-	float nebula_noise = fbm(p + warp_offset * 0.5);
+	// --- 2. Nebula/Haze Layer (Using pre-calculated warped FBM) ---
+	float nebula_noise = getWarpedFbm(world_ray * 4.0 + time * 0.05);
 
 	// Map noise to a color palette (e.g., magenta and cyan for cosmic clouds)
 	vec3 nebula_palette = mix(vec3(0.0, 0.1, 0.4), vec3(0.8, 0.2, 0.7), nebula_noise);

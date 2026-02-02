@@ -30,6 +30,12 @@ namespace Boidsish {
 			}
 		} // namespace UboBinding
 
+		namespace TextureUnit {
+			consteval int Noise() {
+				return 5;
+			}
+		} // namespace TextureUnit
+
 		namespace General {
 			namespace Math {
 				consteval float Pi() {
