@@ -47,6 +47,7 @@ namespace Boidsish {
         PersistentRingBuffer(GLenum target, size_t count = Capacity, int buffering_count = 3)
             : target_(target), count_(count), buffering_count_(buffering_count) {
 
+            fences_.assign(buffering_count_, nullptr);
             CalculateStride();
             Init();
         }
@@ -73,7 +74,7 @@ namespace Boidsish {
          * Blocks if the GPU is still using this specific region (triple buffering minimizes this).
          */
         T* GetCurrentPtr() {
-            if (!ptr_) return nullptr;
+            if (!ptr_ || fences_.empty()) return nullptr;
 
             // Wait for GPU to finish with this frame's part of the buffer
             if (fences_[current_frame_]) {
@@ -92,7 +93,7 @@ namespace Boidsish {
          * @brief Binds the current frame's range to a binding point (for UBOs/SSBOs).
          */
         void BindRange(GLuint binding) {
-            if (vbo_ != 0) {
+            if (vbo_ != 0 && size_per_frame_ > 0) {
                 glBindBufferRange(target_, binding, vbo_, current_frame_ * size_per_frame_, size_per_frame_);
             }
         }
@@ -101,7 +102,7 @@ namespace Boidsish {
          * @brief Binds the current frame's range to a specific target and binding point.
          */
         void BindRange(GLenum target, GLuint binding) {
-            if (vbo_ != 0) {
+            if (vbo_ != 0 && size_per_frame_ > 0) {
                 glBindBufferRange(target, binding, vbo_, current_frame_ * size_per_frame_, size_per_frame_);
             }
         }
@@ -110,7 +111,7 @@ namespace Boidsish {
          * @brief Advance to the next frame in the ring, placing a fence for the current one.
          */
         void AdvanceFrame() {
-            if (!ptr_) return;
+            if (!ptr_ || fences_.empty()) return;
 
             // Lock this range
             if (fences_[current_frame_]) glDeleteSync(fences_[current_frame_]);
@@ -136,14 +137,10 @@ namespace Boidsish {
             // 1. Multiple of 256 (for UBO alignment)
             // 2. Multiple of sizeof(T) (so vertex pointers remain aligned to element boundaries)
 
-            if constexpr (sizeof(T) == 0) {
-                size_per_frame_ = (raw_size + 255) & ~255;
-            } else {
-                size_t alignment = 256;
-                // Use lcm to find the smallest common multiple of alignment and sizeof(T)
-                size_t unit_alignment = std::lcm(sizeof(T), alignment);
-                size_per_frame_ = (raw_size + unit_alignment - 1) / unit_alignment * unit_alignment;
-            }
+            size_t alignment = 256;
+            // Use lcm to find the smallest common multiple of alignment and sizeof(T)
+            size_t unit_alignment = std::lcm(sizeof(T), alignment);
+            size_per_frame_ = (raw_size + unit_alignment - 1) / unit_alignment * unit_alignment;
         }
 
         void Init() {
@@ -179,7 +176,7 @@ namespace Boidsish {
                 return;
             }
 
-            fences_.assign(buffering_count_, nullptr);
+            // fences_ already assigned in constructor or Cleanup()
             current_frame_ = 0;
             logger::INFO("PersistentRingBuffer initialized for target " + std::to_string(target_) + ". VBO=" + std::to_string(vbo_) + ", total_size=" + std::to_string(total_size_) + ", count=" + std::to_string(count_));
         }
@@ -197,7 +194,7 @@ namespace Boidsish {
             for (auto fence : fences_) {
                 if (fence) glDeleteSync(fence);
             }
-            fences_.clear();
+            fences_.assign(buffering_count_, nullptr);
             logger::INFO("PersistentRingBuffer cleaned up for target " + std::to_string(target_));
         }
 
