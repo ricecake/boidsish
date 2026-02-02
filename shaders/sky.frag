@@ -115,7 +115,7 @@ float starLayer(vec3 dir) {
 	return smoothstep(radius, radius * 0.5, dist);
 }
 
-float fbm(vec3 p) {
+float fbm_sky(vec3 p) {
 	float value = 0.0;
 	float amplitude = 0.5;
 	for (int i = 0; i < 4; i++) {
@@ -157,7 +157,7 @@ void main() {
 		if (lights[i].type == 1) { // DIRECTIONAL_LIGHT
 			vec3 lightDir = normalize(-lights[i].direction);
 			vec3 lightColor = lights[i].color * lights[i].intensity;
-			scattering += calculateScattering(ro, world_ray, t1 - t0, i, 16);
+			scattering += calculateScattering(ro, world_ray, t1 - t0, i, 12);
 
 			// Sun disc
 			float cosTheta = dot(world_ray, lightDir);
@@ -180,7 +180,7 @@ void main() {
 	}
 
 	// Calculate view transmittance for background elements
-	vec2 odViewTotal = opticalDepth(ro, world_ray, t1 - t0, 16);
+	vec2 odViewTotal = opticalDepth(ro, world_ray, t1 - t0, 12);
 	vec3 transmittance = exp(-(betaR * odViewTotal.x + betaM * 1.1 * odViewTotal.y));
 
 	// Background Layer (Stars and Nebula)
@@ -188,8 +188,8 @@ void main() {
 	if (!hitPlanet) { // Only if we are looking at the sky, not the ground
 		// Nebula/Haze
 		vec3  p_noise = world_ray * 4.0;
-		vec3  warp_offset = vec3(fbm(p_noise + time * 0.05));
-		float nebula_noise = fbm(p_noise + warp_offset * 0.5);
+		vec3  warp_offset = vec3(fbm_sky(p_noise + time * 0.05));
+		float nebula_noise = fbm_sky(p_noise + warp_offset * 0.5);
 		vec3  nebula_palette = mix(vec3(0.0, 0.1, 0.4), vec3(0.8, 0.2, 0.7), nebula_noise);
 		background_color += nebula_palette * 0.4;
 

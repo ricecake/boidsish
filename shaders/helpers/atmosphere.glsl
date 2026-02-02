@@ -1,10 +1,8 @@
 #ifndef HELPERS_ATMOSPHERE_GLSL
 #define HELPERS_ATMOSPHERE_GLSL
 
-#include "../lighting.glsl"
+// This helper pulls in the Lighting UBO and shadow functions
 #include "lighting.glsl"
-
-const float PI = 3.14159265359;
 
 const float Re = 6371e3; // Earth radius
 const float Ra = 6471e3; // Atmosphere radius
@@ -15,6 +13,7 @@ const vec3  betaR = vec3(5.8e-6, 13.5e-6, 33.1e-6); // Rayleigh scattering coeff
 const float betaM = 21e-6;                         // Mie scattering coefficient
 
 float rayleighPhase(float cosTheta) {
+	// PI is defined in helpers/lighting.glsl
 	return 3.0 / (16.0 * PI) * (1.0 + cosTheta * cosTheta);
 }
 
@@ -74,12 +73,10 @@ vec3 calculateScattering(vec3 ro, vec3 rd, float L, int lightIndex, int samples)
 		bool  planetBlocked = intersectSphere(p, lightDir, Re, tp0, tp1) && tp0 > 0.0;
 
 		if (!planetBlocked && intersectSphere(p, lightDir, Ra, t0, t1) && t1 > 0.0) {
-			// Atmospheric scattering sample
-			// Correct world position for shadow mapping: ro is centered at planet center.
-			// We need to bring it back to engine coordinates (near 0,0,0).
+			// Engine coordinate offset for shadow sampling
 			vec3 engineP = p - vec3(0.0, Re, 0.0);
 
-			// Check shadows from terrain/objects
+			// Check terrain shadows
 			float shadow = calculateShadow(lightIndex, engineP, lightDir, lightDir);
 
 			vec2 odLight = opticalDepth(p, lightDir, t1, 4);
