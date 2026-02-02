@@ -36,7 +36,6 @@ namespace Boidsish {
 		if (vao_)
 			glDeleteVertexArrays(1, &vao_);
 		vbo_ring_.reset();
-		draw_command_ring_.reset();
 	}
 
 	bool TrailRenderManager::RegisterTrail(int trail_id, size_t max_vertices) {
@@ -251,65 +250,7 @@ namespace Boidsish {
 
 		glBindVertexArray(vao_);
 
-		// Build draw commands if dirty
-		if (draw_commands_dirty_) {
-			draw_commands_.clear();
-			draw_commands_.reserve(trail_allocations_.size() * 2); // Up to 2 draws per trail for ring buffer wrap
-
-			for (const auto& [trail_id, alloc] : trail_allocations_) {
-				if (alloc.vertex_count == 0) {
-					continue;
-				}
-
-				// Handle ring buffer - may need 1 or 2 draw commands per trail
-				if (!alloc.is_full && alloc.tail > alloc.head) {
-					// Single contiguous segment
-					DrawArraysIndirectCommand cmd{};
-					cmd.count = static_cast<GLuint>(alloc.tail - alloc.head);
-					cmd.instanceCount = 1;
-					cmd.first = static_cast<GLuint>(alloc.vertex_offset + alloc.head);
-					cmd.baseInstance = trail_id; // Use baseInstance to identify trail
-					draw_commands_.push_back(cmd);
-				} else if (alloc.vertex_count > 0) {
-					// Wrapped ring buffer - two segments
-					// First segment: from head to end of buffer
-					size_t first_count = alloc.max_vertices - alloc.head;
-					if (first_count > 0) {
-						DrawArraysIndirectCommand cmd1{};
-						cmd1.count = static_cast<GLuint>(first_count);
-						cmd1.instanceCount = 1;
-						cmd1.first = static_cast<GLuint>(alloc.vertex_offset + alloc.head);
-						cmd1.baseInstance = trail_id;
-						draw_commands_.push_back(cmd1);
-					}
-
-					// Second segment: from start of buffer to tail
-					if (alloc.tail > 0) {
-						DrawArraysIndirectCommand cmd2{};
-						cmd2.count = static_cast<GLuint>(alloc.tail);
-						cmd2.instanceCount = 1;
-						cmd2.first = static_cast<GLuint>(alloc.vertex_offset);
-						cmd2.baseInstance = trail_id;
-						draw_commands_.push_back(cmd2);
-					}
-				}
-			}
-
-			// Upload draw commands to GPU buffer
-			if (!draw_command_ring_) {
-				draw_command_ring_ = std::make_unique<PersistentRingBuffer<DrawArraysIndirectCommand>>(GL_DRAW_INDIRECT_BUFFER, draw_commands_.size());
-			}
-			draw_command_ring_->EnsureCapacity(draw_commands_.size());
-			DrawArraysIndirectCommand* cmd_ptr = draw_command_ring_->GetCurrentPtr();
-			if (cmd_ptr) {
-				memcpy(cmd_ptr, draw_commands_.data(), draw_commands_.size() * sizeof(DrawArraysIndirectCommand));
-			}
-
-			glBindBuffer(GL_DRAW_INDIRECT_BUFFER, draw_command_ring_->GetVBO());
-
-			draw_commands_dirty_ = false;
-		}
-
+		draw_commands_dirty_ = false;
 		size_t base_offset = vbo_ring_->GetOffset() / sizeof(TrailVertex);
 
 		for (const auto& [trail_id, alloc] : trail_allocations_) {
@@ -361,7 +302,6 @@ namespace Boidsish {
 		shader.setInt("useVertexColor", 0);
 
 		vbo_ring_->AdvanceFrame();
-		if (draw_command_ring_) draw_command_ring_->AdvanceFrame();
 	}
 
 	size_t TrailRenderManager::GetRegisteredTrailCount() const {

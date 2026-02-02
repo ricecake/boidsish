@@ -57,6 +57,7 @@ namespace Boidsish {
 	public:
 		// Constructor, expects a filepath to a 3D model.
 		Model(const std::string& path, bool no_cull = false);
+		~Model();
 
 		// Render the model
 		void      render() const override;

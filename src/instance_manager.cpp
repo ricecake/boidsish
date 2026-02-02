@@ -11,7 +11,6 @@
 namespace Boidsish {
 
 	InstanceManager::~InstanceManager() {
-		m_indirect_ring.reset();
 		m_instance_groups.clear(); // ring buffers reset automatically
 	}
 
@@ -42,8 +41,6 @@ namespace Boidsish {
 
 			group.shapes.clear();
 		}
-
-		if (m_indirect_ring) m_indirect_ring->AdvanceFrame();
 
 		shader.setBool("is_instanced", false);
 	}
@@ -103,41 +100,17 @@ namespace Boidsish {
 		const auto& offsets = model->GetMeshIndicesOffset();
 		const auto& base_verts = model->GetMeshVerticesOffset();
 
-		if (glewIsSupported("GL_ARB_multi_draw_indirect")) {
-			std::vector<DrawElementsIndirectCommand> commands;
-			commands.reserve(counts.size());
-
-			for (size_t i = 0; i < counts.size(); ++i) {
-				DrawElementsIndirectCommand cmd;
-				cmd.count = counts[i];
-				cmd.instanceCount = group.shapes.size();
-				cmd.firstIndex = offsets[i];
-				cmd.baseVertex = base_verts[i];
-				cmd.baseInstance = 0;
-				commands.push_back(cmd);
-			}
-
-			if (!m_indirect_ring) {
-				m_indirect_ring = std::make_unique<PersistentRingBuffer<DrawElementsIndirectCommand>>(GL_DRAW_INDIRECT_BUFFER, commands.size());
-			}
-			m_indirect_ring->EnsureCapacity(commands.size());
-
-			DrawElementsIndirectCommand* ptr = m_indirect_ring->GetCurrentPtr();
-			if (ptr) {
-				memcpy(ptr, commands.data(), commands.size() * sizeof(DrawElementsIndirectCommand));
-			}
-
-			glBindBuffer(GL_DRAW_INDIRECT_BUFFER, m_indirect_ring->GetVBO());
-
-			model->getMeshes()[0].bindTextures(shader);
-
-			glMultiDrawElementsIndirect(GL_TRIANGLES, GL_UNSIGNED_INT, (void*)m_indirect_ring->GetOffset(), commands.size(), 0);
-		} else {
-			// Fallback to regular instanced rendering
-			for (size_t i = 0; i < model->getMeshes().size(); ++i) {
-				model->getMeshes()[i].bindTextures(shader);
-				glDrawElementsInstancedBaseVertex(GL_TRIANGLES, counts[i], GL_UNSIGNED_INT, (void*)(uintptr_t)(offsets[i] * sizeof(unsigned int)), group.shapes.size(), base_verts[i]);
-			}
+		// Render each mesh of the model instanced
+		for (size_t i = 0; i < model->getMeshes().size(); ++i) {
+			model->getMeshes()[i].bindTextures(shader);
+			glDrawElementsInstancedBaseVertex(
+				GL_TRIANGLES,
+				counts[i],
+				GL_UNSIGNED_INT,
+				(void*)(uintptr_t)(offsets[i] * sizeof(unsigned int)),
+				group.shapes.size(),
+				base_verts[i]
+			);
 		}
 
 		glVertexAttribDivisor(3, 0);

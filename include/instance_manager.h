@@ -24,8 +24,6 @@ namespace Boidsish {
 			std::unique_ptr<PersistentRingBuffer<glm::vec4>> color_ring;
 		};
 
-		std::unique_ptr<PersistentRingBuffer<DrawElementsIndirectCommand>> m_indirect_ring;
-
 		// Group by instance key (model path for Models, "Dot" for Dots, etc.)
 		std::map<std::string, InstanceGroup> m_instance_groups;
 

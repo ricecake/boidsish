@@ -200,6 +200,12 @@ namespace Boidsish {
 		loadModel(path);
 	}
 
+	Model::~Model() {
+		if (model_vao_) glDeleteVertexArrays(1, &model_vao_);
+		if (model_vbo_) glDeleteBuffers(1, &model_vbo_);
+		if (model_ebo_) glDeleteBuffers(1, &model_ebo_);
+	}
+
 	void Model::render() const {
 		if (!shader) {
 			std::cerr << "Model::render - Shader is not set!" << std::endl;

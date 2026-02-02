@@ -166,7 +166,6 @@ namespace Boidsish {
 		// OpenGL resources
 		GLuint vao_ = 0;
 		std::unique_ptr<PersistentRingBuffer<TrailVertex>> vbo_ring_;
-		std::unique_ptr<PersistentRingBuffer<DrawArraysIndirectCommand>> draw_command_ring_;
 
 		// Buffer capacity (in vertices, not bytes)
 		size_t vertex_capacity_ = 0;
@@ -186,8 +185,7 @@ namespace Boidsish {
 
 		std::vector<FreeBlock> free_list_;
 
-		// Draw commands
-		std::vector<DrawArraysIndirectCommand> draw_commands_;
+		// Draw commands tracking
 		bool                                   draw_commands_dirty_ = true;
 
 		// Thread safety
