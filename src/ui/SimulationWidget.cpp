@@ -8,7 +8,7 @@ namespace Boidsish {
 	namespace UI {
 		SimulationWidget::SimulationWidget(Visualizer& visualizer): m_visualizer(visualizer) {}
 
-		void RenderConfigSection(const std::string& section_name, bool is_global) {
+		static void RenderConfigSection(const std::string& section_name, bool is_global) {
 			auto& config_manager = ConfigManager::GetInstance();
 			auto  registered_values = config_manager.GetRegisteredValues(section_name);
 			if (registered_values.empty()) return;

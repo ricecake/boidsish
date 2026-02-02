@@ -2,6 +2,8 @@
 #include "ConfigManager.h"
 #include "graphics.h"
 #include "imgui.h"
+#include "decor_manager.h"
+#include "post_processing/PostProcessingManager.h"
 #include "post_processing/effects/AtmosphereEffect.h"
 #include "post_processing/effects/BloomEffect.h"
 #include "post_processing/effects/FilmGrainEffect.h"
