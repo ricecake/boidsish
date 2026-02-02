@@ -6,6 +6,7 @@
 #include <vector>
 
 #include "shape.h"
+#include "opengl_helpers.h"
 #include <shader.h>
 
 namespace Boidsish {
@@ -18,11 +19,9 @@ namespace Boidsish {
 
 	private:
 		struct InstanceGroup {
-			std::vector<std::shared_ptr<Shape>> shapes;
-			unsigned int                        instance_matrix_vbo_ = 0;
-			unsigned int                        instance_color_vbo_ = 0;
-			size_t                              matrix_capacity_ = 0;
-			size_t                              color_capacity_ = 0;
+			std::vector<std::shared_ptr<Shape>>               shapes;
+			std::unique_ptr<PersistentRingBuffer<glm::mat4>> matrix_ring;
+			std::unique_ptr<PersistentRingBuffer<glm::vec4>> color_ring;
 		};
 
 		// Group by instance key (model path for Models, "Dot" for Dots, etc.)

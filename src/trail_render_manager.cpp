@@ -2,7 +2,10 @@
 
 #include <algorithm>
 #include <iostream>
+#include <cstring>
 
+#include "profiler.h"
+#include "opengl_helpers.h"
 #include <shader.h>
 
 namespace Boidsish {
@@ -12,41 +15,27 @@ namespace Boidsish {
 		glGenVertexArrays(1, &vao_);
 		glBindVertexArray(vao_);
 
-		// Create VBO with initial capacity
-		glGenBuffers(1, &vbo_);
-		glBindBuffer(GL_ARRAY_BUFFER, vbo_);
-		glBufferData(
-			GL_ARRAY_BUFFER,
-			INITIAL_VERTEX_CAPACITY * FLOATS_PER_VERTEX * sizeof(float),
-			nullptr,
-			GL_DYNAMIC_DRAW
-		);
+		vbo_ring_ = std::make_unique<PersistentRingBuffer<TrailVertex>>(GL_ARRAY_BUFFER, INITIAL_VERTEX_CAPACITY);
 		vertex_capacity_ = INITIAL_VERTEX_CAPACITY;
 
 		// Set up vertex attributes (matches TrailVertex: pos + normal + color)
 		// Position attribute (location 0)
-		glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, FLOATS_PER_VERTEX * sizeof(float), (void*)0);
+		glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(TrailVertex), (void*)0);
 		glEnableVertexAttribArray(0);
 		// Normal attribute (location 1)
-		glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, FLOATS_PER_VERTEX * sizeof(float), (void*)(3 * sizeof(float)));
+		glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, sizeof(TrailVertex), (void*)(offsetof(TrailVertex, normal)));
 		glEnableVertexAttribArray(1);
 		// Color attribute (location 2)
-		glVertexAttribPointer(2, 3, GL_FLOAT, GL_FALSE, FLOATS_PER_VERTEX * sizeof(float), (void*)(6 * sizeof(float)));
+		glVertexAttribPointer(2, 3, GL_FLOAT, GL_FALSE, sizeof(TrailVertex), (void*)(offsetof(TrailVertex, color)));
 		glEnableVertexAttribArray(2);
 
 		glBindVertexArray(0);
-
-		// Create indirect draw command buffer
-		glGenBuffers(1, &draw_command_buffer_);
 	}
 
 	TrailRenderManager::~TrailRenderManager() {
 		if (vao_)
 			glDeleteVertexArrays(1, &vao_);
-		if (vbo_)
-			glDeleteBuffers(1, &vbo_);
-		if (draw_command_buffer_)
-			glDeleteBuffers(1, &draw_command_buffer_);
+		vbo_ring_.reset();
 	}
 
 	bool TrailRenderManager::RegisterTrail(int trail_id, size_t max_vertices) {
@@ -183,36 +172,19 @@ namespace Boidsish {
 			new_capacity = static_cast<size_t>(new_capacity * GROWTH_FACTOR);
 		}
 
-		// Create new buffer
-		GLuint new_vbo;
-		glGenBuffers(1, &new_vbo);
-		glBindBuffer(GL_ARRAY_BUFFER, new_vbo);
-		glBufferData(GL_ARRAY_BUFFER, new_capacity * FLOATS_PER_VERTEX * sizeof(float), nullptr, GL_DYNAMIC_DRAW);
-
-		// Copy old data
-		glBindBuffer(GL_COPY_READ_BUFFER, vbo_);
-		glCopyBufferSubData(
-			GL_COPY_READ_BUFFER,
-			GL_ARRAY_BUFFER,
-			0,
-			0,
-			vertex_capacity_ * FLOATS_PER_VERTEX * sizeof(float)
-		);
-
-		glDeleteBuffers(1, &vbo_);
-		vbo_ = new_vbo;
+		vbo_ring_->EnsureCapacity(new_capacity);
 		vertex_capacity_ = new_capacity;
 
 		// Update VAO binding
 		glBindVertexArray(vao_);
-		glBindBuffer(GL_ARRAY_BUFFER, vbo_);
+		glBindBuffer(GL_ARRAY_BUFFER, vbo_ring_->GetVBO());
 
 		// Re-setup vertex attributes
-		glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, FLOATS_PER_VERTEX * sizeof(float), (void*)0);
+		glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(TrailVertex), (void*)0);
 		glEnableVertexAttribArray(0);
-		glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, FLOATS_PER_VERTEX * sizeof(float), (void*)(3 * sizeof(float)));
+		glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, sizeof(TrailVertex), (void*)(offsetof(TrailVertex, normal)));
 		glEnableVertexAttribArray(1);
-		glVertexAttribPointer(2, 3, GL_FLOAT, GL_FALSE, FLOATS_PER_VERTEX * sizeof(float), (void*)(6 * sizeof(float)));
+		glVertexAttribPointer(2, 3, GL_FLOAT, GL_FALSE, sizeof(TrailVertex), (void*)(offsetof(TrailVertex, color)));
 		glEnableVertexAttribArray(2);
 		glBindVertexArray(0);
 	}
@@ -220,11 +192,12 @@ namespace Boidsish {
 	void TrailRenderManager::CommitUpdates() {
 		std::lock_guard<std::mutex> lock(mutex_);
 
-		if (pending_vertex_data_.empty()) {
+		if (pending_vertex_data_.empty() || !vbo_ring_) {
 			return;
 		}
 
-		glBindBuffer(GL_ARRAY_BUFFER, vbo_);
+		TrailVertex* vbo_ptr = vbo_ring_->GetCurrentPtr();
+		if (!vbo_ptr) return;
 
 		// Upload pending vertex data
 		for (auto& [trail_id, vertices] : pending_vertex_data_) {
@@ -239,12 +212,8 @@ namespace Boidsish {
 			}
 
 			// Upload the entire trail data at its allocated offset
-			// The vertices are already in the correct format (pos + normal + color)
-			size_t byte_offset = alloc.vertex_offset * FLOATS_PER_VERTEX * sizeof(float);
-			size_t byte_size = vertices.size() * sizeof(float);
-
-			if (byte_size > 0) {
-				glBufferSubData(GL_ARRAY_BUFFER, byte_offset, byte_size, vertices.data());
+			if (!vertices.empty()) {
+				memcpy(vbo_ptr + alloc.vertex_offset, vertices.data(), vertices.size() * sizeof(float));
 			}
 
 			alloc.needs_upload = false;
@@ -259,9 +228,10 @@ namespace Boidsish {
 		const glm::mat4&                projection,
 		const std::optional<glm::vec4>& clip_plane
 	) {
+		PROJECT_PROFILE_SCOPE("TrailRenderManager::Render");
 		std::lock_guard<std::mutex> lock(mutex_);
 
-		if (trail_allocations_.empty()) {
+		if (trail_allocations_.empty() || !vbo_ring_) {
 			return;
 		}
 
@@ -280,72 +250,8 @@ namespace Boidsish {
 
 		glBindVertexArray(vao_);
 
-		// Build draw commands if dirty
-		if (draw_commands_dirty_) {
-			draw_commands_.clear();
-			draw_commands_.reserve(trail_allocations_.size() * 2); // Up to 2 draws per trail for ring buffer wrap
-
-			for (const auto& [trail_id, alloc] : trail_allocations_) {
-				if (alloc.vertex_count == 0) {
-					continue;
-				}
-
-				// Handle ring buffer - may need 1 or 2 draw commands per trail
-				if (!alloc.is_full && alloc.tail > alloc.head) {
-					// Single contiguous segment
-					DrawArraysIndirectCommand cmd{};
-					cmd.count = static_cast<GLuint>(alloc.tail - alloc.head);
-					cmd.instanceCount = 1;
-					cmd.first = static_cast<GLuint>(alloc.vertex_offset + alloc.head);
-					cmd.baseInstance = trail_id; // Use baseInstance to identify trail
-					draw_commands_.push_back(cmd);
-				} else if (alloc.vertex_count > 0) {
-					// Wrapped ring buffer - two segments
-					// First segment: from head to end of buffer
-					size_t first_count = alloc.max_vertices - alloc.head;
-					if (first_count > 0) {
-						DrawArraysIndirectCommand cmd1{};
-						cmd1.count = static_cast<GLuint>(first_count);
-						cmd1.instanceCount = 1;
-						cmd1.first = static_cast<GLuint>(alloc.vertex_offset + alloc.head);
-						cmd1.baseInstance = trail_id;
-						draw_commands_.push_back(cmd1);
-					}
-
-					// Second segment: from start of buffer to tail
-					if (alloc.tail > 0) {
-						DrawArraysIndirectCommand cmd2{};
-						cmd2.count = static_cast<GLuint>(alloc.tail);
-						cmd2.instanceCount = 1;
-						cmd2.first = static_cast<GLuint>(alloc.vertex_offset);
-						cmd2.baseInstance = trail_id;
-						draw_commands_.push_back(cmd2);
-					}
-				}
-			}
-
-			// Upload draw commands to GPU buffer
-			glBindBuffer(GL_DRAW_INDIRECT_BUFFER, draw_command_buffer_);
-			glBufferData(
-				GL_DRAW_INDIRECT_BUFFER,
-				draw_commands_.size() * sizeof(DrawArraysIndirectCommand),
-				draw_commands_.data(),
-				GL_DYNAMIC_DRAW
-			);
-
-			draw_commands_dirty_ = false;
-		}
-
-		// Unfortunately, GL_TRIANGLE_STRIP doesn't work well with MultiDrawArraysIndirect
-		// because primitive restart isn't supported in indirect mode.
-		// We need to render each trail segment separately to maintain strip continuity.
-		// However, we still benefit from:
-		// 1. Single VAO bind
-		// 2. Single shader setup
-		// 3. All data in one VBO
-
-		// For proper single-call rendering, we'd need to convert to indexed triangles.
-		// For now, iterate but with shared state (still much faster than separate VAO binds)
+		draw_commands_dirty_ = false;
+		size_t base_offset = vbo_ring_->GetOffset() / sizeof(TrailVertex);
 
 		for (const auto& [trail_id, alloc] : trail_allocations_) {
 			if (alloc.vertex_count == 0) {
@@ -359,9 +265,9 @@ namespace Boidsish {
 			shader.setBool("usePBR", alloc.use_pbr);
 			shader.setFloat("trailRoughness", alloc.roughness);
 			shader.setFloat("trailMetallic", alloc.metallic);
-			// trailHead must include vertex_offset because gl_VertexID sees the global index
-			// when we call glDrawArrays(mode, vertex_offset + head, count)
-			shader.setFloat("trailHead", static_cast<float>(alloc.vertex_offset + alloc.head));
+
+			// trailHead must include vertex_offset AND the ring buffer offset because gl_VertexID sees the global index
+			shader.setFloat("trailHead", static_cast<float>(base_offset + alloc.vertex_offset + alloc.head));
 			shader.setFloat("trailSize", static_cast<float>(alloc.vertex_count));
 
 			// Handle ring buffer rendering
@@ -369,7 +275,7 @@ namespace Boidsish {
 				// Single contiguous segment
 				glDrawArrays(
 					GL_TRIANGLE_STRIP,
-					static_cast<GLint>(alloc.vertex_offset + alloc.head),
+					static_cast<GLint>(base_offset + alloc.vertex_offset + alloc.head),
 					static_cast<GLsizei>(alloc.tail - alloc.head)
 				);
 			} else if (alloc.vertex_count > 0) {
@@ -378,14 +284,14 @@ namespace Boidsish {
 				if (first_count > 0) {
 					glDrawArrays(
 						GL_TRIANGLE_STRIP,
-						static_cast<GLint>(alloc.vertex_offset + alloc.head),
+						static_cast<GLint>(base_offset + alloc.vertex_offset + alloc.head),
 						static_cast<GLsizei>(first_count)
 					);
 				}
 				if (alloc.tail > 0) {
 					glDrawArrays(
 						GL_TRIANGLE_STRIP,
-						static_cast<GLint>(alloc.vertex_offset),
+						static_cast<GLint>(base_offset + alloc.vertex_offset),
 						static_cast<GLsizei>(alloc.tail)
 					);
 				}
@@ -394,6 +300,8 @@ namespace Boidsish {
 
 		glBindVertexArray(0);
 		shader.setInt("useVertexColor", 0);
+
+		vbo_ring_->AdvanceFrame();
 	}
 
 	size_t TrailRenderManager::GetRegisteredTrailCount() const {

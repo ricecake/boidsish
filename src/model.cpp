@@ -5,6 +5,7 @@
 
 #include "shader.h"
 #include "stb_image.h"
+#include "profiler.h"
 #include <GL/glew.h>
 #include <glm/gtc/matrix_transform.hpp>
 
@@ -81,24 +82,35 @@ namespace Boidsish {
 		Shape::shader->setVec3("objectColor", diffuseColor);
 		Shape::shader->setFloat("objectAlpha", opacity);
 
-		for (unsigned int i = 0; i < textures.size(); i++) {
-			glActiveTexture(GL_TEXTURE0 + i); // active proper texture unit before binding
-			// retrieve texture number (the N in diffuse_textureN)
-			std::string number;
-			std::string name = textures[i].type;
-			if (name == "texture_diffuse")
-				number = std::to_string(diffuseNr++);
-			else if (name == "texture_specular")
-				number = std::to_string(specularNr++); // transfer unsigned int to string
-			else if (name == "texture_normal")
-				number = std::to_string(normalNr++); // transfer unsigned int to string
-			else if (name == "texture_height")
-				number = std::to_string(heightNr++); // transfer unsigned int to string
+		bool useBindless = false;
+		if (glewIsSupported("GL_ARB_bindless_texture")) {
+			for (unsigned int i = 0; i < textures.size(); i++) {
+				if (textures[i].handle != 0 && textures[i].type == "texture_diffuse") {
+					glUniformHandleui64ARB(glGetUniformLocation(Shape::shader->ID, "diffuseHandle"), textures[i].handle);
+					useBindless = true;
+					break;
+				}
+			}
+		}
+		Shape::shader->setBool("use_bindless", useBindless);
 
-			// now set the sampler to the correct texture unit
-			Shape::shader->setInt((name + number).c_str(), i);
-			// and finally bind the texture
-			glBindTexture(GL_TEXTURE_2D, textures[i].id);
+		if (!useBindless) {
+			for (unsigned int i = 0; i < textures.size(); i++) {
+				glActiveTexture(GL_TEXTURE0 + i);
+				std::string number;
+				std::string name = textures[i].type;
+				if (name == "texture_diffuse")
+					number = std::to_string(diffuseNr++);
+				else if (name == "texture_specular")
+					number = std::to_string(specularNr++);
+				else if (name == "texture_normal")
+					number = std::to_string(normalNr++);
+				else if (name == "texture_height")
+					number = std::to_string(heightNr++);
+
+				Shape::shader->setInt((name + number).c_str(), i);
+				glBindTexture(GL_TEXTURE_2D, textures[i].id);
+			}
 		}
 
 		// draw mesh
@@ -150,27 +162,48 @@ namespace Boidsish {
 		unsigned int specularNr = 1;
 		unsigned int normalNr = 1;
 		unsigned int heightNr = 1;
-		for (unsigned int i = 0; i < textures.size(); i++) {
-			glActiveTexture(GL_TEXTURE0 + i);
-			std::string number;
-			std::string name = textures[i].type;
-			if (name == "texture_diffuse")
-				number = std::to_string(diffuseNr++);
-			else if (name == "texture_specular")
-				number = std::to_string(specularNr++);
-			else if (name == "texture_normal")
-				number = std::to_string(normalNr++);
-			else if (name == "texture_height")
-				number = std::to_string(heightNr++);
 
-			shader.setInt((name + number).c_str(), i);
-			glBindTexture(GL_TEXTURE_2D, textures[i].id);
+		bool useBindless = false;
+		if (glewIsSupported("GL_ARB_bindless_texture")) {
+			for (unsigned int i = 0; i < textures.size(); i++) {
+				if (textures[i].handle != 0 && textures[i].type == "texture_diffuse") {
+					glUniformHandleui64ARB(glGetUniformLocation(shader.ID, "diffuseHandle"), textures[i].handle);
+					useBindless = true;
+					break;
+				}
+			}
+		}
+		shader.setBool("use_bindless", useBindless);
+
+		if (!useBindless) {
+			for (unsigned int i = 0; i < textures.size(); i++) {
+				glActiveTexture(GL_TEXTURE0 + i);
+				std::string number;
+				std::string name = textures[i].type;
+				if (name == "texture_diffuse")
+					number = std::to_string(diffuseNr++);
+				else if (name == "texture_specular")
+					number = std::to_string(specularNr++);
+				else if (name == "texture_normal")
+					number = std::to_string(normalNr++);
+				else if (name == "texture_height")
+					number = std::to_string(heightNr++);
+
+				shader.setInt((name + number).c_str(), i);
+				glBindTexture(GL_TEXTURE_2D, textures[i].id);
+			}
 		}
 	}
 
 	// Model implementation
 	Model::Model(const std::string& path, bool no_cull): no_cull_(no_cull), model_path_(path) {
 		loadModel(path);
+	}
+
+	Model::~Model() {
+		if (model_vao_) glDeleteVertexArrays(1, &model_vao_);
+		if (model_vbo_) glDeleteBuffers(1, &model_vbo_);
+		if (model_ebo_) glDeleteBuffers(1, &model_ebo_);
 	}
 
 	void Model::render() const {
@@ -257,6 +290,58 @@ namespace Boidsish {
 		}
 
 		processNode(scene->mRootNode, scene);
+		setupMDI();
+	}
+
+	void Model::setupMDI() {
+		if (meshes.empty())
+			return;
+
+		std::vector<Vertex>       all_vertices;
+		std::vector<unsigned int> all_indices;
+
+		unsigned int vertex_offset = 0;
+		unsigned int index_offset = 0;
+
+		for (const auto& mesh : meshes) {
+			mesh_indices_count_.push_back(mesh.indices.size());
+			mesh_indices_offset_.push_back(index_offset);
+			mesh_vertices_offset_.push_back(vertex_offset);
+
+			all_vertices.insert(all_vertices.end(), mesh.vertices.begin(), mesh.vertices.end());
+			all_indices.insert(all_indices.end(), mesh.indices.begin(), mesh.indices.end());
+
+			vertex_offset += mesh.vertices.size();
+			index_offset += mesh.indices.size();
+		}
+
+		glGenVertexArrays(1, &model_vao_);
+		glGenBuffers(1, &model_vbo_);
+		glGenBuffers(1, &model_ebo_);
+
+		glBindVertexArray(model_vao_);
+		glBindBuffer(GL_ARRAY_BUFFER, model_vbo_);
+		glBufferData(GL_ARRAY_BUFFER, all_vertices.size() * sizeof(Vertex), all_vertices.data(), GL_STATIC_DRAW);
+
+		glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, model_ebo_);
+		glBufferData(
+			GL_ELEMENT_ARRAY_BUFFER,
+			all_indices.size() * sizeof(unsigned int),
+			all_indices.data(),
+			GL_STATIC_DRAW
+		);
+
+		// Vertex Positions
+		glEnableVertexAttribArray(0);
+		glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)0);
+		// Vertex Normals
+		glEnableVertexAttribArray(1);
+		glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)offsetof(Vertex, Normal));
+		// Vertex Texture Coords
+		glEnableVertexAttribArray(2);
+		glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)offsetof(Vertex, TexCoords));
+
+		glBindVertexArray(0);
 	}
 
 	void Model::processNode(aiNode* node, const aiScene* scene) {
@@ -384,6 +469,14 @@ namespace Boidsish {
 				texture.id = TextureFromFile(str.C_Str(), this->directory);
 				texture.type = typeName;
 				texture.path = str.C_Str();
+
+				if (glewIsSupported("GL_ARB_bindless_texture")) {
+					texture.handle = glGetTextureHandleARB(texture.id);
+					glMakeTextureHandleResidentARB(texture.handle);
+				} else {
+					texture.handle = 0;
+				}
+
 				textures.push_back(texture);
 				textures_loaded_.push_back(texture); // add to loaded textures
 			}

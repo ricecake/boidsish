@@ -6,6 +6,11 @@ set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS ON) # Corresponds to -std=gnu++23
 
+option(PROFILING_ENABLED "Enable profiling instrumentation" OFF)
+if(PROFILING_ENABLED)
+    add_compile_definitions(PROFILING_ENABLED)
+endif()
+
 set(IMGUI_DIR external/imgui)
 set(STB_DIR "${CMAKE_SOURCE_DIR}/external/stb")
 

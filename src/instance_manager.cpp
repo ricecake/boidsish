@@ -2,19 +2,16 @@
 
 #include "dot.h"
 #include "model.h"
+#include "profiler.h"
+#include "opengl_helpers.h"
 #include <GL/glew.h>
+#include <cstring>
+#include <algorithm>
 
 namespace Boidsish {
 
 	InstanceManager::~InstanceManager() {
-		for (auto& [key, group] : m_instance_groups) {
-			if (group.instance_matrix_vbo_ != 0) {
-				glDeleteBuffers(1, &group.instance_matrix_vbo_);
-			}
-			if (group.instance_color_vbo_ != 0) {
-				glDeleteBuffers(1, &group.instance_color_vbo_);
-			}
-		}
+		m_instance_groups.clear(); // ring buffers reset automatically
 	}
 
 	void InstanceManager::AddInstance(std::shared_ptr<Shape> shape) {
@@ -23,6 +20,7 @@ namespace Boidsish {
 	}
 
 	void InstanceManager::Render(Shader& shader) {
+		PROJECT_PROFILE_SCOPE("InstanceManager::Render");
 		shader.use();
 		shader.setBool("is_instanced", true);
 
@@ -37,7 +35,10 @@ namespace Boidsish {
 			} else if (key == "Dot") {
 				RenderDotGroup(shader, group);
 			}
-			// Other shape types can be added here
+
+			if (group.matrix_ring) group.matrix_ring->AdvanceFrame();
+			if (group.color_ring) group.color_ring->AdvanceFrame();
+
 			group.shapes.clear();
 		}
 
@@ -52,22 +53,14 @@ namespace Boidsish {
 			model_matrices.push_back(shape->GetModelMatrix());
 		}
 
-		// Create/update matrix VBO
-		if (group.instance_matrix_vbo_ == 0) {
-			glGenBuffers(1, &group.instance_matrix_vbo_);
+		if (!group.matrix_ring) {
+			group.matrix_ring = std::make_unique<PersistentRingBuffer<glm::mat4>>(GL_ARRAY_BUFFER, std::max(static_cast<size_t>(100), model_matrices.size()));
 		}
 
-		glBindBuffer(GL_ARRAY_BUFFER, group.instance_matrix_vbo_);
-		if (model_matrices.size() > group.matrix_capacity_) {
-			glBufferData(
-				GL_ARRAY_BUFFER,
-				model_matrices.size() * sizeof(glm::mat4),
-				&model_matrices[0],
-				GL_DYNAMIC_DRAW
-			);
-			group.matrix_capacity_ = model_matrices.size();
-		} else {
-			glBufferSubData(GL_ARRAY_BUFFER, 0, model_matrices.size() * sizeof(glm::mat4), &model_matrices[0]);
+		group.matrix_ring->EnsureCapacity(model_matrices.size());
+		glm::mat4* ptr = group.matrix_ring->GetCurrentPtr();
+		if (ptr && !model_matrices.empty()) {
+			memcpy(ptr, model_matrices.data(), model_matrices.size() * sizeof(glm::mat4));
 		}
 
 		// Get the Model from the first shape to access mesh data
@@ -78,56 +71,58 @@ namespace Boidsish {
 
 		shader.setBool("isColossal", model->IsColossal());
 		shader.setFloat("objectAlpha", model->GetA());
-		shader.setBool("useInstanceColor", false); // Models use textures, not per-instance colors
+		shader.setBool("useInstanceColor", false);
 
-		for (const auto& mesh : model->getMeshes()) {
-			// Bind textures
-			unsigned int diffuseNr = 1;
-			unsigned int specularNr = 1;
-			for (unsigned int i = 0; i < mesh.textures.size(); i++) {
-				glActiveTexture(GL_TEXTURE0 + i);
-				std::string number;
-				std::string name = mesh.textures[i].type;
-				if (name == "texture_diffuse")
-					number = std::to_string(diffuseNr++);
-				else if (name == "texture_specular")
-					number = std::to_string(specularNr++);
-				shader.setInt(("material." + name + number).c_str(), i);
-				glBindTexture(GL_TEXTURE_2D, mesh.textures[i].id);
-			}
-			glActiveTexture(GL_TEXTURE0);
+		unsigned int modelVAO = model->GetVAO();
+		if (modelVAO == 0) return;
 
-			glBindVertexArray(mesh.VAO);
+		glBindVertexArray(modelVAO);
 
-			// Setup instance matrix attribute (location 3-6, mat4 takes 4 vec4 slots)
-			glBindBuffer(GL_ARRAY_BUFFER, group.instance_matrix_vbo_);
-			glEnableVertexAttribArray(3);
-			glVertexAttribPointer(3, 4, GL_FLOAT, GL_FALSE, sizeof(glm::mat4), (void*)0);
-			glEnableVertexAttribArray(4);
-			glVertexAttribPointer(4, 4, GL_FLOAT, GL_FALSE, sizeof(glm::mat4), (void*)(sizeof(glm::vec4)));
-			glEnableVertexAttribArray(5);
-			glVertexAttribPointer(5, 4, GL_FLOAT, GL_FALSE, sizeof(glm::mat4), (void*)(2 * sizeof(glm::vec4)));
-			glEnableVertexAttribArray(6);
-			glVertexAttribPointer(6, 4, GL_FLOAT, GL_FALSE, sizeof(glm::mat4), (void*)(3 * sizeof(glm::vec4)));
+		// Setup instance matrix attribute (location 3-6)
+		glBindBuffer(GL_ARRAY_BUFFER, group.matrix_ring->GetVBO());
+		size_t base_offset = group.matrix_ring->GetOffset();
 
-			glVertexAttribDivisor(3, 1);
-			glVertexAttribDivisor(4, 1);
-			glVertexAttribDivisor(5, 1);
-			glVertexAttribDivisor(6, 1);
+		glEnableVertexAttribArray(3);
+		glVertexAttribPointer(3, 4, GL_FLOAT, GL_FALSE, sizeof(glm::mat4), (void*)base_offset);
+		glEnableVertexAttribArray(4);
+		glVertexAttribPointer(4, 4, GL_FLOAT, GL_FALSE, sizeof(glm::mat4), (void*)(base_offset + sizeof(glm::vec4)));
+		glEnableVertexAttribArray(5);
+		glVertexAttribPointer(5, 4, GL_FLOAT, GL_FALSE, sizeof(glm::mat4), (void*)(base_offset + 2 * sizeof(glm::vec4)));
+		glEnableVertexAttribArray(6);
+		glVertexAttribPointer(6, 4, GL_FLOAT, GL_FALSE, sizeof(glm::mat4), (void*)(base_offset + 3 * sizeof(glm::vec4)));
 
-			mesh.render_instanced(group.shapes.size());
+		glVertexAttribDivisor(3, 1);
+		glVertexAttribDivisor(4, 1);
+		glVertexAttribDivisor(5, 1);
+		glVertexAttribDivisor(6, 1);
 
-			glVertexAttribDivisor(3, 0);
-			glVertexAttribDivisor(4, 0);
-			glVertexAttribDivisor(5, 0);
-			glVertexAttribDivisor(6, 0);
+		const auto& counts = model->GetMeshIndicesCount();
+		const auto& offsets = model->GetMeshIndicesOffset();
+		const auto& base_verts = model->GetMeshVerticesOffset();
 
-			glDisableVertexAttribArray(3);
-			glDisableVertexAttribArray(4);
-			glDisableVertexAttribArray(5);
-			glDisableVertexAttribArray(6);
-			glBindVertexArray(0);
+		// Render each mesh of the model instanced
+		for (size_t i = 0; i < model->getMeshes().size(); ++i) {
+			model->getMeshes()[i].bindTextures(shader);
+			glDrawElementsInstancedBaseVertex(
+				GL_TRIANGLES,
+				counts[i],
+				GL_UNSIGNED_INT,
+				(void*)(uintptr_t)(offsets[i] * sizeof(unsigned int)),
+				group.shapes.size(),
+				base_verts[i]
+			);
 		}
+
+		glVertexAttribDivisor(3, 0);
+		glVertexAttribDivisor(4, 0);
+		glVertexAttribDivisor(5, 0);
+		glVertexAttribDivisor(6, 0);
+
+		glDisableVertexAttribArray(3);
+		glDisableVertexAttribArray(4);
+		glDisableVertexAttribArray(5);
+		glDisableVertexAttribArray(6);
+		glBindVertexArray(0);
 	}
 
 	void InstanceManager::RenderDotGroup(Shader& shader, InstanceGroup& group) {
@@ -146,35 +141,22 @@ namespace Boidsish {
 			colors.emplace_back(shape->GetR(), shape->GetG(), shape->GetB(), shape->GetA());
 		}
 
-		// Create/update matrix VBO
-		if (group.instance_matrix_vbo_ == 0) {
-			glGenBuffers(1, &group.instance_matrix_vbo_);
+		if (!group.matrix_ring) {
+			group.matrix_ring = std::make_unique<PersistentRingBuffer<glm::mat4>>(GL_ARRAY_BUFFER, std::max(static_cast<size_t>(100), model_matrices.size()));
+		}
+		group.matrix_ring->EnsureCapacity(model_matrices.size());
+		glm::mat4* m_ptr = group.matrix_ring->GetCurrentPtr();
+		if (m_ptr && !model_matrices.empty()) {
+			memcpy(m_ptr, model_matrices.data(), model_matrices.size() * sizeof(glm::mat4));
 		}
 
-		glBindBuffer(GL_ARRAY_BUFFER, group.instance_matrix_vbo_);
-		if (model_matrices.size() > group.matrix_capacity_) {
-			glBufferData(
-				GL_ARRAY_BUFFER,
-				model_matrices.size() * sizeof(glm::mat4),
-				&model_matrices[0],
-				GL_DYNAMIC_DRAW
-			);
-			group.matrix_capacity_ = model_matrices.size();
-		} else {
-			glBufferSubData(GL_ARRAY_BUFFER, 0, model_matrices.size() * sizeof(glm::mat4), &model_matrices[0]);
+		if (!group.color_ring) {
+			group.color_ring = std::make_unique<PersistentRingBuffer<glm::vec4>>(GL_ARRAY_BUFFER, std::max(static_cast<size_t>(100), colors.size()));
 		}
-
-		// Create/update color VBO
-		if (group.instance_color_vbo_ == 0) {
-			glGenBuffers(1, &group.instance_color_vbo_);
-		}
-
-		glBindBuffer(GL_ARRAY_BUFFER, group.instance_color_vbo_);
-		if (colors.size() > group.color_capacity_) {
-			glBufferData(GL_ARRAY_BUFFER, colors.size() * sizeof(glm::vec4), &colors[0], GL_DYNAMIC_DRAW);
-			group.color_capacity_ = colors.size();
-		} else {
-			glBufferSubData(GL_ARRAY_BUFFER, 0, colors.size() * sizeof(glm::vec4), &colors[0]);
+		group.color_ring->EnsureCapacity(colors.size());
+		glm::vec4* c_ptr = group.color_ring->GetCurrentPtr();
+		if (c_ptr && !colors.empty()) {
+			memcpy(c_ptr, colors.data(), colors.size() * sizeof(glm::vec4));
 		}
 
 		// Get first Dot's properties for shared settings
@@ -198,15 +180,17 @@ namespace Boidsish {
 		glBindVertexArray(Shape::sphere_vao_);
 
 		// Setup instance matrix attribute (location 3-6)
-		glBindBuffer(GL_ARRAY_BUFFER, group.instance_matrix_vbo_);
+		glBindBuffer(GL_ARRAY_BUFFER, group.matrix_ring->GetVBO());
+		size_t m_offset = group.matrix_ring->GetOffset();
+
 		glEnableVertexAttribArray(3);
-		glVertexAttribPointer(3, 4, GL_FLOAT, GL_FALSE, sizeof(glm::mat4), (void*)0);
+		glVertexAttribPointer(3, 4, GL_FLOAT, GL_FALSE, sizeof(glm::mat4), (void*)m_offset);
 		glEnableVertexAttribArray(4);
-		glVertexAttribPointer(4, 4, GL_FLOAT, GL_FALSE, sizeof(glm::mat4), (void*)(sizeof(glm::vec4)));
+		glVertexAttribPointer(4, 4, GL_FLOAT, GL_FALSE, sizeof(glm::mat4), (void*)(m_offset + sizeof(glm::vec4)));
 		glEnableVertexAttribArray(5);
-		glVertexAttribPointer(5, 4, GL_FLOAT, GL_FALSE, sizeof(glm::mat4), (void*)(2 * sizeof(glm::vec4)));
+		glVertexAttribPointer(5, 4, GL_FLOAT, GL_FALSE, sizeof(glm::mat4), (void*)(m_offset + 2 * sizeof(glm::vec4)));
 		glEnableVertexAttribArray(6);
-		glVertexAttribPointer(6, 4, GL_FLOAT, GL_FALSE, sizeof(glm::mat4), (void*)(3 * sizeof(glm::vec4)));
+		glVertexAttribPointer(6, 4, GL_FLOAT, GL_FALSE, sizeof(glm::mat4), (void*)(m_offset + 3 * sizeof(glm::vec4)));
 
 		glVertexAttribDivisor(3, 1);
 		glVertexAttribDivisor(4, 1);
@@ -214,9 +198,10 @@ namespace Boidsish {
 		glVertexAttribDivisor(6, 1);
 
 		// Setup instance color attribute (location 7)
-		glBindBuffer(GL_ARRAY_BUFFER, group.instance_color_vbo_);
+		glBindBuffer(GL_ARRAY_BUFFER, group.color_ring->GetVBO());
+		size_t c_offset = group.color_ring->GetOffset();
 		glEnableVertexAttribArray(7);
-		glVertexAttribPointer(7, 4, GL_FLOAT, GL_FALSE, sizeof(glm::vec4), (void*)0);
+		glVertexAttribPointer(7, 4, GL_FLOAT, GL_FALSE, sizeof(glm::vec4), (void*)c_offset);
 		glVertexAttribDivisor(7, 1);
 
 		// Draw instanced spheres
