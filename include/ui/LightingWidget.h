@@ -1,5 +1,5 @@
-#ifndef LIGHTS_WIDGET_H
-#define LIGHTS_WIDGET_H
+#ifndef LIGHTING_WIDGET_H
+#define LIGHTING_WIDGET_H
 
 #include "IWidget.h"
 #include "light_manager.h"
@@ -7,9 +7,9 @@
 namespace Boidsish {
 	namespace UI {
 
-		class LightsWidget: public IWidget {
+		class LightingWidget: public IWidget {
 		public:
-			LightsWidget(LightManager& lightManager);
+			LightingWidget(LightManager& lightManager);
 			void Draw() override;
 
 		private:
@@ -20,4 +20,4 @@ namespace Boidsish {
 	} // namespace UI
 } // namespace Boidsish
 
-#endif // LIGHTS_WIDGET_H
+#endif // LIGHTING_WIDGET_H
