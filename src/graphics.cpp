@@ -49,10 +49,11 @@
 #include "terrain_render_manager.h"
 #include "trail.h"
 #include "trail_render_manager.h"
-#include "ui/ConfigWidget.h"
-#include "ui/EffectsWidget.h"
-#include "ui/LightsWidget.h"
-#include "ui/PostProcessingWidget.h"
+#include "ui/CameraWidget.h"
+#include "ui/LightingWidget.h"
+#include "ui/RenderWidget.h"
+#include "ui/SimulationWidget.h"
+#include "ui/SpecialEffectsWidget.h"
 #include "ui/SceneWidget.h"
 #include "ui/hud_widget.h"
 #include "visual_effects.h"
@@ -770,18 +771,21 @@ namespace Boidsish {
 				}
 
 				// --- UI ---
-				auto post_processing_widget = std::make_shared<UI::PostProcessingWidget>(*post_processing_manager_);
-				ui_manager->AddWidget(post_processing_widget);
+				auto special_effects_widget = std::make_shared<UI::SpecialEffectsWidget>(parent);
+				ui_manager->AddWidget(special_effects_widget);
 			}
 
-			auto config_widget = std::make_shared<UI::ConfigWidget>(*parent);
-			ui_manager->AddWidget(config_widget);
+			auto lighting_widget = std::make_shared<UI::LightingWidget>(light_manager);
+			ui_manager->AddWidget(lighting_widget);
 
-			auto effects_widget = std::make_shared<UI::EffectsWidget>(parent);
-			ui_manager->AddWidget(effects_widget);
+			auto camera_widget = std::make_shared<UI::CameraWidget>(*parent);
+			ui_manager->AddWidget(camera_widget);
 
-			auto lights_widget = std::make_shared<UI::LightsWidget>(light_manager);
-			ui_manager->AddWidget(lights_widget);
+			auto simulation_widget = std::make_shared<UI::SimulationWidget>(*parent);
+			ui_manager->AddWidget(simulation_widget);
+
+			auto render_widget = std::make_shared<UI::RenderWidget>(*parent);
+			ui_manager->AddWidget(render_widget);
 
 			auto scene_widget = std::make_shared<UI::SceneWidget>(*scene_manager, *parent);
 			ui_manager->AddWidget(scene_widget);
