@@ -31,6 +31,14 @@ const vec3 COL_DIRT = vec3(0.35, 0.25, 0.18);          // Exposed dirt
 
 // Height thresholds (0 = water level, ~100 = typical peaks)
 const float HEIGHT_BEACH_END = 3.0;
+
+struct TerrainMaterial {
+	vec3  albedo;
+	float roughness;
+	float metallic;
+	float normalScale;
+	float normalStrength;
+};
 const float HEIGHT_LOWLAND_END = 20.0;
 const float HEIGHT_FOREST_END = 50.0;
 const float HEIGHT_ALPINE_START = 60.0;
@@ -78,25 +86,36 @@ float calculateMoisture(float height, float valleyFactor, vec3 pos) {
 }
 
 /**
- * Get the base biome color based on height
+ * Get the base biome material based on height
  */
-vec3 getBiomeColor(float height, float moisture, float noise) {
+TerrainMaterial getBiomeMaterial(float height, float moisture, float noise) {
+	TerrainMaterial mat;
+	mat.metallic = 0.0;
 	// Distort height with noise for natural boundaries
 	float h = height + noise * 8.0;
 
 	// Beach zone (0 - 3)
 	if (h < HEIGHT_BEACH_END) {
 		float wetness = 1.0 - smoothstep(0.0, HEIGHT_BEACH_END, h);
-		return mix(COL_SAND_DRY, COL_SAND_WET, wetness);
+		mat.albedo = mix(COL_SAND_DRY, COL_SAND_WET, wetness);
+		mat.roughness = mix(0.9, 0.4, wetness);
+		mat.normalScale = 40.0;
+		mat.normalStrength = mix(0.1, 0.05, wetness);
+		return mat;
 	}
 
 	// Lowland zone (3 - 25): grass/meadow, lusher in valleys
 	if (h < HEIGHT_LOWLAND_END) {
 		float t = smoothstep(HEIGHT_BEACH_END, HEIGHT_LOWLAND_END, h);
 		vec3  grassColor = mix(COL_GRASS_LUSH, COL_GRASS_DRY, t * (1.0 - moisture));
+		float grassRoughness = mix(0.7, 0.8, t * (1.0 - moisture));
 		// Blend from sand to grass
 		float sandFade = smoothstep(HEIGHT_BEACH_END, HEIGHT_BEACH_END + 5.0, h);
-		return mix(COL_SAND_DRY, grassColor, sandFade);
+		mat.albedo = mix(COL_SAND_DRY, grassColor, sandFade);
+		mat.roughness = mix(0.9, grassRoughness, sandFade);
+		mat.normalScale = mix(40.0, 12.0, sandFade);
+		mat.normalStrength = mix(0.1, 0.08, sandFade);
+		return mat;
 	}
 
 	// Forest zone (25 - 80): trees dominate
@@ -104,22 +123,32 @@ vec3 getBiomeColor(float height, float moisture, float noise) {
 		float t = smoothstep(HEIGHT_LOWLAND_END, HEIGHT_FOREST_END, h);
 		// More moisture = denser forest
 		vec3 forestColor = mix(COL_GRASS_LUSH, COL_FOREST, moisture);
-		// Higher = sparser forest
-		return mix(forestColor, COL_GRASS_DRY, t * 0.3);
+		mat.albedo = mix(forestColor, COL_GRASS_DRY, t * 0.3);
+		mat.roughness = mix(0.8, 0.85, t * 0.3);
+		mat.normalScale = mix(12.0, 10.0, t);
+		mat.normalStrength = mix(0.08, 0.12, t);
+		return mat;
 	}
 
 	// Transition to alpine (80 - 100)
 	if (h < HEIGHT_ALPINE_START) {
 		float t = smoothstep(HEIGHT_FOREST_END, HEIGHT_ALPINE_START, h);
-		return mix(COL_FOREST, COL_ALPINE_MEADOW, t);
+		mat.albedo = mix(COL_FOREST, COL_ALPINE_MEADOW, t);
+		mat.roughness = 0.8;
+		mat.normalScale = mix(10.0, 15.0, t);
+		mat.normalStrength = mix(0.12, 0.1, t);
+		return mat;
 	}
 
 	// Alpine meadow (100 - 130): above treeline
 	if (h < HEIGHT_TREELINE) {
 		float t = smoothstep(HEIGHT_ALPINE_START, HEIGHT_TREELINE, h);
 		// Grass becomes sparser, more rock showing through
-		vec3 alpineColor = mix(COL_ALPINE_MEADOW, COL_ROCK_GREY, t * 0.4);
-		return alpineColor;
+		mat.albedo = mix(COL_ALPINE_MEADOW, COL_ROCK_GREY, t * 0.4);
+		mat.roughness = mix(0.8, 0.6, t * 0.4);
+		mat.normalScale = mix(15.0, 4.0, t * 0.4);
+		mat.normalStrength = mix(0.1, 0.2, t * 0.4);
+		return mat;
 	}
 
 	// High alpine / rocky (130 - 160)
@@ -128,8 +157,11 @@ vec3 getBiomeColor(float height, float moisture, float noise) {
 		// Mostly rock with patches of hardy vegetation
 		vec3 rockColor = mix(COL_ROCK_BROWN, COL_ROCK_GREY, noise * 0.5 + 0.5);
 		vec3 patchColor = mix(rockColor, COL_ALPINE_MEADOW, moisture * 0.3);
-		// Gradual snow patches appearing
-		return mix(patchColor, COL_SNOW_OLD, t * 0.3);
+		mat.albedo = mix(patchColor, COL_SNOW_OLD, t * 0.3);
+		mat.roughness = mix(0.6, 0.5, t * 0.3);
+		mat.normalScale = mix(4.0, 25.0, t * 0.3);
+		mat.normalStrength = mix(0.2, 0.05, t * 0.3);
+		return mat;
 	}
 
 	// Snow zone (160+)
@@ -138,32 +170,50 @@ vec3 getBiomeColor(float height, float moisture, float noise) {
 	vec3 snowColor = mix(COL_SNOW_OLD, COL_SNOW_FRESH, t);
 	// Some rock still pokes through at lower snow zone
 	float rockShow = (1.0 - t) * 0.2 * (1.0 - moisture);
-	return mix(snowColor, COL_ROCK_GREY, rockShow);
+	mat.albedo = mix(snowColor, COL_ROCK_GREY, rockShow);
+	mat.roughness = mix(0.5, 0.4, t);
+	mat.normalScale = mix(25.0, 30.0, t);
+	mat.normalStrength = mix(0.05, 0.03, t);
+	return mat;
 }
 
 /**
- * Calculate cliff/steep surface coloring
- * Steep surfaces are barren rock, with color varying by altitude
+ * Calculate cliff/steep surface material properties
+ * Steep surfaces are barren rock, with properties varying by altitude
  */
-vec3 getCliffColor(float height, float noise) {
+TerrainMaterial getCliffMaterial(float height, float noise) {
+	TerrainMaterial mat;
+	mat.metallic = 0.0;
 	float h = height + noise * 5.0;
 
 	// Low altitude cliffs: brown/dark rock (often wet)
 	if (h < HEIGHT_FOREST_END) {
 		float wetness = 0.3 + noise * 0.2;
-		return mix(COL_ROCK_BROWN, COL_ROCK_DARK, wetness);
+		mat.albedo = mix(COL_ROCK_BROWN, COL_ROCK_DARK, wetness);
+		mat.roughness = mix(0.6, 0.3, wetness);
+		mat.normalScale = 4.0;
+		mat.normalStrength = 0.2;
+		return mat;
 	}
 
 	// Mid altitude: mixed brown/grey
 	if (h < HEIGHT_SNOW_START) {
 		float t = smoothstep(HEIGHT_FOREST_END, HEIGHT_SNOW_START, h);
-		return mix(COL_ROCK_BROWN, COL_ROCK_GREY, t + noise * 0.2);
+		mat.albedo = mix(COL_ROCK_BROWN, COL_ROCK_GREY, t + noise * 0.2);
+		mat.roughness = 0.6;
+		mat.normalScale = 3.5;
+		mat.normalStrength = 0.2;
+		return mat;
 	}
 
 	// High altitude cliffs: grey rock with snow patches
 	float snowPatch = smoothstep(HEIGHT_SNOW_START, HEIGHT_PEAK, h) * 0.4;
 	vec3  highRock = mix(COL_ROCK_GREY, COL_ROCK_DARK, noise * 0.3);
-	return mix(highRock, COL_SNOW_OLD, snowPatch);
+	mat.albedo = mix(highRock, COL_SNOW_OLD, snowPatch);
+	mat.roughness = mix(0.6, 0.5, snowPatch);
+	mat.normalScale = 3.0;
+	mat.normalStrength = 0.15;
+	return mat;
 }
 
 void main() {
@@ -239,14 +289,14 @@ void main() {
 	moisture = mix(moisture, min(moisture + 0.3, 1.0), valleyLushness);
 
 	// ========================================================================
-	// Color Calculation
+	// Material Calculation
 	// ========================================================================
 
-	// Get base biome color
-	vec3 biomeColor = getBiomeColor(distortedHeight, moisture, combinedNoise);
+	// Get base biome material
+	TerrainMaterial biomeMat = getBiomeMaterial(distortedHeight, moisture, combinedNoise);
 
-	// Get cliff color
-	vec3 cliffColor = getCliffColor(baseHeight, combinedNoise);
+	// Get cliff material
+	TerrainMaterial cliffMat = getCliffMaterial(baseHeight, combinedNoise);
 
 	// Cliff mask: steep surfaces become rocky
 	// Threshold varies with altitude (snow sticks to steeper surfaces at high alt)
@@ -266,8 +316,15 @@ void main() {
 	float beachMask = 1.0 - smoothstep(0.0, HEIGHT_BEACH_END + 2.0, baseHeight);
 	cliffMask *= (1.0 - beachMask);
 
-	// Blend biome with cliff
-	vec3 finalAlbedo = mix(biomeColor, cliffColor, cliffMask);
+	// Blend biome with cliff material
+	TerrainMaterial finalMaterial;
+	finalMaterial.albedo = mix(biomeMat.albedo, cliffMat.albedo, cliffMask);
+	finalMaterial.roughness = mix(biomeMat.roughness, cliffMat.roughness, cliffMask);
+	finalMaterial.metallic = mix(biomeMat.metallic, cliffMat.metallic, cliffMask);
+	finalMaterial.normalScale = mix(biomeMat.normalScale, cliffMat.normalScale, cliffMask);
+	finalMaterial.normalStrength = mix(biomeMat.normalStrength, cliffMat.normalStrength, cliffMask);
+
+	vec3 finalAlbedo = finalMaterial.albedo;
 	// ========================================================================
 	// Detail Variation
 	// ========================================================================
@@ -303,14 +360,14 @@ void main() {
 	//    finalAlbedo = mix(finalAlbedo, vec3(1,0.5,0.25), curvature * 0.05);
 
 	// ========================================================================
-	// Normal Perturbation (Roughness)
+	// Normal Perturbation (Grain)
 	// ========================================================================
 	// Enhance realism by adding fine-grained surface roughness.
-	// Cliffs/rocks get more intense perturbation than grassy lowlands.
+	// Scale and strength are now tied to the material/biome.
 	vec3 perturbedNorm = norm;
 	if (perturbFactor >= 0.1) {
-		float roughnessStrength = smoothstep(0.1, 1, perturbFactor) * mix(0.06, 0.18, cliffMask);
-		float roughnessScale = 6.0;
+		float roughnessStrength = smoothstep(0.1, 1.0, perturbFactor) * finalMaterial.normalStrength;
+		float roughnessScale = finalMaterial.normalScale;
 
 		// Use finite difference to approximate the gradient of the noise field
 		float eps = 0.015;
@@ -328,7 +385,7 @@ void main() {
 		perturbedNorm = normalize(norm + (tangent * (n - nx) + bitangent * (n - nz)) * (roughnessStrength / eps));
 	}
 	// vec3 lighting = apply_lighting(FragPos, norm, finalAlbedo, 0.8);
-	vec3 lighting = apply_lighting_pbr(FragPos, perturbedNorm, finalAlbedo, 0.5, 0.1, 1.0).rgb;
+	vec3 lighting = apply_lighting_pbr(FragPos, perturbedNorm, finalAlbedo, finalMaterial.roughness, finalMaterial.metallic, 1.0).rgb;
 
 	// ========================================================================
 	// Distance Fade
