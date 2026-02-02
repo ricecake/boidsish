@@ -7,6 +7,7 @@ in vec2  TexCoords;
 in float perturbFactor;
 
 #include "helpers/lighting.glsl"
+#include "helpers/noise_tex.glsl"
 #include "helpers/terrain_noise.glsl"
 
 uniform bool uIsShadowPass = false;
@@ -72,7 +73,7 @@ float calculateMoisture(float height, float valleyFactor, vec3 pos) {
 	float valleyMoisture = clamp(-valleyFactor * 0.5, 0.0, 0.4);
 
 	// Add some noise variation
-	float noiseMoisture = fbm(pos * 0.03) * 0.2;
+	float noiseMoisture = getFbm(pos * 0.03) * 0.2;
 
 	return clamp(baseMoisture + valleyMoisture + noiseMoisture, 0.0, 1.0);
 }
@@ -173,28 +174,27 @@ void main() {
 	}
 
 	// ========================================================================
-	// Noise Generation
+	// Noise Generation (Using Texture)
 	// ========================================================================
-	float[6] noise = fbm_detail(FragPos * 0.2);
+	// Sample noise from the pre-calculated noise texture
+	// Restore original visual frequencies and logic
+	vec4 noiseSampleDetail = getNoise(FragPos * 0.2);
 
-	// Large scale domain warping for natural variation
-	// vec3  warp = vec3(fbm(FragPos * 0.01 + FragPos.x * 0.02));
-	vec3  warp = vec3(noise[3]);
-	float largeNoise = fbm(FragPos * 0.015 + warp * 0.3);
+	// Large scale domain warping using pre-calculated noise
+	vec3  warp = vec3(noiseSampleDetail.g); // Use FBM for warp basis
+	float largeNoise = getFbm(FragPos * 0.015 + warp * 0.3);
 
-	// Medium scale noise for biome boundaries
-	float medNoise = noise[4]; // fbm_detail(FragPos * 0.05);
+	// Medium scale noise (corresponds to old noise[4])
+	float medNoise = noiseSampleDetail.g;
 
-	// Fine detail noise for texture
-	// float fineNoise = fbm_detail(FragPos * 0.2);
-	float fineNoise = noise[5];
+	// Fine detail noise (corresponds to old noise[5])
+	float fineNoise = noiseSampleDetail.a;
 
 	// Combined noise for various effects
 	float combinedNoise = largeNoise * 0.6 + medNoise * 0.3 + fineNoise * 0.1;
 
-	// float n1 = snoise(vec3(FragPos.xy / 5, FragPos.z * 0.25));
-	float n2 = snoise(vec3(FragPos.xy / 25, time * 0.08));
-	// float n3 = snoise(vec3(FragPos.xy / 50, FragPos.x * 0.04));
+	// Time-animated noise for distance fade
+	float n2 = getSimplex(vec3(FragPos.xy / 25.0, time * 0.08));
 	// ========================================================================
 	// Distance Fade -- precalc
 	// ========================================================================
@@ -314,9 +314,9 @@ void main() {
 
 		// Use finite difference to approximate the gradient of the noise field
 		float eps = 0.015;
-		float n = snoise(FragPos * roughnessScale);
-		float nx = snoise((FragPos + vec3(eps, 0.0, 0.0)) * roughnessScale);
-		float nz = snoise((FragPos + vec3(0.0, 0.0, eps)) * roughnessScale);
+		float n = getSimplex(FragPos * 6.0); // Synced to old roughnessScale
+		float nx = getSimplex((FragPos + vec3(eps, 0.0, 0.0)) * 6.0);
+		float nz = getSimplex((FragPos + vec3(0.0, 0.0, eps)) * 6.0);
 
 		// Compute local tangent space to orient the perturbation
 		vec3 tangent = normalize(cross(norm, vec3(0, 0, 1)));

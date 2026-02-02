@@ -20,6 +20,7 @@ uniform vec3  cloudColorUniform;
 // uniform float time;
 
 #include "../helpers/lighting.glsl"
+#include "../helpers/noise_tex.glsl"
 #include "../helpers/noise.glsl"
 
 float getHeightFog(vec3 start, vec3 end, float density, float heightFalloff) {
@@ -111,7 +112,7 @@ void main() {
 			float h = (p.y - cloudAltitude) / max(cloudThickness, 0.001);
 			float tapering = smoothstep(0.0, 0.2, h) * smoothstep(1.0, 0.5, h);
 
-			float noise = fbm(p.xz * 0.015 + jitter * time * 0.0001 + p.y * 0.02);
+			float noise = getFbm(vec3(p.xz * 0.015, p.y * 0.02 + time * 0.01));
 			// float d = smoothstep(0.2, 0.6, noise * (i + 1)) * cloudDensity;
 			float d = smoothstep(0.2, 0.6, noise * (i + (1 - noise))) * cloudDensity * tapering;
 

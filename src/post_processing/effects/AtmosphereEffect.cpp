@@ -1,5 +1,5 @@
 #include "post_processing/effects/AtmosphereEffect.h"
-
+#include "constants.h"
 #include "shader.h"
 
 namespace Boidsish {
@@ -18,6 +18,9 @@ namespace Boidsish {
 			if (lighting_idx != GL_INVALID_INDEX) {
 				glUniformBlockBinding(shader_->ID, lighting_idx, 0);
 			}
+
+			shader_->use();
+			shader_->setInt("u_noiseTex", Constants::TextureUnit::Noise());
 
 			width_ = width;
 			height_ = height;

@@ -25,6 +25,7 @@
 #include "line.h"
 #include "logger.h"
 #include "mesh_explosion_manager.h"
+#include "noise_manager.h"
 #include "path.h"
 #include "post_processing/PostProcessingManager.h"
 #include "post_processing/effects/AtmosphereEffect.h"
@@ -199,6 +200,7 @@ namespace Boidsish {
 		std::unique_ptr<SoundEffectManager>   sound_effect_manager;
 		std::unique_ptr<ShockwaveManager>     shockwave_manager;
 		std::unique_ptr<SdfVolumeManager>     sdf_volume_manager;
+		std::unique_ptr<NoiseManager>         noise_manager;
 		std::unique_ptr<ShadowManager>        shadow_manager;
 		std::unique_ptr<SceneManager>         scene_manager;
 		std::unique_ptr<DecorManager>         decor_manager;
@@ -467,6 +469,8 @@ namespace Boidsish {
 			shockwave_manager = std::make_unique<ShockwaveManager>();
 			sdf_volume_manager = std::make_unique<SdfVolumeManager>();
 			sdf_volume_manager->Initialize();
+			noise_manager = std::make_unique<NoiseManager>();
+			noise_manager->Initialize();
 			shadow_manager = std::make_unique<ShadowManager>();
 			scene_manager = std::make_unique<SceneManager>("scenes");
 			decor_manager = std::make_unique<DecorManager>();
@@ -837,6 +841,10 @@ namespace Boidsish {
 			if (shockwaves_idx != GL_INVALID_INDEX) {
 				glUniformBlockBinding(shader_to_setup.ID, shockwaves_idx, Constants::UboBinding::Shockwaves());
 			}
+
+			// Set noise texture uniform
+			shader_to_setup.use();
+			shader_to_setup.setInt("u_noiseTex", Constants::TextureUnit::Noise());
 		}
 
 		~VisualizerImpl() {
@@ -1989,6 +1997,8 @@ namespace Boidsish {
 		impl->mesh_explosion_manager->Update(impl->input_state.delta_time, impl->simulation_time);
 		impl->sound_effect_manager->Update(impl->input_state.delta_time);
 		impl->shockwave_manager->Update(impl->input_state.delta_time);
+		// impl->noise_manager->Update(impl->simulation_time);
+		impl->noise_manager->BindTexture(Constants::TextureUnit::Noise());
 		impl->sdf_volume_manager->UpdateUBO();
 		impl->sdf_volume_manager->BindUBO(Constants::UboBinding::SdfVolumes());
 		impl->shockwave_manager->UpdateShaderData();

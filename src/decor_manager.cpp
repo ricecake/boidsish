@@ -36,6 +36,9 @@ namespace Boidsish {
 			return;
 		}
 
+		placement_shader_->use();
+		placement_shader_->setInt("u_noiseTex", Constants::TextureUnit::Noise());
+
 		initialized_ = true;
 	}
 
