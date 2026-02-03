@@ -172,7 +172,8 @@ namespace Boidsish {
 
 						for (int i = 0; i < num_vertices; ++i) {
 							stbtt_vertex v = stb_vertices[i];
-							current_contour.push_back({(v.x * scale), (v.y * scale) + (ascent * scale)});
+							// stb_truetype glyph shape uses Y-up coordinates in font units.
+							current_contour.push_back({(v.x * scale), (v.y * scale)});
 
 							if (i < num_vertices - 1 && stb_vertices[i + 1].type == STBTT_vmove) {
 								polygon.push_back(current_contour);
@@ -193,32 +194,32 @@ namespace Boidsish {
 							const auto& v2 = flat_vertices[indices[i + 1]];
 							const auto& v3 = flat_vertices[indices[i + 2]];
 
-							// Front face
+							// Front face (v1, v3, v2) - TrueType contours are CW, so v1,v3,v2 is CCW
 							glyph_vertices.insert(
 								glyph_vertices.end(),
 								{v1[0], v1[1], depth / 2.0f, 0.0f, 0.0f, 1.0f, v1[0], v1[1]}
 							);
 							glyph_vertices.insert(
 								glyph_vertices.end(),
-								{v2[0], v2[1], depth / 2.0f, 0.0f, 0.0f, 1.0f, v2[0], v2[1]}
+								{v3[0], v3[1], depth / 2.0f, 0.0f, 0.0f, 1.0f, v3[0], v3[1]}
 							);
 							glyph_vertices.insert(
 								glyph_vertices.end(),
-								{v3[0], v3[1], depth / 2.0f, 0.0f, 0.0f, 1.0f, v3[0], v3[1]}
+								{v2[0], v2[1], depth / 2.0f, 0.0f, 0.0f, 1.0f, v2[0], v2[1]}
 							);
 
-							// Back face
+							// Back face (v1, v2, v3) - CW from front, CCW from back
 							glyph_vertices.insert(
 								glyph_vertices.end(),
 								{v1[0], v1[1], -depth / 2.0f, 0.0f, 0.0f, -1.0f, v1[0], v1[1]}
 							);
 							glyph_vertices.insert(
 								glyph_vertices.end(),
-								{v3[0], v3[1], -depth / 2.0f, 0.0f, 0.0f, -1.0f, v3[0], v3[1]}
+								{v2[0], v2[1], -depth / 2.0f, 0.0f, 0.0f, -1.0f, v2[0], v2[1]}
 							);
 							glyph_vertices.insert(
 								glyph_vertices.end(),
-								{v2[0], v2[1], -depth / 2.0f, 0.0f, 0.0f, -1.0f, v2[0], v2[1]}
+								{v3[0], v3[1], -depth / 2.0f, 0.0f, 0.0f, -1.0f, v3[0], v3[1]}
 							);
 						}
 
@@ -230,32 +231,37 @@ namespace Boidsish {
 								glm::vec3 p1_back = {contour[i][0], contour[i][1], -depth / 2.0f};
 								glm::vec3 p2_back = {contour[next_i][0], contour[next_i][1], -depth / 2.0f};
 
+								// Outer contour is CW: p1 -> p2
+								// For side faces, we want normal pointing out.
+								// cross(p2_front - p1_front, p1_back - p1_front)
 								glm::vec3 normal = glm::normalize(glm::cross(p2_front - p1_front, p1_back - p1_front));
 
+								// Triangle 1: p1_front, p1_back, p2_back (CCW)
 								glyph_vertices.insert(
 									glyph_vertices.end(),
 									{p1_front.x, p1_front.y, p1_front.z, normal.x, normal.y, normal.z, p1_front.x, p1_front.y}
 								);
 								glyph_vertices.insert(
 									glyph_vertices.end(),
-									{p2_front.x, p2_front.y, p2_front.z, normal.x, normal.y, normal.z, p2_front.x, p2_front.y}
-								);
-								glyph_vertices.insert(
-									glyph_vertices.end(),
 									{p1_back.x, p1_back.y, p1_back.z, normal.x, normal.y, normal.z, p1_back.x, p1_back.y}
-								);
-
-								glyph_vertices.insert(
-									glyph_vertices.end(),
-									{p1_back.x, p1_back.y, p1_back.z, normal.x, normal.y, normal.z, p1_back.x, p1_back.y}
-								);
-								glyph_vertices.insert(
-									glyph_vertices.end(),
-									{p2_front.x, p2_front.y, p2_front.z, normal.x, normal.y, normal.z, p2_front.x, p2_front.y}
 								);
 								glyph_vertices.insert(
 									glyph_vertices.end(),
 									{p2_back.x, p2_back.y, p2_back.z, normal.x, normal.y, normal.z, p2_back.x, p2_back.y}
+								);
+
+								// Triangle 2: p1_front, p2_back, p2_front (CCW)
+								glyph_vertices.insert(
+									glyph_vertices.end(),
+									{p1_front.x, p1_front.y, p1_front.z, normal.x, normal.y, normal.z, p1_front.x, p1_front.y}
+								);
+								glyph_vertices.insert(
+									glyph_vertices.end(),
+									{p2_back.x, p2_back.y, p2_back.z, normal.x, normal.y, normal.z, p2_back.x, p2_back.y}
+								);
+								glyph_vertices.insert(
+									glyph_vertices.end(),
+									{p2_front.x, p2_front.y, p2_front.z, normal.x, normal.y, normal.z, p2_front.x, p2_front.y}
 								);
 							}
 						}

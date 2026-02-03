@@ -36,9 +36,37 @@ uniform bool  isLine = false;
 uniform bool  enableFrustumCulling = false;
 uniform float frustumCullRadius = 5.0; // Approximate object radius for sphere test
 
+// Arcade Text Effects
+uniform bool  isArcadeText = false;
+uniform int   arcadeWaveMode = 0; // 0: None, 1: Vertical, 2: Flag, 3: Twist
+uniform float arcadeWaveAmplitude = 0.5;
+uniform float arcadeWaveFrequency = 10.0;
+uniform float arcadeWaveSpeed = 5.0;
+
 void main() {
 	vec3 displacedPos = aPos;
 	vec3 displacedNormal = aNormal;
+
+	if (isArcadeText) {
+		float x = aTexCoords.x;
+		float phase = time * arcadeWaveSpeed;
+
+		if (arcadeWaveMode == 1) { // Vertical Rippling Wave
+			displacedPos.y += sin(x * arcadeWaveFrequency + phase) * arcadeWaveAmplitude;
+		} else if (arcadeWaveMode == 2) { // Flag Style Wave
+			displacedPos.y += sin(x * arcadeWaveFrequency + phase) * arcadeWaveAmplitude;
+			displacedPos.z += cos(x * arcadeWaveFrequency * 0.7 + phase * 0.8) * arcadeWaveAmplitude * 0.5;
+		} else if (arcadeWaveMode == 3) { // Lengthwise Twist
+			float twist_angle = (x - 0.5) * arcadeWaveAmplitude * sin(phase);
+			float s = sin(twist_angle);
+			float c = cos(twist_angle);
+			// Rotate around local X axis
+			float y = displacedPos.y;
+			float z = displacedPos.z;
+			displacedPos.y = y * c - z * s;
+			displacedPos.z = y * s + z * c;
+		}
+	}
 
 	if (glitched_enabled == 1) {
 		displacedPos = applyGlitch(displacedPos, time);
