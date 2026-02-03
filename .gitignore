@@ -210,3 +210,4 @@ core.*
 *.ini
 
 scenes/*.dict
+deps/
