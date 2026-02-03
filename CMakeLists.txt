@@ -41,6 +41,10 @@ set(BUILD_TESTING OFF CACHE BOOL "Disable submodule tests" FORCE)
 add_subdirectory(external/task-thread-pool)
 add_subdirectory(external/poolSTL)
 add_subdirectory(external/libmorton)
+
+# Bonxai - header-only voxel grid library (only need core, not ROS/map modules)
+set(BONXAI_INCLUDE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/external/Bonxai/bonxai_core/include")
+
 set_directory_properties(PROPERTIES COMPILE_OPTIONS "${OLD_COMPILE_OPTIONS}")
 
 # 3. Define the Library
@@ -56,6 +60,7 @@ target_include_directories(boidsish
         $<INSTALL_INTERFACE:include>
         external/include
         external/libmorton/include
+        ${BONXAI_INCLUDE_DIR}
         ${IMGUI_DIR}/
         ${IMGUI_DIR}/backends
         ${STB_DIR}/

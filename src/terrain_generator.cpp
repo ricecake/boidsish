@@ -15,6 +15,7 @@
 #include "graphics.h"
 #include "logger.h"
 #include "stb_image_write.h"
+#include "terrain_deformations.h"
 #include "zstr.hpp"
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
@@ -480,6 +481,14 @@ namespace Boidsish {
 		std::vector<unsigned int>           indices;
 		bool                                has_terrain = false;
 
+		// Check if this chunk has any deformations
+		float chunk_min_x = static_cast<float>(chunkX * chunk_size_);
+		float chunk_min_z = static_cast<float>(chunkZ * chunk_size_);
+		float chunk_max_x = chunk_min_x + chunk_size_;
+		float chunk_max_z = chunk_min_z + chunk_size_;
+		bool  chunk_has_deformations = deformation_manager_
+										  .ChunkHasDeformations(chunk_min_x, chunk_min_z, chunk_max_x, chunk_max_z);
+
 		// Generate heightmap
 		for (int i = 0; i < num_vertices_x; ++i) {
 			for (int j = 0; j < num_vertices_z; ++j) {
@@ -488,6 +497,57 @@ namespace Boidsish {
 				auto  noise = pointGenerate(worldX, worldZ);
 				heightmap[i][j] = noise;
 				has_terrain = has_terrain || noise[0] > 0;
+			}
+		}
+
+		// Apply deformations if any affect this chunk
+		if (chunk_has_deformations) {
+			has_terrain = true; // Deformations can create terrain where there was none
+			for (int i = 0; i < num_vertices_x; ++i) {
+				for (int j = 0; j < num_vertices_z; ++j) {
+					float worldX = (chunkX * chunk_size_ + i);
+					float worldZ = (chunkZ * chunk_size_ + j);
+
+					if (deformation_manager_.HasDeformationAt(worldX, worldZ)) {
+						float     base_height = heightmap[i][j][0];
+						glm::vec3 base_normal = diffToNorm(heightmap[i][j][1], heightmap[i][j][2]);
+
+						auto result = deformation_manager_.QueryDeformations(worldX, worldZ, base_height, base_normal);
+
+						if (result.has_deformation) {
+							// Apply height delta
+							heightmap[i][j][0] += result.total_height_delta;
+
+							// Recompute gradient approximation for the deformed surface
+							// We store the transformed normal info for later use
+							// The gradient values are approximations - we'll use finite differences
+							// after all heights are computed
+						}
+					}
+				}
+			}
+
+			// Recompute normals using finite differences on deformed heightmap
+			for (int i = 0; i < num_vertices_x; ++i) {
+				for (int j = 0; j < num_vertices_z; ++j) {
+					float worldX = (chunkX * chunk_size_ + i);
+					float worldZ = (chunkZ * chunk_size_ + j);
+
+					if (deformation_manager_.HasDeformationAt(worldX, worldZ)) {
+						// Finite differences for gradient
+						float h_center = heightmap[i][j][0];
+						float h_left = (i > 0) ? heightmap[i - 1][j][0] : h_center;
+						float h_right = (i < num_vertices_x - 1) ? heightmap[i + 1][j][0] : h_center;
+						float h_down = (j > 0) ? heightmap[i][j - 1][0] : h_center;
+						float h_up = (j < num_vertices_z - 1) ? heightmap[i][j + 1][0] : h_center;
+
+						float dx = (h_right - h_left) * 0.5f;
+						float dz = (h_up - h_down) * 0.5f;
+
+						heightmap[i][j][1] = dx;
+						heightmap[i][j][2] = dz;
+					}
+				}
 			}
 		}
 
@@ -1130,6 +1190,106 @@ namespace Boidsish {
 		}
 
 		return false; // No hit
+	}
+
+	// ==================== Terrain Deformation Convenience Methods ====================
+
+	uint32_t TerrainGenerator::AddCrater(
+		const glm::vec3& center,
+		float            radius,
+		float            depth,
+		float            irregularity,
+		float            rim_height
+	) {
+		static std::atomic<uint32_t> crater_id_counter{1};
+		uint32_t                     id = crater_id_counter++;
+
+		auto crater = std::make_shared<
+			CraterDeformation>(id, center, radius, depth, irregularity, rim_height, static_cast<uint32_t>(eng_()));
+
+		deformation_manager_.AddDeformation(crater);
+		InvalidateDeformedChunks(id);
+
+		return id;
+	}
+
+	uint32_t TerrainGenerator::AddFlattenSquare(
+		const glm::vec3& center,
+		float            half_width,
+		float            half_depth,
+		float            blend_distance,
+		float            rotation_y
+	) {
+		static std::atomic<uint32_t> flatten_id_counter{1000000}; // Offset to avoid collision with craters
+		uint32_t                     id = flatten_id_counter++;
+
+		auto flatten =
+			std::make_shared<FlattenSquareDeformation>(id, center, half_width, half_depth, blend_distance, rotation_y);
+
+		deformation_manager_.AddDeformation(flatten);
+		InvalidateDeformedChunks(id);
+
+		return id;
+	}
+
+	void TerrainGenerator::InvalidateDeformedChunks(std::optional<uint32_t> deformation_id) {
+		std::lock_guard<std::recursive_mutex> lock(chunk_cache_mutex_);
+
+		std::vector<std::pair<int, int>> chunks_to_remove;
+
+		if (deformation_id.has_value()) {
+			// Invalidate only chunks affected by the specific deformation
+			auto deformation = deformation_manager_.GetDeformation(deformation_id.value());
+			if (!deformation) {
+				return;
+			}
+
+			glm::vec3 def_min, def_max;
+			deformation->GetBounds(def_min, def_max);
+
+			// Convert to chunk coordinates
+			int min_chunk_x = static_cast<int>(std::floor(def_min.x / chunk_size_));
+			int max_chunk_x = static_cast<int>(std::floor(def_max.x / chunk_size_));
+			int min_chunk_z = static_cast<int>(std::floor(def_min.z / chunk_size_));
+			int max_chunk_z = static_cast<int>(std::floor(def_max.z / chunk_size_));
+
+			for (auto& [chunk_key, terrain] : chunk_cache_) {
+				if (chunk_key.first >= min_chunk_x && chunk_key.first <= max_chunk_x &&
+				    chunk_key.second >= min_chunk_z && chunk_key.second <= max_chunk_z) {
+					chunks_to_remove.push_back(chunk_key);
+				}
+			}
+		} else {
+			// Invalidate all chunks that have any deformation
+			for (auto& [chunk_key, terrain] : chunk_cache_) {
+				float chunk_min_x = static_cast<float>(chunk_key.first * chunk_size_);
+				float chunk_min_z = static_cast<float>(chunk_key.second * chunk_size_);
+				float chunk_max_x = chunk_min_x + chunk_size_;
+				float chunk_max_z = chunk_min_z + chunk_size_;
+
+				if (deformation_manager_.ChunkHasDeformations(chunk_min_x, chunk_min_z, chunk_max_x, chunk_max_z)) {
+					chunks_to_remove.push_back(chunk_key);
+				}
+			}
+		}
+
+		// Remove invalidated chunks (they will be regenerated on next update)
+		for (const auto& chunk_key : chunks_to_remove) {
+			// Unregister from render manager if present
+			if (render_manager_) {
+				render_manager_->UnregisterChunk(chunk_key);
+			}
+			chunk_cache_.erase(chunk_key);
+		}
+
+		// Also cancel any pending chunks that would be affected
+		for (const auto& chunk_key : chunks_to_remove) {
+			auto pending_it = pending_chunks_.find(chunk_key);
+			if (pending_it != pending_chunks_.end()) {
+				pending_it->second.cancel();
+				pending_chunks_.erase(pending_it);
+			}
+		}
 	}
 
 } // namespace Boidsish

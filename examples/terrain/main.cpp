@@ -4,6 +4,7 @@
 #include "graphics.h"
 #include "logger.h"
 #include "model.h"
+#include "terrain_generator.h"
 
 int main() {
 	try {
@@ -33,6 +34,8 @@ int main() {
 		auto model = std::make_shared<Boidsish::Model>("assets/utah_teapot.obj");
 		model->SetColossal(true);
 		shapes.push_back(model);
+
+		visualizer.GetTerrainGenerator2()->AddCrater({132, 0, -63}, 50, 22, 0.5, 3.0f);
 
 		visualizer.Run();
 	} catch (const std::exception& e) {

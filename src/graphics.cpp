@@ -2784,6 +2784,10 @@ namespace Boidsish {
 		return impl->terrain_generator.get();
 	}
 
+	TerrainGenerator* Visualizer::GetTerrainGenerator2() const {
+		return impl->terrain_generator.get();
+	}
+
 	void Visualizer::AddHudIcon(const HudIcon& icon) {
 		impl->hud_manager->AddIcon(icon);
 	}

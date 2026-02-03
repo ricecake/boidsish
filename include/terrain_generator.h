@@ -9,6 +9,7 @@
 #include "Simplex.h"
 #include "constants.h"
 #include "terrain.h"
+#include "terrain_deformation_manager.h"
 #include "terrain_render_manager.h"
 #include "thread_pool.h"
 
@@ -212,6 +213,72 @@ namespace Boidsish {
 		 */
 		bool IsPositionCached(float x, float z) const;
 
+		// ==================== Terrain Deformation API ====================
+
+		/**
+		 * @brief Get the deformation manager for adding/querying terrain deformations.
+		 *
+		 * The deformation manager allows you to add craters, flatten areas, and
+		 * other terrain modifications that will be applied during chunk generation.
+		 *
+		 * @return Reference to the deformation manager
+		 */
+		TerrainDeformationManager& GetDeformationManager() { return deformation_manager_; }
+
+		const TerrainDeformationManager& GetDeformationManager() const { return deformation_manager_; }
+
+		/**
+		 * @brief Add a crater deformation at the specified position.
+		 *
+		 * Convenience method that creates and adds a CraterDeformation.
+		 *
+		 * @param center Center position of the crater
+		 * @param radius Radius of the crater
+		 * @param depth Depth of the crater (positive value)
+		 * @param irregularity Random variation amount (0-1)
+		 * @param rim_height Height of the rim around the crater
+		 * @return ID of the created deformation
+		 */
+		uint32_t AddCrater(
+			const glm::vec3& center,
+			float            radius,
+			float            depth,
+			float            irregularity = 0.2f,
+			float            rim_height = 0.0f
+		);
+
+		/**
+		 * @brief Add a flatten square deformation at the specified position.
+		 *
+		 * Convenience method that creates and adds a FlattenSquareDeformation.
+		 *
+		 * @param center Center position (Y is the target height)
+		 * @param half_width Half-width in X direction
+		 * @param half_depth Half-depth in Z direction
+		 * @param blend_distance Edge blending distance
+		 * @param rotation_y Rotation around Y axis in radians
+		 * @return ID of the created deformation
+		 */
+		uint32_t AddFlattenSquare(
+			const glm::vec3& center,
+			float            half_width,
+			float            half_depth,
+			float            blend_distance = 1.0f,
+			float            rotation_y = 0.0f
+		);
+
+		/**
+		 * @brief Invalidate chunks affected by deformations.
+		 *
+		 * Call this after adding/removing deformations to regenerate affected chunks.
+		 * If deformation_id is provided, only invalidates chunks affected by that
+		 * specific deformation. Otherwise invalidates all chunks that have any
+		 * deformation.
+		 *
+		 * @param deformation_id Optional specific deformation to invalidate for
+		 */
+		void InvalidateDeformedChunks(std::optional<uint32_t> deformation_id = std::nullopt);
+
 	private:
 		glm::vec2 findClosestPointOnPath(glm::vec2 sample_pos) const;
 		glm::vec3 getPathInfluence(float x, float z) const;
@@ -293,6 +360,9 @@ namespace Boidsish {
 
 		// Instanced terrain render manager (optional, when set uses GPU heightmap lookup)
 		std::shared_ptr<TerrainRenderManager> render_manager_;
+
+		// Terrain deformation system
+		TerrainDeformationManager deformation_manager_;
 	};
 
 } // namespace Boidsish
