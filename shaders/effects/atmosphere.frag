@@ -20,9 +20,20 @@ uniform vec3  cloudColorUniform;
 // uniform float time;
 
 #include "../helpers/lighting.glsl"
-#include "../helpers/noise.glsl"
+#include "lygia/generative/worley.glsl"
 
 #define PI 3.14159265359
+
+float worleyFbm(vec3 p) {
+	float value = 0.0;
+	float amplitude = 0.5;
+	for (int i = 0; i < 3; i++) {
+		value += amplitude * worley(p);
+		p *= 2.0;
+		amplitude *= 0.5;
+	}
+	return value;
+}
 
 uniform float hazeG;
 uniform float cloudG;
@@ -74,7 +85,7 @@ void main() {
 	// Capping the distance prevents the noise from "swimming" too fast when looking at the sky
 	float textureDist = min(dist, 100.0);
 	vec3  texturePos = cameraPos + rayDir * textureDist;
-	float fogTexture = fbm(texturePos * 0.01 + time * 0.005);
+	float fogTexture = worleyFbm(texturePos * 0.01 + time * 0.005);
 	fogFactor *= (0.8 + 0.4 * fogTexture);
 
 	vec3 currentHazeColor = hazeColor;
@@ -120,10 +131,9 @@ void main() {
 			float h = (p.y - cloudAltitude) / max(cloudThickness, 0.001);
 			float tapering = smoothstep(0.0, 0.2, h) * smoothstep(1.0, 0.5, h);
 
-			// Improved 3D noise for organic shape (multi-octave for finer detail)
-			float baseNoise = fbm(p * 0.015 + time * 0.01);
-			float detailNoise = fbm(p * 0.04 - time * 0.02);
-			float noise = baseNoise * 0.8 + detailNoise * 0.2;
+			// Improved 3D noise for organic shape (Worley FBM for rounded blobs)
+			float noise = worleyFbm(p * 0.02 + time * 0.01);
+			noise = pow(noise, 1.5); // Substantially more "blobby"
 
 			float density = smoothstep(0.3, 0.7, noise) * cloudDensity * tapering;
 
@@ -138,8 +148,8 @@ void main() {
 						vec3  sp = p + L * float(j) * shadowStepSize;
 						float sh = (sp.y - cloudAltitude) / max(cloudThickness, 0.001);
 						float stapering = smoothstep(0.0, 0.2, sh) * smoothstep(1.0, 0.5, sh);
-						float snoise = fbm(sp * 0.015 + time * 0.01);
-						shadowAcc += smoothstep(0.3, 0.7, snoise) * cloudDensity * stapering;
+						float snoise = worleyFbm(sp * 0.02 + time * 0.01);
+						shadowAcc += smoothstep(0.4, 0.8, snoise) * cloudDensity * stapering;
 					}
 				}
 				float shadowTransmittance = exp(-shadowAcc * 1.0);
