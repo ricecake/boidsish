@@ -322,6 +322,36 @@ namespace Boidsish {
 			FireEffectStyle        fire_style = FireEffectStyle::Explosion
 		);
 
+		/**
+		 * @brief Add a curved text effect in world space.
+		 *
+		 * The text will curve around the axis defined by 'normal' passing through 'position'.
+		 * It will fade in from left to right, stay for a while, and then fade out from left to right.
+		 *
+		 * @param text The text to display
+		 * @param position Center of the arc
+		 * @param radius Distance from the center to the text baseline
+		 * @param angle_degrees The total arc angle in degrees
+		 * @param normal The normal of the plane the text lies on (the axis of curvature)
+		 * @param duration Total time the effect stays visible
+		 * @param font_path Path to the .ttf font file
+		 * @param font_size Font size
+		 * @param depth Thickness of the 3D text
+		 */
+		void AddCurvedTextEffect(
+			const std::string& text,
+			const glm::vec3&   position,
+			float              radius,
+			float              angle_degrees,
+			const glm::vec3&   wrap_normal,
+			const glm::vec3&   text_normal,
+			float              duration = 5.0f,
+			const std::string& font_path = "assets/Roboto-Medium.ttf",
+			float              font_size = 1.0f,
+			float              depth = 0.1f,
+			const glm::vec3&   color = glm::vec3(1.0f)
+		);
+
 		std::tuple<float, glm::vec3>                 GetTerrainPointProperties(float x, float y) const;
 		std::tuple<float, glm::vec3>                 GetTerrainPointPropertiesThreadSafe(float x, float y) const;
 		float                                        GetTerrainMaxHeight() const;

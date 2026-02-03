@@ -14,6 +14,7 @@
 #include "UIManager.h"
 #include "audio_manager.h"
 #include "clone_manager.h"
+#include "curved_text.h"
 #include "decor_manager.h"
 #include "dot.h"
 #include "entity.h"
@@ -191,6 +192,7 @@ namespace Boidsish {
 		std::vector<ShapeFunction>            shape_functions;
 		std::vector<std::shared_ptr<Shape>>   shapes;            // Legacy shapes from callbacks
 		std::map<int, std::shared_ptr<Shape>> persistent_shapes; // New persistent shapes
+		std::vector<std::shared_ptr<Shape>>   transient_effects; // Short-lived effects like CurvedText
 		ConcurrentQueue<ShapeCommand>         shape_command_queue;
 		std::unique_ptr<CloneManager>         clone_manager;
 		std::unique_ptr<InstanceManager>      instance_manager;
@@ -1864,6 +1866,19 @@ namespace Boidsish {
 
 	void Visualizer::Render() {
 		impl->shapes.clear();
+
+		// Update and collect transient effects
+		auto it = impl->transient_effects.begin();
+		while (it != impl->transient_effects.end()) {
+			(*it)->Update(impl->input_state.delta_time);
+			if ((*it)->IsExpired()) {
+				it = impl->transient_effects.erase(it);
+			} else {
+				impl->shapes.push_back(*it);
+				++it;
+			}
+		}
+
 		// --- 1. RENDER SCENE TO FBO ---
 		// Note: The reflection and blur passes are pre-passes that generate textures for the main scene.
 		// They have their own FBOs. The main scene pass below is what we want to capture.
@@ -2925,6 +2940,35 @@ namespace Boidsish {
 
 	void Visualizer::ExplodeShape(std::shared_ptr<Shape> shape, float intensity, const glm::vec3& velocity) {
 		impl->mesh_explosion_manager->ExplodeShape(shape, intensity, velocity);
+	}
+
+	void Visualizer::AddCurvedTextEffect(
+		const std::string& text,
+		const glm::vec3&   position,
+		float              radius,
+		float              angle_degrees,
+		const glm::vec3&   wrap_normal,
+		const glm::vec3&   text_normal,
+		float              duration,
+		const std::string& font_path,
+		float              font_size,
+		float              depth,
+		const glm::vec3&   color
+	) {
+		auto effect = std::make_shared<CurvedText>(
+			text,
+			font_path,
+			font_size,
+			depth,
+			position,
+			radius,
+			angle_degrees,
+			wrap_normal,
+			text_normal,
+			duration
+		);
+		effect->SetColor(color.r, color.g, color.b);
+		impl->transient_effects.push_back(effect);
 	}
 
 	void Visualizer::TriggerComplexExplosion(

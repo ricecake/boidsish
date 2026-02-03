@@ -1,7 +1,6 @@
-#include "text.h"
+#include "curved_text.h"
 
 #include <array>
-#include <fstream>
 #include <iostream>
 #include <vector>
 
@@ -14,74 +13,55 @@
 
 namespace Boidsish {
 
-	Text::Text(
+	CurvedText::CurvedText(
 		const std::string& text,
 		const std::string& font_path,
 		float              font_size,
 		float              depth,
-		Justification      justification,
-		int                id,
-		float              x,
-		float              y,
-		float              z,
-		float              r,
-		float              g,
-		float              b,
-		float              a,
-		bool               generate_mesh
+		const glm::vec3&   position,
+		float              radius,
+		float              angle_degrees,
+		const glm::vec3&   wrap_normal,
+		const glm::vec3&   text_normal,
+		float              duration
 	):
-		Shape(id, x, y, z, r, g, b, a),
-		text_(text),
-		font_path_(font_path),
-		font_size_(font_size),
-		depth_(depth),
-		justification_(justification) {
-		font_info_ = std::make_unique<stbtt_fontinfo>();
-		LoadFont(font_path_);
-		if (generate_mesh) {
-			GenerateMesh(text_, font_size_, depth_);
-		}
-	}
-
-	Text::~Text() {
-		if (vao_ != 0) {
-			glDeleteVertexArrays(1, &vao_);
-			glDeleteBuffers(1, &vbo_);
-		}
-	}
-
-	void Text::LoadFont(const std::string& font_path) {
-		std::ifstream file(font_path, std::ios::binary | std::ios::ate);
-		if (!file.is_open()) {
-			std::cerr << "FATAL: Failed to open font file: " << font_path << std::endl;
-			exit(1);
-		}
-
-		std::streamsize size = file.tellg();
-		file.seekg(0, std::ios::beg);
-
-		font_buffer_.resize(size);
-		if (!file.read(reinterpret_cast<char*>(font_buffer_.data()), size)) {
-			std::cerr << "Failed to read font file: " << font_path << std::endl;
-			return;
-		}
-
-		if (!stbtt_InitFont(font_info_.get(), font_buffer_.data(), 0)) {
-			std::cerr << "Failed to initialize font: " << font_path << std::endl;
-		}
-	}
-
-	void Text::SetText(const std::string& text) {
-		text_ = text;
+		Text(text, font_path, font_size, depth, CENTER, 0, position.x, position.y, position.z, 1, 1, 1, 1, false),
+		center_(position),
+		radius_(radius),
+		angle_rad_(glm::radians(angle_degrees)),
+		wrap_normal_(glm::normalize(wrap_normal)),
+		text_normal_(glm::normalize(text_normal)),
+		total_duration_(duration) {
+		is_text_effect_ = true;
+		text_fade_progress_ = 0.0f;
+		text_fade_mode_ = 0; // Fade In
 		GenerateMesh(text_, font_size_, depth_);
 	}
 
-	void Text::SetJustification(Justification justification) {
-		justification_ = justification;
-		GenerateMesh(text_, font_size_, depth_);
+	void CurvedText::Update(float delta_time) {
+		age_ += delta_time;
+
+		if (age_ < fade_in_time_) {
+			text_fade_progress_ = age_ / fade_in_time_;
+			text_fade_mode_ = 0;
+		} else if (age_ < total_duration_ - fade_out_time_) {
+			text_fade_progress_ = 1.0f;
+			text_fade_mode_ = 0;
+		} else if (age_ < total_duration_) {
+			text_fade_progress_ = (age_ - (total_duration_ - fade_out_time_)) / fade_out_time_;
+			text_fade_mode_ = 1;
+		} else {
+			text_fade_progress_ = 1.0f;
+			text_fade_mode_ = 1;
+			SetHidden(true);
+		}
 	}
 
-	void Text::GenerateMesh(const std::string& text, float font_size, float depth) {
+	void CurvedText::render() const {
+		Text::render();
+	}
+
+	void CurvedText::GenerateMesh(const std::string& text, float font_size, float depth) {
 		if (font_buffer_.empty()) {
 			return;
 		}
@@ -128,6 +108,31 @@ namespace Boidsish {
 			if (line_width > max_width)
 				max_width = line_width;
 		}
+
+		// Calculate basis vectors for the transformation
+		// Wrap Normal (W) is the axis of curvature.
+		// Text Normal (N) is the facing direction at the midpoint.
+		glm::vec3 W = wrap_normal_;
+		glm::vec3 N = text_normal_;
+
+		glm::vec3 Tangent_mid;
+		if (glm::abs(glm::dot(W, N)) < 0.999f) {
+			// Facing is not parallel to Axis -> Can-style wrapping
+			Tangent_mid = glm::normalize(glm::cross(N, W));
+		} else {
+			// Facing is parallel to Axis -> Rainbow-style wrapping
+			// We need a reference vector to define the plane of the rainbow.
+			if (glm::abs(W.y) < 0.999f) {
+				Tangent_mid = glm::normalize(glm::cross(glm::vec3(0, 1, 0), W));
+			} else {
+				Tangent_mid = glm::normalize(glm::cross(glm::vec3(1, 0, 0), W));
+			}
+		}
+
+		glm::vec3 Radial_mid = glm::normalize(glm::cross(W, Tangent_mid));
+		glm::vec3 X0 = Tangent_mid;
+		glm::vec3 Z0 = N;
+		glm::vec3 Y0 = glm::normalize(glm::cross(Z0, X0));
 
 		for (const auto& line : lines) {
 			float line_width = 0.0f;
@@ -269,16 +274,35 @@ namespace Boidsish {
 				for (size_t i = 0; i < cached_vertices.size(); i += 8) {
 					float vx = cached_vertices[i] + x_offset;
 					float vy = cached_vertices[i + 1] - y_offset;
-					float normalized_x = (max_width > 0.0f) ? ((cached_vertices[i] + line_accumulated_x) / max_width) : 0.0f;
+					float vz = cached_vertices[i + 2];
+
+					float normalized_x =
+						(max_width > 0.0f) ? ((cached_vertices[i] + line_accumulated_x) / max_width) : 0.0f;
+
+					// Curving transformation
+					float     theta = (normalized_x - 0.5f) * angle_rad_;
+				glm::mat4 rot_mat = glm::rotate(glm::mat4(1.0f), theta, W);
+				glm::mat3 rot = glm::mat3(rot_mat);
+
+				glm::vec3 radial = rot * Radial_mid;
+				glm::vec3 tangent = rot * Tangent_mid; // not used directly but good for mental model
+				glm::vec3 text_up = rot * Y0;
+				glm::vec3 text_face = rot * Z0;
+
+				glm::vec3 final_pos = radius_ * radial + vy * text_up + vz * text_face;
+
+				// Transform normal
+					glm::vec3 v_normal = {cached_vertices[i + 3], cached_vertices[i + 4], cached_vertices[i + 5]};
+					glm::vec3 final_normal = rot * v_normal;
 
 					vertices.insert(
 						vertices.end(),
-						{vx,
-					     vy,
-					     cached_vertices[i + 2],
-					     cached_vertices[i + 3],
-					     cached_vertices[i + 4],
-					     cached_vertices[i + 5],
+						{final_pos.x,
+					     final_pos.y,
+					     final_pos.z,
+					     final_normal.x,
+					     final_normal.y,
+					     final_normal.z,
 					     normalized_x,
 					     cached_vertices[i + 7]}
 					);
@@ -314,72 +338,6 @@ namespace Boidsish {
 		glEnableVertexAttribArray(2);
 
 		glBindVertexArray(0);
-	}
-
-	void Text::render() const {
-		if (vao_ == 0 || shader == nullptr)
-			return;
-
-		shader->use();
-		shader->setMat4("model", GetModelMatrix());
-		shader->setVec3("objectColor", GetR(), GetG(), GetB());
-		shader->setFloat("objectAlpha", GetA());
-
-		shader->setBool("isTextEffect", is_text_effect_);
-		if (is_text_effect_) {
-			shader->setFloat("textFadeProgress", text_fade_progress_);
-			shader->setFloat("textFadeSoftness", text_fade_softness_);
-			shader->setInt("textFadeMode", text_fade_mode_);
-		}
-
-		// Set PBR material properties
-		shader->setBool("usePBR", UsePBR());
-		if (UsePBR()) {
-			shader->setFloat("roughness", GetRoughness());
-			shader->setFloat("metallic", GetMetallic());
-			shader->setFloat("ao", GetAO());
-		}
-
-		glBindVertexArray(vao_);
-		glDrawArrays(GL_TRIANGLES, 0, vertex_count_);
-		glBindVertexArray(0);
-	}
-
-	void Text::render(Shader& shader, const glm::mat4& model_matrix) const {
-		if (vao_ == 0)
-			return;
-
-		shader.use();
-		shader.setMat4("model", model_matrix);
-		shader.setVec3("objectColor", GetR(), GetG(), GetB());
-		shader.setFloat("objectAlpha", GetA());
-
-		shader.setBool("isTextEffect", is_text_effect_);
-		if (is_text_effect_) {
-			shader.setFloat("textFadeProgress", text_fade_progress_);
-			shader.setFloat("textFadeSoftness", text_fade_softness_);
-			shader.setInt("textFadeMode", text_fade_mode_);
-		}
-
-		// Set PBR material properties
-		shader.setBool("usePBR", UsePBR());
-		if (UsePBR()) {
-			shader.setFloat("roughness", GetRoughness());
-			shader.setFloat("metallic", GetMetallic());
-			shader.setFloat("ao", GetAO());
-		}
-
-		glBindVertexArray(vao_);
-		glDrawArrays(GL_TRIANGLES, 0, vertex_count_);
-		glBindVertexArray(0);
-	}
-
-	glm::mat4 Text::GetModelMatrix() const {
-		glm::mat4 model = glm::mat4(1.0f);
-		model = glm::translate(model, glm::vec3(GetX(), GetY(), GetZ()));
-		model = model * glm::mat4_cast(GetRotation());
-		model = glm::scale(model, GetScale());
-		return model;
 	}
 
 } // namespace Boidsish
