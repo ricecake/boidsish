@@ -242,6 +242,10 @@ namespace Boidsish {
 			trailSize = tail + mesh_vertices.size() - head;
 		}
 
+		glEnable(GL_BLEND);
+		glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+		glDepthMask(GL_FALSE);
+
 		shader.use();
 		shader.setFloat("base_thickness", thickness);
 		shader.setInt("useVertexColor", 1);
@@ -273,6 +277,9 @@ namespace Boidsish {
 		glBindVertexArray(0);
 
 		shader.setInt("useVertexColor", 0);
+
+		glDepthMask(GL_TRUE);
+		glDisable(GL_BLEND);
 
 		// Render a cap at the end of the trail
 		if (!points.empty()) {

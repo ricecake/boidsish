@@ -210,6 +210,10 @@ namespace Boidsish {
 		if (!initialized_ || !compute_shader_ || !compute_shader_->isValid())
 			return;
 
+		glEnable(GL_BLEND);
+		glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+		glDepthMask(GL_FALSE);
+
 		render_shader_->use();
 		render_shader_->setMat4("u_view", view);
 		render_shader_->setMat4("u_projection", projection);
@@ -219,6 +223,9 @@ namespace Boidsish {
 		glDrawArraysInstanced(GL_TRIANGLES, 0, 3, kMaxFragments);
 		glBindVertexArray(0);
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, 0);
+
+		glDepthMask(GL_TRUE);
+		glDisable(GL_BLEND);
 	}
 
 } // namespace Boidsish
