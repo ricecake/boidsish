@@ -442,6 +442,53 @@ namespace Boidsish {
 		current.floorLevel = std::lerp(low_item.floorLevel, high_item.floorLevel, t);
 	}
 
+	void TerrainGenerator::AddDeformation(const TerrainDeformation& deformation) {
+		InvalidateAffectedChunks(deformation);
+		std::lock_guard<std::mutex> lock(deformations_mutex_);
+		deformations_.push_back(deformation);
+	}
+
+	void TerrainGenerator::ClearDeformations() {
+		// Invalidate all chunks currently in cache if they might be affected
+		// For simplicity, we can just clear the whole cache or iterate through it
+		std::lock_guard<std::recursive_mutex> lock(chunk_cache_mutex_);
+		for (auto const& [key, terrain_chunk] : chunk_cache_) {
+			if (render_manager_) {
+				render_manager_->UnregisterChunk(key);
+			}
+		}
+		chunk_cache_.clear();
+		std::lock_guard<std::mutex> def_lock(deformations_mutex_);
+		deformations_.clear();
+	}
+
+	void TerrainGenerator::InvalidateAffectedChunks(const TerrainDeformation& deformation) {
+		std::lock_guard<std::recursive_mutex> lock(chunk_cache_mutex_);
+
+		// Calculate affected chunk range
+		int min_chunk_x = static_cast<int>(std::floor((deformation.position.x - deformation.radius) / chunk_size_));
+		int max_chunk_x = static_cast<int>(std::floor((deformation.position.x + deformation.radius) / chunk_size_));
+		int min_chunk_z = static_cast<int>(std::floor((deformation.position.z - deformation.radius) / chunk_size_));
+		int max_chunk_z = static_cast<int>(std::floor((deformation.position.z + deformation.radius) / chunk_size_));
+
+		for (int x = min_chunk_x; x <= max_chunk_x; ++x) {
+			for (int z = min_chunk_z; z <= max_chunk_z; ++z) {
+				std::pair<int, int> key = {x, z};
+				if (chunk_cache_.count(key)) {
+					if (render_manager_) {
+						render_manager_->UnregisterChunk(key);
+					}
+					chunk_cache_.erase(key);
+				}
+				// Also cancel any pending generations for this chunk
+				if (pending_chunks_.count(key)) {
+					pending_chunks_.at(key).cancel();
+					pending_chunks_.erase(key);
+				}
+			}
+		}
+	}
+
 	glm::vec3 TerrainGenerator::pointGenerate(float x, float z) const {
 		glm::vec3 path_data = getPathInfluence(x, z);
 		float     path_factor = path_data.x;
@@ -466,6 +513,45 @@ namespace Boidsish {
 
 		float path_floor_level = -0.10f;
 		terrain_height.x = glm::mix(path_floor_level, terrain_height.x, path_factor);
+
+		// Apply deformations
+		std::lock_guard<std::mutex> lock(deformations_mutex_);
+		for (const auto& def : deformations_) {
+			float dx = x - def.position.x;
+			float dz = z - def.position.z;
+			float dist_sq = dx * dx + dz * dz;
+			float radius_sq = def.radius * def.radius;
+
+			if (dist_sq < radius_sq) {
+				float d = std::sqrt(dist_sq);
+				float d_over_r = d / def.radius;
+
+				// Use a smooth quartic polynomial: (1 - (d/r)^2)^2
+				// This has zero derivative at d=r and d=0.
+				float t = (1.0f - d_over_r * d_over_r);
+				float t2 = t * t;
+
+				// Derivative of t2 with respect to x:
+				// dt2/dx = 2 * t * dt/dx
+				// dt/dx = -2 * (d/r) * (1/r) * (x-x_c)/d = -2 * (x-x_c) / r^2
+				// dt2/dx = -4 * t * (x-x_c) / r^2
+				float dt2_dx = -4.0f * t * dx / radius_sq;
+				float dt2_dz = -4.0f * t * dz / radius_sq;
+
+				if (def.type == DeformationType::CRATER) {
+					terrain_height.x -= def.value * t2;
+					terrain_height.y -= def.value * dt2_dx;
+					terrain_height.z -= def.value * dt2_dz;
+				} else if (def.type == DeformationType::FLATTEN) {
+					float old_h = terrain_height.x;
+					terrain_height.x = glm::mix(old_h, def.value, t2);
+					// dH_new/dx = dH_old/dx * (1-t2) + H_old * (-dt2/dx) + target * dt2/dx
+					//           = dH_old/dx * (1-t2) + (target - H_old) * dt2/dx
+					terrain_height.y = terrain_height.y * (1.0f - t2) + (def.value - old_h) * dt2_dx;
+					terrain_height.z = terrain_height.z * (1.0f - t2) + (def.value - old_h) * dt2_dz;
+				}
+			}
+		}
 
 		return terrain_height;
 	}

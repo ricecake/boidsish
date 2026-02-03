@@ -2768,6 +2768,18 @@ namespace Boidsish {
 		return {0.0f, glm::vec3(0, 1, 0)};
 	}
 
+	void Visualizer::AddTerrainDeformation(const glm::vec3& position, float radius, float value, DeformationType type) {
+		if (impl->terrain_generator) {
+			impl->terrain_generator->AddDeformation({position, radius, value, type});
+		}
+	}
+
+	void Visualizer::ClearTerrainDeformations() {
+		if (impl->terrain_generator) {
+			impl->terrain_generator->ClearDeformations();
+		}
+	}
+
 	float Visualizer::GetTerrainMaxHeight() const {
 		if (impl->terrain_generator) {
 			return impl->terrain_generator->GetMaxHeight();
