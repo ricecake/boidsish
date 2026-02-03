@@ -194,32 +194,32 @@ namespace Boidsish {
 							const auto& v2 = flat_vertices[indices[i + 1]];
 							const auto& v3 = flat_vertices[indices[i + 2]];
 
-							// Front face (v1, v3, v2 to account for Y flip)
+							// Front face (v1, v2, v3) - CCW in OpenGL space
 							glyph_vertices.insert(
 								glyph_vertices.end(),
 								{v1[0], v1[1], depth / 2.0f, 0.0f, 0.0f, 1.0f, v1[0], v1[1]}
 							);
 							glyph_vertices.insert(
 								glyph_vertices.end(),
-								{v3[0], v3[1], depth / 2.0f, 0.0f, 0.0f, 1.0f, v3[0], v3[1]}
+								{v2[0], v2[1], depth / 2.0f, 0.0f, 0.0f, 1.0f, v2[0], v2[1]}
 							);
 							glyph_vertices.insert(
 								glyph_vertices.end(),
-								{v2[0], v2[1], depth / 2.0f, 0.0f, 0.0f, 1.0f, v2[0], v2[1]}
+								{v3[0], v3[1], depth / 2.0f, 0.0f, 0.0f, 1.0f, v3[0], v3[1]}
 							);
 
-							// Back face (v1, v2, v3 to account for Y flip)
+							// Back face (v1, v3, v2) - CW from front, CCW from back
 							glyph_vertices.insert(
 								glyph_vertices.end(),
 								{v1[0], v1[1], -depth / 2.0f, 0.0f, 0.0f, -1.0f, v1[0], v1[1]}
 							);
 							glyph_vertices.insert(
 								glyph_vertices.end(),
-								{v2[0], v2[1], -depth / 2.0f, 0.0f, 0.0f, -1.0f, v2[0], v2[1]}
+								{v3[0], v3[1], -depth / 2.0f, 0.0f, 0.0f, -1.0f, v3[0], v3[1]}
 							);
 							glyph_vertices.insert(
 								glyph_vertices.end(),
-								{v3[0], v3[1], -depth / 2.0f, 0.0f, 0.0f, -1.0f, v3[0], v3[1]}
+								{v2[0], v2[1], -depth / 2.0f, 0.0f, 0.0f, -1.0f, v2[0], v2[1]}
 							);
 						}
 
