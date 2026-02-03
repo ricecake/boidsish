@@ -2558,8 +2558,9 @@ namespace Boidsish {
 
 		glm::vec3 ray_dir = glm::normalize(far_plane_pos - ray_origin);
 
-		float distance;
-		if (impl->terrain_generator->Raycast(ray_origin, ray_dir, 1000.0f, distance)) {
+		float     distance;
+		[[maybe_unused]] glm::vec3 normal;
+		if (impl->terrain_generator->RaycastCached(ray_origin, ray_dir, 1000.0f, distance, normal)) {
 			return ray_origin + ray_dir * distance;
 		}
 
