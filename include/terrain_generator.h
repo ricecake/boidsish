@@ -21,6 +21,15 @@ namespace Boidsish {
 
 namespace Boidsish {
 
+	enum class DeformationType { CRATER, FLATTEN };
+
+	struct TerrainDeformation {
+		glm::vec3       position;
+		float           radius;
+		float           value; // Depth for crater, target height for flatten
+		DeformationType type;
+	};
+
 	struct TerrainGenerationResult {
 		std::vector<unsigned int> indices;
 		std::vector<glm::vec3>    positions;
@@ -212,6 +221,25 @@ namespace Boidsish {
 		 */
 		bool IsPositionCached(float x, float z) const;
 
+		/**
+		 * @brief Add a terrain deformation.
+		 *
+		 * @param deformation The deformation to add
+		 */
+		void AddDeformation(const TerrainDeformation& deformation);
+
+		/**
+		 * @brief Clear all terrain deformations.
+		 */
+		void ClearDeformations();
+
+		/**
+		 * @brief Invalidate chunks affected by a deformation.
+		 *
+		 * @param deformation The deformation to check against
+		 */
+		void InvalidateAffectedChunks(const TerrainDeformation& deformation);
+
 	private:
 		glm::vec2 findClosestPointOnPath(glm::vec2 sample_pos) const;
 		glm::vec3 getPathInfluence(float x, float z) const;
@@ -293,6 +321,9 @@ namespace Boidsish {
 
 		// Instanced terrain render manager (optional, when set uses GPU heightmap lookup)
 		std::shared_ptr<TerrainRenderManager> render_manager_;
+
+		std::vector<TerrainDeformation> deformations_;
+		mutable std::mutex              deformations_mutex_;
 	};
 
 } // namespace Boidsish

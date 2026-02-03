@@ -156,6 +156,7 @@ namespace Boidsish {
 	// Main visualization class
 	class Terrain;
 	class TerrainGenerator;
+	enum class DeformationType;
 
 	// Main visualization class
 	class Visualizer {
@@ -324,6 +325,8 @@ namespace Boidsish {
 
 		std::tuple<float, glm::vec3>                 GetTerrainPointProperties(float x, float y) const;
 		std::tuple<float, glm::vec3>                 GetTerrainPointPropertiesThreadSafe(float x, float y) const;
+		void                                         AddTerrainDeformation(const glm::vec3& position, float radius, float value, DeformationType type);
+		void                                         ClearTerrainDeformations();
 		float                                        GetTerrainMaxHeight() const;
 		const TerrainGenerator*                      GetTerrainGenerator() const;
 		const std::vector<std::shared_ptr<Terrain>>& GetTerrainChunks() const;
