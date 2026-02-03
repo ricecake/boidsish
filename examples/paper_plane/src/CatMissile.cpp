@@ -209,8 +209,19 @@ namespace Boidsish {
 					hit_dist,
 					terrain_normal
 				)) {
-				// Aim for approach point instead if launcher is obscured
-				target_dir_world = target_->GetApproachPoint();
+				// Aim for approach point if launcher is obscured, but start cutting the corner
+				// once we are close enough to the approach point (crested the hill).
+				glm::vec3 approach_p = target_->GetApproachPoint();
+				glm::vec3 target_p = target_->GetPosition().Toglm();
+				float     d_at = glm::distance(approach_p, target_p);
+				float     d_ma = glm::distance(missile_pos, approach_p);
+
+				if (d_ma <= d_at && d_at > 1e-4f) {
+					float t = d_ma / d_at;
+					target_dir_world = glm::mix(target_p, approach_p, t);
+				} else {
+					target_dir_world = approach_p;
+				}
 			}
 
 			target_dir_local = WorldToObject(glm::normalize(target_dir_world - missile_pos));
