@@ -24,11 +24,13 @@ namespace Boidsish {
 		float GetHealth() const;
 		float GetShield() const;
 
-	private:
+	protected:
 		std::shared_ptr<PaperPlaneInputController> controller_;
 		glm::quat                                  orientation_;
 		glm::vec3                                  rotational_velocity_; // x: pitch, y: yaw, z: roll
 		float                                      forward_speed_;
+
+	private:
 		float                                      time_to_fire = 0.25f;
 		bool                                       fire_left = true;
 		int                                        damage_pending_ = 0;

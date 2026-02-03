@@ -3,6 +3,7 @@
 #include <vector>
 
 #include "PaperPlane.h"
+#include "TargetPlane.h"
 #include "FiringRangeHandler.h"
 #include "FiringRangeWidget.h"
 #include "constants.h"
@@ -38,7 +39,7 @@ int main() {
 		handler->SetVisualizer(visualizer);
 
 		// Initial setup: A target and some launchers
-		handler->AddEntity<PaperPlane>(Vector3(0, 100, 0));
+		handler->AddEntity<TargetPlane>(Vector3(0, 100, 0));
 		handler->AddEntity<GuidedMissileLauncher>(Vector3(100, 40, 100), glm::quat(1,0,0,0));
 		handler->AddEntity<GuidedMissileLauncher>(Vector3(-100, 40, 100), glm::quat(1,0,0,0));
 		handler->AddEntity<GuidedMissileLauncher>(Vector3(0, 40, -100), glm::quat(1,0,0,0));

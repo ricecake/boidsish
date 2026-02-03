@@ -3,6 +3,7 @@
 #include "FiringRangeHandler.h"
 #include "imgui.h"
 #include "PaperPlane.h"
+#include "TargetPlane.h"
 #include "GuidedMissileLauncher.h"
 #include "CatMissile.h"
 #include "graphics.h"
@@ -34,7 +35,7 @@ namespace Boidsish {
 				ImGui::SameLine();
 				if (ImGui::Button("Spawn Target")) {
 					auto cam_pos = handler_.vis->GetCamera().pos();
-					handler_.QueueAddEntity<PaperPlane>(Vector3(cam_pos.x, cam_pos.y, cam_pos.z));
+					handler_.QueueAddEntity<TargetPlane>(Vector3(cam_pos.x, cam_pos.y, cam_pos.z));
 				}
 
 				ImGui::Separator();
