@@ -63,7 +63,7 @@ namespace Boidsish {
 			}
 		}
 
-		if (vis && vis->GetTerrainGenerator()) {
+		if (enable_auto_spawning_ && vis && vis->GetTerrainGenerator()) {
 			const auto               visible_chunks = vis->GetTerrainGenerator()->getVisibleChunksCopy();
 			std::set<const Terrain*> visible_chunk_set;
 			std::set<const Terrain*> forbidden_chunks;

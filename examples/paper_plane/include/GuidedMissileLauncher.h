@@ -15,6 +15,7 @@ namespace Boidsish {
 
 		void UpdateEntity(const EntityHandler& handler, float time, float delta_time) override;
 		void Destroy(const EntityHandler& handler);
+		void Fire(const EntityHandler& handler);
 
 	private:
 		float                time_since_last_fire_ = 0.0f;

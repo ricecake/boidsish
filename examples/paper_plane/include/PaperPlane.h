@@ -11,7 +11,7 @@ namespace Boidsish {
 
 	class PaperPlane: public Entity<Model> {
 	public:
-		PaperPlane(int id = 0);
+		PaperPlane(int id = 0, Vector3 pos = Vector3(0, 4, 0));
 
 		void SetController(std::shared_ptr<PaperPlaneInputController> controller);
 		void UpdateEntity(const EntityHandler& handler, float time, float delta_time) override;

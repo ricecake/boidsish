@@ -8,7 +8,7 @@
 
 namespace Boidsish {
 
-	PaperPlane::PaperPlane(int id):
+	PaperPlane::PaperPlane(int id, Vector3 pos):
 		Entity<Model>(id, "assets/Mesh_Cat.obj", true),
 		orientation_(glm::quat(1.0f, 0.0f, 0.0f, 0.0f)),
 		rotational_velocity_(glm::vec3(0.0f)),
@@ -26,7 +26,7 @@ namespace Boidsish {
 		std::dynamic_pointer_cast<Model>(shape_)->SetBaseRotation(
 			glm::angleAxis(glm::radians(-180.0f), glm::vec3(0.0f, 1.0f, 0.0f))
 		);
-		SetPosition(0, 4, 0);
+		SetPosition(pos.x, pos.y, pos.z);
 
 		// Initial velocity for a nice takeoff
 		SetVelocity(Vector3(0, 0, 20));
