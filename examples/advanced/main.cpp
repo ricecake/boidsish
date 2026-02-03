@@ -184,15 +184,15 @@ int main(int argc, char* argv[]) {
 		switch (example) {
 		case 1:
 			title += "Spiraling Particles";
-			viz.SetDotFunction(SpiralExample);
+			viz.AddShapeHandler(SpiralExample);
 			break;
 		case 2:
 			title += "Random Walk";
-			viz.SetDotFunction(RandomWalkExample);
+			viz.AddShapeHandler(RandomWalkExample);
 			break;
 		case 3:
 			title += "Wave Function";
-			viz.SetDotFunction(WaveExample);
+			viz.AddShapeHandler(WaveExample);
 			break;
 		}
 

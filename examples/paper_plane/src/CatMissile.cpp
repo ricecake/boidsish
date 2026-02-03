@@ -5,7 +5,7 @@
 #include "fire_effect.h"
 #include "graphics.h"
 #include "spatial_entity_handler.h"
-#include "terrain_generator.h"
+#include "terrain_generator_interface.h"
 #include <glm/gtx/quaternion.hpp>
 
 namespace Boidsish {
@@ -183,7 +183,7 @@ namespace Boidsish {
 			target_dir_local = WorldToObject(glm::normalize(target_dir_world - GetPosition()));
 		}
 
-		const auto* terrain_generator = handler.GetTerrainGenerator();
+		const auto terrain_generator = handler.GetTerrain();
 		if (terrain_generator) {
 			const float kAvoidanceStrength = 5.0f;
 			const float kUpAlignmentThreshold = 0.5f;

@@ -14,6 +14,11 @@
 #include <GL/glew.h>
 #include <glm/glm.hpp>
 
+// Forward declare ShaderManager for cache integration
+namespace Boidsish {
+	class ShaderManager;
+}
+
 class ShaderBase {
 public:
 	unsigned int ID;
@@ -71,72 +76,25 @@ public:
 		RegisterConstant(name, std::to_string(value));
 	}
 
-	// activate the shader
+	// activate the shader - uses ShaderManager for caching
 	// ------------------------------------------------------------------------
-	void use() { glUseProgram(ID); }
+	inline void use();
 
-	// utility uniform functions
+	// utility uniform functions - use ShaderManager for caching
 	// ------------------------------------------------------------------------
-	void setBool(const std::string& name, bool value) const {
-		glUniform1i(getUniformLocation(name), (int)value);
-	}
-
-	// ------------------------------------------------------------------------
-	void setInt(const std::string& name, int value) const {
-		glUniform1i(getUniformLocation(name), value);
-	}
-
-	// ------------------------------------------------------------------------
-	void setFloat(const std::string& name, float value) const {
-		glUniform1f(getUniformLocation(name), value);
-	}
-
-	// ------------------------------------------------------------------------
-	void setVec2(const std::string& name, const glm::vec2& value) const {
-		glUniform2fv(getUniformLocation(name), 1, &value[0]);
-	}
-
-	void setVec2(const std::string& name, float x, float y) const {
-		glUniform2f(getUniformLocation(name), x, y);
-	}
-
-	// ------------------------------------------------------------------------
-	void setVec3(const std::string& name, const glm::vec3& value) const {
-		glUniform3fv(getUniformLocation(name), 1, &value[0]);
-	}
-
-	void setVec3(const std::string& name, float x, float y, float z) const {
-		glUniform3f(getUniformLocation(name), x, y, z);
-	}
-
-	// ------------------------------------------------------------------------
-	void setVec4(const std::string& name, const glm::vec4& value) const {
-		glUniform4fv(getUniformLocation(name), 1, &value[0]);
-	}
-
-	void setVec4(const std::string& name, float x, float y, float z, float w) {
-		glUniform4f(getUniformLocation(name), x, y, z, w);
-	}
-
-	// ------------------------------------------------------------------------
-	void setMat2(const std::string& name, const glm::mat2& mat) const {
-		glUniformMatrix2fv(getUniformLocation(name), 1, GL_FALSE, &mat[0][0]);
-	}
-
-	// ------------------------------------------------------------------------
-	void setMat3(const std::string& name, const glm::mat3& mat) const {
-		glUniformMatrix3fv(getUniformLocation(name), 1, GL_FALSE, &mat[0][0]);
-	}
-
-	// ------------------------------------------------------------------------
-	void setMat4(const std::string& name, const glm::mat4& mat) const {
-		glUniformMatrix4fv(getUniformLocation(name), 1, GL_FALSE, &mat[0][0]);
-	}
-
-	// ------------------------------------------------------------------------
-	void setIntArray(const std::string& name, const int* values, int count) const {
-		glUniform1iv(getUniformLocation(name), count, values);
-	}
+	inline void setBool(const std::string& name, bool value) const;
+	inline void setInt(const std::string& name, int value) const;
+	inline void setFloat(const std::string& name, float value) const;
+	inline void setVec2(const std::string& name, const glm::vec2& value) const;
+	inline void setVec2(const std::string& name, float x, float y) const;
+	inline void setVec3(const std::string& name, const glm::vec3& value) const;
+	inline void setVec3(const std::string& name, float x, float y, float z) const;
+	inline void setVec4(const std::string& name, const glm::vec4& value) const;
+	inline void setVec4(const std::string& name, float x, float y, float z, float w);
+	inline void setMat2(const std::string& name, const glm::mat2& mat) const;
+	inline void setMat3(const std::string& name, const glm::mat3& mat) const;
+	inline void setMat4(const std::string& name, const glm::mat4& mat) const;
+	inline void setIntArray(const std::string& name, const int* values, int count) const;
 
 protected:
 	int getUniformLocation(const std::string& name) const {
@@ -501,5 +459,86 @@ public:
 		}
 	}
 };
+
+// =============================================================================
+// Inline implementations that use ShaderManager
+// Include shader_manager.h here to avoid circular dependencies
+// =============================================================================
+#include "shader_manager.h"
+
+inline void ShaderBase::use() {
+	Boidsish::ShaderManager::GetInstance().Use(ID);
+}
+
+inline void ShaderBase::setBool(const std::string& name, bool value) const {
+	int intValue = static_cast<int>(value);
+	if (!Boidsish::ShaderManager::GetInstance().IsCached(ID, name, intValue)) {
+		glUniform1i(getUniformLocation(name), intValue);
+	}
+}
+
+inline void ShaderBase::setInt(const std::string& name, int value) const {
+	if (!Boidsish::ShaderManager::GetInstance().IsCached(ID, name, value)) {
+		glUniform1i(getUniformLocation(name), value);
+	}
+}
+
+inline void ShaderBase::setFloat(const std::string& name, float value) const {
+	if (!Boidsish::ShaderManager::GetInstance().IsCached(ID, name, value)) {
+		glUniform1f(getUniformLocation(name), value);
+	}
+}
+
+inline void ShaderBase::setVec2(const std::string& name, const glm::vec2& value) const {
+	if (!Boidsish::ShaderManager::GetInstance().IsCached(ID, name, value)) {
+		glUniform2fv(getUniformLocation(name), 1, &value[0]);
+	}
+}
+
+inline void ShaderBase::setVec2(const std::string& name, float x, float y) const {
+	setVec2(name, glm::vec2(x, y));
+}
+
+inline void ShaderBase::setVec3(const std::string& name, const glm::vec3& value) const {
+	if (!Boidsish::ShaderManager::GetInstance().IsCached(ID, name, value)) {
+		glUniform3fv(getUniformLocation(name), 1, &value[0]);
+	}
+}
+
+inline void ShaderBase::setVec3(const std::string& name, float x, float y, float z) const {
+	setVec3(name, glm::vec3(x, y, z));
+}
+
+inline void ShaderBase::setVec4(const std::string& name, const glm::vec4& value) const {
+	if (!Boidsish::ShaderManager::GetInstance().IsCached(ID, name, value)) {
+		glUniform4fv(getUniformLocation(name), 1, &value[0]);
+	}
+}
+
+inline void ShaderBase::setVec4(const std::string& name, float x, float y, float z, float w) {
+	setVec4(name, glm::vec4(x, y, z, w));
+}
+
+inline void ShaderBase::setMat2(const std::string& name, const glm::mat2& mat) const {
+	// mat2 not cached - relatively rare usage
+	glUniformMatrix2fv(getUniformLocation(name), 1, GL_FALSE, &mat[0][0]);
+}
+
+inline void ShaderBase::setMat3(const std::string& name, const glm::mat3& mat) const {
+	if (!Boidsish::ShaderManager::GetInstance().IsCached(ID, name, mat)) {
+		glUniformMatrix3fv(getUniformLocation(name), 1, GL_FALSE, &mat[0][0]);
+	}
+}
+
+inline void ShaderBase::setMat4(const std::string& name, const glm::mat4& mat) const {
+	if (!Boidsish::ShaderManager::GetInstance().IsCached(ID, name, mat)) {
+		glUniformMatrix4fv(getUniformLocation(name), 1, GL_FALSE, &mat[0][0]);
+	}
+}
+
+inline void ShaderBase::setIntArray(const std::string& name, const int* values, int count) const {
+	// Arrays not cached - would need special handling
+	glUniform1iv(getUniformLocation(name), count, values);
+}
 
 #endif

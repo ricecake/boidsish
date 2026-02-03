@@ -5,9 +5,7 @@
 #include <vector>
 
 #include "constants.h"
-#include "shader.h"
 #include "vector.h"
-#include <GL/glew.h>
 #include <glm/glm.hpp>
 
 namespace Boidsish {
@@ -21,7 +19,6 @@ namespace Boidsish {
 		~Trail();
 
 		void AddPoint(glm::vec3 position, glm::vec3 color);
-		void Render(Shader& shader) const;
 		void SetIridescence(bool enabled);
 		void SetUseRocketTrail(bool enabled);
 
@@ -36,11 +33,6 @@ namespace Boidsish {
 		float GetRoughness() const { return roughness_; }
 
 		float GetMetallic() const { return metallic_; }
-
-		// Batched rendering support
-		void SetManagedByRenderManager(bool managed) { managed_by_render_manager_ = managed; }
-
-		bool IsManagedByRenderManager() const { return managed_by_render_manager_; }
 
 		// Get vertex data for batched rendering (interleaved pos + normal + color)
 		std::vector<float> GetInterleavedVertexData() const;
@@ -97,9 +89,6 @@ namespace Boidsish {
 		std::deque<std::pair<glm::vec3, glm::vec3>> points;
 		int                                         max_length;
 		float                                       thickness;
-		GLuint                                      vao;
-		GLuint                                      vbo;
-		GLuint                                      ebo;
 
 		// Mesh data
 		mutable std::vector<TrailVertex>  mesh_vertices;
@@ -124,7 +113,6 @@ namespace Boidsish {
 		bool                                       usePBR_ = false;
 		float                                      roughness_ = Constants::Class::Trails::DefaultRoughness();
 		float                                      metallic_ = Constants::Class::Trails::DefaultMetallic();
-		bool                                       managed_by_render_manager_ = false;
 
 		// Configuration
 		const int   TRAIL_SEGMENTS = Constants::Class::Trails::Segments();      // Circular segments around trail

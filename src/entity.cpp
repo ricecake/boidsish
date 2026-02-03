@@ -4,7 +4,7 @@
 #include <cmath>
 
 #include "path.h"
-#include "terrain_generator.h"
+#include "terrain_generator_interface.h"
 #include <poolstl/poolstl.hpp>
 
 namespace {
@@ -139,35 +139,35 @@ namespace Boidsish {
 		return vis->GetTerrainChunks();
 	}
 
-	const TerrainGenerator* EntityHandler::GetTerrainGenerator() const {
-		return vis->GetTerrainGenerator();
+	std::shared_ptr<ITerrainGenerator> EntityHandler::GetTerrain() const {
+		return vis->GetTerrain();
 	}
 
 	// ========== Cache-Preferring Terrain Query Implementations ==========
 
 	std::tuple<float, glm::vec3> EntityHandler::GetCachedTerrainProperties(float x, float z) const {
-		if (auto* gen = GetTerrainGenerator()) {
+		if (auto gen = GetTerrain()) {
 			return gen->GetCachedPointProperties(x, z);
 		}
 		return {0.0f, glm::vec3(0, 1, 0)};
 	}
 
 	bool EntityHandler::IsPointBelowTerrain(const glm::vec3& point) const {
-		if (auto* gen = GetTerrainGenerator()) {
+		if (auto gen = GetTerrain()) {
 			return gen->IsPointBelowTerrain(point);
 		}
 		return false;
 	}
 
 	float EntityHandler::GetDistanceAboveTerrain(const glm::vec3& point) const {
-		if (auto* gen = GetTerrainGenerator()) {
+		if (auto gen = GetTerrain()) {
 			return gen->GetDistanceAboveTerrain(point);
 		}
 		return point.y; // Assume terrain at y=0 if no generator
 	}
 
 	std::tuple<float, glm::vec3> EntityHandler::GetClosestTerrainInfo(const glm::vec3& point) const {
-		if (auto* gen = GetTerrainGenerator()) {
+		if (auto gen = GetTerrain()) {
 			return gen->GetClosestTerrainInfo(point);
 		}
 		// Default: assume flat terrain at y=0
@@ -183,14 +183,14 @@ namespace Boidsish {
 		float&           out_distance,
 		glm::vec3&       out_normal
 	) const {
-		if (auto* gen = GetTerrainGenerator()) {
+		if (auto gen = GetTerrain()) {
 			return gen->RaycastCached(origin, direction, max_distance, out_distance, out_normal);
 		}
 		return false;
 	}
 
 	bool EntityHandler::IsTerrainCached(float x, float z) const {
-		if (auto* gen = GetTerrainGenerator()) {
+		if (auto gen = GetTerrain()) {
 			return gen->IsPositionCached(x, z);
 		}
 		return false;

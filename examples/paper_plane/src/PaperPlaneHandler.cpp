@@ -10,7 +10,8 @@
 #include "graphics.h"
 #include "hud.h"
 #include "neighbor_utils.h"
-#include "terrain_generator.h"
+#include "terrain.h"
+#include "terrain_generator_interface.h"
 #include <glm/gtx/quaternion.hpp>
 
 namespace Boidsish {
@@ -63,8 +64,8 @@ namespace Boidsish {
 			}
 		}
 
-		if (vis && vis->GetTerrainGenerator()) {
-			const auto               visible_chunks = vis->GetTerrainGenerator()->getVisibleChunksCopy();
+		if (vis && vis->GetTerrain()) {
+			const auto               visible_chunks = vis->GetTerrain()->GetVisibleChunksCopy();
 			std::set<const Terrain*> visible_chunk_set;
 			std::set<const Terrain*> forbidden_chunks;
 

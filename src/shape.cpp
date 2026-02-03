@@ -156,7 +156,7 @@ namespace Boidsish {
 		model = model * glm::mat4_cast(rotation);
 		model = glm::scale(model, scale);
 		shader->setMat4("model", model);
-		shader->setVec3("objectColor", color.r, color.g, color.b);
+		shader->setVec3("objectColor", color);
 		shader->setFloat("objectAlpha", 1.0f); // Default to opaque for this static helper
 
 		glBindVertexArray(sphere_vao_);

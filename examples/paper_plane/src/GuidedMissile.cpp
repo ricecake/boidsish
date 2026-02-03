@@ -3,7 +3,7 @@
 #include "PaperPlane.h"
 #include "fire_effect.h"
 #include "graphics.h"
-#include "terrain_generator.h"
+#include "terrain_generator_interface.h"
 #include <glm/gtx/quaternion.hpp>
 
 namespace Boidsish {
@@ -169,7 +169,7 @@ namespace Boidsish {
 				    glm::vec3 torque = glm::cross(P, target_dir_local);
 				*/
 
-				const auto* terrain_generator = handler.GetTerrainGenerator();
+				const auto terrain_generator = handler.GetTerrain();
 				if (terrain_generator) {
 					const float reaction_distance = 100.0f;
 					const float kAvoidanceStrength = 5.0f;
@@ -184,7 +184,7 @@ namespace Boidsish {
 						float hit_dist = 0.0f;
 						if (terrain_generator->Raycast(origin, dir, reaction_distance, hit_dist)) {
 							auto hit_coord = vel_vec.Normalized() * hit_dist;
-							auto [terrain_h, terrain_normal] = terrain_generator->pointProperties(
+							auto [terrain_h, terrain_normal] = terrain_generator->GetPointProperties(
 								hit_coord.x,
 								hit_coord.z
 							);

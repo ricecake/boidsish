@@ -358,9 +358,9 @@ namespace Boidsish {
 
 			// Set per-trail uniforms
 			shader.setFloat("base_thickness", alloc.base_thickness);
-			shader.setBool("useIridescence", alloc.iridescent);
-			shader.setBool("useRocketTrail", alloc.rocket_trail);
-			shader.setBool("usePBR", alloc.use_pbr);
+			shader.setInt("useIridescence", alloc.iridescent ? 1 : 0);
+			shader.setInt("useRocketTrail", alloc.rocket_trail ? 1 : 0);
+			shader.setInt("usePBR", alloc.use_pbr ? 1 : 0);
 			shader.setFloat("trailRoughness", alloc.roughness);
 			shader.setFloat("trailMetallic", alloc.metallic);
 			// trailHead must include vertex_offset because gl_VertexID sees the global index

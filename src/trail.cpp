@@ -4,37 +4,21 @@
 #include <cmath>
 #include <vector>
 
-#include "shape.h"
 #include <glm/gtc/quaternion.hpp>
 
 namespace Boidsish {
 
 	Trail::Trail(int max_length, float thickness):
 		max_length(max_length), thickness(thickness), vertex_count(0), mesh_dirty(false) {
-		// Pre-allocate mesh data regardless of render mode
+		// Pre-allocate mesh data for TrailRenderManager
 		mesh_vertices.resize(max_length * CURVE_SEGMENTS * VERTS_PER_STEP);
 		indices.resize(max_length * CURVE_SEGMENTS * VERTS_PER_STEP);
 		for (unsigned int i = 0; i < indices.size(); ++i) {
 			indices[i] = i;
 		}
-
-		// Create GPU resources (may not be used if managed by render manager)
-		glGenVertexArrays(1, &vao);
-		glGenBuffers(1, &vbo);
-		glGenBuffers(1, &ebo);
-
-		glBindBuffer(GL_ARRAY_BUFFER, vbo);
-		glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ebo);
-
-		glBufferData(GL_ARRAY_BUFFER, mesh_vertices.size() * sizeof(TrailVertex), nullptr, GL_DYNAMIC_DRAW);
-		glBufferData(GL_ELEMENT_ARRAY_BUFFER, indices.size() * sizeof(unsigned int), indices.data(), GL_STATIC_DRAW);
 	}
 
-	Trail::~Trail() {
-		glDeleteVertexArrays(1, &vao);
-		glDeleteBuffers(1, &vbo);
-		glDeleteBuffers(1, &ebo);
-	}
+	Trail::~Trail() = default;
 
 	Vector3
 	Trail::CatmullRom(float t, const Vector3& p0, const Vector3& p1, const Vector3& p2, const Vector3& p3) const {
@@ -184,109 +168,6 @@ namespace Boidsish {
 
 	void Trail::SetUseRocketTrail(bool enabled) {
 		useRocketTrail_ = enabled;
-	}
-
-	void Trail::Render(Shader& shader) const {
-		// Skip rendering if managed by TrailRenderManager
-		if (managed_by_render_manager_) {
-			return;
-		}
-
-		if (points.size() < 4) {
-			return;
-		}
-
-		if (mesh_dirty) {
-			const_cast<Trail*>(this)->mesh_dirty = false;
-
-			// Upload mesh to GPU
-			glBindVertexArray(vao);
-			glBindBuffer(GL_ARRAY_BUFFER, vbo);
-			if (tail > old_tail) {
-				glBufferSubData(
-					GL_ARRAY_BUFFER,
-					old_tail * sizeof(TrailVertex),
-					(tail - old_tail) * sizeof(TrailVertex),
-					&mesh_vertices[old_tail]
-				);
-			} else if (tail < old_tail) { // Buffer has wrapped
-				glBufferSubData(
-					GL_ARRAY_BUFFER,
-					old_tail * sizeof(TrailVertex),
-					(mesh_vertices.size() - old_tail) * sizeof(TrailVertex),
-					&mesh_vertices[old_tail]
-				);
-				glBufferSubData(GL_ARRAY_BUFFER, 0, tail * sizeof(TrailVertex), &mesh_vertices[0]);
-			}
-			const_cast<Trail*>(this)->old_tail = tail;
-
-			// Position
-			glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(TrailVertex), (void*)0);
-			glEnableVertexAttribArray(0);
-
-			// Normal
-			glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, sizeof(TrailVertex), (void*)offsetof(TrailVertex, normal));
-			glEnableVertexAttribArray(1);
-
-			// Color
-			glVertexAttribPointer(2, 3, GL_FLOAT, GL_FALSE, sizeof(TrailVertex), (void*)offsetof(TrailVertex, color));
-			glEnableVertexAttribArray(2);
-
-			glBindVertexArray(0);
-		}
-
-		float trailSize = 0;
-		if (tail > head) {
-			trailSize = tail - head;
-		} else {
-			trailSize = tail + mesh_vertices.size() - head;
-		}
-
-		glEnable(GL_BLEND);
-		glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-		glDepthMask(GL_FALSE);
-
-		shader.use();
-		shader.setFloat("base_thickness", thickness);
-		shader.setInt("useVertexColor", 1);
-		shader.setBool("useIridescence", iridescent_);
-		shader.setBool("useRocketTrail", useRocketTrail_);
-		shader.setBool("usePBR", usePBR_);
-		shader.setFloat("trailRoughness", roughness_);
-		shader.setFloat("trailMetallic", metallic_);
-		shader.setFloat("trailHead", head);
-		shader.setFloat("trailSize", trailSize);
-
-		glBindVertexArray(vao);
-		glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ebo);
-
-		if (!full && tail > head) {
-			glDrawElements(
-				GL_TRIANGLE_STRIP,
-				(GLsizei)(tail - head),
-				GL_UNSIGNED_INT,
-				(void*)(head * sizeof(unsigned int))
-			);
-		} else {
-			GLsizei firstPartCount = (GLsizei)(mesh_vertices.size() - head);
-			glDrawElements(GL_TRIANGLE_STRIP, firstPartCount, GL_UNSIGNED_INT, (void*)(head * sizeof(unsigned int)));
-			if (tail > 0) {
-				glDrawElements(GL_TRIANGLE_STRIP, (GLsizei)tail, GL_UNSIGNED_INT, (void*)0);
-			}
-		}
-		glBindVertexArray(0);
-
-		shader.setInt("useVertexColor", 0);
-
-		glDepthMask(GL_TRUE);
-		glDisable(GL_BLEND);
-
-		// Render a cap at the end of the trail
-		if (!points.empty()) {
-			const auto& end_point = points.front();
-			float       end_thickness = thickness * 0.1f; // Make cap size relative to trail
-			Shape::RenderSphere(end_point.first, end_point.second, glm::vec3(end_thickness), glm::quat());
-		}
 	}
 
 	void Trail::AppendToGeometryCache(

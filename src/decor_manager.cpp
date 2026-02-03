@@ -5,7 +5,7 @@
 #include "ConfigManager.h"
 #include "graphics.h"
 #include "logger.h"
-#include "terrain_generator.h"
+#include "terrain_generator_interface.h"
 #include "terrain_render_manager.h"
 #include <GL/glew.h>
 #include <glm/gtc/type_ptr.hpp>
@@ -68,7 +68,7 @@ namespace Boidsish {
 		float /*delta_time*/,
 		const Camera&                         camera,
 		const Frustum&                        frustum,
-		const TerrainGenerator&               terrain_gen,
+		const ITerrainGenerator&              terrain_gen,
 		std::shared_ptr<TerrainRenderManager> render_manager
 	) {
 		if (!enabled_ || !initialized_ || decor_types_.empty())
@@ -99,7 +99,7 @@ namespace Boidsish {
 	void DecorManager::_RegeneratePlacements(
 		const Camera&                         camera,
 		const Frustum&                        frustum,
-		const TerrainGenerator&               terrain_gen,
+		const ITerrainGenerator&              terrain_gen,
 		std::shared_ptr<TerrainRenderManager> render_manager
 	) {
 		// Get the heightmap texture array from the terrain render manager
@@ -196,9 +196,9 @@ namespace Boidsish {
 			placement_shader_->setFloat("u_minSlope", type.props.min_slope);
 			placement_shader_->setFloat("u_maxSlope", type.props.max_slope);
 			placement_shader_->setVec3("u_baseRotation", glm::radians(type.props.base_rotation));
-			placement_shader_->setBool("u_randomYaw", type.props.random_yaw);
-			placement_shader_->setBool("u_alignToTerrain", type.props.align_to_terrain);
-			placement_shader_->setInt("u_typeIndex", (int)i);
+			placement_shader_->setInt("u_randomYaw", type.props.random_yaw ? 1 : 0);
+			placement_shader_->setInt("u_alignToTerrain", type.props.align_to_terrain ? 1 : 0);
+			placement_shader_->setInt("u_typeIndex", static_cast<int>(i));
 
 			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, type.ssbo);
 			glBindBufferBase(GL_ATOMIC_COUNTER_BUFFER, 0, type.count_buffer);
@@ -212,7 +212,6 @@ namespace Boidsish {
 
 				placement_shader_->setVec2("u_chunkWorldOffset", chunk_offset);
 				placement_shader_->setFloat("u_chunkSlice", chunk_slice);
-				;
 				placement_shader_->setFloat("u_chunkSize", chunk_size);
 
 				// Dispatch compute shader for this chunk

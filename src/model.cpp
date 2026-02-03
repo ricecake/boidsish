@@ -76,7 +76,7 @@ namespace Boidsish {
 				break;
 			}
 		}
-		Shape::shader->setBool("use_texture", hasDiffuse);
+		Shape::shader->setInt("use_texture", hasDiffuse ? 1 : 0);
 
 		Shape::shader->setVec3("objectColor", diffuseColor);
 		Shape::shader->setFloat("objectAlpha", opacity);
@@ -96,7 +96,7 @@ namespace Boidsish {
 				number = std::to_string(heightNr++); // transfer unsigned int to string
 
 			// now set the sampler to the correct texture unit
-			Shape::shader->setInt((name + number).c_str(), i);
+			Shape::shader->setInt((name + number).c_str(), static_cast<int>(i));
 			// and finally bind the texture
 			glBindTexture(GL_TEXTURE_2D, textures[i].id);
 		}
@@ -122,7 +122,7 @@ namespace Boidsish {
 				break;
 			}
 		}
-		shader.setBool("use_texture", hasDiffuse);
+		shader.setInt("use_texture", hasDiffuse ? 1 : 0);
 
 		shader.setVec3("objectColor", diffuseColor);
 		shader.setFloat("objectAlpha", opacity);
@@ -163,7 +163,7 @@ namespace Boidsish {
 			else if (name == "texture_height")
 				number = std::to_string(heightNr++);
 
-			shader.setInt((name + number).c_str(), i);
+			shader.setInt((name + number).c_str(), static_cast<int>(i));
 			glBindTexture(GL_TEXTURE_2D, textures[i].id);
 		}
 	}
@@ -191,11 +191,11 @@ namespace Boidsish {
 		model = glm::scale(model, GetScale());
 
 		shader.setMat4("model", model);
-		shader.setVec3("objectColor", GetR(), GetG(), GetB());
+		shader.setVec3("objectColor", glm::vec3(GetR(), GetG(), GetB()));
 		shader.setFloat("objectAlpha", GetA());
 
 		// Set PBR material properties
-		shader.setBool("usePBR", UsePBR());
+		shader.setInt("usePBR", UsePBR() ? 1 : 0);
 		if (UsePBR()) {
 			shader.setFloat("roughness", GetRoughness());
 			shader.setFloat("metallic", GetMetallic());

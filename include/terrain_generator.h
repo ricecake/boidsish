@@ -9,6 +9,8 @@
 #include "Simplex.h"
 #include "constants.h"
 #include "terrain.h"
+#include "terrain_deformation_manager.h"
+#include "terrain_generator_interface.h"
 #include "terrain_render_manager.h"
 #include "thread_pool.h"
 
@@ -31,14 +33,16 @@ namespace Boidsish {
 		bool                      has_terrain;
 	};
 
-	class TerrainGenerator {
+	class TerrainGenerator: public ITerrainGenerator {
 	public:
 		TerrainGenerator(int seed = 12345);
-		~TerrainGenerator();
+		~TerrainGenerator() override;
 
-		void                                         update(const Frustum& frustum, const Camera& camera);
-		const std::vector<std::shared_ptr<Terrain>>& getVisibleChunks() const;
-		std::vector<std::shared_ptr<Terrain>>        getVisibleChunksCopy() const;
+		// ==================== ITerrainGenerator Interface ====================
+
+		void                                         Update(const Frustum& frustum, const Camera& camera) override;
+		const std::vector<std::shared_ptr<Terrain>>& GetVisibleChunks() const override;
+		std::vector<std::shared_ptr<Terrain>>        GetVisibleChunksCopy() const override;
 
 		/**
 		 * @brief Set the terrain render manager for batched rendering.
@@ -48,7 +52,7 @@ namespace Boidsish {
 		 *
 		 * @param manager The render manager (can be nullptr to disable batched rendering)
 		 */
-		void SetRenderManager(std::shared_ptr<TerrainRenderManager> manager) { render_manager_ = manager; }
+		void SetRenderManager(std::shared_ptr<TerrainRenderManager> manager) override { render_manager_ = manager; }
 
 		/**
 		 * @brief Invalidate a chunk that was evicted from the render manager.
@@ -59,7 +63,7 @@ namespace Boidsish {
 		 *
 		 * @param chunk_key The (chunk_x, chunk_z) key of the evicted chunk
 		 */
-		void InvalidateChunk(std::pair<int, int> chunk_key) {
+		void InvalidateChunk(std::pair<int, int> chunk_key) override {
 			// No-op: we want to keep the chunk in our CPU cache even if it's
 			// evicted from GPU memory, to avoid expensive re-generation.
 			// It will be re-registered with the renderer when next visible.
@@ -68,18 +72,25 @@ namespace Boidsish {
 		/**
 		 * @brief Get the render manager.
 		 */
-		std::shared_ptr<TerrainRenderManager> GetRenderManager() const { return render_manager_; }
+		std::shared_ptr<TerrainRenderManager> GetRenderManager() const override { return render_manager_; }
 
 		std::vector<uint16_t> GenerateSuperChunkTexture(int requested_x, int requested_z);
 		std::vector<uint16_t> GenerateTextureForArea(int world_x, int world_z, int size);
 		void                  ConvertDatToPng(const std::string& dat_filepath, const std::string& png_filepath);
 
-		float GetMaxHeight() const {
+		float GetMaxHeight() const override {
 			float max_h = 0.0f;
 			for (const auto& biome : biomes) {
 				max_h = std::max(max_h, biome.floorLevel);
 			}
 			return max_h * 0.8;
+		}
+
+		int GetChunkSize() const override { return chunk_size_; }
+
+		// Interface method - calls pointProperties
+		std::tuple<float, glm::vec3> GetPointProperties(float x, float z) const override {
+			return pointProperties(x, z);
 		}
 
 		std::tuple<float, glm::vec3> pointProperties(float x, float z) const {
@@ -127,9 +138,9 @@ namespace Boidsish {
 			return {final_pos.y, final_norm};
 		}
 
-		bool Raycast(const glm::vec3& origin, const glm::vec3& dir, float max_dist, float& out_dist) const;
+		bool Raycast(const glm::vec3& origin, const glm::vec3& dir, float max_dist, float& out_dist) const override;
 
-		std::vector<glm::vec3> GetPath(glm::vec2 start_pos, int num_points, float step_size) const;
+		std::vector<glm::vec3> GetPath(glm::vec2 start_pos, int num_points, float step_size) const override;
 
 		float     getBiomeControlValue(float x, float z) const;
 		glm::vec2 getDomainWarp(float x, float z) const;
@@ -146,7 +157,7 @@ namespace Boidsish {
 		 * @param z World Z coordinate
 		 * @return Tuple of (height, surface_normal). Returns (0, up) if no data available.
 		 */
-		std::tuple<float, glm::vec3> GetCachedPointProperties(float x, float z) const;
+		std::tuple<float, glm::vec3> GetCachedPointProperties(float x, float z) const override;
 
 		/**
 		 * @brief Check if a 3D point is below the terrain surface.
@@ -156,7 +167,7 @@ namespace Boidsish {
 		 * @param point The 3D world position to check
 		 * @return true if point.y is below the terrain height at (point.x, point.z)
 		 */
-		bool IsPointBelowTerrain(const glm::vec3& point) const;
+		bool IsPointBelowTerrain(const glm::vec3& point) const override;
 
 		/**
 		 * @brief Get the signed distance from a point to the terrain surface.
@@ -167,7 +178,7 @@ namespace Boidsish {
 		 * @param point The 3D world position
 		 * @return Signed vertical distance (point.y - terrain_height)
 		 */
-		float GetDistanceAboveTerrain(const glm::vec3& point) const;
+		float GetDistanceAboveTerrain(const glm::vec3& point) const override;
 
 		/**
 		 * @brief Get distance and direction to the closest terrain point.
@@ -179,7 +190,7 @@ namespace Boidsish {
 		 * @return Tuple of (distance, direction_to_terrain). Direction is normalized.
 		 *         If point is below terrain, direction points upward.
 		 */
-		std::tuple<float, glm::vec3> GetClosestTerrainInfo(const glm::vec3& point) const;
+		std::tuple<float, glm::vec3> GetClosestTerrainInfo(const glm::vec3& point) const override;
 
 		/**
 		 * @brief Raycast against terrain, preferring cached chunk data.
@@ -199,7 +210,7 @@ namespace Boidsish {
 			float            max_distance,
 			float&           out_distance,
 			glm::vec3&       out_normal
-		) const;
+		) const override;
 
 		/**
 		 * @brief Check if a world position is within the currently cached terrain area.
@@ -210,7 +221,73 @@ namespace Boidsish {
 		 * @param z World Z coordinate
 		 * @return true if the position is within a cached chunk
 		 */
-		bool IsPositionCached(float x, float z) const;
+		bool IsPositionCached(float x, float z) const override;
+
+		// ==================== Terrain Deformation API ====================
+
+		/**
+		 * @brief Get the deformation manager for adding/querying terrain deformations.
+		 *
+		 * The deformation manager allows you to add craters, flatten areas, and
+		 * other terrain modifications that will be applied during chunk generation.
+		 *
+		 * @return Reference to the deformation manager
+		 */
+		TerrainDeformationManager& GetDeformationManager() override { return deformation_manager_; }
+
+		const TerrainDeformationManager& GetDeformationManager() const override { return deformation_manager_; }
+
+		/**
+		 * @brief Add a crater deformation at the specified position.
+		 *
+		 * Convenience method that creates and adds a CraterDeformation.
+		 *
+		 * @param center Center position of the crater
+		 * @param radius Radius of the crater
+		 * @param depth Depth of the crater (positive value)
+		 * @param irregularity Random variation amount (0-1)
+		 * @param rim_height Height of the rim around the crater
+		 * @return ID of the created deformation
+		 */
+		uint32_t AddCrater(
+			const glm::vec3& center,
+			float            radius,
+			float            depth,
+			float            irregularity = 0.2f,
+			float            rim_height = 0.0f
+		) override;
+
+		/**
+		 * @brief Add a flatten square deformation at the specified position.
+		 *
+		 * Convenience method that creates and adds a FlattenSquareDeformation.
+		 *
+		 * @param center Center position (Y is the target height)
+		 * @param half_width Half-width in X direction
+		 * @param half_depth Half-depth in Z direction
+		 * @param blend_distance Edge blending distance
+		 * @param rotation_y Rotation around Y axis in radians
+		 * @return ID of the created deformation
+		 */
+		uint32_t AddFlattenSquare(
+			const glm::vec3& center,
+			float            half_width,
+			float            half_depth,
+			float            blend_distance = 1.0f,
+			float            rotation_y = 0.0f
+		) override;
+
+		/**
+		 * @brief Invalidate chunks affected by deformations.
+		 *
+		 * Call this after adding/removing deformations to regenerate affected chunks.
+		 * If deformation_id is provided, only invalidates chunks affected by that
+		 * specific deformation. Otherwise invalidates all chunks that have any
+		 * deformation.
+		 *
+		 * @param deformation_id Optional specific deformation to invalidate for
+		 */
+		void InvalidateDeformedChunks(std::optional<uint32_t> deformation_id = std::nullopt) override;
 
 	private:
 		glm::vec2 findClosestPointOnPath(glm::vec2 sample_pos) const;
@@ -293,6 +370,9 @@ namespace Boidsish {
 
 		// Instanced terrain render manager (optional, when set uses GPU heightmap lookup)
 		std::shared_ptr<TerrainRenderManager> render_manager_;
+
+		// Terrain deformation system
+		TerrainDeformationManager deformation_manager_;
 	};
 
 } // namespace Boidsish

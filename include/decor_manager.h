@@ -11,7 +11,7 @@
 
 namespace Boidsish {
 
-	class TerrainGenerator;
+	class ITerrainGenerator;
 	class TerrainRenderManager;
 	struct Camera;
 
@@ -63,7 +63,7 @@ namespace Boidsish {
 			float                                 delta_time,
 			const Camera&                         camera,
 			const Frustum&                        frustum,
-			const TerrainGenerator&               terrain_gen,
+			const ITerrainGenerator&              terrain_gen,
 			std::shared_ptr<TerrainRenderManager> render_manager
 		);
 		void Render(const glm::mat4& view, const glm::mat4& projection);
@@ -86,7 +86,7 @@ namespace Boidsish {
 		void _RegeneratePlacements(
 			const Camera&                         camera,
 			const Frustum&                        frustum,
-			const TerrainGenerator&               terrain_gen,
+			const ITerrainGenerator&              terrain_gen,
 			std::shared_ptr<TerrainRenderManager> render_manager
 		);
 

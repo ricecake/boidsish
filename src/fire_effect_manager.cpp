@@ -204,7 +204,7 @@ namespace Boidsish {
 		compute_shader_->use();
 		compute_shader_->setFloat("u_delta_time", delta_time);
 		compute_shader_->setFloat("u_time", time_);
-		compute_shader_->setInt("u_num_emitters", emitters.size());
+		compute_shader_->setInt("u_num_emitters", static_cast<int>(emitters.size()));
 
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, particle_buffer_);
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, emitter_buffer_);
@@ -357,7 +357,7 @@ namespace Boidsish {
 		render_shader_->setFloat("u_time", time_);
 
 		// Enable GPU frustum culling for particles
-		render_shader_->setBool("enableFrustumCulling", true);
+		render_shader_->setInt("enableFrustumCulling", 1);
 		render_shader_->setFloat("frustumCullRadius", 2.0f); // Particle cull radius
 
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, particle_buffer_);

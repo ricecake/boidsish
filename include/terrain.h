@@ -1,16 +1,30 @@
 #pragma once
 
+#include <memory>
 #include <vector>
 
 #include "field.h"
-#include "shape.h"
 #include <glm/glm.hpp>
+#include <glm/gtc/matrix_transform.hpp>
+
+class Shader;
 
 namespace Boidsish {
 
 	class TerrainRenderManager;
 
-	class Terrain: public Shape {
+	/**
+	 * @brief Represents a single terrain chunk with its geometry data.
+	 *
+	 * Terrain chunks are managed by TerrainGenerator and rendered via
+	 * TerrainRenderManager. Unlike other renderable objects, Terrain
+	 * does not inherit from Shape as it:
+	 * - Is never rendered through the standard shape pipeline
+	 * - Is never instanced via InstanceManager
+	 * - Has no color, trail, rotation, or PBR properties
+	 * - Only needs position and geometry data
+	 */
+	class Terrain {
 	public:
 		Terrain(
 			const std::vector<unsigned int>& indices,
@@ -20,14 +34,24 @@ namespace Boidsish {
 		);
 		~Terrain();
 
-		// Legacy per-chunk GPU setup (deprecated - use TerrainRenderManager instead)
-		void      setupMesh();
-		void      render() const override;
-		void      render(Shader& shader, const glm::mat4& model_matrix) const override;
-		glm::mat4 GetModelMatrix() const override;
+		// Position accessors
+		float GetX() const { return x_; }
 
-		// Terrain chunks are not instanced (each has unique geometry)
-		std::string GetInstanceKey() const override { return "Terrain:" + std::to_string(GetId()); }
+		float GetY() const { return y_; }
+
+		float GetZ() const { return z_; }
+
+		void SetPosition(float x, float y, float z) {
+			x_ = x;
+			y_ = y;
+			z_ = z;
+		}
+
+		glm::mat4 GetModelMatrix() const {
+			glm::mat4 model = glm::mat4(1.0f);
+			model = glm::translate(model, glm::vec3(x_, y_, z_));
+			return model;
+		}
 
 		static std::shared_ptr<Shader> terrain_shader_;
 
@@ -52,26 +76,14 @@ namespace Boidsish {
 		 */
 		const std::vector<unsigned int>& GetIndices() const { return indices_; }
 
-		/**
-		 * @brief Check if this chunk uses legacy per-chunk GPU resources.
-		 */
-		bool HasLegacyGPUResources() const { return vao_ != 0; }
-
-		/**
-		 * @brief Mark this chunk as managed by TerrainRenderManager (skip legacy GPU setup).
-		 */
-		void SetManagedByRenderManager(bool managed) { managed_by_render_manager_ = managed; }
-
-		bool IsManagedByRenderManager() const { return managed_by_render_manager_; }
-
 	private:
+		float x_ = 0.0f;
+		float y_ = 0.0f;
+		float z_ = 0.0f;
+
 		std::vector<float>        vertex_data_; // Interleaved for GPU
 		std::vector<unsigned int> indices_;
-
-		unsigned int vao_ = 0, vbo_ = 0, ebo_ = 0;
-		int          index_count_;
-
-		bool managed_by_render_manager_ = false;
+		int                       index_count_;
 	};
 
 } // namespace Boidsish

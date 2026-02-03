@@ -56,8 +56,8 @@ int main() {
 		Camera camera(0.0f, 2.0f, 8.0f, -15.0f, 0.0f, 45.0f);
 		viz.SetCamera(camera);
 
-		// Set the dot function
-		viz.SetDotFunction(TrailExample);
+		// Set the shape handler function
+		viz.AddShapeHandler(TrailExample);
 
 		auto path = std::filesystem::current_path();
 

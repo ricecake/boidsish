@@ -317,7 +317,7 @@ namespace Boidsish {
 		std::tuple<float, glm::vec3>                 GetTerrainPointProperties(float x, float y) const;
 		std::tuple<float, glm::vec3>                 GetTerrainPointPropertiesThreadSafe(float x, float y) const;
 		const std::vector<std::shared_ptr<Terrain>>& GetTerrainChunks() const;
-		const TerrainGenerator*                      GetTerrainGenerator() const;
+		std::shared_ptr<ITerrainGenerator>           GetTerrain() const;
 
 		// ========== Cache-Preferring Terrain Queries ==========
 		// These methods use cached terrain chunk data when available, which is much

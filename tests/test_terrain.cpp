@@ -18,13 +18,13 @@ TEST(TerrainGeneratorTest, DISABLED_CachePersistence) {
     camera.x = 0; camera.y = 1; camera.z = 0; // height 1 -> distance 10
 
     // Update should trigger some low priority generations if they are not in cache
-    gen.update(frustum, camera);
+    gen.Update(frustum, camera);
 
     // Since it's async, we might need to wait or just check if they are enqueued
     // Actually, we can't easily check pending_chunks_ from outside.
 
     // But we can check if visible_chunks is empty (it should be because of frustum culling)
-    EXPECT_TRUE(gen.getVisibleChunks().empty());
+    EXPECT_TRUE(gen.GetVisibleChunks().empty());
 }
 
 int main(int argc, char **argv) {

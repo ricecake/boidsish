@@ -379,6 +379,17 @@ namespace Boidsish {
 				consteval int BlurPasses() {
 					return 4;
 				}
+
+				/**
+				 * @brief Scale factor for reflection FBO resolution.
+				 *
+				 * Using 0.5 means the reflection is rendered at half resolution,
+				 * reducing fill rate by 75% while the blur hides quality loss.
+				 * Values: 0.25 (quarter), 0.5 (half), 1.0 (full)
+				 */
+				consteval float ReflectionResolutionScale() {
+					return 0.5f;
+				}
 			} // namespace Rendering
 		} // namespace Class
 	} // namespace Constants
