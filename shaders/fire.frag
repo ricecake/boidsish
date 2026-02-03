@@ -84,6 +84,26 @@ void main() {
 		// Add a "sparkle" highlight
 		float sparkle = pow(twinkle, 10.0) * 2.0;
 		color += vec3(sparkle);
+	} else if (v_style == 5) { // Accelerator
+		// Vibrant blues and fiery orange-reds
+		// Use gl_PrimitiveID to distinguish between blue and orange-red particles
+		bool is_blue = (gl_PrimitiveID % 2 == 0);
+
+		if (is_blue) {
+			vec3 blue = vec3(0.0, 0.3, 1.0);
+			vec3 cyan = vec3(0.3, 0.8, 1.0);
+			color = mix(blue, cyan, sin(u_time * 5.0 + v_lifetime) * 0.5 + 0.5);
+		} else {
+			vec3 red = vec3(1.0, 0.1, 0.0);
+			vec3 orange = vec3(1.0, 0.6, 0.0);
+			color = mix(red, orange, cos(u_time * 5.0 + v_lifetime) * 0.5 + 0.5);
+		}
+
+		// Lightning flickering
+		float flicker = sin(u_time * 50.0 + float(gl_PrimitiveID)) * 0.5 + 0.5;
+		if (flicker > 0.8) {
+			color *= 4.0;
+		}
 	}
 
 	if (v_style == 28) {
@@ -121,6 +141,9 @@ void main() {
 		FragColor = vec4(color, alpha);
 	} else if (v_style == 4) { // Glitter
 		float alpha = clamp(v_lifetime, 0.0, 1.0);
+		FragColor = vec4(color, alpha);
+	} else if (v_style == 5) { // Accelerator
+		float alpha = smoothstep(0.0, 0.5, v_lifetime);
 		FragColor = vec4(color, alpha);
 	} else {
 		// float alpha = smoothstep((1.0 - v_lifetime), (v_lifetime), dist*v_lifetime / 2.5);

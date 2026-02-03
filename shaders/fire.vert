@@ -69,6 +69,8 @@ void main() {
 			gl_PointSize = 4.0 + v_lifetime * 20.0;
 		} else if (p.style == 4) { // Glitter
 			gl_PointSize = 6.0;    // Small, consistent square
+		} else if (p.style == 5) { // Accelerator
+			gl_PointSize = 12.0;
 		} else {
 			gl_PointSize = smoothstep(2.0 * (1.0 - v_lifetime), v_lifetime, v_lifetime / 2.5) * 25.0;
 		}
