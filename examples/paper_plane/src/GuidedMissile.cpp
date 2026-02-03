@@ -127,7 +127,16 @@ namespace Boidsish {
 
 			auto targets = handler.GetEntitiesByType<PaperPlane>();
 			if (!targets.empty()) {
-				auto plane = targets[0];
+				PaperPlane*                 closest = nullptr;
+				float                       min_dist_sq = std::numeric_limits<float>::max();
+				for (auto p : targets) {
+					float d2 = (p->GetPosition() - GetPosition()).MagnitudeSquared();
+					if (d2 < min_dist_sq) {
+						min_dist_sq = d2;
+						closest = p;
+					}
+				}
+				auto plane = closest;
 				target_ = plane;
 				auto& r = rigid_body_;
 

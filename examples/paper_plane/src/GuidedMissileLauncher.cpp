@@ -33,9 +33,19 @@ namespace Boidsish {
 		auto planes = handler.GetEntitiesByType<PaperPlane>();
 		if (planes.empty())
 			return;
-		auto plane = planes[0];
 
-		float distance_to_plane = (plane->GetPosition() - GetPosition()).Magnitude();
+		PaperPlane*                 closest = nullptr;
+		float                       min_dist_sq = std::numeric_limits<float>::max();
+		for (auto p : planes) {
+			float d2 = (p->GetPosition() - GetPosition()).MagnitudeSquared();
+			if (d2 < min_dist_sq) {
+				min_dist_sq = d2;
+				closest = p;
+			}
+		}
+		auto plane = closest;
+
+		float distance_to_plane = std::sqrt(min_dist_sq);
 		if (distance_to_plane > 500.0f) {
 			return;
 		}
@@ -77,12 +87,16 @@ namespace Boidsish {
 
 		std::uniform_real_distribution<float> dist(0.0f, 1.0f);
 		if (dist(eng_) < fire_probability_this_frame) {
-			if (handler.GetEntitiesByType<GuidedMissile>().size() < kMaxInFlightMissiles) {
-				handler.QueueAddEntity<GuidedMissile>(GetPosition());
-				time_since_last_fire_ = 0.0f;
-				std::uniform_real_distribution<float> new_dist(4.0f, 8.0f);
-				fire_interval_ = new_dist(eng_);
-			}
+			Fire(handler);
+		}
+	}
+
+	void GuidedMissileLauncher::Fire(const EntityHandler& handler) {
+		if (handler.GetEntitiesByType<GuidedMissile>().size() < kMaxInFlightMissiles) {
+			handler.QueueAddEntity<GuidedMissile>(GetPosition());
+			time_since_last_fire_ = 0.0f;
+			std::uniform_real_distribution<float> new_dist(4.0f, 8.0f);
+			fire_interval_ = new_dist(eng_);
 		}
 	}
 

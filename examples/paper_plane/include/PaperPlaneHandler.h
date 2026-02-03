@@ -18,6 +18,9 @@ namespace Boidsish {
 		PaperPlaneHandler(task_thread_pool::task_thread_pool& thread_pool);
 		void PreTimestep(float time, float delta_time) override;
 
+		void SetAutoSpawn(bool enable) { enable_auto_spawning_ = enable; }
+		bool GetAutoSpawn() const { return enable_auto_spawning_; }
+
 		void RecordTarget(std::shared_ptr<GuidedMissileLauncher> target) const;
 		int  GetTargetCount(std::shared_ptr<GuidedMissileLauncher> target) const;
 
@@ -27,6 +30,7 @@ namespace Boidsish {
 		std::map<const Terrain*, int>         spawned_launchers_;
 		std::random_device                    rd_;
 		std::mt19937                          eng_;
+		bool                                  enable_auto_spawning_ = true;
 		float                                 damage_timer_ = 0.0f;
 		std::uniform_real_distribution<float> damage_dist_;
 	};

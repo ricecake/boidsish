@@ -65,6 +65,8 @@ namespace Boidsish {
 
 		void SetPosition(const Vector3& pos) { rigid_body_.SetPosition(glm::vec3(pos.x, pos.y, pos.z)); }
 
+		glm::quat GetOrientation() const { return rigid_body_.GetOrientation(); }
+
 		// Spatial velocity per frame
 		float GetXVel() const { return rigid_body_.GetLinearVelocity().x; }
 
