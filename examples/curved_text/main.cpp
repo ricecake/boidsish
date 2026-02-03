@@ -30,16 +30,16 @@ int main() {
 		if (state.mouse_button_down[GLFW_MOUSE_BUTTON_LEFT]) {
 			auto world_pos = visualizer.ScreenToWorld(state.mouse_x, state.mouse_y);
 			if (world_pos) {
-				std::cout << "Spawning curved text at: " << world_pos->x << ", " << world_pos->y << ", " << world_pos->z
-						  << std::endl;
+				std::cout << "Spawning 'Can' style text at terrain" << std::endl;
 
-				// Spawn curved text effect
+				// Spawn curved text effect (Can style: text normal perp to wrap axis)
 				visualizer.AddCurvedTextEffect(
 					"+100 POINTS",
-					*world_pos + glm::vec3(0, 5, 0),
+					*world_pos + glm::vec3(0, 5, 0), // center of cylinder
 					10.0f,          // radius
 					90.0f,          // angle
-					glm::vec3(0, 1, 0), // normal (up)
+					glm::vec3(0, 1, 0), // wrap axis (up)
+					glm::vec3(1, 0, 0), // text normal (midpoint facing)
 					3.0f,           // duration
 					"assets/Roboto-Medium.ttf",
 					2.0f,           // font size
@@ -50,24 +50,21 @@ int main() {
 		}
 
 		if (state.key_down[GLFW_KEY_SPACE]) {
-			// Spawn some examples around the center
-			for (int i = 0; i < 8; ++i) {
-				float angle = i * glm::two_pi<float>() / 8.0f;
-				glm::vec3 pos(20.0f * cos(angle), 10.0f, 20.0f * sin(angle));
-				glm::vec3 normal = glm::normalize(pos);
-
-				visualizer.AddCurvedTextEffect(
-					"BOIDSISH ENGINE",
-					pos,
-					15.0f,
-					120.0f,
-					normal,
-					4.0f,
-					"assets/Roboto-Medium.ttf",
-					1.5f,
-					0.2f
-				);
-			}
+			std::cout << "Spawning 'Rainbow' style text" << std::endl;
+			// Spawn curved text effect (Rainbow style: text normal parallel to wrap axis)
+			visualizer.AddCurvedTextEffect(
+				"DOUBLE RAINBOW",
+				glm::vec3(0, 25, 0), // center of circle
+				25.0f,             // radius
+				180.0f,            // angle
+				glm::vec3(0, 0, 1), // wrap axis (z)
+				glm::vec3(0, 0, 1), // text normal (z - facing camera)
+				5.0f,              // duration
+				"assets/Roboto-Medium.ttf",
+				3.0f,              // font size
+				0.5f,              // depth
+				glm::vec3(0.0f, 1.0f, 1.0f) // cyan
+			);
 		}
 	});
 

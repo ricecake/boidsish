@@ -2947,7 +2947,8 @@ namespace Boidsish {
 		const glm::vec3&   position,
 		float              radius,
 		float              angle_degrees,
-		const glm::vec3&   normal,
+		const glm::vec3&   wrap_normal,
+		const glm::vec3&   text_normal,
 		float              duration,
 		const std::string& font_path,
 		float              font_size,
@@ -2962,7 +2963,8 @@ namespace Boidsish {
 			position,
 			radius,
 			angle_degrees,
-			normal,
+			wrap_normal,
+			text_normal,
 			duration
 		);
 		effect->SetColor(color.r, color.g, color.b);

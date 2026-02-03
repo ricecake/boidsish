@@ -14,7 +14,8 @@ namespace Boidsish {
 			const glm::vec3&   position,
 			float              radius,
 			float              angle_degrees,
-			const glm::vec3&   normal,
+			const glm::vec3&   wrap_normal,
+			const glm::vec3&   text_normal,
 			float              duration = 5.0f
 		);
 
@@ -29,7 +30,8 @@ namespace Boidsish {
 		glm::vec3 center_;
 		float     radius_;
 		float     angle_rad_;
-		glm::vec3 normal_;
+		glm::vec3 wrap_normal_;
+		glm::vec3 text_normal_;
 		float     total_duration_;
 		float     age_ = 0.0f;
 

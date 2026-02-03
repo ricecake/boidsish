@@ -21,14 +21,16 @@ namespace Boidsish {
 		const glm::vec3&   position,
 		float              radius,
 		float              angle_degrees,
-		const glm::vec3&   normal,
+		const glm::vec3&   wrap_normal,
+		const glm::vec3&   text_normal,
 		float              duration
 	):
 		Text(text, font_path, font_size, depth, CENTER, 0, position.x, position.y, position.z, 1, 1, 1, 1, false),
 		center_(position),
 		radius_(radius),
 		angle_rad_(glm::radians(angle_degrees)),
-		normal_(glm::normalize(normal)),
+		wrap_normal_(glm::normalize(wrap_normal)),
+		text_normal_(glm::normalize(text_normal)),
 		total_duration_(duration) {
 		is_text_effect_ = true;
 		text_fade_progress_ = 0.0f;
@@ -107,15 +109,30 @@ namespace Boidsish {
 				max_width = line_width;
 		}
 
-		// Calculate basis vectors for the normal
-		glm::vec3 up = normal_;
-		glm::vec3 right;
-		if (std::abs(up.y) < 0.999f) {
-			right = glm::normalize(glm::cross(glm::vec3(0, 1, 0), up));
+		// Calculate basis vectors for the transformation
+		// Wrap Normal (W) is the axis of curvature.
+		// Text Normal (N) is the facing direction at the midpoint.
+		glm::vec3 W = wrap_normal_;
+		glm::vec3 N = text_normal_;
+
+		glm::vec3 Tangent_mid;
+		if (glm::abs(glm::dot(W, N)) < 0.999f) {
+			// Facing is not parallel to Axis -> Can-style wrapping
+			Tangent_mid = glm::normalize(glm::cross(N, W));
 		} else {
-			right = glm::normalize(glm::cross(glm::vec3(1, 0, 0), up));
+			// Facing is parallel to Axis -> Rainbow-style wrapping
+			// We need a reference vector to define the plane of the rainbow.
+			if (glm::abs(W.y) < 0.999f) {
+				Tangent_mid = glm::normalize(glm::cross(glm::vec3(0, 1, 0), W));
+			} else {
+				Tangent_mid = glm::normalize(glm::cross(glm::vec3(1, 0, 0), W));
+			}
 		}
-		glm::vec3 forward = glm::normalize(glm::cross(up, right));
+
+		glm::vec3 Radial_mid = glm::normalize(glm::cross(W, Tangent_mid));
+		glm::vec3 X0 = Tangent_mid;
+		glm::vec3 Z0 = N;
+		glm::vec3 Y0 = glm::normalize(glm::cross(Z0, X0));
 
 		for (const auto& line : lines) {
 			float line_width = 0.0f;
@@ -264,13 +281,18 @@ namespace Boidsish {
 
 					// Curving transformation
 					float     theta = (normalized_x - 0.5f) * angle_rad_;
-					glm::vec3 radial = std::cos(theta) * right + std::sin(theta) * forward;
-					glm::vec3 final_pos = (radius_ + vz) * radial + vy * normal_;
+				glm::mat4 rot_mat = glm::rotate(glm::mat4(1.0f), theta, W);
+				glm::mat3 rot = glm::mat3(rot_mat);
 
-					// Transform normal as well
+				glm::vec3 radial = rot * Radial_mid;
+				glm::vec3 tangent = rot * Tangent_mid; // not used directly but good for mental model
+				glm::vec3 text_up = rot * Y0;
+				glm::vec3 text_face = rot * Z0;
+
+				glm::vec3 final_pos = radius_ * radial + vy * text_up + vz * text_face;
+
+				// Transform normal
 					glm::vec3 v_normal = {cached_vertices[i + 3], cached_vertices[i + 4], cached_vertices[i + 5]};
-					// Rough approximation of normal rotation: rotate it by theta around 'up'
-					glm::mat3 rot = glm::mat3(glm::rotate(glm::mat4(1.0f), theta, up));
 					glm::vec3 final_normal = rot * v_normal;
 
 					vertices.insert(

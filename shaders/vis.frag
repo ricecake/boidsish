@@ -127,8 +127,6 @@ void main() {
 			final_alpha *= alpha_factor;
 		}
 
-		final_alpha = mix(0.0, final_alpha, step(0.01, FragPos.y));
-
 		outColor = vec4(result, final_alpha);
 		outColor = mix(vec4(0.0, 0.7, 0.7, final_alpha) * length(outColor), outColor, step(1, fade));
 	}
