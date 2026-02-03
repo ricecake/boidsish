@@ -16,23 +16,16 @@ void main() {
 	}
 
 	vec3 color;
-	if (v_style == 0) {                       // Rocket Trail
-		vec3 hot_color = vec3(0.8, 0.6, 0.6); // Bright blue-white
-		// vec3 mid_color = vec3(0.5, 0.5, 1.0);   // Blue
-		// vec3 cool_color = vec3(0.1, 0.1, 0.3);    // Dark blue
-		// vec3 smoke_color = vec3(0.3, 0.3, 0.3);
-		// vec3 mid_color = vec3(1.0, 0.5, 0.0);   // Orange
-		// vec3 cool_color = vec3(0.4, 0.1, 0.0);    // Dark red/smokey
-		// vec3 smoke_color = vec3(0.3, 0.3, 0.3);    // Dark red/smokey
-
-		vec3 mid_color = vec3(0.6, 0.3, 0.0);   // Orange
-		vec3 cool_color = vec3(0.2, 0.1, 0.0);  // Dark red/smokey
-		vec3 smoke_color = vec3(0.1, 0.0, 0.0); // Dark red/smokey
+	if (v_style == 0) {                         // Rocket Trail
+		vec3 hot_color = vec3(0.8, 0.8, 1.0);   // Bright blue-white
+		vec3 mid_color = vec3(0.5, 0.5, 1.0);   // Blue
+		vec3 cool_color = vec3(0.1, 0.1, 0.3);  // Dark blue
+		vec3 smoke_color = vec3(0.3, 0.3, 0.3); // Grey smoke
 
 		color = mix(
 			mix(smoke_color, cool_color, v_lifetime / 2.5),
 			mix(mid_color, hot_color, v_lifetime / 2.5),
-			v_lifetime / 5
+			v_lifetime / 5.0
 		);
 		// color = vec3(0, 0, 1);
 	} else if (v_style == 1) { // Explosion
@@ -114,7 +107,7 @@ void main() {
 
 		FragColor = vec4(final_color, 0.75); // Semi-transparent
 	} else if (v_style == 0) {
-		float alpha = 1 - length(color - vec3(0.1, 0.0, 0.0)); // whatever smoke color is
+		float alpha = v_lifetime * 0.4;
 		FragColor = vec4(color, alpha);
 	} else if (v_style == 3) {
 		float alpha = smoothstep(0.0, 0.1, v_lifetime);

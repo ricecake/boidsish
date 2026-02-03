@@ -265,6 +265,10 @@ namespace Boidsish {
 			return;
 		}
 
+		glEnable(GL_BLEND);
+		glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+		glDepthMask(GL_FALSE);
+
 		shader.use();
 		shader.setMat4("view", view);
 		shader.setMat4("projection", projection);
@@ -394,6 +398,9 @@ namespace Boidsish {
 
 		glBindVertexArray(0);
 		shader.setInt("useVertexColor", 0);
+
+		glDepthMask(GL_TRUE);
+		glDisable(GL_BLEND);
 	}
 
 	size_t TrailRenderManager::GetRegisteredTrailCount() const {
