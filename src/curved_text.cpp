@@ -1,5 +1,6 @@
 #include "curved_text.h"
 
+#include <array>
 #include <iostream>
 #include <vector>
 
