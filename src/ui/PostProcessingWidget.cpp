@@ -46,6 +46,10 @@ namespace Boidsish {
 						if (ImGui::ColorEdit3("Haze Color", &haze_color[0])) {
 							atmosphere_effect->SetHazeColor(haze_color);
 						}
+						float haze_g = atmosphere_effect->GetHazeG();
+						if (ImGui::SliderFloat("Haze Anisotropy", &haze_g, 0.0f, 0.99f)) {
+							atmosphere_effect->SetHazeG(haze_g);
+						}
 						float cloud_density = atmosphere_effect->GetCloudDensity();
 						if (ImGui::SliderFloat("Cloud Density", &cloud_density, 0.0f, 1.0f)) {
 							atmosphere_effect->SetCloudDensity(cloud_density);
@@ -61,6 +65,18 @@ namespace Boidsish {
 						glm::vec3 cloud_color = atmosphere_effect->GetCloudColor();
 						if (ImGui::ColorEdit3("Cloud Color", &cloud_color[0])) {
 							atmosphere_effect->SetCloudColor(cloud_color);
+						}
+						float cloud_g = atmosphere_effect->GetCloudG();
+						if (ImGui::SliderFloat("Cloud Anisotropy", &cloud_g, 0.0f, 0.99f)) {
+							atmosphere_effect->SetCloudG(cloud_g);
+						}
+						float cloud_boost = atmosphere_effect->GetCloudScatteringBoost();
+						if (ImGui::SliderFloat("Cloud Scatter Boost", &cloud_boost, 0.0f, 10.0f)) {
+							atmosphere_effect->SetCloudScatteringBoost(cloud_boost);
+						}
+						float cloud_powder = atmosphere_effect->GetCloudPowderStrength();
+						if (ImGui::SliderFloat("Cloud Powder Strength", &cloud_powder, 0.0f, 10.0f)) {
+							atmosphere_effect->SetCloudPowderStrength(cloud_powder);
 						}
 					}
 				}
