@@ -37,6 +37,8 @@ namespace Boidsish {
 		class IWidget;
 	}
 	class EntityBase;
+	class CurvedText;
+	class ArcadeText;
 	class FireEffect;
 	class SoundEffect;
 	class FireEffectManager;
@@ -338,7 +340,25 @@ namespace Boidsish {
 		 * @param font_size Font size
 		 * @param depth Thickness of the 3D text
 		 */
-		void AddCurvedTextEffect(
+		std::shared_ptr<CurvedText> AddCurvedTextEffect(
+			const std::string& text,
+			const glm::vec3&   position,
+			float              radius,
+			float              angle_degrees,
+			const glm::vec3&   wrap_normal,
+			const glm::vec3&   text_normal,
+			float              duration = 5.0f,
+			const std::string& font_path = "assets/Roboto-Medium.ttf",
+			float              font_size = 1.0f,
+			float              depth = 0.1f,
+			const glm::vec3&   color = glm::vec3(1.0f)
+		);
+
+		/**
+		 * @brief Add an arcade-style curved text effect in world space.
+		 * Supports waves, twists, double-copy, and rainbow effects.
+		 */
+		std::shared_ptr<ArcadeText> AddArcadeTextEffect(
 			const std::string& text,
 			const glm::vec3&   position,
 			float              radius,

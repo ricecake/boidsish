@@ -25,6 +25,12 @@ uniform float textFadeProgress = 1.0;
 uniform float textFadeSoftness = 0.1;
 uniform int   textFadeMode = 0; // 0: Fade In, 1: Fade Out
 
+// Arcade Text Effects
+uniform bool  isArcadeText = false;
+uniform bool  arcadeRainbowEnabled = false;
+uniform float arcadeRainbowSpeed = 2.0;
+uniform float arcadeRainbowFrequency = 5.0;
+
 // PBR material properties
 uniform bool  usePBR = false;
 uniform float roughness = 0.5;
@@ -125,6 +131,12 @@ void main() {
 				alpha_factor = 1.0 - smoothstep(TexCoords.x, TexCoords.x + textFadeSoftness, textFadeProgress);
 			}
 			final_alpha *= alpha_factor;
+		}
+
+		if (isArcadeText && arcadeRainbowEnabled) {
+			vec3 rainbow =
+				0.5 + 0.5 * cos(time * arcadeRainbowSpeed + TexCoords.x * arcadeRainbowFrequency + vec3(0, 2, 4));
+			result *= rainbow;
 		}
 
 		outColor = vec4(result, final_alpha);

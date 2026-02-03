@@ -13,6 +13,7 @@
 #include "ConfigManager.h"
 #include "UIManager.h"
 #include "audio_manager.h"
+#include "arcade_text.h"
 #include "clone_manager.h"
 #include "curved_text.h"
 #include "decor_manager.h"
@@ -2942,7 +2943,7 @@ namespace Boidsish {
 		impl->mesh_explosion_manager->ExplodeShape(shape, intensity, velocity);
 	}
 
-	void Visualizer::AddCurvedTextEffect(
+	std::shared_ptr<CurvedText> Visualizer::AddCurvedTextEffect(
 		const std::string& text,
 		const glm::vec3&   position,
 		float              radius,
@@ -2969,6 +2970,37 @@ namespace Boidsish {
 		);
 		effect->SetColor(color.r, color.g, color.b);
 		impl->transient_effects.push_back(effect);
+		return effect;
+	}
+
+	std::shared_ptr<ArcadeText> Visualizer::AddArcadeTextEffect(
+		const std::string& text,
+		const glm::vec3&   position,
+		float              radius,
+		float              angle_degrees,
+		const glm::vec3&   wrap_normal,
+		const glm::vec3&   text_normal,
+		float              duration,
+		const std::string& font_path,
+		float              font_size,
+		float              depth,
+		const glm::vec3&   color
+	) {
+		auto effect = std::make_shared<ArcadeText>(
+			text,
+			font_path,
+			font_size,
+			depth,
+			position,
+			radius,
+			angle_degrees,
+			wrap_normal,
+			text_normal,
+			duration
+		);
+		effect->SetColor(color.r, color.g, color.b);
+		impl->transient_effects.push_back(effect);
+		return effect;
 	}
 
 	void Visualizer::TriggerComplexExplosion(
