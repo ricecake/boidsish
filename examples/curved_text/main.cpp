@@ -12,11 +12,7 @@ std::tuple<glm::vec3, glm::vec3, glm::vec3> orientToCameraHelper(const Boidsish:
 	auto textNormal = camPos - pos;
 	auto side = glm::cross(up, textNormal);
 
-	return {
-		glm::normalize(textNormal),
-		glm::normalize(up),
-		glm::normalize(side)
-	};
+	return {glm::normalize(textNormal), glm::normalize(up), glm::normalize(side)};
 }
 
 int main() {
@@ -32,12 +28,14 @@ int main() {
 
 	// Add some light
 	auto& light_manager = visualizer.GetLightManager();
-	light_manager.AddLight(Boidsish::Light::CreateDirectional(
-		glm::vec3(10.0f, 20.0f, 10.0f),
-		glm::vec3(-1.0f, -1.0f, -1.0f),
-		1.0f,
-		glm::vec3(1.0f, 1.0f, 1.0f)
-	));
+	light_manager.AddLight(
+		Boidsish::Light::CreateDirectional(
+			glm::vec3(10.0f, 20.0f, 10.0f),
+			glm::vec3(-1.0f, -1.0f, -1.0f),
+			1.0f,
+			glm::vec3(1.0f, 1.0f, 1.0f)
+		)
+	);
 	light_manager.SetAmbientLight(glm::vec3(0.3f));
 
 	visualizer.AddInputCallback([&](const Boidsish::InputState& state) {
@@ -51,15 +49,15 @@ int main() {
 				auto [tN, up, side] = orientToCameraHelper(camera, wPos);
 				visualizer.AddCurvedTextEffect(
 					"+100 POINTS",
-					wPos, // center of cylinder
-					10.0f,          // radius
-					90.0f,          // angle
-					up, // wrap axis (up)
-					tN, // text normal (midpoint facing)
-					15.0f,           // duration
+					wPos,  // center of cylinder
+					10.0f, // radius
+					90.0f, // angle
+					up,    // wrap axis (up)
+					tN,    // text normal (midpoint facing)
+					15.0f, // duration
 					"assets/Roboto-Medium.ttf",
-					2.0f,           // font size
-					0.5f,           // depth
+					2.0f,                       // font size
+					0.5f,                       // depth
 					glm::vec3(1.0f, 1.0f, 0.0f) // yellow
 				);
 			}
@@ -72,14 +70,14 @@ int main() {
 			visualizer.AddCurvedTextEffect(
 				"DOUBLE RAINBOW",
 				glm::vec3(0, 25, 0), // center of circle
-				25.0f,             // radius
-				180.0f,            // angle
-				tN, // wrap axis (z)
-				tN, // text normal (z - facing camera)
-				15.0f,              // duration
+				25.0f,               // radius
+				180.0f,              // angle
+				tN,                  // wrap axis (z)
+				tN,                  // text normal (z - facing camera)
+				15.0f,               // duration
 				"assets/Roboto-Medium.ttf",
-				3.0f,              // font size
-				0.5f,              // depth
+				3.0f,                       // font size
+				0.5f,                       // depth
 				glm::vec3(0.0f, 1.0f, 1.0f) // cyan
 			);
 		}

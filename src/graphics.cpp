@@ -12,8 +12,8 @@
 
 #include "ConfigManager.h"
 #include "UIManager.h"
-#include "audio_manager.h"
 #include "arcade_text.h"
+#include "audio_manager.h"
 #include "clone_manager.h"
 #include "curved_text.h"
 #include "decor_manager.h"
@@ -2578,7 +2578,7 @@ namespace Boidsish {
 
 		glm::vec3 ray_dir = glm::normalize(far_plane_pos - ray_origin);
 
-		float     distance;
+		float                      distance;
 		[[maybe_unused]] glm::vec3 normal;
 		if (impl->terrain_generator->RaycastCached(ray_origin, ray_dir, 1000.0f, distance, normal)) {
 			return ray_origin + ray_dir * distance;

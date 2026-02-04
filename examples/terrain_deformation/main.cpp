@@ -1,9 +1,9 @@
 #include <iostream>
 #include <vector>
-#include <glm/glm.hpp>
 
 #include "graphics.h"
 #include "terrain_generator.h"
+#include <glm/glm.hpp>
 
 int main() {
 	try {

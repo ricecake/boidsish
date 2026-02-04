@@ -33,21 +33,23 @@ namespace Boidsish {
 		bool                      has_terrain;
 	};
 
-	class TerrainGenerator : public ITerrainGenerator {
+	class TerrainGenerator: public ITerrainGenerator {
 	public:
 		TerrainGenerator(int seed = 12345);
 		~TerrainGenerator() override;
 
 		// ==================== ITerrainGenerator Interface ====================
 
-		void Update(const Frustum& frustum, const Camera& camera) override;
+		void                                         Update(const Frustum& frustum, const Camera& camera) override;
 		const std::vector<std::shared_ptr<Terrain>>& GetVisibleChunks() const override;
 		std::vector<std::shared_ptr<Terrain>>        GetVisibleChunksCopy() const override;
 
 		// Legacy method names for compatibility (call the interface methods)
-		void                                         update(const Frustum& frustum, const Camera& camera) { Update(frustum, camera); }
+		void update(const Frustum& frustum, const Camera& camera) { Update(frustum, camera); }
+
 		const std::vector<std::shared_ptr<Terrain>>& getVisibleChunks() const { return GetVisibleChunks(); }
-		std::vector<std::shared_ptr<Terrain>>        getVisibleChunksCopy() const { return GetVisibleChunksCopy(); }
+
+		std::vector<std::shared_ptr<Terrain>> getVisibleChunksCopy() const { return GetVisibleChunksCopy(); }
 
 		/**
 		 * @brief Set the terrain render manager for batched rendering.
@@ -239,6 +241,7 @@ namespace Boidsish {
 		 * @return Reference to the deformation manager
 		 */
 		TerrainDeformationManager& GetDeformationManager() override { return deformation_manager_; }
+
 		const TerrainDeformationManager& GetDeformationManager() const override { return deformation_manager_; }
 
 		/**
@@ -255,10 +258,10 @@ namespace Boidsish {
 		 */
 		uint32_t AddCrater(
 			const glm::vec3& center,
-			float radius,
-			float depth,
-			float irregularity = 0.2f,
-			float rim_height = 0.0f
+			float            radius,
+			float            depth,
+			float            irregularity = 0.2f,
+			float            rim_height = 0.0f
 		) override;
 
 		/**
@@ -275,10 +278,10 @@ namespace Boidsish {
 		 */
 		uint32_t AddFlattenSquare(
 			const glm::vec3& center,
-			float half_width,
-			float half_depth,
-			float blend_distance = 1.0f,
-			float rotation_y = 0.0f
+			float            half_width,
+			float            half_depth,
+			float            blend_distance = 1.0f,
+			float            rotation_y = 0.0f
 		) override;
 
 		/**

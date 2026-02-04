@@ -19,12 +19,14 @@ int main() {
 
 	// Add some light
 	auto& light_manager = visualizer.GetLightManager();
-	light_manager.AddLight(Boidsish::Light::CreateDirectional(
-		glm::vec3(10.0f, 20.0f, 10.0f),
-		glm::vec3(-1.0f, -1.0f, -1.0f),
-		1.0f,
-		glm::vec3(1.0f, 1.0f, 1.0f)
-	));
+	light_manager.AddLight(
+		Boidsish::Light::CreateDirectional(
+			glm::vec3(10.0f, 20.0f, 10.0f),
+			glm::vec3(-1.0f, -1.0f, -1.0f),
+			1.0f,
+			glm::vec3(1.0f, 1.0f, 1.0f)
+		)
+	);
 	light_manager.SetAmbientLight(glm::vec3(0.4f));
 
 	// Helper to spawn different effects
@@ -79,7 +81,9 @@ int main() {
 			glm::vec3(0, 1, 0),
 			glm::vec3(0, -1, 0),
 			10.0f,
-			"assets/Roboto-Medium.ttf", 12.0f, 5.0f
+			"assets/Roboto-Medium.ttf",
+			12.0f,
+			5.0f
 		);
 		t4->SetDoubleCopy(true);
 		t4->SetRotationSpeed(1.0f);

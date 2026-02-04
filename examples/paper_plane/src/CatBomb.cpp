@@ -2,8 +2,8 @@
 
 #include "fire_effect.h"
 #include "graphics.h"
-#include <glm/gtx/quaternion.hpp>
 #include "terrain_generator_interface.h"
+#include <glm/gtx/quaternion.hpp>
 
 namespace Boidsish {
 

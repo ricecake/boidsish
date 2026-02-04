@@ -33,8 +33,7 @@ namespace Boidsish {
 			text_normal,
 			duration
 		),
-		initial_position_(position) {
-	}
+		initial_position_(position) {}
 
 	void ArcadeText::Update(float delta_time) {
 		CurvedText::Update(delta_time);

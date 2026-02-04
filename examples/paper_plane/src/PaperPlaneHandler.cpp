@@ -4,8 +4,6 @@
 #include <cmath>
 #include <set>
 
-#include <glm/gtc/constants.hpp>
-
 #include "GuidedMissileLauncher.h"
 #include "PaperPlane.h"
 #include "VortexFlockingEntity.h"
@@ -14,6 +12,7 @@
 #include "hud.h"
 #include "neighbor_utils.h"
 #include "terrain_generator.h"
+#include <glm/gtc/constants.hpp>
 #include <glm/gtx/quaternion.hpp>
 
 namespace Boidsish {

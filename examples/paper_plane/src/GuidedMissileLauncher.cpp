@@ -1,12 +1,12 @@
 #include "GuidedMissileLauncher.h"
 
 #include <algorithm>
-#include <glm/gtc/constants.hpp>
 
 #include "GuidedMissile.h"
 #include "PaperPlane.h"
 #include "graphics.h"
 #include "terrain_generator_interface.h"
+#include <glm/gtc/constants.hpp>
 
 namespace Boidsish {
 
@@ -35,7 +35,10 @@ namespace Boidsish {
 			for (int i = 0; i < 8; ++i) {
 				float     angle = i * (glm::pi<float>() / 4.0f);
 				glm::vec3 dir(sin(angle), 0, cos(angle));
-				auto [h, norm] = handler.GetCachedTerrainProperties(pos.x + dir.x * sample_dist, pos.z + dir.z * sample_dist);
+				auto [h, norm] = handler.GetCachedTerrainProperties(
+					pos.x + dir.x * sample_dist,
+					pos.z + dir.z * sample_dist
+				);
 				max_neighbor_h = std::max(max_neighbor_h, h);
 			}
 

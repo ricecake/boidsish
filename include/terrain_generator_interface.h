@@ -6,9 +6,8 @@
 #include <tuple>
 #include <vector>
 
-#include <glm/glm.hpp>
-
 #include "terrain_deformation_manager.h"
+#include <glm/glm.hpp>
 
 namespace Boidsish {
 
@@ -177,12 +176,8 @@ namespace Boidsish {
 		 * @param out_distance Output: distance to hit point
 		 * @return true if terrain was hit within max_distance
 		 */
-		virtual bool Raycast(
-			const glm::vec3& origin,
-			const glm::vec3& direction,
-			float            max_distance,
-			float&           out_distance
-		) const = 0;
+		virtual bool
+		Raycast(const glm::vec3& origin, const glm::vec3& direction, float max_distance, float& out_distance) const = 0;
 
 		/**
 		 * @brief Cast a ray with normal output.
@@ -209,7 +204,7 @@ namespace Boidsish {
 		 *
 		 * @return Reference to the deformation manager
 		 */
-		virtual TerrainDeformationManager& GetDeformationManager() = 0;
+		virtual TerrainDeformationManager&       GetDeformationManager() = 0;
 		virtual const TerrainDeformationManager& GetDeformationManager() const = 0;
 
 		/**

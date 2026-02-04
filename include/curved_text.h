@@ -20,7 +20,9 @@ namespace Boidsish {
 		);
 
 		void Update(float delta_time) override;
+
 		bool IsExpired() const override { return age_ >= total_duration_; }
+
 		void render() const override;
 
 	protected:

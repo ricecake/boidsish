@@ -134,8 +134,8 @@ void main() {
 		}
 
 		if (isArcadeText && arcadeRainbowEnabled) {
-			vec3 rainbow =
-				0.5 + 0.5 * cos(time * arcadeRainbowSpeed + TexCoords.x * arcadeRainbowFrequency + vec3(0, 2, 4));
+			vec3 rainbow = 0.5 +
+				0.5 * cos(time * arcadeRainbowSpeed + TexCoords.x * arcadeRainbowFrequency + vec3(0, 2, 4));
 			result *= rainbow;
 		}
 

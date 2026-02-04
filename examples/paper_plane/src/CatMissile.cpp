@@ -156,14 +156,15 @@ namespace Boidsish {
 
 			float     hit_dist = 0.0f;
 			glm::vec3 terrain_normal;
-			bool      target_blocked = handler.RaycastTerrain(missile_pos, to_target, distance, hit_dist, terrain_normal);
-			bool      sector_blocked = true;
+			bool target_blocked = handler.RaycastTerrain(missile_pos, to_target, distance, hit_dist, terrain_normal);
+			bool sector_blocked = true;
 
 			if (target_blocked) {
 				glm::vec3 approach_p = candidate->GetApproachPoint();
 				glm::vec3 to_approach = glm::normalize(approach_p - missile_pos);
 				float     dist_to_approach = glm::length(approach_p - missile_pos);
-				sector_blocked = handler.RaycastTerrain(missile_pos, to_approach, dist_to_approach, hit_dist, terrain_normal);
+				sector_blocked =
+					handler.RaycastTerrain(missile_pos, to_approach, dist_to_approach, hit_dist, terrain_normal);
 			} else {
 				sector_blocked = false;
 			}
@@ -266,9 +267,8 @@ namespace Boidsish {
 						}
 					}
 
-					glm::vec3 current_desired_dir = (target_ != nullptr)
-						? glm::normalize(target_dir_world - origin)
-						: world_fwd;
+					glm::vec3 current_desired_dir = (target_ != nullptr) ? glm::normalize(target_dir_world - origin)
+																		 : world_fwd;
 
 					glm::vec3 final_desired_dir = glm::normalize(glm::mix(current_desired_dir, away, avoidance_weight));
 					target_dir_local = WorldToObject(final_desired_dir);

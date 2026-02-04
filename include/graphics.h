@@ -388,7 +388,7 @@ namespace Boidsish {
 		 *
 		 * @return Shared pointer to the terrain generator interface (nullptr if terrain disabled)
 		 */
-		std::shared_ptr<ITerrainGenerator> GetTerrain();
+		std::shared_ptr<ITerrainGenerator>       GetTerrain();
 		std::shared_ptr<const ITerrainGenerator> GetTerrain() const;
 
 		/**
@@ -434,12 +434,12 @@ namespace Boidsish {
 			requires std::derived_from<T, ITerrainGenerator>
 		std::shared_ptr<T> SetTerrainGenerator(Args&&... args);
 
-		task_thread_pool::task_thread_pool&          GetThreadPool();
-		LightManager&                                GetLightManager();
-		FireEffectManager*                           GetFireEffectManager();
-		DecorManager*                                GetDecorManager();
-		PostProcessing::PostProcessingManager&       GetPostProcessingManager();
-		float                                        GetLastFrameTime() const;
+		task_thread_pool::task_thread_pool&    GetThreadPool();
+		LightManager&                          GetLightManager();
+		FireEffectManager*                     GetFireEffectManager();
+		DecorManager*                          GetDecorManager();
+		PostProcessing::PostProcessingManager& GetPostProcessingManager();
+		float                                  GetLastFrameTime() const;
 
 		Config&       GetConfig();
 		AudioManager& GetAudioManager();

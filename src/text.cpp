@@ -239,29 +239,71 @@ namespace Boidsish {
 								// Triangle 1: p1_front, p1_back, p2_back (CCW)
 								glyph_vertices.insert(
 									glyph_vertices.end(),
-									{p1_front.x, p1_front.y, p1_front.z, normal.x, normal.y, normal.z, p1_front.x, p1_front.y}
+									{p1_front.x,
+								     p1_front.y,
+								     p1_front.z,
+								     normal.x,
+								     normal.y,
+								     normal.z,
+								     p1_front.x,
+								     p1_front.y}
 								);
 								glyph_vertices.insert(
 									glyph_vertices.end(),
-									{p1_back.x, p1_back.y, p1_back.z, normal.x, normal.y, normal.z, p1_back.x, p1_back.y}
+									{p1_back.x,
+								     p1_back.y,
+								     p1_back.z,
+								     normal.x,
+								     normal.y,
+								     normal.z,
+								     p1_back.x,
+								     p1_back.y}
 								);
 								glyph_vertices.insert(
 									glyph_vertices.end(),
-									{p2_back.x, p2_back.y, p2_back.z, normal.x, normal.y, normal.z, p2_back.x, p2_back.y}
+									{p2_back.x,
+								     p2_back.y,
+								     p2_back.z,
+								     normal.x,
+								     normal.y,
+								     normal.z,
+								     p2_back.x,
+								     p2_back.y}
 								);
 
 								// Triangle 2: p1_front, p2_back, p2_front (CCW)
 								glyph_vertices.insert(
 									glyph_vertices.end(),
-									{p1_front.x, p1_front.y, p1_front.z, normal.x, normal.y, normal.z, p1_front.x, p1_front.y}
+									{p1_front.x,
+								     p1_front.y,
+								     p1_front.z,
+								     normal.x,
+								     normal.y,
+								     normal.z,
+								     p1_front.x,
+								     p1_front.y}
 								);
 								glyph_vertices.insert(
 									glyph_vertices.end(),
-									{p2_back.x, p2_back.y, p2_back.z, normal.x, normal.y, normal.z, p2_back.x, p2_back.y}
+									{p2_back.x,
+								     p2_back.y,
+								     p2_back.z,
+								     normal.x,
+								     normal.y,
+								     normal.z,
+								     p2_back.x,
+								     p2_back.y}
 								);
 								glyph_vertices.insert(
 									glyph_vertices.end(),
-									{p2_front.x, p2_front.y, p2_front.z, normal.x, normal.y, normal.z, p2_front.x, p2_front.y}
+									{p2_front.x,
+								     p2_front.y,
+								     p2_front.z,
+								     normal.x,
+								     normal.y,
+								     normal.z,
+								     p2_front.x,
+								     p2_front.y}
 								);
 							}
 						}
@@ -275,7 +317,8 @@ namespace Boidsish {
 				for (size_t i = 0; i < cached_vertices.size(); i += 8) {
 					float vx = cached_vertices[i] + x_offset;
 					float vy = cached_vertices[i + 1] - y_offset;
-					float normalized_x = (max_width > 0.0f) ? ((cached_vertices[i] + line_accumulated_x) / max_width) : 0.0f;
+					float normalized_x = (max_width > 0.0f) ? ((cached_vertices[i] + line_accumulated_x) / max_width)
+															: 0.0f;
 
 					vertices.insert(
 						vertices.end(),

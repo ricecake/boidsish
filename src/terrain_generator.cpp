@@ -486,9 +486,8 @@ namespace Boidsish {
 		float chunk_min_z = static_cast<float>(chunkZ * chunk_size_);
 		float chunk_max_x = chunk_min_x + chunk_size_;
 		float chunk_max_z = chunk_min_z + chunk_size_;
-		bool  chunk_has_deformations = deformation_manager_.ChunkHasDeformations(
-            chunk_min_x, chunk_min_z, chunk_max_x, chunk_max_z
-        );
+		bool  chunk_has_deformations = deformation_manager_
+										  .ChunkHasDeformations(chunk_min_x, chunk_min_z, chunk_max_x, chunk_max_z);
 
 		// Generate heightmap
 		for (int i = 0; i < num_vertices_x; ++i) {
@@ -1205,9 +1204,8 @@ namespace Boidsish {
 		static std::atomic<uint32_t> crater_id_counter{1};
 		uint32_t                     id = crater_id_counter++;
 
-		auto crater = std::make_shared<CraterDeformation>(
-			id, center, radius, depth, irregularity, rim_height, static_cast<uint32_t>(eng_())
-		);
+		auto crater = std::make_shared<
+			CraterDeformation>(id, center, radius, depth, irregularity, rim_height, static_cast<uint32_t>(eng_()));
 
 		deformation_manager_.AddDeformation(crater);
 		InvalidateDeformedChunks(id);

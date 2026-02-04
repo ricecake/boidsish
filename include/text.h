@@ -46,8 +46,11 @@ namespace Boidsish {
 
 		// Text effect state
 		void SetTextEffect(bool enabled) { is_text_effect_ = enabled; }
+
 		void SetFadeProgress(float progress) { text_fade_progress_ = progress; }
+
 		void SetFadeSoftness(float softness) { text_fade_softness_ = softness; }
+
 		void SetFadeMode(int mode) { text_fade_mode_ = mode; }
 
 	protected:
