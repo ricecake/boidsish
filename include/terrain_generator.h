@@ -95,7 +95,8 @@ namespace Boidsish {
 
 		int GetChunkSize() const override { return chunk_size_; }
 
-		void  SetWorldScale(float scale) override;
+		void SetWorldScale(float scale) override;
+
 		float GetWorldScale() const override { return world_scale_; }
 
 		// Interface method - calls pointProperties

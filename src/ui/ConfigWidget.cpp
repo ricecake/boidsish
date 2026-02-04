@@ -4,6 +4,7 @@
 #include "decor_manager.h"
 #include "graphics.h"
 #include "imgui.h"
+#include "terrain_generator_interface.h"
 
 namespace Boidsish {
 	namespace UI {

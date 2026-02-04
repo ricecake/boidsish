@@ -10,6 +10,7 @@
 #include "graphics.h"
 #include "hud.h"
 #include "model.h"
+#include "terrain_generator_interface.h"
 #include <GLFW/glfw3.h>
 
 using namespace Boidsish;
@@ -22,12 +23,16 @@ int main() {
 			"Paper Plane Demo"
 		);
 
+		auto terrain = visualizer->GetTerrain();
+		terrain->SetWorldScale(2.0f);
+
 		auto decor = visualizer->GetDecorManager();
 
 		DecorProperties teapot_props;
 		teapot_props.min_height = 0.01;
-		teapot_props.min_density = 0.1f;
-		teapot_props.max_density = 0.3f;
+		teapot_props.max_height = 95.0f;
+		teapot_props.min_density = 0.01f;
+		teapot_props.max_density = 0.03f;
 		teapot_props.base_scale = 0.005f;
 		teapot_props.scale_variance = 0.001f;
 		teapot_props.align_to_terrain = true; // Align to slope
