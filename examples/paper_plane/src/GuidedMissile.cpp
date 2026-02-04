@@ -1,12 +1,27 @@
 #include "GuidedMissile.h"
 
 #include "PaperPlane.h"
+#include "arcade_text.h"
 #include "fire_effect.h"
 #include "graphics.h"
 #include "terrain_generator.h"
 #include <glm/gtx/quaternion.hpp>
 
 namespace Boidsish {
+
+	static const std::vector<std::string> kTaunts = {
+		"U MAD?",
+		"DODGE THIS!",
+		"COMING FOR YOU!",
+		"SURPRISE!",
+		"BYE BYE!",
+		"CAN'T HIDE!",
+		"GOTCHA!",
+		"BOOM?",
+		"WATCH OUT!",
+		"HELLO THERE!",
+		"MISS ME?"
+	};
 	// Calculates the torque needed to rotate 'current_forward' to align with 'desired_direction'
 	// using a PD controller to prevent overshoot.
 	glm::vec3 CalculateSteeringTorque2(
@@ -91,6 +106,28 @@ namespace Boidsish {
 	void GuidedMissile::UpdateEntity(const EntityHandler& handler, float time, float delta_time) {
 		lived_ += delta_time;
 		auto pos = GetPosition();
+
+		if (!taunt_text_ && !exploded_) {
+			std::uniform_int_distribution<size_t> dist(0, kTaunts.size() - 1);
+			std::string                           taunt = kTaunts[dist(const_cast<std::mt19937&>(eng_))];
+			taunt_text_ = handler.vis->AddArcadeTextEffect(
+				taunt,
+				pos.Toglm(),
+				3.0f,               // radius
+				360.0f,             // angle
+				glm::vec3(0, 1, 0), // wrap normal
+				glm::vec3(0, 0, 1), // text normal
+				lifetime_ - lived_
+			);
+			if (taunt_text_) {
+				taunt_text_->SetRainbowEnabled(true);
+				taunt_text_->SetWaveMode(ArcadeWaveMode::VERTICAL);
+			}
+		}
+
+		if (taunt_text_) {
+			taunt_text_->SetPosition(pos.x, pos.y, pos.z);
+		}
 
 		if (!launch_sound_) {
 			launch_sound_ = handler.vis
@@ -229,13 +266,18 @@ namespace Boidsish {
 		if (exploded_)
 			return;
 
+		if (taunt_text_) {
+			taunt_text_->SetHidden(true);
+		}
+
 		shape_->SetHidden(true);
 		auto pos = GetPosition();
-		handler.EnqueueVisualizerAction([=, &handler]() {
+		auto [height, normal] = handler.GetCachedTerrainProperties(pos.x, pos.z);
+		handler.EnqueueVisualizerAction([=, &handler, normal = normal]() {
 			handler.vis->AddFireEffect(
 				glm::vec3(pos.x, pos.y, pos.z),
 				FireEffectStyle::Explosion,
-				glm::vec3(0, 1, 0),
+				normal,
 				glm::vec3(0, 0, 0),
 				-1,
 				2.0f

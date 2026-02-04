@@ -181,7 +181,7 @@ namespace Boidsish {
 			});
 
 			for (const auto& candidate : candidates) {
-				if (forbidden_chunks.count(candidate.chunk)) {
+				if (forbidden_chunks.count(candidate.chunk) || launcher_cooldowns_.count(candidate.chunk)) {
 					continue;
 				}
 
@@ -220,6 +220,19 @@ namespace Boidsish {
 				if (visible_chunk_set.find(it->first) == visible_chunk_set.end()) {
 					QueueRemoveEntity(it->second);
 					it = spawned_launchers_.erase(it);
+				} else if (GetEntity(it->second) == nullptr) {
+					// Launcher was destroyed!
+					launcher_cooldowns_[it->first] = time + 30.0f; // 30 second cooldown
+					it = spawned_launchers_.erase(it);
+				} else {
+					++it;
+				}
+			}
+
+			// Clean up expired cooldowns
+			for (auto it = launcher_cooldowns_.begin(); it != launcher_cooldowns_.end();) {
+				if (visible_chunk_set.find(it->first) == visible_chunk_set.end() || time >= it->second) {
+					it = launcher_cooldowns_.erase(it);
 				} else {
 					++it;
 				}

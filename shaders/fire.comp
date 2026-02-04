@@ -236,7 +236,17 @@ void main() {
 			p.vel = vec4(emitter.velocity + normalize(spread_dir) * kExhaustSpeed * rand(seed), 0.0);
 		} else if (p.style == 1) { // Explosion
 			p.pos = vec4(emitter.position, kExplosionLifetime * lifeTimeModifier);
-			p.vel = vec4(normalize(random_vec) * kExplosionSpeed * 0.5 + rand(seed.yx), 0.0);
+			vec3 dir = length(emitter.direction) > 0.001 ? normalize(emitter.direction) : vec3(0, 0, 0);
+			if (length(dir) > 0.001) {
+				// Oriented explosion: bias towards direction
+				vec3 perpendicular = normalize(cross(abs(dir.y) < 0.9 ? vec3(0, 1, 0) : vec3(1, 0, 0), dir));
+				vec3 bitangent = cross(dir, perpendicular);
+				vec3 spread_dir = normalize(dir + random_vec.x * perpendicular * 0.8 + random_vec.y * bitangent * 0.8);
+				p.vel = vec4(emitter.velocity + spread_dir * kExplosionSpeed * (0.3 + 0.7 * rand(seed)), 0.0);
+			} else {
+				// Spherical explosion
+				p.vel = vec4(normalize(random_vec) * kExplosionSpeed * 0.5 + rand(seed.yx), 0.0);
+			}
 		} else if (p.style == 2) { // Fire
 			p.pos = vec4(emitter.position + random_vec * 0.1, kFireLifetime * lifeTimeModifier);
 			p.vel = vec4(0, kFireSpeed, 0, 0); // Start with upward velocity

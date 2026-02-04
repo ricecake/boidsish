@@ -12,6 +12,7 @@ namespace Boidsish {
 
 	// Forward declaration
 	class FireEffect;
+	class ArcadeText;
 
 	class GuidedMissile: public Entity<Model> {
 	public:
@@ -28,6 +29,7 @@ namespace Boidsish {
 		float                        lived_ = 0.0f;
 		bool                         exploded_ = false;
 		std::shared_ptr<FireEffect>  exhaust_effect_ = nullptr;
+		std::shared_ptr<ArcadeText>  taunt_text_ = nullptr;
 		std::shared_ptr<SoundEffect> launch_sound_ = nullptr;
 		std::shared_ptr<SoundEffect> explode_sound_ = nullptr;
 		int                          handedness = 1;
