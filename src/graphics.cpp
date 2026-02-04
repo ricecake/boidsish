@@ -1113,22 +1113,6 @@ namespace Boidsish {
 				// Commit updates and render all trails
 				trail_render_manager->CommitUpdates();
 				trail_render_manager->Render(*trail_shader, view, projection, clip_plane);
-			} else {
-				// Fallback to per-trail rendering
-				trail_shader->use();
-				trail_shader->setMat4("view", view);
-				trail_shader->setMat4("projection", projection);
-				glm::mat4 model = glm::mat4(1.0f);
-				trail_shader->setMat4("model", model);
-				if (clip_plane) {
-					trail_shader->setVec4("clipPlane", *clip_plane);
-				} else {
-					trail_shader->setVec4("clipPlane", glm::vec4(0, 0, 0, 0));
-				}
-
-				for (auto& pair : trails) {
-					pair.second->Render(*trail_shader);
-				}
 			}
 		}
 
