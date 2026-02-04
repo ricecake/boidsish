@@ -340,6 +340,35 @@ namespace Boidsish {
 		return total / max_amplitude;
 	}
 
+	void TerrainGenerator::SetWorldScale(float scale) {
+		if (std::abs(scale - world_scale_) < 0.0001f)
+			return;
+
+		std::lock_guard<std::recursive_mutex> lock(chunk_cache_mutex_);
+
+		world_scale_ = scale;
+
+		// Cancel all pending tasks
+		for (auto& pair : pending_chunks_) {
+			pair.second.cancel();
+		}
+		pending_chunks_.clear();
+
+		// Unregister from render manager and clear cache
+		if (render_manager_) {
+			for (auto const& [key, terrain] : chunk_cache_) {
+				render_manager_->UnregisterChunk(key);
+			}
+		}
+		chunk_cache_.clear();
+
+		// Also clear visible chunks to prevent rendering stale data
+		{
+			std::lock_guard<std::mutex> visible_lock(visible_chunks_mutex_);
+			visible_chunks_.clear();
+		}
+	}
+
 	const std::vector<std::shared_ptr<Terrain>>& TerrainGenerator::GetVisibleChunks() const {
 		std::lock_guard<std::mutex> lock(visible_chunks_mutex_);
 		return visible_chunks_;
@@ -444,17 +473,20 @@ namespace Boidsish {
 	}
 
 	glm::vec3 TerrainGenerator::pointGenerate(float x, float z) const {
-		glm::vec3 path_data = getPathInfluence(x, z);
+		float sx = x * world_scale_;
+		float sz = z * world_scale_;
+
+		glm::vec3 path_data = getPathInfluence(sx, sz);
 		float     path_factor = path_data.x;
 
 		glm::vec2 push_dir = glm::normalize(glm::vec2(path_data.y, path_data.z));
 		float     warp_strength = (1.0f - path_factor) * Constants::Class::Terrain::WarpStrength();
 		glm::vec2 warp = push_dir * warp_strength;
 
-		glm::vec2 pos = glm::vec2(x, z);
+		glm::vec2 pos = glm::vec2(sx, sz);
 		glm::vec2 warped_pos = pos + warp;
 
-		float control_value = getBiomeControlValue(x, z);
+		float control_value = getBiomeControlValue(sx, sz);
 
 		if (std::isnan(control_value) || std::isinf(control_value)) {
 			control_value = 0.0f;
@@ -467,6 +499,10 @@ namespace Boidsish {
 
 		float path_floor_level = -0.10f;
 		terrain_height.x = glm::mix(path_floor_level, terrain_height.x, path_factor);
+
+		// Scale height proportionally to world scale
+		terrain_height.x /= world_scale_;
+		// Derivatives stay the same to maintain slopes (h'(x) = f'(sx) * s / s = f'(sx))
 
 		return terrain_height;
 	}
@@ -660,7 +696,7 @@ namespace Boidsish {
 		constexpr float kStepSize = 0.1f;
 
 		for (int i = 0; i < kGradientDescentSteps; ++i) {
-			glm::vec3 path_data = Simplex::dnoise(sample_pos * kPathFrequency);
+			glm::vec3 path_data = Simplex::dnoise(sample_pos * world_scale_ * kPathFrequency);
 			glm::vec2 gradient = glm::vec2(path_data.y, path_data.z);
 			sample_pos -= gradient * path_data.x * kStepSize;
 		}
@@ -679,7 +715,7 @@ namespace Boidsish {
 			path.emplace_back(current_pos.x, height, current_pos.y);
 
 			// Get path tangent
-			glm::vec3 path_data = Simplex::dnoise(current_pos * kPathFrequency);
+			glm::vec3 path_data = Simplex::dnoise(current_pos * world_scale_ * kPathFrequency);
 			glm::vec2 tangent = glm::normalize(glm::vec2(path_data.z, -path_data.y));
 
 			// Move along the tangent
@@ -864,6 +900,7 @@ namespace Boidsish {
 	}
 
 	float TerrainGenerator::getBiomeControlValue(float x, float z) const {
+		// Note: coordinates already scaled if called from pointGenerate
 		glm::vec2 pos(x, z);
 		pos *= control_noise_scale_;
 		float result = Simplex::noise(pos + Simplex::curlNoise(pos)) * 0.5f + 0.5f;
@@ -878,7 +915,9 @@ namespace Boidsish {
 	}
 
 	glm::vec2 TerrainGenerator::getDomainWarp(float x, float z) const {
-		glm::vec3 path_data = getPathInfluence(x, z);
+		float     sx = x * world_scale_;
+		float     sz = z * world_scale_;
+		glm::vec3 path_data = getPathInfluence(sx, sz);
 		float     path_factor = path_data.x;
 		glm::vec2 push_dir = glm::normalize(glm::vec2(path_data.y, path_data.z));
 		float     warp_strength = (1.0f - path_factor) * 20.0f;

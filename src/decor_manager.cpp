@@ -121,6 +121,7 @@ namespace Boidsish {
 		placement_shader_->setVec2("u_cameraPos", cam_pos);
 		placement_shader_->setFloat("u_maxTerrainHeight", terrain_gen.GetMaxHeight());
 		placement_shader_->setInt("u_maxInstances", kMaxInstancesPerType);
+		placement_shader_->setFloat("u_worldScale", terrain_gen.GetWorldScale());
 
 		// Pass frustum planes for GPU-side culling
 		for (int p = 0; p < 6; ++p) {

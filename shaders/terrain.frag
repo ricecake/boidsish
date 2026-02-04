@@ -223,15 +223,18 @@ void main() {
 		return;
 	}
 
+	// Scale world-space position for detail noise to match terrain scaling
+	vec3 scaledFragPos = FragPos * worldScale;
+
 	// ========================================================================
 	// Noise Generation
 	// ========================================================================
-	float[6] noise = fbm_detail(FragPos * 0.2);
+	float[6] noise = fbm_detail(scaledFragPos * 0.2);
 
 	// Large scale domain warping for natural variation
 	// vec3  warp = vec3(fbm(FragPos * 0.01 + FragPos.x * 0.02));
 	vec3  warp = vec3(noise[3]);
-	float largeNoise = fbm(FragPos * 0.015 + warp * 0.3);
+	float largeNoise = fbm(scaledFragPos * 0.015 + warp * 0.3);
 
 	// Medium scale noise for biome boundaries
 	float medNoise = noise[4]; // fbm_detail(FragPos * 0.05);
@@ -372,9 +375,9 @@ void main() {
 
 		// Use finite difference to approximate the gradient of the noise field
 		float eps = 0.015;
-		float n = snoise(FragPos * roughnessScale);
-		float nx = snoise((FragPos + vec3(eps, 0.0, 0.0)) * roughnessScale);
-		float nz = snoise((FragPos + vec3(0.0, 0.0, eps)) * roughnessScale);
+		float n = snoise(scaledFragPos * roughnessScale);
+		float nx = snoise((scaledFragPos + vec3(eps * worldScale, 0.0, 0.0)) * roughnessScale);
+		float nz = snoise((scaledFragPos + vec3(0.0, 0.0, eps * worldScale)) * roughnessScale);
 
 		// Compute local tangent space to orient the perturbation
 		vec3 tangent = normalize(cross(norm, vec3(0, 0, 1)));

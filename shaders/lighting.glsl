@@ -18,6 +18,7 @@ const int MAX_CASCADES = [[MAX_CASCADES]];
 layout(std140) uniform Lighting {
 	Light lights[MAX_LIGHTS];
 	int   num_lights;
+	float worldScale;
 	vec3  viewPos;
 	vec3  ambient_light;
 	float time;
