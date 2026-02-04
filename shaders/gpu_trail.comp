@@ -1,0 +1,105 @@
+#version 430 core
+
+layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
+
+struct ControlPoint {
+    vec4 pos_thickness;
+    vec4 color_time;
+};
+
+struct Segment {
+    vec4 p1_thickness1;
+    vec4 p2_thickness2;
+    vec4 color;
+};
+
+struct TrailInfo {
+    int offset;
+    int count;
+    int head;
+    int max_count;
+    int segments_offset;
+    int active;
+    int padding[2];
+};
+
+layout(std430, binding = 6) buffer ControlPoints {
+    ControlPoint points[];
+};
+
+layout(std430, binding = 7) buffer Segments {
+    Segment segments[];
+};
+
+layout(std430, binding = 8) buffer TrailInfos {
+    TrailInfo trails[];
+};
+
+uniform int interpolationFactor;
+
+vec3 catmullRom(float t, vec3 p0, vec3 p1, vec3 p2, vec3 p3) {
+    return 0.5 * ((2.0 * p1) +
+                  (-p0 + p2) * t +
+                  (2.0 * p0 - 5.0 * p1 + 4.0 * p2 - p3) * (t * t) +
+                  (-p0 + 3.0 * p1 - 3.0 * p2 + p3) * (t * t * t));
+}
+
+void main() {
+    uint trail_idx = gl_WorkGroupID.x;
+    if (trail_idx >= trails.length()) return;
+
+    TrailInfo info = trails[trail_idx];
+    if (info.active == 0 || info.count < 2) return;
+
+    int num_logical_segments = info.count - 1;
+
+    for (int i = int(gl_LocalInvocationID.x); i < num_logical_segments * interpolationFactor; i += int(gl_LocalSize_x)) {
+        int seg_idx = i / interpolationFactor;
+        int sub_idx = i % interpolationFactor;
+
+        float t1 = float(sub_idx) / float(interpolationFactor);
+        float t2 = float(sub_idx + 1) / float(interpolationFactor);
+
+        int p_indices[4];
+        for (int k = 0; k < 4; ++k) {
+            int logical_idx = seg_idx + k - 1;
+            logical_idx = clamp(logical_idx, 0, info.count - 1);
+            int physical_idx;
+            if (info.count < info.max_count) {
+                physical_idx = logical_idx;
+            } else {
+                physical_idx = (info.head + logical_idx) % info.max_count;
+            }
+            p_indices[k] = info.offset + physical_idx;
+        }
+
+        vec3 p0 = points[p_indices[0]].pos_thickness.xyz;
+        vec3 p1 = points[p_indices[1]].pos_thickness.xyz;
+        vec3 p2 = points[p_indices[2]].pos_thickness.xyz;
+        vec3 p3 = points[p_indices[3]].pos_thickness.xyz;
+
+        float w1 = points[p_indices[1]].pos_thickness.w;
+        float w2 = points[p_indices[2]].pos_thickness.w;
+        float thickness1 = mix(w1, w2, t1);
+        float thickness2 = mix(w1, w2, t2);
+
+        vec3 pos1 = catmullRom(t1, p0, p1, p2, p3);
+        vec3 pos2 = catmullRom(t2, p0, p1, p2, p3);
+
+        vec3 c1 = points[p_indices[1]].color_time.rgb;
+        vec3 c2 = points[p_indices[2]].color_time.rgb;
+        vec3 color = mix(c1, c2, t1);
+
+        int out_idx = info.segments_offset + i;
+        segments[out_idx].p1_thickness1 = vec4(pos1, thickness1);
+        segments[out_idx].p2_thickness2 = vec4(pos2, thickness2);
+        segments[out_idx].color = vec4(color, 1.0); // 1.0 indicates active
+    }
+
+    // Mark remaining segments in the trail as inactive
+    int total_possible_segments = info.max_count * interpolationFactor;
+    for (int i = num_logical_segments * interpolationFactor + int(gl_LocalInvocationID.x); i < total_possible_segments; i += int(gl_LocalSize_x)) {
+        int out_idx = info.segments_offset + i;
+        segments[out_idx].color.a = 0.0;
+    }
+}
