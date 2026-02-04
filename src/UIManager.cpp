@@ -1,10 +1,13 @@
 #include "UIManager.h"
 
 #include "IWidget.h"
+
+#include <algorithm>
+
 #include "imgui.h"
 #include "imgui_impl_glfw.h"
-#include "imgui_internal.h"
 #include "imgui_impl_opengl3.h"
+#include "imgui_internal.h"
 
 namespace Boidsish {
 	namespace UI {
@@ -61,6 +64,8 @@ namespace Boidsish {
 			float corner_y = io.DisplaySize.y - 10.0f;
 			float current_y = corner_y;
 
+			std::vector<ImGuiWindow*> collapsed_windows;
+
 			for (int i = 0; i < g.Windows.Size; i++) {
 				ImGuiWindow* window = g.Windows[i];
 
@@ -84,12 +89,7 @@ namespace Boidsish {
 						state.last_expanded_pos = window->Pos;
 						state.was_collapsed = true;
 					}
-
-					// Position in corner
-					float window_height = window->TitleBarHeight;
-					current_y -= window_height;
-					window->Pos = ImVec2(corner_x, current_y);
-					current_y -= 5.0f; // Padding
+					collapsed_windows.push_back(window);
 				} else {
 					if (state.was_collapsed) {
 						// Just uncollapsed, restore previous position
@@ -100,6 +100,19 @@ namespace Boidsish {
 						state.last_expanded_pos = window->Pos;
 					}
 				}
+			}
+
+			// Sort collapsed windows by ID for stable positioning
+			std::sort(collapsed_windows.begin(), collapsed_windows.end(), [](ImGuiWindow* a, ImGuiWindow* b) {
+				return a->ID < b->ID;
+			});
+
+			for (ImGuiWindow* window : collapsed_windows) {
+				// Position in corner
+				float window_height = window->TitleBarHeight;
+				current_y -= window_height;
+				window->Pos = ImVec2(corner_x, current_y);
+				current_y -= 5.0f; // Padding
 			}
 		}
 	} // namespace UI
