@@ -75,13 +75,14 @@ int main() {
 			"DOUBLE ROTATE",
 			glm::vec3(0, 10, 0),
 			15.0f,
-			90.0f,
+			150.0f,
 			glm::vec3(0, 1, 0),
-			glm::vec3(0, 0, 1),
-			10.0f
+			glm::vec3(0, -1, 0),
+			10.0f,
+			"assets/Roboto-Medium.ttf", 12.0f, 5.0f
 		);
 		t4->SetDoubleCopy(true);
-		t4->SetRotationSpeed(2.0f);
+		t4->SetRotationSpeed(1.0f);
 		t4->SetRotationAxis(glm::vec3(0, 1, 0));
 		t4->SetRainbowEnabled(true);
 		t4->SetColor(1.0f, 1.0f, 1.0f);
@@ -89,7 +90,7 @@ int main() {
 		// 5. Pulsing Scale + Rainbow
 		auto t5 = visualizer.AddArcadeTextEffect(
 			"PULSING ARCADE",
-			glm::vec3(0, -10, 0),
+			glm::vec3(0, 10, 0),
 			20.0f,
 			60.0f,
 			glm::vec3(0, 1, 0),
@@ -104,7 +105,7 @@ int main() {
 		// 6. Bouncing Text
 		auto t6 = visualizer.AddArcadeTextEffect(
 			"BOUNCING!",
-			glm::vec3(0, -30, 0),
+			glm::vec3(0, 30, 0),
 			25.0f,
 			45.0f,
 			glm::vec3(0, 1, 0),

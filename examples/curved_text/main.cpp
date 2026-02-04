@@ -5,6 +5,20 @@
 #include "graphics.h"
 #include <GLFW/glfw3.h>
 
+std::tuple<glm::vec3, glm::vec3, glm::vec3> orientToCameraHelper(const Boidsish::Camera cam, const glm::vec3 pos) {
+	auto camPos = cam.pos();
+	auto up = cam.up();
+
+	auto textNormal = camPos - pos;
+	auto side = glm::cross(up, textNormal);
+
+	return {
+		glm::normalize(textNormal),
+		glm::normalize(up),
+		glm::normalize(side)
+	};
+}
+
 int main() {
 	Boidsish::Visualizer visualizer(1280, 720, "Curved Text Effect Example");
 
@@ -30,17 +44,19 @@ int main() {
 		if (state.mouse_button_down[GLFW_MOUSE_BUTTON_LEFT]) {
 			auto world_pos = visualizer.ScreenToWorld(state.mouse_x, state.mouse_y);
 			if (world_pos) {
+				auto wPos = world_pos.value() + glm::vec3(0, 5, 0);
 				std::cout << "Spawning 'Can' style text at terrain" << std::endl;
 
 				// Spawn curved text effect (Can style: text normal perp to wrap axis)
+				auto [tN, up, side] = orientToCameraHelper(camera, wPos);
 				visualizer.AddCurvedTextEffect(
 					"+100 POINTS",
-					*world_pos + glm::vec3(0, 5, 0), // center of cylinder
+					wPos, // center of cylinder
 					10.0f,          // radius
 					90.0f,          // angle
-					glm::vec3(0, 1, 0), // wrap axis (up)
-					glm::vec3(1, 0, 0), // text normal (midpoint facing)
-					3.0f,           // duration
+					up, // wrap axis (up)
+					tN, // text normal (midpoint facing)
+					15.0f,           // duration
 					"assets/Roboto-Medium.ttf",
 					2.0f,           // font size
 					0.5f,           // depth
@@ -50,6 +66,7 @@ int main() {
 		}
 
 		if (state.key_down[GLFW_KEY_SPACE]) {
+			auto [tN, up, side] = orientToCameraHelper(camera, glm::vec3(0, 25, 0));
 			std::cout << "Spawning 'Rainbow' style text" << std::endl;
 			// Spawn curved text effect (Rainbow style: text normal parallel to wrap axis)
 			visualizer.AddCurvedTextEffect(
@@ -57,9 +74,9 @@ int main() {
 				glm::vec3(0, 25, 0), // center of circle
 				25.0f,             // radius
 				180.0f,            // angle
-				glm::vec3(0, 0, 1), // wrap axis (z)
-				glm::vec3(0, 0, 1), // text normal (z - facing camera)
-				5.0f,              // duration
+				tN, // wrap axis (z)
+				tN, // text normal (z - facing camera)
+				15.0f,              // duration
 				"assets/Roboto-Medium.ttf",
 				3.0f,              // font size
 				0.5f,              // depth
