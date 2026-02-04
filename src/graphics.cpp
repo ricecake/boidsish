@@ -1263,7 +1263,8 @@ namespace Boidsish {
 				plane_shader->setMat4("reflectionViewProjection", reflection_vp);
 			}
 
-			glm::mat4 model = glm::scale(glm::mat4(1.0f), glm::vec3(600.0f));
+			float world_scale = terrain_generator ? terrain_generator->GetWorldScale() : 1.0f;
+			glm::mat4 model = glm::scale(glm::mat4(1.0f), glm::vec3(600.0f * world_scale));
 			plane_shader->setMat4("model", model);
 			plane_shader->setMat4("view", view);
 			plane_shader->setMat4("projection", projection);

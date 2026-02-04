@@ -473,8 +473,8 @@ namespace Boidsish {
 	}
 
 	glm::vec3 TerrainGenerator::pointGenerate(float x, float z) const {
-		float sx = x * world_scale_;
-		float sz = z * world_scale_;
+		float sx = x / world_scale_;
+		float sz = z / world_scale_;
 
 		glm::vec3 path_data = getPathInfluence(sx, sz);
 		float     path_factor = path_data.x;
@@ -501,8 +501,8 @@ namespace Boidsish {
 		terrain_height.x = glm::mix(path_floor_level, terrain_height.x, path_factor);
 
 		// Scale height proportionally to world scale
-		terrain_height.x /= world_scale_;
-		// Derivatives stay the same to maintain slopes (h'(x) = f'(sx) * s / s = f'(sx))
+		terrain_height.x *= world_scale_;
+		// Derivatives stay the same to maintain slopes (h'(x) = f'(x/s) * 1/s * s = f'(x/s))
 
 		return terrain_height;
 	}
@@ -696,9 +696,9 @@ namespace Boidsish {
 		constexpr float kStepSize = 0.1f;
 
 		for (int i = 0; i < kGradientDescentSteps; ++i) {
-			glm::vec3 path_data = Simplex::dnoise(sample_pos * world_scale_ * kPathFrequency);
+			glm::vec3 path_data = Simplex::dnoise((sample_pos / world_scale_) * kPathFrequency);
 			glm::vec2 gradient = glm::vec2(path_data.y, path_data.z);
-			sample_pos -= gradient * path_data.x * kStepSize;
+			sample_pos -= (gradient * world_scale_) * path_data.x * kStepSize;
 		}
 
 		return sample_pos;
@@ -715,7 +715,7 @@ namespace Boidsish {
 			path.emplace_back(current_pos.x, height, current_pos.y);
 
 			// Get path tangent
-			glm::vec3 path_data = Simplex::dnoise(current_pos * world_scale_ * kPathFrequency);
+			glm::vec3 path_data = Simplex::dnoise((current_pos / world_scale_) * kPathFrequency);
 			glm::vec2 tangent = glm::normalize(glm::vec2(path_data.z, -path_data.y));
 
 			// Move along the tangent
@@ -915,8 +915,8 @@ namespace Boidsish {
 	}
 
 	glm::vec2 TerrainGenerator::getDomainWarp(float x, float z) const {
-		float     sx = x * world_scale_;
-		float     sz = z * world_scale_;
+		float     sx = x / world_scale_;
+		float     sz = z / world_scale_;
 		glm::vec3 path_data = getPathInfluence(sx, sz);
 		float     path_factor = path_data.x;
 		glm::vec2 push_dir = glm::normalize(glm::vec2(path_data.y, path_data.z));
