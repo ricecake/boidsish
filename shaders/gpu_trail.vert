@@ -41,18 +41,18 @@ void main() {
 
     float maxR = max(vs_r1, vs_r2);
 
-    // Construct orientation matrix
-    vec3 zAxis = (len > 0.0001) ? dir / len : vec3(0, 0, 1);
-    vec3 temp = (abs(zAxis.y) < 0.99) ? vec3(0, 1, 0) : vec3(1, 0, 0);
-    vec3 xAxis = normalize(cross(temp, zAxis));
+    // Construct orientation matrix where Z is the segment direction
+    vec3 zAxis = (len > 1e-6) ? dir / len : vec3(0, 0, 1);
+    vec3 up = (abs(zAxis.y) < 0.99) ? vec3(0, 1, 0) : vec3(1, 0, 0);
+    vec3 xAxis = normalize(cross(up, zAxis));
     vec3 yAxis = cross(zAxis, xAxis);
 
     mat3 rotation = mat3(xAxis, yAxis, zAxis);
 
-    // Scale the unit box
-    // Unit box is 1x1x1 centered at 0
-    // We want it to be (2*maxR) x (2*maxR) x (len + 2*maxR)
-    vec3 scale = vec3(maxR * 2.5, maxR * 2.5, len + maxR * 2.5); // Oversized for safety
+    // Scale the unit box to bound the capsule
+    // Width and height should be at least 2*maxR
+    // Depth should be at least len + 2*maxR
+    vec3 scale = vec3(maxR * 2.2, maxR * 2.2, len + maxR * 2.2);
 
     vec3 worldPos = rotation * (aPos * scale) + center;
     vs_fragPos = worldPos;

@@ -182,6 +182,12 @@ namespace Boidsish {
         glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
         glDepthMask(GL_FALSE);
 
+        // Use front-face culling to render only the back faces of the proxy boxes.
+        // This allows the camera to be inside the box and ensures we have a valid
+        // exit point for raymarching (the back face).
+        glEnable(GL_CULL_FACE);
+        glCullFace(GL_FRONT);
+
         render_shader_->use();
         render_shader_->setMat4("view", view);
         render_shader_->setMat4("projection", projection);
@@ -195,6 +201,7 @@ namespace Boidsish {
 
         glBindVertexArray(0);
         glDepthMask(GL_TRUE);
+        glCullFace(GL_BACK); // Restore default
     }
 
 } // namespace Boidsish
