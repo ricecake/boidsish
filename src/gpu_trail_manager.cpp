@@ -26,6 +26,8 @@ namespace Boidsish {
         glGenBuffers(1, &segments_ssbo_);
         glBindBuffer(GL_SHADER_STORAGE_BUFFER, segments_ssbo_);
         glBufferData(GL_SHADER_STORAGE_BUFFER, kMaxSegments * sizeof(GpuTrailSegment), nullptr, GL_DYNAMIC_DRAW);
+        // Clear segments buffer to avoid garbage data
+        glClearBufferData(GL_SHADER_STORAGE_BUFFER, GL_RGBA32F, GL_RGBA, GL_FLOAT, nullptr);
 
         glGenBuffers(1, &trail_info_ssbo_);
         glBindBuffer(GL_SHADER_STORAGE_BUFFER, trail_info_ssbo_);
@@ -141,7 +143,12 @@ namespace Boidsish {
 
     void GpuTrailManager::UpdateBuffers() {
         std::vector<GpuTrailInfo> info_data(kMaxTrails);
-        for (int i = 0; i < kMaxTrails; ++i) info_data[i].active = 0;
+        for (int i = 0; i < kMaxTrails; ++i) {
+            info_data[i].isActive = 0;
+            info_data[i].offset = i * kMaxPointsPerTrail;
+            info_data[i].max_count = kMaxPointsPerTrail;
+            info_data[i].segments_offset = i * kMaxPointsPerTrail * kInterpolationFactor;
+        }
 
         glBindBuffer(GL_SHADER_STORAGE_BUFFER, control_points_ssbo_);
         for (auto& [id, data] : trails_) {
@@ -156,7 +163,7 @@ namespace Boidsish {
             info_data[index].head = data.head;
             info_data[index].max_count = data.max_count;
             info_data[index].segments_offset = data.segments_offset;
-            info_data[index].active = 1;
+            info_data[index].isActive = 1;
         }
 
         glBindBuffer(GL_SHADER_STORAGE_BUFFER, trail_info_ssbo_);
@@ -165,6 +172,11 @@ namespace Boidsish {
 
     void GpuTrailManager::Render(const glm::mat4& view, const glm::mat4& projection) {
         if (!initialized_ || trails_.empty()) return;
+
+        int max_segment_index = 0;
+        for (const auto& [id, data] : trails_) {
+            max_segment_index = std::max(max_segment_index, data.segments_offset + data.max_count * kInterpolationFactor);
+        }
 
         glEnable(GL_BLEND);
         glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
@@ -178,9 +190,8 @@ namespace Boidsish {
         glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::GpuTrailInfo(), trail_info_ssbo_);
 
         glBindVertexArray(proxy_vao_);
-        // Draw all possible segments. We'll discard inactive ones in the shader or use a more clever approach.
-        // For simplicity, we draw them all and discard in vertex shader if not active.
-        glDrawArraysInstanced(GL_TRIANGLES, 0, 36, kMaxSegments);
+        // Draw up to the last active segment.
+        glDrawArraysInstanced(GL_TRIANGLES, 0, 36, max_segment_index);
 
         glBindVertexArray(0);
         glDepthMask(GL_TRUE);

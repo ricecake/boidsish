@@ -563,6 +563,7 @@ namespace Boidsish {
 			trail_render_manager = std::make_unique<TrailRenderManager>();
 			gpu_trail_manager = std::make_unique<GpuTrailManager>();
 			gpu_trail_manager->Initialize();
+			SetupShaderBindings(*gpu_trail_manager->GetRenderShader());
 
 			const int MAX_LIGHTS = 10;
 			glGenBuffers(1, &lighting_ubo);

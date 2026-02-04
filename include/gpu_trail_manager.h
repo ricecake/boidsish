@@ -30,7 +30,7 @@ namespace Boidsish {
         int head;       // Ring buffer head
         int max_count;  // Max points for this trail
         int segments_offset; // Offset in Segments SSBO
-        int active;     // 1 if active, 0 otherwise
+        int isActive;   // 1 if active, 0 otherwise
         int padding[2];
     };
 
@@ -48,6 +48,8 @@ namespace Boidsish {
 
         void Update(float delta_time, float simulation_time);
         void Render(const glm::mat4& view, const glm::mat4& projection);
+
+        Shader* GetRenderShader() const { return render_shader_.get(); }
 
     private:
         struct TrailData {
@@ -76,10 +78,10 @@ namespace Boidsish {
 
         void UpdateBuffers();
 
-        static constexpr int kMaxTrails = Constants::Class::GpuTrails::MaxTrails();
-        static constexpr int kMaxPointsPerTrail = Constants::Class::GpuTrails::MaxPointsPerTrail();
-        static constexpr int kInterpolationFactor = Constants::Class::GpuTrails::InterpolationFactor();
-        static constexpr int kMaxSegments = Constants::Class::GpuTrails::MaxSegments();
+        static constexpr int kMaxTrails = Boidsish::Constants::Class::GpuTrails::MaxTrails();
+        static constexpr int kMaxPointsPerTrail = Boidsish::Constants::Class::GpuTrails::MaxPointsPerTrail();
+        static constexpr int kInterpolationFactor = Boidsish::Constants::Class::GpuTrails::InterpolationFactor();
+        static constexpr int kMaxSegments = Boidsish::Constants::Class::GpuTrails::MaxSegments();
     };
 
 } // namespace Boidsish

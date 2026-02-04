@@ -19,7 +19,7 @@ struct TrailInfo {
     int head;
     int max_count;
     int segments_offset;
-    int active;
+    int isActive;
     int padding[2];
 };
 
@@ -49,11 +49,20 @@ void main() {
     if (trail_idx >= trails.length()) return;
 
     TrailInfo info = trails[trail_idx];
-    if (info.active == 0 || info.count < 2) return;
+    int total_possible_segments = info.max_count * interpolationFactor;
+
+    if (info.isActive == 0 || info.count < 2) {
+        // Clear all segments for this inactive trail
+        for (int i = int(gl_LocalInvocationID.x); i < total_possible_segments; i += int(gl_WorkGroupSize.x)) {
+            int out_idx = info.segments_offset + i;
+            segments[out_idx].color.a = 0.0;
+        }
+        return;
+    }
 
     int num_logical_segments = info.count - 1;
 
-    for (int i = int(gl_LocalInvocationID.x); i < num_logical_segments * interpolationFactor; i += int(gl_LocalSize_x)) {
+    for (int i = int(gl_LocalInvocationID.x); i < num_logical_segments * interpolationFactor; i += int(gl_WorkGroupSize.x)) {
         int seg_idx = i / interpolationFactor;
         int sub_idx = i % interpolationFactor;
 
@@ -97,8 +106,7 @@ void main() {
     }
 
     // Mark remaining segments in the trail as inactive
-    int total_possible_segments = info.max_count * interpolationFactor;
-    for (int i = num_logical_segments * interpolationFactor + int(gl_LocalInvocationID.x); i < total_possible_segments; i += int(gl_LocalSize_x)) {
+    for (int i = num_logical_segments * interpolationFactor + int(gl_LocalInvocationID.x); i < total_possible_segments; i += int(gl_WorkGroupSize.x)) {
         int out_idx = info.segments_offset + i;
         segments[out_idx].color.a = 0.0;
     }
