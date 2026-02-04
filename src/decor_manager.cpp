@@ -117,11 +117,13 @@ namespace Boidsish {
 		glm::vec3 cam_front = camera.front();
 		glm::vec2 cam_front_xz = glm::normalize(glm::vec2(cam_front.x, cam_front.z));
 
+		float       world_scale = terrain_gen.GetWorldScale();
+
 		placement_shader_->use();
 		placement_shader_->setVec2("u_cameraPos", cam_pos);
 		placement_shader_->setFloat("u_maxTerrainHeight", terrain_gen.GetMaxHeight());
 		placement_shader_->setInt("u_maxInstances", kMaxInstancesPerType);
-		placement_shader_->setFloat("u_worldScale", terrain_gen.GetWorldScale());
+		placement_shader_->setFloat("u_worldScale", world_scale);
 
 		// Scale distance-based parameters by world scale
 		placement_shader_->setFloat("u_densityFalloffStart", 200.0f * world_scale);
@@ -146,7 +148,6 @@ namespace Boidsish {
 		std::vector<std::pair<float, size_t>> chunk_priorities;
 		chunk_priorities.reserve(chunk_info.size());
 
-		float       world_scale = terrain_gen.GetWorldScale();
 		const float kPreloadRadius = 128.0f * world_scale; // Chunks within this radius always get decor
 
 		for (size_t ci = 0; ci < chunk_info.size(); ++ci) {
