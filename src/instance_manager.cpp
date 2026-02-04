@@ -80,6 +80,17 @@ namespace Boidsish {
 		shader.setFloat("objectAlpha", model->GetA());
 		shader.setBool("useInstanceColor", false); // Models use textures, not per-instance colors
 
+		// Pass bounding box for culling if valid
+		const auto& bb = model->GetBoundingBox();
+		if (bb.valid) {
+			shader.setBool("useAABBCulling", true);
+			shader.setVec3("frustumCullMin", bb.min);
+			shader.setVec3("frustumCullMax", bb.max);
+		} else {
+			shader.setBool("useAABBCulling", false);
+			shader.setFloat("frustumCullRadius", 5.0f);
+		}
+
 		for (const auto& mesh : model->getMeshes()) {
 			// Bind textures
 			unsigned int diffuseNr = 1;
@@ -185,6 +196,11 @@ namespace Boidsish {
 
 		shader.setBool("isColossal", false);
 		shader.setBool("useInstanceColor", true);
+
+		// Dots are spheres, we can use AABB culling with their local bounding box
+		shader.setBool("useAABBCulling", true);
+		shader.setVec3("frustumCullMin", glm::vec3(-1.0f));
+		shader.setVec3("frustumCullMax", glm::vec3(1.0f));
 
 		// Set PBR properties (using first dot's values - could be extended to per-instance)
 		shader.setBool("usePBR", dot->UsePBR());

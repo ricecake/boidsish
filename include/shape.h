@@ -14,6 +14,38 @@ class Shader;
 
 namespace Boidsish {
 
+	struct BoundingBox {
+		glm::vec3 min{0.0f};
+		glm::vec3 max{0.0f};
+		bool      valid{false};
+
+		BoundingBox() = default;
+		BoundingBox(const glm::vec3& min, const glm::vec3& max): min(min), max(max), valid(true) {}
+
+		void Merge(const glm::vec3& point) {
+			if (!valid) {
+				min = max = point;
+				valid = true;
+			} else {
+				min = glm::min(min, point);
+				max = glm::max(max, point);
+			}
+		}
+
+		void Merge(const BoundingBox& other) {
+			if (!other.valid)
+				return;
+			Merge(other.min);
+			Merge(other.max);
+		}
+
+		glm::vec3 GetCenter() const { return (min + max) * 0.5f; }
+
+		glm::vec3 GetExtents() const { return (max - min) * 0.5f; }
+
+		float GetRadius() const { return glm::length(GetExtents()); }
+	};
+
 	struct Vertex {
 		glm::vec3 Position;
 		glm::vec3 Normal;
@@ -43,6 +75,8 @@ namespace Boidsish {
 		virtual std::vector<VisualEffect> GetActiveEffects() const { return {}; }
 
 		virtual void GetGeometry(std::vector<Vertex>& vertices, std::vector<unsigned int>& indices) const;
+
+		virtual const BoundingBox& GetBoundingBox() const { return bounding_box_; }
 
 		// Accessors
 		inline int GetId() const { return id_; }
@@ -205,8 +239,9 @@ namespace Boidsish {
 			ao_(1.0f),
 			use_pbr_(false) {}
 
-		glm::quat rotation_;
-		glm::vec3 scale_;
+		glm::quat   rotation_;
+		glm::vec3   scale_;
+		BoundingBox bounding_box_;
 
 	private:
 		int       id_;

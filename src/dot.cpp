@@ -14,6 +14,7 @@ namespace Boidsish {
 	Dot::Dot(int id, float x, float y, float z, float size, float r, float g, float b, float a, int trail_length):
 		Shape(id, x, y, z, r, g, b, a, trail_length), size_(size) {
 		// SetInstanced(true);
+		bounding_box_ = BoundingBox(glm::vec3(-1.0f), glm::vec3(1.0f));
 	}
 
 	void Dot::render() const {

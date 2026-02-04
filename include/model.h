@@ -26,6 +26,7 @@ namespace Boidsish {
 		std::vector<unsigned int> indices;
 		std::vector<Texture>      textures;
 		unsigned int              VAO;
+		BoundingBox               bounding_box;
 
 		// Material Data
 		glm::vec3 diffuseColor = glm::vec3(1.0f);

@@ -138,6 +138,15 @@ namespace Boidsish {
 		glEnableVertexAttribArray(1);
 
 		glBindVertexArray(0);
+
+		// Calculate bounding box
+		bounding_box_ = BoundingBox();
+		for (size_t i = 0; i < rod_vertices.size(); i += 6) {
+			bounding_box_.Merge(glm::vec3(rod_vertices[i], rod_vertices[i + 1], rod_vertices[i + 2]));
+		}
+		for (size_t i = 0; i < cone_vertices.size(); i += 6) {
+			bounding_box_.Merge(glm::vec3(cone_vertices[i], cone_vertices[i + 1], cone_vertices[i + 2]));
+		}
 	}
 
 	void Arrow::SetDirection(const glm::vec3& direction) {

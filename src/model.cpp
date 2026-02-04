@@ -257,6 +257,12 @@ namespace Boidsish {
 		}
 
 		processNode(scene->mRootNode, scene);
+
+		// Aggregate bounding boxes from all meshes
+		bounding_box_ = BoundingBox();
+		for (const auto& mesh : meshes) {
+			bounding_box_.Merge(mesh.bounding_box);
+		}
 	}
 
 	void Model::processNode(aiNode* node, const aiScene* scene) {
@@ -346,8 +352,15 @@ namespace Boidsish {
 		);
 		textures.insert(textures.end(), heightMaps.begin(), heightMaps.end());
 
+		// Calculate mesh bounding box
+		BoundingBox mesh_bb;
+		for (const auto& v : vertices) {
+			mesh_bb.Merge(v.Position);
+		}
+
 		// return a mesh object created from the extracted mesh data
 		Mesh out_mesh(vertices, indices, textures);
+		out_mesh.bounding_box = mesh_bb;
 
 		// Extract material properties
 		aiColor3D color(1.0f, 1.0f, 1.0f);

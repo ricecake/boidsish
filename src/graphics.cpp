@@ -1087,9 +1087,17 @@ namespace Boidsish {
 					instance_manager->AddInstance(shape);
 				} else {
 					shader->setBool("isColossal", shape->IsColossal());
-					// Set cull radius based on shape size if available
-					float size = 5; // shape->GetSize();
-					shader->setFloat("frustumCullRadius", size > 0 ? size : 5.0f);
+					// Pass bounding box for culling if valid
+					const auto& bb = shape->GetBoundingBox();
+					if (bb.valid) {
+						shader->setBool("useAABBCulling", true);
+						shader->setVec3("frustumCullMin", bb.min);
+						shader->setVec3("frustumCullMax", bb.max);
+					} else {
+						shader->setBool("useAABBCulling", false);
+						// Fallback to sphere culling with default radius
+						shader->setFloat("frustumCullRadius", 5.0f);
+					}
 					shape->render();
 				}
 			}
