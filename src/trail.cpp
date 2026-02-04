@@ -5,6 +5,7 @@
 #include <vector>
 
 #include <glm/gtc/quaternion.hpp>
+#include <glm/gtc/constants.hpp>
 
 namespace Boidsish {
 
@@ -39,33 +40,77 @@ namespace Boidsish {
 		}
 
 		axis = axis / axis_length;
-		float angle = acos(std::clamp(prev_tangent.Dot(curr_tangent), -1.0f, 1.0f));
+		float angle = std::acos(std::clamp(prev_tangent.Dot(curr_tangent), -1.0f, 1.0f));
 
 		// Rodrigues' rotation formula
-		Vector3 rotated = prev_normal * cos(angle) + axis.Cross(prev_normal) * sin(angle) +
-			axis * (axis.Dot(prev_normal)) * (1 - cos(angle));
+		Vector3 rotated = prev_normal * std::cos(angle) + axis.Cross(prev_normal) * std::sin(angle) +
+			axis * (axis.Dot(prev_normal)) * (1.0f - std::cos(angle));
 
 		return rotated.Normalized();
 	}
 
-	void Trail::UpdateAndAppendSegment() {
-		// Get the last 4 points to calculate the new segment
-		int                  size = points.size();
-		std::vector<Vector3> p(4);
-		std::vector<Vector3> c(4);
-		for (int i = 0; i < 4; ++i) {
-			p[i] = Vector3(points[size - 4 + i].first.x, points[size - 4 + i].first.y, points[size - 4 + i].first.z);
-			c[i] = Vector3(points[size - 4 + i].second.x, points[size - 4 + i].second.y, points[size - 4 + i].second.z);
+	void Trail::UpdateMesh() {
+		// Regenerate the entire trail mesh from scratch to ensure no gaps or lag.
+		// This provides immediate connection to the emitter and smooth Catmull-Rom curves.
+		curve_positions.clear();
+		curve_colors.clear();
+		tangents.clear();
+		normals.clear();
+		binormals.clear();
+		ring_positions.clear();
+		ring_normals.clear();
+		head = 0;
+		tail = 0;
+		full = false;
+		vertex_count = 0;
+
+		if (points.size() < 2)
+			return;
+
+		// 1. Generate interpolated curve positions and colors
+		for (size_t i = 0; i < points.size() - 1; ++i) {
+			Vector3 p0, p1, p2, p3;
+			Vector3 c0, c1, c2, c3;
+
+			p1 = Vector3(points[i].first.x, points[i].first.y, points[i].first.z);
+			p2 = Vector3(points[i + 1].first.x, points[i + 1].first.y, points[i + 1].first.z);
+			c1 = Vector3(points[i].second.x, points[i].second.y, points[i].second.z);
+			c2 = Vector3(points[i + 1].second.x, points[i + 1].second.y, points[i + 1].second.z);
+
+			// Extrapolate control points at the start and end of the trail
+			if (i == 0) {
+				p0 = p1 - (p2 - p1);
+				c0 = c1;
+			} else {
+				p0 = Vector3(points[i - 1].first.x, points[i - 1].first.y, points[i - 1].first.z);
+				c0 = Vector3(points[i - 1].second.x, points[i - 1].second.y, points[i - 1].second.z);
+			}
+
+			if (i + 1 == points.size() - 1) {
+				p3 = p2 + (p2 - p1);
+				c3 = c2;
+			} else {
+				p3 = Vector3(points[i + 2].first.x, points[i + 2].first.y, points[i + 2].first.z);
+				c3 = Vector3(points[i + 2].second.x, points[i + 2].second.y, points[i + 2].second.z);
+			}
+
+			for (int j = 0; j < CURVE_SEGMENTS; ++j) {
+				float   t = (float)j / CURVE_SEGMENTS;
+				curve_positions.push_back(CatmullRom(t, p0, p1, p2, p3));
+				curve_colors.push_back(CatmullRom(t, c0, c1, c2, c3));
+			}
+
+			// Add the final point of the trail
+			if (i == points.size() - 2) {
+				curve_positions.push_back(p2);
+				curve_colors.push_back(c2);
+			}
 		}
 
-		// Append to the geometry cache
-		AppendToGeometryCache(p[0], p[1], p[2], p[3], c[0], c[1], c[2], c[3]);
-
-		// Calculate tangents, normals, and binormals for the new segment
-		size_t start_index = curve_positions.size() - CURVE_SEGMENTS;
-		for (size_t i = start_index; i < curve_positions.size(); ++i) {
+		// 2. Calculate tangents and propagate orientation (Frame Transport)
+		for (size_t i = 0; i < curve_positions.size(); ++i) {
 			Vector3 tangent;
-			if (i == 0) {
+			if (i < curve_positions.size() - 1) {
 				tangent = (curve_positions[i + 1] - curve_positions[i]).Normalized();
 			} else {
 				tangent = (curve_positions[i] - curve_positions[i - 1]).Normalized();
@@ -74,28 +119,27 @@ namespace Boidsish {
 
 			Vector3 normal;
 			if (i == 0) {
-				if (abs(tangents[i].y) < 0.999f) {
-					normal = tangents[i].Cross(Vector3(0, 1, 0)).Normalized();
+				// Establish initial normal orthogonal to the first tangent
+				if (std::abs(tangent.y) < 0.999f) {
+					normal = tangent.Cross(Vector3(0, 1, 0)).Normalized();
 				} else {
-					normal = tangents[i].Cross(Vector3(1, 0, 0)).Normalized();
+					normal = tangent.Cross(Vector3(1, 0, 0)).Normalized();
 				}
 			} else {
 				normal = TransportFrame(normals.back(), tangents[i - 1], tangents[i]);
 			}
 			normals.push_back(normal);
-			binormals.push_back(tangents[i].Cross(normal).Normalized());
+			binormals.push_back(tangent.Cross(normal).Normalized());
 		}
 
-		// Generate rings for the new segment
-		size_t ring_start_index = curve_positions.size() - CURVE_SEGMENTS;
-		for (size_t i = ring_start_index; i < curve_positions.size(); ++i) {
+		// 3. Generate rings for each curve point
+		for (size_t i = 0; i < curve_positions.size(); ++i) {
 			std::vector<glm::vec3> current_ring_pos;
 			std::vector<glm::vec3> current_ring_norm;
-			// float                  thickness = BASE_THICKNESS;
 
 			for (int j = 0; j <= TRAIL_SEGMENTS; ++j) {
 				float   angle = 2.0f * glm::pi<float>() * j / TRAIL_SEGMENTS;
-				Vector3 offset = (normals[i] * cos(angle) + binormals[i] * sin(angle)) * thickness;
+				Vector3 offset = (normals[i] * std::cos(angle) + binormals[i] * std::sin(angle)) * thickness;
 				Vector3 pos = curve_positions[i] + offset;
 				Vector3 norm = offset.Normalized();
 				current_ring_pos.emplace_back(pos.x, pos.y, pos.z);
@@ -105,46 +149,29 @@ namespace Boidsish {
 			ring_normals.push_back(current_ring_norm);
 		}
 
-		// Generate the mesh for the new segment
-		size_t segment_start_index = (curve_positions.size() == CURVE_SEGMENTS)
-			? 0
-			: curve_positions.size() - CURVE_SEGMENTS - 1;
-		for (size_t i = segment_start_index; i < curve_positions.size() - 1; ++i) {
+		// 4. Triangulate segments between rings into the interleaved vertex buffer
+		for (size_t i = 0; i < ring_positions.size() - 1; ++i) {
 			const auto& ring1_positions = ring_positions[i];
 			const auto& ring1_normals = ring_normals[i];
 			const auto& ring2_positions = ring_positions[i + 1];
 			const auto& ring2_normals = ring_normals[i + 1];
 
 			for (int j = 0; j <= TRAIL_SEGMENTS; ++j) {
-				int idx = j % (TRAIL_SEGMENTS + 1);
-
-				// Vertex from the CURRENT ring
-				mesh_vertices[tail] = {
-					ring2_positions[idx],
-					ring2_normals[idx],
+				// CCW Triangle Strip winding: alternate between the two rings
+				mesh_vertices[tail++] = {
+					ring2_positions[j],
+					ring2_normals[j],
+					glm::vec3(curve_colors[i + 1].x, curve_colors[i + 1].y, curve_colors[i + 1].z),
+				};
+				mesh_vertices[tail++] = {
+					ring1_positions[j],
+					ring1_normals[j],
 					glm::vec3(curve_colors[i].x, curve_colors[i].y, curve_colors[i].z),
 				};
-				tail = (tail + 1) % mesh_vertices.size();
-
-				// Vertex from the PREVIOUS ring
-				mesh_vertices[tail] = {
-					ring1_positions[idx],
-					ring1_normals[idx],
-					glm::vec3(curve_colors[i].x, curve_colors[i].y, curve_colors[i].z),
-				};
-				tail = (tail + 1) % mesh_vertices.size();
 			}
 		}
-		if (full) {
-			vertex_count = mesh_vertices.size();
-		} else if (tail > head) {
-			vertex_count = tail - head;
-		} else {
-			vertex_count = mesh_vertices.size() - head + tail;
-		}
-		if (tail == head && points.size() > 4) {
-			full = true;
-		}
+
+		vertex_count = static_cast<int>(tail);
 	}
 
 	void Trail::AddPoint(glm::vec3 position, glm::vec3 color) {
@@ -152,13 +179,9 @@ namespace Boidsish {
 
 		if (points.size() > static_cast<size_t>(max_length)) {
 			points.pop_front();
-			PopFromGeometryCache();
 		}
 
-		if (points.size() >= 4) {
-			UpdateAndAppendSegment();
-		}
-
+		UpdateMesh();
 		mesh_dirty = true;
 	}
 
@@ -170,43 +193,7 @@ namespace Boidsish {
 		useRocketTrail_ = enabled;
 	}
 
-	void Trail::AppendToGeometryCache(
-		const Vector3& p0,
-		const Vector3& p1,
-		const Vector3& p2,
-		const Vector3& p3,
-		const Vector3& c0,
-		const Vector3& c1,
-		const Vector3& c2,
-		const Vector3& c3
-	) {
-		for (int j = 0; j < CURVE_SEGMENTS; ++j) {
-			float   t = (float)j / CURVE_SEGMENTS;
-			Vector3 pos = CatmullRom(t, p0, p1, p2, p3);
-			Vector3 color = CatmullRom(t, c0, c1, c2, c3);
-
-			curve_positions.push_back(pos);
-			curve_colors.push_back(color);
-		}
-	}
-
-	void Trail::PopFromGeometryCache() {
-		for (int i = 0; i < CURVE_SEGMENTS; ++i) {
-			curve_positions.pop_front();
-			curve_colors.pop_front();
-			tangents.pop_front();
-			normals.pop_front();
-			binormals.pop_front();
-			ring_positions.pop_front();
-			ring_normals.pop_front();
-		}
-		head = (head + CURVE_SEGMENTS * VERTS_PER_STEP) % mesh_vertices.size();
-		full = false;
-	}
-
 	std::vector<float> Trail::GetInterleavedVertexData() const {
-		// Convert TrailVertex array to interleaved float array
-		// Format: [pos.x, pos.y, pos.z, normal.x, normal.y, normal.z, color.x, color.y, color.z] per vertex
 		std::vector<float> data;
 		data.reserve(mesh_vertices.size() * 9);
 

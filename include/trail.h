@@ -67,20 +67,8 @@ namespace Boidsish {
 		// Catmull-Rom interpolation for smooth curves
 		Vector3 CatmullRom(float t, const Vector3& p0, const Vector3& p1, const Vector3& p2, const Vector3& p3) const;
 
-		// Appends a new segment to the geometry cache
-		void AppendToGeometryCache(
-			const Vector3& p0,
-			const Vector3& p1,
-			const Vector3& p2,
-			const Vector3& p3,
-			const Vector3& c0,
-			const Vector3& c1,
-			const Vector3& c2,
-			const Vector3& c3
-		);
-		// Removes the oldest segment from the geometry cache
-		void PopFromGeometryCache();
-		void UpdateAndAppendSegment();
+		// Regenerates the entire mesh based on current points
+		void UpdateMesh();
 
 		// Frame transport for maintaining smooth normal orientation
 		Vector3
@@ -97,22 +85,22 @@ namespace Boidsish {
 		mutable bool                      mesh_dirty;
 		mutable size_t                    head = 0;
 		mutable size_t                    tail = 0;
-		mutable size_t                    old_tail = 0;
 		mutable bool                      full = false;
 
-		// Cached geometry data for incremental updates
-		mutable std::deque<Vector3>                curve_positions;
-		mutable std::deque<Vector3>                curve_colors;
-		mutable std::deque<Vector3>                tangents;
-		mutable std::deque<Vector3>                normals;
-		mutable std::deque<Vector3>                binormals;
-		mutable std::deque<std::vector<glm::vec3>> ring_positions;
-		mutable std::deque<std::vector<glm::vec3>> ring_normals;
-		bool                                       iridescent_ = false;
-		bool                                       useRocketTrail_ = false;
-		bool                                       usePBR_ = false;
-		float                                      roughness_ = Constants::Class::Trails::DefaultRoughness();
-		float                                      metallic_ = Constants::Class::Trails::DefaultMetallic();
+		// Cached geometry data for mesh generation
+		mutable std::vector<Vector3>                curve_positions;
+		mutable std::vector<Vector3>                curve_colors;
+		mutable std::vector<Vector3>                tangents;
+		mutable std::vector<Vector3>                normals;
+		mutable std::vector<Vector3>                binormals;
+		mutable std::vector<std::vector<glm::vec3>> ring_positions;
+		mutable std::vector<std::vector<glm::vec3>> ring_normals;
+
+		bool  iridescent_ = false;
+		bool  useRocketTrail_ = false;
+		bool  usePBR_ = false;
+		float roughness_ = Constants::Class::Trails::DefaultRoughness();
+		float metallic_ = Constants::Class::Trails::DefaultMetallic();
 
 		// Configuration
 		const int   TRAIL_SEGMENTS = Constants::Class::Trails::Segments();      // Circular segments around trail
