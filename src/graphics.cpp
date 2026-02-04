@@ -274,6 +274,9 @@ namespace Boidsish {
 		bool is_fullscreen_ = false;
 		int  windowed_xpos_, windowed_ypos_, windowed_width_, windowed_height_;
 
+		float render_scale = 1.0f;
+		int   render_width, render_height;
+
 		// Adaptive Tessellation
 		glm::vec3 last_camera_pos_{0.0f, 0.0f, 0.0f};
 		float     last_camera_yaw_{0.0f};
@@ -321,6 +324,11 @@ namespace Boidsish {
 			width = ConfigManager::GetInstance().GetAppSettingInt("window_width", w);
 			height = ConfigManager::GetInstance().GetAppSettingInt("window_height", h);
 			is_fullscreen_ = ConfigManager::GetInstance().GetAppSettingBool("fullscreen", false);
+
+			render_scale = ConfigManager::GetInstance().GetAppSettingFloat("render_scale", 1.0f);
+			render_scale = std::clamp(render_scale, 0.1f, 1.0f);
+			render_width = static_cast<int>(width * render_scale);
+			render_height = static_cast<int>(height * render_scale);
 
 			// Cache global settings
 			camera_roll_speed_ = ConfigManager::GetInstance().GetGlobalSettingFloat(
@@ -624,7 +632,7 @@ namespace Boidsish {
 					// Color attachment
 					glGenTextures(1, &reflection_texture);
 					glBindTexture(GL_TEXTURE_2D, reflection_texture);
-					glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, width, height, 0, GL_RGB, GL_UNSIGNED_BYTE, NULL);
+					glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, render_width, render_height, 0, GL_RGB, GL_UNSIGNED_BYTE, NULL);
 					glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
 					glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 					glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, reflection_texture, 0);
@@ -632,7 +640,7 @@ namespace Boidsish {
 					// Depth renderbuffer
 					glGenRenderbuffers(1, &reflection_depth_rbo);
 					glBindRenderbuffer(GL_RENDERBUFFER, reflection_depth_rbo);
-					glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT24, width, height);
+					glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT24, render_width, render_height);
 					glFramebufferRenderbuffer(
 						GL_FRAMEBUFFER,
 						GL_DEPTH_ATTACHMENT,
@@ -650,7 +658,7 @@ namespace Boidsish {
 					for (unsigned int i = 0; i < 2; i++) {
 						glBindFramebuffer(GL_FRAMEBUFFER, pingpong_fbo[i]);
 						glBindTexture(GL_TEXTURE_2D, pingpong_texture[i]);
-						glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB16F, width, height, 0, GL_RGB, GL_FLOAT, NULL);
+						glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB16F, render_width, render_height, 0, GL_RGB, GL_FLOAT, NULL);
 						glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
 						glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 						glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
@@ -677,9 +685,9 @@ namespace Boidsish {
 			glGenTextures(1, &main_fbo_texture_);
 			glBindTexture(GL_TEXTURE_2D, main_fbo_texture_);
 			if (enable_hdr_) {
-				glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB16F, width, height, 0, GL_RGB, GL_FLOAT, NULL);
+				glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB16F, render_width, render_height, 0, GL_RGB, GL_FLOAT, NULL);
 			} else {
-				glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, width, height, 0, GL_RGB, GL_UNSIGNED_BYTE, NULL);
+				glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, render_width, render_height, 0, GL_RGB, GL_UNSIGNED_BYTE, NULL);
 			}
 			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
 			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
@@ -693,8 +701,8 @@ namespace Boidsish {
 				GL_TEXTURE_2D,
 				0,
 				GL_DEPTH24_STENCIL8,
-				width,
-				height,
+				render_width,
+				render_height,
 				0,
 				GL_DEPTH_STENCIL,
 				GL_UNSIGNED_INT_24_8,
@@ -722,14 +730,14 @@ namespace Boidsish {
 			if (postprocess_shader_) {
 				// --- Post Processing Manager ---
 				post_processing_manager_ = std::make_unique<PostProcessing::PostProcessingManager>(
-					width,
-					height,
+					render_width,
+					render_height,
 					blur_quad_vao
 				);
 				post_processing_manager_->Initialize();
 
 				// --- Shockwave Manager ---
-				shockwave_manager->Initialize(width, height);
+				shockwave_manager->Initialize(render_width, render_height);
 
 				auto ssao_effect = std::make_shared<PostProcessing::SsaoEffect>();
 				ssao_effect->SetEnabled(false);
@@ -767,7 +775,7 @@ namespace Boidsish {
 				atmosphere_effect->SetEnabled(true);
 				post_processing_manager_->AddEffect(atmosphere_effect);
 
-				auto bloom_effect = std::make_shared<PostProcessing::BloomEffect>(width, height);
+				auto bloom_effect = std::make_shared<PostProcessing::BloomEffect>(render_width, render_height);
 				bloom_effect->SetEnabled(false);
 				post_processing_manager_->AddEffect(bloom_effect);
 
@@ -851,6 +859,7 @@ namespace Boidsish {
 			ConfigManager::GetInstance().SetInt("window_width", width);
 			ConfigManager::GetInstance().SetInt("window_height", height);
 			ConfigManager::GetInstance().SetBool("fullscreen", is_fullscreen_);
+			ConfigManager::GetInstance().SetFloat("render_scale", render_scale);
 
 			ConfigManager::GetInstance().SetFloat("camera_follow_distance", camera.follow_distance);
 			ConfigManager::GetInstance().SetFloat("camera_follow_elevation", camera.follow_elevation);
@@ -1700,37 +1709,43 @@ namespace Boidsish {
 			auto* impl = static_cast<VisualizerImpl*>(glfwGetWindowUserPointer(w));
 			impl->width = width;
 			impl->height = height;
-			glViewport(0, 0, width, height);
 
-			if (impl->reflection_fbo) {
+			impl->ResizeInternalFramebuffers();
+		}
+
+		void ResizeInternalFramebuffers() {
+			render_width = static_cast<int>(width * render_scale);
+			render_height = static_cast<int>(height * render_scale);
+
+			if (reflection_fbo) {
 				// --- Resize reflection framebuffer ---
-				glBindTexture(GL_TEXTURE_2D, impl->reflection_texture);
-				glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, width, height, 0, GL_RGB, GL_UNSIGNED_BYTE, NULL);
-				glBindRenderbuffer(GL_RENDERBUFFER, impl->reflection_depth_rbo);
-				glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT24, width, height);
+				glBindTexture(GL_TEXTURE_2D, reflection_texture);
+				glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, render_width, render_height, 0, GL_RGB, GL_UNSIGNED_BYTE, NULL);
+				glBindRenderbuffer(GL_RENDERBUFFER, reflection_depth_rbo);
+				glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT24, render_width, render_height);
 
 				// --- Resize ping-pong framebuffers ---
 				for (unsigned int i = 0; i < 2; i++) {
-					glBindTexture(GL_TEXTURE_2D, impl->pingpong_texture[i]);
-					glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB16F, width, height, 0, GL_RGB, GL_FLOAT, NULL);
+					glBindTexture(GL_TEXTURE_2D, pingpong_texture[i]);
+					glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB16F, render_width, render_height, 0, GL_RGB, GL_FLOAT, NULL);
 				}
 			}
 
 			// --- Resize main scene framebuffer ---
-			glBindTexture(GL_TEXTURE_2D, impl->main_fbo_texture_);
-			if (impl->enable_hdr_) {
-				glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB16F, width, height, 0, GL_RGB, GL_FLOAT, NULL);
+			glBindTexture(GL_TEXTURE_2D, main_fbo_texture_);
+			if (enable_hdr_) {
+				glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB16F, render_width, render_height, 0, GL_RGB, GL_FLOAT, NULL);
 			} else {
-				glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, width, height, 0, GL_RGB, GL_UNSIGNED_BYTE, NULL);
+				glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, render_width, render_height, 0, GL_RGB, GL_UNSIGNED_BYTE, NULL);
 			}
 			// Resize depth-stencil texture
-			glBindTexture(GL_TEXTURE_2D, impl->main_fbo_depth_texture_);
+			glBindTexture(GL_TEXTURE_2D, main_fbo_depth_texture_);
 			glTexImage2D(
 				GL_TEXTURE_2D,
 				0,
 				GL_DEPTH24_STENCIL8,
-				width,
-				height,
+				render_width,
+				render_height,
 				0,
 				GL_DEPTH_STENCIL,
 				GL_UNSIGNED_INT_24_8,
@@ -1738,13 +1753,13 @@ namespace Boidsish {
 			);
 
 			// --- Resize post-processing manager ---
-			if (impl->post_processing_manager_) {
-				impl->post_processing_manager_->Resize(width, height);
+			if (post_processing_manager_) {
+				post_processing_manager_->Resize(render_width, render_height);
 			}
 
 			// --- Resize shockwave manager ---
-			if (impl->shockwave_manager) {
-				impl->shockwave_manager->Resize(width, height);
+			if (shockwave_manager) {
+				shockwave_manager->Resize(render_width, render_height);
 			}
 		}
 	};
@@ -2323,8 +2338,19 @@ namespace Boidsish {
 			impl->shadow_manager->UpdateShadowUBO(shadow_lights);
 		}
 
-		// --- Main Scene Pass (renders to our FBO) ---
-		glBindFramebuffer(GL_FRAMEBUFFER, impl->main_fbo_);
+		bool effects_enabled = ConfigManager::GetInstance().GetAppSettingBool("enable_effects", true);
+		bool has_shockwaves = impl->shockwave_manager && impl->shockwave_manager->HasActiveShockwaves();
+		bool skip_intermediate = (impl->render_scale == 1.0f && !effects_enabled && !has_shockwaves);
+
+		// --- Main Scene Pass ---
+		if (skip_intermediate) {
+			glBindFramebuffer(GL_FRAMEBUFFER, 0);
+			glViewport(0, 0, impl->width, impl->height);
+		} else {
+			glBindFramebuffer(GL_FRAMEBUFFER, impl->main_fbo_);
+			glViewport(0, 0, impl->render_width, impl->render_height);
+		}
+
 		glEnable(GL_DEPTH_TEST);
 		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
@@ -2352,10 +2378,10 @@ namespace Boidsish {
 		impl->mesh_explosion_manager->Render(view, impl->projection, impl->camera.pos());
 		impl->RenderTrails(view, std::nullopt);
 
-		if (ConfigManager::GetInstance().GetAppSettingBool("enable_effects", true)) {
+		if (effects_enabled) {
 			// --- Post-processing Pass (renders FBO texture to screen) ---
 
-			// Apply standard post-processing effects
+			// Apply standard post-processing effects (at render resolution)
 			GLuint final_texture = impl->post_processing_manager_->ApplyEffects(
 				impl->main_fbo_texture_,
 				impl->main_fbo_depth_texture_,
@@ -2365,23 +2391,28 @@ namespace Boidsish {
 				impl->simulation_time
 			);
 
+			// Return to display resolution for final output
 			glBindFramebuffer(GL_FRAMEBUFFER, 0);
+			glViewport(0, 0, impl->width, impl->height);
 			glDisable(GL_DEPTH_TEST);
 			glClear(GL_COLOR_BUFFER_BIT);
 
 			// Apply shockwave effect as the final pass (after other post-processing)
 			// This ensures the distortion is visible and not processed by other effects
-			if (impl->shockwave_manager->HasActiveShockwaves()) {
+			if (has_shockwaves) {
+				// We need to pass the target resolution for the viewport
 				impl->shockwave_manager->ApplyScreenSpaceEffect(
 					final_texture,
 					impl->main_fbo_depth_texture_,
 					view,
 					impl->projection,
 					impl->camera.pos(),
-					impl->blur_quad_vao
+					impl->blur_quad_vao,
+					impl->width,
+					impl->height
 				);
 			} else {
-				// No shockwaves - just render the post-processed texture
+				// No shockwaves - just render the post-processed texture (upscales automatically via viewport)
 				impl->postprocess_shader_->use();
 				impl->postprocess_shader_->setInt("sceneTexture", 0);
 				glActiveTexture(GL_TEXTURE0);
@@ -2392,36 +2423,42 @@ namespace Boidsish {
 			}
 		} else {
 			// --- Passthrough without Post-processing ---
-			// Still apply shockwave if active
-			if (impl->shockwave_manager->HasActiveShockwaves()) {
+			if (!skip_intermediate) {
 				glBindFramebuffer(GL_FRAMEBUFFER, 0);
+				glViewport(0, 0, impl->width, impl->height);
 				glDisable(GL_DEPTH_TEST);
 				glClear(GL_COLOR_BUFFER_BIT);
 
-				impl->shockwave_manager->ApplyScreenSpaceEffect(
-					impl->main_fbo_texture_,
-					impl->main_fbo_depth_texture_,
-					view,
-					impl->projection,
-					impl->camera.pos(),
-					impl->blur_quad_vao
-				);
-			} else {
-				glBindFramebuffer(GL_READ_FRAMEBUFFER, impl->main_fbo_);
-				glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
-				glBlitFramebuffer(
-					0,
-					0,
-					impl->width,
-					impl->height,
-					0,
-					0,
-					impl->width,
-					impl->height,
-					GL_COLOR_BUFFER_BIT,
-					GL_NEAREST
-				);
-				glBindFramebuffer(GL_FRAMEBUFFER, 0);
+				// Still apply shockwave if active
+				if (has_shockwaves) {
+					impl->shockwave_manager->ApplyScreenSpaceEffect(
+						impl->main_fbo_texture_,
+						impl->main_fbo_depth_texture_,
+						view,
+						impl->projection,
+						impl->camera.pos(),
+						impl->blur_quad_vao,
+						impl->width,
+						impl->height
+					);
+				} else {
+					// Direct blit with upscaling
+					glBindFramebuffer(GL_READ_FRAMEBUFFER, impl->main_fbo_);
+					glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
+					glBlitFramebuffer(
+						0,
+						0,
+						impl->render_width,
+						impl->render_height,
+						0,
+						0,
+						impl->width,
+						impl->height,
+						GL_COLOR_BUFFER_BIT,
+						GL_LINEAR
+					);
+					glBindFramebuffer(GL_FRAMEBUFFER, 0);
+				}
 			}
 		}
 
@@ -3103,6 +3140,15 @@ namespace Boidsish {
 
 	float Visualizer::GetTimeScale() {
 		return impl->time_scale;
+	}
+
+	float Visualizer::GetRenderScale() const {
+		return impl->render_scale;
+	}
+
+	void Visualizer::SetRenderScale(float scale) {
+		impl->render_scale = std::clamp(scale, 0.1f, 1.0f);
+		impl->ResizeInternalFramebuffers();
 	}
 
 	AudioManager& Visualizer::GetAudioManager() {
