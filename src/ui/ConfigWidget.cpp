@@ -139,7 +139,7 @@ namespace Boidsish {
 						if (ImGui::SliderFloat("World Scale", &world_scale, 0.1f, 5.0f)) {
 							terrain->SetWorldScale(world_scale);
 						}
-						ImGui::Text("Higher = smaller world, Lower = larger world");
+						ImGui::Text("Higher = larger world, Lower = smaller world");
 					}
 
 					auto decor_manager = m_visualizer.GetDecorManager();

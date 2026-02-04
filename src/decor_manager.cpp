@@ -123,6 +123,11 @@ namespace Boidsish {
 		placement_shader_->setInt("u_maxInstances", kMaxInstancesPerType);
 		placement_shader_->setFloat("u_worldScale", terrain_gen.GetWorldScale());
 
+		// Scale distance-based parameters by world scale
+		placement_shader_->setFloat("u_densityFalloffStart", 200.0f * world_scale);
+		placement_shader_->setFloat("u_densityFalloffEnd", 500.0f * world_scale);
+		placement_shader_->setFloat("u_maxDecorDistance", 600.0f * world_scale);
+
 		// Pass frustum planes for GPU-side culling
 		for (int p = 0; p < 6; ++p) {
 			placement_shader_->setVec4(
@@ -141,7 +146,8 @@ namespace Boidsish {
 		std::vector<std::pair<float, size_t>> chunk_priorities;
 		chunk_priorities.reserve(chunk_info.size());
 
-		const float kPreloadRadius = 128.0f; // Chunks within this radius always get decor
+		float       world_scale = terrain_gen.GetWorldScale();
+		const float kPreloadRadius = 128.0f * world_scale; // Chunks within this radius always get decor
 
 		for (size_t ci = 0; ci < chunk_info.size(); ++ci) {
 			const auto& chunk = chunk_info[ci];
