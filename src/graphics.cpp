@@ -1130,6 +1130,11 @@ namespace Boidsish {
 			// Use quality override if provided, otherwise use default multiplier
 			float effective_quality = (quality_override > 0.0f) ? quality_override : tess_quality_multiplier_;
 
+		// Inversely apply world scale to tessellation. Larger world = lower triangle density per unit.
+		if (terrain_generator) {
+			effective_quality /= terrain_generator->GetWorldScale();
+		}
+
 			// Set up shadow uniforms for terrain shader
 			Terrain::terrain_shader_->use();
 			Terrain::terrain_shader_->setBool("uIsShadowPass", is_shadow_pass);

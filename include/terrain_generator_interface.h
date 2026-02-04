@@ -272,8 +272,8 @@ namespace Boidsish {
 		 * @brief Set the global scale of the world.
 		 *
 		 * Scaling affects both horizontal and vertical terrain features.
-		 * Values > 1.0 make the world feel smaller (more compressed features).
-		 * Values < 1.0 make the world feel larger (more expanded features).
+		 * Values > 1.0 make the world feel larger (more expanded features).
+		 * Values < 1.0 make the world feel smaller (more compressed features).
 		 *
 		 * @param scale The new world scale (default: 1.0)
 		 */

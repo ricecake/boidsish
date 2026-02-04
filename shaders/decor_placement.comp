@@ -131,6 +131,14 @@ void main() {
 
 	float effectiveDensity = mix(u_minDensity, u_maxDensity, combinedNoise);
 
+	// Distance-based density falloff
+	float distToCam = distance(worldPos, u_cameraPos);
+	float distanceFactor = 1.0 - smoothstep(u_densityFalloffStart, u_densityFalloffEnd, distToCam);
+	effectiveDensity *= mix(0.2, 1.0, distanceFactor);
+
+	if (distToCam > u_maxDecorDistance)
+		return;
+
 	// Random density check using effective density
 	if (hash(seed + 5678) > effectiveDensity)
 		return;

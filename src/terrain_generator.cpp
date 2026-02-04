@@ -341,6 +341,8 @@ namespace Boidsish {
 	}
 
 	void TerrainGenerator::SetWorldScale(float scale) {
+		scale = std::max(0.0001f, scale); // Guard against division by zero
+
 		if (std::abs(scale - world_scale_) < 0.0001f)
 			return;
 
@@ -643,7 +645,7 @@ namespace Boidsish {
 
 	bool
 	TerrainGenerator::Raycast(const glm::vec3& origin, const glm::vec3& dir, float max_dist, float& out_dist) const {
-		constexpr float step_size = 1.0f; // Initial step for ray marching
+		float           step_size = 1.0f * world_scale_; // Initial step for ray marching
 		float           current_dist = 0.0f;
 		glm::vec3       current_pos = origin;
 
@@ -1154,7 +1156,7 @@ namespace Boidsish {
 		glm::vec3&       out_normal
 	) const {
 		// Use smaller step size for more precision, adaptive based on terrain scale
-		constexpr float step_size = 0.5f;
+		float           step_size = 0.5f * world_scale_;
 		float           current_dist = 0.0f;
 		glm::vec3       dir = glm::normalize(direction);
 
