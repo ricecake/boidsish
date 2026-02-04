@@ -366,15 +366,37 @@ void main() {
 	// Enhance realism by adding fine-grained surface roughness.
 	// Scale and strength are now tied to the material/biome.
 	vec3 perturbedNorm = norm;
-	if (perturbFactor >= 0.1) {
-		float roughnessStrength = smoothstep(0.1, 1.0, perturbFactor) * finalMaterial.normalStrength;
-		float roughnessScale = finalMaterial.normalScale;
+	if (perturbFactor >= 0.01) {
+		// Calculate distance-based factors
+		float distFactor = smoothstep(0.0, 600.0, dist);
+
+		// Distance scale drop: features get larger (lower frequency) further away
+		float roughnessScale = finalMaterial.normalScale * mix(1.0, 0.2, distFactor);
+
+		// Strength calculation with slope factor (steeper = rougher)
+		float roughnessStrength = smoothstep(0.01, 1.0, perturbFactor) * finalMaterial.normalStrength;
+		float slopeFactor = 1.0 + (1.0 - slope) * 2.0;
+		roughnessStrength *= slopeFactor;
 
 		// Use finite difference to approximate the gradient of the noise field
 		float eps = 0.015;
-		float n = snoise(FragPos * roughnessScale);
-		float nx = snoise((FragPos + vec3(eps, 0.0, 0.0)) * roughnessScale);
-		float nz = snoise((FragPos + vec3(0.0, 0.0, eps)) * roughnessScale);
+
+		// Combine fine-grained noise with large-scale noise for mid-to-far range variety
+		float fineScale = roughnessScale;
+		float largeScale = roughnessScale * 0.15;
+		float largeWeight = mix(0.0, 0.7, distFactor);
+
+		float n = mix(snoise(FragPos * fineScale), snoise(FragPos * largeScale), largeWeight);
+		float nx = mix(
+			snoise((FragPos + vec3(eps, 0.0, 0.0)) * fineScale),
+			snoise((FragPos + vec3(eps, 0.0, 0.0)) * largeScale),
+			largeWeight
+		);
+		float nz = mix(
+			snoise((FragPos + vec3(0.0, 0.0, eps)) * fineScale),
+			snoise((FragPos + vec3(0.0, 0.0, eps)) * largeScale),
+			largeWeight
+		);
 
 		// Compute local tangent space to orient the perturbation
 		vec3 tangent = normalize(cross(norm, vec3(0, 0, 1)));
