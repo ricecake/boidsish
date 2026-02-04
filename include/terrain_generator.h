@@ -90,7 +90,7 @@ namespace Boidsish {
 			for (const auto& biome : biomes) {
 				max_h = std::max(max_h, biome.floorLevel);
 			}
-			return (max_h * 0.8f) / world_scale_;
+			return max_h * 0.8f * world_scale_;
 		}
 
 		int GetChunkSize() const override { return chunk_size_; }

@@ -98,7 +98,7 @@ void main() {
 	worldPos += vec2(hash(seed), hash(seed + 1234u)) * step * 0.9;
 
 	// Scale world position for noise to match terrain scaling
-	vec2 scaledWorldPos = worldPos * u_worldScale;
+	vec2 scaledWorldPos = worldPos / u_worldScale;
 
 	// Clamp to chunk bounds
 	if (worldPos.x < u_chunkWorldOffset.x || worldPos.x >= u_chunkWorldOffset.x + u_chunkSize ||
@@ -117,7 +117,7 @@ void main() {
 	vec3  normal = vec3(terrainSample.g, terrainSample.b, terrainSample.a);
 
 	// Check constraints
-	if (height < u_minHeight || height > u_maxHeight)
+	if (height < u_minHeight * u_worldScale || height > u_maxHeight * u_worldScale)
 		return;
 	float slope = 1.0 - normal.y; // 0 is flat, 1 is vertical
 	if (slope < u_minSlope || slope > u_maxSlope)
@@ -151,9 +151,9 @@ void main() {
 	// Use noise for scale variation as well for more coherent "growth" patterns
 	float scaleNoise = (snoise(scaledWorldPos * 0.1) + 1.0) * 0.5;
 
-	// Base scale is inversely proportional to world scale to keep relative size
-	float baseScale = u_baseScale / u_worldScale;
-	float s = baseScale + (scaleNoise * 2.0 - 1.0) * (u_scaleVariance / u_worldScale);
+	// Base scale is proportional to world scale to keep relative size
+	float baseScale = u_baseScale * u_worldScale;
+	float s = baseScale + (scaleNoise * 2.0 - 1.0) * (u_scaleVariance * u_worldScale);
 
 	// Build rotation: base rotation + optional random yaw
 	vec3 rotation = u_baseRotation;

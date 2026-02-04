@@ -30,7 +30,7 @@ const vec3 COL_SNOW_OLD = vec3(0.85, 0.88, 0.92);      // Older packed snow
 const vec3 COL_DIRT = vec3(0.35, 0.25, 0.18);          // Exposed dirt
 
 // Height thresholds (0 = water level, ~100 = typical peaks)
-const float HEIGHT_BEACH_END = 3.0;
+#define HEIGHT_BEACH_END (3.0 * worldScale)
 
 struct TerrainMaterial {
 	vec3  albedo;
@@ -40,12 +40,12 @@ struct TerrainMaterial {
 	float normalStrength;
 };
 
-const float HEIGHT_LOWLAND_END = 20.0;
-const float HEIGHT_FOREST_END = 50.0;
-const float HEIGHT_ALPINE_START = 60.0;
-const float HEIGHT_TREELINE = 80.0;
-const float HEIGHT_SNOW_START = 90.0;
-const float HEIGHT_PEAK = 100.0;
+#define HEIGHT_LOWLAND_END (20.0 * worldScale)
+#define HEIGHT_FOREST_END (50.0 * worldScale)
+#define HEIGHT_ALPINE_START (60.0 * worldScale)
+#define HEIGHT_TREELINE (80.0 * worldScale)
+#define HEIGHT_SNOW_START (90.0 * worldScale)
+#define HEIGHT_PEAK (100.0 * worldScale)
 
 /**
  * Calculate valley/ridge factor using noise-based curvature approximation.
@@ -224,7 +224,7 @@ void main() {
 	}
 
 	// Scale world-space position for detail noise to match terrain scaling
-	vec3 scaledFragPos = FragPos * worldScale;
+	vec3 scaledFragPos = FragPos / worldScale;
 
 	// ========================================================================
 	// Noise Generation
@@ -254,10 +254,10 @@ void main() {
 	// ========================================================================
 	vec3  norm = normalize(Normal);
 	float dist = length(FragPos.xz - viewPos.xz);
-	float fade_start = 560.0;
-	float fade_end = 570.0;
-	// float fade = 1.0 - smoothstep(fade_start, fade_end, dist + n2 * 40.0);
-	float fade = 1.0 - smoothstep(fade_start, fade_end, dist + n2 * 40.0);
+	float fade_start = 560.0 * worldScale;
+	float fade_end = 570.0 * worldScale;
+	// float fade = 1.0 - smoothstep(fade_start, fade_end, dist + n2 * 40.0 * worldScale);
+	float fade = 1.0 - smoothstep(fade_start, fade_end, dist + n2 * 40.0 * worldScale);
 
 	if (fade < 0.2) {
 		discard;
@@ -276,7 +276,7 @@ void main() {
 	// float combinedNoise = largeNoise * 0.6 + medNoise * 0.3 + fineNoise * 0.1;
 	// Height with noise distortion for natural boundaries
 	float baseHeight = FragPos.y;
-	float distortedHeight = baseHeight + largeNoise * 5.0;
+	float distortedHeight = baseHeight + largeNoise * 5.0 * worldScale;
 
 	// Slope analysis: 1.0 = flat horizontal, 0.0 = vertical cliff
 	float slope = dot(norm, vec3(0.0, 1.0, 0.0));
@@ -376,8 +376,8 @@ void main() {
 		// Use finite difference to approximate the gradient of the noise field
 		float eps = 0.015;
 		float n = snoise(scaledFragPos * roughnessScale);
-		float nx = snoise((scaledFragPos + vec3(eps * worldScale, 0.0, 0.0)) * roughnessScale);
-		float nz = snoise((scaledFragPos + vec3(0.0, 0.0, eps * worldScale)) * roughnessScale);
+		float nx = snoise((scaledFragPos + vec3(eps, 0.0, 0.0)) * roughnessScale);
+		float nz = snoise((scaledFragPos + vec3(0.0, 0.0, eps)) * roughnessScale);
 
 		// Compute local tangent space to orient the perturbation
 		vec3 tangent = normalize(cross(norm, vec3(0, 0, 1)));

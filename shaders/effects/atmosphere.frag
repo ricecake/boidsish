@@ -66,12 +66,12 @@ void main() {
 	float dist = length(worldPos - cameraPos);
 
 	if (depth == 1.0) {
-		dist = 1000.0; // Assume sky is far
+		dist = 1000.0 * worldScale; // Assume sky is far
 		worldPos = cameraPos + rayDir * dist;
 	}
 
 	// 1. Height Fog (Haze)
-	float fogFactor = getHeightFog(cameraPos, worldPos, hazeDensity, 1.0 / (hazeHeight + 0.001));
+	float fogFactor = getHeightFog(cameraPos, worldPos, hazeDensity, 1.0 / (hazeHeight * worldScale + 0.001));
 	vec3  currentHazeColor = hazeColor;
 
 	// Add light scattering to fog
@@ -87,9 +87,12 @@ void main() {
 	float cloudFactor = 0.0;
 	vec3  cloudColor = vec3(0.0);
 
+	float scaledCloudAltitude = cloudAltitude * worldScale;
+	float scaledCloudThickness = cloudThickness * worldScale;
+
 	// Intersect with cloud layer (volume approximation)
-	float t_start = (cloudAltitude - cameraPos.y) / (rayDir.y + 0.000001);
-	float t_end = (cloudAltitude + cloudThickness - cameraPos.y) / (rayDir.y + 0.000001);
+	float t_start = (scaledCloudAltitude - cameraPos.y) / (rayDir.y + 0.000001);
+	float t_end = (scaledCloudAltitude + scaledCloudThickness - cameraPos.y) / (rayDir.y + 0.000001);
 
 	if (t_start > t_end) {
 		float temp = t_start;
@@ -108,10 +111,10 @@ void main() {
 		for (int i = 0; i < samples; i++) {
 			float t = mix(t_start, t_end, (float(i) + jitter) / float(samples));
 			vec3  p = cameraPos + rayDir * t;
-			float h = (p.y - cloudAltitude) / max(cloudThickness, 0.001);
+			float h = (p.y - scaledCloudAltitude) / max(scaledCloudThickness, 0.001);
 			float tapering = smoothstep(0.0, 0.2, h) * smoothstep(1.0, 0.5, h);
 
-			float noise = fbm(p.xz * 0.015 + jitter * time * 0.0001 + p.y * 0.02);
+			float noise = fbm((p.xz / worldScale) * 0.015 + jitter * time * 0.0001 + (p.y / worldScale) * 0.02);
 			// float d = smoothstep(0.2, 0.6, noise * (i + 1)) * cloudDensity;
 			float d = smoothstep(0.2, 0.6, noise * (i + (1 - noise))) * cloudDensity * tapering;
 
