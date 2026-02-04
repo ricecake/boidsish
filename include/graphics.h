@@ -441,6 +441,9 @@ namespace Boidsish {
 		PostProcessing::PostProcessingManager& GetPostProcessingManager();
 		float                                  GetLastFrameTime() const;
 
+		float GetRenderScale() const;
+		void  SetRenderScale(float scale);
+
 		Config&       GetConfig();
 		AudioManager& GetAudioManager();
 

@@ -129,7 +129,9 @@ namespace Boidsish {
 			const glm::mat4& view_matrix,
 			const glm::mat4& proj_matrix,
 			const glm::vec3& camera_pos,
-			GLuint           quad_vao
+			GLuint           quad_vao,
+			int              target_width = -1,
+			int              target_height = -1
 		);
 
 		/**
