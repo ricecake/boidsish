@@ -5,6 +5,7 @@
 #include "GuidedMissile.h"
 #include "PaperPlane.h"
 #include "graphics.h"
+#include "terrain_generator_interface.h"
 
 namespace Boidsish {
 
@@ -87,7 +88,11 @@ namespace Boidsish {
 	}
 
 	void GuidedMissileLauncher::Destroy(const EntityHandler& handler) {
-		handler.vis->TriggerComplexExplosion(shape_, glm::vec3(0.0f, 1.0f, 0.0f), 2.0f, FireEffectStyle::Explosion);
+		auto pos = GetPosition().Toglm();
+		auto [height, normal] = handler.GetCachedTerrainProperties(pos.x, pos.z);
+		handler.vis->TriggerComplexExplosion(shape_, normal, 2.0f, FireEffectStyle::Explosion);
+		handler.vis->GetTerrain()->AddCrater({pos.x, height, pos.z}, 15.0f, 8.0f, 0.2f, 2.0f);
+
 		handler.QueueRemoveEntity(GetId());
 	}
 

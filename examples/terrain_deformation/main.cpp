@@ -28,7 +28,7 @@ int main() {
 					visualizer.CreateExplosion(*pos, 1.0f);
 
 					// Terrain deformation
-					visualizer.GetTerrainGenerator2()->AddCrater(*pos, 15.0f, 8.0f, 0.2f, 2.0f);
+					visualizer.GetTerrain()->AddCrater(*pos, 15.0f, 8.0f, 0.2f, 2.0f);
 				}
 			}
 			// Right click: Flatten
@@ -36,7 +36,7 @@ int main() {
 				auto pos = visualizer.ScreenToWorld(input.mouse_x, input.mouse_y);
 				if (pos) {
 					// Terrain deformation
-					visualizer.GetTerrainGenerator2()->AddFlattenSquare(*pos, 20.0f, 20.0f, 5.0f, 0.0f);
+					visualizer.GetTerrain()->AddFlattenSquare(*pos, 20.0f, 20.0f, 5.0f, 0.0f);
 				}
 			}
 		});
