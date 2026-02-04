@@ -399,6 +399,11 @@ namespace Boidsish {
 		void UpdateHudGauge(int id, const HudGauge& gauge);
 		void RemoveHudGauge(int id);
 
+		// GPU Trail Experiment
+		int  AddGpuTrail(int max_points = 256);
+		void RemoveGpuTrail(int trail_id);
+		void AddGpuTrailPoint(int trail_id, const glm::vec3& pos, const glm::vec3& color, float thickness);
+
 	private:
 		struct VisualizerImpl;
 		std::unique_ptr<VisualizerImpl> impl;

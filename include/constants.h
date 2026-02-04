@@ -30,6 +30,20 @@ namespace Boidsish {
 			}
 		} // namespace UboBinding
 
+		namespace SsboBinding {
+			consteval int GpuTrailControlPoints() {
+				return 6;
+			}
+
+			consteval int GpuTrailSegments() {
+				return 7;
+			}
+
+			consteval int GpuTrailInfo() {
+				return 8;
+			}
+		} // namespace SsboBinding
+
 		namespace General {
 			namespace Math {
 				consteval float Pi() {
@@ -358,6 +372,24 @@ namespace Boidsish {
 					return 1.5f;
 				}
 			} // namespace Trails
+
+			namespace GpuTrails {
+				consteval int MaxTrails() {
+					return 128;
+				}
+
+				consteval int MaxPointsPerTrail() {
+					return 256;
+				}
+
+				consteval int InterpolationFactor() {
+					return 16;
+				}
+
+				consteval int MaxSegments() {
+					return MaxTrails() * MaxPointsPerTrail() * InterpolationFactor();
+				}
+			} // namespace GpuTrails
 
 			namespace Shapes {
 				namespace Arrow {

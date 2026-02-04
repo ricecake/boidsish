@@ -51,6 +51,7 @@
 #include "terrain_render_manager.h"
 #include "trail.h"
 #include "trail_render_manager.h"
+#include "gpu_trail_manager.h"
 #include "ui/ConfigWidget.h"
 #include "ui/EffectsWidget.h"
 #include "ui/LightsWidget.h"
@@ -282,6 +283,7 @@ namespace Boidsish {
 		std::unique_ptr<InstanceManager>                       instance_manager;
 		std::shared_ptr<TerrainRenderManager>                  terrain_render_manager;
 		std::unique_ptr<TrailRenderManager>                    trail_render_manager;
+		std::unique_ptr<GpuTrailManager>                       gpu_trail_manager;
 		std::unique_ptr<PostProcessing::PostProcessingManager> post_processing_manager_;
 
 		// Effect managers
@@ -559,6 +561,9 @@ namespace Boidsish {
 			audio_manager = std::make_unique<AudioManager>();
 			sound_effect_manager = std::make_unique<SoundEffectManager>(audio_manager.get());
 			trail_render_manager = std::make_unique<TrailRenderManager>();
+			gpu_trail_manager = std::make_unique<GpuTrailManager>();
+			gpu_trail_manager->Initialize();
+			SetupShaderBindings(*gpu_trail_manager->GetRenderShader());
 
 			const int MAX_LIGHTS = 10;
 			glGenBuffers(1, &lighting_ubo);
@@ -1371,6 +1376,9 @@ namespace Boidsish {
 		}
 
 		void RenderTrails(const glm::mat4& view, const std::optional<glm::vec4>& clip_plane) {
+			// Render GPU trails
+			gpu_trail_manager->Render(view, projection);
+
 			// Update trail data in the render manager
 			for (auto& [trail_id, trail] : trails) {
 				if (!trail_render_manager->HasTrail(trail_id)) {
@@ -2274,6 +2282,7 @@ namespace Boidsish {
 		// Update clone manager
 		impl->clone_manager->Update(impl->simulation_time, impl->camera.pos());
 		impl->fire_effect_manager->Update(impl->input_state.delta_time, impl->simulation_time);
+		impl->gpu_trail_manager->Update(impl->input_state.delta_time, impl->simulation_time);
 		impl->mesh_explosion_manager->Update(impl->input_state.delta_time, impl->simulation_time);
 		impl->sound_effect_manager->Update(impl->input_state.delta_time);
 		impl->shockwave_manager->Update(impl->input_state.delta_time);
@@ -3168,5 +3177,17 @@ namespace Boidsish {
 
 	bool Visualizer::IsWireframeEffectEnabled() const {
 		return ConfigManager::GetInstance().GetAppSettingBool("artistic_effect_wireframe", false);
+	}
+
+	int Visualizer::AddGpuTrail(int max_points) {
+		return impl->gpu_trail_manager->AddTrail(max_points);
+	}
+
+	void Visualizer::RemoveGpuTrail(int trail_id) {
+		impl->gpu_trail_manager->RemoveTrail(trail_id);
+	}
+
+	void Visualizer::AddGpuTrailPoint(int trail_id, const glm::vec3& pos, const glm::vec3& color, float thickness) {
+		impl->gpu_trail_manager->AddPoint(trail_id, pos, color, thickness, impl->simulation_time);
 	}
 } // namespace Boidsish
