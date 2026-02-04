@@ -5,7 +5,7 @@
 #include "ConfigManager.h"
 #include "graphics.h"
 #include "logger.h"
-#include "terrain_generator.h"
+#include "terrain_generator_interface.h"
 #include "terrain_render_manager.h"
 #include <GL/glew.h>
 #include <glm/gtc/type_ptr.hpp>
@@ -68,7 +68,7 @@ namespace Boidsish {
 		float /*delta_time*/,
 		const Camera&                         camera,
 		const Frustum&                        frustum,
-		const TerrainGenerator&               terrain_gen,
+		const ITerrainGenerator&              terrain_gen,
 		std::shared_ptr<TerrainRenderManager> render_manager
 	) {
 		if (!enabled_ || !initialized_ || decor_types_.empty())
@@ -99,7 +99,7 @@ namespace Boidsish {
 	void DecorManager::_RegeneratePlacements(
 		const Camera&                         camera,
 		const Frustum&                        frustum,
-		const TerrainGenerator&               terrain_gen,
+		const ITerrainGenerator&              terrain_gen,
 		std::shared_ptr<TerrainRenderManager> render_manager
 	) {
 		// Get the heightmap texture array from the terrain render manager

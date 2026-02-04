@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cmath>
+#include <concepts>
 #include <functional>
 #include <map>
 #include <memory>
@@ -156,6 +157,7 @@ namespace Boidsish {
 	// Main visualization class
 	class Terrain;
 	class TerrainGenerator;
+	class ITerrainGenerator;
 
 	// Main visualization class
 	class Visualizer {
@@ -325,8 +327,63 @@ namespace Boidsish {
 		std::tuple<float, glm::vec3>                 GetTerrainPointProperties(float x, float y) const;
 		std::tuple<float, glm::vec3>                 GetTerrainPointPropertiesThreadSafe(float x, float y) const;
 		float                                        GetTerrainMaxHeight() const;
-		const TerrainGenerator*                      GetTerrainGenerator() const;
 		const std::vector<std::shared_ptr<Terrain>>& GetTerrainChunks() const;
+
+		/**
+		 * @brief Get the current terrain generator.
+		 *
+		 * Returns a shared_ptr to ensure safe access even if the terrain generator
+		 * is swapped at runtime. The returned pointer remains valid as long as
+		 * the caller holds the shared_ptr.
+		 *
+		 * @return Shared pointer to the terrain generator interface (nullptr if terrain disabled)
+		 */
+		std::shared_ptr<ITerrainGenerator> GetTerrain();
+		std::shared_ptr<const ITerrainGenerator> GetTerrain() const;
+
+		/**
+		 * @brief Get the terrain generator cast to TerrainGenerator (legacy).
+		 *
+		 * @deprecated Use GetTerrain() instead for type-safe interface access.
+		 * This method exists for backward compatibility with code that needs
+		 * the concrete TerrainGenerator type.
+		 *
+		 * @return Raw pointer to TerrainGenerator, or nullptr if terrain is disabled
+		 *         or is a different implementation type
+		 */
+		[[deprecated("Use GetTerrain() for safe shared_ptr access")]]
+		const TerrainGenerator* GetTerrainGenerator() const;
+
+		/**
+		 * @brief Create and set a terrain generator.
+		 *
+		 * Creates a new terrain generator of the specified type with the given
+		 * constructor arguments. The Visualizer takes ownership of the generator.
+		 *
+		 * Note: This will invalidate all existing terrain chunks. The new generator
+		 * will begin streaming in chunks based on the current camera position.
+		 *
+		 * @tparam T Terrain generator type (must derive from ITerrainGenerator)
+		 * @tparam Args Constructor argument types
+		 * @param args Arguments forwarded to T's constructor
+		 * @return Shared pointer to the newly created generator
+		 *
+		 * Example:
+		 * @code
+		 * // Create default TerrainGenerator
+		 * auto terrain = visualizer.SetTerrainGenerator<TerrainGenerator>();
+		 *
+		 * // Create with custom seed
+		 * auto terrain = visualizer.SetTerrainGenerator<TerrainGenerator>(42);
+		 *
+		 * // Create custom terrain type
+		 * auto terrain = visualizer.SetTerrainGenerator<MyCustomTerrain>(config);
+		 * @endcode
+		 */
+		template <typename T, typename... Args>
+			requires std::derived_from<T, ITerrainGenerator>
+		std::shared_ptr<T> SetTerrainGenerator(Args&&... args);
+
 		task_thread_pool::task_thread_pool&          GetThreadPool();
 		LightManager&                                GetLightManager();
 		FireEffectManager*                           GetFireEffectManager();
@@ -361,6 +418,18 @@ namespace Boidsish {
 	private:
 		struct VisualizerImpl;
 		std::unique_ptr<VisualizerImpl> impl;
+
+		// Internal helper for SetTerrainGenerator template
+		void InstallTerrainGenerator(std::shared_ptr<ITerrainGenerator> generator);
 	};
+
+	// Template implementation must be in header
+	template <typename T, typename... Args>
+		requires std::derived_from<T, ITerrainGenerator>
+	std::shared_ptr<T> Visualizer::SetTerrainGenerator(Args&&... args) {
+		auto generator = std::make_shared<T>(std::forward<Args>(args)...);
+		InstallTerrainGenerator(generator);
+		return generator;
+	}
 
 } // namespace Boidsish
