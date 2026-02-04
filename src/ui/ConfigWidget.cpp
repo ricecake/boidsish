@@ -19,7 +19,7 @@ namespace Boidsish {
 					const std::string& key = pair.first;
 					const ConfigValue& val_info = pair.second;
 
-					if (key.contains("artistic_effect_")) {
+					if (key.contains("artistic_effect_") || key == "render_scale") {
 						continue;
 					}
 
@@ -139,6 +139,13 @@ namespace Boidsish {
 						if (ImGui::Checkbox("Enable Foliage", &enabled)) {
 							decor_manager->SetEnabled(enabled);
 						}
+					}
+				}
+
+				if (ImGui::CollapsingHeader("Rendering", ImGuiTreeNodeFlags_DefaultOpen)) {
+					float render_scale = m_visualizer.GetRenderScale();
+					if (ImGui::SliderFloat("Render Scale", &render_scale, 0.1f, 1.0f)) {
+						m_visualizer.SetRenderScale(render_scale);
 					}
 				}
 
