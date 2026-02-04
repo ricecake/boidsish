@@ -67,7 +67,7 @@ namespace Boidsish {
 		// Catmull-Rom interpolation for smooth curves
 		Vector3 CatmullRom(float t, const Vector3& p0, const Vector3& p1, const Vector3& p2, const Vector3& p3) const;
 
-		// Appends a new segment to the geometry cache
+		// Appends a new finalized segment to the geometry cache
 		void AppendToGeometryCache(
 			const Vector3& p0,
 			const Vector3& p1,
@@ -78,13 +78,25 @@ namespace Boidsish {
 			const Vector3& c2,
 			const Vector3& c3
 		);
+
 		// Removes the oldest segment from the geometry cache
 		void PopFromGeometryCache();
-		void UpdateAndAppendSegment();
+
+		// Updates the mesh incrementally, including a temporary lead segment
+		void UpdateMesh();
 
 		// Frame transport for maintaining smooth normal orientation
 		Vector3
 		TransportFrame(const Vector3& prev_normal, const Vector3& prev_tangent, const Vector3& curr_tangent) const;
+
+		// Helper to generate a ring of vertices around a point
+		void GenerateRing(
+			const Vector3& position,
+			const Vector3& normal,
+			const Vector3& binormal,
+			std::vector<glm::vec3>& out_positions,
+			std::vector<glm::vec3>& out_normals
+		) const;
 
 		std::deque<std::pair<glm::vec3, glm::vec3>> points;
 		int                                         max_length;
@@ -97,10 +109,10 @@ namespace Boidsish {
 		mutable bool                      mesh_dirty;
 		mutable size_t                    head = 0;
 		mutable size_t                    tail = 0;
-		mutable size_t                    old_tail = 0;
+		mutable size_t                    permanent_tail = 0;
 		mutable bool                      full = false;
 
-		// Cached geometry data for incremental updates
+		// Cached geometry data for incremental updates (finalized segments only)
 		mutable std::deque<Vector3>                curve_positions;
 		mutable std::deque<Vector3>                curve_colors;
 		mutable std::deque<Vector3>                tangents;
@@ -108,11 +120,12 @@ namespace Boidsish {
 		mutable std::deque<Vector3>                binormals;
 		mutable std::deque<std::vector<glm::vec3>> ring_positions;
 		mutable std::deque<std::vector<glm::vec3>> ring_normals;
-		bool                                       iridescent_ = false;
-		bool                                       useRocketTrail_ = false;
-		bool                                       usePBR_ = false;
-		float                                      roughness_ = Constants::Class::Trails::DefaultRoughness();
-		float                                      metallic_ = Constants::Class::Trails::DefaultMetallic();
+
+		bool  iridescent_ = false;
+		bool  useRocketTrail_ = false;
+		bool  usePBR_ = false;
+		float roughness_ = Constants::Class::Trails::DefaultRoughness();
+		float metallic_ = Constants::Class::Trails::DefaultMetallic();
 
 		// Configuration
 		const int   TRAIL_SEGMENTS = Constants::Class::Trails::Segments();      // Circular segments around trail
