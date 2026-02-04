@@ -90,10 +90,13 @@ namespace Boidsish {
 			for (const auto& biome : biomes) {
 				max_h = std::max(max_h, biome.floorLevel);
 			}
-			return max_h * 0.8;
+			return (max_h * 0.8f) / world_scale_;
 		}
 
 		int GetChunkSize() const override { return chunk_size_; }
+
+		void  SetWorldScale(float scale) override;
+		float GetWorldScale() const override { return world_scale_; }
 
 		// Interface method - calls pointProperties
 		std::tuple<float, glm::vec3> GetPointProperties(float x, float z) const override {
@@ -350,6 +353,7 @@ namespace Boidsish {
 		float     lacunarity_ = Constants::Class::Terrain::DefaultLacunarity();
 		float     persistence_ = Constants::Class::Terrain::DefaultPersistence();
 		int       seed_;
+		float     world_scale_ = 1.0f;
 
 		// Control noise parameters
 		constexpr static const float control_noise_scale_ = Constants::Class::Terrain::ControlNoiseScale();

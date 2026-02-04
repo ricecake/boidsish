@@ -132,7 +132,16 @@ namespace Boidsish {
 					}
 				}
 
-				if (ImGui::CollapsingHeader("Foliage", ImGuiTreeNodeFlags_DefaultOpen)) {
+				if (ImGui::CollapsingHeader("Terrain", ImGuiTreeNodeFlags_DefaultOpen)) {
+					auto terrain = m_visualizer.GetTerrain();
+					if (terrain) {
+						float world_scale = terrain->GetWorldScale();
+						if (ImGui::SliderFloat("World Scale", &world_scale, 0.1f, 5.0f)) {
+							terrain->SetWorldScale(world_scale);
+						}
+						ImGui::Text("Higher = smaller world, Lower = larger world");
+					}
+
 					auto decor_manager = m_visualizer.GetDecorManager();
 					if (decor_manager) {
 						bool enabled = decor_manager->IsEnabled();

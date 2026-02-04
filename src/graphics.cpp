@@ -2053,6 +2053,10 @@ namespace Boidsish {
 		glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(LightGPU) * num_lights, gpu_lights.data());
 		size_t offset = 640;
 		glBufferSubData(GL_UNIFORM_BUFFER, offset, sizeof(int), &num_lights);
+
+		float world_scale = impl->terrain_generator ? impl->terrain_generator->GetWorldScale() : 1.0f;
+		glBufferSubData(GL_UNIFORM_BUFFER, offset + 4, sizeof(float), &world_scale);
+
 		offset += 16;
 		glBufferSubData(
 			GL_UNIFORM_BUFFER,
