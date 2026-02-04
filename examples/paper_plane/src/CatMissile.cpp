@@ -283,8 +283,8 @@ namespace Boidsish {
 		if (target_ != nullptr) {
 			spiral_amplitude = glm::mix(0.0f, 0.25f, std::clamp(target_distance / 300.0f, 0.0f, 1.0f));
 		}
-		target_dir_local.x += sin(lived_ * 10.0f) * spiral_amplitude;
-		target_dir_local.y += cos(lived_ * 8.0f) * spiral_amplitude;
+		target_dir_local.x += sin(lived_ * 2.0f) * spiral_amplitude;
+		target_dir_local.y += cos(lived_ * 1.5f) * spiral_amplitude;
 
 		// Terminal hard swing
 		float kP = 60.0f;
