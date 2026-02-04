@@ -109,19 +109,22 @@ namespace Boidsish {
 
 		if (!taunt_text_ && !exploded_) {
 			std::uniform_int_distribution<size_t> dist(0, kTaunts.size() - 1);
-			std::string                           taunt = kTaunts[dist(const_cast<std::mt19937&>(eng_))];
+			std::string                           taunt = kTaunts[dist(eng_)];
 			taunt_text_ = handler.vis->AddArcadeTextEffect(
 				taunt,
 				pos.Toglm(),
-				3.0f,               // radius
-				360.0f,             // angle
-				glm::vec3(0, 1, 0), // wrap normal
-				glm::vec3(0, 0, 1), // text normal
-				lifetime_ - lived_
+				5.0f,                // radius offset
+				0.0f,                // angle (flat)
+				glm::vec3(0, 1, 0),  // wrap normal
+				glm::vec3(0, 0, 1),  // text normal
+				lifetime_ - lived_,
+				"assets/Roboto-Medium.ttf",
+				3.0f                 // font size
 			);
 			if (taunt_text_) {
 				taunt_text_->SetRainbowEnabled(true);
 				taunt_text_->SetWaveMode(ArcadeWaveMode::VERTICAL);
+				taunt_text_->SetRotationSpeed(2.0f);
 			}
 		}
 

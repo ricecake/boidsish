@@ -126,19 +126,22 @@ namespace Boidsish {
 		handler.vis->GetTerrain()->AddCrater({pos.x, height, pos.z}, 15.0f, 8.0f, 0.2f, 2.0f);
 
 		std::uniform_int_distribution<size_t> dist(0, kEncouragements.size() - 1);
-		std::string                           msg = kEncouragements[dist(const_cast<std::mt19937&>(eng_))];
+		std::string                           msg = kEncouragements[dist(eng_)];
 		auto arcade_text = handler.vis->AddArcadeTextEffect(
 			msg,
-			pos + glm::vec3(0, 10, 0),
+			pos + glm::vec3(0, 25, 0),
 			5.0f,
-			360.0f,
+			0.0f,
 			glm::vec3(0, 1, 0),
 			glm::vec3(0, 0, 1),
-			3.0f
+			4.0f,
+			"assets/Roboto-Medium.ttf",
+			15.0f
 		);
 		if (arcade_text) {
 			arcade_text->SetRainbowEnabled(true);
 			arcade_text->SetWaveMode(ArcadeWaveMode::VERTICAL);
+			arcade_text->SetRotationSpeed(1.5f);
 		}
 
 		handler.QueueRemoveEntity(GetId());
