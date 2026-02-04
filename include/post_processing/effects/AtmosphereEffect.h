@@ -5,6 +5,7 @@
 #include "post_processing/IPostProcessingEffect.h"
 
 class Shader; // Forward declaration
+class ComputeShader;
 
 namespace Boidsish {
 	namespace PostProcessing {
@@ -72,9 +73,19 @@ namespace Boidsish {
 
 			float GetCloudPowderStrength() const { return cloud_powder_strength_; }
 
+			GLuint GetTransmittanceLUT() const { return transmittance_lut_; }
+
+			GLuint GetCloudNoiseLUT() const { return cloud_noise_lut_; }
+
 		private:
-			std::unique_ptr<Shader> shader_;
-			float                   time_ = 0.0f;
+			void GenerateLUTs();
+
+			std::unique_ptr<Shader>        shader_;
+			std::unique_ptr<ComputeShader> transmittance_lut_shader_;
+			std::unique_ptr<ComputeShader> cloud_noise_lut_shader_;
+			GLuint                         transmittance_lut_ = 0;
+			GLuint                         cloud_noise_lut_ = 0;
+			float                          time_ = 0.0f;
 
 			float     haze_density_ = 0.005f;
 			float     haze_height_ = 20.0f;

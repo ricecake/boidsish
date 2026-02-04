@@ -16,9 +16,10 @@ const float MIE_HEIGHT = 1200.0;
 const float EARTH_RADIUS = 6371000.0;
 const float ATMOSPHERE_RADIUS = EARTH_RADIUS + 100000.0;
 
+uniform sampler2D transmittanceLUT;
+
 /**
  * Rayleigh phase function.
- * Describes how light scatters off small particles (air molecules).
  */
 float rayleighPhase(float cosTheta) {
 	return (3.0 / (16.0 * PI)) * (1.0 + cosTheta * cosTheta);
@@ -26,8 +27,6 @@ float rayleighPhase(float cosTheta) {
 
 /**
  * Henyey-Greenstein phase function.
- * Approximation for Mie scattering (larger particles like dust/water).
- * @param g Anisotropy factor [-1, 1]. g > 0 is forward scattering.
  */
 float henyeyGreensteinPhase(float cosTheta, float g) {
 	float g2 = g * g;
@@ -36,8 +35,17 @@ float henyeyGreensteinPhase(float cosTheta, float g) {
 }
 
 /**
+ * Samples precomputed transmittance from LUT.
+ * @param h Altitude in meters [0, 100000]
+ * @param cosTheta Angle to zenith [-1, 1]
+ */
+vec3 getTransmittance(float h, float cosTheta) {
+	vec2 uv = vec2(cosTheta * 0.5 + 0.5, h / 100000.0);
+	return texture(transmittanceLUT, uv).rgb;
+}
+
+/**
  * Combined Beer-Lambert law with "Powder Effect".
- * Used for volumetric cloud lighting.
  */
 float beerPowder(float density, float thickness, float powderStrength) {
 	float beer = exp(-density * thickness);
@@ -46,30 +54,28 @@ float beerPowder(float density, float thickness, float powderStrength) {
 }
 
 /**
- * Simple analytical sky scattering approximation.
- * Returns the color of the sky in a given direction.
+ * Sky scattering approximation using Transmittance LUT.
  */
 vec3 calculateSkyColor(vec3 rayDir, vec3 sunDir, vec3 sunColor) {
 	float cosTheta = dot(rayDir, sunDir);
-	float zenith = max(rayDir.y, 0.0);
+	float viewZenith = rayDir.y;
+	float sunZenith = sunDir.y;
 
-	// Atmosphere thickness based on angle (shorter at zenith, longer at horizon)
-	float dist = 1.0 / (zenith + 0.1);
+	// Transmittance from observer to atmosphere boundary
+	vec3 T_view = getTransmittance(0.0, viewZenith);
+	// Transmittance from boundary to observer along sun direction
+	vec3 T_sun = getTransmittance(0.0, sunZenith);
 
-	// Rayleigh scattering
+	// Approximate in-scattering
 	float ray = rayleighPhase(cosTheta);
-	vec3  extinction = exp(-RAYLEIGH_BETA * dist * 10000.0);
-	vec3  rayleigh = RAYLEIGH_BETA * ray * (1.0 - extinction);
-
-	// Mie scattering (sun glow)
 	float mie = henyeyGreensteinPhase(cosTheta, 0.8);
-	vec3  mieGlow = vec3(MIE_BETA) * mie * (1.0 - extinction);
 
-	// Simple sky gradient
-	vec3  skyColor = mix(vec3(0.1, 0.2, 0.4), vec3(0.5, 0.7, 1.0), pow(zenith, 0.5));
-	vec3  scatteredLight = (rayleigh * 500000.0 + mieGlow * 100000.0) * sunColor;
+	vec3 scatteredLight = (RAYLEIGH_BETA * ray + MIE_BETA * mie) * (1.0 - T_view) * sunColor * 100000.0;
 
-	return skyColor * 0.2 + scatteredLight;
+	// Add some ambient horizon color
+	vec3 skyColor = mix(vec3(0.05, 0.1, 0.2), vec3(0.4, 0.6, 1.0), pow(max(0.0, viewZenith), 0.5));
+
+	return skyColor * 0.5 + scatteredLight;
 }
 
 #endif // HELPERS_ATMOSPHERE_GLSL

@@ -1182,6 +1182,18 @@ namespace Boidsish {
 			sky_shader->use();
 			sky_shader->setMat4("invProjection", glm::inverse(projection));
 			sky_shader->setMat4("invView", glm::inverse(view));
+
+			// Bind Transmittance LUT if available
+			if (post_processing_manager_) {
+				auto atmosphere =
+					post_processing_manager_->GetEffect<PostProcessing::AtmosphereEffect>("Atmosphere");
+				if (atmosphere) {
+					sky_shader->setInt("transmittanceLUT", 2);
+					glActiveTexture(GL_TEXTURE2);
+					glBindTexture(GL_TEXTURE_2D, atmosphere->GetTransmittanceLUT());
+				}
+			}
+
 			glBindVertexArray(sky_vao);
 			glDrawArrays(GL_TRIANGLES, 0, 3);
 			glBindVertexArray(0);

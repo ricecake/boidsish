@@ -5,6 +5,8 @@ in vec2 TexCoords;
 
 uniform sampler2D sceneTexture;
 uniform sampler2D depthTexture;
+uniform sampler2D transmittanceLUT;
+uniform sampler3D cloudNoiseLUT;
 
 uniform vec3 cameraPos;
 uniform mat4 invView;
@@ -28,7 +30,6 @@ uniform float cloudPowderStrength = 0.5;
 #include "../helpers/lighting.glsl"
 #include "../helpers/noise.glsl"
 #include "../helpers/atmosphere.glsl"
-#include "lygia/generative/worley.glsl"
 
 float getHeightFog(vec3 start, vec3 end, float density, float heightFalloff) {
 	float dist = length(end - start);
@@ -43,24 +44,17 @@ float getHeightFog(vec3 start, vec3 end, float density, float heightFalloff) {
 	return 1.0 - exp(-max(0.0, fog));
 }
 
-float cloudFBM(vec3 p) {
-	float v = 0.0;
-	float a = 0.5;
-	vec3  shift = vec3(time * 0.05, 0.0, time * 0.02);
-	for (int i = 0; i < 3; i++) {
-		v += a * worley(p + shift);
-		p = p * 2.0;
-		a *= 0.5;
-	}
-	return v;
-}
-
 float sampleCloudDensity(vec3 p) {
 	float h = (p.y - cloudAltitude) / max(cloudThickness, 0.001);
 	float tapering = smoothstep(0.0, 0.2, h) * smoothstep(1.0, 0.5, h);
 
-	float noise = cloudFBM(p * 0.02);
-	float d = smoothstep(0.3, 0.7, noise) * cloudDensity * tapering;
+	vec3  uvw = p * 0.0002 + vec3(time * 0.005, 0.0, time * 0.002);
+	vec4  noise = texture(cloudNoiseLUT, uvw);
+
+	// FBM from 3D texture
+	float d_noise = noise.r * 0.5 + noise.g * 0.25 + noise.b * 0.125 + noise.a * 0.0625;
+
+	float d = smoothstep(0.3, 0.7, d_noise) * cloudDensity * tapering;
 	return d;
 }
 
@@ -129,26 +123,23 @@ void main() {
 			}
 		}
 
-		float totalDensity = 0.0;
 		for (int i = 0; i < samples; i++) {
 			float t = t_start + (float(i) + jitter) * stepSize;
 			vec3  p = cameraPos + rayDir * t;
 			float d = sampleCloudDensity(p);
 
 			if (d > 0.001) {
-				// Self-shadowing towards sun
-				float shadowDensity = 0.0;
-				int   shadowSamples = 4;
-				float shadowStep = cloudThickness * 0.2;
-				for (int j = 1; j <= shadowSamples; j++) {
-					vec3 sp = p + sunDir * shadowStep * float(j);
-					shadowDensity += sampleCloudDensity(sp);
-				}
-				float transmittance = beerPowder(shadowDensity, shadowStep, cloudPowderStrength);
+				// Self-shadowing using Transmittance LUT
+				vec3 T_sun = getTransmittance(p.y, sunDir.y);
+
+				// Beer-Powder Law for internal density and silver lining
+				// Use the current transmittance as an approximation of shadowing
+				float powder = beerPowder(d, stepSize, cloudPowderStrength);
+				vec3  effectiveTransmittance = T_sun * powder;
 
 				// Scattering
 				float phase = henyeyGreensteinPhase(dot(rayDir, sunDir), cloudG);
-				vec3  pointLight = sunColor * transmittance * phase * cloudScatteringBoost;
+				vec3  pointLight = sunColor * effectiveTransmittance * phase * cloudScatteringBoost;
 				pointLight += ambient_light; // Ambient light in clouds
 
 				vec3 src = pointLight * d * cloudColorUniform;
