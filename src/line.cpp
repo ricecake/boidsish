@@ -14,10 +14,14 @@ namespace Boidsish {
 	int          Line::line_vertex_count_ = 0;
 
 	Line::Line(int id, glm::vec3 start, glm::vec3 end, float width, float r, float g, float b, float a):
-		Shape(id, start.x, start.y, start.z, r, g, b, a), end_(end), width_(width), style_(Style::SOLID) {}
+		Shape(id, start.x, start.y, start.z, r, g, b, a), end_(end), width_(width), style_(Style::SOLID) {
+		bounding_box_ = BoundingBox(glm::vec3(0.0f, -0.5f, -0.5f), glm::vec3(1.0f, 0.5f, 0.5f));
+	}
 
 	Line::Line(glm::vec3 start, glm::vec3 end, float width):
-		Shape(0, start.x, start.y, start.z, 1.0f, 1.0f, 1.0f, 1.0f), end_(end), width_(width), style_(Style::SOLID) {}
+		Shape(0, start.x, start.y, start.z, 1.0f, 1.0f, 1.0f, 1.0f), end_(end), width_(width), style_(Style::SOLID) {
+		bounding_box_ = BoundingBox(glm::vec3(0.0f, -0.5f, -0.5f), glm::vec3(1.0f, 0.5f, 0.5f));
+	}
 
 	void Line::InitLineMesh() {
 		if (line_vao_ != 0)

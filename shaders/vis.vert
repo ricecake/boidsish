@@ -35,6 +35,9 @@ uniform bool  useSSBOInstancing = false;
 uniform bool  isLine = false;
 uniform bool  enableFrustumCulling = false;
 uniform float frustumCullRadius = 5.0; // Approximate object radius for sphere test
+uniform vec3  frustumCullMin;
+uniform vec3  frustumCullMax;
+uniform bool  useAABBCulling = false;
 
 // Arcade Text Effects
 uniform bool  isArcadeText = false;
@@ -103,10 +106,26 @@ void main() {
 
 	// GPU frustum culling - output degenerate triangle if outside frustum
 	if (enableFrustumCulling && !isColossal) {
-		// Use sphere test with approximate radius based on scale
-		float effectiveRadius = frustumCullRadius * instanceScale;
+		bool isVisible = true;
+		if (useAABBCulling) {
+			// Transform local AABB to world space AABB
+			vec3 worldMin = modelMatrix[3].xyz;
+			vec3 worldMax = modelMatrix[3].xyz;
+			for (int j = 0; j < 3; j++) {
+				vec3 col = modelMatrix[j].xyz;
+				vec3 a = col * frustumCullMin[j];
+				vec3 b = col * frustumCullMax[j];
+				worldMin += min(a, b);
+				worldMax += max(a, b);
+			}
+			isVisible = isAABBInFrustum(worldMin, worldMax);
+		} else {
+			// Use sphere test with approximate radius based on scale
+			float effectiveRadius = frustumCullRadius * instanceScale;
+			isVisible = isSphereInFrustum(instanceCenter, effectiveRadius);
+		}
 
-		if (!isSphereInFrustum(instanceCenter, effectiveRadius)) {
+		if (!isVisible) {
 			// Output degenerate triangle (all vertices at same point)
 			// GPU will automatically cull this
 			gl_Position = vec4(0.0, 0.0, -2.0, 1.0); // Behind near plane

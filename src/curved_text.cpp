@@ -375,6 +375,12 @@ namespace Boidsish {
 
 		vertex_count_ = vertices.size() / 8;
 
+		// Calculate bounding box
+		bounding_box_ = BoundingBox();
+		for (size_t i = 0; i < vertices.size(); i += 8) {
+			bounding_box_.Merge(glm::vec3(vertices[i], vertices[i + 1], vertices[i + 2]));
+		}
+
 		glGenVertexArrays(1, &vao_);
 		glBindVertexArray(vao_);
 
