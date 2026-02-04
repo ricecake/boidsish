@@ -28,3 +28,6 @@
 [submodule "external/lygia"]
 	path = external/lygia
 	url = https://github.com/patriciogonzalezvivo/lygia.git
+[submodule "external/Bonxai"]
+	path = external/Bonxai
+	url = https://github.com/facontidavide/Bonxai.git

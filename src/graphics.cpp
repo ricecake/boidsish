@@ -49,6 +49,7 @@
 #include "task_thread_pool.hpp"
 #include "terrain.h"
 #include "terrain_generator.h"
+#include "terrain_generator_interface.h"
 #include "terrain_render_manager.h"
 #include "trail.h"
 #include "trail_render_manager.h"
@@ -218,7 +219,7 @@ namespace Boidsish {
 		std::unique_ptr<PostProcessing::PostProcessingManager> post_processing_manager_;
 		int                                                    exit_key;
 
-		std::unique_ptr<TerrainGenerator>     terrain_generator;
+		std::shared_ptr<ITerrainGenerator>    terrain_generator;
 		std::shared_ptr<TerrainRenderManager> terrain_render_manager;
 		std::unique_ptr<TrailRenderManager>   trail_render_manager;
 
@@ -457,7 +458,7 @@ namespace Boidsish {
 				postprocess_shader_ = std::make_unique<Shader>("shaders/postprocess.vert", "shaders/postprocess.frag");
 			}
 			if (ConfigManager::GetInstance().GetAppSettingBool("enable_terrain", true)) {
-				terrain_generator = std::make_unique<TerrainGenerator>();
+				terrain_generator = std::make_shared<TerrainGenerator>();
 				last_camera_yaw_ = camera.yaw;
 				last_camera_pitch_ = camera.pitch;
 			}
@@ -548,10 +549,14 @@ namespace Boidsish {
 				terrain_generator->SetRenderManager(terrain_render_manager);
 
 				// Set up eviction callback so terrain generator knows when chunks are LRU-evicted
-				// Capture raw pointer since terrain_generator is a unique_ptr with same lifetime
-				terrain_render_manager->SetEvictionCallback([gen = terrain_generator.get()](std::pair<int, int> key) {
-					gen->InvalidateChunk(key);
-				});
+				// Capture weak_ptr to allow terrain generator to be swapped without dangling reference
+				terrain_render_manager->SetEvictionCallback(
+					[weak_gen = std::weak_ptr<ITerrainGenerator>(terrain_generator)](std::pair<int, int> key) {
+						if (auto gen = weak_gen.lock()) {
+							gen->InvalidateChunk(key);
+						}
+					}
+				);
 			}
 
 			Shape::InitSphereMesh();
@@ -1173,7 +1178,7 @@ namespace Boidsish {
 					Terrain::terrain_shader_->setVec4("clipPlane", glm::vec4(0, 0, 0, 0));
 				}
 
-				auto terrain_chunks = terrain_generator->getVisibleChunks();
+				auto terrain_chunks = terrain_generator->GetVisibleChunks();
 				for (const auto& chunk : terrain_chunks) {
 					chunk->render();
 				}
@@ -1995,7 +2000,7 @@ namespace Boidsish {
 			glm::mat4 predicted_view = glm::lookAt(cameraPos, cameraPos + predicted_cam.front(), predicted_cam.up());
 
 			generator_frustum = impl->CalculateFrustum(predicted_view, generator_proj);
-			impl->terrain_generator->update(generator_frustum, impl->camera);
+			impl->terrain_generator->Update(generator_frustum, impl->camera);
 		}
 
 		// Update clone manager
@@ -2475,12 +2480,12 @@ namespace Boidsish {
 			);
 
 			// Update terrain once to start chunk loading around the camera
-			impl->terrain_generator->update(impl->CalculateFrustum(view, proj), impl->camera);
+			impl->terrain_generator->Update(impl->CalculateFrustum(view, proj), impl->camera);
 
 			// Process any pending async chunk loads
 			// Give terrain generation a head start
 			for (int i = 0; i < 10; ++i) {
-				impl->terrain_generator->update(impl->CalculateFrustum(view, proj), impl->camera);
+				impl->terrain_generator->Update(impl->CalculateFrustum(view, proj), impl->camera);
 				std::this_thread::sleep_for(std::chrono::milliseconds(10));
 			}
 		}
@@ -2573,8 +2578,9 @@ namespace Boidsish {
 
 		glm::vec3 ray_dir = glm::normalize(far_plane_pos - ray_origin);
 
-		float distance;
-		if (impl->terrain_generator->Raycast(ray_origin, ray_dir, 1000.0f, distance)) {
+		float     distance;
+		[[maybe_unused]] glm::vec3 normal;
+		if (impl->terrain_generator->RaycastCached(ray_origin, ray_dir, 1000.0f, distance, normal)) {
 			return ray_origin + ray_dir * distance;
 		}
 
@@ -2774,12 +2780,12 @@ namespace Boidsish {
 	}
 
 	std::tuple<float, glm::vec3> Visualizer::GetTerrainPointProperties(float x, float y) const {
-		return impl->terrain_generator->pointProperties(x, y);
+		return impl->terrain_generator->GetPointProperties(x, y);
 	}
 
 	std::tuple<float, glm::vec3> Visualizer::GetTerrainPointPropertiesThreadSafe(float x, float y) const {
 		if (impl->terrain_generator) {
-			return impl->terrain_generator->pointProperties(x, y);
+			return impl->terrain_generator->GetPointProperties(x, y);
 		}
 		return {0.0f, glm::vec3(0, 1, 0)};
 	}
@@ -2792,11 +2798,39 @@ namespace Boidsish {
 	}
 
 	const std::vector<std::shared_ptr<Terrain>>& Visualizer::GetTerrainChunks() const {
-		return impl->terrain_generator->getVisibleChunks();
+		return impl->terrain_generator->GetVisibleChunks();
+	}
+
+	std::shared_ptr<ITerrainGenerator> Visualizer::GetTerrain() {
+		return impl->terrain_generator;
+	}
+
+	std::shared_ptr<const ITerrainGenerator> Visualizer::GetTerrain() const {
+		return impl->terrain_generator;
 	}
 
 	const TerrainGenerator* Visualizer::GetTerrainGenerator() const {
-		return impl->terrain_generator.get();
+		// Legacy method - attempt to cast to concrete type
+		return dynamic_cast<const TerrainGenerator*>(impl->terrain_generator.get());
+	}
+
+	void Visualizer::InstallTerrainGenerator(std::shared_ptr<ITerrainGenerator> generator) {
+		// Swap the terrain generator
+		impl->terrain_generator = std::move(generator);
+
+		// Set up the render manager for the new generator
+		if (impl->terrain_render_manager && impl->terrain_generator) {
+			impl->terrain_generator->SetRenderManager(impl->terrain_render_manager);
+
+			// Set up eviction callback with weak_ptr to avoid preventing destruction
+			impl->terrain_render_manager->SetEvictionCallback(
+				[weak_gen = std::weak_ptr<ITerrainGenerator>(impl->terrain_generator)](std::pair<int, int> chunk_key) {
+					if (auto gen = weak_gen.lock()) {
+						gen->InvalidateChunk(chunk_key);
+					}
+				}
+			);
+		}
 	}
 
 	void Visualizer::AddHudIcon(const HudIcon& icon) {

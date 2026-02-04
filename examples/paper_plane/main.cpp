@@ -52,16 +52,13 @@ int main() {
 			{3, "assets/bullet-icon.png", HudAlignment::TOP_LEFT, {84 + 10 + 64, 10}, {64, 64}, selected_weapon == 2}
 		);
 
-		auto [height, norm] = visualizer->GetTerrainPointProperties(0, 0);
-
 		auto handler = PaperPlaneHandler(visualizer->GetThreadPool());
 		handler.SetVisualizer(visualizer);
 		auto id = handler.AddEntity<PaperPlane>();
-		auto plane = handler.GetEntity(id);
-		plane->SetPosition(0, height + 50, 0);
-		// visualizer->GetTerrainGenerator()->Raycast();
-		Boidsish::Camera camera(0.0f, height + 55, -10.0f);
-		visualizer->SetCamera(camera);
+		auto plane = std::dynamic_pointer_cast<PaperPlane>(handler.GetEntity(id));
+
+		// Find a good starting position and orientation
+		handler.PreparePlane(plane);
 
 		visualizer->AddShapeHandler(std::ref(handler));
 		visualizer->SetChaseCamera(plane);
