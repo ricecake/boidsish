@@ -45,277 +45,152 @@ float getHeightFog(vec3 start, vec3 end, float density, float heightFalloff) {
 	return 1.0 - exp(-max(0.0, fog));
 }
 
-/*
-float cloudFBM(vec3 p) {
-    float v = 0.0;
-    float a = 0.5;
-    vec3  shift = vec3(time * 0.05, 0.0, time * 0.02);
-    for (int i = 0; i < 3; i++) {
-        v += a * worley(p + shift);
-        p = p * 2.0;
-        a *= 0.5;
-    }
-    return v;
-}
-
-
-
-// #include "lygia/generative/snoise.glsl"
-
-// Helper: Remap values to control cloud density/erosion
-
-// 1. CUSTOM TILED WORLEY
-// Lygia's standard worley doesn't expose the tile period, so we implement a
-// grid-wrapping version here.
-// p: coordinate
-// tile: integer repetition frequency (e.g., 4.0, 8.0)
-float worleyTiled(vec3 p, float tile) {
-    vec3 id = floor(p);
-    vec3 fd = fract(p);
-
-    float minDist = 1.0;
-
-    // Search neighbors
-    for (int k = -1; k <= 1; k++) {
-        for (int j = -1; j <= 1; j++) {
-            for (int i = -1; i <= 1; i++) {
-                vec3 neighbor = vec3(float(i), float(j), float(k));
-
-                // CRITICAL: Wrap the neighbor lookup for seamless tiling
-                // This ensures the point at (0,0,0) matches (tile, tile, tile)
-                vec3 uv = id + neighbor;
-                uv = mod(uv, tile); // Wrap the grid ID
-
-                // Hash the wrapped grid ID to get a random point offset
-                // (Using a simple hash for portability, or use lygia's hash)
-                vec3 pointOffset = fract(sin(vec3(dot(uv, vec3(127.1, 311.7, 74.7)),
-                                                  dot(uv, vec3(269.5, 183.3, 246.1)),
-                                                  dot(uv, vec3(113.5, 271.9, 124.6)))) * 43758.5453);
-
-                // Animate pointOffset here with time if you want internal motion
-                // pointOffset = 0.5 + 0.5 * sin(u_time + 6.2831 * pointOffset);
-
-                vec3 diff = neighbor + pointOffset - fd;
-                float dist = length(diff);
-                minDist = min(minDist, dist);
-            }
-        }
-    }
-
-    // Invert so 1.0 is the center of the cell (billowy)
-    return 1.0 - minDist;
-}
-
-// 2. FBM CONSTRUCTION
-float getCloudNoise(vec3 uv, float tileFreq) {
-    // A. Base Cloud Shape (Worley FBM)
-    // We layer 3 octaves of Worley noise.
-    float w1 = worleyTiled(uv * tileFreq, tileFreq);
-    float w2 = worleyTiled(uv * tileFreq * 2.0, tileFreq * 2.0);
-    float w3 = worleyTiled(uv * tileFreq * 4.0, tileFreq * 4.0);
-
-    // FBM: Combine with diminishing weights (0.625, 0.25, 0.125)
-    float worleyFBM = w1 * 0.625 + w2 * 0.25 + w3 * 0.125;
-
-    // B. Smooth Irregularity (Simplex Noise)
-    // We use Simplex to "distort" or "erode" the Worley base.
-    // Ensure the simplex frequency is also a multiple of your base tile if you want
-    // strict looping, though high-freq simplex often hides seams well enough.
-    float simplex = snoise(uv * tileFreq * 2.0);
-    simplex = simplex * 0.5 + 0.5; // Remap to 0-1
-
-    // C. The "Perlin-Worley" Mix
-    // We use the Simplex noise to erode the Worley noise.
-    // As simplex increases, we push the worley value down.
-    float finalNoise = remap(worleyFBM, simplex * 0.3, 1.0, 0.0, 1.0);
-
-    return clamp(finalNoise, 0.0, 1.0);
-}
-
-float sampleCloudDensity(vec3 p) {
-    float h = (p.y - cloudAltitude) / max(cloudThickness, 0.001);
-    float tapering = smoothstep(0.0, 0.2, h) * smoothstep(1.0, 0.5, h);
-
-    vec3  uvw = p * 0.002 + vec3(time * 0.009, time*0.003, time * 0.002);
-    // vec4  noise = texture(cloudNoiseLUT, uvw);
-
-    // FBM from 3D texture
-    // float d_noise = noise.r * 0.5 + noise.g * 0.25 + noise.b * 0.125 + noise.a * 0.0625;
-
-    // float d_noise = cloudFBM(p * 0.02);
-    float d_noise = getCloudNoise(uvw, 5.0);
-
-    float d = smoothstep(0.2, 0.8, d_noise) * cloudDensity * tapering;
-    return d;
-}
-
-*/
-
 float remap(float value, float original_min, float original_max, float new_min, float new_max) {
 	return new_min + (((value - original_min) / (original_max - original_min)) * (new_max - new_min));
 }
 
-// 1. CUSTOM TILED WORLEY
-// Lygia's standard worley doesn't expose the tile period, so we implement a
-// grid-wrapping version here.
-// p: coordinate
-// tile: integer repetition frequency (e.g., 4.0, 8.0)
-float worleyTiled(vec3 p, float tile) {
-	vec3 id = floor(p);
-	vec3 fd = fract(p);
+// Returns a value between 0.0 and 1.0 based on where we are in the cloud layer
+// heightFraction: 0.0 = bottom of cloud layer, 1.0 = top of cloud layer
+float getCloudGradient(float heightFraction) {
+	// REMAP height to a "Cumulus" shape:
+	// 1. Bottom (0.0 to 0.1): Sharp fade-in (Flat bottom)
+	// 2. Middle (0.1 to 0.9): Full density (Body)
+	// 3. Top (0.9 to 1.0): Round fade-out (Puffy top)
 
-	float minDist = 1.0;
+	// Simple gradient approach:
+	// Create a round "hump" but skew it so the bottom is harder
+	float bottom = smoothstep(0.0, 0.1, heightFraction);    // Sharp bottom
+	float top = 1.0 - smoothstep(0.6, 1.0, heightFraction); // Soft rounded top
 
-	// Search neighbors
-	for (int k = -1; k <= 1; k++) {
-		for (int j = -1; j <= 1; j++) {
-			for (int i = -1; i <= 1; i++) {
-				vec3 neighbor = vec3(float(i), float(j), float(k));
-
-				// CRITICAL: Wrap the neighbor lookup for seamless tiling
-				// This ensures the point at (0,0,0) matches (tile, tile, tile)
-				vec3 uv = id + neighbor;
-				uv = mod(uv, tile); // Wrap the grid ID
-
-				// Hash the wrapped grid ID to get a random point offset
-				// (Using a simple hash for portability, or use lygia's hash)
-				vec3 pointOffset = fract(
-					sin(vec3(
-						dot(uv, vec3(127.1, 311.7, 74.7)),
-						dot(uv, vec3(269.5, 183.3, 246.1)),
-						dot(uv, vec3(113.5, 271.9, 124.6))
-					)) *
-					43758.5453
-				);
-
-				// Animate pointOffset here with time if you want internal motion
-				// pointOffset = 0.5 + 0.5 * sin(u_time + 6.2831 * pointOffset);
-
-				vec3  diff = neighbor + pointOffset - fd;
-				float dist = length(diff);
-				minDist = min(minDist, dist);
-			}
-		}
-	}
-
-	// Invert so 1.0 is the center of the cell (billowy)
-	return clamp(1.0 - minDist, 0.0, 1.0);
+	// Multiply them to create the "bracket"
+	return bottom * top;
 }
 
-// A simple Tiled Gradient Noise (Perlin-like)
-// p: coordinate, tile: repeat frequency
+/*
+float sampleCloudDensity(vec3 p) {
+    // Sample the packed texture once
+    // vec3 uvw = p * vec3(0.001, 0.05*sin(time*length(p.zx)*0.0004), sin(time*0.02)*0.002+0.001);
+    vec3 uvw = p * vec3(0.001, 0.00035, 0.001);
 
-// Hash function that wraps 'i' on the 'tile' boundary
-vec3 wrapHash(vec3 p, float tile) {
-	p = mod(p, tile); // <--- FORCE WRAP
-	return fract(
-			   sin(vec3(
-				   dot(p, vec3(127.1, 311.7, 74.7)),
-				   dot(p, vec3(269.5, 183.3, 246.1)),
-				   dot(p, vec3(113.5, 271.9, 124.6))
-			   )) *
-			   43758.5453
-		   ) *
-		2.0 -
-		1.0;
+    uvw += vec3(time * 0.01, 0.0, 0.0);
+
+    uvw = fract(uvw);
+    vec4 noiseData = texture(cloudNoiseLUT, uvw);
+
+    float u_erosionScale = 0.6; // e.g., 0.5
+    float u_threshold = 0.5;    // e.g., 0.2 (cloud coverage)
+
+    float baseCloud = noiseData.r;  // Low freq
+    float midDetail = noiseData.g;  // Mid freq
+    float highDetail = noiseData.b; // High freq
+
+    // 1. Build the detail FBM dynamically
+    // You can adjust these weights (0.625, 0.25, 0.125) to change detail roughness
+    float detailFBM = midDetail * 0.525 + highDetail * 0.35 + (noiseData.a) * 0.125;
+
+    // 2. Remap (Erosion)
+    // We use the detailFBM to "eat away" at the base cloud shape.
+    // As u_erosionScale increases, the cloud gets wispier.
+    float finalDensity = remap(baseCloud, detailFBM * u_erosionScale, 1.0, 0.0, 1.0);
+
+    // 3. Apply coverage threshold
+    return clamp(finalDensity - u_threshold, 0.0, 1.0);
 }
+*/
 
-float gradientNoiseTiled(vec3 p, float tile) {
-	vec3 i = floor(p);
-	vec3 f = fract(p);
+/*
+float sampleCloudDensity(vec3 p) {
+    // 1. Calculate relative height in the cloud volume (0.0 to 1.0)
+    // Ensure p.y is clamped to your layer bounds first if not already handled
+    float heightFraction = (p.y - cloudAltitude) / cloudThickness;
+    heightFraction = clamp(heightFraction, 0.0, 1.0);
 
-	// Quintic interpolation (smoother than cubic)
-	vec3 u = f * f * f * (f * (f * 6.0 - 15.0) + 10.0);
+    // 2. Apply Coordinate Stretch (from Step 1)
+    vec3 uvw = p * vec3(0.001, 0.000035, 0.001);
 
-	// 8 Corners of the cube
-	return mix(
-		mix(mix(dot(wrapHash(i + vec3(0, 0, 0), tile), f - vec3(0, 0, 0)),
-	            dot(wrapHash(i + vec3(1, 0, 0), tile), f - vec3(1, 0, 0)),
-	            u.x),
-	        mix(dot(wrapHash(i + vec3(0, 1, 0), tile), f - vec3(0, 1, 0)),
-	            dot(wrapHash(i + vec3(1, 1, 0), tile), f - vec3(1, 1, 0)),
-	            u.x),
-	        u.y),
-		mix(mix(dot(wrapHash(i + vec3(0, 0, 1), tile), f - vec3(0, 0, 1)),
-	            dot(wrapHash(i + vec3(1, 0, 1), tile), f - vec3(1, 0, 1)),
-	            u.x),
-	        mix(dot(wrapHash(i + vec3(0, 1, 1), tile), f - vec3(0, 1, 1)),
-	            dot(wrapHash(i + vec3(1, 1, 1), tile), f - vec3(1, 1, 1)),
-	            u.x),
-	        u.y),
-		u.z
-	);
+    uvw += vec3(sin(time * 0.01), abs(sin(p.x)+cos(p.z))*0.001, cos(time*0.01));
+
+
+    // 3. Sample Base Noise (Red Channel)
+    vec4 noiseData = texture(cloudNoiseLUT, uvw);
+    float baseCloud = noiseData.r;
+
+    // 4. Apply The Gradient (Step 2)
+    // This cuts the noise into a "Cloud Slice" shape
+    baseCloud *= getCloudGradient(heightFraction);
+
+    // 5. Calculate Erosion Details
+    // Mix High/Mid freq details
+    float detailFBM = noiseData.g * 0.625 + noiseData.b * 0.25 + noiseData.a * 0.125;
+
+    // 6. Height-Dependent Erosion Strength
+    // Bottom (0.0): Less erosion (Keep it flat/heavy)
+    // Top (1.0): More erosion (Make it wispy)
+    float erosionStrength = mix(0.2, 0.9, (sin(time*0.01)*0.5+0.5)*noiseData.a*heightFraction);
+
+    // 7. Erode
+    float finalDensity = remap(baseCloud, detailFBM * erosionStrength, 1.0, 0.0, 1.0);
+
+    return clamp(finalDensity - cloudDensity, 0.0, 1.0);
 }
-
-// 2. FBM CONSTRUCTION
-float getCloudNoise(vec3 uv, float tileFreq) {
-	// A. Base Cloud Shape (Worley FBM)
-	// We layer 3 octaves of Worley noise.
-	float w1 = worleyTiled(uv * tileFreq, tileFreq);
-	float w2 = worleyTiled(uv * tileFreq * 2.0, tileFreq * 2.0);
-	float w3 = worleyTiled(uv * tileFreq * 4.0, tileFreq * 4.0);
-
-	// FBM: Combine with diminishing weights (0.625, 0.25, 0.125)
-	float worleyFBM = w1 * 0.625 + w2 * 0.25 + w3 * 0.125;
-
-	// B. Smooth Irregularity (Simplex Noise)
-	// We use Simplex to "distort" or "erode" the Worley base.
-	// Ensure the simplex frequency is also a multiple of your base tile if you want
-	// strict looping, though high-freq simplex often hides seams well enough.
-	float simplex = snoise(uv * tileFreq * 2.0);
-	simplex = simplex * 0.5 + 0.5; // Remap to 0-1
-
-	// C. The "Perlin-Worley" Mix
-	// We use the Simplex noise to erode the Worley noise.
-	// As simplex increases, we push the worley value down.
-	float finalNoise = remap(worleyFBM, simplex * 0.3, 1.0, 0.0, 1.0);
-
-	return clamp(finalNoise, 0.0, 1.0);
-}
-
-vec4 generatePackedNoise(vec3 uv) {
-	float lowFreq = worleyTiled(uv * 4.0, 4.0);
-	float midFreq = worleyTiled(uv * 8.0, 8.0);
-	float highFreq = worleyTiled(uv * 16.0, 16.0);
-	// float simplex = snoise(uv * 4.0);
-	// simplex = simplex * 0.5 + 0.5; // Remap -1..1 to 0..1
-
-	// float simplex = 1.0 - worleyTiled(uv * 4.0, 4.0);
-	// simplex = simplex * 0.5 + 0.5;
-
-	float simplex = gradientNoiseTiled(uv * 4.0, 4.0); // Returns -1..1
-	simplex = simplex * 0.5 + 0.5;                     // Remap to 0..1
-
-	return vec4(lowFreq, midFreq, highFreq, simplex);
-}
+*/
 
 float sampleCloudDensity(vec3 p) {
-	// Sample the packed texture once
-	// vec3 uvw = p * vec3(0.001, 0.05*sin(time*length(p.zx)*0.0004), sin(time*0.02)*0.002+0.001);
-	vec3 uvw = p * vec3(0.001, 0.05, 0.001);
-	uvw += vec3(time * 0.01, 0.0, 0.0);
+	// 1. BOUNDS CHECK
+	// Normalized height within the cloud layer (0.0 at bottom, 1.0 at top)
+	float heightFraction = (p.y - cloudAltitude) / cloudThickness;
+	if (heightFraction < 0.0 || heightFraction > 1.0)
+		return 0.0;
 
-	uvw = fract(uvw);
-	vec4 noiseData = texture(cloudNoiseLUT, uvw);
-	// vec4  noiseData = generatePackedNoise(uvw);
-	float u_erosionScale = 0.6; // e.g., 0.5
-	float u_threshold = 0.5;    // e.g., 0.2 (cloud coverage)
+	// 2. COORDINATE SCALING
+	// We scale the base shape (large) and details (small) differently.
+	// 'p' is likely in meters. 0.0005 = 2km repeat pattern (large shapes).
+	vec3 p_large = p * 0.005;
+	// Anisotropy: Sample Y slower to make them taller
+	p_large.y *= 0.5;
 
-	float baseCloud = noiseData.r;  // Low freq
-	float midDetail = noiseData.g;  // Mid freq
-	float highDetail = noiseData.b; // High freq
+	// Animate the lookup to simulate wind
+	p_large += vec3(time * 0.05, 0.0, 0.003 * p.z * sin(time * 0.05));
 
-	// 1. Build the detail FBM dynamically
-	// You can adjust these weights (0.625, 0.25, 0.125) to change detail roughness
-	float detailFBM = midDetail * 0.525 + highDetail * 0.35 + (noiseData.a) * 0.125;
+	// 3. SAMPLE VOLUME TEXTURE
+	vec4 noise = texture(cloudNoiseLUT, p_large);
 
-	// 2. Remap (Erosion)
-	// We use the detailFBM to "eat away" at the base cloud shape.
-	// As u_erosionScale increases, the cloud gets wispier.
-	float finalDensity = remap(baseCloud, detailFBM * u_erosionScale, 1.0, 0.0, 1.0);
+	// 4. BASE CLOUD SHAPE (Low Frequency)
+	// The Red channel defines the "blob" size.
+	float baseCloud = noise.r;
 
-	// 3. Apply coverage threshold
-	return clamp(finalDensity - u_threshold, 0.0, 1.0);
+	// Apply Vertical Gradient (The "Anvil" Profile)
+	// Bottom is flat/hard, Top is billowy/soft.
+	float bottomShape = smoothstep(0.0, 0.15, heightFraction);
+	float topShape = 1.0 - smoothstep(0.7, 1.0, heightFraction);
+	// Multiply to trim the top and bottom of the cylinder
+	baseCloud *= bottomShape * topShape;
+
+	// 5. DETAIL EROSION (High Frequency)
+	// Combine Green/Blue channels for fine detail
+	float detailNoise = noise.g * 0.625 + noise.b * 0.25 + noise.a * 0.125;
+
+	// Scale erosion strength by height.
+	// Bottom of cloud (0.0) is solid (0.0 erosion).
+	// Top of cloud (1.0) is wispy (1.0 erosion).
+	float erosionStrength = mix(0.1, 0.9, heightFraction);
+
+	// THE "ANTI-MARSHMALLOW" REMAP
+	// We use the detail noise to raise the "floor" of the base cloud.
+	// If detailNoise is high, we remove more density.
+	float density = remap(baseCloud, detailNoise * erosionStrength, 1.0, 0.0, 1.0);
+
+	// 6. COVERAGE & SHARPENING
+	// Subtract a threshold to break up the "infinite field" into clusters
+	float coverage = 0.6; // Tweak this: 0.2 = overcast, 0.6 = scattered clouds
+	density = density - coverage;
+
+	// CRITICAL: Sharpen the result.
+	// Multiply by a high number so the transition from 0.0 to 1.0 happens fast.
+	// This turns "fog" into "solid cumulus".
+	density = clamp(density * 5.0, 0.0, 1.0);
+
+	return density * cloudDensity;
 }
 
 void main() {
