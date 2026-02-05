@@ -726,10 +726,6 @@ namespace Boidsish {
 		proxy.minY = std::numeric_limits<float>::max();
 		proxy.maxY = std::numeric_limits<float>::lowest();
 
-		for (auto& quad : occluders) {
-			// Occluder vertices are in local chunk coordinates (0 to chunk_size)
-		}
-
 		for (const auto& pos : positions) {
 			if (pos.y < proxy.minY) {
 				proxy.minY = pos.y;

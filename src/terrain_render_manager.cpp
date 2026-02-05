@@ -437,19 +437,31 @@ namespace Boidsish {
 			glBindVertexArray(0);
 		}
 
-		shader.use();
-		glBindVertexArray(vao);
+		// Gather all occluder vertices in world space for a single batch
+		std::vector<glm::vec3> all_vertices;
 		for (const auto& [key, chunk] : chunks_) {
-			glm::mat4 model =
-				glm::translate(glm::mat4(1.0f), glm::vec3(chunk.world_offset.x, 0, chunk.world_offset.y));
-			shader.setMat4("model", model);
-
+			glm::vec3 world_origin(chunk.world_offset.x, 0, chunk.world_offset.y);
 			for (const auto& quad : chunk.occluders) {
-				glBindBuffer(GL_ARRAY_BUFFER, vbo);
-				glBufferData(GL_ARRAY_BUFFER, 4 * sizeof(glm::vec3), quad.corners, GL_DYNAMIC_DRAW);
-				glDrawArrays(GL_LINE_LOOP, 0, 4);
+				all_vertices.push_back(quad.corners[0] + world_origin);
+				all_vertices.push_back(quad.corners[1] + world_origin);
+				all_vertices.push_back(quad.corners[1] + world_origin);
+				all_vertices.push_back(quad.corners[2] + world_origin);
+				all_vertices.push_back(quad.corners[2] + world_origin);
+				all_vertices.push_back(quad.corners[3] + world_origin);
+				all_vertices.push_back(quad.corners[3] + world_origin);
+				all_vertices.push_back(quad.corners[0] + world_origin);
 			}
 		}
+
+		if (all_vertices.empty())
+			return;
+
+		shader.use();
+		shader.setMat4("model", glm::mat4(1.0f));
+		glBindVertexArray(vao);
+		glBindBuffer(GL_ARRAY_BUFFER, vbo);
+		glBufferData(GL_ARRAY_BUFFER, all_vertices.size() * sizeof(glm::vec3), all_vertices.data(), GL_STREAM_DRAW);
+		glDrawArrays(GL_LINES, 0, static_cast<GLsizei>(all_vertices.size()));
 		glBindVertexArray(0);
 	}
 
