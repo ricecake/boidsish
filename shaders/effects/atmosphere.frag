@@ -11,7 +11,7 @@ uniform sampler3D cloudNoiseLUT;
 uniform vec3 cameraPos;
 uniform mat4 invView;
 uniform mat4 invProjection;
-uniform float time;
+// uniform float time;
 
 uniform float hazeDensity;
 uniform float hazeHeight;
@@ -30,6 +30,7 @@ uniform float cloudPowderStrength = 0.5;
 #include "../helpers/lighting.glsl"
 #include "../helpers/noise.glsl"
 #include "../helpers/atmosphere.glsl"
+#include "lygia/generative/worley.glsl"
 
 float getHeightFog(vec3 start, vec3 end, float density, float heightFalloff) {
 	float dist = length(end - start);
@@ -44,17 +45,115 @@ float getHeightFog(vec3 start, vec3 end, float density, float heightFalloff) {
 	return 1.0 - exp(-max(0.0, fog));
 }
 
+float cloudFBM(vec3 p) {
+	float v = 0.0;
+	float a = 0.5;
+	vec3  shift = vec3(time * 0.05, 0.0, time * 0.02);
+	for (int i = 0; i < 3; i++) {
+		v += a * worley(p + shift);
+		p = p * 2.0;
+		a *= 0.5;
+	}
+	return v;
+}
+
+
+
+// #include "lygia/generative/snoise.glsl"
+
+// Helper: Remap values to control cloud density/erosion
+float remap(float value, float original_min, float original_max, float new_min, float new_max) {
+    return new_min + (((value - original_min) / (original_max - original_min)) * (new_max - new_min));
+}
+
+// 1. CUSTOM TILED WORLEY
+// Lygia's standard worley doesn't expose the tile period, so we implement a
+// grid-wrapping version here.
+// p: coordinate
+// tile: integer repetition frequency (e.g., 4.0, 8.0)
+float worleyTiled(vec3 p, float tile) {
+    vec3 id = floor(p);
+    vec3 fd = fract(p);
+
+    float minDist = 1.0;
+
+    // Search neighbors
+    for (int k = -1; k <= 1; k++) {
+        for (int j = -1; j <= 1; j++) {
+            for (int i = -1; i <= 1; i++) {
+                vec3 neighbor = vec3(float(i), float(j), float(k));
+
+                // CRITICAL: Wrap the neighbor lookup for seamless tiling
+                // This ensures the point at (0,0,0) matches (tile, tile, tile)
+                vec3 uv = id + neighbor;
+                uv = mod(uv, tile); // Wrap the grid ID
+
+                // Hash the wrapped grid ID to get a random point offset
+                // (Using a simple hash for portability, or use lygia's hash)
+                vec3 pointOffset = fract(sin(vec3(dot(uv, vec3(127.1, 311.7, 74.7)),
+                                                  dot(uv, vec3(269.5, 183.3, 246.1)),
+                                                  dot(uv, vec3(113.5, 271.9, 124.6)))) * 43758.5453);
+
+                // Animate pointOffset here with time if you want internal motion
+                // pointOffset = 0.5 + 0.5 * sin(u_time + 6.2831 * pointOffset);
+
+                vec3 diff = neighbor + pointOffset - fd;
+                float dist = length(diff);
+                minDist = min(minDist, dist);
+            }
+        }
+    }
+
+    // Invert so 1.0 is the center of the cell (billowy)
+    return 1.0 - minDist;
+}
+
+// 2. FBM CONSTRUCTION
+float getCloudNoise(vec3 uv, float tileFreq) {
+    // A. Base Cloud Shape (Worley FBM)
+    // We layer 3 octaves of Worley noise.
+    float w1 = worleyTiled(uv * tileFreq, tileFreq);
+    float w2 = worleyTiled(uv * tileFreq * 2.0, tileFreq * 2.0);
+    float w3 = worleyTiled(uv * tileFreq * 4.0, tileFreq * 4.0);
+
+    // FBM: Combine with diminishing weights (0.625, 0.25, 0.125)
+    float worleyFBM = w1 * 0.625 + w2 * 0.25 + w3 * 0.125;
+
+    // B. Smooth Irregularity (Simplex Noise)
+    // We use Simplex to "distort" or "erode" the Worley base.
+    // Ensure the simplex frequency is also a multiple of your base tile if you want
+    // strict looping, though high-freq simplex often hides seams well enough.
+    float simplex = snoise(uv * tileFreq * 2.0);
+    simplex = simplex * 0.5 + 0.5; // Remap to 0-1
+
+    // C. The "Perlin-Worley" Mix
+    // We use the Simplex noise to erode the Worley noise.
+    // As simplex increases, we push the worley value down.
+    float finalNoise = remap(worleyFBM, simplex * 0.3, 1.0, 0.0, 1.0);
+
+    return clamp(finalNoise, 0.0, 1.0);
+}
+
+// Usage in your main loop
+// vec3 texCoord = ... (your 0 to 1 UVW)
+// float cloudDensity = getCloudNoise(texCoord, 4.0); // 4.0 = tiles 4 times across texture
+
+
+
 float sampleCloudDensity(vec3 p) {
 	float h = (p.y - cloudAltitude) / max(cloudThickness, 0.001);
 	float tapering = smoothstep(0.0, 0.2, h) * smoothstep(1.0, 0.5, h);
 
-	vec3  uvw = p * 0.0002 + vec3(time * 0.005, 0.0, time * 0.002);
-	vec4  noise = texture(cloudNoiseLUT, uvw);
+	vec3  uvw = p * 0.002 + vec3(time * 0.009, time*0.003, time * 0.002);
+	// vec4  noise = texture(cloudNoiseLUT, uvw);
 
 	// FBM from 3D texture
-	float d_noise = noise.r * 0.5 + noise.g * 0.25 + noise.b * 0.125 + noise.a * 0.0625;
+	// float d_noise = noise.r * 0.5 + noise.g * 0.25 + noise.b * 0.125 + noise.a * 0.0625;
 
-	float d = smoothstep(0.3, 0.7, d_noise) * cloudDensity * tapering;
+	// float d_noise = cloudFBM(p * 0.02);
+	float d_noise = getCloudNoise(uvw, 5.0);
+
+	float d = smoothstep(0.2, 0.8, d_noise) * cloudDensity * tapering;
 	return d;
 }
 
