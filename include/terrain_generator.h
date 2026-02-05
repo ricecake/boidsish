@@ -106,24 +106,27 @@ namespace Boidsish {
 		std::tuple<float, glm::vec3> pointProperties(float x, float z) const {
 			std::lock_guard<std::mutex> lock(point_generation_mutex_);
 			// Determine grid cell
-			float tx = x - floor(x);
-			float tz = z - floor(z);
+			float sx = x / world_scale_;
+			float sz = z / world_scale_;
+
+			float tx = sx - floor(sx);
+			float tz = sz - floor(sz);
 
 			// Get the 4 corner vertices of the grid cell
-			float x0 = floor(x);
+			float x0 = floor(sx);
 			float x1 = x0 + 1.0f;
-			float z0 = floor(z);
+			float z0 = floor(sz);
 			float z1 = z0 + 1.0f;
 
-			auto v0_raw = pointGenerate(x0, z0); // Bottom-left
-			auto v1_raw = pointGenerate(x1, z0); // Bottom-right
-			auto v2_raw = pointGenerate(x1, z1); // Top-right
-			auto v3_raw = pointGenerate(x0, z1); // Top-left
+			auto v0_raw = pointGenerate(x0 * world_scale_, z0 * world_scale_); // Bottom-left
+			auto v1_raw = pointGenerate(x1 * world_scale_, z0 * world_scale_); // Bottom-right
+			auto v2_raw = pointGenerate(x1 * world_scale_, z1 * world_scale_); // Top-right
+			auto v3_raw = pointGenerate(x0 * world_scale_, z1 * world_scale_); // Top-left
 
-			glm::vec3 v0 = {x0, v0_raw.x, z0};
-			glm::vec3 v1 = {x1, v1_raw.x, z0};
-			glm::vec3 v2 = {x1, v2_raw.x, z1};
-			glm::vec3 v3 = {x0, v3_raw.x, z1};
+			glm::vec3 v0 = {x0 * world_scale_, v0_raw.x, z0 * world_scale_};
+			glm::vec3 v1 = {x1 * world_scale_, v1_raw.x, z0 * world_scale_};
+			glm::vec3 v2 = {x1 * world_scale_, v2_raw.x, z1 * world_scale_};
+			glm::vec3 v3 = {x0 * world_scale_, v3_raw.x, z1 * world_scale_};
 
 			glm::vec3 n0 = diffToNorm(v0_raw.y, v0_raw.z);
 			glm::vec3 n1 = diffToNorm(v1_raw.y, v1_raw.z);
