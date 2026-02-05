@@ -119,8 +119,6 @@ namespace Boidsish {
 		glm::vec3 cam_front = camera.front();
 		glm::vec2 cam_front_xz = glm::normalize(glm::vec2(cam_front.x, cam_front.z));
 
-		float       world_scale = terrain_gen.GetWorldScale();
-
 		placement_shader_->use();
 		placement_shader_->setVec2("u_cameraPos", cam_pos);
 		placement_shader_->setFloat("u_maxTerrainHeight", terrain_gen.GetMaxHeight());
