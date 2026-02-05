@@ -226,6 +226,7 @@ namespace Boidsish {
 		std::shared_ptr<Shader> shader;
 		std::unique_ptr<Shader> plane_shader;
 		std::unique_ptr<Shader> sky_shader;
+		std::unique_ptr<Shader> occluder_debug_shader;
 		std::unique_ptr<Shader> trail_shader;
 		std::unique_ptr<Shader> blur_shader;
 		std::unique_ptr<Shader> postprocess_shader_;
@@ -242,6 +243,7 @@ namespace Boidsish {
 		bool   first_mouse = true;
 
 		bool                                           paused = false;
+		bool                                           render_occluders = false;
 		float                                          simulation_time = 0.0f;
 		float                                          time_scale = 1.0f;
 		float                                          ripple_strength = 0.0f;
@@ -467,6 +469,8 @@ namespace Boidsish {
 			}
 			if (ConfigManager::GetInstance().GetAppSettingBool("enable_terrain", true)) {
 				terrain_generator = std::make_shared<TerrainGenerator>();
+				occluder_debug_shader =
+					std::make_unique<Shader>("shaders/debug_occluders.vert", "shaders/debug_occluders.frag");
 				last_camera_yaw_ = camera.yaw;
 				last_camera_pitch_ = camera.pitch;
 			}
@@ -1176,6 +1180,13 @@ namespace Boidsish {
 				terrain_render_manager->PrepareForRender(frustum, camera.pos());
 
 				terrain_render_manager->Render(*Terrain::terrain_shader_, view, proj, clip_plane, effective_quality);
+
+				if (render_occluders && !is_shadow_pass) {
+					occluder_debug_shader->use();
+					occluder_debug_shader->setMat4("view", view);
+					occluder_debug_shader->setMat4("projection", proj);
+					terrain_render_manager->RenderOccluders(*occluder_debug_shader);
+				}
 			} else {
 				// Fallback to per-chunk rendering
 				Terrain::terrain_shader_->use();
@@ -3201,5 +3212,13 @@ namespace Boidsish {
 
 	bool Visualizer::IsWireframeEffectEnabled() const {
 		return ConfigManager::GetInstance().GetAppSettingBool("artistic_effect_wireframe", false);
+	}
+
+	bool Visualizer::IsOccluderVisualizationEnabled() const {
+		return impl->render_occluders;
+	}
+
+	void Visualizer::SetOccluderVisualizationEnabled(bool enabled) {
+		impl->render_occluders = enabled;
 	}
 } // namespace Boidsish
