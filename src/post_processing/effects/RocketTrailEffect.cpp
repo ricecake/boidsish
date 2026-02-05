@@ -27,8 +27,8 @@ namespace Boidsish {
 
 			fragment_shader_ =
 				std::make_unique<Shader>("shaders/postprocess.vert", "shaders/effects/rocket_trail.frag");
-			clear_shader_ = std::make_unique<Shader>("shaders/effects/rocket_trail_clear.comp");
-			write_shader_ = std::make_unique<Shader>("shaders/effects/rocket_trail_write.comp");
+			clear_shader_ = std::make_unique<ComputeShader>("shaders/effects/rocket_trail_clear.comp");
+			write_shader_ = std::make_unique<ComputeShader>("shaders/effects/rocket_trail_write.comp");
 
 			CreateResources();
 		}
@@ -98,7 +98,7 @@ namespace Boidsish {
 
 			// Run compute shaders to update texture
 			glBindImageTexture(0, voxel_texture_, 0, GL_TRUE, 0, GL_READ_WRITE, GL_R32F);
-			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::UboBinding::RocketVoxels(), voxel_ssbo_);
+			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::UboBinding::RocketVoxelsSSBO(), voxel_ssbo_);
 
 			// 1. Clear phase
 			clear_shader_->use();

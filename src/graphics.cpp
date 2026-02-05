@@ -90,7 +90,7 @@ namespace Boidsish {
 
 		// Effects
 		ShaderBase::RegisterConstant("MAX_SHOCKWAVES", Constants::Class::Shockwaves::MaxShockwaves());
-		ShaderBase::RegisterConstant("ROCKET_VOXELS_BINDING", Constants::UboBinding::RocketVoxels());
+		ShaderBase::RegisterConstant("ROCKET_VOXELS_BINDING", Constants::UboBinding::RocketVoxelsSSBO());
 
 		registered = true;
 	}

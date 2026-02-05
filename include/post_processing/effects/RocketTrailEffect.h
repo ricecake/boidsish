@@ -45,9 +45,9 @@ namespace Boidsish {
 			void CreateResources();
 			void ReleaseResources();
 
-			std::unique_ptr<Shader> fragment_shader_;
-			std::unique_ptr<Shader> clear_shader_;
-			std::unique_ptr<Shader> write_shader_;
+			std::unique_ptr<Shader>        fragment_shader_;
+			std::unique_ptr<ComputeShader> clear_shader_;
+			std::unique_ptr<ComputeShader> write_shader_;
 
 			GLuint voxel_texture_ = 0;
 			GLuint voxel_ssbo_ = 0;

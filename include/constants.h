@@ -28,7 +28,33 @@ namespace Boidsish {
 			consteval int SdfVolumes() {
 				return 5;
 			}
+
+			consteval int RocketVoxelsSSBO() {
+				return 6;
+			}
 		} // namespace UboBinding
+
+		namespace TextureUnit {
+			consteval int TransmittanceLUT() {
+				return 2;
+			}
+
+			consteval int CloudNoiseLUT() {
+				return 3;
+			}
+
+			consteval int ShadowMaps() {
+				return 4;
+			}
+
+			consteval int Noise() {
+				return 5;
+			}
+
+			consteval int RocketVoxels() {
+				return 6;
+			}
+		} // namespace TextureUnit
 
 		namespace General {
 			namespace Math {
@@ -316,6 +342,28 @@ namespace Boidsish {
 					return 2.0f;
 				}
 			} // namespace SdfVolumes
+
+			namespace RocketVoxels {
+				consteval int GridSizeX() {
+					return 256;
+				}
+
+				consteval int GridSizeY() {
+					return 256;
+				}
+
+				consteval int GridSizeZ() {
+					return 128;
+				}
+
+				consteval float VoxelSize() {
+					return 1.0f;
+				}
+
+				consteval float MaxAge() {
+					return 10.0f;
+				}
+			} // namespace RocketVoxels
 
 			namespace Trails {
 				consteval int DefaultMaxLength() {
