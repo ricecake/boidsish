@@ -29,7 +29,7 @@ namespace Boidsish {
 				return 5;
 			}
 
-			consteval int RocketVoxelsSSBO() {
+			consteval int RocketVoxelsBinding() {
 				return 6;
 			}
 		} // namespace UboBinding
@@ -51,7 +51,7 @@ namespace Boidsish {
 				return 5;
 			}
 
-			consteval int RocketVoxels() {
+			consteval int RocketVoxelsUnit() {
 				return 6;
 			}
 		} // namespace TextureUnit

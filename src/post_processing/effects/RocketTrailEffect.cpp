@@ -98,7 +98,7 @@ namespace Boidsish {
 
 			// Run compute shaders to update texture
 			glBindImageTexture(0, voxel_texture_, 0, GL_TRUE, 0, GL_READ_WRITE, GL_R32F);
-			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::UboBinding::RocketVoxelsSSBO(), voxel_ssbo_);
+			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::UboBinding::RocketVoxelsBinding(), voxel_ssbo_);
 
 			// 1. Clear phase
 			clear_shader_->use();
@@ -134,7 +134,7 @@ namespace Boidsish {
 			fragment_shader_->use();
 			fragment_shader_->setInt("sceneTexture", 0);
 			fragment_shader_->setInt("depthTexture", 1);
-			fragment_shader_->setInt("voxelTexture", Constants::TextureUnit::RocketVoxels());
+			fragment_shader_->setInt("voxelTexture", Constants::TextureUnit::RocketVoxelsUnit());
 
 			fragment_shader_->setVec3("cameraPos", cameraPos);
 			fragment_shader_->setMat4("invView", glm::inverse(viewMatrix));
@@ -150,7 +150,7 @@ namespace Boidsish {
 			glBindTexture(GL_TEXTURE_2D, sourceTexture);
 			glActiveTexture(GL_TEXTURE1);
 			glBindTexture(GL_TEXTURE_2D, depthTexture);
-			glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::RocketVoxels());
+			glActiveTexture(GL_TEXTURE0 + Constants::TextureUnit::RocketVoxelsUnit());
 			glBindTexture(GL_TEXTURE_3D, voxel_texture_);
 
 			glDrawArrays(GL_TRIANGLES, 0, 6);

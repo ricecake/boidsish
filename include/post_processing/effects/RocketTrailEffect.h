@@ -8,6 +8,7 @@
 #include <vector>
 
 class Shader;
+class ComputeShader;
 
 namespace Boidsish {
 	namespace PostProcessing {
