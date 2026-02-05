@@ -1159,10 +1159,10 @@ namespace Boidsish {
 			// Use quality override if provided, otherwise use default multiplier
 			float effective_quality = (quality_override > 0.0f) ? quality_override : tess_quality_multiplier_;
 
-		// Inversely apply world scale to tessellation. Larger world = lower triangle density per unit.
-		if (terrain_generator) {
-			effective_quality /= terrain_generator->GetWorldScale();
-		}
+			// Inversely apply world scale to tessellation. Larger world = lower triangle density per unit.
+			if (terrain_generator) {
+				effective_quality /= terrain_generator->GetWorldScale();
+			}
 
 			// Set up shadow uniforms for terrain shader
 			Terrain::terrain_shader_->use();
@@ -1178,7 +1178,8 @@ namespace Boidsish {
 				Frustum frustum = shadow_frustum.has_value() ? *shadow_frustum : CalculateFrustum(view, proj);
 
 				// Prepare for rendering (frustum culling for instanced renderer)
-				terrain_render_manager->PrepareForRender(frustum, camera.pos());
+				float world_scale = terrain_generator ? terrain_generator->GetWorldScale() : 1.0f;
+				terrain_render_manager->PrepareForRender(frustum, camera.pos(), world_scale);
 
 				terrain_render_manager->Render(*Terrain::terrain_shader_, view, proj, clip_plane, effective_quality);
 			} else {

@@ -76,9 +76,11 @@ namespace Boidsish {
 	}
 
 	void TerrainGenerator::Update(const Frustum& frustum, const Camera& camera) {
+		float scaled_chunk_size = static_cast<float>(chunk_size_) * world_scale_;
+
 		// Use floor division for correct negative coordinate handling
-		int current_chunk_x = static_cast<int>(std::floor(camera.x / static_cast<float>(chunk_size_)));
-		int current_chunk_z = static_cast<int>(std::floor(camera.z / static_cast<float>(chunk_size_)));
+		int current_chunk_x = static_cast<int>(std::floor(camera.x / scaled_chunk_size));
+		int current_chunk_z = static_cast<int>(std::floor(camera.z / scaled_chunk_size));
 
 		float height_factor = std::max(1.0f, camera.y / 5.0f);
 		int   dynamic_view_distance = std::min(
@@ -110,11 +112,14 @@ namespace Boidsish {
 				std::pair<int, int> chunk_coord = {x, z};
 				if (chunk_cache_.find(chunk_coord) == chunk_cache_.end() &&
 				    pending_chunks_.find(chunk_coord) == pending_chunks_.end()) {
-					bool in_frustum = isChunkInFrustum(frustum, x, z, chunk_size_, max_h);
+					bool in_frustum = isChunkInFrustum(frustum, x, z, scaled_chunk_size, max_h);
 
 					// Calculate distance from chunk center to camera
-					glm::vec2 chunk_center(x * chunk_size_ + chunk_size_ * 0.5f, z * chunk_size_ + chunk_size_ * 0.5f);
-					float     dist_sq = glm::dot(chunk_center - camera_pos_2d, chunk_center - camera_pos_2d);
+					glm::vec2 chunk_center(
+						x * scaled_chunk_size + scaled_chunk_size * 0.5f,
+						z * scaled_chunk_size + scaled_chunk_size * 0.5f
+					);
+					float dist_sq = glm::dot(chunk_center - camera_pos_2d, chunk_center - camera_pos_2d);
 
 					// Priority: HIGH for in-frustum chunks, LOW for out-of-frustum
 					// Within each priority level, distance will determine order
@@ -156,7 +161,11 @@ namespace Boidsish {
 					if (result.has_terrain) {
 						auto terrain_chunk =
 							std::make_shared<Terrain>(result.indices, result.positions, result.normals, result.proxy);
-						terrain_chunk->SetPosition(result.chunk_x * chunk_size_, 0, result.chunk_z * chunk_size_);
+						terrain_chunk->SetPosition(
+							result.chunk_x * scaled_chunk_size,
+							0,
+							result.chunk_z * scaled_chunk_size
+						);
 
 						if (render_manager_) {
 							terrain_chunk->SetManagedByRenderManager(true);
@@ -205,11 +214,11 @@ namespace Boidsish {
 				if (!render_manager_->HasChunk(key)) {
 					// Calculate distance from chunk center to camera
 					glm::vec2 chunk_center(
-						key.first * chunk_size_ + chunk_size_ * 0.5f,
-						key.second * chunk_size_ + chunk_size_ * 0.5f
+						key.first * scaled_chunk_size + scaled_chunk_size * 0.5f,
+						key.second * scaled_chunk_size + scaled_chunk_size * 0.5f
 					);
 					float dist_sq = glm::dot(chunk_center - camera_pos_2d, chunk_center - camera_pos_2d);
-					bool  in_frustum = isChunkInFrustum(frustum, key.first, key.second, chunk_size_, max_h);
+					bool  in_frustum = isChunkInFrustum(frustum, key.first, key.second, scaled_chunk_size, max_h);
 
 					// Register if in frustum OR if close enough to preload
 					if (in_frustum || dist_sq < preload_distance_sq) {
@@ -243,7 +252,7 @@ namespace Boidsish {
 					chunk.terrain->GetIndices(),
 					chunk.terrain->proxy.minY,
 					chunk.terrain->proxy.maxY,
-					glm::vec3(chunk.key.first * chunk_size_, 0, chunk.key.second * chunk_size_)
+					glm::vec3(chunk.key.first * scaled_chunk_size, 0, chunk.key.second * scaled_chunk_size)
 				);
 				registrations_this_frame++;
 			}
@@ -303,10 +312,10 @@ namespace Boidsish {
 			glm::vec2 camera_pos_2d(camera.x, camera.z);
 
 			for (auto const& [key, val] : chunk_cache_) {
-				if (val && isChunkInFrustum(frustum, key.first, key.second, chunk_size_, max_h)) {
+				if (val && isChunkInFrustum(frustum, key.first, key.second, scaled_chunk_size, max_h)) {
 					glm::vec2 chunk_center(
-						key.first * chunk_size_ + chunk_size_ * 0.5f,
-						key.second * chunk_size_ + chunk_size_ * 0.5f
+						key.first * scaled_chunk_size + scaled_chunk_size * 0.5f,
+						key.second * scaled_chunk_size + scaled_chunk_size * 0.5f
 					);
 					float dist_sq = glm::dot(chunk_center - camera_pos_2d, chunk_center - camera_pos_2d);
 					visible_with_distance.push_back({val, dist_sq});
@@ -528,10 +537,12 @@ namespace Boidsish {
 										  .ChunkHasDeformations(chunk_min_x, chunk_min_z, chunk_max_x, chunk_max_z);
 
 		// Generate heightmap
+		float scaled_chunk_size = static_cast<float>(chunk_size_) * world_scale_;
+
 		for (int i = 0; i < num_vertices_x; ++i) {
 			for (int j = 0; j < num_vertices_z; ++j) {
-				float worldX = (chunkX * chunk_size_ + i);
-				float worldZ = (chunkZ * chunk_size_ + j);
+				float worldX = (chunkX * chunk_size_ + i) * world_scale_;
+				float worldZ = (chunkZ * chunk_size_ + j) * world_scale_;
 				auto  noise = pointGenerate(worldX, worldZ);
 				heightmap[i][j] = noise;
 				has_terrain = has_terrain || noise[0] > 0;
@@ -599,7 +610,7 @@ namespace Boidsish {
 		for (int i = 0; i < num_vertices_x; ++i) {
 			for (int j = 0; j < num_vertices_z; ++j) {
 				float y = heightmap[i][j][0];
-				positions.emplace_back(i, y, j);
+				positions.emplace_back(i * world_scale_, y, j * world_scale_);
 				normals.push_back(diffToNorm(heightmap[i][j][1], heightmap[i][j][2]));
 			}
 		}
@@ -1277,6 +1288,7 @@ namespace Boidsish {
 		std::lock_guard<std::recursive_mutex> lock(chunk_cache_mutex_);
 
 		std::vector<std::pair<int, int>> chunks_to_regenerate;
+		float                            scaled_chunk_size = static_cast<float>(chunk_size_) * world_scale_;
 
 		if (deformation_id.has_value()) {
 			// Invalidate only chunks affected by the specific deformation
@@ -1289,10 +1301,10 @@ namespace Boidsish {
 			deformation->GetBounds(def_min, def_max);
 
 			// Convert to chunk coordinates
-			int min_chunk_x = static_cast<int>(std::floor(def_min.x / chunk_size_));
-			int max_chunk_x = static_cast<int>(std::floor(def_max.x / chunk_size_));
-			int min_chunk_z = static_cast<int>(std::floor(def_min.z / chunk_size_));
-			int max_chunk_z = static_cast<int>(std::floor(def_max.z / chunk_size_));
+			int min_chunk_x = static_cast<int>(std::floor(def_min.x / scaled_chunk_size));
+			int max_chunk_x = static_cast<int>(std::floor(def_max.x / scaled_chunk_size));
+			int min_chunk_z = static_cast<int>(std::floor(def_min.z / scaled_chunk_size));
+			int max_chunk_z = static_cast<int>(std::floor(def_max.z / scaled_chunk_size));
 
 			for (auto& [chunk_key, terrain] : chunk_cache_) {
 				if (chunk_key.first >= min_chunk_x && chunk_key.first <= max_chunk_x &&
@@ -1303,10 +1315,10 @@ namespace Boidsish {
 		} else {
 			// Invalidate all chunks that have any deformation
 			for (auto& [chunk_key, terrain] : chunk_cache_) {
-				float chunk_min_x = static_cast<float>(chunk_key.first * chunk_size_);
-				float chunk_min_z = static_cast<float>(chunk_key.second * chunk_size_);
-				float chunk_max_x = chunk_min_x + chunk_size_;
-				float chunk_max_z = chunk_min_z + chunk_size_;
+				float chunk_min_x = static_cast<float>(chunk_key.first) * scaled_chunk_size;
+				float chunk_min_z = static_cast<float>(chunk_key.second) * scaled_chunk_size;
+				float chunk_max_x = chunk_min_x + scaled_chunk_size;
+				float chunk_max_z = chunk_min_z + scaled_chunk_size;
 
 				if (deformation_manager_.ChunkHasDeformations(chunk_min_x, chunk_min_z, chunk_max_x, chunk_max_z)) {
 					chunks_to_regenerate.push_back(chunk_key);
@@ -1333,7 +1345,7 @@ namespace Boidsish {
 				// Create new terrain object with deformed data
 				auto new_terrain =
 					std::make_shared<Terrain>(result.indices, result.positions, result.normals, result.proxy);
-				new_terrain->SetPosition(result.chunk_x * chunk_size_, 0, result.chunk_z * chunk_size_);
+				new_terrain->SetPosition(result.chunk_x * scaled_chunk_size, 0, result.chunk_z * scaled_chunk_size);
 
 				if (render_manager_) {
 					new_terrain->SetManagedByRenderManager(true);
@@ -1346,7 +1358,7 @@ namespace Boidsish {
 						new_terrain->GetIndices(),
 						new_terrain->proxy.minY,
 						new_terrain->proxy.maxY,
-						glm::vec3(chunk_key.first * chunk_size_, 0, chunk_key.second * chunk_size_)
+						glm::vec3(chunk_key.first * scaled_chunk_size, 0, chunk_key.second * scaled_chunk_size)
 					);
 				} else {
 					// Legacy rendering: set up mesh (will replace old GPU resources)

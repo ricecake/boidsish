@@ -102,6 +102,8 @@ namespace Boidsish {
 		const ITerrainGenerator&              terrain_gen,
 		std::shared_ptr<TerrainRenderManager> render_manager
 	) {
+		float world_scale = terrain_gen.GetWorldScale();
+
 		// Get the heightmap texture array from the terrain render manager
 		GLuint heightmap_texture = render_manager->GetHeightmapTexture();
 		if (heightmap_texture == 0)
