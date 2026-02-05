@@ -21,7 +21,8 @@ namespace Boidsish {
 			Vector3   pos = {0, 0, 0},
 			glm::quat orientation = {0, {0, 0, 0}},
 			glm::vec3 dir = {0, 0, 0},
-			Vector3   vel = {0, 0, 0}
+			Vector3   vel = {0, 0, 0},
+			bool      leftHanded = true
 		);
 
 		void UpdateEntity(const EntityHandler& handler, float time, float delta_time) override;
@@ -39,6 +40,7 @@ namespace Boidsish {
 		std::shared_ptr<GuidedMissileLauncher> target_ = nullptr;
 		std::shared_ptr<SoundEffect>           launch_sound_ = nullptr;
 		std::shared_ptr<SoundEffect>           explode_sound_ = nullptr;
+		bool                                   leftHanded_ = true;
 
 		// Flight model
 		std::random_device rd_;

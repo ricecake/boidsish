@@ -14,6 +14,10 @@ namespace Boidsish {
 
 	struct Frustum;
 
+	struct OccluderQuad {
+		glm::vec3 corners[4];
+	};
+
 	/**
 	 * @brief Common interface for terrain rendering backends.
 	 *
@@ -46,7 +50,20 @@ namespace Boidsish {
 			const std::vector<unsigned int>& indices,
 			float                            min_y,
 			float                            max_y,
-			const glm::vec3&                 world_offset
+			const glm::vec3&                 world_offset,
+			const std::vector<OccluderQuad>& occluders = {}
+		) = 0;
+
+		/**
+		 * @brief Render simplified occlusion quads and issue queries.
+		 *
+		 * Used for hardware occlusion culling.
+		 */
+		virtual void RenderOccluders(
+			Shader&          shader,
+			const glm::mat4& view,
+			const glm::mat4& projection,
+			const Frustum&   frustum
 		) = 0;
 
 		/**

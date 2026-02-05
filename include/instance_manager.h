@@ -14,7 +14,17 @@ namespace Boidsish {
 	public:
 		~InstanceManager();
 		void AddInstance(std::shared_ptr<Shape> shape);
-		void Render(Shader& shader);
+		void Render(Shader& shader, bool ignore_occlusion = false);
+
+		/**
+		 * @brief Render bounding boxes for occlusion queries.
+		 */
+		void RenderOcclusionQueries(Shader& shader);
+
+		/**
+		 * @brief Clear all registered instances.
+		 */
+		void ClearInstances();
 
 	private:
 		struct InstanceGroup {

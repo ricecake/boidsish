@@ -9,6 +9,7 @@
 
 #include <GL/glew.h>
 #include <glm/glm.hpp>
+#include "terrain_render_interface.h"
 
 class Shader;
 
@@ -40,7 +41,7 @@ namespace Boidsish {
 	 * 4. Render() issues single instanced draw call
 	 * 5. TES shader samples heightmap to displace flat grid vertices
 	 */
-	class TerrainRenderManager {
+	class TerrainRenderManager : public ITerrainRenderManager {
 	public:
 		TerrainRenderManager(int chunk_size = 32, int max_chunks = 512);
 		~TerrainRenderManager();
@@ -61,23 +62,36 @@ namespace Boidsish {
 			const std::vector<unsigned int>& indices,
 			float                            min_y,
 			float                            max_y,
-			const glm::vec3&                 world_offset
-		);
+			const glm::vec3&                 world_offset,
+			const std::vector<OccluderQuad>& occluders = {}
+		) override;
 
 		/**
 		 * @brief Unregister a terrain chunk, freeing its texture slice.
 		 */
-		void UnregisterChunk(std::pair<int, int> chunk_key);
+		void UnregisterChunk(std::pair<int, int> chunk_key) override;
 
 		/**
 		 * @brief Check if a chunk is registered.
 		 */
-		bool HasChunk(std::pair<int, int> chunk_key) const;
+		bool HasChunk(std::pair<int, int> chunk_key) const override;
+
+		/**
+		 * @brief Prepare for rendering (culling, buffer updates, etc.)
+		 */
+		void PrepareForRender(const Frustum& frustum, const glm::vec3& camera_pos) override {
+			PrepareForRender(frustum, camera_pos, 1.0f);
+		}
 
 		/**
 		 * @brief Perform frustum culling and prepare instance buffer.
 		 */
-		void PrepareForRender(const Frustum& frustum, const glm::vec3& camera_pos);
+		void PrepareForRender(
+			const Frustum&   frustum,
+			const glm::vec3& camera_pos,
+			float            world_scale,
+			bool             ignore_occlusion = false
+		);
 
 		/**
 		 * @brief Render all visible terrain chunks with single instanced draw.
@@ -88,12 +102,24 @@ namespace Boidsish {
 			const glm::mat4&                projection,
 			const std::optional<glm::vec4>& clip_plane,
 			float                           tess_quality_multiplier
-		);
+		) override;
+
+		/**
+		 * @brief Render simplified occlusion quads and issue queries.
+		 *
+		 * Used for hardware occlusion culling.
+		 */
+		void RenderOccluders(
+			Shader&          shader,
+			const glm::mat4& view,
+			const glm::mat4& projection,
+			const Frustum&   frustum
+		) override;
 
 		/**
 		 * @brief Commit any pending updates (no-op for this implementation).
 		 */
-		void CommitUpdates() {}
+		void CommitUpdates() override {}
 
 		/**
 		 * @brief Set a callback to be notified when a chunk is evicted due to LRU.
@@ -106,10 +132,10 @@ namespace Boidsish {
 		/**
 		 * @brief Get statistics.
 		 */
-		size_t GetRegisteredChunkCount() const;
-		size_t GetVisibleChunkCount() const;
+		size_t GetRegisteredChunkCount() const override;
+		size_t GetVisibleChunkCount() const override;
 
-		int GetChunkSize() const { return chunk_size_; }
+		int GetChunkSize() const override { return chunk_size_; }
 
 		/**
 		 * @brief Get the heightmap texture array for shader binding.
@@ -125,10 +151,16 @@ namespace Boidsish {
 	private:
 		// Per-chunk metadata (CPU side)
 		struct ChunkInfo {
-			int       texture_slice; // Index into texture array
-			float     min_y;         // For frustum culling
-			float     max_y;         // For frustum culling
-			glm::vec2 world_offset;  // (chunk_x * chunk_size, chunk_z * chunk_size)
+			int                       texture_slice; // Index into texture array
+			float                     min_y;         // For frustum culling
+			float                     max_y;         // For frustum culling
+			glm::vec2                 world_offset;  // (chunk_x * chunk_size, chunk_z * chunk_size)
+			std::vector<OccluderQuad> occluders;
+
+			// Occlusion culling state
+			GLuint occlusion_query = 0;
+			bool   query_issued = false;
+			bool   is_occluded = false;
 		};
 
 		// Per-instance data sent to GPU (std140 layout)
@@ -138,7 +170,7 @@ namespace Boidsish {
 		};
 
 		// Frustum culling helper
-		bool IsChunkVisible(const ChunkInfo& chunk, const Frustum& frustum) const;
+		bool IsChunkVisible(const ChunkInfo& chunk, const Frustum& frustum, float world_scale) const;
 
 		// Create the flat grid mesh
 		void CreateGridMesh();
@@ -176,6 +208,7 @@ namespace Boidsish {
 
 		// Camera position for LRU eviction (updated by PrepareForRender)
 		glm::vec3 last_camera_pos_{0.0f, 0.0f, 0.0f};
+		float     last_world_scale_ = 1.0f;
 
 		// Thread safety
 		mutable std::mutex mutex_;

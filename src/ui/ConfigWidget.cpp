@@ -4,6 +4,7 @@
 #include "decor_manager.h"
 #include "graphics.h"
 #include "imgui.h"
+#include "terrain_generator_interface.h"
 
 namespace Boidsish {
 	namespace UI {
@@ -132,7 +133,16 @@ namespace Boidsish {
 					}
 				}
 
-				if (ImGui::CollapsingHeader("Foliage", ImGuiTreeNodeFlags_DefaultOpen)) {
+				if (ImGui::CollapsingHeader("Terrain", ImGuiTreeNodeFlags_DefaultOpen)) {
+					auto terrain = m_visualizer.GetTerrain();
+					if (terrain) {
+						float world_scale = terrain->GetWorldScale();
+						if (ImGui::SliderFloat("World Scale", &world_scale, 0.1f, 5.0f)) {
+							terrain->SetWorldScale(world_scale);
+						}
+						ImGui::Text("Higher = larger world, Lower = smaller world");
+					}
+
 					auto decor_manager = m_visualizer.GetDecorManager();
 					if (decor_manager) {
 						bool enabled = decor_manager->IsEnabled();

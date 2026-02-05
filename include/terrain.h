@@ -6,6 +6,8 @@
 #include "shape.h"
 #include <glm/glm.hpp>
 
+#include "terrain_render_interface.h"
+
 namespace Boidsish {
 
 	class TerrainRenderManager;
@@ -16,7 +18,8 @@ namespace Boidsish {
 			const std::vector<unsigned int>& indices,
 			const std::vector<glm::vec3>&    vertices,
 			const std::vector<glm::vec3>&    normals,
-			const PatchProxy&                proxy
+			const PatchProxy&                proxy,
+			const std::vector<OccluderQuad>& occluders = {}
 		);
 		~Terrain();
 
@@ -32,9 +35,10 @@ namespace Boidsish {
 		static std::shared_ptr<Shader> terrain_shader_;
 
 		// Public members for field calculations
-		PatchProxy             proxy;
-		std::vector<glm::vec3> vertices;
-		std::vector<glm::vec3> normals;
+		PatchProxy                proxy;
+		std::vector<glm::vec3>    vertices;
+		std::vector<glm::vec3>    normals;
+		std::vector<OccluderQuad> occluders;
 
 		/**
 		 * @brief Get interleaved vertex data for batched rendering.

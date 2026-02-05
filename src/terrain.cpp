@@ -14,12 +14,14 @@ namespace Boidsish {
 		const std::vector<unsigned int>& indices,
 		const std::vector<glm::vec3>&    vertices,
 		const std::vector<glm::vec3>&    normals,
-		const PatchProxy&                proxy
+		const PatchProxy&                proxy,
+		const std::vector<OccluderQuad>& occluders
 	):
 		indices_(indices),
 		vertices(vertices),
 		normals(normals),
 		proxy(proxy),
+		occluders(occluders),
 		vao_(0),
 		vbo_(0),
 		ebo_(0),

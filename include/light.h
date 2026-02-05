@@ -33,6 +33,26 @@ namespace Boidsish {
 	}; // Total: 64 bytes
 
 	/**
+	 * @brief Complete lighting UBO data for single-call upload (std140 layout).
+	 * Must match layout in shaders/lighting.glsl.
+	 * Replaces 8 separate glBufferSubData calls with one for better GPU throughput.
+	 */
+	struct alignas(16) LightingUbo {
+		LightGPU lights[10];                 // offset 0,   640 bytes
+		int      num_lights;                 // offset 640, 4 bytes
+		float    world_scale;                // offset 644, 4 bytes
+		float    _pad1[2];                   // offset 648, 8 bytes (align vec3 to 16)
+		alignas(16) glm::vec3 view_pos;      // offset 656, 12 bytes
+		float _pad2;                         // offset 668, 4 bytes
+		alignas(16) glm::vec3 ambient_light; // offset 672, 12 bytes
+		float time;                          // offset 684, 4 bytes
+		alignas(16) glm::vec3 view_dir;      // offset 688, 12 bytes
+		float _pad3;                         // offset 700, 4 bytes
+	}; // Total: 704 bytes
+
+	static_assert(sizeof(LightingUbo) == 704, "LightingUbo must be 704 bytes for UBO alignment");
+
+	/**
 	 * @brief Light source data structure for rendering.
 	 */
 	enum class LightBehaviorType { NONE, BLINK, PULSE, EASE_IN, EASE_OUT, EASE_IN_OUT, FLICKER, MORSE };

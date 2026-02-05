@@ -11,7 +11,7 @@
 namespace Boidsish {
 
 	Trail::Trail(int max_length, float thickness):
-		max_length(max_length), thickness(thickness), vertex_count(0), mesh_dirty(false) {
+		max_length(max_length), thickness(thickness), vao(0), vbo(0), ebo(0), vertex_count(0), mesh_dirty(false) {
 		mesh_vertices.resize(max_length * CURVE_SEGMENTS * VERTS_PER_STEP);
 		indices.resize(max_length * CURVE_SEGMENTS * VERTS_PER_STEP);
 		for (unsigned int i = 0; i < indices.size(); ++i) {
@@ -20,9 +20,12 @@ namespace Boidsish {
 	}
 
 	Trail::~Trail() {
-		glDeleteVertexArrays(1, &vao);
-		glDeleteBuffers(1, &vbo);
-		glDeleteBuffers(1, &ebo);
+		if (vao != 0)
+			glDeleteVertexArrays(1, &vao);
+		if (vbo != 0)
+			glDeleteBuffers(1, &vbo);
+		if (ebo != 0)
+			glDeleteBuffers(1, &ebo);
 	}
 
 	Vector3

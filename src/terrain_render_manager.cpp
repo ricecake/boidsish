@@ -22,6 +22,11 @@ namespace Boidsish {
 	}
 
 	TerrainRenderManager::~TerrainRenderManager() {
+		for (auto& [key, chunk] : chunks_) {
+			if (chunk.occlusion_query)
+				glDeleteQueries(1, &chunk.occlusion_query);
+		}
+
 		if (grid_vao_)
 			glDeleteVertexArrays(1, &grid_vao_);
 		if (grid_vbo_)
@@ -236,7 +241,8 @@ namespace Boidsish {
 		const std::vector<unsigned int>& indices, // Not used in this implementation
 		float                            min_y,
 		float                            max_y,
-		const glm::vec3&                 world_offset
+		const glm::vec3&                 world_offset,
+		const std::vector<OccluderQuad>& occluders
 	) {
 		// Deferred eviction callback to avoid deadlock
 		// (caller may hold terrain generator's mutex, and callback needs that mutex)
@@ -274,6 +280,7 @@ namespace Boidsish {
 				UploadHeightmapSlice(it->second.texture_slice, heightmap, reordered_normals);
 				it->second.min_y = min_y;
 				it->second.max_y = max_y;
+				it->second.occluders = occluders;
 				return;
 			}
 
@@ -297,9 +304,10 @@ namespace Boidsish {
 						std::pair<int, int> farthest_key;
 
 						for (const auto& [key, chunk] : chunks_) {
+							float     scaled_chunk_size = chunk_size_ * last_world_scale_;
 							glm::vec2 chunk_center(
-								chunk.world_offset.x + chunk_size_ * 0.5f,
-								chunk.world_offset.y + chunk_size_ * 0.5f
+								chunk.world_offset.x + scaled_chunk_size * 0.5f,
+								chunk.world_offset.y + scaled_chunk_size * 0.5f
 							);
 							float dist_sq = glm::dot(chunk_center - camera_pos_2d, chunk_center - camera_pos_2d);
 							if (dist_sq > max_dist_sq) {
@@ -344,6 +352,10 @@ namespace Boidsish {
 			info.min_y = min_y;
 			info.max_y = max_y;
 			info.world_offset = glm::vec2(world_offset.x, world_offset.z);
+			info.occluders = occluders;
+
+			glGenQueries(1, &info.occlusion_query);
+			info.is_occluded = false;
 
 			chunks_[chunk_key] = info;
 		} // mutex released here
@@ -362,6 +374,9 @@ namespace Boidsish {
 			return;
 		}
 
+		if (it->second.occlusion_query)
+			glDeleteQueries(1, &it->second.occlusion_query);
+
 		// Return slice to free list
 		free_slices_.push_back(it->second.texture_slice);
 		chunks_.erase(it);
@@ -372,10 +387,15 @@ namespace Boidsish {
 		return chunks_.count(chunk_key) > 0;
 	}
 
-	bool TerrainRenderManager::IsChunkVisible(const ChunkInfo& chunk, const Frustum& frustum) const {
+	bool TerrainRenderManager::IsChunkVisible(const ChunkInfo& chunk, const Frustum& frustum, float world_scale) const {
 		// Build AABB for this chunk
+		float     scaled_chunk_size = chunk_size_ * world_scale;
 		glm::vec3 min_corner(chunk.world_offset.x, chunk.min_y, chunk.world_offset.y);
-		glm::vec3 max_corner(chunk.world_offset.x + chunk_size_, chunk.max_y, chunk.world_offset.y + chunk_size_);
+		glm::vec3 max_corner(
+			chunk.world_offset.x + scaled_chunk_size,
+			chunk.max_y,
+			chunk.world_offset.y + scaled_chunk_size
+		);
 
 		glm::vec3 center = (min_corner + max_corner) * 0.5f;
 		glm::vec3 half_size = (max_corner - min_corner) * 0.5f;
@@ -396,14 +416,37 @@ namespace Boidsish {
 		return true; // Inside or intersecting all planes
 	}
 
-	void TerrainRenderManager::PrepareForRender(const Frustum& frustum, const glm::vec3& camera_pos) {
+	void TerrainRenderManager::PrepareForRender(
+		const Frustum&   frustum,
+		const glm::vec3& camera_pos,
+		float            world_scale,
+		bool             ignore_occlusion
+	) {
 		std::lock_guard<std::mutex> lock(mutex_);
 
-		// Store camera position for LRU eviction decisions in RegisterChunk
+		// Store camera position and world scale for LRU eviction decisions in RegisterChunk
 		last_camera_pos_ = camera_pos;
+		last_world_scale_ = world_scale;
 
 		visible_instances_.clear();
 		visible_instances_.reserve(chunks_.size());
+
+		// Update visibility states from occlusion queries
+		for (auto& [key, chunk] : chunks_) {
+			if (chunk.query_issued) {
+				GLuint available = 0;
+				glGetQueryObjectuiv(chunk.occlusion_query, GL_QUERY_RESULT_AVAILABLE, &available);
+				if (available) {
+					GLuint samples = 0;
+					glGetQueryObjectuiv(chunk.occlusion_query, GL_QUERY_RESULT, &samples);
+					chunk.is_occluded = (samples == 0);
+					chunk.query_issued = false;
+				}
+			} else {
+				// If no query issued (e.g. out of frustum or first frame), assume not occluded
+				chunk.is_occluded = false;
+			}
+		}
 
 		// Collect visible chunks with distance info
 		struct VisibleChunk {
@@ -416,8 +459,12 @@ namespace Boidsish {
 
 		glm::vec2 camera_pos_2d(camera_pos.x, camera_pos.z);
 
-		for (const auto& [key, chunk] : chunks_) {
-			if (IsChunkVisible(chunk, frustum)) {
+		for (auto& [key, chunk] : chunks_) {
+			if (IsChunkVisible(chunk, frustum, world_scale)) {
+				if (!ignore_occlusion && chunk.is_occluded) {
+					continue;
+				}
+
 				InstanceData instance{};
 				instance.world_offset_and_slice = glm::vec4(
 					chunk.world_offset.x,
@@ -428,9 +475,10 @@ namespace Boidsish {
 				instance.bounds = glm::vec4(chunk.min_y, chunk.max_y, 0.0f, 0.0f);
 
 				// Calculate distance from chunk center to camera
+				float     scaled_chunk_size = chunk_size_ * world_scale;
 				glm::vec2 chunk_center(
-					chunk.world_offset.x + chunk_size_ * 0.5f,
-					chunk.world_offset.y + chunk_size_ * 0.5f
+					chunk.world_offset.x + scaled_chunk_size * 0.5f,
+					chunk.world_offset.y + scaled_chunk_size * 0.5f
 				);
 				float dist_sq = glm::dot(chunk_center - camera_pos_2d, chunk_center - camera_pos_2d);
 
@@ -492,6 +540,100 @@ namespace Boidsish {
 		}
 	}
 
+	void TerrainRenderManager::RenderOccluders(
+		Shader&          shader,
+		const glm::mat4& view,
+		const glm::mat4& projection,
+		const Frustum&   frustum
+	) {
+		std::lock_guard<std::mutex> lock(mutex_);
+
+		static GLuint vao = 0, vbo = 0;
+		if (vao == 0) {
+			glGenVertexArrays(1, &vao);
+			glGenBuffers(1, &vbo);
+			glBindVertexArray(vao);
+			glBindBuffer(GL_ARRAY_BUFFER, vbo);
+			glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(glm::vec3), (void*)0);
+			glEnableVertexAttribArray(0);
+			glBindVertexArray(0);
+		}
+
+		shader.use();
+		shader.setMat4("view", view);
+		shader.setMat4("projection", projection);
+		shader.setMat4("model", glm::mat4(1.0f));
+
+		// Gather all occluder vertices in world space for a single batch
+		std::vector<glm::vec3> all_vertices;
+		for (auto& [key, chunk] : chunks_) {
+			glm::vec3 world_origin(chunk.world_offset.x, 0, chunk.world_offset.y);
+			for (const auto& quad : chunk.occluders) {
+				all_vertices.push_back(quad.corners[0] + world_origin);
+				all_vertices.push_back(quad.corners[1] + world_origin);
+				all_vertices.push_back(quad.corners[2] + world_origin);
+
+				all_vertices.push_back(quad.corners[0] + world_origin);
+				all_vertices.push_back(quad.corners[2] + world_origin);
+				all_vertices.push_back(quad.corners[3] + world_origin);
+			}
+		}
+
+		if (!all_vertices.empty()) {
+			glBindVertexArray(vao);
+			glBindBuffer(GL_ARRAY_BUFFER, vbo);
+			glBufferData(GL_ARRAY_BUFFER, all_vertices.size() * sizeof(glm::vec3), all_vertices.data(), GL_STREAM_DRAW);
+			glDrawArrays(GL_TRIANGLES, 0, static_cast<GLsizei>(all_vertices.size()));
+		}
+
+		// Second pass: issue queries for chunks to check if they are still visible
+		// We use the bounding box for the query volume
+		static GLuint bbox_vao = 0, bbox_vbo = 0, bbox_ebo = 0;
+		if (bbox_vao == 0) {
+			glGenVertexArrays(1, &bbox_vao);
+			glGenBuffers(1, &bbox_vbo);
+			glGenBuffers(1, &bbox_ebo);
+			float vertices[] = {
+				0, 0, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0, 0, 0, 1, 1, 0, 1, 1, 1, 1, 0, 1, 1,
+			};
+			unsigned int indices[] = {
+				0, 1, 2, 2, 3, 0, 4, 5, 6, 6, 7, 4, 0, 1, 5, 5, 4, 0,
+				2, 3, 7, 7, 6, 2, 1, 2, 6, 6, 5, 1, 0, 3, 7, 7, 4, 0,
+			};
+			glBindVertexArray(bbox_vao);
+			glBindBuffer(GL_ARRAY_BUFFER, bbox_vbo);
+			glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
+			glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
+			glEnableVertexAttribArray(0);
+			glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, bbox_ebo);
+			glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(indices), indices, GL_STATIC_DRAW);
+			glBindVertexArray(0);
+		}
+
+		glBindVertexArray(bbox_vao);
+		for (auto& [key, chunk] : chunks_) {
+			if (chunk.query_issued)
+				continue;
+
+			if (!IsChunkVisible(chunk, frustum, last_world_scale_))
+				continue;
+
+			glm::mat4 model = glm::translate(
+				glm::mat4(1.0f),
+				glm::vec3(chunk.world_offset.x, chunk.min_y, chunk.world_offset.y)
+			);
+			model = glm::scale(model, glm::vec3(chunk_size_ * last_world_scale_, chunk.max_y - chunk.min_y, chunk_size_ * last_world_scale_));
+			shader.setMat4("model", model);
+
+			glBeginQuery(GL_ANY_SAMPLES_PASSED, chunk.occlusion_query);
+			glDrawElements(GL_TRIANGLES, 36, GL_UNSIGNED_INT, 0);
+			glEndQuery(GL_ANY_SAMPLES_PASSED);
+			chunk.query_issued = true;
+		}
+
+		glBindVertexArray(0);
+	}
+
 	void TerrainRenderManager::Render(
 		Shader&                         shader,
 		const glm::mat4&                view,
@@ -512,7 +654,7 @@ namespace Boidsish {
 		shader.setFloat("uTessQualityMultiplier", tess_quality_multiplier);
 		shader.setFloat("uTessLevelMax", 64.0f);
 		shader.setFloat("uTessLevelMin", 1.0f);
-		shader.setInt("uChunkSize", chunk_size_);
+		shader.setInt("uChunkSize", static_cast<int>(chunk_size_ * last_world_scale_));
 
 		if (clip_plane) {
 			shader.setVec4("clipPlane", *clip_plane);
@@ -528,8 +670,7 @@ namespace Boidsish {
 		// Bind VAO (instance attributes already configured during initialization)
 		glBindVertexArray(grid_vao_);
 
-		// Explicitly rebind EBO in case VAO state was corrupted
-		// glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, grid_ebo_);
+		// Note: EBO is already captured in VAO state during initialization
 
 		// Set patch vertices for tessellation
 		glPatchParameteri(GL_PATCH_VERTICES, 4);
@@ -567,7 +708,7 @@ namespace Boidsish {
 					chunk.world_offset.x, // x world offset
 					chunk.world_offset.y, // z world offset (stored as y in vec2)
 					static_cast<float>(chunk.texture_slice),
-					static_cast<float>(chunk_size_)
+					static_cast<float>(chunk_size_ * last_world_scale_)
 				)
 			);
 		}

@@ -107,8 +107,8 @@ void main() {
 	// vec3  warp = vec3(fbm(WorldPos / 50 + time * 0.08));
 	float nebula_noise = 0; // fbm(WorldPos / 50 + warp * 0.8);
 	float dist = length(WorldPos.xz - viewPos.xz);
-	float fade_start = 550.0;
-	float fade_end = 600.0;
+	float fade_start = 550.0 * worldScale;
+	float fade_end = 600.0 * worldScale;
 	float fade = 1.0 - smoothstep(fade_start, fade_end, dist + nebula_noise * 50);
 
 	if (fade < 0.2) {
