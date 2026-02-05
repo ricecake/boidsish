@@ -2323,7 +2323,7 @@ namespace Boidsish {
 				const auto& info = shadow_map_registry[map_idx];
 				auto&       state = impl->shadow_map_states_[map_idx];
 
-				float world_scale = terrain_generator ? terrain_generator->GetWorldScale() : 1.0f;
+				float world_scale = impl->terrain_generator ? impl->terrain_generator->GetWorldScale() : 1.0f;
 				impl->shadow_manager->BeginShadowPass(
 					info.map_index,
 					*info.light,
