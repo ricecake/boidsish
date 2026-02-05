@@ -98,6 +98,8 @@ namespace Boidsish {
 		void  SetWorldScale(float scale) override;
 		float GetWorldScale() const override { return world_scale_; }
 
+		uint32_t GetVersion() const override { return terrain_version_; }
+
 		// Interface method - calls pointProperties
 		std::tuple<float, glm::vec3> GetPointProperties(float x, float z) const override {
 			return pointProperties(x, z);
@@ -123,15 +125,49 @@ namespace Boidsish {
 			auto v2_raw = pointGenerate(x1 * world_scale_, z1 * world_scale_); // Top-right
 			auto v3_raw = pointGenerate(x0 * world_scale_, z1 * world_scale_); // Top-left
 
-			glm::vec3 v0 = {x0 * world_scale_, v0_raw.x, z0 * world_scale_};
-			glm::vec3 v1 = {x1 * world_scale_, v1_raw.x, z0 * world_scale_};
-			glm::vec3 v2 = {x1 * world_scale_, v2_raw.x, z1 * world_scale_};
-			glm::vec3 v3 = {x0 * world_scale_, v3_raw.x, z1 * world_scale_};
+			float h0 = v0_raw.x;
+			float h1 = v1_raw.x;
+			float h2 = v2_raw.x;
+			float h3 = v3_raw.x;
 
 			glm::vec3 n0 = diffToNorm(v0_raw.y, v0_raw.z);
 			glm::vec3 n1 = diffToNorm(v1_raw.y, v1_raw.z);
 			glm::vec3 n2 = diffToNorm(v2_raw.y, v2_raw.z);
 			glm::vec3 n3 = diffToNorm(v3_raw.y, v3_raw.z);
+
+			// Apply deformations to corners before Phong interpolation
+			if (deformation_manager_.HasDeformations()) {
+				float wx0 = x0 * world_scale_;
+				float wx1 = x1 * world_scale_;
+				float wz0 = z0 * world_scale_;
+				float wz1 = z1 * world_scale_;
+
+				auto res0 = deformation_manager_.QueryDeformations(wx0, wz0, h0, n0);
+				if (res0.has_deformation) {
+					h0 += res0.total_height_delta;
+					n0 = res0.transformed_normal;
+				}
+				auto res1 = deformation_manager_.QueryDeformations(wx1, wz0, h1, n1);
+				if (res1.has_deformation) {
+					h1 += res1.total_height_delta;
+					n1 = res1.transformed_normal;
+				}
+				auto res2 = deformation_manager_.QueryDeformations(wx1, wz1, h2, n2);
+				if (res2.has_deformation) {
+					h2 += res2.total_height_delta;
+					n2 = res2.transformed_normal;
+				}
+				auto res3 = deformation_manager_.QueryDeformations(wx0, wz1, h3, n3);
+				if (res3.has_deformation) {
+					h3 += res3.total_height_delta;
+					n3 = res3.transformed_normal;
+				}
+			}
+
+			glm::vec3 v0 = {x0 * world_scale_, h0, z0 * world_scale_};
+			glm::vec3 v1 = {x1 * world_scale_, h1, z0 * world_scale_};
+			glm::vec3 v2 = {x1 * world_scale_, h2, z1 * world_scale_};
+			glm::vec3 v3 = {x0 * world_scale_, h3, z1 * world_scale_};
 
 			// The "flat" position from standard bilinear interpolation
 			glm::vec3 q = bilerp(v0, v1, v2, v3, {tx, tz});
@@ -147,15 +183,6 @@ namespace Boidsish {
 
 			// Interpolate normals for lighting
 			glm::vec3 final_norm = glm::normalize(bilerp(n0, n1, n2, n3, {tx, tz}));
-
-			// Apply deformations to match the mesh
-			if (deformation_manager_.HasDeformationAt(x, z)) {
-				auto def_result = deformation_manager_.QueryDeformations(x, z, final_pos.y, final_norm);
-				if (def_result.has_deformation) {
-					final_pos.y += def_result.total_height_delta;
-					final_norm = def_result.transformed_normal;
-				}
-			}
 
 			return {final_pos.y, final_norm};
 		}
@@ -366,6 +393,7 @@ namespace Boidsish {
 		float     persistence_ = Constants::Class::Terrain::DefaultPersistence();
 		int       seed_;
 		float     world_scale_ = 1.0f;
+		uint32_t  terrain_version_ = 0;
 
 		// Control noise parameters
 		constexpr static const float control_noise_scale_ = Constants::Class::Terrain::ControlNoiseScale();

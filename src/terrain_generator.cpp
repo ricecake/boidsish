@@ -358,6 +358,7 @@ namespace Boidsish {
 		std::lock_guard<std::recursive_mutex> lock(chunk_cache_mutex_);
 
 		world_scale_ = scale;
+		terrain_version_++;
 
 		// Cancel all pending tasks
 		for (auto& pair : pending_chunks_) {
@@ -491,7 +492,7 @@ namespace Boidsish {
 		float     path_factor = path_data.x;
 
 		glm::vec2 push_dir = glm::normalize(glm::vec2(path_data.y, path_data.z));
-		float     warp_strength = (1.0f - path_factor) * Constants::Class::Terrain::WarpStrength();
+		float     warp_strength = (1.0f - path_factor) * Constants::Class::Terrain::WarpStrength() * world_scale_;
 		glm::vec2 warp = push_dir * warp_strength;
 
 		glm::vec2 pos = glm::vec2(sx, sz);
@@ -933,7 +934,7 @@ namespace Boidsish {
 		glm::vec3 path_data = getPathInfluence(sx, sz);
 		float     path_factor = path_data.x;
 		glm::vec2 push_dir = glm::normalize(glm::vec2(path_data.y, path_data.z));
-		float     warp_strength = (1.0f - path_factor) * 20.0f;
+		float     warp_strength = (1.0f - path_factor) * Constants::Class::Terrain::WarpStrength() * world_scale_;
 		return push_dir * warp_strength;
 	}
 
@@ -1303,6 +1304,7 @@ namespace Boidsish {
 
 	void TerrainGenerator::InvalidateDeformedChunks(std::optional<uint32_t> deformation_id) {
 		std::lock_guard<std::recursive_mutex> lock(chunk_cache_mutex_);
+		terrain_version_++;
 
 		std::vector<std::pair<int, int>> chunks_to_regenerate;
 		float                            scaled_chunk_size = static_cast<float>(chunk_size_) * world_scale_;

@@ -287,6 +287,16 @@ namespace Boidsish {
 		virtual float GetWorldScale() const = 0;
 
 		/**
+		 * @brief Get a version counter that increments whenever the terrain changes.
+		 *
+		 * This counter increments when the world scale changes or when deformations
+		 * are added/removed, signaling systems like DecorManager to regenerate.
+		 *
+		 * @return The current terrain version
+		 */
+		virtual uint32_t GetVersion() const = 0;
+
+		/**
 		 * @brief Get a path along terrain following procedural path spline.
 		 *
 		 * @param start_pos Starting XZ position

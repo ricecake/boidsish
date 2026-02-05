@@ -88,10 +88,16 @@ namespace Boidsish {
 		// Check rotation: 1 - dot(a, b) gives 0 when same direction, ~2 when opposite
 		float angle_change = 1.0f - glm::dot(cam_front, last_camera_front_);
 
-		if (needs_regeneration_ || dist_moved > kRegenerationDistance || angle_change > kRegenerationAngle) {
+		uint32_t current_version = terrain_gen.GetVersion();
+		float    current_scale = terrain_gen.GetWorldScale();
+
+		if (needs_regeneration_ || dist_moved > kRegenerationDistance || angle_change > kRegenerationAngle ||
+		    current_version != last_terrain_version_ || current_scale != last_world_scale_) {
 			_RegeneratePlacements(camera, frustum, terrain_gen, render_manager);
 			last_camera_pos_ = cam_pos;
 			last_camera_front_ = cam_front;
+			last_terrain_version_ = current_version;
+			last_world_scale_ = current_scale;
 			needs_regeneration_ = false;
 		}
 	}
@@ -220,8 +226,7 @@ namespace Boidsish {
 
 				placement_shader_->setVec2("u_chunkWorldOffset", chunk_offset);
 				placement_shader_->setFloat("u_chunkSlice", chunk_slice);
-				;
-				placement_shader_->setFloat("u_chunkSize", chunk_size * world_scale);
+				placement_shader_->setFloat("u_chunkSize", chunk_size);
 
 				// Dispatch compute shader for this chunk
 				// 4x4 work groups of 8x8 threads = 32x32 potential placement points per chunk
