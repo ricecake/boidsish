@@ -10,6 +10,7 @@ in vec2 TexCoords;
 
 uniform mat4 invProjection;
 uniform mat4 invView;
+uniform sampler2D transmittanceLUT;
 
 // A simple 3D hash function (returns pseudo-random vec3 between 0 and 1)
 vec3 hash33(vec3 p) {
@@ -64,7 +65,7 @@ void main() {
 	for (int i = 0; i < num_lights; i++) {
 		if (lights[i].type == LIGHT_TYPE_DIRECTIONAL) {
 			vec3 sun_dir = normalize(-lights[i].direction);
-			final_sky_color += calculateSkyColor(world_ray, sun_dir, lights[i].color * lights[i].intensity);
+			final_sky_color += calculateSkyColor(transmittanceLUT, world_ray, sun_dir, lights[i].color * lights[i].intensity);
 		}
 	}
 

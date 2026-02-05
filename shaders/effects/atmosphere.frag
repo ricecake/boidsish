@@ -130,10 +130,9 @@ void main() {
 
 			if (d > 0.001) {
 				// Self-shadowing using Transmittance LUT
-				vec3 T_sun = getTransmittance(p.y, sunDir.y);
+				vec3 T_sun = getTransmittance(transmittanceLUT, p.y, sunDir.y);
 
 				// Beer-Powder Law for internal density and silver lining
-				// Use the current transmittance as an approximation of shadowing
 				float powder = beerPowder(d, stepSize, cloudPowderStrength);
 				vec3  effectiveTransmittance = T_sun * powder;
 

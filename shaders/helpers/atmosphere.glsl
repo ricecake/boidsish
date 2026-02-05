@@ -16,8 +16,6 @@ const float MIE_HEIGHT = 1200.0;
 const float EARTH_RADIUS = 6371000.0;
 const float ATMOSPHERE_RADIUS = EARTH_RADIUS + 100000.0;
 
-uniform sampler2D transmittanceLUT;
-
 /**
  * Rayleigh phase function.
  */
@@ -36,12 +34,13 @@ float henyeyGreensteinPhase(float cosTheta, float g) {
 
 /**
  * Samples precomputed transmittance from LUT.
+ * Note: transmittanceLUT must be defined as sampler2D in the calling shader.
  * @param h Altitude in meters [0, 100000]
  * @param cosTheta Angle to zenith [-1, 1]
  */
-vec3 getTransmittance(float h, float cosTheta) {
+vec3 getTransmittance(sampler2D tex, float h, float cosTheta) {
 	vec2 uv = vec2(cosTheta * 0.5 + 0.5, h / 100000.0);
-	return texture(transmittanceLUT, uv).rgb;
+	return texture(tex, uv).rgb;
 }
 
 /**
@@ -55,16 +54,17 @@ float beerPowder(float density, float thickness, float powderStrength) {
 
 /**
  * Sky scattering approximation using Transmittance LUT.
+ * Note: transmittanceLUT must be defined as sampler2D in the calling shader.
  */
-vec3 calculateSkyColor(vec3 rayDir, vec3 sunDir, vec3 sunColor) {
+vec3 calculateSkyColor(sampler2D tex, vec3 rayDir, vec3 sunDir, vec3 sunColor) {
 	float cosTheta = dot(rayDir, sunDir);
 	float viewZenith = rayDir.y;
 	float sunZenith = sunDir.y;
 
 	// Transmittance from observer to atmosphere boundary
-	vec3 T_view = getTransmittance(0.0, viewZenith);
+	vec3 T_view = getTransmittance(tex, 0.0, viewZenith);
 	// Transmittance from boundary to observer along sun direction
-	vec3 T_sun = getTransmittance(0.0, sunZenith);
+	vec3 T_sun = getTransmittance(tex, 0.0, sunZenith);
 
 	// Approximate in-scattering
 	float ray = rayleighPhase(cosTheta);
