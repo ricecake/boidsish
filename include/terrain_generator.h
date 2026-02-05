@@ -149,6 +149,15 @@ namespace Boidsish {
 			// Interpolate normals for lighting
 			glm::vec3 final_norm = glm::normalize(bilerp(n0, n1, n2, n3, {tx, tz}));
 
+			// Apply deformations to match the mesh
+			if (deformation_manager_.HasDeformationAt(x, z)) {
+				auto def_result = deformation_manager_.QueryDeformations(x, z, final_pos.y, final_norm);
+				if (def_result.has_deformation) {
+					final_pos.y += def_result.total_height_delta;
+					final_norm = def_result.transformed_normal;
+				}
+			}
+
 			return {final_pos.y, final_norm};
 		}
 
