@@ -34,33 +34,56 @@ namespace Boidsish {
 				if (effect->GetName() == "Atmosphere" && is_enabled) {
 					auto atmosphere_effect = std::dynamic_pointer_cast<PostProcessing::AtmosphereEffect>(effect);
 					if (atmosphere_effect) {
-						float haze_density = atmosphere_effect->GetHazeDensity();
-						if (ImGui::SliderFloat("Haze Density", &haze_density, 0.0f, 0.05f, "%.4f")) {
-							atmosphere_effect->SetHazeDensity(haze_density);
+						if (ImGui::TreeNode("Haze")) {
+							float haze_density = atmosphere_effect->GetHazeDensity();
+							if (ImGui::SliderFloat("Density##Haze", &haze_density, 0.0f, 0.05f, "%.4f")) {
+								atmosphere_effect->SetHazeDensity(haze_density);
+							}
+							float haze_height = atmosphere_effect->GetHazeHeight();
+							if (ImGui::SliderFloat("Height##Haze", &haze_height, 0.0f, 100.0f)) {
+								atmosphere_effect->SetHazeHeight(haze_height);
+							}
+							glm::vec3 haze_color = atmosphere_effect->GetHazeColor();
+							if (ImGui::ColorEdit3("Color##Haze", &haze_color[0])) {
+								atmosphere_effect->SetHazeColor(haze_color);
+							}
+							float haze_g = atmosphere_effect->GetHazeG();
+							if (ImGui::SliderFloat("Anisotropy (G)##Haze", &haze_g, 0.0f, 0.99f)) {
+								atmosphere_effect->SetHazeG(haze_g);
+							}
+							ImGui::TreePop();
 						}
-						float haze_height = atmosphere_effect->GetHazeHeight();
-						if (ImGui::SliderFloat("Haze Height", &haze_height, 0.0f, 100.0f)) {
-							atmosphere_effect->SetHazeHeight(haze_height);
-						}
-						glm::vec3 haze_color = atmosphere_effect->GetHazeColor();
-						if (ImGui::ColorEdit3("Haze Color", &haze_color[0])) {
-							atmosphere_effect->SetHazeColor(haze_color);
-						}
-						float cloud_density = atmosphere_effect->GetCloudDensity();
-						if (ImGui::SliderFloat("Cloud Density", &cloud_density, 0.0f, 1.0f)) {
-							atmosphere_effect->SetCloudDensity(cloud_density);
-						}
-						float cloud_altitude = atmosphere_effect->GetCloudAltitude();
-						if (ImGui::SliderFloat("Cloud Altitude", &cloud_altitude, 0.0f, 200.0f)) {
-							atmosphere_effect->SetCloudAltitude(cloud_altitude);
-						}
-						float cloud_thickness = atmosphere_effect->GetCloudThickness();
-						if (ImGui::SliderFloat("Cloud Thickness", &cloud_thickness, 0.0f, 50.0f)) {
-							atmosphere_effect->SetCloudThickness(cloud_thickness);
-						}
-						glm::vec3 cloud_color = atmosphere_effect->GetCloudColor();
-						if (ImGui::ColorEdit3("Cloud Color", &cloud_color[0])) {
-							atmosphere_effect->SetCloudColor(cloud_color);
+
+						if (ImGui::TreeNode("Clouds")) {
+							float cloud_density = atmosphere_effect->GetCloudDensity();
+							if (ImGui::SliderFloat("Density##Cloud", &cloud_density, 0.0f, 1.0f)) {
+								atmosphere_effect->SetCloudDensity(cloud_density);
+							}
+							float cloud_altitude = atmosphere_effect->GetCloudAltitude();
+							if (ImGui::SliderFloat("Altitude##Cloud", &cloud_altitude, 0.0f, 200.0f)) {
+								atmosphere_effect->SetCloudAltitude(cloud_altitude);
+							}
+							float cloud_thickness = atmosphere_effect->GetCloudThickness();
+							if (ImGui::SliderFloat("Thickness##Cloud", &cloud_thickness, 0.0f, 50.0f)) {
+								atmosphere_effect->SetCloudThickness(cloud_thickness);
+							}
+							glm::vec3 cloud_color = atmosphere_effect->GetCloudColor();
+							if (ImGui::ColorEdit3("Color##Cloud", &cloud_color[0])) {
+								atmosphere_effect->SetCloudColor(cloud_color);
+							}
+							float cloud_g = atmosphere_effect->GetCloudG();
+							if (ImGui::SliderFloat("Anisotropy (G)##Cloud", &cloud_g, 0.0f, 0.99f)) {
+								atmosphere_effect->SetCloudG(cloud_g);
+							}
+							float cloud_boost = atmosphere_effect->GetCloudScatteringBoost();
+							if (ImGui::SliderFloat("Scattering Boost##Cloud", &cloud_boost, 1.0f, 10.0f)) {
+								atmosphere_effect->SetCloudScatteringBoost(cloud_boost);
+							}
+							float powder = atmosphere_effect->GetCloudPowderStrength();
+							if (ImGui::SliderFloat("Powder Strength##Cloud", &powder, 0.0f, 1.0f)) {
+								atmosphere_effect->SetCloudPowderStrength(powder);
+							}
+							ImGui::TreePop();
 						}
 					}
 				}

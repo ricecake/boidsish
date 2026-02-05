@@ -1,0 +1,26 @@
+#version 430 core
+
+layout(local_size_x = 8, local_size_y = 8, local_size_z = 8) in;
+
+layout(rgba8, binding = 1) uniform writeonly image3D cloudNoiseLUT;
+
+#include "lygia/generative/worley.glsl"
+
+void main() {
+	ivec3 texel = ivec3(gl_GlobalInvocationID.xyz);
+	ivec3 size = imageSize(cloudNoiseLUT);
+
+	if (texel.x >= size.x || texel.y >= size.y || texel.z >= size.z) return;
+
+	vec3 p = vec3(texel) / vec3(size);
+
+	// Generate multi-octave Worley noise
+	float v1 = worley(p * 4.0);
+	float v2 = worley(p * 8.0);
+	float v3 = worley(p * 16.0);
+	float v4 = worley(p * 32.0);
+
+	vec4 noise = vec4(v1, v2, v3, v4);
+
+	imageStore(cloudNoiseLUT, texel, noise);
+}
