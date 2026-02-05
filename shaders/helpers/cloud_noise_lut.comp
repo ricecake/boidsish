@@ -151,7 +151,9 @@ void main() {
 	ivec3 size = imageSize(cloudNoiseLUT);
 	vec3  uv = (vec3(texel) + 0.5) / vec3(size);
 
-	vec4 noise = generatePackedNoise(uv);
+	// vec4 noise = generatePackedNoise(uv);
+	// imageStore(cloudNoiseLUT, texel, noise);
 
-	imageStore(cloudNoiseLUT, texel, noise);
+	vec3 debugColor = vec3(texel) / vec3(size);
+	imageStore(cloudNoiseLUT, texel, vec4(debugColor, 1.0));
 }

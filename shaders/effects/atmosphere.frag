@@ -155,14 +155,148 @@ float remap(float value, float original_min, float original_max, float new_min, 
 	return new_min + (((value - original_min) / (original_max - original_min)) * (new_max - new_min));
 }
 
+// 1. CUSTOM TILED WORLEY
+// Lygia's standard worley doesn't expose the tile period, so we implement a
+// grid-wrapping version here.
+// p: coordinate
+// tile: integer repetition frequency (e.g., 4.0, 8.0)
+float worleyTiled(vec3 p, float tile) {
+	vec3 id = floor(p);
+	vec3 fd = fract(p);
+
+	float minDist = 1.0;
+
+	// Search neighbors
+	for (int k = -1; k <= 1; k++) {
+		for (int j = -1; j <= 1; j++) {
+			for (int i = -1; i <= 1; i++) {
+				vec3 neighbor = vec3(float(i), float(j), float(k));
+
+				// CRITICAL: Wrap the neighbor lookup for seamless tiling
+				// This ensures the point at (0,0,0) matches (tile, tile, tile)
+				vec3 uv = id + neighbor;
+				uv = mod(uv, tile); // Wrap the grid ID
+
+				// Hash the wrapped grid ID to get a random point offset
+				// (Using a simple hash for portability, or use lygia's hash)
+				vec3 pointOffset = fract(
+					sin(vec3(
+						dot(uv, vec3(127.1, 311.7, 74.7)),
+						dot(uv, vec3(269.5, 183.3, 246.1)),
+						dot(uv, vec3(113.5, 271.9, 124.6))
+					)) *
+					43758.5453
+				);
+
+				// Animate pointOffset here with time if you want internal motion
+				// pointOffset = 0.5 + 0.5 * sin(u_time + 6.2831 * pointOffset);
+
+				vec3  diff = neighbor + pointOffset - fd;
+				float dist = length(diff);
+				minDist = min(minDist, dist);
+			}
+		}
+	}
+
+	// Invert so 1.0 is the center of the cell (billowy)
+	return clamp(1.0 - minDist, 0.0, 1.0);
+}
+
+// A simple Tiled Gradient Noise (Perlin-like)
+// p: coordinate, tile: repeat frequency
+
+// Hash function that wraps 'i' on the 'tile' boundary
+vec3 wrapHash(vec3 p, float tile) {
+	p = mod(p, tile); // <--- FORCE WRAP
+	return fract(
+			   sin(vec3(
+				   dot(p, vec3(127.1, 311.7, 74.7)),
+				   dot(p, vec3(269.5, 183.3, 246.1)),
+				   dot(p, vec3(113.5, 271.9, 124.6))
+			   )) *
+			   43758.5453
+		   ) *
+		2.0 -
+		1.0;
+}
+
+float gradientNoiseTiled(vec3 p, float tile) {
+	vec3 i = floor(p);
+	vec3 f = fract(p);
+
+	// Quintic interpolation (smoother than cubic)
+	vec3 u = f * f * f * (f * (f * 6.0 - 15.0) + 10.0);
+
+	// 8 Corners of the cube
+	return mix(
+		mix(mix(dot(wrapHash(i + vec3(0, 0, 0), tile), f - vec3(0, 0, 0)),
+	            dot(wrapHash(i + vec3(1, 0, 0), tile), f - vec3(1, 0, 0)),
+	            u.x),
+	        mix(dot(wrapHash(i + vec3(0, 1, 0), tile), f - vec3(0, 1, 0)),
+	            dot(wrapHash(i + vec3(1, 1, 0), tile), f - vec3(1, 1, 0)),
+	            u.x),
+	        u.y),
+		mix(mix(dot(wrapHash(i + vec3(0, 0, 1), tile), f - vec3(0, 0, 1)),
+	            dot(wrapHash(i + vec3(1, 0, 1), tile), f - vec3(1, 0, 1)),
+	            u.x),
+	        mix(dot(wrapHash(i + vec3(0, 1, 1), tile), f - vec3(0, 1, 1)),
+	            dot(wrapHash(i + vec3(1, 1, 1), tile), f - vec3(1, 1, 1)),
+	            u.x),
+	        u.y),
+		u.z
+	);
+}
+
+// 2. FBM CONSTRUCTION
+float getCloudNoise(vec3 uv, float tileFreq) {
+	// A. Base Cloud Shape (Worley FBM)
+	// We layer 3 octaves of Worley noise.
+	float w1 = worleyTiled(uv * tileFreq, tileFreq);
+	float w2 = worleyTiled(uv * tileFreq * 2.0, tileFreq * 2.0);
+	float w3 = worleyTiled(uv * tileFreq * 4.0, tileFreq * 4.0);
+
+	// FBM: Combine with diminishing weights (0.625, 0.25, 0.125)
+	float worleyFBM = w1 * 0.625 + w2 * 0.25 + w3 * 0.125;
+
+	// B. Smooth Irregularity (Simplex Noise)
+	// We use Simplex to "distort" or "erode" the Worley base.
+	// Ensure the simplex frequency is also a multiple of your base tile if you want
+	// strict looping, though high-freq simplex often hides seams well enough.
+	float simplex = snoise(uv * tileFreq * 2.0);
+	simplex = simplex * 0.5 + 0.5; // Remap to 0-1
+
+	// C. The "Perlin-Worley" Mix
+	// We use the Simplex noise to erode the Worley noise.
+	// As simplex increases, we push the worley value down.
+	float finalNoise = remap(worleyFBM, simplex * 0.3, 1.0, 0.0, 1.0);
+
+	return clamp(finalNoise, 0.0, 1.0);
+}
+
+vec4 generatePackedNoise(vec3 uv) {
+	float lowFreq = worleyTiled(uv * 4.0, 4.0);
+	float midFreq = worleyTiled(uv * 8.0, 8.0);
+	float highFreq = worleyTiled(uv * 16.0, 16.0);
+	// float simplex = snoise(uv * 4.0);
+	// simplex = simplex * 0.5 + 0.5; // Remap -1..1 to 0..1
+
+	// float simplex = 1.0 - worleyTiled(uv * 4.0, 4.0);
+	// simplex = simplex * 0.5 + 0.5;
+
+	float simplex = gradientNoiseTiled(uv * 4.0, 4.0); // Returns -1..1
+	simplex = simplex * 0.5 + 0.5;                     // Remap to 0..1
+
+	return vec4(lowFreq, midFreq, highFreq, simplex);
+}
+
 float sampleCloudDensity(vec3 p) {
 	// Sample the packed texture once
-	vec3 uvw = p * vec3(0.001, 0.0005, 0.001);
+	vec3 uvw = p * vec3(0.001, 0.01, 0.001);
 
 	uvw = fract(uvw);
-	vec4 noiseData = texture(cloudNoiseLUT, uvw);
-
-	float u_erosionScale = 0.5; // e.g., 0.5
+	// vec4 noiseData = texture(cloudNoiseLUT, uvw);
+	vec4  noiseData = generatePackedNoise(uvw);
+	float u_erosionScale = 0.6; // e.g., 0.5
 	float u_threshold = 0.2;    // e.g., 0.2 (cloud coverage)
 
 	float baseCloud = noiseData.r;  // Low freq
@@ -280,4 +414,5 @@ void main() {
 	result = mix(result, currentHazeColor, fogFactor);
 
 	FragColor = vec4(result, 1.0);
+	// FragColor = vec4(vec3(sampleCloudDensity(fract(worldPos))), 1.0);
 }
