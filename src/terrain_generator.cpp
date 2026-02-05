@@ -194,8 +194,8 @@ namespace Boidsish {
 		// This prevents pop-in by pre-registering nearby chunks even if not visible yet
 		if (render_manager_) {
 			const int   max_registrations_per_frame = 32; // Increased for faster catch-up
-			const float preload_distance_sq = (dynamic_view_distance * chunk_size_ * 0.5f) *
-				(dynamic_view_distance * chunk_size_ * 0.5f);
+			const float preload_distance_sq = (dynamic_view_distance * scaled_chunk_size * 0.5f) *
+				(dynamic_view_distance * scaled_chunk_size * 0.5f);
 
 			// Collect chunks needing registration with their distances and frustum status
 			struct ChunkToRegister {
@@ -529,15 +529,15 @@ namespace Boidsish {
 		bool                                has_terrain = false;
 
 		// Check if this chunk has any deformations
-		float chunk_min_x = static_cast<float>(chunkX * chunk_size_);
-		float chunk_min_z = static_cast<float>(chunkZ * chunk_size_);
-		float chunk_max_x = chunk_min_x + chunk_size_;
-		float chunk_max_z = chunk_min_z + chunk_size_;
+		float scaled_chunk_size = static_cast<float>(chunk_size_) * world_scale_;
+		float chunk_min_x = static_cast<float>(chunkX) * scaled_chunk_size;
+		float chunk_min_z = static_cast<float>(chunkZ) * scaled_chunk_size;
+		float chunk_max_x = chunk_min_x + scaled_chunk_size;
+		float chunk_max_z = chunk_min_z + scaled_chunk_size;
 		bool  chunk_has_deformations = deformation_manager_
 										  .ChunkHasDeformations(chunk_min_x, chunk_min_z, chunk_max_x, chunk_max_z);
 
 		// Generate heightmap
-		float scaled_chunk_size = static_cast<float>(chunk_size_) * world_scale_;
 
 		for (int i = 0; i < num_vertices_x; ++i) {
 			for (int j = 0; j < num_vertices_z; ++j) {
@@ -554,8 +554,8 @@ namespace Boidsish {
 			has_terrain = true; // Deformations can create terrain where there was none
 			for (int i = 0; i < num_vertices_x; ++i) {
 				for (int j = 0; j < num_vertices_z; ++j) {
-					float worldX = (chunkX * chunk_size_ + i);
-					float worldZ = (chunkZ * chunk_size_ + j);
+					float worldX = (chunkX * chunk_size_ + i) * world_scale_;
+					float worldZ = (chunkZ * chunk_size_ + j) * world_scale_;
 
 					if (deformation_manager_.HasDeformationAt(worldX, worldZ)) {
 						float     base_height = heightmap[i][j][0];
@@ -579,8 +579,8 @@ namespace Boidsish {
 			// Recompute normals using finite differences on deformed heightmap
 			for (int i = 0; i < num_vertices_x; ++i) {
 				for (int j = 0; j < num_vertices_z; ++j) {
-					float worldX = (chunkX * chunk_size_ + i);
-					float worldZ = (chunkZ * chunk_size_ + j);
+					float worldX = (chunkX * chunk_size_ + i) * world_scale_;
+					float worldZ = (chunkZ * chunk_size_ + j) * world_scale_;
 
 					if (deformation_manager_.HasDeformationAt(worldX, worldZ)) {
 						// Finite differences for gradient
@@ -663,7 +663,7 @@ namespace Boidsish {
 		// Ray marching to find a segment that contains the intersection
 		while (current_dist < max_dist) {
 			current_pos = origin + dir * current_dist;
-			float terrain_height = pointGenerate(current_pos.x, current_pos.z).x;
+			float terrain_height = std::get<0>(GetPointProperties(current_pos.x, current_pos.z));
 
 			if (current_pos.y < terrain_height) {
 				// We found an intersection between the previous and current step.
@@ -676,7 +676,7 @@ namespace Boidsish {
 					float     mid_dist = (start_dist + end_dist) / 2.0f;
 					glm::vec3 mid_pos = origin + dir * mid_dist;
 
-					float mid_terrain_height = pointGenerate(mid_pos.x, mid_pos.z).x;
+					float mid_terrain_height = std::get<0>(GetPointProperties(mid_pos.x, mid_pos.z));
 
 					if (mid_pos.y < mid_terrain_height) {
 						end_dist = mid_dist; // Intersection is in the first half
@@ -868,8 +868,8 @@ namespace Boidsish {
 
 		for (int y = 0; y < texture_dim; ++y) {
 			for (int x = 0; x < texture_dim; ++x) {
-				float worldX = (super_chunk_x * texture_dim + x);
-				float worldZ = (super_chunk_z * texture_dim + y);
+				float worldX = (super_chunk_x * texture_dim + x) * world_scale_;
+				float worldZ = (super_chunk_z * texture_dim + y) * world_scale_;
 
 				auto [height, normal] = pointProperties(worldX, worldZ);
 
@@ -975,13 +975,13 @@ namespace Boidsish {
 
 	std::vector<uint16_t> TerrainGenerator::GenerateTextureForArea(int world_x, int world_z, int size) {
 		const int kSuperChunkSizeInChunks = chunk_size_;
-		const int texture_dim = kSuperChunkSizeInChunks * chunk_size_;
+		const float scaled_texture_dim = kSuperChunkSizeInChunks * chunk_size_ * world_scale_;
 
 		// Determine the range of superchunks needed
-		int start_chunk_x = floor(static_cast<float>(world_x) / texture_dim);
-		int end_chunk_x = floor(static_cast<float>(world_x + size - 1) / texture_dim);
-		int start_chunk_z = floor(static_cast<float>(world_z) / texture_dim);
-		int end_chunk_z = floor(static_cast<float>(world_z + size - 1) / texture_dim);
+		int start_chunk_x = floor(static_cast<float>(world_x) / scaled_texture_dim);
+		int end_chunk_x = floor(static_cast<float>(world_x + size - 1) / scaled_texture_dim);
+		int start_chunk_z = floor(static_cast<float>(world_z) / scaled_texture_dim);
+		int end_chunk_z = floor(static_cast<float>(world_z + size - 1) / scaled_texture_dim);
 
 		// Create the destination texture
 		std::vector<uint16_t> stitched_texture(size * size * 4);
@@ -989,17 +989,21 @@ namespace Boidsish {
 		// Iterate over the needed superchunks and stitch them together
 		for (int cz = start_chunk_z; cz <= end_chunk_z; ++cz) {
 			for (int cx = start_chunk_x; cx <= end_chunk_x; ++cx) {
-				std::vector<uint16_t> superchunk = GenerateSuperChunkTexture(cx * texture_dim, cz * texture_dim);
+				std::vector<uint16_t> superchunk = GenerateSuperChunkTexture(
+					cx * static_cast<int>(scaled_texture_dim),
+					cz * static_cast<int>(scaled_texture_dim)
+				);
 
 				// Calculate the region to copy from the superchunk
-				int src_start_x = std::max(0, world_x - cx * texture_dim);
-				int src_end_x = std::min(texture_dim, world_x + size - cx * texture_dim);
-				int src_start_z = std::max(0, world_z - cz * texture_dim);
-				int src_end_z = std::min(texture_dim, world_z + size - cz * texture_dim);
+				int texture_dim = kSuperChunkSizeInChunks * chunk_size_;
+				int src_start_x = std::max(0, static_cast<int>((world_x - cx * scaled_texture_dim) / world_scale_));
+				int src_end_x = std::min(texture_dim, static_cast<int>((world_x + size - cx * scaled_texture_dim) / world_scale_));
+				int src_start_z = std::max(0, static_cast<int>((world_z - cz * scaled_texture_dim) / world_scale_));
+				int src_end_z = std::min(texture_dim, static_cast<int>((world_z + size - cz * scaled_texture_dim) / world_scale_));
 
 				// Calculate the region to copy to in the destination texture
-				int dest_start_x = std::max(0, cx * texture_dim - world_x);
-				int dest_start_z = std::max(0, cz * texture_dim - world_z);
+				int dest_start_x = std::max(0, static_cast<int>((cx * scaled_texture_dim - world_x) / world_scale_));
+				int dest_start_z = std::max(0, static_cast<int>((cz * scaled_texture_dim - world_z) / world_scale_));
 
 				for (int z = src_start_z; z < src_end_z; ++z) {
 					for (int x = src_start_x; x < src_end_x; ++x) {
@@ -1024,9 +1028,11 @@ namespace Boidsish {
 	// ========== Cache-Preferring Terrain Query Implementations ==========
 
 	std::optional<std::tuple<float, glm::vec3>> TerrainGenerator::InterpolateFromCachedChunk(float x, float z) const {
+		float scaled_chunk_size = static_cast<float>(chunk_size_) * world_scale_;
+
 		// Determine which chunk this position belongs to
-		int chunk_x = static_cast<int>(std::floor(x / static_cast<float>(chunk_size_)));
-		int chunk_z = static_cast<int>(std::floor(z / static_cast<float>(chunk_size_)));
+		int chunk_x = static_cast<int>(std::floor(x / scaled_chunk_size));
+		int chunk_z = static_cast<int>(std::floor(z / scaled_chunk_size));
 
 		std::lock_guard<std::recursive_mutex> lock(chunk_cache_mutex_);
 
@@ -1044,18 +1050,18 @@ namespace Boidsish {
 		}
 
 		// Convert world position to local chunk coordinates
-		float chunk_origin_x = chunk_x * static_cast<float>(chunk_size_);
-		float chunk_origin_z = chunk_z * static_cast<float>(chunk_size_);
+		float chunk_origin_x = static_cast<float>(chunk_x) * scaled_chunk_size;
+		float chunk_origin_z = static_cast<float>(chunk_z) * scaled_chunk_size;
 		float local_x = x - chunk_origin_x;
 		float local_z = z - chunk_origin_z;
 
-		// Terrain mesh is generated with 1-unit spacing between vertices
+		// Terrain mesh is generated with world_scale_ spacing between vertices
 		// The chunk has (chunk_size_ + 1) vertices along each edge
 		int grid_size = chunk_size_ + 1;
 
-		// Find the grid cell
-		int ix = static_cast<int>(std::floor(local_x));
-		int iz = static_cast<int>(std::floor(local_z));
+		// Find the grid cell in vertex units [0, chunk_size]
+		int ix = static_cast<int>(std::floor(local_x / world_scale_));
+		int iz = static_cast<int>(std::floor(local_z / world_scale_));
 
 		// Clamp to valid range
 		ix = std::clamp(ix, 0, chunk_size_ - 1);
@@ -1073,8 +1079,8 @@ namespace Boidsish {
 		}
 
 		// Bilinear interpolation factors
-		float fx = local_x - static_cast<float>(ix);
-		float fz = local_z - static_cast<float>(iz);
+		float fx = (local_x / world_scale_) - static_cast<float>(ix);
+		float fz = (local_z / world_scale_) - static_cast<float>(iz);
 		fx = std::clamp(fx, 0.0f, 1.0f);
 		fz = std::clamp(fz, 0.0f, 1.0f);
 
@@ -1104,8 +1110,9 @@ namespace Boidsish {
 	}
 
 	bool TerrainGenerator::IsPositionCached(float x, float z) const {
-		int chunk_x = static_cast<int>(std::floor(x / static_cast<float>(chunk_size_)));
-		int chunk_z = static_cast<int>(std::floor(z / static_cast<float>(chunk_size_)));
+		float scaled_chunk_size = static_cast<float>(chunk_size_) * world_scale_;
+		int   chunk_x = static_cast<int>(std::floor(x / scaled_chunk_size));
+		int   chunk_z = static_cast<int>(std::floor(z / scaled_chunk_size));
 
 		std::lock_guard<std::recursive_mutex> lock(chunk_cache_mutex_);
 		return chunk_cache_.find({chunk_x, chunk_z}) != chunk_cache_.end();
@@ -1256,8 +1263,13 @@ namespace Boidsish {
 		static std::atomic<uint32_t> crater_id_counter{1};
 		uint32_t                     id = crater_id_counter++;
 
+		// Scale crater parameters by world scale so it maintains relative size
+		float s_radius = radius * world_scale_;
+		float s_depth = depth * world_scale_;
+		float s_rim_height = rim_height * world_scale_;
+
 		auto crater = std::make_shared<
-			CraterDeformation>(id, center, radius, depth, irregularity, rim_height, static_cast<uint32_t>(eng_()));
+			CraterDeformation>(id, center, s_radius, s_depth, irregularity, s_rim_height, static_cast<uint32_t>(eng_()));
 
 		deformation_manager_.AddDeformation(crater);
 		InvalidateDeformedChunks(id);
@@ -1275,8 +1287,13 @@ namespace Boidsish {
 		static std::atomic<uint32_t> flatten_id_counter{1000000}; // Offset to avoid collision with craters
 		uint32_t                     id = flatten_id_counter++;
 
-		auto flatten =
-			std::make_shared<FlattenSquareDeformation>(id, center, half_width, half_depth, blend_distance, rotation_y);
+		// Scale parameters by world scale
+		float s_half_width = half_width * world_scale_;
+		float s_half_depth = half_depth * world_scale_;
+		float s_blend_distance = blend_distance * world_scale_;
+
+		auto flatten = std::make_shared<
+			FlattenSquareDeformation>(id, center, s_half_width, s_half_depth, s_blend_distance, rotation_y);
 
 		deformation_manager_.AddDeformation(flatten);
 		InvalidateDeformedChunks(id);
