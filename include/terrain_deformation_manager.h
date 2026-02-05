@@ -201,6 +201,11 @@ namespace Boidsish {
 		size_t GetDeformationCount() const;
 
 		/**
+		 * @brief Check if there are any deformations
+		 */
+		bool HasDeformations() const { return GetDeformationCount() > 0; }
+
+		/**
 		 * @brief Get approximate memory usage
 		 */
 		size_t GetMemoryUsage() const;
