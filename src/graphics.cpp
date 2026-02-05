@@ -2140,14 +2140,14 @@ namespace Boidsish {
 				impl->reflection_vp = impl->projection * reflection_view;
 				// Render opaque geometry first for early-Z benefit
 				// Use reduced tessellation (25%) for reflection pass - it's blurred anyway
-				impl->RenderTerrain(
-					reflection_view,
-					impl->projection,
-					glm::vec4(0, 1, 0, 0.01),
-					false,
-					std::nullopt,
-					0.25f
-				);
+				// impl->RenderTerrain(
+				// 	reflection_view,
+				// 	impl->projection,
+				// 	glm::vec4(0, 1, 0, 0.01),
+				// 	false,
+				// 	std::nullopt,
+				// 	0.25f
+				// );
 				impl->RenderShapes(
 					reflection_view,
 					reflection_cam,
