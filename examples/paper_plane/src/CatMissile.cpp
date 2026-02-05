@@ -279,9 +279,10 @@ namespace Boidsish {
 		glm::vec3 local_forward = glm::vec3(0, 0, -1);
 
 		// Spiral movement that tightens as it approaches target
-		float spiral_amplitude = 0.25f;
+		float max_spiral = 0.25;
+		float spiral_amplitude = max_spiral;
 		if (target_ != nullptr) {
-			spiral_amplitude = glm::mix(0.0f, 0.25f, std::clamp(target_distance / 300.0f, 0.0f, 1.0f));
+			spiral_amplitude = glm::mix(0.0f, max_spiral, std::clamp(target_distance / 300.0f, 0.0f, 1.0f));
 		}
 		target_dir_local.x += sin(lived_ * 2.0f) * spiral_amplitude;
 		target_dir_local.y += cos(lived_ * 1.5f) * spiral_amplitude;

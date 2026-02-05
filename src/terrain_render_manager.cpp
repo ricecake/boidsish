@@ -297,9 +297,10 @@ namespace Boidsish {
 						std::pair<int, int> farthest_key;
 
 						for (const auto& [key, chunk] : chunks_) {
+							float     scaled_chunk_size = chunk_size_ * last_world_scale_;
 							glm::vec2 chunk_center(
-								chunk.world_offset.x + chunk_size_ * 0.5f,
-								chunk.world_offset.y + chunk_size_ * 0.5f
+								chunk.world_offset.x + scaled_chunk_size * 0.5f,
+								chunk.world_offset.y + scaled_chunk_size * 0.5f
 							);
 							float dist_sq = glm::dot(chunk_center - camera_pos_2d, chunk_center - camera_pos_2d);
 							if (dist_sq > max_dist_sq) {
@@ -372,10 +373,15 @@ namespace Boidsish {
 		return chunks_.count(chunk_key) > 0;
 	}
 
-	bool TerrainRenderManager::IsChunkVisible(const ChunkInfo& chunk, const Frustum& frustum) const {
+	bool TerrainRenderManager::IsChunkVisible(const ChunkInfo& chunk, const Frustum& frustum, float world_scale) const {
 		// Build AABB for this chunk
+		float     scaled_chunk_size = chunk_size_ * world_scale;
 		glm::vec3 min_corner(chunk.world_offset.x, chunk.min_y, chunk.world_offset.y);
-		glm::vec3 max_corner(chunk.world_offset.x + chunk_size_, chunk.max_y, chunk.world_offset.y + chunk_size_);
+		glm::vec3 max_corner(
+			chunk.world_offset.x + scaled_chunk_size,
+			chunk.max_y,
+			chunk.world_offset.y + scaled_chunk_size
+		);
 
 		glm::vec3 center = (min_corner + max_corner) * 0.5f;
 		glm::vec3 half_size = (max_corner - min_corner) * 0.5f;
@@ -396,11 +402,13 @@ namespace Boidsish {
 		return true; // Inside or intersecting all planes
 	}
 
-	void TerrainRenderManager::PrepareForRender(const Frustum& frustum, const glm::vec3& camera_pos) {
+	void
+	TerrainRenderManager::PrepareForRender(const Frustum& frustum, const glm::vec3& camera_pos, float world_scale) {
 		std::lock_guard<std::mutex> lock(mutex_);
 
-		// Store camera position for LRU eviction decisions in RegisterChunk
+		// Store camera position and world scale for LRU eviction decisions in RegisterChunk
 		last_camera_pos_ = camera_pos;
+		last_world_scale_ = world_scale;
 
 		visible_instances_.clear();
 		visible_instances_.reserve(chunks_.size());
@@ -417,7 +425,7 @@ namespace Boidsish {
 		glm::vec2 camera_pos_2d(camera_pos.x, camera_pos.z);
 
 		for (const auto& [key, chunk] : chunks_) {
-			if (IsChunkVisible(chunk, frustum)) {
+			if (IsChunkVisible(chunk, frustum, world_scale)) {
 				InstanceData instance{};
 				instance.world_offset_and_slice = glm::vec4(
 					chunk.world_offset.x,
@@ -428,9 +436,10 @@ namespace Boidsish {
 				instance.bounds = glm::vec4(chunk.min_y, chunk.max_y, 0.0f, 0.0f);
 
 				// Calculate distance from chunk center to camera
+				float     scaled_chunk_size = chunk_size_ * world_scale;
 				glm::vec2 chunk_center(
-					chunk.world_offset.x + chunk_size_ * 0.5f,
-					chunk.world_offset.y + chunk_size_ * 0.5f
+					chunk.world_offset.x + scaled_chunk_size * 0.5f,
+					chunk.world_offset.y + scaled_chunk_size * 0.5f
 				);
 				float dist_sq = glm::dot(chunk_center - camera_pos_2d, chunk_center - camera_pos_2d);
 
@@ -512,7 +521,7 @@ namespace Boidsish {
 		shader.setFloat("uTessQualityMultiplier", tess_quality_multiplier);
 		shader.setFloat("uTessLevelMax", 64.0f);
 		shader.setFloat("uTessLevelMin", 1.0f);
-		shader.setInt("uChunkSize", chunk_size_);
+		shader.setInt("uChunkSize", static_cast<int>(chunk_size_ * last_world_scale_));
 
 		if (clip_plane) {
 			shader.setVec4("clipPlane", *clip_plane);
@@ -567,7 +576,7 @@ namespace Boidsish {
 					chunk.world_offset.x, // x world offset
 					chunk.world_offset.y, // z world offset (stored as y in vec2)
 					static_cast<float>(chunk.texture_slice),
-					static_cast<float>(chunk_size_)
+					static_cast<float>(chunk_size_ * last_world_scale_)
 				)
 			);
 		}
