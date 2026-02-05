@@ -1001,7 +1001,9 @@ namespace Boidsish {
 		}
 
 		glm::mat4 SetupMatrices(const Camera& cam_to_use) {
-			projection = glm::perspective(glm::radians(cam_to_use.fov), (float)width / (float)height, 0.1f, 1000.0f);
+			float world_scale = terrain_generator ? terrain_generator->GetWorldScale() : 1.0f;
+			float far_plane = 1000.0f * std::max(1.0f, world_scale);
+			projection = glm::perspective(glm::radians(cam_to_use.fov), (float)width / (float)height, 0.1f, far_plane);
 			glm::vec3 cameraPos(cam_to_use.x, cam_to_use.y, cam_to_use.z);
 			glm::mat4 view;
 
@@ -2009,9 +2011,11 @@ namespace Boidsish {
 		if (impl->terrain_generator) {
 			// Create a widened and predictive frustum for the generator
 			// This helps pre-generate chunks just out of view and in the direction of rotation
-			float     generator_fov = impl->camera.fov + 15.0f; // 15 degrees wider FOV
+			float world_scale = impl->terrain_generator->GetWorldScale();
+			float far_plane = 1000.0f * std::max(1.0f, world_scale);
+			float generator_fov = impl->camera.fov + 15.0f; // 15 degrees wider FOV
 			glm::mat4 generator_proj =
-				glm::perspective(glm::radians(generator_fov), (float)impl->width / (float)impl->height, 0.1f, 1000.0f);
+				glm::perspective(glm::radians(generator_fov), (float)impl->width / (float)impl->height, 0.1f, far_plane);
 
 			// Predictive orientation based on current angular velocity
 			float lead_time = 0.4f; // Look 0.4 seconds into the future
@@ -2319,11 +2323,12 @@ namespace Boidsish {
 				const auto& info = shadow_map_registry[map_idx];
 				auto&       state = impl->shadow_map_states_[map_idx];
 
+				float world_scale = terrain_generator ? terrain_generator->GetWorldScale() : 1.0f;
 				impl->shadow_manager->BeginShadowPass(
 					info.map_index,
 					*info.light,
 					scene_center,
-					500.0f,
+					500.0f * std::max(1.0f, world_scale),
 					info.cascade_index,
 					view_matrix,
 					impl->camera.fov,
@@ -2524,11 +2529,13 @@ namespace Boidsish {
 			// Construct view and projection matrices from camera state
 			glm::vec3 cameraPos(impl->camera.x, impl->camera.y, impl->camera.z);
 			glm::mat4 view = glm::lookAt(cameraPos, cameraPos + impl->camera.front(), impl->camera.up());
+			float world_scale = impl->terrain_generator ? impl->terrain_generator->GetWorldScale() : 1.0f;
+			float far_plane = 1000.0f * std::max(1.0f, world_scale);
 			glm::mat4 proj = glm::perspective(
 				glm::radians(impl->camera.fov),
 				(float)impl->width / (float)impl->height,
 				0.1f,
-				1000.0f
+				far_plane
 			);
 
 			// Update terrain once to start chunk loading around the camera
@@ -2630,9 +2637,12 @@ namespace Boidsish {
 
 		glm::vec3 ray_dir = glm::normalize(far_plane_pos - ray_origin);
 
+		float world_scale = impl->terrain_generator ? impl->terrain_generator->GetWorldScale() : 1.0f;
+		float max_ray_dist = 1000.0f * std::max(1.0f, world_scale);
+
 		float                      distance;
 		[[maybe_unused]] glm::vec3 normal;
-		if (impl->terrain_generator->RaycastCached(ray_origin, ray_dir, 1000.0f, distance, normal)) {
+		if (impl->terrain_generator->RaycastCached(ray_origin, ray_dir, max_ray_dist, distance, normal)) {
 			return ray_origin + ray_dir * distance;
 		}
 

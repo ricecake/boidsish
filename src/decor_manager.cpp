@@ -223,7 +223,7 @@ namespace Boidsish {
 				placement_shader_->setVec2("u_chunkWorldOffset", chunk_offset);
 				placement_shader_->setFloat("u_chunkSlice", chunk_slice);
 				;
-				placement_shader_->setFloat("u_chunkSize", chunk_size);
+				placement_shader_->setFloat("u_chunkSize", chunk_size * world_scale);
 
 				// Dispatch compute shader for this chunk
 				// 4x4 work groups of 8x8 threads = 32x32 potential placement points per chunk
