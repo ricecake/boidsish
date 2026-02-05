@@ -7,6 +7,7 @@
 
 #include <GL/glew.h>
 #include <glm/glm.hpp>
+#include "terrain.h"
 
 class Shader;
 
@@ -38,6 +39,7 @@ namespace Boidsish {
 		 * @param min_y Minimum height in chunk
 		 * @param max_y Maximum height in chunk
 		 * @param world_offset World position offset for this chunk
+		 * @param occluders Optional occluder quads for visibility testing
 		 */
 		virtual void RegisterChunk(
 			std::pair<int, int>              chunk_key,
@@ -46,7 +48,8 @@ namespace Boidsish {
 			const std::vector<unsigned int>& indices,
 			float                            min_y,
 			float                            max_y,
-			const glm::vec3&                 world_offset
+			const glm::vec3&                 world_offset,
+			const std::vector<OccluderQuad>& occluders = {}
 		) = 0;
 
 		/**
@@ -97,6 +100,15 @@ namespace Boidsish {
 		 * @brief Get chunk size.
 		 */
 		virtual int GetChunkSize() const = 0;
+
+		/**
+		 * @brief Render occluder quads for debugging.
+		 *
+		 * Visualizes the generated occluder geometry as wireframes.
+		 *
+		 * @param shader Debug shader to use for rendering
+		 */
+		virtual void RenderOccluders(Shader& shader) = 0;
 	};
 
 } // namespace Boidsish

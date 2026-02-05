@@ -9,6 +9,7 @@
 #include <iostream>
 #include <numeric>
 #include <ranges>
+#include <stack>
 #include <string>
 #include <vector>
 
@@ -154,8 +155,13 @@ namespace Boidsish {
 					auto&                   future = const_cast<TaskHandle<TerrainGenerationResult>&>(pair.second);
 					TerrainGenerationResult result = future.get();
 					if (result.has_terrain) {
-						auto terrain_chunk =
-							std::make_shared<Terrain>(result.indices, result.positions, result.normals, result.proxy);
+						auto terrain_chunk = std::make_shared<Terrain>(
+							result.indices,
+							result.positions,
+							result.normals,
+							result.proxy,
+							result.occluders
+						);
 						terrain_chunk->SetPosition(result.chunk_x * chunk_size_, 0, result.chunk_z * chunk_size_);
 
 						if (render_manager_) {
@@ -243,7 +249,8 @@ namespace Boidsish {
 					chunk.terrain->GetIndices(),
 					chunk.terrain->proxy.minY,
 					chunk.terrain->proxy.maxY,
-					glm::vec3(chunk.key.first * chunk_size_, 0, chunk.key.second * chunk_size_)
+					glm::vec3(chunk.key.first * chunk_size_, 0, chunk.key.second * chunk_size_),
+					chunk.terrain->occluders
 				);
 				registrations_this_frame++;
 			}
@@ -403,6 +410,130 @@ namespace Boidsish {
 		return height;
 	};
 
+	namespace {
+		struct Rect {
+			int start_row, start_col, num_rows, num_cols;
+		};
+
+		Rect findLargestRectangle(std::vector<std::vector<bool>>& grid) {
+			int rows = grid.size();
+			if (rows == 0)
+				return {0, 0, 0, 0};
+			int cols = grid[0].size();
+
+			std::vector<int> heights(cols, 0);
+			Rect             maxRect = {0, 0, 0, 0};
+			int              maxArea = 0;
+
+			for (int r = 0; r < rows; ++r) {
+				for (int c = 0; c < cols; ++c) {
+					heights[c] = grid[r][c] ? heights[c] + 1 : 0;
+				}
+
+				// Largest rectangle in histogram
+				std::stack<int> s;
+				for (int i = 0; i <= cols; ++i) {
+					int h = (i == cols) ? 0 : heights[i];
+					while (!s.empty() && heights[s.top()] >= h) {
+						int height = heights[s.top()];
+						s.pop();
+						int width = s.empty() ? i : i - s.top() - 1;
+						if (height * width > maxArea) {
+							maxArea = height * width;
+							maxRect = {r - height + 1, s.empty() ? 0 : s.top() + 1, height, width};
+						}
+					}
+					s.push(i);
+				}
+			}
+			return maxRect;
+		}
+	} // namespace
+
+	std::vector<OccluderQuad> TerrainGenerator::_GenerateOccluders(const std::vector<std::vector<float>>& hmap) const {
+		std::vector<OccluderQuad> occluders;
+		int                       rows = hmap.size();
+		int                       cols = hmap[0].size();
+
+		// Find min/max height in chunk
+		float minY = std::numeric_limits<float>::max();
+		float maxY = std::numeric_limits<float>::lowest();
+		for (int i = 0; i < rows; ++i) {
+			for (int j = 0; j < cols; ++j) {
+				minY = std::min(minY, hmap[i][j]);
+				maxY = std::max(maxY, hmap[i][j]);
+			}
+		}
+
+		// Horizontal occluders at multiple levels
+		const int numLevels = 4;
+		for (int l = 0; l < numLevels; ++l) {
+			float threshold = minY + (maxY - minY) * (float(l) / float(numLevels));
+
+			std::vector<std::vector<bool>> grid(rows, std::vector<bool>(cols));
+			for (int i = 0; i < rows; ++i) {
+				for (int j = 0; j < cols; ++j) {
+					grid[i][j] = hmap[i][j] >= threshold;
+				}
+			}
+
+			// Find up to 2 quads per level
+			for (int q = 0; q < 2; ++q) {
+				Rect r = findLargestRectangle(grid);
+				if (r.num_rows * r.num_cols < 16)
+					break; // Too small
+
+				OccluderQuad quad;
+				// Corners in local chunk space (using indices as coordinates)
+				// We subtract a small amount from height to stay safely inside
+				float quadY = threshold - 0.1f;
+				quad.corners[0] = glm::vec3(r.start_row, quadY, r.start_col);
+				quad.corners[1] = glm::vec3(r.start_row + r.num_rows - 1, quadY, r.start_col);
+				quad.corners[2] = glm::vec3(r.start_row + r.num_rows - 1, quadY, r.start_col + r.num_cols - 1);
+				quad.corners[3] = glm::vec3(r.start_row, quadY, r.start_col + r.num_cols - 1);
+				occluders.push_back(quad);
+
+				// Mark used area as false to find another rectangle
+				for (int i = r.start_row; i < r.start_row + r.num_rows; ++i) {
+					for (int j = r.start_col; j < r.start_col + r.num_cols; ++j) {
+						grid[i][j] = false;
+					}
+				}
+			}
+		}
+
+		// Vertical occluders (scanning along X)
+		// For a fixed Z and Y, how far does the terrain extend?
+		// This is more complex for a heightmap but we can find some vertical quads inside mountains
+		for (int z = 0; z < cols; z += 8) {
+			std::vector<std::vector<bool>> grid(rows, std::vector<bool>(20)); // Y levels
+			float                          yStep = (maxY - minY) / 20.0f;
+			if (yStep < 0.1f)
+				continue;
+
+			for (int i = 0; i < rows; ++i) {
+				for (int yIdx = 0; yIdx < 20; ++yIdx) {
+					float y = minY + yIdx * yStep;
+					grid[i][yIdx] = hmap[i][z] >= y;
+				}
+			}
+
+			Rect r = findLargestRectangle(grid);
+			if (r.num_rows * r.num_cols > 20) {
+				OccluderQuad quad;
+				float        y0 = minY + r.start_col * yStep;
+				float        y1 = minY + (r.start_col + r.num_cols - 1) * yStep;
+				quad.corners[0] = glm::vec3(r.start_row, y0, z);
+				quad.corners[1] = glm::vec3(r.start_row + r.num_rows - 1, y0, z);
+				quad.corners[2] = glm::vec3(r.start_row + r.num_rows - 1, y1, z);
+				quad.corners[3] = glm::vec3(r.start_row, y1, z);
+				occluders.push_back(quad);
+			}
+		}
+
+		return occluders;
+	}
+
 	void TerrainGenerator::ApplyWeightedBiome(float control_value, BiomeAttributes& current) const {
 		if (biomes.empty())
 			return;
@@ -552,7 +683,7 @@ namespace Boidsish {
 		}
 
 		if (!has_terrain) {
-			return {{}, {}, {}, {}, chunkX, chunkZ, false};
+			return {{}, {}, {}, {}, {}, chunkX, chunkZ, false};
 		}
 
 		// Generate vertices and normals
@@ -576,6 +707,15 @@ namespace Boidsish {
 				indices.push_back(i * num_vertices_z + j + 1);
 			}
 		}
+
+		// Generate occluders
+		std::vector<std::vector<float>> hmap_only(num_vertices_x, std::vector<float>(num_vertices_z));
+		for (int i = 0; i < num_vertices_x; ++i) {
+			for (int j = 0; j < num_vertices_z; ++j) {
+				hmap_only[i][j] = heightmap[i][j][0];
+			}
+		}
+		std::vector<OccluderQuad> occluders = _GenerateOccluders(hmap_only);
 
 		// Calculate aggregate data for the PatchProxy
 		PatchProxy proxy;
@@ -602,7 +742,7 @@ namespace Boidsish {
 		}
 		proxy.radiusSq = max_dist_sq;
 
-		return {indices, positions, normals, proxy, chunkX, chunkZ, true};
+		return {indices, positions, normals, occluders, proxy, chunkX, chunkZ, true};
 	}
 
 	bool
@@ -1290,8 +1430,13 @@ namespace Boidsish {
 
 			if (result.has_terrain) {
 				// Create new terrain object with deformed data
-				auto new_terrain =
-					std::make_shared<Terrain>(result.indices, result.positions, result.normals, result.proxy);
+				auto new_terrain = std::make_shared<Terrain>(
+					result.indices,
+					result.positions,
+					result.normals,
+					result.proxy,
+					result.occluders
+				);
 				new_terrain->SetPosition(result.chunk_x * chunk_size_, 0, result.chunk_z * chunk_size_);
 
 				if (render_manager_) {
@@ -1305,7 +1450,8 @@ namespace Boidsish {
 						new_terrain->GetIndices(),
 						new_terrain->proxy.minY,
 						new_terrain->proxy.maxY,
-						glm::vec3(chunk_key.first * chunk_size_, 0, chunk_key.second * chunk_size_)
+						glm::vec3(chunk_key.first * chunk_size_, 0, chunk_key.second * chunk_size_),
+						new_terrain->occluders
 					);
 				} else {
 					// Legacy rendering: set up mesh (will replace old GPU resources)

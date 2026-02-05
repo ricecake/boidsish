@@ -27,6 +27,7 @@ namespace Boidsish {
 		std::vector<unsigned int> indices;
 		std::vector<glm::vec3>    positions;
 		std::vector<glm::vec3>    normals;
+		std::vector<OccluderQuad> occluders;
 		PatchProxy                proxy;
 		int                       chunk_x;
 		int                       chunk_z;
@@ -296,6 +297,10 @@ namespace Boidsish {
 		 */
 		void InvalidateDeformedChunks(std::optional<uint32_t> deformation_id = std::nullopt) override;
 
+		TerrainGenerationResult generateChunkData(int chunkX, int chunkZ);
+
+		std::vector<OccluderQuad> _GenerateOccluders(const std::vector<std::vector<float>>& heightmap) const;
+
 	private:
 		glm::vec2 findClosestPointOnPath(glm::vec2 sample_pos) const;
 		glm::vec3 getPathInfluence(float x, float z) const;
@@ -313,8 +318,6 @@ namespace Boidsish {
 			glm::vec3 top = glm::mix(v3, v2, uv.x);
 			return glm::mix(bot, top, uv.y);
 		}
-
-		TerrainGenerationResult generateChunkData(int chunkX, int chunkZ);
 
 		// Terrain parameters
 		struct TerrainParameters {
