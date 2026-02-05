@@ -68,7 +68,7 @@ namespace Boidsish {
 
 			if (cloud_noise_lut_shader_ && cloud_noise_lut_shader_->isValid()) {
 				cloud_noise_lut_shader_->use();
-				glBindImageTexture(1, cloud_noise_lut_, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA8);
+				glBindImageTexture(1, cloud_noise_lut_, 0, GL_TRUE, 0, GL_WRITE_ONLY, GL_RGBA8);
 				cloud_noise_lut_shader_->dispatch(16, 16, 16); // 16*8 = 128
 			}
 

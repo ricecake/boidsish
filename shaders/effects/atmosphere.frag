@@ -291,13 +291,15 @@ vec4 generatePackedNoise(vec3 uv) {
 
 float sampleCloudDensity(vec3 p) {
 	// Sample the packed texture once
-	vec3 uvw = p * vec3(0.001, 0.01, 0.001);
+	// vec3 uvw = p * vec3(0.001, 0.05*sin(time*length(p.zx)*0.0004), sin(time*0.02)*0.002+0.001);
+	vec3 uvw = p * vec3(0.001, 0.05, 0.001);
+	uvw += vec3(time * 0.01, 0.0, 0.0);
 
 	uvw = fract(uvw);
-	// vec4 noiseData = texture(cloudNoiseLUT, uvw);
-	vec4  noiseData = generatePackedNoise(uvw);
+	vec4 noiseData = texture(cloudNoiseLUT, uvw);
+	// vec4  noiseData = generatePackedNoise(uvw);
 	float u_erosionScale = 0.6; // e.g., 0.5
-	float u_threshold = 0.2;    // e.g., 0.2 (cloud coverage)
+	float u_threshold = 0.5;    // e.g., 0.2 (cloud coverage)
 
 	float baseCloud = noiseData.r;  // Low freq
 	float midDetail = noiseData.g;  // Mid freq
@@ -305,7 +307,7 @@ float sampleCloudDensity(vec3 p) {
 
 	// 1. Build the detail FBM dynamically
 	// You can adjust these weights (0.625, 0.25, 0.125) to change detail roughness
-	float detailFBM = midDetail * 0.625 + highDetail * 0.25 + (noiseData.a) * 0.125;
+	float detailFBM = midDetail * 0.525 + highDetail * 0.35 + (noiseData.a) * 0.125;
 
 	// 2. Remap (Erosion)
 	// We use the detailFBM to "eat away" at the base cloud shape.
