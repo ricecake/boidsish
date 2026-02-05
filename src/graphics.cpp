@@ -1185,8 +1185,7 @@ namespace Boidsish {
 
 			// Bind Transmittance LUT if available
 			if (post_processing_manager_) {
-				auto atmosphere =
-					post_processing_manager_->GetEffect<PostProcessing::AtmosphereEffect>("Atmosphere");
+				auto atmosphere = post_processing_manager_->GetEffect<PostProcessing::AtmosphereEffect>("Atmosphere");
 				if (atmosphere) {
 					sky_shader->setInt("transmittanceLUT", 2);
 					glActiveTexture(GL_TEXTURE2);

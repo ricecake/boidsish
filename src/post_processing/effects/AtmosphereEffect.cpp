@@ -72,7 +72,7 @@ namespace Boidsish {
 				cloud_noise_lut_shader_->dispatch(16, 16, 16); // 16*8 = 128
 			}
 
-			glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
+			glMemoryBarrier(GL_TEXTURE_FETCH_BARRIER_BIT);
 		}
 
 		void AtmosphereEffect::Apply(

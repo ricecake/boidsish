@@ -35,7 +35,7 @@ namespace Boidsish {
 
 			std::shared_ptr<IPostProcessingEffect> GetToneMappingEffect() { return tone_mapping_effect_; }
 
-			template<typename T>
+			template <typename T>
 			std::shared_ptr<T> GetEffect(const std::string& name) {
 				for (auto& effect : pre_tone_mapping_effects_) {
 					if (effect->GetName() == name) {

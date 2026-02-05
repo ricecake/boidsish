@@ -126,8 +126,8 @@ float snoise(vec3 v) {
 	vec4 b0 = vec4(x.xy, y.xy);
 	vec4 b1 = vec4(x.zw, y.zw);
 
-	//vec4 s0 = vec4(lessThan(b0,0.0))*2.0 - 1.0;
-	//vec4 s1 = vec4(lessThan(b1,0.0))*2.0 - 1.0;
+	// vec4 s0 = vec4(lessThan(b0,0.0))*2.0 - 1.0;
+	// vec4 s1 = vec4(lessThan(b1,0.0))*2.0 - 1.0;
 	vec4 s0 = floor(b0) * 2.0 + 1.0;
 	vec4 s1 = floor(b1) * 2.0 + 1.0;
 	vec4 sh = -step(h, vec4(0.0));
@@ -140,7 +140,7 @@ float snoise(vec3 v) {
 	vec3 p2 = vec3(a1.xy, h.z);
 	vec3 p3 = vec3(a1.zw, h.w);
 
-	//Normalise gradients
+	// Normalise gradients
 	vec4 norm = taylorInvSqrt(vec4(dot(p0, p0), dot(p1, p1), dot(p2, p2), dot(p3, p3)));
 	p0 *= norm.x;
 	p1 *= norm.y;

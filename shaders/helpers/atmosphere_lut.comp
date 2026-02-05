@@ -15,13 +15,15 @@ float getOpticalDepth(float h, float cosTheta, float scaleHeight) {
 	float c = r2 - ATMOSPHERE_RADIUS * ATMOSPHERE_RADIUS;
 	float d = b * b - 4.0 * c;
 
-	if (d < 0.0) return 0.0;
+	if (d < 0.0)
+		return 0.0;
 	float t = (-b + sqrt(d)) * 0.5;
-	if (t < 0.0) return 0.0;
+	if (t < 0.0)
+		return 0.0;
 
 	const int SAMPLES = 64;
-	float stepSize = t / float(SAMPLES);
-	float opticalDepth = 0.0;
+	float     stepSize = t / float(SAMPLES);
+	float     opticalDepth = 0.0;
 
 	for (int i = 0; i < SAMPLES; i++) {
 		float ti = (float(i) + 0.5) * stepSize;
@@ -37,7 +39,8 @@ void main() {
 	ivec2 texel = ivec2(gl_GlobalInvocationID.xy);
 	ivec2 size = imageSize(transmittanceLUT);
 
-	if (texel.x >= size.x || texel.y >= size.y) return;
+	if (texel.x >= size.x || texel.y >= size.y)
+		return;
 
 	// x: cos(zenith angle) [-1, 1]
 	// y: altitude [0, 100km]

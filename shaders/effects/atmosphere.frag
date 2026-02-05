@@ -27,9 +27,9 @@ uniform float cloudG = 0.8;
 uniform float cloudScatteringBoost = 2.0;
 uniform float cloudPowderStrength = 0.5;
 
+#include "../helpers/atmosphere.glsl"
 #include "../helpers/lighting.glsl"
 #include "../helpers/noise.glsl"
-#include "../helpers/atmosphere.glsl"
 #include "lygia/generative/worley.glsl"
 
 float getHeightFog(vec3 start, vec3 end, float density, float heightFalloff) {
@@ -45,16 +45,17 @@ float getHeightFog(vec3 start, vec3 end, float density, float heightFalloff) {
 	return 1.0 - exp(-max(0.0, fog));
 }
 
+/*
 float cloudFBM(vec3 p) {
-	float v = 0.0;
-	float a = 0.5;
-	vec3  shift = vec3(time * 0.05, 0.0, time * 0.02);
-	for (int i = 0; i < 3; i++) {
-		v += a * worley(p + shift);
-		p = p * 2.0;
-		a *= 0.5;
-	}
-	return v;
+    float v = 0.0;
+    float a = 0.5;
+    vec3  shift = vec3(time * 0.05, 0.0, time * 0.02);
+    for (int i = 0; i < 3; i++) {
+        v += a * worley(p + shift);
+        p = p * 2.0;
+        a *= 0.5;
+    }
+    return v;
 }
 
 
@@ -62,9 +63,6 @@ float cloudFBM(vec3 p) {
 // #include "lygia/generative/snoise.glsl"
 
 // Helper: Remap values to control cloud density/erosion
-float remap(float value, float original_min, float original_max, float new_min, float new_max) {
-    return new_min + (((value - original_min) / (original_max - original_min)) * (new_max - new_min));
-}
 
 // 1. CUSTOM TILED WORLEY
 // Lygia's standard worley doesn't expose the tile period, so we implement a
@@ -134,27 +132,54 @@ float getCloudNoise(vec3 uv, float tileFreq) {
     return clamp(finalNoise, 0.0, 1.0);
 }
 
-// Usage in your main loop
-// vec3 texCoord = ... (your 0 to 1 UVW)
-// float cloudDensity = getCloudNoise(texCoord, 4.0); // 4.0 = tiles 4 times across texture
+float sampleCloudDensity(vec3 p) {
+    float h = (p.y - cloudAltitude) / max(cloudThickness, 0.001);
+    float tapering = smoothstep(0.0, 0.2, h) * smoothstep(1.0, 0.5, h);
 
+    vec3  uvw = p * 0.002 + vec3(time * 0.009, time*0.003, time * 0.002);
+    // vec4  noise = texture(cloudNoiseLUT, uvw);
 
+    // FBM from 3D texture
+    // float d_noise = noise.r * 0.5 + noise.g * 0.25 + noise.b * 0.125 + noise.a * 0.0625;
+
+    // float d_noise = cloudFBM(p * 0.02);
+    float d_noise = getCloudNoise(uvw, 5.0);
+
+    float d = smoothstep(0.2, 0.8, d_noise) * cloudDensity * tapering;
+    return d;
+}
+
+*/
+
+float remap(float value, float original_min, float original_max, float new_min, float new_max) {
+	return new_min + (((value - original_min) / (original_max - original_min)) * (new_max - new_min));
+}
 
 float sampleCloudDensity(vec3 p) {
-	float h = (p.y - cloudAltitude) / max(cloudThickness, 0.001);
-	float tapering = smoothstep(0.0, 0.2, h) * smoothstep(1.0, 0.5, h);
+	// Sample the packed texture once
+	vec3 uvw = p * vec3(0.001, 0.0005, 0.001);
 
-	vec3  uvw = p * 0.002 + vec3(time * 0.009, time*0.003, time * 0.002);
-	// vec4  noise = texture(cloudNoiseLUT, uvw);
+	uvw = fract(uvw);
+	vec4 noiseData = texture(cloudNoiseLUT, uvw);
 
-	// FBM from 3D texture
-	// float d_noise = noise.r * 0.5 + noise.g * 0.25 + noise.b * 0.125 + noise.a * 0.0625;
+	float u_erosionScale = 0.5; // e.g., 0.5
+	float u_threshold = 0.2;    // e.g., 0.2 (cloud coverage)
 
-	// float d_noise = cloudFBM(p * 0.02);
-	float d_noise = getCloudNoise(uvw, 5.0);
+	float baseCloud = noiseData.r;  // Low freq
+	float midDetail = noiseData.g;  // Mid freq
+	float highDetail = noiseData.b; // High freq
 
-	float d = smoothstep(0.2, 0.8, d_noise) * cloudDensity * tapering;
-	return d;
+	// 1. Build the detail FBM dynamically
+	// You can adjust these weights (0.625, 0.25, 0.125) to change detail roughness
+	float detailFBM = midDetail * 0.625 + highDetail * 0.25 + (noiseData.a) * 0.125;
+
+	// 2. Remap (Erosion)
+	// We use the detailFBM to "eat away" at the base cloud shape.
+	// As u_erosionScale increases, the cloud gets wispier.
+	float finalDensity = remap(baseCloud, detailFBM * u_erosionScale, 1.0, 0.0, 1.0);
+
+	// 3. Apply coverage threshold
+	return clamp(finalDensity - u_threshold, 0.0, 1.0);
 }
 
 void main() {
@@ -212,8 +237,8 @@ void main() {
 		float stepSize = (t_end - t_start) / float(samples);
 		float jitter = fract(sin(dot(TexCoords, vec2(12.9898, 78.233))) * 43758.5453);
 
-		vec3  sunDir = vec3(0, 1, 0);
-		vec3  sunColor = vec3(1);
+		vec3 sunDir = vec3(0, 1, 0);
+		vec3 sunColor = vec3(1);
 		for (int i = 0; i < num_lights; i++) {
 			if (lights[i].type == LIGHT_TYPE_DIRECTIONAL) {
 				sunDir = normalize(-lights[i].direction);

@@ -4,12 +4,12 @@ out vec4 FragColor;
 
 in vec2 TexCoords;
 
-#include "helpers/lighting.glsl"
 #include "helpers/atmosphere.glsl"
+#include "helpers/lighting.glsl"
 #include "helpers/noise.glsl"
 
-uniform mat4 invProjection;
-uniform mat4 invView;
+uniform mat4      invProjection;
+uniform mat4      invView;
 uniform sampler2D transmittanceLUT;
 
 // A simple 3D hash function (returns pseudo-random vec3 between 0 and 1)
@@ -65,7 +65,8 @@ void main() {
 	for (int i = 0; i < num_lights; i++) {
 		if (lights[i].type == LIGHT_TYPE_DIRECTIONAL) {
 			vec3 sun_dir = normalize(-lights[i].direction);
-			final_sky_color += calculateSkyColor(transmittanceLUT, world_ray, sun_dir, lights[i].color * lights[i].intensity);
+			final_sky_color +=
+				calculateSkyColor(transmittanceLUT, world_ray, sun_dir, lights[i].color * lights[i].intensity);
 		}
 	}
 
@@ -82,7 +83,7 @@ void main() {
 	float n2 = snoise(p.zx - time * 0.03);
 	float nebula_noise = mix(n1, n2, 0.5) * 0.5 + 0.5;
 
-	vec3 nebula_palette = mix(vec3(0.0, 0.1, 0.4), vec3(0.4, 0.1, 0.5), nebula_noise);
+	vec3  nebula_palette = mix(vec3(0.0, 0.1, 0.4), vec3(0.4, 0.1, 0.5), nebula_noise);
 	float nebula_strength = smoothstep(0.1, 0.8, y);
 	final_sky_color = mix(final_sky_color, nebula_palette, nebula_strength * 0.3 * nebula_noise);
 
