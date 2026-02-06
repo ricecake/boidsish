@@ -8,6 +8,7 @@ namespace Boidsish {
 	Tracer::Tracer(int id, Vector3 pos, glm::quat orientation, glm::vec3 velocity, glm::vec3 color):
 		Entity<Line>(
 			id,
+			id,
 			pos.Toglm(),
 			pos.Toglm() + glm::normalize(velocity) * 2.0f,
 			0.15f,
