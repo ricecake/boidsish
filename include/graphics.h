@@ -264,6 +264,8 @@ namespace Boidsish {
 		void TogglePostProcessingEffect(const std::string& name);
 		void TogglePostProcessingEffect(const std::string& name, const bool newState);
 		void SetFilmGrainIntensity(float intensity);
+		void SetSuperSpeedIntensity(float intensity);
+		void SetCameraShake(float intensity, float duration);
 
 		// Shockwave effect methods
 		/**

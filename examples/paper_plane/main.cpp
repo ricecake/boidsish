@@ -84,6 +84,7 @@ int main() {
 			controller->brake = state.keys[GLFW_KEY_LEFT_CONTROL];
 			controller->fire = state.keys[GLFW_KEY_SPACE];
 			controller->chaff = state.keys[GLFW_KEY_G];
+			controller->super_speed = state.keys[GLFW_KEY_B];
 			if (state.key_down[GLFW_KEY_F]) {
 				selected_weapon = (selected_weapon + 1) % 3;
 				visualizer->UpdateHudIcon(
