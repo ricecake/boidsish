@@ -4,6 +4,7 @@
 #include <cmath>
 #include <set>
 
+#include "FighterPlane.h"
 #include "GuidedMissileLauncher.h"
 #include "PaperPlane.h"
 #include "VortexFlockingEntity.h"
@@ -212,12 +213,35 @@ namespace Boidsish {
 						terrain_alignment
 					);
 					spawned_launchers_[candidate.chunk] = id;
+
+					// Spawn fighters near the launcher
+					int current_fighters = GetEntitiesByType<FighterPlane>().size();
+					int to_spawn = std::min(3, 15 - current_fighters);
+					for (int i = 0; i < to_spawn; ++i) {
+						int f_id = id | ((i + 1) << 24);
+						QueueAddEntity<FighterPlane>(
+							f_id,
+							id,
+							Vector3(world_pos.x + (i - 1) * 20.0f, terrain_h + 40.0f, world_pos.z + (i - 1) * 20.0f)
+						);
+						launcher_to_fighters_[id].push_back(f_id);
+					}
+
 					exclude_neighborhood(candidate.chunk);
 				}
 			}
 
 			for (auto it = spawned_launchers_.begin(); it != spawned_launchers_.end();) {
 				if (visible_chunk_set.find(it->first) == visible_chunk_set.end()) {
+					// Remove fighters associated with this launcher
+					auto f_it = launcher_to_fighters_.find(it->second);
+					if (f_it != launcher_to_fighters_.end()) {
+						for (int f_id : f_it->second) {
+							QueueRemoveEntity(f_id);
+						}
+						launcher_to_fighters_.erase(f_it);
+					}
+
 					QueueRemoveEntity(it->second);
 					it = spawned_launchers_.erase(it);
 				} else {

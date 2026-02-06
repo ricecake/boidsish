@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cmath>
 
+#include "FighterPlane.h"
 #include "PaperPlane.h"
 #include "PaperPlaneHandler.h"
 #include "fire_effect.h"
@@ -124,17 +125,29 @@ namespace Boidsish {
 		const float kDamping = 2.5f;
 
 		auto& pp_handler = static_cast<const PaperPlaneHandler&>(handler);
-		auto  targets = pp_handler.GetEntitiesInRadius<GuidedMissileLauncher>(
+		auto  launchers = pp_handler.GetEntitiesInRadius<GuidedMissileLauncher>(
             pos,
             kMaxSpeed * (lifetime_ - lived_) * 0.5f
         );
+		auto fighters = pp_handler.GetEntitiesInRadius<FighterPlane>(
+			pos,
+			kMaxSpeed * (lifetime_ - lived_) * 0.5f
+		);
+
+		std::vector<std::shared_ptr<EntityBase>> all_targets;
+		all_targets.insert(all_targets.end(), launchers.begin(), launchers.end());
+		for (auto& f : fighters) {
+			if (f->GetState() != FighterPlane::State::CRASHING) {
+				all_targets.push_back(f);
+			}
+		}
 
 		const float stickiness = 0.30f;
 		auto        minRank = INFINITY;
 		float       target_distance = 0.0f;
 		const float reaction_distance = 250.0f;
 
-		for (auto& candidate : targets) {
+		for (auto& candidate : all_targets) {
 			auto target_pos = candidate->GetPosition().Toglm();
 			auto missile_pos = pos.Toglm();
 
@@ -160,11 +173,13 @@ namespace Boidsish {
 			bool sector_blocked = true;
 
 			if (target_blocked) {
-				glm::vec3 approach_p = candidate->GetApproachPoint();
-				glm::vec3 to_approach = glm::normalize(approach_p - missile_pos);
-				float     dist_to_approach = glm::length(approach_p - missile_pos);
-				sector_blocked =
-					handler.RaycastTerrain(missile_pos, to_approach, dist_to_approach, hit_dist, terrain_normal);
+				if (auto launcher = std::dynamic_pointer_cast<GuidedMissileLauncher>(candidate)) {
+					glm::vec3 approach_p = launcher->GetApproachPoint();
+					glm::vec3 to_approach = glm::normalize(approach_p - missile_pos);
+					float     dist_to_approach = glm::length(approach_p - missile_pos);
+					sector_blocked =
+						handler.RaycastTerrain(missile_pos, to_approach, dist_to_approach, hit_dist, terrain_normal);
+				}
 			} else {
 				sector_blocked = false;
 			}
@@ -173,7 +188,10 @@ namespace Boidsish {
 				continue;
 			}
 
-			int  target_count = pp_handler.GetTargetCount(candidate);
+			int target_count = 0;
+			if (auto launcher = std::dynamic_pointer_cast<GuidedMissileLauncher>(candidate)) {
+				target_count = pp_handler.GetTargetCount(launcher);
+			}
 			auto rank = distance * (2.0 - 1.75f * frontNess) * (1.0f + 0.5f * target_count);
 			if (candidate == target_) {
 				rank *= stickiness;
@@ -212,16 +230,18 @@ namespace Boidsish {
 				)) {
 				// Aim for approach point if launcher is obscured, but start cutting the corner
 				// once we are close enough to the approach point (crested the hill).
-				glm::vec3 approach_p = target_->GetApproachPoint();
-				glm::vec3 target_p = target_->GetPosition().Toglm();
-				float     d_at = glm::distance(approach_p, target_p);
-				float     d_ma = glm::distance(missile_pos, approach_p);
+				if (auto launcher = std::dynamic_pointer_cast<GuidedMissileLauncher>(target_)) {
+					glm::vec3 approach_p = launcher->GetApproachPoint();
+					glm::vec3 target_p = target_->GetPosition().Toglm();
+					float     d_at = glm::distance(approach_p, target_p);
+					float     d_ma = glm::distance(missile_pos, approach_p);
 
-				if (d_ma <= d_at && d_at > 1e-4f) {
-					float t = d_ma / d_at;
-					target_dir_world = glm::mix(target_p, approach_p, t);
-				} else {
-					target_dir_world = approach_p;
+					if (d_ma <= d_at && d_at > 1e-4f) {
+						float t = d_ma / d_at;
+						target_dir_world = glm::mix(target_p, approach_p, t);
+					} else {
+						target_dir_world = approach_p;
+					}
 				}
 			}
 
@@ -315,7 +335,11 @@ namespace Boidsish {
 		shape_->SetHidden(true);
 
 		if (hit_target && target_) {
-			target_->Destroy(handler);
+			if (auto launcher = std::dynamic_pointer_cast<GuidedMissileLauncher>(target_)) {
+				launcher->Destroy(handler);
+			} else if (auto fighter = std::dynamic_pointer_cast<FighterPlane>(target_)) {
+				fighter->ShotDown(handler);
+			}
 		}
 
 		auto pos = GetPosition();
