@@ -41,17 +41,19 @@ namespace Boidsish {
 	void CurvedText::Update(float delta_time) {
 		age_ += delta_time;
 
+		float max_fade_progress = 1.0f + text_fade_softness_;
+
 		if (age_ < fade_in_time_) {
-			text_fade_progress_ = age_ / fade_in_time_;
+			text_fade_progress_ = (age_ / fade_in_time_) * max_fade_progress;
 			text_fade_mode_ = 0;
 		} else if (age_ < total_duration_ - fade_out_time_) {
-			text_fade_progress_ = 1.0f;
+			text_fade_progress_ = max_fade_progress;
 			text_fade_mode_ = 0;
 		} else if (age_ < total_duration_) {
-			text_fade_progress_ = (age_ - (total_duration_ - fade_out_time_)) / fade_out_time_;
+			text_fade_progress_ = ((age_ - (total_duration_ - fade_out_time_)) / fade_out_time_) * max_fade_progress;
 			text_fade_mode_ = 1;
 		} else {
-			text_fade_progress_ = 1.0f;
+			text_fade_progress_ = max_fade_progress;
 			text_fade_mode_ = 1;
 			SetHidden(true);
 		}

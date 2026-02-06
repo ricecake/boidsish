@@ -4,11 +4,23 @@
 
 #include "GuidedMissile.h"
 #include "PaperPlane.h"
+#include "arcade_text.h"
 #include "graphics.h"
 #include "terrain_generator_interface.h"
 #include <glm/gtc/constants.hpp>
 
 namespace Boidsish {
+
+	static const std::vector<std::string> kEncouragements = {
+		"NICE SHOT!",
+		"SCRAP METAL!",
+		"DIRECT HIT!",
+		"WELL DONE!",
+		"BULLSEYE!",
+		"KABOOM!",
+		"CLEARED!",
+		"REVENGE!"
+	};
 
 	GuidedMissileLauncher::GuidedMissileLauncher(int id, Vector3 pos, glm::quat orientation):
 		// Entity<Model>(id, "assets/utah_teapot.obj", false), eng_(rd_()) {
@@ -112,6 +124,27 @@ namespace Boidsish {
 		auto [height, normal] = handler.GetCachedTerrainProperties(pos.x, pos.z);
 		handler.vis->TriggerComplexExplosion(shape_, normal, 2.0f, FireEffectStyle::Explosion);
 		handler.vis->GetTerrain()->AddCrater({pos.x, height, pos.z}, 15.0f, 8.0f, 0.2f, 2.0f);
+
+		std::uniform_int_distribution<size_t> dist(0, kEncouragements.size() - 1);
+		std::string                           msg = kEncouragements[dist(eng_)];
+		auto arcade_text = handler.vis->AddArcadeTextEffect(
+			msg,
+			pos + glm::vec3(0, 75, 0),
+			50.0f,               // radius
+			360.0f,              // wrap around
+			glm::vec3(0, 1, 0),  // wrap normal (axis Up)
+			glm::vec3(0, 0, 1),  // text normal (face Z)
+			5.0f,                // duration
+			"assets/Roboto-Medium.ttf",
+			150.0f,              // preposterously oversize
+			20.0f                // depth
+		);
+		if (arcade_text) {
+			arcade_text->SetRainbowEnabled(true);
+			arcade_text->SetWaveMode(ArcadeWaveMode::VERTICAL);
+			arcade_text->SetDoubleCopy(true);
+			arcade_text->SetRotationSpeed(3.0f);
+		}
 
 		handler.QueueRemoveEntity(GetId());
 	}
