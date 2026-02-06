@@ -1,5 +1,6 @@
 #include "CatBomb.h"
 
+#include "FighterPlane.h"
 #include "fire_effect.h"
 #include "graphics.h"
 #include "terrain_generator_interface.h"
@@ -52,6 +53,15 @@ namespace Boidsish {
 			return;
 
 		auto pos = GetPosition();
+
+		auto fighters = handler.GetEntitiesByType<FighterPlane>();
+		for (auto& fighter : fighters) {
+			if (fighter->GetState() != FighterPlane::State::CRASHING &&
+			    glm::distance(pos.Toglm(), fighter->GetPosition().Toglm()) < 30.0f) {
+				fighter->ShotDown(handler);
+			}
+		}
+
 		handler.EnqueueVisualizerAction([=, &handler]() {
 			handler.vis->CreateExplosion(glm::vec3(pos.x, pos.y, pos.z), 2.5f);
 			handler.vis->GetTerrain()->AddCrater({pos.x, pos.y, pos.z}, 15.0f, 8.0f, 0.2f, 2.0f);

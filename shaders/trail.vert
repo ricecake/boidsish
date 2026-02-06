@@ -37,7 +37,7 @@ void main() {
 		ringDist += totalRings;
 	}
 
-	float Progress = ringDist / totalRings;
+	float Progress = (totalRings > 0.5) ? ringDist / totalRings : 1.0;
 	Progress = clamp(Progress, 0.0, 1.0);
 
 	// Calculate tapering scale based on progress
