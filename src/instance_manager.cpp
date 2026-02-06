@@ -127,6 +127,7 @@ namespace Boidsish {
 			glDisableVertexAttribArray(5);
 			glDisableVertexAttribArray(6);
 			glBindVertexArray(0);
+			glBindBuffer(GL_ARRAY_BUFFER, 0); // Prevent buffer state leakage
 		}
 	}
 
@@ -236,6 +237,7 @@ namespace Boidsish {
 		glDisableVertexAttribArray(7);
 
 		glBindVertexArray(0);
+		glBindBuffer(GL_ARRAY_BUFFER, 0); // Prevent buffer state leakage
 		shader.setBool("useInstanceColor", false);
 	}
 

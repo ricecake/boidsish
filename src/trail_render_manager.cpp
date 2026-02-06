@@ -215,6 +215,7 @@ namespace Boidsish {
 		glVertexAttribPointer(2, 3, GL_FLOAT, GL_FALSE, FLOATS_PER_VERTEX * sizeof(float), (void*)(6 * sizeof(float)));
 		glEnableVertexAttribArray(2);
 		glBindVertexArray(0);
+		glBindBuffer(GL_ARRAY_BUFFER, 0); // Prevent buffer state leakage after resize
 	}
 
 	void TrailRenderManager::CommitUpdates() {
@@ -251,6 +252,7 @@ namespace Boidsish {
 		}
 
 		pending_vertex_data_.clear();
+		glBindBuffer(GL_ARRAY_BUFFER, 0); // Prevent buffer state leakage
 	}
 
 	void TrailRenderManager::Render(
@@ -397,6 +399,7 @@ namespace Boidsish {
 		}
 
 		glBindVertexArray(0);
+		glBindBuffer(GL_ARRAY_BUFFER, 0); // Prevent buffer state leakage
 		shader.setInt("useVertexColor", 0);
 
 		glDepthMask(GL_TRUE);
