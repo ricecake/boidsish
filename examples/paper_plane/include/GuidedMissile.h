@@ -33,6 +33,7 @@ namespace Boidsish {
 		int                          handedness = 1;
 		int                          wobble = 1;
 		PaperPlane*                  target_ = nullptr;
+		float                        jamming_intensity_ = 0.0f;
 
 		// Flight model
 		std::random_device rd_;
