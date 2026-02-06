@@ -13,6 +13,7 @@ namespace Boidsish {
 		bool brake = false;
 		bool fire = false;
 		bool chaff = false;
+		bool super_speed = false;
 	};
 
 } // namespace Boidsish
