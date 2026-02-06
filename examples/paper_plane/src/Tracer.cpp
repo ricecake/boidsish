@@ -19,6 +19,7 @@ namespace Boidsish {
 		),
 		velocity_(velocity) {
 		shape_->SetStyle(Line::Style::LASER);
+		SetPosition(pos);
 		rigid_body_.SetLinearVelocity(velocity);
 		rigid_body_.SetOrientation(orientation);
 		rigid_body_.linear_friction_ = 0.0f;
