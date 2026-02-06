@@ -59,11 +59,11 @@ namespace Boidsish {
 		SetPosition(pos.x, pos.y, pos.z);
 
 		glm::vec3 world_eject = orientation * dir;
-		rigid_body_.SetLinearVelocity(glm::vec3(vel.x, vel.y, vel.z) + (1.0f * world_eject));
+		rigid_body_.SetLinearVelocity(glm::vec3(vel.x, vel.y, vel.z) + (5.0f * world_eject));
 
 		SetTrailLength(0);
 		SetTrailRocket(false);
-		shape_->SetScale(glm::vec3(0.015f));
+		shape_->SetScale(glm::vec3(0.05f));
 		std::dynamic_pointer_cast<Model>(shape_)->SetBaseRotation(
 			glm::angleAxis(glm::radians(90.0f), glm::vec3(0.0f, 1.0f, 0.0f))
 		);
@@ -97,7 +97,7 @@ namespace Boidsish {
 		const float kAcceleration = 150.0f;
 
 		if (lived_ < kLaunchTime) {
-			rigid_body_.AddForce(glm::vec3(0, -0.70, 0));
+			rigid_body_.AddForce(glm::vec3(0, -1.00, 0));
 			return;
 		}
 
