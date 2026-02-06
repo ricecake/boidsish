@@ -66,11 +66,18 @@ namespace Boidsish {
 			fbo_index_ = 0;
 			effect_applied_ = false;
 
+			// Store currently bound FBO to restore later
+			GLint previousFBO;
+			glGetIntegerv(GL_FRAMEBUFFER_BINDING, &previousFBO);
+
 			// Attach depth texture to ping-pong FBOs for depth testing in mid-pass
 			for (int i = 0; i < 2; i++) {
 				glBindFramebuffer(GL_FRAMEBUFFER, pingpong_fbo_[i]);
 				glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_TEXTURE_2D, depth_texture_, 0);
 			}
+
+			// Restore previous FBO
+			glBindFramebuffer(GL_FRAMEBUFFER, previousFBO);
 
 			// Ensure the viewport is set correctly for our FBOs before starting
 			glViewport(0, 0, width_, height_);
@@ -81,6 +88,7 @@ namespace Boidsish {
 			const glm::mat4& projectionMatrix,
 			const glm::vec3& cameraPos
 		) {
+			glDisable(GL_DEPTH_TEST);
 			for (const auto& effect : pre_tone_mapping_effects_) {
 				if (effect->IsEnabled() && effect->IsPreTransparency()) {
 					effect->SetTime(time_);
@@ -96,6 +104,7 @@ namespace Boidsish {
 					effect_applied_ = true;
 				}
 			}
+			glEnable(GL_DEPTH_TEST);
 		}
 
 		void PostProcessingManager::ApplyPostTransparencyEffects(
@@ -103,6 +112,7 @@ namespace Boidsish {
 			const glm::mat4& projectionMatrix,
 			const glm::vec3& cameraPos
 		) {
+			glDisable(GL_DEPTH_TEST);
 			// Apply remaining pre-tone-mapping effects
 			for (const auto& effect : pre_tone_mapping_effects_) {
 				if (effect->IsEnabled() && !effect->IsPreTransparency()) {
@@ -133,6 +143,7 @@ namespace Boidsish {
 				current_texture_ = pingpong_texture_[fbo_index_];
 				effect_applied_ = true;
 			}
+			glEnable(GL_DEPTH_TEST);
 
 			// Restore the default framebuffer
 			glBindFramebuffer(GL_FRAMEBUFFER, 0);
