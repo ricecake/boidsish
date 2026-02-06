@@ -23,6 +23,7 @@ namespace Boidsish {
 
 		float GetHealth() const;
 		float GetShield() const;
+		bool  IsChaffActive() const { return chaff_timer_ > 0.0f; }
 
 	private:
 		std::shared_ptr<PaperPlaneInputController> controller_;
@@ -34,6 +35,7 @@ namespace Boidsish {
 		int                                        damage_pending_ = 0;
 		float                                      health = 100.0f;
 		float                                      shield = 100.0f;
+		float                                      chaff_timer_ = 0.0f;
 
 		// Super speed effect state
 		enum class SuperSpeedState { NORMAL, BUILDUP, ACTIVE, TAPERING };
