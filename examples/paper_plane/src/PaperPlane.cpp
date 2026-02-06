@@ -2,6 +2,7 @@
 
 #include "CatBomb.h"
 #include "CatMissile.h"
+#include "Tracer.h"
 #include "PaperPlaneHandler.h" // For selected_weapon
 #include "entity.h"
 #include <glm/gtx/quaternion.hpp>
@@ -217,6 +218,27 @@ namespace Boidsish {
 				handler.QueueAddEntity<CatBomb>(pos, orientation_ * glm::vec3(0, -1, 0), GetVelocity());
 				time_to_fire = 1.25f;
 				break;
+			case 2: {
+				glm::vec3 forward = orientation_ * glm::vec3(0, 0, -1);
+				glm::vec3 right = orientation_ * glm::vec3(1, 0, 0);
+
+				// High-velocity tracer rounds
+				float     tracer_speed = 600.0f;
+				glm::vec3 tracer_vel = velocity.Toglm() + forward * tracer_speed;
+
+				// Alternate red and orange streaks for the machine gun effect
+				glm::vec3 color = weapon_toggle_ ? glm::vec3(1.0f, 0.2f, 0.0f) : glm::vec3(1.0f, 0.6f, 0.0f);
+				weapon_toggle_ = !weapon_toggle_;
+
+				// Fire from alternating wing positions
+				glm::vec3 offset = right * (fire_left ? -0.5f : 0.5f);
+				fire_left = !fire_left;
+
+				handler.QueueAddEntity<Tracer>(pos.Toglm() + offset, orientation_, tracer_vel, color);
+
+				time_to_fire = 0.05f; // 20 rounds per second!
+				break;
+			}
 			}
 		}
 
