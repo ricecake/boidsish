@@ -321,6 +321,11 @@ namespace Boidsish {
 		std::array<ShadowMapState, 16> shadow_map_states_;
 		int shadow_update_round_robin_ = 0; // For ensuring all cascades get updated periodically
 
+		// Performance optimization: batched UBO updates and config caching
+		std::vector<LightGPU> gpu_lights_cache_;
+		LightingUbo           lighting_ubo_data_;
+		FrameConfigCache      frame_config_;
+
 		task_thread_pool::task_thread_pool thread_pool;
 		std::unique_ptr<AudioManager>      audio_manager;
 
@@ -499,6 +504,9 @@ namespace Boidsish {
 			glBufferData(GL_UNIFORM_BUFFER, 704, NULL, GL_DYNAMIC_DRAW);
 			glBindBuffer(GL_UNIFORM_BUFFER, 0);
 			glBindBufferRange(GL_UNIFORM_BUFFER, Constants::UboBinding::Lighting(), lighting_ubo, 0, 704);
+
+			// Pre-allocate lighting cache for batched UBO updates
+			gpu_lights_cache_.reserve(MAX_LIGHTS);
 
 			if (ConfigManager::GetInstance().GetAppSettingBool("enable_effects", true)) {
 				glGenBuffers(1, &visual_effects_ubo);
@@ -884,6 +892,22 @@ namespace Boidsish {
 			if (shockwaves_idx != GL_INVALID_INDEX) {
 				glUniformBlockBinding(shader_to_setup.ID, shockwaves_idx, Constants::UboBinding::Shockwaves());
 			}
+		}
+
+		void RefreshFrameConfig() {
+			auto& cfg = ConfigManager::GetInstance();
+			frame_config_.effects_enabled = cfg.GetAppSettingBool("enable_effects", true);
+			frame_config_.render_terrain = cfg.GetAppSettingBool("render_terrain", true);
+			frame_config_.render_skybox = cfg.GetAppSettingBool("render_skybox", true);
+			frame_config_.render_floor = cfg.GetAppSettingBool("render_floor", true);
+			frame_config_.artistic_ripple = cfg.GetAppSettingBool("artistic_effect_ripple", false);
+			frame_config_.artistic_color_shift = cfg.GetAppSettingBool("artistic_effect_color_shift", false);
+			frame_config_.artistic_black_and_white = cfg.GetAppSettingBool("artistic_effect_black_and_white", false);
+			frame_config_.artistic_negative = cfg.GetAppSettingBool("artistic_effect_negative", false);
+			frame_config_.artistic_shimmery = cfg.GetAppSettingBool("artistic_effect_shimmery", false);
+			frame_config_.artistic_glitched = cfg.GetAppSettingBool("artistic_effect_glitched", false);
+			frame_config_.artistic_wireframe = cfg.GetAppSettingBool("artistic_effect_wireframe", false);
+			frame_config_.enable_floor_reflection = cfg.GetAppSettingBool("enable_floor_reflection", true);
 		}
 
 		~VisualizerImpl() {
@@ -1933,6 +1957,7 @@ namespace Boidsish {
 	}
 
 	void Visualizer::Render() {
+		impl->RefreshFrameConfig();
 		impl->shapes.clear();
 
 		// Update and collect transient effects
@@ -2092,8 +2117,8 @@ namespace Boidsish {
 			);
 		}
 
-		// UBO Updates
-		if (ConfigManager::GetInstance().GetAppSettingBool("enable_effects", true)) {
+		// UBO Updates - using cached config values
+		if (impl->frame_config_.effects_enabled) {
 			VisualEffectsUbo ubo_data{};
 			for (const auto& shape : impl->shapes) {
 				for (const auto& effect : shape->GetActiveEffects()) {
@@ -2107,14 +2132,14 @@ namespace Boidsish {
 				}
 			}
 
-			auto& config = ConfigManager::GetInstance();
-			ubo_data.black_and_white_enabled = config.GetAppSettingBool("artistic_effect_black_and_white", false);
-			ubo_data.negative_enabled = config.GetAppSettingBool("artistic_effect_negative", false);
-			ubo_data.shimmery_enabled = config.GetAppSettingBool("artistic_effect_shimmery", false);
-			ubo_data.glitched_enabled = config.GetAppSettingBool("artistic_effect_glitched", false);
-			ubo_data.wireframe_enabled = config.GetAppSettingBool("artistic_effect_wireframe", false);
-			ubo_data.color_shift_enabled = config.GetAppSettingBool("artistic_effect_color_shift", false);
-			if (config.GetAppSettingBool("artistic_effect_ripple", false)) {
+			// Use cached config values instead of per-call lookups
+			ubo_data.black_and_white_enabled = impl->frame_config_.artistic_black_and_white;
+			ubo_data.negative_enabled = impl->frame_config_.artistic_negative;
+			ubo_data.shimmery_enabled = impl->frame_config_.artistic_shimmery;
+			ubo_data.glitched_enabled = impl->frame_config_.artistic_glitched;
+			ubo_data.wireframe_enabled = impl->frame_config_.artistic_wireframe;
+			ubo_data.color_shift_enabled = ubo_data.color_shift_enabled || impl->frame_config_.artistic_color_shift;
+			if (impl->frame_config_.artistic_ripple) {
 				ubo_data.ripple_enabled = 1;
 			}
 
@@ -2123,40 +2148,33 @@ namespace Boidsish {
 			glBindBuffer(GL_UNIFORM_BUFFER, 0);
 		}
 
-		glBindBuffer(GL_UNIFORM_BUFFER, impl->lighting_ubo);
-		const auto& lights = impl->light_manager.GetLights();
-		int         num_lights = lights.size();
+		// Batched lighting UBO update - single glBufferSubData instead of 8 calls
+		{
+			const auto& lights = impl->light_manager.GetLights();
+			int         num_lights = std::min(static_cast<int>(lights.size()), 10);
 
-		// Convert lights to GPU-compatible format (32 bytes each, matching GLSL struct)
-		std::vector<LightGPU> gpu_lights;
-		gpu_lights.reserve(num_lights);
-		for (const auto& light : lights) {
-			gpu_lights.push_back(light.ToGPU());
+			// Reuse cached vector to avoid per-frame allocation
+			impl->gpu_lights_cache_.clear();
+			for (int i = 0; i < num_lights; ++i) {
+				impl->gpu_lights_cache_.push_back(lights[i].ToGPU());
+			}
+
+			// Fill the UBO struct in one pass
+			std::memset(&impl->lighting_ubo_data_, 0, sizeof(LightingUbo));
+			std::memcpy(impl->lighting_ubo_data_.lights, impl->gpu_lights_cache_.data(), num_lights * sizeof(LightGPU));
+			impl->lighting_ubo_data_.num_lights = num_lights;
+			impl->lighting_ubo_data_.world_scale = impl->terrain_generator ? impl->terrain_generator->GetWorldScale()
+																		   : 1.0f;
+			impl->lighting_ubo_data_.view_pos = impl->camera.pos();
+			impl->lighting_ubo_data_.ambient_light = impl->light_manager.GetAmbientLight();
+			impl->lighting_ubo_data_.time = impl->simulation_time;
+			impl->lighting_ubo_data_.view_dir = impl->camera.front();
+
+			// Single buffer upload instead of 8 separate calls
+			glBindBuffer(GL_UNIFORM_BUFFER, impl->lighting_ubo);
+			glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(LightingUbo), &impl->lighting_ubo_data_);
+			glBindBuffer(GL_UNIFORM_BUFFER, 0);
 		}
-		const int MAX_LIGHTS = 10;
-		glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(LightGPU) * num_lights, gpu_lights.data());
-		size_t offset = 640;
-		glBufferSubData(GL_UNIFORM_BUFFER, offset, sizeof(int), &num_lights);
-
-		float world_scale = impl->terrain_generator ? impl->terrain_generator->GetWorldScale() : 1.0f;
-		glBufferSubData(GL_UNIFORM_BUFFER, offset + 4, sizeof(float), &world_scale);
-
-		offset += 16;
-		glBufferSubData(
-			GL_UNIFORM_BUFFER,
-			offset,
-			sizeof(glm::vec3),
-			&glm::vec3(impl->camera.x, impl->camera.y, impl->camera.z)[0]
-		);
-		offset += 16;
-		glm::vec3 ambient_light = impl->light_manager.GetAmbientLight();
-		glBufferSubData(GL_UNIFORM_BUFFER, offset, sizeof(glm::vec3), &ambient_light[0]);
-		offset += 12;
-		glBufferSubData(GL_UNIFORM_BUFFER, offset, sizeof(float), &impl->simulation_time);
-		offset += 4;
-		offset = (offset + 15) & ~15; // align to 16
-		glBufferSubData(GL_UNIFORM_BUFFER, offset, sizeof(glm::vec3), &impl->camera.front()[0]);
-		glBindBuffer(GL_UNIFORM_BUFFER, 0);
 
 		// Update Frustum UBO for GPU-side culling
 		{
@@ -2412,7 +2430,7 @@ namespace Boidsish {
 			impl->shadow_manager->UpdateShadowUBO(shadow_lights);
 		}
 
-		bool effects_enabled = ConfigManager::GetInstance().GetAppSettingBool("enable_effects", true);
+		bool effects_enabled = impl->frame_config_.effects_enabled;
 		bool has_shockwaves = impl->shockwave_manager && impl->shockwave_manager->HasActiveShockwaves();
 		bool skip_intermediate = (impl->render_scale == 1.0f && !effects_enabled && !has_shockwaves);
 
