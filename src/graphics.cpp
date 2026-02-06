@@ -236,6 +236,8 @@ namespace Boidsish {
 		GLuint                  lighting_ubo{0};
 		GLuint                  visual_effects_ubo{0};
 		GLuint                  frustum_ubo{0};
+		GLuint                  atmosphere_ubo{0};
+		std::shared_ptr<PostProcessing::AtmosphereEffect> atmosphere_effect_ptr_;
 		glm::mat4               projection, reflection_vp;
 
 		double last_mouse_x = 0.0, last_mouse_y = 0.0;
@@ -515,6 +517,19 @@ namespace Boidsish {
 			glBindBuffer(GL_UNIFORM_BUFFER, 0);
 			glBindBufferRange(GL_UNIFORM_BUFFER, Constants::UboBinding::FrustumData(), frustum_ubo, 0, 112);
 
+			// Atmosphere UBO
+			glGenBuffers(1, &atmosphere_ubo);
+			glBindBuffer(GL_UNIFORM_BUFFER, atmosphere_ubo);
+			glBufferData(GL_UNIFORM_BUFFER, sizeof(PostProcessing::AtmosphereGPU), NULL, GL_DYNAMIC_DRAW);
+			glBindBuffer(GL_UNIFORM_BUFFER, 0);
+			glBindBufferRange(
+				GL_UNIFORM_BUFFER,
+				Constants::UboBinding::Atmosphere(),
+				atmosphere_ubo,
+				0,
+				sizeof(PostProcessing::AtmosphereGPU)
+			);
+
 			shader->use();
 			SetupShaderBindings(*shader);
 			SetupShaderBindings(*trail_shader);
@@ -791,9 +806,9 @@ namespace Boidsish {
 				film_grain_effect->SetEnabled(false);
 				post_processing_manager_->AddEffect(film_grain_effect);
 
-				auto atmosphere_effect = std::make_shared<PostProcessing::AtmosphereEffect>();
-				atmosphere_effect->SetEnabled(true);
-				post_processing_manager_->AddEffect(atmosphere_effect);
+				atmosphere_effect_ptr_ = std::make_shared<PostProcessing::AtmosphereEffect>();
+				atmosphere_effect_ptr_->SetEnabled(true);
+				post_processing_manager_->AddEffect(atmosphere_effect_ptr_);
 
 				auto bloom_effect = std::make_shared<PostProcessing::BloomEffect>(render_width, render_height);
 				bloom_effect->SetEnabled(false);
@@ -943,6 +958,10 @@ namespace Boidsish {
 				glDeleteBuffers(1, &frustum_ubo);
 			}
 
+			if (atmosphere_ubo) {
+				glDeleteBuffers(1, &atmosphere_ubo);
+			}
+
 			if (window)
 				glfwDestroyWindow(window);
 			glfwTerminate();
@@ -1058,7 +1077,8 @@ namespace Boidsish {
 			const Camera& /* cam */,
 			const std::vector<std::shared_ptr<Shape>>& shapes,
 			float                                      time,
-			const std::optional<glm::vec4>&            clip_plane
+			const std::optional<glm::vec4>&            clip_plane,
+			bool                                       transparentOnly = false
 		) {
 			if (shapes.empty()) {
 				return;
@@ -1070,6 +1090,8 @@ namespace Boidsish {
 				ConfigManager::GetInstance().GetAppSettingBool("artistic_effect_ripple", false) ? 0.05f : 0.0f
 			);
 			shader->setMat4("view", view);
+			shader->setBool("u_applyFog", transparentOnly);
+
 			if (clip_plane) {
 				shader->setVec4("clipPlane", *clip_plane);
 			} else {
@@ -1085,6 +1107,12 @@ namespace Boidsish {
 				if (shape->IsHidden()) {
 					continue;
 				}
+
+				bool isTransparent = shape->GetA() < 0.99f;
+				if (isTransparent != transparentOnly) {
+					continue;
+				}
+
 				if (shape->IsInstanced()) {
 					instance_manager->AddInstance(shape);
 				} else {
@@ -1098,8 +1126,10 @@ namespace Boidsish {
 
 			instance_manager->Render(*shader);
 
-			// Render clones
-			clone_manager->Render(*shader);
+			// Render clones only in the transparent pass, as they usually involve semi-transparency
+			if (transparentOnly) {
+				clone_manager->Render(*shader);
+			}
 
 			// Disable frustum culling after shapes are rendered
 			shader->setBool("enableFrustumCulling", false);
@@ -2146,6 +2176,14 @@ namespace Boidsish {
 			glBindBuffer(GL_UNIFORM_BUFFER, 0);
 		}
 
+		// Update Atmosphere UBO
+		if (impl->atmosphere_effect_ptr_) {
+			PostProcessing::AtmosphereGPU atmosphere_gpu = impl->atmosphere_effect_ptr_->ToGPU();
+			glBindBuffer(GL_UNIFORM_BUFFER, impl->atmosphere_ubo);
+			glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(PostProcessing::AtmosphereGPU), &atmosphere_gpu);
+			glBindBuffer(GL_UNIFORM_BUFFER, 0);
+		}
+
 		if (impl->reflection_fbo) {
 			// --- Reflection Pre-Pass ---
 			glEnable(GL_CLIP_DISTANCE0);
@@ -2404,7 +2442,8 @@ namespace Boidsish {
 		// An unbound sampler2DArrayShadow can cause shader failures on some GPUs
 		impl->BindShadows(*impl->shader);
 
-		impl->RenderShapes(view, impl->camera, impl->shapes, impl->simulation_time, std::nullopt);
+		// Render opaque shapes
+		impl->RenderShapes(view, impl->camera, impl->shapes, impl->simulation_time, std::nullopt, false);
 		if (impl->decor_manager) {
 			impl->decor_manager->Render(view, impl->projection);
 		}
@@ -2413,23 +2452,39 @@ namespace Boidsish {
 		// This avoids expensive noise calculations for pixels already drawn
 		impl->RenderSky(view);
 
-		// Render transparent/particle effects last
-		impl->fire_effect_manager->Render(view, impl->projection, impl->camera.pos());
-		impl->mesh_explosion_manager->Render(view, impl->projection, impl->camera.pos());
-		impl->RenderTrails(view, std::nullopt);
-
 		if (effects_enabled) {
 			// --- Post-processing Pass (renders FBO texture to screen) ---
 
-			// Apply standard post-processing effects (at render resolution)
-			GLuint final_texture = impl->post_processing_manager_->ApplyEffects(
+			// 1. Start frame and apply pre-transparency effects (SSAO, Atmosphere)
+			impl->post_processing_manager_->StartFrame(
 				impl->main_fbo_texture_,
 				impl->main_fbo_depth_texture_,
-				view,
-				impl->projection,
-				impl->camera.pos(),
 				impl->simulation_time
 			);
+			impl->post_processing_manager_->ApplyPreTransparencyEffects(view, impl->projection, impl->camera.pos());
+
+			// 2. Render transparent/particle effects into the current post-processing buffer
+			// This ensures they are drawn on top of a fogged scene, but can still be processed by bloom
+			GLuint currentFbo = impl->post_processing_manager_->GetCurrentFBO();
+			if (currentFbo == 0) {
+				glBindFramebuffer(GL_FRAMEBUFFER, impl->main_fbo_);
+			} else {
+				glBindFramebuffer(GL_FRAMEBUFFER, currentFbo);
+			}
+			// Use existing depth buffer for testing
+			glEnable(GL_DEPTH_TEST);
+			glDepthMask(GL_FALSE);
+
+			impl->fire_effect_manager->Render(view, impl->projection, impl->camera.pos());
+			impl->mesh_explosion_manager->Render(view, impl->projection, impl->camera.pos());
+			impl->RenderTrails(view, std::nullopt);
+			impl->RenderShapes(view, impl->camera, impl->shapes, impl->simulation_time, std::nullopt, true);
+
+			glDepthMask(GL_TRUE);
+
+			// 3. Apply remaining effects (Bloom, Tone Mapping, etc.)
+			impl->post_processing_manager_->ApplyPostTransparencyEffects(view, impl->projection, impl->camera.pos());
+			GLuint final_texture = impl->post_processing_manager_->GetCurrentResult();
 
 			// Return to display resolution for final output
 			glBindFramebuffer(GL_FRAMEBUFFER, 0);
@@ -2463,6 +2518,24 @@ namespace Boidsish {
 			}
 		} else {
 			// --- Passthrough without Post-processing ---
+
+			// Still need to render transparency if effects are disabled
+			if (skip_intermediate) {
+				glBindFramebuffer(GL_FRAMEBUFFER, 0);
+				glViewport(0, 0, impl->width, impl->height);
+			} else {
+				glBindFramebuffer(GL_FRAMEBUFFER, impl->main_fbo_);
+				glViewport(0, 0, impl->render_width, impl->render_height);
+			}
+
+			glEnable(GL_DEPTH_TEST);
+			glDepthMask(GL_FALSE);
+			impl->fire_effect_manager->Render(view, impl->projection, impl->camera.pos());
+			impl->mesh_explosion_manager->Render(view, impl->projection, impl->camera.pos());
+			impl->RenderTrails(view, std::nullopt);
+			impl->RenderShapes(view, impl->camera, impl->shapes, impl->simulation_time, std::nullopt, true);
+			glDepthMask(GL_TRUE);
+
 			if (!skip_intermediate) {
 				glBindFramebuffer(GL_FRAMEBUFFER, 0);
 				glViewport(0, 0, impl->width, impl->height);

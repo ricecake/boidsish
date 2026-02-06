@@ -2,10 +2,13 @@
 
 in float    v_lifetime;
 in vec4     view_pos;
+in vec3     v_world_pos;
 flat in int v_style;
 out vec4    FragColor;
 
 uniform float u_time;
+
+#include "helpers/fog.glsl"
 
 void main() {
 	// Shape the point into a circle and discard fragments outside the circle
@@ -121,4 +124,6 @@ void main() {
 		float alpha = smoothstep(0.25, 0.75, v_lifetime / 2.5);
 		FragColor = vec4(color, alpha);
 	}
+
+	FragColor.rgb = applyFog(FragColor.rgb, v_world_pos, viewPos);
 }

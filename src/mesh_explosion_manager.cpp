@@ -59,6 +59,10 @@ namespace Boidsish {
 		if (shadows_idx != GL_INVALID_INDEX) {
 			glUniformBlockBinding(render_shader_->ID, shadows_idx, Constants::UboBinding::Shadows());
 		}
+		GLuint atmosphere_idx = glGetUniformBlockIndex(render_shader_->ID, "Atmosphere");
+		if (atmosphere_idx != GL_INVALID_INDEX) {
+			glUniformBlockBinding(render_shader_->ID, atmosphere_idx, Constants::UboBinding::Atmosphere());
+		}
 
 		glGenBuffers(1, &ssbo_);
 		glBindBuffer(GL_SHADER_STORAGE_BUFFER, ssbo_);

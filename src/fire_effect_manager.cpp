@@ -66,6 +66,14 @@ namespace Boidsish {
 		if (frustum_idx != GL_INVALID_INDEX) {
 			glUniformBlockBinding(render_shader_->ID, frustum_idx, Constants::UboBinding::FrustumData());
 		}
+		GLuint lighting_idx = glGetUniformBlockIndex(render_shader_->ID, "Lighting");
+		if (lighting_idx != GL_INVALID_INDEX) {
+			glUniformBlockBinding(render_shader_->ID, lighting_idx, Constants::UboBinding::Lighting());
+		}
+		GLuint atmosphere_idx = glGetUniformBlockIndex(render_shader_->ID, "Atmosphere");
+		if (atmosphere_idx != GL_INVALID_INDEX) {
+			glUniformBlockBinding(render_shader_->ID, atmosphere_idx, Constants::UboBinding::Atmosphere());
+		}
 
 		// Create buffers
 		glGenBuffers(1, &particle_buffer_);

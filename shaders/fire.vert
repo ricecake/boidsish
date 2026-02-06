@@ -23,6 +23,7 @@ uniform float frustumCullRadius = 1.0;
 
 out float    v_lifetime;
 out vec4     view_pos;
+out vec3     v_world_pos;
 flat out int v_style;
 
 void main() {
@@ -39,7 +40,8 @@ void main() {
 		gl_PointSize = 0.0;
 		v_style = -1;
 	} else {
-		view_pos = u_view * vec4(p.pos.xyz, 1.0);
+		v_world_pos = p.pos.xyz;
+		view_pos = u_view * vec4(v_world_pos, 1.0);
 		gl_Position = u_projection * view_pos;
 		v_lifetime = p.pos.w;
 		v_style = p.style;

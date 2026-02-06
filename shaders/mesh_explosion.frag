@@ -1,6 +1,7 @@
 #version 420 core
 
 #include "helpers/lighting.glsl"
+#include "helpers/fog.glsl"
 
 in vec3 fFragPos;
 in vec3 fNormal;
@@ -28,4 +29,5 @@ void main() {
 	vec4 lightResult = apply_lighting_no_shadows(fFragPos, norm, baseColor, 0.5);
 
 	FragColor = vec4(lightResult.rgb, fColor.a);
+	FragColor.rgb = applyFog(FragColor.rgb, fFragPos, viewPos);
 }
