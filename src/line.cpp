@@ -112,7 +112,8 @@ namespace Boidsish {
 		float     length = glm::length(direction);
 
 		if (length < 0.0001f) {
-			return glm::mat4(1.0f);
+			// Zero scale to effectively hide the line if length is negligible
+			return glm::scale(glm::translate(glm::mat4(1.0f), start), glm::vec3(0.0f));
 		}
 
 		glm::vec3 norm_dir = direction / length;

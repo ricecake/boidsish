@@ -193,6 +193,7 @@ namespace Boidsish {
 		shader.setMat4("model", model);
 		shader.setVec3("objectColor", GetR(), GetG(), GetB());
 		shader.setFloat("objectAlpha", GetA());
+		shader.setBool("useInstanceColor", false);
 
 		// Set PBR material properties
 		shader.setBool("usePBR", UsePBR());
