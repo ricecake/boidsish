@@ -32,6 +32,7 @@ namespace Boidsish {
         inline const AssimpNodeData& GetRootNode() { return m_RootNode; }
         inline const std::map<std::string, BoneInfo>& GetBoneIDMap() { return m_BoneInfoMap; }
         inline bool  IsValid() const { return m_IsValid; }
+        inline const glm::mat4& GetGlobalInverseTransform() const { return m_GlobalInverseTransform; }
 
     private:
         void ReadMissingBones(const aiAnimation* animation, Model& model);
@@ -44,6 +45,7 @@ namespace Boidsish {
         AssimpNodeData m_RootNode;
         std::map<std::string, BoneInfo> m_BoneInfoMap;
         bool m_IsValid = false;
+        glm::mat4 m_GlobalInverseTransform;
     };
 
 }

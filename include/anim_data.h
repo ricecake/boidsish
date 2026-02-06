@@ -4,6 +4,8 @@
 
 namespace Boidsish {
 
+#define MAX_BONES 100
+
     struct BoneInfo {
         /*id is index in finalBoneMatrices*/
         int id;

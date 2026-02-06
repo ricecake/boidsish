@@ -11,7 +11,10 @@ namespace Boidsish {
         std::replace(normalized_path.begin(), normalized_path.end(), '\\', '/');
 
         Assimp::Importer importer;
-        const aiScene*   scene = importer.ReadFile(normalized_path, aiProcess_Triangulate);
+        const aiScene*   scene = importer.ReadFile(
+            normalized_path,
+            aiProcess_Triangulate | aiProcess_GlobalScale | aiProcess_LimitBoneWeights
+        );
 
         if (!scene || !scene->mRootNode) {
             logger::ERROR("Failed to load animation at path: " + normalized_path);
@@ -25,7 +28,9 @@ namespace Boidsish {
 
         auto animation = scene->mAnimations[0];
         m_Duration = (float)animation->mDuration;
-        m_TicksPerSecond = (int)animation->mTicksPerSecond;
+        m_TicksPerSecond = (animation->mTicksPerSecond != 0) ? (int)animation->mTicksPerSecond : 25;
+        m_GlobalInverseTransform = AssimpGLMHelpers::ConvertMatrixToGLMFormat(scene->mRootNode->mTransformation);
+        m_GlobalInverseTransform = glm::inverse(m_GlobalInverseTransform);
         ReadHierarchyData(m_RootNode, scene->mRootNode);
         ReadMissingBones(animation, *model);
         m_IsValid = true;

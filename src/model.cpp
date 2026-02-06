@@ -253,7 +253,8 @@ namespace Boidsish {
 		Assimp::Importer importer;
 		const aiScene*   scene = importer.ReadFile(
             normalized_path,
-            aiProcess_Triangulate | aiProcess_FlipUVs | aiProcess_GenNormals
+            aiProcess_Triangulate | aiProcess_FlipUVs | aiProcess_GenNormals | aiProcess_LimitBoneWeights |
+                aiProcess_GlobalScale
         );
 
 		if (!scene || scene->mFlags & AI_SCENE_FLAGS_INCOMPLETE || !scene->mRootNode) {

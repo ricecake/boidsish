@@ -54,6 +54,7 @@
 #include "ui/SceneWidget.h"
 #include "ui/hud_widget.h"
 #include "visual_effects.h"
+#include "anim_data.h"
 #include <GL/glew.h>
 #include <GLFW/glfw3.h>
 #include <glm/ext/matrix_projection.hpp>
@@ -84,7 +85,7 @@ namespace Boidsish {
 		ShaderBase::RegisterConstant("MAX_SHOCKWAVES", Constants::Class::Shockwaves::MaxShockwaves());
 
 		// Animation
-		ShaderBase::RegisterConstant("MAX_BONES", 100);
+		ShaderBase::RegisterConstant("MAX_BONES", MAX_BONES);
 
 		registered = true;
 	}

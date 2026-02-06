@@ -1,4 +1,5 @@
 #include "animator.h"
+#include "anim_data.h"
 
 namespace Boidsish {
 
@@ -6,9 +7,9 @@ namespace Boidsish {
         m_CurrentTime = 0.0;
         m_CurrentAnimation = animation;
 
-        m_FinalBoneMatrices.reserve(100);
+        m_FinalBoneMatrices.reserve(MAX_BONES);
 
-        for (int i = 0; i < 100; i++)
+        for (int i = 0; i < MAX_BONES; i++)
             m_FinalBoneMatrices.push_back(glm::mat4(1.0f));
     }
 
@@ -39,12 +40,13 @@ namespace Boidsish {
 
         glm::mat4 globalTransformation = parentTransform * nodeTransform;
 
-        auto boneInfoMap = m_CurrentAnimation->GetBoneIDMap();
+        const auto& boneInfoMap = m_CurrentAnimation->GetBoneIDMap();
         if (boneInfoMap.find(nodeName) != boneInfoMap.end()) {
-            int index = boneInfoMap[nodeName].id;
-            glm::mat4 offset = boneInfoMap[nodeName].offset;
-            if (index < 100) {
-                m_FinalBoneMatrices[index] = globalTransformation * offset;
+            int              index = boneInfoMap.at(nodeName).id;
+            const glm::mat4& offset = boneInfoMap.at(nodeName).offset;
+            if (index < MAX_BONES) {
+                m_FinalBoneMatrices[index] =
+                    m_CurrentAnimation->GetGlobalInverseTransform() * globalTransformation * offset;
             }
         }
 
