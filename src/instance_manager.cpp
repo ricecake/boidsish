@@ -2,9 +2,16 @@
 
 #include "dot.h"
 #include "model.h"
+#include "logger.h"
 #include <GL/glew.h>
+#include <set>
 
 namespace Boidsish {
+
+	// Helper to validate VAO ID
+	static bool IsValidVAO(GLuint vao) {
+		return vao != 0 && glIsVertexArray(vao) == GL_TRUE;
+	}
 
 	InstanceManager::~InstanceManager() {
 		for (auto& [key, group] : m_instance_groups) {
@@ -93,9 +100,22 @@ namespace Boidsish {
 		shader.setFloat("objectAlpha", model->GetA());
 		shader.setBool("useInstanceColor", false); // Models use textures, not per-instance colors
 
+		// Debug: log model info once per distinct model path
+		static std::set<std::string> logged_models;
+		if (logged_models.find(model->GetModelPath()) == logged_models.end()) {
+			logged_models.insert(model->GetModelPath());
+			logger::LOG("Rendering model: {} with {} meshes, {} instances",
+				model->GetModelPath(), model->getMeshes().size(), group.shapes.size());
+			for (size_t i = 0; i < model->getMeshes().size(); i++) {
+				logger::LOG("  Mesh {}: VAO={}, valid={}",
+					i, model->getMeshes()[i].VAO, IsValidVAO(model->getMeshes()[i].VAO));
+			}
+		}
+
 		for (const auto& mesh : model->getMeshes()) {
-			// Skip meshes with invalid VAO
-			if (mesh.VAO == 0) {
+			// Skip meshes with invalid VAO - use glIsVertexArray for thorough check
+			if (!IsValidVAO(mesh.VAO)) {
+				logger::ERROR("Invalid VAO {} in model {} - skipping mesh", mesh.VAO, model->GetModelPath());
 				continue;
 			}
 
@@ -160,9 +180,11 @@ namespace Boidsish {
 	}
 
 	void InstanceManager::RenderDotGroup(Shader& shader, InstanceGroup& group) {
-		// Ensure sphere VAO is initialized before rendering
-		if (Shape::sphere_vao_ == 0)
+		// Ensure sphere VAO is initialized and valid before rendering
+		if (!IsValidVAO(Shape::sphere_vao_)) {
+			logger::ERROR("Invalid sphere VAO {} - skipping dot rendering", Shape::sphere_vao_);
 			return;
+		}
 
 		// Reset shader state at start to prevent leakage from previous model groups
 		shader.setBool("isColossal", false);
