@@ -113,14 +113,14 @@ namespace Boidsish {
 			taunt_text_ = handler.vis->AddArcadeTextEffect(
 				taunt,
 				pos.Toglm(),
-				30.0f,               // radius
+				40.0f,               // radius
 				360.0f,              // angle (wrap around)
 				glm::vec3(0, 0, 1),  // wrap normal (missile local forward)
-				glm::vec3(0, 1, 0),  // text normal (missile local up)
+				glm::vec3(0, 0, 1),  // text normal (parallel -> rainbow style)
 				lifetime_ - lived_,
 				"assets/Roboto-Medium.ttf",
-				100.0f,              // preposterously oversize
-				10.0f                // depth
+				150.0f,              // preposterously oversize
+				15.0f                // depth
 			);
 			if (taunt_text_) {
 				taunt_text_->SetRainbowEnabled(true);

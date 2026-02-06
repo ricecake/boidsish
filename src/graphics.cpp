@@ -1058,9 +1058,9 @@ namespace Boidsish {
 					instance_manager->AddInstance(shape);
 				} else {
 					shader->setBool("isColossal", shape->IsColossal());
-					// Set cull radius based on shape size if available
-					float size = 5; // shape->GetSize();
-					shader->setFloat("frustumCullRadius", size > 0 ? size : 5.0f);
+					// Set cull radius based on shape size
+					float size = shape->GetCullRadius();
+					shader->setFloat("frustumCullRadius", size);
 					shape->render();
 				}
 			}

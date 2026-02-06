@@ -41,6 +41,8 @@ namespace Boidsish {
 		// Text objects are not instanced (each has unique geometry)
 		std::string GetInstanceKey() const override { return "Text:" + std::to_string(GetId()); }
 
+		float GetCullRadius() const override { return font_size_ * 2.0f + depth_; }
+
 		void SetText(const std::string& text);
 		void SetJustification(Justification justification);
 

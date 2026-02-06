@@ -138,6 +138,9 @@ namespace Boidsish {
 		// Shapes with the same key share the same mesh data
 		virtual std::string GetInstanceKey() const = 0;
 
+		// Returns the radius of the bounding sphere for frustum culling
+		virtual float GetCullRadius() const { return 8.0f; }
+
 		// PBR material properties
 		inline float GetRoughness() const { return roughness_; }
 

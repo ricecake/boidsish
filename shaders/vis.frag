@@ -42,8 +42,8 @@ uniform bool      use_texture;
 
 void main() {
 	float dist = length(FragPos.xz - viewPos.xz);
-	float fade_start = 540.0;
-	float fade_end = 550.0;
+	float fade_start = 1900.0;
+	float fade_end = 2000.0;
 	float fade = 1.0 - smoothstep(fade_start, fade_end, dist);
 
 	if (fade < 0.2) {

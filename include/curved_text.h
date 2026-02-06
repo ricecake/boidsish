@@ -23,6 +23,8 @@ namespace Boidsish {
 
 		bool IsExpired() const override { return age_ >= total_duration_; }
 
+		float GetCullRadius() const override { return radius_ + font_size_ * 2.0f; }
+
 		void render() const override;
 
 	protected:
