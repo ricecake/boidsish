@@ -19,10 +19,15 @@ layout(std140) uniform Lighting {
 	Light lights[MAX_LIGHTS];
 	int   num_lights;
 	float worldScale;
+	float hazeDensity;
+	float hazeHeight;
 	vec3  viewPos;
 	vec3  ambient_light;
 	float time;
 	vec3  viewDir;
+	vec3  hazeColor;
+	vec4  cloudParams; // x: density, y: altitude, z: thickness
+	vec3  cloudColor;
 };
 
 // Shadow mapping UBO (binding set via glUniformBlockBinding to point 2)

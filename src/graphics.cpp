@@ -236,7 +236,6 @@ namespace Boidsish {
 		GLuint                  lighting_ubo{0};
 		GLuint                  visual_effects_ubo{0};
 		GLuint                  frustum_ubo{0};
-		GLuint                  atmosphere_ubo{0};
 		std::shared_ptr<PostProcessing::AtmosphereEffect> atmosphere_effect_ptr_;
 		glm::mat4               projection, reflection_vp;
 
@@ -491,7 +490,7 @@ namespace Boidsish {
 			const int MAX_LIGHTS = 10;
 			glGenBuffers(1, &lighting_ubo);
 			glBindBuffer(GL_UNIFORM_BUFFER, lighting_ubo);
-			glBufferData(GL_UNIFORM_BUFFER, 704, NULL, GL_DYNAMIC_DRAW);
+			glBufferData(GL_UNIFORM_BUFFER, 736, NULL, GL_DYNAMIC_DRAW);
 			glBindBuffer(GL_UNIFORM_BUFFER, 0);
 			glBindBufferRange(GL_UNIFORM_BUFFER, Constants::UboBinding::Lighting(), lighting_ubo, 0, 704);
 
@@ -517,18 +516,6 @@ namespace Boidsish {
 			glBindBuffer(GL_UNIFORM_BUFFER, 0);
 			glBindBufferRange(GL_UNIFORM_BUFFER, Constants::UboBinding::FrustumData(), frustum_ubo, 0, 112);
 
-			// Atmosphere UBO
-			glGenBuffers(1, &atmosphere_ubo);
-			glBindBuffer(GL_UNIFORM_BUFFER, atmosphere_ubo);
-			glBufferData(GL_UNIFORM_BUFFER, sizeof(PostProcessing::AtmosphereGPU), NULL, GL_DYNAMIC_DRAW);
-			glBindBuffer(GL_UNIFORM_BUFFER, 0);
-			glBindBufferRange(
-				GL_UNIFORM_BUFFER,
-				Constants::UboBinding::Atmosphere(),
-				atmosphere_ubo,
-				0,
-				sizeof(PostProcessing::AtmosphereGPU)
-			);
 
 			shader->use();
 			SetupShaderBindings(*shader);
@@ -958,9 +945,6 @@ namespace Boidsish {
 				glDeleteBuffers(1, &frustum_ubo);
 			}
 
-			if (atmosphere_ubo) {
-				glDeleteBuffers(1, &atmosphere_ubo);
-			}
 
 			if (window)
 				glfwDestroyWindow(window);
@@ -2137,6 +2121,16 @@ namespace Boidsish {
 		float world_scale = impl->terrain_generator ? impl->terrain_generator->GetWorldScale() : 1.0f;
 		glBufferSubData(GL_UNIFORM_BUFFER, offset + 4, sizeof(float), &world_scale);
 
+		// Fog parameters (hazeDensity, hazeHeight)
+		if (impl->atmosphere_effect_ptr_) {
+			float haze_density = impl->atmosphere_effect_ptr_->IsEnabled()
+				? impl->atmosphere_effect_ptr_->GetHazeDensity()
+				: 0.0f;
+			float haze_height = impl->atmosphere_effect_ptr_->GetHazeHeight();
+			glBufferSubData(GL_UNIFORM_BUFFER, offset + 8, sizeof(float), &haze_density);
+			glBufferSubData(GL_UNIFORM_BUFFER, offset + 12, sizeof(float), &haze_height);
+		}
+
 		offset += 16;
 		glBufferSubData(
 			GL_UNIFORM_BUFFER,
@@ -2152,6 +2146,30 @@ namespace Boidsish {
 		offset += 4;
 		offset = (offset + 15) & ~15; // align to 16
 		glBufferSubData(GL_UNIFORM_BUFFER, offset, sizeof(glm::vec3), &impl->camera.front()[0]);
+
+		// hazeColor
+		if (impl->atmosphere_effect_ptr_) {
+			glm::vec3 haze_color = impl->atmosphere_effect_ptr_->GetHazeColor();
+			glBufferSubData(GL_UNIFORM_BUFFER, offset + 16, sizeof(glm::vec3), &haze_color[0]);
+		}
+
+		// cloudParams and cloudColor
+		if (impl->atmosphere_effect_ptr_) {
+			float cloud_density = impl->atmosphere_effect_ptr_->IsEnabled()
+				? impl->atmosphere_effect_ptr_->GetCloudDensity()
+				: 0.0f;
+			glm::vec4 cloud_params(
+				cloud_density,
+				impl->atmosphere_effect_ptr_->GetCloudAltitude(),
+				impl->atmosphere_effect_ptr_->GetCloudThickness(),
+				0.0f
+			);
+			glm::vec3 cloud_color = impl->atmosphere_effect_ptr_->GetCloudColor();
+
+			glBufferSubData(GL_UNIFORM_BUFFER, offset + 32, sizeof(glm::vec4), &cloud_params[0]);
+			glBufferSubData(GL_UNIFORM_BUFFER, offset + 48, sizeof(glm::vec3), &cloud_color[0]);
+		}
+
 		glBindBuffer(GL_UNIFORM_BUFFER, 0);
 
 		// Update Frustum UBO for GPU-side culling
@@ -2176,13 +2194,6 @@ namespace Boidsish {
 			glBindBuffer(GL_UNIFORM_BUFFER, 0);
 		}
 
-		// Update Atmosphere UBO
-		if (impl->atmosphere_effect_ptr_) {
-			PostProcessing::AtmosphereGPU atmosphere_gpu = impl->atmosphere_effect_ptr_->ToGPU();
-			glBindBuffer(GL_UNIFORM_BUFFER, impl->atmosphere_ubo);
-			glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(PostProcessing::AtmosphereGPU), &atmosphere_gpu);
-			glBindBuffer(GL_UNIFORM_BUFFER, 0);
-		}
 
 		if (impl->reflection_fbo) {
 			// --- Reflection Pre-Pass ---
@@ -2454,6 +2465,9 @@ namespace Boidsish {
 
 		if (effects_enabled) {
 			// --- Post-processing Pass (renders FBO texture to screen) ---
+			// ARCHITECTURE: We split the post-processing chain to allow transparent objects
+			// to be rendered on top of a fogged background, while still allowing them to
+			// be processed by later effects like Bloom or Tone Mapping.
 
 			// 1. Start frame and apply pre-transparency effects (SSAO, Atmosphere)
 			impl->post_processing_manager_->StartFrame(
@@ -2464,7 +2478,8 @@ namespace Boidsish {
 			impl->post_processing_manager_->ApplyPreTransparencyEffects(view, impl->projection, impl->camera.pos());
 
 			// 2. Render transparent/particle effects into the current post-processing buffer
-			// This ensures they are drawn on top of a fogged scene, but can still be processed by bloom
+			// This ensures they are drawn on top of a fogged scene, but can still be processed by bloom.
+			// NOTE: Any new transparent effect should be rendered here.
 			GLuint currentFbo = impl->post_processing_manager_->GetCurrentFBO();
 			if (currentFbo == 0) {
 				glBindFramebuffer(GL_FRAMEBUFFER, impl->main_fbo_);

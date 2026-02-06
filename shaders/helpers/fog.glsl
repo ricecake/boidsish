@@ -3,13 +3,6 @@
 
 #include "lighting.glsl"
 
-layout(std140, binding = 6) uniform Atmosphere {
-	vec4  hazeParams;   // x: density, y: height, zw: unused
-	vec4  hazeColor;    // rgb: color, w: unused
-	vec4  cloudParams;  // x: density, y: altitude, z: thickness, w: unused
-	vec4  cloudColor;   // rgb: color, w: unused
-};
-
 /**
  * Calculate height-based exponential fog.
  * @param start Ray start position (camera)
@@ -31,11 +24,11 @@ float getHeightFog(vec3 start, vec3 end, float density, float heightFalloff) {
 }
 
 /**
- * Apply fog to a given color.
+ * Apply fog to a given color using global Lighting parameters.
  */
-vec3 applyFog(vec3 color, vec3 fragPos, vec3 camPos) {
-    float fogFactor = getHeightFog(camPos, fragPos, hazeParams.x, 1.0 / (hazeParams.y * worldScale + 0.001));
-    return mix(color, hazeColor.rgb, fogFactor);
+vec3 apply_fog(vec3 color, vec3 worldPos) {
+    float fogFactor = getHeightFog(viewPos, worldPos, hazeDensity, 1.0 / (hazeHeight * worldScale + 0.001));
+    return mix(color, hazeColor, fogFactor);
 }
 
 #endif // HELPERS_FOG_GLSL

@@ -2,6 +2,7 @@
 #define HELPERS_LIGHTING_GLSL
 
 #include "../lighting.glsl"
+#include "fog.glsl"
 
 const int LIGHT_TYPE_POINT = 0;
 const int LIGHT_TYPE_DIRECTIONAL = 1;
@@ -850,5 +851,6 @@ vec3 apply_flash_lighting(
 
 	return result;
 }
+
 
 #endif // HELPERS_LIGHTING_GLSL

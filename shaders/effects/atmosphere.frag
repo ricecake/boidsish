@@ -50,8 +50,8 @@ void main() {
 	}
 
 	// 1. Height Fog (Haze)
-	float fogFactor = getHeightFog(cameraPos, worldPos, hazeParams.x, 1.0 / (hazeParams.y * worldScale + 0.001));
-	vec3  currentHazeColor = hazeColor.rgb;
+	float fogFactor = getHeightFog(cameraPos, worldPos, hazeDensity, 1.0 / (hazeHeight * worldScale + 0.001));
+	vec3  currentHazeColor = hazeColor;
 
 	// Add light scattering to fog
 	vec3 scattering = vec3(0.0);
@@ -112,10 +112,10 @@ void main() {
 			cloudScattering += lights[i].color * (d * 0.5 + 0.5 + silver) * lights[i].intensity;
 		}
 
-		cloudFinalColor = cloudColor.rgb * (ambient_light + cloudScattering * 0.5);
+		cloudFinalColor = cloudColor * (ambient_light + cloudScattering * 0.5);
 
 		// Apply fog to clouds based on their own distance
-		float cloudFogFactor = getHeightFog(cameraPos, cameraPos + rayDir * t_start, hazeParams.x, 1.0 / (hazeParams.y * worldScale + 0.001));
+		float cloudFogFactor = getHeightFog(cameraPos, cameraPos + rayDir * t_start, hazeDensity, 1.0 / (hazeHeight * worldScale + 0.001));
 		cloudFinalColor = mix(cloudFinalColor, currentHazeColor, cloudFogFactor);
 	}
 

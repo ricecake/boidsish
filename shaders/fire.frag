@@ -125,5 +125,5 @@ void main() {
 		FragColor = vec4(color, alpha);
 	}
 
-	FragColor.rgb = applyFog(FragColor.rgb, v_world_pos, viewPos);
+	FragColor.rgb = apply_fog(FragColor.rgb, v_world_pos);
 }

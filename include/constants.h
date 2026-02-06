@@ -28,10 +28,6 @@ namespace Boidsish {
 			consteval int SdfVolumes() {
 				return 5;
 			}
-
-			consteval int Atmosphere() {
-				return 6;
-			}
 		} // namespace UboBinding
 
 		namespace General {

@@ -38,13 +38,6 @@ namespace Boidsish {
 			shader_->setMat4("invView", glm::inverse(viewMatrix));
 			shader_->setMat4("invProjection", glm::inverse(projectionMatrix));
 
-			shader_->setFloat("hazeDensity", haze_density_);
-			shader_->setFloat("hazeHeight", haze_height_);
-			shader_->setVec3("hazeColor", haze_color_);
-			shader_->setFloat("cloudDensity", cloud_density_);
-			shader_->setFloat("cloudAltitude", cloud_altitude_);
-			shader_->setFloat("cloudThickness", cloud_thickness_);
-			shader_->setVec3("cloudColorUniform", cloud_color_);
 
 			glActiveTexture(GL_TEXTURE0);
 			glBindTexture(GL_TEXTURE_2D, sourceTexture);

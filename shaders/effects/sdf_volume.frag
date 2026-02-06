@@ -23,6 +23,7 @@ layout(std140) uniform SdfVolumes {
 };
 
 #include "lygia/sdf/sphereSDF.glsl"
+#include "../helpers/fog.glsl"
 
 // Custom union that handles color blending
 vec4 opUnionColored(vec4 d1, vec4 d2, float k) {
@@ -128,6 +129,9 @@ void main() {
 		rim = pow(rim, 3.0);
 
 		vec3 volumeColor = res.rgb * (diff * 0.8 + 0.2) + res.rgb * rim * 0.5;
+
+		// Apply fog based on raymarching hit position
+		volumeColor = apply_fog(volumeColor, p);
 
 		FragColor = vec4(volumeColor, 1.0);
 	} else {

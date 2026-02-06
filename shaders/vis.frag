@@ -2,7 +2,6 @@
 out vec4 FragColor;
 
 #include "helpers/lighting.glsl"
-#include "helpers/fog.glsl"
 #include "visual_effects.frag"
 #include "visual_effects.glsl"
 
@@ -146,7 +145,7 @@ void main() {
 	}
 
 	if (u_applyFog) {
-		outColor.rgb = applyFog(outColor.rgb, FragPos, viewPos);
+		outColor.rgb = apply_fog(outColor.rgb, FragPos);
 	}
 
 	FragColor = outColor;

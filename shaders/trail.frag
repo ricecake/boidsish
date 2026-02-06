@@ -15,7 +15,6 @@ uniform float trailRoughness; // PBR roughness [0=mirror, 1=matte]
 uniform float trailMetallic;  // PBR metallic [0=dielectric, 1=metal]
 
 #include "helpers/noise.glsl"
-#include "helpers/fog.glsl"
 
 void main() {
 	vec3 norm = normalize(vs_normal);
@@ -102,5 +101,5 @@ void main() {
 		FragColor = vec4(result, camera_fade);
 	}
 
-	FragColor.rgb = applyFog(FragColor.rgb, vs_frag_pos, viewPos);
+	FragColor.rgb = apply_fog(FragColor.rgb, vs_frag_pos);
 }
