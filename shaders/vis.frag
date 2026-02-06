@@ -2,6 +2,7 @@
 out vec4 FragColor;
 
 #include "helpers/lighting.glsl"
+#include "helpers/fog.glsl"
 #include "visual_effects.frag"
 #include "visual_effects.glsl"
 
@@ -33,6 +34,7 @@ uniform float arcadeRainbowFrequency = 5.0;
 
 // PBR material properties
 uniform bool  usePBR = false;
+uniform bool  u_applyFog = false;
 uniform float roughness = 0.5;
 uniform float metallic = 0.0;
 uniform float ao = 1.0;
@@ -141,6 +143,10 @@ void main() {
 
 		outColor = vec4(result, final_alpha);
 		outColor = mix(vec4(0.0, 0.7, 0.7, final_alpha) * length(outColor), outColor, step(1, fade));
+	}
+
+	if (u_applyFog) {
+		outColor.rgb = applyFog(outColor.rgb, FragPos, viewPos);
 	}
 
 	FragColor = outColor;

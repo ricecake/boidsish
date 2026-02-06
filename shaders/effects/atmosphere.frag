@@ -10,30 +10,9 @@ uniform vec3 cameraPos;
 uniform mat4 invView;
 uniform mat4 invProjection;
 
-uniform float hazeDensity;
-uniform float hazeHeight;
-uniform vec3  hazeColor;
-uniform float cloudDensity;
-uniform float cloudAltitude;
-uniform float cloudThickness;
-uniform vec3  cloudColorUniform;
-// uniform float time;
-
 #include "../helpers/lighting.glsl"
 #include "../helpers/noise.glsl"
-
-float getHeightFog(vec3 start, vec3 end, float density, float heightFalloff) {
-	float dist = length(end - start);
-	vec3  dir = (end - start) / dist;
-
-	float fog;
-	if (abs(dir.y) < 0.0001) {
-		fog = density * exp(-heightFalloff * start.y) * dist;
-	} else {
-		fog = (density / (heightFalloff * dir.y)) * (exp(-heightFalloff * start.y) - exp(-heightFalloff * end.y));
-	}
-	return 1.0 - exp(-max(0.0, fog));
-}
+#include "../helpers/fog.glsl"
 
 float fbm(vec2 p) {
 	float v = 0.0;
@@ -71,8 +50,8 @@ void main() {
 	}
 
 	// 1. Height Fog (Haze)
-	float fogFactor = getHeightFog(cameraPos, worldPos, hazeDensity, 1.0 / (hazeHeight * worldScale + 0.001));
-	vec3  currentHazeColor = hazeColor;
+	float fogFactor = getHeightFog(cameraPos, worldPos, hazeParams.x, 1.0 / (hazeParams.y * worldScale + 0.001));
+	vec3  currentHazeColor = hazeColor.rgb;
 
 	// Add light scattering to fog
 	vec3 scattering = vec3(0.0);
@@ -85,10 +64,10 @@ void main() {
 
 	// 2. Cloud Layer
 	float cloudFactor = 0.0;
-	vec3  cloudColor = vec3(0.0);
+	vec3  cloudFinalColor = vec3(0.0);
 
-	float scaledCloudAltitude = cloudAltitude * worldScale;
-	float scaledCloudThickness = cloudThickness * worldScale;
+	float scaledCloudAltitude = cloudParams.y * worldScale;
+	float scaledCloudThickness = cloudParams.z * worldScale;
 
 	// Intersect with cloud layer (volume approximation)
 	float t_start = (scaledCloudAltitude - cameraPos.y) / (rayDir.y + 0.000001);
@@ -116,7 +95,7 @@ void main() {
 
 			float noise = fbm((p.xz / worldScale) * 0.015 + jitter * time * 0.0001 + (p.y / worldScale) * 0.02);
 			// float d = smoothstep(0.2, 0.6, noise * (i + 1)) * cloudDensity;
-			float d = smoothstep(0.2, 0.6, noise * (i + (1 - noise))) * cloudDensity * tapering;
+			float d = smoothstep(0.2, 0.6, noise * (i + (1 - noise))) * cloudParams.x * tapering;
 
 			cloudAcc += d;
 		}
@@ -133,12 +112,16 @@ void main() {
 			cloudScattering += lights[i].color * (d * 0.5 + 0.5 + silver) * lights[i].intensity;
 		}
 
-		cloudColor = cloudColorUniform * (ambient_light + cloudScattering * 0.5);
+		cloudFinalColor = cloudColor.rgb * (ambient_light + cloudScattering * 0.5);
+
+		// Apply fog to clouds based on their own distance
+		float cloudFogFactor = getHeightFog(cameraPos, cameraPos + rayDir * t_start, hazeParams.x, 1.0 / (hazeParams.y * worldScale + 0.001));
+		cloudFinalColor = mix(cloudFinalColor, currentHazeColor, cloudFogFactor);
 	}
 
 	// Combine everything
-	vec3 result = mix(sceneColor, cloudColor, cloudFactor);
-	result = mix(result, currentHazeColor, fogFactor);
+	vec3 foggedSceneColor = mix(sceneColor, currentHazeColor, fogFactor);
+	vec3 result = mix(foggedSceneColor, cloudFinalColor, cloudFactor);
 
 	FragColor = vec4(result, 1.0);
 }

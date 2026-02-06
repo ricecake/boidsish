@@ -9,6 +9,13 @@ class Shader; // Forward declaration
 namespace Boidsish {
 	namespace PostProcessing {
 
+		struct AtmosphereGPU {
+			glm::vec4 hazeParams;  // x: density, y: height, zw: unused
+			glm::vec4 hazeColor;   // rgb: color, w: unused
+			glm::vec4 cloudParams; // x: density, y: altitude, z: thickness, w: unused
+			glm::vec4 cloudColor;  // rgb: color, w: unused
+		};
+
 		class AtmosphereEffect: public IPostProcessingEffect {
 		public:
 			AtmosphereEffect();
@@ -25,6 +32,8 @@ namespace Boidsish {
 			void Resize(int width, int height) override;
 
 			void SetTime(float time) override { time_ = time; }
+
+			bool IsPreTransparency() const override { return true; }
 
 			// Haze parameters
 			void SetHazeDensity(float density) { haze_density_ = density; }
@@ -55,6 +64,13 @@ namespace Boidsish {
 			void SetCloudColor(const glm::vec3& color) { cloud_color_ = color; }
 
 			glm::vec3 GetCloudColor() const { return cloud_color_; }
+
+			AtmosphereGPU ToGPU() const {
+				return {glm::vec4(is_enabled_ ? haze_density_ : 0.0f, haze_height_, 0.0f, 0.0f),
+						glm::vec4(haze_color_, 0.0f),
+						glm::vec4(is_enabled_ ? cloud_density_ : 0.0f, cloud_altitude_, cloud_thickness_, 0.0f),
+						glm::vec4(cloud_color_, 0.0f)};
+			}
 
 		private:
 			std::unique_ptr<Shader> shader_;

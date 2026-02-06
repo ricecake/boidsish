@@ -27,6 +27,23 @@ namespace Boidsish {
 				const glm::vec3& cameraPos,
 				float            time
 			);
+
+			// New multi-stage API
+			void StartFrame(GLuint sourceTexture, GLuint depthTexture, float time);
+			void ApplyPreTransparencyEffects(
+				const glm::mat4& viewMatrix,
+				const glm::mat4& projectionMatrix,
+				const glm::vec3& cameraPos
+			);
+			void ApplyPostTransparencyEffects(
+				const glm::mat4& viewMatrix,
+				const glm::mat4& projectionMatrix,
+				const glm::vec3& cameraPos
+			);
+			GLuint GetCurrentResult() const { return current_texture_; }
+			GLuint GetCurrentFBO() const {
+				return effect_applied_ ? pingpong_fbo_[1 - fbo_index_] : 0;
+			} // This is complex...
 			void Resize(int width, int height);
 
 			std::vector<std::shared_ptr<IPostProcessingEffect>>& GetPreToneMappingEffects() {
@@ -45,6 +62,13 @@ namespace Boidsish {
 
 			GLuint pingpong_fbo_[2];
 			GLuint pingpong_texture_[2];
+
+			// Current frame state
+			GLuint current_texture_ = 0;
+			GLuint depth_texture_ = 0;
+			float  time_ = 0.0f;
+			int    fbo_index_ = 0;
+			bool   effect_applied_ = false;
 		};
 
 	} // namespace PostProcessing

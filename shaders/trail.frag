@@ -1,4 +1,4 @@
-#version 330 core
+#version 420 core
 out vec4 FragColor;
 
 in vec3  vs_color;
@@ -15,6 +15,7 @@ uniform float trailRoughness; // PBR roughness [0=mirror, 1=matte]
 uniform float trailMetallic;  // PBR metallic [0=dielectric, 1=metal]
 
 #include "helpers/noise.glsl"
+#include "helpers/fog.glsl"
 
 void main() {
 	vec3 norm = normalize(vs_normal);
@@ -100,4 +101,6 @@ void main() {
 		vec3 result = apply_lighting_no_shadows(vs_frag_pos, norm, vs_color, 0.5).rgb;
 		FragColor = vec4(result, camera_fade);
 	}
+
+	FragColor.rgb = applyFog(FragColor.rgb, vs_frag_pos, viewPos);
 }
