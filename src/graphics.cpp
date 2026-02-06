@@ -38,6 +38,7 @@
 #include "post_processing/effects/SdfVolumeEffect.h"
 #include "post_processing/effects/SsaoEffect.h"
 #include "post_processing/effects/StrobeEffect.h"
+#include "post_processing/effects/SuperSpeedEffect.h"
 #include "post_processing/effects/TimeStutterEffect.h"
 #include "post_processing/effects/ToneMappingEffect.h"
 #include "post_processing/effects/WhispTrailEffect.h"
@@ -285,6 +286,12 @@ namespace Boidsish {
 		glm::vec2 camera_angular_velocity_{0.0f, 0.0f};
 		float     avg_frame_time_{1.0f / 60.0f};
 		float     tess_quality_multiplier_{1.0f};
+
+		// Camera shake state
+		float     shake_intensity = 0.0f;
+		float     shake_timer = 0.0f;
+		float     shake_duration = 0.0f;
+		glm::vec3 shake_offset{0.0f};
 
 		// Cached global settings
 		float camera_roll_speed_;
@@ -791,6 +798,10 @@ namespace Boidsish {
 				film_grain_effect->SetEnabled(false);
 				post_processing_manager_->AddEffect(film_grain_effect);
 
+				auto super_speed_effect = std::make_shared<PostProcessing::SuperSpeedEffect>();
+				super_speed_effect->SetEnabled(true);
+				post_processing_manager_->AddEffect(super_speed_effect);
+
 				auto atmosphere_effect = std::make_shared<PostProcessing::AtmosphereEffect>();
 				atmosphere_effect->SetEnabled(true);
 				post_processing_manager_->AddEffect(atmosphere_effect);
@@ -1005,6 +1016,7 @@ namespace Boidsish {
 			float far_plane = 1000.0f * std::max(1.0f, world_scale);
 			projection = glm::perspective(glm::radians(cam_to_use.fov), (float)width / (float)height, 0.1f, far_plane);
 			glm::vec3 cameraPos(cam_to_use.x, cam_to_use.y, cam_to_use.z);
+			cameraPos += shake_offset;
 			glm::mat4 view;
 
 			if (camera_mode == CameraMode::PATH_FOLLOW) {
@@ -1896,6 +1908,28 @@ namespace Boidsish {
 				1.0f - exp(-delta_time * 5.0f)
 			);
 		}
+
+		// Update camera shake
+		if (impl->shake_timer > 0.0f) {
+			impl->shake_timer -= delta_time;
+			if (impl->shake_timer <= 0.0f) {
+				impl->shake_timer = 0.0f;
+				impl->shake_offset = glm::vec3(0.0f);
+			} else {
+				float t_shake = (impl->shake_duration > 0.0f) ? (impl->shake_timer / impl->shake_duration) : 0.0f;
+				float current_intensity = impl->shake_intensity * t_shake; // Simple linear decay
+				// Use a pseudo-random offset based on time
+				float t = impl->simulation_time * 50.0f;
+				impl->shake_offset = glm::vec3(
+										 sin(t * 1.1f) * cos(t * 0.9f),
+										 cos(t * 1.2f) * sin(t * 0.8f),
+										 sin(t * 1.3f) * cos(t * 0.7f)
+									 ) *
+					current_intensity;
+			}
+		} else {
+			impl->shake_offset = glm::vec3(0.0f);
+		}
 	}
 
 	void Visualizer::Render() {
@@ -2700,6 +2734,23 @@ namespace Boidsish {
 				return;
 			}
 		}
+	}
+
+	void Visualizer::SetSuperSpeedIntensity(float intensity) {
+		if (impl->post_processing_manager_) {
+			for (auto& effect : impl->post_processing_manager_->GetPreToneMappingEffects()) {
+				if (auto super_speed = std::dynamic_pointer_cast<PostProcessing::SuperSpeedEffect>(effect)) {
+					super_speed->SetIntensity(intensity);
+					break;
+				}
+			}
+		}
+	}
+
+	void Visualizer::SetCameraShake(float intensity, float duration) {
+		impl->shake_intensity = intensity;
+		impl->shake_timer = duration;
+		impl->shake_duration = duration;
 	}
 
 	void Visualizer::SetPathCamera(std::shared_ptr<Path> path) {

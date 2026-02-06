@@ -34,6 +34,12 @@ namespace Boidsish {
 		int                                        damage_pending_ = 0;
 		float                                      health = 100.0f;
 		float                                      shield = 100.0f;
+
+		// Super speed effect state
+		enum class SuperSpeedState { NORMAL, BUILDUP, ACTIVE, TAPERING };
+		SuperSpeedState super_speed_state_ = SuperSpeedState::NORMAL;
+		float           super_speed_timer_ = 0.0f;
+		float           super_speed_intensity_ = 0.0f;
 	};
 
 } // namespace Boidsish
