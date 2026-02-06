@@ -20,5 +20,6 @@ namespace Boidsish {
 		int shimmery_enabled;
 		int glitched_enabled;
 		int wireframe_enabled;
+		int _padding; // Align to 32 bytes (8 * 4)
 	};
 } // namespace Boidsish

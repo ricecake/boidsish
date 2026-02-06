@@ -25,70 +25,23 @@ namespace Boidsish {
 
 		// Create a mesh of two crossed quads to give some 3D volume
 		// Quads go from (0,-0.5, 0) to (1, 0.5, 0) and (0, 0, -0.5) to (1, 0, 0.5)
+		// Layout: Position (x,y,z), Normal (nx,ny,nz), TexCoords (u,v)
 		float vertices[] = {
-			// Quad 1 (XY plane) - Position (x,y,z), TexCoords (u,v)
-			0.0f,
-			-0.5f,
-			0.0f,
-			0.0f,
-			0.0f,
-			1.0f,
-			-0.5f,
-			0.0f,
-			1.0f,
-			0.0f,
-			1.0f,
-			0.5f,
-			0.0f,
-			1.0f,
-			1.0f,
-			0.0f,
-			-0.5f,
-			0.0f,
-			0.0f,
-			0.0f,
-			1.0f,
-			0.5f,
-			0.0f,
-			1.0f,
-			1.0f,
-			0.0f,
-			0.5f,
-			0.0f,
-			0.0f,
-			1.0f,
+			// Quad 1 (XY plane)
+			0.0f, -0.5f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f,
+			1.0f, -0.5f, 0.0f, 0.0f, 0.0f, 1.0f, 1.0f, 0.0f,
+			1.0f,  0.5f, 0.0f, 0.0f, 0.0f, 1.0f, 1.0f, 1.0f,
+			0.0f, -0.5f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f,
+			1.0f,  0.5f, 0.0f, 0.0f, 0.0f, 1.0f, 1.0f, 1.0f,
+			0.0f,  0.5f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 1.0f,
 
 			// Quad 2 (XZ plane)
-			0.0f,
-			0.0f,
-			-0.5f,
-			0.0f,
-			0.0f,
-			1.0f,
-			0.0f,
-			-0.5f,
-			1.0f,
-			0.0f,
-			1.0f,
-			0.0f,
-			0.5f,
-			1.0f,
-			1.0f,
-			0.0f,
-			0.0f,
-			-0.5f,
-			0.0f,
-			0.0f,
-			1.0f,
-			0.0f,
-			0.5f,
-			1.0f,
-			1.0f,
-			0.0f,
-			0.0f,
-			0.5f,
-			0.0f,
-			1.0f
+			0.0f, 0.0f, -0.5f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f,
+			1.0f, 0.0f, -0.5f, 0.0f, 1.0f, 0.0f, 1.0f, 0.0f,
+			1.0f, 0.0f,  0.5f, 0.0f, 1.0f, 0.0f, 1.0f, 1.0f,
+			0.0f, 0.0f, -0.5f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f,
+			1.0f, 0.0f,  0.5f, 0.0f, 1.0f, 0.0f, 1.0f, 1.0f,
+			0.0f, 0.0f,  0.5f, 0.0f, 1.0f, 0.0f, 0.0f, 1.0f
 		};
 
 		line_vertex_count_ = 12;
@@ -100,11 +53,14 @@ namespace Boidsish {
 		glBindBuffer(GL_ARRAY_BUFFER, line_vbo_);
 		glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
 
-		// Position attribute
-		glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void*)0);
+		// Position attribute (0)
+		glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)0);
 		glEnableVertexAttribArray(0);
-		// TexCoord attribute
-		glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void*)(3 * sizeof(float)));
+		// Normal attribute (1)
+		glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)(3 * sizeof(float)));
+		glEnableVertexAttribArray(1);
+		// TexCoord attribute (2)
+		glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)(6 * sizeof(float)));
 		glEnableVertexAttribArray(2);
 
 		glBindBuffer(GL_ARRAY_BUFFER, 0);
@@ -140,6 +96,7 @@ namespace Boidsish {
 
 		// Pass through isColossal from base class
 		s.setBool("isColossal", IsColossal());
+		s.setBool("use_texture", false);
 
 		glBindVertexArray(line_vao_);
 		glDrawArrays(GL_TRIANGLES, 0, line_vertex_count_);

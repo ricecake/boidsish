@@ -102,16 +102,30 @@ namespace Boidsish {
 		if (state_ == State::CIRCLING) {
 			glm::vec3 l_pos = launcher->GetPosition().Toglm();
 			glm::vec3 to_launcher = l_pos - pos;
-			glm::vec3 orbit = glm::cross(glm::vec3(0, 1, 0), glm::normalize(to_launcher));
+			float     dist_to_launcher = glm::length(to_launcher);
 
-			// Aim for a point on the orbit circle
-			glm::vec3 target_orbit_pos = l_pos + glm::normalize(pos - l_pos) * kCirclingRadius + orbit * 50.0f;
-			desired_dir_world = glm::normalize(target_orbit_pos - pos);
+			if (dist_to_launcher > 0.001f) {
+				glm::vec3 to_launcher_n = to_launcher / dist_to_launcher;
+				glm::vec3 orbit = glm::cross(glm::vec3(0, 1, 0), to_launcher_n);
+
+				// Aim for a point on the orbit circle
+				glm::vec3 to_pos = pos - l_pos;
+				float     dist_to_pos = glm::length(to_pos);
+				glm::vec3 to_pos_n = (dist_to_pos > 0.001f) ? to_pos / dist_to_pos : glm::vec3(1, 0, 0);
+
+				glm::vec3 target_orbit_pos = l_pos + to_pos_n * kCirclingRadius + orbit * 50.0f;
+				glm::vec3 to_target = target_orbit_pos - pos;
+				if (glm::length(to_target) > 0.001f) {
+					desired_dir_world = glm::normalize(to_target);
+				}
+			}
 			target_speed = kCirclingSpeed;
 		} else if (state_ == State::ENGAGING && player) {
 			glm::vec3 p_pos = player->GetPosition().Toglm();
 			glm::vec3 to_player = p_pos - pos;
-			desired_dir_world = glm::normalize(to_player);
+			if (glm::length(to_player) > 0.001f) {
+				desired_dir_world = glm::normalize(to_player);
+			}
 			target_speed = kEngagingSpeed;
 
 			// Fire gun

@@ -185,6 +185,7 @@ namespace Boidsish {
 
 		shader.setBool("isColossal", false);
 		shader.setBool("useInstanceColor", true);
+		shader.setBool("use_texture", false);
 
 		// Set PBR properties (using first dot's values - could be extended to per-instance)
 		shader.setBool("usePBR", dot->UsePBR());
