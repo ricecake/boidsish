@@ -113,23 +113,27 @@ namespace Boidsish {
 			taunt_text_ = handler.vis->AddArcadeTextEffect(
 				taunt,
 				pos.Toglm(),
-				5.0f,                // radius offset
-				0.0f,                // angle (flat)
-				glm::vec3(0, 1, 0),  // wrap normal
-				glm::vec3(0, 0, 1),  // text normal
+				30.0f,               // radius
+				360.0f,              // angle (wrap around)
+				glm::vec3(0, 0, 1),  // wrap normal (missile local forward)
+				glm::vec3(0, 1, 0),  // text normal (missile local up)
 				lifetime_ - lived_,
 				"assets/Roboto-Medium.ttf",
-				3.0f                 // font size
+				100.0f,              // preposterously oversize
+				10.0f                // depth
 			);
 			if (taunt_text_) {
 				taunt_text_->SetRainbowEnabled(true);
 				taunt_text_->SetWaveMode(ArcadeWaveMode::VERTICAL);
-				taunt_text_->SetRotationSpeed(2.0f);
+				taunt_text_->SetDoubleCopy(true);
+				taunt_text_->SetRotationSpeed(5.0f);
+				taunt_text_->SetRotationAxis(glm::vec3(0, 0, 1));
 			}
 		}
 
 		if (taunt_text_) {
 			taunt_text_->SetPosition(pos.x, pos.y, pos.z);
+			taunt_text_->SetRotation(rigid_body_.GetOrientation());
 		}
 
 		if (!launch_sound_) {

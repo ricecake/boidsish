@@ -150,18 +150,19 @@ namespace Boidsish {
 				}
 			}
 
-			// 3. Populate forbidden chunks based on CURRENT launchers and cooldowns
-			std::set<const Terrain*> forbidden_chunks;
-			auto                     exclude_neighborhood = [&](const Terrain* chunk) {
-                forbidden_chunks.insert(chunk);
-                auto neighbors = get_neighbors(chunk, visible_chunks);
-                for (const auto& neighbor : neighbors) {
-                    forbidden_chunks.insert(neighbor);
-                    // Also exclude neighbors of neighbors for a wider "one per hilltop" effect
-                    auto n2 = get_neighbors(neighbor, visible_chunks);
-                    forbidden_chunks.insert(n2.begin(), n2.end());
-                }
-            };
+			// 3. Populate forbidden coordinates based on CURRENT launchers and cooldowns
+			std::set<std::pair<int, int>> forbidden_coords;
+			auto                          exclude_neighborhood = [&](const Terrain* chunk) {
+				int cx = chunk->GetX();
+				int cz = chunk->GetZ();
+				int step = Constants::Class::Terrain::ChunkSize();
+				int range = 2; // Exclude 2 chunks in every direction
+				for (int dx = -range; dx <= range; ++dx) {
+					for (int dz = -range; dz <= range; ++dz) {
+						forbidden_coords.insert({cx + dx * step, cz + dz * step});
+					}
+				}
+			};
 
 			for (const auto& pair : spawned_launchers_) {
 				exclude_neighborhood(pair.first);
@@ -212,7 +213,7 @@ namespace Boidsish {
 			});
 
 			for (const auto& candidate : candidates) {
-				if (forbidden_chunks.count(candidate.chunk)) {
+				if (forbidden_coords.count({candidate.chunk->GetX(), candidate.chunk->GetZ()})) {
 					continue;
 				}
 

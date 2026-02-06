@@ -129,19 +129,21 @@ namespace Boidsish {
 		std::string                           msg = kEncouragements[dist(eng_)];
 		auto arcade_text = handler.vis->AddArcadeTextEffect(
 			msg,
-			pos + glm::vec3(0, 25, 0),
-			5.0f,
-			0.0f,
-			glm::vec3(0, 1, 0),
-			glm::vec3(0, 0, 1),
-			4.0f,
+			pos + glm::vec3(0, 75, 0),
+			50.0f,               // radius
+			360.0f,              // wrap around
+			glm::vec3(0, 1, 0),  // wrap normal (axis Up)
+			glm::vec3(0, 0, 1),  // text normal (face Z)
+			5.0f,                // duration
 			"assets/Roboto-Medium.ttf",
-			15.0f
+			150.0f,              // preposterously oversize
+			20.0f                // depth
 		);
 		if (arcade_text) {
 			arcade_text->SetRainbowEnabled(true);
 			arcade_text->SetWaveMode(ArcadeWaveMode::VERTICAL);
-			arcade_text->SetRotationSpeed(1.5f);
+			arcade_text->SetDoubleCopy(true);
+			arcade_text->SetRotationSpeed(3.0f);
 		}
 
 		handler.QueueRemoveEntity(GetId());
