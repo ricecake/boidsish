@@ -50,8 +50,8 @@ namespace Boidsish {
 		return target_pos + (target_vel * time_to_impact);
 	}
 
-	CatMissile::CatMissile(int id, Vector3 pos, glm::quat orientation, glm::vec3 dir, Vector3 vel):
-		Entity<Model>(id, "assets/Missile.obj", true), eng_(rd_()) {
+	CatMissile::CatMissile(int id, Vector3 pos, glm::quat orientation, glm::vec3 dir, Vector3 vel, bool leftHanded):
+		Entity<Model>(id, "assets/Missile.obj", true), eng_(rd_()), leftHanded_(leftHanded) {
 		rigid_body_.linear_friction_ = 0.01f;
 		rigid_body_.angular_friction_ = 0.01f;
 
@@ -284,8 +284,8 @@ namespace Boidsish {
 		if (target_ != nullptr) {
 			spiral_amplitude = glm::mix(0.0f, max_spiral, std::clamp(target_distance / 300.0f, 0.0f, 1.0f));
 		}
-		target_dir_local.x += sin(lived_ * 2.0f) * spiral_amplitude;
-		target_dir_local.y += cos(lived_ * 1.5f) * spiral_amplitude;
+		target_dir_local.x += sin(lived_ * 2.0f * leftHanded_ ? -1.0f : 1.0f) * spiral_amplitude;
+		target_dir_local.y += cos(lived_ * 1.5f * leftHanded_ ? -1.0f : 1.0f) * spiral_amplitude;
 
 		// Terminal hard swing
 		float kP = 60.0f;

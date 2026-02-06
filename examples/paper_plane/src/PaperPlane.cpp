@@ -153,7 +153,8 @@ namespace Boidsish {
 					pos,
 					orientation_,
 					glm::normalize(glm::vec3(fire_left ? -1.0f : 1.0f, -1.0f, 0.0f)),
-					GetVelocity()
+					GetVelocity(),
+					fire_left
 				);
 				time_to_fire = 0.25f;
 				fire_left = !fire_left;
