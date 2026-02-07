@@ -83,6 +83,26 @@ namespace Boidsish {
 							if (ImGui::SliderFloat("Powder Strength##Cloud", &powder, 0.0f, 1.0f)) {
 								atmosphere_effect->SetCloudPowderStrength(powder);
 							}
+							float coverage = atmosphere_effect->GetCloudCoverage();
+							if (ImGui::SliderFloat("Coverage##Cloud", &coverage, 0.0f, 1.0f)) {
+								atmosphere_effect->SetCloudCoverage(coverage);
+							}
+							float type = atmosphere_effect->GetCloudType();
+							if (ImGui::SliderFloat("Type##Cloud", &type, 0.0f, 1.0f)) {
+								atmosphere_effect->SetCloudType(type);
+							}
+							float wind_speed = atmosphere_effect->GetCloudWindSpeed();
+							if (ImGui::SliderFloat("Wind Speed##Cloud", &wind_speed, 0.0f, 50.0f)) {
+								atmosphere_effect->SetCloudWindSpeed(wind_speed);
+							}
+							float detail_scale = atmosphere_effect->GetCloudDetailScale();
+							if (ImGui::SliderFloat("Detail Scale##Cloud", &detail_scale, 0.1f, 5.0f)) {
+								atmosphere_effect->SetCloudDetailScale(detail_scale);
+							}
+							float curl_strength = atmosphere_effect->GetCloudCurlStrength();
+							if (ImGui::SliderFloat("Curl Strength##Cloud", &curl_strength, 0.0f, 2.0f)) {
+								atmosphere_effect->SetCloudCurlStrength(curl_strength);
+							}
 							ImGui::TreePop();
 						}
 					}
