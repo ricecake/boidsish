@@ -90,14 +90,15 @@ float sampleCloudDensity(vec3 p, bool fullDetail) {
 	vec4 baseNoise = texture(cloudNoiseLUT, p_base);
 	float baseDensity = baseNoise.r; // Perlin-Worley
 
-	// Apply tiered Worley for more shape
+	// Apply tiered Worley for more shape (HZD style subtraction)
 	float lowFreqWorley = baseNoise.g * 0.625 + baseNoise.b * 0.25 + baseNoise.a * 0.125;
-	baseDensity = remap(baseDensity, lowFreqWorley, 1.0, 0.0, 1.0);
+	baseDensity = remap(baseDensity, lowFreqWorley * 0.5, 1.0, 0.0, 1.0);
 
 	// 3. Vertical Gradient
 	baseDensity *= getCloudGradient(heightFraction, type);
 
 	// 4. Coverage
+	// HZD: base_density = remap(base_density, (1.0 - coverage), 1.0, 0.0, 1.0)
 	float density = remap(baseDensity, 1.0 - coverage, 1.0, 0.0, 1.0);
 	density *= coverage;
 
@@ -180,10 +181,10 @@ void main() {
 
 			if (d > 0.001) {
 				// Self-shadowing (HZD style simple: sample density towards sun)
-				float shadowDensity = sampleCloudDensity(p + sunDir * 2.0, false) * 2.0;
-				shadowDensity += sampleCloudDensity(p + sunDir * 6.0, false) * 1.0;
+				float shadowDensity = sampleCloudDensity(p + sunDir * 3.0, false) * 2.0;
+				shadowDensity += sampleCloudDensity(p + sunDir * 8.0, false) * 1.0;
 
-				float T_internal = exp(-shadowDensity);
+				float T_internal = exp(-shadowDensity * 0.3);
 				vec3 T_sun = getTransmittance(transmittanceLUT, p.y, sunDir.y);
 
 				float powder = beerPowder(d, stepSize, cloudPowderStrength);

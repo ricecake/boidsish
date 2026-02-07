@@ -120,12 +120,12 @@ namespace Boidsish {
 			glm::vec3 haze_color_ = glm::vec3(0.6f, 0.7f, 0.8f);
 			float     haze_g_ = 0.7f;
 
-			float     cloud_density_ = 0.5f;
-			float     cloud_altitude_ = 95.0f;
-			float     cloud_thickness_ = 10.0f;
+			float     cloud_density_ = 0.8f;
+			float     cloud_altitude_ = 100.0f;
+			float     cloud_thickness_ = 30.0f;
 			glm::vec3 cloud_color_ = glm::vec3(0.95f, 0.95f, 1.0f);
 			float     cloud_g_ = 0.8f;
-			float     cloud_scattering_boost_ = 2.0f;
+			float     cloud_scattering_boost_ = 3.0f;
 			float     cloud_powder_strength_ = 0.5f;
 
 			float     cloud_coverage_ = 0.5f;

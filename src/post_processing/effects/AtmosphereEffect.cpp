@@ -153,11 +153,11 @@ namespace Boidsish {
 			shader_->use();
 			shader_->setInt("sceneTexture", 0);
 			shader_->setInt("depthTexture", 1);
-			shader_->setInt("transmittanceLUT", 2);
-			shader_->setInt("cloudNoiseLUT", 3);
-			shader_->setInt("cloudDetailNoiseLUT", 4);
-			shader_->setInt("curlNoiseLUT", 5);
-			shader_->setInt("weatherMap", 6);
+			shader_->setInt("transmittanceLUT", 10);
+			shader_->setInt("cloudNoiseLUT", 11);
+			shader_->setInt("cloudDetailNoiseLUT", 12);
+			shader_->setInt("curlNoiseLUT", 13);
+			shader_->setInt("weatherMap", 14);
 
 			shader_->setFloat("time", time_);
 			shader_->setVec3("cameraPos", cameraPos);
@@ -190,15 +190,15 @@ namespace Boidsish {
 			glBindTexture(GL_TEXTURE_2D, sourceTexture);
 			glActiveTexture(GL_TEXTURE1);
 			glBindTexture(GL_TEXTURE_2D, depthTexture);
-			glActiveTexture(GL_TEXTURE2);
+			glActiveTexture(GL_TEXTURE10);
 			glBindTexture(GL_TEXTURE_2D, transmittance_lut_);
-			glActiveTexture(GL_TEXTURE3);
+			glActiveTexture(GL_TEXTURE11);
 			glBindTexture(GL_TEXTURE_3D, cloud_noise_lut_);
-			glActiveTexture(GL_TEXTURE4);
+			glActiveTexture(GL_TEXTURE12);
 			glBindTexture(GL_TEXTURE_3D, cloud_detail_noise_lut_);
-			glActiveTexture(GL_TEXTURE5);
+			glActiveTexture(GL_TEXTURE13);
 			glBindTexture(GL_TEXTURE_2D, curl_noise_lut_);
-			glActiveTexture(GL_TEXTURE6);
+			glActiveTexture(GL_TEXTURE14);
 			glBindTexture(GL_TEXTURE_2D, weather_map_);
 
 			glDrawArrays(GL_TRIANGLES, 0, 6);

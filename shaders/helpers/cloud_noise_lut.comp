@@ -76,10 +76,12 @@ void main() {
 	ivec3 size = imageSize(cloudNoiseLUT);
 	vec3  uv = (vec3(texel) + 0.5) / vec3(size);
 
-	// R: Perlin-Worley
+	// R: Perlin-Worley (Dilated Perlin)
 	float perlin = gradientNoiseTiled(uv * 4.0, 4.0) * 0.5 + 0.5;
 	float worley0 = worleyTiled(uv * 4.0, 4.0);
-	float perlinWorley = remap(perlin, 1.0 - worley0, 1.0, 0.0, 1.0);
+	// Perlin dilated by worley: base shape of perlin but with billowy worley edges
+	// Using a smaller threshold for dilation to ensure clouds are large enough
+	float perlinWorley = remap(perlin, (1.0 - worley0) * 0.4, 1.0, 0.0, 1.0);
 
 	// G, B, A: Layered Worley (FBM)
 	float worley1 = worleyTiled(uv * 8.0, 8.0);
