@@ -21,6 +21,8 @@ layout(std140, binding = 0) uniform Lighting {
 	vec3  viewPos;
 	vec3  ambient_light;
 	float time;
+	int   day_count;
+	float day_night_factor;
 	vec3  viewDir;
 };
 
