@@ -119,8 +119,12 @@ namespace Boidsish {
 		glGetIntegerv(GL_ELEMENT_ARRAY_BUFFER_BINDING, &current_ebo);
 		if (current_ebo == 0) {
 			logger::ERROR("Mesh::render() - No EBO bound after VAO {} bind! EBO should be {}", VAO, EBO);
-			glBindVertexArray(0);
-			return;
+			if (EBO != 0) {
+				glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, EBO);
+			} else {
+				glBindVertexArray(0);
+				return;
+			}
 		}
 
 		glDrawElements(GL_TRIANGLES, static_cast<unsigned int>(indices.size()), GL_UNSIGNED_INT, 0);
@@ -160,8 +164,12 @@ namespace Boidsish {
 		glGetIntegerv(GL_ELEMENT_ARRAY_BUFFER_BINDING, &current_ebo);
 		if (current_ebo == 0) {
 			logger::ERROR("Mesh::render(shader) - No EBO bound after VAO {} bind! EBO should be {}", VAO, EBO);
-			glBindVertexArray(0);
-			return;
+			if (EBO != 0) {
+				glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, EBO);
+			} else {
+				glBindVertexArray(0);
+				return;
+			}
 		}
 
 		glDrawElements(GL_TRIANGLES, static_cast<unsigned int>(indices.size()), GL_UNSIGNED_INT, 0);
@@ -172,27 +180,35 @@ namespace Boidsish {
 	}
 
 	void Mesh::render_instanced(int count, bool doVAO) const {
-		// Validate VAO before instanced render
-		if (!IsValidVAO(VAO) || indices.empty()) {
-			logger::ERROR("Mesh::render_instanced - Invalid VAO {} (glIsVertexArray={})", VAO, glIsVertexArray(VAO));
-			return;
+		if (doVAO) {
+			// Validate VAO before instanced render
+			if (!IsValidVAO(VAO) || indices.empty()) {
+				logger::ERROR("Mesh::render_instanced - Invalid VAO {} (glIsVertexArray={})", VAO, glIsVertexArray(VAO));
+				return;
+			}
+			glBindVertexArray(VAO);
 		}
-		glBindVertexArray(VAO);
 
-		// Validate EBO is properly bound after VAO binding
+		// Validate EBO is properly bound (should be part of VAO state)
 		GLint current_ebo = 0;
 		glGetIntegerv(GL_ELEMENT_ARRAY_BUFFER_BINDING, &current_ebo);
 		if (current_ebo == 0) {
-			logger::ERROR("Mesh::render_instanced - No EBO bound after VAO {} bind! EBO should be {}", VAO, EBO);
-			glBindVertexArray(0);
-			return;
+			logger::ERROR("Mesh::render_instanced - No EBO bound! VAO={}, EBO={}", VAO, EBO);
+			// Attempt recovery if EBO is missing but we know what it should be
+			if (EBO != 0) {
+				glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, EBO);
+			} else {
+				if (doVAO)
+					glBindVertexArray(0);
+				return;
+			}
 		}
 
-		// logger::INFO("RENDERING INSTANCE");
 		glDrawElementsInstanced(GL_TRIANGLES, static_cast<unsigned int>(indices.size()), GL_UNSIGNED_INT, 0, count);
-		// logger::INFO("done RENDERING INSTANCE");
 
-		glBindVertexArray(0);
+		if (doVAO) {
+			glBindVertexArray(0);
+		}
 	}
 
 	void Mesh::bindTextures(Shader& shader) const {
