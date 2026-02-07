@@ -70,9 +70,12 @@ void main() {
 		}
 	}
 
-	// Base ambient sky if no directional lights
+	// Base ambient sky if no directional lights (transition from day to night)
 	float y = world_ray.y;
-	final_sky_color = max(final_sky_color, vec3(0.01, 0.05, 0.2) * 0.2);
+	vec3  day_base = vec3(0.2, 0.4, 0.8) * 0.2;
+	vec3  night_base = vec3(0.005, 0.01, 0.05);
+	vec3  base_ambient = mix(day_base, night_base, day_night_factor);
+	final_sky_color = max(final_sky_color, base_ambient);
 
 	// --- 3. Nebula/Haze Layer (Domain Warping + FBM) ---
 	vec3  p = world_ray * 4.0;
@@ -86,8 +89,9 @@ void main() {
 
 	// --- 4. Star Field Layer (Additive Blend) ---
 	float stars = starLayer(world_ray);
-	// Only show stars where sky is dark
-	float star_visibility = smoothstep(0.5, 1.0, 1.0 - length(final_sky_color));
+	// Only show stars where sky is dark and it's night time
+	float star_visibility =
+		smoothstep(0.5, 1.0, 1.0 - length(final_sky_color)) * smoothstep(0.3, 0.7, day_night_factor);
 	final_sky_color += stars * vec3(1.0, 0.9, 0.8) * star_visibility;
 
 	FragColor = vec4(final_sky_color, 1.0);

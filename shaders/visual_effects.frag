@@ -74,6 +74,40 @@ vec3 applyWireframe(vec3 color, vec3 barycentric) {
 	return color;
 }
 
+vec3 applySynthwave(vec3 color, vec3 fragPos, float factor) {
+	if (factor <= 0.01)
+		return color;
+
+	// World-space grid
+	float grid_scale = 10.0;
+	vec2  grid_uv = fract(fragPos.xz / grid_scale);
+	float grid_line = smoothstep(0.05, 0.0, grid_uv.x) + smoothstep(0.95, 1.0, grid_uv.x) +
+		smoothstep(0.05, 0.0, grid_uv.y) + smoothstep(0.95, 1.0, grid_uv.y);
+
+	vec3 neon_purple = vec3(0.7, 0.0, 1.0);
+	vec3 neon_cyan = vec3(0.0, 1.0, 1.0);
+
+	// Pulse the grid cyan, background purple
+	vec3 synth_color = mix(color * 0.1, neon_purple * 0.2, 1.0 - grid_line);
+	synth_color += neon_cyan * grid_line * (0.5 + 0.5 * sin(time * 2.0));
+
+	return mix(color, synth_color, factor);
+}
+
+vec3 applySynthwaveBarycentric(vec3 color, vec3 barycentric, float factor) {
+	if (factor <= 0.01)
+		return color;
+
+	// Edge highlights
+	float edge_factor = min(barycentric.x, min(barycentric.y, barycentric.z));
+	float edge_glow = smoothstep(0.1, 0.0, edge_factor);
+
+	vec3 neon_magenta = vec3(1.0, 0.0, 0.8);
+	vec3 synth_color = mix(color, neon_magenta, edge_glow * factor);
+
+	return synth_color;
+}
+
 vec3 applyArtisticEffects(vec3 color, vec3 fragPos, vec3 barycentric, float time) {
 	color = applyBlackAndWhite(color);
 	color = applyColorShift(color, fragPos, time);
