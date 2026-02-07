@@ -201,6 +201,7 @@ namespace Boidsish {
 			shader_->setVec3("cloudWindDir", cloud_wind_dir_);
 			shader_->setFloat("cloudDetailScale", cloud_detail_scale_);
 			shader_->setFloat("cloudCurlStrength", cloud_curl_strength_);
+			shader_->setFloat("cloudScale", cloud_scale_);
 
 			glActiveTexture(GL_TEXTURE0);
 			glBindTexture(GL_TEXTURE_2D, sourceTexture);

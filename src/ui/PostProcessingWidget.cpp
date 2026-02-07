@@ -60,11 +60,11 @@ namespace Boidsish {
 								atmosphere_effect->SetCloudDensity(cloud_density);
 							}
 							float cloud_altitude = atmosphere_effect->GetCloudAltitude();
-							if (ImGui::SliderFloat("Altitude##Cloud", &cloud_altitude, 0.0f, 200.0f)) {
+							if (ImGui::SliderFloat("Altitude##Cloud", &cloud_altitude, 0.0f, 10000.0f)) {
 								atmosphere_effect->SetCloudAltitude(cloud_altitude);
 							}
 							float cloud_thickness = atmosphere_effect->GetCloudThickness();
-							if (ImGui::SliderFloat("Thickness##Cloud", &cloud_thickness, 0.0f, 50.0f)) {
+							if (ImGui::SliderFloat("Thickness##Cloud", &cloud_thickness, 0.0f, 5000.0f)) {
 								atmosphere_effect->SetCloudThickness(cloud_thickness);
 							}
 							glm::vec3 cloud_color = atmosphere_effect->GetCloudColor();
@@ -92,16 +92,20 @@ namespace Boidsish {
 								atmosphere_effect->SetCloudType(type);
 							}
 							float wind_speed = atmosphere_effect->GetCloudWindSpeed();
-							if (ImGui::SliderFloat("Wind Speed##Cloud", &wind_speed, 0.0f, 50.0f)) {
+							if (ImGui::SliderFloat("Wind Speed##Cloud", &wind_speed, 0.0f, 200.0f)) {
 								atmosphere_effect->SetCloudWindSpeed(wind_speed);
 							}
 							float detail_scale = atmosphere_effect->GetCloudDetailScale();
-							if (ImGui::SliderFloat("Detail Scale##Cloud", &detail_scale, 0.1f, 5.0f)) {
+							if (ImGui::SliderFloat("Detail Scale##Cloud", &detail_scale, 0.0f, 10.0f)) {
 								atmosphere_effect->SetCloudDetailScale(detail_scale);
 							}
 							float curl_strength = atmosphere_effect->GetCloudCurlStrength();
-							if (ImGui::SliderFloat("Curl Strength##Cloud", &curl_strength, 0.0f, 2.0f)) {
+							if (ImGui::SliderFloat("Curl Strength##Cloud", &curl_strength, 0.0f, 5.0f)) {
 								atmosphere_effect->SetCloudCurlStrength(curl_strength);
+							}
+							float cloud_scale = atmosphere_effect->GetCloudScale();
+							if (ImGui::SliderFloat("Cloud Scale##Cloud", &cloud_scale, 0.1f, 10.0f)) {
+								atmosphere_effect->SetCloudScale(cloud_scale);
 							}
 							ImGui::TreePop();
 						}

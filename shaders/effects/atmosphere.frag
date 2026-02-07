@@ -35,6 +35,7 @@ uniform float cloudWindSpeed = 5.0;
 uniform vec3  cloudWindDir = vec3(1.0, 0.0, 0.5);
 uniform float cloudDetailScale = 1.0;
 uniform float cloudCurlStrength = 0.5;
+uniform float cloudScale = 1.0;
 
 #include "../helpers/atmosphere.glsl"
 #include "../helpers/lighting.glsl"
@@ -86,7 +87,7 @@ float sampleCloudDensity(vec3 p, bool fullDetail) {
 	float type = weather.g * cloudType;
 
 	// 2. Base Noise
-	vec3 p_base = p_wind * 0.0005;
+	vec3 p_base = p_wind * 0.0005 * cloudScale;
 	vec4 baseNoise = texture(cloudNoiseLUT, p_base);
 	float baseDensity = baseNoise.r; // Perlin-Worley
 
@@ -103,8 +104,8 @@ float sampleCloudDensity(vec3 p, bool fullDetail) {
 
 	if (density > 0.0 && fullDetail) {
 		// 5. Curl Noise & Detail Erosion
-		vec2 curl = texture(curlNoiseLUT, p_wind.xz * 0.001).rg * 2.0 - 1.0;
-		vec3 p_detail = (p_wind + vec3(curl * 100.0 * heightFraction * cloudCurlStrength, 0.0)) * 0.005 * cloudDetailScale;
+		vec2 curl = texture(curlNoiseLUT, p_wind.xz * 0.001 * cloudScale).rg * 2.0 - 1.0;
+		vec3 p_detail = (p_wind + vec3(curl * 100.0 * heightFraction * cloudCurlStrength, 0.0)) * 0.005 * cloudDetailScale * cloudScale;
 
 		vec4 detailNoise = texture(cloudDetailNoiseLUT, p_detail);
 		float detailFBM = detailNoise.r * 0.625 + detailNoise.g * 0.25 + detailNoise.b * 0.125;
@@ -169,7 +170,8 @@ void main() {
 	if (t_start < t_end) {
 		int   samples = 64;
 		float stepSize = (t_end - t_start) / float(samples);
-		float jitter = fract(sin(dot(TexCoords, vec2(12.9898, 78.233))) * 43758.5453);
+		// Blue noise or similar jitter for smoother volumes
+		float jitter = fract(sin(dot(TexCoords, vec2(12.9898, 78.233))) * 43758.5453 + time);
 
 		for (int i = 0; i < samples; i++) {
 			float t = t_start + (float(i) + jitter) * stepSize;

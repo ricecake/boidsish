@@ -91,6 +91,9 @@ namespace Boidsish {
 			void  SetCloudCurlStrength(float strength) { cloud_curl_strength_ = strength; }
 			float GetCloudCurlStrength() const { return cloud_curl_strength_; }
 
+			void  SetCloudScale(float scale) { cloud_scale_ = scale; }
+			float GetCloudScale() const { return cloud_scale_; }
+
 			GLuint GetTransmittanceLUT() const { return transmittance_lut_; }
 			GLuint GetCloudNoiseLUT() const { return cloud_noise_lut_; }
 			GLuint GetCloudDetailNoiseLUT() const { return cloud_detail_noise_lut_; }
@@ -134,6 +137,7 @@ namespace Boidsish {
 			glm::vec3 cloud_wind_dir_ = glm::vec3(1.0f, 0.0f, 0.5f);
 			float     cloud_detail_scale_ = 1.0f;
 			float     cloud_curl_strength_ = 0.5f;
+			float     cloud_scale_ = 1.0f;
 
 			int width_ = 0;
 			int height_ = 0;
