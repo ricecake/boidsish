@@ -3,12 +3,18 @@
 #include <algorithm>
 #include <iostream>
 
+#include "logger.h"
 #include "shader.h"
 #include "stb_image.h"
 #include <GL/glew.h>
 #include <glm/gtc/matrix_transform.hpp>
 
 namespace Boidsish {
+
+	// Helper to validate VAO ID
+	static bool IsValidVAO(GLuint vao) {
+		return vao != 0 && glIsVertexArray(vao) == GL_TRUE;
+	}
 
 	// Mesh implementation
 	Mesh::Mesh(std::vector<Vertex> vertices, std::vector<unsigned int> indices, std::vector<Texture> textures) {
@@ -56,9 +62,11 @@ namespace Boidsish {
 		if (!Shape::shader || !Shape::shader->isValid())
 			return;
 
-		// Ensure VAO is valid
-		if (VAO == 0 || indices.empty())
+		// Ensure VAO is valid - use glIsVertexArray for thorough check
+		if (!IsValidVAO(VAO) || indices.empty()) {
+			logger::ERROR("Mesh::render() - Invalid VAO {} (glIsVertexArray={})", VAO, glIsVertexArray(VAO));
 			return;
+		}
 
 		// bind appropriate textures
 		unsigned int diffuseNr = 1;
@@ -111,9 +119,11 @@ namespace Boidsish {
 	}
 
 	void Mesh::render(Shader& shader) const {
-		// Ensure VAO is valid
-		if (VAO == 0 || indices.empty())
+		// Ensure VAO is valid - use glIsVertexArray for thorough check
+		if (!IsValidVAO(VAO) || indices.empty()) {
+			logger::ERROR("Mesh::render(shader) - Invalid VAO {} (glIsVertexArray={})", VAO, bool(glIsVertexArray(VAO)));
 			return;
+		}
 
 		bool hasDiffuse = false;
 		for (const auto& t : textures) {
@@ -140,6 +150,11 @@ namespace Boidsish {
 	}
 
 	void Mesh::render_instanced(int count) const {
+		// Validate VAO before instanced render
+		if (!IsValidVAO(VAO) || indices.empty()) {
+			logger::ERROR("Mesh::render_instanced - Invalid VAO {} (glIsVertexArray={})", VAO, glIsVertexArray(VAO));
+			return;
+		}
 		glBindVertexArray(VAO);
 		glDrawElementsInstanced(GL_TRIANGLES, static_cast<unsigned int>(indices.size()), GL_UNSIGNED_INT, 0, count);
 		glBindVertexArray(0);
