@@ -249,7 +249,6 @@ namespace Boidsish {
 	}
 
 	void DecorManager::Render(const glm::mat4& view, const glm::mat4& projection) {
-		return;
 		if (!enabled_ || !initialized_ || decor_types_.empty())
 			return;
 
@@ -290,8 +289,16 @@ namespace Boidsish {
 			size_t mesh_count = type.model->getMeshes().size();
 
 			for (const auto& mesh : type.model->getMeshes()) {
+				bool hasDiffuse = false;
+				for (const auto& t : mesh.textures) {
+					if (t.type == "texture_diffuse") {
+						hasDiffuse = true;
+						break;
+					}
+				}
+				shader->setBool("use_texture", hasDiffuse);
 				mesh.bindTextures(*shader);
-				mesh.render_instanced((int)count);
+				mesh.render_instanced((int)count, true);
 			}
 		}
 

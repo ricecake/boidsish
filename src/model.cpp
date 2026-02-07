@@ -64,8 +64,11 @@ namespace Boidsish {
 		if (!Shape::shader || !Shape::shader->isValid())
 			return;
 
+		if (indices.empty())
+			return;
+
 		// Ensure VAO is valid - use glIsVertexArray for thorough check
-		if (!IsValidVAO(VAO) || indices.empty()) {
+		if (!IsValidVAO(VAO)) {
 			logger::ERROR("Mesh::render() - Invalid VAO {} (glIsVertexArray={})", VAO, glIsVertexArray(VAO));
 			return;
 		}
@@ -135,9 +138,12 @@ namespace Boidsish {
 	}
 
 	void Mesh::render(Shader& shader) const {
+		if (indices.empty())
+			return;
+
 		// Ensure VAO is valid - use glIsVertexArray for thorough check
-		if (!IsValidVAO(VAO) || indices.empty()) {
-			logger::ERROR("Mesh::render(shader) - Invalid VAO {} (glIsVertexArray={})", VAO, bool(glIsVertexArray(VAO)));
+		if (!IsValidVAO(VAO)) {
+			logger::ERROR("Mesh::render(shader) - Invalid VAO {} (glIsVertexArray={})", VAO, glIsVertexArray(VAO));
 			return;
 		}
 
@@ -180,9 +186,12 @@ namespace Boidsish {
 	}
 
 	void Mesh::render_instanced(int count, bool doVAO) const {
+		if (indices.empty())
+			return;
+
 		if (doVAO) {
 			// Validate VAO before instanced render
-			if (!IsValidVAO(VAO) || indices.empty()) {
+			if (!IsValidVAO(VAO)) {
 				logger::ERROR("Mesh::render_instanced - Invalid VAO {} (glIsVertexArray={})", VAO, glIsVertexArray(VAO));
 				return;
 			}
@@ -323,6 +332,7 @@ namespace Boidsish {
 		}
 
 		processNode(scene->mRootNode, scene);
+		logger::LOG("Model loaded: {} with {} meshes", path, meshes.size());
 	}
 
 	void Model::processNode(aiNode* node, const aiScene* scene) {
