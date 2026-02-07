@@ -26,9 +26,11 @@ namespace Boidsish {
 	}
 
 	// Mesh::~Mesh() {
-	// 	glDeleteVertexArrays(1, &VAO);
-	// 	glDeleteBuffers(1, &VBO);
-	// 	glDeleteBuffers(1, &EBO);
+	// 	if (VAO != 0) {
+	// 		glDeleteVertexArrays(1, &VAO);
+	// 		glDeleteBuffers(1, &VBO);
+	// 		glDeleteBuffers(1, &EBO);
+	// 	}
 	// }
 
 	void Mesh::setupMesh() {
@@ -111,6 +113,16 @@ namespace Boidsish {
 
 		// draw mesh
 		glBindVertexArray(VAO);
+
+		// Validate EBO is properly bound after VAO binding
+		GLint current_ebo = 0;
+		glGetIntegerv(GL_ELEMENT_ARRAY_BUFFER_BINDING, &current_ebo);
+		if (current_ebo == 0) {
+			logger::ERROR("Mesh::render() - No EBO bound after VAO {} bind! EBO should be {}", VAO, EBO);
+			glBindVertexArray(0);
+			return;
+		}
+
 		glDrawElements(GL_TRIANGLES, static_cast<unsigned int>(indices.size()), GL_UNSIGNED_INT, 0);
 		glBindVertexArray(0);
 
@@ -142,6 +154,16 @@ namespace Boidsish {
 
 		// draw mesh
 		glBindVertexArray(VAO);
+
+		// Validate EBO is properly bound after VAO binding
+		GLint current_ebo = 0;
+		glGetIntegerv(GL_ELEMENT_ARRAY_BUFFER_BINDING, &current_ebo);
+		if (current_ebo == 0) {
+			logger::ERROR("Mesh::render(shader) - No EBO bound after VAO {} bind! EBO should be {}", VAO, EBO);
+			glBindVertexArray(0);
+			return;
+		}
+
 		glDrawElements(GL_TRIANGLES, static_cast<unsigned int>(indices.size()), GL_UNSIGNED_INT, 0);
 		glBindVertexArray(0);
 
@@ -156,6 +178,16 @@ namespace Boidsish {
 			return;
 		}
 		glBindVertexArray(VAO);
+
+		// Validate EBO is properly bound after VAO binding
+		GLint current_ebo = 0;
+		glGetIntegerv(GL_ELEMENT_ARRAY_BUFFER_BINDING, &current_ebo);
+		if (current_ebo == 0) {
+			logger::ERROR("Mesh::render_instanced - No EBO bound after VAO {} bind! EBO should be {}", VAO, EBO);
+			glBindVertexArray(0);
+			return;
+		}
+
 		glDrawElementsInstanced(GL_TRIANGLES, static_cast<unsigned int>(indices.size()), GL_UNSIGNED_INT, 0, count);
 		glBindVertexArray(0);
 	}
