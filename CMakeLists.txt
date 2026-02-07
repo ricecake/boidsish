@@ -1,6 +1,10 @@
 cmake_minimum_required(VERSION 3.20)
 project(Boidsish VERSION 1.0 LANGUAGES CXX)
 
+add_compile_options(-g)
+add_compile_options(-rdynamic)
+add_compile_options(-O0)
+
 # 1. C++ Standard and Flags
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)

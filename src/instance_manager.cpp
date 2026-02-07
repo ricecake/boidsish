@@ -153,7 +153,7 @@ namespace Boidsish {
 			glVertexAttribDivisor(5, 1);
 			glVertexAttribDivisor(6, 1);
 
-			mesh.render_instanced(group.shapes.size());
+			mesh.render_instanced(group.shapes.size(), false);
 
 			// render_instanced unbinds VAO, rebind to clean up attributes
 			glBindVertexArray(mesh.VAO);

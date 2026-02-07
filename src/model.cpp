@@ -171,7 +171,7 @@ namespace Boidsish {
 		glActiveTexture(GL_TEXTURE0);
 	}
 
-	void Mesh::render_instanced(int count) const {
+	void Mesh::render_instanced(int count, bool doVAO) const {
 		// Validate VAO before instanced render
 		if (!IsValidVAO(VAO) || indices.empty()) {
 			logger::ERROR("Mesh::render_instanced - Invalid VAO {} (glIsVertexArray={})", VAO, glIsVertexArray(VAO));
@@ -188,7 +188,10 @@ namespace Boidsish {
 			return;
 		}
 
+		// logger::INFO("RENDERING INSTANCE");
 		glDrawElementsInstanced(GL_TRIANGLES, static_cast<unsigned int>(indices.size()), GL_UNSIGNED_INT, 0, count);
+		// logger::INFO("done RENDERING INSTANCE");
+
 		glBindVertexArray(0);
 	}
 

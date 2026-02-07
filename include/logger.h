@@ -6,9 +6,20 @@
 #include <sstream>
 #include <string>
 #include <string_view>         // Add this
+#include <execinfo.h>
+#include <unistd.h>
+#include <array>
+
 using namespace std::literals; // required for ""sv
 
 namespace logger {
+
+	inline static void printBacktrace() {
+		std::array<void*, 100> stacks;
+		auto size = backtrace(stacks.data(), 100);
+		backtrace_symbols_fd(stacks.data(), size, STDERR_FILENO);
+	}
+
 	enum class LogLevel : uint8_t { LOG, INFO, WARNING, ERROR, DEBUG };
 
 	constexpr std::string_view levelString(const LogLevel& level) {

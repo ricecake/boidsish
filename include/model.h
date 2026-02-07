@@ -38,7 +38,7 @@ namespace Boidsish {
 		// Render the mesh
 		void render() const;
 		void render(Shader& shader) const; // Render with specific shader (for shadow pass, etc.)
-		void render_instanced(int count) const;
+		void render_instanced(int count, bool doVAO = false) const;
 
 		// Bind textures for external rendering (e.g., instanced rendering with custom shaders)
 		void bindTextures(Shader& shader) const;

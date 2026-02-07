@@ -249,6 +249,7 @@ namespace Boidsish {
 	}
 
 	void DecorManager::Render(const glm::mat4& view, const glm::mat4& projection) {
+		return;
 		if (!enabled_ || !initialized_ || decor_types_.empty())
 			return;
 

@@ -185,6 +185,8 @@ namespace Boidsish {
 		if (severity == GL_DEBUG_SEVERITY_HIGH && type == GL_DEBUG_TYPE_ERROR) {
 			std::cerr << "  *** HIGH SEVERITY ERROR - Check shader compilation or GL state ***\n" << std::endl;
 		}
+
+		logger::printBacktrace();
 	}
 
 	struct Visualizer::VisualizerImpl {
