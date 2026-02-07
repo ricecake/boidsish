@@ -1,0 +1,44 @@
+#version 430 core
+
+layout(local_size_x = 8, local_size_y = 8, local_size_z = 8) in;
+
+layout(rgba8, binding = 2) uniform writeonly image3D cloudDetailNoiseLUT;
+
+float worleyTiled(vec3 p, float tile) {
+	vec3 id = floor(p);
+	vec3 fd = fract(p);
+	float minDist = 1.0;
+
+	for (int k = -1; k <= 1; k++) {
+		for (int j = -1; j <= 1; j++) {
+			for (int i = -1; i <= 1; i++) {
+				vec3 neighbor = vec3(float(i), float(j), float(k));
+				vec3 uv = id + neighbor;
+				uv = mod(uv, tile);
+
+				vec3 pointOffset = fract(sin(vec3(
+					dot(uv, vec3(127.1, 311.7, 74.7)),
+					dot(uv, vec3(269.5, 183.3, 246.1)),
+					dot(uv, vec3(113.5, 271.9, 124.6))
+				)) * 43758.5453);
+
+				vec3 diff = neighbor + pointOffset - fd;
+				float dist = length(diff);
+				minDist = min(minDist, dist);
+			}
+		}
+	}
+	return clamp(1.0 - minDist, 0.0, 1.0);
+}
+
+void main() {
+	ivec3 texel = ivec3(gl_GlobalInvocationID.xyz);
+	ivec3 size = imageSize(cloudDetailNoiseLUT);
+	vec3  uv = (vec3(texel) + 0.5) / vec3(size);
+
+	float w1 = worleyTiled(uv * 4.0, 4.0);
+	float w2 = worleyTiled(uv * 8.0, 8.0);
+	float w3 = worleyTiled(uv * 16.0, 16.0);
+
+	imageStore(cloudDetailNoiseLUT, texel, vec4(w1, w2, w3, 1.0));
+}

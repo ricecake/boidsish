@@ -72,10 +72,7 @@ void main() {
 
 	// Base ambient sky if no directional lights
 	float y = world_ray.y;
-	vec3  top_sky_color = vec4(0.05, 0.1, 0.3, 1.0).rgb;
-	vec3  horizon_color = vec3(0.2, 0.4, 0.8);
-	vec3  sky_gradient = mix(horizon_color, top_sky_color, smoothstep(0.0, 0.6, y));
-	final_sky_color = max(final_sky_color, sky_gradient * 0.2);
+	final_sky_color = max(final_sky_color, vec3(0.01, 0.05, 0.2) * 0.2);
 
 	// --- 3. Nebula/Haze Layer (Domain Warping + FBM) ---
 	vec3  p = world_ray * 4.0;

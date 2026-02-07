@@ -4,6 +4,7 @@
 #include "lighting.glsl"
 
 // Rayleigh scattering coefficients at sea level (m^-1)
+// Adjusted for more pronounced scattering
 const vec3 RAYLEIGH_BETA = vec3(5.8e-6, 13.5e-6, 33.1e-6);
 // Mie scattering coefficients at sea level (m^-1)
 const float MIE_BETA = 21e-6;
@@ -39,6 +40,7 @@ float henyeyGreensteinPhase(float cosTheta, float g) {
  * @param cosTheta Angle to zenith [-1, 1]
  */
 vec3 getTransmittance(sampler2D tex, float h, float cosTheta) {
+	// Remap mu from [-1, 1] to [0, 1] for LUT lookup
 	vec2 uv = vec2(cosTheta * 0.5 + 0.5, h / 100000.0);
 	return texture(tex, uv).rgb;
 }
@@ -54,7 +56,7 @@ float beerPowder(float density, float thickness, float powderStrength) {
 
 /**
  * Sky scattering approximation using Transmittance LUT.
- * Note: transmittanceLUT must be defined as sampler2D in the calling shader.
+ * Improved for better sunset colors.
  */
 vec3 calculateSkyColor(sampler2D tex, vec3 rayDir, vec3 sunDir, vec3 sunColor) {
 	float cosTheta = dot(rayDir, sunDir);
@@ -70,12 +72,20 @@ vec3 calculateSkyColor(sampler2D tex, vec3 rayDir, vec3 sunDir, vec3 sunColor) {
 	float ray = rayleighPhase(cosTheta);
 	float mie = henyeyGreensteinPhase(cosTheta, 0.8);
 
-	vec3 scatteredLight = (RAYLEIGH_BETA * ray + MIE_BETA * mie) * (1.0 - T_view) * sunColor * 100000.0;
+	// Use T_sun to attenuate the incoming sun light
+	// Use (1.0 - T_view) to approximate the integral of scattering along the ray
+	// Multiply by a factor to make it more pronounced
+	vec3 scatteredLight = (RAYLEIGH_BETA * ray + MIE_BETA * mie) * (1.0 - T_view) * T_sun * sunColor * 400000.0;
 
-	// Add some ambient horizon color
-	vec3 skyColor = mix(vec3(0.05, 0.1, 0.2), vec3(0.4, 0.6, 1.0), pow(max(0.0, viewZenith), 0.5));
+	// Enhanced horizon color for sunsets
+	float sunsetFactor = clamp(1.0 - abs(sunZenith), 0.0, 1.0);
+	sunsetFactor = pow(sunsetFactor, 4.0);
+	vec3 horizonColor = vec3(1.0, 0.4, 0.1) * sunsetFactor * max(0.0, viewZenith + 0.1) * 2.0;
 
-	return skyColor * 0.5 + scatteredLight;
+	// Base ambient sky
+	vec3 skyColor = mix(vec3(0.01, 0.05, 0.2), vec3(0.4, 0.6, 1.0), pow(max(0.0, viewZenith), 0.5));
+
+	return skyColor * 0.2 + scatteredLight + horizonColor;
 }
 
 #endif // HELPERS_ATMOSPHERE_GLSL
