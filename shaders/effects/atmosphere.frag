@@ -82,7 +82,7 @@ float sampleCloudDensity(vec3 p, bool fullDetail) {
 	// 1. Weather Map
 	vec2 weatherUV = p_wind.xz * 0.0001;
 	vec4 weather = texture(weatherMap, weatherUV);
-	float coverage = weather.r * cloudCoverage;
+	float coverage = mix(0.1, 0.9, weather.r) * cloudCoverage;
 	float type = weather.g * cloudType;
 
 	// 2. Base Noise
@@ -90,27 +90,26 @@ float sampleCloudDensity(vec3 p, bool fullDetail) {
 	vec4 baseNoise = texture(cloudNoiseLUT, p_base);
 	float baseDensity = baseNoise.r; // Perlin-Worley
 
-	// Apply tiered Worley for more shape (HZD style subtraction)
+	// Apply tiered Worley for more shape
 	float lowFreqWorley = baseNoise.g * 0.625 + baseNoise.b * 0.25 + baseNoise.a * 0.125;
-	baseDensity = remap(baseDensity, lowFreqWorley * 0.5, 1.0, 0.0, 1.0);
+	baseDensity = remap(baseDensity, lowFreqWorley * 0.2, 1.0, 0.0, 1.0);
 
 	// 3. Vertical Gradient
 	baseDensity *= getCloudGradient(heightFraction, type);
 
 	// 4. Coverage
-	// HZD: base_density = remap(base_density, (1.0 - coverage), 1.0, 0.0, 1.0)
 	float density = remap(baseDensity, 1.0 - coverage, 1.0, 0.0, 1.0);
 	density *= coverage;
 
 	if (density > 0.0 && fullDetail) {
 		// 5. Curl Noise & Detail Erosion
 		vec2 curl = texture(curlNoiseLUT, p_wind.xz * 0.001).rg * 2.0 - 1.0;
-		vec3 p_detail = (p_wind + vec3(curl * heightFraction * cloudCurlStrength, 0.0)) * 0.005 * cloudDetailScale;
+		vec3 p_detail = (p_wind + vec3(curl * 100.0 * heightFraction * cloudCurlStrength, 0.0)) * 0.005 * cloudDetailScale;
 
 		vec4 detailNoise = texture(cloudDetailNoiseLUT, p_detail);
 		float detailFBM = detailNoise.r * 0.625 + detailNoise.g * 0.25 + detailNoise.b * 0.125;
 
-		float erosion = mix(detailFBM, 1.0 - detailFBM, clamp(heightFraction * 10.0, 0.0, 1.0));
+		float erosion = mix(detailFBM, 1.0 - detailFBM, clamp(heightFraction * 3.0, 0.0, 1.0));
 		density = remap(density, erosion * 0.2, 1.0, 0.0, 1.0);
 	}
 
@@ -205,8 +204,22 @@ void main() {
 	}
 
 	// Combine everything
+	// If depth is 1.0, sceneColor IS the sky.
+	// Clouds should attenuate the sky and add their light.
 	vec3 result = sceneColor * cloudTransmittance + cloudLight;
-	result = mix(result, currentHazeColor, fogFactor);
+
+	// Apply haze (fog) to the result.
+	// But only if it's closer than the "far plane" distance for the sky.
+	float effectiveFogFactor = fogFactor;
+	if (depth == 1.0) {
+		// For sky, the fog is already "baked" into calculateSkyColor in sky.frag
+		// and currentHazeColor here.
+		// We don't want to double-fog the clouds if they are part of the sky.
+		// However, haze (height fog) should still affect them.
+		effectiveFogFactor = fogFactor * 0.5; // Reduce fog impact on sky-depth clouds
+	}
+
+	result = mix(result, currentHazeColor, effectiveFogFactor);
 
 	FragColor = vec4(result, 1.0);
 }

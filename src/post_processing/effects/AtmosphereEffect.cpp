@@ -36,9 +36,25 @@ namespace Boidsish {
 			curl_noise_lut_shader_ = std::make_unique<ComputeShader>("shaders/helpers/curl_noise_lut.comp");
 			weather_map_shader_ = std::make_unique<ComputeShader>("shaders/helpers/weather_map.comp");
 
+			// Set up UBO bindings for atmosphere shader
 			GLuint lighting_idx = glGetUniformBlockIndex(shader_->ID, "Lighting");
 			if (lighting_idx != GL_INVALID_INDEX) {
 				glUniformBlockBinding(shader_->ID, lighting_idx, 0);
+			}
+			GLuint shadows_idx = glGetUniformBlockIndex(shader_->ID, "Shadows");
+			if (shadows_idx != GL_INVALID_INDEX) {
+				glUniformBlockBinding(shader_->ID, shadows_idx, 2);
+			} else {
+				// Shadows not found - maybe it was optimized out?
+				// This shouldn't happen if lighting.glsl is included.
+			}
+			GLuint effects_idx = glGetUniformBlockIndex(shader_->ID, "VisualEffects");
+			if (effects_idx != GL_INVALID_INDEX) {
+				glUniformBlockBinding(shader_->ID, effects_idx, 1);
+			}
+			GLuint frustum_idx = glGetUniformBlockIndex(shader_->ID, "FrustumData");
+			if (frustum_idx != GL_INVALID_INDEX) {
+				glUniformBlockBinding(shader_->ID, frustum_idx, 3);
 			}
 
 			width_ = width;

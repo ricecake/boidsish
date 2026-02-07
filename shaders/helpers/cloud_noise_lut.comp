@@ -80,8 +80,8 @@ void main() {
 	float perlin = gradientNoiseTiled(uv * 4.0, 4.0) * 0.5 + 0.5;
 	float worley0 = worleyTiled(uv * 4.0, 4.0);
 	// Perlin dilated by worley: base shape of perlin but with billowy worley edges
-	// Using a smaller threshold for dilation to ensure clouds are large enough
-	float perlinWorley = remap(perlin, (1.0 - worley0) * 0.4, 1.0, 0.0, 1.0);
+	// HZD: pw = remap(perlin, worley - 1, 1, 0, 1)
+	float perlinWorley = remap(perlin, worley0 - 1.0, 1.0, 0.0, 1.0);
 
 	// G, B, A: Layered Worley (FBM)
 	float worley1 = worleyTiled(uv * 8.0, 8.0);
