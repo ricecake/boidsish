@@ -101,13 +101,6 @@ namespace Boidsish {
 		shader.setFloat("objectAlpha", model->GetA());
 		shader.setBool("useInstanceColor", false); // Models use textures, not per-instance colors
 
-		// Debug: log model info once per distinct model path
-		static std::set<std::string> logged_models;
-		if (logged_models.find(model->GetModelPath()) == logged_models.end()) {
-			logged_models.insert(model->GetModelPath());
-				model->GetModelPath(), model->getMeshes().size(), group.shapes.size());
-		}
-
 		for (const auto& mesh : model->getMeshes()) {
 			// Skip meshes with invalid VAO - use glIsVertexArray for thorough check
 			if (!IsValidVAO(mesh.VAO)) {
