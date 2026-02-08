@@ -33,6 +33,7 @@ namespace Boidsish {
 		float                                      forward_speed_;
 		float                                      time_to_fire = 0.25f;
 		bool                                       fire_left = true;
+		bool                                       weapon_toggle_ = false;
 		int                                        damage_pending_ = 0;
 		float                                      health = 100.0f;
 		float                                      shield = 100.0f;
