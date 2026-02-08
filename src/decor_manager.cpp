@@ -265,6 +265,7 @@ namespace Boidsish {
 		shader->setMat4("projection", projection);
 		shader->setMat4("model", glm::mat4(1.0f)); // Identity - instances provide transform
 		shader->setBool("useSSBOInstancing", true);
+		shader->setBool("isTextEffect", false);
 		shader->setBool("isColossal", false);
 		shader->setBool("is_instanced", false);
 		shader->setVec3("objectColor", 1.0f, 1.0f, 1.0f);

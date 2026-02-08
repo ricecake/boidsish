@@ -54,6 +54,7 @@ namespace Boidsish {
 		shader.setBool("useInstanceColor", false);
 		shader.setBool("isColossal", false);
 		shader.setBool("usePBR", false);
+		shader.setBool("isTextEffect", false);
 		shader.setFloat("objectAlpha", 1.0f);
 
 		// Clean up buffer state

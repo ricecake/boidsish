@@ -421,6 +421,7 @@ namespace Boidsish {
 
 		glBindVertexArray(vao_);
 		glDrawArrays(GL_TRIANGLES, 0, vertex_count_);
+		shader.setBool("isTextEffect", false);
 		glBindVertexArray(0);
 	}
 
