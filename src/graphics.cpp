@@ -43,6 +43,7 @@
 #include "post_processing/effects/ToneMappingEffect.h"
 #include "post_processing/effects/WhispTrailEffect.h"
 #include "sdf_volume_manager.h"
+#include "terrain_opening.h"
 #include "shadow_manager.h"
 #include "shockwave_effect.h"
 #include "sound_effect_manager.h"
@@ -204,6 +205,7 @@ namespace Boidsish {
 		std::unique_ptr<SoundEffectManager>   sound_effect_manager;
 		std::unique_ptr<ShockwaveManager>     shockwave_manager;
 		std::unique_ptr<SdfVolumeManager>     sdf_volume_manager;
+		std::unique_ptr<TerrainOpeningManager> terrain_opening_manager;
 		std::unique_ptr<ShadowManager>        shadow_manager;
 		std::unique_ptr<SceneManager>         scene_manager;
 		std::unique_ptr<DecorManager>         decor_manager;
@@ -491,6 +493,8 @@ namespace Boidsish {
 			shockwave_manager = std::make_unique<ShockwaveManager>();
 			sdf_volume_manager = std::make_unique<SdfVolumeManager>();
 			sdf_volume_manager->Initialize();
+			terrain_opening_manager = std::make_unique<TerrainOpeningManager>();
+			terrain_opening_manager->Initialize();
 			shadow_manager = std::make_unique<ShadowManager>();
 			scene_manager = std::make_unique<SceneManager>("scenes");
 			decor_manager = std::make_unique<DecorManager>();
@@ -887,6 +891,10 @@ namespace Boidsish {
 			GLuint frustum_idx = glGetUniformBlockIndex(shader_to_setup.ID, "FrustumData");
 			if (frustum_idx != GL_INVALID_INDEX) {
 				glUniformBlockBinding(shader_to_setup.ID, frustum_idx, Constants::UboBinding::FrustumData());
+			}
+			GLuint openings_idx = glGetUniformBlockIndex(shader_to_setup.ID, "TerrainOpenings");
+			if (openings_idx != GL_INVALID_INDEX) {
+				glUniformBlockBinding(shader_to_setup.ID, openings_idx, Constants::UboBinding::TerrainOpenings());
 			}
 			GLuint shockwaves_idx = glGetUniformBlockIndex(shader_to_setup.ID, "Shockwaves");
 			if (shockwaves_idx != GL_INVALID_INDEX) {
@@ -1855,6 +1863,11 @@ namespace Boidsish {
 
 	void Visualizer::Update() {
 		impl->frame_count_++;
+
+		if (impl->terrain_opening_manager) {
+			impl->terrain_opening_manager->UpdateUBO();
+			impl->terrain_opening_manager->BindUBO(Constants::UboBinding::TerrainOpenings());
+		}
 
 		// Reset per-frame input state
 		std::fill_n(impl->input_state.key_down, Constants::Library::Input::MaxKeys(), false);
@@ -3107,6 +3120,18 @@ namespace Boidsish {
 
 	void Visualizer::RemoveSdfSource(int id) {
 		impl->sdf_volume_manager->RemoveSource(id);
+	}
+
+	int Visualizer::AddTerrainOpening(const glm::vec3& center, float radius) {
+		return impl->terrain_opening_manager->AddOpening(TerrainOpening(center, radius));
+	}
+
+	void Visualizer::RemoveTerrainOpening(int id) {
+		impl->terrain_opening_manager->RemoveOpening(id);
+	}
+
+	void Visualizer::ClearTerrainOpenings() {
+		impl->terrain_opening_manager->Clear();
 	}
 
 	void Visualizer::ExplodeShape(std::shared_ptr<Shape> shape, float intensity, const glm::vec3& velocity) {

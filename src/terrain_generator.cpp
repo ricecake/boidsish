@@ -506,6 +506,14 @@ namespace Boidsish {
 
 		glm::vec3 terrain_height = biomefbm(warped_pos, current);
 
+		// Apply canyon effect for varied terrain
+		if (current.canyonInfluence > 0.01f) {
+			float canyon_noise = Simplex::noise(warped_pos * 0.05f);
+			float ridged = 1.0f - std::abs(canyon_noise);
+			float canyon_depth = ridged * ridged * 40.0f * current.canyonInfluence;
+			terrain_height.x -= canyon_depth;
+		}
+
 		float path_floor_level = -0.10f;
 		terrain_height.x = glm::mix(path_floor_level, terrain_height.x, path_factor);
 

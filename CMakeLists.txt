@@ -42,6 +42,11 @@ add_subdirectory(external/task-thread-pool)
 add_subdirectory(external/poolSTL)
 add_subdirectory(external/libmorton)
 
+# FastNoise2
+set(FASTNOISE2_TOOLS OFF CACHE BOOL "" FORCE)
+set(FASTNOISE2_TESTS OFF CACHE BOOL "" FORCE)
+add_subdirectory(external/FastNoise2)
+
 # Bonxai - header-only voxel grid library (only need core, not ROS/map modules)
 set(BONXAI_INCLUDE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/external/Bonxai/bonxai_core/include")
 
@@ -60,6 +65,7 @@ target_include_directories(boidsish
         $<INSTALL_INTERFACE:include>
         external/include
         external/libmorton/include
+        external/FastNoise2/include
         ${BONXAI_INCLUDE_DIR}
         ${IMGUI_DIR}/
         ${IMGUI_DIR}/backends
@@ -80,6 +86,7 @@ target_link_libraries(boidsish
         ${ASSIMP_LIBRARIES}
         ZLIB::ZLIB
         libmorton::libmorton
+        FastNoise
         Threads::Threads
         glm::glm
 )
