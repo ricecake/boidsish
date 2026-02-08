@@ -11,6 +11,9 @@ uniform sampler3D cloudDetailNoiseLUT;
 uniform sampler2D curlNoiseLUT;
 uniform sampler2D weatherMap;
 
+uniform int isCloudPass;
+uniform sampler2D cloudBuffer;
+
 uniform vec3 cameraPos;
 uniform mat4 invView;
 uniform mat4 invProjection;
@@ -117,7 +120,83 @@ float sampleCloudDensity(vec3 p, bool fullDetail) {
 	return clamp(density * cloudDensity, 0.0, 1.0);
 }
 
+float sampleCloudShadow(vec3 p, vec3 sunDir) {
+	float shadow = 0.0;
+	shadow += sampleCloudDensity(p + sunDir * 5.0, false) * 3.0;
+	shadow += sampleCloudDensity(p + sunDir * 15.0, false) * 2.0;
+	shadow += sampleCloudDensity(p + sunDir * 40.0, false) * 1.0;
+	return exp(-shadow * 0.4);
+}
+
 void main() {
+	if (isCloudPass == 1) {
+		// --- CLOUD RAYMARCHING (Low Resolution) ---
+		vec2  uv = TexCoords * 2.0 - 1.0;
+		vec4  target = invProjection * vec4(uv, 1.0, 1.0);
+		vec3  rayDir = normalize(vec3(invView * vec4(normalize(target.xyz), 0.0)));
+		float sceneDepth = texture(depthTexture, TexCoords).r;
+
+		float z = sceneDepth * 2.0 - 1.0;
+		vec4  clipPos = vec4(TexCoords * 2.0 - 1.0, z, 1.0);
+		vec4  viewPosSpace = invProjection * clipPos;
+		viewPosSpace /= viewPosSpace.w;
+		vec3 worldPos = (invView * viewPosSpace).xyz;
+		float distToScene = length(worldPos - cameraPos);
+		if (sceneDepth == 1.0) distToScene = 100000.0;
+
+		float t_start = (cloudAltitude - cameraPos.y) / (rayDir.y + 0.000001);
+		float t_end = (cloudAltitude + cloudThickness - cameraPos.y) / (rayDir.y + 0.000001);
+
+		if (t_start > t_end) { float temp = t_start; t_start = t_end; t_end = temp; }
+		t_start = max(t_start, 0.0);
+		t_end = min(t_end, distToScene);
+
+		vec3  cloudLight = vec3(0.0);
+		float cloudTransmittance = 1.0;
+
+		if (t_start < t_end) {
+			vec3 sunDir = vec3(0, 1, 0);
+			vec3 sunColor = vec3(1);
+			for (int i = 0; i < num_lights; i++) {
+				if (lights[i].type == LIGHT_TYPE_DIRECTIONAL) {
+					sunDir = normalize(-lights[i].direction);
+					sunColor = lights[i].color * lights[i].intensity;
+					break;
+				}
+			}
+
+			int   samples = 64;
+			float stepSize = (t_end - t_start) / float(samples);
+			float jitter = fract(sin(dot(TexCoords, vec2(12.9898, 78.233))) * 43758.5453 + time);
+
+			for (int i = 0; i < samples; i++) {
+				float t = t_start + (float(i) + jitter) * stepSize;
+				vec3  p = cameraPos + rayDir * t;
+				float d = sampleCloudDensity(p, cloudTransmittance > 0.1);
+
+				if (d > 0.001) {
+					float shadow = sampleCloudShadow(p, sunDir);
+					vec3  T_sun = getTransmittance(transmittanceLUT, p.y, sunDir.y);
+					float powder = beerPowder(d, stepSize, cloudPowderStrength);
+					vec3  effectiveTrans = T_sun * shadow * powder;
+
+					float phase = henyeyGreensteinPhase(dot(rayDir, sunDir), cloudG);
+					vec3  pointLight = sunColor * effectiveTrans * phase * cloudScatteringBoost;
+					pointLight += ambient_light * 0.1;
+
+					vec3 src = pointLight * d * cloudColorUniform;
+					cloudLight += src * cloudTransmittance * stepSize;
+					cloudTransmittance *= exp(-d * stepSize);
+
+					if (cloudTransmittance < 0.01) break;
+				}
+			}
+		}
+		FragColor = vec4(cloudLight, 1.0 - cloudTransmittance);
+		return;
+	}
+
+	// --- FINAL COMPOSITION ---
 	float depth = texture(depthTexture, TexCoords).r;
 	vec3  sceneColor = texture(sceneTexture, TexCoords).rgb;
 
@@ -129,16 +208,12 @@ void main() {
 
 	vec3  rayDir = normalize(worldPos - cameraPos);
 	float dist = length(worldPos - cameraPos);
-
 	if (depth == 1.0) {
 		dist = 100000.0;
 		worldPos = cameraPos + rayDir * dist;
 	}
 
-	// 1. Height Fog (Haze)
-	float fogFactor = getHeightFog(cameraPos, worldPos, hazeDensity, 1.0 / (hazeHeight + 0.001));
-
-	// Add scattering to haze
+	// 1. Get Sky Color (Atmosphere)
 	vec3 sunDir = vec3(0, 1, 0);
 	vec3 sunColor = vec3(1);
 	for (int i = 0; i < num_lights; i++) {
@@ -148,80 +223,27 @@ void main() {
 			break;
 		}
 	}
-
 	vec3 currentHazeColor = calculateSkyColor(transmittanceLUT, rayDir, sunDir, sunColor);
 
-	// 2. Cloud Layer
-	float cloudTransmittance = 1.0;
-	vec3  cloudLight = vec3(0.0);
+	// 2. Sample Cloud Buffer with Smoothing
+	vec2 texelSize = 1.0 / vec2(textureSize(cloudBuffer, 0));
+	vec4 cloudInfo = texture(cloudBuffer, TexCoords);
+	// 4-tap blur for upscaling smoothing
+	cloudInfo += texture(cloudBuffer, TexCoords + vec2(texelSize.x, 0));
+	cloudInfo += texture(cloudBuffer, TexCoords + vec2(0, texelSize.y));
+	cloudInfo += texture(cloudBuffer, TexCoords + texelSize);
+	cloudInfo /= 4.0;
 
-	float t_start = (cloudAltitude - cameraPos.y) / (rayDir.y + 0.000001);
-	float t_end = (cloudAltitude + cloudThickness - cameraPos.y) / (rayDir.y + 0.000001);
+	// 3. Height Fog
+	float fogFactor = getHeightFog(cameraPos, worldPos, hazeDensity, 1.0 / (hazeHeight + 0.001));
 
-	if (t_start > t_end) {
-		float temp = t_start;
-		t_start = t_end;
-		t_end = temp;
-	}
+	// 4. Combine
+	vec3 color = sceneColor * (1.0 - cloudInfo.a) + cloudInfo.rgb;
 
-	t_start = max(t_start, 0.0);
-	t_end = min(t_end, dist);
-
-	if (t_start < t_end) {
-		int   samples = 64;
-		float stepSize = (t_end - t_start) / float(samples);
-		// Blue noise or similar jitter for smoother volumes
-		float jitter = fract(sin(dot(TexCoords, vec2(12.9898, 78.233))) * 43758.5453 + time);
-
-		for (int i = 0; i < samples; i++) {
-			float t = t_start + (float(i) + jitter) * stepSize;
-			vec3  p = cameraPos + rayDir * t;
-
-			// Sample density (full detail only if not too deep in cloud)
-			float d = sampleCloudDensity(p, cloudTransmittance > 0.1);
-
-			if (d > 0.001) {
-				// Self-shadowing (HZD style simple: sample density towards sun)
-				float shadowDensity = sampleCloudDensity(p + sunDir * 3.0, false) * 2.0;
-				shadowDensity += sampleCloudDensity(p + sunDir * 8.0, false) * 1.0;
-
-				float T_internal = exp(-shadowDensity * 0.3);
-				vec3 T_sun = getTransmittance(transmittanceLUT, p.y, sunDir.y);
-
-				float powder = beerPowder(d, stepSize, cloudPowderStrength);
-				vec3  effectiveTransmittance = T_sun * T_internal * powder;
-
-				float phase = henyeyGreensteinPhase(dot(rayDir, sunDir), cloudG);
-				vec3  pointLight = sunColor * effectiveTransmittance * phase * cloudScatteringBoost;
-				pointLight += ambient_light * 0.1;
-
-				vec3 src = pointLight * d * cloudColorUniform;
-				cloudLight += src * cloudTransmittance * stepSize;
-				cloudTransmittance *= exp(-d * stepSize);
-
-				if (cloudTransmittance < 0.01)
-					break;
-			}
-		}
-	}
-
-	// Combine everything
-	// If depth is 1.0, sceneColor IS the sky.
-	// Clouds should attenuate the sky and add their light.
-	vec3 result = sceneColor * cloudTransmittance + cloudLight;
-
-	// Apply haze (fog) to the result.
-	// But only if it's closer than the "far plane" distance for the sky.
 	float effectiveFogFactor = fogFactor;
-	if (depth == 1.0) {
-		// For sky, the fog is already "baked" into calculateSkyColor in sky.frag
-		// and currentHazeColor here.
-		// We don't want to double-fog the clouds if they are part of the sky.
-		// However, haze (height fog) should still affect them.
-		effectiveFogFactor = fogFactor * 0.5; // Reduce fog impact on sky-depth clouds
-	}
+	if (depth == 1.0) effectiveFogFactor = fogFactor * 0.5;
 
-	result = mix(result, currentHazeColor, effectiveFogFactor);
+	vec3 finalColor = mix(color, currentHazeColor, effectiveFogFactor);
 
-	FragColor = vec4(result, 1.0);
+	FragColor = vec4(finalColor, 1.0);
 }

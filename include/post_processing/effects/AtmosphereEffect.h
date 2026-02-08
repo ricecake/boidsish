@@ -102,8 +102,10 @@ namespace Boidsish {
 
 		private:
 			void GenerateLUTs();
+			void InitializeCloudFBO(int width, int height);
 
 			std::unique_ptr<Shader>        shader_;
+			std::unique_ptr<Shader>        cloud_raymarch_shader_;
 			std::unique_ptr<ComputeShader> transmittance_lut_shader_;
 			std::unique_ptr<ComputeShader> cloud_noise_lut_shader_;
 			std::unique_ptr<ComputeShader> cloud_detail_noise_lut_shader_;
@@ -115,6 +117,9 @@ namespace Boidsish {
 			GLuint cloud_detail_noise_lut_ = 0;
 			GLuint curl_noise_lut_ = 0;
 			GLuint weather_map_ = 0;
+
+			GLuint cloud_fbo_ = 0;
+			GLuint cloud_texture_ = 0;
 
 			float time_ = 0.0f;
 

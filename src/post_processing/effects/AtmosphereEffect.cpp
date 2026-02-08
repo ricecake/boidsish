@@ -61,6 +61,31 @@ namespace Boidsish {
 			height_ = height;
 
 			GenerateLUTs();
+			InitializeCloudFBO(width, height);
+		}
+
+		void AtmosphereEffect::InitializeCloudFBO(int width, int height) {
+			int cloudW = width / 2;
+			int cloudH = height / 2;
+
+			if (cloud_fbo_ == 0) {
+				glGenFramebuffers(1, &cloud_fbo_);
+				glGenTextures(1, &cloud_texture_);
+			}
+
+			glBindFramebuffer(GL_FRAMEBUFFER, cloud_fbo_);
+			glBindTexture(GL_TEXTURE_2D, cloud_texture_);
+			glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, cloudW, cloudH, 0, GL_RGBA, GL_FLOAT, NULL);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+			glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, cloud_texture_, 0);
+
+			if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
+				// Failed
+			}
+			glBindFramebuffer(GL_FRAMEBUFFER, 0);
 		}
 
 		void AtmosphereEffect::GenerateLUTs() {
@@ -166,7 +191,26 @@ namespace Boidsish {
 			const glm::mat4& projectionMatrix,
 			const glm::vec3& cameraPos
 		) {
+			static int lastW = 0, lastH = 0;
+			if (width_ != lastW || height_ != lastH) {
+				InitializeCloudFBO(width_, height_);
+				lastW = width_;
+				lastH = height_;
+			}
+
+			time_ += 0.016f;
+
+			GLint currentFBO;
+			glGetIntegerv(GL_FRAMEBUFFER_BINDING, &currentFBO);
+
+			// 1. Render clouds to low-res FBO
+			glBindFramebuffer(GL_FRAMEBUFFER, cloud_fbo_);
+			glViewport(0, 0, width_ / 2, height_ / 2);
+			glClearColor(0, 0, 0, 0);
+			glClear(GL_COLOR_BUFFER_BIT);
+
 			shader_->use();
+			shader_->setInt("isCloudPass", 1);
 			shader_->setInt("sceneTexture", 0);
 			shader_->setInt("depthTexture", 1);
 			shader_->setInt("transmittanceLUT", 10);
@@ -217,6 +261,19 @@ namespace Boidsish {
 			glBindTexture(GL_TEXTURE_2D, curl_noise_lut_);
 			glActiveTexture(GL_TEXTURE14);
 			glBindTexture(GL_TEXTURE_2D, weather_map_);
+
+			glDrawArrays(GL_TRIANGLES, 0, 6);
+
+			// 2. Final composition pass
+			glBindFramebuffer(GL_FRAMEBUFFER, currentFBO);
+			glViewport(0, 0, width_, height_);
+
+			shader_->use();
+			shader_->setInt("isCloudPass", 0);
+
+			glActiveTexture(GL_TEXTURE6);
+			glBindTexture(GL_TEXTURE_2D, cloud_texture_);
+			shader_->setInt("cloudBuffer", 6);
 
 			glDrawArrays(GL_TRIANGLES, 0, 6);
 		}
