@@ -256,8 +256,7 @@ void main() {
 	float dist = length(FragPos.xz - viewPos.xz);
 	float fade_start = 560.0 * worldScale;
 	float fade_end = 570.0 * worldScale;
-	// float fade = 1.0 - smoothstep(fade_start, fade_end, dist + n2 * 40.0 * worldScale);
-	float fade = 1.0 - smoothstep(fade_start, fade_end, dist + n2 * 40.0 * worldScale);
+	float fade = 1.0 - smoothstep(fade_start, fade_end, dist + n2 * 40.0);
 
 	if (fade < 0.2) {
 		discard;
