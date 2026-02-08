@@ -2209,6 +2209,7 @@ namespace Boidsish {
 				reflection_cam.pitch = -reflection_cam.pitch;
 				glm::mat4 reflection_view = impl->SetupMatrices(reflection_cam);
 				impl->reflection_vp = impl->projection * reflection_view;
+
 				// Render opaque geometry first for early-Z benefit
 				// Use reduced tessellation (25%) for reflection pass - it's blurred anyway
 				// impl->RenderTerrain(

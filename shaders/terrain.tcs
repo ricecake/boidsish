@@ -22,7 +22,7 @@ uniform int            uChunkSize;
 
 #include "helpers/lighting.glsl"
 
-uniform float uTessLevelMax = 64.0;
+uniform float uTessLevelMax = 16.0;
 uniform float uTessLevelMin = 1.0;
 uniform float uTessQualityMultiplier = 1.0;
 uniform bool  uIsShadowPass = false;
@@ -40,15 +40,20 @@ void sampleHeightmap(vec2 uv, float slice, vec3 worldOffset, out vec3 worldPos, 
 }
 
 float GetVertexTessLevel(vec3 worldPos, vec3 normal, vec3 forward) {
-	// 1. DISTANCE FACTOR (The Base)
 	float dist = distance(viewPos, worldPos);
+	vec3  viewDir = normalize(viewPos - worldPos);
+	float dotProd = dot(normalize(normal), viewDir);
+	float isSilhouette = 1.0 - abs(dotProd);
+
+	if (uIsShadowPass) {
+		return mix(1.0, 2.0, isSilhouette * (1.0 - clamp(dist / 500.0, 0.0, 1.0)));
+	}
+
+	// 1. DISTANCE FACTOR (The Base)
 	float distanceLevel = uTessLevelMax * exp(-dist * (0.02 / worldScale));
 	distanceLevel = clamp(distanceLevel, uTessLevelMin, uTessLevelMax);
 
 	// 2. SILHOUETTE FACTOR (The Boost)
-	vec3  viewDir = normalize(viewPos - worldPos);
-	float dotProd = dot(normalize(normal), viewDir);
-	float isSilhouette = 1.0 - abs(dotProd);
 	float silhouetteBoost = mix(1.0, 2.0, isSilhouette * (1.0 - clamp(dist / 500.0, 0.0, 1.0)));
 
 	// 3. FOCUS FACTOR (The Cull)
