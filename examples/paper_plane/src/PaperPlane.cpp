@@ -224,6 +224,7 @@ namespace Boidsish {
 		}
 
 		if (controller_->chaff) {
+			chaff_timer_ = 0.5f;
 			handler.vis->AddFireEffect(
 				pos.Toglm() - forward_dir,
 				FireEffectStyle::Glitter,
@@ -232,6 +233,10 @@ namespace Boidsish {
 				1500,
 				1.0f
 			);
+		}
+
+		if (chaff_timer_ > 0.0f) {
+			chaff_timer_ -= delta_time;
 		}
 	}
 
