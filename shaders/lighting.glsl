@@ -15,7 +15,7 @@ const int MAX_LIGHTS = [[MAX_LIGHTS]];
 const int MAX_SHADOW_MAPS = [[MAX_SHADOW_MAPS]];
 const int MAX_CASCADES = [[MAX_CASCADES]];
 
-layout(std140) uniform Lighting {
+layout(std140, binding = 0) uniform Lighting {
 	Light lights[MAX_LIGHTS];
 	int   num_lights;
 	vec3  viewPos;
@@ -24,8 +24,8 @@ layout(std140) uniform Lighting {
 	vec3  viewDir;
 };
 
-// Shadow mapping UBO (binding set via glUniformBlockBinding to point 2)
-layout(std140) uniform Shadows {
+// Shadow mapping UBO
+layout(std140, binding = 2) uniform Shadows {
 	mat4 lightSpaceMatrices[MAX_SHADOW_MAPS];
 	vec4 cascadeSplits;
 	int  numShadowLights;
