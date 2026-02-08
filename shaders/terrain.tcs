@@ -66,8 +66,9 @@ float GetVertexTessLevel(vec3 worldPos, vec3 normal, vec3 forward) {
 	finalLevel *= focusCull;
 	finalLevel *= uTessQualityMultiplier;
 
-	// For shadow pass, ensure a minimum level to prevent light leaking
-	float minLevel = uIsShadowPass ? max(uTessLevelMin, 8.0) : uTessLevelMin;
+	// For shadow pass, use lower tessellation to improve performance
+	// Shadows don't need as much detail since they're binary (lit/shadow)
+	float minLevel = uIsShadowPass ? max(uTessLevelMin, 4.0) : uTessLevelMin;
 
 	return step(0.0, finalLevel) * max(finalLevel, minLevel);
 }

@@ -537,8 +537,7 @@ namespace Boidsish {
 		// Bind VAO (instance attributes already configured during initialization)
 		glBindVertexArray(grid_vao_);
 
-		// Explicitly rebind EBO in case VAO state was corrupted
-		// glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, grid_ebo_);
+		// Note: EBO is already captured in VAO state during initialization
 
 		// Set patch vertices for tessellation
 		glPatchParameteri(GL_PATCH_VERTICES, 4);

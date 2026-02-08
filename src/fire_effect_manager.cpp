@@ -75,6 +75,7 @@ namespace Boidsish {
 		glGenBuffers(1, &emitter_buffer_);
 		glBindBuffer(GL_SHADER_STORAGE_BUFFER, emitter_buffer_);
 		glBufferData(GL_SHADER_STORAGE_BUFFER, kMaxEmitters * sizeof(Emitter), nullptr, GL_DYNAMIC_DRAW);
+		emitter_buffer_capacity_ = kMaxEmitters;
 
 		glGenBuffers(1, &indirection_buffer_);
 		glBindBuffer(GL_SHADER_STORAGE_BUFFER, indirection_buffer_);
@@ -189,8 +190,15 @@ namespace Boidsish {
 			return; // No active emitters, nothing to compute
 		}
 
+		// Update emitter buffer, only reallocating if capacity exceeded
 		glBindBuffer(GL_SHADER_STORAGE_BUFFER, emitter_buffer_);
-		glBufferData(GL_SHADER_STORAGE_BUFFER, emitters.size() * sizeof(Emitter), emitters.data(), GL_DYNAMIC_DRAW);
+		if (emitters.size() > emitter_buffer_capacity_) {
+			// Grow buffer with headroom to avoid frequent reallocations
+			size_t new_capacity = std::max(emitters.size() * 2, emitter_buffer_capacity_);
+			glBufferData(GL_SHADER_STORAGE_BUFFER, new_capacity * sizeof(Emitter), nullptr, GL_DYNAMIC_DRAW);
+			emitter_buffer_capacity_ = new_capacity;
+		}
+		glBufferSubData(GL_SHADER_STORAGE_BUFFER, 0, emitters.size() * sizeof(Emitter), emitters.data());
 
 		glBindBuffer(GL_SHADER_STORAGE_BUFFER, indirection_buffer_);
 		glBufferSubData(
