@@ -613,16 +613,14 @@ namespace Boidsish {
 			}
 		}
 
-		// Generate indices for a grid of quads
-		indices.reserve(chunk_size_ * chunk_size_ * 4);
-		for (int i = 0; i < chunk_size_; ++i) {
-			for (int j = 0; j < chunk_size_; ++j) {
-				indices.push_back(i * num_vertices_z + j);
-				indices.push_back((i + 1) * num_vertices_z + j);
-				indices.push_back((i + 1) * num_vertices_z + j + 1);
-				indices.push_back(i * num_vertices_z + j + 1);
-			}
-		}
+		// Generate indices for a single quad patch covering the whole chunk.
+		// The corners are at (0,0), (chunk_size, 0), (chunk_size, chunk_size), (0, chunk_size).
+		// This matches the simplified instanced geometry in TerrainRenderManager.
+		indices.reserve(4);
+		indices.push_back(0);                                           // (0,0)
+		indices.push_back(chunk_size_ * num_vertices_z);                // (chunk_size, 0)
+		indices.push_back(chunk_size_ * num_vertices_z + chunk_size_);  // (chunk_size, chunk_size)
+		indices.push_back(chunk_size_);                                 // (0, chunk_size)
 
 		// Calculate aggregate data for the PatchProxy
 		PatchProxy proxy;
