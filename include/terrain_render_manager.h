@@ -99,6 +99,19 @@ namespace Boidsish {
 		void RenderOccluders(Shader& shader) override;
 
 		/**
+		 * @brief Perform hardware occlusion queries for all visible chunks.
+		 *
+		 * This populates is_occluded based on results from the previous frame
+		 * and issues new queries for the current frame.
+		 *
+		 * @param view View matrix
+		 * @param projection Projection matrix
+		 * @param frustum Current view frustum
+		 * @param shader Debug shader for bounding box rendering
+		 */
+		void PerformOcclusionQueries(const glm::mat4& view, const glm::mat4& projection, const Frustum& frustum, Shader& shader) override;
+
+		/**
 		 * @brief Commit any pending updates (no-op for this implementation).
 		 */
 		void CommitUpdates() {}
@@ -138,6 +151,9 @@ namespace Boidsish {
 			float                     max_y;         // For frustum culling
 			glm::vec2                 world_offset;  // (chunk_x * chunk_size, chunk_z * chunk_size)
 			std::vector<OccluderQuad> occluders;
+			GLuint                    occlusion_query = 0;
+			bool                      query_issued = false;
+			bool                      is_occluded = false;
 		};
 
 		// Per-instance data sent to GPU (std140 layout)

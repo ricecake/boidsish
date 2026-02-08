@@ -56,6 +56,8 @@ namespace Boidsish {
 		// Constructor, expects a filepath to a 3D model.
 		Model(const std::string& path, bool no_cull = false);
 
+		void GetAABB(glm::vec3& min, glm::vec3& max) const;
+
 		// Render the model
 		void      render() const override;
 		void      render(Shader& shader, const glm::mat4& model_matrix) const override;
@@ -78,6 +80,8 @@ namespace Boidsish {
 	private:
 		// Model data
 		glm::quat            base_rotation_ = glm::quat(1.0f, 0.0f, 0.0f, 0.0f);
+		glm::vec3            min_aabb_ = glm::vec3(0.0f);
+		glm::vec3            max_aabb_ = glm::vec3(0.0f);
 		std::vector<Mesh>    meshes;
 		std::string          directory;
 		std::string          model_path_; // Full path to the model file for instancing identification

@@ -2007,6 +2007,41 @@ namespace Boidsish {
 		impl->audio_manager->Update();
 
 		glm::mat4 view_matrix = impl->SetupMatrices();
+		Frustum   render_frustum = impl->CalculateFrustum(view_matrix, impl->projection);
+
+		if (impl->terrain_render_manager) {
+			// --- Occlusion Pass ---
+			// Use terrain occlusion quads to populate depth and perform queries
+			glEnable(GL_DEPTH_TEST);
+			glDepthMask(GL_TRUE);
+			glColorMask(GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE);
+
+			if (impl->occluder_debug_shader) {
+				impl->occluder_debug_shader->use();
+				impl->occluder_debug_shader->setMat4("view", view_matrix);
+				impl->occluder_debug_shader->setMat4("projection", impl->projection);
+
+				// 1. Render all terrain occluders to depth buffer
+				impl->terrain_render_manager->RenderOccluders(*impl->occluder_debug_shader);
+
+				// 2. Perform occlusion queries for chunks in frustum
+				impl->terrain_render_manager->PerformOcclusionQueries(
+					view_matrix,
+					impl->projection,
+					render_frustum,
+					*impl->occluder_debug_shader
+				);
+
+				// 3. Perform occlusion queries for model instances
+				impl->instance_manager->PerformOcclusionQueries(
+					view_matrix,
+					impl->projection,
+					*impl->occluder_debug_shader
+				);
+			}
+
+			glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
+		}
 
 		// Calculate frustum for terrain generation and decor placement
 		Frustum generator_frustum;
@@ -2118,13 +2153,6 @@ namespace Boidsish {
 
 		// Update Frustum UBO for GPU-side culling
 		{
-			glm::mat4 view = glm::lookAt(
-				impl->camera.pos(),
-				impl->camera.pos() + impl->camera.front(),
-				impl->camera.up()
-			);
-			Frustum render_frustum = impl->CalculateFrustum(view, impl->projection);
-
 			// Pack frustum planes into vec4 array (normal.xyz, distance.w)
 			glm::vec4 frustum_planes[6];
 			for (int i = 0; i < 6; ++i) {

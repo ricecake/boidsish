@@ -170,7 +170,14 @@ namespace Boidsish {
 
 	// Model implementation
 	Model::Model(const std::string& path, bool no_cull): no_cull_(no_cull), model_path_(path) {
+		min_aabb_ = glm::vec3(std::numeric_limits<float>::max());
+		max_aabb_ = glm::vec3(std::numeric_limits<float>::lowest());
 		loadModel(path);
+	}
+
+	void Model::GetAABB(glm::vec3& min, glm::vec3& max) const {
+		min = min_aabb_;
+		max = max_aabb_;
 	}
 
 	void Model::render() const {
@@ -299,6 +306,10 @@ namespace Boidsish {
 				vertex.TexCoords = glm::vec2(0.0f, 0.0f);
 			}
 			vertices.push_back(vertex);
+
+			// Update AABB
+			min_aabb_ = glm::min(min_aabb_, vertex.Position);
+			max_aabb_ = glm::max(max_aabb_, vertex.Position);
 		}
 		// now wak all of the mesh's faces (a face is a mesh its triangle) and retrieve the corresponding vertex
 		// indices.

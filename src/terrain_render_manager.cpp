@@ -231,6 +231,9 @@ namespace Boidsish {
 			}
 
 			int slice;
+			GLuint query;
+			glGenQueries(1, &query);
+
 			if (!free_slices_.empty()) {
 				slice = free_slices_.back();
 				free_slices_.pop_back();
@@ -288,6 +291,8 @@ namespace Boidsish {
 			info.max_y = max_y;
 			info.world_offset = glm::vec2(world_offset.x, world_offset.z);
 			info.occluders = occluders;
+			info.occlusion_query = query;
+			info.is_occluded = false;
 
 			chunks_[chunk_key] = info;
 		}
@@ -306,6 +311,9 @@ namespace Boidsish {
 		}
 
 		free_slices_.push_back(it->second.texture_slice);
+		if (it->second.occlusion_query != 0) {
+			glDeleteQueries(1, &it->second.occlusion_query);
+		}
 		chunks_.erase(it);
 	}
 
@@ -355,6 +363,10 @@ namespace Boidsish {
 
 		for (const auto& [key, chunk] : chunks_) {
 			if (IsChunkVisible(chunk, frustum)) {
+				if (chunk.is_occluded) {
+					continue;
+				}
+
 				InstanceData instance{};
 				instance.world_offset_and_slice = glm::vec4(
 					chunk.world_offset.x,
@@ -442,14 +454,14 @@ namespace Boidsish {
 		for (const auto& [key, chunk] : chunks_) {
 			glm::vec3 world_origin(chunk.world_offset.x, 0, chunk.world_offset.y);
 			for (const auto& quad : chunk.occluders) {
+				// We render as triangles for solid occlusion
 				all_vertices.push_back(quad.corners[0] + world_origin);
 				all_vertices.push_back(quad.corners[1] + world_origin);
-				all_vertices.push_back(quad.corners[1] + world_origin);
 				all_vertices.push_back(quad.corners[2] + world_origin);
-				all_vertices.push_back(quad.corners[2] + world_origin);
-				all_vertices.push_back(quad.corners[3] + world_origin);
-				all_vertices.push_back(quad.corners[3] + world_origin);
+
 				all_vertices.push_back(quad.corners[0] + world_origin);
+				all_vertices.push_back(quad.corners[2] + world_origin);
+				all_vertices.push_back(quad.corners[3] + world_origin);
 			}
 		}
 
@@ -461,7 +473,79 @@ namespace Boidsish {
 		glBindVertexArray(vao);
 		glBindBuffer(GL_ARRAY_BUFFER, vbo);
 		glBufferData(GL_ARRAY_BUFFER, all_vertices.size() * sizeof(glm::vec3), all_vertices.data(), GL_STREAM_DRAW);
-		glDrawArrays(GL_LINES, 0, static_cast<GLsizei>(all_vertices.size()));
+		glDrawArrays(GL_TRIANGLES, 0, static_cast<GLsizei>(all_vertices.size()));
+		glBindVertexArray(0);
+	}
+
+	void TerrainRenderManager::PerformOcclusionQueries(
+		const glm::mat4& view,
+		const glm::mat4& projection,
+		const Frustum&   frustum,
+		Shader&          shader
+	) {
+		std::lock_guard<std::mutex> lock(mutex_);
+
+		// 1. Update is_occluded from previous frame results
+		for (auto& [key, chunk] : chunks_) {
+			if (!chunk.query_issued)
+				continue;
+
+			GLuint available = 0;
+			glGetQueryObjectuiv(chunk.occlusion_query, GL_QUERY_RESULT_AVAILABLE, &available);
+			if (available) {
+				GLuint samples = 0;
+				glGetQueryObjectuiv(chunk.occlusion_query, GL_QUERY_RESULT, &samples);
+				chunk.is_occluded = (samples == 0);
+			}
+		}
+
+		// 2. Issue new queries for chunks in the frustum
+		// We use a shared VAO/VBO for bounding boxes
+		static GLuint bbox_vao = 0, bbox_vbo = 0, bbox_ebo = 0;
+		if (bbox_vao == 0) {
+			glGenVertexArrays(1, &bbox_vao);
+			glGenBuffers(1, &bbox_vbo);
+			glGenBuffers(1, &bbox_ebo);
+
+			float vertices[] = {
+				0, 0, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0, 0, 0, 1, 1, 0, 1, 1, 1, 1, 0, 1, 1,
+			};
+
+			unsigned int indices[] = {
+				0, 1, 2, 2, 3, 0, 4, 5, 6, 6, 7, 4, 0, 1, 5, 5, 4, 0,
+				2, 3, 7, 7, 6, 2, 1, 2, 6, 6, 5, 1, 0, 3, 7, 7, 4, 0,
+			};
+
+			glBindVertexArray(bbox_vao);
+			glBindBuffer(GL_ARRAY_BUFFER, bbox_vbo);
+			glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
+			glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
+			glEnableVertexAttribArray(0);
+
+			glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, bbox_ebo);
+			glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(indices), indices, GL_STATIC_DRAW);
+			glBindVertexArray(0);
+		}
+
+		glBindVertexArray(bbox_vao);
+		GLint modelLoc = glGetUniformLocation(shader.ID, "model");
+
+		for (auto& [key, chunk] : chunks_) {
+			if (IsChunkVisible(chunk, frustum)) {
+				// Set model matrix for the bounding box
+				glm::mat4 model = glm::translate(
+					glm::mat4(1.0f),
+					glm::vec3(chunk.world_offset.x, chunk.min_y, chunk.world_offset.y)
+				);
+				model = glm::scale(model, glm::vec3(chunk_size_, chunk.max_y - chunk.min_y, chunk_size_));
+				glUniformMatrix4fv(modelLoc, 1, GL_FALSE, &model[0][0]);
+
+				glBeginQuery(GL_ANY_SAMPLES_PASSED, chunk.occlusion_query);
+				glDrawElements(GL_TRIANGLES, 36, GL_UNSIGNED_INT, 0);
+				glEndQuery(GL_ANY_SAMPLES_PASSED);
+				chunk.query_issued = true;
+			}
+		}
 		glBindVertexArray(0);
 	}
 

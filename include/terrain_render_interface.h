@@ -109,6 +109,19 @@ namespace Boidsish {
 		 * @param shader Debug shader to use for rendering
 		 */
 		virtual void RenderOccluders(Shader& shader) = 0;
+
+		/**
+		 * @brief Perform hardware occlusion queries for all visible chunks.
+		 *
+		 * This populates occlusion state based on results from the previous frame
+		 * and issues new queries for the current frame.
+		 *
+		 * @param view View matrix
+		 * @param projection Projection matrix
+		 * @param frustum Current view frustum
+		 * @param shader Debug shader for bounding box rendering
+		 */
+		virtual void PerformOcclusionQueries(const glm::mat4& view, const glm::mat4& projection, const Frustum& frustum, Shader& shader) = 0;
 	};
 
 } // namespace Boidsish

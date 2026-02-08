@@ -45,12 +45,19 @@ namespace Boidsish {
 	}
 
 	void InstanceManager::RenderModelGroup(Shader& shader, InstanceGroup& group) {
-		// Build instance matrices
+		// Build instance matrices, filtering by occlusion
 		std::vector<glm::mat4> model_matrices;
 		model_matrices.reserve(group.shapes.size());
 		for (const auto& shape : group.shapes) {
+			auto q_it = m_queries.find(shape->GetId());
+			if (q_it != m_queries.end() && q_it->second.is_occluded) {
+				continue;
+			}
 			model_matrices.push_back(shape->GetModelMatrix());
 		}
+
+		if (model_matrices.empty())
+			return;
 
 		// Create/update matrix VBO
 		if (group.instance_matrix_vbo_ == 0) {
@@ -127,6 +134,91 @@ namespace Boidsish {
 			glDisableVertexAttribArray(5);
 			glDisableVertexAttribArray(6);
 			glBindVertexArray(0);
+		}
+	}
+
+	void InstanceManager::PerformOcclusionQueries(const glm::mat4& view, const glm::mat4& projection, Shader& shader) {
+		m_frame_count++;
+
+		// 1. Gather results from previous frame
+		for (auto& [id, query] : m_queries) {
+			if (!query.query_issued)
+				continue;
+
+			GLuint available = 0;
+			glGetQueryObjectuiv(query.query_id, GL_QUERY_RESULT_AVAILABLE, &available);
+			if (available) {
+				GLuint samples = 0;
+				glGetQueryObjectuiv(query.query_id, GL_QUERY_RESULT, &samples);
+				query.is_occluded = (samples == 0);
+			}
+		}
+
+		// 2. Issue new queries for all model instances
+		static GLuint bbox_vao = 0, bbox_vbo = 0, bbox_ebo = 0;
+		if (bbox_vao == 0) {
+			glGenVertexArrays(1, &bbox_vao);
+			glGenBuffers(1, &bbox_vbo);
+			glGenBuffers(1, &bbox_ebo);
+			float vertices[] = {0, 0, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0, 0, 0, 1, 1, 0, 1, 1, 1, 1, 0, 1, 1};
+			unsigned int indices[] = {0, 1, 2, 2, 3, 0, 4, 5, 6, 6, 7, 4, 0, 1, 5, 5, 4, 0,
+			                          2, 3, 7, 7, 6, 2, 1, 2, 6, 6, 5, 1, 0, 3, 7, 7, 4, 0};
+			glBindVertexArray(bbox_vao);
+			glBindBuffer(GL_ARRAY_BUFFER, bbox_vbo);
+			glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
+			glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
+			glEnableVertexAttribArray(0);
+			glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, bbox_ebo);
+			glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(indices), indices, GL_STATIC_DRAW);
+			glBindVertexArray(0);
+		}
+
+		glBindVertexArray(bbox_vao);
+		GLint modelLoc = glGetUniformLocation(shader.ID, "model");
+
+		for (auto& [key, group] : m_instance_groups) {
+			if (!key.starts_with("Model:") || group.shapes.empty())
+				continue;
+
+			auto first_model = std::dynamic_pointer_cast<Model>(group.shapes[0]);
+			if (!first_model)
+				continue;
+
+			glm::vec3 min_aabb, max_aabb;
+			first_model->GetAABB(min_aabb, max_aabb);
+			glm::vec3 size = max_aabb - min_aabb;
+
+			for (const auto& shape : group.shapes) {
+				auto& q_info = m_queries[shape->GetId()];
+				if (q_info.query_id == 0) {
+					glGenQueries(1, &q_info.query_id);
+				}
+				q_info.last_frame_used = m_frame_count;
+
+				glm::mat4 model_mat = shape->GetModelMatrix();
+				// Adjust model matrix to match the AABB
+				glm::mat4 bbox_mat = glm::translate(model_mat, min_aabb);
+				bbox_mat = glm::scale(bbox_mat, size);
+
+				glUniformMatrix4fv(modelLoc, 1, GL_FALSE, &bbox_mat[0][0]);
+
+				glBeginQuery(GL_ANY_SAMPLES_PASSED, q_info.query_id);
+				glDrawElements(GL_TRIANGLES, 36, GL_UNSIGNED_INT, 0);
+				glEndQuery(GL_ANY_SAMPLES_PASSED);
+				q_info.query_issued = true;
+			}
+		}
+		glBindVertexArray(0);
+
+		// 3. Cleanup unused queries
+		auto it = m_queries.begin();
+		while (it != m_queries.end()) {
+			if (it->second.last_frame_used < m_frame_count - 10) {
+				glDeleteQueries(1, &it->second.query_id);
+				it = m_queries.erase(it);
+			} else {
+				++it;
+			}
 		}
 	}
 
