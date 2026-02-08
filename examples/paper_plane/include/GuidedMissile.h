@@ -34,6 +34,7 @@ namespace Boidsish {
 		int                          wobble = 1;
 		PaperPlane*                  target_ = nullptr;
 		float                        jamming_intensity_ = 0.0f;
+		std::shared_ptr<ArcadeText>  text_ = nullptr;
 
 		// Flight model
 		std::random_device rd_;

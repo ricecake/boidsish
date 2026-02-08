@@ -1,6 +1,7 @@
 #include "GuidedMissile.h"
 
 #include "PaperPlane.h"
+#include "arcade_text.h"
 #include "fire_effect.h"
 #include "graphics.h"
 #include "terrain_generator.h"
@@ -92,6 +93,7 @@ namespace Boidsish {
 	void GuidedMissile::UpdateEntity(const EntityHandler& handler, float time, float delta_time) {
 		lived_ += delta_time;
 		auto pos = GetPosition();
+		auto vel = GetVelocity();
 
 		if (!launch_sound_) {
 			launch_sound_ = handler.vis
@@ -108,6 +110,45 @@ namespace Boidsish {
 		if (lived_ >= lifetime_) {
 			Explode(handler, false);
 			return;
+		}
+
+		if (!text_) {
+			handler.EnqueueVisualizerAction([&handler, this]() {
+				text_ = handler.vis->AddArcadeTextEffect(
+					// "FUCK YOU",
+				    // this->GetPosition(),
+				    // 20.0f,
+				    // 60.0f,
+				    // glm::vec3(0, 1, 0),
+				    // glm::vec3(0, 0, 1),
+				    // 100.0f
+
+					"FUCK YOU",
+					this->GetPosition(),
+					15.0f,
+					150.0f,
+					-1 * this->GetVelocity().Toglm(),
+					this->GetVelocity().Toglm(),
+					10.0f,
+					"assets/Roboto-Medium.ttf",
+					12.0f,
+					5.0f
+
+				);
+				// text_->SetPulseSpeed(3.0f);
+				// text_->SetPulseAmplitude(0.3f);
+				// text_->SetRainbowEnabled(true);
+				// text_->SetRainbowSpeed(5.0f);
+
+				text_->SetDoubleCopy(true);
+				text_->SetRotationSpeed(1.0f);
+				text_->SetRotationAxis(glm::vec3(0, 1, 0));
+				text_->SetRainbowEnabled(true);
+				text_->SetColor(1.0f, 1.0f, 1.0f);
+			});
+		} else {
+			text_->SetPosition(pos.x, pos.y, pos.z);
+			text_->SetRotationAxis(GetVelocity().Toglm());
 		}
 
 		// --- Flight Model Constants ---
