@@ -22,8 +22,8 @@ uniform int            uChunkSize;
 
 #include "helpers/lighting.glsl"
 
-uniform float uTessLevelMax = 16.0;
-uniform float uTessLevelMin = 1.0;
+uniform float uTessLevelMax = 32.0;
+uniform float uTessLevelMin = 16.0;
 uniform float uTessQualityMultiplier = 1.0;
 uniform bool  uIsShadowPass = false;
 
@@ -46,15 +46,18 @@ float GetVertexTessLevel(vec3 worldPos, vec3 normal, vec3 forward) {
 	float isSilhouette = 1.0 - abs(dotProd);
 
 	if (uIsShadowPass) {
-		return mix(1.0, 2.0, isSilhouette * (1.0 - clamp(dist / 500.0, 0.0, 1.0)));
+		return mix(8.0, 32.0, isSilhouette * (1.0 - clamp(dist / 500.0, 0.0, 1.0)));
 	}
 
 	// 1. DISTANCE FACTOR (The Base)
-	float distanceLevel = uTessLevelMax * exp(-dist * (0.02 / worldScale));
+	float distanceLevel = uTessLevelMax * exp(-dist * (0.1 / worldScale));
 	distanceLevel = clamp(distanceLevel, uTessLevelMin, uTessLevelMax);
 
 	// 2. SILHOUETTE FACTOR (The Boost)
-	float silhouetteBoost = mix(1.0, 2.0, isSilhouette * (1.0 - clamp(dist / 500.0, 0.0, 1.0)));
+	// float silhouetteBoost = mix(16.0, 32.0, isSilhouette * (1.0 - clamp(dist / 500.0, 0.0, 1.0)));
+	float silhouetteBoost = mix(16.0, 32.0, isSilhouette * (1.0 - clamp(dist / 500.0, 0.0, 1.0)));
+	// float silhouetteBoost = mix(16.0, 32.0, mix(32, isSilhouette * (1.0 - clamp(dist / 500.0, 0.0, 1.0)), smoothstep(32, 64, dist))   );
+
 
 	// 3. FOCUS FACTOR (The Cull)
 	float focusCull = 1.0;
@@ -62,8 +65,8 @@ float GetVertexTessLevel(vec3 worldPos, vec3 normal, vec3 forward) {
 		vec3  dirCamToVertex = normalize(worldPos - viewPos);
 		float align = dot(dirCamToVertex, forward);
 		// Focus culling threshold - wider when world is larger to avoid edges
-		float focusThreshold = mix(0.85, 0.65, clamp(worldScale / 10.0, 0.0, 1.0));
-		focusCull = smoothstep(focusThreshold, 1.0, align);
+		float focusThreshold = mix(0.65, 0.45, clamp(worldScale / 10.0, 0.0, 1.0));
+		focusCull = mix(1.0, smoothstep(focusThreshold, 1.0, align), smoothstep(100, 250, dist));
 	}
 
 	// COMBINE
