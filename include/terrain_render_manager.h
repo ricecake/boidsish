@@ -105,14 +105,15 @@ namespace Boidsish {
 		) override;
 
 		/**
-		 * @brief Render simplified occlusion quads.
+		 * @brief Render simplified occlusion quads and issue queries.
 		 *
 		 * Used for hardware occlusion culling.
 		 */
 		void RenderOccluders(
 			Shader&          shader,
 			const glm::mat4& view,
-			const glm::mat4& projection
+			const glm::mat4& projection,
+			const Frustum&   frustum
 		) override;
 
 		/**

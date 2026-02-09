@@ -540,7 +540,12 @@ namespace Boidsish {
 		}
 	}
 
-	void TerrainRenderManager::RenderOccluders(Shader& shader, const glm::mat4& view, const glm::mat4& projection) {
+	void TerrainRenderManager::RenderOccluders(
+		Shader&          shader,
+		const glm::mat4& view,
+		const glm::mat4& projection,
+		const Frustum&   frustum
+	) {
 		std::lock_guard<std::mutex> lock(mutex_);
 
 		static GLuint vao = 0, vbo = 0;
@@ -562,9 +567,6 @@ namespace Boidsish {
 		// Gather all occluder vertices in world space for a single batch
 		std::vector<glm::vec3> all_vertices;
 		for (auto& [key, chunk] : chunks_) {
-			if (chunk.is_occluded)
-				continue;
-
 			glm::vec3 world_origin(chunk.world_offset.x, 0, chunk.world_offset.y);
 			for (const auto& quad : chunk.occluders) {
 				all_vertices.push_back(quad.corners[0] + world_origin);
@@ -611,6 +613,9 @@ namespace Boidsish {
 		glBindVertexArray(bbox_vao);
 		for (auto& [key, chunk] : chunks_) {
 			if (chunk.query_issued)
+				continue;
+
+			if (!IsChunkVisible(chunk, frustum, last_world_scale_))
 				continue;
 
 			glm::mat4 model = glm::translate(

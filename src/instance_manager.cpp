@@ -52,6 +52,8 @@ namespace Boidsish {
 						shape->SetOccluded(samples == 0);
 						shape->SetQueryIssued(false);
 					}
+				} else {
+					shape->SetOccluded(false);
 				}
 
 				if (ignore_occlusion || !shape->IsOccluded()) {
