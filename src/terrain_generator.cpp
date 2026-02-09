@@ -508,9 +508,9 @@ namespace Boidsish {
 
 		// Apply canyon effect for varied terrain
 		if (current.canyonInfluence > 0.01f) {
-			float canyon_noise = Simplex::noise(warped_pos * 0.05f);
+			float canyon_noise = Simplex::noise(warped_pos * 0.04f);
 			float ridged = 1.0f - std::abs(canyon_noise);
-			float canyon_depth = ridged * ridged * 40.0f * current.canyonInfluence;
+			float canyon_depth = ridged * ridged * 60.0f * current.canyonInfluence;
 			terrain_height.x -= canyon_depth;
 		}
 
