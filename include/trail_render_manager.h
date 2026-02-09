@@ -202,6 +202,7 @@ namespace Boidsish {
 		// Draw commands
 		std::vector<DrawArraysIndirectCommand> draw_commands_;
 		bool                                   draw_commands_dirty_ = true;
+		bool                                   params_dirty_ = true;
 
 		// Thread safety
 		mutable std::mutex mutex_;

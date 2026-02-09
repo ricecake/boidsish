@@ -143,6 +143,7 @@ namespace Boidsish {
 		}
 
 		draw_commands_dirty_ = true;
+		params_dirty_ = true;
 
 		return true;
 	}
@@ -170,6 +171,7 @@ namespace Boidsish {
 		}
 
 		draw_commands_dirty_ = true;
+		params_dirty_ = true;
 	}
 
 	bool TrailRenderManager::HasTrail(int trail_id) const {
@@ -217,6 +219,7 @@ namespace Boidsish {
 		alloc.needs_upload = true;
 
 		draw_commands_dirty_ = true;
+		params_dirty_ = true;
 	}
 
 	void TrailRenderManager::SetTrailParams(
@@ -236,12 +239,23 @@ namespace Boidsish {
 		}
 
 		auto& alloc = it->second;
-		alloc.iridescent = iridescent;
-		alloc.rocket_trail = rocket_trail;
-		alloc.use_pbr = use_pbr;
-		alloc.roughness = roughness;
-		alloc.metallic = metallic;
-		alloc.base_thickness = base_thickness;
+
+		// Only mark dirty if something actually changed
+		if (alloc.iridescent != iridescent ||
+			alloc.rocket_trail != rocket_trail ||
+			alloc.use_pbr != use_pbr ||
+			alloc.roughness != roughness ||
+			alloc.metallic != metallic ||
+			alloc.base_thickness != base_thickness) {
+
+			alloc.iridescent = iridescent;
+			alloc.rocket_trail = rocket_trail;
+			alloc.use_pbr = use_pbr;
+			alloc.roughness = roughness;
+			alloc.metallic = metallic;
+			alloc.base_thickness = base_thickness;
+			params_dirty_ = true;
+		}
 	}
 
 	void TrailRenderManager::EnsureBufferCapacity(size_t required_vertices) {
@@ -363,30 +377,34 @@ namespace Boidsish {
 
 		glBindVertexArray(vao_);
 
-		// Build draw commands if dirty
-		// Prepare trail parameters SSBO
-		params_buffer_.assign(next_index_, TrailParams{});
+		// Prepare trail parameters SSBO if dirty
+		if (params_dirty_) {
+			if (params_buffer_.size() < static_cast<size_t>(next_index_)) {
+				params_buffer_.resize(next_index_);
+			}
 
-		for (const auto& [trail_id, alloc] : trail_allocations_) {
-			int index = trail_id_to_index_[trail_id];
-			TrailParams& p = params_buffer_[index];
-			p.base_thickness = alloc.base_thickness;
-			p.use_rocket_trail = alloc.rocket_trail ? 1 : 0;
-			p.use_iridescence = alloc.iridescent ? 1 : 0;
-			p.use_pbr = alloc.use_pbr ? 1 : 0;
-			p.roughness = alloc.roughness;
-			p.metallic = alloc.metallic;
-			p.head = static_cast<float>(alloc.vertex_offset + alloc.head);
-			p.size = static_cast<float>(alloc.vertex_count);
+			for (const auto& [trail_id, alloc] : trail_allocations_) {
+				int          index = trail_id_to_index_[trail_id];
+				TrailParams& p = params_buffer_[index];
+				p.base_thickness = alloc.base_thickness;
+				p.use_rocket_trail = alloc.rocket_trail ? 1 : 0;
+				p.use_iridescence = alloc.iridescent ? 1 : 0;
+				p.use_pbr = alloc.use_pbr ? 1 : 0;
+				p.roughness = alloc.roughness;
+				p.metallic = alloc.metallic;
+				p.head = static_cast<float>(alloc.vertex_offset + alloc.head);
+				p.size = static_cast<float>(alloc.vertex_count);
+			}
+
+			glBindBuffer(GL_SHADER_STORAGE_BUFFER, params_ssbo_);
+			glBufferData(
+				GL_SHADER_STORAGE_BUFFER,
+				params_buffer_.size() * sizeof(TrailParams),
+				params_buffer_.data(),
+				GL_DYNAMIC_DRAW
+			);
+			params_dirty_ = false;
 		}
-
-		glBindBuffer(GL_SHADER_STORAGE_BUFFER, params_ssbo_);
-		glBufferData(
-			GL_SHADER_STORAGE_BUFFER,
-			params_buffer_.size() * sizeof(TrailParams),
-			params_buffer_.data(),
-			GL_DYNAMIC_DRAW
-		);
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 7, params_ssbo_);
 
 		// Build draw commands if dirty
