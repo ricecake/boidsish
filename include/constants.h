@@ -107,24 +107,42 @@ namespace Boidsish {
 				}
 
 				consteval float ChaseTrailBehind() {
-					return 5.0f;
+					return 15.0f;
 				}
 
 				consteval float ChaseElevation() {
-					return 2.0f;
-				}
-
-				consteval float ChaseLookAhead() {
 					return 5.0f;
 				}
 
+				consteval float ChaseLookAhead() {
+					return 10.0f;
+				}
+
 				consteval float ChaseResponsiveness() {
-					return 4.5f;
+					return 1.5f;
 				}
 
 				consteval float PathFollowSmoothing() {
 					return 5.0f;
 				}
+
+				// glm::vec3 up = glm::vec3(0.0f, 1.0f, 0.0f);
+				// glm::vec3 desired_cam_pos = target_pos - forward * 15.0f + up * 5.0f;
+				// glm::vec3 look_at_pos = target_pos + forward * 10.0f;
+
+				// // 3. Smoothly interpolate camera position
+				// // Frame-rate independent interpolation using exponential decay
+				// float     lerp_factor = 1.0f - exp(-delta_time * 2.5f);
+
+				// glm::vec3 up = glm::vec3(0.0f, 1.0f, 0.0f);
+				// glm::vec3 desired_cam_pos = target_pos - forward * camera.follow_distance + up *
+				// camera.follow_elevation; glm::vec3 look_at_pos = target_pos + forward * camera.follow_look_ahead;
+
+				// // 3. Smoothly interpolate camera position
+				// // Frame-rate independent interpolation using exponential decay
+				// float     lerp_factor = 1.0f - exp(-delta_time * camera.follow_responsiveness);
+				// glm::vec3 new_cam_pos = glm::mix(camera.pos(), desired_cam_pos, lerp_factor);
+
 			} // namespace Camera
 		} // namespace Project
 

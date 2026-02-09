@@ -9,7 +9,6 @@
 
 #include <GL/glew.h>
 #include <glm/glm.hpp>
-#include "terrain.h"
 #include "terrain_render_interface.h"
 
 class Shader;
@@ -78,9 +77,21 @@ namespace Boidsish {
 		bool HasChunk(std::pair<int, int> chunk_key) const override;
 
 		/**
+		 * @brief Prepare for rendering (culling, buffer updates, etc.)
+		 */
+		void PrepareForRender(const Frustum& frustum, const glm::vec3& camera_pos) override {
+			PrepareForRender(frustum, camera_pos, 1.0f);
+		}
+
+		/**
 		 * @brief Perform frustum culling and prepare instance buffer.
 		 */
-		void PrepareForRender(const Frustum& frustum, const glm::vec3& camera_pos, bool ignore_occlusion = false) override;
+		void PrepareForRender(
+			const Frustum&   frustum,
+			const glm::vec3& camera_pos,
+			float            world_scale,
+			bool             ignore_occlusion = false
+		);
 
 		/**
 		 * @brief Render all visible terrain chunks with single instanced draw.
@@ -94,27 +105,20 @@ namespace Boidsish {
 		) override;
 
 		/**
-		 * @brief Render occluder quads for debugging.
-		 */
-		void RenderOccluders(Shader& shader) override;
-
-		/**
-		 * @brief Perform hardware occlusion queries for all visible chunks.
+		 * @brief Render simplified occlusion quads.
 		 *
-		 * This populates is_occluded based on results from the previous frame
-		 * and issues new queries for the current frame.
-		 *
-		 * @param view View matrix
-		 * @param projection Projection matrix
-		 * @param frustum Current view frustum
-		 * @param shader Debug shader for bounding box rendering
+		 * Used for hardware occlusion culling.
 		 */
-		void PerformOcclusionQueries(const glm::mat4& view, const glm::mat4& projection, const Frustum& frustum, Shader& shader) override;
+		void RenderOccluders(
+			Shader&          shader,
+			const glm::mat4& view,
+			const glm::mat4& projection
+		) override;
 
 		/**
 		 * @brief Commit any pending updates (no-op for this implementation).
 		 */
-		void CommitUpdates() {}
+		void CommitUpdates() override {}
 
 		/**
 		 * @brief Set a callback to be notified when a chunk is evicted due to LRU.
@@ -151,9 +155,11 @@ namespace Boidsish {
 			float                     max_y;         // For frustum culling
 			glm::vec2                 world_offset;  // (chunk_x * chunk_size, chunk_z * chunk_size)
 			std::vector<OccluderQuad> occluders;
-			GLuint                    occlusion_query = 0;
-			bool                      query_issued = false;
-			bool                      is_occluded = false;
+
+			// Occlusion culling state
+			GLuint occlusion_query = 0;
+			bool   query_issued = false;
+			bool   is_occluded = false;
 		};
 
 		// Per-instance data sent to GPU (std140 layout)
@@ -163,7 +169,7 @@ namespace Boidsish {
 		};
 
 		// Frustum culling helper
-		bool IsChunkVisible(const ChunkInfo& chunk, const Frustum& frustum) const;
+		bool IsChunkVisible(const ChunkInfo& chunk, const Frustum& frustum, float world_scale) const;
 
 		// Create the flat grid mesh
 		void CreateGridMesh();
@@ -201,6 +207,7 @@ namespace Boidsish {
 
 		// Camera position for LRU eviction (updated by PrepareForRender)
 		glm::vec3 last_camera_pos_{0.0f, 0.0f, 0.0f};
+		float     last_world_scale_ = 1.0f;
 
 		// Thread safety
 		mutable std::mutex mutex_;

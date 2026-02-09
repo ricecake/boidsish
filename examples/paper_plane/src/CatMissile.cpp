@@ -50,8 +50,8 @@ namespace Boidsish {
 		return target_pos + (target_vel * time_to_impact);
 	}
 
-	CatMissile::CatMissile(int id, Vector3 pos, glm::quat orientation, glm::vec3 dir, Vector3 vel):
-		Entity<Model>(id, "assets/Missile.obj", true), eng_(rd_()) {
+	CatMissile::CatMissile(int id, Vector3 pos, glm::quat orientation, glm::vec3 dir, Vector3 vel, bool leftHanded):
+		Entity<Model>(id, "assets/Missile.obj", true), eng_(rd_()), leftHanded_(leftHanded) {
 		rigid_body_.linear_friction_ = 0.01f;
 		rigid_body_.angular_friction_ = 0.01f;
 
@@ -59,11 +59,11 @@ namespace Boidsish {
 		SetPosition(pos.x, pos.y, pos.z);
 
 		glm::vec3 world_eject = orientation * dir;
-		rigid_body_.SetLinearVelocity(glm::vec3(vel.x, vel.y, vel.z) + (1.0f * world_eject));
+		rigid_body_.SetLinearVelocity(glm::vec3(vel.x, vel.y, vel.z) + (5.0f * world_eject));
 
 		SetTrailLength(0);
 		SetTrailRocket(false);
-		shape_->SetScale(glm::vec3(0.015f));
+		shape_->SetScale(glm::vec3(0.05f));
 		std::dynamic_pointer_cast<Model>(shape_)->SetBaseRotation(
 			glm::angleAxis(glm::radians(90.0f), glm::vec3(0.0f, 1.0f, 0.0f))
 		);
@@ -97,7 +97,7 @@ namespace Boidsish {
 		const float kAcceleration = 150.0f;
 
 		if (lived_ < kLaunchTime) {
-			rigid_body_.AddForce(glm::vec3(0, -0.70, 0));
+			rigid_body_.AddForce(glm::vec3(0, -1.00, 0));
 			return;
 		}
 
@@ -279,12 +279,13 @@ namespace Boidsish {
 		glm::vec3 local_forward = glm::vec3(0, 0, -1);
 
 		// Spiral movement that tightens as it approaches target
-		float spiral_amplitude = 0.25f;
+		float max_spiral = 0.25;
+		float spiral_amplitude = max_spiral;
 		if (target_ != nullptr) {
-			spiral_amplitude = glm::mix(0.0f, 0.25f, std::clamp(target_distance / 300.0f, 0.0f, 1.0f));
+			spiral_amplitude = glm::mix(0.0f, max_spiral, std::clamp(target_distance / 300.0f, 0.0f, 1.0f));
 		}
-		target_dir_local.x += sin(lived_ * 2.0f) * spiral_amplitude;
-		target_dir_local.y += cos(lived_ * 1.5f) * spiral_amplitude;
+		target_dir_local.x += sin(lived_ * 2.0f * leftHanded_ ? -1.0f : 1.0f) * spiral_amplitude;
+		target_dir_local.y += cos(lived_ * 1.5f * leftHanded_ ? -1.0f : 1.0f) * spiral_amplitude;
 
 		// Terminal hard swing
 		float kP = 60.0f;

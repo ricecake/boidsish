@@ -44,6 +44,7 @@ uniform vec3  u_baseRotation;   // Base rotation in radians (pitch, yaw, roll)
 uniform bool  u_randomYaw;      // Whether to apply random Y rotation
 uniform bool  u_alignToTerrain; // If true, align to terrain normal; if false, use world up
 uniform int   u_typeIndex;
+uniform float u_worldScale;
 
 // Simple hash for random values
 float hash(uint x) {
@@ -96,6 +97,9 @@ void main() {
 	// Add some jitter within the cell
 	worldPos += vec2(hash(seed), hash(seed + 1234u)) * step * 0.9;
 
+	// Scale world position for noise to match terrain scaling
+	vec2 scaledWorldPos = worldPos / u_worldScale;
+
 	// Clamp to chunk bounds
 	if (worldPos.x < u_chunkWorldOffset.x || worldPos.x >= u_chunkWorldOffset.x + u_chunkSize ||
 	    worldPos.y < u_chunkWorldOffset.y || worldPos.y >= u_chunkWorldOffset.y + u_chunkSize)
@@ -113,19 +117,27 @@ void main() {
 	vec3  normal = vec3(terrainSample.g, terrainSample.b, terrainSample.a);
 
 	// Check constraints
-	if (height < u_minHeight || height > u_maxHeight)
+	if (height < u_minHeight * u_worldScale || height > u_maxHeight * u_worldScale)
 		return;
 	float slope = 1.0 - normal.y; // 0 is flat, 1 is vertical
 	if (slope < u_minSlope || slope > u_maxSlope)
 		return;
 
 	// Coherent noise for natural distribution
-	float noiseVal = snoise(worldPos * 0.01);  // Large scale patterns
-	float noiseVal2 = snoise(worldPos * 0.05); // Medium scale patterns
+	float noiseVal = snoise(scaledWorldPos * 0.01);  // Large scale patterns
+	float noiseVal2 = snoise(scaledWorldPos * 0.05); // Medium scale patterns
 	float combinedNoise = (noiseVal * 0.7 + noiseVal2 * 0.3 + 1.0) * 0.5;
 	combinedNoise = clamp(combinedNoise, 0.0, 1.0);
 
 	float effectiveDensity = mix(u_minDensity, u_maxDensity, combinedNoise);
+
+	// Distance-based density falloff
+	float distToCam = distance(worldPos, u_cameraPos);
+	float distanceFactor = 1.0 - smoothstep(u_densityFalloffStart, u_densityFalloffEnd, distToCam);
+	effectiveDensity *= mix(0.2, 1.0, distanceFactor);
+
+	if (distToCam > u_maxDecorDistance)
+		return;
 
 	// Random density check using effective density
 	if (hash(seed + 5678) > effectiveDensity)
@@ -145,8 +157,11 @@ void main() {
 
 	// Create model matrix with scale and rotation
 	// Use noise for scale variation as well for more coherent "growth" patterns
-	float scaleNoise = (snoise(worldPos * 0.1) + 1.0) * 0.5;
-	float s = u_baseScale + (scaleNoise * 2.0 - 1.0) * u_scaleVariance;
+	float scaleNoise = (snoise(scaledWorldPos * 0.1) + 1.0) * 0.5;
+
+	// Base scale is proportional to world scale to keep relative size
+	float baseScale = u_baseScale * u_worldScale;
+	float s = baseScale + (scaleNoise * 2.0 - 1.0) * (u_scaleVariance * u_worldScale);
 
 	// Build rotation: base rotation + optional random yaw
 	vec3 rotation = u_baseRotation;

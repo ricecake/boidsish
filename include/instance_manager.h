@@ -17,23 +17,16 @@ namespace Boidsish {
 		void Render(Shader& shader, bool ignore_occlusion = false);
 
 		/**
-		 * @brief Perform hardware occlusion queries for all registered instances.
+		 * @brief Render bounding boxes for occlusion queries.
 		 */
-		void PerformOcclusionQueries(
-			const glm::mat4&                    view,
-			const glm::mat4&                    projection,
-			Shader&                             shader,
-			const std::vector<std::shared_ptr<Shape>>& shapes
-		);
+		void RenderOcclusionQueries(Shader& shader);
+
+		/**
+		 * @brief Clear all registered instances.
+		 */
+		void ClearInstances();
 
 	private:
-		struct QueryInfo {
-			unsigned int query_id = 0;
-			bool         query_issued = false;
-			bool         is_occluded = false;
-			int          last_frame_used = -1;
-		};
-
 		struct InstanceGroup {
 			std::vector<std::shared_ptr<Shape>> shapes;
 			unsigned int                        instance_matrix_vbo_ = 0;
@@ -45,10 +38,7 @@ namespace Boidsish {
 		// Group by instance key (model path for Models, "Dot" for Dots, etc.)
 		std::map<std::string, InstanceGroup> m_instance_groups;
 
-		std::map<int, QueryInfo> m_queries;
-		int                      m_frame_count = 0;
-
-		void RenderModelGroup(Shader& shader, InstanceGroup& group, bool ignore_occlusion = false);
+		void RenderModelGroup(Shader& shader, InstanceGroup& group);
 		void RenderDotGroup(Shader& shader, InstanceGroup& group);
 	};
 

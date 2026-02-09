@@ -6,13 +6,11 @@
 #include "shape.h"
 #include <glm/glm.hpp>
 
+#include "terrain_render_interface.h"
+
 namespace Boidsish {
 
 	class TerrainRenderManager;
-
-	struct OccluderQuad {
-		glm::vec3 corners[4];
-	};
 
 	class Terrain: public Shape {
 	public:

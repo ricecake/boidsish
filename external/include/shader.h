@@ -16,7 +16,7 @@
 
 class ShaderBase {
 public:
-	unsigned int ID;
+	unsigned int ID = 0;
 
 	// Rule of Five: Disallow copying due to manual OpenGL resource management.
 	// Moving is supported to allow transferring ownership of shader programs.

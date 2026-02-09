@@ -1,10 +1,18 @@
 #include "instance_manager.h"
 
+#include <set>
+
 #include "dot.h"
+#include "logger.h"
 #include "model.h"
 #include <GL/glew.h>
 
 namespace Boidsish {
+
+	// Helper to validate VAO ID
+	static bool IsValidVAO(GLuint vao) {
+		return vao != 0 && glIsVertexArray(vao) == GL_TRUE;
+	}
 
 	InstanceManager::~InstanceManager() {
 		for (auto& [key, group] : m_instance_groups) {
@@ -31,35 +39,70 @@ namespace Boidsish {
 				continue;
 			}
 
+			// Filter out occluded shapes
+			std::vector<std::shared_ptr<Shape>> visible_shapes;
+			for (auto& shape : group.shapes) {
+				// Update occlusion query result
+				if (shape->IsQueryIssued()) {
+					GLuint available = 0;
+					glGetQueryObjectuiv(shape->GetOcclusionQuery(), GL_QUERY_RESULT_AVAILABLE, &available);
+					if (available) {
+						GLuint samples = 0;
+						glGetQueryObjectuiv(shape->GetOcclusionQuery(), GL_QUERY_RESULT, &samples);
+						shape->SetOccluded(samples == 0);
+						shape->SetQueryIssued(false);
+					}
+				}
+
+				if (ignore_occlusion || !shape->IsOccluded()) {
+					visible_shapes.push_back(shape);
+				}
+			}
+
+			if (visible_shapes.empty()) {
+				group.shapes.clear();
+				continue;
+			}
+
+			// Temporarily replace group shapes with visible ones for rendering
+			std::vector<std::shared_ptr<Shape>> original_shapes = std::move(group.shapes);
+			group.shapes = std::move(visible_shapes);
+
 			// Determine type from the key prefix
 			if (key.starts_with("Model:")) {
-				RenderModelGroup(shader, group, ignore_occlusion);
+				RenderModelGroup(shader, group);
 			} else if (key == "Dot") {
 				RenderDotGroup(shader, group);
 			}
 			// Other shape types can be added here
+
+			// Restore original shapes so they can be queried again next frame
+			group.shapes = std::move(original_shapes);
 			group.shapes.clear();
 		}
 
+		// Reset all shader uniforms to safe defaults after all groups rendered
 		shader.setBool("is_instanced", false);
+		shader.setBool("useInstanceColor", false);
+		shader.setBool("isColossal", false);
+		shader.setBool("usePBR", false);
+		shader.setFloat("objectAlpha", 1.0f);
+
+		// Clean up buffer state
+		glBindBuffer(GL_ARRAY_BUFFER, 0);
 	}
 
-	void InstanceManager::RenderModelGroup(Shader& shader, InstanceGroup& group, bool ignore_occlusion) {
-		// Build instance matrices, filtering by occlusion
+	void InstanceManager::RenderModelGroup(Shader& shader, InstanceGroup& group) {
+		// Reset shader state at start of each model group to prevent state leakage
+		shader.setBool("useInstanceColor", false);
+		shader.setBool("usePBR", false);
+
+		// Build instance matrices
 		std::vector<glm::mat4> model_matrices;
 		model_matrices.reserve(group.shapes.size());
 		for (const auto& shape : group.shapes) {
-			if (!ignore_occlusion) {
-				auto q_it = m_queries.find(shape->GetId());
-				if (q_it != m_queries.end() && q_it->second.is_occluded) {
-					continue;
-				}
-			}
 			model_matrices.push_back(shape->GetModelMatrix());
 		}
-
-		if (model_matrices.empty())
-			return;
 
 		// Create/update matrix VBO
 		if (group.instance_matrix_vbo_ == 0) {
@@ -82,6 +125,7 @@ namespace Boidsish {
 		// Get the Model from the first shape to access mesh data
 		auto model = std::dynamic_pointer_cast<Model>(group.shapes[0]);
 		if (!model) {
+			glBindBuffer(GL_ARRAY_BUFFER, 0); // Clean up before early return
 			return;
 		}
 
@@ -90,20 +134,31 @@ namespace Boidsish {
 		shader.setBool("useInstanceColor", false); // Models use textures, not per-instance colors
 
 		for (const auto& mesh : model->getMeshes()) {
+			// Skip meshes with invalid VAO - use glIsVertexArray for thorough check
+			if (!IsValidVAO(mesh.VAO)) {
+				logger::ERROR("Invalid VAO {} in model {} - skipping mesh", mesh.VAO, model->GetModelPath());
+				continue;
+			}
+
 			// Bind textures
 			unsigned int diffuseNr = 1;
 			unsigned int specularNr = 1;
+			bool         hasDiffuse = false;
 			for (unsigned int i = 0; i < mesh.textures.size(); i++) {
 				glActiveTexture(GL_TEXTURE0 + i);
 				std::string number;
 				std::string name = mesh.textures[i].type;
-				if (name == "texture_diffuse")
+				if (name == "texture_diffuse") {
 					number = std::to_string(diffuseNr++);
-				else if (name == "texture_specular")
+					hasDiffuse = true;
+				} else if (name == "texture_specular")
 					number = std::to_string(specularNr++);
-				shader.setInt(("material." + name + number).c_str(), i);
+
+				// Use correct uniform names (vis.frag doesn't use "material." prefix)
+				shader.setInt((name + number).c_str(), i);
 				glBindTexture(GL_TEXTURE_2D, mesh.textures[i].id);
 			}
+			shader.setBool("use_texture", hasDiffuse);
 			glActiveTexture(GL_TEXTURE0);
 
 			glBindVertexArray(mesh.VAO);
@@ -124,7 +179,12 @@ namespace Boidsish {
 			glVertexAttribDivisor(5, 1);
 			glVertexAttribDivisor(6, 1);
 
-			mesh.render_instanced(group.shapes.size());
+			// Tell mesh to skip its own VAO/EBO binding if we already have it correctly bound
+			// (requires update to mesh.render_instanced to support this flag)
+			mesh.render_instanced(group.shapes.size(), false);
+
+			// Note: render_instanced(..., false) now DOES NOT unbind the VAO
+			// allowing us to clean up efficiently.
 
 			glVertexAttribDivisor(3, 0);
 			glVertexAttribDivisor(4, 0);
@@ -136,118 +196,77 @@ namespace Boidsish {
 			glDisableVertexAttribArray(5);
 			glDisableVertexAttribArray(6);
 			glBindVertexArray(0);
+			glBindBuffer(GL_ARRAY_BUFFER, 0); // Prevent buffer state leakage
+
+			// Clean up texture state to prevent leakage between meshes/models
+			for (unsigned int i = 0; i < mesh.textures.size(); i++) {
+				glActiveTexture(GL_TEXTURE0 + i);
+				glBindTexture(GL_TEXTURE_2D, 0);
+			}
+			glActiveTexture(GL_TEXTURE0);
 		}
 	}
 
-	void InstanceManager::PerformOcclusionQueries(
-		const glm::mat4&                    view,
-		const glm::mat4&                    projection,
-		Shader&                             shader,
-		const std::vector<std::shared_ptr<Shape>>& shapes
-	) {
-		m_frame_count++;
+	void InstanceManager::RenderOcclusionQueries(Shader& shader) {
+		shader.use();
+		for (auto& [key, group] : m_instance_groups) {
+			for (auto& shape : group.shapes) {
+				if (shape->IsHidden())
+					continue;
 
-		// 1. Gather results from previous frame
-		for (auto& [id, query] : m_queries) {
-			if (!query.query_issued) {
-				query.is_occluded = false; // Default to visible if no query issued
-				continue;
-			}
+				auto model = std::dynamic_pointer_cast<Model>(shape);
+				if (!model)
+					continue;
 
-			GLuint available = 0;
-			glGetQueryObjectuiv(query.query_id, GL_QUERY_RESULT_AVAILABLE, &available);
-			if (available) {
-				GLuint samples = 0;
-				glGetQueryObjectuiv(query.query_id, GL_QUERY_RESULT, &samples);
-				query.is_occluded = (samples == 0);
-				query.query_issued = false;
-			} else {
-				// Result not ready yet, keep previous state
-			}
-		}
-
-		// 2. Issue new queries for all model instances
-		static GLuint bbox_vao = 0, bbox_vbo = 0, bbox_ebo = 0;
-		if (bbox_vao == 0) {
-			glGenVertexArrays(1, &bbox_vao);
-			glGenBuffers(1, &bbox_vbo);
-			glGenBuffers(1, &bbox_ebo);
-			float vertices[] = {0, 0, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0, 0, 0, 1, 1, 0, 1, 1, 1, 1, 0, 1, 1};
-			unsigned int indices[] = {0, 1, 2, 2, 3, 0, 4, 5, 6, 6, 7, 4, 0, 1, 5, 5, 4, 0,
-			                          2, 3, 7, 7, 6, 2, 1, 2, 6, 6, 5, 1, 0, 3, 7, 7, 4, 0};
-			glBindVertexArray(bbox_vao);
-			glBindBuffer(GL_ARRAY_BUFFER, bbox_vbo);
-			glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
-			glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
-			glEnableVertexAttribArray(0);
-			glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, bbox_ebo);
-			glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(indices), indices, GL_STATIC_DRAW);
-			glBindVertexArray(0);
-		}
-
-		glBindVertexArray(bbox_vao);
-		GLint modelLoc = glGetUniformLocation(shader.ID, "model");
-
-		for (const auto& shape : shapes) {
-			if (shape->IsHidden()) {
-				auto q_it = m_queries.find(shape->GetId());
-				if (q_it != m_queries.end()) {
-					q_it->second.is_occluded = false;
+				if (shape->GetOcclusionQuery() == 0) {
+					GLuint query;
+					glGenQueries(1, &query);
+					shape->SetOcclusionQuery(query);
 				}
-				continue;
+
+				if (shape->IsQueryIssued())
+					continue;
+
+				glm::mat4 model_matrix = shape->GetModelMatrix();
+				shader.setMat4("model", model_matrix);
+
+				glBeginQuery(GL_ANY_SAMPLES_PASSED, shape->GetOcclusionQuery());
+				// For now, let's just render the model's meshes as a proxy for the AABB
+				for (const auto& mesh : model->getMeshes()) {
+					glBindVertexArray(mesh.VAO);
+					glDrawElements(GL_TRIANGLES, mesh.indices.size(), GL_UNSIGNED_INT, 0);
+				}
+
+				glEndQuery(GL_ANY_SAMPLES_PASSED);
+				shape->SetQueryIssued(true);
 			}
-
-			std::string key = shape->GetInstanceKey();
-			if (!key.starts_with("Model:"))
-				continue;
-
-			auto model = std::dynamic_pointer_cast<Model>(shape);
-			if (!model)
-				continue;
-
-			glm::vec3 min_aabb, max_aabb;
-			model->GetAABB(min_aabb, max_aabb);
-			glm::vec3 size = max_aabb - min_aabb;
-
-			auto& q_info = m_queries[shape->GetId()];
-			if (q_info.query_id == 0) {
-				glGenQueries(1, &q_info.query_id);
-			}
-			q_info.last_frame_used = m_frame_count;
-
-			if (q_info.query_issued)
-				continue; // Still waiting for previous result
-
-			glm::mat4 model_mat = shape->GetModelMatrix();
-			// Adjust model matrix to match the AABB
-			glm::mat4 bbox_mat = glm::translate(model_mat, min_aabb);
-			bbox_mat = glm::scale(bbox_mat, size);
-
-			glUniformMatrix4fv(modelLoc, 1, GL_FALSE, &bbox_mat[0][0]);
-
-			glBeginQuery(GL_ANY_SAMPLES_PASSED, q_info.query_id);
-			glDrawElements(GL_TRIANGLES, 36, GL_UNSIGNED_INT, 0);
-			glEndQuery(GL_ANY_SAMPLES_PASSED);
-			q_info.query_issued = true;
 		}
 		glBindVertexArray(0);
+	}
 
-		// 3. Cleanup unused queries
-		auto it = m_queries.begin();
-		while (it != m_queries.end()) {
-			if (it->second.last_frame_used < m_frame_count - 10) {
-				glDeleteQueries(1, &it->second.query_id);
-				it = m_queries.erase(it);
-			} else {
-				++it;
-			}
+	void InstanceManager::ClearInstances() {
+		for (auto& [key, group] : m_instance_groups) {
+			group.shapes.clear();
 		}
 	}
 
 	void InstanceManager::RenderDotGroup(Shader& shader, InstanceGroup& group) {
-		// Ensure sphere VAO is initialized before rendering
-		if (Shape::sphere_vao_ == 0)
+		// Ensure sphere VAO is initialized and valid before rendering
+		if (!IsValidVAO(Shape::sphere_vao_)) {
+			logger::ERROR("Invalid sphere VAO {} - skipping dot rendering", Shape::sphere_vao_);
 			return;
+		}
+
+		// Reset shader state at start to prevent leakage from previous model groups
+		shader.setBool("isColossal", false);
+		shader.setFloat("objectAlpha", 1.0f);
+
+		// Clear any stale texture bindings from model rendering
+		for (unsigned int i = 0; i < 4; i++) {
+			glActiveTexture(GL_TEXTURE0 + i);
+			glBindTexture(GL_TEXTURE_2D, 0);
+		}
+		glActiveTexture(GL_TEXTURE0);
 
 		// Build instance matrices and colors
 		std::vector<glm::mat4> model_matrices;
@@ -294,6 +313,7 @@ namespace Boidsish {
 		// Get first Dot's properties for shared settings
 		auto dot = std::dynamic_pointer_cast<Dot>(group.shapes[0]);
 		if (!dot) {
+			glBindBuffer(GL_ARRAY_BUFFER, 0); // Clean up before early return
 			return;
 		}
 
@@ -310,6 +330,13 @@ namespace Boidsish {
 
 		// Use the shared sphere VAO
 		glBindVertexArray(Shape::sphere_vao_);
+
+		// Validate EBO binding
+		GLint current_ebo = 0;
+		glGetIntegerv(GL_ELEMENT_ARRAY_BUFFER_BINDING, &current_ebo);
+		if (current_ebo == 0 && Shape::sphere_ebo_ != 0) {
+			glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, Shape::sphere_ebo_);
+		}
 
 		// Setup instance matrix attribute (location 3-6)
 		glBindBuffer(GL_ARRAY_BUFFER, group.instance_matrix_vbo_);
@@ -350,6 +377,7 @@ namespace Boidsish {
 		glDisableVertexAttribArray(7);
 
 		glBindVertexArray(0);
+		glBindBuffer(GL_ARRAY_BUFFER, 0); // Prevent buffer state leakage
 		shader.setBool("useInstanceColor", false);
 	}
 

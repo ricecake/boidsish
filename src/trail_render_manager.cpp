@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <iostream>
 
+#include "logger.h"
 #include <shader.h>
 
 namespace Boidsish {
@@ -138,13 +139,29 @@ namespace Boidsish {
 		}
 
 		auto& alloc = it->second;
-		alloc.head = head;
-		alloc.tail = tail;
-		alloc.vertex_count = vertex_count;
+
+		// Bounds check: Ensure vertex data doesn't exceed allocated capacity
+		size_t incoming_vertex_count = vertices.size() / FLOATS_PER_VERTEX;
+		if (incoming_vertex_count > alloc.max_vertices) {
+			logger::ERROR(
+				"Trail {} update exceeded allocated capacity ({} > {}) - truncating",
+				trail_id,
+				incoming_vertex_count,
+				alloc.max_vertices
+			);
+			std::vector<float> truncated_vertices = vertices;
+			truncated_vertices.resize(alloc.max_vertices * FLOATS_PER_VERTEX);
+			pending_vertex_data_[trail_id] = std::move(truncated_vertices);
+		} else {
+			pending_vertex_data_[trail_id] = vertices;
+		}
+
+		alloc.head = std::min(head, alloc.max_vertices - 1);
+		alloc.tail = std::min(tail, alloc.max_vertices - 1);
+		alloc.vertex_count = std::min(vertex_count, alloc.max_vertices);
 		alloc.is_full = is_full;
 		alloc.needs_upload = true;
 
-		pending_vertex_data_[trail_id] = vertices;
 		draw_commands_dirty_ = true;
 	}
 
@@ -215,6 +232,7 @@ namespace Boidsish {
 		glVertexAttribPointer(2, 3, GL_FLOAT, GL_FALSE, FLOATS_PER_VERTEX * sizeof(float), (void*)(6 * sizeof(float)));
 		glEnableVertexAttribArray(2);
 		glBindVertexArray(0);
+		glBindBuffer(GL_ARRAY_BUFFER, 0); // Prevent buffer state leakage after resize
 	}
 
 	void TrailRenderManager::CommitUpdates() {
@@ -242,6 +260,12 @@ namespace Boidsish {
 			// The vertices are already in the correct format (pos + normal + color)
 			size_t byte_offset = alloc.vertex_offset * FLOATS_PER_VERTEX * sizeof(float);
 			size_t byte_size = vertices.size() * sizeof(float);
+			size_t max_byte_size = alloc.max_vertices * FLOATS_PER_VERTEX * sizeof(float);
+
+			if (byte_size > max_byte_size) {
+				logger::ERROR("Trail {} upload size mismatch during commit - truncating", trail_id);
+				byte_size = max_byte_size;
+			}
 
 			if (byte_size > 0) {
 				glBufferSubData(GL_ARRAY_BUFFER, byte_offset, byte_size, vertices.data());
@@ -251,6 +275,7 @@ namespace Boidsish {
 		}
 
 		pending_vertex_data_.clear();
+		glBindBuffer(GL_ARRAY_BUFFER, 0); // Prevent buffer state leakage
 	}
 
 	void TrailRenderManager::Render(
@@ -397,6 +422,7 @@ namespace Boidsish {
 		}
 
 		glBindVertexArray(0);
+		glBindBuffer(GL_ARRAY_BUFFER, 0); // Prevent buffer state leakage
 		shader.setInt("useVertexColor", 0);
 
 		glDepthMask(GL_TRUE);

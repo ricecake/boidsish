@@ -7,13 +7,16 @@
 
 #include <GL/glew.h>
 #include <glm/glm.hpp>
-#include "terrain.h"
 
 class Shader;
 
 namespace Boidsish {
 
 	struct Frustum;
+
+	struct OccluderQuad {
+		glm::vec3 corners[4];
+	};
 
 	/**
 	 * @brief Common interface for terrain rendering backends.
@@ -39,7 +42,6 @@ namespace Boidsish {
 		 * @param min_y Minimum height in chunk
 		 * @param max_y Maximum height in chunk
 		 * @param world_offset World position offset for this chunk
-		 * @param occluders Optional occluder quads for visibility testing
 		 */
 		virtual void RegisterChunk(
 			std::pair<int, int>              chunk_key,
@@ -50,6 +52,17 @@ namespace Boidsish {
 			float                            max_y,
 			const glm::vec3&                 world_offset,
 			const std::vector<OccluderQuad>& occluders = {}
+		) = 0;
+
+		/**
+		 * @brief Render simplified occlusion quads.
+		 *
+		 * Used for hardware occlusion culling.
+		 */
+		virtual void RenderOccluders(
+			Shader&          shader,
+			const glm::mat4& view,
+			const glm::mat4& projection
 		) = 0;
 
 		/**
@@ -69,9 +82,8 @@ namespace Boidsish {
 		 *
 		 * @param frustum View frustum for culling
 		 * @param camera_pos Camera position
-		 * @param ignore_occlusion If true, chunks are not culled by occlusion state (e.g. for shadow pass)
 		 */
-		virtual void PrepareForRender(const Frustum& frustum, const glm::vec3& camera_pos, bool ignore_occlusion = false) = 0;
+		virtual void PrepareForRender(const Frustum& frustum, const glm::vec3& camera_pos) = 0;
 
 		/**
 		 * @brief Render all visible terrain.
@@ -101,28 +113,6 @@ namespace Boidsish {
 		 * @brief Get chunk size.
 		 */
 		virtual int GetChunkSize() const = 0;
-
-		/**
-		 * @brief Render occluder quads for debugging.
-		 *
-		 * Visualizes the generated occluder geometry as wireframes.
-		 *
-		 * @param shader Debug shader to use for rendering
-		 */
-		virtual void RenderOccluders(Shader& shader) = 0;
-
-		/**
-		 * @brief Perform hardware occlusion queries for all visible chunks.
-		 *
-		 * This populates occlusion state based on results from the previous frame
-		 * and issues new queries for the current frame.
-		 *
-		 * @param view View matrix
-		 * @param projection Projection matrix
-		 * @param frustum Current view frustum
-		 * @param shader Debug shader for bounding box rendering
-		 */
-		virtual void PerformOcclusionQueries(const glm::mat4& view, const glm::mat4& projection, const Frustum& frustum, Shader& shader) = 0;
 	};
 
 } // namespace Boidsish

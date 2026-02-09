@@ -17,6 +17,10 @@ check:
 	@cmake -B $(BUILD_DIR) -DCMAKE_BUILD_TYPE=$(CONFIG)
 	@cmake --build $(BUILD_DIR) --target check
 
+glcheck:
+	@cmake -B $(BUILD_DIR) -DCMAKE_BUILD_TYPE=$(CONFIG)
+	@cmake --build $(BUILD_DIR) --target glcheck
+
 test: all
 	@cd $(BUILD_DIR) && ctest --output-on-failure
 

@@ -3,6 +3,7 @@
 #include "CatBomb.h"
 #include "CatMissile.h"
 #include "PaperPlaneHandler.h" // For selected_weapon
+#include "Tracer.h"
 #include "entity.h"
 #include <glm/gtx/quaternion.hpp>
 
@@ -16,13 +17,16 @@ namespace Boidsish {
 		rigid_body_.linear_friction_ = 0.01f;
 		rigid_body_.angular_friction_ = 0.01f;
 
-		SetSize(0.1f);
+		// Enable instanced rendering for better performance and state management
+		shape_->SetInstanced(true);
+
+		// SetSize(0.1f);
 		SetTrailLength(10);
-		shape_->SetTrailThickness(0.001f);
+		// shape_->SetTrailThickness(0.001f);
 		SetTrailIridescence(true);
 
 		SetColor(1.0f, 0.5f, 0.0f);
-		shape_->SetScale(glm::vec3(0.005f));
+		shape_->SetScale(glm::vec3(0.04f));
 		std::dynamic_pointer_cast<Model>(shape_)->SetBaseRotation(
 			glm::angleAxis(glm::radians(-180.0f), glm::vec3(0.0f, 1.0f, 0.0f))
 		);
@@ -44,16 +48,54 @@ namespace Boidsish {
 		if (!controller_)
 			return;
 
+		// --- Handle Super Speed State Machine ---
+		const float kBuildupDuration = 1.0f; // 1 second of suspense
+		const float kTaperingSpeed = 2.0f;   // 0.5 seconds to taper off
+
+		if (controller_->super_speed) {
+			if (super_speed_state_ == SuperSpeedState::NORMAL || super_speed_state_ == SuperSpeedState::TAPERING) {
+				super_speed_state_ = SuperSpeedState::BUILDUP;
+				super_speed_timer_ = kBuildupDuration;
+			} else if (super_speed_state_ == SuperSpeedState::BUILDUP) {
+				super_speed_timer_ -= delta_time;
+				if (super_speed_timer_ <= 0.0f) {
+					super_speed_state_ = SuperSpeedState::ACTIVE;
+					super_speed_intensity_ = 5.0f;
+					SetTrailRocket(true);
+					handler.vis->SetCameraShake(0.5f, 10.0f); // Continuous shake while active
+				}
+				// While building up, plane slows down
+				forward_speed_ = glm::mix(forward_speed_, 0.0f, 1.0f - exp(-delta_time * 5.0f));
+			}
+		} else {
+			if (super_speed_state_ == SuperSpeedState::ACTIVE || super_speed_state_ == SuperSpeedState::BUILDUP) {
+				super_speed_state_ = SuperSpeedState::TAPERING;
+				SetTrailRocket(false);
+				handler.vis->SetCameraShake(0.0f, 0.0f); // Stop shake
+			}
+
+			if (super_speed_state_ == SuperSpeedState::TAPERING) {
+				super_speed_intensity_ -= kTaperingSpeed * delta_time;
+				if (super_speed_intensity_ <= 0.0f) {
+					super_speed_intensity_ = 0.0f;
+					super_speed_state_ = SuperSpeedState::NORMAL;
+				}
+			}
+		}
+
+		// Update visualizer with current intensity
+		handler.vis->SetSuperSpeedIntensity(super_speed_intensity_);
+
 		// --- Constants for flight model ---
-		const float kPitchSpeed = 1.5f * 0.5f;
-		const float kYawSpeed = 1.5f * 0.5f;
-		const float kRollSpeed = 3.0f * 0.5f;
+		const float kPitchSpeed = 1.5f; // * 0.5f;
+		const float kYawSpeed = 1.5f;   // * 0.5f;
+		const float kRollSpeed = 3.0f;  // * 0.5f;
 		const float kCoordinatedTurnFactor = 0.8f;
 		const float kAutoLevelSpeed = 1.5f;
 		const float kDamping = 2.5f;
 
-		const float kBaseSpeed = 40.0f;
-		const float kBoostSpeed = 80.0f;
+		const float kBaseSpeed = 60.0f;
+		const float kBoostSpeed = 120.0f;
 		const float kBreakSpeed = 10.0f;
 		const float kBoostAcceleration = 100.0f;
 		const float kSpeedDecay = 30.0f;
@@ -93,6 +135,17 @@ namespace Boidsish {
 		// --- Coordinated Turn (Banking) ---
 		target_rot_velocity.z += target_rot_velocity.y * kCoordinatedTurnFactor;
 
+		// --- Terrain Avoidance in Super Speed ---
+		if (super_speed_state_ == SuperSpeedState::ACTIVE) {
+			auto pos = GetPosition();
+			auto [height, norm] = handler.vis->GetTerrainPointPropertiesThreadSafe(pos.x, pos.z);
+			float safety_height = height + 10.0f;
+			if (pos.y < safety_height) {
+				float factor = (safety_height - pos.y) / 10.0f;
+				target_rot_velocity.x += kPitchSpeed * factor * 2.0f;
+			}
+		}
+
 		// --- Auto-leveling ---
 		if (!controller_->pitch_up && !controller_->pitch_down && !controller_->yaw_left && !controller_->yaw_right &&
 		    !controller_->roll_left && !controller_->roll_right) {
@@ -121,7 +174,9 @@ namespace Boidsish {
 		glm::quat roll_delta = glm::angleAxis(rotational_velocity_.z * delta_time, glm::vec3(0.0f, 0.0f, 1.0f));
 		orientation_ = glm::normalize(orientation_ * pitch_delta * yaw_delta * roll_delta);
 
-		if (controller_->boost) {
+		if (super_speed_state_ == SuperSpeedState::ACTIVE) {
+			forward_speed_ = kBoostSpeed * 3.0f; // Super speed!
+		} else if (controller_->boost) {
 			forward_speed_ += kBoostAcceleration * delta_time;
 			if (forward_speed_ > kBoostSpeed)
 				forward_speed_ = kBoostSpeed;
@@ -153,7 +208,8 @@ namespace Boidsish {
 					pos,
 					orientation_,
 					glm::normalize(glm::vec3(fire_left ? -1.0f : 1.0f, -1.0f, 0.0f)),
-					GetVelocity()
+					GetVelocity(),
+					fire_left
 				);
 				time_to_fire = 0.25f;
 				fire_left = !fire_left;
@@ -165,10 +221,32 @@ namespace Boidsish {
 				handler.QueueAddEntity<CatBomb>(pos, orientation_ * glm::vec3(0, -1, 0), GetVelocity());
 				time_to_fire = 1.25f;
 				break;
+			case 2: {
+				glm::vec3 forward = orientation_ * glm::vec3(0, 0, -1);
+				glm::vec3 right = orientation_ * glm::vec3(1, 0, 0);
+
+				// High-velocity tracer rounds
+				float     tracer_speed = 600.0f;
+				glm::vec3 tracer_vel = GetVelocity().Toglm() + forward * tracer_speed;
+
+				// Alternate red and orange streaks for the machine gun effect
+				glm::vec3 color = weapon_toggle_ ? glm::vec3(1.0f, 0.2f, 0.0f) : glm::vec3(1.0f, 0.6f, 0.0f);
+				weapon_toggle_ = !weapon_toggle_;
+
+				// Fire from alternating wing positions
+				glm::vec3 offset = right * (fire_left ? -0.5f : 0.5f);
+				fire_left = !fire_left;
+
+				handler.QueueAddEntity<Tracer>(pos.Toglm() + offset, orientation_, tracer_vel, color);
+
+				time_to_fire = 0.05f; // 20 rounds per second!
+				break;
+			}
 			}
 		}
 
 		if (controller_->chaff) {
+			chaff_timer_ = 0.5f;
 			handler.vis->AddFireEffect(
 				pos.Toglm() - forward_dir,
 				FireEffectStyle::Glitter,
@@ -177,6 +255,10 @@ namespace Boidsish {
 				1500,
 				1.0f
 			);
+		}
+
+		if (chaff_timer_ > 0.0f) {
+			chaff_timer_ -= delta_time;
 		}
 	}
 
