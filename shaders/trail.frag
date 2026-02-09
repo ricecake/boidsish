@@ -1,18 +1,28 @@
-#version 330 core
+#version 430 core
 out vec4 FragColor;
 
 in vec3  vs_color;
 in vec3  vs_normal;
 in vec3  vs_frag_pos;
 in float vs_progress;
+flat in int vs_draw_id;
 
 #include "helpers/lighting.glsl"
 
-uniform bool  useIridescence;
-uniform bool  useRocketTrail;
-uniform bool  usePBR;         // Enable PBR lighting for trails
-uniform float trailRoughness; // PBR roughness [0=mirror, 1=matte]
-uniform float trailMetallic;  // PBR metallic [0=dielectric, 1=metal]
+struct TrailParams {
+	float base_thickness;
+	int   use_rocket_trail;
+	int   use_iridescence;
+	int   use_pbr;
+	float roughness;
+	float metallic;
+	float head;
+	float size;
+};
+
+layout(std430, binding = 7) readonly buffer TrailParamsBlock {
+	TrailParams params[];
+} trailData;
 
 #include "helpers/noise.glsl"
 
@@ -24,7 +34,9 @@ void main() {
 	float dist_to_cam = length(viewPos - vs_frag_pos);
 	float camera_fade = smoothstep(3.0, 10.0, dist_to_cam);
 
-	if (useRocketTrail) {
+	TrailParams p = trailData.params[vs_draw_id];
+
+	if (p.use_rocket_trail != 0) {
 		// --- Rocket Trail Effect with Emissive Glow ---
 		float flame_threshold = 0.9;
 		float flicker = snoise(vec2(time * 20.0, vs_frag_pos.x * 5.0)) * 0.5 + 0.5;
@@ -70,10 +82,10 @@ void main() {
 
 			FragColor = vec4(lit_smoke, alpha * camera_fade);
 		}
-	} else if (useIridescence) {
+	} else if (p.use_iridescence != 0) {
 		// --- PBR Iridescent Trail ---
 		// Low roughness for sharp, mirror-like reflections
-		float roughness = usePBR ? trailRoughness : 0.15;
+		float roughness = (p.use_pbr != 0) ? p.roughness : 0.15;
 
 		// Apply PBR iridescent lighting (no shadows for trail effects)
 		vec4 iridescent_result_vec = apply_lighting_pbr_iridescent_no_shadows(
@@ -90,9 +102,9 @@ void main() {
 		vec3  final_color = mix(iridescent_result, vec3(1.0), fresnel * 0.3);
 
 		FragColor = vec4(final_color, 0.85 * camera_fade); // Slightly more opaque for better visibility
-	} else if (usePBR) {
+	} else if (p.use_pbr != 0) {
 		// --- Standard PBR Trail (no shadows for trails) ---
-		vec3 result = apply_lighting_pbr_no_shadows(vs_frag_pos, norm, vs_color, trailRoughness, trailMetallic, 1.0)
+		vec3 result = apply_lighting_pbr_no_shadows(vs_frag_pos, norm, vs_color, p.roughness, p.metallic, 1.0)
 						  .rgb;
 		FragColor = vec4(result, camera_fade);
 	} else {

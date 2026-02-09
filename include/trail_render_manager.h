@@ -39,6 +39,17 @@ namespace Boidsish {
 	 */
 	class TrailRenderManager {
 	public:
+		struct TrailParams {
+			float base_thickness;
+			int   use_rocket_trail;
+			int   use_iridescence;
+			int   use_pbr;
+			float roughness;
+			float metallic;
+			float head;
+			float size;
+		};
+
 		TrailRenderManager();
 		~TrailRenderManager();
 
@@ -162,6 +173,8 @@ namespace Boidsish {
 		GLuint vao_ = 0;
 		GLuint vbo_ = 0;
 		GLuint draw_command_buffer_ = 0;
+		GLuint params_ssbo_ = 0;
+		GLuint trail_indices_vbo_ = 0;
 
 		// Buffer capacity (in vertices, not bytes)
 		size_t vertex_capacity_ = 0;
@@ -169,6 +182,11 @@ namespace Boidsish {
 
 		// Trail allocations
 		std::map<int, TrailAllocation> trail_allocations_;
+		std::map<int, int>             trail_id_to_index_;
+		int                            next_index_ = 0;
+		std::vector<int>               free_indices_;
+		std::vector<TrailParams>       params_buffer_;
+		std::vector<int>               trail_indices_;
 
 		// Pending vertex data for upload
 		std::map<int, std::vector<float>> pending_vertex_data_;

@@ -35,10 +35,26 @@ namespace Boidsish {
 		glVertexAttribPointer(2, 3, GL_FLOAT, GL_FALSE, FLOATS_PER_VERTEX * sizeof(float), (void*)(6 * sizeof(float)));
 		glEnableVertexAttribArray(2);
 
+		// DrawID attribute (location 3)
+		glGenBuffers(1, &trail_indices_vbo_);
+		glBindBuffer(GL_ARRAY_BUFFER, trail_indices_vbo_);
+		// Initialize with some default capacity
+		trail_indices_.resize(1024);
+		for (int i = 0; i < 1024; ++i)
+			trail_indices_[i] = i;
+		glBufferData(GL_ARRAY_BUFFER, trail_indices_.size() * sizeof(int), trail_indices_.data(), GL_STATIC_DRAW);
+
+		glVertexAttribIPointer(3, 1, GL_INT, 0, (void*)0);
+		glEnableVertexAttribArray(3);
+		glVertexAttribDivisor(3, 1);
+
 		glBindVertexArray(0);
 
 		// Create indirect draw command buffer
 		glGenBuffers(1, &draw_command_buffer_);
+
+		// Create SSBO for trail parameters
+		glGenBuffers(1, &params_ssbo_);
 	}
 
 	TrailRenderManager::~TrailRenderManager() {
@@ -48,6 +64,10 @@ namespace Boidsish {
 			glDeleteBuffers(1, &vbo_);
 		if (draw_command_buffer_)
 			glDeleteBuffers(1, &draw_command_buffer_);
+		if (params_ssbo_)
+			glDeleteBuffers(1, &params_ssbo_);
+		if (trail_indices_vbo_)
+			glDeleteBuffers(1, &trail_indices_vbo_);
 	}
 
 	bool TrailRenderManager::RegisterTrail(int trail_id, size_t max_vertices) {
@@ -95,6 +115,33 @@ namespace Boidsish {
 		allocation.needs_upload = false;
 
 		trail_allocations_[trail_id] = allocation;
+
+		// Assign a dense index for the SSBO
+		int index;
+		if (!free_indices_.empty()) {
+			index = free_indices_.back();
+			free_indices_.pop_back();
+		} else {
+			index = next_index_++;
+		}
+		trail_id_to_index_[trail_id] = index;
+
+		// Ensure trail_indices_ is large enough for the DrawID attribute
+		if (index >= static_cast<int>(trail_indices_.size())) {
+			size_t old_size = trail_indices_.size();
+			size_t new_size = old_size * 2;
+			while (index >= static_cast<int>(new_size))
+				new_size *= 2;
+			trail_indices_.resize(new_size);
+			for (size_t i = old_size; i < new_size; ++i) {
+				trail_indices_[i] = static_cast<int>(i);
+			}
+
+			glBindBuffer(GL_ARRAY_BUFFER, trail_indices_vbo_);
+			glBufferData(GL_ARRAY_BUFFER, trail_indices_.size() * sizeof(int), trail_indices_.data(), GL_STATIC_DRAW);
+			glBindBuffer(GL_ARRAY_BUFFER, 0);
+		}
+
 		draw_commands_dirty_ = true;
 
 		return true;
@@ -115,6 +162,13 @@ namespace Boidsish {
 
 		trail_allocations_.erase(it);
 		pending_vertex_data_.erase(trail_id);
+
+		auto idx_it = trail_id_to_index_.find(trail_id);
+		if (idx_it != trail_id_to_index_.end()) {
+			free_indices_.push_back(idx_it->second);
+			trail_id_to_index_.erase(idx_it);
+		}
+
 		draw_commands_dirty_ = true;
 	}
 
@@ -310,6 +364,32 @@ namespace Boidsish {
 		glBindVertexArray(vao_);
 
 		// Build draw commands if dirty
+		// Prepare trail parameters SSBO
+		params_buffer_.assign(next_index_, TrailParams{});
+
+		for (const auto& [trail_id, alloc] : trail_allocations_) {
+			int index = trail_id_to_index_[trail_id];
+			TrailParams& p = params_buffer_[index];
+			p.base_thickness = alloc.base_thickness;
+			p.use_rocket_trail = alloc.rocket_trail ? 1 : 0;
+			p.use_iridescence = alloc.iridescent ? 1 : 0;
+			p.use_pbr = alloc.use_pbr ? 1 : 0;
+			p.roughness = alloc.roughness;
+			p.metallic = alloc.metallic;
+			p.head = static_cast<float>(alloc.vertex_offset + alloc.head);
+			p.size = static_cast<float>(alloc.vertex_count);
+		}
+
+		glBindBuffer(GL_SHADER_STORAGE_BUFFER, params_ssbo_);
+		glBufferData(
+			GL_SHADER_STORAGE_BUFFER,
+			params_buffer_.size() * sizeof(TrailParams),
+			params_buffer_.data(),
+			GL_DYNAMIC_DRAW
+		);
+		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 7, params_ssbo_);
+
+		// Build draw commands if dirty
 		if (draw_commands_dirty_) {
 			draw_commands_.clear();
 			draw_commands_.reserve(trail_allocations_.size() * 2); // Up to 2 draws per trail for ring buffer wrap
@@ -319,6 +399,8 @@ namespace Boidsish {
 					continue;
 				}
 
+				int trail_index = trail_id_to_index_[trail_id];
+
 				// Handle ring buffer - may need 1 or 2 draw commands per trail
 				if (!alloc.is_full && alloc.tail > alloc.head) {
 					// Single contiguous segment
@@ -326,7 +408,7 @@ namespace Boidsish {
 					cmd.count = static_cast<GLuint>(alloc.tail - alloc.head);
 					cmd.instanceCount = 1;
 					cmd.first = static_cast<GLuint>(alloc.vertex_offset + alloc.head);
-					cmd.baseInstance = trail_id; // Use baseInstance to identify trail
+					cmd.baseInstance = static_cast<GLuint>(trail_index); // Use baseInstance to identify trail
 					draw_commands_.push_back(cmd);
 				} else if (alloc.vertex_count > 0) {
 					// Wrapped ring buffer - two segments
@@ -337,7 +419,7 @@ namespace Boidsish {
 						cmd1.count = static_cast<GLuint>(first_count);
 						cmd1.instanceCount = 1;
 						cmd1.first = static_cast<GLuint>(alloc.vertex_offset + alloc.head);
-						cmd1.baseInstance = trail_id;
+						cmd1.baseInstance = static_cast<GLuint>(trail_index);
 						draw_commands_.push_back(cmd1);
 					}
 
@@ -347,7 +429,7 @@ namespace Boidsish {
 						cmd2.count = static_cast<GLuint>(alloc.tail);
 						cmd2.instanceCount = 1;
 						cmd2.first = static_cast<GLuint>(alloc.vertex_offset);
-						cmd2.baseInstance = trail_id;
+						cmd2.baseInstance = static_cast<GLuint>(trail_index);
 						draw_commands_.push_back(cmd2);
 					}
 				}
@@ -365,60 +447,9 @@ namespace Boidsish {
 			draw_commands_dirty_ = false;
 		}
 
-		// Unfortunately, GL_TRIANGLE_STRIP doesn't work well with MultiDrawArraysIndirect
-		// because primitive restart isn't supported in indirect mode.
-		// We need to render each trail segment separately to maintain strip continuity.
-		// However, we still benefit from:
-		// 1. Single VAO bind
-		// 2. Single shader setup
-		// 3. All data in one VBO
-
-		// For proper single-call rendering, we'd need to convert to indexed triangles.
-		// For now, iterate but with shared state (still much faster than separate VAO binds)
-
-		for (const auto& [trail_id, alloc] : trail_allocations_) {
-			if (alloc.vertex_count == 0) {
-				continue;
-			}
-
-			// Set per-trail uniforms
-			shader.setFloat("base_thickness", alloc.base_thickness);
-			shader.setBool("useIridescence", alloc.iridescent);
-			shader.setBool("useRocketTrail", alloc.rocket_trail);
-			shader.setBool("usePBR", alloc.use_pbr);
-			shader.setFloat("trailRoughness", alloc.roughness);
-			shader.setFloat("trailMetallic", alloc.metallic);
-			// trailHead must include vertex_offset because gl_VertexID sees the global index
-			// when we call glDrawArrays(mode, vertex_offset + head, count)
-			shader.setFloat("trailHead", static_cast<float>(alloc.vertex_offset + alloc.head));
-			shader.setFloat("trailSize", static_cast<float>(alloc.vertex_count));
-
-			// Handle ring buffer rendering
-			if (!alloc.is_full && alloc.tail > alloc.head) {
-				// Single contiguous segment
-				glDrawArrays(
-					GL_TRIANGLE_STRIP,
-					static_cast<GLint>(alloc.vertex_offset + alloc.head),
-					static_cast<GLsizei>(alloc.tail - alloc.head)
-				);
-			} else if (alloc.vertex_count > 0) {
-				// Wrapped ring buffer - two segments
-				size_t first_count = alloc.max_vertices - alloc.head;
-				if (first_count > 0) {
-					glDrawArrays(
-						GL_TRIANGLE_STRIP,
-						static_cast<GLint>(alloc.vertex_offset + alloc.head),
-						static_cast<GLsizei>(first_count)
-					);
-				}
-				if (alloc.tail > 0) {
-					glDrawArrays(
-						GL_TRIANGLE_STRIP,
-						static_cast<GLint>(alloc.vertex_offset),
-						static_cast<GLsizei>(alloc.tail)
-					);
-				}
-			}
+		if (!draw_commands_.empty()) {
+			glBindBuffer(GL_DRAW_INDIRECT_BUFFER, draw_command_buffer_);
+			glMultiDrawArraysIndirect(GL_TRIANGLE_STRIP, 0, static_cast<GLsizei>(draw_commands_.size()), 0);
 		}
 
 		glBindVertexArray(0);
