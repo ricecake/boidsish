@@ -53,10 +53,12 @@ namespace Boidsish {
     void Cave::render(Shader& s, const glm::mat4& model_matrix) const {
         s.use();
         s.setMat4("model", model_matrix);
-        s.setVec3("material.albedo", glm::vec3(0.35f, 0.3f, 0.25f));
-        s.setFloat("material.roughness", 0.9f);
-        s.setFloat("material.metallic", 0.0f);
+        s.setVec3("objectColor", glm::vec3(0.35f, 0.3f, 0.25f));
+        s.setFloat("roughness", 0.9f);
+        s.setFloat("metallic", 0.0f);
+        s.setBool("usePBR", true);
         s.setBool("use_texture", false);
+        s.setBool("isColossal", false);
 
         glBindVertexArray(vao_);
         glDrawElements(GL_TRIANGLES, index_count_, GL_UNSIGNED_INT, 0);
@@ -64,7 +66,7 @@ namespace Boidsish {
     }
 
     glm::mat4 Cave::GetModelMatrix() const {
-        return glm::mat4(1.0f); // Cave is already in world space coordinates from generator
+        return glm::mat4(1.0f);
     }
 
 }

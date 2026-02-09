@@ -1,7 +1,8 @@
 #include "dual_contouring.h"
-#include <map>
+#include <vector>
 #include <array>
 #include <tuple>
+#include <glm/gtc/matrix_inverse.hpp>
 
 namespace Boidsish {
 
@@ -13,15 +14,18 @@ namespace Boidsish {
         GradFunction grad
     ) {
         DualContouringMesh mesh;
-        std::map<std::tuple<int, int, int>, unsigned int> grid;
 
         int nx = static_cast<int>((max_bound.x - min_bound.x) / cell_size);
         int ny = static_cast<int>((max_bound.y - min_bound.y) / cell_size);
         int nz = static_cast<int>((max_bound.z - min_bound.z) / cell_size);
 
+        if (nx <= 0 || ny <= 0 || nz <= 0) return mesh;
+
+        std::vector<int> grid(nx * ny * nz, -1);
+
         auto get_grad = [&](const glm::vec3& p) {
             if (grad) return grad(p);
-            float eps = 0.01f;
+            float eps = cell_size * 0.01f;
             return glm::normalize(glm::vec3(
                 sdf(p + glm::vec3(eps, 0, 0)) - sdf(p - glm::vec3(eps, 0, 0)),
                 sdf(p + glm::vec3(0, eps, 0)) - sdf(p - glm::vec3(0, eps, 0)),
@@ -29,14 +33,14 @@ namespace Boidsish {
             ));
         };
 
-        // 1. For each cell, find if it contains a surface and calculate optimal vertex
-        for (int x = 0; x < nx; ++x) {
+        // 1. Vertex Generation
+        for (int z = 0; z < nz; ++z) {
             for (int y = 0; y < ny; ++y) {
-                for (int z = 0; z < nz; ++z) {
+                for (int x = 0; x < nx; ++x) {
                     glm::vec3 cell_min = min_bound + glm::vec3(x, y, z) * cell_size;
                     std::vector<EdgeIntersection> intersections;
 
-                    // Check 12 edges of the cell
+                    // 12 Edges
                     static const int edges[12][2][3] = {
                         {{0,0,0},{1,0,0}}, {{0,1,0},{1,1,0}}, {{0,0,1},{1,0,1}}, {{0,1,1},{1,1,1}},
                         {{0,0,0},{0,1,0}}, {{1,0,0},{1,1,0}}, {{0,0,1},{0,1,1}}, {{1,0,1},{1,1,1}},
@@ -59,55 +63,76 @@ namespace Boidsish {
                     if (!intersections.empty()) {
                         glm::vec3 center = cell_min + glm::vec3(0.5f) * cell_size;
                         glm::vec3 v_pos = SolveQEF(intersections, center);
-
-                        // Keep within cell
                         v_pos = glm::clamp(v_pos, cell_min, cell_min + glm::vec3(cell_size));
 
                         glm::vec3 avg_norm(0);
                         for (auto& intersect : intersections) avg_norm += intersect.n;
-                        avg_norm = glm::normalize(avg_norm);
+                        // Normals point into the cave (negative SDF)
+                        avg_norm = -glm::normalize(avg_norm);
 
-                        grid[std::make_tuple(x, y, z)] = static_cast<unsigned int>(mesh.vertices.size());
+                        grid[x + y * nx + z * nx * ny] = static_cast<int>(mesh.vertices.size());
                         mesh.vertices.push_back({v_pos, avg_norm});
                     }
                 }
             }
         }
 
-        // 2. For each edge, if it crosses the surface, create two triangles
-        for (int x = 0; x < nx - 1; ++x) {
-            for (int y = 0; y < ny - 1; ++y) {
-                for (int z = 0; z < nz - 1; ++z) {
-                    float v = sdf(min_bound + glm::vec3(x, y, z) * cell_size);
-                    float vx = sdf(min_bound + glm::vec3(x+1, y, z) * cell_size);
-                    float vy = sdf(min_bound + glm::vec3(x, y+1, z) * cell_size);
-                    float vz = sdf(min_bound + glm::vec3(x, y, z+1) * cell_size);
+        // 2. Index Generation
+        auto get_v = [&](int x, int y, int z) -> int {
+            if (x < 0 || x >= nx || y < 0 || y >= ny || z < 0 || z >= nz) return -1;
+            return grid[x + y * nx + z * nx * ny];
+        };
 
-                    auto add_quad = [&](std::array<std::tuple<int,int,int>, 4> cells, bool flip) {
-                        unsigned int ids[4];
-                        for(int i=0; i<4; ++i) {
-                            auto it = grid.find(cells[i]);
-                            if (it == grid.end()) return;
-                            ids[i] = it->second;
-                        }
-                        if (flip) {
-                            mesh.indices.push_back(ids[0]); mesh.indices.push_back(ids[1]); mesh.indices.push_back(ids[2]);
-                            mesh.indices.push_back(ids[0]); mesh.indices.push_back(ids[2]); mesh.indices.push_back(ids[3]);
-                        } else {
-                            mesh.indices.push_back(ids[0]); mesh.indices.push_back(ids[2]); mesh.indices.push_back(ids[1]);
-                            mesh.indices.push_back(ids[0]); mesh.indices.push_back(ids[3]); mesh.indices.push_back(ids[2]);
+        for (int z = 0; z < nz; ++z) {
+            for (int y = 0; y < ny; ++y) {
+                for (int x = 0; x < nx; ++x) {
+                    glm::vec3 p = min_bound + glm::vec3(x, y, z) * cell_size;
+                    float v = sdf(p);
+
+                    // Check edges in +X, +Y, +Z
+                    auto check_edge = [&](int axis) {
+                        glm::vec3 p_next = p;
+                        if (axis == 0) p_next.x += cell_size;
+                        else if (axis == 1) p_next.y += cell_size;
+                        else p_next.z += cell_size;
+
+                        float v_next = sdf(p_next);
+                        if ((v < 0) != (v_next < 0)) {
+                            int v_ids[4];
+                            bool reverse = (v < 0);
+                            if (axis == 0) { // X-edge
+                                v_ids[0] = get_v(x, y, z);
+                                v_ids[1] = get_v(x, y-1, z);
+                                v_ids[2] = get_v(x, y-1, z-1);
+                                v_ids[3] = get_v(x, y, z-1);
+                            } else if (axis == 1) { // Y-edge
+                                v_ids[0] = get_v(x, y, z);
+                                v_ids[1] = get_v(x, y, z-1);
+                                v_ids[2] = get_v(x-1, y, z-1);
+                                v_ids[3] = get_v(x-1, y, z);
+                                reverse = !reverse;
+                            } else { // Z-edge
+                                v_ids[0] = get_v(x, y, z);
+                                v_ids[1] = get_v(x-1, y, z);
+                                v_ids[2] = get_v(x-1, y-1, z);
+                                v_ids[3] = get_v(x, y-1, z);
+                            }
+
+                            for(int i=0; i<4; ++i) if (v_ids[i] == -1) return;
+
+                            if (reverse) {
+                                mesh.indices.push_back(v_ids[0]); mesh.indices.push_back(v_ids[1]); mesh.indices.push_back(v_ids[2]);
+                                mesh.indices.push_back(v_ids[0]); mesh.indices.push_back(v_ids[2]); mesh.indices.push_back(v_ids[3]);
+                            } else {
+                                mesh.indices.push_back(v_ids[0]); mesh.indices.push_back(v_ids[2]); mesh.indices.push_back(v_ids[1]);
+                                mesh.indices.push_back(v_ids[0]); mesh.indices.push_back(v_ids[3]); mesh.indices.push_back(v_ids[2]);
+                            }
                         }
                     };
 
-                    if ((v < 0) != (vx < 0)) {
-                        add_quad({std::make_tuple(x,y,z), std::make_tuple(x,y-1,z), std::make_tuple(x,y-1,z-1), std::make_tuple(x,y,z-1)}, (v < 0));
-                    }
-                    if ((v < 0) != (vy < 0)) {
-                        add_quad({std::make_tuple(x,y,z), std::make_tuple(x-1,y,z), std::make_tuple(x-1,y,z-1), std::make_tuple(x,y,z-1)}, (v > 0));
-                    }
-                    if ((v < 0) != (vz < 0)) {
-                        add_quad({std::make_tuple(x,y,z), std::make_tuple(x-1,y,z), std::make_tuple(x-1,y-1,z), std::make_tuple(x,y-1,z)}, (v < 0));
-                    }
+                    check_edge(0);
+                    check_edge(1);
+                    check_edge(2);
                 }
             }
         }
@@ -128,8 +153,6 @@ namespace Boidsish {
             AtA[1][2] += intersect.n.y * intersect.n.z;
             AtA[2][2] += intersect.n.z * intersect.n.z;
 
-            float d = glm::dot(intersect.n, intersect.n); // Weighting? Or just 1.0 if normalized
-            (void)d;
             float b = glm::dot(intersect.n, intersect.p);
             Atb += intersect.n * b;
             centroid += intersect.p;
@@ -141,16 +164,15 @@ namespace Boidsish {
 
         centroid /= static_cast<float>(intersections.size());
 
-        // Regularization to handle singular matrices
-        float lambda = 0.01f;
+        float lambda = 0.1f;
         AtA[0][0] += lambda;
         AtA[1][1] += lambda;
         AtA[2][2] += lambda;
 
-        // Solve AtA * x = Atb using Cramer's rule or direct inversion
         float det = glm::determinant(AtA);
         if (std::abs(det) > 1e-6f) {
-            return glm::inverse(AtA) * Atb;
+            glm::vec3 sol = glm::inverse(AtA) * Atb;
+            return sol;
         }
 
         return centroid;
