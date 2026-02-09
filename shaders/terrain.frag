@@ -370,7 +370,7 @@ void main() {
 	vec3 perturbedNorm = norm;
 	if (perturbFactor >= 0.1) {
 		float roughnessStrength = smoothstep(0.1, 1.0, perturbFactor) * finalMaterial.normalStrength;
-		float roughnessScale = finalMaterial.normalScale;
+		float roughnessScale = finalMaterial.normalScale * 0.05;
 
 		// Use finite difference to approximate the gradient of the noise field
 		float eps = 0.015;

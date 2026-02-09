@@ -85,7 +85,7 @@ float perturbLevel(vec3 worldPos, vec3 forward) {
 
 	// 1. DISTANCE FACTOR (The Base)
 	float dist = distance(viewPos, worldPos);
-	float distanceLevel = uTessLevelMax * exp(-dist * (0.1 / worldScale));
+	float distanceLevel = uTessLevelMax * exp(-dist * (0.005 / worldScale));
 	distanceLevel = clamp(distanceLevel, uTessLevelMin, uTessLevelMax);
 
 	// 2. FOCUS FACTOR (The Cull)
@@ -94,8 +94,7 @@ float perturbLevel(vec3 worldPos, vec3 forward) {
 	float focusCull = smoothstep(0.65, 1.0, align);
 
 	// 3. Y factor lock
-
-	float distanceMin = 10 * worldScale * smoothstep(15 * worldScale, 0, abs(worldPos.y - viewPos.y));
+	float distanceMin = 20 * worldScale * smoothstep(10 * worldScale, 0, abs(worldPos.y - viewPos.y));
 
 	// COMBINE
 	float finalLevel = max(distanceMin, distanceLevel) * focusCull;
