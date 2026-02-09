@@ -137,7 +137,12 @@ namespace Boidsish {
 		}
 	}
 
-	void InstanceManager::PerformOcclusionQueries(const glm::mat4& view, const glm::mat4& projection, Shader& shader) {
+	void InstanceManager::PerformOcclusionQueries(
+		const glm::mat4&                    view,
+		const glm::mat4&                    projection,
+		Shader&                             shader,
+		const std::vector<std::shared_ptr<Shape>>& shapes
+	) {
 		m_frame_count++;
 
 		// 1. Gather results from previous frame
@@ -151,6 +156,7 @@ namespace Boidsish {
 				GLuint samples = 0;
 				glGetQueryObjectuiv(query.query_id, GL_QUERY_RESULT, &samples);
 				query.is_occluded = (samples == 0);
+				query.query_issued = false;
 			}
 		}
 
@@ -176,37 +182,44 @@ namespace Boidsish {
 		glBindVertexArray(bbox_vao);
 		GLint modelLoc = glGetUniformLocation(shader.ID, "model");
 
-		for (auto& [key, group] : m_instance_groups) {
-			if (!key.starts_with("Model:") || group.shapes.empty())
+		for (const auto& shape : shapes) {
+			if (shape->IsHidden()) {
+				auto q_it = m_queries.find(shape->GetId());
+				if (q_it != m_queries.end()) {
+					q_it->second.is_occluded = false;
+				}
+				continue;
+			}
+
+			std::string key = shape->GetInstanceKey();
+			if (!key.starts_with("Model:"))
 				continue;
 
-			auto first_model = std::dynamic_pointer_cast<Model>(group.shapes[0]);
-			if (!first_model)
+			auto model = std::dynamic_pointer_cast<Model>(shape);
+			if (!model)
 				continue;
 
 			glm::vec3 min_aabb, max_aabb;
-			first_model->GetAABB(min_aabb, max_aabb);
+			model->GetAABB(min_aabb, max_aabb);
 			glm::vec3 size = max_aabb - min_aabb;
 
-			for (const auto& shape : group.shapes) {
-				auto& q_info = m_queries[shape->GetId()];
-				if (q_info.query_id == 0) {
-					glGenQueries(1, &q_info.query_id);
-				}
-				q_info.last_frame_used = m_frame_count;
-
-				glm::mat4 model_mat = shape->GetModelMatrix();
-				// Adjust model matrix to match the AABB
-				glm::mat4 bbox_mat = glm::translate(model_mat, min_aabb);
-				bbox_mat = glm::scale(bbox_mat, size);
-
-				glUniformMatrix4fv(modelLoc, 1, GL_FALSE, &bbox_mat[0][0]);
-
-				glBeginQuery(GL_ANY_SAMPLES_PASSED, q_info.query_id);
-				glDrawElements(GL_TRIANGLES, 36, GL_UNSIGNED_INT, 0);
-				glEndQuery(GL_ANY_SAMPLES_PASSED);
-				q_info.query_issued = true;
+			auto& q_info = m_queries[shape->GetId()];
+			if (q_info.query_id == 0) {
+				glGenQueries(1, &q_info.query_id);
 			}
+			q_info.last_frame_used = m_frame_count;
+
+			glm::mat4 model_mat = shape->GetModelMatrix();
+			// Adjust model matrix to match the AABB
+			glm::mat4 bbox_mat = glm::translate(model_mat, min_aabb);
+			bbox_mat = glm::scale(bbox_mat, size);
+
+			glUniformMatrix4fv(modelLoc, 1, GL_FALSE, &bbox_mat[0][0]);
+
+			glBeginQuery(GL_ANY_SAMPLES_PASSED, q_info.query_id);
+			glDrawElements(GL_TRIANGLES, 36, GL_UNSIGNED_INT, 0);
+			glEndQuery(GL_ANY_SAMPLES_PASSED);
+			q_info.query_issued = true;
 		}
 		glBindVertexArray(0);
 

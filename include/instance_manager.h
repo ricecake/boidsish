@@ -19,7 +19,12 @@ namespace Boidsish {
 		/**
 		 * @brief Perform hardware occlusion queries for all registered instances.
 		 */
-		void PerformOcclusionQueries(const glm::mat4& view, const glm::mat4& projection, Shader& shader);
+		void PerformOcclusionQueries(
+			const glm::mat4&                    view,
+			const glm::mat4&                    projection,
+			Shader&                             shader,
+			const std::vector<std::shared_ptr<Shape>>& shapes
+		);
 
 	private:
 		struct QueryInfo {

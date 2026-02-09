@@ -496,6 +496,7 @@ namespace Boidsish {
 				GLuint samples = 0;
 				glGetQueryObjectuiv(chunk.occlusion_query, GL_QUERY_RESULT, &samples);
 				chunk.is_occluded = (samples == 0);
+				chunk.query_issued = false;
 			}
 		}
 
@@ -544,6 +545,9 @@ namespace Boidsish {
 				glDrawElements(GL_TRIANGLES, 36, GL_UNSIGNED_INT, 0);
 				glEndQuery(GL_ANY_SAMPLES_PASSED);
 				chunk.query_issued = true;
+			} else {
+				// Prevent sticky occlusion when re-entering frustum
+				chunk.is_occluded = false;
 			}
 		}
 		glBindVertexArray(0);

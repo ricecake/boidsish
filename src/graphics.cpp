@@ -2009,11 +2009,25 @@ namespace Boidsish {
 		glm::mat4 view_matrix = impl->SetupMatrices();
 		Frustum   render_frustum = impl->CalculateFrustum(view_matrix, impl->projection);
 
+		bool effects_enabled = ConfigManager::GetInstance().GetAppSettingBool("enable_effects", true);
+		bool has_shockwaves = impl->shockwave_manager && impl->shockwave_manager->HasActiveShockwaves();
+		bool skip_intermediate = (impl->render_scale == 1.0f && !effects_enabled && !has_shockwaves);
+
+		if (skip_intermediate) {
+			glBindFramebuffer(GL_FRAMEBUFFER, 0);
+			glViewport(0, 0, impl->width, impl->height);
+		} else {
+			glBindFramebuffer(GL_FRAMEBUFFER, impl->main_fbo_);
+			glViewport(0, 0, impl->render_width, impl->render_height);
+		}
+
 		if (impl->terrain_render_manager) {
 			// --- Occlusion Pass ---
 			// Use terrain occlusion quads to populate depth and perform queries
 			glEnable(GL_DEPTH_TEST);
+			glDepthFunc(GL_LEQUAL);
 			glDepthMask(GL_TRUE);
+			glClear(GL_DEPTH_BUFFER_BIT);
 			glColorMask(GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE);
 
 			if (impl->occluder_debug_shader) {
@@ -2024,7 +2038,11 @@ namespace Boidsish {
 				// 1. Render all terrain occluders to depth buffer
 				impl->terrain_render_manager->RenderOccluders(*impl->occluder_debug_shader);
 
-				// 2. Perform occlusion queries for chunks in frustum
+				// 2. Perform queries (against the populated depth buffer)
+				// Queries should not write to depth themselves
+				glDepthMask(GL_FALSE);
+
+				// Perform occlusion queries for chunks in frustum
 				impl->terrain_render_manager->PerformOcclusionQueries(
 					view_matrix,
 					impl->projection,
@@ -2032,12 +2050,15 @@ namespace Boidsish {
 					*impl->occluder_debug_shader
 				);
 
-				// 3. Perform occlusion queries for model instances
+				// Perform occlusion queries for model instances
 				impl->instance_manager->PerformOcclusionQueries(
 					view_matrix,
 					impl->projection,
-					*impl->occluder_debug_shader
+					*impl->occluder_debug_shader,
+					impl->shapes
 				);
+
+				glDepthMask(GL_TRUE);
 			}
 
 			glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
@@ -2397,19 +2418,7 @@ namespace Boidsish {
 			impl->shadow_manager->UpdateShadowUBO(shadow_lights);
 		}
 
-		bool effects_enabled = ConfigManager::GetInstance().GetAppSettingBool("enable_effects", true);
-		bool has_shockwaves = impl->shockwave_manager && impl->shockwave_manager->HasActiveShockwaves();
-		bool skip_intermediate = (impl->render_scale == 1.0f && !effects_enabled && !has_shockwaves);
-
 		// --- Main Scene Pass ---
-		if (skip_intermediate) {
-			glBindFramebuffer(GL_FRAMEBUFFER, 0);
-			glViewport(0, 0, impl->width, impl->height);
-		} else {
-			glBindFramebuffer(GL_FRAMEBUFFER, impl->main_fbo_);
-			glViewport(0, 0, impl->render_width, impl->render_height);
-		}
-
 		glEnable(GL_DEPTH_TEST);
 		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
