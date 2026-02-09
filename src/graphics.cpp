@@ -12,8 +12,10 @@
 
 #include "ConfigManager.h"
 #include "UIManager.h"
+#include "arcade_text.h"
 #include "audio_manager.h"
 #include "clone_manager.h"
+#include "curved_text.h"
 #include "decor_manager.h"
 #include "dot.h"
 #include "entity.h"
@@ -36,6 +38,7 @@
 #include "post_processing/effects/SdfVolumeEffect.h"
 #include "post_processing/effects/SsaoEffect.h"
 #include "post_processing/effects/StrobeEffect.h"
+#include "post_processing/effects/SuperSpeedEffect.h"
 #include "post_processing/effects/TimeStutterEffect.h"
 #include "post_processing/effects/ToneMappingEffect.h"
 #include "post_processing/effects/WhispTrailEffect.h"
@@ -47,6 +50,7 @@
 #include "task_thread_pool.hpp"
 #include "terrain.h"
 #include "terrain_generator.h"
+#include "terrain_generator_interface.h"
 #include "terrain_render_manager.h"
 #include "trail.h"
 #include "trail_render_manager.h"
@@ -191,6 +195,7 @@ namespace Boidsish {
 		std::vector<ShapeFunction>            shape_functions;
 		std::vector<std::shared_ptr<Shape>>   shapes;            // Legacy shapes from callbacks
 		std::map<int, std::shared_ptr<Shape>> persistent_shapes; // New persistent shapes
+		std::vector<std::shared_ptr<Shape>>   transient_effects; // Short-lived effects like CurvedText
 		ConcurrentQueue<ShapeCommand>         shape_command_queue;
 		std::unique_ptr<CloneManager>         clone_manager;
 		std::unique_ptr<InstanceManager>      instance_manager;
@@ -215,7 +220,7 @@ namespace Boidsish {
 		std::unique_ptr<PostProcessing::PostProcessingManager> post_processing_manager_;
 		int                                                    exit_key;
 
-		std::unique_ptr<TerrainGenerator>     terrain_generator;
+		std::shared_ptr<ITerrainGenerator>    terrain_generator;
 		std::shared_ptr<TerrainRenderManager> terrain_render_manager;
 		std::unique_ptr<TrailRenderManager>   trail_render_manager;
 
@@ -270,6 +275,9 @@ namespace Boidsish {
 		bool is_fullscreen_ = false;
 		int  windowed_xpos_, windowed_ypos_, windowed_width_, windowed_height_;
 
+		float render_scale = 1.0f;
+		int   render_width, render_height;
+
 		// Adaptive Tessellation
 		glm::vec3 last_camera_pos_{0.0f, 0.0f, 0.0f};
 		float     last_camera_yaw_{0.0f};
@@ -278,6 +286,12 @@ namespace Boidsish {
 		glm::vec2 camera_angular_velocity_{0.0f, 0.0f};
 		float     avg_frame_time_{1.0f / 60.0f};
 		float     tess_quality_multiplier_{1.0f};
+
+		// Camera shake state
+		float     shake_intensity = 0.0f;
+		float     shake_timer = 0.0f;
+		float     shake_duration = 0.0f;
+		glm::vec3 shake_offset{0.0f};
 
 		// Cached global settings
 		float camera_roll_speed_;
@@ -307,6 +321,11 @@ namespace Boidsish {
 		std::array<ShadowMapState, 16> shadow_map_states_;
 		int shadow_update_round_robin_ = 0; // For ensuring all cascades get updated periodically
 
+		// Performance optimization: batched UBO updates and config caching
+		std::vector<LightGPU> gpu_lights_cache_;
+		LightingUbo           lighting_ubo_data_;
+		FrameConfigCache      frame_config_;
+
 		task_thread_pool::task_thread_pool thread_pool;
 		std::unique_ptr<AudioManager>      audio_manager;
 
@@ -317,6 +336,11 @@ namespace Boidsish {
 			width = ConfigManager::GetInstance().GetAppSettingInt("window_width", w);
 			height = ConfigManager::GetInstance().GetAppSettingInt("window_height", h);
 			is_fullscreen_ = ConfigManager::GetInstance().GetAppSettingBool("fullscreen", false);
+
+			render_scale = ConfigManager::GetInstance().GetAppSettingFloat("render_scale", 1.0f);
+			render_scale = std::clamp(render_scale, 0.1f, 1.0f);
+			render_width = static_cast<int>(width * render_scale);
+			render_height = static_cast<int>(height * render_scale);
 
 			// Cache global settings
 			camera_roll_speed_ = ConfigManager::GetInstance().GetGlobalSettingFloat(
@@ -454,7 +478,7 @@ namespace Boidsish {
 				postprocess_shader_ = std::make_unique<Shader>("shaders/postprocess.vert", "shaders/postprocess.frag");
 			}
 			if (ConfigManager::GetInstance().GetAppSettingBool("enable_terrain", true)) {
-				terrain_generator = std::make_unique<TerrainGenerator>();
+				terrain_generator = std::make_shared<TerrainGenerator>();
 				last_camera_yaw_ = camera.yaw;
 				last_camera_pitch_ = camera.pitch;
 			}
@@ -480,6 +504,9 @@ namespace Boidsish {
 			glBufferData(GL_UNIFORM_BUFFER, 704, NULL, GL_DYNAMIC_DRAW);
 			glBindBuffer(GL_UNIFORM_BUFFER, 0);
 			glBindBufferRange(GL_UNIFORM_BUFFER, Constants::UboBinding::Lighting(), lighting_ubo, 0, 704);
+
+			// Pre-allocate lighting cache for batched UBO updates
+			gpu_lights_cache_.reserve(MAX_LIGHTS);
 
 			if (ConfigManager::GetInstance().GetAppSettingBool("enable_effects", true)) {
 				glGenBuffers(1, &visual_effects_ubo);
@@ -545,10 +572,14 @@ namespace Boidsish {
 				terrain_generator->SetRenderManager(terrain_render_manager);
 
 				// Set up eviction callback so terrain generator knows when chunks are LRU-evicted
-				// Capture raw pointer since terrain_generator is a unique_ptr with same lifetime
-				terrain_render_manager->SetEvictionCallback([gen = terrain_generator.get()](std::pair<int, int> key) {
-					gen->InvalidateChunk(key);
-				});
+				// Capture weak_ptr to allow terrain generator to be swapped without dangling reference
+				terrain_render_manager->SetEvictionCallback(
+					[weak_gen = std::weak_ptr<ITerrainGenerator>(terrain_generator)](std::pair<int, int> key) {
+						if (auto gen = weak_gen.lock()) {
+							gen->InvalidateChunk(key);
+						}
+					}
+				);
 			}
 
 			Shape::InitSphereMesh();
@@ -616,7 +647,17 @@ namespace Boidsish {
 					// Color attachment
 					glGenTextures(1, &reflection_texture);
 					glBindTexture(GL_TEXTURE_2D, reflection_texture);
-					glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, width, height, 0, GL_RGB, GL_UNSIGNED_BYTE, NULL);
+					glTexImage2D(
+						GL_TEXTURE_2D,
+						0,
+						GL_RGB,
+						render_width,
+						render_height,
+						0,
+						GL_RGB,
+						GL_UNSIGNED_BYTE,
+						NULL
+					);
 					glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
 					glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 					glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, reflection_texture, 0);
@@ -624,7 +665,7 @@ namespace Boidsish {
 					// Depth renderbuffer
 					glGenRenderbuffers(1, &reflection_depth_rbo);
 					glBindRenderbuffer(GL_RENDERBUFFER, reflection_depth_rbo);
-					glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT24, width, height);
+					glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT24, render_width, render_height);
 					glFramebufferRenderbuffer(
 						GL_FRAMEBUFFER,
 						GL_DEPTH_ATTACHMENT,
@@ -642,7 +683,17 @@ namespace Boidsish {
 					for (unsigned int i = 0; i < 2; i++) {
 						glBindFramebuffer(GL_FRAMEBUFFER, pingpong_fbo[i]);
 						glBindTexture(GL_TEXTURE_2D, pingpong_texture[i]);
-						glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB16F, width, height, 0, GL_RGB, GL_FLOAT, NULL);
+						glTexImage2D(
+							GL_TEXTURE_2D,
+							0,
+							GL_RGB16F,
+							render_width,
+							render_height,
+							0,
+							GL_RGB,
+							GL_FLOAT,
+							NULL
+						);
 						glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
 						glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 						glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
@@ -669,9 +720,9 @@ namespace Boidsish {
 			glGenTextures(1, &main_fbo_texture_);
 			glBindTexture(GL_TEXTURE_2D, main_fbo_texture_);
 			if (enable_hdr_) {
-				glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB16F, width, height, 0, GL_RGB, GL_FLOAT, NULL);
+				glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB16F, render_width, render_height, 0, GL_RGB, GL_FLOAT, NULL);
 			} else {
-				glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, width, height, 0, GL_RGB, GL_UNSIGNED_BYTE, NULL);
+				glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, render_width, render_height, 0, GL_RGB, GL_UNSIGNED_BYTE, NULL);
 			}
 			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
 			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
@@ -685,8 +736,8 @@ namespace Boidsish {
 				GL_TEXTURE_2D,
 				0,
 				GL_DEPTH24_STENCIL8,
-				width,
-				height,
+				render_width,
+				render_height,
 				0,
 				GL_DEPTH_STENCIL,
 				GL_UNSIGNED_INT_24_8,
@@ -714,14 +765,14 @@ namespace Boidsish {
 			if (postprocess_shader_) {
 				// --- Post Processing Manager ---
 				post_processing_manager_ = std::make_unique<PostProcessing::PostProcessingManager>(
-					width,
-					height,
+					render_width,
+					render_height,
 					blur_quad_vao
 				);
 				post_processing_manager_->Initialize();
 
 				// --- Shockwave Manager ---
-				shockwave_manager->Initialize(width, height);
+				shockwave_manager->Initialize(render_width, render_height);
 
 				auto ssao_effect = std::make_shared<PostProcessing::SsaoEffect>();
 				ssao_effect->SetEnabled(false);
@@ -755,11 +806,15 @@ namespace Boidsish {
 				film_grain_effect->SetEnabled(false);
 				post_processing_manager_->AddEffect(film_grain_effect);
 
+				auto super_speed_effect = std::make_shared<PostProcessing::SuperSpeedEffect>();
+				super_speed_effect->SetEnabled(true);
+				post_processing_manager_->AddEffect(super_speed_effect);
+
 				auto atmosphere_effect = std::make_shared<PostProcessing::AtmosphereEffect>();
 				atmosphere_effect->SetEnabled(true);
 				post_processing_manager_->AddEffect(atmosphere_effect);
 
-				auto bloom_effect = std::make_shared<PostProcessing::BloomEffect>(width, height);
+				auto bloom_effect = std::make_shared<PostProcessing::BloomEffect>(render_width, render_height);
 				bloom_effect->SetEnabled(false);
 				post_processing_manager_->AddEffect(bloom_effect);
 
@@ -839,10 +894,27 @@ namespace Boidsish {
 			}
 		}
 
+		void RefreshFrameConfig() {
+			auto& cfg = ConfigManager::GetInstance();
+			frame_config_.effects_enabled = cfg.GetAppSettingBool("enable_effects", true);
+			frame_config_.render_terrain = cfg.GetAppSettingBool("render_terrain", true);
+			frame_config_.render_skybox = cfg.GetAppSettingBool("render_skybox", true);
+			frame_config_.render_floor = cfg.GetAppSettingBool("render_floor", true);
+			frame_config_.artistic_ripple = cfg.GetAppSettingBool("artistic_effect_ripple", false);
+			frame_config_.artistic_color_shift = cfg.GetAppSettingBool("artistic_effect_color_shift", false);
+			frame_config_.artistic_black_and_white = cfg.GetAppSettingBool("artistic_effect_black_and_white", false);
+			frame_config_.artistic_negative = cfg.GetAppSettingBool("artistic_effect_negative", false);
+			frame_config_.artistic_shimmery = cfg.GetAppSettingBool("artistic_effect_shimmery", false);
+			frame_config_.artistic_glitched = cfg.GetAppSettingBool("artistic_effect_glitched", false);
+			frame_config_.artistic_wireframe = cfg.GetAppSettingBool("artistic_effect_wireframe", false);
+			frame_config_.enable_floor_reflection = cfg.GetAppSettingBool("enable_floor_reflection", true);
+		}
+
 		~VisualizerImpl() {
 			ConfigManager::GetInstance().SetInt("window_width", width);
 			ConfigManager::GetInstance().SetInt("window_height", height);
 			ConfigManager::GetInstance().SetBool("fullscreen", is_fullscreen_);
+			ConfigManager::GetInstance().SetFloat("render_scale", render_scale);
 
 			ConfigManager::GetInstance().SetFloat("camera_follow_distance", camera.follow_distance);
 			ConfigManager::GetInstance().SetFloat("camera_follow_elevation", camera.follow_elevation);
@@ -964,8 +1036,11 @@ namespace Boidsish {
 		}
 
 		glm::mat4 SetupMatrices(const Camera& cam_to_use) {
-			projection = glm::perspective(glm::radians(cam_to_use.fov), (float)width / (float)height, 0.1f, 1000.0f);
+			float world_scale = terrain_generator ? terrain_generator->GetWorldScale() : 1.0f;
+			float far_plane = 1000.0f * std::max(1.0f, world_scale);
+			projection = glm::perspective(glm::radians(cam_to_use.fov), (float)width / (float)height, 0.1f, far_plane);
 			glm::vec3 cameraPos(cam_to_use.x, cam_to_use.y, cam_to_use.z);
+			cameraPos += shake_offset;
 			glm::mat4 view;
 
 			if (camera_mode == CameraMode::PATH_FOLLOW) {
@@ -1105,22 +1180,6 @@ namespace Boidsish {
 				// Commit updates and render all trails
 				trail_render_manager->CommitUpdates();
 				trail_render_manager->Render(*trail_shader, view, projection, clip_plane);
-			} else {
-				// Fallback to per-trail rendering
-				trail_shader->use();
-				trail_shader->setMat4("view", view);
-				trail_shader->setMat4("projection", projection);
-				glm::mat4 model = glm::mat4(1.0f);
-				trail_shader->setMat4("model", model);
-				if (clip_plane) {
-					trail_shader->setVec4("clipPlane", *clip_plane);
-				} else {
-					trail_shader->setVec4("clipPlane", glm::vec4(0, 0, 0, 0));
-				}
-
-				for (auto& pair : trails) {
-					pair.second->Render(*trail_shader);
-				}
 			}
 		}
 
@@ -1138,6 +1197,11 @@ namespace Boidsish {
 			// Use quality override if provided, otherwise use default multiplier
 			float effective_quality = (quality_override > 0.0f) ? quality_override : tess_quality_multiplier_;
 
+			// Inversely apply world scale to tessellation. Larger world = lower triangle density per unit.
+			if (terrain_generator) {
+				effective_quality /= terrain_generator->GetWorldScale();
+			}
+
 			// Set up shadow uniforms for terrain shader
 			Terrain::terrain_shader_->use();
 			Terrain::terrain_shader_->setBool("uIsShadowPass", is_shadow_pass);
@@ -1152,7 +1216,8 @@ namespace Boidsish {
 				Frustum frustum = shadow_frustum.has_value() ? *shadow_frustum : CalculateFrustum(view, proj);
 
 				// Prepare for rendering (frustum culling for instanced renderer)
-				terrain_render_manager->PrepareForRender(frustum, camera.pos());
+				float world_scale = terrain_generator ? terrain_generator->GetWorldScale() : 1.0f;
+				terrain_render_manager->PrepareForRender(frustum, camera.pos(), world_scale);
 
 				terrain_render_manager->Render(*Terrain::terrain_shader_, view, proj, clip_plane, effective_quality);
 			} else {
@@ -1170,7 +1235,7 @@ namespace Boidsish {
 					Terrain::terrain_shader_->setVec4("clipPlane", glm::vec4(0, 0, 0, 0));
 				}
 
-				auto terrain_chunks = terrain_generator->getVisibleChunks();
+				auto terrain_chunks = terrain_generator->GetVisibleChunks();
 				for (const auto& chunk : terrain_chunks) {
 					chunk->render();
 				}
@@ -1242,7 +1307,8 @@ namespace Boidsish {
 				plane_shader->setMat4("reflectionViewProjection", reflection_vp);
 			}
 
-			glm::mat4 model = glm::scale(glm::mat4(1.0f), glm::vec3(600.0f));
+			float     world_scale = terrain_generator ? terrain_generator->GetWorldScale() : 1.0f;
+			glm::mat4 model = glm::scale(glm::mat4(1.0f), glm::vec3(600.0f * world_scale));
 			plane_shader->setMat4("model", model);
 			plane_shader->setMat4("view", view);
 			plane_shader->setMat4("projection", projection);
@@ -1708,37 +1774,43 @@ namespace Boidsish {
 			auto* impl = static_cast<VisualizerImpl*>(glfwGetWindowUserPointer(w));
 			impl->width = width;
 			impl->height = height;
-			glViewport(0, 0, width, height);
 
-			if (impl->reflection_fbo) {
+			impl->ResizeInternalFramebuffers();
+		}
+
+		void ResizeInternalFramebuffers() {
+			render_width = static_cast<int>(width * render_scale);
+			render_height = static_cast<int>(height * render_scale);
+
+			if (reflection_fbo) {
 				// --- Resize reflection framebuffer ---
-				glBindTexture(GL_TEXTURE_2D, impl->reflection_texture);
-				glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, width, height, 0, GL_RGB, GL_UNSIGNED_BYTE, NULL);
-				glBindRenderbuffer(GL_RENDERBUFFER, impl->reflection_depth_rbo);
-				glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT24, width, height);
+				glBindTexture(GL_TEXTURE_2D, reflection_texture);
+				glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, render_width, render_height, 0, GL_RGB, GL_UNSIGNED_BYTE, NULL);
+				glBindRenderbuffer(GL_RENDERBUFFER, reflection_depth_rbo);
+				glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT24, render_width, render_height);
 
 				// --- Resize ping-pong framebuffers ---
 				for (unsigned int i = 0; i < 2; i++) {
-					glBindTexture(GL_TEXTURE_2D, impl->pingpong_texture[i]);
-					glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB16F, width, height, 0, GL_RGB, GL_FLOAT, NULL);
+					glBindTexture(GL_TEXTURE_2D, pingpong_texture[i]);
+					glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB16F, render_width, render_height, 0, GL_RGB, GL_FLOAT, NULL);
 				}
 			}
 
 			// --- Resize main scene framebuffer ---
-			glBindTexture(GL_TEXTURE_2D, impl->main_fbo_texture_);
-			if (impl->enable_hdr_) {
-				glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB16F, width, height, 0, GL_RGB, GL_FLOAT, NULL);
+			glBindTexture(GL_TEXTURE_2D, main_fbo_texture_);
+			if (enable_hdr_) {
+				glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB16F, render_width, render_height, 0, GL_RGB, GL_FLOAT, NULL);
 			} else {
-				glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, width, height, 0, GL_RGB, GL_UNSIGNED_BYTE, NULL);
+				glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, render_width, render_height, 0, GL_RGB, GL_UNSIGNED_BYTE, NULL);
 			}
 			// Resize depth-stencil texture
-			glBindTexture(GL_TEXTURE_2D, impl->main_fbo_depth_texture_);
+			glBindTexture(GL_TEXTURE_2D, main_fbo_depth_texture_);
 			glTexImage2D(
 				GL_TEXTURE_2D,
 				0,
 				GL_DEPTH24_STENCIL8,
-				width,
-				height,
+				render_width,
+				render_height,
 				0,
 				GL_DEPTH_STENCIL,
 				GL_UNSIGNED_INT_24_8,
@@ -1746,13 +1818,13 @@ namespace Boidsish {
 			);
 
 			// --- Resize post-processing manager ---
-			if (impl->post_processing_manager_) {
-				impl->post_processing_manager_->Resize(width, height);
+			if (post_processing_manager_) {
+				post_processing_manager_->Resize(render_width, render_height);
 			}
 
 			// --- Resize shockwave manager ---
-			if (impl->shockwave_manager) {
-				impl->shockwave_manager->Resize(width, height);
+			if (shockwave_manager) {
+				shockwave_manager->Resize(render_width, render_height);
 			}
 		}
 	};
@@ -1860,10 +1932,46 @@ namespace Boidsish {
 				1.0f - exp(-delta_time * 5.0f)
 			);
 		}
+
+		// Update camera shake
+		if (impl->shake_timer > 0.0f) {
+			impl->shake_timer -= delta_time;
+			if (impl->shake_timer <= 0.0f) {
+				impl->shake_timer = 0.0f;
+				impl->shake_offset = glm::vec3(0.0f);
+			} else {
+				float t_shake = (impl->shake_duration > 0.0f) ? (impl->shake_timer / impl->shake_duration) : 0.0f;
+				float current_intensity = impl->shake_intensity * t_shake; // Simple linear decay
+				// Use a pseudo-random offset based on time
+				float t = impl->simulation_time * 50.0f;
+				impl->shake_offset = glm::vec3(
+										 sin(t * 1.1f) * cos(t * 0.9f),
+										 cos(t * 1.2f) * sin(t * 0.8f),
+										 sin(t * 1.3f) * cos(t * 0.7f)
+									 ) *
+					current_intensity;
+			}
+		} else {
+			impl->shake_offset = glm::vec3(0.0f);
+		}
 	}
 
 	void Visualizer::Render() {
+		impl->RefreshFrameConfig();
 		impl->shapes.clear();
+
+		// Update and collect transient effects
+		auto it = impl->transient_effects.begin();
+		while (it != impl->transient_effects.end()) {
+			(*it)->Update(impl->input_state.delta_time);
+			if ((*it)->IsExpired()) {
+				it = impl->transient_effects.erase(it);
+			} else {
+				impl->shapes.push_back(*it);
+				++it;
+			}
+		}
+
 		// --- 1. RENDER SCENE TO FBO ---
 		// Note: The reflection and blur passes are pre-passes that generate textures for the main scene.
 		// They have their own FBOs. The main scene pass below is what we want to capture.
@@ -1962,9 +2070,15 @@ namespace Boidsish {
 		if (impl->terrain_generator) {
 			// Create a widened and predictive frustum for the generator
 			// This helps pre-generate chunks just out of view and in the direction of rotation
+			float     world_scale = impl->terrain_generator->GetWorldScale();
+			float     far_plane = 1000.0f * std::max(1.0f, world_scale);
 			float     generator_fov = impl->camera.fov + 15.0f; // 15 degrees wider FOV
-			glm::mat4 generator_proj =
-				glm::perspective(glm::radians(generator_fov), (float)impl->width / (float)impl->height, 0.1f, 1000.0f);
+			glm::mat4 generator_proj = glm::perspective(
+				glm::radians(generator_fov),
+				(float)impl->width / (float)impl->height,
+				0.1f,
+				far_plane
+			);
 
 			// Predictive orientation based on current angular velocity
 			float lead_time = 0.4f; // Look 0.4 seconds into the future
@@ -1979,7 +2093,7 @@ namespace Boidsish {
 			glm::mat4 predicted_view = glm::lookAt(cameraPos, cameraPos + predicted_cam.front(), predicted_cam.up());
 
 			generator_frustum = impl->CalculateFrustum(predicted_view, generator_proj);
-			impl->terrain_generator->update(generator_frustum, impl->camera);
+			impl->terrain_generator->Update(generator_frustum, impl->camera);
 		}
 
 		// Update clone manager
@@ -2003,8 +2117,8 @@ namespace Boidsish {
 			);
 		}
 
-		// UBO Updates
-		if (ConfigManager::GetInstance().GetAppSettingBool("enable_effects", true)) {
+		// UBO Updates - using cached config values
+		if (impl->frame_config_.effects_enabled) {
 			VisualEffectsUbo ubo_data{};
 			for (const auto& shape : impl->shapes) {
 				for (const auto& effect : shape->GetActiveEffects()) {
@@ -2018,14 +2132,14 @@ namespace Boidsish {
 				}
 			}
 
-			auto& config = ConfigManager::GetInstance();
-			ubo_data.black_and_white_enabled = config.GetAppSettingBool("artistic_effect_black_and_white", false);
-			ubo_data.negative_enabled = config.GetAppSettingBool("artistic_effect_negative", false);
-			ubo_data.shimmery_enabled = config.GetAppSettingBool("artistic_effect_shimmery", false);
-			ubo_data.glitched_enabled = config.GetAppSettingBool("artistic_effect_glitched", false);
-			ubo_data.wireframe_enabled = config.GetAppSettingBool("artistic_effect_wireframe", false);
-			ubo_data.color_shift_enabled = config.GetAppSettingBool("artistic_effect_color_shift", false);
-			if (config.GetAppSettingBool("artistic_effect_ripple", false)) {
+			// Use cached config values instead of per-call lookups
+			ubo_data.black_and_white_enabled = impl->frame_config_.artistic_black_and_white;
+			ubo_data.negative_enabled = impl->frame_config_.artistic_negative;
+			ubo_data.shimmery_enabled = impl->frame_config_.artistic_shimmery;
+			ubo_data.glitched_enabled = impl->frame_config_.artistic_glitched;
+			ubo_data.wireframe_enabled = impl->frame_config_.artistic_wireframe;
+			ubo_data.color_shift_enabled = ubo_data.color_shift_enabled || impl->frame_config_.artistic_color_shift;
+			if (impl->frame_config_.artistic_ripple) {
 				ubo_data.ripple_enabled = 1;
 			}
 
@@ -2034,36 +2148,33 @@ namespace Boidsish {
 			glBindBuffer(GL_UNIFORM_BUFFER, 0);
 		}
 
-		glBindBuffer(GL_UNIFORM_BUFFER, impl->lighting_ubo);
-		const auto& lights = impl->light_manager.GetLights();
-		int         num_lights = lights.size();
+		// Batched lighting UBO update - single glBufferSubData instead of 8 calls
+		{
+			const auto& lights = impl->light_manager.GetLights();
+			int         num_lights = std::min(static_cast<int>(lights.size()), 10);
 
-		// Convert lights to GPU-compatible format (32 bytes each, matching GLSL struct)
-		std::vector<LightGPU> gpu_lights;
-		gpu_lights.reserve(num_lights);
-		for (const auto& light : lights) {
-			gpu_lights.push_back(light.ToGPU());
+			// Reuse cached vector to avoid per-frame allocation
+			impl->gpu_lights_cache_.clear();
+			for (int i = 0; i < num_lights; ++i) {
+				impl->gpu_lights_cache_.push_back(lights[i].ToGPU());
+			}
+
+			// Fill the UBO struct in one pass
+			std::memset(&impl->lighting_ubo_data_, 0, sizeof(LightingUbo));
+			std::memcpy(impl->lighting_ubo_data_.lights, impl->gpu_lights_cache_.data(), num_lights * sizeof(LightGPU));
+			impl->lighting_ubo_data_.num_lights = num_lights;
+			impl->lighting_ubo_data_.world_scale = impl->terrain_generator ? impl->terrain_generator->GetWorldScale()
+																		   : 1.0f;
+			impl->lighting_ubo_data_.view_pos = impl->camera.pos();
+			impl->lighting_ubo_data_.ambient_light = impl->light_manager.GetAmbientLight();
+			impl->lighting_ubo_data_.time = impl->simulation_time;
+			impl->lighting_ubo_data_.view_dir = impl->camera.front();
+
+			// Single buffer upload instead of 8 separate calls
+			glBindBuffer(GL_UNIFORM_BUFFER, impl->lighting_ubo);
+			glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(LightingUbo), &impl->lighting_ubo_data_);
+			glBindBuffer(GL_UNIFORM_BUFFER, 0);
 		}
-		const int MAX_LIGHTS = 10;
-		glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(LightGPU) * num_lights, gpu_lights.data());
-		size_t offset = 640;
-		glBufferSubData(GL_UNIFORM_BUFFER, offset, sizeof(int), &num_lights);
-		offset += 16;
-		glBufferSubData(
-			GL_UNIFORM_BUFFER,
-			offset,
-			sizeof(glm::vec3),
-			&glm::vec3(impl->camera.x, impl->camera.y, impl->camera.z)[0]
-		);
-		offset += 16;
-		glm::vec3 ambient_light = impl->light_manager.GetAmbientLight();
-		glBufferSubData(GL_UNIFORM_BUFFER, offset, sizeof(glm::vec3), &ambient_light[0]);
-		offset += 12;
-		glBufferSubData(GL_UNIFORM_BUFFER, offset, sizeof(float), &impl->simulation_time);
-		offset += 4;
-		offset = (offset + 15) & ~15; // align to 16
-		glBufferSubData(GL_UNIFORM_BUFFER, offset, sizeof(glm::vec3), &impl->camera.front()[0]);
-		glBindBuffer(GL_UNIFORM_BUFFER, 0);
 
 		// Update Frustum UBO for GPU-side culling
 		{
@@ -2098,16 +2209,17 @@ namespace Boidsish {
 				reflection_cam.pitch = -reflection_cam.pitch;
 				glm::mat4 reflection_view = impl->SetupMatrices(reflection_cam);
 				impl->reflection_vp = impl->projection * reflection_view;
+
 				// Render opaque geometry first for early-Z benefit
 				// Use reduced tessellation (25%) for reflection pass - it's blurred anyway
-				impl->RenderTerrain(
-					reflection_view,
-					impl->projection,
-					glm::vec4(0, 1, 0, 0.01),
-					false,
-					std::nullopt,
-					0.25f
-				);
+				// impl->RenderTerrain(
+				// 	reflection_view,
+				// 	impl->projection,
+				// 	glm::vec4(0, 1, 0, 0.01),
+				// 	false,
+				// 	std::nullopt,
+				// 	0.25f
+				// );
 				impl->RenderShapes(
 					reflection_view,
 					reflection_cam,
@@ -2268,11 +2380,12 @@ namespace Boidsish {
 				const auto& info = shadow_map_registry[map_idx];
 				auto&       state = impl->shadow_map_states_[map_idx];
 
+				float world_scale = impl->terrain_generator ? impl->terrain_generator->GetWorldScale() : 1.0f;
 				impl->shadow_manager->BeginShadowPass(
 					info.map_index,
 					*info.light,
 					scene_center,
-					500.0f,
+					500.0f * std::max(1.0f, world_scale),
 					info.cascade_index,
 					view_matrix,
 					impl->camera.fov,
@@ -2318,8 +2431,19 @@ namespace Boidsish {
 			impl->shadow_manager->UpdateShadowUBO(shadow_lights);
 		}
 
-		// --- Main Scene Pass (renders to our FBO) ---
-		glBindFramebuffer(GL_FRAMEBUFFER, impl->main_fbo_);
+		bool effects_enabled = impl->frame_config_.effects_enabled;
+		bool has_shockwaves = impl->shockwave_manager && impl->shockwave_manager->HasActiveShockwaves();
+		bool skip_intermediate = (impl->render_scale == 1.0f && !effects_enabled && !has_shockwaves);
+
+		// --- Main Scene Pass ---
+		if (skip_intermediate) {
+			glBindFramebuffer(GL_FRAMEBUFFER, 0);
+			glViewport(0, 0, impl->width, impl->height);
+		} else {
+			glBindFramebuffer(GL_FRAMEBUFFER, impl->main_fbo_);
+			glViewport(0, 0, impl->render_width, impl->render_height);
+		}
+
 		glEnable(GL_DEPTH_TEST);
 		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
@@ -2347,10 +2471,10 @@ namespace Boidsish {
 		impl->mesh_explosion_manager->Render(view, impl->projection, impl->camera.pos());
 		impl->RenderTrails(view, std::nullopt);
 
-		if (ConfigManager::GetInstance().GetAppSettingBool("enable_effects", true)) {
+		if (effects_enabled) {
 			// --- Post-processing Pass (renders FBO texture to screen) ---
 
-			// Apply standard post-processing effects
+			// Apply standard post-processing effects (at render resolution)
 			GLuint final_texture = impl->post_processing_manager_->ApplyEffects(
 				impl->main_fbo_texture_,
 				impl->main_fbo_depth_texture_,
@@ -2360,23 +2484,28 @@ namespace Boidsish {
 				impl->simulation_time
 			);
 
+			// Return to display resolution for final output
 			glBindFramebuffer(GL_FRAMEBUFFER, 0);
+			glViewport(0, 0, impl->width, impl->height);
 			glDisable(GL_DEPTH_TEST);
 			glClear(GL_COLOR_BUFFER_BIT);
 
 			// Apply shockwave effect as the final pass (after other post-processing)
 			// This ensures the distortion is visible and not processed by other effects
-			if (impl->shockwave_manager->HasActiveShockwaves()) {
+			if (has_shockwaves) {
+				// We need to pass the target resolution for the viewport
 				impl->shockwave_manager->ApplyScreenSpaceEffect(
 					final_texture,
 					impl->main_fbo_depth_texture_,
 					view,
 					impl->projection,
 					impl->camera.pos(),
-					impl->blur_quad_vao
+					impl->blur_quad_vao,
+					impl->width,
+					impl->height
 				);
 			} else {
-				// No shockwaves - just render the post-processed texture
+				// No shockwaves - just render the post-processed texture (upscales automatically via viewport)
 				impl->postprocess_shader_->use();
 				impl->postprocess_shader_->setInt("sceneTexture", 0);
 				glActiveTexture(GL_TEXTURE0);
@@ -2387,36 +2516,42 @@ namespace Boidsish {
 			}
 		} else {
 			// --- Passthrough without Post-processing ---
-			// Still apply shockwave if active
-			if (impl->shockwave_manager->HasActiveShockwaves()) {
+			if (!skip_intermediate) {
 				glBindFramebuffer(GL_FRAMEBUFFER, 0);
+				glViewport(0, 0, impl->width, impl->height);
 				glDisable(GL_DEPTH_TEST);
 				glClear(GL_COLOR_BUFFER_BIT);
 
-				impl->shockwave_manager->ApplyScreenSpaceEffect(
-					impl->main_fbo_texture_,
-					impl->main_fbo_depth_texture_,
-					view,
-					impl->projection,
-					impl->camera.pos(),
-					impl->blur_quad_vao
-				);
-			} else {
-				glBindFramebuffer(GL_READ_FRAMEBUFFER, impl->main_fbo_);
-				glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
-				glBlitFramebuffer(
-					0,
-					0,
-					impl->width,
-					impl->height,
-					0,
-					0,
-					impl->width,
-					impl->height,
-					GL_COLOR_BUFFER_BIT,
-					GL_NEAREST
-				);
-				glBindFramebuffer(GL_FRAMEBUFFER, 0);
+				// Still apply shockwave if active
+				if (has_shockwaves) {
+					impl->shockwave_manager->ApplyScreenSpaceEffect(
+						impl->main_fbo_texture_,
+						impl->main_fbo_depth_texture_,
+						view,
+						impl->projection,
+						impl->camera.pos(),
+						impl->blur_quad_vao,
+						impl->width,
+						impl->height
+					);
+				} else {
+					// Direct blit with upscaling
+					glBindFramebuffer(GL_READ_FRAMEBUFFER, impl->main_fbo_);
+					glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
+					glBlitFramebuffer(
+						0,
+						0,
+						impl->render_width,
+						impl->render_height,
+						0,
+						0,
+						impl->width,
+						impl->height,
+						GL_COLOR_BUFFER_BIT,
+						GL_LINEAR
+					);
+					glBindFramebuffer(GL_FRAMEBUFFER, 0);
+				}
 			}
 		}
 
@@ -2451,20 +2586,22 @@ namespace Boidsish {
 			// Construct view and projection matrices from camera state
 			glm::vec3 cameraPos(impl->camera.x, impl->camera.y, impl->camera.z);
 			glm::mat4 view = glm::lookAt(cameraPos, cameraPos + impl->camera.front(), impl->camera.up());
+			float     world_scale = impl->terrain_generator ? impl->terrain_generator->GetWorldScale() : 1.0f;
+			float     far_plane = 1000.0f * std::max(1.0f, world_scale);
 			glm::mat4 proj = glm::perspective(
 				glm::radians(impl->camera.fov),
 				(float)impl->width / (float)impl->height,
 				0.1f,
-				1000.0f
+				far_plane
 			);
 
 			// Update terrain once to start chunk loading around the camera
-			impl->terrain_generator->update(impl->CalculateFrustum(view, proj), impl->camera);
+			impl->terrain_generator->Update(impl->CalculateFrustum(view, proj), impl->camera);
 
 			// Process any pending async chunk loads
 			// Give terrain generation a head start
 			for (int i = 0; i < 10; ++i) {
-				impl->terrain_generator->update(impl->CalculateFrustum(view, proj), impl->camera);
+				impl->terrain_generator->Update(impl->CalculateFrustum(view, proj), impl->camera);
 				std::this_thread::sleep_for(std::chrono::milliseconds(10));
 			}
 		}
@@ -2557,8 +2694,12 @@ namespace Boidsish {
 
 		glm::vec3 ray_dir = glm::normalize(far_plane_pos - ray_origin);
 
-		float distance;
-		if (impl->terrain_generator->Raycast(ray_origin, ray_dir, 1000.0f, distance)) {
+		float world_scale = impl->terrain_generator ? impl->terrain_generator->GetWorldScale() : 1.0f;
+		float max_ray_dist = 1000.0f * std::max(1.0f, world_scale);
+
+		float                      distance;
+		[[maybe_unused]] glm::vec3 normal;
+		if (impl->terrain_generator->RaycastCached(ray_origin, ray_dir, max_ray_dist, distance, normal)) {
 			return ray_origin + ray_dir * distance;
 		}
 
@@ -2612,6 +2753,23 @@ namespace Boidsish {
 				return;
 			}
 		}
+	}
+
+	void Visualizer::SetSuperSpeedIntensity(float intensity) {
+		if (impl->post_processing_manager_) {
+			for (auto& effect : impl->post_processing_manager_->GetPreToneMappingEffects()) {
+				if (auto super_speed = std::dynamic_pointer_cast<PostProcessing::SuperSpeedEffect>(effect)) {
+					super_speed->SetIntensity(intensity);
+					break;
+				}
+			}
+		}
+	}
+
+	void Visualizer::SetCameraShake(float intensity, float duration) {
+		impl->shake_intensity = intensity;
+		impl->shake_timer = duration;
+		impl->shake_duration = duration;
 	}
 
 	void Visualizer::SetPathCamera(std::shared_ptr<Path> path) {
@@ -2758,12 +2916,12 @@ namespace Boidsish {
 	}
 
 	std::tuple<float, glm::vec3> Visualizer::GetTerrainPointProperties(float x, float y) const {
-		return impl->terrain_generator->pointProperties(x, y);
+		return impl->terrain_generator->GetPointProperties(x, y);
 	}
 
 	std::tuple<float, glm::vec3> Visualizer::GetTerrainPointPropertiesThreadSafe(float x, float y) const {
 		if (impl->terrain_generator) {
-			return impl->terrain_generator->pointProperties(x, y);
+			return impl->terrain_generator->GetPointProperties(x, y);
 		}
 		return {0.0f, glm::vec3(0, 1, 0)};
 	}
@@ -2776,11 +2934,39 @@ namespace Boidsish {
 	}
 
 	const std::vector<std::shared_ptr<Terrain>>& Visualizer::GetTerrainChunks() const {
-		return impl->terrain_generator->getVisibleChunks();
+		return impl->terrain_generator->GetVisibleChunks();
+	}
+
+	std::shared_ptr<ITerrainGenerator> Visualizer::GetTerrain() {
+		return impl->terrain_generator;
+	}
+
+	std::shared_ptr<const ITerrainGenerator> Visualizer::GetTerrain() const {
+		return impl->terrain_generator;
 	}
 
 	const TerrainGenerator* Visualizer::GetTerrainGenerator() const {
-		return impl->terrain_generator.get();
+		// Legacy method - attempt to cast to concrete type
+		return dynamic_cast<const TerrainGenerator*>(impl->terrain_generator.get());
+	}
+
+	void Visualizer::InstallTerrainGenerator(std::shared_ptr<ITerrainGenerator> generator) {
+		// Swap the terrain generator
+		impl->terrain_generator = std::move(generator);
+
+		// Set up the render manager for the new generator
+		if (impl->terrain_render_manager && impl->terrain_generator) {
+			impl->terrain_generator->SetRenderManager(impl->terrain_render_manager);
+
+			// Set up eviction callback with weak_ptr to avoid preventing destruction
+			impl->terrain_render_manager->SetEvictionCallback(
+				[weak_gen = std::weak_ptr<ITerrainGenerator>(impl->terrain_generator)](std::pair<int, int> chunk_key) {
+					if (auto gen = weak_gen.lock()) {
+						gen->InvalidateChunk(chunk_key);
+					}
+				}
+			);
+		}
 	}
 
 	void Visualizer::AddHudIcon(const HudIcon& icon) {
@@ -2927,6 +3113,66 @@ namespace Boidsish {
 		impl->mesh_explosion_manager->ExplodeShape(shape, intensity, velocity);
 	}
 
+	std::shared_ptr<CurvedText> Visualizer::AddCurvedTextEffect(
+		const std::string& text,
+		const glm::vec3&   position,
+		float              radius,
+		float              angle_degrees,
+		const glm::vec3&   wrap_normal,
+		const glm::vec3&   text_normal,
+		float              duration,
+		const std::string& font_path,
+		float              font_size,
+		float              depth,
+		const glm::vec3&   color
+	) {
+		auto effect = std::make_shared<CurvedText>(
+			text,
+			font_path,
+			font_size,
+			depth,
+			position,
+			radius,
+			angle_degrees,
+			wrap_normal,
+			text_normal,
+			duration
+		);
+		effect->SetColor(color.r, color.g, color.b);
+		impl->transient_effects.push_back(effect);
+		return effect;
+	}
+
+	std::shared_ptr<ArcadeText> Visualizer::AddArcadeTextEffect(
+		const std::string& text,
+		const glm::vec3&   position,
+		float              radius,
+		float              angle_degrees,
+		const glm::vec3&   wrap_normal,
+		const glm::vec3&   text_normal,
+		float              duration,
+		const std::string& font_path,
+		float              font_size,
+		float              depth,
+		const glm::vec3&   color
+	) {
+		auto effect = std::make_shared<ArcadeText>(
+			text,
+			font_path,
+			font_size,
+			depth,
+			position,
+			radius,
+			angle_degrees,
+			wrap_normal,
+			text_normal,
+			duration
+		);
+		effect->SetColor(color.r, color.g, color.b);
+		impl->transient_effects.push_back(effect);
+		return effect;
+	}
+
 	void Visualizer::TriggerComplexExplosion(
 		std::shared_ptr<Shape> shape,
 		const glm::vec3&       direction,
@@ -3009,6 +3255,15 @@ namespace Boidsish {
 
 	float Visualizer::GetTimeScale() {
 		return impl->time_scale;
+	}
+
+	float Visualizer::GetRenderScale() const {
+		return impl->render_scale;
+	}
+
+	void Visualizer::SetRenderScale(float scale) {
+		impl->render_scale = std::clamp(scale, 0.1f, 1.0f);
+		impl->ResizeInternalFramebuffers();
 	}
 
 	AudioManager& Visualizer::GetAudioManager() {

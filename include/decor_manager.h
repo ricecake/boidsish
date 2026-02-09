@@ -11,7 +11,7 @@
 
 namespace Boidsish {
 
-	class TerrainGenerator;
+	class ITerrainGenerator;
 	class TerrainRenderManager;
 	struct Camera;
 
@@ -63,7 +63,7 @@ namespace Boidsish {
 			float                                 delta_time,
 			const Camera&                         camera,
 			const Frustum&                        frustum,
-			const TerrainGenerator&               terrain_gen,
+			const ITerrainGenerator&              terrain_gen,
 			std::shared_ptr<TerrainRenderManager> render_manager
 		);
 		void Render(const glm::mat4& view, const glm::mat4& projection);
@@ -86,7 +86,7 @@ namespace Boidsish {
 		void _RegeneratePlacements(
 			const Camera&                         camera,
 			const Frustum&                        frustum,
-			const TerrainGenerator&               terrain_gen,
+			const ITerrainGenerator&              terrain_gen,
 			std::shared_ptr<TerrainRenderManager> render_manager
 		);
 
@@ -99,6 +99,8 @@ namespace Boidsish {
 		// Caching - only regenerate when camera moves significantly or rotates
 		glm::vec2              last_camera_pos_ = glm::vec2(0.0f);
 		glm::vec3              last_camera_front_ = glm::vec3(0.0f, 0.0f, -1.0f);
+		uint32_t               last_terrain_version_ = 0xFFFFFFFF; // Force initial regen
+		float                  last_world_scale_ = 0.0f;
 		bool                   needs_regeneration_ = true;
 		static constexpr float kRegenerationDistance = 20.0f; // Regenerate when camera moves this far
 		static constexpr float kRegenerationAngle = 0.05f;    // ~8.5 degrees (1 - cos(angle))

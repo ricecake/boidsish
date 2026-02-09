@@ -1,10 +1,18 @@
 #include "instance_manager.h"
 
+#include <set>
+
 #include "dot.h"
+#include "logger.h"
 #include "model.h"
 #include <GL/glew.h>
 
 namespace Boidsish {
+
+	// Helper to validate VAO ID
+	static bool IsValidVAO(GLuint vao) {
+		return vao != 0 && glIsVertexArray(vao) == GL_TRUE;
+	}
 
 	InstanceManager::~InstanceManager() {
 		for (auto& [key, group] : m_instance_groups) {
@@ -41,10 +49,23 @@ namespace Boidsish {
 			group.shapes.clear();
 		}
 
+		// Reset all shader uniforms to safe defaults after all groups rendered
 		shader.setBool("is_instanced", false);
+		shader.setBool("useInstanceColor", false);
+		shader.setBool("isColossal", false);
+		shader.setBool("usePBR", false);
+		shader.setBool("isTextEffect", false);
+		shader.setFloat("objectAlpha", 1.0f);
+
+		// Clean up buffer state
+		glBindBuffer(GL_ARRAY_BUFFER, 0);
 	}
 
 	void InstanceManager::RenderModelGroup(Shader& shader, InstanceGroup& group) {
+		// Reset shader state at start of each model group to prevent state leakage
+		shader.setBool("useInstanceColor", false);
+		shader.setBool("usePBR", false);
+
 		// Build instance matrices
 		std::vector<glm::mat4> model_matrices;
 		model_matrices.reserve(group.shapes.size());
@@ -73,6 +94,7 @@ namespace Boidsish {
 		// Get the Model from the first shape to access mesh data
 		auto model = std::dynamic_pointer_cast<Model>(group.shapes[0]);
 		if (!model) {
+			glBindBuffer(GL_ARRAY_BUFFER, 0); // Clean up before early return
 			return;
 		}
 
@@ -81,20 +103,31 @@ namespace Boidsish {
 		shader.setBool("useInstanceColor", false); // Models use textures, not per-instance colors
 
 		for (const auto& mesh : model->getMeshes()) {
+			// Skip meshes with invalid VAO - use glIsVertexArray for thorough check
+			if (!IsValidVAO(mesh.VAO)) {
+				logger::ERROR("Invalid VAO {} in model {} - skipping mesh", mesh.VAO, model->GetModelPath());
+				continue;
+			}
+
 			// Bind textures
 			unsigned int diffuseNr = 1;
 			unsigned int specularNr = 1;
+			bool         hasDiffuse = false;
 			for (unsigned int i = 0; i < mesh.textures.size(); i++) {
 				glActiveTexture(GL_TEXTURE0 + i);
 				std::string number;
 				std::string name = mesh.textures[i].type;
-				if (name == "texture_diffuse")
+				if (name == "texture_diffuse") {
 					number = std::to_string(diffuseNr++);
-				else if (name == "texture_specular")
+					hasDiffuse = true;
+				} else if (name == "texture_specular")
 					number = std::to_string(specularNr++);
-				shader.setInt(("material." + name + number).c_str(), i);
+
+				// Use correct uniform names (vis.frag doesn't use "material." prefix)
+				shader.setInt((name + number).c_str(), i);
 				glBindTexture(GL_TEXTURE_2D, mesh.textures[i].id);
 			}
+			shader.setBool("use_texture", hasDiffuse);
 			glActiveTexture(GL_TEXTURE0);
 
 			glBindVertexArray(mesh.VAO);
@@ -115,7 +148,12 @@ namespace Boidsish {
 			glVertexAttribDivisor(5, 1);
 			glVertexAttribDivisor(6, 1);
 
-			mesh.render_instanced(group.shapes.size());
+			// Tell mesh to skip its own VAO/EBO binding if we already have it correctly bound
+			// (requires update to mesh.render_instanced to support this flag)
+			mesh.render_instanced(group.shapes.size(), false);
+
+			// Note: render_instanced(..., false) now DOES NOT unbind the VAO
+			// allowing us to clean up efficiently.
 
 			glVertexAttribDivisor(3, 0);
 			glVertexAttribDivisor(4, 0);
@@ -127,13 +165,34 @@ namespace Boidsish {
 			glDisableVertexAttribArray(5);
 			glDisableVertexAttribArray(6);
 			glBindVertexArray(0);
+			glBindBuffer(GL_ARRAY_BUFFER, 0); // Prevent buffer state leakage
+
+			// Clean up texture state to prevent leakage between meshes/models
+			for (unsigned int i = 0; i < mesh.textures.size(); i++) {
+				glActiveTexture(GL_TEXTURE0 + i);
+				glBindTexture(GL_TEXTURE_2D, 0);
+			}
+			glActiveTexture(GL_TEXTURE0);
 		}
 	}
 
 	void InstanceManager::RenderDotGroup(Shader& shader, InstanceGroup& group) {
-		// Ensure sphere VAO is initialized before rendering
-		if (Shape::sphere_vao_ == 0)
+		// Ensure sphere VAO is initialized and valid before rendering
+		if (!IsValidVAO(Shape::sphere_vao_)) {
+			logger::ERROR("Invalid sphere VAO {} - skipping dot rendering", Shape::sphere_vao_);
 			return;
+		}
+
+		// Reset shader state at start to prevent leakage from previous model groups
+		shader.setBool("isColossal", false);
+		shader.setFloat("objectAlpha", 1.0f);
+
+		// Clear any stale texture bindings from model rendering
+		for (unsigned int i = 0; i < 4; i++) {
+			glActiveTexture(GL_TEXTURE0 + i);
+			glBindTexture(GL_TEXTURE_2D, 0);
+		}
+		glActiveTexture(GL_TEXTURE0);
 
 		// Build instance matrices and colors
 		std::vector<glm::mat4> model_matrices;
@@ -180,6 +239,7 @@ namespace Boidsish {
 		// Get first Dot's properties for shared settings
 		auto dot = std::dynamic_pointer_cast<Dot>(group.shapes[0]);
 		if (!dot) {
+			glBindBuffer(GL_ARRAY_BUFFER, 0); // Clean up before early return
 			return;
 		}
 
@@ -196,6 +256,13 @@ namespace Boidsish {
 
 		// Use the shared sphere VAO
 		glBindVertexArray(Shape::sphere_vao_);
+
+		// Validate EBO binding
+		GLint current_ebo = 0;
+		glGetIntegerv(GL_ELEMENT_ARRAY_BUFFER_BINDING, &current_ebo);
+		if (current_ebo == 0 && Shape::sphere_ebo_ != 0) {
+			glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, Shape::sphere_ebo_);
+		}
 
 		// Setup instance matrix attribute (location 3-6)
 		glBindBuffer(GL_ARRAY_BUFFER, group.instance_matrix_vbo_);
@@ -236,6 +303,7 @@ namespace Boidsish {
 		glDisableVertexAttribArray(7);
 
 		glBindVertexArray(0);
+		glBindBuffer(GL_ARRAY_BUFFER, 0); // Prevent buffer state leakage
 		shader.setBool("useInstanceColor", false);
 	}
 

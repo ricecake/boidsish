@@ -24,6 +24,8 @@ namespace Boidsish {
 		float GetHealth() const;
 		float GetShield() const;
 
+		bool IsChaffActive() const { return chaff_timer_ > 0.0f; }
+
 	private:
 		std::shared_ptr<PaperPlaneInputController> controller_;
 		glm::quat                                  orientation_;
@@ -31,9 +33,17 @@ namespace Boidsish {
 		float                                      forward_speed_;
 		float                                      time_to_fire = 0.25f;
 		bool                                       fire_left = true;
+		bool                                       weapon_toggle_ = false;
 		int                                        damage_pending_ = 0;
 		float                                      health = 100.0f;
 		float                                      shield = 100.0f;
+		float                                      chaff_timer_ = 0.0f;
+
+		// Super speed effect state
+		enum class SuperSpeedState { NORMAL, BUILDUP, ACTIVE, TAPERING };
+		SuperSpeedState super_speed_state_ = SuperSpeedState::NORMAL;
+		float           super_speed_timer_ = 0.0f;
+		float           super_speed_intensity_ = 0.0f;
 	};
 
 } // namespace Boidsish

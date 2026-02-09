@@ -5,7 +5,7 @@
 #include "ConfigManager.h"
 #include "graphics.h"
 #include "logger.h"
-#include "terrain_generator.h"
+#include "terrain_generator_interface.h"
 #include "terrain_render_manager.h"
 #include <GL/glew.h>
 #include <glm/gtc/type_ptr.hpp>
@@ -68,7 +68,7 @@ namespace Boidsish {
 		float /*delta_time*/,
 		const Camera&                         camera,
 		const Frustum&                        frustum,
-		const TerrainGenerator&               terrain_gen,
+		const ITerrainGenerator&              terrain_gen,
 		std::shared_ptr<TerrainRenderManager> render_manager
 	) {
 		if (!enabled_ || !initialized_ || decor_types_.empty())
@@ -88,10 +88,16 @@ namespace Boidsish {
 		// Check rotation: 1 - dot(a, b) gives 0 when same direction, ~2 when opposite
 		float angle_change = 1.0f - glm::dot(cam_front, last_camera_front_);
 
-		if (needs_regeneration_ || dist_moved > kRegenerationDistance || angle_change > kRegenerationAngle) {
+		uint32_t current_version = terrain_gen.GetVersion();
+		float    current_scale = terrain_gen.GetWorldScale();
+
+		if (needs_regeneration_ || dist_moved > kRegenerationDistance || angle_change > kRegenerationAngle ||
+		    current_version != last_terrain_version_ || current_scale != last_world_scale_) {
 			_RegeneratePlacements(camera, frustum, terrain_gen, render_manager);
 			last_camera_pos_ = cam_pos;
 			last_camera_front_ = cam_front;
+			last_terrain_version_ = current_version;
+			last_world_scale_ = current_scale;
 			needs_regeneration_ = false;
 		}
 	}
@@ -99,9 +105,11 @@ namespace Boidsish {
 	void DecorManager::_RegeneratePlacements(
 		const Camera&                         camera,
 		const Frustum&                        frustum,
-		const TerrainGenerator&               terrain_gen,
+		const ITerrainGenerator&              terrain_gen,
 		std::shared_ptr<TerrainRenderManager> render_manager
 	) {
+		float world_scale = terrain_gen.GetWorldScale();
+
 		// Get the heightmap texture array from the terrain render manager
 		GLuint heightmap_texture = render_manager->GetHeightmapTexture();
 		if (heightmap_texture == 0)
@@ -121,6 +129,12 @@ namespace Boidsish {
 		placement_shader_->setVec2("u_cameraPos", cam_pos);
 		placement_shader_->setFloat("u_maxTerrainHeight", terrain_gen.GetMaxHeight());
 		placement_shader_->setInt("u_maxInstances", kMaxInstancesPerType);
+		placement_shader_->setFloat("u_worldScale", world_scale);
+
+		// Scale distance-based parameters by world scale
+		placement_shader_->setFloat("u_densityFalloffStart", 200.0f * world_scale);
+		placement_shader_->setFloat("u_densityFalloffEnd", 500.0f * world_scale);
+		placement_shader_->setFloat("u_maxDecorDistance", 600.0f * world_scale);
 
 		// Pass frustum planes for GPU-side culling
 		for (int p = 0; p < 6; ++p) {
@@ -140,7 +154,7 @@ namespace Boidsish {
 		std::vector<std::pair<float, size_t>> chunk_priorities;
 		chunk_priorities.reserve(chunk_info.size());
 
-		const float kPreloadRadius = 128.0f; // Chunks within this radius always get decor
+		const float kPreloadRadius = 128.0f * world_scale; // Chunks within this radius always get decor
 
 		for (size_t ci = 0; ci < chunk_info.size(); ++ci) {
 			const auto& chunk = chunk_info[ci];
@@ -212,7 +226,6 @@ namespace Boidsish {
 
 				placement_shader_->setVec2("u_chunkWorldOffset", chunk_offset);
 				placement_shader_->setFloat("u_chunkSlice", chunk_slice);
-				;
 				placement_shader_->setFloat("u_chunkSize", chunk_size);
 
 				// Dispatch compute shader for this chunk
@@ -252,6 +265,7 @@ namespace Boidsish {
 		shader->setMat4("projection", projection);
 		shader->setMat4("model", glm::mat4(1.0f)); // Identity - instances provide transform
 		shader->setBool("useSSBOInstancing", true);
+		shader->setBool("isTextEffect", false);
 		shader->setBool("isColossal", false);
 		shader->setBool("is_instanced", false);
 		shader->setVec3("objectColor", 1.0f, 1.0f, 1.0f);
@@ -276,8 +290,16 @@ namespace Boidsish {
 			size_t mesh_count = type.model->getMeshes().size();
 
 			for (const auto& mesh : type.model->getMeshes()) {
+				bool hasDiffuse = false;
+				for (const auto& t : mesh.textures) {
+					if (t.type == "texture_diffuse") {
+						hasDiffuse = true;
+						break;
+					}
+				}
+				shader->setBool("use_texture", hasDiffuse);
 				mesh.bindTextures(*shader);
-				mesh.render_instanced((int)count);
+				mesh.render_instanced((int)count, true);
 			}
 		}
 

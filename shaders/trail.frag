@@ -20,6 +20,10 @@ void main() {
 	vec3 norm = normalize(vs_normal);
 	vec3 view_dir = normalize(viewPos - vs_frag_pos);
 
+	// Distance-based fade to prevent blocking the camera
+	float dist_to_cam = length(viewPos - vs_frag_pos);
+	float camera_fade = smoothstep(3.0, 10.0, dist_to_cam);
+
 	if (useRocketTrail) {
 		// --- Rocket Trail Effect with Emissive Glow ---
 		float flame_threshold = 0.9;
@@ -43,7 +47,7 @@ void main() {
 			float blue_intensity = pow(flame_progress, 12.0) * 0.3;
 			flame_emission += vec3(0.3, 0.5, 1.0) * blue_intensity;
 
-			FragColor = vec4(flame_emission, 1.0);
+			FragColor = vec4(flame_emission, camera_fade);
 		} else {
 			// --- Smoke with subtle lighting ---
 			float smoke_progress = vs_progress / flame_threshold;
@@ -64,7 +68,7 @@ void main() {
 			float glow = smoothstep(0.7, 0.9, smoke_progress) * 0.3;
 			lit_smoke += vec3(1.0, 0.4, 0.1) * glow;
 
-			FragColor = vec4(lit_smoke, alpha);
+			FragColor = vec4(lit_smoke, alpha * camera_fade);
 		}
 	} else if (useIridescence) {
 		// --- PBR Iridescent Trail ---
@@ -85,15 +89,15 @@ void main() {
 		float fresnel = pow(1.0 - abs(dot(view_dir, norm)), 5.0);
 		vec3  final_color = mix(iridescent_result, vec3(1.0), fresnel * 0.3);
 
-		FragColor = vec4(final_color, 0.85); // Slightly more opaque for better visibility
+		FragColor = vec4(final_color, 0.85 * camera_fade); // Slightly more opaque for better visibility
 	} else if (usePBR) {
 		// --- Standard PBR Trail (no shadows for trails) ---
 		vec3 result = apply_lighting_pbr_no_shadows(vs_frag_pos, norm, vs_color, trailRoughness, trailMetallic, 1.0)
 						  .rgb;
-		FragColor = vec4(result, 1.0);
+		FragColor = vec4(result, camera_fade);
 	} else {
 		// --- Original Phong Lighting ---
 		vec3 result = apply_lighting_no_shadows(vs_frag_pos, norm, vs_color, 0.5).rgb;
-		FragColor = vec4(result, 1.0);
+		FragColor = vec4(result, camera_fade);
 	}
 }

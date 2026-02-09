@@ -20,6 +20,17 @@ uniform bool  useInstanceColor = false;
 uniform bool  isLine = false;
 uniform int   lineStyle = 0; // 0: SOLID, 1: LASER
 
+uniform bool  isTextEffect = false;
+uniform float textFadeProgress = 1.0;
+uniform float textFadeSoftness = 0.1;
+uniform int   textFadeMode = 0; // 0: Fade In, 1: Fade Out
+
+// Arcade Text Effects
+uniform bool  isArcadeText = false;
+uniform bool  arcadeRainbowEnabled = false;
+uniform float arcadeRainbowSpeed = 2.0;
+uniform float arcadeRainbowFrequency = 5.0;
+
 // PBR material properties
 uniform bool  usePBR = false;
 uniform float roughness = 0.5;
@@ -31,8 +42,8 @@ uniform bool      use_texture;
 
 void main() {
 	float dist = length(FragPos.xz - viewPos.xz);
-	float fade_start = 540.0;
-	float fade_end = 550.0;
+	float fade_start = 540.0 * worldScale;
+	float fade_end = 550.0 * worldScale;
 	float fade = 1.0 - smoothstep(fade_start, fade_end, dist);
 
 	if (fade < 0.2) {
@@ -111,7 +122,22 @@ void main() {
 		outColor = vec4(final_haze_color, mix(0, 1, 1 - (haze_factor)));
 	} else {
 		float final_alpha = clamp((baseAlpha + spec_lum) * fade, 0.0, 1.0);
-		final_alpha = mix(0.0, final_alpha, step(0.01, FragPos.y));
+
+		if (isTextEffect) {
+			float alpha_factor = 1.0;
+			if (textFadeMode == 0) { // Fade In
+				alpha_factor = smoothstep(TexCoords.x, TexCoords.x + textFadeSoftness, textFadeProgress);
+			} else if (textFadeMode == 1) { // Fade Out
+				alpha_factor = 1.0 - smoothstep(TexCoords.x, TexCoords.x + textFadeSoftness, textFadeProgress);
+			}
+			final_alpha *= alpha_factor;
+		}
+
+		if (isArcadeText && arcadeRainbowEnabled) {
+			vec3 rainbow = 0.5 +
+				0.5 * cos(time * arcadeRainbowSpeed + TexCoords.x * arcadeRainbowFrequency + vec3(0, 2, 4));
+			result *= rainbow;
+		}
 
 		outColor = vec4(result, final_alpha);
 		outColor = mix(vec4(0.0, 0.7, 0.7, final_alpha) * length(outColor), outColor, step(1, fade));

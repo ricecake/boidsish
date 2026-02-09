@@ -204,7 +204,9 @@ namespace Boidsish {
 		const glm::mat4& view_matrix,
 		const glm::mat4& proj_matrix,
 		const glm::vec3& camera_pos,
-		GLuint           quad_vao
+		GLuint           quad_vao,
+		int              target_width,
+		int              target_height
 	) {
 		EnsureInitialized();
 
@@ -215,15 +217,18 @@ namespace Boidsish {
 		// Update UBO data first
 		UpdateShaderData();
 
+		int v_width = (target_width > 0) ? target_width : screen_width_;
+		int v_height = (target_height > 0) ? target_height : screen_height_;
+
 		// Set viewport to match the screen size for this post-processing stage
-		glViewport(0, 0, screen_width_, screen_height_);
+		glViewport(0, 0, v_width, v_height);
 
 		shader_->use();
 
 		// Set uniforms (count is in UBO, so we don't need numShockwaves uniform)
 		shader_->setInt("sceneTexture", 0);
 		shader_->setInt("depthTexture", 1);
-		shader_->setVec2("screenSize", glm::vec2(screen_width_, screen_height_));
+		shader_->setVec2("screenSize", glm::vec2(v_width, v_height));
 		shader_->setVec3("cameraPos", camera_pos);
 		shader_->setMat4("viewMatrix", view_matrix);
 		shader_->setMat4("projMatrix", proj_matrix);

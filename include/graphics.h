@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cmath>
+#include <concepts>
 #include <functional>
 #include <map>
 #include <memory>
@@ -37,6 +38,8 @@ namespace Boidsish {
 		class IWidget;
 	}
 	class EntityBase;
+	class CurvedText;
+	class ArcadeText;
 	class FireEffect;
 	class SoundEffect;
 	class FireEffectManager;
@@ -72,6 +75,25 @@ namespace Boidsish {
 		bool   mouse_button_down[Constants::Library::Input::MaxMouseButtons()];
 		bool   mouse_button_up[Constants::Library::Input::MaxMouseButtons()];
 		float  delta_time;
+	};
+
+	/**
+	 * @brief Cached config values to avoid per-frame mutex locks and map lookups.
+	 * Refreshed once per frame at the start of Render().
+	 */
+	struct FrameConfigCache {
+		bool effects_enabled = true;
+		bool render_terrain = true;
+		bool render_skybox = true;
+		bool render_floor = true;
+		bool artistic_ripple = false;
+		bool artistic_color_shift = false;
+		bool artistic_black_and_white = false;
+		bool artistic_negative = false;
+		bool artistic_shimmery = false;
+		bool artistic_glitched = false;
+		bool artistic_wireframe = false;
+		bool enable_floor_reflection = true;
 	};
 
 	enum class CameraMode { FREE, AUTO, TRACKING, STATIONARY, CHASE, PATH_FOLLOW };
@@ -156,6 +178,7 @@ namespace Boidsish {
 	// Main visualization class
 	class Terrain;
 	class TerrainGenerator;
+	class ITerrainGenerator;
 
 	// Main visualization class
 	class Visualizer {
@@ -260,6 +283,8 @@ namespace Boidsish {
 		void TogglePostProcessingEffect(const std::string& name);
 		void TogglePostProcessingEffect(const std::string& name, const bool newState);
 		void SetFilmGrainIntensity(float intensity);
+		void SetSuperSpeedIntensity(float intensity);
+		void SetCameraShake(float intensity, float duration);
 
 		// Shockwave effect methods
 		/**
@@ -322,17 +347,123 @@ namespace Boidsish {
 			FireEffectStyle        fire_style = FireEffectStyle::Explosion
 		);
 
+		/**
+		 * @brief Add a curved text effect in world space.
+		 *
+		 * The text will curve around the axis defined by 'normal' passing through 'position'.
+		 * It will fade in from left to right, stay for a while, and then fade out from left to right.
+		 *
+		 * @param text The text to display
+		 * @param position Center of the arc
+		 * @param radius Distance from the center to the text baseline
+		 * @param angle_degrees The total arc angle in degrees
+		 * @param normal The normal of the plane the text lies on (the axis of curvature)
+		 * @param duration Total time the effect stays visible
+		 * @param font_path Path to the .ttf font file
+		 * @param font_size Font size
+		 * @param depth Thickness of the 3D text
+		 */
+		std::shared_ptr<CurvedText> AddCurvedTextEffect(
+			const std::string& text,
+			const glm::vec3&   position,
+			float              radius,
+			float              angle_degrees,
+			const glm::vec3&   wrap_normal,
+			const glm::vec3&   text_normal,
+			float              duration = 5.0f,
+			const std::string& font_path = "assets/Roboto-Medium.ttf",
+			float              font_size = 1.0f,
+			float              depth = 0.1f,
+			const glm::vec3&   color = glm::vec3(1.0f)
+		);
+
+		/**
+		 * @brief Add an arcade-style curved text effect in world space.
+		 * Supports waves, twists, double-copy, and rainbow effects.
+		 */
+		std::shared_ptr<ArcadeText> AddArcadeTextEffect(
+			const std::string& text,
+			const glm::vec3&   position,
+			float              radius,
+			float              angle_degrees,
+			const glm::vec3&   wrap_normal,
+			const glm::vec3&   text_normal,
+			float              duration = 5.0f,
+			const std::string& font_path = "assets/Roboto-Medium.ttf",
+			float              font_size = 1.0f,
+			float              depth = 0.1f,
+			const glm::vec3&   color = glm::vec3(1.0f)
+		);
+
 		std::tuple<float, glm::vec3>                 GetTerrainPointProperties(float x, float y) const;
 		std::tuple<float, glm::vec3>                 GetTerrainPointPropertiesThreadSafe(float x, float y) const;
 		float                                        GetTerrainMaxHeight() const;
-		const TerrainGenerator*                      GetTerrainGenerator() const;
 		const std::vector<std::shared_ptr<Terrain>>& GetTerrainChunks() const;
-		task_thread_pool::task_thread_pool&          GetThreadPool();
-		LightManager&                                GetLightManager();
-		FireEffectManager*                           GetFireEffectManager();
-		DecorManager*                                GetDecorManager();
-		PostProcessing::PostProcessingManager&       GetPostProcessingManager();
-		float                                        GetLastFrameTime() const;
+
+		/**
+		 * @brief Get the current terrain generator.
+		 *
+		 * Returns a shared_ptr to ensure safe access even if the terrain generator
+		 * is swapped at runtime. The returned pointer remains valid as long as
+		 * the caller holds the shared_ptr.
+		 *
+		 * @return Shared pointer to the terrain generator interface (nullptr if terrain disabled)
+		 */
+		std::shared_ptr<ITerrainGenerator>       GetTerrain();
+		std::shared_ptr<const ITerrainGenerator> GetTerrain() const;
+
+		/**
+		 * @brief Get the terrain generator cast to TerrainGenerator (legacy).
+		 *
+		 * @deprecated Use GetTerrain() instead for type-safe interface access.
+		 * This method exists for backward compatibility with code that needs
+		 * the concrete TerrainGenerator type.
+		 *
+		 * @return Raw pointer to TerrainGenerator, or nullptr if terrain is disabled
+		 *         or is a different implementation type
+		 */
+		[[deprecated("Use GetTerrain() for safe shared_ptr access")]]
+		const TerrainGenerator* GetTerrainGenerator() const;
+
+		/**
+		 * @brief Create and set a terrain generator.
+		 *
+		 * Creates a new terrain generator of the specified type with the given
+		 * constructor arguments. The Visualizer takes ownership of the generator.
+		 *
+		 * Note: This will invalidate all existing terrain chunks. The new generator
+		 * will begin streaming in chunks based on the current camera position.
+		 *
+		 * @tparam T Terrain generator type (must derive from ITerrainGenerator)
+		 * @tparam Args Constructor argument types
+		 * @param args Arguments forwarded to T's constructor
+		 * @return Shared pointer to the newly created generator
+		 *
+		 * Example:
+		 * @code
+		 * // Create default TerrainGenerator
+		 * auto terrain = visualizer.SetTerrainGenerator<TerrainGenerator>();
+		 *
+		 * // Create with custom seed
+		 * auto terrain = visualizer.SetTerrainGenerator<TerrainGenerator>(42);
+		 *
+		 * // Create custom terrain type
+		 * auto terrain = visualizer.SetTerrainGenerator<MyCustomTerrain>(config);
+		 * @endcode
+		 */
+		template <typename T, typename... Args>
+			requires std::derived_from<T, ITerrainGenerator>
+		std::shared_ptr<T> SetTerrainGenerator(Args&&... args);
+
+		task_thread_pool::task_thread_pool&    GetThreadPool();
+		LightManager&                          GetLightManager();
+		FireEffectManager*                     GetFireEffectManager();
+		DecorManager*                          GetDecorManager();
+		PostProcessing::PostProcessingManager& GetPostProcessingManager();
+		float                                  GetLastFrameTime() const;
+
+		float GetRenderScale() const;
+		void  SetRenderScale(float scale);
 
 		Config&       GetConfig();
 		AudioManager& GetAudioManager();
@@ -361,6 +492,18 @@ namespace Boidsish {
 	private:
 		struct VisualizerImpl;
 		std::unique_ptr<VisualizerImpl> impl;
+
+		// Internal helper for SetTerrainGenerator template
+		void InstallTerrainGenerator(std::shared_ptr<ITerrainGenerator> generator);
 	};
+
+	// Template implementation must be in header
+	template <typename T, typename... Args>
+		requires std::derived_from<T, ITerrainGenerator>
+	std::shared_ptr<T> Visualizer::SetTerrainGenerator(Args&&... args) {
+		auto generator = std::make_shared<T>(std::forward<Args>(args)...);
+		InstallTerrainGenerator(generator);
+		return generator;
+	}
 
 } // namespace Boidsish

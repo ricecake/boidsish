@@ -3,12 +3,18 @@
 #include <algorithm>
 #include <iostream>
 
+#include "logger.h"
 #include "shader.h"
 #include "stb_image.h"
 #include <GL/glew.h>
 #include <glm/gtc/matrix_transform.hpp>
 
 namespace Boidsish {
+
+	// Helper to validate VAO ID
+	static bool IsValidVAO(GLuint vao) {
+		return vao != 0 && glIsVertexArray(vao) == GL_TRUE;
+	}
 
 	// Mesh implementation
 	Mesh::Mesh(std::vector<Vertex> vertices, std::vector<unsigned int> indices, std::vector<Texture> textures) {
@@ -18,12 +24,6 @@ namespace Boidsish {
 
 		setupMesh();
 	}
-
-	// Mesh::~Mesh() {
-	// 	glDeleteVertexArrays(1, &VAO);
-	// 	glDeleteBuffers(1, &VBO);
-	// 	glDeleteBuffers(1, &EBO);
-	// }
 
 	void Mesh::setupMesh() {
 		glGenVertexArrays(1, &VAO);
@@ -56,9 +56,14 @@ namespace Boidsish {
 		if (!Shape::shader || !Shape::shader->isValid())
 			return;
 
-		// Ensure VAO is valid
-		if (VAO == 0 || indices.empty())
+		if (indices.empty())
 			return;
+
+		// Ensure VAO is valid - use glIsVertexArray for thorough check
+		if (!IsValidVAO(VAO)) {
+			logger::ERROR("Mesh::render() - Invalid VAO {} (glIsVertexArray={})", VAO, glIsVertexArray(VAO));
+			return;
+		}
 
 		// bind appropriate textures
 		unsigned int diffuseNr = 1;
@@ -103,6 +108,20 @@ namespace Boidsish {
 
 		// draw mesh
 		glBindVertexArray(VAO);
+
+		// Validate EBO is properly bound after VAO binding
+		GLint current_ebo = 0;
+		glGetIntegerv(GL_ELEMENT_ARRAY_BUFFER_BINDING, &current_ebo);
+		if (current_ebo == 0) {
+			logger::ERROR("Mesh::render() - No EBO bound after VAO {} bind! EBO should be {}", VAO, EBO);
+			if (EBO != 0) {
+				glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, EBO);
+			} else {
+				glBindVertexArray(0);
+				return;
+			}
+		}
+
 		glDrawElements(GL_TRIANGLES, static_cast<unsigned int>(indices.size()), GL_UNSIGNED_INT, 0);
 		glBindVertexArray(0);
 
@@ -111,9 +130,14 @@ namespace Boidsish {
 	}
 
 	void Mesh::render(Shader& shader) const {
-		// Ensure VAO is valid
-		if (VAO == 0 || indices.empty())
+		if (indices.empty())
 			return;
+
+		// Ensure VAO is valid - use glIsVertexArray for thorough check
+		if (!IsValidVAO(VAO)) {
+			logger::ERROR("Mesh::render(shader) - Invalid VAO {} (glIsVertexArray={})", VAO, glIsVertexArray(VAO));
+			return;
+		}
 
 		bool hasDiffuse = false;
 		for (const auto& t : textures) {
@@ -132,6 +156,20 @@ namespace Boidsish {
 
 		// draw mesh
 		glBindVertexArray(VAO);
+
+		// Validate EBO is properly bound after VAO binding
+		GLint current_ebo = 0;
+		glGetIntegerv(GL_ELEMENT_ARRAY_BUFFER_BINDING, &current_ebo);
+		if (current_ebo == 0) {
+			logger::ERROR("Mesh::render(shader) - No EBO bound after VAO {} bind! EBO should be {}", VAO, EBO);
+			if (EBO != 0) {
+				glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, EBO);
+			} else {
+				glBindVertexArray(0);
+				return;
+			}
+		}
+
 		glDrawElements(GL_TRIANGLES, static_cast<unsigned int>(indices.size()), GL_UNSIGNED_INT, 0);
 		glBindVertexArray(0);
 
@@ -139,10 +177,43 @@ namespace Boidsish {
 		glActiveTexture(GL_TEXTURE0);
 	}
 
-	void Mesh::render_instanced(int count) const {
-		glBindVertexArray(VAO);
+	void Mesh::render_instanced(int count, bool doVAO) const {
+		if (indices.empty())
+			return;
+
+		if (doVAO) {
+			// Validate VAO before instanced render
+			if (!IsValidVAO(VAO)) {
+				logger::ERROR(
+					"Mesh::render_instanced - Invalid VAO {} (glIsVertexArray={})",
+					VAO,
+					glIsVertexArray(VAO)
+				);
+				return;
+			}
+			glBindVertexArray(VAO);
+		}
+
+		// Validate EBO is properly bound (should be part of VAO state)
+		GLint current_ebo = 0;
+		glGetIntegerv(GL_ELEMENT_ARRAY_BUFFER_BINDING, &current_ebo);
+		if (current_ebo == 0) {
+			logger::ERROR("Mesh::render_instanced - No EBO bound! VAO={}, EBO={}", VAO, EBO);
+			// Attempt recovery if EBO is missing but we know what it should be
+			if (EBO != 0) {
+				glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, EBO);
+			} else {
+				if (doVAO)
+					glBindVertexArray(0);
+				return;
+			}
+		}
+
 		glDrawElementsInstanced(GL_TRIANGLES, static_cast<unsigned int>(indices.size()), GL_UNSIGNED_INT, 0, count);
-		glBindVertexArray(0);
+
+		if (doVAO) {
+			glBindVertexArray(0);
+		}
 	}
 
 	void Mesh::bindTextures(Shader& shader) const {
@@ -257,6 +328,7 @@ namespace Boidsish {
 		}
 
 		processNode(scene->mRootNode, scene);
+		logger::LOG("Model loaded: {} with {} meshes", path, meshes.size());
 	}
 
 	void Model::processNode(aiNode* node, const aiScene* scene) {

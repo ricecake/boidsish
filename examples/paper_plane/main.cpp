@@ -10,6 +10,7 @@
 #include "graphics.h"
 #include "hud.h"
 #include "model.h"
+#include "terrain_generator_interface.h"
 #include <GLFW/glfw3.h>
 
 using namespace Boidsish;
@@ -22,12 +23,16 @@ int main() {
 			"Paper Plane Demo"
 		);
 
+		auto terrain = visualizer->GetTerrain();
+		terrain->SetWorldScale(2.0f);
+
 		auto decor = visualizer->GetDecorManager();
 
 		DecorProperties teapot_props;
 		teapot_props.min_height = 0.01;
-		teapot_props.min_density = 0.1f;
-		teapot_props.max_density = 0.3f;
+		teapot_props.max_height = 95.0f;
+		teapot_props.min_density = 0.01f;
+		teapot_props.max_density = 0.03f;
 		teapot_props.base_scale = 0.005f;
 		teapot_props.scale_variance = 0.001f;
 		teapot_props.align_to_terrain = true; // Align to slope
@@ -52,16 +57,13 @@ int main() {
 			{3, "assets/bullet-icon.png", HudAlignment::TOP_LEFT, {84 + 10 + 64, 10}, {64, 64}, selected_weapon == 2}
 		);
 
-		auto [height, norm] = visualizer->GetTerrainPointProperties(0, 0);
-
 		auto handler = PaperPlaneHandler(visualizer->GetThreadPool());
 		handler.SetVisualizer(visualizer);
 		auto id = handler.AddEntity<PaperPlane>();
-		auto plane = handler.GetEntity(id);
-		plane->SetPosition(0, height + 50, 0);
-		// visualizer->GetTerrainGenerator()->Raycast();
-		Boidsish::Camera camera(0.0f, height + 55, -10.0f);
-		visualizer->SetCamera(camera);
+		auto plane = std::dynamic_pointer_cast<PaperPlane>(handler.GetEntity(id));
+
+		// Find a good starting position and orientation
+		handler.PreparePlane(plane);
 
 		visualizer->AddShapeHandler(std::ref(handler));
 		visualizer->SetChaseCamera(plane);
@@ -82,6 +84,7 @@ int main() {
 			controller->brake = state.keys[GLFW_KEY_LEFT_CONTROL];
 			controller->fire = state.keys[GLFW_KEY_SPACE];
 			controller->chaff = state.keys[GLFW_KEY_G];
+			controller->super_speed = state.keys[GLFW_KEY_B];
 			if (state.key_down[GLFW_KEY_F]) {
 				selected_weapon = (selected_weapon + 1) % 3;
 				visualizer->UpdateHudIcon(
@@ -106,9 +109,9 @@ int main() {
 
 		std::vector<std::shared_ptr<Boidsish::Shape>> shapes;
 		visualizer->AddShapeHandler([&](float time) { return shapes; });
-		auto model = std::make_shared<Boidsish::Model>("assets/utah_teapot.obj");
-		model->SetColossal(true);
-		shapes.push_back(model);
+		// auto model = std::make_shared<Boidsish::Model>("assets/utah_teapot.obj");
+		// model->SetColossal(true);
+		// shapes.push_back(model);
 
 		visualizer->GetAudioManager().PlayMusic("assets/kazoom.mp3", true, 0.25f);
 

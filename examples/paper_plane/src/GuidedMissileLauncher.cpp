@@ -4,7 +4,10 @@
 
 #include "GuidedMissile.h"
 #include "PaperPlane.h"
+#include "arcade_text.h"
 #include "graphics.h"
+#include "terrain_generator_interface.h"
+#include <glm/gtc/constants.hpp>
 
 namespace Boidsish {
 
@@ -25,6 +28,47 @@ namespace Boidsish {
 	}
 
 	void GuidedMissileLauncher::UpdateEntity(const EntityHandler& handler, float time, float delta_time) {
+		if (!approach_point_set_) {
+			auto  pos = GetPosition().Toglm();
+			float max_neighbor_h = pos.y;
+			float sample_dist = 50.0f;
+
+			for (int i = 0; i < 8; ++i) {
+				float     angle = i * (glm::pi<float>() / 4.0f);
+				glm::vec3 dir(sin(angle), 0, cos(angle));
+				auto [h, norm] = handler.GetCachedTerrainProperties(
+					pos.x + dir.x * sample_dist,
+					pos.z + dir.z * sample_dist
+				);
+				max_neighbor_h = std::max(max_neighbor_h, h);
+			}
+
+			approach_point_ = pos + glm::vec3(0, std::max(30.0f, (max_neighbor_h - pos.y) + 20.0f), 0);
+			approach_point_set_ = true;
+		}
+
+		if (!text_) {
+			handler.EnqueueVisualizerAction([&handler, this]() {
+				text_ = handler.vis->AddArcadeTextEffect(
+					"SUP",
+					this->GetPosition(),
+					20.0f,
+					60.0f,
+					glm::vec3(0, 1, 0),
+					glm::vec3(0, 0, 1),
+					100.0f,
+					"assets/Roboto-Medium.ttf",
+					12.0f,
+					2.0f
+
+				);
+				text_->SetPulseSpeed(3.0f);
+				text_->SetPulseAmplitude(0.3f);
+				text_->SetRainbowEnabled(true);
+				text_->SetRainbowSpeed(5.0f);
+			});
+		}
+
 		time_since_last_fire_ += delta_time;
 		if (time_since_last_fire_ < fire_interval_) {
 			return;
@@ -87,7 +131,11 @@ namespace Boidsish {
 	}
 
 	void GuidedMissileLauncher::Destroy(const EntityHandler& handler) {
-		handler.vis->TriggerComplexExplosion(shape_, glm::vec3(0.0f, 1.0f, 0.0f), 2.0f, FireEffectStyle::Explosion);
+		auto pos = GetPosition().Toglm();
+		auto [height, normal] = handler.GetCachedTerrainProperties(pos.x, pos.z);
+		handler.vis->TriggerComplexExplosion(shape_, normal, 2.0f, FireEffectStyle::Explosion);
+		handler.vis->GetTerrain()->AddCrater({pos.x, height, pos.z}, 15.0f, 8.0f, 0.2f, 2.0f);
+
 		handler.QueueRemoveEntity(GetId());
 	}
 

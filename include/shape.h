@@ -25,6 +25,12 @@ namespace Boidsish {
 	public:
 		virtual ~Shape() = default;
 
+		// Update the shape's state
+		virtual void Update(float delta_time) { (void)delta_time; }
+
+		// Check if the shape has expired (for transient effects)
+		virtual bool IsExpired() const { return false; }
+
 		// Pure virtual function for rendering the shape
 		virtual void render() const = 0;
 

@@ -27,7 +27,8 @@ namespace Boidsish {
 		float              r,
 		float              g,
 		float              b,
-		float              a
+		float              a,
+		bool               generate_mesh
 	):
 		Shape(id, x, y, z, r, g, b, a),
 		text_(text),
@@ -37,7 +38,9 @@ namespace Boidsish {
 		justification_(justification) {
 		font_info_ = std::make_unique<stbtt_fontinfo>();
 		LoadFont(font_path_);
-		GenerateMesh(text_, font_size_, depth_);
+		if (generate_mesh) {
+			GenerateMesh(text_, font_size_, depth_);
+		}
 	}
 
 	Text::~Text() {
@@ -109,6 +112,23 @@ namespace Boidsish {
 
 		float y_offset = 0.0f;
 
+		float max_width = 0.0f;
+		for (const auto& line : lines) {
+			float line_width = 0.0f;
+			for (char c : line) {
+				int advance_width, left_side_bearing;
+				stbtt_GetGlyphHMetrics(
+					font_info_.get(),
+					stbtt_FindGlyphIndex(font_info_.get(), c),
+					&advance_width,
+					&left_side_bearing
+				);
+				line_width += advance_width * scale;
+			}
+			if (line_width > max_width)
+				max_width = line_width;
+		}
+
 		for (const auto& line : lines) {
 			float line_width = 0.0f;
 			for (char c : line) {
@@ -136,6 +156,7 @@ namespace Boidsish {
 				break;
 			}
 
+			float line_accumulated_x = 0.0f;
 			for (char c : line) {
 				if (glyph_cache_.find(c) == glyph_cache_.end()) {
 					int glyph_index = stbtt_FindGlyphIndex(font_info_.get(), c);
@@ -151,7 +172,8 @@ namespace Boidsish {
 
 						for (int i = 0; i < num_vertices; ++i) {
 							stbtt_vertex v = stb_vertices[i];
-							current_contour.push_back({(v.x * scale), (v.y * scale) + (ascent * scale)});
+							// stb_truetype glyph shape uses Y-up coordinates in font units.
+							current_contour.push_back({(v.x * scale), (v.y * scale)});
 
 							if (i < num_vertices - 1 && stb_vertices[i + 1].type == STBTT_vmove) {
 								polygon.push_back(current_contour);
@@ -172,32 +194,32 @@ namespace Boidsish {
 							const auto& v2 = flat_vertices[indices[i + 1]];
 							const auto& v3 = flat_vertices[indices[i + 2]];
 
-							// Front face
+							// Front face (v1, v3, v2) - TrueType contours are CW, so v1,v3,v2 is CCW
 							glyph_vertices.insert(
 								glyph_vertices.end(),
-								{v1[0], v1[1], depth / 2.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f}
+								{v1[0], v1[1], depth / 2.0f, 0.0f, 0.0f, 1.0f, v1[0], v1[1]}
 							);
 							glyph_vertices.insert(
 								glyph_vertices.end(),
-								{v2[0], v2[1], depth / 2.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f}
+								{v3[0], v3[1], depth / 2.0f, 0.0f, 0.0f, 1.0f, v3[0], v3[1]}
 							);
 							glyph_vertices.insert(
 								glyph_vertices.end(),
-								{v3[0], v3[1], depth / 2.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f}
+								{v2[0], v2[1], depth / 2.0f, 0.0f, 0.0f, 1.0f, v2[0], v2[1]}
 							);
 
-							// Back face
+							// Back face (v1, v2, v3) - CW from front, CCW from back
 							glyph_vertices.insert(
 								glyph_vertices.end(),
-								{v1[0], v1[1], -depth / 2.0f, 0.0f, 0.0f, -1.0f, 0.0f, 0.0f}
+								{v1[0], v1[1], -depth / 2.0f, 0.0f, 0.0f, -1.0f, v1[0], v1[1]}
 							);
 							glyph_vertices.insert(
 								glyph_vertices.end(),
-								{v3[0], v3[1], -depth / 2.0f, 0.0f, 0.0f, -1.0f, 0.0f, 0.0f}
+								{v2[0], v2[1], -depth / 2.0f, 0.0f, 0.0f, -1.0f, v2[0], v2[1]}
 							);
 							glyph_vertices.insert(
 								glyph_vertices.end(),
-								{v2[0], v2[1], -depth / 2.0f, 0.0f, 0.0f, -1.0f, 0.0f, 0.0f}
+								{v3[0], v3[1], -depth / 2.0f, 0.0f, 0.0f, -1.0f, v3[0], v3[1]}
 							);
 						}
 
@@ -209,32 +231,79 @@ namespace Boidsish {
 								glm::vec3 p1_back = {contour[i][0], contour[i][1], -depth / 2.0f};
 								glm::vec3 p2_back = {contour[next_i][0], contour[next_i][1], -depth / 2.0f};
 
+								// Outer contour is CW: p1 -> p2
+								// For side faces, we want normal pointing out.
+								// cross(p2_front - p1_front, p1_back - p1_front)
 								glm::vec3 normal = glm::normalize(glm::cross(p2_front - p1_front, p1_back - p1_front));
 
+								// Triangle 1: p1_front, p1_back, p2_back (CCW)
 								glyph_vertices.insert(
 									glyph_vertices.end(),
-									{p1_front.x, p1_front.y, p1_front.z, normal.x, normal.y, normal.z, 0.0f, 0.0f}
+									{p1_front.x,
+								     p1_front.y,
+								     p1_front.z,
+								     normal.x,
+								     normal.y,
+								     normal.z,
+								     p1_front.x,
+								     p1_front.y}
 								);
 								glyph_vertices.insert(
 									glyph_vertices.end(),
-									{p2_front.x, p2_front.y, p2_front.z, normal.x, normal.y, normal.z, 0.0f, 0.0f}
+									{p1_back.x,
+								     p1_back.y,
+								     p1_back.z,
+								     normal.x,
+								     normal.y,
+								     normal.z,
+								     p1_back.x,
+								     p1_back.y}
 								);
 								glyph_vertices.insert(
 									glyph_vertices.end(),
-									{p1_back.x, p1_back.y, p1_back.z, normal.x, normal.y, normal.z, 0.0f, 0.0f}
+									{p2_back.x,
+								     p2_back.y,
+								     p2_back.z,
+								     normal.x,
+								     normal.y,
+								     normal.z,
+								     p2_back.x,
+								     p2_back.y}
 								);
 
+								// Triangle 2: p1_front, p2_back, p2_front (CCW)
 								glyph_vertices.insert(
 									glyph_vertices.end(),
-									{p1_back.x, p1_back.y, p1_back.z, normal.x, normal.y, normal.z, 0.0f, 0.0f}
+									{p1_front.x,
+								     p1_front.y,
+								     p1_front.z,
+								     normal.x,
+								     normal.y,
+								     normal.z,
+								     p1_front.x,
+								     p1_front.y}
 								);
 								glyph_vertices.insert(
 									glyph_vertices.end(),
-									{p2_front.x, p2_front.y, p2_front.z, normal.x, normal.y, normal.z, 0.0f, 0.0f}
+									{p2_back.x,
+								     p2_back.y,
+								     p2_back.z,
+								     normal.x,
+								     normal.y,
+								     normal.z,
+								     p2_back.x,
+								     p2_back.y}
 								);
 								glyph_vertices.insert(
 									glyph_vertices.end(),
-									{p2_back.x, p2_back.y, p2_back.z, normal.x, normal.y, normal.z, 0.0f, 0.0f}
+									{p2_front.x,
+								     p2_front.y,
+								     p2_front.z,
+								     normal.x,
+								     normal.y,
+								     normal.z,
+								     p2_front.x,
+								     p2_front.y}
 								);
 							}
 						}
@@ -246,15 +315,20 @@ namespace Boidsish {
 
 				const std::vector<float>& cached_vertices = glyph_cache_[c];
 				for (size_t i = 0; i < cached_vertices.size(); i += 8) {
+					float vx = cached_vertices[i] + x_offset;
+					float vy = cached_vertices[i + 1] - y_offset;
+					float normalized_x = (max_width > 0.0f) ? ((cached_vertices[i] + line_accumulated_x) / max_width)
+															: 0.0f;
+
 					vertices.insert(
 						vertices.end(),
-						{cached_vertices[i] + x_offset,
-					     cached_vertices[i + 1] - y_offset,
+						{vx,
+					     vy,
 					     cached_vertices[i + 2],
 					     cached_vertices[i + 3],
 					     cached_vertices[i + 4],
 					     cached_vertices[i + 5],
-					     cached_vertices[i + 6],
+					     normalized_x,
 					     cached_vertices[i + 7]}
 					);
 				}
@@ -267,6 +341,7 @@ namespace Boidsish {
 					&left_side_bearing
 				);
 				x_offset += advance_width * scale;
+				line_accumulated_x += advance_width * scale;
 			}
 			y_offset += line_height;
 		}
@@ -299,6 +374,13 @@ namespace Boidsish {
 		shader->setVec3("objectColor", GetR(), GetG(), GetB());
 		shader->setFloat("objectAlpha", GetA());
 
+		shader->setBool("isTextEffect", is_text_effect_);
+		if (is_text_effect_) {
+			shader->setFloat("textFadeProgress", text_fade_progress_);
+			shader->setFloat("textFadeSoftness", text_fade_softness_);
+			shader->setInt("textFadeMode", text_fade_mode_);
+		}
+
 		// Set PBR material properties
 		shader->setBool("usePBR", UsePBR());
 		if (UsePBR()) {
@@ -309,6 +391,7 @@ namespace Boidsish {
 
 		glBindVertexArray(vao_);
 		glDrawArrays(GL_TRIANGLES, 0, vertex_count_);
+		shader->setBool("isTextEffect", false);
 		glBindVertexArray(0);
 	}
 
@@ -321,6 +404,13 @@ namespace Boidsish {
 		shader.setVec3("objectColor", GetR(), GetG(), GetB());
 		shader.setFloat("objectAlpha", GetA());
 
+		shader.setBool("isTextEffect", is_text_effect_);
+		if (is_text_effect_) {
+			shader.setFloat("textFadeProgress", text_fade_progress_);
+			shader.setFloat("textFadeSoftness", text_fade_softness_);
+			shader.setInt("textFadeMode", text_fade_mode_);
+		}
+
 		// Set PBR material properties
 		shader.setBool("usePBR", UsePBR());
 		if (UsePBR()) {
@@ -331,6 +421,7 @@ namespace Boidsish {
 
 		glBindVertexArray(vao_);
 		glDrawArrays(GL_TRIANGLES, 0, vertex_count_);
+		shader.setBool("isTextEffect", false);
 		glBindVertexArray(0);
 	}
 

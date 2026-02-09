@@ -77,7 +77,7 @@ namespace Boidsish {
 		/**
 		 * @brief Perform frustum culling and prepare instance buffer.
 		 */
-		void PrepareForRender(const Frustum& frustum, const glm::vec3& camera_pos);
+		void PrepareForRender(const Frustum& frustum, const glm::vec3& camera_pos, float world_scale = 1.0f);
 
 		/**
 		 * @brief Render all visible terrain chunks with single instanced draw.
@@ -138,7 +138,7 @@ namespace Boidsish {
 		};
 
 		// Frustum culling helper
-		bool IsChunkVisible(const ChunkInfo& chunk, const Frustum& frustum) const;
+		bool IsChunkVisible(const ChunkInfo& chunk, const Frustum& frustum, float world_scale) const;
 
 		// Create the flat grid mesh
 		void CreateGridMesh();
@@ -176,6 +176,7 @@ namespace Boidsish {
 
 		// Camera position for LRU eviction (updated by PrepareForRender)
 		glm::vec3 last_camera_pos_{0.0f, 0.0f, 0.0f};
+		float     last_world_scale_ = 1.0f;
 
 		// Thread safety
 		mutable std::mutex mutex_;

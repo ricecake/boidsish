@@ -4,6 +4,7 @@
 #include "decor_manager.h"
 #include "graphics.h"
 #include "imgui.h"
+#include "terrain_generator_interface.h"
 
 namespace Boidsish {
 	namespace UI {
@@ -19,7 +20,7 @@ namespace Boidsish {
 					const std::string& key = pair.first;
 					const ConfigValue& val_info = pair.second;
 
-					if (key.contains("artistic_effect_")) {
+					if (key.contains("artistic_effect_") || key == "render_scale") {
 						continue;
 					}
 
@@ -132,13 +133,29 @@ namespace Boidsish {
 					}
 				}
 
-				if (ImGui::CollapsingHeader("Foliage", ImGuiTreeNodeFlags_DefaultOpen)) {
+				if (ImGui::CollapsingHeader("Terrain", ImGuiTreeNodeFlags_DefaultOpen)) {
+					auto terrain = m_visualizer.GetTerrain();
+					if (terrain) {
+						float world_scale = terrain->GetWorldScale();
+						if (ImGui::SliderFloat("World Scale", &world_scale, 0.1f, 5.0f)) {
+							terrain->SetWorldScale(world_scale);
+						}
+						ImGui::Text("Higher = larger world, Lower = smaller world");
+					}
+
 					auto decor_manager = m_visualizer.GetDecorManager();
 					if (decor_manager) {
 						bool enabled = decor_manager->IsEnabled();
 						if (ImGui::Checkbox("Enable Foliage", &enabled)) {
 							decor_manager->SetEnabled(enabled);
 						}
+					}
+				}
+
+				if (ImGui::CollapsingHeader("Rendering", ImGuiTreeNodeFlags_DefaultOpen)) {
+					float render_scale = m_visualizer.GetRenderScale();
+					if (ImGui::SliderFloat("Render Scale", &render_scale, 0.1f, 1.0f)) {
+						m_visualizer.SetRenderScale(render_scale);
 					}
 				}
 
