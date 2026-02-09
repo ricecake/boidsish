@@ -1060,7 +1060,8 @@ namespace Boidsish {
 			const Camera& /* cam */,
 			const std::vector<std::shared_ptr<Shape>>& shapes,
 			float                                      time,
-			const std::optional<glm::vec4>&            clip_plane
+			const std::optional<glm::vec4>&            clip_plane,
+			bool                                       ignore_occlusion = false
 		) {
 			if (shapes.empty()) {
 				return;
@@ -1098,7 +1099,7 @@ namespace Boidsish {
 				}
 			}
 
-			instance_manager->Render(*shader);
+			instance_manager->Render(*shader, ignore_occlusion);
 
 			// Render clones
 			clone_manager->Render(*shader);
@@ -1155,7 +1156,8 @@ namespace Boidsish {
 			const std::optional<glm::vec4>& clip_plane,
 			bool                            is_shadow_pass = false,
 			std::optional<Frustum>          shadow_frustum = std::nullopt,
-			float                           quality_override = -1.0f
+			float                           quality_override = -1.0f,
+			bool                            ignore_occlusion = false
 		) {
 			if (!terrain_generator || !ConfigManager::GetInstance().GetAppSettingBool("render_terrain", true))
 				return;
@@ -1177,7 +1179,7 @@ namespace Boidsish {
 				Frustum frustum = shadow_frustum.has_value() ? *shadow_frustum : CalculateFrustum(view, proj);
 
 				// Prepare for rendering (frustum culling for instanced renderer)
-				terrain_render_manager->PrepareForRender(frustum, camera.pos());
+				terrain_render_manager->PrepareForRender(frustum, camera.pos(), ignore_occlusion);
 
 				terrain_render_manager->Render(*Terrain::terrain_shader_, view, proj, clip_plane, effective_quality);
 
@@ -2023,7 +2025,15 @@ namespace Boidsish {
 
 		if (impl->terrain_render_manager) {
 			// --- Occlusion Pass ---
-			// Use terrain occlusion quads to populate depth and perform queries
+			// Ensure we are rendering to the intended target for queries
+			if (skip_intermediate) {
+				glBindFramebuffer(GL_FRAMEBUFFER, 0);
+				glViewport(0, 0, impl->width, impl->height);
+			} else {
+				glBindFramebuffer(GL_FRAMEBUFFER, impl->main_fbo_);
+				glViewport(0, 0, impl->render_width, impl->render_height);
+			}
+
 			glEnable(GL_DEPTH_TEST);
 			glDepthFunc(GL_LEQUAL);
 			glDepthMask(GL_TRUE);
@@ -2034,6 +2044,7 @@ namespace Boidsish {
 				impl->occluder_debug_shader->use();
 				impl->occluder_debug_shader->setMat4("view", view_matrix);
 				impl->occluder_debug_shader->setMat4("projection", impl->projection);
+				impl->occluder_debug_shader->setMat4("model", glm::mat4(1.0f));
 
 				// 1. Render all terrain occluders to depth buffer
 				impl->terrain_render_manager->RenderOccluders(*impl->occluder_debug_shader);
@@ -2206,14 +2217,16 @@ namespace Boidsish {
 					glm::vec4(0, 1, 0, 0.01),
 					false,
 					std::nullopt,
-					0.25f
+					0.25f,
+					true // ignore_occlusion for reflection pass
 				);
 				impl->RenderShapes(
 					reflection_view,
 					reflection_cam,
 					impl->shapes,
 					impl->simulation_time,
-					glm::vec4(0, 1, 0, 0.01)
+					glm::vec4(0, 1, 0, 0.01),
+					true // ignore_occlusion for reflection pass
 				);
 				// Sky after opaque geometry
 				impl->RenderSky(reflection_view);
@@ -2221,6 +2234,7 @@ namespace Boidsish {
 				impl->fire_effect_manager->Render(reflection_view, impl->projection, reflection_cam.pos());
 				impl->RenderTrails(reflection_view, glm::vec4(0, 1, 0, 0.01));
 			}
+			glBindFramebuffer(GL_FRAMEBUFFER, 0); // Restore to default
 			glDisable(GL_CLIP_DISTANCE0);
 
 			// --- Blur Pre-Pass ---
@@ -2393,7 +2407,9 @@ namespace Boidsish {
 					glm::mat4(1.0f),
 					std::nullopt,
 					true,
-					impl->shadow_manager->GetShadowFrustum(info.map_index)
+					impl->shadow_manager->GetShadowFrustum(info.map_index),
+					-1.0f,
+					true // ignore_occlusion for shadow pass
 				);
 				glEnable(GL_CULL_FACE);
 				glCullFace(GL_FRONT);
@@ -2419,6 +2435,15 @@ namespace Boidsish {
 		}
 
 		// --- Main Scene Pass ---
+		// RE-BIND FBO to ensure we are rendering to the correct target after shadow pass
+		if (skip_intermediate) {
+			glBindFramebuffer(GL_FRAMEBUFFER, 0);
+			glViewport(0, 0, impl->width, impl->height);
+		} else {
+			glBindFramebuffer(GL_FRAMEBUFFER, impl->main_fbo_);
+			glViewport(0, 0, impl->render_width, impl->render_height);
+		}
+
 		glEnable(GL_DEPTH_TEST);
 		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 

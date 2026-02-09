@@ -69,8 +69,9 @@ namespace Boidsish {
 		 *
 		 * @param frustum View frustum for culling
 		 * @param camera_pos Camera position
+		 * @param ignore_occlusion If true, chunks are not culled by occlusion state (e.g. for shadow pass)
 		 */
-		virtual void PrepareForRender(const Frustum& frustum, const glm::vec3& camera_pos) = 0;
+		virtual void PrepareForRender(const Frustum& frustum, const glm::vec3& camera_pos, bool ignore_occlusion = false) = 0;
 
 		/**
 		 * @brief Render all visible terrain.

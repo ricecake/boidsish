@@ -14,7 +14,7 @@ namespace Boidsish {
 	public:
 		~InstanceManager();
 		void AddInstance(std::shared_ptr<Shape> shape);
-		void Render(Shader& shader);
+		void Render(Shader& shader, bool ignore_occlusion = false);
 
 		/**
 		 * @brief Perform hardware occlusion queries for all registered instances.
@@ -48,7 +48,7 @@ namespace Boidsish {
 		std::map<int, QueryInfo> m_queries;
 		int                      m_frame_count = 0;
 
-		void RenderModelGroup(Shader& shader, InstanceGroup& group);
+		void RenderModelGroup(Shader& shader, InstanceGroup& group, bool ignore_occlusion = false);
 		void RenderDotGroup(Shader& shader, InstanceGroup& group);
 	};
 

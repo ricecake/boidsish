@@ -80,7 +80,7 @@ namespace Boidsish {
 		/**
 		 * @brief Perform frustum culling and prepare instance buffer.
 		 */
-		void PrepareForRender(const Frustum& frustum, const glm::vec3& camera_pos) override;
+		void PrepareForRender(const Frustum& frustum, const glm::vec3& camera_pos, bool ignore_occlusion = false) override;
 
 		/**
 		 * @brief Render all visible terrain chunks with single instanced draw.

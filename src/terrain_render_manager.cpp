@@ -343,7 +343,7 @@ namespace Boidsish {
 		return true;
 	}
 
-	void TerrainRenderManager::PrepareForRender(const Frustum& frustum, const glm::vec3& camera_pos) {
+	void TerrainRenderManager::PrepareForRender(const Frustum& frustum, const glm::vec3& camera_pos, bool ignore_occlusion) {
 		std::lock_guard<std::mutex> lock(mutex_);
 
 		last_camera_pos_ = camera_pos;
@@ -363,7 +363,7 @@ namespace Boidsish {
 
 		for (const auto& [key, chunk] : chunks_) {
 			if (IsChunkVisible(chunk, frustum)) {
-				if (chunk.is_occluded) {
+				if (!ignore_occlusion && chunk.is_occluded) {
 					continue;
 				}
 
@@ -487,8 +487,10 @@ namespace Boidsish {
 
 		// 1. Update is_occluded from previous frame results
 		for (auto& [key, chunk] : chunks_) {
-			if (!chunk.query_issued)
+			if (!chunk.query_issued) {
+				chunk.is_occluded = false; // Default to visible if no query issued
 				continue;
+			}
 
 			GLuint available = 0;
 			glGetQueryObjectuiv(chunk.occlusion_query, GL_QUERY_RESULT_AVAILABLE, &available);
@@ -497,6 +499,9 @@ namespace Boidsish {
 				glGetQueryObjectuiv(chunk.occlusion_query, GL_QUERY_RESULT, &samples);
 				chunk.is_occluded = (samples == 0);
 				chunk.query_issued = false;
+			} else {
+				// Result not ready yet, keep previous state OR assume visible to avoid popping
+				// For now, let's keep previous state but ensure we don't issue a new query below
 			}
 		}
 
@@ -533,6 +538,9 @@ namespace Boidsish {
 
 		for (auto& [key, chunk] : chunks_) {
 			if (IsChunkVisible(chunk, frustum)) {
+				if (chunk.query_issued)
+					continue; // Still waiting for previous result
+
 				// Set model matrix for the bounding box
 				glm::mat4 model = glm::translate(
 					glm::mat4(1.0f),

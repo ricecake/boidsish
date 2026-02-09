@@ -22,7 +22,7 @@ namespace Boidsish {
 		m_instance_groups[shape->GetInstanceKey()].shapes.push_back(shape);
 	}
 
-	void InstanceManager::Render(Shader& shader) {
+	void InstanceManager::Render(Shader& shader, bool ignore_occlusion) {
 		shader.use();
 		shader.setBool("is_instanced", true);
 
@@ -33,7 +33,7 @@ namespace Boidsish {
 
 			// Determine type from the key prefix
 			if (key.starts_with("Model:")) {
-				RenderModelGroup(shader, group);
+				RenderModelGroup(shader, group, ignore_occlusion);
 			} else if (key == "Dot") {
 				RenderDotGroup(shader, group);
 			}
@@ -44,14 +44,16 @@ namespace Boidsish {
 		shader.setBool("is_instanced", false);
 	}
 
-	void InstanceManager::RenderModelGroup(Shader& shader, InstanceGroup& group) {
+	void InstanceManager::RenderModelGroup(Shader& shader, InstanceGroup& group, bool ignore_occlusion) {
 		// Build instance matrices, filtering by occlusion
 		std::vector<glm::mat4> model_matrices;
 		model_matrices.reserve(group.shapes.size());
 		for (const auto& shape : group.shapes) {
-			auto q_it = m_queries.find(shape->GetId());
-			if (q_it != m_queries.end() && q_it->second.is_occluded) {
-				continue;
+			if (!ignore_occlusion) {
+				auto q_it = m_queries.find(shape->GetId());
+				if (q_it != m_queries.end() && q_it->second.is_occluded) {
+					continue;
+				}
 			}
 			model_matrices.push_back(shape->GetModelMatrix());
 		}
@@ -147,8 +149,10 @@ namespace Boidsish {
 
 		// 1. Gather results from previous frame
 		for (auto& [id, query] : m_queries) {
-			if (!query.query_issued)
+			if (!query.query_issued) {
+				query.is_occluded = false; // Default to visible if no query issued
 				continue;
+			}
 
 			GLuint available = 0;
 			glGetQueryObjectuiv(query.query_id, GL_QUERY_RESULT_AVAILABLE, &available);
@@ -157,6 +161,8 @@ namespace Boidsish {
 				glGetQueryObjectuiv(query.query_id, GL_QUERY_RESULT, &samples);
 				query.is_occluded = (samples == 0);
 				query.query_issued = false;
+			} else {
+				// Result not ready yet, keep previous state
 			}
 		}
 
@@ -208,6 +214,9 @@ namespace Boidsish {
 				glGenQueries(1, &q_info.query_id);
 			}
 			q_info.last_frame_used = m_frame_count;
+
+			if (q_info.query_issued)
+				continue; // Still waiting for previous result
 
 			glm::mat4 model_mat = shape->GetModelMatrix();
 			// Adjust model matrix to match the AABB
