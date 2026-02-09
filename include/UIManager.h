@@ -2,13 +2,21 @@
 
 #include <functional>
 #include <memory>
+#include <unordered_map>
 #include <vector>
+
+#include "imgui.h"
 
 struct GLFWwindow;
 
 namespace Boidsish {
 	namespace UI {
 		class IWidget;
+
+		struct WindowState {
+			ImVec2 last_expanded_pos;
+			bool   was_collapsed = false;
+		};
 
 		class UIManager {
 		public:
@@ -21,8 +29,11 @@ namespace Boidsish {
 			void ToggleMenus() { m_show_menus = !m_show_menus; }
 
 		private:
-			std::vector<std::shared_ptr<IWidget>> m_widgets;
-			bool                                  m_show_menus = false;
+			void PositionMinimizedWindows();
+
+			std::vector<std::shared_ptr<IWidget>>         m_widgets;
+			bool                                          m_show_menus = false;
+			std::unordered_map<unsigned int, WindowState> m_window_states;
 		};
 	} // namespace UI
 } // namespace Boidsish
