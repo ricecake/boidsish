@@ -8,6 +8,7 @@ in float perturbFactor;
 
 #include "helpers/lighting.glsl"
 #include "helpers/terrain_noise.glsl"
+#include "helpers/blue_noise.glsl"
 
 uniform bool uIsShadowPass = false;
 
@@ -371,6 +372,12 @@ void main() {
 	if (perturbFactor >= 0.1) {
 		float roughnessStrength = smoothstep(0.1, 1.0, perturbFactor) * finalMaterial.normalStrength;
 		float roughnessScale = finalMaterial.normalScale;
+
+		// Scale the perturbance by blue noise that decreases in resolution with distance
+		// This makes the texturing more varied and avoids high-frequency noise artifacts at a distance.
+		float blueNoiseRes = mix(2.0, 0.1, smoothstep(0.0, 500.0 * worldScale, dist));
+		float bn = proceduralBlueNoise(floor(FragPos.xz * blueNoiseRes) * 10.0);
+		roughnessStrength *= (bn * 2.0); // Multiply by 2 to keep average intensity around 1.0
 
 		// Use finite difference to approximate the gradient of the noise field
 		float eps = 0.015;
