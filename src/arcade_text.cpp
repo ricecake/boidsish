@@ -87,8 +87,9 @@ namespace Boidsish {
 			render_internal(model);
 		}
 
-		// Reset arcade flag for subsequent renders
+		// Reset arcade and text effect flags for subsequent renders
 		shader->setBool("isArcadeText", false);
+		shader->setBool("isTextEffect", false);
 	}
 
 	void ArcadeText::render_internal(const glm::mat4& model_matrix) const {
