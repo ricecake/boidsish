@@ -25,7 +25,7 @@ namespace Boidsish {
     private:
         GLuint vao_ = 0, vbo_ = 0, ebo_ = 0;
         GLsizei index_count_ = 0;
-        glm::vec3 min_, max_;
+        glm::vec3 min_, max_, center_;
     };
 
 }

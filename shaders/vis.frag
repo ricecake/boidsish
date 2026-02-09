@@ -37,6 +37,9 @@ uniform float roughness = 0.5;
 uniform float metallic = 0.0;
 uniform float ao = 1.0;
 
+// Cave rendering - disable distance fade for underground visibility
+uniform bool  isCave = false;
+
 uniform sampler2D texture_diffuse1;
 uniform bool      use_texture;
 
@@ -46,8 +49,12 @@ void main() {
 	float fade_end = 550.0 * worldScale;
 	float fade = 1.0 - smoothstep(fade_start, fade_end, dist);
 
-	if (fade < 0.2) {
+	// Caves should remain visible underground without distance culling
+	if (!isCave && fade < 0.2) {
 		discard;
+	}
+	if (isCave) {
+		fade = 1.0;  // Full visibility for caves
 	}
 
 	vec3 final_color;

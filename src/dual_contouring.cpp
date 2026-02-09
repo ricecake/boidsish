@@ -42,6 +42,10 @@ namespace Boidsish {
         }
 
         auto get_field = [&](int x, int y, int z) {
+            // Clamp to valid range for boundary cells
+            x = std::clamp(x, 0, corners_x - 1);
+            y = std::clamp(y, 0, corners_y - 1);
+            z = std::clamp(z, 0, corners_z - 1);
             return field[x + y * corners_x + z * corners_x * corners_y];
         };
 
@@ -58,12 +62,21 @@ namespace Boidsish {
         };
 
         // 2. Vertex Generation: One vertex per cell crossing the surface
-        std::vector<int> grid(nx * ny * nz, -1);
+        // Extended grid: cells from -1 to n (inclusive) to capture boundary vertices
+        int ext_nx = nx + 2;  // -1 to nx
+        int ext_ny = ny + 2;  // -1 to ny
+        int ext_nz = nz + 2;  // -1 to nz
+        std::vector<int> grid(ext_nx * ext_ny * ext_nz, -1);
 
-        for (int z = 0; z < nz; ++z) {
-            for (int y = 0; y < ny; ++y) {
-                for (int x = 0; x < nx; ++x) {
-                    // Check 8 corners of the cell for sign change
+        auto grid_idx = [&](int x, int y, int z) {
+            return (x + 1) + (y + 1) * ext_nx + (z + 1) * ext_nx * ext_ny;
+        };
+
+        // Process cells from -1 to n (inclusive)
+        for (int z = -1; z <= nz; ++z) {
+            for (int y = -1; y <= ny; ++y) {
+                for (int x = -1; x <= nx; ++x) {
+                    // Check 8 corners of the cell for sign change (with clamping)
                     bool has_inside = false;
                     bool has_outside = false;
                     for (int i = 0; i < 8; ++i) {
@@ -110,7 +123,7 @@ namespace Boidsish {
                             // Negate for interior cave walls
                             avg_norm = -glm::normalize(avg_norm);
 
-                            grid[x + y * nx + z * nx * ny] = static_cast<int>(mesh.vertices.size());
+                            grid[grid_idx(x, y, z)] = static_cast<int>(mesh.vertices.size());
                             mesh.vertices.push_back({v_pos, avg_norm});
                         }
                     }
@@ -120,8 +133,9 @@ namespace Boidsish {
 
         // 3. Index Generation: One quad per edge crossing the surface
         auto get_v = [&](int x, int y, int z) -> int {
-            if (x < 0 || x >= nx || y < 0 || y >= ny || z < 0 || z >= nz) return -1;
-            return grid[x + y * nx + z * nx * ny];
+            // Extended grid allows cells from -1 to n
+            if (x < -1 || x > nx || y < -1 || y > ny || z < -1 || z > nz) return -1;
+            return grid[grid_idx(x, y, z)];
         };
 
         for (int z = 0; z < corners_z; ++z) {
@@ -149,7 +163,7 @@ namespace Boidsish {
                         if ((v1 < 0.0f) != (v2 < 0.0f)) {
                             int v_ids[4] = {get_v(x,y,z), get_v(x,y,z-1), get_v(x-1,y,z-1), get_v(x-1,y,z)};
                             if (v_ids[0]!=-1 && v_ids[1]!=-1 && v_ids[2]!=-1 && v_ids[3]!=-1) {
-                                bool rev = (v1 > 0.0f); // Flipped for proper Y-axis winding
+                                bool rev = (v1 < 0.0f); // Consistent with X and Z axes
                                 if (rev) {
                                     mesh.indices.push_back(v_ids[0]); mesh.indices.push_back(v_ids[1]); mesh.indices.push_back(v_ids[2]);
                                     mesh.indices.push_back(v_ids[0]); mesh.indices.push_back(v_ids[2]); mesh.indices.push_back(v_ids[3]);

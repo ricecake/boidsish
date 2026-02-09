@@ -1363,8 +1363,8 @@ namespace Boidsish {
 					camera.roll -= camera_roll_speed_ * state.delta_time;
 				if (state.keys[GLFW_KEY_E])
 					camera.roll += camera_roll_speed_ * state.delta_time;
-				if (camera.y < Constants::Project::Camera::MinHeight())
-					camera.y = Constants::Project::Camera::MinHeight();
+				if (camera.y < Constants::Project::Camera::MinWorldY())
+					camera.y = Constants::Project::Camera::MinWorldY();
 
 				float sensitivity = 1.f;
 				float xoffset = state.mouse_delta_x * sensitivity;
@@ -1566,8 +1566,8 @@ namespace Boidsish {
 			camera.y = new_pos.y;
 			camera.z = new_pos.z;
 
-			if (camera.y < Constants::Project::Camera::MinHeight())
-				camera.y = Constants::Project::Camera::MinHeight();
+			if (camera.y < Constants::Project::Camera::MinWorldY())
+				camera.y = Constants::Project::Camera::MinWorldY();
 
 			float dx = mean_x - camera.x;
 			float dy = mean_y - camera.y;
@@ -1610,8 +1610,8 @@ namespace Boidsish {
 			camera.x = new_cam_pos.x;
 			camera.y = new_cam_pos.y;
 			camera.z = new_cam_pos.z;
-			if (camera.y < Constants::Project::Camera::MinHeight())
-				camera.y = Constants::Project::Camera::MinHeight();
+			if (camera.y < Constants::Project::Camera::MinWorldY())
+				camera.y = Constants::Project::Camera::MinWorldY();
 
 			// 4. Calculate desired orientation based on look-at
 			glm::vec3 front = glm::normalize(look_at_pos - new_cam_pos);
@@ -1659,8 +1659,8 @@ namespace Boidsish {
 			camera.y = camera_pos.y;
 			camera.z = camera_pos.z;
 
-			if (camera.y < Constants::Project::Camera::MinHeight())
-				camera.y = Constants::Project::Camera::MinHeight();
+			if (camera.y < Constants::Project::Camera::MinWorldY())
+				camera.y = Constants::Project::Camera::MinWorldY();
 
 			glm::vec3 front = glm::normalize(target_pos - camera_pos);
 
@@ -1727,8 +1727,8 @@ namespace Boidsish {
 			path_orientation_ = glm::slerp(path_orientation_, final_orientation, lerp_factor);
 
 			// Ensure camera stays above a minimum height
-			if (camera.y < Constants::Project::Camera::MinHeight())
-				camera.y = Constants::Project::Camera::MinHeight();
+			if (camera.y < Constants::Project::Camera::MinWorldY())
+				camera.y = Constants::Project::Camera::MinWorldY();
 		}
 
 		static void KeyCallback(GLFWwindow* w, int key, int /* sc */, int action, int /* mods */) {

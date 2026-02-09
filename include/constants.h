@@ -81,6 +81,10 @@ namespace Boidsish {
 					return 0.1f;
 				}
 
+				consteval float MinWorldY() {
+					return -500.0f;  // Allow deep underground caves
+				}
+
 				consteval float MinSpeed() {
 					return 0.5f;
 				}

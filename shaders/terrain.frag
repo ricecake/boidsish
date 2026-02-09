@@ -223,9 +223,22 @@ TerrainMaterial getCliffMaterial(float height, float noise) {
 }
 
 void main() {
-	// Apply terrain openings (hole cutting)
+	// Apply terrain openings (hole cutting) with irregular edges
 	for (int i = 0; i < uOpenings.num_openings; i++) {
-		if (distance(FragPos.xz, uOpenings.openings[i].xz) < uOpenings.openings[i].w) {
+		vec2 toCenter = FragPos.xz - uOpenings.openings[i].xz;
+		float dist = length(toCenter);
+		float radius = uOpenings.openings[i].w;
+
+		// Add noise-based irregularity to the opening edge
+		// Use angle and position to create organic cave entrance shapes
+		float angle = atan(toCenter.y, toCenter.x);
+		float edgeNoise = snoise(vec3(FragPos.xz * 0.15, angle * 2.0)) * 0.3
+		                + snoise(vec3(FragPos.xz * 0.4, angle * 4.0)) * 0.15;
+
+		// Modulate radius based on noise - creates jagged rock edges
+		float irregularRadius = radius * (1.0 + edgeNoise);
+
+		if (dist < irregularRadius) {
 			discard;
 		}
 	}
