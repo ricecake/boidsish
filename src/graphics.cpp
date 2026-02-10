@@ -817,6 +817,7 @@ namespace Boidsish {
 
 				auto atmosphere_effect = std::make_shared<PostProcessing::AtmosphereEffect>();
 				atmosphere_effect->SetEnabled(true);
+				atmosphere_effect->SetManual(true);
 				post_processing_manager_->AddEffect(atmosphere_effect);
 
 				auto bloom_effect = std::make_shared<PostProcessing::BloomEffect>(render_width, render_height);
@@ -1270,6 +1271,49 @@ namespace Boidsish {
 			sky_shader->use();
 			sky_shader->setMat4("invProjection", glm::inverse(projection));
 			sky_shader->setMat4("invView", glm::inverse(view));
+
+			// Primary light scattering for sky
+			const auto& lights = light_manager.GetLights();
+			if (!lights.empty()) {
+				if (lights[0].type == DIRECTIONAL_LIGHT) {
+					sky_shader->setVec3("sunDir", glm::normalize(-lights[0].direction));
+				} else {
+					sky_shader->setVec3("sunDir", glm::normalize(lights[0].position - camera.pos()));
+				}
+			} else {
+				sky_shader->setVec3("sunDir", glm::vec3(0, 1, 0));
+			}
+
+			// Bind Atmosphere LUTs
+			auto& effects = post_processing_manager_->GetPreToneMappingEffects();
+			for (auto& e : effects) {
+				if (e->GetName() == "Atmosphere") {
+					auto atmosphere = std::dynamic_pointer_cast<PostProcessing::AtmosphereEffect>(e);
+					if (atmosphere) {
+						glActiveTexture(GL_TEXTURE2);
+						glBindTexture(GL_TEXTURE_2D, atmosphere->GetScattering().GetTransmittanceLUT());
+						sky_shader->setInt("transmittanceLUT", 2);
+
+						glActiveTexture(GL_TEXTURE3);
+						glBindTexture(GL_TEXTURE_2D, atmosphere->GetScattering().GetMultiScatteringLUT());
+						sky_shader->setInt("multiScatteringLUT", 3);
+
+						const auto& params = atmosphere->GetScattering().GetParameters();
+						sky_shader->setVec3("rayleighScattering", params.rayleigh_scattering * params.rayleigh_multiplier);
+						sky_shader->setFloat("rayleighScaleHeight", params.rayleigh_scale_height);
+						sky_shader->setFloat("mieScattering", params.mie_scattering * params.mie_multiplier);
+						sky_shader->setFloat("mieExtinction", params.mie_extinction * params.mie_multiplier);
+						sky_shader->setFloat("mieScaleHeight", params.mie_scale_height);
+						sky_shader->setFloat("mieAnisotropy", params.mie_anisotropy);
+						sky_shader->setVec3("absorptionExtinction", params.absorption_extinction);
+						sky_shader->setFloat("bottomRadius", params.bottom_radius);
+						sky_shader->setFloat("topRadius", params.top_radius);
+						sky_shader->setFloat("sunIntensity", params.sun_intensity);
+					}
+					break;
+				}
+			}
+
 			glBindVertexArray(sky_vao);
 			glDrawArrays(GL_TRIANGLES, 0, 3);
 			glBindVertexArray(0);
@@ -1277,6 +1321,61 @@ namespace Boidsish {
 			// Restore depth state
 			glDepthFunc(GL_LESS);
 			glDepthMask(GL_TRUE);
+		}
+
+		bool ApplyAtmosphereEffect(const glm::mat4& view, const glm::mat4& projection) {
+			if (!post_processing_manager_)
+				return false;
+
+			auto&                                             effects = post_processing_manager_->GetPreToneMappingEffects();
+			std::shared_ptr<PostProcessing::AtmosphereEffect> atmosphere;
+			for (auto& e : effects) {
+				if (e->GetName() == "Atmosphere") {
+					atmosphere = std::dynamic_pointer_cast<PostProcessing::AtmosphereEffect>(e);
+					break;
+				}
+			}
+
+			if (atmosphere && atmosphere->IsEnabled()) {
+				atmosphere->SetTime(simulation_time);
+
+				// 1. Blit current main FBO color to ping-pong texture 0 as a source
+				glBindFramebuffer(GL_READ_FRAMEBUFFER, main_fbo_);
+				glBindFramebuffer(GL_DRAW_FRAMEBUFFER, post_processing_manager_->GetPingPongFBO(0));
+				glBlitFramebuffer(
+					0,
+					0,
+					render_width,
+					render_height,
+					0,
+					0,
+					render_width,
+					render_height,
+					GL_COLOR_BUFFER_BIT,
+					GL_NEAREST
+				);
+
+				// 2. Render atmosphere back into main FBO using the copy as source
+				glBindFramebuffer(GL_FRAMEBUFFER, main_fbo_);
+				glViewport(0, 0, render_width, render_height);
+				glDisable(GL_DEPTH_TEST);
+				glDisable(GL_BLEND);
+
+				glBindVertexArray(blur_quad_vao);
+				atmosphere->Apply(
+					post_processing_manager_->GetPingPongTexture(0),
+					main_fbo_depth_texture_,
+					view,
+					projection,
+					camera.pos()
+				);
+				glBindVertexArray(0);
+
+				glEnable(GL_DEPTH_TEST);
+				return true;
+			}
+
+			return false;
 		}
 
 		// TODO: Replace the multi-pass Gaussian blur with a more performant technique.
@@ -2481,7 +2580,13 @@ namespace Boidsish {
 		// This avoids expensive noise calculations for pixels already drawn
 		impl->RenderSky(view);
 
+		// Apply Atmosphere Effect early (before transparents)
+		if (impl->frame_config_.effects_enabled) {
+			impl->ApplyAtmosphereEffect(view, impl->projection);
+		}
+
 		// Render transparent/particle effects last
+		// They will render into main_fbo_
 		impl->fire_effect_manager->Render(view, impl->projection, impl->camera.pos());
 		impl->mesh_explosion_manager->Render(view, impl->projection, impl->camera.pos());
 		impl->RenderTrails(view, std::nullopt);

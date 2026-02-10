@@ -1,5 +1,4 @@
 #include "post_processing/PostProcessingManager.h"
-
 #include <iostream>
 
 #include <shader.h>
@@ -76,7 +75,7 @@ namespace Boidsish {
 
 			// Pre-tone-mapping effects chain
 			for (const auto& effect : pre_tone_mapping_effects_) {
-				if (effect->IsEnabled()) {
+				if (effect->IsEnabled() && !effect->IsManual()) {
 					effect->SetTime(time);
 					glBindFramebuffer(GL_FRAMEBUFFER, pingpong_fbo_[fbo_index]);
 					glClear(GL_COLOR_BUFFER_BIT);

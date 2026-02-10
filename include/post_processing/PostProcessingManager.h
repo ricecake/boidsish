@@ -35,6 +35,10 @@ namespace Boidsish {
 
 			std::shared_ptr<IPostProcessingEffect> GetToneMappingEffect() { return tone_mapping_effect_; }
 
+			GLuint GetPingPongFBO(int index) const { return pingpong_fbo_[index]; }
+
+			GLuint GetPingPongTexture(int index) const { return pingpong_texture_[index]; }
+
 		private:
 			void InitializeFBOs();
 
