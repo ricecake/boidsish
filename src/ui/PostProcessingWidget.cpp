@@ -50,46 +50,46 @@ namespace Boidsish {
 							if (ImGui::DragFloat3(
 									"Rayleigh Scattering",
 									&new_params.rayleigh_scattering[0],
-									0.000001f,
+									0.0001f,
 									0.0f,
-									0.001f,
-									"%.7f"
+									1.0f,
+									"%.5f"
 								)) {
 							}
-							if (ImGui::SliderFloat("Rayleigh Scale Height", &new_params.rayleigh_scale_height, 0.1f, 50.0f)) {
+							if (ImGui::SliderFloat("Rayleigh Scale Height", &new_params.rayleigh_scale_height, 0.1f, 100.0f)) {
 							}
 							if (ImGui::DragFloat(
 									"Mie Scattering",
 									&new_params.mie_scattering,
-									0.000001f,
+									0.0001f,
 									0.0f,
-									0.001f,
-									"%.7f"
+									1.0f,
+									"%.5f"
 								)) {
 							}
 							if (ImGui::DragFloat(
 									"Mie Extinction",
 									&new_params.mie_extinction,
-									0.000001f,
+									0.0001f,
 									0.0f,
-									0.001f,
-									"%.7f"
+									1.0f,
+									"%.5f"
 								)) {
 							}
 							if (ImGui::SliderFloat("Mie Anisotropy", &new_params.mie_anisotropy, 0.0f, 0.999f)) {
 							}
-							if (ImGui::SliderFloat("Mie Scale Height", &new_params.mie_scale_height, 0.1f, 20.0f)) {
+							if (ImGui::SliderFloat("Mie Scale Height", &new_params.mie_scale_height, 0.1f, 100.0f)) {
 							}
 							if (ImGui::DragFloat3(
 									"Absorption Extinction",
 									&new_params.absorption_extinction[0],
-									0.000001f,
+									0.0001f,
 									0.0f,
-									0.001f,
-									"%.7f"
+									1.0f,
+									"%.5f"
 								)) {
 							}
-							if (ImGui::SliderFloat("Sun Intensity", &new_params.sun_intensity, 0.0f, 100.0f)) {
+							if (ImGui::SliderFloat("Sun Intensity", &new_params.sun_intensity, 0.0f, 500.0f)) {
 							}
 							if (ImGui::DragFloat("Bottom Radius", &new_params.bottom_radius, 1.0f, 100.0f, 10000.0f)) {
 							}
@@ -103,15 +103,15 @@ namespace Boidsish {
 
 						if (ImGui::CollapsingHeader("Cloud Parameters")) {
 							float cloud_density = atmosphere_effect->GetCloudDensity();
-							if (ImGui::SliderFloat("Cloud Density", &cloud_density, 0.0f, 2.0f)) {
+							if (ImGui::SliderFloat("Cloud Density", &cloud_density, 0.0f, 5.0f)) {
 								atmosphere_effect->SetCloudDensity(cloud_density);
 							}
 							float cloud_altitude = atmosphere_effect->GetCloudAltitude();
-							if (ImGui::SliderFloat("Cloud Altitude", &cloud_altitude, -100.0f, 1000.0f)) {
+							if (ImGui::SliderFloat("Cloud Altitude", &cloud_altitude, -50.0f, 200.0f)) {
 								atmosphere_effect->SetCloudAltitude(cloud_altitude);
 							}
 							float cloud_thickness = atmosphere_effect->GetCloudThickness();
-							if (ImGui::SliderFloat("Cloud Thickness", &cloud_thickness, 0.0f, 500.0f)) {
+							if (ImGui::SliderFloat("Cloud Thickness", &cloud_thickness, 0.0f, 50.0f)) {
 								atmosphere_effect->SetCloudThickness(cloud_thickness);
 							}
 							glm::vec3 cloud_color = atmosphere_effect->GetCloudColor();

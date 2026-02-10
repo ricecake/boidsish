@@ -13,13 +13,13 @@ namespace Boidsish {
 		class AtmosphereScattering {
 		public:
 			struct Parameters {
-				glm::vec3 rayleigh_scattering = glm::vec3(5.802e-6f, 13.558e-6f, 33.100e-6f);
+				glm::vec3 rayleigh_scattering = glm::vec3(5.802e-3f, 13.558e-3f, 33.100e-3f);
 				float     rayleigh_scale_height = 8.0f;
-				float     mie_scattering = 3.996e-6f;
-				float     mie_extinction = 4.440e-6f;
+				float     mie_scattering = 3.996e-3f;
+				float     mie_extinction = 4.440e-3f;
 				float     mie_anisotropy = 0.8f;
 				float     mie_scale_height = 1.2f;
-				glm::vec3 absorption_extinction = glm::vec3(0.650e-6f, 1.881e-6f, 0.085e-6f);
+				glm::vec3 absorption_extinction = glm::vec3(0.650e-3f, 1.881e-3f, 0.085e-3f);
 				float     bottom_radius = 6360.0f;
 				float     top_radius = 6460.0f;
 				glm::vec3 ground_albedo = glm::vec3(0.3f);
