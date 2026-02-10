@@ -1260,7 +1260,11 @@ namespace Boidsish {
 			// Primary light scattering for sky
 			const auto& lights = light_manager.GetLights();
 			if (!lights.empty()) {
-				sky_shader->setVec3("sunDir", glm::normalize(lights[0].position - camera.pos()));
+				if (lights[0].type == DIRECTIONAL_LIGHT) {
+					sky_shader->setVec3("sunDir", glm::normalize(-lights[0].direction));
+				} else {
+					sky_shader->setVec3("sunDir", glm::normalize(lights[0].position - camera.pos()));
+				}
 			} else {
 				sky_shader->setVec3("sunDir", glm::vec3(0, 1, 0));
 			}
@@ -1332,10 +1336,12 @@ namespace Boidsish {
 					0
 				);
 
+				glDisable(GL_DEPTH_TEST);
 				glClear(GL_COLOR_BUFFER_BIT);
 				glBindVertexArray(blur_quad_vao);
 				atmosphere->Apply(main_fbo_texture_, main_fbo_depth_texture_, view, projection, camera.pos());
 				glBindVertexArray(0);
+				glEnable(GL_DEPTH_TEST);
 
 				return 1; // Used FBO 0, next post-process should start at FBO index 1
 			}
