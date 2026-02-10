@@ -82,7 +82,8 @@ void main() {
 	}
 
 	// Atmosphere Scattering
-	vec3 ro = viewPos + vec3(0, bottomRadius, 0);
+	// We use a vertical-only offset for ro to ensure horizontal invariance
+	vec3 ro = vec3(0.0, viewPos.y + bottomRadius, 0.0);
 	float t0, t1;
 	intersect_sphere(ro, world_ray, topRadius, t0, t1);
 	float d = t1;
