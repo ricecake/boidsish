@@ -52,6 +52,7 @@ namespace Boidsish {
 		GetAppSettingBool("enable_skybox", true);
 		GetAppSettingBool("enable_effects", true);
 		GetAppSettingBool("enable_floor_reflection", true);
+		GetAppSettingBool("enable_shadows", true);
 		GetAppSettingFloat("render_scale", 1.0f);
 		GetAppSettingBool("enable_gl_debug", false); // OpenGL debug output (performance impact)
 		GetAppSettingBool("render_terrain", true);
