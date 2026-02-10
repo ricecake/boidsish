@@ -52,11 +52,11 @@ namespace Boidsish {
 						shape->SetOccluded(samples == 0);
 						shape->SetQueryIssued(false);
 					}
-				} else {
-					shape->SetOccluded(false);
+					// If query results are not yet available, we retain the state from the previous frame
+					// to prevent 1-frame flickering.
 				}
 
-				if (ignore_occlusion || !shape->IsOccluded()) {
+				if (ignore_occlusion || shape->IsColossal() || !shape->IsOccluded()) {
 					visible_shapes.push_back(shape);
 				}
 			}

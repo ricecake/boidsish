@@ -442,8 +442,11 @@ namespace Boidsish {
 					chunk.is_occluded = (samples == 0);
 					chunk.query_issued = false;
 				}
+				// If query results are not yet available, we retain the state from the previous frame
+				// to prevent 1-frame flickering.
 			} else {
-				// If no query issued (e.g. out of frustum or first frame), assume not occluded
+				// If no query was issued (e.g., first frame or just entered frustum),
+				// assume it's visible.
 				chunk.is_occluded = false;
 			}
 		}
@@ -653,7 +656,7 @@ namespace Boidsish {
 
 		// Restore depth state
 		glDepthMask(GL_TRUE);
-		glDepthFunc(GL_LESS);
+		glDepthFunc(GL_LEQUAL);
 	}
 
 	void TerrainRenderManager::Render(

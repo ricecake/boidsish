@@ -771,7 +771,7 @@ namespace Boidsish {
 			}
 		}
 
-		// Vertical occluders (scanning along X)
+		// Vertical occluders (scanning along X - constant Z)
 		for (int z = 0; z < cols; z += 8) {
 			std::vector<std::vector<bool>> grid(rows, std::vector<bool>(20)); // Y levels
 			float                          yStep = (maxY - minY) / 20.0f;
@@ -794,6 +794,33 @@ namespace Boidsish {
 				quad.corners[1] = glm::vec3((r.start_row + r.num_rows - 1) * world_scale_, y0, z * world_scale_);
 				quad.corners[2] = glm::vec3((r.start_row + r.num_rows - 1) * world_scale_, y1, z * world_scale_);
 				quad.corners[3] = glm::vec3(r.start_row * world_scale_, y1, z * world_scale_);
+				occluders.push_back(quad);
+			}
+		}
+
+		// Vertical occluders (scanning along Z - constant X)
+		for (int i = 0; i < rows; i += 8) {
+			std::vector<std::vector<bool>> grid(cols, std::vector<bool>(20)); // Y levels
+			float                          yStep = (maxY - minY) / 20.0f;
+			if (yStep < 0.1f * world_scale_)
+				continue;
+
+			for (int z = 0; z < cols; ++z) {
+				for (int yIdx = 0; yIdx < 20; ++yIdx) {
+					float y = minY + yIdx * yStep;
+					grid[z][yIdx] = hmap[i][z] >= y;
+				}
+			}
+
+			Rect r = findLargestRectangle(grid);
+			if (r.num_rows * r.num_cols > 20) {
+				OccluderQuad quad;
+				float        y0 = minY + r.start_col * yStep;
+				float        y1 = minY + (r.start_col + r.num_cols - 1) * yStep;
+				quad.corners[0] = glm::vec3(i * world_scale_, y0, r.start_row * world_scale_);
+				quad.corners[1] = glm::vec3(i * world_scale_, y0, (r.start_row + r.num_rows - 1) * world_scale_);
+				quad.corners[2] = glm::vec3(i * world_scale_, y1, (r.start_row + r.num_rows - 1) * world_scale_);
+				quad.corners[3] = glm::vec3(i * world_scale_, y1, r.start_row * world_scale_);
 				occluders.push_back(quad);
 			}
 		}

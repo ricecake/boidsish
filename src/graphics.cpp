@@ -228,10 +228,10 @@ namespace Boidsish {
 		std::unique_ptr<Shader> plane_shader;
 		std::unique_ptr<Shader> sky_shader;
 		std::unique_ptr<Shader> trail_shader;
+		std::unique_ptr<Shader> occlusion_shader;
+		std::unique_ptr<Shader> debug_occlusion_shader;
 		std::unique_ptr<Shader> blur_shader;
 		std::unique_ptr<Shader> postprocess_shader_;
-		std::unique_ptr<Shader> occlusion_shader;
-		std::unique_ptr<Shader> occluder_debug_shader;
 		GLuint                  plane_vao{0}, plane_vbo{0}, sky_vao{0}, blur_quad_vao{0}, blur_quad_vbo{0};
 		GLuint                  reflection_fbo{0}, reflection_texture{0}, reflection_depth_rbo{0};
 		GLuint                  pingpong_fbo[2]{0}, pingpong_texture[2]{0};
@@ -245,6 +245,7 @@ namespace Boidsish {
 		bool   first_mouse = true;
 
 		bool                                           paused = false;
+		bool                                           show_occluders = false;
 		float                                          simulation_time = 0.0f;
 		float                                          time_scale = 1.0f;
 		float                                          ripple_strength = 0.0f;
@@ -288,8 +289,6 @@ namespace Boidsish {
 		glm::vec2 camera_angular_velocity_{0.0f, 0.0f};
 		float     avg_frame_time_{1.0f / 60.0f};
 		float     tess_quality_multiplier_{1.0f};
-
-		bool render_occluders = false;
 
 		// Camera shake state
 		float     shake_intensity = 0.0f;
@@ -474,12 +473,13 @@ namespace Boidsish {
 			if (ConfigManager::GetInstance().GetAppSettingBool("enable_skybox", true)) {
 				sky_shader = std::make_unique<Shader>("shaders/sky.vert", "shaders/sky.frag");
 			}
+			occlusion_shader = std::make_unique<Shader>("shaders/occlusion.vert", "shaders/occlusion.frag");
+			debug_occlusion_shader =
+				std::make_unique<Shader>("shaders/debug_occluders.vert", "shaders/debug_occluders.frag");
 			if (ConfigManager::GetInstance().GetAppSettingBool("enable_floor", true) &&
 			    ConfigManager::GetInstance().GetAppSettingBool("enable_floor_reflection", true)) {
 				blur_shader = std::make_unique<Shader>("shaders/blur.vert", "shaders/blur.frag");
 			}
-			occlusion_shader = std::make_unique<Shader>("shaders/occlusion.vert", "shaders/occlusion.frag");
-			occluder_debug_shader = std::make_unique<Shader>("shaders/debug_occluders.vert", "shaders/debug_occluders.frag");
 			if (ConfigManager::GetInstance().GetAppSettingBool("enable_effects", true)) {
 				postprocess_shader_ = std::make_unique<Shader>("shaders/postprocess.vert", "shaders/postprocess.frag");
 			}
@@ -900,6 +900,31 @@ namespace Boidsish {
 			}
 		}
 
+		void RenderOcclusionPass(const glm::mat4& view, const glm::mat4& projection) {
+			if (!occlusion_shader || !terrain_render_manager)
+				return;
+
+			// Disable color writes but ENABLE depth writes for priming
+			glColorMask(GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE);
+			glDepthMask(GL_TRUE);
+			glEnable(GL_DEPTH_TEST);
+			glDepthFunc(GL_LESS);
+
+			occlusion_shader->use();
+			occlusion_shader->setMat4("view", view);
+			occlusion_shader->setMat4("projection", projection);
+
+			Frustum frustum = CalculateFrustum(view, projection);
+
+			// 1. Render terrain occluders to prime the depth buffer AND issue terrain occlusion queries
+			terrain_render_manager->RenderOccluders(*occlusion_shader, view, projection, frustum, true);
+
+			// 2. Render instance bounding boxes for occlusion queries
+			instance_manager->RenderOcclusionQueries(*occlusion_shader);
+
+			// Restore state is handled by the caller (Visualizer::Render)
+		}
+
 		void RefreshFrameConfig() {
 			auto& cfg = ConfigManager::GetInstance();
 			frame_config_.effects_enabled = cfg.GetAppSettingBool("enable_effects", true);
@@ -1095,68 +1120,6 @@ namespace Boidsish {
 			}
 		}
 
-		void RenderOcclusionPass(
-			const glm::mat4&                           view,
-			const glm::mat4&                           proj,
-			const std::vector<std::shared_ptr<Shape>>& shapes
-		) {
-			if (!occlusion_shader)
-				return;
-
-			// Disable color writes and enable depth testing
-			glColorMask(GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE);
-			glDepthMask(GL_TRUE);
-			glEnable(GL_DEPTH_TEST);
-			glDepthFunc(GL_LESS);
-			glDisable(GL_CULL_FACE); // Important: Occluders should be visible from both sides
-
-			// Clear depth only
-			glClear(GL_DEPTH_BUFFER_BIT);
-
-			occlusion_shader->use();
-			occlusion_shader->setMat4("view", view);
-			occlusion_shader->setMat4("projection", proj);
-
-			// 1. Render terrain occluders and issue terrain queries
-			if (terrain_render_manager) {
-				Frustum frustum = CalculateFrustum(view, proj);
-				terrain_render_manager->RenderOccluders(*occlusion_shader, view, proj, frustum);
-			}
-
-			// 2. Issue model occlusion queries
-			if (instance_manager) {
-				Frustum frustum = CalculateFrustum(view, proj);
-				for (const auto& shape : shapes) {
-					if (shape->IsInstanced() && !shape->IsHidden()) {
-						// Simple sphere-frustum culling for occlusion queries
-						glm::vec3 center(shape->GetX(), shape->GetY(), shape->GetZ());
-						float     radius = 10.0f; // Conservative default
-						bool      in_frustum = true;
-						for (int i = 0; i < 6; ++i) {
-							if (glm::dot(center, frustum.planes[i].normal) + frustum.planes[i].distance < -radius) {
-								in_frustum = false;
-								break;
-							}
-						}
-
-						if (in_frustum) {
-							instance_manager->AddInstance(shape);
-						} else {
-							// Reset occlusion state if not in frustum
-							shape->SetOccluded(false);
-							shape->SetQueryIssued(false);
-						}
-					}
-				}
-				instance_manager->RenderOcclusionQueries(*occlusion_shader);
-				instance_manager->ClearInstances();
-			}
-
-			// Restore color writes and culling
-			glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
-			glEnable(GL_CULL_FACE);
-		}
-
 		void RenderShapes(
 			const glm::mat4& view,
 			const Camera& /* cam */,
@@ -1200,8 +1163,7 @@ namespace Boidsish {
 				}
 			}
 
-			bool ignore_occlusion = clip_plane.has_value();
-			instance_manager->Render(*shader, ignore_occlusion);
+			instance_manager->Render(*shader);
 
 			// Render clones
 			clone_manager->Render(*shader);
@@ -1286,8 +1248,7 @@ namespace Boidsish {
 
 				// Prepare for rendering (frustum culling for instanced renderer)
 				float world_scale = terrain_generator ? terrain_generator->GetWorldScale() : 1.0f;
-				bool  ignore_occlusion = is_shadow_pass || clip_plane.has_value();
-				terrain_render_manager->PrepareForRender(frustum, camera.pos(), world_scale, ignore_occlusion);
+				terrain_render_manager->PrepareForRender(frustum, camera.pos(), world_scale);
 
 				terrain_render_manager->Render(*Terrain::terrain_shader_, view, proj, clip_plane, effective_quality);
 			} else {
@@ -2187,27 +2148,6 @@ namespace Boidsish {
 			);
 		}
 
-		// Early preparation for terrain rendering - polls occlusion queries from previous frame
-		if (impl->terrain_render_manager) {
-			float world_scale = impl->terrain_generator ? impl->terrain_generator->GetWorldScale() : 1.0f;
-			Frustum main_frustum = impl->CalculateFrustum(view_matrix, impl->projection);
-			impl->terrain_render_manager->PrepareForRender(main_frustum, impl->camera.pos(), world_scale, false);
-		}
-
-		bool effects_enabled = impl->frame_config_.effects_enabled;
-		bool has_shockwaves = impl->shockwave_manager && impl->shockwave_manager->HasActiveShockwaves();
-		bool skip_intermediate = (impl->render_scale == 1.0f && !effects_enabled && !has_shockwaves);
-
-		// --- NEW: Occlusion Pass ---
-		if (skip_intermediate) {
-			glBindFramebuffer(GL_FRAMEBUFFER, 0);
-			glViewport(0, 0, impl->width, impl->height);
-		} else {
-			glBindFramebuffer(GL_FRAMEBUFFER, impl->main_fbo_);
-			glViewport(0, 0, impl->render_width, impl->render_height);
-		}
-		impl->RenderOcclusionPass(view_matrix, impl->projection, impl->shapes);
-
 		// UBO Updates - using cached config values
 		if (impl->frame_config_.effects_enabled) {
 			VisualEffectsUbo ubo_data{};
@@ -2522,12 +2462,28 @@ namespace Boidsish {
 			impl->shadow_manager->UpdateShadowUBO(shadow_lights);
 		}
 
+		bool effects_enabled = impl->frame_config_.effects_enabled;
+		bool has_shockwaves = impl->shockwave_manager && impl->shockwave_manager->HasActiveShockwaves();
+		bool skip_intermediate = (impl->render_scale == 1.0f && !effects_enabled && !has_shockwaves);
+
+		// --- Occlusion Pass ---
+		impl->RenderOcclusionPass(view_matrix, impl->projection);
+
+		// Restore state for main scene pass
+		glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
+		glDepthMask(GL_TRUE);
+		glDepthFunc(GL_LEQUAL);
+
 		// --- Main Scene Pass ---
-		// (FBO and Viewport already set above for Occlusion Pass)
+		if (skip_intermediate) {
+			glBindFramebuffer(GL_FRAMEBUFFER, 0);
+			glViewport(0, 0, impl->width, impl->height);
+		} else {
+			glBindFramebuffer(GL_FRAMEBUFFER, impl->main_fbo_);
+			glViewport(0, 0, impl->render_width, impl->render_height);
+		}
 
 		glEnable(GL_DEPTH_TEST);
-		// IMPORTANT: Clear depth again! The occlusion pass populated it with simplified quads
-		// which would cause clipping artifacts if left in the buffer.
 		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
 		glm::mat4 view = impl->SetupMatrices();
@@ -2541,15 +2497,6 @@ namespace Boidsish {
 		impl->BindShadows(*impl->shader);
 
 		impl->RenderShapes(view, impl->camera, impl->shapes, impl->simulation_time, std::nullopt);
-
-		if (impl->render_occluders) {
-			glDisable(GL_CULL_FACE);
-			glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
-			impl->terrain_render_manager->RenderOccluders(*impl->occluder_debug_shader, view, impl->projection, Frustum(), false);
-			glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
-			glEnable(GL_CULL_FACE);
-		}
-
 		if (impl->decor_manager) {
 			impl->decor_manager->Render(view, impl->projection);
 		}
@@ -2645,6 +2592,24 @@ namespace Boidsish {
 					glBindFramebuffer(GL_FRAMEBUFFER, 0);
 				}
 			}
+		}
+
+		// --- Debug Visualization ---
+		if (impl->show_occluders && impl->debug_occlusion_shader && impl->terrain_render_manager) {
+			glEnable(GL_BLEND);
+			glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+			impl->debug_occlusion_shader->use();
+			impl->debug_occlusion_shader->setMat4("view", view_matrix);
+			impl->debug_occlusion_shader->setMat4("projection", impl->projection);
+
+			Frustum frustum = impl->CalculateFrustum(view_matrix, impl->projection);
+			impl->terrain_render_manager->RenderOccluders(
+				*impl->debug_occlusion_shader,
+				view_matrix,
+				impl->projection,
+				frustum,
+				false // Just render, queries already issued in RenderOcclusionPass
+			);
 		}
 
 		// --- Shadow Optimization: Update last known positions for the next frame ---
@@ -2862,6 +2827,14 @@ namespace Boidsish {
 		impl->shake_intensity = intensity;
 		impl->shake_timer = duration;
 		impl->shake_duration = duration;
+	}
+
+	bool Visualizer::IsOccluderVisualizationEnabled() const {
+		return impl->show_occluders;
+	}
+
+	void Visualizer::SetOccluderVisualizationEnabled(bool enabled) {
+		impl->show_occluders = enabled;
 	}
 
 	void Visualizer::SetPathCamera(std::shared_ptr<Path> path) {
@@ -3388,13 +3361,5 @@ namespace Boidsish {
 
 	bool Visualizer::IsWireframeEffectEnabled() const {
 		return ConfigManager::GetInstance().GetAppSettingBool("artistic_effect_wireframe", false);
-	}
-
-	bool Visualizer::IsOccluderVisualizationEnabled() const {
-		return impl->render_occluders;
-	}
-
-	void Visualizer::SetOccluderVisualizationEnabled(bool enabled) {
-		impl->render_occluders = enabled;
 	}
 } // namespace Boidsish
