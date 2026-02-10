@@ -1,5 +1,4 @@
 #include "post_processing/PostProcessingManager.h"
-
 #include <iostream>
 
 #include <shader.h>
@@ -65,10 +64,11 @@ namespace Boidsish {
 			const glm::mat4& viewMatrix,
 			const glm::mat4& projectionMatrix,
 			const glm::vec3& cameraPos,
-			float            time
+			float            time,
+			int              start_fbo_index
 		) {
-			bool   effect_applied = false;
-			int    fbo_index = 0;
+			bool   effect_applied = (start_fbo_index != 0);
+			int    fbo_index = start_fbo_index;
 			GLuint current_texture = sourceTexture;
 
 			// Ensure the viewport is set correctly for our FBOs before starting
@@ -76,7 +76,7 @@ namespace Boidsish {
 
 			// Pre-tone-mapping effects chain
 			for (const auto& effect : pre_tone_mapping_effects_) {
-				if (effect->IsEnabled()) {
+				if (effect->IsEnabled() && !effect->IsManual()) {
 					effect->SetTime(time);
 					glBindFramebuffer(GL_FRAMEBUFFER, pingpong_fbo_[fbo_index]);
 					glClear(GL_COLOR_BUFFER_BIT);

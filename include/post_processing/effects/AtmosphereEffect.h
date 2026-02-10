@@ -3,6 +3,7 @@
 #include <memory>
 
 #include "post_processing/IPostProcessingEffect.h"
+#include "post_processing/effects/AtmosphereScattering.h"
 
 class Shader; // Forward declaration
 
@@ -56,6 +57,18 @@ namespace Boidsish {
 
 			glm::vec3 GetCloudColor() const { return cloud_color_; }
 
+			void SetCloudsEnabled(bool enabled) { clouds_enabled_ = enabled; }
+
+			bool AreCloudsEnabled() const { return clouds_enabled_; }
+
+			void SetFogEnabled(bool enabled) { fog_enabled_ = enabled; }
+
+			bool IsFogEnabled() const { return fog_enabled_; }
+
+			AtmosphereScattering&       GetScattering() { return scattering_; }
+
+			const AtmosphereScattering& GetScattering() const { return scattering_; }
+
 		private:
 			std::unique_ptr<Shader> shader_;
 			float                   time_ = 0.0f;
@@ -67,6 +80,11 @@ namespace Boidsish {
 			float     cloud_altitude_ = 95.0f;
 			float     cloud_thickness_ = 10.0f;
 			glm::vec3 cloud_color_ = glm::vec3(0.95f, 0.95f, 1.0f);
+
+			bool clouds_enabled_ = true;
+			bool fog_enabled_ = true;
+
+			AtmosphereScattering scattering_;
 
 			int width_ = 0;
 			int height_ = 0;

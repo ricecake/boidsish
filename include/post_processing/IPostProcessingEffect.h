@@ -29,11 +29,16 @@ namespace Boidsish {
 
 			void SetEnabled(bool enabled) { is_enabled_ = enabled; }
 
+			bool IsManual() const { return is_manual_; }
+
+			void SetManual(bool manual) { is_manual_ = manual; }
+
 			virtual void SetTime(float /* time */) {}
 
 		protected:
 			std::string name_;
 			bool        is_enabled_ = true;
+			bool        is_manual_ = false;
 		};
 
 	} // namespace PostProcessing
