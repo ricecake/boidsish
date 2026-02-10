@@ -9,6 +9,7 @@
 
 #include <GL/glew.h>
 #include <glm/glm.hpp>
+#include "frustum.h"
 #include "terrain_render_interface.h"
 
 class Shader;
@@ -113,7 +114,8 @@ namespace Boidsish {
 			Shader&          shader,
 			const glm::mat4& view,
 			const glm::mat4& projection,
-			const Frustum&   frustum
+			const Frustum&   frustum = Frustum(),
+			bool             issue_queries = true
 		) override;
 
 		/**

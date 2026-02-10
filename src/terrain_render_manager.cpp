@@ -544,7 +544,8 @@ namespace Boidsish {
 		Shader&          shader,
 		const glm::mat4& view,
 		const glm::mat4& projection,
-		const Frustum&   frustum
+		const Frustum&   frustum,
+		bool             issue_queries
 	) {
 		std::lock_guard<std::mutex> lock(mutex_);
 
@@ -587,6 +588,14 @@ namespace Boidsish {
 		}
 
 		// Second pass: issue queries for chunks to check if they are still visible
+		if (!issue_queries) {
+			return;
+		}
+
+		// Switch to query mode: disable depth writes and use LEQUAL to pass against the priming pass
+		glDepthMask(GL_FALSE);
+		glDepthFunc(GL_LEQUAL);
+
 		// We use the bounding box for the query volume
 		static GLuint bbox_vao = 0, bbox_vbo = 0, bbox_ebo = 0;
 		if (bbox_vao == 0) {
@@ -618,11 +627,20 @@ namespace Boidsish {
 			if (!IsChunkVisible(chunk, frustum, last_world_scale_))
 				continue;
 
+			// Use a slightly inflated bounding box for the occlusion query to be conservative
+			float     padding = 2.0f * last_world_scale_;
 			glm::mat4 model = glm::translate(
 				glm::mat4(1.0f),
-				glm::vec3(chunk.world_offset.x, chunk.min_y, chunk.world_offset.y)
+				glm::vec3(chunk.world_offset.x - padding * 0.5f, chunk.min_y - padding * 0.5f, chunk.world_offset.y - padding * 0.5f)
 			);
-			model = glm::scale(model, glm::vec3(chunk_size_ * last_world_scale_, chunk.max_y - chunk.min_y, chunk_size_ * last_world_scale_));
+			model = glm::scale(
+				model,
+				glm::vec3(
+					chunk_size_ * last_world_scale_ + padding,
+					(chunk.max_y - chunk.min_y) + padding,
+					chunk_size_ * last_world_scale_ + padding
+				)
+			);
 			shader.setMat4("model", model);
 
 			glBeginQuery(GL_ANY_SAMPLES_PASSED, chunk.occlusion_query);
@@ -632,6 +650,10 @@ namespace Boidsish {
 		}
 
 		glBindVertexArray(0);
+
+		// Restore depth state
+		glDepthMask(GL_TRUE);
+		glDepthFunc(GL_LESS);
 	}
 
 	void TerrainRenderManager::Render(

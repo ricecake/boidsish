@@ -2545,7 +2545,7 @@ namespace Boidsish {
 		if (impl->render_occluders) {
 			glDisable(GL_CULL_FACE);
 			glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
-			impl->terrain_render_manager->RenderOccluders(*impl->occluder_debug_shader, view, impl->projection);
+			impl->terrain_render_manager->RenderOccluders(*impl->occluder_debug_shader, view, impl->projection, Frustum(), false);
 			glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
 			glEnable(GL_CULL_FACE);
 		}

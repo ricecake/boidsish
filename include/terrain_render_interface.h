@@ -63,7 +63,8 @@ namespace Boidsish {
 			Shader&          shader,
 			const glm::mat4& view,
 			const glm::mat4& projection,
-			const Frustum&   frustum
+			const Frustum&   frustum,
+			bool             issue_queries = true
 		) = 0;
 
 		/**

@@ -211,6 +211,34 @@ namespace Boidsish {
 
 	void InstanceManager::RenderOcclusionQueries(Shader& shader) {
 		shader.use();
+
+		static GLuint bbox_vao = 0, bbox_vbo = 0, bbox_ebo = 0;
+		if (bbox_vao == 0) {
+			glGenVertexArrays(1, &bbox_vao);
+			glGenBuffers(1, &bbox_vbo);
+			glGenBuffers(1, &bbox_ebo);
+			float vertices[] = {
+				0, 0, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0, 0, 0, 1, 1, 0, 1, 1, 1, 1, 0, 1, 1,
+			};
+			unsigned int indices[] = {
+				0, 1, 2, 2, 3, 0, 4, 5, 6, 6, 7, 4, 0, 1, 5, 5, 4, 0,
+				2, 3, 7, 7, 6, 2, 1, 2, 6, 6, 5, 1, 0, 3, 7, 7, 4, 0,
+			};
+			glBindVertexArray(bbox_vao);
+			glBindBuffer(GL_ARRAY_BUFFER, bbox_vbo);
+			glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
+			glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
+			glEnableVertexAttribArray(0);
+			glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, bbox_ebo);
+			glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(indices), indices, GL_STATIC_DRAW);
+			glBindVertexArray(0);
+		}
+
+		// Switch to query mode
+		glDepthMask(GL_FALSE);
+		glDepthFunc(GL_LEQUAL);
+		glBindVertexArray(bbox_vao);
+
 		for (auto& [key, group] : m_instance_groups) {
 			for (auto& shape : group.shapes) {
 				if (shape->IsHidden())
@@ -229,21 +257,29 @@ namespace Boidsish {
 				if (shape->IsQueryIssued())
 					continue;
 
+				// Use AABB for the query volume
+				glm::vec3 min_b = model->GetMinBound();
+				glm::vec3 max_b = model->GetMaxBound();
+				glm::vec3 size  = max_b - min_b;
+
+				// Inflate slightly
+				float     padding = 0.1f;
 				glm::mat4 model_matrix = shape->GetModelMatrix();
+				model_matrix           = glm::translate(model_matrix, min_b - glm::vec3(padding * 0.5f));
+				model_matrix           = glm::scale(model_matrix, size + glm::vec3(padding));
+
 				shader.setMat4("model", model_matrix);
 
 				glBeginQuery(GL_ANY_SAMPLES_PASSED, shape->GetOcclusionQuery());
-				// For now, let's just render the model's meshes as a proxy for the AABB
-				for (const auto& mesh : model->getMeshes()) {
-					glBindVertexArray(mesh.VAO);
-					glDrawElements(GL_TRIANGLES, mesh.indices.size(), GL_UNSIGNED_INT, 0);
-				}
-
+				glDrawElements(GL_TRIANGLES, 36, GL_UNSIGNED_INT, 0);
 				glEndQuery(GL_ANY_SAMPLES_PASSED);
 				shape->SetQueryIssued(true);
 			}
 		}
+
 		glBindVertexArray(0);
+		glDepthMask(GL_TRUE);
+		glDepthFunc(GL_LESS);
 	}
 
 	void InstanceManager::ClearInstances() {
