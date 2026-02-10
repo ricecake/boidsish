@@ -108,10 +108,10 @@ namespace Boidsish {
 			glViewport(0, 0, transmittance_width_, transmittance_height_);
 			glDisable(GL_DEPTH_TEST);
 			transmittance_shader_->use();
-			transmittance_shader_->setVec3("rayleighScattering", params_.rayleigh_scattering);
+			transmittance_shader_->setVec3("rayleighScattering", params_.rayleigh_scattering * params_.rayleigh_multiplier);
 			transmittance_shader_->setFloat("rayleighScaleHeight", params_.rayleigh_scale_height);
-			transmittance_shader_->setFloat("mieScattering", params_.mie_scattering);
-			transmittance_shader_->setFloat("mieExtinction", params_.mie_extinction);
+			transmittance_shader_->setFloat("mieScattering", params_.mie_scattering * params_.mie_multiplier);
+			transmittance_shader_->setFloat("mieExtinction", params_.mie_extinction * params_.mie_multiplier);
 			transmittance_shader_->setFloat("mieScaleHeight", params_.mie_scale_height);
 			transmittance_shader_->setFloat("mieAnisotropy", params_.mie_anisotropy);
 			transmittance_shader_->setVec3("absorptionExtinction", params_.absorption_extinction);
@@ -140,10 +140,10 @@ namespace Boidsish {
 			glViewport(0, 0, multi_scattering_size_, multi_scattering_size_);
 			glDisable(GL_DEPTH_TEST);
 			multi_scattering_shader_->use();
-			multi_scattering_shader_->setVec3("rayleighScattering", params_.rayleigh_scattering);
+			multi_scattering_shader_->setVec3("rayleighScattering", params_.rayleigh_scattering * params_.rayleigh_multiplier);
 			multi_scattering_shader_->setFloat("rayleighScaleHeight", params_.rayleigh_scale_height);
-			multi_scattering_shader_->setFloat("mieScattering", params_.mie_scattering);
-			multi_scattering_shader_->setFloat("mieExtinction", params_.mie_extinction);
+			multi_scattering_shader_->setFloat("mieScattering", params_.mie_scattering * params_.mie_multiplier);
+			multi_scattering_shader_->setFloat("mieExtinction", params_.mie_extinction * params_.mie_multiplier);
 			multi_scattering_shader_->setFloat("mieAnisotropy", params_.mie_anisotropy);
 			multi_scattering_shader_->setFloat("mieScaleHeight", params_.mie_scale_height);
 			multi_scattering_shader_->setVec3("absorptionExtinction", params_.absorption_extinction);

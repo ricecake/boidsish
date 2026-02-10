@@ -25,8 +25,7 @@ namespace Boidsish {
 				const glm::mat4& viewMatrix,
 				const glm::mat4& projectionMatrix,
 				const glm::vec3& cameraPos,
-				float            time,
-				int              start_fbo_index = 0
+				float            time
 			);
 			void Resize(int width, int height);
 

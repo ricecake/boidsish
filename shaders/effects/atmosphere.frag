@@ -44,8 +44,8 @@ vec3 get_scattering(vec3 p, vec3 rd, vec3 sun_dir, out vec3 transmittance) {
 	transmittance = get_transmittance(r, mu);
 	vec3 trans_sun = get_transmittance(r, mu_s);
 
-	float r_h = exp(-(r - bottomRadius) / rayleighScaleHeight);
-	float m_h = exp(-(r - bottomRadius) / mieScaleHeight);
+	float r_h = exp(-max(0.0, r - bottomRadius) / max(0.01, rayleighScaleHeight));
+	float m_h = exp(-max(0.0, r - bottomRadius) / max(0.01, mieScaleHeight));
 
 	vec3  rayleigh_scat = rayleighScattering * r_h * rayleigh_phase(cos_theta);
 	vec3  mie_scat = vec3(mieScattering) * m_h * henyey_greenstein(cos_theta, mieAnisotropy);

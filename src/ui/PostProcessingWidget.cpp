@@ -66,55 +66,53 @@ namespace Boidsish {
 							auto& params = atmosphere_effect->GetScattering().GetParameters();
 							auto  new_params = params;
 
-							if (ImGui::DragFloat3(
-									"Rayleigh Scattering",
+							if (ImGui::Button("Reset to Earth Defaults")) {
+								new_params = PostProcessing::AtmosphereScattering::Parameters();
+							}
+
+							ImGui::Separator();
+							ImGui::Text("Scattering Multipliers");
+							ImGui::SliderFloat("Rayleigh Strength", &new_params.rayleigh_multiplier, 0.0f, 10.0f);
+							ImGui::SliderFloat("Mie Strength", &new_params.mie_multiplier, 0.0f, 10.0f);
+							ImGui::SliderFloat("Sun Intensity", &new_params.sun_intensity, 0.0f, 100.0f);
+
+							ImGui::Separator();
+							ImGui::Text("Advanced Physical Parameters");
+							if (ImGui::CollapsingHeader("Rayleigh Details")) {
+								ImGui::DragFloat3(
+									"Base Coefficients",
 									&new_params.rayleigh_scattering[0],
 									0.0001f,
 									0.0f,
-									1.0f,
+									0.1f,
 									"%.5f"
-								)) {
+								);
+								ImGui::SliderFloat("Scale Height", &new_params.rayleigh_scale_height, 0.1f, 50.0f);
 							}
-							if (ImGui::SliderFloat("Rayleigh Scale Height", &new_params.rayleigh_scale_height, 0.1f, 100.0f)) {
-							}
-							if (ImGui::DragFloat(
-									"Mie Scattering",
+							if (ImGui::CollapsingHeader("Mie Details")) {
+								ImGui::DragFloat(
+									"Base Scattering",
 									&new_params.mie_scattering,
 									0.0001f,
 									0.0f,
-									1.0f,
+									0.1f,
 									"%.5f"
-								)) {
-							}
-							if (ImGui::DragFloat(
-									"Mie Extinction",
+								);
+								ImGui::DragFloat(
+									"Base Extinction",
 									&new_params.mie_extinction,
 									0.0001f,
 									0.0f,
-									1.0f,
+									0.1f,
 									"%.5f"
-								)) {
+								);
+								ImGui::SliderFloat("Anisotropy (g)", &new_params.mie_anisotropy, 0.0f, 0.999f);
+								ImGui::SliderFloat("Mie Scale Height", &new_params.mie_scale_height, 0.1f, 20.0f);
 							}
-							if (ImGui::SliderFloat("Mie Anisotropy", &new_params.mie_anisotropy, 0.0f, 0.999f)) {
-							}
-							if (ImGui::SliderFloat("Mie Scale Height", &new_params.mie_scale_height, 0.1f, 100.0f)) {
-							}
-							if (ImGui::DragFloat3(
-									"Absorption Extinction",
-									&new_params.absorption_extinction[0],
-									0.0001f,
-									0.0f,
-									1.0f,
-									"%.5f"
-								)) {
-							}
-							if (ImGui::SliderFloat("Sun Intensity", &new_params.sun_intensity, 0.0f, 500.0f)) {
-							}
-							if (ImGui::DragFloat("Bottom Radius", &new_params.bottom_radius, 1.0f, 100.0f, 10000.0f)) {
-							}
-							if (ImGui::DragFloat("Top Radius", &new_params.top_radius, 1.0f, 100.0f, 10000.0f)) {
-							}
-							if (ImGui::ColorEdit3("Ground Albedo", &new_params.ground_albedo[0])) {
+							if (ImGui::CollapsingHeader("Atmosphere Geometry")) {
+								ImGui::DragFloat("Planet Radius", &new_params.bottom_radius, 1.0f, 100.0f, 10000.0f);
+								ImGui::DragFloat("Atmosphere Top", &new_params.top_radius, 1.0f, 100.0f, 10000.0f);
+								ImGui::ColorEdit3("Ground Albedo", &new_params.ground_albedo[0]);
 							}
 
 							atmosphere_effect->GetScattering().Update(new_params);

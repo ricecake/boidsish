@@ -64,11 +64,10 @@ namespace Boidsish {
 			const glm::mat4& viewMatrix,
 			const glm::mat4& projectionMatrix,
 			const glm::vec3& cameraPos,
-			float            time,
-			int              start_fbo_index
+			float            time
 		) {
-			bool   effect_applied = (start_fbo_index != 0);
-			int    fbo_index = start_fbo_index;
+			bool   effect_applied = false;
+			int    fbo_index = 0;
 			GLuint current_texture = sourceTexture;
 
 			// Ensure the viewport is set correctly for our FBOs before starting

@@ -69,8 +69,9 @@ bool intersect_sphere(vec3 ro, vec3 rd, float radius, out float t0, out float t1
 }
 
 float henyey_greenstein(float cos_theta, float g) {
+	g = clamp(g, -0.999, 0.999);
 	float g2 = g * g;
-	return (1.0 - g2) / (4.0 * ATM_PI * pow(1.0 + g2 - 2.0 * g * cos_theta, 1.5));
+	return (1.0 - g2) / (4.0 * ATM_PI * pow(max(0.001, 1.0 + g2 - 2.0 * g * cos_theta), 1.5));
 }
 
 float rayleigh_phase(float cos_theta) {
