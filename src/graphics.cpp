@@ -1291,6 +1291,8 @@ namespace Boidsish {
 				if (e->GetName() == "Atmosphere") {
 					auto atmosphere = std::dynamic_pointer_cast<PostProcessing::AtmosphereEffect>(e);
 					if (atmosphere) {
+						atmosphere->SetWorldScale(lighting_ubo_data_.world_scale);
+
 						glActiveTexture(GL_TEXTURE2);
 						glBindTexture(GL_TEXTURE_2D, atmosphere->GetScattering().GetTransmittanceLUT());
 						sky_shader->setInt("transmittanceLUT", 2);
@@ -1300,16 +1302,20 @@ namespace Boidsish {
 						sky_shader->setInt("multiScatteringLUT", 3);
 
 						const auto& params = atmosphere->GetScattering().GetParameters();
-						sky_shader->setVec3("rayleighScattering", params.rayleigh_scattering * params.rayleigh_multiplier);
-						sky_shader->setFloat("rayleighScaleHeight", params.rayleigh_scale_height);
+						sky_shader->setVec3(
+							"rayleighScattering",
+							params.rayleigh_scattering * params.rayleigh_multiplier
+						);
+						sky_shader->setFloat("rayleighScaleHeight", params.rayleigh_scale_height * params.world_scale);
 						sky_shader->setFloat("mieScattering", params.mie_scattering * params.mie_multiplier);
 						sky_shader->setFloat("mieExtinction", params.mie_extinction * params.mie_multiplier);
-						sky_shader->setFloat("mieScaleHeight", params.mie_scale_height);
+						sky_shader->setFloat("mieScaleHeight", params.mie_scale_height * params.world_scale);
 						sky_shader->setFloat("mieAnisotropy", params.mie_anisotropy);
 						sky_shader->setVec3("absorptionExtinction", params.absorption_extinction);
-						sky_shader->setFloat("bottomRadius", params.bottom_radius);
-						sky_shader->setFloat("topRadius", params.top_radius);
+						sky_shader->setFloat("bottomRadius", params.bottom_radius * params.world_scale);
+						sky_shader->setFloat("topRadius", params.top_radius * params.world_scale);
 						sky_shader->setFloat("sunIntensity", params.sun_intensity);
+						sky_shader->setFloat("sunIntensityFactor", params.sun_intensity_factor);
 					}
 					break;
 				}
@@ -1339,6 +1345,7 @@ namespace Boidsish {
 
 			if (atmosphere && atmosphere->IsEnabled()) {
 				atmosphere->SetTime(simulation_time);
+				atmosphere->SetWorldScale(lighting_ubo_data_.world_scale);
 
 				// 1. Blit current main FBO color to ping-pong texture 0 as a source
 				glBindFramebuffer(GL_READ_FRAMEBUFFER, main_fbo_);

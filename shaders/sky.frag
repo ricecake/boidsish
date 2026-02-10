@@ -11,10 +11,6 @@ in vec2 TexCoords;
 uniform mat4 invProjection;
 uniform mat4 invView;
 
-uniform sampler2D transmittanceLUT;
-uniform sampler2D multiScatteringLUT;
-uniform float sunIntensity;
-
 // Star field logic from original sky.frag
 vec3 hash33(vec3 p) {
 	p = fract(p * vec3(443.897, 441.423, 437.195));
@@ -32,36 +28,6 @@ float starLayer(vec3 dir) {
 	float dist = length(local_uv - center);
 	float radius = 0.05 * brightness;
 	return smoothstep(radius, radius * 0.5, dist);
-}
-
-vec3 get_transmittance(float r, float mu) {
-	vec2 uv = transmittance_to_uv(r, mu);
-	return texture(transmittanceLUT, uv).rgb;
-}
-
-vec3 get_scattering(vec3 p, vec3 rd, vec3 sun_dir, out vec3 transmittance) {
-	float r = length(p);
-	float mu = dot(p, rd) / max(r, 0.01);
-	float mu_s = dot(p, sun_dir) / max(r, 0.01);
-	float cos_theta = dot(rd, sun_dir);
-
-	transmittance = get_transmittance(r, mu);
-	vec3 trans_sun = get_transmittance(r, mu_s);
-
-	float r_h = exp(-max(0.0, r - bottomRadius) / max(0.01, rayleighScaleHeight));
-	float m_h = exp(-max(0.0, r - bottomRadius) / max(0.01, mieScaleHeight));
-
-	vec3  rayleigh_scat = rayleighScattering * r_h * rayleigh_phase(cos_theta);
-	vec3  mie_scat = vec3(mieScattering) * m_h * henyey_greenstein(cos_theta, mieAnisotropy);
-
-	vec3  scat = (rayleigh_scat + mie_scat) * trans_sun * sunIntensity;
-
-	// Add multi-scattering
-	vec2 ms_uv = vec2(mu_s * 0.5 + 0.5, (r - bottomRadius) / (topRadius - bottomRadius));
-	vec3 ms = texture(multiScatteringLUT, ms_uv).rgb;
-	scat += ms * sunIntensity;
-
-	return scat;
 }
 
 void main() {
@@ -114,21 +80,36 @@ void main() {
 
 	// Solar Disc
 	float sun_angular_radius = 0.015;
-	float sun_cos_theta = dot(world_ray, sun_dir);
 
-	// Distortion near horizon
-	float flattening = 1.0 + 1.5 * smoothstep(0.1, -0.1, sun_dir.y);
-	vec3 distorted_ray = world_ray;
+	float effectiveSunIntensity = sunIntensity;
+	if (num_lights > 0) {
+		effectiveSunIntensity = lights[0].intensity * sunIntensityFactor;
+	}
+
+	// Curvature magnification: make sun look bigger near horizon
+	float sun_size_mult = 1.0 + 2.5 * smoothstep(0.15, -0.05, sun_dir.y);
+	float current_sun_radius = sun_angular_radius * sun_size_mult;
+
+	// Distortion near horizon (flattening)
+	float flattening = 1.0 + 0.5 * smoothstep(0.1, -0.1, sun_dir.y);
+	vec3  distorted_ray = world_ray;
 	distorted_ray.y *= flattening;
 	vec3 distorted_sun = sun_dir;
 	distorted_sun.y *= flattening;
 
 	float sun_dist = length(normalize(distorted_ray) - normalize(distorted_sun));
-	float sun_disc = smoothstep(sun_angular_radius, sun_angular_radius * 0.9, sun_dist);
+	float sun_disc = smoothstep(current_sun_radius, current_sun_radius * 0.9, sun_dist);
 
 	if (sun_disc > 0.0) {
 		vec3 sun_transmittance = get_transmittance(length(ro), sun_dir.y);
-		final_color += sun_disc * sun_transmittance * sunIntensity * 4.0;
+		final_color += sun_disc * sun_transmittance * effectiveSunIntensity * 2.0;
+	}
+
+	// Sun Glow / Corona
+	float sun_glow = exp(-sun_dist * 15.0 / sun_size_mult) * 0.4;
+	if (sun_glow > 0.001) {
+		vec3 sun_transmittance = get_transmittance(length(ro), sun_dir.y);
+		final_color += sun_glow * sun_transmittance * effectiveSunIntensity;
 	}
 
 	// Stars (only if sky is dark)

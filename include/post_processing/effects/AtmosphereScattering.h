@@ -19,13 +19,15 @@ namespace Boidsish {
 				float     mie_scattering = 0.000399f;
 				float     mie_multiplier = 1.0f;
 				float     mie_extinction = 0.000444f;
-				float     mie_anisotropy = 0.76f;
+				float     mie_anisotropy = 0.80f;
 				float     mie_scale_height = 15.0f;
 				glm::vec3 absorption_extinction = glm::vec3(0.000052f, 0.000150f, 0.000007f);
 				float     bottom_radius = 79500.0f;
 				float     top_radius = 80750.0f;
 				glm::vec3 ground_albedo = glm::vec3(0.3f);
 				float     sun_intensity = 30.0f;
+				float     sun_intensity_factor = 35.0f;
+				float     world_scale = 1.0f;
 
 				bool operator==(const Parameters& other) const {
 					return rayleigh_scattering == other.rayleigh_scattering &&
@@ -36,7 +38,8 @@ namespace Boidsish {
 						mie_scale_height == other.mie_scale_height &&
 						absorption_extinction == other.absorption_extinction && bottom_radius == other.bottom_radius &&
 						top_radius == other.top_radius && ground_albedo == other.ground_albedo &&
-						sun_intensity == other.sun_intensity;
+						sun_intensity == other.sun_intensity && sun_intensity_factor == other.sun_intensity_factor &&
+						world_scale == other.world_scale;
 				}
 
 				bool operator!=(const Parameters& other) const { return !(*this == other); }

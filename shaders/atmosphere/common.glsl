@@ -11,6 +11,8 @@ uniform vec3  absorptionExtinction;
 uniform float bottomRadius;
 uniform float topRadius;
 uniform float mieAnisotropy;
+uniform float sunIntensity;
+uniform float sunIntensityFactor;
 
 const float ATM_PI = 3.14159265359;
 
@@ -88,6 +90,49 @@ float henyey_greenstein(float cos_theta, float g) {
 
 float rayleigh_phase(float cos_theta) {
 	return 3.0 / (16.0 * ATM_PI) * (1.0 + cos_theta * cos_theta);
+}
+
+// Atmosphere Lookups
+uniform sampler2D transmittanceLUT;
+uniform sampler2D multiScatteringLUT;
+
+vec3 get_transmittance(float r, float mu) {
+	vec2 uv = transmittance_to_uv(r, mu);
+	return texture(transmittanceLUT, uv).rgb;
+}
+
+vec3 get_scattering(vec3 p, vec3 rd, vec3 sun_dir, out vec3 transmittance) {
+	float r = length(p);
+	float mu = dot(p, rd) / max(r, 0.01);
+	float mu_s = dot(p, sun_dir) / max(r, 0.01);
+	float cos_theta = dot(rd, sun_dir);
+
+	transmittance = get_transmittance(r, mu);
+	vec3 trans_sun = get_transmittance(r, mu_s);
+
+	float r_h = exp(-max(0.0, r - bottomRadius) / max(0.01, rayleighScaleHeight));
+	float m_h = exp(-max(0.0, r - bottomRadius) / max(0.01, mieScaleHeight));
+
+	vec3  rayleigh_scat = rayleighScattering * r_h * rayleigh_phase(cos_theta);
+	vec3  mie_scat = vec3(mieScattering) * m_h * henyey_greenstein(cos_theta, mieAnisotropy);
+
+	float effectiveSunIntensity = sunIntensity;
+	// Assumption: num_lights and lights are defined where this is included (e.g. via lighting.glsl)
+	// We use a macro or just assume they are available if included after lighting.glsl
+#ifdef LIGHTING_GLSL
+	if (num_lights > 0) {
+		effectiveSunIntensity = lights[0].intensity * sunIntensityFactor;
+	}
+#endif
+
+	vec3 scat = (rayleigh_scat + mie_scat) * trans_sun * effectiveSunIntensity;
+
+	// Add multi-scattering
+	vec2 ms_uv = vec2(mu_s * 0.5 + 0.5, (r - bottomRadius) / (topRadius - bottomRadius));
+	vec3 ms = texture(multiScatteringLUT, ms_uv).rgb;
+	scat += ms * effectiveSunIntensity;
+
+	return scat;
 }
 
 #endif

@@ -1,5 +1,6 @@
 #include "ui/PostProcessingWidget.h"
 
+#include "ConfigManager.h"
 #include "imgui.h"
 #include "post_processing/effects/AtmosphereEffect.h"
 #include "post_processing/effects/AutoExposureEffect.h"
@@ -51,106 +52,51 @@ namespace Boidsish {
 				}
 
 				if (effect->GetName() == "Atmosphere" && is_enabled) {
-					auto atmosphere_effect = std::dynamic_pointer_cast<PostProcessing::AtmosphereEffect>(effect);
-					if (atmosphere_effect) {
-						bool clouds_enabled = atmosphere_effect->AreCloudsEnabled();
-						if (ImGui::Checkbox("Enable Clouds", &clouds_enabled)) {
-							atmosphere_effect->SetCloudsEnabled(clouds_enabled);
-						}
-						bool fog_enabled = atmosphere_effect->IsFogEnabled();
-						if (ImGui::Checkbox("Enable Fog", &fog_enabled)) {
-							atmosphere_effect->SetFogEnabled(fog_enabled);
-						}
+					auto& config = ConfigManager::GetInstance();
 
-						if (ImGui::CollapsingHeader("Scattering Parameters")) {
-							auto& params = atmosphere_effect->GetScattering().GetParameters();
-							auto  new_params = params;
+					bool clouds_enabled = config.GetAppSettingBool("enable_clouds", true);
+					if (ImGui::Checkbox("Enable Clouds", &clouds_enabled)) {
+						config.SetBool("enable_clouds", clouds_enabled);
+					}
+					bool fog_enabled = config.GetAppSettingBool("enable_fog", true);
+					if (ImGui::Checkbox("Enable Fog", &fog_enabled)) {
+						config.SetBool("enable_fog", fog_enabled);
+					}
 
-							if (ImGui::Button("Reset to Earth Defaults")) {
-								new_params = PostProcessing::AtmosphereScattering::Parameters();
-							}
-
-							ImGui::Separator();
-							ImGui::Text("Scattering Multipliers");
-							ImGui::SliderFloat("Rayleigh Strength", &new_params.rayleigh_multiplier, 0.0f, 10.0f);
-							ImGui::SliderFloat("Mie Strength", &new_params.mie_multiplier, 0.0f, 10.0f);
-							ImGui::SliderFloat("Sun Intensity", &new_params.sun_intensity, 0.0f, 100.0f);
-
-							ImGui::Separator();
-							ImGui::Text("Advanced Physical Parameters");
-							if (ImGui::CollapsingHeader("Rayleigh Details")) {
-								ImGui::DragFloat3(
-									"Base Coefficients",
-									&new_params.rayleigh_scattering[0],
-									0.0001f,
-									0.0f,
-									0.1f,
-									"%.5f"
-								);
-								ImGui::SliderFloat("Scale Height", &new_params.rayleigh_scale_height, 0.1f, 50.0f);
-							}
-							if (ImGui::CollapsingHeader("Mie Details")) {
-								ImGui::DragFloat(
-									"Base Scattering",
-									&new_params.mie_scattering,
-									0.0001f,
-									0.0f,
-									0.1f,
-									"%.5f"
-								);
-								ImGui::DragFloat(
-									"Base Extinction",
-									&new_params.mie_extinction,
-									0.0001f,
-									0.0f,
-									0.1f,
-									"%.5f"
-								);
-								ImGui::SliderFloat("Anisotropy (g)", &new_params.mie_anisotropy, 0.0f, 0.999f);
-								ImGui::SliderFloat("Mie Scale Height", &new_params.mie_scale_height, 0.1f, 20.0f);
-							}
-							if (ImGui::CollapsingHeader("Atmosphere Geometry")) {
-								ImGui::DragFloat("Planet Radius", &new_params.bottom_radius, 1.0f, 100.0f, 10000.0f);
-								ImGui::DragFloat("Atmosphere Top", &new_params.top_radius, 1.0f, 100.0f, 10000.0f);
-								ImGui::ColorEdit3("Ground Albedo", &new_params.ground_albedo[0]);
-							}
-
-							atmosphere_effect->GetScattering().Update(new_params);
+					if (ImGui::CollapsingHeader("Scattering Parameters")) {
+						float atmosphere_density = config.GetAppSettingFloat("atmosphere_density", 1.0f);
+						if (ImGui::SliderFloat("Atmosphere Density", &atmosphere_density, 0.0f, 5.0f)) {
+							config.SetFloat("atmosphere_density", atmosphere_density);
 						}
 
-						if (ImGui::CollapsingHeader("Cloud Parameters")) {
-							float cloud_density = atmosphere_effect->GetCloudDensity();
-							if (ImGui::SliderFloat("Cloud Density", &cloud_density, 0.0f, 5.0f)) {
-								atmosphere_effect->SetCloudDensity(cloud_density);
-							}
-							float cloud_altitude = atmosphere_effect->GetCloudAltitude();
-							if (ImGui::SliderFloat("Cloud Altitude", &cloud_altitude, -50.0f, 200.0f)) {
-								atmosphere_effect->SetCloudAltitude(cloud_altitude);
-							}
-							float cloud_thickness = atmosphere_effect->GetCloudThickness();
-							if (ImGui::SliderFloat("Cloud Thickness", &cloud_thickness, 0.0f, 50.0f)) {
-								atmosphere_effect->SetCloudThickness(cloud_thickness);
-							}
-							glm::vec3 cloud_color = atmosphere_effect->GetCloudColor();
-							if (ImGui::ColorEdit3("Cloud Color", &cloud_color[0])) {
-								atmosphere_effect->SetCloudColor(cloud_color);
-							}
+						float fog_density = config.GetAppSettingFloat("fog_density", 1.0f);
+						if (ImGui::SliderFloat("Fog Density", &fog_density, 0.0f, 10.0f)) {
+							config.SetFloat("fog_density", fog_density);
 						}
 
-						// Haze params for backward compatibility if needed, but mostly replaced by scattering
-						if (ImGui::CollapsingHeader("Legacy Haze (Experimental)")) {
-							float haze_density = atmosphere_effect->GetHazeDensity();
-							if (ImGui::SliderFloat("Haze Density", &haze_density, 0.0f, 0.5f, "%.4f")) {
-								atmosphere_effect->SetHazeDensity(haze_density);
-							}
-							float haze_height = atmosphere_effect->GetHazeHeight();
-							if (ImGui::SliderFloat("Haze Height", &haze_height, 0.0f, 500.0f)) {
-								atmosphere_effect->SetHazeHeight(haze_height);
-							}
-							glm::vec3 haze_color = atmosphere_effect->GetHazeColor();
-							if (ImGui::ColorEdit3("Haze Color", &haze_color[0])) {
-								atmosphere_effect->SetHazeColor(haze_color);
-							}
+						float mie_anisotropy = config.GetAppSettingFloat("mie_anisotropy", 0.80f);
+						if (ImGui::SliderFloat("Mie Anisotropy (G)", &mie_anisotropy, 0.0f, 0.99f)) {
+							config.SetFloat("mie_anisotropy", mie_anisotropy);
+						}
+
+						float sun_intensity_factor = config.GetAppSettingFloat("sun_intensity_factor", 35.0f);
+						if (ImGui::SliderFloat("Sun Intensity Factor", &sun_intensity_factor, 1.0f, 100.0f)) {
+							config.SetFloat("sun_intensity_factor", sun_intensity_factor);
+						}
+					}
+
+					if (ImGui::CollapsingHeader("Cloud Parameters")) {
+						float cloud_density = config.GetAppSettingFloat("cloud_density", 0.2f);
+						if (ImGui::SliderFloat("Cloud Density", &cloud_density, 0.0f, 1.0f)) {
+							config.SetFloat("cloud_density", cloud_density);
+						}
+						float cloud_altitude = config.GetAppSettingFloat("cloud_altitude", 2.0f);
+						if (ImGui::SliderFloat("Cloud Altitude", &cloud_altitude, 0.1f, 10.0f)) {
+							config.SetFloat("cloud_altitude", cloud_altitude);
+						}
+						float cloud_thickness = config.GetAppSettingFloat("cloud_thickness", 0.5f);
+						if (ImGui::SliderFloat("Cloud Thickness", &cloud_thickness, 0.1f, 5.0f)) {
+							config.SetFloat("cloud_thickness", cloud_thickness);
 						}
 					}
 				}

@@ -5,13 +5,7 @@ in vec2  TexCoords;
 
 #include "common.glsl"
 
-uniform sampler2D transmittanceLUT;
 uniform vec3      groundAlbedo;
-
-vec3 get_transmittance(float r, float mu) {
-	vec2 uv = transmittance_to_uv(r, mu);
-	return texture(transmittanceLUT, uv).rgb;
-}
 
 // Integrated radiance over the sphere
 void main() {

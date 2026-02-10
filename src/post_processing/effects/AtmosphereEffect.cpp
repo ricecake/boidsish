@@ -1,5 +1,6 @@
 #include "post_processing/effects/AtmosphereEffect.h"
 
+#include "ConfigManager.h"
 #include "shader.h"
 
 namespace Boidsish {
@@ -32,6 +33,21 @@ namespace Boidsish {
 			const glm::mat4& projectionMatrix,
 			const glm::vec3& cameraPos
 		) {
+			auto& config = ConfigManager::GetInstance();
+
+			// Update scattering parameters with current world scale and config
+			auto params = scattering_.GetParameters();
+
+			params.world_scale = world_scale_;
+			params.rayleigh_multiplier = config.GetAppSettingFloat("atmosphere_density", 1.0f);
+			params.mie_multiplier = config.GetAppSettingFloat("fog_density", 1.0f);
+			params.mie_anisotropy = config.GetAppSettingFloat("mie_anisotropy", 0.80f);
+			params.sun_intensity_factor = config.GetAppSettingFloat("sun_intensity_factor", 35.0f);
+			params.rayleigh_scale_height = config.GetAppSettingFloat("rayleigh_scale_height", 100.0f);
+			params.mie_scale_height = config.GetAppSettingFloat("mie_scale_height", 15.0f);
+
+			scattering_.Update(params);
+
 			shader_->use();
 			shader_->setInt("sceneTexture", 0);
 			shader_->setInt("depthTexture", 1);
@@ -40,29 +56,27 @@ namespace Boidsish {
 			shader_->setMat4("invView", glm::inverse(viewMatrix));
 			shader_->setMat4("invProjection", glm::inverse(projectionMatrix));
 
-			shader_->setFloat("hazeDensity", haze_density_);
-			shader_->setFloat("hazeHeight", haze_height_);
-			shader_->setVec3("hazeColor", haze_color_);
-			shader_->setFloat("cloudDensity", cloud_density_);
-			shader_->setFloat("cloudAltitude", cloud_altitude_);
-			shader_->setFloat("cloudThickness", cloud_thickness_);
-			shader_->setVec3("cloudColorUniform", cloud_color_);
+			shader_->setFloat("cloudDensity", config.GetAppSettingFloat("cloud_density", 0.2f));
+			shader_->setFloat("cloudAltitude", config.GetAppSettingFloat("cloud_altitude", 2.0f));
+			shader_->setFloat("cloudThickness", config.GetAppSettingFloat("cloud_thickness", 0.5f));
+			shader_->setVec3("cloudColorUniform", cloud_color_); // Still use member for now, or move to config
 
-			shader_->setBool("enableClouds", clouds_enabled_);
-			shader_->setBool("enableFog", fog_enabled_);
+			shader_->setBool("enableClouds", config.GetAppSettingBool("enable_clouds", true));
+			shader_->setBool("enableFog", config.GetAppSettingBool("enable_fog", true));
 
 			// Atmosphere scattering parameters
-			const auto& params = scattering_.GetParameters();
-			shader_->setVec3("rayleighScattering", params.rayleigh_scattering * params.rayleigh_multiplier);
-			shader_->setFloat("rayleighScaleHeight", params.rayleigh_scale_height);
-			shader_->setFloat("mieScattering", params.mie_scattering * params.mie_multiplier);
-			shader_->setFloat("mieExtinction", params.mie_extinction * params.mie_multiplier);
-			shader_->setFloat("mieScaleHeight", params.mie_scale_height);
-			shader_->setFloat("mieAnisotropy", params.mie_anisotropy);
-			shader_->setVec3("absorptionExtinction", params.absorption_extinction);
-			shader_->setFloat("bottomRadius", params.bottom_radius);
-			shader_->setFloat("topRadius", params.top_radius);
-			shader_->setFloat("sunIntensity", params.sun_intensity);
+			const auto& p = scattering_.GetParameters();
+			shader_->setVec3("rayleighScattering", p.rayleigh_scattering * p.rayleigh_multiplier);
+			shader_->setFloat("rayleighScaleHeight", p.rayleigh_scale_height * p.world_scale);
+			shader_->setFloat("mieScattering", p.mie_scattering * p.mie_multiplier);
+			shader_->setFloat("mieExtinction", p.mie_extinction * p.mie_multiplier);
+			shader_->setFloat("mieScaleHeight", p.mie_scale_height * p.world_scale);
+			shader_->setFloat("mieAnisotropy", p.mie_anisotropy);
+			shader_->setVec3("absorptionExtinction", p.absorption_extinction);
+			shader_->setFloat("bottomRadius", p.bottom_radius * p.world_scale);
+			shader_->setFloat("topRadius", p.top_radius * p.world_scale);
+			shader_->setFloat("sunIntensity", p.sun_intensity);
+			shader_->setFloat("sunIntensityFactor", p.sun_intensity_factor);
 
 			glActiveTexture(GL_TEXTURE0);
 			glBindTexture(GL_TEXTURE_2D, sourceTexture);

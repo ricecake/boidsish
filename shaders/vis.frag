@@ -113,13 +113,6 @@ void main() {
 		float distToCenter = abs(TexCoords.y - 0.5) * 2.0;
 		float alpha = max(smoothstep(0.15, 0.08, distToCenter), exp(-distToCenter * 3.0) * 0.8);
 		outColor = vec4(result, alpha * fade * objectAlpha);
-	} else if (isColossal) {
-		vec3  skyColor = vec3(0.2, 0.4, 0.8);
-		float haze_start = 0.0;
-		float haze_end = 75.0;
-		float haze_factor = 1.0 - smoothstep(haze_start, haze_end, FragPos.y);
-		vec3  final_haze_color = mix(result, skyColor, haze_factor * 2);
-		outColor = vec4(final_haze_color, mix(0, 1, 1 - (haze_factor)));
 	} else {
 		float final_alpha = clamp((baseAlpha + spec_lum) * fade, 0.0, 1.0);
 

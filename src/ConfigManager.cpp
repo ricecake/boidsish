@@ -65,6 +65,19 @@ namespace Boidsish {
 		GetAppSettingBool("artistic_effect_shimmery", false);
 		GetAppSettingBool("artistic_effect_glitched", false);
 		GetAppSettingBool("artistic_effect_wireframe", false);
+
+		// Atmosphere settings
+		GetAppSettingFloat("atmosphere_density", 1.0f);
+		GetAppSettingFloat("fog_density", 1.0f);
+		GetAppSettingFloat("mie_anisotropy", 0.80f);
+		GetAppSettingFloat("sun_intensity_factor", 35.0f);
+		GetAppSettingFloat("rayleigh_scale_height", 100.0f);
+		GetAppSettingFloat("mie_scale_height", 15.0f);
+		GetAppSettingBool("enable_clouds", true);
+		GetAppSettingBool("enable_fog", true);
+		GetAppSettingFloat("cloud_density", 0.2f);
+		GetAppSettingFloat("cloud_altitude", 2.0f);
+		GetAppSettingFloat("cloud_thickness", 0.5f);
 	}
 
 	void ConfigManager::Shutdown() {
