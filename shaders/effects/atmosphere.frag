@@ -110,7 +110,7 @@ void main() {
 		// Integrate along the ray
 		// We use a vertical-only offset for ro to ensure horizontal invariance
 		vec3 ro = vec3(0.0, viewPos.y + bottomRadius, 0.0);
-		const int SAMPLES = 16;
+		const int SAMPLES = 32;
 		vec3 scat_acc = vec3(0.0);
 		vec3 trans_acc = vec3(1.0);
 		float ds = dist / float(SAMPLES);

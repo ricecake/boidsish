@@ -14,11 +14,11 @@ vec3 calculate_transmittance(float r, float mu) {
 		return vec3(1.0);
 
 	float d = t1;
-	// If it hits the planet, it's blocked (unless we are inside it)
+	// If it hits the planet, it's blocked
 	float tp0, tp1;
 	if (intersect_sphere(ro, rd, bottomRadius, tp0, tp1)) {
 		if (tp0 > 0.0)
-			d = min(d, tp0);
+			return vec3(0.0);
 	}
 
 	const int SAMPLES = 40;

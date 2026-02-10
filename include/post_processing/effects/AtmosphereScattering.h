@@ -16,16 +16,16 @@ namespace Boidsish {
 				glm::vec3 rayleigh_scattering = glm::vec3(0.000464f, 0.001085f, 0.002648f);
 				float     rayleigh_multiplier = 1.0f;
 				float     rayleigh_scale_height = 100.0f;
-				float     mie_scattering = 0.000320f;
+				float     mie_scattering = 0.000399f;
 				float     mie_multiplier = 1.0f;
-				float     mie_extinction = 0.000355f;
-				float     mie_anisotropy = 0.8f;
+				float     mie_extinction = 0.000444f;
+				float     mie_anisotropy = 0.76f;
 				float     mie_scale_height = 15.0f;
 				glm::vec3 absorption_extinction = glm::vec3(0.000052f, 0.000150f, 0.000007f);
 				float     bottom_radius = 79500.0f;
 				float     top_radius = 80750.0f;
 				glm::vec3 ground_albedo = glm::vec3(0.3f);
-				float     sun_intensity = 20.0f;
+				float     sun_intensity = 30.0f;
 
 				bool operator==(const Parameters& other) const {
 					return rayleigh_scattering == other.rayleigh_scattering &&
