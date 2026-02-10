@@ -7,6 +7,7 @@
 
 #include "constants.h"
 #include "visual_effects.h"
+#include <GL/glew.h>
 #include <glm/glm.hpp>
 #include <glm/gtc/quaternion.hpp>
 
@@ -23,7 +24,7 @@ namespace Boidsish {
 	// Base class for all renderable shapes
 	class Shape {
 	public:
-		virtual ~Shape() = default;
+		virtual ~Shape();
 
 		// Update the shape's state
 		virtual void Update(float delta_time) { (void)delta_time; }
@@ -134,6 +135,14 @@ namespace Boidsish {
 
 		inline void SetHidden(bool hidden) { is_hidden_ = hidden; }
 
+		// Occlusion state
+		inline GLuint GetOcclusionQuery() const { return occlusion_query_; }
+		inline void   SetOcclusionQuery(GLuint query) { occlusion_query_ = query; }
+		inline bool   IsQueryIssued() const { return query_issued_; }
+		inline void   SetQueryIssued(bool issued) { query_issued_ = issued; }
+		inline bool   IsOccluded() const { return is_occluded_; }
+		inline void   SetOccluded(bool occluded) { is_occluded_ = occluded; }
+
 		// Returns a key identifying what shapes can be instanced together
 		// Shapes with the same key share the same mesh data
 		virtual std::string GetInstanceKey() const = 0;
@@ -203,7 +212,10 @@ namespace Boidsish {
 			roughness_(0.5f),
 			metallic_(0.0f),
 			ao_(1.0f),
-			use_pbr_(false) {}
+			use_pbr_(false),
+			occlusion_query_(0),
+			query_issued_(false),
+			is_occluded_(false) {}
 
 		glm::quat rotation_;
 		glm::vec3 scale_;
@@ -227,6 +239,11 @@ namespace Boidsish {
 		float     metallic_;
 		float     ao_;
 		bool      use_pbr_;
+
+		// Occlusion state
+		GLuint occlusion_query_;
+		bool   query_issued_;
+		bool   is_occluded_;
 
 	public:
 		// Shared sphere mesh (public for instancing support)

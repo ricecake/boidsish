@@ -19,6 +19,12 @@ namespace Boidsish {
 	int                     Shape::sphere_vertex_count_ = 0;
 	std::shared_ptr<Shader> Shape::shader = nullptr;
 
+	Shape::~Shape() {
+		if (occlusion_query_ != 0) {
+			glDeleteQueries(1, &occlusion_query_);
+		}
+	}
+
 	void Shape::GetGeometry(std::vector<Vertex>& vertices, std::vector<unsigned int>& indices) const {
 		const int   latitude_segments = 16;
 		const int   longitude_segments = 32;

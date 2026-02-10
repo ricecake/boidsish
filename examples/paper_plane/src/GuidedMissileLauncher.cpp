@@ -4,6 +4,7 @@
 
 #include "GuidedMissile.h"
 #include "PaperPlane.h"
+#include "arcade_text.h"
 #include "graphics.h"
 #include "terrain_generator_interface.h"
 #include <glm/gtc/constants.hpp>
@@ -44,6 +45,28 @@ namespace Boidsish {
 
 			approach_point_ = pos + glm::vec3(0, std::max(30.0f, (max_neighbor_h - pos.y) + 20.0f), 0);
 			approach_point_set_ = true;
+		}
+
+		if (!text_) {
+			handler.EnqueueVisualizerAction([&handler, this]() {
+				text_ = handler.vis->AddArcadeTextEffect(
+					"SUP",
+					this->GetPosition(),
+					20.0f,
+					60.0f,
+					glm::vec3(0, 1, 0),
+					glm::vec3(0, 0, 1),
+					100.0f,
+					"assets/Roboto-Medium.ttf",
+					12.0f,
+					2.0f
+
+				);
+				text_->SetPulseSpeed(3.0f);
+				text_->SetPulseAmplitude(0.3f);
+				text_->SetRainbowEnabled(true);
+				text_->SetRainbowSpeed(5.0f);
+			});
 		}
 
 		time_since_last_fire_ += delta_time;

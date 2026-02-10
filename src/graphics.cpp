@@ -38,6 +38,7 @@
 #include "post_processing/effects/SdfVolumeEffect.h"
 #include "post_processing/effects/SsaoEffect.h"
 #include "post_processing/effects/StrobeEffect.h"
+#include "post_processing/effects/SuperSpeedEffect.h"
 #include "post_processing/effects/TimeStutterEffect.h"
 #include "post_processing/effects/ToneMappingEffect.h"
 #include "post_processing/effects/WhispTrailEffect.h"
@@ -226,8 +227,9 @@ namespace Boidsish {
 		std::shared_ptr<Shader> shader;
 		std::unique_ptr<Shader> plane_shader;
 		std::unique_ptr<Shader> sky_shader;
-		std::unique_ptr<Shader> occluder_debug_shader;
 		std::unique_ptr<Shader> trail_shader;
+		std::unique_ptr<Shader> occlusion_shader;
+		std::unique_ptr<Shader> debug_occlusion_shader;
 		std::unique_ptr<Shader> blur_shader;
 		std::unique_ptr<Shader> postprocess_shader_;
 		GLuint                  plane_vao{0}, plane_vbo{0}, sky_vao{0}, blur_quad_vao{0}, blur_quad_vbo{0};
@@ -243,7 +245,7 @@ namespace Boidsish {
 		bool   first_mouse = true;
 
 		bool                                           paused = false;
-		bool                                           render_occluders = false;
+		bool                                           show_occluders = false;
 		float                                          simulation_time = 0.0f;
 		float                                          time_scale = 1.0f;
 		float                                          ripple_strength = 0.0f;
@@ -288,6 +290,12 @@ namespace Boidsish {
 		float     avg_frame_time_{1.0f / 60.0f};
 		float     tess_quality_multiplier_{1.0f};
 
+		// Camera shake state
+		float     shake_intensity = 0.0f;
+		float     shake_timer = 0.0f;
+		float     shake_duration = 0.0f;
+		glm::vec3 shake_offset{0.0f};
+
 		// Cached global settings
 		float camera_roll_speed_;
 		float camera_speed_step_;
@@ -315,6 +323,11 @@ namespace Boidsish {
 
 		std::array<ShadowMapState, 16> shadow_map_states_;
 		int shadow_update_round_robin_ = 0; // For ensuring all cascades get updated periodically
+
+		// Performance optimization: batched UBO updates and config caching
+		std::vector<LightGPU> gpu_lights_cache_;
+		LightingUbo           lighting_ubo_data_;
+		FrameConfigCache      frame_config_;
 
 		task_thread_pool::task_thread_pool thread_pool;
 		std::unique_ptr<AudioManager>      audio_manager;
@@ -460,6 +473,9 @@ namespace Boidsish {
 			if (ConfigManager::GetInstance().GetAppSettingBool("enable_skybox", true)) {
 				sky_shader = std::make_unique<Shader>("shaders/sky.vert", "shaders/sky.frag");
 			}
+			occlusion_shader = std::make_unique<Shader>("shaders/occlusion.vert", "shaders/occlusion.frag");
+			debug_occlusion_shader =
+				std::make_unique<Shader>("shaders/debug_occluders.vert", "shaders/debug_occluders.frag");
 			if (ConfigManager::GetInstance().GetAppSettingBool("enable_floor", true) &&
 			    ConfigManager::GetInstance().GetAppSettingBool("enable_floor_reflection", true)) {
 				blur_shader = std::make_unique<Shader>("shaders/blur.vert", "shaders/blur.frag");
@@ -469,8 +485,6 @@ namespace Boidsish {
 			}
 			if (ConfigManager::GetInstance().GetAppSettingBool("enable_terrain", true)) {
 				terrain_generator = std::make_shared<TerrainGenerator>();
-				occluder_debug_shader =
-					std::make_unique<Shader>("shaders/debug_occluders.vert", "shaders/debug_occluders.frag");
 				last_camera_yaw_ = camera.yaw;
 				last_camera_pitch_ = camera.pitch;
 			}
@@ -496,6 +510,9 @@ namespace Boidsish {
 			glBufferData(GL_UNIFORM_BUFFER, 704, NULL, GL_DYNAMIC_DRAW);
 			glBindBuffer(GL_UNIFORM_BUFFER, 0);
 			glBindBufferRange(GL_UNIFORM_BUFFER, Constants::UboBinding::Lighting(), lighting_ubo, 0, 704);
+
+			// Pre-allocate lighting cache for batched UBO updates
+			gpu_lights_cache_.reserve(MAX_LIGHTS);
 
 			if (ConfigManager::GetInstance().GetAppSettingBool("enable_effects", true)) {
 				glGenBuffers(1, &visual_effects_ubo);
@@ -795,6 +812,10 @@ namespace Boidsish {
 				film_grain_effect->SetEnabled(false);
 				post_processing_manager_->AddEffect(film_grain_effect);
 
+				auto super_speed_effect = std::make_shared<PostProcessing::SuperSpeedEffect>();
+				super_speed_effect->SetEnabled(true);
+				post_processing_manager_->AddEffect(super_speed_effect);
+
 				auto atmosphere_effect = std::make_shared<PostProcessing::AtmosphereEffect>();
 				atmosphere_effect->SetEnabled(true);
 				post_processing_manager_->AddEffect(atmosphere_effect);
@@ -877,6 +898,47 @@ namespace Boidsish {
 			if (shockwaves_idx != GL_INVALID_INDEX) {
 				glUniformBlockBinding(shader_to_setup.ID, shockwaves_idx, Constants::UboBinding::Shockwaves());
 			}
+		}
+
+		void RenderOcclusionPass(const glm::mat4& view, const glm::mat4& projection) {
+			if (!occlusion_shader || !terrain_render_manager)
+				return;
+
+			// Disable color writes but ENABLE depth writes for priming
+			glColorMask(GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE);
+			glDepthMask(GL_TRUE);
+			glEnable(GL_DEPTH_TEST);
+			glDepthFunc(GL_LESS);
+
+			occlusion_shader->use();
+			occlusion_shader->setMat4("view", view);
+			occlusion_shader->setMat4("projection", projection);
+
+			Frustum frustum = CalculateFrustum(view, projection);
+
+			// 1. Render terrain occluders to prime the depth buffer AND issue terrain occlusion queries
+			terrain_render_manager->RenderOccluders(*occlusion_shader, view, projection, frustum, true);
+
+			// 2. Render instance bounding boxes for occlusion queries
+			instance_manager->RenderOcclusionQueries(*occlusion_shader);
+
+			// Restore state is handled by the caller (Visualizer::Render)
+		}
+
+		void RefreshFrameConfig() {
+			auto& cfg = ConfigManager::GetInstance();
+			frame_config_.effects_enabled = cfg.GetAppSettingBool("enable_effects", true);
+			frame_config_.render_terrain = cfg.GetAppSettingBool("render_terrain", true);
+			frame_config_.render_skybox = cfg.GetAppSettingBool("render_skybox", true);
+			frame_config_.render_floor = cfg.GetAppSettingBool("render_floor", true);
+			frame_config_.artistic_ripple = cfg.GetAppSettingBool("artistic_effect_ripple", false);
+			frame_config_.artistic_color_shift = cfg.GetAppSettingBool("artistic_effect_color_shift", false);
+			frame_config_.artistic_black_and_white = cfg.GetAppSettingBool("artistic_effect_black_and_white", false);
+			frame_config_.artistic_negative = cfg.GetAppSettingBool("artistic_effect_negative", false);
+			frame_config_.artistic_shimmery = cfg.GetAppSettingBool("artistic_effect_shimmery", false);
+			frame_config_.artistic_glitched = cfg.GetAppSettingBool("artistic_effect_glitched", false);
+			frame_config_.artistic_wireframe = cfg.GetAppSettingBool("artistic_effect_wireframe", false);
+			frame_config_.enable_floor_reflection = cfg.GetAppSettingBool("enable_floor_reflection", true);
 		}
 
 		~VisualizerImpl() {
@@ -1005,8 +1067,11 @@ namespace Boidsish {
 		}
 
 		glm::mat4 SetupMatrices(const Camera& cam_to_use) {
-			projection = glm::perspective(glm::radians(cam_to_use.fov), (float)width / (float)height, 0.1f, 1000.0f);
+			float world_scale = terrain_generator ? terrain_generator->GetWorldScale() : 1.0f;
+			float far_plane = 1000.0f * std::max(1.0f, world_scale);
+			projection = glm::perspective(glm::radians(cam_to_use.fov), (float)width / (float)height, 0.1f, far_plane);
 			glm::vec3 cameraPos(cam_to_use.x, cam_to_use.y, cam_to_use.z);
+			cameraPos += shake_offset;
 			glm::mat4 view;
 
 			if (camera_mode == CameraMode::PATH_FOLLOW) {
@@ -1163,6 +1228,11 @@ namespace Boidsish {
 			// Use quality override if provided, otherwise use default multiplier
 			float effective_quality = (quality_override > 0.0f) ? quality_override : tess_quality_multiplier_;
 
+			// Inversely apply world scale to tessellation. Larger world = lower triangle density per unit.
+			if (terrain_generator) {
+				effective_quality /= terrain_generator->GetWorldScale();
+			}
+
 			// Set up shadow uniforms for terrain shader
 			Terrain::terrain_shader_->use();
 			Terrain::terrain_shader_->setBool("uIsShadowPass", is_shadow_pass);
@@ -1177,16 +1247,10 @@ namespace Boidsish {
 				Frustum frustum = shadow_frustum.has_value() ? *shadow_frustum : CalculateFrustum(view, proj);
 
 				// Prepare for rendering (frustum culling for instanced renderer)
-				terrain_render_manager->PrepareForRender(frustum, camera.pos());
+				float world_scale = terrain_generator ? terrain_generator->GetWorldScale() : 1.0f;
+				terrain_render_manager->PrepareForRender(frustum, camera.pos(), world_scale);
 
 				terrain_render_manager->Render(*Terrain::terrain_shader_, view, proj, clip_plane, effective_quality);
-
-				if (render_occluders && !is_shadow_pass) {
-					occluder_debug_shader->use();
-					occluder_debug_shader->setMat4("view", view);
-					occluder_debug_shader->setMat4("projection", proj);
-					terrain_render_manager->RenderOccluders(*occluder_debug_shader);
-				}
 			} else {
 				// Fallback to per-chunk rendering
 				Terrain::terrain_shader_->use();
@@ -1274,7 +1338,8 @@ namespace Boidsish {
 				plane_shader->setMat4("reflectionViewProjection", reflection_vp);
 			}
 
-			glm::mat4 model = glm::scale(glm::mat4(1.0f), glm::vec3(600.0f));
+			float     world_scale = terrain_generator ? terrain_generator->GetWorldScale() : 1.0f;
+			glm::mat4 model = glm::scale(glm::mat4(1.0f), glm::vec3(600.0f * world_scale));
 			plane_shader->setMat4("model", model);
 			plane_shader->setMat4("view", view);
 			plane_shader->setMat4("projection", projection);
@@ -1898,9 +1963,32 @@ namespace Boidsish {
 				1.0f - exp(-delta_time * 5.0f)
 			);
 		}
+
+		// Update camera shake
+		if (impl->shake_timer > 0.0f) {
+			impl->shake_timer -= delta_time;
+			if (impl->shake_timer <= 0.0f) {
+				impl->shake_timer = 0.0f;
+				impl->shake_offset = glm::vec3(0.0f);
+			} else {
+				float t_shake = (impl->shake_duration > 0.0f) ? (impl->shake_timer / impl->shake_duration) : 0.0f;
+				float current_intensity = impl->shake_intensity * t_shake; // Simple linear decay
+				// Use a pseudo-random offset based on time
+				float t = impl->simulation_time * 50.0f;
+				impl->shake_offset = glm::vec3(
+										 sin(t * 1.1f) * cos(t * 0.9f),
+										 cos(t * 1.2f) * sin(t * 0.8f),
+										 sin(t * 1.3f) * cos(t * 0.7f)
+									 ) *
+					current_intensity;
+			}
+		} else {
+			impl->shake_offset = glm::vec3(0.0f);
+		}
 	}
 
 	void Visualizer::Render() {
+		impl->RefreshFrameConfig();
 		impl->shapes.clear();
 
 		// Update and collect transient effects
@@ -1941,6 +2029,14 @@ namespace Boidsish {
 
 		for (const auto& pair : impl->persistent_shapes) {
 			impl->shapes.push_back(pair.second);
+		}
+
+		// Pre-populate InstanceManager for the occlusion pass
+		impl->instance_manager->ClearInstances();
+		for (const auto& shape : impl->shapes) {
+			if (!shape->IsHidden() && shape->IsInstanced()) {
+				impl->instance_manager->AddInstance(shape);
+			}
 		}
 
 		// --- Shadow Optimization: Check for object movement and camera proximity ---
@@ -2013,9 +2109,15 @@ namespace Boidsish {
 		if (impl->terrain_generator) {
 			// Create a widened and predictive frustum for the generator
 			// This helps pre-generate chunks just out of view and in the direction of rotation
+			float     world_scale = impl->terrain_generator->GetWorldScale();
+			float     far_plane = 1000.0f * std::max(1.0f, world_scale);
 			float     generator_fov = impl->camera.fov + 15.0f; // 15 degrees wider FOV
-			glm::mat4 generator_proj =
-				glm::perspective(glm::radians(generator_fov), (float)impl->width / (float)impl->height, 0.1f, 1000.0f);
+			glm::mat4 generator_proj = glm::perspective(
+				glm::radians(generator_fov),
+				(float)impl->width / (float)impl->height,
+				0.1f,
+				far_plane
+			);
 
 			// Predictive orientation based on current angular velocity
 			float lead_time = 0.4f; // Look 0.4 seconds into the future
@@ -2054,8 +2156,8 @@ namespace Boidsish {
 			);
 		}
 
-		// UBO Updates
-		if (ConfigManager::GetInstance().GetAppSettingBool("enable_effects", true)) {
+		// UBO Updates - using cached config values
+		if (impl->frame_config_.effects_enabled) {
 			VisualEffectsUbo ubo_data{};
 			for (const auto& shape : impl->shapes) {
 				for (const auto& effect : shape->GetActiveEffects()) {
@@ -2069,14 +2171,14 @@ namespace Boidsish {
 				}
 			}
 
-			auto& config = ConfigManager::GetInstance();
-			ubo_data.black_and_white_enabled = config.GetAppSettingBool("artistic_effect_black_and_white", false);
-			ubo_data.negative_enabled = config.GetAppSettingBool("artistic_effect_negative", false);
-			ubo_data.shimmery_enabled = config.GetAppSettingBool("artistic_effect_shimmery", false);
-			ubo_data.glitched_enabled = config.GetAppSettingBool("artistic_effect_glitched", false);
-			ubo_data.wireframe_enabled = config.GetAppSettingBool("artistic_effect_wireframe", false);
-			ubo_data.color_shift_enabled = config.GetAppSettingBool("artistic_effect_color_shift", false);
-			if (config.GetAppSettingBool("artistic_effect_ripple", false)) {
+			// Use cached config values instead of per-call lookups
+			ubo_data.black_and_white_enabled = impl->frame_config_.artistic_black_and_white;
+			ubo_data.negative_enabled = impl->frame_config_.artistic_negative;
+			ubo_data.shimmery_enabled = impl->frame_config_.artistic_shimmery;
+			ubo_data.glitched_enabled = impl->frame_config_.artistic_glitched;
+			ubo_data.wireframe_enabled = impl->frame_config_.artistic_wireframe;
+			ubo_data.color_shift_enabled = ubo_data.color_shift_enabled || impl->frame_config_.artistic_color_shift;
+			if (impl->frame_config_.artistic_ripple) {
 				ubo_data.ripple_enabled = 1;
 			}
 
@@ -2085,36 +2187,33 @@ namespace Boidsish {
 			glBindBuffer(GL_UNIFORM_BUFFER, 0);
 		}
 
-		glBindBuffer(GL_UNIFORM_BUFFER, impl->lighting_ubo);
-		const auto& lights = impl->light_manager.GetLights();
-		int         num_lights = lights.size();
+		// Batched lighting UBO update - single glBufferSubData instead of 8 calls
+		{
+			const auto& lights = impl->light_manager.GetLights();
+			int         num_lights = std::min(static_cast<int>(lights.size()), 10);
 
-		// Convert lights to GPU-compatible format (32 bytes each, matching GLSL struct)
-		std::vector<LightGPU> gpu_lights;
-		gpu_lights.reserve(num_lights);
-		for (const auto& light : lights) {
-			gpu_lights.push_back(light.ToGPU());
+			// Reuse cached vector to avoid per-frame allocation
+			impl->gpu_lights_cache_.clear();
+			for (int i = 0; i < num_lights; ++i) {
+				impl->gpu_lights_cache_.push_back(lights[i].ToGPU());
+			}
+
+			// Fill the UBO struct in one pass
+			std::memset(&impl->lighting_ubo_data_, 0, sizeof(LightingUbo));
+			std::memcpy(impl->lighting_ubo_data_.lights, impl->gpu_lights_cache_.data(), num_lights * sizeof(LightGPU));
+			impl->lighting_ubo_data_.num_lights = num_lights;
+			impl->lighting_ubo_data_.world_scale = impl->terrain_generator ? impl->terrain_generator->GetWorldScale()
+																		   : 1.0f;
+			impl->lighting_ubo_data_.view_pos = impl->camera.pos();
+			impl->lighting_ubo_data_.ambient_light = impl->light_manager.GetAmbientLight();
+			impl->lighting_ubo_data_.time = impl->simulation_time;
+			impl->lighting_ubo_data_.view_dir = impl->camera.front();
+
+			// Single buffer upload instead of 8 separate calls
+			glBindBuffer(GL_UNIFORM_BUFFER, impl->lighting_ubo);
+			glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(LightingUbo), &impl->lighting_ubo_data_);
+			glBindBuffer(GL_UNIFORM_BUFFER, 0);
 		}
-		const int MAX_LIGHTS = 10;
-		glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(LightGPU) * num_lights, gpu_lights.data());
-		size_t offset = 640;
-		glBufferSubData(GL_UNIFORM_BUFFER, offset, sizeof(int), &num_lights);
-		offset += 16;
-		glBufferSubData(
-			GL_UNIFORM_BUFFER,
-			offset,
-			sizeof(glm::vec3),
-			&glm::vec3(impl->camera.x, impl->camera.y, impl->camera.z)[0]
-		);
-		offset += 16;
-		glm::vec3 ambient_light = impl->light_manager.GetAmbientLight();
-		glBufferSubData(GL_UNIFORM_BUFFER, offset, sizeof(glm::vec3), &ambient_light[0]);
-		offset += 12;
-		glBufferSubData(GL_UNIFORM_BUFFER, offset, sizeof(float), &impl->simulation_time);
-		offset += 4;
-		offset = (offset + 15) & ~15; // align to 16
-		glBufferSubData(GL_UNIFORM_BUFFER, offset, sizeof(glm::vec3), &impl->camera.front()[0]);
-		glBindBuffer(GL_UNIFORM_BUFFER, 0);
 
 		// Update Frustum UBO for GPU-side culling
 		{
@@ -2149,16 +2248,17 @@ namespace Boidsish {
 				reflection_cam.pitch = -reflection_cam.pitch;
 				glm::mat4 reflection_view = impl->SetupMatrices(reflection_cam);
 				impl->reflection_vp = impl->projection * reflection_view;
+
 				// Render opaque geometry first for early-Z benefit
 				// Use reduced tessellation (25%) for reflection pass - it's blurred anyway
-				impl->RenderTerrain(
-					reflection_view,
-					impl->projection,
-					glm::vec4(0, 1, 0, 0.01),
-					false,
-					std::nullopt,
-					0.25f
-				);
+				// impl->RenderTerrain(
+				// 	reflection_view,
+				// 	impl->projection,
+				// 	glm::vec4(0, 1, 0, 0.01),
+				// 	false,
+				// 	std::nullopt,
+				// 	0.25f
+				// );
 				impl->RenderShapes(
 					reflection_view,
 					reflection_cam,
@@ -2319,11 +2419,12 @@ namespace Boidsish {
 				const auto& info = shadow_map_registry[map_idx];
 				auto&       state = impl->shadow_map_states_[map_idx];
 
+				float world_scale = impl->terrain_generator ? impl->terrain_generator->GetWorldScale() : 1.0f;
 				impl->shadow_manager->BeginShadowPass(
 					info.map_index,
 					*info.light,
 					scene_center,
-					500.0f,
+					500.0f * std::max(1.0f, world_scale),
 					info.cascade_index,
 					view_matrix,
 					impl->camera.fov,
@@ -2369,9 +2470,21 @@ namespace Boidsish {
 			impl->shadow_manager->UpdateShadowUBO(shadow_lights);
 		}
 
-		bool effects_enabled = ConfigManager::GetInstance().GetAppSettingBool("enable_effects", true);
+		bool effects_enabled = impl->frame_config_.effects_enabled;
 		bool has_shockwaves = impl->shockwave_manager && impl->shockwave_manager->HasActiveShockwaves();
 		bool skip_intermediate = (impl->render_scale == 1.0f && !effects_enabled && !has_shockwaves);
+
+		// --- Occlusion Pass ---
+		impl->RenderOcclusionPass(view_matrix, impl->projection);
+
+		// Clear InstanceManager so RenderShapes can populate it correctly for the main pass
+		// (with any per-pass logic if needed, although currently it's the same)
+		impl->instance_manager->ClearInstances();
+
+		// Restore state for main scene pass
+		glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
+		glDepthMask(GL_TRUE);
+		glDepthFunc(GL_LEQUAL);
 
 		// --- Main Scene Pass ---
 		if (skip_intermediate) {
@@ -2493,6 +2606,24 @@ namespace Boidsish {
 			}
 		}
 
+		// --- Debug Visualization ---
+		if (impl->show_occluders && impl->debug_occlusion_shader && impl->terrain_render_manager) {
+			glEnable(GL_BLEND);
+			glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+			impl->debug_occlusion_shader->use();
+			impl->debug_occlusion_shader->setMat4("view", view_matrix);
+			impl->debug_occlusion_shader->setMat4("projection", impl->projection);
+
+			Frustum frustum = impl->CalculateFrustum(view_matrix, impl->projection);
+			impl->terrain_render_manager->RenderOccluders(
+				*impl->debug_occlusion_shader,
+				view_matrix,
+				impl->projection,
+				frustum,
+				false // Just render, queries already issued in RenderOcclusionPass
+			);
+		}
+
 		// --- Shadow Optimization: Update last known positions for the next frame ---
 		for (const auto& shape : impl->shapes) {
 			shape->UpdateLastPosition();
@@ -2524,11 +2655,13 @@ namespace Boidsish {
 			// Construct view and projection matrices from camera state
 			glm::vec3 cameraPos(impl->camera.x, impl->camera.y, impl->camera.z);
 			glm::mat4 view = glm::lookAt(cameraPos, cameraPos + impl->camera.front(), impl->camera.up());
+			float     world_scale = impl->terrain_generator ? impl->terrain_generator->GetWorldScale() : 1.0f;
+			float     far_plane = 1000.0f * std::max(1.0f, world_scale);
 			glm::mat4 proj = glm::perspective(
 				glm::radians(impl->camera.fov),
 				(float)impl->width / (float)impl->height,
 				0.1f,
-				1000.0f
+				far_plane
 			);
 
 			// Update terrain once to start chunk loading around the camera
@@ -2630,9 +2763,12 @@ namespace Boidsish {
 
 		glm::vec3 ray_dir = glm::normalize(far_plane_pos - ray_origin);
 
+		float world_scale = impl->terrain_generator ? impl->terrain_generator->GetWorldScale() : 1.0f;
+		float max_ray_dist = 1000.0f * std::max(1.0f, world_scale);
+
 		float                      distance;
 		[[maybe_unused]] glm::vec3 normal;
-		if (impl->terrain_generator->RaycastCached(ray_origin, ray_dir, 1000.0f, distance, normal)) {
+		if (impl->terrain_generator->RaycastCached(ray_origin, ray_dir, max_ray_dist, distance, normal)) {
 			return ray_origin + ray_dir * distance;
 		}
 
@@ -2686,6 +2822,31 @@ namespace Boidsish {
 				return;
 			}
 		}
+	}
+
+	void Visualizer::SetSuperSpeedIntensity(float intensity) {
+		if (impl->post_processing_manager_) {
+			for (auto& effect : impl->post_processing_manager_->GetPreToneMappingEffects()) {
+				if (auto super_speed = std::dynamic_pointer_cast<PostProcessing::SuperSpeedEffect>(effect)) {
+					super_speed->SetIntensity(intensity);
+					break;
+				}
+			}
+		}
+	}
+
+	void Visualizer::SetCameraShake(float intensity, float duration) {
+		impl->shake_intensity = intensity;
+		impl->shake_timer = duration;
+		impl->shake_duration = duration;
+	}
+
+	bool Visualizer::IsOccluderVisualizationEnabled() const {
+		return impl->show_occluders;
+	}
+
+	void Visualizer::SetOccluderVisualizationEnabled(bool enabled) {
+		impl->show_occluders = enabled;
 	}
 
 	void Visualizer::SetPathCamera(std::shared_ptr<Path> path) {
@@ -3212,13 +3373,5 @@ namespace Boidsish {
 
 	bool Visualizer::IsWireframeEffectEnabled() const {
 		return ConfigManager::GetInstance().GetAppSettingBool("artistic_effect_wireframe", false);
-	}
-
-	bool Visualizer::IsOccluderVisualizationEnabled() const {
-		return impl->render_occluders;
-	}
-
-	void Visualizer::SetOccluderVisualizationEnabled(bool enabled) {
-		impl->render_occluders = enabled;
 	}
 } // namespace Boidsish

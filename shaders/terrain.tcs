@@ -22,7 +22,7 @@ uniform int            uChunkSize;
 
 #include "helpers/lighting.glsl"
 
-uniform float uTessLevelMax = 64.0;
+uniform float uTessLevelMax = 16.0;
 uniform float uTessLevelMin = 1.0;
 uniform float uTessQualityMultiplier = 1.0;
 uniform bool  uIsShadowPass = false;
@@ -40,15 +40,20 @@ void sampleHeightmap(vec2 uv, float slice, vec3 worldOffset, out vec3 worldPos, 
 }
 
 float GetVertexTessLevel(vec3 worldPos, vec3 normal, vec3 forward) {
-	// 1. DISTANCE FACTOR (The Base)
 	float dist = distance(viewPos, worldPos);
-	float distanceLevel = uTessLevelMax * exp(-dist * 0.02);
-	distanceLevel = clamp(distanceLevel, uTessLevelMin, uTessLevelMax);
-
-	// 2. SILHOUETTE FACTOR (The Boost)
 	vec3  viewDir = normalize(viewPos - worldPos);
 	float dotProd = dot(normalize(normal), viewDir);
 	float isSilhouette = 1.0 - abs(dotProd);
+
+	if (uIsShadowPass) {
+		return mix(1.0, 2.0, isSilhouette * (1.0 - clamp(dist / 500.0, 0.0, 1.0)));
+	}
+
+	// 1. DISTANCE FACTOR (The Base)
+	float distanceLevel = uTessLevelMax * exp(-dist * (0.02 / worldScale));
+	distanceLevel = clamp(distanceLevel, uTessLevelMin, uTessLevelMax);
+
+	// 2. SILHOUETTE FACTOR (The Boost)
 	float silhouetteBoost = mix(1.0, 2.0, isSilhouette * (1.0 - clamp(dist / 500.0, 0.0, 1.0)));
 
 	// 3. FOCUS FACTOR (The Cull)
@@ -56,7 +61,9 @@ float GetVertexTessLevel(vec3 worldPos, vec3 normal, vec3 forward) {
 	if (!uIsShadowPass) {
 		vec3  dirCamToVertex = normalize(worldPos - viewPos);
 		float align = dot(dirCamToVertex, forward);
-		focusCull = smoothstep(0.85, 1.0, align);
+		// Focus culling threshold - wider when world is larger to avoid edges
+		float focusThreshold = mix(0.85, 0.65, clamp(worldScale / 10.0, 0.0, 1.0));
+		focusCull = smoothstep(focusThreshold, 1.0, align);
 	}
 
 	// COMBINE
@@ -64,8 +71,9 @@ float GetVertexTessLevel(vec3 worldPos, vec3 normal, vec3 forward) {
 	finalLevel *= focusCull;
 	finalLevel *= uTessQualityMultiplier;
 
-	// For shadow pass, ensure a minimum level to prevent light leaking
-	float minLevel = uIsShadowPass ? max(uTessLevelMin, 8.0) : uTessLevelMin;
+	// For shadow pass, use lower tessellation to improve performance
+	// Shadows don't need as much detail since they're binary (lit/shadow)
+	float minLevel = uIsShadowPass ? max(uTessLevelMin, 4.0) : uTessLevelMin;
 
 	return step(0.0, finalLevel) * max(finalLevel, minLevel);
 }
@@ -77,7 +85,7 @@ float perturbLevel(vec3 worldPos, vec3 forward) {
 
 	// 1. DISTANCE FACTOR (The Base)
 	float dist = distance(viewPos, worldPos);
-	float distanceLevel = uTessLevelMax * exp(-dist * 0.1);
+	float distanceLevel = uTessLevelMax * exp(-dist * (0.1 / worldScale));
 	distanceLevel = clamp(distanceLevel, uTessLevelMin, uTessLevelMax);
 
 	// 2. FOCUS FACTOR (The Cull)
@@ -87,7 +95,7 @@ float perturbLevel(vec3 worldPos, vec3 forward) {
 
 	// 3. Y factor lock
 
-	float distanceMin = 10 * smoothstep(15, 0, abs(worldPos.y - viewPos.y));
+	float distanceMin = 10 * worldScale * smoothstep(15 * worldScale, 0, abs(worldPos.y - viewPos.y));
 
 	// COMBINE
 	float finalLevel = max(distanceMin, distanceLevel) * focusCull;

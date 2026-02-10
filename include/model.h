@@ -38,7 +38,7 @@ namespace Boidsish {
 		// Render the mesh
 		void render() const;
 		void render(Shader& shader) const; // Render with specific shader (for shadow pass, etc.)
-		void render_instanced(int count) const;
+		void render_instanced(int count, bool doVAO = true) const;
 
 		// Bind textures for external rendering (e.g., instanced rendering with custom shaders)
 		void bindTextures(Shader& shader) const;
@@ -75,6 +75,10 @@ namespace Boidsish {
 		// Get the model path
 		const std::string& GetModelPath() const { return model_path_; }
 
+		// AABB for occlusion culling
+		glm::vec3 GetMinBound() const { return min_bound_; }
+		glm::vec3 GetMaxBound() const { return max_bound_; }
+
 	private:
 		// Model data
 		glm::quat            base_rotation_ = glm::quat(1.0f, 0.0f, 0.0f, 0.0f);
@@ -83,6 +87,9 @@ namespace Boidsish {
 		std::string          model_path_; // Full path to the model file for instancing identification
 		bool                 no_cull_ = false;
 		std::vector<Texture> textures_loaded_;
+
+		// Local bounding box
+		glm::vec3 min_bound_{0.0f}, max_bound_{0.0f};
 
 		// Loads a model with supported ASSIMP extensions from file and stores the resulting meshes in meshes vector.
 		void loadModel(const std::string& path);

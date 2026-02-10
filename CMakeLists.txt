@@ -146,6 +146,73 @@ add_library(check STATIC ${LIB_SOURCES})
 target_compile_definitions(check PRIVATE GLM_ENABLE_EXPERIMENTAL)
 target_link_libraries(check PRIVATE boidsish)
 
+# Add shader preprocessor tool
+add_executable(shader_preprocessor tools/shader_preprocessor.cpp)
+target_link_libraries(shader_preprocessor PRIVATE boidsish)
+add_dependencies(check shader_preprocessor)
+
+# Find glslangValidator
+find_program(GLSLANG_VALIDATOR_EXE NAMES glslangValidator)
+
+if(GLSLANG_VALIDATOR_EXE)
+    file(GLOB_RECURSE SHADER_FILES
+        "shaders/*.vert"
+        "shaders/*.frag"
+        "shaders/*.geom"
+        "shaders/*.comp"
+        "shaders/*.tcs"
+        "shaders/*.tes"
+    )
+
+    # Filter out files that are known to be include-only or don't have a main()
+    list(REMOVE_ITEM SHADER_FILES "${CMAKE_CURRENT_SOURCE_DIR}/shaders/visual_effects.frag")
+    list(REMOVE_ITEM SHADER_FILES "${CMAKE_CURRENT_SOURCE_DIR}/shaders/visual_effects.vert")
+
+    set(VALIDATION_OUTPUTS "")
+    foreach(SHADER_FILE ${SHADER_FILES})
+        get_filename_component(SHADER_NAME ${SHADER_FILE} NAME)
+        get_filename_component(SHADER_EXT ${SHADER_FILE} EXT)
+
+        # Map extensions for glslangValidator compatibility
+        set(VAL_EXT ${SHADER_EXT})
+        if(SHADER_EXT STREQUAL ".tcs")
+            set(VAL_EXT ".tesc")
+        elseif(SHADER_EXT STREQUAL ".tes")
+            set(VAL_EXT ".tese")
+        endif()
+
+        # Determine preprocessed path
+        file(RELATIVE_PATH REL_SHADER ${CMAKE_CURRENT_SOURCE_DIR}/shaders ${SHADER_FILE})
+        get_filename_component(REL_DIR ${REL_SHADER} DIRECTORY)
+        get_filename_component(BASE_NAME ${REL_SHADER} NAME_WE)
+
+        set(PREPROCESSED_FILE "${CMAKE_BINARY_DIR}/shaders_preprocessed/${REL_DIR}/${BASE_NAME}${VAL_EXT}")
+        set(STAMP_FILE "${PREPROCESSED_FILE}.validated")
+
+        add_custom_command(
+            OUTPUT ${PREPROCESSED_FILE}
+            COMMAND shader_preprocessor ${SHADER_FILE} ${PREPROCESSED_FILE}
+            DEPENDS shader_preprocessor ${SHADER_FILE}
+            WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+            COMMENT "Preprocessing shader ${REL_SHADER}"
+        )
+
+        add_custom_command(
+            OUTPUT ${STAMP_FILE}
+            COMMAND ${GLSLANG_VALIDATOR_EXE} ${PREPROCESSED_FILE}
+            COMMAND ${CMAKE_COMMAND} -E touch ${STAMP_FILE}
+            DEPENDS ${PREPROCESSED_FILE}
+            COMMENT "Validating shader ${REL_SHADER}"
+        )
+
+        list(APPEND VALIDATION_OUTPUTS ${STAMP_FILE})
+    endforeach()
+
+    add_custom_target(glcheck DEPENDS ${VALIDATION_OUTPUTS})
+else()
+    message(WARNING "glslangValidator not found. The 'glcheck' target will not be available.")
+endif()
+
 add_executable(test_rigid_body tests/test_rigid_body.cpp)
 target_link_libraries(test_rigid_body PRIVATE boidsish GTest::GTest GTest::Main)
 set_target_properties(test_rigid_body PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")

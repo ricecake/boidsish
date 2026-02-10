@@ -1,6 +1,7 @@
 #include "GuidedMissile.h"
 
 #include "PaperPlane.h"
+#include "arcade_text.h"
 #include "fire_effect.h"
 #include "graphics.h"
 #include "terrain_generator.h"
@@ -66,7 +67,8 @@ namespace Boidsish {
 		return target_pos + (target_vel * time_to_impact);
 	}
 
-	GuidedMissile::GuidedMissile(int id, Vector3 pos): Entity<Model>(id, "assets/Missile.obj", true), eng_(rd_()) {
+	GuidedMissile::GuidedMissile(int id, Vector3 pos):
+		Entity<Model>(id, "assets/Missile.obj", true), eng_(rd_()), jamming_intensity_(0.0f) {
 		auto orientation = glm::angleAxis(glm::radians(90.0f), glm::vec3(1.0f, 0.0f, 0.0f));
 
 		auto dist = std::uniform_int_distribution(0, 1);
@@ -91,6 +93,7 @@ namespace Boidsish {
 	void GuidedMissile::UpdateEntity(const EntityHandler& handler, float time, float delta_time) {
 		lived_ += delta_time;
 		auto pos = GetPosition();
+		auto vel = GetVelocity();
 
 		if (!launch_sound_) {
 			launch_sound_ = handler.vis
@@ -107,6 +110,45 @@ namespace Boidsish {
 		if (lived_ >= lifetime_) {
 			Explode(handler, false);
 			return;
+		}
+
+		if (!text_) {
+			handler.EnqueueVisualizerAction([&handler, this]() {
+				text_ = handler.vis->AddArcadeTextEffect(
+					// "FUCK YOU",
+				    // this->GetPosition(),
+				    // 20.0f,
+				    // 60.0f,
+				    // glm::vec3(0, 1, 0),
+				    // glm::vec3(0, 0, 1),
+				    // 100.0f
+
+					"FUCK YOU",
+					this->GetPosition(),
+					15.0f,
+					150.0f,
+					-1 * this->GetVelocity().Toglm(),
+					this->GetVelocity().Toglm(),
+					10.0f,
+					"assets/Roboto-Medium.ttf",
+					12.0f,
+					5.0f
+
+				);
+				// text_->SetPulseSpeed(3.0f);
+				// text_->SetPulseAmplitude(0.3f);
+				// text_->SetRainbowEnabled(true);
+				// text_->SetRainbowSpeed(5.0f);
+
+				text_->SetDoubleCopy(true);
+				text_->SetRotationSpeed(1.0f);
+				text_->SetRotationAxis(glm::vec3(0, 1, 0));
+				text_->SetRainbowEnabled(true);
+				text_->SetColor(1.0f, 1.0f, 1.0f);
+			});
+		} else {
+			text_->SetPosition(pos.x, pos.y, pos.z);
+			text_->SetRotationAxis(GetVelocity().Toglm());
 		}
 
 		// --- Flight Model Constants ---
@@ -127,9 +169,16 @@ namespace Boidsish {
 
 			auto targets = handler.GetEntitiesByType<PaperPlane>();
 			if (!targets.empty()) {
-				auto plane = targets[0];
+				PaperPlane* plane = targets[0];
 				target_ = plane;
 				auto& r = rigid_body_;
+
+				if (target_->IsChaffActive()) {
+					jamming_intensity_ += delta_time * 2.0f;
+				} else {
+					jamming_intensity_ -= delta_time * 0.5f;
+				}
+				jamming_intensity_ = std::clamp(jamming_intensity_, 0.0f, 10.0f);
 
 				if ((plane->GetPosition() - GetPosition()).Magnitude() < 10) {
 					Explode(handler, true);
@@ -210,8 +259,18 @@ namespace Boidsish {
 				}
 
 				glm::vec3 local_forward = glm::vec3(0, 0, -1);
-				target_dir_local.x += sin(handedness * lived_ * 20.0f) * 0.075f;
-				target_dir_local.y += cos(handedness * lived_ * 15.0f) * 0.075f;
+				float     wobble_speed = 20.0f + jamming_intensity_ * 20.0f;
+				float     wobble_amp = 0.075f + jamming_intensity_ * 0.25f;
+				target_dir_local.x += sin(handedness * lived_ * wobble_speed) * wobble_amp;
+				target_dir_local.y += cos(handedness * lived_ * (wobble_speed * 0.75f)) * wobble_amp;
+
+				// If very jammed, add a significant bias to make it "veer away" theatrically
+				if (jamming_intensity_ > 1.0f) {
+					float bias_factor = (jamming_intensity_ - 1.0f) * 0.5f;
+					target_dir_local.x += bias_factor * (float)handedness;
+					target_dir_local.y += bias_factor;
+				}
+
 				glm::vec3 pid_torque = CalculateSteeringTorque2(
 					local_forward,
 					target_dir_local,
