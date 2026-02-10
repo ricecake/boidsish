@@ -32,6 +32,7 @@ namespace Boidsish {
 			void  SetTargetLuminance(float t) { targetLuminance_ = t; }
 			float GetTargetLuminance() const { return targetLuminance_; }
 
+			void SetEnabled(bool enabled) override;
 			void SetTime(float time) override;
 
 		private:

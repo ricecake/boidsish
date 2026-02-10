@@ -18,7 +18,7 @@ namespace Boidsish {
 
 		void AutoExposureEffect::Initialize(int /* width */, int /* height */) {
 			computeShader_ = std::make_unique<ComputeShader>("shaders/post_processing/auto_exposure.comp");
-			passthroughShader_ = std::make_unique<Shader>("shaders/postprocess.vert", "shaders/post_processing/passthrough.frag");
+			passthroughShader_ = std::make_unique<Shader>("shaders/postprocess.vert", "shaders/postprocess.frag");
 
 			// Create SSBO for adapted luminance, target luminance, and enabled flag
 			struct ExposureData {
@@ -70,7 +70,7 @@ namespace Boidsish {
 
 			// Passthrough blit
 			passthroughShader_->use();
-			passthroughShader_->setInt("u_texture", 0);
+			passthroughShader_->setInt("sceneTexture", 0);
 			glActiveTexture(GL_TEXTURE0);
 			glBindTexture(GL_TEXTURE_2D, sourceTexture);
 			glDrawArrays(GL_TRIANGLES, 0, 6);
@@ -78,6 +78,25 @@ namespace Boidsish {
 
 		void AutoExposureEffect::Resize(int /* width */, int /* height */) {
 			// Nothing to do for resize
+		}
+
+		void AutoExposureEffect::SetEnabled(bool enabled) {
+			IPostProcessingEffect::SetEnabled(enabled);
+
+			// Update SSBO immediately if possible (assuming we have context)
+			// In this project, UI usually runs on main thread with context.
+			if (exposureSsbo_) {
+				struct ExposureData {
+					float adaptedLuminance;
+					float targetLuminance;
+					int   useAutoExposure;
+				};
+
+				glBindBuffer(GL_SHADER_STORAGE_BUFFER, exposureSsbo_);
+				int enabledInt = enabled ? 1 : 0;
+				glBufferSubData(GL_SHADER_STORAGE_BUFFER, offsetof(ExposureData, useAutoExposure), sizeof(int), &enabledInt);
+				glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
+			}
 		}
 
 		// Override SetTime to calculate delta time
