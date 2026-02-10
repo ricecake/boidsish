@@ -25,7 +25,8 @@ namespace Boidsish {
 				const glm::mat4& viewMatrix,
 				const glm::mat4& projectionMatrix,
 				const glm::vec3& cameraPos,
-				float            time
+				float            time,
+				int              start_fbo_index = 0
 			);
 			void Resize(int width, int height);
 
@@ -34,6 +35,10 @@ namespace Boidsish {
 			}
 
 			std::shared_ptr<IPostProcessingEffect> GetToneMappingEffect() { return tone_mapping_effect_; }
+
+			GLuint GetPingPongFBO(int index) const { return pingpong_fbo_[index]; }
+
+			GLuint GetPingPongTexture(int index) const { return pingpong_texture_[index]; }
 
 		private:
 			void InitializeFBOs();
