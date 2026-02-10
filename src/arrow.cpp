@@ -145,12 +145,12 @@ namespace Boidsish {
 		glm::vec3 norm_direction = glm::normalize(direction);
 
 		float dot = glm::dot(up, norm_direction);
-		if (abs(dot + 1.0f) < 0.000001f) {
+		if (std::abs(dot + 1.0f) < 0.000001f) {
 			// vector a and b are parallel but opposite direction
 			SetRotation(glm::angleAxis(glm::pi<float>(), glm::vec3(1.0f, 0.0f, 0.0f)));
 			return;
 		}
-		if (abs(dot - 1.0f) < 0.000001f) {
+		if (std::abs(dot - 1.0f) < 0.000001f) {
 			// vector a and b are parallel in same direction
 			SetRotation(glm::quat(1.0f, 0.0f, 0.0f, 0.0f));
 			return;

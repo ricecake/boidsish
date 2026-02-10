@@ -26,7 +26,7 @@ int main() {
 
 			if (state.key_down[GLFW_KEY_G]) {
 				// Spawn glitter in a random direction
-				float     angle = (float)rand() / RAND_MAX * 2.0f * 3.14159f;
+				float     angle = static_cast<float>(static_cast<double>(rand()) / static_cast<double>(RAND_MAX) * 2.0 * 3.1415926535);
 				glm::vec3 dir(cos(angle), 1.0f, sin(angle));
 				visualizer->AddFireEffect(
 					glm::vec3(0, 5, 0),
