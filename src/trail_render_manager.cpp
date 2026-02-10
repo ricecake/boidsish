@@ -1,6 +1,7 @@
 #include "trail_render_manager.h"
 
 #include <algorithm>
+#include <cstring>
 #include <iostream>
 
 #include "logger.h"
@@ -8,39 +9,50 @@
 
 namespace Boidsish {
 
+	void TrailRenderManager::PersistentBuffer::Create(GLenum target, size_t size) {
+		Size = size;
+		glGenBuffers(1, &ID);
+		glBindBuffer(target, ID);
+		GLbitfield flags = GL_MAP_WRITE_BIT | GL_MAP_READ_BIT | GL_MAP_PERSISTENT_BIT | GL_MAP_COHERENT_BIT;
+		glBufferStorage(target, size, nullptr, flags);
+		MappedPtr = glMapBufferRange(target, 0, size, flags);
+	}
+
+	void TrailRenderManager::PersistentBuffer::Destroy() {
+		if (ID != 0) {
+			glDeleteBuffers(1, &ID);
+			ID = 0;
+			MappedPtr = nullptr;
+		}
+	}
+
 	TrailRenderManager::TrailRenderManager() {
-		// Create VAO
 		glGenVertexArrays(1, &vao_);
 		glBindVertexArray(vao_);
 
-		// Create VBO with initial capacity
-		glGenBuffers(1, &vbo_);
-		glBindBuffer(GL_ARRAY_BUFFER, vbo_);
-		glBufferData(
-			GL_ARRAY_BUFFER,
-			INITIAL_VERTEX_CAPACITY * FLOATS_PER_VERTEX * sizeof(float),
-			nullptr,
-			GL_DYNAMIC_DRAW
-		);
 		vertex_capacity_ = INITIAL_VERTEX_CAPACITY;
+		size_t vbo_size = vertex_capacity_ * FLOATS_PER_VERTEX * sizeof(float);
+		size_t params_size = max_trails_capacity_ * sizeof(TrailParams);
+		size_t commands_size = max_trails_capacity_ * 2 * sizeof(DrawArraysIndirectCommand) * MAX_PASSES;
 
-		// Set up vertex attributes (matches TrailVertex: pos + normal + color)
-		// Position attribute (location 0)
+		for (int i = 0; i < NUM_FRAMES; ++i) {
+			vbo_persistent_[i].Create(GL_ARRAY_BUFFER, vbo_size);
+			params_ssbo_persistent_[i].Create(GL_SHADER_STORAGE_BUFFER, params_size);
+			draw_command_buffer_persistent_[i].Create(GL_DRAW_INDIRECT_BUFFER, commands_size);
+		}
+
+		glBindBuffer(GL_ARRAY_BUFFER, vbo_persistent_[0].ID);
 		glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, FLOATS_PER_VERTEX * sizeof(float), (void*)0);
 		glEnableVertexAttribArray(0);
-		// Normal attribute (location 1)
 		glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, FLOATS_PER_VERTEX * sizeof(float), (void*)(3 * sizeof(float)));
 		glEnableVertexAttribArray(1);
-		// Color attribute (location 2)
 		glVertexAttribPointer(2, 3, GL_FLOAT, GL_FALSE, FLOATS_PER_VERTEX * sizeof(float), (void*)(6 * sizeof(float)));
 		glEnableVertexAttribArray(2);
 
-		// DrawID attribute (location 3)
 		glGenBuffers(1, &trail_indices_vbo_);
 		glBindBuffer(GL_ARRAY_BUFFER, trail_indices_vbo_);
-		// Initialize with some default capacity
-		trail_indices_.resize(1024);
-		for (int i = 0; i < 1024; ++i)
+		trail_indices_.resize(max_trails_capacity_);
+		for (int i = 0; i < (int)max_trails_capacity_; ++i)
 			trail_indices_[i] = i;
 		glBufferData(GL_ARRAY_BUFFER, trail_indices_.size() * sizeof(int), trail_indices_.data(), GL_STATIC_DRAW);
 
@@ -49,38 +61,32 @@ namespace Boidsish {
 		glVertexAttribDivisor(3, 1);
 
 		glBindVertexArray(0);
-
-		// Create indirect draw command buffer
-		glGenBuffers(1, &draw_command_buffer_);
-
-		// Create SSBO for trail parameters
-		glGenBuffers(1, &params_ssbo_);
 	}
 
 	TrailRenderManager::~TrailRenderManager() {
 		if (vao_)
 			glDeleteVertexArrays(1, &vao_);
-		if (vbo_)
-			glDeleteBuffers(1, &vbo_);
-		if (draw_command_buffer_)
-			glDeleteBuffers(1, &draw_command_buffer_);
-		if (params_ssbo_)
-			glDeleteBuffers(1, &params_ssbo_);
 		if (trail_indices_vbo_)
 			glDeleteBuffers(1, &trail_indices_vbo_);
+
+		for (int i = 0; i < NUM_FRAMES; ++i) {
+			vbo_persistent_[i].Destroy();
+			params_ssbo_persistent_[i].Destroy();
+			draw_command_buffer_persistent_[i].Destroy();
+			if (frame_fences_[i]) {
+				glDeleteSync(frame_fences_[i]);
+			}
+		}
 	}
 
 	bool TrailRenderManager::RegisterTrail(int trail_id, size_t max_vertices) {
 		std::lock_guard<std::mutex> lock(mutex_);
 
-		// If trail already exists, return false
-		if (trail_allocations_.count(trail_id)) {
+		if (trail_id_to_list_index_.count(trail_id)) {
 			return false;
 		}
 
-		// Try to find space in free list
 		size_t vertex_offset = vertex_usage_;
-
 		for (auto it = free_list_.begin(); it != free_list_.end(); ++it) {
 			if (it->size >= max_vertices) {
 				vertex_offset = it->offset;
@@ -94,29 +100,19 @@ namespace Boidsish {
 			}
 		}
 
-		// If no free block found, allocate at end
 		if (vertex_offset == vertex_usage_) {
 			vertex_usage_ += max_vertices;
 		}
 
-		// Ensure buffer capacity
 		if (vertex_usage_ > vertex_capacity_) {
 			EnsureBufferCapacity(vertex_usage_);
 		}
 
-		// Store allocation info
 		TrailAllocation allocation{};
 		allocation.vertex_offset = vertex_offset;
 		allocation.max_vertices = max_vertices;
-		allocation.head = 0;
-		allocation.tail = 0;
-		allocation.vertex_count = 0;
-		allocation.is_full = false;
-		allocation.needs_upload = false;
+		allocation.vertices.resize(max_vertices * FLOATS_PER_VERTEX);
 
-		trail_allocations_[trail_id] = allocation;
-
-		// Assign a dense index for the SSBO
 		int index;
 		if (!free_indices_.empty()) {
 			index = free_indices_.back();
@@ -124,26 +120,41 @@ namespace Boidsish {
 		} else {
 			index = next_index_++;
 		}
-		trail_id_to_index_[trail_id] = index;
 
-		// Ensure trail_indices_ is large enough for the DrawID attribute
-		if (index >= static_cast<int>(trail_indices_.size())) {
-			size_t old_size = trail_indices_.size();
-			size_t new_size = old_size * 2;
-			while (index >= static_cast<int>(new_size))
-				new_size *= 2;
-			trail_indices_.resize(new_size);
-			for (size_t i = old_size; i < new_size; ++i) {
-				trail_indices_[i] = static_cast<int>(i);
+		if (index >= (int)max_trails_capacity_) {
+			size_t old_capacity = max_trails_capacity_;
+			max_trails_capacity_ *= 2;
+
+			size_t params_size = max_trails_capacity_ * sizeof(TrailParams);
+			size_t commands_size = max_trails_capacity_ * 2 * sizeof(DrawArraysIndirectCommand) * MAX_PASSES;
+
+			for (int i = 0; i < NUM_FRAMES; ++i) {
+				PersistentBuffer new_params, new_commands;
+				new_params.Create(GL_SHADER_STORAGE_BUFFER, params_size);
+				new_commands.Create(GL_DRAW_INDIRECT_BUFFER, commands_size);
+
+				std::memcpy(new_params.MappedPtr, params_ssbo_persistent_[i].MappedPtr, old_capacity * sizeof(TrailParams));
+				// commands don't need copying as they are rebuilt every frame
+
+				params_ssbo_persistent_[i].Destroy();
+				draw_command_buffer_persistent_[i].Destroy();
+
+				params_ssbo_persistent_[i] = new_params;
+				draw_command_buffer_persistent_[i] = new_commands;
 			}
+
+			// Update trail indices VBO
+			trail_indices_.resize(max_trails_capacity_);
+			for (int i = (int)old_capacity; i < (int)max_trails_capacity_; ++i)
+				trail_indices_[i] = i;
 
 			glBindBuffer(GL_ARRAY_BUFFER, trail_indices_vbo_);
 			glBufferData(GL_ARRAY_BUFFER, trail_indices_.size() * sizeof(int), trail_indices_.data(), GL_STATIC_DRAW);
 			glBindBuffer(GL_ARRAY_BUFFER, 0);
 		}
 
-		draw_commands_dirty_ = true;
-		params_dirty_ = true;
+		trail_id_to_list_index_[trail_id] = active_trails_list_.size();
+		active_trails_list_.push_back({trail_id, allocation, index});
 
 		return true;
 	}
@@ -151,32 +162,29 @@ namespace Boidsish {
 	void TrailRenderManager::UnregisterTrail(int trail_id) {
 		std::lock_guard<std::mutex> lock(mutex_);
 
-		auto it = trail_allocations_.find(trail_id);
-		if (it == trail_allocations_.end()) {
+		auto it = trail_id_to_list_index_.find(trail_id);
+		if (it == trail_id_to_list_index_.end()) {
 			return;
 		}
 
-		const auto& alloc = it->second;
+		size_t list_idx = it->second;
+		const auto& entry = active_trails_list_[list_idx];
 
-		// Add to free list
-		free_list_.push_back({alloc.vertex_offset, alloc.max_vertices});
+		free_list_.push_back({entry.alloc.vertex_offset, entry.alloc.max_vertices});
+		free_indices_.push_back(entry.index);
 
-		trail_allocations_.erase(it);
-		pending_vertex_data_.erase(trail_id);
-
-		auto idx_it = trail_id_to_index_.find(trail_id);
-		if (idx_it != trail_id_to_index_.end()) {
-			free_indices_.push_back(idx_it->second);
-			trail_id_to_index_.erase(idx_it);
+		// Remove from list and update map (swap with last)
+		if (list_idx < active_trails_list_.size() - 1) {
+			active_trails_list_[list_idx] = active_trails_list_.back();
+			trail_id_to_list_index_[active_trails_list_[list_idx].id] = list_idx;
 		}
-
-		draw_commands_dirty_ = true;
-		params_dirty_ = true;
+		active_trails_list_.pop_back();
+		trail_id_to_list_index_.erase(it);
 	}
 
 	bool TrailRenderManager::HasTrail(int trail_id) const {
 		std::lock_guard<std::mutex> lock(mutex_);
-		return trail_allocations_.count(trail_id) > 0;
+		return trail_id_to_list_index_.count(trail_id) > 0;
 	}
 
 	void TrailRenderManager::UpdateTrailData(
@@ -191,39 +199,24 @@ namespace Boidsish {
 	) {
 		std::lock_guard<std::mutex> lock(mutex_);
 
-		auto it = trail_allocations_.find(trail_id);
-		if (it == trail_allocations_.end()) {
+		auto it = trail_id_to_list_index_.find(trail_id);
+		if (it == trail_id_to_list_index_.end()) {
 			return;
 		}
 
-		auto& alloc = it->second;
+		auto& alloc = active_trails_list_[it->second].alloc;
 
-		// Bounds check: Ensure vertex data doesn't exceed allocated capacity
 		size_t incoming_vertex_count = vertices.size() / FLOATS_PER_VERTEX;
-		if (incoming_vertex_count > alloc.max_vertices) {
-			logger::ERROR(
-				"Trail {} update exceeded allocated capacity ({} > {}) - truncating",
-				trail_id,
-				incoming_vertex_count,
-				alloc.max_vertices
-			);
-			std::vector<float> truncated_vertices = vertices;
-			truncated_vertices.resize(alloc.max_vertices * FLOATS_PER_VERTEX);
-			pending_vertex_data_[trail_id] = std::move(truncated_vertices);
-		} else {
-			pending_vertex_data_[trail_id] = vertices;
-		}
+		size_t copy_count = std::min(incoming_vertex_count, alloc.max_vertices);
+		std::memcpy(alloc.vertices.data(), vertices.data(), copy_count * FLOATS_PER_VERTEX * sizeof(float));
 
+		alloc.clean_mask = 0;
 		alloc.head = std::min(head, alloc.max_vertices - 1);
 		alloc.tail = std::min(tail, alloc.max_vertices - 1);
 		alloc.vertex_count = std::min(vertex_count, alloc.max_vertices);
 		alloc.is_full = is_full;
 		alloc.aabb_min = aabb_min;
 		alloc.aabb_max = aabb_max;
-		alloc.needs_upload = true;
-
-		draw_commands_dirty_ = true;
-		params_dirty_ = true;
 	}
 
 	void TrailRenderManager::SetTrailParams(
@@ -237,25 +230,18 @@ namespace Boidsish {
 	) {
 		std::lock_guard<std::mutex> lock(mutex_);
 
-		auto it = trail_allocations_.find(trail_id);
-		if (it == trail_allocations_.end()) {
+		auto it = trail_id_to_list_index_.find(trail_id);
+		if (it == trail_id_to_list_index_.end()) {
 			return;
 		}
 
-		auto& alloc = it->second;
-
-		// Only mark dirty if something actually changed
-		if (alloc.iridescent != iridescent || alloc.rocket_trail != rocket_trail || alloc.use_pbr != use_pbr ||
-		    alloc.roughness != roughness || alloc.metallic != metallic || alloc.base_thickness != base_thickness) {
-
-			alloc.iridescent = iridescent;
-			alloc.rocket_trail = rocket_trail;
-			alloc.use_pbr = use_pbr;
-			alloc.roughness = roughness;
-			alloc.metallic = metallic;
-			alloc.base_thickness = base_thickness;
-			params_dirty_ = true;
-		}
+		auto& alloc = active_trails_list_[it->second].alloc;
+		alloc.iridescent = iridescent;
+		alloc.rocket_trail = rocket_trail;
+		alloc.use_pbr = use_pbr;
+		alloc.roughness = roughness;
+		alloc.metallic = metallic;
+		alloc.base_thickness = base_thickness;
 	}
 
 	void TrailRenderManager::EnsureBufferCapacity(size_t required_vertices) {
@@ -268,31 +254,29 @@ namespace Boidsish {
 			new_capacity = static_cast<size_t>(new_capacity * GROWTH_FACTOR);
 		}
 
-		// Create new buffer
-		GLuint new_vbo;
-		glGenBuffers(1, &new_vbo);
-		glBindBuffer(GL_ARRAY_BUFFER, new_vbo);
-		glBufferData(GL_ARRAY_BUFFER, new_capacity * FLOATS_PER_VERTEX * sizeof(float), nullptr, GL_DYNAMIC_DRAW);
+		size_t new_vbo_size = new_capacity * FLOATS_PER_VERTEX * sizeof(float);
+		size_t old_vbo_size = vertex_capacity_ * FLOATS_PER_VERTEX * sizeof(float);
 
-		// Copy old data
-		glBindBuffer(GL_COPY_READ_BUFFER, vbo_);
-		glCopyBufferSubData(
-			GL_COPY_READ_BUFFER,
-			GL_ARRAY_BUFFER,
-			0,
-			0,
-			vertex_capacity_ * FLOATS_PER_VERTEX * sizeof(float)
-		);
+		for (int i = 0; i < NUM_FRAMES; ++i) {
+			PersistentBuffer new_vbo;
+			new_vbo.Create(GL_ARRAY_BUFFER, new_vbo_size);
 
-		glDeleteBuffers(1, &vbo_);
-		vbo_ = new_vbo;
+			// Copy old data
+			std::memcpy(new_vbo.MappedPtr, vbo_persistent_[i].MappedPtr, old_vbo_size);
+
+			vbo_persistent_[i].Destroy();
+			vbo_persistent_[i] = new_vbo;
+		}
 		vertex_capacity_ = new_capacity;
 
-		// Update VAO binding
-		glBindVertexArray(vao_);
-		glBindBuffer(GL_ARRAY_BUFFER, vbo_);
+		// Reset clean masks as offsets might have changed (actually offsets didn't change, but we might want to be safe)
+		for (auto& entry : active_trails_list_) {
+			entry.alloc.clean_mask = 0;
+		}
 
-		// Re-setup vertex attributes
+		// Update VAO binding (use any of the VBOs, Render will re-bind)
+		glBindVertexArray(vao_);
+		glBindBuffer(GL_ARRAY_BUFFER, vbo_persistent_[0].ID);
 		glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, FLOATS_PER_VERTEX * sizeof(float), (void*)0);
 		glEnableVertexAttribArray(0);
 		glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, FLOATS_PER_VERTEX * sizeof(float), (void*)(3 * sizeof(float)));
@@ -300,50 +284,46 @@ namespace Boidsish {
 		glVertexAttribPointer(2, 3, GL_FLOAT, GL_FALSE, FLOATS_PER_VERTEX * sizeof(float), (void*)(6 * sizeof(float)));
 		glEnableVertexAttribArray(2);
 		glBindVertexArray(0);
-		glBindBuffer(GL_ARRAY_BUFFER, 0); // Prevent buffer state leakage after resize
 	}
 
 	void TrailRenderManager::CommitUpdates() {
 		std::lock_guard<std::mutex> lock(mutex_);
 
-		if (pending_vertex_data_.empty()) {
-			return;
+		current_frame_ = (current_frame_ + 1) % NUM_FRAMES;
+		current_pass_ = 0;
+
+		if (frame_fences_[current_frame_]) {
+			glClientWaitSync(frame_fences_[current_frame_], GL_SYNC_FLUSH_COMMANDS_BIT, 1000000000); // 1s timeout
+			glDeleteSync(frame_fences_[current_frame_]);
+			frame_fences_[current_frame_] = nullptr;
 		}
 
-		glBindBuffer(GL_ARRAY_BUFFER, vbo_);
+		uint8_t      mask = (1 << current_frame_);
+		uint8_t*     vbo_ptr = (uint8_t*)vbo_persistent_[current_frame_].MappedPtr;
+		TrailParams* params_ptr = (TrailParams*)params_ssbo_persistent_[current_frame_].MappedPtr;
 
-		// Upload pending vertex data
-		for (auto& [trail_id, vertices] : pending_vertex_data_) {
-			auto alloc_it = trail_allocations_.find(trail_id);
-			if (alloc_it == trail_allocations_.end()) {
-				continue;
+		for (auto& entry : active_trails_list_) {
+			// Ensure vertex data is up to date in this frame's buffer
+			if (!(entry.alloc.clean_mask & mask)) {
+				size_t byte_offset = entry.alloc.vertex_offset * FLOATS_PER_VERTEX * sizeof(float);
+				size_t byte_size = entry.alloc.vertices.size() * sizeof(float);
+				std::memcpy(vbo_ptr + byte_offset, entry.alloc.vertices.data(), byte_size);
+				entry.alloc.clean_mask |= mask;
 			}
 
-			auto& alloc = alloc_it->second;
-			if (!alloc.needs_upload) {
-				continue;
-			}
-
-			// Upload the entire trail data at its allocated offset
-			// The vertices are already in the correct format (pos + normal + color)
-			size_t byte_offset = alloc.vertex_offset * FLOATS_PER_VERTEX * sizeof(float);
-			size_t byte_size = vertices.size() * sizeof(float);
-			size_t max_byte_size = alloc.max_vertices * FLOATS_PER_VERTEX * sizeof(float);
-
-			if (byte_size > max_byte_size) {
-				logger::ERROR("Trail {} upload size mismatch during commit - truncating", trail_id);
-				byte_size = max_byte_size;
-			}
-
-			if (byte_size > 0) {
-				glBufferSubData(GL_ARRAY_BUFFER, byte_offset, byte_size, vertices.data());
-			}
-
-			alloc.needs_upload = false;
+			// Update parameters for active trails
+			TrailParams& p = params_ptr[entry.index];
+			const auto&  alloc = entry.alloc;
+			p.base_thickness = alloc.base_thickness;
+			p.use_rocket_trail = alloc.rocket_trail ? 1 : 0;
+			p.use_iridescence = alloc.iridescent ? 1 : 0;
+			p.use_pbr = alloc.use_pbr ? 1 : 0;
+			p.roughness = alloc.roughness;
+			p.metallic = alloc.metallic;
+			p.head = static_cast<float>(alloc.vertex_offset + alloc.head);
+			p.size = static_cast<float>(alloc.vertex_count);
+			p.verts_per_step = static_cast<float>((Constants::Class::Trails::Segments() + 1) * 2);
 		}
-
-		pending_vertex_data_.clear();
-		glBindBuffer(GL_ARRAY_BUFFER, 0); // Prevent buffer state leakage
 	}
 
 	void TrailRenderManager::Render(
@@ -354,8 +334,11 @@ namespace Boidsish {
 		const std::optional<Frustum>&   frustum
 	) {
 		std::lock_guard<std::mutex> lock(mutex_);
+		if (active_trails_list_.empty())
+			return;
 
-		if (trail_allocations_.empty()) {
+		if (current_pass_ >= MAX_PASSES) {
+			logger::ERROR("TrailRenderManager: Max passes exceeded!");
 			return;
 		}
 
@@ -366,129 +349,84 @@ namespace Boidsish {
 		shader.use();
 		shader.setMat4("view", view);
 		shader.setMat4("projection", projection);
-		shader.setMat4("model", glm::mat4(1.0f)); // Identity - positions are world space
-
-		if (clip_plane) {
-			shader.setVec4("clipPlane", *clip_plane);
-		} else {
-			shader.setVec4("clipPlane", glm::vec4(0, 0, 0, 0));
-		}
-
+		shader.setMat4("model", glm::mat4(1.0f));
+		if (clip_plane) shader.setVec4("clipPlane", *clip_plane);
+		else shader.setVec4("clipPlane", glm::vec4(0, 0, 0, 0));
 		shader.setInt("useVertexColor", 1);
 
 		glBindVertexArray(vao_);
+		glBindBuffer(GL_ARRAY_BUFFER, vbo_persistent_[current_frame_].ID);
+		glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, FLOATS_PER_VERTEX * sizeof(float), (void*)0);
+		glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, FLOATS_PER_VERTEX * sizeof(float), (void*)(3 * sizeof(float)));
+		glVertexAttribPointer(2, 3, GL_FLOAT, GL_FALSE, FLOATS_PER_VERTEX * sizeof(float), (void*)(6 * sizeof(float)));
 
-		// Prepare trail parameters SSBO if dirty
-		if (params_dirty_) {
-			if (params_buffer_.size() < static_cast<size_t>(next_index_)) {
-				params_buffer_.resize(next_index_);
-			}
+		size_t                     pass_offset = current_pass_ * max_trails_capacity_ * 2;
+		DrawArraysIndirectCommand* cmd_ptr = (DrawArraysIndirectCommand*)draw_command_buffer_persistent_[current_frame_].MappedPtr + pass_offset;
+		size_t                     draw_count = 0;
 
-			for (const auto& [trail_id, alloc] : trail_allocations_) {
-				int          index = trail_id_to_index_[trail_id];
-				TrailParams& p = params_buffer_[index];
-				p.base_thickness = alloc.base_thickness;
-				p.use_rocket_trail = alloc.rocket_trail ? 1 : 0;
-				p.use_iridescence = alloc.iridescent ? 1 : 0;
-				p.use_pbr = alloc.use_pbr ? 1 : 0;
-				p.roughness = alloc.roughness;
-				p.metallic = alloc.metallic;
-				p.head = static_cast<float>(alloc.vertex_offset + alloc.head);
-				p.size = static_cast<float>(alloc.vertex_count);
-			}
-
-			glBindBuffer(GL_SHADER_STORAGE_BUFFER, params_ssbo_);
-			glBufferData(
-				GL_SHADER_STORAGE_BUFFER,
-				params_buffer_.size() * sizeof(TrailParams),
-				params_buffer_.data(),
-				GL_DYNAMIC_DRAW
-			);
-			params_dirty_ = false;
-		}
-		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 7, params_ssbo_);
-
-		// Build draw commands
-		// We rebuild draw commands every frame now because of culling.
-		draw_commands_.clear();
-		draw_commands_.reserve(trail_allocations_.size() * 2);
-
-		for (const auto& [trail_id, alloc] : trail_allocations_) {
-			if (alloc.vertex_count == 0) {
+		for (const auto& entry : active_trails_list_) {
+			const auto& alloc = entry.alloc;
+			if (alloc.vertex_count == 0)
 				continue;
-			}
 
-			// Frustum culling
+			// Frustum culling for draw commands
 			if (frustum && !frustum->IsBoxInFrustum(alloc.aabb_min, alloc.aabb_max)) {
 				continue;
 			}
 
-			int trail_index = trail_id_to_index_[trail_id];
-
-			// Handle ring buffer - may need 1 or 2 draw commands per trail
 			if (!alloc.is_full && alloc.tail > alloc.head) {
-				// Single contiguous segment
-				DrawArraysIndirectCommand cmd{};
+				DrawArraysIndirectCommand& cmd = cmd_ptr[draw_count++];
 				cmd.count = static_cast<GLuint>(alloc.tail - alloc.head);
 				cmd.instanceCount = 1;
 				cmd.first = static_cast<GLuint>(alloc.vertex_offset + alloc.head);
-				cmd.baseInstance = static_cast<GLuint>(trail_index); // Use baseInstance to identify trail
-				draw_commands_.push_back(cmd);
+				cmd.baseInstance = static_cast<GLuint>(entry.index);
 			} else if (alloc.vertex_count > 0) {
-				// Wrapped ring buffer - two segments
-				// First segment: from head to end of buffer
 				size_t first_count = alloc.max_vertices - alloc.head;
 				if (first_count > 0) {
-					DrawArraysIndirectCommand cmd1{};
+					DrawArraysIndirectCommand& cmd1 = cmd_ptr[draw_count++];
 					cmd1.count = static_cast<GLuint>(first_count);
 					cmd1.instanceCount = 1;
 					cmd1.first = static_cast<GLuint>(alloc.vertex_offset + alloc.head);
-					cmd1.baseInstance = static_cast<GLuint>(trail_index);
-					draw_commands_.push_back(cmd1);
+					cmd1.baseInstance = static_cast<GLuint>(entry.index);
 				}
-
-				// Second segment: from start of buffer to tail
 				if (alloc.tail > 0) {
-					DrawArraysIndirectCommand cmd2{};
+					DrawArraysIndirectCommand& cmd2 = cmd_ptr[draw_count++];
 					cmd2.count = static_cast<GLuint>(alloc.tail);
 					cmd2.instanceCount = 1;
 					cmd2.first = static_cast<GLuint>(alloc.vertex_offset);
-					cmd2.baseInstance = static_cast<GLuint>(trail_index);
-					draw_commands_.push_back(cmd2);
+					cmd2.baseInstance = static_cast<GLuint>(entry.index);
 				}
 			}
 		}
 
-		// Upload draw commands to GPU buffer
-		if (!draw_commands_.empty()) {
-			glBindBuffer(GL_DRAW_INDIRECT_BUFFER, draw_command_buffer_);
-			glBufferData(
-				GL_DRAW_INDIRECT_BUFFER,
-				draw_commands_.size() * sizeof(DrawArraysIndirectCommand),
-				draw_commands_.data(),
-				GL_DYNAMIC_DRAW
-			);
-			glMultiDrawArraysIndirect(GL_TRIANGLE_STRIP, 0, static_cast<GLsizei>(draw_commands_.size()), 0);
+		if (draw_count > 0) {
+			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 7, params_ssbo_persistent_[current_frame_].ID);
+			glBindBuffer(GL_DRAW_INDIRECT_BUFFER, draw_command_buffer_persistent_[current_frame_].ID);
+			glMultiDrawArraysIndirect(GL_TRIANGLE_STRIP, (void*)(pass_offset * sizeof(DrawArraysIndirectCommand)), static_cast<GLsizei>(draw_count), 0);
 		}
 
-		glBindVertexArray(0);
-		glBindBuffer(GL_ARRAY_BUFFER, 0); // Prevent buffer state leakage
-		shader.setInt("useVertexColor", 0);
+		if (frame_fences_[current_frame_])
+			glDeleteSync(frame_fences_[current_frame_]);
+		frame_fences_[current_frame_] = glFenceSync(GL_SYNC_GPU_COMMANDS_COMPLETE, 0);
+		current_pass_++;
 
+		glBindVertexArray(0);
+		glBindBuffer(GL_ARRAY_BUFFER, 0);
+		shader.setInt("useVertexColor", 0);
 		glDepthMask(GL_TRUE);
 		glDisable(GL_BLEND);
 	}
 
 	size_t TrailRenderManager::GetRegisteredTrailCount() const {
 		std::lock_guard<std::mutex> lock(mutex_);
-		return trail_allocations_.size();
+		return active_trails_list_.size();
 	}
 
 	size_t TrailRenderManager::GetTotalVertexCount() const {
 		std::lock_guard<std::mutex> lock(mutex_);
-		size_t                      total = 0;
-		for (const auto& [id, alloc] : trail_allocations_) {
-			total += alloc.vertex_count;
+		size_t total = 0;
+		for (const auto& entry : active_trails_list_) {
+			total += entry.alloc.vertex_count;
 		}
 		return total;
 	}

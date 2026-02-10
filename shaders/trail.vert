@@ -24,6 +24,8 @@ struct TrailParams {
 	float metallic;
 	float head;
 	float size;
+	float verts_per_step;
+	float padding_params[3];
 };
 
 layout(std430, binding = 7) readonly buffer TrailParamsBlock {
@@ -37,7 +39,7 @@ void main() {
 	TrailParams p = trailData.params[aDrawID];
 
 	// Convert vertex ID to a sequential Ring Index (0, 1, 2... N)
-	float vertsPerStep = 18.0;
+	float vertsPerStep = p.verts_per_step;
 	float segmentIndex = floor(float(gl_VertexID) / vertsPerStep);
 	float isBottomRing = mod(float(gl_VertexID) + 1.0, 2.0);
 	float logicalRingIndex = segmentIndex + isBottomRing;

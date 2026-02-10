@@ -1141,6 +1141,48 @@ namespace Boidsish {
 			shader->setBool("enableFrustumCulling", false);
 		}
 
+		void UpdateTrailManager() {
+			if (!trail_render_manager)
+				return;
+
+			for (auto& [trail_id, trail] : trails) {
+				if (!trail_render_manager->HasTrail(trail_id)) {
+					// Register new trail
+					trail_render_manager->RegisterTrail(trail_id, trail->GetMaxVertexCount());
+					trail->SetManagedByRenderManager(true);
+				}
+
+				// Update trail parameters
+				trail_render_manager->SetTrailParams(
+					trail_id,
+					trail->GetIridescent(),
+					trail->GetUseRocketTrail(),
+					trail->GetUsePBR(),
+					trail->GetRoughness(),
+					trail->GetMetallic(),
+					trail->GetBaseThickness()
+				);
+
+				// Update vertex data if dirty
+				if (trail->IsDirty()) {
+					trail_render_manager->UpdateTrailData(
+						trail_id,
+						trail->GetInterleavedVertexData(),
+						trail->GetHead(),
+						trail->GetTail(),
+						trail->GetVertexCount(),
+						trail->IsFull(),
+						trail->GetAABBMin(),
+						trail->GetAABBMax()
+					);
+					trail->ClearDirty();
+				}
+			}
+
+			// Commit all updates to the GPU for the current frame
+			trail_render_manager->CommitUpdates();
+		}
+
 		void RenderTrails(
 			const glm::mat4&                view,
 			const std::optional<glm::vec4>& clip_plane,
@@ -1148,43 +1190,6 @@ namespace Boidsish {
 		) {
 			// Use batched render manager if available
 			if (trail_render_manager) {
-				// Update trail data in the render manager
-				for (auto& [trail_id, trail] : trails) {
-					if (!trail_render_manager->HasTrail(trail_id)) {
-						// Register new trail
-						trail_render_manager->RegisterTrail(trail_id, trail->GetMaxVertexCount());
-						trail->SetManagedByRenderManager(true);
-					}
-
-					// Update trail parameters
-					trail_render_manager->SetTrailParams(
-						trail_id,
-						trail->GetIridescent(),
-						trail->GetUseRocketTrail(),
-						trail->GetUsePBR(),
-						trail->GetRoughness(),
-						trail->GetMetallic(),
-						trail->GetBaseThickness()
-					);
-
-					// Update vertex data if dirty
-					if (trail->IsDirty()) {
-						trail_render_manager->UpdateTrailData(
-							trail_id,
-							trail->GetInterleavedVertexData(),
-							trail->GetHead(),
-							trail->GetTail(),
-							trail->GetVertexCount(),
-							trail->IsFull(),
-							trail->GetAABBMin(),
-							trail->GetAABBMax()
-						);
-						trail->ClearDirty();
-					}
-				}
-
-				// Commit updates and render all trails
-				trail_render_manager->CommitUpdates();
 				Frustum frustum = frustum_override ? *frustum_override : CalculateFrustum(view, projection);
 				trail_render_manager->Render(*trail_shader, view, projection, clip_plane, frustum);
 			}
@@ -2050,6 +2055,7 @@ namespace Boidsish {
 		}
 
 		impl->UpdateTrails(impl->shapes, impl->simulation_time);
+		impl->UpdateTrailManager();
 
 		if (impl->camera_mode == CameraMode::TRACKING) {
 			impl->UpdateSingleTrackCamera(impl->input_state.delta_time, impl->shapes);

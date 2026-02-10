@@ -18,6 +18,8 @@ struct TrailParams {
 	float metallic;
 	float head;
 	float size;
+	float verts_per_step;
+	float padding_params[3];
 };
 
 layout(std430, binding = 7) readonly buffer TrailParamsBlock {

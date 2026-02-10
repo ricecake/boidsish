@@ -49,6 +49,8 @@ namespace Boidsish {
 			float metallic;
 			float head;
 			float size;
+			float verts_per_step;
+			float padding_params[3];
 		};
 
 		TrailRenderManager();
@@ -162,7 +164,8 @@ namespace Boidsish {
 			float metallic = Constants::Class::Trails::DefaultMetallic();
 			float base_thickness = Constants::Class::Trails::BaseThickness();
 
-			bool needs_upload = false;
+			uint8_t clean_mask = 0;
+			std::vector<float> vertices;
 		};
 
 		// OpenGL indirect draw command structure
@@ -176,27 +179,50 @@ namespace Boidsish {
 		// Buffer management
 		void EnsureBufferCapacity(size_t required_vertices);
 
+		// Persistent mapped buffer management
+		struct PersistentBuffer {
+			GLuint ID = 0;
+			void*  MappedPtr = nullptr;
+			size_t Size = 0;
+
+			void Create(GLenum target, size_t size);
+			void Destroy();
+		};
+
+		// Triple buffering state
+		static constexpr int NUM_FRAMES = 3;
+		static constexpr int MAX_PASSES = 4;
+		int                  current_frame_ = 0;
+		int                  current_pass_ = 0;
+		GLsync               frame_fences_[NUM_FRAMES]{nullptr};
+
+		PersistentBuffer vbo_persistent_[NUM_FRAMES];
+		PersistentBuffer params_ssbo_persistent_[NUM_FRAMES];
+		PersistentBuffer draw_command_buffer_persistent_[NUM_FRAMES];
+
 		// OpenGL resources
 		GLuint vao_ = 0;
-		GLuint vbo_ = 0;
-		GLuint draw_command_buffer_ = 0;
-		GLuint params_ssbo_ = 0;
 		GLuint trail_indices_vbo_ = 0;
 
-		// Buffer capacity (in vertices, not bytes)
+		// Buffer capacity
 		size_t vertex_capacity_ = 0;
 		size_t vertex_usage_ = 0;
+		size_t max_trails_capacity_ = 1024; // Initial capacity for params/commands
 
 		// Trail allocations
-		std::map<int, TrailAllocation> trail_allocations_;
-		std::map<int, int>             trail_id_to_index_;
-		int                            next_index_ = 0;
+		struct TrailEntry {
+			int             id;
+			TrailAllocation alloc;
+			int             index; // index in params buffer
+		};
+		std::vector<TrailEntry> active_trails_list_;
+		std::map<int, size_t>   trail_id_to_list_index_;
+
+		std::map<int, int> trail_id_to_index_;
+		int                next_index_ = 0;
 		std::vector<int>               free_indices_;
-		std::vector<TrailParams>       params_buffer_;
 		std::vector<int>               trail_indices_;
 
-		// Pending vertex data for upload
-		std::map<int, std::vector<float>> pending_vertex_data_;
 
 		// Free list for reusing deallocated space
 		struct FreeBlock {
