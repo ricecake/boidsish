@@ -90,9 +90,11 @@ namespace Boidsish {
 								scene.post_processing.bloom_enabled = bloom->IsEnabled();
 								scene.post_processing.bloom_intensity = bloom->GetIntensity();
 								scene.post_processing.bloom_threshold = bloom->GetThreshold();
-							} else if (std::dynamic_pointer_cast<PostProcessing::AtmosphereEffect>(effect)) {
+							} else if (auto atmos = std::dynamic_pointer_cast<PostProcessing::AtmosphereEffect>(
+										   effect
+									   )) {
 								auto& config = ConfigManager::GetInstance();
-								scene.post_processing.atmosphere_enabled = effect->IsEnabled();
+								scene.post_processing.atmosphere_enabled = atmos->IsEnabled();
 								scene.post_processing.atmosphere_density =
 									config.GetAppSettingFloat("atmosphere_density", 1.0f);
 								scene.post_processing.fog_density = config.GetAppSettingFloat("fog_density", 1.0f);
@@ -105,7 +107,7 @@ namespace Boidsish {
 									config.GetAppSettingFloat("cloud_altitude", 2.0f);
 								scene.post_processing.cloud_thickness =
 									config.GetAppSettingFloat("cloud_thickness", 0.5f);
-								scene.post_processing.cloud_color = glm::vec3(0.95f, 0.95f, 1.0f); // Default
+								scene.post_processing.cloud_color = atmos->GetCloudColor();
 							} else if (auto fg = std::dynamic_pointer_cast<PostProcessing::FilmGrainEffect>(effect)) {
 								scene.post_processing.film_grain_enabled = fg->IsEnabled();
 								scene.post_processing.film_grain_intensity = fg->GetIntensity();
@@ -209,9 +211,11 @@ namespace Boidsish {
 								bloom->SetEnabled(scene.post_processing.bloom_enabled);
 								bloom->SetIntensity(scene.post_processing.bloom_intensity);
 								bloom->SetThreshold(scene.post_processing.bloom_threshold);
-							} else if (std::dynamic_pointer_cast<PostProcessing::AtmosphereEffect>(effect)) {
+							} else if (auto atmos = std::dynamic_pointer_cast<PostProcessing::AtmosphereEffect>(
+										   effect
+									   )) {
 								auto& config = ConfigManager::GetInstance();
-								effect->SetEnabled(scene.post_processing.atmosphere_enabled);
+								atmos->SetEnabled(scene.post_processing.atmosphere_enabled);
 								config.SetFloat("atmosphere_density", scene.post_processing.atmosphere_density);
 								config.SetFloat("fog_density", scene.post_processing.fog_density);
 								config.SetFloat("mie_anisotropy", scene.post_processing.mie_anisotropy);
@@ -219,6 +223,7 @@ namespace Boidsish {
 								config.SetFloat("cloud_density", scene.post_processing.cloud_density);
 								config.SetFloat("cloud_altitude", scene.post_processing.cloud_altitude);
 								config.SetFloat("cloud_thickness", scene.post_processing.cloud_thickness);
+								atmos->SetCloudColor(scene.post_processing.cloud_color);
 							} else if (auto fg = std::dynamic_pointer_cast<PostProcessing::FilmGrainEffect>(effect)) {
 								fg->SetEnabled(scene.post_processing.film_grain_enabled);
 								fg->SetIntensity(scene.post_processing.film_grain_intensity);

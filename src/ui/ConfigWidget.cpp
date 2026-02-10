@@ -194,6 +194,16 @@ namespace Boidsish {
 						config.SetFloat("sun_intensity_factor", sun_intensity_factor);
 					}
 
+					float rayleigh_scale_height = config.GetAppSettingFloat("rayleigh_scale_height", 100.0f);
+					if (ImGui::SliderFloat("Rayleigh Scale Height", &rayleigh_scale_height, 10.0f, 500.0f)) {
+						config.SetFloat("rayleigh_scale_height", rayleigh_scale_height);
+					}
+
+					float mie_scale_height = config.GetAppSettingFloat("mie_scale_height", 15.0f);
+					if (ImGui::SliderFloat("Mie Scale Height", &mie_scale_height, 1.0f, 100.0f)) {
+						config.SetFloat("mie_scale_height", mie_scale_height);
+					}
+
 					ImGui::Separator();
 					ImGui::Text("Clouds");
 					bool enable_clouds = config.GetAppSettingBool("enable_clouds", true);

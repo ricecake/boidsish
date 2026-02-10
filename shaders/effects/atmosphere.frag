@@ -132,11 +132,21 @@ void main() {
 			vec3 intersect = viewPos + rayDir * mix(t_start, t_end, 0.5);
 			vec3 cloudScattering = vec3(0.0);
 			for (int i = 0; i < num_lights; i++) {
-				vec3  L = normalize(lights[i].position - intersect);
+				vec3 L;
+				if (lights[i].type == LIGHT_TYPE_DIRECTIONAL) {
+					L = normalize(-lights[i].direction);
+				} else {
+					L = normalize(lights[i].position - intersect);
+				}
+
 				float d = max(0.0, dot(vec3(0, 1, 0), L));
 				float silver = pow(max(0.0, dot(rayDir, L)), 4.0) * 0.5;
 
-				cloudScattering += lights[i].color * (d * 0.5 + 0.5 + silver) * lights[i].intensity;
+				// Cloud intensity also benefits from the sunIntensityFactor for cinematic look
+				float intens = lights[i].intensity;
+				if (i == 0) intens *= sunIntensityFactor * 0.1; // Scale down factor for clouds to avoid over-exposure
+
+				cloudScattering += lights[i].color * (d * 0.5 + 0.5 + silver) * intens;
 			}
 
 			cloudColor = cloudColorUniform * (ambient_light + cloudScattering * 0.5);
