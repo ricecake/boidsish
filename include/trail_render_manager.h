@@ -83,7 +83,9 @@ namespace Boidsish {
 			size_t                    head,
 			size_t                    tail,
 			size_t                    vertex_count,
-			bool                      is_full
+			bool                      is_full,
+			const glm::vec3&          min_bound,
+			const glm::vec3&          max_bound
 		);
 
 		/**
@@ -143,6 +145,9 @@ namespace Boidsish {
 			float roughness = Constants::Class::Trails::DefaultRoughness();
 			float metallic = Constants::Class::Trails::DefaultMetallic();
 			float base_thickness = Constants::Class::Trails::BaseThickness();
+
+			glm::vec3 min_bound = glm::vec3(0.0f);
+			glm::vec3 max_bound = glm::vec3(0.0f);
 
 			bool needs_upload = false;
 		};
