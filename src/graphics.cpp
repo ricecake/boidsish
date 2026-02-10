@@ -35,6 +35,7 @@
 #include "post_processing/effects/GlitchEffect.h"
 #include "post_processing/effects/NegativeEffect.h"
 #include "post_processing/effects/OpticalFlowEffect.h"
+#include "post_processing/effects/RocketTrailEffect.h"
 #include "post_processing/effects/SdfVolumeEffect.h"
 #include "post_processing/effects/SsaoEffect.h"
 #include "post_processing/effects/StrobeEffect.h"
@@ -42,6 +43,7 @@
 #include "post_processing/effects/TimeStutterEffect.h"
 #include "post_processing/effects/ToneMappingEffect.h"
 #include "post_processing/effects/WhispTrailEffect.h"
+#include "rocket_voxel_tree.h"
 #include "sdf_volume_manager.h"
 #include "shadow_manager.h"
 #include "shockwave_effect.h"
@@ -89,6 +91,7 @@ namespace Boidsish {
 
 		// Effects
 		ShaderBase::RegisterConstant("MAX_SHOCKWAVES", Constants::Class::Shockwaves::MaxShockwaves());
+		ShaderBase::RegisterConstant("ROCKET_VOXELS_BINDING", Constants::UboBinding::RocketVoxelsBinding());
 
 		registered = true;
 	}
@@ -204,6 +207,7 @@ namespace Boidsish {
 		std::unique_ptr<SoundEffectManager>   sound_effect_manager;
 		std::unique_ptr<ShockwaveManager>     shockwave_manager;
 		std::unique_ptr<SdfVolumeManager>     sdf_volume_manager;
+		std::unique_ptr<RocketVoxelTree>      rocket_voxel_tree;
 		std::unique_ptr<ShadowManager>        shadow_manager;
 		std::unique_ptr<SceneManager>         scene_manager;
 		std::unique_ptr<DecorManager>         decor_manager;
@@ -218,6 +222,7 @@ namespace Boidsish {
 		std::unique_ptr<UI::UIManager>                         ui_manager;
 		std::unique_ptr<HudManager>                            hud_manager;
 		std::unique_ptr<PostProcessing::PostProcessingManager> post_processing_manager_;
+		std::shared_ptr<PostProcessing::RocketTrailEffect>    rocket_trail_effect;
 		int                                                    exit_key;
 
 		std::shared_ptr<ITerrainGenerator>    terrain_generator;
@@ -497,6 +502,7 @@ namespace Boidsish {
 			audio_manager = std::make_unique<AudioManager>();
 			sound_effect_manager = std::make_unique<SoundEffectManager>(audio_manager.get());
 			trail_render_manager = std::make_unique<TrailRenderManager>();
+			rocket_voxel_tree = std::make_unique<RocketVoxelTree>(Constants::Class::RocketVoxels::VoxelSize());
 
 			const int MAX_LIGHTS = 10;
 			glGenBuffers(1, &lighting_ubo);
@@ -814,6 +820,10 @@ namespace Boidsish {
 				atmosphere_effect->SetEnabled(true);
 				post_processing_manager_->AddEffect(atmosphere_effect);
 
+				rocket_trail_effect = std::make_shared<PostProcessing::RocketTrailEffect>();
+				rocket_trail_effect->SetEnabled(true);
+				post_processing_manager_->AddEffect(rocket_trail_effect);
+
 				auto bloom_effect = std::make_shared<PostProcessing::BloomEffect>(render_width, render_height);
 				bloom_effect->SetEnabled(false);
 				post_processing_manager_->AddEffect(bloom_effect);
@@ -1061,8 +1071,24 @@ namespace Boidsish {
 
 		void UpdateTrails(const std::vector<std::shared_ptr<Shape>>& shapes, float time) {
 			CleanupOldTrails(time, shapes);
+
+			if (rocket_voxel_tree && !paused) {
+				rocket_voxel_tree->Prune(time, Constants::Class::RocketVoxels::MaxAge());
+			}
+
 			for (const auto& shape : shapes) {
 				if (shape->GetTrailLength() > 0 && !paused) {
+					if (shape->IsTrailRocket()) {
+						if (rocket_voxel_tree) {
+							rocket_voxel_tree->AddSegment(
+								shape->GetLastPosition(),
+								glm::vec3(shape->GetX(), shape->GetY(), shape->GetZ()),
+								time
+							);
+						}
+						continue;
+					}
+
 					if (trails.find(shape->GetId()) == trails.end()) {
 						trails[shape->GetId()] = std::make_shared<Trail>(
 							shape->GetTrailLength(),
@@ -1959,6 +1985,10 @@ namespace Boidsish {
 	void Visualizer::Render() {
 		impl->RefreshFrameConfig();
 		impl->shapes.clear();
+
+		if (impl->rocket_voxel_tree && impl->rocket_trail_effect && impl->rocket_trail_effect->IsEnabled()) {
+			impl->rocket_trail_effect->UpdateVoxels(*impl->rocket_voxel_tree, impl->camera.pos());
+		}
 
 		// Update and collect transient effects
 		auto it = impl->transient_effects.begin();
