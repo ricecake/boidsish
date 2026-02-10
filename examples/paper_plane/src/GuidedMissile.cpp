@@ -114,21 +114,16 @@ namespace Boidsish {
 
 		if (!text_) {
 			handler.EnqueueVisualizerAction([&handler, this]() {
+				auto camPos = handler.vis->GetCamera().pos();
+				auto pos = this->GetPosition().Toglm();
+				auto vec = pos - camPos;
 				text_ = handler.vis->AddArcadeTextEffect(
-					// "FUCK YOU",
-				    // this->GetPosition(),
-				    // 20.0f,
-				    // 60.0f,
-				    // glm::vec3(0, 1, 0),
-				    // glm::vec3(0, 0, 1),
-				    // 100.0f
-
 					"FUCK YOU",
-					this->GetPosition(),
+					pos,
 					15.0f,
 					150.0f,
-					-1 * this->GetVelocity().Toglm(),
-					this->GetVelocity().Toglm(),
+					-1 * vec,
+					vec,
 					10.0f,
 					"assets/Roboto-Medium.ttf",
 					12.0f,
@@ -147,8 +142,12 @@ namespace Boidsish {
 				text_->SetColor(1.0f, 1.0f, 1.0f);
 			});
 		} else {
+			auto camPos = handler.vis->GetCamera().pos();
+			auto pos = this->GetPosition().Toglm();
+			auto vec = pos - camPos;
+
 			text_->SetPosition(pos.x, pos.y, pos.z);
-			text_->SetRotationAxis(GetVelocity().Toglm());
+			text_->SetRotationAxis(vec);
 		}
 
 		// --- Flight Model Constants ---

@@ -37,6 +37,7 @@ namespace Boidsish {
 		std::mt19937                          eng_;
 		float                                 damage_timer_ = 0.0f;
 		std::uniform_real_distribution<float> damage_dist_;
+		std::map<const Terrain*, float>       launcher_cooldowns_;
 	};
 
 } // namespace Boidsish
