@@ -77,6 +77,9 @@ namespace Boidsish {
 			shader_->setInt("motionVectorTexture", 2);
 			shader_->setBool("firstFrame", first_frame_);
 			shader_->setBool("blitOnly", false);
+			shader_->setFloat("feedbackMin", 0.85f);
+			shader_->setFloat("feedbackMax", 0.99f);
+			shader_->setFloat("varianceGamma", 1.2f);
 
 			glActiveTexture(GL_TEXTURE0);
 			glBindTexture(GL_TEXTURE_2D, params.sourceTexture);

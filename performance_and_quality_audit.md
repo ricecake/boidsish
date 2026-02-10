@@ -8,14 +8,15 @@ This document outlines key areas for performance enhancement and code quality im
 -   **Proposed Solution**: Offload frustum culling to a compute shader. This would involve passing the view-projection matrix and a list of object bounding volumes (e.g., spheres or AABBs) to a compute shader, which would then determine visibility and output a compact list of visible objects. This approach leverages the massive parallelism of the GPU to perform the culling calculations much faster than the CPU.
 -   **Code Location**: `src/graphics.cpp`, `VisualizerImpl::CalculateFrustum`
 
-## 2. Optimized Screen-Space Reflections and Blur
+## 2. Optimized Screen-Space Reflections and Blur [COMPLETED]
 
--   **Issue**: The current planar reflection effect uses a multi-pass Gaussian blur (`RenderBlur`) that requires 10 passes. This is computationally expensive, consuming significant GPU time and memory bandwidth due to the multiple render target swaps and texture reads.
--   **Proposed Solution**: Replace the multi-pass Gaussian blur with a more modern and performant technique. Options include:
-    -   A single-pass Kawase blur, which can achieve a similar effect with fewer texture samples.
-    -   Using mipmap generation to create a blurred version of the reflection texture, which is extremely fast.
-    -   Implementing a screen-space stochastic reflection technique for more realistic and higher-quality results.
--   **Code Location**: `src/graphics.cpp`, `VisualizerImpl::RenderBlur` and the call site in `Visualizer::Render`.
+-   **Issue**: The previous planar reflection effect used a multi-pass Gaussian blur (`RenderBlur`) that required 10 passes. This was computationally expensive, consuming significant GPU time and memory bandwidth due to multiple render target swaps and texture reads.
+-   **Solution Implemented**: Replaced the dual-pass planar reflection system with a **Hi-Z Screen-Space Stochastic Reflection (SSSR)** system.
+    -   Implemented a Hierarchical-Z (Hi-Z) mipmap generator (`hiz_depth.comp`) to accelerate ray-marching.
+    -   Developed a reusable **Temporal Reprojection** system (`temporal_reprojection.frag`) with variance clipping to stabilize stochastic noise.
+    -   Unified the PBR pipeline by outputting roughness/metallic data to the G-Buffer from `plane.frag` and `terrain.frag`.
+    -   Purged the legacy planar reflection rendering and multi-pass blur code from `src/graphics.cpp`.
+-   **Status**: Completed. SSSR is now integrated into the main post-processing pipeline.
 
 ## 3. GPU-Based Trail Generation
 

@@ -6,7 +6,7 @@
 #include "IPostProcessingEffect.h"
 #include <GL/glew.h>
 
-class Shader; // Forward declaration
+class ComputeShader;
 
 namespace Boidsish {
 	namespace PostProcessing {
@@ -54,6 +54,10 @@ namespace Boidsish {
 
 			GLuint pingpong_fbo_[2];
 			GLuint pingpong_texture_[2];
+
+			GLuint                         hiz_texture_{0};
+			std::unique_ptr<ComputeShader> hiz_shader_;
+			void                           GenerateHiZ(GLuint depthTexture);
 		};
 
 	} // namespace PostProcessing

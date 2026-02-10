@@ -1,5 +1,6 @@
 #include "post_processing/PostProcessingManager.h"
 
+#include <algorithm>
 #include <iostream>
 
 #include <shader.h>
@@ -11,6 +12,7 @@ namespace Boidsish {
 			width_(width), height_(height), quad_vao_(quad_vao) {
 			pingpong_fbo_[0] = 0;
 			pingpong_fbo_[1] = 0;
+			hiz_shader_ = std::make_unique<ComputeShader>("shaders/effects/hiz_depth.comp");
 		}
 
 		PostProcessingManager::~PostProcessingManager() {
@@ -20,6 +22,8 @@ namespace Boidsish {
 				glDeleteFramebuffers(1, &motion_vector_fbo_);
 			if (motion_vector_texture_)
 				glDeleteTextures(1, &motion_vector_texture_);
+			if (hiz_texture_)
+				glDeleteTextures(1, &hiz_texture_);
 		}
 
 		void PostProcessingManager::Initialize() {
@@ -35,6 +39,9 @@ namespace Boidsish {
 			if (motion_vector_fbo_) {
 				glDeleteFramebuffers(1, &motion_vector_fbo_);
 				glDeleteTextures(1, &motion_vector_texture_);
+			}
+			if (hiz_texture_) {
+				glDeleteTextures(1, &hiz_texture_);
 			}
 
 			glGenFramebuffers(2, pingpong_fbo_);
@@ -64,6 +71,16 @@ namespace Boidsish {
 			glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, motion_vector_texture_, 0);
 			if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
 				std::cerr << "ERROR::FRAMEBUFFER:: Motion Vector FBO is not complete!" << std::endl;
+
+			// Hi-Z Texture
+			glGenTextures(1, &hiz_texture_);
+			glBindTexture(GL_TEXTURE_2D, hiz_texture_);
+			int levels = (int)std::floor(std::log2(std::max(width_, height_))) + 1;
+			glTexStorage2D(GL_TEXTURE_2D, levels, GL_R32F, width_, height_);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST_MIPMAP_NEAREST);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 
 			glBindFramebuffer(GL_FRAMEBUFFER, 0);
 		}
@@ -106,8 +123,12 @@ namespace Boidsish {
 			// Ensure the viewport is set correctly for our FBOs before starting
 			glViewport(0, 0, width_, height_);
 
+			// Generate Hi-Z depth mipmap chain
+			GenerateHiZ(depthTexture);
+
 			PostProcessingParams params;
 			params.depthTexture = depthTexture;
+			params.hizTexture = hiz_texture_;
 			params.normalTexture = normalTexture;
 			params.pbrTexture = pbrTexture;
 			params.viewMatrix = viewMatrix;
@@ -174,6 +195,42 @@ namespace Boidsish {
 			}
 
 			return current_texture;
+		}
+
+		void PostProcessingManager::GenerateHiZ(GLuint depthTexture) {
+			if (!hiz_shader_ || !hiz_shader_->isValid() || !hiz_texture_)
+				return;
+
+			int levels = (int)std::floor(std::log2(std::max(width_, height_))) + 1;
+			int currW = width_;
+			int currH = height_;
+
+			hiz_shader_->use();
+
+			// Pass 0: Copy depthTexture to hiz_texture_ Level 0
+			hiz_shader_->setInt("u_Mode", 0);
+			hiz_shader_->setInt("u_SrcLevel", 0);
+			hiz_shader_->setVec2("u_DestSize", (float)currW, (float)currH);
+			glActiveTexture(GL_TEXTURE0);
+			glBindTexture(GL_TEXTURE_2D, depthTexture);
+			glBindImageTexture(1, hiz_texture_, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_R32F);
+			hiz_shader_->dispatch((currW + 7) / 8, (currH + 7) / 8, 1);
+			glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
+
+			// Pass 1..N: Downsample
+			hiz_shader_->setInt("u_Mode", 1);
+			glBindTexture(GL_TEXTURE_2D, hiz_texture_);
+			for (int i = 1; i < levels; ++i) {
+				currW = std::max(1, currW / 2);
+				currH = std::max(1, currH / 2);
+
+				hiz_shader_->setInt("u_SrcLevel", i - 1);
+				hiz_shader_->setVec2("u_DestSize", (float)currW, (float)currH);
+				glBindImageTexture(1, hiz_texture_, i, GL_FALSE, 0, GL_WRITE_ONLY, GL_R32F);
+
+				hiz_shader_->dispatch((currW + 7) / 8, (currH + 7) / 8, 1);
+				glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
+			}
 		}
 
 		void PostProcessingManager::Resize(int width, int height) {

@@ -9,6 +9,11 @@ uniform sampler2D motionVectorTexture;
 uniform bool      firstFrame;
 uniform bool      blitOnly;
 
+// Parameters (will be moved to uniforms)
+uniform float feedbackMin = 0.9;
+uniform float feedbackMax = 0.98;
+uniform float varianceGamma = 1.0;
+
 void main() {
 	if (blitOnly) {
 		FragColor = texture(historyTexture, TexCoords);
@@ -25,6 +30,7 @@ void main() {
 	vec2 motion = texture(motionVectorTexture, TexCoords).rg;
 	vec2 prevUV = TexCoords - motion;
 
+	// Check if previous UV is off-screen
 	if (prevUV.x < 0.0 || prevUV.x > 1.0 || prevUV.y < 0.0 || prevUV.y > 1.0) {
 		FragColor = current;
 		return;
@@ -32,32 +38,34 @@ void main() {
 
 	vec4 history = texture(historyTexture, prevUV);
 
-	// 2. Neighborhood clamping to prevent ghosting
-	vec2 texelSize = 1.0 / textureSize(currentTexture, 0);
-	vec4 minColor = current;
-	vec4 maxColor = current;
+	// 2. Variance Clipping to prevent ghosting
+	vec2  texelSize = 1.0 / textureSize(currentTexture, 0);
+	vec4  m1 = vec4(0.0);
+	vec4  m2 = vec4(0.0);
+	int   count = 0;
 
 	for (int x = -1; x <= 1; x++) {
 		for (int y = -1; y <= 1; y++) {
-			if (x == 0 && y == 0)
-				continue;
 			vec4 neighbor = texture(currentTexture, TexCoords + vec2(x, y) * texelSize);
-			minColor = min(minColor, neighbor);
-			maxColor = max(maxColor, neighbor);
+			m1 += neighbor;
+			m2 += neighbor * neighbor;
+			count++;
 		}
 	}
 
-	// Add some padding to the range to reduce flickering
-	float padding = 0.1;
-	minColor = max(vec4(0.0), minColor - padding);
-	maxColor = min(vec4(10.0), maxColor + padding);
+	vec4 mean = m1 / float(count);
+	vec4 stddev = sqrt(max(vec4(0.0), (m2 / float(count)) - (mean * mean)));
+
+	vec4 minColor = mean - varianceGamma * stddev;
+	vec4 maxColor = mean + varianceGamma * stddev;
 
 	history = clamp(history, minColor, maxColor);
 
 	// 3. Accumulate
-	// Dynamic alpha based on motion?
 	float motionLength = length(motion);
-	float alpha = mix(0.95, 0.7, clamp(motionLength * 100.0, 0.0, 1.0));
+	// Increase feedback (alpha) when motion is low for more stability
+	// Decrease feedback when motion is high to reduce ghosting
+	float alpha = mix(feedbackMax, feedbackMin, clamp(motionLength * 100.0, 0.0, 1.0));
 
 	FragColor = mix(current, history, alpha);
 }

@@ -7,6 +7,7 @@ uniform sampler2D sceneTexture;
 uniform sampler2D depthTexture;
 uniform sampler2D normalTexture;
 uniform sampler2D pbrTexture;
+uniform sampler2D hizTexture;
 
 uniform mat4 view;
 uniform mat4 projection;
@@ -15,12 +16,13 @@ uniform mat4 invView;
 uniform float time;
 uniform vec3 viewPos;
 
-#include "lygia/generative/random.glsl"
+// Parameters
+uniform int   maxSteps = 64;
+uniform float maxDistance = 500.0;
+uniform float jitterStrength = 0.2;
+uniform float thicknessBias = 0.1;
 
-// Better hash for jitter
-float hash(vec2 p) {
-	return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453);
-}
+#include "helpers/blue_noise.glsl"
 
 vec3 getPos(vec2 uv) {
 	float depth = texture(depthTexture, uv).r;
@@ -33,6 +35,78 @@ vec3 getNormal(vec2 uv) {
 	return texture(normalTexture, uv).xyz;
 }
 
+// Hi-Z Raymarching
+bool hiZTrace(vec3 startVS, vec3 dirVS, out vec2 hitUV) {
+    // Project ray to screen space
+    vec4 startClip = projection * vec4(startVS, 1.0);
+    startClip.xyz /= startClip.w;
+    vec3 startSS = vec3(startClip.xy * 0.5 + 0.5, startClip.z);
+
+    // End point in view space
+    vec3 endVS = startVS + dirVS * maxDistance;
+    // Clip end point to near plane if necessary
+    if (endVS.z > -0.1) endVS.z = -0.1;
+
+    vec4 endClip = projection * vec4(endVS, 1.0);
+    endClip.xyz /= endClip.w;
+    vec3 endSS = vec3(endClip.xy * 0.5 + 0.5, endClip.z);
+
+    vec3 dirSS = endSS - startSS;
+
+    // Clamp to screen boundaries
+    float tMax = 1.0;
+    if (dirSS.x > 0.0) tMax = min(tMax, (1.0 - startSS.x) / dirSS.x);
+    else if (dirSS.x < 0.0) tMax = min(tMax, (0.0 - startSS.x) / dirSS.x);
+    if (dirSS.y > 0.0) tMax = min(tMax, (1.0 - startSS.y) / dirSS.y);
+    else if (dirSS.y < 0.0) tMax = min(tMax, (0.0 - startSS.y) / dirSS.y);
+    if (dirSS.z > 0.0) tMax = min(tMax, (1.0 - startSS.z) / dirSS.z);
+    else if (dirSS.z < 0.0) tMax = min(tMax, (0.0 - startSS.z) / dirSS.z);
+
+    dirSS *= tMax;
+
+    ivec2 screenRes = textureSize(hizTexture, 0);
+    int maxLevel = int(floor(log2(float(max(screenRes.x, screenRes.y)))));
+    int level = 0;
+    float t = 0.001;
+
+    for (int i = 0; i < maxSteps; i++) {
+        vec3 currentSS = startSS + dirSS * t;
+        if (currentSS.x < 0.0 || currentSS.x > 1.0 || currentSS.y < 0.0 || currentSS.y > 1.0 || currentSS.z > 1.0 || t > 1.0) break;
+
+        float minZ = textureLod(hizTexture, currentSS.xy, level).r;
+
+        if (currentSS.z < minZ) {
+            // Skip cell
+            ivec2 cellCount = screenRes >> level;
+            vec2 cellIdx = floor(currentSS.xy * vec2(cellCount));
+            vec2 cellStart = cellIdx / vec2(cellCount);
+            vec2 cellEnd = (cellIdx + 1.0) / vec2(cellCount);
+
+            // Find t to exit current cell
+            vec2 tExit2 = vec2(1e10);
+            if (abs(dirSS.x) > 1e-6) tExit2.x = ((dirSS.x > 0.0 ? cellEnd.x : cellStart.x) - startSS.x) / dirSS.x;
+            if (abs(dirSS.y) > 1e-6) tExit2.y = ((dirSS.y > 0.0 ? cellEnd.y : cellStart.y) - startSS.y) / dirSS.y;
+
+            float tExit = min(tExit2.x, tExit2.y);
+            t = tExit + 0.0001;
+            level = min(maxLevel, level + 1);
+        } else {
+            if (level == 0) {
+                float actualDepth = textureLod(depthTexture, currentSS.xy, 0).r;
+                // Hit check with thickness
+                if (currentSS.z >= actualDepth && (currentSS.z - actualDepth) < (thicknessBias / 1000.0)) {
+                    hitUV = currentSS.xy;
+                    return true;
+                }
+                t += 0.001;
+            } else {
+                level--;
+            }
+        }
+    }
+    return false;
+}
+
 void main() {
 	float depth = texture(depthTexture, TexCoords).r;
 	if (depth >= 1.0) {
@@ -41,97 +115,58 @@ void main() {
 	}
 
 	vec3 posVS = getPos(TexCoords);
-	vec3 worldPos = (invView * vec4(posVS, 1.0)).xyz;
 	vec3 worldNormal = normalize(getNormal(TexCoords));
 	vec2 pbr = texture(pbrTexture, TexCoords).rg;
 	float roughness = pbr.r;
 
-	vec3 viewDirWS = normalize(worldPos - viewPos);
+    vec3 viewDirVS = normalize(posVS);
+    vec3 normalVS = normalize((view * vec4(worldNormal, 0.0)).xyz);
 
-	// Stochastic part: jitter the normal based on roughness
-	// Use a slightly more stable jitter
-	float h = hash(TexCoords + time);
-	vec3 jitter = vec3(
-		hash(TexCoords + vec2(h, 0.0)) - 0.5,
-		hash(TexCoords + vec2(0.0, h)) - 0.5,
-		hash(TexCoords + vec2(h, h)) - 0.5
-	);
-	vec3 normalWS = normalize(worldNormal + jitter * roughness * 0.4);
+	// Stochastic part: use Blue Noise jitter
+	float bn = blueNoise(TexCoords * textureSize(sceneTexture, 0), time);
 
-	vec3 reflectDirWS = reflect(viewDirWS, normalWS);
+    vec3 jitter = vec3(
+        blueNoiseM(TexCoords * 10.1, time),
+        blueNoiseM(TexCoords * 10.2, time + 0.33),
+        blueNoiseM(TexCoords * 10.3, time + 0.66)
+    );
+	vec3 perturbedNormalVS = normalize(normalVS + jitter * roughness * jitterStrength);
 
-	// Raymarching in world space
-	// Add a small bias to the start position to avoid self-intersection
-	vec3 currentPosWS = worldPos + worldNormal * 0.05;
-	// Initial step size scaled by distance to handle larger scales better
-	float distToCam = length(worldPos - viewPos);
-	vec3  rayStepWS = reflectDirWS * mix(0.1, 0.5, clamp(distToCam / 100.0, 0.0, 1.0));
-	vec4  hitColor = vec4(0.0);
-	float hitOccurred = 0.0;
+	vec3 reflectDirVS = reflect(viewDirVS, perturbedNormalVS);
 
-	// Optimization: skip very small reflections
-	if (dot(worldNormal, reflectDirWS) < 0.0) {
+	// Skip if reflecting back into surface
+	if (dot(normalVS, reflectDirVS) < 0.0) {
 		FragColor = texture(sceneTexture, TexCoords);
 		return;
 	}
 
-	// Better thickness check based on distance
-	float thickness = 0.5 * mix(1.0, 10.0, clamp(distToCam / 500.0, 0.0, 1.0));
+    vec2 hitUV;
+    bool hit = hiZTrace(posVS, reflectDirVS, hitUV);
 
-	for (int i = 0; i < 40; i++) {
-		currentPosWS += rayStepWS;
+	vec4 sceneColor = texture(sceneTexture, TexCoords);
+    vec4 hitColor = hit ? texture(sceneTexture, hitUV) : vec4(0.0);
 
-		vec4 projectedPos = projection * view * vec4(currentPosWS, 1.0);
-		if (projectedPos.w <= 0.0) {
-			// Ray went behind camera, try to sample horizon/sky
-			break;
-		}
-		projectedPos.xyz /= projectedPos.w;
-		vec2 sampleUV = projectedPos.xy * 0.5 + 0.5;
+	// Fresnel
+	float fresnel = pow(1.0 - max(dot(normalVS, -viewDirVS), 0.0), 5.0);
 
-		if (sampleUV.x < 0.0 || sampleUV.x > 1.0 || sampleUV.y < 0.0 || sampleUV.y > 1.0)
-			break;
-
-		float sampleDepth = texture(depthTexture, sampleUV).r;
-		if (sampleDepth >= 1.0)
-			continue;
-
-		// Convert sample depth to linear view space depth for comparison
-		vec4  sampleClipPos = vec4(sampleUV * 2.0 - 1.0, sampleDepth * 2.0 - 1.0, 1.0);
-		vec4  sampleViewPos = invProjection * sampleClipPos;
-		float linearSampleDepth = sampleViewPos.z / sampleViewPos.w;
-
-		vec4  currentViewPos = view * vec4(currentPosWS, 1.0);
-		float linearRayDepth = currentViewPos.z / currentViewPos.w;
-
-		// Check if ray is behind geometry
-		// Since linear depth is negative in OpenGL, linearRayDepth < linearSampleDepth means further away
-		if (linearRayDepth < linearSampleDepth) {
-			// Check if it's a hit (thickness check)
-			if (abs(linearRayDepth - linearSampleDepth) < thickness) {
-				hitColor = texture(sceneTexture, sampleUV);
-				hitOccurred = 1.0;
-				break;
-			}
-		}
-		// Increase step size
-		rayStepWS *= 1.1;
-	}
-
-	vec4  sceneColor = texture(sceneTexture, TexCoords);
-	// Boost reflection for smooth surfaces
-	float reflectionStrength = mix(0.8, 0.1, roughness);
-
-	// Fresnel - stronger at grazing angles
-	float fresnel = pow(1.0 - max(dot(worldNormal, -viewDirWS), 0.0), 5.0);
+	// Reflection strength
+	float reflectionStrength = mix(0.5, 0.1, roughness);
 	reflectionStrength = mix(reflectionStrength, 1.0, fresnel);
 
 	// Edge fade
 	vec2  dUV = abs(TexCoords - 0.5) * 2.0;
-	float edgeFade = 1.0 - clamp(max(pow(dUV.x, 8.0), pow(dUV.y, 8.0)), 0.0, 1.0);
+	float screenFade = 1.0 - clamp(max(pow(dUV.x, 8.0), pow(dUV.y, 8.0)), 0.0, 1.0);
 
-	// Fade out based on distance to prevent sharp cuts at far plane
-	float distFade = 1.0 - smoothstep(400.0, 600.0, distToCam);
+    // Ray hit UV edge fade
+    float rayFade = 0.0;
+    if (hit) {
+	    vec2  hitDUV = abs(hitUV - 0.5) * 2.0;
+        rayFade = 1.0 - clamp(max(pow(hitDUV.x, 8.0), pow(hitDUV.y, 8.0)), 0.0, 1.0);
+    }
 
-	FragColor = mix(sceneColor, hitColor, reflectionStrength * hitOccurred * edgeFade * distFade);
+	float finalReflectionFactor = reflectionStrength * (hit ? 1.0 : 0.0) * screenFade * rayFade;
+
+    if (hit && distance(hitUV, TexCoords) < 0.005) finalReflectionFactor = 0.0;
+
+	FragColor = mix(sceneColor, hitColor, finalReflectionFactor);
 }

@@ -5,12 +5,8 @@ layout(location = 2) out vec2 PbrColor;
 
 in vec3 WorldPos;
 in vec3 Normal;
-in vec4 ReflectionClipSpacePos;
 
 #include "helpers/lighting.glsl"
-
-uniform sampler2D reflectionTexture;
-uniform bool      useReflection;
 
 vec3 mod289(vec3 x) {
 	return x - floor(x * (1.0 / 289.0)) * 289.0;

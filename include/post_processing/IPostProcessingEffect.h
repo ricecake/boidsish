@@ -12,6 +12,7 @@ namespace Boidsish {
 		struct PostProcessingParams {
 			GLuint    sourceTexture;
 			GLuint    depthTexture;
+			GLuint    hizTexture;
 			GLuint    normalTexture;
 			GLuint    pbrTexture;
 			GLuint    motionVectorTexture;
