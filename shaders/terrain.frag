@@ -403,11 +403,11 @@ void main() {
 		step(1.0, fade)
 	);
 
-	float heat = clamp(tessFactor / 32.0, 0.0, 1.0);
-    FragColor = vec4(heat, 1.0 - heat, 0.0, 1.0); // Simple Red-Green ramp
+	// float heat = clamp(tessFactor / 32.0, 0.0, 1.0);
+    // FragColor = vec4(heat, 1.0 - heat, 0.0, 1.0); // Simple Red-Green ramp
 
 	// FragColor = vec4(tessFactor, norm.y, dist, 1.0);
-	// FragColor = vec4(tessFactor * smoothstep(0,16, tessFactor), tessFactor * smoothstep(8,24, tessFactor), tessFactor * smoothstep(16,32, tessFactor), 1.0);
+	// FragColor = vec4(smoothstep(0,16, tessFactor), smoothstep(8,24, tessFactor), smoothstep(16,32, tessFactor), 1.0);
 	// FragColor = vec4(tessFactor, 0,0, 1.0);
 
 	// vec4 outColor = vec4(lighting, fade);
