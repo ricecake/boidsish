@@ -410,7 +410,7 @@ namespace Boidsish {
 		// Build draw commands if dirty
 		if (draw_commands_dirty_) {
 			draw_commands_.clear();
-			draw_commands_.reserve(trail_allocations_.size() * 2); // Up to 2 draws per trail for ring buffer wrap
+			draw_commands_.reserve(trail_allocations_.size() * 2);
 
 			for (const auto& [trail_id, alloc] : trail_allocations_) {
 				if (alloc.vertex_count == 0) {
