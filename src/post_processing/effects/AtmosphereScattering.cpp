@@ -97,12 +97,16 @@ namespace Boidsish {
 		}
 
 		void AtmosphereScattering::GenerateTransmittanceLUT() {
+			GLint viewport[4];
+			glGetIntegerv(GL_VIEWPORT, viewport);
+
 			GLuint fbo;
 			glGenFramebuffers(1, &fbo);
 			glBindFramebuffer(GL_FRAMEBUFFER, fbo);
 			glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, transmittance_lut_, 0);
 
 			glViewport(0, 0, transmittance_width_, transmittance_height_);
+			glDisable(GL_DEPTH_TEST);
 			transmittance_shader_->use();
 			transmittance_shader_->setVec3("rayleighScattering", params_.rayleigh_scattering);
 			transmittance_shader_->setFloat("rayleighScaleHeight", params_.rayleigh_scale_height);
@@ -120,15 +124,21 @@ namespace Boidsish {
 
 			glBindFramebuffer(GL_FRAMEBUFFER, 0);
 			glDeleteFramebuffers(1, &fbo);
+			glEnable(GL_DEPTH_TEST);
+			glViewport(viewport[0], viewport[1], viewport[2], viewport[3]);
 		}
 
 		void AtmosphereScattering::GenerateMultiScatteringLUT() {
+			GLint viewport[4];
+			glGetIntegerv(GL_VIEWPORT, viewport);
+
 			GLuint fbo;
 			glGenFramebuffers(1, &fbo);
 			glBindFramebuffer(GL_FRAMEBUFFER, fbo);
 			glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, multi_scattering_lut_, 0);
 
 			glViewport(0, 0, multi_scattering_size_, multi_scattering_size_);
+			glDisable(GL_DEPTH_TEST);
 			multi_scattering_shader_->use();
 			multi_scattering_shader_->setVec3("rayleighScattering", params_.rayleigh_scattering);
 			multi_scattering_shader_->setFloat("rayleighScaleHeight", params_.rayleigh_scale_height);
@@ -151,6 +161,8 @@ namespace Boidsish {
 
 			glBindFramebuffer(GL_FRAMEBUFFER, 0);
 			glDeleteFramebuffers(1, &fbo);
+			glEnable(GL_DEPTH_TEST);
+			glViewport(viewport[0], viewport[1], viewport[2], viewport[3]);
 		}
 
 	} // namespace PostProcessing

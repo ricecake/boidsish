@@ -41,8 +41,8 @@ vec3 get_transmittance(float r, float mu) {
 
 vec3 get_scattering(vec3 p, vec3 rd, vec3 sun_dir, out vec3 transmittance) {
 	float r = length(p);
-	float mu = dot(p, rd) / r;
-	float mu_s = dot(p, sun_dir) / r;
+	float mu = dot(p, rd) / max(r, 0.01);
+	float mu_s = dot(p, sun_dir) / max(r, 0.01);
 	float cos_theta = dot(rd, sun_dir);
 
 	transmittance = get_transmittance(r, mu);
@@ -70,8 +70,16 @@ void main() {
 	vec3 world_ray = (invView * vec4(view_ray.xy, -1.0, 0.0)).xyz;
 	world_ray = normalize(world_ray);
 
-	vec3 sun_dir = normalize(lights[0].position - viewPos);
-	if (num_lights == 0) sun_dir = vec3(0, 1, 0);
+	vec3 sun_dir;
+	if (num_lights > 0) {
+		if (lights[0].type == LIGHT_TYPE_DIRECTIONAL) {
+			sun_dir = normalize(-lights[0].direction);
+		} else {
+			sun_dir = normalize(lights[0].position - viewPos);
+		}
+	} else {
+		sun_dir = vec3(0, 1, 0);
+	}
 
 	// Atmosphere Scattering
 	vec3 ro = viewPos + vec3(0, bottomRadius, 0);
