@@ -30,6 +30,7 @@
 #include "path.h"
 #include "post_processing/PostProcessingManager.h"
 #include "post_processing/effects/AtmosphereEffect.h"
+#include "post_processing/effects/AutoExposureEffect.h"
 #include "post_processing/effects/BloomEffect.h"
 #include "post_processing/effects/FilmGrainEffect.h"
 #include "post_processing/effects/GlitchEffect.h"
@@ -773,6 +774,10 @@ namespace Boidsish {
 
 				// --- Shockwave Manager ---
 				shockwave_manager->Initialize(render_width, render_height);
+
+				auto auto_exposure_effect = std::make_shared<PostProcessing::AutoExposureEffect>();
+				auto_exposure_effect->SetEnabled(true);
+				post_processing_manager_->AddEffect(auto_exposure_effect);
 
 				auto ssao_effect = std::make_shared<PostProcessing::SsaoEffect>();
 				ssao_effect->SetEnabled(false);

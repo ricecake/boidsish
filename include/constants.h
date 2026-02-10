@@ -30,6 +30,12 @@ namespace Boidsish {
 			}
 		} // namespace UboBinding
 
+		namespace SsboBinding {
+			consteval int AutoExposure() {
+				return 11;
+			}
+		} // namespace SsboBinding
+
 		namespace General {
 			namespace Math {
 				consteval float Pi() {

@@ -2,6 +2,7 @@
 
 #include "imgui.h"
 #include "post_processing/effects/AtmosphereEffect.h"
+#include "post_processing/effects/AutoExposureEffect.h"
 #include "post_processing/effects/BloomEffect.h"
 #include "post_processing/effects/FilmGrainEffect.h"
 #include "post_processing/effects/SsaoEffect.h"
@@ -19,6 +20,24 @@ namespace Boidsish {
 				bool is_enabled = effect->IsEnabled();
 				if (ImGui::Checkbox(effect->GetName().c_str(), &is_enabled)) {
 					effect->SetEnabled(is_enabled);
+				}
+
+				if (effect->GetName() == "AutoExposure" && is_enabled) {
+					auto auto_exposure_effect = std::dynamic_pointer_cast<PostProcessing::AutoExposureEffect>(effect);
+					if (auto_exposure_effect) {
+						float speed_up = auto_exposure_effect->GetSpeedUp();
+						if (ImGui::SliderFloat("Speed Up", &speed_up, 0.1f, 10.0f)) {
+							auto_exposure_effect->SetSpeedUp(speed_up);
+						}
+						float speed_down = auto_exposure_effect->GetSpeedDown();
+						if (ImGui::SliderFloat("Speed Down", &speed_down, 0.1f, 10.0f)) {
+							auto_exposure_effect->SetSpeedDown(speed_down);
+						}
+						float target_lum = auto_exposure_effect->GetTargetLuminance();
+						if (ImGui::SliderFloat("Target Luminance", &target_lum, 0.01f, 1.0f)) {
+							auto_exposure_effect->SetTargetLuminance(target_lum);
+						}
+					}
 				}
 
 				if (effect->GetName() == "Film Grain" && is_enabled) {
