@@ -9,6 +9,11 @@ in float perturbFactor;
 #include "helpers/lighting.glsl"
 #include "helpers/terrain_noise.glsl"
 
+layout(std140, binding = 6) uniform TerrainOpenings {
+	vec4 openings[16]; // xyz = center, w = radius
+	int  num_openings;
+} uOpenings;
+
 uniform bool uIsShadowPass = false;
 
 // ============================================================================
@@ -218,6 +223,13 @@ TerrainMaterial getCliffMaterial(float height, float noise) {
 }
 
 void main() {
+	// Apply terrain openings (hole cutting)
+	for (int i = 0; i < uOpenings.num_openings; i++) {
+		if (distance(FragPos.xz, uOpenings.openings[i].xz) < uOpenings.openings[i].w) {
+			discard;
+		}
+	}
+
 	if (uIsShadowPass) {
 		// Output only depth (handled by hardware)
 		return;

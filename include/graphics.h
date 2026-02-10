@@ -52,6 +52,8 @@ namespace Boidsish {
 	namespace PostProcessing {
 		class PostProcessingManager;
 	}
+	class TerrainOpeningManager;
+	struct TerrainOpening;
 } // namespace Boidsish
 
 #include "frustum.h"
@@ -318,6 +320,14 @@ namespace Boidsish {
 		void RemoveSdfSource(int id);
 
 		/**
+		 * @brief Terrain Opening management
+		 * These create holes in the terrain mesh.
+		 */
+		int  AddTerrainOpening(const glm::vec3& center, float radius);
+		void RemoveTerrainOpening(int id);
+		void ClearTerrainOpenings();
+
+		/**
 		 * @brief Create an explosion with fire particles and shockwave.
 		 *
 		 * Convenience method that combines fire effect with shockwave for
@@ -489,12 +499,12 @@ namespace Boidsish {
 		void UpdateHudGauge(int id, const HudGauge& gauge);
 		void RemoveHudGauge(int id);
 
+		// Helper to swap the terrain generator
+		void InstallTerrainGenerator(std::shared_ptr<ITerrainGenerator> generator);
+
 	private:
 		struct VisualizerImpl;
 		std::unique_ptr<VisualizerImpl> impl;
-
-		// Internal helper for SetTerrainGenerator template
-		void InstallTerrainGenerator(std::shared_ptr<ITerrainGenerator> generator);
 	};
 
 	// Template implementation must be in header

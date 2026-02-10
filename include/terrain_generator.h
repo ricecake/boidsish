@@ -376,21 +376,23 @@ namespace Boidsish {
 		};
 
 		struct BiomeAttributes {
-			float spikeDamping;  // How aggressively to cut off sharp gradients
-			float detailMasking; // How much valleys should hide high-frequency noise
-			float floorLevel;    // The height at which flattening occurs
-			float weight = 1.0f; // How much weight to give this Biome
+			float spikeDamping;   // How aggressively to cut off sharp gradients
+			float detailMasking;  // How much valleys should hide high-frequency noise
+			float floorLevel;     // The height at which flattening occurs
+			float weight = 1.0f;  // How much weight to give this Biome
+			float canyonInfluence = 0.0f; // How much to apply ridged subtractive noise
 		};
 
-		inline static const std::array<BiomeAttributes, 8> biomes = {
-			BiomeAttributes{1.0, 0.9, 5.0, 5.0f},
-			BiomeAttributes{0.80, 0.5, 20.0, 3.0f},
-			BiomeAttributes{0.05, 0.6, 40.0, 2.0f},
-			BiomeAttributes{0.30, 0.5, 60.00, 1.0f},
-			BiomeAttributes{0.40, 0.4, 80.00, 6.0f},
-			BiomeAttributes{0.30, 0.2, 100.00, 1.0f},
-			BiomeAttributes{0.10, 0.1, 150.0, 3.0f},
-			BiomeAttributes{0.05, 0.5, 250.0, 5.0f}
+		inline static const std::array<BiomeAttributes, 9> biomes = {
+			BiomeAttributes{1.0, 0.9, 5.0, 5.0f, 0.0f},
+			BiomeAttributes{0.80, 0.5, 20.0, 3.0f, 0.0f},
+			BiomeAttributes{0.05, 0.6, 40.0, 2.0f, 0.0f},
+			BiomeAttributes{0.30, 0.5, 60.00, 1.0f, 0.8f}, // Canyon Biome
+			BiomeAttributes{0.40, 0.4, 80.00, 6.0f, 0.0f},
+			BiomeAttributes{0.30, 0.2, 100.00, 1.0f, 0.0f},
+			BiomeAttributes{0.10, 0.1, 150.0, 3.0f, 0.0f},
+			BiomeAttributes{0.05, 0.5, 250.0, 5.0f, 0.0f},
+			BiomeAttributes{0.02, 0.1, 400.0, 2.0f, 0.0f}
 		};
 
 		void ApplyWeightedBiome(float control_value, BiomeAttributes& current) const;

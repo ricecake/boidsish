@@ -28,6 +28,10 @@ namespace Boidsish {
 			consteval int SdfVolumes() {
 				return 5;
 			}
+
+			consteval int TerrainOpenings() {
+				return 6;
+			}
 		} // namespace UboBinding
 
 		namespace General {
