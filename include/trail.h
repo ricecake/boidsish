@@ -65,6 +65,9 @@ namespace Boidsish {
 
 		void ClearDirty() { mesh_dirty = false; }
 
+		const glm::vec3& GetAABBMin() const { return aabb_min_; }
+		const glm::vec3& GetAABBMax() const { return aabb_max_; }
+
 	private:
 		struct TrailVertex {
 			glm::vec3 pos;
@@ -138,6 +141,9 @@ namespace Boidsish {
 		float roughness_ = Constants::Class::Trails::DefaultRoughness();
 		float metallic_ = Constants::Class::Trails::DefaultMetallic();
 		bool  managed_by_render_manager_ = false;
+
+		glm::vec3 aabb_min_ = glm::vec3(0.0f);
+		glm::vec3 aabb_max_ = glm::vec3(0.0f);
 
 		// Configuration
 		const int   TRAIL_SEGMENTS = Constants::Class::Trails::Segments();      // Circular segments around trail

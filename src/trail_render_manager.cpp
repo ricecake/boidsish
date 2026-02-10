@@ -185,7 +185,9 @@ namespace Boidsish {
 		size_t                    head,
 		size_t                    tail,
 		size_t                    vertex_count,
-		bool                      is_full
+		bool                      is_full,
+		const glm::vec3&          aabb_min,
+		const glm::vec3&          aabb_max
 	) {
 		std::lock_guard<std::mutex> lock(mutex_);
 
@@ -216,6 +218,8 @@ namespace Boidsish {
 		alloc.tail = std::min(tail, alloc.max_vertices - 1);
 		alloc.vertex_count = std::min(vertex_count, alloc.max_vertices);
 		alloc.is_full = is_full;
+		alloc.aabb_min = aabb_min;
+		alloc.aabb_max = aabb_max;
 		alloc.needs_upload = true;
 
 		draw_commands_dirty_ = true;
@@ -241,12 +245,8 @@ namespace Boidsish {
 		auto& alloc = it->second;
 
 		// Only mark dirty if something actually changed
-		if (alloc.iridescent != iridescent ||
-			alloc.rocket_trail != rocket_trail ||
-			alloc.use_pbr != use_pbr ||
-			alloc.roughness != roughness ||
-			alloc.metallic != metallic ||
-			alloc.base_thickness != base_thickness) {
+		if (alloc.iridescent != iridescent || alloc.rocket_trail != rocket_trail || alloc.use_pbr != use_pbr ||
+		    alloc.roughness != roughness || alloc.metallic != metallic || alloc.base_thickness != base_thickness) {
 
 			alloc.iridescent = iridescent;
 			alloc.rocket_trail = rocket_trail;
@@ -350,7 +350,8 @@ namespace Boidsish {
 		Shader&                         shader,
 		const glm::mat4&                view,
 		const glm::mat4&                projection,
-		const std::optional<glm::vec4>& clip_plane
+		const std::optional<glm::vec4>& clip_plane,
+		const std::optional<Frustum>&   frustum
 	) {
 		std::lock_guard<std::mutex> lock(mutex_);
 
@@ -407,53 +408,59 @@ namespace Boidsish {
 		}
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 7, params_ssbo_);
 
-		// Build draw commands if dirty
-		if (draw_commands_dirty_) {
-			draw_commands_.clear();
-			draw_commands_.reserve(trail_allocations_.size() * 2);
+		// Build draw commands
+		// We rebuild draw commands every frame now because of culling.
+		draw_commands_.clear();
+		draw_commands_.reserve(trail_allocations_.size() * 2);
 
-			for (const auto& [trail_id, alloc] : trail_allocations_) {
-				if (alloc.vertex_count == 0) {
-					continue;
-				}
-
-				int trail_index = trail_id_to_index_[trail_id];
-
-				// Handle ring buffer - may need 1 or 2 draw commands per trail
-				if (!alloc.is_full && alloc.tail > alloc.head) {
-					// Single contiguous segment
-					DrawArraysIndirectCommand cmd{};
-					cmd.count = static_cast<GLuint>(alloc.tail - alloc.head);
-					cmd.instanceCount = 1;
-					cmd.first = static_cast<GLuint>(alloc.vertex_offset + alloc.head);
-					cmd.baseInstance = static_cast<GLuint>(trail_index); // Use baseInstance to identify trail
-					draw_commands_.push_back(cmd);
-				} else if (alloc.vertex_count > 0) {
-					// Wrapped ring buffer - two segments
-					// First segment: from head to end of buffer
-					size_t first_count = alloc.max_vertices - alloc.head;
-					if (first_count > 0) {
-						DrawArraysIndirectCommand cmd1{};
-						cmd1.count = static_cast<GLuint>(first_count);
-						cmd1.instanceCount = 1;
-						cmd1.first = static_cast<GLuint>(alloc.vertex_offset + alloc.head);
-						cmd1.baseInstance = static_cast<GLuint>(trail_index);
-						draw_commands_.push_back(cmd1);
-					}
-
-					// Second segment: from start of buffer to tail
-					if (alloc.tail > 0) {
-						DrawArraysIndirectCommand cmd2{};
-						cmd2.count = static_cast<GLuint>(alloc.tail);
-						cmd2.instanceCount = 1;
-						cmd2.first = static_cast<GLuint>(alloc.vertex_offset);
-						cmd2.baseInstance = static_cast<GLuint>(trail_index);
-						draw_commands_.push_back(cmd2);
-					}
-				}
+		for (const auto& [trail_id, alloc] : trail_allocations_) {
+			if (alloc.vertex_count == 0) {
+				continue;
 			}
 
-			// Upload draw commands to GPU buffer
+			// Frustum culling
+			if (frustum && !frustum->IsBoxInFrustum(alloc.aabb_min, alloc.aabb_max)) {
+				continue;
+			}
+
+			int trail_index = trail_id_to_index_[trail_id];
+
+			// Handle ring buffer - may need 1 or 2 draw commands per trail
+			if (!alloc.is_full && alloc.tail > alloc.head) {
+				// Single contiguous segment
+				DrawArraysIndirectCommand cmd{};
+				cmd.count = static_cast<GLuint>(alloc.tail - alloc.head);
+				cmd.instanceCount = 1;
+				cmd.first = static_cast<GLuint>(alloc.vertex_offset + alloc.head);
+				cmd.baseInstance = static_cast<GLuint>(trail_index); // Use baseInstance to identify trail
+				draw_commands_.push_back(cmd);
+			} else if (alloc.vertex_count > 0) {
+				// Wrapped ring buffer - two segments
+				// First segment: from head to end of buffer
+				size_t first_count = alloc.max_vertices - alloc.head;
+				if (first_count > 0) {
+					DrawArraysIndirectCommand cmd1{};
+					cmd1.count = static_cast<GLuint>(first_count);
+					cmd1.instanceCount = 1;
+					cmd1.first = static_cast<GLuint>(alloc.vertex_offset + alloc.head);
+					cmd1.baseInstance = static_cast<GLuint>(trail_index);
+					draw_commands_.push_back(cmd1);
+				}
+
+				// Second segment: from start of buffer to tail
+				if (alloc.tail > 0) {
+					DrawArraysIndirectCommand cmd2{};
+					cmd2.count = static_cast<GLuint>(alloc.tail);
+					cmd2.instanceCount = 1;
+					cmd2.first = static_cast<GLuint>(alloc.vertex_offset);
+					cmd2.baseInstance = static_cast<GLuint>(trail_index);
+					draw_commands_.push_back(cmd2);
+				}
+			}
+		}
+
+		// Upload draw commands to GPU buffer
+		if (!draw_commands_.empty()) {
 			glBindBuffer(GL_DRAW_INDIRECT_BUFFER, draw_command_buffer_);
 			glBufferData(
 				GL_DRAW_INDIRECT_BUFFER,
@@ -461,12 +468,6 @@ namespace Boidsish {
 				draw_commands_.data(),
 				GL_DYNAMIC_DRAW
 			);
-
-			draw_commands_dirty_ = false;
-		}
-
-		if (!draw_commands_.empty()) {
-			glBindBuffer(GL_DRAW_INDIRECT_BUFFER, draw_command_buffer_);
 			glMultiDrawArraysIndirect(GL_TRIANGLE_STRIP, 0, static_cast<GLsizei>(draw_commands_.size()), 0);
 		}
 

@@ -7,6 +7,7 @@
 #include <vector>
 
 #include "constants.h"
+#include "frustum.h"
 #include <GL/glew.h>
 #include <glm/glm.hpp>
 
@@ -94,7 +95,9 @@ namespace Boidsish {
 			size_t                    head,
 			size_t                    tail,
 			size_t                    vertex_count,
-			bool                      is_full
+			bool                      is_full,
+			const glm::vec3&          aabb_min,
+			const glm::vec3&          aabb_max
 		);
 
 		/**
@@ -122,7 +125,8 @@ namespace Boidsish {
 			Shader&                         shader,
 			const glm::mat4&                view,
 			const glm::mat4&                projection,
-			const std::optional<glm::vec4>& clip_plane
+			const std::optional<glm::vec4>& clip_plane,
+			const std::optional<Frustum>&   frustum = std::nullopt
 		);
 
 		/**
@@ -146,6 +150,9 @@ namespace Boidsish {
 			size_t tail;          // Ring buffer tail
 			size_t vertex_count;  // Current active vertex count
 			bool   is_full;       // Ring buffer full flag
+
+			glm::vec3 aabb_min = glm::vec3(0.0f);
+			glm::vec3 aabb_max = glm::vec3(0.0f);
 
 			// Per-trail shader parameters
 			bool  iridescent = false;
