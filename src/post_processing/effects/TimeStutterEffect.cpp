@@ -65,13 +65,7 @@ namespace Boidsish {
 			glBindFramebuffer(GL_FRAMEBUFFER, 0);
 		}
 
-		void TimeStutterEffect::Apply(
-			GLuint           sourceTexture,
-			GLuint           depthTexture,
-			const glm::mat4& viewMatrix,
-			const glm::mat4& projectionMatrix,
-			const glm::vec3& cameraPos
-		) {
+		void TimeStutterEffect::Apply(const PostProcessingParams& params) {
 			// Save original state
 			GLint previous_fbo;
 			glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING, &previous_fbo);
@@ -87,7 +81,7 @@ namespace Boidsish {
 			blit_shader_->use();
 			blit_shader_->setInt("sceneTexture", 0);
 			glActiveTexture(GL_TEXTURE0);
-			glBindTexture(GL_TEXTURE_2D, sourceTexture);
+			glBindTexture(GL_TEXTURE_2D, params.sourceTexture);
 			glDrawArrays(GL_TRIANGLES, 0, 6);
 
 			// 2. Decide whether to stutter

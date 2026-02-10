@@ -17,17 +17,11 @@ namespace Boidsish {
 			shader_ = std::make_unique<Shader>("shaders/postprocess.vert", "shaders/effects/negative.frag");
 		}
 
-		void NegativeEffect::Apply(
-			GLuint           sourceTexture,
-			GLuint           depthTexture,
-			const glm::mat4& viewMatrix,
-			const glm::mat4& projectionMatrix,
-			const glm::vec3& cameraPos
-		) {
+		void NegativeEffect::Apply(const PostProcessingParams& params) {
 			shader_->use();
 			shader_->setInt("sceneTexture", 0);
 			glActiveTexture(GL_TEXTURE0);
-			glBindTexture(GL_TEXTURE_2D, sourceTexture);
+			glBindTexture(GL_TEXTURE_2D, params.sourceTexture);
 			glDrawArrays(GL_TRIANGLES, 0, 6); // Drawing a quad
 		}
 

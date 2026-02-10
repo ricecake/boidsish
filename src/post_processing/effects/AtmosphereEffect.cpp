@@ -23,20 +23,14 @@ namespace Boidsish {
 			height_ = height;
 		}
 
-		void AtmosphereEffect::Apply(
-			GLuint           sourceTexture,
-			GLuint           depthTexture,
-			const glm::mat4& viewMatrix,
-			const glm::mat4& projectionMatrix,
-			const glm::vec3& cameraPos
-		) {
+		void AtmosphereEffect::Apply(const PostProcessingParams& params) {
 			shader_->use();
 			shader_->setInt("sceneTexture", 0);
 			shader_->setInt("depthTexture", 1);
 			shader_->setFloat("time", time_);
-			shader_->setVec3("cameraPos", cameraPos);
-			shader_->setMat4("invView", glm::inverse(viewMatrix));
-			shader_->setMat4("invProjection", glm::inverse(projectionMatrix));
+			shader_->setVec3("cameraPos", params.cameraPos);
+			shader_->setMat4("invView", params.invViewMatrix);
+			shader_->setMat4("invProjection", params.invProjectionMatrix);
 
 			shader_->setFloat("hazeDensity", haze_density_);
 			shader_->setFloat("hazeHeight", haze_height_);
@@ -47,9 +41,9 @@ namespace Boidsish {
 			shader_->setVec3("cloudColorUniform", cloud_color_);
 
 			glActiveTexture(GL_TEXTURE0);
-			glBindTexture(GL_TEXTURE_2D, sourceTexture);
+			glBindTexture(GL_TEXTURE_2D, params.sourceTexture);
 			glActiveTexture(GL_TEXTURE1);
-			glBindTexture(GL_TEXTURE_2D, depthTexture);
+			glBindTexture(GL_TEXTURE_2D, params.depthTexture);
 
 			glDrawArrays(GL_TRIANGLES, 0, 6);
 		}

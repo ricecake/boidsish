@@ -16,6 +16,10 @@ namespace Boidsish {
 		PostProcessingManager::~PostProcessingManager() {
 			glDeleteFramebuffers(2, pingpong_fbo_);
 			glDeleteTextures(2, pingpong_texture_);
+			if (motion_vector_fbo_)
+				glDeleteFramebuffers(1, &motion_vector_fbo_);
+			if (motion_vector_texture_)
+				glDeleteTextures(1, &motion_vector_texture_);
 		}
 
 		void PostProcessingManager::Initialize() {
@@ -27,6 +31,10 @@ namespace Boidsish {
 			if (pingpong_fbo_[0] != 0) {
 				glDeleteFramebuffers(2, pingpong_fbo_);
 				glDeleteTextures(2, pingpong_texture_);
+			}
+			if (motion_vector_fbo_) {
+				glDeleteFramebuffers(1, &motion_vector_fbo_);
+				glDeleteTextures(1, &motion_vector_texture_);
 			}
 
 			glGenFramebuffers(2, pingpong_fbo_);
@@ -44,12 +52,32 @@ namespace Boidsish {
 				if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
 					std::cerr << "ERROR::FRAMEBUFFER:: Ping-pong FBO is not complete!" << std::endl;
 			}
+
+			// Motion Vector FBO
+			glGenFramebuffers(1, &motion_vector_fbo_);
+			glBindFramebuffer(GL_FRAMEBUFFER, motion_vector_fbo_);
+			glGenTextures(1, &motion_vector_texture_);
+			glBindTexture(GL_TEXTURE_2D, motion_vector_texture_);
+			glTexImage2D(GL_TEXTURE_2D, 0, GL_RG16F, width_, height_, 0, GL_RG, GL_FLOAT, NULL);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+			glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, motion_vector_texture_, 0);
+			if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
+				std::cerr << "ERROR::FRAMEBUFFER:: Motion Vector FBO is not complete!" << std::endl;
+
 			glBindFramebuffer(GL_FRAMEBUFFER, 0);
 		}
 
 		void PostProcessingManager::AddEffect(std::shared_ptr<IPostProcessingEffect> effect) {
 			effect->Initialize(width_, height_);
 			pre_tone_mapping_effects_.push_back(effect);
+		}
+
+		void PostProcessingManager::SetMotionVectorEffect(std::shared_ptr<IPostProcessingEffect> effect) {
+			if (effect) {
+				effect->Initialize(width_, height_);
+			}
+			motion_vector_effect_ = effect;
 		}
 
 		void PostProcessingManager::SetToneMappingEffect(std::shared_ptr<IPostProcessingEffect> effect) {
@@ -62,8 +90,12 @@ namespace Boidsish {
 		GLuint PostProcessingManager::ApplyEffects(
 			GLuint           sourceTexture,
 			GLuint           depthTexture,
+			GLuint           normalTexture,
+			GLuint           pbrTexture,
 			const glm::mat4& viewMatrix,
 			const glm::mat4& projectionMatrix,
+			const glm::mat4& prevViewMatrix,
+			const glm::mat4& prevProjectionMatrix,
 			const glm::vec3& cameraPos,
 			float            time
 		) {
@@ -74,6 +106,31 @@ namespace Boidsish {
 			// Ensure the viewport is set correctly for our FBOs before starting
 			glViewport(0, 0, width_, height_);
 
+			PostProcessingParams params;
+			params.depthTexture = depthTexture;
+			params.normalTexture = normalTexture;
+			params.pbrTexture = pbrTexture;
+			params.viewMatrix = viewMatrix;
+			params.projectionMatrix = projectionMatrix;
+			params.invViewMatrix = glm::inverse(viewMatrix);
+			params.invProjectionMatrix = glm::inverse(projectionMatrix);
+			params.prevViewMatrix = prevViewMatrix;
+			params.prevProjectionMatrix = prevProjectionMatrix;
+			params.cameraPos = cameraPos;
+			params.time = time;
+			params.motionVectorTexture = motion_vector_texture_;
+
+			// 1. Calculate Motion Vectors first (if enabled)
+			if (motion_vector_effect_ && motion_vector_effect_->IsEnabled()) {
+				motion_vector_effect_->SetTime(time);
+				glBindFramebuffer(GL_FRAMEBUFFER, motion_vector_fbo_);
+				glClear(GL_COLOR_BUFFER_BIT);
+				params.sourceTexture = current_texture;
+				glBindVertexArray(quad_vao_);
+				motion_vector_effect_->Apply(params);
+				glBindVertexArray(0);
+			}
+
 			// Pre-tone-mapping effects chain
 			for (const auto& effect : pre_tone_mapping_effects_) {
 				if (effect->IsEnabled()) {
@@ -81,8 +138,10 @@ namespace Boidsish {
 					glBindFramebuffer(GL_FRAMEBUFFER, pingpong_fbo_[fbo_index]);
 					glClear(GL_COLOR_BUFFER_BIT);
 
+					params.sourceTexture = current_texture;
+
 					glBindVertexArray(quad_vao_);
-					effect->Apply(current_texture, depthTexture, viewMatrix, projectionMatrix, cameraPos);
+					effect->Apply(params);
 					glBindVertexArray(0);
 
 					current_texture = pingpong_texture_[fbo_index];
@@ -97,8 +156,10 @@ namespace Boidsish {
 				glBindFramebuffer(GL_FRAMEBUFFER, pingpong_fbo_[fbo_index]);
 				glClear(GL_COLOR_BUFFER_BIT);
 
+				params.sourceTexture = current_texture;
+
 				glBindVertexArray(quad_vao_);
-				tone_mapping_effect_->Apply(current_texture, depthTexture, viewMatrix, projectionMatrix, cameraPos);
+				tone_mapping_effect_->Apply(params);
 				glBindVertexArray(0);
 
 				current_texture = pingpong_texture_[fbo_index];
@@ -119,6 +180,10 @@ namespace Boidsish {
 			width_ = width;
 			height_ = height;
 			InitializeFBOs();
+
+			if (motion_vector_effect_) {
+				motion_vector_effect_->Resize(width, height);
+			}
 
 			for (const auto& effect : pre_tone_mapping_effects_) {
 				effect->Resize(width, height);

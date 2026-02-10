@@ -1,5 +1,7 @@
 #version 420 core
-out vec4 FragColor;
+layout(location = 0) out vec4 FragColor;
+layout(location = 1) out vec3 NormalColor;
+layout(location = 2) out vec2 PbrColor;
 
 in vec3  Normal;
 in vec3  FragPos;
@@ -402,6 +404,9 @@ void main() {
 		outColor,
 		step(1.0, fade)
 	);
+
+	NormalColor = perturbedNorm;
+	PbrColor = vec2(finalMaterial.roughness, finalMaterial.metallic);
 
 	// float heat = clamp(tessFactor / 32.0, 0.0, 1.0);
 	// FragColor = vec4(heat, 1.0 - heat, 0.0, 1.0); // Simple Red-Green ramp

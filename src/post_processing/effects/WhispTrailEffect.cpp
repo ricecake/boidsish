@@ -51,13 +51,7 @@ namespace Boidsish {
 			glBindFramebuffer(GL_FRAMEBUFFER, 0);
 		}
 
-		void WhispTrailEffect::Apply(
-			GLuint           sourceTexture,
-			GLuint           depthTexture,
-			const glm::mat4& viewMatrix,
-			const glm::mat4& projectionMatrix,
-			const glm::vec3& cameraPos
-		) {
+		void WhispTrailEffect::Apply(const PostProcessingParams& params) {
 			// Save original state
 			GLint previous_fbo;
 			glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING, &previous_fbo);
@@ -79,7 +73,7 @@ namespace Boidsish {
 			trail_shader_->setVec2("resolution", (float)width_, (float)height_);
 
 			glActiveTexture(GL_TEXTURE0);
-			glBindTexture(GL_TEXTURE_2D, sourceTexture); // The current scene
+			glBindTexture(GL_TEXTURE_2D, params.sourceTexture); // The current scene
 			glActiveTexture(GL_TEXTURE1);
 			glBindTexture(GL_TEXTURE_2D, trail_texture_[read_idx]); // The previous frame's trail
 

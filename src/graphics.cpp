@@ -34,10 +34,13 @@
 #include "post_processing/effects/BloomEffect.h"
 #include "post_processing/effects/FilmGrainEffect.h"
 #include "post_processing/effects/GlitchEffect.h"
+#include "post_processing/effects/MotionVectorEffect.h"
 #include "post_processing/effects/NegativeEffect.h"
 #include "post_processing/effects/OpticalFlowEffect.h"
 #include "post_processing/effects/SdfVolumeEffect.h"
+#include "post_processing/effects/SssrEffect.h"
 #include "post_processing/effects/SsaoEffect.h"
+#include "post_processing/effects/TemporalReprojectionEffect.h"
 #include "post_processing/effects/StrobeEffect.h"
 #include "post_processing/effects/SuperSpeedEffect.h"
 #include "post_processing/effects/TimeStutterEffect.h"
@@ -235,10 +238,12 @@ namespace Boidsish {
 		GLuint                  reflection_fbo{0}, reflection_texture{0}, reflection_depth_rbo{0};
 		GLuint                  pingpong_fbo[2]{0}, pingpong_texture[2]{0};
 		GLuint                  main_fbo_{0}, main_fbo_texture_{0}, main_fbo_depth_texture_{0}, main_fbo_rbo_{0};
+		GLuint                  main_fbo_normal_texture_{0}, main_fbo_pbr_texture_{0};
 		GLuint                  lighting_ubo{0};
 		GLuint                  visual_effects_ubo{0};
 		GLuint                  frustum_ubo{0};
 		glm::mat4               projection, reflection_vp;
+		glm::mat4               prev_view_{1.0f}, prev_projection_{1.0f};
 
 		double last_mouse_x = 0.0, last_mouse_y = 0.0;
 		bool   first_mouse = true;
@@ -729,6 +734,22 @@ namespace Boidsish {
 			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 			glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, main_fbo_texture_, 0);
 
+			// Normal attachment
+			glGenTextures(1, &main_fbo_normal_texture_);
+			glBindTexture(GL_TEXTURE_2D, main_fbo_normal_texture_);
+			glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB16F, render_width, render_height, 0, GL_RGB, GL_FLOAT, NULL);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+			glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT1, GL_TEXTURE_2D, main_fbo_normal_texture_, 0);
+
+			// PBR attachment (Roughness, Metallic)
+			glGenTextures(1, &main_fbo_pbr_texture_);
+			glBindTexture(GL_TEXTURE_2D, main_fbo_pbr_texture_);
+			glTexImage2D(GL_TEXTURE_2D, 0, GL_RG16F, render_width, render_height, 0, GL_RG, GL_FLOAT, NULL);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+			glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT2, GL_TEXTURE_2D, main_fbo_pbr_texture_, 0);
+
 			// Depth-stencil texture (for shockwave depth testing and stencil operations)
 			// Using GL_DEPTH24_STENCIL8 allows sampling depth while also providing stencil
 			glGenTextures(1, &main_fbo_depth_texture_);
@@ -775,6 +796,10 @@ namespace Boidsish {
 				// --- Shockwave Manager ---
 				shockwave_manager->Initialize(render_width, render_height);
 
+				auto motion_vector_effect = std::make_shared<PostProcessing::MotionVectorEffect>();
+				motion_vector_effect->SetEnabled(true);
+				post_processing_manager_->SetMotionVectorEffect(motion_vector_effect);
+
 				auto auto_exposure_effect = std::make_shared<PostProcessing::AutoExposureEffect>();
 				auto_exposure_effect->SetEnabled(true);
 				post_processing_manager_->AddEffect(auto_exposure_effect);
@@ -814,6 +839,14 @@ namespace Boidsish {
 				auto super_speed_effect = std::make_shared<PostProcessing::SuperSpeedEffect>();
 				super_speed_effect->SetEnabled(true);
 				post_processing_manager_->AddEffect(super_speed_effect);
+
+				auto sssr_effect = std::make_shared<PostProcessing::SssrEffect>();
+				sssr_effect->SetEnabled(true);
+				post_processing_manager_->AddEffect(sssr_effect);
+
+				auto temporal_reprojection_effect = std::make_shared<PostProcessing::TemporalReprojectionEffect>();
+				temporal_reprojection_effect->SetEnabled(true);
+				post_processing_manager_->AddEffect(temporal_reprojection_effect);
 
 				auto atmosphere_effect = std::make_shared<PostProcessing::AtmosphereEffect>();
 				atmosphere_effect->SetEnabled(true);
@@ -968,6 +1001,8 @@ namespace Boidsish {
 			if (main_fbo_) {
 				glDeleteFramebuffers(1, &main_fbo_);
 				glDeleteTextures(1, &main_fbo_texture_);
+				glDeleteTextures(1, &main_fbo_normal_texture_);
+				glDeleteTextures(1, &main_fbo_pbr_texture_);
 				glDeleteTextures(1, &main_fbo_depth_texture_);
 			}
 
@@ -1808,6 +1843,13 @@ namespace Boidsish {
 			} else {
 				glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, render_width, render_height, 0, GL_RGB, GL_UNSIGNED_BYTE, NULL);
 			}
+
+			glBindTexture(GL_TEXTURE_2D, main_fbo_normal_texture_);
+			glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB16F, render_width, render_height, 0, GL_RGB, GL_FLOAT, NULL);
+
+			glBindTexture(GL_TEXTURE_2D, main_fbo_pbr_texture_);
+			glTexImage2D(GL_TEXTURE_2D, 0, GL_RG16F, render_width, render_height, 0, GL_RG, GL_FLOAT, NULL);
+
 			// Resize depth-stencil texture
 			glBindTexture(GL_TEXTURE_2D, main_fbo_depth_texture_);
 			glTexImage2D(
@@ -2450,6 +2492,10 @@ namespace Boidsish {
 		}
 
 		glEnable(GL_DEPTH_TEST);
+		if (!skip_intermediate) {
+			GLuint attachments[3] = {GL_COLOR_ATTACHMENT0, GL_COLOR_ATTACHMENT1, GL_COLOR_ATTACHMENT2};
+			glDrawBuffers(3, attachments);
+		}
 		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
 		glm::mat4 view = impl->SetupMatrices();
@@ -2483,8 +2529,12 @@ namespace Boidsish {
 			GLuint final_texture = impl->post_processing_manager_->ApplyEffects(
 				impl->main_fbo_texture_,
 				impl->main_fbo_depth_texture_,
+				impl->main_fbo_normal_texture_,
+				impl->main_fbo_pbr_texture_,
 				view,
 				impl->projection,
+				impl->prev_view_,
+				impl->prev_projection_,
 				impl->camera.pos(),
 				impl->simulation_time
 			);
@@ -2567,6 +2617,9 @@ namespace Boidsish {
 
 		// --- UI Pass (renders on top of the fullscreen quad) ---
 		impl->ui_manager->Render();
+
+		impl->prev_view_ = view;
+		impl->prev_projection_ = impl->projection;
 
 		glfwSwapBuffers(impl->window);
 	}
