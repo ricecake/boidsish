@@ -4,6 +4,7 @@
 #include <iostream>
 
 #include "logger.h"
+#include "frustum.h"
 #include <shader.h>
 
 namespace Boidsish {
@@ -129,7 +130,9 @@ namespace Boidsish {
 		size_t                    head,
 		size_t                    tail,
 		size_t                    vertex_count,
-		bool                      is_full
+		bool                      is_full,
+		const glm::vec3&          min_bound,
+		const glm::vec3&          max_bound
 	) {
 		std::lock_guard<std::mutex> lock(mutex_);
 
@@ -160,6 +163,8 @@ namespace Boidsish {
 		alloc.tail = std::min(tail, alloc.max_vertices - 1);
 		alloc.vertex_count = std::min(vertex_count, alloc.max_vertices);
 		alloc.is_full = is_full;
+		alloc.min_bound = min_bound;
+		alloc.max_bound = max_bound;
 		alloc.needs_upload = true;
 
 		draw_commands_dirty_ = true;
@@ -376,8 +381,15 @@ namespace Boidsish {
 		// For proper single-call rendering, we'd need to convert to indexed triangles.
 		// For now, iterate but with shared state (still much faster than separate VAO binds)
 
+		Frustum frustum = Frustum::FromViewProjection(view, projection);
+
 		for (const auto& [trail_id, alloc] : trail_allocations_) {
 			if (alloc.vertex_count == 0) {
+				continue;
+			}
+
+			// Frustum culling
+			if (!frustum.IsBoxInFrustum(alloc.min_bound, alloc.max_bound)) {
 				continue;
 			}
 

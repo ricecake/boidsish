@@ -991,53 +991,7 @@ namespace Boidsish {
 		// TODO: Offload frustum culling to a compute shader for performance.
 		// See performance_and_quality_audit.md#1-gpu-accelerated-frustum-culling
 		Frustum CalculateFrustum(const glm::mat4& view, const glm::mat4& projection) {
-			Frustum   frustum;
-			glm::mat4 vp = projection * view;
-
-			// Left plane
-			frustum.planes[0].normal.x = vp[0][3] + vp[0][0];
-			frustum.planes[0].normal.y = vp[1][3] + vp[1][0];
-			frustum.planes[0].normal.z = vp[2][3] + vp[2][0];
-			frustum.planes[0].distance = vp[3][3] + vp[3][0];
-
-			// Right plane
-			frustum.planes[1].normal.x = vp[0][3] - vp[0][0];
-			frustum.planes[1].normal.y = vp[1][3] - vp[1][0];
-			frustum.planes[1].normal.z = vp[2][3] - vp[2][0];
-			frustum.planes[1].distance = vp[3][3] - vp[3][0];
-
-			// Bottom plane
-			frustum.planes[2].normal.x = vp[0][3] + vp[0][1];
-			frustum.planes[2].normal.y = vp[1][3] + vp[1][1];
-			frustum.planes[2].normal.z = vp[2][3] + vp[2][1];
-			frustum.planes[2].distance = vp[3][3] + vp[3][1];
-
-			// Top plane
-			frustum.planes[3].normal.x = vp[0][3] - vp[0][1];
-			frustum.planes[3].normal.y = vp[1][3] - vp[1][1];
-			frustum.planes[3].normal.z = vp[2][3] - vp[2][1];
-			frustum.planes[3].distance = vp[3][3] - vp[3][1];
-
-			// Near plane
-			frustum.planes[4].normal.x = vp[0][3] + vp[0][2];
-			frustum.planes[4].normal.y = vp[1][3] + vp[1][2];
-			frustum.planes[4].normal.z = vp[2][3] + vp[2][2];
-			frustum.planes[4].distance = vp[3][3] + vp[3][2];
-
-			// Far plane
-			frustum.planes[5].normal.x = vp[0][3] - vp[0][2];
-			frustum.planes[5].normal.y = vp[1][3] - vp[1][2];
-			frustum.planes[5].normal.z = vp[2][3] - vp[2][2];
-			frustum.planes[5].distance = vp[3][3] - vp[3][2];
-
-			// Normalize the planes
-			for (int i = 0; i < 6; ++i) {
-				float length = glm::length(frustum.planes[i].normal);
-				frustum.planes[i].normal /= length;
-				frustum.planes[i].distance /= length;
-			}
-
-			return frustum;
+			return Frustum::FromViewProjection(view, projection);
 		}
 
 		glm::mat4 SetupMatrices(const Camera& cam_to_use) {
@@ -1176,7 +1130,9 @@ namespace Boidsish {
 							trail->GetHead(),
 							trail->GetTail(),
 							trail->GetVertexCount(),
-							trail->IsFull()
+							trail->IsFull(),
+							trail->GetMinBound(),
+							trail->GetMaxBound()
 						);
 						trail->ClearDirty();
 					}
