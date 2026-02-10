@@ -15,6 +15,7 @@ out vec2       TexCoords_TC_out[];
 flat out float TextureSlice_TC_out[];
 flat out vec3  WorldOffset_TC_out[];
 out float      perturbFactor_TC_out[];
+out float      tessFactor_TC_out[];
 
 // Heightmap texture array: R=height, GBA=normal
 uniform sampler2DArray uHeightmap;
@@ -22,7 +23,7 @@ uniform int            uChunkSize;
 
 #include "helpers/lighting.glsl"
 
-uniform float uTessLevelMax = 16.0;
+uniform float uTessLevelMax = 32.0;
 uniform float uTessLevelMin = 1.0;
 uniform float uTessQualityMultiplier = 1.0;
 uniform bool  uIsShadowPass = false;
@@ -39,43 +40,37 @@ void sampleHeightmap(vec2 uv, float slice, vec3 worldOffset, out vec3 worldPos, 
 	worldPos.z = worldOffset.z + uv.y * float(uChunkSize);
 }
 
-float GetVertexTessLevel(vec3 worldPos, vec3 normal, vec3 forward) {
+float GetVertexTessLevel(vec3 worldPos, vec3 normal, vec3 nextNormal, vec3 forward) {
 	float dist = distance(viewPos, worldPos);
 	vec3  viewDir = normalize(viewPos - worldPos);
 	float dotProd = dot(normalize(normal), viewDir);
 	float isSilhouette = 1.0 - abs(dotProd);
 
 	if (uIsShadowPass) {
-		return mix(1.0, 2.0, isSilhouette * (1.0 - clamp(dist / 500.0, 0.0, 1.0)));
+		return mix(16.0, 32.0, isSilhouette * smoothstep(800 * worldScale, 200 * worldScale, dist));
 	}
 
 	// 1. DISTANCE FACTOR (The Base)
-	float distanceLevel = uTessLevelMax * exp(-dist * (0.02 / worldScale));
+	float distanceLevel = uTessLevelMax * exp(-dist * (0.005 / worldScale));
 	distanceLevel = clamp(distanceLevel, uTessLevelMin, uTessLevelMax);
 
 	// 2. SILHOUETTE FACTOR (The Boost)
-	float silhouetteBoost = mix(1.0, 2.0, isSilhouette * (1.0 - clamp(dist / 500.0, 0.0, 1.0)));
+	float silhouetteBoost = mix(1.0, 32.0, isSilhouette * smoothstep(800 * worldScale, 200 * worldScale, dist));
 
 	// 3. FOCUS FACTOR (The Cull)
-	float focusCull = 1.0;
-	if (!uIsShadowPass) {
-		vec3  dirCamToVertex = normalize(worldPos - viewPos);
-		float align = dot(dirCamToVertex, forward);
-		// Focus culling threshold - wider when world is larger to avoid edges
-		float focusThreshold = mix(0.85, 0.65, clamp(worldScale / 10.0, 0.0, 1.0));
-		focusCull = smoothstep(focusThreshold, 1.0, align);
-	}
+	vec3  dirCamToVertex = normalize(worldPos - viewPos);
+	float align = dot(dirCamToVertex, forward);
+	// Focus culling threshold - wider when world is larger to avoid edges
+	float focusThreshold = mix(0.85, 0.65, clamp(worldScale / 10.0, 0.0, 1.0));
+	float focusCull = mix(1.0, smoothstep(focusThreshold, 1.0, align), smoothstep(50, 100, dist));
 
 	// COMBINE
 	float finalLevel = distanceLevel * silhouetteBoost;
 	finalLevel *= focusCull;
 	finalLevel *= uTessQualityMultiplier;
+	finalLevel *= mix(8.0, 1.0, smoothstep(-1, 1, dot(normal, nextNormal)));
 
-	// For shadow pass, use lower tessellation to improve performance
-	// Shadows don't need as much detail since they're binary (lit/shadow)
-	float minLevel = uIsShadowPass ? max(uTessLevelMin, 4.0) : uTessLevelMin;
-
-	return step(0.0, finalLevel) * max(finalLevel, minLevel);
+	return step(0.0, finalLevel) * max(finalLevel, mix(16, 1, smoothstep(0, 5, worldPos.y)) * uTessLevelMin);
 }
 
 float perturbLevel(vec3 worldPos, vec3 forward) {
@@ -91,7 +86,8 @@ float perturbLevel(vec3 worldPos, vec3 forward) {
 	// 2. FOCUS FACTOR (The Cull)
 	vec3  dirCamToVertex = normalize(worldPos - viewPos);
 	float align = dot(dirCamToVertex, forward);
-	float focusCull = smoothstep(0.65, 1.0, align);
+	float focusThreshold = mix(0.65, 0.45, clamp(worldScale / 10.0, 0.0, 1.0));
+	float focusCull = mix(0.60, smoothstep(focusThreshold, 1.0, align), smoothstep(100, 250, dist));
 
 	// 3. Y factor lock
 	float distanceMin = 20 * worldScale * smoothstep(10 * worldScale, 0, abs(worldPos.y - viewPos.y));
@@ -109,20 +105,24 @@ void main() {
 	TextureSlice_TC_out[gl_InvocationID] = TextureSlice_VS_out[gl_InvocationID];
 	WorldOffset_TC_out[gl_InvocationID] = WorldOffset_VS_out[gl_InvocationID];
 
-	vec3  worldPos0, normal0;
+	vec3  preWorldPos0, preWorldPos1;
+	vec3  preNormal0, preNormal1;
 	float slice = TextureSlice_VS_out[0];
 	vec3  worldOffset = WorldOffset_VS_out[0];
 
-	sampleHeightmap(TexCoords_VS_out[0], slice, worldOffset, worldPos0, normal0);
-	perturbFactor_TC_out[gl_InvocationID] = perturbLevel(worldPos0, viewForward[gl_InvocationID]);
+	sampleHeightmap(TexCoords_VS_out[(gl_InvocationID + 1) % 4], slice, worldOffset, preWorldPos0, preNormal0);
+	sampleHeightmap(TexCoords_VS_out[(gl_InvocationID + 1) % 4], slice, worldOffset, preWorldPos1, preNormal1);
+
+	perturbFactor_TC_out[gl_InvocationID] = perturbLevel(preWorldPos0, viewForward[gl_InvocationID]);
+	tessFactor_TC_out[gl_InvocationID] = GetVertexTessLevel(preWorldPos0, preNormal0, preNormal1, viewForward[0]);
 
 	if (gl_InvocationID == 0) {
 		// Sample heightmap for all 4 corners to get world positions and normals
 
-		vec3 worldPos1, worldPos2, worldPos3;
-		vec3 normal1, normal2, normal3;
+		vec3 worldPos0, worldPos1, worldPos2, worldPos3;
+		vec3 normal0, normal1, normal2, normal3;
 
-		// sampleHeightmap(TexCoords_VS_out[0], slice, worldOffset, worldPos0, normal0);
+		sampleHeightmap(TexCoords_VS_out[0], slice, worldOffset, worldPos0, normal0);
 		sampleHeightmap(TexCoords_VS_out[1], slice, worldOffset, worldPos1, normal1);
 		sampleHeightmap(TexCoords_VS_out[2], slice, worldOffset, worldPos2, normal2);
 		sampleHeightmap(TexCoords_VS_out[3], slice, worldOffset, worldPos3, normal3);
@@ -139,10 +139,10 @@ void main() {
 		float curv23 = 1.0 + (1.0 - smoothstep(0.95, 0.99, dot23)) * 2.0;
 		float curv30 = 1.0 + (1.0 - smoothstep(0.95, 0.99, dot30)) * 2.0;
 
-		float l0 = GetVertexTessLevel(worldPos0, normal0, viewForward[0]);
-		float l1 = GetVertexTessLevel(worldPos1, normal1, viewForward[1]);
-		float l2 = GetVertexTessLevel(worldPos2, normal2, viewForward[2]);
-		float l3 = GetVertexTessLevel(worldPos3, normal3, viewForward[3]);
+		float l0 = GetVertexTessLevel(worldPos0, normal0, normal1, viewForward[0]);
+		float l1 = GetVertexTessLevel(worldPos1, normal1, normal2, viewForward[1]);
+		float l2 = GetVertexTessLevel(worldPos2, normal2, normal3, viewForward[2]);
+		float l3 = GetVertexTessLevel(worldPos3, normal3, normal0, viewForward[3]);
 
 		// Correct Mapping for Quads:
 		// gl_TessLevelOuter[0] -> u=0 (edge 3-0)
@@ -156,10 +156,5 @@ void main() {
 
 		gl_TessLevelInner[0] = max(gl_TessLevelOuter[0], gl_TessLevelOuter[2]);
 		gl_TessLevelInner[1] = max(gl_TessLevelOuter[1], gl_TessLevelOuter[3]);
-
-		// perturbFactor_TC_out[0] = perturbLevel(worldPos0, viewForward[0]);
-		// perturbFactor_TC_out[1] = perturbLevel(worldPos1, viewForward[1]);
-		// perturbFactor_TC_out[2] = perturbLevel(worldPos2, viewForward[2]);
-		// perturbFactor_TC_out[3] = perturbLevel(worldPos3, viewForward[3]);
 	}
 }

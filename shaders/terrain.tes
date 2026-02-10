@@ -8,12 +8,14 @@ in vec2       TexCoords_TC_out[];
 flat in float TextureSlice_TC_out[];
 flat in vec3  WorldOffset_TC_out[];
 in float      perturbFactor_TC_out[];
+in float      tessFactor_TC_out[];
 
 // Output to Fragment Shader
 out vec3  FragPos;
 out vec3  Normal;
 out vec2  TexCoords;
 out float perturbFactor;
+out float tessFactor;
 
 // Heightmap texture array: R=height, GBA=normal
 uniform sampler2DArray uHeightmap;
@@ -102,6 +104,12 @@ void main() {
 	float perturbFactor1 = mix(perturbFactor_TC_out[0], perturbFactor_TC_out[1], uv.x);
 	float perturbFactor2 = mix(perturbFactor_TC_out[3], perturbFactor_TC_out[2], uv.x);
 	perturbFactor = mix(perturbFactor1, perturbFactor2, uv.y);
+
+	float tessFactor1 = mix(tessFactor_TC_out[0], tessFactor_TC_out[1], uv.x);
+	float tessFactor2 = mix(tessFactor_TC_out[3], tessFactor_TC_out[2], uv.x);
+	tessFactor = mix(tessFactor1, tessFactor2, uv.y);
+
+	// out float tessFactor;
 
 	// Final vertex position
 	gl_Position = projection * view * vec4(FragPos, 1.0);
