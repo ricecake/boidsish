@@ -34,24 +34,36 @@ AtmosphereSample sample_atmosphere(float h) {
 // Mapping functions for LUTs
 vec2 transmittance_to_uv(float r, float mu) {
 	float h = r - bottomRadius;
+	float H = topRadius - bottomRadius;
 	float rho = sqrt(max(0.0, r * r - bottomRadius * bottomRadius));
-	float d = sqrt(max(0.0, r * r - bottomRadius * bottomRadius * (1.0 - mu * mu))) - rho;
-	float d_max = sqrt(max(0.0, topRadius * topRadius - bottomRadius * bottomRadius));
 
-	float u = d / d_max;
-	float v = h / (topRadius - bottomRadius);
+	// Distance to top atmosphere boundary
+	float d = sqrt(max(0.0, r * r * mu * mu + topRadius * topRadius - r * r)) - r * mu;
+	float d_min = topRadius - r;
+	float d_max = rho + sqrt(max(0.0, topRadius * topRadius - bottomRadius * bottomRadius));
+
+	float u = clamp((d - d_min) / (d_max - d_min), 0.0, 1.0);
+	float v = clamp(h / H, 0.0, 1.0);
 	return vec2(u, v);
 }
 
 void uv_to_transmittance(vec2 uv, out float r, out float mu) {
-	float h = uv.y * (topRadius - bottomRadius);
+	float x_mu = uv.x;
+	float x_r = uv.y;
+
+	float h = x_r * (topRadius - bottomRadius);
 	r = bottomRadius + h;
 
-	float d_max = sqrt(max(0.0, topRadius * topRadius - bottomRadius * bottomRadius));
 	float rho = sqrt(max(0.0, r * r - bottomRadius * bottomRadius));
-	float d = uv.x * d_max;
+	float d_min = topRadius - r;
+	float d_max = rho + sqrt(max(0.0, topRadius * topRadius - bottomRadius * bottomRadius));
+	float d = d_min + x_mu * (d_max - d_min);
 
-	mu = (d * d + 2.0 * d * rho) / (2.0 * r);
+	if (d > 0.0) {
+		mu = (topRadius * topRadius - r * r - d * d) / (2.0 * r * d);
+	} else {
+		mu = 1.0;
+	}
 	mu = clamp(mu, -1.0, 1.0);
 }
 

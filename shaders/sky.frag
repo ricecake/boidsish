@@ -94,7 +94,7 @@ void main() {
 		if (tp0 > 0.0) d = min(d, tp0);
 	}
 
-	const int SAMPLES = 16;
+	const int SAMPLES = 32;
 	vec3 scat_acc = vec3(0.0);
 	vec3 trans_acc = vec3(1.0);
 	float ds = d / float(SAMPLES);
@@ -128,7 +128,7 @@ void main() {
 
 	if (sun_disc > 0.0) {
 		vec3 sun_transmittance = get_transmittance(length(ro), sun_dir.y);
-		final_color += sun_disc * sun_transmittance * sunIntensity * 2.0;
+		final_color += sun_disc * sun_transmittance * sunIntensity * 4.0;
 	}
 
 	// Stars (only if sky is dark)
