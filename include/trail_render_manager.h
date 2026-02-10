@@ -7,6 +7,7 @@
 #include <vector>
 
 #include "constants.h"
+#include "frustum.h"
 #include <GL/glew.h>
 #include <glm/glm.hpp>
 
@@ -39,6 +40,17 @@ namespace Boidsish {
 	 */
 	class TrailRenderManager {
 	public:
+		struct TrailParams {
+			float base_thickness;
+			int   use_rocket_trail;
+			int   use_iridescence;
+			int   use_pbr;
+			float roughness;
+			float metallic;
+			float head;
+			float size;
+		};
+
 		TrailRenderManager();
 		~TrailRenderManager();
 
@@ -83,7 +95,9 @@ namespace Boidsish {
 			size_t                    head,
 			size_t                    tail,
 			size_t                    vertex_count,
-			bool                      is_full
+			bool                      is_full,
+			const glm::vec3&          aabb_min,
+			const glm::vec3&          aabb_max
 		);
 
 		/**
@@ -111,7 +125,8 @@ namespace Boidsish {
 			Shader&                         shader,
 			const glm::mat4&                view,
 			const glm::mat4&                projection,
-			const std::optional<glm::vec4>& clip_plane
+			const std::optional<glm::vec4>& clip_plane,
+			const std::optional<Frustum>&   frustum = std::nullopt
 		);
 
 		/**
@@ -135,6 +150,9 @@ namespace Boidsish {
 			size_t tail;          // Ring buffer tail
 			size_t vertex_count;  // Current active vertex count
 			bool   is_full;       // Ring buffer full flag
+
+			glm::vec3 aabb_min = glm::vec3(0.0f);
+			glm::vec3 aabb_max = glm::vec3(0.0f);
 
 			// Per-trail shader parameters
 			bool  iridescent = false;
@@ -162,6 +180,8 @@ namespace Boidsish {
 		GLuint vao_ = 0;
 		GLuint vbo_ = 0;
 		GLuint draw_command_buffer_ = 0;
+		GLuint params_ssbo_ = 0;
+		GLuint trail_indices_vbo_ = 0;
 
 		// Buffer capacity (in vertices, not bytes)
 		size_t vertex_capacity_ = 0;
@@ -169,6 +189,11 @@ namespace Boidsish {
 
 		// Trail allocations
 		std::map<int, TrailAllocation> trail_allocations_;
+		std::map<int, int>             trail_id_to_index_;
+		int                            next_index_ = 0;
+		std::vector<int>               free_indices_;
+		std::vector<TrailParams>       params_buffer_;
+		std::vector<int>               trail_indices_;
 
 		// Pending vertex data for upload
 		std::map<int, std::vector<float>> pending_vertex_data_;
@@ -184,6 +209,7 @@ namespace Boidsish {
 		// Draw commands
 		std::vector<DrawArraysIndirectCommand> draw_commands_;
 		bool                                   draw_commands_dirty_ = true;
+		bool                                   params_dirty_ = true;
 
 		// Thread safety
 		mutable std::mutex mutex_;

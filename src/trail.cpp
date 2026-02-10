@@ -260,6 +260,24 @@ namespace Boidsish {
 			points.pop_front();
 			PopFromGeometryCache();
 		}
+
+		// Update AABB
+		if (points.empty()) {
+			aabb_min_ = aabb_max_ = position;
+		} else {
+			aabb_min_ = glm::vec3(std::numeric_limits<float>::max());
+			aabb_max_ = glm::vec3(-std::numeric_limits<float>::max());
+			for (const auto& p : points) {
+				aabb_min_ = glm::min(aabb_min_, p.first);
+				aabb_max_ = glm::max(aabb_max_, p.first);
+			}
+		}
+
+		// Expand by thickness to ensure full coverage
+		float pad = thickness * 5.0f; // Extra padding for rocket trails and smoke expansion
+		aabb_min_ -= glm::vec3(pad);
+		aabb_max_ += glm::vec3(pad);
+
 		UpdateMesh();
 		mesh_dirty = true;
 	}

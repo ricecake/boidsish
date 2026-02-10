@@ -1141,7 +1141,11 @@ namespace Boidsish {
 			shader->setBool("enableFrustumCulling", false);
 		}
 
-		void RenderTrails(const glm::mat4& view, const std::optional<glm::vec4>& clip_plane) {
+		void RenderTrails(
+			const glm::mat4&                view,
+			const std::optional<glm::vec4>& clip_plane,
+			const std::optional<Frustum>&   frustum_override = std::nullopt
+		) {
 			// Use batched render manager if available
 			if (trail_render_manager) {
 				// Update trail data in the render manager
@@ -1171,7 +1175,9 @@ namespace Boidsish {
 							trail->GetHead(),
 							trail->GetTail(),
 							trail->GetVertexCount(),
-							trail->IsFull()
+							trail->IsFull(),
+							trail->GetAABBMin(),
+							trail->GetAABBMax()
 						);
 						trail->ClearDirty();
 					}
@@ -1179,7 +1185,8 @@ namespace Boidsish {
 
 				// Commit updates and render all trails
 				trail_render_manager->CommitUpdates();
-				trail_render_manager->Render(*trail_shader, view, projection, clip_plane);
+				Frustum frustum = frustum_override ? *frustum_override : CalculateFrustum(view, projection);
+				trail_render_manager->Render(*trail_shader, view, projection, clip_plane, frustum);
 			}
 		}
 
@@ -2209,6 +2216,7 @@ namespace Boidsish {
 				reflection_cam.pitch = -reflection_cam.pitch;
 				glm::mat4 reflection_view = impl->SetupMatrices(reflection_cam);
 				impl->reflection_vp = impl->projection * reflection_view;
+				Frustum   reflection_frustum = impl->CalculateFrustum(reflection_view, impl->projection);
 
 				// Render opaque geometry first for early-Z benefit
 				// Use reduced tessellation (25%) for reflection pass - it's blurred anyway
@@ -2231,7 +2239,7 @@ namespace Boidsish {
 				impl->RenderSky(reflection_view);
 				// Transparent effects last
 				impl->fire_effect_manager->Render(reflection_view, impl->projection, reflection_cam.pos());
-				impl->RenderTrails(reflection_view, glm::vec4(0, 1, 0, 0.01));
+				impl->RenderTrails(reflection_view, glm::vec4(0, 1, 0, 0.01), reflection_frustum);
 			}
 			glDisable(GL_CLIP_DISTANCE0);
 
