@@ -1,4 +1,4 @@
-#version 330 core
+#version 430 core
 
 out vec4 FragColor;
 
@@ -6,6 +6,13 @@ in vec2 TexCoords;
 
 uniform sampler2D sceneTexture;
 uniform int       toneMapMode = 2;
+
+// Auto-exposure SSBO
+layout(std430, binding = 11) buffer AutoExposure {
+	float adaptedLuminance;
+	float targetLuminance;
+	int   useAutoExposure;
+};
 
 ////////////////////////////////////////////////////////////////////////////////
 // Narkowicz 2015, "ACES Filmic Tone Mapping Curve"
@@ -180,6 +187,11 @@ float unreal(float x) {
 void main() {
 	vec2 uv = TexCoords;
 	vec3 tex = texture(sceneTexture, uv).rgb;
+
+	if (useAutoExposure != 0) {
+		float exposure = targetLuminance / max(adaptedLuminance, 0.0001);
+		tex *= exposure;
+	}
 
 	if (toneMapMode == 0) {
 		FragColor = vec4(aces(tex), 1.0f);

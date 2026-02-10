@@ -1,0 +1,38 @@
+#version 430 core
+
+layout(local_size_x = 1, local_size_y = 1) in;
+
+layout(binding = 0) uniform sampler2D sceneTexture;
+
+layout(std430, binding = 11) buffer AutoExposure {
+	float adaptedLuminance;
+	float targetLuminance;
+	int   useAutoExposure;
+};
+
+uniform float deltaTime;
+uniform float speedUp;
+uniform float speedDown;
+
+void main() {
+	// Sample a grid of pixels to estimate average luminance
+	float sumLuma = 0.0;
+	int   samples = 32;
+	for (int i = 0; i < samples; ++i) {
+		for (int j = 0; j < samples; ++j) {
+			vec2  uv = vec2(float(i) / float(samples), float(j) / float(samples));
+			vec3  color = texture(sceneTexture, uv).rgb;
+			float luma = dot(color, vec3(0.2126, 0.7152, 0.0722));
+			sumLuma += log(max(luma, 0.0001)); // Log-average for better perceptual response
+		}
+	}
+	float avgLuma = exp(sumLuma / float(samples * samples));
+
+	// Dual-speed adaptation logic
+	// speedUp is used when the scene gets brighter (eye adapts quickly to light)
+	// speedDown is used when the scene gets darker (eye adapts slowly to darkness)
+	float speed = (avgLuma > adaptedLuminance) ? speedUp : speedDown;
+
+	// Exponential decay adaptation
+	adaptedLuminance += (avgLuma - adaptedLuminance) * (1.0 - exp(-deltaTime * speed));
+}

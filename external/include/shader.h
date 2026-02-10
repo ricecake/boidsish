@@ -85,7 +85,7 @@ public:
 		UniformGuard(const UniformGuard&) = delete;
 		UniformGuard& operator=(const UniformGuard&) = delete;
 		UniformGuard(UniformGuard&&) = default;
-		UniformGuard& operator=(UniformGuard&&) = default;
+		UniformGuard& operator=(UniformGuard&&) = delete;
 
 		void setBool(const std::string& name, bool value) {
 			capture(name);
