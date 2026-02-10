@@ -52,8 +52,10 @@ namespace Boidsish {
 						shape->SetOccluded(samples == 0);
 						shape->SetQueryIssued(false);
 					}
-					// If query results are not yet available, we retain the state from the previous frame
-					// to prevent 1-frame flickering.
+				} else {
+					// If no query was issued (e.g., first frame or object just moved into view),
+					// assume it's visible.
+					shape->SetOccluded(false);
 				}
 
 				if (ignore_occlusion || shape->IsColossal() || !shape->IsOccluded()) {
@@ -241,7 +243,7 @@ namespace Boidsish {
 
 		for (auto& [key, group] : m_instance_groups) {
 			for (auto& shape : group.shapes) {
-				if (shape->IsHidden())
+				if (shape->IsHidden() || shape->IsColossal())
 					continue;
 
 				auto model = std::dynamic_pointer_cast<Model>(shape);
@@ -262,8 +264,8 @@ namespace Boidsish {
 				glm::vec3 max_b = model->GetMaxBound();
 				glm::vec3 size  = max_b - min_b;
 
-				// Inflate slightly
-				float     padding = 0.1f;
+				// Inflate significantly to prevent flickering from small camera movements
+				float     padding = 2.0f;
 				glm::mat4 model_matrix = shape->GetModelMatrix();
 				model_matrix           = glm::translate(model_matrix, min_b - glm::vec3(padding * 0.5f));
 				model_matrix           = glm::scale(model_matrix, size + glm::vec3(padding));

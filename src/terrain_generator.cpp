@@ -772,7 +772,7 @@ namespace Boidsish {
 		}
 
 		// Vertical occluders (scanning along X - constant Z)
-		for (int z = 0; z < cols; z += 8) {
+		for (int z = 0; z < cols; z += 2) {
 			std::vector<std::vector<bool>> grid(rows, std::vector<bool>(20)); // Y levels
 			float                          yStep = (maxY - minY) / 20.0f;
 			if (yStep < 0.1f * world_scale_)
@@ -799,7 +799,7 @@ namespace Boidsish {
 		}
 
 		// Vertical occluders (scanning along Z - constant X)
-		for (int i = 0; i < rows; i += 8) {
+		for (int i = 0; i < rows; i += 2) {
 			std::vector<std::vector<bool>> grid(cols, std::vector<bool>(20)); // Y levels
 			float                          yStep = (maxY - minY) / 20.0f;
 			if (yStep < 0.1f * world_scale_)

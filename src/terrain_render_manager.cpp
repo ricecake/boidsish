@@ -568,6 +568,9 @@ namespace Boidsish {
 		shader.setMat4("projection", projection);
 		shader.setMat4("model", glm::mat4(1.0f));
 
+		// Disable face culling for occluders to ensure they are visible from both sides
+		glDisable(GL_CULL_FACE);
+
 		// Gather all occluder vertices in world space for a single batch
 		std::vector<glm::vec3> all_vertices;
 		for (auto& [key, chunk] : chunks_) {
@@ -589,6 +592,8 @@ namespace Boidsish {
 			glBufferData(GL_ARRAY_BUFFER, all_vertices.size() * sizeof(glm::vec3), all_vertices.data(), GL_STREAM_DRAW);
 			glDrawArrays(GL_TRIANGLES, 0, static_cast<GLsizei>(all_vertices.size()));
 		}
+
+		glEnable(GL_CULL_FACE);
 
 		// Second pass: issue queries for chunks to check if they are still visible
 		if (!issue_queries) {
@@ -630,8 +635,8 @@ namespace Boidsish {
 			if (!IsChunkVisible(chunk, frustum, last_world_scale_))
 				continue;
 
-			// Use a slightly inflated bounding box for the occlusion query to be conservative
-			float     padding = 2.0f * last_world_scale_;
+			// Use a significantly inflated bounding box for the occlusion query to be conservative
+			float     padding = 4.0f * last_world_scale_;
 			glm::mat4 model = glm::translate(
 				glm::mat4(1.0f),
 				glm::vec3(chunk.world_offset.x - padding * 0.5f, chunk.min_y - padding * 0.5f, chunk.world_offset.y - padding * 0.5f)

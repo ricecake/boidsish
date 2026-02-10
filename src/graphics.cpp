@@ -2031,6 +2031,14 @@ namespace Boidsish {
 			impl->shapes.push_back(pair.second);
 		}
 
+		// Pre-populate InstanceManager for the occlusion pass
+		impl->instance_manager->ClearInstances();
+		for (const auto& shape : impl->shapes) {
+			if (!shape->IsHidden() && shape->IsInstanced()) {
+				impl->instance_manager->AddInstance(shape);
+			}
+		}
+
 		// --- Shadow Optimization: Check for object movement and camera proximity ---
 		impl->any_shadow_caster_moved = false;
 		glm::vec3 scene_center(0.0f);
@@ -2468,6 +2476,10 @@ namespace Boidsish {
 
 		// --- Occlusion Pass ---
 		impl->RenderOcclusionPass(view_matrix, impl->projection);
+
+		// Clear InstanceManager so RenderShapes can populate it correctly for the main pass
+		// (with any per-pass logic if needed, although currently it's the same)
+		impl->instance_manager->ClearInstances();
 
 		// Restore state for main scene pass
 		glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
