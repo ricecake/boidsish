@@ -1284,10 +1284,10 @@ namespace Boidsish {
 						sky_shader->setInt("multiScatteringLUT", 3);
 
 						const auto& params = atmosphere->GetScattering().GetParameters();
-						sky_shader->setVec3("rayleighScattering", params.rayleigh_scattering);
+						sky_shader->setVec3("rayleighScattering", params.rayleigh_scattering * params.rayleigh_multiplier);
 						sky_shader->setFloat("rayleighScaleHeight", params.rayleigh_scale_height);
-						sky_shader->setFloat("mieScattering", params.mie_scattering);
-						sky_shader->setFloat("mieExtinction", params.mie_extinction);
+						sky_shader->setFloat("mieScattering", params.mie_scattering * params.mie_multiplier);
+						sky_shader->setFloat("mieExtinction", params.mie_extinction * params.mie_multiplier);
 						sky_shader->setFloat("mieScaleHeight", params.mie_scale_height);
 						sky_shader->setFloat("mieAnisotropy", params.mie_anisotropy);
 						sky_shader->setVec3("absorptionExtinction", params.absorption_extinction);
@@ -1308,9 +1308,9 @@ namespace Boidsish {
 			glDepthMask(GL_TRUE);
 		}
 
-		int ApplyAtmosphereEffect(const glm::mat4& view, const glm::mat4& projection) {
+		bool ApplyAtmosphereEffect(const glm::mat4& view, const glm::mat4& projection) {
 			if (!post_processing_manager_)
-				return 0;
+				return false;
 
 			auto&                                             effects = post_processing_manager_->GetPreToneMappingEffects();
 			std::shared_ptr<PostProcessing::AtmosphereEffect> atmosphere;
@@ -1324,29 +1324,43 @@ namespace Boidsish {
 			if (atmosphere && atmosphere->IsEnabled()) {
 				atmosphere->SetTime(simulation_time);
 
-				GLuint target_fbo = post_processing_manager_->GetPingPongFBO(0);
-				glBindFramebuffer(GL_FRAMEBUFFER, target_fbo);
-
-				// Re-attach main depth for atmosphere and transparent rendering
-				glFramebufferTexture2D(
-					GL_FRAMEBUFFER,
-					GL_DEPTH_STENCIL_ATTACHMENT,
-					GL_TEXTURE_2D,
-					main_fbo_depth_texture_,
-					0
+				// 1. Blit current main FBO color to ping-pong texture 0 as a source
+				glBindFramebuffer(GL_READ_FRAMEBUFFER, main_fbo_);
+				glBindFramebuffer(GL_DRAW_FRAMEBUFFER, post_processing_manager_->GetPingPongFBO(0));
+				glBlitFramebuffer(
+					0,
+					0,
+					render_width,
+					render_height,
+					0,
+					0,
+					render_width,
+					render_height,
+					GL_COLOR_BUFFER_BIT,
+					GL_NEAREST
 				);
 
+				// 2. Render atmosphere back into main FBO using the copy as source
+				glBindFramebuffer(GL_FRAMEBUFFER, main_fbo_);
+				glViewport(0, 0, render_width, render_height);
 				glDisable(GL_DEPTH_TEST);
-				glClear(GL_COLOR_BUFFER_BIT);
-				glBindVertexArray(blur_quad_vao);
-				atmosphere->Apply(main_fbo_texture_, main_fbo_depth_texture_, view, projection, camera.pos());
-				glBindVertexArray(0);
-				glEnable(GL_DEPTH_TEST);
+				glDisable(GL_BLEND);
 
-				return 1; // Used FBO 0, next post-process should start at FBO index 1
+				glBindVertexArray(blur_quad_vao);
+				atmosphere->Apply(
+					post_processing_manager_->GetPingPongTexture(0),
+					main_fbo_depth_texture_,
+					view,
+					projection,
+					camera.pos()
+				);
+				glBindVertexArray(0);
+
+				glEnable(GL_DEPTH_TEST);
+				return true;
 			}
 
-			return 0;
+			return false;
 		}
 
 		// TODO: Replace the multi-pass Gaussian blur with a more performant technique.
@@ -2552,15 +2566,12 @@ namespace Boidsish {
 		impl->RenderSky(view);
 
 		// Apply Atmosphere Effect early (before transparents)
-		int  post_atmosphere_fbo_index = 0;
-		bool atmosphere_applied = false;
 		if (impl->frame_config_.effects_enabled) {
-			post_atmosphere_fbo_index = impl->ApplyAtmosphereEffect(view, impl->projection);
-			atmosphere_applied = (post_atmosphere_fbo_index > 0);
+			impl->ApplyAtmosphereEffect(view, impl->projection);
 		}
 
 		// Render transparent/particle effects last
-		// They will render into either main_fbo_ or pingpong_fbo_[0]
+		// They will render into main_fbo_
 		impl->fire_effect_manager->Render(view, impl->projection, impl->camera.pos());
 		impl->mesh_explosion_manager->Render(view, impl->projection, impl->camera.pos());
 		impl->RenderTrails(view, std::nullopt);
@@ -2568,18 +2579,14 @@ namespace Boidsish {
 		if (effects_enabled) {
 			// --- Post-processing Pass (renders FBO texture to screen) ---
 
-			GLuint source_tex = atmosphere_applied ? impl->post_processing_manager_->GetPingPongTexture(0)
-												   : impl->main_fbo_texture_;
-
 			// Apply standard post-processing effects (at render resolution)
 			GLuint final_texture = impl->post_processing_manager_->ApplyEffects(
-				source_tex,
+				impl->main_fbo_texture_,
 				impl->main_fbo_depth_texture_,
 				view,
 				impl->projection,
 				impl->camera.pos(),
-				impl->simulation_time,
-				post_atmosphere_fbo_index
+				impl->simulation_time
 			);
 
 			// Return to display resolution for final output

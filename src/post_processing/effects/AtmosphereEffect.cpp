@@ -53,10 +53,10 @@ namespace Boidsish {
 
 			// Atmosphere scattering parameters
 			const auto& params = scattering_.GetParameters();
-			shader_->setVec3("rayleighScattering", params.rayleigh_scattering);
+			shader_->setVec3("rayleighScattering", params.rayleigh_scattering * params.rayleigh_multiplier);
 			shader_->setFloat("rayleighScaleHeight", params.rayleigh_scale_height);
-			shader_->setFloat("mieScattering", params.mie_scattering);
-			shader_->setFloat("mieExtinction", params.mie_extinction);
+			shader_->setFloat("mieScattering", params.mie_scattering * params.mie_multiplier);
+			shader_->setFloat("mieExtinction", params.mie_extinction * params.mie_multiplier);
 			shader_->setFloat("mieScaleHeight", params.mie_scale_height);
 			shader_->setFloat("mieAnisotropy", params.mie_anisotropy);
 			shader_->setVec3("absorptionExtinction", params.absorption_extinction);

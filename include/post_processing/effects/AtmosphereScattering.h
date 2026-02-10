@@ -14,8 +14,10 @@ namespace Boidsish {
 		public:
 			struct Parameters {
 				glm::vec3 rayleigh_scattering = glm::vec3(5.802e-3f, 13.558e-3f, 33.100e-3f);
+				float     rayleigh_multiplier = 1.0f;
 				float     rayleigh_scale_height = 8.0f;
 				float     mie_scattering = 3.996e-3f;
+				float     mie_multiplier = 1.0f;
 				float     mie_extinction = 4.440e-3f;
 				float     mie_anisotropy = 0.8f;
 				float     mie_scale_height = 1.2f;
