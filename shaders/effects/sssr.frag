@@ -17,6 +17,11 @@ uniform vec3 viewPos;
 
 #include "lygia/generative/random.glsl"
 
+// Better hash for jitter
+float hash(vec2 p) {
+	return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453);
+}
+
 vec3 getPos(vec2 uv) {
 	float depth = texture(depthTexture, uv).r;
 	vec4  clipSpacePosition = vec4(uv * 2.0 - 1.0, depth * 2.0 - 1.0, 1.0);
@@ -44,19 +49,23 @@ void main() {
 	vec3 viewDirWS = normalize(worldPos - viewPos);
 
 	// Stochastic part: jitter the normal based on roughness
+	// Use a slightly more stable jitter
+	float h = hash(TexCoords + time);
 	vec3 jitter = vec3(
-		random(TexCoords + time) - 0.5,
-		random(TexCoords + time + 1.234) - 0.5,
-		random(TexCoords + time + 5.678) - 0.5
+		hash(TexCoords + vec2(h, 0.0)) - 0.5,
+		hash(TexCoords + vec2(0.0, h)) - 0.5,
+		hash(TexCoords + vec2(h, h)) - 0.5
 	);
-	vec3 normalWS = normalize(worldNormal + jitter * roughness * 0.2);
+	vec3 normalWS = normalize(worldNormal + jitter * roughness * 0.4);
 
 	vec3 reflectDirWS = reflect(viewDirWS, normalWS);
 
 	// Raymarching in world space
-	vec3 currentPosWS = worldPos;
-	// Dynamic step size based on distance? Let's start with fixed.
-	vec3  rayStepWS = reflectDirWS * 0.5;
+	// Add a small bias to the start position to avoid self-intersection
+	vec3 currentPosWS = worldPos + worldNormal * 0.05;
+	// Initial step size scaled by distance to handle larger scales better
+	float distToCam = length(worldPos - viewPos);
+	vec3  rayStepWS = reflectDirWS * mix(0.1, 0.5, clamp(distToCam / 100.0, 0.0, 1.0));
 	vec4  hitColor = vec4(0.0);
 	float hitOccurred = 0.0;
 
@@ -66,12 +75,17 @@ void main() {
 		return;
 	}
 
-	for (int i = 0; i < 32; i++) {
+	// Better thickness check based on distance
+	float thickness = 0.5 * mix(1.0, 10.0, clamp(distToCam / 500.0, 0.0, 1.0));
+
+	for (int i = 0; i < 40; i++) {
 		currentPosWS += rayStepWS;
 
 		vec4 projectedPos = projection * view * vec4(currentPosWS, 1.0);
-		if (projectedPos.w <= 0.0)
+		if (projectedPos.w <= 0.0) {
+			// Ray went behind camera, try to sample horizon/sky
 			break;
+		}
 		projectedPos.xyz /= projectedPos.w;
 		vec2 sampleUV = projectedPos.xy * 0.5 + 0.5;
 
@@ -91,9 +105,10 @@ void main() {
 		float linearRayDepth = currentViewPos.z / currentViewPos.w;
 
 		// Check if ray is behind geometry
+		// Since linear depth is negative in OpenGL, linearRayDepth < linearSampleDepth means further away
 		if (linearRayDepth < linearSampleDepth) {
 			// Check if it's a hit (thickness check)
-			if (abs(linearRayDepth - linearSampleDepth) < 1.0) {
+			if (abs(linearRayDepth - linearSampleDepth) < thickness) {
 				hitColor = texture(sceneTexture, sampleUV);
 				hitOccurred = 1.0;
 				break;
@@ -104,15 +119,19 @@ void main() {
 	}
 
 	vec4  sceneColor = texture(sceneTexture, TexCoords);
-	float reflectionStrength = 0.7 * (1.0 - roughness);
+	// Boost reflection for smooth surfaces
+	float reflectionStrength = mix(0.8, 0.1, roughness);
 
-	// Fresnel
+	// Fresnel - stronger at grazing angles
 	float fresnel = pow(1.0 - max(dot(worldNormal, -viewDirWS), 0.0), 5.0);
 	reflectionStrength = mix(reflectionStrength, 1.0, fresnel);
 
 	// Edge fade
 	vec2  dUV = abs(TexCoords - 0.5) * 2.0;
-	float edgeFade = 1.0 - max(pow(dUV.x, 8.0), pow(dUV.y, 8.0));
+	float edgeFade = 1.0 - clamp(max(pow(dUV.x, 8.0), pow(dUV.y, 8.0)), 0.0, 1.0);
 
-	FragColor = mix(sceneColor, hitColor, reflectionStrength * hitOccurred * edgeFade);
+	// Fade out based on distance to prevent sharp cuts at far plane
+	float distFade = 1.0 - smoothstep(400.0, 600.0, distToCam);
+
+	FragColor = mix(sceneColor, hitColor, reflectionStrength * hitOccurred * edgeFade * distFade);
 }
