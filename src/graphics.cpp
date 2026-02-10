@@ -1207,6 +1207,14 @@ namespace Boidsish {
 				effective_quality /= terrain_generator->GetWorldScale();
 			}
 
+			// Determine viewport size for Screen Space Error calculations
+			glm::vec2 viewport_size;
+			if (is_shadow_pass) {
+				viewport_size = glm::vec2(ShadowManager::kShadowMapSize, ShadowManager::kShadowMapSize);
+			} else {
+				viewport_size = glm::vec2(render_width, render_height);
+			}
+
 			// Set up shadow uniforms for terrain shader
 			Terrain::terrain_shader_->use();
 			Terrain::terrain_shader_->setBool("uIsShadowPass", is_shadow_pass);
@@ -1224,12 +1232,14 @@ namespace Boidsish {
 				float world_scale = terrain_generator ? terrain_generator->GetWorldScale() : 1.0f;
 				terrain_render_manager->PrepareForRender(frustum, camera.pos(), world_scale);
 
-				terrain_render_manager->Render(*Terrain::terrain_shader_, view, proj, clip_plane, effective_quality);
+				terrain_render_manager
+					->Render(*Terrain::terrain_shader_, view, proj, viewport_size, clip_plane, effective_quality);
 			} else {
 				// Fallback to per-chunk rendering
 				Terrain::terrain_shader_->use();
 				Terrain::terrain_shader_->setMat4("view", view);
 				Terrain::terrain_shader_->setMat4("projection", proj);
+				Terrain::terrain_shader_->setVec2("uViewportSize", viewport_size);
 				Terrain::terrain_shader_->setFloat("uTessQualityMultiplier", effective_quality);
 				Terrain::terrain_shader_->setFloat("uTessLevelMax", 64.0f);
 				Terrain::terrain_shader_->setFloat("uTessLevelMin", 1.0f);

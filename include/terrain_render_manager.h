@@ -86,6 +86,7 @@ namespace Boidsish {
 			Shader&                         shader,
 			const glm::mat4&                view,
 			const glm::mat4&                projection,
+			const glm::vec2&                viewport_size,
 			const std::optional<glm::vec4>& clip_plane,
 			float                           tess_quality_multiplier
 		);
