@@ -2,19 +2,37 @@
 
 #include <cstdint>
 #include <iostream>
-#include <source_location>
+#if __has_include(<source_location>)
+	#include <source_location>
+#endif
 #include <sstream>
 #include <string>
 #include <string_view>         // Add this
 using namespace std::literals; // required for ""sv
 
 namespace logger {
+#if defined(__cpp_lib_source_location)
+	using source_location_type = std::source_location;
+#else
+	struct source_location_type {
+		static constexpr source_location_type current() noexcept { return {}; }
+
+		constexpr const char* file_name() const noexcept { return "unknown"; }
+
+		constexpr uint32_t line() const noexcept { return 0; }
+	};
+#endif
+
 	enum class LogLevel : uint8_t { LOG, INFO, WARNING, ERROR, DEBUG };
 
 	constexpr std::string_view levelString(const LogLevel& level) {
 		switch (level) {
 		case LogLevel::LOG:
 			return "LOG"sv;
+		case LogLevel::INFO:
+			return "INFO"sv;
+		case LogLevel::WARNING:
+			return "WARNING"sv;
 		case LogLevel::ERROR:
 			return "ERROR"sv;
 		case LogLevel::DEBUG:
@@ -62,10 +80,10 @@ namespace logger {
 
 	struct LogSource {
 		std::string_view     msg;
-		std::source_location loc;
+		source_location_type loc;
 
 		template <typename StringType>
-		constexpr LogSource(const StringType& m, const std::source_location& l = std::source_location::current()):
+		constexpr LogSource(const StringType& m, const source_location_type& l = source_location_type::current()):
 			msg(m), loc(l) {}
 	};
 

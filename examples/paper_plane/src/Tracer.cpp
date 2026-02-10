@@ -43,14 +43,15 @@ namespace Boidsish {
 		shape_->SetEnd(current_pos - dir * streak_length);
 
 		// Terrain collision check
-		auto [height, norm] = handler.GetCachedTerrainProperties(current_pos.x, current_pos.z);
+		auto [height, terrain_norm] = handler.GetCachedTerrainProperties(current_pos.x, current_pos.z);
 		if (current_pos.y <= height) {
 			handler.QueueRemoveEntity(id_);
 			// Small impact effect
-			auto vis = handler.vis;
+			auto      vis = handler.vis;
+			glm::vec3 spark_norm = terrain_norm;
 			handler.EnqueueVisualizerAction([=]() {
 				if (vis) {
-					vis->AddFireEffect(current_pos, FireEffectStyle::Sparks, norm, glm::vec3(0), 5, 0.3f);
+					vis->AddFireEffect(current_pos, FireEffectStyle::Sparks, spark_norm, glm::vec3(0), 5, 0.3f);
 				}
 			});
 		}

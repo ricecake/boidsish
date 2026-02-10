@@ -27,7 +27,7 @@ namespace Boidsish {
 
 			bool IsEnabled() const { return is_enabled_; }
 
-			void SetEnabled(bool enabled) { is_enabled_ = enabled; }
+			virtual void SetEnabled(bool enabled) { is_enabled_ = enabled; }
 
 			virtual void SetTime(float /* time */) {}
 

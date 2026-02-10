@@ -5,34 +5,40 @@
 namespace Boidsish {
 	namespace Constants {
 		namespace UboBinding {
-			consteval int Lighting() {
+			constexpr int Lighting() {
 				return 0;
 			}
 
-			consteval int VisualEffects() {
+			constexpr int VisualEffects() {
 				return 1;
 			}
 
-			consteval int Shadows() {
+			constexpr int Shadows() {
 				return 2;
 			}
 
-			consteval int FrustumData() {
+			constexpr int FrustumData() {
 				return 3;
 			}
 
-			consteval int Shockwaves() {
+			constexpr int Shockwaves() {
 				return 4;
 			}
 
-			consteval int SdfVolumes() {
+			constexpr int SdfVolumes() {
 				return 5;
 			}
 		} // namespace UboBinding
 
+		namespace SsboBinding {
+			constexpr int AutoExposure() {
+				return 11;
+			}
+		} // namespace SsboBinding
+
 		namespace General {
 			namespace Math {
-				consteval float Pi() {
+				constexpr float Pi() {
 					return 3.14159265358979323846f;
 				}
 			} // namespace Math
@@ -43,7 +49,7 @@ namespace Boidsish {
 				constexpr float DefaultAmbientG = 81.0f / 255.0f;
 				constexpr float DefaultAmbientB = 62.0f / 255.0f;
 
-				consteval glm::vec3 DefaultAmbient() {
+				constexpr glm::vec3 DefaultAmbient() {
 					return glm::vec3(DefaultAmbientR, DefaultAmbientG, DefaultAmbientB);
 				}
 			} // namespace Colors
@@ -51,78 +57,78 @@ namespace Boidsish {
 
 		namespace Project {
 			namespace Window {
-				consteval int DefaultWidth() {
+				constexpr int DefaultWidth() {
 					return 1280;
 				}
 
-				consteval int DefaultHeight() {
+				constexpr int DefaultHeight() {
 					return 720;
 				}
 			} // namespace Window
 
 			namespace Camera {
-				consteval float DefaultFOV() {
+				constexpr float DefaultFOV() {
 					return 45.0f;
 				}
 
-				consteval float DefaultNearPlane() {
+				constexpr float DefaultNearPlane() {
 					return 0.1f;
 				}
 
-				consteval float DefaultFarPlane() {
+				constexpr float DefaultFarPlane() {
 					return 1000.0f;
 				}
 
-				consteval float MinHeight() {
+				constexpr float MinHeight() {
 					return 0.1f;
 				}
 
-				consteval float MinSpeed() {
+				constexpr float MinSpeed() {
 					return 0.5f;
 				}
 
-				consteval float DefaultSpeed() {
+				constexpr float DefaultSpeed() {
 					return 10.0f;
 				}
 
-				consteval float SpeedStep() {
+				constexpr float SpeedStep() {
 					return 2.5f;
 				}
 
-				consteval float RollSpeed() {
+				constexpr float RollSpeed() {
 					return 45.0f;
 				}
 
 				// Path following
-				consteval float DefaultPathSpeed() {
+				constexpr float DefaultPathSpeed() {
 					return 20.0f;
 				}
 
-				consteval float PathBankFactor() {
+				constexpr float PathBankFactor() {
 					return 1.8f;
 				}
 
-				consteval float PathBankSpeed() {
+				constexpr float PathBankSpeed() {
 					return 3.5f;
 				}
 
-				consteval float ChaseTrailBehind() {
+				constexpr float ChaseTrailBehind() {
 					return 15.0f;
 				}
 
-				consteval float ChaseElevation() {
+				constexpr float ChaseElevation() {
 					return 5.0f;
 				}
 
-				consteval float ChaseLookAhead() {
+				constexpr float ChaseLookAhead() {
 					return 10.0f;
 				}
 
-				consteval float ChaseResponsiveness() {
+				constexpr float ChaseResponsiveness() {
 					return 1.5f;
 				}
 
-				consteval float PathFollowSmoothing() {
+				constexpr float PathFollowSmoothing() {
 					return 5.0f;
 				}
 
@@ -148,11 +154,11 @@ namespace Boidsish {
 
 		namespace Library {
 			namespace Input {
-				consteval int MaxKeys() {
+				constexpr int MaxKeys() {
 					return 1024;
 				}
 
-				consteval int MaxMouseButtons() {
+				constexpr int MaxMouseButtons() {
 					return 8;
 				}
 			} // namespace Input
@@ -160,241 +166,241 @@ namespace Boidsish {
 
 		namespace Class {
 			namespace Shadows {
-				consteval int MaxLights() {
+				constexpr int MaxLights() {
 					return 10;
 				}
 
-				consteval int MaxCascades() {
+				constexpr int MaxCascades() {
 					return 4;
 				}
 
-				consteval int MaxShadowMaps() {
+				constexpr int MaxShadowMaps() {
 					return 16;
 				}
 
-				consteval int MapSize() {
+				constexpr int MapSize() {
 					return 2048;
 				}
 
-				consteval float DefaultSceneRadius() {
+				constexpr float DefaultSceneRadius() {
 					return 500.0f;
 				}
 
-				consteval float DefaultFOV() {
+				constexpr float DefaultFOV() {
 					return 45.0f;
 				}
 
 				// Cascade split distances (logarithmic distribution)
 				// Near splits are tighter for crisp close shadows
 				// Far cascade acts as catchall for distant terrain
-				consteval float CascadeSplit0() {
+				constexpr float CascadeSplit0() {
 					return 20.0f;
 				}
 
-				consteval float CascadeSplit1() {
+				constexpr float CascadeSplit1() {
 					return 50.0f;
 				}
 
-				consteval float CascadeSplit2() {
+				constexpr float CascadeSplit2() {
 					return 150.0f;
 				}
 
-				consteval float CascadeSplit3() {
+				constexpr float CascadeSplit3() {
 					return 700.0f;
 				}
 
 				// Grid snapping sizes per cascade (finer for near, coarser for far)
-				consteval float GridSnapCascade0() {
+				constexpr float GridSnapCascade0() {
 					return 0.25f;
 				}
 
-				consteval float GridSnapCascade1() {
+				constexpr float GridSnapCascade1() {
 					return 1.0f;
 				}
 
-				consteval float GridSnapCascade2() {
+				constexpr float GridSnapCascade2() {
 					return 4.0f;
 				}
 
-				consteval float GridSnapCascade3() {
+				constexpr float GridSnapCascade3() {
 					return 8.0f;
 				}
 			} // namespace Shadows
 
 			namespace Terrain {
-				consteval int ChunkSize() {
+				constexpr int ChunkSize() {
 					return 32;
 				}
 
-				consteval int DefaultViewDistance() {
+				constexpr int DefaultViewDistance() {
 					return 10;
 				}
 
-				consteval int MaxViewDistance() {
+				constexpr int MaxViewDistance() {
 					return 24;
 				}
 
-				consteval int UnloadDistanceBuffer() {
+				constexpr int UnloadDistanceBuffer() {
 					return 12;
 				}
 
-				consteval int DefaultOctaves() {
+				constexpr int DefaultOctaves() {
 					return 4;
 				}
 
-				consteval float ControlNoiseScale() {
+				constexpr float ControlNoiseScale() {
 					return 0.001f;
 				}
 
-				consteval float PathFrequency() {
+				constexpr float PathFrequency() {
 					return 0.002f;
 				}
 
-				consteval float DefaultLacunarity() {
+				constexpr float DefaultLacunarity() {
 					return 0.99f;
 				}
 
-				consteval float DefaultPersistence() {
+				constexpr float DefaultPersistence() {
 					return 0.5f;
 				}
 
-				consteval float PathCorridorWidth() {
+				constexpr float PathCorridorWidth() {
 					return 0.35f;
 				}
 
-				consteval float WarpStrength() {
+				constexpr float WarpStrength() {
 					return 20.0f;
 				}
 			} // namespace Terrain
 
 			namespace Particles {
-				consteval int MaxParticles() {
+				constexpr int MaxParticles() {
 					return 64000;
 				}
 
-				consteval int MaxEmitters() {
+				constexpr int MaxEmitters() {
 					return 100;
 				}
 
-				consteval int ComputeGroupSize() {
+				constexpr int ComputeGroupSize() {
 					return 256;
 				}
 			} // namespace Particles
 
 			namespace Explosions {
-				consteval int MaxFragments() {
+				constexpr int MaxFragments() {
 					return 50000;
 				}
 
-				consteval int ComputeGroupSize() {
+				constexpr int ComputeGroupSize() {
 					return 64;
 				}
 
-				consteval float DefaultVelocity() {
+				constexpr float DefaultVelocity() {
 					return 10.0f;
 				}
 
-				consteval float DefaultRandomVelocity() {
+				constexpr float DefaultRandomVelocity() {
 					return 5.0f;
 				}
 			} // namespace Explosions
 
 			namespace Shockwaves {
-				consteval int MaxShockwaves() {
+				constexpr int MaxShockwaves() {
 					return 16;
 				}
 
-				consteval float DefaultIntensity() {
+				constexpr float DefaultIntensity() {
 					return 0.5f;
 				}
 
-				consteval float DefaultRingWidth() {
+				constexpr float DefaultRingWidth() {
 					return 3.0f;
 				}
 
-				consteval float DefaultDuration() {
+				constexpr float DefaultDuration() {
 					return 1.2f;
 				} // Based on CreateExplosion logic
 
-				consteval glm::vec3 DefaultColor() {
+				constexpr glm::vec3 DefaultColor() {
 					return glm::vec3(1.0f, 0.6f, 0.2f);
 				}
 			} // namespace Shockwaves
 
 			namespace SdfVolumes {
-				consteval int MaxSources() {
+				constexpr int MaxSources() {
 					return 128;
 				}
 
-				consteval float DefaultRadius() {
+				constexpr float DefaultRadius() {
 					return 5.0f;
 				}
 
-				consteval float DefaultSmoothness() {
+				constexpr float DefaultSmoothness() {
 					return 2.0f;
 				}
 			} // namespace SdfVolumes
 
 			namespace Trails {
-				consteval int DefaultMaxLength() {
+				constexpr int DefaultMaxLength() {
 					return 250;
 				}
 
-				consteval int DefaultTrailLength() {
+				constexpr int DefaultTrailLength() {
 					return 10;
 				}
 
-				consteval int Segments() {
+				constexpr int Segments() {
 					return 8;
 				}
 
-				consteval int CurveSegments() {
+				constexpr int CurveSegments() {
 					return 4;
 				}
 
-				consteval float BaseThickness() {
+				constexpr float BaseThickness() {
 					return 0.06f;
 				}
 
-				consteval float DefaultRoughness() {
+				constexpr float DefaultRoughness() {
 					return 0.3f;
 				}
 
-				consteval float DefaultMetallic() {
+				constexpr float DefaultMetallic() {
 					return 0.0f;
 				}
 
-				consteval int FloatsPerVertex() {
+				constexpr int FloatsPerVertex() {
 					return 9;
 				}
 
-				consteval int InitialVertexCapacity() {
+				constexpr int InitialVertexCapacity() {
 					return 500000;
 				}
 
-				consteval float GrowthFactor() {
+				constexpr float GrowthFactor() {
 					return 1.5f;
 				}
 			} // namespace Trails
 
 			namespace Shapes {
 				namespace Arrow {
-					consteval float DefaultConeHeight() {
+					constexpr float DefaultConeHeight() {
 						return 0.2f;
 					}
 
-					consteval float DefaultConeRadius() {
+					constexpr float DefaultConeRadius() {
 						return 0.1f;
 					}
 
-					consteval float DefaultRodRadius() {
+					constexpr float DefaultRodRadius() {
 						return 0.05f;
 					}
 				} // namespace Arrow
 			} // namespace Shapes
 
 			namespace Rendering {
-				consteval int BlurPasses() {
+				constexpr int BlurPasses() {
 					return 4;
 				}
 			} // namespace Rendering

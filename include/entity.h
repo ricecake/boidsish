@@ -228,10 +228,6 @@ namespace Boidsish {
 		EntityHandler(const EntityHandler&) = delete;
 		EntityHandler& operator=(const EntityHandler&) = delete;
 
-		// Enable move semantics
-		EntityHandler(EntityHandler&&) = default;
-		EntityHandler& operator=(EntityHandler&&) = default;
-
 		// Operator() to make this compatible with ShapeFunction
 		std::vector<std::shared_ptr<Shape>> operator()(float time);
 
