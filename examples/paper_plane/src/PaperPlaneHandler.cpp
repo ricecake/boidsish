@@ -125,11 +125,11 @@ namespace Boidsish {
 			}
 		}
 
-		if (vis && vis->GetTerrainGenerator()) {
-			const auto               visible_chunks = vis->GetTerrainGenerator()->getVisibleChunksCopy();
-			std::set<const Terrain*> visible_chunk_set;
+		if (vis && vis->GetTerrain()) {
+			const auto                   visible_chunks = vis->GetTerrain()->GetVisibleChunksCopy();
+			std::set<std::pair<int, int>> visible_chunk_set;
 			for (const auto& chunk_ptr : visible_chunks) {
-				visible_chunk_set.insert(chunk_ptr.get());
+				visible_chunk_set.insert({static_cast<int>(chunk_ptr->GetX()), static_cast<int>(chunk_ptr->GetZ())});
 			}
 
 			// 1. Detect removals and destructions BEFORE spawning new ones
@@ -157,9 +157,9 @@ namespace Boidsish {
 
 			// 3. Populate forbidden coordinates based on CURRENT launchers and cooldowns
 			std::set<std::pair<int, int>> forbidden_coords;
-			auto                          exclude_neighborhood = [&](const Terrain* chunk) {
-                int cx = static_cast<int>(chunk->GetX());
-                int cz = static_cast<int>(chunk->GetZ());
+			auto                          exclude_neighborhood = [&](const std::pair<int, int>& coord) {
+                int cx = coord.first;
+                int cz = coord.second;
                 int step = Constants::Class::Terrain::ChunkSize();
                 int range = 2; // Exclude 2 chunks in every direction
                 for (int dx = -range; dx <= range; ++dx) {
@@ -188,7 +188,7 @@ namespace Boidsish {
 
 			for (const auto& chunk_ptr : visible_chunks) {
 				const Terrain* chunk = chunk_ptr.get();
-				visible_chunk_set.insert(chunk);
+				visible_chunk_set.insert({static_cast<int>(chunk->GetX()), static_cast<int>(chunk->GetZ())});
 				if (processed_chunks.count(chunk)) {
 					continue;
 				}
@@ -250,8 +250,10 @@ namespace Boidsish {
 						Vector3(world_pos.x, terrain_h, world_pos.z),
 						terrain_alignment
 					);
-					spawned_launchers_[candidate.chunk] = id;
-					exclude_neighborhood(candidate.chunk);
+					std::pair<int, int> coord = {static_cast<int>(candidate.chunk->GetX()),
+					                             static_cast<int>(candidate.chunk->GetZ())};
+					spawned_launchers_[coord] = id;
+					exclude_neighborhood(coord);
 				}
 			}
 		}

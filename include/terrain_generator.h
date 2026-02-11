@@ -107,7 +107,6 @@ namespace Boidsish {
 		}
 
 		std::tuple<float, glm::vec3> pointProperties(float x, float z) const {
-			std::lock_guard<std::mutex> lock(point_generation_mutex_);
 			// Determine grid cell
 			float sx = x / world_scale_;
 			float sz = z / world_scale_;
@@ -434,7 +433,6 @@ namespace Boidsish {
 		std::map<std::pair<int, int>, TaskHandle<TerrainGenerationResult>> pending_chunks_;
 		mutable std::recursive_mutex chunk_cache_mutex_; // Recursive to allow eviction callback
 		mutable std::mutex           visible_chunks_mutex_;
-		mutable std::mutex           point_generation_mutex_;
 		std::random_device           rd_;
 		std::mt19937                 eng_;
 

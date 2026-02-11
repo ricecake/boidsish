@@ -96,8 +96,14 @@ namespace Boidsish {
 		auto vel = GetVelocity();
 
 		if (!launch_sound_) {
-			launch_sound_ = handler.vis
-								->AddSoundEffect("assets/sam_launch.wav", pos.Toglm(), GetVelocity().Toglm(), 30.0f);
+			handler.EnqueueVisualizerAction([this, &handler, pos]() {
+				this->launch_sound_ = handler.vis->AddSoundEffect(
+					"assets/sam_launch.wav",
+					pos.Toglm(),
+					GetVelocity().Toglm(),
+					30.0f
+				);
+			});
 		}
 
 		if (exploded_) {
@@ -147,12 +153,14 @@ namespace Boidsish {
 				text_->SetColor(1.0f, 1.0f, 1.0f);
 			});
 		} else if (text_) {
-			auto camPos = handler.vis->GetCamera().pos();
-			auto pos = this->GetPosition().Toglm();
-			auto vec = pos - camPos;
+			handler.EnqueueVisualizerAction([this, &handler]() {
+				auto camPos = handler.vis->GetCamera().pos();
+				auto pos = this->GetPosition().Toglm();
+				auto vec = pos - camPos;
 
-			text_->SetPosition(pos.x, pos.y, pos.z);
-			text_->SetRotationAxis(vec);
+				this->text_->SetPosition(pos.x, pos.y, pos.z);
+				this->text_->SetRotationAxis(vec);
+			});
 		}
 
 		if (lived_ < kLaunchTime) {
@@ -289,7 +297,7 @@ namespace Boidsish {
 
 		shape_->SetHidden(true);
 		auto pos = GetPosition();
-		handler.EnqueueVisualizerAction([=, &handler]() {
+		handler.EnqueueVisualizerAction([pos, &handler]() {
 			handler.vis->AddFireEffect(
 				glm::vec3(pos.x, pos.y, pos.z),
 				FireEffectStyle::Explosion,
@@ -310,8 +318,14 @@ namespace Boidsish {
 		exploded_ = true;
 		lived_ = 0.0f;
 		SetVelocity(Vector3(0, 0, 0));
-		explode_sound_ = handler.vis
-							 ->AddSoundEffect("assets/rocket_explosion.wav", pos.Toglm(), GetVelocity().Toglm(), 20.0f);
+		handler.EnqueueVisualizerAction([this, pos, &handler]() {
+			this->explode_sound_ = handler.vis->AddSoundEffect(
+				"assets/rocket_explosion.wav",
+				pos.Toglm(),
+				GetVelocity().Toglm(),
+				20.0f
+			);
+		});
 
 		if (hit_target) {
 			target_->TriggerDamage();

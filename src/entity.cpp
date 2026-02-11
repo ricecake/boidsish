@@ -73,22 +73,25 @@ namespace Boidsish {
 		// Call post-timestep hook
 		PostTimestep(time, delta_time);
 
-		// Process modification requests
-		{
-			std::lock_guard<std::mutex> lock(requests_mutex_);
-			for (auto& request : modification_requests_) {
-				request();
-			}
-			modification_requests_.clear();
-		}
-
-		// Process main thread requests
+		// Process main thread requests (Visualizer actions)
+		// We do this BEFORE processing modification requests (removals)
+		// to ensure any actions enqueued by entities that are about to be removed
+		// can still access the entity state if needed.
 		{
 			std::lock_guard<std::mutex> lock(visualizer_mutex_);
 			for (auto& request : post_frame_requests_) {
 				request();
 			}
 			post_frame_requests_.clear();
+		}
+
+		// Process modification requests (Add/Remove Entity)
+		{
+			std::lock_guard<std::mutex> lock(requests_mutex_);
+			for (auto& request : modification_requests_) {
+				request();
+			}
+			modification_requests_.clear();
 		}
 
 		// Generate shapes from entity states
@@ -140,7 +143,7 @@ namespace Boidsish {
 	}
 
 	const TerrainGenerator* EntityHandler::GetTerrainGenerator() const {
-		return vis->GetTerrainGenerator();
+		return dynamic_cast<const TerrainGenerator*>(vis->GetTerrain().get());
 	}
 
 	// ========== Cache-Preferring Terrain Query Implementations ==========
