@@ -15,6 +15,7 @@
 #include "akira_effect.h"
 #include "arcade_text.h"
 #include "audio_manager.h"
+#include "checkpoint_ring.h"
 #include "clone_manager.h"
 #include "curved_text.h"
 #include "decor_manager.h"
@@ -538,6 +539,12 @@ namespace Boidsish {
 			shader->use();
 			SetupShaderBindings(*shader);
 			SetupShaderBindings(*trail_shader);
+
+			CheckpointRingShape::SetShader(
+				std::make_shared<Shader>("shaders/checkpoint.vert", "shaders/checkpoint.frag")
+			);
+			SetupShaderBindings(*CheckpointRingShape::GetShader());
+
 			if (plane_shader) {
 				SetupShaderBindings(*plane_shader);
 			}
@@ -589,6 +596,7 @@ namespace Boidsish {
 
 			Shape::InitSphereMesh();
 			Line::InitLineMesh();
+			CheckpointRingShape::InitQuadMesh();
 
 			if (postprocess_shader_ || blur_shader) {
 				float blur_quad_vertices[] = {
@@ -956,6 +964,7 @@ namespace Boidsish {
 
 			Shape::DestroySphereMesh();
 			Line::DestroyLineMesh();
+			CheckpointRingShape::DestroyQuadMesh();
 
 			if (blur_quad_vao)
 				glDeleteVertexArrays(1, &blur_quad_vao);
