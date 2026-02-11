@@ -143,11 +143,12 @@ namespace Boidsish {
 
 		auto pos = GetPosition().Toglm();
 		auto [height, normal] = handler.GetCachedTerrainProperties(pos.x, pos.z);
-		handler.vis->TriggerComplexExplosion(shape_, normal, 2.0f, FireEffectStyle::Explosion);
-		handler.vis->GetTerrain()->AddCrater({pos.x, height, pos.z}, 15.0f, 8.0f, 0.2f, 2.0f);
 
 		// if (!text_) {
-		handler.EnqueueVisualizerAction([&handler, this]() {
+		handler.EnqueueVisualizerAction([&handler, this, normal, pos, height]() {
+			handler.vis->TriggerComplexExplosion(this->shape_, normal, 2.0f, FireEffectStyle::Explosion);
+			handler.vis->GetTerrain()->AddCrater({pos.x, height, pos.z}, 15.0f, 8.0f, 0.2f, 2.0f);
+
 			auto camPos = handler.vis->GetCamera().pos();
 			auto pos = this->GetPosition().Toglm();
 			auto vec = pos - camPos;

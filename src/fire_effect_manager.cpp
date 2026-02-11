@@ -99,6 +99,7 @@ namespace Boidsish {
 		int              max_particles,
 		float            lifetime
 	) {
+		std::lock_guard<std::mutex> lock(mutex_);
 		_EnsureShaderAndBuffers();
 
 		// If compute shader failed, fire effects are disabled
@@ -130,6 +131,7 @@ namespace Boidsish {
 
 	void FireEffectManager::RemoveEffect(const std::shared_ptr<FireEffect>& effect) {
 		if (effect) {
+			std::lock_guard<std::mutex> lock(mutex_);
 			for (size_t i = 0; i < effects_.size(); ++i) {
 				if (effects_[i] == effect) {
 					effects_[i] = nullptr; // Mark as inactive
@@ -141,6 +143,7 @@ namespace Boidsish {
 	}
 
 	void FireEffectManager::Update(float delta_time, float time) {
+		std::lock_guard<std::mutex> lock(mutex_);
 		if (!initialized_ || !compute_shader_ || !compute_shader_->isValid()) {
 			return;
 		}
@@ -349,6 +352,7 @@ namespace Boidsish {
 	}
 
 	void FireEffectManager::Render(const glm::mat4& view, const glm::mat4& projection, const glm::vec3& camera_pos) {
+		std::lock_guard<std::mutex> lock(mutex_);
 		if (!initialized_ || effects_.empty() || !compute_shader_ || !compute_shader_->isValid()) {
 			return;
 		}

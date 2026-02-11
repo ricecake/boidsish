@@ -62,7 +62,7 @@ namespace Boidsish {
 					super_speed_state_ = SuperSpeedState::ACTIVE;
 					super_speed_intensity_ = 5.0f;
 					SetTrailRocket(true);
-					handler.vis->SetCameraShake(0.5f, 10.0f); // Continuous shake while active
+					handler.EnqueueVisualizerAction([&handler]() { handler.vis->SetCameraShake(0.5f, 10.0f); });
 				}
 				// While building up, plane slows down
 				forward_speed_ = glm::mix(forward_speed_, 0.0f, 1.0f - exp(-delta_time * 5.0f));
@@ -71,7 +71,7 @@ namespace Boidsish {
 			if (super_speed_state_ == SuperSpeedState::ACTIVE || super_speed_state_ == SuperSpeedState::BUILDUP) {
 				super_speed_state_ = SuperSpeedState::TAPERING;
 				SetTrailRocket(false);
-				handler.vis->SetCameraShake(0.0f, 0.0f); // Stop shake
+				handler.EnqueueVisualizerAction([&handler]() { handler.vis->SetCameraShake(0.0f, 0.0f); });
 			}
 
 			if (super_speed_state_ == SuperSpeedState::TAPERING) {
@@ -84,7 +84,9 @@ namespace Boidsish {
 		}
 
 		// Update visualizer with current intensity
-		handler.vis->SetSuperSpeedIntensity(super_speed_intensity_);
+		handler.EnqueueVisualizerAction([&handler, intensity = super_speed_intensity_]() {
+			handler.vis->SetSuperSpeedIntensity(intensity);
+		});
 
 		// --- Constants for flight model ---
 		const float kPitchSpeed = 1.5f; // * 0.5f;
@@ -247,14 +249,16 @@ namespace Boidsish {
 
 		if (controller_->chaff) {
 			chaff_timer_ = 0.5f;
-			handler.vis->AddFireEffect(
-				pos.Toglm() - forward_dir,
-				FireEffectStyle::Glitter,
-				glm::normalize(-1 * forward_dir),
-				glm::normalize(-5 * forward_dir),
-				1500,
-				1.0f
-			);
+			handler.EnqueueVisualizerAction([&handler, pos, forward_dir]() {
+				handler.vis->AddFireEffect(
+					pos.Toglm() - forward_dir,
+					FireEffectStyle::Glitter,
+					glm::normalize(-1 * forward_dir),
+					glm::normalize(-5 * forward_dir),
+					1500,
+					1.0f
+				);
+			});
 		}
 
 		if (chaff_timer_ > 0.0f) {
