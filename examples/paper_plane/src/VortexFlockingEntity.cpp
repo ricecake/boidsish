@@ -9,6 +9,7 @@
 namespace Boidsish {
 
 	VortexFlockingEntity::VortexFlockingEntity(int id): Entity(id) {
+		SetName("Bird " + std::to_string(id));
 		SetSize(5.0f);
 		SetTrailLength(30);
 		shape_->SetInstanced(true);

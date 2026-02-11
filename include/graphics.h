@@ -244,6 +244,10 @@ namespace Boidsish {
 		void SetChaseCamera(std::shared_ptr<EntityBase> target);
 		void AddChaseTarget(std::shared_ptr<EntityBase> target);
 		void CycleChaseTarget();
+
+		std::vector<std::shared_ptr<EntityBase>> GetChaseTargets() const;
+		std::shared_ptr<EntityBase>              GetChaseTarget() const;
+
 		void SetPathCamera(std::shared_ptr<Path> path);
 
 		// Add a UI widget to be rendered

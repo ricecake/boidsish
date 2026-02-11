@@ -5,6 +5,7 @@
 #include <map>
 #include <memory>
 #include <mutex>
+#include <string>
 #include <vector>
 
 #include "dot.h"
@@ -29,6 +30,7 @@ namespace Boidsish {
 	public:
 		EntityBase(int id = 0):
 			id_(id),
+			name_("Entity " + std::to_string(id)),
 			size_(8.0f),
 			color_{1.0f, 1.0f, 1.0f, 1.0f},
 			trail_length_(50),
@@ -48,6 +50,10 @@ namespace Boidsish {
 
 		// Getters and setters
 		int GetId() const { return id_; }
+
+		virtual std::string GetName() const { return name_; }
+
+		void SetName(const std::string& name) { name_ = name; }
 
 		// Absolute spatial position
 		float GetXPos() const { return rigid_body_.GetPosition().x; }
@@ -145,8 +151,9 @@ namespace Boidsish {
 		glm::vec3 WorldToObject(const glm::vec3& v) const { return glm::inverse(rigid_body_.GetOrientation()) * v; }
 
 	protected:
-		int       id_;
-		RigidBody rigid_body_;
+		int         id_;
+		std::string name_;
+		RigidBody   rigid_body_;
 		float     size_;
 		float     color_[4]; // RGBA
 		int       trail_length_;

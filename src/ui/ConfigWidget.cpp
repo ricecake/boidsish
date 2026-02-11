@@ -2,6 +2,7 @@
 
 #include "ConfigManager.h"
 #include "decor_manager.h"
+#include "entity.h"
 #include "graphics.h"
 #include "imgui.h"
 #include "terrain_generator_interface.h"
@@ -90,6 +91,29 @@ namespace Boidsish {
 
 					if (ImGui::Button("Next Chase Target")) {
 						m_visualizer.CycleChaseTarget();
+					}
+
+					auto targets = m_visualizer.GetChaseTargets();
+					if (!targets.empty()) {
+						std::vector<std::string> names;
+						names.reserve(targets.size());
+						std::vector<const char*> name_ptrs;
+						int                      current_idx = -1;
+						auto                     current_target = m_visualizer.GetChaseTarget();
+
+						for (size_t i = 0; i < targets.size(); ++i) {
+							names.push_back(targets[i]->GetName());
+							name_ptrs.push_back(names.back().c_str());
+							if (targets[i] == current_target) {
+								current_idx = static_cast<int>(i);
+							}
+						}
+
+						if (ImGui::Combo("Select Target", &current_idx, name_ptrs.data(), static_cast<int>(name_ptrs.size()))) {
+							if (current_idx >= 0 && current_idx < static_cast<int>(targets.size())) {
+								m_visualizer.SetChaseCamera(targets[current_idx]);
+							}
+						}
 					}
 				}
 

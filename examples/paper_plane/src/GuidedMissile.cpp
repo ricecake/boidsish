@@ -69,6 +69,7 @@ namespace Boidsish {
 
 	GuidedMissile::GuidedMissile(int id, Vector3 pos):
 		Entity<Model>(id, "assets/Missile.obj", true), eng_(rd_()), jamming_intensity_(0.0f) {
+		SetName("Guided Missile");
 		auto orientation = glm::angleAxis(glm::radians(90.0f), glm::vec3(1.0f, 0.0f, 0.0f));
 
 		auto dist = std::uniform_int_distribution(0, 1);
