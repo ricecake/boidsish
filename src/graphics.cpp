@@ -12,10 +12,10 @@
 
 #include "ConfigManager.h"
 #include "UIManager.h"
+#include "akira_effect.h"
 #include "arcade_text.h"
 #include "audio_manager.h"
 #include "clone_manager.h"
-#include "akira_effect.h"
 #include "curved_text.h"
 #include "decor_manager.h"
 #include "dot.h"

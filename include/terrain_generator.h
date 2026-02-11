@@ -343,10 +343,7 @@ namespace Boidsish {
 		 * @param radius Radius of the cut at terrain level
 		 * @return ID of created deformation
 		 */
-		uint32_t AddAkira(
-			const glm::vec3& center,
-			float            radius
-		) override;
+		uint32_t AddAkira(const glm::vec3& center, float radius) override;
 
 		/**
 		 * @brief Invalidate chunks affected by deformations.
