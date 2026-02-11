@@ -4,6 +4,7 @@
 
 #include "GuidedMissile.h"
 #include "PaperPlane.h"
+#include "PaperPlaneHandler.h"
 #include "arcade_text.h"
 #include "graphics.h"
 #include "terrain_generator_interface.h"
@@ -135,6 +136,11 @@ namespace Boidsish {
 	}
 
 	void GuidedMissileLauncher::Destroy(const EntityHandler& handler) {
+		// Award points for destroying the launcher
+		if (auto* pp_handler = dynamic_cast<const PaperPlaneHandler*>(&handler)) {
+			pp_handler->AddScore(500, "Launcher Destroyed");
+		}
+
 		auto pos = GetPosition().Toglm();
 		auto [height, normal] = handler.GetCachedTerrainProperties(pos.x, pos.z);
 		handler.vis->TriggerComplexExplosion(shape_, normal, 2.0f, FireEffectStyle::Explosion);

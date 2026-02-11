@@ -52,6 +52,11 @@ namespace Boidsish {
 		return 0;
 	}
 
+	void PaperPlaneHandler::AddScore(int delta, const std::string& label) const {
+		if (score_indicator_)
+			score_indicator_->AddScore(delta, label);
+	}
+
 	void PaperPlaneHandler::PreparePlane(std::shared_ptr<PaperPlane> plane) {
 		if (!plane || !vis)
 			return;
@@ -133,7 +138,7 @@ namespace Boidsish {
 					QueueRemoveEntity(it->second);
 					it = spawned_launchers_.erase(it);
 				} else if (GetEntity(it->second) == nullptr) {
-					// Launcher was destroyed!
+					// Launcher was destroyed! (Points are awarded in GuidedMissileLauncher::Destroy)
 					launcher_cooldowns_[it->first] = time + 30.0f; // 30 second cooldown
 					it = spawned_launchers_.erase(it);
 				} else {
@@ -153,8 +158,8 @@ namespace Boidsish {
 			// 3. Populate forbidden coordinates based on CURRENT launchers and cooldowns
 			std::set<std::pair<int, int>> forbidden_coords;
 			auto                          exclude_neighborhood = [&](const Terrain* chunk) {
-                int cx = chunk->GetX();
-                int cz = chunk->GetZ();
+                int cx = static_cast<int>(chunk->GetX());
+                int cz = static_cast<int>(chunk->GetZ());
                 int step = Constants::Class::Terrain::ChunkSize();
                 int range = 2; // Exclude 2 chunks in every direction
                 for (int dx = -range; dx <= range; ++dx) {
@@ -213,7 +218,9 @@ namespace Boidsish {
 			});
 
 			for (const auto& candidate : candidates) {
-				if (forbidden_coords.count({candidate.chunk->GetX(), candidate.chunk->GetZ()})) {
+				if (forbidden_coords.count(
+						{static_cast<int>(candidate.chunk->GetX()), static_cast<int>(candidate.chunk->GetZ())}
+					)) {
 					continue;
 				}
 
@@ -254,11 +261,10 @@ namespace Boidsish {
 			return;
 
 		auto plane = std::static_pointer_cast<PaperPlane>(targets[0]);
-		if (plane && plane->IsDamagePending()) {
+		bool took_damage = false;
+		while (plane && plane->IsDamagePending()) {
 			plane->AcknowledgeDamage();
-			if (health_gauge_) {
-				health_gauge_->SetValue(plane->GetHealth());
-			}
+			took_damage = true;
 
 			auto new_time = damage_dist_(eng_);
 
@@ -268,6 +274,10 @@ namespace Boidsish {
 			}
 
 			damage_timer_ = damage_timer_ + new_time;
+		}
+
+		if (took_damage && health_gauge_) {
+			health_gauge_->SetValue(plane->GetHealth() / plane->GetMaxHealth());
 		}
 
 		damage_timer_ = std::min(damage_timer_, 2.0f);

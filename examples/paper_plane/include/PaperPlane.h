@@ -24,6 +24,8 @@ namespace Boidsish {
 		float GetHealth() const;
 		float GetShield() const;
 
+		float GetMaxHealth() const { return 100.0f; }
+
 		bool IsChaffActive() const { return chaff_timer_ > 0.0f; }
 
 	private:
