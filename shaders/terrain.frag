@@ -396,12 +396,8 @@ void main() {
 	// ========================================================================
 	// Distance Fade
 	// ========================================================================
-	vec4 outColor = vec4(lighting, mix(0.0, fade, step(0.01, FragPos.y))) + vec4(smoothstep(0.2, 0.5, 1 - fade));
-	FragColor = mix(
-		vec4(0.0, 0.7, 0.7, mix(0.0, fade, step(0.01, FragPos.y))) * length(outColor),
-		outColor,
-		step(1.0, fade)
-	);
+	float final_alpha = mix(0.0, fade, step(0.01, FragPos.y));
+	FragColor = vec4(lighting, final_alpha);
 
 	// float heat = clamp(tessFactor / 32.0, 0.0, 1.0);
 	// FragColor = vec4(heat, 1.0 - heat, 0.0, 1.0); // Simple Red-Green ramp

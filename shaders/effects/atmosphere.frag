@@ -10,55 +10,18 @@ uniform sampler2D depthTexture;
 uniform mat4 invView;
 uniform mat4 invProjection;
 
-uniform float hazeDensity;
-uniform float hazeHeight;
-uniform vec3  hazeColor;
+// Atmosphere settings (now pulled from Config in C++, but some still passed as uniforms for clouds)
 uniform float cloudDensity;
 uniform float cloudAltitude;
 uniform float cloudThickness;
 uniform vec3  cloudColorUniform;
-// uniform float time; // Use time from Lighting UBO
 
 uniform bool enableClouds;
 uniform bool enableFog;
 
-uniform sampler2D transmittanceLUT;
-uniform sampler2D multiScatteringLUT;
-uniform float sunIntensity;
-
 #include "../helpers/lighting.glsl"
 #include "../helpers/noise.glsl"
 #include "../atmosphere/common.glsl"
-
-vec3 get_transmittance(float r, float mu) {
-	vec2 uv = transmittance_to_uv(r, mu);
-	return texture(transmittanceLUT, uv).rgb;
-}
-
-vec3 get_scattering(vec3 p, vec3 rd, vec3 sun_dir, out vec3 transmittance) {
-	float r = length(p);
-	float mu = dot(p, rd) / max(r, 0.01);
-	float mu_s = dot(p, sun_dir) / max(r, 0.01);
-	float cos_theta = dot(rd, sun_dir);
-
-	transmittance = get_transmittance(r, mu);
-	vec3 trans_sun = get_transmittance(r, mu_s);
-
-	float r_h = exp(-max(0.0, r - bottomRadius) / max(0.01, rayleighScaleHeight));
-	float m_h = exp(-max(0.0, r - bottomRadius) / max(0.01, mieScaleHeight));
-
-	vec3  rayleigh_scat = rayleighScattering * r_h * rayleigh_phase(cos_theta);
-	vec3  mie_scat = vec3(mieScattering) * m_h * henyey_greenstein(cos_theta, mieAnisotropy);
-
-	vec3  scat = (rayleigh_scat + mie_scat) * trans_sun * sunIntensity;
-
-	// Add multi-scattering
-	vec2 ms_uv = vec2(mu_s * 0.5 + 0.5, (r - bottomRadius) / (topRadius - bottomRadius));
-	vec3 ms = texture(multiScatteringLUT, ms_uv).rgb;
-	scat += ms * sunIntensity;
-
-	return scat;
-}
 
 float fbm_clouds(vec2 p) {
 	float v = 0.0;
@@ -95,7 +58,6 @@ void main() {
 	// 1. Atmosphere Scattering (Fog/Haze)
 	// Skip for sky pixels (depth == 1.0) to avoid double-fogging, as sky.frag already handles it
 	if (enableFog && depth < 1.0) {
-		// We use a simplified version of the scattering for fog
 		vec3 sun_dir;
 		if (num_lights > 0) {
 			if (lights[0].type == LIGHT_TYPE_DIRECTIONAL) {
@@ -170,11 +132,21 @@ void main() {
 			vec3 intersect = viewPos + rayDir * mix(t_start, t_end, 0.5);
 			vec3 cloudScattering = vec3(0.0);
 			for (int i = 0; i < num_lights; i++) {
-				vec3  L = normalize(lights[i].position - intersect);
+				vec3 L;
+				if (lights[i].type == LIGHT_TYPE_DIRECTIONAL) {
+					L = normalize(-lights[i].direction);
+				} else {
+					L = normalize(lights[i].position - intersect);
+				}
+
 				float d = max(0.0, dot(vec3(0, 1, 0), L));
 				float silver = pow(max(0.0, dot(rayDir, L)), 4.0) * 0.5;
 
-				cloudScattering += lights[i].color * (d * 0.5 + 0.5 + silver) * lights[i].intensity;
+				// Cloud intensity also benefits from the sunIntensityFactor for cinematic look
+				float intens = lights[i].intensity;
+				if (i == 0) intens *= sunIntensityFactor * 0.1; // Scale down factor for clouds to avoid over-exposure
+
+				cloudScattering += lights[i].color * (d * 0.5 + 0.5 + silver) * intens;
 			}
 
 			cloudColor = cloudColorUniform * (ambient_light + cloudScattering * 0.5);

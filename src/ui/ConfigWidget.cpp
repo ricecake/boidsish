@@ -171,6 +171,7 @@ namespace Boidsish {
 					}
 				}
 
+
 				RenderSection("global", true);
 
 				auto&              config_manager = ConfigManager::GetInstance();

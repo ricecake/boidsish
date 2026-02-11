@@ -4,6 +4,7 @@
 #include <iomanip>
 #include <sstream>
 
+#include "ConfigManager.h"
 #include "imgui.h"
 #include "post_processing/PostProcessingManager.h"
 #include "post_processing/effects/AtmosphereEffect.h"
@@ -92,13 +93,20 @@ namespace Boidsish {
 							} else if (auto atmos = std::dynamic_pointer_cast<PostProcessing::AtmosphereEffect>(
 										   effect
 									   )) {
+								auto& config = ConfigManager::GetInstance();
 								scene.post_processing.atmosphere_enabled = atmos->IsEnabled();
-								scene.post_processing.haze_density = atmos->GetHazeDensity();
-								scene.post_processing.haze_height = atmos->GetHazeHeight();
-								scene.post_processing.haze_color = atmos->GetHazeColor();
-								scene.post_processing.cloud_density = atmos->GetCloudDensity();
-								scene.post_processing.cloud_altitude = atmos->GetCloudAltitude();
-								scene.post_processing.cloud_thickness = atmos->GetCloudThickness();
+								scene.post_processing.atmosphere_density =
+									config.GetAppSettingFloat("atmosphere_density", 1.0f);
+								scene.post_processing.fog_density = config.GetAppSettingFloat("fog_density", 1.0f);
+								scene.post_processing.mie_anisotropy =
+									config.GetAppSettingFloat("mie_anisotropy", 0.80f);
+								scene.post_processing.sun_intensity_factor =
+									config.GetAppSettingFloat("sun_intensity_factor", 35.0f);
+								scene.post_processing.cloud_density = config.GetAppSettingFloat("cloud_density", 0.2f);
+								scene.post_processing.cloud_altitude =
+									config.GetAppSettingFloat("cloud_altitude", 2.0f);
+								scene.post_processing.cloud_thickness =
+									config.GetAppSettingFloat("cloud_thickness", 0.5f);
 								scene.post_processing.cloud_color = atmos->GetCloudColor();
 							} else if (auto fg = std::dynamic_pointer_cast<PostProcessing::FilmGrainEffect>(effect)) {
 								scene.post_processing.film_grain_enabled = fg->IsEnabled();
@@ -206,13 +214,15 @@ namespace Boidsish {
 							} else if (auto atmos = std::dynamic_pointer_cast<PostProcessing::AtmosphereEffect>(
 										   effect
 									   )) {
+								auto& config = ConfigManager::GetInstance();
 								atmos->SetEnabled(scene.post_processing.atmosphere_enabled);
-								atmos->SetHazeDensity(scene.post_processing.haze_density);
-								atmos->SetHazeHeight(scene.post_processing.haze_height);
-								atmos->SetHazeColor(scene.post_processing.haze_color);
-								atmos->SetCloudDensity(scene.post_processing.cloud_density);
-								atmos->SetCloudAltitude(scene.post_processing.cloud_altitude);
-								atmos->SetCloudThickness(scene.post_processing.cloud_thickness);
+								config.SetFloat("atmosphere_density", scene.post_processing.atmosphere_density);
+								config.SetFloat("fog_density", scene.post_processing.fog_density);
+								config.SetFloat("mie_anisotropy", scene.post_processing.mie_anisotropy);
+								config.SetFloat("sun_intensity_factor", scene.post_processing.sun_intensity_factor);
+								config.SetFloat("cloud_density", scene.post_processing.cloud_density);
+								config.SetFloat("cloud_altitude", scene.post_processing.cloud_altitude);
+								config.SetFloat("cloud_thickness", scene.post_processing.cloud_thickness);
 								atmos->SetCloudColor(scene.post_processing.cloud_color);
 							} else if (auto fg = std::dynamic_pointer_cast<PostProcessing::FilmGrainEffect>(effect)) {
 								fg->SetEnabled(scene.post_processing.film_grain_enabled);

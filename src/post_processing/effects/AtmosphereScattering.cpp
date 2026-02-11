@@ -108,15 +108,18 @@ namespace Boidsish {
 			glViewport(0, 0, transmittance_width_, transmittance_height_);
 			glDisable(GL_DEPTH_TEST);
 			transmittance_shader_->use();
-			transmittance_shader_->setVec3("rayleighScattering", params_.rayleigh_scattering * params_.rayleigh_multiplier);
-			transmittance_shader_->setFloat("rayleighScaleHeight", params_.rayleigh_scale_height);
+			transmittance_shader_->setVec3(
+				"rayleighScattering",
+				params_.rayleigh_scattering * params_.rayleigh_multiplier
+			);
+			transmittance_shader_->setFloat("rayleighScaleHeight", params_.rayleigh_scale_height * params_.world_scale);
 			transmittance_shader_->setFloat("mieScattering", params_.mie_scattering * params_.mie_multiplier);
 			transmittance_shader_->setFloat("mieExtinction", params_.mie_extinction * params_.mie_multiplier);
-			transmittance_shader_->setFloat("mieScaleHeight", params_.mie_scale_height);
+			transmittance_shader_->setFloat("mieScaleHeight", params_.mie_scale_height * params_.world_scale);
 			transmittance_shader_->setFloat("mieAnisotropy", params_.mie_anisotropy);
 			transmittance_shader_->setVec3("absorptionExtinction", params_.absorption_extinction);
-			transmittance_shader_->setFloat("bottomRadius", params_.bottom_radius);
-			transmittance_shader_->setFloat("topRadius", params_.top_radius);
+			transmittance_shader_->setFloat("bottomRadius", params_.bottom_radius * params_.world_scale);
+			transmittance_shader_->setFloat("topRadius", params_.top_radius * params_.world_scale);
 
 			glBindVertexArray(quad_vao_);
 			glDrawArrays(GL_TRIANGLES, 0, 6);
@@ -140,15 +143,18 @@ namespace Boidsish {
 			glViewport(0, 0, multi_scattering_size_, multi_scattering_size_);
 			glDisable(GL_DEPTH_TEST);
 			multi_scattering_shader_->use();
-			multi_scattering_shader_->setVec3("rayleighScattering", params_.rayleigh_scattering * params_.rayleigh_multiplier);
-			multi_scattering_shader_->setFloat("rayleighScaleHeight", params_.rayleigh_scale_height);
+			multi_scattering_shader_->setVec3(
+				"rayleighScattering",
+				params_.rayleigh_scattering * params_.rayleigh_multiplier
+			);
+			multi_scattering_shader_->setFloat("rayleighScaleHeight", params_.rayleigh_scale_height * params_.world_scale);
 			multi_scattering_shader_->setFloat("mieScattering", params_.mie_scattering * params_.mie_multiplier);
 			multi_scattering_shader_->setFloat("mieExtinction", params_.mie_extinction * params_.mie_multiplier);
 			multi_scattering_shader_->setFloat("mieAnisotropy", params_.mie_anisotropy);
-			multi_scattering_shader_->setFloat("mieScaleHeight", params_.mie_scale_height);
+			multi_scattering_shader_->setFloat("mieScaleHeight", params_.mie_scale_height * params_.world_scale);
 			multi_scattering_shader_->setVec3("absorptionExtinction", params_.absorption_extinction);
-			multi_scattering_shader_->setFloat("bottomRadius", params_.bottom_radius);
-			multi_scattering_shader_->setFloat("topRadius", params_.top_radius);
+			multi_scattering_shader_->setFloat("bottomRadius", params_.bottom_radius * params_.world_scale);
+			multi_scattering_shader_->setFloat("topRadius", params_.top_radius * params_.world_scale);
 			multi_scattering_shader_->setVec3("groundAlbedo", params_.ground_albedo);
 
 			glActiveTexture(GL_TEXTURE0);
