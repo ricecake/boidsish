@@ -61,10 +61,6 @@ namespace Boidsish {
 
 	private:
 		std::vector<std::shared_ptr<HudElement>> m_elements;
-
-		std::map<std::string, unsigned int> m_texture_cache;
-
-		unsigned int LoadTexture(const std::string& path);
 	};
 
 } // namespace Boidsish

@@ -4,6 +4,7 @@
 #include <cstdio>
 #include <stdexcept>
 
+#include "asset_manager.h"
 #include "graphics.h"
 #include "imgui.h"
 #include "logger.h"
@@ -14,11 +15,7 @@ namespace Boidsish {
 
 	HudManager::HudManager() {}
 
-	HudManager::~HudManager() {
-		for (auto const& [key, val] : m_texture_cache) {
-			glDeleteTextures(1, &val);
-		}
-	}
+	HudManager::~HudManager() {}
 
 	// Modern API
 	std::shared_ptr<HudIcon>
@@ -169,14 +166,7 @@ namespace Boidsish {
 	}
 
 	unsigned int HudManager::GetTextureId(const std::string& path) {
-		if (m_texture_cache.find(path) != m_texture_cache.end()) {
-			return m_texture_cache[path];
-		}
-		unsigned int textureId = LoadTexture(path);
-		if (textureId != 0) {
-			m_texture_cache[path] = textureId;
-		}
-		return textureId;
+		return AssetManager::GetInstance().GetTexture(path);
 	}
 
 	// Implementation of HudElement Draw methods
@@ -383,44 +373,6 @@ namespace Boidsish {
 				}
 			}
 		}
-	}
-
-	unsigned int HudManager::LoadTexture(const std::string& path) {
-		unsigned int textureID;
-		glGenTextures(1, &textureID);
-
-		int            width, height, nrComponents;
-		unsigned char* data = stbi_load(path.c_str(), &width, &height, &nrComponents, 0);
-		if (data) {
-			GLenum format;
-			if (nrComponents == 1)
-				format = GL_RED;
-			else if (nrComponents == 3)
-				format = GL_RGB;
-			else if (nrComponents == 4)
-				format = GL_RGBA;
-			else {
-				logger::ERROR("Unsupported number of components in texture: " + std::to_string(nrComponents));
-				stbi_image_free(data);
-				return 0;
-			}
-
-			glBindTexture(GL_TEXTURE_2D, textureID);
-			glTexImage2D(GL_TEXTURE_2D, 0, format, width, height, 0, format, GL_UNSIGNED_BYTE, data);
-			glGenerateMipmap(GL_TEXTURE_2D);
-
-			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
-			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
-			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
-			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-
-			stbi_image_free(data);
-		} else {
-			logger::ERROR("Texture failed to load", path, stbi_failure_reason());
-			return 0;
-		}
-
-		return textureID;
 	}
 
 } // namespace Boidsish
