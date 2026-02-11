@@ -62,8 +62,12 @@ namespace Boidsish {
 
     private:
         Callback callback_;
-        std::vector<std::weak_ptr<EntityBase>> tracked_entities_;
-        std::map<int, glm::vec3> last_positions_;
+        struct TrackedEntity {
+            int                        id;
+            std::weak_ptr<EntityBase> ptr;
+        };
+        std::vector<TrackedEntity> tracked_entities_;
+        std::map<int, glm::vec3>   last_positions_;
     };
 
 } // namespace Boidsish

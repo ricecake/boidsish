@@ -94,8 +94,9 @@ namespace Boidsish {
     }
 
     void CheckpointRing::RegisterEntity(std::shared_ptr<EntityBase> entity) {
-        if (!entity) return;
-        tracked_entities_.push_back(entity);
+        if (!entity)
+            return;
+        tracked_entities_.push_back({entity->GetId(), entity});
         last_positions_[entity->GetId()] = entity->GetPosition().Toglm();
     }
 
@@ -104,10 +105,10 @@ namespace Boidsish {
         glm::quat ringRot = rigid_body_.GetOrientation();
         glm::vec3 ringNormal = ringRot * glm::vec3(0, 0, 1); // Local Z is forward
 
-        for (auto it = tracked_entities_.begin(); it != tracked_entities_.end(); ) {
-            if (auto entity = it->lock()) {
+        for (auto it = tracked_entities_.begin(); it != tracked_entities_.end();) {
+            if (auto entity = it->ptr.lock()) {
                 glm::vec3 pos = entity->GetPosition().Toglm();
-                int id = entity->GetId();
+                int       id = entity->GetId();
 
                 if (last_positions_.find(id) != last_positions_.end()) {
                     glm::vec3 lastPos = last_positions_[id];
@@ -118,9 +119,9 @@ namespace Boidsish {
 
                     if (d1 > 0 && d2 <= 0) { // Passed from front to back
                         // Calculate intersection point with plane
-                        float t = d1 / (d1 - d2);
+                        float     t = d1 / (d1 - d2);
                         glm::vec3 intersect = lastPos + t * (pos - lastPos);
-                        float distFromCenter = glm::distance(intersect, ringPos);
+                        float     distFromCenter = glm::distance(intersect, ringPos);
 
                         if (distFromCenter <= shape_->GetRadius()) {
                             if (callback_) {
@@ -132,6 +133,8 @@ namespace Boidsish {
                 last_positions_[id] = pos;
                 ++it;
             } else {
+                // Entity destroyed, clean up last_positions_ to prevent memory leak
+                last_positions_.erase(it->id);
                 it = tracked_entities_.erase(it);
             }
         }
@@ -139,10 +142,6 @@ namespace Boidsish {
 
     void CheckpointRing::UpdateShape() {
         Entity<CheckpointRingShape>::UpdateShape();
-        if (shape_) {
-            shape_->SetRadius(shape_->GetRadius()); // ensure radius is correct
-            shape_->SetStyle(shape_->GetStyle());
-        }
     }
 
 } // namespace Boidsish

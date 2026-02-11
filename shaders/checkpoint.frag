@@ -6,6 +6,7 @@ in vec2 TexCoords;
 uniform vec3  baseColor;
 uniform int   style; // 0-4: Colors, 5: RAINBOW, 6: INVISIBLE
 uniform float time;
+uniform float radius;
 
 void main() {
     if (style == 6) discard;

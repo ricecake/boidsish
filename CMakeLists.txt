@@ -107,6 +107,7 @@ foreach(EXAMPLE_DIR ${EXAMPLE_DIRS})
     endif()
 endforeach()
 
+
 # Copy assets to the root of the build directory
 add_custom_command(TARGET boidsish POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_directory
@@ -135,6 +136,8 @@ else()
 endif()
 
 # 6. Build Tests
+# Note: Tests are included in the default build ('all') to ensure they are available
+# for 'ctest' in CI environments, avoiding "executable not found" errors.
 enable_testing()
 find_package(GTest REQUIRED)
 include_directories(${GTEST_INCLUDE_DIRS})
