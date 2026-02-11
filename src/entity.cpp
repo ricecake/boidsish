@@ -196,6 +196,16 @@ namespace Boidsish {
 		return false;
 	}
 
+	glm::vec3 EntityHandler::GetValidPlacement(const glm::vec3& suggested_pos, float clearance) const {
+		float terrain_h = 0.0f;
+		if (vis) {
+			auto [h, norm] = vis->GetTerrainPointPropertiesThreadSafe(suggested_pos.x, suggested_pos.z);
+			terrain_h = h;
+		}
+		float min_y = std::max(0.0f, terrain_h) + clearance;
+		return glm::vec3(suggested_pos.x, std::max(suggested_pos.y, min_y), suggested_pos.z);
+	}
+
 	EntityHandler::~EntityHandler() {
 		std::lock_guard<std::mutex> lock(requests_mutex_);
 		for (auto& request : modification_requests_) {

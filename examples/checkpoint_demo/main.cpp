@@ -51,26 +51,26 @@ int main() {
 		// Gold ring
 		int  r1 = handler.AddEntity<CheckpointRing>(15.0f, CheckpointStyle::GOLD, callback);
 		auto ring1 = std::dynamic_pointer_cast<CheckpointRing>(handler.GetEntity(r1));
-		ring1->SetPosition(0, 50, 0);
+		ring1->SetPosition(handler.GetValidPlacement(glm::vec3(0, 50, 0), 20.0f));
 		ring1->RegisterEntity(player);
 
 		// Blue ring, rotated
 		int  r2 = handler.AddEntity<CheckpointRing>(15.0f, CheckpointStyle::BLUE, callback);
 		auto ring2 = std::dynamic_pointer_cast<CheckpointRing>(handler.GetEntity(r2));
-		ring2->SetPosition(50, 50, -50);
+		ring2->SetPosition(handler.GetValidPlacement(glm::vec3(50, 50, -50), 20.0f));
 		ring2->SetOrientation(glm::angleAxis(glm::radians(45.0f), glm::vec3(0, 1, 0)));
 		ring2->RegisterEntity(player);
 
 		// Rainbow ring
 		int  r3 = handler.AddEntity<CheckpointRing>(20.0f, CheckpointStyle::RAINBOW, callback);
 		auto ring3 = std::dynamic_pointer_cast<CheckpointRing>(handler.GetEntity(r3));
-		ring3->SetPosition(0, 70, -100);
+		ring3->SetPosition(handler.GetValidPlacement(glm::vec3(0, 70, -100), 25.0f));
 		ring3->RegisterEntity(player);
 
 		// Neon Green ring
 		int  r4 = handler.AddEntity<CheckpointRing>(10.0f, CheckpointStyle::NEON_GREEN, callback);
 		auto ring4 = std::dynamic_pointer_cast<CheckpointRing>(handler.GetEntity(r4));
-		ring4->SetPosition(-50, 40, -150);
+		ring4->SetPosition(handler.GetValidPlacement(glm::vec3(-50, 40, -150), 15.0f));
 		ring4->RegisterEntity(player);
 
 		visualizer->AddInputCallback([&](const Boidsish::InputState& state) {

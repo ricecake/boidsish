@@ -1033,6 +1033,13 @@ namespace Boidsish {
 			shader->use();
 			shader->setMat4("projection", projection);
 			shader->setMat4("view", view);
+
+			if (CheckpointRingShape::GetShader()) {
+				CheckpointRingShape::GetShader()->use();
+				CheckpointRingShape::GetShader()->setMat4("projection", projection);
+				CheckpointRingShape::GetShader()->setMat4("view", view);
+			}
+
 			return view;
 		}
 
@@ -2145,6 +2152,10 @@ namespace Boidsish {
 
 		// Batched lighting UBO update - single glBufferSubData instead of 8 calls
 		{
+			if (CheckpointRingShape::GetShader()) {
+				CheckpointRingShape::GetShader()->use();
+				CheckpointRingShape::GetShader()->setFloat("time", impl->simulation_time);
+			}
 			const auto& lights = impl->light_manager.GetLights();
 			int         num_lights = std::min(static_cast<int>(lights.size()), 10);
 

@@ -44,10 +44,19 @@ void main() {
     float radialScroll = sin(dist * 20.0 + time * 10.0);
     float directionMask = smoothstep(0.0, 0.2, radialScroll);
 
+    // Directional cue: Chevron pattern
+    float chevronCount = 8.0;
+    float chevronSpeed = 2.0;
+    float chevronPattern = sin(angle * chevronCount + time * chevronSpeed + dist * 5.0);
+    float chevronMask = smoothstep(0.5, 0.6, chevronPattern);
+
     // Combine masks
     float alpha = ringMask * 0.9;
     alpha += haloMask * 0.5 * (0.7 + 0.3 * directionMask);
     alpha += auraMask * 0.4 * (0.7 + 0.3 * slowPulse);
+
+    // Add chevrons to the halo
+    alpha += haloMask * chevronMask * 0.2;
 
     // Add bright highlights on the ring
     float highlights = step(0.8, sin(angle * 10.0 + time * 2.0));
