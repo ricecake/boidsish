@@ -1837,6 +1837,7 @@ namespace Boidsish {
 
 	void Visualizer::Update() {
 		impl->frame_count_++;
+		impl->hud_manager->Update(impl->input_state.delta_time, impl->camera);
 
 		// Reset per-frame input state
 		std::fill_n(impl->input_state.key_down, Constants::Library::Input::MaxKeys(), false);
@@ -2955,6 +2956,61 @@ namespace Boidsish {
 				}
 			);
 		}
+	}
+
+	std::shared_ptr<HudIcon>
+	Visualizer::AddHudIcon(const std::string& path, HudAlignment alignment, glm::vec2 position, glm::vec2 size) {
+		return impl->hud_manager->AddIcon(path, alignment, position, size);
+	}
+
+	std::shared_ptr<HudNumber> Visualizer::AddHudNumber(
+		float              value,
+		const std::string& label,
+		HudAlignment       alignment,
+		glm::vec2          position,
+		int                precision
+	) {
+		return impl->hud_manager->AddNumber(value, label, alignment, position, precision);
+	}
+
+	std::shared_ptr<HudGauge> Visualizer::AddHudGauge(
+		float              value,
+		const std::string& label,
+		HudAlignment       alignment,
+		glm::vec2          position,
+		glm::vec2          size
+	) {
+		return impl->hud_manager->AddGauge(value, label, alignment, position, size);
+	}
+
+	std::shared_ptr<HudCompass> Visualizer::AddHudCompass(HudAlignment alignment, glm::vec2 position) {
+		auto compass = std::make_shared<HudCompass>(alignment, position);
+		impl->hud_manager->AddElement(compass);
+		return compass;
+	}
+
+	std::shared_ptr<HudLocation> Visualizer::AddHudLocation(HudAlignment alignment, glm::vec2 position) {
+		auto location = std::make_shared<HudLocation>(alignment, position);
+		impl->hud_manager->AddElement(location);
+		return location;
+	}
+
+	std::shared_ptr<HudScore> Visualizer::AddHudScore(HudAlignment alignment, glm::vec2 position) {
+		auto score = std::make_shared<HudScore>(alignment, position);
+		impl->hud_manager->AddElement(score);
+		return score;
+	}
+
+	std::shared_ptr<HudIconSet> Visualizer::AddHudIconSet(
+		const std::vector<std::string>& paths,
+		HudAlignment                    alignment,
+		glm::vec2                       position,
+		glm::vec2                       size,
+		float                           spacing
+	) {
+		auto iconSet = std::make_shared<HudIconSet>(paths, alignment, position, size, spacing);
+		impl->hud_manager->AddElement(iconSet);
+		return iconSet;
 	}
 
 	void Visualizer::AddHudIcon(const HudIcon& icon) {

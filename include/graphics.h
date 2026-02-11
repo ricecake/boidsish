@@ -27,11 +27,9 @@ namespace task_thread_pool {
 	class task_thread_pool;
 }
 
-namespace Boidsish {
-	struct HudIcon;
-	struct HudNumber;
-	struct HudGauge;
+#include "hud.h"
 
+namespace Boidsish {
 	// class AudioManager;
 
 	namespace UI {
@@ -478,9 +476,50 @@ namespace Boidsish {
 		AudioManager& GetAudioManager();
 
 		// HUD methods
+		std::shared_ptr<HudIcon> AddHudIcon(
+			const std::string& path,
+			HudAlignment       alignment = HudAlignment::TOP_LEFT,
+			glm::vec2          position = {0, 0},
+			glm::vec2          size = {64, 64}
+		);
+		std::shared_ptr<HudNumber> AddHudNumber(
+			float              value = 0.0f,
+			const std::string& label = "",
+			HudAlignment       alignment = HudAlignment::TOP_RIGHT,
+			glm::vec2          position = {-10, 10},
+			int                precision = 2
+		);
+		std::shared_ptr<HudGauge> AddHudGauge(
+			float              value = 0.0f,
+			const std::string& label = "",
+			HudAlignment       alignment = HudAlignment::BOTTOM_CENTER,
+			glm::vec2          position = {0, -50},
+			glm::vec2          size = {200, 20}
+		);
+		std::shared_ptr<HudCompass>
+		AddHudCompass(HudAlignment alignment = HudAlignment::TOP_CENTER, glm::vec2 position = {0, 20});
+		std::shared_ptr<HudLocation>
+		AddHudLocation(HudAlignment alignment = HudAlignment::BOTTOM_LEFT, glm::vec2 position = {10, -10});
+		std::shared_ptr<HudScore>
+		AddHudScore(HudAlignment alignment = HudAlignment::TOP_RIGHT, glm::vec2 position = {-10, 50});
+		std::shared_ptr<HudIconSet> AddHudIconSet(
+			const std::vector<std::string>& paths,
+			HudAlignment                    alignment = HudAlignment::TOP_LEFT,
+			glm::vec2                       position = {10, 10},
+			glm::vec2                       size = {64, 64},
+			float                           spacing = 10.0f
+		);
+
+		// Legacy HUD methods (deprecated)
 		void AddHudIcon(const HudIcon& icon);
 		void UpdateHudIcon(int id, const HudIcon& icon);
 		void RemoveHudIcon(int id);
+		void AddHudNumber(const HudNumber& number);
+		void UpdateHudNumber(int id, const HudNumber& number);
+		void RemoveHudNumber(int id);
+		void AddHudGauge(const HudGauge& gauge);
+		void UpdateHudGauge(int id, const HudGauge& gauge);
+		void RemoveHudGauge(int id);
 
 		bool IsRippleEffectEnabled() const;
 		bool IsColorShiftEffectEnabled() const;
@@ -489,14 +528,6 @@ namespace Boidsish {
 		bool IsShimmeryEffectEnabled() const;
 		bool IsGlitchedEffectEnabled() const;
 		bool IsWireframeEffectEnabled() const;
-
-		void AddHudNumber(const HudNumber& number);
-		void UpdateHudNumber(int id, const HudNumber& number);
-		void RemoveHudNumber(int id);
-
-		void AddHudGauge(const HudGauge& gauge);
-		void UpdateHudGauge(int id, const HudGauge& gauge);
-		void RemoveHudGauge(int id);
 
 	private:
 		struct VisualizerImpl;
