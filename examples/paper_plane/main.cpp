@@ -47,15 +47,13 @@ int main() {
 		Similar to the fire system balancing, but everything has a uniform density...density.
 		*/
 
-		visualizer->AddHudIcon(
-			{1, "assets/missile-icon.png", HudAlignment::TOP_LEFT, {10, 10}, {64, 64}, selected_weapon == 0}
-		);
-		visualizer->AddHudIcon(
-			{2, "assets/bomb-icon.png", HudAlignment::TOP_LEFT, {84, 10}, {64, 64}, selected_weapon == 1}
-		);
-		visualizer->AddHudIcon(
-			{3, "assets/bullet-icon.png", HudAlignment::TOP_LEFT, {84 + 10 + 64, 10}, {64, 64}, selected_weapon == 2}
-		);
+		std::vector<std::string> weaponIcons = {
+			"assets/missile-icon.png",
+			"assets/bomb-icon.png",
+			"assets/bullet-icon.png"
+		};
+		auto weaponSelector = visualizer->AddHudIconSet(weaponIcons, HudAlignment::TOP_LEFT, {10, 10}, {64, 64}, 10.0f);
+		weaponSelector->SetSelectedIndex(selected_weapon);
 
 		auto handler = PaperPlaneHandler(visualizer->GetThreadPool());
 		handler.SetVisualizer(visualizer);
@@ -68,7 +66,8 @@ int main() {
 		visualizer->AddShapeHandler(std::ref(handler));
 		visualizer->SetChaseCamera(plane);
 
-		visualizer->AddHudGauge({3, 100.0f, "Health", HudAlignment::BOTTOM_CENTER, {0, -50}, {200, 20}});
+		auto healthGauge = visualizer->AddHudGauge(100.0f, "Health", HudAlignment::BOTTOM_CENTER, {0, -50}, {200, 20});
+		handler.SetHealthGauge(healthGauge);
 
 		auto controller = std::make_shared<PaperPlaneInputController>();
 		std::dynamic_pointer_cast<PaperPlane>(plane)->SetController(controller);
@@ -87,23 +86,7 @@ int main() {
 			controller->super_speed = state.keys[GLFW_KEY_B];
 			if (state.key_down[GLFW_KEY_F]) {
 				selected_weapon = (selected_weapon + 1) % 3;
-				visualizer->UpdateHudIcon(
-					1,
-					{1, "assets/missile-icon.png", HudAlignment::TOP_LEFT, {10, 10}, {64, 64}, selected_weapon == 0}
-				);
-				visualizer->UpdateHudIcon(
-					2,
-					{2, "assets/bomb-icon.png", HudAlignment::TOP_LEFT, {84, 10}, {64, 64}, selected_weapon == 1}
-				);
-				visualizer->UpdateHudIcon(
-					3,
-					{3,
-				     "assets/bullet-icon.png",
-				     HudAlignment::TOP_LEFT,
-				     {84 + 10 + 64, 10},
-				     {64, 64},
-				     selected_weapon == 2}
-				);
+				weaponSelector->SetSelectedIndex(selected_weapon);
 			}
 		});
 
