@@ -203,7 +203,7 @@ namespace Boidsish {
 		scene.post_processing.atmosphere_density = config.GetFloat(pp_section, "atmosphere_density", 1.0f);
 		scene.post_processing.fog_density = config.GetFloat(pp_section, "fog_density", 1.0f);
 		scene.post_processing.mie_anisotropy = config.GetFloat(pp_section, "mie_anisotropy", 0.80f);
-		scene.post_processing.sun_intensity_factor = config.GetFloat(pp_section, "sun_intensity_factor", 35.0f);
+		scene.post_processing.sun_intensity_factor = config.GetFloat(pp_section, "sun_intensity_factor", 15.0f);
 		scene.post_processing.cloud_density = config.GetFloat(pp_section, "cloud_density", 0.2f);
 		scene.post_processing.cloud_altitude = config.GetFloat(pp_section, "cloud_altitude", 2.0f);
 		scene.post_processing.cloud_thickness = config.GetFloat(pp_section, "cloud_thickness", 0.5f);

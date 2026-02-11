@@ -42,9 +42,11 @@ namespace Boidsish {
 			params.rayleigh_multiplier = config.GetAppSettingFloat("atmosphere_density", 1.0f);
 			params.mie_multiplier = config.GetAppSettingFloat("fog_density", 1.0f);
 			params.mie_anisotropy = config.GetAppSettingFloat("mie_anisotropy", 0.80f);
-			params.sun_intensity_factor = config.GetAppSettingFloat("sun_intensity_factor", 35.0f);
+			params.sun_intensity_factor = config.GetAppSettingFloat("sun_intensity_factor", 15.0f);
 			params.rayleigh_scale_height = config.GetAppSettingFloat("rayleigh_scale_height", 100.0f);
 			params.mie_scale_height = config.GetAppSettingFloat("mie_scale_height", 15.0f);
+			params.bottom_radius = config.GetAppSettingFloat("planet_radius", 79500.0f);
+			params.top_radius = config.GetAppSettingFloat("atmosphere_top", 80750.0f);
 
 			scattering_.Update(params);
 

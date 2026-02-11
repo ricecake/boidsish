@@ -39,7 +39,7 @@ namespace Boidsish {
 			float     atmosphere_density = 1.0f;
 			float     fog_density = 1.0f;
 			float     mie_anisotropy = 0.8f;
-			float     sun_intensity_factor = 35.0f;
+			float     sun_intensity_factor = 15.0f;
 			float     cloud_density = 0.2f;
 			float     cloud_altitude = 2.0f;
 			float     cloud_thickness = 0.5f;

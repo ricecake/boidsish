@@ -26,7 +26,7 @@ namespace Boidsish {
 				float     top_radius = 80750.0f;
 				glm::vec3 ground_albedo = glm::vec3(0.3f);
 				float     sun_intensity = 30.0f;
-				float     sun_intensity_factor = 35.0f;
+				float     sun_intensity_factor = 15.0f;
 				float     world_scale = 1.0f;
 
 				bool operator==(const Parameters& other) const {

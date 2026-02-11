@@ -70,7 +70,7 @@ namespace Boidsish {
 		GetAppSettingFloat("atmosphere_density", 1.0f);
 		GetAppSettingFloat("fog_density", 1.0f);
 		GetAppSettingFloat("mie_anisotropy", 0.80f);
-		GetAppSettingFloat("sun_intensity_factor", 35.0f);
+		GetAppSettingFloat("sun_intensity_factor", 15.0f);
 		GetAppSettingFloat("rayleigh_scale_height", 100.0f);
 		GetAppSettingFloat("mie_scale_height", 15.0f);
 		GetAppSettingBool("enable_clouds", true);
@@ -78,6 +78,8 @@ namespace Boidsish {
 		GetAppSettingFloat("cloud_density", 0.2f);
 		GetAppSettingFloat("cloud_altitude", 2.0f);
 		GetAppSettingFloat("cloud_thickness", 0.5f);
+		GetAppSettingFloat("planet_radius", 79500.0f);
+		GetAppSettingFloat("atmosphere_top", 80750.0f);
 	}
 
 	void ConfigManager::Shutdown() {

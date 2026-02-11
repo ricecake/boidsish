@@ -171,67 +171,6 @@ namespace Boidsish {
 					}
 				}
 
-				if (ImGui::CollapsingHeader("Atmosphere", ImGuiTreeNodeFlags_DefaultOpen)) {
-					auto& config = ConfigManager::GetInstance();
-
-					float atmosphere_density = config.GetAppSettingFloat("atmosphere_density", 1.0f);
-					if (ImGui::SliderFloat("Atmosphere Density", &atmosphere_density, 0.0f, 5.0f)) {
-						config.SetFloat("atmosphere_density", atmosphere_density);
-					}
-
-					float fog_density = config.GetAppSettingFloat("fog_density", 1.0f);
-					if (ImGui::SliderFloat("Fog Density", &fog_density, 0.0f, 10.0f)) {
-						config.SetFloat("fog_density", fog_density);
-					}
-
-					float mie_anisotropy = config.GetAppSettingFloat("mie_anisotropy", 0.80f);
-					if (ImGui::SliderFloat("Mie Anisotropy (G)", &mie_anisotropy, 0.0f, 0.99f)) {
-						config.SetFloat("mie_anisotropy", mie_anisotropy);
-					}
-
-					float sun_intensity_factor = config.GetAppSettingFloat("sun_intensity_factor", 35.0f);
-					if (ImGui::SliderFloat("Sun Intensity Factor", &sun_intensity_factor, 1.0f, 100.0f)) {
-						config.SetFloat("sun_intensity_factor", sun_intensity_factor);
-					}
-
-					float rayleigh_scale_height = config.GetAppSettingFloat("rayleigh_scale_height", 100.0f);
-					if (ImGui::SliderFloat("Rayleigh Scale Height", &rayleigh_scale_height, 10.0f, 500.0f)) {
-						config.SetFloat("rayleigh_scale_height", rayleigh_scale_height);
-					}
-
-					float mie_scale_height = config.GetAppSettingFloat("mie_scale_height", 15.0f);
-					if (ImGui::SliderFloat("Mie Scale Height", &mie_scale_height, 1.0f, 100.0f)) {
-						config.SetFloat("mie_scale_height", mie_scale_height);
-					}
-
-					ImGui::Separator();
-					ImGui::Text("Clouds");
-					bool enable_clouds = config.GetAppSettingBool("enable_clouds", true);
-					if (ImGui::Checkbox("Enable Clouds", &enable_clouds)) {
-						config.SetBool("enable_clouds", enable_clouds);
-					}
-
-					float cloud_density = config.GetAppSettingFloat("cloud_density", 0.2f);
-					if (ImGui::SliderFloat("Cloud Density", &cloud_density, 0.0f, 1.0f)) {
-						config.SetFloat("cloud_density", cloud_density);
-					}
-
-					float cloud_altitude = config.GetAppSettingFloat("cloud_altitude", 2.0f);
-					if (ImGui::SliderFloat("Cloud Altitude", &cloud_altitude, 0.1f, 10.0f)) {
-						config.SetFloat("cloud_altitude", cloud_altitude);
-					}
-
-					float cloud_thickness = config.GetAppSettingFloat("cloud_thickness", 0.5f);
-					if (ImGui::SliderFloat("Cloud Thickness", &cloud_thickness, 0.1f, 5.0f)) {
-						config.SetFloat("cloud_thickness", cloud_thickness);
-					}
-
-					ImGui::Separator();
-					bool enable_fog = config.GetAppSettingBool("enable_fog", true);
-					if (ImGui::Checkbox("Enable Fog/Haze", &enable_fog)) {
-						config.SetBool("enable_fog", enable_fog);
-					}
-				}
 
 				RenderSection("global", true);
 
