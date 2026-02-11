@@ -112,7 +112,12 @@ namespace Boidsish {
 			return;
 		}
 
-		if (!text_) {
+		// --- Flight Model Constants ---
+		const float kLaunchTime = 0.5f;
+		const float kMaxSpeed = 170.0f;
+		const float kAcceleration = 150.0f;
+
+		if (!text_ && (lived_ >= kLaunchTime)) {
 			handler.EnqueueVisualizerAction([&handler, this]() {
 				auto camPos = handler.vis->GetCamera().pos();
 				auto pos = this->GetPosition().Toglm();
@@ -124,7 +129,7 @@ namespace Boidsish {
 					150.0f,
 					-1 * vec,
 					vec,
-					10.0f,
+					3.0f,
 					"assets/Roboto-Medium.ttf",
 					12.0f,
 					5.0f
@@ -141,7 +146,7 @@ namespace Boidsish {
 				text_->SetRainbowEnabled(true);
 				text_->SetColor(1.0f, 1.0f, 1.0f);
 			});
-		} else {
+		} else if (text_) {
 			auto camPos = handler.vis->GetCamera().pos();
 			auto pos = this->GetPosition().Toglm();
 			auto vec = pos - camPos;
@@ -149,11 +154,6 @@ namespace Boidsish {
 			text_->SetPosition(pos.x, pos.y, pos.z);
 			text_->SetRotationAxis(vec);
 		}
-
-		// --- Flight Model Constants ---
-		const float kLaunchTime = 0.5f;
-		const float kMaxSpeed = 170.0f;
-		const float kAcceleration = 150.0f;
 
 		if (lived_ < kLaunchTime) {
 			rigid_body_.AddRelativeForce(glm::vec3(0, 0, -600));
