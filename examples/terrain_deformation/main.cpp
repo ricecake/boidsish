@@ -3,6 +3,7 @@
 
 #include "graphics.h"
 #include "terrain_generator.h"
+#include <GLFW/glfw3.h>
 #include <glm/glm.hpp>
 
 int main() {
@@ -39,11 +40,19 @@ int main() {
 					visualizer.GetTerrain()->AddFlattenSquare(*pos, 20.0f, 20.0f, 5.0f, 0.0f);
 				}
 			}
+			// K key: Akira effect
+			else if (input.key_down[GLFW_KEY_K]) {
+				auto pos = visualizer.ScreenToWorld(input.mouse_x, input.mouse_y);
+				if (pos) {
+					visualizer.TriggerAkira(*pos, 25.0f);
+				}
+			}
 		});
 
 		std::cout << "Terrain Deformation Demo" << std::endl;
 		std::cout << "Left Click: Create crater and explosion" << std::endl;
 		std::cout << "Right Click: Flatten terrain" << std::endl;
+		std::cout << "K Key: Trigger Akira effect" << std::endl;
 
 		visualizer.Run();
 	} catch (const std::exception& e) {

@@ -311,6 +311,14 @@ namespace Boidsish {
 		);
 
 		/**
+		 * @brief Trigger an Akira effect at the given position.
+		 *
+		 * @param position World-space center of the effect
+		 * @param radius Radius of the deformation
+		 */
+		void TriggerAkira(const glm::vec3& position, float radius);
+
+		/**
 		 * @brief SDF Volume management
 		 */
 		int  AddSdfSource(const SdfSource& source);
