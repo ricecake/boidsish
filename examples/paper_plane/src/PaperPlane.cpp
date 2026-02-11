@@ -14,6 +14,7 @@ namespace Boidsish {
 		orientation_(glm::quat(1.0f, 0.0f, 0.0f, 0.0f)),
 		rotational_velocity_(glm::vec3(0.0f)),
 		forward_speed_(20.0f) {
+		SetName("Paper Plane");
 		rigid_body_.linear_friction_ = 0.01f;
 		rigid_body_.angular_friction_ = 0.01f;
 

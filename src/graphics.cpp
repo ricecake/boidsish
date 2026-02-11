@@ -1644,11 +1644,34 @@ namespace Boidsish {
 			if (camera_mode != CameraMode::TRACKING || shapes.empty()) {
 				return;
 			}
-			if (tracked_dot_index >= static_cast<int>(shapes.size())) {
-				tracked_dot_index = 0;
+
+			std::shared_ptr<Shape> target_dot = nullptr;
+
+			// If we have a selected chase target, try to find its shape
+			if (chase_target_) {
+				auto target_shape = chase_target_->GetShape();
+				if (target_shape) {
+					// Verify the shape is actually in the current frame's shapes list
+					for (const auto& s : shapes) {
+						if (s == target_shape) {
+							target_dot = s;
+							break;
+						}
+					}
+				}
 			}
 
-			const auto& target_dot = shapes[tracked_dot_index];
+			// Fallback to index-based tracking if no entity shape found
+			if (!target_dot) {
+				if (tracked_dot_index >= static_cast<int>(shapes.size())) {
+					tracked_dot_index = 0;
+				}
+				target_dot = shapes[tracked_dot_index];
+			}
+
+			if (!target_dot) {
+				return;
+			}
 
 			glm::vec3 target_pos(target_dot->GetX(), target_dot->GetY(), target_dot->GetZ());
 
@@ -2725,6 +2748,7 @@ namespace Boidsish {
 		if (target) {
 			impl->chase_target_ = target;
 			SetCameraMode(CameraMode::CHASE);
+			AddChaseTarget(target);
 		} else {
 			impl->chase_target_ = nullptr;
 			SetCameraMode(CameraMode::FREE);
@@ -2734,11 +2758,33 @@ namespace Boidsish {
 	void Visualizer::AddChaseTarget(std::shared_ptr<EntityBase> target) {
 		if (!target)
 			return;
+
+		// Avoid duplicates
+		for (const auto& weak_target : impl->chase_targets_) {
+			if (weak_target.lock() == target) {
+				return;
+			}
+		}
+
 		impl->chase_targets_.push_back(target);
 		if (impl->chase_target_ == nullptr) {
 			SetChaseCamera(target);
 			impl->current_chase_target_index_ = impl->chase_targets_.size() - 1;
 		}
+	}
+
+	std::vector<std::shared_ptr<EntityBase>> Visualizer::GetChaseTargets() const {
+		std::vector<std::shared_ptr<EntityBase>> result;
+		for (auto& weak_target : impl->chase_targets_) {
+			if (auto target = weak_target.lock()) {
+				result.push_back(target);
+			}
+		}
+		return result;
+	}
+
+	std::shared_ptr<EntityBase> Visualizer::GetChaseTarget() const {
+		return impl->chase_target_;
 	}
 
 	void Visualizer::CycleChaseTarget() {

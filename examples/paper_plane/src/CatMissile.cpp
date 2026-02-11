@@ -52,6 +52,7 @@ namespace Boidsish {
 
 	CatMissile::CatMissile(int id, Vector3 pos, glm::quat orientation, glm::vec3 dir, Vector3 vel, bool leftHanded):
 		Entity<Model>(id, "assets/Missile.obj", true), eng_(rd_()), leftHanded_(leftHanded) {
+		SetName("Cat Missile");
 		rigid_body_.linear_friction_ = 0.01f;
 		rigid_body_.angular_friction_ = 0.01f;
 

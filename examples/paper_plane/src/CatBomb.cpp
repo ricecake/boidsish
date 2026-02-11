@@ -9,6 +9,7 @@ namespace Boidsish {
 
 	CatBomb::CatBomb(int id, Vector3 pos, glm::vec3 dir, Vector3 vel):
 		Entity<Model>(id, "assets/bomb_shading_v005.obj", true) {
+		SetName("Cat Bomb");
 		rigid_body_.linear_friction_ = 0.01f;
 		rigid_body_.angular_friction_ = 0.01f;
 
