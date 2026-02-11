@@ -176,4 +176,52 @@ namespace Boidsish {
 		float sin_rot_;
 	};
 
+	/**
+	 * @brief Akira deformation - removes a hemispherical (bottom 1/3) portion of terrain
+	 *
+	 * Named after the iconic destruction effect, this deformation creates a clean,
+	 * spherical cut in the terrain. It has a sharp edge with no blending,
+	 * representing a sudden and complete removal of matter.
+	 */
+	class AkiraDeformation: public TerrainDeformation {
+	public:
+		/**
+		 * @brief Create an Akira deformation
+		 *
+		 * @param id Unique identifier
+		 * @param center Center position (Y is the terrain level where the cut begins)
+		 * @param radius The radius of the cut at terrain level
+		 */
+		AkiraDeformation(uint32_t id, const glm::vec3& center, float radius);
+
+		DeformationType GetType() const override { return DeformationType::Subtractive; }
+
+		std::string GetTypeName() const override { return "Akira"; }
+
+		void GetBounds(glm::vec3& out_min, glm::vec3& out_max) const override;
+
+		glm::vec3 GetCenter() const override { return center_; }
+
+		float GetMaxRadius() const override { return radius_; }
+
+		bool ContainsPoint(const glm::vec3& world_pos) const override;
+		bool ContainsPointXZ(float x, float z) const override;
+
+		float     ComputeHeightDelta(float x, float z, float current_height) const override;
+		glm::vec3 TransformNormal(float x, float z, const glm::vec3& original_normal) const override;
+
+		DeformationResult
+		ComputeDeformation(float x, float z, float current_height, const glm::vec3& current_normal) const override;
+
+		DeformationDescriptor GetDescriptor() const override;
+
+		float GetRadius() const { return radius_; }
+
+	private:
+		glm::vec3 center_;
+		float     radius_;        // Radius at terrain level
+		float     sphere_radius_; // Actual radius of the underlying sphere
+		float     depth_;         // Maximum depth at center
+	};
+
 } // namespace Boidsish
