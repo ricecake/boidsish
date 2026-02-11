@@ -1,6 +1,7 @@
 #pragma once
 
 #include <glm/glm.hpp>
+#include <cstdint>
 #include <string>
 #include <vector>
 
@@ -11,6 +12,16 @@ namespace Boidsish {
 	 * This decouples the what-to-render from the how-to-render.
 	 */
 	struct RenderPacket {
+		/**
+		 * @brief Packed 64-bit ID for sorting packets to minimize GPU state changes.
+		 * Suggested layout (high to low bits):
+		 * [Layer: 8] [Shader: 16] [Material: 16] [Depth: 24]
+		 *
+		 * For opaque: sorting ascending will group by layer, then shader, then material,
+		 * and finally by depth (front-to-back if depth is packed correctly).
+		 */
+		uint64_t sort_key = 0;
+
 		unsigned int vao = 0;
 		unsigned int vbo = 0;
 		unsigned int ebo = 0;
