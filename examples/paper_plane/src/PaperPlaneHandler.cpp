@@ -134,6 +134,8 @@ namespace Boidsish {
 					it = spawned_launchers_.erase(it);
 				} else if (GetEntity(it->second) == nullptr) {
 					// Launcher was destroyed!
+					if (score_indicator_)
+						score_indicator_->AddScore(500, "Launcher Destroyed");
 					launcher_cooldowns_[it->first] = time + 30.0f; // 30 second cooldown
 					it = spawned_launchers_.erase(it);
 				} else {
@@ -254,11 +256,10 @@ namespace Boidsish {
 			return;
 
 		auto plane = std::static_pointer_cast<PaperPlane>(targets[0]);
-		if (plane && plane->IsDamagePending()) {
+		bool took_damage = false;
+		while (plane && plane->IsDamagePending()) {
 			plane->AcknowledgeDamage();
-			if (health_gauge_) {
-				health_gauge_->SetValue(plane->GetHealth());
-			}
+			took_damage = true;
 
 			auto new_time = damage_dist_(eng_);
 
@@ -268,6 +269,10 @@ namespace Boidsish {
 			}
 
 			damage_timer_ = damage_timer_ + new_time;
+		}
+
+		if (took_damage && health_gauge_) {
+			health_gauge_->SetValue(plane->GetHealth() / 100.0f);
 		}
 
 		damage_timer_ = std::min(damage_timer_, 2.0f);

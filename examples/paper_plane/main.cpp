@@ -67,7 +67,8 @@ int main() {
 		handler.SetHealthGauge(healthGauge);
 
 		visualizer->AddHudCompass();
-		visualizer->AddHudScore();
+		auto scoreIndicator = visualizer->AddHudScore();
+		handler.SetScoreIndicator(scoreIndicator);
 		visualizer->AddHudLocation();
 
 		auto controller = std::make_shared<PaperPlaneInputController>();
