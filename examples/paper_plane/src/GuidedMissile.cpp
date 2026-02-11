@@ -297,7 +297,7 @@ namespace Boidsish {
 
 		shape_->SetHidden(true);
 		auto pos = GetPosition();
-		handler.EnqueueVisualizerAction([=, &handler]() {
+		handler.EnqueueVisualizerAction([pos, &handler]() {
 			handler.vis->AddFireEffect(
 				glm::vec3(pos.x, pos.y, pos.z),
 				FireEffectStyle::Explosion,
@@ -318,7 +318,7 @@ namespace Boidsish {
 		exploded_ = true;
 		lived_ = 0.0f;
 		SetVelocity(Vector3(0, 0, 0));
-		handler.EnqueueVisualizerAction([=, &handler]() {
+		handler.EnqueueVisualizerAction([this, pos, &handler]() {
 			this->explode_sound_ = handler.vis->AddSoundEffect(
 				"assets/rocket_explosion.wav",
 				pos.Toglm(),

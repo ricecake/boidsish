@@ -332,7 +332,7 @@ namespace Boidsish {
 			}
 		});
 
-		handler.EnqueueVisualizerAction([=, &handler]() {
+		handler.EnqueueVisualizerAction([this, pos, &handler]() {
 			handler.vis->AddFireEffect(
 				glm::vec3(pos.x, pos.y, pos.z),
 				FireEffectStyle::Explosion,

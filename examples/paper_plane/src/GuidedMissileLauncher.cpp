@@ -142,7 +142,9 @@ namespace Boidsish {
 		}
 
 		auto pos = GetPosition().Toglm();
-		auto [height, normal] = handler.GetCachedTerrainProperties(pos.x, pos.z);
+		auto [h_val, n_val] = handler.GetCachedTerrainProperties(pos.x, pos.z);
+		float     height = h_val;
+		glm::vec3 normal = n_val;
 
 		// if (!text_) {
 		handler.EnqueueVisualizerAction([&handler, this, normal, pos, height]() {
