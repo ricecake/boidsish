@@ -51,6 +51,13 @@ namespace Boidsish {
 		void setupMesh();
 	};
 
+	struct ModelData {
+		std::vector<Mesh>    meshes;
+		std::vector<Texture> textures_loaded;
+		std::string          directory;
+		std::string          model_path;
+	};
+
 	class Model: public Shape {
 	public:
 		// Constructor, expects a filepath to a 3D model.
@@ -63,36 +70,28 @@ namespace Boidsish {
 
 		void GetGeometry(std::vector<Vertex>& vertices, std::vector<unsigned int>& indices) const override;
 
-		const std::vector<Mesh>& getMeshes() const { return meshes; }
+		const std::vector<Mesh>& getMeshes() const;
 
 		void SetBaseRotation(const glm::quat& rotation) { base_rotation_ = rotation; }
 
 		void SetInstanced(bool is_instanced) { Shape::SetInstanced(is_instanced); }
 
 		// Returns unique key for this model file - models loaded from the same file can be instanced together
-		std::string GetInstanceKey() const override { return "Model:" + model_path_; }
+		std::string GetInstanceKey() const override;
 
 		// Get the model path
-		const std::string& GetModelPath() const { return model_path_; }
+		const std::string& GetModelPath() const;
+
+		// Exposed for AssetManager to fill during loading
+		friend class AssetManager;
 
 	private:
 		// Model data
-		glm::quat            base_rotation_ = glm::quat(1.0f, 0.0f, 0.0f, 0.0f);
-		std::vector<Mesh>    meshes;
-		std::string          directory;
-		std::string          model_path_; // Full path to the model file for instancing identification
-		bool                 no_cull_ = false;
-		std::vector<Texture> textures_loaded_;
+		glm::quat                  base_rotation_ = glm::quat(1.0f, 0.0f, 0.0f, 0.0f);
+		std::shared_ptr<ModelData> m_data;
+		bool                       no_cull_ = false;
 
-		// Loads a model with supported ASSIMP extensions from file and stores the resulting meshes in meshes vector.
-		void loadModel(const std::string& path);
-
-		// Processes a node in a recursive fashion. Processes each individual mesh located at the node and repeats this
-		// process on its children nodes (if any).
-		void                 processNode(aiNode* node, const aiScene* scene);
-		Mesh                 processMesh(aiMesh* mesh, const aiScene* scene);
-		std::vector<Texture> loadMaterialTextures(aiMaterial* mat, aiTextureType type, std::string typeName);
-		static unsigned int  TextureFromFile(const char* path, const std::string& directory, bool gamma = false);
+		static unsigned int TextureFromFile(const char* path, const std::string& directory, bool gamma = false);
 	};
 
 } // namespace Boidsish
