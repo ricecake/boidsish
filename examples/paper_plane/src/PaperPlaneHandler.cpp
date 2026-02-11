@@ -256,7 +256,9 @@ namespace Boidsish {
 		auto plane = std::static_pointer_cast<PaperPlane>(targets[0]);
 		if (plane && plane->IsDamagePending()) {
 			plane->AcknowledgeDamage();
-			vis->UpdateHudGauge(3, {3, plane->GetHealth(), "Health", HudAlignment::BOTTOM_CENTER, {0, -50}, {200, 20}});
+			if (health_gauge_) {
+				health_gauge_->SetValue(plane->GetHealth());
+			}
 
 			auto new_time = damage_dist_(eng_);
 

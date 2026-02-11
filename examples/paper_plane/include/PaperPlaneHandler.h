@@ -14,11 +14,14 @@ namespace Boidsish {
 	extern int selected_weapon;
 
 	class PaperPlane; // Forward declaration
+	class HudGauge;
 
 	class PaperPlaneHandler: public SpatialEntityHandler {
 	public:
 		PaperPlaneHandler(task_thread_pool::task_thread_pool& thread_pool);
 		void PreTimestep(float time, float delta_time) override;
+
+		void SetHealthGauge(std::shared_ptr<HudGauge> gauge) { health_gauge_ = gauge; }
 
 		/**
 		 * @brief Finds a suitable starting position and orientation for the paper plane.
@@ -38,6 +41,7 @@ namespace Boidsish {
 		float                                 damage_timer_ = 0.0f;
 		std::uniform_real_distribution<float> damage_dist_;
 		std::map<const Terrain*, float>       launcher_cooldowns_;
+		std::shared_ptr<HudGauge>             health_gauge_;
 	};
 
 } // namespace Boidsish
