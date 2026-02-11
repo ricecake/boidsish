@@ -133,9 +133,7 @@ namespace Boidsish {
 					QueueRemoveEntity(it->second);
 					it = spawned_launchers_.erase(it);
 				} else if (GetEntity(it->second) == nullptr) {
-					// Launcher was destroyed!
-					if (score_indicator_)
-						score_indicator_->AddScore(500, "Launcher Destroyed");
+					// Launcher was destroyed! (Points are awarded in GuidedMissileLauncher::Destroy)
 					launcher_cooldowns_[it->first] = time + 30.0f; // 30 second cooldown
 					it = spawned_launchers_.erase(it);
 				} else {
