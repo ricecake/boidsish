@@ -47,31 +47,31 @@ namespace Boidsish {
 			approach_point_set_ = true;
 		}
 
-		if (!text_) {
-			handler.EnqueueVisualizerAction([&handler, this]() {
-				auto camPos = handler.vis->GetCamera().pos();
-				auto pos = this->GetPosition().Toglm();
-				auto vec = pos - camPos;
+		// if (!text_) {
+		// 	handler.EnqueueVisualizerAction([&handler, this]() {
+		// 		auto camPos = handler.vis->GetCamera().pos();
+		// 		auto pos = this->GetPosition().Toglm();
+		// 		auto vec = pos - camPos;
 
-				text_ = handler.vis->AddArcadeTextEffect(
-					"SUP",
-					pos,
-					20.0f,
-					60.0f,
-					glm::vec3(0, 1, 0),
-					-1 * vec,
-					100.0f,
-					"assets/Roboto-Medium.ttf",
-					12.0f,
-					2.0f
+		// 		text_ = handler.vis->AddArcadeTextEffect(
+		// 			"SUP",
+		// 			pos,
+		// 			20.0f,
+		// 			60.0f,
+		// 			glm::vec3(0, 1, 0),
+		// 			-1 * vec,
+		// 			100.0f,
+		// 			"assets/Roboto-Medium.ttf",
+		// 			12.0f,
+		// 			2.0f
 
-				);
-				text_->SetPulseSpeed(3.0f);
-				text_->SetPulseAmplitude(0.3f);
-				text_->SetRainbowEnabled(true);
-				text_->SetRainbowSpeed(5.0f);
-			});
-		}
+		// 		);
+		// 		text_->SetPulseSpeed(3.0f);
+		// 		text_->SetPulseAmplitude(0.3f);
+		// 		text_->SetRainbowEnabled(true);
+		// 		text_->SetRainbowSpeed(5.0f);
+		// 	});
+		// }
 
 		time_since_last_fire_ += delta_time;
 		if (time_since_last_fire_ < fire_interval_) {
@@ -140,7 +140,33 @@ namespace Boidsish {
 		handler.vis->TriggerComplexExplosion(shape_, normal, 2.0f, FireEffectStyle::Explosion);
 		handler.vis->GetTerrain()->AddCrater({pos.x, height, pos.z}, 15.0f, 8.0f, 0.2f, 2.0f);
 
-		handler.QueueRemoveEntity(GetId());
+		// if (!text_) {
+			handler.EnqueueVisualizerAction([&handler, this]() {
+				auto camPos = handler.vis->GetCamera().pos();
+				auto pos = this->GetPosition().Toglm();
+				auto vec = pos - camPos;
+
+				text_ = handler.vis->AddArcadeTextEffect(
+					"GOT EM'",
+					pos,
+					20.0f,
+					60.0f,
+					glm::vec3(0, 1, 0),
+					-1 * vec,
+					3.0f,
+					"assets/Roboto-Medium.ttf",
+					12.0f,
+					2.0f
+
+				);
+				text_->SetPulseSpeed(3.0f);
+				text_->SetPulseAmplitude(0.3f);
+				text_->SetRainbowEnabled(true);
+				text_->SetRainbowSpeed(5.0f);
+
+				handler.QueueRemoveEntity(GetId());
+			});
+		// }
 	}
 
 } // namespace Boidsish
