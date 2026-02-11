@@ -52,6 +52,11 @@ namespace Boidsish {
 		return 0;
 	}
 
+	void PaperPlaneHandler::AddScore(int delta, const std::string& label) const {
+		if (score_indicator_)
+			score_indicator_->AddScore(delta, label);
+	}
+
 	void PaperPlaneHandler::PreparePlane(std::shared_ptr<PaperPlane> plane) {
 		if (!plane || !vis)
 			return;
@@ -153,8 +158,8 @@ namespace Boidsish {
 			// 3. Populate forbidden coordinates based on CURRENT launchers and cooldowns
 			std::set<std::pair<int, int>> forbidden_coords;
 			auto                          exclude_neighborhood = [&](const Terrain* chunk) {
-                int cx = chunk->GetX();
-                int cz = chunk->GetZ();
+                int cx = static_cast<int>(chunk->GetX());
+                int cz = static_cast<int>(chunk->GetZ());
                 int step = Constants::Class::Terrain::ChunkSize();
                 int range = 2; // Exclude 2 chunks in every direction
                 for (int dx = -range; dx <= range; ++dx) {
@@ -213,7 +218,7 @@ namespace Boidsish {
 			});
 
 			for (const auto& candidate : candidates) {
-				if (forbidden_coords.count({candidate.chunk->GetX(), candidate.chunk->GetZ()})) {
+				if (forbidden_coords.count({static_cast<int>(candidate.chunk->GetX()), static_cast<int>(candidate.chunk->GetZ())})) {
 					continue;
 				}
 
@@ -270,7 +275,7 @@ namespace Boidsish {
 		}
 
 		if (took_damage && health_gauge_) {
-			health_gauge_->SetValue(plane->GetHealth() / 100.0f);
+			health_gauge_->SetValue(plane->GetHealth() / plane->GetMaxHealth());
 		}
 
 		damage_timer_ = std::min(damage_timer_, 2.0f);

@@ -25,10 +25,7 @@ namespace Boidsish {
 		void SetHealthGauge(std::shared_ptr<HudGauge> gauge) { health_gauge_ = gauge; }
 		void SetScoreIndicator(std::shared_ptr<HudScore> indicator) { score_indicator_ = indicator; }
 
-		void AddScore(int delta, const std::string& label) const {
-			if (score_indicator_)
-				score_indicator_->AddScore(delta, label);
-		}
+		void AddScore(int delta, const std::string& label) const;
 
 		/**
 		 * @brief Finds a suitable starting position and orientation for the paper plane.
