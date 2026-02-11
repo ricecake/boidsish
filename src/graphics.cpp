@@ -15,6 +15,7 @@
 #include "arcade_text.h"
 #include "audio_manager.h"
 #include "clone_manager.h"
+#include "akira_effect.h"
 #include "curved_text.h"
 #include "decor_manager.h"
 #include "dot.h"
@@ -204,6 +205,7 @@ namespace Boidsish {
 		std::unique_ptr<MeshExplosionManager> mesh_explosion_manager;
 		std::unique_ptr<SoundEffectManager>   sound_effect_manager;
 		std::unique_ptr<ShockwaveManager>     shockwave_manager;
+		std::unique_ptr<AkiraEffectManager>   akira_effect_manager;
 		std::unique_ptr<SdfVolumeManager>     sdf_volume_manager;
 		std::unique_ptr<ShadowManager>        shadow_manager;
 		std::unique_ptr<SceneManager>         scene_manager;
@@ -490,6 +492,8 @@ namespace Boidsish {
 			mesh_explosion_manager = std::make_unique<MeshExplosionManager>();
 			mesh_explosion_manager->Initialize(); // Must initialize on main thread with GL context
 			shockwave_manager = std::make_unique<ShockwaveManager>();
+			akira_effect_manager = std::make_unique<AkiraEffectManager>();
+			SetupAkiraBindings();
 			sdf_volume_manager = std::make_unique<SdfVolumeManager>();
 			sdf_volume_manager->Initialize();
 			shadow_manager = std::make_unique<ShadowManager>();
@@ -896,6 +900,12 @@ namespace Boidsish {
 			GLuint shockwaves_idx = glGetUniformBlockIndex(shader_to_setup.ID, "Shockwaves");
 			if (shockwaves_idx != GL_INVALID_INDEX) {
 				glUniformBlockBinding(shader_to_setup.ID, shockwaves_idx, Constants::UboBinding::Shockwaves());
+			}
+		}
+
+		void SetupAkiraBindings() {
+			if (akira_effect_manager && akira_effect_manager->GetShader()) {
+				SetupShaderBindings(*akira_effect_manager->GetShader());
 			}
 		}
 
@@ -2074,6 +2084,9 @@ namespace Boidsish {
 		impl->mesh_explosion_manager->Update(impl->input_state.delta_time, impl->simulation_time);
 		impl->sound_effect_manager->Update(impl->input_state.delta_time);
 		impl->shockwave_manager->Update(impl->input_state.delta_time);
+		if (impl->akira_effect_manager && impl->terrain_generator) {
+			impl->akira_effect_manager->Update(impl->input_state.delta_time, *impl->terrain_generator);
+		}
 		impl->sdf_volume_manager->UpdateUBO();
 		impl->sdf_volume_manager->BindUBO(Constants::UboBinding::SdfVolumes());
 		impl->shockwave_manager->UpdateShaderData();
@@ -2441,6 +2454,9 @@ namespace Boidsish {
 		// Render transparent/particle effects last
 		impl->fire_effect_manager->Render(view, impl->projection, impl->camera.pos());
 		impl->mesh_explosion_manager->Render(view, impl->projection, impl->camera.pos());
+		if (impl->akira_effect_manager) {
+			impl->akira_effect_manager->Render(view, impl->projection, impl->simulation_time);
+		}
 		impl->RenderTrails(view, std::nullopt);
 
 		if (effects_enabled) {
@@ -3067,6 +3083,12 @@ namespace Boidsish {
 	) {
 		return impl->shockwave_manager
 			->AddShockwave(position, normal, max_radius, duration, intensity, ring_width, color);
+	}
+
+	void Visualizer::TriggerAkira(const glm::vec3& position, float radius) {
+		if (impl->akira_effect_manager) {
+			impl->akira_effect_manager->Trigger(position, radius);
+		}
 	}
 
 	int Visualizer::AddSdfSource(const SdfSource& source) {

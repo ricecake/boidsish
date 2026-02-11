@@ -1316,6 +1316,21 @@ namespace Boidsish {
 		return id;
 	}
 
+	uint32_t TerrainGenerator::AddAkira(const glm::vec3& center, float radius) {
+		static std::atomic<uint32_t> akira_id_counter{2000000}; // Offset to avoid collision
+		uint32_t                     id = akira_id_counter++;
+
+		// Scale parameters by world scale
+		float s_radius = radius * world_scale_;
+
+		auto akira = std::make_shared<AkiraDeformation>(id, center, s_radius);
+
+		deformation_manager_.AddDeformation(akira);
+		InvalidateDeformedChunks(id);
+
+		return id;
+	}
+
 	void TerrainGenerator::InvalidateDeformedChunks(std::optional<uint32_t> deformation_id) {
 		std::lock_guard<std::recursive_mutex> lock(chunk_cache_mutex_);
 		terrain_version_++;

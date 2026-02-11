@@ -337,6 +337,18 @@ namespace Boidsish {
 		) override;
 
 		/**
+		 * @brief Add an Akira deformation (hemispherical removal).
+		 *
+		 * @param center Center position
+		 * @param radius Radius of the cut at terrain level
+		 * @return ID of created deformation
+		 */
+		uint32_t AddAkira(
+			const glm::vec3& center,
+			float            radius
+		) override;
+
+		/**
 		 * @brief Invalidate chunks affected by deformations.
 		 *
 		 * Call this after adding/removing deformations to regenerate affected chunks.

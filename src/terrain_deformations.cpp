@@ -392,4 +392,104 @@ namespace Boidsish {
 		return desc;
 	}
 
+	// ==================== AkiraDeformation ====================
+
+	AkiraDeformation::AkiraDeformation(uint32_t id, const glm::vec3& center, float radius):
+		TerrainDeformation(id), center_(center), radius_(radius) {
+		// For the bottom 1/3 of a sphere:
+		// h = 2R/3
+		// a = radius = R * sqrt(8)/3
+		// R = 3 * radius / sqrt(8)
+		sphere_radius_ = (3.0f * radius_) / std::sqrt(8.0f);
+		depth_ = (2.0f * sphere_radius_) / 3.0f;
+	}
+
+	void AkiraDeformation::GetBounds(glm::vec3& out_min, glm::vec3& out_max) const {
+		out_min = center_ - glm::vec3(radius_, depth_, radius_);
+		out_max = center_ + glm::vec3(radius_, 0.0f, radius_);
+	}
+
+	bool AkiraDeformation::ContainsPoint(const glm::vec3& world_pos) const {
+		return ContainsPointXZ(world_pos.x, world_pos.z);
+	}
+
+	bool AkiraDeformation::ContainsPointXZ(float x, float z) const {
+		float dx = x - center_.x;
+		float dz = z - center_.z;
+		return (dx * dx + dz * dz) <= (radius_ * radius_);
+	}
+
+	float AkiraDeformation::ComputeHeightDelta(float x, float z, float current_height) const {
+		(void)current_height;
+		float dx = x - center_.x;
+		float dz = z - center_.z;
+		float dist_sq = dx * dx + dz * dz;
+
+		if (dist_sq > radius_ * radius_) {
+			return 0.0f;
+		}
+
+		// Sphere equation: (x-xc)^2 + (y-yc)^2 + (z-zc)^2 = R^2
+		// y = yc - sqrt(R^2 - dx^2 - dz^2)
+		// yc is sphere_radius_ / 3.0f above the terrain cut level
+		float yc = center_.y + sphere_radius_ / 3.0f;
+		float sphere_y = yc - std::sqrt(std::max(0.0f, sphere_radius_ * sphere_radius_ - dist_sq));
+
+		return sphere_y - center_.y;
+	}
+
+	glm::vec3 AkiraDeformation::TransformNormal(float x, float z, const glm::vec3& original_normal) const {
+		float dx = x - center_.x;
+		float dz = z - center_.z;
+		float dist_sq = dx * dx + dz * dz;
+
+		if (dist_sq > radius_ * radius_ || dist_sq < 0.0001f) {
+			return original_normal;
+		}
+
+		// Normal of a sphere (x-xc, y-yc, z-zc) / R
+		// For the bottom surface, the normal points generally upwards/inwards
+		float yc = center_.y + sphere_radius_ / 3.0f;
+		float sphere_y = yc - std::sqrt(std::max(0.0f, sphere_radius_ * sphere_radius_ - dist_sq));
+
+		glm::vec3 sphere_normal = glm::normalize(glm::vec3(dx, sphere_y - yc, dz));
+		// We want the normal to point away from the sphere center (outwards from the bowl)
+		// The bottom surface normal should have a positive Y component.
+		if (sphere_normal.y < 0)
+			sphere_normal = -sphere_normal;
+
+		return sphere_normal;
+	}
+
+	DeformationResult AkiraDeformation::ComputeDeformation(
+		float            x,
+		float            z,
+		float            current_height,
+		const glm::vec3& current_normal
+	) const {
+		DeformationResult result;
+		if (!ContainsPointXZ(x, z)) {
+			return result;
+		}
+
+		result.applies = true;
+		result.height_delta = ComputeHeightDelta(x, z, current_height);
+		// For Akira, we don't want smooth blending at the edges, so weight is always 1.0 if inside
+		result.blend_weight = 1.0f;
+
+		return result;
+	}
+
+	DeformationDescriptor AkiraDeformation::GetDescriptor() const {
+		DeformationDescriptor desc;
+		desc.type_name = GetTypeName();
+		desc.center = center_;
+		desc.dimensions = glm::vec3(radius_, sphere_radius_, depth_);
+		desc.parameters = glm::vec4(0.0f);
+		desc.seed = 0;
+		desc.intensity = 1.0f;
+		desc.deformation_type = DeformationType::Subtractive;
+		return desc;
+	}
+
 } // namespace Boidsish

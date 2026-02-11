@@ -404,6 +404,20 @@ namespace Boidsish {
 					return 4;
 				}
 			} // namespace Rendering
+
+			namespace Akira {
+				constexpr float DefaultGrowthDuration() {
+					return 0.5f;
+				}
+
+				constexpr float DefaultFadeDuration() {
+					return 3.0f;
+				}
+
+				constexpr float DefaultRadius() {
+					return 20.0f;
+				}
+			} // namespace Akira
 		} // namespace Class
 	} // namespace Constants
 } // namespace Boidsish
