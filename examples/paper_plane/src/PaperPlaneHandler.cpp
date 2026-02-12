@@ -52,9 +52,22 @@ namespace Boidsish {
 		return 0;
 	}
 
+	int PaperPlaneHandler::GetScore() const {
+		if (score_indicator_)
+			return score_indicator_->GetValue();
+		return 0;
+	}
+
 	void PaperPlaneHandler::AddScore(int delta, const std::string& label) const {
 		if (score_indicator_)
 			score_indicator_->AddScore(delta, label);
+	}
+
+	void PaperPlaneHandler::OnPlaneDeath(int score) const {
+		if (vis) {
+			vis->AddHudMessage("GAME OVER", HudAlignment::MIDDLE_CENTER, {0, 0}, 3.0f);
+			vis->AddHudMessage("Final Score: " + std::to_string(score), HudAlignment::MIDDLE_CENTER, {0, 60}, 1.5f);
+		}
 	}
 
 	void PaperPlaneHandler::PreparePlane(std::shared_ptr<PaperPlane> plane) {

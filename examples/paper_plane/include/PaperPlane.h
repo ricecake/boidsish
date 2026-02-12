@@ -1,6 +1,7 @@
 #pragma once
 
 #include <memory>
+#include <mutex>
 
 #include "PaperPlaneInputController.h"
 #include "entity.h"
@@ -11,6 +12,8 @@ namespace Boidsish {
 
 	class PaperPlane: public Entity<Model> {
 	public:
+		enum class PlaneState { ALIVE, DYING, DEAD };
+
 		PaperPlane(int id = 0);
 
 		void SetController(std::shared_ptr<PaperPlaneInputController> controller);
@@ -40,6 +43,11 @@ namespace Boidsish {
 		float                                      health = 100.0f;
 		float                                      shield = 100.0f;
 		float                                      chaff_timer_ = 0.0f;
+		PlaneState                                 state_ = PlaneState::ALIVE;
+		float                                      fire_effect_timer_ = 0.0f;
+		std::shared_ptr<FireEffect>                dying_fire_effect_;
+		float                                      spiral_intensity_ = 1.0f;
+		mutable std::mutex                         effect_mutex_;
 
 		// Super speed effect state
 		enum class SuperSpeedState { NORMAL, BUILDUP, ACTIVE, TAPERING };
