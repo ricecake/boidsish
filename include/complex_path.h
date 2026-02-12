@@ -16,14 +16,14 @@ public:
     void Update();
     void SetHeight(float height);
     void render() const override;
-    std::map<std::string, UniformValue> GetRenderUniforms() const override;
+    void render(Shader& shader, const glm::mat4& model_matrix) const override;
 
 private:
     const TerrainGenerator* terrain_generator_;
     Camera* camera_;
-    float height_ = 10.0f;
-    float path_length_ = 200.0f;
-    float segment_distance_ = 5.0f;
+    float height_ = 0.5f;
+    float path_length_ = 300.0f;
+    float segment_distance_ = 4.0f;
 
 };
 

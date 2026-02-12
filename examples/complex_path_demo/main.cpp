@@ -29,7 +29,6 @@ int main(int argc, char** argv) {
     // Create a shape handler to update and render the path
     visualizer.AddShapeHandler([=](float time) {
         complex_path->Update();
-        complex_path->SetHeight(camera->y);
         std::vector<std::shared_ptr<Boidsish::Shape>> shapes;
         shapes.push_back(complex_path);
         return shapes;
