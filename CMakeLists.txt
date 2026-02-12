@@ -241,3 +241,7 @@ add_test(NAME test_thread_pool COMMAND test_thread_pool)
 add_executable(test_spline tests/test_spline.cpp)
 target_link_libraries(test_spline PRIVATE boidsish GTest::GTest GTest::Main)
 add_test(NAME test_spline COMMAND test_spline)
+
+add_executable(test_shader_framework tests/test_shader_framework.cpp)
+target_link_libraries(test_shader_framework PRIVATE boidsish GTest::GTest GTest::Main)
+add_test(NAME test_shader_framework COMMAND test_shader_framework)
