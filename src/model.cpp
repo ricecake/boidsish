@@ -286,6 +286,43 @@ namespace Boidsish {
 		}
 	}
 
+	void Model::GenerateRenderPackets(std::vector<RenderPacket>& out_packets) const {
+		glm::mat4 model_matrix = GetModelMatrix();
+
+		for (const auto& mesh : meshes) {
+			RenderPacket packet;
+			packet.vao = mesh.getVAO();
+			packet.vbo = mesh.getVBO();
+			packet.ebo = mesh.getEBO();
+			packet.index_count = static_cast<unsigned int>(mesh.indices.size());
+			packet.draw_mode = GL_TRIANGLES;
+			packet.index_type = GL_UNSIGNED_INT;
+			packet.shader_id = shader ? shader->ID : 0;
+			packet.model_matrix = model_matrix;
+
+			packet.color = glm::vec3(GetR() * mesh.diffuseColor.r, GetG() * mesh.diffuseColor.g, GetB() * mesh.diffuseColor.b);
+			packet.alpha = GetA() * mesh.opacity;
+			packet.use_pbr = UsePBR();
+			packet.roughness = GetRoughness();
+			packet.metallic = GetMetallic();
+			packet.ao = GetAO();
+			packet.is_instanced = IsInstanced();
+
+			for (const auto& tex : mesh.textures) {
+				packet.textures.push_back({tex.id, tex.type});
+			}
+
+			RenderLayer layer = (packet.alpha < 1.0f) ? RenderLayer::Transparent : RenderLayer::Opaque;
+			packet.shader_handle = ShaderHandle(0);
+			packet.material_handle = MaterialHandle(0);
+
+			// Depth could be calculated here if camera position was available, or updated later
+			packet.sort_key = CalculateSortKey(layer, packet.shader_handle, packet.material_handle, 0.0f);
+
+			out_packets.push_back(packet);
+		}
+	}
+
 	glm::mat4 Model::GetModelMatrix() const {
 		glm::mat4 model = glm::mat4(1.0f);
 		model = glm::translate(model, glm::vec3(GetX(), GetY(), GetZ()));

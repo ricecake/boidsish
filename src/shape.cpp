@@ -19,6 +19,37 @@ namespace Boidsish {
 	int                     Shape::sphere_vertex_count_ = 0;
 	std::shared_ptr<Shader> Shape::shader = nullptr;
 
+	void Shape::GenerateRenderPackets(std::vector<RenderPacket>& out_packets) const {
+		RenderPacket packet;
+		packet.vao = sphere_vao_;
+		packet.vbo = sphere_vbo_;
+		packet.ebo = sphere_ebo_;
+		packet.index_count = static_cast<unsigned int>(sphere_vertex_count_);
+		packet.draw_mode = GL_TRIANGLES;
+		packet.index_type = GL_UNSIGNED_INT;
+		packet.shader_id = shader ? shader->ID : 0;
+		packet.model_matrix = GetModelMatrix();
+		packet.color = glm::vec3(r_, g_, b_);
+		packet.alpha = a_;
+		packet.use_pbr = use_pbr_;
+		packet.roughness = roughness_;
+		packet.metallic = metallic_;
+		packet.ao = ao_;
+		packet.is_instanced = is_instanced_;
+
+		// Default to Opaque layer unless alpha is less than 1.0
+		RenderLayer layer = (a_ < 1.0f) ? RenderLayer::Transparent : RenderLayer::Opaque;
+
+		// Handles would typically be managed by a higher-level system (e.g., AssetManager)
+		packet.shader_handle = ShaderHandle(0);
+		packet.material_handle = MaterialHandle(0);
+
+		// Use a neutral depth for the initial key.
+		packet.sort_key = CalculateSortKey(layer, packet.shader_handle, packet.material_handle, 0.0f);
+
+		out_packets.push_back(packet);
+	}
+
 	void Shape::GetGeometry(std::vector<Vertex>& vertices, std::vector<unsigned int>& indices) const {
 		const int   latitude_segments = 16;
 		const int   longitude_segments = 32;
@@ -61,13 +92,6 @@ namespace Boidsish {
 
 		std::vector<Vertex>       vertices;
 		std::vector<unsigned int> indices;
-
-		// We use a dummy instance to call the virtual GetGeometry,
-		// but since Shape is abstract, we just use the logic directly or
-		// we can make a temporary concrete class if we really wanted to.
-		// However, Shape's GetGeometry is already the sphere logic.
-		// Since InitSphereMesh is static, we can't use 'this'.
-		// I'll just keep the logic here but I could have made it a static helper.
 
 		const int   latitude_segments = 16;
 		const int   longitude_segments = 32;
@@ -123,8 +147,6 @@ namespace Boidsish {
 		glEnableVertexAttribArray(2);
 
 		glBindVertexArray(0);
-		// EBO is not needed after this, but we're not deleting it.
-		// This is a potential resource leak if not managed, but matches original logic.
 	}
 
 	void Shape::DestroySphereMesh() {
@@ -157,7 +179,7 @@ namespace Boidsish {
 		model = glm::scale(model, scale);
 		shader->setMat4("model", model);
 		shader->setVec3("objectColor", color.r, color.g, color.b);
-		shader->setFloat("objectAlpha", 1.0f); // Default to opaque for this static helper
+		shader->setFloat("objectAlpha", 1.0f);
 
 		glBindVertexArray(sphere_vao_);
 		glDrawElements(GL_TRIANGLES, sphere_vertex_count_, GL_UNSIGNED_INT, 0);

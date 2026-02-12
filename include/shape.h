@@ -7,6 +7,7 @@
 
 #include "constants.h"
 #include "visual_effects.h"
+#include "geometry.h"
 #include <glm/glm.hpp>
 #include <glm/gtc/quaternion.hpp>
 
@@ -21,7 +22,7 @@ namespace Boidsish {
 	};
 
 	// Base class for all renderable shapes
-	class Shape {
+	class Shape : public Geometry {
 	public:
 		virtual ~Shape() = default;
 
@@ -31,7 +32,10 @@ namespace Boidsish {
 		// Check if the shape has expired (for transient effects)
 		virtual bool IsExpired() const { return false; }
 
-		// Pure virtual function for rendering the shape
+		// Implementation of Geometry interface
+		virtual void GenerateRenderPackets(std::vector<RenderPacket>& out_packets) const override;
+
+		// Pure virtual function for legacy immediate rendering the shape
 		virtual void render() const = 0;
 
 		virtual void render(Shader& shader) const final { render(shader, GetModelMatrix()); }

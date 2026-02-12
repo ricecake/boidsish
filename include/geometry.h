@@ -4,8 +4,23 @@
 #include <cstdint>
 #include <string>
 #include <vector>
+#include <algorithm>
+
+#include "render_shader.h"
+#include "material.h"
 
 namespace Boidsish {
+
+	/**
+	 * @brief Defines the logical layers for rendering to control draw order.
+	 */
+	enum class RenderLayer : uint8_t {
+		Background = 0,
+		Opaque = 1,
+		Transparent = 2,
+		UI = 3,
+		Overlay = 4
+	};
 
 	/**
 	 * @brief Contains all the data necessary for a single draw call.
@@ -14,18 +29,23 @@ namespace Boidsish {
 	struct RenderPacket {
 		/**
 		 * @brief Packed 64-bit ID for sorting packets to minimize GPU state changes.
-		 * Suggested layout (high to low bits):
+		 * Layout (high to low bits):
 		 * [Layer: 8] [Shader: 16] [Material: 16] [Depth: 24]
 		 *
 		 * For opaque: sorting ascending will group by layer, then shader, then material,
-		 * and finally by depth (front-to-back if depth is packed correctly).
+		 * and finally by depth (front-to-back).
 		 */
 		uint64_t sort_key = 0;
 
+		// Resource handles
+		ShaderHandle   shader_handle;
+		MaterialHandle material_handle;
+
+		// Raw OpenGL resources (kept for compatibility and low-level access)
 		unsigned int vao = 0;
 		unsigned int vbo = 0;
 		unsigned int ebo = 0;
-		unsigned int shader_id = 0;
+		unsigned int shader_id = 0; // The compiled program ID
 
 		unsigned int vertex_count = 0;
 		unsigned int index_count = 0;
@@ -38,7 +58,7 @@ namespace Boidsish {
 		// Transformation
 		glm::mat4 model_matrix = glm::mat4(1.0f);
 
-		// Material Properties
+		// Material Properties (Directly in packet for fast access/legacy support)
 		glm::vec3 color = glm::vec3(1.0f);
 		float     alpha = 1.0f;
 
@@ -61,7 +81,7 @@ namespace Boidsish {
 	};
 
 	/**
-	 * @brief Abstract base class for geometric objects that can provide a RenderPacket.
+	 * @brief Abstract base class for geometric objects that can provide RenderPackets.
 	 * The ultimate goal is for geometry to return data needed to render it, and a
 	 * different loop actually handles rendering.
 	 */
@@ -70,10 +90,43 @@ namespace Boidsish {
 		virtual ~Geometry() = default;
 
 		/**
-		 * @brief Generates a RenderPacket describing how this geometry should be rendered.
-		 * @return A RenderPacket containing buffer IDs, shader IDs, and material properties.
+		 * @brief Generates one or more RenderPackets describing how this geometry should be rendered.
+		 * @param out_packets Vector to append the generated packets to.
 		 */
-		virtual RenderPacket render() const = 0;
+		virtual void GenerateRenderPackets(std::vector<RenderPacket>& out_packets) const = 0;
 	};
+
+	/**
+	 * @brief Helper to calculate a 64-bit sort key for a RenderPacket.
+	 *
+	 * @param layer The render layer (highest priority)
+	 * @param shader The shader handle
+	 * @param material The material handle
+	 * @param depth Normalized depth [0.0, 1.0]
+	 * @return A packed 64-bit key for sorting
+	 */
+	inline uint64_t CalculateSortKey(RenderLayer layer, ShaderHandle shader, MaterialHandle material, float depth) {
+		uint64_t key = 0;
+		// Layer: 8 bits (56-63)
+		key |= static_cast<uint64_t>(layer) << 56;
+		// Shader: 16 bits (40-55)
+		key |= static_cast<uint64_t>(shader.id & 0xFFFF) << 40;
+		// Material: 16 bits (24-39)
+		key |= static_cast<uint64_t>(material.id & 0xFFFF) << 24;
+
+		// Depth: 24 bits (0-23)
+		// Map [0, 1] to [0, 16777215]
+		uint32_t d;
+		if (layer == RenderLayer::Transparent) {
+			// Transparent sorting: Back-to-front (larger depth = smaller value for ascending sort)
+			d = static_cast<uint32_t>((1.0f - glm::clamp(depth, 0.0f, 1.0f)) * 16777215.0f);
+		} else {
+			// Opaque sorting: Front-to-back (smaller depth = smaller value)
+			d = static_cast<uint32_t>(glm::clamp(depth, 0.0f, 1.0f) * 16777215.0f);
+		}
+		key |= (d & 0xFFFFFF);
+
+		return key;
+	}
 
 } // namespace Boidsish
