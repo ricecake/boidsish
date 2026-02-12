@@ -115,20 +115,27 @@ namespace Boidsish {
 		auto [height, norm] = handler.vis->GetTerrainPointPropertiesThreadSafe(pos.x, pos.z);
 		if (pos.y < height) {
 			if (state_ == PlaneState::DYING) {
-				state_ = PlaneState::DEAD;
-				handler.EnqueueVisualizerAction([&handler, pos = GetPosition().Toglm()]() {
-					if (handler.vis) {
-						handler.vis->CreateExplosion(pos, 5.0f);
+				spiral_intensity_ += 0.5f;
+				if (health < -20.0f) {
+					state_ = PlaneState::DEAD;
+					handler.EnqueueVisualizerAction([&handler, pos = GetPosition().Toglm(), effect = dying_fire_effect_]() {
+						if (handler.vis) {
+							handler.vis->CreateExplosion(pos, 5.0f);
+							if (effect) {
+								effect->SetActive(false);
+								effect->SetLifetime(0.1f);
+							}
+						}
+					});
+					if (shape_) {
+						shape_->SetHidden(true);
 					}
-				});
-				if (shape_) {
-					shape_->SetHidden(true);
+					if (auto* pp_handler = dynamic_cast<const PaperPlaneHandler*>(&handler)) {
+						pp_handler->OnPlaneDeath(pp_handler->GetScore());
+					}
+					SetVelocity(Vector3(0, 0, 0));
+					return;
 				}
-				if (auto* pp_handler = dynamic_cast<const PaperPlaneHandler*>(&handler)) {
-					pp_handler->OnPlaneDeath(pp_handler->GetScore());
-				}
-				SetVelocity(Vector3(0, 0, 0));
-				return;
 			}
 
 			TriggerDamage();
@@ -146,14 +153,23 @@ namespace Boidsish {
 		}
 
 		if (state_ == PlaneState::DYING) {
-			fire_effect_timer_ -= delta_time;
-			if (fire_effect_timer_ <= 0) {
-				handler.EnqueueVisualizerAction([&handler, p = pos.Toglm()]() {
-					if (handler.vis) {
-						handler.vis->AddFireEffect(p, FireEffectStyle::Fire);
-					}
+			std::lock_guard<std::mutex> lock(effect_mutex_);
+			if (!dying_fire_effect_) {
+				fire_effect_timer_ -= delta_time;
+				if (fire_effect_timer_ <= 0) {
+					handler.EnqueueVisualizerAction([this, &handler, p = pos.Toglm()]() {
+						if (handler.vis) {
+							auto effect = handler.vis->AddFireEffect(p, FireEffectStyle::Fire);
+							std::lock_guard<std::mutex> lock(this->effect_mutex_);
+							this->dying_fire_effect_ = effect;
+						}
+					});
+					fire_effect_timer_ = 1.0f; // Prevent multiple requests while pending
+				}
+			} else {
+				handler.EnqueueVisualizerAction([effect = dying_fire_effect_, p = pos.Toglm()]() {
+					effect->SetPosition(p);
 				});
-				fire_effect_timer_ = 0.1f;
 			}
 		}
 
@@ -174,8 +190,8 @@ namespace Boidsish {
 
 		if (state_ == PlaneState::DYING) {
 			target_rot_velocity *= 0.2f;
-			target_rot_velocity.z += 1.5f;
-			target_rot_velocity.x += 0.5f;
+			target_rot_velocity.z += 1.5f * spiral_intensity_;
+			target_rot_velocity.x += 0.5f * spiral_intensity_;
 		}
 
 		// --- Coordinated Turn (Banking) ---

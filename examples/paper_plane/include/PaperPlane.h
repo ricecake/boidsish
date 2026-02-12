@@ -6,6 +6,7 @@
 #include "entity.h"
 #include "model.h"
 #include <glm/gtc/quaternion.hpp>
+#include <mutex>
 
 namespace Boidsish {
 
@@ -44,6 +45,9 @@ namespace Boidsish {
 		float                                      chaff_timer_ = 0.0f;
 		PlaneState                                 state_ = PlaneState::ALIVE;
 		float                                      fire_effect_timer_ = 0.0f;
+		std::shared_ptr<FireEffect>                dying_fire_effect_;
+		float                                      spiral_intensity_ = 1.0f;
+		mutable std::mutex                         effect_mutex_;
 
 		// Super speed effect state
 		enum class SuperSpeedState { NORMAL, BUILDUP, ACTIVE, TAPERING };
