@@ -5,6 +5,7 @@
 #include <set>
 
 #include "GuidedMissileLauncher.h"
+#include "PearEnemy.h"
 #include "PaperPlane.h"
 #include "VortexFlockingEntity.h"
 #include "constants.h"
@@ -159,6 +160,18 @@ namespace Boidsish {
 				}
 			}
 
+			for (auto it = spawned_roamers_.begin(); it != spawned_roamers_.end();) {
+				if (visible_chunk_set.find(it->first) == visible_chunk_set.end()) {
+					QueueRemoveEntity(it->second);
+					it = spawned_roamers_.erase(it);
+				} else if (GetEntity(it->second) == nullptr) {
+					// Roamer was destroyed or despawned
+					it = spawned_roamers_.erase(it);
+				} else {
+					++it;
+				}
+			}
+
 			// 2. Clean up expired cooldowns
 			for (auto it = launcher_cooldowns_.begin(); it != launcher_cooldowns_.end();) {
 				if (visible_chunk_set.find(it->first) == visible_chunk_set.end() || time >= it->second) {
@@ -186,6 +199,10 @@ namespace Boidsish {
 				exclude_neighborhood(pair.first);
 			}
 
+			for (const auto& pair : spawned_roamers_) {
+				exclude_neighborhood(pair.first);
+			}
+
 			for (const auto& pair : launcher_cooldowns_) {
 				exclude_neighborhood(pair.first);
 			}
@@ -196,7 +213,8 @@ namespace Boidsish {
 				float          height;
 			};
 
-			std::vector<SpawnCandidate> candidates;
+			std::vector<SpawnCandidate> launcher_candidates;
+			std::vector<SpawnCandidate> roamer_candidates;
 			std::set<const Terrain*>    processed_chunks;
 
 			for (const auto& chunk_ptr : visible_chunks) {
@@ -210,27 +228,46 @@ namespace Boidsish {
 				std::vector<const Terrain*> current_grid = neighbors;
 				current_grid.push_back(chunk);
 
-				const Terrain* best_chunk = nullptr;
+				const Terrain* best_launcher_chunk = nullptr;
 				glm::vec3      highest_point = {0, -std::numeric_limits<float>::infinity(), 0};
+
+				const Terrain* best_roamer_chunk = nullptr;
+				glm::vec3      lowest_flat_point = {0, std::numeric_limits<float>::infinity(), 0};
 
 				for (const auto& grid_chunk : current_grid) {
 					if (grid_chunk->proxy.highestPoint.y > highest_point.y) {
 						highest_point = grid_chunk->proxy.highestPoint;
-						best_chunk = grid_chunk;
+						best_launcher_chunk = grid_chunk;
 					}
+
+					// Find a low flat point for roamer
+					// For simplicity, we can use a sample or a property if available.
+					// Terrain doesn't have lowestPoint in proxy. Let's use a sample.
+					// Actually, let's just use the chunk center for roamers if it's low enough.
+					float cx = grid_chunk->GetX() + Constants::Class::Terrain::ChunkSize() * 0.5f;
+					float cz = grid_chunk->GetZ() + Constants::Class::Terrain::ChunkSize() * 0.5f;
+					auto [h, norm] = vis->GetTerrainPointPropertiesThreadSafe(cx, cz);
+					if (h < lowest_flat_point.y && norm.y > 0.9f) {
+						lowest_flat_point = {cx - grid_chunk->GetX(), h, cz - grid_chunk->GetZ()};
+						best_roamer_chunk = grid_chunk;
+					}
+
 					processed_chunks.insert(grid_chunk);
 				}
 
-				if (best_chunk) {
-					candidates.push_back({best_chunk, highest_point, highest_point.y});
+				if (best_launcher_chunk) {
+					launcher_candidates.push_back({best_launcher_chunk, highest_point, highest_point.y});
+				}
+				if (best_roamer_chunk && lowest_flat_point.y < 30.0f) {
+					roamer_candidates.push_back({best_roamer_chunk, lowest_flat_point, lowest_flat_point.y});
 				}
 			}
 
-			std::sort(candidates.begin(), candidates.end(), [](const auto& a, const auto& b) {
+			std::sort(launcher_candidates.begin(), launcher_candidates.end(), [](const auto& a, const auto& b) {
 				return a.height > b.height;
 			});
 
-			for (const auto& candidate : candidates) {
+			for (const auto& candidate : launcher_candidates) {
 				if (forbidden_coords.count(
 						{static_cast<int>(candidate.chunk->GetX()), static_cast<int>(candidate.chunk->GetZ())}
 					)) {
@@ -249,7 +286,6 @@ namespace Boidsish {
 					glm::vec3 up_vector = glm::vec3(0.0f, 1.0f, 0.0f);
 					glm::quat terrain_alignment = glm::rotation(up_vector, terrain_normal);
 
-					// Use a more robust ID based on chunk indices to avoid collisions and NaNs
 					int ix = static_cast<int>(
 						std::round(chunk_pos.x / static_cast<float>(Constants::Class::Terrain::ChunkSize()))
 					);
@@ -268,6 +304,55 @@ namespace Boidsish {
 						static_cast<int>(candidate.chunk->GetZ())
 					};
 					spawned_launchers_[coord] = id;
+					exclude_neighborhood(coord);
+				}
+			}
+
+			// Spawn Roamers
+			auto planes = GetEntitiesByType<PaperPlane>();
+			glm::vec3 plane_pos(0.0f);
+			bool has_plane = !planes.empty();
+			if (has_plane) {
+				plane_pos = planes[0]->GetPosition().Toglm();
+			}
+
+			for (const auto& candidate : roamer_candidates) {
+				if (forbidden_coords.count(
+						{static_cast<int>(candidate.chunk->GetX()), static_cast<int>(candidate.chunk->GetZ())}
+					)) {
+					continue;
+				}
+
+				glm::vec3 chunk_pos = glm::vec3(
+					candidate.chunk->GetX(),
+					candidate.chunk->GetY(),
+					candidate.chunk->GetZ()
+				);
+				glm::vec3 world_pos = chunk_pos + candidate.point;
+				auto [terrain_h, terrain_normal] = vis->GetTerrainPointPropertiesThreadSafe(world_pos.x, world_pos.z);
+
+				if (terrain_h < 35.0f) {
+					// Prevent spawn/despawn loop: only spawn if player is within 1000m
+					if (has_plane && glm::distance(world_pos, plane_pos) > 1000.0f) {
+						continue;
+					}
+					int ix = static_cast<int>(
+						std::round(chunk_pos.x / static_cast<float>(Constants::Class::Terrain::ChunkSize()))
+					);
+					int iz = static_cast<int>(
+						std::round(chunk_pos.z / static_cast<float>(Constants::Class::Terrain::ChunkSize()))
+					);
+					int id = 0x60000000 | ((ix + 1024) << 11) | (iz + 1024);
+
+					QueueAddEntity<PearEnemy>(
+						id,
+						Vector3(world_pos.x, terrain_h + 0.1f, world_pos.z)
+					);
+					std::pair<int, int> coord = {
+						static_cast<int>(candidate.chunk->GetX()),
+						static_cast<int>(candidate.chunk->GetZ())
+					};
+					spawned_roamers_[coord] = id;
 					exclude_neighborhood(coord);
 				}
 			}
