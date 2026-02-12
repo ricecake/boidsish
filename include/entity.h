@@ -373,6 +373,14 @@ namespace Boidsish {
 		 */
 		bool IsTerrainCached(float x, float z) const;
 
+		/**
+		 * @brief Get a valid placement for an entity, ensuring clearance from terrain and ground.
+		 * @param suggested_pos The desired position
+		 * @param clearance Minimum distance from terrain and ground (Y=0)
+		 * @return A valid position at least 'clearance' above surfaces, with Y > 0.
+		 */
+		glm::vec3 GetValidPlacement(const glm::vec3& suggested_pos, float clearance) const;
+
 		// Thread-safe methods for entity modification
 		template <typename T, typename... Args>
 		void QueueAddEntity(Args&&... args) const {

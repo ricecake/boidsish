@@ -15,6 +15,7 @@
 #include "akira_effect.h"
 #include "arcade_text.h"
 #include "audio_manager.h"
+#include "checkpoint_ring.h"
 #include "clone_manager.h"
 #include "curved_text.h"
 #include "decor_manager.h"
@@ -538,6 +539,12 @@ namespace Boidsish {
 			shader->use();
 			SetupShaderBindings(*shader);
 			SetupShaderBindings(*trail_shader);
+
+			CheckpointRingShape::SetShader(
+				std::make_shared<Shader>("shaders/checkpoint.vert", "shaders/checkpoint.frag")
+			);
+			SetupShaderBindings(*CheckpointRingShape::GetShader());
+
 			if (plane_shader) {
 				SetupShaderBindings(*plane_shader);
 			}
@@ -589,6 +596,7 @@ namespace Boidsish {
 
 			Shape::InitSphereMesh();
 			Line::InitLineMesh();
+			CheckpointRingShape::InitQuadMesh();
 
 			if (postprocess_shader_ || blur_shader) {
 				float blur_quad_vertices[] = {
@@ -956,6 +964,7 @@ namespace Boidsish {
 
 			Shape::DestroySphereMesh();
 			Line::DestroyLineMesh();
+			CheckpointRingShape::DestroyQuadMesh();
 
 			if (blur_quad_vao)
 				glDeleteVertexArrays(1, &blur_quad_vao);
@@ -1024,6 +1033,13 @@ namespace Boidsish {
 			shader->use();
 			shader->setMat4("projection", projection);
 			shader->setMat4("view", view);
+
+			if (CheckpointRingShape::GetShader()) {
+				CheckpointRingShape::GetShader()->use();
+				CheckpointRingShape::GetShader()->setMat4("projection", projection);
+				CheckpointRingShape::GetShader()->setMat4("view", view);
+			}
+
 			return view;
 		}
 
@@ -2136,6 +2152,10 @@ namespace Boidsish {
 
 		// Batched lighting UBO update - single glBufferSubData instead of 8 calls
 		{
+			if (CheckpointRingShape::GetShader()) {
+				CheckpointRingShape::GetShader()->use();
+				CheckpointRingShape::GetShader()->setFloat("time", impl->simulation_time);
+			}
 			const auto& lights = impl->light_manager.GetLights();
 			int         num_lights = std::min(static_cast<int>(lights.size()), 10);
 
