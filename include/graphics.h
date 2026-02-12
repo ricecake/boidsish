@@ -402,8 +402,8 @@ namespace Boidsish {
 			const glm::vec3&   color = glm::vec3(1.0f)
 		);
 
-		std::tuple<float, glm::vec3>                 GetTerrainPointProperties(float x, float y) const;
-		std::tuple<float, glm::vec3>                 GetTerrainPointPropertiesThreadSafe(float x, float y) const;
+		std::tuple<float, glm::vec3>                 CalculateTerrainPropertiesAtPoint(float x, float y) const;
+		std::tuple<float, glm::vec3>                 GetTerrainPropertiesAtPoint(float x, float y) const;
 		float                                        GetTerrainMaxHeight() const;
 		const std::vector<std::shared_ptr<Terrain>>& GetTerrainChunks() const;
 

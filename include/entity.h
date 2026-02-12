@@ -310,8 +310,7 @@ namespace Boidsish {
 		// Get total entity count
 		size_t GetEntityCount() const { return entities_.size(); }
 
-		std::tuple<float, glm::vec3>                 GetTerrainPointProperties(float x, float y) const;
-		std::tuple<float, glm::vec3>                 GetTerrainPointPropertiesThreadSafe(float x, float y) const;
+		std::tuple<float, glm::vec3>                 CalculateTerrainPropertiesAtPoint(float x, float y) const;
 		const std::vector<std::shared_ptr<Terrain>>& GetTerrainChunks() const;
 		const TerrainGenerator*                      GetTerrainGenerator() const;
 
@@ -325,7 +324,7 @@ namespace Boidsish {
 		 * @param z World Z coordinate
 		 * @return Tuple of (height, surface_normal)
 		 */
-		std::tuple<float, glm::vec3> GetCachedTerrainProperties(float x, float z) const;
+		std::tuple<float, glm::vec3> GetTerrainPropertiesAtPoint(float x, float z) const;
 
 		/**
 		 * @brief Check if a 3D point is below the terrain surface.

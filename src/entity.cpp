@@ -127,13 +127,9 @@ namespace Boidsish {
 		return {};
 	}
 
-	std::tuple<float, glm::vec3> EntityHandler::GetTerrainPointProperties(float x, float y) const {
-		return vis->GetTerrainPointProperties(x, y);
-	}
-
-	std::tuple<float, glm::vec3> EntityHandler::GetTerrainPointPropertiesThreadSafe(float x, float y) const {
+	std::tuple<float, glm::vec3> EntityHandler::CalculateTerrainPropertiesAtPoint(float x, float y) const {
 		if (vis) {
-			return vis->GetTerrainPointPropertiesThreadSafe(x, y);
+			return vis->CalculateTerrainPropertiesAtPoint(x, y);
 		}
 		return {0.0f, glm::vec3(0, 1, 0)};
 	}
@@ -148,9 +144,9 @@ namespace Boidsish {
 
 	// ========== Cache-Preferring Terrain Query Implementations ==========
 
-	std::tuple<float, glm::vec3> EntityHandler::GetCachedTerrainProperties(float x, float z) const {
-		if (auto* gen = GetTerrainGenerator()) {
-			return gen->GetCachedPointProperties(x, z);
+	std::tuple<float, glm::vec3> EntityHandler::GetTerrainPropertiesAtPoint(float x, float z) const {
+		if (vis) {
+			return vis->GetTerrainPropertiesAtPoint(x, z);
 		}
 		return {0.0f, glm::vec3(0, 1, 0)};
 	}
@@ -202,7 +198,7 @@ namespace Boidsish {
 	glm::vec3 EntityHandler::GetValidPlacement(const glm::vec3& suggested_pos, float clearance) const {
 		float terrain_h = 0.0f;
 		if (vis) {
-			auto [h, norm] = vis->GetTerrainPointPropertiesThreadSafe(suggested_pos.x, suggested_pos.z);
+			auto [h, norm] = vis->GetTerrainPropertiesAtPoint(suggested_pos.x, suggested_pos.z);
 			terrain_h = h;
 		}
 		float min_y = std::max(0.0f, terrain_h) + clearance;

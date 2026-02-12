@@ -659,7 +659,7 @@ namespace Boidsish {
 		// Ray marching to find a segment that contains the intersection
 		while (current_dist < max_dist) {
 			current_pos = origin + dir * current_dist;
-			float terrain_height = std::get<0>(GetPointProperties(current_pos.x, current_pos.z));
+			float terrain_height = std::get<0>(CalculateTerrainPropertiesAtPoint(current_pos.x, current_pos.z));
 
 			if (current_pos.y < terrain_height) {
 				// We found an intersection between the previous and current step.
@@ -672,7 +672,7 @@ namespace Boidsish {
 					float     mid_dist = (start_dist + end_dist) / 2.0f;
 					glm::vec3 mid_pos = origin + dir * mid_dist;
 
-					float mid_terrain_height = std::get<0>(GetPointProperties(mid_pos.x, mid_pos.z));
+					float mid_terrain_height = std::get<0>(CalculateTerrainPropertiesAtPoint(mid_pos.x, mid_pos.z));
 
 					if (mid_pos.y < mid_terrain_height) {
 						end_dist = mid_dist; // Intersection is in the first half
@@ -720,7 +720,7 @@ namespace Boidsish {
 		glm::vec2 current_pos = findClosestPointOnPath(start_pos);
 
 		for (int i = 0; i < num_points; ++i) {
-			float height = std::get<0>(pointProperties(current_pos.x, current_pos.y));
+			float height = std::get<0>(CalculateTerrainPropertiesAtPoint(current_pos.x, current_pos.y));
 			path.emplace_back(current_pos.x, height, current_pos.y);
 
 			// Get path tangent
@@ -867,7 +867,7 @@ namespace Boidsish {
 				float worldX = (super_chunk_x * texture_dim + x) * world_scale_;
 				float worldZ = (super_chunk_z * texture_dim + y) * world_scale_;
 
-				auto [height, normal] = pointProperties(worldX, worldZ);
+				auto [height, normal] = CalculateTerrainPropertiesAtPoint(worldX, worldZ);
 
 				int index = (y * texture_dim + x) * 4;
 
@@ -1120,7 +1120,7 @@ namespace Boidsish {
 		return chunk_cache_.find({chunk_x, chunk_z}) != chunk_cache_.end();
 	}
 
-	std::tuple<float, glm::vec3> TerrainGenerator::GetCachedPointProperties(float x, float z) const {
+	std::tuple<float, glm::vec3> TerrainGenerator::GetTerrainPropertiesAtPoint(float x, float z) const {
 		// Try cache first
 		auto cached = InterpolateFromCachedChunk(x, z);
 		if (cached.has_value()) {
@@ -1128,21 +1128,21 @@ namespace Boidsish {
 		}
 
 		// Fall back to procedural generation
-		return pointProperties(x, z);
+		return CalculateTerrainPropertiesAtPoint(x, z);
 	}
 
 	bool TerrainGenerator::IsPointBelowTerrain(const glm::vec3& point) const {
-		auto [height, normal] = GetCachedPointProperties(point.x, point.z);
+		auto [height, normal] = GetTerrainPropertiesAtPoint(point.x, point.z);
 		return point.y < height;
 	}
 
 	float TerrainGenerator::GetDistanceAboveTerrain(const glm::vec3& point) const {
-		auto [height, normal] = GetCachedPointProperties(point.x, point.z);
+		auto [height, normal] = GetTerrainPropertiesAtPoint(point.x, point.z);
 		return point.y - height;
 	}
 
 	std::tuple<float, glm::vec3> TerrainGenerator::GetClosestTerrainInfo(const glm::vec3& point) const {
-		auto [height, normal] = GetCachedPointProperties(point.x, point.z);
+		auto [height, normal] = GetTerrainPropertiesAtPoint(point.x, point.z);
 
 		// The closest point on terrain directly below/above the query point
 		glm::vec3 terrain_point(point.x, height, point.z);
@@ -1202,7 +1202,10 @@ namespace Boidsish {
 			} else {
 				// Fall back to procedural - note we're no longer fully cached
 				all_cached = false;
-				std::tie(terrain_height, surface_normal) = pointProperties(current_pos.x, current_pos.z);
+				std::tie(terrain_height, surface_normal) = CalculateTerrainPropertiesAtPoint(
+					current_pos.x,
+					current_pos.z
+				);
 			}
 
 			if (current_pos.y < terrain_height) {
@@ -1220,7 +1223,7 @@ namespace Boidsish {
 					if (mid_cached.has_value()) {
 						mid_height = std::get<0>(mid_cached.value());
 					} else {
-						mid_height = std::get<0>(pointProperties(mid_pos.x, mid_pos.z));
+						mid_height = std::get<0>(CalculateTerrainPropertiesAtPoint(mid_pos.x, mid_pos.z));
 					}
 
 					if (mid_pos.y < mid_height) {
@@ -1238,7 +1241,7 @@ namespace Boidsish {
 				if (hit_cached.has_value()) {
 					out_normal = std::get<1>(hit_cached.value());
 				} else {
-					out_normal = std::get<1>(pointProperties(hit_pos.x, hit_pos.z));
+					out_normal = std::get<1>(CalculateTerrainPropertiesAtPoint(hit_pos.x, hit_pos.z));
 				}
 
 				return true;

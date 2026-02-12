@@ -103,7 +103,7 @@ namespace Boidsish {
 		const float kSpeedDecay = 30.0f;
 
 		auto pos = GetPosition();
-		auto [height, norm] = handler.vis->GetTerrainPointPropertiesThreadSafe(pos.x, pos.z);
+		auto [height, norm] = handler.vis->GetTerrainPropertiesAtPoint(pos.x, pos.z);
 		if (pos.y < height) {
 			TriggerDamage();
 			// pos = height;
@@ -140,7 +140,7 @@ namespace Boidsish {
 		// --- Terrain Avoidance in Super Speed ---
 		if (super_speed_state_ == SuperSpeedState::ACTIVE) {
 			auto pos = GetPosition();
-			auto [height, norm] = handler.vis->GetTerrainPointPropertiesThreadSafe(pos.x, pos.z);
+			auto [height, norm] = handler.vis->GetTerrainPropertiesAtPoint(pos.x, pos.z);
 			float safety_height = height + 10.0f;
 			if (pos.y < safety_height) {
 				float factor = (safety_height - pos.y) / 10.0f;

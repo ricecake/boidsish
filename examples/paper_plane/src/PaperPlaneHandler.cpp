@@ -68,7 +68,7 @@ namespace Boidsish {
 		// Sample a grid around the starting area
 		for (float x = -300; x <= 300; x += 30) {
 			for (float z = -300; z <= 300; z += 30) {
-				auto [h, norm] = vis->GetTerrainPointPropertiesThreadSafe(x, z);
+				auto [h, norm] = vis->GetTerrainPropertiesAtPoint(x, z);
 				if (h < 15.0f)
 					continue; // Avoid valleys/water
 
@@ -79,7 +79,7 @@ namespace Boidsish {
 
 					// Look ahead to check gradient
 					float check_dist = 60.0f;
-					auto [h_ahead, norm_ahead] = vis->GetTerrainPointPropertiesThreadSafe(
+					auto [h_ahead, norm_ahead] = vis->GetTerrainPropertiesAtPoint(
 						x + dir.x * check_dist,
 						z + dir.z * check_dist
 					);
@@ -230,7 +230,7 @@ namespace Boidsish {
 					candidate.chunk->GetZ()
 				);
 				glm::vec3 world_pos = chunk_pos + candidate.point;
-				auto [terrain_h, terrain_normal] = vis->GetTerrainPointPropertiesThreadSafe(world_pos.x, world_pos.z);
+				auto [terrain_h, terrain_normal] = vis->GetTerrainPropertiesAtPoint(world_pos.x, world_pos.z);
 
 				if (terrain_h >= 40) {
 					glm::vec3 up_vector = glm::vec3(0.0f, 1.0f, 0.0f);
