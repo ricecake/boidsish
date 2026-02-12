@@ -115,7 +115,6 @@ namespace Boidsish {
 		auto [height, norm] = handler.vis->GetTerrainPointPropertiesThreadSafe(pos.x, pos.z);
 		if (pos.y < height) {
 			if (state_ == PlaneState::DYING) {
-				spiral_intensity_ += 0.5f;
 				if (health < -20.0f) {
 					state_ = PlaneState::DEAD;
 					handler.EnqueueVisualizerAction([&handler, pos = GetPosition().Toglm(), effect = dying_fire_effect_]() {
@@ -336,6 +335,9 @@ namespace Boidsish {
 	void PaperPlane::TriggerDamage() {
 		health -= 5;
 		damage_pending_++;
+		if (state_ == PlaneState::DYING) {
+			spiral_intensity_ += 1.0f;
+		}
 	}
 
 	bool PaperPlane::IsDamagePending() {
