@@ -33,7 +33,6 @@ namespace Boidsish {
 
 		// Constructor
 		Mesh(std::vector<Vertex> vertices, std::vector<unsigned int> indices, std::vector<Texture> textures);
-		// ~Mesh();
 
 		// Render the mesh
 		void render() const;
@@ -42,6 +41,9 @@ namespace Boidsish {
 
 		// Bind textures for external rendering (e.g., instanced rendering with custom shaders)
 		void bindTextures(Shader& shader) const;
+
+		unsigned int getVBO() const { return VBO; }
+		unsigned int getEBO() const { return EBO; }
 
 	private:
 		// Render data
@@ -60,6 +62,8 @@ namespace Boidsish {
 		void      render() const override;
 		void      render(Shader& shader, const glm::mat4& model_matrix) const override;
 		glm::mat4 GetModelMatrix() const override;
+
+		void GenerateRenderPackets(std::vector<RenderPacket>& out_packets) const override;
 
 		void GetGeometry(std::vector<Vertex>& vertices, std::vector<unsigned int>& indices) const override;
 

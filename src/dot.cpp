@@ -42,6 +42,11 @@ namespace Boidsish {
 		glBindVertexArray(0);
 	}
 
+	void Dot::GenerateRenderPackets(std::vector<RenderPacket>& out_packets) const {
+		// Dots are spheres, so we can use the base Shape implementation which defaults to spheres.
+		Shape::GenerateRenderPackets(out_packets);
+	}
+
 	glm::mat4 Dot::GetModelMatrix() const {
 		glm::mat4 model = glm::mat4(1.0f);
 		model = glm::translate(model, glm::vec3(GetX(), GetY(), GetZ()));
