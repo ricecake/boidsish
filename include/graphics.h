@@ -502,6 +502,12 @@ namespace Boidsish {
 		AddHudLocation(HudAlignment alignment = HudAlignment::BOTTOM_LEFT, glm::vec2 position = {10, -10});
 		std::shared_ptr<HudScore>
 		AddHudScore(HudAlignment alignment = HudAlignment::TOP_RIGHT, glm::vec2 position = {-10, 50});
+		std::shared_ptr<HudMessage> AddHudMessage(
+			const std::string& message = "",
+			HudAlignment       alignment = HudAlignment::MIDDLE_CENTER,
+			glm::vec2          position = {0, 0},
+			float              fontSizeScale = 2.0f
+		);
 		std::shared_ptr<HudIconSet> AddHudIconSet(
 			const std::vector<std::string>& paths,
 			HudAlignment                    alignment = HudAlignment::TOP_LEFT,

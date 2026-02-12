@@ -3024,6 +3024,11 @@ namespace Boidsish {
 		return score;
 	}
 
+	std::shared_ptr<HudMessage>
+	Visualizer::AddHudMessage(const std::string& message, HudAlignment alignment, glm::vec2 position, float fontSizeScale) {
+		return impl->hud_manager->AddMessage(message, alignment, position, fontSizeScale);
+	}
+
 	std::shared_ptr<HudIconSet> Visualizer::AddHudIconSet(
 		const std::vector<std::string>& paths,
 		HudAlignment                    alignment,

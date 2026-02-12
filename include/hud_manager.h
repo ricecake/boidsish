@@ -35,6 +35,12 @@ namespace Boidsish {
 			glm::vec2          position = {0, -50},
 			glm::vec2          size = {200, 20}
 		);
+		std::shared_ptr<HudMessage> AddMessage(
+			const std::string& message = "",
+			HudAlignment       alignment = HudAlignment::MIDDLE_CENTER,
+			glm::vec2          position = {0, 0},
+			float              fontSizeScale = 2.0f
+		);
 
 		void AddElement(std::shared_ptr<HudElement> element);
 		void RemoveElement(std::shared_ptr<HudElement> element);
