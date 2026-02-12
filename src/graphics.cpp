@@ -2924,13 +2924,16 @@ namespace Boidsish {
 		return impl->light_manager;
 	}
 
-	std::tuple<float, glm::vec3> Visualizer::GetTerrainPointProperties(float x, float y) const {
-		return impl->terrain_generator->GetPointProperties(x, y);
+	std::tuple<float, glm::vec3> Visualizer::CalculateTerrainPropertiesAtPoint(float x, float y) const {
+		if (impl->terrain_generator) {
+			return impl->terrain_generator->CalculateTerrainPropertiesAtPoint(x, y);
+		}
+		return {0.0f, glm::vec3(0, 1, 0)};
 	}
 
-	std::tuple<float, glm::vec3> Visualizer::GetTerrainPointPropertiesThreadSafe(float x, float y) const {
+	std::tuple<float, glm::vec3> Visualizer::GetTerrainPropertiesAtPoint(float x, float y) const {
 		if (impl->terrain_generator) {
-			return impl->terrain_generator->GetPointProperties(x, y);
+			return impl->terrain_generator->GetTerrainPropertiesAtPoint(x, y);
 		}
 		return {0.0f, glm::vec3(0, 1, 0)};
 	}

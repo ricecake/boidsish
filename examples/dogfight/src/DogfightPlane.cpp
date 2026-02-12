@@ -66,7 +66,7 @@ namespace Boidsish {
 		}
 
 		auto pos = GetPosition();
-		auto [terrain_h, terrain_norm] = handler.GetTerrainPointPropertiesThreadSafe(pos.x, pos.z);
+		auto [terrain_h, terrain_norm] = handler.GetTerrainPropertiesAtPoint(pos.x, pos.z);
 
 		// Collision check
 		if (pos.y <= terrain_h) {
@@ -228,7 +228,7 @@ namespace Boidsish {
 			float     hit_dist = 0.0f;
 			glm::vec3 ray_dir = my_fwd;
 			if (terrain_gen->Raycast(pos.Toglm(), ray_dir, 100.0f, hit_dist)) {
-				auto [h, n] = terrain_gen->pointProperties(pos.x + ray_dir.x * hit_dist, pos.z + ray_dir.z * hit_dist);
+				auto [h, n] = terrain_gen->GetTerrainPropertiesAtPoint(pos.x + ray_dir.x * hit_dist, pos.z + ray_dir.z * hit_dist);
 				glm::vec3 away = n;
 				if (glm::dot(away, glm::vec3(0, 1, 0)) < 0.5f)
 					away = glm::vec3(0, 1, 0);

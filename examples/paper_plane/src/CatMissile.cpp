@@ -86,7 +86,7 @@ namespace Boidsish {
 			return;
 		}
 
-		auto [height, norm] = handler.GetCachedTerrainProperties(pos.x, pos.z);
+		auto [height, norm] = handler.GetTerrainPropertiesAtPoint(pos.x, pos.z);
 		if (pos.y <= height) {
 			Explode(handler, false);
 			return;
