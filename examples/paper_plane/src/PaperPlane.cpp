@@ -48,6 +48,15 @@ namespace Boidsish {
 		if (!controller_)
 			return;
 
+		if (state_ == PlaneState::DEAD) {
+			SetVelocity(Vector3(0, 0, 0));
+			return;
+		}
+
+		if (state_ == PlaneState::ALIVE && health <= 0) {
+			state_ = PlaneState::DYING;
+		}
+
 		// --- Handle Super Speed State Machine ---
 		const float kBuildupDuration = 1.0f; // 1 second of suspense
 		const float kTaperingSpeed = 2.0f;   // 0.5 seconds to taper off
@@ -105,6 +114,23 @@ namespace Boidsish {
 		auto pos = GetPosition();
 		auto [height, norm] = handler.vis->GetTerrainPointPropertiesThreadSafe(pos.x, pos.z);
 		if (pos.y < height) {
+			if (state_ == PlaneState::DYING) {
+				state_ = PlaneState::DEAD;
+				handler.EnqueueVisualizerAction([&handler, pos = GetPosition().Toglm()]() {
+					if (handler.vis) {
+						handler.vis->CreateExplosion(pos, 5.0f);
+					}
+				});
+				if (shape_) {
+					shape_->SetHidden(true);
+				}
+				if (auto* pp_handler = dynamic_cast<const PaperPlaneHandler*>(&handler)) {
+					pp_handler->OnPlaneDeath(pp_handler->GetScore());
+				}
+				SetVelocity(Vector3(0, 0, 0));
+				return;
+			}
+
 			TriggerDamage();
 			// pos = height;
 			auto newPos = glm::vec3{pos.x, height, pos.z} + norm * 0.1f;
@@ -117,6 +143,18 @@ namespace Boidsish {
 			SetVelocity(Vector3(new_velocity.x, new_velocity.y, new_velocity.z));
 
 			return;
+		}
+
+		if (state_ == PlaneState::DYING) {
+			fire_effect_timer_ -= delta_time;
+			if (fire_effect_timer_ <= 0) {
+				handler.EnqueueVisualizerAction([&handler, p = pos.Toglm()]() {
+					if (handler.vis) {
+						handler.vis->AddFireEffect(p, FireEffectStyle::Fire);
+					}
+				});
+				fire_effect_timer_ = 0.1f;
+			}
 		}
 
 		// --- Handle Rotational Input ---
@@ -133,6 +171,12 @@ namespace Boidsish {
 			target_rot_velocity.z += kRollSpeed;
 		if (controller_->roll_right)
 			target_rot_velocity.z -= kRollSpeed;
+
+		if (state_ == PlaneState::DYING) {
+			target_rot_velocity *= 0.2f;
+			target_rot_velocity.z += 1.5f;
+			target_rot_velocity.x += 0.5f;
+		}
 
 		// --- Coordinated Turn (Banking) ---
 		target_rot_velocity.z += target_rot_velocity.y * kCoordinatedTurnFactor;

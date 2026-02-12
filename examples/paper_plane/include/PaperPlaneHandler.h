@@ -26,7 +26,11 @@ namespace Boidsish {
 
 		void SetScoreIndicator(std::shared_ptr<HudScore> indicator) { score_indicator_ = indicator; }
 
+		int GetScore() const;
+
 		void AddScore(int delta, const std::string& label) const;
+
+		void OnPlaneDeath(int score) const;
 
 		/**
 		 * @brief Finds a suitable starting position and orientation for the paper plane.

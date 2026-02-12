@@ -49,6 +49,17 @@ namespace Boidsish {
 		return gauge;
 	}
 
+	std::shared_ptr<HudMessage> HudManager::AddMessage(
+		const std::string& message,
+		HudAlignment       alignment,
+		glm::vec2          position,
+		float              fontSizeScale
+	) {
+		auto msg = std::make_shared<HudMessage>(message, alignment, position, fontSizeScale);
+		m_elements.push_back(msg);
+		return msg;
+	}
+
 	void HudManager::AddElement(std::shared_ptr<HudElement> element) {
 		m_elements.push_back(element);
 	}
@@ -83,6 +94,16 @@ namespace Boidsish {
 				}
 			}
 		}
+	}
+
+	void HudMessage::Draw(HudManager& /*manager*/) {
+		ImGui::SetWindowFontScale(m_fontSizeScale);
+		ImVec2    textSize = ImGui::CalcTextSize(m_message.c_str());
+		glm::vec2 pos = HudManager::GetAlignmentPosition(m_alignment, {textSize.x, textSize.y}, m_position);
+
+		ImGui::SetCursorPos({pos.x, pos.y});
+		ImGui::Text("%s", m_message.c_str());
+		ImGui::SetWindowFontScale(1.0f);
 	}
 
 	void HudManager::RemoveIcon(int id) {
