@@ -12,9 +12,13 @@ namespace Boidsish {
 	PearEnemy::PearEnemy(int id, Vector3 pos): Entity<Model>(id, "assets/utah_teapot.obj"), eng_(rd_()) {
 		SetPosition(pos);
 		SetColor(0.82f, 0.71f, 0.55f, 1.0f); // Tan
-		SetTrailLength(0); // Remove grey lines
-		shape_->SetScale(glm::vec3(1.0f)); // Larger teapot
+		SetTrailLength(0);                  // Remove grey lines
+		shape_->SetScale(glm::vec3(1.0f));   // Larger teapot
 		shape_->SetInstanced(true);
+
+		rigid_body_.linear_friction_ = 2.0f;
+		rigid_body_.angular_friction_ = 2.0f;
+
 		UpdateShape();
 	}
 
@@ -59,7 +63,7 @@ namespace Boidsish {
 						vel.z = to_target.z / time_to_impact;
 						vel.y = (vert_dist + 0.5f * g * time_to_impact * time_to_impact) / time_to_impact;
 
-						handler.QueueAddEntity<MagentaBall>(Vector3(my_pos.x, my_pos.y, my_pos.z), Vector3(vel.x, vel.y, vel.z));
+						handler.QueueAddEntity<MagentaBall>(Vector3{my_pos.x, my_pos.y, my_pos.z}, Vector3{vel.x, vel.y, vel.z});
 						attack_cooldown_ = 5.0f; // 5 seconds between shots
 					}
 				}
@@ -80,13 +84,15 @@ namespace Boidsish {
 			return;
 		}
 
+		glm::vec3 current_pos = GetPosition().Toglm();
+		glm::vec3 vel = rigid_body_.GetLinearVelocity();
+
 		if (!has_target_) {
 			// Pick a new target position
-			std::uniform_real_distribution<float> dist(-50.0f, 50.0f);
-			glm::vec3 current_pos = GetPosition().Toglm();
-			glm::vec3 candidate = current_pos + glm::vec3(dist(eng_), 0.0f, dist(eng_));
+			std::uniform_real_distribution<float> dist(-100.0f, 100.0f);
+			glm::vec3                             candidate = current_pos + glm::vec3(dist(eng_), 0.0f, dist(eng_));
 
-			auto [h, norm] = handler.vis->GetTerrain()->GetCachedPointProperties(candidate.x, candidate.z);
+			auto [h, norm] = handler.vis->GetTerrain()->GetPointProperties(candidate.x, candidate.z);
 
 			// Constraint: height < 50, and prefer flat ground (norm.y is large)
 			if (h < 50.0f && norm.y > 0.8f) {
@@ -96,11 +102,11 @@ namespace Boidsish {
 			return;
 		}
 
-		glm::vec3 current_pos = GetPosition().Toglm();
 		glm::vec3 to_target = target_pos_ - current_pos;
-		float     dist_to_target = glm::length(to_target);
+		to_target.y = 0; // Horizontal distance
+		float dist_to_target = glm::length(to_target);
 
-		if (dist_to_target < 1.0f) {
+		if (dist_to_target < 5.0f) {
 			has_target_ = false;
 			std::uniform_real_distribution<float> wait_dist(1.0f, 3.0f);
 			wait_timer_ = wait_dist(eng_);
@@ -108,19 +114,23 @@ namespace Boidsish {
 		}
 
 		glm::vec3 move_dir = to_target / dist_to_target;
-		glm::vec3 new_pos = current_pos + move_dir * move_speed_ * delta_time;
+		rigid_body_.AddForce(move_dir * 15.0f); // Constant horizontal movement force
 
-		// Keep on terrain
-		auto [h, norm] = handler.vis->GetTerrain()->GetCachedPointProperties(new_pos.x, new_pos.z);
-		new_pos.y = h + 0.1f; // Slightly above ground to avoid clipping
+		// Keep on terrain using vertical spring-damping
+		auto [h, norm] = handler.vis->GetTerrain()->GetPointProperties(current_pos.x, current_pos.z);
+		float target_h = h + 0.5f; // Target height above ground
+		float error = target_h - current_pos.y;
 
-		SetPosition(new_pos.x, new_pos.y, new_pos.z);
-		SetVelocity(0, 0, 0); // Stop physics drift
+		// Simple PD controller for vertical stability
+		float force_y = error * 50.0f - vel.y * 10.0f;
+		rigid_body_.AddForce(glm::vec3(0, force_y, 0));
 
 		// Align with terrain normal and face movement direction
 		glm::vec3 up = norm;
-		glm::vec3 forward = move_dir;
-		if (glm::length(forward) < 0.001f) forward = glm::vec3(0,0,1);
+		glm::vec3 forward = (glm::length(vel) > 0.1f) ? glm::normalize(vel) : move_dir;
+		if (glm::length(forward) < 0.001f)
+			forward = glm::vec3(0, 0, 1);
+
 		glm::vec3 right = glm::normalize(glm::cross(up, forward));
 		forward = glm::cross(right, up);
 

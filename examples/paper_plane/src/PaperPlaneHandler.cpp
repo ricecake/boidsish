@@ -133,6 +133,13 @@ namespace Boidsish {
 				visible_chunk_set.insert({static_cast<int>(chunk_ptr->GetX()), static_cast<int>(chunk_ptr->GetZ())});
 			}
 
+			auto      planes = GetEntitiesByType<PaperPlane>();
+			glm::vec3 plane_pos(0.0f);
+			bool      has_plane = !planes.empty();
+			if (has_plane) {
+				plane_pos = planes[0]->GetPosition().Toglm();
+			}
+
 			// 1. Detect removals and destructions BEFORE spawning new ones
 			for (auto it = spawned_launchers_.begin(); it != spawned_launchers_.end();) {
 				if (visible_chunk_set.find(it->first) == visible_chunk_set.end()) {
@@ -148,11 +155,22 @@ namespace Boidsish {
 			}
 
 			for (auto it = spawned_roamers_.begin(); it != spawned_roamers_.end();) {
-				if (visible_chunk_set.find(it->first) == visible_chunk_set.end()) {
-					QueueRemoveEntity(it->second);
-					it = spawned_roamers_.erase(it);
-				} else if (GetEntity(it->second) == nullptr) {
-					// Roamer was destroyed or despawned
+				auto roamer = GetEntity(it->second);
+				bool should_remove = false;
+
+				if (roamer == nullptr) {
+					should_remove = true;
+				} else {
+					// Roamers are only removed if they are far away (1500m)
+					// or if the player is very far from the chunk itself
+					float dist = glm::distance(roamer->GetPosition().Toglm(), plane_pos);
+					if (dist > 1500.0f) {
+						should_remove = true;
+						QueueRemoveEntity(it->second);
+					}
+				}
+
+				if (should_remove) {
 					it = spawned_roamers_.erase(it);
 				} else {
 					++it;
@@ -296,13 +314,6 @@ namespace Boidsish {
 			}
 
 			// Spawn Roamers
-			auto planes = GetEntitiesByType<PaperPlane>();
-			glm::vec3 plane_pos(0.0f);
-			bool has_plane = !planes.empty();
-			if (has_plane) {
-				plane_pos = planes[0]->GetPosition().Toglm();
-			}
-
 			for (const auto& candidate : roamer_candidates) {
 				if (forbidden_coords.count(
 						{static_cast<int>(candidate.chunk->GetX()), static_cast<int>(candidate.chunk->GetZ())}
@@ -333,7 +344,7 @@ namespace Boidsish {
 
 					QueueAddEntity<PearEnemy>(
 						id,
-						Vector3(static_cast<float>(world_pos.x), static_cast<float>(terrain_h + 0.1f), static_cast<float>(world_pos.z))
+						Vector3{static_cast<float>(world_pos.x), static_cast<float>(terrain_h + 0.1f), static_cast<float>(world_pos.z)}
 					);
 					std::pair<int, int> coord = {
 						static_cast<int>(candidate.chunk->GetX()),
