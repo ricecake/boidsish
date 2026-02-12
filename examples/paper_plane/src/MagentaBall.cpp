@@ -37,7 +37,11 @@ namespace Boidsish {
 
 		// Ground collision
 		auto [h, norm] = handler.GetCachedTerrainProperties(my_pos.x, my_pos.z);
-		if (my_pos.y < h) {
+		if (my_pos.y > h + 1.0f) {
+			has_cleared_ground_ = true;
+		}
+
+		if (has_cleared_ground_ && my_pos.y < h) {
 			// Trigger a small explosion or effect on ground hit
 			handler.EnqueueVisualizerAction([my_pos, &handler]() {
 				handler.vis->AddFireEffect(my_pos, FireEffectStyle::Explosion, glm::vec3(0, 1, 0), glm::vec3(0), -1, 0.5f);

@@ -322,7 +322,7 @@ namespace Boidsish {
 
 					QueueAddEntity<PearEnemy>(
 						id,
-						Vector3(world_pos.x, terrain_h, world_pos.z)
+						Vector3(world_pos.x, terrain_h + 0.1f, world_pos.z)
 					);
 					std::pair<int, int> coord = {
 						static_cast<int>(candidate.chunk->GetX()),

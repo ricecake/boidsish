@@ -2,12 +2,12 @@
 
 #include <random>
 
-#include "PearShape.h"
 #include "entity.h"
+#include "model.h"
 
 namespace Boidsish {
 
-	class PearEnemy: public Entity<PearShape> {
+	class PearEnemy: public Entity<Model> {
 	public:
 		PearEnemy(int id, Vector3 pos);
 

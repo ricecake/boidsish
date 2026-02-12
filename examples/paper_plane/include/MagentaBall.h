@@ -14,6 +14,7 @@ namespace Boidsish {
 	private:
 		float lived_ = 0.0f;
 		float lifetime_ = 10.0f;
+		bool  has_cleared_ground_ = false;
 	};
 
 } // namespace Boidsish

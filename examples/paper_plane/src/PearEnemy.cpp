@@ -9,9 +9,11 @@
 
 namespace Boidsish {
 
-	PearEnemy::PearEnemy(int id, Vector3 pos): Entity<PearShape>(id), eng_(rd_()) {
+	PearEnemy::PearEnemy(int id, Vector3 pos): Entity<Model>(id, "assets/utah_teapot.obj"), eng_(rd_()) {
 		SetPosition(pos);
-		shape_->SetScale(glm::vec3(2.0f)); // Make them reasonably sized
+		SetColor(0.82f, 0.71f, 0.55f, 1.0f); // Tan
+		SetTrailLength(0); // Remove grey lines
+		shape_->SetScale(glm::vec3(0.5f)); // Teapots are big, scale down
 		shape_->SetInstanced(true);
 		UpdateShape();
 	}
@@ -110,9 +112,10 @@ namespace Boidsish {
 
 		// Keep on terrain
 		auto [h, norm] = handler.GetCachedTerrainProperties(new_pos.x, new_pos.z);
-		new_pos.y = h;
+		new_pos.y = h + 0.1f; // Slightly above ground to avoid clipping
 
 		SetPosition(new_pos.x, new_pos.y, new_pos.z);
+		SetVelocity(0, 0, 0); // Stop physics drift
 
 		// Align with terrain normal and face movement direction
 		glm::vec3 up = norm;
