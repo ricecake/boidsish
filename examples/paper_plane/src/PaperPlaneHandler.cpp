@@ -296,6 +296,13 @@ namespace Boidsish {
 			}
 
 			// Spawn Roamers
+			auto planes = GetEntitiesByType<PaperPlane>();
+			glm::vec3 plane_pos(0.0f);
+			bool has_plane = !planes.empty();
+			if (has_plane) {
+				plane_pos = planes[0]->GetPosition().Toglm();
+			}
+
 			for (const auto& candidate : roamer_candidates) {
 				if (forbidden_coords.count(
 						{static_cast<int>(candidate.chunk->GetX()), static_cast<int>(candidate.chunk->GetZ())}
@@ -312,6 +319,10 @@ namespace Boidsish {
 				auto [terrain_h, terrain_normal] = vis->GetTerrainPointPropertiesThreadSafe(world_pos.x, world_pos.z);
 
 				if (terrain_h < 35.0f) {
+					// Prevent spawn/despawn loop: only spawn if player is within 1000m
+					if (has_plane && glm::distance(world_pos, plane_pos) > 1000.0f) {
+						continue;
+					}
 					int ix = static_cast<int>(
 						std::round(chunk_pos.x / static_cast<float>(Constants::Class::Terrain::ChunkSize()))
 					);

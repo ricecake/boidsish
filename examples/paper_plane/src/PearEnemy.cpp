@@ -13,7 +13,7 @@ namespace Boidsish {
 		SetPosition(pos);
 		SetColor(0.82f, 0.71f, 0.55f, 1.0f); // Tan
 		SetTrailLength(0); // Remove grey lines
-		shape_->SetScale(glm::vec3(0.5f)); // Teapots are big, scale down
+		shape_->SetScale(glm::vec3(1.0f)); // Larger teapot
 		shape_->SetInstanced(true);
 		UpdateShape();
 	}
@@ -43,20 +43,20 @@ namespace Boidsish {
 				if (!hit || hit_dist >= dist - 1.0f) {
 					// Player is visible!
 					if (attack_cooldown_ <= 0.0f) {
-						// Launch magenta ball in a ballistic arc
-						glm::vec3 to_player = plane_pos - my_pos;
-						float horiz_dist = glm::length(glm::vec3(to_player.x, 0, to_player.z));
-						float vert_dist = to_player.y;
+						// Intercept prediction: target where player will be in 3 seconds
+						float     time_to_impact = 3.0f;
+						glm::vec3 player_vel = plane->GetVelocity().Toglm();
+						glm::vec3 target_pos = plane_pos + player_vel * time_to_impact;
 
-						// Simple ballistic calculation for long arc
-						// v_x = horiz_dist / time
-						// v_y = (vert_dist + 0.5 * g * time^2) / time
-						float time_to_impact = 3.0f; // Target 3 seconds flight
+						glm::vec3 to_target = target_pos - my_pos;
+						float horiz_dist = glm::length(glm::vec3(to_target.x, 0, to_target.z));
+						float vert_dist = to_target.y;
+
+						// Ballistic calculation
 						float g = 9.8f;
-
 						glm::vec3 vel;
-						vel.x = to_player.x / time_to_impact;
-						vel.z = to_player.z / time_to_impact;
+						vel.x = to_target.x / time_to_impact;
+						vel.z = to_target.z / time_to_impact;
 						vel.y = (vert_dist + 0.5f * g * time_to_impact * time_to_impact) / time_to_impact;
 
 						handler.QueueAddEntity<MagentaBall>(Vector3(my_pos.x, my_pos.y, my_pos.z), Vector3(vel.x, vel.y, vel.z));
@@ -129,7 +129,9 @@ namespace Boidsish {
 		rotation_matrix[1] = glm::vec4(up, 0.0f);
 		rotation_matrix[2] = glm::vec4(-forward, 0.0f);
 
-		SetOrientation(glm::quat_cast(rotation_matrix));
+		glm::quat target_orient = glm::quat_cast(rotation_matrix);
+		glm::quat current_orient = rigid_body_.GetOrientation();
+		SetOrientation(glm::slerp(current_orient, target_orient, 10.0f * delta_time));
 	}
 
 } // namespace Boidsish

@@ -10,7 +10,7 @@ namespace Boidsish {
 		SetPosition(pos);
 		SetVelocity(vel);
 		SetColor(1.0f, 0.0f, 1.0f, 1.0f); // Magenta
-		SetSize(2.0f);
+		SetSize(8.0f);
 		SetTrailLength(30);
 		SetTrailPBR(true);
 		SetTrailRoughness(0.1f);
@@ -37,7 +37,8 @@ namespace Boidsish {
 
 		// Ground collision
 		auto [h, norm] = handler.GetCachedTerrainProperties(my_pos.x, my_pos.z);
-		if (my_pos.y > h + 1.0f) {
+		// Prevent immediate explosion on launch
+		if (lived_ > 0.5f) {
 			has_cleared_ground_ = true;
 		}
 
