@@ -2,6 +2,7 @@
 
 #include "graphics.h"
 #include "shader.h"
+#include "entity.h"
 
 namespace Boidsish {
 
@@ -9,7 +10,7 @@ ComplexPath::ComplexPath(int id, const TerrainGenerator* terrain_generator, Came
     : Path(id)
     , terrain_generator_(terrain_generator)
     , camera_(camera)
-    , height_(0.5f)
+    , height_(2.0f)
     , path_length_(300.0f)
     , segment_distance_(4.0f)
 {
@@ -22,17 +23,24 @@ ComplexPath::~ComplexPath()
 
 void ComplexPath::Update()
 {
-    if (!terrain_generator_ || !camera_) {
+    if (!terrain_generator_) {
         return;
     }
 
-    // Get camera's XZ position
-    glm::vec2 camera_pos(camera_->x, camera_->z);
+    // Get focus position (target entity or camera)
+    glm::vec2 focus_pos;
+    if (target_) {
+        focus_pos = glm::vec2(target_->GetXPos(), target_->GetZPos());
+    } else if (camera_) {
+        focus_pos = glm::vec2(camera_->x, camera_->z);
+    } else {
+        return;
+    }
 
-    // Get the terrain path closest to the camera
+    // Get the terrain path closest to the focus position
     // We request more points and smaller steps for a smoother terrain-hugging line
     int num_points = static_cast<int>(path_length_ / segment_distance_);
-    auto terrainPath = terrain_generator_->GetPath(camera_pos, num_points, segment_distance_);
+    auto terrainPath = terrain_generator_->GetPath(focus_pos, num_points, segment_distance_, max_curvature_, roughness_avoidance_);
 
     // Clear existing waypoints and add new ones from the terrain path
     waypoints_.clear();
@@ -51,12 +59,6 @@ void ComplexPath::Update()
     }
 }
 
-void ComplexPath::SetHeight(float height)
-{
-    height_ = height;
-    Update();
-}
-
 void ComplexPath::render() const
 {
     if (shader) {
@@ -73,6 +75,8 @@ void ComplexPath::render(Shader& s, const glm::mat4& model_matrix) const
         SetupBuffers();
     }
 
+    // Set a very large cull radius to prevent the path from disappearing due to frustum culling
+    s.setFloat("frustumCullRadius", 10000.0f);
     s.setMat4("model", model_matrix);
     s.setInt("useVertexColor", 1);
 

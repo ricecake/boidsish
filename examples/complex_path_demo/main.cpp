@@ -9,7 +9,8 @@ int main(int argc, char** argv) {
     Boidsish::Visualizer visualizer(1024, 768, "Complex Path Demo");
 
     // Get the terrain generator and camera from the visualizer
-    const Boidsish::TerrainGenerator* terrain_generator = visualizer.GetTerrainGenerator();
+    auto terrain_ptr = visualizer.GetTerrain();
+    const Boidsish::TerrainGenerator* terrain_generator = dynamic_cast<const Boidsish::TerrainGenerator*>(terrain_ptr.get());
     Boidsish::Camera* camera = &visualizer.GetCamera();
 
     // // Set a custom camera position
@@ -26,8 +27,17 @@ int main(int argc, char** argv) {
     auto complex_path = std::make_shared<Boidsish::ComplexPath>(0, terrain_generator, camera);
     complex_path->SetVisible(true);
 
+    // Set some advanced parameters
+    complex_path->SetMaxCurvature(0.5f); // Smoother turns
+    complex_path->SetRoughnessAvoidance(0.8f); // Avoid steep terrain
+    complex_path->SetPathLength(500.0f); // Longer guide line
+
     // Create a shape handler to update and render the path
     visualizer.AddShapeHandler([=](float time) {
+        // Adjust parameters based on time to show dynamic nature
+        float avoidance = 0.5f + 0.5f * sin(time * 0.5f);
+        complex_path->SetRoughnessAvoidance(avoidance);
+
         complex_path->Update();
         std::vector<std::shared_ptr<Boidsish::Shape>> shapes;
         shapes.push_back(complex_path);
