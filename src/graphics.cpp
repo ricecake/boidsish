@@ -2366,7 +2366,8 @@ namespace Boidsish {
 				impl->prev_view_,
 				impl->prev_projection_,
 				impl->camera.pos(),
-				impl->simulation_time
+				impl->simulation_time,
+				static_cast<uint32_t>(impl->frame_count_)
 			);
 
 			// Return to display resolution for final output

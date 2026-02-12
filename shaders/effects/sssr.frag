@@ -14,6 +14,7 @@ uniform mat4 projection;
 uniform mat4 invProjection;
 uniform mat4 invView;
 uniform float time;
+uniform uint  frameCount;
 uniform vec3 viewPos;
 
 // Parameters
@@ -23,6 +24,43 @@ uniform float jitterStrength = 0.2;
 uniform float thicknessBias = 0.1;
 
 #include "helpers/blue_noise.glsl"
+
+// Hammersley sequence for low-discrepancy 2D points
+float radicalInverse_VdC(uint bits) {
+	bits = (bits << 16u) | (bits >> 16u);
+	bits = ((bits & 0x55555555u) << 1u) | ((bits & 0xAAAAAAAAu) >> 1u);
+	bits = ((bits & 0x33333333u) << 2u) | ((bits & 0xCCCCCCCCu) >> 2u);
+	bits = ((bits & 0x0F0F0F0Fu) << 4u) | ((bits & 0xF0F0F0F0u) >> 4u);
+	bits = ((bits & 0x00FF00FFu) << 8u) | ((bits & 0xFF00FF00u) >> 8u);
+	return float(bits) * 2.3283064365386963e-10; // / 0x100000000
+}
+
+vec2 hammersley(uint i, uint N) {
+	return vec2(float(i) / float(N), radicalInverse_VdC(i));
+}
+
+// GGX Importance Sampling
+vec3 importanceSampleGGX(vec2 Xi, vec3 N, float roughness) {
+	float a = roughness * roughness;
+
+	float phi = 2.0 * 3.14159265359 * Xi.x;
+	float cosTheta = sqrt((1.0 - Xi.y) / (1.0 + (a * a - 1.0) * Xi.y));
+	float sinTheta = sqrt(1.0 - cosTheta * cosTheta);
+
+	// From spherical coordinates to cartesian coordinates
+	vec3 H;
+	H.x = cos(phi) * sinTheta;
+	H.y = sin(phi) * sinTheta;
+	H.z = cosTheta;
+
+	// From tangent-space vector to world-space sample vector
+	vec3 up = abs(N.z) < 0.999 ? vec3(0.0, 0.0, 1.0) : vec3(1.0, 0.0, 0.0);
+	vec3 tangent = normalize(cross(up, N));
+	vec3 bitangent = cross(N, tangent);
+
+	vec3 sampleVec = tangent * H.x + bitangent * H.y + N * H.z;
+	return normalize(sampleVec);
+}
 
 vec3 getPos(vec2 uv) {
 	float depth = texture(depthTexture, uv).r;
@@ -119,20 +157,21 @@ void main() {
 	vec2 pbr = texture(pbrTexture, TexCoords).rg;
 	float roughness = pbr.r;
 
-    vec3 viewDirVS = normalize(posVS);
-    vec3 normalVS = normalize((view * vec4(worldNormal, 0.0)).xyz);
+	vec3 viewDirVS = normalize(posVS);
+	vec3 normalVS = normalize((view * vec4(worldNormal, 0.0)).xyz);
 
-	// Stochastic part: use Blue Noise jitter
+	// Stochastic part: use Hammersley Sequence + GGX Importance Sampling
+	// Use frameCount to rotate through the sequence
+	uint  sampleIndex = frameCount % 64u;
+	vec2  Xi = hammersley(sampleIndex, 64u);
+
+	// Use blue noise to further jitter the Xi to avoid patterns
 	float bn = blueNoise(TexCoords * textureSize(sceneTexture, 0), time);
+	Xi = fract(Xi + vec2(bn, blueNoise(TexCoords * 1.1, time + 0.5)));
 
-    vec3 jitter = vec3(
-        blueNoiseM(TexCoords * 10.1, time),
-        blueNoiseM(TexCoords * 10.2, time + 0.33),
-        blueNoiseM(TexCoords * 10.3, time + 0.66)
-    );
-	vec3 perturbedNormalVS = normalize(normalVS + jitter * roughness * jitterStrength);
-
-	vec3 reflectDirVS = reflect(viewDirVS, perturbedNormalVS);
+	// Importance sample GGX to get a microfacet normal (half-vector)
+	vec3 H_VS = importanceSampleGGX(Xi, normalVS, roughness * jitterStrength);
+	vec3 reflectDirVS = reflect(viewDirVS, H_VS);
 
 	// Skip if reflecting back into surface
 	if (dot(normalVS, reflectDirVS) < 0.0) {

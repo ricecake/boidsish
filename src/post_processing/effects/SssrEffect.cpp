@@ -42,6 +42,7 @@ namespace Boidsish {
 			shader_->setMat4("invProjection", params.invProjectionMatrix);
 			shader_->setMat4("invView", params.invViewMatrix);
 			shader_->setFloat("time", params.time);
+			shader_->setUint("frameCount", params.frameCount);
 			shader_->setVec3("viewPos", params.cameraPos);
 
 			// Load parameters from config

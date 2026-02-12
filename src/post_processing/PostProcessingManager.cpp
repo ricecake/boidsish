@@ -114,7 +114,8 @@ namespace Boidsish {
 			const glm::mat4& prevViewMatrix,
 			const glm::mat4& prevProjectionMatrix,
 			const glm::vec3& cameraPos,
-			float            time
+			float            time,
+			uint32_t         frameCount
 		) {
 			bool   effect_applied = false;
 			int    fbo_index = 0;
@@ -139,6 +140,7 @@ namespace Boidsish {
 			params.prevProjectionMatrix = prevProjectionMatrix;
 			params.cameraPos = cameraPos;
 			params.time = time;
+			params.frameCount = frameCount;
 			params.motionVectorTexture = motion_vector_texture_;
 
 			// 1. Calculate Motion Vectors first (if enabled)
