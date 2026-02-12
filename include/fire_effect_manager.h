@@ -1,6 +1,7 @@
 #pragma once
 
 #include <memory>
+#include <mutex>
 #include <vector>
 
 #include "constants.h"
@@ -51,6 +52,7 @@ namespace Boidsish {
 
 		std::vector<std::shared_ptr<FireEffect>> effects_;
 		std::vector<int>                         particle_to_emitter_map_;
+		mutable std::mutex                       mutex_;
 
 		std::unique_ptr<ComputeShader> compute_shader_;
 		std::unique_ptr<Shader>        render_shader_;

@@ -12,6 +12,7 @@ namespace Boidsish {
 	SoundEffectManager::~SoundEffectManager() {
 		// Clear all effects before destruction to ensure Sound objects
 		// are released while AudioManager is still valid
+		std::lock_guard<std::mutex> lock(_mutex);
 		_effects.clear();
 	}
 
@@ -32,7 +33,8 @@ namespace Boidsish {
 			return nullptr;
 		}
 
-		auto effect = std::make_shared<SoundEffect>(sound_handle, position, velocity, lifetime);
+		auto                        effect = std::make_shared<SoundEffect>(sound_handle, position, velocity, lifetime);
+		std::lock_guard<std::mutex> lock(_mutex);
 		_effects.push_back(effect);
 		return effect;
 	}
@@ -45,6 +47,7 @@ namespace Boidsish {
 	}
 
 	void SoundEffectManager::Update(float delta_time) {
+		std::lock_guard<std::mutex> lock(_mutex);
 		// Update positions and lifetimes
 		for (auto& effect : _effects) {
 			if (effect && effect->IsActive()) {
