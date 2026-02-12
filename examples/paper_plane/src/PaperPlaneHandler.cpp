@@ -299,11 +299,13 @@ namespace Boidsish {
 					);
 					int id = 0x50000000 | ((ix + 1024) << 11) | (iz + 1024);
 
-					QueueAddEntity<GuidedMissileLauncher>(
-						id,
-						Vector3(world_pos.x, terrain_h, world_pos.z),
-						terrain_alignment
-					);
+					if (GetEntity(id) == nullptr) {
+						QueueAddEntity<GuidedMissileLauncher>(
+							id,
+							Vector3(world_pos.x, terrain_h, world_pos.z),
+							terrain_alignment
+						);
+					}
 					std::pair<int, int> coord = {
 						static_cast<int>(candidate.chunk->GetX()),
 						static_cast<int>(candidate.chunk->GetZ())
@@ -342,10 +344,12 @@ namespace Boidsish {
 					);
 					int id = 0x60000000 | ((ix + 1024) << 11) | (iz + 1024);
 
-					QueueAddEntity<PearEnemy>(
-						id,
-						Vector3{static_cast<float>(world_pos.x), static_cast<float>(terrain_h + 0.1f), static_cast<float>(world_pos.z)}
-					);
+					if (GetEntity(id) == nullptr) {
+						QueueAddEntity<PearEnemy>(
+							id,
+							Vector3{static_cast<float>(world_pos.x), static_cast<float>(terrain_h + 1.0f), static_cast<float>(world_pos.z)}
+						);
+					}
 					std::pair<int, int> coord = {
 						static_cast<int>(candidate.chunk->GetX()),
 						static_cast<int>(candidate.chunk->GetZ())

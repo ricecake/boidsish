@@ -10,7 +10,7 @@ namespace Boidsish {
 		SetPosition(pos);
 		SetVelocity(vel);
 		SetColor(1.0f, 0.0f, 1.0f, 1.0f); // Magenta
-		SetSize(8.0f);
+		SetSize(15.0f);
 		SetTrailLength(30);
 		SetTrailPBR(true);
 		SetTrailRoughness(0.1f);
