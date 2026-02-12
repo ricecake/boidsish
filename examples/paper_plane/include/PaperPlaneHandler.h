@@ -41,6 +41,7 @@ namespace Boidsish {
 		mutable std::mutex                    target_mutex_;
 		mutable std::map<int, int>            target_counts_;
 		std::map<std::pair<int, int>, int>    spawned_launchers_;
+		std::map<std::pair<int, int>, int>    spawned_roamers_;
 		std::random_device                    rd_;
 		std::mt19937                          eng_;
 		float                                 damage_timer_ = 0.0f;
