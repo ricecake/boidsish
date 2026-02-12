@@ -36,7 +36,7 @@ namespace Boidsish {
 		glm::vec3 my_pos = GetPosition().Toglm();
 
 		// Ground collision
-		auto [h, norm] = handler.GetCachedTerrainProperties(my_pos.x, my_pos.z);
+		auto [h, norm] = handler.vis->GetTerrain()->GetCachedPointProperties(my_pos.x, my_pos.z);
 		// Prevent immediate explosion on launch
 		if (lived_ > 0.5f) {
 			has_cleared_ground_ = true;

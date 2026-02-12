@@ -67,9 +67,9 @@ namespace Boidsish {
 		glm::vec3 best_dir(0, 0, -1);
 
 		// Sample a grid around the starting area
-		for (float x = -300; x <= 300; x += 30) {
-			for (float z = -300; z <= 300; z += 30) {
-				auto [h, norm] = vis->GetTerrainPointPropertiesThreadSafe(x, z);
+		for (float x = -300.0f; x <= 300.0f; x += 30.0f) {
+			for (float z = -300.0f; z <= 300.0f; z += 30.0f) {
+				auto [h, norm] = vis->GetTerrain()->GetPointProperties(x, z);
 				if (h < 15.0f)
 					continue; // Avoid valleys/water
 
@@ -80,7 +80,7 @@ namespace Boidsish {
 
 					// Look ahead to check gradient
 					float check_dist = 60.0f;
-					auto [h_ahead, norm_ahead] = vis->GetTerrainPointPropertiesThreadSafe(
+					auto [h_ahead, norm_ahead] = vis->GetTerrain()->GetPointProperties(
 						x + dir.x * check_dist,
 						z + dir.z * check_dist
 					);
@@ -231,11 +231,11 @@ namespace Boidsish {
 					// For simplicity, we can use a sample or a property if available.
 					// Terrain doesn't have lowestPoint in proxy. Let's use a sample.
 					// Actually, let's just use the chunk center for roamers if it's low enough.
-					float cx = grid_chunk->GetX() + Constants::Class::Terrain::ChunkSize() * 0.5f;
-					float cz = grid_chunk->GetZ() + Constants::Class::Terrain::ChunkSize() * 0.5f;
-					auto [h, norm] = vis->GetTerrainPointPropertiesThreadSafe(cx, cz);
+					float cx = static_cast<float>(grid_chunk->GetX()) + Constants::Class::Terrain::ChunkSize() * 0.5f;
+					float cz = static_cast<float>(grid_chunk->GetZ()) + Constants::Class::Terrain::ChunkSize() * 0.5f;
+					auto [h, norm] = vis->GetTerrain()->GetPointProperties(cx, cz);
 					if (h < lowest_flat_point.y && norm.y > 0.9f) {
-						lowest_flat_point = {cx - grid_chunk->GetX(), h, cz - grid_chunk->GetZ()};
+						lowest_flat_point = glm::vec3(cx - grid_chunk->GetX(), h, cz - grid_chunk->GetZ());
 						best_roamer_chunk = grid_chunk;
 					}
 
@@ -267,9 +267,9 @@ namespace Boidsish {
 					candidate.chunk->GetZ()
 				);
 				glm::vec3 world_pos = chunk_pos + candidate.point;
-				auto [terrain_h, terrain_normal] = vis->GetTerrainPointPropertiesThreadSafe(world_pos.x, world_pos.z);
+				auto [terrain_h, terrain_normal] = vis->GetTerrain()->GetPointProperties(world_pos.x, world_pos.z);
 
-				if (terrain_h >= 40) {
+				if (terrain_h >= 40.0f) {
 					glm::vec3 up_vector = glm::vec3(0.0f, 1.0f, 0.0f);
 					glm::quat terrain_alignment = glm::rotation(up_vector, terrain_normal);
 
@@ -316,7 +316,7 @@ namespace Boidsish {
 					candidate.chunk->GetZ()
 				);
 				glm::vec3 world_pos = chunk_pos + candidate.point;
-				auto [terrain_h, terrain_normal] = vis->GetTerrainPointPropertiesThreadSafe(world_pos.x, world_pos.z);
+				auto [terrain_h, terrain_normal] = vis->GetTerrain()->GetPointProperties(world_pos.x, world_pos.z);
 
 				if (terrain_h < 35.0f) {
 					// Prevent spawn/despawn loop: only spawn if player is within 1000m
@@ -333,7 +333,7 @@ namespace Boidsish {
 
 					QueueAddEntity<PearEnemy>(
 						id,
-						Vector3(world_pos.x, terrain_h + 0.1f, world_pos.z)
+						Vector3(static_cast<float>(world_pos.x), static_cast<float>(terrain_h + 0.1f), static_cast<float>(world_pos.z))
 					);
 					std::pair<int, int> coord = {
 						static_cast<int>(candidate.chunk->GetX()),

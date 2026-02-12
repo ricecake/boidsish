@@ -86,7 +86,7 @@ namespace Boidsish {
 			glm::vec3 current_pos = GetPosition().Toglm();
 			glm::vec3 candidate = current_pos + glm::vec3(dist(eng_), 0.0f, dist(eng_));
 
-			auto [h, norm] = handler.GetCachedTerrainProperties(candidate.x, candidate.z);
+			auto [h, norm] = handler.vis->GetTerrain()->GetCachedPointProperties(candidate.x, candidate.z);
 
 			// Constraint: height < 50, and prefer flat ground (norm.y is large)
 			if (h < 50.0f && norm.y > 0.8f) {
@@ -111,7 +111,7 @@ namespace Boidsish {
 		glm::vec3 new_pos = current_pos + move_dir * move_speed_ * delta_time;
 
 		// Keep on terrain
-		auto [h, norm] = handler.GetCachedTerrainProperties(new_pos.x, new_pos.z);
+		auto [h, norm] = handler.vis->GetTerrain()->GetCachedPointProperties(new_pos.x, new_pos.z);
 		new_pos.y = h + 0.1f; // Slightly above ground to avoid clipping
 
 		SetPosition(new_pos.x, new_pos.y, new_pos.z);
