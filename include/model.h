@@ -25,7 +25,6 @@ namespace Boidsish {
 		std::vector<Vertex>       vertices;
 		std::vector<unsigned int> indices;
 		std::vector<Texture>      textures;
-		unsigned int              VAO;
 
 		// Material Data
 		glm::vec3 diffuseColor = glm::vec3(1.0f);
@@ -42,12 +41,13 @@ namespace Boidsish {
 		// Bind textures for external rendering (e.g., instanced rendering with custom shaders)
 		void bindTextures(Shader& shader) const;
 
+		unsigned int getVAO() const { return VAO; }
 		unsigned int getVBO() const { return VBO; }
 		unsigned int getEBO() const { return EBO; }
 
 	private:
 		// Render data
-		unsigned int VBO, EBO;
+		unsigned int VAO, VBO, EBO;
 
 		// Initializes all the buffer objects/arrays
 		void setupMesh();

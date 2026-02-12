@@ -104,8 +104,8 @@ namespace Boidsish {
 
 		for (const auto& mesh : model->getMeshes()) {
 			// Skip meshes with invalid VAO - use glIsVertexArray for thorough check
-			if (!IsValidVAO(mesh.VAO)) {
-				logger::ERROR("Invalid VAO {} in model {} - skipping mesh", mesh.VAO, model->GetModelPath());
+			if (!IsValidVAO(mesh.getVAO())) {
+				logger::ERROR("Invalid VAO {} in model {} - skipping mesh", mesh.getVAO(), model->GetModelPath());
 				continue;
 			}
 
@@ -130,7 +130,7 @@ namespace Boidsish {
 			shader.setBool("use_texture", hasDiffuse);
 			glActiveTexture(GL_TEXTURE0);
 
-			glBindVertexArray(mesh.VAO);
+			glBindVertexArray(mesh.getVAO());
 
 			// Setup instance matrix attribute (location 3-6, mat4 takes 4 vec4 slots)
 			glBindBuffer(GL_ARRAY_BUFFER, group.instance_matrix_vbo_);

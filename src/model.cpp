@@ -2,7 +2,6 @@
 
 #include <algorithm>
 #include <iostream>
-#include <cstring>
 
 #include "logger.h"
 #include "shader.h"
@@ -292,7 +291,7 @@ namespace Boidsish {
 
 		for (const auto& mesh : meshes) {
 			RenderPacket packet;
-			packet.vao = mesh.VAO;
+			packet.vao = mesh.getVAO();
 			packet.vbo = mesh.getVBO();
 			packet.ebo = mesh.getEBO();
 			packet.index_count = static_cast<unsigned int>(mesh.indices.size());
