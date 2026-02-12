@@ -713,24 +713,59 @@ namespace Boidsish {
 		return sample_pos;
 	}
 
-	std::vector<glm::vec3> TerrainGenerator::GetPath(glm::vec2 start_pos, int num_points, float step_size) const {
+	std::vector<glm::vec3> TerrainGenerator::GetPath(
+		glm::vec2 start_pos,
+		int       num_points,
+		float     step_size,
+		float     max_curvature,
+		float     roughness_avoidance
+	) const {
 		std::vector<glm::vec3> path;
 		path.reserve(num_points);
 
 		glm::vec2 current_pos = findClosestPointOnPath(start_pos);
+		glm::vec2 current_tangent(0, 0);
 
 		for (int i = 0; i < num_points; ++i) {
-			float height = std::get<0>(pointProperties(current_pos.x, current_pos.y));
+			auto [height, normal] = pointProperties(current_pos.x, current_pos.y);
 			path.emplace_back(current_pos.x, height, current_pos.y);
 
-			// Get path tangent
+			// Get path tangent from noise field
 			glm::vec3 path_data = Simplex::dnoise((current_pos / world_scale_) * kPathFrequency);
-			glm::vec2 tangent = glm::normalize(glm::vec2(path_data.z, -path_data.y));
+			glm::vec2 raw_tangent = glm::normalize(glm::vec2(path_data.z, -path_data.y));
 
-			// Move along the tangent
-			current_pos += tangent * step_size;
+			// 1. Curvature limiting
+			if (i > 0 && max_curvature < 1.0f) {
+				// max_curvature 0.0 -> very stiff, 1.0 -> full turns
+				float max_angle = max_curvature * glm::pi<float>() * 0.25f; // Max 45 deg change per step at 1.0
+				float cos_max = cos(max_angle);
+				float dot = glm::dot(current_tangent, raw_tangent);
+				if (dot < cos_max) {
+					// Nudge raw_tangent towards current_tangent
+					float t = (dot + 1.0f) / (cos_max + 1.0f);
+					raw_tangent = glm::normalize(glm::mix(current_tangent, raw_tangent, std::clamp(t, 0.0f, 1.0f)));
+				}
+			}
+			current_tangent = raw_tangent;
 
-			// Correct position to stay on the path
+			// 2. Roughness avoidance
+			glm::vec2 steer(0, 0);
+			if (roughness_avoidance > 0.0f) {
+				// Steepness avoidance: steer away from steep gradients
+				if (normal.y < 0.98f) { // Normal.y < 1.0 means there is a slope
+					// Gradient of height is (-normal.x, -normal.z) / normal.y
+					// We steer away from the gradient (downhill) if we want to avoid high peaks,
+					// or just stay on flat ground.
+					glm::vec2 terrain_nudge = glm::vec2(normal.x, normal.z);
+					steer += terrain_nudge * roughness_avoidance;
+				}
+			}
+
+			// Combined movement
+			current_pos += (current_tangent + steer) * step_size;
+
+			// Correct position to stay on the path (this is the "desire" for the path center)
+			// This will pull it back to the riverbed/floor
 			current_pos = findClosestPointOnPath(current_pos);
 		}
 

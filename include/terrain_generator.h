@@ -198,7 +198,13 @@ namespace Boidsish {
 
 		bool Raycast(const glm::vec3& origin, const glm::vec3& dir, float max_dist, float& out_dist) const override;
 
-		std::vector<glm::vec3> GetPath(glm::vec2 start_pos, int num_points, float step_size) const override;
+		std::vector<glm::vec3> GetPath(
+			glm::vec2 start_pos,
+			int       num_points,
+			float     step_size,
+			float     max_curvature = 1.0f,
+			float     roughness_avoidance = 0.0f
+		) const override;
 
 		float     getBiomeControlValue(float x, float z) const;
 		glm::vec2 getDomainWarp(float x, float z) const;

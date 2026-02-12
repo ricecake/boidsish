@@ -311,9 +311,17 @@ namespace Boidsish {
 		 * @param start_pos Starting XZ position
 		 * @param num_points Number of path points to generate
 		 * @param step_size Distance between points
+		 * @param max_curvature Maximum curvature (0.0 to 1.0, higher means sharper turns allowed)
+		 * @param roughness_avoidance Strength of rough terrain avoidance (0.0 to 1.0)
 		 * @return Vector of 3D path points on terrain surface
 		 */
-		virtual std::vector<glm::vec3> GetPath(glm::vec2 start_pos, int num_points, float step_size) const = 0;
+		virtual std::vector<glm::vec3> GetPath(
+			glm::vec2 start_pos,
+			int       num_points,
+			float     step_size,
+			float     max_curvature = 1.0f,
+			float     roughness_avoidance = 0.0f
+		) const = 0;
 
 	protected:
 		// Protected constructor - only derived classes can instantiate
