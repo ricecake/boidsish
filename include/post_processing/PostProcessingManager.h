@@ -6,7 +6,7 @@
 #include "IPostProcessingEffect.h"
 #include <GL/glew.h>
 
-class Shader; // Forward declaration
+class ComputeShader;
 
 namespace Boidsish {
 	namespace PostProcessing {
@@ -22,12 +22,19 @@ namespace Boidsish {
 			GLuint ApplyEffects(
 				GLuint           sourceTexture,
 				GLuint           depthTexture,
+				GLuint           normalTexture,
+				GLuint           pbrTexture,
 				const glm::mat4& viewMatrix,
 				const glm::mat4& projectionMatrix,
+				const glm::mat4& prevViewMatrix,
+				const glm::mat4& prevProjectionMatrix,
 				const glm::vec3& cameraPos,
-				float            time
+				float            time,
+				uint32_t         frameCount
 			);
 			void Resize(int width, int height);
+
+			void SetMotionVectorEffect(std::shared_ptr<IPostProcessingEffect> effect);
 
 			std::vector<std::shared_ptr<IPostProcessingEffect>>& GetPreToneMappingEffects() {
 				return pre_tone_mapping_effects_;
@@ -39,12 +46,19 @@ namespace Boidsish {
 			void InitializeFBOs();
 
 			int                                                 width_, height_;
+			std::shared_ptr<IPostProcessingEffect>              motion_vector_effect_;
+			GLuint                                              motion_vector_fbo_{0};
+			GLuint                                              motion_vector_texture_{0};
 			std::vector<std::shared_ptr<IPostProcessingEffect>> pre_tone_mapping_effects_;
 			std::shared_ptr<IPostProcessingEffect>              tone_mapping_effect_;
 			GLuint                                              quad_vao_;
 
 			GLuint pingpong_fbo_[2];
 			GLuint pingpong_texture_[2];
+
+			GLuint                         hiz_texture_{0};
+			std::unique_ptr<ComputeShader> hiz_shader_;
+			void                           GenerateHiZ(GLuint depthTexture);
 		};
 
 	} // namespace PostProcessing

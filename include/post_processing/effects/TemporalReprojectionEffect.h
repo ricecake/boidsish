@@ -1,34 +1,31 @@
 #pragma once
 
-#include <memory>
-
 #include "post_processing/IPostProcessingEffect.h"
+#include <memory>
 
 class Shader;
 
 namespace Boidsish {
 	namespace PostProcessing {
 
-		class SuperSpeedEffect: public IPostProcessingEffect {
+		class TemporalReprojectionEffect : public IPostProcessingEffect {
 		public:
-			SuperSpeedEffect();
-			~SuperSpeedEffect() override;
+			TemporalReprojectionEffect();
+			virtual ~TemporalReprojectionEffect();
 
 			void Apply(const PostProcessingParams& params) override;
 			void Initialize(int width, int height) override;
 			void Resize(int width, int height) override;
 
-			void SetIntensity(float intensity) { intensity_ = intensity; }
-
-			float GetIntensity() const { return intensity_; }
-
-			void SetTime(float time) override { time_ = time; }
-
 		private:
+			void InitializeFBOs();
+
 			std::unique_ptr<Shader> shader_;
-			float                   intensity_ = 0.0f;
-			float                   time_ = 0.0f;
 			int                     width_, height_;
+			GLuint                  history_fbo_[2];
+			GLuint                  history_texture_[2];
+			int                     current_read_ = 0;
+			bool                    first_frame_ = true;
 		};
 
 	} // namespace PostProcessing

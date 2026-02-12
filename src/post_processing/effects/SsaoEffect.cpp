@@ -118,13 +118,7 @@ namespace Boidsish {
 			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
 		}
 
-		void SsaoEffect::Apply(
-			GLuint sourceTexture,
-			GLuint depthTexture,
-			const glm::mat4& /* viewMatrix */,
-			const glm::mat4& projectionMatrix,
-			const glm::vec3& /* cameraPos */
-		) {
+		void SsaoEffect::Apply(const PostProcessingParams& params) {
 			GLint originalFBO;
 			glGetIntegerv(GL_FRAMEBUFFER_BINDING, &originalFBO);
 
@@ -135,8 +129,8 @@ namespace Boidsish {
 			for (unsigned int i = 0; i < 64; ++i) {
 				ssao_shader_->setVec3("samples[" + std::to_string(i) + "]", ssao_kernel_[i]);
 			}
-			ssao_shader_->setMat4("projection", projectionMatrix);
-			ssao_shader_->setMat4("invProjection", glm::inverse(projectionMatrix));
+			ssao_shader_->setMat4("projection", params.projectionMatrix);
+			ssao_shader_->setMat4("invProjection", params.invProjectionMatrix);
 			ssao_shader_->setInt("gDepth", 0);
 			ssao_shader_->setInt("texNoise", 1);
 			ssao_shader_->setVec2("noiseScale", (float)width_ / 16.0f, (float)height_ / 16.0f);
@@ -144,7 +138,7 @@ namespace Boidsish {
 			ssao_shader_->setFloat("bias", bias_);
 
 			glActiveTexture(GL_TEXTURE0);
-			glBindTexture(GL_TEXTURE_2D, depthTexture);
+			glBindTexture(GL_TEXTURE_2D, params.depthTexture);
 			glActiveTexture(GL_TEXTURE1);
 			glBindTexture(GL_TEXTURE_2D, noise_texture_);
 			glDrawArrays(GL_TRIANGLES, 0, 6);
@@ -155,11 +149,11 @@ namespace Boidsish {
 			blur_shader_->use();
 			blur_shader_->setInt("ssaoInput", 0);
 			blur_shader_->setInt("gDepth", 1);
-			blur_shader_->setMat4("invProjection", glm::inverse(projectionMatrix));
+			blur_shader_->setMat4("invProjection", params.invProjectionMatrix);
 			glActiveTexture(GL_TEXTURE0);
 			glBindTexture(GL_TEXTURE_2D, ssao_texture_);
 			glActiveTexture(GL_TEXTURE1);
-			glBindTexture(GL_TEXTURE_2D, depthTexture);
+			glBindTexture(GL_TEXTURE_2D, params.depthTexture);
 			glDrawArrays(GL_TRIANGLES, 0, 6);
 
 			// 3. Composite
@@ -170,7 +164,7 @@ namespace Boidsish {
 			composite_shader_->setFloat("intensity", intensity_);
 			composite_shader_->setFloat("power", power_);
 			glActiveTexture(GL_TEXTURE0);
-			glBindTexture(GL_TEXTURE_2D, sourceTexture);
+			glBindTexture(GL_TEXTURE_2D, params.sourceTexture);
 			glActiveTexture(GL_TEXTURE1);
 			glBindTexture(GL_TEXTURE_2D, blur_texture_);
 			glDrawArrays(GL_TRIANGLES, 0, 6);

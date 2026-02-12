@@ -1,5 +1,7 @@
-#version 330 core
-out vec4 FragColor;
+#version 420 core
+layout(location = 0) out vec4 FragColor;
+layout(location = 1) out vec3 NormalColor;
+layout(location = 2) out vec2 PbrColor;
 
 in vec3  vs_color;
 in vec3  vs_normal;
@@ -100,4 +102,7 @@ void main() {
 		vec3 result = apply_lighting_no_shadows(vs_frag_pos, norm, vs_color, 0.5).rgb;
 		FragColor = vec4(result, camera_fade);
 	}
+
+	NormalColor = norm;
+	PbrColor = vec2(usePBR ? trailRoughness : 0.5, usePBR ? trailMetallic : 0.0);
 }

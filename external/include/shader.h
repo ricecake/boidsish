@@ -18,7 +18,7 @@
 class ShaderBase {
 public:
 	struct UniformValue {
-		std::variant<std::monostate, bool, int, float, glm::vec2, glm::vec3, glm::vec4, glm::mat2, glm::mat3, glm::mat4, std::vector<int>> value;
+		std::variant<std::monostate, bool, int, uint32_t, float, glm::vec2, glm::vec3, glm::vec4, glm::mat2, glm::mat3, glm::mat4, std::vector<int>> value;
 
 		UniformValue() = default;
 		template<typename T, typename = std::enable_if_t<!std::is_same_v<std::decay_t<T>, UniformValue>>>
@@ -37,6 +37,8 @@ public:
 						glUniform1i(location, (int)arg);
 					else if constexpr (std::is_same_v<T, int>)
 						glUniform1i(location, arg);
+					else if constexpr (std::is_same_v<T, uint32_t>)
+						glUniform1ui(location, arg);
 					else if constexpr (std::is_same_v<T, float>)
 						glUniform1f(location, arg);
 					else if constexpr (std::is_same_v<T, glm::vec2>)
@@ -94,6 +96,10 @@ public:
 		void setInt(const std::string& name, int value) {
 			capture(name);
 			shader.setInt(name, value);
+		}
+		void setUint(const std::string& name, uint32_t value) {
+			capture(name);
+			shader.setUint(name, value);
 		}
 		void setFloat(const std::string& name, float value) {
 			capture(name);
@@ -228,6 +234,13 @@ public:
 	}
 
 	// ------------------------------------------------------------------------
+	void setUint(const std::string& name, uint32_t value) const {
+		int loc = getUniformLocation(name);
+		glUniform1ui(loc, value);
+		m_UniformValues[loc] = UniformValue{value};
+	}
+
+	// ------------------------------------------------------------------------
 	void setFloat(const std::string& name, float value) const {
 		int loc = getUniformLocation(name);
 		glUniform1f(loc, value);
@@ -357,11 +370,17 @@ protected:
 			return {v};
 		}
 		case GL_INT:
+		case GL_UNSIGNED_INT:
 		case GL_BOOL:
 		case GL_SAMPLER_2D:
 		case GL_SAMPLER_CUBE:
 		case GL_SAMPLER_2D_ARRAY:
 		case GL_SAMPLER_3D: {
+			if (type == GL_UNSIGNED_INT) {
+				uint32_t v;
+				glGetUniformuiv(ID, loc, &v);
+				return {v};
+			}
 			int v;
 			glGetUniformiv(ID, loc, &v);
 			if (type == GL_BOOL)

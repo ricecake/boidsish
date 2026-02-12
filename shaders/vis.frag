@@ -1,5 +1,7 @@
 #version 420 core
-out vec4 FragColor;
+layout(location = 0) out vec4 FragColor;
+layout(location = 1) out vec3 NormalColor;
+layout(location = 2) out vec2 PbrColor;
 
 #include "helpers/lighting.glsl"
 #include "visual_effects.frag"
@@ -147,4 +149,6 @@ void main() {
 	}
 
 	FragColor = outColor;
+	NormalColor = norm;
+	PbrColor = vec2(usePBR ? roughness : 0.5, usePBR ? metallic : 0.0);
 }

@@ -88,13 +88,7 @@ namespace Boidsish {
 			InitializeFBO(width, height);
 		}
 
-		void OpticalFlowEffect::Apply(
-			GLuint           sourceTexture,
-			GLuint           depthTexture,
-			const glm::mat4& viewMatrix,
-			const glm::mat4& projectionMatrix,
-			const glm::vec3& cameraPos
-		) {
+		void OpticalFlowEffect::Apply(const PostProcessingParams& params) {
 			// 1. Get the currently bound FBO to restore it later
 			GLint originalFBO;
 			glGetIntegerv(GL_FRAMEBUFFER_BINDING, &originalFBO);
@@ -116,7 +110,7 @@ namespace Boidsish {
 
 			_shader->use();
 			glActiveTexture(GL_TEXTURE0);
-			glBindTexture(GL_TEXTURE_2D, sourceTexture);
+			glBindTexture(GL_TEXTURE_2D, params.sourceTexture);
 			glActiveTexture(GL_TEXTURE1);
 			glBindTexture(GL_TEXTURE_2D, _previousFrameTexture);
 			glActiveTexture(GL_TEXTURE2);
@@ -136,7 +130,7 @@ namespace Boidsish {
 			glClear(GL_COLOR_BUFFER_BIT);
 			_passthroughShader->use();
 			glActiveTexture(GL_TEXTURE0);
-			glBindTexture(GL_TEXTURE_2D, sourceTexture);
+			glBindTexture(GL_TEXTURE_2D, params.sourceTexture);
 			_passthroughShader->setInt("u_texture", 0);
 			glDrawArrays(GL_TRIANGLES, 0, 6);
 

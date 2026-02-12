@@ -107,13 +107,7 @@ namespace Boidsish {
 			glBindFramebuffer(GL_FRAMEBUFFER, 0);
 		}
 
-		void BloomEffect::Apply(
-			GLuint           sourceTexture,
-			GLuint           depthTexture,
-			const glm::mat4& viewMatrix,
-			const glm::mat4& projectionMatrix,
-			const glm::vec3& cameraPos
-		) {
+		void BloomEffect::Apply(const PostProcessingParams& params) {
 			GLint originalFBO;
 			glGetIntegerv(GL_FRAMEBUFFER_BINDING, &originalFBO);
 			GLint originalViewport[4];
@@ -126,7 +120,7 @@ namespace Boidsish {
 			_brightPassShader->setInt("sceneTexture", 0);
 			_brightPassShader->setFloat("threshold", threshold_);
 			glActiveTexture(GL_TEXTURE0);
-			glBindTexture(GL_TEXTURE_2D, sourceTexture);
+			glBindTexture(GL_TEXTURE_2D, params.sourceTexture);
 			glDrawArrays(GL_TRIANGLES, 0, 6);
 
 			// 2. Progressive downsample with blur
@@ -179,7 +173,7 @@ namespace Boidsish {
 			_compositeShader->setInt("bloomBlur", 1);
 			_compositeShader->setFloat("intensity", intensity_);
 			glActiveTexture(GL_TEXTURE0);
-			glBindTexture(GL_TEXTURE_2D, sourceTexture);
+			glBindTexture(GL_TEXTURE_2D, params.sourceTexture);
 			glActiveTexture(GL_TEXTURE1);
 			glBindTexture(GL_TEXTURE_2D, _mipChain[0].texture);
 			glDrawArrays(GL_TRIANGLES, 0, 6);
