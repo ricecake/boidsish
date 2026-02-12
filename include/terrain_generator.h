@@ -101,12 +101,8 @@ namespace Boidsish {
 
 		uint32_t GetVersion() const override { return terrain_version_; }
 
-		// Interface method - calls pointProperties
-		std::tuple<float, glm::vec3> GetPointProperties(float x, float z) const override {
-			return pointProperties(x, z);
-		}
-
-		std::tuple<float, glm::vec3> pointProperties(float x, float z) const {
+		// Interface method - calls CalculateTerrainPropertiesAtPoint
+		std::tuple<float, glm::vec3> CalculateTerrainPropertiesAtPoint(float x, float z) const override {
 			// Determine grid cell
 			float sx = x / world_scale_;
 			float sz = z / world_scale_;
@@ -215,7 +211,7 @@ namespace Boidsish {
 		 * @param z World Z coordinate
 		 * @return Tuple of (height, surface_normal). Returns (0, up) if no data available.
 		 */
-		std::tuple<float, glm::vec3> GetCachedPointProperties(float x, float z) const override;
+		std::tuple<float, glm::vec3> GetTerrainPropertiesAtPoint(float x, float z) const override;
 
 		/**
 		 * @brief Check if a 3D point is below the terrain surface.

@@ -21,7 +21,7 @@ int main() {
 		// No shapes, just terrain
 		visualizer.AddShapeHandler([&visualizer](float /* time */) {
 			auto cam = visualizer.GetCamera();
-			auto [height, norm] = visualizer.GetTerrainPointProperties(cam.x, cam.z);
+			auto [height, norm] = visualizer.GetTerrainPropertiesAtPoint(cam.x, cam.z);
 			if (cam.y < height) {
 				logger::LOG("BELOW");
 			}

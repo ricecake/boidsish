@@ -14,7 +14,7 @@ int main() {
 		visualizer->AddShapeHandler(std::ref(*handler));
 
 		// Initial camera position
-		auto [h, n] = visualizer->GetTerrainPointProperties(0, 0);
+		auto [h, n] = visualizer->GetTerrainPropertiesAtPoint(0, 0);
 		Camera camera(0.0f, h + 100.0f, 200.0f);
 		visualizer->SetCamera(camera);
 

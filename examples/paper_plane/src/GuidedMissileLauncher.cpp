@@ -37,7 +37,7 @@ namespace Boidsish {
 			for (int i = 0; i < 8; ++i) {
 				float     angle = i * (glm::pi<float>() / 4.0f);
 				glm::vec3 dir(sin(angle), 0, cos(angle));
-				auto [h, norm] = handler.GetCachedTerrainProperties(
+				auto [h, norm] = handler.GetTerrainPropertiesAtPoint(
 					pos.x + dir.x * sample_dist,
 					pos.z + dir.z * sample_dist
 				);
@@ -142,7 +142,7 @@ namespace Boidsish {
 		}
 
 		auto pos = GetPosition().Toglm();
-		auto [h_val, n_val] = handler.GetCachedTerrainProperties(pos.x, pos.z);
+		auto [h_val, n_val] = handler.GetTerrainPropertiesAtPoint(pos.x, pos.z);
 		float     height = h_val;
 		glm::vec3 normal = n_val;
 

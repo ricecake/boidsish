@@ -162,7 +162,7 @@ namespace Boidsish {
 		if (lived_ < kLaunchTime) {
 			rigid_body_.AddRelativeForce(glm::vec3(0, 0, -600));
 		} else {
-			auto [height, norm] = handler.vis->GetTerrainPointPropertiesThreadSafe(pos.x, pos.z);
+			auto [height, norm] = handler.vis->GetTerrainPropertiesAtPoint(pos.x, pos.z);
 			if (pos.y < height) {
 				Explode(handler, false);
 				return;
@@ -236,7 +236,7 @@ namespace Boidsish {
 						float hit_dist = 0.0f;
 						if (terrain_generator->Raycast(origin, dir, reaction_distance, hit_dist)) {
 							auto hit_coord = vel_vec.Normalized() * hit_dist;
-							auto [terrain_h, terrain_normal] = terrain_generator->pointProperties(
+							auto [terrain_h, terrain_normal] = terrain_generator->GetTerrainPropertiesAtPoint(
 								hit_coord.x,
 								hit_coord.z
 							);
