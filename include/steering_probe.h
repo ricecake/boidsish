@@ -75,7 +75,7 @@ namespace Boidsish {
 			if (glm::dot(valleyDir, glm::vec2(playerVel.x, playerVel.z)) < 0) {
 				valleyDir = -valleyDir;
 			}
-			glm::vec2 flowForce2D = valleyDir * (velocity.length() * 0.5f);
+			glm::vec2 flowForce2D = valleyDir * (glm::length(velocity) * 0.5f);
 
 			// --- 4. HEIGHT CONTROL ---
 			// Sample actual ground height to stay above it

@@ -222,6 +222,7 @@ namespace Boidsish {
 			std::vector<SpawnCandidate> launcher_candidates;
 			std::vector<SpawnCandidate> roamer_candidates;
 			std::set<const Terrain*>    processed_chunks;
+			std::set<int>               queued_ids;
 
 			for (const auto& chunk_ptr : visible_chunks) {
 				const Terrain* chunk = chunk_ptr.get();
@@ -300,12 +301,13 @@ namespace Boidsish {
 					);
 					int id = 0x50000000 | ((ix + 1024) << 11) | (iz + 1024);
 
-					if (GetEntity(id) == nullptr) {
+					if (queued_ids.find(id) == queued_ids.end() && GetEntity(id) == nullptr) {
 						QueueAddEntity<GuidedMissileLauncher>(
 							id,
 							Vector3(world_pos.x, terrain_h, world_pos.z),
 							terrain_alignment
 						);
+						queued_ids.insert(id);
 					}
 					std::pair<int, int> coord = {
 						static_cast<int>(candidate.chunk->GetX()),
@@ -346,11 +348,12 @@ namespace Boidsish {
 					int id = 0x60000000 | ((ix + 1024) << 11) | (iz + 1024);
 
 					bool spawned = false;
-					if (GetEntity(id) == nullptr) {
+					if (queued_ids.find(id) == queued_ids.end() && GetEntity(id) == nullptr) {
 						QueueAddEntity<PearEnemy>(
 							id,
 							Vector3{static_cast<float>(world_pos.x), static_cast<float>(terrain_h + 10.0f), static_cast<float>(world_pos.z)}
 						);
+						queued_ids.insert(id);
 						spawned = true;
 					}
 
