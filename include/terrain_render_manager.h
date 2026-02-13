@@ -105,6 +105,11 @@ namespace Boidsish {
 		void SetEvictionCallback(std::function<void(std::pair<int, int>)> callback) { eviction_callback_ = callback; }
 
 		/**
+		 * @brief Set the Phong alpha for terrain smoothing (0.0 = flat, 1.0 = smooth).
+		 */
+		void SetPhongAlpha(float alpha) { phong_alpha_ = alpha; }
+
+		/**
 		 * @brief Get statistics.
 		 */
 		size_t GetRegisteredChunkCount() const;
@@ -152,7 +157,8 @@ namespace Boidsish {
 		UploadHeightmapSlice(int slice, const std::vector<float>& heightmap, const std::vector<glm::vec3>& normals);
 
 		// Configuration
-		int chunk_size_;           // Grid size per chunk (e.g., 32)
+		float phong_alpha_ = 1.0f; // Default to smooth
+		int   chunk_size_;         // Grid size per chunk (e.g., 32)
 		int max_chunks_;           // Maximum chunks in texture array
 		int heightmap_resolution_; // (chunk_size + 1) for vertex corners
 

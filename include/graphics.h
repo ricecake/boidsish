@@ -535,6 +535,13 @@ namespace Boidsish {
 		bool IsGlitchedEffectEnabled() const;
 		bool IsWireframeEffectEnabled() const;
 
+		// Terrain Debug methods
+		void  SetTerrainPhongAlpha(float alpha);
+		float GetTerrainPhongAlpha() const;
+		void  SetTerrainDebugGridEnabled(bool enabled);
+		bool  IsTerrainDebugGridEnabled() const;
+		void  CaptureTerrainData(const glm::vec3& center, float size, int resolution);
+
 	private:
 		struct VisualizerImpl;
 		std::unique_ptr<VisualizerImpl> impl;

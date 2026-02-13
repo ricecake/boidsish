@@ -77,6 +77,25 @@ namespace Boidsish {
 				config.SetBool("artistic_effect_wireframe", wireframe_enabled);
 			}
 
+			ImGui::Separator();
+			ImGui::Text("Terrain Debug");
+
+			float phong_alpha = m_visualizer->GetTerrainPhongAlpha();
+			if (ImGui::SliderFloat("Phong Alpha", &phong_alpha, 0.0f, 1.0f)) {
+				m_visualizer->SetTerrainPhongAlpha(phong_alpha);
+			}
+
+			bool terrain_debug_grid = m_visualizer->IsTerrainDebugGridEnabled();
+			if (ImGui::Checkbox("Terrain Debug Grid (200x200)", &terrain_debug_grid)) {
+				m_visualizer->SetTerrainDebugGridEnabled(terrain_debug_grid);
+			}
+
+			if (ImGui::Button("Capture Terrain Data Dump")) {
+				auto&     cam = m_visualizer->GetCamera();
+				glm::vec3 camPos(cam.x, cam.y, cam.z);
+				m_visualizer->CaptureTerrainData(camPos, 200.0f, 100);
+			}
+
 			ImGui::End();
 		}
 
