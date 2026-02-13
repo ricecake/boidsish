@@ -2,6 +2,8 @@
 
 #include <array>
 #include <chrono>
+#include <fstream>
+#include <iomanip>
 #include <iostream>
 #include <map>
 #include <memory>
@@ -234,6 +236,7 @@ namespace Boidsish {
 		std::unique_ptr<Shader> plane_shader;
 		std::unique_ptr<Shader> sky_shader;
 		std::unique_ptr<Shader> trail_shader;
+		std::unique_ptr<Shader> terrain_capture_shader;
 		std::unique_ptr<Shader> blur_shader;
 		std::unique_ptr<Shader> postprocess_shader_;
 		GLuint                  plane_vao{0}, plane_vbo{0}, sky_vao{0}, blur_quad_vao{0}, blur_quad_vbo{0};
@@ -576,6 +579,14 @@ namespace Boidsish {
 					"shaders/terrain.tes"
 				);
 				SetupShaderBindings(*Terrain::terrain_shader_);
+
+				terrain_capture_shader = std::make_unique<Shader>(
+					"shaders/terrain.vert",
+					"shaders/terrain_capture.frag",
+					"shaders/terrain.tcs",
+					"shaders/terrain.tes"
+				);
+				SetupShaderBindings(*terrain_capture_shader);
 
 				// Create the terrain render manager
 				// Query GPU for max texture array layers and use a safe initial allocation
@@ -3433,5 +3444,102 @@ namespace Boidsish {
 
 	bool Visualizer::IsTerrainDebugGridEnabled() const {
 		return impl->terrain_debug_grid_enabled_;
+	}
+
+	void Visualizer::CaptureTerrainData(const glm::vec3& center, float size, int resolution) {
+		if (!impl->terrain_generator || !impl->terrain_render_manager || !impl->terrain_capture_shader) {
+			logger::ERROR("Cannot capture terrain data: Terrain system not initialized");
+			return;
+		}
+
+		logger::LOG("Capturing terrain data dump...");
+
+		// 1. Setup FBO
+		GLuint fbo, tex;
+		glGenFramebuffers(1, &fbo);
+		glBindFramebuffer(GL_FRAMEBUFFER, fbo);
+
+		glGenTextures(1, &tex);
+		glBindTexture(GL_TEXTURE_2D, tex);
+		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, resolution, resolution, 0, GL_RGBA, GL_FLOAT, nullptr);
+		glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, tex, 0);
+
+		if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
+			logger::ERROR("Capture FBO incomplete");
+			glBindFramebuffer(GL_FRAMEBUFFER, 0);
+			glDeleteTextures(1, &tex);
+			glDeleteFramebuffers(1, &fbo);
+			return;
+		}
+
+		glViewport(0, 0, resolution, resolution);
+		glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
+		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+		// 2. Setup Orthographic Camera
+		float     halfSize = size / 2.0f;
+		glm::mat4 projection = glm::ortho(-halfSize, halfSize, -halfSize, halfSize, 0.1f, 2000.0f);
+		glm::mat4 view = glm::lookAt(glm::vec3(center.x, center.y + 1000.0f, center.z), center, glm::vec3(0, 0, -1));
+
+		// 3. Render
+		Frustum captureFrustum = Frustum::FromViewProjection(view, projection);
+		impl->terrain_generator->Update(captureFrustum, Camera(center.x, center.y + 1000.0f, center.z, -90, 0, 0));
+
+		// Prepare and render
+		float world_scale = impl->terrain_generator->GetWorldScale();
+		impl->terrain_render_manager->PrepareForRender(captureFrustum, glm::vec3(center.x, center.y + 1000.0f, center.z), world_scale);
+		impl->terrain_render_manager->Render(
+			*impl->terrain_capture_shader,
+			view,
+			projection,
+			glm::vec2(resolution, resolution),
+			std::nullopt,
+			1.0f // Quality
+		);
+
+		// 4. Read back
+		std::vector<float> data(resolution * resolution * 4);
+		glReadPixels(0, 0, resolution, resolution, GL_RGBA, GL_FLOAT, data.data());
+
+		// 5. Cleanup
+		glBindFramebuffer(GL_FRAMEBUFFER, 0);
+		glDeleteTextures(1, &tex);
+		glDeleteFramebuffers(1, &fbo);
+		glViewport(0, 0, impl->width, impl->height);
+
+		// 6. Write CSV and compare with CPU
+		std::ofstream csv("terrain_debug_dump.csv");
+		csv << "X,Z,GPU_Height,CPU_Smoothed_Height,CPU_Raw_Detailed_Height\n";
+		csv << std::fixed << std::setprecision(4);
+
+		float start_x = center.x - halfSize;
+		float start_z = center.z - halfSize;
+		float step = size / resolution;
+
+		float old_alpha = impl->terrain_generator->GetPhongAlpha();
+
+		for (int j = 0; j < resolution; ++j) {
+			for (int i = 0; i < resolution; ++i) {
+				float x = start_x + (i + 0.5f) * step;
+				float z = start_z + (j + 0.5f) * step;
+
+				// Invert Y axis for glReadPixels (starts bottom-left)
+				float gpu_height = data[(j * resolution + i) * 4 + 0];
+
+				// CPU Smoothed (alpha = 0.0)
+				impl->terrain_generator->SetPhongAlpha(0.0f);
+				auto [cpu_smoothed, _] = impl->terrain_generator->CalculateTerrainPropertiesAtPoint(x, z);
+
+				// CPU Detailed (alpha = 1.0)
+				impl->terrain_generator->SetPhongAlpha(1.0f);
+				auto [cpu_detailed, __] = impl->terrain_generator->CalculateTerrainPropertiesAtPoint(x, z);
+
+				csv << x << "," << z << "," << gpu_height << "," << cpu_smoothed << "," << cpu_detailed << "\n";
+			}
+		}
+
+		impl->terrain_generator->SetPhongAlpha(old_alpha);
+
+		logger::LOG("Terrain data dump complete: terrain_debug_dump.csv");
 	}
 } // namespace Boidsish

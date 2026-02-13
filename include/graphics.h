@@ -540,6 +540,7 @@ namespace Boidsish {
 		float GetTerrainPhongAlpha() const;
 		void  SetTerrainDebugGridEnabled(bool enabled);
 		bool  IsTerrainDebugGridEnabled() const;
+		void  CaptureTerrainData(const glm::vec3& center, float size, int resolution);
 
 	private:
 		struct VisualizerImpl;

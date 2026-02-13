@@ -90,6 +90,12 @@ namespace Boidsish {
 				m_visualizer->SetTerrainDebugGridEnabled(terrain_debug_grid);
 			}
 
+			if (ImGui::Button("Capture Terrain Data Dump")) {
+				auto&     cam = m_visualizer->GetCamera();
+				glm::vec3 camPos(cam.x, cam.y, cam.z);
+				m_visualizer->CaptureTerrainData(camPos, 200.0f, 100);
+			}
+
 			ImGui::End();
 		}
 
