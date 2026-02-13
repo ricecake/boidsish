@@ -16,6 +16,15 @@ namespace Boidsish {
 		void UpdateEntity(const EntityHandler& handler, float time, float delta_time) override;
 		void Destroy(const EntityHandler& handler);
 
+		void OnHit(const EntityHandler& handler, float damage) override {
+			(void)damage;
+			Destroy(handler);
+		}
+
+		float GetHealth() const override { return 1.0f; }
+
+		bool IsTargetable() const override { return true; }
+
 		glm::vec3 GetApproachPoint() const { return approach_point_; }
 
 	private:

@@ -37,6 +37,7 @@ namespace Boidsish {
 
 		// Correct the initial orientation to match the model's alignment
 		orientation_ = glm::angleAxis(glm::radians(25.0f), glm::vec3(1.0f, 0.0f, 0.0f));
+		SetOrientation(orientation_);
 		UpdateShape();
 	}
 
@@ -236,6 +237,7 @@ namespace Boidsish {
 		glm::quat yaw_delta = glm::angleAxis(rotational_velocity_.y * delta_time, glm::vec3(0.0f, 1.0f, 0.0f));
 		glm::quat roll_delta = glm::angleAxis(rotational_velocity_.z * delta_time, glm::vec3(0.0f, 0.0f, 1.0f));
 		orientation_ = glm::normalize(orientation_ * pitch_delta * yaw_delta * roll_delta);
+		SetOrientation(orientation_);
 
 		if (super_speed_state_ == SuperSpeedState::ACTIVE) {
 			forward_speed_ = kBoostSpeed * 3.0f; // Super speed!
@@ -329,9 +331,6 @@ namespace Boidsish {
 
 	void PaperPlane::UpdateShape() {
 		Entity<Model>::UpdateShape();
-		if (shape_) {
-			shape_->SetRotation(orientation_);
-		}
 	}
 
 	void PaperPlane::TriggerDamage() {

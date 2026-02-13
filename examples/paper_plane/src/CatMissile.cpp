@@ -127,10 +127,17 @@ namespace Boidsish {
 		const float kDamping = 2.5f;
 
 		auto& pp_handler = static_cast<const PaperPlaneHandler&>(handler);
-		auto  targets = pp_handler.GetEntitiesInRadius<GuidedMissileLauncher>(
+		auto  candidates = pp_handler.GetEntitiesInRadius<EntityBase>(
             pos,
             kMaxSpeed * (lifetime_ - lived_) * 0.5f
         );
+
+		std::vector<std::shared_ptr<EntityBase>> targets;
+		for (auto& c : candidates) {
+			if (c->IsTargetable() && c->GetId() != id_) {
+				targets.push_back(c);
+			}
+		}
 
 		const float stickiness = 0.30f;
 		auto        minRank = INFINITY;
@@ -147,7 +154,7 @@ namespace Boidsish {
 
 			auto frontNess = glm::dot(world_fwd, to_target);
 
-			if (distance <= 5 && frontNess < 0.75 || distance <= 10 && frontNess < 0.85) {
+			if (distance <= 15 && frontNess < 0.75 || distance <= 25 && frontNess < 0.85) {
 				target_ = candidate;
 				Explode(handler, true);
 				return;
@@ -163,11 +170,16 @@ namespace Boidsish {
 			bool sector_blocked = true;
 
 			if (target_blocked) {
-				glm::vec3 approach_p = candidate->GetApproachPoint();
-				glm::vec3 to_approach = glm::normalize(approach_p - missile_pos);
-				float     dist_to_approach = glm::length(approach_p - missile_pos);
-				sector_blocked =
-					handler.RaycastTerrain(missile_pos, to_approach, dist_to_approach, hit_dist, terrain_normal);
+				auto launcher = std::dynamic_pointer_cast<GuidedMissileLauncher>(candidate);
+				if (launcher) {
+					glm::vec3 approach_p = launcher->GetApproachPoint();
+					glm::vec3 to_approach = glm::normalize(approach_p - missile_pos);
+					float     dist_to_approach = glm::length(approach_p - missile_pos);
+					sector_blocked =
+						handler.RaycastTerrain(missile_pos, to_approach, dist_to_approach, hit_dist, terrain_normal);
+				} else {
+					sector_blocked = true;
+				}
 			} else {
 				sector_blocked = false;
 			}
@@ -176,7 +188,8 @@ namespace Boidsish {
 				continue;
 			}
 
-			int  target_count = pp_handler.GetTargetCount(candidate);
+			auto launcher = std::dynamic_pointer_cast<GuidedMissileLauncher>(candidate);
+			int  target_count = launcher ? pp_handler.GetTargetCount(launcher) : 0;
 			auto rank = distance * (2.0 - 1.75f * frontNess) * (1.0f + 0.5f * target_count);
 			if (candidate == target_) {
 				rank *= stickiness;
@@ -213,18 +226,21 @@ namespace Boidsish {
 					hit_dist,
 					terrain_normal
 				)) {
-				// Aim for approach point if launcher is obscured, but start cutting the corner
-				// once we are close enough to the approach point (crested the hill).
-				glm::vec3 approach_p = target_->GetApproachPoint();
-				glm::vec3 target_p = target_->GetPosition().Toglm();
-				float     d_at = glm::distance(approach_p, target_p);
-				float     d_ma = glm::distance(missile_pos, approach_p);
+				auto launcher = std::dynamic_pointer_cast<GuidedMissileLauncher>(target_);
+				if (launcher) {
+					// Aim for approach point if launcher is obscured, but start cutting the corner
+					// once we are close enough to the approach point (crested the hill).
+					glm::vec3 approach_p = launcher->GetApproachPoint();
+					glm::vec3 target_p = target_->GetPosition().Toglm();
+					float     d_at = glm::distance(approach_p, target_p);
+					float     d_ma = glm::distance(missile_pos, approach_p);
 
-				if (d_ma <= d_at && d_at > 1e-4f) {
-					float t = d_ma / d_at;
-					target_dir_world = glm::mix(target_p, approach_p, t);
-				} else {
-					target_dir_world = approach_p;
+					if (d_ma <= d_at && d_at > 1e-4f) {
+						float t = d_ma / d_at;
+						target_dir_world = glm::mix(target_p, approach_p, t);
+					} else {
+						target_dir_world = approach_p;
+					}
 				}
 			}
 
@@ -319,7 +335,7 @@ namespace Boidsish {
 		shape_->SetHidden(true);
 
 		if (hit_target && target_) {
-			target_->Destroy(handler);
+			target_->OnHit(handler, 100.0f);
 		}
 
 		auto pos = GetPosition();

@@ -42,6 +42,15 @@ namespace Boidsish {
 		// Called each frame to update the entity
 		virtual void UpdateEntity(const EntityHandler& handler, float time, float delta_time) = 0;
 
+		virtual void OnHit(const EntityHandler& handler, float damage) {
+			(void)handler;
+			(void)damage;
+		}
+
+		virtual float GetHealth() const { return 0.0f; }
+
+		virtual bool IsTargetable() const { return false; }
+
 		// Shape management
 		virtual std::shared_ptr<Shape> GetShape() const = 0;
 		virtual void                   UpdateShape() = 0;
@@ -189,6 +198,8 @@ namespace Boidsish {
 		std::shared_ptr<Shape> GetShape() const override { return shape_; }
 
 		void SetOrientation(glm::quat orientation) { rigid_body_.SetOrientation(orientation); }
+
+		glm::quat GetOrientation() const { return rigid_body_.GetOrientation(); }
 
 		void UpdateShape() override {
 			if (!shape_)
