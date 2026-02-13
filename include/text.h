@@ -44,6 +44,8 @@ namespace Boidsish {
 		void SetText(const std::string& text);
 		void SetJustification(Justification justification);
 
+		bool IsTransparent() const override { return GetA() < 0.99f || is_text_effect_; }
+
 		// Text effect state
 		void SetTextEffect(bool enabled) { is_text_effect_ = enabled; }
 
