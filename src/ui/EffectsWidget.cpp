@@ -77,6 +77,19 @@ namespace Boidsish {
 				config.SetBool("artistic_effect_wireframe", wireframe_enabled);
 			}
 
+			ImGui::Separator();
+			ImGui::Text("Terrain Debug");
+
+			bool terrain_smoothing = m_visualizer->IsTerrainSmoothingEnabled();
+			if (ImGui::Checkbox("Terrain Smoothing", &terrain_smoothing)) {
+				m_visualizer->SetTerrainSmoothingEnabled(terrain_smoothing);
+			}
+
+			bool terrain_debug_grid = m_visualizer->IsTerrainDebugGridEnabled();
+			if (ImGui::Checkbox("Terrain Debug Grid (200x200)", &terrain_debug_grid)) {
+				m_visualizer->SetTerrainDebugGridEnabled(terrain_debug_grid);
+			}
+
 			ImGui::End();
 		}
 

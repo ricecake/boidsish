@@ -30,6 +30,7 @@ namespace Boidsish {
 
 		void RenderModelGroup(Shader& shader, InstanceGroup& group);
 		void RenderDotGroup(Shader& shader, InstanceGroup& group);
+		void RenderConeGroup(Shader& shader, InstanceGroup& group);
 	};
 
 } // namespace Boidsish

@@ -18,6 +18,7 @@
 #include "checkpoint_ring.h"
 #include "clone_manager.h"
 #include "curved_text.h"
+#include "debug_cone.h"
 #include "decor_manager.h"
 #include "dot.h"
 #include "entity.h"
@@ -69,6 +70,7 @@
 #include <glm/ext/matrix_projection.hpp>
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
+#include <glm/gtx/quaternion.hpp>
 #include <shader.h>
 
 namespace Boidsish {
@@ -290,6 +292,11 @@ namespace Boidsish {
 		glm::vec2 camera_angular_velocity_{0.0f, 0.0f};
 		float     avg_frame_time_{1.0f / 60.0f};
 		float     tess_quality_multiplier_{1.0f};
+
+		// Terrain Debug
+		bool terrain_smoothing_enabled_ = true;
+		bool terrain_debug_grid_enabled_ = false;
+		std::vector<std::shared_ptr<DebugCone>> debug_cones_;
 
 		// Camera shake state
 		float     shake_intensity = 0.0f;
@@ -595,6 +602,7 @@ namespace Boidsish {
 			}
 
 			Shape::InitSphereMesh();
+			Shape::InitConeMesh();
 			Line::InitLineMesh();
 			CheckpointRingShape::InitQuadMesh();
 
@@ -963,6 +971,7 @@ namespace Boidsish {
 			ui_manager.reset();
 
 			Shape::DestroySphereMesh();
+			Shape::DestroyConeMesh();
 			Line::DestroyLineMesh();
 			CheckpointRingShape::DestroyQuadMesh();
 
@@ -1071,6 +1080,53 @@ namespace Boidsish {
 						glm::vec3(shape->GetR(), shape->GetG(), shape->GetB())
 					);
 					trail_last_update[shape->GetId()] = time;
+				}
+			}
+		}
+
+		void UpdateDebugGrid() {
+			if (!terrain_debug_grid_enabled_ || !terrain_generator) {
+				return;
+			}
+
+			const int   grid_size = 200;
+			const float spacing = 5.0f;
+			const int   total_cones = grid_size * grid_size;
+
+			if (debug_cones_.size() != (size_t)total_cones) {
+				debug_cones_.clear();
+				debug_cones_.reserve(total_cones);
+				for (int i = 0; i < total_cones; ++i) {
+					auto cone = std::make_shared<DebugCone>(1000000 + i); // High ID range
+					cone->SetScale(glm::vec3(0.5f, 2.0f, 0.5f));         // Tall cones
+					cone->SetColor(1.0f, 1.0f, 0.0f, 1.0f);              // Bright yellow
+					debug_cones_.push_back(cone);
+				}
+			}
+
+			glm::vec3 cam_pos = camera.pos();
+			float     start_x = std::floor(cam_pos.x / spacing) * spacing - (grid_size / 2) * spacing;
+			float     start_z = std::floor(cam_pos.z / spacing) * spacing - (grid_size / 2) * spacing;
+
+			for (int i = 0; i < grid_size; ++i) {
+				for (int j = 0; j < grid_size; ++j) {
+					float x = start_x + i * spacing;
+					float z = start_z + j * spacing;
+
+					// Use GetTerrainPropertiesAtPoint (the GetPoint* method intended)
+					auto [height, normal] = terrain_generator->GetTerrainPropertiesAtPoint(x, z);
+
+					auto& cone = debug_cones_[i * grid_size + j];
+					cone->SetPosition(x, height, z);
+
+					// Orient to terrain normal
+					glm::vec3 up(0, 1, 0);
+					if (glm::length(normal) > 0.001f && glm::length(glm::cross(up, normal)) > 0.001f) {
+						glm::quat rot = glm::rotation(up, normal);
+						cone->SetRotation(rot);
+					} else {
+						cone->SetRotation(glm::quat(1, 0, 0, 0));
+					}
 				}
 			}
 		}
@@ -1188,6 +1244,11 @@ namespace Boidsish {
 			// Inversely apply world scale to tessellation. Larger world = lower triangle density per unit.
 			if (terrain_generator) {
 				effective_quality /= terrain_generator->GetWorldScale();
+				terrain_generator->SetPhongAlpha(terrain_smoothing_enabled_ ? 1.0f : 0.0f);
+			}
+
+			if (terrain_render_manager) {
+				terrain_render_manager->SetPhongAlpha(terrain_smoothing_enabled_ ? 1.0f : 0.0f);
 			}
 
 			// Determine viewport size for Screen Space Error calculations
@@ -1999,6 +2060,10 @@ namespace Boidsish {
 			impl->shapes.push_back(pair.second);
 		}
 
+		if (impl->terrain_debug_grid_enabled_) {
+			impl->shapes.insert(impl->shapes.end(), impl->debug_cones_.begin(), impl->debug_cones_.end());
+		}
+
 		// --- Shadow Optimization: Check for object movement and camera proximity ---
 		impl->any_shadow_caster_moved = false;
 		glm::vec3 scene_center(0.0f);
@@ -2052,6 +2117,10 @@ namespace Boidsish {
 		} else if (impl->camera_mode == CameraMode::PATH_FOLLOW) {
 			impl->UpdatePathFollowCamera(impl->input_state.delta_time);
 		}
+
+	if (impl->terrain_debug_grid_enabled_) {
+		impl->UpdateDebugGrid();
+	}
 
 		impl->audio_manager->UpdateListener(
 			impl->camera.pos(),
@@ -3378,5 +3447,21 @@ namespace Boidsish {
 
 	bool Visualizer::IsWireframeEffectEnabled() const {
 		return ConfigManager::GetInstance().GetAppSettingBool("artistic_effect_wireframe", false);
+	}
+
+	void Visualizer::SetTerrainSmoothingEnabled(bool enabled) {
+		impl->terrain_smoothing_enabled_ = enabled;
+	}
+
+	bool Visualizer::IsTerrainSmoothingEnabled() const {
+		return impl->terrain_smoothing_enabled_;
+	}
+
+	void Visualizer::SetTerrainDebugGridEnabled(bool enabled) {
+		impl->terrain_debug_grid_enabled_ = enabled;
+	}
+
+	bool Visualizer::IsTerrainDebugGridEnabled() const {
+		return impl->terrain_debug_grid_enabled_;
 	}
 } // namespace Boidsish

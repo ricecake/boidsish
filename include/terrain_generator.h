@@ -101,6 +101,9 @@ namespace Boidsish {
 
 		uint32_t GetVersion() const override { return terrain_version_; }
 
+		void  SetPhongAlpha(float alpha) override { phong_alpha_ = glm::clamp(alpha, 0.0f, 1.0f); }
+		float GetPhongAlpha() const override { return phong_alpha_; }
+
 		// Interface method - calls CalculateTerrainPropertiesAtPoint
 		std::tuple<float, glm::vec3> CalculateTerrainPropertiesAtPoint(float x, float z) const override {
 			// Determine grid cell
@@ -177,8 +180,18 @@ namespace Boidsish {
 			// Interpolate the projected points to find the final curved position
 			glm::vec3 final_pos = bilerp(p0, p1, p2, p3, {tx, tz});
 
+			// Mix flat and curved positions based on phong_alpha_
+			final_pos = glm::mix(q, final_pos, phong_alpha_);
+
 			// Interpolate normals for lighting
 			glm::vec3 final_norm = glm::normalize(bilerp(n0, n1, n2, n3, {tx, tz}));
+
+			// Mix with raw heightmap normal based on phong_alpha_
+			glm::vec3 n = glm::normalize(diffToNorm(v0_raw.y, v0_raw.z)); // Corner normals are already normalized
+			// Actually n should be calculated at tx, tz
+			auto v_raw = pointGenerate(x, z);
+			glm::vec3 raw_norm = diffToNorm(v_raw.y, v_raw.z);
+			final_norm = glm::normalize(glm::mix(raw_norm, final_norm, phong_alpha_));
 
 			// Apply deformations to match the mesh
 			if (deformation_manager_.HasDeformationAt(x, z)) {
@@ -407,6 +420,7 @@ namespace Boidsish {
 		float     persistence_ = Constants::Class::Terrain::DefaultPersistence();
 		int       seed_;
 		float     world_scale_ = 1.0f;
+		float     phong_alpha_ = 1.0f; // Default to smooth
 		uint32_t  terrain_version_ = 0;
 
 		// Control noise parameters

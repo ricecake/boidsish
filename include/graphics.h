@@ -535,6 +535,12 @@ namespace Boidsish {
 		bool IsGlitchedEffectEnabled() const;
 		bool IsWireframeEffectEnabled() const;
 
+		// Terrain Debug methods
+		void SetTerrainSmoothingEnabled(bool enabled);
+		bool IsTerrainSmoothingEnabled() const;
+		void SetTerrainDebugGridEnabled(bool enabled);
+		bool IsTerrainDebugGridEnabled() const;
+
 	private:
 		struct VisualizerImpl;
 		std::unique_ptr<VisualizerImpl> impl;

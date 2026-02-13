@@ -305,6 +305,16 @@ namespace Boidsish {
 		virtual uint32_t GetVersion() const = 0;
 
 		/**
+		 * @brief Set the Phong alpha for terrain smoothing (0.0 = flat, 1.0 = smooth).
+		 */
+		virtual void SetPhongAlpha(float alpha) = 0;
+
+		/**
+		 * @brief Get the current Phong alpha.
+		 */
+		virtual float GetPhongAlpha() const = 0;
+
+		/**
 		 * @brief Get a path along terrain following procedural path spline.
 		 *
 		 * @param start_pos Starting XZ position

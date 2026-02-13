@@ -515,6 +515,7 @@ namespace Boidsish {
 		shader.setFloat("uTessQualityMultiplier", tess_quality_multiplier);
 		shader.setFloat("uTessLevelMax", 64.0f);
 		shader.setFloat("uTessLevelMin", 1.0f);
+		shader.setFloat("uPhongAlpha", phong_alpha_);
 		shader.setInt("uChunkSize", static_cast<int>(chunk_size_ * last_world_scale_));
 
 		if (clip_plane) {

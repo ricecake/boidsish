@@ -44,6 +44,8 @@ namespace Boidsish {
 				RenderModelGroup(shader, group);
 			} else if (key == "Dot") {
 				RenderDotGroup(shader, group);
+			} else if (key == "DebugCone") {
+				RenderConeGroup(shader, group);
 			}
 			// Other shape types can be added here
 			group.shapes.clear();
@@ -174,6 +176,103 @@ namespace Boidsish {
 			}
 			glActiveTexture(GL_TEXTURE0);
 		}
+	}
+
+	void InstanceManager::RenderConeGroup(Shader& shader, InstanceGroup& group) {
+		if (!IsValidVAO(Shape::cone_vao_)) {
+			logger::ERROR("Invalid cone VAO {} - skipping cone rendering", Shape::cone_vao_);
+			return;
+		}
+
+		shader.setBool("isColossal", false);
+		shader.setFloat("objectAlpha", 1.0f);
+
+		for (unsigned int i = 0; i < 4; i++) {
+			glActiveTexture(GL_TEXTURE0 + i);
+			glBindTexture(GL_TEXTURE_2D, 0);
+		}
+		glActiveTexture(GL_TEXTURE0);
+
+		std::vector<glm::mat4> model_matrices;
+		std::vector<glm::vec4> colors;
+		model_matrices.reserve(group.shapes.size());
+		colors.reserve(group.shapes.size());
+
+		for (const auto& shape : group.shapes) {
+			model_matrices.push_back(shape->GetModelMatrix());
+			colors.emplace_back(shape->GetR(), shape->GetG(), shape->GetB(), shape->GetA());
+		}
+
+		if (group.instance_matrix_vbo_ == 0) {
+			glGenBuffers(1, &group.instance_matrix_vbo_);
+		}
+		glBindBuffer(GL_ARRAY_BUFFER, group.instance_matrix_vbo_);
+		if (model_matrices.size() > group.matrix_capacity_) {
+			glBufferData(
+				GL_ARRAY_BUFFER,
+				model_matrices.size() * sizeof(glm::mat4),
+				&model_matrices[0],
+				GL_DYNAMIC_DRAW
+			);
+			group.matrix_capacity_ = model_matrices.size();
+		} else {
+			glBufferSubData(GL_ARRAY_BUFFER, 0, model_matrices.size() * sizeof(glm::mat4), &model_matrices[0]);
+		}
+
+		if (group.instance_color_vbo_ == 0) {
+			glGenBuffers(1, &group.instance_color_vbo_);
+		}
+		glBindBuffer(GL_ARRAY_BUFFER, group.instance_color_vbo_);
+		if (colors.size() > group.color_capacity_) {
+			glBufferData(GL_ARRAY_BUFFER, colors.size() * sizeof(glm::vec4), &colors[0], GL_DYNAMIC_DRAW);
+			group.color_capacity_ = colors.size();
+		} else {
+			glBufferSubData(GL_ARRAY_BUFFER, 0, colors.size() * sizeof(glm::vec4), &colors[0]);
+		}
+
+		shader.setBool("useInstanceColor", true);
+		glBindVertexArray(Shape::cone_vao_);
+
+		GLint current_ebo = 0;
+		glGetIntegerv(GL_ELEMENT_ARRAY_BUFFER_BINDING, &current_ebo);
+		if (current_ebo == 0 && Shape::cone_ebo_ != 0) {
+			glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, Shape::cone_ebo_);
+		}
+
+		glBindBuffer(GL_ARRAY_BUFFER, group.instance_matrix_vbo_);
+		glEnableVertexAttribArray(3);
+		glVertexAttribPointer(3, 4, GL_FLOAT, GL_FALSE, sizeof(glm::mat4), (void*)0);
+		glEnableVertexAttribArray(4);
+		glVertexAttribPointer(4, 4, GL_FLOAT, GL_FALSE, sizeof(glm::mat4), (void*)(sizeof(glm::vec4)));
+		glEnableVertexAttribArray(5);
+		glVertexAttribPointer(5, 4, GL_FLOAT, GL_FALSE, sizeof(glm::mat4), (void*)(2 * sizeof(glm::vec4)));
+		glEnableVertexAttribArray(6);
+		glVertexAttribPointer(6, 4, GL_FLOAT, GL_FALSE, sizeof(glm::mat4), (void*)(3 * sizeof(glm::vec4)));
+		glVertexAttribDivisor(3, 1);
+		glVertexAttribDivisor(4, 1);
+		glVertexAttribDivisor(5, 1);
+		glVertexAttribDivisor(6, 1);
+
+		glBindBuffer(GL_ARRAY_BUFFER, group.instance_color_vbo_);
+		glEnableVertexAttribArray(7);
+		glVertexAttribPointer(7, 4, GL_FLOAT, GL_FALSE, sizeof(glm::vec4), (void*)0);
+		glVertexAttribDivisor(7, 1);
+
+		glDrawElementsInstanced(GL_TRIANGLES, Shape::cone_vertex_count_, GL_UNSIGNED_INT, 0, group.shapes.size());
+
+		glVertexAttribDivisor(3, 0);
+		glVertexAttribDivisor(4, 0);
+		glVertexAttribDivisor(5, 0);
+		glVertexAttribDivisor(6, 0);
+		glVertexAttribDivisor(7, 0);
+		glDisableVertexAttribArray(3);
+		glDisableVertexAttribArray(4);
+		glDisableVertexAttribArray(5);
+		glDisableVertexAttribArray(6);
+		glDisableVertexAttribArray(7);
+		glBindVertexArray(0);
+		glBindBuffer(GL_ARRAY_BUFFER, 0);
+		shader.setBool("useInstanceColor", false);
 	}
 
 	void InstanceManager::RenderDotGroup(Shader& shader, InstanceGroup& group) {

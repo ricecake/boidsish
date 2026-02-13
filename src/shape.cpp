@@ -17,6 +17,10 @@ namespace Boidsish {
 	unsigned int            Shape::sphere_vbo_ = 0;
 	unsigned int            Shape::sphere_ebo_ = 0;
 	int                     Shape::sphere_vertex_count_ = 0;
+	unsigned int            Shape::cone_vao_ = 0;
+	unsigned int            Shape::cone_vbo_ = 0;
+	unsigned int            Shape::cone_ebo_ = 0;
+	int                     Shape::cone_vertex_count_ = 0;
 	std::shared_ptr<Shader> Shape::shader = nullptr;
 
 	void Shape::GetGeometry(std::vector<Vertex>& vertices, std::vector<unsigned int>& indices) const {
@@ -125,6 +129,97 @@ namespace Boidsish {
 		glBindVertexArray(0);
 		// EBO is not needed after this, but we're not deleting it.
 		// This is a potential resource leak if not managed, but matches original logic.
+	}
+
+	void Shape::InitConeMesh() {
+		if (cone_vao_ != 0)
+			return;
+
+		std::vector<Vertex>       vertices;
+		std::vector<unsigned int> indices;
+
+		const int   segments = 16;
+		const float radius = 0.5f;
+		const float height = 1.0f;
+
+		// Tip
+		Vertex tip;
+		tip.Position = glm::vec3(0.0f, height, 0.0f);
+		tip.Normal = glm::vec3(0.0f, 1.0f, 0.0f); // Approximate
+		tip.TexCoords = glm::vec2(0.5f, 1.0f);
+		vertices.push_back(tip);
+
+		// Base center
+		Vertex base_center;
+		base_center.Position = glm::vec3(0.0f, 0.0f, 0.0f);
+		base_center.Normal = glm::vec3(0.0f, -1.0f, 0.0f);
+		base_center.TexCoords = glm::vec2(0.5f, 0.5f);
+		int base_center_idx = vertices.size();
+		vertices.push_back(base_center);
+
+		// Base ring
+		for (int i = 0; i <= segments; ++i) {
+			float theta = i * 2.0f * glm::pi<float>() / segments;
+			float x = radius * cos(theta);
+			float z = radius * sin(theta);
+
+			Vertex v;
+			v.Position = glm::vec3(x, 0.0f, z);
+			// Normal points slightly outwards and downwards
+			v.Normal = glm::normalize(glm::vec3(x, radius / height, z));
+			v.TexCoords = glm::vec2((float)i / segments, 0.0f);
+			vertices.push_back(v);
+		}
+
+		// Sides
+		for (int i = 0; i < segments; ++i) {
+			indices.push_back(0); // Tip
+			indices.push_back(base_center_idx + 1 + i);
+			indices.push_back(base_center_idx + 1 + i + 1);
+		}
+
+		// Base
+		for (int i = 0; i < segments; ++i) {
+			indices.push_back(base_center_idx);
+			indices.push_back(base_center_idx + 1 + i + 1);
+			indices.push_back(base_center_idx + 1 + i);
+		}
+
+		cone_vertex_count_ = indices.size();
+
+		glGenVertexArrays(1, &cone_vao_);
+		glBindVertexArray(cone_vao_);
+
+		glGenBuffers(1, &cone_vbo_);
+		glBindBuffer(GL_ARRAY_BUFFER, cone_vbo_);
+		glBufferData(GL_ARRAY_BUFFER, vertices.size() * sizeof(Vertex), &vertices[0], GL_STATIC_DRAW);
+
+		glGenBuffers(1, &cone_ebo_);
+		glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, cone_ebo_);
+		glBufferData(GL_ELEMENT_ARRAY_BUFFER, indices.size() * sizeof(unsigned int), &indices[0], GL_STATIC_DRAW);
+
+		glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)0);
+		glEnableVertexAttribArray(0);
+		glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)offsetof(Vertex, Normal));
+		glEnableVertexAttribArray(1);
+		glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)offsetof(Vertex, TexCoords));
+		glEnableVertexAttribArray(2);
+
+		glBindVertexArray(0);
+	}
+
+	void Shape::DestroyConeMesh() {
+		if (cone_vao_ != 0) {
+			glDeleteVertexArrays(1, &cone_vao_);
+			glDeleteBuffers(1, &cone_vbo_);
+			if (cone_ebo_ != 0) {
+				glDeleteBuffers(1, &cone_ebo_);
+			}
+			cone_vao_ = 0;
+			cone_vbo_ = 0;
+			cone_ebo_ = 0;
+			cone_vertex_count_ = 0;
+		}
 	}
 
 	void Shape::DestroySphereMesh() {

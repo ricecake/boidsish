@@ -234,6 +234,16 @@ namespace Boidsish {
 		static unsigned int sphere_vbo_;
 		static unsigned int sphere_ebo_;
 		static int          sphere_vertex_count_;
+
+		// Cone mesh generation
+		static void InitConeMesh();
+		static void DestroyConeMesh();
+
+		// Shared cone mesh (public for instancing support)
+		static unsigned int cone_vao_;
+		static unsigned int cone_vbo_;
+		static unsigned int cone_ebo_;
+		static int          cone_vertex_count_;
 	};
 
 	// Function type for user-defined shape generation
