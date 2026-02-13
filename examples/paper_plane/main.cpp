@@ -94,7 +94,7 @@ int main() {
 			}
 		});
 
-		std::shared_ptr<SteeringProbe> sp = std::make_shared<SteeringProbe>();
+		std::shared_ptr<SteeringProbe> sp = std::make_shared<SteeringProbe>(visualizer->GetTerrain());
 
 		auto dot = std::make_shared<Dot>(2343433);
 		dot->SetSize(940.0f);
@@ -105,12 +105,9 @@ int main() {
 		visualizer->AddShapeHandler([&](float time) {
 			auto delta_time = time - last_time;
 			last_time = time;
-			if (!sp->terrain) {
-				sp->terrain = visualizer->GetTerrain();
-			}
 
 			sp->Update(delta_time, plane->GetPosition().Toglm(), plane->GetVelocity().Toglm());
-			auto pos = sp->position;
+			auto pos = sp->GetPosition();
 			dot->SetPosition(pos.x, pos.y, pos.z);
 
 			return shapes;
