@@ -96,7 +96,7 @@ int main() {
 		auto handler = std::make_shared<EntityHandler>(visualizer->GetThreadPool(), visualizer);
 		visualizer->AddShapeHandler(std::ref(*handler));
 
-		auto player_id = handler->AddEntity<DemoPlayer>(45443);
+		auto player_id = handler->AddEntity<DemoPlayer>();
 		auto player = std::dynamic_pointer_cast<DemoPlayer>(handler->GetEntity(player_id));
 		player->SetPosition(0, 150, 0);
 
@@ -116,7 +116,7 @@ int main() {
 		auto sp = std::make_shared<SteeringProbe>(terrain);
 		sp->SetPosition({0, 150, -100});
 
-		auto probeDot = std::make_shared<Dot>(329392);
+		auto probeDot = std::make_shared<Dot>();
 		probeDot->SetSize(80.0f);
 		probeDot->SetColor(1.0f, 0.0f, 1.0f);
 		probeDot->SetInstanced(true);

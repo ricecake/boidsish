@@ -21,6 +21,7 @@ namespace Boidsish {
 		void UpdateShape() override;
 
 		void TriggerDamage();
+		void OnHit(const EntityHandler& handler, float damage) override;
 		bool IsDamagePending();
 		void AcknowledgeDamage();
 
@@ -44,6 +45,8 @@ namespace Boidsish {
 		float                                      shield = 100.0f;
 		float                                      chaff_timer_ = 0.0f;
 		PlaneState                                 state_ = PlaneState::ALIVE;
+		int                                        beam_id_ = -1;
+		bool                                       beam_spawn_queued_ = false;
 		float                                      fire_effect_timer_ = 0.0f;
 		std::shared_ptr<FireEffect>                dying_fire_effect_;
 		float                                      spiral_intensity_ = 1.0f;
