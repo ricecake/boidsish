@@ -26,10 +26,10 @@ namespace Boidsish {
 		// Config: "Leash" physics
 		float mass = 2.00f;
 		float drag = 0.95f;           // Air resistance (prevents orbiting)
-		float springStiffness = 1.10f; // How hard the leash pulls
+		float springStiffness = 0.50f; // How hard the leash pulls
 
 		// Config: Terrain physics
-		float valleySlideStrength = 30.0f; // How hard the terrain pushes into the valley
+		float valleySlideStrength = 50.0f; // How hard the terrain pushes into the valley
 		float flyHeight = 30.0f;           // Target height above ground
 
 		// State for dropping checkpoints
@@ -60,7 +60,7 @@ namespace Boidsish {
 			glm::vec3 noise = terrain->GetPathData(position.x, position.z);
 
 			float     distFromSpine = noise.x;                // Signed distance! (- is left, + is right)
-			glm::vec2 gradient = glm::vec2(noise.y, noise.z) * 2.0f; // Points UPHILL (away from spine)
+			glm::vec2 gradient = glm::normalize(glm::vec2(noise.y, noise.z)) * 2.0f; // Points UPHILL (away from spine)
 
 			// Force A: Valley Slide
 			// If dist is positive, gradient points away -> we want -gradient.

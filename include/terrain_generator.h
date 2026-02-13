@@ -196,6 +196,8 @@ namespace Boidsish {
 
 		std::vector<glm::vec3> GetPath(glm::vec2 start_pos, int num_points, float step_size) const override;
 		glm::vec3 GetPathData(float x, float z) const override;
+		glm::vec3 getPathDataFlat(float x, float z) const;
+		glm::vec3 getPathDataFlat(glm::vec2 pos) const;
 
 		float     getBiomeControlValue(float x, float z) const;
 		glm::vec2 getDomainWarp(float x, float z) const;
