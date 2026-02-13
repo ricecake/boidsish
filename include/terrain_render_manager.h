@@ -88,7 +88,8 @@ namespace Boidsish {
 			const glm::mat4&                projection,
 			const glm::vec2&                viewport_size,
 			const std::optional<glm::vec4>& clip_plane,
-			float                           tess_quality_multiplier
+			float                           tess_quality_multiplier,
+			float                           phong_alpha = 0.0f
 		);
 
 		/**

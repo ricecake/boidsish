@@ -499,7 +499,8 @@ namespace Boidsish {
 		const glm::mat4&                projection,
 		const glm::vec2&                viewport_size,
 		const std::optional<glm::vec4>& clip_plane,
-		float                           tess_quality_multiplier
+		float                           tess_quality_multiplier,
+		float                           phong_alpha
 	) {
 		std::lock_guard<std::mutex> lock(mutex_);
 
@@ -515,6 +516,7 @@ namespace Boidsish {
 		shader.setFloat("uTessQualityMultiplier", tess_quality_multiplier);
 		shader.setFloat("uTessLevelMax", 64.0f);
 		shader.setFloat("uTessLevelMin", 1.0f);
+		shader.setFloat("uPhongAlpha", phong_alpha);
 		shader.setInt("uChunkSize", static_cast<int>(chunk_size_ * last_world_scale_));
 
 		if (clip_plane) {

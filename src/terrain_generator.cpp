@@ -1097,7 +1097,8 @@ namespace Boidsish {
 		float h01 = v01.y;
 		float h11 = v11.y;
 
-		float height = h00 * (1 - fx) * (1 - fz) + h10 * fx * (1 - fz) + h01 * (1 - fx) * fz + h11 * fx * fz;
+		// The "flat" height from standard bilinear interpolation
+		float h_flat = h00 * (1 - fx) * (1 - fz) + h10 * fx * (1 - fz) + h01 * (1 - fx) * fz + h11 * fx * fz;
 
 		// Interpolate normal
 		glm::vec3 n00 = normals[idx00];
@@ -1108,7 +1109,32 @@ namespace Boidsish {
 		glm::vec3 normal = n00 * (1 - fx) * (1 - fz) + n10 * fx * (1 - fz) + n01 * (1 - fx) * fz + n11 * fx * fz;
 		normal = glm::normalize(normal);
 
-		return std::make_tuple(height, normal);
+		// If phong_alpha_ is > 0, calculate Phong interpolation
+		float final_height = h_flat;
+		if (phong_alpha_ > 0.0f) {
+			// Construct full corner positions
+			glm::vec3 c00 = {ix * world_scale_ + chunk_origin_x, h00, iz * world_scale_ + chunk_origin_z};
+			glm::vec3 c10 = {(ix + 1) * world_scale_ + chunk_origin_x, h10, iz * world_scale_ + chunk_origin_z};
+			glm::vec3 c01 = {ix * world_scale_ + chunk_origin_x, h01, (iz + 1) * world_scale_ + chunk_origin_z};
+			glm::vec3 c11 = {(ix + 1) * world_scale_ + chunk_origin_x, h11, (iz + 1) * world_scale_ + chunk_origin_z};
+
+			// The full "flat" position
+			glm::vec3 q = {x, h_flat, z};
+
+			// Phong Tessellation: Project q onto the tangent plane of each corner
+			glm::vec3 p00 = projectPointOnPlane(q, c00, n00);
+			glm::vec3 p10 = projectPointOnPlane(q, c10, n10);
+			glm::vec3 p01 = projectPointOnPlane(q, c01, n01);
+			glm::vec3 p11 = projectPointOnPlane(q, c11, n11);
+
+			// Interpolate the projected points (bilinear mix of projected heights)
+			float h_phong = p00.y * (1 - fx) * (1 - fz) + p10.y * fx * (1 - fz) + p01.y * (1 - fx) * fz +
+				p11.y * fx * fz;
+
+			final_height = glm::mix(h_flat, h_phong, phong_alpha_);
+		}
+
+		return std::make_tuple(final_height, normal);
 	}
 
 	bool TerrainGenerator::IsPositionCached(float x, float z) const {
