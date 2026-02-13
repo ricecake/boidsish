@@ -1078,9 +1078,11 @@ namespace Boidsish {
 		void RenderShapes(
 			const glm::mat4&                           view,
 			const std::vector<std::shared_ptr<Shape>>& shapes,
+			float                                      time,
 			const std::optional<glm::vec4>&            clip_plane
 		) {
 			shader->use();
+			shader->setFloat("time", time);
 			shader->setFloat(
 				"ripple_strength",
 				ConfigManager::GetInstance().GetAppSettingBool("artistic_effect_ripple", false) ? 0.05f : 0.0f
@@ -1094,7 +1096,6 @@ namespace Boidsish {
 
 			// Enable GPU frustum culling for instanced rendering
 			shader->setBool("enableFrustumCulling", true);
-			shader->setFloat("frustumCullRadius", 5.0f); // Default radius, can be adjusted per-object
 
 			shader->setInt("useVertexColor", 0);
 			for (const auto& shape : shapes) {
@@ -1102,12 +1103,11 @@ namespace Boidsish {
 					continue;
 				}
 				if (shape->IsInstanced()) {
+					shader->setFloat("frustumCullRadius", shape->GetBoundingRadius());
 					instance_manager->AddInstance(shape);
 				} else {
 					shader->setBool("isColossal", shape->IsColossal());
-					// Set cull radius based on shape size if available
-					float size = 5; // shape->GetSize();
-					shader->setFloat("frustumCullRadius", size > 0 ? size : 5.0f);
+					shader->setFloat("frustumCullRadius", shape->GetBoundingRadius());
 					shape->render();
 				}
 			}
@@ -1125,6 +1125,7 @@ namespace Boidsish {
 			const glm::mat4&                           view,
 			const Camera&                              cam,
 			const std::vector<std::shared_ptr<Shape>>& shapes,
+			float                                      time,
 			const std::optional<glm::vec4>&            clip_plane
 		) {
 			std::vector<std::shared_ptr<Shape>> transparent_shapes;
@@ -1147,6 +1148,7 @@ namespace Boidsish {
 			});
 
 			shader->use();
+			shader->setFloat("time", time);
 			shader->setFloat(
 				"ripple_strength",
 				ConfigManager::GetInstance().GetAppSettingBool("artistic_effect_ripple", false) ? 0.05f : 0.0f
@@ -1160,21 +1162,21 @@ namespace Boidsish {
 
 			// Enable GPU frustum culling for instanced rendering
 			shader->setBool("enableFrustumCulling", true);
-			shader->setFloat("frustumCullRadius", 5.0f); // Default radius
 
 			// Disable depth writing for transparency to show objects behind
 			glDepthMask(GL_FALSE);
 			glEnable(GL_BLEND);
 			glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+			glDisable(GL_CULL_FACE);
 
 			shader->setInt("useVertexColor", 0);
 			for (const auto& shape : transparent_shapes) {
 				if (shape->IsInstanced()) {
+					shader->setFloat("frustumCullRadius", shape->GetBoundingRadius());
 					instance_manager->AddInstance(shape);
 				} else {
 					shader->setBool("isColossal", shape->IsColossal());
-					// Set cull radius based on shape size if available
-					shader->setFloat("frustumCullRadius", 5.0f);
+					shader->setFloat("frustumCullRadius", shape->GetBoundingRadius());
 					shape->render();
 				}
 			}
@@ -1183,6 +1185,7 @@ namespace Boidsish {
 
 			// Restore state
 			glDepthMask(GL_TRUE);
+			glEnable(GL_CULL_FACE);
 			shader->setBool("enableFrustumCulling", false);
 		}
 
@@ -2285,13 +2288,14 @@ namespace Boidsish {
 				// 	std::nullopt,
 				// 	0.25f
 				// );
-				impl->RenderShapes(reflection_view, impl->shapes, glm::vec4(0, 1, 0, 0.01));
+				impl->RenderShapes(reflection_view, impl->shapes, impl->simulation_time, glm::vec4(0, 1, 0, 0.01));
 				// Sky after opaque geometry
 				impl->RenderSky(reflection_view);
 				impl->RenderTransparentShapes(
 					reflection_view,
 					reflection_cam,
 					impl->shapes,
+					impl->simulation_time,
 					glm::vec4(0, 1, 0, 0.01)
 				);
 				// Transparent effects last
@@ -2522,7 +2526,7 @@ namespace Boidsish {
 		// An unbound sampler2DArrayShadow can cause shader failures on some GPUs
 		impl->BindShadows(*impl->shader);
 
-		impl->RenderShapes(view, impl->shapes, std::nullopt);
+		impl->RenderShapes(view, impl->shapes, impl->simulation_time, std::nullopt);
 		if (impl->decor_manager) {
 			impl->decor_manager->Render(view, impl->projection);
 		}
@@ -2532,7 +2536,7 @@ namespace Boidsish {
 		impl->RenderSky(view);
 
 		// Render transparent shapes after sky
-		impl->RenderTransparentShapes(view, impl->camera, impl->shapes, std::nullopt);
+		impl->RenderTransparentShapes(view, impl->camera, impl->shapes, impl->simulation_time, std::nullopt);
 
 		// Render transparent/particle effects last
 		impl->fire_effect_manager->Render(view, impl->projection, impl->camera.pos());

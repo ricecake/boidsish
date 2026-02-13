@@ -36,6 +36,8 @@ namespace Boidsish {
 
 		bool CastsShadows() const override { return false; }
 
+		float GetBoundingRadius() const override { return radius_ * 2.0f; }
+
 		void SetRadius(float radius) { radius_ = radius; }
 
 		float GetRadius() const { return radius_; }

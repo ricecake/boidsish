@@ -146,6 +146,13 @@ namespace Boidsish {
 		 */
 		virtual bool IsTransparent() const { return a_ < 0.99f; }
 
+		/**
+		 * @brief Returns the bounding radius of the shape for frustum culling.
+		 *
+		 * @return float bounding radius in world units
+		 */
+		virtual float GetBoundingRadius() const { return 5.0f; }
+
 		// PBR material properties
 		inline float GetRoughness() const { return roughness_; }
 
