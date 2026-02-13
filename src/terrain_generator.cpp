@@ -1097,7 +1097,8 @@ namespace Boidsish {
 		float h01 = v01.y;
 		float h11 = v11.y;
 
-		float height = h00 * (1 - fx) * (1 - fz) + h10 * fx * (1 - fz) + h01 * (1 - fx) * fz + h11 * fx * fz;
+		// The "flat" position from standard bilinear interpolation
+		glm::vec3 q = bilerp(v00, v10, v11, v01, {fx, fz});
 
 		// Interpolate normal
 		glm::vec3 n00 = normals[idx00];
@@ -1105,10 +1106,22 @@ namespace Boidsish {
 		glm::vec3 n01 = normals[idx01];
 		glm::vec3 n11 = normals[idx11];
 
-		glm::vec3 normal = n00 * (1 - fx) * (1 - fz) + n10 * fx * (1 - fz) + n01 * (1 - fx) * fz + n11 * fx * fz;
+		glm::vec3 normal = bilerp(n00, n10, n11, n01, {fx, fz});
 		normal = glm::normalize(normal);
 
-		return std::make_tuple(height, normal);
+		// Phong Tessellation: Project q onto the tangent plane of each corner
+		glm::vec3 p0 = projectPointOnPlane(q, v00, n00);
+		glm::vec3 p1 = projectPointOnPlane(q, v10, n10);
+		glm::vec3 p2 = projectPointOnPlane(q, v11, n11);
+		glm::vec3 p3 = projectPointOnPlane(q, v01, n01);
+
+		// Interpolate the projected points to find the final curved position
+		glm::vec3 final_pos = bilerp(p0, p1, p2, p3, {fx, fz});
+
+		// Mix flat and curved positions based on phong_alpha_
+		final_pos = glm::mix(q, final_pos, phong_alpha_);
+
+		return std::make_tuple(final_pos.y, normal);
 	}
 
 	bool TerrainGenerator::IsPositionCached(float x, float z) const {

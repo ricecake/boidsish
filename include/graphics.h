@@ -536,10 +536,10 @@ namespace Boidsish {
 		bool IsWireframeEffectEnabled() const;
 
 		// Terrain Debug methods
-		void SetTerrainSmoothingEnabled(bool enabled);
-		bool IsTerrainSmoothingEnabled() const;
-		void SetTerrainDebugGridEnabled(bool enabled);
-		bool IsTerrainDebugGridEnabled() const;
+		void  SetTerrainPhongAlpha(float alpha);
+		float GetTerrainPhongAlpha() const;
+		void  SetTerrainDebugGridEnabled(bool enabled);
+		bool  IsTerrainDebugGridEnabled() const;
 
 	private:
 		struct VisualizerImpl;

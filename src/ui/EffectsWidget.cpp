@@ -80,9 +80,9 @@ namespace Boidsish {
 			ImGui::Separator();
 			ImGui::Text("Terrain Debug");
 
-			bool terrain_smoothing = m_visualizer->IsTerrainSmoothingEnabled();
-			if (ImGui::Checkbox("Terrain Smoothing", &terrain_smoothing)) {
-				m_visualizer->SetTerrainSmoothingEnabled(terrain_smoothing);
+			float phong_alpha = m_visualizer->GetTerrainPhongAlpha();
+			if (ImGui::SliderFloat("Phong Alpha", &phong_alpha, 0.0f, 1.0f)) {
+				m_visualizer->SetTerrainPhongAlpha(phong_alpha);
 			}
 
 			bool terrain_debug_grid = m_visualizer->IsTerrainDebugGridEnabled();

@@ -294,8 +294,8 @@ namespace Boidsish {
 		float     tess_quality_multiplier_{1.0f};
 
 		// Terrain Debug
-		bool terrain_smoothing_enabled_ = true;
-		bool terrain_debug_grid_enabled_ = false;
+		float terrain_phong_alpha_ = 1.0f;
+		bool  terrain_debug_grid_enabled_ = false;
 		std::vector<std::shared_ptr<DebugCone>> debug_cones_;
 
 		// Camera shake state
@@ -589,6 +589,10 @@ namespace Boidsish {
 				);
 				terrain_render_manager = std::make_shared<TerrainRenderManager>(32, initial_chunks);
 				terrain_generator->SetRenderManager(terrain_render_manager);
+
+				// Initialize smoothing alpha
+				terrain_generator->SetPhongAlpha(terrain_phong_alpha_);
+				terrain_render_manager->SetPhongAlpha(terrain_phong_alpha_);
 
 				// Set up eviction callback so terrain generator knows when chunks are LRU-evicted
 				// Capture weak_ptr to allow terrain generator to be swapped without dangling reference
@@ -1244,11 +1248,6 @@ namespace Boidsish {
 			// Inversely apply world scale to tessellation. Larger world = lower triangle density per unit.
 			if (terrain_generator) {
 				effective_quality /= terrain_generator->GetWorldScale();
-				terrain_generator->SetPhongAlpha(terrain_smoothing_enabled_ ? 1.0f : 0.0f);
-			}
-
-			if (terrain_render_manager) {
-				terrain_render_manager->SetPhongAlpha(terrain_smoothing_enabled_ ? 1.0f : 0.0f);
 			}
 
 			// Determine viewport size for Screen Space Error calculations
@@ -2118,9 +2117,9 @@ namespace Boidsish {
 			impl->UpdatePathFollowCamera(impl->input_state.delta_time);
 		}
 
-	if (impl->terrain_debug_grid_enabled_) {
-		impl->UpdateDebugGrid();
-	}
+			if (impl->terrain_debug_grid_enabled_) {
+				impl->UpdateDebugGrid();
+			}
 
 		impl->audio_manager->UpdateListener(
 			impl->camera.pos(),
@@ -3038,6 +3037,7 @@ namespace Boidsish {
 		// Set up the render manager for the new generator
 		if (impl->terrain_render_manager && impl->terrain_generator) {
 			impl->terrain_generator->SetRenderManager(impl->terrain_render_manager);
+			impl->terrain_generator->SetPhongAlpha(impl->terrain_phong_alpha_);
 
 			// Set up eviction callback with weak_ptr to avoid preventing destruction
 			impl->terrain_render_manager->SetEvictionCallback(
@@ -3449,12 +3449,18 @@ namespace Boidsish {
 		return ConfigManager::GetInstance().GetAppSettingBool("artistic_effect_wireframe", false);
 	}
 
-	void Visualizer::SetTerrainSmoothingEnabled(bool enabled) {
-		impl->terrain_smoothing_enabled_ = enabled;
+	void Visualizer::SetTerrainPhongAlpha(float alpha) {
+		impl->terrain_phong_alpha_ = alpha;
+		if (impl->terrain_generator) {
+			impl->terrain_generator->SetPhongAlpha(alpha);
+		}
+		if (impl->terrain_render_manager) {
+			impl->terrain_render_manager->SetPhongAlpha(alpha);
+		}
 	}
 
-	bool Visualizer::IsTerrainSmoothingEnabled() const {
-		return impl->terrain_smoothing_enabled_;
+	float Visualizer::GetTerrainPhongAlpha() const {
+		return impl->terrain_phong_alpha_;
 	}
 
 	void Visualizer::SetTerrainDebugGridEnabled(bool enabled) {

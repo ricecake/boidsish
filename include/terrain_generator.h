@@ -186,13 +186,6 @@ namespace Boidsish {
 			// Interpolate normals for lighting
 			glm::vec3 final_norm = glm::normalize(bilerp(n0, n1, n2, n3, {tx, tz}));
 
-			// Mix with raw heightmap normal based on phong_alpha_
-			glm::vec3 n = glm::normalize(diffToNorm(v0_raw.y, v0_raw.z)); // Corner normals are already normalized
-			// Actually n should be calculated at tx, tz
-			auto v_raw = pointGenerate(x, z);
-			glm::vec3 raw_norm = diffToNorm(v_raw.y, v_raw.z);
-			final_norm = glm::normalize(glm::mix(raw_norm, final_norm, phong_alpha_));
-
 			// Apply deformations to match the mesh
 			if (deformation_manager_.HasDeformationAt(x, z)) {
 				auto def_result = deformation_manager_.QueryDeformations(x, z, final_pos.y, final_norm);
