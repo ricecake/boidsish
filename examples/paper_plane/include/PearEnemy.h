@@ -4,6 +4,7 @@
 
 #include "entity.h"
 #include "model.h"
+#include "steering_probe.h"
 
 namespace Boidsish {
 
@@ -16,7 +17,8 @@ namespace Boidsish {
 	private:
 		void Roam(const EntityHandler& handler, float delta_time);
 
-		glm::vec3 target_pos_;
+		SteeringProbe probe_;
+		glm::vec3     target_pos_;
 		bool      has_target_ = false;
 		float     move_speed_ = 5.0f;
 		float     wait_timer_ = 0.0f;
