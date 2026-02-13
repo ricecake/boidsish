@@ -251,8 +251,7 @@ namespace Boidsish {
 		}
 
 		template <typename T, typename... Args>
-		int AddEntity(int id, Args&&... args) {
-			// int  id = next_id_++;
+		int AddEntityWithId(int id, Args&&... args) {
 			auto entity = std::make_shared<T>(id, std::forward<Args>(args)...);
 			AddEntity(id, entity);
 			return id;
@@ -394,7 +393,22 @@ namespace Boidsish {
 			std::lock_guard<std::mutex> lock(requests_mutex_);
 			modification_requests_.emplace_back([this, args = std::make_tuple(std::forward<Args>(args)...)]() mutable {
 				std::apply(
-					[this](auto&&... a) { const_cast<EntityHandler*>(this)->AddEntity<T>(std::forward<Args>(a)...); },
+					[this](auto&&... a) {
+						const_cast<EntityHandler*>(this)->AddEntity<T>(std::forward<decltype(a)>(a)...);
+					},
+					std::move(args)
+				);
+			});
+		}
+
+		template <typename T, typename... Args>
+		void QueueAddEntityWithId(int id, Args&&... args) const {
+			std::lock_guard<std::mutex> lock(requests_mutex_);
+			modification_requests_.emplace_back([this, id, args = std::make_tuple(std::forward<Args>(args)...)]() mutable {
+				std::apply(
+					[this, id](auto&&... a) {
+						const_cast<EntityHandler*>(this)->AddEntityWithId<T>(id, std::forward<decltype(a)>(a)...);
+					},
 					std::move(args)
 				);
 			});

@@ -10,7 +10,7 @@ namespace Boidsish {
 	public:
 		enum class State { IDLE, AIMING, FIRING_TRANSITION, FIRING_HOLD, FIRING_SHRINK, COOLDOWN };
 
-		Beam(int id = 0, int owner_id = -1);
+		Beam(int id, int owner_id);
 
 		void UpdateEntity(const EntityHandler& handler, float time, float delta_time) override;
 

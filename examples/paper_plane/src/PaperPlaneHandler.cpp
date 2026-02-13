@@ -258,7 +258,7 @@ namespace Boidsish {
 					);
 					int id = 0x50000000 | ((ix + 1024) << 11) | (iz + 1024);
 
-					QueueAddEntity<GuidedMissileLauncher>(
+					QueueAddEntityWithId<GuidedMissileLauncher>(
 						id,
 						Vector3(world_pos.x, terrain_h, world_pos.z),
 						terrain_alignment

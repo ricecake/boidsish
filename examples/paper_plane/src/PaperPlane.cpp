@@ -378,8 +378,11 @@ namespace Boidsish {
 
 	void PaperPlane::OnHit(const EntityHandler& handler, float damage) {
 		(void)handler;
-		(void)damage;
-		TriggerDamage();
+		health -= damage;
+		damage_pending_++;
+		if (state_ == PlaneState::DYING) {
+			spiral_intensity_ += 1.0f;
+		}
 	}
 
 	void PaperPlane::TriggerDamage() {
