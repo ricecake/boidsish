@@ -1,5 +1,6 @@
 #include "PaperPlane.h"
 
+#include "Beam.h"
 #include "CatBomb.h"
 #include "CatMissile.h"
 #include "PaperPlaneHandler.h" // For selected_weapon
@@ -13,7 +14,9 @@ namespace Boidsish {
 		Entity<Model>(id, "assets/Mesh_Cat.obj", true),
 		orientation_(glm::quat(1.0f, 0.0f, 0.0f, 0.0f)),
 		rotational_velocity_(glm::vec3(0.0f)),
-		forward_speed_(20.0f) {
+		forward_speed_(20.0f),
+		beam_id_(-1),
+		beam_spawn_queued_(false) {
 		rigid_body_.linear_friction_ = 0.01f;
 		rigid_body_.angular_friction_ = 0.01f;
 
@@ -112,6 +115,44 @@ namespace Boidsish {
 		const float kSpeedDecay = 30.0f;
 
 		auto pos = GetPosition();
+
+		// Handle Beam weapon (Weapon 3)
+		Beam* my_beam = nullptr;
+		if (beam_id_ >= 0) {
+			auto ent = handler.GetEntity(beam_id_);
+			my_beam = dynamic_cast<Beam*>(ent.get());
+			if (!my_beam || my_beam->GetOwnerId() != id_) {
+				my_beam = nullptr;
+				beam_id_ = -1;
+			}
+		}
+
+		if (!my_beam) {
+			auto beams = handler.GetEntitiesByType<Beam>();
+			for (auto b : beams) {
+				if (b->GetOwnerId() == id_) {
+					my_beam = b;
+					beam_id_ = b->GetId();
+					beam_spawn_queued_ = false;
+					break;
+				}
+			}
+		}
+
+		if (selected_weapon == 3) {
+			if (!my_beam && !beam_spawn_queued_) {
+				handler.QueueAddEntity<Beam>(id_);
+				beam_spawn_queued_ = true;
+			} else if (my_beam) {
+				my_beam->SetSelected(true);
+				my_beam->SetRequesting(controller_->fire);
+				my_beam->SetOffset(glm::vec3(0, 0, -0.5f)); // Nose offset
+			}
+		} else if (my_beam) {
+			my_beam->SetSelected(false);
+			my_beam->SetRequesting(false);
+		}
+
 		auto [height, norm] = handler.vis->GetTerrainPropertiesAtPoint(pos.x, pos.z);
 		if (pos.y < height) {
 			if (state_ == PlaneState::DYING) {
@@ -231,12 +272,18 @@ namespace Boidsish {
 			target_rot_velocity.z -= roll_error * kAutoLevelSpeed;
 		}
 
+		if (my_beam && (my_beam->IsCharging() || my_beam->IsFiring() || my_beam->IsShrinking())) {
+			target_rot_velocity = glm::vec3(0.0f);
+			rotational_velocity_ = glm::vec3(0.0f);
+		}
+
 		rotational_velocity_ += (target_rot_velocity - rotational_velocity_) * kDamping * delta_time;
 
 		glm::quat pitch_delta = glm::angleAxis(rotational_velocity_.x * delta_time, glm::vec3(1.0f, 0.0f, 0.0f));
 		glm::quat yaw_delta = glm::angleAxis(rotational_velocity_.y * delta_time, glm::vec3(0.0f, 1.0f, 0.0f));
 		glm::quat roll_delta = glm::angleAxis(rotational_velocity_.z * delta_time, glm::vec3(0.0f, 0.0f, 1.0f));
 		orientation_ = glm::normalize(orientation_ * pitch_delta * yaw_delta * roll_delta);
+		rigid_body_.SetOrientation(orientation_);
 
 		if (super_speed_state_ == SuperSpeedState::ACTIVE) {
 			forward_speed_ = kBoostSpeed * 3.0f; // Super speed!
@@ -306,6 +353,9 @@ namespace Boidsish {
 				time_to_fire = 0.05f; // 20 rounds per second!
 				break;
 			}
+			case 3:
+				// Beam weapon is handled outside the switch because it's continuous
+				break;
 			}
 		}
 
@@ -332,6 +382,15 @@ namespace Boidsish {
 		Entity<Model>::UpdateShape();
 		if (shape_) {
 			shape_->SetRotation(orientation_);
+		}
+	}
+
+	void PaperPlane::OnHit(const EntityHandler& handler, float damage) {
+		(void)handler;
+		health -= damage;
+		damage_pending_++;
+		if (state_ == PlaneState::DYING) {
+			spiral_intensity_ += 1.0f;
 		}
 	}
 

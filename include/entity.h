@@ -42,6 +42,12 @@ namespace Boidsish {
 		// Called each frame to update the entity
 		virtual void UpdateEntity(const EntityHandler& handler, float time, float delta_time) = 0;
 
+		// Generic interaction for weapons/collisions
+		virtual void OnHit(const EntityHandler& handler, float damage) {
+			(void)handler;
+			(void)damage;
+		}
+
 		// Shape management
 		virtual std::shared_ptr<Shape> GetShape() const = 0;
 		virtual void                   UpdateShape() = 0;
@@ -76,6 +82,8 @@ namespace Boidsish {
 			glm::vec3 vel = rigid_body_.GetLinearVelocity();
 			return Vector3(vel.x, vel.y, vel.z);
 		}
+
+		glm::quat GetOrientation() const { return rigid_body_.GetOrientation(); }
 
 		void SetVelocity(float vx, float vy, float vz) { rigid_body_.SetLinearVelocity(glm::vec3(vx, vy, vz)); }
 
@@ -243,8 +251,7 @@ namespace Boidsish {
 		}
 
 		template <typename T, typename... Args>
-		int AddEntity(int id, Args&&... args) {
-			// int  id = next_id_++;
+		int AddEntityWithId(int id, Args&&... args) {
 			auto entity = std::make_shared<T>(id, std::forward<Args>(args)...);
 			AddEntity(id, entity);
 			return id;
@@ -386,7 +393,22 @@ namespace Boidsish {
 			std::lock_guard<std::mutex> lock(requests_mutex_);
 			modification_requests_.emplace_back([this, args = std::make_tuple(std::forward<Args>(args)...)]() mutable {
 				std::apply(
-					[this](auto&&... a) { const_cast<EntityHandler*>(this)->AddEntity<T>(std::forward<Args>(a)...); },
+					[this](auto&&... a) {
+						const_cast<EntityHandler*>(this)->AddEntity<T>(std::forward<decltype(a)>(a)...);
+					},
+					std::move(args)
+				);
+			});
+		}
+
+		template <typename T, typename... Args>
+		void QueueAddEntityWithId(int id, Args&&... args) const {
+			std::lock_guard<std::mutex> lock(requests_mutex_);
+			modification_requests_.emplace_back([this, id, args = std::make_tuple(std::forward<Args>(args)...)]() mutable {
+				std::apply(
+					[this, id](auto&&... a) {
+						const_cast<EntityHandler*>(this)->AddEntityWithId<T>(id, std::forward<decltype(a)>(a)...);
+					},
 					std::move(args)
 				);
 			});
