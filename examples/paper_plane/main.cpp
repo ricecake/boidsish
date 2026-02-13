@@ -51,7 +51,7 @@ int main() {
 			"assets/missile-icon.png",
 			"assets/bomb-icon.png",
 			"assets/bullet-icon.png",
-			"assets/missile-icon.png"};
+			"assets/icon.png"};
 		auto weaponSelector = visualizer->AddHudIconSet(weaponIcons, HudAlignment::TOP_LEFT, {10, 10}, {64, 64}, 10.0f);
 		weaponSelector->SetSelectedIndex(selected_weapon);
 

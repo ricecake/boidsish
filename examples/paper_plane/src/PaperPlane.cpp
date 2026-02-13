@@ -239,6 +239,7 @@ namespace Boidsish {
 		glm::quat yaw_delta = glm::angleAxis(rotational_velocity_.y * delta_time, glm::vec3(0.0f, 1.0f, 0.0f));
 		glm::quat roll_delta = glm::angleAxis(rotational_velocity_.z * delta_time, glm::vec3(0.0f, 0.0f, 1.0f));
 		orientation_ = glm::normalize(orientation_ * pitch_delta * yaw_delta * roll_delta);
+		rigid_body_.SetOrientation(orientation_);
 
 		if (super_speed_state_ == SuperSpeedState::ACTIVE) {
 			forward_speed_ = kBoostSpeed * 3.0f; // Super speed!
@@ -296,10 +297,12 @@ namespace Boidsish {
 				handler.QueueAddEntity<Beam>(id_);
 				beam_spawn_queued_ = true;
 			} else if (my_beam) {
+				my_beam->SetSelected(true);
 				my_beam->SetRequesting(controller_->fire);
 				my_beam->SetOffset(glm::vec3(0, 0, -0.5f)); // Nose offset
 			}
 		} else if (my_beam) {
+			my_beam->SetSelected(false);
 			my_beam->SetRequesting(false);
 		}
 

@@ -11,6 +11,8 @@ namespace Boidsish {
 		Entity<Line>(id, glm::vec3(0.0f), glm::vec3(0.0f), kAimingWidth), owner_id_(owner_id) {
 		shape_->SetStyle(Line::Style::LASER);
 		shape_->SetHidden(true);
+		SetSize(0.0f);                 // Disable physical collision radius
+		SetVelocity(Vector3(0, 0, 0)); // Ensure no physical movement
 	}
 
 	void Beam::SetRequesting(bool requesting) { requesting_ = requesting; }
@@ -26,13 +28,17 @@ namespace Boidsish {
 		// State Machine
 		switch (state_) {
 		case State::IDLE:
-			if (requesting_) {
+			if (selected_) {
 				state_ = State::AIMING;
+				state_timer_ = 0.0f;
 				shape_->SetHidden(false);
 			}
 			break;
 		case State::AIMING:
-			if (!requesting_) {
+			if (!selected_) {
+				state_ = State::IDLE;
+				shape_->SetHidden(true);
+			} else if (requesting_) {
 				state_ = State::FIRING_TRANSITION;
 				state_timer_ = 0.0f;
 			}
@@ -62,8 +68,11 @@ namespace Boidsish {
 		case State::COOLDOWN:
 			state_timer_ += delta_time;
 			if (state_timer_ >= kCooldownDuration) {
-				state_ = State::IDLE;
+				state_ = selected_ ? State::AIMING : State::IDLE;
 				state_timer_ = 0.0f;
+				if (state_ == State::AIMING) {
+					shape_->SetHidden(false);
+				}
 			}
 			break;
 		}
@@ -74,6 +83,7 @@ namespace Boidsish {
 		}
 
 		// Update Transform
+		SetVelocity(Vector3(0, 0, 0));     // Constantly zero out velocity to prevent physical interactions
 		SetPosition(owner->GetPosition()); // Keep entity at owner's position for spatial queries
 		glm::vec3 start = owner->GetPosition().Toglm() + owner->ObjectToWorld(offset_);
 		glm::vec3 dir = owner->ObjectToWorld(relative_dir_);
