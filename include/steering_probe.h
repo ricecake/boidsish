@@ -1,120 +1,68 @@
 #pragma once
 
-#include <map>
 #include <memory>
-#include <optional>
-#include <tuple>
 #include <vector>
-
-#include "Simplex.h"
-#include "constants.h"
-#include "terrain.h"
-#include "terrain_deformation_manager.h"
-#include "terrain_generator.h"
-#include "terrain_generator_interface.h"
-#include "terrain_render_manager.h"
-#include "thread_pool.h"
-#include "terrain_generator_interface.h"
+#include <glm/glm.hpp>
 
 namespace Boidsish {
 
-	struct SteeringProbe {
-		glm::vec3                         position;
-		glm::vec3                         velocity = glm::vec3(0.0f);
-		std::shared_ptr<ITerrainGenerator> terrain;
+	class ITerrainGenerator;
+	class EntityHandler;
+	class EntityBase;
 
-		// Config: "Leash" physics
-		float mass = 2.00f;
-		float drag = 0.95f;           // Air resistance (prevents orbiting)
-		float springStiffness = 0.50f; // How hard the leash pulls
-
-		// Config: Terrain physics
-		float valleySlideStrength = 50.0f; // How hard the terrain pushes into the valley
-		float flyHeight = 30.0f;           // Target height above ground
-
-		// State for dropping checkpoints
-		glm::vec3 lastCheckpointPos;
-		glm::vec3 lastCheckpointDir;
-		float     timeSinceLastDrop = 0.0f;
+	class SteeringProbe {
+	public:
+		SteeringProbe(std::shared_ptr<ITerrainGenerator> terrain = nullptr);
 
 		void Update(
 			float                   dt,
 			const glm::vec3&        playerPos,
 			const glm::vec3&        playerVel
-			// std::vector<glm::vec3>& outCheckpoints
-		) {
-			// --- 1. THE LURE (Where we want to be) ---
-			// Look ahead 2-3 seconds. Dynamic based on speed.
-			float     speed = glm::length(playerVel);
-			float     lookAheadTime = std::clamp(speed * 0.1f, 3.0f, 5.0f);
-			glm::vec3 lurePos = playerPos + (playerVel * lookAheadTime);
+		);
 
-			// --- 2. TETHER FORCE (The Leash) ---
-			// Pulls the probe towards the lure position
-			glm::vec3 displacement = lurePos - position;
-			glm::vec3 tetherForce = displacement * springStiffness;
+		void HandleCheckpoints(float dt, EntityHandler& handler, std::shared_ptr<EntityBase> player);
 
-			// --- 3. TERRAIN FORCES (The Valley) ---
-			// We need the raw noise to know if we are on the left or right bank.
-			// Assuming we can access the same params as terrain_generator.cpp:
-			glm::vec3 noise = terrain->GetPathData(position.x, position.z);
+		// Configuration Setters
+		void SetMass(float m) { mass_ = m; }
+		void SetDrag(float d) { drag_ = d; }
+		void SetSpringStiffness(float s) { springStiffness_ = s; }
+		void SetValleySlideStrength(float v) { valleySlideStrength_ = v; }
+		void SetFlyHeight(float h) { flyHeight_ = h; }
+		void SetNorthBiasStrength(float n) { northBiasStrength_ = n; }
+		void SetAvoidanceLookAhead(float a) { avoidanceLookAhead_ = a; }
+		void SetAvoidanceRadius(float r) { avoidanceRadius_ = r; }
+		void SetAvoidanceStrength(float s) { avoidanceStrength_ = s; }
 
-			float     distFromSpine = noise.x;                // Signed distance! (- is left, + is right)
-			glm::vec2 gradient = glm::normalize(glm::vec2(noise.y, noise.z)) * 2.0f; // Points UPHILL (away from spine)
+		// Getters
+		glm::vec3 GetPosition() const { return position_; }
+		glm::vec3 GetVelocity() const { return velocity_; }
 
-			// Force A: Valley Slide
-			// If dist is positive, gradient points away -> we want -gradient.
-			// If dist is negative, gradient points away (from negative peak) -> we want +gradient.
-			// Math: -gradient * dist pushes us towards 0.
-			glm::vec2 slideForce2D = -gradient * distFromSpine * valleySlideStrength;
+		void SetPosition(const glm::vec3& p) { position_ = p; }
+		void SetVelocity(const glm::vec3& v) { velocity_ = v; }
+		void SetTerrain(std::shared_ptr<ITerrainGenerator> t) { terrain_ = t; }
 
-			// Force B: Flow Alignment (Optional but recommended)
-			// Helps the probe carry momentum through corners
-			glm::vec2 valleyDir = glm::vec2(-gradient.y, gradient.x); // Perpendicular
-			// Flip if pointing against the player
-			if (glm::dot(valleyDir, glm::vec2(playerVel.x, playerVel.z)) < 0) {
-				valleyDir = -valleyDir;
-			}
-			glm::vec2 flowForce2D = valleyDir * (glm::length(velocity) * 0.5f);
+	private:
+		glm::vec3                         position_{0.0f};
+		glm::vec3                         velocity_{0.0f};
+		std::shared_ptr<ITerrainGenerator> terrain_;
 
-			// --- 4. HEIGHT CONTROL ---
-			// Sample actual ground height to stay above it
-			// (Using your existing pointGenerate or point query)
-			float     height = terrain->GetDistanceAboveTerrain(position);
-			float     liftForce = (flyHeight - height) * 10.0f;
+		// Physics parameters
+		float mass_ = 2.00f;
+		float drag_ = 0.95f;           // Air resistance
+		float springStiffness_ = 0.50f; // How hard the leash pulls
+		float valleySlideStrength_ = 60.0f;
+		float flyHeight_ = 30.0f;
+		float northBiasStrength_ = 15.0f;
 
-			// --- 5. INTEGRATION ---
-			glm::vec3 totalForce = tetherForce;
-			totalForce.x += slideForce2D.x + flowForce2D.x;
-			totalForce.z += slideForce2D.y + flowForce2D.y;
-			totalForce.y += liftForce;
+		// Avoidance parameters
+		float avoidanceLookAhead_ = 60.0f;
+		float avoidanceRadius_ = 25.0f;
+		float avoidanceStrength_ = 20.0f;
 
-			glm::vec3 acceleration = totalForce / mass;
-			velocity += acceleration * dt;
-			velocity *= drag; // Dampening
-			position += velocity * dt;
-
-			// --- 6. CHECKPOINT DROPPING ---
-			// HandleCheckpoints(dt, outCheckpoints);
-		}
-
-		void HandleCheckpoints(float dt, std::vector<glm::vec3>& outPoints) {
-			timeSinceLastDrop += dt;
-
-			glm::vec3 currentDir = glm::normalize(velocity);
-
-			// Logic: Drop if 5 seconds passed OR we turned > 15 degrees
-			bool  timeTrigger = timeSinceLastDrop > 5.0f;
-			float dot = glm::dot(currentDir, lastCheckpointDir);
-			bool  turnTrigger = (dot < 0.96f) && (timeSinceLastDrop > 0.5f); // ~15 degrees
-
-			if (timeTrigger || turnTrigger) {
-				outPoints.push_back(position);
-				lastCheckpointPos = position;
-				lastCheckpointDir = currentDir;
-				timeSinceLastDrop = 0.0f;
-			}
-		}
+		// State for dropping checkpoints
+		glm::vec3 lastCheckpointPos_{0.0f};
+		glm::vec3 lastCheckpointDir_{0.0f, 0.0f, -1.0f};
+		float     timeSinceLastDrop_ = 0.0f;
 	};
 
-}; // namespace Boidsish
+} // namespace Boidsish

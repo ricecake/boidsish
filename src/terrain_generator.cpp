@@ -692,7 +692,7 @@ namespace Boidsish {
 	}
 
 	glm::vec3 TerrainGenerator::GetPathData(float x, float z) const {
-		return getPathDataFlat((glm::vec2(x, z)/world_scale_) * kPathFrequency);
+		return getPathDataFlat(glm::vec2(x / world_scale_, z / world_scale_));
 	}
 
 	glm::vec3 TerrainGenerator::getPathDataFlat(glm::vec2 pos) const {
