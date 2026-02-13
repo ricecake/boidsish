@@ -346,6 +346,24 @@ namespace Boidsish {
 		return total / max_amplitude;
 	}
 
+	std::tuple<float, glm::vec3> TerrainGenerator::CalculateTerrainPropertiesAtPoint(float x, float z) const {
+		// 1. Get raw procedural height and normal at the exact point
+		auto      v_raw = pointGenerate(x, z);
+		float     height_detailed = v_raw.x;
+		glm::vec3 normal_detailed = diffToNorm(v_raw.y, v_raw.z);
+
+		// Apply deformations to detailed point
+		if (deformation_manager_.HasDeformationAt(x, z)) {
+			auto res = deformation_manager_.QueryDeformations(x, z, height_detailed, normal_detailed);
+			if (res.has_deformation) {
+				height_detailed += res.total_height_delta;
+				normal_detailed = res.transformed_normal;
+			}
+		}
+
+		return {height_detailed, normal_detailed};
+	}
+
 	void TerrainGenerator::SetWorldScale(float scale) {
 		scale = std::max(0.0001f, scale); // Guard against division by zero
 
@@ -1070,10 +1088,10 @@ namespace Boidsish {
 		iz = std::clamp(iz, 0, chunk_size_ - 1);
 
 		// Get the 4 corner vertex indices
-		int idx00 = iz * grid_size + ix;
-		int idx10 = iz * grid_size + (ix + 1);
-		int idx01 = (iz + 1) * grid_size + ix;
-		int idx11 = (iz + 1) * grid_size + (ix + 1);
+		int idx00 = ix * grid_size + iz;
+		int idx10 = ix * grid_size + (iz + 1);
+		int idx01 = (ix + 1) * grid_size + iz;
+		int idx11 = (ix + 1) * grid_size + (iz + 1);
 
 		// Bounds check
 		if (idx11 >= static_cast<int>(vertices.size())) {
@@ -1092,12 +1110,8 @@ namespace Boidsish {
 		glm::vec3 v01 = vertices[idx01];
 		glm::vec3 v11 = vertices[idx11];
 
-		float h00 = v00.y;
-		float h10 = v10.y;
-		float h01 = v01.y;
-		float h11 = v11.y;
-
-		float height = h00 * (1 - fx) * (1 - fz) + h10 * fx * (1 - fz) + h01 * (1 - fx) * fz + h11 * fx * fz;
+		// The "flat" position from standard bilinear interpolation
+		glm::vec3 q = bilerp(v00, v10, v11, v01, {fx, fz});
 
 		// Interpolate normal
 		glm::vec3 n00 = normals[idx00];
@@ -1105,10 +1119,10 @@ namespace Boidsish {
 		glm::vec3 n01 = normals[idx01];
 		glm::vec3 n11 = normals[idx11];
 
-		glm::vec3 normal = n00 * (1 - fx) * (1 - fz) + n10 * fx * (1 - fz) + n01 * (1 - fx) * fz + n11 * fx * fz;
-		normal = glm::normalize(normal);
+		glm::vec3 interpolatedNormal = bilerp(n00, n10, n11, n01, {fx, fz});
+		interpolatedNormal = glm::normalize(interpolatedNormal);
 
-		return std::make_tuple(height, normal);
+		return std::make_tuple(q.y, interpolatedNormal);
 	}
 
 	bool TerrainGenerator::IsPositionCached(float x, float z) const {
