@@ -99,6 +99,10 @@ namespace Boidsish {
 
 		float GetWorldScale() const override { return world_scale_; }
 
+		void SetPhongAlpha(float alpha) override { phong_alpha_ = std::clamp(alpha, 0.0f, 1.0f); }
+
+		float GetPhongAlpha() const override { return phong_alpha_; }
+
 		uint32_t GetVersion() const override { return terrain_version_; }
 
 		// Interface method - calls CalculateTerrainPropertiesAtPoint
@@ -180,16 +184,10 @@ namespace Boidsish {
 			// Interpolate normals for lighting
 			glm::vec3 final_norm = glm::normalize(bilerp(n0, n1, n2, n3, {tx, tz}));
 
-			// Apply deformations to match the mesh
-			if (deformation_manager_.HasDeformationAt(x, z)) {
-				auto def_result = deformation_manager_.QueryDeformations(x, z, final_pos.y, final_norm);
-				if (def_result.has_deformation) {
-					final_pos.y += def_result.total_height_delta;
-					final_norm = def_result.transformed_normal;
-				}
-			}
+			// Combine flat and curved positions based on phong_alpha_
+			float final_height = glm::mix(q.y, final_pos.y, phong_alpha_);
 
-			return {final_pos.y, final_norm};
+			return {final_height, final_norm};
 		}
 
 		bool Raycast(const glm::vec3& origin, const glm::vec3& dir, float max_dist, float& out_dist) const override;
@@ -407,6 +405,7 @@ namespace Boidsish {
 		float     persistence_ = Constants::Class::Terrain::DefaultPersistence();
 		int       seed_;
 		float     world_scale_ = 1.0f;
+		float     phong_alpha_ = 0.0f;
 		uint32_t  terrain_version_ = 0;
 
 		// Control noise parameters

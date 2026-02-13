@@ -27,6 +27,36 @@ TEST(TerrainGeneratorTest, DISABLED_CachePersistence) {
     EXPECT_TRUE(gen.getVisibleChunks().empty());
 }
 
+TEST(TerrainGeneratorTest, ConsistencyWithDeformations) {
+    TerrainGenerator gen(12345);
+    gen.SetPhongAlpha(0.0f); // Start with Bilinear
+
+    // We avoid calling Update() to prevent OpenGL calls in headless environment
+    // Procedural queries should still work and account for deformations.
+
+    float testX = 5.3f;
+    float testZ = 7.7f;
+
+    // Case 1: No deformations
+    auto [h_proc1, n_proc1] = gen.CalculateTerrainPropertiesAtPoint(testX, testZ);
+
+    // Case 2: Add deformation
+    // Using a large crater that covers the test point and its neighbors
+    uint32_t defId = gen.AddCrater(glm::vec3(testX, 0.0f, testZ), 20.0f, 10.0f);
+
+    auto [h_proc2, n_proc2] = gen.CalculateTerrainPropertiesAtPoint(testX, testZ);
+
+    // Verify deformation was actually applied
+    EXPECT_LT(h_proc2, h_proc1 - 5.0f);
+
+    // Case 3: Phong
+    gen.SetPhongAlpha(1.0f);
+    auto [h_proc3, n_proc3] = gen.CalculateTerrainPropertiesAtPoint(testX, testZ);
+
+    // Phong height should generally be different from Bilinear height on curved terrain
+    EXPECT_NE(h_proc3, h_proc2);
+}
+
 int main(int argc, char **argv) {
     ::testing::InitGoogleTest(&argc, argv);
     return RUN_ALL_TESTS();

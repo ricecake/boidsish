@@ -1213,10 +1213,18 @@ namespace Boidsish {
 
 				// Prepare for rendering (frustum culling for instanced renderer)
 				float world_scale = terrain_generator ? terrain_generator->GetWorldScale() : 1.0f;
+				float phong_alpha = terrain_generator ? terrain_generator->GetPhongAlpha() : 0.0f;
 				terrain_render_manager->PrepareForRender(frustum, camera.pos(), world_scale);
 
-				terrain_render_manager
-					->Render(*Terrain::terrain_shader_, view, proj, viewport_size, clip_plane, effective_quality);
+				terrain_render_manager->Render(
+					*Terrain::terrain_shader_,
+					view,
+					proj,
+					viewport_size,
+					clip_plane,
+					effective_quality,
+					phong_alpha
+				);
 			} else {
 				// Fallback to per-chunk rendering
 				Terrain::terrain_shader_->use();
@@ -1226,6 +1234,10 @@ namespace Boidsish {
 				Terrain::terrain_shader_->setFloat("uTessQualityMultiplier", effective_quality);
 				Terrain::terrain_shader_->setFloat("uTessLevelMax", 64.0f);
 				Terrain::terrain_shader_->setFloat("uTessLevelMin", 1.0f);
+				Terrain::terrain_shader_->setFloat(
+					"uPhongAlpha",
+					terrain_generator ? terrain_generator->GetPhongAlpha() : 0.0f
+				);
 
 				if (clip_plane) {
 					Terrain::terrain_shader_->setVec4("clipPlane", *clip_plane);

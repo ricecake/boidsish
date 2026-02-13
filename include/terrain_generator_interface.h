@@ -295,6 +295,20 @@ namespace Boidsish {
 		virtual float GetWorldScale() const = 0;
 
 		/**
+		 * @brief Set the Phong interpolation alpha (0.0 = flat bilerp, 1.0 = smooth Phong).
+		 *
+		 * @param alpha The interpolation factor
+		 */
+		virtual void SetPhongAlpha(float alpha) = 0;
+
+		/**
+		 * @brief Get the current Phong interpolation alpha.
+		 *
+		 * @return The current Phong interpolation factor
+		 */
+		virtual float GetPhongAlpha() const = 0;
+
+		/**
 		 * @brief Get a version counter that increments whenever the terrain changes.
 		 *
 		 * This counter increments when the world scale changes or when deformations

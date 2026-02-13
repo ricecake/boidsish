@@ -3,6 +3,7 @@
 #include "ConfigManager.h"
 #include "graphics.h"
 #include "imgui.h"
+#include "terrain_generator_interface.h"
 
 namespace Boidsish {
 	namespace UI {
@@ -39,6 +40,14 @@ namespace Boidsish {
 			}
 
 			ImGui::Separator();
+
+			if (m_visualizer->GetTerrain()) {
+				float phong_alpha = m_visualizer->GetTerrain()->GetPhongAlpha();
+				if (ImGui::SliderFloat("Phong Alpha", &phong_alpha, 0.0f, 1.0f)) {
+					m_visualizer->GetTerrain()->SetPhongAlpha(phong_alpha);
+				}
+				ImGui::Separator();
+			}
 
 			auto& config = ConfigManager::GetInstance();
 
