@@ -16,6 +16,7 @@ namespace Boidsish {
 		shape_->SetScale(glm::vec3(10.0f));   // Larger teapot
 		shape_->SetInstanced(true);
 
+<<<<<<< Updated upstream
 		// rigid_body_.linear_friction_ = 1.0f;
 		// rigid_body_.angular_friction_ = 2.0f;
 		rigid_body_.SetMaxLinearVelocity(10.0f);
@@ -27,6 +28,11 @@ namespace Boidsish {
 	// 	Entity<Model>::UpdateShape();
 	// 	shape_->SetScale(glm::vec3(2.0f));
 	// }
+=======
+		rigid_body_.linear_friction_ = 1.0f;
+		rigid_body_.angular_friction_ = 2.0f;
+	}
+>>>>>>> Stashed changes
 
 	void PearEnemy::UpdateEntity(const EntityHandler& handler, float time, float delta_time) {
 		Roam(handler, delta_time);
@@ -102,6 +108,8 @@ namespace Boidsish {
 			}
 			return;
 		}
+
+		return;
 
 		glm::vec3 to_target = target_pos_ - current_pos;
 		to_target.y = 0; // Horizontal distance

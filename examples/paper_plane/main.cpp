@@ -13,6 +13,8 @@
 #include "terrain_generator_interface.h"
 #include <GLFW/glfw3.h>
 
+#include "steering_probe.h"
+
 using namespace Boidsish;
 
 int main() {
@@ -92,11 +94,32 @@ int main() {
 			}
 		});
 
+		std::shared_ptr<SteeringProbe> sp = std::make_shared<SteeringProbe>();
+
+		auto dot = std::make_shared<Dot>(2343433);
+		dot->SetSize(940.0f);
+		// dot->SetInstanced(true);
+		// visualizer->AddShape(dot);
+		float last_time = 0;
 		std::vector<std::shared_ptr<Boidsish::Shape>> shapes;
-		visualizer->AddShapeHandler([&](float time) { return shapes; });
-		auto model = std::make_shared<Boidsish::Model>("assets/utah_teapot.obj");
-		model->SetColossal(true);
-		shapes.push_back(model);
+		visualizer->AddShapeHandler([&](float time) {
+			auto delta_time = time - last_time;
+			last_time = time;
+			if (!sp->terrain) {
+				sp->terrain = visualizer->GetTerrain();
+			}
+
+			sp->Update(delta_time, plane->GetPosition().Toglm(), plane->GetVelocity().Toglm());
+			auto pos = sp->position;
+			dot->SetPosition(pos.x, pos.y, pos.z);
+
+			return shapes;
+		});
+		// auto model = std::make_shared<Boidsish::Model>("assets/utah_teapot.obj");
+		// model->SetInstanced(true);
+		// model->SetColossal(true);
+		shapes.push_back(dot);
+		// shapes.push_back(model);
 
 		visualizer->GetAudioManager().PlayMusic("assets/kazoom.mp3", true, 0.25f);
 

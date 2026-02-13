@@ -16,6 +16,8 @@
 #include <glm/gtc/constants.hpp>
 #include <glm/gtx/quaternion.hpp>
 
+#include "steering_probe.h"
+
 namespace Boidsish {
 
 	// Define the global weapon selection variable here
@@ -163,7 +165,11 @@ namespace Boidsish {
 				} else {
 					// Roamers are only removed if they are far away (2000m)
 					float dist = glm::distance(roamer->GetPosition().Toglm(), plane_pos);
+<<<<<<< Updated upstream
 					if (dist > 2000.0f) {
+=======
+					if (dist > 500.0f) {
+>>>>>>> Stashed changes
 						should_remove = true;
 						QueueRemoveEntity(it->second);
 					}
@@ -191,7 +197,7 @@ namespace Boidsish {
                 int cx = coord.first;
                 int cz = coord.second;
                 int step = Constants::Class::Terrain::ChunkSize();
-                int range = 2; // Exclude 2 chunks in every direction
+                int range = 3; // Exclude 2 chunks in every direction
                 for (int dx = -range; dx <= range; ++dx) {
                     for (int dz = -range; dz <= range; ++dz) {
                         forbidden_coords.insert({cx + dx * step, cz + dz * step});
@@ -347,7 +353,7 @@ namespace Boidsish {
 					if (GetEntity(id) == nullptr) {
 						QueueAddEntity<PearEnemy>(
 							id,
-							Vector3{static_cast<float>(world_pos.x), static_cast<float>(terrain_h + 1.0f), static_cast<float>(world_pos.z)}
+							Vector3{static_cast<float>(world_pos.x), static_cast<float>(terrain_h + 10.0f), static_cast<float>(world_pos.z)}
 						);
 						spawned = true;
 					}
@@ -368,6 +374,7 @@ namespace Boidsish {
 		auto targets = GetEntitiesByType<PaperPlane>();
 		if (targets.empty())
 			return;
+
 
 		auto plane = std::static_pointer_cast<PaperPlane>(targets[0]);
 		bool took_damage = false;
