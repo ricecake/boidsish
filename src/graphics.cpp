@@ -1076,16 +1076,10 @@ namespace Boidsish {
 		}
 
 		void RenderShapes(
-			const glm::mat4& view,
-			const Camera& /* cam */,
+			const glm::mat4&                           view,
 			const std::vector<std::shared_ptr<Shape>>& shapes,
-			float                                      time,
 			const std::optional<glm::vec4>&            clip_plane
 		) {
-			if (shapes.empty()) {
-				return;
-			}
-
 			shader->use();
 			shader->setFloat(
 				"ripple_strength",
@@ -1104,7 +1098,7 @@ namespace Boidsish {
 
 			shader->setInt("useVertexColor", 0);
 			for (const auto& shape : shapes) {
-				if (shape->IsHidden()) {
+				if (shape->IsHidden() || shape->IsTransparent()) {
 					continue;
 				}
 				if (shape->IsInstanced()) {
@@ -1124,6 +1118,71 @@ namespace Boidsish {
 			clone_manager->Render(*shader);
 
 			// Disable frustum culling after shapes are rendered
+			shader->setBool("enableFrustumCulling", false);
+		}
+
+		void RenderTransparentShapes(
+			const glm::mat4&                           view,
+			const Camera&                              cam,
+			const std::vector<std::shared_ptr<Shape>>& shapes,
+			const std::optional<glm::vec4>&            clip_plane
+		) {
+			std::vector<std::shared_ptr<Shape>> transparent_shapes;
+			for (const auto& shape : shapes) {
+				if (!shape->IsHidden() && shape->IsTransparent()) {
+					transparent_shapes.push_back(shape);
+				}
+			}
+
+			if (transparent_shapes.empty()) {
+				return;
+			}
+
+			// Sort back-to-front for correct alpha blending
+			glm::vec3 cameraPos = cam.pos();
+			std::sort(transparent_shapes.begin(), transparent_shapes.end(), [&](const auto& a, const auto& b) {
+				glm::vec3 posA(a->GetX(), a->GetY(), a->GetZ());
+				glm::vec3 posB(b->GetX(), b->GetY(), b->GetZ());
+				return glm::distance(cameraPos, posA) > glm::distance(cameraPos, posB);
+			});
+
+			shader->use();
+			shader->setFloat(
+				"ripple_strength",
+				ConfigManager::GetInstance().GetAppSettingBool("artistic_effect_ripple", false) ? 0.05f : 0.0f
+			);
+			shader->setMat4("view", view);
+			if (clip_plane) {
+				shader->setVec4("clipPlane", *clip_plane);
+			} else {
+				shader->setVec4("clipPlane", glm::vec4(0, 0, 0, 0));
+			}
+
+			// Enable GPU frustum culling for instanced rendering
+			shader->setBool("enableFrustumCulling", true);
+			shader->setFloat("frustumCullRadius", 5.0f); // Default radius
+
+			// Disable depth writing for transparency to show objects behind
+			glDepthMask(GL_FALSE);
+			glEnable(GL_BLEND);
+			glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+			shader->setInt("useVertexColor", 0);
+			for (const auto& shape : transparent_shapes) {
+				if (shape->IsInstanced()) {
+					instance_manager->AddInstance(shape);
+				} else {
+					shader->setBool("isColossal", shape->IsColossal());
+					// Set cull radius based on shape size if available
+					shader->setFloat("frustumCullRadius", 5.0f);
+					shape->render();
+				}
+			}
+
+			instance_manager->Render(*shader);
+
+			// Restore state
+			glDepthMask(GL_TRUE);
 			shader->setBool("enableFrustumCulling", false);
 		}
 
@@ -2226,15 +2285,15 @@ namespace Boidsish {
 				// 	std::nullopt,
 				// 	0.25f
 				// );
-				impl->RenderShapes(
+				impl->RenderShapes(reflection_view, impl->shapes, glm::vec4(0, 1, 0, 0.01));
+				// Sky after opaque geometry
+				impl->RenderSky(reflection_view);
+				impl->RenderTransparentShapes(
 					reflection_view,
 					reflection_cam,
 					impl->shapes,
-					impl->simulation_time,
 					glm::vec4(0, 1, 0, 0.01)
 				);
-				// Sky after opaque geometry
-				impl->RenderSky(reflection_view);
 				// Transparent effects last
 				impl->fire_effect_manager->Render(reflection_view, impl->projection, reflection_cam.pos());
 				impl->RenderTrails(reflection_view, glm::vec4(0, 1, 0, 0.01));
@@ -2463,7 +2522,7 @@ namespace Boidsish {
 		// An unbound sampler2DArrayShadow can cause shader failures on some GPUs
 		impl->BindShadows(*impl->shader);
 
-		impl->RenderShapes(view, impl->camera, impl->shapes, impl->simulation_time, std::nullopt);
+		impl->RenderShapes(view, impl->shapes, std::nullopt);
 		if (impl->decor_manager) {
 			impl->decor_manager->Render(view, impl->projection);
 		}
@@ -2471,6 +2530,9 @@ namespace Boidsish {
 		// Render sky AFTER opaque geometry so early-Z rejects covered fragments
 		// This avoids expensive noise calculations for pixels already drawn
 		impl->RenderSky(view);
+
+		// Render transparent shapes after sky
+		impl->RenderTransparentShapes(view, impl->camera, impl->shapes, std::nullopt);
 
 		// Render transparent/particle effects last
 		impl->fire_effect_manager->Render(view, impl->projection, impl->camera.pos());

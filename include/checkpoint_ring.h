@@ -32,6 +32,10 @@ namespace Boidsish {
 
 		std::string GetInstanceKey() const override { return "CheckpointRing"; }
 
+		bool IsTransparent() const override { return true; }
+
+		bool CastsShadows() const override { return false; }
+
 		void SetRadius(float radius) { radius_ = radius; }
 
 		float GetRadius() const { return radius_; }

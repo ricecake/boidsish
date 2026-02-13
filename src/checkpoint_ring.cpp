@@ -61,6 +61,10 @@ namespace Boidsish {
 			return;
 
 		shader.use();
+
+		// Disable backface culling for the ring to make it visible from both sides
+		glDisable(GL_CULL_FACE);
+
 		shader.setMat4("model", model_matrix);
 
 		glm::vec3 color(1.0f);
@@ -92,6 +96,9 @@ namespace Boidsish {
 		glBindVertexArray(quad_vao_);
 		glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
 		glBindVertexArray(0);
+
+		// Re-enable culling
+		glEnable(GL_CULL_FACE);
 	}
 
 	glm::mat4 CheckpointRingShape::GetModelMatrix() const {
