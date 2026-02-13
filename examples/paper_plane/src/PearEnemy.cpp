@@ -9,23 +9,24 @@
 
 namespace Boidsish {
 
-	PearEnemy::PearEnemy(int id, Vector3 pos): Entity<Model>(id, "assets/utah_teapot.obj"), eng_(rd_()) {
+	PearEnemy::PearEnemy(int id, Vector3 pos): Entity<Model>(id, "assets/Mesh_Goose.obj"), eng_(rd_()) {
 		SetPosition(pos);
 		SetColor(0.82f, 0.71f, 0.55f, 1.0f); // Tan
 		SetTrailLength(0);                  // Remove grey lines
-		shape_->SetScale(glm::vec3(1.0f));   // Larger teapot
+		shape_->SetScale(glm::vec3(10.0f));   // Larger teapot
 		shape_->SetInstanced(true);
 
-		rigid_body_.linear_friction_ = 1.0f;
-		rigid_body_.angular_friction_ = 2.0f;
+		// rigid_body_.linear_friction_ = 1.0f;
+		// rigid_body_.angular_friction_ = 2.0f;
+		rigid_body_.SetMaxLinearVelocity(10.0f);
 
-		UpdateShape();
+		// UpdateShape();
 	}
 
-	void PearEnemy::UpdateShape() {
-		Entity<Model>::UpdateShape();
-		shape_->SetScale(glm::vec3(2.0f));
-	}
+	// void PearEnemy::UpdateShape() {
+	// 	Entity<Model>::UpdateShape();
+	// 	shape_->SetScale(glm::vec3(2.0f));
+	// }
 
 	void PearEnemy::UpdateEntity(const EntityHandler& handler, float time, float delta_time) {
 		Roam(handler, delta_time);
@@ -113,8 +114,8 @@ namespace Boidsish {
 			return;
 		}
 
-		glm::vec3 move_dir = (dist_to_target > 0.01f) ? to_target / dist_to_target : glm::vec3(0);
-		rigid_body_.AddForce(move_dir * 30.0f); // Constant horizontal movement force
+		glm::vec3 move_dir = glm::normalize((dist_to_target > 0.01f) ? to_target / dist_to_target : glm::vec3(0));
+		rigid_body_.AddForce(move_dir * 3.0f); // Constant horizontal movement force
 
 		// Keep on terrain using vertical spring-damping
 		auto [h, norm] = handler.vis->GetTerrain()->GetPointProperties(current_pos.x, current_pos.z);
@@ -122,8 +123,8 @@ namespace Boidsish {
 		float error = target_h - current_pos.y;
 
 		// Simple PD controller for vertical stability
-		float force_y = error * 100.0f - vel.y * 20.0f;
-		force_y = glm::clamp(force_y, -500.0f, 500.0f); // Prevent explosive forces
+		float force_y = error * 10.0f - vel.y * 2.0f;
+		force_y = glm::clamp(force_y, -5.0f, 5.0f); // Prevent explosive forces
 		rigid_body_.AddForce(glm::vec3(0, force_y, 0));
 
 		// Align with terrain normal and face movement direction
