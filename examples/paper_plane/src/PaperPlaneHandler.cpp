@@ -174,7 +174,7 @@ namespace Boidsish {
                 int cx = coord.first;
                 int cz = coord.second;
                 int step = Constants::Class::Terrain::ChunkSize();
-                int range = 2; // Exclude 2 chunks in every direction
+                int range = 3; // Exclude 2 chunks in every direction
                 for (int dx = -range; dx <= range; ++dx) {
                     for (int dz = -range; dz <= range; ++dz) {
                         forbidden_coords.insert({cx + dx * step, cz + dz * step});

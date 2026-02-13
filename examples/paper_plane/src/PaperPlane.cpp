@@ -193,6 +193,7 @@ namespace Boidsish {
 			target_rot_velocity *= 0.2f;
 			target_rot_velocity.z += 1.5f * spiral_intensity_;
 			target_rot_velocity.x += 0.5f * spiral_intensity_;
+			target_rot_velocity.y *= std::fmod(spiral_intensity_, 3.0f) - 1;
 		}
 
 		// --- Coordinated Turn (Banking) ---
@@ -338,7 +339,7 @@ namespace Boidsish {
 		health -= 5;
 		damage_pending_++;
 		if (state_ == PlaneState::DYING) {
-			spiral_intensity_ += 1.0f;
+			spiral_intensity_ += (std::abs(health)) / (std::max(health, 1.0f));
 		}
 	}
 
