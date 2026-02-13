@@ -161,10 +161,9 @@ namespace Boidsish {
 				if (roamer == nullptr) {
 					should_remove = true;
 				} else {
-					// Roamers are only removed if they are far away (1500m)
-					// or if the player is very far from the chunk itself
+					// Roamers are only removed if they are far away (2000m)
 					float dist = glm::distance(roamer->GetPosition().Toglm(), plane_pos);
-					if (dist > 1500.0f) {
+					if (dist > 2000.0f) {
 						should_remove = true;
 						QueueRemoveEntity(it->second);
 					}
@@ -332,8 +331,8 @@ namespace Boidsish {
 				auto [terrain_h, terrain_normal] = vis->GetTerrain()->GetPointProperties(world_pos.x, world_pos.z);
 
 				if (terrain_h < 35.0f) {
-					// Prevent spawn/despawn loop: only spawn if player is within 1000m
-					if (has_plane && glm::distance(world_pos, plane_pos) > 1000.0f) {
+					// Prevent spawn/despawn loop: only spawn if player is within 800m
+					if (has_plane && glm::distance(world_pos, plane_pos) > 800.0f) {
 						continue;
 					}
 					int ix = static_cast<int>(
@@ -344,18 +343,24 @@ namespace Boidsish {
 					);
 					int id = 0x60000000 | ((ix + 1024) << 11) | (iz + 1024);
 
+					bool spawned = false;
 					if (GetEntity(id) == nullptr) {
 						QueueAddEntity<PearEnemy>(
 							id,
 							Vector3{static_cast<float>(world_pos.x), static_cast<float>(terrain_h + 1.0f), static_cast<float>(world_pos.z)}
 						);
+						spawned = true;
 					}
-					std::pair<int, int> coord = {
-						static_cast<int>(candidate.chunk->GetX()),
-						static_cast<int>(candidate.chunk->GetZ())
-					};
-					spawned_roamers_[coord] = id;
-					exclude_neighborhood(coord);
+
+					// Only track if it exists or was just spawned
+					if (spawned || GetEntity(id) != nullptr) {
+						std::pair<int, int> coord = {
+							static_cast<int>(candidate.chunk->GetX()),
+							static_cast<int>(candidate.chunk->GetZ())
+						};
+						spawned_roamers_[coord] = id;
+						exclude_neighborhood(coord);
+					}
 				}
 			}
 		}

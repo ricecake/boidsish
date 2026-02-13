@@ -58,25 +58,20 @@ namespace Boidsish {
 						glm::vec3 target_pos = plane_pos + player_vel * time_to_impact;
 
 						glm::vec3 to_target = target_pos - my_pos;
-						float horiz_dist = glm::length(glm::vec3(to_target.x, 0, to_target.z));
-						float vert_dist = to_target.y;
 
 						// Ballistic calculation
 						float g = 9.8f;
 						glm::vec3 vel;
 						vel.x = to_target.x / time_to_impact;
 						vel.z = to_target.z / time_to_impact;
-						vel.y = (vert_dist + 0.5f * g * time_to_impact * time_to_impact) / time_to_impact;
+						vel.y = (to_target.y + 0.5f * g * time_to_impact * time_to_impact) / time_to_impact;
 
-						handler.QueueAddEntity<MagentaBall>(Vector3{my_pos.x, my_pos.y, my_pos.z}, Vector3{vel.x, vel.y, vel.z});
+						// Add an ID argument for MagentaBall
+						int projectile_id = 0x70000000 | (GetId() & 0x0FFFFFFF);
+						handler.QueueAddEntity<MagentaBall>(projectile_id, Vector3{my_pos.x, my_pos.y, my_pos.z}, Vector3{vel.x, vel.y, vel.z});
 						attack_cooldown_ = 5.0f; // 5 seconds between shots
 					}
 				}
-			}
-
-			// Despawn logic (part of next step but I can prepare it)
-			if (dist > 1500.0f) {
-				handler.QueueRemoveEntity(GetId());
 			}
 		}
 
@@ -118,7 +113,7 @@ namespace Boidsish {
 			return;
 		}
 
-		glm::vec3 move_dir = to_target / dist_to_target;
+		glm::vec3 move_dir = (dist_to_target > 0.01f) ? to_target / dist_to_target : glm::vec3(0);
 		rigid_body_.AddForce(move_dir * 30.0f); // Constant horizontal movement force
 
 		// Keep on terrain using vertical spring-damping
@@ -128,16 +123,23 @@ namespace Boidsish {
 
 		// Simple PD controller for vertical stability
 		float force_y = error * 100.0f - vel.y * 20.0f;
+		force_y = glm::clamp(force_y, -500.0f, 500.0f); // Prevent explosive forces
 		rigid_body_.AddForce(glm::vec3(0, force_y, 0));
 
 		// Align with terrain normal and face movement direction
-		glm::vec3 up = norm;
-		glm::vec3 forward = (glm::length(vel) > 0.1f) ? glm::normalize(vel) : move_dir;
-		if (glm::length(forward) < 0.001f)
-			forward = glm::vec3(0, 0, 1);
+		glm::vec3 up = (glm::length(norm) > 0.01f) ? glm::normalize(norm) : glm::vec3(0, 1, 0);
+		glm::vec3 forward_pref = (glm::length(vel) > 0.1f) ? glm::normalize(vel) : move_dir;
+		if (glm::length(forward_pref) < 0.001f) forward_pref = glm::vec3(0, 0, 1);
+
+		// Project forward onto terrain tangent plane
+		glm::vec3 forward = forward_pref - up * glm::dot(forward_pref, up);
+		if (glm::length(forward) < 0.001f) {
+			forward = glm::vec3(1, 0, 0) - up * up.x; // Fallback
+		}
+		forward = glm::normalize(forward);
 
 		glm::vec3 right = glm::normalize(glm::cross(up, forward));
-		forward = glm::cross(right, up);
+		forward = glm::cross(right, up); // Re-orthogonalize
 
 		glm::mat4 rotation_matrix = glm::mat4(1.0f);
 		rotation_matrix[0] = glm::vec4(right, 0.0f);
