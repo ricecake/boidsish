@@ -691,8 +691,12 @@ namespace Boidsish {
 		return false; // No hit
 	}
 
+	glm::vec3 TerrainGenerator::GetPathData(float x, float z) const {
+		return Simplex::dnoise((glm::vec2(x, z)) * kPathFrequency);
+	}
+
 	glm::vec3 TerrainGenerator::getPathInfluence(float x, float z) const {
-		glm::vec3 noise = Simplex::dnoise(glm::vec2(x, z) * kPathFrequency);
+		glm::vec3 noise = GetPathData(x, z);
 		float     distance_from_spine = std::abs(noise.x);
 		float     corridor_width = Constants::Class::Terrain::PathCorridorWidth(); // Adjust for wider/narrower paths
 		float     path_factor = glm::smoothstep(0.0f, corridor_width, distance_from_spine);
@@ -705,7 +709,7 @@ namespace Boidsish {
 		constexpr float kStepSize = 0.1f;
 
 		for (int i = 0; i < kGradientDescentSteps; ++i) {
-			glm::vec3 path_data = Simplex::dnoise((sample_pos / world_scale_) * kPathFrequency);
+			glm::vec3 path_data = GetPathData(sample_pos.x, sample_pos.y);
 			glm::vec2 gradient = glm::vec2(path_data.y, path_data.z);
 			sample_pos -= (gradient * world_scale_) * path_data.x * kStepSize;
 		}
@@ -724,7 +728,7 @@ namespace Boidsish {
 			path.emplace_back(current_pos.x, height, current_pos.y);
 
 			// Get path tangent
-			glm::vec3 path_data = Simplex::dnoise((current_pos / world_scale_) * kPathFrequency);
+			glm::vec3 path_data = GetPathData(current_pos.x, current_pos.y);
 			glm::vec2 tangent = glm::normalize(glm::vec2(path_data.z, -path_data.y));
 
 			// Move along the tangent

@@ -128,7 +128,7 @@ int main() {
 	const int                  width = 2048;
 	const int                  height = 2048;
 
-	// generateDomainWarpMap(generator, width, height);
+	generateDomainWarpMap(generator, width, height);
 	generateBiomeMap(generator, width, height);
 	generateHeightmap(generator, width, height);
 
