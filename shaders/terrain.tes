@@ -21,9 +21,9 @@ out float tessFactor;
 uniform sampler2DArray uHeightmap;
 uniform int            uChunkSize;
 
-uniform mat4  view;
-uniform mat4  projection;
-uniform vec4  clipPlane;
+uniform mat4 view;
+uniform mat4 projection;
+uniform vec4 clipPlane;
 
 #include "helpers/shockwave.glsl"
 #include "helpers/terrain_noise.glsl"
