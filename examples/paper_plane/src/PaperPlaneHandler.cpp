@@ -4,6 +4,7 @@
 #include <cmath>
 #include <set>
 
+#include "Blimp.h"
 #include "GuidedMissileLauncher.h"
 #include "PaperPlane.h"
 #include "VortexFlockingEntity.h"
@@ -298,6 +299,29 @@ namespace Boidsish {
 		}
 
 		damage_timer_ = std::min(damage_timer_, 2.0f);
+
+		// Manage Blimps
+		auto current_blimps = GetEntitiesByType<Blimp>();
+		if (current_blimps.size() < 3) {
+			auto planes = GetEntitiesByType<PaperPlane>();
+			if (!planes.empty()) {
+				auto      plane = planes[0];
+				glm::vec3 player_pos = plane->GetPosition().Toglm();
+				glm::vec3 player_fwd = plane->GetOrientation() * glm::vec3(0, 0, -1);
+
+				for (int i = 0; i < (3 - (int)current_blimps.size()); ++i) {
+					std::uniform_real_distribution<float> angle_dist(-0.8f, 0.8f);
+					float                                 angle = angle_dist(eng_);
+					glm::mat4 rotation = glm::rotate(glm::mat4(1.0f), angle, glm::vec3(0, 1, 0));
+					glm::vec3 spawn_dir = glm::vec3(rotation * glm::vec4(player_fwd, 0.0f));
+
+					glm::vec3 spawn_pos = player_pos + spawn_dir * 1000.0f;
+					spawn_pos.y = 150.0f;
+
+					QueueAddEntity<Blimp>(Vector3(spawn_pos.x, spawn_pos.y, spawn_pos.z));
+				}
+			}
+		}
 	}
 
 } // namespace Boidsish
