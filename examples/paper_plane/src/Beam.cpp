@@ -74,8 +74,14 @@ namespace Boidsish {
 		}
 
 		// Update Transform
+		SetPosition(owner->GetPosition()); // Keep entity at owner's position for spatial queries
 		glm::vec3 start = owner->GetPosition().Toglm() + owner->ObjectToWorld(offset_);
 		glm::vec3 dir = owner->ObjectToWorld(relative_dir_);
+		if (glm::dot(dir, dir) < 1e-6) {
+			dir = glm::vec3(0, 0, -1);
+		} else {
+			dir = glm::normalize(dir);
+		}
 
 		float     hit_dist = 2000.0f;
 		glm::vec3 hit_norm(0, 1, 0);

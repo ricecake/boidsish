@@ -14,7 +14,9 @@ namespace Boidsish {
 		Entity<Model>(id, "assets/Mesh_Cat.obj", true),
 		orientation_(glm::quat(1.0f, 0.0f, 0.0f, 0.0f)),
 		rotational_velocity_(glm::vec3(0.0f)),
-		forward_speed_(20.0f) {
+		forward_speed_(20.0f),
+		beam_id_(-1),
+		beam_spawn_queued_(false) {
 		rigid_body_.linear_friction_ = 0.01f;
 		rigid_body_.angular_friction_ = 0.01f;
 
@@ -283,15 +285,17 @@ namespace Boidsish {
 				if (b->GetOwnerId() == id_) {
 					my_beam = b;
 					beam_id_ = b->GetId();
+					beam_spawn_queued_ = false;
 					break;
 				}
 			}
 		}
 
 		if (selected_weapon == 3) {
-			if (!my_beam) {
+			if (!my_beam && !beam_spawn_queued_) {
 				handler.QueueAddEntity<Beam>(id_);
-			} else {
+				beam_spawn_queued_ = true;
+			} else if (my_beam) {
 				my_beam->SetRequesting(controller_->fire);
 				my_beam->SetOffset(glm::vec3(0, 0, -0.5f)); // Nose offset
 			}
