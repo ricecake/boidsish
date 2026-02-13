@@ -1,5 +1,6 @@
 #include "PaperPlane.h"
 
+#include "Beam.h"
 #include "CatBomb.h"
 #include "CatMissile.h"
 #include "PaperPlaneHandler.h" // For selected_weapon
@@ -264,6 +265,40 @@ namespace Boidsish {
 		SetVelocity(Vector3(new_velocity.x, new_velocity.y, new_velocity.z));
 
 		time_to_fire -= delta_time;
+
+		// Handle Beam weapon (Weapon 3)
+		Beam* my_beam = nullptr;
+		if (beam_id_ >= 0) {
+			auto ent = handler.GetEntity(beam_id_);
+			my_beam = dynamic_cast<Beam*>(ent.get());
+			if (!my_beam || my_beam->GetOwnerId() != id_) {
+				my_beam = nullptr;
+				beam_id_ = -1;
+			}
+		}
+
+		if (!my_beam) {
+			auto beams = handler.GetEntitiesByType<Beam>();
+			for (auto b : beams) {
+				if (b->GetOwnerId() == id_) {
+					my_beam = b;
+					beam_id_ = b->GetId();
+					break;
+				}
+			}
+		}
+
+		if (selected_weapon == 3) {
+			if (!my_beam) {
+				handler.QueueAddEntity<Beam>(id_);
+			} else {
+				my_beam->SetRequesting(controller_->fire);
+				my_beam->SetOffset(glm::vec3(0, 0, -0.5f)); // Nose offset
+			}
+		} else if (my_beam) {
+			my_beam->SetRequesting(false);
+		}
+
 		if (controller_->fire && time_to_fire <= 0) {
 			switch (selected_weapon) {
 			case 0:
@@ -305,6 +340,9 @@ namespace Boidsish {
 				time_to_fire = 0.05f; // 20 rounds per second!
 				break;
 			}
+			case 3:
+				// Beam weapon is handled outside the switch because it's continuous
+				break;
 			}
 		}
 
@@ -332,6 +370,12 @@ namespace Boidsish {
 		if (shape_) {
 			shape_->SetRotation(orientation_);
 		}
+	}
+
+	void PaperPlane::OnHit(const EntityHandler& handler, float damage) {
+		(void)handler;
+		(void)damage;
+		TriggerDamage();
 	}
 
 	void PaperPlane::TriggerDamage() {

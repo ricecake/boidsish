@@ -47,8 +47,11 @@ int main() {
 		Similar to the fire system balancing, but everything has a uniform density...density.
 		*/
 
-		std::vector<std::string> weaponIcons =
-			{"assets/missile-icon.png", "assets/bomb-icon.png", "assets/bullet-icon.png"};
+		std::vector<std::string> weaponIcons = {
+			"assets/missile-icon.png",
+			"assets/bomb-icon.png",
+			"assets/bullet-icon.png",
+			"assets/missile-icon.png"};
 		auto weaponSelector = visualizer->AddHudIconSet(weaponIcons, HudAlignment::TOP_LEFT, {10, 10}, {64, 64}, 10.0f);
 		weaponSelector->SetSelectedIndex(selected_weapon);
 
@@ -87,7 +90,7 @@ int main() {
 			controller->chaff = state.keys[GLFW_KEY_G];
 			controller->super_speed = state.keys[GLFW_KEY_B];
 			if (state.key_down[GLFW_KEY_F]) {
-				selected_weapon = (selected_weapon + 1) % 3;
+				selected_weapon = (selected_weapon + 1) % 4;
 				weaponSelector->SetSelectedIndex(selected_weapon);
 			}
 		});

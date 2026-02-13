@@ -42,6 +42,12 @@ namespace Boidsish {
 		// Called each frame to update the entity
 		virtual void UpdateEntity(const EntityHandler& handler, float time, float delta_time) = 0;
 
+		// Generic interaction for weapons/collisions
+		virtual void OnHit(const EntityHandler& handler, float damage) {
+			(void)handler;
+			(void)damage;
+		}
+
 		// Shape management
 		virtual std::shared_ptr<Shape> GetShape() const = 0;
 		virtual void                   UpdateShape() = 0;
@@ -76,6 +82,8 @@ namespace Boidsish {
 			glm::vec3 vel = rigid_body_.GetLinearVelocity();
 			return Vector3(vel.x, vel.y, vel.z);
 		}
+
+		glm::quat GetOrientation() const { return rigid_body_.GetOrientation(); }
 
 		void SetVelocity(float vx, float vy, float vz) { rigid_body_.SetLinearVelocity(glm::vec3(vx, vy, vz)); }
 
