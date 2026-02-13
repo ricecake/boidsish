@@ -23,7 +23,8 @@ namespace Boidsish {
 
 		probe_.position = pos.Toglm();
 		probe_.flyHeight = 1.5f;
-		probe_.valleySlideStrength = 100.0f;
+		probe_.valleySlideStrength = 30.0f; // Reduced from 100
+		probe_.springStiffness = 5.0f;      // Increased from 1.1
 
 		UpdateShape();
 	}
@@ -158,13 +159,13 @@ namespace Boidsish {
 		// 3. Separation Force
 		glm::vec3 separation_force(0.0f);
 		if (auto spatial_handler = dynamic_cast<const SpatialEntityHandler*>(&handler)) {
-			const auto& neighbors = spatial_handler->GetEntitiesInRadius<PearEnemy>(GetPosition(), 20.0f);
+			const auto& neighbors = spatial_handler->GetEntitiesInRadius<PearEnemy>(GetPosition(), 30.0f);
 			for (const auto& neighbor : neighbors) {
 				if (neighbor->GetId() == GetId()) continue;
 				glm::vec3 diff = current_pos - neighbor->GetPosition().Toglm();
 				float     dist = glm::length(diff);
 				if (dist > 0.001f) {
-					separation_force += (diff / (dist * dist)) * 20.0f;
+					separation_force += (diff / (dist * dist)) * 100.0f; // Increased from 20.0f
 				}
 			}
 		}
