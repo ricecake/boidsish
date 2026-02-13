@@ -347,103 +347,73 @@ namespace Boidsish {
 	}
 
 	std::tuple<float, glm::vec3> TerrainGenerator::CalculateTerrainPropertiesAtPoint(float x, float z) const {
-		// Determine grid cell
-		float sx = x / world_scale_;
-		float sz = z / world_scale_;
+		// 1. Get raw procedural height and normal at the exact point
+		auto      v_raw = pointGenerate(x, z);
+		float     height_detailed = v_raw.x;
+		glm::vec3 normal_detailed = diffToNorm(v_raw.y, v_raw.z);
 
-		float tx = sx - floor(sx);
-		float tz = sz - floor(sz);
-
-		// Get the 4 corner vertices of the grid cell
-		float x0 = floor(sx);
-		float x1 = x0 + 1.0f;
-		float z0 = floor(sz);
-		float z1 = z0 + 1.0f;
-
-		auto v0_raw = pointGenerate(x0 * world_scale_, z0 * world_scale_); // Bottom-left
-		auto v1_raw = pointGenerate(x1 * world_scale_, z0 * world_scale_); // Bottom-right
-		auto v2_raw = pointGenerate(x1 * world_scale_, z1 * world_scale_); // Top-right
-		auto v3_raw = pointGenerate(x0 * world_scale_, z1 * world_scale_); // Top-left
-
-		float h0 = v0_raw.x;
-		float h1 = v1_raw.x;
-		float h2 = v2_raw.x;
-		float h3 = v3_raw.x;
-
-		glm::vec3 n0 = diffToNorm(v0_raw.y, v0_raw.z);
-		glm::vec3 n1 = diffToNorm(v1_raw.y, v1_raw.z);
-		glm::vec3 n2 = diffToNorm(v2_raw.y, v2_raw.z);
-		glm::vec3 n3 = diffToNorm(v3_raw.y, v3_raw.z);
-
-		// Apply deformations to corners before Phong interpolation
-		if (deformation_manager_.HasDeformations()) {
-			float wx0 = x0 * world_scale_;
-			float wx1 = x1 * world_scale_;
-			float wz0 = z0 * world_scale_;
-			float wz1 = z1 * world_scale_;
-
-			auto res0 = deformation_manager_.QueryDeformations(wx0, wz0, h0, n0);
-			if (res0.has_deformation) {
-				h0 += res0.total_height_delta;
-				n0 = res0.transformed_normal;
-			}
-			auto res1 = deformation_manager_.QueryDeformations(wx1, wz0, h1, n1);
-			if (res1.has_deformation) {
-				h1 += res1.total_height_delta;
-				n1 = res1.transformed_normal;
-			}
-			auto res2 = deformation_manager_.QueryDeformations(wx1, wz1, h2, n2);
-			if (res2.has_deformation) {
-				h2 += res2.total_height_delta;
-				n2 = res2.transformed_normal;
-			}
-			auto res3 = deformation_manager_.QueryDeformations(wx0, wz1, h3, n3);
-			if (res3.has_deformation) {
-				h3 += res3.total_height_delta;
-				n3 = res3.transformed_normal;
-			}
-		}
-
-		glm::vec3 v0 = {x0 * world_scale_, h0, z0 * world_scale_};
-		glm::vec3 v1 = {x1 * world_scale_, h1, z0 * world_scale_};
-		glm::vec3 v2 = {x1 * world_scale_, h2, z1 * world_scale_};
-		glm::vec3 v3 = {x0 * world_scale_, h3, z1 * world_scale_};
-
-		// The "flat" position from standard bilinear interpolation
-		glm::vec3 q = bilerp(v0, v1, v2, v3, {tx, tz});
-
-		// Phong Tessellation: Project bilinear position onto tangent planes
-		glm::vec3 q_linear = bilerp(v0, v1, v2, v3, {tx, tz});
-		glm::vec3 p0 = projectPointOnPlane(q_linear, v0, n0);
-		glm::vec3 p1 = projectPointOnPlane(q_linear, v1, n1);
-		glm::vec3 p2 = projectPointOnPlane(q_linear, v2, n2);
-		glm::vec3 p3 = projectPointOnPlane(q_linear, v3, n3);
-
-		// Interpolate the projected points to find the final curved position
-		glm::vec3 posCurved = bilerp(p0, p1, p2, p3, {tx, tz});
-
-		// Mix flat and curved positions based on phong_alpha_
-		// 0.0 is q (Detailed), 1.0 is posCurved (Smooth)
-		glm::vec3 final_pos = glm::mix(q, posCurved, phong_alpha_);
-
-		// Interpolate normals for lighting
-		glm::vec3 final_norm = glm::normalize(bilerp(n0, n1, n2, n3, {tx, tz}));
-
-		// Mix with raw normal based on smoothing toggle
-		auto v_raw = pointGenerate(x, z);
-		glm::vec3 raw_norm = diffToNorm(v_raw.y, v_raw.z);
-		final_norm = glm::normalize(glm::mix(raw_norm, final_norm, phong_alpha_));
-
-		// Apply deformations to match the mesh
+		// Apply deformations to detailed point
 		if (deformation_manager_.HasDeformationAt(x, z)) {
-			auto def_result = deformation_manager_.QueryDeformations(x, z, final_pos.y, final_norm);
-			if (def_result.has_deformation) {
-				final_pos.y += def_result.total_height_delta;
-				final_norm = def_result.transformed_normal;
+			auto res = deformation_manager_.QueryDeformations(x, z, height_detailed, normal_detailed);
+			if (res.has_deformation) {
+				height_detailed += res.total_height_delta;
+				normal_detailed = res.transformed_normal;
 			}
 		}
 
-		return {final_pos.y, final_norm};
+		// 2. Get coarse data for Phong smoothing (matching chunk-quad tessellation)
+		float scaled_chunk_size = static_cast<float>(chunk_size_) * world_scale_;
+		float cx0 = std::floor(x / scaled_chunk_size) * scaled_chunk_size;
+		float cz0 = std::floor(z / scaled_chunk_size) * scaled_chunk_size;
+		float cx1 = cx0 + scaled_chunk_size;
+		float cz1 = cz0 + scaled_chunk_size;
+
+		float tx = (x - cx0) / scaled_chunk_size;
+		float tz = (z - cz0) / scaled_chunk_size;
+
+		// Corner indices for procedural generation
+		auto c0_raw = pointGenerate(cx0, cz0);
+		auto c1_raw = pointGenerate(cx1, cz0);
+		auto c2_raw = pointGenerate(cx1, cz1);
+		auto c3_raw = pointGenerate(cx0, cz1);
+
+		float h0 = c0_raw.x, h1 = c1_raw.x, h2 = c2_raw.x, h3 = c3_raw.x;
+		glm::vec3 n0 = diffToNorm(c0_raw.y, c0_raw.z);
+		glm::vec3 n1 = diffToNorm(c1_raw.y, c1_raw.z);
+		glm::vec3 n2 = diffToNorm(c2_raw.y, c2_raw.z);
+		glm::vec3 n3 = diffToNorm(c3_raw.y, c3_raw.z);
+
+		// Apply deformations to corners
+		if (deformation_manager_.HasDeformations()) {
+			auto r0 = deformation_manager_.QueryDeformations(cx0, cz0, h0, n0);
+			if (r0.has_deformation) { h0 += r0.total_height_delta; n0 = r0.transformed_normal; }
+			auto r1 = deformation_manager_.QueryDeformations(cx1, cz0, h1, n1);
+			if (r1.has_deformation) { h1 += r1.total_height_delta; n1 = r1.transformed_normal; }
+			auto r2 = deformation_manager_.QueryDeformations(cx1, cz1, h2, n2);
+			if (r2.has_deformation) { h2 += r2.total_height_delta; n2 = r2.transformed_normal; }
+			auto r3 = deformation_manager_.QueryDeformations(cx0, cz1, h3, n3);
+			if (r3.has_deformation) { h3 += r3.total_height_delta; n3 = r3.transformed_normal; }
+		}
+
+		glm::vec3 v0 = {cx0, h0, cz0}, v1 = {cx1, h1, cz0}, v2 = {cx1, h2, cz1}, v3 = {cx0, h3, cz1};
+
+		// Coarse bilinear position
+		glm::vec3 q_coarse = bilerp(v0, v1, v2, v3, {tx, tz});
+
+		// Phong projection using coarse bilinear position
+		glm::vec3 p0 = projectPointOnPlane(q_coarse, v0, n0);
+		glm::vec3 p1 = projectPointOnPlane(q_coarse, v1, n1);
+		glm::vec3 p2 = projectPointOnPlane(q_coarse, v2, n2);
+		glm::vec3 p3 = projectPointOnPlane(q_coarse, v3, n3);
+
+		glm::vec3 pos_smooth = bilerp(p0, p1, p2, p3, {tx, tz});
+		glm::vec3 norm_smooth = glm::normalize(bilerp(n0, n1, n2, n3, {tx, tz}));
+
+		// 3. Mix based on Phong Alpha (0.0 = Smooth, 1.0 = Detailed)
+		float final_height = glm::mix(pos_smooth.y, height_detailed, phong_alpha_);
+		glm::vec3 final_norm = glm::normalize(glm::mix(norm_smooth, normal_detailed, phong_alpha_));
+
+		return {final_height, final_norm};
 	}
 
 	void TerrainGenerator::SetWorldScale(float scale) {
@@ -1220,8 +1190,8 @@ namespace Boidsish {
 		glm::vec3 posCurved = bilerp(p0, p1, p2, p3, {fx, fz});
 
 		// Mix flat and curved positions based on phong_alpha_
-		// 0.0 is q (Detailed), 1.0 is posCurved (Smooth)
-		glm::vec3 final_pos = glm::mix(q, posCurved, phong_alpha_);
+		// 0.0 is posCurved (Smooth), 1.0 is q (Detailed)
+		glm::vec3 final_pos = glm::mix(posCurved, q, phong_alpha_);
 
 		return std::make_tuple(final_pos.y, interpolatedNormal);
 	}

@@ -65,7 +65,9 @@ namespace Boidsish {
 	}
 
 	void TerrainDebugGrid::render() const {
-		// Not used when instancing is handled internally
+		if (Shape::shader) {
+			render(*Shape::shader, glm::mat4(1.0f));
+		}
 	}
 
 	void TerrainDebugGrid::render(Shader& shader, const glm::mat4& model_matrix) const {
@@ -105,6 +107,13 @@ namespace Boidsish {
 		shader.setFloat("objectAlpha", 1.0f);
 
 		glBindVertexArray(cone_vao_);
+
+		// Validate EBO binding (crucial if it was lost)
+		GLint current_ebo = 0;
+		glGetIntegerv(GL_ELEMENT_ARRAY_BUFFER_BINDING, &current_ebo);
+		if (current_ebo == 0 && cone_ebo_ != 0) {
+			glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, cone_ebo_);
+		}
 
 		// Matrix attribute
 		glBindBuffer(GL_ARRAY_BUFFER, instance_matrix_vbo_);

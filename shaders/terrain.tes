@@ -83,8 +83,8 @@ void main() {
 	vec3 interpolatedNormal = normalize(mix(norm1, norm2, uv.y));
 
 	// Mix with raw heightmap normal based on smoothing toggle
-	// 0.0 is Heightmap (Sharp/Detailed), 1.0 is Interpolated (Smooth)
-	Normal = normalize(mix(n, interpolatedNormal, uPhongAlpha));
+	// 0.0 is Interpolated (Smooth), 1.0 is Heightmap (Sharp/Detailed)
+	Normal = normalize(mix(interpolatedNormal, n, uPhongAlpha));
 
 	// Phong Tessellation: Project onto tangent planes
 	vec3 q_linear = bilerp(worldPos0, worldPos1, worldPos2, worldPos3, uv);
@@ -96,8 +96,8 @@ void main() {
 	// Bilinear interpolation of projected points
 	vec3 posCurved = bilerp(p0, p1, p2, p3, uv);
 
-	// Mix positions: 0.0 is q (Detailed), 1.0 is posCurved (Smooth)
-	FragPos = mix(q, posCurved, uPhongAlpha);
+	// Mix positions: 0.0 is posCurved (Smooth), 1.0 is q (Detailed)
+	FragPos = mix(posCurved, q, uPhongAlpha);
 
 	// Apply shockwave ripple to terrain
 	FragPos += getShockwaveDisplacement(FragPos, 0.0, false);
