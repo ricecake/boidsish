@@ -14,7 +14,9 @@ namespace Boidsish {
 		GuidedMissileLauncher(int id, Vector3 pos, glm::quat orientation);
 
 		void UpdateEntity(const EntityHandler& handler, float time, float delta_time) override;
-		void Destroy(const EntityHandler& handler);
+		void Destroy(const EntityHandler& handler) override;
+
+		bool IsTargetable() const override { return true; }
 
 		glm::vec3 GetApproachPoint() const { return approach_point_; }
 

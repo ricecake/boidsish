@@ -42,6 +42,15 @@ namespace Boidsish {
 		// Called each frame to update the entity
 		virtual void UpdateEntity(const EntityHandler& handler, float time, float delta_time) = 0;
 
+		// Combat and targeting interface
+		virtual void OnHit(float damage) { (void)damage; }
+
+		virtual void Destroy(const EntityHandler& handler) { (void)handler; }
+
+		virtual bool IsTargetable() const { return false; }
+
+		virtual float GetHealth() const { return 0.0f; }
+
 		// Shape management
 		virtual std::shared_ptr<Shape> GetShape() const = 0;
 		virtual void                   UpdateShape() = 0;
@@ -139,6 +148,8 @@ namespace Boidsish {
 			constraint_path_ = path;
 			constraint_radius_ = radius;
 		}
+
+		glm::quat GetOrientation() const { return rigid_body_.GetOrientation(); }
 
 		glm::vec3 ObjectToWorld(const glm::vec3& v) const { return rigid_body_.GetOrientation() * v; }
 

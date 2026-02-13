@@ -14,9 +14,16 @@ namespace Boidsish {
 
 		void UpdateEntity(const EntityHandler& handler, float time, float delta_time) override;
 
+		// Combat interface
+		void  OnHit(float damage) override;
+		void  Destroy(const EntityHandler& handler) override;
+		bool  IsTargetable() const override { return true; }
+		float GetHealth() const override { return health_; }
+
 	private:
 		void Roam(const EntityHandler& handler, float delta_time);
 
+		float         health_ = 200.0f;
 		SteeringProbe probe_;
 		glm::vec3     target_pos_;
 		bool      has_target_ = false;

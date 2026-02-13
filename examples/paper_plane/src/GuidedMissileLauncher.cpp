@@ -145,37 +145,39 @@ namespace Boidsish {
 		auto [h_val, n_val] = handler.GetTerrainPropertiesAtPoint(pos.x, pos.z);
 		float     height = h_val;
 		glm::vec3 normal = n_val;
+		auto      vis = handler.vis;
+		auto      shape = this->shape_;
+		int       my_id = GetId();
 
-		// if (!text_) {
-		handler.EnqueueVisualizerAction([&handler, this, normal, pos, height]() {
-			handler.vis->TriggerComplexExplosion(this->shape_, normal, 2.0f, FireEffectStyle::Explosion);
-			handler.vis->GetTerrain()->AddCrater({pos.x, height, pos.z}, 15.0f, 8.0f, 0.2f, 2.0f);
+		handler.EnqueueVisualizerAction([vis, shape, normal, pos, height]() {
+			if (vis) {
+				vis->TriggerComplexExplosion(shape, normal, 2.0f, FireEffectStyle::Explosion);
+				if (auto terrain = vis->GetTerrain()) {
+					terrain->AddCrater({pos.x, height, pos.z}, 15.0f, 8.0f, 0.2f, 2.0f);
+				}
 
-			auto camPos = handler.vis->GetCamera().pos();
-			auto pos = this->GetPosition().Toglm();
-			auto vec = pos - camPos;
+				auto camPos = vis->GetCamera().pos();
+				auto vec = pos - camPos;
 
-			text_ = handler.vis->AddArcadeTextEffect(
-				"GOT EM'",
-				pos,
-				20.0f,
-				60.0f,
-				glm::vec3(0, 1, 0),
-				-1 * vec,
-				3.0f,
-				"assets/Roboto-Medium.ttf",
-				12.0f,
-				2.0f
-
-			);
-			text_->SetPulseSpeed(3.0f);
-			text_->SetPulseAmplitude(0.3f);
-			text_->SetRainbowEnabled(true);
-			text_->SetRainbowSpeed(5.0f);
-
-			handler.QueueRemoveEntity(GetId());
+				auto text = vis->AddArcadeTextEffect(
+					"GOT EM'",
+					pos,
+					20.0f,
+					60.0f,
+					glm::vec3(0, 1, 0),
+					-1.0f * vec,
+					3.0f,
+					"assets/Roboto-Medium.ttf",
+					12.0f,
+					2.0f
+				);
+				text->SetPulseSpeed(3.0f);
+				text->SetPulseAmplitude(0.3f);
+				text->SetRainbowEnabled(true);
+				text->SetRainbowSpeed(5.0f);
+			}
 		});
-		// }
+		handler.QueueRemoveEntity(my_id);
 	}
 
 } // namespace Boidsish

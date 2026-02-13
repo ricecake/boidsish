@@ -38,8 +38,8 @@ namespace Boidsish {
 		 */
 		void PreparePlane(std::shared_ptr<PaperPlane> plane);
 
-		void RecordTarget(std::shared_ptr<GuidedMissileLauncher> target) const;
-		int  GetTargetCount(std::shared_ptr<GuidedMissileLauncher> target) const;
+		void RecordTarget(std::shared_ptr<EntityBase> target) const;
+		int  GetTargetCount(std::shared_ptr<EntityBase> target) const;
 
 	private:
 		mutable std::mutex                    target_mutex_;
