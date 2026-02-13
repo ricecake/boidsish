@@ -165,11 +165,7 @@ namespace Boidsish {
 				} else {
 					// Roamers are only removed if they are far away (2000m)
 					float dist = glm::distance(roamer->GetPosition().Toglm(), plane_pos);
-<<<<<<< Updated upstream
-					if (dist > 2000.0f) {
-=======
 					if (dist > 500.0f) {
->>>>>>> Stashed changes
 						should_remove = true;
 						QueueRemoveEntity(it->second);
 					}

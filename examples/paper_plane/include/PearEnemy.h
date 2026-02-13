@@ -12,10 +12,6 @@ namespace Boidsish {
 		PearEnemy(int id, Vector3 pos);
 
 		void UpdateEntity(const EntityHandler& handler, float time, float delta_time) override;
-<<<<<<< Updated upstream
-		// void UpdateShape() override;
-=======
->>>>>>> Stashed changes
 
 	private:
 		void Roam(const EntityHandler& handler, float delta_time);
