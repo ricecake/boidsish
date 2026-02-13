@@ -115,10 +115,22 @@ namespace Boidsish {
 			width = glm::mix(kAimingWidth, kFiringWidth, t);
 			color = glm::mix(glm::vec3(1.0f, 1.0f, 0.0f), glm::vec3(1.0f, 0.0f, 0.0f), t);
 			alpha = glm::mix(0.4f, 1.0f, t);
+
+			auto vis = handler.vis;
+			handler.EnqueueVisualizerAction([vis, delta_time]() {
+				if (vis)
+					vis->SetCameraShake(0.15f, delta_time * 2.0f);
+			});
 		} else if (state_ == State::FIRING_HOLD) {
 			width = kFiringWidth;
 			color = glm::vec3(1.0f, 0.0f, 0.0f);
 			alpha = 1.0f;
+
+			auto vis = handler.vis;
+			handler.EnqueueVisualizerAction([vis, delta_time]() {
+				if (vis)
+					vis->SetCameraShake(0.4f, delta_time * 2.0f);
+			});
 		} else if (state_ == State::FIRING_SHRINK) {
 			float t = state_timer_ / kShrinkDuration;
 			width = glm::mix(kFiringWidth, kShrinkWidth, t);
@@ -128,10 +140,11 @@ namespace Boidsish {
 			// Trigger Akira effect and damage at the start of shrink/white phase
 			if (state_timer_ <= delta_time) {
 				auto vis = handler.vis;
-				handler.EnqueueVisualizerAction([vis, end]() {
+				handler.EnqueueVisualizerAction([vis, end, delta_time]() {
 					if (vis) {
 						vis->TriggerAkira(end, kDamageRadius);
 						vis->CreateExplosion(end, 2.0f);
+						vis->SetCameraShake(1.0f, 0.2f);
 					}
 				});
 

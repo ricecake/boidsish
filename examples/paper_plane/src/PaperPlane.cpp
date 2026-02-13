@@ -115,6 +115,44 @@ namespace Boidsish {
 		const float kSpeedDecay = 30.0f;
 
 		auto pos = GetPosition();
+
+		// Handle Beam weapon (Weapon 3)
+		Beam* my_beam = nullptr;
+		if (beam_id_ >= 0) {
+			auto ent = handler.GetEntity(beam_id_);
+			my_beam = dynamic_cast<Beam*>(ent.get());
+			if (!my_beam || my_beam->GetOwnerId() != id_) {
+				my_beam = nullptr;
+				beam_id_ = -1;
+			}
+		}
+
+		if (!my_beam) {
+			auto beams = handler.GetEntitiesByType<Beam>();
+			for (auto b : beams) {
+				if (b->GetOwnerId() == id_) {
+					my_beam = b;
+					beam_id_ = b->GetId();
+					beam_spawn_queued_ = false;
+					break;
+				}
+			}
+		}
+
+		if (selected_weapon == 3) {
+			if (!my_beam && !beam_spawn_queued_) {
+				handler.QueueAddEntity<Beam>(id_);
+				beam_spawn_queued_ = true;
+			} else if (my_beam) {
+				my_beam->SetSelected(true);
+				my_beam->SetRequesting(controller_->fire);
+				my_beam->SetOffset(glm::vec3(0, 0, -0.5f)); // Nose offset
+			}
+		} else if (my_beam) {
+			my_beam->SetSelected(false);
+			my_beam->SetRequesting(false);
+		}
+
 		auto [height, norm] = handler.vis->GetTerrainPropertiesAtPoint(pos.x, pos.z);
 		if (pos.y < height) {
 			if (state_ == PlaneState::DYING) {
@@ -233,6 +271,11 @@ namespace Boidsish {
 			target_rot_velocity.z -= roll_error * kAutoLevelSpeed;
 		}
 
+		if (my_beam && (my_beam->IsCharging() || my_beam->IsFiring() || my_beam->IsShrinking())) {
+			target_rot_velocity = glm::vec3(0.0f);
+			rotational_velocity_ = glm::vec3(0.0f);
+		}
+
 		rotational_velocity_ += (target_rot_velocity - rotational_velocity_) * kDamping * delta_time;
 
 		glm::quat pitch_delta = glm::angleAxis(rotational_velocity_.x * delta_time, glm::vec3(1.0f, 0.0f, 0.0f));
@@ -268,44 +311,6 @@ namespace Boidsish {
 		SetVelocity(Vector3(new_velocity.x, new_velocity.y, new_velocity.z));
 
 		time_to_fire -= delta_time;
-
-		// Handle Beam weapon (Weapon 3)
-		Beam* my_beam = nullptr;
-		if (beam_id_ >= 0) {
-			auto ent = handler.GetEntity(beam_id_);
-			my_beam = dynamic_cast<Beam*>(ent.get());
-			if (!my_beam || my_beam->GetOwnerId() != id_) {
-				my_beam = nullptr;
-				beam_id_ = -1;
-			}
-		}
-
-		if (!my_beam) {
-			auto beams = handler.GetEntitiesByType<Beam>();
-			for (auto b : beams) {
-				if (b->GetOwnerId() == id_) {
-					my_beam = b;
-					beam_id_ = b->GetId();
-					beam_spawn_queued_ = false;
-					break;
-				}
-			}
-		}
-
-		if (selected_weapon == 3) {
-			if (!my_beam && !beam_spawn_queued_) {
-				handler.QueueAddEntity<Beam>(id_);
-				beam_spawn_queued_ = true;
-			} else if (my_beam) {
-				my_beam->SetSelected(true);
-				my_beam->SetRequesting(controller_->fire);
-				my_beam->SetOffset(glm::vec3(0, 0, -0.5f)); // Nose offset
-			}
-		} else if (my_beam) {
-			my_beam->SetSelected(false);
-			my_beam->SetRequesting(false);
-		}
-
 		if (controller_->fire && time_to_fire <= 0) {
 			switch (selected_weapon) {
 			case 0:

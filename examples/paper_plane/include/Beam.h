@@ -20,6 +20,9 @@ namespace Boidsish {
 		void SetRelativeDirection(const glm::vec3& dir) { relative_dir_ = glm::normalize(dir); }
 
 		State GetState() const { return state_; }
+		bool  IsCharging() const { return state_ == State::FIRING_TRANSITION; }
+		bool  IsFiring() const { return state_ == State::FIRING_HOLD; }
+		bool  IsShrinking() const { return state_ == State::FIRING_SHRINK; }
 		int   GetOwnerId() const { return owner_id_; }
 
 	private:
