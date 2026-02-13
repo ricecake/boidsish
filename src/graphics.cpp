@@ -18,8 +18,8 @@
 #include "checkpoint_ring.h"
 #include "clone_manager.h"
 #include "curved_text.h"
-#include "debug_cone.h"
 #include "decor_manager.h"
+#include "terrain_debug_grid.h"
 #include "dot.h"
 #include "entity.h"
 #include "fire_effect_manager.h"
@@ -296,7 +296,7 @@ namespace Boidsish {
 		// Terrain Debug
 		float terrain_phong_alpha_ = 1.0f;
 		bool  terrain_debug_grid_enabled_ = false;
-		std::vector<std::shared_ptr<DebugCone>> debug_cones_;
+		std::shared_ptr<TerrainDebugGrid> terrain_debug_grid_;
 
 		// Camera shake state
 		float     shake_intensity = 0.0f;
@@ -1093,46 +1093,11 @@ namespace Boidsish {
 				return;
 			}
 
-			const int   grid_size = 200;
-			const float spacing = 5.0f;
-			const int   total_cones = grid_size * grid_size;
-
-			if (debug_cones_.size() != (size_t)total_cones) {
-				debug_cones_.clear();
-				debug_cones_.reserve(total_cones);
-				for (int i = 0; i < total_cones; ++i) {
-					auto cone = std::make_shared<DebugCone>(1000000 + i); // High ID range
-					cone->SetScale(glm::vec3(0.5f, 2.0f, 0.5f));         // Tall cones
-					cone->SetColor(1.0f, 1.0f, 0.0f, 1.0f);              // Bright yellow
-					debug_cones_.push_back(cone);
-				}
+			if (!terrain_debug_grid_) {
+				terrain_debug_grid_ = std::make_shared<TerrainDebugGrid>(1000000);
 			}
 
-			glm::vec3 cam_pos = camera.pos();
-			float     start_x = std::floor(cam_pos.x / spacing) * spacing - (grid_size / 2) * spacing;
-			float     start_z = std::floor(cam_pos.z / spacing) * spacing - (grid_size / 2) * spacing;
-
-			for (int i = 0; i < grid_size; ++i) {
-				for (int j = 0; j < grid_size; ++j) {
-					float x = start_x + i * spacing;
-					float z = start_z + j * spacing;
-
-					// Use GetTerrainPropertiesAtPoint (the GetPoint* method intended)
-					auto [height, normal] = terrain_generator->GetTerrainPropertiesAtPoint(x, z);
-
-					auto& cone = debug_cones_[i * grid_size + j];
-					cone->SetPosition(x, height, z);
-
-					// Orient to terrain normal
-					glm::vec3 up(0, 1, 0);
-					if (glm::length(normal) > 0.001f && glm::length(glm::cross(up, normal)) > 0.001f) {
-						glm::quat rot = glm::rotation(up, normal);
-						cone->SetRotation(rot);
-					} else {
-						cone->SetRotation(glm::quat(1, 0, 0, 0));
-					}
-				}
-			}
+			terrain_debug_grid_->UpdateGrid(camera.pos(), *terrain_generator);
 		}
 
 		void RenderShapes(
@@ -2060,7 +2025,10 @@ namespace Boidsish {
 		}
 
 		if (impl->terrain_debug_grid_enabled_) {
-			impl->shapes.insert(impl->shapes.end(), impl->debug_cones_.begin(), impl->debug_cones_.end());
+			impl->UpdateDebugGrid();
+			if (impl->terrain_debug_grid_) {
+				impl->shapes.push_back(impl->terrain_debug_grid_);
+			}
 		}
 
 		// --- Shadow Optimization: Check for object movement and camera proximity ---
@@ -2116,10 +2084,6 @@ namespace Boidsish {
 		} else if (impl->camera_mode == CameraMode::PATH_FOLLOW) {
 			impl->UpdatePathFollowCamera(impl->input_state.delta_time);
 		}
-
-			if (impl->terrain_debug_grid_enabled_) {
-				impl->UpdateDebugGrid();
-			}
 
 		impl->audio_manager->UpdateListener(
 			impl->camera.pos(),
