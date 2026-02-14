@@ -135,6 +135,11 @@ namespace Boidsish {
 		}
 	}
 
+	void GuidedMissileLauncher::OnHit(const EntityHandler& handler, float damage) {
+		(void)damage;
+		Destroy(handler);
+	}
+
 	void GuidedMissileLauncher::Destroy(const EntityHandler& handler) {
 		// Award points for destroying the launcher
 		if (auto* pp_handler = dynamic_cast<const PaperPlaneHandler*>(&handler)) {

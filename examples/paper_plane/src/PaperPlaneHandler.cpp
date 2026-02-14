@@ -175,7 +175,7 @@ namespace Boidsish {
                 int cx = coord.first;
                 int cz = coord.second;
                 int step = Constants::Class::Terrain::ChunkSize();
-                int range = 2; // Exclude 2 chunks in every direction
+                int range = 3; // Exclude 2 chunks in every direction
                 for (int dx = -range; dx <= range; ++dx) {
                     for (int dz = -range; dz <= range; ++dz) {
                         forbidden_coords.insert({cx + dx * step, cz + dz * step});
@@ -259,7 +259,7 @@ namespace Boidsish {
 					);
 					int id = 0x50000000 | ((ix + 1024) << 11) | (iz + 1024);
 
-					QueueAddEntity<GuidedMissileLauncher>(
+					QueueAddEntityWithId<GuidedMissileLauncher>(
 						id,
 						Vector3(world_pos.x, terrain_h, world_pos.z),
 						terrain_alignment
