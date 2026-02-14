@@ -298,6 +298,16 @@ namespace Boidsish {
 		return model;
 	}
 
+	bool Model::Intersects(const Ray& ray, float& t) const {
+		return GetAABB().Intersects(ray, t);
+	}
+
+	AABB Model::GetAABB() const {
+		if (!m_data)
+			return AABB();
+		return m_data->aabb.Transform(GetModelMatrix());
+	}
+
 	void Model::GetGeometry(std::vector<Vertex>& vertices, std::vector<unsigned int>& indices) const {
 		if (!m_data)
 			return;
