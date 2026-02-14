@@ -221,41 +221,41 @@ namespace Boidsish {
 			glm::vec3 missile_pos = GetPosition().Toglm();
 
 			// PREDICT
-			target_dir_world =
+			glm::vec3 predicted_target_p =
 				GetInterceptPoint(missile_pos, missile_speed, target_->GetPosition(), target_->GetVelocity());
+
+			glm::vec3 approach_p = target_->GetApproachPoint(missile_pos, handler);
+			glm::vec3 direct_target_p = target_->GetPosition().Toglm();
+
+			float d_mt = glm::distance(missile_pos, direct_target_p);
+			float d_at = glm::distance(approach_p, direct_target_p);
+			float d_ma = glm::distance(missile_pos, approach_p);
 
 			// Check LOS to target
 			float     hit_dist;
 			glm::vec3 terrain_normal;
-			glm::vec3 to_target = glm::normalize(target_dir_world - missile_pos);
-			if (handler.RaycastTerrain(
-					missile_pos,
-					to_target,
-					glm::length(target_dir_world - missile_pos),
-					hit_dist,
-					terrain_normal
-				)) {
-				// Aim for approach point if launcher is obscured, but follow a sagging spline
-				// once we are close enough to the approach point (crested the hill).
-				glm::vec3 approach_p = target_->GetApproachPoint(missile_pos, handler);
-				glm::vec3 target_p = target_->GetPosition().Toglm();
-				float     d_at = glm::distance(approach_p, target_p);
-				float     d_ma = glm::distance(missile_pos, approach_p);
-				float     d_mt = glm::distance(missile_pos, target_p);
+			glm::vec3 to_target = glm::normalize(direct_target_p - missile_pos);
+			bool      blocked = handler.RaycastTerrain(missile_pos, to_target, d_mt, hit_dist, terrain_normal);
 
-				if (d_ma < d_at && d_mt < d_at) {
-					// We are between approach point and target, follow sagging spline
-					float t = d_ma / (d_ma + d_mt);
+			// Decision logic for approach vs terminal guidance
+			if (d_mt < d_at * 0.5f && !blocked) {
+				// Terminal phase: very close and clear, go straight for predicted intercept
+				target_dir_world = predicted_target_p;
+			} else if (blocked || d_ma < d_at || d_mt < d_at * 1.5f) {
+				// Spline/Approach phase: transitioning or blocked
+				if (d_ma < d_at) {
+					// Progress between approach point and target
+					float t = std::clamp(1.0f - (d_mt / d_at), 0.0f, 1.0f);
 					float lookahead = 0.1f;
-					float target_t = std::clamp(t + lookahead, 0.0f, 1.0f);
-					target_dir_world = GetSaggingSplinePoint(approach_p, target_p, target_t);
-				} else if (d_ma > d_at && d_mt < d_at) {
-					// Past the approach point, go straight for target
-					target_dir_world = target_p;
+					target_dir_world =
+						GetSaggingSplinePoint(approach_p, predicted_target_p, std::clamp(t + lookahead, 0.0f, 1.0f));
 				} else {
-					// Not yet reached approach point
+					// Still heading to approach point
 					target_dir_world = approach_p;
 				}
+			} else {
+				// General pursuit
+				target_dir_world = predicted_target_p;
 			}
 
 			target_dir_local = WorldToObject(glm::normalize(target_dir_world - missile_pos));

@@ -13,7 +13,7 @@ namespace Boidsish {
 	 * in multiple directions (sectors). Used for viewshed approximation and approach pathing.
 	 */
 	struct Horizon {
-		static constexpr int kNumSectors = 32;
+		static constexpr int kNumSectors = 64;
 		float                max_slopes[kNumSectors];
 		glm::vec3            origin;
 

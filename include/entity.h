@@ -157,9 +157,9 @@ namespace Boidsish {
 		/**
 		 * @brief Get the horizon data for this entity, computing and caching it if necessary.
 		 * @param handler The entity handler (used for terrain queries)
-		 * @return Reference to the cached horizon data.
+		 * @return The horizon data.
 		 */
-		const Horizon& GetHorizon(const EntityHandler& handler) const;
+		Horizon GetHorizon(const EntityHandler& handler) const;
 
 		/**
 		 * @brief Calculate a good approach point for a missile coming from from_pos.
@@ -196,6 +196,7 @@ namespace Boidsish {
 		// Horizon cache
 		mutable std::optional<Horizon> horizon_cache_;
 		mutable glm::vec3              horizon_cache_pos_;
+		mutable std::mutex             horizon_mutex_;
 	};
 
 	// Template-based entity class that takes a shape

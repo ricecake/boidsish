@@ -208,33 +208,84 @@ namespace Boidsish {
 	void EntityHandler::CalculateHorizon(const glm::vec3& origin, Horizon& out_horizon) const {
 		out_horizon.origin = origin;
 		const float max_dist = 1000.0f;
-		const int   steps = 40;
-		const float step_dist = max_dist / steps;
+		const float grid_step = 20.0f; // Dense grid for viewshed calculation
 
-		for (int s = 0; s < Horizon::kNumSectors; ++s) {
-			float angle = (float)s / (float)Horizon::kNumSectors * 2.0f * glm::pi<float>() - glm::pi<float>();
-			glm::vec3 dir(cos(angle), 0, sin(angle));
-			float     max_s = -10.0f;
-			for (int i = 1; i <= steps; ++i) {
-				float     dist = i * step_dist;
-				glm::vec3 p = origin + dir * dist;
-				auto [h, norm] = GetTerrainPropertiesAtPoint(p.x, p.z);
-				float slope = (h - origin.y) / dist;
-				if (slope > max_s)
-					max_s = slope;
+		for (int i = 0; i < Horizon::kNumSectors; ++i) {
+			out_horizon.max_slopes[i] = -1.0f;
+		}
+
+		int range = (int)(max_dist / grid_step);
+		for (int dz = -range; dz <= range; ++dz) {
+			for (int dx = -range; dx <= range; ++dx) {
+				if (dx == 0 && dz == 0)
+					continue;
+
+				float world_dx = dx * grid_step;
+				float world_dz = dz * grid_step;
+				float dist_sq = world_dx * world_dx + world_dz * world_dz;
+
+				if (dist_sq > max_dist * max_dist || dist_sq < 1.0f)
+					continue;
+
+				float dist = sqrt(dist_sq);
+				auto [h, norm] = GetTerrainPropertiesAtPoint(origin.x + world_dx, origin.z + world_dz);
+
+				// Use slope (normal) to refine the ridge detection.
+				// We can estimate the elevation of the "peak" within this grid cell.
+				float grad_x = -norm.x / std::max(norm.y, 0.001f);
+				float grad_z = -norm.z / std::max(norm.y, 0.001f);
+				float radial_grad = (grad_x * world_dx + grad_z * world_dz) / dist;
+
+				float effective_h = h;
+				// If the terrain is sloping UP away from us (radial_grad > 0), the actual
+				// horizon ridge might be slightly further and higher.
+				if (radial_grad > 0.0f) {
+					effective_h += radial_grad * (grid_step * 0.5f);
+				}
+
+				float slope = (effective_h - origin.y) / dist;
+
+				float angle_center = atan2(world_dz, world_dx);
+				float angle_width = grid_step / dist;
+
+				// Update all sectors subtended by this grid cell
+				int start_sector = (int)floor(
+					((angle_center - angle_width * 0.5f) + glm::pi<float>()) / (2.0f * glm::pi<float>()) *
+					(float)Horizon::kNumSectors
+				);
+				int end_sector = (int)floor(
+					((angle_center + angle_width * 0.5f) + glm::pi<float>()) / (2.0f * glm::pi<float>()) *
+					(float)Horizon::kNumSectors
+				);
+
+				for (int s = start_sector; s <= end_sector; ++s) {
+					int idx = s % Horizon::kNumSectors;
+					if (idx < 0)
+						idx += Horizon::kNumSectors;
+					if (slope > out_horizon.max_slopes[idx]) {
+						out_horizon.max_slopes[idx] = slope;
+					}
+				}
 			}
-			out_horizon.max_slopes[s] = max_s;
 		}
 	}
 
-	const Horizon& EntityBase::GetHorizon(const EntityHandler& handler) const {
+	Horizon EntityBase::GetHorizon(const EntityHandler& handler) const {
 		glm::vec3 current_pos = rigid_body_.GetPosition();
-		if (!horizon_cache_ || glm::distance(current_pos, horizon_cache_pos_) > 5.0f) {
-			Horizon h;
-			handler.CalculateHorizon(current_pos, h);
-			horizon_cache_ = h;
-			horizon_cache_pos_ = current_pos;
+		{
+			std::lock_guard<std::mutex> lock(horizon_mutex_);
+			if (horizon_cache_ && glm::distance(current_pos, horizon_cache_pos_) <= 5.0f) {
+				return *horizon_cache_;
+			}
 		}
+
+		// Compute outside the lock to avoid holding it during potentially slow terrain queries
+		Horizon h;
+		handler.CalculateHorizon(current_pos, h);
+
+		std::lock_guard<std::mutex> lock(horizon_mutex_);
+		horizon_cache_ = h;
+		horizon_cache_pos_ = current_pos;
 		return *horizon_cache_;
 	}
 

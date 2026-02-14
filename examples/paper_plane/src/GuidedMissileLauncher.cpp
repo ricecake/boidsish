@@ -29,8 +29,9 @@ namespace Boidsish {
 	}
 
 	void GuidedMissileLauncher::UpdateEntity(const EntityHandler& handler, float time, float delta_time) {
-		// Horizon is cached in EntityBase and computed on demand.
-		// For a static launcher, this happens once and remains valid.
+		// Ensure horizon is computed early for efficiency (requested by user)
+		// GetHorizon is thread-safe and will cache the result.
+		GetHorizon(handler);
 
 		// if (!text_) {
 		// 	handler.EnqueueVisualizerAction([&handler, this]() {
