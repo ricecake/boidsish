@@ -34,6 +34,9 @@ namespace Boidsish {
 		void      render(Shader& shader, const glm::mat4& model_matrix) const override;
 		glm::mat4 GetModelMatrix() const override;
 
+		bool Intersects(const Ray& ray, float& t) const override;
+		AABB GetAABB() const override;
+
 		bool CastsShadows() const override { return false; }
 
 		float GetBoundingRadius() const override { return size_; }

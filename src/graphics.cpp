@@ -2061,6 +2061,16 @@ namespace Boidsish {
 			impl->shapes.push_back(pair.second);
 		}
 
+		// Handle terrain clamping for shapes
+		for (auto& shape : impl->shapes) {
+			if (shape->IsClampedToTerrain()) {
+				float     height;
+				glm::vec3 normal;
+				std::tie(height, normal) = GetTerrainPropertiesAtPoint(shape->GetX(), shape->GetZ());
+				shape->SetPosition(shape->GetX(), height + shape->GetGroundOffset(), shape->GetZ());
+			}
+		}
+
 		// --- Shadow Optimization: Check for object movement and camera proximity ---
 		impl->any_shadow_caster_moved = false;
 		glm::vec3 scene_center(0.0f);

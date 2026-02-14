@@ -179,6 +179,23 @@ namespace Boidsish {
 
 		ProcessNode(scene->mRootNode, scene, *data, data->directory);
 
+		// Calculate AABB
+		glm::vec3 min(std::numeric_limits<float>::max());
+		glm::vec3 max(-std::numeric_limits<float>::max());
+		bool      has_vertices = false;
+		for (const auto& mesh : data->meshes) {
+			for (const auto& vertex : mesh.vertices) {
+				min = glm::min(min, vertex.Position);
+				max = glm::max(max, vertex.Position);
+				has_vertices = true;
+			}
+		}
+		if (has_vertices) {
+			data->aabb = AABB(min, max);
+		} else {
+			data->aabb = AABB(glm::vec3(0.0f), glm::vec3(0.0f));
+		}
+
 		logger::LOG("Model cached: {} with {} meshes", path, data->meshes.size());
 		m_models[path] = data;
 		return data;

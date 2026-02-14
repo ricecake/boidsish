@@ -5,6 +5,7 @@
 #include <string>
 #include <vector>
 
+#include "collision.h"
 #include "constants.h"
 #include "visual_effects.h"
 #include <glm/glm.hpp>
@@ -153,6 +154,28 @@ namespace Boidsish {
 		 */
 		virtual float GetBoundingRadius() const { return 5.0f; }
 
+		/**
+		 * @brief Test for intersection with a ray.
+		 *
+		 * @param ray The ray to test against
+		 * @param t Output: distance along the ray to the intersection point
+		 * @return true if the ray intersects the shape
+		 */
+		virtual bool Intersects(const Ray& ray, float& t) const;
+
+		/**
+		 * @brief Get the world-space axis-aligned bounding box (AABB) for this shape.
+		 *
+		 * @return AABB in world coordinates
+		 */
+		virtual AABB GetAABB() const;
+
+		// Terrain clamping
+		inline bool  IsClampedToTerrain() const { return clamp_to_terrain_; }
+		inline void  SetClampedToTerrain(bool clamp) { clamp_to_terrain_ = clamp; }
+		inline float GetGroundOffset() const { return ground_offset_; }
+		inline void  SetGroundOffset(float offset) { ground_offset_ = offset; }
+
 		// PBR material properties
 		inline float GetRoughness() const { return roughness_; }
 
@@ -207,6 +230,9 @@ namespace Boidsish {
 			a_(a),
 			rotation_(glm::quat(1.0f, 0.0f, 0.0f, 0.0f)),
 			scale_(glm::vec3(1.0f)),
+			local_aabb_(glm::vec3(-1.0f), glm::vec3(1.0f)),
+			clamp_to_terrain_(false),
+			ground_offset_(0.0f),
 			trail_length_(trail_length),
 			trail_thickness_(trail_thickness),
 			trail_iridescent_(false),
@@ -222,6 +248,9 @@ namespace Boidsish {
 
 		glm::quat rotation_;
 		glm::vec3 scale_;
+		AABB      local_aabb_;
+		bool      clamp_to_terrain_;
+		float     ground_offset_;
 
 	private:
 		int       id_;
