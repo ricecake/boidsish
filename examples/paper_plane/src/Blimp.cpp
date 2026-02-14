@@ -14,7 +14,7 @@ namespace Boidsish {
 	Blimp::Blimp(int id, Vector3 pos):
 		Entity<Model>(id, "assets/utah_teapot.obj", false), eng_(rd_()) {
 		SetPosition(pos);
-		shape_->SetScale(glm::vec3(15.0f, 8.0f, 8.0f));
+		shape_->SetScale(glm::vec3(32.0f, 16.0f, 16.0f));
 		shape_->SetInstanced(true);
 		SetColor(0.8f, 0.2f, 0.2f); // Red blimp
 		UpdateShape();
@@ -32,11 +32,11 @@ namespace Boidsish {
 		float dist = glm::distance(player_pos, my_pos);
 
 		// 1. Repositioning logic (Catch up)
-		if (dist > 2500.0f) {
+		if (dist > 1000.0f) {
 			std::uniform_real_distribution<float> angle_dist(0, 2.0f * glm::pi<float>());
 			float                                 angle = angle_dist(eng_);
 			glm::vec3                             offset = glm::vec3(cos(angle), 0, sin(angle)) * 1000.0f;
-			SetPosition(player_pos.x + offset.x, 150.0f, player_pos.z + offset.z);
+			SetPosition(player_pos.x + offset.x, 200.0f, player_pos.z + offset.z);
 			SetVelocity(0, 0, 0);
 			return;
 		}
@@ -49,14 +49,14 @@ namespace Boidsish {
 			horizontal_to_player = glm::vec3(1, 0, 0);
 		}
 
-		glm::vec3 desired_pos = player_pos - glm::normalize(horizontal_to_player) * 900.0f;
-		desired_pos.y = 150.0f;
+		glm::vec3 desired_pos = player_pos - glm::normalize(horizontal_to_player) * 500.0f;
+		desired_pos.y = 200.0f;
 
 		glm::vec3 move_dir = desired_pos - my_pos;
 		float     move_dist = glm::length(move_dir);
 		if (move_dist > 1.0f) {
 			float speed = 15.0f;
-			if (move_dist > 500.0f) {
+			if (move_dist > 300.0f) {
 				speed = 60.0f; // Catch up faster if significantly out of position
 			}
 			glm::vec3 vel = glm::normalize(move_dir) * speed;
@@ -74,7 +74,7 @@ namespace Boidsish {
 			// Number of missiles scales with proximity and damage
 			int num_missiles = 1;
 			// Closer = more missiles (up to 5 extra)
-			num_missiles += static_cast<int>((1.0f - std::clamp(dist / 1500.0f, 0.0f, 1.0f)) * 5);
+			num_missiles += static_cast<int>((1.0f - std::clamp(dist / 600.0f, 0.0f, 1.0f)) * 5);
 			// Damaged = more missiles (up to 5 extra)
 			num_missiles += static_cast<int>((1.0f - health_ / max_health_) * 5);
 

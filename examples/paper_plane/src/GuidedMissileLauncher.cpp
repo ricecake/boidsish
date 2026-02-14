@@ -122,16 +122,17 @@ namespace Boidsish {
 		if (std::isnan(effectiveWeight))
 			effectiveWeight = 0.1f;
 
-		float fire_probability_this_frame = missiles_per_second * effectiveWeight * delta_time;
+		int inflightMissiles = handler.GetEntitiesByType<GuidedMissile>().size();
+		float fire_probability_this_frame = missiles_per_second * effectiveWeight * (kMaxInFlightMissiles)/std::max(1,inflightMissiles) * delta_time;
 
 		std::uniform_real_distribution<float> dist(0.0f, 1.0f);
 		if (dist(eng_) < fire_probability_this_frame) {
-			if (handler.GetEntitiesByType<GuidedMissile>().size() < kMaxInFlightMissiles) {
+			// if (handler.GetEntitiesByType<GuidedMissile>().size() < kMaxInFlightMissiles) {
 				handler.QueueAddEntity<GuidedMissile>(GetPosition());
 				time_since_last_fire_ = 0.0f;
 				std::uniform_real_distribution<float> new_dist(4.0f, 8.0f);
 				fire_interval_ = new_dist(eng_);
-			}
+			// }
 		}
 	}
 

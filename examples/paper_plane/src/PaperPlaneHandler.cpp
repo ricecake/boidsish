@@ -315,8 +315,8 @@ namespace Boidsish {
 					glm::mat4 rotation = glm::rotate(glm::mat4(1.0f), angle, glm::vec3(0, 1, 0));
 					glm::vec3 spawn_dir = glm::vec3(rotation * glm::vec4(player_fwd, 0.0f));
 
-					glm::vec3 spawn_pos = player_pos + spawn_dir * 1000.0f;
-					spawn_pos.y = 150.0f;
+					glm::vec3 spawn_pos = player_pos + spawn_dir * 600.0f;
+					spawn_pos.y = 200.0f;
 
 					QueueAddEntity<Blimp>(Vector3(spawn_pos.x, spawn_pos.y, spawn_pos.z));
 				}

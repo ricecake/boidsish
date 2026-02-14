@@ -388,7 +388,7 @@ namespace Boidsish {
 		health -= damage;
 		damage_pending_++;
 		if (state_ == PlaneState::DYING) {
-			spiral_intensity_ += 1.0f;
+			spiral_intensity_ += 1 / (std::max(std::abs(health), 1.0f));
 		}
 	}
 
@@ -396,7 +396,7 @@ namespace Boidsish {
 		health -= 5;
 		damage_pending_++;
 		if (state_ == PlaneState::DYING) {
-			spiral_intensity_ += (std::abs(health)) / (std::max(health, 1.0f));
+			spiral_intensity_ += 1 / (std::max(std::abs(health), 1.0f));
 		}
 	}
 

@@ -114,11 +114,11 @@ namespace Boidsish {
 		// Thresholds for dropping checkpoints
 		bool timeTrigger = timeSinceLastDrop_ > 5.0f && dist > 150.0f;
 		bool distTrigger = dist > 400.0f;
-		bool turnTrigger = (dot < 0.90f) && (dist > 100.0f); // ~25 degrees
+		bool turnTrigger = (dot < 0.85f) && (dist > 150.0f); // ~25 degrees
 
 		if (timeTrigger || distTrigger || turnTrigger) {
 			float           radius = 25.0f;
-			CheckpointStyle style = CheckpointStyle::GOLD;
+			CheckpointStyle style = CheckpointStyle::SILVER;
 
 			glm::vec3 up = glm::vec3(0, 1, 0);
 			if (std::abs(glm::dot(currentDir, up)) > 0.99f)

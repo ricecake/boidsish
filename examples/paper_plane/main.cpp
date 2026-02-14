@@ -94,11 +94,12 @@ int main() {
 		});
 
 		std::shared_ptr<SteeringProbe> sp = std::make_shared<SteeringProbe>(visualizer->GetTerrain());
+		sp->SetSpringStiffness(1.5f);
+		sp->SetMass(5);
 
 		auto dot = std::make_shared<Dot>(2343433);
 		dot->SetSize(940.0f);
-		// dot->SetInstanced(true);
-		// visualizer->AddShape(dot);
+		dot->SetInstanced(true);
 		float                                         last_time = 0;
 		std::vector<std::shared_ptr<Boidsish::Shape>> shapes;
 		visualizer->AddShapeHandler([&](float time) {
@@ -112,11 +113,11 @@ int main() {
 
 			return shapes;
 		});
-		// auto model = std::make_shared<Boidsish::Model>("assets/utah_teapot.obj");
-		// model->SetInstanced(true);
-		// model->SetColossal(true);
+		auto model = std::make_shared<Boidsish::Model>("assets/utah_teapot.obj");
+		model->SetInstanced(true);
+		model->SetColossal(true);
 		shapes.push_back(dot);
-		// shapes.push_back(model);
+		shapes.push_back(model);
 
 		visualizer->GetAudioManager().PlayMusic("assets/kazoom.mp3", true, 0.25f);
 
