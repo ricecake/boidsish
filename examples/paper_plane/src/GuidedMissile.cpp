@@ -119,7 +119,9 @@ namespace Boidsish {
 		const float kMaxSpeed = 170.0f;
 		const float kAcceleration = 150.0f;
 
-		if (!text_ && (lived_ >= kLaunchTime)) {
+		std::bernoulli_distribution makeText(0.001);
+
+		if (makeText(eng_) && !text_ && (lived_ >= kLaunchTime)) {
 			handler.EnqueueVisualizerAction([&handler, this]() {
 				auto camPos = handler.vis->GetCamera().pos();
 				auto pos = this->GetPosition().Toglm();
