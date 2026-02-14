@@ -432,6 +432,10 @@ namespace Boidsish {
 					return 5.0f;
 				}
 
+				constexpr float DefaultLifespan() {
+					return 60.0f;
+				}
+
 				namespace Colors {
 					constexpr float GoldR = 1.0f, GoldG = 0.84f, GoldB = 0.0f;
 					constexpr float SilverR = 0.75f, SilverG = 0.75f, SilverB = 0.75f;

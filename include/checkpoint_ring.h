@@ -72,8 +72,14 @@ namespace Boidsish {
 		void UpdateEntity(const EntityHandler& handler, float time, float delta_time) override;
 		void UpdateShape() override;
 
+		void SetLifespan(float l) { lifespan_ = l; }
+
+		float GetAge() const { return age_; }
+
 	private:
 		Callback callback_;
+		float    lifespan_;
+		float    age_ = 0.0f;
 
 		struct TrackedEntity {
 			int                       id;
