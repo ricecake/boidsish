@@ -8,6 +8,7 @@
 #include "fire_effect.h"
 #include "graphics.h"
 #include "spatial_entity_handler.h"
+#include "spline.h"
 #include "terrain_generator.h"
 #include <glm/gtx/quaternion.hpp>
 
@@ -48,6 +49,27 @@ namespace Boidsish {
 
 		// Predict where the target will be
 		return target_pos + (target_vel * time_to_impact);
+	}
+
+	glm::vec3 GetSaggingSplinePoint(const glm::vec3& A, const glm::vec3& T, float t) {
+		// Control points for Catmull-Rom to create a sag
+		// P0 is behind A and high, P3 is beyond T and high
+		glm::vec3 dir = glm::normalize(T - A);
+		glm::vec3 up(0, 1, 0);
+
+		glm::vec3 p0 = A - dir * 50.0f + up * 40.0f;
+		glm::vec3 p1 = A;
+		glm::vec3 p2 = T;
+		glm::vec3 p3 = T + dir * 50.0f + up * 40.0f;
+
+		return Spline::CatmullRom(
+				   t,
+				   Vector3(p0.x, p0.y, p0.z),
+				   Vector3(p1.x, p1.y, p1.z),
+				   Vector3(p2.x, p2.y, p2.z),
+				   Vector3(p3.x, p3.y, p3.z)
+		)
+			.Toglm();
 	}
 
 	CatMissile::CatMissile(int id, Vector3 pos, glm::quat orientation, glm::vec3 dir, Vector3 vel, bool leftHanded):
@@ -163,7 +185,7 @@ namespace Boidsish {
 			bool sector_blocked = true;
 
 			if (target_blocked) {
-				glm::vec3 approach_p = candidate->GetApproachPoint();
+				glm::vec3 approach_p = candidate->GetApproachPoint(missile_pos, handler);
 				glm::vec3 to_approach = glm::normalize(approach_p - missile_pos);
 				float     dist_to_approach = glm::length(approach_p - missile_pos);
 				sector_blocked =
@@ -213,17 +235,25 @@ namespace Boidsish {
 					hit_dist,
 					terrain_normal
 				)) {
-				// Aim for approach point if launcher is obscured, but start cutting the corner
+				// Aim for approach point if launcher is obscured, but follow a sagging spline
 				// once we are close enough to the approach point (crested the hill).
-				glm::vec3 approach_p = target_->GetApproachPoint();
+				glm::vec3 approach_p = target_->GetApproachPoint(missile_pos, handler);
 				glm::vec3 target_p = target_->GetPosition().Toglm();
 				float     d_at = glm::distance(approach_p, target_p);
 				float     d_ma = glm::distance(missile_pos, approach_p);
+				float     d_mt = glm::distance(missile_pos, target_p);
 
-				if (d_ma <= d_at && d_at > 1e-4f) {
-					float t = d_ma / d_at;
-					target_dir_world = glm::mix(target_p, approach_p, t);
+				if (d_ma < d_at && d_mt < d_at) {
+					// We are between approach point and target, follow sagging spline
+					float t = d_ma / (d_ma + d_mt);
+					float lookahead = 0.1f;
+					float target_t = std::clamp(t + lookahead, 0.0f, 1.0f);
+					target_dir_world = GetSaggingSplinePoint(approach_p, target_p, target_t);
+				} else if (d_ma > d_at && d_mt < d_at) {
+					// Past the approach point, go straight for target
+					target_dir_world = target_p;
 				} else {
+					// Not yet reached approach point
 					target_dir_world = approach_p;
 				}
 			}

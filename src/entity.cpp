@@ -205,6 +205,70 @@ namespace Boidsish {
 		return glm::vec3(suggested_pos.x, std::max(suggested_pos.y, min_y), suggested_pos.z);
 	}
 
+	void EntityHandler::CalculateHorizon(const glm::vec3& origin, Horizon& out_horizon) const {
+		out_horizon.origin = origin;
+		const float max_dist = 1000.0f;
+		const int   steps = 40;
+		const float step_dist = max_dist / steps;
+
+		for (int s = 0; s < Horizon::kNumSectors; ++s) {
+			float angle = (float)s / (float)Horizon::kNumSectors * 2.0f * glm::pi<float>() - glm::pi<float>();
+			glm::vec3 dir(cos(angle), 0, sin(angle));
+			float     max_s = -10.0f;
+			for (int i = 1; i <= steps; ++i) {
+				float     dist = i * step_dist;
+				glm::vec3 p = origin + dir * dist;
+				auto [h, norm] = GetTerrainPropertiesAtPoint(p.x, p.z);
+				float slope = (h - origin.y) / dist;
+				if (slope > max_s)
+					max_s = slope;
+			}
+			out_horizon.max_slopes[s] = max_s;
+		}
+	}
+
+	const Horizon& EntityBase::GetHorizon(const EntityHandler& handler) const {
+		glm::vec3 current_pos = rigid_body_.GetPosition();
+		if (!horizon_cache_ || glm::distance(current_pos, horizon_cache_pos_) > 5.0f) {
+			Horizon h;
+			handler.CalculateHorizon(current_pos, h);
+			horizon_cache_ = h;
+			horizon_cache_pos_ = current_pos;
+		}
+		return *horizon_cache_;
+	}
+
+	glm::vec3 EntityBase::GetApproachPoint(const glm::vec3& from_pos, const EntityHandler& handler) const {
+		const Horizon& h = GetHorizon(handler);
+		glm::vec3      target_pos = rigid_body_.GetPosition();
+		glm::vec3      to_from = from_pos - target_pos;
+		float          dist_to_from = glm::length(to_from);
+
+		glm::vec3 dir_to_from;
+		if (dist_to_from < 1e-4f) {
+			dir_to_from = glm::vec3(0, 0, 1);
+		} else {
+			dir_to_from = to_from / dist_to_from;
+		}
+
+		float max_slope = h.GetMaxSlope(dir_to_from);
+
+		// We want a point at some distance from the target along the direction to the missile
+		float approach_dist = 150.0f; // distance from target to approach point
+
+		// Height needed for LOS
+		float height = target_pos.y + approach_dist * max_slope + 20.0f; // 20m buffer
+
+		// Factor in sag compensation: if the spline sags, we need more height to clear the horizon
+		float sag_compensation = 15.0f;
+		height += sag_compensation;
+
+		// Project direction onto horizontal plane for consistent approach distance
+		glm::vec3 flat_dir = glm::normalize(glm::vec3(dir_to_from.x, 0, dir_to_from.z));
+
+		return target_pos + flat_dir * approach_dist + glm::vec3(0, height - target_pos.y, 0);
+	}
+
 	EntityHandler::~EntityHandler() {
 		std::lock_guard<std::mutex> lock(requests_mutex_);
 		for (auto& request : modification_requests_) {
