@@ -108,6 +108,7 @@ int main() {
 			sp->Update(delta_time, plane->GetPosition().Toglm(), plane->GetVelocity().Toglm());
 			auto pos = sp->GetPosition();
 			dot->SetPosition(pos.x, pos.y, pos.z);
+			sp->HandleCheckpoints(delta_time, handler, plane);
 
 			return shapes;
 		});
