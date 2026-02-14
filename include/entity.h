@@ -8,6 +8,7 @@
 #include <vector>
 
 #include "dot.h"
+#include "horizon.h"
 #include "graphics.h"
 #include "logger.h"
 #include "path.h"
@@ -35,7 +36,8 @@ namespace Boidsish {
 			trail_iridescent_(false),
 			trail_pbr_(false),
 			trail_roughness_(0.3f),
-			trail_metallic_(0.0f) {}
+			trail_metallic_(0.0f),
+			horizon_cache_pos_(1e10f, 1e10f, 1e10f) {}
 
 		virtual ~EntityBase() = default;
 
@@ -152,6 +154,21 @@ namespace Boidsish {
 
 		glm::vec3 WorldToObject(const glm::vec3& v) const { return glm::inverse(rigid_body_.GetOrientation()) * v; }
 
+		/**
+		 * @brief Get the horizon data for this entity, computing and caching it if necessary.
+		 * @param handler The entity handler (used for terrain queries)
+		 * @return The horizon data.
+		 */
+		Horizon GetHorizon(const EntityHandler& handler) const;
+
+		/**
+		 * @brief Calculate a good approach point for a missile coming from from_pos.
+		 * @param from_pos The position of the approaching entity.
+		 * @param handler The entity handler.
+		 * @return A world-space position suitable for an approach.
+		 */
+		virtual glm::vec3 GetApproachPoint(const glm::vec3& from_pos, const EntityHandler& handler) const;
+
 	protected:
 		int       id_;
 		RigidBody rigid_body_;
@@ -175,6 +192,11 @@ namespace Boidsish {
 		// Path constraint
 		std::shared_ptr<Path> constraint_path_;
 		float                 constraint_radius_ = 0.0f;
+
+		// Horizon cache
+		mutable std::optional<Horizon> horizon_cache_;
+		mutable glm::vec3              horizon_cache_pos_;
+		mutable std::mutex             horizon_mutex_;
 	};
 
 	// Template-based entity class that takes a shape
@@ -386,6 +408,13 @@ namespace Boidsish {
 		 * @return A valid position at least 'clearance' above surfaces, with Y > 0.
 		 */
 		glm::vec3 GetValidPlacement(const glm::vec3& suggested_pos, float clearance) const;
+
+		/**
+		 * @brief Compute the horizon for a given origin point by sampling terrain.
+		 * @param origin The point from which to calculate the horizon.
+		 * @param out_horizon Output structure to store the results.
+		 */
+		void CalculateHorizon(const glm::vec3& origin, Horizon& out_horizon) const;
 
 		// Thread-safe methods for entity modification
 		template <typename T, typename... Args>

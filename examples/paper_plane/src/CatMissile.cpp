@@ -8,6 +8,7 @@
 #include "fire_effect.h"
 #include "graphics.h"
 #include "spatial_entity_handler.h"
+#include "spline.h"
 #include "terrain_generator.h"
 #include <glm/gtx/quaternion.hpp>
 
@@ -48,6 +49,27 @@ namespace Boidsish {
 
 		// Predict where the target will be
 		return target_pos + (target_vel * time_to_impact);
+	}
+
+	glm::vec3 GetSaggingSplinePoint(const glm::vec3& A, const glm::vec3& T, float t) {
+		// Control points for Catmull-Rom to create a sag
+		// P0 is behind A and high, P3 is beyond T and high
+		glm::vec3 dir = glm::normalize(T - A);
+		glm::vec3 up(0, 1, 0);
+
+		glm::vec3 p0 = A - dir * 50.0f + up * 40.0f;
+		glm::vec3 p1 = A;
+		glm::vec3 p2 = T;
+		glm::vec3 p3 = T + dir * 50.0f + up * 40.0f;
+
+		return Spline::CatmullRom(
+				   t,
+				   Vector3(p0.x, p0.y, p0.z),
+				   Vector3(p1.x, p1.y, p1.z),
+				   Vector3(p2.x, p2.y, p2.z),
+				   Vector3(p3.x, p3.y, p3.z)
+		)
+			.Toglm();
 	}
 
 	CatMissile::CatMissile(int id, Vector3 pos, glm::quat orientation, glm::vec3 dir, Vector3 vel, bool leftHanded):
@@ -163,7 +185,7 @@ namespace Boidsish {
 			bool sector_blocked = true;
 
 			if (target_blocked) {
-				glm::vec3 approach_p = candidate->GetApproachPoint();
+				glm::vec3 approach_p = candidate->GetApproachPoint(missile_pos, handler);
 				glm::vec3 to_approach = glm::normalize(approach_p - missile_pos);
 				float     dist_to_approach = glm::length(approach_p - missile_pos);
 				sector_blocked =
@@ -199,33 +221,41 @@ namespace Boidsish {
 			glm::vec3 missile_pos = GetPosition().Toglm();
 
 			// PREDICT
-			target_dir_world =
+			glm::vec3 predicted_target_p =
 				GetInterceptPoint(missile_pos, missile_speed, target_->GetPosition(), target_->GetVelocity());
+
+			glm::vec3 approach_p = target_->GetApproachPoint(missile_pos, handler);
+			glm::vec3 direct_target_p = target_->GetPosition().Toglm();
+
+			float d_mt = glm::distance(missile_pos, direct_target_p);
+			float d_at = glm::distance(approach_p, direct_target_p);
+			float d_ma = glm::distance(missile_pos, approach_p);
 
 			// Check LOS to target
 			float     hit_dist;
 			glm::vec3 terrain_normal;
-			glm::vec3 to_target = glm::normalize(target_dir_world - missile_pos);
-			if (handler.RaycastTerrain(
-					missile_pos,
-					to_target,
-					glm::length(target_dir_world - missile_pos),
-					hit_dist,
-					terrain_normal
-				)) {
-				// Aim for approach point if launcher is obscured, but start cutting the corner
-				// once we are close enough to the approach point (crested the hill).
-				glm::vec3 approach_p = target_->GetApproachPoint();
-				glm::vec3 target_p = target_->GetPosition().Toglm();
-				float     d_at = glm::distance(approach_p, target_p);
-				float     d_ma = glm::distance(missile_pos, approach_p);
+			glm::vec3 to_target = glm::normalize(direct_target_p - missile_pos);
+			bool      blocked = handler.RaycastTerrain(missile_pos, to_target, d_mt, hit_dist, terrain_normal);
 
-				if (d_ma <= d_at && d_at > 1e-4f) {
-					float t = d_ma / d_at;
-					target_dir_world = glm::mix(target_p, approach_p, t);
+			// Decision logic for approach vs terminal guidance
+			if (d_mt < d_at * 0.5f && !blocked) {
+				// Terminal phase: very close and clear, go straight for predicted intercept
+				target_dir_world = predicted_target_p;
+			} else if (blocked || d_ma < d_at || d_mt < d_at * 1.5f) {
+				// Spline/Approach phase: transitioning or blocked
+				if (d_ma < d_at) {
+					// Progress between approach point and target
+					float t = std::clamp(1.0f - (d_mt / d_at), 0.0f, 1.0f);
+					float lookahead = 0.1f;
+					target_dir_world =
+						GetSaggingSplinePoint(approach_p, predicted_target_p, std::clamp(t + lookahead, 0.0f, 1.0f));
 				} else {
+					// Still heading to approach point
 					target_dir_world = approach_p;
 				}
+			} else {
+				// General pursuit
+				target_dir_world = predicted_target_p;
 			}
 
 			target_dir_local = WorldToObject(glm::normalize(target_dir_world - missile_pos));

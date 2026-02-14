@@ -29,24 +29,9 @@ namespace Boidsish {
 	}
 
 	void GuidedMissileLauncher::UpdateEntity(const EntityHandler& handler, float time, float delta_time) {
-		if (!approach_point_set_) {
-			auto  pos = GetPosition().Toglm();
-			float max_neighbor_h = pos.y;
-			float sample_dist = 50.0f;
-
-			for (int i = 0; i < 8; ++i) {
-				float     angle = i * (glm::pi<float>() / 4.0f);
-				glm::vec3 dir(sin(angle), 0, cos(angle));
-				auto [h, norm] = handler.GetTerrainPropertiesAtPoint(
-					pos.x + dir.x * sample_dist,
-					pos.z + dir.z * sample_dist
-				);
-				max_neighbor_h = std::max(max_neighbor_h, h);
-			}
-
-			approach_point_ = pos + glm::vec3(0, std::max(30.0f, (max_neighbor_h - pos.y) + 20.0f), 0);
-			approach_point_set_ = true;
-		}
+		// Ensure horizon is computed early for efficiency (requested by user)
+		// GetHorizon is thread-safe and will cache the result.
+		GetHorizon(handler);
 
 		// if (!text_) {
 		// 	handler.EnqueueVisualizerAction([&handler, this]() {

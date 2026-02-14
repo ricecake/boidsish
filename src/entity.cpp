@@ -205,6 +205,121 @@ namespace Boidsish {
 		return glm::vec3(suggested_pos.x, std::max(suggested_pos.y, min_y), suggested_pos.z);
 	}
 
+	void EntityHandler::CalculateHorizon(const glm::vec3& origin, Horizon& out_horizon) const {
+		out_horizon.origin = origin;
+		const float max_dist = 1000.0f;
+		const float grid_step = 20.0f; // Dense grid for viewshed calculation
+
+		for (int i = 0; i < Horizon::kNumSectors; ++i) {
+			out_horizon.max_slopes[i] = -1.0f;
+		}
+
+		int range = (int)(max_dist / grid_step);
+		for (int dz = -range; dz <= range; ++dz) {
+			for (int dx = -range; dx <= range; ++dx) {
+				if (dx == 0 && dz == 0)
+					continue;
+
+				float world_dx = dx * grid_step;
+				float world_dz = dz * grid_step;
+				float dist_sq = world_dx * world_dx + world_dz * world_dz;
+
+				if (dist_sq > max_dist * max_dist || dist_sq < 1.0f)
+					continue;
+
+				float dist = sqrt(dist_sq);
+				auto [h, norm] = GetTerrainPropertiesAtPoint(origin.x + world_dx, origin.z + world_dz);
+
+				// Use slope (normal) to refine the ridge detection.
+				// We can estimate the elevation of the "peak" within this grid cell.
+				float grad_x = -norm.x / std::max(norm.y, 0.001f);
+				float grad_z = -norm.z / std::max(norm.y, 0.001f);
+				float radial_grad = (grad_x * world_dx + grad_z * world_dz) / dist;
+
+				float effective_h = h;
+				// If the terrain is sloping UP away from us (radial_grad > 0), the actual
+				// horizon ridge might be slightly further and higher.
+				if (radial_grad > 0.0f) {
+					effective_h += radial_grad * (grid_step * 0.5f);
+				}
+
+				float slope = (effective_h - origin.y) / dist;
+
+				float angle_center = atan2(world_dz, world_dx);
+				float angle_width = grid_step / dist;
+
+				// Update all sectors subtended by this grid cell
+				int start_sector = (int)floor(
+					((angle_center - angle_width * 0.5f) + glm::pi<float>()) / (2.0f * glm::pi<float>()) *
+					(float)Horizon::kNumSectors
+				);
+				int end_sector = (int)floor(
+					((angle_center + angle_width * 0.5f) + glm::pi<float>()) / (2.0f * glm::pi<float>()) *
+					(float)Horizon::kNumSectors
+				);
+
+				for (int s = start_sector; s <= end_sector; ++s) {
+					int idx = s % Horizon::kNumSectors;
+					if (idx < 0)
+						idx += Horizon::kNumSectors;
+					if (slope > out_horizon.max_slopes[idx]) {
+						out_horizon.max_slopes[idx] = slope;
+					}
+				}
+			}
+		}
+	}
+
+	Horizon EntityBase::GetHorizon(const EntityHandler& handler) const {
+		glm::vec3 current_pos = rigid_body_.GetPosition();
+		{
+			std::lock_guard<std::mutex> lock(horizon_mutex_);
+			if (horizon_cache_ && glm::distance(current_pos, horizon_cache_pos_) <= 5.0f) {
+				return *horizon_cache_;
+			}
+		}
+
+		// Compute outside the lock to avoid holding it during potentially slow terrain queries
+		Horizon h;
+		handler.CalculateHorizon(current_pos, h);
+
+		std::lock_guard<std::mutex> lock(horizon_mutex_);
+		horizon_cache_ = h;
+		horizon_cache_pos_ = current_pos;
+		return *horizon_cache_;
+	}
+
+	glm::vec3 EntityBase::GetApproachPoint(const glm::vec3& from_pos, const EntityHandler& handler) const {
+		const Horizon& h = GetHorizon(handler);
+		glm::vec3      target_pos = rigid_body_.GetPosition();
+		glm::vec3      to_from = from_pos - target_pos;
+		float          dist_to_from = glm::length(to_from);
+
+		glm::vec3 dir_to_from;
+		if (dist_to_from < 1e-4f) {
+			dir_to_from = glm::vec3(0, 0, 1);
+		} else {
+			dir_to_from = to_from / dist_to_from;
+		}
+
+		float max_slope = h.GetMaxSlope(dir_to_from);
+
+		// We want a point at some distance from the target along the direction to the missile
+		float approach_dist = 150.0f; // distance from target to approach point
+
+		// Height needed for LOS
+		float height = target_pos.y + approach_dist * max_slope + 20.0f; // 20m buffer
+
+		// Factor in sag compensation: if the spline sags, we need more height to clear the horizon
+		float sag_compensation = 15.0f;
+		height += sag_compensation;
+
+		// Project direction onto horizontal plane for consistent approach distance
+		glm::vec3 flat_dir = glm::normalize(glm::vec3(dir_to_from.x, 0, dir_to_from.z));
+
+		return target_pos + flat_dir * approach_dist + glm::vec3(0, height - target_pos.y, 0);
+	}
+
 	EntityHandler::~EntityHandler() {
 		std::lock_guard<std::mutex> lock(requests_mutex_);
 		for (auto& request : modification_requests_) {
