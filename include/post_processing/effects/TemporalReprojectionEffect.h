@@ -8,10 +8,10 @@ class Shader;
 namespace Boidsish {
 	namespace PostProcessing {
 
-		class TemporalReprojectionEffect : public IPostProcessingEffect {
+		class TemporalReprojectionEffect: public IPostProcessingEffect {
 		public:
 			TemporalReprojectionEffect();
-			virtual ~TemporalReprojectionEffect();
+			~TemporalReprojectionEffect();
 
 			void Apply(const PostProcessingParams& params) override;
 			void Initialize(int width, int height) override;

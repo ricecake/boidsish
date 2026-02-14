@@ -86,7 +86,7 @@ namespace Boidsish {
 			return;
 		}
 
-		auto [height, norm] = handler.GetCachedTerrainProperties(pos.x, pos.z);
+		auto [height, norm] = handler.GetTerrainPropertiesAtPoint(pos.x, pos.z);
 		if (pos.y <= height) {
 			Explode(handler, false);
 			return;
@@ -104,14 +104,17 @@ namespace Boidsish {
 		if (!fired_) {
 			SetTrailLength(300);
 			SetTrailRocket(true);
-			launch_sound_ = handler.vis->AddSoundEffect("assets/rocket.wav", pos.Toglm(), GetVelocity().Toglm(), 10.0f);
+			handler.EnqueueVisualizerAction([this, &handler, pos]() {
+				this->launch_sound_ =
+					handler.vis->AddSoundEffect("assets/rocket.wav", pos.Toglm(), GetVelocity().Toglm(), 10.0f);
+			});
 
 			rigid_body_.linear_friction_ = 7.5f;
 			rigid_body_.angular_friction_ = 7.5f;
 
 			fired_ = true;
 		} else if (launch_sound_) {
-			launch_sound_->SetPosition(pos.Toglm());
+			handler.EnqueueVisualizerAction([effect = launch_sound_, p = pos.Toglm()]() { effect->SetPosition(p); });
 		}
 
 		rigid_body_.AddRelativeForce(glm::vec3(0, 0, -2000));
@@ -327,7 +330,7 @@ namespace Boidsish {
 			}
 		});
 
-		handler.EnqueueVisualizerAction([=, &handler]() {
+		handler.EnqueueVisualizerAction([this, pos, &handler]() {
 			handler.vis->AddFireEffect(
 				glm::vec3(pos.x, pos.y, pos.z),
 				FireEffectStyle::Explosion,
@@ -336,10 +339,9 @@ namespace Boidsish {
 				-1,
 				5.0f
 			);
+			this->explode_sound_ =
+				handler.vis->AddSoundEffect("assets/rocket_explosion.wav", pos.Toglm(), GetVelocity().Toglm(), 25.0f);
 		});
-
-		explode_sound_ = handler.vis
-							 ->AddSoundEffect("assets/rocket_explosion.wav", pos.Toglm(), GetVelocity().Toglm(), 25.0f);
 	}
 
 } // namespace Boidsish

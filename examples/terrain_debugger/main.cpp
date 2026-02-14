@@ -47,7 +47,7 @@ void generateHeightmap(const Boidsish::TerrainGenerator& generator, int width, i
 			float worldX = static_cast<float>(x);
 			float worldZ = static_cast<float>(y);
 
-			auto [h, normal] = generator.pointProperties(worldX, worldZ);
+			auto [h, normal] = generator.GetTerrainPropertiesAtPoint(worldX, worldZ);
 
 			float     normalized_height = std::max(0.0f, std::min(1.0f, h / max_height));
 			glm::vec3 color = getColor(normalized_height);
@@ -128,7 +128,7 @@ int main() {
 	const int                  width = 2048;
 	const int                  height = 2048;
 
-	// generateDomainWarpMap(generator, width, height);
+	generateDomainWarpMap(generator, width, height);
 	generateBiomeMap(generator, width, height);
 	generateHeightmap(generator, width, height);
 

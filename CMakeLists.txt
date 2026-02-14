@@ -107,6 +107,7 @@ foreach(EXAMPLE_DIR ${EXAMPLE_DIRS})
     endif()
 endforeach()
 
+
 # Copy assets to the root of the build directory
 add_custom_command(TARGET boidsish POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_directory
@@ -135,6 +136,8 @@ else()
 endif()
 
 # 6. Build Tests
+# Note: Tests are included in the default build ('all') to ensure they are available
+# for 'ctest' in CI environments, avoiding "executable not found" errors.
 enable_testing()
 find_package(GTest REQUIRED)
 include_directories(${GTEST_INCLUDE_DIRS})
@@ -145,6 +148,7 @@ include_directories(${GTEST_INCLUDE_DIRS})
 add_library(check STATIC ${LIB_SOURCES})
 target_compile_definitions(check PRIVATE GLM_ENABLE_EXPERIMENTAL)
 target_link_libraries(check PRIVATE boidsish)
+set_target_properties(check PROPERTIES EXCLUDE_FROM_ALL TRUE)
 
 # Add shader preprocessor tool
 add_executable(shader_preprocessor tools/shader_preprocessor.cpp)
@@ -215,35 +219,47 @@ endif()
 
 add_executable(test_rigid_body tests/test_rigid_body.cpp)
 target_link_libraries(test_rigid_body PRIVATE boidsish GTest::GTest GTest::Main)
-set_target_properties(test_rigid_body PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+set_target_properties(test_rigid_body PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}" EXCLUDE_FROM_ALL TRUE)
 add_test(NAME test_rigid_body COMMAND test_rigid_body)
 
 add_executable(test_terrain tests/test_terrain.cpp)
 target_link_libraries(test_terrain PRIVATE boidsish GTest::GTest GTest::Main)
-set_target_properties(test_terrain PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+set_target_properties(test_terrain PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}" EXCLUDE_FROM_ALL TRUE)
 add_test(NAME test_terrain COMMAND test_terrain)
 
 add_executable(test_config tests/test_config.cpp)
 target_link_libraries(test_config PRIVATE boidsish GTest::GTest GTest::Main)
-set_target_properties(test_config PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+set_target_properties(test_config PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}" EXCLUDE_FROM_ALL TRUE)
 add_test(NAME test_config COMMAND test_config)
 
 add_executable(test_concurrent_queue tests/test_concurrent_queue.cpp)
 target_link_libraries(test_concurrent_queue PRIVATE boidsish GTest::GTest GTest::Main)
-set_target_properties(test_concurrent_queue PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+set_target_properties(test_concurrent_queue PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}" EXCLUDE_FROM_ALL TRUE)
 add_test(NAME test_concurrent_queue COMMAND test_concurrent_queue)
 
 add_executable(test_vector tests/test_vector.cpp)
 target_link_libraries(test_vector PRIVATE boidsish GTest::GTest GTest::Main)
-set_target_properties(test_vector PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+set_target_properties(test_vector PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}" EXCLUDE_FROM_ALL TRUE)
 add_test(NAME test_vector COMMAND test_vector)
 
 add_executable(test_thread_pool tests/test_thread_pool.cpp)
 target_link_libraries(test_thread_pool PRIVATE boidsish GTest::GTest GTest::Main)
-set_target_properties(test_thread_pool PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+set_target_properties(test_thread_pool PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}" EXCLUDE_FROM_ALL TRUE)
 add_test(NAME test_thread_pool COMMAND test_thread_pool)
 
 add_executable(test_spline tests/test_spline.cpp)
 target_link_libraries(test_spline PRIVATE boidsish GTest::GTest GTest::Main)
-set_target_properties(test_spline PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+set_target_properties(test_spline PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}" EXCLUDE_FROM_ALL TRUE)
 add_test(NAME test_spline COMMAND test_spline)
+
+# Group all tests into a single target for convenience
+add_custom_target(tests)
+add_dependencies(tests
+    test_rigid_body
+    test_terrain
+    test_config
+    test_concurrent_queue
+    test_vector
+    test_thread_pool
+    test_spline
+)

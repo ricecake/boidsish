@@ -4,6 +4,7 @@
 
 #include "GuidedMissile.h"
 #include "PaperPlane.h"
+#include "PaperPlaneHandler.h"
 #include "arcade_text.h"
 #include "graphics.h"
 #include "terrain_generator_interface.h"
@@ -36,7 +37,7 @@ namespace Boidsish {
 			for (int i = 0; i < 8; ++i) {
 				float     angle = i * (glm::pi<float>() / 4.0f);
 				glm::vec3 dir(sin(angle), 0, cos(angle));
-				auto [h, norm] = handler.GetCachedTerrainProperties(
+				auto [h, norm] = handler.GetTerrainPropertiesAtPoint(
 					pos.x + dir.x * sample_dist,
 					pos.z + dir.z * sample_dist
 				);
@@ -47,31 +48,31 @@ namespace Boidsish {
 			approach_point_set_ = true;
 		}
 
-		if (!text_) {
-			handler.EnqueueVisualizerAction([&handler, this]() {
-				auto camPos = handler.vis->GetCamera().pos();
-				auto pos = this->GetPosition().Toglm();
-				auto vec = pos - camPos;
+		// if (!text_) {
+		// 	handler.EnqueueVisualizerAction([&handler, this]() {
+		// 		auto camPos = handler.vis->GetCamera().pos();
+		// 		auto pos = this->GetPosition().Toglm();
+		// 		auto vec = pos - camPos;
 
-				text_ = handler.vis->AddArcadeTextEffect(
-					"SUP",
-					pos,
-					20.0f,
-					60.0f,
-					glm::vec3(0, 1, 0),
-					-1 * vec,
-					100.0f,
-					"assets/Roboto-Medium.ttf",
-					12.0f,
-					2.0f
+		// 		text_ = handler.vis->AddArcadeTextEffect(
+		// 			"SUP",
+		// 			pos,
+		// 			20.0f,
+		// 			60.0f,
+		// 			glm::vec3(0, 1, 0),
+		// 			-1 * vec,
+		// 			100.0f,
+		// 			"assets/Roboto-Medium.ttf",
+		// 			12.0f,
+		// 			2.0f
 
-				);
-				text_->SetPulseSpeed(3.0f);
-				text_->SetPulseAmplitude(0.3f);
-				text_->SetRainbowEnabled(true);
-				text_->SetRainbowSpeed(5.0f);
-			});
-		}
+		// 		);
+		// 		text_->SetPulseSpeed(3.0f);
+		// 		text_->SetPulseAmplitude(0.3f);
+		// 		text_->SetRainbowEnabled(true);
+		// 		text_->SetRainbowSpeed(5.0f);
+		// 	});
+		// }
 
 		time_since_last_fire_ += delta_time;
 		if (time_since_last_fire_ < fire_interval_) {
@@ -134,13 +135,52 @@ namespace Boidsish {
 		}
 	}
 
-	void GuidedMissileLauncher::Destroy(const EntityHandler& handler) {
-		auto pos = GetPosition().Toglm();
-		auto [height, normal] = handler.GetCachedTerrainProperties(pos.x, pos.z);
-		handler.vis->TriggerComplexExplosion(shape_, normal, 2.0f, FireEffectStyle::Explosion);
-		handler.vis->GetTerrain()->AddCrater({pos.x, height, pos.z}, 15.0f, 8.0f, 0.2f, 2.0f);
+	void GuidedMissileLauncher::OnHit(const EntityHandler& handler, float damage) {
+		(void)damage;
+		Destroy(handler);
+	}
 
-		handler.QueueRemoveEntity(GetId());
+	void GuidedMissileLauncher::Destroy(const EntityHandler& handler) {
+		// Award points for destroying the launcher
+		if (auto* pp_handler = dynamic_cast<const PaperPlaneHandler*>(&handler)) {
+			pp_handler->AddScore(500, "Launcher Destroyed");
+		}
+
+		auto pos = GetPosition().Toglm();
+		auto [h_val, n_val] = handler.GetTerrainPropertiesAtPoint(pos.x, pos.z);
+		float     height = h_val;
+		glm::vec3 normal = n_val;
+
+		// if (!text_) {
+		handler.EnqueueVisualizerAction([&handler, this, normal, pos, height]() {
+			handler.vis->TriggerComplexExplosion(this->shape_, normal, 2.0f, FireEffectStyle::Explosion);
+			handler.vis->GetTerrain()->AddCrater({pos.x, height, pos.z}, 15.0f, 8.0f, 0.2f, 2.0f);
+
+			auto camPos = handler.vis->GetCamera().pos();
+			auto pos = this->GetPosition().Toglm();
+			auto vec = pos - camPos;
+
+			text_ = handler.vis->AddArcadeTextEffect(
+				"GOT EM'",
+				pos,
+				20.0f,
+				60.0f,
+				glm::vec3(0, 1, 0),
+				-1 * vec,
+				3.0f,
+				"assets/Roboto-Medium.ttf",
+				12.0f,
+				2.0f
+
+			);
+			text_->SetPulseSpeed(3.0f);
+			text_->SetPulseAmplitude(0.3f);
+			text_->SetRainbowEnabled(true);
+			text_->SetRainbowSpeed(5.0f);
+
+			handler.QueueRemoveEntity(GetId());
+		});
+		// }
 	}
 
 } // namespace Boidsish

@@ -8,10 +8,10 @@ class Shader;
 namespace Boidsish {
 	namespace PostProcessing {
 
-		class MotionVectorEffect : public IPostProcessingEffect {
+		class MotionVectorEffect: public IPostProcessingEffect {
 		public:
 			MotionVectorEffect();
-			virtual ~MotionVectorEffect();
+			~MotionVectorEffect();
 
 			void Apply(const PostProcessingParams& params) override;
 			void Initialize(int width, int height) override;

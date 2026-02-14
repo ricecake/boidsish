@@ -9,10 +9,10 @@ uniform sampler2D motionVectorTexture;
 uniform bool      firstFrame;
 uniform bool      blitOnly;
 
-// Parameters (will be moved to uniforms)
-uniform float feedbackMin = 0.9;
-uniform float feedbackMax = 0.98;
-uniform float varianceGamma = 1.0;
+// Parameters
+uniform float feedbackMin = 0.85;
+uniform float feedbackMax = 0.99;
+uniform float varianceGamma = 1.2;
 
 void main() {
 	if (blitOnly) {

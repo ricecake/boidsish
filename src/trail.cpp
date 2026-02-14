@@ -252,6 +252,7 @@ namespace Boidsish {
 		}
 		head = (head + CURVE_SEGMENTS * VERTS_PER_STEP) % mesh_vertices.size();
 		full = false;
+		bounds_dirty_ = true;
 	}
 
 	void Trail::AddPoint(glm::vec3 position, glm::vec3 color) {
@@ -262,6 +263,7 @@ namespace Boidsish {
 		}
 		UpdateMesh();
 		mesh_dirty = true;
+		bounds_dirty_ = true;
 	}
 
 	void Trail::SetIridescence(bool enabled) {
@@ -270,6 +272,42 @@ namespace Boidsish {
 
 	void Trail::SetUseRocketTrail(bool enabled) {
 		useRocketTrail_ = enabled;
+	}
+
+	glm::vec3 Trail::GetMinBound() const {
+		if (bounds_dirty_) {
+			UpdateBounds();
+		}
+		return min_bound_;
+	}
+
+	glm::vec3 Trail::GetMaxBound() const {
+		if (bounds_dirty_) {
+			UpdateBounds();
+		}
+		return max_bound_;
+	}
+
+	void Trail::UpdateBounds() const {
+		if (points.empty()) {
+			min_bound_ = max_bound_ = glm::vec3(0.0f);
+			bounds_dirty_ = false;
+			return;
+		}
+
+		min_bound_ = points[0].first;
+		max_bound_ = points[0].first;
+
+		for (const auto& p : points) {
+			min_bound_ = glm::min(min_bound_, p.first);
+			max_bound_ = glm::max(max_bound_, p.first);
+		}
+
+		// Expand by thickness to account for the trail's volume
+		min_bound_ -= glm::vec3(thickness);
+		max_bound_ += glm::vec3(thickness);
+
+		bounds_dirty_ = false;
 	}
 
 	std::vector<float> Trail::GetInterleavedVertexData() const {

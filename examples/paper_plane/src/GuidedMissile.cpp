@@ -96,8 +96,10 @@ namespace Boidsish {
 		auto vel = GetVelocity();
 
 		if (!launch_sound_) {
-			launch_sound_ = handler.vis
-								->AddSoundEffect("assets/sam_launch.wav", pos.Toglm(), GetVelocity().Toglm(), 30.0f);
+			handler.EnqueueVisualizerAction([this, &handler, pos]() {
+				this->launch_sound_ =
+					handler.vis->AddSoundEffect("assets/sam_launch.wav", pos.Toglm(), GetVelocity().Toglm(), 30.0f);
+			});
 		}
 
 		if (exploded_) {
@@ -112,7 +114,12 @@ namespace Boidsish {
 			return;
 		}
 
-		if (!text_) {
+		// --- Flight Model Constants ---
+		const float kLaunchTime = 0.5f;
+		const float kMaxSpeed = 170.0f;
+		const float kAcceleration = 150.0f;
+
+		if (!text_ && (lived_ >= kLaunchTime)) {
 			handler.EnqueueVisualizerAction([&handler, this]() {
 				auto camPos = handler.vis->GetCamera().pos();
 				auto pos = this->GetPosition().Toglm();
@@ -124,7 +131,7 @@ namespace Boidsish {
 					150.0f,
 					-1 * vec,
 					vec,
-					10.0f,
+					3.0f,
 					"assets/Roboto-Medium.ttf",
 					12.0f,
 					5.0f
@@ -141,24 +148,21 @@ namespace Boidsish {
 				text_->SetRainbowEnabled(true);
 				text_->SetColor(1.0f, 1.0f, 1.0f);
 			});
-		} else {
-			auto camPos = handler.vis->GetCamera().pos();
-			auto pos = this->GetPosition().Toglm();
-			auto vec = pos - camPos;
+		} else if (text_) {
+			handler.EnqueueVisualizerAction([this, &handler]() {
+				auto camPos = handler.vis->GetCamera().pos();
+				auto pos = this->GetPosition().Toglm();
+				auto vec = pos - camPos;
 
-			text_->SetPosition(pos.x, pos.y, pos.z);
-			text_->SetRotationAxis(vec);
+				this->text_->SetPosition(pos.x, pos.y, pos.z);
+				this->text_->SetRotationAxis(vec);
+			});
 		}
-
-		// --- Flight Model Constants ---
-		const float kLaunchTime = 0.5f;
-		const float kMaxSpeed = 170.0f;
-		const float kAcceleration = 150.0f;
 
 		if (lived_ < kLaunchTime) {
 			rigid_body_.AddRelativeForce(glm::vec3(0, 0, -600));
 		} else {
-			auto [height, norm] = handler.vis->GetTerrainPointPropertiesThreadSafe(pos.x, pos.z);
+			auto [height, norm] = handler.vis->GetTerrainPropertiesAtPoint(pos.x, pos.z);
 			if (pos.y < height) {
 				Explode(handler, false);
 				return;
@@ -232,7 +236,7 @@ namespace Boidsish {
 						float hit_dist = 0.0f;
 						if (terrain_generator->Raycast(origin, dir, reaction_distance, hit_dist)) {
 							auto hit_coord = vel_vec.Normalized() * hit_dist;
-							auto [terrain_h, terrain_normal] = terrain_generator->pointProperties(
+							auto [terrain_h, terrain_normal] = terrain_generator->GetTerrainPropertiesAtPoint(
 								hit_coord.x,
 								hit_coord.z
 							);
@@ -289,7 +293,7 @@ namespace Boidsish {
 
 		shape_->SetHidden(true);
 		auto pos = GetPosition();
-		handler.EnqueueVisualizerAction([=, &handler]() {
+		handler.EnqueueVisualizerAction([pos, &handler]() {
 			handler.vis->AddFireEffect(
 				glm::vec3(pos.x, pos.y, pos.z),
 				FireEffectStyle::Explosion,
@@ -310,8 +314,10 @@ namespace Boidsish {
 		exploded_ = true;
 		lived_ = 0.0f;
 		SetVelocity(Vector3(0, 0, 0));
-		explode_sound_ = handler.vis
-							 ->AddSoundEffect("assets/rocket_explosion.wav", pos.Toglm(), GetVelocity().Toglm(), 20.0f);
+		handler.EnqueueVisualizerAction([this, pos, &handler]() {
+			this->explode_sound_ =
+				handler.vis->AddSoundEffect("assets/rocket_explosion.wav", pos.Toglm(), GetVelocity().Toglm(), 20.0f);
+		});
 
 		if (hit_target) {
 			target_->TriggerDamage();

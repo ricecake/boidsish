@@ -36,6 +36,8 @@ namespace Boidsish {
 
 		bool CastsShadows() const override { return false; }
 
+		float GetBoundingRadius() const override { return size_; }
+
 		// All Dots share the same sphere mesh, so they can be instanced together
 		std::string GetInstanceKey() const override { return "Dot"; }
 

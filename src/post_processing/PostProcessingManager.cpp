@@ -115,6 +115,7 @@ namespace Boidsish {
 			const glm::mat4& prevProjectionMatrix,
 			const glm::vec3& cameraPos,
 			float            time,
+			float            worldScale,
 			uint32_t         frameCount
 		) {
 			bool   effect_applied = false;
@@ -140,6 +141,7 @@ namespace Boidsish {
 			params.prevProjectionMatrix = prevProjectionMatrix;
 			params.cameraPos = cameraPos;
 			params.time = time;
+			params.worldScale = worldScale;
 			params.frameCount = frameCount;
 			params.motionVectorTexture = motion_vector_texture_;
 

@@ -52,6 +52,7 @@ namespace Boidsish {
 		GetAppSettingBool("enable_skybox", true);
 		GetAppSettingBool("enable_effects", true);
 		GetAppSettingBool("enable_floor_reflection", true);
+		GetAppSettingBool("enable_shadows", true);
 		GetAppSettingFloat("render_scale", 1.0f);
 		GetAppSettingBool("enable_gl_debug", false); // OpenGL debug output (performance impact)
 		GetAppSettingBool("render_terrain", true);
@@ -64,20 +65,6 @@ namespace Boidsish {
 		GetAppSettingBool("artistic_effect_shimmery", false);
 		GetAppSettingBool("artistic_effect_glitched", false);
 		GetAppSettingBool("artistic_effect_wireframe", false);
-
-		// SSSR Parameters
-		GetAppSettingBool("sssr_enabled", true);
-		GetAppSettingInt("sssr_max_steps", 64);
-		GetAppSettingInt("sssr_binary_steps", 8);
-		GetAppSettingFloat("sssr_ray_step_size", 0.5f);
-		GetAppSettingFloat("sssr_max_distance", 500.0f);
-		GetAppSettingFloat("sssr_jitter_strength", 0.2f);
-		GetAppSettingFloat("sssr_thickness_bias", 0.1f);
-
-		// Temporal Reprojection Parameters
-		GetAppSettingFloat("temporal_feedback_min", 0.9f);
-		GetAppSettingFloat("temporal_feedback_max", 0.98f);
-		GetAppSettingFloat("temporal_variance_gamma", 1.0f);
 	}
 
 	void ConfigManager::Shutdown() {

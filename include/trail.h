@@ -65,6 +65,10 @@ namespace Boidsish {
 
 		void ClearDirty() { mesh_dirty = false; }
 
+		// Bounding box for culling
+		glm::vec3 GetMinBound() const;
+		glm::vec3 GetMaxBound() const;
+
 	private:
 		struct TrailVertex {
 			glm::vec3 pos;
@@ -138,6 +142,13 @@ namespace Boidsish {
 		float roughness_ = Constants::Class::Trails::DefaultRoughness();
 		float metallic_ = Constants::Class::Trails::DefaultMetallic();
 		bool  managed_by_render_manager_ = false;
+
+		// Bounding box cache
+		mutable glm::vec3 min_bound_ = glm::vec3(0.0f);
+		mutable glm::vec3 max_bound_ = glm::vec3(0.0f);
+		mutable bool      bounds_dirty_ = true;
+
+		void UpdateBounds() const;
 
 		// Configuration
 		const int   TRAIL_SEGMENTS = Constants::Class::Trails::Segments();      // Circular segments around trail

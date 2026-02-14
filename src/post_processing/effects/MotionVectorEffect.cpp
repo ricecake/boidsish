@@ -25,8 +25,10 @@ namespace Boidsish {
 		void MotionVectorEffect::Apply(const PostProcessingParams& params) {
 			shader_->use();
 			shader_->setInt("depthTexture", 0);
-			shader_->setMat4("invViewProj", glm::inverse(params.projectionMatrix * params.viewMatrix));
-			shader_->setMat4("prevViewProj", params.prevProjectionMatrix * params.prevViewMatrix);
+			shader_->setMat4("invProjection", params.invProjectionMatrix);
+			shader_->setMat4("invView", params.invViewMatrix);
+			shader_->setMat4("prevView", params.prevViewMatrix);
+			shader_->setMat4("prevProjection", params.prevProjectionMatrix);
 
 			glActiveTexture(GL_TEXTURE0);
 			glBindTexture(GL_TEXTURE_2D, params.depthTexture);

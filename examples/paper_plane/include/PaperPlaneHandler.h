@@ -14,11 +14,23 @@ namespace Boidsish {
 	extern int selected_weapon;
 
 	class PaperPlane; // Forward declaration
+	class HudGauge;
+	class HudScore;
 
 	class PaperPlaneHandler: public SpatialEntityHandler {
 	public:
 		PaperPlaneHandler(task_thread_pool::task_thread_pool& thread_pool);
 		void PreTimestep(float time, float delta_time) override;
+
+		void SetHealthGauge(std::shared_ptr<HudGauge> gauge) { health_gauge_ = gauge; }
+
+		void SetScoreIndicator(std::shared_ptr<HudScore> indicator) { score_indicator_ = indicator; }
+
+		int GetScore() const;
+
+		void AddScore(int delta, const std::string& label) const;
+
+		void OnPlaneDeath(int score) const;
 
 		/**
 		 * @brief Finds a suitable starting position and orientation for the paper plane.
@@ -32,12 +44,14 @@ namespace Boidsish {
 	private:
 		mutable std::mutex                    target_mutex_;
 		mutable std::map<int, int>            target_counts_;
-		std::map<const Terrain*, int>         spawned_launchers_;
+		std::map<std::pair<int, int>, int>    spawned_launchers_;
 		std::random_device                    rd_;
 		std::mt19937                          eng_;
 		float                                 damage_timer_ = 0.0f;
 		std::uniform_real_distribution<float> damage_dist_;
-		std::map<const Terrain*, float>       launcher_cooldowns_;
+		std::map<std::pair<int, int>, float>  launcher_cooldowns_;
+		std::shared_ptr<HudGauge>             health_gauge_;
+		std::shared_ptr<HudScore>             score_indicator_;
 	};
 
 } // namespace Boidsish

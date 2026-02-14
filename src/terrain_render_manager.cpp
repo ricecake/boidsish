@@ -497,6 +497,7 @@ namespace Boidsish {
 		Shader&                         shader,
 		const glm::mat4&                view,
 		const glm::mat4&                projection,
+		const glm::vec2&                viewport_size,
 		const std::optional<glm::vec4>& clip_plane,
 		float                           tess_quality_multiplier
 	) {
@@ -509,6 +510,7 @@ namespace Boidsish {
 		shader.use();
 		shader.setMat4("view", view);
 		shader.setMat4("projection", projection);
+		shader.setVec2("uViewportSize", viewport_size);
 		shader.setMat4("model", glm::mat4(1.0f)); // Identity - instances provide world offset
 		shader.setFloat("uTessQualityMultiplier", tess_quality_multiplier);
 		shader.setFloat("uTessLevelMax", 64.0f);

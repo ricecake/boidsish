@@ -21,7 +21,9 @@ glcheck:
 	@cmake -B $(BUILD_DIR) -DCMAKE_BUILD_TYPE=$(CONFIG)
 	@cmake --build $(BUILD_DIR) --target glcheck
 
-test: all
+test:
+	@cmake -B $(BUILD_DIR) -DCMAKE_BUILD_TYPE=$(CONFIG)
+	@cmake --build $(BUILD_DIR) --target tests
 	@cd $(BUILD_DIR) && ctest --output-on-failure
 
 # Runs a specific example (e.g., 'make run X=boid_sim')
@@ -37,7 +39,3 @@ clean-build:
 
 clean:
 	rm -rf $(BUILD_DIR)
-
-clean-build:
-	@cmake -B $(BUILD_DIR) -DCMAKE_BUILD_TYPE=$(CONFIG)
-	@cmake --build $(BUILD_DIR) --parallel --clean-first

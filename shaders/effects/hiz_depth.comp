@@ -3,33 +3,31 @@
 layout(local_size_x = 8, local_size_y = 8) in;
 
 layout(binding = 0) uniform sampler2D u_InputDepth;
-layout(binding = 1, r32f) uniform writeonly image2D u_OutputDepth;
+layout(binding = 1, r32f) uniform writeonly image2D u_OutputMip;
 
-uniform vec2 u_DestSize;
+uniform int u_Mode; // 0: Copy level 0, 1: Downsample
 uniform int u_SrcLevel;
-uniform int u_Mode; // 0: Copy Level 0, 1: Downsample
+uniform vec2 u_DestSize;
 
 void main() {
-    ivec2 destPos = ivec2(gl_GlobalInvocationID.xy);
-    ivec2 size = ivec2(u_DestSize);
-    if (destPos.x >= size.x || destPos.y >= size.y) {
-        return;
-    }
+    ivec2 dstPos = ivec2(gl_GlobalInvocationID.xy);
+    if (dstPos.x >= int(u_DestSize.x) || dstPos.y >= int(u_DestSize.y)) return;
 
     if (u_Mode == 0) {
-        float d = texelFetch(u_InputDepth, destPos, 0).r;
-        imageStore(u_OutputDepth, destPos, vec4(d));
-        return;
+        // Just copy depth from level 0
+        float d = texelFetch(u_InputDepth, dstPos, 0).r;
+        imageStore(u_OutputMip, dstPos, vec4(d));
+    } else {
+        // Downsample from u_SrcLevel to u_SrcLevel + 1
+        ivec2 srcPos = dstPos * 2;
+
+        float d00 = texelFetch(u_InputDepth, srcPos + ivec2(0, 0), u_SrcLevel).r;
+        float d10 = texelFetch(u_InputDepth, srcPos + ivec2(1, 0), u_SrcLevel).r;
+        float d01 = texelFetch(u_InputDepth, srcPos + ivec2(0, 1), u_SrcLevel).r;
+        float d11 = texelFetch(u_InputDepth, srcPos + ivec2(1, 1), u_SrcLevel).r;
+
+        // Use MIN depth for conservative ray marching (closest point in 2x2 area)
+        float minDepth = min(min(d00, d10), min(d01, d11));
+        imageStore(u_OutputMip, dstPos, vec4(minDepth));
     }
-
-    ivec2 srcPos = destPos * 2;
-    float d0, d1, d2, d3;
-
-    d0 = texelFetch(u_InputDepth, srcPos + ivec2(0, 0), u_SrcLevel).r;
-    d1 = texelFetch(u_InputDepth, srcPos + ivec2(1, 0), u_SrcLevel).r;
-    d2 = texelFetch(u_InputDepth, srcPos + ivec2(0, 1), u_SrcLevel).r;
-    d3 = texelFetch(u_InputDepth, srcPos + ivec2(1, 1), u_SrcLevel).r;
-
-    float minDepth = min(min(d0, d1), min(d2, d3));
-    imageStore(u_OutputDepth, destPos, vec4(minDepth));
 }

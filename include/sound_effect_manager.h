@@ -1,6 +1,7 @@
 #pragma once
 
 #include <memory>
+#include <mutex>
 #include <string>
 #include <vector>
 
@@ -32,6 +33,7 @@ namespace Boidsish {
 	private:
 		AudioManager*                             _audio_manager;
 		std::vector<std::shared_ptr<SoundEffect>> _effects;
+		mutable std::mutex                        _mutex;
 	};
 
 } // namespace Boidsish

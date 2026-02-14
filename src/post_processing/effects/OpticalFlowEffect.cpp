@@ -29,12 +29,12 @@ namespace Boidsish {
 		}
 
 		void OpticalFlowEffect::CleanupFBO() {
-			glDeleteFramebuffers(1, &_previousFrameFBO);
-			glDeleteTextures(1, &_previousFrameTexture);
+			if (_previousFrameFBO) glDeleteFramebuffers(1, &_previousFrameFBO);
+			if (_previousFrameTexture) glDeleteTextures(1, &_previousFrameTexture);
 			glDeleteFramebuffers(2, _flowFBOs);
 			glDeleteTextures(2, _flowTextures);
-			glDeleteFramebuffers(1, &_outputFBO);
-			glDeleteTextures(1, &_outputTexture);
+			if (_outputFBO) glDeleteFramebuffers(1, &_outputFBO);
+			if (_outputTexture) glDeleteTextures(1, &_outputTexture);
 		}
 
 		void OpticalFlowEffect::InitializeFBO(int width, int height) {
@@ -52,8 +52,6 @@ namespace Boidsish {
 			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
 			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 			glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, _previousFrameTexture, 0);
-			if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
-				std::cerr << "ERROR::FRAMEBUFFER:: Previous Frame FBO is not complete!" << std::endl;
 
 			// Optical Flow FBOs (Ping-Pong)
 			for (int i = 0; i < 2; ++i) {
@@ -65,8 +63,6 @@ namespace Boidsish {
 				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
 				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 				glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, _flowTextures[i], 0);
-				if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
-					std::cerr << "ERROR::FRAMEBUFFER:: Flow FBO " << i << " is not complete!" << std::endl;
 			}
 
 			// Output FBO
@@ -78,8 +74,6 @@ namespace Boidsish {
 			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
 			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 			glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, _outputTexture, 0);
-			if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
-				std::cerr << "ERROR::FRAMEBUFFER:: Output FBO is not complete!" << std::endl;
 
 			glBindFramebuffer(GL_FRAMEBUFFER, 0);
 		}

@@ -10,6 +10,7 @@
 #include "graphics.h"
 #include "hud.h"
 #include "model.h"
+#include "steering_probe.h"
 #include "terrain_generator_interface.h"
 #include <GLFW/glfw3.h>
 
@@ -47,15 +48,10 @@ int main() {
 		Similar to the fire system balancing, but everything has a uniform density...density.
 		*/
 
-		visualizer->AddHudIcon(
-			{1, "assets/missile-icon.png", HudAlignment::TOP_LEFT, {10, 10}, {64, 64}, selected_weapon == 0}
-		);
-		visualizer->AddHudIcon(
-			{2, "assets/bomb-icon.png", HudAlignment::TOP_LEFT, {84, 10}, {64, 64}, selected_weapon == 1}
-		);
-		visualizer->AddHudIcon(
-			{3, "assets/bullet-icon.png", HudAlignment::TOP_LEFT, {84 + 10 + 64, 10}, {64, 64}, selected_weapon == 2}
-		);
+		std::vector<std::string> weaponIcons =
+			{"assets/missile-icon.png", "assets/bomb-icon.png", "assets/bullet-icon.png", "assets/icon.png"};
+		auto weaponSelector = visualizer->AddHudIconSet(weaponIcons, HudAlignment::TOP_LEFT, {10, 10}, {64, 64}, 10.0f);
+		weaponSelector->SetSelectedIndex(selected_weapon);
 
 		auto handler = PaperPlaneHandler(visualizer->GetThreadPool());
 		handler.SetVisualizer(visualizer);
@@ -68,7 +64,13 @@ int main() {
 		visualizer->AddShapeHandler(std::ref(handler));
 		visualizer->SetChaseCamera(plane);
 
-		visualizer->AddHudGauge({3, 100.0f, "Health", HudAlignment::BOTTOM_CENTER, {0, -50}, {200, 20}});
+		auto healthGauge = visualizer->AddHudGauge(100.0f, "Health", HudAlignment::BOTTOM_CENTER, {0, -50}, {200, 20});
+		handler.SetHealthGauge(healthGauge);
+
+		visualizer->AddHudCompass();
+		auto scoreIndicator = visualizer->AddHudScore();
+		handler.SetScoreIndicator(scoreIndicator);
+		visualizer->AddHudLocation();
 
 		auto controller = std::make_shared<PaperPlaneInputController>();
 		std::dynamic_pointer_cast<PaperPlane>(plane)->SetController(controller);
@@ -86,31 +88,34 @@ int main() {
 			controller->chaff = state.keys[GLFW_KEY_G];
 			controller->super_speed = state.keys[GLFW_KEY_B];
 			if (state.key_down[GLFW_KEY_F]) {
-				selected_weapon = (selected_weapon + 1) % 3;
-				visualizer->UpdateHudIcon(
-					1,
-					{1, "assets/missile-icon.png", HudAlignment::TOP_LEFT, {10, 10}, {64, 64}, selected_weapon == 0}
-				);
-				visualizer->UpdateHudIcon(
-					2,
-					{2, "assets/bomb-icon.png", HudAlignment::TOP_LEFT, {84, 10}, {64, 64}, selected_weapon == 1}
-				);
-				visualizer->UpdateHudIcon(
-					3,
-					{3,
-				     "assets/bullet-icon.png",
-				     HudAlignment::TOP_LEFT,
-				     {84 + 10 + 64, 10},
-				     {64, 64},
-				     selected_weapon == 2}
-				);
+				selected_weapon = (selected_weapon + 1) % 4;
+				weaponSelector->SetSelectedIndex(selected_weapon);
 			}
 		});
 
+		std::shared_ptr<SteeringProbe> sp = std::make_shared<SteeringProbe>(visualizer->GetTerrain());
+
+		auto dot = std::make_shared<Dot>(2343433);
+		dot->SetSize(940.0f);
+		// dot->SetInstanced(true);
+		// visualizer->AddShape(dot);
+		float                                         last_time = 0;
 		std::vector<std::shared_ptr<Boidsish::Shape>> shapes;
-		visualizer->AddShapeHandler([&](float time) { return shapes; });
+		visualizer->AddShapeHandler([&](float time) {
+			auto delta_time = time - last_time;
+			last_time = time;
+
+			sp->Update(delta_time, plane->GetPosition().Toglm(), plane->GetVelocity().Toglm());
+			auto pos = sp->GetPosition();
+			dot->SetPosition(pos.x, pos.y, pos.z);
+			sp->HandleCheckpoints(delta_time, handler, plane);
+
+			return shapes;
+		});
 		// auto model = std::make_shared<Boidsish::Model>("assets/utah_teapot.obj");
+		// model->SetInstanced(true);
 		// model->SetColossal(true);
+		shapes.push_back(dot);
 		// shapes.push_back(model);
 
 		visualizer->GetAudioManager().PlayMusic("assets/kazoom.mp3", true, 0.25f);

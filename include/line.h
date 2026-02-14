@@ -44,6 +44,8 @@ namespace Boidsish {
 
 		inline Style GetStyle() const { return style_; }
 
+		bool IsTransparent() const override { return GetA() < 0.99f || style_ == Style::LASER; }
+
 		static void InitLineMesh();
 		static void DestroyLineMesh();
 

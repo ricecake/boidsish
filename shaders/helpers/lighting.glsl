@@ -408,13 +408,13 @@ vec4 apply_lighting_pbr(vec3 frag_pos, vec3 normal, vec3 albedo, float roughness
 	vec3  F_env = fresnelSchlickRoughness(NdotV, F0_env, roughness);
 
 	// Fake environment color - gradient from horizon to sky
-	// Using a smoother transition to avoid sharp demarcation lines
-	float upAmount = clamp(R.y, -1.0, 1.0);
+	// Optimized to avoid a harsh demarcation line at the horizon
+	float upAmount = clamp(R.y, -1.0, 1.0) * 0.5 + 0.5;
 	vec3  envColor = mix(
-        vec3(0.2, 0.25, 0.3), // Ground/horizon color (darker)
-        vec3(0.5, 0.7, 1.0),  // Sky color
-        smoothstep(-0.2, 0.8, upAmount)
-    );
+		vec3(0.05, 0.1, 0.2), // Ground color (darker for contrast)
+		vec3(0.6, 0.8, 1.0),  // Sky color
+		smoothstep(0.4, 0.6, upAmount) // Wider transition to avoid line
+	);
 
 	// Environment reflection strength based on smoothness
 	float smoothness = 1.0 - roughness;
@@ -486,8 +486,15 @@ vec4 apply_lighting_pbr_no_shadows(vec3 frag_pos, vec3 normal, vec3 albedo, floa
 	vec3  F0_env = mix(vec3(0.04), albedo, metallic);
 	float NdotV = max(dot(N, V), 0.0);
 	vec3  F_env = fresnelSchlickRoughness(NdotV, F0_env, roughness);
-	float upAmount = clamp(R.y, -1.0, 1.0);
-	vec3  envColor = mix(vec3(0.2, 0.25, 0.3), vec3(0.5, 0.7, 1.0), smoothstep(-0.2, 0.8, upAmount));
+
+	// Optimized environment color for consistent reflections
+	float upAmount = clamp(R.y, -1.0, 1.0) * 0.5 + 0.5;
+	vec3  envColor = mix(
+		vec3(0.05, 0.1, 0.2),
+		vec3(0.6, 0.8, 1.0),
+		smoothstep(0.4, 0.6, upAmount)
+	);
+
 	float smoothness = 1.0 - roughness;
 	float envStrength = smoothness * smoothness * 0.8;
 	vec3  ambientSpecular = F_env * envColor * envStrength * ao;

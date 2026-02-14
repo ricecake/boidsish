@@ -30,6 +30,7 @@ namespace Boidsish {
 				const glm::mat4& prevProjectionMatrix,
 				const glm::vec3& cameraPos,
 				float            time,
+				float            worldScale,
 				uint32_t         frameCount
 			);
 			void Resize(int width, int height);

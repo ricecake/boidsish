@@ -24,6 +24,7 @@ namespace Boidsish {
 			glm::mat4 prevProjectionMatrix;
 			glm::vec3 cameraPos;
 			float     time;
+			float     worldScale;
 			uint32_t  frameCount;
 		};
 

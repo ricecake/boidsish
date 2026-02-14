@@ -10,47 +10,50 @@
 
 using namespace Boidsish;
 
-// Keep track of highlight state globally for simplicity in the demo
-bool g_icon_highlighted = false;
-
 int main() {
 	Visualizer viz(1024, 768, "HUD Demo");
 
-	// Add an icon. ID 1.
+	// Modern API: Add elements and keep pointers for easy updates
 	// NOTE: This demo requires an image at "assets/icon.png".
-	// If it's missing, an error will be logged, and the icon will not be displayed.
-	viz.AddHudIcon({1, "assets/icon.png", HudAlignment::TOP_LEFT, {10, 10}, {64, 64}, g_icon_highlighted});
+	auto icon = viz.AddHudIcon("assets/icon.png", HudAlignment::TOP_LEFT, {10, 10}, {64, 64});
+	auto timeDisplay = viz.AddHudNumber(0.0f, "Time", HudAlignment::TOP_RIGHT, {-10, 10}, 2);
+	auto progressGauge = viz.AddHudGauge(0.0f, "Progress", HudAlignment::BOTTOM_CENTER, {0, -50}, {200, 20});
 
-	// Add a number display. ID 2.
-	viz.AddHudNumber({2, 0.0f, "Time", HudAlignment::TOP_RIGHT, {-10, 10}, 2});
+	// New widgets
+	viz.AddHudCompass(HudAlignment::TOP_CENTER, {0, 20});
+	viz.AddHudLocation(HudAlignment::BOTTOM_LEFT, {10, -10});
+	auto scoreWidget = viz.AddHudScore(HudAlignment::TOP_RIGHT, {-10, 50});
 
-	// Add a gauge. ID 3.
-	viz.AddHudGauge({3, 0.0f, "0%", HudAlignment::BOTTOM_CENTER, {0, -50}, {200, 20}});
+	// Add an icon set (selectable)
+	std::vector<std::string> weaponIcons =
+		{"assets/missile-icon.png", "assets/bomb-icon.png", "assets/bullet-icon.png"};
+	auto weaponSelector = viz.AddHudIconSet(weaponIcons, HudAlignment::TOP_LEFT, {10, 84}, {64, 64}, 10.0f);
 
-	// Add an input handler to toggle the icon's highlight state on 'H' press
+	// Add an input handler
 	viz.AddInputCallback([&](const InputState& state) {
 		if (state.key_down[GLFW_KEY_H]) {
-			g_icon_highlighted = !g_icon_highlighted;
-			// Update the icon with the new state. We must provide the full struct.
-			viz.UpdateHudIcon(
-				1,
-				{1, "assets/icon.png", HudAlignment::TOP_LEFT, {10, 10}, {64, 64}, g_icon_highlighted}
-			);
+			icon->SetHighlighted(!icon->IsHighlighted());
+		}
+		if (state.key_down[GLFW_KEY_S]) {
+			scoreWidget->AddScore(10, "Bonus!");
+		}
+		if (state.key_down[GLFW_KEY_F]) {
+			int next = (weaponSelector->GetSelectedIndex() + 1) % 3;
+			weaponSelector->SetSelectedIndex(next);
 		}
 	});
 
-	// The main shape handler will update the dynamic HUD elements
+	// The main shape handler can still be used for frame updates
 	viz.AddShapeHandler([&](float time) {
-		// Update number
-		viz.UpdateHudNumber(2, {2, time, "Time", HudAlignment::TOP_RIGHT, {-10, 10}, 2});
+		timeDisplay->SetValue(time);
 
-		// Update gauge
 		float progress = fmod(time, 5.0f) / 5.0f;
-		char  overlay[10];
-		snprintf(overlay, 10, "%.0f%%", progress * 100);
-		viz.UpdateHudGauge(3, {3, progress, overlay, HudAlignment::BOTTOM_CENTER, {0, -50}, {200, 20}});
+		progressGauge->SetValue(progress);
 
-		// No 3D shapes needed for this demo
+		char overlay[16];
+		snprintf(overlay, sizeof(overlay), "%.0f%%", progress * 100);
+		progressGauge->SetLabel(overlay);
+
 		return std::vector<std::shared_ptr<Shape>>();
 	});
 
