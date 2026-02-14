@@ -68,9 +68,10 @@ namespace Boidsish {
 		float avoidanceStrength_ = 20.0f;
 
 		// State for dropping checkpoints
-		glm::vec3 lastCheckpointPos_{0.0f};
-		glm::vec3 lastCheckpointDir_{0.0f, 0.0f, -1.0f};
-		float     timeSinceLastDrop_ = 0.0f;
+		glm::vec3        lastCheckpointPos_{0.0f};
+		glm::vec3        lastCheckpointDir_{0.0f, 0.0f, -1.0f};
+		float            timeSinceLastDrop_ = 0.0f;
+		std::vector<int> activeCheckpoints_;
 	};
 
 } // namespace Boidsish
