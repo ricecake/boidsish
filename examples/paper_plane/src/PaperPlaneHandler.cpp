@@ -37,14 +37,14 @@ namespace Boidsish {
 		// }
 	}
 
-	void PaperPlaneHandler::RecordTarget(std::shared_ptr<GuidedMissileLauncher> target) const {
+	void PaperPlaneHandler::RecordTarget(std::shared_ptr<EntityBase> target) const {
 		if (target) {
 			std::lock_guard<std::mutex> lock(target_mutex_);
 			target_counts_[target->GetId()]++;
 		}
 	}
 
-	int PaperPlaneHandler::GetTargetCount(std::shared_ptr<GuidedMissileLauncher> target) const {
+	int PaperPlaneHandler::GetTargetCount(std::shared_ptr<EntityBase> target) const {
 		if (target) {
 			std::lock_guard<std::mutex> lock(target_mutex_);
 			auto                        it = target_counts_.find(target->GetId());
@@ -176,9 +176,9 @@ namespace Boidsish {
 				if (roamer == nullptr) {
 					should_remove = true;
 				} else {
-					// Roamers are only removed if they are far away (2000m)
+					// Roamers are only removed if they are far away (1500m)
 					float dist = glm::distance(roamer->GetPosition().Toglm(), plane_pos);
-					if (dist > 500.0f) {
+					if (dist > 1500.0f) {
 						should_remove = true;
 						QueueRemoveEntity(it->second);
 					}

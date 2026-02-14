@@ -29,6 +29,9 @@ namespace Boidsish {
 
 		float GetMaxHealth() const { return 100.0f; }
 
+		bool IsTargetable() const override { return true; }
+		void OnHit(float damage) override { health -= damage; damage_pending_++; }
+
 		bool IsChaffActive() const { return chaff_timer_ > 0.0f; }
 
 	private:

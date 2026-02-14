@@ -42,6 +42,25 @@ namespace Boidsish {
 		shape_->SetStart(current_pos);
 		shape_->SetEnd(current_pos - dir * streak_length);
 
+		// Entity collision check
+		if (auto spatial_handler = dynamic_cast<const SpatialEntityHandler*>(&handler)) {
+			auto targets = spatial_handler->GetEntitiesInRadius<EntityBase>(Vector3(current_pos.x, current_pos.y, current_pos.z), 3.0f);
+			for (auto& target : targets) {
+				if (target->IsTargetable()) {
+					target->OnHit(10.0f); // 10 damage per hit
+					handler.QueueRemoveEntity(id_);
+					// Small impact effect on entity
+					auto vis = handler.vis;
+					handler.EnqueueVisualizerAction([=]() {
+						if (vis) {
+							vis->AddFireEffect(current_pos, FireEffectStyle::Sparks, -dir, glm::vec3(0), 10, 0.2f);
+						}
+					});
+					return;
+				}
+			}
+		}
+
 		// Terrain collision check
 		auto [height, terrain_norm] = handler.GetTerrainPropertiesAtPoint(current_pos.x, current_pos.z);
 		if (current_pos.y <= height) {

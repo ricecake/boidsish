@@ -21,10 +21,10 @@ namespace Boidsish {
 		rigid_body_.angular_friction_ = 2.0f;
 		rigid_body_.SetMaxLinearVelocity(15.0f);
 
-		probe_.position = pos.Toglm();
-		probe_.flyHeight = 1.5f;
-		probe_.valleySlideStrength = 30.0f; // Reduced from 100
-		probe_.springStiffness = 5.0f;      // Increased from 1.1
+		probe_.SetPosition(pos.Toglm());
+		probe_.SetFlyHeight(1.5f);
+		probe_.SetValleySlideStrength(50.0f);
+		probe_.SetSpringStiffness(8.0f);
 
 		UpdateShape();
 	}
@@ -34,9 +34,45 @@ namespace Boidsish {
 	// 	shape_->SetScale(glm::vec3(2.0f));
 	// }
 
+	void PearEnemy::OnHit(float damage) {
+		health_ -= damage;
+	}
+
+	void PearEnemy::Destroy(const EntityHandler& handler) {
+		// Award points
+		if (auto* pp_handler = dynamic_cast<const PaperPlaneHandler*>(&handler)) {
+			pp_handler->AddScore(250, "Ground Unit Destroyed");
+		}
+
+		auto pos = GetPosition().Toglm();
+		auto [h_val, n_val] = handler.GetTerrainPropertiesAtPoint(pos.x, pos.z);
+		float     height = h_val;
+		glm::vec3 normal = n_val;
+		auto      vis = handler.vis;
+		auto      shape = this->shape_;
+		int       my_id = GetId();
+
+		handler.EnqueueVisualizerAction([vis, shape, normal, pos, height]() {
+			if (vis) {
+				vis->TriggerComplexExplosion(shape, normal, 1.5f, FireEffectStyle::Explosion);
+				if (auto terrain = vis->GetTerrain()) {
+					terrain->AddCrater({pos.x, height, pos.z}, 10.0f, 5.0f, 0.2f, 1.5f);
+				}
+				vis->AddSoundEffect("assets/rocket_explosion.wav", pos, glm::vec3(0), 15.0f);
+			}
+		});
+		handler.QueueRemoveEntity(my_id);
+	}
+
 	void PearEnemy::UpdateEntity(const EntityHandler& handler, float time, float delta_time) {
-		if (!probe_.terrain) {
-			probe_.terrain = handler.vis->GetTerrain();
+		if (health_ <= 0.0f) {
+			Destroy(handler);
+			return;
+		}
+
+		// Update probe terrain if not already set
+		if (handler.vis && handler.vis->GetTerrain()) {
+			probe_.SetTerrain(handler.vis->GetTerrain());
 		}
 
 		Roam(handler, delta_time);
@@ -116,15 +152,15 @@ namespace Boidsish {
 
 		if (!following_player) {
 			if (!has_target_ && wait_timer_ <= 0.0f) {
-			std::uniform_real_distribution<float> dist(-150.0f, 150.0f);
-			glm::vec3                             candidate = current_pos + glm::vec3(dist(eng_), 0.0f, dist(eng_));
+				std::uniform_real_distribution<float> dist(-150.0f, 150.0f);
+				glm::vec3                             candidate = current_pos + glm::vec3(dist(eng_), 0.0f, dist(eng_));
 
-			auto [h, norm] = handler.vis->GetTerrainPropertiesAtPoint(candidate.x, candidate.z);
+				auto [h, norm] = handler.vis->GetTerrainPropertiesAtPoint(candidate.x, candidate.z);
 
-			if (h < 60.0f && norm.y > 0.7f) {
-				target_pos_ = glm::vec3(candidate.x, h, candidate.z);
-				has_target_ = true;
-			}
+				if (h < 40.0f && norm.y > 0.7f) {
+					target_pos_ = glm::vec3(candidate.x, h, candidate.z);
+					has_target_ = true;
+				}
 			}
 
 			if (has_target_) {
@@ -186,8 +222,8 @@ namespace Boidsish {
 		auto [h, norm] = handler.vis->GetTerrainPropertiesAtPoint(current_pos.x, current_pos.z);
 		float target_h = h + 1.5f;
 		float error = target_h - current_pos.y;
-		float force_y = error * 40.0f - vel.y * 15.0f;
-		force_y = glm::clamp(force_y, -100.0f, 100.0f);
+		float force_y = error * 60.0f - vel.y * 25.0f;
+		force_y = glm::clamp(force_y, -150.0f, 150.0f);
 		rigid_body_.AddForce(glm::vec3(0, force_y, 0));
 
 		// 6. Orientation (Align with normal and movement)
