@@ -55,7 +55,11 @@ namespace Boidsish {
 		glm::vec3 move_dir = desired_pos - my_pos;
 		float     move_dist = glm::length(move_dir);
 		if (move_dist > 1.0f) {
-			glm::vec3 vel = glm::normalize(move_dir) * 15.0f; // Slow movement
+			float speed = 15.0f;
+			if (move_dist > 500.0f) {
+				speed = 60.0f; // Catch up faster if significantly out of position
+			}
+			glm::vec3 vel = glm::normalize(move_dir) * speed;
 			SetVelocity(vel.x, vel.y, vel.z);
 		} else {
 			SetVelocity(0, 0, 0);

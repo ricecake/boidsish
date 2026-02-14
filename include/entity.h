@@ -42,6 +42,7 @@ namespace Boidsish {
 		// Called each frame to update the entity
 		virtual void UpdateEntity(const EntityHandler& handler, float time, float delta_time) = 0;
 
+		// Generic interaction for weapons/collisions
 		virtual void OnHit(const EntityHandler& handler, float damage) {
 			(void)handler;
 			(void)damage;
