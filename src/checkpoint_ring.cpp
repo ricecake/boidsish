@@ -104,7 +104,9 @@ namespace Boidsish {
 	}
 
 	CheckpointRing::CheckpointRing(int id, float radius, CheckpointStyle style, Callback callback):
-		Entity<CheckpointRingShape>(id, radius, style), callback_(callback) {}
+		Entity<CheckpointRingShape>(id, radius, style),
+		callback_(callback),
+		lifespan_(Constants::Class::Checkpoint::DefaultLifespan()) {}
 
 	void CheckpointRing::RegisterEntity(std::shared_ptr<EntityBase> entity) {
 		if (!entity)
@@ -113,7 +115,13 @@ namespace Boidsish {
 		last_positions_[entity->GetId()] = entity->GetPosition().Toglm();
 	}
 
-	void CheckpointRing::UpdateEntity(const EntityHandler& /*handler*/, float /*time*/, float /*delta_time*/) {
+	void CheckpointRing::UpdateEntity(const EntityHandler& handler, float /*time*/, float delta_time) {
+		age_ += delta_time;
+		if (age_ > lifespan_) {
+			handler.QueueRemoveEntity(id_);
+			return;
+		}
+
 		glm::vec3 ringPos = GetPosition().Toglm();
 		glm::quat ringRot = rigid_body_.GetOrientation();
 		glm::vec3 ringNormal = ringRot * glm::vec3(0, 0, 1); // Local Z is forward
@@ -141,6 +149,9 @@ namespace Boidsish {
 								callback_(distFromCenter, entity);
 							}
 						}
+						// IRRELEVANT now that it has been passed
+						handler.QueueRemoveEntity(id_);
+						return;
 					}
 				}
 				last_positions_[id] = pos;

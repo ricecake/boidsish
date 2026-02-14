@@ -104,6 +104,27 @@ namespace Boidsish {
 	void SteeringProbe::HandleCheckpoints(float dt, EntityHandler& handler, std::shared_ptr<EntityBase> player) {
 		timeSinceLastDrop_ += dt;
 
+		// 1. Clean up stale checkpoints and handle "changed tracks"
+		for (auto it = activeCheckpoints_.begin(); it != activeCheckpoints_.end();) {
+			auto ring = handler.GetEntity(*it);
+			if (!ring) {
+				it = activeCheckpoints_.erase(it);
+				continue;
+			}
+
+			if (player) {
+				float dist = glm::distance(player->GetPosition().Toglm(), ring->GetPosition().Toglm());
+				// If the player is way off course (beyond far plane distance), remove the checkpoint
+				if (dist > Constants::Project::Camera::DefaultFarPlane()) {
+					handler.QueueRemoveEntity(*it);
+					it = activeCheckpoints_.erase(it);
+					continue;
+				}
+			}
+
+			++it;
+		}
+
 		if (glm::length(velocity_) < 0.1f)
 			return;
 		glm::vec3 currentDir = glm::normalize(velocity_);
@@ -134,6 +155,8 @@ namespace Boidsish {
 							  (void)e;
 							  logger::LOG("GOT RING PASS");
 						  });
+
+			activeCheckpoints_.push_back(id);
 
 			auto ring = handler.GetEntity(id);
 			if (ring) {
