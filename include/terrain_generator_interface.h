@@ -315,6 +315,25 @@ namespace Boidsish {
 		virtual std::vector<glm::vec3> GetPath(glm::vec2 start_pos, int num_points, float step_size) const = 0;
 		virtual glm::vec3              GetPathData(float x, float z) const = 0;
 
+		/**
+		 * @brief Find the closest terrain point in any direction, or within a specific cone.
+		 *
+		 * This method searches for the nearest terrain surface point to the given origin.
+		 * If a direction vector is provided, it limits the search to a cone aligned with that direction.
+		 * The radius parameter specifies the maximum search distance (for spherical search) or
+		 * the search distance and cone spread (for conical search).
+		 *
+		 * @param origin The 3D world position to search from
+		 * @param radius Optional maximum search distance (if vector is null) or cone spread (if vector is present)
+		 * @param vector Optional direction vector (if provided, search is restricted to a cone)
+		 * @return Tuple of (distance, direction_to_terrain). Direction is normalized.
+		 */
+		virtual std::tuple<float, glm::vec3> GetClosestTerrain(
+			const glm::vec3&           origin,
+			std::optional<float>     radius = std::nullopt,
+			std::optional<glm::vec3> vector = std::nullopt
+		) const = 0;
+
 	protected:
 		// Protected constructor - only derived classes can instantiate
 		ITerrainGenerator() = default;

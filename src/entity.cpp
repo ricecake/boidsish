@@ -175,6 +175,18 @@ namespace Boidsish {
 		return {dist, dir};
 	}
 
+	std::tuple<float, glm::vec3> EntityHandler::GetClosestTerrain(
+		const glm::vec3&           point,
+		std::optional<float>     radius,
+		std::optional<glm::vec3> vector
+	) const {
+		if (auto* gen = GetTerrainGenerator()) {
+			return gen->GetClosestTerrain(point, radius, vector);
+		}
+		// Default fallback using vertical distance
+		return GetClosestTerrainInfo(point);
+	}
+
 	bool EntityHandler::RaycastTerrain(
 		const glm::vec3& origin,
 		const glm::vec3& direction,
