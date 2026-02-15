@@ -42,16 +42,6 @@ namespace Boidsish {
 				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 				glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, pingpong_texture_[i], 0);
 
-				if (shared_depth_texture_ != 0) {
-					glFramebufferTexture2D(
-						GL_FRAMEBUFFER,
-						GL_DEPTH_STENCIL_ATTACHMENT,
-						GL_TEXTURE_2D,
-						shared_depth_texture_,
-						0
-					);
-				}
-
 				if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
 					std::cerr << "ERROR::FRAMEBUFFER:: Ping-pong FBO is not complete!" << std::endl;
 			}
@@ -81,6 +71,33 @@ namespace Boidsish {
 			depth_texture_ = depthTexture;
 			fbo_index_ = 0;
 			glViewport(0, 0, width_, height_);
+
+			DetachDepthFromPingPongFBOs();
+		}
+
+		void PostProcessingManager::AttachDepthToCurrentFBO() {
+			if (shared_depth_texture_ == 0)
+				return;
+
+			// Only attach to our ping-pong FBOs, not the source FBO (which should already have its own depth)
+			if (current_fbo_ == pingpong_fbo_[0] || current_fbo_ == pingpong_fbo_[1]) {
+				glBindFramebuffer(GL_FRAMEBUFFER, current_fbo_);
+				glFramebufferTexture2D(
+					GL_FRAMEBUFFER,
+					GL_DEPTH_STENCIL_ATTACHMENT,
+					GL_TEXTURE_2D,
+					shared_depth_texture_,
+					0
+				);
+			}
+		}
+
+		void PostProcessingManager::DetachDepthFromPingPongFBOs() {
+			for (int i = 0; i < 2; ++i) {
+				glBindFramebuffer(GL_FRAMEBUFFER, pingpong_fbo_[i]);
+				glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_TEXTURE_2D, 0, 0);
+			}
+			glBindFramebuffer(GL_FRAMEBUFFER, 0);
 		}
 
 		void PostProcessingManager::ApplyEarlyEffects(
@@ -89,6 +106,8 @@ namespace Boidsish {
 			const glm::vec3& cameraPos,
 			float            time
 		) {
+			DetachDepthFromPingPongFBOs();
+
 			for (const auto& effect : pre_tone_mapping_effects_) {
 				if (effect->IsEnabled() && effect->IsEarly()) {
 					ApplyEffectInternal(effect, viewMatrix, projectionMatrix, cameraPos, time);
@@ -126,9 +145,16 @@ namespace Boidsish {
 			glBindFramebuffer(GL_FRAMEBUFFER, pingpong_fbo_[fbo_index_]);
 			glClear(GL_COLOR_BUFFER_BIT);
 
+			// Post-processing quads should not be depth-tested or write to depth buffer
+			glDisable(GL_DEPTH_TEST);
+			glDepthMask(GL_FALSE);
+
 			glBindVertexArray(quad_vao_);
 			effect->Apply(current_texture_, depth_texture_, viewMatrix, projectionMatrix, cameraPos);
 			glBindVertexArray(0);
+
+			glEnable(GL_DEPTH_TEST);
+			glDepthMask(GL_TRUE);
 
 			current_texture_ = pingpong_texture_[fbo_index_];
 			current_fbo_ = pingpong_fbo_[fbo_index_];

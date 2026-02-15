@@ -23,6 +23,10 @@ namespace Boidsish {
 			void SetSharedDepthTexture(GLuint texture);
 
 			void BeginApply(GLuint sourceTexture, GLuint sourceFbo, GLuint depthTexture);
+
+			void AttachDepthToCurrentFBO();
+			void DetachDepthFromPingPongFBOs();
+
 			void ApplyEarlyEffects(
 				const glm::mat4& viewMatrix,
 				const glm::mat4& projectionMatrix,
