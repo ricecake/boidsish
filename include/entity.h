@@ -143,9 +143,10 @@ namespace Boidsish {
 			path_t_ = 0.0f;
 		}
 
-		void SetPathConstraint(std::shared_ptr<Path> path, float radius) {
+		void SetPathConstraint(std::shared_ptr<Path> path, float radius, float orientation_strength = 0.0f) {
 			constraint_path_ = path;
 			constraint_radius_ = radius;
+			constraint_orientation_strength_ = orientation_strength;
 		}
 
 		glm::vec3 ObjectToWorld(const glm::vec3& v) const { return rigid_body_.GetOrientation() * v; }
@@ -175,6 +176,7 @@ namespace Boidsish {
 		// Path constraint
 		std::shared_ptr<Path> constraint_path_;
 		float                 constraint_radius_ = 0.0f;
+		float                 constraint_orientation_strength_ = 0.0f;
 	};
 
 	// Template-based entity class that takes a shape

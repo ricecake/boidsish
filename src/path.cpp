@@ -369,4 +369,45 @@ namespace Boidsish {
 		return closest_point;
 	}
 
+	glm::vec3 Path::GetTangentAtClosestPoint(const Vector3& point) const {
+		if (waypoints_.size() < 2) {
+			return glm::vec3(0.0f, 0.0f, -1.0f);
+		}
+
+		float     min_dist_sq = std::numeric_limits<float>::max();
+		glm::vec3 best_tangent(0.0f, 0.0f, -1.0f);
+
+		int num_segments = (mode_ == PathMode::LOOP) ? waypoints_.size() : waypoints_.size() - 1;
+
+		for (int i = 0; i < num_segments; ++i) {
+			Vector3 p0, p1, p2, p3;
+			if (mode_ == PathMode::LOOP) {
+				p0 = waypoints_[(i - 1 + waypoints_.size()) % waypoints_.size()].position;
+				p1 = waypoints_[i].position;
+				p2 = waypoints_[(i + 1) % waypoints_.size()].position;
+				p3 = waypoints_[(i + 2) % waypoints_.size()].position;
+			} else {
+				p1 = waypoints_[i].position;
+				p2 = waypoints_[i + 1].position;
+				p0 = (i > 0) ? waypoints_[i - 1].position : (p1 - (p2 - p1));
+				p3 = (i < (int)waypoints_.size() - 2) ? waypoints_[i + 2].position : (p2 + (p2 - p1));
+			}
+
+			for (int j = 0; j <= 20; ++j) {
+				float   t = (float)j / 20.0f;
+				Vector3 spline_point = Spline::CatmullRom(t, p0, p1, p2, p3);
+				float   dist_sq = (spline_point - point).MagnitudeSquared();
+				if (dist_sq < min_dist_sq) {
+					min_dist_sq = dist_sq;
+					Vector3 tangent = Spline::CatmullRomDerivative(t, p0, p1, p2, p3);
+					if (tangent.MagnitudeSquared() > 1e-6) {
+						tangent.Normalize();
+						best_tangent = glm::vec3(tangent.x, tangent.y, tangent.z);
+					}
+				}
+			}
+		}
+		return best_tangent;
+	}
+
 } // namespace Boidsish

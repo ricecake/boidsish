@@ -68,6 +68,17 @@ namespace Boidsish {
 		) const;
 
 		glm::vec3 FindClosestPoint(const Vector3& point) const;
+		glm::vec3 GetTangentAtClosestPoint(const Vector3& point) const;
+
+		void ClearWaypoints() {
+			waypoints_.clear();
+			buffers_initialized_ = false;
+		}
+
+		void SetWaypoints(const std::vector<Waypoint>& waypoints) {
+			waypoints_ = waypoints;
+			buffers_initialized_ = false;
+		}
 
 		PathMode GetMode() const { return mode_; }
 
