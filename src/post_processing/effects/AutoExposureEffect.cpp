@@ -52,5 +52,22 @@ namespace Boidsish {
 
 		void AutoExposureEffect::Resize(int /*width*/, int /*height*/) {}
 
+		void AutoExposureEffect::SetEnabled(bool enabled) {
+			is_enabled_ = enabled;
+			if (exposureSsbo_ != 0) {
+				glBindBuffer(GL_SHADER_STORAGE_BUFFER, exposureSsbo_);
+				float val = enabled ? 1.0f : 0.0f;
+				glBufferSubData(GL_SHADER_STORAGE_BUFFER, 2 * sizeof(float), sizeof(float), &val);
+				glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
+			}
+		}
+
+		void AutoExposureEffect::SetTime(float time) {
+			if (lastTime_ > 0.0f) {
+				deltaTime_ = time - lastTime_;
+			}
+			lastTime_ = time;
+		}
+
 	} // namespace PostProcessing
 } // namespace Boidsish
