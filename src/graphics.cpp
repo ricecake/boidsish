@@ -2543,6 +2543,10 @@ namespace Boidsish {
 		if (effects_enabled) {
 			impl->post_processing_manager_->BeginApply(current_texture, impl->main_fbo_, current_depth);
 			impl->post_processing_manager_->ApplyEarlyEffects(view, impl->projection, impl->camera.pos(), impl->simulation_time);
+
+			// Re-bind shadows for transparent objects as early effects may have changed texture bindings
+			impl->BindShadows(*impl->shader);
+
 			impl->post_processing_manager_->AttachDepthToCurrentFBO();
 			glBindFramebuffer(GL_FRAMEBUFFER, impl->post_processing_manager_->GetCurrentFBO());
 			current_texture = impl->post_processing_manager_->GetFinalTexture();
