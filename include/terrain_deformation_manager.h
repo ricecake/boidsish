@@ -12,6 +12,8 @@
 
 namespace Boidsish {
 
+	static constexpr int MAX_DEFORMATIONS_PER_VOXEL = 8;
+
 	/**
 	 * @brief Entry stored in the deformation voxel grid
 	 *
@@ -19,15 +21,46 @@ namespace Boidsish {
 	 * to the deformation object for additional queries.
 	 */
 	struct DeformationVoxelEntry {
-		uint32_t  deformation_id = 0;              // ID of the owning deformation
-		float     precomputed_height_delta = 0.0f; // Cached height delta for this voxel
-		float     blend_weight = 0.0f;             // How strongly this voxel is affected
-		glm::vec3 voxel_center{0.0f};              // Center position of this voxel
+		uint32_t deformation_ids[MAX_DEFORMATIONS_PER_VOXEL] = {0};
+		float    precomputed_height_delta = 0.0f; // Cached total height delta for this voxel
 
 		DeformationVoxelEntry() = default;
 
-		DeformationVoxelEntry(uint32_t id, float delta, float weight, const glm::vec3& center):
-			deformation_id(id), precomputed_height_delta(delta), blend_weight(weight), voxel_center(center) {}
+		DeformationVoxelEntry(uint32_t id, float delta): precomputed_height_delta(delta) { deformation_ids[0] = id; }
+
+		bool AddDeformation(uint32_t id, float delta) {
+			for (int i = 0; i < MAX_DEFORMATIONS_PER_VOXEL; ++i) {
+				if (deformation_ids[i] == id)
+					return false;
+			}
+			for (int i = 0; i < MAX_DEFORMATIONS_PER_VOXEL; ++i) {
+				if (deformation_ids[i] == 0) {
+					deformation_ids[i] = id;
+					precomputed_height_delta += delta;
+					return true;
+				}
+			}
+			return false;
+		}
+
+		bool RemoveDeformation(uint32_t id, float delta) {
+			for (int i = 0; i < MAX_DEFORMATIONS_PER_VOXEL; ++i) {
+				if (deformation_ids[i] == id) {
+					deformation_ids[i] = 0;
+					precomputed_height_delta -= delta;
+					return true;
+				}
+			}
+			return false;
+		}
+
+		bool IsEmpty() const {
+			for (int i = 0; i < MAX_DEFORMATIONS_PER_VOXEL; ++i) {
+				if (deformation_ids[i] != 0)
+					return false;
+			}
+			return true;
+		}
 	};
 
 	/**

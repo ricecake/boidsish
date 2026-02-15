@@ -97,8 +97,11 @@ namespace Boidsish {
 		auto           accessor = voxel_grid_.createConstAccessor();
 		const auto*    entry = accessor.value(coord);
 
-		if (entry && entry->deformation_id > 0) {
-			affecting_ids.insert(entry->deformation_id);
+		if (entry) {
+			for (uint32_t id : entry->deformation_ids) {
+				if (id > 0)
+					affecting_ids.insert(id);
+			}
 		}
 
 		// Also check surrounding voxels for deformations that might overlap
@@ -108,8 +111,11 @@ namespace Boidsish {
 					continue;
 				Bonxai::CoordT neighbor{coord.x + dx, coord.y, coord.z + dz};
 				const auto*    neighbor_entry = accessor.value(neighbor);
-				if (neighbor_entry && neighbor_entry->deformation_id > 0) {
-					affecting_ids.insert(neighbor_entry->deformation_id);
+				if (neighbor_entry) {
+					for (uint32_t id : neighbor_entry->deformation_ids) {
+						if (id > 0)
+							affecting_ids.insert(id);
+					}
 				}
 			}
 		}
@@ -163,7 +169,13 @@ namespace Boidsish {
 		auto           accessor = voxel_grid_.createConstAccessor();
 		const auto*    entry = accessor.value(coord);
 
-		return entry != nullptr && entry->deformation_id > 0;
+		if (!entry)
+			return false;
+		for (uint32_t id : entry->deformation_ids) {
+			if (id > 0)
+				return true;
+		}
+		return false;
 	}
 
 	float TerrainDeformationManager::GetCachedHeightDelta(float x, float z) const {
@@ -173,7 +185,7 @@ namespace Boidsish {
 		auto           accessor = voxel_grid_.createConstAccessor();
 		const auto*    entry = accessor.value(coord);
 
-		if (entry && entry->deformation_id > 0) {
+		if (entry) {
 			return entry->precomputed_height_delta;
 		}
 		return 0.0f;
@@ -194,11 +206,15 @@ namespace Boidsish {
 			for (int dz = -1; dz <= 1; ++dz) {
 				Bonxai::CoordT check{coord.x + dx, coord.y, coord.z + dz};
 				const auto*    entry = accessor.value(check);
-				if (entry && entry->deformation_id > 0 && found_ids.find(entry->deformation_id) == found_ids.end()) {
-					auto it = deformations_.find(entry->deformation_id);
-					if (it != deformations_.end() && it->second->ContainsPointXZ(x, z)) {
-						result.push_back(it->second);
-						found_ids.insert(entry->deformation_id);
+				if (entry) {
+					for (uint32_t id : entry->deformation_ids) {
+						if (id > 0 && found_ids.find(id) == found_ids.end()) {
+							auto it = deformations_.find(id);
+							if (it != deformations_.end() && it->second->ContainsPointXZ(x, z)) {
+								result.push_back(it->second);
+								found_ids.insert(id);
+							}
+						}
 					}
 				}
 			}
@@ -329,16 +345,14 @@ namespace Boidsish {
 				// Use a reference height of 0 for precomputation
 				float height_delta = deformation->ComputeHeightDelta(x, z, 0.0f);
 
-				// Compute blend weight (distance-based falloff from deformation center)
-				glm::vec3 center = deformation->GetCenter();
-				float     dist_xz = std::sqrt((x - center.x) * (x - center.x) + (z - center.z) * (z - center.z));
-				float     max_radius = deformation->GetMaxRadius();
-				float     blend_weight = 1.0f - std::clamp(dist_xz / max_radius, 0.0f, 1.0f);
-
-				DeformationVoxelEntry entry(deformation->GetId(), height_delta, blend_weight, glm::vec3(x, 0.0f, z));
-
 				Bonxai::CoordT coord = voxel_grid_.posToCoord(x, 0.0, z);
-				accessor.setValue(coord, entry);
+				auto*          entry = accessor.value(coord);
+				if (entry) {
+					entry->AddDeformation(deformation->GetId(), height_delta);
+				} else {
+					DeformationVoxelEntry new_entry(deformation->GetId(), height_delta);
+					accessor.setValue(coord, new_entry);
+				}
 			}
 		}
 	}
@@ -360,8 +374,12 @@ namespace Boidsish {
 			for (float z = min_bound.z; z <= max_bound.z; z += static_cast<float>(voxel_size_)) {
 				Bonxai::CoordT coord = voxel_grid_.posToCoord(x, 0.0, z);
 				auto*          entry = accessor.value(coord);
-				if (entry && entry->deformation_id == deformation_id) {
-					accessor.setCellOff(coord);
+				if (entry) {
+					float height_delta = deformation->ComputeHeightDelta(x, z, 0.0f);
+					entry->RemoveDeformation(deformation_id, height_delta);
+					if (entry->IsEmpty()) {
+						accessor.setCellOff(coord);
+					}
 				}
 			}
 		}

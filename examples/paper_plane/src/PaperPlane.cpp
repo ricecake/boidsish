@@ -247,8 +247,8 @@ namespace Boidsish {
 		// --- Auto-leveling ---
 		if (state_ == PlaneState::DYING) {
 			target_rot_velocity *= 0.2f;
-			target_rot_velocity.z += 0.75f * spiral_intensity_ * sin(time/3);
-			target_rot_velocity.x += 0.5f * spiral_intensity_ * sin(time/5);
+			target_rot_velocity.z += 0.75f * spiral_intensity_ * sin(time / 3);
+			target_rot_velocity.x += 0.5f * spiral_intensity_ * sin(time / 5);
 		}
 
 		if (!controller_->pitch_up && !controller_->pitch_down && !controller_->yaw_left && !controller_->yaw_right &&
@@ -262,8 +262,6 @@ namespace Boidsish {
 			}
 
 			glm::vec3 world_up_in_local = glm::inverse(orientation_) * world_up;
-
-
 
 			// glm::vec3 forward_on_horizon = glm::normalize(
 			// 	glm::vec3(plane_forward_world.x, 0.0f, plane_forward_world.zs)
@@ -405,7 +403,7 @@ namespace Boidsish {
 		health -= 5;
 		damage_pending_++;
 		if (state_ == PlaneState::DYING) {
-			spiral_intensity_ += (std::abs(health)-1) / (std::max(std::abs(health), 1.0f));
+			spiral_intensity_ += (std::abs(health) - 1) / (std::max(std::abs(health), 1.0f));
 		}
 	}
 
