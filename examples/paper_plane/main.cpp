@@ -5,6 +5,7 @@
 #include "PaperPlane.h"
 #include "PaperPlaneHandler.h"
 #include "PaperPlaneInputController.h"
+#include "checkpoint_spline.h"
 #include "constants.h"
 #include "decor_manager.h"
 #include "graphics.h"
@@ -95,6 +96,9 @@ int main() {
 
 		std::shared_ptr<SteeringProbe> sp = std::make_shared<SteeringProbe>(visualizer->GetTerrain());
 
+		auto spline = std::make_shared<CheckpointSpline>(12345);
+		visualizer->AddShape(spline);
+
 		auto dot = std::make_shared<Dot>(2343433);
 		dot->SetSize(940.0f);
 		// dot->SetInstanced(true);
@@ -109,6 +113,13 @@ int main() {
 			auto pos = sp->GetPosition();
 			dot->SetPosition(pos.x, pos.y, pos.z);
 			sp->HandleCheckpoints(delta_time, handler, plane);
+
+			spline->UpdateFromCheckpoints(sp->GetActiveCheckpoints(), handler);
+			spline->SubdivideAndAdjustForTerrain(visualizer->GetTerrain(), 20.0f);
+
+			// Constrain plane to spline (Rail Shooter mode)
+			// Hard limit of 50 units, soft limit (orientation) of 2.0 strength
+			plane->SetPathConstraint(spline, 50.0f, 2.0f);
 
 			return shapes;
 		});

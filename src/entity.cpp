@@ -115,6 +115,25 @@ namespace Boidsish {
 					Vector3 corrected_position = closest_point + from_path * entity->constraint_radius_;
 					entity->SetPosition(corrected_position);
 				}
+
+				// Apply orientation constraint (soft limit)
+				if (entity->constraint_orientation_strength_ > 0.0f) {
+					glm::vec3 tangent = entity->constraint_path_->GetTangentAtClosestPoint(entity->GetPosition());
+					// Use current up vector if possible, or world up
+					glm::vec3 up = entity->ObjectToWorld(glm::vec3(0, 1, 0));
+					if (glm::length(glm::cross(tangent, up)) < 0.001f) {
+						up = glm::vec3(0, 1, 0);
+						if (glm::length(glm::cross(tangent, up)) < 0.001f) {
+							up = glm::vec3(1, 0, 0);
+						}
+					}
+					glm::quat target_orientation = glm::quatLookAt(tangent, up);
+					entity->rigid_body_.SetOrientation(glm::slerp(
+						entity->rigid_body_.GetOrientation(),
+						target_orientation,
+						std::min(1.0f, entity->constraint_orientation_strength_ * delta_time)
+					));
+				}
 			}
 
 			// Update the entity's shape
