@@ -22,10 +22,13 @@ out vec3 vs_color;
 out vec3 barycentric;
 out vec2 TexCoords;
 out vec4 InstanceColor;
+out vec4 CurrClipPos;
+out vec4 PrevClipPos;
 
 uniform mat4  model;
 uniform mat4  view;
 uniform mat4  projection;
+uniform mat4  uPrevViewProjection;
 uniform vec4  clipPlane;
 uniform float ripple_strength;
 uniform bool  isColossal = false;
@@ -142,8 +145,12 @@ void main() {
 		gl_Position = projection * staticView * world_pos;
 		gl_Position.z = gl_Position.w * 0.99999;
 		FragPos = world_pos.xyz;
+		CurrClipPos = gl_Position;
+		PrevClipPos = gl_Position; // Colossal objects are usually static or move with camera
 	} else {
 		gl_Position = projection * view * vec4(FragPos, 1.0);
+		CurrClipPos = gl_Position;
+		PrevClipPos = uPrevViewProjection * vec4(FragPos, 1.0);
 	}
 
 	gl_ClipDistance[0] = dot(vec4(FragPos, 1.0), clipPlane);

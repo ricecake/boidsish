@@ -1,0 +1,42 @@
+#version 430 core
+
+layout(local_size_x = 16, local_size_y = 16) in;
+
+layout(binding = 0) uniform sampler2D uCurrentReflection;
+layout(binding = 1) uniform sampler2D uHistoryReflection;
+layout(binding = 2) uniform sampler2D uVelocity;
+layout(binding = 3) uniform sampler2D uDepth;
+
+layout(binding = 0, rgba16f) uniform writeonly image2D uOutputAccumulated;
+
+#include "temporal.glsl"
+
+void main() {
+    ivec2 pixel = ivec2(gl_GlobalInvocationID.xy);
+    ivec2 size = imageSize(uOutputAccumulated);
+    if (pixel.x >= size.x || pixel.y >= size.y) return;
+
+    vec2 uv = (vec2(pixel) + 0.5) / vec2(size);
+    float depth = texture(uDepth, uv).r;
+
+    ReprojectionResult reproj = reproject(uv, depth, uVelocity);
+
+    vec4 current = texture(uCurrentReflection, uv);
+
+    if (reproj.isValid) {
+        vec4 history = texture(uHistoryReflection, reproj.uv);
+
+        // Neighborhood stats for clipping
+        vec3 nMin, nMax, nAvg;
+        getNeighborhoodStats(uCurrentReflection, uv, nMin, nMax, nAvg);
+
+        history.rgb = clipHistory(history.rgb, nMin, nMax);
+
+        // Accumulate
+        float alpha = 0.05; // 5% current frame
+        vec4 accumulated = mix(history, current, alpha);
+        imageStore(uOutputAccumulated, pixel, accumulated);
+    } else {
+        imageStore(uOutputAccumulated, pixel, current);
+    }
+}

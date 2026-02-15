@@ -11,6 +11,15 @@ class Shader; // Forward declaration
 namespace Boidsish {
 	namespace PostProcessing {
 
+		struct GBuffer {
+			GLuint depth;
+			GLuint normal;
+			GLuint material;
+			GLuint velocity;
+			GLuint hiz;
+			int    hiz_levels;
+		};
+
 		class PostProcessingManager {
 		public:
 			PostProcessingManager(int width, int height, GLuint quad_vao);
@@ -21,7 +30,7 @@ namespace Boidsish {
 			void   SetToneMappingEffect(std::shared_ptr<IPostProcessingEffect> effect);
 			GLuint ApplyEffects(
 				GLuint           sourceTexture,
-				GLuint           depthTexture,
+				const GBuffer&   gbuffer,
 				const glm::mat4& viewMatrix,
 				const glm::mat4& projectionMatrix,
 				const glm::vec3& cameraPos,

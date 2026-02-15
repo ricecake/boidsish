@@ -40,6 +40,7 @@
 #include "post_processing/effects/OpticalFlowEffect.h"
 #include "post_processing/effects/SdfVolumeEffect.h"
 #include "post_processing/effects/SsaoEffect.h"
+#include "post_processing/effects/SssrEffect.h"
 #include "post_processing/effects/StrobeEffect.h"
 #include "post_processing/effects/SuperSpeedEffect.h"
 #include "post_processing/effects/TimeStutterEffect.h"
@@ -231,17 +232,21 @@ namespace Boidsish {
 		std::shared_ptr<Shader> shader;
 		std::unique_ptr<Shader> plane_shader;
 		std::unique_ptr<Shader> sky_shader;
-		std::unique_ptr<Shader> trail_shader;
-		std::unique_ptr<Shader> blur_shader;
-		std::unique_ptr<Shader> postprocess_shader_;
-		GLuint                  plane_vao{0}, plane_vbo{0}, sky_vao{0}, blur_quad_vao{0}, blur_quad_vbo{0};
-		GLuint                  reflection_fbo{0}, reflection_texture{0}, reflection_depth_rbo{0};
-		GLuint                  pingpong_fbo[2]{0}, pingpong_texture[2]{0};
+		std::unique_ptr<Shader>        trail_shader;
+		std::unique_ptr<Shader>        postprocess_shader_;
+		std::unique_ptr<ComputeShader> hiz_shader_;
+		GLuint                         plane_vao{0}, plane_vbo{0}, sky_vao{0}, blur_quad_vao{0}, blur_quad_vbo{0};
+		GLuint                  hiz_texture_{0};
+		int                     hiz_levels_{0};
 		GLuint                  main_fbo_{0}, main_fbo_texture_{0}, main_fbo_depth_texture_{0}, main_fbo_rbo_{0};
+		GLuint                  main_fbo_normal_texture_{0};
+		GLuint                  main_fbo_material_texture_{0}; // R: Roughness, G: Metallic, B: AO
+		GLuint                  main_fbo_velocity_texture_{0};
 		GLuint                  lighting_ubo{0};
 		GLuint                  visual_effects_ubo{0};
 		GLuint                  frustum_ubo{0};
 		glm::mat4               projection, reflection_vp;
+		glm::mat4               prev_view_projection_{1.0f};
 
 		double last_mouse_x = 0.0, last_mouse_y = 0.0;
 		bool   first_mouse = true;
@@ -474,12 +479,9 @@ namespace Boidsish {
 			if (ConfigManager::GetInstance().GetAppSettingBool("enable_skybox", true)) {
 				sky_shader = std::make_unique<Shader>("shaders/sky.vert", "shaders/sky.frag");
 			}
-			if (ConfigManager::GetInstance().GetAppSettingBool("enable_floor", true) &&
-			    ConfigManager::GetInstance().GetAppSettingBool("enable_floor_reflection", true)) {
-				blur_shader = std::make_unique<Shader>("shaders/blur.vert", "shaders/blur.frag");
-			}
 			if (ConfigManager::GetInstance().GetAppSettingBool("enable_effects", true)) {
 				postprocess_shader_ = std::make_unique<Shader>("shaders/postprocess.vert", "shaders/postprocess.frag");
+				hiz_shader_ = std::make_unique<ComputeShader>("shaders/post_processing/hiz.comp");
 			}
 			if (ConfigManager::GetInstance().GetAppSettingBool("enable_terrain", true)) {
 				terrain_generator = std::make_shared<TerrainGenerator>();
@@ -598,7 +600,7 @@ namespace Boidsish {
 			Line::InitLineMesh();
 			CheckpointRingShape::InitQuadMesh();
 
-			if (postprocess_shader_ || blur_shader) {
+			if (postprocess_shader_) {
 				float blur_quad_vertices[] = {
 					// positions   // texCoords
 					-1.0f, 1.0f, 0.0f, 1.0f, -1.0f, -1.0f, 0.0f, 0.0f, 1.0f, -1.0f, 1.0f, 0.0f,
@@ -652,84 +654,13 @@ namespace Boidsish {
 				glEnableVertexAttribArray(0);
 				glBindVertexArray(0);
 
-				if (blur_shader) {
-					// --- Reflection Framebuffer ---
-					glGenFramebuffers(1, &reflection_fbo);
-					glBindFramebuffer(GL_FRAMEBUFFER, reflection_fbo);
-
-					// Color attachment
-					glGenTextures(1, &reflection_texture);
-					glBindTexture(GL_TEXTURE_2D, reflection_texture);
-					glTexImage2D(
-						GL_TEXTURE_2D,
-						0,
-						GL_RGB,
-						render_width,
-						render_height,
-						0,
-						GL_RGB,
-						GL_UNSIGNED_BYTE,
-						NULL
-					);
-					glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-					glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-					glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, reflection_texture, 0);
-
-					// Depth renderbuffer
-					glGenRenderbuffers(1, &reflection_depth_rbo);
-					glBindRenderbuffer(GL_RENDERBUFFER, reflection_depth_rbo);
-					glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT24, render_width, render_height);
-					glFramebufferRenderbuffer(
-						GL_FRAMEBUFFER,
-						GL_DEPTH_ATTACHMENT,
-						GL_RENDERBUFFER,
-						reflection_depth_rbo
-					);
-
-					if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
-						std::cerr << "ERROR::FRAMEBUFFER:: Framebuffer is not complete!" << std::endl;
-					glBindFramebuffer(GL_FRAMEBUFFER, 0);
-
-					// --- Ping-pong Framebuffers for blurring ---
-					glGenFramebuffers(2, pingpong_fbo);
-					glGenTextures(2, pingpong_texture);
-					for (unsigned int i = 0; i < 2; i++) {
-						glBindFramebuffer(GL_FRAMEBUFFER, pingpong_fbo[i]);
-						glBindTexture(GL_TEXTURE_2D, pingpong_texture[i]);
-						glTexImage2D(
-							GL_TEXTURE_2D,
-							0,
-							GL_RGB16F,
-							render_width,
-							render_height,
-							0,
-							GL_RGB,
-							GL_FLOAT,
-							NULL
-						);
-						glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-						glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-						glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-						glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-						glFramebufferTexture2D(
-							GL_FRAMEBUFFER,
-							GL_COLOR_ATTACHMENT0,
-							GL_TEXTURE_2D,
-							pingpong_texture[i],
-							0
-						);
-						if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
-							std::cerr << "ERROR::FRAMEBUFFER:: Ping-pong Framebuffer is not complete!" << std::endl;
-					}
-					glBindFramebuffer(GL_FRAMEBUFFER, 0);
-				}
 			}
 
 			// --- Main Scene Framebuffer ---
 			glGenFramebuffers(1, &main_fbo_);
 			glBindFramebuffer(GL_FRAMEBUFFER, main_fbo_);
 
-			// Color attachment
+			// Color attachment (Radiance)
 			glGenTextures(1, &main_fbo_texture_);
 			glBindTexture(GL_TEXTURE_2D, main_fbo_texture_);
 			if (enable_hdr_) {
@@ -740,6 +671,30 @@ namespace Boidsish {
 			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
 			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 			glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, main_fbo_texture_, 0);
+
+			// Normal attachment
+			glGenTextures(1, &main_fbo_normal_texture_);
+			glBindTexture(GL_TEXTURE_2D, main_fbo_normal_texture_);
+			glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, render_width, render_height, 0, GL_RGBA, GL_FLOAT, NULL);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+			glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT1, GL_TEXTURE_2D, main_fbo_normal_texture_, 0);
+
+			// Material attachment (R: Roughness, G: Metallic, B: AO)
+			glGenTextures(1, &main_fbo_material_texture_);
+			glBindTexture(GL_TEXTURE_2D, main_fbo_material_texture_);
+			glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, render_width, render_height, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+			glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT2, GL_TEXTURE_2D, main_fbo_material_texture_, 0);
+
+			// Velocity attachment
+			glGenTextures(1, &main_fbo_velocity_texture_);
+			glBindTexture(GL_TEXTURE_2D, main_fbo_velocity_texture_);
+			glTexImage2D(GL_TEXTURE_2D, 0, GL_RG16F, render_width, render_height, 0, GL_RG, GL_FLOAT, NULL);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+			glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT3, GL_TEXTURE_2D, main_fbo_velocity_texture_, 0);
 
 			// Depth-stencil texture (for shockwave depth testing and stencil operations)
 			// Using GL_DEPTH24_STENCIL8 allows sampling depth while also providing stencil
@@ -830,6 +785,10 @@ namespace Boidsish {
 				auto atmosphere_effect = std::make_shared<PostProcessing::AtmosphereEffect>();
 				atmosphere_effect->SetEnabled(true);
 				post_processing_manager_->AddEffect(atmosphere_effect);
+
+				auto sssr_effect = std::make_shared<PostProcessing::SssrEffect>();
+				sssr_effect->SetEnabled(true);
+				post_processing_manager_->AddEffect(sssr_effect);
 
 				auto bloom_effect = std::make_shared<PostProcessing::BloomEffect>(render_width, render_height);
 				bloom_effect->SetEnabled(false);
@@ -977,18 +936,18 @@ namespace Boidsish {
 			if (sky_vao) {
 				glDeleteVertexArrays(1, &sky_vao);
 			}
-			if (reflection_fbo) {
-				glDeleteFramebuffers(1, &reflection_fbo);
-				glDeleteTextures(1, &reflection_texture);
-				glDeleteRenderbuffers(1, &reflection_depth_rbo);
-				glDeleteFramebuffers(2, pingpong_fbo);
-				glDeleteTextures(2, pingpong_texture);
-			}
 
 			if (main_fbo_) {
 				glDeleteFramebuffers(1, &main_fbo_);
 				glDeleteTextures(1, &main_fbo_texture_);
+				glDeleteTextures(1, &main_fbo_normal_texture_);
+				glDeleteTextures(1, &main_fbo_material_texture_);
+				glDeleteTextures(1, &main_fbo_velocity_texture_);
 				glDeleteTextures(1, &main_fbo_depth_texture_);
+			}
+
+			if (hiz_texture_) {
+				glDeleteTextures(1, &hiz_texture_);
 			}
 
 			if (lighting_ubo) {
@@ -1324,26 +1283,6 @@ namespace Boidsish {
 			glDepthMask(GL_TRUE);
 		}
 
-		// TODO: Replace the multi-pass Gaussian blur with a more performant technique.
-		// See performance_and_quality_audit.md#2-optimized-screen-space-reflections-and-blur
-		void RenderBlur(int amount) {
-			glDisable(GL_DEPTH_TEST);
-			blur_shader->use();
-			bool horizontal = true, first_iteration = true;
-			for (int i = 0; i < amount; i++) {
-				glBindFramebuffer(GL_FRAMEBUFFER, pingpong_fbo[horizontal]);
-				blur_shader->setInt("horizontal", horizontal);
-				glActiveTexture(GL_TEXTURE0);
-				glBindTexture(GL_TEXTURE_2D, first_iteration ? reflection_texture : pingpong_texture[!horizontal]);
-				glBindVertexArray(blur_quad_vao);
-				glDrawArrays(GL_TRIANGLES, 0, 6);
-				horizontal = !horizontal;
-				if (first_iteration)
-					first_iteration = false;
-			}
-			glBindFramebuffer(GL_FRAMEBUFFER, 0);
-			glEnable(GL_DEPTH_TEST);
-		}
 
 		void RenderPlane(const glm::mat4& view) {
 			if (!plane_shader || !ConfigManager::GetInstance().GetAppSettingBool("render_floor", true)) {
@@ -1356,16 +1295,6 @@ namespace Boidsish {
 			glEnable(GL_BLEND);
 			glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 			plane_shader->use();
-			plane_shader->setBool(
-				"useReflection",
-				ConfigManager::GetInstance().GetAppSettingBool("enable_floor_reflection", true)
-			);
-			if (ConfigManager::GetInstance().GetAppSettingBool("enable_floor_reflection", true)) {
-				plane_shader->setInt("reflectionTexture", 0);
-				glActiveTexture(GL_TEXTURE0);
-				glBindTexture(GL_TEXTURE_2D, pingpong_texture[0]);
-				plane_shader->setMat4("reflectionViewProjection", reflection_vp);
-			}
 
 			float     world_scale = terrain_generator ? terrain_generator->GetWorldScale() : 1.0f;
 			glm::mat4 model = glm::scale(glm::mat4(1.0f), glm::vec3(600.0f * world_scale));
@@ -1842,19 +1771,6 @@ namespace Boidsish {
 			render_width = static_cast<int>(width * render_scale);
 			render_height = static_cast<int>(height * render_scale);
 
-			if (reflection_fbo) {
-				// --- Resize reflection framebuffer ---
-				glBindTexture(GL_TEXTURE_2D, reflection_texture);
-				glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, render_width, render_height, 0, GL_RGB, GL_UNSIGNED_BYTE, NULL);
-				glBindRenderbuffer(GL_RENDERBUFFER, reflection_depth_rbo);
-				glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT24, render_width, render_height);
-
-				// --- Resize ping-pong framebuffers ---
-				for (unsigned int i = 0; i < 2; i++) {
-					glBindTexture(GL_TEXTURE_2D, pingpong_texture[i]);
-					glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB16F, render_width, render_height, 0, GL_RGB, GL_FLOAT, NULL);
-				}
-			}
 
 			// --- Resize main scene framebuffer ---
 			glBindTexture(GL_TEXTURE_2D, main_fbo_texture_);
@@ -1863,6 +1779,16 @@ namespace Boidsish {
 			} else {
 				glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, render_width, render_height, 0, GL_RGB, GL_UNSIGNED_BYTE, NULL);
 			}
+
+			glBindTexture(GL_TEXTURE_2D, main_fbo_normal_texture_);
+			glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, render_width, render_height, 0, GL_RGBA, GL_FLOAT, NULL);
+
+			glBindTexture(GL_TEXTURE_2D, main_fbo_material_texture_);
+			glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, render_width, render_height, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
+
+			glBindTexture(GL_TEXTURE_2D, main_fbo_velocity_texture_);
+			glTexImage2D(GL_TEXTURE_2D, 0, GL_RG16F, render_width, render_height, 0, GL_RG, GL_FLOAT, NULL);
+
 			// Resize depth-stencil texture
 			glBindTexture(GL_TEXTURE_2D, main_fbo_depth_texture_);
 			glTexImage2D(
@@ -1886,6 +1812,57 @@ namespace Boidsish {
 			if (shockwave_manager) {
 				shockwave_manager->Resize(render_width, render_height);
 			}
+
+			if (hiz_texture_) {
+				glDeleteTextures(1, &hiz_texture_);
+				hiz_texture_ = 0;
+			}
+		}
+
+		void GenerateHiZ(GLuint depthTexture) {
+			if (!hiz_shader_)
+				return;
+
+			// Allocate/resize hiz texture if needed
+			if (hiz_texture_ == 0) {
+				hiz_levels_ = 1 + floor(log2(std::max(render_width, render_height)));
+				glGenTextures(1, &hiz_texture_);
+				glBindTexture(GL_TEXTURE_2D, hiz_texture_);
+				glTexStorage2D(GL_TEXTURE_2D, hiz_levels_, GL_R32F, render_width, render_height);
+				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST_MIPMAP_NEAREST);
+				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+			}
+
+			hiz_shader_->use();
+
+			for (int i = 0; i < hiz_levels_; ++i) {
+				int mipWidth = std::max(1, render_width >> i);
+				int mipHeight = std::max(1, render_height >> i);
+
+				hiz_shader_->setVec2("uMipSize", (float)mipWidth, (float)mipHeight);
+
+				if (i == 0) {
+					glActiveTexture(GL_TEXTURE0);
+					glBindTexture(GL_TEXTURE_2D, depthTexture);
+				} else {
+					glActiveTexture(GL_TEXTURE0);
+					glBindTexture(GL_TEXTURE_2D, hiz_texture_);
+					glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_BASE_LEVEL, i - 1);
+					glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, i - 1);
+				}
+
+				glBindImageTexture(1, hiz_texture_, i, GL_FALSE, 0, GL_WRITE_ONLY, GL_R32F);
+
+				glDispatchCompute((mipWidth + 15) / 16, (mipHeight + 15) / 16, 1);
+				glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
+			}
+
+			// Reset mipmap levels
+			glBindTexture(GL_TEXTURE_2D, hiz_texture_);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_BASE_LEVEL, 0);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, hiz_levels_ - 1);
 		}
 	};
 
@@ -2266,47 +2243,6 @@ namespace Boidsish {
 			glBindBuffer(GL_UNIFORM_BUFFER, 0);
 		}
 
-		if (impl->reflection_fbo) {
-			// --- Reflection Pre-Pass ---
-			glEnable(GL_CLIP_DISTANCE0);
-			{
-				glBindFramebuffer(GL_FRAMEBUFFER, impl->reflection_fbo);
-				glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-				Camera reflection_cam = impl->camera;
-				reflection_cam.y = -reflection_cam.y;
-				reflection_cam.pitch = -reflection_cam.pitch;
-				glm::mat4 reflection_view = impl->SetupMatrices(reflection_cam);
-				impl->reflection_vp = impl->projection * reflection_view;
-
-				// Render opaque geometry first for early-Z benefit
-				// Use reduced tessellation (25%) for reflection pass - it's blurred anyway
-				// impl->RenderTerrain(
-				// 	reflection_view,
-				// 	impl->projection,
-				// 	glm::vec4(0, 1, 0, 0.01),
-				// 	false,
-				// 	std::nullopt,
-				// 	0.25f
-				// );
-				impl->RenderShapes(reflection_view, impl->shapes, impl->simulation_time, glm::vec4(0, 1, 0, 0.01));
-				// Sky after opaque geometry
-				impl->RenderSky(reflection_view);
-				impl->RenderTransparentShapes(
-					reflection_view,
-					reflection_cam,
-					impl->shapes,
-					impl->simulation_time,
-					glm::vec4(0, 1, 0, 0.01)
-				);
-				// Transparent effects last
-				impl->fire_effect_manager->Render(reflection_view, impl->projection, reflection_cam.pos());
-				impl->RenderTrails(reflection_view, glm::vec4(0, 1, 0, 0.01));
-			}
-			glDisable(GL_CLIP_DISTANCE0);
-
-			// --- Blur Pre-Pass ---
-			impl->RenderBlur(Constants::Class::Rendering::BlurPasses());
-		}
 
 		// --- Shadow Pass (render depth from each shadow-casting light) ---
 		if (impl->shadow_manager && impl->shadow_manager->IsInitialized() && impl->frame_config_.enable_shadows) {
@@ -2514,9 +2450,36 @@ namespace Boidsish {
 		}
 
 		glEnable(GL_DEPTH_TEST);
-		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+		if (skip_intermediate) {
+			glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+		} else {
+			GLenum drawBuffers[] = {
+				GL_COLOR_ATTACHMENT0, // Radiance
+				GL_COLOR_ATTACHMENT1, // Normal
+				GL_COLOR_ATTACHMENT2, // Material
+				GL_COLOR_ATTACHMENT3  // Velocity
+			};
+			glDrawBuffers(4, drawBuffers);
+			glClearColor(0.0f, 0.0f, 0.0f, 0.0f); // Clear to 0 for normals/velocity
+			glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+		}
 
 		glm::mat4 view = impl->SetupMatrices();
+
+		// Set uniforms for G-Buffer and Motion Vectors
+		impl->shader->use();
+		impl->shader->setMat4("uPrevViewProjection", impl->prev_view_projection_);
+		if (Terrain::terrain_shader_) {
+			Terrain::terrain_shader_->use();
+			Terrain::terrain_shader_->setMat4("uPrevViewProjection", impl->prev_view_projection_);
+		}
+		if (impl->plane_shader) {
+			impl->plane_shader->use();
+			impl->plane_shader->setMat4("uPrevViewProjection", impl->prev_view_projection_);
+		}
+
+		// Update previous view projection for next frame
+		impl->prev_view_projection_ = impl->projection * view;
 
 		// Render opaque geometry first (terrain, plane, shapes) to populate depth buffer
 		impl->RenderPlane(view);
@@ -2546,13 +2509,23 @@ namespace Boidsish {
 		}
 		impl->RenderTrails(view, std::nullopt);
 
+		// Generate Hi-Z after main pass
+		impl->GenerateHiZ(impl->main_fbo_depth_texture_);
+
 		if (effects_enabled) {
 			// --- Post-processing Pass (renders FBO texture to screen) ---
+			PostProcessing::GBuffer gbuffer;
+			gbuffer.depth = impl->main_fbo_depth_texture_;
+			gbuffer.normal = impl->main_fbo_normal_texture_;
+			gbuffer.material = impl->main_fbo_material_texture_;
+			gbuffer.velocity = impl->main_fbo_velocity_texture_;
+			gbuffer.hiz = impl->hiz_texture_;
+			gbuffer.hiz_levels = impl->hiz_levels_;
 
 			// Apply standard post-processing effects (at render resolution)
 			GLuint final_texture = impl->post_processing_manager_->ApplyEffects(
 				impl->main_fbo_texture_,
-				impl->main_fbo_depth_texture_,
+				gbuffer,
 				view,
 				impl->projection,
 				impl->camera.pos(),

@@ -1,3 +1,4 @@
+#include "post_processing/PostProcessingManager.h"
 #include "post_processing/effects/SdfVolumeEffect.h"
 
 #include "constants.h"
@@ -19,7 +20,7 @@ namespace Boidsish {
 
 		void SdfVolumeEffect::Apply(
 			GLuint           sourceTexture,
-			GLuint           depthTexture,
+			const GBuffer&   gbuffer,
 			const glm::mat4& viewMatrix,
 			const glm::mat4& projectionMatrix,
 			const glm::vec3& cameraPos
@@ -29,7 +30,7 @@ namespace Boidsish {
 
 			shader_->use();
 			shader_->setInt("sceneTexture", 0);
-			shader_->setInt("depthTexture", 1);
+			shader_->setInt("gbuffer.depth", 1);
 			shader_->setVec2("screenSize", glm::vec2(width_, height_));
 			shader_->setVec3("cameraPos", cameraPos);
 			shader_->setMat4("invView", glm::inverse(viewMatrix));
@@ -45,7 +46,7 @@ namespace Boidsish {
 			glActiveTexture(GL_TEXTURE0);
 			glBindTexture(GL_TEXTURE_2D, sourceTexture);
 			glActiveTexture(GL_TEXTURE1);
-			glBindTexture(GL_TEXTURE_2D, depthTexture);
+			glBindTexture(GL_TEXTURE_2D, gbuffer.depth);
 
 			glDrawArrays(GL_TRIANGLES, 0, 6);
 		}

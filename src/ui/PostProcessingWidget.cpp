@@ -6,6 +6,7 @@
 #include "post_processing/effects/BloomEffect.h"
 #include "post_processing/effects/FilmGrainEffect.h"
 #include "post_processing/effects/SsaoEffect.h"
+#include "post_processing/effects/SssrEffect.h"
 #include "post_processing/effects/ToneMappingEffect.h"
 
 namespace Boidsish {
@@ -36,6 +37,24 @@ namespace Boidsish {
 						float target_lum = auto_exposure_effect->GetTargetLuminance();
 						if (ImGui::SliderFloat("Target Luminance", &target_lum, 0.01f, 1.0f)) {
 							auto_exposure_effect->SetTargetLuminance(target_lum);
+						}
+					}
+				}
+
+				if (effect->GetName() == "SSSR" && is_enabled) {
+					auto sssr_effect = std::dynamic_pointer_cast<PostProcessing::SssrEffect>(effect);
+					if (sssr_effect) {
+						int samples = sssr_effect->GetMaxSamples();
+						if (ImGui::SliderInt("Ray Samples", &samples, 1, 16)) {
+							sssr_effect->SetMaxSamples(samples);
+						}
+						float roughness_threshold = sssr_effect->GetRoughnessThreshold();
+						if (ImGui::SliderFloat("Roughness Threshold", &roughness_threshold, 0.0f, 1.0f)) {
+							sssr_effect->SetRoughnessThreshold(roughness_threshold);
+						}
+						float mirror_threshold = sssr_effect->GetMirrorThreshold();
+						if (ImGui::SliderFloat("Mirror Threshold", &mirror_threshold, 0.0f, 0.2f)) {
+							sssr_effect->SetMirrorThreshold(mirror_threshold);
 						}
 					}
 				}

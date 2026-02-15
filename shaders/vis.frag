@@ -1,5 +1,8 @@
 #version 420 core
-out vec4 FragColor;
+layout(location = 0) out vec4 FragColor;
+layout(location = 1) out vec4 gNormal;
+layout(location = 2) out vec4 gMaterial;
+layout(location = 3) out vec2 gVelocity;
 
 #include "helpers/lighting.glsl"
 #include "visual_effects.frag"
@@ -11,6 +14,8 @@ in vec3 vs_color;
 in vec3 barycentric;
 in vec2 TexCoords;
 in vec4 InstanceColor;
+in vec4 CurrClipPos;
+in vec4 PrevClipPos;
 
 uniform vec3  objectColor;
 uniform float objectAlpha = 1.0;
@@ -147,4 +152,12 @@ void main() {
 	}
 
 	FragColor = outColor;
+
+	// G-Buffer outputs
+	gNormal = vec4(norm * 0.5 + 0.5, 1.0);
+	gMaterial = vec4(usePBR ? roughness : 0.5, usePBR ? metallic : 0.0, ao, 1.0);
+
+	vec2 a = (CurrClipPos.xy / CurrClipPos.w) * 0.5 + 0.5;
+	vec2 b = (PrevClipPos.xy / PrevClipPos.w) * 0.5 + 0.5;
+	gVelocity = a - b;
 }
