@@ -162,6 +162,20 @@ namespace Boidsish {
 		std::tuple<float, glm::vec3> GetClosestTerrainInfo(const glm::vec3& point) const;
 
 		/**
+		 * @brief Find the closest terrain point in any direction, or within a specific cone.
+		 *
+		 * @param origin The 3D world position to search from
+		 * @param radius Optional maximum search distance
+		 * @param vector Optional direction vector
+		 * @return Tuple of (distance, direction_to_terrain)
+		 */
+		std::tuple<float, glm::vec3> GetClosestTerrain(
+			const glm::vec3&           origin,
+			std::optional<float>     radius = std::nullopt,
+			std::optional<glm::vec3> vector = std::nullopt
+		) const override;
+
+		/**
 		 * @brief Raycast against terrain, preferring cached chunk data.
 		 *
 		 * Faster than full Raycast() when the ray is within cached terrain bounds.

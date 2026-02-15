@@ -1456,4 +1456,114 @@ namespace Boidsish {
 		}
 	}
 
+
+	std::tuple<float, glm::vec3> TerrainGenerator::GetClosestTerrain(
+		const glm::vec3&           origin,
+		std::optional<float>     radius,
+		std::optional<glm::vec3> vector
+	) const {
+		float max_search_dist = 1000.0f;
+		float cone_spread = 0.5f;
+
+		if (vector.has_value()) {
+			cone_spread = radius.value_or(0.5f);
+		} else {
+			max_search_dist = radius.value_or(1000.0f);
+		}
+
+		// 1. Establish baseline
+		float     min_dist = 1e30f;
+		glm::vec3 best_dir(0, -1, 0);
+
+		auto [v_dist, v_dir] = GetClosestTerrainInfo(origin);
+
+		bool use_vertical = true;
+		if (vector.has_value()) {
+			// Only use vertical baseline if it's within the cone's aperture
+			glm::vec3 axis = glm::normalize(*vector);
+			// Aperture angle is atan(cone_spread)
+			float cos_aperture = std::cos(std::atan(cone_spread));
+			if (glm::dot(v_dir, axis) < cos_aperture) {
+				use_vertical = false;
+			}
+		}
+
+		if (use_vertical) {
+			min_dist = v_dist;
+			best_dir = v_dir;
+		}
+
+		std::vector<glm::vec3> sample_dirs;
+		if (vector.has_value()) {
+			// 2. Conical search
+			glm::vec3 axis = glm::normalize(*vector);
+			sample_dirs.push_back(axis);
+
+			// Generate rays in a cone around the axis
+			glm::vec3 up = (std::abs(axis.y) < 0.999f) ? glm::vec3(0, 1, 0) : glm::vec3(1, 0, 0);
+			glm::vec3 right = glm::normalize(glm::cross(up, axis));
+			up = glm::cross(axis, right);
+
+			for (int i = 0; i < 8; ++i) {
+				float     angle = i * 2.0f * glm::pi<float>() / 8.0f;
+				glm::vec3 ray_dir =
+					glm::normalize(axis + (std::cos(angle) * right + std::sin(angle) * up) * cone_spread);
+				sample_dirs.push_back(ray_dir);
+			}
+		} else {
+			// 3. Spherical search (26 directions)
+			for (float x : {-1.0f, 0.0f, 1.0f}) {
+				for (float y : {-1.0f, 0.0f, 1.0f}) {
+					for (float z : {-1.0f, 0.0f, 1.0f}) {
+						if (x == 0.0f && y == 0.0f && z == 0.0f)
+							continue;
+						sample_dirs.push_back(glm::normalize(glm::vec3(x, y, z)));
+					}
+				}
+			}
+		}
+
+		// Perform raycasts for all sample directions
+		for (const auto& dir : sample_dirs) {
+			float     dist;
+			glm::vec3 normal;
+			if (RaycastCached(origin, dir, max_search_dist, dist, normal)) {
+				if (dist < min_dist) {
+					min_dist = dist;
+					best_dir = dir;
+				}
+			}
+		}
+
+		// 4. Refinement using gradient descent on the surface
+		glm::vec3 curr_q = origin + best_dir * min_dist;
+		for (int i = 0; i < 10; ++i) {
+			auto [h, normal] = GetTerrainPropertiesAtPoint(curr_q.x, curr_q.z);
+			glm::vec3 q_surf(curr_q.x, h, curr_q.z);
+			float     d = glm::distance(origin, q_surf);
+
+			if (d < min_dist) {
+				min_dist = d;
+				// Direction to terrain: if above ground, q_surf - origin. If below, normal (escape dir).
+				if (origin.y > h) {
+					best_dir = (d > 0.0001f) ? glm::normalize(q_surf - origin) : -normal;
+				} else {
+					best_dir = normal;
+				}
+			}
+
+			glm::vec3 to_p = origin - q_surf;
+			glm::vec3 move = to_p - glm::dot(to_p, normal) * normal;
+			float     move_len = glm::length(move);
+			if (move_len < 0.001f)
+				break;
+
+			// Limit step size to avoid jumping too far on rough terrain
+			float step_size = std::min(0.5f, 1.0f / move_len);
+			curr_q += move * step_size;
+		}
+
+		return {min_dist, best_dir};
+	}
+
 } // namespace Boidsish
