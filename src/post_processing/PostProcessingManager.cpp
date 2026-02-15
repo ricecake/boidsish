@@ -41,6 +41,17 @@ namespace Boidsish {
 				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
 				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 				glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, pingpong_texture_[i], 0);
+
+				if (shared_depth_texture_ != 0) {
+					glFramebufferTexture2D(
+						GL_FRAMEBUFFER,
+						GL_DEPTH_STENCIL_ATTACHMENT,
+						GL_TEXTURE_2D,
+						shared_depth_texture_,
+						0
+					);
+				}
+
 				if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
 					std::cerr << "ERROR::FRAMEBUFFER:: Ping-pong FBO is not complete!" << std::endl;
 			}
@@ -59,6 +70,71 @@ namespace Boidsish {
 			tone_mapping_effect_ = effect;
 		}
 
+		void PostProcessingManager::SetSharedDepthTexture(GLuint texture) {
+			shared_depth_texture_ = texture;
+			InitializeFBOs();
+		}
+
+		void PostProcessingManager::BeginApply(GLuint sourceTexture, GLuint sourceFbo, GLuint depthTexture) {
+			current_texture_ = sourceTexture;
+			current_fbo_ = sourceFbo;
+			depth_texture_ = depthTexture;
+			fbo_index_ = 0;
+			glViewport(0, 0, width_, height_);
+		}
+
+		void PostProcessingManager::ApplyEarlyEffects(
+			const glm::mat4& viewMatrix,
+			const glm::mat4& projectionMatrix,
+			const glm::vec3& cameraPos,
+			float            time
+		) {
+			for (const auto& effect : pre_tone_mapping_effects_) {
+				if (effect->IsEnabled() && effect->IsEarly()) {
+					ApplyEffectInternal(effect, viewMatrix, projectionMatrix, cameraPos, time);
+				}
+			}
+		}
+
+		void PostProcessingManager::ApplyLateEffects(
+			const glm::mat4& viewMatrix,
+			const glm::mat4& projectionMatrix,
+			const glm::vec3& cameraPos,
+			float            time
+		) {
+			for (const auto& effect : pre_tone_mapping_effects_) {
+				if (effect->IsEnabled() && !effect->IsEarly()) {
+					ApplyEffectInternal(effect, viewMatrix, projectionMatrix, cameraPos, time);
+				}
+			}
+
+			if (tone_mapping_effect_ && tone_mapping_effect_->IsEnabled()) {
+				ApplyEffectInternal(tone_mapping_effect_, viewMatrix, projectionMatrix, cameraPos, time);
+			}
+
+			glBindFramebuffer(GL_FRAMEBUFFER, 0);
+		}
+
+		void PostProcessingManager::ApplyEffectInternal(
+			std::shared_ptr<IPostProcessingEffect> effect,
+			const glm::mat4&                       viewMatrix,
+			const glm::mat4&                       projectionMatrix,
+			const glm::vec3&                       cameraPos,
+			float                                  time
+		) {
+			effect->SetTime(time);
+			glBindFramebuffer(GL_FRAMEBUFFER, pingpong_fbo_[fbo_index_]);
+			glClear(GL_COLOR_BUFFER_BIT);
+
+			glBindVertexArray(quad_vao_);
+			effect->Apply(current_texture_, depth_texture_, viewMatrix, projectionMatrix, cameraPos);
+			glBindVertexArray(0);
+
+			current_texture_ = pingpong_texture_[fbo_index_];
+			current_fbo_ = pingpong_fbo_[fbo_index_];
+			fbo_index_ = 1 - fbo_index_;
+		}
+
 		GLuint PostProcessingManager::ApplyEffects(
 			GLuint           sourceTexture,
 			GLuint           depthTexture,
@@ -67,52 +143,10 @@ namespace Boidsish {
 			const glm::vec3& cameraPos,
 			float            time
 		) {
-			bool   effect_applied = false;
-			int    fbo_index = 0;
-			GLuint current_texture = sourceTexture;
-
-			// Ensure the viewport is set correctly for our FBOs before starting
-			glViewport(0, 0, width_, height_);
-
-			// Pre-tone-mapping effects chain
-			for (const auto& effect : pre_tone_mapping_effects_) {
-				if (effect->IsEnabled()) {
-					effect->SetTime(time);
-					glBindFramebuffer(GL_FRAMEBUFFER, pingpong_fbo_[fbo_index]);
-					glClear(GL_COLOR_BUFFER_BIT);
-
-					glBindVertexArray(quad_vao_);
-					effect->Apply(current_texture, depthTexture, viewMatrix, projectionMatrix, cameraPos);
-					glBindVertexArray(0);
-
-					current_texture = pingpong_texture_[fbo_index];
-					fbo_index = 1 - fbo_index; // Flip index
-					effect_applied = true;
-				}
-			}
-
-			// Apply the tone mapping effect as the final step
-			if (tone_mapping_effect_ && tone_mapping_effect_->IsEnabled()) {
-				tone_mapping_effect_->SetTime(time);
-				glBindFramebuffer(GL_FRAMEBUFFER, pingpong_fbo_[fbo_index]);
-				glClear(GL_COLOR_BUFFER_BIT);
-
-				glBindVertexArray(quad_vao_);
-				tone_mapping_effect_->Apply(current_texture, depthTexture, viewMatrix, projectionMatrix, cameraPos);
-				glBindVertexArray(0);
-
-				current_texture = pingpong_texture_[fbo_index];
-				effect_applied = true;
-			}
-
-			// Restore the default framebuffer
-			glBindFramebuffer(GL_FRAMEBUFFER, 0);
-
-			if (!effect_applied) {
-				return sourceTexture;
-			}
-
-			return current_texture;
+			BeginApply(sourceTexture, 0, depthTexture);
+			ApplyEarlyEffects(viewMatrix, projectionMatrix, cameraPos, time);
+			ApplyLateEffects(viewMatrix, projectionMatrix, cameraPos, time);
+			return GetFinalTexture();
 		}
 
 		void PostProcessingManager::Resize(int width, int height) {
