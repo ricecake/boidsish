@@ -71,7 +71,7 @@ namespace Boidsish {
 
 		void      SetupBuffers() const;
 		void      render() const override;
-		void      render(Shader& shader, const glm::mat4& model_matrix) const override;
+		void      render(Shader& shader, const glm::mat4& model_matrix, const glm::mat4& prev_model_matrix) const override;
 		glm::mat4 GetModelMatrix() const override;
 
 		// Graphs are not instanced (each has unique geometry)

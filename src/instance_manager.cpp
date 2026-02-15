@@ -19,6 +19,9 @@ namespace Boidsish {
 			if (group.instance_matrix_vbo_ != 0) {
 				glDeleteBuffers(1, &group.instance_matrix_vbo_);
 			}
+			if (group.prev_instance_matrix_vbo_ != 0) {
+				glDeleteBuffers(1, &group.prev_instance_matrix_vbo_);
+			}
 			if (group.instance_color_vbo_ != 0) {
 				glDeleteBuffers(1, &group.instance_color_vbo_);
 			}
@@ -68,9 +71,12 @@ namespace Boidsish {
 
 		// Build instance matrices
 		std::vector<glm::mat4> model_matrices;
+		std::vector<glm::mat4> prev_model_matrices;
 		model_matrices.reserve(group.shapes.size());
+		prev_model_matrices.reserve(group.shapes.size());
 		for (const auto& shape : group.shapes) {
 			model_matrices.push_back(shape->GetModelMatrix());
+			prev_model_matrices.push_back(shape->GetPrevModelMatrix());
 		}
 
 		// Create/update matrix VBO
@@ -86,9 +92,31 @@ namespace Boidsish {
 				&model_matrices[0],
 				GL_DYNAMIC_DRAW
 			);
-			group.matrix_capacity_ = model_matrices.size();
 		} else {
 			glBufferSubData(GL_ARRAY_BUFFER, 0, model_matrices.size() * sizeof(glm::mat4), &model_matrices[0]);
+		}
+
+		// Create/update previous matrix VBO
+		if (group.prev_instance_matrix_vbo_ == 0) {
+			glGenBuffers(1, &group.prev_instance_matrix_vbo_);
+		}
+
+		glBindBuffer(GL_ARRAY_BUFFER, group.prev_instance_matrix_vbo_);
+		if (prev_model_matrices.size() > group.matrix_capacity_) {
+			glBufferData(
+				GL_ARRAY_BUFFER,
+				prev_model_matrices.size() * sizeof(glm::mat4),
+				&prev_model_matrices[0],
+				GL_DYNAMIC_DRAW
+			);
+			group.matrix_capacity_ = prev_model_matrices.size();
+		} else {
+			glBufferSubData(
+				GL_ARRAY_BUFFER,
+				0,
+				prev_model_matrices.size() * sizeof(glm::mat4),
+				&prev_model_matrices[0]
+			);
 		}
 
 		// Get the Model from the first shape to access mesh data
@@ -148,6 +176,22 @@ namespace Boidsish {
 			glVertexAttribDivisor(5, 1);
 			glVertexAttribDivisor(6, 1);
 
+			// Setup previous instance matrix attribute (location 8-11)
+			glBindBuffer(GL_ARRAY_BUFFER, group.prev_instance_matrix_vbo_);
+			glEnableVertexAttribArray(8);
+			glVertexAttribPointer(8, 4, GL_FLOAT, GL_FALSE, sizeof(glm::mat4), (void*)0);
+			glEnableVertexAttribArray(9);
+			glVertexAttribPointer(9, 4, GL_FLOAT, GL_FALSE, sizeof(glm::mat4), (void*)(sizeof(glm::vec4)));
+			glEnableVertexAttribArray(10);
+			glVertexAttribPointer(10, 4, GL_FLOAT, GL_FALSE, sizeof(glm::mat4), (void*)(2 * sizeof(glm::vec4)));
+			glEnableVertexAttribArray(11);
+			glVertexAttribPointer(11, 4, GL_FLOAT, GL_FALSE, sizeof(glm::mat4), (void*)(3 * sizeof(glm::vec4)));
+
+			glVertexAttribDivisor(8, 1);
+			glVertexAttribDivisor(9, 1);
+			glVertexAttribDivisor(10, 1);
+			glVertexAttribDivisor(11, 1);
+
 			// Tell mesh to skip its own VAO/EBO binding if we already have it correctly bound
 			// (requires update to mesh.render_instanced to support this flag)
 			mesh.render_instanced(group.shapes.size(), false);
@@ -159,11 +203,19 @@ namespace Boidsish {
 			glVertexAttribDivisor(4, 0);
 			glVertexAttribDivisor(5, 0);
 			glVertexAttribDivisor(6, 0);
+			glVertexAttribDivisor(8, 0);
+			glVertexAttribDivisor(9, 0);
+			glVertexAttribDivisor(10, 0);
+			glVertexAttribDivisor(11, 0);
 
 			glDisableVertexAttribArray(3);
 			glDisableVertexAttribArray(4);
 			glDisableVertexAttribArray(5);
 			glDisableVertexAttribArray(6);
+			glDisableVertexAttribArray(8);
+			glDisableVertexAttribArray(9);
+			glDisableVertexAttribArray(10);
+			glDisableVertexAttribArray(11);
 			glBindVertexArray(0);
 			glBindBuffer(GL_ARRAY_BUFFER, 0); // Prevent buffer state leakage
 
@@ -196,12 +248,15 @@ namespace Boidsish {
 
 		// Build instance matrices and colors
 		std::vector<glm::mat4> model_matrices;
+		std::vector<glm::mat4> prev_model_matrices;
 		std::vector<glm::vec4> colors;
 		model_matrices.reserve(group.shapes.size());
+		prev_model_matrices.reserve(group.shapes.size());
 		colors.reserve(group.shapes.size());
 
 		for (const auto& shape : group.shapes) {
 			model_matrices.push_back(shape->GetModelMatrix());
+			prev_model_matrices.push_back(shape->GetPrevModelMatrix());
 			colors.emplace_back(shape->GetR(), shape->GetG(), shape->GetB(), shape->GetA());
 		}
 
@@ -218,9 +273,31 @@ namespace Boidsish {
 				&model_matrices[0],
 				GL_DYNAMIC_DRAW
 			);
-			group.matrix_capacity_ = model_matrices.size();
 		} else {
 			glBufferSubData(GL_ARRAY_BUFFER, 0, model_matrices.size() * sizeof(glm::mat4), &model_matrices[0]);
+		}
+
+		// Create/update previous matrix VBO
+		if (group.prev_instance_matrix_vbo_ == 0) {
+			glGenBuffers(1, &group.prev_instance_matrix_vbo_);
+		}
+
+		glBindBuffer(GL_ARRAY_BUFFER, group.prev_instance_matrix_vbo_);
+		if (prev_model_matrices.size() > group.matrix_capacity_) {
+			glBufferData(
+				GL_ARRAY_BUFFER,
+				prev_model_matrices.size() * sizeof(glm::mat4),
+				&prev_model_matrices[0],
+				GL_DYNAMIC_DRAW
+			);
+			group.matrix_capacity_ = prev_model_matrices.size();
+		} else {
+			glBufferSubData(
+				GL_ARRAY_BUFFER,
+				0,
+				prev_model_matrices.size() * sizeof(glm::mat4),
+				&prev_model_matrices[0]
+			);
 		}
 
 		// Create/update color VBO
@@ -280,6 +357,22 @@ namespace Boidsish {
 		glVertexAttribDivisor(5, 1);
 		glVertexAttribDivisor(6, 1);
 
+		// Setup previous instance matrix attribute (location 8-11)
+		glBindBuffer(GL_ARRAY_BUFFER, group.prev_instance_matrix_vbo_);
+		glEnableVertexAttribArray(8);
+		glVertexAttribPointer(8, 4, GL_FLOAT, GL_FALSE, sizeof(glm::mat4), (void*)0);
+		glEnableVertexAttribArray(9);
+		glVertexAttribPointer(9, 4, GL_FLOAT, GL_FALSE, sizeof(glm::mat4), (void*)(sizeof(glm::vec4)));
+		glEnableVertexAttribArray(10);
+		glVertexAttribPointer(10, 4, GL_FLOAT, GL_FALSE, sizeof(glm::mat4), (void*)(2 * sizeof(glm::vec4)));
+		glEnableVertexAttribArray(11);
+		glVertexAttribPointer(11, 4, GL_FLOAT, GL_FALSE, sizeof(glm::mat4), (void*)(3 * sizeof(glm::vec4)));
+
+		glVertexAttribDivisor(8, 1);
+		glVertexAttribDivisor(9, 1);
+		glVertexAttribDivisor(10, 1);
+		glVertexAttribDivisor(11, 1);
+
 		// Setup instance color attribute (location 7)
 		glBindBuffer(GL_ARRAY_BUFFER, group.instance_color_vbo_);
 		glEnableVertexAttribArray(7);
@@ -294,12 +387,20 @@ namespace Boidsish {
 		glVertexAttribDivisor(4, 0);
 		glVertexAttribDivisor(5, 0);
 		glVertexAttribDivisor(6, 0);
+		glVertexAttribDivisor(8, 0);
+		glVertexAttribDivisor(9, 0);
+		glVertexAttribDivisor(10, 0);
+		glVertexAttribDivisor(11, 0);
 		glVertexAttribDivisor(7, 0);
 
 		glDisableVertexAttribArray(3);
 		glDisableVertexAttribArray(4);
 		glDisableVertexAttribArray(5);
 		glDisableVertexAttribArray(6);
+		glDisableVertexAttribArray(8);
+		glDisableVertexAttribArray(9);
+		glDisableVertexAttribArray(10);
+		glDisableVertexAttribArray(11);
 		glDisableVertexAttribArray(7);
 
 		glBindVertexArray(0);

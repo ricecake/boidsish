@@ -1,3 +1,4 @@
+#include "post_processing/PostProcessingManager.h"
 #include "post_processing/effects/SsaoEffect.h"
 
 #include <random>
@@ -119,8 +120,8 @@ namespace Boidsish {
 		}
 
 		void SsaoEffect::Apply(
-			GLuint sourceTexture,
-			GLuint depthTexture,
+			GLuint           sourceTexture,
+			const GBuffer&   gbuffer,
 			const glm::mat4& /* viewMatrix */,
 			const glm::mat4& projectionMatrix,
 			const glm::vec3& /* cameraPos */
@@ -144,7 +145,7 @@ namespace Boidsish {
 			ssao_shader_->setFloat("bias", bias_);
 
 			glActiveTexture(GL_TEXTURE0);
-			glBindTexture(GL_TEXTURE_2D, depthTexture);
+			glBindTexture(GL_TEXTURE_2D, gbuffer.depth);
 			glActiveTexture(GL_TEXTURE1);
 			glBindTexture(GL_TEXTURE_2D, noise_texture_);
 			glDrawArrays(GL_TRIANGLES, 0, 6);
@@ -159,7 +160,7 @@ namespace Boidsish {
 			glActiveTexture(GL_TEXTURE0);
 			glBindTexture(GL_TEXTURE_2D, ssao_texture_);
 			glActiveTexture(GL_TEXTURE1);
-			glBindTexture(GL_TEXTURE_2D, depthTexture);
+			glBindTexture(GL_TEXTURE_2D, gbuffer.depth);
 			glDrawArrays(GL_TRIANGLES, 0, 6);
 
 			// 3. Composite

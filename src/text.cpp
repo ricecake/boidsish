@@ -395,7 +395,7 @@ namespace Boidsish {
 		glBindVertexArray(0);
 	}
 
-	void Text::render(Shader& shader, const glm::mat4& model_matrix) const {
+	void Text::render(Shader& shader, const glm::mat4& model_matrix, const glm::mat4& prev_model_matrix) const {
 		if (vao_ == 0)
 			return;
 

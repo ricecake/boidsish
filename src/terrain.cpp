@@ -113,7 +113,7 @@ namespace Boidsish {
 		glBindVertexArray(0);
 	}
 
-	void Terrain::render(Shader& shader, const glm::mat4& model_matrix) const {
+	void Terrain::render(Shader& shader, const glm::mat4& model_matrix, const glm::mat4& prev_model_matrix) const {
 		// Terrain is not meant to be cloned, so this is a no-op
 	}
 

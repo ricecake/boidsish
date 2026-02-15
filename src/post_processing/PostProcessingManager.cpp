@@ -2,6 +2,7 @@
 
 #include <iostream>
 
+#include "post_processing/effects/SssrEffect.h"
 #include <shader.h>
 
 namespace Boidsish {
@@ -59,9 +60,28 @@ namespace Boidsish {
 			tone_mapping_effect_ = effect;
 		}
 
+		void PostProcessingManager::CalculateEarlyEffects(
+			GLuint           sourceTexture,
+			const GBuffer&   gbuffer,
+			const glm::mat4& viewMatrix,
+			const glm::mat4& projectionMatrix,
+			const glm::vec3& cameraPos
+		) {
+			// Early effects (like SSSR) should calculate their internal buffers
+			for (const auto& effect : pre_tone_mapping_effects_) {
+				if (effect->IsEnabled() && effect->IsEarly()) {
+					if (auto sssr = std::dynamic_pointer_cast<SssrEffect>(effect)) {
+						sssr->Calculate(sourceTexture, gbuffer, viewMatrix, projectionMatrix);
+					}
+					// Atmosphere and SSAO currently Apply directly in ApplyEffects.
+					// We might want to move them here too if they produce buffers.
+				}
+			}
+		}
+
 		GLuint PostProcessingManager::ApplyEffects(
 			GLuint           sourceTexture,
-			GLuint           depthTexture,
+			const GBuffer&   gbuffer,
 			const glm::mat4& viewMatrix,
 			const glm::mat4& projectionMatrix,
 			const glm::vec3& cameraPos,
@@ -78,11 +98,28 @@ namespace Boidsish {
 			for (const auto& effect : pre_tone_mapping_effects_) {
 				if (effect->IsEnabled()) {
 					effect->SetTime(time);
+
+					if (effect->IsEarly()) {
+						if (auto sssr = std::dynamic_pointer_cast<SssrEffect>(effect)) {
+							// For SSSR, we composite it here
+							glBindFramebuffer(GL_FRAMEBUFFER, pingpong_fbo_[fbo_index]);
+							glClear(GL_COLOR_BUFFER_BIT);
+							glBindVertexArray(quad_vao_);
+							sssr->Composite(current_texture, gbuffer, projectionMatrix);
+							glBindVertexArray(0);
+							current_texture = pingpong_texture_[fbo_index];
+							fbo_index = 1 - fbo_index;
+							effect_applied = true;
+							continue;
+						}
+					}
+
+					// Standard effect Apply (includes Atmosphere, SSAO, etc. even if marked IsEarly)
 					glBindFramebuffer(GL_FRAMEBUFFER, pingpong_fbo_[fbo_index]);
 					glClear(GL_COLOR_BUFFER_BIT);
 
 					glBindVertexArray(quad_vao_);
-					effect->Apply(current_texture, depthTexture, viewMatrix, projectionMatrix, cameraPos);
+					effect->Apply(current_texture, gbuffer, viewMatrix, projectionMatrix, cameraPos);
 					glBindVertexArray(0);
 
 					current_texture = pingpong_texture_[fbo_index];
@@ -98,7 +135,7 @@ namespace Boidsish {
 				glClear(GL_COLOR_BUFFER_BIT);
 
 				glBindVertexArray(quad_vao_);
-				tone_mapping_effect_->Apply(current_texture, depthTexture, viewMatrix, projectionMatrix, cameraPos);
+				tone_mapping_effect_->Apply(current_texture, gbuffer, viewMatrix, projectionMatrix, cameraPos);
 				glBindVertexArray(0);
 
 				current_texture = pingpong_texture_[fbo_index];

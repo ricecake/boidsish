@@ -1,11 +1,16 @@
 #version 420 core
-out vec4 FragColor;
+layout(location = 0) out vec4 FragColor;
+layout(location = 1) out vec4 gNormal;
+layout(location = 2) out vec4 gMaterial;
+layout(location = 3) out vec2 gVelocity;
 
 in vec3  Normal;
 in vec3  FragPos;
 in vec2  TexCoords;
 in float perturbFactor;
 in float tessFactor;
+in vec4  CurrClipPos;
+in vec4  PrevClipPos;
 
 #include "helpers/lighting.glsl"
 #include "helpers/terrain_noise.glsl"
@@ -410,10 +415,11 @@ void main() {
 	// FragColor = vec4(smoothstep(0,16, tessFactor), smoothstep(8,24, tessFactor), smoothstep(16,32, tessFactor), 1.0);
 	// FragColor = vec4(tessFactor, 0,0, 1.0);
 
-	// vec4 outColor = vec4(lighting, fade);
-	// FragColor = mix(
-	//      vec4(0.0, 0.7, 0.7, fade) * length(outColor),
-	//      outColor,
-	//      step(1.0, fade)
-	// );
+	// G-Buffer outputs
+	gNormal = vec4(perturbedNorm * 0.5 + 0.5, 1.0);
+	gMaterial = vec4(finalMaterial.roughness, finalMaterial.metallic, 1.0, 1.0);
+
+	vec2 a = (CurrClipPos.xy / CurrClipPos.w) * 0.5 + 0.5;
+	vec2 b = (PrevClipPos.xy / PrevClipPos.w) * 0.5 + 0.5;
+	gVelocity = a - b;
 }

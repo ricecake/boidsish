@@ -9,13 +9,15 @@
 namespace Boidsish {
 	namespace PostProcessing {
 
+		struct GBuffer;
+
 		class IPostProcessingEffect {
 		public:
 			virtual ~IPostProcessingEffect() = default;
 
 			virtual void Apply(
 				GLuint           sourceTexture,
-				GLuint           depthTexture,
+				const GBuffer&   gbuffer,
 				const glm::mat4& viewMatrix,
 				const glm::mat4& projectionMatrix,
 				const glm::vec3& cameraPos
@@ -30,6 +32,8 @@ namespace Boidsish {
 			virtual void SetEnabled(bool enabled) { is_enabled_ = enabled; }
 
 			virtual void SetTime(float /* time */) {}
+
+			virtual bool IsEarly() const { return false; }
 
 		protected:
 			std::string name_;

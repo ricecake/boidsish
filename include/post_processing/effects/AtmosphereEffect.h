@@ -16,13 +16,15 @@ namespace Boidsish {
 
 			void Apply(
 				GLuint           sourceTexture,
-				GLuint           depthTexture,
+				const GBuffer&   gbuffer,
 				const glm::mat4& viewMatrix,
 				const glm::mat4& projectionMatrix,
 				const glm::vec3& cameraPos
 			) override;
 			void Initialize(int width, int height) override;
 			void Resize(int width, int height) override;
+
+			bool IsEarly() const override { return true; }
 
 			void SetTime(float time) override { time_ = time; }
 

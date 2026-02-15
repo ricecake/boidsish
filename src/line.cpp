@@ -122,13 +122,14 @@ namespace Boidsish {
 
 	void Line::render() const {
 		if (shader) {
-			render(*shader, GetModelMatrix());
+			render(*shader, GetModelMatrix(), GetPrevModelMatrix());
 		}
 	}
 
-	void Line::render(Shader& s, const glm::mat4& model_matrix) const {
+	void Line::render(Shader& s, const glm::mat4& model_matrix, const glm::mat4& prev_model_matrix) const {
 		s.use();
 		s.setMat4("model", model_matrix);
+		s.setMat4("prevModel", prev_model_matrix);
 
 		// Use standard uniforms for color and alpha
 		s.setVec3("objectColor", glm::vec3(GetR(), GetG(), GetB()));

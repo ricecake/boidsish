@@ -33,11 +33,12 @@ namespace Boidsish {
 
 	void Arrow::render() const {
 		shader->use();
-		render(*shader, GetModelMatrix());
+		render(*shader, GetModelMatrix(), GetPrevModelMatrix());
 	}
 
-	void Arrow::render(Shader& shader, const glm::mat4& model_matrix) const {
+	void Arrow::render(Shader& shader, const glm::mat4& model_matrix, const glm::mat4& prev_model_matrix) const {
 		shader.setMat4("model", model_matrix);
+		shader.setMat4("uPrevModel", prev_model_matrix);
 		shader.setVec3("objectColor", GetR(), GetG(), GetB());
 		shader.setFloat("objectAlpha", GetA());
 

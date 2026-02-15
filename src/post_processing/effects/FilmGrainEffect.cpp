@@ -1,3 +1,4 @@
+#include "post_processing/PostProcessingManager.h"
 #include "post_processing/effects/FilmGrainEffect.h"
 
 #include "shader.h"
@@ -21,7 +22,7 @@ namespace Boidsish {
 
 		void FilmGrainEffect::Apply(
 			GLuint           sourceTexture,
-			GLuint           depthTexture,
+			const GBuffer&   gbuffer,
 			const glm::mat4& viewMatrix,
 			const glm::mat4& projectionMatrix,
 			const glm::vec3& cameraPos

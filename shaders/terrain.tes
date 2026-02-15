@@ -16,6 +16,8 @@ out vec3  Normal;
 out vec2  TexCoords;
 out float perturbFactor;
 out float tessFactor;
+out vec4  CurrClipPos;
+out vec4  PrevClipPos;
 
 // Heightmap texture array: R=height, GBA=normal
 uniform sampler2DArray uHeightmap;
@@ -23,6 +25,7 @@ uniform int            uChunkSize;
 
 uniform mat4 view;
 uniform mat4 projection;
+uniform mat4 uPrevViewProjection;
 uniform vec4 clipPlane;
 
 #include "helpers/shockwave.glsl"
@@ -55,6 +58,7 @@ void main() {
 	// Sample heightmap at the interpolated UV to get world position and normal
 	vec3 q, n;
 	sampleHeightmap(TexCoords, slice, worldOffset, FragPos, Normal);
+	vec3 baseFragPos = FragPos;
 
 	// Apply shockwave ripple to terrain
 	FragPos += getShockwaveDisplacement(FragPos, 0.0, false);
@@ -75,4 +79,11 @@ void main() {
 
 	// Final vertex position
 	gl_Position = projection * view * vec4(FragPos, 1.0);
+	CurrClipPos = gl_Position;
+
+	// Improved Terrain Motion Vectors:
+	// For terrain, we use the non-displaced position for the previous frame's clip position.
+	// This ensures that the terrain's motion vector accounts for the displacement velocity,
+	// reducing smearing artifacts caused by dynamic deformations like shockwaves.
+	PrevClipPos = uPrevViewProjection * vec4(baseFragPos, 1.0);
 }

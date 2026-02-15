@@ -67,7 +67,9 @@ namespace Boidsish {
 		shader.use();
 		for (const auto& clone : clones_) {
 			if (clone.shape_ptr) {
-				clone.shape_ptr->render(shader, clone.model_matrix);
+				// For clones, we use the same matrix for both current and previous
+				// to ensure they have zero motion vectors.
+				clone.shape_ptr->render(shader, clone.model_matrix, clone.model_matrix);
 			}
 		}
 	}

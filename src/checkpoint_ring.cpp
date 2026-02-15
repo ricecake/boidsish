@@ -51,17 +51,18 @@ namespace Boidsish {
 	void CheckpointRingShape::render() const {
 		if (!checkpoint_shader_ || quad_vao_ == 0)
 			return;
-		render(*checkpoint_shader_, GetModelMatrix());
+		render(*checkpoint_shader_, GetModelMatrix(), GetPrevModelMatrix());
 		if (Shape::shader)
 			Shape::shader->use();
 	}
 
-	void CheckpointRingShape::render(Shader& shader, const glm::mat4& model_matrix) const {
+	void CheckpointRingShape::render(Shader& shader, const glm::mat4& model_matrix, const glm::mat4& prev_model_matrix) const {
 		if (quad_vao_ == 0)
 			return;
 
 		shader.use();
 		shader.setMat4("model", model_matrix);
+		shader.setMat4("prevModel", prev_model_matrix);
 
 		glm::vec3 color(1.0f);
 		switch (style_) {

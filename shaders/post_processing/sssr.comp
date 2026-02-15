@@ -1,0 +1,197 @@
+#version 430 core
+
+layout(local_size_x = 16, local_size_y = 16) in;
+
+layout(binding = 0) uniform sampler2D uRadiance;
+layout(binding = 1) uniform sampler2D uNormal;
+layout(binding = 2) uniform sampler2D uMaterial; // R: Roughness, G: Metallic
+layout(binding = 3) uniform sampler2D uDepth;
+layout(binding = 4) uniform sampler2D uHiZ;
+
+layout(binding = 0, rgba16f) uniform writeonly image2D uOutputReflection;
+
+uniform mat4 uView;
+uniform mat4 uProjection;
+uniform mat4 uInvView;
+uniform mat4 uInvProjection;
+uniform float uTime;
+uniform int uFrameCount;
+uniform int uMaxSamples = 1;
+uniform float uRoughnessThreshold = 0.8;
+uniform float uMirrorThreshold = 0.05;
+
+const float PI = 3.14159265359;
+
+float radicalInverse_VdC(uint bits) {
+    bits = (bits << 16u) | (bits >> 16u);
+    bits = ((bits & 0x55555555u) << 1u) | ((bits & 0xAAAAAAAAu) >> 1u);
+    bits = ((bits & 0x33333333u) << 2u) | ((bits & 0xCCCCCCCCu) >> 2u);
+    bits = ((bits & 0x0F0F0F0Fu) << 4u) | ((bits & 0xF0F0F0F0u) >> 4u);
+    bits = ((bits & 0x00FF00FFu) << 8u) | ((bits & 0xFF00FF00u) >> 8u);
+    return float(bits) * 2.3283064365386963e-10;
+}
+
+vec2 hammersley(uint i, uint N) {
+    return vec2(float(i) / float(N), radicalInverse_VdC(i));
+}
+
+vec3 importanceSampleGGX(vec2 xi, vec3 N, float roughness) {
+    float a = roughness * roughness;
+    float phi = 2.0 * PI * xi.x;
+    float cosTheta = sqrt(clamp((1.0 - xi.y) / (1.0 + (a * a - 1.0) * xi.y), 0.0, 1.0));
+    float sinTheta = sqrt(clamp(1.0 - cosTheta * cosTheta, 0.0, 1.0));
+
+    vec3 H;
+    H.x = cos(phi) * sinTheta;
+    H.y = sin(phi) * sinTheta;
+    H.z = cosTheta;
+
+    vec3 up = abs(N.z) < 0.999 ? vec3(0.0, 0.0, 1.0) : vec3(1.0, 0.0, 0.0);
+    vec3 tangent = normalize(cross(up, N));
+    vec3 bitangent = cross(N, tangent);
+
+    return normalize(tangent * H.x + bitangent * H.y + N * H.z);
+}
+
+vec3 getPosition(vec2 uv, float depth) {
+    vec4 clip = vec4(uv * 2.0 - 1.0, depth * 2.0 - 1.0, 1.0);
+    vec4 view = uInvProjection * clip;
+    return view.xyz / view.w;
+}
+
+// Hierarchical Z Trace for accelerated ray marching
+bool hiZTrace(vec3 startView, vec3 dirView, out vec2 hitUV) {
+    float maxDistance = 200.0;
+    vec3 endView = startView + dirView * maxDistance;
+
+    vec4 startClip = uProjection * vec4(startView, 1.0);
+    vec4 endClip = uProjection * vec4(endView, 1.0);
+
+    vec3 startScreen = (startClip.xyz / startClip.w) * 0.5 + 0.5;
+    vec3 endScreen = (endClip.xyz / endClip.w) * 0.5 + 0.5;
+
+    // Manual clipping for rays going behind camera
+    if (endClip.w < 0.0) {
+        float t = (0.01 - startClip.w) / (endClip.w - startClip.w);
+        endScreen = mix(startScreen, endScreen, t);
+    }
+
+    vec3 rayDir = endScreen - startScreen;
+    ivec2 res = textureSize(uHiZ, 0);
+
+    vec3 currentPos = startScreen;
+
+    // Jitter to break up artifacts
+    float jitter = fract(sin(dot(startScreen.xy + uTime, vec2(12.9898, 78.233))) * 43758.5453);
+    currentPos += rayDir * (jitter / 256.0);
+
+    int level = 0;
+    const int maxSteps = 128;
+    const int maxLevel = 6;
+
+    for (int i = 0; i < maxSteps; ++i) {
+        vec2 mipSize = vec2(res >> level);
+        float minDepth = textureLod(uHiZ, currentPos.xy, level).r;
+
+        if (currentPos.z > minDepth) {
+            if (level == 0) {
+                // Check thickness to avoid hitting through objects
+                // thickness increases with distance
+                float thickness = 0.002 + currentPos.z * 0.01;
+                if (currentPos.z < minDepth + thickness) {
+                    hitUV = currentPos.xy;
+                    return true;
+                }
+                // Miss (occluded), advance beyond
+                currentPos += rayDir * (1.0 / float(maxSteps));
+            } else {
+                level--;
+            }
+        } else {
+            // No hit, advance to next cell
+            vec2 cellIdx = floor(currentPos.xy * mipSize);
+            vec2 cellUV = (cellIdx + step(0.0, rayDir.xy)) / mipSize;
+            vec2 distUV = (cellUV - currentPos.xy) / rayDir.xy;
+            float t = min(distUV.x, distUV.y);
+
+            // Advance slightly into next cell
+            currentPos += rayDir * (t + 0.0001);
+            level = min(maxLevel, level + 1);
+        }
+
+        if (any(lessThan(currentPos.xy, vec2(0.0))) || any(greaterThan(currentPos.xy, vec2(1.0)))) break;
+        if (currentPos.z < 0.0 || currentPos.z > 1.0) break;
+    }
+
+    return false;
+}
+
+// Procedural Sky Fallback
+vec3 getSkyColor(vec3 worldRay) {
+    vec3 u_sunset_orange = vec3(0.9, 0.5, 0.2);
+    vec3 u_horizon_color = vec3(0.2, 0.4, 0.8);
+    vec3 u_night_color = vec3(0.05, 0.1, 0.3);
+
+    float atmosphere_thickness = exp(-abs(worldRay.y) * 15.0);
+    vec3 sky_base = mix(u_night_color, u_horizon_color, atmosphere_thickness * 0.5);
+    float top_mix = smoothstep(0.1, 0.6, worldRay.y);
+    return mix(sky_base, u_night_color, top_mix); // simplified
+}
+
+void main() {
+    ivec2 pixel = ivec2(gl_GlobalInvocationID.xy);
+    ivec2 size = imageSize(uOutputReflection);
+    if (pixel.x >= size.x || pixel.y >= size.y) return;
+
+    vec2 uv = (vec2(pixel) + 0.5) / vec2(size);
+    float depth = texture(uDepth, uv).r;
+
+    if (depth >= 0.9999) {
+        imageStore(uOutputReflection, pixel, vec4(0.0));
+        return;
+    }
+
+    vec3 normalWorld = texture(uNormal, uv).xyz * 2.0 - 1.0;
+    vec4 material = texture(uMaterial, uv);
+    float roughness = material.r;
+
+    if (roughness > uRoughnessThreshold) {
+        imageStore(uOutputReflection, pixel, vec4(0.0));
+        return;
+    }
+
+    vec3 posView = getPosition(uv, depth);
+    vec3 normalView = mat3(uView) * normalWorld;
+    vec3 viewDirView = normalize(posView);
+
+    vec3 totalRadiance = vec3(0.0);
+    int samples = (roughness < uMirrorThreshold) ? 1 : uMaxSamples;
+
+    for (int i = 0; i < samples; ++i) {
+        vec2 xi = hammersley(uint((uFrameCount + i) % 1024), 1024u);
+        vec3 HView = importanceSampleGGX(xi, normalView, roughness);
+        vec3 reflectDirView = reflect(viewDirView, HView);
+
+        if (dot(reflectDirView, normalView) < 0.0) {
+            // Reflect into surface, ignore
+            continue;
+        }
+
+        vec2 hitUV;
+        if (hiZTrace(posView, reflectDirView, hitUV)) {
+            // Screen edge fade
+            vec2 edge = smoothstep(0.0, 0.1, hitUV) * (1.0 - smoothstep(0.9, 1.0, hitUV));
+            float fade = edge.x * edge.y;
+            totalRadiance += texture(uRadiance, hitUV).rgb * fade;
+
+            // Fallback blend
+            vec3 reflectDirWorld = mat3(uInvView) * reflectDirView;
+            totalRadiance += getSkyColor(reflectDirWorld) * (1.0 - fade);
+        } else {
+            vec3 reflectDirWorld = mat3(uInvView) * reflectDirView;
+            totalRadiance += getSkyColor(reflectDirWorld);
+        }
+    }
+
+    imageStore(uOutputReflection, pixel, vec4(totalRadiance / float(samples), 1.0));
+}

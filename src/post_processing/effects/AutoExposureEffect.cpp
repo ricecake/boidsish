@@ -1,3 +1,4 @@
+#include "post_processing/PostProcessingManager.h"
 #include "post_processing/effects/AutoExposureEffect.h"
 
 #include "constants.h"
@@ -35,12 +36,7 @@ namespace Boidsish {
 			glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
 		}
 
-		void AutoExposureEffect::Apply(
-			GLuint sourceTexture,
-			GLuint /* depthTexture */,
-			const glm::mat4& /* viewMatrix */,
-			const glm::mat4& /* projectionMatrix */,
-			const glm::vec3& /* cameraPos */
+		void AutoExposureEffect::Apply(GLuint sourceTexture, const GBuffer& gbuffer, const glm::mat4& /* viewMatrix */, const glm::mat4& /* projectionMatrix */, const glm::vec3& /* cameraPos */
 		) {
 			// Update SSBO with latest parameters
 			struct ExposureData {

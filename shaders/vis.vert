@@ -4,6 +4,7 @@ layout(location = 1) in vec3 aNormal;
 layout(location = 2) in vec2 aTexCoords;
 layout(location = 3) in mat4 aInstanceMatrix;
 layout(location = 7) in vec4 aInstanceColor;
+layout(location = 8) in mat4 aPrevInstanceMatrix;
 
 // SSBO for decor/foliage instancing (binding 10)
 layout(std430, binding = 10) buffer SSBOInstances {
@@ -22,10 +23,14 @@ out vec3 vs_color;
 out vec3 barycentric;
 out vec2 TexCoords;
 out vec4 InstanceColor;
+out vec4 CurrClipPos;
+out vec4 PrevClipPos;
 
 uniform mat4  model;
+uniform mat4  uPrevModel;
 uniform mat4  view;
 uniform mat4  projection;
+uniform mat4  uPrevViewProjection;
 uniform vec4  clipPlane;
 uniform float ripple_strength;
 uniform bool  isColossal = false;
@@ -43,58 +48,70 @@ uniform float arcadeWaveAmplitude = 0.5;
 uniform float arcadeWaveFrequency = 10.0;
 uniform float arcadeWaveSpeed = 5.0;
 
-void main() {
-	vec3 displacedPos = aPos;
-	vec3 displacedNormal = aNormal;
-
+vec3 getDisplacedPos(vec3 pos, vec3 normal, float t) {
+	vec3 dPos = pos;
 	if (isArcadeText) {
 		float x = aTexCoords.x;
-		float phase = time * arcadeWaveSpeed;
+		float phase = t * arcadeWaveSpeed;
 
-		if (arcadeWaveMode == 1) { // Vertical Rippling Wave
-			displacedPos.y += sin(x * arcadeWaveFrequency + phase) * arcadeWaveAmplitude;
-		} else if (arcadeWaveMode == 2) { // Flag Style Wave
-			displacedPos.y += sin(x * arcadeWaveFrequency + phase) * arcadeWaveAmplitude;
-			displacedPos.z += cos(x * arcadeWaveFrequency * 0.7 + phase * 0.8) * arcadeWaveAmplitude * 0.5;
-		} else if (arcadeWaveMode == 3) { // Lengthwise Twist
+		if (arcadeWaveMode == 1) {
+			dPos.y += sin(x * arcadeWaveFrequency + phase) * arcadeWaveAmplitude;
+		} else if (arcadeWaveMode == 2) {
+			dPos.y += sin(x * arcadeWaveFrequency + phase) * arcadeWaveAmplitude;
+			dPos.z += cos(x * arcadeWaveFrequency * 0.7 + phase * 0.8) * arcadeWaveAmplitude * 0.5;
+		} else if (arcadeWaveMode == 3) {
 			float twist_angle = (x - 0.5) * arcadeWaveAmplitude * sin(phase);
 			float s = sin(twist_angle);
 			float c = cos(twist_angle);
-			// Rotate around local X axis
-			float y = displacedPos.y;
-			float z = displacedPos.z;
-			displacedPos.y = y * c - z * s;
-			displacedPos.z = y * s + z * c;
+			float y = dPos.y;
+			float z = dPos.z;
+			dPos.y = y * c - z * s;
+			dPos.z = y * s + z * c;
 		}
 	}
 
 	if (glitched_enabled == 1) {
-		displacedPos = applyGlitch(displacedPos, time);
+		dPos = applyGlitch(dPos, t);
 	}
 
 	if (ripple_strength > 0.0) {
 		float frequency = 20.0;
 		float speed = 3.0;
 		float amplitude = ripple_strength;
+		float wave = sin(frequency * (pos.x + pos.z) + t * speed);
+		dPos = pos + normal * wave * amplitude;
+	}
+	return dPos;
+}
 
-		float wave = sin(frequency * (aPos.x + aPos.z) + time * speed);
-		displacedPos = aPos + aNormal * wave * amplitude;
+void main() {
+	vec3 displacedPos = getDisplacedPos(aPos, aNormal, time);
+	vec3 prevDisplacedPos = getDisplacedPos(aPos, aNormal, time - deltaTime);
 
-		vec3 gradient = vec3(
-			cos(frequency * (aPos.x + aPos.z) + time * speed) * frequency * amplitude,
-			0.0,
-			cos(frequency * (aPos.x + aPos.z) + time * speed) * frequency * amplitude
-		);
+	vec3 displacedNormal = aNormal;
+	if (ripple_strength > 0.0) {
+		float frequency = 20.0;
+		float speed = 3.0;
+		float amplitude = ripple_strength;
+		vec3  gradient = vec3(
+            cos(frequency * (aPos.x + aPos.z) + time * speed) * frequency * amplitude,
+            0.0,
+            cos(frequency * (aPos.x + aPos.z) + time * speed) * frequency * amplitude
+        );
 		displacedNormal = normalize(aNormal - gradient);
 	}
 
 	mat4 modelMatrix;
+	mat4 prevModelMatrix;
 	if (useSSBOInstancing) {
 		modelMatrix = ssboInstanceMatrices[gl_InstanceID];
+		prevModelMatrix = modelMatrix; // Decor is static
 	} else if (is_instanced) {
 		modelMatrix = aInstanceMatrix;
+		prevModelMatrix = aPrevInstanceMatrix;
 	} else {
 		modelMatrix = model;
+		prevModelMatrix = uPrevModel;
 	}
 
 	// Extract world position (translation from model matrix)
@@ -142,8 +159,13 @@ void main() {
 		gl_Position = projection * staticView * world_pos;
 		gl_Position.z = gl_Position.w * 0.99999;
 		FragPos = world_pos.xyz;
+		CurrClipPos = gl_Position;
+		PrevClipPos = gl_Position; // Colossal objects are usually static or move with camera
 	} else {
 		gl_Position = projection * view * vec4(FragPos, 1.0);
+		CurrClipPos = gl_Position;
+		vec3 prevFragPos = vec3(prevModelMatrix * vec4(prevDisplacedPos, 1.0));
+		PrevClipPos = uPrevViewProjection * vec4(prevFragPos, 1.0);
 	}
 
 	gl_ClipDistance[0] = dot(vec4(FragPos, 1.0), clipPlane);

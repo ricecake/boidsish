@@ -1,14 +1,15 @@
-#version 330 core
-out vec4 FragColor;
+#version 420 core
+layout(location = 0) out vec4 FragColor;
+layout(location = 1) out vec4 gNormal;
+layout(location = 2) out vec4 gMaterial;
+layout(location = 3) out vec2 gVelocity;
 
 in vec3 WorldPos;
 in vec3 Normal;
-in vec4 ReflectionClipSpacePos;
+in vec4 CurrClipPos;
+in vec4 PrevClipPos;
 
 #include "helpers/lighting.glsl"
-
-uniform sampler2D reflectionTexture;
-uniform bool      useReflection;
 
 vec3 mod289(vec3 x) {
 	return x - floor(x * (1.0 / 289.0)) * 289.0;
@@ -116,13 +117,6 @@ void main() {
 	}
 
 	// discard;
-	// --- Reflection sampling ---
-	vec3 reflectionColor = vec3(0.0);
-	if (useReflection) {
-		vec2 texCoords = ReflectionClipSpacePos.xy / ReflectionClipSpacePos.w / 2.0 + 0.5;
-		reflectionColor = texture(reflectionTexture, texCoords).rgb;
-	}
-
 	// --- Grid logic ---
 	float grid_spacing = 1.0;
 	vec2  coord = WorldPos.xz / grid_spacing;
@@ -145,10 +139,17 @@ void main() {
 	vec3 lighting = apply_lighting(WorldPos, norm, surfaceColor, 0.8).rgb;
 
 	// --- Combine colors ---
-	float reflection_strength = 0.8;
-	vec3  final_color = mix(lighting * surfaceColor, reflectionColor, reflection_strength) + grid_color;
+	vec3  final_color = (lighting * surfaceColor) + grid_color;
 
 	// --- Distance Fade ---
 	vec4 outColor = vec4(final_color, fade);
 	FragColor = mix(vec4(0.7, 0.1, 0.7, fade) * length(outColor), outColor, step(1, fade));
+
+	// G-Buffer outputs
+	gNormal = vec4(norm * 0.5 + 0.5, 1.0);
+	gMaterial = vec4(0.1, 0.0, 1.0, 1.0); // Roughness 0.1 for floor
+
+	vec2 a = (CurrClipPos.xy / CurrClipPos.w) * 0.5 + 0.5;
+	vec2 b = (PrevClipPos.xy / PrevClipPos.w) * 0.5 + 0.5;
+	gVelocity = a - b;
 }

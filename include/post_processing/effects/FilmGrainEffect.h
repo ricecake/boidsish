@@ -17,7 +17,7 @@ namespace Boidsish {
 			void Initialize(int width, int height) override;
 			void Apply(
 				GLuint           sourceTexture,
-				GLuint           depthTexture,
+				const GBuffer&   gbuffer,
 				const glm::mat4& viewMatrix,
 				const glm::mat4& projectionMatrix,
 				const glm::vec3& cameraPos
