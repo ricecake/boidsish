@@ -718,11 +718,11 @@ namespace Boidsish {
 
 	void DelaunayBlob::render() const {
 		if (shader && shader->isValid()) {
-			render(*shader, GetModelMatrix());
+			render(*shader, GetModelMatrix(), GetPrevModelMatrix());
 		}
 	}
 
-	void DelaunayBlob::render(Shader& active_shader, const glm::mat4& model_matrix) const {
+	void DelaunayBlob::render(Shader& active_shader, const glm::mat4& model_matrix, const glm::mat4& prev_model_matrix) const {
 		if (points_.size() < 4)
 			return; // Need 4 points for tetrahedralization
 
@@ -734,6 +734,7 @@ namespace Boidsish {
 		active_shader.use();
 
 		active_shader.setMat4("model", model_matrix);
+		active_shader.setMat4("prevModel", prev_model_matrix);
 		active_shader.setVec3("objectColor", GetR(), GetG(), GetB());
 		active_shader.setFloat("objectAlpha", alpha_);
 		active_shader.setInt("useVertexColor", 1);

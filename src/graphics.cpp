@@ -237,6 +237,7 @@ namespace Boidsish {
 		std::unique_ptr<ComputeShader> hiz_shader_;
 		GLuint                         plane_vao{0}, plane_vbo{0}, sky_vao{0}, blur_quad_vao{0}, blur_quad_vbo{0};
 		GLuint                  hiz_texture_{0};
+		GLuint                  hiz_counter_buffer_{0};
 		int                     hiz_levels_{0};
 		GLuint                  main_fbo_{0}, main_fbo_texture_{0}, main_fbo_depth_texture_{0}, main_fbo_rbo_{0};
 		GLuint                  main_fbo_normal_texture_{0};
@@ -742,10 +743,6 @@ namespace Boidsish {
 				// --- Shockwave Manager ---
 				shockwave_manager->Initialize(render_width, render_height);
 
-				auto auto_exposure_effect = std::make_shared<PostProcessing::AutoExposureEffect>();
-				auto_exposure_effect->SetEnabled(true);
-				post_processing_manager_->AddEffect(auto_exposure_effect);
-
 				auto ssao_effect = std::make_shared<PostProcessing::SsaoEffect>();
 				ssao_effect->SetEnabled(false);
 				post_processing_manager_->AddEffect(ssao_effect);
@@ -797,6 +794,10 @@ namespace Boidsish {
 				auto sdf_volume_effect = std::make_shared<PostProcessing::SdfVolumeEffect>();
 				sdf_volume_effect->SetEnabled(true);
 				post_processing_manager_->AddEffect(sdf_volume_effect);
+
+				auto auto_exposure_effect = std::make_shared<PostProcessing::AutoExposureEffect>();
+				auto_exposure_effect->SetEnabled(true);
+				post_processing_manager_->AddEffect(auto_exposure_effect);
 
 				if (enable_hdr_) {
 					auto tone_mapping_effect = std::make_shared<PostProcessing::ToneMappingEffect>();
@@ -948,6 +949,9 @@ namespace Boidsish {
 
 			if (hiz_texture_) {
 				glDeleteTextures(1, &hiz_texture_);
+			}
+			if (hiz_counter_buffer_) {
+				glDeleteBuffers(1, &hiz_counter_buffer_);
 			}
 
 			if (lighting_ubo) {
@@ -1833,36 +1837,37 @@ namespace Boidsish {
 				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
 				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+
+				// Create counter buffer for SPD
+				glGenBuffers(1, &hiz_counter_buffer_);
+				glBindBuffer(GL_SHADER_STORAGE_BUFFER, hiz_counter_buffer_);
+				glBufferData(GL_SHADER_STORAGE_BUFFER, 12 * sizeof(uint32_t), NULL, GL_DYNAMIC_DRAW);
+				glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
 			}
 
 			hiz_shader_->use();
+			hiz_shader_->setVec2("uBaseSize", (float)render_width, (float)render_height);
+			hiz_shader_->setInt("uNumMips", hiz_levels_);
 
-			for (int i = 0; i < hiz_levels_; ++i) {
-				int mipWidth = std::max(1, render_width >> i);
-				int mipHeight = std::max(1, render_height >> i);
+			// Reset counters
+			uint32_t zero_counters[12] = {0};
+			glBindBuffer(GL_SHADER_STORAGE_BUFFER, hiz_counter_buffer_);
+			glBufferSubData(GL_SHADER_STORAGE_BUFFER, 0, sizeof(zero_counters), zero_counters);
+			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 2, hiz_counter_buffer_);
 
-				hiz_shader_->setVec2("uMipSize", (float)mipWidth, (float)mipHeight);
+			// Bind input depth
+			glActiveTexture(GL_TEXTURE0);
+			glBindTexture(GL_TEXTURE_2D, depthTexture);
+			hiz_shader_->setInt("uInputDepth", 0);
 
-				if (i == 0) {
-					glActiveTexture(GL_TEXTURE0);
-					glBindTexture(GL_TEXTURE_2D, depthTexture);
-				} else {
-					glActiveTexture(GL_TEXTURE0);
-					glBindTexture(GL_TEXTURE_2D, hiz_texture_);
-					glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_BASE_LEVEL, i - 1);
-					glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, i - 1);
-				}
-
-				glBindImageTexture(1, hiz_texture_, i, GL_FALSE, 0, GL_WRITE_ONLY, GL_R32F);
-
-				glDispatchCompute((mipWidth + 15) / 16, (mipHeight + 15) / 16, 1);
-				glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
+			// Bind all mip levels as images
+			for (int i = 0; i < hiz_levels_ && i < 12; ++i) {
+				glBindImageTexture(i, hiz_texture_, i, GL_FALSE, 0, GL_READ_WRITE, GL_R32F);
 			}
 
-			// Reset mipmap levels
-			glBindTexture(GL_TEXTURE_2D, hiz_texture_);
-			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_BASE_LEVEL, 0);
-			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, hiz_levels_ - 1);
+			// Single pass dispatch
+			glDispatchCompute((render_width + 15) / 16, (render_height + 15) / 16, 1);
+			glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
 		}
 	};
 
@@ -2214,6 +2219,7 @@ namespace Boidsish {
 			impl->lighting_ubo_data_.ambient_light = impl->light_manager.GetAmbientLight();
 			impl->lighting_ubo_data_.time = impl->simulation_time;
 			impl->lighting_ubo_data_.view_dir = impl->camera.front();
+			impl->lighting_ubo_data_.delta_time = impl->input_state.delta_time;
 
 			// Single buffer upload instead of 8 separate calls
 			glBindBuffer(GL_UNIFORM_BUFFER, impl->lighting_ubo);
@@ -2498,7 +2504,30 @@ namespace Boidsish {
 		// This avoids expensive noise calculations for pixels already drawn
 		impl->RenderSky(view);
 
-		// Render transparent shapes after sky
+		// Prepare G-Buffer for early effects
+		PostProcessing::GBuffer gbuffer;
+		gbuffer.depth = impl->main_fbo_depth_texture_;
+		gbuffer.normal = impl->main_fbo_normal_texture_;
+		gbuffer.material = impl->main_fbo_material_texture_;
+		gbuffer.velocity = impl->main_fbo_velocity_texture_;
+
+		// Generate Hi-Z before early effects calculation
+		impl->GenerateHiZ(impl->main_fbo_depth_texture_);
+		gbuffer.hiz = impl->hiz_texture_;
+		gbuffer.hiz_levels = impl->hiz_levels_;
+
+		// Calculate early effects (like SSSR) before transparency so they can be sampled
+		if (effects_enabled && impl->post_processing_manager_) {
+			impl->post_processing_manager_->CalculateEarlyEffects(
+				impl->main_fbo_texture_,
+				gbuffer,
+				view,
+				impl->projection,
+				impl->camera.pos()
+			);
+		}
+
+		// Render transparent shapes after sky and early effects calculation
 		impl->RenderTransparentShapes(view, impl->camera, impl->shapes, impl->simulation_time, std::nullopt);
 
 		// Render transparent/particle effects last
@@ -2509,19 +2538,8 @@ namespace Boidsish {
 		}
 		impl->RenderTrails(view, std::nullopt);
 
-		// Generate Hi-Z after main pass
-		impl->GenerateHiZ(impl->main_fbo_depth_texture_);
-
 		if (effects_enabled) {
 			// --- Post-processing Pass (renders FBO texture to screen) ---
-			PostProcessing::GBuffer gbuffer;
-			gbuffer.depth = impl->main_fbo_depth_texture_;
-			gbuffer.normal = impl->main_fbo_normal_texture_;
-			gbuffer.material = impl->main_fbo_material_texture_;
-			gbuffer.velocity = impl->main_fbo_velocity_texture_;
-			gbuffer.hiz = impl->hiz_texture_;
-			gbuffer.hiz_levels = impl->hiz_levels_;
-
 			// Apply standard post-processing effects (at render resolution)
 			GLuint final_texture = impl->post_processing_manager_->ApplyEffects(
 				impl->main_fbo_texture_,
@@ -2606,6 +2624,11 @@ namespace Boidsish {
 		// --- Shadow Optimization: Update last known positions for the next frame ---
 		for (const auto& shape : impl->shapes) {
 			shape->UpdateLastPosition();
+		}
+
+		// Update previous model matrices for motion vectors
+		for (const auto& pair : impl->persistent_shapes) {
+			pair.second->UpdatePrevModelMatrix();
 		}
 
 		// --- UI Pass (renders on top of the fullscreen quad) ---

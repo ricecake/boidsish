@@ -232,19 +232,20 @@ namespace Boidsish {
 				.render();
 		}
 
-		render(*shader, GetModelMatrix());
+		render(*shader, GetModelMatrix(), GetPrevModelMatrix());
 
 		// Reset model matrix for subsequent renders if needed
 		glm::mat4 model = glm::mat4(1.0f);
 		shader->setMat4("model", model);
 	}
 
-	void Graph::render(Shader& shader, const glm::mat4& model_matrix) const {
+	void Graph::render(Shader& shader, const glm::mat4& model_matrix, const glm::mat4& prev_model_matrix) const {
 		if (!buffers_initialized_) {
 			SetupBuffers();
 		}
 
 		shader.setMat4("model", model_matrix);
+		shader.setMat4("prevModel", prev_model_matrix);
 		shader.setInt("useVertexColor", 1);
 
 		glBindVertexArray(graph_vao_);

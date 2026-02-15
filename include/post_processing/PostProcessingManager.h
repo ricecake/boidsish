@@ -3,6 +3,7 @@
 #include <memory>
 #include <vector>
 
+#include "GBuffer.h"
 #include "IPostProcessingEffect.h"
 #include <GL/glew.h>
 
@@ -10,15 +11,6 @@ class Shader; // Forward declaration
 
 namespace Boidsish {
 	namespace PostProcessing {
-
-		struct GBuffer {
-			GLuint depth;
-			GLuint normal;
-			GLuint material;
-			GLuint velocity;
-			GLuint hiz;
-			int    hiz_levels;
-		};
 
 		class PostProcessingManager {
 		public:
@@ -28,6 +20,14 @@ namespace Boidsish {
 			void   Initialize();
 			void   AddEffect(std::shared_ptr<IPostProcessingEffect> effect);
 			void   SetToneMappingEffect(std::shared_ptr<IPostProcessingEffect> effect);
+			void CalculateEarlyEffects(
+				GLuint           sourceTexture,
+				const GBuffer&   gbuffer,
+				const glm::mat4& viewMatrix,
+				const glm::mat4& projectionMatrix,
+				const glm::vec3& cameraPos
+			);
+
 			GLuint ApplyEffects(
 				GLuint           sourceTexture,
 				const GBuffer&   gbuffer,

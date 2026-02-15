@@ -70,8 +70,9 @@ bool hiZTrace(vec3 startView, vec3 dirView, out vec2 hitUV) {
     vec3 startScreen = (startClip.xyz / startClip.w) * 0.5 + 0.5;
     vec3 endScreen = (endClip.xyz / endClip.w) * 0.5 + 0.5;
 
+    // Manual clipping for rays going behind camera
     if (endClip.w < 0.0) {
-        float t = startClip.w / (startClip.w - endClip.w);
+        float t = (0.01 - startClip.w) / (endClip.w - startClip.w);
         endScreen = mix(startScreen, endScreen, t);
     }
 
@@ -82,40 +83,39 @@ bool hiZTrace(vec3 startView, vec3 dirView, out vec2 hitUV) {
 
     // Jitter to break up artifacts
     float jitter = fract(sin(dot(startScreen.xy + uTime, vec2(12.9898, 78.233))) * 43758.5453);
-    currentPos += rayDir * (jitter / 128.0);
+    currentPos += rayDir * (jitter / 256.0);
 
     int level = 0;
-    const int maxSteps = 80;
-    const int maxLevel = 5;
+    const int maxSteps = 128;
+    const int maxLevel = 6;
 
     for (int i = 0; i < maxSteps; ++i) {
         vec2 mipSize = vec2(res >> level);
-        vec2 cellIdx = floor(currentPos.xy * mipSize);
-
-        // Sample Hi-Z (min depth)
         float minDepth = textureLod(uHiZ, currentPos.xy, level).r;
 
         if (currentPos.z > minDepth) {
             if (level == 0) {
-                // Potential hit at finest level
-                // Check thickness to avoid hitting backfaces of foreground objects
-                if (currentPos.z < minDepth + 0.005) {
+                // Check thickness to avoid hitting through objects
+                // thickness increases with distance
+                float thickness = 0.002 + currentPos.z * 0.01;
+                if (currentPos.z < minDepth + thickness) {
                     hitUV = currentPos.xy;
                     return true;
                 }
-                // Skip if too deep (occluded)
+                // Miss (occluded), advance beyond
                 currentPos += rayDir * (1.0 / float(maxSteps));
             } else {
-                // Go down to refine
                 level--;
             }
         } else {
-            // No hit in this cell at this level, advance ray to next cell
-            // A simple approximation for advancement:
-            float stepSize = pow(2.0, float(level)) / float(max(res.x, res.y));
-            currentPos += rayDir * stepSize;
+            // No hit, advance to next cell
+            vec2 cellIdx = floor(currentPos.xy * mipSize);
+            vec2 cellUV = (cellIdx + step(0.0, rayDir.xy)) / mipSize;
+            vec2 distUV = (cellUV - currentPos.xy) / rayDir.xy;
+            float t = min(distUV.x, distUV.y);
 
-            // Go up to skip more
+            // Advance slightly into next cell
+            currentPos += rayDir * (t + 0.0001);
             level = min(maxLevel, level + 1);
         }
 

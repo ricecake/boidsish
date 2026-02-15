@@ -67,13 +67,13 @@ namespace Boidsish {
 			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 		}
 
-		void SssrEffect::Apply(
+		void SssrEffect::Calculate(
 			GLuint           sourceTexture,
 			const GBuffer&   gbuffer,
 			const glm::mat4& viewMatrix,
-			const glm::mat4& projectionMatrix,
-			const glm::vec3& /* cameraPos */
+			const glm::mat4& projectionMatrix
 		) {
+			if (!is_enabled_) return;
 			frame_count_++;
 
 			// 1. SSSR Raymarching
@@ -151,13 +151,22 @@ namespace Boidsish {
 				height_,
 				1
 			);
+		}
+
+		void SssrEffect::Composite(
+			GLuint           sourceTexture,
+			const GBuffer&   gbuffer,
+			const glm::mat4& projectionMatrix
+		) {
+			if (!is_enabled_) return;
 
 			// 4. Composite
 			composite_shader_->use();
 			composite_shader_->setInt("sceneTexture", 0);
 			composite_shader_->setInt("reflectionTexture", 1);
 			composite_shader_->setInt("gNormal", 2);
-			composite_shader_->setInt("gDepth", 3);
+			composite_shader_->setInt("gMaterial", 3);
+			composite_shader_->setInt("gDepth", 4);
 			composite_shader_->setMat4("uInvProjection", glm::inverse(projectionMatrix));
 
 			glActiveTexture(GL_TEXTURE0);
@@ -167,9 +176,22 @@ namespace Boidsish {
 			glActiveTexture(GL_TEXTURE2);
 			glBindTexture(GL_TEXTURE_2D, gbuffer.normal);
 			glActiveTexture(GL_TEXTURE3);
+			glBindTexture(GL_TEXTURE_2D, gbuffer.material);
+			glActiveTexture(GL_TEXTURE4);
 			glBindTexture(GL_TEXTURE_2D, gbuffer.depth);
 
 			glDrawArrays(GL_TRIANGLES, 0, 6);
+		}
+
+		void SssrEffect::Apply(
+			GLuint           sourceTexture,
+			const GBuffer&   gbuffer,
+			const glm::mat4& viewMatrix,
+			const glm::mat4& projectionMatrix,
+			const glm::vec3& /* cameraPos */
+		) {
+			Calculate(sourceTexture, gbuffer, viewMatrix, projectionMatrix);
+			Composite(sourceTexture, gbuffer, projectionMatrix);
 		}
 
 		void SssrEffect::Resize(int width, int height) {

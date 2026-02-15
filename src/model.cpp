@@ -250,21 +250,15 @@ namespace Boidsish {
 			return;
 		}
 		shader->use();
-		render(*shader, GetModelMatrix());
+		render(*shader, GetModelMatrix(), GetPrevModelMatrix());
 	}
 
-	void Model::render(Shader& shader, const glm::mat4& model_matrix) const {
+	void Model::render(Shader& shader, const glm::mat4& model_matrix, const glm::mat4& prev_model_matrix) const {
 		if (!m_data)
 			return;
 
-		// Create model matrix from shape properties
-		glm::mat4 model = glm::mat4(1.0f);
-		model = glm::translate(model, glm::vec3(GetX(), GetY(), GetZ()));
-		model *= glm::mat4_cast(GetRotation());
-		model *= glm::mat4_cast(base_rotation_);
-		model = glm::scale(model, GetScale());
-
-		shader.setMat4("model", model);
+		shader.setMat4("model", model_matrix);
+		shader.setMat4("uPrevModel", prev_model_matrix);
 		shader.setVec3("objectColor", GetR(), GetG(), GetB());
 		shader.setFloat("objectAlpha", GetA());
 

@@ -58,6 +58,7 @@ void main() {
 	// Sample heightmap at the interpolated UV to get world position and normal
 	vec3 q, n;
 	sampleHeightmap(TexCoords, slice, worldOffset, FragPos, Normal);
+	vec3 baseFragPos = FragPos;
 
 	// Apply shockwave ripple to terrain
 	FragPos += getShockwaveDisplacement(FragPos, 0.0, false);
@@ -79,5 +80,10 @@ void main() {
 	// Final vertex position
 	gl_Position = projection * view * vec4(FragPos, 1.0);
 	CurrClipPos = gl_Position;
-	PrevClipPos = uPrevViewProjection * vec4(FragPos, 1.0);
+
+	// Improved Terrain Motion Vectors:
+	// For terrain, we use the non-displaced position for the previous frame's clip position.
+	// This ensures that the terrain's motion vector accounts for the displacement velocity,
+	// reducing smearing artifacts caused by dynamic deformations like shockwaves.
+	PrevClipPos = uPrevViewProjection * vec4(baseFragPos, 1.0);
 }

@@ -23,6 +23,8 @@ namespace Boidsish {
 			) override;
 			void Resize(int width, int height) override;
 
+			bool IsEarly() const override { return true; }
+
 			void SetTime(float time) override { time_ = time; }
 
 		private:

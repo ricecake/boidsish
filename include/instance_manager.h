@@ -20,6 +20,7 @@ namespace Boidsish {
 		struct InstanceGroup {
 			std::vector<std::shared_ptr<Shape>> shapes;
 			unsigned int                        instance_matrix_vbo_ = 0;
+			unsigned int                        prev_instance_matrix_vbo_ = 0;
 			unsigned int                        instance_color_vbo_ = 0;
 			size_t                              matrix_capacity_ = 0;
 			size_t                              color_capacity_ = 0;

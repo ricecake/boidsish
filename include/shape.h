@@ -34,9 +34,9 @@ namespace Boidsish {
 		// Pure virtual function for rendering the shape
 		virtual void render() const = 0;
 
-		virtual void render(Shader& shader) const final { render(shader, GetModelMatrix()); }
+		virtual void render(Shader& shader) const final { render(shader, GetModelMatrix(), GetPrevModelMatrix()); }
 
-		virtual void      render(Shader& shader, const glm::mat4& model_matrix) const = 0;
+		virtual void      render(Shader& shader, const glm::mat4& model_matrix, const glm::mat4& prev_model_matrix) const = 0;
 		virtual glm::mat4 GetModelMatrix() const = 0;
 
 		// Get the active visual effects for this shape
@@ -64,6 +64,10 @@ namespace Boidsish {
 		inline glm::vec3 GetLastPosition() const { return last_position_; }
 
 		inline void UpdateLastPosition() { last_position_ = glm::vec3(x_, y_, z_); }
+
+		inline const glm::mat4& GetPrevModelMatrix() const { return prev_model_matrix_; }
+
+		inline void UpdatePrevModelMatrix() { prev_model_matrix_ = GetModelMatrix(); }
 
 		inline float GetR() const { return r_; }
 
@@ -227,6 +231,7 @@ namespace Boidsish {
 		int       id_;
 		float     x_, y_, z_;
 		glm::vec3 last_position_;
+		glm::mat4 prev_model_matrix_{1.0f};
 		float     r_, g_, b_, a_;
 		int       trail_length_;
 		float     trail_thickness_;

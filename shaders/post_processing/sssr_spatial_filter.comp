@@ -22,9 +22,9 @@ void main() {
     vec4 sum = vec4(0.0);
     float totalWeight = 0.0;
 
-    // 5x5 Bilateral Filter
-    for (int x = -2; x <= 2; ++x) {
-        for (int y = -2; y <= 2; ++y) {
+    // 7x7 Bilateral Filter
+    for (int x = -3; x <= 3; ++x) {
+        for (int y = -3; y <= 3; ++y) {
             vec2 offset = vec2(x, y) * texelSize;
             vec2 sampleUV = uv + offset;
 
@@ -32,9 +32,9 @@ void main() {
             vec3 sampleNormal = texture(uNormal, sampleUV).xyz * 2.0 - 1.0;
             float sampleDepth = texture(uDepth, sampleUV).r;
 
-            float weightNormal = pow(max(0.0, dot(centerNormal, sampleNormal)), 64.0);
-            float weightDepth = exp(-abs(centerDepth - sampleDepth) * 100.0);
-            float weightSpatial = exp(-(float(x*x + y*y)) / 4.0);
+            float weightNormal = pow(max(0.0, dot(centerNormal, sampleNormal)), 32.0);
+            float weightDepth = exp(-abs(centerDepth - sampleDepth) * 200.0);
+            float weightSpatial = exp(-(float(x*x + y*y)) / 8.0);
 
             float weight = weightNormal * weightDepth * weightSpatial;
 

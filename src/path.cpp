@@ -141,7 +141,7 @@ namespace Boidsish {
 		}
 	}
 
-	void Path::render(Shader& shader, const glm::mat4& model_matrix) const {
+	void Path::render(Shader& shader, const glm::mat4& model_matrix, const glm::mat4& prev_model_matrix) const {
 		if (!buffers_initialized_) {
 			SetupBuffers();
 		}

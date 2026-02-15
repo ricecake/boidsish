@@ -47,7 +47,7 @@ namespace Boidsish {
 		alignas(16) glm::vec3 ambient_light; // offset 672, 12 bytes
 		float time;                          // offset 684, 4 bytes
 		alignas(16) glm::vec3 view_dir;      // offset 688, 12 bytes
-		float _pad3;                         // offset 700, 4 bytes
+		float delta_time;                    // offset 700, 4 bytes
 	}; // Total: 704 bytes
 
 	static_assert(sizeof(LightingUbo) == 704, "LightingUbo must be 704 bytes for UBO alignment");

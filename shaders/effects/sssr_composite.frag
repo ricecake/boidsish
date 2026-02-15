@@ -6,6 +6,7 @@ in vec2 TexCoords;
 uniform sampler2D sceneTexture;
 uniform sampler2D reflectionTexture;
 uniform sampler2D gNormal;
+uniform sampler2D gMaterial;
 uniform sampler2D gDepth;
 uniform mat4      uInvProjection;
 
@@ -22,6 +23,13 @@ vec3 fresnelSchlick(float cosTheta, vec3 F0) {
 
 void main() {
     vec4 scene = texture(sceneTexture, TexCoords);
+    float depth = texture(gDepth, TexCoords).r;
+
+    if (depth >= 0.9999) {
+        FragColor = scene;
+        return;
+    }
+
     vec4 reflection = texture(reflectionTexture, TexCoords);
 
     vec3 normal = texture(gNormal, TexCoords).xyz * 2.0 - 1.0;
@@ -33,12 +41,22 @@ void main() {
     vec3 posView = getPosition(TexCoords);
     vec3 viewDir = normalize(-posView);
 
-    // Assuming a standard F0 for dielectrics if we don't have metallic/albedo here
-    vec3 F0 = vec3(0.04);
+    vec4 material = texture(gMaterial, TexCoords);
+    float roughness = material.r;
+    float metallic = material.g;
+
+    // Use albedo for F0 if metallic
+    vec3 F0 = mix(vec3(0.04), scene.rgb, metallic);
     vec3 F = fresnelSchlick(max(dot(normal, viewDir), 0.0), F0);
 
     // Mix based on Fresnel - ensure energy conservation roughly
-    vec3 finalColor = scene.rgb * (1.0 - F) + reflection.rgb * F;
+    // For non-metallic, diffuse (scene.rgb) is preserved more.
+    // For metallic, diffuse is zero.
+    vec3 reflectionPart = reflection.rgb * F;
+    vec3 finalColor = scene.rgb * (1.0 - F * (1.0 - metallic)) + reflectionPart;
+
+    // Simple rough approximation: damp reflections by roughness
+    finalColor = mix(finalColor, scene.rgb + reflectionPart * 0.5, roughness * 0.5);
 
     FragColor = vec4(finalColor, scene.a);
 }

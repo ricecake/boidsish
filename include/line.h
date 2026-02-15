@@ -25,7 +25,7 @@ namespace Boidsish {
 		Line(glm::vec3 start, glm::vec3 end, float width = 1.0f);
 
 		void      render() const override;
-		void      render(Shader& shader, const glm::mat4& model_matrix) const override;
+		void      render(Shader& shader, const glm::mat4& model_matrix, const glm::mat4& prev_model_matrix) const override;
 		glm::mat4 GetModelMatrix() const override;
 
 		inline void SetStart(const glm::vec3& start) { SetPosition(start.x, start.y, start.z); }

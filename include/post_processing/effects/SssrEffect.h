@@ -1,7 +1,7 @@
 #pragma once
 
+#include "post_processing/GBuffer.h"
 #include "post_processing/IPostProcessingEffect.h"
-#include "post_processing/PostProcessingManager.h"
 #include <memory>
 
 class Shader;
@@ -22,8 +22,23 @@ namespace Boidsish {
 				const glm::mat4& projectionMatrix,
 				const glm::vec3& cameraPos
 			) override;
+
+			void Calculate(
+				GLuint           sourceTexture,
+				const GBuffer&   gbuffer,
+				const glm::mat4& viewMatrix,
+				const glm::mat4& projectionMatrix
+			);
+
+			void Composite(
+				GLuint           sourceTexture,
+				const GBuffer&   gbuffer,
+				const glm::mat4& projectionMatrix
+			);
 			void Initialize(int width, int height) override;
 			void Resize(int width, int height) override;
+
+			bool IsEarly() const override { return true; }
 
 			void SetMaxSamples(int samples) { max_samples_ = samples; }
 			int  GetMaxSamples() const { return max_samples_; }

@@ -24,6 +24,8 @@ namespace Boidsish {
 			void Initialize(int width, int height) override;
 			void Resize(int width, int height) override;
 
+			bool IsEarly() const override { return true; }
+
 			void SetTime(float time) override { time_ = time; }
 
 			// Haze parameters
