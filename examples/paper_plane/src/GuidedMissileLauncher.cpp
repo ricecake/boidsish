@@ -95,15 +95,15 @@ namespace Boidsish {
 		float max_h = handler.vis->GetTerrainMaxHeight();
 
 		if (max_h <= 0.0f)
-			max_h = 200.0f;
+			max_h = 300.0f;
 
-		float start_h = 60.0f;
+		float start_h = 70.0f;
 		float extreme_h = 3.0f * max_h;
 
 		if (ppos.y < start_h)
 			return;
 
-		const float p_min = 0.5f;
+		const float p_min = 0.4f;
 		const float p_max = 10.0f;
 
 		glm::vec3 pvel_n = (glm::length(pvel.Toglm()) > 0.001f) ? glm::normalize(pvel) : glm::vec3(0, 0, 1);

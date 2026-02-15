@@ -230,13 +230,6 @@ namespace Boidsish {
 		if (controller_->roll_right)
 			target_rot_velocity.z -= kRollSpeed;
 
-		if (state_ == PlaneState::DYING) {
-			target_rot_velocity *= 0.2f;
-			target_rot_velocity.z += 1.5f * spiral_intensity_;
-			target_rot_velocity.x += 0.5f * spiral_intensity_;
-			target_rot_velocity.y *= std::fmod(spiral_intensity_, 3.0f) - 1;
-		}
-
 		// --- Coordinated Turn (Banking) ---
 		target_rot_velocity.z += target_rot_velocity.y * kCoordinatedTurnFactor;
 
@@ -252,15 +245,29 @@ namespace Boidsish {
 		}
 
 		// --- Auto-leveling ---
+		if (state_ == PlaneState::DYING) {
+			target_rot_velocity *= 0.2f;
+			target_rot_velocity.z += 0.75f * spiral_intensity_ * sin(time/3);
+			target_rot_velocity.x += 0.5f * spiral_intensity_ * sin(time/5);
+		}
+
 		if (!controller_->pitch_up && !controller_->pitch_down && !controller_->yaw_left && !controller_->yaw_right &&
 		    !controller_->roll_left && !controller_->roll_right) {
 			glm::vec3 world_up = glm::vec3(0.0f, 1.0f, 0.0f);
 			glm::vec3 plane_forward_world = orientation_ * glm::vec3(0.0f, 0.0f, -1.0f);
+
+			if (state_ == PlaneState::DYING) {
+				// plane_forward_world = orientation_ * glm::vec3(0.0f, 0.50f, -1.0f);
+				world_up = glm::normalize(glm::vec3(0.0f, 1.0f, -0.40f));
+			}
+
 			glm::vec3 world_up_in_local = glm::inverse(orientation_) * world_up;
 
-			glm::vec3 forward_on_horizon = glm::normalize(
-				glm::vec3(plane_forward_world.x, 0.0f, plane_forward_world.z)
-			);
+
+
+			// glm::vec3 forward_on_horizon = glm::normalize(
+			// 	glm::vec3(plane_forward_world.x, 0.0f, plane_forward_world.zs)
+			// );
 			float pitch_error = glm::asin(glm::dot(plane_forward_world, world_up));
 			float roll_error = atan2(world_up_in_local.x, world_up_in_local.y);
 
@@ -398,7 +405,7 @@ namespace Boidsish {
 		health -= 5;
 		damage_pending_++;
 		if (state_ == PlaneState::DYING) {
-			spiral_intensity_ += (std::abs(health)) / (std::max(health, 1.0f));
+			spiral_intensity_ += (std::abs(health)-1) / (std::max(std::abs(health), 1.0f));
 		}
 	}
 

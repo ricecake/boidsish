@@ -71,11 +71,11 @@ namespace Boidsish {
 			if (terrain_->RaycastCached(position_, ray.dir, avoidanceLookAhead_, hitDist, hitNormal)) {
 				float forceMag = (1.0f - (hitDist / avoidanceLookAhead_)) * avoidanceStrength_;
 				// Push away from the surface normal
-				avoidanceForce += hitNormal * forceMag * ray.weight;
+				avoidanceForce += -ray.dir * forceMag * ray.weight;
 
 				// If it's the forward ray, also add a significant upward push if we're hitting a wall
 				if (&ray == &rays[0] && hitNormal.y < 0.5f) {
-					avoidanceForce.y += avoidanceStrength_ * 2.0f;
+					avoidanceForce += -ray.dir * 2.0f;
 				}
 			}
 		}
