@@ -1,69 +1,113 @@
-#include <iostream>
+#include "graphics.h"
+#include "dot.h"
+#include "hud.h"
+#include "line.h"
+#include "terrain_generator_interface.h"
+#include <GLFW/glfw3.h>
+
 #include <iomanip>
+#include <iostream>
 #include <vector>
 #include <glm/glm.hpp>
-#include <glm/gtc/matrix_transform.hpp>
 
-#include "graphics.h"
-#include "terrain_generator.h"
-
-void print_res(const std::string& label, float dist, glm::vec3 dir) {
-    std::cout << "  " << std::left << std::setw(16) << label << ": Dist = "
-              << std::fixed << std::setprecision(4) << dist
-              << ", Dir = (" << dir.x << ", " << dir.y << ", " << dir.z << ")" << std::endl;
-}
+using namespace Boidsish;
 
 int main() {
-    std::cout << "Starting Refined Closest Terrain Test..." << std::endl;
+	try {
+		Visualizer visualizer(1280, 720, "Closest Terrain Visualizer");
+		visualizer.SetCameraMode(CameraMode::TRACKING);
 
-    Boidsish::TerrainGenerator terrain;
+		auto terrain_gen = visualizer.GetTerrain();
+		if (terrain_gen) {
+			terrain_gen->SetWorldScale(2.0f);
+		}
 
-    // Test points
-    std::vector<glm::vec3> test_points = {
-        {0.0f, 100.0f, 0.0f},    // High above origin
-        {10.0f, 0.1f, 10.0f},    // Just above surface
-        {10.0f, -0.1f, 10.0f}    // Just below surface
-    };
+		glm::vec3 probe_pos(0, 100, 0);
+		float     cone_spread = 0.5f;
+		bool      spherical_mode = true;
 
-    for (const auto& p : test_points) {
-        std::cout << "\nTesting Point: (" << p.x << ", " << p.y << ", " << p.z << ")" << std::endl;
+		// Initial camera setup
+		Camera& cam = visualizer.GetCamera();
+		cam.x = 100.0f;
+		cam.y = 150.0f;
+		cam.z = 100.0f;
 
-        // 1. Spherical
-        auto [s_dist, s_dir] = terrain.GetClosestTerrain(p);
-        print_res("Spherical", s_dist, s_dir);
+		// We'll use these to render
+		auto probe_dot = std::make_shared<Dot>(999, 0.0f, 0.0f, 0.0f, 2.0f, 1.0f, 1.0f, 0.0f);
+		auto result_line = std::make_shared<Line>(glm::vec3(0), glm::vec3(0), 0.5f);
+		result_line->SetStyle(Line::Style::LASER);
+		result_line->SetColor(0.0f, 1.0f, 1.0f, 0.8f);
 
-        // 2. Forward cone (narrow)
-        glm::vec3 forward(0, 0, -1);
-        auto [c1_dist, c1_dir] = terrain.GetClosestTerrain(p, 0.1f, forward);
-        print_res("Cone (Narrow)", c1_dist, c1_dir);
+		auto msg = visualizer.AddHudMessage("Mode: Spherical", HudAlignment::TOP_CENTER, {0, 20}, 1.0f);
 
-        // 3. Forward cone (wide)
-        auto [c2_dist, c2_dir] = terrain.GetClosestTerrain(p, 2.0f, forward);
-        print_res("Cone (Wide)", c2_dist, c2_dir);
-    }
+		visualizer.AddInputCallback([&](const InputState& input) {
+			float speed = 100.0f * input.delta_time;
 
-    // Direction flip test
-    std::cout << "\nDirection Flip Test (near surface):" << std::endl;
-    float x = 50.0f, z = 50.0f;
-    auto [h, norm] = terrain.GetTerrainPropertiesAtPoint(x, z);
-    std::cout << "Terrain height at (" << x << ", " << z << ") is " << h << ", Normal: (" << norm.x << ", " << norm.y << ", " << norm.z << ")" << std::endl;
+			// Move relative to world axes
+			if (input.keys[GLFW_KEY_W])
+				probe_pos.z -= speed;
+			if (input.keys[GLFW_KEY_S])
+				probe_pos.z += speed;
+			if (input.keys[GLFW_KEY_A])
+				probe_pos.x -= speed;
+			if (input.keys[GLFW_KEY_D])
+				probe_pos.x += speed;
+			if (input.keys[GLFW_KEY_LEFT_SHIFT])
+				probe_pos.y += speed;
+			if (input.keys[GLFW_KEY_LEFT_CONTROL])
+				probe_pos.y -= speed;
 
-    glm::vec3 p_above(x, h + 0.01f, z);
-    glm::vec3 p_below(x, h - 0.01f, z);
+			// Toggle mode
+			if (input.key_down[GLFW_KEY_M]) {
+				spherical_mode = !spherical_mode;
+			}
 
-    auto [d_a, dir_a] = terrain.GetClosestTerrain(p_above);
-    auto [d_b, dir_b] = terrain.GetClosestTerrain(p_below);
+			// Control spread
+			if (input.keys[GLFW_KEY_E])
+				cone_spread += 2.0f * input.delta_time;
+			if (input.keys[GLFW_KEY_Q])
+				cone_spread = std::max(0.01f, cone_spread - 2.0f * input.delta_time);
 
-    print_res("Above", d_a, dir_a);
-    print_res("Below", d_b, dir_b);
+			std::string mode_str =
+				spherical_mode ? "Spherical" : "Conical (Spread: " + std::to_string(cone_spread) + ")";
+			msg->SetMessage("Mode: " + mode_str + "\nWASD: Move, Shift/Ctrl: Height, M: Toggle Mode, Q/E: Spread");
+		});
 
-    std::cout << "Dot product of directions: " << glm::dot(dir_a, dir_b) << std::endl;
-    if (glm::dot(dir_a, dir_b) < -0.9f) {
-        std::cout << "Directions correctly point in opposite ways (both towards surface)." << std::endl;
-    } else {
-        std::cout << "Directions are NOT opposite. (May be expected if surface is very complex but usually they should be opposite for near-flat)." << std::endl;
-    }
+		visualizer.AddShapeHandler([&](float time) {
+			(void)time;
+			auto                                terrain = visualizer.GetTerrain();
+			std::vector<std::shared_ptr<Shape>> shapes;
+			if (!terrain)
+				return shapes;
 
-    std::cout << "\nTest Complete." << std::endl;
-    return 0;
+			std::tuple<float, glm::vec3> result;
+			if (spherical_mode) {
+				result = terrain->GetClosestTerrain(probe_pos);
+			} else {
+				// Search direction is camera front (opposite camera from focus point)
+				glm::vec3 cone_dir = visualizer.GetCamera().front();
+				result = terrain->GetClosestTerrain(probe_pos, cone_spread, cone_dir);
+			}
+
+			float     dist = std::get<0>(result);
+			glm::vec3 dir = std::get<1>(result);
+			glm::vec3 target = probe_pos + dir * dist;
+
+			probe_dot->SetPosition(probe_pos.x, probe_pos.y, probe_pos.z);
+			result_line->SetStart(probe_pos);
+			result_line->SetEnd(target);
+
+			// First shape is the one tracked by TRACKING mode
+			shapes.push_back(probe_dot);
+			shapes.push_back(result_line);
+
+			return shapes;
+		});
+
+		visualizer.Run();
+	} catch (const std::exception& e) {
+		std::cerr << "Error: " << e.what() << std::endl;
+		return 1;
+	}
+	return 0;
 }
