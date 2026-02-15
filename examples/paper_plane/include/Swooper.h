@@ -23,6 +23,7 @@ namespace Boidsish {
 		float time_to_fire_ = 0.0f;
 		bool  swooping_ = false;
 		float speed_ = 70.0f;
+		bool  repositioning_ = false;
 	};
 
 } // namespace Boidsish

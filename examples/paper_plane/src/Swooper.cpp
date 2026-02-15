@@ -36,10 +36,19 @@ namespace Boidsish {
 		float     dist = glm::length(to_player);
 
 		glm::vec3 to_enemy = current_pos - player_pos;
-		bool      is_behind = false;
-		if (glm::length(to_enemy) > 0.001f) {
-			float dot_forward = glm::dot(player_forward, glm::normalize(to_enemy));
-			is_behind = dot_forward < -0.1f;
+		float     distance_to_player = glm::length(to_enemy);
+		float     dot_forward = 0.0f;
+		if (distance_to_player > 0.001f) {
+			dot_forward = glm::dot(player_forward, to_enemy / distance_to_player);
+		}
+
+		// State transition: enter repositioning if behind
+		if (dot_forward < -0.1f) {
+			repositioning_ = true;
+		}
+		// Exit repositioning if in front and far enough
+		if (repositioning_ && dot_forward > 0.7f && distance_to_player > 150.0f) {
+			repositioning_ = false;
 		}
 
 		if (dist < 0.001f)
@@ -49,9 +58,9 @@ namespace Boidsish {
 
 		float current_speed = swooping_ ? speed_ * 1.8f : speed_;
 
-		if (is_behind) {
+		if (repositioning_) {
 			current_speed *= 3.5f; // Catch up fast
-			glm::vec3 target_pos = player_pos + player_forward * 150.0f;
+			glm::vec3 target_pos = player_pos + player_forward * 200.0f;
 			glm::vec3 move_dir = glm::normalize(target_pos - current_pos);
 			glm::vec3 new_vel = move_dir * current_speed;
 			SetVelocity(Vector3(new_vel.x, new_vel.y, new_vel.z));
@@ -84,7 +93,7 @@ namespace Boidsish {
 
 		// Firing logic
 		time_to_fire_ -= delta_time;
-		if (!is_behind && time_to_fire_ <= 0 && dist < 800.0f && dist > 50.0f) {
+		if (!repositioning_ && time_to_fire_ <= 0 && dist < 800.0f && dist > 50.0f) {
 			float fire_rate = swooping_ ? 0.15f : 0.8f;
 			time_to_fire_ = fire_rate;
 

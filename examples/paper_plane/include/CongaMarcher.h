@@ -21,6 +21,7 @@ namespace Boidsish {
 		float spiral_speed_ = 3.0f;
 		float spiral_radius_ = 8.0f;
 		float speed_ = 45.0f;
+		bool  repositioning_ = false;
 	};
 
 } // namespace Boidsish

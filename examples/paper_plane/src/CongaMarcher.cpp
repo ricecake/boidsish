@@ -32,18 +32,27 @@ namespace Boidsish {
 
 		glm::vec3 current_pos = GetPosition().Toglm();
 		glm::vec3 to_enemy = current_pos - player_pos;
-		bool      is_behind = false;
+		float     distance = glm::length(to_enemy);
+		float     dot_forward = 0.0f;
 
-		if (glm::length(to_enemy) > 0.001f) {
-			float dot_forward = glm::dot(player_forward, glm::normalize(to_enemy));
-			is_behind = dot_forward < -0.1f;
+		if (distance > 0.001f) {
+			dot_forward = glm::dot(player_forward, to_enemy / distance);
+		}
+
+		// State transition: enter repositioning if behind
+		if (dot_forward < -0.1f) {
+			repositioning_ = true;
+		}
+		// Exit repositioning if in front and far enough
+		if (repositioning_ && dot_forward > 0.7f && distance > 120.0f) {
+			repositioning_ = false;
 		}
 
 		float current_speed = speed_;
-		if (is_behind) {
+		if (repositioning_) {
 			current_speed *= 3.0f; // Catch up fast
 			// Target a point in front of the player
-			target_pos = player_pos + player_forward * 150.0f;
+			target_pos = player_pos + player_forward * 180.0f;
 		} else if (leader_id_ != -1) {
 			auto leader = handler.GetEntity(leader_id_);
 			if (leader) {
@@ -78,8 +87,8 @@ namespace Boidsish {
 			glm::vec3 spiral_offset = (right * std::sin(spiral_phase_) + actual_up * std::cos(spiral_phase_)) *
 									  spiral_radius_;
 
-			// If behind, reduce spiral offset to move more directly
-			if (is_behind)
+			// If repositioning, reduce spiral offset to move more directly
+			if (repositioning_)
 				spiral_offset *= 0.2f;
 
 			glm::vec3 desired_pos = target_pos + spiral_offset;

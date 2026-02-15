@@ -24,6 +24,7 @@ namespace Boidsish {
 		float     fire_timer_ = 0.0f;
 		float     speed_ = 120.0f;
 		bool      initialized_target_ = false;
+		bool      repositioning_ = false;
 
 		void PickNewPosition(const glm::vec3& player_forward);
 	};
