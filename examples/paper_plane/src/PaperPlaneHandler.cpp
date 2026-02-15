@@ -6,6 +6,9 @@
 
 #include "GuidedMissileLauncher.h"
 #include "PaperPlane.h"
+#include "CongaMarcher.h"
+#include "Swooper.h"
+#include "Potshot.h"
 #include "VortexFlockingEntity.h"
 #include "constants.h"
 #include "graphics.h"
@@ -298,6 +301,74 @@ namespace Boidsish {
 		}
 
 		damage_timer_ = std::min(damage_timer_, 2.0f);
+
+		// Enemy spawning logic
+		enemy_spawn_timer_ -= delta_time;
+		if (enemy_spawn_timer_ <= 0) {
+			enemy_spawn_timer_ = 6.0f + std::uniform_real_distribution<float>(0, 4.0f)(eng_);
+
+			if (!targets.empty()) {
+				auto      pos = plane->GetPosition().Toglm();
+				auto      forward = plane->GetOrientation() * glm::vec3(0, 0, -1);
+				auto      spawn_pos = FindOccludedSpawnPosition(pos, forward);
+
+				if (spawn_pos) {
+					std::uniform_int_distribution<int> enemy_type(0, 2);
+					int                                type = enemy_type(eng_);
+
+					if (type == 0) {
+						// Conga Marcher group
+						int count = std::uniform_int_distribution<int>(3, 9)(eng_);
+						int last_id = -1;
+						for (int i = 0; i < count; ++i) {
+							// For the first one, last_id is -1.
+							// For subsequent ones, it's the id of the previous one.
+							int new_id = AddEntity<CongaMarcher>(Vector3(spawn_pos->x, spawn_pos->y, spawn_pos->z), last_id);
+							last_id = new_id;
+						}
+					} else if (type == 1) {
+						// Swooper
+						QueueAddEntity<Swooper>(Vector3(spawn_pos->x, spawn_pos->y, spawn_pos->z));
+					} else {
+						// Potshot
+						QueueAddEntity<Potshot>(Vector3(spawn_pos->x, spawn_pos->y, spawn_pos->z));
+					}
+				}
+			}
+		}
+	}
+
+	std::optional<glm::vec3>
+	PaperPlaneHandler::FindOccludedSpawnPosition(const glm::vec3& player_pos, const glm::vec3& player_forward) {
+		std::uniform_real_distribution<float> dist_range(500.0f, 800.0f);
+		std::uniform_real_distribution<float> angle_range(-0.5f, 0.5f);
+
+		glm::vec3 up(0, 1, 0);
+		glm::vec3 right = glm::normalize(glm::cross(player_forward, up));
+		if (glm::length(right) < 0.001f)
+			right = glm::vec3(1, 0, 0);
+
+		for (int i = 0; i < 15; ++i) { // Try 15 times
+			float d = dist_range(eng_);
+			float a = angle_range(eng_);
+
+			glm::vec3 candidate = player_pos + player_forward * d + right * (a * d);
+			auto [h, norm] = GetTerrainPropertiesAtPoint(candidate.x, candidate.z);
+			candidate.y = h + 40.0f; // Above ground
+
+			// Check LOS
+			glm::vec3 to_candidate = candidate - player_pos;
+			float     dist_to_cand = glm::length(to_candidate);
+			glm::vec3 dir = glm::normalize(to_candidate);
+
+			float     hit_dist;
+			glm::vec3 hit_norm;
+			if (RaycastTerrain(player_pos, dir, dist_to_cand, hit_dist, hit_norm)) {
+				// Hit terrain before reaching candidate -> Occluded!
+				return candidate;
+			}
+		}
+		return std::nullopt;
 	}
 
 } // namespace Boidsish

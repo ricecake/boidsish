@@ -2,6 +2,7 @@
 
 #include <map>
 #include <mutex>
+#include <optional>
 #include <random>
 #include <set>
 
@@ -42,12 +43,15 @@ namespace Boidsish {
 		int  GetTargetCount(std::shared_ptr<GuidedMissileLauncher> target) const;
 
 	private:
+		std::optional<glm::vec3> FindOccludedSpawnPosition(const glm::vec3& player_pos, const glm::vec3& player_forward);
+
 		mutable std::mutex                    target_mutex_;
 		mutable std::map<int, int>            target_counts_;
 		std::map<std::pair<int, int>, int>    spawned_launchers_;
 		std::random_device                    rd_;
 		std::mt19937                          eng_;
 		float                                 damage_timer_ = 0.0f;
+		float                                 enemy_spawn_timer_ = 5.0f;
 		std::uniform_real_distribution<float> damage_dist_;
 		std::map<std::pair<int, int>, float>  launcher_cooldowns_;
 		std::shared_ptr<HudGauge>             health_gauge_;
