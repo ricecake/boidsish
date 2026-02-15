@@ -127,10 +127,17 @@ namespace Boidsish {
 		const float kDamping = 2.5f;
 
 		auto& pp_handler = static_cast<const PaperPlaneHandler&>(handler);
-		auto  targets = pp_handler.GetEntitiesInRadius<GuidedMissileLauncher>(
+		auto  candidates = pp_handler.GetEntitiesInRadius<EntityBase>(
             pos,
             kMaxSpeed * (lifetime_ - lived_) * 0.5f
         );
+
+		std::vector<std::shared_ptr<EntityBase>> targets;
+		for (auto& c : candidates) {
+			if (c->IsTargetable() && c->GetId() != id_) {
+				targets.push_back(c);
+			}
+		}
 
 		const float stickiness = 0.30f;
 		auto        minRank = INFINITY;
@@ -200,7 +207,7 @@ namespace Boidsish {
 
 			// PREDICT
 			target_dir_world =
-				GetInterceptPoint(missile_pos, missile_speed, target_->GetPosition(), target_->GetVelocity());
+				GetInterceptPoint(missile_pos, missile_speed, target_->GetPosition().Toglm(), target_->GetVelocity().Toglm());
 
 			// Check LOS to target
 			float     hit_dist;
@@ -319,7 +326,7 @@ namespace Boidsish {
 		shape_->SetHidden(true);
 
 		if (hit_target && target_) {
-			target_->Destroy(handler);
+			target_->OnHit(handler, 100.0f);
 		}
 
 		auto pos = GetPosition();

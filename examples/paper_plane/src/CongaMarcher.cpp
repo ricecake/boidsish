@@ -27,9 +27,24 @@ namespace Boidsish {
 
 		auto      plane = planes[0];
 		glm::vec3 player_pos = plane->GetPosition().Toglm();
+		glm::vec3 player_forward = plane->GetOrientation() * glm::vec3(0, 0, -1);
 		glm::vec3 target_pos = player_pos;
 
-		if (leader_id_ != -1) {
+		glm::vec3 current_pos = GetPosition().Toglm();
+		glm::vec3 to_enemy = current_pos - player_pos;
+		bool      is_behind = false;
+
+		if (glm::length(to_enemy) > 0.001f) {
+			float dot_forward = glm::dot(player_forward, glm::normalize(to_enemy));
+			is_behind = dot_forward < -0.1f;
+		}
+
+		float current_speed = speed_;
+		if (is_behind) {
+			current_speed *= 3.0f; // Catch up fast
+			// Target a point in front of the player
+			target_pos = player_pos + player_forward * 150.0f;
+		} else if (leader_id_ != -1) {
 			auto leader = handler.GetEntity(leader_id_);
 			if (leader) {
 				// Follow behind leader
@@ -45,7 +60,6 @@ namespace Boidsish {
 			}
 		}
 
-		glm::vec3 current_pos = GetPosition().Toglm();
 		glm::vec3 to_target = target_pos - current_pos;
 		float     dist_to_target = glm::length(to_target);
 
@@ -64,16 +78,28 @@ namespace Boidsish {
 			glm::vec3 spiral_offset = (right * std::sin(spiral_phase_) + actual_up * std::cos(spiral_phase_)) *
 									  spiral_radius_;
 
+			// If behind, reduce spiral offset to move more directly
+			if (is_behind)
+				spiral_offset *= 0.2f;
+
 			glm::vec3 desired_pos = target_pos + spiral_offset;
 			glm::vec3 move_dir = glm::normalize(desired_pos - current_pos);
 
-			glm::vec3 new_vel = move_dir * speed_;
+			glm::vec3 new_vel = move_dir * current_speed;
 			SetVelocity(Vector3(new_vel.x, new_vel.y, new_vel.z));
 		}
 
-		// Terrain avoidance
+		// Terrain avoidance/snap
 		auto [h, norm] = handler.GetTerrainPropertiesAtPoint(current_pos.x, current_pos.z);
-		if (current_pos.y < h + 10.0f) {
+		if (current_pos.y < h + 2.0f) {
+			SetPosition(current_pos.x, h + 2.0f, current_pos.z);
+			rigid_body_.AddForce(glm::vec3(0, 150.0f, 0));
+			glm::vec3 vel = GetVelocity().Toglm();
+			if (vel.y < 0) {
+				vel.y = -vel.y * 0.5f;
+				SetVelocity(Vector3(vel.x, vel.y, vel.z));
+			}
+		} else if (current_pos.y < h + 10.0f) {
 			rigid_body_.AddForce(glm::vec3(0, 50.0f, 0));
 		}
 

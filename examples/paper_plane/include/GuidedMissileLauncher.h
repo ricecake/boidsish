@@ -17,7 +17,8 @@ namespace Boidsish {
 		void OnHit(const EntityHandler& handler, float damage) override;
 		void Destroy(const EntityHandler& handler);
 
-		glm::vec3 GetApproachPoint() const { return approach_point_; }
+		bool      IsTargetable() const override { return true; }
+		glm::vec3 GetApproachPoint() const override { return approach_point_; }
 
 	private:
 		glm::vec3                   approach_point_;

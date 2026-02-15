@@ -12,6 +12,8 @@ namespace Boidsish {
 		void UpdateEntity(const EntityHandler& handler, float time, float delta_time) override;
 		void OnHit(const EntityHandler& handler, float damage) override;
 
+		bool IsTargetable() const override { return health_ > 0; }
+
 	private:
 		int   leader_id_;
 		float health_ = 20.0f;

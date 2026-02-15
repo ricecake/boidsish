@@ -39,8 +39,8 @@ namespace Boidsish {
 		 */
 		void PreparePlane(std::shared_ptr<PaperPlane> plane);
 
-		void RecordTarget(std::shared_ptr<GuidedMissileLauncher> target) const;
-		int  GetTargetCount(std::shared_ptr<GuidedMissileLauncher> target) const;
+		void RecordTarget(std::shared_ptr<EntityBase> target) const;
+		int  GetTargetCount(std::shared_ptr<EntityBase> target) const;
 
 	private:
 		std::optional<glm::vec3> FindOccludedSpawnPosition(const glm::vec3& player_pos, const glm::vec3& player_forward);
