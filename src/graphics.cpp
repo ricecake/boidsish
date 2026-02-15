@@ -3397,6 +3397,20 @@ namespace Boidsish {
 			->AddShockwave(position, normal, max_radius, duration, wave_intensity, ring_width, color);
 	}
 
+	void Visualizer::CreateShockwave(
+		const glm::vec3& center,
+		float            intensity,
+		float            max_radius,
+		float            duration,
+		const glm::vec3& normal,
+		const glm::vec3& color,
+		float            ring_width
+	) {
+		float wave_intensity = Constants::Class::Shockwaves::DefaultIntensity() * intensity;
+
+		impl->shockwave_manager->AddShockwave(center, normal, max_radius, duration, wave_intensity, ring_width, color);
+	}
+
 	void Visualizer::SetTimeScale(float ts) {
 		impl->time_scale = ts;
 	}

@@ -335,6 +335,16 @@ namespace Boidsish {
 		 */
 		void CreateExplosion(const glm::vec3& position, float intensity = 1.0f);
 
+		void CreateShockwave(
+			const glm::vec3& center,
+			float            intensity,
+			float            max_radius = 30.0f,
+			float            duration = Constants::Class::Shockwaves::DefaultDuration(),
+			const glm::vec3& normal = {0.0f, 1.0f, 0.0f},
+			const glm::vec3& color = Constants::Class::Shockwaves::DefaultColor(),
+			float            ring_width = (Constants::Class::Shockwaves::DefaultRingWidth() + 1.0f)
+		);
+
 		void
 		ExplodeShape(std::shared_ptr<Shape> shape, float intensity = 1.0f, const glm::vec3& velocity = glm::vec3(0.0f));
 

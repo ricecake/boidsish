@@ -142,10 +142,21 @@ namespace Boidsish {
 			// Trigger Akira effect and damage at the start of shrink/white phase
 			if (state_timer_ <= delta_time) {
 				auto vis = handler.vis;
-				handler.EnqueueVisualizerAction([vis, end, delta_time]() {
+				handler.EnqueueVisualizerAction([vis, end, hit_norm, delta_time]() {
 					if (vis) {
 						vis->TriggerAkira(end, kDamageRadius);
-						vis->CreateExplosion(end, 2.0f);
+						vis->CreateShockwave(
+							end,
+							50.0f,
+							kDamageRadius,
+							Constants::Class::Akira::DefaultFadeDuration() / 1.5f,
+							hit_norm,
+							{0, 0, 0},
+							-20.0f
+						);
+						// vis->CreateShockwave(end, 5.0f, kDamageRadius*1.5,
+						// Constants::Class::Akira::DefaultFadeDuration()+Constants::Class::Akira::DefaultGrowthDuration(),
+						// {0,1,0}, {0,0,0}, 5.0f); vis->CreateExplosion(end, 100.0f);
 						vis->SetCameraShake(1.0f, 0.2f);
 					}
 				});

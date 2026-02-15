@@ -156,7 +156,7 @@ namespace Boidsish {
 		auto [height, norm] = handler.vis->GetTerrainPropertiesAtPoint(pos.x, pos.z);
 		if (pos.y < height) {
 			if (state_ == PlaneState::DYING) {
-				if (health < -20.0f) {
+				if (health < -10.0f) {
 					state_ = PlaneState::DEAD;
 					handler.EnqueueVisualizerAction(
 						[&handler, pos = GetPosition().Toglm(), effect = dying_fire_effect_]() {
