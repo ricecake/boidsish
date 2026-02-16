@@ -313,14 +313,20 @@ namespace Boidsish {
 			packet.shader_id = shader ? shader->ID : 0;
 
 			packet.uniforms.model = model_matrix;
-			packet.uniforms.color =
-				glm::vec3(GetR() * mesh.diffuseColor.r, GetG() * mesh.diffuseColor.g, GetB() * mesh.diffuseColor.b);
-			packet.uniforms.alpha = GetA() * mesh.opacity;
+			packet.uniforms.color = glm::vec4(
+				GetR() * mesh.diffuseColor.r,
+				GetG() * mesh.diffuseColor.g,
+				GetB() * mesh.diffuseColor.b,
+				GetA() * mesh.opacity
+			);
 			packet.uniforms.use_pbr = UsePBR();
 			packet.uniforms.roughness = GetRoughness();
 			packet.uniforms.metallic = GetMetallic();
 			packet.uniforms.ao = GetAO();
 			packet.uniforms.use_texture = !mesh.textures.empty();
+			packet.uniforms.is_instanced = 0; // MDI path uses per-draw model matrix
+			packet.uniforms.is_colossal = IsColossal();
+			packet.uniforms.use_instance_color = false;
 
 			packet.is_instanced = IsInstanced();
 
@@ -331,7 +337,7 @@ namespace Boidsish {
 				packet.textures.push_back(info);
 			}
 
-			RenderLayer layer = (packet.uniforms.alpha < 0.99f) ? RenderLayer::Transparent : RenderLayer::Opaque;
+			RenderLayer layer = (packet.uniforms.color.w < 0.99f) ? RenderLayer::Transparent : RenderLayer::Opaque;
 			packet.shader_handle = shader_handle;
 			packet.material_handle = MaterialHandle(0);
 

@@ -25,34 +25,49 @@ namespace Boidsish {
 
 	/**
 	 * @brief Grouped common uniforms for easier management and use across objects.
+	 * Layout matches std430 for use in SSBOs.
 	 */
 	struct CommonUniforms {
-		glm::mat4 model = glm::mat4(1.0f);
-		glm::vec3 color = glm::vec3(1.0f);
-		float     alpha = 1.0f;
-		bool      use_pbr = false;
-		float     roughness = 0.5f;
-		float     metallic = 0.0f;
-		float     ao = 1.0f;
-		bool      use_texture = false;
+		glm::mat4 model = glm::mat4(1.0f);   // 64 bytes
+		glm::vec4 color = glm::vec4(1.0f);   // 16 bytes (xyz=color, w=alpha)
 
-		// Extended common uniforms
-		bool  is_line = false;
-		int   line_style = 0;
-		bool  is_text_effect = false;
-		float text_fade_progress = 1.0f;
-		float text_fade_softness = 0.1f;
-		int   text_fade_mode = 0;
-		bool  is_arcade_text = false;
-		int   arcade_wave_mode = 0;
-		float arcade_wave_amplitude = 0.5f;
-		float arcade_wave_frequency = 10.0f;
-		float arcade_wave_speed = 5.0f;
-		bool  arcade_rainbow_enabled = false;
-		float arcade_rainbow_speed = 2.0f;
-		float arcade_rainbow_frequency = 5.0f;
-		int   checkpoint_style = 0;
-		float checkpoint_radius = 0.0f;
+		// Material/PBR
+		int       use_pbr = 0;               // 4 bytes
+		float     roughness = 0.5f;          // 4 bytes
+		float     metallic = 0.0f;           // 4 bytes
+		float     ao = 1.0f;                 // 4 bytes -> 16 bytes
+
+		// Feature Flags
+		int       use_texture = 0;           // 4 bytes
+		int       is_line = 0;               // 4 bytes
+		int       line_style = 0;            // 4 bytes
+		int       is_text_effect = 0;        // 4 bytes -> 16 bytes
+
+		// Text/Arcade Effects
+		float     text_fade_progress = 1.0f; // 4 bytes
+		float     text_fade_softness = 0.1f; // 4 bytes
+		int       text_fade_mode = 0;        // 4 bytes
+		int       is_arcade_text = 0;        // 4 bytes -> 16 bytes
+
+		int       arcade_wave_mode = 0;      // 4 bytes
+		float     arcade_wave_amplitude = 0.5f; // 4 bytes
+		float     arcade_wave_frequency = 10.0f;// 4 bytes
+		float     arcade_wave_speed = 5.0f;     // 4 bytes -> 16 bytes
+
+		int       arcade_rainbow_enabled = 0;   // 4 bytes
+		float     arcade_rainbow_speed = 2.0f;  // 4 bytes
+		float     arcade_rainbow_frequency = 5.0f;// 4 bytes
+		int       checkpoint_style = 0;         // 4 bytes -> 16 bytes
+
+		// Rendering State Flags
+		int       is_instanced = 0;          // 4 bytes
+		int       is_colossal = 0;           // 4 bytes
+		int       use_ssbo_instancing = 0;   // 4 bytes
+		int       use_instance_color = 0;    // 4 bytes -> 16 bytes
+
+		int       use_vertex_color = 0;      // 4 bytes
+		float     checkpoint_radius = 0.0f;     // 4 bytes
+		float     padding[2] = {0,0};           // 8 bytes padding to match 16-byte alignment
 	};
 
 	/**
