@@ -25,7 +25,7 @@ int main() {
 		visualizer.AddShapeHandler([&](float) {
 			auto cam = visualizer.GetCamera();
 			auto shapes = std::vector<std::shared_ptr<Boidsish::Shape>>();
-			auto dot = std::make_shared<Dot>(1);
+			auto dot = std::make_shared<Dot>();
 			auto front = cam.front();
 			auto dotPost = cam.pos() + 3.0f * cam.front();
 

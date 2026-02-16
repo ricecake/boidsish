@@ -10,8 +10,8 @@
 
 namespace Boidsish {
 
-	PaperPlane::PaperPlane(int id):
-		Entity<Model>(id, "assets/Mesh_Cat.obj", true),
+	PaperPlane::PaperPlane():
+		Entity<Model>("assets/Mesh_Cat.obj", true),
 		orientation_(glm::quat(1.0f, 0.0f, 0.0f, 0.0f)),
 		rotational_velocity_(glm::vec3(0.0f)),
 		forward_speed_(20.0f),
@@ -19,9 +19,6 @@ namespace Boidsish {
 		beam_spawn_queued_(false) {
 		rigid_body_.linear_friction_ = 0.01f;
 		rigid_body_.angular_friction_ = 0.01f;
-
-		// Enable instanced rendering for better performance and state management
-		shape_->SetInstanced(true);
 
 		// SetSize(0.1f);
 		SetTrailLength(10);
@@ -121,7 +118,7 @@ namespace Boidsish {
 		if (beam_id_ >= 0) {
 			auto ent = handler.GetEntity(beam_id_);
 			my_beam = dynamic_cast<Beam*>(ent.get());
-			if (!my_beam || my_beam->GetOwnerId() != id_) {
+			if (!my_beam || my_beam->GetOwnerId() != GetId()) {
 				my_beam = nullptr;
 				beam_id_ = -1;
 			}
@@ -130,7 +127,7 @@ namespace Boidsish {
 		if (!my_beam) {
 			auto beams = handler.GetEntitiesByType<Beam>();
 			for (auto b : beams) {
-				if (b->GetOwnerId() == id_) {
+				if (b->GetOwnerId() == GetId()) {
 					my_beam = b;
 					beam_id_ = b->GetId();
 					beam_spawn_queued_ = false;
@@ -141,7 +138,7 @@ namespace Boidsish {
 
 		if (selected_weapon == 3) {
 			if (!my_beam && !beam_spawn_queued_) {
-				handler.QueueAddEntity<Beam>(id_);
+				handler.QueueAddEntity<Beam>(GetId());
 				beam_spawn_queued_ = true;
 			} else if (my_beam) {
 				my_beam->SetSelected(true);

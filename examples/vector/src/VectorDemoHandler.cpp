@@ -36,8 +36,8 @@ namespace Boidsish {
 		std::cout << "Flocking entities now automatically discover each other through the handler!" << std::endl;
 	}
 
-	void VectorDemoHandler::AddEntity(int id, std::shared_ptr<EntityBase> entity) {
-		SpatialEntityHandler::AddEntity(id, entity);
+	void VectorDemoHandler::AddEntity(std::shared_ptr<EntityBase> entity) {
+		SpatialEntityHandler::AddEntity(entity);
 		// EnqueueVisualizerAction([this, entity]() {
 		entity->UpdateShape();
 		viz_.AddShape(entity->GetShape());

@@ -8,7 +8,7 @@ namespace Boidsish {
 
 	class CatBomb: public Entity<Model> {
 	public:
-		CatBomb(int id = 0, Vector3 pos = {0, 0, 0}, glm::vec3 dir = {0, 0, 0}, Vector3 vel = {0, 0, 0});
+		CatBomb(Vector3 pos = {0, 0, 0}, glm::vec3 dir = {0, 0, 0}, Vector3 vel = {0, 0, 0});
 
 		void UpdateEntity(const EntityHandler& handler, float time, float delta_time) override;
 

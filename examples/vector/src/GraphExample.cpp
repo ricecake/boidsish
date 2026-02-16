@@ -13,7 +13,7 @@ namespace Boidsish {
 
 	std::vector<std::shared_ptr<Shape>> GraphExample(float time) {
 		std::vector<std::shared_ptr<Shape>> shapes;
-		auto                                graph = std::make_shared<Graph>(0, 0, 0, 0);
+		auto                                graph = std::make_shared<Graph>(0, 0, 0);
 
 		auto root = graph->AddVertex(Vector3(0, 0, 0), 48.0f, 0, 0, 1, 1);
 		auto trunk = graph->AddVertex(Vector3(0, 6, 0), 16.0f, 0, 1, 1, 1);

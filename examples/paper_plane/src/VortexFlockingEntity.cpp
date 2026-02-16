@@ -8,10 +8,9 @@
 
 namespace Boidsish {
 
-	VortexFlockingEntity::VortexFlockingEntity(int id): Entity(id) {
+	VortexFlockingEntity::VortexFlockingEntity(): Entity() {
 		SetSize(5.0f);
 		SetTrailLength(30);
-		shape_->SetInstanced(true);
 	}
 
 	void VortexFlockingEntity::UpdateEntity(const EntityHandler& handler, float time, float delta_time) {

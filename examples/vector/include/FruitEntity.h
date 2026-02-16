@@ -6,7 +6,7 @@ namespace Boidsish {
 
 	class FruitEntity: public Entity<> {
 	public:
-		FruitEntity(int id);
+		FruitEntity();
 		void UpdateEntity(const EntityHandler& handler, float time, float delta_time) override;
 
 		float GetValue() const { return value; }

@@ -7,8 +7,8 @@
 
 namespace Boidsish {
 
-	Beam::Beam(int id, int owner_id):
-		Entity<Line>(id, glm::vec3(0.0f), glm::vec3(0.0f), kAimingWidth), owner_id_(owner_id) {
+	Beam::Beam(int owner_id):
+		Entity<Line>(glm::vec3(0.0f), glm::vec3(0.0f), kAimingWidth), owner_id_(owner_id) {
 		shape_->SetStyle(Line::Style::LASER);
 		shape_->SetHidden(true);
 		SetSize(0.0f);                 // Disable physical collision radius
@@ -23,7 +23,7 @@ namespace Boidsish {
 		(void)time;
 		auto owner = handler.GetEntity(owner_id_);
 		if (!owner) {
-			handler.QueueRemoveEntity(id_);
+			handler.QueueRemoveEntity(GetId());
 			return;
 		}
 

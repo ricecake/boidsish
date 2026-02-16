@@ -10,7 +10,7 @@ namespace Boidsish {
 
 	class VectorDemoEntity: public Entity<> {
 	public:
-		VectorDemoEntity(int id, const Vector3& start_pos);
+		VectorDemoEntity(const Vector3& start_pos);
 		void UpdateEntity(const EntityHandler& handler, float time, float delta_time) override;
 
 	private:

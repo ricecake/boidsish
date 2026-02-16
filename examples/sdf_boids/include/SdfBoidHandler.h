@@ -9,7 +9,7 @@ namespace Boidsish {
 
 	class SdfBoid: public Entity<Dot> {
 	public:
-		SdfBoid(int id, bool predator = false);
+		SdfBoid(bool predator = false);
 		void UpdateEntity(const EntityHandler& handler, float time, float delta_time) override;
 
 		bool IsPredator() const { return is_predator_; }

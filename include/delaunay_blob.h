@@ -58,7 +58,7 @@ namespace Boidsish {
 		};
 
 	public:
-		explicit DelaunayBlob(int id);
+		DelaunayBlob();
 		~DelaunayBlob() override;
 
 		// Disable copy (OpenGL resources)
@@ -154,7 +154,7 @@ namespace Boidsish {
 		void      render(Shader& shader, const glm::mat4& model_matrix) const override;
 		glm::mat4 GetModelMatrix() const override;
 
-		std::string GetInstanceKey() const override { return "delaunay_blob_" + std::to_string(id_); }
+		std::string GetInstanceKey() const override { return "delaunay_blob_" + std::to_string(GetId()); }
 
 		/// Get centroid of all points
 		glm::vec3 GetCentroid() const;
@@ -203,7 +203,6 @@ namespace Boidsish {
 		// Point storage with stable IDs
 		std::map<int, ControlPoint> points_;
 		int                         next_point_id_ = 0;
-		int                         id_; // Shape ID for instance key
 
 		// Rendering state
 		RenderMode   render_mode_ = RenderMode::Solid;

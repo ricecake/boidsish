@@ -12,7 +12,7 @@ namespace Boidsish {
 
 	class DogfightPlane: public Entity<Model> {
 	public:
-		DogfightPlane(int id, Team team, Vector3 pos);
+		DogfightPlane(Team team, Vector3 pos);
 
 		void UpdateEntity(const EntityHandler& handler, float time, float delta_time) override;
 		void Explode(const EntityHandler& handler);

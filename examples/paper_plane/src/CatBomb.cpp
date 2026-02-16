@@ -7,8 +7,8 @@
 
 namespace Boidsish {
 
-	CatBomb::CatBomb(int id, Vector3 pos, glm::vec3 dir, Vector3 vel):
-		Entity<Model>(id, "assets/bomb_shading_v005.obj", true) {
+	CatBomb::CatBomb(Vector3 pos, glm::vec3 dir, Vector3 vel):
+		Entity<Model>("assets/bomb_shading_v005.obj", true) {
 		rigid_body_.linear_friction_ = 0.01f;
 		rigid_body_.angular_friction_ = 0.01f;
 
@@ -22,7 +22,6 @@ namespace Boidsish {
 		std::dynamic_pointer_cast<Model>(shape_)->SetBaseRotation(
 			glm::angleAxis(glm::radians(90.0f), glm::vec3(1.0f, 0.0f, 0.0f))
 		);
-		shape_->SetInstanced(true);
 	}
 
 	void CatBomb::UpdateEntity(const EntityHandler& handler, float time, float delta_time) {
@@ -31,7 +30,7 @@ namespace Boidsish {
 
 		if (exploded_) {
 			if (lived_ >= kExplosionDisplayTime) {
-				handler.QueueRemoveEntity(id_);
+				handler.QueueRemoveEntity(GetId());
 			}
 			return;
 		}
