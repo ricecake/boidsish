@@ -71,7 +71,7 @@ namespace Boidsish {
 	}
 
 	void PaperPlaneHandler::PreparePlane(std::shared_ptr<PaperPlane> plane) {
-		if (!plane || !vis)
+		if (!plane || !vis || !vis->GetTerrain())
 			return;
 
 		float     best_score = -1e10f;
@@ -79,16 +79,23 @@ namespace Boidsish {
 		glm::vec3 best_dir(0, 0, -1);
 
 		// Sample a grid around the starting area
-		for (float x = -300; x <= 300; x += 30) {
-			for (float z = -300; z <= 300; z += 30) {
-				auto [h, norm] = vis->GetTerrainPropertiesAtPoint(x, z);
-				if (h < 15.0f)
-					continue; // Avoid valleys/water
+		for (float x = -400; x <= 400; x += 25) {
+			for (float z = -400; z <= 400; z += 25) {
+				glm::vec3 path_data = vis->GetTerrain()->GetPathData(x, z);
+				float     dist_from_path = std::abs(path_data.x);
 
-				// Test 8 directions
-				for (int i = 0; i < 8; ++i) {
-					float     angle = i * (glm::pi<float>() / 4.0f);
-					glm::vec3 dir(sin(angle), 0, cos(angle));
+				auto [h, norm] = vis->GetTerrainPropertiesAtPoint(x, z);
+				if (h < 5.0f)
+					continue; // Avoid water
+
+				float path_score = 1.0f - glm::smoothstep(0.0f, 1.5f, dist_from_path);
+
+				// Tangent to the path: perpendicular to gradient (path_data.y, path_data.z)
+				glm::vec2 tangent2D = glm::normalize(glm::vec2(path_data.z, -path_data.y));
+				glm::vec2 directions[2] = {tangent2D, -tangent2D};
+
+				for (const auto& t2d : directions) {
+					glm::vec3 dir(t2d.x, 0, t2d.y);
 
 					// Look ahead to check gradient
 					float check_dist = 60.0f;
@@ -98,15 +105,17 @@ namespace Boidsish {
 					);
 
 					float gradient = h - h_ahead; // positive is downslope
-					float score = h * 0.5f + gradient * 2.0f;
+					float score = path_score * 200.0f;
+					score -= h * 0.2f;        // Prefer lower altitude (valleys)
+					score += gradient * 5.0f; // Prefer downslope
 
 					// Penalize if pointing directly into a steep uphill
-					if (gradient < -10.0f)
+					if (gradient < -5.0f)
 						score -= 100.0f;
 
 					if (score > best_score) {
 						best_score = score;
-						best_pos = glm::vec3(x, h + 60.0f, z);
+						best_pos = glm::vec3(x, h + 30.0f, z); // Lower fly height to stay below aggression threshold
 						best_dir = dir;
 					}
 				}
@@ -116,7 +125,7 @@ namespace Boidsish {
 		plane->SetPosition(best_pos.x, best_pos.y, best_pos.z);
 		glm::quat orient = glm::quatLookAt(glm::normalize(best_dir), glm::vec3(0, 1, 0));
 		plane->SetOrientation(orient);
-		plane->SetVelocity(best_dir * 40.0f); // Set a good starting speed
+		plane->SetVelocity(best_dir * 60.0f); // Set a good starting speed
 		plane->UpdateShape();
 
 		// Update camera to follow
