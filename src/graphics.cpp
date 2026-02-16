@@ -1,5 +1,6 @@
 #include "graphics.h"
 
+#include "persistent_buffer.h"
 #include <array>
 #include <chrono>
 #include <iostream>
@@ -192,6 +193,22 @@ namespace Boidsish {
 		}
 	}
 
+	// OpenGL indirect draw command structures
+	struct DrawElementsIndirectCommand {
+		GLuint count;
+		GLuint instanceCount;
+		GLuint firstIndex;
+		GLint  baseVertex;
+		GLuint baseInstance;
+	};
+
+	struct DrawArraysIndirectCommand {
+		GLuint count;
+		GLuint instanceCount;
+		GLuint first;
+		GLuint baseInstance;
+	};
+
 	struct Visualizer::VisualizerImpl {
 		Visualizer*                           parent;
 		GLFWwindow*                           window;
@@ -231,6 +248,17 @@ namespace Boidsish {
 		std::shared_ptr<ITerrainGenerator>    terrain_generator;
 		std::shared_ptr<TerrainRenderManager> terrain_render_manager;
 		std::unique_ptr<TrailRenderManager>   trail_render_manager;
+
+		// Persistent buffers for MDI
+		std::unique_ptr<PersistentBuffer<DrawElementsIndirectCommand>> indirect_elements_buffer;
+		std::unique_ptr<PersistentBuffer<DrawArraysIndirectCommand>>   indirect_arrays_buffer;
+		std::unique_ptr<PersistentBuffer<CommonUniforms>>              uniforms_ssbo;
+		GLsync                                                         mdi_fences[3]{0, 0, 0};
+
+		// MDI offset tracking across layers within a single frame
+		uint32_t mdi_elements_count = 0;
+		uint32_t mdi_arrays_count = 0;
+		uint32_t mdi_uniform_count = 0;
 
 		std::shared_ptr<Shader> shader;
 		std::shared_ptr<Shader> plane_shader;
@@ -402,7 +430,7 @@ namespace Boidsish {
 			});
 
 			glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
-			glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3); // Updated to 4.3 for compute shader support
+			glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 6); // Updated to 4.6 for MDI and gl_DrawID support
 			glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
 #ifdef __APPLE__
 			glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE);
@@ -489,6 +517,21 @@ namespace Boidsish {
 				blur_shader = std::make_shared<Shader>("shaders/blur.vert", "shaders/blur.frag");
 				shader_table.Register(std::make_unique<RenderShader>(blur_shader));
 			}
+
+			// Initialize persistent buffers for MDI
+			// Capacity: 16384 commands/uniforms per frame (triple buffered)
+			indirect_elements_buffer = std::make_unique<PersistentBuffer<DrawElementsIndirectCommand>>(
+				GL_DRAW_INDIRECT_BUFFER,
+				16384
+			);
+			indirect_arrays_buffer = std::make_unique<PersistentBuffer<DrawArraysIndirectCommand>>(
+				GL_DRAW_INDIRECT_BUFFER,
+				16384
+			);
+			uniforms_ssbo = std::make_unique<PersistentBuffer<CommonUniforms>>(
+				GL_SHADER_STORAGE_BUFFER,
+				16384
+			);
 			if (ConfigManager::GetInstance().GetAppSettingBool("enable_effects", true)) {
 				postprocess_shader_ =
 					std::make_shared<Shader>("shaders/postprocess.vert", "shaders/postprocess.frag");
@@ -1218,108 +1261,181 @@ namespace Boidsish {
 			const glm::mat4&   proj_mat,
 			RenderLayer        layer
 		) {
-			unsigned int   current_shader_id = 0;
-			unsigned int   current_vao = 0;
-			CommonUniforms last_uniforms;
-			bool           first_in_shader = true;
-			bool           last_textures_empty = true;
-
 			const auto& packets = queue.GetPackets(layer);
-			for (const auto& packet : packets) {
-				if (packet.shader_id == 0)
+			if (packets.empty())
+				return;
+
+			// Get pointers to persistent buffers
+			DrawElementsIndirectCommand* elements_cmd_ptr = indirect_elements_buffer->GetFrameDataPtr();
+			DrawArraysIndirectCommand*   arrays_cmd_ptr = indirect_arrays_buffer->GetFrameDataPtr();
+			CommonUniforms*              uniforms_ptr = uniforms_ssbo->GetFrameDataPtr();
+
+			uint32_t max_elements = 16384; // Buffer capacity
+
+			// Bind Uniforms SSBO to binding point 2
+			// Use the whole buffer because shaders use gl_DrawID and uBaseUniformIndex
+			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 2, uniforms_ssbo->GetBufferId());
+
+			struct Batch {
+				ShaderHandle                           shader_handle;
+				unsigned int                           shader_id;
+				unsigned int                           vao;
+				unsigned int                           draw_mode;
+				unsigned int                           index_type;
+				std::vector<RenderPacket::TextureInfo> textures;
+				uint32_t                               first_command;
+				uint32_t                               command_count;
+				bool                                   is_indexed;
+				uint32_t                               base_uniform_index;
+			};
+
+			std::vector<Batch> batches;
+
+			auto can_batch = [](const RenderPacket& a, const RenderPacket& b) {
+				if (a.shader_id != b.shader_id)
+					return false;
+				if (a.vao != b.vao)
+					return false;
+				if (a.draw_mode != b.draw_mode)
+					return false;
+				if (a.index_type != b.index_type)
+					return false;
+				if (a.textures.size() != b.textures.size())
+					return false;
+				for (size_t i = 0; i < a.textures.size(); ++i) {
+					if (a.textures[i].id != b.textures[i].id)
+						return false;
+				}
+				return true;
+			};
+
+			// 1. Build batches and fill uniform/command buffers
+			// Note: We use global offsets mdi_*_count to avoid overwriting data from previous layers in the same frame
+			for (size_t i = 0; i < packets.size(); ++i) {
+				const auto& packet = packets[i];
+				if (packet.shader_id == 0 || mdi_uniform_count >= max_elements)
 					continue;
 
-				RenderShader* render_shader = shader_table.Get(packet.shader_handle);
+				// Copy uniforms to persistent SSBO
+				uniforms_ptr[mdi_uniform_count] = packet.uniforms;
+
+				bool is_indexed = (packet.ebo > 0);
+
+				if (batches.empty() || !can_batch(packets[i - 1], packet)) {
+					Batch new_batch;
+					new_batch.shader_handle = packet.shader_handle;
+					new_batch.shader_id = packet.shader_id;
+					new_batch.vao = packet.vao;
+					new_batch.draw_mode = packet.draw_mode;
+					new_batch.index_type = packet.index_type;
+					new_batch.textures = packet.textures;
+					new_batch.first_command = is_indexed ? mdi_elements_count : mdi_arrays_count;
+					new_batch.command_count = 0;
+					new_batch.is_indexed = is_indexed;
+					new_batch.base_uniform_index = mdi_uniform_count;
+					batches.push_back(new_batch);
+				}
+
+				auto& current_batch = batches.back();
+				current_batch.command_count++;
+
+				if (is_indexed) {
+					if (mdi_elements_count < max_elements) {
+						DrawElementsIndirectCommand cmd{};
+						cmd.count = packet.index_count;
+						cmd.instanceCount = packet.is_instanced ? packet.instance_count : 1;
+						cmd.firstIndex = 0;
+						cmd.baseVertex = 0;
+						cmd.baseInstance = 0; // We use gl_DrawID to index uniforms
+						elements_cmd_ptr[mdi_elements_count++] = cmd;
+					}
+				} else {
+					if (mdi_arrays_count < max_elements) {
+						DrawArraysIndirectCommand cmd{};
+						cmd.count = packet.vertex_count;
+						cmd.instanceCount = packet.is_instanced ? packet.instance_count : 1;
+						cmd.first = 0;
+						cmd.baseInstance = 0;
+						arrays_cmd_ptr[mdi_arrays_count++] = cmd;
+					}
+				}
+
+				mdi_uniform_count++;
+			}
+
+			// 2. Execute batches
+			unsigned int current_vao = 0;
+			unsigned int current_shader_id = 0;
+			std::set<ShaderBase*> used_shaders;
+
+			for (const auto& batch : batches) {
+				RenderShader* render_shader = shader_table.Get(batch.shader_handle);
 				if (!render_shader)
 					continue;
 
 				ShaderBase* s = render_shader->GetBackingShader().get();
+				used_shaders.insert(s);
 
-				// Minimize shader state changes
-				if (packet.shader_id != current_shader_id) {
+				if (batch.shader_id != current_shader_id) {
 					s->use();
-					current_shader_id = packet.shader_id;
-					first_in_shader = true;
-
-					// Set frame-level uniforms using cached locations
+					current_shader_id = batch.shader_id;
 					s->setMat4("view", view_mat);
 					s->setMat4("projection", proj_mat);
 					s->setFloat("time", simulation_time);
 				}
 
-				// Set packet-specific common uniforms from the grouped structure using cached locations
-				// Track changes to minimize redundant uniform updates
-				if (first_in_shader || packet.uniforms.model != last_uniforms.model) {
-					s->setMat4("model", packet.uniforms.model);
-				}
-				if (first_in_shader || packet.uniforms.color != last_uniforms.color) {
-					s->setVec3("objectColor", packet.uniforms.color);
-				}
-				if (first_in_shader || packet.uniforms.alpha != last_uniforms.alpha) {
-					s->setFloat("objectAlpha", packet.uniforms.alpha);
-				}
-				if (first_in_shader || packet.uniforms.use_pbr != last_uniforms.use_pbr) {
-					s->setBool("usePBR", packet.uniforms.use_pbr);
-				}
+				// Set MDI-specific uniforms
+				s->setBool("uUseMDI", true);
+				s->setInt("uBaseUniformIndex", batch.base_uniform_index);
 
-				if (packet.uniforms.use_pbr) {
-					s->setFloat("roughness", packet.uniforms.roughness);
-					s->setFloat("metallic", packet.uniforms.metallic);
-					s->setFloat("ao", packet.uniforms.ao);
+				// Bind textures
+				for (size_t i = 0; i < batch.textures.size(); ++i) {
+					glActiveTexture(GL_TEXTURE0 + i);
+					glBindTexture(GL_TEXTURE_2D, batch.textures[i].id);
+					s->setInt(batch.textures[i].type.c_str(), i);
+				}
+				s->setBool("use_texture", !batch.textures.empty());
+
+				if (batch.vao != current_vao) {
+					glBindVertexArray(batch.vao);
+					current_vao = batch.vao;
 				}
 
-				bool use_texture = packet.uniforms.use_texture || !packet.textures.empty();
-				s->setBool("use_texture", use_texture);
-
-				// Extended uniforms
-				s->setBool("isLine", packet.uniforms.is_line);
-				if (packet.uniforms.is_line) {
-					s->setInt("lineStyle", packet.uniforms.line_style);
-				}
-
-				s->setBool("isTextEffect", packet.uniforms.is_text_effect);
-				if (packet.uniforms.is_text_effect) {
-					s->setFloat("textFadeProgress", packet.uniforms.text_fade_progress);
-					s->setFloat("textFadeSoftness", packet.uniforms.text_fade_softness);
-					s->setInt("textFadeMode", packet.uniforms.text_fade_mode);
-				}
-
-				s->setBool("isArcadeText", packet.uniforms.is_arcade_text);
-				if (packet.uniforms.is_arcade_text) {
-					s->setInt("arcadeWaveMode", packet.uniforms.arcade_wave_mode);
-					s->setFloat("arcadeWaveAmplitude", packet.uniforms.arcade_wave_amplitude);
-					s->setFloat("arcadeWaveFrequency", packet.uniforms.arcade_wave_frequency);
-					s->setFloat("arcadeWaveSpeed", packet.uniforms.arcade_wave_speed);
-					s->setBool("arcadeRainbowEnabled", packet.uniforms.arcade_rainbow_enabled);
-					s->setFloat("arcadeRainbowSpeed", packet.uniforms.arcade_rainbow_speed);
-					s->setFloat("arcadeRainbowFrequency", packet.uniforms.arcade_rainbow_frequency);
-				}
-
-				s->setInt("checkpointStyle", packet.uniforms.checkpoint_style);
-				s->setInt("style", packet.uniforms.checkpoint_style);
-				s->setFloat("radius", packet.uniforms.checkpoint_radius);
-				s->setVec3("baseColor", packet.uniforms.color);
-
-				last_uniforms = packet.uniforms;
-				last_textures_empty = packet.textures.empty();
-				first_in_shader = false;
-
-				// Minimize VAO state changes
-				if (packet.vao != current_vao) {
-					glBindVertexArray(packet.vao);
-					current_vao = packet.vao;
-				}
-
-				// Render
-				if (packet.ebo > 0) {
-					glDrawElements(packet.draw_mode, packet.index_count, packet.index_type, 0);
+				if (batch.is_indexed) {
+					glBindBuffer(GL_DRAW_INDIRECT_BUFFER, indirect_elements_buffer->GetBufferId());
+					glMultiDrawElementsIndirect(
+						batch.draw_mode,
+						batch.index_type,
+						(void*)(uintptr_t)(indirect_elements_buffer->GetFrameOffset() +
+										   batch.first_command * sizeof(DrawElementsIndirectCommand)),
+						batch.command_count,
+						sizeof(DrawElementsIndirectCommand)
+					);
 				} else {
-					glDrawArrays(packet.draw_mode, 0, packet.vertex_count);
+					glBindBuffer(GL_DRAW_INDIRECT_BUFFER, indirect_arrays_buffer->GetBufferId());
+					glMultiDrawArraysIndirect(
+						batch.draw_mode,
+						(void*)(uintptr_t)(indirect_arrays_buffer->GetFrameOffset() +
+										   batch.first_command * sizeof(DrawArraysIndirectCommand)),
+						batch.command_count,
+						sizeof(DrawArraysIndirectCommand)
+					);
 				}
 			}
 
+			// Reset state to ensure non-MDI paths work correctly
 			if (current_vao != 0)
 				glBindVertexArray(0);
+
+			// Reset MDI state in all used shaders to prevent affecting subsequent non-MDI draws
+			for (auto* s : used_shaders) {
+				s->use();
+				s->setBool("uUseMDI", false);
+			}
+
+			glBindBuffer(GL_DRAW_INDIRECT_BUFFER, 0);
+			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 2, 0);
+			glActiveTexture(GL_TEXTURE0);
 		}
 
 		void RenderTrails(const glm::mat4& view, const std::optional<glm::vec4>& clip_plane) {
@@ -2153,6 +2269,24 @@ namespace Boidsish {
 
 	void Visualizer::Render() {
 		impl->RefreshFrameConfig();
+
+		// Advance persistent buffers and handle synchronization
+		impl->indirect_elements_buffer->AdvanceFrame();
+		impl->indirect_arrays_buffer->AdvanceFrame();
+		impl->uniforms_ssbo->AdvanceFrame();
+
+		int current_idx = impl->uniforms_ssbo->GetCurrentBufferIndex(); // I need to add this method or keep track
+		if (impl->mdi_fences[current_idx]) {
+			glClientWaitSync(impl->mdi_fences[current_idx], GL_SYNC_FLUSH_COMMANDS_BIT, GL_TIMEOUT_IGNORED);
+			glDeleteSync(impl->mdi_fences[current_idx]);
+			impl->mdi_fences[current_idx] = 0;
+		}
+
+		// Reset MDI offsets for the new frame
+		impl->mdi_elements_count = 0;
+		impl->mdi_arrays_count = 0;
+		impl->mdi_uniform_count = 0;
+
 		impl->shapes.clear();
 
 		// Update and collect transient effects
@@ -2840,6 +2974,11 @@ namespace Boidsish {
 
 		// --- UI Pass (renders on top of the fullscreen quad) ---
 		impl->ui_manager->Render();
+
+		// Create synchronization fence for the current frame's buffers
+		if (impl->mdi_fences[current_idx])
+			glDeleteSync(impl->mdi_fences[current_idx]);
+		impl->mdi_fences[current_idx] = glFenceSync(GL_SYNC_GPU_COMMANDS_COMPLETE, 0);
 
 		glfwSwapBuffers(impl->window);
 	}

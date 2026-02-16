@@ -1,9 +1,44 @@
-#version 430 core
+#version 460 core
 layout(location = 0) in vec3 aPos;
 layout(location = 1) in vec3 aNormal;
 layout(location = 2) in vec2 aTexCoords;
 layout(location = 3) in mat4 aInstanceMatrix;
 layout(location = 7) in vec4 aInstanceColor;
+
+struct CommonUniforms {
+	mat4  model;
+	vec3  color;
+	float alpha;
+	int   use_pbr;
+	float roughness;
+	float metallic;
+	float ao;
+	int   use_texture;
+	int   is_line;
+	int   line_style;
+	int   is_text_effect;
+	float text_fade_progress;
+	float text_fade_softness;
+	int   text_fade_mode;
+	int   is_arcade_text;
+	int   arcade_wave_mode;
+	float arcade_wave_amplitude;
+	float arcade_wave_frequency;
+	float arcade_wave_speed;
+	int   arcade_rainbow_enabled;
+	float arcade_rainbow_speed;
+	float arcade_rainbow_frequency;
+	int   checkpoint_style;
+	float checkpoint_radius;
+	float padding[3];
+};
+
+layout(std430, binding = 2) buffer UniformsSSBO {
+	CommonUniforms uniforms_data[];
+};
+
+uniform bool uUseMDI = false;
+uniform int  uBaseUniformIndex = 0;
 
 // SSBO for decor/foliage instancing (binding 10)
 layout(std430, binding = 10) buffer SSBOInstances {
@@ -22,6 +57,7 @@ out vec3 vs_color;
 out vec3 barycentric;
 out vec2 TexCoords;
 out vec4 InstanceColor;
+flat out int vUniformIndex;
 
 uniform mat4  model;
 uniform mat4  view;
@@ -44,20 +80,29 @@ uniform float arcadeWaveFrequency = 10.0;
 uniform float arcadeWaveSpeed = 5.0;
 
 void main() {
+	vUniformIndex = uUseMDI ? (uBaseUniformIndex + gl_DrawID) : -1;
+
+	mat4  current_model = uUseMDI ? uniforms_data[vUniformIndex].model : model;
+	bool  current_isArcadeText = uUseMDI ? (uniforms_data[vUniformIndex].is_arcade_text != 0) : isArcadeText;
+	int   current_arcadeWaveMode = uUseMDI ? uniforms_data[vUniformIndex].arcade_wave_mode : arcadeWaveMode;
+	float current_arcadeWaveAmplitude = uUseMDI ? uniforms_data[vUniformIndex].arcade_wave_amplitude : arcadeWaveAmplitude;
+	float current_arcadeWaveFrequency = uUseMDI ? uniforms_data[vUniformIndex].arcade_wave_frequency : arcadeWaveFrequency;
+	float current_arcadeWaveSpeed = uUseMDI ? uniforms_data[vUniformIndex].arcade_wave_speed : arcadeWaveSpeed;
+
 	vec3 displacedPos = aPos;
 	vec3 displacedNormal = aNormal;
 
-	if (isArcadeText) {
+	if (current_isArcadeText) {
 		float x = aTexCoords.x;
-		float phase = time * arcadeWaveSpeed;
+		float phase = time * current_arcadeWaveSpeed;
 
-		if (arcadeWaveMode == 1) { // Vertical Rippling Wave
-			displacedPos.y += sin(x * arcadeWaveFrequency + phase) * arcadeWaveAmplitude;
-		} else if (arcadeWaveMode == 2) { // Flag Style Wave
-			displacedPos.y += sin(x * arcadeWaveFrequency + phase) * arcadeWaveAmplitude;
-			displacedPos.z += cos(x * arcadeWaveFrequency * 0.7 + phase * 0.8) * arcadeWaveAmplitude * 0.5;
-		} else if (arcadeWaveMode == 3) { // Lengthwise Twist
-			float twist_angle = (x - 0.5) * arcadeWaveAmplitude * sin(phase);
+		if (current_arcadeWaveMode == 1) { // Vertical Rippling Wave
+			displacedPos.y += sin(x * current_arcadeWaveFrequency + phase) * current_arcadeWaveAmplitude;
+		} else if (current_arcadeWaveMode == 2) { // Flag Style Wave
+			displacedPos.y += sin(x * current_arcadeWaveFrequency + phase) * current_arcadeWaveAmplitude;
+			displacedPos.z += cos(x * current_arcadeWaveFrequency * 0.7 + phase * 0.8) * current_arcadeWaveAmplitude * 0.5;
+		} else if (current_arcadeWaveMode == 3) { // Lengthwise Twist
+			float twist_angle = (x - 0.5) * current_arcadeWaveAmplitude * sin(phase);
 			float s = sin(twist_angle);
 			float c = cos(twist_angle);
 			// Rotate around local X axis
@@ -94,7 +139,7 @@ void main() {
 	} else if (is_instanced) {
 		modelMatrix = aInstanceMatrix;
 	} else {
-		modelMatrix = model;
+		modelMatrix = current_model;
 	}
 
 	// Extract world position (translation from model matrix)
@@ -137,7 +182,7 @@ void main() {
 	if (isColossal) {
 		mat4 staticView = mat4(mat3(view));
 		vec3 skyPositionOffset = vec3(0.0, -10.0, -500.0);
-		vec4 world_pos = model * vec4(displacedPos * 50, 1.0);
+		vec4 world_pos = current_model * vec4(displacedPos * 50, 1.0);
 		world_pos.xyz += skyPositionOffset;
 		gl_Position = projection * staticView * world_pos;
 		gl_Position.z = gl_Position.w * 0.99999;
