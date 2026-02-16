@@ -31,6 +31,8 @@ namespace Boidsish {
 
 			virtual void SetTime(float /* time */) {}
 
+			virtual bool IsEarly() const { return false; }
+
 		protected:
 			std::string name_;
 			bool        is_enabled_ = true;
