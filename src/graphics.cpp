@@ -1196,33 +1196,25 @@ namespace Boidsish {
 		}
 
 		void ExecuteRenderQueue(
-			const RenderQueue&         queue,
-			const glm::mat4&           view,
-			const glm::mat4&           projection,
-			std::optional<RenderLayer> layer_filter = std::nullopt
+			const RenderQueue& queue,
+			const glm::mat4&   view,
+			const glm::mat4&   projection,
+			RenderLayer        layer
 		) {
 			unsigned int current_shader_id = 0;
 			unsigned int current_vao = 0;
 
-			const auto& packets = queue.GetPackets();
+			const auto& packets = queue.GetPackets(layer);
 			for (const auto& packet : packets) {
 				if (packet.shader_id == 0)
 					continue;
-
-				if (layer_filter.has_value()) {
-					RenderLayer packet_layer = static_cast<RenderLayer>(packet.sort_key >> 56);
-					if (packet_layer != *layer_filter)
-						continue;
-				}
 
 				// Minimize shader state changes
 				if (packet.shader_id != current_shader_id) {
 					glUseProgram(packet.shader_id);
 					current_shader_id = packet.shader_id;
 
-					// Since we're using a raw program ID, we need to set common uniforms manually
-					// or use the Shader class wrapper if we had it.
-					// For now, assume it's our main vis shader or similar.
+					// Set frame-level uniforms
 					GLint view_loc = glGetUniformLocation(current_shader_id, "view");
 					if (view_loc != -1)
 						glUniformMatrix4fv(view_loc, 1, GL_FALSE, &view[0][0]);
@@ -1236,38 +1228,38 @@ namespace Boidsish {
 						glUniform1f(time_loc, simulation_time);
 				}
 
-				// Set packet-specific uniforms
+				// Set packet-specific common uniforms from the grouped structure
 				GLint model_loc = glGetUniformLocation(current_shader_id, "model");
 				if (model_loc != -1)
-					glUniformMatrix4fv(model_loc, 1, GL_FALSE, &packet.model_matrix[0][0]);
+					glUniformMatrix4fv(model_loc, 1, GL_FALSE, &packet.uniforms.model[0][0]);
 
 				GLint color_loc = glGetUniformLocation(current_shader_id, "objectColor");
 				if (color_loc != -1)
-					glUniform3fv(color_loc, 1, &packet.color[0]);
+					glUniform3fv(color_loc, 1, &packet.uniforms.color[0]);
 
 				GLint alpha_loc = glGetUniformLocation(current_shader_id, "objectAlpha");
 				if (alpha_loc != -1)
-					glUniform1f(alpha_loc, packet.alpha);
+					glUniform1f(alpha_loc, packet.uniforms.alpha);
 
 				GLint use_pbr_loc = glGetUniformLocation(current_shader_id, "usePBR");
 				if (use_pbr_loc != -1)
-					glUniform1i(use_pbr_loc, packet.use_pbr);
+					glUniform1i(use_pbr_loc, packet.uniforms.use_pbr);
 
-				if (packet.use_pbr) {
+				if (packet.uniforms.use_pbr) {
 					GLint roughness_loc = glGetUniformLocation(current_shader_id, "roughness");
 					if (roughness_loc != -1)
-						glUniform1f(roughness_loc, packet.roughness);
+						glUniform1f(roughness_loc, packet.uniforms.roughness);
 					GLint metallic_loc = glGetUniformLocation(current_shader_id, "metallic");
 					if (metallic_loc != -1)
-						glUniform1f(metallic_loc, packet.metallic);
+						glUniform1f(metallic_loc, packet.uniforms.metallic);
 					GLint ao_loc = glGetUniformLocation(current_shader_id, "ao");
 					if (ao_loc != -1)
-						glUniform1f(ao_loc, packet.ao);
+						glUniform1f(ao_loc, packet.uniforms.ao);
 				}
 
 				GLint use_texture_loc = glGetUniformLocation(current_shader_id, "use_texture");
 				if (use_texture_loc != -1)
-					glUniform1i(use_texture_loc, !packet.textures.empty());
+					glUniform1i(use_texture_loc, packet.uniforms.use_texture || !packet.textures.empty());
 
 				// Minimize VAO state changes
 				if (packet.vao != current_vao) {
@@ -2203,34 +2195,7 @@ namespace Boidsish {
 
 		impl->UpdateTrails(impl->shapes, impl->simulation_time);
 
-		// --- Data-Driven Render Queue Collection ---
-		impl->render_queue.Clear();
-		for (const auto& shape : impl->shapes) {
-			if (shape->UseNewRenderPath()) {
-				std::vector<RenderPacket> packets;
-				shape->GenerateRenderPackets(packets);
-
-				// Update sort keys with actual depth and layer
-				glm::vec3 camera_pos = impl->camera.pos();
-				for (auto& packet : packets) {
-					glm::vec3 world_pos = glm::vec3(packet.model_matrix[3]);
-					float     depth = glm::distance(camera_pos, world_pos);
-
-					// Normalize depth to [0, 1] for sort key using far plane
-					float world_scale = impl->terrain_generator ? impl->terrain_generator->GetWorldScale() : 1.0f;
-					float far_plane = 1000.0f * std::max(1.0f, world_scale);
-					float normalized_depth = glm::clamp(depth / far_plane, 0.0f, 1.0f);
-
-					RenderLayer layer = (packet.alpha < 0.99f) ? RenderLayer::Transparent : RenderLayer::Opaque;
-					packet.sort_key =
-						CalculateSortKey(layer, packet.shader_handle, packet.material_handle, normalized_depth);
-
-					impl->render_queue.Submit(packet);
-				}
-			}
-		}
-		impl->render_queue.Sort();
-
+		// --- Camera and Audio Updates ---
 		if (impl->camera_mode == CameraMode::TRACKING) {
 			impl->UpdateSingleTrackCamera(impl->input_state.delta_time, impl->shapes);
 		} else if (impl->camera_mode == CameraMode::AUTO) {
@@ -2250,7 +2215,33 @@ namespace Boidsish {
 		);
 		impl->audio_manager->Update();
 
-		glm::mat4 view_matrix = impl->SetupMatrices();
+		glm::mat4 view = impl->SetupMatrices();
+
+		// --- Data-Driven Render Queue Collection ---
+		impl->render_queue.Clear();
+
+		// Prepare render context with updated view matrix
+		RenderContext context;
+		context.view = view;
+		context.projection = impl->projection;
+		context.view_pos = impl->camera.pos();
+		context.time = impl->simulation_time;
+
+		float world_scale = impl->terrain_generator ? impl->terrain_generator->GetWorldScale() : 1.0f;
+		context.far_plane = 1000.0f * std::max(1.0f, world_scale);
+		context.frustum = Frustum::FromViewProjection(view, impl->projection);
+
+		for (const auto& shape : impl->shapes) {
+			if (shape->UseNewRenderPath()) {
+				std::vector<RenderPacket> packets;
+				shape->GenerateRenderPackets(packets, context);
+
+				for (const auto& packet : packets) {
+					impl->render_queue.Submit(packet);
+				}
+			}
+		}
+		impl->render_queue.Sort();
 
 		// Calculate frustum for terrain generation and decor placement
 		Frustum generator_frustum;
@@ -2582,7 +2573,7 @@ namespace Boidsish {
 					scene_center,
 					500.0f * std::max(1.0f, world_scale),
 					info.cascade_index,
-					view_matrix,
+					view,
 					impl->camera.fov,
 					(float)impl->width / (float)impl->height
 				);
@@ -2642,7 +2633,7 @@ namespace Boidsish {
 		glEnable(GL_DEPTH_TEST);
 		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-		glm::mat4 view = impl->SetupMatrices();
+		view = impl->SetupMatrices();
 
 		// Render opaque geometry first (terrain, plane, shapes) to populate depth buffer
 		impl->RenderPlane(view);

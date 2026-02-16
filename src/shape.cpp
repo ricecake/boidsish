@@ -19,7 +19,17 @@ namespace Boidsish {
 	int                     Shape::sphere_vertex_count_ = 0;
 	std::shared_ptr<Shader> Shape::shader = nullptr;
 
-	void Shape::GenerateRenderPackets(std::vector<RenderPacket>& out_packets) const {
+	void Shape::GenerateRenderPackets(std::vector<RenderPacket>& out_packets, const RenderContext& context) const {
+		// Calculate model matrix once
+		glm::mat4 model = GetModelMatrix();
+		glm::vec3 world_pos = glm::vec3(model[3]);
+
+		// Frustum Culling
+		float radius = GetBoundingRadius();
+		if (!context.frustum.IsBoxInFrustum(world_pos - glm::vec3(radius), world_pos + glm::vec3(radius))) {
+			return;
+		}
+
 		RenderPacket packet;
 		packet.vao = sphere_vao_;
 		packet.vbo = sphere_vbo_;
@@ -28,24 +38,28 @@ namespace Boidsish {
 		packet.draw_mode = GL_TRIANGLES;
 		packet.index_type = GL_UNSIGNED_INT;
 		packet.shader_id = shader ? shader->ID : 0;
-		packet.model_matrix = GetModelMatrix();
-		packet.color = glm::vec3(r_, g_, b_);
-		packet.alpha = a_;
-		packet.use_pbr = use_pbr_;
-		packet.roughness = roughness_;
-		packet.metallic = metallic_;
-		packet.ao = ao_;
+
+		packet.uniforms.model = model;
+		packet.uniforms.color = glm::vec3(r_, g_, b_);
+		packet.uniforms.alpha = a_;
+		packet.uniforms.use_pbr = use_pbr_;
+		packet.uniforms.roughness = roughness_;
+		packet.uniforms.metallic = metallic_;
+		packet.uniforms.ao = ao_;
+		packet.uniforms.use_texture = false; // Default for base sphere shape
+
 		packet.is_instanced = is_instanced_;
 
 		// Default to Opaque layer unless alpha is less than 1.0
-		RenderLayer layer = (a_ < 1.0f) ? RenderLayer::Transparent : RenderLayer::Opaque;
+		RenderLayer layer = (a_ < 0.99f) ? RenderLayer::Transparent : RenderLayer::Opaque;
 
 		// Handles would typically be managed by a higher-level system (e.g., AssetManager)
 		packet.shader_handle = ShaderHandle(0);
 		packet.material_handle = MaterialHandle(0);
 
-		// Use a neutral depth for the initial key.
-		packet.sort_key = CalculateSortKey(layer, packet.shader_handle, packet.material_handle, 0.0f);
+		// Calculate depth for sorting
+		float normalized_depth = context.CalculateNormalizedDepth(world_pos);
+		packet.sort_key = CalculateSortKey(layer, packet.shader_handle, packet.material_handle, normalized_depth);
 
 		out_packets.push_back(packet);
 	}

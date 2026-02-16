@@ -33,7 +33,7 @@ namespace Boidsish {
 		virtual bool IsExpired() const { return false; }
 
 		// Implementation of Geometry interface
-		virtual void GenerateRenderPackets(std::vector<RenderPacket>& out_packets) const override;
+		virtual void GenerateRenderPackets(std::vector<RenderPacket>& out_packets, const RenderContext& context) const override;
 
 		// Pure virtual function for legacy immediate rendering the shape
 		virtual void render() const = 0;

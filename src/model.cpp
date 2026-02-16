@@ -289,11 +289,18 @@ namespace Boidsish {
 		}
 	}
 
-	void Model::GenerateRenderPackets(std::vector<RenderPacket>& out_packets) const {
+	void Model::GenerateRenderPackets(std::vector<RenderPacket>& out_packets, const RenderContext& context) const {
 		if (!m_data)
 			return;
 
 		glm::mat4 model_matrix = GetModelMatrix();
+		glm::vec3 world_pos = glm::vec3(model_matrix[3]);
+
+		// Frustum Culling
+		float radius = GetBoundingRadius();
+		if (!no_cull_ && !context.frustum.IsBoxInFrustum(world_pos - glm::vec3(radius), world_pos + glm::vec3(radius))) {
+			return;
+		}
 
 		for (const auto& mesh : m_data->meshes) {
 			RenderPacket packet;
@@ -304,15 +311,17 @@ namespace Boidsish {
 			packet.draw_mode = GL_TRIANGLES;
 			packet.index_type = GL_UNSIGNED_INT;
 			packet.shader_id = shader ? shader->ID : 0;
-			packet.model_matrix = model_matrix;
 
-			packet.color =
+			packet.uniforms.model = model_matrix;
+			packet.uniforms.color =
 				glm::vec3(GetR() * mesh.diffuseColor.r, GetG() * mesh.diffuseColor.g, GetB() * mesh.diffuseColor.b);
-			packet.alpha = GetA() * mesh.opacity;
-			packet.use_pbr = UsePBR();
-			packet.roughness = GetRoughness();
-			packet.metallic = GetMetallic();
-			packet.ao = GetAO();
+			packet.uniforms.alpha = GetA() * mesh.opacity;
+			packet.uniforms.use_pbr = UsePBR();
+			packet.uniforms.roughness = GetRoughness();
+			packet.uniforms.metallic = GetMetallic();
+			packet.uniforms.ao = GetAO();
+			packet.uniforms.use_texture = !mesh.textures.empty();
+
 			packet.is_instanced = IsInstanced();
 
 			for (const auto& tex : mesh.textures) {
@@ -322,12 +331,13 @@ namespace Boidsish {
 				packet.textures.push_back(info);
 			}
 
-			RenderLayer layer = (packet.alpha < 1.0f) ? RenderLayer::Transparent : RenderLayer::Opaque;
+			RenderLayer layer = (packet.uniforms.alpha < 0.99f) ? RenderLayer::Transparent : RenderLayer::Opaque;
 			packet.shader_handle = ShaderHandle(0);
 			packet.material_handle = MaterialHandle(0);
 
-			// Depth could be calculated here if camera position was available, or updated later
-			packet.sort_key = CalculateSortKey(layer, packet.shader_handle, packet.material_handle, 0.0f);
+			// Calculate depth for sorting
+			float normalized_depth = context.CalculateNormalizedDepth(world_pos);
+			packet.sort_key = CalculateSortKey(layer, packet.shader_handle, packet.material_handle, normalized_depth);
 
 			out_packets.push_back(packet);
 		}
