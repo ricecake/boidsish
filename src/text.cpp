@@ -368,31 +368,7 @@ namespace Boidsish {
 		if (vao_ == 0 || shader == nullptr)
 			return;
 
-		shader->use();
-		shader->setMat4("model", GetModelMatrix());
-		shader->setVec3("objectColor", GetR(), GetG(), GetB());
-		shader->setFloat("objectAlpha", GetA());
-		shader->setBool("use_texture", false);
-
-		shader->setBool("isTextEffect", is_text_effect_);
-		if (is_text_effect_) {
-			shader->setFloat("textFadeProgress", text_fade_progress_);
-			shader->setFloat("textFadeSoftness", text_fade_softness_);
-			shader->setInt("textFadeMode", text_fade_mode_);
-		}
-
-		// Set PBR material properties
-		shader->setBool("usePBR", UsePBR());
-		if (UsePBR()) {
-			shader->setFloat("roughness", GetRoughness());
-			shader->setFloat("metallic", GetMetallic());
-			shader->setFloat("ao", GetAO());
-		}
-
-		glBindVertexArray(vao_);
-		glDrawArrays(GL_TRIANGLES, 0, vertex_count_);
-		shader->setBool("isTextEffect", false);
-		glBindVertexArray(0);
+		render(*shader, GetModelMatrix());
 	}
 
 	void Text::render(Shader& shader, const glm::mat4& model_matrix) const {

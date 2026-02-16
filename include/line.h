@@ -21,6 +21,7 @@ namespace Boidsish {
 			float     a = 1.0f
 		);
 
+		using Shape::render;
 		void      render() const override;
 		void      render(Shader& shader, const glm::mat4& model_matrix) const override;
 		glm::mat4 GetModelMatrix() const override;

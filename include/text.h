@@ -33,6 +33,7 @@ namespace Boidsish {
 		);
 		~Text();
 
+		using Shape::render;
 		virtual void render() const override;
 		virtual void render(Shader& shader, const glm::mat4& model_matrix) const override;
 		glm::mat4    GetModelMatrix() const override;

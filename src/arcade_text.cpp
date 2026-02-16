@@ -58,59 +58,63 @@ namespace Boidsish {
 		if (vao_ == 0 || shader == nullptr)
 			return;
 
-		shader->use();
-		shader->setBool("isArcadeText", true);
-		shader->setInt("arcadeWaveMode", static_cast<int>(wave_mode_));
-		shader->setFloat("arcadeWaveAmplitude", wave_amplitude_);
-		shader->setFloat("arcadeWaveFrequency", wave_frequency_);
-		shader->setFloat("arcadeWaveSpeed", wave_speed_);
+		render(*shader, GetModelMatrix());
+	}
 
-		shader->setBool("arcadeRainbowEnabled", rainbow_enabled_);
-		shader->setFloat("arcadeRainbowSpeed", rainbow_speed_);
-		shader->setFloat("arcadeRainbowFrequency", rainbow_frequency_);
+	void ArcadeText::render(Shader& shader, const glm::mat4& model_matrix) const {
+		shader.use();
+		shader.setBool("isArcadeText", true);
+		shader.setInt("arcadeWaveMode", static_cast<int>(wave_mode_));
+		shader.setFloat("arcadeWaveAmplitude", wave_amplitude_);
+		shader.setFloat("arcadeWaveFrequency", wave_frequency_);
+		shader.setFloat("arcadeWaveSpeed", wave_speed_);
+
+		shader.setBool("arcadeRainbowEnabled", rainbow_enabled_);
+		shader.setFloat("arcadeRainbowSpeed", rainbow_speed_);
+		shader.setFloat("arcadeRainbowFrequency", rainbow_frequency_);
 
 		if (double_copy_) {
 			// First copy
-			glm::mat4 m1 = GetModelMatrix();
+			glm::mat4 m1 = model_matrix;
 			m1 = glm::rotate(m1, rotation_angle_, rotation_axis_);
-			render_internal(m1);
+			render_internal(shader, m1);
 
 			// Second copy (180 degrees offset)
-			glm::mat4 m2 = GetModelMatrix();
+			glm::mat4 m2 = model_matrix;
 			m2 = glm::rotate(m2, rotation_angle_ + glm::pi<float>(), rotation_axis_);
-			render_internal(m2);
+			render_internal(shader, m2);
 		} else {
-			glm::mat4 model = GetModelMatrix();
+			glm::mat4 model = model_matrix;
 			if (rotation_angle_ != 0.0f) {
 				model = glm::rotate(model, rotation_angle_, rotation_axis_);
 			}
-			render_internal(model);
+			render_internal(shader, model);
 		}
 
 		// Reset arcade and text effect flags for subsequent renders
-		shader->setBool("isArcadeText", false);
-		shader->setBool("isTextEffect", false);
+		shader.setBool("isArcadeText", false);
+		shader.setBool("isTextEffect", false);
 	}
 
-	void ArcadeText::render_internal(const glm::mat4& model_matrix) const {
-		shader->setMat4("model", model_matrix);
-		shader->setVec3("objectColor", GetR(), GetG(), GetB());
-		shader->setFloat("objectAlpha", GetA());
-		shader->setBool("use_texture", false);
+	void ArcadeText::render_internal(Shader& shader, const glm::mat4& model_matrix) const {
+		shader.setMat4("model", model_matrix);
+		shader.setVec3("objectColor", GetR(), GetG(), GetB());
+		shader.setFloat("objectAlpha", GetA());
+		shader.setBool("use_texture", false);
 
-		shader->setBool("isTextEffect", is_text_effect_);
+		shader.setBool("isTextEffect", is_text_effect_);
 		if (is_text_effect_) {
-			shader->setFloat("textFadeProgress", text_fade_progress_);
-			shader->setFloat("textFadeSoftness", text_fade_softness_);
-			shader->setInt("textFadeMode", text_fade_mode_);
+			shader.setFloat("textFadeProgress", text_fade_progress_);
+			shader.setFloat("textFadeSoftness", text_fade_softness_);
+			shader.setInt("textFadeMode", text_fade_mode_);
 		}
 
 		// Set PBR material properties
-		shader->setBool("usePBR", UsePBR());
+		shader.setBool("usePBR", UsePBR());
 		if (UsePBR()) {
-			shader->setFloat("roughness", GetRoughness());
-			shader->setFloat("metallic", GetMetallic());
-			shader->setFloat("ao", GetAO());
+			shader.setFloat("roughness", GetRoughness());
+			shader.setFloat("metallic", GetMetallic());
+			shader.setFloat("ao", GetAO());
 		}
 
 		glBindVertexArray(vao_);

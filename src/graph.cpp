@@ -203,6 +203,13 @@ namespace Boidsish {
 	}
 
 	void Graph::render() const {
+		if (!shader)
+			return;
+
+		render(*shader, GetModelMatrix());
+	}
+
+	void Graph::render(Shader& shader, const glm::mat4& model_matrix) const {
 		if (cached_vertex_positions_.size() != vertices.size()) {
 			buffers_initialized_ = false;
 		} else {
@@ -228,21 +235,10 @@ namespace Boidsish {
 			    vertex.b,
 			    vertex.a,
 			    0)
-				.render();
+				.render(shader);
 		}
 
-		render(*shader, GetModelMatrix());
-
-		// Reset model matrix for subsequent renders if needed
-		glm::mat4 model = glm::mat4(1.0f);
-		shader->setMat4("model", model);
-	}
-
-	void Graph::render(Shader& shader, const glm::mat4& model_matrix) const {
-		if (!buffers_initialized_) {
-			SetupBuffers();
-		}
-
+		shader.use();
 		shader.setMat4("model", model_matrix);
 		shader.setInt("useVertexColor", 1);
 
