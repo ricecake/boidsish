@@ -4,8 +4,11 @@
 #include <cmath>
 #include <set>
 
+#include "CongaMarcher.h"
 #include "GuidedMissileLauncher.h"
 #include "PaperPlane.h"
+#include "Potshot.h"
+#include "Swooper.h"
 #include "VortexFlockingEntity.h"
 #include "constants.h"
 #include "graphics.h"
@@ -34,14 +37,14 @@ namespace Boidsish {
 		// }
 	}
 
-	void PaperPlaneHandler::RecordTarget(std::shared_ptr<GuidedMissileLauncher> target) const {
+	void PaperPlaneHandler::RecordTarget(std::shared_ptr<EntityBase> target) const {
 		if (target) {
 			std::lock_guard<std::mutex> lock(target_mutex_);
 			target_counts_[target->GetId()]++;
 		}
 	}
 
-	int PaperPlaneHandler::GetTargetCount(std::shared_ptr<GuidedMissileLauncher> target) const {
+	int PaperPlaneHandler::GetTargetCount(std::shared_ptr<EntityBase> target) const {
 		if (target) {
 			std::lock_guard<std::mutex> lock(target_mutex_);
 			auto                        it = target_counts_.find(target->GetId());
@@ -71,52 +74,61 @@ namespace Boidsish {
 	}
 
 	void PaperPlaneHandler::PreparePlane(std::shared_ptr<PaperPlane> plane) {
-		if (!plane || !vis)
+		if (!plane || !vis || !vis->GetTerrain())
 			return;
 
 		float     best_score = -1e10f;
-		glm::vec3 best_pos(0, 100, 0);
+		glm::vec3 best_pos(210, 30, -600);
 		glm::vec3 best_dir(0, 0, -1);
 
 		// Sample a grid around the starting area
-		for (float x = -300; x <= 300; x += 30) {
-			for (float z = -300; z <= 300; z += 30) {
-				auto [h, norm] = vis->GetTerrainPropertiesAtPoint(x, z);
-				if (h < 15.0f)
-					continue; // Avoid valleys/water
+		// for (float x = -400; x <= 400; x += 25) {
+		// 	for (float z = -400; z <= 400; z += 25) {
+		// 		glm::vec3 path_data = vis->GetTerrain()->GetPathData(x, z);
+		// 		float     dist_from_path = std::abs(path_data.x);
 
-				// Test 8 directions
-				for (int i = 0; i < 8; ++i) {
-					float     angle = i * (glm::pi<float>() / 4.0f);
-					glm::vec3 dir(sin(angle), 0, cos(angle));
+		// 		auto [h, norm] = vis->GetTerrainPropertiesAtPoint(x, z);
+		// 		if (h < 5.0f)
+		// 			continue; // Avoid water
 
-					// Look ahead to check gradient
-					float check_dist = 60.0f;
-					auto [h_ahead, norm_ahead] = vis->GetTerrainPropertiesAtPoint(
-						x + dir.x * check_dist,
-						z + dir.z * check_dist
-					);
+		// 		float path_score = 1.0f - glm::smoothstep(0.0f, 1.5f, dist_from_path);
 
-					float gradient = h - h_ahead; // positive is downslope
-					float score = h * 0.5f + gradient * 2.0f;
+		// 		// Tangent to the path: perpendicular to gradient (path_data.y, path_data.z)
+		// 		glm::vec2 tangent2D = glm::normalize(glm::vec2(path_data.z, -path_data.y));
+		// 		glm::vec2 directions[2] = {tangent2D, -tangent2D};
 
-					// Penalize if pointing directly into a steep uphill
-					if (gradient < -10.0f)
-						score -= 100.0f;
+		// 		for (const auto& t2d : directions) {
+		// 			glm::vec3 dir(t2d.x, 0, t2d.y);
 
-					if (score > best_score) {
-						best_score = score;
-						best_pos = glm::vec3(x, h + 60.0f, z);
-						best_dir = dir;
-					}
-				}
-			}
-		}
+		// 			// Look ahead to check gradient
+		// 			float check_dist = 60.0f;
+		// 			auto [h_ahead, norm_ahead] = vis->GetTerrainPropertiesAtPoint(
+		// 				x + dir.x * check_dist,
+		// 				z + dir.z * check_dist
+		// 			);
+
+		// 			float gradient = h - h_ahead; // positive is downslope
+		// 			float score = path_score * 200.0f;
+		// 			score -= h * 0.2f;        // Prefer lower altitude (valleys)
+		// 			score += gradient * 5.0f; // Prefer downslope
+
+		// 			// Penalize if pointing directly into a steep uphill
+		// 			if (gradient < -5.0f)
+		// 				score -= 100.0f;
+
+		// 			if (score > best_score) {
+		// 				best_score = score;
+		// 				best_pos = glm::vec3(x, h + 30.0f, z); // Lower fly height to stay below aggression threshold
+		// 				best_dir = dir;
+		// 			}
+		// 		}
+		// 	}
+		// }
 
 		plane->SetPosition(best_pos.x, best_pos.y, best_pos.z);
 		glm::quat orient = glm::quatLookAt(glm::normalize(best_dir), glm::vec3(0, 1, 0));
 		plane->SetOrientation(orient);
-		plane->SetVelocity(best_dir * 40.0f); // Set a good starting speed
+		plane->SetVelocity(best_dir * 60.0f); // Set a good starting speed
 		plane->UpdateShape();
 
 		// Update camera to follow
@@ -298,6 +310,77 @@ namespace Boidsish {
 		}
 
 		damage_timer_ = std::min(damage_timer_, 2.0f);
+
+		// Enemy spawning logic
+		enemy_spawn_timer_ -= delta_time;
+		if (enemy_spawn_timer_ <= 0) {
+			enemy_spawn_timer_ = 6.0f + std::uniform_real_distribution<float>(0, 4.0f)(eng_);
+
+			if (!targets.empty()) {
+				auto pos = plane->GetPosition().Toglm();
+				auto forward = plane->GetOrientation() * glm::vec3(0, 0, -1);
+				auto spawn_pos = FindOccludedSpawnPosition(pos, forward);
+
+				if (spawn_pos) {
+					std::uniform_int_distribution<int> enemy_type(0, 2);
+					int                                type = enemy_type(eng_);
+
+					if (type == 0) {
+						// Conga Marcher group
+						int count = std::uniform_int_distribution<int>(3, 9)(eng_);
+						int last_id = -1;
+						for (int i = 0; i < count; ++i) {
+							// For the first one, last_id is -1.
+							// For subsequent ones, it's the id of the previous one.
+							int new_id = AddEntity<CongaMarcher>(
+								Vector3(spawn_pos->x, spawn_pos->y, spawn_pos->z),
+								last_id
+							);
+							last_id = new_id;
+						}
+					} else if (type == 1) {
+						// Swooper
+						QueueAddEntity<Swooper>(Vector3(spawn_pos->x, spawn_pos->y, spawn_pos->z));
+					} else {
+						// Potshot
+						QueueAddEntity<Potshot>(Vector3(spawn_pos->x, spawn_pos->y, spawn_pos->z));
+					}
+				}
+			}
+		}
+	}
+
+	std::optional<glm::vec3>
+	PaperPlaneHandler::FindOccludedSpawnPosition(const glm::vec3& player_pos, const glm::vec3& player_forward) {
+		std::uniform_real_distribution<float> dist_range(500.0f, 800.0f);
+		std::uniform_real_distribution<float> angle_range(-0.5f, 0.5f);
+
+		glm::vec3 up(0, 1, 0);
+		glm::vec3 right = glm::normalize(glm::cross(player_forward, up));
+		if (glm::length(right) < 0.001f)
+			right = glm::vec3(1, 0, 0);
+
+		for (int i = 0; i < 15; ++i) { // Try 15 times
+			float d = dist_range(eng_);
+			float a = angle_range(eng_);
+
+			glm::vec3 candidate = player_pos + player_forward * d + right * (a * d);
+			auto [h, norm] = GetTerrainPropertiesAtPoint(candidate.x, candidate.z);
+			candidate.y = h + 40.0f; // Above ground
+
+			// Check LOS
+			glm::vec3 to_candidate = candidate - player_pos;
+			float     dist_to_cand = glm::length(to_candidate);
+			glm::vec3 dir = glm::normalize(to_candidate);
+
+			float     hit_dist;
+			glm::vec3 hit_norm;
+			if (RaycastTerrain(player_pos, dir, dist_to_cand, hit_dist, hit_norm)) {
+				// Hit terrain before reaching candidate -> Occluded!
+				return candidate;
+			}
+		}
+		return std::nullopt;
 	}
 
 } // namespace Boidsish
