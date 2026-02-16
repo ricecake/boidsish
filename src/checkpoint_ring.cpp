@@ -11,6 +11,7 @@ namespace Boidsish {
 	unsigned int            CheckpointRingShape::quad_vao_ = 0;
 	unsigned int            CheckpointRingShape::quad_vbo_ = 0;
 	std::shared_ptr<Shader> CheckpointRingShape::checkpoint_shader_ = nullptr;
+	ShaderHandle            CheckpointRingShape::checkpoint_shader_handle = ShaderHandle(0);
 
 	CheckpointRingShape::CheckpointRingShape(float radius, CheckpointStyle style):
 		Shape(), radius_(radius), style_(style) {
@@ -92,6 +93,68 @@ namespace Boidsish {
 		glBindVertexArray(quad_vao_);
 		glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
 		glBindVertexArray(0);
+	}
+
+	void CheckpointRingShape::GenerateRenderPackets(std::vector<RenderPacket>& out_packets, const RenderContext& context) const {
+		if (quad_vao_ == 0) return;
+
+		glm::mat4 model_matrix = GetModelMatrix();
+		glm::vec3 world_pos = glm::vec3(model_matrix[3]);
+
+		// Frustum Culling
+		float radius = GetBoundingRadius();
+		if (!context.frustum.IsBoxInFrustum(world_pos - glm::vec3(radius), world_pos + glm::vec3(radius))) {
+			return;
+		}
+
+		RenderPacket packet;
+		packet.vao = quad_vao_;
+		packet.vbo = quad_vbo_;
+		packet.vertex_count = 4;
+		packet.draw_mode = GL_TRIANGLE_STRIP;
+		packet.shader_id = checkpoint_shader_ ? checkpoint_shader_->ID : 0;
+
+		packet.uniforms.model = model_matrix;
+
+		glm::vec3 color(1.0f);
+		switch (style_) {
+		case CheckpointStyle::GOLD:
+			color = Constants::Class::Checkpoint::Colors::Gold();
+			break;
+		case CheckpointStyle::SILVER:
+			color = Constants::Class::Checkpoint::Colors::Silver();
+			break;
+		case CheckpointStyle::BLACK:
+			color = Constants::Class::Checkpoint::Colors::Black();
+			break;
+		case CheckpointStyle::BLUE:
+			color = Constants::Class::Checkpoint::Colors::Blue();
+			break;
+		case CheckpointStyle::NEON_GREEN:
+			color = Constants::Class::Checkpoint::Colors::NeonGreen();
+			break;
+		default:
+			color = glm::vec3(GetR(), GetG(), GetB());
+			break;
+		}
+
+		packet.uniforms.color = color;
+		packet.uniforms.alpha = GetA();
+		packet.uniforms.use_pbr = false;
+		packet.uniforms.use_texture = false;
+
+		packet.uniforms.checkpoint_style = static_cast<int>(style_);
+		packet.uniforms.checkpoint_radius = radius_;
+
+		RenderLayer layer = RenderLayer::Transparent;
+
+		packet.shader_handle = checkpoint_shader_handle;
+		packet.material_handle = MaterialHandle(0);
+
+		float normalized_depth = context.CalculateNormalizedDepth(world_pos);
+		packet.sort_key = CalculateSortKey(layer, packet.shader_handle, packet.material_handle, normalized_depth);
+
+		out_packets.push_back(packet);
 	}
 
 	glm::mat4 CheckpointRingShape::GetModelMatrix() const {

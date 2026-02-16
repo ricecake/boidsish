@@ -154,6 +154,8 @@ namespace Boidsish {
 		void      render(Shader& shader, const glm::mat4& model_matrix) const override;
 		glm::mat4 GetModelMatrix() const override;
 
+		void GenerateRenderPackets(std::vector<RenderPacket>& out_packets, const RenderContext& context) const override;
+
 		std::string GetInstanceKey() const override { return "delaunay_blob_" + std::to_string(id_); }
 
 		/// Get centroid of all points

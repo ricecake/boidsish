@@ -173,4 +173,66 @@ namespace Boidsish {
 			cone_vao_ = 0;
 		}
 	}
+
+	void Arrow::GenerateRenderPackets(std::vector<RenderPacket>& out_packets, const RenderContext& context) const {
+		glm::mat4 model_matrix = GetModelMatrix();
+		glm::vec3 world_pos = glm::vec3(model_matrix[3]);
+
+		// Frustum Culling
+		float radius = GetBoundingRadius();
+		if (!context.frustum.IsBoxInFrustum(world_pos - glm::vec3(radius), world_pos + glm::vec3(radius))) {
+			return;
+		}
+
+		// Arrow has two parts: Rod and Cone
+		// For simplicity, we create two packets if needed, or one if they share state.
+		// Since they use different VAOs, we need two packets.
+
+		// Rod Packet
+		{
+			RenderPacket packet;
+			packet.vao = rod_vao_;
+			packet.vbo = rod_vbo_;
+			packet.vertex_count = static_cast<unsigned int>(rod_vertex_count_);
+			packet.draw_mode = GL_TRIANGLES;
+			packet.shader_id = shader ? shader->ID : 0;
+			packet.uniforms.model = model_matrix;
+			packet.uniforms.color = glm::vec3(GetR(), GetG(), GetB());
+			packet.uniforms.alpha = GetA();
+			packet.uniforms.use_pbr = UsePBR();
+			packet.uniforms.roughness = GetRoughness();
+			packet.uniforms.metallic = GetMetallic();
+			packet.uniforms.ao = GetAO();
+
+			RenderLayer layer = (GetA() < 0.99f) ? RenderLayer::Transparent : RenderLayer::Opaque;
+			float normalized_depth = context.CalculateNormalizedDepth(world_pos);
+			packet.shader_handle = shader_handle;
+			packet.sort_key = CalculateSortKey(layer, packet.shader_handle, MaterialHandle(0), normalized_depth);
+			out_packets.push_back(packet);
+		}
+
+		// Cone Packet
+		{
+			RenderPacket packet;
+			packet.vao = cone_vao_;
+			packet.vbo = cone_vbo_;
+			packet.vertex_count = static_cast<unsigned int>(cone_vertex_count_);
+			packet.draw_mode = GL_TRIANGLES;
+			packet.shader_id = shader ? shader->ID : 0;
+			packet.uniforms.model = model_matrix;
+			packet.uniforms.color = glm::vec3(GetR(), GetG(), GetB());
+			packet.uniforms.alpha = GetA();
+			packet.uniforms.use_pbr = UsePBR();
+			packet.uniforms.roughness = GetRoughness();
+			packet.uniforms.metallic = GetMetallic();
+			packet.uniforms.ao = GetAO();
+
+			RenderLayer layer = (GetA() < 0.99f) ? RenderLayer::Transparent : RenderLayer::Opaque;
+			float normalized_depth = context.CalculateNormalizedDepth(world_pos);
+			packet.shader_handle = shader_handle;
+			packet.sort_key = CalculateSortKey(layer, packet.shader_handle, MaterialHandle(0), normalized_depth);
+			out_packets.push_back(packet);
+		}
+	}
+
 } // namespace Boidsish

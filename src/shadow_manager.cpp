@@ -32,7 +32,7 @@ namespace Boidsish {
 		}
 
 		// Create shadow depth shader
-		shadow_shader_ = std::make_unique<Shader>("shaders/shadow_depth.vert", "shaders/shadow_depth.frag");
+		shadow_shader_ = std::make_shared<Shader>("shaders/shadow_depth.vert", "shaders/shadow_depth.frag");
 
 		// Create shadow map texture array
 		glGenTextures(1, &shadow_map_array_);

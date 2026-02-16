@@ -74,6 +74,8 @@ namespace Boidsish {
 		void      render(Shader& shader, const glm::mat4& model_matrix) const override;
 		glm::mat4 GetModelMatrix() const override;
 
+		void GenerateRenderPackets(std::vector<RenderPacket>& out_packets, const RenderContext& context) const override;
+
 		// Graphs are not instanced (each has unique geometry)
 		std::string GetInstanceKey() const override { return "Graph:" + std::to_string(GetId()); }
 

@@ -24,6 +24,8 @@ namespace Boidsish {
 		void Update(float delta_time) override;
 		void render() const override;
 
+		void GenerateRenderPackets(std::vector<RenderPacket>& out_packets, const RenderContext& context) const override;
+
 		// Arcade Effect Setters
 		void SetWaveMode(ArcadeWaveMode mode) { wave_mode_ = mode; }
 

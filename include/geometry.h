@@ -8,6 +8,7 @@
 
 #include "render_shader.h"
 #include "material.h"
+#include "render_context.h"
 
 namespace Boidsish {
 
@@ -20,6 +21,38 @@ namespace Boidsish {
 		Transparent = 2,
 		UI = 3,
 		Overlay = 4
+	};
+
+	/**
+	 * @brief Grouped common uniforms for easier management and use across objects.
+	 */
+	struct CommonUniforms {
+		glm::mat4 model = glm::mat4(1.0f);
+		glm::vec3 color = glm::vec3(1.0f);
+		float     alpha = 1.0f;
+		bool      use_pbr = false;
+		float     roughness = 0.5f;
+		float     metallic = 0.0f;
+		float     ao = 1.0f;
+		bool      use_texture = false;
+
+		// Extended common uniforms
+		bool  is_line = false;
+		int   line_style = 0;
+		bool  is_text_effect = false;
+		float text_fade_progress = 1.0f;
+		float text_fade_softness = 0.1f;
+		int   text_fade_mode = 0;
+		bool  is_arcade_text = false;
+		int   arcade_wave_mode = 0;
+		float arcade_wave_amplitude = 0.5f;
+		float arcade_wave_frequency = 10.0f;
+		float arcade_wave_speed = 5.0f;
+		bool  arcade_rainbow_enabled = false;
+		float arcade_rainbow_speed = 2.0f;
+		float arcade_rainbow_frequency = 5.0f;
+		int   checkpoint_style = 0;
+		float checkpoint_radius = 0.0f;
 	};
 
 	/**
@@ -55,18 +88,8 @@ namespace Boidsish {
 		// OpenGL index type (e.g., GL_UNSIGNED_INT)
 		unsigned int index_type = 0;
 
-		// Transformation
-		glm::mat4 model_matrix = glm::mat4(1.0f);
-
-		// Material Properties (Directly in packet for fast access/legacy support)
-		glm::vec3 color = glm::vec3(1.0f);
-		float     alpha = 1.0f;
-
-		// PBR Properties
-		bool  use_pbr = false;
-		float roughness = 0.5f;
-		float metallic = 0.0f;
-		float ao = 1.0f;
+		// Grouped common uniforms
+		CommonUniforms uniforms;
 
 		// Texture information
 		struct TextureInfo {
@@ -92,8 +115,9 @@ namespace Boidsish {
 		/**
 		 * @brief Generates one or more RenderPackets describing how this geometry should be rendered.
 		 * @param out_packets Vector to append the generated packets to.
+		 * @param context The current frame's rendering context.
 		 */
-		virtual void GenerateRenderPackets(std::vector<RenderPacket>& out_packets) const = 0;
+		virtual void GenerateRenderPackets(std::vector<RenderPacket>& out_packets, const RenderContext& context) const = 0;
 	};
 
 	/**
