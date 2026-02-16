@@ -94,7 +94,7 @@ int main() {
 		});
 
 		std::shared_ptr<SteeringProbe> sp = std::make_shared<SteeringProbe>(visualizer->GetTerrain());
-		sp->SetPosition(plane->GetPosition().Toglm()+plane->GetVelocity());
+		sp->SetPosition(plane->GetPosition().Toglm() + plane->GetVelocity());
 		sp->SetVelocity(plane->GetVelocity().Toglm());
 
 		auto dot = std::make_shared<Dot>(2343433);
