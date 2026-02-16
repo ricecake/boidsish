@@ -1218,8 +1218,11 @@ namespace Boidsish {
 			const glm::mat4&   proj_mat,
 			RenderLayer        layer
 		) {
-			unsigned int current_shader_id = 0;
-			unsigned int current_vao = 0;
+			unsigned int   current_shader_id = 0;
+			unsigned int   current_vao = 0;
+			CommonUniforms last_uniforms;
+			bool           first_in_shader = true;
+			bool           last_textures_empty = true;
 
 			const auto& packets = queue.GetPackets(layer);
 			for (const auto& packet : packets) {
@@ -1236,6 +1239,7 @@ namespace Boidsish {
 				if (packet.shader_id != current_shader_id) {
 					s->use();
 					current_shader_id = packet.shader_id;
+					first_in_shader = true;
 
 					// Set frame-level uniforms using cached locations
 					s->setMat4("view", view_mat);
@@ -1244,10 +1248,19 @@ namespace Boidsish {
 				}
 
 				// Set packet-specific common uniforms from the grouped structure using cached locations
-				s->setMat4("model", packet.uniforms.model);
-				s->setVec3("objectColor", packet.uniforms.color);
-				s->setFloat("objectAlpha", packet.uniforms.alpha);
-				s->setBool("usePBR", packet.uniforms.use_pbr);
+				// Track changes to minimize redundant uniform updates
+				if (first_in_shader || packet.uniforms.model != last_uniforms.model) {
+					s->setMat4("model", packet.uniforms.model);
+				}
+				if (first_in_shader || packet.uniforms.color != last_uniforms.color) {
+					s->setVec3("objectColor", packet.uniforms.color);
+				}
+				if (first_in_shader || packet.uniforms.alpha != last_uniforms.alpha) {
+					s->setFloat("objectAlpha", packet.uniforms.alpha);
+				}
+				if (first_in_shader || packet.uniforms.use_pbr != last_uniforms.use_pbr) {
+					s->setBool("usePBR", packet.uniforms.use_pbr);
+				}
 
 				if (packet.uniforms.use_pbr) {
 					s->setFloat("roughness", packet.uniforms.roughness);
@@ -1255,7 +1268,8 @@ namespace Boidsish {
 					s->setFloat("ao", packet.uniforms.ao);
 				}
 
-				s->setBool("use_texture", packet.uniforms.use_texture || !packet.textures.empty());
+				bool use_texture = packet.uniforms.use_texture || !packet.textures.empty();
+				s->setBool("use_texture", use_texture);
 
 				// Extended uniforms
 				s->setBool("isLine", packet.uniforms.is_line);
@@ -1285,6 +1299,10 @@ namespace Boidsish {
 				s->setInt("style", packet.uniforms.checkpoint_style);
 				s->setFloat("radius", packet.uniforms.checkpoint_radius);
 				s->setVec3("baseColor", packet.uniforms.color);
+
+				last_uniforms = packet.uniforms;
+				last_textures_empty = packet.textures.empty();
+				first_in_shader = false;
 
 				// Minimize VAO state changes
 				if (packet.vao != current_vao) {
@@ -2268,17 +2286,35 @@ namespace Boidsish {
 		context.frustum = Frustum::FromViewProjection(view, impl->projection);
 		context.shader_table = &impl->shader_table;
 
-		for (const auto& shape : impl->shapes) {
-			if (shape->UseNewRenderPath()) {
-				std::vector<RenderPacket> packets;
-				shape->GenerateRenderPackets(packets, context);
+		const size_t num_shapes = impl->shapes.size();
+		const size_t chunk_size = 64;
+		std::vector<std::future<void>> packet_futures;
+		auto* impl_ptr = impl.get();
 
-				for (const auto& packet : packets) {
-					impl->render_queue.Submit(packet);
+		for (size_t i = 0; i < num_shapes; i += chunk_size) {
+			size_t end = std::min(i + chunk_size, num_shapes);
+			packet_futures.push_back(impl->thread_pool.submit([this, impl_ptr, i, end, context]() {
+				std::vector<RenderPacket> local_packets;
+				// Reserve a reasonable amount to avoid frequent reallocations
+				local_packets.reserve(end - i);
+				for (size_t j = i; j < end; ++j) {
+					const auto& shape = impl_ptr->shapes[j];
+					if (shape->UseNewRenderPath()) {
+						shape->GenerateRenderPackets(local_packets, context);
+					}
 				}
-			}
+				if (!local_packets.empty()) {
+					impl->render_queue.Submit(std::move(local_packets));
+				}
+			}));
 		}
-		impl->render_queue.Sort();
+
+		// Wait for all packet generation tasks to complete
+		for (auto& f : packet_futures) {
+			f.get();
+		}
+
+		impl->render_queue.Sort(impl->thread_pool);
 
 		// Calculate frustum for terrain generation and decor placement
 		Frustum generator_frustum;
