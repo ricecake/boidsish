@@ -41,13 +41,15 @@ namespace Boidsish {
 		packet.shader_id = shader ? shader->ID : 0;
 
 		packet.uniforms.model = model;
-		packet.uniforms.color = glm::vec3(r_, g_, b_);
-		packet.uniforms.alpha = a_;
+		packet.uniforms.color = glm::vec4(r_, g_, b_, a_);
 		packet.uniforms.use_pbr = use_pbr_;
 		packet.uniforms.roughness = roughness_;
 		packet.uniforms.metallic = metallic_;
 		packet.uniforms.ao = ao_;
 		packet.uniforms.use_texture = false; // Default for base sphere shape
+		packet.uniforms.is_instanced = 0; // MDI path uses per-draw model matrix, not attributes
+		packet.uniforms.is_colossal = is_colossal_;
+		packet.uniforms.use_instance_color = false;
 
 		packet.is_instanced = is_instanced_;
 

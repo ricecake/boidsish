@@ -29,19 +29,21 @@ namespace Boidsish {
 	 */
 	struct CommonUniforms {
 		glm::mat4 model = glm::mat4(1.0f);   // 64 bytes
-		glm::vec3 color = glm::vec3(1.0f);   // 12 bytes
-		float     alpha = 1.0f;              // 4 bytes -> 16 bytes for color+alpha
+		glm::vec4 color = glm::vec4(1.0f);   // 16 bytes (xyz=color, w=alpha)
 
-		int       use_pbr = 0;               // 4 bytes (bool as int for std430)
+		// Material/PBR
+		int       use_pbr = 0;               // 4 bytes
 		float     roughness = 0.5f;          // 4 bytes
 		float     metallic = 0.0f;           // 4 bytes
 		float     ao = 1.0f;                 // 4 bytes -> 16 bytes
 
+		// Feature Flags
 		int       use_texture = 0;           // 4 bytes
 		int       is_line = 0;               // 4 bytes
 		int       line_style = 0;            // 4 bytes
 		int       is_text_effect = 0;        // 4 bytes -> 16 bytes
 
+		// Text/Arcade Effects
 		float     text_fade_progress = 1.0f; // 4 bytes
 		float     text_fade_softness = 0.1f; // 4 bytes
 		int       text_fade_mode = 0;        // 4 bytes
@@ -57,8 +59,15 @@ namespace Boidsish {
 		float     arcade_rainbow_frequency = 5.0f;// 4 bytes
 		int       checkpoint_style = 0;         // 4 bytes -> 16 bytes
 
+		// Rendering State Flags
+		int       is_instanced = 0;          // 4 bytes
+		int       is_colossal = 0;           // 4 bytes
+		int       use_ssbo_instancing = 0;   // 4 bytes
+		int       use_instance_color = 0;    // 4 bytes -> 16 bytes
+
+		int       use_vertex_color = 0;      // 4 bytes
 		float     checkpoint_radius = 0.0f;     // 4 bytes
-		float     padding[3] = {0,0,0};         // 12 bytes padding to match 16-byte alignment
+		float     padding[2] = {0,0};           // 8 bytes padding to match 16-byte alignment
 	};
 
 	/**

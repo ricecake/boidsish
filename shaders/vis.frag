@@ -3,8 +3,7 @@ out vec4 FragColor;
 
 struct CommonUniforms {
 	mat4  model;
-	vec3  color;
-	float alpha;
+	vec4  color;
 	int   use_pbr;
 	float roughness;
 	float metallic;
@@ -25,8 +24,13 @@ struct CommonUniforms {
 	float arcade_rainbow_speed;
 	float arcade_rainbow_frequency;
 	int   checkpoint_style;
+	int   is_instanced;
+	int   is_colossal;
+	int   use_ssbo_instancing;
+	int   use_instance_color;
+	int   use_vertex_color;
 	float checkpoint_radius;
-	float padding[3];
+	float padding[2];
 };
 
 layout(std430, binding = 2) buffer UniformsSSBO {
@@ -76,8 +80,8 @@ uniform sampler2D texture_diffuse1;
 uniform bool      use_texture;
 
 void main() {
-	vec3  c_objectColor = uUseMDI ? uniforms_data[vUniformIndex].color : objectColor;
-	float c_objectAlpha = uUseMDI ? uniforms_data[vUniformIndex].alpha : objectAlpha;
+	vec3  c_objectColor = uUseMDI ? uniforms_data[vUniformIndex].color.rgb : objectColor;
+	float c_objectAlpha = uUseMDI ? uniforms_data[vUniformIndex].color.a : objectAlpha;
 	bool  c_usePBR = uUseMDI ? (uniforms_data[vUniformIndex].use_pbr != 0) : usePBR;
 	float c_roughness = uUseMDI ? uniforms_data[vUniformIndex].roughness : roughness;
 	float c_metallic = uUseMDI ? uniforms_data[vUniformIndex].metallic : metallic;
@@ -93,9 +97,12 @@ void main() {
 	bool  c_arcadeRainbowEnabled = uUseMDI ? (uniforms_data[vUniformIndex].arcade_rainbow_enabled != 0) : arcadeRainbowEnabled;
 	float c_arcadeRainbowSpeed = uUseMDI ? uniforms_data[vUniformIndex].arcade_rainbow_speed : arcadeRainbowSpeed;
 	float c_arcadeRainbowFrequency = uUseMDI ? uniforms_data[vUniformIndex].arcade_rainbow_frequency : arcadeRainbowFrequency;
+	bool  c_isColossal = uUseMDI ? (uniforms_data[vUniformIndex].is_colossal != 0) : isColossal;
+	bool  c_useInstanceColor = uUseMDI ? (uniforms_data[vUniformIndex].use_instance_color != 0) : useInstanceColor;
+	bool  c_useVertexColor = uUseMDI ? (uniforms_data[vUniformIndex].use_vertex_color != 0) : (useVertexColor != 0);
 
 	float fade = 1.0;
-	if (!isColossal) {
+	if (!c_isColossal) {
 		float dist = length(FragPos.xz - viewPos.xz);
 		float fade_start = 540.0 * worldScale;
 		float fade_end = 550.0 * worldScale;
@@ -107,9 +114,9 @@ void main() {
 	}
 
 	vec3 final_color;
-	if (useInstanceColor) {
+	if (c_useInstanceColor) {
 		final_color = InstanceColor.rgb;
-	} else if (useVertexColor == 1) {
+	} else if (c_useVertexColor) {
 		final_color = vs_color;
 	} else {
 		final_color = c_objectColor;
@@ -118,7 +125,7 @@ void main() {
 	vec3 norm = normalize(Normal);
 
 	float baseAlpha = c_objectAlpha;
-	if (useInstanceColor) {
+	if (c_useInstanceColor) {
 		baseAlpha = InstanceColor.a;
 	}
 
@@ -169,7 +176,7 @@ void main() {
 		float distToCenter = abs(TexCoords.y - 0.5) * 2.0;
 		float alpha = max(smoothstep(0.15, 0.08, distToCenter), exp(-distToCenter * 3.0) * 0.8);
 		outColor = vec4(result, alpha * fade * c_objectAlpha);
-	} else if (isColossal) {
+	} else if (c_isColossal) {
 		vec3  skyColor = vec3(0.2, 0.4, 0.8);
 		float haze_start = 0.0;
 		float haze_end = 150.0;

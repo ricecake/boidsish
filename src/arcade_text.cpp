@@ -139,25 +139,26 @@ namespace Boidsish {
 		packet.shader_id = shader ? shader->ID : 0;
 
 		packet.uniforms.model = model_matrix;
-		packet.uniforms.color = glm::vec3(GetR(), GetG(), GetB());
-		packet.uniforms.alpha = GetA();
+		packet.uniforms.color = glm::vec4(GetR(), GetG(), GetB(), GetA());
 		packet.uniforms.use_pbr = UsePBR();
 		packet.uniforms.roughness = GetRoughness();
 		packet.uniforms.metallic = GetMetallic();
 		packet.uniforms.ao = GetAO();
 		packet.uniforms.use_texture = false;
+		packet.uniforms.is_instanced = IsInstanced();
+		packet.uniforms.is_colossal = IsColossal();
 
-		packet.uniforms.is_text_effect = is_text_effect_;
+		packet.uniforms.is_text_effect = is_text_effect_ ? 1 : 0;
 		packet.uniforms.text_fade_progress = text_fade_progress_;
 		packet.uniforms.text_fade_softness = text_fade_softness_;
 		packet.uniforms.text_fade_mode = text_fade_mode_;
 
-		packet.uniforms.is_arcade_text = true;
+		packet.uniforms.is_arcade_text = 1;
 		packet.uniforms.arcade_wave_mode = static_cast<int>(wave_mode_);
 		packet.uniforms.arcade_wave_amplitude = wave_amplitude_;
 		packet.uniforms.arcade_wave_frequency = wave_frequency_;
 		packet.uniforms.arcade_wave_speed = wave_speed_;
-		packet.uniforms.arcade_rainbow_enabled = rainbow_enabled_;
+		packet.uniforms.arcade_rainbow_enabled = rainbow_enabled_ ? 1 : 0;
 		packet.uniforms.arcade_rainbow_speed = rainbow_speed_;
 		packet.uniforms.arcade_rainbow_frequency = rainbow_frequency_;
 

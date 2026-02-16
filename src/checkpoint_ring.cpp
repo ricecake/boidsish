@@ -139,10 +139,11 @@ namespace Boidsish {
 			break;
 		}
 
-		packet.uniforms.color = color;
-		packet.uniforms.alpha = GetA();
-		packet.uniforms.use_pbr = false;
-		packet.uniforms.use_texture = false;
+		packet.uniforms.color = glm::vec4(color.r, color.g, color.b, GetA());
+		packet.uniforms.use_pbr = 0;
+		packet.uniforms.use_texture = 0;
+		packet.uniforms.is_instanced = IsInstanced();
+		packet.uniforms.is_colossal = IsColossal();
 
 		packet.uniforms.checkpoint_style = static_cast<int>(style_);
 		packet.uniforms.checkpoint_radius = radius_;

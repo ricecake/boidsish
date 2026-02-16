@@ -7,8 +7,7 @@ layout(location = 7) in vec4 aInstanceColor;
 
 struct CommonUniforms {
 	mat4  model;
-	vec3  color;
-	float alpha;
+	vec4  color;
 	int   use_pbr;
 	float roughness;
 	float metallic;
@@ -29,8 +28,13 @@ struct CommonUniforms {
 	float arcade_rainbow_speed;
 	float arcade_rainbow_frequency;
 	int   checkpoint_style;
+	int   is_instanced;
+	int   is_colossal;
+	int   use_ssbo_instancing;
+	int   use_instance_color;
+	int   use_vertex_color;
 	float checkpoint_radius;
-	float padding[3];
+	float padding[2];
 };
 
 layout(std430, binding = 2) buffer UniformsSSBO {
@@ -88,6 +92,10 @@ void main() {
 	float current_arcadeWaveAmplitude = uUseMDI ? uniforms_data[vUniformIndex].arcade_wave_amplitude : arcadeWaveAmplitude;
 	float current_arcadeWaveFrequency = uUseMDI ? uniforms_data[vUniformIndex].arcade_wave_frequency : arcadeWaveFrequency;
 	float current_arcadeWaveSpeed = uUseMDI ? uniforms_data[vUniformIndex].arcade_wave_speed : arcadeWaveSpeed;
+	bool  current_is_instanced = uUseMDI ? (uniforms_data[vUniformIndex].is_instanced != 0) : is_instanced;
+	bool  current_isColossal = uUseMDI ? (uniforms_data[vUniformIndex].is_colossal != 0) : isColossal;
+	bool  current_useSSBOInstancing = uUseMDI ? (uniforms_data[vUniformIndex].use_ssbo_instancing != 0) : useSSBOInstancing;
+	bool  current_useInstanceColor = uUseMDI ? (uniforms_data[vUniformIndex].use_instance_color != 0) : useInstanceColor;
 
 	vec3 displacedPos = aPos;
 	vec3 displacedNormal = aNormal;
@@ -134,9 +142,9 @@ void main() {
 	}
 
 	mat4 modelMatrix;
-	if (useSSBOInstancing) {
+	if (current_useSSBOInstancing) {
 		modelMatrix = ssboInstanceMatrices[gl_InstanceID];
-	} else if (is_instanced) {
+	} else if (current_is_instanced) {
 		modelMatrix = aInstanceMatrix;
 	} else {
 		modelMatrix = current_model;
@@ -147,7 +155,7 @@ void main() {
 	float instanceScale = length(vec3(modelMatrix[0])); // Approximate scale from first column
 
 	// GPU frustum culling - output degenerate triangle if outside frustum
-	if (enableFrustumCulling && !isColossal) {
+	if (enableFrustumCulling && !current_isColossal) {
 		// Use sphere test with approximate radius based on scale
 		float effectiveRadius = frustumCullRadius * instanceScale;
 
@@ -168,18 +176,18 @@ void main() {
 
 	// Apply shockwave displacement (sway for decor)
 	// Calculate at instanceCenter to prevent warping, scale by world-relative height
-	if (useSSBOInstancing) {
+	if (current_useSSBOInstancing) {
 		FragPos += getShockwaveDisplacement(instanceCenter, aPos.y * instanceScale, true);
 	}
 
 	Normal = mat3(transpose(inverse(modelMatrix))) * displacedNormal;
 	TexCoords = aTexCoords;
-	InstanceColor = useInstanceColor ? aInstanceColor : vec4(1.0);
+	InstanceColor = current_useInstanceColor ? aInstanceColor : vec4(1.0);
 	if (wireframe_enabled == 1) {
 		barycentric = getBarycentric();
 	}
 
-	if (isColossal) {
+	if (current_isColossal) {
 		mat4 staticView = mat4(mat3(view));
 		vec3 skyPositionOffset = vec3(0.0, -10.0, -500.0);
 		vec4 world_pos = current_model * vec4(displacedPos * 50, 1.0);

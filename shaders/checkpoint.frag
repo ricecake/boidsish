@@ -3,8 +3,7 @@ out vec4 FragColor;
 
 struct CommonUniforms {
 	mat4  model;
-	vec3  color;
-	float alpha;
+	vec4  color;
 	int   use_pbr;
 	float roughness;
 	float metallic;
@@ -25,8 +24,13 @@ struct CommonUniforms {
 	float arcade_rainbow_speed;
 	float arcade_rainbow_frequency;
 	int   checkpoint_style;
+	int   is_instanced;
+	int   is_colossal;
+	int   use_ssbo_instancing;
+	int   use_instance_color;
+	int   use_vertex_color;
 	float checkpoint_radius;
-	float padding[3];
+	float padding[2];
 };
 
 layout(std430, binding = 2) buffer UniformsSSBO {
@@ -44,7 +48,7 @@ uniform float time;
 uniform float radius;
 
 void main() {
-	vec3  c_baseColor = uUseMDI ? uniforms_data[vUniformIndex].color : baseColor;
+	vec3  c_baseColor = uUseMDI ? uniforms_data[vUniformIndex].color.rgb : baseColor;
 	int   c_style = uUseMDI ? uniforms_data[vUniformIndex].checkpoint_style : style;
 	float c_radius = uUseMDI ? uniforms_data[vUniformIndex].checkpoint_radius : radius;
 

@@ -838,13 +838,15 @@ namespace Boidsish {
 		packet.shader_id = shader ? shader->ID : 0;
 
 		packet.uniforms.model = model_matrix;
-		packet.uniforms.color = glm::vec3(GetR(), GetG(), GetB());
-		packet.uniforms.alpha = alpha_; // Use the blob's specific alpha
+		packet.uniforms.color = glm::vec4(GetR(), GetG(), GetB(), GetA());
 		packet.uniforms.use_pbr = UsePBR();
 		packet.uniforms.roughness = GetRoughness();
 		packet.uniforms.metallic = GetMetallic();
 		packet.uniforms.ao = GetAO();
-		packet.uniforms.use_texture = false;
+		packet.uniforms.use_texture = 0;
+		packet.uniforms.use_vertex_color = 1;
+		packet.uniforms.is_instanced = IsInstanced();
+		packet.uniforms.is_colossal = IsColossal();
 
 		RenderLayer layer = (alpha_ < 0.99f || render_mode_ == RenderMode::Transparent) ? RenderLayer::Transparent : RenderLayer::Opaque;
 

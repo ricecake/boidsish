@@ -1271,6 +1271,7 @@ namespace Boidsish {
 			CommonUniforms*              uniforms_ptr = uniforms_ssbo->GetFrameDataPtr();
 
 			uint32_t max_elements = 16384; // Buffer capacity
+			uint32_t frame_element_offset = uniforms_ssbo->GetCurrentBufferIndex() * max_elements;
 
 			// Bind Uniforms SSBO to binding point 2
 			// Use the whole buffer because shaders use gl_DrawID and uBaseUniformIndex
@@ -1300,6 +1301,16 @@ namespace Boidsish {
 					return false;
 				if (a.index_type != b.index_type)
 					return false;
+				if ((a.ebo > 0) != (b.ebo > 0))
+					return false;
+				if (a.is_instanced != b.is_instanced)
+					return false;
+				if (a.uniforms.is_colossal != b.uniforms.is_colossal)
+					return false;
+				if (a.uniforms.use_ssbo_instancing != b.uniforms.use_ssbo_instancing)
+					return false;
+				if (a.uniforms.use_instance_color != b.uniforms.use_instance_color)
+					return false;
 				if (a.textures.size() != b.textures.size())
 					return false;
 				for (size_t i = 0; i < a.textures.size(); ++i) {
@@ -1316,10 +1327,20 @@ namespace Boidsish {
 				if (packet.shader_id == 0 || mdi_uniform_count >= max_elements)
 					continue;
 
+				bool is_indexed = (packet.ebo > 0);
+
+				// Safety check for command buffer capacity
+				if (is_indexed && mdi_elements_count >= max_elements) continue;
+				if (!is_indexed && mdi_arrays_count >= max_elements) continue;
+
 				// Copy uniforms to persistent SSBO
 				uniforms_ptr[mdi_uniform_count] = packet.uniforms;
 
-				bool is_indexed = (packet.ebo > 0);
+				// If this packet represents a single instance, we want the shader to use the
+				// model matrix from uniforms, not from instance attributes.
+				if (packet.instance_count <= 1) {
+					uniforms_ptr[mdi_uniform_count].is_instanced = 0;
+				}
 
 				if (batches.empty() || !can_batch(packets[i - 1], packet)) {
 					Batch new_batch;
@@ -1332,7 +1353,7 @@ namespace Boidsish {
 					new_batch.first_command = is_indexed ? mdi_elements_count : mdi_arrays_count;
 					new_batch.command_count = 0;
 					new_batch.is_indexed = is_indexed;
-					new_batch.base_uniform_index = mdi_uniform_count;
+					new_batch.base_uniform_index = frame_element_offset + mdi_uniform_count;
 					batches.push_back(new_batch);
 				}
 
@@ -1340,28 +1361,28 @@ namespace Boidsish {
 				current_batch.command_count++;
 
 				if (is_indexed) {
-					if (mdi_elements_count < max_elements) {
-						DrawElementsIndirectCommand cmd{};
-						cmd.count = packet.index_count;
-						cmd.instanceCount = packet.is_instanced ? packet.instance_count : 1;
-						cmd.firstIndex = 0;
-						cmd.baseVertex = 0;
-						cmd.baseInstance = 0; // We use gl_DrawID to index uniforms
-						elements_cmd_ptr[mdi_elements_count++] = cmd;
-					}
+					DrawElementsIndirectCommand cmd{};
+					cmd.count = packet.index_count;
+					// Ensure at least 1 instance if not specified, default to packet.instance_count if > 0
+					cmd.instanceCount = packet.is_instanced ? std::max(1, packet.instance_count) : 1;
+					cmd.firstIndex = 0;
+					cmd.baseVertex = 0;
+					cmd.baseInstance = 0; // We use gl_DrawID to index uniforms
+					elements_cmd_ptr[mdi_elements_count++] = cmd;
 				} else {
-					if (mdi_arrays_count < max_elements) {
-						DrawArraysIndirectCommand cmd{};
-						cmd.count = packet.vertex_count;
-						cmd.instanceCount = packet.is_instanced ? packet.instance_count : 1;
-						cmd.first = 0;
-						cmd.baseInstance = 0;
-						arrays_cmd_ptr[mdi_arrays_count++] = cmd;
-					}
+					DrawArraysIndirectCommand cmd{};
+					cmd.count = packet.vertex_count;
+					cmd.instanceCount = packet.is_instanced ? std::max(1, packet.instance_count) : 1;
+					cmd.first = 0;
+					cmd.baseInstance = 0;
+					arrays_cmd_ptr[mdi_arrays_count++] = cmd;
 				}
 
 				mdi_uniform_count++;
 			}
+
+			// Ensure all writes to persistent mapped buffers are visible to the GPU before draw calls
+			glMemoryBarrier(GL_CLIENT_MAPPED_BUFFER_BARRIER_BIT);
 
 			// 2. Execute batches
 			unsigned int current_vao = 0;
