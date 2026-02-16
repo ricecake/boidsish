@@ -12,7 +12,7 @@
 namespace Boidsish {
 
 	class ITerrainGenerator;
-	class TerrainRenderManager;
+	class ITerrainRenderManager;
 	struct Camera;
 
 	// Properties for configuring decor placement and appearance
@@ -60,11 +60,11 @@ namespace Boidsish {
 		void AddDecorType(const std::string& model_path, const DecorProperties& props);
 
 		void Update(
-			float                                 delta_time,
-			const Camera&                         camera,
-			const Frustum&                        frustum,
-			const ITerrainGenerator&              terrain_gen,
-			std::shared_ptr<TerrainRenderManager> render_manager
+			float                                  delta_time,
+			const Camera&                          camera,
+			const Frustum&                         frustum,
+			const ITerrainGenerator&               terrain_gen,
+			std::shared_ptr<ITerrainRenderManager> render_manager
 		);
 		void Render(const glm::mat4& view, const glm::mat4& projection);
 
@@ -84,10 +84,10 @@ namespace Boidsish {
 	private:
 		void _Initialize();
 		void _RegeneratePlacements(
-			const Camera&                         camera,
-			const Frustum&                        frustum,
-			const ITerrainGenerator&              terrain_gen,
-			std::shared_ptr<TerrainRenderManager> render_manager
+			const Camera&                          camera,
+			const Frustum&                         frustum,
+			const ITerrainGenerator&               terrain_gen,
+			std::shared_ptr<ITerrainRenderManager> render_manager
 		);
 
 		bool                           enabled_ = true;

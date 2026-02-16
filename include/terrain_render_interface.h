@@ -1,5 +1,6 @@
 #pragma once
 
+#include <functional>
 #include <map>
 #include <memory>
 #include <optional>
@@ -66,18 +67,22 @@ namespace Boidsish {
 		 *
 		 * @param frustum View frustum for culling
 		 * @param camera_pos Camera position
+		 * @param world_scale Global world scale factor
 		 */
-		virtual void PrepareForRender(const Frustum& frustum, const glm::vec3& camera_pos) = 0;
+		virtual void PrepareForRender(const Frustum& frustum, const glm::vec3& camera_pos, float world_scale = 1.0f) = 0;
 
 		/**
 		 * @brief Render all visible terrain.
+		 * @param is_shadow_pass true if rendering to shadow map
 		 */
 		virtual void Render(
 			Shader&                         shader,
 			const glm::mat4&                view,
 			const glm::mat4&                projection,
+			const glm::vec2&                viewport_size,
 			const std::optional<glm::vec4>& clip_plane,
-			float                           tess_quality_multiplier
+			float                           tess_quality_multiplier,
+			bool                            is_shadow_pass = false
 		) = 0;
 
 		/**
@@ -86,6 +91,11 @@ namespace Boidsish {
 		 * For implementations that batch updates, call once per frame.
 		 */
 		virtual void CommitUpdates() {}
+
+		/**
+		 * @brief Set a callback to be notified when a chunk is evicted due to LRU.
+		 */
+		virtual void SetEvictionCallback(std::function<void(std::pair<int, int>)> /*callback*/) {}
 
 		/**
 		 * @brief Get debug statistics.
@@ -97,6 +107,18 @@ namespace Boidsish {
 		 * @brief Get chunk size.
 		 */
 		virtual int GetChunkSize() const = 0;
+
+		/**
+		 * @brief Get the heightmap texture array for shader binding.
+		 * Returns 0 if not supported by the implementation.
+		 */
+		virtual GLuint GetHeightmapTexture() const { return 0; }
+
+		/**
+		 * @brief Get info about all registered chunks for external use (e.g., decor placement).
+		 * Returns a vector of (world_offset_x, world_offset_z, chunk_data, chunk_size).
+		 */
+		virtual std::vector<glm::vec4> GetChunkInfo() const { return {}; }
 	};
 
 } // namespace Boidsish
