@@ -262,6 +262,11 @@ target_link_libraries(test_deformation_overlap PRIVATE boidsish GTest::GTest GTe
 set_target_properties(test_deformation_overlap PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}" EXCLUDE_FROM_ALL TRUE)
 add_test(NAME test_deformation_overlap COMMAND test_deformation_overlap)
 
+add_executable(test_collision tests/collision_test.cpp)
+target_link_libraries(test_collision PRIVATE boidsish GTest::GTest GTest::Main)
+set_target_properties(test_collision PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}" EXCLUDE_FROM_ALL TRUE)
+add_test(NAME test_collision COMMAND test_collision)
+
 # Group all tests into a single target for convenience
 add_custom_target(tests)
 add_dependencies(tests
@@ -273,4 +278,5 @@ add_dependencies(tests
     test_thread_pool
     test_spline
     test_deformation_overlap
+    test_collision
 )

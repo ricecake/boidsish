@@ -801,6 +801,7 @@ namespace Boidsish {
 					blur_quad_vao
 				);
 				post_processing_manager_->Initialize();
+				post_processing_manager_->SetSharedDepthTexture(main_fbo_depth_texture_);
 
 				// --- Shockwave Manager ---
 				shockwave_manager->Initialize(render_width, render_height);
@@ -1994,6 +1995,7 @@ namespace Boidsish {
 			// --- Resize post-processing manager ---
 			if (post_processing_manager_) {
 				post_processing_manager_->Resize(render_width, render_height);
+				post_processing_manager_->SetSharedDepthTexture(main_fbo_depth_texture_);
 			}
 
 			// --- Resize shockwave manager ---
@@ -2173,6 +2175,16 @@ namespace Boidsish {
 
 		for (const auto& pair : impl->persistent_shapes) {
 			impl->shapes.push_back(pair.second);
+		}
+
+		// Handle terrain clamping for shapes
+		for (auto& shape : impl->shapes) {
+			if (shape->IsClampedToTerrain()) {
+				float     height;
+				glm::vec3 normal;
+				std::tie(height, normal) = GetTerrainPropertiesAtPoint(shape->GetX(), shape->GetZ());
+				shape->SetPosition(shape->GetX(), height + shape->GetGroundOffset(), shape->GetZ());
+			}
 		}
 
 		// --- Shadow Optimization: Check for object movement and camera proximity ---
@@ -2678,7 +2690,23 @@ namespace Boidsish {
 		// This avoids expensive noise calculations for pixels already drawn
 		impl->RenderSky(view);
 
-		// Render transparent shapes after sky
+		GLuint current_texture = impl->main_fbo_texture_;
+		GLuint current_depth = impl->main_fbo_depth_texture_;
+
+		if (effects_enabled) {
+			impl->post_processing_manager_->BeginApply(current_texture, impl->main_fbo_, current_depth);
+			impl->post_processing_manager_
+				->ApplyEarlyEffects(view, impl->projection, impl->camera.pos(), impl->simulation_time);
+
+			// Re-bind shadows for transparent objects as early effects may have changed texture bindings
+			impl->BindShadows(*impl->shader);
+
+			impl->post_processing_manager_->AttachDepthToCurrentFBO();
+			glBindFramebuffer(GL_FRAMEBUFFER, impl->post_processing_manager_->GetCurrentFBO());
+			current_texture = impl->post_processing_manager_->GetFinalTexture();
+		}
+
+		// Render transparent shapes after sky and early post-processing
 		impl->RenderTransparentShapes(view, impl->camera, impl->shapes, impl->simulation_time, std::nullopt);
 		impl->ExecuteRenderQueue(impl->render_queue, view, impl->projection, RenderLayer::Transparent);
 
@@ -2694,14 +2722,9 @@ namespace Boidsish {
 			// --- Post-processing Pass (renders FBO texture to screen) ---
 
 			// Apply standard post-processing effects (at render resolution)
-			GLuint final_texture = impl->post_processing_manager_->ApplyEffects(
-				impl->main_fbo_texture_,
-				impl->main_fbo_depth_texture_,
-				view,
-				impl->projection,
-				impl->camera.pos(),
-				impl->simulation_time
-			);
+			impl->post_processing_manager_
+				->ApplyLateEffects(view, impl->projection, impl->camera.pos(), impl->simulation_time);
+			GLuint final_texture = impl->post_processing_manager_->GetFinalTexture();
 
 			// Return to display resolution for final output
 			glBindFramebuffer(GL_FRAMEBUFFER, 0);

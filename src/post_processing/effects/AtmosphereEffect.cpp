@@ -1,5 +1,6 @@
 #include "post_processing/effects/AtmosphereEffect.h"
 
+#include "constants.h"
 #include "shader.h"
 
 namespace Boidsish {
@@ -14,10 +15,22 @@ namespace Boidsish {
 		void AtmosphereEffect::Initialize(int width, int height) {
 			shader_ = std::make_unique<Shader>("shaders/postprocess.vert", "shaders/effects/atmosphere.frag");
 
+			shader_->use();
 			GLuint lighting_idx = glGetUniformBlockIndex(shader_->ID, "Lighting");
 			if (lighting_idx != GL_INVALID_INDEX) {
-				glUniformBlockBinding(shader_->ID, lighting_idx, 0);
+				glUniformBlockBinding(shader_->ID, lighting_idx, Constants::UboBinding::Lighting());
 			}
+			GLuint shadows_idx = glGetUniformBlockIndex(shader_->ID, "Shadows");
+			if (shadows_idx != GL_INVALID_INDEX) {
+				glUniformBlockBinding(shader_->ID, shadows_idx, Constants::UboBinding::Shadows());
+			}
+			GLuint effects_idx = glGetUniformBlockIndex(shader_->ID, "VisualEffects");
+			if (effects_idx != GL_INVALID_INDEX) {
+				glUniformBlockBinding(shader_->ID, effects_idx, Constants::UboBinding::VisualEffects());
+			}
+
+			// Explicitly set standard sampler bindings
+			shader_->setInt("shadowMaps", 4);
 
 			width_ = width;
 			height_ = height;
@@ -52,6 +65,11 @@ namespace Boidsish {
 			glBindTexture(GL_TEXTURE_2D, depthTexture);
 
 			glDrawArrays(GL_TRIANGLES, 0, 6);
+
+			glActiveTexture(GL_TEXTURE1);
+			glBindTexture(GL_TEXTURE_2D, 0);
+			glActiveTexture(GL_TEXTURE0);
+			glBindTexture(GL_TEXTURE_2D, 0);
 		}
 
 		void AtmosphereEffect::Resize(int width, int height) {

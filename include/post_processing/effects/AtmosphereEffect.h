@@ -26,6 +26,8 @@ namespace Boidsish {
 
 			void SetTime(float time) override { time_ = time; }
 
+			bool IsEarly() const override { return true; }
+
 			// Haze parameters
 			void SetHazeDensity(float density) { haze_density_ = density; }
 

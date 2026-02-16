@@ -58,6 +58,7 @@ namespace Boidsish {
 		std::vector<Texture> textures_loaded;
 		std::string          directory;
 		std::string          model_path;
+		AABB                 aabb;
 	};
 
 	class Model: public Shape {
@@ -71,6 +72,8 @@ namespace Boidsish {
 		glm::mat4 GetModelMatrix() const override;
 
 		void GenerateRenderPackets(std::vector<RenderPacket>& out_packets, const RenderContext& context) const override;
+		bool Intersects(const Ray& ray, float& t) const override;
+		AABB GetAABB() const override;
 
 		void GetGeometry(std::vector<Vertex>& vertices, std::vector<unsigned int>& indices) const override;
 

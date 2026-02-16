@@ -25,6 +25,8 @@ namespace Boidsish {
 			void Initialize(int width, int height) override;
 			void Resize(int width, int height) override;
 
+			bool IsEarly() const override { return false; }
+
 			// Configuration options
 			void SetRadius(float radius) { radius_ = radius; }
 

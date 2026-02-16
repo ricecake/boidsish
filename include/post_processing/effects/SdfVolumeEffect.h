@@ -25,6 +25,8 @@ namespace Boidsish {
 
 			void SetTime(float time) override { time_ = time; }
 
+			bool IsEarly() const override { return true; }
+
 		private:
 			std::unique_ptr<Shader> shader_;
 			int                     width_;

@@ -89,6 +89,7 @@ namespace Boidsish {
 		shader.setVec3("baseColor", color);
 		shader.setInt("style", static_cast<int>(style_));
 		shader.setFloat("radius", radius_);
+		shader.setBool("use_texture", false);
 
 		glBindVertexArray(quad_vao_);
 		glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);

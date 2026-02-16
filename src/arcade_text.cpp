@@ -96,6 +96,7 @@ namespace Boidsish {
 		shader->setMat4("model", model_matrix);
 		shader->setVec3("objectColor", GetR(), GetG(), GetB());
 		shader->setFloat("objectAlpha", GetA());
+		shader->setBool("use_texture", false);
 
 		shader->setBool("isTextEffect", is_text_effect_);
 		if (is_text_effect_) {

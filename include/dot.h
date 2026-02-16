@@ -35,6 +35,8 @@ namespace Boidsish {
 		glm::mat4 GetModelMatrix() const override;
 
 		void GenerateRenderPackets(std::vector<RenderPacket>& out_packets, const RenderContext& context) const override;
+		bool Intersects(const Ray& ray, float& t) const override;
+		AABB GetAABB() const override;
 
 		bool CastsShadows() const override { return false; }
 

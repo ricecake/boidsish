@@ -133,6 +133,7 @@ namespace Boidsish {
 		// Use standard uniforms for color and alpha
 		s.setVec3("objectColor", glm::vec3(GetR(), GetG(), GetB()));
 		s.setFloat("objectAlpha", GetA());
+		s.setBool("use_texture", false);
 
 		// Set Line-specific uniforms
 		s.setBool("isLine", true);
