@@ -252,6 +252,15 @@ namespace Boidsish {
 		virtual uint32_t AddAkira(const glm::vec3& center, float radius) = 0;
 
 		/**
+		 * @brief Add a mesh-based hole deformation.
+		 *
+		 * @param vertices Mesh vertices in world space
+		 * @param indices Mesh indices
+		 * @return ID of created deformation
+		 */
+		virtual uint32_t AddMeshHole(const std::vector<glm::vec3>& vertices, const std::vector<unsigned int>& indices) = 0;
+
+		/**
 		 * @brief Invalidate and regenerate chunks affected by deformations.
 		 *
 		 * @param deformation_id Optional: only invalidate for specific deformation

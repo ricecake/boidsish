@@ -40,6 +40,7 @@ namespace Boidsish {
 		glm::vec3 normal_offset{0.0f}; // Offset to apply to the normal (before renormalization)
 		float     blend_weight = 0.0f; // 0-1, how strongly this deformation affects the point
 		bool      applies = false;     // Whether this deformation affects the queried point
+		bool      is_hole = false;     // Whether this point should be discarded
 	};
 
 	/**
@@ -113,6 +114,21 @@ namespace Boidsish {
 		 * @return Height change to apply (positive = raise, negative = lower)
 		 */
 		virtual float ComputeHeightDelta(float x, float z, float current_height) const = 0;
+
+		/**
+		 * @brief Check if a point is a hole (discarded from rendering)
+		 *
+		 * @param x World X coordinate
+		 * @param z World Z coordinate
+		 * @param current_height The terrain's current height at this point (before deformation)
+		 * @return true if the point should be a hole
+		 */
+		virtual bool IsHole(float x, float z, float current_height) const {
+			(void)x;
+			(void)z;
+			(void)current_height;
+			return false;
+		}
 
 		/**
 		 * @brief Transform a surface normal based on the deformation

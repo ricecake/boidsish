@@ -224,6 +224,11 @@ void main() {
 		return;
 	}
 
+	// Hole check: Discard fragments with very low height (sentinel value)
+	if (FragPos.y < -500.0) {
+		discard;
+	}
+
 	// Scale world-space position for detail noise to match terrain scaling
 	vec3 scaledFragPos = FragPos / worldScale;
 
