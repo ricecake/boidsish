@@ -36,9 +36,9 @@ namespace Boidsish {
 		float                                  lived_ = 0.0f;
 		bool                                   exploded_ = false;
 		bool                                   fired_ = false;
-		std::shared_ptr<FireEffect>            exhaust_effect_ = nullptr;
-		std::shared_ptr<GuidedMissileLauncher> target_ = nullptr;
-		std::shared_ptr<SoundEffect>           launch_sound_ = nullptr;
+		std::shared_ptr<FireEffect>  exhaust_effect_ = nullptr;
+		std::shared_ptr<EntityBase>  target_ = nullptr;
+		std::shared_ptr<SoundEffect> launch_sound_ = nullptr;
 		std::shared_ptr<SoundEffect>           explode_sound_ = nullptr;
 		bool                                   leftHanded_ = true;
 
