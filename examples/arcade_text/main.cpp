@@ -20,12 +20,7 @@ int main() {
 	// Add some light
 	auto& light_manager = visualizer.GetLightManager();
 	light_manager.AddLight(
-		Boidsish::Light::CreateDirectional(
-			glm::vec3(10.0f, 20.0f, 10.0f),
-			glm::vec3(-1.0f, -1.0f, -1.0f),
-			1.0f,
-			glm::vec3(1.0f, 1.0f, 1.0f)
-		)
+		Boidsish::Light::CreateDirectional(45.0f, 35.0f, 1.0f, glm::vec3(1.0f, 1.0f, 1.0f))
 	);
 	light_manager.SetAmbientLight(glm::vec3(0.4f));
 
