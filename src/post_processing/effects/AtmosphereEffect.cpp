@@ -29,6 +29,9 @@ namespace Boidsish {
 				glUniformBlockBinding(shader_->ID, effects_idx, Constants::UboBinding::VisualEffects());
 			}
 
+			// Explicitly set standard sampler bindings
+			shader_->setInt("shadowMaps", 4);
+
 			width_ = width;
 			height_ = height;
 		}

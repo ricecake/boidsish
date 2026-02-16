@@ -32,6 +32,9 @@ namespace Boidsish {
 				glUniformBlockBinding(shader_->ID, sdf_volumes_idx, Constants::UboBinding::SdfVolumes());
 			}
 
+			// Explicitly set standard sampler bindings
+			shader_->setInt("shadowMaps", 4);
+
 			width_ = width;
 			height_ = height;
 		}
