@@ -170,4 +170,46 @@ namespace Boidsish {
 		return model;
 	}
 
+	void Line::GenerateRenderPackets(std::vector<RenderPacket>& out_packets, const RenderContext& context) const {
+		glm::mat4 model_matrix = GetModelMatrix();
+		glm::vec3 world_pos = (GetStart() + GetEnd()) * 0.5f;
+
+		// Frustum Culling
+		float radius = glm::distance(GetStart(), GetEnd()) * 0.5f;
+		if (!context.frustum.IsBoxInFrustum(world_pos - glm::vec3(radius), world_pos + glm::vec3(radius))) {
+			return;
+		}
+
+		RenderPacket packet;
+		packet.vao = line_vao_;
+		packet.vbo = line_vbo_;
+		packet.ebo = 0;
+		packet.vertex_count = static_cast<unsigned int>(line_vertex_count_);
+		packet.draw_mode = GL_TRIANGLES;
+		packet.index_type = 0;
+		packet.shader_id = shader ? shader->ID : 0;
+
+		packet.uniforms.model = model_matrix;
+		packet.uniforms.color = glm::vec3(GetR(), GetG(), GetB());
+		packet.uniforms.alpha = GetA();
+		packet.uniforms.use_pbr = UsePBR();
+		packet.uniforms.roughness = GetRoughness();
+		packet.uniforms.metallic = GetMetallic();
+		packet.uniforms.ao = GetAO();
+		packet.uniforms.use_texture = false;
+
+		packet.uniforms.is_line = true;
+		packet.uniforms.line_style = static_cast<int>(style_);
+
+		packet.is_instanced = IsInstanced();
+
+		RenderLayer layer = IsTransparent() ? RenderLayer::Transparent : RenderLayer::Opaque;
+		packet.shader_handle = shader_handle;
+		packet.material_handle = MaterialHandle(0);
+
+		float normalized_depth = context.CalculateNormalizedDepth(world_pos);
+		packet.sort_key = CalculateSortKey(layer, packet.shader_handle, packet.material_handle, normalized_depth);
+
+		out_packets.push_back(packet);
+	}
 } // namespace Boidsish

@@ -813,3 +813,47 @@ namespace Boidsish {
 	}
 
 } // namespace Boidsish
+
+namespace Boidsish {
+	void DelaunayBlob::GenerateRenderPackets(std::vector<RenderPacket>& out_packets, const RenderContext& context) const {
+		if (points_.empty()) return;
+		UpdateMeshBuffers();
+
+		glm::mat4 model_matrix = GetModelMatrix();
+		glm::vec3 world_pos = GetCentroid();
+
+		// Frustum Culling
+		float radius = GetBoundingRadius();
+		if (!context.frustum.IsBoxInFrustum(world_pos - glm::vec3(radius), world_pos + glm::vec3(radius))) {
+			return;
+		}
+
+		RenderPacket packet;
+		packet.vao = vao_;
+		packet.vbo = vbo_;
+		packet.ebo = ebo_;
+		packet.index_count = static_cast<unsigned int>(index_count_);
+		packet.draw_mode = GL_TRIANGLES;
+		packet.index_type = GL_UNSIGNED_INT;
+		packet.shader_id = shader ? shader->ID : 0;
+
+		packet.uniforms.model = model_matrix;
+		packet.uniforms.color = glm::vec3(GetR(), GetG(), GetB());
+		packet.uniforms.alpha = alpha_; // Use the blob's specific alpha
+		packet.uniforms.use_pbr = UsePBR();
+		packet.uniforms.roughness = GetRoughness();
+		packet.uniforms.metallic = GetMetallic();
+		packet.uniforms.ao = GetAO();
+		packet.uniforms.use_texture = false;
+
+		RenderLayer layer = (alpha_ < 0.99f || render_mode_ == RenderMode::Transparent) ? RenderLayer::Transparent : RenderLayer::Opaque;
+
+		packet.shader_handle = shader_handle;
+		packet.material_handle = MaterialHandle(0);
+
+		float normalized_depth = context.CalculateNormalizedDepth(world_pos);
+		packet.sort_key = CalculateSortKey(layer, packet.shader_handle, packet.material_handle, normalized_depth);
+
+		out_packets.push_back(packet);
+	}
+} // namespace Boidsish

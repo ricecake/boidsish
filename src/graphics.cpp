@@ -31,6 +31,7 @@
 #include "mesh_explosion_manager.h"
 #include "path.h"
 #include "render_queue.h"
+#include "shader_table.h"
 #include "post_processing/PostProcessingManager.h"
 #include "post_processing/effects/AtmosphereEffect.h"
 #include "post_processing/effects/AutoExposureEffect.h"
@@ -215,6 +216,7 @@ namespace Boidsish {
 		std::map<int, std::shared_ptr<Trail>> trails;
 		std::map<int, float>                  trail_last_update;
 		LightManager                          light_manager;
+		ShaderTable                           shader_table;
 		RenderQueue                           render_queue;
 
 		InputState                                             input_state{};
@@ -231,11 +233,11 @@ namespace Boidsish {
 		std::unique_ptr<TrailRenderManager>   trail_render_manager;
 
 		std::shared_ptr<Shader> shader;
-		std::unique_ptr<Shader> plane_shader;
-		std::unique_ptr<Shader> sky_shader;
-		std::unique_ptr<Shader> trail_shader;
-		std::unique_ptr<Shader> blur_shader;
-		std::unique_ptr<Shader> postprocess_shader_;
+		std::shared_ptr<Shader> plane_shader;
+		std::shared_ptr<Shader> sky_shader;
+		std::shared_ptr<Shader> trail_shader;
+		std::shared_ptr<Shader> blur_shader;
+		std::shared_ptr<Shader> postprocess_shader_;
 		GLuint                  plane_vao{0}, plane_vbo{0}, sky_vao{0}, blur_quad_vao{0}, blur_quad_vbo{0};
 		GLuint                  reflection_fbo{0}, reflection_texture{0}, reflection_depth_rbo{0};
 		GLuint                  pingpong_fbo[2]{0}, pingpong_texture[2]{0};
@@ -469,19 +471,28 @@ namespace Boidsish {
 
 			shader = std::make_shared<Shader>("shaders/vis.vert", "shaders/vis.frag");
 			Shape::shader = shader;
-			trail_shader = std::make_unique<Shader>("shaders/trail.vert", "shaders/trail.frag");
+			Shape::shader_handle = shader_table.Register(std::make_unique<RenderShader>(shader));
+
+			trail_shader = std::make_shared<Shader>("shaders/trail.vert", "shaders/trail.frag");
+			shader_table.Register(std::make_unique<RenderShader>(trail_shader));
+
 			if (ConfigManager::GetInstance().GetAppSettingBool("enable_floor", true)) {
-				plane_shader = std::make_unique<Shader>("shaders/plane.vert", "shaders/plane.frag");
+				plane_shader = std::make_shared<Shader>("shaders/plane.vert", "shaders/plane.frag");
+				shader_table.Register(std::make_unique<RenderShader>(plane_shader));
 			}
 			if (ConfigManager::GetInstance().GetAppSettingBool("enable_skybox", true)) {
-				sky_shader = std::make_unique<Shader>("shaders/sky.vert", "shaders/sky.frag");
+				sky_shader = std::make_shared<Shader>("shaders/sky.vert", "shaders/sky.frag");
+				shader_table.Register(std::make_unique<RenderShader>(sky_shader));
 			}
 			if (ConfigManager::GetInstance().GetAppSettingBool("enable_floor", true) &&
 			    ConfigManager::GetInstance().GetAppSettingBool("enable_floor_reflection", true)) {
-				blur_shader = std::make_unique<Shader>("shaders/blur.vert", "shaders/blur.frag");
+				blur_shader = std::make_shared<Shader>("shaders/blur.vert", "shaders/blur.frag");
+				shader_table.Register(std::make_unique<RenderShader>(blur_shader));
 			}
 			if (ConfigManager::GetInstance().GetAppSettingBool("enable_effects", true)) {
-				postprocess_shader_ = std::make_unique<Shader>("shaders/postprocess.vert", "shaders/postprocess.frag");
+				postprocess_shader_ =
+					std::make_shared<Shader>("shaders/postprocess.vert", "shaders/postprocess.frag");
+				shader_table.Register(std::make_unique<RenderShader>(postprocess_shader_));
 			}
 			if (ConfigManager::GetInstance().GetAppSettingBool("enable_terrain", true)) {
 				terrain_generator = std::make_shared<TerrainGenerator>();
@@ -545,6 +556,8 @@ namespace Boidsish {
 			CheckpointRingShape::SetShader(
 				std::make_shared<Shader>("shaders/checkpoint.vert", "shaders/checkpoint.frag")
 			);
+			CheckpointRingShape::checkpoint_shader_handle =
+				shader_table.Register(std::make_unique<RenderShader>(CheckpointRingShape::GetShader()));
 			SetupShaderBindings(*CheckpointRingShape::GetShader());
 
 			if (plane_shader) {
@@ -570,6 +583,8 @@ namespace Boidsish {
 					"shaders/terrain.tcs",
 					"shaders/terrain.tes"
 				);
+				Terrain::terrain_shader_handle =
+					shader_table.Register(std::make_unique<RenderShader>(Terrain::terrain_shader_));
 				SetupShaderBindings(*Terrain::terrain_shader_);
 
 				// Create the terrain render manager
@@ -776,6 +791,7 @@ namespace Boidsish {
 
 			// --- Shadow Manager (initialize unconditionally) ---
 			shadow_manager->Initialize();
+			shader_table.Register(std::make_unique<RenderShader>(shadow_manager->GetShadowShaderPtr()));
 
 			if (postprocess_shader_) {
 				// --- Post Processing Manager ---
@@ -1197,8 +1213,8 @@ namespace Boidsish {
 
 		void ExecuteRenderQueue(
 			const RenderQueue& queue,
-			const glm::mat4&   view,
-			const glm::mat4&   projection,
+			const glm::mat4&   view_mat,
+			const glm::mat4&   proj_mat,
 			RenderLayer        layer
 		) {
 			unsigned int current_shader_id = 0;
@@ -1209,57 +1225,65 @@ namespace Boidsish {
 				if (packet.shader_id == 0)
 					continue;
 
+				RenderShader* render_shader = shader_table.Get(packet.shader_handle);
+				if (!render_shader)
+					continue;
+
+				ShaderBase* s = render_shader->GetBackingShader().get();
+
 				// Minimize shader state changes
 				if (packet.shader_id != current_shader_id) {
-					glUseProgram(packet.shader_id);
+					s->use();
 					current_shader_id = packet.shader_id;
 
-					// Set frame-level uniforms
-					GLint view_loc = glGetUniformLocation(current_shader_id, "view");
-					if (view_loc != -1)
-						glUniformMatrix4fv(view_loc, 1, GL_FALSE, &view[0][0]);
-
-					GLint proj_loc = glGetUniformLocation(current_shader_id, "projection");
-					if (proj_loc != -1)
-						glUniformMatrix4fv(proj_loc, 1, GL_FALSE, &projection[0][0]);
-
-					GLint time_loc = glGetUniformLocation(current_shader_id, "time");
-					if (time_loc != -1)
-						glUniform1f(time_loc, simulation_time);
+					// Set frame-level uniforms using cached locations
+					s->setMat4("view", view_mat);
+					s->setMat4("projection", proj_mat);
+					s->setFloat("time", simulation_time);
 				}
 
-				// Set packet-specific common uniforms from the grouped structure
-				GLint model_loc = glGetUniformLocation(current_shader_id, "model");
-				if (model_loc != -1)
-					glUniformMatrix4fv(model_loc, 1, GL_FALSE, &packet.uniforms.model[0][0]);
-
-				GLint color_loc = glGetUniformLocation(current_shader_id, "objectColor");
-				if (color_loc != -1)
-					glUniform3fv(color_loc, 1, &packet.uniforms.color[0]);
-
-				GLint alpha_loc = glGetUniformLocation(current_shader_id, "objectAlpha");
-				if (alpha_loc != -1)
-					glUniform1f(alpha_loc, packet.uniforms.alpha);
-
-				GLint use_pbr_loc = glGetUniformLocation(current_shader_id, "usePBR");
-				if (use_pbr_loc != -1)
-					glUniform1i(use_pbr_loc, packet.uniforms.use_pbr);
+				// Set packet-specific common uniforms from the grouped structure using cached locations
+				s->setMat4("model", packet.uniforms.model);
+				s->setVec3("objectColor", packet.uniforms.color);
+				s->setFloat("objectAlpha", packet.uniforms.alpha);
+				s->setBool("usePBR", packet.uniforms.use_pbr);
 
 				if (packet.uniforms.use_pbr) {
-					GLint roughness_loc = glGetUniformLocation(current_shader_id, "roughness");
-					if (roughness_loc != -1)
-						glUniform1f(roughness_loc, packet.uniforms.roughness);
-					GLint metallic_loc = glGetUniformLocation(current_shader_id, "metallic");
-					if (metallic_loc != -1)
-						glUniform1f(metallic_loc, packet.uniforms.metallic);
-					GLint ao_loc = glGetUniformLocation(current_shader_id, "ao");
-					if (ao_loc != -1)
-						glUniform1f(ao_loc, packet.uniforms.ao);
+					s->setFloat("roughness", packet.uniforms.roughness);
+					s->setFloat("metallic", packet.uniforms.metallic);
+					s->setFloat("ao", packet.uniforms.ao);
 				}
 
-				GLint use_texture_loc = glGetUniformLocation(current_shader_id, "use_texture");
-				if (use_texture_loc != -1)
-					glUniform1i(use_texture_loc, packet.uniforms.use_texture || !packet.textures.empty());
+				s->setBool("use_texture", packet.uniforms.use_texture || !packet.textures.empty());
+
+				// Extended uniforms
+				s->setBool("isLine", packet.uniforms.is_line);
+				if (packet.uniforms.is_line) {
+					s->setInt("lineStyle", packet.uniforms.line_style);
+				}
+
+				s->setBool("isTextEffect", packet.uniforms.is_text_effect);
+				if (packet.uniforms.is_text_effect) {
+					s->setFloat("textFadeProgress", packet.uniforms.text_fade_progress);
+					s->setFloat("textFadeSoftness", packet.uniforms.text_fade_softness);
+					s->setInt("textFadeMode", packet.uniforms.text_fade_mode);
+				}
+
+				s->setBool("isArcadeText", packet.uniforms.is_arcade_text);
+				if (packet.uniforms.is_arcade_text) {
+					s->setInt("arcadeWaveMode", packet.uniforms.arcade_wave_mode);
+					s->setFloat("arcadeWaveAmplitude", packet.uniforms.arcade_wave_amplitude);
+					s->setFloat("arcadeWaveFrequency", packet.uniforms.arcade_wave_frequency);
+					s->setFloat("arcadeWaveSpeed", packet.uniforms.arcade_wave_speed);
+					s->setBool("arcadeRainbowEnabled", packet.uniforms.arcade_rainbow_enabled);
+					s->setFloat("arcadeRainbowSpeed", packet.uniforms.arcade_rainbow_speed);
+					s->setFloat("arcadeRainbowFrequency", packet.uniforms.arcade_rainbow_frequency);
+				}
+
+				s->setInt("checkpointStyle", packet.uniforms.checkpoint_style);
+				s->setInt("style", packet.uniforms.checkpoint_style);
+				s->setFloat("radius", packet.uniforms.checkpoint_radius);
+				s->setVec3("baseColor", packet.uniforms.color);
 
 				// Minimize VAO state changes
 				if (packet.vao != current_vao) {
@@ -2230,6 +2254,7 @@ namespace Boidsish {
 		float world_scale = impl->terrain_generator ? impl->terrain_generator->GetWorldScale() : 1.0f;
 		context.far_plane = 1000.0f * std::max(1.0f, world_scale);
 		context.frustum = Frustum::FromViewProjection(view, impl->projection);
+		context.shader_table = &impl->shader_table;
 
 		for (const auto& shape : impl->shapes) {
 			if (shape->UseNewRenderPath()) {

@@ -332,7 +332,7 @@ namespace Boidsish {
 			}
 
 			RenderLayer layer = (packet.uniforms.alpha < 0.99f) ? RenderLayer::Transparent : RenderLayer::Opaque;
-			packet.shader_handle = ShaderHandle(0);
+			packet.shader_handle = shader_handle;
 			packet.material_handle = MaterialHandle(0);
 
 			// Calculate depth for sorting

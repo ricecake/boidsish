@@ -28,6 +28,8 @@ namespace Boidsish {
 		void      render(Shader& shader, const glm::mat4& model_matrix) const override;
 		glm::mat4 GetModelMatrix() const override;
 
+		void GenerateRenderPackets(std::vector<RenderPacket>& out_packets, const RenderContext& context) const override;
+
 		inline void SetStart(const glm::vec3& start) { SetPosition(start.x, start.y, start.z); }
 
 		inline glm::vec3 GetStart() const { return glm::vec3(GetX(), GetY(), GetZ()); }

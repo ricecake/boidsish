@@ -30,6 +30,8 @@ namespace Boidsish {
 		void      render(Shader& shader, const glm::mat4& model_matrix) const override;
 		glm::mat4 GetModelMatrix() const override;
 
+		void GenerateRenderPackets(std::vector<RenderPacket>& out_packets, const RenderContext& context) const override;
+
 		std::string GetInstanceKey() const override { return "CheckpointRing"; }
 
 		bool IsTransparent() const override { return true; }
@@ -52,6 +54,8 @@ namespace Boidsish {
 		static std::shared_ptr<Shader> GetShader() { return checkpoint_shader_; }
 
 		static void SetShader(std::shared_ptr<Shader> shader) { checkpoint_shader_ = shader; }
+
+		static ShaderHandle checkpoint_shader_handle;
 
 	private:
 		float           radius_;

@@ -35,6 +35,24 @@ namespace Boidsish {
 		float     metallic = 0.0f;
 		float     ao = 1.0f;
 		bool      use_texture = false;
+
+		// Extended common uniforms
+		bool  is_line = false;
+		int   line_style = 0;
+		bool  is_text_effect = false;
+		float text_fade_progress = 1.0f;
+		float text_fade_softness = 0.1f;
+		int   text_fade_mode = 0;
+		bool  is_arcade_text = false;
+		int   arcade_wave_mode = 0;
+		float arcade_wave_amplitude = 0.5f;
+		float arcade_wave_frequency = 10.0f;
+		float arcade_wave_speed = 5.0f;
+		bool  arcade_rainbow_enabled = false;
+		float arcade_rainbow_speed = 2.0f;
+		float arcade_rainbow_frequency = 5.0f;
+		int   checkpoint_style = 0;
+		float checkpoint_radius = 0.0f;
 	};
 
 	/**

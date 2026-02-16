@@ -182,6 +182,7 @@ namespace Boidsish {
 
 		// Static shader reference
 		static std::shared_ptr<Shader> shader;
+		static ShaderHandle            shader_handle;
 
 		// Sphere mesh generation
 		static void InitSphereMesh();

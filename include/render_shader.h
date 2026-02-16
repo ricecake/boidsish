@@ -33,7 +33,10 @@ public:
     /**
      * @brief Get the list of fields (uniforms) required by this shader.
      */
-    virtual const std::vector<Field>& GetRequiredFields() const = 0;
+    virtual const std::vector<Field>& GetRequiredFields() const {
+        static std::vector<Field> empty;
+        return empty;
+    }
 
     /**
      * @brief Queue a uniform update.

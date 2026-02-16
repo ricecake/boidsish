@@ -18,6 +18,7 @@ namespace Boidsish {
 	unsigned int            Shape::sphere_ebo_ = 0;
 	int                     Shape::sphere_vertex_count_ = 0;
 	std::shared_ptr<Shader> Shape::shader = nullptr;
+	ShaderHandle            Shape::shader_handle = ShaderHandle(0);
 
 	void Shape::GenerateRenderPackets(std::vector<RenderPacket>& out_packets, const RenderContext& context) const {
 		// Calculate model matrix once
@@ -54,7 +55,7 @@ namespace Boidsish {
 		RenderLayer layer = (a_ < 0.99f) ? RenderLayer::Transparent : RenderLayer::Opaque;
 
 		// Handles would typically be managed by a higher-level system (e.g., AssetManager)
-		packet.shader_handle = ShaderHandle(0);
+		packet.shader_handle = shader_handle;
 		packet.material_handle = MaterialHandle(0);
 
 		// Calculate depth for sorting

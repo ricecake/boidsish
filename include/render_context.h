@@ -2,6 +2,7 @@
 
 #include <glm/glm.hpp>
 #include "frustum.h"
+#include "shader_table.h"
 
 namespace Boidsish {
 
@@ -16,6 +17,7 @@ namespace Boidsish {
         float     far_plane = 1000.0f;
         float     time = 0.0f;
         Frustum   frustum;
+        const ShaderTable* shader_table = nullptr;
 
         // Optional: helper to project a world position to screen space or calculate depth
         float CalculateNormalizedDepth(const glm::vec3& world_pos) const {

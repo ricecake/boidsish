@@ -9,6 +9,7 @@
 namespace Boidsish {
 
 	std::shared_ptr<Shader> Terrain::terrain_shader_ = nullptr;
+	ShaderHandle            Terrain::terrain_shader_handle = ShaderHandle(0);
 
 	Terrain::Terrain(
 		const std::vector<unsigned int>& indices,
@@ -121,6 +122,49 @@ namespace Boidsish {
 		glm::mat4 model = glm::mat4(1.0f);
 		model = glm::translate(model, glm::vec3(GetX(), GetY(), GetZ()));
 		return model;
+	}
+
+	void Terrain::GenerateRenderPackets(std::vector<RenderPacket>& out_packets, const RenderContext& context) const {
+		if (managed_by_render_manager_ || vao_ == 0) {
+			return;
+		}
+
+		glm::mat4 model_matrix = GetModelMatrix();
+		glm::vec3 world_pos = glm::vec3(model_matrix[3]);
+
+		// Frustum Culling
+		float radius = GetBoundingRadius();
+		if (!context.frustum.IsBoxInFrustum(world_pos - glm::vec3(radius), world_pos + glm::vec3(radius))) {
+			return;
+		}
+
+		RenderPacket packet;
+		packet.vao = vao_;
+		packet.vbo = vbo_;
+		packet.ebo = ebo_;
+		packet.index_count = static_cast<unsigned int>(index_count_);
+		packet.draw_mode = GL_PATCHES;
+		packet.index_type = GL_UNSIGNED_INT;
+		packet.shader_id = terrain_shader_ ? terrain_shader_->ID : 0;
+
+		packet.uniforms.model = model_matrix;
+		packet.uniforms.color = glm::vec3(GetR(), GetG(), GetB());
+		packet.uniforms.alpha = GetA();
+		packet.uniforms.use_pbr = UsePBR();
+		packet.uniforms.roughness = GetRoughness();
+		packet.uniforms.metallic = GetMetallic();
+		packet.uniforms.ao = GetAO();
+		packet.uniforms.use_texture = false;
+
+		RenderLayer layer = RenderLayer::Opaque;
+
+		packet.shader_handle = terrain_shader_handle;
+		packet.material_handle = MaterialHandle(0);
+
+		float normalized_depth = context.CalculateNormalizedDepth(world_pos);
+		packet.sort_key = CalculateSortKey(layer, packet.shader_handle, packet.material_handle, normalized_depth);
+
+		out_packets.push_back(packet);
 	}
 
 } // namespace Boidsish

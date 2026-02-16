@@ -433,4 +433,48 @@ namespace Boidsish {
 		return model;
 	}
 
+	void Text::GenerateRenderPackets(std::vector<RenderPacket>& out_packets, const RenderContext& context) const {
+		if (vao_ == 0 || vertex_count_ == 0) return;
+
+		glm::mat4 model_matrix = GetModelMatrix();
+		glm::vec3 world_pos = glm::vec3(model_matrix[3]);
+
+		// Frustum Culling
+		float radius = GetBoundingRadius();
+		if (!context.frustum.IsBoxInFrustum(world_pos - glm::vec3(radius), world_pos + glm::vec3(radius))) {
+			return;
+		}
+
+		RenderPacket packet;
+		packet.vao = vao_;
+		packet.vbo = vbo_;
+		packet.vertex_count = static_cast<unsigned int>(vertex_count_);
+		packet.draw_mode = GL_TRIANGLES;
+		packet.index_type = 0;
+		packet.shader_id = shader ? shader->ID : 0;
+
+		packet.uniforms.model = model_matrix;
+		packet.uniforms.color = glm::vec3(GetR(), GetG(), GetB());
+		packet.uniforms.alpha = GetA();
+		packet.uniforms.use_pbr = UsePBR();
+		packet.uniforms.roughness = GetRoughness();
+		packet.uniforms.metallic = GetMetallic();
+		packet.uniforms.ao = GetAO();
+		packet.uniforms.use_texture = false;
+
+		packet.uniforms.is_text_effect = is_text_effect_;
+		packet.uniforms.text_fade_progress = text_fade_progress_;
+		packet.uniforms.text_fade_softness = text_fade_softness_;
+		packet.uniforms.text_fade_mode = text_fade_mode_;
+
+		RenderLayer layer = RenderLayer::Transparent;
+
+		packet.shader_handle = shader_handle;
+		packet.material_handle = MaterialHandle(0);
+
+		float normalized_depth = context.CalculateNormalizedDepth(world_pos);
+		packet.sort_key = CalculateSortKey(layer, packet.shader_handle, packet.material_handle, normalized_depth);
+
+		out_packets.push_back(packet);
+	}
 } // namespace Boidsish
