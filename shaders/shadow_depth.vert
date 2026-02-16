@@ -1,10 +1,21 @@
-#version 420 core
+#version 460 core
 
 layout(location = 0) in vec3 aPos;
 
+#include "common_uniforms.glsl"
+
+layout(std430, binding = 2) buffer UniformsSSBO {
+	CommonUniforms uniforms_data[];
+};
+
+uniform bool uUseMDI = false;
+uniform int  uBaseUniformIndex = 0;
 uniform mat4 lightSpaceMatrix;
 uniform mat4 model;
 
 void main() {
-	gl_Position = lightSpaceMatrix * model * vec4(aPos, 1.0);
+	int  vUniformIndex = uUseMDI ? (uBaseUniformIndex + gl_DrawID) : -1;
+	mat4 current_model = uUseMDI ? uniforms_data[vUniformIndex].model : model;
+
+	gl_Position = lightSpaceMatrix * current_model * vec4(aPos, 1.0);
 }

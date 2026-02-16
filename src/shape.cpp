@@ -25,11 +25,9 @@ namespace Boidsish {
 		glm::mat4 model = GetModelMatrix();
 		glm::vec3 world_pos = glm::vec3(model[3]);
 
-		// Frustum Culling
-		float radius = GetBoundingRadius();
-		if (!context.frustum.IsBoxInFrustum(world_pos - glm::vec3(radius), world_pos + glm::vec3(radius))) {
-			return;
-		}
+		// Note: We remove CPU frustum culling here to allow packet reuse across multiple passes
+		// (e.g., main camera, reflection, shadows) with different frustums.
+		// GPU-side frustum culling in the vertex shader handles visibility for each pass.
 
 		RenderPacket packet;
 		packet.vao = sphere_vao_;
@@ -47,11 +45,12 @@ namespace Boidsish {
 		packet.uniforms.metallic = metallic_;
 		packet.uniforms.ao = ao_;
 		packet.uniforms.use_texture = false; // Default for base sphere shape
-		packet.uniforms.is_instanced = 0; // MDI path uses per-draw model matrix, not attributes
+		packet.uniforms.is_instanced = 0;    // MDI path uses per-draw model matrix, not attributes
 		packet.uniforms.is_colossal = is_colossal_;
 		packet.uniforms.use_instance_color = false;
 
 		packet.is_instanced = is_instanced_;
+		packet.casts_shadows = CastsShadows();
 
 		// Default to Opaque layer unless alpha is less than 1.0
 		RenderLayer layer = (a_ < 0.99f) ? RenderLayer::Transparent : RenderLayer::Opaque;

@@ -116,6 +116,9 @@ namespace Boidsish {
 		// Instancing
 		bool is_instanced = false;
 		int  instance_count = 0;
+
+		// Pass identification
+		bool casts_shadows = true;
 	};
 
 	/**

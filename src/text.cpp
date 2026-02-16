@@ -441,12 +441,6 @@ namespace Boidsish {
 		glm::mat4 model_matrix = GetModelMatrix();
 		glm::vec3 world_pos = glm::vec3(model_matrix[3]);
 
-		// Frustum Culling
-		float radius = GetBoundingRadius();
-		if (!context.frustum.IsBoxInFrustum(world_pos - glm::vec3(radius), world_pos + glm::vec3(radius))) {
-			return;
-		}
-
 		RenderPacket packet;
 		packet.vao = vao_;
 		packet.vbo = vbo_;
@@ -469,6 +463,8 @@ namespace Boidsish {
 		packet.uniforms.text_fade_progress = text_fade_progress_;
 		packet.uniforms.text_fade_softness = text_fade_softness_;
 		packet.uniforms.text_fade_mode = text_fade_mode_;
+
+		packet.casts_shadows = CastsShadows();
 
 		RenderLayer layer = RenderLayer::Transparent;
 

@@ -266,6 +266,7 @@ namespace Boidsish {
 		std::shared_ptr<Shader> trail_shader;
 		std::shared_ptr<Shader> blur_shader;
 		std::shared_ptr<Shader> postprocess_shader_;
+		ShaderHandle            shadow_shader_handle{0};
 		GLuint                  plane_vao{0}, plane_vbo{0}, sky_vao{0}, blur_quad_vao{0}, blur_quad_vbo{0};
 		GLuint                  reflection_fbo{0}, reflection_texture{0}, reflection_depth_rbo{0};
 		GLuint                  pingpong_fbo[2]{0}, pingpong_texture[2]{0};
@@ -834,7 +835,8 @@ namespace Boidsish {
 
 			// --- Shadow Manager (initialize unconditionally) ---
 			shadow_manager->Initialize();
-			shader_table.Register(std::make_unique<RenderShader>(shadow_manager->GetShadowShaderPtr()));
+			shadow_shader_handle =
+				shader_table.Register(std::make_unique<RenderShader>(shadow_manager->GetShadowShaderPtr()));
 
 			if (postprocess_shader_) {
 				// --- Post Processing Manager ---
@@ -1256,14 +1258,33 @@ namespace Boidsish {
 		}
 
 		void ExecuteRenderQueue(
-			const RenderQueue& queue,
-			const glm::mat4&   view_mat,
-			const glm::mat4&   proj_mat,
-			RenderLayer        layer
+			const RenderQueue&                 queue,
+			const glm::mat4&                   view_mat,
+			const glm::mat4&                   proj_mat,
+			RenderLayer                        layer,
+			const std::optional<ShaderHandle>& shader_override = std::nullopt,
+			const std::optional<glm::mat4>&    light_space_mat = std::nullopt,
+			const std::optional<glm::vec4>&    clip_plane = std::nullopt,
+			bool                               is_shadow_pass = false
 		) {
 			const auto& packets = queue.GetPackets(layer);
 			if (packets.empty())
 				return;
+
+			// Update Frustum UBO for GPU-side culling for this specific pass
+			{
+				Frustum   pass_frustum = Frustum::FromViewProjection(view_mat, proj_mat);
+				glm::vec4 frustum_planes[6];
+				for (int i = 0; i < 6; ++i) {
+					frustum_planes[i] = glm::vec4(pass_frustum.planes[i].normal, pass_frustum.planes[i].distance);
+				}
+				glBindBuffer(GL_UNIFORM_BUFFER, frustum_ubo);
+				glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(frustum_planes), frustum_planes);
+				// We don't necessarily have the camera pos for shadow passes in the same way,
+				// but using the view_mat's implicit camera pos could work.
+				// For now, keep the main camera pos as it's used for LOD/fading.
+				glBindBuffer(GL_UNIFORM_BUFFER, 0);
+			}
 
 			// Get pointers to persistent buffers
 			DrawElementsIndirectCommand* elements_cmd_ptr = indirect_elements_buffer->GetFrameDataPtr();
@@ -1274,7 +1295,6 @@ namespace Boidsish {
 			uint32_t frame_element_offset = uniforms_ssbo->GetCurrentBufferIndex() * max_elements;
 
 			// Bind Uniforms SSBO to binding point 2
-			// Use the whole buffer because shaders use gl_DrawID and uBaseUniformIndex
 			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 2, uniforms_ssbo->GetBufferId());
 
 			struct Batch {
@@ -1292,7 +1312,20 @@ namespace Boidsish {
 
 			std::vector<Batch> batches;
 
-			auto can_batch = [](const RenderPacket& a, const RenderPacket& b) {
+			auto can_batch = [&](const RenderPacket& a, const RenderPacket& b) {
+				if (shader_override.has_value()) {
+					// When overriding shader, we only care about VAO and draw state
+					if (a.vao != b.vao)
+						return false;
+					if (a.draw_mode != b.draw_mode)
+						return false;
+					if (a.index_type != b.index_type)
+						return false;
+					if ((a.ebo > 0) != (b.ebo > 0))
+						return false;
+					return true;
+				}
+
 				if (a.shader_id != b.shader_id)
 					return false;
 				if (a.vao != b.vao)
@@ -1321,31 +1354,37 @@ namespace Boidsish {
 			};
 
 			// 1. Build batches and fill uniform/command buffers
-			// Note: We use global offsets mdi_*_count to avoid overwriting data from previous layers in the same frame
+			const RenderPacket* last_processed_packet = nullptr;
+
 			for (size_t i = 0; i < packets.size(); ++i) {
 				const auto& packet = packets[i];
+
+				// Filter for shadow pass
+				if (is_shadow_pass && !packet.casts_shadows)
+					continue;
+
 				if (packet.shader_id == 0 || mdi_uniform_count >= max_elements)
 					continue;
 
 				bool is_indexed = (packet.ebo > 0);
 
 				// Safety check for command buffer capacity
-				if (is_indexed && mdi_elements_count >= max_elements) continue;
-				if (!is_indexed && mdi_arrays_count >= max_elements) continue;
+				if (is_indexed && mdi_elements_count >= max_elements)
+					continue;
+				if (!is_indexed && mdi_arrays_count >= max_elements)
+					continue;
 
 				// Copy uniforms to persistent SSBO
 				uniforms_ptr[mdi_uniform_count] = packet.uniforms;
 
-				// If this packet represents a single instance, we want the shader to use the
-				// model matrix from uniforms, not from instance attributes.
 				if (packet.instance_count <= 1) {
 					uniforms_ptr[mdi_uniform_count].is_instanced = 0;
 				}
 
-				if (batches.empty() || !can_batch(packets[i - 1], packet)) {
+				if (batches.empty() || !last_processed_packet || !can_batch(*last_processed_packet, packet)) {
 					Batch new_batch;
-					new_batch.shader_handle = packet.shader_handle;
-					new_batch.shader_id = packet.shader_id;
+					new_batch.shader_handle = shader_override.value_or(packet.shader_handle);
+					new_batch.shader_id = is_shadow_pass ? 999999 : packet.shader_id; // Dummy ID if overridden
 					new_batch.vao = packet.vao;
 					new_batch.draw_mode = packet.draw_mode;
 					new_batch.index_type = packet.index_type;
@@ -1363,11 +1402,10 @@ namespace Boidsish {
 				if (is_indexed) {
 					DrawElementsIndirectCommand cmd{};
 					cmd.count = packet.index_count;
-					// Ensure at least 1 instance if not specified, default to packet.instance_count if > 0
 					cmd.instanceCount = packet.is_instanced ? std::max(1, packet.instance_count) : 1;
 					cmd.firstIndex = 0;
 					cmd.baseVertex = 0;
-					cmd.baseInstance = 0; // We use gl_DrawID to index uniforms
+					cmd.baseInstance = 0;
 					elements_cmd_ptr[mdi_elements_count++] = cmd;
 				} else {
 					DrawArraysIndirectCommand cmd{};
@@ -1378,15 +1416,15 @@ namespace Boidsish {
 					arrays_cmd_ptr[mdi_arrays_count++] = cmd;
 				}
 
+				last_processed_packet = &packet;
 				mdi_uniform_count++;
 			}
 
-			// Ensure all writes to persistent mapped buffers are visible to the GPU before draw calls
 			glMemoryBarrier(GL_CLIENT_MAPPED_BUFFER_BARRIER_BIT);
 
 			// 2. Execute batches
 			unsigned int current_vao = 0;
-			unsigned int current_shader_id = 0;
+			unsigned int current_bound_shader_id = 0;
 			std::set<ShaderBase*> used_shaders;
 
 			for (const auto& batch : batches) {
@@ -1397,25 +1435,34 @@ namespace Boidsish {
 				ShaderBase* s = render_shader->GetBackingShader().get();
 				used_shaders.insert(s);
 
-				if (batch.shader_id != current_shader_id) {
+				if (s->ID != current_bound_shader_id) {
 					s->use();
-					current_shader_id = batch.shader_id;
+					current_bound_shader_id = s->ID;
 					s->setMat4("view", view_mat);
 					s->setMat4("projection", proj_mat);
 					s->setFloat("time", simulation_time);
+					s->setBool("enableFrustumCulling", true);
+					if (light_space_mat) {
+						s->setMat4("lightSpaceMatrix", *light_space_mat);
+					}
+					if (clip_plane) {
+						s->setVec4("clipPlane", *clip_plane);
+					} else {
+						s->setVec4("clipPlane", glm::vec4(0, 0, 0, 0));
+					}
 				}
 
-				// Set MDI-specific uniforms
 				s->setBool("uUseMDI", true);
 				s->setInt("uBaseUniformIndex", batch.base_uniform_index);
 
-				// Bind textures
-				for (size_t i = 0; i < batch.textures.size(); ++i) {
-					glActiveTexture(GL_TEXTURE0 + i);
-					glBindTexture(GL_TEXTURE_2D, batch.textures[i].id);
-					s->setInt(batch.textures[i].type.c_str(), i);
+				if (!is_shadow_pass) {
+					for (size_t i = 0; i < batch.textures.size(); ++i) {
+						glActiveTexture(GL_TEXTURE0 + i);
+						glBindTexture(GL_TEXTURE_2D, batch.textures[i].id);
+						s->setInt(batch.textures[i].type.c_str(), i);
+					}
+					s->setBool("use_texture", !batch.textures.empty());
 				}
-				s->setBool("use_texture", !batch.textures.empty());
 
 				if (batch.vao != current_vao) {
 					glBindVertexArray(batch.vao);
@@ -1444,14 +1491,13 @@ namespace Boidsish {
 				}
 			}
 
-			// Reset state to ensure non-MDI paths work correctly
 			if (current_vao != 0)
 				glBindVertexArray(0);
 
-			// Reset MDI state in all used shaders to prevent affecting subsequent non-MDI draws
 			for (auto* s : used_shaders) {
 				s->use();
 				s->setBool("uUseMDI", false);
+				s->setBool("enableFrustumCulling", false);
 			}
 
 			glBindBuffer(GL_DRAW_INDIRECT_BUFFER, 0);
@@ -2624,18 +2670,27 @@ namespace Boidsish {
 				impl->reflection_vp = impl->projection * reflection_view;
 
 				// Render opaque geometry first for early-Z benefit
-				// Use reduced tessellation (25%) for reflection pass - it's blurred anyway
-				// impl->RenderTerrain(
-				// 	reflection_view,
-				// 	impl->projection,
-				// 	glm::vec4(0, 1, 0, 0.01),
-				// 	false,
-				// 	std::nullopt,
-				// 	0.25f
-				// );
+				impl->ExecuteRenderQueue(
+					impl->render_queue,
+					reflection_view,
+					impl->projection,
+					RenderLayer::Opaque,
+					std::nullopt,
+					std::nullopt,
+					glm::vec4(0, 1, 0, 0.01)
+				);
 				impl->RenderShapes(reflection_view, impl->shapes, impl->simulation_time, glm::vec4(0, 1, 0, 0.01));
 				// Sky after opaque geometry
 				impl->RenderSky(reflection_view);
+				impl->ExecuteRenderQueue(
+					impl->render_queue,
+					reflection_view,
+					impl->projection,
+					RenderLayer::Transparent,
+					std::nullopt,
+					std::nullopt,
+					glm::vec4(0, 1, 0, 0.01)
+				);
 				impl->RenderTransparentShapes(
 					reflection_view,
 					reflection_cam,
@@ -2806,13 +2861,16 @@ namespace Boidsish {
 					(float)impl->width / (float)impl->height
 				);
 
-				Shader& shadow_shader = impl->shadow_manager->GetShadowShader();
-				shadow_shader.use();
-				for (const auto& shape : impl->shapes) {
-					if (shape->CastsShadows()) {
-						shape->render(shadow_shader);
-					}
-				}
+				impl->ExecuteRenderQueue(
+					impl->render_queue,
+					view, // Base view (not used for gl_Position in shadow pass)
+					impl->projection,
+					RenderLayer::Opaque,
+					impl->shadow_shader_handle,
+					impl->shadow_manager->GetLightSpaceMatrix(info.map_index),
+					std::nullopt,
+					true
+				);
 
 				glDisable(GL_CULL_FACE);
 				impl->RenderTerrain(
