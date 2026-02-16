@@ -2,7 +2,9 @@
 
 #include <vector>
 #include <algorithm>
+#include <mutex>
 #include "geometry.h"
+#include "task_thread_pool.hpp"
 
 namespace Boidsish {
 
@@ -25,9 +27,15 @@ namespace Boidsish {
         void Submit(const RenderPacket& packet);
 
         /**
-         * @brief Sort the submitted packets in each layer based on their sort_key.
+         * @brief Batch submit RenderPackets to the queue.
          */
-        void Sort();
+        void Submit(std::vector<RenderPacket>&& packets);
+
+        /**
+         * @brief Sort the submitted packets in each layer based on their sort_key.
+         * Parallelizes sorting across layer buckets using the provided thread pool.
+         */
+        void Sort(task_thread_pool::task_thread_pool& pool);
 
         /**
          * @brief Get the list of sorted packets for a specific layer.
@@ -45,6 +53,8 @@ namespace Boidsish {
         // Use separate buckets for each RenderLayer to sort "as they come in"
         // RenderLayer: Background=0, Opaque=1, Transparent=2, UI=3, Overlay=4
         std::vector<RenderPacket> m_layers[5];
+        size_t m_last_frame_counts[5] = {0, 0, 0, 0, 0};
+        mutable std::mutex m_mutex;
     };
 
 } // namespace Boidsish
