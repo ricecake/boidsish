@@ -26,6 +26,17 @@ namespace Boidsish {
 
 			ImGui::Separator();
 
+			// Day/Night Cycle
+			auto& cycle = _lightManager.GetDayNightCycle();
+			if (ImGui::CollapsingHeader("Day/Night Cycle")) {
+				ImGui::Checkbox("Enabled", &cycle.enabled);
+				ImGui::SliderFloat("Time (24h)", &cycle.time, 0.0f, 24.0f, "%.1f h");
+				ImGui::SliderFloat("Speed", &cycle.speed, 0.0f, 2.0f, "%.2f");
+				ImGui::Checkbox("Paused", &cycle.paused);
+			}
+
+			ImGui::Separator();
+
 			int light_to_remove = -1;
 			// Lights
 			auto& lights = _lightManager.GetLights();
@@ -40,10 +51,19 @@ namespace Boidsish {
 					}
 
 					// Position
-					ImGui::DragFloat3("Position", &lights[i].position[0], 0.1f);
+					if (lights[i].type != DIRECTIONAL_LIGHT) {
+						ImGui::DragFloat3("Position", &lights[i].position[0], 0.1f);
+					}
 
-					// Direction
-					if (lights[i].type != POINT_LIGHT) {
+					// Direction / Angles
+					if (lights[i].type == DIRECTIONAL_LIGHT) {
+						bool changed = false;
+						changed |= ImGui::SliderFloat("Azimuth", &lights[i].azimuth, 0.0f, 360.0f);
+						changed |= ImGui::SliderFloat("Elevation", &lights[i].elevation, -90.0f, 90.0f);
+						if (changed) {
+							lights[i].UpdateDirectionFromAngles();
+						}
+					} else if (lights[i].type == SPOT_LIGHT) {
 						ImGui::DragFloat3("Direction", &lights[i].direction[0], 0.1f);
 					}
 
