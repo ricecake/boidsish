@@ -23,6 +23,7 @@ namespace Boidsish {
 
 		bool IsExpired() const override { return age_ >= total_duration_; }
 
+		using Text::render;
 		void render() const override;
 
 	protected:

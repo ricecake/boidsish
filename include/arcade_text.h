@@ -22,7 +22,9 @@ namespace Boidsish {
 		);
 
 		void Update(float delta_time) override;
+		using CurvedText::render;
 		void render() const override;
+		void render(Shader& shader, const glm::mat4& model_matrix) const override;
 
 		// Arcade Effect Setters
 		void SetWaveMode(ArcadeWaveMode mode) { wave_mode_ = mode; }
@@ -77,7 +79,7 @@ namespace Boidsish {
 
 		float time_ = 0.0f;
 
-		void render_internal(const glm::mat4& model_matrix) const;
+		void render_internal(Shader& shader, const glm::mat4& model_matrix) const;
 	};
 
 } // namespace Boidsish

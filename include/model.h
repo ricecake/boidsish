@@ -64,6 +64,7 @@ namespace Boidsish {
 		Model(const std::string& path, bool no_cull = false);
 
 		// Render the model
+		using Shape::render;
 		void      render() const override;
 		void      render(Shader& shader, const glm::mat4& model_matrix) const override;
 		glm::mat4 GetModelMatrix() const override;
