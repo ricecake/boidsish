@@ -9,7 +9,7 @@ int main(int argc, char** argv) {
 	try {
 		Visualizer vis(1280, 960, "Boidsish Graph Demo");
 
-		auto graph = std::make_shared<Graph>(0, 0, 0, 0);
+		auto graph = std::make_shared<Graph>(0, 0, 0);
 
 		auto& v1 = graph->AddVertex({-5, 0, 0}, 10.0f, 1, 0, 0, 1);
 		auto& v2 = graph->AddVertex({5, 0, 0}, 10.0f, 0, 1, 0, 1);

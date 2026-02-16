@@ -11,7 +11,6 @@
 namespace Boidsish {
 
 	Arrow::Arrow(
-		int   id,
 		float x,
 		float y,
 		float z,
@@ -23,7 +22,7 @@ namespace Boidsish {
 		float b,
 		float a
 	):
-		Shape(id, x, y, z, r, g, b, a), cone_height_(cone_height), cone_radius_(cone_radius), rod_radius_(rod_radius) {
+		Shape(x, y, z, r, g, b, a), cone_height_(cone_height), cone_radius_(cone_radius), rod_radius_(rod_radius) {
 		InitArrowMesh();
 	}
 

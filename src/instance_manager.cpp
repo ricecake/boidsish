@@ -2,7 +2,9 @@
 
 #include <set>
 
+#include "checkpoint_ring.h"
 #include "dot.h"
+#include "line.h"
 #include "logger.h"
 #include "model.h"
 #include <GL/glew.h>
@@ -44,8 +46,20 @@ namespace Boidsish {
 				RenderModelGroup(shader, group);
 			} else if (key == "Dot") {
 				RenderDotGroup(shader, group);
+			} else if (key.starts_with("Line:")) {
+				RenderLineGroup(shader, group);
+			} else if (key.starts_with("CheckpointRing:")) {
+				RenderCheckpointRingGroup(shader, group);
+			} else {
+				// Fallback for unique shapes
+				shader.setBool("is_instanced", false);
+				for (auto& shape : group.shapes) {
+					shader.setBool("isColossal", shape->IsColossal());
+					shader.setFloat("frustumCullRadius", shape->GetBoundingRadius());
+					shape->render(shader);
+				}
+				shader.setBool("is_instanced", true);
 			}
-			// Other shape types can be added here
 			group.shapes.clear();
 		}
 
@@ -149,11 +163,7 @@ namespace Boidsish {
 			glVertexAttribDivisor(6, 1);
 
 			// Tell mesh to skip its own VAO/EBO binding if we already have it correctly bound
-			// (requires update to mesh.render_instanced to support this flag)
 			mesh.render_instanced(group.shapes.size(), false);
-
-			// Note: render_instanced(..., false) now DOES NOT unbind the VAO
-			// allowing us to clean up efficiently.
 
 			glVertexAttribDivisor(3, 0);
 			glVertexAttribDivisor(4, 0);
@@ -305,6 +315,175 @@ namespace Boidsish {
 		glBindVertexArray(0);
 		glBindBuffer(GL_ARRAY_BUFFER, 0); // Prevent buffer state leakage
 		shader.setBool("useInstanceColor", false);
+	}
+
+	void InstanceManager::RenderLineGroup(Shader& shader, InstanceGroup& group) {
+		auto first_line = std::dynamic_pointer_cast<Line>(group.shapes[0]);
+		if (!first_line || !IsValidVAO(Line::line_vao_))
+			return;
+
+		shader.setBool("isLine", true);
+		shader.setInt("lineStyle", static_cast<int>(first_line->GetStyle()));
+		shader.setBool("useInstanceColor", true);
+
+		std::vector<glm::mat4> model_matrices;
+		std::vector<glm::vec4> colors;
+		model_matrices.reserve(group.shapes.size());
+		colors.reserve(group.shapes.size());
+
+		for (const auto& shape : group.shapes) {
+			model_matrices.push_back(shape->GetModelMatrix());
+			colors.emplace_back(shape->GetR(), shape->GetG(), shape->GetB(), shape->GetA());
+		}
+
+		if (group.instance_matrix_vbo_ == 0)
+			glGenBuffers(1, &group.instance_matrix_vbo_);
+		glBindBuffer(GL_ARRAY_BUFFER, group.instance_matrix_vbo_);
+		if (model_matrices.size() > group.matrix_capacity_) {
+			glBufferData(
+				GL_ARRAY_BUFFER,
+				model_matrices.size() * sizeof(glm::mat4),
+				&model_matrices[0],
+				GL_DYNAMIC_DRAW
+			);
+			group.matrix_capacity_ = model_matrices.size();
+		} else {
+			glBufferSubData(GL_ARRAY_BUFFER, 0, model_matrices.size() * sizeof(glm::mat4), &model_matrices[0]);
+		}
+
+		if (group.instance_color_vbo_ == 0)
+			glGenBuffers(1, &group.instance_color_vbo_);
+		glBindBuffer(GL_ARRAY_BUFFER, group.instance_color_vbo_);
+		if (colors.size() > group.color_capacity_) {
+			glBufferData(GL_ARRAY_BUFFER, colors.size() * sizeof(glm::vec4), &colors[0], GL_DYNAMIC_DRAW);
+			group.color_capacity_ = colors.size();
+		} else {
+			glBufferSubData(GL_ARRAY_BUFFER, 0, colors.size() * sizeof(glm::vec4), &colors[0]);
+		}
+
+		glBindVertexArray(Line::line_vao_);
+		glBindBuffer(GL_ARRAY_BUFFER, group.instance_matrix_vbo_);
+		for (int i = 0; i < 4; i++) {
+			glEnableVertexAttribArray(3 + i);
+			glVertexAttribPointer(3 + i, 4, GL_FLOAT, GL_FALSE, sizeof(glm::mat4), (void*)(i * sizeof(glm::vec4)));
+			glVertexAttribDivisor(3 + i, 1);
+		}
+
+		glBindBuffer(GL_ARRAY_BUFFER, group.instance_color_vbo_);
+		glEnableVertexAttribArray(7);
+		glVertexAttribPointer(7, 4, GL_FLOAT, GL_FALSE, sizeof(glm::vec4), (void*)0);
+		glVertexAttribDivisor(7, 1);
+
+		glDrawArraysInstanced(GL_TRIANGLES, 0, Line::line_vertex_count_, group.shapes.size());
+
+		for (int i = 0; i < 5; i++) {
+			glVertexAttribDivisor(3 + i, 0);
+			glDisableVertexAttribArray(3 + i);
+		}
+		glBindVertexArray(0);
+		shader.setBool("isLine", false);
+		shader.setBool("useInstanceColor", false);
+	}
+
+	void InstanceManager::RenderCheckpointRingGroup(Shader& /*shader*/, InstanceGroup& group) {
+		auto first_ring = std::dynamic_pointer_cast<CheckpointRingShape>(group.shapes[0]);
+		if (!first_ring || !IsValidVAO(CheckpointRingShape::quad_vao_))
+			return;
+
+		auto cp_shader = CheckpointRingShape::GetShader();
+		if (!cp_shader)
+			return;
+
+		cp_shader->use();
+		cp_shader->setBool("is_instanced", true);
+
+		// Set uniforms based on first ring (they should all be same style/radius due to InstanceKey)
+		cp_shader->setInt("style", static_cast<int>(first_ring->GetStyle()));
+		cp_shader->setFloat("radius", first_ring->GetRadius());
+
+		std::vector<glm::mat4> model_matrices;
+		std::vector<glm::vec4> colors;
+		model_matrices.reserve(group.shapes.size());
+		colors.reserve(group.shapes.size());
+
+		for (const auto& shape : group.shapes) {
+			model_matrices.push_back(shape->GetModelMatrix());
+
+			auto ring = std::dynamic_pointer_cast<CheckpointRingShape>(shape);
+			glm::vec3 color(shape->GetR(), shape->GetG(), shape->GetB());
+			switch (ring->GetStyle()) {
+			case CheckpointStyle::GOLD:
+				color = Constants::Class::Checkpoint::Colors::Gold();
+				break;
+			case CheckpointStyle::SILVER:
+				color = Constants::Class::Checkpoint::Colors::Silver();
+				break;
+			case CheckpointStyle::BLACK:
+				color = Constants::Class::Checkpoint::Colors::Black();
+				break;
+			case CheckpointStyle::BLUE:
+				color = Constants::Class::Checkpoint::Colors::Blue();
+				break;
+			case CheckpointStyle::NEON_GREEN:
+				color = Constants::Class::Checkpoint::Colors::NeonGreen();
+				break;
+			}
+			colors.emplace_back(color.r, color.g, color.b, shape->GetA());
+		}
+
+		if (group.instance_matrix_vbo_ == 0)
+			glGenBuffers(1, &group.instance_matrix_vbo_);
+		glBindBuffer(GL_ARRAY_BUFFER, group.instance_matrix_vbo_);
+		if (model_matrices.size() > group.matrix_capacity_) {
+			glBufferData(
+				GL_ARRAY_BUFFER,
+				model_matrices.size() * sizeof(glm::mat4),
+				&model_matrices[0],
+				GL_DYNAMIC_DRAW
+			);
+			group.matrix_capacity_ = model_matrices.size();
+		} else {
+			glBufferSubData(GL_ARRAY_BUFFER, 0, model_matrices.size() * sizeof(glm::mat4), &model_matrices[0]);
+		}
+
+		if (group.instance_color_vbo_ == 0)
+			glGenBuffers(1, &group.instance_color_vbo_);
+		glBindBuffer(GL_ARRAY_BUFFER, group.instance_color_vbo_);
+		if (colors.size() > group.color_capacity_) {
+			glBufferData(GL_ARRAY_BUFFER, colors.size() * sizeof(glm::vec4), &colors[0], GL_DYNAMIC_DRAW);
+			group.color_capacity_ = colors.size();
+		} else {
+			glBufferSubData(GL_ARRAY_BUFFER, 0, colors.size() * sizeof(glm::vec4), &colors[0]);
+		}
+
+		glBindVertexArray(CheckpointRingShape::quad_vao_);
+		glBindBuffer(GL_ARRAY_BUFFER, group.instance_matrix_vbo_);
+		for (int i = 0; i < 4; i++) {
+			glEnableVertexAttribArray(3 + i);
+			glVertexAttribPointer(3 + i, 4, GL_FLOAT, GL_FALSE, sizeof(glm::mat4), (void*)(i * sizeof(glm::vec4)));
+			glVertexAttribDivisor(3 + i, 1);
+		}
+
+		glBindBuffer(GL_ARRAY_BUFFER, group.instance_color_vbo_);
+		glEnableVertexAttribArray(7);
+		glVertexAttribPointer(7, 4, GL_FLOAT, GL_FALSE, sizeof(glm::vec4), (void*)0);
+		glVertexAttribDivisor(7, 1);
+
+		glDrawArraysInstanced(GL_TRIANGLE_STRIP, 0, 4, group.shapes.size());
+
+		for (int i = 0; i < 4; i++) {
+			glVertexAttribDivisor(3 + i, 0);
+			glDisableVertexAttribArray(3 + i);
+		}
+		glVertexAttribDivisor(7, 0);
+		glDisableVertexAttribArray(7);
+		glBindVertexArray(0);
+
+		cp_shader->setBool("is_instanced", false);
+
+		// Switch back to main shader
+		if (Shape::shader)
+			Shape::shader->use();
 	}
 
 } // namespace Boidsish

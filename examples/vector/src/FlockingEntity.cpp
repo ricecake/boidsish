@@ -7,7 +7,7 @@
 
 namespace Boidsish {
 
-	FlockingEntity::FlockingEntity(int id, const Vector3& start_pos): Entity<>(id) {
+	FlockingEntity::FlockingEntity(const Vector3& start_pos): Entity<>() {
 		SetPosition(start_pos);
 		SetSize(5.0f);
 		SetTrailIridescence(true);

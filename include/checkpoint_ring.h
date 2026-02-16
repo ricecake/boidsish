@@ -30,7 +30,9 @@ namespace Boidsish {
 		void      render(Shader& shader, const glm::mat4& model_matrix) const override;
 		glm::mat4 GetModelMatrix() const override;
 
-		std::string GetInstanceKey() const override { return "CheckpointRing"; }
+		std::string GetInstanceKey() const override {
+			return "CheckpointRing:" + std::to_string(static_cast<int>(style_)) + ":" + std::to_string(radius_);
+		}
 
 		bool IsTransparent() const override { return true; }
 
@@ -53,20 +55,21 @@ namespace Boidsish {
 
 		static void SetShader(std::shared_ptr<Shader> shader) { checkpoint_shader_ = shader; }
 
-	private:
-		float           radius_;
-		CheckpointStyle style_;
-
+	public:
 		static unsigned int            quad_vao_;
 		static unsigned int            quad_vbo_;
 		static std::shared_ptr<Shader> checkpoint_shader_;
+
+	private:
+		float           radius_;
+		CheckpointStyle style_;
 	};
 
 	class CheckpointRing: public Entity<CheckpointRingShape> {
 	public:
 		using Callback = std::function<void(float, std::shared_ptr<EntityBase>)>;
 
-		CheckpointRing(int id, float radius, CheckpointStyle style, Callback callback);
+		CheckpointRing(float radius, CheckpointStyle style, Callback callback);
 
 		void RegisterEntity(std::shared_ptr<EntityBase> entity);
 		void UpdateEntity(const EntityHandler& handler, float time, float delta_time) override;

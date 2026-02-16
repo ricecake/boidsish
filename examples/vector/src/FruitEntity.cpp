@@ -8,7 +8,7 @@ namespace Boidsish {
 	// If it were used more broadly, it would be better to pass it as a dependency.
 	static MakeBranchAttractor fruitPlacer;
 
-	FruitEntity::FruitEntity(int id): Entity<>(id), value(0) {
+	FruitEntity::FruitEntity(): Entity<>(), value(0) {
 		auto start_pos = fruitPlacer(6);
 		start_pos.y += 8;
 		SetPosition(start_pos);

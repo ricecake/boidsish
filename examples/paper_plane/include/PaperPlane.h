@@ -14,7 +14,7 @@ namespace Boidsish {
 	public:
 		enum class PlaneState { ALIVE, DYING, DEAD };
 
-		PaperPlane(int id = 0);
+		PaperPlane();
 
 		void SetController(std::shared_ptr<PaperPlaneInputController> controller);
 		void UpdateEntity(const EntityHandler& handler, float time, float delta_time) override;

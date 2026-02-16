@@ -17,7 +17,6 @@ namespace Boidsish {
 	class CatMissile: public Entity<Model> {
 	public:
 		CatMissile(
-			int       id = 0,
 			Vector3   pos = {0, 0, 0},
 			glm::quat orientation = {0, {0, 0, 0}},
 			glm::vec3 dir = {0, 0, 0},

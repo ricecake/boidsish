@@ -1,5 +1,6 @@
 #pragma once
 
+#include <atomic>
 #include <functional>
 #include <memory>
 #include <string>
@@ -46,8 +47,6 @@ namespace Boidsish {
 
 		// Accessors
 		inline int GetId() const { return id_; }
-
-		inline void SetId(int id) { id_ = id; }
 
 		inline float GetX() const { return x_; }
 
@@ -128,8 +127,6 @@ namespace Boidsish {
 
 		inline bool IsInstanced() const { return is_instanced_; }
 
-		inline void SetInstanced(bool is_instanced) { is_instanced_ = is_instanced; }
-
 		inline bool IsHidden() const { return is_hidden_; }
 
 		inline void SetHidden(bool hidden) { is_hidden_ = hidden; }
@@ -186,7 +183,6 @@ namespace Boidsish {
 	protected:
 		// Protected constructor for derived classes
 		Shape(
-			int   id = 0,
 			float x = 0.0f,
 			float y = 0.0f,
 			float z = 0.0f,
@@ -196,36 +192,15 @@ namespace Boidsish {
 			float a = 1.0f,
 			int   trail_length = 0,
 			float trail_thickness = Constants::Class::Trails::BaseThickness()
-		):
-			id_(id),
-			x_(x),
-			y_(y),
-			z_(z),
-			r_(r),
-			g_(g),
-			b_(b),
-			a_(a),
-			rotation_(glm::quat(1.0f, 0.0f, 0.0f, 0.0f)),
-			scale_(glm::vec3(1.0f)),
-			trail_length_(trail_length),
-			trail_thickness_(trail_thickness),
-			trail_iridescent_(false),
-			is_colossal_(false),
-			last_position_(x, y, z),
-			trail_pbr_(false),
-			trail_roughness_(0.3f),
-			trail_metallic_(0.0f),
-			roughness_(0.5f),
-			metallic_(0.0f),
-			ao_(1.0f),
-			use_pbr_(false) {}
+		);
 
 		glm::quat rotation_;
 		glm::vec3 scale_;
 
 	private:
-		int       id_;
-		float     x_, y_, z_;
+		static std::atomic<int> next_id_;
+		int                     id_;
+		float                   x_, y_, z_;
 		glm::vec3 last_position_;
 		float     r_, g_, b_, a_;
 		int       trail_length_;
@@ -233,7 +208,7 @@ namespace Boidsish {
 		bool      trail_iridescent_;
 		bool      trail_rocket_;
 		bool      is_colossal_;
-		bool      is_instanced_ = false;
+		bool      is_instanced_ = true;
 		bool      is_hidden_ = false;
 		bool      trail_pbr_;
 		float     trail_roughness_;

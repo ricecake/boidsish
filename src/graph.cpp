@@ -14,7 +14,7 @@
 
 namespace Boidsish {
 
-	Graph::Graph(int id, float x, float y, float z): Shape(id, x, y, z, 1.0f, 1.0f, 1.0f, 1.0f, 0) {}
+	Graph::Graph(float x, float y, float z): Shape(x, y, z, 1.0f, 1.0f, 1.0f, 1.0f, 0) {}
 
 	Graph::~Graph() {
 		if (buffers_initialized_) {
@@ -219,8 +219,7 @@ namespace Boidsish {
 		}
 
 		for (const auto& vertex : vertices) {
-			Dot(0,
-			    vertex.position.x + GetX(),
+			Dot(vertex.position.x + GetX(),
 			    vertex.position.y + GetY(),
 			    vertex.position.z + GetZ(),
 			    vertex.size,

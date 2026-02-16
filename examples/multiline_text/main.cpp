@@ -15,7 +15,6 @@ int main() {
 		5.0f,
 		Boidsish::Text::LEFT,
 		0,
-		0,
 		30,
 		0
 	);
@@ -27,7 +26,6 @@ int main() {
 		5.0f,
 		Boidsish::Text::CENTER,
 		0,
-		0,
 		30,
 		30
 	);
@@ -38,7 +36,6 @@ int main() {
 		24.0f,
 		5.0f,
 		Boidsish::Text::RIGHT,
-		0,
 		0,
 		30,
 		60

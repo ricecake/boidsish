@@ -21,7 +21,6 @@ int main() {
 		16.0f,
 		2.0f,
 		Boidsish::Text::CENTER,
-		0,
 		0.0f,
 		10.0f,
 		0.0f

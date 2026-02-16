@@ -6,7 +6,7 @@ namespace Boidsish {
 
 	class VortexFlockingEntity: public Entity<> {
 	public:
-		VortexFlockingEntity(int id);
+		VortexFlockingEntity();
 		void UpdateEntity(const EntityHandler& handler, float time, float delta_time) override;
 	};
 

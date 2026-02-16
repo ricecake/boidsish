@@ -12,7 +12,7 @@ namespace Boidsish {
 
 	class FlockingEntity: public Entity<> {
 	public:
-		FlockingEntity(int id, const Vector3& start_pos);
+		FlockingEntity(const Vector3& start_pos);
 		void UpdateEntity(const EntityHandler& handler, float time, float delta_time) override;
 
 		float GetValue() const { return energy; }

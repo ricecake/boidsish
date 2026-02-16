@@ -1102,14 +1102,8 @@ namespace Boidsish {
 				if (shape->IsHidden() || shape->IsTransparent()) {
 					continue;
 				}
-				if (shape->IsInstanced()) {
-					shader->setFloat("frustumCullRadius", shape->GetBoundingRadius());
-					instance_manager->AddInstance(shape);
-				} else {
-					shader->setBool("isColossal", shape->IsColossal());
-					shader->setFloat("frustumCullRadius", shape->GetBoundingRadius());
-					shape->render();
-				}
+				shader->setFloat("frustumCullRadius", shape->GetBoundingRadius());
+				instance_manager->AddInstance(shape);
 			}
 
 			instance_manager->Render(*shader);
@@ -1171,14 +1165,8 @@ namespace Boidsish {
 
 			shader->setInt("useVertexColor", 0);
 			for (const auto& shape : transparent_shapes) {
-				if (shape->IsInstanced()) {
-					shader->setFloat("frustumCullRadius", shape->GetBoundingRadius());
-					instance_manager->AddInstance(shape);
-				} else {
-					shader->setBool("isColossal", shape->IsColossal());
-					shader->setFloat("frustumCullRadius", shape->GetBoundingRadius());
-					shape->render();
-				}
+				shader->setFloat("frustumCullRadius", shape->GetBoundingRadius());
+				instance_manager->AddInstance(shape);
 			}
 
 			instance_manager->Render(*shader);
@@ -2465,9 +2453,10 @@ namespace Boidsish {
 				shadow_shader.use();
 				for (const auto& shape : impl->shapes) {
 					if (shape->CastsShadows()) {
-						shape->render(shadow_shader);
+						impl->instance_manager->AddInstance(shape);
 					}
 				}
+				impl->instance_manager->Render(shadow_shader);
 
 				glDisable(GL_CULL_FACE);
 				impl->RenderTerrain(

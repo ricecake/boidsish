@@ -18,10 +18,10 @@ namespace Boidsish {
 		std::uniform_real_distribution<> dis_vel(-5.0, 5.0);
 
 		for (int i = 0; i < 100; ++i) {
-			auto entity = std::make_shared<VortexFlockingEntity>(i);
+			auto entity = std::make_shared<VortexFlockingEntity>();
 			entity->SetPosition(dis_pos(gen), dis_y(gen), dis_pos(gen));
 			entity->SetVelocity(dis_vel(gen), dis_vel(gen), dis_vel(gen));
-			AddEntity(i, entity);
+			AddEntity(entity);
 		}
 	}
 

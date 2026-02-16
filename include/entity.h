@@ -27,8 +27,7 @@ namespace Boidsish {
 		friend class EntityHandler;
 
 	public:
-		EntityBase(int id = 0):
-			id_(id),
+		EntityBase():
 			size_(8.0f),
 			color_{1.0f, 1.0f, 1.0f, 1.0f},
 			trail_length_(50),
@@ -53,7 +52,7 @@ namespace Boidsish {
 		virtual void                   UpdateShape() = 0;
 
 		// Getters and setters
-		int GetId() const { return id_; }
+		virtual int GetId() const = 0;
 
 		// Absolute spatial position
 		float GetXPos() const { return rigid_body_.GetPosition().x; }
@@ -153,7 +152,6 @@ namespace Boidsish {
 		glm::vec3 WorldToObject(const glm::vec3& v) const { return glm::inverse(rigid_body_.GetOrientation()) * v; }
 
 	protected:
-		int       id_;
 		RigidBody rigid_body_;
 		float     size_;
 		float     color_[4]; // RGBA
@@ -182,17 +180,19 @@ namespace Boidsish {
 	class Entity: public EntityBase {
 	public:
 		template <typename... ShapeArgs>
-		Entity(int id = 0, ShapeArgs... args): EntityBase(id), shape_(nullptr) {
+		Entity(ShapeArgs... args): EntityBase(), shape_(nullptr) {
 			shape_ = std::make_shared<ShapeType>(std::forward<ShapeArgs>(args)...);
 			UpdateShape();
 		}
 
-		Entity(int id = 0): EntityBase(id), shape_(nullptr) {
+		Entity(): EntityBase(), shape_(nullptr) {
 			if constexpr (std::is_default_constructible<ShapeType>::value) {
 				shape_ = std::make_shared<ShapeType>();
 			}
 			UpdateShape();
 		}
+
+		int GetId() const override { return shape_ ? shape_->GetId() : -1; }
 
 		std::shared_ptr<Shape> GetShape() const override { return shape_; }
 
@@ -201,7 +201,6 @@ namespace Boidsish {
 		void UpdateShape() override {
 			if (!shape_)
 				return;
-			shape_->SetId(id_);
 			shape_->SetPosition(GetXPos(), GetYPos(), GetZPos());
 			shape_->SetColor(color_[0], color_[1], color_[2], color_[3]);
 			shape_->SetTrailLength(trail_length_);
@@ -228,7 +227,7 @@ namespace Boidsish {
 			task_thread_pool::task_thread_pool& thread_pool,
 			std::shared_ptr<Visualizer>         visualizer = nullptr
 		):
-			thread_pool_(thread_pool), vis(visualizer), last_time_(-1.0f), next_id_(0) {}
+			thread_pool_(thread_pool), vis(visualizer), last_time_(-1.0f) {}
 
 		virtual ~EntityHandler();
 
@@ -244,20 +243,14 @@ namespace Boidsish {
 		// Entity management
 		template <typename T, typename... Args>
 		int AddEntity(Args&&... args) {
-			int  id = next_id_++;
-			auto entity = std::make_shared<T>(id, std::forward<Args>(args)...);
-			AddEntity(id, entity);
+			auto entity = std::make_shared<T>(std::forward<Args>(args)...);
+			int  id = entity->GetId();
+			AddEntity(entity);
 			return id;
 		}
 
-		template <typename T, typename... Args>
-		int AddEntityWithId(int id, Args&&... args) {
-			auto entity = std::make_shared<T>(id, std::forward<Args>(args)...);
-			AddEntity(id, entity);
-			return id;
-		}
-
-		virtual void AddEntity(int id, std::shared_ptr<EntityBase> entity) {
+		virtual void AddEntity(std::shared_ptr<EntityBase> entity) {
+			int id = entity->GetId();
 			entities_[id] = entity;
 			if (vis) {
 				entity->UpdateShape();
@@ -401,21 +394,6 @@ namespace Boidsish {
 			});
 		}
 
-		template <typename T, typename... Args>
-		void QueueAddEntityWithId(int id, Args&&... args) const {
-			std::lock_guard<std::mutex> lock(requests_mutex_);
-			modification_requests_.emplace_back(
-				[this, id, args = std::make_tuple(std::forward<Args>(args)...)]() mutable {
-					std::apply(
-						[this, id](auto&&... a) {
-							const_cast<EntityHandler*>(this)->AddEntityWithId<T>(id, std::forward<decltype(a)>(a)...);
-						},
-						std::move(args)
-					);
-				}
-			);
-		}
-
 		void QueueRemoveEntity(int id) const {
 			std::lock_guard<std::mutex> lock(requests_mutex_);
 			modification_requests_.emplace_back([this, id]() { const_cast<EntityHandler*>(this)->RemoveEntity(id); });
@@ -445,7 +423,6 @@ namespace Boidsish {
 	private:
 		std::map<int, std::shared_ptr<EntityBase>> entities_;
 		float                                      last_time_;
-		int                                        next_id_;
 		task_thread_pool::task_thread_pool&        thread_pool_;
 		mutable std::vector<std::function<void()>> modification_requests_;
 		mutable std::vector<std::function<void()>> post_frame_requests_;

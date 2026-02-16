@@ -66,7 +66,7 @@ namespace Boidsish {
 			std::weak_ptr<Graph> parent_;
 		};
 
-		Graph(int id = 0, float x = 0.0f, float y = 0.0f, float z = 0.0f);
+		Graph(float x = 0.0f, float y = 0.0f, float z = 0.0f);
 		~Graph();
 
 		void      SetupBuffers() const;

@@ -15,7 +15,7 @@ using namespace Boidsish;
 
 class PlayerEntity: public Entity<Dot> {
 public:
-	PlayerEntity(int id): Entity<Dot>(id) {
+	PlayerEntity(): Entity<Dot>() {
 		SetSize(2.0f);
 		SetColor(1.0f, 1.0f, 1.0f);
 		SetTrailLength(100);

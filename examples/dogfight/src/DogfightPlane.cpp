@@ -22,8 +22,8 @@ namespace Boidsish {
 		return (error_vector * kP) - (derivative_term * kD);
 	}
 
-	DogfightPlane::DogfightPlane(int id, Team team, Vector3 pos):
-		Entity<Model>(id, "assets/dogplane.obj", true), team_(team), eng_(rd_()) {
+	DogfightPlane::DogfightPlane(Team team, Vector3 pos):
+		Entity<Model>("assets/dogplane.obj", true), team_(team), eng_(rd_()) {
 		SetPosition(pos);
 		if (team == Team::RED) {
 			SetColor(1.0f, 0.1f, 0.1f, 1.0f);
@@ -49,7 +49,6 @@ namespace Boidsish {
 		std::dynamic_pointer_cast<Model>(shape_)->SetBaseRotation(
 			glm::angleAxis(glm::radians(90.0f), glm::vec3(0.0f, 1.0f, 0.0f))
 		);
-		shape_->SetInstanced(true);
 
 		UpdateShape();
 	}
@@ -60,7 +59,7 @@ namespace Boidsish {
 
 		if (exploded_) {
 			if (lived_ > 2.0f) {
-				handler.QueueRemoveEntity(id_);
+				handler.QueueRemoveEntity(GetId());
 			}
 			return;
 		}
@@ -84,7 +83,7 @@ namespace Boidsish {
 
 		// 1. Analyze situation
 		for (auto& other : nearby) {
-			if (other->GetId() == id_)
+			if (other->GetId() == GetId())
 				continue;
 
 			glm::vec3 to_other = other->GetPosition().Toglm() - pos.Toglm();
@@ -190,7 +189,7 @@ namespace Boidsish {
 			int     allies = 0;
 
 			for (auto& other : nearby) {
-				if (other->GetId() == id_ || other->GetTeam() != team_)
+				if (other->GetId() == GetId() || other->GetTeam() != team_)
 					continue;
 				cohesion += other->GetPosition();
 				alignment += other->GetVelocity();

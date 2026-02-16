@@ -19,7 +19,7 @@ namespace Boidsish {
 		VectorDemoHandler(task_thread_pool::task_thread_pool& thread_pool, Visualizer& viz);
 		void PreTimestep(float time, float delta_time) override;
 
-		void AddEntity(int id, std::shared_ptr<EntityBase> entity) override;
+		void AddEntity(std::shared_ptr<EntityBase> entity) override;
 		void RemoveEntity(int id) override;
 	};
 
