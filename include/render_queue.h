@@ -34,6 +34,11 @@ namespace Boidsish {
         const std::vector<RenderPacket>& GetPackets() const { return m_packets; }
 
         /**
+         * @brief Get the list of packets for modification (e.g., updating sort keys).
+         */
+        std::vector<RenderPacket>& GetPacketsMutable() { return m_packets; }
+
+        /**
          * @brief Clear the queue for the next frame.
          */
         void Clear();
