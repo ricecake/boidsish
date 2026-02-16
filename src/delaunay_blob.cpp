@@ -46,7 +46,7 @@ namespace Boidsish {
 
 	// === Constructor / Destructor ===
 
-	DelaunayBlob::DelaunayBlob(int id): Shape(id), id_(id) {
+	DelaunayBlob::DelaunayBlob(): Shape() {
 		// GL buffers initialized lazily on first render
 	}
 
@@ -57,7 +57,6 @@ namespace Boidsish {
 	DelaunayBlob::DelaunayBlob(DelaunayBlob&& other) noexcept: Shape(std::move(other)) {
 		points_ = std::move(other.points_);
 		next_point_id_ = other.next_point_id_;
-		id_ = other.id_;
 		render_mode_ = other.render_mode_;
 		alpha_ = other.alpha_;
 		wireframe_color_ = other.wireframe_color_;
@@ -89,7 +88,6 @@ namespace Boidsish {
 			Shape::operator=(std::move(other));
 			points_ = std::move(other.points_);
 			next_point_id_ = other.next_point_id_;
-			id_ = other.id_;
 			render_mode_ = other.render_mode_;
 			alpha_ = other.alpha_;
 			wireframe_color_ = other.wireframe_color_;

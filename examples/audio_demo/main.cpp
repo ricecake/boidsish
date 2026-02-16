@@ -15,7 +15,7 @@ using namespace Boidsish;
 // A simple entity that moves in a circle
 class MovingSoundEntity: public Entity<Dot> {
 public:
-	MovingSoundEntity(int id, float radius): Entity<Dot>(id), m_radius(radius) {
+	MovingSoundEntity(float radius): Entity<Dot>(), m_radius(radius) {
 		shape_ = std::make_shared<Dot>(0, 0, 0, 10.0f, 1.0f, 0.0f, 0.0f, 1.0f, 0);
 	}
 

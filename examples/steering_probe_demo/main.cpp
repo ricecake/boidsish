@@ -27,13 +27,12 @@ struct DemoInput {
 
 class DemoPlayer: public Entity<Dot> {
 public:
-	DemoPlayer(int id): Entity<Dot>(id) {
+	DemoPlayer(): Entity<Dot>() {
 		SetSize(20.0f);
 		SetColor(0.0f, 0.8f, 1.0f);
 		orientation_ = glm::quat(1.0f, 0.0f, 0.0f, 0.0f);
 		forward_speed_ = 40.0f;
 		SetTrailLength(100);
-		shape_->SetInstanced(true);
 	}
 
 	void UpdateEntity(const EntityHandler& /*handler*/, float /*time*/, float delta_time) override {
@@ -119,7 +118,6 @@ int main() {
 		auto probeDot = std::make_shared<Dot>();
 		probeDot->SetSize(80.0f);
 		probeDot->SetColor(1.0f, 0.0f, 1.0f);
-		probeDot->SetInstanced(true);
 		visualizer->AddShape(probeDot);
 
 		auto scoreIndicator = visualizer->AddHudScore();

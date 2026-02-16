@@ -12,17 +12,14 @@ namespace Boidsish {
 		enum class Style { SOLID = 0, LASER = 1 };
 
 		Line(
-			int       id = 0,
 			glm::vec3 start = glm::vec3(0.0f),
 			glm::vec3 end = glm::vec3(0.0f),
-			float     width = 0.1f,
+			float     width = 1.0f,
 			float     r = 1.0f,
 			float     g = 1.0f,
 			float     b = 1.0f,
 			float     a = 1.0f
 		);
-
-		Line(glm::vec3 start, glm::vec3 end, float width = 1.0f);
 
 		void      render() const override;
 		void      render(Shader& shader, const glm::mat4& model_matrix) const override;
@@ -49,16 +46,17 @@ namespace Boidsish {
 		static void InitLineMesh();
 		static void DestroyLineMesh();
 
-		std::string GetInstanceKey() const override { return "Line:" + std::to_string(GetId()); }
+		std::string GetInstanceKey() const override { return "Line:" + std::to_string(static_cast<int>(style_)); }
+
+	public:
+		static unsigned int line_vao_;
+		static unsigned int line_vbo_;
+		static int          line_vertex_count_;
 
 	private:
 		glm::vec3 end_;
 		float     width_;
 		Style     style_ = Style::SOLID;
-
-		static unsigned int line_vao_;
-		static unsigned int line_vbo_;
-		static int          line_vertex_count_;
 	};
 
 } // namespace Boidsish

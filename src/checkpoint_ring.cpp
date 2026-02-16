@@ -104,8 +104,8 @@ namespace Boidsish {
 		return model;
 	}
 
-	CheckpointRing::CheckpointRing(int id, float radius, CheckpointStyle style, Callback callback):
-		Entity<CheckpointRingShape>(id, radius, style),
+	CheckpointRing::CheckpointRing(float radius, CheckpointStyle style, Callback callback):
+		Entity<CheckpointRingShape>(radius, style),
 		callback_(callback),
 		lifespan_(Constants::Class::Checkpoint::DefaultLifespan()) {}
 
@@ -119,7 +119,7 @@ namespace Boidsish {
 	void CheckpointRing::UpdateEntity(const EntityHandler& handler, float /*time*/, float delta_time) {
 		age_ += delta_time;
 		if (age_ > lifespan_) {
-			handler.QueueRemoveEntity(id_);
+			handler.QueueRemoveEntity(GetId());
 			return;
 		}
 
@@ -151,7 +151,7 @@ namespace Boidsish {
 							}
 						}
 						// IRRELEVANT now that it has been passed
-						handler.QueueRemoveEntity(id_);
+						handler.QueueRemoveEntity(GetId());
 						return;
 					}
 				}

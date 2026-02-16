@@ -14,7 +14,7 @@ std::vector<std::shared_ptr<Shape>> TrailExample(float time) {
 	std::vector<std::shared_ptr<Shape>> shapes;
 
 	// Example: Graph with spline smoothing
-	auto graph = std::make_shared<Graph>(0, 0, 0, 0);
+	auto graph = std::make_shared<Graph>(0, 0, 0);
 
 	// Add vertices in a chain
 	graph->AddVertex(Vector3(-4, 0, 0), 10.0f, 1, 0, 0, 1);
@@ -33,13 +33,13 @@ std::vector<std::shared_ptr<Shape>> TrailExample(float time) {
 
 	// Example: Simple moving dot with trail
 	// Create a moving dot with a trail
-	auto dot = std::make_shared<Dot>(1, sin(time) * 3.0f, cos(time * 0.7f) * 2.0f, sin(time * 0.5f) * 1.5f);
+	auto dot = std::make_shared<Dot>(sin(time) * 3.0f, cos(time * 0.7f) * 2.0f, sin(time * 0.5f) * 1.5f);
 	dot->SetTrailLength(100); // Enable trails
 	dot->SetColor(1.0f, 0.5f, 0.0f);
 	shapes.push_back(dot);
 
 	// Another moving dot
-	auto dot2 = std::make_shared<Dot>(2, cos(time * 1.3f) * 2.5f, sin(time * 0.9f) * 2.0f, cos(time * 0.8f) * 1.0f);
+	auto dot2 = std::make_shared<Dot>(cos(time * 1.3f) * 2.5f, sin(time * 0.9f) * 2.0f, cos(time * 0.8f) * 1.0f);
 	dot2->SetTrailLength(150);
 	dot2->SetColor(0.0f, 1.0f, 0.5f);
 	shapes.push_back(dot2);

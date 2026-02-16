@@ -95,7 +95,7 @@ int main() {
 
 		std::shared_ptr<SteeringProbe> sp = std::make_shared<SteeringProbe>(visualizer->GetTerrain());
 
-		auto dot = std::make_shared<Dot>(2343433);
+		auto dot = std::make_shared<Dot>();
 		dot->SetSize(940.0f);
 		// dot->SetInstanced(true);
 		// visualizer->AddShape(dot);

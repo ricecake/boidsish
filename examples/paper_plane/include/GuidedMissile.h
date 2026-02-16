@@ -15,7 +15,7 @@ namespace Boidsish {
 
 	class GuidedMissile: public Entity<Model> {
 	public:
-		GuidedMissile(int id = 0, Vector3 pos = {0, 0, 0});
+		GuidedMissile(Vector3 pos = {0, 0, 0});
 
 		void UpdateEntity(const EntityHandler& handler, float time, float delta_time) override;
 		void Explode(const EntityHandler& handler, bool hit_target);

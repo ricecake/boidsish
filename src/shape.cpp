@@ -13,6 +13,7 @@
 namespace Boidsish {
 
 	// Initialize static members
+	std::atomic<int>        Shape::next_id_{0};
 	unsigned int            Shape::sphere_vao_ = 0;
 	unsigned int            Shape::sphere_vbo_ = 0;
 	unsigned int            Shape::sphere_ebo_ = 0;
@@ -163,6 +164,43 @@ namespace Boidsish {
 		glDrawElements(GL_TRIANGLES, sphere_vertex_count_, GL_UNSIGNED_INT, 0);
 		glBindVertexArray(0);
 	}
+
+	Shape::Shape(
+		float x,
+		float y,
+		float z,
+		float r,
+		float g,
+		float b,
+		float a,
+		int   trail_length,
+		float trail_thickness
+	):
+		id_(next_id_++),
+		x_(x),
+		y_(y),
+		z_(z),
+		r_(r),
+		g_(g),
+		b_(b),
+		a_(a),
+		rotation_(glm::quat(1.0f, 0.0f, 0.0f, 0.0f)),
+		scale_(glm::vec3(1.0f)),
+		local_aabb_(glm::vec3(-1.0f), glm::vec3(1.0f)),
+		clamp_to_terrain_(false),
+		ground_offset_(0.0f),
+		trail_length_(trail_length),
+		trail_thickness_(trail_thickness),
+		trail_iridescent_(false),
+		is_colossal_(false),
+		last_position_(x, y, z),
+		trail_pbr_(false),
+		trail_roughness_(0.3f),
+		trail_metallic_(0.0f),
+		roughness_(0.5f),
+		metallic_(0.0f),
+		ao_(1.0f),
+		use_pbr_(false) {}
 
 	void Shape::LookAt(const glm::vec3& target, const glm::vec3& up) {
 		rotation_ = glm::quat_cast(glm::inverse(glm::lookAt(glm::vec3(x_, y_, z_), target, up)));

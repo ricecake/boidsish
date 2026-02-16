@@ -67,8 +67,8 @@ namespace Boidsish {
 		return target_pos + (target_vel * time_to_impact);
 	}
 
-	GuidedMissile::GuidedMissile(int id, Vector3 pos):
-		Entity<Model>(id, "assets/Missile.obj", true), eng_(rd_()), jamming_intensity_(0.0f) {
+	GuidedMissile::GuidedMissile(Vector3 pos):
+		Entity<Model>("assets/Missile.obj", true), eng_(rd_()), jamming_intensity_(0.0f) {
 		auto orientation = glm::angleAxis(glm::radians(90.0f), glm::vec3(1.0f, 0.0f, 0.0f));
 
 		auto dist = std::uniform_int_distribution(0, 1);
@@ -87,7 +87,6 @@ namespace Boidsish {
 		std::dynamic_pointer_cast<Model>(shape_)->SetBaseRotation(
 			glm::angleAxis(glm::radians(90.0f), glm::vec3(0.0f, 1.0f, 0.0f))
 		);
-		shape_->SetInstanced(true);
 	}
 
 	void GuidedMissile::UpdateEntity(const EntityHandler& handler, float time, float delta_time) {
@@ -104,7 +103,7 @@ namespace Boidsish {
 
 		if (exploded_) {
 			if (lived_ >= kExplosionDisplayTime) {
-				handler.QueueRemoveEntity(id_);
+				handler.QueueRemoveEntity(GetId());
 			}
 			return;
 		}

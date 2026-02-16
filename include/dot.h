@@ -13,8 +13,7 @@ namespace Boidsish {
 	class Dot: public Shape {
 	public:
 		// Constructor with proper parameter names
-		Dot(int   id = 0,
-		    float x = 0.0f,
+		Dot(float x = 0.0f,
 		    float y = 0.0f,
 		    float z = 0.0f,
 		    float size = 1.0f,

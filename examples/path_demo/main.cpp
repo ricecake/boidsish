@@ -10,7 +10,7 @@ using namespace Boidsish;
 
 class PathDemoEntity: public Entity<Dot> {
 public:
-	PathDemoEntity(int id): Entity(id) {}
+	PathDemoEntity(): Entity() {}
 
 	void UpdateEntity(const EntityHandler& handler, float time, float delta_time) override {
 		// Nothing to do here, the path following is handled by the EntityHandler
@@ -65,10 +65,10 @@ int main(int argc, char** argv) {
 
 		auto entity_handler = std::make_shared<EntityHandler>(vis.GetThreadPool());
 		for (int i = 0; i < 10; ++i) {
-			auto entity = std::make_shared<PathDemoEntity>(i);
+			auto entity = std::make_shared<PathDemoEntity>();
 			entity->SetPosition(-10 + i * 2, 0, 0);
 			entity->SetPath(path, 5.0f + (float)i / 2.0f);
-			entity_handler->AddEntity(i, entity);
+			entity_handler->AddEntity(entity);
 		}
 
 		vis.AddShapeHandler([entity_handler](float time) { return (*entity_handler)(time); });

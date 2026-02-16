@@ -15,7 +15,7 @@
 
 namespace Boidsish {
 
-	Path::Path(int id, float x, float y, float z): Shape(id, x, y, z, 1.0f, 1.0f, 1.0f, 1.0f, 0) {}
+	Path::Path(float x, float y, float z): Shape(x, y, z, 1.0f, 1.0f, 1.0f, 1.0f, 0) {}
 
 	Path::~Path() {
 		if (buffers_initialized_) {
@@ -113,8 +113,7 @@ namespace Boidsish {
 		}
 
 		for (const auto& waypoint : waypoints_) {
-			Dot(0,
-			    waypoint.position.x + GetX(),
+			Dot(waypoint.position.x + GetX(),
 			    waypoint.position.y + GetY(),
 			    waypoint.position.z + GetZ(),
 			    waypoint.size,

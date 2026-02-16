@@ -12,7 +12,7 @@ using namespace Boidsish;
 class RocketEntity: public Entity<Dot> {
 public:
 	// Add a constructor that accepts an ID to match the AddEntity template
-	RocketEntity(int id = 0): Entity<Dot>(id) {
+	RocketEntity(): Entity<Dot>() {
 		// Use the EntityBase setters to configure the trail
 		SetTrailLength(500);
 		SetTrailRocket(true);

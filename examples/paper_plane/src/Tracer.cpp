@@ -5,10 +5,8 @@
 
 namespace Boidsish {
 
-	Tracer::Tracer(int id, Vector3 pos, glm::quat orientation, glm::vec3 velocity, glm::vec3 color):
+	Tracer::Tracer(Vector3 pos, glm::quat orientation, glm::vec3 velocity, glm::vec3 color):
 		Entity<Line>(
-			id,
-			id,
 			pos.Toglm(),
 			pos.Toglm() + glm::normalize(velocity) * 2.0f,
 			0.15f,
@@ -29,7 +27,7 @@ namespace Boidsish {
 	void Tracer::UpdateEntity(const EntityHandler& handler, float time, float delta_time) {
 		lived_ += delta_time;
 		if (lived_ > lifetime_) {
-			handler.QueueRemoveEntity(id_);
+			handler.QueueRemoveEntity(GetId());
 			return;
 		}
 
@@ -45,7 +43,7 @@ namespace Boidsish {
 		// Terrain collision check
 		auto [height, terrain_norm] = handler.GetTerrainPropertiesAtPoint(current_pos.x, current_pos.z);
 		if (current_pos.y <= height) {
-			handler.QueueRemoveEntity(id_);
+			handler.QueueRemoveEntity(GetId());
 			// Small impact effect
 			auto      vis = handler.vis;
 			glm::vec3 spark_norm = terrain_norm;

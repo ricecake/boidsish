@@ -8,7 +8,7 @@
 
 namespace Boidsish {
 
-	SdfBoid::SdfBoid(int id, bool predator): Entity<Dot>(id), is_predator_(predator) {
+	SdfBoid::SdfBoid(bool predator): Entity<Dot>(), is_predator_(predator) {
 		if (predator) {
 			SetColor(1.0f, 0.1f, 0.1f);
 			SetSize(12.0f);
@@ -31,7 +31,7 @@ namespace Boidsish {
 
 		auto entities = handler.GetAllEntities();
 		for (auto const& [id, other_base] : entities) {
-			if (id == id_)
+			if (id == GetId())
 				continue;
 			auto other = std::dynamic_pointer_cast<SdfBoid>(other_base);
 			if (!other)
@@ -103,7 +103,7 @@ namespace Boidsish {
 		// Add boids
 		for (int i = 0; i < 50; ++i) {
 			bool is_predator = (i % 2); // One predator
-			auto boid = std::make_shared<SdfBoid>(i, is_predator);
+			auto boid = std::make_shared<SdfBoid>(is_predator);
 			boid->SetPosition(dis(gen), dis(gen), dis(gen));
 			boid->SetVelocity(dis_vel(gen), dis_vel(gen), dis_vel(gen));
 
@@ -119,7 +119,7 @@ namespace Boidsish {
 			int sid = visualizer->AddSdfSource(source);
 			boid->SetSdfSourceId(sid);
 
-			AddEntity(i, std::dynamic_pointer_cast<EntityBase>(boid));
+			AddEntity(std::dynamic_pointer_cast<EntityBase>(boid));
 		}
 	}
 

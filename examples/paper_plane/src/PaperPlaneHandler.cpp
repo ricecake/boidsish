@@ -249,17 +249,7 @@ namespace Boidsish {
 					glm::vec3 up_vector = glm::vec3(0.0f, 1.0f, 0.0f);
 					glm::quat terrain_alignment = glm::rotation(up_vector, terrain_normal);
 
-					// Use a more robust ID based on chunk indices to avoid collisions and NaNs
-					int ix = static_cast<int>(
-						std::round(chunk_pos.x / static_cast<float>(Constants::Class::Terrain::ChunkSize()))
-					);
-					int iz = static_cast<int>(
-						std::round(chunk_pos.z / static_cast<float>(Constants::Class::Terrain::ChunkSize()))
-					);
-					int id = 0x50000000 | ((ix + 1024) << 11) | (iz + 1024);
-
-					QueueAddEntityWithId<GuidedMissileLauncher>(
-						id,
+					int id = AddEntity<GuidedMissileLauncher>(
 						Vector3(world_pos.x, terrain_h, world_pos.z),
 						terrain_alignment
 					);

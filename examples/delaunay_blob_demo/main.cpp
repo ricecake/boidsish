@@ -23,8 +23,8 @@ using namespace Boidsish;
 
 class BlobBoid: public Entity<Dot> {
 public:
-	BlobBoid(int id, std::shared_ptr<DelaunayBlob> blob, int point_id):
-		Entity<Dot>(id), blob_(blob), point_id_(point_id) {
+	BlobBoid(std::shared_ptr<DelaunayBlob> blob, int point_id):
+		Entity<Dot>(), blob_(blob), point_id_(point_id) {
 		// Small visualization dot at the control point
 		SetSize(0.5f);
 		SetColor(1.0f, 0.3f, 0.1f);
@@ -201,7 +201,7 @@ int main() {
 	camera.yaw = -90.0f;
 
 	// Create the blob shape
-	auto blob = std::make_shared<DelaunayBlob>(0);
+	auto blob = std::make_shared<DelaunayBlob>();
 	blob->SetColor(0.3f, 0.5f, 0.9f);
 	blob->SetAlpha(0.85f);
 	blob->SetRenderMode(DelaunayBlob::RenderMode::SolidWithWire);
@@ -230,7 +230,7 @@ int main() {
 		int point_id = blob->AddPoint(pos);
 
 		// Create boid entity that controls this point
-		auto boid = std::make_shared<BlobBoid>(i + 1, blob, point_id);
+		auto boid = std::make_shared<BlobBoid>(blob, point_id);
 		boid->SetPosition(pos);
 		boid->SetBlobCenter(blob_center);
 		boid->SetMaxRadius(22.0f);
@@ -238,7 +238,7 @@ int main() {
 		// Random initial velocity
 		boid->SetVelocity(glm::vec3(dist(gen) * 5.0f, 0.0f, dist(gen) * 0.5f));
 
-		handler.AddEntity(boid->GetId(), boid);
+		handler.AddEntity(boid);
 	}
 
 	// Initial tetrahedralization

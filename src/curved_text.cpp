@@ -25,7 +25,7 @@ namespace Boidsish {
 		const glm::vec3&   text_normal,
 		float              duration
 	):
-		Text(text, font_path, font_size, depth, CENTER, 0, position.x, position.y, position.z, 1, 1, 1, 1, false),
+		Text(text, font_path, font_size, depth, CENTER, position.x, position.y, position.z, 1, 1, 1, 1, false),
 		center_(position),
 		radius_(radius),
 		angle_rad_(glm::radians(angle_degrees)),

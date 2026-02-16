@@ -20,7 +20,6 @@ namespace Boidsish {
 		float              font_size,
 		float              depth,
 		Justification      justification,
-		int                id,
 		float              x,
 		float              y,
 		float              z,
@@ -30,7 +29,7 @@ namespace Boidsish {
 		float              a,
 		bool               generate_mesh
 	):
-		Shape(id, x, y, z, r, g, b, a),
+		Shape(x, y, z, r, g, b, a),
 		text_(text),
 		font_path_(font_path),
 		font_size_(font_size),

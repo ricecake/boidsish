@@ -6,7 +6,7 @@
 // A simple entity for testing the path constraint
 class ConstrainedEntity: public Boidsish::Entity<Boidsish::Dot> {
 public:
-	ConstrainedEntity(int id): Boidsish::Entity<Boidsish::Dot>(id) {}
+	ConstrainedEntity(): Boidsish::Entity<Boidsish::Dot>() {}
 
 	void UpdateEntity(const Boidsish::EntityHandler&, float, float) override {
 		// The entity's movement is solely determined by its velocity,
@@ -26,7 +26,7 @@ public:
 		path->SetColor(1.0f, 0.0f, 0.0f); // Set to red
 
 		// 2. Create an entity
-		auto entity = std::make_shared<ConstrainedEntity>(0);
+		auto entity = std::make_shared<ConstrainedEntity>();
 		entity->SetPosition(0, 0, 0);
 
 		// Set a velocity that will move it away from the path
@@ -36,7 +36,7 @@ public:
 		float constraint_radius = 2.0f;
 		entity->SetPathConstraint(path, constraint_radius);
 
-		AddEntity(0, entity);
+		AddEntity(entity);
 		paths_.push_back(path);
 	}
 
