@@ -59,6 +59,7 @@ namespace Boidsish {
 		GetAppSettingBool("render_floor", true);
 		GetAppSettingBool("render_skybox", true);
 		GetAppSettingBool("artistic_effect_ripple", false);
+		GetAppSettingBool("use_voxel_terrain", false);
 		GetAppSettingBool("artistic_effect_color_shift", false);
 		GetAppSettingBool("artistic_effect_black_and_white", false);
 		GetAppSettingBool("artistic_effect_negative", false);

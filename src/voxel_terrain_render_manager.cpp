@@ -150,7 +150,7 @@ namespace Boidsish {
 				// East (+X)
 				float he = (i < chunk_size_ - 1) ? get_height(i + 1, j) : -1000.0f;
 				if (h > he) {
-					add_quad(p3, p2, glm::vec3((i + 1) * step, he, j * step), glm::vec3((i + 1) * he, he, (j + 1) * step), glm::vec3(1, 0, 0));
+					add_quad(p3, p2, glm::vec3((i + 1) * step, he, j * step), glm::vec3((i + 1) * step, he, (j + 1) * step), glm::vec3(1, 0, 0));
 				}
 				// West (-X)
 				float hw = (i > 0) ? get_height(i - 1, j) : -1000.0f;
