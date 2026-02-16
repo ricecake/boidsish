@@ -248,6 +248,7 @@ namespace Boidsish {
 
 		bool                                           paused = false;
 		float                                          simulation_time = 0.0f;
+		float                                          time_accumulator = 0.0f;
 		float                                          time_scale = 1.0f;
 		float                                          ripple_strength = 0.0f;
 		std::chrono::high_resolution_clock::time_point last_frame;
@@ -1917,6 +1918,15 @@ namespace Boidsish {
 
 	void Visualizer::Update() {
 		impl->frame_count_++;
+
+		// Periodically clean up expired chase targets to prevent unbounded vector growth
+		if (impl->frame_count_ % 600 == 0) {
+			auto it = std::remove_if(impl->chase_targets_.begin(), impl->chase_targets_.end(), [](const auto& wp) {
+				return wp.expired();
+			});
+			impl->chase_targets_.erase(it, impl->chase_targets_.end());
+		}
+
 		impl->hud_manager->Update(impl->input_state.delta_time, impl->camera);
 
 		// Reset per-frame input state
@@ -1942,12 +1952,27 @@ namespace Boidsish {
 		}
 
 		if (!impl->paused) {
-			// TODO: Implement a fixed timestep for simulation stability.
-			// See performance_and_quality_audit.md#4-fixed-timestep-for-simulation-stability
-			impl->simulation_time += impl->time_scale * delta_time;
-		}
+			const float fixed_dt = 1.0f / 60.0f;
+			impl->time_accumulator += impl->time_scale * delta_time;
 
-		impl->light_manager.Update(impl->input_state.delta_time);
+			// Limit accumulator to prevent "spiral of death" on extremely low framerates
+			if (impl->time_accumulator > 0.25f)
+				impl->time_accumulator = 0.25f;
+
+			while (impl->time_accumulator >= fixed_dt) {
+				impl->simulation_time += fixed_dt;
+
+				// Update stateful systems with fixed timestep
+				impl->light_manager.Update(fixed_dt);
+				impl->fire_effect_manager->Update(fixed_dt, impl->simulation_time);
+				impl->mesh_explosion_manager->Update(fixed_dt, impl->simulation_time);
+				impl->sound_effect_manager->Update(fixed_dt);
+				impl->shockwave_manager->Update(fixed_dt);
+				impl->clone_manager->Update(impl->simulation_time, impl->camera.pos());
+
+				impl->time_accumulator -= fixed_dt;
+			}
+		}
 
 		// --- Adaptive Tessellation Logic ---
 		glm::vec3 current_camera_pos(impl->camera.x, impl->camera.y, impl->camera.z);
@@ -2022,6 +2047,8 @@ namespace Boidsish {
 	void Visualizer::Render() {
 		impl->RefreshFrameConfig();
 		impl->shapes.clear();
+		// Pre-allocate to avoid frequent reallocations; include headroom for transient effects
+		impl->shapes.reserve(impl->persistent_shapes.size() + 128);
 
 		// Update and collect transient effects
 		auto it = impl->transient_effects.begin();
@@ -2159,12 +2186,6 @@ namespace Boidsish {
 			impl->terrain_generator->Update(generator_frustum, impl->camera);
 		}
 
-		// Update clone manager
-		impl->clone_manager->Update(impl->simulation_time, impl->camera.pos());
-		impl->fire_effect_manager->Update(impl->input_state.delta_time, impl->simulation_time);
-		impl->mesh_explosion_manager->Update(impl->input_state.delta_time, impl->simulation_time);
-		impl->sound_effect_manager->Update(impl->input_state.delta_time);
-		impl->shockwave_manager->Update(impl->input_state.delta_time);
 		if (impl->akira_effect_manager && impl->terrain_generator) {
 			impl->akira_effect_manager->Update(impl->input_state.delta_time, *impl->terrain_generator);
 		}
@@ -2248,12 +2269,8 @@ namespace Boidsish {
 
 		// Update Frustum UBO for GPU-side culling
 		{
-			glm::mat4 view = glm::lookAt(
-				impl->camera.pos(),
-				impl->camera.pos() + impl->camera.front(),
-				impl->camera.up()
-			);
-			Frustum render_frustum = impl->CalculateFrustum(view, impl->projection);
+			// Reuse the view_matrix calculated at the start of Render()
+			Frustum render_frustum = impl->CalculateFrustum(view_matrix, impl->projection);
 
 			// Pack frustum planes into vec4 array (normal.xyz, distance.w)
 			glm::vec4 frustum_planes[6];
