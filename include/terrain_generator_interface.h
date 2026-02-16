@@ -114,29 +114,28 @@ namespace Boidsish {
 		// ==================== Terrain Queries ====================
 
 		/**
-		 * @brief Get terrain height and surface normal at a world position.
+		 * @brief Calculate terrain height and surface normal at a world position.
 		 *
-		 * Uses procedural generation or cached data to determine the terrain
-		 * surface properties. Applies Phong tessellation interpolation for
-		 * smooth results matching the GPU rendering.
+		 * Uses procedural generation to determine the terrain surface properties.
+		 * Applies Phong tessellation interpolation for smooth results matching the GPU rendering.
 		 *
 		 * @param x World X coordinate
 		 * @param z World Z coordinate
 		 * @return Tuple of (height, surface_normal)
 		 */
-		virtual std::tuple<float, glm::vec3> GetPointProperties(float x, float z) const = 0;
+		virtual std::tuple<float, glm::vec3> CalculateTerrainPropertiesAtPoint(float x, float z) const = 0;
 
 		/**
-		 * @brief Get terrain properties using cached chunk data when available.
+		 * @brief Get terrain properties at a point, preferring cached chunk data.
 		 *
-		 * Faster than GetPointProperties() when querying within visible terrain.
+		 * Much faster than CalculateTerrainPropertiesAtPoint() when querying within visible terrain.
 		 * Falls back to procedural generation for uncached areas.
 		 *
 		 * @param x World X coordinate
 		 * @param z World Z coordinate
 		 * @return Tuple of (height, surface_normal)
 		 */
-		virtual std::tuple<float, glm::vec3> GetCachedPointProperties(float x, float z) const = 0;
+		virtual std::tuple<float, glm::vec3> GetTerrainPropertiesAtPoint(float x, float z) const = 0;
 
 		/**
 		 * @brief Check if a point is below the terrain surface.
@@ -314,6 +313,7 @@ namespace Boidsish {
 		 * @return Vector of 3D path points on terrain surface
 		 */
 		virtual std::vector<glm::vec3> GetPath(glm::vec2 start_pos, int num_points, float step_size) const = 0;
+		virtual glm::vec3              GetPathData(float x, float z) const = 0;
 
 	protected:
 		// Protected constructor - only derived classes can instantiate

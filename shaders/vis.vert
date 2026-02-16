@@ -140,7 +140,7 @@ void main() {
 		vec4 world_pos = model * vec4(displacedPos * 50, 1.0);
 		world_pos.xyz += skyPositionOffset;
 		gl_Position = projection * staticView * world_pos;
-		gl_Position = gl_Position.xyww;
+		gl_Position.z = gl_Position.w * 0.99999;
 		FragPos = world_pos.xyz;
 	} else {
 		gl_Position = projection * view * vec4(FragPos, 1.0);

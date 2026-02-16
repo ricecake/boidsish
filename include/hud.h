@@ -221,6 +221,8 @@ namespace Boidsish {
 
 		void SetValue(int value) { m_value = value; }
 
+		int GetValue() const { return m_value; }
+
 		void AddScore(int delta, const std::string& label = "");
 
 	private:
@@ -260,6 +262,31 @@ namespace Boidsish {
 		glm::vec2                m_icon_size;
 		float                    m_spacing;
 		int                      m_selectedIndex = 0;
+	};
+
+	class HudMessage: public HudElement {
+	public:
+		HudMessage(
+			const std::string& message = "",
+			HudAlignment       alignment = HudAlignment::MIDDLE_CENTER,
+			glm::vec2          position = {0, 0},
+			float              fontSizeScale = 2.0f
+		):
+			HudElement(alignment, position), m_message(message), m_fontSizeScale(fontSizeScale) {}
+
+		void Draw(HudManager& manager) override;
+
+		void SetMessage(const std::string& message) { m_message = message; }
+
+		const std::string& GetMessage() const { return m_message; }
+
+		void SetFontSizeScale(float scale) { m_fontSizeScale = scale; }
+
+		float GetFontSizeScale() const { return m_fontSizeScale; }
+
+	private:
+		std::string m_message;
+		float       m_fontSizeScale;
 	};
 
 } // namespace Boidsish

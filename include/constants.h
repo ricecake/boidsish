@@ -418,6 +418,52 @@ namespace Boidsish {
 					return 20.0f;
 				}
 			} // namespace Akira
+
+			namespace Checkpoint {
+				constexpr float DefaultRadius() {
+					return 10.0f;
+				}
+
+				constexpr float DefaultHaloWidth() {
+					return 2.0f;
+				}
+
+				constexpr float DefaultAuraWidth() {
+					return 5.0f;
+				}
+
+				constexpr float DefaultLifespan() {
+					return 60.0f;
+				}
+
+				namespace Colors {
+					constexpr float GoldR = 1.0f, GoldG = 0.84f, GoldB = 0.0f;
+					constexpr float SilverR = 0.75f, SilverG = 0.75f, SilverB = 0.75f;
+					constexpr float BlackR = 0.01f, BlackG = 0.01f, BlackB = 0.01f;
+					constexpr float BlueR = 0.0f, BlueG = 0.5f, BlueB = 1.0f;
+					constexpr float NeonGreenR = 0.2f, NeonGreenG = 1.0f, NeonGreenB = 0.2f;
+
+					constexpr glm::vec3 Gold() {
+						return glm::vec3(GoldR, GoldG, GoldB);
+					}
+
+					constexpr glm::vec3 Silver() {
+						return glm::vec3(SilverR, SilverG, SilverB);
+					}
+
+					constexpr glm::vec3 Black() {
+						return glm::vec3(BlackR, BlackG, BlackB);
+					}
+
+					constexpr glm::vec3 Blue() {
+						return glm::vec3(BlueR, BlueG, BlueB);
+					}
+
+					constexpr glm::vec3 NeonGreen() {
+						return glm::vec3(NeonGreenR, NeonGreenG, NeonGreenB);
+					}
+				} // namespace Colors
+			} // namespace Checkpoint
 		} // namespace Class
 	} // namespace Constants
 } // namespace Boidsish

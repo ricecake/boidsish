@@ -43,7 +43,7 @@ namespace Boidsish {
 		shape_->SetEnd(current_pos - dir * streak_length);
 
 		// Terrain collision check
-		auto [height, terrain_norm] = handler.GetCachedTerrainProperties(current_pos.x, current_pos.z);
+		auto [height, terrain_norm] = handler.GetTerrainPropertiesAtPoint(current_pos.x, current_pos.z);
 		if (current_pos.y <= height) {
 			handler.QueueRemoveEntity(id_);
 			// Small impact effect

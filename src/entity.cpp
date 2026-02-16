@@ -73,22 +73,25 @@ namespace Boidsish {
 		// Call post-timestep hook
 		PostTimestep(time, delta_time);
 
-		// Process modification requests
-		{
-			std::lock_guard<std::mutex> lock(requests_mutex_);
-			for (auto& request : modification_requests_) {
-				request();
-			}
-			modification_requests_.clear();
-		}
-
-		// Process main thread requests
+		// Process main thread requests (Visualizer actions)
+		// We do this BEFORE processing modification requests (removals)
+		// to ensure any actions enqueued by entities that are about to be removed
+		// can still access the entity state if needed.
 		{
 			std::lock_guard<std::mutex> lock(visualizer_mutex_);
 			for (auto& request : post_frame_requests_) {
 				request();
 			}
 			post_frame_requests_.clear();
+		}
+
+		// Process modification requests (Add/Remove Entity)
+		{
+			std::lock_guard<std::mutex> lock(requests_mutex_);
+			for (auto& request : modification_requests_) {
+				request();
+			}
+			modification_requests_.clear();
 		}
 
 		// Generate shapes from entity states
@@ -124,13 +127,9 @@ namespace Boidsish {
 		return {};
 	}
 
-	std::tuple<float, glm::vec3> EntityHandler::GetTerrainPointProperties(float x, float y) const {
-		return vis->GetTerrainPointProperties(x, y);
-	}
-
-	std::tuple<float, glm::vec3> EntityHandler::GetTerrainPointPropertiesThreadSafe(float x, float y) const {
+	std::tuple<float, glm::vec3> EntityHandler::CalculateTerrainPropertiesAtPoint(float x, float y) const {
 		if (vis) {
-			return vis->GetTerrainPointPropertiesThreadSafe(x, y);
+			return vis->CalculateTerrainPropertiesAtPoint(x, y);
 		}
 		return {0.0f, glm::vec3(0, 1, 0)};
 	}
@@ -140,14 +139,14 @@ namespace Boidsish {
 	}
 
 	const TerrainGenerator* EntityHandler::GetTerrainGenerator() const {
-		return vis->GetTerrainGenerator();
+		return dynamic_cast<const TerrainGenerator*>(vis->GetTerrain().get());
 	}
 
 	// ========== Cache-Preferring Terrain Query Implementations ==========
 
-	std::tuple<float, glm::vec3> EntityHandler::GetCachedTerrainProperties(float x, float z) const {
-		if (auto* gen = GetTerrainGenerator()) {
-			return gen->GetCachedPointProperties(x, z);
+	std::tuple<float, glm::vec3> EntityHandler::GetTerrainPropertiesAtPoint(float x, float z) const {
+		if (vis) {
+			return vis->GetTerrainPropertiesAtPoint(x, z);
 		}
 		return {0.0f, glm::vec3(0, 1, 0)};
 	}
@@ -194,6 +193,16 @@ namespace Boidsish {
 			return gen->IsPositionCached(x, z);
 		}
 		return false;
+	}
+
+	glm::vec3 EntityHandler::GetValidPlacement(const glm::vec3& suggested_pos, float clearance) const {
+		float terrain_h = 0.0f;
+		if (vis) {
+			auto [h, norm] = vis->GetTerrainPropertiesAtPoint(suggested_pos.x, suggested_pos.z);
+			terrain_h = h;
+		}
+		float min_y = std::max(0.0f, terrain_h) + clearance;
+		return glm::vec3(suggested_pos.x, std::max(suggested_pos.y, min_y), suggested_pos.z);
 	}
 
 	EntityHandler::~EntityHandler() {

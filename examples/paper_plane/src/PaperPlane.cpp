@@ -1,5 +1,6 @@
 #include "PaperPlane.h"
 
+#include "Beam.h"
 #include "CatBomb.h"
 #include "CatMissile.h"
 #include "PaperPlaneHandler.h" // For selected_weapon
@@ -13,7 +14,9 @@ namespace Boidsish {
 		Entity<Model>(id, "assets/Mesh_Cat.obj", true),
 		orientation_(glm::quat(1.0f, 0.0f, 0.0f, 0.0f)),
 		rotational_velocity_(glm::vec3(0.0f)),
-		forward_speed_(20.0f) {
+		forward_speed_(20.0f),
+		beam_id_(-1),
+		beam_spawn_queued_(false) {
 		rigid_body_.linear_friction_ = 0.01f;
 		rigid_body_.angular_friction_ = 0.01f;
 
@@ -48,6 +51,15 @@ namespace Boidsish {
 		if (!controller_)
 			return;
 
+		if (state_ == PlaneState::DEAD) {
+			SetVelocity(Vector3(0, 0, 0));
+			return;
+		}
+
+		if (state_ == PlaneState::ALIVE && health <= 0) {
+			state_ = PlaneState::DYING;
+		}
+
 		// --- Handle Super Speed State Machine ---
 		const float kBuildupDuration = 1.0f; // 1 second of suspense
 		const float kTaperingSpeed = 2.0f;   // 0.5 seconds to taper off
@@ -62,7 +74,7 @@ namespace Boidsish {
 					super_speed_state_ = SuperSpeedState::ACTIVE;
 					super_speed_intensity_ = 5.0f;
 					SetTrailRocket(true);
-					handler.vis->SetCameraShake(0.5f, 10.0f); // Continuous shake while active
+					handler.EnqueueVisualizerAction([&handler]() { handler.vis->SetCameraShake(0.5f, 10.0f); });
 				}
 				// While building up, plane slows down
 				forward_speed_ = glm::mix(forward_speed_, 0.0f, 1.0f - exp(-delta_time * 5.0f));
@@ -71,7 +83,7 @@ namespace Boidsish {
 			if (super_speed_state_ == SuperSpeedState::ACTIVE || super_speed_state_ == SuperSpeedState::BUILDUP) {
 				super_speed_state_ = SuperSpeedState::TAPERING;
 				SetTrailRocket(false);
-				handler.vis->SetCameraShake(0.0f, 0.0f); // Stop shake
+				handler.EnqueueVisualizerAction([&handler]() { handler.vis->SetCameraShake(0.0f, 0.0f); });
 			}
 
 			if (super_speed_state_ == SuperSpeedState::TAPERING) {
@@ -84,7 +96,9 @@ namespace Boidsish {
 		}
 
 		// Update visualizer with current intensity
-		handler.vis->SetSuperSpeedIntensity(super_speed_intensity_);
+		handler.EnqueueVisualizerAction([&handler, intensity = super_speed_intensity_]() {
+			handler.vis->SetSuperSpeedIntensity(intensity);
+		});
 
 		// --- Constants for flight model ---
 		const float kPitchSpeed = 1.5f; // * 0.5f;
@@ -101,8 +115,71 @@ namespace Boidsish {
 		const float kSpeedDecay = 30.0f;
 
 		auto pos = GetPosition();
-		auto [height, norm] = handler.vis->GetTerrainPointPropertiesThreadSafe(pos.x, pos.z);
+
+		// Handle Beam weapon (Weapon 3)
+		Beam* my_beam = nullptr;
+		if (beam_id_ >= 0) {
+			auto ent = handler.GetEntity(beam_id_);
+			my_beam = dynamic_cast<Beam*>(ent.get());
+			if (!my_beam || my_beam->GetOwnerId() != id_) {
+				my_beam = nullptr;
+				beam_id_ = -1;
+			}
+		}
+
+		if (!my_beam) {
+			auto beams = handler.GetEntitiesByType<Beam>();
+			for (auto b : beams) {
+				if (b->GetOwnerId() == id_) {
+					my_beam = b;
+					beam_id_ = b->GetId();
+					beam_spawn_queued_ = false;
+					break;
+				}
+			}
+		}
+
+		if (selected_weapon == 3) {
+			if (!my_beam && !beam_spawn_queued_) {
+				handler.QueueAddEntity<Beam>(id_);
+				beam_spawn_queued_ = true;
+			} else if (my_beam) {
+				my_beam->SetSelected(true);
+				my_beam->SetRequesting(controller_->fire);
+				my_beam->SetOffset(glm::vec3(0, 0, -0.5f)); // Nose offset
+			}
+		} else if (my_beam) {
+			my_beam->SetSelected(false);
+			my_beam->SetRequesting(false);
+		}
+
+		auto [height, norm] = handler.vis->GetTerrainPropertiesAtPoint(pos.x, pos.z);
 		if (pos.y < height) {
+			if (state_ == PlaneState::DYING) {
+				if (health < -10.0f) {
+					state_ = PlaneState::DEAD;
+					handler.EnqueueVisualizerAction(
+						[&handler, pos = GetPosition().Toglm(), effect = dying_fire_effect_]() {
+							if (handler.vis) {
+								handler.vis->CreateExplosion(pos, 5.0f);
+								if (effect) {
+									effect->SetActive(false);
+									effect->SetLifetime(0.1f);
+								}
+							}
+						}
+					);
+					if (shape_) {
+						shape_->SetHidden(true);
+					}
+					if (auto* pp_handler = dynamic_cast<const PaperPlaneHandler*>(&handler)) {
+						pp_handler->OnPlaneDeath(pp_handler->GetScore());
+					}
+					SetVelocity(Vector3(0, 0, 0));
+					return;
+				}
+			}
+
 			TriggerDamage();
 			// pos = height;
 			auto newPos = glm::vec3{pos.x, height, pos.z} + norm * 0.1f;
@@ -115,6 +192,27 @@ namespace Boidsish {
 			SetVelocity(Vector3(new_velocity.x, new_velocity.y, new_velocity.z));
 
 			return;
+		}
+
+		if (state_ == PlaneState::DYING) {
+			std::lock_guard<std::mutex> lock(effect_mutex_);
+			if (!dying_fire_effect_) {
+				fire_effect_timer_ -= delta_time;
+				if (fire_effect_timer_ <= 0) {
+					handler.EnqueueVisualizerAction([this, &handler, p = pos.Toglm()]() {
+						if (handler.vis) {
+							auto                        effect = handler.vis->AddFireEffect(p, FireEffectStyle::Fire);
+							std::lock_guard<std::mutex> lock(this->effect_mutex_);
+							this->dying_fire_effect_ = effect;
+						}
+					});
+					fire_effect_timer_ = 1.0f; // Prevent multiple requests while pending
+				}
+			} else {
+				handler.EnqueueVisualizerAction([effect = dying_fire_effect_, p = pos.Toglm()]() {
+					effect->SetPosition(p);
+				});
+			}
 		}
 
 		// --- Handle Rotational Input ---
@@ -138,7 +236,7 @@ namespace Boidsish {
 		// --- Terrain Avoidance in Super Speed ---
 		if (super_speed_state_ == SuperSpeedState::ACTIVE) {
 			auto pos = GetPosition();
-			auto [height, norm] = handler.vis->GetTerrainPointPropertiesThreadSafe(pos.x, pos.z);
+			auto [height, norm] = handler.vis->GetTerrainPropertiesAtPoint(pos.x, pos.z);
 			float safety_height = height + 10.0f;
 			if (pos.y < safety_height) {
 				float factor = (safety_height - pos.y) / 10.0f;
@@ -147,15 +245,27 @@ namespace Boidsish {
 		}
 
 		// --- Auto-leveling ---
+		if (state_ == PlaneState::DYING) {
+			target_rot_velocity *= 0.2f;
+			target_rot_velocity.z += 0.75f * spiral_intensity_ * sin(time / 3);
+			target_rot_velocity.x += 0.5f * spiral_intensity_ * sin(time / 5);
+		}
+
 		if (!controller_->pitch_up && !controller_->pitch_down && !controller_->yaw_left && !controller_->yaw_right &&
 		    !controller_->roll_left && !controller_->roll_right) {
 			glm::vec3 world_up = glm::vec3(0.0f, 1.0f, 0.0f);
 			glm::vec3 plane_forward_world = orientation_ * glm::vec3(0.0f, 0.0f, -1.0f);
+
+			if (state_ == PlaneState::DYING) {
+				// plane_forward_world = orientation_ * glm::vec3(0.0f, 0.50f, -1.0f);
+				world_up = glm::normalize(glm::vec3(0.0f, 1.0f, -0.40f));
+			}
+
 			glm::vec3 world_up_in_local = glm::inverse(orientation_) * world_up;
 
-			glm::vec3 forward_on_horizon = glm::normalize(
-				glm::vec3(plane_forward_world.x, 0.0f, plane_forward_world.z)
-			);
+			// glm::vec3 forward_on_horizon = glm::normalize(
+			// 	glm::vec3(plane_forward_world.x, 0.0f, plane_forward_world.zs)
+			// );
 			float pitch_error = glm::asin(glm::dot(plane_forward_world, world_up));
 			float roll_error = atan2(world_up_in_local.x, world_up_in_local.y);
 
@@ -167,12 +277,18 @@ namespace Boidsish {
 			target_rot_velocity.z -= roll_error * kAutoLevelSpeed;
 		}
 
+		if (my_beam && (my_beam->IsCharging() || my_beam->IsFiring() || my_beam->IsShrinking())) {
+			target_rot_velocity = glm::vec3(0.0f);
+			rotational_velocity_ = glm::vec3(0.0f);
+		}
+
 		rotational_velocity_ += (target_rot_velocity - rotational_velocity_) * kDamping * delta_time;
 
 		glm::quat pitch_delta = glm::angleAxis(rotational_velocity_.x * delta_time, glm::vec3(1.0f, 0.0f, 0.0f));
 		glm::quat yaw_delta = glm::angleAxis(rotational_velocity_.y * delta_time, glm::vec3(0.0f, 1.0f, 0.0f));
 		glm::quat roll_delta = glm::angleAxis(rotational_velocity_.z * delta_time, glm::vec3(0.0f, 0.0f, 1.0f));
 		orientation_ = glm::normalize(orientation_ * pitch_delta * yaw_delta * roll_delta);
+		rigid_body_.SetOrientation(orientation_);
 
 		if (super_speed_state_ == SuperSpeedState::ACTIVE) {
 			forward_speed_ = kBoostSpeed * 3.0f; // Super speed!
@@ -242,19 +358,24 @@ namespace Boidsish {
 				time_to_fire = 0.05f; // 20 rounds per second!
 				break;
 			}
+			case 3:
+				// Beam weapon is handled outside the switch because it's continuous
+				break;
 			}
 		}
 
 		if (controller_->chaff) {
 			chaff_timer_ = 0.5f;
-			handler.vis->AddFireEffect(
-				pos.Toglm() - forward_dir,
-				FireEffectStyle::Glitter,
-				glm::normalize(-1 * forward_dir),
-				glm::normalize(-5 * forward_dir),
-				1500,
-				1.0f
-			);
+			handler.EnqueueVisualizerAction([&handler, pos, forward_dir]() {
+				handler.vis->AddFireEffect(
+					pos.Toglm() - forward_dir,
+					FireEffectStyle::Glitter,
+					glm::normalize(-1 * forward_dir),
+					glm::normalize(-5 * forward_dir),
+					1500,
+					1.0f
+				);
+			});
 		}
 
 		if (chaff_timer_ > 0.0f) {
@@ -269,9 +390,21 @@ namespace Boidsish {
 		}
 	}
 
+	void PaperPlane::OnHit(const EntityHandler& handler, float damage) {
+		(void)handler;
+		health -= damage;
+		damage_pending_++;
+		if (state_ == PlaneState::DYING) {
+			spiral_intensity_ += 1.0f;
+		}
+	}
+
 	void PaperPlane::TriggerDamage() {
 		health -= 5;
 		damage_pending_++;
+		if (state_ == PlaneState::DYING) {
+			spiral_intensity_ += (std::abs(health) - 1) / (std::max(std::abs(health), 1.0f));
+		}
 	}
 
 	bool PaperPlane::IsDamagePending() {

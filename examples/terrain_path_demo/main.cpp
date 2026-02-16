@@ -11,7 +11,9 @@ int main(int argc, char** argv) {
 	Boidsish::Visualizer visualizer(1024, 768, "Terrain Path Demo");
 
 	// Get the terrain generator from the visualizer
-	const Boidsish::TerrainGenerator* terrain_generator = visualizer.GetTerrainGenerator();
+	const Boidsish::TerrainGenerator* terrain_generator = dynamic_cast<const Boidsish::TerrainGenerator*>(
+		visualizer.GetTerrain().get()
+	);
 
 	// Get the path
 	auto terrainPath = terrain_generator->GetPath({0, 0}, 200, 5.0f);

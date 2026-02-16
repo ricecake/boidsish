@@ -15,6 +15,7 @@
 #include "akira_effect.h"
 #include "arcade_text.h"
 #include "audio_manager.h"
+#include "checkpoint_ring.h"
 #include "clone_manager.h"
 #include "curved_text.h"
 #include "decor_manager.h"
@@ -538,6 +539,12 @@ namespace Boidsish {
 			shader->use();
 			SetupShaderBindings(*shader);
 			SetupShaderBindings(*trail_shader);
+
+			CheckpointRingShape::SetShader(
+				std::make_shared<Shader>("shaders/checkpoint.vert", "shaders/checkpoint.frag")
+			);
+			SetupShaderBindings(*CheckpointRingShape::GetShader());
+
 			if (plane_shader) {
 				SetupShaderBindings(*plane_shader);
 			}
@@ -589,6 +596,7 @@ namespace Boidsish {
 
 			Shape::InitSphereMesh();
 			Line::InitLineMesh();
+			CheckpointRingShape::InitQuadMesh();
 
 			if (postprocess_shader_ || blur_shader) {
 				float blur_quad_vertices[] = {
@@ -956,6 +964,7 @@ namespace Boidsish {
 
 			Shape::DestroySphereMesh();
 			Line::DestroyLineMesh();
+			CheckpointRingShape::DestroyQuadMesh();
 
 			if (blur_quad_vao)
 				glDeleteVertexArrays(1, &blur_quad_vao);
@@ -1024,6 +1033,13 @@ namespace Boidsish {
 			shader->use();
 			shader->setMat4("projection", projection);
 			shader->setMat4("view", view);
+
+			if (CheckpointRingShape::GetShader()) {
+				CheckpointRingShape::GetShader()->use();
+				CheckpointRingShape::GetShader()->setMat4("projection", projection);
+				CheckpointRingShape::GetShader()->setMat4("view", view);
+			}
+
 			return view;
 		}
 
@@ -1060,17 +1076,13 @@ namespace Boidsish {
 		}
 
 		void RenderShapes(
-			const glm::mat4& view,
-			const Camera& /* cam */,
+			const glm::mat4&                           view,
 			const std::vector<std::shared_ptr<Shape>>& shapes,
 			float                                      time,
 			const std::optional<glm::vec4>&            clip_plane
 		) {
-			if (shapes.empty()) {
-				return;
-			}
-
 			shader->use();
+			shader->setFloat("time", time);
 			shader->setFloat(
 				"ripple_strength",
 				ConfigManager::GetInstance().GetAppSettingBool("artistic_effect_ripple", false) ? 0.05f : 0.0f
@@ -1084,20 +1096,18 @@ namespace Boidsish {
 
 			// Enable GPU frustum culling for instanced rendering
 			shader->setBool("enableFrustumCulling", true);
-			shader->setFloat("frustumCullRadius", 5.0f); // Default radius, can be adjusted per-object
 
 			shader->setInt("useVertexColor", 0);
 			for (const auto& shape : shapes) {
-				if (shape->IsHidden()) {
+				if (shape->IsHidden() || shape->IsTransparent()) {
 					continue;
 				}
 				if (shape->IsInstanced()) {
+					shader->setFloat("frustumCullRadius", shape->GetBoundingRadius());
 					instance_manager->AddInstance(shape);
 				} else {
 					shader->setBool("isColossal", shape->IsColossal());
-					// Set cull radius based on shape size if available
-					float size = 5; // shape->GetSize();
-					shader->setFloat("frustumCullRadius", size > 0 ? size : 5.0f);
+					shader->setFloat("frustumCullRadius", shape->GetBoundingRadius());
 					shape->render();
 				}
 			}
@@ -1108,6 +1118,74 @@ namespace Boidsish {
 			clone_manager->Render(*shader);
 
 			// Disable frustum culling after shapes are rendered
+			shader->setBool("enableFrustumCulling", false);
+		}
+
+		void RenderTransparentShapes(
+			const glm::mat4&                           view,
+			const Camera&                              cam,
+			const std::vector<std::shared_ptr<Shape>>& shapes,
+			float                                      time,
+			const std::optional<glm::vec4>&            clip_plane
+		) {
+			std::vector<std::shared_ptr<Shape>> transparent_shapes;
+			for (const auto& shape : shapes) {
+				if (!shape->IsHidden() && shape->IsTransparent()) {
+					transparent_shapes.push_back(shape);
+				}
+			}
+
+			if (transparent_shapes.empty()) {
+				return;
+			}
+
+			// Sort back-to-front for correct alpha blending
+			glm::vec3 cameraPos = cam.pos();
+			std::sort(transparent_shapes.begin(), transparent_shapes.end(), [&](const auto& a, const auto& b) {
+				glm::vec3 posA(a->GetX(), a->GetY(), a->GetZ());
+				glm::vec3 posB(b->GetX(), b->GetY(), b->GetZ());
+				return glm::distance(cameraPos, posA) > glm::distance(cameraPos, posB);
+			});
+
+			shader->use();
+			shader->setFloat("time", time);
+			shader->setFloat(
+				"ripple_strength",
+				ConfigManager::GetInstance().GetAppSettingBool("artistic_effect_ripple", false) ? 0.05f : 0.0f
+			);
+			shader->setMat4("view", view);
+			if (clip_plane) {
+				shader->setVec4("clipPlane", *clip_plane);
+			} else {
+				shader->setVec4("clipPlane", glm::vec4(0, 0, 0, 0));
+			}
+
+			// Enable GPU frustum culling for instanced rendering
+			shader->setBool("enableFrustumCulling", true);
+
+			// Disable depth writing for transparency to show objects behind
+			glDepthMask(GL_FALSE);
+			glEnable(GL_BLEND);
+			glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+			glDisable(GL_CULL_FACE);
+
+			shader->setInt("useVertexColor", 0);
+			for (const auto& shape : transparent_shapes) {
+				if (shape->IsInstanced()) {
+					shader->setFloat("frustumCullRadius", shape->GetBoundingRadius());
+					instance_manager->AddInstance(shape);
+				} else {
+					shader->setBool("isColossal", shape->IsColossal());
+					shader->setFloat("frustumCullRadius", shape->GetBoundingRadius());
+					shape->render();
+				}
+			}
+
+			instance_manager->Render(*shader);
+
+			// Restore state
+			glDepthMask(GL_TRUE);
+			glEnable(GL_CULL_FACE);
 			shader->setBool("enableFrustumCulling", false);
 		}
 
@@ -2136,6 +2214,10 @@ namespace Boidsish {
 
 		// Batched lighting UBO update - single glBufferSubData instead of 8 calls
 		{
+			if (CheckpointRingShape::GetShader()) {
+				CheckpointRingShape::GetShader()->use();
+				CheckpointRingShape::GetShader()->setFloat("time", impl->simulation_time);
+			}
 			const auto& lights = impl->light_manager.GetLights();
 			int         num_lights = std::min(static_cast<int>(lights.size()), 10);
 
@@ -2206,15 +2288,16 @@ namespace Boidsish {
 				// 	std::nullopt,
 				// 	0.25f
 				// );
-				impl->RenderShapes(
+				impl->RenderShapes(reflection_view, impl->shapes, impl->simulation_time, glm::vec4(0, 1, 0, 0.01));
+				// Sky after opaque geometry
+				impl->RenderSky(reflection_view);
+				impl->RenderTransparentShapes(
 					reflection_view,
 					reflection_cam,
 					impl->shapes,
 					impl->simulation_time,
 					glm::vec4(0, 1, 0, 0.01)
 				);
-				// Sky after opaque geometry
-				impl->RenderSky(reflection_view);
 				// Transparent effects last
 				impl->fire_effect_manager->Render(reflection_view, impl->projection, reflection_cam.pos());
 				impl->RenderTrails(reflection_view, glm::vec4(0, 1, 0, 0.01));
@@ -2443,7 +2526,7 @@ namespace Boidsish {
 		// An unbound sampler2DArrayShadow can cause shader failures on some GPUs
 		impl->BindShadows(*impl->shader);
 
-		impl->RenderShapes(view, impl->camera, impl->shapes, impl->simulation_time, std::nullopt);
+		impl->RenderShapes(view, impl->shapes, impl->simulation_time, std::nullopt);
 		if (impl->decor_manager) {
 			impl->decor_manager->Render(view, impl->projection);
 		}
@@ -2451,6 +2534,9 @@ namespace Boidsish {
 		// Render sky AFTER opaque geometry so early-Z rejects covered fragments
 		// This avoids expensive noise calculations for pixels already drawn
 		impl->RenderSky(view);
+
+		// Render transparent shapes after sky
+		impl->RenderTransparentShapes(view, impl->camera, impl->shapes, impl->simulation_time, std::nullopt);
 
 		// Render transparent/particle effects last
 		impl->fire_effect_manager->Render(view, impl->projection, impl->camera.pos());
@@ -2904,13 +2990,16 @@ namespace Boidsish {
 		return impl->light_manager;
 	}
 
-	std::tuple<float, glm::vec3> Visualizer::GetTerrainPointProperties(float x, float y) const {
-		return impl->terrain_generator->GetPointProperties(x, y);
+	std::tuple<float, glm::vec3> Visualizer::CalculateTerrainPropertiesAtPoint(float x, float y) const {
+		if (impl->terrain_generator) {
+			return impl->terrain_generator->CalculateTerrainPropertiesAtPoint(x, y);
+		}
+		return {0.0f, glm::vec3(0, 1, 0)};
 	}
 
-	std::tuple<float, glm::vec3> Visualizer::GetTerrainPointPropertiesThreadSafe(float x, float y) const {
+	std::tuple<float, glm::vec3> Visualizer::GetTerrainPropertiesAtPoint(float x, float y) const {
 		if (impl->terrain_generator) {
-			return impl->terrain_generator->GetPointProperties(x, y);
+			return impl->terrain_generator->GetTerrainPropertiesAtPoint(x, y);
 		}
 		return {0.0f, glm::vec3(0, 1, 0)};
 	}
@@ -2999,6 +3088,15 @@ namespace Boidsish {
 		auto score = std::make_shared<HudScore>(alignment, position);
 		impl->hud_manager->AddElement(score);
 		return score;
+	}
+
+	std::shared_ptr<HudMessage> Visualizer::AddHudMessage(
+		const std::string& message,
+		HudAlignment       alignment,
+		glm::vec2          position,
+		float              fontSizeScale
+	) {
+		return impl->hud_manager->AddMessage(message, alignment, position, fontSizeScale);
 	}
 
 	std::shared_ptr<HudIconSet> Visualizer::AddHudIconSet(
@@ -3297,6 +3395,20 @@ namespace Boidsish {
 
 		impl->shockwave_manager
 			->AddShockwave(position, normal, max_radius, duration, wave_intensity, ring_width, color);
+	}
+
+	void Visualizer::CreateShockwave(
+		const glm::vec3& center,
+		float            intensity,
+		float            max_radius,
+		float            duration,
+		const glm::vec3& normal,
+		const glm::vec3& color,
+		float            ring_width
+	) {
+		float wave_intensity = Constants::Class::Shockwaves::DefaultIntensity() * intensity;
+
+		impl->shockwave_manager->AddShockwave(center, normal, max_radius, duration, wave_intensity, ring_width, color);
 	}
 
 	void Visualizer::SetTimeScale(float ts) {

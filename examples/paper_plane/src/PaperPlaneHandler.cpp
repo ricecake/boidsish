@@ -52,9 +52,22 @@ namespace Boidsish {
 		return 0;
 	}
 
+	int PaperPlaneHandler::GetScore() const {
+		if (score_indicator_)
+			return score_indicator_->GetValue();
+		return 0;
+	}
+
 	void PaperPlaneHandler::AddScore(int delta, const std::string& label) const {
 		if (score_indicator_)
 			score_indicator_->AddScore(delta, label);
+	}
+
+	void PaperPlaneHandler::OnPlaneDeath(int score) const {
+		if (vis) {
+			vis->AddHudMessage("GAME OVER", HudAlignment::MIDDLE_CENTER, {0, 0}, 3.0f);
+			vis->AddHudMessage("Final Score: " + std::to_string(score), HudAlignment::MIDDLE_CENTER, {0, 60}, 1.5f);
+		}
 	}
 
 	void PaperPlaneHandler::PreparePlane(std::shared_ptr<PaperPlane> plane) {
@@ -68,7 +81,7 @@ namespace Boidsish {
 		// Sample a grid around the starting area
 		for (float x = -300; x <= 300; x += 30) {
 			for (float z = -300; z <= 300; z += 30) {
-				auto [h, norm] = vis->GetTerrainPointPropertiesThreadSafe(x, z);
+				auto [h, norm] = vis->GetTerrainPropertiesAtPoint(x, z);
 				if (h < 15.0f)
 					continue; // Avoid valleys/water
 
@@ -79,7 +92,7 @@ namespace Boidsish {
 
 					// Look ahead to check gradient
 					float check_dist = 60.0f;
-					auto [h_ahead, norm_ahead] = vis->GetTerrainPointPropertiesThreadSafe(
+					auto [h_ahead, norm_ahead] = vis->GetTerrainPropertiesAtPoint(
 						x + dir.x * check_dist,
 						z + dir.z * check_dist
 					);
@@ -125,11 +138,11 @@ namespace Boidsish {
 			}
 		}
 
-		if (vis && vis->GetTerrainGenerator()) {
-			const auto               visible_chunks = vis->GetTerrainGenerator()->getVisibleChunksCopy();
-			std::set<const Terrain*> visible_chunk_set;
+		if (vis && vis->GetTerrain()) {
+			const auto                    visible_chunks = vis->GetTerrain()->GetVisibleChunksCopy();
+			std::set<std::pair<int, int>> visible_chunk_set;
 			for (const auto& chunk_ptr : visible_chunks) {
-				visible_chunk_set.insert(chunk_ptr.get());
+				visible_chunk_set.insert({static_cast<int>(chunk_ptr->GetX()), static_cast<int>(chunk_ptr->GetZ())});
 			}
 
 			// 1. Detect removals and destructions BEFORE spawning new ones
@@ -157,11 +170,11 @@ namespace Boidsish {
 
 			// 3. Populate forbidden coordinates based on CURRENT launchers and cooldowns
 			std::set<std::pair<int, int>> forbidden_coords;
-			auto                          exclude_neighborhood = [&](const Terrain* chunk) {
-                int cx = static_cast<int>(chunk->GetX());
-                int cz = static_cast<int>(chunk->GetZ());
+			auto                          exclude_neighborhood = [&](const std::pair<int, int>& coord) {
+                int cx = coord.first;
+                int cz = coord.second;
                 int step = Constants::Class::Terrain::ChunkSize();
-                int range = 2; // Exclude 2 chunks in every direction
+                int range = 3; // Exclude 2 chunks in every direction
                 for (int dx = -range; dx <= range; ++dx) {
                     for (int dz = -range; dz <= range; ++dz) {
                         forbidden_coords.insert({cx + dx * step, cz + dz * step});
@@ -188,7 +201,7 @@ namespace Boidsish {
 
 			for (const auto& chunk_ptr : visible_chunks) {
 				const Terrain* chunk = chunk_ptr.get();
-				visible_chunk_set.insert(chunk);
+				visible_chunk_set.insert({static_cast<int>(chunk->GetX()), static_cast<int>(chunk->GetZ())});
 				if (processed_chunks.count(chunk)) {
 					continue;
 				}
@@ -230,7 +243,7 @@ namespace Boidsish {
 					candidate.chunk->GetZ()
 				);
 				glm::vec3 world_pos = chunk_pos + candidate.point;
-				auto [terrain_h, terrain_normal] = vis->GetTerrainPointPropertiesThreadSafe(world_pos.x, world_pos.z);
+				auto [terrain_h, terrain_normal] = vis->GetTerrainPropertiesAtPoint(world_pos.x, world_pos.z);
 
 				if (terrain_h >= 40) {
 					glm::vec3 up_vector = glm::vec3(0.0f, 1.0f, 0.0f);
@@ -245,13 +258,17 @@ namespace Boidsish {
 					);
 					int id = 0x50000000 | ((ix + 1024) << 11) | (iz + 1024);
 
-					QueueAddEntity<GuidedMissileLauncher>(
+					QueueAddEntityWithId<GuidedMissileLauncher>(
 						id,
 						Vector3(world_pos.x, terrain_h, world_pos.z),
 						terrain_alignment
 					);
-					spawned_launchers_[candidate.chunk] = id;
-					exclude_neighborhood(candidate.chunk);
+					std::pair<int, int> coord = {
+						static_cast<int>(candidate.chunk->GetX()),
+						static_cast<int>(candidate.chunk->GetZ())
+					};
+					spawned_launchers_[coord] = id;
+					exclude_neighborhood(coord);
 				}
 			}
 		}

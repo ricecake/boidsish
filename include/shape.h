@@ -142,6 +142,21 @@ namespace Boidsish {
 		// Shapes with the same key share the same mesh data
 		virtual std::string GetInstanceKey() const = 0;
 
+		/**
+		 * @brief Indicates if the shape has transparent components and should be
+		 * rendered in the transparent pass.
+		 *
+		 * @return true if the shape should be rendered with blending after opaque objects
+		 */
+		virtual bool IsTransparent() const { return a_ < 0.99f; }
+
+		/**
+		 * @brief Returns the bounding radius of the shape for frustum culling.
+		 *
+		 * @return float bounding radius in world units
+		 */
+		virtual float GetBoundingRadius() const { return 5.0f; }
+
 		// PBR material properties
 		inline float GetRoughness() const { return roughness_; }
 

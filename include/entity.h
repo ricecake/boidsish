@@ -42,6 +42,12 @@ namespace Boidsish {
 		// Called each frame to update the entity
 		virtual void UpdateEntity(const EntityHandler& handler, float time, float delta_time) = 0;
 
+		// Generic interaction for weapons/collisions
+		virtual void OnHit(const EntityHandler& handler, float damage) {
+			(void)handler;
+			(void)damage;
+		}
+
 		// Shape management
 		virtual std::shared_ptr<Shape> GetShape() const = 0;
 		virtual void                   UpdateShape() = 0;
@@ -76,6 +82,8 @@ namespace Boidsish {
 			glm::vec3 vel = rigid_body_.GetLinearVelocity();
 			return Vector3(vel.x, vel.y, vel.z);
 		}
+
+		glm::quat GetOrientation() const { return rigid_body_.GetOrientation(); }
 
 		void SetVelocity(float vx, float vy, float vz) { rigid_body_.SetLinearVelocity(glm::vec3(vx, vy, vz)); }
 
@@ -243,8 +251,7 @@ namespace Boidsish {
 		}
 
 		template <typename T, typename... Args>
-		int AddEntity(int id, Args&&... args) {
-			// int  id = next_id_++;
+		int AddEntityWithId(int id, Args&&... args) {
 			auto entity = std::make_shared<T>(id, std::forward<Args>(args)...);
 			AddEntity(id, entity);
 			return id;
@@ -310,8 +317,7 @@ namespace Boidsish {
 		// Get total entity count
 		size_t GetEntityCount() const { return entities_.size(); }
 
-		std::tuple<float, glm::vec3>                 GetTerrainPointProperties(float x, float y) const;
-		std::tuple<float, glm::vec3>                 GetTerrainPointPropertiesThreadSafe(float x, float y) const;
+		std::tuple<float, glm::vec3>                 CalculateTerrainPropertiesAtPoint(float x, float y) const;
 		const std::vector<std::shared_ptr<Terrain>>& GetTerrainChunks() const;
 		const TerrainGenerator*                      GetTerrainGenerator() const;
 
@@ -325,7 +331,7 @@ namespace Boidsish {
 		 * @param z World Z coordinate
 		 * @return Tuple of (height, surface_normal)
 		 */
-		std::tuple<float, glm::vec3> GetCachedTerrainProperties(float x, float z) const;
+		std::tuple<float, glm::vec3> GetTerrainPropertiesAtPoint(float x, float z) const;
 
 		/**
 		 * @brief Check if a 3D point is below the terrain surface.
@@ -373,16 +379,41 @@ namespace Boidsish {
 		 */
 		bool IsTerrainCached(float x, float z) const;
 
+		/**
+		 * @brief Get a valid placement for an entity, ensuring clearance from terrain and ground.
+		 * @param suggested_pos The desired position
+		 * @param clearance Minimum distance from terrain and ground (Y=0)
+		 * @return A valid position at least 'clearance' above surfaces, with Y > 0.
+		 */
+		glm::vec3 GetValidPlacement(const glm::vec3& suggested_pos, float clearance) const;
+
 		// Thread-safe methods for entity modification
 		template <typename T, typename... Args>
 		void QueueAddEntity(Args&&... args) const {
 			std::lock_guard<std::mutex> lock(requests_mutex_);
 			modification_requests_.emplace_back([this, args = std::make_tuple(std::forward<Args>(args)...)]() mutable {
 				std::apply(
-					[this](auto&&... a) { const_cast<EntityHandler*>(this)->AddEntity<T>(std::forward<Args>(a)...); },
+					[this](auto&&... a) {
+						const_cast<EntityHandler*>(this)->AddEntity<T>(std::forward<decltype(a)>(a)...);
+					},
 					std::move(args)
 				);
 			});
+		}
+
+		template <typename T, typename... Args>
+		void QueueAddEntityWithId(int id, Args&&... args) const {
+			std::lock_guard<std::mutex> lock(requests_mutex_);
+			modification_requests_.emplace_back(
+				[this, id, args = std::make_tuple(std::forward<Args>(args)...)]() mutable {
+					std::apply(
+						[this, id](auto&&... a) {
+							const_cast<EntityHandler*>(this)->AddEntityWithId<T>(id, std::forward<decltype(a)>(a)...);
+						},
+						std::move(args)
+					);
+				}
+			);
 		}
 
 		void QueueRemoveEntity(int id) const {

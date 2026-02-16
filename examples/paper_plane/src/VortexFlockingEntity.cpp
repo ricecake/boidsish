@@ -92,7 +92,7 @@ namespace Boidsish {
 		Vector3 new_velocity = GetVelocity() + cohesion_vec + separation_vec + vortex_vec;
 
 		// 4. Terrain Avoidance
-		auto  terrain_props = handler.GetTerrainPointPropertiesThreadSafe(GetPosition().x, GetPosition().z);
+		auto  terrain_props = handler.GetTerrainPropertiesAtPoint(GetPosition().x, GetPosition().z);
 		float height_above_terrain = GetPosition().y - std::get<0>(terrain_props);
 		if (height_above_terrain < terrain_avoidance_height) {
 			float avoidance_strength = (1.0f - (height_above_terrain / terrain_avoidance_height)) *

@@ -41,13 +41,16 @@ uniform sampler2D texture_diffuse1;
 uniform bool      use_texture;
 
 void main() {
-	float dist = length(FragPos.xz - viewPos.xz);
-	float fade_start = 540.0 * worldScale;
-	float fade_end = 550.0 * worldScale;
-	float fade = 1.0 - smoothstep(fade_start, fade_end, dist);
+	float fade = 1.0;
+	if (!isColossal) {
+		float dist = length(FragPos.xz - viewPos.xz);
+		float fade_start = 540.0 * worldScale;
+		float fade_end = 550.0 * worldScale;
+		fade = 1.0 - smoothstep(fade_start, fade_end, dist);
 
-	if (fade < 0.2) {
-		discard;
+		if (fade < 0.2) {
+			discard;
+		}
 	}
 
 	vec3 final_color;
@@ -116,10 +119,10 @@ void main() {
 	} else if (isColossal) {
 		vec3  skyColor = vec3(0.2, 0.4, 0.8);
 		float haze_start = 0.0;
-		float haze_end = 75.0;
+		float haze_end = 150.0;
 		float haze_factor = 1.0 - smoothstep(haze_start, haze_end, FragPos.y);
-		vec3  final_haze_color = mix(result, skyColor, haze_factor * 2);
-		outColor = vec4(final_haze_color, mix(0, 1, 1 - (haze_factor)));
+		vec3  final_haze_color = mix(result, skyColor, haze_factor * 0.5);
+		outColor = vec4(final_haze_color, 1.0);
 	} else {
 		float final_alpha = clamp((baseAlpha + spec_lum) * fade, 0.0, 1.0);
 
