@@ -30,7 +30,9 @@ namespace Boidsish {
 		void      render(Shader& shader, const glm::mat4& model_matrix) const override;
 		glm::mat4 GetModelMatrix() const override;
 
-		std::string GetInstanceKey() const override { return "CheckpointRing"; }
+		std::string GetInstanceKey() const override {
+			return "CheckpointRing:" + std::to_string(static_cast<int>(style_)) + ":" + std::to_string(radius_);
+		}
 
 		bool IsTransparent() const override { return true; }
 

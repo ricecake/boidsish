@@ -48,15 +48,17 @@ namespace Boidsish {
 				RenderDotGroup(shader, group);
 			} else if (key.starts_with("Line:")) {
 				RenderLineGroup(shader, group);
-			} else if (key == "CheckpointRing") {
+			} else if (key.starts_with("CheckpointRing:")) {
 				RenderCheckpointRingGroup(shader, group);
 			} else {
 				// Fallback for unique shapes
+				shader.setBool("is_instanced", false);
 				for (auto& shape : group.shapes) {
 					shader.setBool("isColossal", shape->IsColossal());
 					shader.setFloat("frustumCullRadius", shape->GetBoundingRadius());
 					shape->render(shader);
 				}
+				shader.setBool("is_instanced", true);
 			}
 			group.shapes.clear();
 		}
@@ -383,10 +385,21 @@ namespace Boidsish {
 		shader.setBool("useInstanceColor", false);
 	}
 
-	void InstanceManager::RenderCheckpointRingGroup(Shader& shader, InstanceGroup& group) {
+	void InstanceManager::RenderCheckpointRingGroup(Shader& /*shader*/, InstanceGroup& group) {
 		auto first_ring = std::dynamic_pointer_cast<CheckpointRingShape>(group.shapes[0]);
 		if (!first_ring || !IsValidVAO(CheckpointRingShape::quad_vao_))
 			return;
+
+		auto cp_shader = CheckpointRingShape::GetShader();
+		if (!cp_shader)
+			return;
+
+		cp_shader->use();
+		cp_shader->setBool("is_instanced", true);
+
+		// Set uniforms based on first ring (they should all be same style/radius due to InstanceKey)
+		cp_shader->setInt("style", static_cast<int>(first_ring->GetStyle()));
+		cp_shader->setFloat("radius", first_ring->GetRadius());
 
 		std::vector<glm::mat4> model_matrices;
 		std::vector<glm::vec4> colors;
@@ -395,7 +408,27 @@ namespace Boidsish {
 
 		for (const auto& shape : group.shapes) {
 			model_matrices.push_back(shape->GetModelMatrix());
-			colors.emplace_back(shape->GetR(), shape->GetG(), shape->GetB(), shape->GetA());
+
+			auto ring = std::dynamic_pointer_cast<CheckpointRingShape>(shape);
+			glm::vec3 color(shape->GetR(), shape->GetG(), shape->GetB());
+			switch (ring->GetStyle()) {
+			case CheckpointStyle::GOLD:
+				color = Constants::Class::Checkpoint::Colors::Gold();
+				break;
+			case CheckpointStyle::SILVER:
+				color = Constants::Class::Checkpoint::Colors::Silver();
+				break;
+			case CheckpointStyle::BLACK:
+				color = Constants::Class::Checkpoint::Colors::Black();
+				break;
+			case CheckpointStyle::BLUE:
+				color = Constants::Class::Checkpoint::Colors::Blue();
+				break;
+			case CheckpointStyle::NEON_GREEN:
+				color = Constants::Class::Checkpoint::Colors::NeonGreen();
+				break;
+			}
+			colors.emplace_back(color.r, color.g, color.b, shape->GetA());
 		}
 
 		if (group.instance_matrix_vbo_ == 0)
@@ -438,11 +471,19 @@ namespace Boidsish {
 
 		glDrawArraysInstanced(GL_TRIANGLE_STRIP, 0, 4, group.shapes.size());
 
-		for (int i = 0; i < 5; i++) {
+		for (int i = 0; i < 4; i++) {
 			glVertexAttribDivisor(3 + i, 0);
 			glDisableVertexAttribArray(3 + i);
 		}
+		glVertexAttribDivisor(7, 0);
+		glDisableVertexAttribArray(7);
 		glBindVertexArray(0);
+
+		cp_shader->setBool("is_instanced", false);
+
+		// Switch back to main shader
+		if (Shape::shader)
+			Shape::shader->use();
 	}
 
 } // namespace Boidsish
