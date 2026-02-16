@@ -2,8 +2,8 @@
 out vec4 FragColor;
 
 in vec2 TexCoords;
+in vec3 vColor;
 
-uniform vec3  baseColor;
 uniform int   style; // 0-4: Colors, 5: RAINBOW, 6: INVISIBLE
 uniform float time;
 uniform float radius;
@@ -17,7 +17,7 @@ void main() {
 	float dist = length(uv);
 	float angle = atan(uv.y, uv.x);
 
-	vec3 color = baseColor;
+	vec3 color = vColor;
 	if (style == 5) {
 		color = 0.5 + 0.5 * cos(time * 3.0 + dist * 5.0 + angle + vec3(0, 2, 4));
 	}
