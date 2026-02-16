@@ -54,7 +54,9 @@
 #include "terrain.h"
 #include "terrain_generator.h"
 #include "terrain_generator_interface.h"
+#include "terrain_render_interface.h"
 #include "terrain_render_manager.h"
+#include "voxel_terrain_render_manager.h"
 #include "trail.h"
 #include "trail_render_manager.h"
 #include "ui/ConfigWidget.h"
@@ -224,9 +226,9 @@ namespace Boidsish {
 		std::unique_ptr<PostProcessing::PostProcessingManager> post_processing_manager_;
 		int                                                    exit_key;
 
-		std::shared_ptr<ITerrainGenerator>    terrain_generator;
-		std::shared_ptr<TerrainRenderManager> terrain_render_manager;
-		std::unique_ptr<TrailRenderManager>   trail_render_manager;
+		std::shared_ptr<ITerrainGenerator>     terrain_generator;
+		std::shared_ptr<ITerrainRenderManager> terrain_render_manager;
+		std::unique_ptr<TrailRenderManager>    trail_render_manager;
 
 		std::shared_ptr<Shader> shader;
 		std::unique_ptr<Shader> plane_shader;
@@ -580,7 +582,17 @@ namespace Boidsish {
 					"Terrain render manager: GPU supports " + std::to_string(max_layers) +
 					" texture array layers, using " + std::to_string(initial_chunks)
 				);
-				terrain_render_manager = std::make_shared<TerrainRenderManager>(32, initial_chunks);
+				if (ConfigManager::GetInstance().GetAppSettingBool("use_voxel_terrain", false)) {
+					terrain_render_manager = std::make_shared<VoxelTerrainRenderManager>(32);
+					VoxelTerrainRenderManager::voxel_shader_ = std::make_shared<Shader>(
+						"shaders/voxel_terrain.vert",
+						"shaders/voxel_terrain.frag"
+					);
+					SetupShaderBindings(*VoxelTerrainRenderManager::voxel_shader_);
+				} else {
+					terrain_render_manager = std::make_shared<TerrainRenderManager>(32, initial_chunks);
+				}
+
 				terrain_generator->SetRenderManager(terrain_render_manager);
 
 				// Set up eviction callback so terrain generator knows when chunks are LRU-evicted

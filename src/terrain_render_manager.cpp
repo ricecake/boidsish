@@ -499,7 +499,8 @@ namespace Boidsish {
 		const glm::mat4&                projection,
 		const glm::vec2&                viewport_size,
 		const std::optional<glm::vec4>& clip_plane,
-		float                           tess_quality_multiplier
+		float                           tess_quality_multiplier,
+		bool                            is_shadow_pass
 	) {
 		std::lock_guard<std::mutex> lock(mutex_);
 

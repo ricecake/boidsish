@@ -6,6 +6,7 @@
 #include "graphics.h"
 #include "logger.h"
 #include "terrain_generator_interface.h"
+#include "terrain_render_interface.h"
 #include "terrain_render_manager.h"
 #include <GL/glew.h>
 #include <glm/gtc/type_ptr.hpp>
@@ -66,10 +67,10 @@ namespace Boidsish {
 
 	void DecorManager::Update(
 		float /*delta_time*/,
-		const Camera&                         camera,
-		const Frustum&                        frustum,
-		const ITerrainGenerator&              terrain_gen,
-		std::shared_ptr<TerrainRenderManager> render_manager
+		const Camera&                          camera,
+		const Frustum&                         frustum,
+		const ITerrainGenerator&               terrain_gen,
+		std::shared_ptr<ITerrainRenderManager> render_manager
 	) {
 		if (!enabled_ || !initialized_ || decor_types_.empty())
 			return;
@@ -103,10 +104,10 @@ namespace Boidsish {
 	}
 
 	void DecorManager::_RegeneratePlacements(
-		const Camera&                         camera,
-		const Frustum&                        frustum,
-		const ITerrainGenerator&              terrain_gen,
-		std::shared_ptr<TerrainRenderManager> render_manager
+		const Camera&                          camera,
+		const Frustum&                         frustum,
+		const ITerrainGenerator&               terrain_gen,
+		std::shared_ptr<ITerrainRenderManager> render_manager
 	) {
 		float world_scale = terrain_gen.GetWorldScale();
 

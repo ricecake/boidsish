@@ -10,6 +10,8 @@
 #include <GL/glew.h>
 #include <glm/glm.hpp>
 
+#include "terrain_render_interface.h"
+
 class Shader;
 
 namespace Boidsish {
@@ -40,10 +42,10 @@ namespace Boidsish {
 	 * 4. Render() issues single instanced draw call
 	 * 5. TES shader samples heightmap to displace flat grid vertices
 	 */
-	class TerrainRenderManager {
+	class TerrainRenderManager: public ITerrainRenderManager {
 	public:
 		TerrainRenderManager(int chunk_size = 32, int max_chunks = 512);
-		~TerrainRenderManager();
+		virtual ~TerrainRenderManager();
 
 		// Non-copyable
 		TerrainRenderManager(const TerrainRenderManager&) = delete;
@@ -62,22 +64,22 @@ namespace Boidsish {
 			float                            min_y,
 			float                            max_y,
 			const glm::vec3&                 world_offset
-		);
+		) override;
 
 		/**
 		 * @brief Unregister a terrain chunk, freeing its texture slice.
 		 */
-		void UnregisterChunk(std::pair<int, int> chunk_key);
+		void UnregisterChunk(std::pair<int, int> chunk_key) override;
 
 		/**
 		 * @brief Check if a chunk is registered.
 		 */
-		bool HasChunk(std::pair<int, int> chunk_key) const;
+		bool HasChunk(std::pair<int, int> chunk_key) const override;
 
 		/**
 		 * @brief Perform frustum culling and prepare instance buffer.
 		 */
-		void PrepareForRender(const Frustum& frustum, const glm::vec3& camera_pos, float world_scale = 1.0f);
+		void PrepareForRender(const Frustum& frustum, const glm::vec3& camera_pos, float world_scale = 1.0f) override;
 
 		/**
 		 * @brief Render all visible terrain chunks with single instanced draw.
@@ -88,13 +90,14 @@ namespace Boidsish {
 			const glm::mat4&                projection,
 			const glm::vec2&                viewport_size,
 			const std::optional<glm::vec4>& clip_plane,
-			float                           tess_quality_multiplier
-		);
+			float                           tess_quality_multiplier,
+			bool                            is_shadow_pass = false
+		) override;
 
 		/**
 		 * @brief Commit any pending updates (no-op for this implementation).
 		 */
-		void CommitUpdates() {}
+		void CommitUpdates() override {}
 
 		/**
 		 * @brief Set a callback to be notified when a chunk is evicted due to LRU.
@@ -102,26 +105,28 @@ namespace Boidsish {
 		 * This allows TerrainGenerator to remove the chunk from its cache
 		 * so it will be regenerated when needed.
 		 */
-		void SetEvictionCallback(std::function<void(std::pair<int, int>)> callback) { eviction_callback_ = callback; }
+		void SetEvictionCallback(std::function<void(std::pair<int, int>)> callback) override {
+			eviction_callback_ = callback;
+		}
 
 		/**
 		 * @brief Get statistics.
 		 */
-		size_t GetRegisteredChunkCount() const;
-		size_t GetVisibleChunkCount() const;
+		size_t GetRegisteredChunkCount() const override;
+		size_t GetVisibleChunkCount() const override;
 
-		int GetChunkSize() const { return chunk_size_; }
+		int GetChunkSize() const override { return chunk_size_; }
 
 		/**
 		 * @brief Get the heightmap texture array for shader binding.
 		 */
-		GLuint GetHeightmapTexture() const { return heightmap_texture_; }
+		GLuint GetHeightmapTexture() const override { return heightmap_texture_; }
 
 		/**
 		 * @brief Get info about all registered chunks for external use (e.g., decor placement).
 		 * Returns a vector of (world_offset_x, world_offset_z, texture_slice, chunk_size).
 		 */
-		std::vector<glm::vec4> GetChunkInfo() const;
+		std::vector<glm::vec4> GetChunkInfo() const override;
 
 	private:
 		// Per-chunk metadata (CPU side)
