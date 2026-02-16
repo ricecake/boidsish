@@ -1,6 +1,7 @@
 #include "trail_render_manager.h"
 
 #include <algorithm>
+#include <cstring>
 #include <iostream>
 
 #include "frustum.h"
@@ -14,15 +15,21 @@ namespace Boidsish {
 		glGenVertexArrays(1, &vao_);
 		glBindVertexArray(vao_);
 
-		// Create VBO with initial capacity
+		// Create VBO with initial capacity using persistent mapping (AZDO)
 		glGenBuffers(1, &vbo_);
 		glBindBuffer(GL_ARRAY_BUFFER, vbo_);
-		glBufferData(
+
+		GLbitfield flags = GL_MAP_WRITE_BIT | GL_MAP_PERSISTENT_BIT | GL_MAP_COHERENT_BIT;
+		glBufferStorage(
 			GL_ARRAY_BUFFER,
 			INITIAL_VERTEX_CAPACITY * FLOATS_PER_VERTEX * sizeof(float),
 			nullptr,
-			GL_DYNAMIC_DRAW
+			flags
 		);
+		vbo_ptr_ = static_cast<float*>(
+			glMapBufferRange(GL_ARRAY_BUFFER, 0, INITIAL_VERTEX_CAPACITY * FLOATS_PER_VERTEX * sizeof(float), flags)
+		);
+
 		vertex_capacity_ = INITIAL_VERTEX_CAPACITY;
 
 		// Set up vertex attributes (matches TrailVertex: pos + normal + color)
@@ -43,6 +50,10 @@ namespace Boidsish {
 	}
 
 	TrailRenderManager::~TrailRenderManager() {
+		if (vbo_) {
+			glBindBuffer(GL_ARRAY_BUFFER, vbo_);
+			glUnmapBuffer(GL_ARRAY_BUFFER);
+		}
 		if (vao_)
 			glDeleteVertexArrays(1, &vao_);
 		if (vbo_)
@@ -205,24 +216,29 @@ namespace Boidsish {
 			new_capacity = static_cast<size_t>(new_capacity * GROWTH_FACTOR);
 		}
 
-		// Create new buffer
-		GLuint new_vbo;
+		// Create new buffer with persistent mapping
+		GLuint    new_vbo;
+		GLbitfield flags = GL_MAP_WRITE_BIT | GL_MAP_PERSISTENT_BIT | GL_MAP_COHERENT_BIT;
 		glGenBuffers(1, &new_vbo);
 		glBindBuffer(GL_ARRAY_BUFFER, new_vbo);
-		glBufferData(GL_ARRAY_BUFFER, new_capacity * FLOATS_PER_VERTEX * sizeof(float), nullptr, GL_DYNAMIC_DRAW);
-
-		// Copy old data
-		glBindBuffer(GL_COPY_READ_BUFFER, vbo_);
-		glCopyBufferSubData(
-			GL_COPY_READ_BUFFER,
-			GL_ARRAY_BUFFER,
-			0,
-			0,
-			vertex_capacity_ * FLOATS_PER_VERTEX * sizeof(float)
+		glBufferStorage(GL_ARRAY_BUFFER, new_capacity * FLOATS_PER_VERTEX * sizeof(float), nullptr, flags);
+		float* new_ptr = static_cast<float*>(
+			glMapBufferRange(GL_ARRAY_BUFFER, 0, new_capacity * FLOATS_PER_VERTEX * sizeof(float), flags)
 		);
 
-		glDeleteBuffers(1, &vbo_);
+		// Copy old data using memcpy since both are mapped
+		if (vbo_ptr_) {
+			std::memcpy(new_ptr, vbo_ptr_, vertex_capacity_ * FLOATS_PER_VERTEX * sizeof(float));
+		}
+
+		if (vbo_) {
+			glBindBuffer(GL_ARRAY_BUFFER, vbo_);
+			glUnmapBuffer(GL_ARRAY_BUFFER);
+			glDeleteBuffers(1, &vbo_);
+		}
+
 		vbo_ = new_vbo;
+		vbo_ptr_ = new_ptr;
 		vertex_capacity_ = new_capacity;
 
 		// Update VAO binding
@@ -243,13 +259,11 @@ namespace Boidsish {
 	void TrailRenderManager::CommitUpdates() {
 		std::lock_guard<std::mutex> lock(mutex_);
 
-		if (pending_vertex_data_.empty()) {
+		if (pending_vertex_data_.empty() || !vbo_ptr_) {
 			return;
 		}
 
-		glBindBuffer(GL_ARRAY_BUFFER, vbo_);
-
-		// Upload pending vertex data
+		// Upload pending vertex data using direct memory access (AZDO)
 		for (auto& [trail_id, vertices] : pending_vertex_data_) {
 			auto alloc_it = trail_allocations_.find(trail_id);
 			if (alloc_it == trail_allocations_.end()) {
@@ -262,25 +276,23 @@ namespace Boidsish {
 			}
 
 			// Upload the entire trail data at its allocated offset
-			// The vertices are already in the correct format (pos + normal + color)
-			size_t byte_offset = alloc.vertex_offset * FLOATS_PER_VERTEX * sizeof(float);
-			size_t byte_size = vertices.size() * sizeof(float);
-			size_t max_byte_size = alloc.max_vertices * FLOATS_PER_VERTEX * sizeof(float);
+			size_t float_offset = alloc.vertex_offset * FLOATS_PER_VERTEX;
+			size_t float_size = vertices.size();
+			size_t max_float_size = alloc.max_vertices * FLOATS_PER_VERTEX;
 
-			if (byte_size > max_byte_size) {
+			if (float_size > max_float_size) {
 				logger::ERROR("Trail {} upload size mismatch during commit - truncating", trail_id);
-				byte_size = max_byte_size;
+				float_size = max_float_size;
 			}
 
-			if (byte_size > 0) {
-				glBufferSubData(GL_ARRAY_BUFFER, byte_offset, byte_size, vertices.data());
+			if (float_size > 0) {
+				std::memcpy(vbo_ptr_ + float_offset, vertices.data(), float_size * sizeof(float));
 			}
 
 			alloc.needs_upload = false;
 		}
 
 		pending_vertex_data_.clear();
-		glBindBuffer(GL_ARRAY_BUFFER, 0); // Prevent buffer state leakage
 	}
 
 	void TrailRenderManager::Render(

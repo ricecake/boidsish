@@ -166,6 +166,7 @@ namespace Boidsish {
 		// OpenGL resources
 		GLuint vao_ = 0;
 		GLuint vbo_ = 0;
+		float* vbo_ptr_ = nullptr;
 		GLuint draw_command_buffer_ = 0;
 
 		// Buffer capacity (in vertices, not bytes)
