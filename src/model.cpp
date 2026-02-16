@@ -290,9 +290,12 @@ namespace Boidsish {
 	}
 
 	void Model::GenerateRenderPackets(std::vector<RenderPacket>& out_packets) const {
+		if (!m_data)
+			return;
+
 		glm::mat4 model_matrix = GetModelMatrix();
 
-		for (const auto& mesh : meshes) {
+		for (const auto& mesh : m_data->meshes) {
 			RenderPacket packet;
 			packet.vao = mesh.getVAO();
 			packet.vbo = mesh.getVBO();
@@ -303,7 +306,8 @@ namespace Boidsish {
 			packet.shader_id = shader ? shader->ID : 0;
 			packet.model_matrix = model_matrix;
 
-			packet.color = glm::vec3(GetR() * mesh.diffuseColor.r, GetG() * mesh.diffuseColor.g, GetB() * mesh.diffuseColor.b);
+			packet.color =
+				glm::vec3(GetR() * mesh.diffuseColor.r, GetG() * mesh.diffuseColor.g, GetB() * mesh.diffuseColor.b);
 			packet.alpha = GetA() * mesh.opacity;
 			packet.use_pbr = UsePBR();
 			packet.roughness = GetRoughness();
@@ -312,7 +316,10 @@ namespace Boidsish {
 			packet.is_instanced = IsInstanced();
 
 			for (const auto& tex : mesh.textures) {
-				packet.textures.push_back({tex.id, tex.type});
+				RenderPacket::TextureInfo info;
+				info.id = tex.id;
+				info.type = tex.type;
+				packet.textures.push_back(info);
 			}
 
 			RenderLayer layer = (packet.alpha < 1.0f) ? RenderLayer::Transparent : RenderLayer::Opaque;

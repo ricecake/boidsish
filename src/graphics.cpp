@@ -30,6 +30,7 @@
 #include "logger.h"
 #include "mesh_explosion_manager.h"
 #include "path.h"
+#include "render_queue.h"
 #include "post_processing/PostProcessingManager.h"
 #include "post_processing/effects/AtmosphereEffect.h"
 #include "post_processing/effects/AutoExposureEffect.h"
@@ -214,6 +215,7 @@ namespace Boidsish {
 		std::map<int, std::shared_ptr<Trail>> trails;
 		std::map<int, float>                  trail_last_update;
 		LightManager                          light_manager;
+		RenderQueue                           render_queue;
 
 		InputState                                             input_state{};
 		std::vector<InputCallback>                             input_callbacks;
@@ -1099,6 +1101,8 @@ namespace Boidsish {
 
 			shader->setInt("useVertexColor", 0);
 			for (const auto& shape : shapes) {
+				if (shape->UseNewRenderPath())
+					continue;
 				if (shape->IsHidden() || shape->IsTransparent()) {
 					continue;
 				}
@@ -1130,6 +1134,8 @@ namespace Boidsish {
 		) {
 			std::vector<std::shared_ptr<Shape>> transparent_shapes;
 			for (const auto& shape : shapes) {
+				if (shape->UseNewRenderPath())
+					continue;
 				if (!shape->IsHidden() && shape->IsTransparent()) {
 					transparent_shapes.push_back(shape);
 				}
@@ -1187,6 +1193,98 @@ namespace Boidsish {
 			glDepthMask(GL_TRUE);
 			glEnable(GL_CULL_FACE);
 			shader->setBool("enableFrustumCulling", false);
+		}
+
+		void ExecuteRenderQueue(
+			const RenderQueue&         queue,
+			const glm::mat4&           view,
+			const glm::mat4&           projection,
+			std::optional<RenderLayer> layer_filter = std::nullopt
+		) {
+			unsigned int current_shader_id = 0;
+			unsigned int current_vao = 0;
+
+			const auto& packets = queue.GetPackets();
+			for (const auto& packet : packets) {
+				if (packet.shader_id == 0)
+					continue;
+
+				if (layer_filter.has_value()) {
+					RenderLayer packet_layer = static_cast<RenderLayer>(packet.sort_key >> 56);
+					if (packet_layer != *layer_filter)
+						continue;
+				}
+
+				// Minimize shader state changes
+				if (packet.shader_id != current_shader_id) {
+					glUseProgram(packet.shader_id);
+					current_shader_id = packet.shader_id;
+
+					// Since we're using a raw program ID, we need to set common uniforms manually
+					// or use the Shader class wrapper if we had it.
+					// For now, assume it's our main vis shader or similar.
+					GLint view_loc = glGetUniformLocation(current_shader_id, "view");
+					if (view_loc != -1)
+						glUniformMatrix4fv(view_loc, 1, GL_FALSE, &view[0][0]);
+
+					GLint proj_loc = glGetUniformLocation(current_shader_id, "projection");
+					if (proj_loc != -1)
+						glUniformMatrix4fv(proj_loc, 1, GL_FALSE, &projection[0][0]);
+
+					GLint time_loc = glGetUniformLocation(current_shader_id, "time");
+					if (time_loc != -1)
+						glUniform1f(time_loc, simulation_time);
+				}
+
+				// Set packet-specific uniforms
+				GLint model_loc = glGetUniformLocation(current_shader_id, "model");
+				if (model_loc != -1)
+					glUniformMatrix4fv(model_loc, 1, GL_FALSE, &packet.model_matrix[0][0]);
+
+				GLint color_loc = glGetUniformLocation(current_shader_id, "objectColor");
+				if (color_loc != -1)
+					glUniform3fv(color_loc, 1, &packet.color[0]);
+
+				GLint alpha_loc = glGetUniformLocation(current_shader_id, "objectAlpha");
+				if (alpha_loc != -1)
+					glUniform1f(alpha_loc, packet.alpha);
+
+				GLint use_pbr_loc = glGetUniformLocation(current_shader_id, "usePBR");
+				if (use_pbr_loc != -1)
+					glUniform1i(use_pbr_loc, packet.use_pbr);
+
+				if (packet.use_pbr) {
+					GLint roughness_loc = glGetUniformLocation(current_shader_id, "roughness");
+					if (roughness_loc != -1)
+						glUniform1f(roughness_loc, packet.roughness);
+					GLint metallic_loc = glGetUniformLocation(current_shader_id, "metallic");
+					if (metallic_loc != -1)
+						glUniform1f(metallic_loc, packet.metallic);
+					GLint ao_loc = glGetUniformLocation(current_shader_id, "ao");
+					if (ao_loc != -1)
+						glUniform1f(ao_loc, packet.ao);
+				}
+
+				GLint use_texture_loc = glGetUniformLocation(current_shader_id, "use_texture");
+				if (use_texture_loc != -1)
+					glUniform1i(use_texture_loc, !packet.textures.empty());
+
+				// Minimize VAO state changes
+				if (packet.vao != current_vao) {
+					glBindVertexArray(packet.vao);
+					current_vao = packet.vao;
+				}
+
+				// Render
+				if (packet.ebo > 0) {
+					glDrawElements(packet.draw_mode, packet.index_count, packet.index_type, 0);
+				} else {
+					glDrawArrays(packet.draw_mode, 0, packet.vertex_count);
+				}
+			}
+
+			if (current_vao != 0)
+				glBindVertexArray(0);
 		}
 
 		void RenderTrails(const glm::mat4& view, const std::optional<glm::vec4>& clip_plane) {
@@ -2105,6 +2203,34 @@ namespace Boidsish {
 
 		impl->UpdateTrails(impl->shapes, impl->simulation_time);
 
+		// --- Data-Driven Render Queue Collection ---
+		impl->render_queue.Clear();
+		for (const auto& shape : impl->shapes) {
+			if (shape->UseNewRenderPath()) {
+				std::vector<RenderPacket> packets;
+				shape->GenerateRenderPackets(packets);
+
+				// Update sort keys with actual depth and layer
+				glm::vec3 camera_pos = impl->camera.pos();
+				for (auto& packet : packets) {
+					glm::vec3 world_pos = glm::vec3(packet.model_matrix[3]);
+					float     depth = glm::distance(camera_pos, world_pos);
+
+					// Normalize depth to [0, 1] for sort key using far plane
+					float world_scale = impl->terrain_generator ? impl->terrain_generator->GetWorldScale() : 1.0f;
+					float far_plane = 1000.0f * std::max(1.0f, world_scale);
+					float normalized_depth = glm::clamp(depth / far_plane, 0.0f, 1.0f);
+
+					RenderLayer layer = (packet.alpha < 0.99f) ? RenderLayer::Transparent : RenderLayer::Opaque;
+					packet.sort_key =
+						CalculateSortKey(layer, packet.shader_handle, packet.material_handle, normalized_depth);
+
+					impl->render_queue.Submit(packet);
+				}
+			}
+		}
+		impl->render_queue.Sort();
+
 		if (impl->camera_mode == CameraMode::TRACKING) {
 			impl->UpdateSingleTrackCamera(impl->input_state.delta_time, impl->shapes);
 		} else if (impl->camera_mode == CameraMode::AUTO) {
@@ -2527,6 +2653,7 @@ namespace Boidsish {
 		impl->BindShadows(*impl->shader);
 
 		impl->RenderShapes(view, impl->shapes, impl->simulation_time, std::nullopt);
+		impl->ExecuteRenderQueue(impl->render_queue, view, impl->projection, RenderLayer::Opaque);
 		if (impl->decor_manager) {
 			impl->decor_manager->Render(view, impl->projection);
 		}
@@ -2537,6 +2664,7 @@ namespace Boidsish {
 
 		// Render transparent shapes after sky
 		impl->RenderTransparentShapes(view, impl->camera, impl->shapes, impl->simulation_time, std::nullopt);
+		impl->ExecuteRenderQueue(impl->render_queue, view, impl->projection, RenderLayer::Transparent);
 
 		// Render transparent/particle effects last
 		impl->fire_effect_manager->Render(view, impl->projection, impl->camera.pos());
