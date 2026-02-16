@@ -16,6 +16,7 @@
 #include "logger.h"
 #include "stb_image_write.h"
 #include "terrain_deformations.h"
+#include "mesh_hole_deformation.h"
 #include "zstr.hpp"
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
@@ -356,7 +357,11 @@ namespace Boidsish {
 		if (deformation_manager_.HasDeformationAt(x, z)) {
 			auto res = deformation_manager_.QueryDeformations(x, z, height_detailed, normal_detailed);
 			if (res.has_deformation) {
-				height_detailed += res.total_height_delta;
+				if (res.has_hole) {
+					height_detailed = -10000.0f;
+				} else {
+					height_detailed += res.total_height_delta;
+				}
 				normal_detailed = res.transformed_normal;
 			}
 		}
@@ -580,8 +585,13 @@ namespace Boidsish {
 						auto result = deformation_manager_.QueryDeformations(worldX, worldZ, base_height, base_normal);
 
 						if (result.has_deformation) {
-							// Apply height delta
-							heightmap[i][j][0] += result.total_height_delta;
+							// Check for holes
+							if (result.has_hole) {
+								heightmap[i][j][0] = -10000.0f; // Sentinel for hole
+							} else {
+								// Apply height delta
+								heightmap[i][j][0] += result.total_height_delta;
+							}
 
 							// Recompute gradient approximation for the deformed surface
 							// We store the transformed normal info for later use
@@ -601,10 +611,16 @@ namespace Boidsish {
 					if (deformation_manager_.HasDeformationAt(worldX, worldZ)) {
 						// Finite differences for gradient
 						float h_center = heightmap[i][j][0];
-						float h_left = (i > 0) ? heightmap[i - 1][j][0] : h_center;
-						float h_right = (i < num_vertices_x - 1) ? heightmap[i + 1][j][0] : h_center;
-						float h_down = (j > 0) ? heightmap[i][j - 1][0] : h_center;
-						float h_up = (j < num_vertices_z - 1) ? heightmap[i][j + 1][0] : h_center;
+
+						// If the current point is a hole, we don't need to compute its normal
+						if (h_center < -500.0f) continue;
+
+						auto is_valid = [](float h) { return h > -500.0f; };
+
+						float h_left  = (i > 0 && is_valid(heightmap[i - 1][j][0])) ? heightmap[i - 1][j][0] : h_center;
+						float h_right = (i < num_vertices_x - 1 && is_valid(heightmap[i + 1][j][0])) ? heightmap[i + 1][j][0] : h_center;
+						float h_down  = (j > 0 && is_valid(heightmap[i][j - 1][0])) ? heightmap[i][j - 1][0] : h_center;
+						float h_up    = (j < num_vertices_z - 1 && is_valid(heightmap[i][j + 1][0])) ? heightmap[i][j + 1][0] : h_center;
 
 						float dx = (h_right - h_left) * 0.5f;
 						float dz = (h_up - h_down) * 0.5f;
@@ -1310,6 +1326,18 @@ namespace Boidsish {
 		);
 
 		deformation_manager_.AddDeformation(crater);
+		InvalidateDeformedChunks(id);
+
+		return id;
+	}
+
+	uint32_t TerrainGenerator::AddMeshHole(const std::vector<glm::vec3>& vertices, const std::vector<unsigned int>& indices) {
+		static std::atomic<uint32_t> mesh_hole_id_counter{3000000}; // Offset to avoid collision
+		uint32_t                     id = mesh_hole_id_counter++;
+
+		auto mesh_hole = std::make_shared<MeshHoleDeformation>(id, vertices, indices);
+
+		deformation_manager_.AddDeformation(mesh_hole);
 		InvalidateDeformedChunks(id);
 
 		return id;

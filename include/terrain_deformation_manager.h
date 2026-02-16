@@ -71,6 +71,7 @@ namespace Boidsish {
 		glm::vec3 transformed_normal{0.0f, 1.0f, 0.0f}; // Final normal after all transformations
 		std::vector<std::shared_ptr<TerrainDeformation>> affecting_deformations; // Deformations at this point
 		bool has_deformation = false; // Whether any deformation affects this point
+		bool has_hole = false;        // Whether any deformation marks this as a hole
 	};
 
 	/**

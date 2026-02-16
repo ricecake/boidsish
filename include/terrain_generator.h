@@ -256,6 +256,15 @@ namespace Boidsish {
 		uint32_t AddAkira(const glm::vec3& center, float radius) override;
 
 		/**
+		 * @brief Add a mesh-based hole deformation.
+		 *
+		 * @param vertices Mesh vertices in world space
+		 * @param indices Mesh indices
+		 * @return ID of created deformation
+		 */
+		uint32_t AddMeshHole(const std::vector<glm::vec3>& vertices, const std::vector<unsigned int>& indices) override;
+
+		/**
 		 * @brief Invalidate chunks affected by deformations.
 		 *
 		 * Call this after adding/removing deformations to regenerate affected chunks.

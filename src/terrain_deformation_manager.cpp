@@ -143,6 +143,11 @@ namespace Boidsish {
 				result.has_deformation = true;
 				result.affecting_deformations.push_back(deformation);
 
+				// Accumulate hole status
+				if (def_result.is_hole) {
+					result.has_hole = true;
+				}
+
 				// Accumulate height delta (weighted blend)
 				result.total_height_delta += def_result.height_delta * def_result.blend_weight;
 
