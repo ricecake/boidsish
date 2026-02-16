@@ -216,6 +216,24 @@ namespace Boidsish {
 		}
 	}
 
+	void Mesh::render_indirect(bool doVAO) const {
+		if (indices.empty())
+			return;
+
+		if (doVAO) {
+			if (!IsValidVAO(VAO))
+				return;
+			glBindVertexArray(VAO);
+		}
+
+		// Draw using indirect command buffer (must be bound to GL_DRAW_INDIRECT_BUFFER)
+		glDrawElementsIndirect(GL_TRIANGLES, GL_UNSIGNED_INT, 0);
+
+		if (doVAO) {
+			glBindVertexArray(0);
+		}
+	}
+
 	void Mesh::bindTextures(Shader& shader) const {
 		unsigned int diffuseNr = 1;
 		unsigned int specularNr = 1;

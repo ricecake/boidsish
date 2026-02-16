@@ -249,6 +249,8 @@ namespace Boidsish {
 		bool                                           paused = false;
 		float                                          simulation_time = 0.0f;
 		float                                          time_scale = 1.0f;
+		float                                          time_accumulator = 0.0f;
+		static constexpr float                         fixed_delta_time = 1.0f / 60.0f;
 		float                                          ripple_strength = 0.0f;
 		std::chrono::high_resolution_clock::time_point last_frame;
 
@@ -476,7 +478,8 @@ namespace Boidsish {
 			}
 			if (ConfigManager::GetInstance().GetAppSettingBool("enable_floor", true) &&
 			    ConfigManager::GetInstance().GetAppSettingBool("enable_floor_reflection", true)) {
-				blur_shader = std::make_unique<Shader>("shaders/blur.vert", "shaders/blur.frag");
+				// Optimized: Use Kawase blur for higher quality with fewer passes
+				blur_shader = std::make_unique<Shader>("shaders/blur.vert", "shaders/kawase_blur.frag");
 			}
 			if (ConfigManager::GetInstance().GetAppSettingBool("enable_effects", true)) {
 				postprocess_shader_ = std::make_unique<Shader>("shaders/postprocess.vert", "shaders/postprocess.frag");
@@ -1325,20 +1328,28 @@ namespace Boidsish {
 			glDepthMask(GL_TRUE);
 		}
 
-		// TODO: Replace the multi-pass Gaussian blur with a more performant technique.
-		// See performance_and_quality_audit.md#2-optimized-screen-space-reflections-and-blur
-		void RenderBlur(int amount) {
+		/**
+		 * @brief Renders an optimized Kawase blur.
+		 * Replaces the multi-pass Gaussian blur for better performance and quality.
+		 * See performance_and_quality_audit.md#2-optimized-screen-space-reflections-and-blur
+		 */
+		void RenderBlur(int /*amount*/) {
 			glDisable(GL_DEPTH_TEST);
 			blur_shader->use();
-			bool horizontal = true, first_iteration = true;
-			for (int i = 0; i < amount; i++) {
-				glBindFramebuffer(GL_FRAMEBUFFER, pingpong_fbo[horizontal]);
-				blur_shader->setInt("horizontal", horizontal);
+			bool current_fbo = 0;
+			bool first_iteration = true;
+
+			// Kawase blur uses 5-6 passes with increasing offsets for high quality
+			static const float offsets[] = {0.0f, 1.0f, 2.0f, 2.0f, 3.0f};
+
+			for (int i = 0; i < 5; i++) {
+				glBindFramebuffer(GL_FRAMEBUFFER, pingpong_fbo[current_fbo]);
+				blur_shader->setFloat("offset", offsets[i]);
 				glActiveTexture(GL_TEXTURE0);
-				glBindTexture(GL_TEXTURE_2D, first_iteration ? reflection_texture : pingpong_texture[!horizontal]);
+				glBindTexture(GL_TEXTURE_2D, first_iteration ? reflection_texture : pingpong_texture[!current_fbo]);
 				glBindVertexArray(blur_quad_vao);
 				glDrawArrays(GL_TRIANGLES, 0, 6);
-				horizontal = !horizontal;
+				current_fbo = !current_fbo;
 				if (first_iteration)
 					first_iteration = false;
 			}
@@ -1916,6 +1927,7 @@ namespace Boidsish {
 	}
 
 	void Visualizer::Update() {
+		PROJECT_PROFILE_SCOPE("Visualizer::Update");
 		impl->frame_count_++;
 		impl->hud_manager->Update(impl->input_state.delta_time, impl->camera);
 
@@ -1942,12 +1954,24 @@ namespace Boidsish {
 		}
 
 		if (!impl->paused) {
-			// TODO: Implement a fixed timestep for simulation stability.
-			// See performance_and_quality_audit.md#4-fixed-timestep-for-simulation-stability
-			impl->simulation_time += impl->time_scale * delta_time;
-		}
+			impl->time_accumulator += impl->time_scale * delta_time;
 
-		impl->light_manager.Update(impl->input_state.delta_time);
+			// Cap accumulator to prevent spiral of death
+			if (impl->time_accumulator > 0.25f)
+				impl->time_accumulator = 0.25f;
+
+			while (impl->time_accumulator >= impl->fixed_delta_time) {
+				impl->simulation_time += impl->fixed_delta_time;
+				impl->time_accumulator -= impl->fixed_delta_time;
+
+				// Simulation-dependent updates that benefit from fixed timestep
+				impl->light_manager.Update(impl->fixed_delta_time);
+				impl->fire_effect_manager->Update(impl->fixed_delta_time, impl->simulation_time);
+				impl->mesh_explosion_manager->Update(impl->fixed_delta_time, impl->simulation_time);
+				impl->sound_effect_manager->Update(impl->fixed_delta_time);
+				impl->shockwave_manager->Update(impl->fixed_delta_time);
+			}
+		}
 
 		// --- Adaptive Tessellation Logic ---
 		glm::vec3 current_camera_pos(impl->camera.x, impl->camera.y, impl->camera.z);
@@ -2020,6 +2044,7 @@ namespace Boidsish {
 	}
 
 	void Visualizer::Render() {
+		PROJECT_PROFILE_SCOPE("Visualizer::Render");
 		impl->RefreshFrameConfig();
 		impl->shapes.clear();
 
@@ -2159,12 +2184,8 @@ namespace Boidsish {
 			impl->terrain_generator->Update(generator_frustum, impl->camera);
 		}
 
-		// Update clone manager
+		// Update clone manager (still frame-rate dependent or needs simulation time)
 		impl->clone_manager->Update(impl->simulation_time, impl->camera.pos());
-		impl->fire_effect_manager->Update(impl->input_state.delta_time, impl->simulation_time);
-		impl->mesh_explosion_manager->Update(impl->input_state.delta_time, impl->simulation_time);
-		impl->sound_effect_manager->Update(impl->input_state.delta_time);
-		impl->shockwave_manager->Update(impl->input_state.delta_time);
 		if (impl->akira_effect_manager && impl->terrain_generator) {
 			impl->akira_effect_manager->Update(impl->input_state.delta_time, *impl->terrain_generator);
 		}

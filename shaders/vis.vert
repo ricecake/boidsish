@@ -10,6 +10,16 @@ layout(std430, binding = 10) buffer SSBOInstances {
 	mat4 ssboInstanceMatrices[];
 };
 
+// SSBO for visible instance indices (binding 11)
+layout(std430, binding = 11) readonly buffer VisibleInstances {
+	uint visibleIndices[];
+};
+
+// SSBO for instance colors (binding 12)
+layout(std430, binding = 12) readonly buffer InstanceColors {
+	vec4 instanceColors[];
+};
+
 #include "frustum.glsl"
 #include "helpers/lighting.glsl"
 #include "helpers/shockwave.glsl"
@@ -39,6 +49,7 @@ uniform float frustumCullRadius = 5.0; // Approximate object radius for sphere t
 // Arcade Text Effects
 uniform bool  isArcadeText = false;
 uniform int   arcadeWaveMode = 0; // 0: None, 1: Vertical, 2: Flag, 3: Twist
+uniform bool  useIndirectRendering = false;
 uniform float arcadeWaveAmplitude = 0.5;
 uniform float arcadeWaveFrequency = 10.0;
 uniform float arcadeWaveSpeed = 5.0;
@@ -90,7 +101,8 @@ void main() {
 
 	mat4 modelMatrix;
 	if (useSSBOInstancing) {
-		modelMatrix = ssboInstanceMatrices[gl_InstanceID];
+		uint finalIdx = useIndirectRendering ? visibleIndices[gl_InstanceID] : gl_InstanceID;
+		modelMatrix = ssboInstanceMatrices[finalIdx];
 	} else if (is_instanced) {
 		modelMatrix = aInstanceMatrix;
 	} else {
@@ -129,7 +141,14 @@ void main() {
 
 	Normal = mat3(transpose(inverse(modelMatrix))) * displacedNormal;
 	TexCoords = aTexCoords;
-	InstanceColor = useInstanceColor ? aInstanceColor : vec4(1.0);
+
+	if (useSSBOInstancing && useIndirectRendering) {
+		uint finalIdx = visibleIndices[gl_InstanceID];
+		InstanceColor = instanceColors[finalIdx];
+	} else {
+		InstanceColor = useInstanceColor ? aInstanceColor : vec4(1.0);
+	}
+
 	if (wireframe_enabled == 1) {
 		barycentric = getBarycentric();
 	}

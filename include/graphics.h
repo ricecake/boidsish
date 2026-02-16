@@ -10,6 +10,7 @@
 #include <vector>
 
 #include "Config.h"
+#include "profiling.h"
 #include "audio_manager.h"
 #include "concurrent_queue.h"
 #include "constants.h"

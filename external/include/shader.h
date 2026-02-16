@@ -95,6 +95,10 @@ public:
 			capture(name);
 			shader.setInt(name, value);
 		}
+		void setUint(const std::string& name, unsigned int value) {
+			capture(name);
+			shader.setUint(name, value);
+		}
 		void setFloat(const std::string& name, float value) {
 			capture(name);
 			shader.setFloat(name, value);
@@ -225,6 +229,12 @@ public:
 		int loc = getUniformLocation(name);
 		glUniform1i(loc, value);
 		m_UniformValues[loc] = UniformValue{value};
+	}
+
+	void setUint(const std::string& name, unsigned int value) const {
+		int loc = getUniformLocation(name);
+		glUniform1ui(loc, value);
+		m_UniformValues[loc] = UniformValue{(int)value}; // Variant doesn't have uint, use int for cache
 	}
 
 	// ------------------------------------------------------------------------
