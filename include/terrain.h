@@ -28,6 +28,8 @@ namespace Boidsish {
 
 		void GenerateRenderPackets(std::vector<RenderPacket>& out_packets, const RenderContext& context) const override;
 
+		bool UseNewRenderPath() const override { return true; }
+
 		// Terrain chunks are not instanced (each has unique geometry)
 		std::string GetInstanceKey() const override { return "Terrain:" + std::to_string(GetId()); }
 

@@ -199,8 +199,6 @@ namespace Boidsish {
 			packet.uniforms.is_instanced = IsInstanced();
 			packet.uniforms.is_colossal = IsColossal();
 
-			packet.casts_shadows = CastsShadows();
-
 			RenderLayer layer = (GetA() < 0.99f) ? RenderLayer::Transparent : RenderLayer::Opaque;
 			float normalized_depth = context.CalculateNormalizedDepth(world_pos);
 			packet.shader_handle = shader_handle;

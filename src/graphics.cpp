@@ -253,12 +253,14 @@ namespace Boidsish {
 		std::unique_ptr<PersistentBuffer<DrawElementsIndirectCommand>> indirect_elements_buffer;
 		std::unique_ptr<PersistentBuffer<DrawArraysIndirectCommand>>   indirect_arrays_buffer;
 		std::unique_ptr<PersistentBuffer<CommonUniforms>>              uniforms_ssbo;
+		std::unique_ptr<PersistentBuffer<FrustumDataGPU>>              frustum_ssbo;
 		GLsync                                                         mdi_fences[3]{0, 0, 0};
 
 		// MDI offset tracking across layers within a single frame
 		uint32_t mdi_elements_count = 0;
 		uint32_t mdi_arrays_count = 0;
 		uint32_t mdi_uniform_count = 0;
+		uint32_t mdi_frustum_count = 0;
 
 		std::shared_ptr<Shader> shader;
 		std::shared_ptr<Shader> plane_shader;
@@ -273,7 +275,6 @@ namespace Boidsish {
 		GLuint                  main_fbo_{0}, main_fbo_texture_{0}, main_fbo_depth_texture_{0}, main_fbo_rbo_{0};
 		GLuint                  lighting_ubo{0};
 		GLuint                  visual_effects_ubo{0};
-		GLuint                  frustum_ubo{0};
 		glm::mat4               projection, reflection_vp;
 
 		double last_mouse_x = 0.0, last_mouse_y = 0.0;
@@ -533,6 +534,10 @@ namespace Boidsish {
 				GL_SHADER_STORAGE_BUFFER,
 				16384
 			);
+			frustum_ssbo = std::make_unique<PersistentBuffer<FrustumDataGPU>>(
+				GL_UNIFORM_BUFFER,
+				16
+			);
 			if (ConfigManager::GetInstance().GetAppSettingBool("enable_effects", true)) {
 				postprocess_shader_ =
 					std::make_shared<Shader>("shaders/postprocess.vert", "shaders/postprocess.frag");
@@ -585,13 +590,6 @@ namespace Boidsish {
 				);
 			}
 
-			// Frustum UBO for GPU-side culling
-			// Layout: 6 vec4 planes (96 bytes) + vec3 camera pos + padding (16 bytes) = 112 bytes
-			glGenBuffers(1, &frustum_ubo);
-			glBindBuffer(GL_UNIFORM_BUFFER, frustum_ubo);
-			glBufferData(GL_UNIFORM_BUFFER, 112, NULL, GL_DYNAMIC_DRAW);
-			glBindBuffer(GL_UNIFORM_BUFFER, 0);
-			glBindBufferRange(GL_UNIFORM_BUFFER, Constants::UboBinding::FrustumData(), frustum_ubo, 0, 112);
 
 			shader->use();
 			SetupShaderBindings(*shader);
@@ -1063,9 +1061,6 @@ namespace Boidsish {
 				glDeleteBuffers(1, &visual_effects_ubo);
 			}
 
-			if (frustum_ubo) {
-				glDeleteBuffers(1, &frustum_ubo);
-			}
 
 			if (window)
 				glfwDestroyWindow(window);
@@ -1076,6 +1071,29 @@ namespace Boidsish {
 		// See performance_and_quality_audit.md#1-gpu-accelerated-frustum-culling
 		Frustum CalculateFrustum(const glm::mat4& view, const glm::mat4& projection) {
 			return Frustum::FromViewProjection(view, projection);
+		}
+
+		void UpdateFrustumUbo(const glm::mat4& view_mat, const glm::mat4& proj_mat, const glm::vec3& cam_pos) {
+			if (mdi_frustum_count >= frustum_ssbo->GetElementCount())
+				return;
+
+			Frustum         pass_frustum = Frustum::FromViewProjection(view_mat, proj_mat);
+			FrustumDataGPU* frustum_ptr = frustum_ssbo->GetFrameDataPtr();
+			FrustumDataGPU& data = frustum_ptr[mdi_frustum_count];
+
+			for (int i = 0; i < 6; ++i) {
+				data.planes[i] = glm::vec4(pass_frustum.planes[i].normal, pass_frustum.planes[i].distance);
+			}
+			data.camera_pos = cam_pos;
+
+			glBindBufferRange(
+				GL_UNIFORM_BUFFER,
+				Constants::UboBinding::FrustumData(),
+				frustum_ssbo->GetBufferId(),
+				frustum_ssbo->GetFrameOffset() + mdi_frustum_count * sizeof(FrustumDataGPU),
+				sizeof(FrustumDataGPU)
+			);
+			mdi_frustum_count++;
 		}
 
 		glm::mat4 SetupMatrices(const Camera& cam_to_use) {
@@ -1261,6 +1279,7 @@ namespace Boidsish {
 			const RenderQueue&                 queue,
 			const glm::mat4&                   view_mat,
 			const glm::mat4&                   proj_mat,
+			const glm::vec3&                   camera_pos,
 			RenderLayer                        layer,
 			const std::optional<ShaderHandle>& shader_override = std::nullopt,
 			const std::optional<glm::mat4>&    light_space_mat = std::nullopt,
@@ -1272,19 +1291,7 @@ namespace Boidsish {
 				return;
 
 			// Update Frustum UBO for GPU-side culling for this specific pass
-			{
-				Frustum   pass_frustum = Frustum::FromViewProjection(view_mat, proj_mat);
-				glm::vec4 frustum_planes[6];
-				for (int i = 0; i < 6; ++i) {
-					frustum_planes[i] = glm::vec4(pass_frustum.planes[i].normal, pass_frustum.planes[i].distance);
-				}
-				glBindBuffer(GL_UNIFORM_BUFFER, frustum_ubo);
-				glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(frustum_planes), frustum_planes);
-				// We don't necessarily have the camera pos for shadow passes in the same way,
-				// but using the view_mat's implicit camera pos could work.
-				// For now, keep the main camera pos as it's used for LOD/fading.
-				glBindBuffer(GL_UNIFORM_BUFFER, 0);
-			}
+			UpdateFrustumUbo(view_mat, proj_mat, camera_pos);
 
 			// Get pointers to persistent buffers
 			DrawElementsIndirectCommand* elements_cmd_ptr = indirect_elements_buffer->GetFrameDataPtr();
@@ -2341,6 +2348,7 @@ namespace Boidsish {
 		impl->indirect_elements_buffer->AdvanceFrame();
 		impl->indirect_arrays_buffer->AdvanceFrame();
 		impl->uniforms_ssbo->AdvanceFrame();
+		impl->frustum_ssbo->AdvanceFrame();
 
 		int current_idx = impl->uniforms_ssbo->GetCurrentBufferIndex(); // I need to add this method or keep track
 		if (impl->mdi_fences[current_idx]) {
@@ -2353,6 +2361,7 @@ namespace Boidsish {
 		impl->mdi_elements_count = 0;
 		impl->mdi_arrays_count = 0;
 		impl->mdi_uniform_count = 0;
+		impl->mdi_frustum_count = 0;
 
 		impl->shapes.clear();
 
@@ -2637,24 +2646,12 @@ namespace Boidsish {
 
 		// Update Frustum UBO for GPU-side culling
 		{
-			glm::mat4 view = glm::lookAt(
+			glm::mat4 view_mat = glm::lookAt(
 				impl->camera.pos(),
 				impl->camera.pos() + impl->camera.front(),
 				impl->camera.up()
 			);
-			Frustum render_frustum = impl->CalculateFrustum(view, impl->projection);
-
-			// Pack frustum planes into vec4 array (normal.xyz, distance.w)
-			glm::vec4 frustum_planes[6];
-			for (int i = 0; i < 6; ++i) {
-				frustum_planes[i] = glm::vec4(render_frustum.planes[i].normal, render_frustum.planes[i].distance);
-			}
-
-			glBindBuffer(GL_UNIFORM_BUFFER, impl->frustum_ubo);
-			glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(frustum_planes), frustum_planes);
-			glm::vec3 cam_pos = impl->camera.pos();
-			glBufferSubData(GL_UNIFORM_BUFFER, 96, sizeof(glm::vec3), &cam_pos[0]);
-			glBindBuffer(GL_UNIFORM_BUFFER, 0);
+			impl->UpdateFrustumUbo(view_mat, impl->projection, impl->camera.pos());
 		}
 
 		if (impl->reflection_fbo) {
@@ -2674,11 +2671,13 @@ namespace Boidsish {
 					impl->render_queue,
 					reflection_view,
 					impl->projection,
+					reflection_cam.pos(),
 					RenderLayer::Opaque,
 					std::nullopt,
 					std::nullopt,
 					glm::vec4(0, 1, 0, 0.01)
 				);
+				impl->UpdateFrustumUbo(reflection_view, impl->projection, reflection_cam.pos());
 				impl->RenderShapes(reflection_view, impl->shapes, impl->simulation_time, glm::vec4(0, 1, 0, 0.01));
 				// Sky after opaque geometry
 				impl->RenderSky(reflection_view);
@@ -2686,6 +2685,7 @@ namespace Boidsish {
 					impl->render_queue,
 					reflection_view,
 					impl->projection,
+					reflection_cam.pos(),
 					RenderLayer::Transparent,
 					std::nullopt,
 					std::nullopt,
@@ -2863,14 +2863,24 @@ namespace Boidsish {
 
 				impl->ExecuteRenderQueue(
 					impl->render_queue,
-					view, // Base view (not used for gl_Position in shadow pass)
+					view, // Base view
 					impl->projection,
+					impl->camera.pos(),
 					RenderLayer::Opaque,
 					impl->shadow_shader_handle,
 					impl->shadow_manager->GetLightSpaceMatrix(info.map_index),
 					std::nullopt,
 					true
 				);
+
+				// Fallback for shapes not using the new render path
+				Shader& shadow_shader = impl->shadow_manager->GetShadowShader();
+				shadow_shader.use();
+				for (const auto& shape : impl->shapes) {
+					if (!shape->UseNewRenderPath() && shape->CastsShadows()) {
+						shape->render(shadow_shader);
+					}
+				}
 
 				glDisable(GL_CULL_FACE);
 				impl->RenderTerrain(
@@ -2929,8 +2939,9 @@ namespace Boidsish {
 		// An unbound sampler2DArrayShadow can cause shader failures on some GPUs
 		impl->BindShadows(*impl->shader);
 
+		impl->UpdateFrustumUbo(view, impl->projection, impl->camera.pos());
 		impl->RenderShapes(view, impl->shapes, impl->simulation_time, std::nullopt);
-		impl->ExecuteRenderQueue(impl->render_queue, view, impl->projection, RenderLayer::Opaque);
+		impl->ExecuteRenderQueue(impl->render_queue, view, impl->projection, impl->camera.pos(), RenderLayer::Opaque);
 		if (impl->decor_manager) {
 			impl->decor_manager->Render(view, impl->projection);
 		}
@@ -2956,8 +2967,15 @@ namespace Boidsish {
 		}
 
 		// Render transparent shapes after sky and early post-processing
+		impl->UpdateFrustumUbo(view, impl->projection, impl->camera.pos());
 		impl->RenderTransparentShapes(view, impl->camera, impl->shapes, impl->simulation_time, std::nullopt);
-		impl->ExecuteRenderQueue(impl->render_queue, view, impl->projection, RenderLayer::Transparent);
+		impl->ExecuteRenderQueue(
+			impl->render_queue,
+			view,
+			impl->projection,
+			impl->camera.pos(),
+			RenderLayer::Transparent
+		);
 
 		// Render transparent/particle effects last
 		impl->fire_effect_manager->Render(view, impl->projection, impl->camera.pos());

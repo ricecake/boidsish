@@ -83,6 +83,8 @@ namespace Boidsish {
 
 		void SetInstanced(bool is_instanced) { Shape::SetInstanced(is_instanced); }
 
+		bool UseNewRenderPath() const override { return true; }
+
 		// Returns unique key for this model file - models loaded from the same file can be instanced together
 		std::string GetInstanceKey() const override;
 
