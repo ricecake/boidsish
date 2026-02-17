@@ -10,6 +10,7 @@ namespace Boidsish {
 
 	unsigned int            CheckpointRingShape::quad_vao_ = 0;
 	unsigned int            CheckpointRingShape::quad_vbo_ = 0;
+	MegabufferAllocation    CheckpointRingShape::quad_alloc_ = {};
 	std::shared_ptr<Shader> CheckpointRingShape::checkpoint_shader_ = nullptr;
 	ShaderHandle            CheckpointRingShape::checkpoint_shader_handle = ShaderHandle(0);
 
@@ -18,26 +19,46 @@ namespace Boidsish {
 		SetUsePBR(false);
 	}
 
-	void CheckpointRingShape::InitQuadMesh() {
-		if (quad_vao_ != 0)
+	void CheckpointRingShape::InitQuadMesh(Megabuffer* mb) {
+		if (quad_vao_ != 0 || quad_alloc_.valid)
 			return;
 
-		float vertices[] = {
-			// positions        // texture Coords
-			-1.0f, 1.0f, 0.0f, 0.0f, 1.0f, -1.0f, -1.0f, 0.0f, 0.0f, 0.0f,
-			1.0f,  1.0f, 0.0f, 1.0f, 1.0f, 1.0f,  -1.0f, 0.0f, 1.0f, 0.0f,
+		struct QuadVertex {
+			float x, y, z;
+			float u, v;
+		};
+		QuadVertex raw_vertices[] = {
+			{-1.0f, 1.0f, 0.0f, 0.0f, 1.0f},
+			{-1.0f, -1.0f, 0.0f, 0.0f, 0.0f},
+			{1.0f, 1.0f, 0.0f, 1.0f, 1.0f},
+			{1.0f, -1.0f, 0.0f, 1.0f, 0.0f},
 		};
 
-		glGenVertexArrays(1, &quad_vao_);
-		glGenBuffers(1, &quad_vbo_);
-		glBindVertexArray(quad_vao_);
-		glBindBuffer(GL_ARRAY_BUFFER, quad_vbo_);
-		glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), &vertices, GL_STATIC_DRAW);
-		glEnableVertexAttribArray(0);
-		glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void*)0);
-		glEnableVertexAttribArray(1);
-		glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void*)(3 * sizeof(float)));
-		glBindVertexArray(0);
+		if (mb) {
+			std::vector<Vertex> vertices;
+			for (int i = 0; i < 4; ++i) {
+				Vertex v;
+				v.Position = {raw_vertices[i].x, raw_vertices[i].y, raw_vertices[i].z};
+				v.Normal = {0, 0, 1};
+				v.TexCoords = {raw_vertices[i].u, raw_vertices[i].v};
+				v.Color = {1, 1, 1};
+				vertices.push_back(v);
+			}
+			quad_alloc_ = mb->AllocateStatic(4, 0);
+			mb->Upload(quad_alloc_, vertices.data(), 4);
+			quad_vao_ = mb->GetVAO();
+		} else {
+			glGenVertexArrays(1, &quad_vao_);
+			glGenBuffers(1, &quad_vbo_);
+			glBindVertexArray(quad_vao_);
+			glBindBuffer(GL_ARRAY_BUFFER, quad_vbo_);
+			glBufferData(GL_ARRAY_BUFFER, sizeof(raw_vertices), raw_vertices, GL_STATIC_DRAW);
+			glEnableVertexAttribArray(0);
+			glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void*)0);
+			glEnableVertexAttribArray(1);
+			glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void*)(3 * sizeof(float)));
+			glBindVertexArray(0);
+		}
 	}
 
 	void CheckpointRingShape::DestroyQuadMesh() {
@@ -92,7 +113,11 @@ namespace Boidsish {
 		shader.setBool("use_texture", false);
 
 		glBindVertexArray(quad_vao_);
-		glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+		if (quad_alloc_.valid) {
+			glDrawArrays(GL_TRIANGLE_STRIP, static_cast<GLint>(quad_alloc_.base_vertex), 4);
+		} else {
+			glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+		}
 		glBindVertexArray(0);
 	}
 
@@ -104,7 +129,9 @@ namespace Boidsish {
 
 		RenderPacket packet;
 		packet.vao = quad_vao_;
-		packet.vbo = quad_vbo_;
+		if (quad_alloc_.valid) {
+			packet.base_vertex = quad_alloc_.base_vertex;
+		}
 		packet.vertex_count = 4;
 		packet.draw_mode = GL_TRIANGLE_STRIP;
 		packet.shader_id = checkpoint_shader_ ? checkpoint_shader_->ID : 0;

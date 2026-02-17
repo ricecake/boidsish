@@ -48,7 +48,7 @@ namespace Boidsish {
 
 		bool IsTransparent() const override { return GetA() < 0.99f || style_ == Style::LASER; }
 
-		static void InitLineMesh();
+		static void InitLineMesh(Megabuffer* megabuffer = nullptr);
 		static void DestroyLineMesh();
 
 		std::string GetInstanceKey() const override { return "Line:" + std::to_string(GetId()); }
@@ -58,9 +58,10 @@ namespace Boidsish {
 		float     width_;
 		Style     style_ = Style::SOLID;
 
-		static unsigned int line_vao_;
-		static unsigned int line_vbo_;
-		static int          line_vertex_count_;
+		static unsigned int         line_vao_;
+		static unsigned int         line_vbo_;
+		static int                  line_vertex_count_;
+		static MegabufferAllocation line_allocation_;
 	};
 
 } // namespace Boidsish

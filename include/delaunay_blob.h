@@ -156,7 +156,7 @@ namespace Boidsish {
 
 		void GenerateRenderPackets(std::vector<RenderPacket>& out_packets, const RenderContext& context) const override;
 
-		void PrepareResources() const override { UpdateMeshBuffers(); }
+		void PrepareResources(Megabuffer* megabuffer = nullptr) const override;
 
 		std::string GetInstanceKey() const override { return "delaunay_blob_" + std::to_string(id_); }
 
@@ -231,12 +231,7 @@ namespace Boidsish {
 		mutable std::vector<Tetrahedron> tetrahedra_;
 		mutable std::vector<Face>        surface_faces_;
 
-		// Vertex data structure for GPU
-		struct Vertex {
-			glm::vec3 position;
-			glm::vec3 normal;
-			glm::vec4 color;
-		};
+		mutable MegabufferAllocation allocation_;
 	};
 
 } // namespace Boidsish

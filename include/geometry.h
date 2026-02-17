@@ -5,12 +5,81 @@
 #include <string>
 #include <vector>
 #include <algorithm>
+#include <atomic>
 
 #include "render_shader.h"
 #include "material.h"
 #include "render_context.h"
 
 namespace Boidsish {
+
+	/**
+	 * @brief Standard vertex format used across the rendering system.
+	 */
+	struct Vertex {
+		glm::vec3 Position;
+		glm::vec3 Normal;
+		glm::vec2 TexCoords;
+		glm::vec3 Color = glm::vec3(1.0f);
+	};
+
+	/**
+	 * @brief GPU indirect draw command structures.
+	 */
+	struct DrawElementsIndirectCommand {
+		uint32_t count;
+		uint32_t instanceCount;
+		uint32_t firstIndex;
+		int32_t  baseVertex;
+		uint32_t baseInstance;
+	};
+
+	struct DrawArraysIndirectCommand {
+		uint32_t count;
+		uint32_t instanceCount;
+		uint32_t first;
+		uint32_t baseInstance;
+	};
+
+	/**
+	 * @brief Represents an allocation within a Megabuffer.
+	 */
+	struct MegabufferAllocation {
+		uint32_t base_vertex = 0;
+		uint32_t first_index = 0;
+		uint32_t vertex_count = 0;
+		uint32_t index_count = 0;
+		bool     valid = false;
+	};
+
+	/**
+	 * @brief Forward declaration for Megabuffer.
+	 * Managed by the rendering system to minimize draw calls via buffer consolidation.
+	 */
+	class Megabuffer {
+	public:
+		virtual ~Megabuffer() = default;
+
+		/**
+		 * @brief Allocate space for geometry that persists across frames.
+		 */
+		virtual MegabufferAllocation AllocateStatic(uint32_t vertex_count, uint32_t index_count) = 0;
+
+		/**
+		 * @brief Allocate space for geometry that only lasts for the current frame.
+		 */
+		virtual MegabufferAllocation AllocateDynamic(uint32_t vertex_count, uint32_t index_count) = 0;
+
+		/**
+		 * @brief Upload vertex and index data to an allocation.
+		 */
+		virtual void Upload(const MegabufferAllocation& alloc, const Vertex* vertices, uint32_t v_count, const uint32_t* indices = nullptr, uint32_t i_count = 0) = 0;
+
+		/**
+		 * @brief Get the shared VAO for this megabuffer.
+		 */
+		virtual uint32_t GetVAO() const = 0;
+	};
 
 	/**
 	 * @brief Defines the logical layers for rendering to control draw order.
@@ -93,6 +162,10 @@ namespace Boidsish {
 
 		unsigned int vertex_count = 0;
 		unsigned int index_count = 0;
+
+		// Megabuffer support
+		unsigned int base_vertex = 0;
+		unsigned int first_index = 0;
 
 		// OpenGL drawing mode (e.g., GL_TRIANGLES)
 		unsigned int draw_mode = 0;

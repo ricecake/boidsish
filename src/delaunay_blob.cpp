@@ -580,11 +580,11 @@ namespace Boidsish {
 
 			// Normal attribute
 			glEnableVertexAttribArray(1);
-			glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)offsetof(Vertex, normal));
+			glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)offsetof(Vertex, Normal));
 
 			// Color attribute
 			glEnableVertexAttribArray(8);
-			glVertexAttribPointer(8, 4, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)offsetof(Vertex, color));
+			glVertexAttribPointer(8, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)offsetof(Vertex, Color));
 		};
 
 		setup_vao(vao_);
@@ -612,6 +612,93 @@ namespace Boidsish {
 
 		vao_ = wire_vao_ = vbo_ = ebo_ = wire_ebo_ = 0;
 		buffers_initialized_ = false;
+	}
+
+	void DelaunayBlob::PrepareResources(Megabuffer* mb) const {
+		if (!mb) {
+			UpdateMeshBuffers();
+			return;
+		}
+
+		if (!mesh_dirty_ && allocation_.valid)
+			return;
+
+		ComputeDelaunay3D();
+		ExtractSurfaceFaces();
+
+		if (surface_faces_.empty()) {
+			index_count_ = 0;
+			wire_index_count_ = 0;
+			mesh_dirty_ = false;
+			return;
+		}
+
+		std::vector<Vertex> vertices;
+		std::vector<GLuint> indices;
+
+		if (smooth_normals_) {
+			// Average normals at shared vertices
+			std::unordered_map<int, glm::vec3> vertex_normal_sum;
+			std::unordered_map<int, int>       vertex_face_count;
+
+			for (const auto& face : surface_faces_) {
+				for (int vid : face.vertices) {
+					vertex_normal_sum[vid] += face.normal;
+					vertex_face_count[vid]++;
+				}
+			}
+
+			// Create vertex buffer with averaged normals
+			std::unordered_map<int, GLuint> point_to_vertex;
+
+			for (const auto& [id, cp] : points_) {
+				Vertex v;
+				v.Position = cp.position;
+				if (vertex_face_count[id] > 0) {
+					v.Normal = glm::normalize(vertex_normal_sum[id] / static_cast<float>(vertex_face_count[id]));
+				} else {
+					v.Normal = glm::vec3(0, 1, 0);
+				}
+				v.Color = glm::vec3(cp.color);
+
+				point_to_vertex[id] = static_cast<GLuint>(vertices.size());
+				vertices.push_back(v);
+			}
+
+			// Create indices
+			for (const auto& face : surface_faces_) {
+				indices.push_back(point_to_vertex[face.vertices[0]]);
+				indices.push_back(point_to_vertex[face.vertices[1]]);
+				indices.push_back(point_to_vertex[face.vertices[2]]);
+			}
+		} else {
+			// Flat shading - duplicate vertices per face
+			for (const auto& face : surface_faces_) {
+				GLuint base = static_cast<GLuint>(vertices.size());
+
+				const auto& p0 = points_.at(face.vertices[0]);
+				const auto& p1 = points_.at(face.vertices[1]);
+				const auto& p2 = points_.at(face.vertices[2]);
+
+				vertices.push_back({p0.position, face.normal, {0, 0}, glm::vec3(p0.color)});
+				vertices.push_back({p1.position, face.normal, {0, 0}, glm::vec3(p1.color)});
+				vertices.push_back({p2.position, face.normal, {0, 0}, glm::vec3(p2.color)});
+
+				indices.push_back(base);
+				indices.push_back(base + 1);
+				indices.push_back(base + 2);
+			}
+		}
+
+		// Allocate from megabuffer
+		allocation_ = mb->AllocateStatic(vertices.size(), indices.size());
+		if (allocation_.valid) {
+			mb->Upload(allocation_, vertices.data(), vertices.size(), indices.data(), indices.size());
+			vao_ = mb->GetVAO();
+			index_count_ = indices.size();
+		}
+
+		mesh_dirty_ = false;
 	}
 
 	void DelaunayBlob::UpdateMeshBuffers() const {
@@ -652,13 +739,13 @@ namespace Boidsish {
 
 			for (const auto& [id, cp] : points_) {
 				Vertex v;
-				v.position = cp.position;
+				v.Position = cp.position;
 				if (vertex_face_count[id] > 0) {
-					v.normal = glm::normalize(vertex_normal_sum[id] / static_cast<float>(vertex_face_count[id]));
+					v.Normal = glm::normalize(vertex_normal_sum[id] / static_cast<float>(vertex_face_count[id]));
 				} else {
-					v.normal = glm::vec3(0, 1, 0);
+					v.Normal = glm::vec3(0, 1, 0);
 				}
-				v.color = cp.color;
+				v.Color = glm::vec3(cp.color);
 
 				point_to_vertex[id] = static_cast<GLuint>(vertices.size());
 				vertices.push_back(v);
@@ -687,9 +774,9 @@ namespace Boidsish {
 				const auto& p1 = points_.at(face.vertices[1]);
 				const auto& p2 = points_.at(face.vertices[2]);
 
-				vertices.push_back({p0.position, face.normal, p0.color});
-				vertices.push_back({p1.position, face.normal, p1.color});
-				vertices.push_back({p2.position, face.normal, p2.color});
+				vertices.push_back({p0.position, face.normal, {0, 0}, glm::vec3(p0.color)});
+				vertices.push_back({p1.position, face.normal, {0, 0}, glm::vec3(p1.color)});
+				vertices.push_back({p2.position, face.normal, {0, 0}, glm::vec3(p2.color)});
 
 				indices.push_back(base);
 				indices.push_back(base + 1);
@@ -844,6 +931,10 @@ namespace Boidsish {
 		auto create_packet = [&](RenderMode mode) {
 			RenderPacket packet;
 			packet.vao = vao_;
+			if (allocation_.valid) {
+				packet.base_vertex = allocation_.base_vertex;
+				packet.first_index = allocation_.first_index;
+			}
 			packet.vbo = vbo_;
 			packet.shader_id = shader ? shader->ID : 0;
 			packet.shader_handle = shader_handle;
@@ -861,6 +952,9 @@ namespace Boidsish {
 			if (mode == RenderMode::Wireframe) {
 				packet.vao = wire_vao_;
 				packet.ebo = wire_ebo_;
+				// Reset megabuffer offsets as wireframe uses legacy local buffers
+				packet.base_vertex = 0;
+				packet.first_index = 0;
 				packet.index_count = static_cast<unsigned int>(wire_index_count_);
 				packet.draw_mode = GL_LINES;
 				packet.index_type = GL_UNSIGNED_INT;

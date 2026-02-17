@@ -24,7 +24,13 @@ namespace Boidsish {
 		float a
 	):
 		Shape(id, x, y, z, r, g, b, a), cone_height_(cone_height), cone_radius_(cone_radius), rod_radius_(rod_radius) {
-		InitArrowMesh();
+		InitArrowMesh(nullptr);
+	}
+
+	void Arrow::PrepareResources(Megabuffer* mb) const {
+		if (mb) {
+			InitArrowMesh(mb);
+		}
 	}
 
 	Arrow::~Arrow() {
@@ -60,7 +66,10 @@ namespace Boidsish {
 		return model;
 	}
 
-	void Arrow::InitArrowMesh() {
+	void Arrow::InitArrowMesh(Megabuffer* mb) const {
+		if (rod_vao_ != 0 || rod_alloc_.valid)
+			return;
+
 		// Rod generation
 		std::vector<float> rod_vertices;
 		int                segments = 16;
@@ -90,16 +99,6 @@ namespace Boidsish {
 		}
 		rod_vertex_count_ = rod_vertices.size() / 6;
 
-		glGenVertexArrays(1, &rod_vao_);
-		glBindVertexArray(rod_vao_);
-		glGenBuffers(1, &rod_vbo_);
-		glBindBuffer(GL_ARRAY_BUFFER, rod_vbo_);
-		glBufferData(GL_ARRAY_BUFFER, rod_vertices.size() * sizeof(float), rod_vertices.data(), GL_STATIC_DRAW);
-		glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void*)0);
-		glEnableVertexAttribArray(0);
-		glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void*)(3 * sizeof(float)));
-		glEnableVertexAttribArray(1);
-
 		// Cone generation
 		std::vector<float> cone_vertices;
 		glm::vec3          tip(0, 1.0, 0);
@@ -127,17 +126,56 @@ namespace Boidsish {
 		}
 		cone_vertex_count_ = cone_vertices.size() / 6;
 
-		glGenVertexArrays(1, &cone_vao_);
-		glBindVertexArray(cone_vao_);
-		glGenBuffers(1, &cone_vbo_);
-		glBindBuffer(GL_ARRAY_BUFFER, cone_vbo_);
-		glBufferData(GL_ARRAY_BUFFER, cone_vertices.size() * sizeof(float), cone_vertices.data(), GL_STATIC_DRAW);
-		glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void*)0);
-		glEnableVertexAttribArray(0);
-		glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void*)(3 * sizeof(float)));
-		glEnableVertexAttribArray(1);
+		if (mb) {
+			std::vector<Vertex> v_rod;
+			for (size_t i = 0; i < rod_vertices.size(); i += 6) {
+				Vertex v;
+				v.Position = {rod_vertices[i], rod_vertices[i + 1], rod_vertices[i + 2]};
+				v.Normal = {rod_vertices[i + 3], rod_vertices[i + 4], rod_vertices[i + 5]};
+				v.TexCoords = {0, 0};
+				v.Color = {1, 1, 1};
+				v_rod.push_back(v);
+			}
+			rod_alloc_ = mb->AllocateStatic(v_rod.size(), 0);
+			mb->Upload(rod_alloc_, v_rod.data(), v_rod.size());
 
-		glBindVertexArray(0);
+			std::vector<Vertex> v_cone;
+			for (size_t i = 0; i < cone_vertices.size(); i += 6) {
+				Vertex v;
+				v.Position = {cone_vertices[i], cone_vertices[i + 1], cone_vertices[i + 2]};
+				v.Normal = {cone_vertices[i + 3], cone_vertices[i + 4], cone_vertices[i + 5]};
+				v.TexCoords = {0, 0};
+				v.Color = {1, 1, 1};
+				v_cone.push_back(v);
+			}
+			cone_alloc_ = mb->AllocateStatic(v_cone.size(), 0);
+			mb->Upload(cone_alloc_, v_cone.data(), v_cone.size());
+
+			rod_vao_ = mb->GetVAO();
+			cone_vao_ = mb->GetVAO();
+		} else {
+			glGenVertexArrays(1, &rod_vao_);
+			glBindVertexArray(rod_vao_);
+			glGenBuffers(1, &rod_vbo_);
+			glBindBuffer(GL_ARRAY_BUFFER, rod_vbo_);
+			glBufferData(GL_ARRAY_BUFFER, rod_vertices.size() * sizeof(float), rod_vertices.data(), GL_STATIC_DRAW);
+			glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void*)0);
+			glEnableVertexAttribArray(0);
+			glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void*)(3 * sizeof(float)));
+			glEnableVertexAttribArray(1);
+
+			glGenVertexArrays(1, &cone_vao_);
+			glBindVertexArray(cone_vao_);
+			glGenBuffers(1, &cone_vbo_);
+			glBindBuffer(GL_ARRAY_BUFFER, cone_vbo_);
+			glBufferData(GL_ARRAY_BUFFER, cone_vertices.size() * sizeof(float), cone_vertices.data(), GL_STATIC_DRAW);
+			glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void*)0);
+			glEnableVertexAttribArray(0);
+			glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void*)(3 * sizeof(float)));
+			glEnableVertexAttribArray(1);
+
+			glBindVertexArray(0);
+		}
 	}
 
 	void Arrow::SetDirection(const glm::vec3& direction) {
@@ -187,6 +225,9 @@ namespace Boidsish {
 			RenderPacket packet;
 			packet.vao = rod_vao_;
 			packet.vbo = rod_vbo_;
+			if (rod_alloc_.valid) {
+				packet.base_vertex = rod_alloc_.base_vertex;
+			}
 			packet.vertex_count = static_cast<unsigned int>(rod_vertex_count_);
 			packet.draw_mode = GL_TRIANGLES;
 			packet.shader_id = shader ? shader->ID : 0;
@@ -210,6 +251,9 @@ namespace Boidsish {
 			RenderPacket packet;
 			packet.vao = cone_vao_;
 			packet.vbo = cone_vbo_;
+			if (cone_alloc_.valid) {
+				packet.base_vertex = cone_alloc_.base_vertex;
+			}
 			packet.vertex_count = static_cast<unsigned int>(cone_vertex_count_);
 			packet.draw_mode = GL_TRIANGLES;
 			packet.shader_id = shader ? shader->ID : 0;

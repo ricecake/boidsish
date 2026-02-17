@@ -45,12 +45,16 @@ namespace Boidsish {
 		unsigned int getVBO() const { return VBO; }
 		unsigned int getEBO() const { return EBO; }
 
+		MegabufferAllocation allocation;
+
 	private:
 		// Render data
-		unsigned int VAO, VBO, EBO;
+		unsigned int VAO = 0, VBO = 0, EBO = 0;
 
 		// Initializes all the buffer objects/arrays
-		void setupMesh();
+		void setupMesh(Megabuffer* megabuffer = nullptr);
+
+		friend class Model;
 	};
 
 	struct ModelData {
@@ -65,6 +69,8 @@ namespace Boidsish {
 	public:
 		// Constructor, expects a filepath to a 3D model.
 		Model(const std::string& path, bool no_cull = false);
+
+		void PrepareResources(Megabuffer* megabuffer = nullptr) const override;
 
 		// Render the model
 		void      render() const override;

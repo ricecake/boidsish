@@ -16,12 +16,6 @@ class Shader;
 
 namespace Boidsish {
 
-	struct Vertex {
-		glm::vec3 Position;
-		glm::vec3 Normal;
-		glm::vec2 TexCoords;
-	};
-
 	// Base class for all renderable shapes
 	class Shape : public Geometry {
 	public:
@@ -34,7 +28,7 @@ namespace Boidsish {
 		 * @brief Prepares any GPU resources needed for rendering.
 		 * Called on the main thread before packet generation.
 		 */
-		virtual void PrepareResources() const {}
+		virtual void PrepareResources(Megabuffer* megabuffer = nullptr) const { (void)megabuffer; }
 
 		// Dirty flag pattern implementation
 		bool IsDirty() const override { return render_dirty_; }
@@ -221,7 +215,7 @@ namespace Boidsish {
 		static ShaderHandle            shader_handle;
 
 		// Sphere mesh generation
-		static void InitSphereMesh();
+		static void InitSphereMesh(Megabuffer* megabuffer = nullptr);
 		static void DestroySphereMesh();
 		static void RenderSphere(
 			const glm::vec3& position,
@@ -301,10 +295,11 @@ namespace Boidsish {
 
 	public:
 		// Shared sphere mesh (public for instancing support)
-		static unsigned int sphere_vao_;
-		static unsigned int sphere_vbo_;
-		static unsigned int sphere_ebo_;
-		static int          sphere_vertex_count_;
+		static unsigned int         sphere_vao_;
+		static unsigned int         sphere_vbo_;
+		static unsigned int         sphere_ebo_;
+		static int                  sphere_vertex_count_;
+		static MegabufferAllocation sphere_alloc_;
 	};
 
 	// Function type for user-defined shape generation

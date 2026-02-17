@@ -76,6 +76,8 @@ namespace Boidsish {
         size_t GetElementCount() const { return element_count_; }
         size_t GetTotalSize() const { return element_count_ * sizeof(T) * num_buffers_; }
         int    GetCurrentBufferIndex() const { return current_buffer_index_; }
+        int    GetNumBuffers() const { return num_buffers_; }
+        T*     GetFullBufferPtr() { return mapped_data_; }
 
     private:
         GLuint buffer_id_ = 0;

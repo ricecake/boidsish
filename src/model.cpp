@@ -22,10 +22,22 @@ namespace Boidsish {
 		this->indices = indices;
 		this->textures = textures;
 
-		setupMesh();
+		setupMesh(nullptr); // Initial setup (legacy if no megabuffer yet)
 	}
 
-	void Mesh::setupMesh() {
+	void Mesh::setupMesh(Megabuffer* mb) {
+		if (mb) {
+			if (allocation.valid)
+				return;
+			allocation = mb->AllocateStatic(vertices.size(), indices.size());
+			mb->Upload(allocation, vertices.data(), vertices.size(), indices.data(), indices.size());
+			VAO = mb->GetVAO();
+			return;
+		}
+
+		if (VAO != 0)
+			return;
+
 		glGenVertexArrays(1, &VAO);
 		glGenBuffers(1, &VBO);
 		glGenBuffers(1, &EBO);
@@ -122,7 +134,17 @@ namespace Boidsish {
 			}
 		}
 
-		glDrawElements(GL_TRIANGLES, static_cast<unsigned int>(indices.size()), GL_UNSIGNED_INT, 0);
+		if (allocation_.valid) {
+			glDrawElementsBaseVertex(
+				GL_TRIANGLES,
+				static_cast<unsigned int>(indices.size()),
+				GL_UNSIGNED_INT,
+				(void*)(uintptr_t)(allocation_.first_index * sizeof(unsigned int)),
+				allocation_.base_vertex
+			);
+		} else {
+			glDrawElements(GL_TRIANGLES, static_cast<unsigned int>(indices.size()), GL_UNSIGNED_INT, 0);
+		}
 		glBindVertexArray(0);
 
 		// always good practice to set everything back to defaults once configured.
@@ -244,6 +266,14 @@ namespace Boidsish {
 		m_data = AssetManager::GetInstance().GetModelData(path);
 	}
 
+	void Model::PrepareResources(Megabuffer* mb) const {
+		if (!m_data || !mb)
+			return;
+		for (auto& mesh : m_data->meshes) {
+			mesh.setupMesh(mb);
+		}
+	}
+
 	void Model::render() const {
 		if (!shader) {
 			std::cerr << "Model::render - Shader is not set!" << std::endl;
@@ -302,6 +332,11 @@ namespace Boidsish {
 			packet.vbo = mesh.getVBO();
 			packet.ebo = mesh.getEBO();
 			packet.index_count = static_cast<unsigned int>(mesh.indices.size());
+
+			if (mesh.allocation.valid) {
+				packet.base_vertex = mesh.allocation.base_vertex;
+				packet.first_index = mesh.allocation.first_index;
+			}
 			packet.draw_mode = GL_TRIANGLES;
 			packet.index_type = GL_UNSIGNED_INT;
 			packet.shader_id = shader ? shader->ID : 0;
