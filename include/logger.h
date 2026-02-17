@@ -43,7 +43,7 @@ namespace logger {
 
 	struct LogMessage {
 		const LogLevel         level = LogLevel::LOG;
-		const std::string_view message;   // View of the original message
+		const std::string      message;   // Now potentially interpolated
 		const std::string_view file_name; // View of the const char*
 		// const std::string_view function_name; // View of the const char*
 		const std::string  tags;
@@ -94,11 +94,28 @@ namespace logger {
 
 		template <typename... Ts>
 		void doLogging(const LogLevel& level, const LogSource& src, Ts&&... flags) {
+			std::string       message(src.msg);
 			std::stringstream tags;
-			((tags << "[" << flags << "] "), ...);
+
+			size_t searchPos = 0;
+			auto   process = [&](auto&& arg) {
+				size_t pos = message.find("{}", searchPos);
+				if (pos != std::string::npos) {
+					std::stringstream ss;
+					ss << arg;
+					std::string replacement = ss.str();
+					message.replace(pos, 2, replacement);
+					searchPos = pos + replacement.length();
+				} else {
+					tags << "[" << arg << "] ";
+				}
+			};
+
+			(process(std::forward<Ts>(flags)), ...);
+
 			LogMessage log{
 				.level = level,
-				.message = src.msg,
+				.message = message,
 				.file_name = src.loc.file_name(),
 				// .function_name = src.loc.function_name(),
 				.tags = tags.str(),
