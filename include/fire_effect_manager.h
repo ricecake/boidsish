@@ -35,6 +35,9 @@ namespace Boidsish {
 		void Update(float delta_time, float time);
 		void Render(const glm::mat4& view, const glm::mat4& projection, const glm::vec3& camera_pos);
 
+		// Scale all active fire effects
+		void Scale(float ratio);
+
 		// Add a new fire effect and return a pointer to it
 		std::shared_ptr<FireEffect> AddEffect(
 			const glm::vec3& position,

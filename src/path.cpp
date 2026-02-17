@@ -369,4 +369,12 @@ namespace Boidsish {
 		return closest_point;
 	}
 
+	void Path::Scale(float ratio) {
+		Shape::Scale(ratio);
+		for (auto& wp : waypoints_) {
+			wp.position = wp.position * ratio;
+		}
+		buffers_initialized_ = false;
+	}
+
 } // namespace Boidsish

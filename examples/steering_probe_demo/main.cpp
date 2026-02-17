@@ -90,8 +90,8 @@ private:
 int main() {
 	try {
 		auto visualizer = std::make_shared<Visualizer>(1280, 720, "Steering Probe Demo");
+		visualizer->SetWorldScale(2.0f);
 		auto terrain = visualizer->GetTerrain();
-		terrain->SetWorldScale(2.0f);
 
 		auto handler = std::make_shared<EntityHandler>(visualizer->GetThreadPool(), visualizer);
 		visualizer->AddShapeHandler(std::ref(*handler));
@@ -115,6 +115,8 @@ int main() {
 
 		auto sp = std::make_shared<SteeringProbe>(terrain);
 		sp->SetPosition({0, 150, -100});
+
+		visualizer->AddWorldScaleCallback([sp](float ratio) { sp->Scale(ratio); });
 
 		auto probeDot = std::make_shared<Dot>();
 		probeDot->SetSize(80.0f);

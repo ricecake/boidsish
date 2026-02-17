@@ -170,6 +170,11 @@ namespace Boidsish {
 		void Clear() { shockwaves_.clear(); }
 
 		/**
+		 * @brief Scale all active shockwaves.
+		 */
+		void Scale(float ratio);
+
+		/**
 		 * @brief Initialize GPU resources (call once after OpenGL context creation)
 		 */
 		void Initialize(int screen_width, int screen_height);

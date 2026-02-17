@@ -50,6 +50,7 @@ namespace Boidsish {
 	namespace PostProcessing {
 		class PostProcessingManager;
 	}
+	class EntityHandler;
 } // namespace Boidsish
 
 #include "frustum.h"
@@ -227,6 +228,15 @@ namespace Boidsish {
 		// Get current camera
 		Camera&       GetCamera();
 		const Camera& GetCamera() const;
+
+		// World scaling
+		void  SetWorldScale(float scale);
+		float GetWorldScale() const;
+		void  AddWorldScaleCallback(std::function<void(float ratio)> callback);
+
+		// Entity handler registration
+		void RegisterEntityHandler(EntityHandler* handler);
+		void UnregisterEntityHandler(EntityHandler* handler);
 
 		glm::mat4   GetProjectionMatrix() const;
 		glm::mat4   GetViewMatrix() const;

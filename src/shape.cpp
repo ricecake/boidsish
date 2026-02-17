@@ -175,4 +175,11 @@ namespace Boidsish {
 	AABB Shape::GetAABB() const {
 		return local_aabb_.Transform(GetModelMatrix());
 	}
+
+	void Shape::Scale(float ratio) {
+		x_ *= ratio;
+		y_ *= ratio;
+		z_ *= ratio;
+		last_position_ *= ratio;
+	}
 } // namespace Boidsish

@@ -266,4 +266,13 @@ namespace Boidsish {
 		glActiveTexture(GL_TEXTURE0);
 	}
 
+	void ShockwaveManager::Scale(float ratio) {
+		for (auto& wave : shockwaves_) {
+			wave.center *= ratio;
+			wave.max_radius *= ratio;
+			wave.current_radius *= ratio;
+			wave.ring_width *= ratio;
+		}
+	}
+
 } // namespace Boidsish

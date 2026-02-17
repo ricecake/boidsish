@@ -218,6 +218,8 @@ namespace Boidsish {
 		InputState                                             input_state{};
 		std::vector<InputCallback>                             input_callbacks;
 		std::vector<PrepareCallback>                           prepare_callbacks;
+		std::vector<EntityHandler*>                            entity_handlers_;
+		std::vector<std::function<void(float ratio)>>          world_scale_callbacks_;
 		bool                                                   prepared_{false};
 		std::unique_ptr<UI::UIManager>                         ui_manager;
 		std::unique_ptr<HudManager>                            hud_manager;
@@ -2761,6 +2763,122 @@ namespace Boidsish {
 
 	glm::mat4 Visualizer::GetViewMatrix() const {
 		return impl->SetupMatrices(impl->camera);
+	}
+
+	void Visualizer::RegisterEntityHandler(EntityHandler* handler) {
+		if (handler) {
+			impl->entity_handlers_.push_back(handler);
+		}
+	}
+
+	void Visualizer::UnregisterEntityHandler(EntityHandler* handler) {
+		auto it = std::find(impl->entity_handlers_.begin(), impl->entity_handlers_.end(), handler);
+		if (it != impl->entity_handlers_.end()) {
+			impl->entity_handlers_.erase(it);
+		}
+	}
+
+	void Visualizer::AddWorldScaleCallback(std::function<void(float ratio)> callback) {
+		impl->world_scale_callbacks_.push_back(callback);
+	}
+
+	float Visualizer::GetWorldScale() const {
+		return impl->terrain_generator ? impl->terrain_generator->GetWorldScale() : 1.0f;
+	}
+
+	void Visualizer::SetWorldScale(float scale) {
+		if (!impl->terrain_generator)
+			return;
+
+		float old_scale = impl->terrain_generator->GetWorldScale();
+		if (std::abs(scale - old_scale) < 0.0001f)
+			return;
+
+		float ratio = scale / old_scale;
+
+		// 1. Scale camera
+		impl->camera.x *= ratio;
+		impl->camera.y *= ratio;
+		impl->camera.z *= ratio;
+		impl->camera.speed *= ratio;
+		impl->camera.follow_distance *= ratio;
+		impl->camera.follow_elevation *= ratio;
+		impl->camera.follow_look_ahead *= ratio;
+
+		// Sets to track already scaled objects and avoid double-scaling
+		std::set<EntityBase*> scaled_entities;
+		std::set<Shape*>      scaled_shapes;
+
+		// 2. Scale registered entity handlers and their entities/shapes
+		for (auto* handler : impl->entity_handlers_) {
+			handler->Scale(ratio);
+			for (auto& [id, entity] : handler->GetAllEntities()) {
+				scaled_entities.insert(entity.get());
+				if (auto shape = entity->GetShape()) {
+					scaled_shapes.insert(shape.get());
+				}
+			}
+		}
+
+		// 3. Scale chase targets that might not be in handlers
+		if (impl->chase_target_ && scaled_entities.find(impl->chase_target_.get()) == scaled_entities.end()) {
+			impl->chase_target_->Scale(ratio);
+			scaled_entities.insert(impl->chase_target_.get());
+			if (auto shape = impl->chase_target_->GetShape()) {
+				scaled_shapes.insert(shape.get());
+			}
+		}
+
+		for (auto& weak_target : impl->chase_targets_) {
+			if (auto target = weak_target.lock()) {
+				if (scaled_entities.find(target.get()) == scaled_entities.end()) {
+					target->Scale(ratio);
+					scaled_entities.insert(target.get());
+					if (auto shape = target->GetShape()) {
+						scaled_shapes.insert(shape.get());
+					}
+				}
+			}
+		}
+
+		// 4. Scale persistent shapes (if they are not entities)
+		for (auto& [id, shape] : impl->persistent_shapes) {
+			if (scaled_shapes.find(shape.get()) == scaled_shapes.end()) {
+				shape->Scale(ratio);
+				scaled_shapes.insert(shape.get());
+			}
+		}
+
+		// 5. Scale transient effects (if they are not entities)
+		for (auto& shape : impl->transient_effects) {
+			if (scaled_shapes.find(shape.get()) == scaled_shapes.end()) {
+				shape->Scale(ratio);
+				scaled_shapes.insert(shape.get());
+			}
+		}
+
+		// 6. Scale managers
+		if (impl->fire_effect_manager)
+			impl->fire_effect_manager->Scale(ratio);
+		if (impl->shockwave_manager)
+			impl->shockwave_manager->Scale(ratio);
+		if (impl->sdf_volume_manager)
+			impl->sdf_volume_manager->Scale(ratio);
+		if (impl->decor_manager)
+			impl->decor_manager->Scale(ratio);
+
+		// 7. Scale camera path
+		if (impl->path_target_) {
+			impl->path_target_->Scale(ratio);
+		}
+
+		// 8. Update terrain
+		impl->terrain_generator->SetWorldScale(scale);
+
+		// 9. Invoke callbacks
+		for (auto& callback : impl->world_scale_callbacks_) {
+			callback(ratio);
+		}
 	}
 
 	GLFWwindow* Visualizer::GetWindow() const {

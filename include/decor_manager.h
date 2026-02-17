@@ -81,6 +81,9 @@ namespace Boidsish {
 		// Maximum distance at which decor is placed at all
 		void SetMaxDistance(float distance) { max_decor_distance_ = distance; }
 
+		// Scale distance parameters and decor properties
+		void Scale(float ratio);
+
 	private:
 		void _Initialize();
 		void _RegeneratePlacements(

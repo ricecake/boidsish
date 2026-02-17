@@ -42,6 +42,9 @@ namespace Boidsish {
 		// Called each frame to update the entity
 		virtual void UpdateEntity(const EntityHandler& handler, float time, float delta_time) = 0;
 
+		// Scale the entity's position and velocity
+		virtual void Scale(float ratio);
+
 		// Generic interaction for weapons/collisions
 		virtual void OnHit(const EntityHandler& handler, float damage) {
 			(void)handler;
@@ -232,7 +235,11 @@ namespace Boidsish {
 			task_thread_pool::task_thread_pool& thread_pool,
 			std::shared_ptr<Visualizer>         visualizer = nullptr
 		):
-			thread_pool_(thread_pool), vis(visualizer), last_time_(-1.0f), next_id_(0) {}
+			thread_pool_(thread_pool), vis(visualizer), last_time_(-1.0f), next_id_(0) {
+			if (vis) {
+				vis->RegisterEntityHandler(this);
+			}
+		}
 
 		virtual ~EntityHandler();
 
@@ -243,7 +250,15 @@ namespace Boidsish {
 		// Operator() to make this compatible with ShapeFunction
 		std::vector<std::shared_ptr<Shape>> operator()(float time);
 
-		void SetVisualizer(auto& new_vis) { vis = new_vis; }
+		void SetVisualizer(std::shared_ptr<Visualizer> new_vis) {
+			if (vis) {
+				vis->UnregisterEntityHandler(this);
+			}
+			vis = new_vis;
+			if (vis) {
+				vis->RegisterEntityHandler(this);
+			}
+		}
 
 		// Entity management
 		template <typename T, typename... Args>
@@ -320,6 +335,9 @@ namespace Boidsish {
 
 		// Get total entity count
 		size_t GetEntityCount() const { return entities_.size(); }
+
+		// Scale all managed entities
+		void Scale(float ratio);
 
 		std::tuple<float, glm::vec3>                 CalculateTerrainPropertiesAtPoint(float x, float y) const;
 		const std::vector<std::shared_ptr<Terrain>>& GetTerrainChunks() const;

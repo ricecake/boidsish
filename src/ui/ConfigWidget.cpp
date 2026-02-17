@@ -135,14 +135,11 @@ namespace Boidsish {
 				}
 
 				if (ImGui::CollapsingHeader("Terrain", ImGuiTreeNodeFlags_DefaultOpen)) {
-					auto terrain = m_visualizer.GetTerrain();
-					if (terrain) {
-						float world_scale = terrain->GetWorldScale();
-						if (ImGui::SliderFloat("World Scale", &world_scale, 0.1f, 5.0f)) {
-							terrain->SetWorldScale(world_scale);
-						}
-						ImGui::Text("Higher = larger world, Lower = smaller world");
+					float world_scale = m_visualizer.GetWorldScale();
+					if (ImGui::SliderFloat("World Scale", &world_scale, 0.1f, 5.0f)) {
+						m_visualizer.SetWorldScale(world_scale);
 					}
+					ImGui::Text("Higher = larger world, Lower = smaller world");
 
 					auto decor_manager = m_visualizer.GetDecorManager();
 					if (decor_manager) {

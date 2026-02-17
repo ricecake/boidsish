@@ -306,4 +306,19 @@ namespace Boidsish {
 		shader->setBool("useSSBOInstancing", false);
 	}
 
+	void DecorManager::Scale(float ratio) {
+		density_falloff_start_ *= ratio;
+		density_falloff_end_ *= ratio;
+		max_decor_distance_ *= ratio;
+
+		for (auto& type : decor_types_) {
+			type.props.base_scale *= ratio;
+			type.props.scale_variance *= ratio;
+			type.props.min_height *= ratio;
+			type.props.max_height *= ratio;
+		}
+
+		needs_regeneration_ = true;
+	}
+
 } // namespace Boidsish

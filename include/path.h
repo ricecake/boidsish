@@ -42,6 +42,9 @@ namespace Boidsish {
 		// Paths are not instanced (each has unique geometry)
 		std::string GetInstanceKey() const override { return "Path:" + std::to_string(GetId()); }
 
+		// Scale all waypoints
+		void Scale(float ratio) override;
+
 		Waypoint& AddWaypoint(
 			const Vector3& pos,
 			const Vector3& up = Vector3(0, 1, 0),
