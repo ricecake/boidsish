@@ -1163,6 +1163,8 @@ namespace Boidsish {
 			float                                      time,
 			const std::optional<glm::vec4>&            clip_plane
 		) {
+			(void)shapes; // All shapes now use data-driven path via ExecuteRenderQueue
+
 			shader->use();
 			shader->setFloat("time", time);
 			shader->setFloat(
@@ -1178,27 +1180,9 @@ namespace Boidsish {
 
 			// Enable GPU frustum culling for instanced rendering
 			shader->setBool("enableFrustumCulling", true);
-
 			shader->setInt("useVertexColor", 0);
-			for (const auto& shape : shapes) {
-				if (shape->UseNewRenderPath())
-					continue;
-				if (shape->IsHidden() || shape->IsTransparent()) {
-					continue;
-				}
-				if (shape->IsInstanced()) {
-					shader->setFloat("frustumCullRadius", shape->GetBoundingRadius());
-					instance_manager->AddInstance(shape);
-				} else {
-					shader->setBool("isColossal", shape->IsColossal());
-					shader->setFloat("frustumCullRadius", shape->GetBoundingRadius());
-					shape->render();
-				}
-			}
 
-			instance_manager->Render(*shader);
-
-			// Render clones
+			// Render clones (captured via FREEZE_FRAME_TRAIL effect)
 			clone_manager->Render(*shader);
 
 			// Disable frustum culling after shapes are rendered
@@ -1212,67 +1196,13 @@ namespace Boidsish {
 			float                                      time,
 			const std::optional<glm::vec4>&            clip_plane
 		) {
-			std::vector<std::shared_ptr<Shape>> transparent_shapes;
-			for (const auto& shape : shapes) {
-				if (shape->UseNewRenderPath())
-					continue;
-				if (!shape->IsHidden() && shape->IsTransparent()) {
-					transparent_shapes.push_back(shape);
-				}
-			}
-
-			if (transparent_shapes.empty()) {
-				return;
-			}
-
-			// Sort back-to-front for correct alpha blending
-			glm::vec3 cameraPos = cam.pos();
-			std::sort(transparent_shapes.begin(), transparent_shapes.end(), [&](const auto& a, const auto& b) {
-				glm::vec3 posA(a->GetX(), a->GetY(), a->GetZ());
-				glm::vec3 posB(b->GetX(), b->GetY(), b->GetZ());
-				return glm::distance(cameraPos, posA) > glm::distance(cameraPos, posB);
-			});
-
-			shader->use();
-			shader->setFloat("time", time);
-			shader->setFloat(
-				"ripple_strength",
-				ConfigManager::GetInstance().GetAppSettingBool("artistic_effect_ripple", false) ? 0.05f : 0.0f
-			);
-			shader->setMat4("view", view);
-			if (clip_plane) {
-				shader->setVec4("clipPlane", *clip_plane);
-			} else {
-				shader->setVec4("clipPlane", glm::vec4(0, 0, 0, 0));
-			}
-
-			// Enable GPU frustum culling for instanced rendering
-			shader->setBool("enableFrustumCulling", true);
-
-			// Disable depth writing for transparency to show objects behind
-			glDepthMask(GL_FALSE);
-			glEnable(GL_BLEND);
-			glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-			glDisable(GL_CULL_FACE);
-
-			shader->setInt("useVertexColor", 0);
-			for (const auto& shape : transparent_shapes) {
-				if (shape->IsInstanced()) {
-					shader->setFloat("frustumCullRadius", shape->GetBoundingRadius());
-					instance_manager->AddInstance(shape);
-				} else {
-					shader->setBool("isColossal", shape->IsColossal());
-					shader->setFloat("frustumCullRadius", shape->GetBoundingRadius());
-					shape->render();
-				}
-			}
-
-			instance_manager->Render(*shader);
-
-			// Restore state
-			glDepthMask(GL_TRUE);
-			glEnable(GL_CULL_FACE);
-			shader->setBool("enableFrustumCulling", false);
+			// All shapes now use data-driven path via ExecuteRenderQueue with RenderLayer::Transparent
+			// This function is kept for API compatibility but does nothing
+			(void)view;
+			(void)cam;
+			(void)shapes;
+			(void)time;
+			(void)clip_plane;
 		}
 
 		void ExecuteRenderQueue(
@@ -2514,31 +2444,29 @@ namespace Boidsish {
 				local_packets.reserve(end - i);
 				for (size_t j = i; j < end; ++j) {
 					auto& shape = impl_ptr->shapes[j];
-					if (shape->UseNewRenderPath()) {
-						// Check for cached packets (dirty flag pattern)
-						if (auto* cached = shape->GetCachedPackets(); cached && !cached->empty()) {
-							// Use cached packets - update sort_keys for current camera position
-							for (const auto& cached_packet : *cached) {
-								RenderPacket packet = cached_packet;
-								// Recalculate sort_key with current camera position
-								glm::vec3 world_pos = glm::vec3(packet.uniforms.model[3]);
-								float normalized_depth = context.CalculateNormalizedDepth(world_pos);
-								RenderLayer layer = (packet.uniforms.color.a < 0.99f) ? RenderLayer::Transparent : RenderLayer::Opaque;
-								packet.sort_key = CalculateSortKey(layer, packet.shader_handle, packet.material_handle, normalized_depth);
-								local_packets.push_back(std::move(packet));
-							}
-						} else {
-							// Generate new packets and cache them
-							std::vector<RenderPacket> new_packets;
-							shape->GenerateRenderPackets(new_packets, context);
-							// Copy packets to local_packets before caching
-							for (const auto& packet : new_packets) {
-								local_packets.push_back(packet);
-							}
-							// Cache for future frames
-							shape->CachePackets(std::move(new_packets));
-							shape->MarkClean();
+					// Check for cached packets (dirty flag pattern)
+					if (auto* cached = shape->GetCachedPackets(); cached && !cached->empty()) {
+						// Use cached packets - update sort_keys for current camera position
+						for (const auto& cached_packet : *cached) {
+							RenderPacket packet = cached_packet;
+							// Recalculate sort_key with current camera position
+							glm::vec3 world_pos = glm::vec3(packet.uniforms.model[3]);
+							float normalized_depth = context.CalculateNormalizedDepth(world_pos);
+							RenderLayer layer = (packet.uniforms.color.a < 0.99f) ? RenderLayer::Transparent : RenderLayer::Opaque;
+							packet.sort_key = CalculateSortKey(layer, packet.shader_handle, packet.material_handle, normalized_depth);
+							local_packets.push_back(std::move(packet));
 						}
+					} else {
+						// Generate new packets and cache them
+						std::vector<RenderPacket> new_packets;
+						shape->GenerateRenderPackets(new_packets, context);
+						// Copy packets to local_packets before caching
+						for (const auto& packet : new_packets) {
+							local_packets.push_back(packet);
+						}
+						// Cache for future frames
+						shape->CachePackets(std::move(new_packets));
+						shape->MarkClean();
 					}
 				}
 				if (!local_packets.empty()) {
@@ -2900,15 +2828,6 @@ namespace Boidsish {
 					std::nullopt,
 					true
 				);
-
-				// Fallback for shapes not using the new render path
-				Shader& shadow_shader = impl->shadow_manager->GetShadowShader();
-				shadow_shader.use();
-				for (const auto& shape : impl->shapes) {
-					if (!shape->UseNewRenderPath() && shape->CastsShadows()) {
-						shape->render(shadow_shader);
-					}
-				}
 
 				glDisable(GL_CULL_FACE);
 				impl->RenderTerrain(

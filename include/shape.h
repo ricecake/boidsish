@@ -163,12 +163,6 @@ namespace Boidsish {
 		virtual std::string GetInstanceKey() const = 0;
 
 		/**
-		 * @brief Returns true if this shape should be rendered via the new data-driven
-		 * render queue instead of the legacy immediate path.
-		 */
-		virtual bool UseNewRenderPath() const { return false; }
-
-		/**
 		 * @brief Indicates if the shape has transparent components and should be
 		 * rendered in the transparent pass.
 		 *

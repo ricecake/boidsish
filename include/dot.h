@@ -45,8 +45,6 @@ namespace Boidsish {
 		// All Dots share the same sphere mesh, so they can be instanced together
 		std::string GetInstanceKey() const override { return "Dot"; }
 
-		bool UseNewRenderPath() const override { return true; }
-
 	private:
 		float size_;
 	};

@@ -32,8 +32,6 @@ namespace Boidsish {
 
 		void GenerateRenderPackets(std::vector<RenderPacket>& out_packets, const RenderContext& context) const override;
 
-		bool UseNewRenderPath() const override { return true; }
-
 		std::string GetInstanceKey() const override { return "CheckpointRing"; }
 
 		bool IsTransparent() const override { return true; }

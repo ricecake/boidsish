@@ -157,7 +157,6 @@ namespace Boidsish {
 		void GenerateRenderPackets(std::vector<RenderPacket>& out_packets, const RenderContext& context) const override;
 
 		void PrepareResources() const override { UpdateMeshBuffers(); }
-		bool UseNewRenderPath() const override { return true; }
 
 		std::string GetInstanceKey() const override { return "delaunay_blob_" + std::to_string(id_); }
 
