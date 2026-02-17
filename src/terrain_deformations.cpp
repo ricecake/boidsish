@@ -498,8 +498,8 @@ namespace Boidsish {
 
 	// ==================== CylinderHoleDeformation ====================
 
-	CylinderHoleDeformation::CylinderHoleDeformation(uint32_t id, const glm::vec3& center, float radius, float length, const glm::quat& orientation)
-		: TerrainDeformation(id), center_(center), radius_(radius), length_(length), orientation_(orientation) {
+	CylinderHoleDeformation::CylinderHoleDeformation(uint32_t id, const glm::vec3& center, float radius, float length, const glm::quat& orientation, bool open_ended)
+		: TerrainDeformation(id), center_(center), radius_(radius), length_(length), orientation_(orientation), open_ended_(open_ended) {
 	}
 
 	void CylinderHoleDeformation::GetBounds(glm::vec3& out_min, glm::vec3& out_max) const {
@@ -580,7 +580,7 @@ namespace Boidsish {
 		DeformationDescriptor desc;
 		desc.type_name = GetTypeName();
 		desc.center = center_;
-		desc.dimensions = glm::vec3(radius_, length_, 0.0f);
+		desc.dimensions = glm::vec3(radius_, length_, open_ended_ ? 1.0f : 0.0f);
 		desc.parameters = glm::vec4(orientation_.x, orientation_.y, orientation_.z, orientation_.w);
 		desc.deformation_type = DeformationType::Subtractive;
 		return desc;
@@ -677,19 +677,21 @@ namespace Boidsish {
 		}
 
 		int ring_start = cap_start_idx + 2;
-		for (int i = 0; i < SAMPLES; ++i) {
-			int i0 = ring_start + i * 2;
-			int i1 = ring_start + ((i + 1) % SAMPLES) * 2;
+		if (!open_ended_) {
+			for (int i = 0; i < SAMPLES; ++i) {
+				int i0 = ring_start + i * 2;
+				int i1 = ring_start + ((i + 1) % SAMPLES) * 2;
 
-			// Bottom cap (facing down, so CW from above is CCW from below)
-			indices.push_back(bot_center_idx);
-			indices.push_back(i1);
-			indices.push_back(i0);
+				// Bottom cap (facing down, so CW from above is CCW from below)
+				indices.push_back(bot_center_idx);
+				indices.push_back(i1);
+				indices.push_back(i0);
 
-			// Top cap
-			indices.push_back(top_center_idx);
-			indices.push_back(i0 + 1);
-			indices.push_back(i1 + 1);
+				// Top cap
+				indices.push_back(top_center_idx);
+				indices.push_back(i0 + 1);
+				indices.push_back(i1 + 1);
+			}
 		}
 
 		// Transform all vertices to world space

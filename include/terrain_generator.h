@@ -267,7 +267,7 @@ namespace Boidsish {
 		/**
 		 * @brief Add a cylinder-based hole deformation.
 		 */
-		uint32_t AddCylinderHole(const glm::vec3& center, float radius, float length, const glm::quat& orientation = glm::quat(1, 0, 0, 0)) override;
+		uint32_t AddCylinderHole(const glm::vec3& center, float radius, float length, const glm::quat& orientation = glm::quat(1, 0, 0, 0), bool open_ended = false) override;
 
 		/**
 		 * @brief Invalidate chunks affected by deformations.

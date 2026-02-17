@@ -233,7 +233,7 @@ namespace Boidsish {
 	 */
 	class CylinderHoleDeformation : public TerrainDeformation {
 	public:
-		CylinderHoleDeformation(uint32_t id, const glm::vec3& center, float radius, float length, const glm::quat& orientation = glm::quat(1, 0, 0, 0));
+		CylinderHoleDeformation(uint32_t id, const glm::vec3& center, float radius, float length, const glm::quat& orientation = glm::quat(1, 0, 0, 0), bool open_ended = false);
 
 		DeformationType GetType() const override { return DeformationType::Subtractive; }
 		std::string GetTypeName() const override { return "CylinderHole"; }
@@ -258,11 +258,15 @@ namespace Boidsish {
 		std::shared_ptr<Shape> GetInteriorMesh() const override { return interior_mesh_; }
 		void GenerateMesh(const ITerrainGenerator& terrain) override;
 
+		void SetOpenEnded(bool open_ended) { open_ended_ = open_ended; }
+		bool IsOpenEnded() const { return open_ended_; }
+
 	private:
 		glm::vec3 center_;
 		float radius_;
 		float length_;
 		glm::quat orientation_;
+		bool open_ended_;
 		std::shared_ptr<Shape> interior_mesh_;
 	};
 

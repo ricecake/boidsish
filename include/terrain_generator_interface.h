@@ -268,9 +268,10 @@ namespace Boidsish {
 		 * @param radius Radius of the cylinder
 		 * @param length Length of the cylinder
 		 * @param orientation Orientation of the cylinder
+		 * @param open_ended Whether the cylinder has caps or is a tube
 		 * @return ID of created deformation
 		 */
-		virtual uint32_t AddCylinderHole(const glm::vec3& center, float radius, float length, const glm::quat& orientation = glm::quat(1, 0, 0, 0)) = 0;
+		virtual uint32_t AddCylinderHole(const glm::vec3& center, float radius, float length, const glm::quat& orientation = glm::quat(1, 0, 0, 0), bool open_ended = false) = 0;
 
 		/**
 		 * @brief Invalidate and regenerate chunks affected by deformations.

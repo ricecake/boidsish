@@ -1343,14 +1343,14 @@ namespace Boidsish {
 		return id;
 	}
 
-	uint32_t TerrainGenerator::AddCylinderHole(const glm::vec3& center, float radius, float length, const glm::quat& orientation) {
+	uint32_t TerrainGenerator::AddCylinderHole(const glm::vec3& center, float radius, float length, const glm::quat& orientation, bool open_ended) {
 		static std::atomic<uint32_t> cylinder_hole_id_counter{4000000};
 		uint32_t id = cylinder_hole_id_counter++;
 
 		float s_radius = radius * world_scale_;
 		float s_length = length * world_scale_;
 
-		auto cylinder_hole = std::make_shared<CylinderHoleDeformation>(id, center, s_radius, s_length, orientation);
+		auto cylinder_hole = std::make_shared<CylinderHoleDeformation>(id, center, s_radius, s_length, orientation, open_ended);
 
 		// Generate the interior mesh before adding to manager
 		cylinder_hole->GenerateMesh(*this);
