@@ -125,6 +125,11 @@ namespace Boidsish {
 	 * @brief Abstract base class for geometric objects that can provide RenderPackets.
 	 * The ultimate goal is for geometry to return data needed to render it, and a
 	 * different loop actually handles rendering.
+	 *
+	 * For long-lived/static geometry, override IsDirty() to return false when
+	 * unchanged, and implement GetCachedPackets()/CachePackets(). This avoids
+	 * regenerating RenderPackets every frame. Call MarkDirty() when properties
+	 * change (position, color, material, scale). See Shape for reference impl.
 	 */
 	class Geometry {
 	public:
@@ -136,6 +141,36 @@ namespace Boidsish {
 		 * @param context The current frame's rendering context.
 		 */
 		virtual void GenerateRenderPackets(std::vector<RenderPacket>& out_packets, const RenderContext& context) const = 0;
+
+		/**
+		 * @brief Returns true if this geometry needs packet regeneration.
+		 * Default returns true (always dirty) for backwards compatibility.
+		 */
+		virtual bool IsDirty() const { return true; }
+
+		/**
+		 * @brief Marks this geometry as clean after packet generation.
+		 * Called by the render loop after caching packets.
+		 */
+		virtual void MarkClean() const {}
+
+		/**
+		 * @brief Marks this geometry as needing packet regeneration.
+		 * Call this when any property affecting rendering changes.
+		 */
+		virtual void MarkDirty() {}
+
+		/**
+		 * @brief Returns cached packets if available, nullptr otherwise.
+		 * @return Pointer to cached packets, or nullptr if dirty/not cached.
+		 */
+		virtual std::vector<RenderPacket>* GetCachedPackets() { return nullptr; }
+
+		/**
+		 * @brief Stores generated packets in the cache.
+		 * @param packets The packets to cache (moved).
+		 */
+		virtual void CachePackets(std::vector<RenderPacket>&& packets) { (void)packets; }
 	};
 
 	/**

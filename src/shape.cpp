@@ -204,6 +204,7 @@ namespace Boidsish {
 
 	void Shape::LookAt(const glm::vec3& target, const glm::vec3& up) {
 		rotation_ = glm::quat_cast(glm::inverse(glm::lookAt(glm::vec3(x_, y_, z_), target, up)));
+		MarkDirty();
 	}
 
 	bool Shape::Intersects(const Ray& ray, float& t) const {

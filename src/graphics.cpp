@@ -2513,9 +2513,32 @@ namespace Boidsish {
 				// Reserve a reasonable amount to avoid frequent reallocations
 				local_packets.reserve(end - i);
 				for (size_t j = i; j < end; ++j) {
-					const auto& shape = impl_ptr->shapes[j];
+					auto& shape = impl_ptr->shapes[j];
 					if (shape->UseNewRenderPath()) {
-						shape->GenerateRenderPackets(local_packets, context);
+						// Check for cached packets (dirty flag pattern)
+						if (auto* cached = shape->GetCachedPackets(); cached && !cached->empty()) {
+							// Use cached packets - update sort_keys for current camera position
+							for (const auto& cached_packet : *cached) {
+								RenderPacket packet = cached_packet;
+								// Recalculate sort_key with current camera position
+								glm::vec3 world_pos = glm::vec3(packet.uniforms.model[3]);
+								float normalized_depth = context.CalculateNormalizedDepth(world_pos);
+								RenderLayer layer = (packet.uniforms.color.a < 0.99f) ? RenderLayer::Transparent : RenderLayer::Opaque;
+								packet.sort_key = CalculateSortKey(layer, packet.shader_handle, packet.material_handle, normalized_depth);
+								local_packets.push_back(std::move(packet));
+							}
+						} else {
+							// Generate new packets and cache them
+							std::vector<RenderPacket> new_packets;
+							shape->GenerateRenderPackets(new_packets, context);
+							// Copy packets to local_packets before caching
+							for (const auto& packet : new_packets) {
+								local_packets.push_back(packet);
+							}
+							// Cache for future frames
+							shape->CachePackets(std::move(new_packets));
+							shape->MarkClean();
+						}
 					}
 				}
 				if (!local_packets.empty()) {
