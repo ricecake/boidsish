@@ -8,6 +8,7 @@
 
 #include "terrain_deformation_manager.h"
 #include <glm/glm.hpp>
+#include <glm/gtc/quaternion.hpp>
 
 namespace Boidsish {
 
@@ -265,10 +266,11 @@ namespace Boidsish {
 		 *
 		 * @param center Center of the cylinder
 		 * @param radius Radius of the cylinder
-		 * @param depth Depth of the hole
+		 * @param length Length of the cylinder
+		 * @param orientation Orientation of the cylinder
 		 * @return ID of created deformation
 		 */
-		virtual uint32_t AddCylinderHole(const glm::vec3& center, float radius, float depth) = 0;
+		virtual uint32_t AddCylinderHole(const glm::vec3& center, float radius, float length, const glm::quat& orientation = glm::quat(1, 0, 0, 0)) = 0;
 
 		/**
 		 * @brief Invalidate and regenerate chunks affected by deformations.

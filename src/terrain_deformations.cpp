@@ -498,23 +498,56 @@ namespace Boidsish {
 
 	// ==================== CylinderHoleDeformation ====================
 
-	CylinderHoleDeformation::CylinderHoleDeformation(uint32_t id, const glm::vec3& center, float radius, float depth)
-		: TerrainDeformation(id), center_(center), radius_(radius), depth_(depth) {
+	CylinderHoleDeformation::CylinderHoleDeformation(uint32_t id, const glm::vec3& center, float radius, float length, const glm::quat& orientation)
+		: TerrainDeformation(id), center_(center), radius_(radius), length_(length), orientation_(orientation) {
 	}
 
 	void CylinderHoleDeformation::GetBounds(glm::vec3& out_min, glm::vec3& out_max) const {
-		out_min = center_ - glm::vec3(radius_, depth_ + 10.0f, radius_); // extra buffer for mesh floor
-		out_max = center_ + glm::vec3(radius_, 100.0f, radius_);
+		// Compute AABB of the oriented cylinder
+		float r = radius_;
+		float h = length_ * 0.5f;
+
+		glm::vec3 corners[8] = {
+			{-r, -h, -r}, {r, -h, -r}, {r, -h, r}, {-r, -h, r},
+			{-r, h, -r}, {r, h, -r}, {r, h, r}, {-r, h, r}
+		};
+
+		out_min = glm::vec3(std::numeric_limits<float>::max());
+		out_max = glm::vec3(std::numeric_limits<float>::lowest());
+
+		for (int i = 0; i < 8; ++i) {
+			glm::vec3 world_corner = center_ + orientation_ * corners[i];
+			out_min = glm::min(out_min, world_corner);
+			out_max = glm::max(out_max, world_corner);
+		}
+
+		// Add some padding
+		out_min -= glm::vec3(1.0f);
+		out_max += glm::vec3(1.0f);
 	}
 
 	bool CylinderHoleDeformation::ContainsPoint(const glm::vec3& world_pos) const {
-		return ContainsPointXZ(world_pos.x, world_pos.z);
+		glm::vec3 local_p = glm::inverse(orientation_) * (world_pos - center_);
+
+		// In local space, cylinder is along Y axis, from -length/2 to length/2
+		if (std::abs(local_p.y) > length_ * 0.5f) return false;
+
+		float dist_sq = local_p.x * local_p.x + local_p.z * local_p.z;
+		return dist_sq <= radius_ * radius_;
 	}
 
 	bool CylinderHoleDeformation::ContainsPointXZ(float x, float z) const {
-		float dx = x - center_.x;
-		float dz = z - center_.z;
-		return (dx * dx + dz * dz) <= (radius_ * radius_);
+		// For oriented cylinder, a simple XZ check is not enough because the hole
+		// depends on the terrain height at that point.
+		// However, we can check if any part of the cylinder column at (x, z) could
+		// overlap the cylinder volume.
+
+		// Project the cylinder's world-space AABB to XZ
+		glm::vec3 min_b, max_b;
+		GetBounds(min_b, max_b);
+		if (x < min_b.x || x > max_b.x || z < min_b.z || z > max_b.z) return false;
+
+		return true;
 	}
 
 	float CylinderHoleDeformation::ComputeHeightDelta(float x, float z, float current_height) const {
@@ -523,7 +556,7 @@ namespace Boidsish {
 	}
 
 	bool CylinderHoleDeformation::IsHole(float x, float z, float current_height) const {
-		return ContainsPointXZ(x, z);
+		return ContainsPoint(glm::vec3(x, current_height, z));
 	}
 
 	glm::vec3 CylinderHoleDeformation::TransformNormal(float x, float z, const glm::vec3& original_normal) const {
@@ -535,9 +568,11 @@ namespace Boidsish {
 		DeformationResult result;
 		if (!ContainsPointXZ(x, z)) return result;
 
-		result.applies = true;
-		result.is_hole = true;
-		result.blend_weight = 1.0f;
+		if (IsHole(x, z, current_height)) {
+			result.applies = true;
+			result.is_hole = true;
+			result.blend_weight = 1.0f;
+		}
 		return result;
 	}
 
@@ -545,7 +580,8 @@ namespace Boidsish {
 		DeformationDescriptor desc;
 		desc.type_name = GetTypeName();
 		desc.center = center_;
-		desc.dimensions = glm::vec3(radius_, depth_, 0.0f);
+		desc.dimensions = glm::vec3(radius_, length_, 0.0f);
+		desc.parameters = glm::vec4(orientation_.x, orientation_.y, orientation_.z, orientation_.w);
 		desc.deformation_type = DeformationType::Subtractive;
 		return desc;
 	}
@@ -555,75 +591,111 @@ namespace Boidsish {
 		std::vector<Vertex> vertices;
 		std::vector<unsigned int> indices;
 
-		// We will build:
-		// 1. A rim circle at sampled terrain heights
-		// 2. A floor circle at (rim height - depth)
-		// 3. A center point on the floor
+		// We will build a standard cylinder mesh in local space and transform it.
+		// Local axis is Y. Bottom cap at -length/2, Top cap at length/2.
+		float h2 = length_ * 0.5f;
 
-		// Rim vertices (0 to SAMPLES-1)
-		// Floor vertices (SAMPLES to 2*SAMPLES-1)
-		// Center vertex (2*SAMPLES)
+		// 1. Cylinder sides
+		for (int i = 0; i <= SAMPLES; ++i) {
+			float t = (float)i / SAMPLES;
+			float angle = t * 2.0f * glm::pi<float>();
+			float cosA = cos(angle);
+			float sinA = sin(angle);
 
-		for (int i = 0; i < SAMPLES; ++i) {
-			float angle = (float)i / SAMPLES * 2.0f * glm::pi<float>();
-			float dx = radius_ * cos(angle);
-			float dz = radius_ * sin(angle);
-			float x = center_.x + dx;
-			float z = center_.z + dz;
+			glm::vec3 normal(cosA, 0, sinA);
 
-			// Sample height at the rim
-			auto [h, norm] = terrain.GetTerrainPropertiesAtPoint(x, z);
+			// Bottom vertex
+			Vertex v_bot;
+			v_bot.Position = glm::vec3(radius_ * cosA, -h2, radius_ * sinA);
+			v_bot.Normal = normal;
+			v_bot.TexCoords = glm::vec2(t, 0.0f);
+			vertices.push_back(v_bot);
 
-			// Rim vertex
-			Vertex v_rim;
-			v_rim.Position = glm::vec3(x, h, z);
-			// Normal points inward for the cylinder wall
-			v_rim.Normal = glm::normalize(glm::vec3(-dx, 0, -dz));
-			v_rim.TexCoords = glm::vec2((float)i / SAMPLES, 1.0f);
-			vertices.push_back(v_rim);
+			// Top vertex
+			Vertex v_top;
+			v_top.Position = glm::vec3(radius_ * cosA, h2, radius_ * sinA);
+			v_top.Normal = normal;
+			v_top.TexCoords = glm::vec2(t, 1.0f);
+			vertices.push_back(v_top);
 		}
 
 		for (int i = 0; i < SAMPLES; ++i) {
-			// Floor vertex (same XZ as rim, but lower)
-			Vertex v_floor;
-			v_floor.Position = vertices[i].Position - glm::vec3(0, depth_, 0);
-			v_floor.Normal = glm::vec3(0, 1, 0); // Floor points up
-			v_floor.TexCoords = glm::vec2((float)i / SAMPLES, 0.0f);
-			vertices.push_back(v_floor);
+			int b0 = i * 2;
+			int t0 = i * 2 + 1;
+			int b1 = (i + 1) * 2;
+			int t1 = (i + 1) * 2 + 1;
+
+			// CCW winding
+			indices.push_back(b0);
+			indices.push_back(b1);
+			indices.push_back(t0);
+
+			indices.push_back(t0);
+			indices.push_back(b1);
+			indices.push_back(t1);
 		}
 
-		// Floor center
-		Vertex v_center;
-		v_center.Position = center_;
-		// Determine average rim height for center
-		float avg_h = 0;
-		for (int i = 0; i < SAMPLES; ++i) avg_h += vertices[i].Position.y;
-		avg_h /= SAMPLES;
-		v_center.Position.y = avg_h - depth_;
-		v_center.Normal = glm::vec3(0, 1, 0);
-		v_center.TexCoords = glm::vec2(0.5f, 0.5f);
-		vertices.push_back(v_center);
-		unsigned int center_idx = 2 * SAMPLES;
+		// 2. Caps
+		int cap_start_idx = static_cast<int>(vertices.size());
 
-		// Indices
+		// Bottom cap center
+		Vertex v_bot_center;
+		v_bot_center.Position = glm::vec3(0, -h2, 0);
+		v_bot_center.Normal = glm::vec3(0, -1, 0);
+		v_bot_center.TexCoords = glm::vec2(0.5f, 0.5f);
+		vertices.push_back(v_bot_center);
+
+		// Top cap center
+		Vertex v_top_center;
+		v_top_center.Position = glm::vec3(0, h2, 0);
+		v_top_center.Normal = glm::vec3(0, 1, 0);
+		v_top_center.TexCoords = glm::vec2(0.5f, 0.5f);
+		vertices.push_back(v_top_center);
+
+		int bot_center_idx = cap_start_idx;
+		int top_center_idx = cap_start_idx + 1;
+
 		for (int i = 0; i < SAMPLES; ++i) {
-			int next = (i + 1) % SAMPLES;
+			float t = (float)i / SAMPLES;
+			float angle = t * 2.0f * glm::pi<float>();
+			float cosA = cos(angle);
+			float sinA = sin(angle);
 
-			// Wall triangles
-			// Rim[i], Floor[i], Rim[next]
-			indices.push_back(i);
-			indices.push_back(i + SAMPLES);
-			indices.push_back(next);
+			// Bottom cap ring
+			Vertex v_bot;
+			v_bot.Position = glm::vec3(radius_ * cosA, -h2, radius_ * sinA);
+			v_bot.Normal = glm::vec3(0, -1, 0);
+			v_bot.TexCoords = glm::vec2(cosA * 0.5f + 0.5f, sinA * 0.5f + 0.5f);
+			vertices.push_back(v_bot);
 
-			// Floor[i], Floor[next], Rim[next]
-			indices.push_back(i + SAMPLES);
-			indices.push_back(next + SAMPLES);
-			indices.push_back(next);
+			// Top cap ring
+			Vertex v_top;
+			v_top.Position = glm::vec3(radius_ * cosA, h2, radius_ * sinA);
+			v_top.Normal = glm::vec3(0, 1, 0);
+			v_top.TexCoords = glm::vec2(cosA * 0.5f + 0.5f, sinA * 0.5f + 0.5f);
+			vertices.push_back(v_top);
+		}
 
-			// Floor triangles (connecting to center) - CCW winding from above
-			indices.push_back(i + SAMPLES);
-			indices.push_back(next + SAMPLES);
-			indices.push_back(center_idx);
+		int ring_start = cap_start_idx + 2;
+		for (int i = 0; i < SAMPLES; ++i) {
+			int i0 = ring_start + i * 2;
+			int i1 = ring_start + ((i + 1) % SAMPLES) * 2;
+
+			// Bottom cap (facing down, so CW from above is CCW from below)
+			indices.push_back(bot_center_idx);
+			indices.push_back(i1);
+			indices.push_back(i0);
+
+			// Top cap
+			indices.push_back(top_center_idx);
+			indices.push_back(i0 + 1);
+			indices.push_back(i1 + 1);
+		}
+
+		// Transform all vertices to world space
+		for (auto& v : vertices) {
+			v.Position = center_ + orientation_ * v.Position;
+			v.Normal = orientation_ * v.Normal;
 		}
 
 		interior_mesh_ = std::make_shared<CustomMeshShape>(vertices, indices);

@@ -4,6 +4,7 @@
 #include <random>
 
 #include "terrain_deformation.h"
+#include <glm/gtc/quaternion.hpp>
 
 namespace Boidsish {
 
@@ -232,7 +233,7 @@ namespace Boidsish {
 	 */
 	class CylinderHoleDeformation : public TerrainDeformation {
 	public:
-		CylinderHoleDeformation(uint32_t id, const glm::vec3& center, float radius, float depth);
+		CylinderHoleDeformation(uint32_t id, const glm::vec3& center, float radius, float length, const glm::quat& orientation = glm::quat(1, 0, 0, 0));
 
 		DeformationType GetType() const override { return DeformationType::Subtractive; }
 		std::string GetTypeName() const override { return "CylinderHole"; }
@@ -260,7 +261,8 @@ namespace Boidsish {
 	private:
 		glm::vec3 center_;
 		float radius_;
-		float depth_;
+		float length_;
+		glm::quat orientation_;
 		std::shared_ptr<Shape> interior_mesh_;
 	};
 
