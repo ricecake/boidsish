@@ -254,6 +254,11 @@ namespace Boidsish {
 		 */
 		std::vector<DeformationDescriptor> GetAllDescriptors() const;
 
+		/**
+		 * @brief Get all interior meshes from deformations
+		 */
+		std::vector<std::shared_ptr<Shape>> GetDeformationMeshes() const;
+
 	private:
 		/**
 		 * @brief Populate voxel grid for a deformation's area of effect

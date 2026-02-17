@@ -3,6 +3,10 @@
 #include <algorithm>
 #include <cmath>
 
+#include "shape.h"
+#include "terrain_generator_interface.h"
+#include <glm/gtc/constants.hpp>
+
 namespace Boidsish {
 
 	// ==================== CraterDeformation ====================
@@ -490,6 +494,143 @@ namespace Boidsish {
 		desc.intensity = 1.0f;
 		desc.deformation_type = DeformationType::Subtractive;
 		return desc;
+	}
+
+	// ==================== CylinderHoleDeformation ====================
+
+	CylinderHoleDeformation::CylinderHoleDeformation(uint32_t id, const glm::vec3& center, float radius, float depth)
+		: TerrainDeformation(id), center_(center), radius_(radius), depth_(depth) {
+	}
+
+	void CylinderHoleDeformation::GetBounds(glm::vec3& out_min, glm::vec3& out_max) const {
+		out_min = center_ - glm::vec3(radius_, depth_ + 10.0f, radius_); // extra buffer for mesh floor
+		out_max = center_ + glm::vec3(radius_, 100.0f, radius_);
+	}
+
+	bool CylinderHoleDeformation::ContainsPoint(const glm::vec3& world_pos) const {
+		return ContainsPointXZ(world_pos.x, world_pos.z);
+	}
+
+	bool CylinderHoleDeformation::ContainsPointXZ(float x, float z) const {
+		float dx = x - center_.x;
+		float dz = z - center_.z;
+		return (dx * dx + dz * dz) <= (radius_ * radius_);
+	}
+
+	float CylinderHoleDeformation::ComputeHeightDelta(float x, float z, float current_height) const {
+		(void)x; (void)z; (void)current_height;
+		return 0.0f;
+	}
+
+	bool CylinderHoleDeformation::IsHole(float x, float z, float current_height) const {
+		return ContainsPointXZ(x, z);
+	}
+
+	glm::vec3 CylinderHoleDeformation::TransformNormal(float x, float z, const glm::vec3& original_normal) const {
+		(void)x; (void)z;
+		return original_normal;
+	}
+
+	DeformationResult CylinderHoleDeformation::ComputeDeformation(float x, float z, float current_height, const glm::vec3& current_normal) const {
+		DeformationResult result;
+		if (!ContainsPointXZ(x, z)) return result;
+
+		result.applies = true;
+		result.is_hole = true;
+		result.blend_weight = 1.0f;
+		return result;
+	}
+
+	DeformationDescriptor CylinderHoleDeformation::GetDescriptor() const {
+		DeformationDescriptor desc;
+		desc.type_name = GetTypeName();
+		desc.center = center_;
+		desc.dimensions = glm::vec3(radius_, depth_, 0.0f);
+		desc.deformation_type = DeformationType::Subtractive;
+		return desc;
+	}
+
+	void CylinderHoleDeformation::GenerateMesh(const ITerrainGenerator& terrain) {
+		const int SAMPLES = 32;
+		std::vector<Vertex> vertices;
+		std::vector<unsigned int> indices;
+
+		// We will build:
+		// 1. A rim circle at sampled terrain heights
+		// 2. A floor circle at (rim height - depth)
+		// 3. A center point on the floor
+
+		// Rim vertices (0 to SAMPLES-1)
+		// Floor vertices (SAMPLES to 2*SAMPLES-1)
+		// Center vertex (2*SAMPLES)
+
+		for (int i = 0; i < SAMPLES; ++i) {
+			float angle = (float)i / SAMPLES * 2.0f * glm::pi<float>();
+			float dx = radius_ * cos(angle);
+			float dz = radius_ * sin(angle);
+			float x = center_.x + dx;
+			float z = center_.z + dz;
+
+			// Sample height at the rim
+			auto [h, norm] = terrain.GetTerrainPropertiesAtPoint(x, z);
+
+			// Rim vertex
+			Vertex v_rim;
+			v_rim.Position = glm::vec3(x, h, z);
+			// Normal points inward for the cylinder wall
+			v_rim.Normal = glm::normalize(glm::vec3(-dx, 0, -dz));
+			v_rim.TexCoords = glm::vec2((float)i / SAMPLES, 1.0f);
+			vertices.push_back(v_rim);
+		}
+
+		for (int i = 0; i < SAMPLES; ++i) {
+			// Floor vertex (same XZ as rim, but lower)
+			Vertex v_floor;
+			v_floor.Position = vertices[i].Position - glm::vec3(0, depth_, 0);
+			v_floor.Normal = glm::vec3(0, 1, 0); // Floor points up
+			v_floor.TexCoords = glm::vec2((float)i / SAMPLES, 0.0f);
+			vertices.push_back(v_floor);
+		}
+
+		// Floor center
+		Vertex v_center;
+		v_center.Position = center_;
+		// Determine average rim height for center
+		float avg_h = 0;
+		for (int i = 0; i < SAMPLES; ++i) avg_h += vertices[i].Position.y;
+		avg_h /= SAMPLES;
+		v_center.Position.y = avg_h - depth_;
+		v_center.Normal = glm::vec3(0, 1, 0);
+		v_center.TexCoords = glm::vec2(0.5f, 0.5f);
+		vertices.push_back(v_center);
+		unsigned int center_idx = 2 * SAMPLES;
+
+		// Indices
+		for (int i = 0; i < SAMPLES; ++i) {
+			int next = (i + 1) % SAMPLES;
+
+			// Wall triangles
+			// Rim[i], Floor[i], Rim[next]
+			indices.push_back(i);
+			indices.push_back(i + SAMPLES);
+			indices.push_back(next);
+
+			// Floor[i], Floor[next], Rim[next]
+			indices.push_back(i + SAMPLES);
+			indices.push_back(next + SAMPLES);
+			indices.push_back(next);
+
+			// Floor triangles (connecting to center) - CCW winding from above
+			indices.push_back(i + SAMPLES);
+			indices.push_back(next + SAMPLES);
+			indices.push_back(center_idx);
+		}
+
+		interior_mesh_ = std::make_shared<CustomMeshShape>(vertices, indices);
+		interior_mesh_->SetColor(0.35f, 0.25f, 0.18f); // Soil/Rock color
+		interior_mesh_->SetUsePBR(true);
+		interior_mesh_->SetRoughness(0.9f);
+		interior_mesh_->SetMetallic(0.0f);
 	}
 
 } // namespace Boidsish

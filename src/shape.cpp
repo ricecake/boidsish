@@ -167,4 +167,74 @@ namespace Boidsish {
 	void Shape::LookAt(const glm::vec3& target, const glm::vec3& up) {
 		rotation_ = glm::quat_cast(glm::inverse(glm::lookAt(glm::vec3(x_, y_, z_), target, up)));
 	}
+
+	// ==================== CustomMeshShape ====================
+
+	CustomMeshShape::CustomMeshShape(const std::vector<Vertex>& vertices, const std::vector<unsigned int>& indices)
+		: index_count_(static_cast<unsigned int>(indices.size())) {
+
+		glGenVertexArrays(1, &vao_);
+		glBindVertexArray(vao_);
+
+		glGenBuffers(1, &vbo_);
+		glBindBuffer(GL_ARRAY_BUFFER, vbo_);
+		glBufferData(GL_ARRAY_BUFFER, vertices.size() * sizeof(Vertex), &vertices[0], GL_STATIC_DRAW);
+
+		glGenBuffers(1, &ebo_);
+		glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ebo_);
+		glBufferData(GL_ELEMENT_ARRAY_BUFFER, indices.size() * sizeof(unsigned int), &indices[0], GL_STATIC_DRAW);
+
+		// Position
+		glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)0);
+		glEnableVertexAttribArray(0);
+		// Normal
+		glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)offsetof(Vertex, Normal));
+		glEnableVertexAttribArray(1);
+		// TexCoords
+		glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)offsetof(Vertex, TexCoords));
+		glEnableVertexAttribArray(2);
+
+		glBindVertexArray(0);
+	}
+
+	CustomMeshShape::~CustomMeshShape() {
+		if (vao_ != 0) glDeleteVertexArrays(1, &vao_);
+		if (vbo_ != 0) glDeleteBuffers(1, &vbo_);
+		if (ebo_ != 0) glDeleteBuffers(1, &ebo_);
+	}
+
+	void CustomMeshShape::render() const {
+		if (vao_ == 0 || !shader) return;
+		Shape::render(*shader);
+	}
+
+	void CustomMeshShape::render(Shader& shader, const glm::mat4& model_matrix) const {
+		if (vao_ == 0) return;
+
+		shader.setMat4("model", model_matrix);
+		shader.setVec3("objectColor", GetR(), GetG(), GetB());
+		shader.setFloat("objectAlpha", GetA());
+		shader.setFloat("roughness", GetRoughness());
+		shader.setFloat("metallic", GetMetallic());
+		shader.setFloat("ao", GetAO());
+		shader.setBool("usePBR", UsePBR());
+
+		glBindVertexArray(vao_);
+		glDrawElements(GL_TRIANGLES, index_count_, GL_UNSIGNED_INT, 0);
+		glBindVertexArray(0);
+	}
+
+	glm::mat4 CustomMeshShape::GetModelMatrix() const {
+		glm::mat4 model = glm::mat4(1.0f);
+		model = glm::translate(model, glm::vec3(GetX(), GetY(), GetZ()));
+		model = model * glm::mat4_cast(rotation_);
+		model = glm::scale(model, scale_);
+		return model;
+	}
+
+	std::string CustomMeshShape::GetInstanceKey() const {
+		// Custom meshes are unique by default and not instanced together
+		return "CustomMesh_" + std::to_string(GetId());
+	}
+
 } // namespace Boidsish

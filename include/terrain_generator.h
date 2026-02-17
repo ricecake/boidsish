@@ -265,6 +265,11 @@ namespace Boidsish {
 		uint32_t AddMeshHole(const std::vector<glm::vec3>& vertices, const std::vector<unsigned int>& indices) override;
 
 		/**
+		 * @brief Add a cylinder-based hole deformation.
+		 */
+		uint32_t AddCylinderHole(const glm::vec3& center, float radius, float depth) override;
+
+		/**
 		 * @brief Invalidate chunks affected by deformations.
 		 *
 		 * Call this after adding/removing deformations to regenerate affected chunks.

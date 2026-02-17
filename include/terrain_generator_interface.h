@@ -261,6 +261,16 @@ namespace Boidsish {
 		virtual uint32_t AddMeshHole(const std::vector<glm::vec3>& vertices, const std::vector<unsigned int>& indices) = 0;
 
 		/**
+		 * @brief Add a cylinder-based hole deformation with an interior mesh.
+		 *
+		 * @param center Center of the cylinder
+		 * @param radius Radius of the cylinder
+		 * @param depth Depth of the hole
+		 * @return ID of created deformation
+		 */
+		virtual uint32_t AddCylinderHole(const glm::vec3& center, float radius, float depth) = 0;
+
+		/**
 		 * @brief Invalidate and regenerate chunks affected by deformations.
 		 *
 		 * @param deformation_id Optional: only invalidate for specific deformation
