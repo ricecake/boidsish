@@ -69,12 +69,15 @@ namespace Boidsish {
 		Graph(int id = 0, float x = 0.0f, float y = 0.0f, float z = 0.0f);
 		~Graph();
 
+		void PrepareResources() const override { SetupBuffers(); }
 		void      SetupBuffers() const;
 		void      render() const override;
 		void      render(Shader& shader, const glm::mat4& model_matrix) const override;
 		glm::mat4 GetModelMatrix() const override;
 
 		void GenerateRenderPackets(std::vector<RenderPacket>& out_packets, const RenderContext& context) const override;
+
+		bool UseNewRenderPath() const override { return true; }
 
 		// Graphs are not instanced (each has unique geometry)
 		std::string GetInstanceKey() const override { return "Graph:" + std::to_string(GetId()); }

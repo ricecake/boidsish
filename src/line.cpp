@@ -175,12 +175,6 @@ namespace Boidsish {
 		glm::mat4 model_matrix = GetModelMatrix();
 		glm::vec3 world_pos = (GetStart() + GetEnd()) * 0.5f;
 
-		// Frustum Culling
-		float radius = glm::distance(GetStart(), GetEnd()) * 0.5f;
-		if (!context.frustum.IsBoxInFrustum(world_pos - glm::vec3(radius), world_pos + glm::vec3(radius))) {
-			return;
-		}
-
 		RenderPacket packet;
 		packet.vao = line_vao_;
 		packet.vbo = line_vbo_;
@@ -204,6 +198,7 @@ namespace Boidsish {
 		packet.uniforms.line_style = static_cast<int>(style_);
 
 		packet.is_instanced = IsInstanced();
+		packet.casts_shadows = CastsShadows();
 
 		RenderLayer layer = IsTransparent() ? RenderLayer::Transparent : RenderLayer::Opaque;
 		packet.shader_handle = shader_handle;

@@ -184,14 +184,14 @@ namespace Boidsish {
 		);
 		glEnableVertexAttribArray(1);
 		glVertexAttribPointer(
-			2,
+			8,
 			3,
 			GL_FLOAT,
 			GL_FALSE,
 			sizeof(Spline::VertexData),
 			(void*)offsetof(Spline::VertexData, color)
 		);
-		glEnableVertexAttribArray(2);
+		glEnableVertexAttribArray(8);
 
 		glBindVertexArray(0);
 		buffers_initialized_ = true;
@@ -265,23 +265,39 @@ namespace Boidsish {
 
 namespace Boidsish {
 	void Graph::GenerateRenderPackets(std::vector<RenderPacket>& out_packets, const RenderContext& context) const {
-		if (edges.empty()) return;
-		SetupBuffers();
+		if (edges.empty() && vertices.empty())
+			return;
+
+		// 1. Generate packets for vertex dots
+		for (const auto& v : vertices) {
+			Dot dot(0,
+			        v.position.x + GetX(),
+			        v.position.y + GetY(),
+			        v.position.z + GetZ(),
+			        v.size,
+			        v.r,
+			        v.g,
+			        v.b,
+			        v.a,
+			        0);
+			dot.SetUsePBR(UsePBR());
+			dot.SetRoughness(GetRoughness());
+			dot.SetMetallic(GetMetallic());
+			dot.SetAO(GetAO());
+			dot.GenerateRenderPackets(out_packets, context);
+		}
+
+		if (edges.empty())
+			return;
 
 		glm::mat4 model_matrix = GetModelMatrix();
 		glm::vec3 world_pos = glm::vec3(GetX(), GetY(), GetZ());
-
-		// Frustum Culling
-		float radius = GetBoundingRadius();
-		if (!context.frustum.IsBoxInFrustum(world_pos - glm::vec3(radius), world_pos + glm::vec3(radius))) {
-			return;
-		}
 
 		RenderPacket packet;
 		packet.vao = graph_vao_;
 		packet.vbo = graph_vbo_;
 		packet.vertex_count = static_cast<unsigned int>(edge_vertex_count_);
-		packet.draw_mode = GL_LINES;
+		packet.draw_mode = GL_TRIANGLES;
 		packet.shader_id = shader ? shader->ID : 0;
 
 		packet.uniforms.model = model_matrix;
@@ -294,6 +310,8 @@ namespace Boidsish {
 		packet.uniforms.use_vertex_color = 1; // Graph uses vertex colors
 		packet.uniforms.is_instanced = IsInstanced();
 		packet.uniforms.is_colossal = IsColossal();
+
+		packet.casts_shadows = CastsShadows();
 
 		RenderLayer layer = (GetA() < 0.99f) ? RenderLayer::Transparent : RenderLayer::Opaque;
 

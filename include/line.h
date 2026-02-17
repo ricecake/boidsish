@@ -48,6 +48,8 @@ namespace Boidsish {
 
 		bool IsTransparent() const override { return GetA() < 0.99f || style_ == Style::LASER; }
 
+		bool UseNewRenderPath() const override { return true; }
+
 		static void InitLineMesh();
 		static void DestroyLineMesh();
 

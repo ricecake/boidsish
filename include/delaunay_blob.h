@@ -156,6 +156,9 @@ namespace Boidsish {
 
 		void GenerateRenderPackets(std::vector<RenderPacket>& out_packets, const RenderContext& context) const override;
 
+		void PrepareResources() const override { UpdateMeshBuffers(); }
+		bool UseNewRenderPath() const override { return true; }
+
 		std::string GetInstanceKey() const override { return "delaunay_blob_" + std::to_string(id_); }
 
 		/// Get centroid of all points
@@ -217,6 +220,7 @@ namespace Boidsish {
 
 		// OpenGL resources (mutable for lazy initialization in const render)
 		mutable GLuint vao_ = 0;
+		mutable GLuint wire_vao_ = 0;
 		mutable GLuint vbo_ = 0;
 		mutable GLuint ebo_ = 0;
 		mutable GLuint wire_ebo_ = 0;

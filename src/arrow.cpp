@@ -178,12 +178,6 @@ namespace Boidsish {
 		glm::mat4 model_matrix = GetModelMatrix();
 		glm::vec3 world_pos = glm::vec3(model_matrix[3]);
 
-		// Frustum Culling
-		float radius = GetBoundingRadius();
-		if (!context.frustum.IsBoxInFrustum(world_pos - glm::vec3(radius), world_pos + glm::vec3(radius))) {
-			return;
-		}
-
 		// Arrow has two parts: Rod and Cone
 		// For simplicity, we create two packets if needed, or one if they share state.
 		// Since they use different VAOs, we need two packets.
@@ -228,6 +222,8 @@ namespace Boidsish {
 			packet.uniforms.ao = GetAO();
 			packet.uniforms.is_instanced = IsInstanced();
 			packet.uniforms.is_colossal = IsColossal();
+
+			packet.casts_shadows = CastsShadows();
 
 			RenderLayer layer = (GetA() < 0.99f) ? RenderLayer::Transparent : RenderLayer::Opaque;
 			float normalized_depth = context.CalculateNormalizedDepth(world_pos);

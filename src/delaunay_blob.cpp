@@ -68,6 +68,7 @@ namespace Boidsish {
 		surface_faces_ = std::move(other.surface_faces_);
 
 		vao_ = other.vao_;
+		wire_vao_ = other.wire_vao_;
 		vbo_ = other.vbo_;
 		ebo_ = other.ebo_;
 		wire_ebo_ = other.wire_ebo_;
@@ -76,6 +77,7 @@ namespace Boidsish {
 		buffers_initialized_ = other.buffers_initialized_;
 
 		other.vao_ = 0;
+		other.wire_vao_ = 0;
 		other.vbo_ = 0;
 		other.ebo_ = 0;
 		other.wire_ebo_ = 0;
@@ -100,6 +102,7 @@ namespace Boidsish {
 			surface_faces_ = std::move(other.surface_faces_);
 
 			vao_ = other.vao_;
+			wire_vao_ = other.wire_vao_;
 			vbo_ = other.vbo_;
 			ebo_ = other.ebo_;
 			wire_ebo_ = other.wire_ebo_;
@@ -108,6 +111,7 @@ namespace Boidsish {
 			buffers_initialized_ = other.buffers_initialized_;
 
 			other.vao_ = 0;
+			other.wire_vao_ = 0;
 			other.vbo_ = 0;
 			other.ebo_ = 0;
 			other.wire_ebo_ = 0;
@@ -561,24 +565,33 @@ namespace Boidsish {
 			return;
 
 		glGenVertexArrays(1, &vao_);
+		glGenVertexArrays(1, &wire_vao_);
 		glGenBuffers(1, &vbo_);
 		glGenBuffers(1, &ebo_);
 		glGenBuffers(1, &wire_ebo_);
 
-		glBindVertexArray(vao_);
-		glBindBuffer(GL_ARRAY_BUFFER, vbo_);
+		auto setup_vao = [&](GLuint vao) {
+			glBindVertexArray(vao);
+			glBindBuffer(GL_ARRAY_BUFFER, vbo_);
 
-		// Position attribute
-		glEnableVertexAttribArray(0);
-		glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)0);
+			// Position attribute
+			glEnableVertexAttribArray(0);
+			glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)0);
 
-		// Normal attribute
-		glEnableVertexAttribArray(1);
-		glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)offsetof(Vertex, normal));
+			// Normal attribute
+			glEnableVertexAttribArray(1);
+			glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)offsetof(Vertex, normal));
 
-		// Color attribute
-		glEnableVertexAttribArray(2);
-		glVertexAttribPointer(2, 4, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)offsetof(Vertex, color));
+			// Color attribute
+			glEnableVertexAttribArray(8);
+			glVertexAttribPointer(8, 4, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)offsetof(Vertex, color));
+		};
+
+		setup_vao(vao_);
+		glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ebo_);
+
+		setup_vao(wire_vao_);
+		glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, wire_ebo_);
 
 		glBindVertexArray(0);
 
@@ -588,6 +601,8 @@ namespace Boidsish {
 	void DelaunayBlob::CleanupBuffers() {
 		if (vao_)
 			glDeleteVertexArrays(1, &vao_);
+		if (wire_vao_)
+			glDeleteVertexArrays(1, &wire_vao_);
 		if (vbo_)
 			glDeleteBuffers(1, &vbo_);
 		if (ebo_)
@@ -595,7 +610,7 @@ namespace Boidsish {
 		if (wire_ebo_)
 			glDeleteBuffers(1, &wire_ebo_);
 
-		vao_ = vbo_ = ebo_ = wire_ebo_ = 0;
+		vao_ = wire_vao_ = vbo_ = ebo_ = wire_ebo_ = 0;
 		buffers_initialized_ = false;
 	}
 
@@ -816,46 +831,68 @@ namespace Boidsish {
 
 namespace Boidsish {
 	void DelaunayBlob::GenerateRenderPackets(std::vector<RenderPacket>& out_packets, const RenderContext& context) const {
-		if (points_.empty()) return;
-		UpdateMeshBuffers();
+		if (points_.empty())
+			return;
+
+		if (index_count_ == 0)
+			return;
 
 		glm::mat4 model_matrix = GetModelMatrix();
 		glm::vec3 world_pos = GetCentroid();
+		float     normalized_depth = context.CalculateNormalizedDepth(world_pos);
 
-		// Frustum Culling
-		float radius = GetBoundingRadius();
-		if (!context.frustum.IsBoxInFrustum(world_pos - glm::vec3(radius), world_pos + glm::vec3(radius))) {
-			return;
+		auto create_packet = [&](RenderMode mode) {
+			RenderPacket packet;
+			packet.vao = vao_;
+			packet.vbo = vbo_;
+			packet.shader_id = shader ? shader->ID : 0;
+			packet.shader_handle = shader_handle;
+			packet.material_handle = MaterialHandle(0);
+			packet.uniforms.model = model_matrix;
+			packet.uniforms.use_pbr = UsePBR();
+			packet.uniforms.roughness = GetRoughness();
+			packet.uniforms.metallic = GetMetallic();
+			packet.uniforms.ao = GetAO();
+			packet.uniforms.use_texture = 0;
+			packet.uniforms.use_vertex_color = 1;
+			packet.uniforms.is_instanced = IsInstanced();
+			packet.uniforms.is_colossal = IsColossal();
+			packet.casts_shadows = CastsShadows();
+
+			if (mode == RenderMode::Wireframe) {
+				packet.vao = wire_vao_;
+				packet.ebo = wire_ebo_;
+				packet.index_count = static_cast<unsigned int>(wire_index_count_);
+				packet.draw_mode = GL_LINES;
+				packet.index_type = GL_UNSIGNED_INT;
+				packet.uniforms.color = glm::vec4(wireframe_color_.r, wireframe_color_.g, wireframe_color_.b, 1.0f);
+				packet.uniforms.use_vertex_color = 0; // Wireframe usually uses constant color
+				packet.sort_key = CalculateSortKey(
+					RenderLayer::Overlay,
+					packet.shader_handle,
+					packet.material_handle,
+					normalized_depth
+				);
+			} else {
+				packet.ebo = ebo_;
+				packet.index_count = static_cast<unsigned int>(index_count_);
+				packet.draw_mode = GL_TRIANGLES;
+				packet.index_type = GL_UNSIGNED_INT;
+				packet.uniforms.color = glm::vec4(GetR(), GetG(), GetB(), alpha_);
+
+				RenderLayer layer = (alpha_ < 0.99f || mode == RenderMode::Transparent) ? RenderLayer::Transparent
+																						: RenderLayer::Opaque;
+				packet.sort_key =
+					CalculateSortKey(layer, packet.shader_handle, packet.material_handle, normalized_depth);
+			}
+			return packet;
+		};
+
+		if (render_mode_ == RenderMode::SolidWithWire) {
+			out_packets.push_back(create_packet(RenderMode::Solid));
+			out_packets.push_back(create_packet(RenderMode::Wireframe));
+		} else {
+			out_packets.push_back(create_packet(render_mode_));
 		}
-
-		RenderPacket packet;
-		packet.vao = vao_;
-		packet.vbo = vbo_;
-		packet.ebo = ebo_;
-		packet.index_count = static_cast<unsigned int>(index_count_);
-		packet.draw_mode = GL_TRIANGLES;
-		packet.index_type = GL_UNSIGNED_INT;
-		packet.shader_id = shader ? shader->ID : 0;
-
-		packet.uniforms.model = model_matrix;
-		packet.uniforms.color = glm::vec4(GetR(), GetG(), GetB(), GetA());
-		packet.uniforms.use_pbr = UsePBR();
-		packet.uniforms.roughness = GetRoughness();
-		packet.uniforms.metallic = GetMetallic();
-		packet.uniforms.ao = GetAO();
-		packet.uniforms.use_texture = 0;
-		packet.uniforms.use_vertex_color = 1;
-		packet.uniforms.is_instanced = IsInstanced();
-		packet.uniforms.is_colossal = IsColossal();
-
-		RenderLayer layer = (alpha_ < 0.99f || render_mode_ == RenderMode::Transparent) ? RenderLayer::Transparent : RenderLayer::Opaque;
-
-		packet.shader_handle = shader_handle;
-		packet.material_handle = MaterialHandle(0);
-
-		float normalized_depth = context.CalculateNormalizedDepth(world_pos);
-		packet.sort_key = CalculateSortKey(layer, packet.shader_handle, packet.material_handle, normalized_depth);
-
-		out_packets.push_back(packet);
 	}
 } // namespace Boidsish

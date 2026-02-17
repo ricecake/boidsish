@@ -75,14 +75,14 @@ namespace Boidsish {
 		);
 		glEnableVertexAttribArray(1);
 		glVertexAttribPointer(
-			2,
+			8,
 			3,
 			GL_FLOAT,
 			GL_FALSE,
 			sizeof(Spline::VertexData),
 			(void*)offsetof(Spline::VertexData, color)
 		);
-		glEnableVertexAttribArray(2);
+		glEnableVertexAttribArray(8);
 
 		glBindVertexArray(0);
 		buffers_initialized_ = true;
@@ -373,23 +373,17 @@ namespace Boidsish {
 
 namespace Boidsish {
 	void Path::GenerateRenderPackets(std::vector<RenderPacket>& out_packets, const RenderContext& context) const {
-		if (!visible_ || waypoints_.empty()) return;
-		SetupBuffers();
+		if (!visible_ || waypoints_.empty())
+			return;
 
 		glm::mat4 model_matrix = GetModelMatrix();
 		glm::vec3 world_pos = glm::vec3(GetX(), GetY(), GetZ());
-
-		// Frustum Culling
-		float radius = GetBoundingRadius();
-		if (!context.frustum.IsBoxInFrustum(world_pos - glm::vec3(radius), world_pos + glm::vec3(radius))) {
-			return;
-		}
 
 		RenderPacket packet;
 		packet.vao = path_vao_;
 		packet.vbo = path_vbo_;
 		packet.vertex_count = static_cast<unsigned int>(edge_vertex_count_);
-		packet.draw_mode = GL_LINES;
+		packet.draw_mode = GL_TRIANGLES;
 		packet.shader_id = shader ? shader->ID : 0;
 
 		packet.uniforms.model = model_matrix;
@@ -402,6 +396,8 @@ namespace Boidsish {
 		packet.uniforms.use_vertex_color = 1; // Path uses vertex colors
 		packet.uniforms.is_instanced = IsInstanced();
 		packet.uniforms.is_colossal = IsColossal();
+
+		packet.casts_shadows = CastsShadows();
 
 		RenderLayer layer = (GetA() < 0.99f) ? RenderLayer::Transparent : RenderLayer::Opaque;
 
