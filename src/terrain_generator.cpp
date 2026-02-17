@@ -41,6 +41,20 @@ namespace Boidsish {
 		return true;
 	}
 
+	void TerrainGenerator::SetRenderManager(std::shared_ptr<ITerrainRenderManager> manager) {
+		if (!manager) {
+			render_manager_ = nullptr;
+			return;
+		}
+
+		auto typed_manager = std::dynamic_pointer_cast<ITerrainRenderManagerT<TerrainGenerationResult>>(manager);
+		if (typed_manager) {
+			render_manager_ = typed_manager;
+		} else {
+			std::cerr << "[TerrainGenerator] Warning: Attempted to set incompatible render manager type." << std::endl;
+		}
+	}
+
 	TerrainGenerator::TerrainGenerator(int seed): seed_(seed), thread_pool_(), eng_(rd_()) {
 		Simplex::seed(seed_);
 	}
@@ -242,15 +256,20 @@ namespace Boidsish {
 				if (registrations_this_frame >= max_registrations_per_frame)
 					break;
 
-				render_manager_->RegisterChunk(
-					chunk.key,
-					chunk.terrain->vertices,
-					chunk.terrain->normals,
-					chunk.terrain->GetIndices(),
-					chunk.terrain->proxy.minY,
-					chunk.terrain->proxy.maxY,
-					glm::vec3(chunk.key.first * scaled_chunk_size, 0, chunk.key.second * scaled_chunk_size)
-				);
+				// We need the TerrainGenerationResult to register with the new templated interface.
+				// Since we only have the Terrain object here, we have to reconstruct a result
+				// or change how we cache them. For now, we'll reconstruct it.
+				TerrainGenerationResult result;
+				result.positions = chunk.terrain->vertices;
+				result.normals = chunk.terrain->normals;
+				result.indices = chunk.terrain->GetIndices();
+				result.proxy = chunk.terrain->proxy;
+				result.chunk_x = chunk.key.first;
+				result.chunk_z = chunk.key.second;
+				result.world_offset = glm::vec3(chunk.terrain->GetX(), chunk.terrain->GetY(), chunk.terrain->GetZ());
+				result.has_terrain = true;
+
+				render_manager_->RegisterChunk(chunk.key, result);
 				registrations_this_frame++;
 			}
 		}
@@ -617,7 +636,7 @@ namespace Boidsish {
 		}
 
 		if (!has_terrain) {
-			return {{}, {}, {}, {}, chunkX, chunkZ, false};
+			return {{}, {}, {}, {}, chunkX, chunkZ, glm::vec3(0), false};
 		}
 
 		// Generate vertices and normals
@@ -665,7 +684,8 @@ namespace Boidsish {
 		}
 		proxy.radiusSq = max_dist_sq;
 
-		return {indices, positions, normals, proxy, chunkX, chunkZ, true};
+		glm::vec3 world_offset(chunkX * scaled_chunk_size, 0, chunkZ * scaled_chunk_size);
+		return {indices, positions, normals, proxy, chunkX, chunkZ, world_offset, true};
 	}
 
 	bool
@@ -1428,15 +1448,7 @@ namespace Boidsish {
 					new_terrain->SetManagedByRenderManager(true);
 					// RegisterChunk handles updates - if chunk already exists, it just updates the heightmap texture
 					// This is the key: the texture update happens in-place without removing the chunk first
-					render_manager_->RegisterChunk(
-						chunk_key,
-						new_terrain->vertices,
-						new_terrain->normals,
-						new_terrain->GetIndices(),
-						new_terrain->proxy.minY,
-						new_terrain->proxy.maxY,
-						glm::vec3(chunk_key.first * scaled_chunk_size, 0, chunk_key.second * scaled_chunk_size)
-					);
+					render_manager_->RegisterChunk(chunk_key, result);
 				} else {
 					// Legacy rendering: set up mesh (will replace old GPU resources)
 					new_terrain->setupMesh();

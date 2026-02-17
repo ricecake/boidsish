@@ -23,17 +23,7 @@ namespace Boidsish {
 
 namespace Boidsish {
 
-	struct TerrainGenerationResult {
-		std::vector<unsigned int> indices;
-		std::vector<glm::vec3>    positions;
-		std::vector<glm::vec3>    normals;
-		PatchProxy                proxy;
-		int                       chunk_x;
-		int                       chunk_z;
-		bool                      has_terrain;
-	};
-
-	class TerrainGenerator: public ITerrainGenerator {
+	class TerrainGenerator: public ITerrainGeneratorT<TerrainGenerationResult> {
 	public:
 		TerrainGenerator(int seed = 12345);
 		~TerrainGenerator() override;
@@ -59,7 +49,16 @@ namespace Boidsish {
 		 *
 		 * @param manager The render manager (can be nullptr to disable batched rendering)
 		 */
-		void SetRenderManager(std::shared_ptr<ITerrainRenderManager> manager) override { render_manager_ = manager; }
+		void SetRenderManager(std::shared_ptr<ITerrainRenderManager> manager) override;
+
+		/**
+		 * @brief Set the render manager with matching data type.
+		 *
+		 * @param manager The render manager template specialized for TerrainGenerationResult
+		 */
+		void SetTypedRenderManager(std::shared_ptr<ITerrainRenderManagerT<TerrainGenerationResult>> manager) override {
+			render_manager_ = manager;
+		}
 
 		/**
 		 * @brief Invalidate a chunk that was evicted from the render manager.
@@ -79,7 +78,9 @@ namespace Boidsish {
 		/**
 		 * @brief Get the render manager.
 		 */
-		std::shared_ptr<ITerrainRenderManager> GetRenderManager() const override { return render_manager_; }
+		std::shared_ptr<ITerrainRenderManager> GetRenderManager() const override {
+			return std::static_pointer_cast<ITerrainRenderManager>(render_manager_);
+		}
 
 		std::vector<uint16_t> GenerateSuperChunkTexture(int requested_x, int requested_z);
 		std::vector<uint16_t> GenerateTextureForArea(int world_x, int world_z, int size);
@@ -348,7 +349,7 @@ namespace Boidsish {
 		std::mt19937                 eng_;
 
 		// Instanced terrain render manager (optional, when set uses GPU heightmap lookup)
-		std::shared_ptr<ITerrainRenderManager> render_manager_;
+		std::shared_ptr<ITerrainRenderManagerT<TerrainGenerationResult>> render_manager_;
 
 		// Terrain deformation system
 		TerrainDeformationManager deformation_manager_;

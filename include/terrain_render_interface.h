@@ -26,31 +26,6 @@ namespace Boidsish {
 		virtual ~ITerrainRenderManager() = default;
 
 		/**
-		 * @brief Register a terrain chunk for rendering.
-		 *
-		 * The data format varies by implementation:
-		 * - V1 (batched): Uses pre-computed vertex mesh data
-		 * - V2 (instanced): Uses heightmap for GPU displacement
-		 *
-		 * @param chunk_key Unique identifier (chunk_x, chunk_z)
-		 * @param positions Position data (chunk_size+1)^2 elements
-		 * @param normals Normal vectors (chunk_size+1)^2 elements
-		 * @param indices Index data for mesh topology
-		 * @param min_y Minimum height in chunk
-		 * @param max_y Maximum height in chunk
-		 * @param world_offset World position offset for this chunk
-		 */
-		virtual void RegisterChunk(
-			std::pair<int, int>              chunk_key,
-			const std::vector<glm::vec3>&    positions,
-			const std::vector<glm::vec3>&    normals,
-			const std::vector<unsigned int>& indices,
-			float                            min_y,
-			float                            max_y,
-			const glm::vec3&                 world_offset
-		) = 0;
-
-		/**
 		 * @brief Unregister a terrain chunk.
 		 */
 		virtual void UnregisterChunk(std::pair<int, int> chunk_key) = 0;
@@ -119,6 +94,26 @@ namespace Boidsish {
 		 * Returns a vector of (world_offset_x, world_offset_z, chunk_data, chunk_size).
 		 */
 		virtual std::vector<glm::vec4> GetChunkInfo() const { return {}; }
+	};
+
+	/**
+	 * @brief Templated interface for terrain rendering backends.
+	 *
+	 * Allows for specialized data types to be passed from the generator
+	 * to the renderer while enforcing type safety at the implementation level.
+	 */
+	template <typename T>
+	class ITerrainRenderManagerT: public ITerrainRenderManager {
+	public:
+		virtual ~ITerrainRenderManagerT() = default;
+
+		/**
+		 * @brief Register a terrain chunk for rendering with implementation-specific data.
+		 *
+		 * @param chunk_key Unique identifier (chunk_x, chunk_z)
+		 * @param chunk_data The data produced by the matching generator
+		 */
+		virtual void RegisterChunk(std::pair<int, int> chunk_key, const T& chunk_data) = 0;
 	};
 
 } // namespace Boidsish

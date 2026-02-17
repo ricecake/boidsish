@@ -221,15 +221,7 @@ namespace Boidsish {
 		glBindTexture(GL_TEXTURE_2D_ARRAY, 0);
 	}
 
-	void TerrainRenderManager::RegisterChunk(
-		std::pair<int, int>              chunk_key,
-		const std::vector<glm::vec3>&    positions,
-		const std::vector<glm::vec3>&    normals,
-		const std::vector<unsigned int>& indices, // Not used in this implementation
-		float                            min_y,
-		float                            max_y,
-		const glm::vec3&                 world_offset
-	) {
+	void TerrainRenderManager::RegisterChunk(std::pair<int, int> chunk_key, const TerrainGenerationResult& result) {
 		// Deferred eviction callback to avoid deadlock
 		// (caller may hold terrain generator's mutex, and callback needs that mutex)
 		bool                should_notify_eviction = false;
@@ -250,8 +242,8 @@ namespace Boidsish {
 				int src_idx = x * res + z; // X-major (how terrain generator stores it)
 				int dst_idx = z * res + x; // Z-major / row-major (for texture)
 
-				heightmap[dst_idx] = positions[src_idx].y;
-				reordered_normals[dst_idx] = normals[src_idx];
+				heightmap[dst_idx] = result.positions[src_idx].y;
+				reordered_normals[dst_idx] = result.normals[src_idx];
 			}
 		}
 
@@ -264,8 +256,8 @@ namespace Boidsish {
 			if (it != chunks_.end()) {
 				// Update existing chunk's heightmap
 				UploadHeightmapSlice(it->second.texture_slice, heightmap, reordered_normals);
-				it->second.min_y = min_y;
-				it->second.max_y = max_y;
+				it->second.min_y = result.proxy.minY;
+				it->second.max_y = result.proxy.maxY;
 				return;
 			}
 
@@ -334,9 +326,9 @@ namespace Boidsish {
 			// Store chunk info
 			ChunkInfo info{};
 			info.texture_slice = slice;
-			info.min_y = min_y;
-			info.max_y = max_y;
-			info.world_offset = glm::vec2(world_offset.x, world_offset.z);
+			info.min_y = result.proxy.minY;
+			info.max_y = result.proxy.maxY;
+			info.world_offset = glm::vec2(result.world_offset.x, result.world_offset.z);
 
 			chunks_[chunk_key] = info;
 		} // mutex released here

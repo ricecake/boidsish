@@ -10,6 +10,7 @@
 #include <GL/glew.h>
 #include <glm/glm.hpp>
 
+#include "terrain_generator_interface.h"
 #include "terrain_render_interface.h"
 
 class Shader;
@@ -42,7 +43,7 @@ namespace Boidsish {
 	 * 4. Render() issues single instanced draw call
 	 * 5. TES shader samples heightmap to displace flat grid vertices
 	 */
-	class TerrainRenderManager: public ITerrainRenderManager {
+	class TerrainRenderManager: public ITerrainRenderManagerT<TerrainGenerationResult> {
 	public:
 		TerrainRenderManager(int chunk_size = 32, int max_chunks = 512);
 		virtual ~TerrainRenderManager();
@@ -56,15 +57,7 @@ namespace Boidsish {
 		 *
 		 * Extracts heights from positions and uploads to texture array.
 		 */
-		void RegisterChunk(
-			std::pair<int, int>              chunk_key,
-			const std::vector<glm::vec3>&    positions,
-			const std::vector<glm::vec3>&    normals,
-			const std::vector<unsigned int>& indices,
-			float                            min_y,
-			float                            max_y,
-			const glm::vec3&                 world_offset
-		) override;
+		void RegisterChunk(std::pair<int, int> chunk_key, const TerrainGenerationResult& result) override;
 
 		/**
 		 * @brief Unregister a terrain chunk, freeing its texture slice.
