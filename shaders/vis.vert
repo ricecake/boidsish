@@ -4,6 +4,7 @@ layout(location = 1) in vec3 aNormal;
 layout(location = 2) in vec2 aTexCoords;
 layout(location = 3) in mat4 aInstanceMatrix;
 layout(location = 7) in vec4 aInstanceColor;
+layout(location = 8) in vec3 aVertexColor;
 
 #include "common_uniforms.glsl"
 
@@ -152,6 +153,7 @@ void main() {
 
 	Normal = mat3(transpose(inverse(modelMatrix))) * displacedNormal;
 	TexCoords = aTexCoords;
+	vs_color = aVertexColor;
 	InstanceColor = current_useInstanceColor ? aInstanceColor : vec4(1.0);
 	if (wireframe_enabled == 1) {
 		barycentric = getBarycentric();

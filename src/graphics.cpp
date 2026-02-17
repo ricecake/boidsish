@@ -2496,6 +2496,11 @@ namespace Boidsish {
 		context.frustum = Frustum::FromViewProjection(view, impl->projection);
 		context.shader_table = &impl->shader_table;
 
+		// --- Resource Preparation (Main Thread) ---
+		for (const auto& shape : impl->shapes) {
+			shape->PrepareResources();
+		}
+
 		const size_t num_shapes = impl->shapes.size();
 		const size_t chunk_size = 64;
 		std::vector<std::future<void>> packet_futures;

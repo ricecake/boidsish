@@ -34,6 +34,7 @@ namespace Boidsish {
 		Path(int id = 0, float x = 0.0f, float y = 0.0f, float z = 0.0f);
 		~Path();
 
+		void PrepareResources() const override { SetupBuffers(); }
 		void      SetupBuffers() const;
 		void      render() const override;
 		void      render(Shader& shader, const glm::mat4& model_matrix) const override;

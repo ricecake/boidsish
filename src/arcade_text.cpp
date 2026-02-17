@@ -119,20 +119,19 @@ namespace Boidsish {
 	}
 
 	void ArcadeText::GenerateRenderPackets(std::vector<RenderPacket>& out_packets, const RenderContext& context) const {
-		if (vao_ == 0 || vertex_count_ == 0) return;
+		if (vao_ == 0 || vertex_count_ == 0)
+			return;
 
-		glm::mat4 model_matrix = GetModelMatrix();
-		glm::vec3 world_pos = glm::vec3(model_matrix[3]);
+		auto create_packet = [&](const glm::mat4& model) {
+			RenderPacket packet;
+			packet.vao = vao_;
+			packet.vbo = vbo_;
+			packet.vertex_count = static_cast<unsigned int>(vertex_count_);
+			packet.draw_mode = GL_TRIANGLES;
+			packet.index_type = 0;
+			packet.shader_id = shader ? shader->ID : 0;
 
-		RenderPacket packet;
-		packet.vao = vao_;
-		packet.vbo = vbo_;
-		packet.vertex_count = static_cast<unsigned int>(vertex_count_);
-		packet.draw_mode = GL_TRIANGLES;
-		packet.index_type = 0;
-		packet.shader_id = shader ? shader->ID : 0;
-
-		packet.uniforms.model = model_matrix;
+			packet.uniforms.model = model;
 		packet.uniforms.color = glm::vec4(GetR(), GetG(), GetB(), GetA());
 		packet.uniforms.use_pbr = UsePBR();
 		packet.uniforms.roughness = GetRoughness();
@@ -153,20 +152,40 @@ namespace Boidsish {
 		packet.uniforms.arcade_wave_frequency = wave_frequency_;
 		packet.uniforms.arcade_wave_speed = wave_speed_;
 		packet.uniforms.arcade_rainbow_enabled = rainbow_enabled_ ? 1 : 0;
-		packet.uniforms.arcade_rainbow_speed = rainbow_speed_;
-		packet.uniforms.arcade_rainbow_frequency = rainbow_frequency_;
+			packet.uniforms.arcade_rainbow_speed = rainbow_speed_;
+			packet.uniforms.arcade_rainbow_frequency = rainbow_frequency_;
 
-		packet.casts_shadows = CastsShadows();
+			packet.casts_shadows = CastsShadows();
 
-		RenderLayer layer = RenderLayer::Transparent;
+			RenderLayer layer = RenderLayer::Transparent;
 
-		packet.shader_handle = shader_handle;
-		packet.material_handle = MaterialHandle(0);
+			packet.shader_handle = shader_handle;
+			packet.material_handle = MaterialHandle(0);
 
-		float normalized_depth = context.CalculateNormalizedDepth(world_pos);
-		packet.sort_key = CalculateSortKey(layer, packet.shader_handle, packet.material_handle, normalized_depth);
+			glm::vec3 world_pos = glm::vec3(model[3]);
+			float     normalized_depth = context.CalculateNormalizedDepth(world_pos);
+			packet.sort_key = CalculateSortKey(layer, packet.shader_handle, packet.material_handle, normalized_depth);
 
-		out_packets.push_back(packet);
+			return packet;
+		};
+
+		if (double_copy_) {
+			// First copy
+			glm::mat4 m1 = GetModelMatrix();
+			m1 = glm::rotate(m1, rotation_angle_, rotation_axis_);
+			out_packets.push_back(create_packet(m1));
+
+			// Second copy (180 degrees offset)
+			glm::mat4 m2 = GetModelMatrix();
+			m2 = glm::rotate(m2, rotation_angle_ + glm::pi<float>(), rotation_axis_);
+			out_packets.push_back(create_packet(m2));
+		} else {
+			glm::mat4 model = GetModelMatrix();
+			if (rotation_angle_ != 0.0f) {
+				model = glm::rotate(model, rotation_angle_, rotation_axis_);
+			}
+			out_packets.push_back(create_packet(model));
+		}
 	}
 
 } // namespace Boidsish

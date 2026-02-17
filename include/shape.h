@@ -30,6 +30,12 @@ namespace Boidsish {
 		// Update the shape's state
 		virtual void Update(float delta_time) { (void)delta_time; }
 
+		/**
+		 * @brief Prepares any GPU resources needed for rendering.
+		 * Called on the main thread before packet generation.
+		 */
+		virtual void PrepareResources() const {}
+
 		// Check if the shape has expired (for transient effects)
 		virtual bool IsExpired() const { return false; }
 
