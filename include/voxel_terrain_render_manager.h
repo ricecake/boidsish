@@ -8,6 +8,7 @@
 #include <GL/glew.h>
 #include <glm/glm.hpp>
 
+#include "terrain_generator_interface.h"
 #include "terrain_render_interface.h"
 
 namespace Boidsish {
@@ -18,20 +19,12 @@ namespace Boidsish {
 	 * Operates by interpreting the heightmap grid as a collection of voxel columns
 	 * and generating a blocky mesh from it.
 	 */
-	class VoxelTerrainRenderManager : public ITerrainRenderManager {
+	class VoxelTerrainRenderManager : public ITerrainRenderManagerT<TerrainGenerationResult> {
 	public:
 		VoxelTerrainRenderManager(int chunk_size = 32);
 		virtual ~VoxelTerrainRenderManager();
 
-		void RegisterChunk(
-			std::pair<int, int>              chunk_key,
-			const std::vector<glm::vec3>&    positions,
-			const std::vector<glm::vec3>&    normals,
-			const std::vector<unsigned int>& indices,
-			float                            min_y,
-			float                            max_y,
-			const glm::vec3&                 world_offset
-		) override;
+		void RegisterChunk(std::pair<int, int> chunk_key, const TerrainGenerationResult& result) override;
 
 		void UnregisterChunk(std::pair<int, int> chunk_key) override;
 		bool HasChunk(std::pair<int, int> chunk_key) const override;

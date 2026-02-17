@@ -6,13 +6,27 @@
 #include <tuple>
 #include <vector>
 
+#include "field.h"
 #include "terrain_deformation_manager.h"
 #include <glm/glm.hpp>
 
 namespace Boidsish {
 
+	struct TerrainGenerationResult {
+		std::vector<unsigned int> indices;
+		std::vector<glm::vec3>    positions;
+		std::vector<glm::vec3>    normals;
+		PatchProxy                proxy;
+		int                       chunk_x;
+		int                       chunk_z;
+		glm::vec3                 world_offset;
+		bool                      has_terrain;
+	};
+
 	class Terrain;
 	class ITerrainRenderManager;
+	template <typename T>
+	class ITerrainRenderManagerT;
 	struct Frustum;
 	struct Camera;
 
@@ -322,6 +336,27 @@ namespace Boidsish {
 		// Non-copyable
 		ITerrainGenerator(const ITerrainGenerator&) = delete;
 		ITerrainGenerator& operator=(const ITerrainGenerator&) = delete;
+	};
+
+	/**
+	 * @brief Templated interface for terrain generators.
+	 *
+	 * Enforces that the generator is used with a matching renderer
+	 * that consumes the data type produced by this generator.
+	 *
+	 * @tparam T The data type produced by this generator for each chunk
+	 */
+	template <typename T>
+	class ITerrainGeneratorT: public ITerrainGenerator {
+	public:
+		virtual ~ITerrainGeneratorT() = default;
+
+		/**
+		 * @brief Set the render manager with matching data type.
+		 *
+		 * @param manager The render manager template specialized for type T
+		 */
+		virtual void SetTypedRenderManager(std::shared_ptr<ITerrainRenderManagerT<T>> manager) = 0;
 	};
 
 } // namespace Boidsish

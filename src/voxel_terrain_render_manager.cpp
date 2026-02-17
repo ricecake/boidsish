@@ -28,15 +28,7 @@ namespace Boidsish {
 			glDeleteTextures(1, &heightmap_texture_);
 	}
 
-	void VoxelTerrainRenderManager::RegisterChunk(
-		std::pair<int, int>              chunk_key,
-		const std::vector<glm::vec3>&    positions,
-		const std::vector<glm::vec3>&    normals,
-		const std::vector<unsigned int>& /*indices*/,
-		float                            min_y,
-		float                            max_y,
-		const glm::vec3&                 world_offset
-	) {
+	void VoxelTerrainRenderManager::RegisterChunk(std::pair<int, int> chunk_key, const TerrainGenerationResult& result) {
 		std::lock_guard<std::mutex> lock(mutex_);
 
 		const int          res = heightmap_resolution_;
@@ -47,7 +39,7 @@ namespace Boidsish {
 				int src_idx = x * res + z; // X-major
 				int dst_idx = z * res + x; // Z-major
 
-				heightmap[dst_idx] = positions[src_idx].y;
+				heightmap[dst_idx] = result.positions[src_idx].y;
 			}
 		}
 
@@ -67,9 +59,10 @@ namespace Boidsish {
 
 		auto chunk = std::make_unique<ChunkMesh>();
 		chunk->key = chunk_key;
-		chunk->world_offset = world_offset;
-		chunk->min_corner = glm::vec3(0, min_y, 0);
-		chunk->max_corner = glm::vec3(chunk_size_, max_y, chunk_size_);
+		chunk->world_offset = result.world_offset;
+
+		chunk->min_corner = glm::vec3(0, result.proxy.minY, 0);
+		chunk->max_corner = glm::vec3(chunk_size_, result.proxy.maxY, chunk_size_);
 
 		// Assign or reuse slice
 		if (existing_slice != -1) {
@@ -120,7 +113,7 @@ namespace Boidsish {
 		auto get_height = [&](int i, int j) {
 			i = std::clamp(i, 0, chunk_size_);
 			j = std::clamp(j, 0, chunk_size_);
-			return positions[i * res + j].y;
+			return result.positions[i * res + j].y;
 		};
 
 		float step = 1.0f; // Assuming positions are at integer intervals in local space
