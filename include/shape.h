@@ -29,6 +29,9 @@ namespace Boidsish {
 		// Update the shape's state
 		virtual void Update(float delta_time) { (void)delta_time; }
 
+		// Scale the shape's position
+		virtual void Scale(float ratio);
+
 		// Check if the shape has expired (for transient effects)
 		virtual bool IsExpired() const { return false; }
 

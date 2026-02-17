@@ -95,6 +95,9 @@ public:
 	// Main integration step
 	void Update(float dt);
 
+	// Scaling
+	void Scale(float ratio);
+
 	// Utility
 	void FaceVelocity();
 };

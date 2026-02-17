@@ -39,6 +39,7 @@ namespace Boidsish {
 		void UpdateSource(int id, const SdfSource& source);
 		void RemoveSource(int id);
 		void Clear();
+		void Scale(float ratio);
 
 		size_t GetSourceCount() const { return sources_.size(); }
 

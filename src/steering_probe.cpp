@@ -177,4 +177,11 @@ namespace Boidsish {
 		}
 	}
 
+	void SteeringProbe::Scale(float ratio) {
+		position_ *= ratio;
+		velocity_ *= ratio;
+		lastCheckpointPos_ *= ratio;
+		// lastCheckpointDir_ is a normalized direction, it doesn't need scaling
+	}
+
 } // namespace Boidsish

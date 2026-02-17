@@ -353,3 +353,11 @@ void RigidBody::FaceVelocity() {
 		pose_ = glm::dualquat(targetRot, currentPos);
 	}
 }
+
+void RigidBody::Scale(float ratio) {
+	SetPosition(GetPosition() * ratio);
+	SetLinearVelocity(GetLinearVelocity() * ratio);
+	if (max_linear_velocity_ > 0.0f) {
+		max_linear_velocity_ *= ratio;
+	}
+}

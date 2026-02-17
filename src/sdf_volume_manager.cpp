@@ -86,4 +86,11 @@ namespace Boidsish {
 		sources_.clear();
 	}
 
+	void SdfVolumeManager::Scale(float ratio) {
+		for (auto& [id, source] : sources_) {
+			source.position *= ratio;
+			source.radius *= ratio;
+		}
+	}
+
 } // namespace Boidsish

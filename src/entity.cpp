@@ -205,7 +205,21 @@ namespace Boidsish {
 		return glm::vec3(suggested_pos.x, std::max(suggested_pos.y, min_y), suggested_pos.z);
 	}
 
+	void EntityBase::Scale(float ratio) {
+		rigid_body_.Scale(ratio);
+		UpdateShape();
+	}
+
+	void EntityHandler::Scale(float ratio) {
+		for (auto& [id, entity] : entities_) {
+			entity->Scale(ratio);
+		}
+	}
+
 	EntityHandler::~EntityHandler() {
+		if (vis) {
+			vis->UnregisterEntityHandler(this);
+		}
 		std::lock_guard<std::mutex> lock(requests_mutex_);
 		for (auto& request : modification_requests_) {
 			request();

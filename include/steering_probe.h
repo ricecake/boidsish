@@ -49,6 +49,8 @@ namespace Boidsish {
 
 		void SetTerrain(std::shared_ptr<ITerrainGenerator> t) { terrain_ = t; }
 
+		void Scale(float ratio);
+
 	private:
 		glm::vec3                          position_{0.0f};
 		glm::vec3                          velocity_{0.0f};

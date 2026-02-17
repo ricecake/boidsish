@@ -142,6 +142,16 @@ namespace Boidsish {
 		}
 	}
 
+	void FireEffectManager::Scale(float ratio) {
+		std::lock_guard<std::mutex> lock(mutex_);
+		for (auto& effect : effects_) {
+			if (effect) {
+				effect->SetPosition(effect->GetPosition() * ratio);
+				effect->SetVelocity(effect->GetVelocity() * ratio);
+			}
+		}
+	}
+
 	void FireEffectManager::Update(float delta_time, float time) {
 		std::lock_guard<std::mutex> lock(mutex_);
 		if (!initialized_ || !compute_shader_ || !compute_shader_->isValid()) {

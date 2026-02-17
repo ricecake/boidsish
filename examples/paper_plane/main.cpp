@@ -24,8 +24,7 @@ int main() {
 			"Paper Plane Demo"
 		);
 
-		auto terrain = visualizer->GetTerrain();
-		terrain->SetWorldScale(2.0f);
+		visualizer->SetWorldScale(2.0f);
 
 		auto decor = visualizer->GetDecorManager();
 
@@ -96,6 +95,8 @@ int main() {
 		std::shared_ptr<SteeringProbe> sp = std::make_shared<SteeringProbe>(visualizer->GetTerrain());
 		sp->SetPosition(plane->GetPosition().Toglm() + plane->GetVelocity());
 		sp->SetVelocity(plane->GetVelocity().Toglm());
+
+		visualizer->AddWorldScaleCallback([sp](float ratio) { sp->Scale(ratio); });
 
 		auto dot = std::make_shared<Dot>(2343433);
 		dot->SetSize(940.0f);
