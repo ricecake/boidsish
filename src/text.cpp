@@ -458,7 +458,6 @@ namespace Boidsish {
 		packet.uniforms.use_texture = false;
 
 		packet.uniforms.is_text_effect = is_text_effect_ ? 1 : 0;
-		packet.uniforms.is_instanced = IsInstanced();
 		packet.uniforms.is_colossal = IsColossal();
 		packet.uniforms.text_fade_progress = text_fade_progress_;
 		packet.uniforms.text_fade_softness = text_fade_softness_;

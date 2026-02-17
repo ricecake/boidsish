@@ -196,7 +196,6 @@ namespace Boidsish {
 			packet.uniforms.roughness = GetRoughness();
 			packet.uniforms.metallic = GetMetallic();
 			packet.uniforms.ao = GetAO();
-			packet.uniforms.is_instanced = IsInstanced();
 			packet.uniforms.is_colossal = IsColossal();
 
 			RenderLayer layer = (GetA() < 0.99f) ? RenderLayer::Transparent : RenderLayer::Opaque;
@@ -220,7 +219,6 @@ namespace Boidsish {
 			packet.uniforms.roughness = GetRoughness();
 			packet.uniforms.metallic = GetMetallic();
 			packet.uniforms.ao = GetAO();
-			packet.uniforms.is_instanced = IsInstanced();
 			packet.uniforms.is_colossal = IsColossal();
 
 			packet.casts_shadows = CastsShadows();

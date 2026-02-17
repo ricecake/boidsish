@@ -25,7 +25,6 @@
 #include "fire_effect_manager.h"
 #include "hud.h"
 #include "hud_manager.h"
-#include "instance_manager.h"
 #include "light_manager.h"
 #include "line.h"
 #include "logger.h"
@@ -220,7 +219,6 @@ namespace Boidsish {
 		std::vector<std::shared_ptr<Shape>>   transient_effects; // Short-lived effects like CurvedText
 		ConcurrentQueue<ShapeCommand>         shape_command_queue;
 		std::unique_ptr<CloneManager>         clone_manager;
-		std::unique_ptr<InstanceManager>      instance_manager;
 		std::unique_ptr<FireEffectManager>    fire_effect_manager;
 		std::unique_ptr<MeshExplosionManager> mesh_explosion_manager;
 		std::unique_ptr<SoundEffectManager>   sound_effect_manager;
@@ -549,7 +547,6 @@ namespace Boidsish {
 				last_camera_pitch_ = camera.pitch;
 			}
 			clone_manager = std::make_unique<CloneManager>();
-			instance_manager = std::make_unique<InstanceManager>();
 			fire_effect_manager = std::make_unique<FireEffectManager>();
 			fire_effect_manager->Initialize(); // Must initialize on main thread with GL context
 			mesh_explosion_manager = std::make_unique<MeshExplosionManager>();
@@ -1273,13 +1270,11 @@ namespace Boidsish {
 					return false;
 				if ((a.ebo > 0) != (b.ebo > 0))
 					return false;
-				if (a.is_instanced != b.is_instanced)
-					return false;
+				// Note: is_instanced check removed - attribute-based instancing is deprecated
+				// since InstanceManager was removed. All shapes now use uniform model matrix.
 				if (a.uniforms.is_colossal != b.uniforms.is_colossal)
 					return false;
 				if (a.uniforms.use_ssbo_instancing != b.uniforms.use_ssbo_instancing)
-					return false;
-				if (a.uniforms.use_instance_color != b.uniforms.use_instance_color)
 					return false;
 				if (a.textures.size() != b.textures.size())
 					return false;
@@ -1314,10 +1309,6 @@ namespace Boidsish {
 				// Copy uniforms to persistent SSBO
 				uniforms_ptr[mdi_uniform_count] = packet.uniforms;
 
-				if (packet.instance_count <= 1) {
-					uniforms_ptr[mdi_uniform_count].is_instanced = 0;
-				}
-
 				if (batches.empty() || !last_processed_packet || !can_batch(*last_processed_packet, packet)) {
 					Batch new_batch;
 					new_batch.shader_handle = shader_override.value_or(packet.shader_handle);
@@ -1339,7 +1330,7 @@ namespace Boidsish {
 				if (is_indexed) {
 					DrawElementsIndirectCommand cmd{};
 					cmd.count = packet.index_count;
-					cmd.instanceCount = packet.is_instanced ? std::max(1, packet.instance_count) : 1;
+					cmd.instanceCount = std::max(1, packet.instance_count);
 					cmd.firstIndex = 0;
 					cmd.baseVertex = 0;
 					cmd.baseInstance = 0;
@@ -1347,7 +1338,7 @@ namespace Boidsish {
 				} else {
 					DrawArraysIndirectCommand cmd{};
 					cmd.count = packet.vertex_count;
-					cmd.instanceCount = packet.is_instanced ? std::max(1, packet.instance_count) : 1;
+					cmd.instanceCount = std::max(1, packet.instance_count);
 					cmd.first = 0;
 					cmd.baseInstance = 0;
 					arrays_cmd_ptr[mdi_arrays_count++] = cmd;

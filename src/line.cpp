@@ -191,13 +191,11 @@ namespace Boidsish {
 		packet.uniforms.metallic = GetMetallic();
 		packet.uniforms.ao = GetAO();
 		packet.uniforms.use_texture = false;
-		packet.uniforms.is_instanced = IsInstanced();
 		packet.uniforms.is_colossal = IsColossal();
 
 		packet.uniforms.is_line = 1;
 		packet.uniforms.line_style = static_cast<int>(style_);
 
-		packet.is_instanced = IsInstanced();
 		packet.casts_shadows = CastsShadows();
 
 		RenderLayer layer = IsTransparent() ? RenderLayer::Transparent : RenderLayer::Opaque;

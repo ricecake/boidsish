@@ -148,7 +148,6 @@ namespace Boidsish {
 		packet.uniforms.metallic = GetMetallic();
 		packet.uniforms.ao = GetAO();
 		packet.uniforms.use_texture = false;
-		packet.uniforms.is_instanced = IsInstanced();
 		packet.uniforms.is_colossal = IsColossal();
 
 		packet.casts_shadows = CastsShadows();

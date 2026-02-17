@@ -16,7 +16,6 @@ namespace Boidsish {
 		shape_->SetScale(glm::vec3(0.5f));
 		SetColor(0.8f, 0.2f, 0.2f); // Reddish
 		spiral_phase_ = static_cast<float>(id) * 0.7f;
-		shape_->SetInstanced(true);
 		SetOrientToVelocity(true);
 	}
 

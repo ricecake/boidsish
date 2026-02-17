@@ -19,13 +19,11 @@ in vec3 Normal;
 in vec3 vs_color;
 in vec3 barycentric;
 in vec2 TexCoords;
-in vec4 InstanceColor;
 
 uniform vec3  objectColor;
 uniform float objectAlpha = 1.0;
 uniform int   useVertexColor;
 uniform bool  isColossal = false;
-uniform bool  useInstanceColor = false;
 uniform bool  isLine = false;
 uniform int   lineStyle = 0; // 0: SOLID, 1: LASER
 
@@ -68,7 +66,6 @@ void main() {
 	float c_arcadeRainbowSpeed = uUseMDI ? uniforms_data[vUniformIndex].arcade_rainbow_speed : arcadeRainbowSpeed;
 	float c_arcadeRainbowFrequency = uUseMDI ? uniforms_data[vUniformIndex].arcade_rainbow_frequency : arcadeRainbowFrequency;
 	bool  c_isColossal = uUseMDI ? (uniforms_data[vUniformIndex].is_colossal != 0) : isColossal;
-	bool  c_useInstanceColor = uUseMDI ? (uniforms_data[vUniformIndex].use_instance_color != 0) : useInstanceColor;
 	bool  c_useVertexColor = uUseMDI ? (uniforms_data[vUniformIndex].use_vertex_color != 0) : (useVertexColor != 0);
 
 	float fade = 1.0;
@@ -84,9 +81,7 @@ void main() {
 	}
 
 	vec3 final_color;
-	if (c_useInstanceColor) {
-		final_color = InstanceColor.rgb;
-	} else if (c_useVertexColor) {
+	if (c_useVertexColor) {
 		final_color = vs_color;
 	} else {
 		final_color = c_objectColor;
@@ -95,9 +90,6 @@ void main() {
 	vec3 norm = normalize(Normal);
 
 	float baseAlpha = c_objectAlpha;
-	if (c_useInstanceColor) {
-		baseAlpha = InstanceColor.a;
-	}
 
 	// Choose between PBR and legacy lighting
 	vec4 lightResult;

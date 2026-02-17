@@ -15,7 +15,6 @@ namespace Boidsish {
 		SetPosition(pos);
 		shape_->SetScale(glm::vec3(5.0f));
 		SetColor(0.2f, 0.8f, 0.2f); // Greenish
-		shape_->SetInstanced(true);
 		SetOrientToVelocity(true);
 	}
 

@@ -2,8 +2,6 @@
 layout(location = 0) in vec3 aPos;
 layout(location = 1) in vec3 aNormal;
 layout(location = 2) in vec2 aTexCoords;
-layout(location = 3) in mat4 aInstanceMatrix;
-layout(location = 7) in vec4 aInstanceColor;
 layout(location = 8) in vec3 aVertexColor;
 
 #include "common_uniforms.glsl"
@@ -31,7 +29,6 @@ out vec3 Normal;
 out vec3 vs_color;
 out vec3 barycentric;
 out vec2 TexCoords;
-out vec4 InstanceColor;
 flat out int vUniformIndex;
 
 uniform mat4  model;
@@ -40,8 +37,6 @@ uniform mat4  projection;
 uniform vec4  clipPlane;
 uniform float ripple_strength;
 uniform bool  isColossal = false;
-uniform bool  is_instanced = false;
-uniform bool  useInstanceColor = false;
 uniform bool  useSSBOInstancing = false;
 uniform bool  isLine = false;
 uniform bool  enableFrustumCulling = false;
@@ -63,10 +58,8 @@ void main() {
 	float current_arcadeWaveAmplitude = uUseMDI ? uniforms_data[vUniformIndex].arcade_wave_amplitude : arcadeWaveAmplitude;
 	float current_arcadeWaveFrequency = uUseMDI ? uniforms_data[vUniformIndex].arcade_wave_frequency : arcadeWaveFrequency;
 	float current_arcadeWaveSpeed = uUseMDI ? uniforms_data[vUniformIndex].arcade_wave_speed : arcadeWaveSpeed;
-	bool  current_is_instanced = uUseMDI ? (uniforms_data[vUniformIndex].is_instanced != 0) : is_instanced;
 	bool  current_isColossal = uUseMDI ? (uniforms_data[vUniformIndex].is_colossal != 0) : isColossal;
 	bool  current_useSSBOInstancing = uUseMDI ? (uniforms_data[vUniformIndex].use_ssbo_instancing != 0) : useSSBOInstancing;
-	bool  current_useInstanceColor = uUseMDI ? (uniforms_data[vUniformIndex].use_instance_color != 0) : useInstanceColor;
 
 	vec3 displacedPos = aPos;
 	vec3 displacedNormal = aNormal;
@@ -115,8 +108,6 @@ void main() {
 	mat4 modelMatrix;
 	if (current_useSSBOInstancing) {
 		modelMatrix = ssboInstanceMatrices[gl_InstanceID];
-	} else if (current_is_instanced) {
-		modelMatrix = aInstanceMatrix;
 	} else {
 		modelMatrix = current_model;
 	}
@@ -137,7 +128,6 @@ void main() {
 			FragPos = vec3(0.0);
 			Normal = vec3(0.0, 1.0, 0.0);
 			TexCoords = vec2(0.0);
-			InstanceColor = vec4(0.0);
 			gl_ClipDistance[0] = -1.0; // Clip it
 			return;
 		}
@@ -154,7 +144,6 @@ void main() {
 	Normal = mat3(transpose(inverse(modelMatrix))) * displacedNormal;
 	TexCoords = aTexCoords;
 	vs_color = aVertexColor;
-	InstanceColor = current_useInstanceColor ? aInstanceColor : vec4(1.0);
 	if (wireframe_enabled == 1) {
 		barycentric = getBarycentric();
 	}

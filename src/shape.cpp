@@ -45,11 +45,8 @@ namespace Boidsish {
 		packet.uniforms.metallic = metallic_;
 		packet.uniforms.ao = ao_;
 		packet.uniforms.use_texture = false; // Default for base sphere shape
-		packet.uniforms.is_instanced = 0;    // MDI path uses per-draw model matrix, not attributes
 		packet.uniforms.is_colossal = is_colossal_;
-		packet.uniforms.use_instance_color = false;
 
-		packet.is_instanced = is_instanced_;
 		packet.casts_shadows = CastsShadows();
 
 		// Default to Opaque layer unless alpha is less than 1.0

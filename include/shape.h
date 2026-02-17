@@ -150,10 +150,7 @@ namespace Boidsish {
 
 		virtual bool CastsShadows() const { return !is_colossal_; }
 
-		inline bool IsInstanced() const { return is_instanced_; }
-
-		inline void SetInstanced(bool is_instanced) { is_instanced_ = is_instanced; MarkDirty(); }
-
+	
 		inline bool IsHidden() const { return is_hidden_; }
 
 		inline void SetHidden(bool hidden) { is_hidden_ = hidden; MarkDirty(); }
@@ -293,7 +290,6 @@ namespace Boidsish {
 		bool      trail_iridescent_;
 		bool      trail_rocket_;
 		bool      is_colossal_;
-		bool      is_instanced_ = false;
 		bool      is_hidden_ = false;
 		bool      trail_pbr_;
 		float     trail_roughness_;

@@ -318,11 +318,8 @@ namespace Boidsish {
 			packet.uniforms.metallic = GetMetallic();
 			packet.uniforms.ao = GetAO();
 			packet.uniforms.use_texture = !mesh.textures.empty();
-			packet.uniforms.is_instanced = 0; // MDI path uses per-draw model matrix
 			packet.uniforms.is_colossal = IsColossal();
-			packet.uniforms.use_instance_color = false;
 
-			packet.is_instanced = IsInstanced();
 			packet.casts_shadows = CastsShadows();
 
 			for (const auto& tex : mesh.textures) {

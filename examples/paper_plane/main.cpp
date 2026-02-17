@@ -99,7 +99,6 @@ int main() {
 
 		auto dot = std::make_shared<Dot>(2343433);
 		dot->SetSize(940.0f);
-		// dot->SetInstanced(true);
 		// visualizer->AddShape(dot);
 		float                                         last_time = 0;
 		std::vector<std::shared_ptr<Boidsish::Shape>> shapes;
@@ -115,7 +114,6 @@ int main() {
 			return shapes;
 		});
 		// auto model = std::make_shared<Boidsish::Model>("assets/utah_teapot.obj");
-		// model->SetInstanced(true);
 		// model->SetColossal(true);
 		shapes.push_back(dot);
 		// shapes.push_back(model);

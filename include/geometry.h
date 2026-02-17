@@ -60,14 +60,10 @@ namespace Boidsish {
 		int       checkpoint_style = 0;         // 4 bytes -> 16 bytes
 
 		// Rendering State Flags
-		int       is_instanced = 0;          // 4 bytes
 		int       is_colossal = 0;           // 4 bytes
 		int       use_ssbo_instancing = 0;   // 4 bytes
-		int       use_instance_color = 0;    // 4 bytes -> 16 bytes
-
 		int       use_vertex_color = 0;      // 4 bytes
-		float     checkpoint_radius = 0.0f;     // 4 bytes
-		float     padding[2] = {0,0};           // 8 bytes padding to match 16-byte alignment
+		float     checkpoint_radius = 0.0f;  // 4 bytes -> 16 bytes
 	};
 
 	/**
@@ -113,9 +109,8 @@ namespace Boidsish {
 		};
 		std::vector<TextureInfo> textures;
 
-		// Instancing
-		bool is_instanced = false;
-		int  instance_count = 0;
+		// Instancing - instance_count used for SSBO-based instancing if needed.
+		int instance_count = 0;
 
 		// Pass identification
 		bool casts_shadows = true;

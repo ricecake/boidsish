@@ -81,8 +81,6 @@ namespace Boidsish {
 
 		void SetBaseRotation(const glm::quat& rotation) { base_rotation_ = rotation; }
 
-		void SetInstanced(bool is_instanced) { Shape::SetInstanced(is_instanced); }
-
 		// Returns unique key for this model file - models loaded from the same file can be instanced together
 		std::string GetInstanceKey() const override;
 

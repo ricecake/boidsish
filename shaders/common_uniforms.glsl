@@ -21,11 +21,8 @@ struct CommonUniforms {
 	float arcade_rainbow_speed;
 	float arcade_rainbow_frequency;
 	int   checkpoint_style;
-	int   is_instanced;
 	int   is_colossal;
 	int   use_ssbo_instancing;
-	int   use_instance_color;
 	int   use_vertex_color;
 	float checkpoint_radius;
-	float padding[2];
 };
