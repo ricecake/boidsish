@@ -42,28 +42,37 @@ int main() {
 				if (pos) {
 					glm::vec3 entry = *pos;
 					glm::vec3 cam_front = visualizer.GetCamera().front();
+					// Move slightly inside to avoid immediate exit
 					glm::vec3 dir = glm::normalize(glm::vec3(cam_front.x, 0.0f, cam_front.z));
 
-					float max_dist = 400.0f;
-					float step = 1.0f;
-					glm::vec3 exit = entry + dir * 100.0f; // Default length if no exit found
+					float max_dist = 600.0f;
+					float step = 2.0f;
+					bool has_entered = false;
+					glm::vec3 exit = entry + dir * 100.0f; // Default
 
-					for (float d = 10.0f; d < max_dist; d += step) {
+					for (float d = step; d < max_dist; d += step) {
 						glm::vec3 p = entry + dir * d;
 						auto [h, n] = visualizer.GetTerrainPropertiesAtPoint(p.x, p.z);
-						if (h < entry.y - 2.0f) { // Height dropped below entry point
-							exit = glm::vec3(p.x, entry.y, p.z);
-							break;
+
+						if (!has_entered) {
+							if (h > entry.y + 1.0f) {
+								has_entered = true;
+							}
+						} else {
+							if (h < entry.y - 1.0f) {
+								exit = glm::vec3(p.x, entry.y, p.z);
+								break;
+							}
 						}
 					}
 
 					glm::vec3 center = (entry + exit) * 0.5f;
 					float length = glm::distance(entry, exit);
-					// Rotation from +Y to dir
+					// Cylinder local axis is Y. Rotate +Y to tunnel direction.
 					glm::quat orientation = glm::rotation(glm::vec3(0.0f, 1.0f, 0.0f), dir);
 
-					std::cout << "Tunneling from (" << entry.x << ", " << entry.z << ") to (" << exit.x << ", " << exit.z << ") length " << length << std::endl;
-					visualizer.GetTerrain()->AddCylinderHole(center, 10.0f, length, orientation, true);
+					std::cout << "Tunneling from " << entry.x << "," << entry.z << " to " << exit.x << "," << exit.z << " length " << length << std::endl;
+					visualizer.GetTerrain()->AddCylinderHole(center, 12.0f, length + 2.0f, orientation, true);
 				}
 			}
 			// Arrow keys: Adjust orientation for next hole

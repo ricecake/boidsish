@@ -556,7 +556,18 @@ namespace Boidsish {
 	}
 
 	bool CylinderHoleDeformation::IsHole(float x, float z, float current_height) const {
-		return ContainsPoint(glm::vec3(x, current_height, z));
+		// Use a small epsilon to ensure the hole is slightly larger than the mesh,
+		// preventing z-fighting or slivers of terrain at the edges.
+		// Additionally, ensure we only discard terrain if the surface height is
+		// actually within the cylinder's vertical volume.
+		const float EPSILON = 0.2f;
+		glm::vec3 p(x, current_height, z);
+		glm::vec3 local_p = glm::inverse(orientation_) * (p - center_);
+
+		if (std::abs(local_p.y) > length_ * 0.5f + EPSILON) return false;
+
+		float dist_sq = local_p.x * local_p.x + local_p.z * local_p.z;
+		return dist_sq <= (radius_ + EPSILON) * (radius_ + EPSILON);
 	}
 
 	glm::vec3 CylinderHoleDeformation::TransformNormal(float x, float z, const glm::vec3& original_normal) const {
@@ -591,27 +602,22 @@ namespace Boidsish {
 		std::vector<Vertex> vertices;
 		std::vector<unsigned int> indices;
 
-		// We will build a standard cylinder mesh in local space and transform it.
-		// Local axis is Y. Bottom cap at -length/2, Top cap at length/2.
 		float h2 = length_ * 0.5f;
 
-		// 1. Cylinder sides
+		// 1. Exterior Walls
 		for (int i = 0; i <= SAMPLES; ++i) {
 			float t = (float)i / SAMPLES;
 			float angle = t * 2.0f * glm::pi<float>();
 			float cosA = cos(angle);
 			float sinA = sin(angle);
-
 			glm::vec3 normal(cosA, 0, sinA);
 
-			// Bottom vertex
 			Vertex v_bot;
 			v_bot.Position = glm::vec3(radius_ * cosA, -h2, radius_ * sinA);
 			v_bot.Normal = normal;
 			v_bot.TexCoords = glm::vec2(t, 0.0f);
 			vertices.push_back(v_bot);
 
-			// Top vertex
 			Vertex v_top;
 			v_top.Position = glm::vec3(radius_ * cosA, h2, radius_ * sinA);
 			v_top.Normal = normal;
@@ -624,73 +630,146 @@ namespace Boidsish {
 			int t0 = i * 2 + 1;
 			int b1 = (i + 1) * 2;
 			int t1 = (i + 1) * 2 + 1;
+			// CCW from outside
+			indices.push_back(b0);
+			indices.push_back(t0);
+			indices.push_back(b1);
+			indices.push_back(t0);
+			indices.push_back(t1);
+			indices.push_back(b1);
+		}
 
-			// CCW winding
+		// 2. Interior Walls
+		int interior_start = static_cast<int>(vertices.size());
+		for (int i = 0; i <= SAMPLES; ++i) {
+			float t = (float)i / SAMPLES;
+			float angle = t * 2.0f * glm::pi<float>();
+			float cosA = cos(angle);
+			float sinA = sin(angle);
+			glm::vec3 normal(-cosA, 0, -sinA);
+
+			Vertex v_bot;
+			v_bot.Position = glm::vec3(radius_ * cosA, -h2, radius_ * sinA);
+			v_bot.Normal = normal;
+			v_bot.TexCoords = glm::vec2(t, 0.0f);
+			vertices.push_back(v_bot);
+
+			Vertex v_top;
+			v_top.Position = glm::vec3(radius_ * cosA, h2, radius_ * sinA);
+			v_top.Normal = normal;
+			v_top.TexCoords = glm::vec2(t, 1.0f);
+			vertices.push_back(v_top);
+		}
+
+		for (int i = 0; i < SAMPLES; ++i) {
+			int b0 = interior_start + i * 2;
+			int t0 = interior_start + i * 2 + 1;
+			int b1 = interior_start + (i + 1) * 2;
+			int t1 = interior_start + (i + 1) * 2 + 1;
+			// CCW from inside
 			indices.push_back(b0);
 			indices.push_back(b1);
 			indices.push_back(t0);
-
 			indices.push_back(t0);
 			indices.push_back(b1);
 			indices.push_back(t1);
 		}
 
-		// 2. Caps
-		int cap_start_idx = static_cast<int>(vertices.size());
-
-		// Bottom cap center
-		Vertex v_bot_center;
-		v_bot_center.Position = glm::vec3(0, -h2, 0);
-		v_bot_center.Normal = glm::vec3(0, -1, 0);
-		v_bot_center.TexCoords = glm::vec2(0.5f, 0.5f);
-		vertices.push_back(v_bot_center);
-
-		// Top cap center
-		Vertex v_top_center;
-		v_top_center.Position = glm::vec3(0, h2, 0);
-		v_top_center.Normal = glm::vec3(0, 1, 0);
-		v_top_center.TexCoords = glm::vec2(0.5f, 0.5f);
-		vertices.push_back(v_top_center);
-
-		int bot_center_idx = cap_start_idx;
-		int top_center_idx = cap_start_idx + 1;
-
-		for (int i = 0; i < SAMPLES; ++i) {
-			float t = (float)i / SAMPLES;
-			float angle = t * 2.0f * glm::pi<float>();
-			float cosA = cos(angle);
-			float sinA = sin(angle);
-
-			// Bottom cap ring
-			Vertex v_bot;
-			v_bot.Position = glm::vec3(radius_ * cosA, -h2, radius_ * sinA);
-			v_bot.Normal = glm::vec3(0, -1, 0);
-			v_bot.TexCoords = glm::vec2(cosA * 0.5f + 0.5f, sinA * 0.5f + 0.5f);
-			vertices.push_back(v_bot);
-
-			// Top cap ring
-			Vertex v_top;
-			v_top.Position = glm::vec3(radius_ * cosA, h2, radius_ * sinA);
-			v_top.Normal = glm::vec3(0, 1, 0);
-			v_top.TexCoords = glm::vec2(cosA * 0.5f + 0.5f, sinA * 0.5f + 0.5f);
-			vertices.push_back(v_top);
-		}
-
-		int ring_start = cap_start_idx + 2;
+		// 3. Caps
 		if (!open_ended_) {
+			int cap_centers_start = static_cast<int>(vertices.size());
+
+			// Bot center (Exterior)
+			Vertex v_bot_c_e;
+			v_bot_c_e.Position = glm::vec3(0, -h2, 0);
+			v_bot_c_e.Normal = glm::vec3(0, -1, 0);
+			v_bot_c_e.TexCoords = glm::vec2(0.5f, 0.5f);
+			vertices.push_back(v_bot_c_e);
+
+			// Top center (Exterior)
+			Vertex v_top_c_e;
+			v_top_c_e.Position = glm::vec3(0, h2, 0);
+			v_top_c_e.Normal = glm::vec3(0, 1, 0);
+			v_top_c_e.TexCoords = glm::vec2(0.5f, 0.5f);
+			vertices.push_back(v_top_c_e);
+
+			// Bot center (Interior)
+			Vertex v_bot_c_i;
+			v_bot_c_i.Position = glm::vec3(0, -h2, 0);
+			v_bot_c_i.Normal = glm::vec3(0, 1, 0);
+			v_bot_c_i.TexCoords = glm::vec2(0.5f, 0.5f);
+			vertices.push_back(v_bot_c_i);
+
+			// Top center (Interior)
+			Vertex v_top_c_i;
+			v_top_c_i.Position = glm::vec3(0, h2, 0);
+			v_top_c_i.Normal = glm::vec3(0, -1, 0);
+			v_top_c_i.TexCoords = glm::vec2(0.5f, 0.5f);
+			vertices.push_back(v_top_c_i);
+
+			int ring_start = static_cast<int>(vertices.size());
 			for (int i = 0; i < SAMPLES; ++i) {
-				int i0 = ring_start + i * 2;
-				int i1 = ring_start + ((i + 1) % SAMPLES) * 2;
+				float t = (float)i / SAMPLES;
+				float angle = t * 2.0f * glm::pi<float>();
+				float cosA = cos(angle);
+				float sinA = sin(angle);
 
-				// Bottom cap (facing down, so CW from above is CCW from below)
-				indices.push_back(bot_center_idx);
-				indices.push_back(i1);
-				indices.push_back(i0);
+				Vertex v_b_e;
+				v_b_e.Position = glm::vec3(radius_ * cosA, -h2, radius_ * sinA);
+				v_b_e.Normal = glm::vec3(0, -1, 0);
+				v_b_e.TexCoords = glm::vec2(cosA * 0.5f + 0.5f, sinA * 0.5f + 0.5f);
+				vertices.push_back(v_b_e);
 
-				// Top cap
-				indices.push_back(top_center_idx);
-				indices.push_back(i0 + 1);
-				indices.push_back(i1 + 1);
+				Vertex v_t_e;
+				v_t_e.Position = glm::vec3(radius_ * cosA, h2, radius_ * sinA);
+				v_t_e.Normal = glm::vec3(0, 1, 0);
+				v_t_e.TexCoords = v_b_e.TexCoords;
+				vertices.push_back(v_t_e);
+
+				Vertex v_b_i;
+				v_b_i.Position = glm::vec3(radius_ * cosA, -h2, radius_ * sinA);
+				v_b_i.Normal = glm::vec3(0, 1, 0);
+				v_b_i.TexCoords = v_b_e.TexCoords;
+				vertices.push_back(v_b_i);
+
+				Vertex v_t_i;
+				v_t_i.Position = glm::vec3(radius_ * cosA, h2, radius_ * sinA);
+				v_t_i.Normal = glm::vec3(0, -1, 0);
+				v_t_i.TexCoords = v_b_e.TexCoords;
+				vertices.push_back(v_t_i);
+			}
+
+			for (int i = 0; i < SAMPLES; ++i) {
+				int next = (i + 1) % SAMPLES;
+				int i0_b_e = ring_start + i * 4;
+				int i0_t_e = ring_start + i * 4 + 1;
+				int i0_b_i = ring_start + i * 4 + 2;
+				int i0_t_i = ring_start + i * 4 + 3;
+
+				int i1_b_e = ring_start + next * 4;
+				int i1_t_e = ring_start + next * 4 + 1;
+				int i1_b_i = ring_start + next * 4 + 2;
+				int i1_t_i = ring_start + next * 4 + 3;
+
+				// Bot Exterior
+				indices.push_back(cap_centers_start);
+				indices.push_back(i1_b_e);
+				indices.push_back(i0_b_e);
+
+				// Top Exterior
+				indices.push_back(cap_centers_start + 1);
+				indices.push_back(i0_t_e);
+				indices.push_back(i1_t_e);
+
+				// Bot Interior
+				indices.push_back(cap_centers_start + 2);
+				indices.push_back(i0_b_i);
+				indices.push_back(i1_b_i);
+
+				// Top Interior
+				indices.push_back(cap_centers_start + 3);
+				indices.push_back(i1_t_i);
+				indices.push_back(i0_t_i);
 			}
 		}
 
