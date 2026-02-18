@@ -143,7 +143,7 @@ void main() {
 		float knobly = fastWorley3d(worleyCoords);
 
 		// Combine structural noise, reducing high-frequency gl_PointCoord influence
-		float noiseDetail = mix(roil, knobly, 0.5);
+		float noiseDetail = mix(roil, knobly, abs(fastSimplex3d(vec3(0, u_time, 0))) );
 
 		// Add subtle high-frequency texture that moves with the roil
 		float highFreq = fastSimplex3d(vec3(gl_PointCoord * 1.0, u_time * 0.2)) * 0.5 + 0.5;
