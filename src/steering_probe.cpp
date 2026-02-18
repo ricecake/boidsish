@@ -104,25 +104,105 @@ namespace Boidsish {
 	void SteeringProbe::HandleCheckpoints(float dt, EntityHandler& handler, std::shared_ptr<EntityBase> player) {
 		timeSinceLastDrop_ += dt;
 
-		// 1. Clean up stale checkpoints and handle "changed tracks"
-		for (auto it = activeCheckpoints_.begin(); it != activeCheckpoints_.end();) {
-			auto ring = handler.GetEntity(*it);
-			if (!ring) {
-				it = activeCheckpoints_.erase(it);
-				continue;
+		if (player) {
+			// 1. Prune checkpoints if the probe backtracks or the path becomes too sharp.
+			// We iterate backwards from the most recently placed checkpoint.
+			while (!activeCheckpoints_.empty()) {
+				int  lastId = activeCheckpoints_.back();
+				auto lastRing = handler.GetEntity(lastId);
+				if (!lastRing) {
+					activeCheckpoints_.pop_back();
+					continue;
+				}
+
+				glm::vec3 cpPos = lastRing->GetPosition().Toglm();
+
+				// Identify the "previous" position in the chain to define the segment leading INTO this checkpoint.
+				glm::vec3 prevPos;
+				if (activeCheckpoints_.size() > 1) {
+					auto prevRing = handler.GetEntity(activeCheckpoints_[activeCheckpoints_.size() - 2]);
+					prevPos = prevRing ? prevRing->GetPosition().Toglm() : player->GetPosition().Toglm();
+				} else {
+					prevPos = player->GetPosition().Toglm();
+				}
+
+				glm::vec3 inSegment = cpPos - prevPos;
+				glm::vec3 outSegment = position_ - cpPos;
+
+				// For the very first segment (Player to C1), if it's too short to have a direction,
+				// use player's velocity as a hint for "forward".
+				glm::vec3 inDir;
+				if (glm::length(inSegment) > 0.1f) {
+					inDir = glm::normalize(inSegment);
+				} else {
+					inDir = (glm::length(player->GetVelocity().Toglm()) > 0.1f)
+								? glm::normalize(player->GetVelocity().Toglm())
+								: glm::vec3(0, 0, -1);
+				}
+
+				bool shouldPrune = false;
+
+				if (glm::length(outSegment) > 0.1f) {
+					float dot = glm::dot(inDir, glm::normalize(outSegment));
+					// Angle > 70 degrees => cos(70) ~ 0.342
+					if (dot < 0.342f) {
+						shouldPrune = true;
+					}
+				} else {
+					// If we're right on top of it, don't prune yet based on angle,
+					// but check if we're "behind" it relative to the incoming direction.
+					if (glm::dot(outSegment, inDir) < -1.0f) {
+						shouldPrune = true;
+					}
+				}
+
+				if (shouldPrune) {
+					handler.QueueRemoveEntity(lastId);
+					activeCheckpoints_.pop_back();
+
+					// Update tracker state so we don't immediately drop a new one in a bad spot
+					if (activeCheckpoints_.empty()) {
+						lastCheckpointPos_ = player->GetPosition().Toglm();
+						lastCheckpointDir_ = (glm::length(player->GetVelocity().Toglm()) > 0.1f)
+												 ? glm::normalize(player->GetVelocity().Toglm())
+												 : glm::vec3(0, 0, -1);
+					} else {
+						auto newLast = handler.GetEntity(activeCheckpoints_.back());
+						if (newLast) {
+							lastCheckpointPos_ = newLast->GetPosition().Toglm();
+							glm::vec3 pPos;
+							if (activeCheckpoints_.size() > 1) {
+								auto pRing = handler.GetEntity(activeCheckpoints_[activeCheckpoints_.size() - 2]);
+								pPos = pRing ? pRing->GetPosition().Toglm() : player->GetPosition().Toglm();
+							} else {
+								pPos = player->GetPosition().Toglm();
+							}
+							lastCheckpointDir_ = (glm::length(lastCheckpointPos_ - pPos) > 0.1f)
+													 ? glm::normalize(lastCheckpointPos_ - pPos)
+													 : inDir;
+						}
+					}
+				} else {
+					break; // This one is fine
+				}
 			}
 
-			if (player) {
+			// 2. Clean up "way off course" checkpoints
+			for (auto it = activeCheckpoints_.begin(); it != activeCheckpoints_.end();) {
+				auto ring = handler.GetEntity(*it);
+				if (!ring) {
+					it = activeCheckpoints_.erase(it);
+					continue;
+				}
+
 				float dist = glm::distance(player->GetPosition().Toglm(), ring->GetPosition().Toglm());
-				// If the player is way off course (beyond far plane distance), remove the checkpoint
 				if (dist > Constants::Project::Camera::DefaultFarPlane()) {
 					handler.QueueRemoveEntity(*it);
 					it = activeCheckpoints_.erase(it);
 					continue;
 				}
+				++it;
 			}
-
-			++it;
 		}
 
 		if (glm::length(velocity_) < 0.1f)
