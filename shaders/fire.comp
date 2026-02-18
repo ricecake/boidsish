@@ -252,9 +252,13 @@ void main() {
 	}
 	// If particle is alive, update it
 	else {
-		if (p.emitter_index >= u_num_emitters) {
+		int current_assigned_emitter = particle_to_emitter_map[gid];
+		if (p.emitter_index != current_assigned_emitter || p.emitter_index >= u_num_emitters) {
 			p.pos.w = 0.0;
+			particles[gid] = p;
+			return;
 		}
+
 		float maxSpeed;
 		if (p.style == 0) {
 			maxSpeed = kExhaustSpeed;

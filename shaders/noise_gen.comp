@@ -1,0 +1,70 @@
+#version 430 core
+
+layout(local_size_x = 4, local_size_y = 4, local_size_z = 4) in;
+
+layout(rgba32f, binding = 0) uniform image3D noiseTexture;
+
+#include "helpers/noise.glsl"
+
+// 3D Simplex noise wrapper
+float simplex3d(vec3 p) {
+    return snoise3d(p);
+}
+
+// 3D Worley/Cellular noise
+float worley3d(vec3 p) {
+    vec3 i = floor(p);
+    vec3 f = fract(p);
+    float minDist = 1.0;
+    for (int z = -1; z <= 1; z++) {
+        for (int y = -1; y <= 1; y++) {
+            for (int x = -1; x <= 1; x++) {
+                vec3 neighbor = vec3(float(x), float(y), float(z));
+                vec3 point = hash33(i + neighbor);
+                vec3 diff = neighbor + point - f;
+                minDist = min(minDist, dot(diff, diff));
+            }
+        }
+    }
+    return sqrt(minDist);
+}
+
+// 3D FBM Simplex
+float fbm3d(vec3 p) {
+    float value = 0.0;
+    float amplitude = 0.5;
+    for (int i = 0; i < 4; i++) {
+        value += amplitude * snoise3d(p);
+        p *= 2.0;
+        amplitude *= 0.5;
+    }
+    return value;
+}
+
+void main() {
+    ivec3 texelCoord = ivec3(gl_GlobalInvocationID.xyz);
+    ivec3 size = imageSize(noiseTexture);
+
+    if (any(greaterThanEqual(texelCoord, size))) {
+        return;
+    }
+
+    vec3 p = vec3(texelCoord) / vec3(size);
+
+    // Scale for interesting frequencies
+    vec3 p_scaled = p * 8.0;
+
+    float n_simplex = simplex3d(p_scaled) * 0.5 + 0.5;
+    float n_worley = 1.0 - worley3d(p_scaled);
+    float n_fbm = fbm3d(p_scaled) * 0.5 + 0.5;
+
+    // Warped FBM
+    vec3 warp = vec3(
+        fbm3d(p_scaled + vec3(0.0, 0.0, 0.0)),
+        fbm3d(p_scaled + vec3(1.2, 3.4, 5.6)),
+        fbm3d(p_scaled + vec3(5.6, 1.2, 3.4))
+    );
+    float n_warped = fbm3d(p_scaled + warp * 2.0) * 0.5 + 0.5;
+
+    imageStore(noiseTexture, texelCoord, vec4(n_simplex, n_worley, n_fbm, n_warped));
+}

@@ -54,7 +54,7 @@ namespace Boidsish {
 			std::vector<BloomMip> _mipChain;
 
 			int   _width, _height;
-			float intensity_ = 0.1f;
+			float intensity_ = 0.15f;
 			float threshold_ = 1.0f;
 		};
 
