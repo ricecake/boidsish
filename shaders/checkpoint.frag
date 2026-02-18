@@ -18,9 +18,9 @@ uniform float time;
 uniform float radius;
 
 void main() {
-	vec3  c_baseColor = uUseMDI ? uniforms_data[vUniformIndex].color.rgb : baseColor;
-	int   c_style = uUseMDI ? uniforms_data[vUniformIndex].checkpoint_style : style;
-	float c_radius = uUseMDI ? uniforms_data[vUniformIndex].checkpoint_radius : radius;
+	vec3  c_baseColor = (uUseMDI && vUniformIndex >= 0) ? uniforms_data[vUniformIndex].color.rgb : baseColor;
+	int   c_style = (uUseMDI && vUniformIndex >= 0) ? uniforms_data[vUniformIndex].checkpoint_style : style;
+	float c_radius = (uUseMDI && vUniformIndex >= 0) ? uniforms_data[vUniformIndex].checkpoint_radius : radius;
 
 	if (c_style == 6)
 		discard;

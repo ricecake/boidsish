@@ -1399,7 +1399,7 @@ namespace Boidsish {
 						return false;
 					if (a.index_type != b.index_type)
 						return false;
-					if ((a.ebo > 0) != (b.ebo > 0))
+					if ((a.index_count > 0) != (b.index_count > 0))
 						return false;
 					return true;
 				}
@@ -1412,7 +1412,7 @@ namespace Boidsish {
 					return false;
 				if (a.index_type != b.index_type)
 					return false;
-				if ((a.ebo > 0) != (b.ebo > 0))
+				if ((a.index_count > 0) != (b.index_count > 0))
 					return false;
 				// Note: is_instanced check removed - attribute-based instancing is deprecated
 				// since InstanceManager was removed. All shapes now use uniform model matrix.
@@ -1442,7 +1442,7 @@ namespace Boidsish {
 				if (packet.shader_id == 0 || mdi_uniform_count >= max_elements)
 					continue;
 
-				bool is_indexed = (packet.ebo > 0);
+				bool is_indexed = (packet.index_count > 0);
 
 				// Safety check for command buffer capacity
 				if (is_indexed && mdi_elements_count >= max_elements)

@@ -52,11 +52,27 @@ namespace Boidsish {
 			glGenBuffers(1, &quad_vbo_);
 			glBindVertexArray(quad_vao_);
 			glBindBuffer(GL_ARRAY_BUFFER, quad_vbo_);
-			glBufferData(GL_ARRAY_BUFFER, sizeof(raw_vertices), raw_vertices, GL_STATIC_DRAW);
+
+			std::vector<Vertex> vertices;
+			for (int i = 0; i < 4; ++i) {
+				Vertex v;
+				v.Position = {raw_vertices[i].x, raw_vertices[i].y, raw_vertices[i].z};
+				v.Normal = {0, 0, 1};
+				v.TexCoords = {raw_vertices[i].u, raw_vertices[i].v};
+				v.Color = {1, 1, 1};
+				vertices.push_back(v);
+			}
+			glBufferData(GL_ARRAY_BUFFER, vertices.size() * sizeof(Vertex), vertices.data(), GL_STATIC_DRAW);
+
 			glEnableVertexAttribArray(0);
-			glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void*)0);
+			glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)offsetof(Vertex, Position));
 			glEnableVertexAttribArray(1);
-			glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void*)(3 * sizeof(float)));
+			glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)offsetof(Vertex, Normal));
+			glEnableVertexAttribArray(2);
+			glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)offsetof(Vertex, TexCoords));
+			glEnableVertexAttribArray(8);
+			glVertexAttribPointer(8, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)offsetof(Vertex, Color));
+
 			glBindVertexArray(0);
 		}
 	}

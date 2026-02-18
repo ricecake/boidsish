@@ -15,7 +15,8 @@ uniform mat4 model;
 
 void main() {
 	int  vUniformIndex = uUseMDI ? (uBaseUniformIndex + gl_DrawID) : -1;
-	mat4 current_model = uUseMDI ? uniforms_data[vUniformIndex].model : model;
+	bool use_ssbo = uUseMDI && vUniformIndex >= 0;
+	mat4 current_model = use_ssbo ? uniforms_data[vUniformIndex].model : model;
 
 	gl_Position = lightSpaceMatrix * current_model * vec4(aPos, 1.0);
 }

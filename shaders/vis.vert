@@ -51,15 +51,16 @@ uniform float arcadeWaveSpeed = 5.0;
 
 void main() {
 	vUniformIndex = uUseMDI ? (uBaseUniformIndex + gl_DrawID) : -1;
+	bool  use_ssbo = uUseMDI && vUniformIndex >= 0;
 
-	mat4  current_model = uUseMDI ? uniforms_data[vUniformIndex].model : model;
-	bool  current_isArcadeText = uUseMDI ? (uniforms_data[vUniformIndex].is_arcade_text != 0) : isArcadeText;
-	int   current_arcadeWaveMode = uUseMDI ? uniforms_data[vUniformIndex].arcade_wave_mode : arcadeWaveMode;
-	float current_arcadeWaveAmplitude = uUseMDI ? uniforms_data[vUniformIndex].arcade_wave_amplitude : arcadeWaveAmplitude;
-	float current_arcadeWaveFrequency = uUseMDI ? uniforms_data[vUniformIndex].arcade_wave_frequency : arcadeWaveFrequency;
-	float current_arcadeWaveSpeed = uUseMDI ? uniforms_data[vUniformIndex].arcade_wave_speed : arcadeWaveSpeed;
-	bool  current_isColossal = uUseMDI ? (uniforms_data[vUniformIndex].is_colossal != 0) : isColossal;
-	bool  current_useSSBOInstancing = uUseMDI ? (uniforms_data[vUniformIndex].use_ssbo_instancing != 0) : useSSBOInstancing;
+	mat4  current_model = use_ssbo ? uniforms_data[vUniformIndex].model : model;
+	bool  current_isArcadeText = use_ssbo ? (uniforms_data[vUniformIndex].is_arcade_text != 0) : isArcadeText;
+	int   current_arcadeWaveMode = use_ssbo ? uniforms_data[vUniformIndex].arcade_wave_mode : arcadeWaveMode;
+	float current_arcadeWaveAmplitude = use_ssbo ? uniforms_data[vUniformIndex].arcade_wave_amplitude : arcadeWaveAmplitude;
+	float current_arcadeWaveFrequency = use_ssbo ? uniforms_data[vUniformIndex].arcade_wave_frequency : arcadeWaveFrequency;
+	float current_arcadeWaveSpeed = use_ssbo ? uniforms_data[vUniformIndex].arcade_wave_speed : arcadeWaveSpeed;
+	bool  current_isColossal = use_ssbo ? (uniforms_data[vUniformIndex].is_colossal != 0) : isColossal;
+	bool  current_useSSBOInstancing = use_ssbo ? (uniforms_data[vUniformIndex].use_ssbo_instancing != 0) : useSSBOInstancing;
 
 	vec3 displacedPos = aPos;
 	vec3 displacedNormal = aNormal;

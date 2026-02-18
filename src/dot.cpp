@@ -38,7 +38,17 @@ namespace Boidsish {
 		}
 
 		glBindVertexArray(sphere_vao_);
-		glDrawElements(GL_TRIANGLES, sphere_vertex_count_, GL_UNSIGNED_INT, 0);
+		if (sphere_alloc_.valid) {
+			glDrawElementsBaseVertex(
+				GL_TRIANGLES,
+				sphere_vertex_count_,
+				GL_UNSIGNED_INT,
+				(void*)(uintptr_t)(sphere_alloc_.first_index * sizeof(unsigned int)),
+				sphere_alloc_.base_vertex
+			);
+		} else {
+			glDrawElements(GL_TRIANGLES, sphere_vertex_count_, GL_UNSIGNED_INT, 0);
+		}
 		glBindVertexArray(0);
 	}
 
