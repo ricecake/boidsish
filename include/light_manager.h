@@ -11,10 +11,11 @@ namespace Boidsish {
 	class LightManager {
 	public:
 		struct DayNightCycle {
-			bool  enabled = false;
+			bool  enabled = true;
 			float time = 12.0f; // 0.0 - 24.0 (12.0 is noon)
-			float speed = 0.1f; // Rate of time passage
+			float speed = 0.25f; // Rate of time passage
 			bool  paused = false;
+			float night_factor = 0.0f; // 0.0 (day) to 1.0 (night)
 		};
 
 		void                AddLight(const Light& light);
