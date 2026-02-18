@@ -51,6 +51,7 @@ namespace Boidsish {
 		virtual bool IsTargetable() const { return false; }
 
 		virtual glm::vec3 GetApproachPoint() const { return rigid_body_.GetPosition(); }
+		// virtual glm::vec3 GetApproachPoint() const { return rigid_body_.GetPosition(); }
 
 		// Shape management
 		virtual std::shared_ptr<Shape> GetShape() const = 0;

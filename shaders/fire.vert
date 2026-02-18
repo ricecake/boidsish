@@ -23,10 +23,12 @@ uniform float frustumCullRadius = 1.0;
 
 out float    v_lifetime;
 out vec4     view_pos;
+out vec4 v_pos;
 flat out int v_style;
 
 void main() {
 	Particle p = particles[gl_VertexID];
+	v_pos = p.pos;
 
 	if (p.pos.w <= 0.0) {
 		// Don't draw dead particles
