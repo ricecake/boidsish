@@ -372,20 +372,30 @@ namespace Boidsish {
 
 			packet.casts_shadows = CastsShadows();
 
+			uint32_t texture_hash = 0;
 			for (const auto& tex : mesh.textures) {
 				RenderPacket::TextureInfo info;
 				info.id = tex.id;
 				info.type = tex.type;
 				packet.textures.push_back(info);
+				texture_hash ^= tex.id + 0x9e3779b9 + (texture_hash << 6) + (texture_hash >> 2);
 			}
 
 			RenderLayer layer = (packet.uniforms.color.w < 0.99f) ? RenderLayer::Transparent : RenderLayer::Opaque;
 			packet.shader_handle = shader_handle;
-			packet.material_handle = MaterialHandle(0);
+			packet.material_handle = MaterialHandle(texture_hash);
 
 			// Calculate depth for sorting
 			float normalized_depth = context.CalculateNormalizedDepth(world_pos);
-			packet.sort_key = CalculateSortKey(layer, packet.shader_handle, packet.material_handle, normalized_depth);
+			packet.sort_key = CalculateSortKey(
+				layer,
+				packet.shader_handle,
+				packet.vao,
+				packet.draw_mode,
+				packet.index_count > 0,
+				packet.material_handle,
+				normalized_depth
+			);
 
 			out_packets.push_back(packet);
 		}

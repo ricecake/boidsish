@@ -275,7 +275,16 @@ namespace Boidsish {
 			RenderLayer layer = (GetA() < 0.99f) ? RenderLayer::Transparent : RenderLayer::Opaque;
 			float normalized_depth = context.CalculateNormalizedDepth(world_pos);
 			packet.shader_handle = shader_handle;
-			packet.sort_key = CalculateSortKey(layer, packet.shader_handle, MaterialHandle(0), normalized_depth);
+			packet.material_handle = MaterialHandle(0);
+			packet.sort_key = CalculateSortKey(
+				layer,
+				packet.shader_handle,
+				packet.vao,
+				packet.draw_mode,
+				packet.index_count > 0,
+				packet.material_handle,
+				normalized_depth
+			);
 			out_packets.push_back(packet);
 		}
 
@@ -303,7 +312,16 @@ namespace Boidsish {
 			RenderLayer layer = (GetA() < 0.99f) ? RenderLayer::Transparent : RenderLayer::Opaque;
 			float normalized_depth = context.CalculateNormalizedDepth(world_pos);
 			packet.shader_handle = shader_handle;
-			packet.sort_key = CalculateSortKey(layer, packet.shader_handle, MaterialHandle(0), normalized_depth);
+			packet.material_handle = MaterialHandle(0);
+			packet.sort_key = CalculateSortKey(
+				layer,
+				packet.shader_handle,
+				packet.vao,
+				packet.draw_mode,
+				packet.index_count > 0,
+				packet.material_handle,
+				normalized_depth
+			);
 			out_packets.push_back(packet);
 		}
 	}

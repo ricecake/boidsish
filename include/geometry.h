@@ -249,30 +249,42 @@ namespace Boidsish {
 	 *
 	 * @param layer The render layer (highest priority)
 	 * @param shader The shader handle
-	 * @param material The material handle
+	 * @param vao The VAO ID (groups by buffer state)
+	 * @param draw_mode OpenGL draw mode (e.g. GL_TRIANGLES)
+	 * @param is_indexed Whether the call is indexed
+	 * @param material The material handle (groups by texture/uniform state)
 	 * @param depth Normalized depth [0.0, 1.0]
 	 * @return A packed 64-bit key for sorting
 	 */
-	inline uint64_t CalculateSortKey(RenderLayer layer, ShaderHandle shader, MaterialHandle material, float depth) {
+	inline uint64_t CalculateSortKey(RenderLayer layer, ShaderHandle shader, uint32_t vao, uint32_t draw_mode, bool is_indexed, MaterialHandle material, float depth) {
 		uint64_t key = 0;
 		// Layer: 8 bits (56-63)
-		key |= static_cast<uint64_t>(layer) << 56;
+		key |= (static_cast<uint64_t>(layer) & 0xFF) << 56;
 		// Shader: 16 bits (40-55)
-		key |= static_cast<uint64_t>(shader.id & 0xFFFF) << 40;
-		// Material: 16 bits (24-39)
-		key |= static_cast<uint64_t>(material.id & 0xFFFF) << 24;
+		key |= (static_cast<uint64_t>(shader.id) & 0xFFFF) << 40;
+		// VAO: 8 bits (32-39)
+		key |= (static_cast<uint64_t>(vao) & 0xFF) << 32;
 
-		// Depth: 24 bits (0-23)
-		// Map [0, 1] to [0, 16777215]
+		// Draw State: 8 bits (24-31)
+		uint8_t draw_state = 0;
+		draw_state |= (is_indexed ? 0x80 : 0x00);
+		draw_state |= (static_cast<uint8_t>(draw_mode) & 0x7F);
+		key |= (static_cast<uint64_t>(draw_state)) << 24;
+
+		// Material: 16 bits (8-23)
+		key |= (static_cast<uint64_t>(material.id) & 0xFFFF) << 8;
+
+		// Depth: 8 bits (0-7)
+		// Map [0, 1] to [0, 65535]
 		uint32_t d;
 		if (layer == RenderLayer::Transparent) {
 			// Transparent sorting: Back-to-front (larger depth = smaller value for ascending sort)
-			d = static_cast<uint32_t>((1.0f - glm::clamp(depth, 0.0f, 1.0f)) * 16777215.0f);
+			d = static_cast<uint32_t>((1.0f - glm::clamp(depth, 0.0f, 1.0f)) * 255.0f);
 		} else {
 			// Opaque sorting: Front-to-back (smaller depth = smaller value)
-			d = static_cast<uint32_t>(glm::clamp(depth, 0.0f, 1.0f) * 16777215.0f);
+			d = static_cast<uint32_t>(glm::clamp(depth, 0.0f, 1.0f) * 255.0f);
 		}
-		key |= (d & 0xFFFFFF);
+		key |= (d & 0xFF);
 
 		return key;
 	}

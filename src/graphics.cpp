@@ -1391,21 +1391,7 @@ namespace Boidsish {
 			std::vector<Batch> batches;
 
 			auto can_batch = [&](const RenderPacket& a, const RenderPacket& b) {
-				if (shader_override.has_value()) {
-					// When overriding shader, we only care about VAO and draw state
-					if (a.vao != b.vao)
-						return false;
-					if (a.draw_mode != b.draw_mode)
-						return false;
-					if (a.index_type != b.index_type)
-						return false;
-					if ((a.index_count > 0) != (b.index_count > 0))
-						return false;
-					return true;
-				}
-
-				if (a.shader_id != b.shader_id)
-					return false;
+				// 1. Mandatory breaks: VAO and Draw State
 				if (a.vao != b.vao)
 					return false;
 				if (a.draw_mode != b.draw_mode)
@@ -1415,27 +1401,28 @@ namespace Boidsish {
 				if ((a.index_count > 0) != (b.index_count > 0))
 					return false;
 
-				// For now, let's be conservative and only batch if they share the same geometry offsets.
-				// This acts as a fallback if gl_DrawID is not working correctly on some drivers.
-				// We still use MDI, but with one command per batch for different geometries.
-				// Re-enable batching different geometries but keep it safe.
-				// For now, let's only batch if they are either identical geometry
-				// OR if we are in a shadow pass (where state is minimal).
-				if (!is_shadow_pass && (a.base_vertex != b.base_vertex || a.first_index != b.first_index))
-					return false;
+				// 2. Shader breaks (unless overridden)
+				if (!shader_override.has_value()) {
+					if (a.shader_id != b.shader_id)
+						return false;
+				}
 
-				// Note: is_instanced check removed - attribute-based instancing is deprecated
-				// since InstanceManager was removed. All shapes now use uniform model matrix.
+				// 3. Uniform flags that affect vertex processing
 				if (a.uniforms.is_colossal != b.uniforms.is_colossal)
 					return false;
 				if (a.uniforms.use_ssbo_instancing != b.uniforms.use_ssbo_instancing)
 					return false;
-				if (a.textures.size() != b.textures.size())
-					return false;
-				for (size_t i = 0; i < a.textures.size(); ++i) {
-					if (a.textures[i].id != b.textures[i].id)
+
+				// 4. Textures (only if not a shadow pass)
+				if (!is_shadow_pass) {
+					if (a.textures.size() != b.textures.size())
 						return false;
+					for (size_t i = 0; i < a.textures.size(); ++i) {
+						if (a.textures[i].id != b.textures[i].id)
+							return false;
+					}
 				}
+
 				return true;
 			};
 
@@ -2611,7 +2598,15 @@ namespace Boidsish {
 							glm::vec3 world_pos = glm::vec3(packet.uniforms.model[3]);
 							float normalized_depth = context.CalculateNormalizedDepth(world_pos);
 							RenderLayer layer = (packet.uniforms.color.a < 0.99f) ? RenderLayer::Transparent : RenderLayer::Opaque;
-							packet.sort_key = CalculateSortKey(layer, packet.shader_handle, packet.material_handle, normalized_depth);
+							packet.sort_key = CalculateSortKey(
+								layer,
+								packet.shader_handle,
+								packet.vao,
+								packet.draw_mode,
+								packet.index_count > 0,
+								packet.material_handle,
+								normalized_depth
+							);
 							local_packets.push_back(std::move(packet));
 						}
 					} else {

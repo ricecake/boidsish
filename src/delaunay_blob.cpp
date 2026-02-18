@@ -972,6 +972,9 @@ namespace Boidsish {
 				packet.sort_key = CalculateSortKey(
 					RenderLayer::Overlay,
 					packet.shader_handle,
+					packet.vao,
+					packet.draw_mode,
+					packet.index_count > 0,
 					packet.material_handle,
 					normalized_depth
 				);
@@ -984,8 +987,15 @@ namespace Boidsish {
 
 				RenderLayer layer = (alpha_ < 0.99f || mode == RenderMode::Transparent) ? RenderLayer::Transparent
 																						: RenderLayer::Opaque;
-				packet.sort_key =
-					CalculateSortKey(layer, packet.shader_handle, packet.material_handle, normalized_depth);
+				packet.sort_key = CalculateSortKey(
+					layer,
+					packet.shader_handle,
+					packet.vao,
+					packet.draw_mode,
+					packet.index_count > 0,
+					packet.material_handle,
+					normalized_depth
+				);
 			}
 			return packet;
 		};

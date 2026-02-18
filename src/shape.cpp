@@ -65,7 +65,15 @@ namespace Boidsish {
 
 		// Calculate depth for sorting
 		float normalized_depth = context.CalculateNormalizedDepth(world_pos);
-		packet.sort_key = CalculateSortKey(layer, packet.shader_handle, packet.material_handle, normalized_depth);
+		packet.sort_key = CalculateSortKey(
+			layer,
+			packet.shader_handle,
+			packet.vao,
+			packet.draw_mode,
+			packet.index_count > 0,
+			packet.material_handle,
+			normalized_depth
+		);
 
 		out_packets.push_back(packet);
 	}
