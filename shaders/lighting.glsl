@@ -19,6 +19,8 @@ layout(std140) uniform Lighting {
 	Light lights[MAX_LIGHTS];
 	int   num_lights;
 	float worldScale;
+	float dayTime;
+	float nightFactor;
 	vec3  viewPos;
 	vec3  ambient_light;
 	float time;

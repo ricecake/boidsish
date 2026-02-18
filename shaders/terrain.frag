@@ -394,6 +394,39 @@ void main() {
 			.rgb;
 
 	// ========================================================================
+	// Neon 80s Synth Style (Night Theme)
+	// ========================================================================
+	if (nightFactor > 0.0) {
+		// Synthwave grid lines
+		float gridScale = 0.05; // Lines every 20 units
+		vec2  gridUV = FragPos.xz * gridScale;
+
+		// Use derivative-based anti-aliasing for the grid lines
+		vec2  grid = abs(fract(gridUV - 0.5) - 0.5) / (fwidth(gridUV) * 1.5);
+		float line = min(grid.x, grid.y);
+		float gridLine = 1.0 - smoothstep(0.0, 1.0, line);
+
+		// Thicker grid for glow effect
+		vec2  gridGlow = abs(fract(gridUV - 0.5) - 0.5) / (fwidth(gridUV) * 8.0);
+		float lineGlow = min(gridGlow.x, gridGlow.y);
+		float gridGlowFactor = 1.0 - smoothstep(0.0, 1.0, lineGlow);
+
+		vec3 cyan = vec3(0.0, 1.0, 1.0);
+		vec3 magenta = vec3(1.0, 0.0, 1.0);
+
+		// Blend albedo towards dark purple/magenta for that 80s look
+		lighting = mix(lighting, lighting * vec3(0.4, 0.1, 0.5), nightFactor * 0.7);
+
+		// Add cyan grid with magenta glow
+		lighting += gridLine * cyan * nightFactor * 0.8;
+		lighting += gridGlowFactor * magenta * nightFactor * 0.4;
+
+		// Height-based neon pulse/glow
+		float heightGlow = smoothstep(0.0, 100.0 * worldScale, FragPos.y);
+		lighting += magenta * heightGlow * 0.15 * nightFactor * (0.8 + 0.2 * sin(time * 0.5));
+	}
+
+	// ========================================================================
 	// Distance Fade
 	// ========================================================================
 	vec4 outColor = vec4(lighting, mix(0.0, fade, step(0.01, FragPos.y))) + vec4(smoothstep(0.2, 0.5, 1 - fade));

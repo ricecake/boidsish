@@ -41,7 +41,8 @@ namespace Boidsish {
 		LightGPU lights[10];                 // offset 0,   640 bytes
 		int      num_lights;                 // offset 640, 4 bytes
 		float    world_scale;                // offset 644, 4 bytes
-		float    _pad1[2];                   // offset 648, 8 bytes (align vec3 to 16)
+		float    day_time;                   // offset 648, 4 bytes (0-24)
+		float    night_factor;               // offset 652, 4 bytes (0-1)
 		alignas(16) glm::vec3 view_pos;      // offset 656, 12 bytes
 		float _pad2;                         // offset 668, 4 bytes
 		alignas(16) glm::vec3 ambient_light; // offset 672, 12 bytes

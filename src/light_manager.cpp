@@ -67,6 +67,22 @@ namespace Boidsish {
 					_cycle.time += 24.0f;
 			}
 
+			// Update night factor for transitions (10-15 seconds)
+			// At speed 0.25, 1 hour = 4 seconds. 12 seconds = 3 hours.
+			float transition_duration = 3.0f; // in hours
+			float t = _cycle.time;
+			_cycle.night_factor = 0.0f;
+			if (t >= 22.0f || t < 9.0f) {
+				float wt = (t < 12.0f) ? t + 24.0f : t;
+				if (wt < 22.0f + transition_duration) {
+					_cycle.night_factor = (wt - 22.0f) / transition_duration;
+				} else if (wt < 30.0f) {
+					_cycle.night_factor = 1.0f;
+				} else {
+					_cycle.night_factor = std::max(0.0f, 1.0f - (wt - 30.0f) / transition_duration);
+				}
+			}
+
 			// Update default directional light
 			if (!_lights.empty() && _lights[0].type == DIRECTIONAL_LIGHT) {
 				float sun_angle_deg = (_cycle.time / 24.0f) * 360.0f;
