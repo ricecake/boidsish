@@ -11,13 +11,14 @@ in float      perturbFactor_TC_out[];
 in float      tessFactor_TC_out[];
 
 // Output to Fragment Shader
-out vec3  FragPos;
-out vec3  Normal;
-out vec2  TexCoords;
-out float perturbFactor;
-out float tessFactor;
+out vec3       FragPos;
+out vec3       Normal;
+out vec2       TexCoords;
+out float      perturbFactor;
+out float      tessFactor;
+flat out float vTextureSlice;
 
-// Heightmap texture array: R=height, GBA=normal
+// Heightmap texture array: R=height, G=nx, B=nz, A=mask
 uniform sampler2DArray uHeightmap;
 uniform int            uChunkSize;
 
@@ -30,10 +31,14 @@ uniform vec4 clipPlane;
 
 // Sample heightmap to get world position and normal
 void sampleHeightmap(vec2 uv, float slice, vec3 worldOffset, out vec3 worldPos, out vec3 normal) {
-	// vec2 uv_map = (uv * uChunkSize + 0.5) / (uChunkSize + 1.0);
 	vec4  data = texture(uHeightmap, vec3(uv, slice));
 	float height = data.r;
-	normal = normalize(data.gba);
+
+	// Reconstruct normal Y from X and Z (stored in G and B)
+	float nx = data.g;
+	float nz = data.b;
+	float ny = sqrt(max(0.0, 1.0 - nx*nx - nz*nz));
+	normal = vec3(nx, ny, nz);
 
 	worldPos.x = worldOffset.x + uv.x * float(uChunkSize);
 	worldPos.y = height;
@@ -45,6 +50,7 @@ void main() {
 
 	// Get instance data (same for all corners)
 	float slice = TextureSlice_TC_out[0];
+	vTextureSlice = slice;
 	vec3  worldOffset = WorldOffset_TC_out[0];
 
 	// Interpolate texture coordinates for this tessellated vertex

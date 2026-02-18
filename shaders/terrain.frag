@@ -1,11 +1,15 @@
 #version 420 core
 out vec4 FragColor;
 
-in vec3  Normal;
-in vec3  FragPos;
-in vec2  TexCoords;
-in float perturbFactor;
-in float tessFactor;
+in vec3        Normal;
+in vec3        FragPos;
+in vec2        TexCoords;
+in float       perturbFactor;
+in float       tessFactor;
+flat in float  vTextureSlice;
+
+uniform sampler2DArray uHeightmap;
+uniform int            uChunkSize;
 
 #include "helpers/lighting.glsl"
 #include "helpers/terrain_noise.glsl"
@@ -224,8 +228,11 @@ void main() {
 		return;
 	}
 
-	// Hole check: Discard fragments with very low height (sentinel value)
-	if (FragPos.y < -500.0) {
+	// Sharp hole check using texelFetch on the alpha channel (mask)
+	// We use the integer texture coordinates to avoid interpolation of the mask
+	ivec3 texCoordInt = ivec3(TexCoords * uChunkSize, int(vTextureSlice));
+	float mask = texelFetch(uHeightmap, texCoordInt, 0).a;
+	if (mask < 0.5) {
 		discard;
 	}
 

@@ -358,11 +358,13 @@ namespace Boidsish {
 			auto res = deformation_manager_.QueryDeformations(x, z, height_detailed, normal_detailed);
 			if (res.has_deformation) {
 				if (res.has_hole) {
-					height_detailed = -10000.0f;
+					// Use a sentinel normal (0,0,0) to indicate a hole without destroying height data.
+					// This allows the heightmap to remain continuous for neighboring vertices.
+					normal_detailed = glm::vec3(0.0f, 0.0f, 0.0f);
 				} else {
 					height_detailed += res.total_height_delta;
+					normal_detailed = res.transformed_normal;
 				}
-				normal_detailed = res.transformed_normal;
 			}
 		}
 
@@ -587,16 +589,13 @@ namespace Boidsish {
 						if (result.has_deformation) {
 							// Check for holes
 							if (result.has_hole) {
-								heightmap[i][j][0] = -10000.0f; // Sentinel for hole
+								// We will use a sentinel normal (0,0,0) instead of setting height to -10000.
+								// This keeps the heightmap smooth for neighbors.
+								// We'll set the normal sentinel in the normal recomputation pass.
 							} else {
 								// Apply height delta
 								heightmap[i][j][0] += result.total_height_delta;
 							}
-
-							// Recompute gradient approximation for the deformed surface
-							// We store the transformed normal info for later use
-							// The gradient values are approximations - we'll use finite differences
-							// after all heights are computed
 						}
 					}
 				}
@@ -612,15 +611,19 @@ namespace Boidsish {
 						// Finite differences for gradient
 						float h_center = heightmap[i][j][0];
 
-						// If the current point is a hole, we don't need to compute its normal
-						if (h_center < -500.0f) continue;
+						// Query again to check for holes
+						auto result = deformation_manager_.QueryDeformations(worldX, worldZ, h_center, glm::vec3(0, 1, 0));
+						if (result.has_hole) {
+							// Use a sentinel value in the heightmap to indicate a hole for the next pass
+							heightmap[i][j][1] = 1e10f;
+							heightmap[i][j][2] = 1e10f;
+							continue;
+						}
 
-						auto is_valid = [](float h) { return h > -500.0f; };
-
-						float h_left  = (i > 0 && is_valid(heightmap[i - 1][j][0])) ? heightmap[i - 1][j][0] : h_center;
-						float h_right = (i < num_vertices_x - 1 && is_valid(heightmap[i + 1][j][0])) ? heightmap[i + 1][j][0] : h_center;
-						float h_down  = (j > 0 && is_valid(heightmap[i][j - 1][0])) ? heightmap[i][j - 1][0] : h_center;
-						float h_up    = (j < num_vertices_z - 1 && is_valid(heightmap[i][j + 1][0])) ? heightmap[i][j + 1][0] : h_center;
+						float h_left  = (i > 0) ? heightmap[i - 1][j][0] : h_center;
+						float h_right = (i < num_vertices_x - 1) ? heightmap[i + 1][j][0] : h_center;
+						float h_down  = (j > 0) ? heightmap[i][j - 1][0] : h_center;
+						float h_up    = (j < num_vertices_z - 1) ? heightmap[i][j + 1][0] : h_center;
 
 						float dx = (h_right - h_left) * 0.5f;
 						float dz = (h_up - h_down) * 0.5f;
@@ -643,7 +646,12 @@ namespace Boidsish {
 			for (int j = 0; j < num_vertices_z; ++j) {
 				float y = heightmap[i][j][0];
 				positions.emplace_back(i * world_scale_, y, j * world_scale_);
-				normals.push_back(diffToNorm(heightmap[i][j][1], heightmap[i][j][2]));
+
+				if (heightmap[i][j][1] > 1e9f) {
+					normals.emplace_back(0.0f, 0.0f, 0.0f);
+				} else {
+					normals.push_back(diffToNorm(heightmap[i][j][1], heightmap[i][j][2]));
+				}
 			}
 		}
 
@@ -693,9 +701,9 @@ namespace Boidsish {
 		// Ray marching to find a segment that contains the intersection
 		while (current_dist < max_dist) {
 			current_pos = origin + dir * current_dist;
-			float terrain_height = std::get<0>(CalculateTerrainPropertiesAtPoint(current_pos.x, current_pos.z));
+			auto [terrain_height, normal] = CalculateTerrainPropertiesAtPoint(current_pos.x, current_pos.z);
 
-			if (current_pos.y < terrain_height) {
+			if (current_pos.y < terrain_height && glm::length(normal) > 0.1f) {
 				// We found an intersection between the previous and current step.
 				// Now refine with a binary search.
 				float start_dist = std::max(0.0f, current_dist - step_size);
@@ -706,9 +714,9 @@ namespace Boidsish {
 					float     mid_dist = (start_dist + end_dist) / 2.0f;
 					glm::vec3 mid_pos = origin + dir * mid_dist;
 
-					float mid_terrain_height = std::get<0>(CalculateTerrainPropertiesAtPoint(mid_pos.x, mid_pos.z));
+					auto [mid_height, mid_normal] = CalculateTerrainPropertiesAtPoint(mid_pos.x, mid_pos.z);
 
-					if (mid_pos.y < mid_terrain_height) {
+					if (mid_pos.y < mid_height && glm::length(mid_normal) > 0.1f) {
 						end_dist = mid_dist; // Intersection is in the first half
 					} else {
 						start_dist = mid_dist; // Intersection is in the second half
@@ -1175,16 +1183,25 @@ namespace Boidsish {
 
 	bool TerrainGenerator::IsPointBelowTerrain(const glm::vec3& point) const {
 		auto [height, normal] = GetTerrainPropertiesAtPoint(point.x, point.z);
+		// If it's a hole, the point is never "below" the terrain
+		if (glm::length(normal) < 0.1f) return false;
 		return point.y < height;
 	}
 
 	float TerrainGenerator::GetDistanceAboveTerrain(const glm::vec3& point) const {
 		auto [height, normal] = GetTerrainPropertiesAtPoint(point.x, point.z);
+		// If it's a hole, we're effectively infinitely above the terrain (or just return a large value)
+		if (glm::length(normal) < 0.1f) return 10000.0f;
 		return point.y - height;
 	}
 
 	std::tuple<float, glm::vec3> TerrainGenerator::GetClosestTerrainInfo(const glm::vec3& point) const {
 		auto [height, normal] = GetTerrainPropertiesAtPoint(point.x, point.z);
+
+		// If it's a hole, return a "far away" result
+		if (glm::length(normal) < 0.1f) {
+			return {10000.0f, glm::vec3(0, 1, 0)};
+		}
 
 		// The closest point on terrain directly below/above the query point
 		glm::vec3 terrain_point(point.x, height, point.z);
@@ -1250,7 +1267,7 @@ namespace Boidsish {
 				);
 			}
 
-			if (current_pos.y < terrain_height) {
+			if (current_pos.y < terrain_height && glm::length(surface_normal) > 0.1f) {
 				// We found an intersection - refine with binary search
 				float start_dist = prev_valid ? (current_dist - step_size) : 0.0f;
 				float end_dist = current_dist;
@@ -1262,13 +1279,14 @@ namespace Boidsish {
 
 					auto  mid_cached = InterpolateFromCachedChunk(mid_pos.x, mid_pos.z);
 					float mid_height;
+					glm::vec3 mid_normal;
 					if (mid_cached.has_value()) {
-						mid_height = std::get<0>(mid_cached.value());
+						std::tie(mid_height, mid_normal) = mid_cached.value();
 					} else {
-						mid_height = std::get<0>(CalculateTerrainPropertiesAtPoint(mid_pos.x, mid_pos.z));
+						std::tie(mid_height, mid_normal) = CalculateTerrainPropertiesAtPoint(mid_pos.x, mid_pos.z);
 					}
 
-					if (mid_pos.y < mid_height) {
+					if (mid_pos.y < mid_height && glm::length(mid_normal) > 0.1f) {
 						end_dist = mid_dist;
 					} else {
 						start_dist = mid_dist;
