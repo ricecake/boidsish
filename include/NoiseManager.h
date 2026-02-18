@@ -1,0 +1,27 @@
+#pragma once
+
+#include <GL/glew.h>
+#include <memory>
+
+#include "shader.h"
+
+namespace Boidsish {
+
+	class NoiseManager {
+	public:
+		NoiseManager();
+		~NoiseManager();
+
+		void Initialize();
+		void Generate();
+
+		GLuint GetNoiseTexture() const { return noise_texture_; }
+		void   Bind(GLuint unit) const;
+
+	private:
+		std::unique_ptr<ComputeShader> compute_shader_;
+		GLuint                         noise_texture_ = 0;
+		int                            size_ = 64; // 64x64x64
+	};
+
+} // namespace Boidsish

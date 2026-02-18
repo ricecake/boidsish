@@ -351,7 +351,12 @@ namespace Boidsish {
 		}
 	}
 
-	void FireEffectManager::Render(const glm::mat4& view, const glm::mat4& projection, const glm::vec3& camera_pos) {
+	void FireEffectManager::Render(
+		const glm::mat4& view,
+		const glm::mat4& projection,
+		const glm::vec3& camera_pos,
+		GLuint           noise_texture
+	) {
 		std::lock_guard<std::mutex> lock(mutex_);
 		if (!initialized_ || effects_.empty() || !compute_shader_ || !compute_shader_->isValid()) {
 			return;
@@ -367,6 +372,12 @@ namespace Boidsish {
 		render_shader_->setMat4("u_projection", projection);
 		render_shader_->setVec3("u_camera_pos", camera_pos);
 		render_shader_->setFloat("u_time", time_);
+
+		if (noise_texture != 0) {
+			glActiveTexture(GL_TEXTURE5);
+			glBindTexture(GL_TEXTURE_3D, noise_texture);
+			render_shader_->setInt("u_noiseTexture", 5);
+		}
 
 		// Enable GPU frustum culling for particles
 		render_shader_->setBool("enableFrustumCulling", true);

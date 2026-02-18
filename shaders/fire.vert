@@ -66,7 +66,7 @@ void main() {
 			gl_PointSize = smoothstep((1.0 - v_lifetime), v_lifetime, v_lifetime / 2.0) *
 				15.0;                                                              // Smaller, more consistent size
 		} else if (p.style == 1) {                                                 // Explosion
-			gl_PointSize = (1.0 - (1.0 - v_lifetime) * (1.0 - v_lifetime)) * 30.0; // Starts large, shrinks fast
+			gl_PointSize = (1.0 - (1.0 - v_lifetime) * (1.0 - v_lifetime)) * 60.0; // Starts large, shrinks fast
 		} else if (p.style == 3) {                                                 // Sparks
 			gl_PointSize = 4.0 + v_lifetime * 20.0;
 		} else if (p.style == 4) { // Glitter

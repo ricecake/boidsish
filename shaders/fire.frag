@@ -8,21 +8,23 @@ out vec4    FragColor;
 
 uniform float u_time;
 #include "helpers/noise.glsl"
+#include "helpers/fast_noise.glsl"
 
 // Robust polynomial fit for HDR-friendly fire
 vec3 blackbody_hdr(float t) {
     vec3 col;
-    // Red kicks in immediately and saturates quickly [cite: 4, 35]
-    col.r = smoothstep(0.0, 0.2, t) * 1.2;
+    // Red kicks in immediately and saturates quickly
+    col.r = smoothstep(0.0, 0.2, t);
 
-    // Lowered threshold for green to create orange/yellow much sooner
-    col.g = smoothstep(0.08, 0.5, t) * 1.8;
+    // Green starts earlier for more orange and yellow
+    col.g = smoothstep(0.02, 0.4, t);
 
-    // Blue for the "white-hot" core and high-intensity bloom [cite: 6, 35]
-    col.b = smoothstep(0.4, 0.9, t) * 2.5;
+    // Blue for the core hot spot
+    col.b = smoothstep(0.3, 0.8, t);
 
-    // Warm physical weighting: slightly more gold/yellow, less pure red [cite: 7]
-    return col * vec3(6.0, 1.1, 1.2);
+    // Hollywood stunt fire: Rich orange/yellow boost
+    // Multipliers adjusted for high-emissivity stunt look
+    return col * vec3(8.0, 2.5, 1.5);
 }
 
 // Your existing warped turbulence logic
@@ -127,12 +129,18 @@ void main() {
 			maxLife = kFireLifetime;
 		}
 
-		float noiseDetail = turbulence(v_pos.xz * 0.4 + u_time * 0.1) * turbulence(gl_PointCoord + u_time * 0.3);
+		// Use pre-baked warped noise for a more organic look
+		vec3 noiseCoords = v_pos.xyz * 0.1 + vec3(0.0, u_time * 0.2, 0.0);
+		float noiseDetail = fastWarpedFbm3d(noiseCoords) * 0.5 + 0.5;
+
+		// Add some high-frequency detail from the 2D gl_PointCoord
+		noiseDetail *= fastSimplex3d(vec3(gl_PointCoord * 2.0, u_time * 0.5)) * 0.5 + 0.5;
+
 		float heat = clamp(v_lifetime / maxLife, 0.0, 1.0) * pow(noiseDetail, 1.5);
 		vec3  baseColor = blackbody_hdr(heat);
 
 		alpha = shapeMask * smoothstep(0.05, 0.3, heat);
-		color = baseColor * alpha * 4.5 * (1+clamp(v_lifetime / maxLife, 0.0, 1.0)); // Boosted for HDR/Bloom
+		color = baseColor * alpha * 8.0 * (1.0 + clamp(v_lifetime / maxLife, 0.0, 1.0)); // Significantly boosted for high-emissivity look
 	}
 
 	FragColor = vec4(color, alpha);
