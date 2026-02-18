@@ -53,6 +53,9 @@ namespace Boidsish {
 	 * Thread Safety: Individual deformations are immutable after creation.
 	 * The DeformationManager handles synchronization for the collection.
 	 */
+	class ITerrainGenerator;
+	class Shape;
+
 	class TerrainDeformation {
 	public:
 		explicit TerrainDeformation(uint32_t id): id_(id) {}
@@ -69,6 +72,20 @@ namespace Boidsish {
 		 * @brief Get the unique identifier for this deformation
 		 */
 		uint32_t GetId() const { return id_; }
+
+		/**
+		 * @brief Get the associated interior mesh for this deformation, if any.
+		 *
+		 * Used to render geometry that fills the hole or provides continuity.
+		 */
+		virtual std::shared_ptr<Shape> GetInteriorMesh() const { return nullptr; }
+
+		/**
+		 * @brief Generate the interior mesh based on the terrain generator.
+		 *
+		 * Should be called once after the deformation is added to a generator.
+		 */
+		virtual void GenerateMesh(const ITerrainGenerator& terrain) { (void)terrain; }
 
 		/**
 		 * @brief Get the deformation type (additive or subtractive)

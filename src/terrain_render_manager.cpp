@@ -194,14 +194,20 @@ namespace Boidsish {
 		const int num_pixels = heightmap_resolution_ * heightmap_resolution_;
 
 		// Pack height + normal into RGBA16F format
+		// R = height
+		// G = normal.x
+		// B = normal.z
+		// A = mask (1.0 = solid, 0.0 = hole)
+		// normal.y is reconstructed in shader as sqrt(1.0 - x^2 - z^2)
 		std::vector<float> packed_data;
 		packed_data.reserve(num_pixels * 4);
 
 		for (int i = 0; i < num_pixels; ++i) {
+			float mask = (glm::length(normals[i]) < 0.1f) ? 0.0f : 1.0f;
 			packed_data.push_back(heightmap[i]); // R = height
 			packed_data.push_back(normals[i].x); // G = normal.x
-			packed_data.push_back(normals[i].y); // B = normal.y
-			packed_data.push_back(normals[i].z); // A = normal.z
+			packed_data.push_back(normals[i].z); // B = normal.z
+			packed_data.push_back(mask);         // A = mask
 		}
 
 		glBindTexture(GL_TEXTURE_2D_ARRAY, heightmap_texture_);

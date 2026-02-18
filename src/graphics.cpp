@@ -2063,6 +2063,12 @@ namespace Boidsish {
 			impl->shapes.push_back(pair.second);
 		}
 
+		// Add deformation meshes from the terrain system
+		if (impl->terrain_generator) {
+			auto def_meshes = impl->terrain_generator->GetDeformationManager().GetDeformationMeshes();
+			impl->shapes.insert(impl->shapes.end(), def_meshes.begin(), def_meshes.end());
+		}
+
 		// --- Shadow Optimization: Check for object movement and camera proximity ---
 		impl->any_shadow_caster_moved = false;
 		glm::vec3 scene_center(0.0f);

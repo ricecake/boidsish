@@ -4,6 +4,7 @@
 #include <random>
 
 #include "terrain_deformation.h"
+#include <glm/gtc/quaternion.hpp>
 
 namespace Boidsish {
 
@@ -222,6 +223,51 @@ namespace Boidsish {
 		float     radius_;        // Radius at terrain level
 		float     sphere_radius_; // Actual radius of the underlying sphere
 		float     depth_;         // Maximum depth at center
+	};
+
+	/**
+	 * @brief Cylinder hole deformation - cuts a circular hole and meshes the interior.
+	 *
+	 * Creates a vertical cylindrical hole in the terrain. The interior of the hole
+	 * is filled with a generated mesh (walls and floor) to maintain continuity.
+	 */
+	class CylinderHoleDeformation : public TerrainDeformation {
+	public:
+		CylinderHoleDeformation(uint32_t id, const glm::vec3& center, float radius, float length, const glm::quat& orientation = glm::quat(1, 0, 0, 0), bool open_ended = false);
+
+		DeformationType GetType() const override { return DeformationType::Subtractive; }
+		std::string GetTypeName() const override { return "CylinderHole"; }
+
+		void GetBounds(glm::vec3& out_min, glm::vec3& out_max) const override;
+		glm::vec3 GetCenter() const override { return center_; }
+		float GetMaxRadius() const override { return radius_; }
+
+		bool ContainsPoint(const glm::vec3& world_pos) const override;
+		bool ContainsPointXZ(float x, float z) const override;
+
+		float ComputeHeightDelta(float x, float z, float current_height) const override;
+		bool IsHole(float x, float z, float current_height) const override;
+
+		glm::vec3 TransformNormal(float x, float z, const glm::vec3& original_normal) const override;
+
+		DeformationResult ComputeDeformation(float x, float z, float current_height, const glm::vec3& current_normal) const override;
+
+		DeformationDescriptor GetDescriptor() const override;
+
+		// Mesh support
+		std::shared_ptr<Shape> GetInteriorMesh() const override { return interior_mesh_; }
+		void GenerateMesh(const ITerrainGenerator& terrain) override;
+
+		void SetOpenEnded(bool open_ended) { open_ended_ = open_ended; }
+		bool IsOpenEnded() const { return open_ended_; }
+
+	private:
+		glm::vec3 center_;
+		float radius_;
+		float length_;
+		glm::quat orientation_;
+		bool open_ended_;
+		std::shared_ptr<Shape> interior_mesh_;
 	};
 
 } // namespace Boidsish

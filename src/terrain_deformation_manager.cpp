@@ -330,6 +330,18 @@ namespace Boidsish {
 		return descriptors;
 	}
 
+	std::vector<std::shared_ptr<Shape>> TerrainDeformationManager::GetDeformationMeshes() const {
+		std::shared_lock lock(mutex_);
+		std::vector<std::shared_ptr<Shape>> meshes;
+		for (const auto& [id, deformation] : deformations_) {
+			auto mesh = deformation->GetInteriorMesh();
+			if (mesh) {
+				meshes.push_back(mesh);
+			}
+		}
+		return meshes;
+	}
+
 	// ==================== Private Helpers ====================
 
 	void

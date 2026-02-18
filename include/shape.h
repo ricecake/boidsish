@@ -251,6 +251,29 @@ namespace Boidsish {
 		static int          sphere_vertex_count_;
 	};
 
+	/**
+	 * @brief A shape with a custom mesh provided by vertices and indices.
+	 *
+	 * Useful for unique geometries like terrain deformation interiors.
+	 */
+	class CustomMeshShape : public Shape {
+	public:
+		CustomMeshShape(const std::vector<Vertex>& vertices, const std::vector<unsigned int>& indices);
+		~CustomMeshShape() override;
+
+		void render() const override;
+		void render(Shader& shader, const glm::mat4& model_matrix) const override;
+
+		glm::mat4 GetModelMatrix() const override;
+		std::string GetInstanceKey() const override;
+
+	private:
+		unsigned int vao_ = 0;
+		unsigned int vbo_ = 0;
+		unsigned int ebo_ = 0;
+		unsigned int index_count_ = 0;
+	};
+
 	// Function type for user-defined shape generation
 	using ShapeFunction = std::function<std::vector<std::shared_ptr<Shape>>(float time)>;
 } // namespace Boidsish
