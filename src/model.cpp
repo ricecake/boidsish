@@ -30,8 +30,10 @@ namespace Boidsish {
 			if (allocation.valid)
 				return;
 			allocation = mb->AllocateStatic(vertices.size(), indices.size());
-			mb->Upload(allocation, vertices.data(), vertices.size(), indices.data(), indices.size());
-			VAO = mb->GetVAO();
+			if (allocation.valid) {
+				mb->Upload(allocation, vertices.data(), vertices.size(), indices.data(), indices.size());
+				VAO = mb->GetVAO();
+			}
 			return;
 		}
 

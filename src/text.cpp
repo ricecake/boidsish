@@ -69,11 +69,13 @@ namespace Boidsish {
 	void Text::SetText(const std::string& text) {
 		text_ = text;
 		GenerateMesh(text_, font_size_, depth_);
+		mesh_dirty_ = true;
 	}
 
 	void Text::SetJustification(Justification justification) {
 		justification_ = justification;
 		GenerateMesh(text_, font_size_, depth_);
+		mesh_dirty_ = true;
 	}
 
 	void Text::GenerateMesh(const std::string& text, float font_size, float depth) {
@@ -338,16 +340,15 @@ namespace Boidsish {
 		if (!mb || vertex_count_ == 0)
 			return;
 
-		if (IsDirty()) {
+		if (mesh_dirty_ || !allocation_.valid) {
 			// Allocate static for text as it usually stays around for a while
-			// If it changes frequently, we might want a different strategy,
-			// but for now this follows the "static allocation" hint.
+			// Only re-allocate if the mesh actually changed.
 			allocation_ = mb->AllocateStatic(vertex_count_, 0);
 			if (allocation_.valid) {
 				mb->Upload(allocation_, mesh_vertices_.data(), vertex_count_);
 				vao_ = mb->GetVAO();
 			}
-			MarkClean();
+			mesh_dirty_ = false;
 		}
 	}
 

@@ -663,15 +663,15 @@ namespace Boidsish {
 
 			indirect_elements_buffer = std::make_unique<PersistentBuffer<DrawElementsIndirectCommand>>(
 				GL_DRAW_INDIRECT_BUFFER,
-				16384
+				65536
 			);
 			indirect_arrays_buffer = std::make_unique<PersistentBuffer<DrawArraysIndirectCommand>>(
 				GL_DRAW_INDIRECT_BUFFER,
-				16384
+				65536
 			);
 			uniforms_ssbo = std::make_unique<PersistentBuffer<CommonUniforms>>(
 				GL_SHADER_STORAGE_BUFFER,
-				16384
+				65536
 			);
 			frustum_ssbo = std::make_unique<PersistentBuffer<FrustumDataGPU>>(
 				GL_UNIFORM_BUFFER,
@@ -1366,14 +1366,14 @@ namespace Boidsish {
 			DrawArraysIndirectCommand*   arrays_cmd_ptr = indirect_arrays_buffer->GetFrameDataPtr();
 			CommonUniforms*              uniforms_ptr = uniforms_ssbo->GetFrameDataPtr();
 
-			uint32_t max_elements = 16384; // Buffer capacity
+			uint32_t max_elements = 65536; // Buffer capacity
 			uint32_t frame_element_offset = uniforms_ssbo->GetCurrentBufferIndex() * max_elements;
 
 			uint32_t vertex_frame_offset = megabuffer->GetVertexFrameOffset();
 			uint32_t index_frame_offset = megabuffer->GetIndexFrameOffset();
 
-			// Bind Uniforms SSBO to binding point 2
-			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 2, uniforms_ssbo->GetBufferId());
+			// We bind SSBO per-batch using glBindBufferRange to set the base uniform index
+			// glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 2, uniforms_ssbo->GetBufferId());
 
 			struct Batch {
 				ShaderHandle                           shader_handle;
@@ -1414,6 +1414,16 @@ namespace Boidsish {
 					return false;
 				if ((a.index_count > 0) != (b.index_count > 0))
 					return false;
+
+				// For now, let's be conservative and only batch if they share the same geometry offsets.
+				// This acts as a fallback if gl_DrawID is not working correctly on some drivers.
+				// We still use MDI, but with one command per batch for different geometries.
+				// Re-enable batching different geometries but keep it safe.
+				// For now, let's only batch if they are either identical geometry
+				// OR if we are in a shadow pass (where state is minimal).
+				if (!is_shadow_pass && (a.base_vertex != b.base_vertex || a.first_index != b.first_index))
+					return false;
+
 				// Note: is_instanced check removed - attribute-based instancing is deprecated
 				// since InstanceManager was removed. All shapes now use uniform model matrix.
 				if (a.uniforms.is_colossal != b.uniforms.is_colossal)
@@ -1494,7 +1504,8 @@ namespace Boidsish {
 				mdi_uniform_count++;
 			}
 
-			glMemoryBarrier(GL_CLIENT_MAPPED_BUFFER_BARRIER_BIT);
+			// Ensure all CPU writes to persistent mapped buffers are visible to GPU
+			glMemoryBarrier(GL_CLIENT_MAPPED_BUFFER_BARRIER_BIT | GL_COMMAND_BARRIER_BIT | GL_SHADER_STORAGE_BARRIER_BIT);
 
 			// 2. Execute batches
 			unsigned int current_vao = 0;
@@ -1527,7 +1538,15 @@ namespace Boidsish {
 				}
 
 				s->setBool("uUseMDI", true);
-				s->setInt("uBaseUniformIndex", batch.base_uniform_index);
+
+				// Bind SSBO for this batch's uniforms (replaces uBaseUniformIndex)
+				glBindBufferRange(
+					GL_SHADER_STORAGE_BUFFER,
+					2,
+					uniforms_ssbo->GetBufferId(),
+					batch.base_uniform_index * sizeof(CommonUniforms),
+					batch.command_count * sizeof(CommonUniforms)
+				);
 
 				if (!is_shadow_pass) {
 					for (size_t i = 0; i < batch.textures.size(); ++i) {

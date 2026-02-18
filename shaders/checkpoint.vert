@@ -1,4 +1,6 @@
 #version 460 core
+#extension GL_ARB_shader_draw_parameters : enable
+
 layout(location = 0) in vec3 aPos;
 layout(location = 1) in vec3 aNormal;
 layout(location = 2) in vec2 aTexCoords;
@@ -10,7 +12,6 @@ layout(std430, binding = 2) buffer UniformsSSBO {
 };
 
 uniform bool uUseMDI = false;
-uniform int  uBaseUniformIndex = 0;
 
 out vec3 FragPos;
 out vec3 Normal;
@@ -23,7 +24,13 @@ uniform mat4 projection;
 uniform vec4 clipPlane;
 
 void main() {
-	vUniformIndex = uUseMDI ? (uBaseUniformIndex + gl_DrawID) : -1;
+#ifdef GL_ARB_shader_draw_parameters
+	int drawID = gl_DrawIDARB;
+#else
+	int drawID = gl_DrawID;
+#endif
+
+	vUniformIndex = uUseMDI ? drawID : -1;
 	bool use_ssbo = uUseMDI && vUniformIndex >= 0;
 	mat4 current_model = use_ssbo ? uniforms_data[vUniformIndex].model : model;
 

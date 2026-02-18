@@ -620,85 +620,94 @@ namespace Boidsish {
 			return;
 		}
 
-		if (!mesh_dirty_ && allocation_.valid)
-			return;
+		if (mesh_dirty_ || cached_vertices_.empty()) {
+			ComputeDelaunay3D();
+			ExtractSurfaceFaces();
 
-		ComputeDelaunay3D();
-		ExtractSurfaceFaces();
+			if (surface_faces_.empty()) {
+				index_count_ = 0;
+				wire_index_count_ = 0;
+				cached_vertices_.clear();
+				cached_indices_.clear();
+				mesh_dirty_ = false;
+				return;
+			}
 
-		if (surface_faces_.empty()) {
-			index_count_ = 0;
-			wire_index_count_ = 0;
+			cached_vertices_.clear();
+			cached_indices_.clear();
+
+			if (smooth_normals_) {
+				// Average normals at shared vertices
+				std::unordered_map<int, glm::vec3> vertex_normal_sum;
+				std::unordered_map<int, int>       vertex_face_count;
+
+				for (const auto& face : surface_faces_) {
+					for (int vid : face.vertices) {
+						vertex_normal_sum[vid] += face.normal;
+						vertex_face_count[vid]++;
+					}
+				}
+
+				// Create vertex buffer with averaged normals
+				std::unordered_map<int, GLuint> point_to_vertex;
+
+				for (const auto& [id, cp] : points_) {
+					Vertex v;
+					v.Position = cp.position;
+					if (vertex_face_count[id] > 0) {
+						v.Normal = glm::normalize(vertex_normal_sum[id] / static_cast<float>(vertex_face_count[id]));
+					} else {
+						v.Normal = glm::vec3(0, 1, 0);
+					}
+					v.Color = glm::vec3(cp.color);
+
+					point_to_vertex[id] = static_cast<GLuint>(cached_vertices_.size());
+					cached_vertices_.push_back(v);
+				}
+
+				// Create indices
+				for (const auto& face : surface_faces_) {
+					cached_indices_.push_back(point_to_vertex[face.vertices[0]]);
+					cached_indices_.push_back(point_to_vertex[face.vertices[1]]);
+					cached_indices_.push_back(point_to_vertex[face.vertices[2]]);
+				}
+			} else {
+				// Flat shading - duplicate vertices per face
+				for (const auto& face : surface_faces_) {
+					GLuint base = static_cast<GLuint>(cached_vertices_.size());
+
+					const auto& p0 = points_.at(face.vertices[0]);
+					const auto& p1 = points_.at(face.vertices[1]);
+					const auto& p2 = points_.at(face.vertices[2]);
+
+					cached_vertices_.push_back({p0.position, face.normal, {0, 0}, glm::vec3(p0.color)});
+					cached_vertices_.push_back({p1.position, face.normal, {0, 0}, glm::vec3(p1.color)});
+					cached_vertices_.push_back({p2.position, face.normal, {0, 0}, glm::vec3(p2.color)});
+
+					cached_indices_.push_back(base);
+					cached_indices_.push_back(base + 1);
+					cached_indices_.push_back(base + 2);
+				}
+			}
 			mesh_dirty_ = false;
+		}
+
+		if (cached_vertices_.empty())
 			return;
-		}
 
-		std::vector<Vertex> vertices;
-		std::vector<GLuint> indices;
-
-		if (smooth_normals_) {
-			// Average normals at shared vertices
-			std::unordered_map<int, glm::vec3> vertex_normal_sum;
-			std::unordered_map<int, int>       vertex_face_count;
-
-			for (const auto& face : surface_faces_) {
-				for (int vid : face.vertices) {
-					vertex_normal_sum[vid] += face.normal;
-					vertex_face_count[vid]++;
-				}
-			}
-
-			// Create vertex buffer with averaged normals
-			std::unordered_map<int, GLuint> point_to_vertex;
-
-			for (const auto& [id, cp] : points_) {
-				Vertex v;
-				v.Position = cp.position;
-				if (vertex_face_count[id] > 0) {
-					v.Normal = glm::normalize(vertex_normal_sum[id] / static_cast<float>(vertex_face_count[id]));
-				} else {
-					v.Normal = glm::vec3(0, 1, 0);
-				}
-				v.Color = glm::vec3(cp.color);
-
-				point_to_vertex[id] = static_cast<GLuint>(vertices.size());
-				vertices.push_back(v);
-			}
-
-			// Create indices
-			for (const auto& face : surface_faces_) {
-				indices.push_back(point_to_vertex[face.vertices[0]]);
-				indices.push_back(point_to_vertex[face.vertices[1]]);
-				indices.push_back(point_to_vertex[face.vertices[2]]);
-			}
-		} else {
-			// Flat shading - duplicate vertices per face
-			for (const auto& face : surface_faces_) {
-				GLuint base = static_cast<GLuint>(vertices.size());
-
-				const auto& p0 = points_.at(face.vertices[0]);
-				const auto& p1 = points_.at(face.vertices[1]);
-				const auto& p2 = points_.at(face.vertices[2]);
-
-				vertices.push_back({p0.position, face.normal, {0, 0}, glm::vec3(p0.color)});
-				vertices.push_back({p1.position, face.normal, {0, 0}, glm::vec3(p1.color)});
-				vertices.push_back({p2.position, face.normal, {0, 0}, glm::vec3(p2.color)});
-
-				indices.push_back(base);
-				indices.push_back(base + 1);
-				indices.push_back(base + 2);
-			}
-		}
-
-		// Allocate from megabuffer
-		allocation_ = mb->AllocateStatic(vertices.size(), indices.size());
+		// Allocate from megabuffer (DYNAMIC since blobs change)
+		allocation_ = mb->AllocateDynamic(cached_vertices_.size(), cached_indices_.size());
 		if (allocation_.valid) {
-			mb->Upload(allocation_, vertices.data(), vertices.size(), indices.data(), indices.size());
+			mb->Upload(
+				allocation_,
+				cached_vertices_.data(),
+				cached_vertices_.size(),
+				cached_indices_.data(),
+				cached_indices_.size()
+			);
 			vao_ = mb->GetVAO();
-			index_count_ = indices.size();
+			index_count_ = cached_indices_.size();
 		}
-
-		mesh_dirty_ = false;
 	}
 
 	void DelaunayBlob::UpdateMeshBuffers() const {

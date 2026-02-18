@@ -231,6 +231,10 @@ namespace Boidsish {
 		mutable std::vector<Tetrahedron> tetrahedra_;
 		mutable std::vector<Face>        surface_faces_;
 
+		// Cached mesh data for megabuffer dynamic upload
+		mutable std::vector<Vertex>   cached_vertices_;
+		mutable std::vector<uint32_t> cached_indices_;
+
 		mutable MegabufferAllocation allocation_;
 	};
 

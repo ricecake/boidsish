@@ -137,7 +137,10 @@ namespace Boidsish {
 				v_rod.push_back(v);
 			}
 			rod_alloc_ = mb->AllocateStatic(v_rod.size(), 0);
-			mb->Upload(rod_alloc_, v_rod.data(), v_rod.size());
+			if (rod_alloc_.valid) {
+				mb->Upload(rod_alloc_, v_rod.data(), v_rod.size());
+				rod_vao_ = mb->GetVAO();
+			}
 
 			std::vector<Vertex> v_cone;
 			for (size_t i = 0; i < cone_vertices.size(); i += 6) {
@@ -149,30 +152,60 @@ namespace Boidsish {
 				v_cone.push_back(v);
 			}
 			cone_alloc_ = mb->AllocateStatic(v_cone.size(), 0);
-			mb->Upload(cone_alloc_, v_cone.data(), v_cone.size());
-
-			rod_vao_ = mb->GetVAO();
-			cone_vao_ = mb->GetVAO();
+			if (cone_alloc_.valid) {
+				mb->Upload(cone_alloc_, v_cone.data(), v_cone.size());
+				cone_vao_ = mb->GetVAO();
+			}
 		} else {
+			std::vector<Vertex> v_rod;
+			for (size_t i = 0; i < rod_vertices.size(); i += 6) {
+				Vertex v;
+				v.Position = {rod_vertices[i], rod_vertices[i + 1], rod_vertices[i + 2]};
+				v.Normal = {rod_vertices[i + 3], rod_vertices[i + 4], rod_vertices[i + 5]};
+				v.TexCoords = {0, 0};
+				v.Color = {1, 1, 1};
+				v_rod.push_back(v);
+			}
+
 			glGenVertexArrays(1, &rod_vao_);
 			glBindVertexArray(rod_vao_);
 			glGenBuffers(1, &rod_vbo_);
 			glBindBuffer(GL_ARRAY_BUFFER, rod_vbo_);
-			glBufferData(GL_ARRAY_BUFFER, rod_vertices.size() * sizeof(float), rod_vertices.data(), GL_STATIC_DRAW);
-			glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void*)0);
+			glBufferData(GL_ARRAY_BUFFER, v_rod.size() * sizeof(Vertex), v_rod.data(), GL_STATIC_DRAW);
+
+			glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)offsetof(Vertex, Position));
 			glEnableVertexAttribArray(0);
-			glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void*)(3 * sizeof(float)));
+			glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)offsetof(Vertex, Normal));
 			glEnableVertexAttribArray(1);
+			glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)offsetof(Vertex, TexCoords));
+			glEnableVertexAttribArray(2);
+			glVertexAttribPointer(8, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)offsetof(Vertex, Color));
+			glEnableVertexAttribArray(8);
+
+			std::vector<Vertex> v_cone;
+			for (size_t i = 0; i < cone_vertices.size(); i += 6) {
+				Vertex v;
+				v.Position = {cone_vertices[i], cone_vertices[i + 1], cone_vertices[i + 2]};
+				v.Normal = {cone_vertices[i + 3], cone_vertices[i + 4], cone_vertices[i + 5]};
+				v.TexCoords = {0, 0};
+				v.Color = {1, 1, 1};
+				v_cone.push_back(v);
+			}
 
 			glGenVertexArrays(1, &cone_vao_);
 			glBindVertexArray(cone_vao_);
 			glGenBuffers(1, &cone_vbo_);
 			glBindBuffer(GL_ARRAY_BUFFER, cone_vbo_);
-			glBufferData(GL_ARRAY_BUFFER, cone_vertices.size() * sizeof(float), cone_vertices.data(), GL_STATIC_DRAW);
-			glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void*)0);
+			glBufferData(GL_ARRAY_BUFFER, v_cone.size() * sizeof(Vertex), v_cone.data(), GL_STATIC_DRAW);
+
+			glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)offsetof(Vertex, Position));
 			glEnableVertexAttribArray(0);
-			glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void*)(3 * sizeof(float)));
+			glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)offsetof(Vertex, Normal));
 			glEnableVertexAttribArray(1);
+			glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)offsetof(Vertex, TexCoords));
+			glEnableVertexAttribArray(2);
+			glVertexAttribPointer(8, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)offsetof(Vertex, Color));
+			glEnableVertexAttribArray(8);
 
 			glBindVertexArray(0);
 		}

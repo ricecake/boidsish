@@ -104,45 +104,32 @@ namespace Boidsish {
 		auto all_vertices_data = Spline::GenerateTube(points, ups, sizes, colors, mode_ == PathMode::LOOP);
 		edge_vertex_count_ = all_vertices_data.size();
 
+		std::vector<Vertex> vertices;
+		vertices.reserve(all_vertices_data.size());
+		for (const auto& vd : all_vertices_data) {
+			Vertex v;
+			v.Position = vd.pos;
+			v.Normal = vd.normal;
+			v.TexCoords = {0, 0};
+			v.Color = vd.color;
+			vertices.push_back(v);
+		}
+
 		if (path_vao_ == 0)
 			glGenVertexArrays(1, &path_vao_);
 		glBindVertexArray(path_vao_);
 		if (path_vbo_ == 0)
 			glGenBuffers(1, &path_vbo_);
 		glBindBuffer(GL_ARRAY_BUFFER, path_vbo_);
-		glBufferData(
-			GL_ARRAY_BUFFER,
-			all_vertices_data.size() * sizeof(Spline::VertexData),
-			all_vertices_data.data(),
-			GL_STATIC_DRAW
-		);
+		glBufferData(GL_ARRAY_BUFFER, vertices.size() * sizeof(Vertex), vertices.data(), GL_STATIC_DRAW);
 
-		glVertexAttribPointer(
-			0,
-			3,
-			GL_FLOAT,
-			GL_FALSE,
-			sizeof(Spline::VertexData),
-			(void*)offsetof(Spline::VertexData, pos)
-		);
+		glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)offsetof(Vertex, Position));
 		glEnableVertexAttribArray(0);
-		glVertexAttribPointer(
-			1,
-			3,
-			GL_FLOAT,
-			GL_FALSE,
-			sizeof(Spline::VertexData),
-			(void*)offsetof(Spline::VertexData, normal)
-		);
+		glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)offsetof(Vertex, Normal));
 		glEnableVertexAttribArray(1);
-		glVertexAttribPointer(
-			8,
-			3,
-			GL_FLOAT,
-			GL_FALSE,
-			sizeof(Spline::VertexData),
-			(void*)offsetof(Spline::VertexData, color)
-		);
+		glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)offsetof(Vertex, TexCoords));
+		glEnableVertexAttribArray(2);
+		glVertexAttribPointer(8, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)offsetof(Vertex, Color));
 		glEnableVertexAttribArray(8);
 
 		glBindVertexArray(0);

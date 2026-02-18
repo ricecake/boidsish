@@ -45,8 +45,10 @@ namespace Boidsish {
 				vertices.push_back(v);
 			}
 			quad_alloc_ = mb->AllocateStatic(4, 0);
-			mb->Upload(quad_alloc_, vertices.data(), 4);
-			quad_vao_ = mb->GetVAO();
+			if (quad_alloc_.valid) {
+				mb->Upload(quad_alloc_, vertices.data(), 4);
+				quad_vao_ = mb->GetVAO();
+			}
 		} else {
 			glGenVertexArrays(1, &quad_vao_);
 			glGenBuffers(1, &quad_vbo_);

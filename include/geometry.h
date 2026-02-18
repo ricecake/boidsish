@@ -133,6 +133,9 @@ namespace Boidsish {
 		int       use_ssbo_instancing = 0;   // 4 bytes
 		int       use_vertex_color = 0;      // 4 bytes
 		float     checkpoint_radius = 0.0f;  // 4 bytes -> 16 bytes
+
+		// Padding to 256 bytes for SSBO alignment safety (176 + 80 = 256)
+		float     padding[20];
 	};
 
 	/**

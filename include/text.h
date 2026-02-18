@@ -74,6 +74,7 @@ namespace Boidsish {
 		int                 vertex_count_ = 0;
 		mutable MegabufferAllocation allocation_;
 		mutable uint32_t             vao_ = 0;
+		mutable bool                 mesh_dirty_ = true;
 
 		bool  is_text_effect_ = false;
 		float text_fade_progress_ = 1.0f;

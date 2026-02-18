@@ -73,17 +73,6 @@ namespace Boidsish {
 			glBindVertexArray(line_vao_);
 			glBindBuffer(GL_ARRAY_BUFFER, line_vbo_);
 
-			std::vector<float> buffer_data;
-			for (const auto& tv : temp_verts) {
-				buffer_data.push_back(tv.p.x);
-				buffer_data.push_back(tv.p.y);
-				buffer_data.push_back(tv.p.z);
-				buffer_data.push_back(tv.t.x);
-				buffer_data.push_back(tv.t.y);
-			}
-
-			glBufferData(GL_ARRAY_BUFFER, buffer_data.size() * sizeof(float), buffer_data.data(), GL_STATIC_DRAW);
-
 			std::vector<Vertex> vertices;
 			for (const auto& tv : temp_verts) {
 				Vertex v;
