@@ -132,7 +132,7 @@ void main() {
 		vec3  baseColor = blackbody_hdr(heat);
 
 		alpha = shapeMask * smoothstep(0.05, 0.3, heat);
-		color = baseColor * alpha * 4.5; // Boosted for HDR/Bloom
+		color = baseColor * alpha * 4.5 * (1+clamp(v_lifetime / maxLife, 0.0, 1.0)); // Boosted for HDR/Bloom
 	}
 
 	FragColor = vec4(color, alpha);
