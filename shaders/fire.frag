@@ -12,13 +12,17 @@ uniform float u_time;
 // Robust polynomial fit for HDR-friendly fire
 vec3 blackbody_hdr(float t) {
     vec3 col;
-    // Map temperature to high-dynamic range peaks
-    col.r = smoothstep(0.0, 0.3, t) * 1.5; // Red peaks early
-    col.g = smoothstep(0.2, 0.6, t) * 1.2; // Green for yellow/white heat
-    col.b = smoothstep(0.5, 1.0, t) * 2.0; // Blue for intense core heat
+    // Red kicks in immediately and saturates quickly [cite: 4, 35]
+    col.r = smoothstep(0.0, 0.2, t) * 1.2;
 
-    // Physical color weighting
-    return col * vec3(1.0, 0.8, 0.6);
+    // Lowered threshold for green to create orange/yellow much sooner
+    col.g = smoothstep(0.08, 0.5, t) * 1.8;
+
+    // Blue for the "white-hot" core and high-intensity bloom [cite: 6, 35]
+    col.b = smoothstep(0.4, 0.9, t) * 2.5;
+
+    // Warm physical weighting: slightly more gold/yellow, less pure red [cite: 7]
+    return col * vec3(6.0, 1.1, 1.2);
 }
 
 // Your existing warped turbulence logic
@@ -112,7 +116,6 @@ void main() {
 		} else if (v_style == 28) {
 			alpha = 0.75;
 		}
-		alpha = shapeMask * alpha;
 	}
 	else {
 		float maxLife = 1;
@@ -123,13 +126,13 @@ void main() {
 		} else if (v_style == 2) { // Default Fire
 			maxLife = kFireLifetime;
 		}
+
 		float noiseDetail = turbulence(v_pos.xz * 0.4 + u_time * 0.1) * turbulence(gl_PointCoord + u_time * 0.3);
-		float lifeFactor = clamp(v_lifetime / maxLife, 0, 1);
-		float heat = lifeFactor * noiseDetail;
+		float heat = clamp(v_lifetime / maxLife, 0.0, 1.0) * pow(noiseDetail, 1.5);
 		vec3  baseColor = blackbody_hdr(heat);
 
 		alpha = shapeMask * smoothstep(0.05, 0.3, heat);
-		color = baseColor * alpha * 2.0; // Boosted for HDR/Bloom
+		color = baseColor * alpha * 4.5; // Boosted for HDR/Bloom
 	}
 
 	FragColor = vec4(color, alpha);
