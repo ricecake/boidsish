@@ -36,16 +36,35 @@ namespace Boidsish {
 		}
 	};
 
+	struct DrawElementsIndirectCommand {
+		uint32_t count;
+		uint32_t instanceCount;
+		uint32_t firstIndex;
+		uint32_t baseVertex;
+		uint32_t baseInstance;
+	};
+
+	struct ChunkData {
+		glm::vec2 world_offset;
+		float     texture_slice;
+		float     chunk_size;
+		float     min_y;
+		float     max_y;
+		uint32_t  version;
+		uint32_t  is_active;
+	};
+
 	struct DecorType {
 		std::shared_ptr<Model> model;
 		DecorProperties        props;
 
 		// GPU resources
-		unsigned int ssbo = 0;
-		unsigned int count_buffer = 0; // For atomic counter
+		unsigned int instances_ssbo = 0;
+		unsigned int indirect_commands_ssbo = 0;
+		unsigned int num_meshes = 0;
 
-		// Cached instance count (read back after compute, used during render)
-		unsigned int cached_count = 0;
+		// Cached instance count (read back after compute, used for stats/debugging)
+		unsigned int cached_total_count = 0;
 	};
 
 	class DecorManager {
@@ -96,6 +115,10 @@ namespace Boidsish {
 		std::unique_ptr<ComputeShader> placement_shader_;
 		std::shared_ptr<Shader>        render_shader_; // Maybe use vis.vert/frag or a specialized one
 
+		// GPU resources for chunk management
+		unsigned int chunk_data_ssbo_ = 0;
+		unsigned int chunk_status_ssbo_ = 0;
+
 		// Caching - only regenerate when camera moves significantly or rotates
 		glm::vec2              last_camera_pos_ = glm::vec2(0.0f);
 		glm::vec3              last_camera_front_ = glm::vec3(0.0f, 0.0f, -1.0f);
@@ -110,7 +133,8 @@ namespace Boidsish {
 		float density_falloff_end_ = 300.0f;  // Minimum density beyond this range
 		float max_decor_distance_ = 600.0f;   // No decor beyond this distance
 
-		static constexpr int kMaxInstancesPerType = 131072;
+		static constexpr int kMaxChunks = 512;           // Matches TerrainRenderManager default
+		static constexpr int kMaxInstancesPerChunk = 1024; // 32x32 possible points
 	};
 
 } // namespace Boidsish

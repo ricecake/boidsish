@@ -266,6 +266,7 @@ namespace Boidsish {
 				UploadHeightmapSlice(it->second.texture_slice, heightmap, reordered_normals);
 				it->second.min_y = min_y;
 				it->second.max_y = max_y;
+				it->second.version++;
 				return;
 			}
 
@@ -337,6 +338,7 @@ namespace Boidsish {
 			info.min_y = min_y;
 			info.max_y = max_y;
 			info.world_offset = glm::vec2(world_offset.x, world_offset.z);
+			info.version = 1; // Start at 1 for new registration
 
 			chunks_[chunk_key] = info;
 		} // mutex released here
@@ -557,6 +559,23 @@ namespace Boidsish {
 	size_t TerrainRenderManager::GetVisibleChunkCount() const {
 		std::lock_guard<std::mutex> lock(mutex_);
 		return visible_instances_.size();
+	}
+
+	std::vector<TerrainRenderManager::ChunkExportInfo> TerrainRenderManager::GetChunkExportInfo() const {
+		std::lock_guard<std::mutex> lock(mutex_);
+		std::vector<ChunkExportInfo> result;
+		result.reserve(chunks_.size());
+		for (const auto& [key, chunk] : chunks_) {
+			ChunkExportInfo info;
+			info.world_offset = chunk.world_offset;
+			info.texture_slice = chunk.texture_slice;
+			info.chunk_size = static_cast<float>(chunk_size_ * last_world_scale_);
+			info.min_y = chunk.min_y;
+			info.max_y = chunk.max_y;
+			info.version = chunk.version;
+			result.push_back(info);
+		}
+		return result;
 	}
 
 	std::vector<glm::vec4> TerrainRenderManager::GetChunkInfo() const {
