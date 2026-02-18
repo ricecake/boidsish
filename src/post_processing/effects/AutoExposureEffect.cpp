@@ -29,7 +29,7 @@ namespace Boidsish {
 
 			glGenBuffers(1, &exposureSsbo_);
 			glBindBuffer(GL_SHADER_STORAGE_BUFFER, exposureSsbo_);
-			ExposureData initialData = {0.18f, 0.18f, 1};
+			ExposureData initialData = {0.3f, 0.3f, 1};
 			glBufferData(GL_SHADER_STORAGE_BUFFER, sizeof(ExposureData), &initialData, GL_DYNAMIC_DRAW);
 			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::AutoExposure(), exposureSsbo_);
 			glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);

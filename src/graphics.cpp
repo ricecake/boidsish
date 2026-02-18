@@ -11,6 +11,7 @@
 #include <vector>
 
 #include "ConfigManager.h"
+#include "NoiseManager.h"
 #include "UIManager.h"
 #include "akira_effect.h"
 #include "arcade_text.h"
@@ -203,6 +204,7 @@ namespace Boidsish {
 		std::unique_ptr<CloneManager>         clone_manager;
 		std::unique_ptr<InstanceManager>      instance_manager;
 		std::unique_ptr<FireEffectManager>    fire_effect_manager;
+		std::unique_ptr<NoiseManager>         noise_manager;
 		std::unique_ptr<MeshExplosionManager> mesh_explosion_manager;
 		std::unique_ptr<SoundEffectManager>   sound_effect_manager;
 		std::unique_ptr<ShockwaveManager>     shockwave_manager;
@@ -300,7 +302,7 @@ namespace Boidsish {
 		// Cached global settings
 		float camera_roll_speed_;
 		float camera_speed_step_;
-		bool  enable_hdr_ = false;
+		bool  enable_hdr_ = true;
 
 		// Shadow optimization state
 		bool      any_shadow_caster_moved = true;
@@ -336,7 +338,7 @@ namespace Boidsish {
 		VisualizerImpl(Visualizer* p, int w, int h, const char* title): parent(p), width(w), height(h) {
 			RegisterShaderConstants();
 			ConfigManager::GetInstance().Initialize(title);
-			enable_hdr_ = ConfigManager::GetInstance().GetAppSettingBool("enable_hdr", false);
+			enable_hdr_ = ConfigManager::GetInstance().GetAppSettingBool("enable_hdr", true);
 			width = ConfigManager::GetInstance().GetAppSettingInt("window_width", w);
 			height = ConfigManager::GetInstance().GetAppSettingInt("window_height", h);
 			is_fullscreen_ = ConfigManager::GetInstance().GetAppSettingBool("fullscreen", false);
@@ -488,6 +490,8 @@ namespace Boidsish {
 			}
 			clone_manager = std::make_unique<CloneManager>();
 			instance_manager = std::make_unique<InstanceManager>();
+			noise_manager = std::make_unique<NoiseManager>();
+			noise_manager->Initialize();
 			fire_effect_manager = std::make_unique<FireEffectManager>();
 			fire_effect_manager->Initialize(); // Must initialize on main thread with GL context
 			mesh_explosion_manager = std::make_unique<MeshExplosionManager>();
@@ -793,7 +797,7 @@ namespace Boidsish {
 				post_processing_manager_->AddEffect(auto_exposure_effect);
 
 				auto ssao_effect = std::make_shared<PostProcessing::SsaoEffect>();
-				ssao_effect->SetEnabled(false);
+				ssao_effect->SetEnabled(true);
 				post_processing_manager_->AddEffect(ssao_effect);
 
 				auto negative_effect = std::make_shared<PostProcessing::NegativeEffect>();
@@ -833,7 +837,7 @@ namespace Boidsish {
 				post_processing_manager_->AddEffect(atmosphere_effect);
 
 				auto bloom_effect = std::make_shared<PostProcessing::BloomEffect>(render_width, render_height);
-				bloom_effect->SetEnabled(false);
+				bloom_effect->SetEnabled(true);
 				post_processing_manager_->AddEffect(bloom_effect);
 
 				auto sdf_volume_effect = std::make_shared<PostProcessing::SdfVolumeEffect>();
@@ -2311,7 +2315,12 @@ namespace Boidsish {
 					glm::vec4(0, 1, 0, 0.01)
 				);
 				// Transparent effects last
-				impl->fire_effect_manager->Render(reflection_view, impl->projection, reflection_cam.pos());
+				impl->fire_effect_manager->Render(
+					reflection_view,
+					impl->projection,
+					reflection_cam.pos(),
+					impl->noise_manager->GetNoiseTexture()
+				);
 				impl->RenderTrails(reflection_view, glm::vec4(0, 1, 0, 0.01));
 			}
 			glDisable(GL_CLIP_DISTANCE0);
@@ -2567,7 +2576,8 @@ namespace Boidsish {
 		impl->RenderTransparentShapes(view, impl->camera, impl->shapes, impl->simulation_time, std::nullopt);
 
 		// Render transparent/particle effects last
-		impl->fire_effect_manager->Render(view, impl->projection, impl->camera.pos());
+		impl->fire_effect_manager
+			->Render(view, impl->projection, impl->camera.pos(), impl->noise_manager->GetNoiseTexture());
 		impl->mesh_explosion_manager->Render(view, impl->projection, impl->camera.pos());
 		if (impl->akira_effect_manager) {
 			impl->akira_effect_manager->Render(view, impl->projection, impl->simulation_time);

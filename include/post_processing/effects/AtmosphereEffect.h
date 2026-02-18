@@ -62,11 +62,11 @@ namespace Boidsish {
 			std::unique_ptr<Shader> shader_;
 			float                   time_ = 0.0f;
 
-			float     haze_density_ = 0.005f;
+			float     haze_density_ = 0.003f;
 			float     haze_height_ = 20.0f;
 			glm::vec3 haze_color_ = glm::vec3(0.6f, 0.7f, 0.8f);
 			float     cloud_density_ = 0.5f;
-			float     cloud_altitude_ = 95.0f;
+			float     cloud_altitude_ = 175.0f;
 			float     cloud_thickness_ = 10.0f;
 			glm::vec3 cloud_color_ = glm::vec3(0.95f, 0.95f, 1.0f);
 

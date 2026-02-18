@@ -351,7 +351,12 @@ namespace Boidsish {
 		}
 	}
 
-	void FireEffectManager::Render(const glm::mat4& view, const glm::mat4& projection, const glm::vec3& camera_pos) {
+	void FireEffectManager::Render(
+		const glm::mat4& view,
+		const glm::mat4& projection,
+		const glm::vec3& camera_pos,
+		GLuint           noise_texture
+	) {
 		std::lock_guard<std::mutex> lock(mutex_);
 		if (!initialized_ || effects_.empty() || !compute_shader_ || !compute_shader_->isValid()) {
 			return;
@@ -368,6 +373,14 @@ namespace Boidsish {
 		render_shader_->setVec3("u_camera_pos", camera_pos);
 		render_shader_->setFloat("u_time", time_);
 
+		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, emitter_buffer_);
+
+		if (noise_texture != 0) {
+			glActiveTexture(GL_TEXTURE5);
+			glBindTexture(GL_TEXTURE_3D, noise_texture);
+			render_shader_->setInt("u_noiseTexture", 5);
+		}
+
 		// Enable GPU frustum culling for particles
 		render_shader_->setBool("enableFrustumCulling", true);
 		render_shader_->setFloat("frustumCullRadius", 2.0f); // Particle cull radius
@@ -382,6 +395,7 @@ namespace Boidsish {
 		glBindVertexArray(0);
 
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, 0);
+		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, 0);
 
 		glDepthMask(GL_TRUE);                              // Re-enable depth writing
 		glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA); // Reset blend mode
