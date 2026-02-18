@@ -373,6 +373,8 @@ namespace Boidsish {
 		render_shader_->setVec3("u_camera_pos", camera_pos);
 		render_shader_->setFloat("u_time", time_);
 
+		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, emitter_buffer_);
+
 		if (noise_texture != 0) {
 			glActiveTexture(GL_TEXTURE5);
 			glBindTexture(GL_TEXTURE_3D, noise_texture);
@@ -393,6 +395,7 @@ namespace Boidsish {
 		glBindVertexArray(0);
 
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, 0);
+		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, 0);
 
 		glDepthMask(GL_TRUE);                              // Re-enable depth writing
 		glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA); // Reset blend mode

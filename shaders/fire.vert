@@ -15,6 +15,20 @@ layout(std430, binding = 0) buffer ParticleBuffer {
 	Particle particles[];
 };
 
+// Must match the C++ Emitter struct in fire_effect_manager.h
+struct Emitter {
+	vec3  position;
+	int   style;
+	vec3  direction;
+	int   is_active;
+	vec3  velocity;
+	float _padding2;
+};
+
+layout(std430, binding = 1) buffer EmitterBuffer {
+	Emitter emitters[];
+};
+
 uniform mat4  u_view;
 uniform mat4  u_projection;
 uniform vec3  u_camera_pos;
@@ -23,12 +37,14 @@ uniform float frustumCullRadius = 1.0;
 
 out float    v_lifetime;
 out vec4     view_pos;
-out vec4 v_pos;
+out vec4     v_pos;
+out vec3     v_epicenter;
 flat out int v_style;
 
 void main() {
 	Particle p = particles[gl_VertexID];
 	v_pos = p.pos;
+	v_epicenter = emitters[p.emitter_index].position;
 
 	if (p.pos.w <= 0.0) {
 		// Don't draw dead particles

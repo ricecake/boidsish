@@ -3,6 +3,7 @@
 in float    v_lifetime;
 in vec4     view_pos;
 in vec4     v_pos;
+in vec3     v_epicenter;
 flat in int v_style;
 out vec4    FragColor;
 
@@ -120,7 +121,7 @@ void main() {
 		}
 	}
 	else {
-		float maxLife = 1;
+		float maxLife = 1.0;
 		if (v_style == 0) {        // Rocket Trail
 			maxLife = kExhaustLifetime;
 		} else if (v_style == 1) { // Explosion
@@ -129,18 +130,40 @@ void main() {
 			maxLife = kFireLifetime;
 		}
 
-		// Use pre-baked warped noise for a more organic look
-		vec3 noiseCoords = v_pos.xyz * 0.1 + vec3(0.0, u_time * 0.2, 0.0);
-		float noiseDetail = fastWarpedFbm3d(noiseCoords) * 0.5 + 0.5;
+		float distFromEpicenter = length(v_pos.xyz - v_epicenter);
 
-		// Add some high-frequency detail from the 2D gl_PointCoord
-		noiseDetail *= fastSimplex3d(vec3(gl_PointCoord * 2.0, u_time * 0.5)) * 0.5 + 0.5;
+		// Broad roiling motion (low frequency)
+		vec3 roilCoords = v_pos.xyz * 0.04 - vec3(0.0, u_time * 0.15, 0.0);
+		float roil = fastFbm3d(roilCoords) * 0.5 + 0.5;
 
-		float heat = clamp(v_lifetime / maxLife, 0.0, 1.0) * pow(noiseDetail, 1.5);
+		// Worley "knoblyness" and broad structures
+		// Scale by distance to increase detail as it expands
+		float expansionFactor = 1.0 + distFromEpicenter * 0.05;
+		vec3 worleyCoords = v_pos.xyz * 0.12 * expansionFactor + vec3(u_time * 0.08);
+		float knobly = fastWorley3d(worleyCoords);
+
+		// Combine structural noise, reducing high-frequency gl_PointCoord influence
+		float noiseDetail = mix(roil, knobly, 0.5);
+
+		// Add subtle high-frequency texture that moves with the roil
+		float highFreq = fastSimplex3d(vec3(gl_PointCoord * 1.0, u_time * 0.2)) * 0.5 + 0.5;
+		noiseDetail = mix(noiseDetail, noiseDetail * highFreq, 0.3);
+
+		// Temperature map shaping: Cooler at particle edges
+		// distSq is from gl_PointCoord: 0 at center, 0.25 at edge
+		float edgeCooling = smoothstep(0.25, 0.02, distSq);
+
+		// Heat also influenced by distance from epicenter for explosions
+		float epicenterCooling = 1.0;
+		if (v_style == 1) {
+			epicenterCooling = smoothstep(60.0, 5.0, distFromEpicenter); // Cool down as it expands far
+		}
+
+		float heat = clamp(v_lifetime / maxLife, 0.0, 1.0) * pow(noiseDetail, 1.3) * edgeCooling * epicenterCooling;
 		vec3  baseColor = blackbody_hdr(heat);
 
-		alpha = shapeMask * smoothstep(0.05, 0.3, heat);
-		color = baseColor * alpha * 8.0 * (1.0 + clamp(v_lifetime / maxLife, 0.0, 1.0)); // Significantly boosted for high-emissivity look
+		alpha = shapeMask * smoothstep(0.02, 0.2, heat);
+		color = baseColor * alpha * 10.0 * (1.0 + clamp(v_lifetime / maxLife, 0.0, 1.0));
 	}
 
 	FragColor = vec4(color, alpha);
