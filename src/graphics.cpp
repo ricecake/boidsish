@@ -503,10 +503,6 @@ namespace Boidsish {
 		VisualizerImpl(Visualizer* p, int w, int h, const char* title): parent(p), width(w), height(h) {
 			RegisterShaderConstants();
 
-			megabuffer = std::make_unique<MegabufferImpl>(
-				Constants::Class::Megabuffer::MaxVertices(),
-				Constants::Class::Megabuffer::MaxIndices()
-			);
 			ConfigManager::GetInstance().Initialize(title);
 			enable_hdr_ = ConfigManager::GetInstance().GetAppSettingBool("enable_hdr", false);
 			width = ConfigManager::GetInstance().GetAppSettingInt("window_width", w);
@@ -660,6 +656,11 @@ namespace Boidsish {
 
 			// Initialize persistent buffers for MDI
 			// Capacity: 16384 commands/uniforms per frame (triple buffered)
+			megabuffer = std::make_unique<MegabufferImpl>(
+				Constants::Class::Megabuffer::MaxVertices(),
+				Constants::Class::Megabuffer::MaxIndices()
+			);
+
 			indirect_elements_buffer = std::make_unique<PersistentBuffer<DrawElementsIndirectCommand>>(
 				GL_DRAW_INDIRECT_BUFFER,
 				16384

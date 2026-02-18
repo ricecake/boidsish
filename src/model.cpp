@@ -134,13 +134,13 @@ namespace Boidsish {
 			}
 		}
 
-		if (allocation_.valid) {
+		if (allocation.valid) {
 			glDrawElementsBaseVertex(
 				GL_TRIANGLES,
 				static_cast<unsigned int>(indices.size()),
 				GL_UNSIGNED_INT,
-				(void*)(uintptr_t)(allocation_.first_index * sizeof(unsigned int)),
-				allocation_.base_vertex
+				(void*)(uintptr_t)(allocation.first_index * sizeof(unsigned int)),
+				allocation.base_vertex
 			);
 		} else {
 			glDrawElements(GL_TRIANGLES, static_cast<unsigned int>(indices.size()), GL_UNSIGNED_INT, 0);
@@ -192,7 +192,17 @@ namespace Boidsish {
 			}
 		}
 
-		glDrawElements(GL_TRIANGLES, static_cast<unsigned int>(indices.size()), GL_UNSIGNED_INT, 0);
+		if (allocation.valid) {
+			glDrawElementsBaseVertex(
+				GL_TRIANGLES,
+				static_cast<unsigned int>(indices.size()),
+				GL_UNSIGNED_INT,
+				(void*)(uintptr_t)(allocation.first_index * sizeof(unsigned int)),
+				allocation.base_vertex
+			);
+		} else {
+			glDrawElements(GL_TRIANGLES, static_cast<unsigned int>(indices.size()), GL_UNSIGNED_INT, 0);
+		}
 		glBindVertexArray(0);
 
 		// always good practice to set everything back to defaults once configured.
