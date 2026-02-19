@@ -5,6 +5,7 @@
 #include "PaperPlane.h"
 #include "PaperPlaneHandler.h"
 #include "PaperPlaneInputController.h"
+#include "SteeringProbeEntity.h"
 #include "constants.h"
 #include "decor_manager.h"
 #include "graphics.h"
@@ -93,31 +94,7 @@ int main() {
 			}
 		});
 
-		std::shared_ptr<SteeringProbe> sp = std::make_shared<SteeringProbe>(visualizer->GetTerrain());
-		sp->SetPosition(plane->GetPosition().Toglm() + plane->GetVelocity());
-		sp->SetVelocity(plane->GetVelocity().Toglm());
-
-		auto dot = std::make_shared<Dot>(2343433);
-		dot->SetSize(940.0f);
-		// dot->SetInstanced(true);
-		// visualizer->AddShape(dot);
-		float                                         last_time = 0;
-		std::vector<std::shared_ptr<Boidsish::Shape>> shapes;
-		visualizer->AddShapeHandler([&](float time) {
-			auto delta_time = time - last_time;
-			last_time = time;
-
-			sp->Update(delta_time, plane->GetPosition().Toglm(), plane->GetVelocity().Toglm());
-			auto pos = sp->GetPosition();
-			dot->SetPosition(pos.x, pos.y, pos.z);
-			sp->HandleCheckpoints(delta_time, handler, plane);
-
-			return shapes;
-		});
-		// auto model = std::make_shared<Boidsish::Model>("assets/utah_teapot.obj");
-		// model->SetInstanced(true);
-		// model->SetColossal(true);
-		shapes.push_back(dot);
+		handler.AddEntity<SteeringProbeEntity>(visualizer->GetTerrain(), plane);
 		// shapes.push_back(model);
 
 		visualizer->GetAudioManager().PlayMusic("assets/kazoom.mp3", true, 0.25f);

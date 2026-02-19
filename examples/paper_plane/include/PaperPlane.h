@@ -30,6 +30,8 @@ namespace Boidsish {
 
 		float GetMaxHealth() const { return 100.0f; }
 
+		void AddHealth(float amount) { health = std::min(health + amount, GetMaxHealth()); }
+
 		bool IsChaffActive() const { return chaff_timer_ > 0.0f; }
 
 	private:

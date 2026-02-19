@@ -104,10 +104,25 @@ namespace Boidsish {
 		return model;
 	}
 
-	CheckpointRing::CheckpointRing(int id, float radius, CheckpointStyle style, Callback callback):
+	CheckpointRing::CheckpointRing(
+		int                        id,
+		float                      radius,
+		CheckpointStyle            style,
+		Callback                   callback,
+		glm::vec3                  position,
+		glm::quat                  orientation,
+		std::shared_ptr<EntityBase> initial_tracked
+	):
 		Entity<CheckpointRingShape>(id, radius, style),
 		callback_(callback),
-		lifespan_(Constants::Class::Checkpoint::DefaultLifespan()) {}
+		lifespan_(Constants::Class::Checkpoint::DefaultLifespan()) {
+		SetPosition(position.x, position.y, position.z);
+		SetOrientation(orientation);
+		UpdateShape();
+		if (initial_tracked) {
+			RegisterEntity(initial_tracked);
+		}
+	}
 
 	void CheckpointRing::RegisterEntity(std::shared_ptr<EntityBase> entity) {
 		if (!entity)
@@ -119,6 +134,7 @@ namespace Boidsish {
 	void CheckpointRing::UpdateEntity(const EntityHandler& handler, float /*time*/, float delta_time) {
 		age_ += delta_time;
 		if (age_ > lifespan_) {
+			status_ = CheckpointStatus::EXPIRED;
 			handler.QueueRemoveEntity(id_);
 			return;
 		}
@@ -146,6 +162,7 @@ namespace Boidsish {
 						float     distFromCenter = glm::distance(intersect, ringPos);
 
 						if (distFromCenter <= shape_->GetRadius()) {
+							status_ = CheckpointStatus::COLLECTED;
 							if (callback_) {
 								callback_(distFromCenter, entity);
 							}

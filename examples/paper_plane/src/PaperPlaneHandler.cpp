@@ -6,6 +6,7 @@
 
 #include "CongaMarcher.h"
 #include "GuidedMissileLauncher.h"
+#include "checkpoint_ring.h"
 #include "PaperPlane.h"
 #include "Potshot.h"
 #include "Swooper.h"
@@ -135,6 +136,38 @@ namespace Boidsish {
 		vis->GetCamera().x = best_pos.x;
 		vis->GetCamera().y = best_pos.y + 5;
 		vis->GetCamera().z = best_pos.z + 10;
+	}
+
+	void PaperPlaneHandler::RemoveEntity(int id) {
+		auto entity = GetEntity(id);
+		if (auto ring = std::dynamic_pointer_cast<CheckpointRing>(entity)) {
+			switch (ring->GetStatus()) {
+			case CheckpointStatus::COLLECTED: {
+				streak_++;
+				int bonus = 100 * streak_;
+				AddScore(bonus, "Streak x" + std::to_string(streak_));
+
+				// Heal player
+				auto targets = GetEntitiesByType<PaperPlane>();
+				if (!targets.empty()) {
+					targets[0]->AddHealth(10.0f);
+					if (health_gauge_) {
+						health_gauge_->SetValue(targets[0]->GetHealth() / targets[0]->GetMaxHealth());
+					}
+				}
+				break;
+			}
+			case CheckpointStatus::EXPIRED:
+			case CheckpointStatus::OUT_OF_RANGE:
+				streak_ = 0;
+				break;
+			case CheckpointStatus::PRUNED:
+			default:
+				// Do nothing, keep streak
+				break;
+			}
+		}
+		SpatialEntityHandler::RemoveEntity(id);
 	}
 
 	void PaperPlaneHandler::PreTimestep(float time, float delta_time) {
