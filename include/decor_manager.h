@@ -54,6 +54,13 @@ namespace Boidsish {
 		uint32_t  is_active;
 	};
 
+	struct ChunkStatus {
+		uint32_t lastVersion;
+		uint32_t lastWasVisible;
+		uint32_t generatedCount;
+		uint32_t padding; // For 16-byte alignment
+	};
+
 	struct DecorType {
 		std::shared_ptr<Model> model;
 		DecorProperties        props;

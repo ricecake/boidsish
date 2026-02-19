@@ -46,8 +46,8 @@ namespace Boidsish {
 
 		glGenBuffers(1, &chunk_status_ssbo_);
 		glBindBuffer(GL_SHADER_STORAGE_BUFFER, chunk_status_ssbo_);
-		// Store 2 uints per chunk: lastVersion and lastWasVisible
-		std::vector<uint32_t> zeros(kMaxChunks * 2, 0);
+		// Store ChunkStatus per chunk
+		std::vector<uint32_t> zeros(kMaxChunks * 4, 0);
 		glBufferData(GL_SHADER_STORAGE_BUFFER, zeros.size() * sizeof(uint32_t), zeros.data(), GL_DYNAMIC_DRAW);
 
 		initialized_ = true;
@@ -64,7 +64,7 @@ namespace Boidsish {
 
 		// Resize status buffer to accommodate new decor type
 		glBindBuffer(GL_SHADER_STORAGE_BUFFER, chunk_status_ssbo_);
-		size_t new_size = (decor_types_.size() + 1) * kMaxChunks * 2 * sizeof(uint32_t);
+		size_t new_size = (decor_types_.size() + 1) * kMaxChunks * sizeof(ChunkStatus);
 		// Note: This is a bit inefficient to reallocate every time, but AddDecorType is rare.
 		// Also glBufferData clears existing data, which is actually what we want for a NEW type.
 		// To keep old data, we'd need to copy it, but since each type has its own range,
@@ -73,7 +73,7 @@ namespace Boidsish {
 		// Let's do it properly:
 		std::vector<uint8_t> old_data;
 		if (!decor_types_.empty()) {
-			size_t old_size = decor_types_.size() * kMaxChunks * 2 * sizeof(uint32_t);
+			size_t old_size = decor_types_.size() * kMaxChunks * sizeof(ChunkStatus);
 			old_data.resize(old_size);
 			glGetBufferSubData(GL_SHADER_STORAGE_BUFFER, 0, old_size, old_data.data());
 		}
@@ -83,8 +83,8 @@ namespace Boidsish {
 			glBufferSubData(GL_SHADER_STORAGE_BUFFER, 0, old_data.size(), old_data.data());
 		}
 		// Clear the new portion
-		std::vector<uint32_t> zeros(kMaxChunks * 2, 0);
-		size_t offset = decor_types_.size() * kMaxChunks * 2 * sizeof(uint32_t);
+		std::vector<uint32_t> zeros(kMaxChunks * 4, 0);
+		size_t offset = decor_types_.size() * kMaxChunks * sizeof(ChunkStatus);
 		glBufferSubData(GL_SHADER_STORAGE_BUFFER, offset, zeros.size() * sizeof(uint32_t), zeros.data());
 
 		DecorType type;
@@ -143,26 +143,14 @@ namespace Boidsish {
 		if (!render_manager)
 			return;
 
-		// Check if we need to regenerate placements
-		glm::vec2 cam_pos(camera.x, camera.z);
-		glm::vec3 cam_front = camera.front();
-		float     dist_moved = glm::distance(cam_pos, last_camera_pos_);
+		// Always call _RegeneratePlacements - the shader will handle conditional recomputation
+		_RegeneratePlacements(camera, frustum, terrain_gen, render_manager);
 
-		// Check rotation: 1 - dot(a, b) gives 0 when same direction, ~2 when opposite
-		float angle_change = 1.0f - glm::dot(cam_front, last_camera_front_);
-
-		uint32_t current_version = terrain_gen.GetVersion();
-		float    current_scale = terrain_gen.GetWorldScale();
-
-		if (needs_regeneration_ || dist_moved > kRegenerationDistance || angle_change > kRegenerationAngle ||
-		    current_version != last_terrain_version_ || current_scale != last_world_scale_) {
-			_RegeneratePlacements(camera, frustum, terrain_gen, render_manager);
-			last_camera_pos_ = cam_pos;
-			last_camera_front_ = cam_front;
-			last_terrain_version_ = current_version;
-			last_world_scale_ = current_scale;
-			needs_regeneration_ = false;
-		}
+		last_camera_pos_ = glm::vec2(camera.x, camera.z);
+		last_camera_front_ = camera.front();
+		last_terrain_version_ = terrain_gen.GetVersion();
+		last_world_scale_ = terrain_gen.GetWorldScale();
+		needs_regeneration_ = false;
 	}
 
 	void DecorManager::_RegeneratePlacements(
