@@ -101,7 +101,7 @@ namespace Boidsish {
 		position_ += velocity_ * dt;
 	}
 
-	void SteeringProbe::HandleCheckpoints(float dt, EntityHandler& handler, std::shared_ptr<EntityBase> player) {
+	void SteeringProbe::HandleCheckpoints(float dt, const EntityHandler& handler, std::shared_ptr<EntityBase> player) {
 		timeSinceLastDrop_ += dt;
 
 		if (player) {
@@ -180,6 +180,10 @@ namespace Boidsish {
 				}
 
 				if (shouldPrune) {
+					auto ring = std::dynamic_pointer_cast<CheckpointRing>(handler.GetEntity(lastId));
+					if (ring) {
+						ring->SetStatus(CheckpointStatus::PRUNED);
+					}
 					handler.QueueRemoveEntity(lastId);
 					activeCheckpoints_.pop_back();
 
@@ -230,14 +234,18 @@ namespace Boidsish {
 
 			// 2. Clean up "way off course" checkpoints
 			for (auto it = activeCheckpoints_.begin(); it != activeCheckpoints_.end();) {
-				auto ring = handler.GetEntity(*it);
-				if (!ring) {
+				auto ring_base = handler.GetEntity(*it);
+				if (!ring_base) {
 					it = activeCheckpoints_.erase(it);
 					continue;
 				}
 
-				float dist = glm::distance(player->GetPosition().Toglm(), ring->GetPosition().Toglm());
+				float dist = glm::distance(player->GetPosition().Toglm(), ring_base->GetPosition().Toglm());
 				if (dist > Constants::Project::Camera::DefaultFarPlane()) {
+					auto ring = std::dynamic_pointer_cast<CheckpointRing>(ring_base);
+					if (ring) {
+						ring->SetStatus(CheckpointStatus::OUT_OF_RANGE);
+					}
 					handler.QueueRemoveEntity(*it);
 					it = activeCheckpoints_.erase(it);
 					continue;
@@ -269,28 +277,28 @@ namespace Boidsish {
 			// Ring faces BACKWARDS so player coming from behind goes through it
 			glm::quat rotation = glm::quatLookAt(currentDir, up);
 
-			auto id = handler
-						  .AddEntity<CheckpointRing>(radius, style, [&handler](float d, std::shared_ptr<EntityBase> e) {
-							  // Score could be added here if we had access to the handler or score indicator
-							  (void)d;
-							  (void)e;
-							  logger::LOG("GOT RING PASS");
-						  });
+			int  id = handler.GetNextId();
+			auto callback = [](float d, std::shared_ptr<EntityBase> e) {
+				(void)d;
+				(void)e;
+				logger::LOG("GOT RING PASS");
+			};
+
+			glm::vec3 spawn_pos = position_;
+			spawn_pos.y += radius;
+
+			handler.QueueAddEntityWithId<CheckpointRing>(
+				id,
+				radius,
+				style,
+				callback,
+				spawn_pos,
+				rotation,
+				player,
+				next_sequence_id_++
+			);
 
 			activeCheckpoints_.push_back(id);
-
-			auto ring = handler.GetEntity(id);
-			if (ring) {
-				ring->SetPosition(position_.x, position_.y + radius, position_.z);
-				auto checkpoint = std::dynamic_pointer_cast<CheckpointRing>(ring);
-				if (checkpoint) {
-					checkpoint->SetOrientation(rotation);
-					if (player) {
-						checkpoint->RegisterEntity(player);
-					}
-					checkpoint->UpdateShape();
-				}
-			}
 
 			lastCheckpointPos_ = position_;
 			lastCheckpointDir_ = currentDir;

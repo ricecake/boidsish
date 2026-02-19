@@ -1,5 +1,6 @@
 #pragma once
 
+#include <atomic>
 #include <cmath>
 #include <functional>
 #include <map>
@@ -35,7 +36,10 @@ namespace Boidsish {
 			trail_iridescent_(false),
 			trail_pbr_(false),
 			trail_roughness_(0.3f),
-			trail_metallic_(0.0f) {}
+			trail_metallic_(0.0f),
+			roughness_(0.5f),
+			metallic_(0.0f),
+			use_pbr_(false) {}
 
 		virtual ~EntityBase() = default;
 
@@ -140,6 +144,15 @@ namespace Boidsish {
 
 		float GetTrailMetallic() const { return trail_metallic_; }
 
+		float GetRoughness() const { return roughness_; }
+		void  SetRoughness(float roughness) { roughness_ = roughness; }
+
+		float GetMetallic() const { return metallic_; }
+		void  SetMetallic(float metallic) { metallic_ = metallic; }
+
+		bool GetUsePBR() const { return use_pbr_; }
+		void SetUsePBR(bool use_pbr) { use_pbr_ = use_pbr; }
+
 		void SetOrientToVelocity(bool enabled) { orient_to_velocity_ = enabled; }
 
 		void SetPath(std::shared_ptr<Path> path, float speed) {
@@ -169,6 +182,9 @@ namespace Boidsish {
 		bool      trail_pbr_ = false;    // Enable PBR lighting on trails
 		float     trail_roughness_ = 0.3f;
 		float     trail_metallic_ = 0.0f;
+		float     roughness_ = 0.5f;
+		float     metallic_ = 0.0f;
+		bool      use_pbr_ = false;
 		bool      orient_to_velocity_ = false;
 
 		// Path following
@@ -216,6 +232,9 @@ namespace Boidsish {
 			shape_->SetTrailPBR(trail_pbr_);       // Propagate PBR trail state
 			shape_->SetTrailRoughness(trail_roughness_);
 			shape_->SetTrailMetallic(trail_metallic_);
+			shape_->SetRoughness(roughness_);
+			shape_->SetMetallic(metallic_);
+			shape_->SetUsePBR(use_pbr_);
 			shape_->SetRotation(rigid_body_.GetOrientation());
 			// For dots, we can also update the size
 			if (auto dot = std::dynamic_pointer_cast<Dot>(shape_)) {
@@ -322,6 +341,8 @@ namespace Boidsish {
 
 		// Get total entity count
 		size_t GetEntityCount() const { return entities_.size(); }
+
+		int GetNextId() const { return next_id_++; }
 
 		std::tuple<float, glm::vec3>                 CalculateTerrainPropertiesAtPoint(float x, float y) const;
 		const std::vector<std::shared_ptr<Terrain>>& GetTerrainChunks() const;
@@ -451,7 +472,7 @@ namespace Boidsish {
 	private:
 		std::map<int, std::shared_ptr<EntityBase>> entities_;
 		float                                      last_time_;
-		int                                        next_id_;
+		mutable std::atomic<int>                   next_id_;
 		task_thread_pool::task_thread_pool&        thread_pool_;
 		mutable std::vector<std::function<void()>> modification_requests_;
 		mutable std::vector<std::function<void()>> post_frame_requests_;

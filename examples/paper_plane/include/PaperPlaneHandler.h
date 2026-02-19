@@ -22,6 +22,7 @@ namespace Boidsish {
 	public:
 		PaperPlaneHandler(task_thread_pool::task_thread_pool& thread_pool);
 		void PreTimestep(float time, float delta_time) override;
+		void RemoveEntity(int id) override;
 
 		void SetHealthGauge(std::shared_ptr<HudGauge> gauge) { health_gauge_ = gauge; }
 
@@ -30,6 +31,8 @@ namespace Boidsish {
 		int GetScore() const;
 
 		void AddScore(int delta, const std::string& label) const;
+
+		void SetStreakIndicator(std::shared_ptr<HudNumber> indicator) { streak_indicator_ = indicator; }
 
 		void OnPlaneDeath(int score) const;
 
@@ -57,6 +60,9 @@ namespace Boidsish {
 		std::map<std::pair<int, int>, float>  launcher_cooldowns_;
 		std::shared_ptr<HudGauge>             health_gauge_;
 		std::shared_ptr<HudScore>             score_indicator_;
+		std::shared_ptr<HudNumber>            streak_indicator_;
+		int                                   streak_ = 0;
+		int                                   last_collected_sequence_id_ = -1;
 	};
 
 } // namespace Boidsish
