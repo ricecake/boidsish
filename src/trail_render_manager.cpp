@@ -416,16 +416,16 @@ namespace Boidsish {
 			compute_shader_->setInt("u_numTrails", (int)MAX_TRAILS);
 
 			// Bind SSBOs and atomic counter
-			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, trail_params_ssbo_);
-			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, draw_command_buffer_);
+			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 7, trail_params_ssbo_);
+			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 8, draw_command_buffer_);
 			glBindBufferBase(GL_ATOMIC_COUNTER_BUFFER, 0, atomic_counter_buffer_);
 
 			// Dispatch compute shader
 			uint32_t num_groups = (static_cast<uint32_t>(MAX_TRAILS) + 63) / 64;
 			glDispatchCompute(num_groups, 1, 1);
 
-			// Ensure commands are written before indirect draw
-			glMemoryBarrier(GL_COMMAND_BARRIER_BIT | GL_ATOMIC_COUNTER_BARRIER_BIT);
+			// Ensure commands and counts are written before indirect draw
+			glMemoryBarrier(GL_COMMAND_BARRIER_BIT | GL_ATOMIC_COUNTER_BARRIER_BIT | GL_SHADER_STORAGE_BARRIER_BIT);
 		} else {
 			return;
 		}
@@ -442,12 +442,13 @@ namespace Boidsish {
 		if (clip_plane) {
 			shader.setVec4("clipPlane", *clip_plane);
 		} else {
-			shader.setVec4("clipPlane", glm::vec4(0, 0, 0, 0));
+			// A plane that doesn't clip anything (0,0,0,1 means dot(pos,0)+1 = 1 > 0)
+			shader.setVec4("clipPlane", glm::vec4(0.0f, 0.0f, 0.0f, 1.0f));
 		}
 
 		glBindVertexArray(vao_);
 		glBindBuffer(GL_DRAW_INDIRECT_BUFFER, draw_command_buffer_);
-		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, trail_params_ssbo_);
+		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 7, trail_params_ssbo_);
 
 		// Use MultiDrawArraysIndirectCount if supported for fully GPU-driven rendering
 		if (GLEW_ARB_indirect_parameters || GLEW_VERSION_4_6) {

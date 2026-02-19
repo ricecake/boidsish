@@ -21,7 +21,7 @@ struct TrailParams {
 	vec4  config3;   // x=use_pbr, y=metallic, zw=padding
 };
 
-layout(std430, binding = 0) readonly buffer TrailParamsBuffer {
+layout(std430, binding = 7) readonly buffer TrailParamsBuffer {
 	TrailParams trails[];
 };
 
