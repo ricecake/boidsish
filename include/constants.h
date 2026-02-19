@@ -28,6 +28,10 @@ namespace Boidsish {
 			constexpr int SdfVolumes() {
 				return 5;
 			}
+
+			constexpr int TemporalData() {
+				return 6;
+			}
 		} // namespace UboBinding
 
 		namespace SsboBinding {

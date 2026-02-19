@@ -13,10 +13,13 @@ layout(std430, binding = 10) buffer SSBOInstances {
 #include "frustum.glsl"
 #include "helpers/lighting.glsl"
 #include "helpers/shockwave.glsl"
+#include "temporal_data.glsl"
 #include "visual_effects.glsl"
 #include "visual_effects.vert"
 
 out vec3 FragPos;
+out vec4 CurPosition;
+out vec4 PrevPosition;
 out vec3 Normal;
 out vec3 vs_color;
 out vec3 barycentric;
@@ -142,8 +145,15 @@ void main() {
 		gl_Position = projection * staticView * world_pos;
 		gl_Position.z = gl_Position.w * 0.99999;
 		FragPos = world_pos.xyz;
+
+		CurPosition = gl_Position;
+		PrevPosition = gl_Position; // Sky box doesn't move relative to camera normally, or we don't care about its velocity
 	} else {
 		gl_Position = projection * view * vec4(FragPos, 1.0);
+		CurPosition = gl_Position;
+		// Since we don't have previous model matrix, we assume static objects for velocity
+		// This is sufficient for GTAO and most environment reprojection.
+		PrevPosition = prevViewProjection * vec4(FragPos, 1.0);
 	}
 
 	gl_ClipDistance[0] = dot(vec4(FragPos, 1.0), clipPlane);

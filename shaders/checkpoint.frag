@@ -1,7 +1,10 @@
-#version 420 core
-out vec4 FragColor;
+#version 430 core
+layout(location = 0) out vec4 FragColor;
+layout(location = 1) out vec2 Velocity;
 
 in vec2 TexCoords;
+in vec4 CurPosition;
+in vec4 PrevPosition;
 
 uniform vec3  baseColor;
 uniform int   style; // 0-4: Colors, 5: RAINBOW, 6: INVISIBLE
@@ -75,4 +78,9 @@ void main() {
 		discard;
 
 	FragColor = vec4(finalColor * (1.0 + ringMask), alpha);
+
+	// Calculate screen-space velocity
+	vec2 a = (CurPosition.xy / CurPosition.w) * 0.5 + 0.5;
+	vec2 b = (PrevPosition.xy / PrevPosition.w) * 0.5 + 0.5;
+	Velocity = a - b;
 }

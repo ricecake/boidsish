@@ -38,6 +38,7 @@
 #include "post_processing/effects/FilmGrainEffect.h"
 #include "post_processing/effects/GlitchEffect.h"
 #include "post_processing/effects/NegativeEffect.h"
+#include "post_processing/effects/GtaoEffect.h"
 #include "post_processing/effects/OpticalFlowEffect.h"
 #include "post_processing/effects/SdfVolumeEffect.h"
 #include "post_processing/effects/SsaoEffect.h"
@@ -52,6 +53,7 @@
 #include "sound_effect_manager.h"
 #include "spline.h"
 #include "task_thread_pool.hpp"
+#include "temporal_data.h"
 #include "terrain.h"
 #include "terrain_generator.h"
 #include "terrain_generator_interface.h"
@@ -239,11 +241,13 @@ namespace Boidsish {
 		GLuint                  plane_vao{0}, plane_vbo{0}, sky_vao{0}, blur_quad_vao{0}, blur_quad_vbo{0};
 		GLuint                  reflection_fbo{0}, reflection_texture{0}, reflection_depth_rbo{0};
 		GLuint                  pingpong_fbo[2]{0}, pingpong_texture[2]{0};
-		GLuint                  main_fbo_{0}, main_fbo_texture_{0}, main_fbo_depth_texture_{0}, main_fbo_rbo_{0};
+		GLuint                  main_fbo_{0}, main_fbo_texture_{0}, main_fbo_velocity_texture_{0}, main_fbo_depth_texture_{0}, main_fbo_rbo_{0};
 		GLuint                  lighting_ubo{0};
 		GLuint                  visual_effects_ubo{0};
+		GLuint                  temporal_data_ubo{0};
 		GLuint                  frustum_ubo{0};
 		glm::mat4               projection, reflection_vp;
+		glm::mat4               prev_view_projection{1.0f};
 
 		double last_mouse_x = 0.0, last_mouse_y = 0.0;
 		bool   first_mouse = true;
@@ -515,6 +519,19 @@ namespace Boidsish {
 			glBindBuffer(GL_UNIFORM_BUFFER, 0);
 			glBindBufferRange(GL_UNIFORM_BUFFER, Constants::UboBinding::Lighting(), lighting_ubo, 0, 704);
 
+			// Temporal Data UBO
+			glGenBuffers(1, &temporal_data_ubo);
+			glBindBuffer(GL_UNIFORM_BUFFER, temporal_data_ubo);
+			glBufferData(GL_UNIFORM_BUFFER, sizeof(TemporalUbo), NULL, GL_DYNAMIC_DRAW);
+			glBindBuffer(GL_UNIFORM_BUFFER, 0);
+			glBindBufferRange(
+				GL_UNIFORM_BUFFER,
+				Constants::UboBinding::TemporalData(),
+				temporal_data_ubo,
+				0,
+				sizeof(TemporalUbo)
+			);
+
 			// Pre-allocate lighting cache for batched UBO updates
 			gpu_lights_cache_.reserve(MAX_LIGHTS);
 
@@ -745,6 +762,14 @@ namespace Boidsish {
 			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 			glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, main_fbo_texture_, 0);
 
+			// Velocity attachment
+			glGenTextures(1, &main_fbo_velocity_texture_);
+			glBindTexture(GL_TEXTURE_2D, main_fbo_velocity_texture_);
+			glTexImage2D(GL_TEXTURE_2D, 0, GL_RG16F, render_width, render_height, 0, GL_RG, GL_FLOAT, NULL);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+			glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT1, GL_TEXTURE_2D, main_fbo_velocity_texture_, 0);
+
 			// Depth-stencil texture (for shockwave depth testing and stencil operations)
 			// Using GL_DEPTH24_STENCIL8 allows sampling depth while also providing stencil
 			glGenTextures(1, &main_fbo_depth_texture_);
@@ -796,9 +821,9 @@ namespace Boidsish {
 				auto_exposure_effect->SetEnabled(true);
 				post_processing_manager_->AddEffect(auto_exposure_effect);
 
-				auto ssao_effect = std::make_shared<PostProcessing::SsaoEffect>();
-				ssao_effect->SetEnabled(true);
-				post_processing_manager_->AddEffect(ssao_effect);
+				auto gtao_effect = std::make_shared<PostProcessing::GtaoEffect>();
+				gtao_effect->SetEnabled(true);
+				post_processing_manager_->AddEffect(gtao_effect);
 
 				auto negative_effect = std::make_shared<PostProcessing::NegativeEffect>();
 				negative_effect->SetEnabled(false);
@@ -888,7 +913,7 @@ namespace Boidsish {
 			}
 		}
 
-		void SetupShaderBindings(Shader& shader_to_setup) {
+		void SetupShaderBindings(ShaderBase& shader_to_setup) {
 			shader_to_setup.use();
 			GLuint sdf_volumes_idx = glGetUniformBlockIndex(shader_to_setup.ID, "SdfVolumes");
 			if (sdf_volumes_idx != GL_INVALID_INDEX) {
@@ -913,6 +938,10 @@ namespace Boidsish {
 			GLuint shockwaves_idx = glGetUniformBlockIndex(shader_to_setup.ID, "Shockwaves");
 			if (shockwaves_idx != GL_INVALID_INDEX) {
 				glUniformBlockBinding(shader_to_setup.ID, shockwaves_idx, Constants::UboBinding::Shockwaves());
+			}
+			GLuint temporal_idx = glGetUniformBlockIndex(shader_to_setup.ID, "TemporalData");
+			if (temporal_idx != GL_INVALID_INDEX) {
+				glUniformBlockBinding(shader_to_setup.ID, temporal_idx, Constants::UboBinding::TemporalData());
 			}
 		}
 
@@ -993,6 +1022,7 @@ namespace Boidsish {
 			if (main_fbo_) {
 				glDeleteFramebuffers(1, &main_fbo_);
 				glDeleteTextures(1, &main_fbo_texture_);
+				glDeleteTextures(1, &main_fbo_velocity_texture_);
 				glDeleteTextures(1, &main_fbo_depth_texture_);
 			}
 
@@ -1868,6 +1898,10 @@ namespace Boidsish {
 			} else {
 				glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, render_width, render_height, 0, GL_RGB, GL_UNSIGNED_BYTE, NULL);
 			}
+			// Resize velocity texture
+			glBindTexture(GL_TEXTURE_2D, main_fbo_velocity_texture_);
+			glTexImage2D(GL_TEXTURE_2D, 0, GL_RG16F, render_width, render_height, 0, GL_RG, GL_FLOAT, NULL);
+
 			// Resize depth-stencil texture
 			glBindTexture(GL_TEXTURE_2D, main_fbo_depth_texture_);
 			glTexImage2D(
@@ -2141,6 +2175,24 @@ namespace Boidsish {
 		impl->audio_manager->Update();
 
 		glm::mat4 view_matrix = impl->SetupMatrices();
+		glm::mat4 current_vp = impl->projection * view_matrix;
+
+		// Update Temporal UBO
+		TemporalUbo temporal_data;
+		temporal_data.viewProjection = current_vp;
+		temporal_data.prevViewProjection = impl->prev_view_projection;
+		temporal_data.uProjection = impl->projection;
+		temporal_data.invProjection = glm::inverse(impl->projection);
+		temporal_data.invView = glm::inverse(view_matrix);
+		temporal_data.texelSize = glm::vec2(1.0f / impl->render_width, 1.0f / impl->render_height);
+		temporal_data.frameIndex = static_cast<int>(impl->frame_count_);
+		temporal_data.padding = 0.0f;
+
+		glBindBuffer(GL_UNIFORM_BUFFER, impl->temporal_data_ubo);
+		glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(TemporalUbo), &temporal_data);
+		glBindBuffer(GL_UNIFORM_BUFFER, 0);
+
+		impl->prev_view_projection = current_vp;
 
 		// Calculate frustum for terrain generation and decor placement
 		Frustum generator_frustum;
@@ -2534,6 +2586,8 @@ namespace Boidsish {
 		} else {
 			glBindFramebuffer(GL_FRAMEBUFFER, impl->main_fbo_);
 			glViewport(0, 0, impl->render_width, impl->render_height);
+			GLuint attachments[2] = {GL_COLOR_ATTACHMENT0, GL_COLOR_ATTACHMENT1};
+			glDrawBuffers(2, attachments);
 		}
 
 		glEnable(GL_DEPTH_TEST);
@@ -2562,7 +2616,7 @@ namespace Boidsish {
 		GLuint current_depth = impl->main_fbo_depth_texture_;
 
 		if (effects_enabled) {
-			impl->post_processing_manager_->BeginApply(current_texture, impl->main_fbo_, current_depth);
+			impl->post_processing_manager_->BeginApply(current_texture, impl->main_fbo_, current_depth, impl->main_fbo_velocity_texture_);
 			impl->post_processing_manager_
 				->ApplyEarlyEffects(view, impl->projection, impl->camera.pos(), impl->simulation_time);
 

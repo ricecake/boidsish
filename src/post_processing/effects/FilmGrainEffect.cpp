@@ -22,6 +22,7 @@ namespace Boidsish {
 		void FilmGrainEffect::Apply(
 			GLuint           sourceTexture,
 			GLuint           depthTexture,
+			GLuint           /* velocityTexture */,
 			const glm::mat4& viewMatrix,
 			const glm::mat4& projectionMatrix,
 			const glm::vec3& cameraPos

@@ -5,6 +5,7 @@
 #include "post_processing/effects/AutoExposureEffect.h"
 #include "post_processing/effects/BloomEffect.h"
 #include "post_processing/effects/FilmGrainEffect.h"
+#include "post_processing/effects/GtaoEffect.h"
 #include "post_processing/effects/SsaoEffect.h"
 #include "post_processing/effects/ToneMappingEffect.h"
 
@@ -80,6 +81,20 @@ namespace Boidsish {
 						glm::vec3 cloud_color = atmosphere_effect->GetCloudColor();
 						if (ImGui::ColorEdit3("Cloud Color", &cloud_color[0])) {
 							atmosphere_effect->SetCloudColor(cloud_color);
+						}
+					}
+				}
+
+				if (effect->GetName() == "GTAO" && is_enabled) {
+					auto gtao_effect = std::dynamic_pointer_cast<PostProcessing::GtaoEffect>(effect);
+					if (gtao_effect) {
+						float radius = gtao_effect->GetRadius();
+						if (ImGui::SliderFloat("Radius##GTAO", &radius, 0.01f, 5.0f)) {
+							gtao_effect->SetRadius(radius);
+						}
+						float intensity = gtao_effect->GetIntensity();
+						if (ImGui::SliderFloat("Intensity##GTAO", &intensity, 0.0f, 5.0f)) {
+							gtao_effect->SetIntensity(intensity);
 						}
 					}
 				}

@@ -1,11 +1,14 @@
-#version 420 core
-out vec4 FragColor;
+#version 430 core
+layout(location = 0) out vec4 FragColor;
+layout(location = 1) out vec2 Velocity;
 
 #include "helpers/lighting.glsl"
 #include "visual_effects.frag"
 #include "visual_effects.glsl"
 
 in vec3 FragPos;
+in vec4 CurPosition;
+in vec4 PrevPosition;
 in vec3 Normal;
 in vec3 vs_color;
 in vec3 barycentric;
@@ -147,4 +150,9 @@ void main() {
 	}
 
 	FragColor = outColor;
+
+	// Calculate screen-space velocity
+	vec2 a = (CurPosition.xy / CurPosition.w) * 0.5 + 0.5;
+	vec2 b = (PrevPosition.xy / PrevPosition.w) * 0.5 + 0.5;
+	Velocity = a - b;
 }

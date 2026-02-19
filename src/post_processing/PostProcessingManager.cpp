@@ -65,10 +65,11 @@ namespace Boidsish {
 			InitializeFBOs();
 		}
 
-		void PostProcessingManager::BeginApply(GLuint sourceTexture, GLuint sourceFbo, GLuint depthTexture) {
+		void PostProcessingManager::BeginApply(GLuint sourceTexture, GLuint sourceFbo, GLuint depthTexture, GLuint velocityTexture) {
 			current_texture_ = sourceTexture;
 			current_fbo_ = sourceFbo;
 			depth_texture_ = depthTexture;
+			velocity_texture_ = velocityTexture;
 			fbo_index_ = 0;
 			glViewport(0, 0, width_, height_);
 
@@ -150,7 +151,7 @@ namespace Boidsish {
 			glDepthMask(GL_FALSE);
 
 			glBindVertexArray(quad_vao_);
-			effect->Apply(current_texture_, depth_texture_, viewMatrix, projectionMatrix, cameraPos);
+			effect->Apply(current_texture_, depth_texture_, velocity_texture_, viewMatrix, projectionMatrix, cameraPos);
 			glBindVertexArray(0);
 
 			glEnable(GL_DEPTH_TEST);
@@ -169,7 +170,7 @@ namespace Boidsish {
 			const glm::vec3& cameraPos,
 			float            time
 		) {
-			BeginApply(sourceTexture, 0, depthTexture);
+			BeginApply(sourceTexture, 0, depthTexture, 0); // Deprecated call, passing 0 for velocity
 			ApplyEarlyEffects(viewMatrix, projectionMatrix, cameraPos, time);
 			ApplyLateEffects(viewMatrix, projectionMatrix, cameraPos, time);
 			return GetFinalTexture();
