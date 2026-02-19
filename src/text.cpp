@@ -43,12 +43,7 @@ namespace Boidsish {
 		}
 	}
 
-	Text::~Text() {
-		if (vao_ != 0) {
-			glDeleteVertexArrays(1, &vao_);
-			glDeleteBuffers(1, &vbo_);
-		}
-	}
+	Text::~Text() {}
 
 	void Text::LoadFont(const std::string& font_path) {
 		std::ifstream file(font_path, std::ios::binary | std::ios::ate);
@@ -74,11 +69,13 @@ namespace Boidsish {
 	void Text::SetText(const std::string& text) {
 		text_ = text;
 		GenerateMesh(text_, font_size_, depth_);
+		mesh_dirty_ = true;
 	}
 
 	void Text::SetJustification(Justification justification) {
 		justification_ = justification;
 		GenerateMesh(text_, font_size_, depth_);
+		mesh_dirty_ = true;
 	}
 
 	void Text::GenerateMesh(const std::string& text, float font_size, float depth) {
@@ -86,12 +83,7 @@ namespace Boidsish {
 			return;
 		}
 
-		if (vao_ != 0) {
-			glDeleteVertexArrays(1, &vao_);
-			glDeleteBuffers(1, &vbo_);
-		}
-
-		std::vector<float> vertices;
+		mesh_vertices_.clear();
 		float              scale = stbtt_ScaleForPixelHeight(font_info_.get(), font_size);
 
 		int ascent, descent, line_gap;
@@ -320,17 +312,12 @@ namespace Boidsish {
 					float normalized_x = (max_width > 0.0f) ? ((cached_vertices[i] + line_accumulated_x) / max_width)
 															: 0.0f;
 
-					vertices.insert(
-						vertices.end(),
-						{vx,
-					     vy,
-					     cached_vertices[i + 2],
-					     cached_vertices[i + 3],
-					     cached_vertices[i + 4],
-					     cached_vertices[i + 5],
-					     normalized_x,
-					     cached_vertices[i + 7]}
-					);
+					Vertex v;
+					v.Position = {vx, vy, cached_vertices[i + 2]};
+					v.Normal = {cached_vertices[i + 3], cached_vertices[i + 4], cached_vertices[i + 5]};
+					v.TexCoords = {normalized_x, cached_vertices[i + 7]};
+					v.Color = glm::vec3(1.0f);
+					mesh_vertices_.push_back(v);
 				}
 
 				int advance_width, left_side_bearing;
@@ -346,27 +333,27 @@ namespace Boidsish {
 			y_offset += line_height;
 		}
 
-		vertex_count_ = vertices.size() / 8;
+		vertex_count_ = static_cast<int>(mesh_vertices_.size());
+	}
 
-		glGenVertexArrays(1, &vao_);
-		glBindVertexArray(vao_);
+	void Text::PrepareResources(Megabuffer* mb) const {
+		if (!mb || vertex_count_ == 0)
+			return;
 
-		glGenBuffers(1, &vbo_);
-		glBindBuffer(GL_ARRAY_BUFFER, vbo_);
-		glBufferData(GL_ARRAY_BUFFER, vertices.size() * sizeof(float), vertices.data(), GL_STATIC_DRAW);
-
-		glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)0);
-		glEnableVertexAttribArray(0);
-		glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)(3 * sizeof(float)));
-		glEnableVertexAttribArray(1);
-		glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)(6 * sizeof(float)));
-		glEnableVertexAttribArray(2);
-
-		glBindVertexArray(0);
+		if (mesh_dirty_ || !allocation_.valid) {
+			// Allocate static for text as it usually stays around for a while
+			// Only re-allocate if the mesh actually changed.
+			allocation_ = mb->AllocateStatic(vertex_count_, 0);
+			if (allocation_.valid) {
+				mb->Upload(allocation_, mesh_vertices_.data(), vertex_count_);
+				vao_ = mb->GetVAO();
+			}
+			mesh_dirty_ = false;
+		}
 	}
 
 	void Text::render() const {
-		if (vao_ == 0 || shader == nullptr)
+		if (!allocation_.valid || shader == nullptr)
 			return;
 
 		shader->use();
@@ -391,13 +378,13 @@ namespace Boidsish {
 		}
 
 		glBindVertexArray(vao_);
-		glDrawArrays(GL_TRIANGLES, 0, vertex_count_);
+		glDrawArrays(GL_TRIANGLES, static_cast<GLint>(allocation_.base_vertex), vertex_count_);
 		shader->setBool("isTextEffect", false);
 		glBindVertexArray(0);
 	}
 
 	void Text::render(Shader& shader, const glm::mat4& model_matrix) const {
-		if (vao_ == 0)
+		if (!allocation_.valid)
 			return;
 
 		shader.use();
@@ -422,7 +409,7 @@ namespace Boidsish {
 		}
 
 		glBindVertexArray(vao_);
-		glDrawArrays(GL_TRIANGLES, 0, vertex_count_);
+		glDrawArrays(GL_TRIANGLES, static_cast<GLint>(allocation_.base_vertex), vertex_count_);
 		shader.setBool("isTextEffect", false);
 		glBindVertexArray(0);
 	}
@@ -436,14 +423,17 @@ namespace Boidsish {
 	}
 
 	void Text::GenerateRenderPackets(std::vector<RenderPacket>& out_packets, const RenderContext& context) const {
-		if (vao_ == 0 || vertex_count_ == 0) return;
+		if (vertex_count_ == 0)
+			return;
 
 		glm::mat4 model_matrix = GetModelMatrix();
 		glm::vec3 world_pos = glm::vec3(model_matrix[3]);
 
 		RenderPacket packet;
-		packet.vao = vao_;
-		packet.vbo = vbo_;
+		if (allocation_.valid) {
+			packet.vao = context.megabuffer->GetVAO();
+			packet.base_vertex = allocation_.base_vertex;
+		}
 		packet.vertex_count = static_cast<unsigned int>(vertex_count_);
 		packet.draw_mode = GL_TRIANGLES;
 		packet.index_type = 0;
@@ -471,7 +461,15 @@ namespace Boidsish {
 		packet.material_handle = MaterialHandle(0);
 
 		float normalized_depth = context.CalculateNormalizedDepth(world_pos);
-		packet.sort_key = CalculateSortKey(layer, packet.shader_handle, packet.material_handle, normalized_depth);
+		packet.sort_key = CalculateSortKey(
+			layer,
+			packet.shader_handle,
+			packet.vao,
+			packet.draw_mode,
+			packet.index_count > 0,
+			packet.material_handle,
+			normalized_depth
+		);
 
 		out_packets.push_back(packet);
 	}

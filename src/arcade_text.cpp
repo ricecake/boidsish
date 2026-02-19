@@ -55,7 +55,7 @@ namespace Boidsish {
 	}
 
 	void ArcadeText::render() const {
-		if (vao_ == 0 || shader == nullptr)
+		if (!allocation_.valid || shader == nullptr)
 			return;
 
 		shader->use();
@@ -114,43 +114,45 @@ namespace Boidsish {
 		}
 
 		glBindVertexArray(vao_);
-		glDrawArrays(GL_TRIANGLES, 0, vertex_count_);
+		glDrawArrays(GL_TRIANGLES, static_cast<GLint>(allocation_.base_vertex), vertex_count_);
 		glBindVertexArray(0);
 	}
 
 	void ArcadeText::GenerateRenderPackets(std::vector<RenderPacket>& out_packets, const RenderContext& context) const {
-		if (vao_ == 0 || vertex_count_ == 0)
+		if (vertex_count_ == 0)
 			return;
 
 		auto create_packet = [&](const glm::mat4& model) {
 			RenderPacket packet;
-			packet.vao = vao_;
-			packet.vbo = vbo_;
+			if (allocation_.valid) {
+				packet.vao = context.megabuffer->GetVAO();
+				packet.base_vertex = allocation_.base_vertex;
+			}
 			packet.vertex_count = static_cast<unsigned int>(vertex_count_);
 			packet.draw_mode = GL_TRIANGLES;
 			packet.index_type = 0;
 			packet.shader_id = shader ? shader->ID : 0;
 
 			packet.uniforms.model = model;
-		packet.uniforms.color = glm::vec4(GetR(), GetG(), GetB(), GetA());
-		packet.uniforms.use_pbr = UsePBR();
-		packet.uniforms.roughness = GetRoughness();
-		packet.uniforms.metallic = GetMetallic();
-		packet.uniforms.ao = GetAO();
-		packet.uniforms.use_texture = false;
-		packet.uniforms.is_colossal = IsColossal();
+			packet.uniforms.color = glm::vec4(GetR(), GetG(), GetB(), GetA());
+			packet.uniforms.use_pbr = UsePBR();
+			packet.uniforms.roughness = GetRoughness();
+			packet.uniforms.metallic = GetMetallic();
+			packet.uniforms.ao = GetAO();
+			packet.uniforms.use_texture = false;
+			packet.uniforms.is_colossal = IsColossal();
 
-		packet.uniforms.is_text_effect = is_text_effect_ ? 1 : 0;
-		packet.uniforms.text_fade_progress = text_fade_progress_;
-		packet.uniforms.text_fade_softness = text_fade_softness_;
-		packet.uniforms.text_fade_mode = text_fade_mode_;
+			packet.uniforms.is_text_effect = is_text_effect_ ? 1 : 0;
+			packet.uniforms.text_fade_progress = text_fade_progress_;
+			packet.uniforms.text_fade_softness = text_fade_softness_;
+			packet.uniforms.text_fade_mode = text_fade_mode_;
 
-		packet.uniforms.is_arcade_text = 1;
-		packet.uniforms.arcade_wave_mode = static_cast<int>(wave_mode_);
-		packet.uniforms.arcade_wave_amplitude = wave_amplitude_;
-		packet.uniforms.arcade_wave_frequency = wave_frequency_;
-		packet.uniforms.arcade_wave_speed = wave_speed_;
-		packet.uniforms.arcade_rainbow_enabled = rainbow_enabled_ ? 1 : 0;
+			packet.uniforms.is_arcade_text = 1;
+			packet.uniforms.arcade_wave_mode = static_cast<int>(wave_mode_);
+			packet.uniforms.arcade_wave_amplitude = wave_amplitude_;
+			packet.uniforms.arcade_wave_frequency = wave_frequency_;
+			packet.uniforms.arcade_wave_speed = wave_speed_;
+			packet.uniforms.arcade_rainbow_enabled = rainbow_enabled_ ? 1 : 0;
 			packet.uniforms.arcade_rainbow_speed = rainbow_speed_;
 			packet.uniforms.arcade_rainbow_frequency = rainbow_frequency_;
 
@@ -163,7 +165,15 @@ namespace Boidsish {
 
 			glm::vec3 world_pos = glm::vec3(model[3]);
 			float     normalized_depth = context.CalculateNormalizedDepth(world_pos);
-			packet.sort_key = CalculateSortKey(layer, packet.shader_handle, packet.material_handle, normalized_depth);
+			packet.sort_key = CalculateSortKey(
+				layer,
+				packet.shader_handle,
+				packet.vao,
+				packet.draw_mode,
+				packet.index_count > 0,
+				packet.material_handle,
+				normalized_depth
+			);
 
 			return packet;
 		};

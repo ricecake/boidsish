@@ -9,9 +9,10 @@
 
 namespace Boidsish {
 
-	unsigned int Line::line_vao_ = 0;
-	unsigned int Line::line_vbo_ = 0;
-	int          Line::line_vertex_count_ = 0;
+	unsigned int         Line::line_vao_ = 0;
+	unsigned int         Line::line_vbo_ = 0;
+	int                  Line::line_vertex_count_ = 0;
+	MegabufferAllocation Line::line_allocation_;
 
 	Line::Line(int id, glm::vec3 start, glm::vec3 end, float width, float r, float g, float b, float a):
 		Shape(id, start.x, start.y, start.z, r, g, b, a), end_(end), width_(width), style_(Style::SOLID) {}
@@ -19,96 +20,83 @@ namespace Boidsish {
 	Line::Line(glm::vec3 start, glm::vec3 end, float width):
 		Shape(0, start.x, start.y, start.z, 1.0f, 1.0f, 1.0f, 1.0f), end_(end), width_(width), style_(Style::SOLID) {}
 
-	void Line::InitLineMesh() {
-		if (line_vao_ != 0)
+	void Line::InitLineMesh(Megabuffer* mb) {
+		if (line_vao_ != 0 && line_allocation_.valid)
 			return;
 
 		// Create a mesh of two crossed quads to give some 3D volume
-		// Quads go from (0,-0.5, 0) to (1, 0.5, 0) and (0, 0, -0.5) to (1, 0, 0.5)
-		float vertices[] = {
-			// Quad 1 (XY plane) - Position (x,y,z), TexCoords (u,v)
-			0.0f,
-			-0.5f,
-			0.0f,
-			0.0f,
-			0.0f,
-			1.0f,
-			-0.5f,
-			0.0f,
-			1.0f,
-			0.0f,
-			1.0f,
-			0.5f,
-			0.0f,
-			1.0f,
-			1.0f,
-			0.0f,
-			-0.5f,
-			0.0f,
-			0.0f,
-			0.0f,
-			1.0f,
-			0.5f,
-			0.0f,
-			1.0f,
-			1.0f,
-			0.0f,
-			0.5f,
-			0.0f,
-			0.0f,
-			1.0f,
+		struct TempVertex {
+			glm::vec3 p;
+			glm::vec2 t;
+		};
+
+		std::vector<TempVertex> temp_verts = {
+			// Quad 1 (XY plane)
+			{{0.0f, -0.5f, 0.0f}, {0.0f, 0.0f}},
+			{{1.0f, -0.5f, 0.0f}, {1.0f, 0.0f}},
+			{{1.0f, 0.5f, 0.0f}, {1.0f, 1.0f}},
+			{{0.0f, -0.5f, 0.0f}, {0.0f, 0.0f}},
+			{{1.0f, 0.5f, 0.0f}, {1.0f, 1.0f}},
+			{{0.0f, 0.5f, 0.0f}, {0.0f, 1.0f}},
 
 			// Quad 2 (XZ plane)
-			0.0f,
-			0.0f,
-			-0.5f,
-			0.0f,
-			0.0f,
-			1.0f,
-			0.0f,
-			-0.5f,
-			1.0f,
-			0.0f,
-			1.0f,
-			0.0f,
-			0.5f,
-			1.0f,
-			1.0f,
-			0.0f,
-			0.0f,
-			-0.5f,
-			0.0f,
-			0.0f,
-			1.0f,
-			0.0f,
-			0.5f,
-			1.0f,
-			1.0f,
-			0.0f,
-			0.0f,
-			0.5f,
-			0.0f,
-			1.0f
+			{{0.0f, 0.0f, -0.5f}, {0.0f, 0.0f}},
+			{{1.0f, 0.0f, -0.5f}, {1.0f, 0.0f}},
+			{{1.0f, 0.0f, 0.5f}, {1.0f, 1.0f}},
+			{{0.0f, 0.0f, -0.5f}, {0.0f, 0.0f}},
+			{{1.0f, 0.0f, 0.5f}, {1.0f, 1.0f}},
+			{{0.0f, 0.0f, 0.5f}, {0.0f, 1.0f}}
 		};
 
 		line_vertex_count_ = 12;
 
-		glGenVertexArrays(1, &line_vao_);
-		glGenBuffers(1, &line_vbo_);
+		if (mb) {
+			std::vector<Vertex> vertices;
+			for (const auto& tv : temp_verts) {
+				Vertex v;
+				v.Position = tv.p;
+				v.Normal = glm::vec3(0, 1, 0); // Simplified normal
+				v.TexCoords = tv.t;
+				v.Color = glm::vec3(1, 1, 1);
+				vertices.push_back(v);
+			}
 
-		glBindVertexArray(line_vao_);
-		glBindBuffer(GL_ARRAY_BUFFER, line_vbo_);
-		glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
+			line_allocation_ = mb->AllocateStatic(vertices.size(), 0);
+			if (line_allocation_.valid) {
+				mb->Upload(line_allocation_, vertices.data(), vertices.size());
+				line_vao_ = mb->GetVAO();
+			}
+		} else {
+			glGenVertexArrays(1, &line_vao_);
+			glGenBuffers(1, &line_vbo_);
 
-		// Position attribute
-		glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void*)0);
-		glEnableVertexAttribArray(0);
-		// TexCoord attribute
-		glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void*)(3 * sizeof(float)));
-		glEnableVertexAttribArray(2);
+			glBindVertexArray(line_vao_);
+			glBindBuffer(GL_ARRAY_BUFFER, line_vbo_);
 
-		glBindBuffer(GL_ARRAY_BUFFER, 0);
-		glBindVertexArray(0);
+			std::vector<Vertex> vertices;
+			for (const auto& tv : temp_verts) {
+				Vertex v;
+				v.Position = tv.p;
+				v.Normal = glm::vec3(0, 1, 0); // Simplified normal
+				v.TexCoords = tv.t;
+				v.Color = glm::vec3(1, 1, 1);
+				vertices.push_back(v);
+			}
+
+			glBufferData(GL_ARRAY_BUFFER, vertices.size() * sizeof(Vertex), vertices.data(), GL_STATIC_DRAW);
+
+			glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)offsetof(Vertex, Position));
+			glEnableVertexAttribArray(0);
+			glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)offsetof(Vertex, Normal));
+			glEnableVertexAttribArray(1);
+			glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)offsetof(Vertex, TexCoords));
+			glEnableVertexAttribArray(2);
+			glVertexAttribPointer(8, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)offsetof(Vertex, Color));
+			glEnableVertexAttribArray(8);
+
+			glBindBuffer(GL_ARRAY_BUFFER, 0);
+			glBindVertexArray(0);
+		}
 	}
 
 	void Line::DestroyLineMesh() {
@@ -143,7 +131,11 @@ namespace Boidsish {
 		s.setBool("isColossal", IsColossal());
 
 		glBindVertexArray(line_vao_);
-		glDrawArrays(GL_TRIANGLES, 0, line_vertex_count_);
+		if (line_allocation_.valid) {
+			glDrawArrays(GL_TRIANGLES, static_cast<GLint>(line_allocation_.base_vertex), line_vertex_count_);
+		} else {
+			glDrawArrays(GL_TRIANGLES, 0, line_vertex_count_);
+		}
 		glBindVertexArray(0);
 
 		// Reset uniforms to avoid affecting other shapes
@@ -172,16 +164,20 @@ namespace Boidsish {
 	}
 
 	void Line::GenerateRenderPackets(std::vector<RenderPacket>& out_packets, const RenderContext& context) const {
+		if (line_vao_ == 0) {
+			InitLineMesh(context.megabuffer);
+		}
+
 		glm::mat4 model_matrix = GetModelMatrix();
 		glm::vec3 world_pos = (GetStart() + GetEnd()) * 0.5f;
 
 		RenderPacket packet;
 		packet.vao = line_vao_;
-		packet.vbo = line_vbo_;
-		packet.ebo = 0;
+		if (line_allocation_.valid) {
+			packet.base_vertex = line_allocation_.base_vertex;
+		}
 		packet.vertex_count = static_cast<unsigned int>(line_vertex_count_);
 		packet.draw_mode = GL_TRIANGLES;
-		packet.index_type = 0;
 		packet.shader_id = shader ? shader->ID : 0;
 
 		packet.uniforms.model = model_matrix;
@@ -203,7 +199,15 @@ namespace Boidsish {
 		packet.material_handle = MaterialHandle(0);
 
 		float normalized_depth = context.CalculateNormalizedDepth(world_pos);
-		packet.sort_key = CalculateSortKey(layer, packet.shader_handle, packet.material_handle, normalized_depth);
+		packet.sort_key = CalculateSortKey(
+			layer,
+			packet.shader_handle,
+			packet.vao,
+			packet.draw_mode,
+			packet.index_count > 0,
+			packet.material_handle,
+			normalized_depth
+		);
 
 		out_packets.push_back(packet);
 	}

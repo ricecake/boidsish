@@ -24,6 +24,67 @@ namespace Boidsish {
 		}
 	}
 
+	void Path::PrepareResources(Megabuffer* mb) const {
+		if (waypoints_.size() < 2)
+			return;
+
+		bool waypoints_changed = false;
+		if (cached_waypoint_positions_.size() != waypoints_.size()) {
+			waypoints_changed = true;
+		} else {
+			for (size_t i = 0; i < waypoints_.size(); ++i) {
+				if ((waypoints_[i].position - cached_waypoint_positions_[i]).MagnitudeSquared() > 1e-9) {
+					waypoints_changed = true;
+					break;
+				}
+			}
+		}
+
+		if (mb) {
+			if (allocation_.valid && !waypoints_changed)
+				return;
+
+			std::vector<Vector3>   points;
+			std::vector<Vector3>   ups;
+			std::vector<float>     sizes;
+			std::vector<glm::vec3> colors;
+
+			for (const auto& waypoint : waypoints_) {
+				points.push_back(waypoint.position);
+				ups.push_back(waypoint.up);
+				sizes.push_back(waypoint.size);
+				colors.push_back(glm::vec3(waypoint.r, waypoint.g, waypoint.b));
+			}
+
+			auto all_vertices_data = Spline::GenerateTube(points, ups, sizes, colors, mode_ == PathMode::LOOP);
+			edge_vertex_count_ = static_cast<int>(all_vertices_data.size());
+
+			std::vector<Vertex> vertices;
+			vertices.reserve(all_vertices_data.size());
+			for (const auto& vd : all_vertices_data) {
+				Vertex v;
+				v.Position = vd.pos;
+				v.Normal = vd.normal;
+				v.TexCoords = {0, 0};
+				v.Color = vd.color;
+				vertices.push_back(v);
+			}
+
+			allocation_ = mb->AllocateStatic(vertices.size(), 0);
+			if (allocation_.valid) {
+				mb->Upload(allocation_, vertices.data(), vertices.size());
+				path_vao_ = mb->GetVAO();
+			}
+
+			cached_waypoint_positions_.clear();
+			for (const auto& w : waypoints_)
+				cached_waypoint_positions_.push_back(w.position);
+			buffers_initialized_ = true;
+		} else {
+			SetupBuffers();
+		}
+	}
+
 	void Path::SetupBuffers() const {
 		if (waypoints_.size() < 2)
 			return;
@@ -43,45 +104,32 @@ namespace Boidsish {
 		auto all_vertices_data = Spline::GenerateTube(points, ups, sizes, colors, mode_ == PathMode::LOOP);
 		edge_vertex_count_ = all_vertices_data.size();
 
+		std::vector<Vertex> vertices;
+		vertices.reserve(all_vertices_data.size());
+		for (const auto& vd : all_vertices_data) {
+			Vertex v;
+			v.Position = vd.pos;
+			v.Normal = vd.normal;
+			v.TexCoords = {0, 0};
+			v.Color = vd.color;
+			vertices.push_back(v);
+		}
+
 		if (path_vao_ == 0)
 			glGenVertexArrays(1, &path_vao_);
 		glBindVertexArray(path_vao_);
 		if (path_vbo_ == 0)
 			glGenBuffers(1, &path_vbo_);
 		glBindBuffer(GL_ARRAY_BUFFER, path_vbo_);
-		glBufferData(
-			GL_ARRAY_BUFFER,
-			all_vertices_data.size() * sizeof(Spline::VertexData),
-			all_vertices_data.data(),
-			GL_STATIC_DRAW
-		);
+		glBufferData(GL_ARRAY_BUFFER, vertices.size() * sizeof(Vertex), vertices.data(), GL_STATIC_DRAW);
 
-		glVertexAttribPointer(
-			0,
-			3,
-			GL_FLOAT,
-			GL_FALSE,
-			sizeof(Spline::VertexData),
-			(void*)offsetof(Spline::VertexData, pos)
-		);
+		glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)offsetof(Vertex, Position));
 		glEnableVertexAttribArray(0);
-		glVertexAttribPointer(
-			1,
-			3,
-			GL_FLOAT,
-			GL_FALSE,
-			sizeof(Spline::VertexData),
-			(void*)offsetof(Spline::VertexData, normal)
-		);
+		glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)offsetof(Vertex, Normal));
 		glEnableVertexAttribArray(1);
-		glVertexAttribPointer(
-			8,
-			3,
-			GL_FLOAT,
-			GL_FALSE,
-			sizeof(Spline::VertexData),
-			(void*)offsetof(Spline::VertexData, color)
-		);
+		glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)offsetof(Vertex, TexCoords));
+		glEnableVertexAttribArray(2);
+		glVertexAttribPointer(8, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)offsetof(Vertex, Color));
 		glEnableVertexAttribArray(8);
 
 		glBindVertexArray(0);
@@ -132,7 +180,11 @@ namespace Boidsish {
 			shader->setMat4("model", GetModelMatrix());
 
 			glBindVertexArray(path_vao_);
-			glDrawArrays(GL_TRIANGLES, 0, edge_vertex_count_);
+			if (allocation_.valid) {
+				glDrawArrays(GL_TRIANGLES, static_cast<GLint>(allocation_.base_vertex), edge_vertex_count_);
+			} else {
+				glDrawArrays(GL_TRIANGLES, 0, edge_vertex_count_);
+			}
 			glBindVertexArray(0);
 
 			shader->setInt("useVertexColor", 0);
@@ -150,7 +202,11 @@ namespace Boidsish {
 		shader.setInt("useVertexColor", 1);
 
 		glBindVertexArray(path_vao_);
-		glDrawArrays(GL_TRIANGLES, 0, edge_vertex_count_);
+		if (allocation_.valid) {
+			glDrawArrays(GL_TRIANGLES, static_cast<GLint>(allocation_.base_vertex), edge_vertex_count_);
+		} else {
+			glDrawArrays(GL_TRIANGLES, 0, edge_vertex_count_);
+		}
 		glBindVertexArray(0);
 
 		shader.setInt("useVertexColor", 0);
@@ -376,12 +432,36 @@ namespace Boidsish {
 		if (!visible_ || waypoints_.empty())
 			return;
 
+		// 1. Waypoint Dots
+		for (const auto& waypoint : waypoints_) {
+			Dot dot(0,
+			    waypoint.position.x + GetX(),
+			    waypoint.position.y + GetY(),
+			    waypoint.position.z + GetZ(),
+			    waypoint.size,
+			    waypoint.r,
+			    waypoint.g,
+			    waypoint.b,
+			    waypoint.a,
+			    0);
+			dot.SetUsePBR(UsePBR());
+			dot.SetRoughness(GetRoughness());
+			dot.SetMetallic(GetMetallic());
+			dot.SetAO(GetAO());
+			dot.GenerateRenderPackets(out_packets, context);
+		}
+
+		if (edge_vertex_count_ == 0)
+			return;
+
 		glm::mat4 model_matrix = GetModelMatrix();
 		glm::vec3 world_pos = glm::vec3(GetX(), GetY(), GetZ());
 
 		RenderPacket packet;
 		packet.vao = path_vao_;
-		packet.vbo = path_vbo_;
+		if (allocation_.valid) {
+			packet.base_vertex = allocation_.base_vertex;
+		}
 		packet.vertex_count = static_cast<unsigned int>(edge_vertex_count_);
 		packet.draw_mode = GL_TRIANGLES;
 		packet.shader_id = shader ? shader->ID : 0;
@@ -404,7 +484,15 @@ namespace Boidsish {
 		packet.material_handle = MaterialHandle(0);
 
 		float normalized_depth = context.CalculateNormalizedDepth(world_pos);
-		packet.sort_key = CalculateSortKey(layer, packet.shader_handle, packet.material_handle, normalized_depth);
+		packet.sort_key = CalculateSortKey(
+			layer,
+			packet.shader_handle,
+			packet.vao,
+			packet.draw_mode,
+			packet.index_count > 0,
+			packet.material_handle,
+			normalized_depth
+		);
 
 		out_packets.push_back(packet);
 	}

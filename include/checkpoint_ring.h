@@ -48,7 +48,7 @@ namespace Boidsish {
 
 		CheckpointStyle GetStyle() const { return style_; }
 
-		static void InitQuadMesh();
+		static void InitQuadMesh(Megabuffer* megabuffer = nullptr);
 		static void DestroyQuadMesh();
 
 		static std::shared_ptr<Shader> GetShader() { return checkpoint_shader_; }
@@ -63,6 +63,7 @@ namespace Boidsish {
 
 		static unsigned int            quad_vao_;
 		static unsigned int            quad_vbo_;
+		static MegabufferAllocation    quad_alloc_;
 		static std::shared_ptr<Shader> checkpoint_shader_;
 	};
 

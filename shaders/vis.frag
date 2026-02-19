@@ -48,25 +48,26 @@ uniform sampler2D texture_diffuse1;
 uniform bool      use_texture;
 
 void main() {
-	vec3  c_objectColor = uUseMDI ? uniforms_data[vUniformIndex].color.rgb : objectColor;
-	float c_objectAlpha = uUseMDI ? uniforms_data[vUniformIndex].color.a : objectAlpha;
-	bool  c_usePBR = uUseMDI ? (uniforms_data[vUniformIndex].use_pbr != 0) : usePBR;
-	float c_roughness = uUseMDI ? uniforms_data[vUniformIndex].roughness : roughness;
-	float c_metallic = uUseMDI ? uniforms_data[vUniformIndex].metallic : metallic;
-	float c_ao = uUseMDI ? uniforms_data[vUniformIndex].ao : ao;
-	bool  c_use_texture = uUseMDI ? (uniforms_data[vUniformIndex].use_texture != 0) : use_texture;
-	bool  c_isLine = uUseMDI ? (uniforms_data[vUniformIndex].is_line != 0) : isLine;
-	int   c_lineStyle = uUseMDI ? uniforms_data[vUniformIndex].line_style : lineStyle;
-	bool  c_isTextEffect = uUseMDI ? (uniforms_data[vUniformIndex].is_text_effect != 0) : isTextEffect;
-	float c_textFadeProgress = uUseMDI ? uniforms_data[vUniformIndex].text_fade_progress : textFadeProgress;
-	float c_textFadeSoftness = uUseMDI ? uniforms_data[vUniformIndex].text_fade_softness : textFadeSoftness;
-	int   c_textFadeMode = uUseMDI ? uniforms_data[vUniformIndex].text_fade_mode : textFadeMode;
-	bool  c_isArcadeText = uUseMDI ? (uniforms_data[vUniformIndex].is_arcade_text != 0) : isArcadeText;
-	bool  c_arcadeRainbowEnabled = uUseMDI ? (uniforms_data[vUniformIndex].arcade_rainbow_enabled != 0) : arcadeRainbowEnabled;
-	float c_arcadeRainbowSpeed = uUseMDI ? uniforms_data[vUniformIndex].arcade_rainbow_speed : arcadeRainbowSpeed;
-	float c_arcadeRainbowFrequency = uUseMDI ? uniforms_data[vUniformIndex].arcade_rainbow_frequency : arcadeRainbowFrequency;
-	bool  c_isColossal = uUseMDI ? (uniforms_data[vUniformIndex].is_colossal != 0) : isColossal;
-	bool  c_useVertexColor = uUseMDI ? (uniforms_data[vUniformIndex].use_vertex_color != 0) : (useVertexColor != 0);
+	bool  use_ssbo = uUseMDI && vUniformIndex >= 0;
+	vec3  c_objectColor = use_ssbo ? uniforms_data[vUniformIndex].color.rgb : objectColor;
+	float c_objectAlpha = use_ssbo ? uniforms_data[vUniformIndex].color.a : objectAlpha;
+	bool  c_usePBR = use_ssbo ? (uniforms_data[vUniformIndex].use_pbr != 0) : usePBR;
+	float c_roughness = use_ssbo ? uniforms_data[vUniformIndex].roughness : roughness;
+	float c_metallic = use_ssbo ? uniforms_data[vUniformIndex].metallic : metallic;
+	float c_ao = use_ssbo ? uniforms_data[vUniformIndex].ao : ao;
+	bool  c_use_texture = use_ssbo ? (uniforms_data[vUniformIndex].use_texture != 0) : use_texture;
+	bool  c_isLine = use_ssbo ? (uniforms_data[vUniformIndex].is_line != 0) : isLine;
+	int   c_lineStyle = use_ssbo ? uniforms_data[vUniformIndex].line_style : lineStyle;
+	bool  c_isTextEffect = use_ssbo ? (uniforms_data[vUniformIndex].is_text_effect != 0) : isTextEffect;
+	float c_textFadeProgress = use_ssbo ? uniforms_data[vUniformIndex].text_fade_progress : textFadeProgress;
+	float c_textFadeSoftness = use_ssbo ? uniforms_data[vUniformIndex].text_fade_softness : textFadeSoftness;
+	int   c_textFadeMode = use_ssbo ? uniforms_data[vUniformIndex].text_fade_mode : textFadeMode;
+	bool  c_isArcadeText = use_ssbo ? (uniforms_data[vUniformIndex].is_arcade_text != 0) : isArcadeText;
+	bool  c_arcadeRainbowEnabled = use_ssbo ? (uniforms_data[vUniformIndex].arcade_rainbow_enabled != 0) : arcadeRainbowEnabled;
+	float c_arcadeRainbowSpeed = use_ssbo ? uniforms_data[vUniformIndex].arcade_rainbow_speed : arcadeRainbowSpeed;
+	float c_arcadeRainbowFrequency = use_ssbo ? uniforms_data[vUniformIndex].arcade_rainbow_frequency : arcadeRainbowFrequency;
+	bool  c_isColossal = use_ssbo ? (uniforms_data[vUniformIndex].is_colossal != 0) : isColossal;
+	bool  c_useVertexColor = use_ssbo ? (uniforms_data[vUniformIndex].use_vertex_color != 0) : (useVertexColor != 0);
 
 	float fade = 1.0;
 	if (!c_isColossal) {

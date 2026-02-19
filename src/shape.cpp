@@ -17,10 +17,15 @@ namespace Boidsish {
 	unsigned int            Shape::sphere_vbo_ = 0;
 	unsigned int            Shape::sphere_ebo_ = 0;
 	int                     Shape::sphere_vertex_count_ = 0;
+	MegabufferAllocation    Shape::sphere_alloc_;
 	std::shared_ptr<Shader> Shape::shader = nullptr;
 	ShaderHandle            Shape::shader_handle = ShaderHandle(0);
 
 	void Shape::GenerateRenderPackets(std::vector<RenderPacket>& out_packets, const RenderContext& context) const {
+		if (sphere_vao_ == 0) {
+			InitSphereMesh(context.megabuffer);
+		}
+
 		// Calculate model matrix once
 		glm::mat4 model = GetModelMatrix();
 		glm::vec3 world_pos = glm::vec3(model[3]);
@@ -31,8 +36,10 @@ namespace Boidsish {
 
 		RenderPacket packet;
 		packet.vao = sphere_vao_;
-		packet.vbo = sphere_vbo_;
-		packet.ebo = sphere_ebo_;
+		if (sphere_alloc_.valid) {
+			packet.base_vertex = sphere_alloc_.base_vertex;
+			packet.first_index = sphere_alloc_.first_index;
+		}
 		packet.index_count = static_cast<unsigned int>(sphere_vertex_count_);
 		packet.draw_mode = GL_TRIANGLES;
 		packet.index_type = GL_UNSIGNED_INT;
@@ -58,7 +65,15 @@ namespace Boidsish {
 
 		// Calculate depth for sorting
 		float normalized_depth = context.CalculateNormalizedDepth(world_pos);
-		packet.sort_key = CalculateSortKey(layer, packet.shader_handle, packet.material_handle, normalized_depth);
+		packet.sort_key = CalculateSortKey(
+			layer,
+			packet.shader_handle,
+			packet.vao,
+			packet.draw_mode,
+			packet.index_count > 0,
+			packet.material_handle,
+			normalized_depth
+		);
 
 		out_packets.push_back(packet);
 	}
@@ -99,7 +114,7 @@ namespace Boidsish {
 		}
 	}
 
-	void Shape::InitSphereMesh() {
+	void Shape::InitSphereMesh(Megabuffer* megabuffer) {
 		if (sphere_vao_ != 0)
 			return; // Already initialized
 
@@ -141,25 +156,35 @@ namespace Boidsish {
 		}
 		sphere_vertex_count_ = indices.size();
 
-		glGenVertexArrays(1, &sphere_vao_);
-		glBindVertexArray(sphere_vao_);
+		if (megabuffer) {
+			sphere_alloc_ = megabuffer->AllocateStatic(vertices.size(), indices.size());
+			if (sphere_alloc_.valid) {
+				megabuffer->Upload(sphere_alloc_, vertices.data(), vertices.size(), indices.data(), indices.size());
+				sphere_vao_ = megabuffer->GetVAO();
+			}
+		} else {
+			glGenVertexArrays(1, &sphere_vao_);
+			glBindVertexArray(sphere_vao_);
 
-		glGenBuffers(1, &sphere_vbo_);
-		glBindBuffer(GL_ARRAY_BUFFER, sphere_vbo_);
-		glBufferData(GL_ARRAY_BUFFER, vertices.size() * sizeof(Vertex), &vertices[0], GL_STATIC_DRAW);
+			glGenBuffers(1, &sphere_vbo_);
+			glBindBuffer(GL_ARRAY_BUFFER, sphere_vbo_);
+			glBufferData(GL_ARRAY_BUFFER, vertices.size() * sizeof(Vertex), &vertices[0], GL_STATIC_DRAW);
 
-		glGenBuffers(1, &sphere_ebo_);
-		glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, sphere_ebo_);
-		glBufferData(GL_ELEMENT_ARRAY_BUFFER, indices.size() * sizeof(unsigned int), &indices[0], GL_STATIC_DRAW);
+			glGenBuffers(1, &sphere_ebo_);
+			glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, sphere_ebo_);
+			glBufferData(GL_ELEMENT_ARRAY_BUFFER, indices.size() * sizeof(unsigned int), &indices[0], GL_STATIC_DRAW);
 
-		glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)0);
-		glEnableVertexAttribArray(0);
-		glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)offsetof(Vertex, Normal));
-		glEnableVertexAttribArray(1);
-		glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)offsetof(Vertex, TexCoords));
-		glEnableVertexAttribArray(2);
+			glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)offsetof(Vertex, Position));
+			glEnableVertexAttribArray(0);
+			glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)offsetof(Vertex, Normal));
+			glEnableVertexAttribArray(1);
+			glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)offsetof(Vertex, TexCoords));
+			glEnableVertexAttribArray(2);
+			glVertexAttribPointer(8, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)offsetof(Vertex, Color));
+			glEnableVertexAttribArray(8);
 
-		glBindVertexArray(0);
+			glBindVertexArray(0);
+		}
 	}
 
 	void Shape::DestroySphereMesh() {
@@ -195,7 +220,17 @@ namespace Boidsish {
 		shader->setFloat("objectAlpha", 1.0f);
 
 		glBindVertexArray(sphere_vao_);
-		glDrawElements(GL_TRIANGLES, sphere_vertex_count_, GL_UNSIGNED_INT, 0);
+		if (sphere_alloc_.valid) {
+			glDrawElementsBaseVertex(
+				GL_TRIANGLES,
+				sphere_vertex_count_,
+				GL_UNSIGNED_INT,
+				(void*)(uintptr_t)(sphere_alloc_.first_index * sizeof(unsigned int)),
+				sphere_alloc_.base_vertex
+			);
+		} else {
+			glDrawElements(GL_TRIANGLES, sphere_vertex_count_, GL_UNSIGNED_INT, 0);
+		}
 		glBindVertexArray(0);
 	}
 

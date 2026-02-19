@@ -66,6 +66,7 @@
 #include "ui/SceneWidget.h"
 #include "ui/hud_widget.h"
 #include "visual_effects.h"
+#include <mutex>
 #include <GL/glew.h>
 #include <GLFW/glfw3.h>
 #include <glm/ext/matrix_projection.hpp>
@@ -192,20 +193,152 @@ namespace Boidsish {
 		}
 	}
 
-	// OpenGL indirect draw command structures
-	struct DrawElementsIndirectCommand {
-		GLuint count;
-		GLuint instanceCount;
-		GLuint firstIndex;
-		GLint  baseVertex;
-		GLuint baseInstance;
-	};
 
-	struct DrawArraysIndirectCommand {
-		GLuint count;
-		GLuint instanceCount;
-		GLuint first;
-		GLuint baseInstance;
+	/**
+	 * @brief Concrete implementation of the Megabuffer interface using AZDO principles.
+	 */
+	class MegabufferImpl : public Megabuffer {
+	public:
+		MegabufferImpl(size_t max_vertices, size_t max_indices) {
+			vbo_ = std::make_unique<PersistentBuffer<Vertex>>(GL_ARRAY_BUFFER, max_vertices, 3);
+			ebo_ = std::make_unique<PersistentBuffer<uint32_t>>(GL_ELEMENT_ARRAY_BUFFER, max_indices, 3);
+
+			glGenVertexArrays(1, &vao_);
+			glBindVertexArray(vao_);
+
+			glBindBuffer(GL_ARRAY_BUFFER, vbo_->GetBufferId());
+			glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ebo_->GetBufferId());
+
+			// Set up attributes (matches Vertex)
+			glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)offsetof(Vertex, Position));
+			glEnableVertexAttribArray(0);
+			glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)offsetof(Vertex, Normal));
+			glEnableVertexAttribArray(1);
+			glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)offsetof(Vertex, TexCoords));
+			glEnableVertexAttribArray(2);
+			glVertexAttribPointer(8, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)offsetof(Vertex, Color));
+			glEnableVertexAttribArray(8);
+
+			glBindVertexArray(0);
+
+			static_v_limit_ = Constants::Class::Megabuffer::StaticVertexLimit();
+			static_i_limit_ = Constants::Class::Megabuffer::StaticIndexLimit();
+
+			dynamic_v_start_ = static_cast<uint32_t>(static_v_limit_);
+			dynamic_i_start_ = static_cast<uint32_t>(static_i_limit_);
+
+			dynamic_v_ptr_ = dynamic_v_start_;
+			dynamic_i_ptr_ = dynamic_i_start_;
+		}
+
+		~MegabufferImpl() override {
+			if (vao_)
+				glDeleteVertexArrays(1, &vao_);
+		}
+
+		MegabufferAllocation AllocateStatic(uint32_t vertex_count, uint32_t index_count) override {
+			std::lock_guard<std::mutex> lock(static_mutex_);
+			if (static_v_ptr_ + vertex_count > static_v_limit_ || static_i_ptr_ + index_count > static_i_limit_) {
+				return {};
+			}
+
+			MegabufferAllocation alloc;
+			alloc.base_vertex = static_cast<uint32_t>(static_v_ptr_);
+			alloc.first_index = static_cast<uint32_t>(static_i_ptr_);
+			alloc.vertex_count = vertex_count;
+			alloc.index_count = index_count;
+			alloc.valid = true;
+
+			static_v_ptr_ += vertex_count;
+			static_i_ptr_ += index_count;
+
+			return alloc;
+		}
+
+		MegabufferAllocation AllocateDynamic(uint32_t vertex_count, uint32_t index_count) override {
+			uint32_t v_offset = dynamic_v_ptr_.fetch_add(vertex_count);
+			uint32_t i_offset = dynamic_i_ptr_.fetch_add(index_count);
+
+			if (v_offset + vertex_count > vbo_->GetElementCount() || i_offset + index_count > ebo_->GetElementCount()) {
+				return {};
+			}
+
+			MegabufferAllocation alloc;
+			alloc.base_vertex = v_offset;
+			alloc.first_index = i_offset;
+			alloc.vertex_count = vertex_count;
+			alloc.index_count = index_count;
+			alloc.valid = true;
+
+			return alloc;
+		}
+
+		void Upload(
+			const MegabufferAllocation& alloc,
+			const Vertex*               vertices,
+			uint32_t                    v_count,
+			const uint32_t*             indices = nullptr,
+			uint32_t                    i_count = 0
+		) override {
+			if (!alloc.valid)
+				return;
+
+			// If it's a static allocation (base_vertex < dynamic_v_start_), upload to ALL 3 segments.
+			// Otherwise upload only to the current frame's segment.
+
+			bool is_static = (alloc.base_vertex < dynamic_v_start_);
+
+			if (is_static) {
+				for (int i = 0; i < 3; ++i) {
+					Vertex* v_ptr = vbo_->GetFullBufferPtr() + (i * vbo_->GetElementCount()) + alloc.base_vertex;
+					memcpy(v_ptr, vertices, v_count * sizeof(Vertex));
+
+					if (indices && i_count > 0) {
+						uint32_t* i_ptr = ebo_->GetFullBufferPtr() + (i * ebo_->GetElementCount()) + alloc.first_index;
+						memcpy(i_ptr, indices, i_count * sizeof(uint32_t));
+					}
+				}
+			} else {
+				// Dynamic upload to current frame
+				Vertex* v_ptr = vbo_->GetFrameDataPtr() + alloc.base_vertex;
+				memcpy(v_ptr, vertices, v_count * sizeof(Vertex));
+
+				if (indices && i_count > 0) {
+					uint32_t* i_ptr = ebo_->GetFrameDataPtr() + alloc.first_index;
+					memcpy(i_ptr, indices, i_count * sizeof(uint32_t));
+				}
+			}
+		}
+
+		uint32_t GetVAO() const override { return vao_; }
+
+		void AdvanceFrame() {
+			vbo_->AdvanceFrame();
+			ebo_->AdvanceFrame();
+
+			// Reset dynamic pointers for the new frame
+			dynamic_v_ptr_ = dynamic_v_start_;
+			dynamic_i_ptr_ = dynamic_i_start_;
+		}
+
+		uint32_t GetVertexFrameOffset() const { return vbo_->GetCurrentBufferIndex() * vbo_->GetElementCount(); }
+		uint32_t GetIndexFrameOffset() const { return ebo_->GetCurrentBufferIndex() * ebo_->GetElementCount(); }
+
+	private:
+		std::unique_ptr<PersistentBuffer<Vertex>>   vbo_;
+		std::unique_ptr<PersistentBuffer<uint32_t>> ebo_;
+		GLuint                                      vao_ = 0;
+
+		size_t static_v_ptr_ = 0;
+		size_t static_i_ptr_ = 0;
+		size_t static_v_limit_;
+		size_t static_i_limit_;
+		std::mutex static_mutex_;
+
+		std::atomic<uint32_t> dynamic_v_ptr_;
+		std::atomic<uint32_t> dynamic_i_ptr_;
+		uint32_t              dynamic_v_start_;
+		uint32_t              dynamic_i_start_;
 	};
 
 	struct Visualizer::VisualizerImpl {
@@ -246,6 +379,8 @@ namespace Boidsish {
 		std::shared_ptr<ITerrainGenerator>    terrain_generator;
 		std::shared_ptr<TerrainRenderManager> terrain_render_manager;
 		std::unique_ptr<TrailRenderManager>   trail_render_manager;
+
+		std::unique_ptr<MegabufferImpl> megabuffer;
 
 		// Persistent buffers for MDI
 		std::unique_ptr<PersistentBuffer<DrawElementsIndirectCommand>> indirect_elements_buffer;
@@ -367,6 +502,7 @@ namespace Boidsish {
 
 		VisualizerImpl(Visualizer* p, int w, int h, const char* title): parent(p), width(w), height(h) {
 			RegisterShaderConstants();
+
 			ConfigManager::GetInstance().Initialize(title);
 			enable_hdr_ = ConfigManager::GetInstance().GetAppSettingBool("enable_hdr", false);
 			width = ConfigManager::GetInstance().GetAppSettingInt("window_width", w);
@@ -520,17 +656,22 @@ namespace Boidsish {
 
 			// Initialize persistent buffers for MDI
 			// Capacity: 16384 commands/uniforms per frame (triple buffered)
+			megabuffer = std::make_unique<MegabufferImpl>(
+				Constants::Class::Megabuffer::MaxVertices(),
+				Constants::Class::Megabuffer::MaxIndices()
+			);
+
 			indirect_elements_buffer = std::make_unique<PersistentBuffer<DrawElementsIndirectCommand>>(
 				GL_DRAW_INDIRECT_BUFFER,
-				16384
+				65536
 			);
 			indirect_arrays_buffer = std::make_unique<PersistentBuffer<DrawArraysIndirectCommand>>(
 				GL_DRAW_INDIRECT_BUFFER,
-				16384
+				65536
 			);
 			uniforms_ssbo = std::make_unique<PersistentBuffer<CommonUniforms>>(
 				GL_SHADER_STORAGE_BUFFER,
-				16384
+				65536
 			);
 			frustum_ssbo = std::make_unique<PersistentBuffer<FrustumDataGPU>>(
 				GL_UNIFORM_BUFFER,
@@ -650,9 +791,9 @@ namespace Boidsish {
 				);
 			}
 
-			Shape::InitSphereMesh();
-			Line::InitLineMesh();
-			CheckpointRingShape::InitQuadMesh();
+			Shape::InitSphereMesh(megabuffer.get());
+			Line::InitLineMesh(megabuffer.get());
+			CheckpointRingShape::InitQuadMesh(megabuffer.get());
 
 			if (postprocess_shader_ || blur_shader) {
 				float blur_quad_vertices[] = {
@@ -1225,11 +1366,14 @@ namespace Boidsish {
 			DrawArraysIndirectCommand*   arrays_cmd_ptr = indirect_arrays_buffer->GetFrameDataPtr();
 			CommonUniforms*              uniforms_ptr = uniforms_ssbo->GetFrameDataPtr();
 
-			uint32_t max_elements = 16384; // Buffer capacity
+			uint32_t max_elements = 65536; // Buffer capacity
 			uint32_t frame_element_offset = uniforms_ssbo->GetCurrentBufferIndex() * max_elements;
 
-			// Bind Uniforms SSBO to binding point 2
-			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 2, uniforms_ssbo->GetBufferId());
+			uint32_t vertex_frame_offset = megabuffer->GetVertexFrameOffset();
+			uint32_t index_frame_offset = megabuffer->GetIndexFrameOffset();
+
+			// We bind SSBO per-batch using glBindBufferRange to set the base uniform index
+			// glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 2, uniforms_ssbo->GetBufferId());
 
 			struct Batch {
 				ShaderHandle                           shader_handle;
@@ -1247,41 +1391,38 @@ namespace Boidsish {
 			std::vector<Batch> batches;
 
 			auto can_batch = [&](const RenderPacket& a, const RenderPacket& b) {
-				if (shader_override.has_value()) {
-					// When overriding shader, we only care about VAO and draw state
-					if (a.vao != b.vao)
-						return false;
-					if (a.draw_mode != b.draw_mode)
-						return false;
-					if (a.index_type != b.index_type)
-						return false;
-					if ((a.ebo > 0) != (b.ebo > 0))
-						return false;
-					return true;
-				}
-
-				if (a.shader_id != b.shader_id)
-					return false;
+				// 1. Mandatory breaks: VAO and Draw State
 				if (a.vao != b.vao)
 					return false;
 				if (a.draw_mode != b.draw_mode)
 					return false;
 				if (a.index_type != b.index_type)
 					return false;
-				if ((a.ebo > 0) != (b.ebo > 0))
+				if ((a.index_count > 0) != (b.index_count > 0))
 					return false;
-				// Note: is_instanced check removed - attribute-based instancing is deprecated
-				// since InstanceManager was removed. All shapes now use uniform model matrix.
+
+				// 2. Shader breaks (unless overridden)
+				if (!shader_override.has_value()) {
+					if (a.shader_id != b.shader_id)
+						return false;
+				}
+
+				// 3. Uniform flags that affect vertex processing
 				if (a.uniforms.is_colossal != b.uniforms.is_colossal)
 					return false;
 				if (a.uniforms.use_ssbo_instancing != b.uniforms.use_ssbo_instancing)
 					return false;
-				if (a.textures.size() != b.textures.size())
-					return false;
-				for (size_t i = 0; i < a.textures.size(); ++i) {
-					if (a.textures[i].id != b.textures[i].id)
+
+				// 4. Textures (only if not a shadow pass)
+				if (!is_shadow_pass) {
+					if (a.textures.size() != b.textures.size())
 						return false;
+					for (size_t i = 0; i < a.textures.size(); ++i) {
+						if (a.textures[i].id != b.textures[i].id)
+							return false;
+					}
 				}
+
 				return true;
 			};
 
@@ -1298,7 +1439,7 @@ namespace Boidsish {
 				if (packet.shader_id == 0 || mdi_uniform_count >= max_elements)
 					continue;
 
-				bool is_indexed = (packet.ebo > 0);
+				bool is_indexed = (packet.index_count > 0);
 
 				// Safety check for command buffer capacity
 				if (is_indexed && mdi_elements_count >= max_elements)
@@ -1327,19 +1468,21 @@ namespace Boidsish {
 				auto& current_batch = batches.back();
 				current_batch.command_count++;
 
+				bool uses_megabuffer = (packet.vao == megabuffer->GetVAO());
+
 				if (is_indexed) {
 					DrawElementsIndirectCommand cmd{};
 					cmd.count = packet.index_count;
 					cmd.instanceCount = std::max(1, packet.instance_count);
-					cmd.firstIndex = 0;
-					cmd.baseVertex = 0;
+					cmd.firstIndex = packet.first_index + (uses_megabuffer ? index_frame_offset : 0);
+					cmd.baseVertex = static_cast<int32_t>(packet.base_vertex + (uses_megabuffer ? vertex_frame_offset : 0));
 					cmd.baseInstance = 0;
 					elements_cmd_ptr[mdi_elements_count++] = cmd;
 				} else {
 					DrawArraysIndirectCommand cmd{};
 					cmd.count = packet.vertex_count;
 					cmd.instanceCount = std::max(1, packet.instance_count);
-					cmd.first = 0;
+					cmd.first = packet.base_vertex + (uses_megabuffer ? vertex_frame_offset : 0);
 					cmd.baseInstance = 0;
 					arrays_cmd_ptr[mdi_arrays_count++] = cmd;
 				}
@@ -1348,7 +1491,8 @@ namespace Boidsish {
 				mdi_uniform_count++;
 			}
 
-			glMemoryBarrier(GL_CLIENT_MAPPED_BUFFER_BARRIER_BIT);
+			// Ensure all CPU writes to persistent mapped buffers are visible to GPU
+			glMemoryBarrier(GL_CLIENT_MAPPED_BUFFER_BARRIER_BIT | GL_COMMAND_BARRIER_BIT | GL_SHADER_STORAGE_BARRIER_BIT);
 
 			// 2. Execute batches
 			unsigned int current_vao = 0;
@@ -1381,7 +1525,15 @@ namespace Boidsish {
 				}
 
 				s->setBool("uUseMDI", true);
-				s->setInt("uBaseUniformIndex", batch.base_uniform_index);
+
+				// Bind SSBO for this batch's uniforms (replaces uBaseUniformIndex)
+				glBindBufferRange(
+					GL_SHADER_STORAGE_BUFFER,
+					2,
+					uniforms_ssbo->GetBufferId(),
+					batch.base_uniform_index * sizeof(CommonUniforms),
+					batch.command_count * sizeof(CommonUniforms)
+				);
 
 				if (!is_shadow_pass) {
 					for (size_t i = 0; i < batch.textures.size(); ++i) {
@@ -2270,6 +2422,7 @@ namespace Boidsish {
 		impl->indirect_arrays_buffer->AdvanceFrame();
 		impl->uniforms_ssbo->AdvanceFrame();
 		impl->frustum_ssbo->AdvanceFrame();
+		impl->megabuffer->AdvanceFrame();
 
 		int current_idx = impl->uniforms_ssbo->GetCurrentBufferIndex(); // I need to add this method or keep track
 		if (impl->mdi_fences[current_idx]) {
@@ -2416,10 +2569,11 @@ namespace Boidsish {
 		context.far_plane = 1000.0f * std::max(1.0f, world_scale);
 		context.frustum = Frustum::FromViewProjection(view, impl->projection);
 		context.shader_table = &impl->shader_table;
+		context.megabuffer = impl->megabuffer.get();
 
 		// --- Resource Preparation (Main Thread) ---
 		for (const auto& shape : impl->shapes) {
-			shape->PrepareResources();
+			shape->PrepareResources(impl->megabuffer.get());
 		}
 
 		const size_t num_shapes = impl->shapes.size();
@@ -2444,7 +2598,15 @@ namespace Boidsish {
 							glm::vec3 world_pos = glm::vec3(packet.uniforms.model[3]);
 							float normalized_depth = context.CalculateNormalizedDepth(world_pos);
 							RenderLayer layer = (packet.uniforms.color.a < 0.99f) ? RenderLayer::Transparent : RenderLayer::Opaque;
-							packet.sort_key = CalculateSortKey(layer, packet.shader_handle, packet.material_handle, normalized_depth);
+							packet.sort_key = CalculateSortKey(
+								layer,
+								packet.shader_handle,
+								packet.vao,
+								packet.draw_mode,
+								packet.index_count > 0,
+								packet.material_handle,
+								normalized_depth
+							);
 							local_packets.push_back(std::move(packet));
 						}
 					} else {

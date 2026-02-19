@@ -1,4 +1,5 @@
 #version 460 core
+#extension GL_ARB_shader_draw_parameters : enable
 
 layout(location = 0) in vec3 aPos;
 
@@ -9,13 +10,19 @@ layout(std430, binding = 2) buffer UniformsSSBO {
 };
 
 uniform bool uUseMDI = false;
-uniform int  uBaseUniformIndex = 0;
 uniform mat4 lightSpaceMatrix;
 uniform mat4 model;
 
 void main() {
-	int  vUniformIndex = uUseMDI ? (uBaseUniformIndex + gl_DrawID) : -1;
-	mat4 current_model = uUseMDI ? uniforms_data[vUniformIndex].model : model;
+#ifdef GL_ARB_shader_draw_parameters
+	int drawID = gl_DrawIDARB;
+#else
+	int drawID = gl_DrawID;
+#endif
+
+	int  vUniformIndex = uUseMDI ? drawID : -1;
+	bool use_ssbo = uUseMDI && vUniformIndex >= 0;
+	mat4 current_model = use_ssbo ? uniforms_data[vUniformIndex].model : model;
 
 	gl_Position = lightSpaceMatrix * current_model * vec4(aPos, 1.0);
 }

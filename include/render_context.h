@@ -6,6 +6,8 @@
 
 namespace Boidsish {
 
+    class Megabuffer;
+
     /**
      * @brief Holds frame-level rendering state and context for geometry generation.
      * This information is generally available to all shapes during packet generation.
@@ -18,6 +20,7 @@ namespace Boidsish {
         float     time = 0.0f;
         Frustum   frustum;
         const ShaderTable* shader_table = nullptr;
+        Megabuffer* megabuffer = nullptr;
 
         // Optional: helper to project a world position to screen space or calculate depth
         float CalculateNormalizedDepth(const glm::vec3& world_pos) const {
