@@ -12,6 +12,14 @@ namespace Boidsish {
 
 	// This struct is mirrored in the compute shader.
 	// It must match the layout and padding there.
+	struct ChunkInfo {
+		glm::vec2 worldOffset;
+		float     slice;
+		float     size;
+	};
+
+	// This struct is mirrored in the compute shader.
+	// It must match the layout and padding there.
 	struct Emitter {
 		glm::vec3 position;
 		int       style;
@@ -32,7 +40,13 @@ namespace Boidsish {
 		// Returns true if fire effects are available (compute shader compiled successfully)
 		bool IsAvailable() const;
 
-		void Update(float delta_time, float time);
+		void Update(
+			float                         delta_time,
+			float                         time,
+			const std::vector<glm::vec4>& chunk_info = {},
+			GLuint                        heightmap_texture = 0,
+			GLuint                        curl_noise_texture = 0
+		);
 		void Render(
 			const glm::mat4& view,
 			const glm::mat4& projection,
@@ -65,6 +79,7 @@ namespace Boidsish {
 		GLuint particle_buffer_{0};
 		GLuint emitter_buffer_{0};
 		GLuint indirection_buffer_{0};
+		GLuint terrain_chunk_buffer_{0};
 		GLuint dummy_vao_{0};
 
 		bool   initialized_{false};

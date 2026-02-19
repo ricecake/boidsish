@@ -17,11 +17,14 @@ namespace Boidsish {
 
 		GLuint GetNoiseTexture() const { return noise_texture_; }
 
+		GLuint GetCurlTexture() const { return curl_noise_texture_; }
+
 		void Bind(GLuint unit) const;
 
 	private:
 		std::unique_ptr<ComputeShader> compute_shader_;
 		GLuint                         noise_texture_ = 0;
+		GLuint                         curl_noise_texture_ = 0;
 		int                            size_ = 64; // 64x64x64
 	};
 
