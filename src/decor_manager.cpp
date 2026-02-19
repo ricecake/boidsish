@@ -47,9 +47,8 @@ namespace Boidsish {
 		glGenBuffers(1, &chunk_status_ssbo_);
 		glBindBuffer(GL_SHADER_STORAGE_BUFFER, chunk_status_ssbo_);
 		// Store 2 uints per chunk: lastVersion and lastWasVisible
-		glBufferData(GL_SHADER_STORAGE_BUFFER, kMaxChunks * 2 * sizeof(uint32_t), nullptr, GL_DYNAMIC_DRAW);
-		uint32_t zero = 0;
-		glClearBufferData(GL_SHADER_STORAGE_BUFFER, GL_R32UI, GL_RED_INTEGER, GL_UNSIGNED_INT, &zero);
+		std::vector<uint32_t> zeros(kMaxChunks * 2, 0);
+		glBufferData(GL_SHADER_STORAGE_BUFFER, zeros.size() * sizeof(uint32_t), zeros.data(), GL_DYNAMIC_DRAW);
 
 		initialized_ = true;
 	}
@@ -84,10 +83,9 @@ namespace Boidsish {
 			glBufferSubData(GL_SHADER_STORAGE_BUFFER, 0, old_data.size(), old_data.data());
 		}
 		// Clear the new portion
-		uint32_t zero = 0;
+		std::vector<uint32_t> zeros(kMaxChunks * 2, 0);
 		size_t offset = decor_types_.size() * kMaxChunks * 2 * sizeof(uint32_t);
-		size_t size = kMaxChunks * 2 * sizeof(uint32_t);
-		glClearBufferSubData(GL_SHADER_STORAGE_BUFFER, GL_R32UI, offset, size, GL_RED_INTEGER, GL_UNSIGNED_INT, &zero);
+		glBufferSubData(GL_SHADER_STORAGE_BUFFER, offset, zeros.size() * sizeof(uint32_t), zeros.data());
 
 		DecorType type;
 		type.model = std::make_shared<Model>(model_path);
@@ -234,6 +232,17 @@ namespace Boidsish {
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, chunk_data_ssbo_);
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 3, chunk_status_ssbo_);
 
+		// Find the highest texture slice index that is active
+		int max_slice = -1;
+		for (const auto& info : export_info) {
+			if (info.texture_slice > max_slice && info.texture_slice < kMaxChunks) {
+				max_slice = info.texture_slice;
+			}
+		}
+
+		// If no chunks are active, nothing to do
+		if (max_slice < 0) return;
+
 		for (size_t i = 0; i < decor_types_.size(); ++i) {
 			auto& type = decor_types_[i];
 
@@ -254,10 +263,10 @@ namespace Boidsish {
 			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, type.instances_ssbo);
 			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 2, type.indirect_commands_ssbo);
 
-			// Dispatch compute shader for ALL chunks in parallel
-			// Each chunk is processed by one workgroup of 32x32 threads (1024 points per chunk)
+			// Dispatch compute shader for ALL chunks up to max_slice
+			// Each chunk is processed by one workgroup of 16x16 threads, with each thread processing 4 points
 			// The Z dimension of the dispatch corresponds to the chunk index
-			glDispatchCompute(1, 1, kMaxChunks);
+			glDispatchCompute(1, 1, (GLuint)(max_slice + 1));
 
 			// Memory barrier after each type to ensure all writes complete
 			glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
