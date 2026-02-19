@@ -2,6 +2,7 @@
 // Requires a 3D texture sampler named 'u_noiseTexture' bound to some unit.
 
 uniform sampler3D u_noiseTexture;
+uniform sampler3D u_curlTexture;
 
 // R: Simplex 3D
 float fastSimplex3d(vec3 p) {
@@ -33,4 +34,14 @@ float fastTextureFbm(vec3 p, int octaves) {
 		amplitude *= 0.5;
 	}
 	return value;
+}
+
+// Curl Noise lookup
+vec3 fastCurl3d(vec3 p) {
+	return texture(u_curlTexture, p).rgb;
+}
+
+// FBM Curl magnitude lookup
+float fastFbmCurl3d(vec3 p) {
+	return texture(u_curlTexture, p).a;
 }

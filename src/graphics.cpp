@@ -2672,7 +2672,13 @@ namespace Boidsish {
 
 		// Update clone manager
 		impl->clone_manager->Update(impl->simulation_time, impl->camera.pos());
-		impl->fire_effect_manager->Update(impl->input_state.delta_time, impl->simulation_time);
+		impl->fire_effect_manager->Update(
+			impl->input_state.delta_time,
+			impl->simulation_time,
+			impl->terrain_render_manager ? impl->terrain_render_manager->GetChunkInfo() : std::vector<glm::vec4>{},
+			impl->terrain_render_manager ? impl->terrain_render_manager->GetHeightmapTexture() : 0,
+			impl->noise_manager ? impl->noise_manager->GetCurlTexture() : 0
+		);
 		impl->mesh_explosion_manager->Update(impl->input_state.delta_time, impl->simulation_time);
 		impl->sound_effect_manager->Update(impl->input_state.delta_time);
 		impl->shockwave_manager->Update(impl->input_state.delta_time);

@@ -30,6 +30,8 @@ namespace Boidsish {
 
 		float GetMaxHealth() const { return 100.0f; }
 
+		void AddHealth(float amount) { health_ = std::min(health_ + amount, GetMaxHealth()); }
+
 		bool IsChaffActive() const { return chaff_timer_ > 0.0f; }
 
 	private:
@@ -41,8 +43,8 @@ namespace Boidsish {
 		bool                                       fire_left = true;
 		bool                                       weapon_toggle_ = false;
 		int                                        damage_pending_ = 0;
-		float                                      health = 100.0f;
-		float                                      shield = 100.0f;
+		float                                      health_ = 100.0f;
+		float                                      shield_ = 100.0f;
 		float                                      chaff_timer_ = 0.0f;
 		PlaneState                                 state_ = PlaneState::ALIVE;
 		int                                        beam_id_ = -1;

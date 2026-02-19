@@ -40,6 +40,9 @@ namespace Boidsish {
 		if (indirection_buffer_ != 0) {
 			glDeleteBuffers(1, &indirection_buffer_);
 		}
+		if (terrain_chunk_buffer_ != 0) {
+			glDeleteBuffers(1, &terrain_chunk_buffer_);
+		}
 		if (dummy_vao_ != 0) {
 			glDeleteVertexArrays(1, &dummy_vao_);
 		}
@@ -80,6 +83,11 @@ namespace Boidsish {
 		glGenBuffers(1, &indirection_buffer_);
 		glBindBuffer(GL_SHADER_STORAGE_BUFFER, indirection_buffer_);
 		glBufferData(GL_SHADER_STORAGE_BUFFER, kMaxParticles * sizeof(int), nullptr, GL_DYNAMIC_DRAW);
+
+		glGenBuffers(1, &terrain_chunk_buffer_);
+		glBindBuffer(GL_SHADER_STORAGE_BUFFER, terrain_chunk_buffer_);
+		// Pre-allocate for 1024 chunks as a reasonable default
+		glBufferData(GL_SHADER_STORAGE_BUFFER, 1024 * sizeof(glm::vec4), nullptr, GL_DYNAMIC_DRAW);
 
 		glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
 
@@ -142,7 +150,13 @@ namespace Boidsish {
 		}
 	}
 
-	void FireEffectManager::Update(float delta_time, float time) {
+	void FireEffectManager::Update(
+		float                         delta_time,
+		float                         time,
+		const std::vector<glm::vec4>& chunk_info,
+		GLuint                        heightmap_texture,
+		GLuint                        curl_noise_texture
+	) {
 		std::lock_guard<std::mutex> lock(mutex_);
 		if (!initialized_ || !compute_shader_ || !compute_shader_->isValid()) {
 			return;
@@ -211,15 +225,39 @@ namespace Boidsish {
 			particle_to_emitter_map_.data()
 		);
 
+		if (!chunk_info.empty()) {
+			glBindBuffer(GL_SHADER_STORAGE_BUFFER, terrain_chunk_buffer_);
+			glBufferData(
+				GL_SHADER_STORAGE_BUFFER,
+				chunk_info.size() * sizeof(glm::vec4),
+				chunk_info.data(),
+				GL_DYNAMIC_DRAW
+			);
+		}
+
 		// --- Dispatch Compute Shader ---
 		compute_shader_->use();
 		compute_shader_->setFloat("u_delta_time", delta_time);
 		compute_shader_->setFloat("u_time", time_);
 		compute_shader_->setInt("u_num_emitters", emitters.size());
+		compute_shader_->setInt("u_num_chunks", static_cast<int>(chunk_info.size()));
 
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, particle_buffer_);
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, emitter_buffer_);
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 2, indirection_buffer_);
+		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 3, terrain_chunk_buffer_);
+
+		if (heightmap_texture != 0) {
+			glActiveTexture(GL_TEXTURE7);
+			glBindTexture(GL_TEXTURE_2D_ARRAY, heightmap_texture);
+			compute_shader_->setInt("u_heightmapArray", 7);
+		}
+
+		if (curl_noise_texture != 0) {
+			glActiveTexture(GL_TEXTURE6);
+			glBindTexture(GL_TEXTURE_3D, curl_noise_texture);
+			compute_shader_->setInt("u_curlTexture", 6);
+		}
 
 		// Dispatch enough groups to cover all particles
 		glDispatchCompute((kMaxParticles / Constants::Class::Particles::ComputeGroupSize()) + 1, 1, 1);
@@ -230,6 +268,7 @@ namespace Boidsish {
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, 0);
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, 0);
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 2, 0);
+		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 3, 0);
 	}
 
 	void FireEffectManager::_UpdateParticleAllocation() {

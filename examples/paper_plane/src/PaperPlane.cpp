@@ -53,7 +53,7 @@ namespace Boidsish {
 			return;
 		}
 
-		if (state_ == PlaneState::ALIVE && health <= 0) {
+		if (state_ == PlaneState::ALIVE && health_ <= 0) {
 			state_ = PlaneState::DYING;
 		}
 
@@ -153,7 +153,7 @@ namespace Boidsish {
 		auto [height, norm] = handler.vis->GetTerrainPropertiesAtPoint(pos.x, pos.z);
 		if (pos.y < height) {
 			if (state_ == PlaneState::DYING) {
-				if (health < -10.0f) {
+				if (health_ < -10.0f) {
 					state_ = PlaneState::DEAD;
 					handler.EnqueueVisualizerAction(
 						[&handler, pos = GetPosition().Toglm(), effect = dying_fire_effect_]() {
@@ -389,7 +389,7 @@ namespace Boidsish {
 
 	void PaperPlane::OnHit(const EntityHandler& handler, float damage) {
 		(void)handler;
-		health -= damage;
+		health_ -= damage;
 		damage_pending_++;
 		if (state_ == PlaneState::DYING) {
 			spiral_intensity_ += 1.0f;
@@ -397,10 +397,10 @@ namespace Boidsish {
 	}
 
 	void PaperPlane::TriggerDamage() {
-		health -= 5;
+		health_ -= 5;
 		damage_pending_++;
 		if (state_ == PlaneState::DYING) {
-			spiral_intensity_ += (std::abs(health) - 1) / (std::max(std::abs(health), 1.0f));
+			spiral_intensity_ += (std::abs(health_) - 1) / (std::max(std::abs(health_), 1.0f));
 		}
 	}
 
@@ -413,11 +413,11 @@ namespace Boidsish {
 	}
 
 	float PaperPlane::GetHealth() const {
-		return health;
+		return health_;
 	}
 
 	float PaperPlane::GetShield() const {
-		return shield;
+		return shield_;
 	}
 
 } // namespace Boidsish
