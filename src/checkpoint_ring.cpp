@@ -168,6 +168,8 @@ namespace Boidsish {
 							if (callback_) {
 								callback_(distFromCenter, entity);
 							}
+						} else {
+							status_ = CheckpointStatus::MISSED;
 						}
 						// IRRELEVANT now that it has been passed
 						handler.QueueRemoveEntity(id_);

@@ -71,7 +71,7 @@ int main() {
 		visualizer->AddHudCompass();
 		auto scoreIndicator = visualizer->AddHudScore();
 		handler.SetScoreIndicator(scoreIndicator);
-		auto streakIndicator = visualizer->AddHudNumber(0.0f, "Streak", HudAlignment::TOP_RIGHT, {-10, 80}, 0);
+		auto streakIndicator = visualizer->AddHudNumber(0.0f, "Streak", HudAlignment::TOP_RIGHT, {-160, 50}, 0);
 		handler.SetStreakIndicator(streakIndicator);
 		visualizer->AddHudLocation();
 

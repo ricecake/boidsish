@@ -22,7 +22,7 @@ namespace Boidsish {
 		INVISIBLE = 6
 	};
 
-	enum class CheckpointStatus { ACTIVE, COLLECTED, EXPIRED, PRUNED, OUT_OF_RANGE };
+	enum class CheckpointStatus { ACTIVE, COLLECTED, MISSED, EXPIRED, PRUNED, OUT_OF_RANGE };
 
 	class CheckpointRingShape: public Shape {
 	public:

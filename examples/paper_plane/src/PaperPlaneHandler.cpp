@@ -163,6 +163,10 @@ namespace Boidsish {
 				}
 				break;
 			}
+			case CheckpointStatus::MISSED:
+				streak_ = 0;
+				last_collected_sequence_id_ = ring->GetSequenceId();
+				break;
 			case CheckpointStatus::EXPIRED:
 			case CheckpointStatus::OUT_OF_RANGE:
 				if (ring->GetSequenceId() > last_collected_sequence_id_) {
@@ -170,6 +174,8 @@ namespace Boidsish {
 				}
 				break;
 			case CheckpointStatus::PRUNED:
+				last_collected_sequence_id_ = std::max(last_collected_sequence_id_, ring->GetSequenceId());
+				break;
 			default:
 				// Do nothing, keep streak
 				break;
