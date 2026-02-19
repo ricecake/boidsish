@@ -22,6 +22,8 @@ namespace Boidsish {
 		INVISIBLE = 6
 	};
 
+	enum class CheckpointStatus { ACTIVE, COLLECTED, MISSED, EXPIRED, PRUNED, OUT_OF_RANGE };
+
 	class CheckpointRingShape: public Shape {
 	public:
 		CheckpointRingShape(float radius, CheckpointStyle style);
@@ -66,7 +68,16 @@ namespace Boidsish {
 	public:
 		using Callback = std::function<void(float, std::shared_ptr<EntityBase>)>;
 
-		CheckpointRing(int id, float radius, CheckpointStyle style, Callback callback);
+		CheckpointRing(
+			int                         id,
+			float                       radius,
+			CheckpointStyle             style,
+			Callback                    callback,
+			glm::vec3                   position = glm::vec3(0.0f),
+			glm::quat                   orientation = glm::quat(1.0f, 0.0f, 0.0f, 0.0f),
+			std::shared_ptr<EntityBase> initial_tracked = nullptr,
+			int                         sequence_id = -1
+		);
 
 		void RegisterEntity(std::shared_ptr<EntityBase> entity);
 		void UpdateEntity(const EntityHandler& handler, float time, float delta_time) override;
@@ -76,10 +87,18 @@ namespace Boidsish {
 
 		float GetAge() const { return age_; }
 
+		void SetStatus(CheckpointStatus status) { status_ = status; }
+
+		CheckpointStatus GetStatus() const { return status_; }
+
+		int GetSequenceId() const { return sequence_id_; }
+
 	private:
-		Callback callback_;
-		float    lifespan_;
-		float    age_ = 0.0f;
+		Callback         callback_;
+		float            lifespan_;
+		float            age_ = 0.0f;
+		CheckpointStatus status_ = CheckpointStatus::ACTIVE;
+		int              sequence_id_ = -1;
 
 		struct TrackedEntity {
 			int                       id;
