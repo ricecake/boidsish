@@ -6,7 +6,8 @@ struct Particle {
 	vec4 vel; // Velocity (w is unused)
 	int  style;
 	int  emitter_index; // Index of the emitter that spawned this particle
-	vec2 _padding;      // Explicit padding to align to 16 bytes
+	int  emitter_id;    // Unique ID of the emitter instance
+	int  _padding;      // Explicit padding to align to 16 bytes
 };
 
 // Must match the C++ Emitter struct in fire_effect_manager.h
@@ -16,7 +17,7 @@ struct Emitter {
 	vec3  direction;
 	int   is_active;
 	vec3  velocity;
-	float _padding2;
+	int   id;
 };
 
 layout(std430, binding = 0) buffer ParticleBuffer {
@@ -212,6 +213,7 @@ void main() {
 		}
 
 		p.emitter_index = emitter_index;
+		p.emitter_id = emitter.id;
 		p.style = emitter.style;
 
 		vec2 seed = vec2(float(gid), u_time);
@@ -243,7 +245,8 @@ void main() {
 	// If particle is alive, update it
 	else {
 		int current_assigned_emitter = particle_to_emitter_map[gid];
-		if (p.emitter_index != current_assigned_emitter || p.emitter_index >= u_num_emitters) {
+		if (p.emitter_index != current_assigned_emitter || p.emitter_index >= u_num_emitters ||
+		    p.emitter_id != emitters[p.emitter_index].id || emitters[p.emitter_index].is_active == 0) {
 			p.pos.w = 0.0;
 			particles[gid] = p;
 			return;

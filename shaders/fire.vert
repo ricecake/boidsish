@@ -8,7 +8,8 @@ struct Particle {
 	vec4 vel; // Velocity (w is unused)
 	int  style;
 	int  emitter_index; // Index of the emitter that spawned this particle
-	vec2 _padding;      // Explicit padding to align to 16 bytes
+	int  emitter_id;    // Unique ID of the emitter instance
+	int  _padding;      // Explicit padding to align to 16 bytes
 };
 
 layout(std430, binding = 0) buffer ParticleBuffer {
@@ -22,7 +23,7 @@ struct Emitter {
 	vec3  direction;
 	int   is_active;
 	vec3  velocity;
-	float _padding2;
+	int   id;
 };
 
 layout(std430, binding = 1) buffer EmitterBuffer {

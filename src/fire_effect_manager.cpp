@@ -17,7 +17,8 @@ namespace Boidsish {
 		glm::vec4 vel;
 		int       style;
 		int       emitter_index;
-		glm::vec2 _padding;
+		int       emitter_id;
+		int       _padding;
 	};
 
 	FireEffectManager::FireEffectManager() {}
@@ -195,11 +196,11 @@ namespace Boidsish {
 				     effect->GetDirection(),
 				     1, // is_active
 				     effect->GetVelocity(),
-				     0.0f}
+				     effect->GetId()}
 				);
 			} else {
 				// Add a placeholder for inactive emitters to maintain indexing
-				emitters.push_back({glm::vec3(0), 0, glm::vec3(0), 0, glm::vec3(0), 0.0f});
+				emitters.push_back({glm::vec3(0), 0, glm::vec3(0), 0, glm::vec3(0), 0});
 			}
 		}
 
