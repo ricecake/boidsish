@@ -55,9 +55,9 @@ namespace Boidsish {
 		std::shared_ptr<ITerrainGenerator> terrain_;
 
 		// Physics parameters
-		float mass_ = 2.00f;
-		float drag_ = 0.95f;            // Air resistance
-		float springStiffness_ = 0.50f; // How hard the leash pulls
+		float mass_ = 4.00f;
+		float drag_ = 0.92f;            // Air resistance
+		float springStiffness_ = 0.30f; // How hard the leash pulls
 		float valleySlideStrength_ = 60.0f;
 		float flyHeight_ = 30.0f;
 		float northBiasStrength_ = 15.0f;
