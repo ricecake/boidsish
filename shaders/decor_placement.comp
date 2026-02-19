@@ -2,51 +2,79 @@
 
 #include "helpers/noise.glsl"
 
-layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
+layout(local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
 
+// Binding 0: Instance matrices (fixed offsets per chunk)
 layout(std430, binding = 0) buffer DecorInstances {
 	mat4 instances[];
 };
 
-layout(binding = 0) uniform atomic_uint instanceCount;
+struct ChunkData {
+	vec2  worldOffset;
+	float textureSlice;
+	float chunkSize;
+	float minY;
+	float maxY;
+	uint  version;
+	uint  isActive;
+};
 
-uniform int u_maxInstances;
+// Binding 1: Chunk information
+layout(std430, binding = 1) buffer TerrainChunks {
+	ChunkData chunks[];
+};
 
-// Heightmap texture array from TerrainRenderManager
-// Format: RGBA16F where R=height, G=normal.x, B=normal.y, A=normal.z
+struct DrawElementsIndirectCommand {
+	uint count;
+	uint instanceCount;
+	uint firstIndex;
+	uint baseVertex;
+	uint baseInstance;
+};
+
+// Binding 2: Indirect draw commands
+layout(std430, binding = 2) buffer IndirectCommands {
+	DrawElementsIndirectCommand commands[];
+};
+
+struct ChunkStatus {
+	uint lastVersion;
+	uint lastWasVisible;
+	uint generatedCount;
+	uint padding;
+};
+
+// Binding 3: Persistent status
+layout(std430, binding = 3) buffer TerrainChunkStatus {
+	ChunkStatus statuses[];
+};
+
+shared uint s_instanceCount;
+
 uniform sampler2DArray u_heightmapArray;
 uniform vec2           u_cameraPos;
 uniform float          u_maxTerrainHeight;
+uniform vec4           u_frustumPlanes[6];
+uniform float          u_densityFalloffStart;
+uniform float          u_densityFalloffEnd;
+uniform float          u_maxDecorDistance;
+uniform float          u_minDensity;
+uniform float          u_maxDensity;
+uniform float          u_baseScale;
+uniform float          u_scaleVariance;
+uniform float          u_minHeight;
+uniform float          u_maxHeight;
+uniform float          u_minSlope;
+uniform float          u_maxSlope;
+uniform vec3           u_baseRotation;
+uniform bool           u_randomYaw;
+uniform bool           u_alignToTerrain;
+uniform int            u_typeIndex;
+uniform float          u_worldScale;
+uniform int            u_maxInstancesPerChunk;
+uniform int            u_maxChunks;
+uniform int            u_numMeshes;
 
-// Frustum planes for culling (vec4: xyz=normal, w=distance)
-uniform vec4 u_frustumPlanes[6];
-
-// Distance-based density falloff
-uniform float u_densityFalloffStart; // Full density within this distance
-uniform float u_densityFalloffEnd;   // Minimum density beyond this distance
-uniform float u_maxDecorDistance;    // No decor beyond this distance
-
-// Per-chunk uniforms
-uniform vec2  u_chunkWorldOffset;
-uniform float u_chunkSlice;
-uniform float u_chunkSize;
-
-// Per-type uniforms
-uniform float u_minDensity; // Minimum density (at far distance)
-uniform float u_maxDensity; // Maximum density (at close distance)
-uniform float u_baseScale;
-uniform float u_scaleVariance;
-uniform float u_minHeight;
-uniform float u_maxHeight;
-uniform float u_minSlope;
-uniform float u_maxSlope;
-uniform vec3  u_baseRotation;   // Base rotation in radians (pitch, yaw, roll)
-uniform bool  u_randomYaw;      // Whether to apply random Y rotation
-uniform bool  u_alignToTerrain; // If true, align to terrain normal; if false, use world up
-uniform int   u_typeIndex;
-uniform float u_worldScale;
-
-// Simple hash for random values
 float hash(uint x) {
 	x = ((x >> 16) ^ x) * 0x45d9f3b;
 	x = ((x >> 16) ^ x) * 0x45d9f3b;
@@ -54,164 +82,148 @@ float hash(uint x) {
 	return float(x) / 4294967295.0;
 }
 
-// Check if a point is inside the frustum
 bool isInFrustum(vec3 pos) {
 	for (int i = 0; i < 6; i++) {
-		if (dot(u_frustumPlanes[i].xyz, pos) + u_frustumPlanes[i].w < -5.0) {
-			return false; // Small margin for decor size
-		}
+		if (dot(u_frustumPlanes[i].xyz, pos) + u_frustumPlanes[i].w < -5.0) return false;
 	}
 	return true;
 }
 
-// Build rotation matrix from Euler angles (XYZ order)
-mat3 rotationFromEuler(vec3 angles) {
-	float cx = cos(angles.x), sx = sin(angles.x);
-	float cy = cos(angles.y), sy = sin(angles.y);
-	float cz = cos(angles.z), sz = sin(angles.z);
-
-	mat3 rx = mat3(1, 0, 0, 0, cx, -sx, 0, sx, cx);
-	mat3 ry = mat3(cy, 0, sy, 0, 1, 0, -sy, 0, cy);
-	mat3 rz = mat3(cz, -sz, 0, sz, cz, 0, 0, 0, 1);
-
-	return ry * rx * rz; // YXZ order (typical for games)
+bool isBoxInFrustum(vec3 minCorner, vec3 maxCorner) {
+	for (int i = 0; i < 6; i++) {
+		vec3 positiveVertex = vec3(
+			u_frustumPlanes[i].x >= 0 ? maxCorner.x : minCorner.x,
+			u_frustumPlanes[i].y >= 0 ? maxCorner.y : minCorner.y,
+			u_frustumPlanes[i].z >= 0 ? maxCorner.z : minCorner.z
+		);
+		if (dot(u_frustumPlanes[i].xyz, positiveVertex) + u_frustumPlanes[i].w < 0) return false;
+	}
+	return true;
 }
 
-void main() {
-	uint x = gl_GlobalInvocationID.x;
-	uint y = gl_GlobalInvocationID.y;
+mat3 rotationFromEuler(vec3 angles) {
+	float cx = cos(angles.x), sx = sin(angles.x), cy = cos(angles.y), sy = sin(angles.y), cz = cos(angles.z), sz = sin(angles.z);
+	return mat3(cy, 0, sy, 0, 1, 0, -sy, 0, cy) * mat3(1, 0, 0, 0, cx, -sx, 0, sx, cx) * mat3(cz, -sz, 0, sz, cz, 0, 0, 0, 1);
+}
 
-	// Grid size is determined by dispatch (4x4 groups of 8x8 = 32x32 placement points per chunk)
-	float gridSize = 32.0;
-	float step = u_chunkSize / gridSize;
-
-	// Calculate world position within this chunk
-	vec2 localOffset = vec2(float(x), float(y)) * step;
-	vec2 worldPos = u_chunkWorldOffset + localOffset;
-
-	// Use world position for stable seeding
-	uint seedX = uint(abs(worldPos.x));
-	uint seedY = uint(abs(worldPos.y));
-	uint seed = (seedX * 1973 + seedY * 9277 + uint(u_typeIndex) * 26699) | 1u;
-
-	// Add some jitter within the cell
+void processPoint(uint x, uint y, ChunkData chunk, uint seedBase) {
+	float step = chunk.chunkSize / 32.0;
+	vec2 worldPos = chunk.worldOffset + vec2(float(x), float(y)) * step;
+	uint seed = seedBase + (x * 32 + y);
 	worldPos += vec2(hash(seed), hash(seed + 1234u)) * step * 0.9;
 
-	// Scale world position for noise to match terrain scaling
-	vec2 scaledWorldPos = worldPos / u_worldScale;
+	if (worldPos.x < chunk.worldOffset.x || worldPos.x >= chunk.worldOffset.x + chunk.chunkSize ||
+	    worldPos.y < chunk.worldOffset.y || worldPos.y >= chunk.worldOffset.y + chunk.chunkSize) return;
 
-	// Clamp to chunk bounds
-	if (worldPos.x < u_chunkWorldOffset.x || worldPos.x >= u_chunkWorldOffset.x + u_chunkSize ||
-	    worldPos.y < u_chunkWorldOffset.y || worldPos.y >= u_chunkWorldOffset.y + u_chunkSize)
-		return;
-
-	// Map local position within chunk to UV [0,1]
-	vec2 uv = (worldPos - u_chunkWorldOffset) / u_chunkSize;
-
-	// Sample heightmap array texture
-	// Format: R=height (raw), G=normal.x, B=normal.y, A=normal.z
-	vec4 terrainSample = textureLod(u_heightmapArray, vec3(uv, u_chunkSlice), 0.0);
-
-	// Height is stored directly (not normalized) in TerrainRenderManager
+	vec2 uv = (worldPos - chunk.worldOffset) / chunk.chunkSize;
+	vec4 terrainSample = textureLod(u_heightmapArray, vec3(uv, chunk.textureSlice), 0.0);
 	float height = terrainSample.r;
-	vec3  normal = vec3(terrainSample.g, terrainSample.b, terrainSample.a);
+	vec3 normal = vec3(terrainSample.g, terrainSample.b, terrainSample.a);
 
-	// Check constraints
-	if (height < u_minHeight * u_worldScale || height > u_maxHeight * u_worldScale)
-		return;
-	float slope = 1.0 - normal.y; // 0 is flat, 1 is vertical
-	if (slope < u_minSlope || slope > u_maxSlope)
-		return;
+	if (height < u_minHeight * u_worldScale || height > u_maxHeight * u_worldScale) return;
+	if (1.0 - normal.y < u_minSlope || 1.0 - normal.y > u_maxSlope) return;
 
-	// Coherent noise for natural distribution
-	float noiseVal = snoise(scaledWorldPos * 0.01);  // Large scale patterns
-	float noiseVal2 = snoise(scaledWorldPos * 0.05); // Medium scale patterns
-	float combinedNoise = (noiseVal * 0.7 + noiseVal2 * 0.3 + 1.0) * 0.5;
-	combinedNoise = clamp(combinedNoise, 0.0, 1.0);
+	vec2 scaledWorldPos = worldPos / u_worldScale;
+	float noiseVal = (snoise(scaledWorldPos * 0.01) * 0.7 + snoise(scaledWorldPos * 0.05) * 0.3 + 1.0) * 0.5;
+	float effectiveDensity = mix(u_minDensity, u_maxDensity, clamp(noiseVal, 0.0, 1.0));
 
-	float effectiveDensity = mix(u_minDensity, u_maxDensity, combinedNoise);
-
-	// Distance-based density falloff
 	float distToCam = distance(worldPos, u_cameraPos);
-	float distanceFactor = 1.0 - smoothstep(u_densityFalloffStart, u_densityFalloffEnd, distToCam);
-	effectiveDensity *= mix(0.2, 1.0, distanceFactor);
+	effectiveDensity *= mix(0.2, 1.0, 1.0 - smoothstep(u_densityFalloffStart, u_densityFalloffEnd, distToCam));
 
-	if (distToCam > u_maxDecorDistance)
-		return;
+	if (distToCam > u_maxDecorDistance || hash(seed + 5678) > effectiveDensity) return;
 
-	// Random density check using effective density
-	if (hash(seed + 5678) > effectiveDensity)
-		return;
-
-	// Create world position for frustum check
 	vec3 worldPos3D = vec3(worldPos.x, height, worldPos.y);
+	if (!isInFrustum(worldPos3D)) return;
 
-	// Frustum cull individual instances
-	if (!isInFrustum(worldPos3D))
-		return;
+	uint localIdx = atomicAdd(s_instanceCount, 1);
+	if (localIdx >= u_maxInstancesPerChunk) return;
 
-	// We want to place it!
-	uint index = atomicCounterIncrement(instanceCount);
-	if (index >= u_maxInstances)
-		return;
-
-	// Create model matrix with scale and rotation
-	// Use noise for scale variation as well for more coherent "growth" patterns
-	float scaleNoise = (snoise(scaledWorldPos * 0.1) + 1.0) * 0.5;
-
-	// Base scale is proportional to world scale to keep relative size
-	float baseScale = u_baseScale * u_worldScale;
-	float s = baseScale + (scaleNoise * 2.0 - 1.0) * (u_scaleVariance * u_worldScale);
-
-	// Build rotation: base rotation + optional random yaw
+	float s = (u_baseScale + ((snoise(scaledWorldPos * 0.1) + 1.0) * 0.5 * 2.0 - 1.0) * u_scaleVariance) * u_worldScale;
 	vec3 rotation = u_baseRotation;
-	if (u_randomYaw) {
-		rotation.y += hash(seed + 3456) * 6.28318;
-	}
+	if (u_randomYaw) rotation.y += hash(seed + 3456) * 6.28318;
 	mat3 rotMat = rotationFromEuler(rotation);
 
-	// Apply terrain alignment if enabled
 	if (u_alignToTerrain) {
-		// Build a rotation matrix that aligns Y-up to terrain normal
-		vec3 up = vec3(0.0, 1.0, 0.0);
-		vec3 terrainUp = normalize(normal);
-
-		// Handle edge case where normal is already up or down
-		if (abs(dot(up, terrainUp)) < 0.999) {
-			vec3  axis = normalize(cross(up, terrainUp));
-			float angle = acos(clamp(dot(up, terrainUp), -1.0, 1.0));
-
-			// Rodrigues' rotation formula
-			float c = cos(angle);
-			float s_angle = sin(angle);
-			float t = 1.0 - c;
-
-			mat3 terrainRot = mat3(
-				t * axis.x * axis.x + c,
-				t * axis.x * axis.y - s_angle * axis.z,
-				t * axis.x * axis.z + s_angle * axis.y,
-				t * axis.x * axis.y + s_angle * axis.z,
-				t * axis.y * axis.y + c,
-				t * axis.y * axis.z - s_angle * axis.x,
-				t * axis.x * axis.z - s_angle * axis.y,
-				t * axis.y * axis.z + s_angle * axis.x,
-				t * axis.z * axis.z + c
-			);
-
-			// Apply terrain alignment after base rotation
-			rotMat = terrainRot * rotMat;
+		vec3 up = vec3(0.0, 1.0, 0.0), tUp = normalize(normal);
+		float d = dot(up, tUp);
+		if (abs(d) < 0.99) {
+			vec3 axis = normalize(cross(up, tUp));
+			float a = acos(clamp(d, -1.0, 1.0)), c = cos(a), si = sin(a), t = 1.0 - c;
+			rotMat = mat3(t*axis.x*axis.x+c, t*axis.x*axis.y-si*axis.z, t*axis.x*axis.z+si*axis.y,
+			              t*axis.x*axis.y+si*axis.z, t*axis.y*axis.y+c, t*axis.y*axis.z-si*axis.x,
+			              t*axis.x*axis.z-si*axis.y, t*axis.y*axis.z+si*axis.x, t*axis.z*axis.z+c) * rotMat;
 		}
 	}
 
-	// Apply scale to rotation matrix
 	mat3 scaledRot = rotMat * s;
-
-	// Build final model matrix
 	mat4 m = mat4(1.0);
-	m[0] = vec4(scaledRot[0], 0.0);
-	m[1] = vec4(scaledRot[1], 0.0);
-	m[2] = vec4(scaledRot[2], 0.0);
-	m[3] = vec4(worldPos3D, 1.0);
+	m[0] = vec4(scaledRot[0], 0.0); m[1] = vec4(scaledRot[1], 0.0); m[2] = vec4(scaledRot[2], 0.0); m[3] = vec4(worldPos3D, 1.0);
+	instances[uint(gl_WorkGroupID.z) * u_maxInstancesPerChunk + localIdx] = m;
+}
 
-	instances[index] = m;
+void main() {
+	uint chunkIdx = gl_WorkGroupID.z;
+	if (chunkIdx >= u_maxChunks) return;
+
+	ChunkData chunk = chunks[chunkIdx];
+	uint statusIdx = u_typeIndex * u_maxChunks + chunkIdx;
+
+	if (chunk.isActive == 0) {
+		if (gl_LocalInvocationIndex == 0) {
+			for (int m = 0; m < u_numMeshes; ++m) commands[m * u_maxChunks + chunkIdx].instanceCount = 0;
+			statuses[statusIdx].lastWasVisible = 0;
+		}
+		return;
+	}
+
+	// Generous AABB for culling (padding for decor height)
+	vec3 chunkMin = vec3(chunk.worldOffset.x, chunk.minY - 10.0, chunk.worldOffset.y);
+	vec3 chunkMax = vec3(chunk.worldOffset.x + chunk.chunkSize, chunk.maxY + 50.0, chunk.worldOffset.y + chunk.chunkSize);
+
+	bool visible = isBoxInFrustum(chunkMin, chunkMax);
+
+	// Distance check for generation (preload)
+	vec2 chunkCenter = chunk.worldOffset + vec2(chunk.chunkSize * 0.5);
+	float distToChunk = distance(chunkCenter, u_cameraPos);
+	bool shouldGenerate = (distToChunk < u_maxDecorDistance + chunk.chunkSize);
+
+	if (!shouldGenerate) {
+		if (gl_LocalInvocationIndex == 0) {
+			for (int m = 0; m < u_numMeshes; ++m) commands[m * u_maxChunks + chunkIdx].instanceCount = 0;
+			statuses[statusIdx].lastWasVisible = 0;
+		}
+		return;
+	}
+
+	bool needsRegen = (chunk.version != statuses[statusIdx].lastVersion) || (statuses[statusIdx].lastWasVisible == 0);
+
+	if (needsRegen) {
+		if (gl_LocalInvocationIndex == 0) s_instanceCount = 0;
+	}
+	barrier();
+
+	if (needsRegen) {
+		uint seedBase = (uint(abs(chunk.worldOffset.x)) * 1973 + uint(abs(chunk.worldOffset.y)) * 9277 + uint(u_typeIndex) * 26699) | 1u;
+		processPoint(gl_LocalInvocationID.x * 2 + 0, gl_LocalInvocationID.y * 2 + 0, chunk, seedBase);
+		processPoint(gl_LocalInvocationID.x * 2 + 1, gl_LocalInvocationID.y * 2 + 0, chunk, seedBase);
+		processPoint(gl_LocalInvocationID.x * 2 + 0, gl_LocalInvocationID.y * 2 + 1, chunk, seedBase);
+		processPoint(gl_LocalInvocationID.x * 2 + 1, gl_LocalInvocationID.y * 2 + 1, chunk, seedBase);
+	}
+	barrier();
+
+	if (needsRegen) {
+		if (gl_LocalInvocationIndex == 0) {
+			statuses[statusIdx].generatedCount = min(s_instanceCount, uint(u_maxInstancesPerChunk));
+			statuses[statusIdx].lastVersion = chunk.version;
+			statuses[statusIdx].lastWasVisible = 1;
+		}
+	}
+	barrier();
+
+	if (gl_LocalInvocationIndex == 0) {
+		uint finalCount = visible ? statuses[statusIdx].generatedCount : 0;
+		for (int m = 0; m < u_numMeshes; ++m) {
+			commands[m * u_maxChunks + chunkIdx].instanceCount = finalCount;
+		}
+	}
 }

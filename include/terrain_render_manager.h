@@ -113,12 +113,34 @@ namespace Boidsish {
 		int GetChunkSize() const { return chunk_size_; }
 
 		/**
+		 * @brief Get the maximum number of chunks this manager can hold.
+		 */
+		int GetMaxChunks() const { return max_chunks_; }
+
+		/**
 		 * @brief Get the heightmap texture array for shader binding.
 		 */
 		GLuint GetHeightmapTexture() const { return heightmap_texture_; }
 
 		/**
-		 * @brief Get info about all registered chunks for external use (e.g., decor placement).
+		 * @brief Information about a chunk for external systems like DecorManager.
+		 */
+		struct ChunkExportInfo {
+			glm::vec2 world_offset;
+			int       texture_slice;
+			float     chunk_size;
+			float     min_y;
+			float     max_y;
+			uint32_t  version;
+		};
+
+		/**
+		 * @brief Get info about all registered chunks for external use.
+		 */
+		std::vector<ChunkExportInfo> GetChunkExportInfo() const;
+
+		/**
+		 * @brief Get info about all registered chunks for external use (legacy).
 		 * Returns a vector of (world_offset_x, world_offset_z, texture_slice, chunk_size).
 		 */
 		std::vector<glm::vec4> GetChunkInfo() const;
@@ -130,6 +152,7 @@ namespace Boidsish {
 			float     min_y;         // For frustum culling
 			float     max_y;         // For frustum culling
 			glm::vec2 world_offset;  // (chunk_x * chunk_size, chunk_z * chunk_size)
+			uint32_t  version = 0;   // Incremented whenever chunk data changes
 		};
 
 		// Per-instance data sent to GPU (std140 layout)
