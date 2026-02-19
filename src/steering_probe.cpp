@@ -116,12 +116,29 @@ namespace Boidsish {
 				}
 
 				glm::vec3 cpPos = lastRing->GetPosition().Toglm();
+				auto      checkpoint = std::dynamic_pointer_cast<CheckpointRing>(lastRing);
+				if (checkpoint) {
+					// Adjust for the vertical offset (ring center is radius above ground)
+					auto shape = std::dynamic_pointer_cast<CheckpointRingShape>(checkpoint->GetShape());
+					if (shape)
+						cpPos.y -= shape->GetRadius();
+				}
 
 				// Identify the "previous" position in the chain to define the segment leading INTO this checkpoint.
 				glm::vec3 prevPos;
 				if (activeCheckpoints_.size() > 1) {
 					auto prevRing = handler.GetEntity(activeCheckpoints_[activeCheckpoints_.size() - 2]);
-					prevPos = prevRing ? prevRing->GetPosition().Toglm() : player->GetPosition().Toglm();
+					if (prevRing) {
+						prevPos = prevRing->GetPosition().Toglm();
+						auto pCheck = std::dynamic_pointer_cast<CheckpointRing>(prevRing);
+						if (pCheck) {
+							auto pShape = std::dynamic_pointer_cast<CheckpointRingShape>(pCheck->GetShape());
+							if (pShape)
+								prevPos.y -= pShape->GetRadius();
+						}
+					} else {
+						prevPos = player->GetPosition().Toglm();
+					}
 				} else {
 					prevPos = player->GetPosition().Toglm();
 				}
@@ -129,34 +146,35 @@ namespace Boidsish {
 				glm::vec3 inSegment = cpPos - prevPos;
 				glm::vec3 outSegment = position_ - cpPos;
 
-				if (glm::length(outSegment - inSegment) < 1.0f) {
-					continue;
-				}
+				// Use 2D directions for angle check to be more robust against vertical bobbing
+				glm::vec2 inDir2D(inSegment.x, inSegment.z);
+				glm::vec2 outDir2D(outSegment.x, outSegment.z);
 
-				// For the very first segment (Player to C1), if it's too short to have a direction,
-				// use player's velocity as a hint for "forward".
-				glm::vec3 inDir;
-				if (glm::length(inSegment) > 1.0f) {
-					inDir = glm::normalize(inSegment);
-				} else {
-					inDir = (glm::length(player->GetVelocity().Toglm()) > 0.1f)
-								? glm::normalize(player->GetVelocity().Toglm())
-								: glm::vec3(0, 0, -1);
+				if (glm::length(inDir2D) > 0.1f)
+					inDir2D = glm::normalize(inDir2D);
+				else {
+					glm::vec3 pVel = player->GetVelocity().Toglm();
+					inDir2D = (glm::length(glm::vec2(pVel.x, pVel.z)) > 0.1f)
+								  ? glm::normalize(glm::vec2(pVel.x, pVel.z))
+								  : glm::vec2(0, -1);
 				}
 
 				bool shouldPrune = false;
 
-				if (glm::length(outSegment) > 1.0f) {
-					float dot = glm::dot(inDir, glm::normalize(outSegment));
-					// Angle > 70 degrees => cos(70) ~ 0.342
-					if (dot < 0.342f) {
-						shouldPrune = true;
+				// Only prune if we have moved a significant distance from the checkpoint,
+				// and the angle is sharp OR we have clearly backtracked.
+				float distToCP = glm::length(outSegment);
+				if (distToCP > 60.0f) {
+					if (glm::length(outDir2D) > 0.1f) {
+						float dot = glm::dot(inDir2D, glm::normalize(outDir2D));
+						// Angle > 70 degrees => cos(70) ~ 0.342
+						if (dot < 0.342f) {
+							shouldPrune = true;
+						}
 					}
 				} else {
-					continue;
-					// If we're right on top of it, don't prune yet based on angle,
-					// but check if we're "behind" it relative to the incoming direction.
-					if (glm::dot(outSegment, inDir) < -1.0f) {
+					// Check if we've backtracked past the plane of the checkpoint
+					if (glm::dot(outSegment, glm::vec3(inDir2D.x, 0, inDir2D.y)) < -20.0f) {
 						shouldPrune = true;
 					}
 				}
@@ -168,23 +186,40 @@ namespace Boidsish {
 					// Update tracker state so we don't immediately drop a new one in a bad spot
 					if (activeCheckpoints_.empty()) {
 						lastCheckpointPos_ = player->GetPosition().Toglm();
-						lastCheckpointDir_ = (glm::length(player->GetVelocity().Toglm()) > 0.1f)
-												 ? glm::normalize(player->GetVelocity().Toglm())
-												 : glm::vec3(0, 0, -1);
+						glm::vec3 pVel = player->GetVelocity().Toglm();
+						lastCheckpointDir_ = (glm::length(pVel) > 0.1f) ? glm::normalize(pVel) : glm::vec3(0, 0, -1);
 					} else {
 						auto newLast = handler.GetEntity(activeCheckpoints_.back());
 						if (newLast) {
 							lastCheckpointPos_ = newLast->GetPosition().Toglm();
+							auto pCheck = std::dynamic_pointer_cast<CheckpointRing>(newLast);
+							if (pCheck) {
+								auto pShape = std::dynamic_pointer_cast<CheckpointRingShape>(pCheck->GetShape());
+								if (pShape)
+									lastCheckpointPos_.y -= pShape->GetRadius();
+							}
+
 							glm::vec3 pPos;
 							if (activeCheckpoints_.size() > 1) {
 								auto pRing = handler.GetEntity(activeCheckpoints_[activeCheckpoints_.size() - 2]);
-								pPos = pRing ? pRing->GetPosition().Toglm() : player->GetPosition().Toglm();
+								if (pRing) {
+									pPos = pRing->GetPosition().Toglm();
+									auto ppCheck = std::dynamic_pointer_cast<CheckpointRing>(pRing);
+									if (ppCheck) {
+										auto ppShape =
+											std::dynamic_pointer_cast<CheckpointRingShape>(ppCheck->GetShape());
+										if (ppShape)
+											pPos.y -= ppShape->GetRadius();
+									}
+								} else {
+									pPos = player->GetPosition().Toglm();
+								}
 							} else {
 								pPos = player->GetPosition().Toglm();
 							}
 							lastCheckpointDir_ = (glm::length(lastCheckpointPos_ - pPos) > 0.1f)
 													 ? glm::normalize(lastCheckpointPos_ - pPos)
-													 : inDir;
+													 : glm::vec3(inDir2D.x, 0, inDir2D.y);
 						}
 					}
 				} else {
