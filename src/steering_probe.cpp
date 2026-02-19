@@ -129,10 +129,14 @@ namespace Boidsish {
 				glm::vec3 inSegment = cpPos - prevPos;
 				glm::vec3 outSegment = position_ - cpPos;
 
+				if (glm::length(outSegment - inSegment) < 1.0f) {
+					continue;
+				}
+
 				// For the very first segment (Player to C1), if it's too short to have a direction,
 				// use player's velocity as a hint for "forward".
 				glm::vec3 inDir;
-				if (glm::length(inSegment) > 0.1f) {
+				if (glm::length(inSegment) > 1.0f) {
 					inDir = glm::normalize(inSegment);
 				} else {
 					inDir = (glm::length(player->GetVelocity().Toglm()) > 0.1f)
@@ -142,13 +146,14 @@ namespace Boidsish {
 
 				bool shouldPrune = false;
 
-				if (glm::length(outSegment) > 0.1f) {
+				if (glm::length(outSegment) > 1.0f) {
 					float dot = glm::dot(inDir, glm::normalize(outSegment));
 					// Angle > 70 degrees => cos(70) ~ 0.342
 					if (dot < 0.342f) {
 						shouldPrune = true;
 					}
 				} else {
+					continue;
 					// If we're right on top of it, don't prune yet based on angle,
 					// but check if we're "behind" it relative to the incoming direction.
 					if (glm::dot(outSegment, inDir) < -1.0f) {
