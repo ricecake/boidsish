@@ -9,6 +9,7 @@ out vec3  vs_normal;
 out vec3  vs_frag_pos;
 flat out int vs_trail_idx;
 
+uniform mat4  model;
 uniform mat4  view;
 uniform mat4  projection;
 uniform vec4  clipPlane;
@@ -29,6 +30,8 @@ layout(std430, binding = 7) readonly buffer TrailParamsBuffer {
 #include "helpers/noise.glsl"
 
 void main() {
+	// gl_BaseInstance is available in 460 core.
+	// Some older drivers might need gl_InstanceID + gl_BaseInstanceARB
 	int         trail_idx = gl_BaseInstance;
 	TrailParams trail = trails[trail_idx];
 
@@ -86,9 +89,10 @@ void main() {
 	vs_color = aColor;
 	vs_progress = Progress;
 	vs_trail_idx = trail_idx;
-	vs_normal = aNormal;
-	vs_frag_pos = final_pos;
+	vs_normal = mat3(transpose(inverse(model))) * aNormal;
+	vs_frag_pos = vec3(model * vec4(final_pos, 1.0));
 
-	gl_ClipDistance[0] = dot(vec4(final_pos, 1.0), clipPlane);
-	gl_Position = projection * view * vec4(final_pos, 1.0);
+	vec4 world_pos = model * vec4(final_pos, 1.0);
+	gl_ClipDistance[0] = dot(world_pos, clipPlane);
+	gl_Position = projection * view * world_pos;
 }

@@ -346,6 +346,9 @@ namespace Boidsish {
 			alloc.needs_upload = false;
 		}
 
+		// Ensure CPU writes are visible to GPU
+		glMemoryBarrier(GL_CLIENT_MAPPED_BUFFER_BARRIER_BIT);
+
 		pending_vertex_data_.clear();
 	}
 
@@ -415,7 +418,7 @@ namespace Boidsish {
 			}
 			compute_shader_->setInt("u_numTrails", (int)MAX_TRAILS);
 
-			// Bind SSBOs and atomic counter
+			// Bind SSBOs and atomic counter (using binding 0 for atomic)
 			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 7, trail_params_ssbo_);
 			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 8, draw_command_buffer_);
 			glBindBufferBase(GL_ATOMIC_COUNTER_BUFFER, 0, atomic_counter_buffer_);
@@ -425,7 +428,8 @@ namespace Boidsish {
 			glDispatchCompute(num_groups, 1, 1);
 
 			// Ensure commands and counts are written before indirect draw
-			glMemoryBarrier(GL_COMMAND_BARRIER_BIT | GL_ATOMIC_COUNTER_BARRIER_BIT | GL_SHADER_STORAGE_BARRIER_BIT);
+			glMemoryBarrier(GL_COMMAND_BARRIER_BIT | GL_ATOMIC_COUNTER_BARRIER_BIT | GL_SHADER_STORAGE_BARRIER_BIT |
+							GL_VERTEX_ATTRIB_ARRAY_BARRIER_BIT);
 		} else {
 			return;
 		}
@@ -438,6 +442,7 @@ namespace Boidsish {
 		shader.use();
 		shader.setMat4("view", view);
 		shader.setMat4("projection", projection);
+		shader.setMat4("model", glm::mat4(1.0f)); // Identity - positions are world space
 
 		if (clip_plane) {
 			shader.setVec4("clipPlane", *clip_plane);
@@ -450,25 +455,18 @@ namespace Boidsish {
 		glBindBuffer(GL_DRAW_INDIRECT_BUFFER, draw_command_buffer_);
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 7, trail_params_ssbo_);
 
-		// Use MultiDrawArraysIndirectCount if supported for fully GPU-driven rendering
-		if (GLEW_ARB_indirect_parameters || GLEW_VERSION_4_6) {
-			glBindBuffer(GL_PARAMETER_BUFFER, atomic_counter_buffer_);
-			glMultiDrawArraysIndirectCount(GL_TRIANGLE_STRIP, 0, 0, static_cast<GLsizei>(MAX_TRAILS * 2), 0);
-			glBindBuffer(GL_PARAMETER_BUFFER, 0);
-		} else {
-			// Fallback to readback for older hardware
-			GLuint count = 0;
-			glBindBuffer(GL_ATOMIC_COUNTER_BUFFER, atomic_counter_buffer_);
-			glGetBufferSubData(GL_ATOMIC_COUNTER_BUFFER, 0, sizeof(GLuint), &count);
+		// Read back count to be absolutely safe across all drivers
+		GLuint count = 0;
+		glBindBuffer(GL_ATOMIC_COUNTER_BUFFER, atomic_counter_buffer_);
+		glGetBufferSubData(GL_ATOMIC_COUNTER_BUFFER, 0, sizeof(GLuint), &count);
 
-			if (count > 0) {
-				glMultiDrawArraysIndirect(GL_TRIANGLE_STRIP, 0, count, 0);
-			}
+		if (count > 0) {
+			glMultiDrawArraysIndirect(GL_TRIANGLE_STRIP, 0, count, 0);
 		}
 
 		glBindVertexArray(0);
 		glBindBuffer(GL_DRAW_INDIRECT_BUFFER, 0);
-		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, 0);
+		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 7, 0);
 
 		glDepthMask(GL_TRUE);
 		glDisable(GL_BLEND);
