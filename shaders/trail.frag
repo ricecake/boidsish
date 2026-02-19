@@ -1,10 +1,13 @@
-#version 330 core
-out vec4 FragColor;
+#version 430 core
+layout(location = 0) out vec4 FragColor;
+layout(location = 1) out vec2 Velocity;
 
 in vec3  vs_color;
 in vec3  vs_normal;
 in vec3  vs_frag_pos;
 in float vs_progress;
+in vec4 CurPosition;
+in vec4 PrevPosition;
 
 #include "helpers/lighting.glsl"
 
@@ -100,4 +103,9 @@ void main() {
 		vec3 result = apply_lighting_no_shadows(vs_frag_pos, norm, vs_color, 0.5).rgb;
 		FragColor = vec4(result, camera_fade);
 	}
+
+	// Calculate screen-space velocity
+	vec2 a = (CurPosition.xy / CurPosition.w) * 0.5 + 0.5;
+	vec2 b = (PrevPosition.xy / PrevPosition.w) * 0.5 + 0.5;
+	Velocity = a - b;
 }

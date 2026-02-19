@@ -1,0 +1,68 @@
+#version 430 core
+layout(local_size_x = 8, local_size_y = 8) in;
+
+layout(binding = 0, r16f) uniform image2D outResult;
+
+uniform sampler2D uCurrentFrame;
+uniform sampler2D uHistoryFrame;
+uniform sampler2D uVelocity;
+uniform sampler2D uDepth;
+
+#include "temporal_data.glsl"
+
+uniform float uAlpha = 0.9; // Accumulation factor
+
+void main() {
+    ivec2 pixel = ivec2(gl_GlobalInvocationID.xy);
+    ivec2 size = imageSize(outResult);
+    if (pixel.x >= size.x || pixel.y >= size.y) return;
+
+    vec2 uv = (vec2(pixel) + 0.5) / vec2(size);
+
+    // 1. Reprojection
+    vec2 velocity = texture(uVelocity, uv).rg;
+    vec2 prevUV = uv - velocity;
+
+    vec4 current = texture(uCurrentFrame, uv);
+
+    // 2. Out of bounds check
+    if (prevUV.x < 0.0 || prevUV.x > 1.0 || prevUV.y < 0.0 || prevUV.y > 1.0) {
+        imageStore(outResult, pixel, current);
+        return;
+    }
+
+    vec4 history = texture(uHistoryFrame, prevUV);
+
+    // 3. Neighborhood Clamping to reduce ghosting
+    // Sample 3x3 neighborhood of current frame
+    vec4 m1 = vec4(0.0);
+    vec4 m2 = vec4(0.0);
+    for (int y = -1; y <= 1; y++) {
+        for (int x = -1; x <= 1; x++) {
+            vec4 val = texture(uCurrentFrame, uv + vec2(x, y) * texelSize);
+            m1 += val;
+            m2 += val * val;
+        }
+    }
+    vec4 mean = m1 / 9.0;
+    vec4 stddev = sqrt(max(vec4(0.0), (m2 / 9.0) - (mean * mean)));
+
+    // Clamp history to neighborhood of current
+    float gamma = 1.0; // configurable
+    vec4 minColor = mean - gamma * stddev;
+    vec4 maxColor = mean + gamma * stddev;
+    history = clamp(history, minColor, maxColor);
+
+    // 4. Accumulate
+    // Higher alpha means more history
+    // If it's a checkerboard update, we might want to adjust alpha
+    float activeAlpha = uAlpha;
+
+    // Detect if current pixel was actually updated (for checkerboarding)
+    // This depends on how we pass the info.
+    // For now, assume always updated or handled by neighborhood clamping.
+
+    vec4 result = mix(current, history, activeAlpha);
+
+    imageStore(outResult, pixel, result);
+}
