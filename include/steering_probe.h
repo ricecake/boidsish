@@ -56,8 +56,8 @@ namespace Boidsish {
 
 		// Physics parameters
 		float mass_ = 2.00f;
-		float drag_ = 0.95f;            // Air resistance
-		float springStiffness_ = 0.50f; // How hard the leash pulls
+		float drag_ = 0.93f;            // Air resistance
+		float springStiffness_ = 0.30f; // How hard the leash pulls
 		float valleySlideStrength_ = 60.0f;
 		float flyHeight_ = 30.0f;
 		float northBiasStrength_ = 15.0f;

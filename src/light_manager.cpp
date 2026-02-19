@@ -58,8 +58,63 @@ namespace Boidsish {
 	}
 
 	void LightManager::Update(float deltaTime) {
+		if (_cycle.enabled) {
+			if (!_cycle.paused) {
+				_cycle.time += deltaTime * _cycle.speed;
+				if (_cycle.time >= 24.0f)
+					_cycle.time -= 24.0f;
+				if (_cycle.time < 0.0f)
+					_cycle.time += 24.0f;
+			}
+
+			// Update night factor for transitions (10-15 seconds)
+			// At speed 0.25, 1 hour = 4 seconds. 12 seconds = 3 hours.
+			float transition_duration = 3.0f; // in hours
+			float t = _cycle.time;
+			_cycle.night_factor = 0.0f;
+			if (t >= 22.0f || t < 9.0f) {
+				float wt = (t < 12.0f) ? t + 24.0f : t;
+				if (wt < 22.0f + transition_duration) {
+					_cycle.night_factor = (wt - 22.0f) / transition_duration;
+				} else if (wt < 30.0f) {
+					_cycle.night_factor = 1.0f;
+				} else {
+					_cycle.night_factor = std::max(0.0f, 1.0f - (wt - 30.0f) / transition_duration);
+				}
+			}
+
+			// Update default directional light
+			if (!_lights.empty() && _lights[0].type == DIRECTIONAL_LIGHT) {
+				float sun_angle_deg = (_cycle.time / 24.0f) * 360.0f;
+				// t=0 (mid) -> angle=0, elevation=-90
+				// t=6 (rise) -> angle=90, elevation=0 (East)
+				// t=12 (noon) -> angle=180, elevation=90
+				// t=18 (set) -> angle=270, elevation=180 (West)
+				_lights[0].elevation = sun_angle_deg - 90.0f;
+				_lights[0].azimuth = 90.0f;
+				_lights[0].UpdateDirectionFromAngles();
+
+				// Adjust intensity based on elevation (dim at sunrise/sunset)
+				float elevation_rad = glm::radians(_lights[0].elevation);
+				float sun_vis = glm::sin(elevation_rad);
+				if (sun_vis > 0) {
+					_lights[0].base_intensity = std::clamp(sun_vis * 2.0f, 0.0f, 1.0f);
+				} else {
+					_lights[0].base_intensity = 0.0f;
+				}
+
+				// Update ambient light
+				glm::vec3 day_ambient = Constants::General::Colors::DefaultAmbient();
+				glm::vec3 night_ambient = day_ambient * 0.15f;
+				float     ambient_factor = std::max(0.0f, sun_vis);
+				_ambient_light = glm::mix(night_ambient, day_ambient, ambient_factor);
+			}
+		}
+
 		for (auto& light : _lights) {
 			if (light.behavior.type == LightBehaviorType::NONE) {
+				// We still want to update intensity if it was changed by day/night cycle
+				light.intensity = light.base_intensity;
 				continue;
 			}
 

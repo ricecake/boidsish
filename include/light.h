@@ -41,7 +41,8 @@ namespace Boidsish {
 		LightGPU lights[10];                 // offset 0,   640 bytes
 		int      num_lights;                 // offset 640, 4 bytes
 		float    world_scale;                // offset 644, 4 bytes
-		float    _pad1[2];                   // offset 648, 8 bytes (align vec3 to 16)
+		float    day_time;                   // offset 648, 4 bytes (0-24)
+		float    night_factor;               // offset 652, 4 bytes (0-1)
 		alignas(16) glm::vec3 view_pos;      // offset 656, 12 bytes
 		float _pad2;                         // offset 668, 4 bytes
 		alignas(16) glm::vec3 ambient_light; // offset 672, 12 bytes
@@ -82,8 +83,13 @@ namespace Boidsish {
 		glm::vec3 color;
 		int       type;
 		glm::vec3 direction;
-		float     inner_cutoff;
-		float     outer_cutoff;
+
+		// For directional lights, we use angles instead of position/direction vectors
+		float azimuth = 0.0f;    // degrees, 0 is North (+Z), 90 is East (+X)
+		float elevation = 45.0f; // degrees, 0 is horizon, 90 is zenith (+Y)
+
+		float inner_cutoff;
+		float outer_cutoff;
 
 		// CPU-side shadow configuration (not uploaded to lighting UBO directly)
 		bool casts_shadow = false;
@@ -107,6 +113,26 @@ namespace Boidsish {
 			gpu.inner_cutoff = inner_cutoff;
 			gpu.outer_cutoff = outer_cutoff;
 			return gpu;
+		}
+
+		void UpdateDirectionFromAngles() {
+			float rad_azimuth = glm::radians(azimuth);
+			float rad_elevation = glm::radians(elevation);
+
+			glm::vec3 sun_pos;
+			sun_pos.x = glm::cos(rad_elevation) * glm::sin(rad_azimuth);
+			sun_pos.y = glm::sin(rad_elevation);
+			sun_pos.z = glm::cos(rad_elevation) * glm::cos(rad_azimuth);
+
+			direction = -glm::normalize(sun_pos);
+		}
+
+		static void GetAnglesFromDirection(const glm::vec3& dir, float& azimuth, float& elevation) {
+			glm::vec3 d = -glm::normalize(dir);
+			elevation = glm::degrees(glm::asin(glm::clamp(d.y, -1.0f, 1.0f)));
+			azimuth = glm::degrees(glm::atan(d.x, d.z));
+			if (azimuth < 0.0f)
+				azimuth += 360.0f;
 		}
 
 		void SetBlink(float period, float duty_cycle = 0.5f) {
@@ -171,16 +197,13 @@ namespace Boidsish {
 			return l;
 		}
 
-		static Light CreateDirectional(
-			const glm::vec3& pos,
-			const glm::vec3& dir,
-			float            intens,
-			const glm::vec3& col,
-			bool             shadows = false
-		) {
-			Light l = Create(pos, intens, col, shadows);
+		static Light
+		CreateDirectional(float azimuth, float elevation, float intens, const glm::vec3& col, bool shadows = false) {
+			Light l = Create(glm::vec3(0.0f), intens, col, shadows);
 			l.type = DIRECTIONAL_LIGHT;
-			l.direction = dir;
+			l.azimuth = azimuth;
+			l.elevation = elevation;
+			l.UpdateDirectionFromAngles();
 			return l;
 		}
 

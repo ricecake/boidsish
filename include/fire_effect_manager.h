@@ -33,7 +33,12 @@ namespace Boidsish {
 		bool IsAvailable() const;
 
 		void Update(float delta_time, float time);
-		void Render(const glm::mat4& view, const glm::mat4& projection, const glm::vec3& camera_pos);
+		void Render(
+			const glm::mat4& view,
+			const glm::mat4& projection,
+			const glm::vec3& camera_pos,
+			GLuint           noise_texture = 0
+		);
 
 		// Add a new fire effect and return a pointer to it
 		std::shared_ptr<FireEffect> AddEffect(
