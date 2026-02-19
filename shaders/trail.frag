@@ -1,22 +1,37 @@
-#version 330 core
+#version 460 core
 out vec4 FragColor;
 
 in vec3  vs_color;
 in vec3  vs_normal;
 in vec3  vs_frag_pos;
 in float vs_progress;
+flat in int vs_trail_idx;
 
 #include "helpers/lighting.glsl"
 
-uniform bool  useIridescence;
-uniform bool  useRocketTrail;
-uniform bool  usePBR;         // Enable PBR lighting for trails
-uniform float trailRoughness; // PBR roughness [0=mirror, 1=matte]
-uniform float trailMetallic;  // PBR metallic [0=dielectric, 1=metal]
+struct TrailParams {
+	vec4  min_bound; // w = base_thickness
+	vec4  max_bound; // w = roughness
+	uvec4 config1;   // x=vertex_offset, y=max_vertices, z=head, w=tail
+	uvec4 config2;   // x=vertex_count, y=is_full, z=iridescent, w=rocket_trail
+	vec4  config3;   // x=use_pbr, y=metallic, zw=padding
+};
+
+layout(std430, binding = 0) readonly buffer TrailParamsBuffer {
+	TrailParams trails[];
+};
 
 #include "helpers/noise.glsl"
 
 void main() {
+	TrailParams trail = trails[vs_trail_idx];
+
+	bool  useIridescence = trail.config2.z != 0u;
+	bool  useRocketTrail = trail.config2.w != 0u;
+	bool  usePBR = trail.config3.x != 0.0;
+	float trailRoughness = trail.max_bound.w;
+	float trailMetallic = trail.config3.y;
+
 	vec3 norm = normalize(vs_normal);
 	vec3 view_dir = normalize(viewPos - vs_frag_pos);
 

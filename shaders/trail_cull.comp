@@ -1,0 +1,99 @@
+#version 430 core
+
+layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
+
+struct TrailParams {
+	vec4  min_bound; // w = base_thickness
+	vec4  max_bound; // w = roughness
+	uvec4 config1;   // x=vertex_offset, y=max_vertices, z=head, w=tail
+	uvec4 config2;   // x=vertex_count, y=is_full, z=iridescent, w=rocket_trail
+	vec4  config3;   // x=use_pbr, y=metallic, zw=padding
+};
+
+struct DrawArraysIndirectCommand {
+	uint count;
+	uint instanceCount;
+	uint first;
+	uint baseInstance;
+};
+
+layout(std430, binding = 0) readonly buffer TrailParamsBuffer {
+	TrailParams trails[];
+};
+
+layout(std430, binding = 1) writeonly buffer DrawCommandsBuffer {
+	DrawArraysIndirectCommand commands[];
+};
+
+layout(binding = 0) uniform atomic_uint commandCount;
+
+uniform vec4 u_frustumPlanes[6];
+uniform uint u_numTrails;
+
+bool isInFrustum(vec3 minBound, vec3 maxBound) {
+	for (int i = 0; i < 6; i++) {
+		vec3 positiveVertex;
+		positiveVertex.x = u_frustumPlanes[i].x >= 0 ? maxBound.x : minBound.x;
+		positiveVertex.y = u_frustumPlanes[i].y >= 0 ? maxBound.y : minBound.y;
+		positiveVertex.z = u_frustumPlanes[i].z >= 0 ? maxBound.z : minBound.z;
+
+		if (dot(u_frustumPlanes[i].xyz, positiveVertex) + u_frustumPlanes[i].w < 0.0) {
+			return false;
+		}
+	}
+	return true;
+}
+
+void main() {
+	uint idx = gl_GlobalInvocationID.x;
+	if (idx >= u_numTrails)
+		return;
+
+	TrailParams trail = trails[idx];
+
+	// If vertex_count is 0, nothing to draw
+	if (trail.config2.x == 0)
+		return;
+
+	// Frustum culling
+	if (!isInFrustum(trail.min_bound.xyz, trail.max_bound.xyz))
+		return;
+
+	uint vertex_offset = trail.config1.x;
+	uint max_vertices = trail.config1.y;
+	uint head = trail.config1.z;
+	uint tail = trail.config1.w;
+	uint vertex_count = trail.config2.x;
+	bool is_full = trail.config2.y != 0;
+
+	// Handle ring buffer - may need 1 or 2 draw commands
+	if (!is_full && tail > head) {
+		// Single contiguous segment
+		uint cmdIdx = atomicCounterIncrement(commandCount);
+		commands[cmdIdx].count = tail - head;
+		commands[cmdIdx].instanceCount = 1;
+		commands[cmdIdx].first = vertex_offset + head;
+		commands[cmdIdx].baseInstance = idx;
+	} else if (vertex_count > 0) {
+		// Wrapped ring buffer - two segments
+
+		// First segment: from head to end of buffer
+		uint first_count = max_vertices - head;
+		if (first_count > 0) {
+			uint cmdIdx = atomicCounterIncrement(commandCount);
+			commands[cmdIdx].count = first_count;
+			commands[cmdIdx].instanceCount = 1;
+			commands[cmdIdx].first = vertex_offset + head;
+			commands[cmdIdx].baseInstance = idx;
+		}
+
+		// Second segment: from start of buffer to tail
+		if (tail > 0) {
+			uint cmdIdx = atomicCounterIncrement(commandCount);
+			commands[cmdIdx].count = tail;
+			commands[cmdIdx].instanceCount = 1;
+			commands[cmdIdx].first = vertex_offset;
+			commands[cmdIdx].baseInstance = idx;
+		}
+	}
+}
