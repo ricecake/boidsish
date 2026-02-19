@@ -72,6 +72,7 @@ namespace Boidsish {
 		glm::vec3        lastCheckpointDir_{0.0f, 0.0f, -1.0f};
 		float            timeSinceLastDrop_ = 0.0f;
 		std::vector<int> activeCheckpoints_;
+		int              next_sequence_id_ = 0;
 	};
 
 } // namespace Boidsish

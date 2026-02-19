@@ -75,7 +75,8 @@ namespace Boidsish {
 			Callback                   callback,
 			glm::vec3                  position = glm::vec3(0.0f),
 			glm::quat                  orientation = glm::quat(1.0f, 0.0f, 0.0f, 0.0f),
-			std::shared_ptr<EntityBase> initial_tracked = nullptr
+			std::shared_ptr<EntityBase> initial_tracked = nullptr,
+			int                        sequence_id = -1
 		);
 
 		void RegisterEntity(std::shared_ptr<EntityBase> entity);
@@ -89,11 +90,14 @@ namespace Boidsish {
 		void             SetStatus(CheckpointStatus status) { status_ = status; }
 		CheckpointStatus GetStatus() const { return status_; }
 
+		int GetSequenceId() const { return sequence_id_; }
+
 	private:
 		Callback         callback_;
 		float            lifespan_;
 		float            age_ = 0.0f;
 		CheckpointStatus status_ = CheckpointStatus::ACTIVE;
+		int              sequence_id_ = -1;
 
 		struct TrackedEntity {
 			int                       id;

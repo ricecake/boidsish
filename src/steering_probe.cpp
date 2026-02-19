@@ -287,7 +287,16 @@ namespace Boidsish {
 			glm::vec3 spawn_pos = position_;
 			spawn_pos.y += radius;
 
-			handler.QueueAddEntityWithId<CheckpointRing>(id, radius, style, callback, spawn_pos, rotation, player);
+			handler.QueueAddEntityWithId<CheckpointRing>(
+				id,
+				radius,
+				style,
+				callback,
+				spawn_pos,
+				rotation,
+				player,
+				next_sequence_id_++
+			);
 
 			activeCheckpoints_.push_back(id);
 

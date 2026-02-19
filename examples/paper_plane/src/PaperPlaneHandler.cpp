@@ -143,7 +143,13 @@ namespace Boidsish {
 		if (auto ring = std::dynamic_pointer_cast<CheckpointRing>(entity)) {
 			switch (ring->GetStatus()) {
 			case CheckpointStatus::COLLECTED: {
-				streak_++;
+				if (ring->GetSequenceId() == last_collected_sequence_id_ + 1) {
+					streak_++;
+				} else {
+					streak_ = 1;
+				}
+				last_collected_sequence_id_ = ring->GetSequenceId();
+
 				int bonus = 100 * streak_;
 				AddScore(bonus, "Streak x" + std::to_string(streak_));
 
@@ -159,12 +165,18 @@ namespace Boidsish {
 			}
 			case CheckpointStatus::EXPIRED:
 			case CheckpointStatus::OUT_OF_RANGE:
-				streak_ = 0;
+				if (ring->GetSequenceId() > last_collected_sequence_id_) {
+					streak_ = 0;
+				}
 				break;
 			case CheckpointStatus::PRUNED:
 			default:
 				// Do nothing, keep streak
 				break;
+			}
+
+			if (streak_indicator_) {
+				streak_indicator_->SetValue(static_cast<float>(streak_));
 			}
 		}
 		SpatialEntityHandler::RemoveEntity(id);

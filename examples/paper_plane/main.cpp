@@ -71,6 +71,8 @@ int main() {
 		visualizer->AddHudCompass();
 		auto scoreIndicator = visualizer->AddHudScore();
 		handler.SetScoreIndicator(scoreIndicator);
+		auto streakIndicator = visualizer->AddHudNumber(0.0f, "Streak", HudAlignment::TOP_RIGHT, {-10, 80}, 0);
+		handler.SetStreakIndicator(streakIndicator);
 		visualizer->AddHudLocation();
 
 		auto controller = std::make_shared<PaperPlaneInputController>();

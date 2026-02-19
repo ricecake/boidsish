@@ -111,11 +111,13 @@ namespace Boidsish {
 		Callback                   callback,
 		glm::vec3                  position,
 		glm::quat                  orientation,
-		std::shared_ptr<EntityBase> initial_tracked
+		std::shared_ptr<EntityBase> initial_tracked,
+		int                        sequence_id
 	):
 		Entity<CheckpointRingShape>(id, radius, style),
 		callback_(callback),
-		lifespan_(Constants::Class::Checkpoint::DefaultLifespan()) {
+		lifespan_(Constants::Class::Checkpoint::DefaultLifespan()),
+		sequence_id_(sequence_id) {
 		SetPosition(position.x, position.y, position.z);
 		SetOrientation(orientation);
 		UpdateShape();
