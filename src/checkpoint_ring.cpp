@@ -10,33 +10,73 @@ namespace Boidsish {
 
 	unsigned int            CheckpointRingShape::quad_vao_ = 0;
 	unsigned int            CheckpointRingShape::quad_vbo_ = 0;
+	MegabufferAllocation    CheckpointRingShape::quad_alloc_ = {};
 	std::shared_ptr<Shader> CheckpointRingShape::checkpoint_shader_ = nullptr;
+	ShaderHandle            CheckpointRingShape::checkpoint_shader_handle = ShaderHandle(0);
 
 	CheckpointRingShape::CheckpointRingShape(float radius, CheckpointStyle style):
 		Shape(), radius_(radius), style_(style) {
 		SetUsePBR(false);
 	}
 
-	void CheckpointRingShape::InitQuadMesh() {
-		if (quad_vao_ != 0)
+	void CheckpointRingShape::InitQuadMesh(Megabuffer* mb) {
+		if (quad_vao_ != 0 || quad_alloc_.valid)
 			return;
 
-		float vertices[] = {
-			// positions        // texture Coords
-			-1.0f, 1.0f, 0.0f, 0.0f, 1.0f, -1.0f, -1.0f, 0.0f, 0.0f, 0.0f,
-			1.0f,  1.0f, 0.0f, 1.0f, 1.0f, 1.0f,  -1.0f, 0.0f, 1.0f, 0.0f,
+		struct QuadVertex {
+			float x, y, z;
+			float u, v;
+		};
+		QuadVertex raw_vertices[] = {
+			{-1.0f, 1.0f, 0.0f, 0.0f, 1.0f},
+			{-1.0f, -1.0f, 0.0f, 0.0f, 0.0f},
+			{1.0f, 1.0f, 0.0f, 1.0f, 1.0f},
+			{1.0f, -1.0f, 0.0f, 1.0f, 0.0f},
 		};
 
-		glGenVertexArrays(1, &quad_vao_);
-		glGenBuffers(1, &quad_vbo_);
-		glBindVertexArray(quad_vao_);
-		glBindBuffer(GL_ARRAY_BUFFER, quad_vbo_);
-		glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), &vertices, GL_STATIC_DRAW);
-		glEnableVertexAttribArray(0);
-		glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void*)0);
-		glEnableVertexAttribArray(1);
-		glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void*)(3 * sizeof(float)));
-		glBindVertexArray(0);
+		if (mb) {
+			std::vector<Vertex> vertices;
+			for (int i = 0; i < 4; ++i) {
+				Vertex v;
+				v.Position = {raw_vertices[i].x, raw_vertices[i].y, raw_vertices[i].z};
+				v.Normal = {0, 0, 1};
+				v.TexCoords = {raw_vertices[i].u, raw_vertices[i].v};
+				v.Color = {1, 1, 1};
+				vertices.push_back(v);
+			}
+			quad_alloc_ = mb->AllocateStatic(4, 0);
+			if (quad_alloc_.valid) {
+				mb->Upload(quad_alloc_, vertices.data(), 4);
+				quad_vao_ = mb->GetVAO();
+			}
+		} else {
+			glGenVertexArrays(1, &quad_vao_);
+			glGenBuffers(1, &quad_vbo_);
+			glBindVertexArray(quad_vao_);
+			glBindBuffer(GL_ARRAY_BUFFER, quad_vbo_);
+
+			std::vector<Vertex> vertices;
+			for (int i = 0; i < 4; ++i) {
+				Vertex v;
+				v.Position = {raw_vertices[i].x, raw_vertices[i].y, raw_vertices[i].z};
+				v.Normal = {0, 0, 1};
+				v.TexCoords = {raw_vertices[i].u, raw_vertices[i].v};
+				v.Color = {1, 1, 1};
+				vertices.push_back(v);
+			}
+			glBufferData(GL_ARRAY_BUFFER, vertices.size() * sizeof(Vertex), vertices.data(), GL_STATIC_DRAW);
+
+			glEnableVertexAttribArray(0);
+			glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)offsetof(Vertex, Position));
+			glEnableVertexAttribArray(1);
+			glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)offsetof(Vertex, Normal));
+			glEnableVertexAttribArray(2);
+			glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)offsetof(Vertex, TexCoords));
+			glEnableVertexAttribArray(8);
+			glVertexAttribPointer(8, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)offsetof(Vertex, Color));
+
+			glBindVertexArray(0);
+		}
 	}
 
 	void CheckpointRingShape::DestroyQuadMesh() {
@@ -91,8 +131,80 @@ namespace Boidsish {
 		shader.setBool("use_texture", false);
 
 		glBindVertexArray(quad_vao_);
-		glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+		if (quad_alloc_.valid) {
+			glDrawArrays(GL_TRIANGLE_STRIP, static_cast<GLint>(quad_alloc_.base_vertex), 4);
+		} else {
+			glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+		}
 		glBindVertexArray(0);
+	}
+
+	void CheckpointRingShape::GenerateRenderPackets(std::vector<RenderPacket>& out_packets, const RenderContext& context) const {
+		if (quad_vao_ == 0) return;
+
+		glm::mat4 model_matrix = GetModelMatrix();
+		glm::vec3 world_pos = glm::vec3(model_matrix[3]);
+
+		RenderPacket packet;
+		packet.vao = quad_vao_;
+		if (quad_alloc_.valid) {
+			packet.base_vertex = quad_alloc_.base_vertex;
+		}
+		packet.vertex_count = 4;
+		packet.draw_mode = GL_TRIANGLE_STRIP;
+		packet.shader_id = checkpoint_shader_ ? checkpoint_shader_->ID : 0;
+
+		packet.uniforms.model = model_matrix;
+
+		glm::vec3 color(1.0f);
+		switch (style_) {
+		case CheckpointStyle::GOLD:
+			color = Constants::Class::Checkpoint::Colors::Gold();
+			break;
+		case CheckpointStyle::SILVER:
+			color = Constants::Class::Checkpoint::Colors::Silver();
+			break;
+		case CheckpointStyle::BLACK:
+			color = Constants::Class::Checkpoint::Colors::Black();
+			break;
+		case CheckpointStyle::BLUE:
+			color = Constants::Class::Checkpoint::Colors::Blue();
+			break;
+		case CheckpointStyle::NEON_GREEN:
+			color = Constants::Class::Checkpoint::Colors::NeonGreen();
+			break;
+		default:
+			color = glm::vec3(GetR(), GetG(), GetB());
+			break;
+		}
+
+		packet.uniforms.color = glm::vec4(color.r, color.g, color.b, GetA());
+		packet.uniforms.use_pbr = 0;
+		packet.uniforms.use_texture = 0;
+		packet.uniforms.is_colossal = IsColossal();
+
+		packet.uniforms.checkpoint_style = static_cast<int>(style_);
+		packet.uniforms.checkpoint_radius = radius_;
+
+		packet.casts_shadows = CastsShadows();
+
+		RenderLayer layer = RenderLayer::Transparent;
+
+		packet.shader_handle = checkpoint_shader_handle;
+		packet.material_handle = MaterialHandle(0);
+
+		float normalized_depth = context.CalculateNormalizedDepth(world_pos);
+		packet.sort_key = CalculateSortKey(
+			layer,
+			packet.shader_handle,
+			packet.vao,
+			packet.draw_mode,
+			packet.index_count > 0,
+			packet.material_handle,
+			normalized_depth
+		);
+
+		out_packets.push_back(packet);
 	}
 
 	glm::mat4 CheckpointRingShape::GetModelMatrix() const {

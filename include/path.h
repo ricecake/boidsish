@@ -34,10 +34,13 @@ namespace Boidsish {
 		Path(int id = 0, float x = 0.0f, float y = 0.0f, float z = 0.0f);
 		~Path();
 
+		void PrepareResources(Megabuffer* megabuffer = nullptr) const override;
 		void      SetupBuffers() const;
 		void      render() const override;
 		void      render(Shader& shader, const glm::mat4& model_matrix) const override;
 		glm::mat4 GetModelMatrix() const override;
+
+		void GenerateRenderPackets(std::vector<RenderPacket>& out_packets, const RenderContext& context) const override;
 
 		// Paths are not instanced (each has unique geometry)
 		std::string GetInstanceKey() const override { return "Path:" + std::to_string(GetId()); }
@@ -54,6 +57,7 @@ namespace Boidsish {
 			waypoints_.emplace_back(Waypoint{pos, up.Normalized(), size, r, g, b, a});
 			// Mark buffers as dirty to force recalculation
 			buffers_initialized_ = false;
+			MarkDirty();
 			return waypoints_.back();
 		}
 
@@ -74,6 +78,7 @@ namespace Boidsish {
 		void SetMode(PathMode mode) {
 			mode_ = mode;
 			buffers_initialized_ = false;
+			MarkDirty();
 		}
 
 		bool IsVisible() const { return visible_; }
@@ -94,6 +99,7 @@ namespace Boidsish {
 		mutable int                  edge_vertex_count_ = 0;
 		mutable bool                 buffers_initialized_ = false;
 		mutable std::vector<Vector3> cached_waypoint_positions_;
+		mutable MegabufferAllocation allocation_;
 	};
 
 	class PathHandler {

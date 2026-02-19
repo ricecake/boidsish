@@ -1,5 +1,14 @@
-#version 420 core
+#version 460 core
 out vec4 FragColor;
+
+#include "common_uniforms.glsl"
+
+layout(std430, binding = 2) buffer UniformsSSBO {
+	CommonUniforms uniforms_data[];
+};
+
+uniform bool uUseMDI = false;
+flat in int  vUniformIndex;
 
 #include "helpers/lighting.glsl"
 #include "visual_effects.frag"
@@ -10,13 +19,11 @@ in vec3 Normal;
 in vec3 vs_color;
 in vec3 barycentric;
 in vec2 TexCoords;
-in vec4 InstanceColor;
 
 uniform vec3  objectColor;
 uniform float objectAlpha = 1.0;
 uniform int   useVertexColor;
 uniform bool  isColossal = false;
-uniform bool  useInstanceColor = false;
 uniform bool  isLine = false;
 uniform int   lineStyle = 0; // 0: SOLID, 1: LASER
 
@@ -41,8 +48,29 @@ uniform sampler2D texture_diffuse1;
 uniform bool      use_texture;
 
 void main() {
+	bool  use_ssbo = uUseMDI && vUniformIndex >= 0;
+	vec3  c_objectColor = use_ssbo ? uniforms_data[vUniformIndex].color.rgb : objectColor;
+	float c_objectAlpha = use_ssbo ? uniforms_data[vUniformIndex].color.a : objectAlpha;
+	bool  c_usePBR = use_ssbo ? (uniforms_data[vUniformIndex].use_pbr != 0) : usePBR;
+	float c_roughness = use_ssbo ? uniforms_data[vUniformIndex].roughness : roughness;
+	float c_metallic = use_ssbo ? uniforms_data[vUniformIndex].metallic : metallic;
+	float c_ao = use_ssbo ? uniforms_data[vUniformIndex].ao : ao;
+	bool  c_use_texture = use_ssbo ? (uniforms_data[vUniformIndex].use_texture != 0) : use_texture;
+	bool  c_isLine = use_ssbo ? (uniforms_data[vUniformIndex].is_line != 0) : isLine;
+	int   c_lineStyle = use_ssbo ? uniforms_data[vUniformIndex].line_style : lineStyle;
+	bool  c_isTextEffect = use_ssbo ? (uniforms_data[vUniformIndex].is_text_effect != 0) : isTextEffect;
+	float c_textFadeProgress = use_ssbo ? uniforms_data[vUniformIndex].text_fade_progress : textFadeProgress;
+	float c_textFadeSoftness = use_ssbo ? uniforms_data[vUniformIndex].text_fade_softness : textFadeSoftness;
+	int   c_textFadeMode = use_ssbo ? uniforms_data[vUniformIndex].text_fade_mode : textFadeMode;
+	bool  c_isArcadeText = use_ssbo ? (uniforms_data[vUniformIndex].is_arcade_text != 0) : isArcadeText;
+	bool  c_arcadeRainbowEnabled = use_ssbo ? (uniforms_data[vUniformIndex].arcade_rainbow_enabled != 0) : arcadeRainbowEnabled;
+	float c_arcadeRainbowSpeed = use_ssbo ? uniforms_data[vUniformIndex].arcade_rainbow_speed : arcadeRainbowSpeed;
+	float c_arcadeRainbowFrequency = use_ssbo ? uniforms_data[vUniformIndex].arcade_rainbow_frequency : arcadeRainbowFrequency;
+	bool  c_isColossal = use_ssbo ? (uniforms_data[vUniformIndex].is_colossal != 0) : isColossal;
+	bool  c_useVertexColor = use_ssbo ? (uniforms_data[vUniformIndex].use_vertex_color != 0) : (useVertexColor != 0);
+
 	float fade = 1.0;
-	if (!isColossal) {
+	if (!c_isColossal) {
 		float dist = length(FragPos.xz - viewPos.xz);
 		float fade_start = 540.0 * worldScale;
 		float fade_end = 550.0 * worldScale;
@@ -54,25 +82,20 @@ void main() {
 	}
 
 	vec3 final_color;
-	if (useInstanceColor) {
-		final_color = InstanceColor.rgb;
-	} else if (useVertexColor == 1) {
+	if (c_useVertexColor) {
 		final_color = vs_color;
 	} else {
-		final_color = objectColor;
+		final_color = c_objectColor;
 	}
 
 	vec3 norm = normalize(Normal);
 
-	float baseAlpha = objectAlpha;
-	if (useInstanceColor) {
-		baseAlpha = InstanceColor.a;
-	}
+	float baseAlpha = c_objectAlpha;
 
 	// Choose between PBR and legacy lighting
 	vec4 lightResult;
-	if (usePBR) {
-		lightResult = apply_lighting_pbr(FragPos, norm, final_color * baseAlpha, roughness, metallic, ao);
+	if (c_usePBR) {
+		lightResult = apply_lighting_pbr(FragPos, norm, final_color * baseAlpha, c_roughness, c_metallic, c_ao);
 	} else {
 		lightResult = apply_lighting(FragPos, norm, final_color * baseAlpha, 1.0);
 	}
@@ -80,13 +103,13 @@ void main() {
 	vec3  result = lightResult.rgb;
 	float spec_lum = lightResult.a;
 
-	if (use_texture) {
+	if (c_use_texture) {
 		result *= texture(texture_diffuse1, TexCoords).rgb;
 	}
 
 	result = applyArtisticEffects(result, FragPos, barycentric, time);
 
-	if (isLine && lineStyle == 1) { // LASER style
+	if (c_isLine && c_lineStyle == 1) { // LASER style
 		// Use Y axis for radial glow as defined in Line::InitLineMesh
 		float distToCenter = abs(TexCoords.y - 0.5) * 2.0;
 
@@ -112,11 +135,11 @@ void main() {
 	vec4 outColor;
 
 	// Check for laser style first to ensure transparency/glow is handled correctly
-	if (isLine && lineStyle == 1) {
+	if (c_isLine && c_lineStyle == 1) {
 		float distToCenter = abs(TexCoords.y - 0.5) * 2.0;
 		float alpha = max(smoothstep(0.15, 0.08, distToCenter), exp(-distToCenter * 3.0) * 0.8);
-		outColor = vec4(result, alpha * fade * objectAlpha);
-	} else if (isColossal) {
+		outColor = vec4(result, alpha * fade * c_objectAlpha);
+	} else if (c_isColossal) {
 		vec3  skyColor = vec3(0.2, 0.4, 0.8);
 		float haze_start = 0.0;
 		float haze_end = 150.0;
@@ -126,19 +149,19 @@ void main() {
 	} else {
 		float final_alpha = clamp((baseAlpha + spec_lum) * fade, 0.0, 1.0);
 
-		if (isTextEffect) {
+		if (c_isTextEffect) {
 			float alpha_factor = 1.0;
-			if (textFadeMode == 0) { // Fade In
-				alpha_factor = smoothstep(TexCoords.x, TexCoords.x + textFadeSoftness, textFadeProgress);
-			} else if (textFadeMode == 1) { // Fade Out
-				alpha_factor = 1.0 - smoothstep(TexCoords.x, TexCoords.x + textFadeSoftness, textFadeProgress);
+			if (c_textFadeMode == 0) { // Fade In
+				alpha_factor = smoothstep(TexCoords.x, TexCoords.x + c_textFadeSoftness, c_textFadeProgress);
+			} else if (c_textFadeMode == 1) { // Fade Out
+				alpha_factor = 1.0 - smoothstep(TexCoords.x, TexCoords.x + c_textFadeSoftness, c_textFadeProgress);
 			}
 			final_alpha *= alpha_factor;
 		}
 
-		if (isArcadeText && arcadeRainbowEnabled) {
+		if (c_isArcadeText && c_arcadeRainbowEnabled) {
 			vec3 rainbow = 0.5 +
-				0.5 * cos(time * arcadeRainbowSpeed + TexCoords.x * arcadeRainbowFrequency + vec3(0, 2, 4));
+				0.5 * cos(time * c_arcadeRainbowSpeed + TexCoords.x * c_arcadeRainbowFrequency + vec3(0, 2, 4));
 			result *= rainbow;
 		}
 

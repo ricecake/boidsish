@@ -154,6 +154,10 @@ namespace Boidsish {
 		void      render(Shader& shader, const glm::mat4& model_matrix) const override;
 		glm::mat4 GetModelMatrix() const override;
 
+		void GenerateRenderPackets(std::vector<RenderPacket>& out_packets, const RenderContext& context) const override;
+
+		void PrepareResources(Megabuffer* megabuffer = nullptr) const override;
+
 		std::string GetInstanceKey() const override { return "delaunay_blob_" + std::to_string(id_); }
 
 		/// Get centroid of all points
@@ -215,6 +219,7 @@ namespace Boidsish {
 
 		// OpenGL resources (mutable for lazy initialization in const render)
 		mutable GLuint vao_ = 0;
+		mutable GLuint wire_vao_ = 0;
 		mutable GLuint vbo_ = 0;
 		mutable GLuint ebo_ = 0;
 		mutable GLuint wire_ebo_ = 0;
@@ -226,12 +231,11 @@ namespace Boidsish {
 		mutable std::vector<Tetrahedron> tetrahedra_;
 		mutable std::vector<Face>        surface_faces_;
 
-		// Vertex data structure for GPU
-		struct Vertex {
-			glm::vec3 position;
-			glm::vec3 normal;
-			glm::vec4 color;
-		};
+		// Cached mesh data for megabuffer dynamic upload
+		mutable std::vector<Vertex>   cached_vertices_;
+		mutable std::vector<uint32_t> cached_indices_;
+
+		mutable MegabufferAllocation allocation_;
 	};
 
 } // namespace Boidsish

@@ -20,9 +20,6 @@ namespace Boidsish {
 		rigid_body_.linear_friction_ = 0.01f;
 		rigid_body_.angular_friction_ = 0.01f;
 
-		// Enable instanced rendering for better performance and state management
-		shape_->SetInstanced(true);
-
 		// SetSize(0.1f);
 		SetTrailLength(10);
 		// shape_->SetTrailThickness(0.001f);

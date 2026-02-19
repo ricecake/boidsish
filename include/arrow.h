@@ -27,26 +27,33 @@ namespace Boidsish {
 		void      render(Shader& shader, const glm::mat4& model_matrix) const override;
 		glm::mat4 GetModelMatrix() const override;
 
+		void GenerateRenderPackets(std::vector<RenderPacket>& out_packets, const RenderContext& context) const override;
+
 		// Arrows are not instanced (each has unique geometry)
 		std::string GetInstanceKey() const override { return "Arrow:" + std::to_string(GetId()); }
 
 		void SetDirection(const glm::vec3& direction);
 
+		void PrepareResources(Megabuffer* megabuffer = nullptr) const override;
+
 	private:
-		void InitArrowMesh();
+		void InitArrowMesh(Megabuffer* megabuffer = nullptr) const;
 		void DestroyArrowMesh();
 
 		float cone_height_;
 		float cone_radius_;
 		float rod_radius_;
 
-		unsigned int rod_vao_ = 0;
-		unsigned int rod_vbo_ = 0;
-		int          rod_vertex_count_ = 0;
+		mutable unsigned int rod_vao_ = 0;
+		mutable unsigned int rod_vbo_ = 0;
+		mutable int          rod_vertex_count_ = 0;
 
-		unsigned int cone_vao_ = 0;
-		unsigned int cone_vbo_ = 0;
-		int          cone_vertex_count_ = 0;
+		mutable unsigned int cone_vao_ = 0;
+		mutable unsigned int cone_vbo_ = 0;
+		mutable int          cone_vertex_count_ = 0;
+
+		mutable MegabufferAllocation rod_alloc_;
+		mutable MegabufferAllocation cone_alloc_;
 	};
 
 } // namespace Boidsish

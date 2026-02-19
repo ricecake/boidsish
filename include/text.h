@@ -34,9 +34,13 @@ namespace Boidsish {
 		);
 		~Text();
 
+		void PrepareResources(Megabuffer* megabuffer = nullptr) const override;
+
 		virtual void render() const override;
 		virtual void render(Shader& shader, const glm::mat4& model_matrix) const override;
 		glm::mat4    GetModelMatrix() const override;
+
+		void GenerateRenderPackets(std::vector<RenderPacket>& out_packets, const RenderContext& context) const override;
 
 		// Text objects are not instanced (each has unique geometry)
 		std::string GetInstanceKey() const override { return "Text:" + std::to_string(GetId()); }
@@ -66,9 +70,11 @@ namespace Boidsish {
 		float                              depth_;
 		Justification                      justification_;
 
-		unsigned int vao_ = 0;
-		unsigned int vbo_ = 0;
-		int          vertex_count_ = 0;
+		std::vector<Vertex> mesh_vertices_;
+		int                 vertex_count_ = 0;
+		mutable MegabufferAllocation allocation_;
+		mutable uint32_t             vao_ = 0;
+		mutable bool                 mesh_dirty_ = true;
 
 		bool  is_text_effect_ = false;
 		float text_fade_progress_ = 1.0f;

@@ -1,5 +1,14 @@
-#version 420 core
+#version 460 core
 out vec4 FragColor;
+
+#include "common_uniforms.glsl"
+
+layout(std430, binding = 2) buffer UniformsSSBO {
+	CommonUniforms uniforms_data[];
+};
+
+uniform bool uUseMDI = false;
+flat in int  vUniformIndex;
 
 in vec2 TexCoords;
 
@@ -9,7 +18,11 @@ uniform float time;
 uniform float radius;
 
 void main() {
-	if (style == 6)
+	vec3  c_baseColor = (uUseMDI && vUniformIndex >= 0) ? uniforms_data[vUniformIndex].color.rgb : baseColor;
+	int   c_style = (uUseMDI && vUniformIndex >= 0) ? uniforms_data[vUniformIndex].checkpoint_style : style;
+	float c_radius = (uUseMDI && vUniformIndex >= 0) ? uniforms_data[vUniformIndex].checkpoint_radius : radius;
+
+	if (c_style == 6)
 		discard;
 
 	// uv in [-1, 1]
@@ -17,8 +30,8 @@ void main() {
 	float dist = length(uv);
 	float angle = atan(uv.y, uv.x);
 
-	vec3 color = baseColor;
-	if (style == 5) {
+	vec3 color = c_baseColor;
+	if (c_style == 5) {
 		color = 0.5 + 0.5 * cos(time * 3.0 + dist * 5.0 + angle + vec3(0, 2, 4));
 	}
 
@@ -62,7 +75,7 @@ void main() {
 	// Add bright highlights on the ring
 	float highlights = step(0.8, sin(angle * 10.0 + time * 2.0));
 	vec3  finalColor = color;
-	if (style != 2) { // Not BLACK
+	if (c_style != 2) { // Not BLACK
 		finalColor += highlights * 0.4;
 	} else {
 		finalColor += highlights * 0.15;

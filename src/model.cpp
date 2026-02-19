@@ -22,10 +22,24 @@ namespace Boidsish {
 		this->indices = indices;
 		this->textures = textures;
 
-		setupMesh();
+		setupMesh(nullptr); // Initial setup (legacy if no megabuffer yet)
 	}
 
-	void Mesh::setupMesh() {
+	void Mesh::setupMesh(Megabuffer* mb) {
+		if (mb) {
+			if (allocation.valid)
+				return;
+			allocation = mb->AllocateStatic(vertices.size(), indices.size());
+			if (allocation.valid) {
+				mb->Upload(allocation, vertices.data(), vertices.size(), indices.data(), indices.size());
+				VAO = mb->GetVAO();
+			}
+			return;
+		}
+
+		if (VAO != 0)
+			return;
+
 		glGenVertexArrays(1, &VAO);
 		glGenBuffers(1, &VBO);
 		glGenBuffers(1, &EBO);
@@ -47,6 +61,9 @@ namespace Boidsish {
 		// Vertex Texture Coords
 		glEnableVertexAttribArray(2);
 		glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)offsetof(Vertex, TexCoords));
+		// Vertex Color
+		glEnableVertexAttribArray(8);
+		glVertexAttribPointer(8, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)offsetof(Vertex, Color));
 
 		glBindVertexArray(0);
 	}
@@ -122,7 +139,17 @@ namespace Boidsish {
 			}
 		}
 
-		glDrawElements(GL_TRIANGLES, static_cast<unsigned int>(indices.size()), GL_UNSIGNED_INT, 0);
+		if (allocation.valid) {
+			glDrawElementsBaseVertex(
+				GL_TRIANGLES,
+				static_cast<unsigned int>(indices.size()),
+				GL_UNSIGNED_INT,
+				(void*)(uintptr_t)(allocation.first_index * sizeof(unsigned int)),
+				allocation.base_vertex
+			);
+		} else {
+			glDrawElements(GL_TRIANGLES, static_cast<unsigned int>(indices.size()), GL_UNSIGNED_INT, 0);
+		}
 		glBindVertexArray(0);
 
 		// always good practice to set everything back to defaults once configured.
@@ -170,7 +197,17 @@ namespace Boidsish {
 			}
 		}
 
-		glDrawElements(GL_TRIANGLES, static_cast<unsigned int>(indices.size()), GL_UNSIGNED_INT, 0);
+		if (allocation.valid) {
+			glDrawElementsBaseVertex(
+				GL_TRIANGLES,
+				static_cast<unsigned int>(indices.size()),
+				GL_UNSIGNED_INT,
+				(void*)(uintptr_t)(allocation.first_index * sizeof(unsigned int)),
+				allocation.base_vertex
+			);
+		} else {
+			glDrawElements(GL_TRIANGLES, static_cast<unsigned int>(indices.size()), GL_UNSIGNED_INT, 0);
+		}
 		glBindVertexArray(0);
 
 		// always good practice to set everything back to defaults once configured.
@@ -244,6 +281,14 @@ namespace Boidsish {
 		m_data = AssetManager::GetInstance().GetModelData(path);
 	}
 
+	void Model::PrepareResources(Megabuffer* mb) const {
+		if (!m_data || !mb)
+			return;
+		for (auto& mesh : m_data->meshes) {
+			mesh.setupMesh(mb);
+		}
+	}
+
 	void Model::render() const {
 		if (!shader) {
 			std::cerr << "Model::render - Shader is not set!" << std::endl;
@@ -286,6 +331,73 @@ namespace Boidsish {
 
 		if (this->no_cull_) {
 			glEnable(GL_CULL_FACE);
+		}
+	}
+
+	void Model::GenerateRenderPackets(std::vector<RenderPacket>& out_packets, const RenderContext& context) const {
+		if (!m_data)
+			return;
+
+		glm::mat4 model_matrix = GetModelMatrix();
+		glm::vec3 world_pos = glm::vec3(model_matrix[3]);
+
+		for (const auto& mesh : m_data->meshes) {
+			RenderPacket packet;
+			packet.vao = mesh.getVAO();
+			packet.vbo = mesh.getVBO();
+			packet.ebo = mesh.getEBO();
+			packet.index_count = static_cast<unsigned int>(mesh.indices.size());
+
+			if (mesh.allocation.valid) {
+				packet.base_vertex = mesh.allocation.base_vertex;
+				packet.first_index = mesh.allocation.first_index;
+			}
+			packet.draw_mode = GL_TRIANGLES;
+			packet.index_type = GL_UNSIGNED_INT;
+			packet.shader_id = shader ? shader->ID : 0;
+
+			packet.uniforms.model = model_matrix;
+			packet.uniforms.color = glm::vec4(
+				GetR() * mesh.diffuseColor.r,
+				GetG() * mesh.diffuseColor.g,
+				GetB() * mesh.diffuseColor.b,
+				GetA() * mesh.opacity
+			);
+			packet.uniforms.use_pbr = UsePBR();
+			packet.uniforms.roughness = GetRoughness();
+			packet.uniforms.metallic = GetMetallic();
+			packet.uniforms.ao = GetAO();
+			packet.uniforms.use_texture = !mesh.textures.empty();
+			packet.uniforms.is_colossal = IsColossal();
+
+			packet.casts_shadows = CastsShadows();
+
+			uint32_t texture_hash = 0;
+			for (const auto& tex : mesh.textures) {
+				RenderPacket::TextureInfo info;
+				info.id = tex.id;
+				info.type = tex.type;
+				packet.textures.push_back(info);
+				texture_hash ^= tex.id + 0x9e3779b9 + (texture_hash << 6) + (texture_hash >> 2);
+			}
+
+			RenderLayer layer = (packet.uniforms.color.w < 0.99f) ? RenderLayer::Transparent : RenderLayer::Opaque;
+			packet.shader_handle = shader_handle;
+			packet.material_handle = MaterialHandle(texture_hash);
+
+			// Calculate depth for sorting
+			float normalized_depth = context.CalculateNormalizedDepth(world_pos);
+			packet.sort_key = CalculateSortKey(
+				layer,
+				packet.shader_handle,
+				packet.vao,
+				packet.draw_mode,
+				packet.index_count > 0,
+				packet.material_handle,
+				normalized_depth
+			);
+
+			out_packets.push_back(packet);
 		}
 	}
 
