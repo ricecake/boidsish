@@ -19,7 +19,7 @@ out float      tessFactor_TC_out[];
 
 // Heightmap texture array: R=height, GBA=normal
 uniform sampler2DArray uHeightmap;
-uniform int            uChunkSize;
+uniform float          uChunkSize;
 
 #include "helpers/lighting.glsl"
 
@@ -39,9 +39,9 @@ void sampleHeightmap(vec2 uv, float slice, vec3 worldOffset, out vec3 worldPos, 
 	normal = normalize(data.gba);
 
 	// Compute world position: local XZ from UV, Y from heightmap
-	worldPos.x = worldOffset.x + uv.x * float(uChunkSize);
+	worldPos.x = worldOffset.x + uv.x * uChunkSize;
 	worldPos.y = height;
-	worldPos.z = worldOffset.z + uv.y * float(uChunkSize);
+	worldPos.z = worldOffset.z + uv.y * uChunkSize;
 }
 
 float GetEdgeTessLevel(vec3 p0, vec3 p1, vec3 n0, vec3 n1) {
@@ -131,7 +131,7 @@ void main() {
 
 	// Calculate a representative tessellation factor for the vertex (used for shading effects)
 	// We use a small offset to estimate local screen-space size
-	float vTess = GetEdgeTessLevel(pos, pos + vec3(float(uChunkSize) * 0.03, 0, 0), norm, norm);
+	float vTess = GetEdgeTessLevel(pos, pos + vec3(uChunkSize * 0.03, 0, 0), norm, norm);
 	tessFactor_TC_out[gl_InvocationID] = vTess;
 	// perturbFactor_TC_out[gl_InvocationID] = clamp(vTess / uTessLevelMax, 0.0, 1.0);
 	perturbFactor_TC_out[gl_InvocationID] = perturbLevel(pos, viewForward[gl_InvocationID]);
