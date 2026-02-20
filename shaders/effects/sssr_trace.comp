@@ -80,6 +80,11 @@ bool is_bad(vec3 v) {
     return any(isnan(v)) || any(isinf(v));
 }
 
+float linearizeDepth(float d) {
+    float z = d * 2.0 - 1.0;
+    return (2.0 * 0.1 * 1000.0) / (1000.0 + 0.1 - z * (1000.0 - 0.1));
+}
+
 vec3 getSkyColor(vec3 worldRay) {
     vec3 twilight_color = vec3(0.9, 0.5, 0.2);
     vec3 mid_sky_color = vec3(0.2, 0.4, 0.8);
@@ -123,8 +128,7 @@ bool hiZTrace(vec3 ro, vec3 rd, vec3 worldRay, out vec2 hitUV) {
     vec3 p = s0 + normalize(rayDir) * 0.001;
     vec2 size = vec2(textureSize(uHiZTexture, 0));
 
-    float minThickness = 0.001;
-    float maxThickness = 0.05;
+    float thicknessLimit = 0.5; // World-space thickness limit
 
     for (int i = 0; i < uMaxSteps; i++) {
         if (any(lessThan(p, vec3(0.0))) || any(greaterThan(p, vec3(1.0)))) return false;
@@ -133,19 +137,20 @@ bool hiZTrace(vec3 ro, vec3 rd, vec3 worldRay, out vec2 hitUV) {
 
         if (p.z > z + 0.00001) {
             if (level == 0) {
-                // Back-face check at hit point to prevent leaking
-                vec3 hitNormal = texture(uNormalTexture, p.xy).xyz;
-                // If the ray hits a surface from the inside, it's a leak
-                if (dot(worldRay, hitNormal) > 0.0) {
-                    p += rayDir * 0.01; // Skip this area
-                    continue;
+                float linP = linearizeDepth(p.z);
+                float linZ = linearizeDepth(z);
+
+                if (linP - linZ < thicknessLimit) {
+                    // Potential hit, but check normal to avoid hitting backfaces
+                    vec3 hitNormal = texture(uNormalTexture, p.xy).xyz;
+                    if (dot(worldRay, hitNormal) < 0.0) {
+                        hitUV = p.xy;
+                        return true;
+                    }
                 }
 
-                hitUV = p.xy;
-                float thickness = mix(minThickness, maxThickness, p.z);
-                if (p.z - z < thickness) return true;
-
-                p += rayDir * 0.002;
+                // If we are too far behind or it's a backface, skip forward
+                p += rayDir * 0.005;
             } else {
                 level--;
             }
