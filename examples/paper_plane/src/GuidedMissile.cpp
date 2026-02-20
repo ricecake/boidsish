@@ -302,7 +302,7 @@ namespace Boidsish {
 				glm::vec3(0, 1, 0),
 				glm::vec3(0, 0, 0),
 				-1,
-				2.0f
+				1.0f
 			);
 		});
 

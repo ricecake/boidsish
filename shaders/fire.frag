@@ -145,7 +145,7 @@ void main() {
 		float noiseDetail = mix(roil, knobly, abs(fastSimplex3d(vec3(0, u_time, 0))));
 
 		// Reduced high-frequency gl_PointCoord influence
-		float highFreq = fastSimplex3d(vec3(gl_PointCoord * 0.4, u_time * 0.15)) * 0.5 + 0.5;
+		float highFreq = fastSimplex3d(vec3(gl_PointCoord * 0.4, u_time * 0.05)) * 0.5 + 0.5;
 		noiseDetail = mix(noiseDetail, noiseDetail * highFreq, 0.35);
 
 		// Temperature map shaping: Cooler at particle edges
@@ -160,10 +160,11 @@ void main() {
 		}
 
 		float heat = normalizedLife * pow(noiseDetail, 1.4) * edgeCooling * epicenterCooling;
+//turbulence(v_pos.xz * 0.4 + u_time * 0.1) * turbulence(gl_PointCoord + u_time * 0.3);
 		vec3  baseColor = blackbody_hdr(heat);
 
 		// Sharper alpha thresholds for "jagged" defined edges
-		alpha = shapeMask * smoothstep(0.01, 0.12, heat);
+		alpha = shapeMask * smoothstep(0.01, 0.12, heat) * turbulence(gl_PointCoord);
 		color = baseColor * alpha * 12.0 * (1.0 + normalizedLife);
 	}
 

@@ -163,7 +163,7 @@ const float kExplosionSpeed = 30.0;
 const float kExplosionLifetime = 2.5;
 const float kExplosionDrag = 2.0;
 
-const float kFireSpeed = 1.0;
+const float kFireSpeed = 0.5;
 const float kFireSpread = 4.2;
 const float kFireLifetime = 5.0;
 
@@ -260,7 +260,7 @@ void main() {
 			// Apply distance-based curl noise
 			Emitter emitter = emitters[p.emitter_index];
 			float   dist = distance(p.pos.xyz, emitter.position);
-			float   curlInfluence = smoothstep(5.0, 30.0, dist);
+			float   curlInfluence = smoothstep(5.0, 30.0, dist) + smoothstep(5, 1, length(p.vel.xyz) * kExplosionDrag * u_delta_time);
 			p.vel.xyz += curlNoise(p.pos.xyz, u_time) * curlInfluence * 15.0 * u_delta_time;
 		} else if (p.style == 2) { // Fire
 			maxSpeed = kFireSpeed;
@@ -274,6 +274,21 @@ void main() {
 		} else if (p.style == 4) { // Glitter
 			maxSpeed = kGlitterSpeed;
 			p.vel.xyz -= p.vel.xyz * kGlitterDrag * u_delta_time;
+
+			// // Apply distance-based curl noise
+			// Emitter emitter = emitters[p.emitter_index];
+			// float   dist = distance(p.pos.xyz, emitter.position);
+			// float   curlInfluence = smoothstep(2, 0, length(p.vel.xyz) * kGlitterDrag * u_delta_time);
+			// p.vel.xyz += curlNoise(p.pos.xyz, u_time) * curlInfluence * length(p.vel.xyz) * u_delta_time;
+
+
+			// Apply distance-based curl noise
+			Emitter emitter = emitters[p.emitter_index];
+			float   dist = distance(p.pos.xyz, emitter.position);
+			float   curlInfluence = smoothstep(5.0, 30.0, dist) + smoothstep(5, 1, length(p.vel.xyz) * kGlitterDrag * u_delta_time);
+			p.vel.xyz += curlNoise(p.pos.xyz, u_time) * curlInfluence * 5.0 * u_delta_time;
+
+
 			p.vel.y -= kGlitterGravity * u_delta_time;
 		}
 

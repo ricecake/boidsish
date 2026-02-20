@@ -345,7 +345,7 @@ namespace Boidsish {
 				glm::vec3(0, 1, 0),
 				glm::vec3(0, 0, 0),
 				-1,
-				5.0f
+				1.0f
 			);
 			this->explode_sound_ =
 				handler.vis->AddSoundEffect("assets/rocket_explosion.wav", pos.Toglm(), GetVelocity().Toglm(), 25.0f);

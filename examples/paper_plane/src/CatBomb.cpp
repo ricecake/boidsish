@@ -53,7 +53,7 @@ namespace Boidsish {
 
 		auto pos = GetPosition();
 		handler.EnqueueVisualizerAction([this, pos, &handler]() {
-			handler.vis->CreateExplosion(glm::vec3(pos.x, pos.y, pos.z), 2.5f);
+			handler.vis->CreateExplosion(glm::vec3(pos.x, pos.y, pos.z), 1.5f);
 			handler.vis->GetTerrain()->AddCrater({pos.x, pos.y, pos.z}, 15.0f, 8.0f, 0.2f, 2.0f);
 			this->explode_sound_ =
 				handler.vis->AddSoundEffect("assets/rocket_explosion.wav", pos.Toglm(), GetVelocity().Toglm(), 25.0f);
