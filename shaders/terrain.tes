@@ -21,7 +21,7 @@ out float tessFactor;
 
 // Heightmap texture array: R=height, GBA=normal
 uniform sampler2DArray uHeightmap;
-uniform int            uChunkSize;
+uniform float          uChunkSize;
 
 uniform mat4 view;
 uniform mat4 projection;
@@ -38,9 +38,9 @@ void sampleHeightmap(vec2 uv, float slice, vec3 worldOffset, out vec3 worldPos, 
 	float height = data.r;
 	normal = normalize(data.gba);
 
-	worldPos.x = worldOffset.x + uv.x * float(uChunkSize);
+	worldPos.x = worldOffset.x + uv.x * uChunkSize;
 	worldPos.y = height;
-	worldPos.z = worldOffset.z + uv.y * float(uChunkSize);
+	worldPos.z = worldOffset.z + uv.y * uChunkSize;
 }
 
 void main() {

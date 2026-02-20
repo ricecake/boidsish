@@ -626,8 +626,20 @@ namespace Boidsish {
 		for (int i = 0; i < num_vertices_x; ++i) {
 			for (int j = 0; j < num_vertices_z; ++j) {
 				float y = heightmap[i][j][0];
+
+				// Force perimeter normals to be perfectly vertical to ensure
+				// consistency across chunk boundaries. This prevents "cracks"
+				// where tessellation levels might otherwise differ due to
+				// inconsistent normal-based boosts.
+				float dx = heightmap[i][j][1];
+				float dz = heightmap[i][j][2];
+				if (i == 0 || i == num_vertices_x - 1 || j == 0 || j == num_vertices_z - 1) {
+					dx = 0.0f;
+					dz = 0.0f;
+				}
+
 				positions.emplace_back(i * world_scale_, y, j * world_scale_);
-				normals.push_back(diffToNorm(heightmap[i][j][1], heightmap[i][j][2]));
+				normals.push_back(diffToNorm(dx, dz));
 			}
 		}
 
