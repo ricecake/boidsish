@@ -255,6 +255,7 @@ namespace Boidsish {
 
 		bool                                           paused = false;
 		float                                          simulation_time = 0.0f;
+		float                                          simulation_delta_time = 0.0f;
 		float                                          time_scale = 1.0f;
 		float                                          ripple_strength = 0.0f;
 		std::chrono::high_resolution_clock::time_point last_frame;
@@ -1973,6 +1974,7 @@ namespace Boidsish {
 		impl->last_frame = current_frame;
 
 		impl->input_state.delta_time = impl->time_scale * delta_time;
+		impl->simulation_delta_time = impl->paused ? 0.0f : impl->input_state.delta_time;
 
 		for (const auto& callback : impl->input_callbacks) {
 			if (callback) {
@@ -1986,7 +1988,7 @@ namespace Boidsish {
 			impl->simulation_time += impl->time_scale * delta_time;
 		}
 
-		impl->light_manager.Update(impl->input_state.delta_time);
+		impl->light_manager.Update(impl->simulation_delta_time);
 
 		// --- Adaptive Tessellation Logic ---
 		glm::vec3 current_camera_pos(impl->camera.x, impl->camera.y, impl->camera.z);
@@ -2037,7 +2039,7 @@ namespace Boidsish {
 
 		// Update camera shake
 		if (impl->shake_timer > 0.0f) {
-			impl->shake_timer -= delta_time;
+			impl->shake_timer -= impl->simulation_delta_time;
 			if (impl->shake_timer <= 0.0f) {
 				impl->shake_timer = 0.0f;
 				impl->shake_offset = glm::vec3(0.0f);
@@ -2065,7 +2067,7 @@ namespace Boidsish {
 		// Update and collect transient effects
 		auto it = impl->transient_effects.begin();
 		while (it != impl->transient_effects.end()) {
-			(*it)->Update(impl->input_state.delta_time);
+			(*it)->Update(impl->simulation_delta_time);
 			if ((*it)->IsExpired()) {
 				it = impl->transient_effects.erase(it);
 			} else {
@@ -2229,17 +2231,17 @@ namespace Boidsish {
 		// Update clone manager
 		impl->clone_manager->Update(impl->simulation_time, impl->camera.pos());
 		impl->fire_effect_manager->Update(
-			impl->input_state.delta_time,
+			impl->simulation_delta_time,
 			impl->simulation_time,
 			impl->terrain_render_manager ? impl->terrain_render_manager->GetChunkInfo() : std::vector<glm::vec4>{},
 			impl->terrain_render_manager ? impl->terrain_render_manager->GetHeightmapTexture() : 0,
 			impl->noise_manager ? impl->noise_manager->GetCurlTexture() : 0
 		);
-		impl->mesh_explosion_manager->Update(impl->input_state.delta_time, impl->simulation_time);
-		impl->sound_effect_manager->Update(impl->input_state.delta_time);
-		impl->shockwave_manager->Update(impl->input_state.delta_time);
+		impl->mesh_explosion_manager->Update(impl->simulation_delta_time, impl->simulation_time);
+		impl->sound_effect_manager->Update(impl->simulation_delta_time);
+		impl->shockwave_manager->Update(impl->simulation_delta_time);
 		if (impl->akira_effect_manager && impl->terrain_generator) {
-			impl->akira_effect_manager->Update(impl->input_state.delta_time, *impl->terrain_generator);
+			impl->akira_effect_manager->Update(impl->simulation_delta_time, *impl->terrain_generator);
 		}
 		impl->sdf_volume_manager->UpdateUBO();
 		impl->sdf_volume_manager->BindUBO(Constants::UboBinding::SdfVolumes());
@@ -2248,7 +2250,7 @@ namespace Boidsish {
 
 		if (impl->decor_manager && impl->terrain_generator && impl->terrain_render_manager) {
 			impl->decor_manager->Update(
-				impl->input_state.delta_time,
+				impl->simulation_delta_time,
 				impl->camera,
 				generator_frustum,
 				*impl->terrain_generator,
