@@ -22,6 +22,7 @@ void main() {
 		for (int j = 0; j < samples; ++j) {
 			vec2  uv = vec2(float(i) / float(samples), float(j) / float(samples));
 			vec3  color = texture(sceneTexture, uv).rgb;
+            if (any(isnan(color)) || any(isinf(color))) color = vec3(0.0);
 			float luma = dot(color, vec3(0.2126, 0.7152, 0.0722));
 			sumLuma += log(max(luma, 0.0001)); // Log-average for better perceptual response
 		}

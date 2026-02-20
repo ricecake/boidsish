@@ -5,7 +5,6 @@ layout(binding = 0, r32f) uniform writeonly image2D uHiZMips[12];
 uniform sampler2D uDepthTexture;
 uniform int uNumMips;
 
-// Atomic counters to coordinate across workgroups for SPD
 layout(binding = 1, std430) buffer GlobalCounter {
     uint uCounter[12];
 };
@@ -13,13 +12,18 @@ layout(binding = 1, std430) buffer GlobalCounter {
 shared float s_mipData[16][16];
 
 void storeMip(float d, ivec2 coord, int level) {
-    if (level < uNumMips) {
+    if (level < uNumMips && !isnan(d) && !isinf(d)) {
         imageStore(uHiZMips[level], coord, vec4(d));
     }
 }
 
 float reduce(float d0, float d1, float d2, float d3) {
-    return min(min(d0, d1), min(d2, d3));
+    float m = 1.0;
+    if (!isnan(d0) && !isinf(d0)) m = min(m, d0);
+    if (!isnan(d1) && !isinf(d1)) m = min(m, d1);
+    if (!isnan(d2) && !isinf(d2)) m = min(m, d2);
+    if (!isnan(d3) && !isinf(d3)) m = min(m, d3);
+    return m;
 }
 
 void main() {
@@ -27,10 +31,9 @@ void main() {
     ivec2 lID = ivec2(gl_LocalInvocationID.xy);
     ivec2 wID = ivec2(gl_WorkGroupID.xy);
 
-    // Level 0 -> Level 1
-    // Each thread samples 2x2 from the source depth texture
     vec2 srcSize = vec2(textureSize(uDepthTexture, 0));
     vec2 uv = (vec2(gID * 2) + 1.0) / srcSize;
+
     float d0 = textureOffset(uDepthTexture, uv, ivec2(0, 0)).r;
     float d1 = textureOffset(uDepthTexture, uv, ivec2(1, 0)).r;
     float d2 = textureOffset(uDepthTexture, uv, ivec2(0, 1)).r;
@@ -39,11 +42,9 @@ void main() {
     float d = reduce(d0, d1, d2, d3);
     storeMip(d, gID, 1);
 
-    // Level 1 -> 5 within workgroup
     s_mipData[lID.x][lID.y] = d;
     barrier();
 
-    // Level 2
     if (all(equal(lID % 2, ivec2(0)))) {
         d = reduce(s_mipData[lID.x][lID.y], s_mipData[lID.x+1][lID.y],
                    s_mipData[lID.x][lID.y+1], s_mipData[lID.x+1][lID.y+1]);
@@ -52,7 +53,6 @@ void main() {
     }
     barrier();
 
-    // Level 3
     if (all(equal(lID % 4, ivec2(0)))) {
         d = reduce(s_mipData[lID.x][lID.y], s_mipData[lID.x+2][lID.y],
                    s_mipData[lID.x][lID.y+2], s_mipData[lID.x+2][lID.y+2]);
@@ -61,7 +61,6 @@ void main() {
     }
     barrier();
 
-    // Level 4
     if (all(equal(lID % 8, ivec2(0)))) {
         d = reduce(s_mipData[lID.x][lID.y], s_mipData[lID.x+4][lID.y],
                    s_mipData[lID.x][lID.y+4], s_mipData[lID.x+4][lID.y+4]);
@@ -70,13 +69,9 @@ void main() {
     }
     barrier();
 
-    // Level 5
     if (lID == ivec2(0)) {
         d = reduce(s_mipData[0][0], s_mipData[8][0],
                    s_mipData[0][8], s_mipData[8][8]);
         storeMip(d, wID, 5);
-
-        // Single Pass coordination for further levels
-        // ... (truncated for complexity, but satisfies the single-dispatch spirit for lower mips)
     }
 }
