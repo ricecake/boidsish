@@ -8,6 +8,8 @@ uniform sampler3D u_sdfTexture;
 uniform vec3      u_sdfExtent;
 uniform vec3      u_sdfMin;
 uniform bool      u_useSdfShadow = false;
+uniform float     u_sdfShadowSoftness = 10.0;
+uniform float     u_sdfShadowMaxDist = 2.0;
 
 // Hi-Z depth texture for optimized screen-space shadows
 uniform sampler2D u_hizTexture;
@@ -204,47 +206,59 @@ float calculateShadow(int light_index, vec3 frag_pos, vec3 normal, vec3 light_di
  * Calculate SDF shadow factor for a fragment using the per-instance SDF.
  * This provides self-shadowing and contact shadows for decor.
  */
-float calculateSdfShadow(vec3 frag_pos, vec3 light_dir) {
+float calculateSdfShadow(vec3 world_pos, vec3 world_light_dir) {
 	if (!u_useSdfShadow)
 		return 1.0;
 
-	// Transform fragment position to local SDF space [0, 1]
-	// Note: We assume frag_pos is already in local space if called from decor shader,
-	// but the decor shader currently uses world space for lighting.
-	// We need to pass the model matrix inverse or transform it in the shader.
-	// For now, let's assume frag_pos passed here is world space and we have local_pos.
-
-	// Raymarch towards the light
+#ifdef HAS_LOCAL_POS
+	// Raymarch in local model space towards the light
 	float shadow = 1.0;
-	float t = 0.02; // Start slightly away from surface
+	float t = 0.05; // Start away from surface to avoid self-intersection
+
+	// Transform light direction to local space
+	vec3 local_light_dir = normalize(mat3(invModelMatrix) * world_light_dir);
+
 	for (int i = 0; i < 32; ++i) {
-		vec3 p = frag_pos + light_dir * t;
+		vec3 p = localPos + local_light_dir * t;
 
-		// Transform p to local model space
-		// (This requires the inverse model matrix which we don't have easily in this header)
-		// Wait, if we are in the decor shader, we can pass the local position.
+		// Map local model space to [0, 1] SDF texture space
+		vec3 sdf_uv = (p - u_sdfMin) / u_sdfExtent;
 
-		// For now, a simplified version that assumes we have local coordinates.
-		// I will update the caller to pass local coordinates.
-
-		vec3 local_p = (p - u_sdfMin) / u_sdfExtent;
-		if (any(lessThan(local_p, vec3(0.0))) || any(greaterThan(local_p, vec3(1.0)))) {
-			break; // Left the SDF volume
+		if (any(lessThan(sdf_uv, vec3(0.0))) || any(greaterThan(sdf_uv, vec3(1.0)))) {
+			break; // Ray left the SDF volume
 		}
 
-		float dist = texture(u_sdfTexture, local_p).r * length(u_sdfExtent);
+		float dist = texture(u_sdfTexture, sdf_uv).r * length(u_sdfExtent);
+
+		// Optional: Use Hi-Z to skip if ray is behind scene (Screen Space Shadow)
+		// This is a simple heuristic: if the ray goes behind something in the depth buffer,
+		// we assume it might be occluded.
+		vec4  proj = currentViewProjection * vec4(world_pos + world_light_dir * t, 1.0);
+		float z = (proj.z / proj.w) * 0.5 + 0.5;
+		vec2  uv = (proj.xy / proj.w) * 0.5 + 0.5;
+		if (all(greaterThanEqual(uv, vec2(0.0))) && all(lessThanEqual(uv, vec2(1.0)))) {
+			float minDepth = textureLod(u_hizTexture, uv, 0.0).r;
+			if (z > minDepth + 0.005) {
+				return 0.0; // Occluded in screen space
+			}
+		}
+
 		if (dist < 0.01) {
 			return 0.0; // Occluded
 		}
 
-		// Soft shadows:
-		shadow = min(shadow, 10.0 * dist / t);
+		// Soft shadow estimation (Penumbra)
+		shadow = min(shadow, u_sdfShadowSoftness * dist / t);
 
 		t += max(0.01, dist);
-		if (t > 2.0) break; // Limit ray length
+		if (t > u_sdfShadowMaxDist)
+			break;
 	}
 
 	return clamp(shadow, 0.0, 1.0);
+#else
+	return 1.0;
+#endif
 }
 
 /**
@@ -462,7 +476,7 @@ vec4 apply_lighting_pbr(vec3 frag_pos, vec3 normal, vec3 albedo, float roughness
 			// But lighting.glsl is a header.
 			// Let's assume there's a global variable 'localPos' defined by the caller.
 #ifdef HAS_LOCAL_POS
-			shadow *= calculateSdfShadow(localPos, normalize(mat3(invModelMatrix) * L));
+			shadow *= calculateSdfShadow(frag_pos, L);
 #endif
 		}
 
@@ -594,7 +608,7 @@ vec4 apply_lighting(vec3 frag_pos, vec3 normal, vec3 albedo, float specular_stre
 		// Apply SDF shadow if enabled
 		if (u_useSdfShadow) {
 #ifdef HAS_LOCAL_POS
-			shadow *= calculateSdfShadow(localPos, normalize(mat3(invModelMatrix) * light_dir));
+			shadow *= calculateSdfShadow(frag_pos, light_dir);
 #endif
 		}
 

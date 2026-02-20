@@ -68,6 +68,9 @@ namespace Boidsish {
 		);
 		void Render(const glm::mat4& view, const glm::mat4& projection);
 
+		// Render with a specific shader (e.g. for shadow pass)
+		void Render(Shader& shader);
+
 		void SetEnabled(bool enabled) { enabled_ = enabled; }
 
 		bool IsEnabled() const { return enabled_; }

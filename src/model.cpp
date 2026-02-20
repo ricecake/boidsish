@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <iostream>
 
+#include "ConfigManager.h"
 #include "asset_manager.h"
 #include "logger.h"
 #include "shader.h"
@@ -276,6 +277,19 @@ namespace Boidsish {
 			shader.setFloat("ao", GetAO());
 		}
 
+		// Set SDF shadow if available
+		auto& cfg = ConfigManager::GetInstance();
+		if (m_data->sdf_texture != 0 && cfg.GetAppSettingBool("enable_sdf_shadows", true)) {
+			glActiveTexture(GL_TEXTURE5);
+			glBindTexture(GL_TEXTURE_3D, m_data->sdf_texture);
+			shader.setInt("u_sdfTexture", 5);
+			shader.setVec3("u_sdfExtent", m_data->sdf_extent);
+			shader.setVec3("u_sdfMin", m_data->sdf_min);
+			shader.setBool("u_useSdfShadow", true);
+		} else {
+			shader.setBool("u_useSdfShadow", false);
+		}
+
 		if (this->no_cull_) {
 			glDisable(GL_CULL_FACE);
 		}
@@ -306,6 +320,13 @@ namespace Boidsish {
 		if (!m_data)
 			return AABB();
 		return m_data->aabb.Transform(GetModelMatrix());
+	}
+
+	float Model::GetBoundingRadius() const {
+		if (!m_data)
+			return 5.0f;
+		glm::vec3 center = (m_data->aabb.min + m_data->aabb.max) * 0.5f;
+		return glm::distance(m_data->aabb.max, center);
 	}
 
 	void Model::GetGeometry(std::vector<Vertex>& vertices, std::vector<unsigned int>& indices) const {

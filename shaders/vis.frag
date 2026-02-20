@@ -3,6 +3,7 @@ layout(location = 0) out vec4 FragColor;
 layout(location = 1) out vec2 Velocity;
 
 #define HAS_LOCAL_POS
+#include "temporal_data.glsl"
 #include "helpers/lighting.glsl"
 #include "visual_effects.frag"
 #include "visual_effects.glsl"

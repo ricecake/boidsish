@@ -67,6 +67,7 @@
 #include "ui/LightsWidget.h"
 #include "ui/PostProcessingWidget.h"
 #include "ui/SceneWidget.h"
+#include "ui/ShadowsWidget.h"
 #include "ui/hud_widget.h"
 #include "visual_effects.h"
 #include <GL/glew.h>
@@ -897,6 +898,9 @@ namespace Boidsish {
 			auto lights_widget = std::make_shared<UI::LightsWidget>(light_manager);
 			ui_manager->AddWidget(lights_widget);
 
+			auto shadows_widget = std::make_shared<UI::ShadowsWidget>(*parent);
+			ui_manager->AddWidget(shadows_widget);
+
 			auto scene_widget = std::make_shared<UI::SceneWidget>(*scene_manager, *parent);
 			ui_manager->AddWidget(scene_widget);
 		}
@@ -925,6 +929,11 @@ namespace Boidsish {
 				glBindTexture(GL_TEXTURE_2D, hiz_texture_);
 				s.setInt("u_hizTexture", 6);
 			}
+
+			// Set SDF shadow parameters from config
+			auto& cfg = ConfigManager::GetInstance();
+			s.setFloat("u_sdfShadowSoftness", cfg.GetAppSettingFloat("sdf_shadow_softness", 10.0f));
+			s.setFloat("u_sdfShadowMaxDist", cfg.GetAppSettingFloat("sdf_shadow_max_dist", 2.0f));
 		}
 
 		void SetupShaderBindings(ShaderBase& shader_to_setup) {
@@ -2581,6 +2590,9 @@ namespace Boidsish {
 				}
 
 				glDisable(GL_CULL_FACE);
+				if (impl->decor_manager) {
+					impl->decor_manager->Render(shadow_shader);
+				}
 				impl->RenderTerrain(
 					impl->shadow_manager->GetLightSpaceMatrix(info.map_index),
 					glm::mat4(1.0f),

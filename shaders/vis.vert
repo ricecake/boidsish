@@ -111,8 +111,11 @@ void main() {
 	}
 
 	// Extract world position (translation from model matrix)
-	vec3  instanceCenter = vec3(modelMatrix[3]);
-	float instanceScale = length(vec3(modelMatrix[0])); // Approximate scale from first column
+	vec3 instanceCenter = vec3(modelMatrix[3]);
+
+	// Extract maximum scale factor across all axes
+	float instanceScale = max(length(vec3(modelMatrix[0])),
+	                          max(length(vec3(modelMatrix[1])), length(vec3(modelMatrix[2]))));
 
 	// GPU frustum culling - output degenerate triangle if outside frustum
 	if (enableFrustumCulling && !isColossal) {

@@ -78,6 +78,8 @@ namespace Boidsish {
 		bool Intersects(const Ray& ray, float& t) const override;
 		AABB GetAABB() const override;
 
+		float GetBoundingRadius() const override;
+
 		void GetGeometry(std::vector<Vertex>& vertices, std::vector<unsigned int>& indices) const override;
 
 		const std::vector<Mesh>& getMeshes() const;

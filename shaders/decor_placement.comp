@@ -50,6 +50,7 @@ uniform bool  u_randomYaw;      // Whether to apply random Y rotation
 uniform bool  u_alignToTerrain; // If true, align to terrain normal; if false, use world up
 uniform int   u_typeIndex;
 uniform float u_worldScale;
+uniform float u_boundingRadius; // Local bounding radius of the model
 
 // Simple hash for random values
 float hash(uint x) {
@@ -59,11 +60,11 @@ float hash(uint x) {
 	return float(x) / 4294967295.0;
 }
 
-// Check if a point is inside the frustum
-bool isInFrustum(vec3 pos) {
+// Check if a sphere is inside the frustum
+bool isSphereInFrustum(vec3 center, float radius) {
 	for (int i = 0; i < 6; i++) {
-		if (dot(u_frustumPlanes[i].xyz, pos) + u_frustumPlanes[i].w < -5.0) {
-			return false; // Small margin for decor size
+		if (dot(u_frustumPlanes[i].xyz, center) + u_frustumPlanes[i].w < -radius) {
+			return false;
 		}
 	}
 	return true;
@@ -151,8 +152,13 @@ void main() {
 	// Create world position for frustum check
 	vec3 worldPos3D = vec3(worldPos.x, height, worldPos.y);
 
+	// Approximate world-space bounding radius
+	// We use u_baseScale * u_worldScale as an upper bound for instance scale
+	float maxS = (u_baseScale + u_scaleVariance) * u_worldScale;
+	float worldBoundingRadius = u_boundingRadius * maxS;
+
 	// Frustum cull individual instances
-	if (!isInFrustum(worldPos3D))
+	if (!isSphereInFrustum(worldPos3D, worldBoundingRadius))
 		return;
 
 	// We want to place it!

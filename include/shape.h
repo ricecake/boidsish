@@ -157,7 +157,10 @@ namespace Boidsish {
 		 *
 		 * @return float bounding radius in world units
 		 */
-		virtual float GetBoundingRadius() const { return 5.0f; }
+		virtual float GetBoundingRadius() const {
+			glm::vec3 center = (local_aabb_.min + local_aabb_.max) * 0.5f;
+			return glm::distance(local_aabb_.max, center);
+		}
 
 		/**
 		 * @brief Test for intersection with a ray.
