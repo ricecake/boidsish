@@ -13,12 +13,13 @@ namespace Boidsish {
 
 	// This must match the struct in the compute shader
 	struct Particle {
-		glm::vec4 pos;
-		glm::vec4 vel;
-		int       style;
-		int       emitter_index;
-		int       emitter_id;
-		int       _padding;
+		glm::vec4             pos;
+		glm::vec4             vel;
+		alignas(16) glm::vec3 epicenter;
+		int                   style;
+		int                   emitter_index;
+		int                   emitter_id;
+		int                   _padding[2];
 	};
 
 	FireEffectManager::FireEffectManager() {}
