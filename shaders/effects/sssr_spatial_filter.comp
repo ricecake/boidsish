@@ -49,26 +49,25 @@ void main() {
             float sampleDepth = texture(uDepthTexture, sampleUV).r;
             float sampleLinDepth = linearizeDepth(sampleDepth);
 
-            // Bilateral weights
+            // Bilateral weights - increased normal power for sharper boundaries
             float spatialWeight = exp(-distSq / (2.0 * float(radius)));
-            float normalWeight = pow(max(0.0, dot(centerNormal, sampleNormal)), 128.0);
-            float depthWeight = exp(-abs(centerLinDepth - sampleLinDepth) * 10.0); // units-based depth weight
-
-            float weight = spatialWeight * normalWeight * depthWeight;
+            float normalWeight = pow(max(0.0, dot(centerNormal, sampleNormal)), 256.0);
+            float depthWeight = exp(-abs(centerLinDepth - sampleLinDepth) * 20.0);
 
             vec4 val = texture(uInputTexture, sampleUV);
             if (any(isnan(val))) val = vec4(0.0);
+
+            // Use the sample's reflection alpha (roughnessFade) to weight its contribution.
+            // This prevents non-reflective neighbors from darkening the reflective center.
+            float weight = spatialWeight * normalWeight * depthWeight * val.a;
+
+            if (weight < 1e-6) continue;
 
             // Firefly rejection
             float sampleLum = dot(val.rgb, vec3(0.2126, 0.7152, 0.0722));
             if (sampleLum > centerLum * 10.0 + 1.0) {
                 val.rgb *= (centerLum * 10.0 + 1.0) / sampleLum;
             }
-
-            // Also weight by the sample's contribution potential
-            // If the sample pixel is not reflective, it shouldn't contribute much to a blur
-            float reflectionAlpha = val.a;
-            weight *= (reflectionAlpha > 0.001 ? 1.0 : 0.01);
 
             sum += val * weight;
             totalWeight += weight;
