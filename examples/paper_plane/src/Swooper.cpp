@@ -110,7 +110,8 @@ namespace Boidsish {
 				current_pos + fire_dir * 5.0f,
 				GetOrientation(),
 				fire_dir * bullet_speed,
-				glm::vec3(0.2f, 0.2f, 1.0f)
+				glm::vec3(0.2f, 0.2f, 1.0f),
+				id_
 			);
 		}
 

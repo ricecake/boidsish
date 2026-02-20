@@ -403,13 +403,15 @@ namespace Boidsish {
 
 	std::optional<glm::vec3>
 	PaperPlaneHandler::FindOccludedSpawnPosition(const glm::vec3& player_pos, const glm::vec3& player_forward) {
-		std::uniform_real_distribution<float> dist_range(500.0f, 800.0f);
+		std::uniform_real_distribution<float> dist_range(300.0f, 600.0f);
 		std::uniform_real_distribution<float> angle_range(-0.5f, 0.5f);
 
 		glm::vec3 up(0, 1, 0);
 		glm::vec3 right = glm::normalize(glm::cross(player_forward, up));
 		if (glm::length(right) < 0.001f)
 			right = glm::vec3(1, 0, 0);
+
+		glm::vec3 camera_pos = vis->GetCamera().pos();
 
 		for (int i = 0; i < 15; ++i) { // Try 15 times
 			float d = dist_range(eng_);
@@ -419,16 +421,20 @@ namespace Boidsish {
 			auto [h, norm] = GetTerrainPropertiesAtPoint(candidate.x, candidate.z);
 			candidate.y = h + 40.0f; // Above ground
 
-			// Check LOS
-			glm::vec3 to_candidate = candidate - player_pos;
+			// Check LOS from camera
+			glm::vec3 to_candidate = candidate - camera_pos;
 			float     dist_to_cand = glm::length(to_candidate);
 			glm::vec3 dir = glm::normalize(to_candidate);
 
 			float     hit_dist;
 			glm::vec3 hit_norm;
-			if (RaycastTerrain(player_pos, dir, dist_to_cand, hit_dist, hit_norm)) {
-				// Hit terrain before reaching candidate -> Occluded!
-				return candidate;
+			if (RaycastTerrain(camera_pos, dir, dist_to_cand, hit_dist, hit_norm)) {
+				// Hit terrain before reaching candidate -> Occluded from camera!
+				// Also check if the hit point is in front of the player
+				glm::vec3 hit_point = camera_pos + dir * hit_dist;
+				if (glm::dot(player_forward, hit_point - player_pos) > 0) {
+					return candidate;
+				}
 			}
 		}
 		return std::nullopt;
