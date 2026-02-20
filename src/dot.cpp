@@ -29,6 +29,9 @@ namespace Boidsish {
 		shader.setVec3("objectColor", GetR(), GetG(), GetB());
 		shader.setFloat("objectAlpha", GetA());
 		shader.setBool("use_texture", false);
+		shader.setBool("is_instanced", false);
+		shader.setBool("useSSBOInstancing", false);
+		shader.setBool("isColossal", false);
 
 		// Set PBR material properties
 		shader.setBool("usePBR", UsePBR());

@@ -91,6 +91,8 @@ namespace Boidsish {
 
 		inline void SetScale(const glm::vec3& scale) { scale_ = scale; }
 
+		inline const glm::vec3& GetLocalCenter() const { return local_center_; }
+
 		inline int GetTrailLength() const { return trail_length_; }
 
 		inline void SetTrailLength(int length) { trail_length_ = length; }
@@ -158,8 +160,7 @@ namespace Boidsish {
 		 * @return float bounding radius in world units
 		 */
 		virtual float GetBoundingRadius() const {
-			glm::vec3 center = (local_aabb_.min + local_aabb_.max) * 0.5f;
-			return glm::distance(local_aabb_.max, center);
+			return glm::distance(local_aabb_.max, local_center_);
 		}
 
 		/**
@@ -261,6 +262,7 @@ namespace Boidsish {
 		glm::quat rotation_;
 		glm::vec3 scale_;
 		AABB      local_aabb_;
+		glm::vec3 local_center_;
 		bool      clamp_to_terrain_;
 		float     ground_offset_;
 

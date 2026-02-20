@@ -934,6 +934,8 @@ namespace Boidsish {
 			auto& cfg = ConfigManager::GetInstance();
 			s.setFloat("u_sdfShadowSoftness", cfg.GetAppSettingFloat("sdf_shadow_softness", 10.0f));
 			s.setFloat("u_sdfShadowMaxDist", cfg.GetAppSettingFloat("sdf_shadow_max_dist", 2.0f));
+			s.setFloat("u_sdfShadowBias", cfg.GetAppSettingFloat("sdf_shadow_bias", 0.05f));
+			s.setBool("u_sdfDebug", cfg.GetAppSettingBool("sdf_shadow_debug", false));
 		}
 
 		void SetupShaderBindings(ShaderBase& shader_to_setup) {
@@ -1167,7 +1169,10 @@ namespace Boidsish {
 					shader->setFloat("frustumCullRadius", shape->GetBoundingRadius());
 					instance_manager->AddInstance(shape);
 				} else {
+					shader->setBool("is_instanced", false);
+					shader->setBool("useSSBOInstancing", false);
 					shader->setBool("isColossal", shape->IsColossal());
+					shader->setBool("u_useSdfShadow", false);
 					shader->setFloat("frustumCullRadius", shape->GetBoundingRadius());
 					shape->render();
 				}
@@ -2585,6 +2590,10 @@ namespace Boidsish {
 				shadow_shader.use();
 				for (const auto& shape : impl->shapes) {
 					if (shape->CastsShadows()) {
+						shadow_shader.setBool("is_instanced", false);
+						shadow_shader.setBool("useSSBOInstancing", false);
+						shadow_shader.setBool("isColossal", shape->IsColossal());
+						shadow_shader.setBool("u_useSdfShadow", false);
 						shape->render(shadow_shader);
 					}
 				}

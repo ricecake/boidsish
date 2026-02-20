@@ -243,6 +243,9 @@ namespace Boidsish {
 	// Model implementation
 	Model::Model(const std::string& path, bool no_cull): no_cull_(no_cull) {
 		m_data = AssetManager::GetInstance().GetModelData(path);
+		if (m_data) {
+			local_center_ = (m_data->aabb.min + m_data->aabb.max) * 0.5f;
+		}
 	}
 
 	void Model::render() const {
@@ -268,6 +271,11 @@ namespace Boidsish {
 		shader.setMat4("model", model);
 		shader.setVec3("objectColor", GetR(), GetG(), GetB());
 		shader.setFloat("objectAlpha", GetA());
+		shader.setBool("is_instanced", false);
+		shader.setBool("useSSBOInstancing", false);
+		shader.setBool("isColossal", IsColossal());
+		shader.setVec3("u_localCenter", GetLocalCenter());
+		shader.setFloat("frustumCullRadius", GetBoundingRadius());
 
 		// Set PBR material properties
 		shader.setBool("usePBR", UsePBR());
@@ -325,8 +333,7 @@ namespace Boidsish {
 	float Model::GetBoundingRadius() const {
 		if (!m_data)
 			return 5.0f;
-		glm::vec3 center = (m_data->aabb.min + m_data->aabb.max) * 0.5f;
-		return glm::distance(m_data->aabb.max, center);
+		return glm::distance(m_data->aabb.max, local_center_);
 	}
 
 	void Model::GetGeometry(std::vector<Vertex>& vertices, std::vector<unsigned int>& indices) const {

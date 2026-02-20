@@ -11,6 +11,8 @@ namespace Boidsish {
 			auto& cfg = ConfigManager::GetInstance();
 			_sdfSoftness = cfg.GetAppSettingFloat("sdf_shadow_softness", 10.0f);
 			_sdfMaxDist = cfg.GetAppSettingFloat("sdf_shadow_max_dist", 2.0f);
+			_sdfBias = cfg.GetAppSettingFloat("sdf_shadow_bias", 0.05f);
+			_sdfDebug = cfg.GetAppSettingBool("sdf_shadow_debug", false);
 		}
 
 		void ShadowsWidget::Draw() {
@@ -31,11 +33,17 @@ namespace Boidsish {
 					changed = true;
 				if (ImGui::SliderFloat("Max Distance", &_sdfMaxDist, 0.1f, 10.0f))
 					changed = true;
+				if (ImGui::SliderFloat("Bias", &_sdfBias, 0.0f, 0.5f))
+					changed = true;
+				if (ImGui::Checkbox("Debug SDF", &_sdfDebug))
+					changed = true;
 
 				if (changed) {
 					auto& cfg = ConfigManager::GetInstance();
 					cfg.SetFloat("sdf_shadow_softness", _sdfSoftness);
 					cfg.SetFloat("sdf_shadow_max_dist", _sdfMaxDist);
+					cfg.SetFloat("sdf_shadow_bias", _sdfBias);
+					cfg.SetBool("sdf_shadow_debug", _sdfDebug);
 				}
 			}
 

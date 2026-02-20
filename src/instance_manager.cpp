@@ -55,6 +55,7 @@ namespace Boidsish {
 		shader.setBool("isColossal", false);
 		shader.setBool("usePBR", false);
 		shader.setBool("isTextEffect", false);
+		shader.setBool("u_useSdfShadow", false);
 		shader.setFloat("objectAlpha", 1.0f);
 
 		// Clean up buffer state
@@ -99,6 +100,8 @@ namespace Boidsish {
 		}
 
 		shader.setBool("isColossal", model->IsColossal());
+		shader.setVec3("u_localCenter", model->GetLocalCenter());
+		shader.setFloat("frustumCullRadius", model->GetBoundingRadius());
 		shader.setFloat("objectAlpha", model->GetA());
 		shader.setBool("useInstanceColor", false); // Models use textures, not per-instance colors
 
@@ -244,6 +247,8 @@ namespace Boidsish {
 		}
 
 		shader.setBool("isColossal", false);
+		shader.setVec3("u_localCenter", 0.0f, 0.0f, 0.0f);
+		shader.setFloat("frustumCullRadius", 1.0f);
 		shader.setBool("useInstanceColor", true);
 
 		// Set PBR properties (using first dot's values - could be extended to per-instance)

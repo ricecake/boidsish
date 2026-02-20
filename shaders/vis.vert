@@ -45,6 +45,7 @@ uniform bool  useSSBOInstancing = false;
 uniform bool  isLine = false;
 uniform bool  enableFrustumCulling = false;
 uniform float frustumCullRadius = 5.0; // Approximate object radius for sphere test
+uniform vec3  u_localCenter = vec3(0.0);
 
 // Arcade Text Effects
 uniform bool  isArcadeText = false;
@@ -110,8 +111,8 @@ void main() {
 		invModelMatrix_local = inverse(modelMatrix);
 	}
 
-	// Extract world position (translation from model matrix)
-	vec3 instanceCenter = vec3(modelMatrix[3]);
+	// Transform local center to world space for accurate frustum culling
+	vec3 instanceCenter = vec3(modelMatrix * vec4(u_localCenter, 1.0));
 
 	// Extract maximum scale factor across all axes
 	float instanceScale = max(length(vec3(modelMatrix[0])),

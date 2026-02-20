@@ -175,7 +175,9 @@ namespace Boidsish {
 			bool in_preload = dist < kPreloadRadius;
 			bool in_frustum = frustum.IsBoxInFrustum(chunk_min, chunk_max);
 
-			if (!in_preload && !in_frustum)
+			// For shadows to work correctly, we need decor even slightly outside the frustum
+			// but still within the active terrain area.
+			if (!in_preload && !in_frustum && dist > kPreloadRadius * 3.0f)
 				continue;
 
 			// Priority:
@@ -295,6 +297,8 @@ namespace Boidsish {
 
 			// Bind SSBO to a known binding point that the shader expects for instance matrices
 			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 10, type.ssbo);
+			shader.setVec3("u_localCenter", type.model->GetLocalCenter());
+			shader.setFloat("frustumCullRadius", type.model->GetBoundingRadius());
 
 			// Bind SDF texture if available
 			const auto& model_data = type.model->GetModelData();

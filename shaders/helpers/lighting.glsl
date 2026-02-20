@@ -10,6 +10,8 @@ uniform vec3      u_sdfMin;
 uniform bool      u_useSdfShadow = false;
 uniform float     u_sdfShadowSoftness = 10.0;
 uniform float     u_sdfShadowMaxDist = 2.0;
+uniform float     u_sdfShadowBias = 0.05;
+uniform bool      u_sdfDebug = false;
 
 // Hi-Z depth texture for optimized screen-space shadows
 uniform sampler2D u_hizTexture;
@@ -206,20 +208,24 @@ float calculateShadow(int light_index, vec3 frag_pos, vec3 normal, vec3 light_di
  * Calculate SDF shadow factor for a fragment using the per-instance SDF.
  * This provides self-shadowing and contact shadows for decor.
  */
-float calculateSdfShadow(vec3 world_pos, vec3 world_light_dir) {
+float calculateSdfShadow(vec3 world_pos, vec3 world_normal, vec3 world_light_dir) {
 	if (!u_useSdfShadow)
 		return 1.0;
 
 #ifdef HAS_LOCAL_POS
 	// Raymarch in local model space towards the light
 	float shadow = 1.0;
-	float t = 0.05; // Start away from surface to avoid self-intersection
 
-	// Transform light direction to local space
+	// Transform light direction and normal to local space
 	vec3 local_light_dir = normalize(mat3(invModelMatrix) * world_light_dir);
+	vec3 local_normal = normalize(mat3(invModelMatrix) * world_normal);
+
+	// Bias the starting position along the normal to avoid self-intersection
+	float t = u_sdfShadowBias;
+	vec3  start_p = localPos + local_normal * 0.01; // Tiny offset along normal
 
 	for (int i = 0; i < 32; ++i) {
-		vec3 p = localPos + local_light_dir * t;
+		vec3 p = start_p + local_light_dir * t;
 
 		// Map local model space to [0, 1] SDF texture space
 		vec3 sdf_uv = (p - u_sdfMin) / u_sdfExtent;
@@ -470,13 +476,8 @@ vec4 apply_lighting_pbr(vec3 frag_pos, vec3 normal, vec3 albedo, float roughness
 
 		// Apply SDF shadow if enabled
 		if (u_useSdfShadow) {
-			// For SDF shadow, we use the local position
-			// This requires vis.frag to set a global variable or pass it
-			// We'll use a hack: if LocalPos is available, we use it.
-			// But lighting.glsl is a header.
-			// Let's assume there's a global variable 'localPos' defined by the caller.
 #ifdef HAS_LOCAL_POS
-			shadow *= calculateSdfShadow(frag_pos, L);
+			shadow *= calculateSdfShadow(frag_pos, N, L);
 #endif
 		}
 
@@ -484,6 +485,15 @@ vec4 apply_lighting_pbr(vec3 frag_pos, vec3 normal, vec3 albedo, float roughness
 		vec3 specular_radiance = specular * radiance * NdotL * shadow;
 		Lo += (kD * albedo / PI) * radiance * NdotL * shadow + specular_radiance;
 		spec_lum += get_luminance(specular_radiance);
+	}
+
+	if (u_sdfDebug && u_useSdfShadow) {
+#ifdef HAS_LOCAL_POS
+		float sdfShadow = calculateSdfShadow(frag_pos, N, lights[0].direction);
+		if (sdfShadow < 0.9) {
+			Lo = mix(Lo, vec3(1.0, 0.0, 0.0), 0.5);
+		}
+#endif
 	}
 
 	// Ambient lighting for PBR (uses ambient_light uniform from main branch)
@@ -608,7 +618,7 @@ vec4 apply_lighting(vec3 frag_pos, vec3 normal, vec3 albedo, float specular_stre
 		// Apply SDF shadow if enabled
 		if (u_useSdfShadow) {
 #ifdef HAS_LOCAL_POS
-			shadow *= calculateSdfShadow(frag_pos, light_dir);
+			shadow *= calculateSdfShadow(frag_pos, normal, light_dir);
 #endif
 		}
 

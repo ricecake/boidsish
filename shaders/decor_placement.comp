@@ -157,10 +157,6 @@ void main() {
 	float maxS = (u_baseScale + u_scaleVariance) * u_worldScale;
 	float worldBoundingRadius = u_boundingRadius * maxS;
 
-	// Frustum cull individual instances
-	if (!isSphereInFrustum(worldPos3D, worldBoundingRadius))
-		return;
-
 	// We want to place it!
 	uint index = atomicCounterIncrement(instanceCount);
 	if (index >= u_maxInstances)
