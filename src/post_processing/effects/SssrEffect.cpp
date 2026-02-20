@@ -17,13 +17,14 @@ namespace Boidsish {
 			if (hi_z_texture_) glDeleteTextures(1, &hi_z_texture_);
 			if (trace_texture_) glDeleteTextures(1, &trace_texture_);
 			if (filter_texture_) glDeleteTextures(1, &filter_texture_);
+			if (spd_counter_buffer_) glDeleteBuffers(1, &spd_counter_buffer_);
 		}
 
 		void SssrEffect::Initialize(int width, int height) {
 			width_ = width;
 			height_ = height;
 
-			hi_z_shader_ = std::make_unique<ComputeShader>("shaders/effects/sssr_hi_z.comp");
+			hi_z_shader_ = std::make_unique<ComputeShader>("shaders/effects/sssr_hi_z_spd.comp");
 			sssr_shader_ = std::make_unique<ComputeShader>("shaders/effects/sssr_trace.comp");
 			spatial_filter_shader_ = std::make_unique<ComputeShader>("shaders/effects/sssr_spatial_filter.comp");
 			composite_shader_ = std::make_unique<Shader>("shaders/postprocess.vert", "shaders/effects/sssr_composite.frag");
@@ -37,6 +38,13 @@ namespace Boidsish {
 			if (hi_z_texture_) glDeleteTextures(1, &hi_z_texture_);
 			if (trace_texture_) glDeleteTextures(1, &trace_texture_);
 			if (filter_texture_) glDeleteTextures(1, &filter_texture_);
+			if (spd_counter_buffer_) glDeleteBuffers(1, &spd_counter_buffer_);
+
+			// SPD Counter Buffer
+			glGenBuffers(1, &spd_counter_buffer_);
+			glBindBuffer(GL_SHADER_STORAGE_BUFFER, spd_counter_buffer_);
+			glBufferData(GL_SHADER_STORAGE_BUFFER, 12 * sizeof(uint32_t), NULL, GL_DYNAMIC_DRAW);
+			glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
 
 			// Hi-Z Texture (Max Mips)
 			hi_z_levels_ = static_cast<int>(std::floor(std::log2(std::max(width_, height_)))) + 1;
@@ -69,33 +77,30 @@ namespace Boidsish {
 			if (!hi_z_shader_ || !hi_z_shader_->isValid()) return;
 
 			hi_z_shader_->use();
+			hi_z_shader_->setInt("uNumMips", hi_z_levels_);
 
-			// Copy base level
+			// Clear counter buffer
+			uint32_t zero[12] = {0};
+			glBindBuffer(GL_SHADER_STORAGE_BUFFER, spd_counter_buffer_);
+			glBufferSubData(GL_SHADER_STORAGE_BUFFER, 0, 12 * sizeof(uint32_t), zero);
+			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, spd_counter_buffer_);
+
 			glActiveTexture(GL_TEXTURE0);
 			glBindTexture(GL_TEXTURE_2D, depthTexture);
 			hi_z_shader_->setInt("uDepthTexture", 0);
 
-			glBindImageTexture(0, hi_z_texture_, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_R32F);
-			hi_z_shader_->setInt("uLevel", 0);
-
-			glDispatchCompute((width_ + 15) / 16, (height_ + 15) / 16, 1);
-			glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
-
-			// Downsample
-			for (int i = 1; i < hi_z_levels_; ++i) {
-				hi_z_shader_->setInt("uLevel", i);
-
-				// Bind previous level as input image (since we can't sample from the same texture we are writing to mips of,
-				// or can we? With image2D we can if we use different levels)
-				glBindImageTexture(1, hi_z_texture_, i - 1, GL_FALSE, 0, GL_READ_ONLY, GL_R32F);
-				glBindImageTexture(0, hi_z_texture_, i, GL_FALSE, 0, GL_WRITE_ONLY, GL_R32F);
-
-				int levelWidth = std::max(1, width_ >> i);
-				int levelHeight = std::max(1, height_ >> i);
-
-				glDispatchCompute((levelWidth + 15) / 16, (levelHeight + 15) / 16, 1);
-				glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
+			// Bind all mip levels as images
+			for (int i = 0; i < std::min(12, hi_z_levels_); ++i) {
+				glBindImageTexture(i, hi_z_texture_, i, GL_FALSE, 0, GL_WRITE_ONLY, GL_R32F);
 			}
+
+			// SPD dispatch: each workgroup handles a 32x32 area of Level 0
+			// To produce Level 1 (width/2 x height/2), we need (width/2 + 15) / 16 workgroups
+			int wgX = (width_ / 2 + 15) / 16;
+			int wgY = (height_ / 2 + 15) / 16;
+
+			glDispatchCompute(wgX, wgY, 1);
+			glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
 		}
 
 		void SssrEffect::Apply(

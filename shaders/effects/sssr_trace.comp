@@ -4,7 +4,7 @@ layout(local_size_x = 16, local_size_y = 16) in;
 layout(binding = 0, rgba16f) uniform writeonly image2D uOutRadiance;
 
 uniform sampler2D uSceneTexture;
-uniform sampler2D uHiZTexture; // This is the depth mipmap chain
+uniform sampler2D uHiZTexture;
 uniform sampler2D uNormalTexture;
 uniform sampler2D uMaterialTexture;
 
@@ -18,8 +18,6 @@ uniform float uIntensity;
 uniform int   uMaxSteps;
 uniform float uRoughnessThreshold;
 uniform int   uFrameCount;
-
-#include "helpers/lighting.glsl"
 
 #define PI 3.14159265359
 
@@ -37,7 +35,6 @@ vec2 hammersley(uint i, uint N) {
     return vec2(float(i) / float(N), radicalInverse_VdC(i));
 }
 
-// GGX Importance Sampling
 vec3 importanceSampleGGX(vec2 xi, vec3 N, float roughness) {
     float a = roughness * roughness;
     float phi = 2.0 * PI * xi.x;
@@ -56,80 +53,64 @@ vec3 importanceSampleGGX(vec2 xi, vec3 N, float roughness) {
     return normalize(tangent * H.x + bitangent * H.y + N * H.z);
 }
 
-// Procedural Sky Fallback (Simplified version of sky.frag)
 vec3 getSkyColor(vec3 worldRay) {
-    vec3 u_sunset_orange = vec3(0.9, 0.5, 0.2);
-    vec3 u_horizon_color = vec3(0.2, 0.4, 0.8);
-    vec3 u_night_color = vec3(0.05, 0.1, 0.3);
-    vec3 top_sky_color = vec3(0.05, 0.1, 0.3);
+    // Gradient Sky
+    vec3 bottom = vec3(0.05, 0.1, 0.3);
+    vec3 top = vec3(0.0, 0.0, 0.1);
+    vec3 sunset = vec3(0.9, 0.5, 0.2);
 
-    float atmosphere_thickness = exp(-abs(worldRay.y) * 15.0);
-    vec3 sky_base = mix(u_night_color, u_horizon_color, atmosphere_thickness * 0.5);
+    float y = worldRay.y;
+    vec3 col = mix(bottom, top, smoothstep(0.0, 1.0, y));
 
-    float top_mix = smoothstep(0.1, 0.6, worldRay.y);
-    vec3 final_color = mix(sky_base, top_sky_color, top_mix);
-
-    // Add a simple "sun" contribution
     vec3 sunDir = normalize(vec3(0.0, 0.1, -1.0));
-    float sun_alignment = max(0.0, dot(worldRay, sunDir));
-    final_color += u_sunset_orange * pow(sun_alignment, 8.0) * atmosphere_thickness;
+    float sun = pow(max(0.0, dot(worldRay, sunDir)), 16.0);
+    col += sunset * sun;
 
-    return final_color;
+    return col;
 }
 
-// Robust Hi-Z Trace
+// Hierarchical Z-Trace
 bool hiZTrace(vec3 ro, vec3 rd, out vec2 hitUV) {
-    vec3 p0 = ro;
-    vec3 p1 = ro + rd * 1000.0;
-
-    vec4 c0 = uProj * vec4(p0, 1.0);
-    vec4 c1 = uProj * vec4(p1, 1.0);
-
+    vec4 c0 = uProj * vec4(ro, 1.0);
     vec3 s0 = (c0.xyz / c0.w) * 0.5 + 0.5;
+
+    vec4 c1 = uProj * vec4(ro + rd, 1.0);
     vec3 s1 = (c1.xyz / c1.w) * 0.5 + 0.5;
 
-    vec2 size = textureSize(uHiZTexture, 0).xy;
-    vec3 rayDir = s1 - s0;
+    vec3 rayDir = normalize(s1 - s0);
+    vec3 invRayDir = 1.0 / rayDir;
 
-    // Algorithm based on "Hierarchical Z-Buffer Occlusion Culling"
     int maxLevel = textureQueryLevels(uHiZTexture) - 1;
     int level = 0;
 
-    vec3 v = s0;
-    vec3 d = rayDir;
-
-    // Precompute inverse direction for stepping
-    vec3 invD = 1.0 / d;
+    vec3 p = s0;
+    vec2 size = vec2(textureSize(uHiZTexture, 0));
 
     for (int i = 0; i < uMaxSteps; i++) {
-        vec2 uv = v.xy;
-        if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0) break;
+        if (p.x < 0.0 || p.x > 1.0 || p.y < 0.0 || p.y > 1.0 || p.z < 0.0 || p.z > 1.0) return false;
 
-        float z = textureLod(uHiZTexture, uv, level).r;
+        float z = textureLod(uHiZTexture, p.xy, level).r;
 
-        if (v.z > z + 0.0001) {
-            // Ray is behind geometry
+        if (p.z > z + 0.00001) {
             if (level == 0) {
-                // Potential hit, check thickness
-                if (v.z - z < 0.01) {
-                    hitUV = uv;
-                    return true;
-                }
-                // Too thick, likely occluded or backface, skip
-                // Advance ray slightly to avoid infinite loop
-                v += d * 0.001;
+                // Precise intersection
+                hitUV = p.xy;
+                // Thickness check
+                if (p.z - z < 0.005) return true;
+                // skip
+                p += rayDir * 0.005;
             } else {
-                // Go down a level
                 level--;
             }
         } else {
-            // Ray is in front, advance to cell boundary
-            ivec2 pixel = ivec2(uv * (size / pow(2.0, level)));
-            vec2 boundary = (vec2(pixel) + step(0.0, d.xy)) / (size / pow(2.0, level));
-            vec2 t = (boundary - v.xy) * invD.xy;
+            // Advance to next cell
+            vec2 cellCount = size / pow(2.0, float(level));
+            vec2 cell = floor(p.xy * cellCount);
+            vec2 boundary = (cell + step(0.0, rayDir.xy)) / cellCount;
+            vec2 t = (boundary - p.xy) * invRayDir.xy;
             float tMin = min(t.x, t.y);
 
-            v += d * (tMin + 0.0001);
+            p += rayDir * (tMin + 0.0001);
             level = min(maxLevel, level + 1);
         }
     }
@@ -140,12 +121,9 @@ bool hiZTrace(vec3 ro, vec3 rd, out vec2 hitUV) {
 void main() {
     ivec2 pixel = ivec2(gl_GlobalInvocationID.xy);
     ivec2 size = imageSize(uOutRadiance);
-
-    if (pixel.x >= size.x || pixel.y >= size.y)
-        return;
+    if (pixel.x >= size.x || pixel.y >= size.y) return;
 
     vec2 uv = (vec2(pixel) + 0.5) / vec2(size);
-
     vec3 worldNormal = texture(uNormalTexture, uv).xyz;
     if (length(worldNormal) < 0.1) {
         imageStore(uOutRadiance, pixel, vec4(0.0));
@@ -154,34 +132,28 @@ void main() {
 
     vec4 matData = texture(uMaterialTexture, uv);
     float roughness = matData.r;
-    float metallic = matData.g;
-
     if (roughness > uRoughnessThreshold) {
         imageStore(uOutRadiance, pixel, vec4(0.0));
         return;
     }
 
-    float depth = texture(uHiZTexture, uv).r;
+    float depth = textureLod(uHiZTexture, uv, 0).r;
     vec4 clipPos = vec4(uv * 2.0 - 1.0, depth * 2.0 - 1.0, 1.0);
     vec4 viewPos = uInvProj * clipPos;
     viewPos /= viewPos.w;
     vec3 worldPos = (uInvView * viewPos).xyz;
 
     vec3 V = normalize(uCameraPos - worldPos);
-
-    // Stochastic sampling
     vec2 xi = hammersley(uint(uFrameCount) % 64u, 64u);
 
     vec3 L;
     if (roughness < 0.02) {
-        // Mirror fallback
         L = reflect(-V, worldNormal);
     } else {
         vec3 H = importanceSampleGGX(xi, worldNormal, roughness);
         L = reflect(-V, H);
     }
 
-    // Trace in View Space
     vec3 ro = viewPos.xyz;
     vec3 rd = (uView * vec4(L, 0.0)).xyz;
 
@@ -190,15 +162,15 @@ void main() {
 
     vec4 radiance = vec4(0.0);
     if (hit) {
-        radiance.rgb = texture(uSceneTexture, hitUV).rgb;
-        radiance.a = 1.0;
+        vec3 reflectedColor = texture(uSceneTexture, hitUV).rgb;
 
-        // Edge fade to prevent hard popping
+        // Edge fade to smoothly transition to skybox
         vec2 dUV = abs(hitUV - 0.5) * 2.0;
         float edgeFade = 1.0 - max(smoothstep(0.8, 1.0, dUV.x), smoothstep(0.8, 1.0, dUV.y));
-        radiance *= edgeFade;
+
+        radiance.rgb = mix(getSkyColor(L), reflectedColor, edgeFade);
+        radiance.a = 1.0;
     } else {
-        // Fallback to Skybox
         radiance.rgb = getSkyColor(L);
         radiance.a = 1.0;
     }

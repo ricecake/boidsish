@@ -24,20 +24,30 @@ namespace Boidsish {
 		void TemporalAccumulator::Cleanup() {
 			if (_historyTextures[0])
 				glDeleteTextures(2, _historyTextures);
+			if (_historyDepthTextures[0])
+				glDeleteTextures(2, _historyDepthTextures);
 			_historyTextures[0] = 0;
 			_historyTextures[1] = 0;
+			_historyDepthTextures[0] = 0;
+			_historyDepthTextures[1] = 0;
 		}
 
 		void TemporalAccumulator::CreateTextures() {
 			Cleanup();
 			glGenTextures(2, _historyTextures);
+			glGenTextures(2, _historyDepthTextures);
 			for (int i = 0; i < 2; i++) {
 				glBindTexture(GL_TEXTURE_2D, _historyTextures[i]);
-				glTexImage2D(GL_TEXTURE_2D, 0, _internalFormat, _width, _height, 0, GL_RED, GL_FLOAT, NULL);
+				glTexImage2D(GL_TEXTURE_2D, 0, _internalFormat, _width, _height, 0, GL_RGBA, GL_FLOAT, NULL);
 				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
 				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
 				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+
+				glBindTexture(GL_TEXTURE_2D, _historyDepthTextures[i]);
+				glTexImage2D(GL_TEXTURE_2D, 0, GL_R32F, _width, _height, 0, GL_RED, GL_FLOAT, NULL);
+				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 			}
 			glBindTexture(GL_TEXTURE_2D, 0);
 		}
@@ -73,9 +83,12 @@ namespace Boidsish {
 			glBindTexture(GL_TEXTURE_2D, depthTexture);
 			_accumulationShader->setInt("uDepth", 3);
 
-			// Format must match shader. Using GL_R16F in C++ but rgba16f in shader might be okay if we only use .r
-			// Actually, let's fix the shader to use r16f if we use GL_R16F.
+			glActiveTexture(GL_TEXTURE4);
+			glBindTexture(GL_TEXTURE_2D, _historyDepthTextures[_currentIndex]);
+			_accumulationShader->setInt("uHistoryDepth", 4);
+
 			glBindImageTexture(0, _historyTextures[nextIndex], 0, GL_FALSE, 0, GL_WRITE_ONLY, _internalFormat);
+			glBindImageTexture(1, _historyDepthTextures[nextIndex], 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_R32F);
 
 			glDispatchCompute((_width + 7) / 8, (_height + 7) / 8, 1);
 			glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);

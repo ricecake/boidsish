@@ -2,15 +2,17 @@
 layout(local_size_x = 8, local_size_y = 8) in;
 
 layout(binding = 0, rgba16f) uniform image2D outResult;
+layout(binding = 1, r32f) uniform image2D outDepth;
 
 uniform sampler2D uCurrentFrame;
 uniform sampler2D uHistoryFrame;
 uniform sampler2D uVelocity;
 uniform sampler2D uDepth;
+uniform sampler2D uHistoryDepth;
 
 #include "temporal_data.glsl"
 
-uniform float uAlpha = 0.9; // Accumulation factor
+uniform float uAlpha = 0.9;
 
 void main() {
 	ivec2 pixel = ivec2(gl_GlobalInvocationID.xy);
@@ -19,6 +21,7 @@ void main() {
 		return;
 
 	vec2 uv = (vec2(pixel) + 0.5) / vec2(size);
+    float currentDepth = texture(uDepth, uv).r;
 
 	// 1. Reprojection
 	vec2 velocity = texture(uVelocity, uv).rg;
@@ -29,16 +32,19 @@ void main() {
 	// 2. Out of bounds check
 	if (prevUV.x < 0.0 || prevUV.x > 1.0 || prevUV.y < 0.0 || prevUV.y > 1.0) {
 		imageStore(outResult, pixel, current);
+        imageStore(outDepth, pixel, vec4(currentDepth));
 		return;
 	}
 
 	vec4 history = texture(uHistoryFrame, prevUV);
+    float historyDepth = texture(uHistoryDepth, prevUV).r;
+
+    // Disocclusion Detection
+    bool disoccluded = abs(currentDepth - historyDepth) > 0.01;
 
 	// 3. Advanced Neighborhood Clamping / Clipping
-	// Sample 3x3 neighborhood of current frame
 	vec4 m1 = vec4(0.0);
 	vec4 m2 = vec4(0.0);
-
     vec4 minColor = vec4(10000.0);
     vec4 maxColor = vec4(-10000.0);
 
@@ -54,26 +60,19 @@ void main() {
 	vec4 mean = m1 / 9.0;
 	vec4 stddev = sqrt(max(vec4(0.0), (m2 / 9.0) - (mean * mean)));
 
-    // Variance-based clipping
 	float gamma = 1.5;
 	vec4 cl_min = mean - gamma * stddev;
 	vec4 cl_max = mean + gamma * stddev;
 
-    // Combine with AABB clamping
     minColor = mix(minColor, cl_min, 0.5);
     maxColor = mix(maxColor, cl_max, 0.5);
 
 	history = clamp(history, minColor, maxColor);
 
-	// 4. Accumulation
-	float activeAlpha = uAlpha;
-
-    // Disocclusion handling
-    float currentDepth = texture(uDepth, uv).r;
-    // We would need previous depth for a proper check, but we can approximate
-    // with velocity magnitude or neighborhood variance.
-
+	// 4. Accumulate
+	float activeAlpha = disoccluded ? 0.0 : uAlpha;
 	vec4 result = mix(current, history, activeAlpha);
 
 	imageStore(outResult, pixel, result);
+    imageStore(outDepth, pixel, vec4(currentDepth));
 }
