@@ -49,6 +49,7 @@ namespace Boidsish {
 			int width_ = 0;
 			int height_ = 0;
 
+			std::unique_ptr<ComputeShader> hi_z_copy_shader_;
 			std::unique_ptr<ComputeShader> hi_z_shader_;
 			std::unique_ptr<ComputeShader> sssr_shader_;
 			std::unique_ptr<ComputeShader> spatial_filter_shader_;
@@ -56,7 +57,6 @@ namespace Boidsish {
 
 			GLuint hi_z_texture_ = 0;
 			int    hi_z_levels_ = 0;
-			GLuint spd_counter_buffer_ = 0;
 
 			GLuint trace_texture_ = 0;
 			GLuint filter_texture_ = 0;

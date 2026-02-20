@@ -1,7 +1,7 @@
 #version 430 core
 layout(local_size_x = 8, local_size_y = 8) in;
 
-layout(binding = 0, rgba16f) uniform image2D outResult;
+layout(binding = 0, r16f) uniform image2D outResult;
 layout(binding = 1, r32f) uniform image2D outDepth;
 
 uniform sampler2D uCurrentFrame;
@@ -15,8 +15,6 @@ uniform sampler2D uHistoryDepth;
 uniform float uAlpha = 0.9;
 
 float linearizeDepth(float d) {
-    // Assuming standard perspective projection
-    // Near/Far are usually 0.1 / 1000.0
     float z = d * 2.0 - 1.0;
     return (2.0 * 0.1 * 1000.0) / (1000.0 + 0.1 - z * (1000.0 - 0.1));
 }
@@ -30,68 +28,61 @@ void main() {
 	vec2 uv = (vec2(pixel) + 0.5) / vec2(size);
     float currentDepth = texture(uDepth, uv).r;
 
-	// 1. Reprojection
 	vec2 velocity = texture(uVelocity, uv).rg;
 	vec2 prevUV = uv - velocity;
 
-	vec4 current = texture(uCurrentFrame, uv);
-    if (any(isnan(current)) || any(isinf(current))) current = vec4(0.0);
-    current.rgb = clamp(current.rgb, vec3(0.0), vec3(10.0));
+	float current = texture(uCurrentFrame, uv).r;
+    if (isnan(current) || isinf(current)) current = 0.0;
+    current = clamp(current, 0.0, 10.0);
 
-	// 2. Out of bounds check
 	if (prevUV.x < 0.0 || prevUV.x > 1.0 || prevUV.y < 0.0 || prevUV.y > 1.0) {
-		imageStore(outResult, pixel, current);
+		imageStore(outResult, pixel, vec4(current, 0, 0, 0));
         imageStore(outDepth, pixel, vec4(currentDepth));
 		return;
 	}
 
-	vec4 history = texture(uHistoryFrame, prevUV);
-    if (any(isnan(history)) || any(isinf(history))) history = current;
+	float history = texture(uHistoryFrame, prevUV).r;
+    if (isnan(history) || isinf(history)) history = current;
 
     float historyDepth = texture(uHistoryDepth, prevUV).r;
 
-    // 3. Robust Disocclusion Detection using Linear Depth
     float currLin = linearizeDepth(currentDepth);
     float histLin = linearizeDepth(historyDepth);
     bool disoccluded = abs(currLin - histLin) > (currLin * 0.05 + 0.1);
 
-	// 4. Neighborhood Clamping
-	vec4 m1 = vec4(0.0);
-	vec4 m2 = vec4(0.0);
-    vec4 minColor = vec4(10000.0);
-    vec4 maxColor = vec4(-10000.0);
+	float m1 = 0.0;
+	float m2 = 0.0;
+    float minVal = 10000.0;
+    float maxVal = -10000.0;
 
 	for (int y = -1; y <= 1; y++) {
 		for (int x = -1; x <= 1; x++) {
-			vec4 val = texture(uCurrentFrame, uv + vec2(x, y) * texelSize);
-            if (any(isnan(val))) val = current;
+			float val = texture(uCurrentFrame, uv + vec2(x, y) * texelSize).r;
+            if (isnan(val)) val = current;
 			m1 += val;
 			m2 += val * val;
-            minColor = min(minColor, val);
-            maxColor = max(maxColor, val);
+            minVal = min(minVal, val);
+            maxVal = max(maxVal, val);
 		}
 	}
-	vec4 mean = m1 / 9.0;
-	vec4 stddev = sqrt(max(vec4(0.0), (m2 / 9.0) - (mean * mean)));
+	float mean = m1 / 9.0;
+	float stddev = sqrt(max(0.0, (m2 / 9.0) - (mean * mean)));
 
 	float gamma = 1.25;
-	vec4 cl_min = mean - gamma * stddev;
-	vec4 cl_max = mean + gamma * stddev;
+	float cl_min = mean - gamma * stddev;
+	float cl_max = mean + gamma * stddev;
 
-    // Use AABB for tighter clamping
-    minColor = max(minColor, cl_min);
-    maxColor = min(maxColor, cl_max);
+    minVal = max(minVal, cl_min);
+    maxVal = min(maxVal, cl_max);
 
-	history = clamp(history, minColor, maxColor);
+	history = clamp(history, minVal, maxVal);
 
-	// 5. Accumulate
-    // Reduce history weight if disoccluded or near screen edges
     float edgeFactor = smoothstep(0.0, 0.05, prevUV.x) * smoothstep(1.0, 0.95, prevUV.x) *
                        smoothstep(0.0, 0.05, prevUV.y) * smoothstep(1.0, 0.95, prevUV.y);
 
 	float activeAlpha = disoccluded ? 0.0 : (uAlpha * edgeFactor);
-	vec4 result = mix(current, history, activeAlpha);
+	float result = mix(current, history, activeAlpha);
 
-	imageStore(outResult, pixel, result);
+	imageStore(outResult, pixel, vec4(result, 0, 0, 0));
     imageStore(outDepth, pixel, vec4(currentDepth));
 }

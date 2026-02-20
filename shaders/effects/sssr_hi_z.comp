@@ -1,44 +1,21 @@
 #version 430 core
-layout(local_size_x = 16, local_size_y = 16) in;
+layout(local_size_x = 8, local_size_y = 8) in;
 
-layout(binding = 0, r32f) uniform writeonly image2D uOutImage;
-
-// Input can be either a texture or an image depending on the pass
-uniform sampler2D uDepthTexture;
-layout(binding = 1, r32f) uniform readonly image2D uInImage;
-
-uniform int uLevel; // 0 for initial copy, >0 for downsampling
+layout(binding = 0, r32f) uniform image2D outHiZ; // Dest Level
+uniform sampler2D uSourceHiZ; // Whole texture
+uniform vec2 uDestSize;
+uniform int uSourceLevel;
 
 void main() {
     ivec2 pixel = ivec2(gl_GlobalInvocationID.xy);
-    ivec2 size = imageSize(uOutImage);
+    if (pixel.x >= int(uDestSize.x) || pixel.y >= int(uDestSize.y)) return;
 
-    if (pixel.x >= size.x || pixel.y >= size.y)
-        return;
+    ivec2 srcCoord = pixel * 2;
+    float d0 = texelFetch(uSourceHiZ, srcCoord + ivec2(0, 0), uSourceLevel).r;
+    float d1 = texelFetch(uSourceHiZ, srcCoord + ivec2(1, 0), uSourceLevel).r;
+    float d2 = texelFetch(uSourceHiZ, srcCoord + ivec2(0, 1), uSourceLevel).r;
+    float d3 = texelFetch(uSourceHiZ, srcCoord + ivec2(1, 1), uSourceLevel).r;
 
-    float depth;
-    if (uLevel == 0) {
-        // Initial copy from depth texture
-        vec2 uv = (vec2(pixel) + 0.5) / vec2(size);
-        depth = texture(uDepthTexture, uv).r;
-    } else {
-        // Downsample from previous level
-        ivec2 prevCoord = pixel * 2;
-
-        float d0 = imageLoad(uInImage, prevCoord).r;
-        float d1 = imageLoad(uInImage, prevCoord + ivec2(1, 0)).r;
-        float d2 = imageLoad(uInImage, prevCoord + ivec2(0, 1)).r;
-        float d3 = imageLoad(uInImage, prevCoord + ivec2(1, 1)).r;
-
-        // For Hi-Z tracing, we want the minimum depth (nearest) or maximum depending on depth range
-        // Since we use 0.1 to far_plane (nearer is smaller values in standard GL depth),
-        // we take the maximum value if we want the "furthest" point in the cell to avoid missing intersections.
-        // Actually, for Hi-Z raymarching, we usually want the MINIMUM depth in the cell (closest point)
-        // to determine if we can skip the cell.
-        // Wait, standard depth 0 is near, 1 is far.
-        // If we use MIN depth, we are checking against the closest point in the cell.
-        depth = min(min(d0, d1), min(d2, d3));
-    }
-
-    imageStore(uOutImage, pixel, vec4(depth));
+    float minDepth = min(min(d0, d1), min(d2, d3));
+    imageStore(outHiZ, pixel, vec4(minDepth));
 }

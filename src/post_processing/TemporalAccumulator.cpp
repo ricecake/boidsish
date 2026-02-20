@@ -17,7 +17,11 @@ namespace Boidsish {
 			_height = height;
 			_internalFormat = internalFormat;
 
-			_accumulationShader = std::make_unique<ComputeShader>("shaders/effects/temporal_accumulation.comp");
+			if (_internalFormat == GL_R16F || _internalFormat == GL_R32F) {
+				_accumulationShader = std::make_unique<ComputeShader>("shaders/effects/temporal_accumulation_scalar.comp");
+			} else {
+				_accumulationShader = std::make_unique<ComputeShader>("shaders/effects/temporal_accumulation.comp");
+			}
 			CreateTextures();
 		}
 

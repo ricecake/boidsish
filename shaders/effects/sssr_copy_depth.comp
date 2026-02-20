@@ -1,0 +1,15 @@
+#version 430 core
+layout(local_size_x = 8, local_size_y = 8) in;
+
+layout(binding = 0, r32f) uniform image2D outHiZ;
+uniform sampler2D uDepthTexture;
+
+void main() {
+    ivec2 pixel = ivec2(gl_GlobalInvocationID.xy);
+    ivec2 size = imageSize(outHiZ);
+    if (pixel.x >= size.x || pixel.y >= size.y) return;
+
+    vec2 uv = (vec2(pixel) + 0.5) / vec2(size);
+    float depth = texture(uDepthTexture, uv).r;
+    imageStore(outHiZ, pixel, vec4(depth));
+}
