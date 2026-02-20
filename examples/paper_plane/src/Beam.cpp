@@ -1,5 +1,7 @@
 #include "Beam.h"
 
+#include <set>
+
 #include "GuidedMissileLauncher.h"
 #include "PaperPlane.h"
 #include "graphics.h"
@@ -164,15 +166,45 @@ namespace Boidsish {
 				// Damage entities
 				auto spatial_handler = dynamic_cast<const SpatialEntityHandler*>(&handler);
 				if (spatial_handler) {
-					auto targets = spatial_handler->GetEntitiesInRadius<EntityBase>(
+					// 1. Damage at impact point (explosion radius)
+					auto splash_targets = spatial_handler->GetEntitiesInRadius<EntityBase>(
 						Vector3(end.x, end.y, end.z),
 						kDamageRadius
 					);
-					for (auto& target : targets) {
+					std::set<int> damaged_ids;
+					for (auto& target : splash_targets) {
 						if (target->GetId() == owner_id_)
 							continue;
 
 						target->OnHit(handler, 100.0f); // Large generic damage
+						damaged_ids.insert(target->GetId());
+					}
+
+					// 2. Penetration damage along the beam
+					glm::vec3 beam_mid = (start + end) * 0.5f;
+					float     beam_len = glm::distance(start, end);
+					auto      line_targets = spatial_handler->GetEntitiesInRadius<EntityBase>(
+                        Vector3(beam_mid.x, beam_mid.y, beam_mid.z),
+                        (beam_len * 0.5f) + 15.0f
+                    );
+
+					for (auto& target : line_targets) {
+						if (target->GetId() == owner_id_ || damaged_ids.count(target->GetId()))
+							continue;
+
+						glm::vec3 p = target->GetPosition().Toglm();
+						glm::vec3 ab = end - start;
+						float     ab_len_sq = glm::dot(ab, ab);
+						if (ab_len_sq > 1e-6f) {
+							float t = glm::dot(p - start, ab) / ab_len_sq;
+							t = glm::clamp(t, 0.0f, 1.0f);
+							glm::vec3 closest = start + t * ab;
+							float     dist = glm::distance(p, closest);
+
+							if (dist < 10.0f) { // Penetration radius
+								target->OnHit(handler, 100.0f);
+							}
+						}
 					}
 				}
 			}

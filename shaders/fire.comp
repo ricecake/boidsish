@@ -230,7 +230,10 @@ void main() {
 			p.vel = vec4(emitter.velocity + normalize(spread_dir) * kExhaustSpeed * rand(seed), 0.0);
 		} else if (p.style == 1) { // Explosion
 			p.pos = vec4(emitter.position, kExplosionLifetime * lifeTimeModifier);
-			p.vel = vec4(normalize(random_vec) * kExplosionSpeed * 0.5 + abs(fbmCurlMagnitude(p.pos.xyz, u_delta_time)), 0.0);
+			p.vel = vec4(
+				normalize(random_vec) * kExplosionSpeed * 0.5 + abs(fbmCurlMagnitude(p.pos.xyz, u_delta_time)),
+				0.0
+			);
 		} else if (p.style == 2) { // Fire
 			p.pos = vec4(emitter.position + random_vec * 0.1, kFireLifetime * lifeTimeModifier);
 			p.vel = vec4(0, kFireSpeed, 0, 0); // Start with upward velocity
