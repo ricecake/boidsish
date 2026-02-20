@@ -122,7 +122,7 @@ namespace Boidsish {
 			if (!effects_[i]) {
 				effects_[i] =
 					std::make_shared<FireEffect>(position, style, direction, velocity, max_particles, lifetime);
-				_UpdateParticleAllocation();
+				needs_reallocation_ = true;
 				return effects_[i];
 			}
 		}
@@ -131,7 +131,7 @@ namespace Boidsish {
 		if (effects_.size() < kMaxEmitters) {
 			auto effect = std::make_shared<FireEffect>(position, style, direction, velocity, max_particles, lifetime);
 			effects_.push_back(effect);
-			_UpdateParticleAllocation();
+			needs_reallocation_ = true;
 			return effect;
 		}
 
@@ -145,7 +145,7 @@ namespace Boidsish {
 			for (size_t i = 0; i < effects_.size(); ++i) {
 				if (effects_[i] == effect) {
 					effects_[i] = nullptr; // Mark as inactive
-					_UpdateParticleAllocation();
+					needs_reallocation_ = true;
 					return;
 				}
 			}
@@ -166,7 +166,6 @@ namespace Boidsish {
 
 		time_ = time;
 		// --- Effect Lifetime Management ---
-		bool needs_reallocation = false;
 		for (auto& effect : effects_) {
 			if (effect) {
 				float lifetime = effect->GetLifetime();
@@ -176,14 +175,15 @@ namespace Boidsish {
 					effect->SetLived(lived);
 					if (lived >= lifetime) {
 						effect = nullptr; // Mark for removal
-						needs_reallocation = true;
+						needs_reallocation_ = true;
 					}
 				}
 			}
 		}
 
-		if (needs_reallocation) {
+		if (needs_reallocation_) {
 			_UpdateParticleAllocation();
+			needs_reallocation_ = false;
 		}
 
 		// --- Update Emitters ---
@@ -325,13 +325,15 @@ namespace Boidsish {
 		}
 
 		// --- 2. Calculate Current Distribution ---
-		std::vector<int> current_counts(effects_.size(), 0);
-		std::vector<int> null_particles;
+		std::vector<int>              current_counts(effects_.size(), 0);
+		std::vector<int>              null_particles;
+		std::vector<std::vector<int>> particles_by_emitter(effects_.size());
+
 		for (int i = 0; i < kMaxParticles; ++i) {
 			int emitter_index = particle_to_emitter_map_[i];
-			// if (emitter_index != -1 && emitter_index < (int)effects_.size()) {
 			if (emitter_index != -1 && emitter_index < (int)effects_.size() && effects_[emitter_index]) {
 				current_counts[emitter_index]++;
+				particles_by_emitter[emitter_index].push_back(i);
 			} else {
 				null_particles.push_back(i);
 			}
@@ -347,12 +349,12 @@ namespace Boidsish {
 				float need = (float)diff / ideal_counts[i];
 				to_fill.push({need, (int)i});
 			} else if (diff < 0) {
-				// Find -diff particles to reclaim
-				int count = -diff;
-				for (int p_idx = 0; p_idx < kMaxParticles && count > 0; ++p_idx) {
-					if (particle_to_emitter_map_[p_idx] == (int)i) {
-						to_reclaim.push_back(p_idx);
-						count--;
+				// Reclaim -diff particles from this emitter efficiently using pre-collected indices
+				int num_to_reclaim = -diff;
+				for (int j = 0; j < num_to_reclaim; ++j) {
+					if (!particles_by_emitter[i].empty()) {
+						to_reclaim.push_back(particles_by_emitter[i].back());
+						particles_by_emitter[i].pop_back();
 					}
 				}
 			}
