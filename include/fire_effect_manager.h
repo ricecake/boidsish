@@ -83,6 +83,7 @@ namespace Boidsish {
 		GLuint dummy_vao_{0};
 
 		bool   initialized_{false};
+		bool   needs_reallocation_{false};
 		float  time_{0.0f};
 		size_t emitter_buffer_capacity_{0}; // Track capacity to avoid per-frame reallocation
 

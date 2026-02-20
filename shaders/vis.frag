@@ -149,9 +149,9 @@ void main() {
 		outColor = mix(vec4(0.0, 0.7, 0.7, final_alpha) * length(outColor), outColor, step(1, fade));
 	}
 
-	if (nightFactor > 0) {
-		outColor += vec4(0, 7, 0, 1);
-	}
+	// if (nightFactor > 0) {
+	outColor += nightFactor * (sin(length(FragPos.xz - viewPos.xz * 0.1) + time) * 0.5 + 0.5) * vec4(0, 7, 0, 1);
+	// }
 
 	FragColor = outColor;
 
