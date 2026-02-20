@@ -353,7 +353,7 @@ namespace Boidsish {
 				glm::vec3 offset = right * (fire_left ? -0.5f : 0.5f);
 				fire_left = !fire_left;
 
-				handler.QueueAddEntity<Tracer>(pos.Toglm() + offset, orientation_, tracer_vel, color);
+				handler.QueueAddEntity<Tracer>(pos.Toglm() + offset, orientation_, tracer_vel, color, id_);
 
 				time_to_fire = 0.05f; // 20 rounds per second!
 				break;
