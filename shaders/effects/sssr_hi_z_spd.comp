@@ -1,0 +1,71 @@
+#version 430 core
+layout(local_size_x = 16, local_size_y = 16) in;
+
+layout(binding = 0, r32f) uniform writeonly image2D uHiZMips[12];
+
+uniform sampler2D uDepthTexture;
+uniform int uNumMips;
+
+layout(binding = 1, std430) buffer GlobalCounter {
+    uint uWorkgroupCount[12];
+};
+
+shared float s_mipData[16][16];
+
+void main() {
+    ivec2 pixel = ivec2(gl_GlobalInvocationID.xy);
+    ivec2 size = textureSize(uDepthTexture, 0);
+
+    float d = 1.0;
+    if (pixel.x < size.x && pixel.y < size.y) {
+        d = texelFetch(uDepthTexture, pixel, 0).r;
+        imageStore(uHiZMips[0], pixel, vec4(d));
+    }
+
+    // Level 1
+    s_mipData[gl_LocalInvocationID.x][gl_LocalInvocationID.y] = d;
+    barrier();
+
+    if ((gl_LocalInvocationID.x % 2 == 0) && (gl_LocalInvocationID.y % 2 == 0)) {
+        d = min(min(s_mipData[gl_LocalInvocationID.x][gl_LocalInvocationID.y],
+                    s_mipData[gl_LocalInvocationID.x+1][gl_LocalInvocationID.y]),
+                min(s_mipData[gl_LocalInvocationID.x][gl_LocalInvocationID.y+1],
+                    s_mipData[gl_LocalInvocationID.x+1][gl_LocalInvocationID.y+1]));
+        s_mipData[gl_LocalInvocationID.x][gl_LocalInvocationID.y] = d;
+        imageStore(uHiZMips[1], pixel / 2, vec4(d));
+    }
+    barrier();
+
+    // Level 2
+    if ((gl_LocalInvocationID.x % 4 == 0) && (gl_LocalInvocationID.y % 4 == 0)) {
+        d = min(min(s_mipData[gl_LocalInvocationID.x][gl_LocalInvocationID.y],
+                    s_mipData[gl_LocalInvocationID.x+2][gl_LocalInvocationID.y]),
+                min(s_mipData[gl_LocalInvocationID.x][gl_LocalInvocationID.y+2],
+                    s_mipData[gl_LocalInvocationID.x+2][gl_LocalInvocationID.y+2]));
+        s_mipData[gl_LocalInvocationID.x][gl_LocalInvocationID.y] = d;
+        imageStore(uHiZMips[2], pixel / 4, vec4(d));
+    }
+    barrier();
+
+    // Level 3
+    if ((gl_LocalInvocationID.x % 8 == 0) && (gl_LocalInvocationID.y % 8 == 0)) {
+        d = min(min(s_mipData[gl_LocalInvocationID.x][gl_LocalInvocationID.y],
+                    s_mipData[gl_LocalInvocationID.x+4][gl_LocalInvocationID.y]),
+                min(s_mipData[gl_LocalInvocationID.x][gl_LocalInvocationID.y+4],
+                    s_mipData[gl_LocalInvocationID.x+4][gl_LocalInvocationID.y+4]));
+        s_mipData[gl_LocalInvocationID.x][gl_LocalInvocationID.y] = d;
+        imageStore(uHiZMips[3], pixel / 8, vec4(d));
+    }
+    barrier();
+
+    // Level 4
+    if (gl_LocalInvocationID.x == 0 && gl_LocalInvocationID.y == 0) {
+        d = min(min(s_mipData[0][0], s_mipData[8][0]),
+                min(s_mipData[0][8], s_mipData[8][8]));
+        imageStore(uHiZMips[4], pixel / 16, vec4(d));
+
+        // At this point, one thread per workgroup has the min depth for a 16x16 tile.
+        // For higher levels, we would need to coordinate across workgroups.
+        // This covers up to 1/16th of the resolution.
+    }
+}

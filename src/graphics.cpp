@@ -241,6 +241,7 @@ namespace Boidsish {
 		GLuint                  plane_vao{0}, plane_vbo{0}, sky_vao{0}, blur_quad_vao{0}, blur_quad_vbo{0};
 		GLuint main_fbo_{0}, main_fbo_texture_{0}, main_fbo_velocity_texture_{0}, main_fbo_normal_texture_{0},
 			main_fbo_material_texture_{0}, main_fbo_depth_texture_{0}, main_fbo_rbo_{0};
+		GLuint reflection_radiance_texture_{0};
 		GLuint    lighting_ubo{0};
 		GLuint    visual_effects_ubo{0};
 		GLuint    temporal_data_ubo{0};
@@ -2451,8 +2452,12 @@ namespace Boidsish {
 		} else {
 			glBindFramebuffer(GL_FRAMEBUFFER, impl->main_fbo_);
 			glViewport(0, 0, impl->render_width, impl->render_height);
-			GLuint attachments[2] = {GL_COLOR_ATTACHMENT0, GL_COLOR_ATTACHMENT1};
-			glDrawBuffers(2, attachments);
+			GLuint attachments[4] = {
+				GL_COLOR_ATTACHMENT0,
+				GL_COLOR_ATTACHMENT1,
+				GL_COLOR_ATTACHMENT2,
+				GL_COLOR_ATTACHMENT3};
+			glDrawBuffers(4, attachments);
 		}
 
 		glEnable(GL_DEPTH_TEST);
@@ -2491,6 +2496,8 @@ namespace Boidsish {
 			);
 			impl->post_processing_manager_
 				->ApplyEarlyEffects(view, impl->projection, impl->camera.pos(), impl->simulation_time);
+
+			impl->reflection_radiance_texture_ = impl->post_processing_manager_->GetReflectionRadianceTexture();
 
 			// Re-bind shadows for transparent objects as early effects may have changed texture bindings
 			impl->BindShadows(*impl->shader);

@@ -30,6 +30,8 @@ namespace Boidsish {
 
 			bool IsEarly() const override { return true; }
 
+			GLuint GetResultTexture() const override { return temporal_accumulator_.GetResult(); }
+
 			// Parameters
 			void  SetIntensity(float intensity) { intensity_ = intensity; }
 			float GetIntensity() const { return intensity_; }

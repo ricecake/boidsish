@@ -36,6 +36,8 @@ namespace Boidsish {
 
 			virtual bool IsEarly() const { return false; }
 
+			virtual GLuint GetResultTexture() const { return 0; }
+
 		protected:
 			std::string name_;
 			bool        is_enabled_ = true;

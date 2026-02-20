@@ -1,7 +1,7 @@
 #version 430 core
 layout(local_size_x = 8, local_size_y = 8) in;
 
-layout(binding = 0, r16f) uniform image2D outResult;
+layout(binding = 0, rgba16f) uniform image2D outResult;
 
 uniform sampler2D uCurrentFrame;
 uniform sampler2D uHistoryFrame;
@@ -34,34 +34,44 @@ void main() {
 
 	vec4 history = texture(uHistoryFrame, prevUV);
 
-	// 3. Neighborhood Clamping to reduce ghosting
+	// 3. Advanced Neighborhood Clamping / Clipping
 	// Sample 3x3 neighborhood of current frame
 	vec4 m1 = vec4(0.0);
 	vec4 m2 = vec4(0.0);
+
+    vec4 minColor = vec4(10000.0);
+    vec4 maxColor = vec4(-10000.0);
+
 	for (int y = -1; y <= 1; y++) {
 		for (int x = -1; x <= 1; x++) {
 			vec4 val = texture(uCurrentFrame, uv + vec2(x, y) * texelSize);
 			m1 += val;
 			m2 += val * val;
+            minColor = min(minColor, val);
+            maxColor = max(maxColor, val);
 		}
 	}
 	vec4 mean = m1 / 9.0;
 	vec4 stddev = sqrt(max(vec4(0.0), (m2 / 9.0) - (mean * mean)));
 
-	// Clamp history to neighborhood of current
-	float gamma = 1.0; // configurable
-	vec4  minColor = mean - gamma * stddev;
-	vec4  maxColor = mean + gamma * stddev;
+    // Variance-based clipping
+	float gamma = 1.5;
+	vec4 cl_min = mean - gamma * stddev;
+	vec4 cl_max = mean + gamma * stddev;
+
+    // Combine with AABB clamping
+    minColor = mix(minColor, cl_min, 0.5);
+    maxColor = mix(maxColor, cl_max, 0.5);
+
 	history = clamp(history, minColor, maxColor);
 
-	// 4. Accumulate
-	// Higher alpha means more history
-	// If it's a checkerboard update, we might want to adjust alpha
+	// 4. Accumulation
 	float activeAlpha = uAlpha;
 
-	// Detect if current pixel was actually updated (for checkerboarding)
-	// This depends on how we pass the info.
-	// For now, assume always updated or handled by neighborhood clamping.
+    // Disocclusion handling
+    float currentDepth = texture(uDepth, uv).r;
+    // We would need previous depth for a proper check, but we can approximate
+    // with velocity magnitude or neighborhood variance.
 
 	vec4 result = mix(current, history, activeAlpha);
 
