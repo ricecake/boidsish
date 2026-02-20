@@ -54,8 +54,8 @@ namespace Boidsish {
 
 		glGenBuffers(1, &type.ssbo);
 		glBindBuffer(GL_SHADER_STORAGE_BUFFER, type.ssbo);
-		// Each instance is a mat4 (64 bytes)
-		glBufferData(GL_SHADER_STORAGE_BUFFER, kMaxInstancesPerType * sizeof(glm::mat4), nullptr, GL_DYNAMIC_DRAW);
+		// Each instance is two mat4 (128 bytes)
+		glBufferData(GL_SHADER_STORAGE_BUFFER, kMaxInstancesPerType * 128, nullptr, GL_DYNAMIC_DRAW);
 
 		glGenBuffers(1, &type.count_buffer);
 		glBindBuffer(GL_ATOMIC_COUNTER_BUFFER, type.count_buffer);
@@ -286,6 +286,19 @@ namespace Boidsish {
 
 			// Bind SSBO to a known binding point that the shader expects for instance matrices
 			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 10, type.ssbo);
+
+			// Bind SDF texture if available
+			const auto& model_data = type.model->GetModelData();
+			if (model_data && model_data->sdf_texture != 0) {
+				glActiveTexture(GL_TEXTURE5);
+				glBindTexture(GL_TEXTURE_3D, model_data->sdf_texture);
+				shader->setInt("u_sdfTexture", 5);
+				shader->setVec3("u_sdfExtent", model_data->sdf_extent);
+				shader->setVec3("u_sdfMin", model_data->sdf_min);
+				shader->setBool("u_useSdfShadow", true);
+			} else {
+				shader->setBool("u_useSdfShadow", false);
+			}
 
 			size_t mesh_count = type.model->getMeshes().size();
 

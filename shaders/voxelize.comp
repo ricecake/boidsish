@@ -1,0 +1,66 @@
+#version 430 core
+
+layout(local_size_x = 8, local_size_y = 8, local_size_z = 8) in;
+
+layout(rgba32f, binding = 0) uniform image3D u_sdfTexture;
+
+struct Vertex {
+	vec3 Position;
+	vec3 Normal;
+	vec2 TexCoords;
+};
+
+layout(std430, binding = 1) buffer VertexBuffer {
+	Vertex vertices[];
+};
+
+layout(std430, binding = 2) buffer IndexBuffer {
+	uint indices[];
+};
+
+uniform int u_numIndices;
+uniform vec3 u_localMin;
+uniform vec3 u_localMax;
+uniform int u_resolution;
+
+// Helper to check if a point is inside a triangle (approximate for voxelization)
+// In a real implementation, we'd use a more robust triangle-box intersection.
+// For seeds, we just want to find voxels that are VERY close to the surface.
+
+void main() {
+	ivec3 voxelCoord = ivec3(gl_GlobalInvocationID.xyz);
+	if (any(greaterThanEqual(voxelCoord, ivec3(u_resolution)))) return;
+
+	vec3 voxelPos = u_localMin + (vec3(voxelCoord) + 0.5) * (u_localMax - u_localMin) / float(u_resolution);
+	float voxelSize = length(u_localMax - u_localMin) / float(u_resolution);
+
+	float minDist = 1e10;
+	vec3 closestSeed = vec3(-1.0);
+
+	// Iterate over all triangles to find the closest one to this voxel
+	// NOTE: This is O(Voxels * Triangles). For complex models, we might need a better approach.
+	// But for "medium scale" models at 64^3, it's okay for startup.
+	for (int i = 0; i < u_numIndices; i += 3) {
+		vec3 v0 = vertices[indices[i]].Position;
+		vec3 v1 = vertices[indices[i+1]].Position;
+		vec3 v2 = vertices[indices[i+2]].Position;
+
+		// Simple distance to triangle (approximate: just check vertices and triCentroid)
+		// Better: check distance to plane and projection
+		vec3  triCentroid = (v0 + v1 + v2) / 3.0;
+		float dCentroid = distance(voxelPos, triCentroid);
+
+		if (dCentroid < voxelSize * 1.5) {
+			// Mark as seed if close enough to surface
+			closestSeed = vec3(voxelCoord);
+			minDist = 0.0;
+			break;
+		}
+	}
+
+	if (closestSeed.x >= 0.0) {
+		imageStore(u_sdfTexture, voxelCoord, vec4(closestSeed / float(u_resolution), 0.0));
+	} else {
+		imageStore(u_sdfTexture, voxelCoord, vec4(-1.0, -1.0, -1.0, 1.0));
+	}
+}

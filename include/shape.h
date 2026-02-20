@@ -123,9 +123,14 @@ namespace Boidsish {
 
 		inline bool IsColossal() const { return is_colossal_; }
 
-		inline void SetColossal(bool is_colossal) { is_colossal_ = is_colossal; }
+		inline void SetColossal(bool is_colossal) {
+			is_colossal_ = is_colossal;
+			casts_shadows_ = !is_colossal;
+		}
 
-		virtual bool CastsShadows() const { return !is_colossal_; }
+		virtual bool CastsShadows() const { return casts_shadows_; }
+
+		inline void SetCastsShadows(bool casts) { casts_shadows_ = casts; }
 
 		inline bool IsInstanced() const { return is_instanced_; }
 
@@ -247,7 +252,8 @@ namespace Boidsish {
 			roughness_(0.5f),
 			metallic_(0.0f),
 			ao_(1.0f),
-			use_pbr_(false) {}
+			use_pbr_(false),
+			casts_shadows_(true) {}
 
 		glm::quat rotation_;
 		glm::vec3 scale_;
@@ -274,6 +280,7 @@ namespace Boidsish {
 		float     metallic_;
 		float     ao_;
 		bool      use_pbr_;
+		bool      casts_shadows_;
 
 	public:
 		// Shared sphere mesh (public for instancing support)

@@ -57,6 +57,12 @@ namespace Boidsish {
 		std::string          directory;
 		std::string          model_path;
 		AABB                 aabb;
+
+		// SDF Shadow Data
+		unsigned int sdf_texture = 0;
+		glm::vec3    sdf_extent = glm::vec3(0.0f);
+		glm::vec3    sdf_min = glm::vec3(0.0f);
+		bool         sdf_loaded = false;
 	};
 
 	class Model: public Shape {
@@ -85,6 +91,9 @@ namespace Boidsish {
 
 		// Get the model path
 		const std::string& GetModelPath() const;
+
+		// Get the model data
+		const std::shared_ptr<ModelData>& GetModelData() const { return m_data; }
 
 		// Exposed for AssetManager to fill during loading
 		friend class AssetManager;

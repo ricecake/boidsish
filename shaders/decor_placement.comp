@@ -4,8 +4,13 @@
 
 layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
 
+struct Instance {
+	mat4 model;
+	mat4 invModel;
+};
+
 layout(std430, binding = 0) buffer DecorInstances {
-	mat4 instances[];
+	Instance instances[];
 };
 
 layout(binding = 0) uniform atomic_uint instanceCount;
@@ -213,5 +218,6 @@ void main() {
 	m[2] = vec4(scaledRot[2], 0.0);
 	m[3] = vec4(worldPos3D, 1.0);
 
-	instances[index] = m;
+	instances[index].model = m;
+	instances[index].invModel = inverse(m);
 }

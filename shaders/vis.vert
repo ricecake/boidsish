@@ -5,9 +5,14 @@ layout(location = 2) in vec2 aTexCoords;
 layout(location = 3) in mat4 aInstanceMatrix;
 layout(location = 7) in vec4 aInstanceColor;
 
+struct SSBOInstance {
+	mat4 model;
+	mat4 invModel;
+};
+
 // SSBO for decor/foliage instancing (binding 10)
 layout(std430, binding = 10) buffer SSBOInstances {
-	mat4 ssboInstanceMatrices[];
+	SSBOInstance ssboInstances[];
 };
 
 #include "frustum.glsl"
@@ -18,6 +23,8 @@ layout(std430, binding = 10) buffer SSBOInstances {
 #include "visual_effects.vert"
 
 out vec3 FragPos;
+out vec3 LocalPos;
+out mat4 InvModelMatrix;
 out vec4 CurPosition;
 out vec4 PrevPosition;
 out vec3 Normal;
@@ -92,12 +99,15 @@ void main() {
 	}
 
 	mat4 modelMatrix;
+	mat4 invModelMatrix_local;
 	if (useSSBOInstancing) {
-		modelMatrix = ssboInstanceMatrices[gl_InstanceID];
+		modelMatrix = ssboInstances[gl_InstanceID].model;
+		invModelMatrix_local = ssboInstances[gl_InstanceID].invModel;
 	} else if (is_instanced) {
 		modelMatrix = aInstanceMatrix;
 	} else {
 		modelMatrix = model;
+		invModelMatrix_local = inverse(modelMatrix);
 	}
 
 	// Extract world position (translation from model matrix)
@@ -122,6 +132,8 @@ void main() {
 		}
 	}
 
+	LocalPos = displacedPos;
+	InvModelMatrix = invModelMatrix_local;
 	FragPos = vec3(modelMatrix * vec4(displacedPos, 1.0));
 
 	// Apply shockwave displacement (sway for decor)

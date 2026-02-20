@@ -11,6 +11,7 @@
 #include <vector>
 
 #include "ConfigManager.h"
+#include "asset_manager.h"
 #include "NoiseManager.h"
 #include "UIManager.h"
 #include "akira_effect.h"
@@ -50,6 +51,7 @@
 #include "sdf_volume_manager.h"
 #include "shadow_manager.h"
 #include "shockwave_effect.h"
+#include "sdf_generator.h"
 #include "sound_effect_manager.h"
 #include "spline.h"
 #include "task_thread_pool.hpp"
@@ -243,6 +245,8 @@ namespace Boidsish {
 		GLuint                  pingpong_fbo[2]{0}, pingpong_texture[2]{0};
 		GLuint main_fbo_{0}, main_fbo_texture_{0}, main_fbo_velocity_texture_{0}, main_fbo_depth_texture_{0},
 			main_fbo_rbo_{0};
+		GLuint hiz_texture_{0};
+		std::unique_ptr<ComputeShader> hiz_gen_shader_;
 		GLuint    lighting_ubo{0};
 		GLuint    visual_effects_ubo{0};
 		GLuint    temporal_data_ubo{0};
@@ -508,6 +512,7 @@ namespace Boidsish {
 			sdf_volume_manager = std::make_unique<SdfVolumeManager>();
 			sdf_volume_manager->Initialize();
 			shadow_manager = std::make_unique<ShadowManager>();
+			hiz_gen_shader_ = std::make_unique<ComputeShader>("shaders/hiz_gen.comp");
 			scene_manager = std::make_unique<SceneManager>("scenes");
 			decor_manager = std::make_unique<DecorManager>();
 			audio_manager = std::make_unique<AudioManager>();
@@ -913,6 +918,13 @@ namespace Boidsish {
 				shadow_indices.fill(-1);
 				s.setIntArray("lightShadowIndices", shadow_indices.data(), 10);
 			}
+
+			// Bind Hi-Z texture if available
+			if (hiz_texture_ != 0) {
+				glActiveTexture(GL_TEXTURE6);
+				glBindTexture(GL_TEXTURE_2D, hiz_texture_);
+				s.setInt("u_hizTexture", 6);
+			}
 		}
 
 		void SetupShaderBindings(ShaderBase& shader_to_setup) {
@@ -1026,6 +1038,9 @@ namespace Boidsish {
 				glDeleteTextures(1, &main_fbo_texture_);
 				glDeleteTextures(1, &main_fbo_velocity_texture_);
 				glDeleteTextures(1, &main_fbo_depth_texture_);
+			}
+			if (hiz_texture_) {
+				glDeleteTextures(1, &hiz_texture_);
 			}
 
 			if (lighting_ubo) {
@@ -1893,6 +1908,18 @@ namespace Boidsish {
 				}
 			}
 
+			// --- Resize Hi-Z texture ---
+			if (hiz_texture_)
+				glDeleteTextures(1, &hiz_texture_);
+			glGenTextures(1, &hiz_texture_);
+			glBindTexture(GL_TEXTURE_2D, hiz_texture_);
+			int mips = (int)std::floor(std::log2(std::max(render_width, render_height))) + 1;
+			glTexStorage2D(GL_TEXTURE_2D, mips, GL_R32F, render_width, render_height);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST_MIPMAP_NEAREST);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+
 			// --- Resize main scene framebuffer ---
 			glBindTexture(GL_TEXTURE_2D, main_fbo_texture_);
 			if (enable_hdr_) {
@@ -2734,6 +2761,42 @@ namespace Boidsish {
 			shape->UpdateLastPosition();
 		}
 
+		// --- Hi-Z Generation ---
+		if (impl->hiz_gen_shader_ && impl->hiz_gen_shader_->isValid()) {
+			impl->hiz_gen_shader_->use();
+			glActiveTexture(GL_TEXTURE0);
+			glBindTexture(GL_TEXTURE_2D, impl->main_fbo_depth_texture_);
+			impl->hiz_gen_shader_->setInt("u_inputTexture", 0);
+
+			int w = impl->render_width;
+			int h = impl->render_height;
+			int mips = (int)std::floor(std::log2(std::max(w, h))) + 1;
+
+			// Level 0: Copy and convert depth
+			impl->hiz_gen_shader_->setBool("u_isFirstPass", true);
+			impl->hiz_gen_shader_->setVec2("u_outputSize", glm::vec2(w, h));
+			glBindImageTexture(0, impl->hiz_texture_, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_R32F);
+			glDispatchCompute((w + 15) / 16, (h + 15) / 16, 1);
+			glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
+
+			// Levels 1 to N: Downsample
+			impl->hiz_gen_shader_->setBool("u_isFirstPass", false);
+			glActiveTexture(GL_TEXTURE0);
+			glBindTexture(GL_TEXTURE_2D, impl->hiz_texture_);
+
+			for (int i = 1; i < mips; ++i) {
+				int curr_w = std::max(1, w >> i);
+				int curr_h = std::max(1, h >> i);
+
+				impl->hiz_gen_shader_->setVec2("u_outputSize", glm::vec2(curr_w, curr_h));
+				impl->hiz_gen_shader_->setInt("u_inputMip", i - 1);
+
+				glBindImageTexture(0, impl->hiz_texture_, i, GL_FALSE, 0, GL_WRITE_ONLY, GL_R32F);
+				glDispatchCompute((curr_w + 15) / 16, (curr_h + 15) / 16, 1);
+				glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
+			}
+		}
+
 		// --- UI Pass (renders on top of the fullscreen quad) ---
 		impl->ui_manager->Render();
 
@@ -2796,6 +2859,13 @@ namespace Boidsish {
 					impl->mesh_explosion_manager->IsAvailable() ? "ready" : "disabled (compute shader unavailable)"
 				)
 			);
+		}
+
+		// --- Generate SDFs for models ---
+		logger::LOG("Generating SDFs for loaded models...");
+		auto models = AssetManager::GetInstance().GetAllModels();
+		for (auto& model : models) {
+			SdfGenerator::GetInstance().GenerateSdf(model);
 		}
 
 		// --- Invoke user prepare callbacks ---
