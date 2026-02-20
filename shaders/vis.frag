@@ -149,6 +149,10 @@ void main() {
 		outColor = mix(vec4(0.0, 0.7, 0.7, final_alpha) * length(outColor), outColor, step(1, fade));
 	}
 
+	if (nightFactor > 0) {
+		outColor += vec4(0, 7, 0, 1);
+	}
+
 	FragColor = outColor;
 
 	// Calculate screen-space velocity

@@ -426,7 +426,7 @@ void main() {
 
 		// Height-based neon pulse/glow
 		float heightGlow = smoothstep(0.0, 100.0 * worldScale, FragPos.y);
-		lighting += magenta * heightGlow * 0.15 * nightFactor * (0.8 + 0.2 * sin(time * 0.5));
+		lighting += magenta * heightGlow * nightFactor * (0.8 + 0.2 * sin(time * 0.5));
 	}
 
 	// ========================================================================
