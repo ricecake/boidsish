@@ -1,8 +1,11 @@
-#version 420 core
-out vec4 FragColor;
+#version 430 core
+layout(location = 0) out vec4 FragColor;
+layout(location = 1) out vec2 Velocity;
 
 in vec3  Normal;
 in vec3  FragPos;
+in vec4  CurPosition;
+in vec4  PrevPosition;
 in vec2  TexCoords;
 in float perturbFactor;
 in float tessFactor;
@@ -435,6 +438,11 @@ void main() {
 		outColor,
 		step(1.0, fade)
 	);
+
+	// Calculate screen-space velocity
+	vec2 a = (CurPosition.xy / CurPosition.w) * 0.5 + 0.5;
+	vec2 b = (PrevPosition.xy / PrevPosition.w) * 0.5 + 0.5;
+	Velocity = a - b;
 
 	// float heat = clamp(tessFactor / 32.0, 0.0, 1.0);
 	// FragColor = vec4(heat, 1.0 - heat, 0.0, 1.0); // Simple Red-Green ramp

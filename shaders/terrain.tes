@@ -12,6 +12,8 @@ in float      tessFactor_TC_out[];
 
 // Output to Fragment Shader
 out vec3  FragPos;
+out vec4  CurPosition;
+out vec4  PrevPosition;
 out vec3  Normal;
 out vec2  TexCoords;
 out float perturbFactor;
@@ -27,6 +29,7 @@ uniform vec4 clipPlane;
 
 #include "helpers/shockwave.glsl"
 #include "helpers/terrain_noise.glsl"
+#include "temporal_data.glsl"
 
 // Sample heightmap to get world position and normal
 void sampleHeightmap(vec2 uv, float slice, vec3 worldOffset, out vec3 worldPos, out vec3 normal) {
@@ -75,4 +78,7 @@ void main() {
 
 	// Final vertex position
 	gl_Position = projection * view * vec4(FragPos, 1.0);
+
+	CurPosition = gl_Position;
+	PrevPosition = prevViewProjection * vec4(FragPos, 1.0);
 }

@@ -1,27 +1,23 @@
-#pragma once
+#ifndef GTAO_EFFECT_H
+#define GTAO_EFFECT_H
 
 #include <memory>
 #include <vector>
 
 #include "post_processing/IPostProcessingEffect.h"
+#include "post_processing/TemporalAccumulator.h"
 #include <glm/glm.hpp>
 
-// Forward declarations
 class Shader;
+class ComputeShader;
 
 namespace Boidsish {
 	namespace PostProcessing {
 
-		struct BloomMip {
-			glm::vec2 size;
-			GLuint    fbo;
-			GLuint    texture;
-		};
-
-		class BloomEffect: public IPostProcessingEffect {
+		class GtaoEffect: public IPostProcessingEffect {
 		public:
-			BloomEffect(int width, int height);
-			~BloomEffect();
+			GtaoEffect();
+			~GtaoEffect();
 
 			void Initialize(int width, int height) override;
 			void Apply(
@@ -38,26 +34,27 @@ namespace Boidsish {
 
 			float GetIntensity() const { return intensity_; }
 
-			void SetThreshold(float threshold) { threshold_ = threshold; }
+			void SetRadius(float radius) { radius_ = radius; }
 
-			float GetThreshold() const { return threshold_; }
+			float GetRadius() const { return radius_; }
 
 		private:
 			void InitializeFBOs();
 
-			std::unique_ptr<Shader> _brightPassShader;
-			std::unique_ptr<Shader> _downsampleShader;
-			std::unique_ptr<Shader> _upsampleShader;
-			std::unique_ptr<Shader> _compositeShader;
+			std::unique_ptr<ComputeShader> gtao_shader_;
+			std::unique_ptr<Shader>        composite_shader_;
+			TemporalAccumulator            temporal_accumulator_;
 
-			GLuint                _brightPassFBO;
-			GLuint                _brightPassTexture;
-			std::vector<BloomMip> _mipChain;
+			GLuint ao_texture_ = 0;
+			int    width_ = 0, height_ = 0;
 
-			int   _width, _height;
-			float intensity_ = 0.15f;
-			float threshold_ = 1.0f;
+			float intensity_ = 0.250f;
+			float radius_ = 1.0f;
+			int   numSteps_ = 4;
+			int   numDirections_ = 2;
 		};
 
 	} // namespace PostProcessing
 } // namespace Boidsish
+
+#endif // GTAO_EFFECT_H

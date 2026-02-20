@@ -1,4 +1,4 @@
-#version 330 core
+#version 420 core
 layout(location = 0) in vec3 aPos;
 layout(location = 1) in vec3 aNormal;
 layout(location = 2) in vec3 aColor;
@@ -19,6 +19,10 @@ uniform float trailSize;
 
 #include "helpers/lighting.glsl"
 #include "helpers/noise.glsl"
+#include "temporal_data.glsl"
+
+out vec4 CurPosition;
+out vec4 PrevPosition;
 
 void main() {
 	// Convert vertex ID to a sequential Ring Index (0, 1, 2... N)
@@ -76,4 +80,8 @@ void main() {
 	vec4 world_pos = model * vec4(final_pos, 1.0);
 	gl_ClipDistance[0] = dot(world_pos, clipPlane);
 	gl_Position = projection * view * world_pos;
+
+	CurPosition = gl_Position;
+	// Assume static for velocity (camera-relative only)
+	PrevPosition = prevViewProjection * world_pos;
 }

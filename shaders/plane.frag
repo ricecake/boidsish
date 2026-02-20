@@ -1,9 +1,12 @@
-#version 330 core
-out vec4 FragColor;
+#version 430 core
+layout(location = 0) out vec4 FragColor;
+layout(location = 1) out vec2 Velocity;
 
 in vec3 WorldPos;
 in vec3 Normal;
 in vec4 ReflectionClipSpacePos;
+in vec4 CurPosition;
+in vec4 PrevPosition;
 
 #include "helpers/lighting.glsl"
 
@@ -151,4 +154,9 @@ void main() {
 	// --- Distance Fade ---
 	vec4 outColor = vec4(final_color, fade);
 	FragColor = mix(vec4(0.7, 0.1, 0.7, fade) * length(outColor), outColor, step(1, fade));
+
+	// Calculate screen-space velocity
+	vec2 a = (CurPosition.xy / CurPosition.w) * 0.5 + 0.5;
+	vec2 b = (PrevPosition.xy / PrevPosition.w) * 0.5 + 0.5;
+	Velocity = a - b;
 }
