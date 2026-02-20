@@ -22,7 +22,14 @@ namespace Boidsish {
 
 			void SetSharedDepthTexture(GLuint texture);
 
-			void BeginApply(GLuint sourceTexture, GLuint sourceFbo, GLuint depthTexture, GLuint velocityTexture);
+			void BeginApply(
+				GLuint sourceTexture,
+				GLuint sourceFbo,
+				GLuint depthTexture,
+				GLuint velocityTexture,
+				GLuint normalTexture,
+				GLuint materialTexture
+			);
 
 			void AttachDepthToCurrentFBO();
 			void DetachDepthFromPingPongFBOs();
@@ -43,6 +50,15 @@ namespace Boidsish {
 			GLuint GetFinalTexture() const { return current_texture_; }
 
 			GLuint GetCurrentFBO() const { return current_fbo_; }
+
+			GLuint GetReflectionRadianceTexture() const {
+				for (const auto& effect : pre_tone_mapping_effects_) {
+					if (effect->GetName() == "SSSR") {
+						return effect->GetResultTexture();
+					}
+				}
+				return 0;
+			}
 
 			// Deprecated - use BeginApply/ApplyEarlyEffects/ApplyLateEffects instead
 			GLuint ApplyEffects(
@@ -85,6 +101,8 @@ namespace Boidsish {
 			GLuint current_fbo_ = 0;
 			GLuint depth_texture_ = 0;
 			GLuint velocity_texture_ = 0;
+			GLuint normal_texture_ = 0;
+			GLuint material_texture_ = 0;
 			int    fbo_index_ = 0;
 		};
 

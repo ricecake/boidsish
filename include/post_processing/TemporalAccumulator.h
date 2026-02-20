@@ -40,6 +40,7 @@ namespace Boidsish {
 
 			std::unique_ptr<ComputeShader> _accumulationShader;
 			GLuint                         _historyTextures[2] = {0, 0};
+			GLuint                         _historyDepthTextures[2] = {0, 0};
 			int                            _currentIndex = 0;
 			int                            _width = 0, _height = 0;
 			GLenum                         _internalFormat = GL_R16F;

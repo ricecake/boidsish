@@ -1,0 +1,52 @@
+#version 430 core
+layout(local_size_x = 16, local_size_y = 16) in;
+
+layout(binding = 0, rgba16f) uniform writeonly image2D uOutImage;
+
+uniform sampler2D uInputTexture;
+uniform sampler2D uNormalTexture;
+uniform sampler2D uDepthTexture;
+
+void main() {
+    ivec2 pixel = ivec2(gl_GlobalInvocationID.xy);
+    ivec2 size = textureSize(uInputTexture, 0);
+
+    if (pixel.x >= size.x || pixel.y >= size.y)
+        return;
+
+    vec2 uv = (vec2(pixel) + 0.5) / vec2(size);
+
+    vec3 centerNormal = texture(uNormalTexture, uv).xyz;
+    float centerDepth = texture(uDepthTexture, uv).r;
+
+    vec4 sum = vec4(0.0);
+    float totalWeight = 0.0;
+
+    // Increased radius for better denoising of stochastic samples
+    int radius = 4;
+    for (int y = -radius; y <= radius; y++) {
+        for (int x = -radius; x <= radius; x++) {
+            vec2 offset = vec2(x, y) / vec2(size);
+            vec2 sampleUV = uv + offset;
+
+            vec3 sampleNormal = texture(uNormalTexture, sampleUV).xyz;
+            float sampleDepth = texture(uDepthTexture, sampleUV).r;
+
+            // Bilateral weights with Gaussian spatial fallback
+            float spatialWeight = exp(-float(x*x + y*y) / float(radius * radius));
+            float normalWeight = pow(max(0.0, dot(centerNormal, sampleNormal)), 64.0);
+            float depthWeight = exp(-abs(centerDepth - sampleDepth) * 200.0);
+
+            float weight = spatialWeight * normalWeight * depthWeight;
+
+            vec4 val = texture(uInputTexture, sampleUV);
+            if (any(isnan(val))) val = vec4(0.0);
+
+            sum += val * weight;
+            totalWeight += weight;
+        }
+    }
+
+    vec4 result = sum / max(totalWeight, 0.0001);
+    imageStore(uOutImage, pixel, result);
+}

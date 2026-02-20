@@ -1,6 +1,9 @@
 #version 420 core
 
-out vec4 FragColor;
+layout(location = 0) out vec4 FragColor;
+layout(location = 1) out vec2 Velocity;
+layout(location = 2) out vec3 WorldNormal;
+layout(location = 3) out vec4 MaterialData;
 
 #include "helpers/lighting.glsl"
 
@@ -51,4 +54,7 @@ void main() {
 	}
 
 	FragColor = litColor;
+	Velocity = vec2(0.0);
+	WorldNormal = N;
+	MaterialData = vec4(0.1, 0.0, 1.0, 0.0);
 }

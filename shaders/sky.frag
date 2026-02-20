@@ -1,6 +1,9 @@
 #version 330 core
 
-out vec4 FragColor;
+layout(location = 0) out vec4 FragColor;
+layout(location = 1) out vec2 Velocity;
+layout(location = 2) out vec3 WorldNormal;
+layout(location = 3) out vec4 MaterialData;
 
 in vec2 TexCoords;
 
@@ -340,4 +343,7 @@ void main() {
 	}
 
 	FragColor = vec4(final_color, 1.0);
+	Velocity = vec2(0.0);
+	WorldNormal = vec3(0.0);
+	MaterialData = vec4(1.0, 0.0, 1.0, 0.0);
 }

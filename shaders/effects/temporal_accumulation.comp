@@ -1,16 +1,25 @@
 #version 430 core
 layout(local_size_x = 8, local_size_y = 8) in;
 
-layout(binding = 0, r16f) uniform image2D outResult;
+layout(binding = 0, rgba16f) uniform image2D outResult;
+layout(binding = 1, r32f) uniform image2D outDepth;
 
 uniform sampler2D uCurrentFrame;
 uniform sampler2D uHistoryFrame;
 uniform sampler2D uVelocity;
 uniform sampler2D uDepth;
+uniform sampler2D uHistoryDepth;
 
 #include "temporal_data.glsl"
 
-uniform float uAlpha = 0.9; // Accumulation factor
+uniform float uAlpha = 0.9;
+
+float linearizeDepth(float d) {
+    // Assuming standard perspective projection
+    // Near/Far are usually 0.1 / 1000.0
+    float z = d * 2.0 - 1.0;
+    return (2.0 * 0.1 * 1000.0) / (1000.0 + 0.1 - z * (1000.0 - 0.1));
+}
 
 void main() {
 	ivec2 pixel = ivec2(gl_GlobalInvocationID.xy);
@@ -19,51 +28,70 @@ void main() {
 		return;
 
 	vec2 uv = (vec2(pixel) + 0.5) / vec2(size);
+    float currentDepth = texture(uDepth, uv).r;
 
 	// 1. Reprojection
 	vec2 velocity = texture(uVelocity, uv).rg;
 	vec2 prevUV = uv - velocity;
 
 	vec4 current = texture(uCurrentFrame, uv);
+    if (any(isnan(current))) current = vec4(0.0);
+    current.rgb = clamp(current.rgb, vec3(0.0), vec3(20.0));
 
 	// 2. Out of bounds check
 	if (prevUV.x < 0.0 || prevUV.x > 1.0 || prevUV.y < 0.0 || prevUV.y > 1.0) {
 		imageStore(outResult, pixel, current);
+        imageStore(outDepth, pixel, vec4(currentDepth));
 		return;
 	}
 
 	vec4 history = texture(uHistoryFrame, prevUV);
+    if (any(isnan(history))) history = current;
 
-	// 3. Neighborhood Clamping to reduce ghosting
-	// Sample 3x3 neighborhood of current frame
+    float historyDepth = texture(uHistoryDepth, prevUV).r;
+
+    // 3. Robust Disocclusion Detection using Linear Depth
+    float currLin = linearizeDepth(currentDepth);
+    float histLin = linearizeDepth(historyDepth);
+    bool disoccluded = abs(currLin - histLin) > (currLin * 0.05 + 0.1);
+
+	// 4. Neighborhood Clamping
 	vec4 m1 = vec4(0.0);
 	vec4 m2 = vec4(0.0);
+    vec4 minColor = vec4(10000.0);
+    vec4 maxColor = vec4(-10000.0);
+
 	for (int y = -1; y <= 1; y++) {
 		for (int x = -1; x <= 1; x++) {
 			vec4 val = texture(uCurrentFrame, uv + vec2(x, y) * texelSize);
+            if (any(isnan(val))) val = current;
 			m1 += val;
 			m2 += val * val;
+            minColor = min(minColor, val);
+            maxColor = max(maxColor, val);
 		}
 	}
 	vec4 mean = m1 / 9.0;
 	vec4 stddev = sqrt(max(vec4(0.0), (m2 / 9.0) - (mean * mean)));
 
-	// Clamp history to neighborhood of current
-	float gamma = 1.0; // configurable
-	vec4  minColor = mean - gamma * stddev;
-	vec4  maxColor = mean + gamma * stddev;
+	float gamma = 1.25;
+	vec4 cl_min = mean - gamma * stddev;
+	vec4 cl_max = mean + gamma * stddev;
+
+    // Use AABB for tighter clamping
+    minColor = max(minColor, cl_min);
+    maxColor = min(maxColor, cl_max);
+
 	history = clamp(history, minColor, maxColor);
 
-	// 4. Accumulate
-	// Higher alpha means more history
-	// If it's a checkerboard update, we might want to adjust alpha
-	float activeAlpha = uAlpha;
+	// 5. Accumulate
+    // Reduce history weight if disoccluded or near screen edges
+    float edgeFactor = smoothstep(0.0, 0.05, prevUV.x) * smoothstep(1.0, 0.95, prevUV.x) *
+                       smoothstep(0.0, 0.05, prevUV.y) * smoothstep(1.0, 0.95, prevUV.y);
 
-	// Detect if current pixel was actually updated (for checkerboarding)
-	// This depends on how we pass the info.
-	// For now, assume always updated or handled by neighborhood clamping.
-
+	float activeAlpha = disoccluded ? 0.0 : (uAlpha * edgeFactor);
 	vec4 result = mix(current, history, activeAlpha);
 
 	imageStore(outResult, pixel, result);
+    imageStore(outDepth, pixel, vec4(currentDepth));
 }

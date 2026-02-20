@@ -1,6 +1,8 @@
 #version 430 core
 layout(location = 0) out vec4 FragColor;
 layout(location = 1) out vec2 Velocity;
+layout(location = 2) out vec3 WorldNormal;
+layout(location = 3) out vec4 MaterialData;
 
 in vec3  Normal;
 in vec3  FragPos;
@@ -443,6 +445,10 @@ void main() {
 	vec2 a = (CurPosition.xy / CurPosition.w) * 0.5 + 0.5;
 	vec2 b = (PrevPosition.xy / PrevPosition.w) * 0.5 + 0.5;
 	Velocity = a - b;
+
+	// Output normals and material data for SSSR
+	WorldNormal = perturbedNorm;
+	MaterialData = vec4(finalMaterial.roughness, finalMaterial.metallic, 1.0, 0.0);
 
 	// float heat = clamp(tessFactor / 32.0, 0.0, 1.0);
 	// FragColor = vec4(heat, 1.0 - heat, 0.0, 1.0); // Simple Red-Green ramp

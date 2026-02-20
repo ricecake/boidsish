@@ -5,7 +5,10 @@ in vec4     view_pos;
 in vec4     v_pos;
 in vec3     v_epicenter;
 flat in int v_style;
-out vec4    FragColor;
+layout(location = 0) out vec4 FragColor;
+layout(location = 1) out vec2 Velocity;
+layout(location = 2) out vec3 WorldNormal;
+layout(location = 3) out vec4 MaterialData;
 
 uniform float u_time;
 #include "helpers/fast_noise.glsl"
@@ -169,4 +172,7 @@ void main() {
 	}
 
 	FragColor = vec4(color, alpha);
+	Velocity = vec2(0.0);
+	WorldNormal = vec3(0.0);
+	MaterialData = vec4(1.0, 0.0, 1.0, 0.0);
 }

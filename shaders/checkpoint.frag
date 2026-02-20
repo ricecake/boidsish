@@ -1,6 +1,8 @@
 #version 430 core
 layout(location = 0) out vec4 FragColor;
 layout(location = 1) out vec2 Velocity;
+layout(location = 2) out vec3 WorldNormal;
+layout(location = 3) out vec4 MaterialData;
 
 in vec2 TexCoords;
 in vec4 CurPosition;
@@ -83,4 +85,7 @@ void main() {
 	vec2 a = (CurPosition.xy / CurPosition.w) * 0.5 + 0.5;
 	vec2 b = (PrevPosition.xy / PrevPosition.w) * 0.5 + 0.5;
 	Velocity = a - b;
+
+	WorldNormal = vec3(0.0);
+	MaterialData = vec4(1.0, 0.0, 1.0, 0.0);
 }
