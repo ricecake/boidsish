@@ -6,9 +6,11 @@
 struct Particle {
 	vec4 pos; // Position (w is lifetime)
 	vec4 vel; // Velocity (w is unused)
+	vec3 epicenter;
 	int  style;
-	int  emitter_index; // Index of the emitter that spawned this particle
-	vec2 _padding;      // Explicit padding to align to 16 bytes
+	int  emitter_index;
+	int  emitter_id;
+	int  _padding[2];
 };
 
 layout(std430, binding = 0) buffer ParticleBuffer {
@@ -22,7 +24,7 @@ struct Emitter {
 	vec3  direction;
 	int   is_active;
 	vec3  velocity;
-	float _padding2;
+	int   id;
 };
 
 layout(std430, binding = 1) buffer EmitterBuffer {
@@ -44,7 +46,7 @@ flat out int v_style;
 void main() {
 	Particle p = particles[gl_VertexID];
 	v_pos = p.pos;
-	v_epicenter = emitters[p.emitter_index].position;
+	v_epicenter = p.epicenter;
 
 	if (p.pos.w <= 0.0) {
 		// Don't draw dead particles
