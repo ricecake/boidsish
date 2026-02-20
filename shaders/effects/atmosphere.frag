@@ -7,8 +7,6 @@ uniform sampler2D sceneTexture;
 uniform sampler2D depthTexture;
 
 uniform vec3 cameraPos;
-uniform mat4 invView;
-uniform mat4 invProjection;
 
 uniform float hazeDensity;
 uniform float hazeHeight;

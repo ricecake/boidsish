@@ -84,6 +84,8 @@ namespace Boidsish {
 		// Maximum distance at which decor is placed at all
 		void SetMaxDistance(float distance) { max_decor_distance_ = distance; }
 
+		const std::vector<DecorType>& GetDecorTypes() const { return decor_types_; }
+
 	private:
 		void _Initialize();
 		void _RegeneratePlacements(

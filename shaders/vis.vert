@@ -16,7 +16,7 @@ layout(std430, binding = 10) buffer SSBOInstances {
 };
 
 #include "frustum.glsl"
-#include "helpers/lighting.glsl"
+#include "lighting.glsl"
 #include "helpers/shockwave.glsl"
 #include "temporal_data.glsl"
 #include "visual_effects.glsl"

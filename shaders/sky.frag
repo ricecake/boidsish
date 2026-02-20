@@ -1,13 +1,10 @@
-#version 330 core
+#version 430 core
 
 out vec4 FragColor;
 
 in vec2 TexCoords;
 
 #include "helpers/lighting.glsl"
-
-uniform mat4 invProjection;
-uniform mat4 invView;
 
 vec3 mod289(vec3 x) {
 	return x - floor(x * (1.0 / 289.0)) * 289.0;

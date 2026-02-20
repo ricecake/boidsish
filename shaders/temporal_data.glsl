@@ -1,3 +1,6 @@
+#ifndef TEMPORAL_DATA_GLSL
+#define TEMPORAL_DATA_GLSL
+
 layout(std140, binding = 6) uniform TemporalData {
 	mat4  currentViewProjection;
 	mat4  prevViewProjection;
@@ -8,3 +11,5 @@ layout(std140, binding = 6) uniform TemporalData {
 	int   frameIndex;
 	float padding;
 };
+
+#endif

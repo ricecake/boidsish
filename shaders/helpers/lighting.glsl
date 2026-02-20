@@ -2,6 +2,7 @@
 #define HELPERS_LIGHTING_GLSL
 
 #include "../lighting.glsl"
+#include "../temporal_data.glsl"
 
 // SDF Shadow uniforms
 uniform sampler3D u_sdfTexture;
@@ -15,6 +16,9 @@ uniform bool      u_sdfDebug = false;
 
 // Hi-Z depth texture for optimized screen-space shadows
 uniform sampler2D u_hizTexture;
+
+// Screen-space SDF shadow texture (accumulated from all SDF casters)
+uniform sampler2D u_sdfShadowTexture;
 
 // The shader must provide these if HAS_LOCAL_POS is defined
 #ifdef HAS_LOCAL_POS
@@ -202,6 +206,13 @@ float calculateShadow(int light_index, vec3 frag_pos, vec3 normal, vec3 light_di
 	}
 
 	return shadow;
+}
+
+/**
+ * Calculate screen-space SDF shadow factor.
+ */
+float calculateScreenSpaceSdfShadow(vec2 uv) {
+	return texture(u_sdfShadowTexture, uv).r;
 }
 
 /**
@@ -479,6 +490,10 @@ vec4 apply_lighting_pbr(vec3 frag_pos, vec3 normal, vec3 albedo, float roughness
 #ifdef HAS_LOCAL_POS
 			shadow *= calculateSdfShadow(frag_pos, N, L);
 #endif
+			// Also apply screen-space SDF shadows if we have UVs (from gl_FragCoord)
+			// This allows objects to receive shadows from other SDF objects.
+			vec2 uv = gl_FragCoord.xy * texelSize;
+			shadow *= calculateScreenSpaceSdfShadow(uv);
 		}
 
 		// Add to outgoing radiance Lo
@@ -620,6 +635,8 @@ vec4 apply_lighting(vec3 frag_pos, vec3 normal, vec3 albedo, float specular_stre
 #ifdef HAS_LOCAL_POS
 			shadow *= calculateSdfShadow(frag_pos, normal, light_dir);
 #endif
+			vec2 uv = gl_FragCoord.xy * texelSize;
+			shadow *= calculateScreenSpaceSdfShadow(uv);
 		}
 
 		// Diffuse

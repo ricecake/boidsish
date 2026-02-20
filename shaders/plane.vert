@@ -12,7 +12,7 @@ uniform mat4 view;
 uniform mat4 projection;
 uniform mat4 reflectionViewProjection;
 
-#include "helpers/lighting.glsl"
+#include "lighting.glsl"
 #include "temporal_data.glsl"
 
 void main() {

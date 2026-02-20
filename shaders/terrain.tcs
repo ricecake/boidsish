@@ -21,7 +21,7 @@ out float      tessFactor_TC_out[];
 uniform sampler2DArray uHeightmap;
 uniform float          uChunkSize;
 
-#include "helpers/lighting.glsl"
+#include "lighting.glsl"
 
 uniform float uTessLevelMax = 32.0;
 uniform float uTessLevelMin = 1.0;
