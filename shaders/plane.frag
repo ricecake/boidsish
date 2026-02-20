@@ -1,6 +1,8 @@
 #version 430 core
 layout(location = 0) out vec4 FragColor;
 layout(location = 1) out vec2 Velocity;
+layout(location = 2) out vec3 WorldNormal;
+layout(location = 3) out vec4 MaterialData;
 
 in vec3 WorldPos;
 in vec3 Normal;
@@ -9,9 +11,6 @@ in vec4 CurPosition;
 in vec4 PrevPosition;
 
 #include "helpers/lighting.glsl"
-
-uniform sampler2D reflectionTexture;
-uniform bool      useReflection;
 
 vec3 mod289(vec3 x) {
 	return x - floor(x * (1.0 / 289.0)) * 289.0;
@@ -105,10 +104,24 @@ float fbm(vec3 p) {
 	return value;
 }
 
+// Function to generate micro-scratches
+float microScratches(vec2 uv) {
+    float scratches = 0.0;
+    // Layer 1: Long thin scratches
+    float n1 = snoise(vec3(uv * 100.0, 0.0));
+    float line1 = smoothstep(0.01, 0.0, abs(n1));
+
+    // Layer 2: Shorter scratches in different direction
+    float n2 = snoise(vec3(uv.yx * 150.0 + 10.0, 5.0));
+    float line2 = smoothstep(0.008, 0.0, abs(n2));
+
+    scratches = max(line1 * 0.5, line2 * 0.3);
+    return scratches;
+}
+
 void main() {
 	// --- Distance Fade - Precalc ---
-	// vec3  warp = vec3(fbm(WorldPos / 50 + time * 0.08));
-	float nebula_noise = 0; // fbm(WorldPos / 50 + warp * 0.8);
+	float nebula_noise = 0;
 	float dist = length(WorldPos.xz - viewPos.xz);
 	float fade_start = 550.0 * worldScale;
 	float fade_end = 600.0 * worldScale;
@@ -116,14 +129,6 @@ void main() {
 
 	if (fade < 0.2) {
 		discard;
-	}
-
-	// discard;
-	// --- Reflection sampling ---
-	vec3 reflectionColor = vec3(0.0);
-	if (useReflection) {
-		vec2 texCoords = ReflectionClipSpacePos.xy / ReflectionClipSpacePos.w / 2.0 + 0.5;
-		reflectionColor = texture(reflectionTexture, texCoords).rgb;
 	}
 
 	// --- Grid logic ---
@@ -145,11 +150,19 @@ void main() {
 	// --- Plane lighting ---
 	vec3 norm = normalize(Normal);
 	vec3 surfaceColor = vec3(0.05, 0.05, 0.08);
-	vec3 lighting = apply_lighting(WorldPos, norm, surfaceColor, 0.8).rgb;
+
+    // Micro-scratches logic
+    float scratches = microScratches(WorldPos.xz * 2.0);
+
+    // Polished lobby floor look
+    float planeRoughness = 0.12 + scratches * 0.4;
+    float planeMetallic = 0.05;
+
+    vec4 lightResult = apply_lighting_pbr(WorldPos, norm, surfaceColor, planeRoughness, planeMetallic, 1.0);
+	vec3 lighting = lightResult.rgb;
 
 	// --- Combine colors ---
-	float reflection_strength = 0.8;
-	vec3  final_color = mix(lighting * surfaceColor, reflectionColor, reflection_strength) + grid_color;
+	vec3 final_color = lighting + grid_color;
 
 	// --- Distance Fade ---
 	vec4 outColor = vec4(final_color, fade);
@@ -159,4 +172,8 @@ void main() {
 	vec2 a = (CurPosition.xy / CurPosition.w) * 0.5 + 0.5;
 	vec2 b = (PrevPosition.xy / PrevPosition.w) * 0.5 + 0.5;
 	Velocity = a - b;
+
+    // Output normals and material data for SSSR
+    WorldNormal = norm;
+    MaterialData = vec4(planeRoughness, planeMetallic, 1.0, lightResult.a);
 }

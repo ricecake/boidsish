@@ -38,7 +38,7 @@ namespace Boidsish {
 		void AutoExposureEffect::Apply(
 			GLuint sourceTexture,
 			GLuint /* depthTexture */,
-			GLuint /* velocityTexture */,
+			GLuint /* velocityTexture */, GLuint normalTexture, GLuint materialTexture,
 			const glm::mat4& /* viewMatrix */,
 			const glm::mat4& /* projectionMatrix */,
 			const glm::vec3& /* cameraPos */
