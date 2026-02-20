@@ -74,17 +74,15 @@ vec3 getSkyColor(vec3 worldRay) {
     return mix(sky_base, twilight_color, glow);
 }
 
-// Hierarchical Z-Trace with improved precision and bias
-bool hiZTrace(vec3 ro, vec3 rd, out vec2 hitUV) {
+// Hierarchical Z-Trace
+bool hiZTrace(vec3 ro, vec3 rd, vec3 worldRay, out vec2 hitUV) {
     vec4 c0 = uProj * vec4(ro, 1.0);
     if (c0.w <= 0.0) return false;
     vec3 s0 = (c0.xyz / c0.w) * 0.5 + 0.5;
 
-    // Determine end point based on scene bounds
     vec3 pEnd = ro + rd * 100.0;
     vec4 c1 = uProj * vec4(pEnd, 1.0);
     if (c1.w <= 0.0) {
-        // Ray goes behind camera, clip it to near plane
         float t = (0.1 - c0.w) / (c1.w - c0.w);
         pEnd = ro + rd * (100.0 * t);
         c1 = uProj * vec4(pEnd, 1.0);
@@ -99,11 +97,9 @@ bool hiZTrace(vec3 ro, vec3 rd, out vec2 hitUV) {
     int maxLevel = textureQueryLevels(uHiZTexture) - 1;
     int level = 0;
 
-    // Start with a small bias to avoid self-intersection
     vec3 p = s0 + normalize(rayDir) * 0.001;
     vec2 size = vec2(textureSize(uHiZTexture, 0));
 
-    // Dynamic thickness based on depth
     float minThickness = 0.001;
     float maxThickness = 0.05;
 
@@ -112,22 +108,25 @@ bool hiZTrace(vec3 ro, vec3 rd, out vec2 hitUV) {
 
         float z = textureLod(uHiZTexture, p.xy, level).r;
 
-        // standard GL depth: p.z > z means p is behind the surface
         if (p.z > z + 0.00001) {
             if (level == 0) {
+                // Back-face check at hit point to prevent leaking
+                vec3 hitNormal = texture(uNormalTexture, p.xy).xyz;
+                // If the ray hits a surface from the inside, it's a leak
+                if (dot(worldRay, hitNormal) > 0.0) {
+                    p += rayDir * 0.01; // Skip this area
+                    continue;
+                }
+
                 hitUV = p.xy;
-                // Refined thickness check: prevent leaking through thin objects
-                // but ensure we hit solid ones.
                 float thickness = mix(minThickness, maxThickness, p.z);
                 if (p.z - z < thickness) return true;
 
-                // If it's too thick, it's an occlusion, skip this cell
                 p += rayDir * 0.002;
             } else {
                 level--;
             }
         } else {
-            // Advance to next cell boundary at current level
             vec2 cellCount = size / pow(2.0, float(level));
             vec2 cell = floor(p.xy * cellCount);
             vec2 boundary = (cell + step(0.0, rayDir.xy)) / cellCount;
@@ -192,19 +191,21 @@ void main() {
 
     if (is_bad(L)) L = reflect(-V, worldNormal);
 
-    // Trace in View Space
-    // Bias the origin along the normal to avoid self-intersection
     vec3 viewNormal = normalize(mat3(uView) * worldNormal);
     vec3 ro = viewPos.xyz + viewNormal * 0.05;
     vec3 rd = normalize((uView * vec4(L, 0.0)).xyz);
 
     vec2 hitUV;
-    bool hit = hiZTrace(ro, rd, hitUV);
+    bool hit = hiZTrace(ro, rd, L, hitUV);
 
     vec4 radiance = vec4(0.0);
     if (hit) {
         vec3 reflectedColor = texture(uSceneTexture, hitUV).rgb;
         if (any(isnan(reflectedColor))) reflectedColor = vec3(0.0);
+
+        // Luminance clamping to reduce speckling (Fire/Bright spots)
+        float lum = dot(reflectedColor, vec3(0.2126, 0.7152, 0.0722));
+        if (lum > 10.0) reflectedColor *= (10.0 / lum);
 
         vec2 dUV = abs(hitUV - 0.5) * 2.0;
         float edgeFade = 1.0 - max(smoothstep(0.8, 1.0, dUV.x), smoothstep(0.8, 1.0, dUV.y));
@@ -216,6 +217,6 @@ void main() {
         radiance.a = 1.0;
     }
 
-    radiance.rgb = clamp(radiance.rgb, vec3(0.0), vec3(100.0));
+    radiance.rgb = clamp(radiance.rgb, vec3(0.0), vec3(20.0));
     imageStore(uOutRadiance, pixel, radiance * uIntensity * roughnessFade);
 }
