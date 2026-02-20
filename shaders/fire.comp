@@ -4,19 +4,21 @@
 struct Particle {
 	vec4 pos; // Position (w is lifetime)
 	vec4 vel; // Velocity (w is unused)
+	vec3 epicenter;
 	int  style;
-	int  emitter_index; // Index of the emitter that spawned this particle
-	vec2 _padding;      // Explicit padding to align to 16 bytes
+	int  emitter_index;
+	int  emitter_id;
+	int  _padding[2];
 };
 
 // Must match the C++ Emitter struct in fire_effect_manager.h
 struct Emitter {
-	vec3  position;
-	int   style;
-	vec3  direction;
-	int   is_active;
-	vec3  velocity;
-	float _padding2;
+	vec3 position;
+	int  style;
+	vec3 direction;
+	int  is_active;
+	vec3 velocity;
+	int  id;
 };
 
 layout(std430, binding = 0) buffer ParticleBuffer {
@@ -212,7 +214,9 @@ void main() {
 		}
 
 		p.emitter_index = emitter_index;
+		p.emitter_id = emitter.id;
 		p.style = emitter.style;
+		p.epicenter = emitter.position;
 
 		vec2 seed = vec2(float(gid), u_time);
 		vec3 random_vec = rand3(seed) * 2.0 - 1.0;
@@ -242,13 +246,6 @@ void main() {
 	}
 	// If particle is alive, update it
 	else {
-		int current_assigned_emitter = particle_to_emitter_map[gid];
-		if (p.emitter_index != current_assigned_emitter || p.emitter_index >= u_num_emitters) {
-			p.pos.w = 0.0;
-			particles[gid] = p;
-			return;
-		}
-
 		float maxSpeed;
 		if (p.style == 0) {
 			maxSpeed = kExhaustSpeed;
@@ -258,9 +255,9 @@ void main() {
 			p.vel.xyz -= p.vel.xyz * kExplosionDrag * u_delta_time;
 
 			// Apply distance-based curl noise
-			Emitter emitter = emitters[p.emitter_index];
-			float   dist = distance(p.pos.xyz, emitter.position);
-			float   curlInfluence = smoothstep(5.0, 30.0, dist) + smoothstep(5, 1, length(p.vel.xyz) * kExplosionDrag * u_delta_time);
+			float dist = distance(p.pos.xyz, p.epicenter);
+			float curlInfluence = smoothstep(5.0, 30.0, dist) +
+				smoothstep(5, 1, length(p.vel.xyz) * kExplosionDrag * u_delta_time);
 			p.vel.xyz += curlNoise(p.pos.xyz, u_time) * curlInfluence * 15.0 * u_delta_time;
 		} else if (p.style == 2) { // Fire
 			maxSpeed = kFireSpeed;
@@ -281,13 +278,12 @@ void main() {
 			// float   curlInfluence = smoothstep(2, 0, length(p.vel.xyz) * kGlitterDrag * u_delta_time);
 			// p.vel.xyz += curlNoise(p.pos.xyz, u_time) * curlInfluence * length(p.vel.xyz) * u_delta_time;
 
-
 			// Apply distance-based curl noise
 			Emitter emitter = emitters[p.emitter_index];
 			float   dist = distance(p.pos.xyz, emitter.position);
-			float   curlInfluence = smoothstep(5.0, 30.0, dist) + smoothstep(5, 1, length(p.vel.xyz) * kGlitterDrag * u_delta_time);
+			float   curlInfluence = smoothstep(5.0, 30.0, dist) +
+				smoothstep(5, 1, length(p.vel.xyz) * kGlitterDrag * u_delta_time);
 			p.vel.xyz += curlNoise(p.pos.xyz, u_time) * curlInfluence * 5.0 * u_delta_time;
-
 
 			p.vel.y -= kGlitterGravity * u_delta_time;
 		}

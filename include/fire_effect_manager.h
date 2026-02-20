@@ -26,7 +26,7 @@ namespace Boidsish {
 		glm::vec3 direction;
 		int       is_active;
 		glm::vec3 velocity;
-		float     _padding2;
+		int       id;
 	};
 
 	class FireEffectManager {

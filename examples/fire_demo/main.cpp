@@ -9,7 +9,6 @@ int main() {
 	try {
 		Boidsish::Visualizer vis(1280, 720, "Fire Effect Demo");
 
-
 		vis.GetCamera().y = 5.0;
 		vis.GetCamera().z = 30.0;
 		vis.SetCameraMode(Boidsish::CameraMode::STATIONARY);
