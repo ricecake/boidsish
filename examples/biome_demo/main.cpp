@@ -23,23 +23,23 @@ int main() {
 		if (decor) {
 			// Lush Trees (growing in Lush Grass and Forest biomes - indices 1 and 3)
 			Boidsish::DecorProperties treeProps;
-			treeProps.max_density = 0.03f;
-			treeProps.base_scale = 0.005f;
-			treeProps.scale_variance = 0.001f;
+			treeProps.max_density = 0.8f;
+			treeProps.base_scale = 1.5f;
+			treeProps.scale_variance = 0.5f;
 			treeProps.biome_mask = (1u << 1) | (1u << 3);
 			decor->AddDecorType("assets/tree01.obj", treeProps);
 
 			// Dead Trees (growing in Dry Grass and Alpine Meadow - indices 2 and 4)
 			Boidsish::DecorProperties deadTreeProps;
-			deadTreeProps.max_density = 0.02f;
-			deadTreeProps.base_scale = 0.004f;
+			deadTreeProps.max_density = 0.4f;
+			deadTreeProps.base_scale = 1.2f;
 			deadTreeProps.biome_mask = (1u << 2) | (1u << 4);
 			decor->AddDecorType("assets/PUSHILIN_dead_tree.obj", deadTreeProps);
 
 			// Rocky Details (small "rocks" only visible at close range in Rocky biomes - indices 5, 6)
 			Boidsish::DecorProperties rockProps;
 			rockProps.max_density = 1.5f; // High density for details
-			rockProps.base_scale = 0.002f;
+			rockProps.base_scale = 0.2f;
 			rockProps.scale_variance = 0.1f;
 			rockProps.biome_mask = (1u << 5) | (1u << 6);
 			rockProps.detail_distance = 100.0f; // Only visible if camera is within 100 units
