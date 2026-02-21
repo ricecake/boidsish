@@ -63,10 +63,11 @@ void main() {
 
             if (weight < 1e-6) continue;
 
-            // Firefly rejection
+            // Improved firefly rejection: clamp sample to a reasonable range relative to center
             float sampleLum = dot(val.rgb, vec3(0.2126, 0.7152, 0.0722));
-            if (sampleLum > centerLum * 10.0 + 1.0) {
-                val.rgb *= (centerLum * 10.0 + 1.0) / sampleLum;
+            float maxLum = centerLum * 4.0 + 0.5;
+            if (sampleLum > maxLum) {
+                val.rgb *= (maxLum / sampleLum);
             }
 
             sum += val * weight;
