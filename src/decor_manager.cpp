@@ -148,8 +148,10 @@ namespace Boidsish {
 
 		uint32_t current_terrain_version = terrain_gen.GetVersion();
 
-		// 1. Identify visible chunks and their distances
-		std::vector<std::pair<float, std::pair<int, int>>> visible_chunks;
+		// 1. Identify chunks that should be active (within range and visible/preload)
+		std::vector<std::pair<float, std::pair<int, int>>> chunks_to_keep;
+		const float                                        kPreloadRadius = 128.0f * world_scale;
+
 		for (const auto& chunk : chunk_info) {
 			glm::vec2 chunk_offset(chunk.x, chunk.y);
 			float     chunk_size = chunk.w;
@@ -167,35 +169,60 @@ namespace Boidsish {
 				chunk_offset.y + chunk_size
 			);
 
-			if (!frustum.IsBoxInFrustum(chunk_min, chunk_max))
+			bool in_preload = dist < kPreloadRadius;
+			bool in_frustum = frustum.IsBoxInFrustum(chunk_min, chunk_max);
+
+			if (!in_preload && !in_frustum)
 				continue;
 
 			// Store key and distance (for priority)
 			int cx = static_cast<int>(std::floor(chunk.x / chunk.w + 0.5f));
 			int cz = static_cast<int>(std::floor(chunk.y / chunk.w + 0.5f));
-			visible_chunks.push_back({dist, {cx, cz}});
+			chunks_to_keep.push_back({dist, {cx, cz}});
 		}
 
-		// 2. Cull chunks that are no longer visible or too far
-		std::set<std::pair<int, int>> currently_visible_keys;
-		for (const auto& vc : visible_chunks)
-			currently_visible_keys.insert(vc.second);
+		// 2. Cull chunks that are no longer in range or visible
+		std::vector<std::pair<int, int>> active_keys;
+		for (const auto& ck : chunks_to_keep)
+			active_keys.push_back(ck.second);
+
+		std::vector<glm::mat4> zeros; // Reused for zeroing out blocks
 
 		for (auto it = active_chunks_.begin(); it != active_chunks_.end();) {
-			if (currently_visible_keys.find(it->first) == currently_visible_keys.end()) {
-				free_blocks_.push_back(it->second.block_index);
+			auto key = it->first;
+			bool should_keep = std::find(active_keys.begin(), active_keys.end(), key) != active_keys.end();
+
+			if (!should_keep) {
+				int block = it->second.block_index;
+				free_blocks_.push_back(block);
+
+				if (zeros.empty()) {
+					zeros.assign(kInstancesPerChunk, glm::mat4(0.0f));
+				}
+
+				// Zero out the block in all SSBOs to ensure it doesn't render
+				for (auto& type : decor_types_) {
+					glBindBuffer(GL_SHADER_STORAGE_BUFFER, type.ssbo);
+					glBufferSubData(
+						GL_SHADER_STORAGE_BUFFER,
+						block * kInstancesPerChunk * sizeof(glm::mat4),
+						zeros.size() * sizeof(glm::mat4),
+						zeros.data()
+					);
+				}
+
 				it = active_chunks_.erase(it);
 			} else {
 				++it;
 			}
 		}
 
-		// 3. Allocate blocks for new visible chunks
-		std::sort(visible_chunks.begin(), visible_chunks.end()); // Closer first
+		// 3. Allocate blocks for new chunks
+		std::sort(chunks_to_keep.begin(), chunks_to_keep.end()); // Closer first
 
 		std::vector<std::pair<std::pair<int, int>, int>> chunks_to_generate;
 
-		for (const auto& vc : visible_chunks) {
+		for (const auto& vc : chunks_to_keep) {
 			auto key = vc.second;
 			if (active_chunks_.find(key) == active_chunks_.end()) {
 				if (!free_blocks_.empty()) {
