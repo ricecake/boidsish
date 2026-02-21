@@ -115,13 +115,13 @@ namespace Boidsish {
 		float     last_world_scale_ = 0.0f;
 
 		// Distance-based density parameters
-		float density_falloff_start_ = 10.0f;
-		float density_falloff_end_ = 300.0f;
+		float density_falloff_start_ = 200.0f;
+		float density_falloff_end_ = 500.0f;
 		float max_decor_distance_ = 600.0f;
 
 		static constexpr int kInstancesPerChunk = 1024;
-		static constexpr int kMaxActiveChunks = 128;
-		static constexpr int kMaxInstancesPerType = kInstancesPerChunk * kMaxActiveChunks; // 131072
+		static constexpr int kMaxActiveChunks = 2048;
+		static constexpr int kMaxInstancesPerType = kInstancesPerChunk * kMaxActiveChunks; // 2,097,152
 	};
 
 } // namespace Boidsish
