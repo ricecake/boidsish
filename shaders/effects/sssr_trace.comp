@@ -159,13 +159,15 @@ bool hiZTrace(vec3 ro, vec3 rd, vec3 worldRay, out vec2 hitUV) {
     int maxLevel = uNumMips - 1;
     int level = 0;
 
-    // Use a slightly larger offset to escape the starting surface
-    vec3 p = s0 + rayDir * 0.001;
+    // Use an epsilon scaled by resolution for boundary jumps
     vec2 size = vec2(textureSize(uHiZTexture, 0));
+    vec2 eps = 0.001 / size;
 
-    // Thickness limit should be small to avoid bleed-through, but not so small that rays skip through surfaces.
-    // Making it slightly distance-dependent can help.
-    float baseThickness = 0.1;
+    // Use a small offset to escape the starting surface
+    vec3 p = s0 + rayDir * 0.0001;
+
+    // Thickness limit should be small to avoid bleed-through
+    float baseThickness = 0.05;
 
     for (int i = 0; i < uMaxSteps; i++) {
         if (p.x < 0.0 || p.x > 1.0 || p.y < 0.0 || p.y > 1.0 || p.z < 0.0 || p.z > 1.0) return false;
@@ -185,8 +187,13 @@ bool hiZTrace(vec3 ro, vec3 rd, vec3 worldRay, out vec2 hitUV) {
                         return true;
                     }
                 }
-                // Skip ahead if no hit
-                p += rayDir * 0.005;
+                // Skip this cell: jump to boundary to avoid infinite loops or skipping too much
+                vec2 cellCount = size; // level 0
+                vec2 cell = floor(p.xy * cellCount);
+                vec2 boundary = (cell + step(0.0, rayDir.xy)) / cellCount;
+                vec2 t = (boundary - p.xy) * invRayDir.xy;
+                float tMin = min(t.x, t.y);
+                p += rayDir * (tMin + eps.x);
             } else {
                 level--;
             }
@@ -199,10 +206,9 @@ bool hiZTrace(vec3 ro, vec3 rd, vec3 worldRay, out vec2 hitUV) {
             float tMin = min(t.x, t.y);
 
             // Robust skip: only jump if the ray is also in front of the geometry at the cell exit
-            // (Crucial for rays moving away from the camera)
             float exitZ = p.z + rayDir.z * tMin;
             if (level == 0 || exitZ < z || (rayDir.z <= 0.0)) {
-                p += rayDir * (tMin + 0.0001);
+                p += rayDir * (tMin + eps.x);
                 level = min(maxLevel, level + 1);
             } else {
                 // Ray might intersect in this cell, descend

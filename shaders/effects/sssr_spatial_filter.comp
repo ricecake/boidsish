@@ -49,23 +49,23 @@ void main() {
             float sampleDepth = texture(uDepthTexture, sampleUV).r;
             float sampleLinDepth = linearizeDepth(sampleDepth);
 
-            // Bilateral weights - increased normal power for sharper boundaries
+            // Bilateral weights - adjusted normal power based on center roughness (alpha)
             float spatialWeight = exp(-distSq / (2.0 * float(radius)));
-            float normalWeight = pow(max(0.0, dot(centerNormal, sampleNormal)), 256.0);
-            float depthWeight = exp(-abs(centerLinDepth - sampleLinDepth) * 20.0);
+            float normalPower = mix(16.0, 128.0, centerVal.a);
+            float normalWeight = pow(max(0.0, dot(centerNormal, sampleNormal)), normalPower);
+            float depthWeight = exp(-abs(centerLinDepth - sampleLinDepth) * 10.0);
 
             vec4 val = texture(uInputTexture, sampleUV);
             if (any(isnan(val))) val = vec4(0.0);
 
-            // Use the sample's reflection alpha (roughnessFade) to weight its contribution.
-            // This prevents non-reflective neighbors from darkening the reflective center.
+            // Weight by neighbor's alpha to ensure they are also reflective
             float weight = spatialWeight * normalWeight * depthWeight * val.a;
 
             if (weight < 1e-6) continue;
 
-            // Improved firefly rejection: clamp sample to a reasonable range relative to center
+            // Relaxed firefly rejection: use a wider clamp or Karis-like weighting
             float sampleLum = dot(val.rgb, vec3(0.2126, 0.7152, 0.0722));
-            float maxLum = centerLum * 4.0 + 0.5;
+            float maxLum = max(centerLum * 10.0, 2.0); // Allow more room for stochastic hits
             if (sampleLum > maxLum) {
                 val.rgb *= (maxLum / sampleLum);
             }
@@ -76,5 +76,11 @@ void main() {
     }
 
     vec4 result = sum / max(totalWeight, 0.0001);
+
+    // Fallback if neighbors were too different: avoid black holes
+    if (totalWeight < 0.01) {
+        result = centerVal;
+    }
+
     imageStore(uOutImage, pixel, result);
 }

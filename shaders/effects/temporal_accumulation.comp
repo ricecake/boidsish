@@ -53,7 +53,8 @@ void main() {
     // 3. Robust Disocclusion Detection using Linear Depth
     float currLin = linearizeDepth(currentDepth);
     float histLin = linearizeDepth(historyDepth);
-    bool disoccluded = abs(currLin - histLin) > (currLin * 0.05 + 0.1);
+    // Tighter threshold to prevent reflections from sticking to moving objects
+    bool disoccluded = abs(currLin - histLin) > (currLin * 0.02 + 0.05);
 
 	// 4. Neighborhood Clamping
 	vec4 m1 = vec4(0.0);
