@@ -58,6 +58,7 @@ namespace Boidsish {
 			std::pair<int, int>              chunk_key,
 			const std::vector<glm::vec3>&    positions,
 			const std::vector<glm::vec3>&    normals,
+			const std::vector<glm::vec2>&    biomes,
 			const std::vector<unsigned int>& indices,
 			float                            min_y,
 			float                            max_y,
@@ -118,6 +119,11 @@ namespace Boidsish {
 		GLuint GetHeightmapTexture() const { return heightmap_texture_; }
 
 		/**
+		 * @brief Get the biome texture array for shader binding.
+		 */
+		GLuint GetBiomeTexture() const { return biome_texture_; }
+
+		/**
 		 * @brief Get info about all registered chunks for external use (e.g., decor placement).
 		 * Returns a vector of (world_offset_x, world_offset_z, texture_slice, chunk_size).
 		 */
@@ -148,8 +154,12 @@ namespace Boidsish {
 		void EnsureTextureCapacity(int required_slices);
 
 		// Upload heightmap data to a texture slice
-		void
-		UploadHeightmapSlice(int slice, const std::vector<float>& heightmap, const std::vector<glm::vec3>& normals);
+		void UploadHeightmapSlice(
+			int                           slice,
+			const std::vector<float>&     heightmap,
+			const std::vector<glm::vec3>& normals,
+			const std::vector<glm::vec2>& biomes
+		);
 
 		// Configuration
 		int chunk_size_;           // Grid size per chunk (e.g., 32)
@@ -161,7 +171,9 @@ namespace Boidsish {
 		GLuint grid_vbo_ = 0;
 		GLuint grid_ebo_ = 0;
 		GLuint instance_vbo_ = 0;
-		GLuint heightmap_texture_ = 0; // GL_TEXTURE_2D_ARRAY
+		GLuint heightmap_texture_ = 0; // GL_TEXTURE_2D_ARRAY (RGBA16F: height, normal.xyz)
+		GLuint biome_texture_ = 0;     // GL_TEXTURE_2D_ARRAY (RG8: low_idx, t)
+		GLuint biome_ubo_ = 0;         // UBO for BiomeShaderProperties
 
 		// Grid mesh data
 		size_t grid_index_count_ = 0;

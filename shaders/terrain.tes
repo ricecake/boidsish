@@ -11,17 +11,29 @@ in float      perturbFactor_TC_out[];
 in float      tessFactor_TC_out[];
 
 // Output to Fragment Shader
-out vec3  FragPos;
-out vec4  CurPosition;
-out vec4  PrevPosition;
-out vec3  Normal;
-out vec2  TexCoords;
-out float perturbFactor;
-out float tessFactor;
+out vec3        FragPos;
+out vec4        CurPosition;
+out vec4        PrevPosition;
+out vec3        Normal;
+out vec2        TexCoords;
+flat out float TextureSlice;
+out float      perturbFactor;
+out float      tessFactor;
 
 // Heightmap texture array: R=height, GBA=normal
 uniform sampler2DArray uHeightmap;
+// Biome texture array: RG8 - R=low_idx, G=t
+uniform sampler2DArray uBiomeMap;
 uniform float          uChunkSize;
+
+struct BiomeProperties {
+	vec4 albedo_roughness; // rgb = albedo, w = roughness
+	vec4 params;           // x = metallic, y = detailStrength, z = detailScale, w = unused
+};
+
+layout(std140, binding = 7) uniform BiomeData {
+	BiomeProperties biomes[8];
+};
 
 uniform mat4 view;
 uniform mat4 projection;
@@ -32,15 +44,49 @@ uniform vec4 clipPlane;
 #include "temporal_data.glsl"
 
 // Sample heightmap to get world position and normal
-void sampleHeightmap(vec2 uv, float slice, vec3 worldOffset, out vec3 worldPos, out vec3 normal) {
-	// vec2 uv_map = (uv * uChunkSize + 0.5) / (uChunkSize + 1.0);
-	vec4  data = texture(uHeightmap, vec3(uv, slice));
-	float height = data.r;
-	normal = normalize(data.gba);
+float getRawHeight(vec2 uv, float slice) {
+	return texture(uHeightmap, vec3(uv, slice)).r;
+}
 
+// Sample biome map to get interpolated detail properties
+void getBiomeDetailParams(vec2 uv, float slice, out float strength, out float scale) {
+	vec2  biomeData = texture(uBiomeMap, vec3(uv, slice)).rg;
+	int   lowIdx = int(biomeData.r * 255.0 + 0.5);
+	int   highIdx = min(lowIdx + 1, 7);
+	float t = biomeData.g;
+
+	strength = mix(biomes[lowIdx].params.y, biomes[highIdx].params.y, t);
+	scale = mix(biomes[lowIdx].params.z, biomes[highIdx].params.z, t);
+}
+
+float getDetailedHeight(vec2 uv, float slice, vec3 worldOffset) {
+	float h = getRawHeight(uv, slice);
+
+	// Calculate world position for noise
+	vec3 worldPos;
 	worldPos.x = worldOffset.x + uv.x * uChunkSize;
-	worldPos.y = height;
 	worldPos.z = worldOffset.z + uv.y * uChunkSize;
+
+	// Biome-specific detailing
+	float strength, scale;
+	getBiomeDetailParams(uv, slice, strength, scale);
+
+	if (strength > 0.0) {
+		float detail = snoise(vec3(worldPos.xz * 0.1 * scale, 0.0)) * strength;
+		h += detail;
+
+		// Cliff/Ledge logic
+		// If we are in a rocky biome (indices 5, 6), add some "stepping"
+		vec2  biomeData = texture(uBiomeMap, vec3(uv, slice)).rg;
+		float rockyFactor = smoothstep(4.5, 5.5, biomeData.r); // Blend in around biome 5
+		if (rockyFactor > 0.0) {
+			float ledgeNoise = snoise(vec3(worldPos.xz * 0.05, 1.23));
+			float steps = floor(h * 0.5) * 2.0; // 2-unit steps
+			h = mix(h, mix(h, steps, 0.7), rockyFactor * (0.5 + 0.5 * ledgeNoise));
+		}
+	}
+
+	return h;
 }
 
 void main() {
@@ -55,9 +101,18 @@ void main() {
 	vec2 texCoord2 = mix(TexCoords_TC_out[3], TexCoords_TC_out[2], uv.x);
 	TexCoords = mix(texCoord1, texCoord2, uv.y);
 
-	// Sample heightmap at the interpolated UV to get world position and normal
-	vec3 q, n;
-	sampleHeightmap(TexCoords, slice, worldOffset, FragPos, Normal);
+	// Sample detailed height at the interpolated UV
+	float h = getDetailedHeight(TexCoords, slice, worldOffset);
+	FragPos = vec3(worldOffset.x + TexCoords.x * uChunkSize, h, worldOffset.z + TexCoords.y * uChunkSize);
+
+	// Recalculate normal using finite differences
+	float eps = 0.01; // Small offset for derivatives
+	float h_r = getDetailedHeight(TexCoords + vec2(eps, 0.0), slice, worldOffset);
+	float h_u = getDetailedHeight(TexCoords + vec2(0.0, eps), slice, worldOffset);
+
+	vec3 v_r = vec3(eps * uChunkSize, h_r - h, 0.0);
+	vec3 v_u = vec3(0.0, h_u - h, eps * uChunkSize);
+	Normal = normalize(cross(v_u, v_r));
 
 	// Apply shockwave ripple to terrain
 	FragPos += getShockwaveDisplacement(FragPos, 0.0, false);
@@ -75,6 +130,7 @@ void main() {
 	tessFactor = mix(tessFactor1, tessFactor2, uv.y);
 
 	// out float tessFactor;
+	TextureSlice = slice;
 
 	// Final vertex position
 	gl_Position = projection * view * vec4(FragPos, 1.0);
