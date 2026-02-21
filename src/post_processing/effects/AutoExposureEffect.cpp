@@ -20,16 +20,18 @@ namespace Boidsish {
 			computeShader_ = std::make_unique<ComputeShader>("shaders/post_processing/auto_exposure.comp");
 			passthroughShader_ = std::make_unique<Shader>("shaders/postprocess.vert", "shaders/postprocess.frag");
 
-			// Create SSBO for adapted luminance, target luminance, and enabled flag
+			// Create SSBO for adapted luminance, target luminance, limits, and enabled flag
 			struct ExposureData {
 				float adaptedLuminance;
 				float targetLuminance;
+				float minExposure;
+				float maxExposure;
 				int   useAutoExposure;
 			};
 
 			glGenBuffers(1, &exposureSsbo_);
 			glBindBuffer(GL_SHADER_STORAGE_BUFFER, exposureSsbo_);
-			ExposureData initialData = {0.3f, 0.3f, 1};
+			ExposureData initialData = {0.3f, targetLuminance_, minExposure_, maxExposure_, 1};
 			glBufferData(GL_SHADER_STORAGE_BUFFER, sizeof(ExposureData), &initialData, GL_DYNAMIC_DRAW);
 			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::AutoExposure(), exposureSsbo_);
 			glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
@@ -47,6 +49,8 @@ namespace Boidsish {
 			struct ExposureData {
 				float adaptedLuminance;
 				float targetLuminance;
+				float minExposure;
+				float maxExposure;
 				int   useAutoExposure;
 			};
 
@@ -56,6 +60,18 @@ namespace Boidsish {
 				offsetof(ExposureData, targetLuminance),
 				sizeof(float),
 				&targetLuminance_
+			);
+			glBufferSubData(
+				GL_SHADER_STORAGE_BUFFER,
+				offsetof(ExposureData, minExposure),
+				sizeof(float),
+				&minExposure_
+			);
+			glBufferSubData(
+				GL_SHADER_STORAGE_BUFFER,
+				offsetof(ExposureData, maxExposure),
+				sizeof(float),
+				&maxExposure_
 			);
 			int enabled = is_enabled_ ? 1 : 0;
 			glBufferSubData(GL_SHADER_STORAGE_BUFFER, offsetof(ExposureData, useAutoExposure), sizeof(int), &enabled);
@@ -95,6 +111,8 @@ namespace Boidsish {
 				struct ExposureData {
 					float adaptedLuminance;
 					float targetLuminance;
+					float minExposure;
+					float maxExposure;
 					int   useAutoExposure;
 				};
 

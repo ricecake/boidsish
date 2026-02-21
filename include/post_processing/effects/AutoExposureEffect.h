@@ -36,6 +36,14 @@ namespace Boidsish {
 
 			float GetTargetLuminance() const { return targetLuminance_; }
 
+			void SetMinExposure(float m) { minExposure_ = m; }
+
+			float GetMinExposure() const { return minExposure_; }
+
+			void SetMaxExposure(float m) { maxExposure_ = m; }
+
+			float GetMaxExposure() const { return maxExposure_; }
+
 			void SetEnabled(bool enabled) override;
 			void SetTime(float time) override;
 
@@ -46,6 +54,8 @@ namespace Boidsish {
 			float                          speedUp_ = 3.0f;
 			float                          speedDown_ = 1.0f;
 			float                          targetLuminance_ = 0.3f;
+			float                          minExposure_ = 0.1f;
+			float                          maxExposure_ = 10.0f;
 			float                          deltaTime_ = 0.016f;
 			float                          lastTime_ = 0.0f;
 		};

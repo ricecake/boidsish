@@ -38,6 +38,14 @@ namespace Boidsish {
 						if (ImGui::SliderFloat("Target Luminance", &target_lum, 0.01f, 1.0f)) {
 							auto_exposure_effect->SetTargetLuminance(target_lum);
 						}
+						float min_exposure = auto_exposure_effect->GetMinExposure();
+						if (ImGui::SliderFloat("Min Exposure", &min_exposure, 0.01f, 10.0f)) {
+							auto_exposure_effect->SetMinExposure(min_exposure);
+						}
+						float max_exposure = auto_exposure_effect->GetMaxExposure();
+						if (ImGui::SliderFloat("Max Exposure", &max_exposure, 1.0f, 100.0f)) {
+							auto_exposure_effect->SetMaxExposure(max_exposure);
+						}
 					}
 				}
 
