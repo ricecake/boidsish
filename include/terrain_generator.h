@@ -7,6 +7,7 @@
 #include <vector>
 
 #include "Simplex.h"
+#include "biome_properties.h"
 #include "constants.h"
 #include "terrain.h"
 #include "terrain_deformation_manager.h"
@@ -27,6 +28,7 @@ namespace Boidsish {
 		std::vector<unsigned int> indices;
 		std::vector<glm::vec3>    positions;
 		std::vector<glm::vec3>    normals;
+		std::vector<glm::vec2>    biomes;
 		PatchProxy                proxy;
 		int                       chunk_x;
 		int                       chunk_z;
@@ -87,7 +89,7 @@ namespace Boidsish {
 
 		float GetMaxHeight() const override {
 			float max_h = 0.0f;
-			for (const auto& biome : biomes) {
+			for (const auto& biome : kBiomes) {
 				max_h = std::max(max_h, biome.floorLevel);
 			}
 			return max_h * 0.8f * world_scale_;
@@ -294,25 +296,8 @@ namespace Boidsish {
 			float threshold;
 		};
 
-		struct BiomeAttributes {
-			float spikeDamping;  // How aggressively to cut off sharp gradients
-			float detailMasking; // How much valleys should hide high-frequency noise
-			float floorLevel;    // The height at which flattening occurs
-			float weight = 1.0f; // How much weight to give this Biome
-		};
-
-		inline static const std::array<BiomeAttributes, 8> biomes = {
-			BiomeAttributes{1.0, 0.9, 5.0, 5.0f},
-			BiomeAttributes{0.80, 0.5, 20.0, 3.0f},
-			BiomeAttributes{0.05, 0.6, 40.0, 2.0f},
-			BiomeAttributes{0.30, 0.5, 60.00, 1.0f},
-			BiomeAttributes{0.40, 0.4, 80.00, 6.0f},
-			BiomeAttributes{0.30, 0.2, 100.00, 1.0f},
-			BiomeAttributes{0.10, 0.1, 150.0, 3.0f},
-			BiomeAttributes{0.05, 0.5, 250.0, 5.0f}
-		};
-
 		void ApplyWeightedBiome(float control_value, BiomeAttributes& current) const;
+		void GetBiomeIndicesAndWeights(float control_value, int& low_idx, float& t) const;
 
 		const int view_distance_ = Constants::Class::Terrain::DefaultViewDistance();          // in chunks
 		const int kUnloadDistanceBuffer_ = Constants::Class::Terrain::UnloadDistanceBuffer(); // in chunks

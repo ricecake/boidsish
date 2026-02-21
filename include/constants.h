@@ -32,6 +32,10 @@ namespace Boidsish {
 			constexpr int TemporalData() {
 				return 6;
 			}
+
+			constexpr int Biomes() {
+				return 7;
+			}
 		} // namespace UboBinding
 
 		namespace SsboBinding {

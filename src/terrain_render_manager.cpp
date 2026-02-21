@@ -3,6 +3,8 @@
 #include <algorithm>
 #include <iostream>
 
+#include "biome_properties.h"
+#include "constants.h"
 #include "graphics.h" // For Frustum
 #include <shader.h>
 
@@ -10,6 +12,26 @@ namespace Boidsish {
 
 	TerrainRenderManager::TerrainRenderManager(int chunk_size, int max_chunks):
 		chunk_size_(chunk_size), max_chunks_(max_chunks), heightmap_resolution_(chunk_size + 1) {
+		// Create Biome UBO
+		glGenBuffers(1, &biome_ubo_);
+		glBindBuffer(GL_UNIFORM_BUFFER, biome_ubo_);
+		glBufferData(GL_UNIFORM_BUFFER, sizeof(BiomeShaderProperties) * kBiomes.size(), nullptr, GL_STATIC_DRAW);
+
+		std::vector<BiomeShaderProperties> shader_biomes;
+		for (const auto& b : kBiomes) {
+			BiomeShaderProperties sb;
+			sb.albedo_roughness = glm::vec4(b.albedo, b.roughness);
+			sb.params = glm::vec4(b.metallic, b.detailStrength, b.detailScale, 0.0f);
+			shader_biomes.push_back(sb);
+		}
+		glBufferSubData(
+			GL_UNIFORM_BUFFER,
+			0,
+			sizeof(BiomeShaderProperties) * shader_biomes.size(),
+			shader_biomes.data()
+		);
+		glBindBuffer(GL_UNIFORM_BUFFER, 0);
+
 		// Create instance buffer first so we can set up VAO attributes
 		// Pre-allocate for max_chunks to avoid reallocation
 		glGenBuffers(1, &instance_vbo_);
@@ -32,6 +54,10 @@ namespace Boidsish {
 			glDeleteBuffers(1, &instance_vbo_);
 		if (heightmap_texture_)
 			glDeleteTextures(1, &heightmap_texture_);
+		if (biome_texture_)
+			glDeleteTextures(1, &biome_texture_);
+		if (biome_ubo_)
+			glDeleteBuffers(1, &biome_ubo_);
 	}
 
 	void TerrainRenderManager::CreateGridMesh() {
@@ -115,7 +141,7 @@ namespace Boidsish {
 	}
 
 	void TerrainRenderManager::EnsureTextureCapacity(int required_slices) {
-		if (heightmap_texture_ && required_slices <= max_chunks_) {
+		if (heightmap_texture_ && biome_texture_ && required_slices <= max_chunks_) {
 			return; // Already have enough capacity
 		}
 
@@ -143,6 +169,12 @@ namespace Boidsish {
 					  << new_capacity << " - existing heightmap data will be lost!" << std::endl;
 			glDeleteTextures(1, &heightmap_texture_);
 			heightmap_texture_ = 0;
+
+			if (biome_texture_) {
+				glDeleteTextures(1, &biome_texture_);
+				biome_texture_ = 0;
+			}
+
 			// Reset slice tracking since all data is lost
 			next_slice_ = 0;
 			free_slices_.clear();
@@ -183,13 +215,37 @@ namespace Boidsish {
 		glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
 		glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 
+		// Create 2D texture array for biomes
+		// Format: RG8 - R=low_idx, G=t
+		glGenTextures(1, &biome_texture_);
+		glBindTexture(GL_TEXTURE_2D_ARRAY, biome_texture_);
+
+		glTexImage3D(
+			GL_TEXTURE_2D_ARRAY,
+			0,                     // mip level
+			GL_RG8,                // internal format
+			heightmap_resolution_, // width
+			heightmap_resolution_, // height
+			max_chunks_,           // depth (number of slices)
+			0,                     // border
+			GL_RG,                 // format
+			GL_UNSIGNED_BYTE,      // type
+			nullptr                // no initial data
+		);
+
+		glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+		glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+		glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+		glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+
 		glBindTexture(GL_TEXTURE_2D_ARRAY, 0);
 	}
 
 	void TerrainRenderManager::UploadHeightmapSlice(
 		int                           slice,
 		const std::vector<float>&     heightmap,
-		const std::vector<glm::vec3>& normals
+		const std::vector<glm::vec3>& normals,
+		const std::vector<glm::vec2>& biomes
 	) {
 		const int num_pixels = heightmap_resolution_ * heightmap_resolution_;
 
@@ -218,6 +274,30 @@ namespace Boidsish {
 			GL_FLOAT,
 			packed_data.data()
 		);
+
+		// Pack biome indices/weights into RG8 format
+		std::vector<uint8_t> biome_data;
+		biome_data.reserve(num_pixels * 2);
+		for (int i = 0; i < num_pixels; ++i) {
+			biome_data.push_back(static_cast<uint8_t>(biomes[i].x));               // R = low_idx
+			biome_data.push_back(static_cast<uint8_t>(biomes[i].y * 255.0f + 0.5f)); // G = t
+		}
+
+		glBindTexture(GL_TEXTURE_2D_ARRAY, biome_texture_);
+		glTexSubImage3D(
+			GL_TEXTURE_2D_ARRAY,
+			0, // mip level
+			0,
+			0,
+			slice,
+			heightmap_resolution_,
+			heightmap_resolution_,
+			1,
+			GL_RG,
+			GL_UNSIGNED_BYTE,
+			biome_data.data()
+		);
+
 		glBindTexture(GL_TEXTURE_2D_ARRAY, 0);
 	}
 
@@ -225,6 +305,7 @@ namespace Boidsish {
 		std::pair<int, int>              chunk_key,
 		const std::vector<glm::vec3>&    positions,
 		const std::vector<glm::vec3>&    normals,
+		const std::vector<glm::vec2>&    biomes,
 		const std::vector<unsigned int>& indices, // Not used in this implementation
 		float                            min_y,
 		float                            max_y,
@@ -244,6 +325,7 @@ namespace Boidsish {
 		const int              res = heightmap_resolution_;
 		std::vector<float>     heightmap(res * res);
 		std::vector<glm::vec3> reordered_normals(res * res);
+		std::vector<glm::vec2> reordered_biomes(res * res);
 
 		for (int x = 0; x < res; ++x) {
 			for (int z = 0; z < res; ++z) {
@@ -252,6 +334,7 @@ namespace Boidsish {
 
 				heightmap[dst_idx] = positions[src_idx].y;
 				reordered_normals[dst_idx] = normals[src_idx];
+				reordered_biomes[dst_idx] = biomes[src_idx];
 			}
 		}
 
@@ -263,7 +346,7 @@ namespace Boidsish {
 			auto it = chunks_.find(chunk_key);
 			if (it != chunks_.end()) {
 				// Update existing chunk's heightmap
-				UploadHeightmapSlice(it->second.texture_slice, heightmap, reordered_normals);
+				UploadHeightmapSlice(it->second.texture_slice, heightmap, reordered_normals, reordered_biomes);
 				it->second.min_y = min_y;
 				it->second.max_y = max_y;
 				return;
@@ -329,7 +412,7 @@ namespace Boidsish {
 			}
 
 			// Upload heightmap data
-			UploadHeightmapSlice(slice, heightmap, reordered_normals);
+			UploadHeightmapSlice(slice, heightmap, reordered_normals, reordered_biomes);
 
 			// Store chunk info
 			ChunkInfo info{};
@@ -527,6 +610,14 @@ namespace Boidsish {
 		glActiveTexture(GL_TEXTURE0);
 		glBindTexture(GL_TEXTURE_2D_ARRAY, heightmap_texture_);
 		shader.setInt("uHeightmap", 0);
+
+		// Bind biome texture array
+		glActiveTexture(GL_TEXTURE1);
+		glBindTexture(GL_TEXTURE_2D_ARRAY, biome_texture_);
+		shader.setInt("uBiomeMap", 1);
+
+		// Bind Biome UBO
+		glBindBufferBase(GL_UNIFORM_BUFFER, Constants::UboBinding::Biomes(), biome_ubo_);
 
 		// Bind VAO (instance attributes already configured during initialization)
 		glBindVertexArray(grid_vao_);
