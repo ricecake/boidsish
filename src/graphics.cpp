@@ -11,6 +11,7 @@
 #include <vector>
 
 #include "ConfigManager.h"
+#include "asset_manager.h"
 #include "NoiseManager.h"
 #include "UIManager.h"
 #include "akira_effect.h"
@@ -50,6 +51,8 @@
 #include "sdf_volume_manager.h"
 #include "shadow_manager.h"
 #include "shockwave_effect.h"
+#include "sdf_generator.h"
+#include "sdf_shadow_renderer.h"
 #include "sound_effect_manager.h"
 #include "spline.h"
 #include "task_thread_pool.hpp"
@@ -65,6 +68,7 @@
 #include "ui/LightsWidget.h"
 #include "ui/PostProcessingWidget.h"
 #include "ui/SceneWidget.h"
+#include "ui/ShadowsWidget.h"
 #include "ui/hud_widget.h"
 #include "visual_effects.h"
 #include <GL/glew.h>
@@ -213,6 +217,7 @@ namespace Boidsish {
 		std::unique_ptr<AkiraEffectManager>   akira_effect_manager;
 		std::unique_ptr<SdfVolumeManager>     sdf_volume_manager;
 		std::unique_ptr<ShadowManager>        shadow_manager;
+		std::unique_ptr<SdfShadowRenderer>    sdf_shadow_renderer;
 		std::unique_ptr<SceneManager>         scene_manager;
 		std::unique_ptr<DecorManager>         decor_manager;
 		std::map<int, std::shared_ptr<Trail>> trails;
@@ -243,6 +248,8 @@ namespace Boidsish {
 		GLuint                  pingpong_fbo[2]{0}, pingpong_texture[2]{0};
 		GLuint main_fbo_{0}, main_fbo_texture_{0}, main_fbo_velocity_texture_{0}, main_fbo_depth_texture_{0},
 			main_fbo_rbo_{0};
+		GLuint hiz_texture_{0};
+		std::unique_ptr<ComputeShader> hiz_gen_shader_;
 		GLuint    lighting_ubo{0};
 		GLuint    visual_effects_ubo{0};
 		GLuint    temporal_data_ubo{0};
@@ -508,6 +515,9 @@ namespace Boidsish {
 			sdf_volume_manager = std::make_unique<SdfVolumeManager>();
 			sdf_volume_manager->Initialize();
 			shadow_manager = std::make_unique<ShadowManager>();
+			sdf_shadow_renderer = std::make_unique<SdfShadowRenderer>();
+			sdf_shadow_renderer->Initialize(render_width, render_height);
+			hiz_gen_shader_ = std::make_unique<ComputeShader>("shaders/hiz_gen.comp");
 			scene_manager = std::make_unique<SceneManager>("scenes");
 			decor_manager = std::make_unique<DecorManager>();
 			audio_manager = std::make_unique<AudioManager>();
@@ -892,6 +902,9 @@ namespace Boidsish {
 			auto lights_widget = std::make_shared<UI::LightsWidget>(light_manager);
 			ui_manager->AddWidget(lights_widget);
 
+			auto shadows_widget = std::make_shared<UI::ShadowsWidget>(*parent);
+			ui_manager->AddWidget(shadows_widget);
+
 			auto scene_widget = std::make_shared<UI::SceneWidget>(*scene_manager, *parent);
 			ui_manager->AddWidget(scene_widget);
 		}
@@ -912,6 +925,27 @@ namespace Boidsish {
 				std::array<int, 10> shadow_indices;
 				shadow_indices.fill(-1);
 				s.setIntArray("lightShadowIndices", shadow_indices.data(), 10);
+			}
+
+			// Bind Hi-Z texture if available
+			if (hiz_texture_ != 0) {
+				glActiveTexture(GL_TEXTURE6);
+				glBindTexture(GL_TEXTURE_2D, hiz_texture_);
+				s.setInt("u_hizTexture", 6);
+			}
+
+			// Set SDF shadow parameters from config
+			auto& cfg = ConfigManager::GetInstance();
+			s.setBool("u_useSdfShadow", cfg.GetAppSettingBool("enable_sdf_shadows", true));
+			s.setFloat("u_sdfShadowSoftness", cfg.GetAppSettingFloat("sdf_shadow_softness", 10.0f));
+			s.setFloat("u_sdfShadowMaxDist", cfg.GetAppSettingFloat("sdf_shadow_max_dist", 2.0f));
+			s.setFloat("u_sdfShadowBias", cfg.GetAppSettingFloat("sdf_shadow_bias", 0.05f));
+			s.setBool("u_sdfDebug", cfg.GetAppSettingBool("sdf_shadow_debug", false));
+
+			if (sdf_shadow_renderer) {
+				glActiveTexture(GL_TEXTURE7);
+				glBindTexture(GL_TEXTURE_2D, sdf_shadow_renderer->GetShadowTexture());
+				s.setInt("u_sdfShadowTexture", 7);
 			}
 		}
 
@@ -1026,6 +1060,9 @@ namespace Boidsish {
 				glDeleteTextures(1, &main_fbo_texture_);
 				glDeleteTextures(1, &main_fbo_velocity_texture_);
 				glDeleteTextures(1, &main_fbo_depth_texture_);
+			}
+			if (hiz_texture_) {
+				glDeleteTextures(1, &hiz_texture_);
 			}
 
 			if (lighting_ubo) {
@@ -1143,7 +1180,10 @@ namespace Boidsish {
 					shader->setFloat("frustumCullRadius", shape->GetBoundingRadius());
 					instance_manager->AddInstance(shape);
 				} else {
+					shader->setBool("is_instanced", false);
+					shader->setBool("useSSBOInstancing", false);
 					shader->setBool("isColossal", shape->IsColossal());
+					shader->setBool("u_useSdfShadow", false);
 					shader->setFloat("frustumCullRadius", shape->GetBoundingRadius());
 					shape->render();
 				}
@@ -1879,6 +1919,10 @@ namespace Boidsish {
 			render_width = static_cast<int>(width * render_scale);
 			render_height = static_cast<int>(height * render_scale);
 
+			if (sdf_shadow_renderer) {
+				sdf_shadow_renderer->Resize(render_width, render_height);
+			}
+
 			if (reflection_fbo) {
 				// --- Resize reflection framebuffer ---
 				glBindTexture(GL_TEXTURE_2D, reflection_texture);
@@ -1892,6 +1936,18 @@ namespace Boidsish {
 					glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB16F, render_width, render_height, 0, GL_RGB, GL_FLOAT, NULL);
 				}
 			}
+
+			// --- Resize Hi-Z texture ---
+			if (hiz_texture_)
+				glDeleteTextures(1, &hiz_texture_);
+			glGenTextures(1, &hiz_texture_);
+			glBindTexture(GL_TEXTURE_2D, hiz_texture_);
+			int mips = (int)std::floor(std::log2(std::max(render_width, render_height))) + 1;
+			glTexStorage2D(GL_TEXTURE_2D, mips, GL_R32F, render_width, render_height);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST_MIPMAP_NEAREST);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 
 			// --- Resize main scene framebuffer ---
 			glBindTexture(GL_TEXTURE_2D, main_fbo_texture_);
@@ -2549,11 +2605,18 @@ namespace Boidsish {
 				shadow_shader.use();
 				for (const auto& shape : impl->shapes) {
 					if (shape->CastsShadows()) {
+						shadow_shader.setBool("is_instanced", false);
+						shadow_shader.setBool("useSSBOInstancing", false);
+						shadow_shader.setBool("isColossal", shape->IsColossal());
+						shadow_shader.setBool("u_useSdfShadow", false);
 						shape->render(shadow_shader);
 					}
 				}
 
 				glDisable(GL_CULL_FACE);
+				if (impl->decor_manager) {
+					impl->decor_manager->Render(shadow_shader);
+				}
 				impl->RenderTerrain(
 					impl->shadow_manager->GetLightSpaceMatrix(info.map_index),
 					glm::mat4(1.0f),
@@ -2604,7 +2667,63 @@ namespace Boidsish {
 
 		glm::mat4 view = impl->SetupMatrices();
 
-		// Render opaque geometry first (terrain, plane, shapes) to populate depth buffer
+		// --- 1. Depth Pre-pass (Terrain and Plane) ---
+		// We need depth to compute screen-space SDF shadows for the terrain itself.
+		// Use a simple shader or just disable color writes.
+		glColorMask(GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE);
+		impl->RenderPlane(view);
+		impl->RenderTerrain(view, impl->projection, std::nullopt, true); // true = shadow/depth pass
+		glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
+
+		// --- 2. Hi-Z and SDF Shadow Generation ---
+		if (impl->hiz_gen_shader_ && impl->hiz_gen_shader_->isValid()) {
+			impl->hiz_gen_shader_->use();
+			glActiveTexture(GL_TEXTURE0);
+			glBindTexture(GL_TEXTURE_2D, impl->main_fbo_depth_texture_);
+			impl->hiz_gen_shader_->setInt("u_inputTexture", 0);
+
+			int w = impl->render_width;
+			int h = impl->render_height;
+			int mips = (int)std::floor(std::log2(std::max(w, h))) + 1;
+
+			// Level 0: Copy and convert depth
+			impl->hiz_gen_shader_->setBool("u_isFirstPass", true);
+			impl->hiz_gen_shader_->setVec2("u_outputSize", glm::vec2(w, h));
+			glBindImageTexture(0, impl->hiz_texture_, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_R32F);
+			glDispatchCompute((w + 15) / 16, (h + 15) / 16, 1);
+			glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
+
+			// Levels 1 to N: Downsample
+			impl->hiz_gen_shader_->setBool("u_isFirstPass", false);
+			glActiveTexture(GL_TEXTURE0);
+			glBindTexture(GL_TEXTURE_2D, impl->hiz_texture_);
+
+			for (int i = 1; i < mips; ++i) {
+				int curr_w = std::max(1, w >> i);
+				int curr_h = std::max(1, h >> i);
+				impl->hiz_gen_shader_->setVec2("u_outputSize", glm::vec2(curr_w, curr_h));
+				impl->hiz_gen_shader_->setInt("u_inputMip", i - 1);
+				glBindImageTexture(0, impl->hiz_texture_, i, GL_FALSE, 0, GL_WRITE_ONLY, GL_R32F);
+				glDispatchCompute((curr_w + 15) / 16, (curr_h + 15) / 16, 1);
+				glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
+			}
+		}
+
+		std::vector<Light*> shadow_lights = impl->light_manager.GetShadowCastingLights();
+		if (impl->sdf_shadow_renderer && !shadow_lights.empty()) {
+			impl->sdf_shadow_renderer->RenderShadows(
+				impl->shapes,
+				impl->decor_manager.get(),
+				impl->main_fbo_depth_texture_,
+				impl->hiz_texture_,
+				view,
+				impl->projection,
+				-shadow_lights[0]->direction // Towards the light
+			);
+		}
+
+		// --- 3. Main Opaque Pass ---
+		// Render opaque geometry again with lighting and SDF shadows
 		impl->RenderPlane(view);
 		impl->RenderTerrain(view, impl->projection, std::nullopt);
 
@@ -2796,6 +2915,13 @@ namespace Boidsish {
 					impl->mesh_explosion_manager->IsAvailable() ? "ready" : "disabled (compute shader unavailable)"
 				)
 			);
+		}
+
+		// --- Generate SDFs for models ---
+		logger::LOG("Generating SDFs for loaded models...");
+		auto models = AssetManager::GetInstance().GetAllModels();
+		for (auto& model : models) {
+			SdfGenerator::GetInstance().GenerateSdf(model);
 		}
 
 		// --- Invoke user prepare callbacks ---

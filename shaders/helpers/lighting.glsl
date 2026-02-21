@@ -2,6 +2,31 @@
 #define HELPERS_LIGHTING_GLSL
 
 #include "../lighting.glsl"
+#include "../temporal_data.glsl"
+
+// SDF Shadow uniforms
+uniform sampler3D u_sdfTexture;
+uniform vec3      u_sdfExtent;
+uniform vec3      u_sdfMin;
+uniform bool      u_useSdfShadow = false;
+uniform float     u_sdfShadowSoftness = 10.0;
+uniform float     u_sdfShadowMaxDist = 2.0;
+uniform float     u_sdfShadowBias = 0.05;
+uniform bool      u_sdfDebug = false;
+
+// Hi-Z depth texture for optimized screen-space shadows
+uniform sampler2D u_hizTexture;
+
+// Screen-space SDF shadow texture (accumulated from all SDF casters)
+uniform sampler2D u_sdfShadowTexture;
+
+// The shader must provide these if HAS_LOCAL_POS is defined
+#ifdef HAS_LOCAL_POS
+// These are provided by the including shader (e.g. vis.frag)
+// We declare them as uniforms or variables that will be defined before inclusion
+vec3 localPos;
+mat4 invModelMatrix;
+#endif
 
 const int LIGHT_TYPE_POINT = 0;
 const int LIGHT_TYPE_DIRECTIONAL = 1;
@@ -181,6 +206,76 @@ float calculateShadow(int light_index, vec3 frag_pos, vec3 normal, vec3 light_di
 	}
 
 	return shadow;
+}
+
+/**
+ * Calculate screen-space SDF shadow factor.
+ */
+float calculateScreenSpaceSdfShadow(vec2 uv) {
+	return texture(u_sdfShadowTexture, uv).r;
+}
+
+/**
+ * Calculate SDF shadow factor for a fragment using the per-instance SDF.
+ * This provides self-shadowing and contact shadows for decor.
+ */
+float calculateSdfShadow(vec3 world_pos, vec3 world_normal, vec3 world_light_dir) {
+	if (!u_useSdfShadow)
+		return 1.0;
+
+#ifdef HAS_LOCAL_POS
+	// Raymarch in local model space towards the light
+	float shadow = 1.0;
+
+	// Transform light direction and normal to local space
+	vec3 local_light_dir = normalize(mat3(invModelMatrix) * world_light_dir);
+	vec3 local_normal = normalize(mat3(invModelMatrix) * world_normal);
+
+	// Bias the starting position along the normal to avoid self-intersection
+	float t = u_sdfShadowBias;
+	vec3  start_p = localPos + local_normal * 0.01; // Tiny offset along normal
+
+	for (int i = 0; i < 32; ++i) {
+		vec3 p = start_p + local_light_dir * t;
+
+		// Map local model space to [0, 1] SDF texture space
+		vec3 sdf_uv = (p - u_sdfMin) / u_sdfExtent;
+
+		if (any(lessThan(sdf_uv, vec3(0.0))) || any(greaterThan(sdf_uv, vec3(1.0)))) {
+			break; // Ray left the SDF volume
+		}
+
+		float dist = texture(u_sdfTexture, sdf_uv).r * length(u_sdfExtent);
+
+		// Optional: Use Hi-Z to skip if ray is behind scene (Screen Space Shadow)
+		// This is a simple heuristic: if the ray goes behind something in the depth buffer,
+		// we assume it might be occluded.
+		vec4  proj = currentViewProjection * vec4(world_pos + world_light_dir * t, 1.0);
+		float z = (proj.z / proj.w) * 0.5 + 0.5;
+		vec2  uv = (proj.xy / proj.w) * 0.5 + 0.5;
+		if (all(greaterThanEqual(uv, vec2(0.0))) && all(lessThanEqual(uv, vec2(1.0)))) {
+			float minDepth = textureLod(u_hizTexture, uv, 0.0).r;
+			if (z > minDepth + 0.005) {
+				return 0.0; // Occluded in screen space
+			}
+		}
+
+		if (dist < 0.01) {
+			return 0.0; // Occluded
+		}
+
+		// Soft shadow estimation (Penumbra)
+		shadow = min(shadow, u_sdfShadowSoftness * dist / t);
+
+		t += max(0.01, dist);
+		if (t > u_sdfShadowMaxDist)
+			break;
+	}
+
+	return clamp(shadow, 0.0, 1.0);
+#else
+	return 1.0;
+#endif
 }
 
 /**
@@ -390,10 +485,30 @@ vec4 apply_lighting_pbr(vec3 frag_pos, vec3 normal, vec3 albedo, float roughness
 		// Calculate shadow with slope-scaled bias
 		float shadow = calculateShadow(i, frag_pos, N, L);
 
+		// Apply SDF shadow if enabled
+		if (u_useSdfShadow) {
+#ifdef HAS_LOCAL_POS
+			shadow *= calculateSdfShadow(frag_pos, N, L);
+#endif
+			// Also apply screen-space SDF shadows if we have UVs (from gl_FragCoord)
+			// This allows objects to receive shadows from other SDF objects.
+			vec2 uv = gl_FragCoord.xy * texelSize;
+			shadow *= calculateScreenSpaceSdfShadow(uv);
+		}
+
 		// Add to outgoing radiance Lo
 		vec3 specular_radiance = specular * radiance * NdotL * shadow;
 		Lo += (kD * albedo / PI) * radiance * NdotL * shadow + specular_radiance;
 		spec_lum += get_luminance(specular_radiance);
+	}
+
+	if (u_sdfDebug && u_useSdfShadow) {
+#ifdef HAS_LOCAL_POS
+		float sdfShadow = calculateSdfShadow(frag_pos, N, lights[0].direction);
+		if (sdfShadow < 0.9) {
+			Lo = mix(Lo, vec3(1.0, 0.0, 0.0), 0.5);
+		}
+#endif
 	}
 
 	// Ambient lighting for PBR (uses ambient_light uniform from main branch)
@@ -514,6 +629,15 @@ vec4 apply_lighting(vec3 frag_pos, vec3 normal, vec3 albedo, float specular_stre
 
 		// Calculate shadow factor for this light with slope-scaled bias
 		float shadow = calculateShadow(i, frag_pos, normal, light_dir);
+
+		// Apply SDF shadow if enabled
+		if (u_useSdfShadow) {
+#ifdef HAS_LOCAL_POS
+			shadow *= calculateSdfShadow(frag_pos, normal, light_dir);
+#endif
+			vec2 uv = gl_FragCoord.xy * texelSize;
+			shadow *= calculateScreenSpaceSdfShadow(uv);
+		}
 
 		// Diffuse
 		float diff = max(dot(normal, light_dir), 0.0);

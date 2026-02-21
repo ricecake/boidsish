@@ -32,6 +32,14 @@ namespace Boidsish {
 		m_audio_sources.clear();
 	}
 
+	std::vector<std::shared_ptr<ModelData>> AssetManager::GetAllModels() {
+		std::vector<std::shared_ptr<ModelData>> models;
+		for (auto& [path, data] : m_models) {
+			models.push_back(data);
+		}
+		return models;
+	}
+
 	// Helper for Assimp processing (moved from Model class)
 	namespace {
 		void ProcessNode(aiNode* node, const aiScene* scene, ModelData& data, const std::string& directory);

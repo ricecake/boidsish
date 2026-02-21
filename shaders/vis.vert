@@ -5,19 +5,26 @@ layout(location = 2) in vec2 aTexCoords;
 layout(location = 3) in mat4 aInstanceMatrix;
 layout(location = 7) in vec4 aInstanceColor;
 
+struct SSBOInstance {
+	mat4 model;
+	mat4 invModel;
+};
+
 // SSBO for decor/foliage instancing (binding 10)
 layout(std430, binding = 10) buffer SSBOInstances {
-	mat4 ssboInstanceMatrices[];
+	SSBOInstance ssboInstances[];
 };
 
 #include "frustum.glsl"
-#include "helpers/lighting.glsl"
+#include "lighting.glsl"
 #include "helpers/shockwave.glsl"
 #include "temporal_data.glsl"
 #include "visual_effects.glsl"
 #include "visual_effects.vert"
 
 out vec3 FragPos;
+out vec3 LocalPos;
+out mat4 InvModelMatrix;
 out vec4 CurPosition;
 out vec4 PrevPosition;
 out vec3 Normal;
@@ -38,6 +45,7 @@ uniform bool  useSSBOInstancing = false;
 uniform bool  isLine = false;
 uniform bool  enableFrustumCulling = false;
 uniform float frustumCullRadius = 5.0; // Approximate object radius for sphere test
+uniform vec3  u_localCenter = vec3(0.0);
 
 // Arcade Text Effects
 uniform bool  isArcadeText = false;
@@ -92,17 +100,23 @@ void main() {
 	}
 
 	mat4 modelMatrix;
+	mat4 invModelMatrix_local;
 	if (useSSBOInstancing) {
-		modelMatrix = ssboInstanceMatrices[gl_InstanceID];
+		modelMatrix = ssboInstances[gl_InstanceID].model;
+		invModelMatrix_local = ssboInstances[gl_InstanceID].invModel;
 	} else if (is_instanced) {
 		modelMatrix = aInstanceMatrix;
 	} else {
 		modelMatrix = model;
+		invModelMatrix_local = inverse(modelMatrix);
 	}
 
-	// Extract world position (translation from model matrix)
-	vec3  instanceCenter = vec3(modelMatrix[3]);
-	float instanceScale = length(vec3(modelMatrix[0])); // Approximate scale from first column
+	// Transform local center to world space for accurate frustum culling
+	vec3 instanceCenter = vec3(modelMatrix * vec4(u_localCenter, 1.0));
+
+	// Extract maximum scale factor across all axes
+	float instanceScale = max(length(vec3(modelMatrix[0])),
+	                          max(length(vec3(modelMatrix[1])), length(vec3(modelMatrix[2]))));
 
 	// GPU frustum culling - output degenerate triangle if outside frustum
 	if (enableFrustumCulling && !isColossal) {
@@ -122,6 +136,8 @@ void main() {
 		}
 	}
 
+	LocalPos = displacedPos;
+	InvModelMatrix = invModelMatrix_local;
 	FragPos = vec3(modelMatrix * vec4(displacedPos, 1.0));
 
 	// Apply shockwave displacement (sway for decor)

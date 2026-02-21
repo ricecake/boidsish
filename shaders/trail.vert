@@ -17,9 +17,9 @@ uniform bool  useRocketTrail;
 uniform float trailHead;
 uniform float trailSize;
 
-#include "helpers/lighting.glsl"
-#include "helpers/noise.glsl"
+#include "lighting.glsl"
 #include "temporal_data.glsl"
+#include "helpers/noise.glsl"
 
 out vec4 CurPosition;
 out vec4 PrevPosition;

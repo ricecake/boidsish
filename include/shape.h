@@ -91,6 +91,8 @@ namespace Boidsish {
 
 		inline void SetScale(const glm::vec3& scale) { scale_ = scale; }
 
+		inline const glm::vec3& GetLocalCenter() const { return local_center_; }
+
 		inline int GetTrailLength() const { return trail_length_; }
 
 		inline void SetTrailLength(int length) { trail_length_ = length; }
@@ -123,9 +125,14 @@ namespace Boidsish {
 
 		inline bool IsColossal() const { return is_colossal_; }
 
-		inline void SetColossal(bool is_colossal) { is_colossal_ = is_colossal; }
+		inline void SetColossal(bool is_colossal) {
+			is_colossal_ = is_colossal;
+			casts_shadows_ = !is_colossal;
+		}
 
-		virtual bool CastsShadows() const { return !is_colossal_; }
+		virtual bool CastsShadows() const { return casts_shadows_; }
+
+		inline void SetCastsShadows(bool casts) { casts_shadows_ = casts; }
 
 		inline bool IsInstanced() const { return is_instanced_; }
 
@@ -152,7 +159,9 @@ namespace Boidsish {
 		 *
 		 * @return float bounding radius in world units
 		 */
-		virtual float GetBoundingRadius() const { return 5.0f; }
+		virtual float GetBoundingRadius() const {
+			return glm::distance(local_aabb_.max, local_center_);
+		}
 
 		/**
 		 * @brief Test for intersection with a ray.
@@ -234,6 +243,7 @@ namespace Boidsish {
 			rotation_(glm::quat(1.0f, 0.0f, 0.0f, 0.0f)),
 			scale_(glm::vec3(1.0f)),
 			local_aabb_(glm::vec3(-1.0f), glm::vec3(1.0f)),
+			local_center_(0.0f),
 			clamp_to_terrain_(false),
 			ground_offset_(0.0f),
 			trail_length_(trail_length),
@@ -247,11 +257,13 @@ namespace Boidsish {
 			roughness_(0.5f),
 			metallic_(0.0f),
 			ao_(1.0f),
-			use_pbr_(false) {}
+			use_pbr_(false),
+			casts_shadows_(true) {}
 
 		glm::quat rotation_;
 		glm::vec3 scale_;
 		AABB      local_aabb_;
+		glm::vec3 local_center_;
 		bool      clamp_to_terrain_;
 		float     ground_offset_;
 
@@ -274,6 +286,7 @@ namespace Boidsish {
 		float     metallic_;
 		float     ao_;
 		bool      use_pbr_;
+		bool      casts_shadows_;
 
 	public:
 		// Shared sphere mesh (public for instancing support)

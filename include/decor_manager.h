@@ -68,6 +68,9 @@ namespace Boidsish {
 		);
 		void Render(const glm::mat4& view, const glm::mat4& projection);
 
+		// Render with a specific shader (e.g. for shadow pass)
+		void Render(Shader& shader);
+
 		void SetEnabled(bool enabled) { enabled_ = enabled; }
 
 		bool IsEnabled() const { return enabled_; }
@@ -80,6 +83,8 @@ namespace Boidsish {
 
 		// Maximum distance at which decor is placed at all
 		void SetMaxDistance(float distance) { max_decor_distance_ = distance; }
+
+		const std::vector<DecorType>& GetDecorTypes() const { return decor_types_; }
 
 	private:
 		void _Initialize();

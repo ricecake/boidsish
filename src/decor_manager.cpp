@@ -54,8 +54,8 @@ namespace Boidsish {
 
 		glGenBuffers(1, &type.ssbo);
 		glBindBuffer(GL_SHADER_STORAGE_BUFFER, type.ssbo);
-		// Each instance is a mat4 (64 bytes)
-		glBufferData(GL_SHADER_STORAGE_BUFFER, kMaxInstancesPerType * sizeof(glm::mat4), nullptr, GL_DYNAMIC_DRAW);
+		// Each instance is two mat4 (128 bytes)
+		glBufferData(GL_SHADER_STORAGE_BUFFER, kMaxInstancesPerType * 128, nullptr, GL_DYNAMIC_DRAW);
 
 		glGenBuffers(1, &type.count_buffer);
 		glBindBuffer(GL_ATOMIC_COUNTER_BUFFER, type.count_buffer);
@@ -175,7 +175,9 @@ namespace Boidsish {
 			bool in_preload = dist < kPreloadRadius;
 			bool in_frustum = frustum.IsBoxInFrustum(chunk_min, chunk_max);
 
-			if (!in_preload && !in_frustum)
+			// For shadows to work correctly, we need decor even slightly outside the frustum
+			// but still within the active terrain area.
+			if (!in_preload && !in_frustum && dist > kPreloadRadius * 3.0f)
 				continue;
 
 			// Priority:
@@ -213,6 +215,7 @@ namespace Boidsish {
 			placement_shader_->setBool("u_randomYaw", type.props.random_yaw);
 			placement_shader_->setBool("u_alignToTerrain", type.props.align_to_terrain);
 			placement_shader_->setInt("u_typeIndex", (int)i);
+			placement_shader_->setFloat("u_boundingRadius", type.model->GetBoundingRadius());
 
 			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, type.ssbo);
 			glBindBufferBase(GL_ATOMIC_COUNTER_BUFFER, 0, type.count_buffer);
@@ -256,25 +259,33 @@ namespace Boidsish {
 		if (!shader)
 			return;
 
-		// Ensure SSBO data from compute shader is visible to vertex shader
-		// This barrier is needed because compute wrote to SSBO, and vertex shader reads from it
-		glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
-
 		shader->use();
 		shader->setMat4("view", view);
 		shader->setMat4("projection", projection);
-		shader->setMat4("model", glm::mat4(1.0f)); // Identity - instances provide transform
-		shader->setBool("useSSBOInstancing", true);
-		shader->setBool("isTextEffect", false);
-		shader->setBool("isColossal", false);
-		shader->setBool("is_instanced", false);
-		shader->setVec3("objectColor", 1.0f, 1.0f, 1.0f);
-		shader->setBool("usePBR", false);
 		shader->setVec4("clipPlane", 0.0f, 0.0f, 0.0f, 0.0f); // Disable clipping for main pass
 		shader->setFloat(
 			"ripple_strength",
 			ConfigManager::GetInstance().GetAppSettingBool("artistic_effect_ripple", false) ? 0.05f : 0.0f
 		);
+
+		Render(*shader);
+	}
+
+	void DecorManager::Render(Shader& shader) {
+		if (!enabled_ || !initialized_ || decor_types_.empty())
+			return;
+
+		// Ensure SSBO data from compute shader is visible to vertex shader
+		glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
+
+		shader.use();
+		shader.setMat4("model", glm::mat4(1.0f)); // Identity - instances provide transform
+		shader.setBool("useSSBOInstancing", true);
+		shader.setBool("isTextEffect", false);
+		shader.setBool("isColossal", false);
+		shader.setBool("is_instanced", false);
+		shader.setVec3("objectColor", 1.0f, 1.0f, 1.0f);
+		shader.setBool("usePBR", false);
 
 		for (size_t i = 0; i < decor_types_.size(); ++i) {
 			auto& type = decor_types_[i];
@@ -286,8 +297,22 @@ namespace Boidsish {
 
 			// Bind SSBO to a known binding point that the shader expects for instance matrices
 			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 10, type.ssbo);
+			shader.setVec3("u_localCenter", type.model->GetLocalCenter());
+			shader.setFloat("frustumCullRadius", type.model->GetBoundingRadius());
 
-			size_t mesh_count = type.model->getMeshes().size();
+			// Bind SDF texture if available
+			const auto& model_data = type.model->GetModelData();
+			auto&       cfg = ConfigManager::GetInstance();
+			if (model_data && model_data->sdf_texture != 0 && cfg.GetAppSettingBool("enable_sdf_shadows", true)) {
+				glActiveTexture(GL_TEXTURE5);
+				glBindTexture(GL_TEXTURE_3D, model_data->sdf_texture);
+				shader.setInt("u_sdfTexture", 5);
+				shader.setVec3("u_sdfExtent", model_data->sdf_extent);
+				shader.setVec3("u_sdfMin", model_data->sdf_min);
+				shader.setBool("u_useSdfShadow", true);
+			} else {
+				shader.setBool("u_useSdfShadow", false);
+			}
 
 			for (const auto& mesh : type.model->getMeshes()) {
 				bool hasDiffuse = false;
@@ -297,13 +322,13 @@ namespace Boidsish {
 						break;
 					}
 				}
-				shader->setBool("use_texture", hasDiffuse);
-				mesh.bindTextures(*shader);
+				shader.setBool("use_texture", hasDiffuse);
+				mesh.bindTextures(shader);
 				mesh.render_instanced((int)count, true);
 			}
 		}
 
-		shader->setBool("useSSBOInstancing", false);
+		shader.setBool("useSSBOInstancing", false);
 	}
 
 } // namespace Boidsish

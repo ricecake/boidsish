@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <iostream>
 
+#include "ConfigManager.h"
 #include "asset_manager.h"
 #include "logger.h"
 #include "shader.h"
@@ -242,6 +243,9 @@ namespace Boidsish {
 	// Model implementation
 	Model::Model(const std::string& path, bool no_cull): no_cull_(no_cull) {
 		m_data = AssetManager::GetInstance().GetModelData(path);
+		if (m_data) {
+			local_center_ = (m_data->aabb.min + m_data->aabb.max) * 0.5f;
+		}
 	}
 
 	void Model::render() const {
@@ -267,6 +271,11 @@ namespace Boidsish {
 		shader.setMat4("model", model);
 		shader.setVec3("objectColor", GetR(), GetG(), GetB());
 		shader.setFloat("objectAlpha", GetA());
+		shader.setBool("is_instanced", false);
+		shader.setBool("useSSBOInstancing", false);
+		shader.setBool("isColossal", IsColossal());
+		shader.setVec3("u_localCenter", GetLocalCenter());
+		shader.setFloat("frustumCullRadius", GetBoundingRadius());
 
 		// Set PBR material properties
 		shader.setBool("usePBR", UsePBR());
@@ -274,6 +283,19 @@ namespace Boidsish {
 			shader.setFloat("roughness", GetRoughness());
 			shader.setFloat("metallic", GetMetallic());
 			shader.setFloat("ao", GetAO());
+		}
+
+		// Set SDF shadow if available
+		auto& cfg = ConfigManager::GetInstance();
+		if (m_data->sdf_texture != 0 && cfg.GetAppSettingBool("enable_sdf_shadows", true)) {
+			glActiveTexture(GL_TEXTURE5);
+			glBindTexture(GL_TEXTURE_3D, m_data->sdf_texture);
+			shader.setInt("u_sdfTexture", 5);
+			shader.setVec3("u_sdfExtent", m_data->sdf_extent);
+			shader.setVec3("u_sdfMin", m_data->sdf_min);
+			shader.setBool("u_useSdfShadow", true);
+		} else {
+			shader.setBool("u_useSdfShadow", false);
 		}
 
 		if (this->no_cull_) {
@@ -306,6 +328,12 @@ namespace Boidsish {
 		if (!m_data)
 			return AABB();
 		return m_data->aabb.Transform(GetModelMatrix());
+	}
+
+	float Model::GetBoundingRadius() const {
+		if (!m_data)
+			return 5.0f;
+		return glm::distance(m_data->aabb.max, local_center_);
 	}
 
 	void Model::GetGeometry(std::vector<Vertex>& vertices, std::vector<unsigned int>& indices) const {

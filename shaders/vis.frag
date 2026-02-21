@@ -2,11 +2,15 @@
 layout(location = 0) out vec4 FragColor;
 layout(location = 1) out vec2 Velocity;
 
+#define HAS_LOCAL_POS
+#include "temporal_data.glsl"
 #include "helpers/lighting.glsl"
 #include "visual_effects.frag"
 #include "visual_effects.glsl"
 
 in vec3 FragPos;
+in vec3 LocalPos;
+in mat4 InvModelMatrix;
 in vec4 CurPosition;
 in vec4 PrevPosition;
 in vec3 Normal;
@@ -44,6 +48,8 @@ uniform sampler2D texture_diffuse1;
 uniform bool      use_texture;
 
 void main() {
+	localPos = LocalPos;
+	invModelMatrix = InvModelMatrix;
 	float fade = 1.0;
 	if (!isColossal) {
 		float dist = length(FragPos.xz - viewPos.xz);

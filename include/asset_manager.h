@@ -3,6 +3,7 @@
 #include <map>
 #include <memory>
 #include <string>
+#include <vector>
 
 #include <GL/glew.h>
 
@@ -49,6 +50,11 @@ namespace Boidsish {
 		 * @brief Clear all cached assets. Should be called when the graphics context is destroyed.
 		 */
 		void Clear();
+
+		/**
+		 * @brief Get all cached models.
+		 */
+		std::vector<std::shared_ptr<ModelData>> GetAllModels();
 
 	private:
 		AssetManager() = default;

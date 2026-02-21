@@ -1,0 +1,40 @@
+#version 430 core
+
+layout(local_size_x = 8, local_size_y = 8, local_size_z = 8) in;
+
+layout(rgba32f, binding = 0) uniform readonly image3D u_inputTexture;
+layout(rgba32f, binding = 1) uniform writeonly image3D u_outputTexture;
+
+uniform int u_stepSize;
+uniform int u_resolution;
+
+void main() {
+	ivec3 voxelCoord = ivec3(gl_GlobalInvocationID.xyz);
+	if (any(greaterThanEqual(voxelCoord, ivec3(u_resolution)))) return;
+
+	vec4 currentData = imageLoad(u_inputTexture, voxelCoord);
+	vec3 bestSeed = currentData.xyz;
+	float bestDist = (currentData.w > 0.5) ? 1e10 : distance(vec3(voxelCoord), bestSeed * float(u_resolution));
+
+	for (int z = -1; z <= 1; ++z) {
+		for (int y = -1; y <= 1; ++y) {
+			for (int x = -1; x <= 1; ++x) {
+				ivec3 neighborCoord = voxelCoord + ivec3(x, y, z) * u_stepSize;
+				if (any(lessThan(neighborCoord, ivec3(0))) || any(greaterThanEqual(neighborCoord, ivec3(u_resolution))))
+					continue;
+
+				vec4 neighborData = imageLoad(u_inputTexture, neighborCoord);
+				if (neighborData.w < 0.5) { // Has a seed
+					vec3 seed = neighborData.xyz;
+					float d = distance(vec3(voxelCoord), seed * float(u_resolution));
+					if (d < bestDist) {
+						bestDist = d;
+						bestSeed = seed;
+					}
+				}
+			}
+		}
+	}
+
+	imageStore(u_outputTexture, voxelCoord, vec4(bestSeed, (bestDist > 1e9) ? 1.0 : 0.0));
+}

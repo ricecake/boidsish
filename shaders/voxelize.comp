@@ -1,0 +1,54 @@
+#version 430 core
+
+layout(local_size_x = 128) in;
+
+layout(rgba32f, binding = 0) uniform image3D u_sdfTexture;
+
+// Use simple float array to avoid struct alignment issues
+layout(std430, binding = 1) buffer VertexBuffer {
+	float vertices[];
+};
+
+layout(std430, binding = 2) buffer IndexBuffer {
+	uint indices[];
+};
+
+uniform int u_numIndices;
+uniform vec3 u_localMin;
+uniform vec3 u_localMax;
+uniform int u_resolution;
+
+void main() {
+	uint triIdx = gl_GlobalInvocationID.x * 3;
+	if (triIdx >= u_numIndices) return;
+
+	uint i0 = indices[triIdx];
+	uint i1 = indices[triIdx + 1];
+	uint i2 = indices[triIdx + 2];
+
+    // Each vertex is 8 floats: pos(3), norm(3), uv(2)
+	vec3 v0 = vec3(vertices[i0 * 8], vertices[i0 * 8 + 1], vertices[i0 * 8 + 2]);
+	vec3 v1 = vec3(vertices[i1 * 8], vertices[i1 * 8 + 1], vertices[i1 * 8 + 2]);
+	vec3 v2 = vec3(vertices[i2 * 8], vertices[i2 * 8 + 1], vertices[i2 * 8 + 2]);
+
+    vec3 extent = u_localMax - u_localMin;
+    if (length(extent) < 0.0001) extent = vec3(1.0);
+
+    // Mark voxels containing the triangle vertices as seeds
+    ivec3 c0 = ivec3(clamp((v0 - u_localMin) / extent * float(u_resolution), vec3(0.0), vec3(float(u_resolution - 1))));
+    ivec3 c1 = ivec3(clamp((v1 - u_localMin) / extent * float(u_resolution), vec3(0.0), vec3(float(u_resolution - 1))));
+    ivec3 c2 = ivec3(clamp((v2 - u_localMin) / extent * float(u_resolution), vec3(0.0), vec3(float(u_resolution - 1))));
+
+    vec4 seed0 = vec4(vec3(c0) / float(u_resolution), 0.0);
+    vec4 seed1 = vec4(vec3(c1) / float(u_resolution), 0.0);
+    vec4 seed2 = vec4(vec3(c2) / float(u_resolution), 0.0);
+
+    imageStore(u_sdfTexture, c0, seed0);
+    imageStore(u_sdfTexture, c1, seed1);
+    imageStore(u_sdfTexture, c2, seed2);
+
+    // Also mark the centroid
+    vec3 vCentroid = (v0 + v1 + v2) / 3.0;
+    ivec3 cC = ivec3(clamp((vCentroid - u_localMin) / extent * float(u_resolution), vec3(0.0), vec3(float(u_resolution - 1))));
+    imageStore(u_sdfTexture, cC, vec4(vec3(cC) / float(u_resolution), 0.0));
+}

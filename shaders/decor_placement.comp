@@ -4,8 +4,13 @@
 
 layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
 
+struct Instance {
+	mat4 model;
+	mat4 invModel;
+};
+
 layout(std430, binding = 0) buffer DecorInstances {
-	mat4 instances[];
+	Instance instances[];
 };
 
 layout(binding = 0) uniform atomic_uint instanceCount;
@@ -45,6 +50,7 @@ uniform bool  u_randomYaw;      // Whether to apply random Y rotation
 uniform bool  u_alignToTerrain; // If true, align to terrain normal; if false, use world up
 uniform int   u_typeIndex;
 uniform float u_worldScale;
+uniform float u_boundingRadius; // Local bounding radius of the model
 
 // Simple hash for random values
 float hash(uint x) {
@@ -54,11 +60,11 @@ float hash(uint x) {
 	return float(x) / 4294967295.0;
 }
 
-// Check if a point is inside the frustum
-bool isInFrustum(vec3 pos) {
+// Check if a sphere is inside the frustum
+bool isSphereInFrustum(vec3 center, float radius) {
 	for (int i = 0; i < 6; i++) {
-		if (dot(u_frustumPlanes[i].xyz, pos) + u_frustumPlanes[i].w < -5.0) {
-			return false; // Small margin for decor size
+		if (dot(u_frustumPlanes[i].xyz, center) + u_frustumPlanes[i].w < -radius) {
+			return false;
 		}
 	}
 	return true;
@@ -146,9 +152,10 @@ void main() {
 	// Create world position for frustum check
 	vec3 worldPos3D = vec3(worldPos.x, height, worldPos.y);
 
-	// Frustum cull individual instances
-	if (!isInFrustum(worldPos3D))
-		return;
+	// Approximate world-space bounding radius
+	// We use u_baseScale * u_worldScale as an upper bound for instance scale
+	float maxS = (u_baseScale + u_scaleVariance) * u_worldScale;
+	float worldBoundingRadius = u_boundingRadius * maxS;
 
 	// We want to place it!
 	uint index = atomicCounterIncrement(instanceCount);
@@ -213,5 +220,6 @@ void main() {
 	m[2] = vec4(scaledRot[2], 0.0);
 	m[3] = vec4(worldPos3D, 1.0);
 
-	instances[index] = m;
+	instances[index].model = m;
+	instances[index].invModel = inverse(m);
 }
