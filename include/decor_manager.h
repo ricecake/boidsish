@@ -110,10 +110,6 @@ namespace Boidsish {
 		std::map<std::pair<int, int>, ChunkAllocation> active_chunks_;
 		std::vector<int>                               free_blocks_;
 
-		// Caching - only regenerate when camera moves significantly
-		glm::vec3 last_camera_pos_ = glm::vec3(0.0f);
-		float     last_world_scale_ = 0.0f;
-
 		// Distance-based density parameters
 		float density_falloff_start_ = 200.0f;
 		float density_falloff_end_ = 500.0f;
