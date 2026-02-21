@@ -4,11 +4,11 @@ layout(local_size_x = 8, local_size_y = 8) in;
 layout(binding = 0, rgba16f) uniform image2D outResult;
 layout(binding = 1, r32f) uniform image2D outDepth;
 
-uniform sampler2D uCurrentFrame;
-uniform sampler2D uHistoryFrame;
-uniform sampler2D uVelocity;
-uniform sampler2D uDepth;
-uniform sampler2D uHistoryDepth;
+layout(binding = 2) uniform sampler2D uCurrentFrame;
+layout(binding = 3) uniform sampler2D uHistoryFrame;
+layout(binding = 4) uniform sampler2D uVelocity;
+layout(binding = 5) uniform sampler2D uDepth;
+layout(binding = 6) uniform sampler2D uHistoryDepth;
 
 #include "temporal_data.glsl"
 

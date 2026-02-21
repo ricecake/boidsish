@@ -72,19 +72,14 @@ namespace Boidsish {
 
 			// 1. Copy depth to Level 0
 			hi_z_copy_shader_->use();
-			glActiveTexture(GL_TEXTURE0);
+			glActiveTexture(GL_TEXTURE1);
 			glBindTexture(GL_TEXTURE_2D, depthTexture);
-			hi_z_copy_shader_->setInt("uDepthTexture", 0);
 			glBindImageTexture(0, hi_z_texture_, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_R32F);
 			glDispatchCompute((width_ + 7) / 8, (height_ + 7) / 8, 1);
 			glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | GL_TEXTURE_FETCH_BARRIER_BIT);
 
 			// 2. Reduce mips
 			hi_z_shader_->use();
-			glActiveTexture(GL_TEXTURE0);
-			glBindTexture(GL_TEXTURE_2D, hi_z_texture_);
-			hi_z_shader_->setInt("uSourceHiZ", 0);
-
 			int currW = width_;
 			int currH = height_;
 
@@ -94,6 +89,9 @@ namespace Boidsish {
 
 				hi_z_shader_->setInt("uSourceLevel", i - 1);
 				hi_z_shader_->setVec2("uDestSize", glm::vec2((float)currW, (float)currH));
+
+				glActiveTexture(GL_TEXTURE1);
+				glBindTexture(GL_TEXTURE_2D, hi_z_texture_);
 				glBindImageTexture(0, hi_z_texture_, i, GL_FALSE, 0, GL_WRITE_ONLY, GL_R32F);
 
 				glDispatchCompute((currW + 7) / 8, (currH + 7) / 8, 1);
@@ -129,22 +127,16 @@ namespace Boidsish {
 				sssr_shader_->setInt("uMaxSteps", max_steps_);
 				sssr_shader_->setFloat("uRoughnessThreshold", roughness_threshold_);
 				sssr_shader_->setInt("uFrameCount", int(frame_count_));
-
-				glActiveTexture(GL_TEXTURE0);
-				glBindTexture(GL_TEXTURE_2D, sourceTexture);
-				sssr_shader_->setInt("uSceneTexture", 0);
+				sssr_shader_->setInt("uNumMips", hi_z_levels_);
 
 				glActiveTexture(GL_TEXTURE1);
-				glBindTexture(GL_TEXTURE_2D, hi_z_texture_);
-				sssr_shader_->setInt("uHiZTexture", 1);
-
+				glBindTexture(GL_TEXTURE_2D, sourceTexture);
 				glActiveTexture(GL_TEXTURE2);
-				glBindTexture(GL_TEXTURE_2D, normalTexture);
-				sssr_shader_->setInt("uNormalTexture", 2);
-
+				glBindTexture(GL_TEXTURE_2D, hi_z_texture_);
 				glActiveTexture(GL_TEXTURE3);
+				glBindTexture(GL_TEXTURE_2D, normalTexture);
+				glActiveTexture(GL_TEXTURE4);
 				glBindTexture(GL_TEXTURE_2D, materialTexture);
-				sssr_shader_->setInt("uMaterialTexture", 3);
 
 				glBindImageTexture(0, trace_texture_, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA16F);
 
@@ -155,17 +147,12 @@ namespace Boidsish {
 			// 3. Spatial Filter
 			if (spatial_filter_shader_ && spatial_filter_shader_->isValid()) {
 				spatial_filter_shader_->use();
-				glActiveTexture(GL_TEXTURE0);
-				glBindTexture(GL_TEXTURE_2D, trace_texture_);
-				spatial_filter_shader_->setInt("uInputTexture", 0);
-
 				glActiveTexture(GL_TEXTURE1);
-				glBindTexture(GL_TEXTURE_2D, normalTexture);
-				spatial_filter_shader_->setInt("uNormalTexture", 1);
-
+				glBindTexture(GL_TEXTURE_2D, trace_texture_);
 				glActiveTexture(GL_TEXTURE2);
+				glBindTexture(GL_TEXTURE_2D, normalTexture);
+				glActiveTexture(GL_TEXTURE3);
 				glBindTexture(GL_TEXTURE_2D, depthTexture);
-				spatial_filter_shader_->setInt("uDepthTexture", 2);
 
 				glBindImageTexture(0, filter_texture_, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA16F);
 

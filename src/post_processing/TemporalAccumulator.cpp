@@ -72,25 +72,20 @@ namespace Boidsish {
 			_accumulationShader->use();
 			_accumulationShader->setFloat("uAlpha", 0.9f);
 
-			glActiveTexture(GL_TEXTURE0);
-			glBindTexture(GL_TEXTURE_2D, currentFrame);
-			_accumulationShader->setInt("uCurrentFrame", 0);
-
-			glActiveTexture(GL_TEXTURE1);
-			glBindTexture(GL_TEXTURE_2D, _historyTextures[_currentIndex]);
-			_accumulationShader->setInt("uHistoryFrame", 1);
-
 			glActiveTexture(GL_TEXTURE2);
-			glBindTexture(GL_TEXTURE_2D, velocityTexture);
-			_accumulationShader->setInt("uVelocity", 2);
+			glBindTexture(GL_TEXTURE_2D, currentFrame);
 
 			glActiveTexture(GL_TEXTURE3);
-			glBindTexture(GL_TEXTURE_2D, depthTexture);
-			_accumulationShader->setInt("uDepth", 3);
+			glBindTexture(GL_TEXTURE_2D, _historyTextures[_currentIndex]);
 
 			glActiveTexture(GL_TEXTURE4);
+			glBindTexture(GL_TEXTURE_2D, velocityTexture);
+
+			glActiveTexture(GL_TEXTURE5);
+			glBindTexture(GL_TEXTURE_2D, depthTexture);
+
+			glActiveTexture(GL_TEXTURE6);
 			glBindTexture(GL_TEXTURE_2D, _historyDepthTextures[_currentIndex]);
-			_accumulationShader->setInt("uHistoryDepth", 4);
 
 			glBindImageTexture(0, _historyTextures[nextIndex], 0, GL_FALSE, 0, GL_WRITE_ONLY, _internalFormat);
 			glBindImageTexture(1, _historyDepthTextures[nextIndex], 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_R32F);

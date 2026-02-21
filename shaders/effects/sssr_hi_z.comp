@@ -2,7 +2,7 @@
 layout(local_size_x = 8, local_size_y = 8) in;
 
 layout(binding = 0, r32f) uniform image2D outHiZ; // Dest Level
-uniform sampler2D uSourceHiZ; // Whole texture
+layout(binding = 1) uniform sampler2D uSourceHiZ; // Whole texture
 uniform vec2 uDestSize;
 uniform int uSourceLevel;
 
