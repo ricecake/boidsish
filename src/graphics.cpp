@@ -2718,7 +2718,7 @@ namespace Boidsish {
 				impl->hiz_texture_,
 				view,
 				impl->projection,
-				shadow_lights[0]->direction
+				-shadow_lights[0]->direction // Towards the light
 			);
 		}
 

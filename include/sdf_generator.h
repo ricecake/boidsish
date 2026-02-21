@@ -29,7 +29,7 @@ namespace Boidsish {
 
 		std::unique_ptr<ComputeShader> voxelize_shader_;
 		std::unique_ptr<ComputeShader> jfa_shader_;
-		std::unique_ptr<ComputeShader> distance_shader_;
+		std::unique_ptr<ComputeShader> clear_shader_;
 
 		// Internal helper for JFA
 		GLuint _RunJfa(GLuint texture_a, GLuint texture_b, int size);

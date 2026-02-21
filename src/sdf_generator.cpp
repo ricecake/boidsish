@@ -21,8 +21,9 @@ namespace Boidsish {
 
 		voxelize_shader_ = std::make_unique<ComputeShader>("shaders/voxelize.comp");
 		jfa_shader_ = std::make_unique<ComputeShader>("shaders/sdf_gen.comp");
+		clear_shader_ = std::make_unique<ComputeShader>("shaders/sdf_clear.comp");
 
-		if (!voxelize_shader_->isValid() || !jfa_shader_->isValid()) {
+		if (!voxelize_shader_->isValid() || !jfa_shader_->isValid() || !clear_shader_->isValid()) {
 			logger::ERROR("SdfGenerator: Failed to compile compute shaders");
 		}
 
@@ -35,7 +36,7 @@ namespace Boidsish {
 
 		Initialize();
 
-		const int resolution = 64; // Default resolution for medium scale objects
+		const int resolution = 32; // Default resolution for medium scale objects
 		data->sdf_extent = data->aabb.max - data->aabb.min;
 		data->sdf_min = data->aabb.min;
 
@@ -72,6 +73,14 @@ namespace Boidsish {
 		glBindBuffer(GL_SHADER_STORAGE_BUFFER, ebo);
 		glBufferData(GL_SHADER_STORAGE_BUFFER, indices.size() * sizeof(unsigned int), indices.data(), GL_STATIC_DRAW);
 
+		// 1.5 Clear texture
+		clear_shader_->use();
+		clear_shader_->setInt("u_resolution", resolution);
+		glBindImageTexture(0, textures[0], 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA32F);
+		int clear_groups = (resolution + 7) / 8;
+		glDispatchCompute(clear_groups, clear_groups, clear_groups);
+		glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
+
 		voxelize_shader_->use();
 		voxelize_shader_->setVec3("u_localMin", data->aabb.min);
 		voxelize_shader_->setVec3("u_localMax", data->aabb.max);
@@ -82,8 +91,8 @@ namespace Boidsish {
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, vbo);
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 2, ebo);
 
-		int groups = (resolution + 7) / 8;
-		glDispatchCompute(groups, groups, groups);
+		int groups = ((int)indices.size() / 3 + 127) / 128;
+		glDispatchCompute(groups, 1, 1);
 		glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
 
 		// 3. Run JFA

@@ -243,6 +243,7 @@ namespace Boidsish {
 			rotation_(glm::quat(1.0f, 0.0f, 0.0f, 0.0f)),
 			scale_(glm::vec3(1.0f)),
 			local_aabb_(glm::vec3(-1.0f), glm::vec3(1.0f)),
+			local_center_(0.0f),
 			clamp_to_terrain_(false),
 			ground_offset_(0.0f),
 			trail_length_(trail_length),
