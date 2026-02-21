@@ -95,8 +95,36 @@ void main() {
 		roughness = mix(roughness, 0.6, verticalMask);
 	}
 
+	// ========================================================================
+	// Normal Perturbation (Grain)
+	// ========================================================================
+	vec3 perturbedNorm = norm;
+	float normalStrength = mix(biomes[lowIdx].params.y, biomes[highIdx].params.y, t);
+	float normalScale = mix(biomes[lowIdx].params.z, biomes[highIdx].params.z, t);
+
+	if (perturbFactor >= 0.1 && normalStrength > 0.0) {
+		float roughnessStrength = smoothstep(0.1, 1.0, perturbFactor) * normalStrength;
+		float roughnessScale = normalScale * 0.05;
+		vec3  scaledFragPos = FragPos / worldScale;
+
+		// Use finite difference to approximate the gradient of the noise field
+		float eps = 0.015;
+		float n = snoise(scaledFragPos * roughnessScale);
+		float nx = snoise((scaledFragPos + vec3(eps, 0.0, 0.0)) * roughnessScale);
+		float nz = snoise((scaledFragPos + vec3(0.0, 0.0, eps)) * roughnessScale);
+
+		// Compute local tangent space to orient the perturbation
+		vec3 tangent = normalize(cross(norm, vec3(0, 0, 1)));
+		if (abs(norm.z) > 0.9)
+			tangent = normalize(cross(norm, vec3(1, 0, 0)));
+		vec3 bitangent = cross(norm, tangent);
+
+		// Apply perturbation based on noise gradient
+		perturbedNorm = normalize(norm + (tangent * (n - nx) + bitangent * (n - nz)) * (roughnessStrength / eps));
+	}
+
 	// Final Lighting
-	vec3 lighting = apply_lighting_pbr(FragPos, norm, albedo, roughness, metallic, 1.0).rgb;
+	vec3 lighting = apply_lighting_pbr(FragPos, perturbedNorm, albedo, roughness, metallic, 1.0).rgb;
 
 	// ========================================================================
 	// Neon 80s Synth Style (Night Theme)
