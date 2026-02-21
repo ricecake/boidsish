@@ -8,9 +8,8 @@ layout(std430, binding = 0) buffer DecorInstances {
 	mat4 instances[];
 };
 
-layout(binding = 0) uniform atomic_uint instanceCount;
-
 uniform int u_maxInstances;
+uniform int u_baseInstanceIndex;
 
 // Heightmap texture array from TerrainRenderManager
 // Format: RGBA16F where R=height, G=normal.x, B=normal.y, A=normal.z
@@ -81,6 +80,16 @@ void main() {
 	uint x = gl_GlobalInvocationID.x;
 	uint y = gl_GlobalInvocationID.y;
 
+	// Calculate unique index within the chunk's block
+	uint localIndex = x + y * 32; // 32x32 threads in dispatch
+	uint index = u_baseInstanceIndex + localIndex;
+
+	if (index >= u_maxInstances)
+		return;
+
+	// Default: inactive
+	instances[index] = mat4(0.0);
+
 	// Grid size is determined by dispatch (4x4 groups of 8x8 = 32x32 placement points per chunk)
 	float gridSize = 32.0;
 	float step = u_chunkSize / gridSize;
@@ -143,17 +152,11 @@ void main() {
 	if (hash(seed + 5678) > effectiveDensity)
 		return;
 
-	// Create world position for frustum check
+	// Create world position
 	vec3 worldPos3D = vec3(worldPos.x, height, worldPos.y);
 
-	// Frustum cull individual instances
-	if (!isInFrustum(worldPos3D))
-		return;
-
-	// We want to place it!
-	uint index = atomicCounterIncrement(instanceCount);
-	if (index >= u_maxInstances)
-		return;
+	// We no longer frustum cull here, we do it per frame in decor_cull.comp
+	// This allows objects just outside the frustum to still cast shadows.
 
 	// Create model matrix with scale and rotation
 	// Use noise for scale variation as well for more coherent "growth" patterns

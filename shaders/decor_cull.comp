@@ -1,0 +1,49 @@
+#version 430 core
+
+layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
+
+struct Instance {
+	mat4 model;
+};
+
+layout(std430, binding = 0) readonly buffer MainInstances {
+	Instance all_instances[];
+};
+
+layout(std430, binding = 1) writeonly buffer VisibleInstances {
+	Instance visible_instances[];
+};
+
+layout(binding = 0) uniform atomic_uint visibleCount;
+
+uniform int u_totalSlots;
+uniform vec4 u_frustumPlanes[6];
+
+bool isInFrustum(vec3 pos, float radius) {
+	for (int i = 0; i < 6; i++) {
+		if (dot(u_frustumPlanes[i].xyz, pos) + u_frustumPlanes[i].w < -radius) {
+			return false;
+		}
+	}
+	return true;
+}
+
+void main() {
+	uint idx = gl_GlobalInvocationID.x;
+	if (idx >= u_totalSlots) return;
+
+	Instance inst = all_instances[idx];
+
+	// Check if active (scale > 0)
+	// Magnitude of the first column
+	float s2 = dot(inst.model[0].xyz, inst.model[0].xyz);
+	if (s2 < 0.0001) return;
+
+	vec3 pos = inst.model[3].xyz;
+	float radius = 10.0; // Conservatively large radius for decor
+
+	if (isInFrustum(pos, radius)) {
+		uint destIdx = atomicCounterIncrement(visibleCount);
+		visible_instances[destIdx] = inst;
+	}
+}
