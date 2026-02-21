@@ -1,5 +1,6 @@
 #include "post_processing/TemporalAccumulator.h"
 
+#include "constants.h"
 #include "shader.h"
 #include <GL/glew.h>
 
@@ -22,6 +23,16 @@ namespace Boidsish {
 			} else {
 				_accumulationShader = std::make_unique<ComputeShader>("shaders/effects/temporal_accumulation.comp");
 			}
+
+			// Bind TemporalData UBO
+			if (_accumulationShader && _accumulationShader->isValid()) {
+				_accumulationShader->use();
+				GLuint temporal_idx = glGetUniformBlockIndex(_accumulationShader->ID, "TemporalData");
+				if (temporal_idx != GL_INVALID_INDEX) {
+					glUniformBlockBinding(_accumulationShader->ID, temporal_idx, Constants::UboBinding::TemporalData());
+				}
+			}
+
 			CreateTextures();
 		}
 

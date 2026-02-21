@@ -15,10 +15,10 @@ layout(binding = 6) uniform sampler2D uHistoryDepth;
 uniform float uAlpha = 0.9;
 
 float linearizeDepth(float d) {
-    // Assuming standard perspective projection
-    // Near/Far are usually 0.1 / 1000.0
     float z = d * 2.0 - 1.0;
-    return (2.0 * 0.1 * 1000.0) / (1000.0 + 0.1 - z * (1000.0 - 0.1));
+    float n = uProjection[3][2] / (uProjection[2][2] - 1.0);
+    float f = uProjection[3][2] / (uProjection[2][2] + 1.0);
+    return (2.0 * n * f) / (f + n - z * (f - n));
 }
 
 void main() {
@@ -82,7 +82,15 @@ void main() {
     minColor = max(minColor, cl_min);
     maxColor = min(maxColor, cl_max);
 
-	history = clamp(history, minColor, maxColor);
+	// Advanced Variance-based Clipping
+	// Instead of simple clamping, we clip the history vector towards the current color
+	// to the AABB of the neighborhood, which is more effective at reducing ghosting.
+	vec4 dir = history - current;
+	vec4 invDir = 1.0 / (dir + sign(dir) * 1e-9);
+	vec4 t0 = (minColor - current) * invDir;
+	vec4 t1 = (maxColor - current) * invDir;
+	float tMax = min(min(min(max(t0.x, t1.x), max(t0.y, t1.y)), max(t0.z, t1.z)), max(t0.w, t1.w));
+	history = current + dir * clamp(tMax, 0.0, 1.0);
 
 	// 5. Accumulate
     // Reduce history weight if disoccluded or near screen edges

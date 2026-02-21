@@ -1,5 +1,6 @@
 #include "post_processing/effects/SssrEffect.h"
 
+#include "constants.h"
 #include "logger.h"
 #include <GL/glew.h>
 #include <cmath>
@@ -28,6 +29,24 @@ namespace Boidsish {
 			sssr_shader_ = std::make_unique<ComputeShader>("shaders/effects/sssr_trace.comp");
 			spatial_filter_shader_ = std::make_unique<ComputeShader>("shaders/effects/sssr_spatial_filter.comp");
 			composite_shader_ = std::make_unique<Shader>("shaders/postprocess.vert", "shaders/effects/sssr_composite.frag");
+
+			// Bind standard UBOs for SSSR shader
+			sssr_shader_->use();
+			GLuint lighting_idx = glGetUniformBlockIndex(sssr_shader_->ID, "Lighting");
+			if (lighting_idx != GL_INVALID_INDEX) {
+				glUniformBlockBinding(sssr_shader_->ID, lighting_idx, Constants::UboBinding::Lighting());
+			}
+			GLuint temporal_idx = glGetUniformBlockIndex(sssr_shader_->ID, "TemporalData");
+			if (temporal_idx != GL_INVALID_INDEX) {
+				glUniformBlockBinding(sssr_shader_->ID, temporal_idx, Constants::UboBinding::TemporalData());
+			}
+
+			// Bind TemporalData to Spatial Filter
+			spatial_filter_shader_->use();
+			GLuint sf_temporal_idx = glGetUniformBlockIndex(spatial_filter_shader_->ID, "TemporalData");
+			if (sf_temporal_idx != GL_INVALID_INDEX) {
+				glUniformBlockBinding(spatial_filter_shader_->ID, sf_temporal_idx, Constants::UboBinding::TemporalData());
+			}
 
 			temporal_accumulator_.Initialize(width, height, GL_RGBA16F);
 
