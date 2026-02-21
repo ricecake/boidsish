@@ -74,11 +74,11 @@ void main() {
 	vec4 mean = m1 / 9.0;
 	vec4 stddev = sqrt(max(vec4(0.0), (m2 / 9.0) - (mean * mean)));
 
-	float gamma = 1.25;
+	float gamma = 1.0; // Tighter clamping to reduce speckle persistence
 	vec4 cl_min = mean - gamma * stddev;
 	vec4 cl_max = mean + gamma * stddev;
 
-    // Use AABB for tighter clamping
+    // Combine AABB (min/max of neighborhood) with statistical clamping
     minColor = max(minColor, cl_min);
     maxColor = min(maxColor, cl_max);
 

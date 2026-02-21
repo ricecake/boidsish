@@ -163,7 +163,9 @@ bool hiZTrace(vec3 ro, vec3 rd, vec3 worldRay, out vec2 hitUV) {
     vec3 p = s0 + rayDir * 0.001;
     vec2 size = vec2(textureSize(uHiZTexture, 0));
 
-    float thicknessLimit = 0.5; // Back to 0.5, but with linear depth check
+    // Thickness limit should be small to avoid bleed-through, but not so small that rays skip through surfaces.
+    // Making it slightly distance-dependent can help.
+    float baseThickness = 0.1;
 
     for (int i = 0; i < uMaxSteps; i++) {
         if (p.x < 0.0 || p.x > 1.0 || p.y < 0.0 || p.y > 1.0 || p.z < 0.0 || p.z > 1.0) return false;
@@ -174,6 +176,7 @@ bool hiZTrace(vec3 ro, vec3 rd, vec3 worldRay, out vec2 hitUV) {
             if (level == 0) {
                 float linP = linearizeDepth(p.z);
                 float linZ = linearizeDepth(z);
+                float thicknessLimit = baseThickness * (1.0 + linZ * 0.01);
 
                 if (linP - linZ < thicknessLimit) {
                     vec3 hitNormal = texture(uNormalTexture, p.xy).xyz;
@@ -195,8 +198,16 @@ bool hiZTrace(vec3 ro, vec3 rd, vec3 worldRay, out vec2 hitUV) {
             vec2 t = (boundary - p.xy) * invRayDir.xy;
             float tMin = min(t.x, t.y);
 
-            p += rayDir * (tMin + 0.0001);
-            level = min(maxLevel, level + 1);
+            // Robust skip: only jump if the ray is also in front of the geometry at the cell exit
+            // (Crucial for rays moving away from the camera)
+            float exitZ = p.z + rayDir.z * tMin;
+            if (level == 0 || exitZ < z || (rayDir.z <= 0.0)) {
+                p += rayDir * (tMin + 0.0001);
+                level = min(maxLevel, level + 1);
+            } else {
+                // Ray might intersect in this cell, descend
+                level--;
+            }
         }
     }
 
@@ -250,7 +261,7 @@ void main() {
 
     vec3 L;
     vec3 H;
-    float weight = 1.0;
+    vec3 weight = vec3(1.0);
 
     if (roughness < 0.02) {
         L = reflect(-V, worldNormal);
@@ -271,10 +282,15 @@ void main() {
             vec3 F = fresnelSchlick(VdotH, F0);
 
             // Weight = (F * G * VdotH) / (NdotV * NdotH)
-            vec3 w = (F * G * VdotH) / max(NdotV * NdotH, 0.0001);
-            weight = clamp(length(w), 0.0, 2.0); // Clamp weight to avoid fireflies
+            weight = (F * G * VdotH) / max(NdotV * NdotH, 0.0001);
+
+            // Graceful clamping to avoid fireflies while preserving color
+            float maxW = max(weight.r, max(weight.g, weight.b));
+            if (maxW > 2.0) {
+                weight *= (2.0 / maxW);
+            }
         } else {
-            weight = 0.0;
+            weight = vec3(0.0);
         }
     }
 
