@@ -155,8 +155,10 @@ namespace Boidsish {
 
 		uint32_t current_terrain_version = terrain_gen.GetVersion();
 
-		// 1. Identify chunks within range
-		std::vector<std::pair<float, std::pair<int, int>>> chunks_in_range;
+		// 1. Identify chunks that should be active (within range and visible/preload)
+		std::vector<std::pair<float, std::pair<int, int>>> chunks_to_keep;
+		const float                                       kPreloadRadius = 128.0f * world_scale;
+
 		for (const auto& chunk : chunk_info) {
 			glm::vec2 chunk_offset(chunk.x, chunk.y);
 			float     chunk_size = chunk.w;
@@ -166,24 +168,38 @@ namespace Boidsish {
 			if (dist > max_decor_distance_ * world_scale)
 				continue;
 
+			// Approximate AABB for frustum culling
+			glm::vec3 chunk_min(chunk_offset.x, -100.0f * world_scale, chunk_offset.y);
+			glm::vec3 chunk_max(
+				chunk_offset.x + chunk_size,
+				terrain_gen.GetMaxHeight() + 100.0f * world_scale,
+				chunk_offset.y + chunk_size
+			);
+
+			bool in_preload = dist < kPreloadRadius;
+			bool in_frustum = frustum.IsBoxInFrustum(chunk_min, chunk_max);
+
+			if (!in_preload && !in_frustum)
+				continue;
+
 			// Store key and distance (for priority)
 			int cx = static_cast<int>(std::floor(chunk.x / chunk.w + 0.5f));
 			int cz = static_cast<int>(std::floor(chunk.y / chunk.w + 0.5f));
-			chunks_in_range.push_back({dist, {cx, cz}});
+			chunks_to_keep.push_back({dist, {cx, cz}});
 		}
 
-		// 2. Cull chunks that are significantly out of range
-		const float            kEvictionRadiusMult = 1.2f;
+		// 2. Cull chunks that are no longer in range or visible
+		std::vector<std::pair<int, int>> active_keys;
+		for (const auto& ck : chunks_to_keep)
+			active_keys.push_back(ck.second);
+
 		std::vector<glm::mat4> zeros; // Reused for zeroing out blocks
 
 		for (auto it = active_chunks_.begin(); it != active_chunks_.end();) {
-			auto [cx, cz] = it->first;
-			// Find this chunk's world position to check distance
-			float     chunk_w = chunk_info[0].w; // All chunks have same size
-			glm::vec2 chunk_center(cx * chunk_w + chunk_w * 0.5f, cz * chunk_w + chunk_w * 0.5f);
-			float     dist = glm::distance(glm::vec2(camera.x, camera.z), chunk_center);
+			auto key = it->first;
+			bool should_keep = std::find(active_keys.begin(), active_keys.end(), key) != active_keys.end();
 
-			if (dist > max_decor_distance_ * world_scale * kEvictionRadiusMult) {
+			if (!should_keep) {
 				int block = it->second.block_index;
 				free_blocks_.push_back(block);
 
@@ -209,11 +225,11 @@ namespace Boidsish {
 		}
 
 		// 3. Allocate blocks for new chunks
-		std::sort(chunks_in_range.begin(), chunks_in_range.end()); // Closer first
+		std::sort(chunks_to_keep.begin(), chunks_to_keep.end()); // Closer first
 
 		std::vector<std::pair<std::pair<int, int>, int>> chunks_to_generate;
 
-		for (const auto& vc : chunks_in_range) {
+		for (const auto& vc : chunks_to_keep) {
 			auto key = vc.second;
 			if (active_chunks_.find(key) == active_chunks_.end()) {
 				if (!free_blocks_.empty()) {

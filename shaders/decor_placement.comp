@@ -132,10 +132,11 @@ void main() {
 	if (slope < u_minSlope || slope > u_maxSlope)
 		return;
 
-	// Coherent noise for natural distribution
-	float noiseVal = snoise(scaledWorldPos * 0.01);  // Large scale patterns
-	float noiseVal2 = snoise(scaledWorldPos * 0.05); // Medium scale patterns
-	float combinedNoise = (noiseVal * 0.7 + noiseVal2 * 0.3 + 1.0) * 0.5;
+	// Very low frequency noise for large-scale density "biomes"
+	float biomeNoise = snoise(scaledWorldPos * 0.0005);
+	// Coherent noise for natural distribution variation
+	float noiseVal = snoise(scaledWorldPos * 0.02);
+	float combinedNoise = (biomeNoise * 0.85 + noiseVal * 0.15 + 1.0) * 0.5;
 	combinedNoise = clamp(combinedNoise, 0.0, 1.0);
 
 	float effectiveDensity = mix(u_minDensity, u_maxDensity, combinedNoise);
