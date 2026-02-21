@@ -1,5 +1,6 @@
 #pragma once
 
+#include <map>
 #include <memory>
 #include <string>
 #include <vector>
@@ -41,8 +42,10 @@ namespace Boidsish {
 		DecorProperties        props;
 
 		// GPU resources
-		unsigned int ssbo = 0;
-		unsigned int count_buffer = 0; // For atomic counter
+		unsigned int ssbo = 0;            // Main storage (persistent)
+		unsigned int visible_ssbo = 0;    // Culled storage (per-frame)
+		unsigned int indirect_buffer = 0; // MDI commands
+		unsigned int count_buffer = 0;    // For culling atomic counter
 
 		// Cached instance count (read back after compute, used during render)
 		unsigned int cached_count = 0;
@@ -83,7 +86,7 @@ namespace Boidsish {
 
 	private:
 		void _Initialize();
-		void _RegeneratePlacements(
+		void _UpdateAllocation(
 			const Camera&                         camera,
 			const Frustum&                        frustum,
 			const ITerrainGenerator&              terrain_gen,
@@ -94,23 +97,32 @@ namespace Boidsish {
 		bool                           initialized_ = false;
 		std::vector<DecorType>         decor_types_;
 		std::unique_ptr<ComputeShader> placement_shader_;
-		std::shared_ptr<Shader>        render_shader_; // Maybe use vis.vert/frag or a specialized one
+		std::unique_ptr<ComputeShader> culling_shader_;
+		std::unique_ptr<ComputeShader> update_commands_shader_;
+		std::shared_ptr<Shader>        render_shader_;
 
-		// Caching - only regenerate when camera moves significantly or rotates
-		glm::vec2              last_camera_pos_ = glm::vec2(0.0f);
-		glm::vec3              last_camera_front_ = glm::vec3(0.0f, 0.0f, -1.0f);
-		uint32_t               last_terrain_version_ = 0xFFFFFFFF; // Force initial regen
-		float                  last_world_scale_ = 0.0f;
-		bool                   needs_regeneration_ = true;
-		static constexpr float kRegenerationDistance = 20.0f; // Regenerate when camera moves this far
-		static constexpr float kRegenerationAngle = 0.05f;    // ~8.5 degrees (1 - cos(angle))
+		// Block allocation
+		struct ChunkAllocation {
+			int      block_index;
+			uint32_t terrain_version;
+			bool     is_dirty;
+		};
+
+		std::map<std::pair<int, int>, ChunkAllocation> active_chunks_;
+		std::vector<int>                               free_blocks_;
+
+		// Caching - only regenerate when camera moves significantly
+		glm::vec3 last_camera_pos_ = glm::vec3(0.0f);
+		float     last_world_scale_ = 0.0f;
 
 		// Distance-based density parameters
-		float density_falloff_start_ = 10.0f; // Full density within this range
-		float density_falloff_end_ = 300.0f;  // Minimum density beyond this range
-		float max_decor_distance_ = 600.0f;   // No decor beyond this distance
+		float density_falloff_start_ = 200.0f;
+		float density_falloff_end_ = 500.0f;
+		float max_decor_distance_ = 600.0f;
 
-		static constexpr int kMaxInstancesPerType = 131072;
+		static constexpr int kInstancesPerChunk = 1024;
+		static constexpr int kMaxActiveChunks = 2048;
+		static constexpr int kMaxInstancesPerType = kInstancesPerChunk * kMaxActiveChunks; // 2,097,152
 	};
 
 } // namespace Boidsish

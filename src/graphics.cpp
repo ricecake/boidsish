@@ -2233,7 +2233,9 @@ namespace Boidsish {
 		impl->fire_effect_manager->Update(
 			impl->simulation_delta_time,
 			impl->simulation_time,
-			impl->terrain_render_manager ? impl->terrain_render_manager->GetChunkInfo() : std::vector<glm::vec4>{},
+			impl->terrain_render_manager
+				? impl->terrain_render_manager->GetChunkInfo(impl->terrain_generator->GetWorldScale())
+				: std::vector<glm::vec4>{},
 			impl->terrain_render_manager ? impl->terrain_render_manager->GetHeightmapTexture() : 0,
 			impl->noise_manager ? impl->noise_manager->GetCurlTexture() : 0
 		);
