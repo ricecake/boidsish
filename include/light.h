@@ -102,6 +102,8 @@ namespace Boidsish {
 		// Animation/Behavior state
 		LightBehavior behavior;
 
+		bool auto_remove = false;
+
 		// Convert to GPU-compatible struct for UBO upload
 		LightGPU ToGPU() const {
 			LightGPU gpu;

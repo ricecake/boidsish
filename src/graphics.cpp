@@ -3459,6 +3459,18 @@ namespace Boidsish {
 			4.0f * intensity,
 			glm::vec3(shape->GetR(), shape->GetG(), shape->GetB())
 		);
+
+		// 5. Flash light
+		Light flash = Light::CreateFlash(
+			position,
+			50.0f * intensity,
+			glm::vec3(1.0f, 0.7f, 0.3f), // Warm orange flash
+			50.0f * intensity
+		);
+		flash.auto_remove = true;
+		flash.behavior.loop = false;
+		flash.SetEaseOut(0.5f * intensity);
+		impl->light_manager.AddLight(flash);
 	}
 
 	void Visualizer::CreateExplosion(const glm::vec3& position, float intensity) {
@@ -3494,6 +3506,18 @@ namespace Boidsish {
 
 		impl->shockwave_manager
 			->AddShockwave(position, normal, max_radius, duration, wave_intensity, ring_width, color);
+
+		// Add a flash light
+		Light flash = Light::CreateFlash(
+			position,
+			60.0f * intensity,
+			glm::vec3(1.0f, 0.8f, 0.5f), // Bright yellow-orange flash
+			60.0f * intensity
+		);
+		flash.auto_remove = true;
+		flash.behavior.loop = false;
+		flash.SetEaseOut(0.4f * intensity);
+		impl->light_manager.AddLight(flash);
 	}
 
 	void Visualizer::CreateShockwave(

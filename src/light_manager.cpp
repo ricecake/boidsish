@@ -111,14 +111,21 @@ namespace Boidsish {
 			}
 		}
 
-		for (auto& light : _lights) {
+		for (auto it = _lights.begin(); it != _lights.end();) {
+			auto& light = *it;
 			if (light.behavior.type == LightBehaviorType::NONE) {
 				// We still want to update intensity if it was changed by day/night cycle
 				light.intensity = light.base_intensity;
+				++it;
 				continue;
 			}
 
 			light.behavior.timer += deltaTime;
+
+			bool finished = false;
+			if (!light.behavior.loop && light.behavior.timer >= light.behavior.period) {
+				finished = true;
+			}
 
 			switch (light.behavior.type) {
 			case LightBehaviorType::BLINK: {
@@ -197,6 +204,12 @@ namespace Boidsish {
 			}
 			default:
 				break;
+			}
+
+			if (light.auto_remove && finished) {
+				it = _lights.erase(it);
+			} else {
+				++it;
 			}
 		}
 	}
