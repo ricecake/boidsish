@@ -11,6 +11,8 @@ uniform int       toneMapMode = 2;
 layout(std430, binding = 11) buffer AutoExposure {
 	float adaptedLuminance;
 	float targetLuminance;
+	float minExposure;
+	float maxExposure;
 	int   useAutoExposure;
 };
 
@@ -190,6 +192,7 @@ void main() {
 
 	if (useAutoExposure != 0) {
 		float exposure = targetLuminance / max(adaptedLuminance, 0.0001);
+		exposure = clamp(exposure, minExposure, maxExposure);
 		tex *= exposure;
 	}
 
