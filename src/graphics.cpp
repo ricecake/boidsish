@@ -13,6 +13,7 @@
 
 #include "ConfigManager.h"
 #include "NoiseManager.h"
+#include "atmosphere_manager.h"
 #include "UIManager.h"
 #include "akira_effect.h"
 #include "arcade_text.h"
@@ -369,6 +370,8 @@ namespace Boidsish {
 		std::unique_ptr<AkiraEffectManager>   akira_effect_manager;
 		std::unique_ptr<SdfVolumeManager>     sdf_volume_manager;
 		std::unique_ptr<ShadowManager>        shadow_manager;
+		std::unique_ptr<AtmosphereManager>    atmosphere_manager;
+		std::shared_ptr<PostProcessing::AtmosphereEffect> atmosphere_effect;
 		std::unique_ptr<SceneManager>         scene_manager;
 		std::unique_ptr<DecorManager>         decor_manager;
 		std::map<int, std::shared_ptr<Trail>> trails;
@@ -710,6 +713,8 @@ namespace Boidsish {
 			shadow_manager = std::make_unique<ShadowManager>();
 			scene_manager = std::make_unique<SceneManager>("scenes");
 			decor_manager = std::make_unique<DecorManager>();
+			atmosphere_manager = std::make_unique<AtmosphereManager>();
+			atmosphere_manager->Initialize();
 			audio_manager = std::make_unique<AudioManager>();
 			sound_effect_manager = std::make_unique<SoundEffectManager>(audio_manager.get());
 			trail_render_manager = std::make_unique<TrailRenderManager>();
@@ -1061,7 +1066,7 @@ namespace Boidsish {
 				super_speed_effect->SetEnabled(true);
 				post_processing_manager_->AddEffect(super_speed_effect);
 
-				auto atmosphere_effect = std::make_shared<PostProcessing::AtmosphereEffect>();
+				atmosphere_effect = std::make_shared<PostProcessing::AtmosphereEffect>();
 				atmosphere_effect->SetEnabled(true);
 				post_processing_manager_->AddEffect(atmosphere_effect);
 
@@ -1767,6 +1772,14 @@ namespace Boidsish {
 			sky_shader->use();
 			sky_shader->setMat4("invProjection", glm::inverse(projection));
 			sky_shader->setMat4("invView", glm::inverse(view));
+
+			if (atmosphere_manager) {
+				atmosphere_manager->BindTextures(10);
+				sky_shader->setInt("u_transmittanceLUT", 10);
+				sky_shader->setInt("u_multiScatteringLUT", 11);
+				sky_shader->setInt("u_skyViewLUT", 12);
+			}
+
 			glBindVertexArray(sky_vao);
 			glDrawArrays(GL_TRIANGLES, 0, 3);
 			glBindVertexArray(0);
@@ -2614,8 +2627,31 @@ namespace Boidsish {
 		);
 		impl->audio_manager->Update();
 
-		glm::mat4 view = impl->SetupMatrices();
-		glm::mat4 current_vp = impl->projection * view;
+		// Update atmosphere LUTs
+		if (impl->atmosphere_manager) {
+			glm::vec3 sun_dir = glm::normalize(glm::vec3(0.0f, 1.0f, 0.0f)); // Default
+			if (!impl->light_manager.GetLights().empty()) {
+				const auto& main_light = impl->light_manager.GetLights()[0];
+				if (main_light.type == DIRECTIONAL_LIGHT) {
+					sun_dir = glm::normalize(-main_light.direction);
+				} else {
+					sun_dir = glm::normalize(main_light.position - impl->camera.pos());
+				}
+			}
+			impl->atmosphere_manager->Update(sun_dir, impl->camera.pos());
+
+			if (impl->atmosphere_effect) {
+				impl->atmosphere_effect->SetAtmosphereLUTs(
+					impl->atmosphere_manager->GetTransmittanceLUT(),
+					impl->atmosphere_manager->GetMultiScatteringLUT(),
+					impl->atmosphere_manager->GetSkyViewLUT(),
+					impl->atmosphere_manager->GetAerialPerspectiveLUT()
+				);
+			}
+		}
+
+		glm::mat4 view_matrix = impl->SetupMatrices();
+		glm::mat4 current_vp = impl->projection * view_matrix;
 
 		// Update Temporal UBO for motion blur and reprojection
 		TemporalUbo temporal_data;

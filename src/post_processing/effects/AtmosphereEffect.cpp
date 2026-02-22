@@ -60,13 +60,36 @@ namespace Boidsish {
 			shader_->setFloat("cloudThickness", cloud_thickness_);
 			shader_->setVec3("cloudColorUniform", cloud_color_);
 
+			shader_->setInt("u_transmittanceLUT", 10);
+			shader_->setInt("u_multiScatteringLUT", 11);
+			shader_->setInt("u_skyViewLUT", 12);
+			shader_->setInt("u_aerialPerspectiveLUT", 13);
+
 			glActiveTexture(GL_TEXTURE0);
 			glBindTexture(GL_TEXTURE_2D, sourceTexture);
 			glActiveTexture(GL_TEXTURE1);
 			glBindTexture(GL_TEXTURE_2D, depthTexture);
 
+			// Bind Atmosphere LUTs
+			glActiveTexture(GL_TEXTURE10);
+			glBindTexture(GL_TEXTURE_2D, transmittance_lut_);
+			glActiveTexture(GL_TEXTURE11);
+			glBindTexture(GL_TEXTURE_2D, multi_scattering_lut_);
+			glActiveTexture(GL_TEXTURE12);
+			glBindTexture(GL_TEXTURE_2D, sky_view_lut_);
+			glActiveTexture(GL_TEXTURE13);
+			glBindTexture(GL_TEXTURE_3D, aerial_perspective_lut_);
+
 			glDrawArrays(GL_TRIANGLES, 0, 6);
 
+			glActiveTexture(GL_TEXTURE13);
+			glBindTexture(GL_TEXTURE_3D, 0);
+			glActiveTexture(GL_TEXTURE12);
+			glBindTexture(GL_TEXTURE_2D, 0);
+			glActiveTexture(GL_TEXTURE11);
+			glBindTexture(GL_TEXTURE_2D, 0);
+			glActiveTexture(GL_TEXTURE10);
+			glBindTexture(GL_TEXTURE_2D, 0);
 			glActiveTexture(GL_TEXTURE1);
 			glBindTexture(GL_TEXTURE_2D, 0);
 			glActiveTexture(GL_TEXTURE0);
