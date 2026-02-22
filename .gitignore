@@ -10,7 +10,7 @@ terrain_cache/
 # Compiled Object files
 *.o
 *.obj
-!assets/*
+!assets/**
 
 # Precompiled Headers
 *.gch

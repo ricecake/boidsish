@@ -116,9 +116,97 @@ namespace Boidsish {
 		if (!decor_types_.empty())
 			return;
 
-		AddDecorType("assets/tree01.obj", GetDefaultTreeProperties());
-		AddDecorType("assets/PUSHILIN_dead_tree.obj", GetDefaultDeadTreeProperties());
-		AddDecorType("assets/cube.obj", GetDefaultRockProperties());
+		AddDecorType(
+			"assets/decor/Apple tree/AppleTree.obj",
+			{
+				.min_density = 0.025f,
+				.max_density = 0.05f,
+				.base_scale = 0.5f,
+				.scale_variance = 0.01f,
+				.min_height = 5.0f,
+				.max_height = 95.0f,
+				// .min_slope = 0,
+				// .max_slope = 1.0,
+				// .base_rotation = glm::vec3(0.0f),
+				.random_yaw = true,
+				// .align_to_terrain = true,
+				.biomes = {Biome::LushGrass, Biome::Forest, Biome::AlpineMeadow}
+				// .detail_distance = 0
+			}
+		);
+		AddDecorType(
+			"assets/decor/Dead tree/PUSHILIN_dead_tree.obj",
+			{
+				.min_density = 0.05f,
+				.max_density = 0.075f,
+				.base_scale = 1.0f,
+				.scale_variance = 0.1f,
+				.min_height = 30.0f,
+				.max_height = 95.0f,
+				// .min_slope = 0,
+				// .max_slope = 1.0,
+				// .base_rotation = glm::vec3(0.0f),
+				.random_yaw = true,
+				// .align_to_terrain = true,
+				.biomes = {Biome::DryGrass, Biome::AlpineMeadow, Biome::BrownRock}
+				// .detail_distance
+			}
+		);
+		AddDecorType(
+			"assets/decor/Tree/tree01.obj",
+			{
+				.min_density = 0.05f,
+				.max_density = 0.075f,
+				.base_scale = 0.015f,
+				.scale_variance = 0.01f,
+				.min_height = 5.0f,
+				.max_height = 95.0f,
+				// .min_slope = 0,
+				// .max_slope = 1.0,
+				// .base_rotation = glm::vec3(0.0f),
+				.random_yaw = true,
+				// .align_to_terrain = true,
+				.biomes = {Biome::LushGrass, Biome::Forest}
+				// .detail_distance
+			}
+		);
+
+		AddDecorType(
+			"assets/decor/Rose bush/Mesh_RoseBush.obj",
+			{
+				.min_density = 0.05f,
+				.max_density = 0.075f,
+				.base_scale = 0.05f,
+				.scale_variance = 0.01f,
+				.min_height = 5.0f,
+				.max_height = 95.0f,
+				// .min_slope = 0,
+				// .max_slope = 1.0,
+				// .base_rotation = glm::vec3(0.0f),
+				.random_yaw = true,
+				.align_to_terrain = true,
+				.biomes = {Biome::LushGrass, Biome::AlpineMeadow}
+				// .detail_distance
+			}
+		);
+		AddDecorType(
+			"assets/decor/Sunflower/PUSHILIN_sunflower.obj",
+			{
+				.min_density = 0.05f,
+				.max_density = 0.075f,
+				.base_scale = 0.5f,
+				.scale_variance = 0.01f,
+				.min_height = 5.0f,
+				.max_height = 95.0f,
+				// .min_slope = 0,
+				// .max_slope = 1.0,
+				// .base_rotation = glm::vec3(0.0f),
+				.random_yaw = true,
+				// .align_to_terrain
+				.biomes = {Biome::LushGrass, Biome::AlpineMeadow}
+				// .detail_distance
+			}
+		);
 	}
 
 	DecorProperties DecorManager::GetDefaultTreeProperties() {
