@@ -2757,6 +2757,10 @@ namespace Boidsish {
 		}
 
 		// --- Warm up terrain cache ---
+		if (impl->decor_manager) {
+			impl->decor_manager->PopulateDefaultDecor();
+		}
+
 		if (impl->terrain_generator) {
 			logger::LOG("Warming up terrain cache around camera position...");
 

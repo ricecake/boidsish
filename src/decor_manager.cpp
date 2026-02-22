@@ -112,8 +112,51 @@ namespace Boidsish {
 		decor_types_.push_back(type);
 	}
 
+	void DecorManager::PopulateDefaultDecor() {
+		if (!decor_types_.empty())
+			return;
+
+		AddDecorType("assets/tree01.obj", GetDefaultTreeProperties());
+		AddDecorType("assets/PUSHILIN_dead_tree.obj", GetDefaultDeadTreeProperties());
+		AddDecorType("assets/cube.obj", GetDefaultRockProperties());
+	}
+
+	DecorProperties DecorManager::GetDefaultTreeProperties() {
+		DecorProperties props;
+		props.min_height = 0.01f;
+		props.max_height = 95.0f;
+		props.min_density = 0.1f;
+		props.max_density = 0.11f;
+		props.base_scale = 0.008f;
+		props.scale_variance = 0.01f;
+		props.biomes = {Biome::LushGrass, Biome::Forest};
+		return props;
+	}
+
+	DecorProperties DecorManager::GetDefaultDeadTreeProperties() {
+		DecorProperties props;
+		props.min_height = 30.0f;
+		props.max_height = 95.0f;
+		props.min_density = 0.1f;
+		props.max_density = 0.11f;
+		props.base_scale = 0.8f;
+		props.scale_variance = 0.01f;
+		props.biomes = {Biome::DryGrass, Biome::AlpineMeadow};
+		return props;
+	}
+
+	DecorProperties DecorManager::GetDefaultRockProperties() {
+		DecorProperties props;
+		props.max_density = 1.5f;
+		props.base_scale = 0.002f;
+		props.scale_variance = 0.1f;
+		props.biomes = {Biome::BrownRock, Biome::GreyRock};
+		props.align_to_terrain = true;
+		return props;
+	}
+
 	void DecorManager::Update(
-		float /*delta_time*/,
+		float                                 delta_time,
 		const Camera&                         camera,
 		const Frustum&                        frustum,
 		const ITerrainGenerator&              terrain_gen,
@@ -273,7 +316,7 @@ namespace Boidsish {
 				placement_shader_->setVec3("u_baseRotation", glm::radians(type.props.base_rotation));
 				placement_shader_->setBool("u_randomYaw", type.props.random_yaw);
 				placement_shader_->setBool("u_alignToTerrain", type.props.align_to_terrain);
-				placement_shader_->setUint("u_biomeMask", type.props.biome_mask);
+				placement_shader_->setUint("u_biomeMask", (uint32_t)type.props.biomes);
 				placement_shader_->setFloat("u_detailDistance", type.props.detail_distance);
 				placement_shader_->setInt("u_typeIndex", (int)i);
 
