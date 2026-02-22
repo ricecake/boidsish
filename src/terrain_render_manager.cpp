@@ -616,6 +616,14 @@ namespace Boidsish {
 		glBindTexture(GL_TEXTURE_2D_ARRAY, biome_texture_);
 		shader.setInt("uBiomeMap", 1);
 
+		glActiveTexture(GL_TEXTURE5);
+		glBindTexture(GL_TEXTURE_3D, noise_texture_);
+		shader.setInt("u_noiseTexture", 2);
+
+		glActiveTexture(GL_TEXTURE6);
+		glBindTexture(GL_TEXTURE_3D, curl_texture_);
+		shader.setInt("u_curlTexture", 3);
+
 		// Bind Biome UBO
 		glBindBufferBase(GL_UNIFORM_BUFFER, Constants::UboBinding::Biomes(), biome_ubo_);
 

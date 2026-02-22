@@ -494,10 +494,10 @@ namespace Boidsish {
 				last_camera_yaw_ = camera.yaw;
 				last_camera_pitch_ = camera.pitch;
 			}
-			clone_manager = std::make_unique<CloneManager>();
-			instance_manager = std::make_unique<InstanceManager>();
 			noise_manager = std::make_unique<NoiseManager>();
 			noise_manager->Initialize();
+			clone_manager = std::make_unique<CloneManager>();
+			instance_manager = std::make_unique<InstanceManager>();
 			fire_effect_manager = std::make_unique<FireEffectManager>();
 			fire_effect_manager->Initialize(); // Must initialize on main thread with GL context
 			mesh_explosion_manager = std::make_unique<MeshExplosionManager>();
@@ -605,6 +605,7 @@ namespace Boidsish {
 				);
 				terrain_render_manager = std::make_shared<TerrainRenderManager>(32, initial_chunks);
 				terrain_generator->SetRenderManager(terrain_render_manager);
+				terrain_render_manager->SetNoise(noise_manager->GetNoiseTexture(), noise_manager->GetCurlTexture());
 
 				// Set up eviction callback so terrain generator knows when chunks are LRU-evicted
 				// Capture weak_ptr to allow terrain generator to be swapped without dangling reference

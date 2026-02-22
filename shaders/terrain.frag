@@ -11,8 +11,10 @@ flat in float TextureSlice;
 in float      perturbFactor;
 in float      tessFactor;
 
+#include "helpers/fast_noise.glsl"
 #include "helpers/lighting.glsl"
 #include "helpers/terrain_noise.glsl"
+// #include "helpers/noise.glsl"
 
 uniform bool uIsShadowPass = false;
 
@@ -58,6 +60,20 @@ void main() {
 		return;
 	}
 
+	// Calculate screen-space velocity
+	vec2 a = (CurPosition.xy / CurPosition.w) * 0.5 + 0.5;
+	vec2 b = (PrevPosition.xy / PrevPosition.w) * 0.5 + 0.5;
+	Velocity = a - b;
+
+	// ========================================================================
+	// Noise Generation
+	// ========================================================================
+	float largeNoise = fastWarpedFbm3d(FragPos * 0.15);
+	float medNoise = fastWorley3d(FragPos * 0.3);
+	float fineNoise = fastFbm3d(FragPos * 0.45);
+
+	float combinedNoise = largeNoise * 0.6 + medNoise * 0.3 + fineNoise * 0.1;
+
 	// Distance Fade -- precalc
 	vec3  norm = normalize(Normal);
 	float dist = length(FragPos.xz - viewPos.xz);
@@ -81,11 +97,17 @@ void main() {
 	vec2  biomeData = texture(uBiomeMap, vec3(TexCoords, TextureSlice)).rg;
 	int   lowIdx = int(biomeData.r * 255.0 + 0.5);
 	int   highIdx = min(lowIdx + 1, 7);
-	float t = biomeData.g;
+	float t = biomeData.g; // * combinedNoise * 0.5 + 0.5;
 
-	vec3  albedo = mix(biomes[lowIdx].albedo_roughness.rgb, biomes[highIdx].albedo_roughness.rgb, t);
-	float roughness = mix(biomes[lowIdx].albedo_roughness.a, biomes[highIdx].albedo_roughness.a, t);
-	float metallic = mix(biomes[lowIdx].params.x, biomes[highIdx].params.x, t);
+	// float distortedHeight = baseHeight + largeNoise * 5.0 * worldScale;
+	//  * 0.5 + 0.5
+
+	BiomeProperties lowBiome = biomes[lowIdx];
+	BiomeProperties highBiome = biomes[highIdx];
+
+	vec3  albedo = mix(lowBiome.albedo_roughness.rgb, highBiome.albedo_roughness.rgb, smoothstep(-1, 1, combinedNoise));
+	float roughness = mix(lowBiome.albedo_roughness.a, highBiome.albedo_roughness.a, t);
+	float metallic = mix(lowBiome.params.x, highBiome.params.x, t);
 
 	// Slope-based cliff blending
 	float verticalMask = smoothstep(0.4, 0.2, slope);
@@ -94,6 +116,15 @@ void main() {
 		albedo = mix(albedo, cliffAlbedo, verticalMask);
 		roughness = mix(roughness, 0.6, verticalMask);
 	}
+
+	// ========================================================================
+	// Detail Variation
+	// ========================================================================
+
+	// Add subtle color variation based on fine noise
+	float colorVar = combinedNoise * 0.5;
+	albedo *= (1.0 + colorVar);
+	// albedo *= 1+fastCurl3d(albedo);
 
 	// ========================================================================
 	// Normal Perturbation (Grain)
@@ -168,23 +199,4 @@ void main() {
 		outColor,
 		step(1.0, fade)
 	);
-
-	// Calculate screen-space velocity
-	vec2 a = (CurPosition.xy / CurPosition.w) * 0.5 + 0.5;
-	vec2 b = (PrevPosition.xy / PrevPosition.w) * 0.5 + 0.5;
-	Velocity = a - b;
-
-	// float heat = clamp(tessFactor / 32.0, 0.0, 1.0);
-	// FragColor = vec4(heat, 1.0 - heat, 0.0, 1.0); // Simple Red-Green ramp
-
-	// FragColor = vec4(tessFactor, norm.y, dist, 1.0);
-	// FragColor = vec4(smoothstep(0,16, tessFactor), smoothstep(8,24, tessFactor), smoothstep(16,32, tessFactor), 1.0);
-	// FragColor = vec4(tessFactor, 0,0, 1.0);
-
-	// vec4 outColor = vec4(lighting, fade);
-	// FragColor = mix(
-	//      vec4(0.0, 0.7, 0.7, fade) * length(outColor),
-	//      outColor,
-	//      step(1.0, fade)
-	// );
 }

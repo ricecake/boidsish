@@ -130,6 +130,16 @@ namespace Boidsish {
 		 */
 		std::vector<glm::vec4> GetChunkInfo(float world_scale) const;
 
+		void SetNoise(const GLuint& noise, const GLuint& curl) {
+			if (noise != 0) {
+				noise_texture_ = noise;
+			}
+
+			if (curl != 0) {
+				curl_texture_ = curl;
+			}
+		}
+
 	private:
 		// Per-chunk metadata (CPU side)
 		struct ChunkInfo {
@@ -174,7 +184,9 @@ namespace Boidsish {
 		GLuint instance_vbo_ = 0;
 		GLuint heightmap_texture_ = 0; // GL_TEXTURE_2D_ARRAY (RGBA16F: height, normal.xyz)
 		GLuint biome_texture_ = 0;     // GL_TEXTURE_2D_ARRAY (RG8: low_idx, t)
-		GLuint biome_ubo_ = 0;         // UBO for BiomeShaderProperties
+		GLuint noise_texture_ = 0;
+		GLuint curl_texture_ = 0;
+		GLuint biome_ubo_ = 0; // UBO for BiomeShaderProperties
 
 		// Grid mesh data
 		size_t grid_index_count_ = 0;
