@@ -276,6 +276,8 @@ namespace Boidsish {
 				placement_shader_->setUint("u_biomeMask", type.props.biome_mask);
 				placement_shader_->setFloat("u_detailDistance", type.props.detail_distance);
 				placement_shader_->setInt("u_typeIndex", (int)i);
+				placement_shader_->setVec3("u_aabbMin", type.model->GetAABB().min);
+				placement_shader_->setVec3("u_aabbMax", type.model->GetAABB().max);
 
 				glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, type.ssbo);
 
@@ -367,6 +369,9 @@ namespace Boidsish {
 
 			// Bind the culled instances SSBO
 			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 10, type.visible_ssbo);
+
+			shader->setVec3("u_aabbMin", type.model->GetAABB().min);
+			shader->setVec3("u_aabbMax", type.model->GetAABB().max);
 
 			// Bind the indirect buffer
 			glBindBuffer(GL_DRAW_INDIRECT_BUFFER, type.indirect_buffer);

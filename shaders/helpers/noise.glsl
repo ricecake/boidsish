@@ -149,6 +149,23 @@ float snoise3d(vec3 v) {
 	return 42.0 * dot(m * m, vec4(dot(p0, x0), dot(p1, x1), dot(p2, x2), dot(p3, x3)));
 }
 
+/**
+ * 2D Curl Noise for wind effects.
+ * Calculates the curl of a 2D simplex noise field.
+ */
+vec2 curlNoise2D(vec2 p) {
+	const float e = 0.1;
+	float       n1 = snoise(vec2(p.x, p.y + e));
+	float       n2 = snoise(vec2(p.x, p.y - e));
+	float       n3 = snoise(vec2(p.x + e, p.y));
+	float       n4 = snoise(vec2(p.x - e, p.y));
+
+	float dy = (n1 - n2) / (2.0 * e);
+	float dx = (n3 - n4) / (2.0 * e);
+
+	return vec2(dy, -dx);
+}
+
 // A simple 3D hash function (returns pseudo-random vec3 between 0 and 1)
 vec3 hash33(vec3 p) {
 	p = fract(p * vec3(443.897, 441.423, 437.195));
