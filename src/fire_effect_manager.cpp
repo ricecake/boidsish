@@ -320,12 +320,10 @@ namespace Boidsish {
 			}
 		}
 
-		if (num_active_emitters == 0)
-			return;
-
 		int avg_particles_per_unlimited = 0;
+		int fire_budget = kMaxParticles * 8 / 10; // Reserve 20% for ambient by default
 		if (num_unlimited_emitters > 0) {
-			int available_for_unlimited = kMaxParticles - total_particle_demand;
+			int available_for_unlimited = fire_budget - total_particle_demand;
 			if (available_for_unlimited > 0) {
 				avg_particles_per_unlimited = available_for_unlimited / num_unlimited_emitters;
 			}
@@ -344,7 +342,7 @@ namespace Boidsish {
 
 		// Distribute any remainder due to integer division
 		int current_total = std::accumulate(ideal_counts.begin(), ideal_counts.end(), 0);
-		int remainder = kMaxParticles - current_total;
+		int remainder = (num_active_emitters > 0) ? (fire_budget - current_total) : 0;
 		for (size_t i = 0; i < effects_.size() && remainder > 0; ++i) {
 			if (effects_[i]) {
 				ideal_counts[i]++;
