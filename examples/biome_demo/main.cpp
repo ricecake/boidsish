@@ -29,10 +29,10 @@ int main() {
 			treeProps.max_density = 0.11f;
 			treeProps.base_scale = 0.008f;
 			treeProps.scale_variance = 0.01f;
-			treeProps.biome_mask = (1u << 1) | (1u << 3);
+			treeProps.biomes = {Boidsish::Biome::LushGrass, Boidsish::Biome::Forest};
 			decor->AddDecorType("assets/tree01.obj", treeProps);
 
-			// Dead Trees (growing in Dry Grass and Alpine Meadow - indices 2 and 4)
+			// Dead Trees (growing in Dry Grass and Alpine Meadow)
 			Boidsish::DecorProperties deadTreeProps;
 			deadTreeProps.min_height = 30.0f;
 			deadTreeProps.max_height = 95.0f;
@@ -40,15 +40,15 @@ int main() {
 			deadTreeProps.max_density = 0.11f;
 			deadTreeProps.base_scale = 0.8f;
 			deadTreeProps.scale_variance = 0.01f;
-			deadTreeProps.biome_mask = (1u << 2) | (1u << 4);
+			deadTreeProps.biomes = {Boidsish::Biome::DryGrass, Boidsish::Biome::AlpineMeadow};
 			decor->AddDecorType("assets/PUSHILIN_dead_tree.obj", deadTreeProps);
 
-			// Rocky Details (small "rocks" only visible at close range in Rocky biomes - indices 5, 6)
+			// Rocky Details (small "rocks" only visible at close range in Rocky biomes)
 			Boidsish::DecorProperties rockProps;
 			rockProps.max_density = 1.5f; // High density for details
 			rockProps.base_scale = 0.002f;
 			rockProps.scale_variance = 0.1f;
-			rockProps.biome_mask = (1u << 5) | (1u << 6);
+			rockProps.biomes = {Boidsish::Biome::BrownRock, Boidsish::Biome::GreyRock};
 			// rockProps.detail_distance = 100.0f; // Only visible if camera is within 100 units
 			rockProps.align_to_terrain = true;
 			decor->AddDecorType("assets/cube.obj", rockProps);
