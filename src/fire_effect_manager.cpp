@@ -429,7 +429,7 @@ namespace Boidsish {
 		GLuint           noise_texture
 	) {
 		std::lock_guard<std::mutex> lock(mutex_);
-		if (!initialized_ || effects_.empty() || !compute_shader_ || !compute_shader_->isValid()) {
+		if (!initialized_ || !compute_shader_ || !compute_shader_->isValid()) {
 			return;
 		}
 
