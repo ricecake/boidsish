@@ -25,6 +25,7 @@ out vec3 vs_color;
 out vec3 barycentric;
 out vec2 TexCoords;
 out vec4 InstanceColor;
+out float WindDeflection;
 
 uniform mat4  model;
 uniform mat4  view;
@@ -41,6 +42,7 @@ uniform float frustumCullRadius = 5.0; // Approximate object radius for sphere t
 
 uniform vec3 u_aabbMin;
 uniform vec3 u_aabbMax;
+uniform float u_windResponsiveness;
 
 // Arcade Text Effects
 uniform bool  isArcadeText = false;
@@ -50,6 +52,7 @@ uniform float arcadeWaveFrequency = 10.0;
 uniform float arcadeWaveSpeed = 5.0;
 
 void main() {
+	WindDeflection = 0.0;
 	vec3 displacedPos = aPos;
 	vec3 displacedNormal = aNormal;
 
@@ -140,7 +143,8 @@ void main() {
 
 			// Use instanceCenter for coherent wind across the whole object
 			// We use a combination of world position and time for the noise seed
-			vec2 windNudge = curlNoise2D(instanceCenter.xz * wind_frequency + time * wind_speed * 0.5) * wind_strength;
+			vec2 windNudge = curlNoise2D(instanceCenter.xz * wind_frequency + time * wind_speed * 0.5) * wind_strength * u_windResponsiveness;
+			WindDeflection = length(windNudge);
 
 			// Scale nudge by height (bending effect)
 			FragPos.xz += windNudge * pow(normalizedHeight, 1.2);

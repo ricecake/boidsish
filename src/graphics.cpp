@@ -1124,6 +1124,8 @@ namespace Boidsish {
 		) {
 			shader->use();
 			shader->setFloat("time", time);
+			shader->setFloat("u_windResponsiveness", 0.0f);
+			shader->setFloat("u_windRimHighlight", 0.0f);
 			shader->setFloat(
 				"ripple_strength",
 				ConfigManager::GetInstance().GetAppSettingBool("artistic_effect_ripple", false) ? 0.05f : 0.0f
@@ -1190,6 +1192,8 @@ namespace Boidsish {
 
 			shader->use();
 			shader->setFloat("time", time);
+			shader->setFloat("u_windResponsiveness", 0.0f);
+			shader->setFloat("u_windRimHighlight", 0.0f);
 			shader->setFloat(
 				"ripple_strength",
 				ConfigManager::GetInstance().GetAppSettingBool("artistic_effect_ripple", false) ? 0.05f : 0.0f
