@@ -14,6 +14,7 @@ in vec3 vs_color;
 in vec3 barycentric;
 in vec2 TexCoords;
 in vec4 InstanceColor;
+in float WindDeflection;
 
 uniform vec3  objectColor;
 uniform float objectAlpha = 1.0;
@@ -42,6 +43,7 @@ uniform float ao = 1.0;
 
 uniform sampler2D texture_diffuse1;
 uniform bool      use_texture;
+uniform float     u_windRimHighlight;
 
 void main() {
 	float fade = 1.0;
@@ -82,6 +84,10 @@ void main() {
 
 	vec3  result = lightResult.rgb;
 	float spec_lum = lightResult.a;
+
+	// Apply wind-driven rim highlight
+	float rim = pow(1.0 - max(dot(norm, normalize(viewPos - FragPos)), 0.0), 3.0);
+	result += rim * WindDeflection * u_windRimHighlight * vec3(1.0);
 
 	if (use_texture) {
 		result *= texture(texture_diffuse1, TexCoords).rgb;

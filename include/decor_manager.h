@@ -33,6 +33,8 @@ namespace Boidsish {
 			false;          // If true, align to terrain normal (bush on cliff); if false, align to world up (tree)
 		BiomeBitset biomes; // Bitmask of biomes where this decor can grow
 		float       detail_distance = 0.0f; // If > 0, only rendered if within this distance
+		float       wind_responsiveness = 1.0f; // Controls how much the decor reacts to wind
+		float       wind_rim_highlight = 0.0f; // Rim highlight intensity when wind deflection occurs
 
 		void SetDensity(float d) {
 			min_density = d * 0.2f;
