@@ -126,8 +126,8 @@ namespace Boidsish {
 				.min_height = 5.0f,
 				.max_height = 95.0f,
 				// .min_slope = 0,
-				// .max_slope = 1.0,
-				// .base_rotation = glm::vec3(0.0f),
+		        // .max_slope = 1.0,
+		        // .base_rotation = glm::vec3(0.0f),
 				.random_yaw = true,
 				// .align_to_terrain = true,
 				.biomes = {Biome::LushGrass, Biome::Forest, Biome::AlpineMeadow}
@@ -144,8 +144,8 @@ namespace Boidsish {
 				.min_height = 30.0f,
 				.max_height = 95.0f,
 				// .min_slope = 0,
-				// .max_slope = 1.0,
-				// .base_rotation = glm::vec3(0.0f),
+		        // .max_slope = 1.0,
+		        // .base_rotation = glm::vec3(0.0f),
 				.random_yaw = true,
 				// .align_to_terrain = true,
 				.biomes = {Biome::DryGrass, Biome::AlpineMeadow, Biome::BrownRock}
@@ -162,8 +162,8 @@ namespace Boidsish {
 				.min_height = 5.0f,
 				.max_height = 95.0f,
 				// .min_slope = 0,
-				// .max_slope = 1.0,
-				// .base_rotation = glm::vec3(0.0f),
+		        // .max_slope = 1.0,
+		        // .base_rotation = glm::vec3(0.0f),
 				.random_yaw = true,
 				// .align_to_terrain = true,
 				.biomes = {Biome::LushGrass, Biome::Forest}
@@ -181,8 +181,8 @@ namespace Boidsish {
 				.min_height = 5.0f,
 				.max_height = 95.0f,
 				// .min_slope = 0,
-				// .max_slope = 1.0,
-				// .base_rotation = glm::vec3(0.0f),
+		        // .max_slope = 1.0,
+		        // .base_rotation = glm::vec3(0.0f),
 				.random_yaw = true,
 				.align_to_terrain = true,
 				.biomes = {Biome::LushGrass, Biome::AlpineMeadow}
@@ -199,8 +199,8 @@ namespace Boidsish {
 				.min_height = 5.0f,
 				.max_height = 95.0f,
 				// .min_slope = 0,
-				// .max_slope = 1.0,
-				// .base_rotation = glm::vec3(0.0f),
+		        // .max_slope = 1.0,
+		        // .base_rotation = glm::vec3(0.0f),
 				.random_yaw = true,
 				// .align_to_terrain
 				.biomes = {Biome::LushGrass, Biome::AlpineMeadow}
@@ -218,6 +218,8 @@ namespace Boidsish {
 		props.base_scale = 0.008f;
 		props.scale_variance = 0.01f;
 		props.biomes = {Biome::LushGrass, Biome::Forest};
+		props.wind_responsiveness = 1.0f;
+		props.wind_rim_highlight = 0.15f;
 		return props;
 	}
 
@@ -230,6 +232,8 @@ namespace Boidsish {
 		props.base_scale = 0.8f;
 		props.scale_variance = 0.01f;
 		props.biomes = {Biome::DryGrass, Biome::AlpineMeadow};
+		props.wind_responsiveness = 0.3f;
+		props.wind_rim_highlight = 0.05f;
 		return props;
 	}
 
@@ -240,6 +244,8 @@ namespace Boidsish {
 		props.scale_variance = 0.1f;
 		props.biomes = {Biome::BrownRock, Biome::GreyRock};
 		props.align_to_terrain = true;
+		props.wind_responsiveness = 0.0f;
+		props.wind_rim_highlight = 0.0f;
 		return props;
 	}
 
@@ -503,6 +509,8 @@ namespace Boidsish {
 
 			shader->setVec3("u_aabbMin", type.model->GetAABB().min);
 			shader->setVec3("u_aabbMax", type.model->GetAABB().max);
+			shader->setFloat("u_windResponsiveness", type.props.wind_responsiveness);
+			shader->setFloat("u_windRimHighlight", type.props.wind_rim_highlight);
 
 			// Bind the indirect buffer
 			glBindBuffer(GL_DRAW_INDIRECT_BUFFER, type.indirect_buffer);
