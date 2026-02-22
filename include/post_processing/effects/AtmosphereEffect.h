@@ -59,6 +59,14 @@ namespace Boidsish {
 
 			glm::vec3 GetCloudColor() const { return cloud_color_; }
 
+			// Atmosphere LUTs
+			void SetAtmosphereLUTs(GLuint transmittance, GLuint multiScat, GLuint skyView, GLuint aerialPerspective) {
+				transmittance_lut_ = transmittance;
+				multi_scattering_lut_ = multiScat;
+				sky_view_lut_ = skyView;
+				aerial_perspective_lut_ = aerialPerspective;
+			}
+
 		private:
 			std::unique_ptr<Shader> shader_;
 			float                   time_ = 0.0f;
@@ -70,6 +78,11 @@ namespace Boidsish {
 			float     cloud_altitude_ = 175.0f;
 			float     cloud_thickness_ = 10.0f;
 			glm::vec3 cloud_color_ = glm::vec3(0.95f, 0.95f, 1.0f);
+
+			GLuint transmittance_lut_ = 0;
+			GLuint multi_scattering_lut_ = 0;
+			GLuint sky_view_lut_ = 0;
+			GLuint aerial_perspective_lut_ = 0;
 
 			int width_ = 0;
 			int height_ = 0;
