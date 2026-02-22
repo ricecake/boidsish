@@ -68,11 +68,12 @@ void main() {
 	// ========================================================================
 	// Noise Generation
 	// ========================================================================
-	float largeNoise = fastWarpedFbm3d(FragPos * 0.15);
-	float medNoise = fastWorley3d(FragPos * 0.3);
-	float fineNoise = fastFbm3d(FragPos * 0.45);
+	float baseFreq = 0.1 / worldScale;
+	float largeNoise = fastWarpedFbm3d(FragPos * (baseFreq * 0.5));
+	float medNoise = fastWorley3d(FragPos * (baseFreq * 2.0));
+	float fineNoise = fastFbm3d(FragPos * (baseFreq * 5.0));
 
-	float combinedNoise = largeNoise * 0.6 + medNoise * 0.3 + fineNoise * 0.1;
+	float combinedNoise = largeNoise * 0.6 + (1.0 - medNoise) * 0.3 + fineNoise * 0.1;
 
 	// Distance Fade -- precalc
 	vec3  norm = normalize(Normal);
@@ -97,17 +98,20 @@ void main() {
 	vec2  biomeData = texture(uBiomeMap, vec3(TexCoords, TextureSlice)).rg;
 	int   lowIdx = int(biomeData.r * 255.0 + 0.5);
 	int   highIdx = min(lowIdx + 1, 7);
-	float t = biomeData.g; // * combinedNoise * 0.5 + 0.5;
+	float t = biomeData.g;
 
-	// float distortedHeight = baseHeight + largeNoise * 5.0 * worldScale;
-	//  * 0.5 + 0.5
+	// Organic biome transitions using warped noise
+	float warpScale = 0.05 / worldScale;
+	float transitionWarp = fastWarpedFbm3d(FragPos * warpScale);
+	float organicT = clamp(t + transitionWarp * 0.4 - 0.2, 0.0, 1.0);
+	organicT = smoothstep(0.0, 1.0, organicT);
 
 	BiomeProperties lowBiome = biomes[lowIdx];
 	BiomeProperties highBiome = biomes[highIdx];
 
-	vec3  albedo = mix(lowBiome.albedo_roughness.rgb, highBiome.albedo_roughness.rgb, smoothstep(-1, 1, combinedNoise));
-	float roughness = mix(lowBiome.albedo_roughness.a, highBiome.albedo_roughness.a, t);
-	float metallic = mix(lowBiome.params.x, highBiome.params.x, t);
+	vec3  albedo = mix(lowBiome.albedo_roughness.rgb, highBiome.albedo_roughness.rgb, organicT);
+	float roughness = mix(lowBiome.albedo_roughness.a, highBiome.albedo_roughness.a, organicT);
+	float metallic = mix(lowBiome.params.x, highBiome.params.x, organicT);
 
 	// Slope-based cliff blending
 	float verticalMask = smoothstep(0.4, 0.2, slope);
@@ -121,10 +125,17 @@ void main() {
 	// Detail Variation
 	// ========================================================================
 
-	// Add subtle color variation based on fine noise
-	float colorVar = combinedNoise * 0.5;
-	albedo *= (1.0 + colorVar);
-	// albedo *= 1+fastCurl3d(albedo);
+	// Large-scale macro color shifts
+	float macroNoise = fastSimplex3d(FragPos * (baseFreq * 0.1));
+	albedo *= (1.0 + macroNoise * 0.12);
+
+	// Add subtle color variation based on combined noise
+	albedo *= (1.0 + combinedNoise * 0.15);
+
+	// Extra variety for rocky/steep areas to complement normals
+	float rockyVar = fastWarpedFbm3d(FragPos * (baseFreq * 4.0));
+	float rockyMask = smoothstep(0.5, 0.2, slope); // More variety on steeper slopes
+	albedo = mix(albedo, albedo * (1.0 + rockyVar * 0.2), rockyMask);
 
 	// ========================================================================
 	// Normal Perturbation (Grain)
@@ -140,9 +151,9 @@ void main() {
 
 		// Use finite difference to approximate the gradient of the noise field
 		float eps = 0.015;
-		float n = snoise(scaledFragPos * roughnessScale);
-		float nx = snoise((scaledFragPos + vec3(eps, 0.0, 0.0)) * roughnessScale);
-		float nz = snoise((scaledFragPos + vec3(0.0, 0.0, eps)) * roughnessScale);
+		float n = fastWorley3d(0.5*scaledFragPos * roughnessScale);
+		float nx = fastWorley3d(0.5*(scaledFragPos + vec3(eps, 0.0, 0.0)) * roughnessScale);
+		float nz = fastWorley3d(0.5*(scaledFragPos + vec3(0.0, 0.0, eps)) * roughnessScale);
 
 		// Compute local tangent space to orient the perturbation
 		vec3 tangent = normalize(cross(norm, vec3(0, 0, 1)));
