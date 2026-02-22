@@ -1,9 +1,46 @@
 #pragma once
 #include <array>
+#include <bitset>
+#include <initializer_list>
 
 #include <glm/glm.hpp>
 
 namespace Boidsish {
+
+	enum class Biome : uint32_t {
+		Sand = 0,
+		LushGrass,
+		DryGrass,
+		Forest,
+		AlpineMeadow,
+		BrownRock,
+		GreyRock,
+		Snow,
+		Count
+	};
+
+	struct BiomeBitset {
+		std::bitset<static_cast<size_t>(Biome::Count)> bits;
+
+		BiomeBitset() { bits.set(); }
+
+		BiomeBitset(uint32_t mask): bits(mask) {}
+
+		BiomeBitset(std::initializer_list<Biome> biomes) {
+			bits.reset();
+			for (auto b : biomes) {
+				bits.set(static_cast<size_t>(b));
+			}
+		}
+
+		void set(Biome b, bool val = true) { bits.set(static_cast<size_t>(b), val); }
+
+		void reset() { bits.reset(); }
+
+		bool test(Biome b) const { return bits.test(static_cast<size_t>(b)); }
+
+		operator uint32_t() const { return static_cast<uint32_t>(bits.to_ulong()); }
+	};
 
 	struct BiomeAttributes {
 		float     spikeDamping;  // How aggressively to cut off sharp gradients

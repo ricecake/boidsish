@@ -27,7 +27,6 @@ int main() {
 			grassProps.max_density = 1.0f;
 			grassProps.base_scale = 0.5f;
 			grassProps.scale_variance = 0.2f;
-			grassProps.biome_mask = 0xFFFFFFFF; // Everywhere
 			grassProps.align_to_terrain = true;
 			decor->AddDecorType("assets/cube.obj", grassProps);
 
@@ -36,7 +35,6 @@ int main() {
 			treeProps.max_density = 0.2f;
 			treeProps.base_scale = 0.01f;
 			treeProps.scale_variance = 0.005f;
-			treeProps.biome_mask = 0xFFFFFFFF;
 			decor->AddDecorType("assets/tree01.obj", treeProps);
 		}
 

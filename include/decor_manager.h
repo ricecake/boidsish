@@ -5,6 +5,7 @@
 #include <string>
 #include <vector>
 
+#include "biome_properties.h"
 #include "frustum.h"
 #include "model.h"
 #include <glm/glm.hpp>
@@ -29,9 +30,9 @@ namespace Boidsish {
 		glm::vec3 base_rotation = glm::vec3(0.0f); // Base rotation in degrees (pitch, yaw, roll)
 		bool      random_yaw = true;               // Apply random Y rotation
 		bool      align_to_terrain =
-			false; // If true, align to terrain normal (bush on cliff); if false, align to world up (tree)
-		uint32_t biome_mask = 0xFFFFFFFF; // Bitmask of biomes where this decor can grow
-		float    detail_distance = 0.0f;  // If > 0, only rendered if within this distance
+			false;          // If true, align to terrain normal (bush on cliff); if false, align to world up (tree)
+		BiomeBitset biomes; // Bitmask of biomes where this decor can grow
+		float       detail_distance = 0.0f; // If > 0, only rendered if within this distance
 
 		void SetDensity(float d) {
 			min_density = d * 0.2f;
@@ -63,6 +64,15 @@ namespace Boidsish {
 
 		// Full overload with all properties
 		void AddDecorType(const std::string& model_path, const DecorProperties& props);
+
+		// Populates the manager with default decor (trees, rocks, etc.)
+		// Only adds if no decor types have been added yet.
+		void PopulateDefaultDecor();
+
+		// Static helpers for getting default properties
+		static DecorProperties GetDefaultTreeProperties();
+		static DecorProperties GetDefaultDeadTreeProperties();
+		static DecorProperties GetDefaultRockProperties();
 
 		void Update(
 			float                                 delta_time,
