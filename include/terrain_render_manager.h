@@ -126,8 +126,9 @@ namespace Boidsish {
 		/**
 		 * @brief Get info about all registered chunks for external use (e.g., decor placement).
 		 * Returns a vector of (world_offset_x, world_offset_z, texture_slice, chunk_size).
+		 * @param world_scale The world scale to apply to the chunk size.
 		 */
-		std::vector<glm::vec4> GetChunkInfo() const;
+		std::vector<glm::vec4> GetChunkInfo(float world_scale) const;
 
 	private:
 		// Per-chunk metadata (CPU side)
