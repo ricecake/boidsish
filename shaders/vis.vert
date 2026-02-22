@@ -39,6 +39,9 @@ uniform bool  isLine = false;
 uniform bool  enableFrustumCulling = false;
 uniform float frustumCullRadius = 5.0; // Approximate object radius for sphere test
 
+uniform vec3 u_aabbMin;
+uniform vec3 u_aabbMax;
+
 // Arcade Text Effects
 uniform bool  isArcadeText = false;
 uniform int   arcadeWaveMode = 0; // 0: None, 1: Vertical, 2: Flag, 3: Twist
@@ -127,7 +130,21 @@ void main() {
 	// Apply shockwave displacement (sway for decor)
 	// Calculate at instanceCenter to prevent warping, scale by world-relative height
 	if (useSSBOInstancing) {
-		FragPos += getShockwaveDisplacement(instanceCenter, aPos.y * instanceScale, true);
+		FragPos += getShockwaveDisplacement(instanceCenter, (aPos.y - u_aabbMin.y) * instanceScale, true);
+
+		// Apply wind sway
+		if (wind_strength > 0.0) {
+			float localHeight = max(0.0, aPos.y - u_aabbMin.y);
+			float totalHeight = max(0.001, u_aabbMax.y - u_aabbMin.y);
+			float normalizedHeight = clamp(localHeight / totalHeight, 0.0, 1.0);
+
+			// Use instanceCenter for coherent wind across the whole object
+			// We use a combination of world position and time for the noise seed
+			vec2 windNudge = curlNoise2D(instanceCenter.xz * wind_frequency + time * wind_speed * 0.5) * wind_strength;
+
+			// Scale nudge by height (bending effect)
+			FragPos.xz += windNudge * pow(normalizedHeight, 1.2);
+		}
 	}
 
 	Normal = mat3(transpose(inverse(modelMatrix))) * displacedNormal;

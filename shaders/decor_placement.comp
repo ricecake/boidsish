@@ -49,6 +49,9 @@ uniform float u_detailDistance; // If > 0, only place within this distance
 uniform int   u_typeIndex;
 uniform float u_worldScale;
 
+uniform vec3 u_aabbMin;
+uniform vec3 u_aabbMax;
+
 // Simple hash for random values
 float hash(uint x) {
 	x = ((x >> 16) ^ x) * 0x45d9f3b;
@@ -241,7 +244,12 @@ void main() {
 	m[0] = vec4(scaledRot[0], 0.0);
 	m[1] = vec4(scaledRot[1], 0.0);
 	m[2] = vec4(scaledRot[2], 0.0);
-	m[3] = vec4(worldPos3D, 1.0);
+
+	// Adjust position so AABB base is on terrain
+	// We want the center of the AABB base in local space to be at worldPos3D
+	vec3 localBottom = vec3((u_aabbMin.x + u_aabbMax.x) * 0.5, u_aabbMin.y, (u_aabbMin.z + u_aabbMax.z) * 0.5);
+	vec3 worldBottomOffset = scaledRot * localBottom;
+	m[3] = vec4(worldPos3D - worldBottomOffset, 1.0);
 
 	instances[index] = m;
 }

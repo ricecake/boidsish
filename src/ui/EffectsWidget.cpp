@@ -77,6 +77,24 @@ namespace Boidsish {
 				config.SetBool("artistic_effect_wireframe", wireframe_enabled);
 			}
 
+			ImGui::Separator();
+			ImGui::Text("Wind Effect");
+
+			float wind_strength = config.GetAppSettingFloat("wind_strength", 0.5f);
+			if (ImGui::SliderFloat("Wind Strength", &wind_strength, 0.0f, 5.0f)) {
+				config.SetFloat("wind_strength", wind_strength);
+			}
+
+			float wind_speed = config.GetAppSettingFloat("wind_speed", 1.0f);
+			if (ImGui::SliderFloat("Wind Speed", &wind_speed, 0.0f, 10.0f)) {
+				config.SetFloat("wind_speed", wind_speed);
+			}
+
+			float wind_frequency = config.GetAppSettingFloat("wind_frequency", 0.1f);
+			if (ImGui::SliderFloat("Wind Frequency", &wind_frequency, 0.01f, 1.0f)) {
+				config.SetFloat("wind_frequency", wind_frequency);
+			}
+
 			ImGui::End();
 		}
 

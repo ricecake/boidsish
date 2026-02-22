@@ -80,19 +80,22 @@ namespace Boidsish {
 	 * Refreshed once per frame at the start of Render().
 	 */
 	struct FrameConfigCache {
-		bool effects_enabled = true;
-		bool render_terrain = true;
-		bool render_skybox = true;
-		bool render_floor = true;
-		bool artistic_ripple = false;
-		bool artistic_color_shift = false;
-		bool artistic_black_and_white = false;
-		bool artistic_negative = false;
-		bool artistic_shimmery = false;
-		bool artistic_glitched = false;
-		bool artistic_wireframe = false;
-		bool enable_floor_reflection = true;
-		bool enable_shadows = true;
+		bool  effects_enabled = true;
+		bool  render_terrain = true;
+		bool  render_skybox = true;
+		bool  render_floor = true;
+		bool  artistic_ripple = false;
+		bool  artistic_color_shift = false;
+		bool  artistic_black_and_white = false;
+		bool  artistic_negative = false;
+		bool  artistic_shimmery = false;
+		bool  artistic_glitched = false;
+		bool  artistic_wireframe = false;
+		bool  enable_floor_reflection = true;
+		bool  enable_shadows = true;
+		float wind_strength = 0.5f;
+		float wind_speed = 1.0f;
+		float wind_frequency = 0.1f;
 	};
 
 	enum class CameraMode { FREE, AUTO, TRACKING, STATIONARY, CHASE, PATH_FOLLOW };

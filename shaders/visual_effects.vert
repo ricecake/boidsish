@@ -1,6 +1,7 @@
 #ifndef ARTISTIC_EFFECTS_VERT
 #define ARTISTIC_EFFECTS_VERT
 
+#include "helpers/noise.glsl"
 #include "visual_effects.glsl"
 
 vec3 getBarycentric() {
@@ -11,10 +12,6 @@ vec3 getBarycentric() {
 	} else {
 		return vec3(0.0, 0.0, 1.0);
 	}
-}
-
-vec3 mod289(vec3 x) {
-	return x - floor(x * (1.0 / 289.0)) * 289.0;
 }
 
 vec3 applyGlitch(vec3 position, float time) {
