@@ -140,6 +140,15 @@ namespace Boidsish {
 			glBindFramebuffer(GL_FRAMEBUFFER, 0);
 		}
 
+		void PostProcessingManager::SetNightFactor(float factor) {
+			for (auto& effect : pre_tone_mapping_effects_) {
+				effect->SetNightFactor(factor);
+			}
+			if (tone_mapping_effect_) {
+				tone_mapping_effect_->SetNightFactor(factor);
+			}
+		}
+
 		void PostProcessingManager::ApplyEffectInternal(
 			std::shared_ptr<IPostProcessingEffect> effect,
 			const glm::mat4&                       viewMatrix,

@@ -32,6 +32,8 @@ namespace Boidsish {
 
 			virtual void SetTime(float /* time */) {}
 
+			virtual void SetNightFactor(float /* factor */) {}
+
 			virtual bool IsEarly() const { return false; }
 
 		protected:

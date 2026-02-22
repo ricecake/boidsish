@@ -47,6 +47,8 @@ namespace Boidsish {
 			void SetEnabled(bool enabled) override;
 			void SetTime(float time) override;
 
+			void SetNightFactor(float factor) override { nightFactor_ = factor; }
+
 		private:
 			std::unique_ptr<ComputeShader> computeShader_;
 			std::unique_ptr<Shader>        passthroughShader_;
@@ -58,6 +60,7 @@ namespace Boidsish {
 			float                          maxExposure_ = 2.5f;
 			float                          deltaTime_ = 0.016f;
 			float                          lastTime_ = 0.0f;
+			float                          nightFactor_ = 0.0f;
 		};
 
 	} // namespace PostProcessing

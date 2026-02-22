@@ -40,6 +40,8 @@ namespace Boidsish {
 				float            time
 			);
 
+			void SetNightFactor(float factor);
+
 			GLuint GetFinalTexture() const { return current_texture_; }
 
 			GLuint GetCurrentFBO() const { return current_fbo_; }
