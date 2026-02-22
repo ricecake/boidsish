@@ -69,4 +69,14 @@ namespace Boidsish {
 		glBindTexture(GL_TEXTURE_3D, curl_noise_texture_);
 	}
 
+	void NoiseManager::BindDefault(ShaderBase& shader) const {
+		shader.use();
+		glActiveTexture(GL_TEXTURE5);
+		glBindTexture(GL_TEXTURE_3D, noise_texture_);
+		shader.setInt("u_noiseTexture", 5);
+		glActiveTexture(GL_TEXTURE6);
+		glBindTexture(GL_TEXTURE_3D, curl_noise_texture_);
+		shader.setInt("u_curlTexture", 6);
+	}
+
 } // namespace Boidsish

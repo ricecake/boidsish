@@ -1,5 +1,7 @@
 #version 430 core
 
+#include "lighting.glsl"
+
 in float    v_lifetime;
 in vec4     view_pos;
 in vec4     v_pos;
@@ -53,7 +55,7 @@ void main() {
 
 	vec3  color;
 	float alpha;
-	if (v_style == 0 || v_style == 3 || v_style == 4 || v_style == 28) {
+	if (v_style == 0 || v_style == 3 || v_style == 4 || v_style == 5 || v_style == 28) {
 		if (v_style == 3) {                       // Sparks
 			vec3 hot_color = vec3(1.0, 1.0, 1.0); // White
 			vec3 mid_color = vec3(1.0, 0.8, 0.3); // Bright Yellow/Orange
@@ -79,6 +81,25 @@ void main() {
 			// Add a "sparkle" highlight
 			float sparkle = pow(twinkle, 10.0) * 2.0;
 			color += vec3(sparkle);
+		} else if (v_style == 5) { // Ambient
+			if (nightFactor < 0.5) {
+				// --- Leaf (Daytime) ---
+				// Seasonal/Biome variety could be added here
+				vec3 leaf_green = vec3(0.15, 0.35, 0.1);
+				vec3 leaf_brown = vec3(0.4, 0.3, 0.1);
+				color = mix(leaf_green, leaf_brown, sin(v_pos.x * 0.1 + v_pos.z * 0.1) * 0.5 + 0.5);
+
+				// Simple flutter effect
+				float flutter = sin(u_time * 5.0 + v_pos.x + v_pos.y) * 0.2 + 0.8;
+				color *= flutter;
+				alpha = smoothstep(0.0, 0.5, v_lifetime) * 0.8;
+			} else {
+				// --- Firefly (Nighttime) ---
+				vec3 firefly_color = vec3(0.8, 0.9, 0.2); // Yellow-Green
+				float twinkle = sin(u_time * 8.0 + float(gl_PrimitiveID)) * 0.5 + 0.5;
+				color = firefly_color * (1.0 + twinkle * 5.0); // Glow
+				alpha = (0.3 + twinkle * 0.7) * smoothstep(0.0, 0.5, v_lifetime);
+			}
 		} else if (v_style == 28) {
 			// --- Iridescence Effect ---
 			// Fresnel term for the base reflectivity
@@ -112,6 +133,8 @@ void main() {
 			alpha = smoothstep(0.0, 0.1, v_lifetime);
 		} else if (v_style == 4) { // Glitter
 			alpha = clamp(v_lifetime, 0.0, 1.0);
+		} else if (v_style == 5) { // Ambient
+			// alpha already set
 		} else if (v_style == 28) {
 			alpha = 0.75;
 		}

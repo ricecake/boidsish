@@ -71,6 +71,21 @@ namespace Boidsish {
 		if (frustum_idx != GL_INVALID_INDEX) {
 			glUniformBlockBinding(render_shader_->ID, frustum_idx, Constants::UboBinding::FrustumData());
 		}
+		GLuint lighting_idx = glGetUniformBlockIndex(render_shader_->ID, "Lighting");
+		if (lighting_idx != GL_INVALID_INDEX) {
+			glUniformBlockBinding(render_shader_->ID, lighting_idx, Constants::UboBinding::Lighting());
+		}
+		GLuint temporal_idx = glGetUniformBlockIndex(render_shader_->ID, "TemporalData");
+		if (temporal_idx != GL_INVALID_INDEX) {
+			glUniformBlockBinding(render_shader_->ID, temporal_idx, Constants::UboBinding::TemporalData());
+		}
+
+		// Set up UBO bindings for the compute shader
+		compute_shader_->use();
+		GLuint comp_lighting_idx = glGetUniformBlockIndex(compute_shader_->ID, "Lighting");
+		if (comp_lighting_idx != GL_INVALID_INDEX) {
+			glUniformBlockBinding(compute_shader_->ID, comp_lighting_idx, Constants::UboBinding::Lighting());
+		}
 
 		// Create buffers
 		glGenBuffers(1, &particle_buffer_);
@@ -157,7 +172,8 @@ namespace Boidsish {
 		float                         time,
 		const std::vector<glm::vec4>& chunk_info,
 		GLuint                        heightmap_texture,
-		GLuint                        curl_noise_texture
+		GLuint                        curl_noise_texture,
+		GLuint                        biome_texture
 	) {
 		std::lock_guard<std::mutex> lock(mutex_);
 		if (!initialized_ || !compute_shader_ || !compute_shader_->isValid()) {
@@ -259,6 +275,12 @@ namespace Boidsish {
 			glActiveTexture(GL_TEXTURE6);
 			glBindTexture(GL_TEXTURE_3D, curl_noise_texture);
 			compute_shader_->setInt("u_curlTexture", 6);
+		}
+
+		if (biome_texture != 0) {
+			glActiveTexture(GL_TEXTURE8);
+			glBindTexture(GL_TEXTURE_2D_ARRAY, biome_texture);
+			compute_shader_->setInt("u_biomeMap", 8);
 		}
 
 		// Dispatch enough groups to cover all particles
@@ -415,6 +437,12 @@ namespace Boidsish {
 		render_shader_->setMat4("u_projection", projection);
 		render_shader_->setVec3("u_camera_pos", camera_pos);
 		render_shader_->setFloat("u_time", time_);
+
+		// Bind Lighting UBO for nightFactor
+		GLuint lighting_idx = glGetUniformBlockIndex(render_shader_->ID, "Lighting");
+		if (lighting_idx != GL_INVALID_INDEX) {
+			glUniformBlockBinding(render_shader_->ID, lighting_idx, Constants::UboBinding::Lighting());
+		}
 
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, emitter_buffer_);
 

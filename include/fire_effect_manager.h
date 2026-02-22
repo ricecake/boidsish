@@ -45,7 +45,8 @@ namespace Boidsish {
 			float                         time,
 			const std::vector<glm::vec4>& chunk_info = {},
 			GLuint                        heightmap_texture = 0,
-			GLuint                        curl_noise_texture = 0
+			GLuint                        curl_noise_texture = 0,
+			GLuint                        biome_texture = 0
 		);
 		void Render(
 			const glm::mat4& view,

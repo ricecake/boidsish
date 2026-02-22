@@ -918,6 +918,9 @@ namespace Boidsish {
 
 		void SetupShaderBindings(ShaderBase& shader_to_setup) {
 			shader_to_setup.use();
+			if (noise_manager) {
+				noise_manager->BindDefault(shader_to_setup);
+			}
 			GLuint sdf_volumes_idx = glGetUniformBlockIndex(shader_to_setup.ID, "SdfVolumes");
 			if (sdf_volumes_idx != GL_INVALID_INDEX) {
 				glUniformBlockBinding(shader_to_setup.ID, sdf_volumes_idx, Constants::UboBinding::SdfVolumes());
@@ -2241,7 +2244,8 @@ namespace Boidsish {
 				? impl->terrain_render_manager->GetChunkInfo(impl->terrain_generator->GetWorldScale())
 				: std::vector<glm::vec4>{},
 			impl->terrain_render_manager ? impl->terrain_render_manager->GetHeightmapTexture() : 0,
-			impl->noise_manager ? impl->noise_manager->GetCurlTexture() : 0
+			impl->noise_manager ? impl->noise_manager->GetCurlTexture() : 0,
+			impl->terrain_render_manager ? impl->terrain_render_manager->GetBiomeTexture() : 0
 		);
 		impl->mesh_explosion_manager->Update(impl->simulation_delta_time, impl->simulation_time);
 		impl->sound_effect_manager->Update(impl->simulation_delta_time);
