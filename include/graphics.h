@@ -90,9 +90,12 @@ namespace Boidsish {
 		bool artistic_negative = false;
 		bool artistic_shimmery = false;
 		bool artistic_glitched = false;
-		bool artistic_wireframe = false;
-		bool enable_floor_reflection = true;
-		bool enable_shadows = true;
+		bool  artistic_wireframe = false;
+		bool  enable_floor_reflection = true;
+		bool  enable_shadows = true;
+		float wind_strength = 0.5f;
+		float wind_speed = 1.0f;
+		float wind_frequency = 0.1f;
 	};
 
 	enum class CameraMode { FREE, AUTO, TRACKING, STATIONARY, CHASE, PATH_FOLLOW };

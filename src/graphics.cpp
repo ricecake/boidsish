@@ -969,6 +969,9 @@ namespace Boidsish {
 			frame_config_.artistic_wireframe = cfg.GetAppSettingBool("artistic_effect_wireframe", false);
 			frame_config_.enable_floor_reflection = cfg.GetAppSettingBool("enable_floor_reflection", true);
 			frame_config_.enable_shadows = cfg.GetAppSettingBool("enable_shadows", true);
+			frame_config_.wind_strength = cfg.GetAppSettingFloat("wind_strength", 0.5f);
+			frame_config_.wind_speed = cfg.GetAppSettingFloat("wind_speed", 1.0f);
+			frame_config_.wind_frequency = cfg.GetAppSettingFloat("wind_frequency", 0.1f);
 		}
 
 		~VisualizerImpl() {
@@ -2283,6 +2286,9 @@ namespace Boidsish {
 			ubo_data.glitched_enabled = impl->frame_config_.artistic_glitched;
 			ubo_data.wireframe_enabled = impl->frame_config_.artistic_wireframe;
 			ubo_data.color_shift_enabled = ubo_data.color_shift_enabled || impl->frame_config_.artistic_color_shift;
+			ubo_data.wind_strength = impl->frame_config_.wind_strength;
+			ubo_data.wind_speed = impl->frame_config_.wind_speed;
+			ubo_data.wind_frequency = impl->frame_config_.wind_frequency;
 			if (impl->frame_config_.artistic_ripple) {
 				ubo_data.ripple_enabled = 1;
 			}
