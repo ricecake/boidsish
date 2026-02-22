@@ -14,6 +14,8 @@ uniform int u_baseInstanceIndex;
 // Heightmap texture array from TerrainRenderManager
 // Format: RGBA16F where R=height, G=normal.x, B=normal.y, A=normal.z
 uniform sampler2DArray u_heightmapArray;
+// Biome map: RG8 - R=low_idx, G=t
+uniform sampler2DArray u_biomeMap;
 uniform vec2           u_cameraPos;
 uniform float          u_maxTerrainHeight;
 
@@ -42,6 +44,8 @@ uniform float u_maxSlope;
 uniform vec3  u_baseRotation;   // Base rotation in radians (pitch, yaw, roll)
 uniform bool  u_randomYaw;      // Whether to apply random Y rotation
 uniform bool  u_alignToTerrain; // If true, align to terrain normal; if false, use world up
+uniform uint  u_biomeMask;      // Bitmask of allowed biomes
+uniform float u_detailDistance; // If > 0, only place within this distance
 uniform int   u_typeIndex;
 uniform float u_worldScale;
 
@@ -143,11 +147,33 @@ void main() {
 
 	// Distance-based density falloff
 	float distToCam = distance(worldPos, u_cameraPos);
+
+	// Detail distance check
+	if (u_detailDistance > 0.0 && distToCam > u_detailDistance * u_worldScale)
+		return;
+
 	float distanceFactor = 1.0 - smoothstep(u_densityFalloffStart, u_densityFalloffEnd, distToCam);
 	effectiveDensity *= mix(0.2, 1.0, distanceFactor);
 
 	if (distToCam > u_maxDecorDistance)
 		return;
+
+	// Biome mask check
+	vec2  biomeData = textureLod(u_biomeMap, vec3(uv, u_chunkSlice), 0.0).rg;
+	int   lowIdx = int(biomeData.r * 255.0 + 0.5);
+	int   highIdx = min(lowIdx + 1, 7);
+	float t = biomeData.g;
+
+	float allowedWeight = 0.0;
+	if ((u_biomeMask & (1u << uint(lowIdx))) != 0u)
+		allowedWeight += (1.0 - t);
+	if ((u_biomeMask & (1u << uint(highIdx))) != 0u)
+		allowedWeight += t;
+
+	if (allowedWeight < 0.01)
+		return;
+
+	effectiveDensity *= allowedWeight;
 
 	// Random density check using effective density
 	if (hash(seed + 5678) > effectiveDensity)

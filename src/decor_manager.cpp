@@ -137,9 +137,12 @@ namespace Boidsish {
 		const ITerrainGenerator&              terrain_gen,
 		std::shared_ptr<TerrainRenderManager> render_manager
 	) {
-		float  world_scale = terrain_gen.GetWorldScale();
+		float world_scale = terrain_gen.GetWorldScale();
+
+		// Get the heightmap and biome texture arrays from the terrain render manager
 		GLuint heightmap_texture = render_manager->GetHeightmapTexture();
-		if (heightmap_texture == 0)
+		GLuint biome_texture = render_manager->GetBiomeTexture();
+		if (heightmap_texture == 0 || biome_texture == 0)
 			return;
 
 		auto chunk_info = render_manager->GetChunkInfo(world_scale);
@@ -253,6 +256,10 @@ namespace Boidsish {
 			glBindTexture(GL_TEXTURE_2D_ARRAY, heightmap_texture);
 			placement_shader_->setInt("u_heightmapArray", 0);
 
+			glActiveTexture(GL_TEXTURE1);
+			glBindTexture(GL_TEXTURE_2D_ARRAY, biome_texture);
+			placement_shader_->setInt("u_biomeMap", 1);
+
 			for (size_t i = 0; i < decor_types_.size(); ++i) {
 				auto& type = decor_types_[i];
 				placement_shader_->setFloat("u_minDensity", type.props.min_density);
@@ -266,6 +273,8 @@ namespace Boidsish {
 				placement_shader_->setVec3("u_baseRotation", glm::radians(type.props.base_rotation));
 				placement_shader_->setBool("u_randomYaw", type.props.random_yaw);
 				placement_shader_->setBool("u_alignToTerrain", type.props.align_to_terrain);
+				placement_shader_->setUint("u_biomeMask", type.props.biome_mask);
+				placement_shader_->setFloat("u_detailDistance", type.props.detail_distance);
 				placement_shader_->setInt("u_typeIndex", (int)i);
 
 				glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, type.ssbo);

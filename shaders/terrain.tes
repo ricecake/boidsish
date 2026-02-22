@@ -11,13 +11,14 @@ in float      perturbFactor_TC_out[];
 in float      tessFactor_TC_out[];
 
 // Output to Fragment Shader
-out vec3  FragPos;
-out vec4  CurPosition;
-out vec4  PrevPosition;
-out vec3  Normal;
-out vec2  TexCoords;
-out float perturbFactor;
-out float tessFactor;
+out vec3       FragPos;
+out vec4       CurPosition;
+out vec4       PrevPosition;
+out vec3       Normal;
+out vec2       TexCoords;
+flat out float TextureSlice;
+out float      perturbFactor;
+out float      tessFactor;
 
 // Heightmap texture array: R=height, GBA=normal
 uniform sampler2DArray uHeightmap;
@@ -33,7 +34,6 @@ uniform vec4 clipPlane;
 
 // Sample heightmap to get world position and normal
 void sampleHeightmap(vec2 uv, float slice, vec3 worldOffset, out vec3 worldPos, out vec3 normal) {
-	// vec2 uv_map = (uv * uChunkSize + 0.5) / (uChunkSize + 1.0);
 	vec4  data = texture(uHeightmap, vec3(uv, slice));
 	float height = data.r;
 	normal = normalize(data.gba);
@@ -56,7 +56,6 @@ void main() {
 	TexCoords = mix(texCoord1, texCoord2, uv.y);
 
 	// Sample heightmap at the interpolated UV to get world position and normal
-	vec3 q, n;
 	sampleHeightmap(TexCoords, slice, worldOffset, FragPos, Normal);
 
 	// Apply shockwave ripple to terrain
@@ -75,6 +74,7 @@ void main() {
 	tessFactor = mix(tessFactor1, tessFactor2, uv.y);
 
 	// out float tessFactor;
+	TextureSlice = slice;
 
 	// Final vertex position
 	gl_Position = projection * view * vec4(FragPos, 1.0);

@@ -89,7 +89,7 @@ namespace Boidsish {
         );
 
 		float max_h = 0.0f;
-		for (const auto& b : biomes) {
+		for (const auto& b : kBiomes) {
 			max_h = std::max(max_h, b.floorLevel);
 		}
 
@@ -159,8 +159,13 @@ namespace Boidsish {
 					auto&                   future = const_cast<TaskHandle<TerrainGenerationResult>&>(pair.second);
 					TerrainGenerationResult result = future.get();
 					if (result.has_terrain) {
-						auto terrain_chunk =
-							std::make_shared<Terrain>(result.indices, result.positions, result.normals, result.proxy);
+						auto terrain_chunk = std::make_shared<Terrain>(
+							result.indices,
+							result.positions,
+							result.normals,
+							result.biomes,
+							result.proxy
+						);
 						terrain_chunk
 							->SetPosition(result.chunk_x * scaled_chunk_size, 0, result.chunk_z * scaled_chunk_size);
 
@@ -246,6 +251,7 @@ namespace Boidsish {
 					chunk.key,
 					chunk.terrain->vertices,
 					chunk.terrain->normals,
+					chunk.terrain->biomes,
 					chunk.terrain->GetIndices(),
 					chunk.terrain->proxy.minY,
 					chunk.terrain->proxy.maxY,
@@ -460,18 +466,18 @@ namespace Boidsish {
 	};
 
 	void TerrainGenerator::ApplyWeightedBiome(float control_value, BiomeAttributes& current) const {
-		if (biomes.empty())
+		if (kBiomes.empty())
 			return;
-		if (biomes.size() == 1) {
-			current = biomes[0];
+		if (kBiomes.size() == 1) {
+			current = kBiomes[0];
 			return;
 		}
 
 		// Ideally, cache this
 		std::vector<float> cdf;
-		cdf.reserve(biomes.size());
+		cdf.reserve(kBiomes.size());
 		float totalWeight = 0.0f;
-		for (const auto& b : biomes) {
+		for (const auto& b : kBiomes) {
 			totalWeight += b.weight;
 			cdf.push_back(totalWeight);
 		}
@@ -483,7 +489,7 @@ namespace Boidsish {
 		int high_idx = std::distance(cdf.begin(), it);
 		int low_idx = std::max(0, high_idx - 1);
 
-		high_idx = std::min(high_idx, (int)biomes.size() - 1);
+		high_idx = std::min(high_idx, (int)kBiomes.size() - 1);
 
 		float weight_high = cdf[high_idx];
 		float weight_low = (high_idx == 0) ? 0.0f : cdf[high_idx - 1];
@@ -491,12 +497,41 @@ namespace Boidsish {
 		float segment_width = weight_high - weight_low;
 		float t = (segment_width > 0.0001f) ? (target - weight_low) / segment_width : 0.0f;
 
-		const auto& low_item = biomes[low_idx];
-		const auto& high_item = biomes[high_idx];
+		const auto& low_item = kBiomes[low_idx];
+		const auto& high_item = kBiomes[high_idx];
 
 		current.spikeDamping = std::lerp(low_item.spikeDamping, high_item.spikeDamping, t);
 		current.detailMasking = std::lerp(low_item.detailMasking, high_item.detailMasking, t);
 		current.floorLevel = std::lerp(low_item.floorLevel, high_item.floorLevel, t);
+	}
+
+	void TerrainGenerator::GetBiomeIndicesAndWeights(float control_value, int& low_idx, float& t) const {
+		if (kBiomes.empty()) {
+			low_idx = 0;
+			t = 0.0f;
+			return;
+		}
+
+		std::vector<float> cdf;
+		cdf.reserve(kBiomes.size());
+		float totalWeight = 0.0f;
+		for (const auto& b : kBiomes) {
+			totalWeight += b.weight;
+			cdf.push_back(totalWeight);
+		}
+
+		float target = std::clamp(control_value, 0.0f, 1.0f) * totalWeight;
+		auto  it = std::upper_bound(cdf.begin(), cdf.end(), target);
+
+		int high_idx = std::distance(cdf.begin(), it);
+		low_idx = std::max(0, high_idx - 1);
+		high_idx = std::min(high_idx, (int)kBiomes.size() - 1);
+
+		float weight_high = cdf[high_idx];
+		float weight_low = (high_idx == 0) ? 0.0f : cdf[high_idx - 1];
+
+		float segment_width = weight_high - weight_low;
+		t = (segment_width > 0.0001f) ? (target - weight_low) / segment_width : 0.0f;
 	}
 
 	glm::vec3 TerrainGenerator::pointGenerate(float x, float z) const {
@@ -539,8 +574,10 @@ namespace Boidsish {
 		const int num_vertices_z = chunk_size_ + 1;
 
 		std::vector<std::vector<glm::vec3>> heightmap(num_vertices_x, std::vector<glm::vec3>(num_vertices_z));
+		std::vector<std::vector<glm::vec2>> biome_map(num_vertices_x, std::vector<glm::vec2>(num_vertices_z));
 		std::vector<glm::vec3>              positions;
 		std::vector<glm::vec3>              normals;
+		std::vector<glm::vec2>              biomes_flat;
 		std::vector<unsigned int>           indices;
 		bool                                has_terrain = false;
 
@@ -562,6 +599,15 @@ namespace Boidsish {
 				auto  noise = pointGenerate(worldX, worldZ);
 				heightmap[i][j] = noise;
 				has_terrain = has_terrain || noise[0] > 0;
+
+				// Calculate biome info
+				float sx = worldX / world_scale_;
+				float sz = worldZ / world_scale_;
+				float control_value = getBiomeControlValue(sx, sz);
+				int   low_idx;
+				float t;
+				GetBiomeIndicesAndWeights(control_value, low_idx, t);
+				biome_map[i][j] = glm::vec2(static_cast<float>(low_idx), t);
 			}
 		}
 
@@ -617,12 +663,13 @@ namespace Boidsish {
 		}
 
 		if (!has_terrain) {
-			return {{}, {}, {}, {}, chunkX, chunkZ, false};
+			return {{}, {}, {}, {}, {}, chunkX, chunkZ, false};
 		}
 
 		// Generate vertices and normals
 		positions.reserve(num_vertices_x * num_vertices_z);
 		normals.reserve(num_vertices_x * num_vertices_z);
+		biomes_flat.reserve(num_vertices_x * num_vertices_z);
 		for (int i = 0; i < num_vertices_x; ++i) {
 			for (int j = 0; j < num_vertices_z; ++j) {
 				float y = heightmap[i][j][0];
@@ -640,6 +687,7 @@ namespace Boidsish {
 
 				positions.emplace_back(i * world_scale_, y, j * world_scale_);
 				normals.push_back(diffToNorm(dx, dz));
+				biomes_flat.push_back(biome_map[i][j]);
 			}
 		}
 
@@ -677,7 +725,7 @@ namespace Boidsish {
 		}
 		proxy.radiusSq = max_dist_sq;
 
-		return {indices, positions, normals, proxy, chunkX, chunkZ, true};
+		return {indices, positions, normals, biomes_flat, proxy, chunkX, chunkZ, true};
 	}
 
 	bool
@@ -1432,8 +1480,13 @@ namespace Boidsish {
 
 			if (result.has_terrain) {
 				// Create new terrain object with deformed data
-				auto new_terrain =
-					std::make_shared<Terrain>(result.indices, result.positions, result.normals, result.proxy);
+				auto new_terrain = std::make_shared<Terrain>(
+					result.indices,
+					result.positions,
+					result.normals,
+					result.biomes,
+					result.proxy
+				);
 				new_terrain->SetPosition(result.chunk_x * scaled_chunk_size, 0, result.chunk_z * scaled_chunk_size);
 
 				if (render_manager_) {
@@ -1444,6 +1497,7 @@ namespace Boidsish {
 						chunk_key,
 						new_terrain->vertices,
 						new_terrain->normals,
+						new_terrain->biomes,
 						new_terrain->GetIndices(),
 						new_terrain->proxy.minY,
 						new_terrain->proxy.maxY,

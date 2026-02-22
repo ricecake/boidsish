@@ -30,6 +30,8 @@ namespace Boidsish {
 		bool      random_yaw = true;               // Apply random Y rotation
 		bool      align_to_terrain =
 			false; // If true, align to terrain normal (bush on cliff); if false, align to world up (tree)
+		uint32_t biome_mask = 0xFFFFFFFF; // Bitmask of biomes where this decor can grow
+		float    detail_distance = 0.0f;  // If > 0, only rendered if within this distance
 
 		void SetDensity(float d) {
 			min_density = d * 0.2f;

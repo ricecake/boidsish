@@ -16,6 +16,7 @@ namespace Boidsish {
 			const std::vector<unsigned int>& indices,
 			const std::vector<glm::vec3>&    vertices,
 			const std::vector<glm::vec3>&    normals,
+			const std::vector<glm::vec2>&    biomes,
 			const PatchProxy&                proxy
 		);
 		~Terrain();
@@ -35,6 +36,7 @@ namespace Boidsish {
 		PatchProxy             proxy;
 		std::vector<glm::vec3> vertices;
 		std::vector<glm::vec3> normals;
+		std::vector<glm::vec2> biomes;
 
 		/**
 		 * @brief Get interleaved vertex data for batched rendering.
