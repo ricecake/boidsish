@@ -46,10 +46,15 @@ float fbm(vec2 p) {
 	return v;
 }
 
-// Simple Mie scattering approximation
-float scatter(vec3 lightDir, vec3 viewDir, float g) {
+// Simple Mie scattering approximation (Henyey-Greenstein phase function)
+float miePhase(float cosTheta, float g) {
 	float g2 = g * g;
-	return (1.0 - g2) / (4.0 * 3.14159 * pow(1.0 + g2 - 2.0 * g * dot(lightDir, viewDir), 1.5));
+	return (1.0 - g2) / (4.0 * PI * pow(1.0 + g2 - 2.0 * g * cosTheta, 1.5));
+}
+
+// Rayleigh scattering phase function
+float rayleighPhase(float cosTheta) {
+	return 3.0 / (16.0 * PI) * (1.0 + cosTheta * cosTheta);
 }
 
 void main() {
@@ -70,16 +75,33 @@ void main() {
 		worldPos = cameraPos + rayDir * dist;
 	}
 
-	// 1. Height Fog (Haze)
-	float fogFactor = getHeightFog(cameraPos, worldPos, hazeDensity, 1.0 / (hazeHeight * worldScale + 0.001));
-	vec3  currentHazeColor = hazeColor;
+	// 1. Height Fog (Haze) with Night Adaptation
+	float actualHazeDensity = hazeDensity * (1.0 - nightFactor * 0.7);
+	vec3  actualHazeColor = mix(hazeColor, hazeColor * 0.05, nightFactor);
 
-	// Add light scattering to fog
-	vec3 scattering = vec3(0.0);
+	float fogFactor = getHeightFog(cameraPos, worldPos, actualHazeDensity, 1.0 / (hazeHeight * worldScale + 0.001));
+	vec3  currentHazeColor = actualHazeColor;
+
+	// Add realistic light scattering (Mie + Rayleigh) to fog
+	vec3  scattering = vec3(0.0);
+	vec3  rayleighCoeff = vec3(5.8, 13.5, 33.1); // Relative coefficients for R, G, B wavelengths
+
 	for (int i = 0; i < num_lights; i++) {
-		vec3  lightDir = normalize(lights[i].position - cameraPos);
-		float s = scatter(lightDir, rayDir, 0.7);
-		scattering += lights[i].color * s * lights[i].intensity * 0.05;
+		vec3  L;
+		float atten;
+		calculateLightContribution(i, cameraPos, L, atten);
+
+		float cosTheta = dot(L, rayDir);
+
+		// Mie scattering (larger particles, forward-focused)
+		float m = miePhase(cosTheta, 0.8);
+		vec3  mieScattering = lights[i].color * m * lights[i].intensity * 0.04;
+
+		// Rayleigh scattering (molecules, wavelength dependent blue bias)
+		float r = rayleighPhase(cosTheta);
+		vec3  rScattering = lights[i].color * r * lights[i].intensity * 0.015 * (rayleighCoeff * 0.05);
+
+		scattering += (mieScattering + rScattering) * atten;
 	}
 	currentHazeColor += scattering;
 

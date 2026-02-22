@@ -2315,6 +2315,9 @@ namespace Boidsish {
 																		   : 1.0f;
 			impl->lighting_ubo_data_.day_time = impl->light_manager.GetDayNightCycle().time;
 			impl->lighting_ubo_data_.night_factor = impl->light_manager.GetDayNightCycle().night_factor;
+			if (impl->post_processing_manager_) {
+				impl->post_processing_manager_->SetNightFactor(impl->lighting_ubo_data_.night_factor);
+			}
 			impl->lighting_ubo_data_.view_pos = impl->camera.pos();
 			impl->lighting_ubo_data_.ambient_light = impl->light_manager.GetAmbientLight();
 			impl->lighting_ubo_data_.time = impl->simulation_time;

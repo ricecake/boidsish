@@ -55,11 +55,14 @@ namespace Boidsish {
 			};
 
 			glBindBuffer(GL_SHADER_STORAGE_BUFFER, exposureSsbo_);
+			float actualTarget = targetLuminance_ * (1.0f - nightFactor_ * 0.5f);
+			float actualMax = maxExposure_ * (1.0f - nightFactor_ * 0.4f);
+
 			glBufferSubData(
 				GL_SHADER_STORAGE_BUFFER,
 				offsetof(ExposureData, targetLuminance),
 				sizeof(float),
-				&targetLuminance_
+				&actualTarget
 			);
 			glBufferSubData(
 				GL_SHADER_STORAGE_BUFFER,
@@ -71,7 +74,7 @@ namespace Boidsish {
 				GL_SHADER_STORAGE_BUFFER,
 				offsetof(ExposureData, maxExposure),
 				sizeof(float),
-				&maxExposure_
+				&actualMax
 			);
 			int enabled = is_enabled_ ? 1 : 0;
 			glBufferSubData(GL_SHADER_STORAGE_BUFFER, offsetof(ExposureData, useAutoExposure), sizeof(int), &enabled);
