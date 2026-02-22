@@ -364,6 +364,7 @@ namespace Boidsish {
 				particles_by_emitter[emitter_index].push_back(i);
 			} else {
 				null_particles.push_back(i);
+				particle_to_emitter_map_[i] = -1; // Explicitly return to ambient pool
 			}
 		}
 
@@ -381,8 +382,10 @@ namespace Boidsish {
 				int num_to_reclaim = -diff;
 				for (int j = 0; j < num_to_reclaim; ++j) {
 					if (!particles_by_emitter[i].empty()) {
-						to_reclaim.push_back(particles_by_emitter[i].back());
+						int particle_index = particles_by_emitter[i].back();
+						to_reclaim.push_back(particle_index);
 						particles_by_emitter[i].pop_back();
+						particle_to_emitter_map_[particle_index] = -1; // Explicitly return to ambient pool
 					}
 				}
 			}
