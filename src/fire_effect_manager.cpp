@@ -91,6 +91,9 @@ namespace Boidsish {
 		glGenBuffers(1, &particle_buffer_);
 		glBindBuffer(GL_SHADER_STORAGE_BUFFER, particle_buffer_);
 		glBufferData(GL_SHADER_STORAGE_BUFFER, kMaxParticles * sizeof(Particle), nullptr, GL_DYNAMIC_DRAW);
+		// Zero out the buffer to ensure lifetimes start at 0
+		std::vector<uint8_t> zero_data(kMaxParticles * sizeof(Particle), 0);
+		glBufferSubData(GL_SHADER_STORAGE_BUFFER, 0, zero_data.size(), zero_data.data());
 
 		glGenBuffers(1, &emitter_buffer_);
 		glBindBuffer(GL_SHADER_STORAGE_BUFFER, emitter_buffer_);
@@ -173,7 +176,8 @@ namespace Boidsish {
 		const std::vector<glm::vec4>& chunk_info,
 		GLuint                        heightmap_texture,
 		GLuint                        curl_noise_texture,
-		GLuint                        biome_texture
+		GLuint                        biome_texture,
+		GLuint                        lighting_ubo
 	) {
 		std::lock_guard<std::mutex> lock(mutex_);
 		if (!initialized_ || !compute_shader_ || !compute_shader_->isValid()) {
@@ -221,19 +225,17 @@ namespace Boidsish {
 			}
 		}
 
-		if (emitters.empty()) {
-			return; // No active emitters, nothing to compute
-		}
-
 		// Update emitter buffer, only reallocating if capacity exceeded
 		glBindBuffer(GL_SHADER_STORAGE_BUFFER, emitter_buffer_);
-		if (emitters.size() > emitter_buffer_capacity_) {
+		if (!emitters.empty() && emitters.size() > emitter_buffer_capacity_) {
 			// Grow buffer with headroom to avoid frequent reallocations
 			size_t new_capacity = std::max(emitters.size() * 2, emitter_buffer_capacity_);
 			glBufferData(GL_SHADER_STORAGE_BUFFER, new_capacity * sizeof(Emitter), nullptr, GL_DYNAMIC_DRAW);
 			emitter_buffer_capacity_ = new_capacity;
 		}
-		glBufferSubData(GL_SHADER_STORAGE_BUFFER, 0, emitters.size() * sizeof(Emitter), emitters.data());
+		if (!emitters.empty()) {
+			glBufferSubData(GL_SHADER_STORAGE_BUFFER, 0, emitters.size() * sizeof(Emitter), emitters.data());
+		}
 
 		glBindBuffer(GL_SHADER_STORAGE_BUFFER, indirection_buffer_);
 		glBufferSubData(
@@ -281,6 +283,10 @@ namespace Boidsish {
 			glActiveTexture(GL_TEXTURE8);
 			glBindTexture(GL_TEXTURE_2D_ARRAY, biome_texture);
 			compute_shader_->setInt("u_biomeMap", 8);
+		}
+
+		if (lighting_ubo != 0) {
+			glBindBufferBase(GL_UNIFORM_BUFFER, Constants::UboBinding::Lighting(), lighting_ubo);
 		}
 
 		// Dispatch enough groups to cover all particles

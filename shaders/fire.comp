@@ -188,7 +188,7 @@ layout(local_size_x = 256, local_size_y = 1, local_size_z = 1) in;
 void main() {
 	uint gid = gl_GlobalInvocationID.x;
 
-	if (gid >= particles.length() || u_num_emitters == 0) {
+	if (gid >= particles.length()) {
 		return;
 	}
 
@@ -204,10 +204,10 @@ void main() {
 
 		// If the emitter index is -1, this particle is inactive for fire effects,
 		// but we use it for ambient particles.
-		if (emitter_index == -1 || emitter_index >= u_num_emitters) {
+		if (emitter_index == -1 || (u_num_emitters > 0 && emitter_index >= u_num_emitters)) {
 			// Sparse ambient respawn logic
 			vec2 seed = vec2(float(gid), u_time);
-			if (u_num_chunks > 0 && rand(seed) < 0.0005) { // Very low probability for sparseness
+			if (u_num_chunks > 0 && rand(seed) < 0.002) { // Increased probability for visibility
 				int        chunk_idx = int(rand(seed.yx) * u_num_chunks) % u_num_chunks;
 				ChunkInfo  chunk = chunks[chunk_idx];
 				vec2       local_pos = vec2(rand(seed + 1.1), rand(seed + 2.2)) * chunk.size;
@@ -218,8 +218,8 @@ void main() {
 				vec2       biome_data = texture(u_biomeMap, vec3(uv, chunk.slice)).rg;
 				int        biome_idx = int(biome_data.x * 255.0 + 0.5);
 
-				// Only spawn in vegetated biomes (LushGrass=1, DryGrass=2, Forest=3, AlpineMeadow=4)
-				if (biome_idx >= 1 && biome_idx <= 4) {
+				// Spawn in most biomes (Sand=0 to AlpineMeadow=4)
+				if (biome_idx >= 0 && biome_idx <= 4) {
 					p.pos = vec4(pos.x, height + 1.0 + rand(seed + 3.3) * 2.0, pos.z, 10.0 + rand(seed + 4.4) * 5.0);
 					p.vel = vec4(rand3(seed + 5.5) * 0.5, 0.0);
 					p.style = 5; // Ambient

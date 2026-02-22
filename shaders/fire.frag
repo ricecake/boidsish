@@ -84,22 +84,25 @@ void main() {
 		} else if (v_style == 5) { // Ambient
 			if (nightFactor < 0.5) {
 				// --- Leaf (Daytime) ---
-				// Seasonal/Biome variety could be added here
-				vec3 leaf_green = vec3(0.15, 0.35, 0.1);
-				vec3 leaf_brown = vec3(0.4, 0.3, 0.1);
+				vec3 leaf_green = vec3(0.2, 0.5, 0.1);
+				vec3 leaf_brown = vec3(0.5, 0.4, 0.2);
 				color = mix(leaf_green, leaf_brown, sin(v_pos.x * 0.1 + v_pos.z * 0.1) * 0.5 + 0.5);
 
 				// Simple flutter effect
-				float flutter = sin(u_time * 5.0 + v_pos.x + v_pos.y) * 0.2 + 0.8;
+				float flutter = sin(u_time * 5.0 + v_pos.x + v_pos.y) * 0.3 + 0.7;
 				color *= flutter;
-				alpha = smoothstep(0.0, 0.5, v_lifetime) * 0.8;
+				// Add some highlights to make it more visible
+				color += vec3(0.1) * pow(flutter, 5.0);
+
+				alpha = shapeMask * smoothstep(0.0, 0.5, v_lifetime) * 0.9;
 			} else {
 				// --- Firefly (Nighttime) ---
 				vec3 firefly_color = vec3(0.8, 0.9, 0.2); // Yellow-Green
 				float twinkle = sin(u_time * 8.0 + float(gl_PrimitiveID)) * 0.5 + 0.5;
 				color = firefly_color * (1.0 + twinkle * 5.0); // Glow
-				alpha = (0.3 + twinkle * 0.7) * smoothstep(0.0, 0.5, v_lifetime);
+				alpha = shapeMask * (0.3 + twinkle * 0.7) * smoothstep(0.0, 0.5, v_lifetime);
 			}
+			color *= alpha; // Premultiplied alpha
 		} else if (v_style == 28) {
 			// --- Iridescence Effect ---
 			// Fresnel term for the base reflectivity
