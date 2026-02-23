@@ -26,6 +26,16 @@ namespace Boidsish {
 	}
 
 	void Mesh::setupMesh() {
+		// Ensure all textures have handles if bindless is supported
+		if (GLEW_ARB_bindless_texture) {
+			for (auto& texture : textures) {
+				if (texture.id != 0 && texture.handle == 0) {
+					texture.handle = glGetTextureHandleARB(texture.id);
+					glMakeTextureHandleResidentARB(texture.handle);
+				}
+			}
+		}
+
 		glGenVertexArrays(1, &VAO);
 		glGenBuffers(1, &VBO);
 		glGenBuffers(1, &EBO);
@@ -86,24 +96,39 @@ namespace Boidsish {
 		Shape::shader->setVec3("objectColor", diffuseColor);
 		Shape::shader->setFloat("objectAlpha", opacity);
 
-		for (unsigned int i = 0; i < textures.size(); i++) {
-			glActiveTexture(GL_TEXTURE0 + i); // active proper texture unit before binding
-			// retrieve texture number (the N in diffuse_textureN)
-			std::string number;
-			std::string name = textures[i].type;
-			if (name == "texture_diffuse")
-				number = std::to_string(diffuseNr++);
-			else if (name == "texture_specular")
-				number = std::to_string(specularNr++); // transfer unsigned int to string
-			else if (name == "texture_normal")
-				number = std::to_string(normalNr++); // transfer unsigned int to string
-			else if (name == "texture_height")
-				number = std::to_string(heightNr++); // transfer unsigned int to string
+		bool useBindless = false;
+		if (GLEW_ARB_bindless_texture) {
+			for (const auto& tex : textures) {
+				if (tex.type == "texture_diffuse" && tex.handle != 0) {
+					Shape::shader->setHandle("u_bindlessDiffuse", tex.handle);
+					Shape::shader->setBool("u_useBindless", true);
+					useBindless = true;
+					break;
+				}
+			}
+		}
 
-			// now set the sampler to the correct texture unit
-			Shape::shader->setInt((name + number).c_str(), i);
-			// and finally bind the texture
-			glBindTexture(GL_TEXTURE_2D, textures[i].id);
+		if (!useBindless) {
+			Shape::shader->setBool("u_useBindless", false);
+			for (unsigned int i = 0; i < textures.size(); i++) {
+				glActiveTexture(GL_TEXTURE0 + i); // active proper texture unit before binding
+				// retrieve texture number (the N in diffuse_textureN)
+				std::string number;
+				std::string name = textures[i].type;
+				if (name == "texture_diffuse")
+					number = std::to_string(diffuseNr++);
+				else if (name == "texture_specular")
+					number = std::to_string(specularNr++); // transfer unsigned int to string
+				else if (name == "texture_normal")
+					number = std::to_string(normalNr++); // transfer unsigned int to string
+				else if (name == "texture_height")
+					number = std::to_string(heightNr++); // transfer unsigned int to string
+
+				// now set the sampler to the correct texture unit
+				Shape::shader->setInt((name + number).c_str(), i);
+				// and finally bind the texture
+				glBindTexture(GL_TEXTURE_2D, textures[i].id);
+			}
 		}
 
 		// draw mesh
@@ -221,21 +246,37 @@ namespace Boidsish {
 		unsigned int specularNr = 1;
 		unsigned int normalNr = 1;
 		unsigned int heightNr = 1;
-		for (unsigned int i = 0; i < textures.size(); i++) {
-			glActiveTexture(GL_TEXTURE0 + i);
-			std::string number;
-			std::string name = textures[i].type;
-			if (name == "texture_diffuse")
-				number = std::to_string(diffuseNr++);
-			else if (name == "texture_specular")
-				number = std::to_string(specularNr++);
-			else if (name == "texture_normal")
-				number = std::to_string(normalNr++);
-			else if (name == "texture_height")
-				number = std::to_string(heightNr++);
 
-			shader.setInt((name + number).c_str(), i);
-			glBindTexture(GL_TEXTURE_2D, textures[i].id);
+		bool useBindless = false;
+		if (GLEW_ARB_bindless_texture) {
+			for (const auto& tex : textures) {
+				if (tex.type == "texture_diffuse" && tex.handle != 0) {
+					shader.setHandle("u_bindlessDiffuse", tex.handle);
+					shader.setBool("u_useBindless", true);
+					useBindless = true;
+					break;
+				}
+			}
+		}
+
+		if (!useBindless) {
+			shader.setBool("u_useBindless", false);
+			for (unsigned int i = 0; i < textures.size(); i++) {
+				glActiveTexture(GL_TEXTURE0 + i);
+				std::string number;
+				std::string name = textures[i].type;
+				if (name == "texture_diffuse")
+					number = std::to_string(diffuseNr++);
+				else if (name == "texture_specular")
+					number = std::to_string(specularNr++);
+				else if (name == "texture_normal")
+					number = std::to_string(normalNr++);
+				else if (name == "texture_height")
+					number = std::to_string(heightNr++);
+
+				shader.setInt((name + number).c_str(), i);
+				glBindTexture(GL_TEXTURE_2D, textures[i].id);
+			}
 		}
 	}
 

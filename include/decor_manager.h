@@ -51,6 +51,7 @@ namespace Boidsish {
 		unsigned int visible_ssbo = 0;    // Culled storage (per-frame)
 		unsigned int indirect_buffer = 0; // MDI commands
 		unsigned int count_buffer = 0;    // For culling atomic counter
+		unsigned int handle_ssbo = 0;     // For bindless handles
 
 		// Cached instance count (read back after compute, used during render)
 		unsigned int cached_count = 0;

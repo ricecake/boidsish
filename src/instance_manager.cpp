@@ -2,27 +2,48 @@
 
 #include <set>
 
+#include "asset_manager.h"
 #include "dot.h"
 #include "logger.h"
 #include "model.h"
+#include "profiler.h"
 #include <GL/glew.h>
 
 namespace Boidsish {
+
+	struct DrawElementsIndirectCommand {
+		unsigned int count;
+		unsigned int instanceCount;
+		unsigned int firstIndex;
+		unsigned int baseVertex;
+		unsigned int baseInstance;
+	};
 
 	// Helper to validate VAO ID
 	static bool IsValidVAO(GLuint vao) {
 		return vao != 0 && glIsVertexArray(vao) == GL_TRUE;
 	}
 
+	InstanceManager::InstanceManager() {}
+
 	InstanceManager::~InstanceManager() {
 		for (auto& [key, group] : m_instance_groups) {
-			if (group.instance_matrix_vbo_ != 0) {
-				glDeleteBuffers(1, &group.instance_matrix_vbo_);
-			}
-			if (group.instance_color_vbo_ != 0) {
-				glDeleteBuffers(1, &group.instance_color_vbo_);
-			}
+			if (group.indirect_buffer)
+				glDeleteBuffers(1, &group.indirect_buffer);
+			if (group.atomic_counter_buffer)
+				glDeleteBuffers(1, &group.atomic_counter_buffer);
+			if (group.handle_ssbo)
+				glDeleteBuffers(1, &group.handle_ssbo);
 		}
+		m_instance_groups.clear();
+	}
+
+	void InstanceManager::_InitializeShaders() {
+		if (m_culling_shader)
+			return;
+
+		m_culling_shader = std::make_unique<ComputeShader>("shaders/instance_culling.comp");
+		m_update_commands_shader = std::make_unique<ComputeShader>("shaders/instance_update_commands.comp");
 	}
 
 	void InstanceManager::AddInstance(std::shared_ptr<Shape> shape) {
@@ -31,6 +52,7 @@ namespace Boidsish {
 	}
 
 	void InstanceManager::Render(Shader& shader) {
+		PROJECT_PROFILE_SCOPE("InstanceManager::Render");
 		shader.use();
 		shader.setBool("is_instanced", true);
 
@@ -39,6 +61,7 @@ namespace Boidsish {
 				continue;
 			}
 
+			PROJECT_PROFILE_SCOPE(key.c_str());
 			// Determine type from the key prefix
 			if (key.starts_with("Model:")) {
 				RenderModelGroup(shader, group);
@@ -62,121 +85,139 @@ namespace Boidsish {
 	}
 
 	void InstanceManager::RenderModelGroup(Shader& shader, InstanceGroup& group) {
+		PROJECT_PROFILE_SCOPE("RenderModelGroup");
+		_InitializeShaders();
+
 		// Reset shader state at start of each model group to prevent state leakage
 		shader.setBool("useInstanceColor", false);
 		shader.setBool("usePBR", false);
 
-		// Build instance matrices
-		std::vector<glm::mat4> model_matrices;
-		model_matrices.reserve(group.shapes.size());
-		for (const auto& shape : group.shapes) {
-			model_matrices.push_back(shape->GetModelMatrix());
-		}
-
-		// Create/update matrix VBO
-		if (group.instance_matrix_vbo_ == 0) {
-			glGenBuffers(1, &group.instance_matrix_vbo_);
-		}
-
-		glBindBuffer(GL_ARRAY_BUFFER, group.instance_matrix_vbo_);
-		if (model_matrices.size() > group.matrix_capacity_) {
-			glBufferData(
-				GL_ARRAY_BUFFER,
-				model_matrices.size() * sizeof(glm::mat4),
-				&model_matrices[0],
-				GL_DYNAMIC_DRAW
-			);
-			group.matrix_capacity_ = model_matrices.size();
-		} else {
-			glBufferSubData(GL_ARRAY_BUFFER, 0, model_matrices.size() * sizeof(glm::mat4), &model_matrices[0]);
-		}
-
 		// Get the Model from the first shape to access mesh data
 		auto model = std::dynamic_pointer_cast<Model>(group.shapes[0]);
 		if (!model) {
-			glBindBuffer(GL_ARRAY_BUFFER, 0); // Clean up before early return
 			return;
 		}
 
+		// Create/update matrix buffers
+		if (!group.instance_matrix_buffer) {
+			group.instance_matrix_buffer =
+				std::make_unique<PersistentBuffer<glm::mat4>>(GL_SHADER_STORAGE_BUFFER, group.shapes.size());
+			group.visible_matrix_buffer =
+				std::make_unique<PersistentBuffer<glm::mat4>>(GL_SHADER_STORAGE_BUFFER, group.shapes.size());
+		} else {
+			group.instance_matrix_buffer->ensureCapacity(group.shapes.size());
+			group.visible_matrix_buffer->ensureCapacity(group.shapes.size());
+		}
+
+		// Build instance matrices directly into persistent buffer
+		for (size_t i = 0; i < group.shapes.size(); ++i) {
+			(*group.instance_matrix_buffer)[i] = group.shapes[i]->GetModelMatrix();
+		}
+
+		auto model_data = AssetManager::GetInstance().GetModelData(model->GetModelPath());
+		if (!model_data || !model_data->has_unified) {
+			return;
+		}
+
+		// Prepare MDI commands and bindless textures
+		std::vector<DrawElementsIndirectCommand> commands;
+		std::vector<uint64_t>                    diffuse_handles;
+		bool                                     any_texture = false;
+		unsigned int                             index_offset = 0;
+		unsigned int                             vertex_offset = 0;
+
+		for (const auto& mesh : model_data->meshes) {
+			DrawElementsIndirectCommand cmd;
+			cmd.count = (unsigned int)mesh.indices.size();
+			cmd.instanceCount = 0; // Filled by GPU
+			cmd.firstIndex = index_offset;
+			cmd.baseVertex = vertex_offset;
+			cmd.baseInstance = 0;
+			commands.push_back(cmd);
+
+			index_offset += (unsigned int)mesh.indices.size();
+			vertex_offset += (unsigned int)mesh.vertices.size();
+
+			uint64_t handle = 0;
+			if (GLEW_ARB_bindless_texture) {
+				for (const auto& tex : mesh.textures) {
+					if (tex.type == "texture_diffuse") {
+						handle = tex.handle;
+						any_texture = true;
+						break;
+					}
+				}
+			}
+			diffuse_handles.push_back(handle);
+		}
+
+		// Ensure indirect and atomic buffers are ready
+		if (group.indirect_buffer == 0) {
+			glGenBuffers(1, &group.indirect_buffer);
+			glGenBuffers(1, &group.atomic_counter_buffer);
+		}
+
+		glBindBuffer(GL_DRAW_INDIRECT_BUFFER, group.indirect_buffer);
+		glBufferData(GL_DRAW_INDIRECT_BUFFER, commands.size() * sizeof(DrawElementsIndirectCommand), commands.data(), GL_STREAM_DRAW);
+
+		glBindBuffer(GL_ATOMIC_COUNTER_BUFFER, group.atomic_counter_buffer);
+		unsigned int zero = 0;
+		glBufferData(GL_ATOMIC_COUNTER_BUFFER, sizeof(unsigned int), &zero, GL_STREAM_DRAW);
+
+		// 1. GPU Culling
+		m_culling_shader->use();
+		m_culling_shader->setInt("u_numInstances", (int)group.shapes.size());
+		m_culling_shader->setFloat("u_radius", model->GetBoundingRadius());
+		m_culling_shader->setBool("u_hasColors", false);
+		group.instance_matrix_buffer->bindBase(0);
+		group.visible_matrix_buffer->bindBase(1);
+		glBindBufferBase(GL_ATOMIC_COUNTER_BUFFER, 3, group.atomic_counter_buffer);
+		m_culling_shader->dispatch((group.shapes.size() + 63) / 64, 1, 1);
+		glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT | GL_ATOMIC_COUNTER_BARRIER_BIT);
+
+		// 2. Update indirect commands
+		m_update_commands_shader->use();
+		m_update_commands_shader->setInt("u_numCommands", (int)commands.size());
+		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 2, group.indirect_buffer);
+		glBindBufferBase(GL_ATOMIC_COUNTER_BUFFER, 3, group.atomic_counter_buffer);
+		m_update_commands_shader->dispatch(1, 1, 1);
+		glMemoryBarrier(GL_COMMAND_BARRIER_BIT | GL_SHADER_STORAGE_BARRIER_BIT);
+
+		// 3. Rendering
+		shader.use();
 		shader.setBool("isColossal", model->IsColossal());
 		shader.setFloat("objectAlpha", model->GetA());
-		shader.setBool("useInstanceColor", false); // Models use textures, not per-instance colors
+		shader.setBool("useInstanceColor", false);
+		shader.setBool("use_texture", any_texture);
+		shader.setBool("u_useBindless", GLEW_ARB_bindless_texture && any_texture);
+		shader.setBool("u_useMDI", true);
+		shader.setBool("useSSBOInstancing", true);
 
-		for (const auto& mesh : model->getMeshes()) {
-			// Skip meshes with invalid VAO - use glIsVertexArray for thorough check
-			if (!IsValidVAO(mesh.VAO)) {
-				logger::ERROR("Invalid VAO {} in model {} - skipping mesh", mesh.VAO, model->GetModelPath());
-				continue;
+		if (any_texture) {
+			if (group.handle_ssbo == 0) {
+				glGenBuffers(1, &group.handle_ssbo);
 			}
-
-			// Bind textures
-			unsigned int diffuseNr = 1;
-			unsigned int specularNr = 1;
-			bool         hasDiffuse = false;
-			for (unsigned int i = 0; i < mesh.textures.size(); i++) {
-				glActiveTexture(GL_TEXTURE0 + i);
-				std::string number;
-				std::string name = mesh.textures[i].type;
-				if (name == "texture_diffuse") {
-					number = std::to_string(diffuseNr++);
-					hasDiffuse = true;
-				} else if (name == "texture_specular")
-					number = std::to_string(specularNr++);
-
-				// Use correct uniform names (vis.frag doesn't use "material." prefix)
-				shader.setInt((name + number).c_str(), i);
-				glBindTexture(GL_TEXTURE_2D, mesh.textures[i].id);
-			}
-			shader.setBool("use_texture", hasDiffuse);
-			glActiveTexture(GL_TEXTURE0);
-
-			glBindVertexArray(mesh.VAO);
-
-			// Setup instance matrix attribute (location 3-6, mat4 takes 4 vec4 slots)
-			glBindBuffer(GL_ARRAY_BUFFER, group.instance_matrix_vbo_);
-			glEnableVertexAttribArray(3);
-			glVertexAttribPointer(3, 4, GL_FLOAT, GL_FALSE, sizeof(glm::mat4), (void*)0);
-			glEnableVertexAttribArray(4);
-			glVertexAttribPointer(4, 4, GL_FLOAT, GL_FALSE, sizeof(glm::mat4), (void*)(sizeof(glm::vec4)));
-			glEnableVertexAttribArray(5);
-			glVertexAttribPointer(5, 4, GL_FLOAT, GL_FALSE, sizeof(glm::mat4), (void*)(2 * sizeof(glm::vec4)));
-			glEnableVertexAttribArray(6);
-			glVertexAttribPointer(6, 4, GL_FLOAT, GL_FALSE, sizeof(glm::mat4), (void*)(3 * sizeof(glm::vec4)));
-
-			glVertexAttribDivisor(3, 1);
-			glVertexAttribDivisor(4, 1);
-			glVertexAttribDivisor(5, 1);
-			glVertexAttribDivisor(6, 1);
-
-			// Tell mesh to skip its own VAO/EBO binding if we already have it correctly bound
-			// (requires update to mesh.render_instanced to support this flag)
-			mesh.render_instanced(group.shapes.size(), false);
-
-			// Note: render_instanced(..., false) now DOES NOT unbind the VAO
-			// allowing us to clean up efficiently.
-
-			glVertexAttribDivisor(3, 0);
-			glVertexAttribDivisor(4, 0);
-			glVertexAttribDivisor(5, 0);
-			glVertexAttribDivisor(6, 0);
-
-			glDisableVertexAttribArray(3);
-			glDisableVertexAttribArray(4);
-			glDisableVertexAttribArray(5);
-			glDisableVertexAttribArray(6);
-			glBindVertexArray(0);
-			glBindBuffer(GL_ARRAY_BUFFER, 0); // Prevent buffer state leakage
-
-			// Clean up texture state to prevent leakage between meshes/models
-			for (unsigned int i = 0; i < mesh.textures.size(); i++) {
-				glActiveTexture(GL_TEXTURE0 + i);
-				glBindTexture(GL_TEXTURE_2D, 0);
-			}
-			glActiveTexture(GL_TEXTURE0);
+			glBindBuffer(GL_SHADER_STORAGE_BUFFER, group.handle_ssbo);
+			glBufferData(GL_SHADER_STORAGE_BUFFER, diffuse_handles.size() * sizeof(uint64_t), diffuse_handles.data(), GL_STREAM_DRAW);
+			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 11, group.handle_ssbo);
 		}
+
+		group.visible_matrix_buffer->bindBase(10);
+		glBindVertexArray(model_data->unified_vao);
+		glBindBuffer(GL_DRAW_INDIRECT_BUFFER, group.indirect_buffer);
+
+		glMultiDrawElementsIndirect(GL_TRIANGLES, GL_UNSIGNED_INT, nullptr, (GLsizei)commands.size(), 0);
+
+		// Cleanup
+		glBindVertexArray(0);
+		shader.setBool("u_useMDI", false);
+		shader.setBool("useSSBOInstancing", false);
 	}
 
 	void InstanceManager::RenderDotGroup(Shader& shader, InstanceGroup& group) {
+		PROJECT_PROFILE_SCOPE("RenderDotGroup");
+		_InitializeShaders();
+
 		// Ensure sphere VAO is initialized and valid before rendering
 		if (!IsValidVAO(Shape::sphere_vao_)) {
 			logger::ERROR("Invalid sphere VAO {} - skipping dot rendering", Shape::sphere_vao_);
@@ -187,85 +228,88 @@ namespace Boidsish {
 		shader.setBool("isColossal", false);
 		shader.setFloat("objectAlpha", 1.0f);
 
-		// Clear any stale texture bindings from model rendering
-		for (unsigned int i = 0; i < 4; i++) {
-			glActiveTexture(GL_TEXTURE0 + i);
-			glBindTexture(GL_TEXTURE_2D, 0);
-		}
-		glActiveTexture(GL_TEXTURE0);
-
-		// Build instance matrices and colors
-		std::vector<glm::mat4> model_matrices;
-		std::vector<glm::vec4> colors;
-		model_matrices.reserve(group.shapes.size());
-		colors.reserve(group.shapes.size());
-
-		for (const auto& shape : group.shapes) {
-			model_matrices.push_back(shape->GetModelMatrix());
-			colors.emplace_back(shape->GetR(), shape->GetG(), shape->GetB(), shape->GetA());
-		}
-
-		// Create/update matrix VBO
-		if (group.instance_matrix_vbo_ == 0) {
-			glGenBuffers(1, &group.instance_matrix_vbo_);
-		}
-
-		glBindBuffer(GL_ARRAY_BUFFER, group.instance_matrix_vbo_);
-		if (model_matrices.size() > group.matrix_capacity_) {
-			glBufferData(
-				GL_ARRAY_BUFFER,
-				model_matrices.size() * sizeof(glm::mat4),
-				&model_matrices[0],
-				GL_DYNAMIC_DRAW
-			);
-			group.matrix_capacity_ = model_matrices.size();
+		// Create/update matrix buffers
+		if (!group.instance_matrix_buffer) {
+			group.instance_matrix_buffer =
+				std::make_unique<PersistentBuffer<glm::mat4>>(GL_SHADER_STORAGE_BUFFER, group.shapes.size());
+			group.visible_matrix_buffer =
+				std::make_unique<PersistentBuffer<glm::mat4>>(GL_SHADER_STORAGE_BUFFER, group.shapes.size());
+			group.instance_color_buffer =
+				std::make_unique<PersistentBuffer<glm::vec4>>(GL_SHADER_STORAGE_BUFFER, group.shapes.size());
+			group.visible_color_buffer =
+				std::make_unique<PersistentBuffer<glm::vec4>>(GL_SHADER_STORAGE_BUFFER, group.shapes.size());
 		} else {
-			glBufferSubData(GL_ARRAY_BUFFER, 0, model_matrices.size() * sizeof(glm::mat4), &model_matrices[0]);
+			group.instance_matrix_buffer->ensureCapacity(group.shapes.size());
+			group.visible_matrix_buffer->ensureCapacity(group.shapes.size());
+			group.instance_color_buffer->ensureCapacity(group.shapes.size());
+			group.visible_color_buffer->ensureCapacity(group.shapes.size());
 		}
 
-		// Create/update color VBO
-		if (group.instance_color_vbo_ == 0) {
-			glGenBuffers(1, &group.instance_color_vbo_);
+		// Build instance matrices and colors directly into persistent buffers
+		for (size_t i = 0; i < group.shapes.size(); ++i) {
+			(*group.instance_matrix_buffer)[i] = group.shapes[i]->GetModelMatrix();
+			(*group.instance_color_buffer)[i] =
+				glm::vec4(group.shapes[i]->GetR(), group.shapes[i]->GetG(), group.shapes[i]->GetB(), group.shapes[i]->GetA());
 		}
 
-		glBindBuffer(GL_ARRAY_BUFFER, group.instance_color_vbo_);
-		if (colors.size() > group.color_capacity_) {
-			glBufferData(GL_ARRAY_BUFFER, colors.size() * sizeof(glm::vec4), &colors[0], GL_DYNAMIC_DRAW);
-			group.color_capacity_ = colors.size();
-		} else {
-			glBufferSubData(GL_ARRAY_BUFFER, 0, colors.size() * sizeof(glm::vec4), &colors[0]);
+		// Ensure indirect and atomic buffers are ready
+		if (group.indirect_buffer == 0) {
+			glGenBuffers(1, &group.indirect_buffer);
+			glGenBuffers(1, &group.atomic_counter_buffer);
 		}
 
-		// Get first Dot's properties for shared settings
+		DrawElementsIndirectCommand cmd;
+		cmd.count = (unsigned int)Shape::sphere_vertex_count_;
+		cmd.instanceCount = 0;
+		cmd.firstIndex = 0;
+		cmd.baseVertex = 0;
+		cmd.baseInstance = 0;
+
+		glBindBuffer(GL_DRAW_INDIRECT_BUFFER, group.indirect_buffer);
+		glBufferData(GL_DRAW_INDIRECT_BUFFER, sizeof(DrawElementsIndirectCommand), &cmd, GL_STREAM_DRAW);
+
+		glBindBuffer(GL_ATOMIC_COUNTER_BUFFER, group.atomic_counter_buffer);
+		unsigned int zero = 0;
+		glBufferData(GL_ATOMIC_COUNTER_BUFFER, sizeof(unsigned int), &zero, GL_STREAM_DRAW);
+
+		// 1. GPU Culling
+		m_culling_shader->use();
+		m_culling_shader->setInt("u_numInstances", (int)group.shapes.size());
+		m_culling_shader->setFloat("u_radius", group.shapes[0]->GetBoundingRadius());
+		m_culling_shader->setBool("u_hasColors", true);
+		group.instance_matrix_buffer->bindBase(0);
+		group.visible_matrix_buffer->bindBase(1);
+		glBindBufferBase(GL_ATOMIC_COUNTER_BUFFER, 3, group.atomic_counter_buffer);
+		group.instance_color_buffer->bindBase(4);
+		group.visible_color_buffer->bindBase(5);
+		m_culling_shader->dispatch((group.shapes.size() + 63) / 64, 1, 1);
+		glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT | GL_ATOMIC_COUNTER_BARRIER_BIT);
+
+		// 2. Update indirect command
+		m_update_commands_shader->use();
+		m_update_commands_shader->setInt("u_numCommands", 1);
+		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 2, group.indirect_buffer);
+		glBindBufferBase(GL_ATOMIC_COUNTER_BUFFER, 3, group.atomic_counter_buffer);
+		m_update_commands_shader->dispatch(1, 1, 1);
+		glMemoryBarrier(GL_COMMAND_BARRIER_BIT | GL_SHADER_STORAGE_BARRIER_BIT);
+
+		// 3. Rendering
 		auto dot = std::dynamic_pointer_cast<Dot>(group.shapes[0]);
-		if (!dot) {
-			glBindBuffer(GL_ARRAY_BUFFER, 0); // Clean up before early return
-			return;
-		}
-
+		shader.use();
 		shader.setBool("isColossal", false);
 		shader.setBool("useInstanceColor", true);
-
-		// Set PBR properties (using first dot's values - could be extended to per-instance)
 		shader.setBool("usePBR", dot->UsePBR());
 		if (dot->UsePBR()) {
 			shader.setFloat("roughness", dot->GetRoughness());
 			shader.setFloat("metallic", dot->GetMetallic());
 			shader.setFloat("ao", dot->GetAO());
 		}
+		shader.setBool("useSSBOInstancing", true);
 
-		// Use the shared sphere VAO
+		group.visible_matrix_buffer->bindBase(10);
+
 		glBindVertexArray(Shape::sphere_vao_);
-
-		// Validate EBO binding
-		GLint current_ebo = 0;
-		glGetIntegerv(GL_ELEMENT_ARRAY_BUFFER_BINDING, &current_ebo);
-		if (current_ebo == 0 && Shape::sphere_ebo_ != 0) {
-			glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, Shape::sphere_ebo_);
-		}
-
-		// Setup instance matrix attribute (location 3-6)
-		glBindBuffer(GL_ARRAY_BUFFER, group.instance_matrix_vbo_);
+		glBindBuffer(GL_ARRAY_BUFFER, group.visible_matrix_buffer->id());
 		glEnableVertexAttribArray(3);
 		glVertexAttribPointer(3, 4, GL_FLOAT, GL_FALSE, sizeof(glm::mat4), (void*)0);
 		glEnableVertexAttribArray(4);
@@ -274,36 +318,22 @@ namespace Boidsish {
 		glVertexAttribPointer(5, 4, GL_FLOAT, GL_FALSE, sizeof(glm::mat4), (void*)(2 * sizeof(glm::vec4)));
 		glEnableVertexAttribArray(6);
 		glVertexAttribPointer(6, 4, GL_FLOAT, GL_FALSE, sizeof(glm::mat4), (void*)(3 * sizeof(glm::vec4)));
-
 		glVertexAttribDivisor(3, 1);
 		glVertexAttribDivisor(4, 1);
 		glVertexAttribDivisor(5, 1);
 		glVertexAttribDivisor(6, 1);
 
-		// Setup instance color attribute (location 7)
-		glBindBuffer(GL_ARRAY_BUFFER, group.instance_color_vbo_);
+		glBindBuffer(GL_ARRAY_BUFFER, group.visible_color_buffer->id());
 		glEnableVertexAttribArray(7);
 		glVertexAttribPointer(7, 4, GL_FLOAT, GL_FALSE, sizeof(glm::vec4), (void*)0);
 		glVertexAttribDivisor(7, 1);
 
-		// Draw instanced spheres
-		glDrawElementsInstanced(GL_TRIANGLES, Shape::sphere_vertex_count_, GL_UNSIGNED_INT, 0, group.shapes.size());
+		glBindBuffer(GL_DRAW_INDIRECT_BUFFER, group.indirect_buffer);
+		glDrawElementsIndirect(GL_TRIANGLES, GL_UNSIGNED_INT, nullptr);
 
-		// Reset divisors
-		glVertexAttribDivisor(3, 0);
-		glVertexAttribDivisor(4, 0);
-		glVertexAttribDivisor(5, 0);
-		glVertexAttribDivisor(6, 0);
-		glVertexAttribDivisor(7, 0);
-
-		glDisableVertexAttribArray(3);
-		glDisableVertexAttribArray(4);
-		glDisableVertexAttribArray(5);
-		glDisableVertexAttribArray(6);
-		glDisableVertexAttribArray(7);
-
+		// Cleanup
 		glBindVertexArray(0);
-		glBindBuffer(GL_ARRAY_BUFFER, 0); // Prevent buffer state leakage
+		shader.setBool("useSSBOInstancing", false);
 		shader.setBool("useInstanceColor", false);
 	}
 
