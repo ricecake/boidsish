@@ -28,6 +28,7 @@ void main() {
 
     vec2 uv = (vec2(texel) + 0.5) / size;
 
+    // Mapping from UV to direction
     float azimuth = uv.x * 2.0 * PI;
     float adjV = (uv.y < 0.5) ? (1.0 - 2.0 * uv.y) : (2.0 * uv.y - 1.0);
     adjV = adjV * adjV;

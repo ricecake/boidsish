@@ -31,15 +31,15 @@ bool intersectSphere(vec3 ro, vec3 rd, float radius, out float t0, out float t1)
 }
 
 float getRayleighDensity(float h) {
-    return exp(-h / kRayleighScaleHeight);
+    return exp(-max(0.0, h) / kRayleighScaleHeight);
 }
 
 float getMieDensity(float h) {
-    return exp(-h / kMieScaleHeight);
+    return exp(-max(0.0, h) / kMieScaleHeight);
 }
 
 float getOzoneDensity(float h) {
-    return max(0.0, 1.0 - abs(h - 25.0) / 15.0);
+    return max(0.0, 1.0 - abs(max(0.0, h) - 25.0) / 15.0);
 }
 
 struct Sampling {
@@ -68,32 +68,19 @@ float rayleighPhase(float cosTheta) {
 float miePhase(float cosTheta) {
     float g = kMieG;
     float g2 = g * g;
-    return (1.0 - g2) / (4.0 * PI * pow(1.0 + g2 - 2.0 * g * cosTheta, 1.5));
+    return (1.0 - g2) / (4.0 * PI * pow(max(1e-4, 1.0 + g2 - 2.0 * g * cosTheta), 1.5));
 }
 
-// LUT mapping functions
+// LUT mapping functions - Simple Linear mapping for Transmittance to avoid precision issues
 vec2 transmittanceToUV(float r, float mu) {
-    float H = sqrt(kTopRadius * kTopRadius - kEarthRadius * kEarthRadius);
-    float rho = sqrt(max(0.0, r * r - kEarthRadius * kEarthRadius));
-    float d = mu < 0.0 ? (rho - sqrt(rho * rho - r * r + kEarthRadius * kEarthRadius)) : (rho + sqrt(rho * rho - r * r + kTopRadius * kTopRadius));
-    float d_min = kTopRadius - r;
-    float d_max = rho + H;
-    float u = (d - d_min) / (d_max - d_min);
-    float v = (r - kEarthRadius) / kAtmosphereHeight;
-    return vec2(u, v);
+    float x_mu = mu * 0.5 + 0.5;
+    float x_r = (r - kEarthRadius) / kAtmosphereHeight;
+    return vec2(x_mu, x_r);
 }
 
 void UVToTransmittance(vec2 uv, out float r, out float mu) {
-    float x_mu = uv.x;
-    float x_r = uv.y;
-    r = kEarthRadius + x_r * kAtmosphereHeight;
-    float rho = sqrt(max(0.0, r * r - kEarthRadius * kEarthRadius));
-    float H = sqrt(kTopRadius * kTopRadius - kEarthRadius * kEarthRadius);
-    float d_min = kTopRadius - r;
-    float d_max = rho + H;
-    float d = d_min + x_mu * (d_max - d_min);
-    mu = d == 0.0 ? 1.0 : (H * H - rho * rho - d * d) / (2.0 * r * d);
-    mu = clamp(mu, -1.0, 1.0);
+    mu = uv.x * 2.0 - 1.0;
+    r = kEarthRadius + uv.y * kAtmosphereHeight;
 }
 
 #endif
