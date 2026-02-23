@@ -79,7 +79,7 @@ void main() {
 	float current_arcadeWaveSpeed = use_ssbo ? uniforms_data[vUniformIndex].arcade_wave_speed : arcadeWaveSpeed;
 	bool  current_isColossal = use_ssbo ? (uniforms_data[vUniformIndex].is_colossal != 0) : isColossal;
 	bool  current_useSSBOInstancing = use_ssbo ? (uniforms_data[vUniformIndex].use_ssbo_instancing != 0)
-											   : useSSBOInstancing;
+                                              : useSSBOInstancing;
 
 	WindDeflection = 0.0;
 	vec3 displacedPos = aPos;

@@ -354,6 +354,9 @@ void main() {
 	finalMaterial.normalStrength = mix(biomeMat.normalStrength, cliffMat.normalStrength, cliffMask);
 
 	albedo = finalMaterial.albedo;
+	roughness = finalMaterial.roughness;
+	metallic = finalMaterial.metallic;
+
 	// ========================================================================
 	// Detail Variation
 	// ========================================================================
@@ -377,6 +380,9 @@ void main() {
 	float normalStrength = mix(biomes[lowIdx].params.y, biomes[highIdx].params.y, t);
 	float normalScale = mix(biomes[lowIdx].params.z, biomes[highIdx].params.z, t);
 
+	normalStrength = finalMaterial.normalStrength;
+	normalScale = finalMaterial.normalScale;
+
 	if (perturbFactor >= 0.1 && normalStrength > 0.0) {
 		float roughnessStrength = smoothstep(0.1, 1.0, perturbFactor) * normalStrength;
 		float roughnessScale = normalScale * 0.05;
@@ -396,6 +402,13 @@ void main() {
 
 		// Apply perturbation based on noise gradient
 		perturbedNorm = normalize(norm + (tangent * (n - nx) + bitangent * (n - nz)) * (roughnessStrength / eps));
+
+		// Toksvig Factor: Adjust roughness based on normal length after interpolation
+		float ft = length(perturbedNorm);
+		ft = clamp(ft, 0.01, 1.0);
+		float r2 = roughness * roughness;
+		float newGloss = r2 / (ft * (1.0 + (1.0 - ft) / r2));
+		roughness = sqrt(newGloss); // Feed this adjusted roughness into your BRDF
 	}
 
 	// Final Lighting
@@ -423,15 +436,19 @@ void main() {
 		vec3 magenta = vec3(1.0, 0.0, 1.0);
 
 		// Blend albedo towards dark purple/magenta for that 80s look
-		lighting = mix(lighting, lighting * vec3(0.4, 0.1, 0.5), nightFactor * 0.7);
+		vec3 newLighting = mix(lighting, lighting * vec3(0.4, 0.1, 0.5), nightFactor * 0.7);
 
 		// Add cyan grid with magenta glow
-		lighting += gridLine * cyan * nightFactor * 0.8;
-		lighting += gridGlowFactor * magenta * nightFactor * 0.4;
+		newLighting += gridLine * cyan * nightFactor * 0.8;
+		newLighting += gridGlowFactor * magenta * nightFactor * 0.4;
 
 		// Height-based neon pulse/glow
 		float heightGlow = smoothstep(0.0, 100.0 * worldScale, FragPos.y);
-		lighting += magenta * heightGlow * nightFactor * (0.8 + 0.2 * sin(time * 0.5));
+		newLighting += magenta * heightGlow * nightFactor * (0.8 + 0.2 * sin(time * 0.5));
+
+		float nightNoise = fastWorley3d(vec3(FragPos.xy / (25 * worldScale), time * 0.08));
+		float nightFade = smoothstep(fade_start - 10, fade_end, dist + nightNoise * 100.0);
+		lighting = mix(lighting, newLighting, nightFade);
 	}
 
 	// ========================================================================

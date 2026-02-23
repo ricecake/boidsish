@@ -207,9 +207,9 @@ namespace Boidsish {
 				}
 
 				Vector3                normal = (i == 0 && normals.empty())
-								   ? (std::abs(tangent.y) < 0.999f ? tangent.Cross(Vector3(0, 1, 0)).Normalized()
-				                                                   : tangent.Cross(Vector3(1, 0, 0)).Normalized())
-								   : TransportFrame(last_normal, last_tangent, tangent);
+                    ? (std::abs(tangent.y) < 0.999f ? tangent.Cross(Vector3(0, 1, 0)).Normalized()
+                                                    : tangent.Cross(Vector3(1, 0, 0)).Normalized())
+                    : TransportFrame(last_normal, last_tangent, tangent);
 				Vector3                binormal = tangent.Cross(normal).Normalized();
 				std::vector<glm::vec3> curr_rpos, curr_rnorm;
 				GenerateRing(temp_curve[i], normal, binormal, curr_rpos, curr_rnorm);

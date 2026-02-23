@@ -70,7 +70,7 @@ void main() {
 	int   c_textFadeMode = use_ssbo ? uniforms_data[vUniformIndex].text_fade_mode : textFadeMode;
 	bool  c_isArcadeText = use_ssbo ? (uniforms_data[vUniformIndex].is_arcade_text != 0) : isArcadeText;
 	bool  c_arcadeRainbowEnabled = use_ssbo ? (uniforms_data[vUniformIndex].arcade_rainbow_enabled != 0)
-											: arcadeRainbowEnabled;
+                                           : arcadeRainbowEnabled;
 	float c_arcadeRainbowSpeed = use_ssbo ? uniforms_data[vUniformIndex].arcade_rainbow_speed : arcadeRainbowSpeed;
 	float c_arcadeRainbowFrequency = use_ssbo ? uniforms_data[vUniformIndex].arcade_rainbow_frequency
 											  : arcadeRainbowFrequency;
