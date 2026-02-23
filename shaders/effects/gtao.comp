@@ -51,13 +51,6 @@ void main() {
 
 	vec2 uv = (vec2(pixel) + 0.5) / vec2(size);
 
-	// Checkerboard check - disabled for now to fix lines and ghosting
-	/*
-	if (((pixel.x + pixel.y) % 2) != (frameIndex % 2)) {
-		return;
-	}
-	*/
-
 	float depth = texture(gDepth, uv).r;
 	if (depth >= 0.99999) {
 		imageStore(outAO, pixel, vec4(1.0, 0.0, 0.0, 0.0));
