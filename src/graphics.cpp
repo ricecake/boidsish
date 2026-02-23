@@ -2547,8 +2547,8 @@ namespace Boidsish {
 			}
 		}
 
-		glm::mat4 view_matrix = impl->SetupMatrices();
-		glm::mat4 current_vp = impl->projection * view_matrix;
+		glm::mat4 view = impl->SetupMatrices();
+		glm::mat4 current_vp = impl->projection * view;
 
 		// Update Temporal UBO for motion blur and reprojection
 		TemporalUbo temporal_data;
