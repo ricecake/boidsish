@@ -7,6 +7,11 @@
 
 namespace Boidsish {
 
+	struct NoiseTextures {
+		GLuint noise;
+		GLuint curl;
+	};
+
 	class NoiseManager {
 	public:
 		NoiseManager();
@@ -19,7 +24,10 @@ namespace Boidsish {
 
 		GLuint GetCurlTexture() const { return curl_noise_texture_; }
 
+		NoiseTextures GetTextures() const { return {noise_texture_, curl_noise_texture_}; }
+
 		void Bind(GLuint unit) const;
+		void BindDefault(class ShaderBase& shader) const;
 
 	private:
 		std::unique_ptr<ComputeShader> compute_shader_;
