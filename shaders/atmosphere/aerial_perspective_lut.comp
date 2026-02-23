@@ -10,6 +10,7 @@ uniform vec3 u_sunDir;
 uniform vec3 u_cameraPos;
 
 #include "common.glsl"
+#include "../lighting.glsl"
 
 vec3 getTransmittance(float r, float mu) {
     vec2 uv = transmittanceToUV(r, mu);
@@ -60,7 +61,10 @@ void main() {
 
         vec3 multiScat = getMultiScattering(length(p), cosSun);
 
-        vec3 inScattered = (phase * Ts + multiScat * (s.rayleigh + s.mie)) * dt;
+        // Add ambient scattering to prevent pitch blackness at night
+        vec3 ambientScattering = ambient_light * (s.rayleigh + s.mie) * 0.1;
+
+        vec3 inScattered = (phase * Ts + multiScat * (s.rayleigh + s.mie) + ambientScattering) * dt;
         L += T * inScattered;
         T *= exp(-s.extinction * dt);
     }
