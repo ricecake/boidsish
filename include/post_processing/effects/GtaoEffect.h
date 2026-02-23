@@ -38,6 +38,10 @@ namespace Boidsish {
 
 			float GetRadius() const { return radius_; }
 
+			void SetSSDIIntensity(float intensity) { ssdi_intensity_ = intensity; }
+
+			float GetSSDIIntensity() const { return ssdi_intensity_; }
+
 		private:
 			void InitializeFBOs();
 
@@ -50,6 +54,7 @@ namespace Boidsish {
 
 			float intensity_ = 0.250f;
 			float radius_ = 1.0f;
+			float ssdi_intensity_ = 1.0f;
 			int   numSteps_ = 4;
 			int   numDirections_ = 2;
 		};
