@@ -47,7 +47,7 @@
 - **Fix 6**: Disable copy operations and implement move operations for `ShaderBase` (Rule of Five) to safely manage OpenGL program ownership.
 - **Fix 7**: Add `glDeleteBuffers(1, &frustum_ubo)` to `VisualizerImpl` destructor.
 - **Fix 8**: Add `glDeleteBuffers(1, &temporal_data_ubo)` to `VisualizerImpl` destructor to fix a memory leak.
-- **Fix 9**: Optimized trail vertex data passing by using raw pointers and references, avoiding per-frame `std::vector<float>` allocations and copies in the `Trail` and `TrailRenderManager` systems.
+- **Fix 9**: Optimized trail vertex data passing by using type-safe vector references, avoiding per-frame `std::vector` allocations and copies in the `Trail` and `TrailRenderManager` systems.
 - **Fix 10**: Improved `FireEffectManager` performance by implementing capacity tracking and `glBufferSubData` for the `terrain_chunk_buffer_`, reducing driver-side reallocation overhead.
 - **Fix 11**: Implemented a stale instance group cleanup mechanism in `InstanceManager` to prevent unbounded memory growth from OpenGL buffers when many unique model types are used over time.
 
@@ -61,7 +61,7 @@
 - **Issue Type**: Performance Anti-pattern (CPU Overhead)
 - **Location**: `src/trail.cpp`, `src/trail_render_manager.cpp`
 - **Evidence**: `GetInterleavedVertexData` returned a new `std::vector<float>` every time a trail was dirty, causing frequent heap allocations.
-- **Learning**: Direct access to existing buffer data (e.g., via `const std::vector<T>&` and raw pointers) is essential for high-frequency updates in rendering loops.
+- **Learning**: Direct access to existing buffer data (e.g., via `const std::vector<T>&`) is essential for high-frequency updates in rendering loops. Type safety should be maintained by sharing data structures (like `TrailVertex`) across related systems.
 
 ### 9. Suboptimal SSBO Updates in Fire System
 - **Issue Type**: Performance Anti-pattern (Pipeline Jitter)

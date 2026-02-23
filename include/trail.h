@@ -12,6 +12,12 @@
 
 namespace Boidsish {
 
+	struct TrailVertex {
+		glm::vec3 pos;
+		glm::vec3 normal;
+		glm::vec3 color;
+	};
+
 	class Trail {
 	public:
 		Trail(
@@ -41,12 +47,6 @@ namespace Boidsish {
 		void SetManagedByRenderManager(bool managed) { managed_by_render_manager_ = managed; }
 
 		bool IsManagedByRenderManager() const { return managed_by_render_manager_; }
-
-		struct TrailVertex {
-			glm::vec3 pos;
-			glm::vec3 normal;
-			glm::vec3 color;
-		};
 
 		// Get vertex data for batched rendering (interleaved pos + normal + color)
 		const std::vector<TrailVertex>& GetInterleavedVertexData() const { return mesh_vertices; }

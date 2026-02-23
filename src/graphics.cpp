@@ -1265,11 +1265,9 @@ namespace Boidsish {
 
 					// Update vertex data if dirty
 					if (trail->IsDirty()) {
-						const auto& vertex_data = trail->GetInterleavedVertexData();
 						trail_render_manager->UpdateTrailData(
 							trail_id,
-							reinterpret_cast<const float*>(vertex_data.data()),
-							vertex_data.size() * 9, // 9 floats per TrailVertex
+							trail->GetInterleavedVertexData(),
 							trail->GetHead(),
 							trail->GetTail(),
 							trail->GetVertexCount(),
