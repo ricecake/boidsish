@@ -91,11 +91,11 @@ namespace Boidsish {
 			float     cloud_thickness_ = 10.0f;
 			glm::vec3 cloud_color_ = glm::vec3(0.95f, 0.95f, 1.0f);
 
-			float rayleigh_scale_ = 1.0f;
+			float rayleigh_scale_ = 0.50f;
 			float mie_scale_ = 0.2f; // Reduced default to prevent "washed out" haze
-			float mie_anisotropy_ = 0.8f;
-			float multi_scat_scale_ = 0.5f; // Reduced default
-			float ambient_scat_scale_ = 0.1f;
+			float mie_anisotropy_ = 0.7f;
+			float multi_scat_scale_ = 0.025f; // Reduced default
+			float ambient_scat_scale_ = 0.35f;
 
 			GLuint transmittance_lut_ = 0;
 			GLuint multi_scattering_lut_ = 0;
