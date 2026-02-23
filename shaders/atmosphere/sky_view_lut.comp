@@ -73,7 +73,8 @@ void main() {
 
         vec3 multiScat = getMultiScattering(length(p), cosSun) * u_multiScatScale;
 
-        vec3 inScattered = (phase * u_sunRadiance * Ts + multiScat * (s.rayleigh + s.mie)) * dt;
+        // Correctly scale multi-scattering by sun radiance as it's proportional to it
+        vec3 inScattered = (phase * u_sunRadiance * Ts + multiScat * u_sunRadiance * (s.rayleigh + s.mie)) * dt;
         L += T * inScattered;
         T *= exp(-s.extinction * dt);
     }

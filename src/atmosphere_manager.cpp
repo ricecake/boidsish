@@ -143,13 +143,15 @@ namespace Boidsish {
 
         // Global factor based on sun elevation.
         // Atmosphere stays lit even slightly after sunset (civil twilight)
-        float horizonFactor = glm::clamp(sunElevation * 2.0f + 0.2f, 0.0f, 1.0f);
+        // We use a smoothstep to avoid the "flipping a switch" feeling
+        float horizonFactor = glm::smoothstep(-0.2f, 0.5f, sunElevation);
 
         // Multi-scattering and Rayleigh are the primary drivers of ambient sky light
         float ambientFactor = horizonFactor * (rayleighIrradiance + mieIrradiance) * _multiScatScale;
 
         // Night base ambient to ensure world isn't pitch black
-        glm::vec3 nightGlow = glm::vec3(0.015f, 0.02f, 0.03f) * _ambientScatScale * 10.0f;
+        // Slightly boosted to provide better visibility at night
+        glm::vec3 nightGlow = glm::vec3(0.02f, 0.025f, 0.035f) * _ambientScatScale * 10.0f;
 
         _ambientEstimate = sunColor * sunIntensity * ambientFactor + nightGlow;
     }

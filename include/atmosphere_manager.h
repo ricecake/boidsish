@@ -61,8 +61,8 @@ namespace Boidsish {
 
         bool _needsPrecompute = true;
 
-        float _rayleighScale = 1.0f;
-        float _mieScale = 0.2f;
+        float _rayleighScale = 1.2f;
+        float _mieScale = 0.1f;
         float _mieAnisotropy = 0.8f;
         float _multiScatScale = 0.5f;
         float _ambientScatScale = 0.1f;
