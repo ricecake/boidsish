@@ -46,3 +46,31 @@
 - **Fix 5**: Implement uniform location caching in `ShaderBase` using a `std::unordered_map` to minimize `glGetUniformLocation` overhead.
 - **Fix 6**: Disable copy operations and implement move operations for `ShaderBase` (Rule of Five) to safely manage OpenGL program ownership.
 - **Fix 7**: Add `glDeleteBuffers(1, &frustum_ubo)` to `VisualizerImpl` destructor.
+- **Fix 8**: Add `glDeleteBuffers(1, &temporal_data_ubo)` to `VisualizerImpl` destructor to fix a memory leak.
+- **Fix 9**: Optimized trail vertex data passing by using raw pointers and references, avoiding per-frame `std::vector<float>` allocations and copies in the `Trail` and `TrailRenderManager` systems.
+- **Fix 10**: Improved `FireEffectManager` performance by implementing capacity tracking and `glBufferSubData` for the `terrain_chunk_buffer_`, reducing driver-side reallocation overhead.
+- **Fix 11**: Implemented a stale instance group cleanup mechanism in `InstanceManager` to prevent unbounded memory growth from OpenGL buffers when many unique model types are used over time.
+
+### 7. Missing Resource Cleanup in Visualizer (Additional)
+- **Issue Type**: Memory Leak (OpenGL Buffer)
+- **Location**: `src/graphics.cpp`, `VisualizerImpl::~VisualizerImpl`
+- **Evidence**: `temporal_data_ubo` was created in the constructor but missing from the destructor.
+- **Learning**: Uniform Buffer Objects (UBOs) are just as susceptible to leaks as textures or VBOs; audits must cover all `glGenBuffers` calls.
+
+### 8. Excessive Memory Allocations in Trail System
+- **Issue Type**: Performance Anti-pattern (CPU Overhead)
+- **Location**: `src/trail.cpp`, `src/trail_render_manager.cpp`
+- **Evidence**: `GetInterleavedVertexData` returned a new `std::vector<float>` every time a trail was dirty, causing frequent heap allocations.
+- **Learning**: Direct access to existing buffer data (e.g., via `const std::vector<T>&` and raw pointers) is essential for high-frequency updates in rendering loops.
+
+### 9. Suboptimal SSBO Updates in Fire System
+- **Issue Type**: Performance Anti-pattern (Pipeline Jitter)
+- **Location**: `src/fire_effect_manager.cpp`
+- **Evidence**: `terrain_chunk_buffer_` was being reallocated via `glBufferData` every frame regardless of size changes.
+- **Learning**: Reallocating GPU buffers frequently can cause driver stalls. Reusing capacity with `glBufferSubData` provides more stable frame times.
+
+### 10. Unbounded Map Growth in Instance Manager
+- **Issue Type**: Memory Leak (Map/VBO Bloat)
+- **Location**: `src/instance_manager.cpp`
+- **Evidence**: `m_instance_groups` map grew indefinitely as new instance keys (e.g., model paths) were added, never cleaning up VBOs for models no longer in use.
+- **Learning**: Resource managers that use keys to cache GPU objects must implement eviction policies (like LRU or TTL) to remain deterministic over long sessions.

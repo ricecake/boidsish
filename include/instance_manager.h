@@ -14,7 +14,7 @@ namespace Boidsish {
 	public:
 		~InstanceManager();
 		void AddInstance(std::shared_ptr<Shape> shape);
-		void Render(Shader& shader);
+		void Render(Shader& shader, uint64_t frame_count = 0);
 
 	private:
 		struct InstanceGroup {
@@ -23,6 +23,7 @@ namespace Boidsish {
 			unsigned int                        instance_color_vbo_ = 0;
 			size_t                              matrix_capacity_ = 0;
 			size_t                              color_capacity_ = 0;
+			uint64_t                            last_frame_used_ = 0;
 		};
 
 		// Group by instance key (model path for Models, "Dot" for Dots, etc.)

@@ -1047,6 +1047,10 @@ namespace Boidsish {
 				glDeleteBuffers(1, &frustum_ubo);
 			}
 
+			if (temporal_data_ubo) {
+				glDeleteBuffers(1, &temporal_data_ubo);
+			}
+
 			if (window)
 				glfwDestroyWindow(window);
 			glfwTerminate();
@@ -1158,7 +1162,7 @@ namespace Boidsish {
 				}
 			}
 
-			instance_manager->Render(*shader);
+			instance_manager->Render(*shader, frame_count_);
 
 			// Render clones
 			clone_manager->Render(*shader);
@@ -1229,7 +1233,7 @@ namespace Boidsish {
 				}
 			}
 
-			instance_manager->Render(*shader);
+			instance_manager->Render(*shader, frame_count_);
 
 			// Restore state
 			glDepthMask(GL_TRUE);
@@ -1261,9 +1265,11 @@ namespace Boidsish {
 
 					// Update vertex data if dirty
 					if (trail->IsDirty()) {
+						const auto& vertex_data = trail->GetInterleavedVertexData();
 						trail_render_manager->UpdateTrailData(
 							trail_id,
-							trail->GetInterleavedVertexData(),
+							reinterpret_cast<const float*>(vertex_data.data()),
+							vertex_data.size() * 9, // 9 floats per TrailVertex
 							trail->GetHead(),
 							trail->GetTail(),
 							trail->GetVertexCount(),

@@ -1,6 +1,7 @@
 #include "trail_render_manager.h"
 
 #include <algorithm>
+#include <cstring>
 #include <iostream>
 
 #include "frustum.h"
@@ -125,14 +126,15 @@ namespace Boidsish {
 	}
 
 	void TrailRenderManager::UpdateTrailData(
-		int                       trail_id,
-		const std::vector<float>& vertices,
-		size_t                    head,
-		size_t                    tail,
-		size_t                    vertex_count,
-		bool                      is_full,
-		const glm::vec3&          min_bound,
-		const glm::vec3&          max_bound
+		int              trail_id,
+		const float*     data,
+		size_t           num_floats,
+		size_t           head,
+		size_t           tail,
+		size_t           vertex_count,
+		bool             is_full,
+		const glm::vec3& min_bound,
+		const glm::vec3& max_bound
 	) {
 		std::lock_guard<std::mutex> lock(mutex_);
 
@@ -144,7 +146,7 @@ namespace Boidsish {
 		auto& alloc = it->second;
 
 		// Bounds check: Ensure vertex data doesn't exceed allocated capacity
-		size_t incoming_vertex_count = vertices.size() / FLOATS_PER_VERTEX;
+		size_t incoming_vertex_count = num_floats / FLOATS_PER_VERTEX;
 		if (incoming_vertex_count > alloc.max_vertices) {
 			logger::ERROR(
 				"Trail {} update exceeded allocated capacity ({} > {}) - truncating",
@@ -152,12 +154,14 @@ namespace Boidsish {
 				incoming_vertex_count,
 				alloc.max_vertices
 			);
-			std::vector<float> truncated_vertices = vertices;
-			truncated_vertices.resize(alloc.max_vertices * FLOATS_PER_VERTEX);
-			pending_vertex_data_[trail_id] = std::move(truncated_vertices);
-		} else {
-			pending_vertex_data_[trail_id] = vertices;
+			num_floats = alloc.max_vertices * FLOATS_PER_VERTEX;
 		}
+
+		auto& pending = pending_vertex_data_[trail_id];
+		if (pending.size() != num_floats) {
+			pending.resize(num_floats);
+		}
+		std::memcpy(pending.data(), data, num_floats * sizeof(float));
 
 		alloc.head = std::min(head, alloc.max_vertices - 1);
 		alloc.tail = std::min(tail, alloc.max_vertices - 1);

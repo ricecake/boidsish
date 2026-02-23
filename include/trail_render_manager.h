@@ -71,21 +71,23 @@ namespace Boidsish {
 		 * @brief Update trail vertex data.
 		 *
 		 * @param trail_id The trail to update
-		 * @param vertices Vertex data (position + normal + color per vertex)
+		 * @param data Raw vertex data (position + normal + color per vertex)
+		 * @param num_floats Number of floats in the data array
 		 * @param head Ring buffer head index
 		 * @param tail Ring buffer tail index
 		 * @param vertex_count Number of active vertices
 		 * @param is_full Whether the ring buffer has wrapped
 		 */
 		void UpdateTrailData(
-			int                       trail_id,
-			const std::vector<float>& vertices,
-			size_t                    head,
-			size_t                    tail,
-			size_t                    vertex_count,
-			bool                      is_full,
-			const glm::vec3&          min_bound,
-			const glm::vec3&          max_bound
+			int              trail_id,
+			const float*     data,
+			size_t           num_floats,
+			size_t           head,
+			size_t           tail,
+			size_t           vertex_count,
+			bool             is_full,
+			const glm::vec3& min_bound,
+			const glm::vec3& max_bound
 		);
 
 		/**
