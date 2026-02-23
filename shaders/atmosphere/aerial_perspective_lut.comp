@@ -7,7 +7,11 @@ uniform sampler2D u_transmittanceLUT;
 uniform sampler2D u_multiScatteringLUT;
 
 uniform vec3 u_sunDir;
+uniform vec3 u_sunRadiance;
 uniform vec3 u_cameraPos;
+
+uniform float u_multiScatScale;
+uniform float u_ambientScatScale;
 
 #include "common.glsl"
 #include "../lighting.glsl"
@@ -59,12 +63,12 @@ void main() {
         float cosTheta = dot(rd, u_sunDir);
         vec3 phase = s.rayleigh * rayleighPhase(cosTheta) + s.mie * miePhase(cosTheta);
 
-        vec3 multiScat = getMultiScattering(length(p), cosSun);
+        vec3 multiScat = getMultiScattering(length(p), cosSun) * u_multiScatScale;
 
         // Add ambient scattering to prevent pitch blackness at night
-        vec3 ambientScattering = ambient_light * (s.rayleigh + s.mie) * 0.1;
+        vec3 ambientScattering = ambient_light * (s.rayleigh + s.mie) * u_ambientScatScale;
 
-        vec3 inScattered = (phase * Ts + multiScat * (s.rayleigh + s.mie) + ambientScattering) * dt;
+        vec3 inScattered = (phase * u_sunRadiance * Ts + multiScat * (s.rayleigh + s.mie) + ambientScattering) * dt;
         L += T * inScattered;
         T *= exp(-s.extinction * dt);
     }
