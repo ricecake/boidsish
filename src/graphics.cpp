@@ -41,6 +41,7 @@
 #include "post_processing/effects/GtaoEffect.h"
 #include "post_processing/effects/NegativeEffect.h"
 #include "post_processing/effects/OpticalFlowEffect.h"
+#include "post_processing/effects/RadianceCascadesEffect.h"
 #include "post_processing/effects/SdfVolumeEffect.h"
 #include "post_processing/effects/SsaoEffect.h"
 #include "post_processing/effects/StrobeEffect.h"
@@ -872,6 +873,10 @@ namespace Boidsish {
 				auto bloom_effect = std::make_shared<PostProcessing::BloomEffect>(render_width, render_height);
 				bloom_effect->SetEnabled(true);
 				post_processing_manager_->AddEffect(bloom_effect);
+
+				auto radiance_cascades_effect = std::make_shared<PostProcessing::RadianceCascadesEffect>();
+				radiance_cascades_effect->SetEnabled(false);
+				post_processing_manager_->AddEffect(radiance_cascades_effect);
 
 				auto sdf_volume_effect = std::make_shared<PostProcessing::SdfVolumeEffect>();
 				sdf_volume_effect->SetEnabled(true);
