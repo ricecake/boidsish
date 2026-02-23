@@ -64,16 +64,26 @@ namespace Boidsish {
         _aerialPerspectiveShader = std::make_unique<ComputeShader>("shaders/atmosphere/aerial_perspective_lut.comp");
     }
 
-    void AtmosphereManager::Update(const glm::vec3& sunDir, const glm::vec3& cameraPos) {
+    void AtmosphereManager::Update(
+        const glm::vec3& sunDir,
+        const glm::vec3& sunColor,
+        float            sunIntensity,
+        const glm::vec3& cameraPos
+    ) {
         if (_needsPrecompute) {
             // Dispatch Transmittance
             _transmittanceShader->use();
+            _transmittanceShader->setFloat("u_rayleighScale", _rayleighScale);
+            _transmittanceShader->setFloat("u_mieScale", _mieScale);
             glBindImageTexture(0, _transmittanceLUT, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA32F);
             glDispatchCompute(256 / 8, 64 / 8, 1);
             glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
 
             // Dispatch MultiScattering
             _multiScatteringShader->use();
+            _multiScatteringShader->setFloat("u_rayleighScale", _rayleighScale);
+            _multiScatteringShader->setFloat("u_mieScale", _mieScale);
+            _multiScatteringShader->setFloat("u_mieAnisotropy", _mieAnisotropy);
             glBindImageTexture(0, _multiScatteringLUT, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA32F);
             glActiveTexture(GL_TEXTURE1);
             glBindTexture(GL_TEXTURE_2D, _transmittanceLUT);
@@ -94,7 +104,12 @@ namespace Boidsish {
         _skyViewShader->setInt("u_transmittanceLUT", 1);
         _skyViewShader->setInt("u_multiScatteringLUT", 2);
         _skyViewShader->setVec3("u_sunDir", sunDir);
+        _skyViewShader->setVec3("u_sunRadiance", sunColor * sunIntensity);
         _skyViewShader->setVec3("u_cameraPos", cameraPos);
+        _skyViewShader->setFloat("u_rayleighScale", _rayleighScale);
+        _skyViewShader->setFloat("u_mieScale", _mieScale);
+        _skyViewShader->setFloat("u_mieAnisotropy", _mieAnisotropy);
+        _skyViewShader->setFloat("u_multiScatScale", _multiScatScale);
         glDispatchCompute(192 / 8, (108 + 7) / 8, 1);
         glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
 
@@ -108,7 +123,13 @@ namespace Boidsish {
         _aerialPerspectiveShader->setInt("u_transmittanceLUT", 1);
         _aerialPerspectiveShader->setInt("u_multiScatteringLUT", 2);
         _aerialPerspectiveShader->setVec3("u_sunDir", sunDir);
+        _aerialPerspectiveShader->setVec3("u_sunRadiance", sunColor * sunIntensity);
         _aerialPerspectiveShader->setVec3("u_cameraPos", cameraPos);
+        _aerialPerspectiveShader->setFloat("u_rayleighScale", _rayleighScale);
+        _aerialPerspectiveShader->setFloat("u_mieScale", _mieScale);
+        _aerialPerspectiveShader->setFloat("u_mieAnisotropy", _mieAnisotropy);
+        _aerialPerspectiveShader->setFloat("u_multiScatScale", _multiScatScale);
+        _aerialPerspectiveShader->setFloat("u_ambientScatScale", _ambientScatScale);
         glDispatchCompute(32 / 4, 32 / 4, 32 / 4);
         glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
     }

@@ -1367,6 +1367,14 @@ namespace Boidsish {
 				sky_shader->setInt("u_transmittanceLUT", 10);
 				sky_shader->setInt("u_multiScatteringLUT", 11);
 				sky_shader->setInt("u_skyViewLUT", 12);
+
+				glm::vec3 sun_color = glm::vec3(1.0f);
+				float     sun_intensity = 1.0f;
+				if (!light_manager.GetLights().empty()) {
+					sun_color = light_manager.GetLights()[0].color;
+					sun_intensity = light_manager.GetLights()[0].intensity;
+				}
+				sky_shader->setVec3("u_sunRadiance", sun_color * sun_intensity * 20.0f);
 			}
 
 			glBindVertexArray(sky_vao);
@@ -2197,6 +2205,9 @@ namespace Boidsish {
 		// Update atmosphere LUTs
 		if (impl->atmosphere_manager) {
 			glm::vec3 sun_dir = glm::normalize(glm::vec3(0.0f, 1.0f, 0.0f)); // Default
+			glm::vec3 sun_color = glm::vec3(1.0f);
+			float     sun_intensity = 1.0f;
+
 			if (!impl->light_manager.GetLights().empty()) {
 				const auto& main_light = impl->light_manager.GetLights()[0];
 				if (main_light.type == DIRECTIONAL_LIGHT) {
@@ -2204,8 +2215,22 @@ namespace Boidsish {
 				} else {
 					sun_dir = glm::normalize(main_light.position - impl->camera.pos());
 				}
+				sun_color = main_light.color;
+				sun_intensity = main_light.intensity;
 			}
-			impl->atmosphere_manager->Update(sun_dir, impl->camera.pos());
+
+			if (impl->atmosphere_effect) {
+				impl->atmosphere_manager->SetRayleighScale(impl->atmosphere_effect->GetRayleighScale());
+				impl->atmosphere_manager->SetMieScale(impl->atmosphere_effect->GetMieScale());
+				impl->atmosphere_manager->SetMieAnisotropy(impl->atmosphere_effect->GetMieAnisotropy());
+				impl->atmosphere_manager->SetMultiScatteringScale(impl->atmosphere_effect->GetMultiScatScale());
+				impl->atmosphere_manager->SetAmbientScatteringScale(impl->atmosphere_effect->GetAmbientScatScale());
+			}
+
+			// We multiply sun intensity by a large factor for the atmosphere model
+			// Standard directional light 1.0 is too dim for physical scattering.
+			// 20.0 is a reasonable physical-ish sun radiance.
+			impl->atmosphere_manager->Update(sun_dir, sun_color, sun_intensity * 20.0f, impl->camera.pos());
 
 			if (impl->atmosphere_effect) {
 				impl->atmosphere_effect->SetAtmosphereLUTs(
