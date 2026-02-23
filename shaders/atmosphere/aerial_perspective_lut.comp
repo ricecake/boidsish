@@ -66,7 +66,10 @@ void main() {
         vec3 multiScat = getMultiScattering(length(p), cosSun) * u_multiScatScale;
 
         // Add ambient scattering to prevent pitch blackness at night
-        vec3 ambientScattering = ambient_light * (s.rayleigh + s.mie) * u_ambientScatScale;
+        // We use a blend of the UBO ambient light and a fixed physical base radiance
+        vec3 baseAmbientRadiance = vec3(0.015, 0.02, 0.04) * u_ambientScatScale * 5.0;
+        vec3 effectiveAmbient = max(ambient_light, baseAmbientRadiance);
+        vec3 ambientScattering = effectiveAmbient * (s.rayleigh + s.mie) * u_ambientScatScale;
 
         vec3 inScattered = (phase * u_sunRadiance * Ts + multiScat * (s.rayleigh + s.mie) + ambientScattering) * dt;
         L += T * inScattered;

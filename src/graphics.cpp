@@ -2533,6 +2533,10 @@ namespace Boidsish {
 			// 20.0 is a reasonable physical-ish sun radiance.
 			impl->atmosphere_manager->Update(sun_dir, sun_color, sun_intensity * 20.0f, impl->camera.pos());
 
+			// Sync ambient light from atmosphere to ensure decor and world match
+			glm::vec3 estimated_ambient = impl->atmosphere_manager->GetAmbientEstimate();
+			impl->light_manager.SetAmbientLight(estimated_ambient);
+
 			if (impl->atmosphere_effect) {
 				impl->atmosphere_effect->SetAtmosphereLUTs(
 					impl->atmosphere_manager->GetTransmittanceLUT(),

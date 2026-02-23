@@ -18,6 +18,8 @@ namespace Boidsish {
         void Initialize();
         void Update(const glm::vec3& sunDir, const glm::vec3& sunColor, float sunIntensity, const glm::vec3& cameraPos);
 
+        glm::vec3 GetAmbientEstimate() const { return _ambientEstimate; }
+
         GLuint GetTransmittanceLUT() const { return _transmittanceLUT; }
         GLuint GetMultiScatteringLUT() const { return _multiScatteringLUT; }
         GLuint GetSkyViewLUT() const { return _skyViewLUT; }
@@ -34,7 +36,9 @@ namespace Boidsish {
             if (s != _mieScale) { _mieScale = s; _needsPrecompute = true; }
         }
         float GetMieScale() const { return _mieScale; }
-        void SetMieAnisotropy(float g) { _mieAnisotropy = g; }
+        void SetMieAnisotropy(float g) {
+            if (g != _mieAnisotropy) { _mieAnisotropy = g; _needsPrecompute = true; }
+        }
         float GetMieAnisotropy() const { return _mieAnisotropy; }
         void SetMultiScatteringScale(float s) { _multiScatScale = s; }
         float GetMultiScatteringScale() const { return _multiScatScale; }
@@ -58,10 +62,12 @@ namespace Boidsish {
         bool _needsPrecompute = true;
 
         float _rayleighScale = 1.0f;
-        float _mieScale = 1.0f;
+        float _mieScale = 0.2f;
         float _mieAnisotropy = 0.8f;
-        float _multiScatScale = 1.0f;
+        float _multiScatScale = 0.5f;
         float _ambientScatScale = 0.1f;
+
+        glm::vec3 _ambientEstimate = glm::vec3(0.0f);
     };
 
 } // namespace Boidsish
