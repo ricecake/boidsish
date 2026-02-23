@@ -100,7 +100,7 @@ namespace Boidsish {
 
         // Dispatch AerialPerspective
         _aerialPerspectiveShader->use();
-        glBindImageTexture(0, _aerialPerspectiveLUT, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA32F);
+        glBindImageTexture(0, _aerialPerspectiveLUT, 0, GL_TRUE, 0, GL_WRITE_ONLY, GL_RGBA32F);
         glActiveTexture(GL_TEXTURE1);
         glBindTexture(GL_TEXTURE_2D, _transmittanceLUT);
         glActiveTexture(GL_TEXTURE2);
