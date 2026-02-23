@@ -18,7 +18,8 @@ vec3 calculateTransmittance(float r, float mu) {
     // Check if it intersects the planet
     float p0, p1;
     if (intersectSphere(ro, rd, kEarthRadius, p0, p1)) {
-        if (p0 > 0.0) t_max = p0;
+        // If there is any positive intersection with the earth, the path is blocked
+        if (p0 > 0.01 || p1 > 0.01) return vec3(0.0);
     }
 
     const int kSteps = 40;
