@@ -84,7 +84,7 @@ void generateBiomeMap(const Boidsish::TerrainGenerator& generator, int width, in
 			float worldX = static_cast<float>(x);
 			float worldZ = static_cast<float>(y);
 
-			float     control_value = generator.getBiomeControlValue(worldX, worldZ);
+			float     control_value = generator.GetBiomeControlValue(worldX, worldZ);
 			int       biome_index = static_cast<int>(floor(control_value * 6));
 			glm::vec3 color = biome_colors[biome_index];
 

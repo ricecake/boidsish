@@ -72,7 +72,7 @@ std::vector<glm::vec2> GetNearbyTrees(const glm::vec3& cameraPos, std::shared_pt
 						if (height < minHeight * worldScale || height > maxHeight * worldScale) continue;
 
 						// Biome check
-						float controlValue = terrainGen->getBiomeControlValue(worldPos.x / worldScale, worldPos.y / worldScale);
+						float controlValue = terrainGen->GetBiomeControlValue(worldPos.x / worldScale, worldPos.y / worldScale);
 
 						bool biomeMatch = false;
 						if (typeIdx == 0 && controlValue > 0.1f && controlValue < 0.6f) biomeMatch = true;

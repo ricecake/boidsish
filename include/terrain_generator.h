@@ -113,7 +113,7 @@ namespace Boidsish {
 		glm::vec3              getPathDataFlat(float x, float z) const;
 		glm::vec3              getPathDataFlat(glm::vec2 pos) const;
 
-		float     getBiomeControlValue(float x, float z) const;
+		float     GetBiomeControlValue(float x, float z) const override;
 		glm::vec2 getDomainWarp(float x, float z) const;
 
 		// ========== Cache-Preferring Terrain Queries ==========
