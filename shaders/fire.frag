@@ -112,18 +112,25 @@ void main() {
 				color *= flutter;
 				alpha = smoothstep(0.0, 0.5, v_lifetime) * 0.95;
 			} else if (sub_style == 2) { // Bubble
-				// Use iridescence logic for bubbles
-				float fresnel = pow(1.0 - distSq * 4.0, 5.0);
+				// Use local spherical normal for better visuals
+				vec3 n;
+				n.xy = circ * 2.0;
+				float magSq = dot(n.xy, n.xy);
+				n.z = sqrt(max(0.0, 1.0 - magSq));
+
+				float fresnel = pow(max(0.0, 1.0 - n.z), 3.0);
 				float swirl = sin(v_lifetime * 2.0 + gl_PointCoord.y * 5.0) * 0.5 + 0.5;
 				vec3 iridescent_color = vec3(
 					sin(swirl * 5.0) * 0.5 + 0.5,
 					sin(swirl * 5.0 + 2.0) * 0.5 + 0.5,
 					sin(swirl * 5.0 + 4.0) * 0.5 + 0.5
 				);
-				vec3 reflect_dir = reflect(-view_pos.xyz, vec3(0,1,0)); // Simple reflection
-				float spec = pow(max(dot(normalize(-view_pos.xyz), reflect_dir), 0.0), 32.0);
+				// Better specular highlight
+				vec3 l = normalize(vec3(0.5, 0.5, 1.0)); // Fake light dir in billboard space
+				vec3 h = normalize(l + vec3(0,0,1)); // Halfway between light and view (0,0,1)
+				float spec = pow(max(dot(n, h), 0.0), 64.0);
 
-				color = mix(iridescent_color, vec3(1.0), 0.3) + spec;
+				color = mix(iridescent_color, vec3(1.0), fresnel * 0.5 + 0.2) + spec;
 				alpha = 0.6 * smoothstep(0.0, 0.5, v_lifetime);
 			} else if (sub_style == 3) { // Snowflake
 				color = vec3(0.9, 0.95, 1.0) * (1.2 + 0.3 * sin(u_time * 2.0 + v_pos.x));
@@ -138,10 +145,10 @@ void main() {
 		} else if (v_style == 28) {
 			// --- Iridescence Effect ---
 			// Fresnel term for the base reflectivity
-			float fresnel = pow(1.0 - distSq, 5.0);
+			float fresnel = pow(max(0.0, 1.0 - distSq * 4.0), 5.0);
 
 			// Use view angle to create a color shift
-			float angle_factor = 1.0 - distSq;
+			float angle_factor = clamp(1.0 - distSq * 4.0, 0.0, 1.0);
 			angle_factor = pow(angle_factor, 2.0);
 
 			// Use time and fragment position to create a swirling effect
@@ -155,8 +162,10 @@ void main() {
 			);
 
 			// Add a strong specular highlight
-			vec3  reflect_dir = reflect(-view_pos.xyz + vec3(0, 20, 0), vec3(0,1,0));
-			float spec = pow(max(dot(view_pos.xyz, reflect_dir), 0.0), 128.0);
+			float v_len = length(view_pos.xyz);
+			vec3 view_dir = v_len > 0.001 ? normalize(-view_pos.xyz) : vec3(0, 0, 1);
+			vec3 r = reflect(-view_dir, vec3(0, 1, 0)); // Simplified view-space reflection
+			float spec = pow(max(dot(view_dir, r), 0.0), 64.0);
 			vec3  specular = 1.5 * spec * vec3(1.0); // white highlight
 
 			color = mix(iridescent_color, vec3(1.0), fresnel) + specular;
