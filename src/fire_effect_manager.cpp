@@ -71,11 +71,29 @@ namespace Boidsish {
 		if (frustum_idx != GL_INVALID_INDEX) {
 			glUniformBlockBinding(render_shader_->ID, frustum_idx, Constants::UboBinding::FrustumData());
 		}
+		GLuint lighting_idx = glGetUniformBlockIndex(render_shader_->ID, "Lighting");
+		if (lighting_idx != GL_INVALID_INDEX) {
+			glUniformBlockBinding(render_shader_->ID, lighting_idx, Constants::UboBinding::Lighting());
+		}
+		GLuint temporal_idx = glGetUniformBlockIndex(render_shader_->ID, "TemporalData");
+		if (temporal_idx != GL_INVALID_INDEX) {
+			glUniformBlockBinding(render_shader_->ID, temporal_idx, Constants::UboBinding::TemporalData());
+		}
+
+		// Set up UBO bindings for the compute shader
+		compute_shader_->use();
+		GLuint comp_lighting_idx = glGetUniformBlockIndex(compute_shader_->ID, "Lighting");
+		if (comp_lighting_idx != GL_INVALID_INDEX) {
+			glUniformBlockBinding(compute_shader_->ID, comp_lighting_idx, Constants::UboBinding::Lighting());
+		}
 
 		// Create buffers
 		glGenBuffers(1, &particle_buffer_);
 		glBindBuffer(GL_SHADER_STORAGE_BUFFER, particle_buffer_);
 		glBufferData(GL_SHADER_STORAGE_BUFFER, kMaxParticles * sizeof(Particle), nullptr, GL_DYNAMIC_DRAW);
+		// Zero out the buffer to ensure lifetimes start at 0
+		std::vector<uint8_t> zero_data(kMaxParticles * sizeof(Particle), 0);
+		glBufferSubData(GL_SHADER_STORAGE_BUFFER, 0, zero_data.size(), zero_data.data());
 
 		glGenBuffers(1, &emitter_buffer_);
 		glBindBuffer(GL_SHADER_STORAGE_BUFFER, emitter_buffer_);
@@ -157,7 +175,9 @@ namespace Boidsish {
 		float                         time,
 		const std::vector<glm::vec4>& chunk_info,
 		GLuint                        heightmap_texture,
-		GLuint                        curl_noise_texture
+		GLuint                        curl_noise_texture,
+		GLuint                        biome_texture,
+		GLuint                        lighting_ubo
 	) {
 		std::lock_guard<std::mutex> lock(mutex_);
 		if (!initialized_ || !compute_shader_ || !compute_shader_->isValid()) {
@@ -205,19 +225,17 @@ namespace Boidsish {
 			}
 		}
 
-		if (emitters.empty()) {
-			return; // No active emitters, nothing to compute
-		}
-
 		// Update emitter buffer, only reallocating if capacity exceeded
 		glBindBuffer(GL_SHADER_STORAGE_BUFFER, emitter_buffer_);
-		if (emitters.size() > emitter_buffer_capacity_) {
+		if (!emitters.empty() && emitters.size() > emitter_buffer_capacity_) {
 			// Grow buffer with headroom to avoid frequent reallocations
 			size_t new_capacity = std::max(emitters.size() * 2, emitter_buffer_capacity_);
 			glBufferData(GL_SHADER_STORAGE_BUFFER, new_capacity * sizeof(Emitter), nullptr, GL_DYNAMIC_DRAW);
 			emitter_buffer_capacity_ = new_capacity;
 		}
-		glBufferSubData(GL_SHADER_STORAGE_BUFFER, 0, emitters.size() * sizeof(Emitter), emitters.data());
+		if (!emitters.empty()) {
+			glBufferSubData(GL_SHADER_STORAGE_BUFFER, 0, emitters.size() * sizeof(Emitter), emitters.data());
+		}
 
 		glBindBuffer(GL_SHADER_STORAGE_BUFFER, indirection_buffer_);
 		glBufferSubData(
@@ -261,6 +279,16 @@ namespace Boidsish {
 			compute_shader_->setInt("u_curlTexture", 6);
 		}
 
+		if (biome_texture != 0) {
+			glActiveTexture(GL_TEXTURE8);
+			glBindTexture(GL_TEXTURE_2D_ARRAY, biome_texture);
+			compute_shader_->setInt("u_biomeMap", 8);
+		}
+
+		if (lighting_ubo != 0) {
+			glBindBufferBase(GL_UNIFORM_BUFFER, Constants::UboBinding::Lighting(), lighting_ubo);
+		}
+
 		// Dispatch enough groups to cover all particles
 		glDispatchCompute((kMaxParticles / Constants::Class::Particles::ComputeGroupSize()) + 1, 1, 1);
 
@@ -292,12 +320,10 @@ namespace Boidsish {
 			}
 		}
 
-		if (num_active_emitters == 0)
-			return;
-
 		int avg_particles_per_unlimited = 0;
+		int fire_budget = kMaxParticles * 8 / 10; // Reserve 20% for ambient by default
 		if (num_unlimited_emitters > 0) {
-			int available_for_unlimited = kMaxParticles - total_particle_demand;
+			int available_for_unlimited = fire_budget - total_particle_demand;
 			if (available_for_unlimited > 0) {
 				avg_particles_per_unlimited = available_for_unlimited / num_unlimited_emitters;
 			}
@@ -316,7 +342,7 @@ namespace Boidsish {
 
 		// Distribute any remainder due to integer division
 		int current_total = std::accumulate(ideal_counts.begin(), ideal_counts.end(), 0);
-		int remainder = kMaxParticles - current_total;
+		int remainder = (num_active_emitters > 0) ? (fire_budget - current_total) : 0;
 		for (size_t i = 0; i < effects_.size() && remainder > 0; ++i) {
 			if (effects_[i]) {
 				ideal_counts[i]++;
@@ -326,16 +352,25 @@ namespace Boidsish {
 
 		// --- 2. Calculate Current Distribution ---
 		std::vector<int>              current_counts(effects_.size(), 0);
-		std::vector<int>              null_particles;
+		std::vector<int>              general_nulls;
+		std::vector<int>              reserved_nulls;
 		std::vector<std::vector<int>> particles_by_emitter(effects_.size());
 
-		for (int i = 0; i < kMaxParticles; ++i) {
+		int reserved_start = kMaxParticles * 8 / 10;
+
+		// Iterate backwards to prioritize lower indices for fire emitters when taking from null lists
+		for (int i = kMaxParticles - 1; i >= 0; --i) {
 			int emitter_index = particle_to_emitter_map_[i];
 			if (emitter_index != -1 && emitter_index < (int)effects_.size() && effects_[emitter_index]) {
 				current_counts[emitter_index]++;
 				particles_by_emitter[emitter_index].push_back(i);
 			} else {
-				null_particles.push_back(i);
+				particle_to_emitter_map_[i] = -1; // Explicitly return to ambient pool
+				if (i < reserved_start) {
+					general_nulls.push_back(i);
+				} else {
+					reserved_nulls.push_back(i);
+				}
 			}
 		}
 
@@ -353,20 +388,22 @@ namespace Boidsish {
 				int num_to_reclaim = -diff;
 				for (int j = 0; j < num_to_reclaim; ++j) {
 					if (!particles_by_emitter[i].empty()) {
-						to_reclaim.push_back(particles_by_emitter[i].back());
+						int particle_index = particles_by_emitter[i].back();
+						to_reclaim.push_back(particle_index);
 						particles_by_emitter[i].pop_back();
+						particle_to_emitter_map_[particle_index] = -1; // Explicitly return to ambient pool
 					}
 				}
 			}
 		}
 
 		// --- 4. Perform Stable Re-mapping ---
-		// First, use null particles to fill under-budget emitters
-		while (!to_fill.empty() && !null_particles.empty()) {
+		// First, use general null particles to fill under-budget emitters
+		while (!to_fill.empty() && !general_nulls.empty()) {
 			int emitter_index = to_fill.top().second;
 			to_fill.pop();
-			int particle_index = null_particles.back();
-			null_particles.pop_back();
+			int particle_index = general_nulls.back(); // Lowest available index due to backward loop
+			general_nulls.pop_back();
 
 			particle_to_emitter_map_[particle_index] = emitter_index;
 			ideal_counts[emitter_index]--;
@@ -377,7 +414,23 @@ namespace Boidsish {
 			}
 		}
 
-		// Second, use reclaimed particles to fill the rest
+		// Second, use reserved null particles if still needed
+		while (!to_fill.empty() && !reserved_nulls.empty()) {
+			int emitter_index = to_fill.top().second;
+			to_fill.pop();
+			int particle_index = reserved_nulls.back();
+			reserved_nulls.pop_back();
+
+			particle_to_emitter_map_[particle_index] = emitter_index;
+			ideal_counts[emitter_index]--;
+			if (ideal_counts[emitter_index] > current_counts[emitter_index]) {
+				float need = (float)(ideal_counts[emitter_index] - current_counts[emitter_index]) /
+					ideal_counts[emitter_index];
+				to_fill.push({need, emitter_index});
+			}
+		}
+
+		// Third, use reclaimed particles from over-budget emitters if still needed
 		while (!to_fill.empty() && !to_reclaim.empty()) {
 			int emitter_index = to_fill.top().second;
 			to_fill.pop();
@@ -401,7 +454,7 @@ namespace Boidsish {
 		GLuint           noise_texture
 	) {
 		std::lock_guard<std::mutex> lock(mutex_);
-		if (!initialized_ || effects_.empty() || !compute_shader_ || !compute_shader_->isValid()) {
+		if (!initialized_ || !compute_shader_ || !compute_shader_->isValid()) {
 			return;
 		}
 
@@ -415,6 +468,12 @@ namespace Boidsish {
 		render_shader_->setMat4("u_projection", projection);
 		render_shader_->setVec3("u_camera_pos", camera_pos);
 		render_shader_->setFloat("u_time", time_);
+
+		// Bind Lighting UBO for nightFactor
+		GLuint lighting_idx = glGetUniformBlockIndex(render_shader_->ID, "Lighting");
+		if (lighting_idx != GL_INVALID_INDEX) {
+			glUniformBlockBinding(render_shader_->ID, lighting_idx, Constants::UboBinding::Lighting());
+		}
 
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, emitter_buffer_);
 

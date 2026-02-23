@@ -156,7 +156,7 @@ void main() {
 	}
 
 	// if (nightFactor > 0) {
-	outColor += nightFactor * (sin(length(FragPos.xz - viewPos.xz * 0.1) + time) * 0.5 + 0.5) * vec4(0, 7, 0, 1);
+	// outColor += nightFactor * (sin(length(FragPos.xz - viewPos.xz * 0.1) + time) * 0.5 + 0.5) * vec4(0, 7, 0, 1);
 	// }
 
 	FragColor = outColor;
