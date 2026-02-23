@@ -54,7 +54,7 @@ namespace Boidsish {
 
 			float intensity_ = 0.250f;
 			float radius_ = 1.0f;
-			float ssdi_intensity_ = 1.0f;
+			float ssdi_intensity_ = 0.2f;
 			int   numSteps_ = 4;
 			int   numDirections_ = 2;
 		};
