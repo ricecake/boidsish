@@ -61,6 +61,14 @@ namespace Boidsish {
 						if (ImGui::SliderInt("Max Steps", &max_steps, 16, 256)) {
 							rc_effect->SetMaxSteps(max_steps);
 						}
+						bool enable_hiz = rc_effect->IsHiZEnabled();
+						if (ImGui::Checkbox("Enable Hi-Z Acceleration", &enable_hiz)) {
+							rc_effect->SetHiZEnabled(enable_hiz);
+						}
+						float temp_alpha = rc_effect->GetTemporalAlpha();
+						if (ImGui::SliderFloat("Temporal Accumulation", &temp_alpha, 0.0f, 0.99f)) {
+							rc_effect->SetTemporalAlpha(temp_alpha);
+						}
 					}
 				}
 

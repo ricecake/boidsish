@@ -34,18 +34,32 @@ namespace Boidsish {
 			int  GetMaxSteps() const { return max_steps_; }
 			void SetMaxSteps(int steps) { max_steps_ = steps; }
 
+			bool IsHiZEnabled() const { return enable_hiz_; }
+			void SetHiZEnabled(bool enabled) { enable_hiz_ = enabled; }
+
+			float GetTemporalAlpha() const { return temporal_alpha_; }
+			void  SetTemporalAlpha(float alpha) { temporal_alpha_ = alpha; }
+
 		private:
 			void InitializeResources();
+			void GenerateHiZ(GLuint depthTexture);
 
 			int width_, height_;
 			float intensity_ = 1.0f;
 			int   max_steps_ = 64;
+			bool  enable_hiz_ = true;
+			float temporal_alpha_ = 0.9f;
 
 			std::unique_ptr<ComputeShader> gen_shader_;
 			std::unique_ptr<ComputeShader> merge_shader_;
 			std::unique_ptr<Shader>        composite_shader_;
+			std::unique_ptr<ComputeShader> hiz_shader_;
+			std::unique_ptr<ComputeShader> accum_shader_;
 
 			GLuint cascades_texture_ = 0;
+			GLuint hiz_texture_ = 0;
+			GLuint history_textures_[2] = {0, 0};
+			int    current_history_ = 0;
 		};
 
 	} // namespace PostProcessing

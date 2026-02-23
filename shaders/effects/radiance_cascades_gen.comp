@@ -6,20 +6,27 @@ layout(rgba16f, binding = 0) uniform image2DArray uCascadesTexture;
 
 uniform sampler2D uSceneTexture;
 uniform sampler2D uDepthTexture;
+uniform sampler2D uHizTexture;
 
 uniform int uCascadeIndex;
 uniform vec2 uResolution;
 uniform int uMaxSteps;
+uniform bool uEnableHiZ;
 
 #include "helpers/lighting.glsl"
 #include "temporal_data.glsl"
 
-float getLinearDepth(vec2 uv) {
-    float depth = texture(uDepthTexture, uv).r;
+float getLinearDepth(float depth) {
     float near = uProjection[3][2] / (uProjection[2][2] - 1.0);
     float far = uProjection[3][2] / (uProjection[2][2] + 1.0);
     float z = depth * 2.0 - 1.0;
     return (2.0 * near * far) / (far + near - z * (far - near));
+}
+
+float hash12(vec2 p) {
+	vec3 p3 = fract(vec3(p.xyx) * .1031);
+	p3 += dot(p3, p3.yzx + 33.33);
+	return fract((p3.x + p3.y) * p3.z);
 }
 
 void main() {
@@ -35,7 +42,9 @@ void main() {
     int linearRayIdx = rayIdx.y * raysPerSide + rayIdx.x;
     int numRays = raysPerSide * raysPerSide;
 
-    float angle = 2.0 * 3.14159265 * (float(linearRayIdx) + 0.5) / float(numRays);
+    // Ray jittering
+    float jitter = hash12(vec2(probePos) + float(frameIndex) * 0.123);
+    float angle = 2.0 * 3.14159265 * (float(linearRayIdx) + jitter) / float(numRays);
     vec2 rayDir = vec2(cos(angle), sin(angle));
 
     // Probe center in pixel coordinates
@@ -51,7 +60,7 @@ void main() {
         return;
     }
 
-    float linCenterDepth = getLinearDepth(uv);
+    float linCenterDepth = getLinearDepth(centerDepth);
 
     // Raymarching range for this cascade
     float startDist = (n == 0) ? 1.0 : pow(4.0, float(n)) * 2.0;
@@ -60,31 +69,52 @@ void main() {
     vec3 accumulatedRadiance = vec3(0.0);
     float hitOccurred = 0.0;
 
-    // Raymarching
+    float currentDist = startDist;
     int steps = uMaxSteps;
+
+    // Hierarchical Raymarching / Variable Step Raymarching
     for (int i = 0; i < steps; ++i) {
-        float t = (float(i) + 0.5) / float(steps);
-        float d = mix(startDist, endDist, t);
-        vec2 samplePos = probePixelPos + rayDir * d;
+        vec2 samplePos = probePixelPos + rayDir * currentDist;
 
         if (samplePos.x < 0 || samplePos.x >= uResolution.x || samplePos.y < 0 || samplePos.y >= uResolution.y) {
             break;
         }
 
         vec2 sampleUV = samplePos / uResolution;
-        float linSampleDepth = getLinearDepth(sampleUV);
 
-        float thickness = 2.0 * (1 << n);
+        float stepSize = (endDist - startDist) / float(steps);
+
+        if (uEnableHiZ) {
+            // Use Hi-Z to potentially skip larger areas
+            // Select mip level based on current step size or distance
+            int mip = clamp(int(log2(currentDist * 0.1)), 0, 4);
+            float minDepth = textureLod(uHizTexture, sampleUV, mip).r;
+            float linMinDepth = getLinearDepth(minDepth);
+
+            // If ray is in front of minimum depth in this area, we can skip
+            if (linCenterDepth < linMinDepth - 1.0) {
+                currentDist += stepSize * (1 << mip);
+                continue;
+            }
+        }
+
+        float sampleDepth = texture(uDepthTexture, sampleUV).r;
+        float linSampleDepth = getLinearDepth(sampleDepth);
+
+        float thickness = 2.0 * (1 << n) + currentDist * 0.05;
         if (linSampleDepth < linCenterDepth && linSampleDepth > linCenterDepth - thickness) {
             accumulatedRadiance = texture(uSceneTexture, sampleUV).rgb;
             hitOccurred = 1.0;
             break;
         }
+
+        currentDist += stepSize;
+        if (currentDist > endDist) break;
     }
 
     if (hitOccurred == 0.0) {
         vec3 skyColor = vec3(0.1, 0.2, 0.3) * nightFactor + vec3(0.5, 0.7, 1.0) * (1.0 - nightFactor);
-        accumulatedRadiance = skyColor * 0.1;
+        accumulatedRadiance = skyColor * 0.05;
     }
 
     imageStore(uCascadesTexture, ivec3(texelPos.xy, uCascadeIndex), vec4(accumulatedRadiance, hitOccurred));
