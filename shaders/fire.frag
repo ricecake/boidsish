@@ -71,6 +71,7 @@ void main() {
 			} else {
 				color *= 0.3;
 			}
+			alpha = smoothstep(0.0, 0.1, v_lifetime);
 		} else if (v_style == 4) { // Glitter
 			// Glitter uses a colorful rainbow shift
 			// We use u_time and v_lifetime to create motion in the color space
@@ -84,6 +85,7 @@ void main() {
 			// Add a "sparkle" highlight
 			float sparkle = pow(twinkle, 10.0) * 2.0;
 			color += vec3(sparkle);
+			alpha = clamp(v_lifetime, 0.0, 1.0);
 		} else if (v_style == 5) { // Ambient
 			int sub_style = v_emitter_id;
 			vec3 biome_albedo = (v_emitter_index >= 0 && v_emitter_index < 8) ? u_biomeAlbedos[v_emitter_index] : vec3(0.5);
@@ -97,7 +99,7 @@ void main() {
 				float flutter = sin(u_time * 5.0 + v_pos.x + v_pos.y) * 0.3 + 0.7;
 				color *= flutter;
 				color += vec3(0.1) * pow(flutter, 10.0);
-				alpha = shapeMask * smoothstep(0.0, 0.5, v_lifetime) * 0.9;
+				alpha = smoothstep(0.0, 0.5, v_lifetime) * 0.9;
 			} else if (sub_style == 1) { // Flower Petal
 				// Vibrant petal colors based on biome but shifted
 				vec3 petal_base = mix(biome_albedo, vec3(1.0, 0.5, 0.8), 0.6); // Lean towards pink/magenta
@@ -108,7 +110,7 @@ void main() {
 
 				float flutter = sin(u_time * 8.0 + v_pos.x * 2.0) * 0.4 + 0.6;
 				color *= flutter;
-				alpha = shapeMask * smoothstep(0.0, 0.5, v_lifetime) * 0.95;
+				alpha = smoothstep(0.0, 0.5, v_lifetime) * 0.95;
 			} else if (sub_style == 2) { // Bubble
 				// Use iridescence logic for bubbles
 				float fresnel = pow(1.0 - distSq * 4.0, 5.0);
@@ -122,19 +124,17 @@ void main() {
 				float spec = pow(max(dot(normalize(-view_pos.xyz), reflect_dir), 0.0), 32.0);
 
 				color = mix(iridescent_color, vec3(1.0), 0.3) + spec;
-				alpha = smoothstep(0.25, 0.2, distSq) * 0.6 * smoothstep(0.0, 0.5, v_lifetime);
+				alpha = 0.6 * smoothstep(0.0, 0.5, v_lifetime);
 			} else if (sub_style == 3) { // Snowflake
 				color = vec3(0.9, 0.95, 1.0) * (1.2 + 0.3 * sin(u_time * 2.0 + v_pos.x));
-				alpha = shapeMask * 0.8 * smoothstep(0.0, 0.5, v_lifetime);
+				alpha = 0.8 * smoothstep(0.0, 0.5, v_lifetime);
 			} else if (sub_style == 4) { // Firefly
 				vec3 firefly_base = vec3(0.7, 0.9, 0.1); // Yellow-Green
 				color = mix(firefly_base, biome_albedo, 0.4); // Biome biased
 				float twinkle = sin(u_time * 6.0 + float(gl_PrimitiveID)) * 0.5 + 0.5;
 				color *= (2.0 + twinkle * 8.0);
-				alpha = shapeMask * (0.4 + twinkle * 0.6) * smoothstep(0.0, 0.5, v_lifetime);
+				alpha = (0.4 + twinkle * 0.6) * smoothstep(0.0, 0.5, v_lifetime);
 			}
-
-			color *= alpha; // Premultiplied alpha
 		} else if (v_style == 28) {
 			// --- Iridescence Effect ---
 			// Fresnel term for the base reflectivity
@@ -155,24 +155,20 @@ void main() {
 			);
 
 			// Add a strong specular highlight
-			vec3  reflect_dir = reflect(-view_pos + vec4(0, 20, 0, 0), vec4(distSq)).xyz;
+			vec3  reflect_dir = reflect(-view_pos.xyz + vec3(0, 20, 0), vec3(0,1,0));
 			float spec = pow(max(dot(view_pos.xyz, reflect_dir), 0.0), 128.0);
 			vec3  specular = 1.5 * spec * vec3(1.0); // white highlight
 
 			color = mix(iridescent_color, vec3(1.0), fresnel) + specular;
+			alpha = 0.75;
+		} else if (v_style == 0) { // Exhaust (Smoke)
+			color = vec3(0.1); // Dark smoke
+			alpha = v_lifetime * 0.4;
 		}
 
-		if (v_style == 0) {
-			alpha = v_lifetime * 0.4;
-		} else if (v_style == 3) {
-			alpha = smoothstep(0.0, 0.1, v_lifetime);
-		} else if (v_style == 4) { // Glitter
-			alpha = clamp(v_lifetime, 0.0, 1.0);
-		} else if (v_style == 5) { // Ambient
-			                       // alpha already set
-		} else if (v_style == 28) {
-			alpha = 0.75;
-		}
+		// Apply circular mask and premultiplied alpha to all simple styles
+		alpha *= shapeMask;
+		color *= alpha;
 	} else {
 		float maxLife = 1.0;
 		if (v_style == 1) { // Explosion
