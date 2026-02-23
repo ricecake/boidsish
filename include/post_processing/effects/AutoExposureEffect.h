@@ -55,9 +55,9 @@ namespace Boidsish {
 			GLuint                         exposureSsbo_ = 0;
 			float                          speedUp_ = 3.0f;
 			float                          speedDown_ = 1.0f;
-			float                          targetLuminance_ = 0.3f;
+			float                          targetLuminance_ = 0.45f;
 			float                          minExposure_ = 0.01f;
-			float                          maxExposure_ = 2.5f;
+			float                          maxExposure_ = 3.0f;
 			float                          deltaTime_ = 0.016f;
 			float                          lastTime_ = 0.0f;
 			float                          nightFactor_ = 0.0f;
