@@ -16,7 +16,7 @@ namespace Boidsish {
         ~AtmosphereManager();
 
         void Initialize();
-        void Update(const glm::vec3& sunDir, const glm::vec3& cameraPos);
+        void Update(const glm::vec3& sunDir, const glm::vec3& sunColor, float sunIntensity, const glm::vec3& cameraPos);
 
         GLuint GetTransmittanceLUT() const { return _transmittanceLUT; }
         GLuint GetMultiScatteringLUT() const { return _multiScatteringLUT; }
@@ -24,6 +24,22 @@ namespace Boidsish {
         GLuint GetAerialPerspectiveLUT() const { return _aerialPerspectiveLUT; }
 
         void BindTextures(GLuint firstUnit = 10);
+
+        // Parameters
+        void SetRayleighScale(float s) {
+            if (s != _rayleighScale) { _rayleighScale = s; _needsPrecompute = true; }
+        }
+        float GetRayleighScale() const { return _rayleighScale; }
+        void SetMieScale(float s) {
+            if (s != _mieScale) { _mieScale = s; _needsPrecompute = true; }
+        }
+        float GetMieScale() const { return _mieScale; }
+        void SetMieAnisotropy(float g) { _mieAnisotropy = g; }
+        float GetMieAnisotropy() const { return _mieAnisotropy; }
+        void SetMultiScatteringScale(float s) { _multiScatScale = s; }
+        float GetMultiScatteringScale() const { return _multiScatScale; }
+        void SetAmbientScatteringScale(float s) { _ambientScatScale = s; }
+        float GetAmbientScatteringScale() const { return _ambientScatScale; }
 
     private:
         void CreateTextures();
@@ -40,6 +56,12 @@ namespace Boidsish {
         std::unique_ptr<ComputeShader> _aerialPerspectiveShader;
 
         bool _needsPrecompute = true;
+
+        float _rayleighScale = 1.0f;
+        float _mieScale = 1.0f;
+        float _mieAnisotropy = 0.8f;
+        float _multiScatScale = 1.0f;
+        float _ambientScatScale = 0.1f;
     };
 
 } // namespace Boidsish
