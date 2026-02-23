@@ -352,17 +352,25 @@ namespace Boidsish {
 
 		// --- 2. Calculate Current Distribution ---
 		std::vector<int>              current_counts(effects_.size(), 0);
-		std::vector<int>              null_particles;
+		std::vector<int>              general_nulls;
+		std::vector<int>              reserved_nulls;
 		std::vector<std::vector<int>> particles_by_emitter(effects_.size());
 
-		for (int i = 0; i < kMaxParticles; ++i) {
+		int reserved_start = kMaxParticles * 8 / 10;
+
+		// Iterate backwards to prioritize lower indices for fire emitters when taking from null lists
+		for (int i = kMaxParticles - 1; i >= 0; --i) {
 			int emitter_index = particle_to_emitter_map_[i];
 			if (emitter_index != -1 && emitter_index < (int)effects_.size() && effects_[emitter_index]) {
 				current_counts[emitter_index]++;
 				particles_by_emitter[emitter_index].push_back(i);
 			} else {
-				null_particles.push_back(i);
 				particle_to_emitter_map_[i] = -1; // Explicitly return to ambient pool
+				if (i < reserved_start) {
+					general_nulls.push_back(i);
+				} else {
+					reserved_nulls.push_back(i);
+				}
 			}
 		}
 
@@ -390,12 +398,12 @@ namespace Boidsish {
 		}
 
 		// --- 4. Perform Stable Re-mapping ---
-		// First, use null particles to fill under-budget emitters
-		while (!to_fill.empty() && !null_particles.empty()) {
+		// First, use general null particles to fill under-budget emitters
+		while (!to_fill.empty() && !general_nulls.empty()) {
 			int emitter_index = to_fill.top().second;
 			to_fill.pop();
-			int particle_index = null_particles.back();
-			null_particles.pop_back();
+			int particle_index = general_nulls.back(); // Lowest available index due to backward loop
+			general_nulls.pop_back();
 
 			particle_to_emitter_map_[particle_index] = emitter_index;
 			ideal_counts[emitter_index]--;
@@ -406,7 +414,23 @@ namespace Boidsish {
 			}
 		}
 
-		// Second, use reclaimed particles to fill the rest
+		// Second, use reserved null particles if still needed
+		while (!to_fill.empty() && !reserved_nulls.empty()) {
+			int emitter_index = to_fill.top().second;
+			to_fill.pop();
+			int particle_index = reserved_nulls.back();
+			reserved_nulls.pop_back();
+
+			particle_to_emitter_map_[particle_index] = emitter_index;
+			ideal_counts[emitter_index]--;
+			if (ideal_counts[emitter_index] > current_counts[emitter_index]) {
+				float need = (float)(ideal_counts[emitter_index] - current_counts[emitter_index]) /
+					ideal_counts[emitter_index];
+				to_fill.push({need, emitter_index});
+			}
+		}
+
+		// Third, use reclaimed particles from over-budget emitters if still needed
 		while (!to_fill.empty() && !to_reclaim.empty()) {
 			int emitter_index = to_fill.top().second;
 			to_fill.pop();

@@ -142,9 +142,7 @@ void main() {
 		}
 	} else {
 		float maxLife = 1.0;
-		if (v_style == 0) { // Rocket Trail
-			maxLife = kExhaustLifetime;
-		} else if (v_style == 1) { // Explosion
+		if (v_style == 1) { // Explosion
 			maxLife = kExplosionLifetime;
 		} else if (v_style == 2) { // Default Fire
 			maxLife = kFireLifetime;

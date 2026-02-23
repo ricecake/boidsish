@@ -70,7 +70,6 @@ namespace Boidsish {
 	}
 
 	void NoiseManager::BindDefault(ShaderBase& shader) const {
-		shader.use();
 		glActiveTexture(GL_TEXTURE5);
 		glBindTexture(GL_TEXTURE_3D, noise_texture_);
 		shader.setInt("u_noiseTexture", 5);

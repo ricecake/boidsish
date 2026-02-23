@@ -195,11 +195,11 @@ void main() {
 	Particle p = particles[gid];
 	int emitter_index = particle_to_emitter_map[gid];
 
-	// --- 1. Hijack Logic ---
-	// If this particle is needed by a fire emitter, but it's currently doing something else (like ambient),
-	// we force it to die so it can respawn as a fire particle.
+	// --- 1. Hijack/Reassignment Logic ---
+	// If this particle is needed by a fire emitter, but it's currently doing something else (like ambient)
+	// or it was assigned to a DIFFERENT emitter previously, we force it to die so it can respawn.
 	if (emitter_index != -1 && u_num_emitters > 0 && emitter_index < u_num_emitters) {
-		if (p.style == 5 && p.pos.w > 0.0) {
+		if ((p.style == 5 || p.emitter_id != emitters[emitter_index].id) && p.pos.w > 0.0) {
 			p.pos.w = 0.0;
 		}
 	}
@@ -249,7 +249,7 @@ void main() {
 
 		// --- 3b. Sparse Ambient Respawn ---
 		vec2 seed = vec2(float(gid), u_time);
-		if (u_num_chunks > 0 && rand(seed) < 0.002) {
+		if (u_num_chunks > 0 && rand(seed) < 0.005) {
 			int chunk_idx = int(rand(seed.yx) * u_num_chunks) % u_num_chunks;
 			ChunkInfo chunk = chunks[chunk_idx];
 			vec2 local_pos = vec2(rand(seed + 1.1), rand(seed + 2.2)) * chunk.size;
@@ -275,6 +275,11 @@ void main() {
 
 		// Stay dead
 		p.pos.w = 0.0;
+		if (emitter_index == -1) {
+			p.style = 5; // Prime for ambient
+			p.emitter_index = -1;
+			p.emitter_id = -1;
+		}
 		particles[gid] = p;
 		return;
 	}
