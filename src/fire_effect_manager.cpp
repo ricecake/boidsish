@@ -4,6 +4,7 @@
 #include <numeric>
 #include <queue>
 
+#include "biome_properties.h"
 #include "graphics.h" // For logger
 #include "logger.h"
 #include <GL/glew.h>
@@ -468,6 +469,11 @@ namespace Boidsish {
 		render_shader_->setMat4("u_projection", projection);
 		render_shader_->setVec3("u_camera_pos", camera_pos);
 		render_shader_->setFloat("u_time", time_);
+
+		// Pass biome albedos for biased ambient particle colors
+		for (int i = 0; i < static_cast<int>(Biome::Count); ++i) {
+			render_shader_->setVec3("u_biomeAlbedos[" + std::to_string(i) + "]", kBiomes[i].albedo);
+		}
 
 		// Bind Lighting UBO for nightFactor
 		GLuint lighting_idx = glGetUniformBlockIndex(render_shader_->ID, "Lighting");

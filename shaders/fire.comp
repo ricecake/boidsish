@@ -253,26 +253,57 @@ void main() {
 		// --- 3b. Sparse Ambient Respawn ---
 		vec2 seed = vec2(float(gid), u_time);
 		if (u_num_chunks > 0 && rand(seed) < 0.005) {
-			int       chunk_idx = int(rand(seed.yx) * u_num_chunks) % u_num_chunks;
-			ChunkInfo chunk = chunks[chunk_idx];
-			vec2      local_pos = vec2(rand(seed + 1.1), rand(seed + 2.2)) * chunk.size;
-			vec3      pos = vec3(chunk.worldOffset.x + local_pos.x, 0, chunk.worldOffset.y + local_pos.y);
-			vec2      uv = local_pos / chunk.size;
-			vec4      terrain = texture(u_heightmapArray, vec3(uv, chunk.slice));
-			float     height = terrain.r;
-			vec2      biome_data = texture(u_biomeMap, vec3(uv, chunk.slice)).rg;
-			int       biome_idx = int(biome_data.x * 255.0 + 0.5);
+			// Try a few times to find a chunk closer to the camera
+			for (int i = 0; i < 3; i++) {
+				int       chunk_idx = int(rand(seed.yx + float(i) * 0.1) * u_num_chunks) % u_num_chunks;
+				ChunkInfo chunk = chunks[chunk_idx];
+				vec2      local_pos = vec2(rand(seed + 1.1 + float(i)), rand(seed + 2.2 + float(i))) * chunk.size;
+				vec3      pos = vec3(chunk.worldOffset.x + local_pos.x, 0, chunk.worldOffset.y + local_pos.y);
 
-			// Only spawn in vegetated biomes (LushGrass=1, DryGrass=2, Forest=3, AlpineMeadow=4)
-			if (biome_idx >= 1 && biome_idx <= 4) {
-				p.pos = vec4(pos.x, height + 1.0 + rand(seed + 3.3) * 2.0, pos.z, 10.0 + rand(seed + 4.4) * 5.0);
-				p.vel = vec4(rand3(seed + 5.5) * 0.5, 0.0);
-				p.style = 5; // Ambient
-				p.emitter_index = -1;
-				p.emitter_id = -1;
-				p.epicenter = p.pos.xyz;
-				particles[gid] = p;
-				return;
+				// Only spawn closer to camera
+				if (distance(pos.xz, viewPos.xz) > 500.0)
+					continue;
+
+				vec2  uv = local_pos / chunk.size;
+				vec4  terrain = texture(u_heightmapArray, vec3(uv, chunk.slice));
+				float height = terrain.r;
+				vec2  biome_data = texture(u_biomeMap, vec3(uv, chunk.slice)).rg;
+				int   biome_idx = int(biome_data.x * 255.0 + 0.5);
+
+				// Check emitters and if close enough to a fire emitter change to cinder and ash.
+				// Biomes: Sand=0, LushGrass=1, DryGrass=2, Forest=3, AlpineMeadow=4, BrownRock=5, GreyRock=6, Snow=7
+				bool valid_biome = (biome_idx >= 0 && biome_idx <= 4) || biome_idx == 7;
+				if (valid_biome) {
+					p.pos = vec4(pos.x, height + 1.0 + rand(seed + 3.3) * 2.0, pos.z, 10.0 + rand(seed + 4.4) * 5.0);
+					p.vel = vec4(rand3(seed + 5.5) * 0.5, 0.0);
+					p.style = 5; // Ambient
+					p.emitter_index = biome_idx;
+
+					// Select sub-style based on biome and time
+					int sub_style = 0; // Default: Leaf
+					if (biome_idx == 7) {
+						sub_style = 3; // Snowflake
+					} else if (biome_idx == 0) {
+						sub_style = 2; // Bubble
+					} else {
+						if (nightFactor > 0.5) {
+							sub_style = 4; // Firefly
+						} else {
+							// Randomly choose between Leaf and Petal in vegetated biomes
+							float r = rand(seed + 6.6);
+							if (biome_idx == 4) { // Alpine Meadow has more petals
+								sub_style = (r < 0.7) ? 1 : 0;
+							} else {
+								sub_style = (r < 0.2) ? 1 : 0;
+							}
+						}
+					}
+
+					p.emitter_id = sub_style;
+					p.epicenter = p.pos.xyz;
+					particles[gid] = p;
+					return;
+				}
 			}
 		}
 
@@ -291,12 +322,34 @@ void main() {
 	float maxSpeed = 10.0;
 	if (p.style == 5) { // Ambient
 		maxSpeed = 2.0;
-		float curlInfluence = 1.0;
-		p.vel.xyz += curlNoise(p.pos.xyz, u_time) * curlInfluence * u_delta_time;
-		if (nightFactor > 0.5) {
-			p.vel.y += 0.2 * u_delta_time;
+		int sub_style = p.emitter_id;
+
+		if (sub_style == 0 || sub_style == 1) { // Leaf or Petal
+			float curlInfluence = 1.2;
+			p.vel.xyz += curlNoise(p.pos.xyz, u_time) * curlInfluence * u_delta_time;
+			p.vel.y -= 0.1 * u_delta_time; // Slight gravity
+			p.vel.xyz *= 0.98;
+		} else if (sub_style == 2) { // Bubble
+			float curlInfluence = 0.5;
+			p.vel.xyz += curlNoise(p.pos.xyz, u_time) * curlInfluence * u_delta_time;
+			p.vel.y += 0.4 * u_delta_time; // Rising
+			p.vel.xyz *= 0.97;
+			maxSpeed = 1.5;
+		} else if (sub_style == 3) { // Snowflake
+			float curlInfluence = 0.3;
+			p.vel.xyz += curlNoise(p.pos.xyz, u_time) * curlInfluence * u_delta_time;
+			p.vel.y -= 0.5 * u_delta_time; // Falling
+			p.vel.xyz *= 0.99;
+			maxSpeed = 1.2;
+		} else if (sub_style == 4) { // Firefly
+			float curlInfluence = 0.8;
+			p.vel.xyz += curlNoise(p.pos.xyz, u_time) * curlInfluence * u_delta_time;
+			p.vel.y += 0.15 * u_delta_time; // Gentle rising
+			p.vel.xyz *= 0.99;
+		} else {
+			p.vel.xyz += curlNoise(p.pos.xyz, u_time) * u_delta_time;
+			p.vel.xyz *= 0.99;
 		}
-		p.vel.xyz *= 0.99;
 	} else if (p.style == 0) {
 		maxSpeed = kExhaustSpeed;
 		p.vel.xyz -= p.vel.xyz * kExhaustDrag * 2 * (1 - (p.vel.xyz / 30)) * u_delta_time;
