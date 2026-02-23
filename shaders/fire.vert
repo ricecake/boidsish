@@ -42,6 +42,8 @@ out vec4     view_pos;
 out vec4     v_pos;
 out vec3     v_epicenter;
 flat out int v_style;
+flat out int v_emitter_index;
+flat out int v_emitter_id;
 
 void main() {
 	Particle p = particles[gl_VertexID];
@@ -53,16 +55,22 @@ void main() {
 		gl_Position = vec4(-1000.0, -1000.0, -1000.0, 1.0);
 		gl_PointSize = 0.0;
 		v_style = -1; // A dead particle has no style
+		v_emitter_index = -1;
+		v_emitter_id = -1;
 	} else if (enableFrustumCulling && !isSphereInFrustum(p.pos.xyz, frustumCullRadius)) {
 		// Frustum culling - particle is outside view
 		gl_Position = vec4(-1000.0, -1000.0, -1000.0, 1.0);
 		gl_PointSize = 0.0;
 		v_style = -1;
+		v_emitter_index = -1;
+		v_emitter_id = -1;
 	} else {
 		view_pos = u_view * vec4(p.pos.xyz, 1.0);
 		gl_Position = u_projection * view_pos;
 		v_lifetime = p.pos.w;
 		v_style = p.style;
+		v_emitter_index = p.emitter_index;
+		v_emitter_id = p.emitter_id;
 
 		// // Base size on style
 		// float base_size = 10.0;
@@ -92,7 +100,16 @@ void main() {
 		} else if (p.style == 5) { // Ambient
 			// Prominent size but attenuated by distance
 			gl_PointSize = 15.0 / (-view_pos.z * 0.05);
-			gl_PointSize = clamp(gl_PointSize, 4.0, 30.0);
+
+			// Vary size by sub-style and random factor
+			float size_var = fract(sin(float(gl_VertexID) * 123.456) * 456.789);
+			if (v_emitter_id == 2) { // Bubbles vary more in size
+				gl_PointSize *= (0.5 + size_var * 1.5);
+			} else {
+				gl_PointSize *= (0.8 + size_var * 0.4);
+			}
+
+			gl_PointSize = clamp(gl_PointSize, 2.0, 40.0);
 		} else {
 			gl_PointSize = smoothstep(2.0 * (1.0 - v_lifetime), v_lifetime, v_lifetime / 2.5) * 25.0;
 		}
