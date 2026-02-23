@@ -90,6 +90,29 @@ namespace Boidsish {
 						if (ImGui::ColorEdit3("Cloud Color", &cloud_color[0])) {
 							atmosphere_effect->SetCloudColor(cloud_color);
 						}
+
+						ImGui::Separator();
+						ImGui::Text("Scattering");
+						float rayleigh = atmosphere_effect->GetRayleighScale();
+						if (ImGui::SliderFloat("Rayleigh Scale", &rayleigh, 0.0f, 10.0f)) {
+							atmosphere_effect->SetRayleighScale(rayleigh);
+						}
+						float mie = atmosphere_effect->GetMieScale();
+						if (ImGui::SliderFloat("Mie Scale", &mie, 0.0f, 10.0f)) {
+							atmosphere_effect->SetMieScale(mie);
+						}
+						float mie_g = atmosphere_effect->GetMieAnisotropy();
+						if (ImGui::SliderFloat("Mie Anisotropy", &mie_g, 0.0f, 0.99f)) {
+							atmosphere_effect->SetMieAnisotropy(mie_g);
+						}
+						float multi_scat = atmosphere_effect->GetMultiScatScale();
+						if (ImGui::SliderFloat("MultiScat Scale", &multi_scat, 0.0f, 2.0f)) {
+							atmosphere_effect->SetMultiScatScale(multi_scat);
+						}
+						float ambient_scat = atmosphere_effect->GetAmbientScatScale();
+						if (ImGui::SliderFloat("Ambient Scat Scale", &ambient_scat, 0.0f, 1.0f)) {
+							atmosphere_effect->SetAmbientScatScale(ambient_scat);
+						}
 					}
 				}
 

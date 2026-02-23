@@ -94,19 +94,25 @@ namespace Boidsish {
 				_lights[0].azimuth = 90.0f;
 				_lights[0].UpdateDirectionFromAngles();
 
-				// Adjust intensity based on elevation (dim at sunrise/sunset)
+				// With physical atmosphere, we don't manually dim the sun.
+				// The atmosphere LUTs (transmittance) will handle the color and intensity
+				// change naturally. We keep the sun "on" as long as it's not deep below horizon.
 				float elevation_rad = glm::radians(_lights[0].elevation);
 				float sun_vis = glm::sin(elevation_rad);
-				if (sun_vis > 0) {
-					_lights[0].base_intensity = std::clamp(sun_vis * 2.0f, 0.0f, 1.0f);
+
+				// Keep sun at base intensity when above horizon.
+				// Dim it only when it's significantly below to avoid sudden pops if the atmosphere
+				// doesn't perfectly occlude it at -1 degree.
+				if (sun_vis > -0.1f) {
+					_lights[0].base_intensity = 1.0f;
 				} else {
 					_lights[0].base_intensity = 0.0f;
 				}
 
-				// Update ambient light
+				// Basic fallback ambient - mostly handled by Atmosphere system now
 				glm::vec3 day_ambient = Constants::General::Colors::DefaultAmbient();
 				glm::vec3 night_ambient = day_ambient * 0.15f;
-				float     ambient_factor = std::max(0.0f, sun_vis);
+				float     ambient_factor = std::clamp(sun_vis * 5.0f + 0.5f, 0.0f, 1.0f);
 				_ambient_light = glm::mix(night_ambient, day_ambient, ambient_factor);
 			}
 		}
