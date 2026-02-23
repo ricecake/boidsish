@@ -59,6 +59,18 @@ namespace Boidsish {
 
 			glm::vec3 GetCloudColor() const { return cloud_color_; }
 
+			// Scattering parameters
+			void  SetRayleighScale(float s) { rayleigh_scale_ = s; }
+			float GetRayleighScale() const { return rayleigh_scale_; }
+			void  SetMieScale(float s) { mie_scale_ = s; }
+			float GetMieScale() const { return mie_scale_; }
+			void  SetMieAnisotropy(float g) { mie_anisotropy_ = g; }
+			float GetMieAnisotropy() const { return mie_anisotropy_; }
+			void  SetMultiScatScale(float s) { multi_scat_scale_ = s; }
+			float GetMultiScatScale() const { return multi_scat_scale_; }
+			void  SetAmbientScatScale(float s) { ambient_scat_scale_ = s; }
+			float GetAmbientScatScale() const { return ambient_scat_scale_; }
+
 			// Atmosphere LUTs
 			void SetAtmosphereLUTs(GLuint transmittance, GLuint multiScat, GLuint skyView, GLuint aerialPerspective) {
 				transmittance_lut_ = transmittance;
@@ -78,6 +90,12 @@ namespace Boidsish {
 			float     cloud_altitude_ = 175.0f;
 			float     cloud_thickness_ = 10.0f;
 			glm::vec3 cloud_color_ = glm::vec3(0.95f, 0.95f, 1.0f);
+
+			float rayleigh_scale_ = 1.0f;
+			float mie_scale_ = 1.0f;
+			float mie_anisotropy_ = 0.8f;
+			float multi_scat_scale_ = 1.0f;
+			float ambient_scat_scale_ = 0.1f;
 
 			GLuint transmittance_lut_ = 0;
 			GLuint multi_scattering_lut_ = 0;

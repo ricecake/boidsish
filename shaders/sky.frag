@@ -13,6 +13,8 @@ uniform mat4 invView;
 uniform sampler2D u_transmittanceLUT;
 uniform sampler2D u_skyViewLUT;
 
+uniform vec3 u_sunRadiance; // Added for consistency with scattering
+
 vec3 getTransmittance(float r, float mu) {
     vec2 uv = transmittanceToUV(r, mu);
     return texture(u_transmittanceLUT, uv).rgb;
@@ -142,7 +144,9 @@ void main() {
 
     float r = kEarthRadius + viewPos.y / 1000.0;
     vec3 sunTransmittance = getTransmittance(r, sunDir.y);
-    vec3 sunDisc = sunColor * 20.0 * sunMask * sunTransmittance;
+    // Use u_sunRadiance if available (via AtmosphereManager) or fallback to simple sunColor
+    vec3 radiance = length(u_sunRadiance) > 0.0 ? u_sunRadiance : (sunColor * 20.0);
+    vec3 sunDisc = radiance * sunMask * sunTransmittance;
 
     // 3. Stars and Nebula
     vec3 stars = starLayer(world_ray) * vec3(1.0, 0.9, 0.8);

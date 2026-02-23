@@ -14,7 +14,10 @@ const float kRayleighScaleHeight = 8.0; // km
 const float kMieScattering = 3.996 * 1e-3; // km^-1
 const float kMieExtinction = 4.440 * 1e-3; // km^-1
 const float kMieScaleHeight = 1.2; // km
-const float kMieG = 0.8;
+
+uniform float u_rayleighScale;
+uniform float u_mieScale;
+uniform float u_mieAnisotropy;
 
 const vec3 kOzoneAbsorption = vec3(0.650, 1.881, 0.085) * 1e-3; // km^-1
 
@@ -54,9 +57,9 @@ Sampling getAtmosphereProperties(float h) {
     float od = getOzoneDensity(h);
 
     Sampling s;
-    s.rayleigh = kRayleighScattering * rd;
-    s.mie = vec3(kMieScattering * md);
-    s.extinction = s.rayleigh + vec3(kMieExtinction * md) + kOzoneAbsorption * od;
+    s.rayleigh = kRayleighScattering * rd * u_rayleighScale;
+    s.mie = vec3(kMieScattering * md * u_mieScale);
+    s.extinction = s.rayleigh + vec3(kMieExtinction * md * u_mieScale) + kOzoneAbsorption * od;
     return s;
 }
 
@@ -66,7 +69,7 @@ float rayleighPhase(float cosTheta) {
 }
 
 float miePhase(float cosTheta) {
-    float g = kMieG;
+    float g = u_mieAnisotropy;
     float g2 = g * g;
     return (1.0 - g2) / (4.0 * PI * pow(max(1e-4, 1.0 + g2 - 2.0 * g * cosTheta), 1.5));
 }
