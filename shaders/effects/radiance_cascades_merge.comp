@@ -1,0 +1,56 @@
+#version 430 core
+
+layout(local_size_x = 8, local_size_y = 8) in;
+
+layout(rgba16f, binding = 0) uniform image2DArray uCascadesTexture;
+
+uniform int uCascadeIndex;
+uniform vec2 uResolution;
+
+void main() {
+    ivec2 texelPos = ivec2(gl_GlobalInvocationID.xy);
+    if (texelPos.x >= int(uResolution.x * 2) || texelPos.y >= int(uResolution.y * 2)) return;
+
+    int n = uCascadeIndex;
+    int raysPerSide = 1 << (n + 1);
+
+    ivec2 probeIdx = texelPos / raysPerSide;
+    ivec2 rayIdx = texelPos % raysPerSide;
+
+    int nextRaysPerSide = 1 << (n + 2);
+    ivec2 nextRayIdxBase = rayIdx * 2;
+
+    vec2 pIdxNext = (vec2(probeIdx) + 0.5) * 0.5 - 0.5;
+    ivec2 p0 = ivec2(floor(pIdxNext));
+    ivec2 p1 = p0 + 1;
+    vec2 f = fract(pIdxNext);
+
+    ivec2 maxProbeNext = (ivec2(uResolution) >> (n + 1)) - 1;
+    p0 = clamp(p0, ivec2(0), maxProbeNext);
+    p1 = clamp(p1, ivec2(0), maxProbeNext);
+
+    vec3 upperRadiance = vec3(0.0);
+
+    for (int py = 0; py <= 1; ++py) {
+        for (int px = 0; px <= 1; ++px) {
+            ivec2 p = (px == 0) ? (py == 0 ? p0 : ivec2(p0.x, p1.y)) : (py == 0 ? ivec2(p1.x, p0.y) : p1);
+            float weight = ((px == 0) ? (1.0 - f.x) : f.x) * ((py == 0) ? (1.0 - f.y) : f.y);
+
+            vec3 probeRadiance = vec3(0.0);
+            for (int ry = 0; ry <= 1; ++ry) {
+                for (int rx = 0; rx <= 1; ++rx) {
+                    ivec2 nextTexel = p * nextRaysPerSide + (nextRayIdxBase + ivec2(rx, ry));
+                    probeRadiance += imageLoad(uCascadesTexture, ivec3(nextTexel, n + 1)).rgb;
+                }
+            }
+            upperRadiance += (probeRadiance / 4.0) * weight;
+        }
+    }
+
+    vec4 currentData = imageLoad(uCascadesTexture, ivec3(texelPos, n));
+    float hit = currentData.a;
+
+    vec3 result = currentData.rgb + (1.0 - hit) * upperRadiance;
+
+    imageStore(uCascadesTexture, ivec3(texelPos, n), vec4(result, hit));
+}

@@ -1,0 +1,91 @@
+#version 430 core
+
+layout(local_size_x = 8, local_size_y = 8) in;
+
+layout(rgba16f, binding = 0) uniform image2DArray uCascadesTexture;
+
+uniform sampler2D uSceneTexture;
+uniform sampler2D uDepthTexture;
+
+uniform int uCascadeIndex;
+uniform vec2 uResolution;
+uniform int uMaxSteps;
+
+#include "helpers/lighting.glsl"
+#include "temporal_data.glsl"
+
+float getLinearDepth(vec2 uv) {
+    float depth = texture(uDepthTexture, uv).r;
+    float near = uProjection[3][2] / (uProjection[2][2] - 1.0);
+    float far = uProjection[3][2] / (uProjection[2][2] + 1.0);
+    float z = depth * 2.0 - 1.0;
+    return (2.0 * near * far) / (far + near - z * (far - near));
+}
+
+void main() {
+    ivec3 texelPos = ivec3(gl_GlobalInvocationID.xyz);
+    if (texelPos.x >= int(uResolution.x * 2) || texelPos.y >= int(uResolution.y * 2)) return;
+
+    int n = uCascadeIndex;
+    int raysPerSide = 1 << (n + 1);
+
+    ivec2 probePos = texelPos.xy / raysPerSide;
+    ivec2 rayIdx = texelPos.xy % raysPerSide;
+
+    int linearRayIdx = rayIdx.y * raysPerSide + rayIdx.x;
+    int numRays = raysPerSide * raysPerSide;
+
+    float angle = 2.0 * 3.14159265 * (float(linearRayIdx) + 0.5) / float(numRays);
+    vec2 rayDir = vec2(cos(angle), sin(angle));
+
+    // Probe center in pixel coordinates
+    vec2 probePixelPos;
+    if (n == 0) probePixelPos = vec2(probePos) + 0.5;
+    else probePixelPos = (vec2(probePos) + 0.5) * (1 << n);
+
+    vec2 uv = probePixelPos / uResolution;
+    float centerDepth = texture(uDepthTexture, uv).r;
+
+    if (centerDepth >= 0.999) {
+        imageStore(uCascadesTexture, ivec3(texelPos.xy, uCascadeIndex), vec4(0.0));
+        return;
+    }
+
+    float linCenterDepth = getLinearDepth(uv);
+
+    // Raymarching range for this cascade
+    float startDist = (n == 0) ? 1.0 : pow(4.0, float(n)) * 2.0;
+    float endDist = pow(4.0, float(n + 1)) * 2.0;
+
+    vec3 accumulatedRadiance = vec3(0.0);
+    float hitOccurred = 0.0;
+
+    // Raymarching
+    int steps = uMaxSteps;
+    for (int i = 0; i < steps; ++i) {
+        float t = (float(i) + 0.5) / float(steps);
+        float d = mix(startDist, endDist, t);
+        vec2 samplePos = probePixelPos + rayDir * d;
+
+        if (samplePos.x < 0 || samplePos.x >= uResolution.x || samplePos.y < 0 || samplePos.y >= uResolution.y) {
+            break;
+        }
+
+        vec2 sampleUV = samplePos / uResolution;
+        float linSampleDepth = getLinearDepth(sampleUV);
+
+        float thickness = 2.0 * (1 << n);
+        if (linSampleDepth < linCenterDepth && linSampleDepth > linCenterDepth - thickness) {
+            accumulatedRadiance = texture(uSceneTexture, sampleUV).rgb;
+            hitOccurred = 1.0;
+            break;
+        }
+    }
+
+    if (hitOccurred == 0.0) {
+        vec3 skyColor = vec3(0.1, 0.2, 0.3) * nightFactor + vec3(0.5, 0.7, 1.0) * (1.0 - nightFactor);
+        accumulatedRadiance = skyColor * 0.1;
+    }
+
+    imageStore(uCascadesTexture, ivec3(texelPos.xy, uCascadeIndex), vec4(accumulatedRadiance, hitOccurred));
+}

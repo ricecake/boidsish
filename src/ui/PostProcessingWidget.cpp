@@ -6,6 +6,7 @@
 #include "post_processing/effects/BloomEffect.h"
 #include "post_processing/effects/FilmGrainEffect.h"
 #include "post_processing/effects/GtaoEffect.h"
+#include "post_processing/effects/RadianceCascadesEffect.h"
 #include "post_processing/effects/SsaoEffect.h"
 #include "post_processing/effects/ToneMappingEffect.h"
 
@@ -45,6 +46,20 @@ namespace Boidsish {
 						float max_exposure = auto_exposure_effect->GetMaxExposure();
 						if (ImGui::SliderFloat("Max Exposure", &max_exposure, 1.0f, 100.0f)) {
 							auto_exposure_effect->SetMaxExposure(max_exposure);
+						}
+					}
+				}
+
+				if (effect->GetName() == "Radiance Cascades" && is_enabled) {
+					auto rc_effect = std::dynamic_pointer_cast<PostProcessing::RadianceCascadesEffect>(effect);
+					if (rc_effect) {
+						float intensity = rc_effect->GetIntensity();
+						if (ImGui::SliderFloat("Intensity##RC", &intensity, 0.0f, 5.0f)) {
+							rc_effect->SetIntensity(intensity);
+						}
+						int max_steps = rc_effect->GetMaxSteps();
+						if (ImGui::SliderInt("Max Steps", &max_steps, 16, 256)) {
+							rc_effect->SetMaxSteps(max_steps);
 						}
 					}
 				}
