@@ -132,6 +132,26 @@ namespace Boidsish {
         _aerialPerspectiveShader->setFloat("u_ambientScatScale", _ambientScatScale);
         glDispatchCompute(32 / 4, 32 / 4, 32 / 4);
         glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
+
+        // Analytical estimate of sky ambient irradiance for synchronization with other systems
+        float sunElevation = sunDir.y;
+
+        // Rayleigh and Mie contribute differently to global irradiance
+        // These constants are tuned to match the visual output of the LUTs
+        float rayleighIrradiance = _rayleighScale * 0.05f;
+        float mieIrradiance = _mieScale * 0.02f;
+
+        // Global factor based on sun elevation.
+        // Atmosphere stays lit even slightly after sunset (civil twilight)
+        float horizonFactor = glm::clamp(sunElevation * 2.0f + 0.2f, 0.0f, 1.0f);
+
+        // Multi-scattering and Rayleigh are the primary drivers of ambient sky light
+        float ambientFactor = horizonFactor * (rayleighIrradiance + mieIrradiance) * _multiScatScale;
+
+        // Night base ambient to ensure world isn't pitch black
+        glm::vec3 nightGlow = glm::vec3(0.015f, 0.02f, 0.03f) * _ambientScatScale * 10.0f;
+
+        _ambientEstimate = sunColor * sunIntensity * ambientFactor + nightGlow;
     }
 
     void AtmosphereManager::BindTextures(GLuint firstUnit) {
