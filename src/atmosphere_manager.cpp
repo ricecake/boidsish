@@ -150,8 +150,7 @@ namespace Boidsish {
         float ambientFactor = horizonFactor * (rayleighIrradiance + mieIrradiance) * _multiScatScale;
 
         // Night base ambient to ensure world isn't pitch black
-        // Slightly boosted to provide better visibility at night
-        glm::vec3 nightGlow = glm::vec3(0.02f, 0.025f, 0.035f) * _ambientScatScale * 10.0f;
+        glm::vec3 nightGlow = glm::vec3(0.01f, 0.012f, 0.018f) * _ambientScatScale * 10.0f;
 
         _ambientEstimate = sunColor * sunIntensity * ambientFactor + nightGlow;
     }
