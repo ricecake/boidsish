@@ -73,6 +73,7 @@ void main() {
     vec3 f_avg = totalF / float(nSamples);
 
     // Multi-scattering radiance estimate: L_multi = L_1 / (1 - f)
-    vec3 multiScat = L_avg / max(vec3(1.0) - f_avg, 0.001);
+    // We clamp f_avg to 0.9 to prevent the geometric series from exploding.
+    vec3 multiScat = L_avg / max(vec3(0.1), vec3(1.0) - min(f_avg, vec3(0.9)));
     imageStore(outMultiScattering, texel, vec4(multiScat, 1.0));
 }
