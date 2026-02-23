@@ -107,7 +107,13 @@ namespace Boidsish {
 		glGenBuffers(1, &terrain_chunk_buffer_);
 		glBindBuffer(GL_SHADER_STORAGE_BUFFER, terrain_chunk_buffer_);
 		// Pre-allocate for 1024 chunks as a reasonable default
-		glBufferData(GL_SHADER_STORAGE_BUFFER, 1024 * sizeof(glm::vec4), nullptr, GL_DYNAMIC_DRAW);
+		terrain_chunk_buffer_capacity_ = 1024;
+		glBufferData(
+			GL_SHADER_STORAGE_BUFFER,
+			terrain_chunk_buffer_capacity_ * sizeof(glm::vec4),
+			nullptr,
+			GL_DYNAMIC_DRAW
+		);
 
 		glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
 
@@ -247,12 +253,12 @@ namespace Boidsish {
 
 		if (!chunk_info.empty()) {
 			glBindBuffer(GL_SHADER_STORAGE_BUFFER, terrain_chunk_buffer_);
-			glBufferData(
-				GL_SHADER_STORAGE_BUFFER,
-				chunk_info.size() * sizeof(glm::vec4),
-				chunk_info.data(),
-				GL_DYNAMIC_DRAW
-			);
+			if (chunk_info.size() > terrain_chunk_buffer_capacity_) {
+				size_t new_capacity = std::max(chunk_info.size() * 2, terrain_chunk_buffer_capacity_);
+				glBufferData(GL_SHADER_STORAGE_BUFFER, new_capacity * sizeof(glm::vec4), nullptr, GL_DYNAMIC_DRAW);
+				terrain_chunk_buffer_capacity_ = new_capacity;
+			}
+			glBufferSubData(GL_SHADER_STORAGE_BUFFER, 0, chunk_info.size() * sizeof(glm::vec4), chunk_info.data());
 		}
 
 		// --- Dispatch Compute Shader ---

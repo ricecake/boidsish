@@ -12,6 +12,12 @@
 
 namespace Boidsish {
 
+	struct TrailVertex {
+		glm::vec3 pos;
+		glm::vec3 normal;
+		glm::vec3 color;
+	};
+
 	class Trail {
 	public:
 		Trail(
@@ -43,7 +49,7 @@ namespace Boidsish {
 		bool IsManagedByRenderManager() const { return managed_by_render_manager_; }
 
 		// Get vertex data for batched rendering (interleaved pos + normal + color)
-		std::vector<float> GetInterleavedVertexData() const;
+		const std::vector<TrailVertex>& GetInterleavedVertexData() const { return mesh_vertices; }
 
 		size_t GetMaxVertexCount() const { return mesh_vertices.size(); }
 
@@ -70,11 +76,6 @@ namespace Boidsish {
 		glm::vec3 GetMaxBound() const;
 
 	private:
-		struct TrailVertex {
-			glm::vec3 pos;
-			glm::vec3 normal;
-			glm::vec3 color;
-		};
 
 		// Catmull-Rom interpolation for smooth curves
 		Vector3 CatmullRom(float t, const Vector3& p0, const Vector3& p1, const Vector3& p2, const Vector3& p3) const;

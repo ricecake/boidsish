@@ -1,6 +1,7 @@
 #include "trail_render_manager.h"
 
 #include <algorithm>
+#include <cstring>
 #include <iostream>
 
 #include "frustum.h"
@@ -19,7 +20,7 @@ namespace Boidsish {
 		glBindBuffer(GL_ARRAY_BUFFER, vbo_);
 		glBufferData(
 			GL_ARRAY_BUFFER,
-			INITIAL_VERTEX_CAPACITY * FLOATS_PER_VERTEX * sizeof(float),
+			INITIAL_VERTEX_CAPACITY * sizeof(TrailVertex),
 			nullptr,
 			GL_DYNAMIC_DRAW
 		);
@@ -125,14 +126,14 @@ namespace Boidsish {
 	}
 
 	void TrailRenderManager::UpdateTrailData(
-		int                       trail_id,
-		const std::vector<float>& vertices,
-		size_t                    head,
-		size_t                    tail,
-		size_t                    vertex_count,
-		bool                      is_full,
-		const glm::vec3&          min_bound,
-		const glm::vec3&          max_bound
+		int                             trail_id,
+		const std::vector<TrailVertex>& vertices,
+		size_t                          head,
+		size_t                          tail,
+		size_t                          vertex_count,
+		bool                            is_full,
+		const glm::vec3&                min_bound,
+		const glm::vec3&                max_bound
 	) {
 		std::lock_guard<std::mutex> lock(mutex_);
 
@@ -144,7 +145,7 @@ namespace Boidsish {
 		auto& alloc = it->second;
 
 		// Bounds check: Ensure vertex data doesn't exceed allocated capacity
-		size_t incoming_vertex_count = vertices.size() / FLOATS_PER_VERTEX;
+		size_t incoming_vertex_count = vertices.size();
 		if (incoming_vertex_count > alloc.max_vertices) {
 			logger::ERROR(
 				"Trail {} update exceeded allocated capacity ({} > {}) - truncating",
@@ -152,12 +153,14 @@ namespace Boidsish {
 				incoming_vertex_count,
 				alloc.max_vertices
 			);
-			std::vector<float> truncated_vertices = vertices;
-			truncated_vertices.resize(alloc.max_vertices * FLOATS_PER_VERTEX);
-			pending_vertex_data_[trail_id] = std::move(truncated_vertices);
-		} else {
-			pending_vertex_data_[trail_id] = vertices;
+			incoming_vertex_count = alloc.max_vertices;
 		}
+
+		auto& pending = pending_vertex_data_[trail_id];
+		if (pending.size() != incoming_vertex_count) {
+			pending.resize(incoming_vertex_count);
+		}
+		std::memcpy(pending.data(), vertices.data(), incoming_vertex_count * sizeof(TrailVertex));
 
 		alloc.head = std::min(head, alloc.max_vertices - 1);
 		alloc.tail = std::min(tail, alloc.max_vertices - 1);
@@ -209,7 +212,7 @@ namespace Boidsish {
 		GLuint new_vbo;
 		glGenBuffers(1, &new_vbo);
 		glBindBuffer(GL_ARRAY_BUFFER, new_vbo);
-		glBufferData(GL_ARRAY_BUFFER, new_capacity * FLOATS_PER_VERTEX * sizeof(float), nullptr, GL_DYNAMIC_DRAW);
+		glBufferData(GL_ARRAY_BUFFER, new_capacity * sizeof(TrailVertex), nullptr, GL_DYNAMIC_DRAW);
 
 		// Copy old data
 		glBindBuffer(GL_COPY_READ_BUFFER, vbo_);
@@ -218,7 +221,7 @@ namespace Boidsish {
 			GL_ARRAY_BUFFER,
 			0,
 			0,
-			vertex_capacity_ * FLOATS_PER_VERTEX * sizeof(float)
+			vertex_capacity_ * sizeof(TrailVertex)
 		);
 
 		glDeleteBuffers(1, &vbo_);
@@ -263,9 +266,9 @@ namespace Boidsish {
 
 			// Upload the entire trail data at its allocated offset
 			// The vertices are already in the correct format (pos + normal + color)
-			size_t byte_offset = alloc.vertex_offset * FLOATS_PER_VERTEX * sizeof(float);
-			size_t byte_size = vertices.size() * sizeof(float);
-			size_t max_byte_size = alloc.max_vertices * FLOATS_PER_VERTEX * sizeof(float);
+			size_t byte_offset = alloc.vertex_offset * sizeof(TrailVertex);
+			size_t byte_size = vertices.size() * sizeof(TrailVertex);
+			size_t max_byte_size = alloc.max_vertices * sizeof(TrailVertex);
 
 			if (byte_size > max_byte_size) {
 				logger::ERROR("Trail {} upload size mismatch during commit - truncating", trail_id);

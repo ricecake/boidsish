@@ -30,7 +30,7 @@ namespace Boidsish {
 		m_instance_groups[shape->GetInstanceKey()].shapes.push_back(shape);
 	}
 
-	void InstanceManager::Render(Shader& shader) {
+	void InstanceManager::Render(Shader& shader, uint64_t frame_count) {
 		shader.use();
 		shader.setBool("is_instanced", true);
 
@@ -38,6 +38,8 @@ namespace Boidsish {
 			if (group.shapes.empty()) {
 				continue;
 			}
+
+			group.last_frame_used_ = frame_count;
 
 			// Determine type from the key prefix
 			if (key.starts_with("Model:")) {
@@ -47,6 +49,24 @@ namespace Boidsish {
 			}
 			// Other shape types can be added here
 			group.shapes.clear();
+		}
+
+		// Cleanup unused instance groups periodically (every 600 frames)
+		if (frame_count > 0 && frame_count % 600 == 0) {
+			for (auto it = m_instance_groups.begin(); it != m_instance_groups.end();) {
+				// If group hasn't been used for 600 frames, delete its resources
+				if (frame_count - it->second.last_frame_used_ > 600) {
+					if (it->second.instance_matrix_vbo_ != 0) {
+						glDeleteBuffers(1, &it->second.instance_matrix_vbo_);
+					}
+					if (it->second.instance_color_vbo_ != 0) {
+						glDeleteBuffers(1, &it->second.instance_color_vbo_);
+					}
+					it = m_instance_groups.erase(it);
+				} else {
+					++it;
+				}
+			}
 		}
 
 		// Reset all shader uniforms to safe defaults after all groups rendered

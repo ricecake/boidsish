@@ -310,21 +310,4 @@ namespace Boidsish {
 		bounds_dirty_ = false;
 	}
 
-	std::vector<float> Trail::GetInterleavedVertexData() const {
-		std::vector<float> data;
-		data.reserve(mesh_vertices.size() * 9);
-		for (const auto& v : mesh_vertices) {
-			data.push_back(v.pos.x);
-			data.push_back(v.pos.y);
-			data.push_back(v.pos.z);
-			data.push_back(v.normal.x);
-			data.push_back(v.normal.y);
-			data.push_back(v.normal.z);
-			data.push_back(v.color.x);
-			data.push_back(v.color.y);
-			data.push_back(v.color.z);
-		}
-		return data;
-	}
-
 } // namespace Boidsish

@@ -88,6 +88,7 @@ namespace Boidsish {
 		bool   needs_reallocation_{false};
 		float  time_{0.0f};
 		size_t emitter_buffer_capacity_{0}; // Track capacity to avoid per-frame reallocation
+		size_t terrain_chunk_buffer_capacity_{0};
 
 		static const int kMaxParticles = Constants::Class::Particles::MaxParticles();
 		static const int kMaxEmitters = Constants::Class::Particles::MaxEmitters();

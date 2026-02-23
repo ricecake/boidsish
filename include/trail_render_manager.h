@@ -7,14 +7,13 @@
 #include <vector>
 
 #include "constants.h"
+#include "trail.h"
 #include <GL/glew.h>
 #include <glm/glm.hpp>
 
 class Shader;
 
 namespace Boidsish {
-
-	class Trail;
 
 	/**
 	 * @brief Manages batched trail rendering for improved performance.
@@ -71,21 +70,21 @@ namespace Boidsish {
 		 * @brief Update trail vertex data.
 		 *
 		 * @param trail_id The trail to update
-		 * @param vertices Vertex data (position + normal + color per vertex)
+		 * @param vertices Interleaved vertex data (position + normal + color per vertex)
 		 * @param head Ring buffer head index
 		 * @param tail Ring buffer tail index
 		 * @param vertex_count Number of active vertices
 		 * @param is_full Whether the ring buffer has wrapped
 		 */
 		void UpdateTrailData(
-			int                       trail_id,
-			const std::vector<float>& vertices,
-			size_t                    head,
-			size_t                    tail,
-			size_t                    vertex_count,
-			bool                      is_full,
-			const glm::vec3&          min_bound,
-			const glm::vec3&          max_bound
+			int                             trail_id,
+			const std::vector<TrailVertex>& vertices,
+			size_t                          head,
+			size_t                          tail,
+			size_t                          vertex_count,
+			bool                            is_full,
+			const glm::vec3&                min_bound,
+			const glm::vec3&                max_bound
 		);
 
 		/**
@@ -176,7 +175,7 @@ namespace Boidsish {
 		std::map<int, TrailAllocation> trail_allocations_;
 
 		// Pending vertex data for upload
-		std::map<int, std::vector<float>> pending_vertex_data_;
+		std::map<int, std::vector<TrailVertex>> pending_vertex_data_;
 
 		// Free list for reusing deallocated space
 		struct FreeBlock {

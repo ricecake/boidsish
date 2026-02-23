@@ -1047,6 +1047,10 @@ namespace Boidsish {
 				glDeleteBuffers(1, &frustum_ubo);
 			}
 
+			if (temporal_data_ubo) {
+				glDeleteBuffers(1, &temporal_data_ubo);
+			}
+
 			if (window)
 				glfwDestroyWindow(window);
 			glfwTerminate();
@@ -1158,7 +1162,7 @@ namespace Boidsish {
 				}
 			}
 
-			instance_manager->Render(*shader);
+			instance_manager->Render(*shader, frame_count_);
 
 			// Render clones
 			clone_manager->Render(*shader);
@@ -1229,7 +1233,7 @@ namespace Boidsish {
 				}
 			}
 
-			instance_manager->Render(*shader);
+			instance_manager->Render(*shader, frame_count_);
 
 			// Restore state
 			glDepthMask(GL_TRUE);
