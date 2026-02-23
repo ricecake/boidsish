@@ -32,6 +32,8 @@ namespace Boidsish {
 		void      render(Shader& shader, const glm::mat4& model_matrix) const override;
 		glm::mat4 GetModelMatrix() const override;
 
+		void GenerateRenderPackets(std::vector<RenderPacket>& out_packets, const RenderContext& context) const override;
+
 		std::string GetInstanceKey() const override { return "CheckpointRing"; }
 
 		bool IsTransparent() const override { return true; }
@@ -48,12 +50,14 @@ namespace Boidsish {
 
 		CheckpointStyle GetStyle() const { return style_; }
 
-		static void InitQuadMesh();
+		static void InitQuadMesh(Megabuffer* megabuffer = nullptr);
 		static void DestroyQuadMesh();
 
 		static std::shared_ptr<Shader> GetShader() { return checkpoint_shader_; }
 
 		static void SetShader(std::shared_ptr<Shader> shader) { checkpoint_shader_ = shader; }
+
+		static ShaderHandle checkpoint_shader_handle;
 
 	private:
 		float           radius_;
@@ -61,6 +65,7 @@ namespace Boidsish {
 
 		static unsigned int            quad_vao_;
 		static unsigned int            quad_vbo_;
+		static MegabufferAllocation    quad_alloc_;
 		static std::shared_ptr<Shader> checkpoint_shader_;
 	};
 

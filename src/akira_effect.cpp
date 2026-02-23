@@ -72,7 +72,17 @@ namespace Boidsish {
 			shader_->setFloat("fadeProgress", effect.GetFadeProgress());
 			shader_->setInt("phase", static_cast<int>(effect.phase));
 
-			glDrawElements(GL_TRIANGLES, Shape::sphere_vertex_count_, GL_UNSIGNED_INT, 0);
+			if (Shape::sphere_alloc_.valid) {
+				glDrawElementsBaseVertex(
+					GL_TRIANGLES,
+					Shape::sphere_vertex_count_,
+					GL_UNSIGNED_INT,
+					(void*)(uintptr_t)(Shape::sphere_alloc_.first_index * sizeof(unsigned int)),
+					Shape::sphere_alloc_.base_vertex
+				);
+			} else {
+				glDrawElements(GL_TRIANGLES, Shape::sphere_vertex_count_, GL_UNSIGNED_INT, 0);
+			}
 		}
 
 		glBindVertexArray(0);

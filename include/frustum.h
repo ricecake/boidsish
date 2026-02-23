@@ -9,6 +9,18 @@ namespace Boidsish {
 		float     distance;
 	};
 
+	/**
+	 * @brief GPU-compatible structure for frustum data.
+	 * Matches std140 layout in frustum.glsl.
+	 * Padded to 256 bytes for GL_UNIFORM_BUFFER_OFFSET_ALIGNMENT compliance.
+	 */
+	struct FrustumDataGPU {
+		glm::vec4 planes[6];             // 96 bytes: xyz = normal, w = distance
+		glm::vec3 camera_pos;            // 12 bytes: for LOD/fading
+		float     padding = 0;           // 4 bytes: std140 alignment
+		float     _ubo_padding[36] = {}; // 144 bytes: pad to 256 total for UBO offset alignment
+	};
+
 	struct Frustum {
 		Plane planes[6];
 

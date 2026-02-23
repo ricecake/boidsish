@@ -24,7 +24,13 @@ namespace Boidsish {
 		float a
 	):
 		Shape(id, x, y, z, r, g, b, a), cone_height_(cone_height), cone_radius_(cone_radius), rod_radius_(rod_radius) {
-		InitArrowMesh();
+		InitArrowMesh(nullptr);
+	}
+
+	void Arrow::PrepareResources(Megabuffer* mb) const {
+		if (mb) {
+			InitArrowMesh(mb);
+		}
 	}
 
 	Arrow::~Arrow() {
@@ -60,7 +66,10 @@ namespace Boidsish {
 		return model;
 	}
 
-	void Arrow::InitArrowMesh() {
+	void Arrow::InitArrowMesh(Megabuffer* mb) const {
+		if (rod_vao_ != 0 || rod_alloc_.valid)
+			return;
+
 		// Rod generation
 		std::vector<float> rod_vertices;
 		int                segments = 16;
@@ -90,16 +99,6 @@ namespace Boidsish {
 		}
 		rod_vertex_count_ = rod_vertices.size() / 6;
 
-		glGenVertexArrays(1, &rod_vao_);
-		glBindVertexArray(rod_vao_);
-		glGenBuffers(1, &rod_vbo_);
-		glBindBuffer(GL_ARRAY_BUFFER, rod_vbo_);
-		glBufferData(GL_ARRAY_BUFFER, rod_vertices.size() * sizeof(float), rod_vertices.data(), GL_STATIC_DRAW);
-		glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void*)0);
-		glEnableVertexAttribArray(0);
-		glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void*)(3 * sizeof(float)));
-		glEnableVertexAttribArray(1);
-
 		// Cone generation
 		std::vector<float> cone_vertices;
 		glm::vec3          tip(0, 1.0, 0);
@@ -127,17 +126,89 @@ namespace Boidsish {
 		}
 		cone_vertex_count_ = cone_vertices.size() / 6;
 
-		glGenVertexArrays(1, &cone_vao_);
-		glBindVertexArray(cone_vao_);
-		glGenBuffers(1, &cone_vbo_);
-		glBindBuffer(GL_ARRAY_BUFFER, cone_vbo_);
-		glBufferData(GL_ARRAY_BUFFER, cone_vertices.size() * sizeof(float), cone_vertices.data(), GL_STATIC_DRAW);
-		glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void*)0);
-		glEnableVertexAttribArray(0);
-		glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void*)(3 * sizeof(float)));
-		glEnableVertexAttribArray(1);
+		if (mb) {
+			std::vector<Vertex> v_rod;
+			for (size_t i = 0; i < rod_vertices.size(); i += 6) {
+				Vertex v;
+				v.Position = {rod_vertices[i], rod_vertices[i + 1], rod_vertices[i + 2]};
+				v.Normal = {rod_vertices[i + 3], rod_vertices[i + 4], rod_vertices[i + 5]};
+				v.TexCoords = {0, 0};
+				v.Color = {1, 1, 1};
+				v_rod.push_back(v);
+			}
+			rod_alloc_ = mb->AllocateStatic(v_rod.size(), 0);
+			if (rod_alloc_.valid) {
+				mb->Upload(rod_alloc_, v_rod.data(), v_rod.size());
+				rod_vao_ = mb->GetVAO();
+			}
 
-		glBindVertexArray(0);
+			std::vector<Vertex> v_cone;
+			for (size_t i = 0; i < cone_vertices.size(); i += 6) {
+				Vertex v;
+				v.Position = {cone_vertices[i], cone_vertices[i + 1], cone_vertices[i + 2]};
+				v.Normal = {cone_vertices[i + 3], cone_vertices[i + 4], cone_vertices[i + 5]};
+				v.TexCoords = {0, 0};
+				v.Color = {1, 1, 1};
+				v_cone.push_back(v);
+			}
+			cone_alloc_ = mb->AllocateStatic(v_cone.size(), 0);
+			if (cone_alloc_.valid) {
+				mb->Upload(cone_alloc_, v_cone.data(), v_cone.size());
+				cone_vao_ = mb->GetVAO();
+			}
+		} else {
+			std::vector<Vertex> v_rod;
+			for (size_t i = 0; i < rod_vertices.size(); i += 6) {
+				Vertex v;
+				v.Position = {rod_vertices[i], rod_vertices[i + 1], rod_vertices[i + 2]};
+				v.Normal = {rod_vertices[i + 3], rod_vertices[i + 4], rod_vertices[i + 5]};
+				v.TexCoords = {0, 0};
+				v.Color = {1, 1, 1};
+				v_rod.push_back(v);
+			}
+
+			glGenVertexArrays(1, &rod_vao_);
+			glBindVertexArray(rod_vao_);
+			glGenBuffers(1, &rod_vbo_);
+			glBindBuffer(GL_ARRAY_BUFFER, rod_vbo_);
+			glBufferData(GL_ARRAY_BUFFER, v_rod.size() * sizeof(Vertex), v_rod.data(), GL_STATIC_DRAW);
+
+			glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)offsetof(Vertex, Position));
+			glEnableVertexAttribArray(0);
+			glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)offsetof(Vertex, Normal));
+			glEnableVertexAttribArray(1);
+			glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)offsetof(Vertex, TexCoords));
+			glEnableVertexAttribArray(2);
+			glVertexAttribPointer(8, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)offsetof(Vertex, Color));
+			glEnableVertexAttribArray(8);
+
+			std::vector<Vertex> v_cone;
+			for (size_t i = 0; i < cone_vertices.size(); i += 6) {
+				Vertex v;
+				v.Position = {cone_vertices[i], cone_vertices[i + 1], cone_vertices[i + 2]};
+				v.Normal = {cone_vertices[i + 3], cone_vertices[i + 4], cone_vertices[i + 5]};
+				v.TexCoords = {0, 0};
+				v.Color = {1, 1, 1};
+				v_cone.push_back(v);
+			}
+
+			glGenVertexArrays(1, &cone_vao_);
+			glBindVertexArray(cone_vao_);
+			glGenBuffers(1, &cone_vbo_);
+			glBindBuffer(GL_ARRAY_BUFFER, cone_vbo_);
+			glBufferData(GL_ARRAY_BUFFER, v_cone.size() * sizeof(Vertex), v_cone.data(), GL_STATIC_DRAW);
+
+			glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)offsetof(Vertex, Position));
+			glEnableVertexAttribArray(0);
+			glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)offsetof(Vertex, Normal));
+			glEnableVertexAttribArray(1);
+			glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)offsetof(Vertex, TexCoords));
+			glEnableVertexAttribArray(2);
+			glVertexAttribPointer(8, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)offsetof(Vertex, Color));
+			glEnableVertexAttribArray(8);
+
+			glBindVertexArray(0);
+		}
 	}
 
 	void Arrow::SetDirection(const glm::vec3& direction) {
@@ -173,4 +244,86 @@ namespace Boidsish {
 			cone_vao_ = 0;
 		}
 	}
+
+	void Arrow::GenerateRenderPackets(std::vector<RenderPacket>& out_packets, const RenderContext& context) const {
+		glm::mat4 model_matrix = GetModelMatrix();
+		glm::vec3 world_pos = glm::vec3(model_matrix[3]);
+
+		// Arrow has two parts: Rod and Cone
+		// For simplicity, we create two packets if needed, or one if they share state.
+		// Since they use different VAOs, we need two packets.
+
+		// Rod Packet
+		{
+			RenderPacket packet;
+			packet.vao = rod_vao_;
+			packet.vbo = rod_vbo_;
+			if (rod_alloc_.valid) {
+				packet.base_vertex = rod_alloc_.base_vertex;
+			}
+			packet.vertex_count = static_cast<unsigned int>(rod_vertex_count_);
+			packet.draw_mode = GL_TRIANGLES;
+			packet.shader_id = shader ? shader->ID : 0;
+			packet.uniforms.model = model_matrix;
+			packet.uniforms.color = glm::vec4(GetR(), GetG(), GetB(), GetA());
+			packet.uniforms.use_pbr = UsePBR();
+			packet.uniforms.roughness = GetRoughness();
+			packet.uniforms.metallic = GetMetallic();
+			packet.uniforms.ao = GetAO();
+			packet.uniforms.is_colossal = IsColossal();
+
+			RenderLayer layer = (GetA() < 0.99f) ? RenderLayer::Transparent : RenderLayer::Opaque;
+			float       normalized_depth = context.CalculateNormalizedDepth(world_pos);
+			packet.shader_handle = shader_handle;
+			packet.material_handle = MaterialHandle(0);
+			packet.sort_key = CalculateSortKey(
+				layer,
+				packet.shader_handle,
+				packet.vao,
+				packet.draw_mode,
+				packet.index_count > 0,
+				packet.material_handle,
+				normalized_depth
+			);
+			out_packets.push_back(packet);
+		}
+
+		// Cone Packet
+		{
+			RenderPacket packet;
+			packet.vao = cone_vao_;
+			packet.vbo = cone_vbo_;
+			if (cone_alloc_.valid) {
+				packet.base_vertex = cone_alloc_.base_vertex;
+			}
+			packet.vertex_count = static_cast<unsigned int>(cone_vertex_count_);
+			packet.draw_mode = GL_TRIANGLES;
+			packet.shader_id = shader ? shader->ID : 0;
+			packet.uniforms.model = model_matrix;
+			packet.uniforms.color = glm::vec4(GetR(), GetG(), GetB(), GetA());
+			packet.uniforms.use_pbr = UsePBR();
+			packet.uniforms.roughness = GetRoughness();
+			packet.uniforms.metallic = GetMetallic();
+			packet.uniforms.ao = GetAO();
+			packet.uniforms.is_colossal = IsColossal();
+
+			packet.casts_shadows = CastsShadows();
+
+			RenderLayer layer = (GetA() < 0.99f) ? RenderLayer::Transparent : RenderLayer::Opaque;
+			float       normalized_depth = context.CalculateNormalizedDepth(world_pos);
+			packet.shader_handle = shader_handle;
+			packet.material_handle = MaterialHandle(0);
+			packet.sort_key = CalculateSortKey(
+				layer,
+				packet.shader_handle,
+				packet.vao,
+				packet.draw_mode,
+				packet.index_count > 0,
+				packet.material_handle,
+				normalized_depth
+			);
+			out_packets.push_back(packet);
+		}
+	}
+
 } // namespace Boidsish

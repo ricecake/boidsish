@@ -14,7 +14,6 @@ namespace Boidsish {
 		SetPosition(pos);
 		shape_->SetScale(glm::vec3(3.5f));
 		SetColor(0.2f, 0.2f, 0.8f); // Bluish
-		shape_->SetInstanced(true);
 		SetOrientToVelocity(true);
 
 		std::dynamic_pointer_cast<Model>(shape_)->SetBaseRotation(

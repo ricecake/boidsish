@@ -5,6 +5,7 @@
 #include <iostream>
 #include <map>
 #include <memory>
+#include <mutex>
 #include <optional>
 #include <set>
 #include <thread>
@@ -25,12 +26,12 @@
 #include "fire_effect_manager.h"
 #include "hud.h"
 #include "hud_manager.h"
-#include "instance_manager.h"
 #include "light_manager.h"
 #include "line.h"
 #include "logger.h"
 #include "mesh_explosion_manager.h"
 #include "path.h"
+#include "persistent_buffer.h"
 #include "post_processing/PostProcessingManager.h"
 #include "post_processing/effects/AtmosphereEffect.h"
 #include "post_processing/effects/AutoExposureEffect.h"
@@ -47,7 +48,9 @@
 #include "post_processing/effects/TimeStutterEffect.h"
 #include "post_processing/effects/ToneMappingEffect.h"
 #include "post_processing/effects/WhispTrailEffect.h"
+#include "render_queue.h"
 #include "sdf_volume_manager.h"
+#include "shader_table.h"
 #include "shadow_manager.h"
 #include "shockwave_effect.h"
 #include "sound_effect_manager.h"
@@ -193,6 +196,160 @@ namespace Boidsish {
 		}
 	}
 
+	/**
+	 * @brief Concrete implementation of the Megabuffer interface using AZDO principles.
+	 */
+	class MegabufferImpl: public Megabuffer {
+	public:
+		MegabufferImpl(size_t max_vertices, size_t max_indices) {
+			vbo_ = std::make_unique<PersistentBuffer<Vertex>>(GL_ARRAY_BUFFER, max_vertices, 3);
+			ebo_ = std::make_unique<PersistentBuffer<uint32_t>>(GL_ELEMENT_ARRAY_BUFFER, max_indices, 3);
+
+			glGenVertexArrays(1, &vao_);
+			glBindVertexArray(vao_);
+
+			glBindBuffer(GL_ARRAY_BUFFER, vbo_->GetBufferId());
+			glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ebo_->GetBufferId());
+
+			// Set up attributes (matches Vertex)
+			glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)offsetof(Vertex, Position));
+			glEnableVertexAttribArray(0);
+			glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)offsetof(Vertex, Normal));
+			glEnableVertexAttribArray(1);
+			glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)offsetof(Vertex, TexCoords));
+			glEnableVertexAttribArray(2);
+			glVertexAttribPointer(8, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)offsetof(Vertex, Color));
+			glEnableVertexAttribArray(8);
+
+			glBindVertexArray(0);
+
+			static_v_limit_ = Constants::Class::Megabuffer::StaticVertexLimit();
+			static_i_limit_ = Constants::Class::Megabuffer::StaticIndexLimit();
+
+			dynamic_v_start_ = static_cast<uint32_t>(static_v_limit_);
+			dynamic_i_start_ = static_cast<uint32_t>(static_i_limit_);
+
+			dynamic_v_ptr_ = dynamic_v_start_;
+			dynamic_i_ptr_ = dynamic_i_start_;
+		}
+
+		~MegabufferImpl() override {
+			if (vao_)
+				glDeleteVertexArrays(1, &vao_);
+		}
+
+		MegabufferAllocation AllocateStatic(uint32_t vertex_count, uint32_t index_count) override {
+			std::lock_guard<std::mutex> lock(static_mutex_);
+			if (static_v_ptr_ + vertex_count > static_v_limit_ || static_i_ptr_ + index_count > static_i_limit_) {
+				return {};
+			}
+
+			MegabufferAllocation alloc;
+			alloc.base_vertex = static_cast<uint32_t>(static_v_ptr_);
+			alloc.first_index = static_cast<uint32_t>(static_i_ptr_);
+			alloc.vertex_count = vertex_count;
+			alloc.index_count = index_count;
+			alloc.valid = true;
+
+			static_v_ptr_ += vertex_count;
+			static_i_ptr_ += index_count;
+
+			return alloc;
+		}
+
+		MegabufferAllocation AllocateDynamic(uint32_t vertex_count, uint32_t index_count) override {
+			uint32_t v_offset = dynamic_v_ptr_.fetch_add(vertex_count);
+			uint32_t i_offset = dynamic_i_ptr_.fetch_add(index_count);
+
+			if (v_offset + vertex_count > vbo_->GetElementCount() || i_offset + index_count > ebo_->GetElementCount()) {
+				return {};
+			}
+
+			MegabufferAllocation alloc;
+			alloc.base_vertex = v_offset;
+			alloc.first_index = i_offset;
+			alloc.vertex_count = vertex_count;
+			alloc.index_count = index_count;
+			alloc.valid = true;
+
+			return alloc;
+		}
+
+		void Upload(
+			const MegabufferAllocation& alloc,
+			const Vertex*               vertices,
+			uint32_t                    v_count,
+			const uint32_t*             indices = nullptr,
+			uint32_t                    i_count = 0
+		) override {
+			if (!alloc.valid)
+				return;
+
+			// Bounds checking to prevent buffer overflows
+			assert(alloc.base_vertex + v_count <= vbo_->GetElementCount() && "Vertex buffer overflow in Upload()");
+			if (indices && i_count > 0) {
+				assert(alloc.first_index + i_count <= ebo_->GetElementCount() && "Index buffer overflow in Upload()");
+			}
+
+			// If it's a static allocation (base_vertex < dynamic_v_start_), upload to ALL 3 segments.
+			// Otherwise upload only to the current frame's segment.
+
+			bool is_static = (alloc.base_vertex < dynamic_v_start_);
+
+			if (is_static) {
+				for (int i = 0; i < 3; ++i) {
+					Vertex* v_ptr = vbo_->GetFullBufferPtr() + (i * vbo_->GetElementCount()) + alloc.base_vertex;
+					memcpy(v_ptr, vertices, v_count * sizeof(Vertex));
+
+					if (indices && i_count > 0) {
+						uint32_t* i_ptr = ebo_->GetFullBufferPtr() + (i * ebo_->GetElementCount()) + alloc.first_index;
+						memcpy(i_ptr, indices, i_count * sizeof(uint32_t));
+					}
+				}
+			} else {
+				// Dynamic upload to current frame
+				Vertex* v_ptr = vbo_->GetFrameDataPtr() + alloc.base_vertex;
+				memcpy(v_ptr, vertices, v_count * sizeof(Vertex));
+
+				if (indices && i_count > 0) {
+					uint32_t* i_ptr = ebo_->GetFrameDataPtr() + alloc.first_index;
+					memcpy(i_ptr, indices, i_count * sizeof(uint32_t));
+				}
+			}
+		}
+
+		uint32_t GetVAO() const override { return vao_; }
+
+		void AdvanceFrame() {
+			vbo_->AdvanceFrame();
+			ebo_->AdvanceFrame();
+
+			// Reset dynamic pointers for the new frame
+			dynamic_v_ptr_ = dynamic_v_start_;
+			dynamic_i_ptr_ = dynamic_i_start_;
+		}
+
+		uint32_t GetVertexFrameOffset() const { return vbo_->GetCurrentBufferIndex() * vbo_->GetElementCount(); }
+
+		uint32_t GetIndexFrameOffset() const { return ebo_->GetCurrentBufferIndex() * ebo_->GetElementCount(); }
+
+	private:
+		std::unique_ptr<PersistentBuffer<Vertex>>   vbo_;
+		std::unique_ptr<PersistentBuffer<uint32_t>> ebo_;
+		GLuint                                      vao_ = 0;
+
+		size_t     static_v_ptr_ = 0;
+		size_t     static_i_ptr_ = 0;
+		size_t     static_v_limit_;
+		size_t     static_i_limit_;
+		std::mutex static_mutex_;
+
+		std::atomic<uint32_t> dynamic_v_ptr_;
+		std::atomic<uint32_t> dynamic_i_ptr_;
+		uint32_t              dynamic_v_start_;
+		uint32_t              dynamic_i_start_;
+	};
+
 	struct Visualizer::VisualizerImpl {
 		Visualizer*                           parent;
 		GLFWwindow*                           window;
@@ -204,7 +361,6 @@ namespace Boidsish {
 		std::vector<std::shared_ptr<Shape>>   transient_effects; // Short-lived effects like CurvedText
 		ConcurrentQueue<ShapeCommand>         shape_command_queue;
 		std::unique_ptr<CloneManager>         clone_manager;
-		std::unique_ptr<InstanceManager>      instance_manager;
 		std::unique_ptr<FireEffectManager>    fire_effect_manager;
 		std::unique_ptr<NoiseManager>         noise_manager;
 		std::unique_ptr<MeshExplosionManager> mesh_explosion_manager;
@@ -218,6 +374,8 @@ namespace Boidsish {
 		std::map<int, std::shared_ptr<Trail>> trails;
 		std::map<int, float>                  trail_last_update;
 		LightManager                          light_manager;
+		ShaderTable                           shader_table;
+		RenderQueue                           render_queue;
 
 		InputState                                             input_state{};
 		std::vector<InputCallback>                             input_callbacks;
@@ -232,12 +390,28 @@ namespace Boidsish {
 		std::shared_ptr<TerrainRenderManager> terrain_render_manager;
 		std::unique_ptr<TrailRenderManager>   trail_render_manager;
 
+		std::unique_ptr<MegabufferImpl> megabuffer;
+
+		// Persistent buffers for MDI
+		std::unique_ptr<PersistentBuffer<DrawElementsIndirectCommand>> indirect_elements_buffer;
+		std::unique_ptr<PersistentBuffer<DrawArraysIndirectCommand>>   indirect_arrays_buffer;
+		std::unique_ptr<PersistentBuffer<CommonUniforms>>              uniforms_ssbo;
+		std::unique_ptr<PersistentBuffer<FrustumDataGPU>>              frustum_ssbo;
+		GLsync                                                         mdi_fences[3]{0, 0, 0};
+
+		// MDI offset tracking across layers within a single frame
+		uint32_t mdi_elements_count = 0;
+		uint32_t mdi_arrays_count = 0;
+		uint32_t mdi_uniform_count = 0;
+		uint32_t mdi_frustum_count = 0;
+
 		std::shared_ptr<Shader> shader;
-		std::unique_ptr<Shader> plane_shader;
-		std::unique_ptr<Shader> sky_shader;
-		std::unique_ptr<Shader> trail_shader;
-		std::unique_ptr<Shader> blur_shader;
-		std::unique_ptr<Shader> postprocess_shader_;
+		std::shared_ptr<Shader> plane_shader;
+		std::shared_ptr<Shader> sky_shader;
+		std::shared_ptr<Shader> trail_shader;
+		std::shared_ptr<Shader> blur_shader;
+		std::shared_ptr<Shader> postprocess_shader_;
+		ShaderHandle            shadow_shader_handle{0};
 		GLuint                  plane_vao{0}, plane_vbo{0}, sky_vao{0}, blur_quad_vao{0}, blur_quad_vbo{0};
 		GLuint                  reflection_fbo{0}, reflection_texture{0}, reflection_depth_rbo{0};
 		GLuint                  pingpong_fbo[2]{0}, pingpong_texture[2]{0};
@@ -343,6 +517,7 @@ namespace Boidsish {
 
 		VisualizerImpl(Visualizer* p, int w, int h, const char* title): parent(p), width(w), height(h) {
 			RegisterShaderConstants();
+
 			ConfigManager::GetInstance().Initialize(title);
 			enable_hdr_ = ConfigManager::GetInstance().GetAppSettingBool("enable_hdr", true);
 			width = ConfigManager::GetInstance().GetAppSettingInt("window_width", w);
@@ -406,7 +581,7 @@ namespace Boidsish {
 			});
 
 			glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
-			glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3); // Updated to 4.3 for compute shader support
+			glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 6); // Updated to 4.6 for MDI and gl_DrawID support
 			glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
 #ifdef __APPLE__
 			glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE);
@@ -475,19 +650,45 @@ namespace Boidsish {
 
 			shader = std::make_shared<Shader>("shaders/vis.vert", "shaders/vis.frag");
 			Shape::shader = shader;
-			trail_shader = std::make_unique<Shader>("shaders/trail.vert", "shaders/trail.frag");
+			Shape::shader_handle = shader_table.Register(std::make_unique<RenderShader>(shader));
+
+			trail_shader = std::make_shared<Shader>("shaders/trail.vert", "shaders/trail.frag");
+			shader_table.Register(std::make_unique<RenderShader>(trail_shader));
+
 			if (ConfigManager::GetInstance().GetAppSettingBool("enable_floor", true)) {
-				plane_shader = std::make_unique<Shader>("shaders/plane.vert", "shaders/plane.frag");
+				plane_shader = std::make_shared<Shader>("shaders/plane.vert", "shaders/plane.frag");
+				shader_table.Register(std::make_unique<RenderShader>(plane_shader));
 			}
 			if (ConfigManager::GetInstance().GetAppSettingBool("enable_skybox", true)) {
-				sky_shader = std::make_unique<Shader>("shaders/sky.vert", "shaders/sky.frag");
+				sky_shader = std::make_shared<Shader>("shaders/sky.vert", "shaders/sky.frag");
+				shader_table.Register(std::make_unique<RenderShader>(sky_shader));
 			}
 			if (ConfigManager::GetInstance().GetAppSettingBool("enable_floor", true) &&
 			    ConfigManager::GetInstance().GetAppSettingBool("enable_floor_reflection", true)) {
-				blur_shader = std::make_unique<Shader>("shaders/blur.vert", "shaders/blur.frag");
+				blur_shader = std::make_shared<Shader>("shaders/blur.vert", "shaders/blur.frag");
+				shader_table.Register(std::make_unique<RenderShader>(blur_shader));
 			}
+
+			// Initialize persistent buffers for MDI
+			// Capacity: 16384 commands/uniforms per frame (triple buffered)
+			megabuffer = std::make_unique<MegabufferImpl>(
+				Constants::Class::Megabuffer::MaxVertices(),
+				Constants::Class::Megabuffer::MaxIndices()
+			);
+
+			indirect_elements_buffer = std::make_unique<PersistentBuffer<DrawElementsIndirectCommand>>(
+				GL_DRAW_INDIRECT_BUFFER,
+				65536
+			);
+			indirect_arrays_buffer = std::make_unique<PersistentBuffer<DrawArraysIndirectCommand>>(
+				GL_DRAW_INDIRECT_BUFFER,
+				65536
+			);
+			uniforms_ssbo = std::make_unique<PersistentBuffer<CommonUniforms>>(GL_SHADER_STORAGE_BUFFER, 65536);
+			frustum_ssbo = std::make_unique<PersistentBuffer<FrustumDataGPU>>(GL_UNIFORM_BUFFER, 16);
 			if (ConfigManager::GetInstance().GetAppSettingBool("enable_effects", true)) {
-				postprocess_shader_ = std::make_unique<Shader>("shaders/postprocess.vert", "shaders/postprocess.frag");
+				postprocess_shader_ = std::make_shared<Shader>("shaders/postprocess.vert", "shaders/postprocess.frag");
+				shader_table.Register(std::make_unique<RenderShader>(postprocess_shader_));
 			}
 			if (ConfigManager::GetInstance().GetAppSettingBool("enable_terrain", true)) {
 				terrain_generator = std::make_shared<TerrainGenerator>();
@@ -497,7 +698,6 @@ namespace Boidsish {
 			noise_manager = std::make_unique<NoiseManager>();
 			noise_manager->Initialize();
 			clone_manager = std::make_unique<CloneManager>();
-			instance_manager = std::make_unique<InstanceManager>();
 			fire_effect_manager = std::make_unique<FireEffectManager>();
 			fire_effect_manager->Initialize(); // Must initialize on main thread with GL context
 			mesh_explosion_manager = std::make_unique<MeshExplosionManager>();
@@ -551,20 +751,15 @@ namespace Boidsish {
 				);
 			}
 
-			// Frustum UBO for GPU-side culling
-			// Layout: 6 vec4 planes (96 bytes) + vec3 camera pos + padding (16 bytes) = 112 bytes
-			glGenBuffers(1, &frustum_ubo);
-			glBindBuffer(GL_UNIFORM_BUFFER, frustum_ubo);
-			glBufferData(GL_UNIFORM_BUFFER, 112, NULL, GL_DYNAMIC_DRAW);
-			glBindBuffer(GL_UNIFORM_BUFFER, 0);
-			glBindBufferRange(GL_UNIFORM_BUFFER, Constants::UboBinding::FrustumData(), frustum_ubo, 0, 112);
-
 			shader->use();
 			SetupShaderBindings(*shader);
 			SetupShaderBindings(*trail_shader);
 
 			CheckpointRingShape::SetShader(
 				std::make_shared<Shader>("shaders/checkpoint.vert", "shaders/checkpoint.frag")
+			);
+			CheckpointRingShape::checkpoint_shader_handle = shader_table.Register(
+				std::make_unique<RenderShader>(CheckpointRingShape::GetShader())
 			);
 			SetupShaderBindings(*CheckpointRingShape::GetShader());
 
@@ -590,6 +785,9 @@ namespace Boidsish {
 					"shaders/terrain.frag",
 					"shaders/terrain.tcs",
 					"shaders/terrain.tes"
+				);
+				Terrain::terrain_shader_handle = shader_table.Register(
+					std::make_unique<RenderShader>(Terrain::terrain_shader_)
 				);
 				SetupShaderBindings(*Terrain::terrain_shader_);
 
@@ -618,9 +816,9 @@ namespace Boidsish {
 				);
 			}
 
-			Shape::InitSphereMesh();
-			Line::InitLineMesh();
-			CheckpointRingShape::InitQuadMesh();
+			Shape::InitSphereMesh(megabuffer.get());
+			Line::InitLineMesh(megabuffer.get());
+			CheckpointRingShape::InitQuadMesh(megabuffer.get());
 
 			if (postprocess_shader_ || blur_shader) {
 				float blur_quad_vertices[] = {
@@ -806,6 +1004,9 @@ namespace Boidsish {
 
 			// --- Shadow Manager (initialize unconditionally) ---
 			shadow_manager->Initialize();
+			shadow_shader_handle = shader_table.Register(
+				std::make_unique<RenderShader>(shadow_manager->GetShadowShaderPtr())
+			);
 
 			if (postprocess_shader_) {
 				// --- Post Processing Manager ---
@@ -1043,10 +1244,6 @@ namespace Boidsish {
 				glDeleteBuffers(1, &visual_effects_ubo);
 			}
 
-			if (frustum_ubo) {
-				glDeleteBuffers(1, &frustum_ubo);
-			}
-
 			if (window)
 				glfwDestroyWindow(window);
 			glfwTerminate();
@@ -1056,6 +1253,29 @@ namespace Boidsish {
 		// See performance_and_quality_audit.md#1-gpu-accelerated-frustum-culling
 		Frustum CalculateFrustum(const glm::mat4& view, const glm::mat4& projection) {
 			return Frustum::FromViewProjection(view, projection);
+		}
+
+		void UpdateFrustumUbo(const glm::mat4& view_mat, const glm::mat4& proj_mat, const glm::vec3& cam_pos) {
+			if (mdi_frustum_count >= frustum_ssbo->GetElementCount())
+				return;
+
+			Frustum         pass_frustum = Frustum::FromViewProjection(view_mat, proj_mat);
+			FrustumDataGPU* frustum_ptr = frustum_ssbo->GetFrameDataPtr();
+			FrustumDataGPU& data = frustum_ptr[mdi_frustum_count];
+
+			for (int i = 0; i < 6; ++i) {
+				data.planes[i] = glm::vec4(pass_frustum.planes[i].normal, pass_frustum.planes[i].distance);
+			}
+			data.camera_pos = cam_pos;
+
+			glBindBufferRange(
+				GL_UNIFORM_BUFFER,
+				Constants::UboBinding::FrustumData(),
+				frustum_ssbo->GetBufferId(),
+				frustum_ssbo->GetFrameOffset() + mdi_frustum_count * sizeof(FrustumDataGPU),
+				sizeof(FrustumDataGPU)
+			);
+			mdi_frustum_count++;
 		}
 
 		glm::mat4 SetupMatrices(const Camera& cam_to_use) {
@@ -1125,6 +1345,8 @@ namespace Boidsish {
 			float                                      time,
 			const std::optional<glm::vec4>&            clip_plane
 		) {
+			(void)shapes; // All shapes now use data-driven path via ExecuteRenderQueue
+
 			shader->use();
 			shader->setFloat("time", time);
 			shader->setFloat("u_windResponsiveness", 0.0f);
@@ -1142,99 +1364,281 @@ namespace Boidsish {
 
 			// Enable GPU frustum culling for instanced rendering
 			shader->setBool("enableFrustumCulling", true);
-
 			shader->setInt("useVertexColor", 0);
-			for (const auto& shape : shapes) {
-				if (shape->IsHidden() || shape->IsTransparent()) {
-					continue;
-				}
-				if (shape->IsInstanced()) {
-					shader->setFloat("frustumCullRadius", shape->GetBoundingRadius());
-					instance_manager->AddInstance(shape);
-				} else {
-					shader->setBool("isColossal", shape->IsColossal());
-					shader->setFloat("frustumCullRadius", shape->GetBoundingRadius());
-					shape->render();
-				}
-			}
 
-			instance_manager->Render(*shader);
-
-			// Render clones
+			// Render clones (captured via FREEZE_FRAME_TRAIL effect)
 			clone_manager->Render(*shader);
 
 			// Disable frustum culling after shapes are rendered
 			shader->setBool("enableFrustumCulling", false);
 		}
 
-		void RenderTransparentShapes(
-			const glm::mat4&                           view,
-			const Camera&                              cam,
-			const std::vector<std::shared_ptr<Shape>>& shapes,
-			float                                      time,
-			const std::optional<glm::vec4>&            clip_plane
+		void ExecuteRenderQueue(
+			const RenderQueue&                 queue,
+			const glm::mat4&                   view_mat,
+			const glm::mat4&                   proj_mat,
+			const glm::vec3&                   camera_pos,
+			RenderLayer                        layer,
+			const std::optional<ShaderHandle>& shader_override = std::nullopt,
+			const std::optional<glm::mat4>&    light_space_mat = std::nullopt,
+			const std::optional<glm::vec4>&    clip_plane = std::nullopt,
+			bool                               is_shadow_pass = false
 		) {
-			std::vector<std::shared_ptr<Shape>> transparent_shapes;
-			for (const auto& shape : shapes) {
-				if (!shape->IsHidden() && shape->IsTransparent()) {
-					transparent_shapes.push_back(shape);
-				}
-			}
-
-			if (transparent_shapes.empty()) {
+			const auto& packets = queue.GetPackets(layer);
+			if (packets.empty())
 				return;
-			}
 
-			// Sort back-to-front for correct alpha blending
-			glm::vec3 cameraPos = cam.pos();
-			std::sort(transparent_shapes.begin(), transparent_shapes.end(), [&](const auto& a, const auto& b) {
-				glm::vec3 posA(a->GetX(), a->GetY(), a->GetZ());
-				glm::vec3 posB(b->GetX(), b->GetY(), b->GetZ());
-				return glm::distance(cameraPos, posA) > glm::distance(cameraPos, posB);
-			});
+			// Update Frustum UBO for GPU-side culling for this specific pass
+			UpdateFrustumUbo(view_mat, proj_mat, camera_pos);
 
-			shader->use();
-			shader->setFloat("time", time);
-			shader->setFloat("u_windResponsiveness", 0.0f);
-			shader->setFloat("u_windRimHighlight", 0.0f);
-			shader->setFloat(
-				"ripple_strength",
-				ConfigManager::GetInstance().GetAppSettingBool("artistic_effect_ripple", false) ? 0.05f : 0.0f
-			);
-			shader->setMat4("view", view);
-			if (clip_plane) {
-				shader->setVec4("clipPlane", *clip_plane);
-			} else {
-				shader->setVec4("clipPlane", glm::vec4(0, 0, 0, 0));
-			}
+			// Get pointers to persistent buffers
+			DrawElementsIndirectCommand* elements_cmd_ptr = indirect_elements_buffer->GetFrameDataPtr();
+			DrawArraysIndirectCommand*   arrays_cmd_ptr = indirect_arrays_buffer->GetFrameDataPtr();
+			CommonUniforms*              uniforms_ptr = uniforms_ssbo->GetFrameDataPtr();
 
-			// Enable GPU frustum culling for instanced rendering
-			shader->setBool("enableFrustumCulling", true);
+			uint32_t max_elements = 65536; // Buffer capacity
+			uint32_t frame_element_offset = uniforms_ssbo->GetCurrentBufferIndex() * max_elements;
 
-			// Disable depth writing for transparency to show objects behind
-			glDepthMask(GL_FALSE);
-			glEnable(GL_BLEND);
-			glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-			glDisable(GL_CULL_FACE);
+			uint32_t vertex_frame_offset = megabuffer->GetVertexFrameOffset();
+			uint32_t index_frame_offset = megabuffer->GetIndexFrameOffset();
 
-			shader->setInt("useVertexColor", 0);
-			for (const auto& shape : transparent_shapes) {
-				if (shape->IsInstanced()) {
-					shader->setFloat("frustumCullRadius", shape->GetBoundingRadius());
-					instance_manager->AddInstance(shape);
+			// We bind SSBO per-batch using glBindBufferRange to set the base uniform index
+			// glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 2, uniforms_ssbo->GetBufferId());
+
+			struct Batch {
+				ShaderHandle                           shader_handle;
+				unsigned int                           shader_id;
+				unsigned int                           vao;
+				unsigned int                           draw_mode;
+				unsigned int                           index_type;
+				std::vector<RenderPacket::TextureInfo> textures;
+				uint32_t                               first_command;
+				uint32_t                               command_count;
+				bool                                   is_indexed;
+				uint32_t                               base_uniform_index;
+			};
+
+			std::vector<Batch> batches;
+			batches.reserve(packets.size() / 4); // Pre-allocate for typical batch reduction ratio
+
+			auto can_batch = [&](const RenderPacket& a, const RenderPacket& b) {
+				// 1. Mandatory breaks: VAO and Draw State
+				if (a.vao != b.vao)
+					return false;
+				if (a.draw_mode != b.draw_mode)
+					return false;
+				if (a.index_type != b.index_type)
+					return false;
+				if ((a.index_count > 0) != (b.index_count > 0))
+					return false;
+
+				// 2. Shader breaks (unless overridden)
+				if (!shader_override.has_value()) {
+					if (a.shader_id != b.shader_id)
+						return false;
+				}
+
+				// 3. Uniform flags that affect vertex processing
+				if (a.uniforms.is_colossal != b.uniforms.is_colossal)
+					return false;
+				if (a.uniforms.use_ssbo_instancing != b.uniforms.use_ssbo_instancing)
+					return false;
+
+				// 4. Textures (only if not a shadow pass)
+				if (!is_shadow_pass) {
+					if (a.textures.size() != b.textures.size())
+						return false;
+					for (size_t i = 0; i < a.textures.size(); ++i) {
+						if (a.textures[i].id != b.textures[i].id)
+							return false;
+					}
+				}
+
+				return true;
+			};
+
+			// 1. Build batches and fill uniform/command buffers
+			const RenderPacket* last_processed_packet = nullptr;
+
+			for (size_t i = 0; i < packets.size(); ++i) {
+				const auto& packet = packets[i];
+
+				// Filter for shadow pass
+				if (is_shadow_pass && !packet.casts_shadows)
+					continue;
+
+				// Skip packets with invalid shader or exhausted uniform buffer
+				if (packet.shader_id == 0)
+					continue;
+				if (mdi_uniform_count >= max_elements) {
+					static bool uniform_warning_logged = false;
+					if (!uniform_warning_logged) {
+						logger::WARNING("MDI uniform buffer exhausted - some objects may not render");
+						uniform_warning_logged = true;
+					}
+					continue;
+				}
+
+				bool is_indexed = (packet.index_count > 0);
+
+				// Safety check for command buffer capacity
+				if (is_indexed && mdi_elements_count >= max_elements) {
+					static bool elements_warning_logged = false;
+					if (!elements_warning_logged) {
+						logger::WARNING("MDI indexed command buffer exhausted");
+						elements_warning_logged = true;
+					}
+					continue;
+				}
+				if (!is_indexed && mdi_arrays_count >= max_elements) {
+					static bool arrays_warning_logged = false;
+					if (!arrays_warning_logged) {
+						logger::WARNING("MDI array command buffer exhausted");
+						arrays_warning_logged = true;
+					}
+					continue;
+				}
+
+				// Copy uniforms to persistent SSBO
+				uniforms_ptr[mdi_uniform_count] = packet.uniforms;
+
+				if (batches.empty() || !last_processed_packet || !can_batch(*last_processed_packet, packet)) {
+					Batch new_batch;
+					new_batch.shader_handle = shader_override.value_or(packet.shader_handle);
+					new_batch.shader_id = is_shadow_pass ? 999999 : packet.shader_id; // Dummy ID if overridden
+					new_batch.vao = packet.vao;
+					new_batch.draw_mode = packet.draw_mode;
+					new_batch.index_type = packet.index_type;
+					new_batch.textures = packet.textures;
+					new_batch.first_command = is_indexed ? mdi_elements_count : mdi_arrays_count;
+					new_batch.command_count = 0;
+					new_batch.is_indexed = is_indexed;
+					new_batch.base_uniform_index = frame_element_offset + mdi_uniform_count;
+					batches.push_back(new_batch);
+				}
+
+				auto& current_batch = batches.back();
+				current_batch.command_count++;
+
+				bool uses_megabuffer = (packet.vao == megabuffer->GetVAO());
+
+				if (is_indexed) {
+					DrawElementsIndirectCommand cmd{};
+					cmd.count = packet.index_count;
+					cmd.instanceCount = std::max(1, packet.instance_count);
+					cmd.firstIndex = packet.first_index + (uses_megabuffer ? index_frame_offset : 0);
+					cmd.baseVertex = static_cast<int32_t>(
+						packet.base_vertex + (uses_megabuffer ? vertex_frame_offset : 0)
+					);
+					cmd.baseInstance = 0;
+					elements_cmd_ptr[mdi_elements_count++] = cmd;
 				} else {
-					shader->setBool("isColossal", shape->IsColossal());
-					shader->setFloat("frustumCullRadius", shape->GetBoundingRadius());
-					shape->render();
+					DrawArraysIndirectCommand cmd{};
+					cmd.count = packet.vertex_count;
+					cmd.instanceCount = std::max(1, packet.instance_count);
+					cmd.first = packet.base_vertex + (uses_megabuffer ? vertex_frame_offset : 0);
+					cmd.baseInstance = 0;
+					arrays_cmd_ptr[mdi_arrays_count++] = cmd;
+				}
+
+				last_processed_packet = &packet;
+				mdi_uniform_count++;
+			}
+
+			// Ensure all CPU writes to persistent mapped buffers are visible to GPU
+			glMemoryBarrier(
+				GL_CLIENT_MAPPED_BUFFER_BARRIER_BIT | GL_COMMAND_BARRIER_BIT | GL_SHADER_STORAGE_BARRIER_BIT
+			);
+
+			// 2. Execute batches
+			unsigned int          current_vao = 0;
+			unsigned int          current_bound_shader_id = 0;
+			std::set<ShaderBase*> used_shaders;
+
+			for (const auto& batch : batches) {
+				RenderShader* render_shader = shader_table.Get(batch.shader_handle);
+				if (!render_shader)
+					continue;
+
+				ShaderBase* s = render_shader->GetBackingShader().get();
+				used_shaders.insert(s);
+
+				if (s->ID != current_bound_shader_id) {
+					s->use();
+					current_bound_shader_id = s->ID;
+					s->setMat4("view", view_mat);
+					s->setMat4("projection", proj_mat);
+					s->setFloat("time", simulation_time);
+					s->setBool("enableFrustumCulling", true);
+					if (light_space_mat) {
+						s->setMat4("lightSpaceMatrix", *light_space_mat);
+					}
+					if (clip_plane) {
+						s->setVec4("clipPlane", *clip_plane);
+					} else {
+						s->setVec4("clipPlane", glm::vec4(0, 0, 0, 0));
+					}
+				}
+
+				s->setBool("uUseMDI", true);
+
+				// Bind SSBO for this batch's uniforms (replaces uBaseUniformIndex)
+				glBindBufferRange(
+					GL_SHADER_STORAGE_BUFFER,
+					2,
+					uniforms_ssbo->GetBufferId(),
+					batch.base_uniform_index * sizeof(CommonUniforms),
+					batch.command_count * sizeof(CommonUniforms)
+				);
+
+				if (!is_shadow_pass) {
+					for (size_t i = 0; i < batch.textures.size(); ++i) {
+						glActiveTexture(GL_TEXTURE0 + i);
+						glBindTexture(GL_TEXTURE_2D, batch.textures[i].id);
+						s->setInt(batch.textures[i].type.c_str(), i);
+					}
+					s->setBool("use_texture", !batch.textures.empty());
+				}
+
+				if (batch.vao != current_vao) {
+					glBindVertexArray(batch.vao);
+					current_vao = batch.vao;
+				}
+
+				if (batch.is_indexed) {
+					glBindBuffer(GL_DRAW_INDIRECT_BUFFER, indirect_elements_buffer->GetBufferId());
+					glMultiDrawElementsIndirect(
+						batch.draw_mode,
+						batch.index_type,
+						(void*)(uintptr_t)(indirect_elements_buffer->GetFrameOffset() +
+					                       batch.first_command * sizeof(DrawElementsIndirectCommand)),
+						batch.command_count,
+						sizeof(DrawElementsIndirectCommand)
+					);
+				} else {
+					glBindBuffer(GL_DRAW_INDIRECT_BUFFER, indirect_arrays_buffer->GetBufferId());
+					glMultiDrawArraysIndirect(
+						batch.draw_mode,
+						(void*)(uintptr_t)(indirect_arrays_buffer->GetFrameOffset() +
+					                       batch.first_command * sizeof(DrawArraysIndirectCommand)),
+						batch.command_count,
+						sizeof(DrawArraysIndirectCommand)
+					);
 				}
 			}
 
-			instance_manager->Render(*shader);
+			if (current_vao != 0)
+				glBindVertexArray(0);
 
-			// Restore state
-			glDepthMask(GL_TRUE);
-			glEnable(GL_CULL_FACE);
-			shader->setBool("enableFrustumCulling", false);
+			for (auto* s : used_shaders) {
+				s->use();
+				s->setBool("uUseMDI", false);
+				s->setBool("enableFrustumCulling", false);
+			}
+
+			glBindBuffer(GL_DRAW_INDIRECT_BUFFER, 0);
+			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 2, 0);
+			glActiveTexture(GL_TEXTURE0);
 		}
 
 		void RenderTrails(const glm::mat4& view, const std::optional<glm::vec4>& clip_plane) {
@@ -2073,6 +2477,27 @@ namespace Boidsish {
 
 	void Visualizer::Render() {
 		impl->RefreshFrameConfig();
+
+		// Advance persistent buffers and handle synchronization
+		impl->indirect_elements_buffer->AdvanceFrame();
+		impl->indirect_arrays_buffer->AdvanceFrame();
+		impl->uniforms_ssbo->AdvanceFrame();
+		impl->frustum_ssbo->AdvanceFrame();
+		impl->megabuffer->AdvanceFrame();
+
+		int current_idx = impl->uniforms_ssbo->GetCurrentBufferIndex(); // I need to add this method or keep track
+		if (impl->mdi_fences[current_idx]) {
+			glClientWaitSync(impl->mdi_fences[current_idx], GL_SYNC_FLUSH_COMMANDS_BIT, GL_TIMEOUT_IGNORED);
+			glDeleteSync(impl->mdi_fences[current_idx]);
+			impl->mdi_fences[current_idx] = 0;
+		}
+
+		// Reset MDI offsets for the new frame
+		impl->mdi_elements_count = 0;
+		impl->mdi_arrays_count = 0;
+		impl->mdi_uniform_count = 0;
+		impl->mdi_frustum_count = 0;
+
 		impl->shapes.clear();
 
 		// Update and collect transient effects
@@ -2169,6 +2594,7 @@ namespace Boidsish {
 
 		impl->UpdateTrails(impl->shapes, impl->simulation_time);
 
+		// --- Camera and Audio Updates ---
 		if (impl->camera_mode == CameraMode::TRACKING) {
 			impl->UpdateSingleTrackCamera(impl->input_state.delta_time, impl->shapes);
 		} else if (impl->camera_mode == CameraMode::AUTO) {
@@ -2188,16 +2614,16 @@ namespace Boidsish {
 		);
 		impl->audio_manager->Update();
 
-		glm::mat4 view_matrix = impl->SetupMatrices();
-		glm::mat4 current_vp = impl->projection * view_matrix;
+		glm::mat4 view = impl->SetupMatrices();
+		glm::mat4 current_vp = impl->projection * view;
 
-		// Update Temporal UBO
+		// Update Temporal UBO for motion blur and reprojection
 		TemporalUbo temporal_data;
 		temporal_data.viewProjection = current_vp;
 		temporal_data.prevViewProjection = impl->prev_view_projection;
 		temporal_data.uProjection = impl->projection;
 		temporal_data.invProjection = glm::inverse(impl->projection);
-		temporal_data.invView = glm::inverse(view_matrix);
+		temporal_data.invView = glm::inverse(view);
 		temporal_data.texelSize = glm::vec2(1.0f / impl->render_width, 1.0f / impl->render_height);
 		temporal_data.frameIndex = static_cast<int>(impl->frame_count_);
 		temporal_data.padding = 0.0f;
@@ -2207,6 +2633,87 @@ namespace Boidsish {
 		glBindBuffer(GL_UNIFORM_BUFFER, 0);
 
 		impl->prev_view_projection = current_vp;
+
+		// --- Data-Driven Render Queue Collection ---
+		impl->render_queue.Clear();
+
+		// Prepare render context with updated view matrix
+		RenderContext context;
+		context.view = view;
+		context.projection = impl->projection;
+		context.view_pos = impl->camera.pos();
+		context.time = impl->simulation_time;
+
+		float world_scale = impl->terrain_generator ? impl->terrain_generator->GetWorldScale() : 1.0f;
+		context.far_plane = 1000.0f * std::max(1.0f, world_scale);
+		context.frustum = Frustum::FromViewProjection(view, impl->projection);
+		context.shader_table = &impl->shader_table;
+		context.megabuffer = impl->megabuffer.get();
+
+		// --- Resource Preparation (Main Thread) ---
+		for (const auto& shape : impl->shapes) {
+			shape->PrepareResources(impl->megabuffer.get());
+		}
+
+		const size_t                   num_shapes = impl->shapes.size();
+		const size_t                   chunk_size = 64;
+		std::vector<std::future<void>> packet_futures;
+		auto*                          impl_ptr = impl.get();
+
+		for (size_t i = 0; i < num_shapes; i += chunk_size) {
+			size_t end = std::min(i + chunk_size, num_shapes);
+			packet_futures.push_back(impl->thread_pool.submit([this, impl_ptr, i, end, context]() {
+				std::vector<RenderPacket> local_packets;
+				// Reserve a reasonable amount to avoid frequent reallocations
+				local_packets.reserve(end - i);
+				for (size_t j = i; j < end; ++j) {
+					auto& shape = impl_ptr->shapes[j];
+					// Check for cached packets (dirty flag pattern)
+					if (auto* cached = shape->GetCachedPackets(); cached && !cached->empty()) {
+						// Use cached packets - update sort_keys for current camera position
+						// Iterate by value to copy directly, then move into local_packets
+						for (auto packet : *cached) {
+							// Recalculate sort_key with current camera position
+							glm::vec3   world_pos = glm::vec3(packet.uniforms.model[3]);
+							float       normalized_depth = context.CalculateNormalizedDepth(world_pos);
+							RenderLayer layer = (packet.uniforms.color.a < 0.99f) ? RenderLayer::Transparent
+																				  : RenderLayer::Opaque;
+							packet.sort_key = CalculateSortKey(
+								layer,
+								packet.shader_handle,
+								packet.vao,
+								packet.draw_mode,
+								packet.index_count > 0,
+								packet.material_handle,
+								normalized_depth
+							);
+							local_packets.push_back(std::move(packet));
+						}
+					} else {
+						// Generate new packets and cache them
+						std::vector<RenderPacket> new_packets;
+						shape->GenerateRenderPackets(new_packets, context);
+						// Copy packets to local_packets before caching
+						for (const auto& packet : new_packets) {
+							local_packets.push_back(packet);
+						}
+						// Cache for future frames
+						shape->CachePackets(std::move(new_packets));
+						shape->MarkClean();
+					}
+				}
+				if (!local_packets.empty()) {
+					impl->render_queue.Submit(std::move(local_packets));
+				}
+			}));
+		}
+
+		// Wait for all packet generation tasks to complete
+		for (auto& f : packet_futures) {
+			f.get();
+		}
+
+		impl->render_queue.Sort(impl->thread_pool);
 
 		// Calculate frustum for terrain generation and decor placement
 		Frustum generator_frustum;
@@ -2346,24 +2853,12 @@ namespace Boidsish {
 
 		// Update Frustum UBO for GPU-side culling
 		{
-			glm::mat4 view = glm::lookAt(
+			glm::mat4 view_mat = glm::lookAt(
 				impl->camera.pos(),
 				impl->camera.pos() + impl->camera.front(),
 				impl->camera.up()
 			);
-			Frustum render_frustum = impl->CalculateFrustum(view, impl->projection);
-
-			// Pack frustum planes into vec4 array (normal.xyz, distance.w)
-			glm::vec4 frustum_planes[6];
-			for (int i = 0; i < 6; ++i) {
-				frustum_planes[i] = glm::vec4(render_frustum.planes[i].normal, render_frustum.planes[i].distance);
-			}
-
-			glBindBuffer(GL_UNIFORM_BUFFER, impl->frustum_ubo);
-			glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(frustum_planes), frustum_planes);
-			glm::vec3 cam_pos = impl->camera.pos();
-			glBufferSubData(GL_UNIFORM_BUFFER, 96, sizeof(glm::vec3), &cam_pos[0]);
-			glBindBuffer(GL_UNIFORM_BUFFER, 0);
+			impl->UpdateFrustumUbo(view_mat, impl->projection, impl->camera.pos());
 		}
 
 		if (impl->reflection_fbo) {
@@ -2379,23 +2874,28 @@ namespace Boidsish {
 				impl->reflection_vp = impl->projection * reflection_view;
 
 				// Render opaque geometry first for early-Z benefit
-				// Use reduced tessellation (25%) for reflection pass - it's blurred anyway
-				// impl->RenderTerrain(
-				// 	reflection_view,
-				// 	impl->projection,
-				// 	glm::vec4(0, 1, 0, 0.01),
-				// 	false,
-				// 	std::nullopt,
-				// 	0.25f
-				// );
+				impl->ExecuteRenderQueue(
+					impl->render_queue,
+					reflection_view,
+					impl->projection,
+					reflection_cam.pos(),
+					RenderLayer::Opaque,
+					std::nullopt,
+					std::nullopt,
+					glm::vec4(0, 1, 0, 0.01)
+				);
+				impl->UpdateFrustumUbo(reflection_view, impl->projection, reflection_cam.pos());
 				impl->RenderShapes(reflection_view, impl->shapes, impl->simulation_time, glm::vec4(0, 1, 0, 0.01));
 				// Sky after opaque geometry
 				impl->RenderSky(reflection_view);
-				impl->RenderTransparentShapes(
+				impl->ExecuteRenderQueue(
+					impl->render_queue,
 					reflection_view,
-					reflection_cam,
-					impl->shapes,
-					impl->simulation_time,
+					impl->projection,
+					reflection_cam.pos(),
+					RenderLayer::Transparent,
+					std::nullopt,
+					std::nullopt,
 					glm::vec4(0, 1, 0, 0.01)
 				);
 				// Transparent effects last
@@ -2561,18 +3061,22 @@ namespace Boidsish {
 					scene_center,
 					500.0f * std::max(1.0f, world_scale),
 					info.cascade_index,
-					view_matrix,
+					view,
 					impl->camera.fov,
 					(float)impl->width / (float)impl->height
 				);
 
-				Shader& shadow_shader = impl->shadow_manager->GetShadowShader();
-				shadow_shader.use();
-				for (const auto& shape : impl->shapes) {
-					if (shape->CastsShadows()) {
-						shape->render(shadow_shader);
-					}
-				}
+				impl->ExecuteRenderQueue(
+					impl->render_queue,
+					view, // Base view
+					impl->projection,
+					impl->camera.pos(),
+					RenderLayer::Opaque,
+					impl->shadow_shader_handle,
+					impl->shadow_manager->GetLightSpaceMatrix(info.map_index),
+					std::nullopt,
+					true
+				);
 
 				glDisable(GL_CULL_FACE);
 				impl->RenderTerrain(
@@ -2623,7 +3127,7 @@ namespace Boidsish {
 		glEnable(GL_DEPTH_TEST);
 		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-		glm::mat4 view = impl->SetupMatrices();
+		view = impl->SetupMatrices();
 
 		// Render opaque geometry first (terrain, plane, shapes) to populate depth buffer
 		impl->RenderPlane(view);
@@ -2633,7 +3137,9 @@ namespace Boidsish {
 		// An unbound sampler2DArrayShadow can cause shader failures on some GPUs
 		impl->BindShadows(*impl->shader);
 
-		impl->RenderShapes(view, impl->shapes, impl->simulation_time, std::nullopt);
+		impl->UpdateFrustumUbo(view, impl->projection, impl->camera.pos());
+		// impl->RenderShapes(view, impl->shapes, impl->simulation_time, std::nullopt);
+		impl->ExecuteRenderQueue(impl->render_queue, view, impl->projection, impl->camera.pos(), RenderLayer::Opaque);
 		if (impl->decor_manager) {
 			impl->decor_manager->Render(view, impl->projection);
 		}
@@ -2660,7 +3166,19 @@ namespace Boidsish {
 		}
 
 		// Render transparent shapes after sky and early post-processing
-		impl->RenderTransparentShapes(view, impl->camera, impl->shapes, impl->simulation_time, std::nullopt);
+		// impl->UpdateFrustumUbo(view, impl->projection, impl->camera.pos());
+		glEnable(GL_BLEND);
+		glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+		glDepthMask(GL_FALSE);
+		impl->ExecuteRenderQueue(
+			impl->render_queue,
+			view,
+			impl->projection,
+			impl->camera.pos(),
+			RenderLayer::Transparent
+		);
+
+		glDepthMask(GL_TRUE);
 
 		// Render transparent/particle effects last
 		impl->fire_effect_manager
@@ -2757,6 +3275,11 @@ namespace Boidsish {
 
 		// --- UI Pass (renders on top of the fullscreen quad) ---
 		impl->ui_manager->Render();
+
+		// Create synchronization fence for the current frame's buffers
+		if (impl->mdi_fences[current_idx])
+			glDeleteSync(impl->mdi_fences[current_idx]);
+		impl->mdi_fences[current_idx] = glFenceSync(GL_SYNC_GPU_COMMANDS_COMPLETE, 0);
 
 		glfwSwapBuffers(impl->window);
 	}

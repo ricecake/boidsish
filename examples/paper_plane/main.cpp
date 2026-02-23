@@ -97,7 +97,6 @@ int main() {
 		});
 
 		handler.AddEntity<SteeringProbeEntity>(visualizer->GetTerrain(), plane);
-		// shapes.push_back(model);
 
 		visualizer->GetAudioManager().PlayMusic("assets/kazoom.mp3", true, 0.25f);
 

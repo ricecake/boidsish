@@ -87,6 +87,8 @@ namespace Boidsish {
 		 */
 		Shader& GetShadowShader() const { return *shadow_shader_; }
 
+		std::shared_ptr<Shader> GetShadowShaderPtr() const { return shadow_shader_; }
+
 		/**
 		 * @brief Get the light-space matrix for a shadow-casting light.
 		 *
@@ -145,7 +147,7 @@ namespace Boidsish {
 		GLuint                  shadow_fbo_ = 0;
 		GLuint                  shadow_map_array_ = 0; // 2D texture array for all shadow maps
 		GLuint                  shadow_ubo_ = 0;
-		std::unique_ptr<Shader> shadow_shader_;
+		std::shared_ptr<Shader> shadow_shader_;
 
 		int                                   active_shadow_count_ = 0;
 		std::array<glm::mat4, kMaxShadowMaps> light_space_matrices_;

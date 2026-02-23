@@ -4,6 +4,7 @@
 #include <set>
 
 #include "ConfigManager.h"
+#include "geometry.h"
 #include "graphics.h"
 #include "logger.h"
 #include "terrain_generator_interface.h"
@@ -15,13 +16,7 @@ namespace Boidsish {
 
 	DecorManager::DecorManager() {}
 
-	struct DrawElementsIndirectCommand {
-		unsigned int count;
-		unsigned int instanceCount;
-		unsigned int firstIndex;
-		unsigned int baseVertex;
-		unsigned int baseInstance;
-	};
+	// Use DrawElementsIndirectCommand from geometry.h
 
 	DecorManager::~DecorManager() {
 		for (auto& type : decor_types_) {
@@ -528,7 +523,7 @@ namespace Boidsish {
 				shader->setBool("use_texture", hasDiffuse);
 				mesh.bindTextures(*shader);
 
-				glBindVertexArray(mesh.VAO);
+				glBindVertexArray(mesh.getVAO());
 				glDrawElementsIndirect(
 					GL_TRIANGLES,
 					GL_UNSIGNED_INT,

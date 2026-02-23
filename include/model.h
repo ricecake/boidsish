@@ -25,7 +25,6 @@ namespace Boidsish {
 		std::vector<Vertex>       vertices;
 		std::vector<unsigned int> indices;
 		std::vector<Texture>      textures;
-		unsigned int              VAO;
 
 		// Material Data
 		glm::vec3 diffuseColor = glm::vec3(1.0f);
@@ -33,7 +32,6 @@ namespace Boidsish {
 
 		// Constructor
 		Mesh(std::vector<Vertex> vertices, std::vector<unsigned int> indices, std::vector<Texture> textures);
-		// ~Mesh();
 
 		// Render the mesh
 		void render() const;
@@ -43,12 +41,22 @@ namespace Boidsish {
 		// Bind textures for external rendering (e.g., instanced rendering with custom shaders)
 		void bindTextures(Shader& shader) const;
 
+		unsigned int getVAO() const { return VAO; }
+
+		unsigned int getVBO() const { return VBO; }
+
+		unsigned int getEBO() const { return EBO; }
+
+		MegabufferAllocation allocation;
+
 	private:
 		// Render data
-		unsigned int VBO, EBO;
+		unsigned int VAO = 0, VBO = 0, EBO = 0;
 
 		// Initializes all the buffer objects/arrays
-		void setupMesh();
+		void setupMesh(Megabuffer* megabuffer = nullptr);
+
+		friend class Model;
 	};
 
 	struct ModelData {
@@ -64,11 +72,14 @@ namespace Boidsish {
 		// Constructor, expects a filepath to a 3D model.
 		Model(const std::string& path, bool no_cull = false);
 
+		void PrepareResources(Megabuffer* megabuffer = nullptr) const override;
+
 		// Render the model
 		void      render() const override;
 		void      render(Shader& shader, const glm::mat4& model_matrix) const override;
 		glm::mat4 GetModelMatrix() const override;
 
+		void GenerateRenderPackets(std::vector<RenderPacket>& out_packets, const RenderContext& context) const override;
 		bool Intersects(const Ray& ray, float& t) const override;
 		AABB GetAABB() const override;
 
@@ -77,8 +88,6 @@ namespace Boidsish {
 		const std::vector<Mesh>& getMeshes() const;
 
 		void SetBaseRotation(const glm::quat& rotation) { base_rotation_ = rotation; }
-
-		void SetInstanced(bool is_instanced) { Shape::SetInstanced(is_instanced); }
 
 		// Returns unique key for this model file - models loaded from the same file can be instanced together
 		std::string GetInstanceKey() const override;

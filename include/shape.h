@@ -1,5 +1,6 @@
 #pragma once
 
+#include <atomic>
 #include <functional>
 #include <memory>
 #include <string>
@@ -7,6 +8,7 @@
 
 #include "collision.h"
 #include "constants.h"
+#include "geometry.h"
 #include "visual_effects.h"
 #include <glm/glm.hpp>
 #include <glm/gtc/quaternion.hpp>
@@ -15,24 +17,123 @@ class Shader;
 
 namespace Boidsish {
 
-	struct Vertex {
-		glm::vec3 Position;
-		glm::vec3 Normal;
-		glm::vec2 TexCoords;
-	};
-
 	// Base class for all renderable shapes
-	class Shape {
+	class Shape: public Geometry {
 	public:
 		virtual ~Shape() = default;
+
+		// Move operations (std::atomic is not copyable, so we need explicit move semantics)
+		Shape(Shape&& other) noexcept:
+			Geometry(std::move(other)),
+			rotation_(std::move(other.rotation_)),
+			scale_(std::move(other.scale_)),
+			local_aabb_(std::move(other.local_aabb_)),
+			clamp_to_terrain_(other.clamp_to_terrain_),
+			ground_offset_(other.ground_offset_),
+			render_dirty_(other.render_dirty_.load(std::memory_order_relaxed)),
+			cached_packets_(std::move(other.cached_packets_)),
+			id_(other.id_),
+			x_(other.x_),
+			y_(other.y_),
+			z_(other.z_),
+			last_position_(other.last_position_),
+			r_(other.r_),
+			g_(other.g_),
+			b_(other.b_),
+			a_(other.a_),
+			trail_length_(other.trail_length_),
+			trail_thickness_(other.trail_thickness_),
+			trail_iridescent_(other.trail_iridescent_),
+			trail_rocket_(other.trail_rocket_),
+			is_colossal_(other.is_colossal_),
+			is_hidden_(other.is_hidden_),
+			trail_pbr_(other.trail_pbr_),
+			trail_roughness_(other.trail_roughness_),
+			trail_metallic_(other.trail_metallic_),
+			roughness_(other.roughness_),
+			metallic_(other.metallic_),
+			ao_(other.ao_),
+			use_pbr_(other.use_pbr_) {}
+
+		Shape& operator=(Shape&& other) noexcept {
+			if (this != &other) {
+				Geometry::operator=(std::move(other));
+				rotation_ = std::move(other.rotation_);
+				scale_ = std::move(other.scale_);
+				local_aabb_ = std::move(other.local_aabb_);
+				clamp_to_terrain_ = other.clamp_to_terrain_;
+				ground_offset_ = other.ground_offset_;
+				render_dirty_.store(other.render_dirty_.load(std::memory_order_relaxed), std::memory_order_relaxed);
+				cached_packets_ = std::move(other.cached_packets_);
+				id_ = other.id_;
+				x_ = other.x_;
+				y_ = other.y_;
+				z_ = other.z_;
+				last_position_ = other.last_position_;
+				r_ = other.r_;
+				g_ = other.g_;
+				b_ = other.b_;
+				a_ = other.a_;
+				trail_length_ = other.trail_length_;
+				trail_thickness_ = other.trail_thickness_;
+				trail_iridescent_ = other.trail_iridescent_;
+				trail_rocket_ = other.trail_rocket_;
+				is_colossal_ = other.is_colossal_;
+				is_hidden_ = other.is_hidden_;
+				trail_pbr_ = other.trail_pbr_;
+				trail_roughness_ = other.trail_roughness_;
+				trail_metallic_ = other.trail_metallic_;
+				roughness_ = other.roughness_;
+				metallic_ = other.metallic_;
+				ao_ = other.ao_;
+				use_pbr_ = other.use_pbr_;
+			}
+			return *this;
+		}
+
+		// Delete copy operations (atomic is not copyable)
+		Shape(const Shape&) = delete;
+		Shape& operator=(const Shape&) = delete;
 
 		// Update the shape's state
 		virtual void Update(float delta_time) { (void)delta_time; }
 
+		/**
+		 * @brief Prepares any GPU resources needed for rendering.
+		 * Called on the main thread before packet generation.
+		 */
+		virtual void PrepareResources(Megabuffer* megabuffer = nullptr) const { (void)megabuffer; }
+
+		/// @name Dirty Flag Pattern (Thread Safety)
+		/// @{
+		/// Thread-safety contract:
+		/// - IsDirty/MarkClean/MarkDirty are thread-safe (atomic flag)
+		/// - Shape property modifications (SetPosition, SetColor, etc.) should be done
+		///   on the main thread BEFORE parallel packet generation begins
+		/// - GetCachedPackets/CachePackets are called from worker threads during packet
+		///   generation; each shape is processed by exactly one worker thread
+		bool IsDirty() const override { return render_dirty_.load(std::memory_order_acquire); }
+
+		void MarkClean() const override { render_dirty_.store(false, std::memory_order_release); }
+
+		void MarkDirty() override { render_dirty_.store(true, std::memory_order_release); }
+
+		std::vector<RenderPacket>* GetCachedPackets() override {
+			return render_dirty_.load(std::memory_order_acquire) ? nullptr : &cached_packets_;
+		}
+
+		void CachePackets(std::vector<RenderPacket>&& packets) override { cached_packets_ = std::move(packets); }
+
+		/// @}
+
 		// Check if the shape has expired (for transient effects)
 		virtual bool IsExpired() const { return false; }
 
-		// Pure virtual function for rendering the shape
+		// Implementation of Geometry interface
+		virtual void
+		GenerateRenderPackets(std::vector<RenderPacket>& out_packets, const RenderContext& context) const override;
+
+		// Pure virtual function for legacy immediate rendering the shape
 		virtual void render() const = 0;
 
 		virtual void render(Shader& shader) const final { render(shader, GetModelMatrix()); }
@@ -60,6 +161,7 @@ namespace Boidsish {
 			x_ = x;
 			y_ = y;
 			z_ = z;
+			MarkDirty();
 		}
 
 		inline glm::vec3 GetLastPosition() const { return last_position_; }
@@ -79,17 +181,24 @@ namespace Boidsish {
 			g_ = g;
 			b_ = b;
 			a_ = a;
+			MarkDirty();
 		}
 
 		inline const glm::quat& GetRotation() const { return rotation_; }
 
-		inline void SetRotation(const glm::quat& rotation) { rotation_ = rotation; }
+		inline void SetRotation(const glm::quat& rotation) {
+			rotation_ = rotation;
+			MarkDirty();
+		}
 
 		void LookAt(const glm::vec3& target, const glm::vec3& up = glm::vec3(0.0f, 1.0f, 0.0f));
 
 		inline const glm::vec3& GetScale() const { return scale_; }
 
-		inline void SetScale(const glm::vec3& scale) { scale_ = scale; }
+		inline void SetScale(const glm::vec3& scale) {
+			scale_ = scale;
+			MarkDirty();
+		}
 
 		inline int GetTrailLength() const { return trail_length_; }
 
@@ -123,17 +232,19 @@ namespace Boidsish {
 
 		inline bool IsColossal() const { return is_colossal_; }
 
-		inline void SetColossal(bool is_colossal) { is_colossal_ = is_colossal; }
+		inline void SetColossal(bool is_colossal) {
+			is_colossal_ = is_colossal;
+			MarkDirty();
+		}
 
 		virtual bool CastsShadows() const { return !is_colossal_; }
 
-		inline bool IsInstanced() const { return is_instanced_; }
-
-		inline void SetInstanced(bool is_instanced) { is_instanced_ = is_instanced; }
-
 		inline bool IsHidden() const { return is_hidden_; }
 
-		inline void SetHidden(bool hidden) { is_hidden_ = hidden; }
+		inline void SetHidden(bool hidden) {
+			is_hidden_ = hidden;
+			MarkDirty();
+		}
 
 		// Returns a key identifying what shapes can be instanced together
 		// Shapes with the same key share the same mesh data
@@ -182,25 +293,38 @@ namespace Boidsish {
 		// PBR material properties
 		inline float GetRoughness() const { return roughness_; }
 
-		inline void SetRoughness(float roughness) { roughness_ = glm::clamp(roughness, 0.0f, 1.0f); }
+		inline void SetRoughness(float roughness) {
+			roughness_ = glm::clamp(roughness, 0.0f, 1.0f);
+			MarkDirty();
+		}
 
 		inline float GetMetallic() const { return metallic_; }
 
-		inline void SetMetallic(float metallic) { metallic_ = glm::clamp(metallic, 0.0f, 1.0f); }
+		inline void SetMetallic(float metallic) {
+			metallic_ = glm::clamp(metallic, 0.0f, 1.0f);
+			MarkDirty();
+		}
 
 		inline float GetAO() const { return ao_; }
 
-		inline void SetAO(float ao) { ao_ = glm::clamp(ao, 0.0f, 1.0f); }
+		inline void SetAO(float ao) {
+			ao_ = glm::clamp(ao, 0.0f, 1.0f);
+			MarkDirty();
+		}
 
 		inline bool UsePBR() const { return use_pbr_; }
 
-		inline void SetUsePBR(bool use_pbr) { use_pbr_ = use_pbr; }
+		inline void SetUsePBR(bool use_pbr) {
+			use_pbr_ = use_pbr;
+			MarkDirty();
+		}
 
 		// Static shader reference
 		static std::shared_ptr<Shader> shader;
+		static ShaderHandle            shader_handle;
 
 		// Sphere mesh generation
-		static void InitSphereMesh();
+		static void InitSphereMesh(Megabuffer* megabuffer = nullptr);
 		static void DestroySphereMesh();
 		static void RenderSphere(
 			const glm::vec3& position,
@@ -255,6 +379,10 @@ namespace Boidsish {
 		bool      clamp_to_terrain_;
 		float     ground_offset_;
 
+		// Dirty flag pattern for packet caching (thread-safe)
+		mutable std::atomic<bool>         render_dirty_{true};
+		mutable std::vector<RenderPacket> cached_packets_;
+
 	private:
 		int       id_;
 		float     x_, y_, z_;
@@ -265,7 +393,6 @@ namespace Boidsish {
 		bool      trail_iridescent_;
 		bool      trail_rocket_;
 		bool      is_colossal_;
-		bool      is_instanced_ = false;
 		bool      is_hidden_ = false;
 		bool      trail_pbr_;
 		float     trail_roughness_;
@@ -277,10 +404,11 @@ namespace Boidsish {
 
 	public:
 		// Shared sphere mesh (public for instancing support)
-		static unsigned int sphere_vao_;
-		static unsigned int sphere_vbo_;
-		static unsigned int sphere_ebo_;
-		static int          sphere_vertex_count_;
+		static unsigned int         sphere_vao_;
+		static unsigned int         sphere_vbo_;
+		static unsigned int         sphere_ebo_;
+		static int                  sphere_vertex_count_;
+		static MegabufferAllocation sphere_alloc_;
 	};
 
 	// Function type for user-defined shape generation

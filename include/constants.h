@@ -427,6 +427,24 @@ namespace Boidsish {
 				}
 			} // namespace Akira
 
+			namespace Megabuffer {
+				constexpr size_t MaxVertices() {
+					return 1000000;
+				}
+
+				constexpr size_t MaxIndices() {
+					return 2000000;
+				}
+
+				constexpr size_t StaticVertexLimit() {
+					return 500000;
+				}
+
+				constexpr size_t StaticIndexLimit() {
+					return 1000000;
+				}
+			} // namespace Megabuffer
+
 			namespace Checkpoint {
 				constexpr float DefaultRadius() {
 					return 10.0f;

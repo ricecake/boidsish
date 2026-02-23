@@ -12,9 +12,7 @@
 namespace Boidsish {
 
 	Dot::Dot(int id, float x, float y, float z, float size, float r, float g, float b, float a, int trail_length):
-		Shape(id, x, y, z, r, g, b, a, trail_length), size_(size) {
-		// SetInstanced(true);
-	}
+		Shape(id, x, y, z, r, g, b, a, trail_length), size_(size) {}
 
 	void Dot::render() const {
 		render(*shader, GetModelMatrix());
@@ -39,8 +37,23 @@ namespace Boidsish {
 		}
 
 		glBindVertexArray(sphere_vao_);
-		glDrawElements(GL_TRIANGLES, sphere_vertex_count_, GL_UNSIGNED_INT, 0);
+		if (sphere_alloc_.valid) {
+			glDrawElementsBaseVertex(
+				GL_TRIANGLES,
+				sphere_vertex_count_,
+				GL_UNSIGNED_INT,
+				(void*)(uintptr_t)(sphere_alloc_.first_index * sizeof(unsigned int)),
+				sphere_alloc_.base_vertex
+			);
+		} else {
+			glDrawElements(GL_TRIANGLES, sphere_vertex_count_, GL_UNSIGNED_INT, 0);
+		}
 		glBindVertexArray(0);
+	}
+
+	void Dot::GenerateRenderPackets(std::vector<RenderPacket>& out_packets, const RenderContext& context) const {
+		// Dots are spheres, so we can use the base Shape implementation which defaults to spheres.
+		Shape::GenerateRenderPackets(out_packets, context);
 	}
 
 	glm::mat4 Dot::GetModelMatrix() const {

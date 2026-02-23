@@ -66,13 +66,8 @@ namespace Boidsish {
 			return;
 		}
 
-		if (vao_ != 0) {
-			glDeleteVertexArrays(1, &vao_);
-			glDeleteBuffers(1, &vbo_);
-		}
-
-		std::vector<float> vertices;
-		float              scale = stbtt_ScaleForPixelHeight(font_info_.get(), font_size);
+		mesh_vertices_.clear();
+		float scale = stbtt_ScaleForPixelHeight(font_info_.get(), font_size);
 
 		int ascent, descent, line_gap;
 		stbtt_GetFontVMetrics(font_info_.get(), &ascent, &descent, &line_gap);
@@ -347,17 +342,12 @@ namespace Boidsish {
 					glm::vec3 v_normal = {cached_vertices[i + 3], cached_vertices[i + 4], cached_vertices[i + 5]};
 					glm::vec3 final_normal = rot * v_normal;
 
-					vertices.insert(
-						vertices.end(),
-						{final_pos.x,
-					     final_pos.y,
-					     final_pos.z,
-					     final_normal.x,
-					     final_normal.y,
-					     final_normal.z,
-					     normalized_x,
-					     cached_vertices[i + 7]}
-					);
+					Vertex v;
+					v.Position = final_pos;
+					v.Normal = final_normal;
+					v.TexCoords = {normalized_x, cached_vertices[i + 7]};
+					v.Color = glm::vec3(1.0f);
+					mesh_vertices_.push_back(v);
 				}
 
 				int advance_width, left_side_bearing;
@@ -373,23 +363,7 @@ namespace Boidsish {
 			y_offset += line_height;
 		}
 
-		vertex_count_ = vertices.size() / 8;
-
-		glGenVertexArrays(1, &vao_);
-		glBindVertexArray(vao_);
-
-		glGenBuffers(1, &vbo_);
-		glBindBuffer(GL_ARRAY_BUFFER, vbo_);
-		glBufferData(GL_ARRAY_BUFFER, vertices.size() * sizeof(float), vertices.data(), GL_STATIC_DRAW);
-
-		glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)0);
-		glEnableVertexAttribArray(0);
-		glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)(3 * sizeof(float)));
-		glEnableVertexAttribArray(1);
-		glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)(6 * sizeof(float)));
-		glEnableVertexAttribArray(2);
-
-		glBindVertexArray(0);
+		vertex_count_ = static_cast<int>(mesh_vertices_.size());
 	}
 
 } // namespace Boidsish
