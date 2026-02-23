@@ -1,4 +1,4 @@
-#version 430 core
+#version 460 core
 layout(location = 0) out vec4 FragColor;
 layout(location = 1) out vec2 Velocity;
 
@@ -15,6 +15,7 @@ in vec3  barycentric;
 in vec2  TexCoords;
 in vec4  InstanceColor;
 in float WindDeflection;
+flat in int DrawID;
 
 uniform vec3  objectColor;
 uniform float objectAlpha = 1.0;
@@ -35,6 +36,8 @@ uniform bool  arcadeRainbowEnabled = false;
 uniform float arcadeRainbowSpeed = 2.0;
 uniform float arcadeRainbowFrequency = 5.0;
 
+#extension GL_ARB_bindless_texture : enable
+
 // PBR material properties
 uniform bool  usePBR = false;
 uniform float roughness = 0.5;
@@ -42,6 +45,16 @@ uniform float metallic = 0.0;
 uniform float ao = 1.0;
 
 uniform sampler2D texture_diffuse1;
+
+#ifdef GL_ARB_bindless_texture
+layout(location = 20) uniform sampler2D u_bindlessDiffuse;
+layout(std430, binding = 11) readonly buffer BindlessMeshTextures {
+	sampler2D u_bindlessMeshDiffuses[];
+};
+uniform bool u_useBindless = false;
+uniform bool u_useMDI = false;
+#endif
+
 uniform bool      use_texture;
 uniform float     u_windRimHighlight;
 
@@ -90,7 +103,19 @@ void main() {
 	result += rim * WindDeflection * u_windRimHighlight * vec3(1.0);
 
 	if (use_texture) {
+#ifdef GL_ARB_bindless_texture
+		if (u_useBindless) {
+			if (u_useMDI) {
+				result *= texture(u_bindlessMeshDiffuses[DrawID], TexCoords).rgb;
+			} else {
+				result *= texture(u_bindlessDiffuse, TexCoords).rgb;
+			}
+		} else {
+			result *= texture(texture_diffuse1, TexCoords).rgb;
+		}
+#else
 		result *= texture(texture_diffuse1, TexCoords).rgb;
+#endif
 	}
 
 	result = applyArtisticEffects(result, FragPos, barycentric, time);

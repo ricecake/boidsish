@@ -1,4 +1,5 @@
-#version 430 core
+#version 460 core
+
 layout(location = 0) in vec3 aPos;
 layout(location = 1) in vec3 aNormal;
 layout(location = 2) in vec2 aTexCoords;
@@ -26,6 +27,7 @@ out vec3  barycentric;
 out vec2  TexCoords;
 out vec4  InstanceColor;
 out float WindDeflection;
+flat out int DrawID;
 
 uniform mat4  model;
 uniform mat4  view;
@@ -52,6 +54,7 @@ uniform float arcadeWaveFrequency = 10.0;
 uniform float arcadeWaveSpeed = 5.0;
 
 void main() {
+	DrawID = gl_DrawID;
 	WindDeflection = 0.0;
 	vec3 displacedPos = aPos;
 	vec3 displacedNormal = aNormal;
@@ -111,7 +114,8 @@ void main() {
 	float instanceScale = length(vec3(modelMatrix[0])); // Approximate scale from first column
 
 	// GPU frustum culling - output degenerate triangle if outside frustum
-	if (enableFrustumCulling && !isColossal) {
+	// Only apply this to non-SSBO instancing as SSBO already has GPU culling in InstanceManager
+	if (enableFrustumCulling && !isColossal && !useSSBOInstancing) {
 		// Use sphere test with approximate radius based on scale
 		float effectiveRadius = frustumCullRadius * instanceScale;
 

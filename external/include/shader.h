@@ -18,7 +18,7 @@
 class ShaderBase {
 public:
 	struct UniformValue {
-		std::variant<std::monostate, bool, int, unsigned int, float, glm::vec2, glm::vec3, glm::vec4, glm::mat2, glm::mat3, glm::mat4, std::vector<int>> value;
+		std::variant<std::monostate, bool, int, unsigned int, uint64_t, float, glm::vec2, glm::vec3, glm::vec4, glm::mat2, glm::mat3, glm::mat4, std::vector<int>> value;
 
 		UniformValue() = default;
 		template<typename T, typename = std::enable_if_t<!std::is_same_v<std::decay_t<T>, UniformValue>>>
@@ -39,7 +39,11 @@ public:
 						glUniform1i(location, arg);
 					else if constexpr (std::is_same_v<T, unsigned int>)
 						glUniform1ui(location, arg);
-					else if constexpr (std::is_same_v<T, float>)
+					else if constexpr (std::is_same_v<T, uint64_t>) {
+						if (GLEW_ARB_bindless_texture) {
+							glUniformHandleui64ARB(location, arg);
+						}
+					} else if constexpr (std::is_same_v<T, float>)
 						glUniform1f(location, arg);
 					else if constexpr (std::is_same_v<T, glm::vec2>)
 						glUniform2fv(location, 1, &arg[0]);
@@ -100,6 +104,10 @@ public:
 		void setUint(const std::string& name, unsigned int value) {
 			capture(name);
 			shader.setUint(name, value);
+		}
+		void setHandle(const std::string& name, uint64_t value) {
+			capture(name);
+			shader.setHandle(name, value);
 		}
 		void setFloat(const std::string& name, float value) {
 			capture(name);
@@ -231,6 +239,15 @@ public:
 		int loc = getUniformLocation(name);
 		glUniform1ui(loc, value);
 		m_UniformValues[loc] = UniformValue{value};
+	}
+
+	// ------------------------------------------------------------------------
+	void setHandle(const std::string& name, uint64_t value) const {
+		int loc = getUniformLocation(name);
+		if (GLEW_ARB_bindless_texture) {
+			glUniformHandleui64ARB(loc, value);
+			m_UniformValues[loc] = UniformValue{value};
+		}
 	}
 
 	// ------------------------------------------------------------------------
@@ -385,6 +402,12 @@ protected:
 			unsigned int v;
 			glGetUniformuiv(ID, loc, &v);
 			return {v};
+		}
+		case 0x8F37: // GL_UNSIGNED_INT64_ARB
+		{
+			// glGetUniformui64vARB is required but might not be available in all GLEW versions.
+			// Since we don't strictly need to read back handles for this project, return 0.
+			return {(uint64_t)0};
 		}
 		case GL_FLOAT_MAT2: {
 			glm::mat2 v;

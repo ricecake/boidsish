@@ -28,6 +28,14 @@ namespace Boidsish {
 			glDeleteTextures(1, &textureId);
 		}
 		m_textures.clear();
+		for (auto& [path, data] : m_models) {
+			if (data->unified_vao)
+				glDeleteVertexArrays(1, &data->unified_vao);
+			if (data->unified_vbo)
+				glDeleteBuffers(1, &data->unified_vbo);
+			if (data->unified_ebo)
+				glDeleteBuffers(1, &data->unified_ebo);
+		}
 		m_models.clear();
 		m_audio_sources.clear();
 	}
@@ -142,6 +150,10 @@ namespace Boidsish {
 					texture.id = AssetManager::GetInstance().GetTexture(str.C_Str(), directory);
 					texture.type = typeName;
 					texture.path = str.C_Str();
+					if (texture.id != 0 && GLEW_ARB_bindless_texture) {
+						texture.handle = glGetTextureHandleARB(texture.id);
+						glMakeTextureHandleResidentARB(texture.handle);
+					}
 					textures.push_back(texture);
 					data.textures_loaded.push_back(texture);
 				}
@@ -196,7 +208,45 @@ namespace Boidsish {
 			data->aabb = AABB(glm::vec3(0.0f), glm::vec3(0.0f));
 		}
 
-		logger::LOG("Model cached: {} with {} meshes", path, data->meshes.size());
+		// Create unified buffers for MDI
+		std::vector<Vertex>       all_vertices;
+		std::vector<unsigned int> all_indices;
+		size_t                    vertex_offset = 0;
+
+		for (auto& mesh : data->meshes) {
+			for (const auto& v : mesh.vertices) {
+				all_vertices.push_back(v);
+			}
+			for (unsigned int idx : mesh.indices) {
+				all_indices.push_back(idx + (unsigned int)vertex_offset);
+			}
+			vertex_offset += mesh.vertices.size();
+		}
+
+		if (!all_vertices.empty()) {
+			glGenVertexArrays(1, &data->unified_vao);
+			glGenBuffers(1, &data->unified_vbo);
+			glGenBuffers(1, &data->unified_ebo);
+
+			glBindVertexArray(data->unified_vao);
+			glBindBuffer(GL_ARRAY_BUFFER, data->unified_vbo);
+			glBufferData(GL_ARRAY_BUFFER, all_vertices.size() * sizeof(Vertex), all_vertices.data(), GL_STATIC_DRAW);
+
+			glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, data->unified_ebo);
+			glBufferData(GL_ELEMENT_ARRAY_BUFFER, all_indices.size() * sizeof(unsigned int), all_indices.data(), GL_STATIC_DRAW);
+
+			glEnableVertexAttribArray(0);
+			glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)0);
+			glEnableVertexAttribArray(1);
+			glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)offsetof(Vertex, Normal));
+			glEnableVertexAttribArray(2);
+			glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)offsetof(Vertex, TexCoords));
+
+			glBindVertexArray(0);
+			data->has_unified = true;
+		}
+
+		logger::LOG("Model cached: {} with {} meshes (unified={})", path, data->meshes.size(), data->has_unified);
 		m_models[path] = data;
 		return data;
 	}

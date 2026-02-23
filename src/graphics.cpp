@@ -46,7 +46,9 @@
 #include "post_processing/effects/SuperSpeedEffect.h"
 #include "post_processing/effects/TimeStutterEffect.h"
 #include "post_processing/effects/ToneMappingEffect.h"
+#include "persistent_buffer.h"
 #include "post_processing/effects/WhispTrailEffect.h"
+#include "profiler.h"
 #include "sdf_volume_manager.h"
 #include "shadow_manager.h"
 #include "shockwave_effect.h"
@@ -193,6 +195,12 @@ namespace Boidsish {
 		}
 	}
 
+	struct FrustumUbo {
+		glm::vec4 planes[6];
+		glm::vec3 cameraPos;
+		float     _pad;
+	};
+
 	struct Visualizer::VisualizerImpl {
 		Visualizer*                           parent;
 		GLFWwindow*                           window;
@@ -243,10 +251,12 @@ namespace Boidsish {
 		GLuint                  pingpong_fbo[2]{0}, pingpong_texture[2]{0};
 		GLuint main_fbo_{0}, main_fbo_texture_{0}, main_fbo_velocity_texture_{0}, main_fbo_depth_texture_{0},
 			main_fbo_rbo_{0};
-		GLuint    lighting_ubo{0};
-		GLuint    visual_effects_ubo{0};
-		GLuint    temporal_data_ubo{0};
-		GLuint    frustum_ubo{0};
+
+		std::unique_ptr<PersistentBuffer<LightingUbo>>      persistent_lighting_ubo;
+		std::unique_ptr<PersistentBuffer<VisualEffectsUbo>> persistent_visual_effects_ubo;
+		std::unique_ptr<PersistentBuffer<TemporalUbo>>      persistent_temporal_data_ubo;
+		std::unique_ptr<PersistentBuffer<FrustumUbo>>       persistent_frustum_ubo;
+
 		glm::mat4 projection, reflection_vp;
 		glm::mat4 prev_view_projection{1.0f};
 
@@ -515,49 +525,25 @@ namespace Boidsish {
 			trail_render_manager = std::make_unique<TrailRenderManager>();
 
 			const int MAX_LIGHTS = 10;
-			glGenBuffers(1, &lighting_ubo);
-			glBindBuffer(GL_UNIFORM_BUFFER, lighting_ubo);
-			glBufferData(GL_UNIFORM_BUFFER, 704, NULL, GL_DYNAMIC_DRAW);
-			glBindBuffer(GL_UNIFORM_BUFFER, 0);
-			glBindBufferRange(GL_UNIFORM_BUFFER, Constants::UboBinding::Lighting(), lighting_ubo, 0, 704);
+			persistent_lighting_ubo = std::make_unique<PersistentBuffer<LightingUbo>>(GL_UNIFORM_BUFFER, 1);
+			persistent_lighting_ubo->bindBase(Constants::UboBinding::Lighting());
 
 			// Temporal Data UBO
-			glGenBuffers(1, &temporal_data_ubo);
-			glBindBuffer(GL_UNIFORM_BUFFER, temporal_data_ubo);
-			glBufferData(GL_UNIFORM_BUFFER, sizeof(TemporalUbo), NULL, GL_DYNAMIC_DRAW);
-			glBindBuffer(GL_UNIFORM_BUFFER, 0);
-			glBindBufferRange(
-				GL_UNIFORM_BUFFER,
-				Constants::UboBinding::TemporalData(),
-				temporal_data_ubo,
-				0,
-				sizeof(TemporalUbo)
-			);
+			persistent_temporal_data_ubo = std::make_unique<PersistentBuffer<TemporalUbo>>(GL_UNIFORM_BUFFER, 1);
+			persistent_temporal_data_ubo->bindBase(Constants::UboBinding::TemporalData());
 
 			// Pre-allocate lighting cache for batched UBO updates
 			gpu_lights_cache_.reserve(MAX_LIGHTS);
 
 			if (ConfigManager::GetInstance().GetAppSettingBool("enable_effects", true)) {
-				glGenBuffers(1, &visual_effects_ubo);
-				glBindBuffer(GL_UNIFORM_BUFFER, visual_effects_ubo);
-				glBufferData(GL_UNIFORM_BUFFER, sizeof(VisualEffectsUbo), NULL, GL_DYNAMIC_DRAW);
-				glBindBuffer(GL_UNIFORM_BUFFER, 0);
-				glBindBufferRange(
-					GL_UNIFORM_BUFFER,
-					Constants::UboBinding::VisualEffects(),
-					visual_effects_ubo,
-					0,
-					sizeof(VisualEffectsUbo)
-				);
+				persistent_visual_effects_ubo =
+					std::make_unique<PersistentBuffer<VisualEffectsUbo>>(GL_UNIFORM_BUFFER, 1);
+				persistent_visual_effects_ubo->bindBase(Constants::UboBinding::VisualEffects());
 			}
 
 			// Frustum UBO for GPU-side culling
-			// Layout: 6 vec4 planes (96 bytes) + vec3 camera pos + padding (16 bytes) = 112 bytes
-			glGenBuffers(1, &frustum_ubo);
-			glBindBuffer(GL_UNIFORM_BUFFER, frustum_ubo);
-			glBufferData(GL_UNIFORM_BUFFER, 112, NULL, GL_DYNAMIC_DRAW);
-			glBindBuffer(GL_UNIFORM_BUFFER, 0);
-			glBindBufferRange(GL_UNIFORM_BUFFER, Constants::UboBinding::FrustumData(), frustum_ubo, 0, 112);
+			persistent_frustum_ubo = std::make_unique<PersistentBuffer<FrustumUbo>>(GL_UNIFORM_BUFFER, 1);
+			persistent_frustum_ubo->bindBase(Constants::UboBinding::FrustumData());
 
 			shader->use();
 			SetupShaderBindings(*shader);
@@ -1035,17 +1021,10 @@ namespace Boidsish {
 				glDeleteTextures(1, &main_fbo_depth_texture_);
 			}
 
-			if (lighting_ubo) {
-				glDeleteBuffers(1, &lighting_ubo);
-			}
-
-			if (visual_effects_ubo) {
-				glDeleteBuffers(1, &visual_effects_ubo);
-			}
-
-			if (frustum_ubo) {
-				glDeleteBuffers(1, &frustum_ubo);
-			}
+			persistent_lighting_ubo.reset();
+			persistent_temporal_data_ubo.reset();
+			persistent_visual_effects_ubo.reset();
+			persistent_frustum_ubo.reset();
 
 			if (window)
 				glfwDestroyWindow(window);
@@ -2072,6 +2051,7 @@ namespace Boidsish {
 	}
 
 	void Visualizer::Render() {
+		PROJECT_PROFILE_SCOPE("Visualizer::Render");
 		impl->RefreshFrameConfig();
 		impl->shapes.clear();
 
@@ -2202,9 +2182,9 @@ namespace Boidsish {
 		temporal_data.frameIndex = static_cast<int>(impl->frame_count_);
 		temporal_data.padding = 0.0f;
 
-		glBindBuffer(GL_UNIFORM_BUFFER, impl->temporal_data_ubo);
-		glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(TemporalUbo), &temporal_data);
-		glBindBuffer(GL_UNIFORM_BUFFER, 0);
+		if (impl->persistent_temporal_data_ubo) {
+			*impl->persistent_temporal_data_ubo->data() = temporal_data;
+		}
 
 		impl->prev_view_projection = current_vp;
 
@@ -2250,7 +2230,7 @@ namespace Boidsish {
 			impl->terrain_render_manager ? impl->terrain_render_manager->GetHeightmapTexture() : 0,
 			impl->noise_manager ? impl->noise_manager->GetCurlTexture() : 0,
 			impl->terrain_render_manager ? impl->terrain_render_manager->GetBiomeTexture() : 0,
-			impl->lighting_ubo
+			impl->persistent_lighting_ubo ? impl->persistent_lighting_ubo->id() : 0
 		);
 		impl->mesh_explosion_manager->Update(impl->simulation_delta_time, impl->simulation_time);
 		impl->sound_effect_manager->Update(impl->simulation_delta_time);
@@ -2302,9 +2282,9 @@ namespace Boidsish {
 				ubo_data.ripple_enabled = 1;
 			}
 
-			glBindBuffer(GL_UNIFORM_BUFFER, impl->visual_effects_ubo);
-			glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(VisualEffectsUbo), &ubo_data);
-			glBindBuffer(GL_UNIFORM_BUFFER, 0);
+			if (impl->persistent_visual_effects_ubo) {
+				*impl->persistent_visual_effects_ubo->data() = ubo_data;
+			}
 		}
 
 		// Batched lighting UBO update - single glBufferSubData instead of 8 calls
@@ -2339,9 +2319,9 @@ namespace Boidsish {
 			impl->lighting_ubo_data_.view_dir = impl->camera.front();
 
 			// Single buffer upload instead of 8 separate calls
-			glBindBuffer(GL_UNIFORM_BUFFER, impl->lighting_ubo);
-			glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(LightingUbo), &impl->lighting_ubo_data_);
-			glBindBuffer(GL_UNIFORM_BUFFER, 0);
+			if (impl->persistent_lighting_ubo) {
+				*impl->persistent_lighting_ubo->data() = impl->lighting_ubo_data_;
+			}
 		}
 
 		// Update Frustum UBO for GPU-side culling
@@ -2353,17 +2333,13 @@ namespace Boidsish {
 			);
 			Frustum render_frustum = impl->CalculateFrustum(view, impl->projection);
 
-			// Pack frustum planes into vec4 array (normal.xyz, distance.w)
-			glm::vec4 frustum_planes[6];
-			for (int i = 0; i < 6; ++i) {
-				frustum_planes[i] = glm::vec4(render_frustum.planes[i].normal, render_frustum.planes[i].distance);
+			if (impl->persistent_frustum_ubo) {
+				auto* data = impl->persistent_frustum_ubo->data();
+				for (int i = 0; i < 6; ++i) {
+					data->planes[i] = glm::vec4(render_frustum.planes[i].normal, render_frustum.planes[i].distance);
+				}
+				data->cameraPos = impl->camera.pos();
 			}
-
-			glBindBuffer(GL_UNIFORM_BUFFER, impl->frustum_ubo);
-			glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(frustum_planes), frustum_planes);
-			glm::vec3 cam_pos = impl->camera.pos();
-			glBufferSubData(GL_UNIFORM_BUFFER, 96, sizeof(glm::vec3), &cam_pos[0]);
-			glBindBuffer(GL_UNIFORM_BUFFER, 0);
 		}
 
 		if (impl->reflection_fbo) {

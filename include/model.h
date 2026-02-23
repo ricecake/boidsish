@@ -15,6 +15,7 @@ namespace Boidsish {
 
 	struct Texture {
 		unsigned int id;
+		uint64_t     handle = 0;
 		std::string  type;
 		std::string  path;
 	};
@@ -57,6 +58,12 @@ namespace Boidsish {
 		std::string          directory;
 		std::string          model_path;
 		AABB                 aabb;
+
+		// Unified buffers for MDI
+		unsigned int unified_vao = 0;
+		unsigned int unified_vbo = 0;
+		unsigned int unified_ebo = 0;
+		bool         has_unified = false;
 	};
 
 	class Model: public Shape {

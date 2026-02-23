@@ -4,8 +4,10 @@
 #include <set>
 
 #include "ConfigManager.h"
+#include "asset_manager.h"
 #include "graphics.h"
 #include "logger.h"
+#include "profiler.h"
 #include "terrain_generator_interface.h"
 #include "terrain_render_manager.h"
 #include <GL/glew.h>
@@ -33,6 +35,8 @@ namespace Boidsish {
 				glDeleteBuffers(1, &type.count_buffer);
 			if (type.indirect_buffer != 0)
 				glDeleteBuffers(1, &type.indirect_buffer);
+			if (type.handle_ssbo != 0)
+				glDeleteBuffers(1, &type.handle_ssbo);
 		}
 	}
 
@@ -443,6 +447,8 @@ namespace Boidsish {
 		if (!enabled_ || !initialized_ || decor_types_.empty())
 			return;
 
+		PROJECT_PROFILE_SCOPE("DecorManager::Render");
+
 		// 1. GPU Culling Pass
 		Frustum frustum = Frustum::FromViewProjection(view, projection);
 
@@ -512,28 +518,70 @@ namespace Boidsish {
 			shader->setFloat("u_windResponsiveness", type.props.wind_responsiveness);
 			shader->setFloat("u_windRimHighlight", type.props.wind_rim_highlight);
 
-			// Bind the indirect buffer
-			glBindBuffer(GL_DRAW_INDIRECT_BUFFER, type.indirect_buffer);
-
-			const auto& meshes = type.model->getMeshes();
-			for (size_t mi = 0; mi < meshes.size(); ++mi) {
-				const auto& mesh = meshes[mi];
-				bool        hasDiffuse = false;
-				for (const auto& t : mesh.textures) {
-					if (t.type == "texture_diffuse") {
-						hasDiffuse = true;
-						break;
+			auto model_data = AssetManager::GetInstance().GetModelData(type.model->GetModelPath());
+			if (model_data && model_data->has_unified) {
+				// Prepare bindless textures for MDI
+				std::vector<uint64_t> diffuse_handles;
+				bool                  any_texture = false;
+				for (const auto& mesh : model_data->meshes) {
+					uint64_t handle = 0;
+					if (GLEW_ARB_bindless_texture) {
+						for (const auto& tex : mesh.textures) {
+							if (tex.type == "texture_diffuse") {
+								handle = tex.handle;
+								any_texture = true;
+								break;
+							}
+						}
 					}
+					diffuse_handles.push_back(handle);
 				}
-				shader->setBool("use_texture", hasDiffuse);
-				mesh.bindTextures(*shader);
 
-				glBindVertexArray(mesh.VAO);
-				glDrawElementsIndirect(
-					GL_TRIANGLES,
-					GL_UNSIGNED_INT,
-					(void*)(mi * sizeof(DrawElementsIndirectCommand))
-				);
+				shader->setBool("use_texture", any_texture);
+				shader->setBool("u_useBindless", GLEW_ARB_bindless_texture && any_texture);
+				shader->setBool("u_useMDI", true);
+
+				if (any_texture) {
+					if (type.handle_ssbo == 0) {
+						glGenBuffers(1, &type.handle_ssbo);
+					}
+					glBindBuffer(GL_SHADER_STORAGE_BUFFER, type.handle_ssbo);
+					glBufferData(GL_SHADER_STORAGE_BUFFER, diffuse_handles.size() * sizeof(uint64_t), diffuse_handles.data(), GL_STREAM_DRAW);
+					glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 11, type.handle_ssbo);
+				}
+
+				glBindVertexArray(model_data->unified_vao);
+				glBindBuffer(GL_DRAW_INDIRECT_BUFFER, type.indirect_buffer);
+
+				glMultiDrawElementsIndirect(GL_TRIANGLES, GL_UNSIGNED_INT, nullptr, (GLsizei)model_data->meshes.size(), 0);
+
+				shader->setBool("u_useMDI", false);
+			} else {
+				// Fallback to non-MDI
+				shader->setBool("u_useMDI", false);
+				// Bind the indirect buffer
+				glBindBuffer(GL_DRAW_INDIRECT_BUFFER, type.indirect_buffer);
+
+				const auto& meshes = type.model->getMeshes();
+				for (size_t mi = 0; mi < meshes.size(); ++mi) {
+					const auto& mesh = meshes[mi];
+					bool        hasDiffuse = false;
+					for (const auto& t : mesh.textures) {
+						if (t.type == "texture_diffuse") {
+							hasDiffuse = true;
+							break;
+						}
+					}
+					shader->setBool("use_texture", hasDiffuse);
+					mesh.bindTextures(*shader);
+
+					glBindVertexArray(mesh.VAO);
+					glDrawElementsIndirect(
+						GL_TRIANGLES,
+						GL_UNSIGNED_INT,
+						(void*)(mi * sizeof(DrawElementsIndirectCommand))
+					);
+				}
 			}
 		}
 
