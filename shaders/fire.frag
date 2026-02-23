@@ -136,7 +136,7 @@ void main() {
 		} else if (v_style == 4) { // Glitter
 			alpha = clamp(v_lifetime, 0.0, 1.0);
 		} else if (v_style == 5) { // Ambient
-								   // alpha already set
+			                       // alpha already set
 		} else if (v_style == 28) {
 			alpha = 0.75;
 		}

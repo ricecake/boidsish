@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <iostream>
 #include <memory>
 
@@ -44,6 +45,12 @@ int main() {
 		cam.x = 0.0f;
 		cam.z = 0.0f;
 		cam.y = eyeHeight;
+
+		// Input state for charging
+		float rightHoldTime = 0.0f;
+		float leftHoldTime = 0.0f;
+		bool  rightDown = false;
+		bool  leftDown = false;
 
 		// Input callback to handle movement, bobbing, and footsteps
 		viz.AddInputCallback([&](const InputState& state) {
@@ -135,6 +142,59 @@ int main() {
 				static_cast<float>(state.mouse_delta_x),
 				static_cast<float>(state.mouse_delta_y)
 			);
+
+			// 6. Handle Charging and Explosions
+			// Right Click - Explosion
+			if (state.mouse_buttons[GLFW_MOUSE_BUTTON_RIGHT]) {
+				rightHoldTime += dt;
+				rightDown = true;
+			} else if (rightDown && state.mouse_button_up[GLFW_MOUSE_BUTTON_RIGHT]) {
+				int width, height;
+				glfwGetWindowSize(viz.GetWindow(), &width, &height);
+				auto target = viz.ScreenToWorld(width / 2.0, height / 2.0);
+				if (target) {
+					float intensity = 1.0f + rightHoldTime * 2.0f;
+					viz.CreateExplosion(*target, intensity);
+					viz.AddSoundEffect("assets/rocket_explosion.wav", *target, {0, 0, 0}, glm::min(intensity, 5.0f));
+				}
+				rightHoldTime = 0.0f;
+				rightDown = false;
+			}
+
+			// Left Click - Glitter
+			if (state.mouse_buttons[GLFW_MOUSE_BUTTON_LEFT]) {
+				leftHoldTime += dt;
+				leftDown = true;
+			} else if (leftDown && state.mouse_button_up[GLFW_MOUSE_BUTTON_LEFT]) {
+				int width, height;
+				glfwGetWindowSize(viz.GetWindow(), &width, &height);
+				auto target = viz.ScreenToWorld(width / 2.0, height / 2.0);
+				if (target) {
+					float intensity = 1.0f + leftHoldTime * 2.0f;
+					// Custom Glitter Explosion
+					viz.AddFireEffect(
+						*target,
+						FireEffectStyle::Glitter,
+						{0, 0, 0},
+						{0, 0, 0},
+						static_cast<int>(500 * intensity),
+						0.5f
+					);
+					viz.CreateShockwave(*target, intensity, 30.0f * intensity, 1.5f, {0, 1, 0}, {0.8f, 0.2f, 1.0f});
+
+					Light flash = Light::CreateFlash(*target, 45.0f * intensity, {0.8f, 0.5f, 1.0f}, 45.0f * intensity);
+					flash.auto_remove = true;
+					flash.SetEaseOut(0.4f * intensity);
+					viz.GetLightManager().AddLight(flash);
+
+					viz.AddSoundEffect("assets/rocket_explosion.wav", *target, {0, 0, 0}, glm::min(intensity, 5.0f));
+				}
+				leftHoldTime = 0.0f;
+				leftDown = false;
+			}
+
+			// Update SuperSpeed Intensity
+			viz.SetSuperSpeedIntensity(glm::min(std::max(rightHoldTime, leftHoldTime), 1.0f));
 		});
 
 		// 6. Shape Handler
@@ -152,6 +212,7 @@ int main() {
 		viz.AddHudLocation();
 		viz.AddHudMessage("First Person Demo", HudAlignment::TOP_CENTER, {0, 10}, 1.5f);
 		viz.AddHudMessage("WASD to Move | SHIFT to Sprint", HudAlignment::BOTTOM_CENTER, {0, -20}, 1.0f);
+		viz.AddHudMessage("+", HudAlignment::MIDDLE_CENTER, {0, 0}, 1.0f);
 
 		// Run the simulation
 		viz.Run();
