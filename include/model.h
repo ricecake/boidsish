@@ -65,12 +65,17 @@ namespace Boidsish {
 		std::string          directory;
 		std::string          model_path;
 		AABB                 aabb;
+
+		// SDF approximation data
+		unsigned int sdf_texture = 0;
+		bool         sdf_precompute = false;
+		bool         sdf_initialized = false;
 	};
 
 	class Model: public Shape {
 	public:
 		// Constructor, expects a filepath to a 3D model.
-		Model(const std::string& path, bool no_cull = false);
+		Model(const std::string& path, bool no_cull = false, bool precompute_sdf = false);
 
 		void PrepareResources(Megabuffer* megabuffer = nullptr) const override;
 
@@ -87,6 +92,8 @@ namespace Boidsish {
 
 		const std::vector<Mesh>& getMeshes() const;
 
+		AABB GetLocalAABB() const { return m_data ? m_data->aabb : AABB(); }
+
 		void SetBaseRotation(const glm::quat& rotation) { base_rotation_ = rotation; }
 
 		// Returns unique key for this model file - models loaded from the same file can be instanced together
@@ -94,6 +101,10 @@ namespace Boidsish {
 
 		// Get the model path
 		const std::string& GetModelPath() const;
+
+		// SDF Approximation
+		unsigned int GetSdfTexture() const;
+		void         SetSdfPrecompute(bool precompute) { m_data->sdf_precompute = precompute; }
 
 		// Exposed for AssetManager to fill during loading
 		friend class AssetManager;

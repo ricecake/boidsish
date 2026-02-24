@@ -1,0 +1,53 @@
+#version 430 core
+layout(local_size_x = 4, local_size_y = 4, local_size_z = 4) in;
+
+layout(rgba32f, binding = 0) uniform image3D u_read_seed;
+layout(rgba32f, binding = 1) uniform image3D u_read_normal;
+layout(rgba32f, binding = 2) uniform image3D u_write_seed;
+layout(rgba32f, binding = 3) uniform image3D u_write_normal;
+
+uniform int  u_step;
+uniform int  u_grid_res;
+uniform vec3 u_voxel_size;
+
+void main() {
+	ivec3 vox = ivec3(gl_GlobalInvocationID);
+	if (any(greaterThanEqual(vox, ivec3(u_grid_res))))
+		return;
+
+	vec4  best_seed = imageLoad(u_read_seed, vox);
+	vec4  best_normal = imageLoad(u_read_normal, vox);
+	float min_dist_sq = 1e20;
+
+	if (best_seed.w > 0.5) {
+		vec3 diff = (vec3(vox) - best_seed.xyz) * u_voxel_size;
+		min_dist_sq = dot(diff, diff);
+	}
+
+	for (int dz = -1; dz <= 1; ++dz) {
+		for (int dy = -1; dy <= 1; ++dy) {
+			for (int dx = -1; dx <= 1; ++dx) {
+				if (dx == 0 && dy == 0 && dz == 0)
+					continue;
+
+				ivec3 neighbor = vox + ivec3(dx, dy, dz) * u_step;
+				if (any(lessThan(neighbor, ivec3(0))) || any(greaterThanEqual(neighbor, ivec3(u_grid_res))))
+					continue;
+
+				vec4 n_seed = imageLoad(u_read_seed, neighbor);
+				if (n_seed.w > 0.5) {
+					vec3  diff = (vec3(vox) - n_seed.xyz) * u_voxel_size;
+					float d_sq = dot(diff, diff);
+					if (d_sq < min_dist_sq) {
+						min_dist_sq = d_sq;
+						best_seed = n_seed;
+						best_normal = imageLoad(u_read_normal, neighbor);
+					}
+				}
+			}
+		}
+	}
+
+	imageStore(u_write_seed, vox, best_seed);
+	imageStore(u_write_normal, vox, best_normal);
+}

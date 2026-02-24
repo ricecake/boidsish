@@ -277,8 +277,14 @@ namespace Boidsish {
 	}
 
 	// Model implementation
-	Model::Model(const std::string& path, bool no_cull): no_cull_(no_cull) {
-		m_data = AssetManager::GetInstance().GetModelData(path);
+	Model::Model(const std::string& path, bool no_cull, bool precompute_sdf): no_cull_(no_cull) {
+		m_data = AssetManager::GetInstance().GetModelData(path, precompute_sdf);
+	}
+
+	unsigned int Model::GetSdfTexture() const {
+		if (!m_data)
+			return 0;
+		return AssetManager::GetInstance().GetSdfTexture(m_data);
 	}
 
 	void Model::PrepareResources(Megabuffer* mb) const {

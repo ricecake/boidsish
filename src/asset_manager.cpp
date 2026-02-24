@@ -3,9 +3,11 @@
 #include <algorithm>
 #include <iostream>
 
+#include "constants.h"
 #include "logger.h"
 #include "miniaudio.h"
 #include "model.h"
+#include "shader.h"
 #include "stb_image.h"
 #include <GL/glew.h>
 #include <assimp/Importer.hpp>
@@ -28,6 +30,13 @@ namespace Boidsish {
 			glDeleteTextures(1, &textureId);
 		}
 		m_textures.clear();
+
+		for (auto& [path, modelData] : m_models) {
+			if (modelData->sdf_texture != 0) {
+				glDeleteTextures(1, &modelData->sdf_texture);
+				modelData->sdf_texture = 0;
+			}
+		}
 		m_models.clear();
 		m_audio_sources.clear();
 	}
@@ -150,9 +159,12 @@ namespace Boidsish {
 		}
 	} // anonymous namespace
 
-	std::shared_ptr<ModelData> AssetManager::GetModelData(const std::string& path) {
+	std::shared_ptr<ModelData> AssetManager::GetModelData(const std::string& path, bool precompute_sdf) {
 		auto it = m_models.find(path);
 		if (it != m_models.end()) {
+			if (precompute_sdf && !it->second->sdf_initialized) {
+				GetSdfTexture(it->second);
+			}
 			return it->second;
 		}
 
@@ -198,7 +210,175 @@ namespace Boidsish {
 
 		logger::LOG("Model cached: {} with {} meshes", path, data->meshes.size());
 		m_models[path] = data;
+
+		if (precompute_sdf) {
+			GetSdfTexture(data);
+		}
+
 		return data;
+	}
+
+	GLuint AssetManager::GetSdfTexture(std::shared_ptr<ModelData> data) {
+		if (!data || data->sdf_initialized) {
+			return data ? data->sdf_texture : 0;
+		}
+
+		// Check for OpenGL 4.3 support (required for Compute Shaders)
+		GLint major, minor;
+		glGetIntegerv(GL_MAJOR_VERSION, &major);
+		glGetIntegerv(GL_MINOR_VERSION, &minor);
+		if (major < 4 || (major == 4 && minor < 3)) {
+			logger::ERROR("Compute shaders not supported (OpenGL {}.{} < 4.3). SDF generation disabled.", major, minor);
+			data->sdf_initialized = true; // Prevent further attempts
+			return 0;
+		}
+
+		// Initialize SDF Approximation using JFA
+		int grid_res = Constants::Class::SdfApproximation::GridResolution();
+		int jfa_iters = Constants::Class::SdfApproximation::JfaIterations();
+
+		logger::LOG("Generating SDF for model: {} (Resolution: {}^3)", data->model_path, grid_res);
+
+		// 1. Setup 3D Textures
+		auto create3DTexture = [&](GLenum format) {
+			GLuint tex;
+			glGenTextures(1, &tex);
+			glBindTexture(GL_TEXTURE_3D, tex);
+			glTexImage3D(GL_TEXTURE_3D, 0, format, grid_res, grid_res, grid_res, 0, GL_RGBA, GL_FLOAT, nullptr);
+			glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+			glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+			glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+			glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+			glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE);
+			return tex;
+		};
+
+		GLuint seed_tex_a = create3DTexture(GL_RGBA32F);
+		GLuint normal_tex_a = create3DTexture(GL_RGBA32F);
+		GLuint seed_tex_b = create3DTexture(GL_RGBA32F);
+		GLuint normal_tex_b = create3DTexture(GL_RGBA32F);
+		GLuint final_tex = create3DTexture(GL_RGBA32F);
+
+		// Clear textures
+		float clear_color[4] = {0, 0, 0, 0};
+		glClearTexImage(seed_tex_a, 0, GL_RGBA, GL_FLOAT, clear_color);
+		glClearTexImage(normal_tex_a, 0, GL_RGBA, GL_FLOAT, clear_color);
+
+		// 2. Prepare Geometry SSBOs
+		std::vector<Vertex>       all_vertices;
+		std::vector<unsigned int> all_indices;
+		unsigned int              vertex_offset = 0;
+		for (const auto& mesh : data->meshes) {
+			for (const auto& v : mesh.vertices) {
+				all_vertices.push_back(v);
+			}
+			for (unsigned int idx : mesh.indices) {
+				all_indices.push_back(idx + vertex_offset);
+			}
+			vertex_offset += static_cast<unsigned int>(mesh.vertices.size());
+		}
+
+		GLuint vbo, ebo;
+		glGenBuffers(1, &vbo);
+		glBindBuffer(GL_SHADER_STORAGE_BUFFER, vbo);
+		glBufferData(GL_SHADER_STORAGE_BUFFER, all_vertices.size() * sizeof(Vertex), all_vertices.data(), GL_STATIC_DRAW);
+		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, vbo);
+
+		glGenBuffers(1, &ebo);
+		glBindBuffer(GL_SHADER_STORAGE_BUFFER, ebo);
+		glBufferData(
+			GL_SHADER_STORAGE_BUFFER,
+			all_indices.size() * sizeof(unsigned int),
+			all_indices.data(),
+			GL_STATIC_DRAW
+		);
+		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, ebo);
+
+		// 3. Load Shaders
+		ComputeShader voxelize_sh("shaders/sdf/sdf_voxelize.comp");
+		ComputeShader jfa_sh("shaders/sdf/sdf_jfa.comp");
+		ComputeShader final_sh("shaders/sdf/sdf_final.comp");
+
+		if (!voxelize_sh.isValid() || !jfa_sh.isValid() || !final_sh.isValid()) {
+			logger::ERROR("Failed to load SDF compute shaders");
+			// Cleanup
+			glDeleteTextures(1, &seed_tex_a);
+			glDeleteTextures(1, &normal_tex_a);
+			glDeleteTextures(1, &seed_tex_b);
+			glDeleteTextures(1, &normal_tex_b);
+			glDeleteTextures(1, &final_tex);
+			glDeleteBuffers(1, &vbo);
+			glDeleteBuffers(1, &ebo);
+			return 0;
+		}
+
+		// 4. Voxelize (Seed JFA)
+		voxelize_sh.use();
+		voxelize_sh.setUint("u_num_indices", (unsigned int)all_indices.size());
+		voxelize_sh.setVec3("u_min_bounds", data->aabb.min);
+		voxelize_sh.setVec3("u_max_bounds", data->aabb.max);
+		voxelize_sh.setInt("u_grid_res", grid_res);
+
+		glBindImageTexture(0, seed_tex_a, 0, GL_TRUE, 0, GL_WRITE_ONLY, GL_RGBA32F);
+		glBindImageTexture(1, normal_tex_a, 0, GL_TRUE, 0, GL_WRITE_ONLY, GL_RGBA32F);
+
+		voxelize_sh.dispatch((all_indices.size() / 3 + 255) / 256, 1, 1);
+		glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
+
+		// 5. JFA Iterations
+		jfa_sh.use();
+		jfa_sh.setInt("u_grid_res", grid_res);
+		glm::vec3 size = data->aabb.max - data->aabb.min;
+		glm::vec3 voxel_size = size / float(grid_res);
+		jfa_sh.setVec3("u_voxel_size", voxel_size);
+
+		GLuint read_seed = seed_tex_a;
+		GLuint read_normal = normal_tex_a;
+		GLuint write_seed = seed_tex_b;
+		GLuint write_normal = normal_tex_b;
+
+		for (int i = 0; i < jfa_iters; ++i) {
+			int step = 1 << (jfa_iters - 1 - i);
+			jfa_sh.setInt("u_step", step);
+
+			glBindImageTexture(0, read_seed, 0, GL_TRUE, 0, GL_READ_ONLY, GL_RGBA32F);
+			glBindImageTexture(1, read_normal, 0, GL_TRUE, 0, GL_READ_ONLY, GL_RGBA32F);
+			glBindImageTexture(2, write_seed, 0, GL_TRUE, 0, GL_WRITE_ONLY, GL_RGBA32F);
+			glBindImageTexture(3, write_normal, 0, GL_TRUE, 0, GL_WRITE_ONLY, GL_RGBA32F);
+
+			jfa_sh.dispatch((grid_res + 3) / 4, (grid_res + 3) / 4, (grid_res + 3) / 4);
+			glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
+
+			std::swap(read_seed, write_seed);
+			std::swap(read_normal, write_normal);
+		}
+
+		// 6. Final Pass (Distance and Sign)
+		final_sh.use();
+		final_sh.setInt("u_grid_res", grid_res);
+		final_sh.setVec3("u_voxel_size", voxel_size);
+
+		glBindImageTexture(0, read_seed, 0, GL_TRUE, 0, GL_READ_ONLY, GL_RGBA32F);
+		glBindImageTexture(1, read_normal, 0, GL_TRUE, 0, GL_READ_ONLY, GL_RGBA32F);
+		glBindImageTexture(2, final_tex, 0, GL_TRUE, 0, GL_WRITE_ONLY, GL_RGBA32F);
+
+		final_sh.dispatch((grid_res + 3) / 4, (grid_res + 3) / 4, (grid_res + 3) / 4);
+		glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
+
+		// 7. Cleanup
+		glDeleteTextures(1, &seed_tex_a);
+		glDeleteTextures(1, &normal_tex_a);
+		glDeleteTextures(1, &seed_tex_b);
+		glDeleteTextures(1, &normal_tex_b);
+		glDeleteBuffers(1, &vbo);
+		glDeleteBuffers(1, &ebo);
+
+		data->sdf_texture = final_tex;
+		data->sdf_initialized = true;
+
+		logger::LOG("SDF generation complete for {}", data->model_path);
+
+		return final_tex;
 	}
 
 	GLuint AssetManager::GetTexture(const std::string& path, const std::string& directory) {

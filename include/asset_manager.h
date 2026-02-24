@@ -29,7 +29,12 @@ namespace Boidsish {
 		/**
 		 * @brief Load or retrieve a cached model.
 		 */
-		std::shared_ptr<ModelData> GetModelData(const std::string& path);
+		std::shared_ptr<ModelData> GetModelData(const std::string& path, bool precompute_sdf = false);
+
+		/**
+		 * @brief Get the SDF texture for a model, generating it if necessary.
+		 */
+		GLuint GetSdfTexture(std::shared_ptr<ModelData> data);
 
 		/**
 		 * @brief Load or retrieve a cached texture.

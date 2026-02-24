@@ -1,0 +1,102 @@
+#version 430 core
+layout(local_size_x = 256) in;
+
+struct Vertex {
+	float px, py, pz;
+	float nx, ny, nz;
+	float tx, ty;
+	float cx, cy, cz;
+};
+
+layout(std430, binding = 0) buffer VertexBuffer {
+	Vertex vertices[];
+};
+
+layout(std430, binding = 1) buffer IndexBuffer {
+	uint indices[];
+};
+
+layout(rgba32f, binding = 0) uniform image3D u_seed_texture;
+layout(rgba32f, binding = 1) uniform image3D u_normal_texture;
+
+uniform uint u_num_indices;
+uniform vec3 u_min_bounds;
+uniform vec3 u_max_bounds;
+uniform int  u_grid_res;
+
+float dot2(vec3 v) {
+	return dot(v, v);
+}
+
+float distPointTriangleSq(vec3 p, vec3 v0, vec3 v1, vec3 v2) {
+	vec3 v10 = v1 - v0;
+	vec3 vp0 = p - v0;
+	vec3 v21 = v2 - v1;
+	vec3 vp1 = p - v1;
+	vec3 v02 = v0 - v2;
+	vec3 vp2 = p - v2;
+	vec3 nor = cross(v10, v02);
+
+	if (sign(dot(cross(v10, nor), vp0)) + sign(dot(cross(v21, nor), vp1)) + sign(dot(cross(v02, nor), vp2)) < 2.0) {
+		return min(min(
+					   dot2(v10 * clamp(dot(v10, vp0) / dot2(v10), 0.0, 1.0) - vp0),
+					   dot2(v21 * clamp(dot(v21, vp1) / dot2(v21), 0.0, 1.0) - vp1)
+				   ),
+				   dot2(v02 * clamp(dot(v02, vp2) / dot2(v02), 0.0, 1.0) - vp2));
+	} else {
+		return dot(nor, vp0) * dot(nor, vp0) / dot2(nor);
+	}
+}
+
+void main() {
+	uint tri_idx = gl_GlobalInvocationID.x;
+	if (tri_idx * 3 >= u_num_indices)
+		return;
+
+	// Get triangle vertices
+	Vertex vert0 = vertices[indices[tri_idx * 3 + 0]];
+	Vertex vert1 = vertices[indices[tri_idx * 3 + 1]];
+	Vertex vert2 = vertices[indices[tri_idx * 3 + 2]];
+
+	vec3 v0 = vec3(vert0.px, vert0.py, vert0.pz);
+	vec3 v1 = vec3(vert1.px, vert1.py, vert1.pz);
+	vec3 v2 = vec3(vert2.px, vert2.py, vert2.pz);
+
+	// Triangle AABB in voxel space
+	vec3 size = u_max_bounds - u_min_bounds;
+	vec3 inv_size = vec3(
+		size.x > 0.0001 ? 1.0 / size.x : 0.0,
+		size.y > 0.0001 ? 1.0 / size.y : 0.0,
+		size.z > 0.0001 ? 1.0 / size.z : 0.0
+	);
+
+	vec3 v0_vox = (v0 - u_min_bounds) * inv_size * float(u_grid_res);
+	vec3 v1_vox = (v1 - u_min_bounds) * inv_size * float(u_grid_res);
+	vec3 v2_vox = (v2 - u_min_bounds) * inv_size * float(u_grid_res);
+
+	vec3 tri_min = min(v0_vox, min(v1_vox, v2_vox));
+	vec3 tri_max = max(v0_vox, max(v1_vox, v2_vox));
+
+	ivec3 min_vox = ivec3(max(vec3(0), floor(tri_min - 0.5)));
+	ivec3 max_vox = ivec3(min(vec3(u_grid_res - 1), ceil(tri_max + 0.5)));
+
+	vec3 normal = normalize(cross(v1 - v0, v2 - v0));
+	vec3 voxel_size = size / float(u_grid_res);
+	float threshold_sq = dot(voxel_size, voxel_size) * 0.5; // Roughly half voxel diagonal squared
+
+	// For each voxel in AABB, mark it if close enough to triangle
+	for (int z = min_vox.z; z <= max_vox.z; ++z) {
+		for (int y = min_vox.y; y <= max_vox.y; ++y) {
+			for (int x = min_vox.x; x <= max_vox.x; ++x) {
+				vec3  vox_center_world = u_min_bounds + (vec3(x, y, z) + 0.5) * voxel_size;
+				float d_sq = distPointTriangleSq(vox_center_world, v0, v1, v2);
+
+				if (d_sq < threshold_sq) {
+					ivec3 vox = ivec3(x, y, z);
+					imageStore(u_seed_texture, vox, vec4(vec3(vox), 1.0));
+					imageStore(u_normal_texture, vox, vec4(normal, 1.0));
+				}
+			}
+		}
+	}
+}
