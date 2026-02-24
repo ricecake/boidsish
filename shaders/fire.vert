@@ -19,12 +19,16 @@ layout(std430, binding = 0) buffer ParticleBuffer {
 
 // Must match the C++ Emitter struct in fire_effect_manager.h
 struct Emitter {
-	vec3 position;
-	int  style;
-	vec3 direction;
-	int  is_active;
-	vec3 velocity;
-	int  id;
+	vec3 position;   // 12 bytes
+	int  style;      // 4 bytes -> total 16
+	vec3 direction;  // 12 bytes
+	int  is_active;  // 4 bytes -> total 16
+	vec3 velocity;   // 12 bytes
+	int  id;         // 4 bytes -> total 16
+	vec3 dimensions; // 12 bytes
+	int  type;       // 4 bytes -> total 16
+	float sweep;     // 4 bytes
+	int  _padding[3];
 };
 
 layout(std430, binding = 1) buffer EmitterBuffer {
@@ -97,13 +101,13 @@ void main() {
 			gl_PointSize = 4.0 + v_lifetime * 20.0;
 		} else if (p.style == 4) { // Glitter
 			gl_PointSize = 6.0;    // Small, consistent square
-		} else if (p.style == 5) { // Ambient
+		} else if (p.style == 5 || p.style == 6 || p.style == 7) { // Ambient, Bubbles, or Fireflies
 			// Prominent size but attenuated by distance
 			gl_PointSize = 15.0 / (-view_pos.z * 0.05);
 
 			// Vary size by sub-style and random factor
 			float size_var = fract(sin(float(gl_VertexID) * 123.456) * 456.789);
-			if (v_emitter_id == 2) { // Bubbles vary more in size
+			if (p.style == 6 || (p.style == 5 && v_emitter_id == 2)) { // Bubbles vary more in size
 				gl_PointSize *= (0.5 + size_var * 1.5);
 			} else {
 				gl_PointSize *= (0.8 + size_var * 0.4);

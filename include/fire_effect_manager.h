@@ -21,12 +21,16 @@ namespace Boidsish {
 	// This struct is mirrored in the compute shader.
 	// It must match the layout and padding there.
 	struct Emitter {
-		glm::vec3 position;
-		int       style;
-		glm::vec3 direction;
-		int       is_active;
-		glm::vec3 velocity;
-		int       id;
+		glm::vec3 position;   // 12 bytes
+		int       style;      // 4 bytes -> total 16
+		glm::vec3 direction;  // 12 bytes
+		int       is_active;  // 4 bytes -> total 16
+		glm::vec3 velocity;   // 12 bytes
+		int       id;         // 4 bytes -> total 16
+		glm::vec3 dimensions; // 12 bytes
+		int       type;       // 4 bytes -> total 16
+		float     sweep;      // 4 bytes
+		int       _padding[3];
 	};
 
 	class FireEffectManager {
@@ -63,7 +67,10 @@ namespace Boidsish {
 			const glm::vec3& direction = glm::vec3(0.0f),
 			const glm::vec3& velocity = glm::vec3(0.0f),
 			int              max_particles = -1,
-			float            lifetime = -1.0f
+			float            lifetime = -1.0f,
+			EmitterType      type = EmitterType::Point,
+			const glm::vec3& dimensions = glm::vec3(0.0f),
+			float            sweep = 1.0f
 		);
 		void RemoveEffect(const std::shared_ptr<FireEffect>& effect);
 
