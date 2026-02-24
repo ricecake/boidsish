@@ -127,8 +127,10 @@ void main() {
 	ao = clamp(1.0 - (1.0 - visibility) * uIntensity, 0.0, 1.0);
 
 	// Normalize Indirect light
-	// Each direction has 2 samples, so total samples is 2 * uNumDirections * uNumSteps
-	indirect /= (2.0 * float(uNumDirections) * float(uNumSteps));
+	// The cosine-weighted integral over the hemisphere should be normalized by the total weight.
+	// However, for a simple screen-space effect, we can just use a meaningful average.
+	// Since we are adding this to the scene, we want it to represent the average gathered radiance.
+	indirect /= max(1.0, float(uNumDirections) * float(uNumSteps) * 2.0);
 
 	imageStore(outAO, pixel, vec4(ao, indirect.r, indirect.g, indirect.b));
 }
