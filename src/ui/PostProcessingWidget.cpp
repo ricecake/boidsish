@@ -104,6 +104,10 @@ namespace Boidsish {
 						if (ImGui::SliderFloat("Intensity##GTAO", &intensity, 0.0f, 5.0f)) {
 							gtao_effect->SetIntensity(intensity);
 						}
+						float ssdi_intensity = gtao_effect->GetSSDIIntensity();
+						if (ImGui::SliderFloat("SSDI Intensity##GTAO", &ssdi_intensity, 0.0f, 5.0f)) {
+							gtao_effect->SetSSDIIntensity(ssdi_intensity);
+						}
 					}
 				}
 
