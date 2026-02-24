@@ -338,7 +338,7 @@ namespace Boidsish {
 		return frustum;
 	}
 
-	void ShadowManager::BindForRendering(Shader& shader, int texture_unit) {
+	void ShadowManager::BindForRendering(ShaderBase& shader, int texture_unit) {
 		glActiveTexture(GL_TEXTURE0 + texture_unit);
 		glBindTexture(GL_TEXTURE_2D_ARRAY, shadow_map_array_);
 		shader.use();
@@ -358,10 +358,11 @@ namespace Boidsish {
 		size_t splits_offset = sizeof(glm::mat4) * kMaxShadowMaps;
 		glBufferSubData(GL_UNIFORM_BUFFER, splits_offset, sizeof(float) * kMaxCascades, cascade_splits_.data());
 
-		// Upload shadow count (at offset after all matrices and splits)
-		size_t count_offset = splits_offset + 16; // align to 16 bytes
-		active_shadow_count_ = kMaxShadowMaps;    // Just indicate we have slots
-		glBufferSubData(GL_UNIFORM_BUFFER, count_offset, sizeof(int), &active_shadow_count_);
+		// Upload shadow parameters (at offset after all matrices and splits)
+		// x = numShadowLights (using kMaxShadowMaps to indicate slots available)
+		size_t    params_offset = splits_offset + 16; // align to 16 bytes
+		glm::vec4 shadow_params(static_cast<float>(kMaxShadowMaps), 1.0f, 0.0f, 0.0f);
+		glBufferSubData(GL_UNIFORM_BUFFER, params_offset, sizeof(glm::vec4), &shadow_params);
 
 		glBindBuffer(GL_UNIFORM_BUFFER, 0);
 	}

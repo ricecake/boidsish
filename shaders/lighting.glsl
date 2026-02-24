@@ -31,7 +31,7 @@ layout(std140) uniform Lighting {
 layout(std140) uniform Shadows {
 	mat4 lightSpaceMatrices[MAX_SHADOW_MAPS];
 	vec4 cascadeSplits;
-	int  numShadowLights;
+	vec4 shadowParams; // x = numShadowLights, y = bias_multiplier
 };
 
 // Shadow map texture array - bound to texture unit 4

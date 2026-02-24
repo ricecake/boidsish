@@ -146,7 +146,7 @@ void main() {
     vec3 sunTransmittance = getTransmittance(r, sunDir.y);
     // Use u_sunRadiance if available (via AtmosphereManager) or fallback to simple sunColor
     vec3 radiance = length(u_sunRadiance) > 0.0 ? u_sunRadiance : (sunColor * 20.0);
-    vec3 sunDisc = radiance * sunMask * sunTransmittance * 2.0;
+    vec3 sunDisc = radiance * sunMask * sunTransmittance;
 
     // 3. Stars and Nebula
     vec3 stars = starLayer(world_ray) * vec3(1.0, 0.9, 0.8);

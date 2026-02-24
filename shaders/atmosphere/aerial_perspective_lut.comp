@@ -71,7 +71,8 @@ void main() {
         vec3 effectiveAmbient = max(ambient_light, baseAmbientRadiance);
         vec3 ambientScattering = effectiveAmbient * (s.rayleigh + s.mie) * u_ambientScatScale;
 
-        vec3 inScattered = (phase * u_sunRadiance * Ts + multiScat * (s.rayleigh + s.mie) + ambientScattering) * dt;
+        // Multi-scattering is proportional to sun radiance
+        vec3 inScattered = (phase * u_sunRadiance * Ts + multiScat * u_sunRadiance * (s.rayleigh + s.mie) + ambientScattering) * dt;
         L += T * inScattered;
         T *= exp(-s.extinction * dt);
     }
