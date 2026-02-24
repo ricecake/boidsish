@@ -52,6 +52,10 @@ int main() {
 		bool  rightDown = false;
 		bool  leftDown = false;
 
+		// State for the charging beam effect
+		std::shared_ptr<FireEffect> chargeEffect;
+		FireEffectStyle             currentChargeStyle = FireEffectStyle::Bubbles;
+
 		// Input callback to handle movement, bobbing, and footsteps
 		viz.AddInputCallback([&](const InputState& state) {
 			auto& camera = viz.GetCamera();
@@ -144,6 +148,27 @@ int main() {
 			);
 
 			// 6. Handle Charging and Explosions
+			// Determine if we are currently charging
+			bool isCharging =
+				state.mouse_buttons[GLFW_MOUSE_BUTTON_LEFT] || state.mouse_buttons[GLFW_MOUSE_BUTTON_RIGHT];
+
+			if (isCharging) {
+				if (!chargeEffect) {
+					// Randomly pick between Bubbles and Fireflies per shot
+					currentChargeStyle = (rand() % 2 == 0) ? FireEffectStyle::Bubbles : FireEffectStyle::Fireflies;
+					chargeEffect = viz.AddFireEffect(
+						rig->GetMuzzlePosition(),
+						currentChargeStyle,
+						camera.front(),
+						glm::vec3(0.0f),
+						500,
+						-1.0f,
+						EmitterType::Beam,
+						glm::vec3(1.0f, 0.0f, 0.0f)
+					);
+				}
+			}
+
 			// Right Click - Explosion
 			if (state.mouse_buttons[GLFW_MOUSE_BUTTON_RIGHT]) {
 				rightHoldTime += dt;
@@ -191,6 +216,29 @@ int main() {
 				}
 				leftHoldTime = 0.0f;
 				leftDown = false;
+			}
+
+			// Update the beam effect if active
+			if (chargeEffect) {
+				if (isCharging) {
+					glm::vec3 muzzle = rig->GetMuzzlePosition();
+					int       width, height;
+					glfwGetWindowSize(viz.GetWindow(), &width, &height);
+					auto      target = viz.ScreenToWorld(width / 2.0, height / 2.0);
+					glm::vec3 aimPoint = target ? *target : (camera.pos() + camera.front() * 100.0f);
+
+					glm::vec3 dir = aimPoint - muzzle;
+					float     dist = glm::length(dir);
+					if (dist < 0.001f)
+						dist = 0.001f;
+
+					chargeEffect->SetPosition(muzzle);
+					chargeEffect->SetDirection(dir);
+					chargeEffect->SetDimensions(glm::vec3(dist, 0.0f, 0.0f));
+				} else {
+					viz.RemoveFireEffect(chargeEffect);
+					chargeEffect.reset();
+				}
 			}
 
 			// Update SuperSpeed Intensity
