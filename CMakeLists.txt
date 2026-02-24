@@ -107,6 +107,25 @@ foreach(EXAMPLE_DIR ${EXAMPLE_DIRS})
     endif()
 endforeach()
 
+# Build Applications
+file(GLOB APP_DIRS "app/*")
+
+foreach(APP_DIR ${APP_DIRS})
+    if(IS_DIRECTORY ${APP_DIR})
+        get_filename_component(APP_NAME ${APP_DIR} NAME)
+
+        file(GLOB APP_SOURCES
+            "${APP_DIR}/main.cpp"
+            "${APP_DIR}/src/*.cpp"
+        )
+
+        add_executable(${APP_NAME} ${APP_SOURCES})
+        target_link_libraries(${APP_NAME} PRIVATE boidsish)
+        target_include_directories(${APP_NAME} PRIVATE "${APP_DIR}/include")
+        target_compile_definitions(${APP_NAME} PRIVATE GLM_ENABLE_EXPERIMENTAL)
+        set_target_properties(${APP_NAME} PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+    endif()
+endforeach()
 
 # Copy assets to the root of the build directory
 add_custom_command(TARGET boidsish POST_BUILD
