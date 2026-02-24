@@ -95,7 +95,8 @@ namespace Boidsish {
 
 				// Update night factor for transitions based on sun visibility
 				// This synchronizes the post-processing and terrain night effects with the atmosphere
-				_cycle.night_factor = glm::smoothstep(0.2f, -0.2f, sun_vis);
+				// Transition occurs between -0.2 and 0.2 sun visibility (approx civil twilight)
+				_cycle.night_factor = 1.0f - glm::smoothstep(-0.2f, 0.2f, sun_vis);
 
 				// Basic fallback ambient - mostly handled by Atmosphere system now
 				glm::vec3 day_ambient = Constants::General::Colors::DefaultAmbient();
