@@ -58,7 +58,7 @@ void main() {
 
 	vec3  color = vec3(0.0);
 	float alpha = 0.0;
-	if (v_style == 0 || v_style == 3 || v_style == 4 || v_style == 5 || v_style == 28) {
+	if (v_style == 0 || v_style == 3 || v_style == 4 || v_style == 5 || v_style == 6 || v_style == 7 || v_style == 28) {
 		if (v_style == 3) {                       // Sparks
 			vec3 hot_color = vec3(1.0, 1.0, 1.0); // White
 			vec3 mid_color = vec3(1.0, 0.8, 0.3); // Bright Yellow/Orange
@@ -144,6 +144,31 @@ void main() {
 				color *= (2.0 + twinkle * 8.0);
 				alpha = (0.4 + twinkle * 0.6) * smoothstep(0.0, 0.5, v_lifetime);
 			}
+		} else if (v_style == 6) { // Bubbles
+			// Use local spherical normal for better visuals
+			vec3 n;
+			n.xy = circ * 2.0;
+			float magSq = dot(n.xy, n.xy);
+			n.z = sqrt(max(0.0, 1.0 - magSq));
+
+			float fresnel = pow(max(0.0, 1.0 - n.z), 3.0);
+			float swirl = sin(v_lifetime * 2.0 + gl_PointCoord.y * 5.0) * 0.5 + 0.5;
+			vec3  iridescent_color = vec3(
+                sin(swirl * 5.0) * 0.5 + 0.5,
+                sin(swirl * 5.0 + 2.0) * 0.5 + 0.5,
+                sin(swirl * 5.0 + 4.0) * 0.5 + 0.5
+            );
+			vec3  l = normalize(vec3(0.5, 0.5, 1.0)); // Fake light dir in billboard space
+			vec3  h = normalize(l + vec3(0, 0, 1));   // Halfway between light and view (0,0,1)
+			float spec = pow(max(dot(n, h), 0.0), 64.0);
+
+			color = mix(iridescent_color, vec3(1.0), fresnel * 0.5 + 0.2) + spec;
+			alpha = 0.6 * smoothstep(0.0, 0.5, v_lifetime);
+		} else if (v_style == 7) {                    // Fireflies
+			vec3  firefly_base = vec3(0.7, 0.9, 0.1); // Yellow-Green
+			float twinkle = sin(u_time * 6.0 + float(gl_PrimitiveID)) * 0.5 + 0.5;
+			color = firefly_base * (2.0 + twinkle * 8.0);
+			alpha = (0.4 + twinkle * 0.6) * smoothstep(0.0, 0.5, v_lifetime);
 		} else if (v_style == 28) {
 			// --- Iridescence Effect ---
 			// Fresnel term for the base reflectivity
