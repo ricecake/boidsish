@@ -22,7 +22,7 @@ float calculateShadow(int light_index, vec3 frag_pos, vec3 normal, vec3 light_di
 	if (shadow_index < 0) {
 		return 1.0; // No shadow for this light
 	}
-	if (numShadowLights <= 0) {
+	if (shadowParams.x <= 0.0) {
 		return 1.0; // No shadow maps active at all
 	}
 
@@ -99,10 +99,11 @@ float calculateShadow(int light_index, vec3 frag_pos, vec3 normal, vec3 light_di
 	float slope_factor = max(1.0 - dot(normal, light_dir), 0.0); // 0 when facing light, 1 when perpendicular
 
 	// Base bias: very small for direct facing surfaces
-	float base_bias = 0.0002;
+	// Reduced slightly to ensure shadows stay connected to geometry
+	float base_bias = 0.0001;
 
 	// Slope bias: increases for steep angles relative to light
-	float slope_bias = 0.002 * slope_factor;
+	float slope_bias = 0.001 * slope_factor;
 
 	// Cascade-specific bias: accounts for texel size differences
 	// CRITICAL: This should be modest - previous 5x multiplier was too aggressive

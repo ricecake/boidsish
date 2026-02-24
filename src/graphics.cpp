@@ -1103,7 +1103,7 @@ namespace Boidsish {
 			ui_manager->AddWidget(scene_widget);
 		}
 
-		void BindShadows(Shader& s) {
+		void BindShadows(ShaderBase& s) {
 			s.use();
 			if (shadow_manager && shadow_manager->IsInitialized() && frame_config_.enable_shadows) {
 				shadow_manager->BindForRendering(s);
@@ -1577,6 +1577,8 @@ namespace Boidsish {
 					s->setBool("enableFrustumCulling", true);
 					if (light_space_mat) {
 						s->setMat4("lightSpaceMatrix", *light_space_mat);
+					} else if (!is_shadow_pass) {
+						BindShadows(*s);
 					}
 					if (clip_plane) {
 						s->setVec4("clipPlane", *clip_plane);
