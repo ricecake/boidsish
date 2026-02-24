@@ -685,7 +685,7 @@ namespace Boidsish {
 				65536
 			);
 			uniforms_ssbo = std::make_unique<PersistentBuffer<CommonUniforms>>(GL_SHADER_STORAGE_BUFFER, 65536);
-			frustum_ssbo = std::make_unique<PersistentBuffer<FrustumDataGPU>>(GL_UNIFORM_BUFFER, 16);
+			frustum_ssbo = std::make_unique<PersistentBuffer<FrustumDataGPU>>(GL_UNIFORM_BUFFER, 64);
 			if (ConfigManager::GetInstance().GetAppSettingBool("enable_effects", true)) {
 				postprocess_shader_ = std::make_shared<Shader>("shaders/postprocess.vert", "shaders/postprocess.frag");
 				shader_table.Register(std::make_unique<RenderShader>(postprocess_shader_));
@@ -1389,7 +1389,9 @@ namespace Boidsish {
 				return;
 
 			// Update Frustum UBO for GPU-side culling for this specific pass
-			UpdateFrustumUbo(view_mat, proj_mat, camera_pos);
+			if (!is_shadow_pass) {
+				UpdateFrustumUbo(view_mat, proj_mat, camera_pos);
+			}
 
 			// Get pointers to persistent buffers
 			DrawElementsIndirectCommand* elements_cmd_ptr = indirect_elements_buffer->GetFrameDataPtr();
@@ -1569,7 +1571,7 @@ namespace Boidsish {
 					s->setMat4("view", view_mat);
 					s->setMat4("projection", proj_mat);
 					s->setFloat("time", simulation_time);
-					s->setBool("enableFrustumCulling", true);
+					s->setBool("enableFrustumCulling", !is_shadow_pass);
 					if (light_space_mat) {
 						s->setMat4("lightSpaceMatrix", *light_space_mat);
 					}
@@ -3077,6 +3079,15 @@ namespace Boidsish {
 					std::nullopt,
 					true
 				);
+
+				if (impl->decor_manager) {
+					impl->decor_manager->Render(
+						view,
+						impl->projection,
+						impl->shadow_manager->GetLightSpaceMatrix(info.map_index),
+						impl->shadow_manager->GetShadowShaderPtr().get()
+					);
+				}
 
 				glDisable(GL_CULL_FACE);
 				impl->RenderTerrain(
