@@ -68,8 +68,9 @@ void main() {
     // The average is Sum(Contribution * dOmega) / 4PI.
     // dOmega = 4PI / nSamples.
     // So average = Sum(Contribution) / nSamples.
-    // Since we also have 1/(4*PI) from the isotropic phase function, the 4PIs cancel out.
-    vec3 L_avg = totalL / float(nSamples);
+    // Average over the sphere. L_avg is the average first-order scattered radiance.
+    // We include the 1/(4*PI) from the isotropic phase function.
+    vec3 L_avg = (totalL / float(nSamples)) / (4.0 * PI);
     vec3 f_avg = totalF / float(nSamples);
 
     // Multi-scattering radiance estimate: L_multi = L_1 / (1 - f)
