@@ -14,10 +14,15 @@ int main() {
 	try {
 		Visualizer viz(1280, 720, "SDF Approximation Test");
 
+		// Add a directional light so models are not black
+		Light sun = Light::CreateDirectional(45.0f, 45.0f, 1.5f, glm::vec3(1.0f, 0.9f, 0.8f));
+		viz.GetLightManager().AddLight(sun);
+
 		// Load model and precompute SDF
 		auto cat_model = std::make_shared<Model>("assets/Mesh_Cat.obj", false, true);
 		cat_model->SetScale(glm::vec3(0.1f));
 		cat_model->SetPosition(-10.0f, 5.0f, 0.0f);
+		cat_model->SetColor(1.0f, 1.0f, 1.0f);
 
 		// Create a separate model for the SDF visualization using a Cube
 		auto sdf_cube = std::make_shared<Model>("assets/cube.obj", false, false);
@@ -45,14 +50,13 @@ int main() {
 
 			// Set uniforms for raymarching
 			viz_shader->use();
-			viz_shader->setVec3("u_min_bounds", local_aabb.min);
-			viz_shader->setVec3("u_max_bounds", local_aabb.max);
 			viz_shader->setVec3("u_viewPos", viz.GetCamera().pos());
 
+			// Bind SDF texture to unit 10
 			GLuint sdf_tex = cat_model->GetSdfTexture();
-			glActiveTexture(GL_TEXTURE0);
+			glActiveTexture(GL_TEXTURE10);
 			glBindTexture(GL_TEXTURE_3D, sdf_tex);
-			viz_shader->setInt("u_sdf_texture", 0);
+			viz_shader->setInt("u_sdf_texture", 10);
 
 			return shapes;
 		});

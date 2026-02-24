@@ -25,5 +25,9 @@ struct CommonUniforms {
 	int   use_ssbo_instancing;
 	int   use_vertex_color;
 	float checkpoint_radius;
-	float padding[20];
+	vec4  sdf_aabb_min;
+	vec4  sdf_aabb_max;
+	int   has_sdf;
+	float sdf_padding[3];
+	float padding[12];
 };

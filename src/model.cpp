@@ -376,6 +376,10 @@ namespace Boidsish {
 			packet.uniforms.use_texture = !mesh.textures.empty();
 			packet.uniforms.is_colossal = IsColossal();
 
+			packet.uniforms.sdf_aabb_min = glm::vec4(m_data->aabb.min, 0.0f);
+			packet.uniforms.sdf_aabb_max = glm::vec4(m_data->aabb.max, 0.0f);
+			packet.uniforms.has_sdf = m_data->sdf_initialized;
+
 			packet.casts_shadows = CastsShadows();
 
 			uint32_t texture_hash = 0;
