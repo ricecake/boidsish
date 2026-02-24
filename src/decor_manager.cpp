@@ -434,12 +434,21 @@ namespace Boidsish {
 		}
 	}
 
-	void DecorManager::Render(const glm::mat4& view, const glm::mat4& projection) {
+	void DecorManager::Render(
+		const glm::mat4&                view,
+		const glm::mat4&                projection,
+		const std::optional<glm::mat4>& light_space_matrix,
+		Shader*                         shader_override
+	) {
 		if (!enabled_ || !initialized_ || decor_types_.empty())
 			return;
 
+		bool is_shadow_pass = light_space_matrix.has_value();
+
 		// 1. GPU Culling Pass
-		Frustum frustum = Frustum::FromViewProjection(view, projection);
+		// Use light space matrix directly for shadow pass culling
+		Frustum frustum = is_shadow_pass ? Frustum::FromViewProjection(glm::mat4(1.0f), *light_space_matrix)
+										 : Frustum::FromViewProjection(view, projection);
 
 		culling_shader_->use();
 		for (int p = 0; p < 6; ++p) {
@@ -476,13 +485,16 @@ namespace Boidsish {
 		}
 
 		// 2. Rendering Pass
-		auto shader = Shape::shader;
+		Shader* shader = shader_override ? shader_override : Shape::shader.get();
 		if (!shader)
 			return;
 
 		shader->use();
 		shader->setMat4("view", view);
 		shader->setMat4("projection", projection);
+		if (is_shadow_pass) {
+			shader->setMat4("lightSpaceMatrix", *light_space_matrix);
+		}
 		shader->setMat4("model", glm::mat4(1.0f));
 		shader->setBool("useSSBOInstancing", true);
 		shader->setBool("isTextEffect", false);

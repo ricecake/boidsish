@@ -210,13 +210,15 @@ namespace Boidsish {
 			// Use the calculated depth range but extend backward for terrain below the frustum
 			float depth_range = maxZ - minZ + scene_radius;
 
+			// Near/far planes for right-handed ortho projection.
+			// Pulling the near plane back ensures geometry behind the center (but still in view) is captured.
 			light_projection = glm::ortho(
 				centerX - maxExtent,
 				centerX + maxExtent,
 				centerY - maxExtent,
 				centerY + maxExtent,
-				0.0f,
-				depth_range + pull_back
+				-pull_back,
+				depth_range
 			);
 		} else {
 			// Standard shadow map
@@ -243,7 +245,7 @@ namespace Boidsish {
 			float ortho_size = scene_radius + 100.0f; // Add padding to standard ortho as well
 			// Use a tighter depth range to improve precision.
 			light_projection =
-				glm::ortho(-ortho_size, ortho_size, -ortho_size, ortho_size, 0.0f, pull_back + scene_radius);
+				glm::ortho(-ortho_size, ortho_size, -ortho_size, ortho_size, -pull_back, scene_radius);
 		}
 
 		light_space_matrices_[map_index] = light_projection * light_view;

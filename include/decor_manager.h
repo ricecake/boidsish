@@ -83,7 +83,12 @@ namespace Boidsish {
 			const ITerrainGenerator&              terrain_gen,
 			std::shared_ptr<TerrainRenderManager> render_manager
 		);
-		void Render(const glm::mat4& view, const glm::mat4& projection);
+		void Render(
+			const glm::mat4&                view,
+			const glm::mat4&                projection,
+			const std::optional<glm::mat4>& light_space_matrix = std::nullopt,
+			Shader*                         shader_override = nullptr
+		);
 
 		void SetEnabled(bool enabled) { enabled_ = enabled; }
 
