@@ -351,11 +351,11 @@ namespace Boidsish {
 
 			namespace SdfApproximation {
 				constexpr int GridResolution() {
-					return 64;
+					return 128;
 				}
 
 				constexpr int JfaIterations() {
-					return 6; // 2^6 = 64
+					return 7; // 2^7 = 128
 				}
 			} // namespace SdfApproximation
 

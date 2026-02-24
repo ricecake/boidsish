@@ -360,7 +360,7 @@ namespace Boidsish {
 			}
 			packet.draw_mode = GL_TRIANGLES;
 			packet.index_type = GL_UNSIGNED_INT;
-			packet.shader_id = shader ? shader->ID : 0;
+			packet.shader_id = GetShader() ? GetShader()->ID : 0;
 
 			packet.uniforms.model = model_matrix;
 			packet.uniforms.color = glm::vec4(
@@ -388,7 +388,7 @@ namespace Boidsish {
 			}
 
 			RenderLayer layer = (packet.uniforms.color.w < 0.99f) ? RenderLayer::Transparent : RenderLayer::Opaque;
-			packet.shader_handle = shader_handle;
+			packet.shader_handle = GetShaderHandle();
 			packet.material_handle = MaterialHandle(texture_hash);
 
 			// Calculate depth for sorting

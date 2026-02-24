@@ -319,6 +319,18 @@ namespace Boidsish {
 			MarkDirty();
 		}
 
+		// Instance shader override
+		void SetShader(std::shared_ptr<Shader> s, ShaderHandle h) {
+			instance_shader_ = s;
+			instance_shader_handle_ = h;
+			MarkDirty();
+		}
+
+		std::shared_ptr<Shader> GetShader() const { return instance_shader_ ? instance_shader_ : shader; }
+		ShaderHandle            GetShaderHandle() const {
+			return instance_shader_ ? instance_shader_handle_ : shader_handle;
+		}
+
 		// Static shader reference
 		static std::shared_ptr<Shader> shader;
 		static ShaderHandle            shader_handle;
@@ -334,6 +346,9 @@ namespace Boidsish {
 		);
 
 	protected:
+		std::shared_ptr<Shader> instance_shader_ = nullptr;
+		ShaderHandle            instance_shader_handle_ = ShaderHandle(0);
+
 		// Protected constructor for derived classes
 		Shape(
 			int   id = 0,

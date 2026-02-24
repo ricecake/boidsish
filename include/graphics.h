@@ -241,6 +241,11 @@ namespace Boidsish {
 		// Add an input callback to the chain of handlers.
 		void AddInputCallback(InputCallback callback);
 
+		/**
+		 * @brief Register a custom shader for use with per-instance overrides.
+		 */
+		ShaderHandle RegisterShader(std::shared_ptr<Shader> shader);
+
 		std::optional<glm::vec3> ScreenToWorld(double screen_x, double screen_y) const;
 
 		void SetChaseCamera(std::shared_ptr<EntityBase> target);

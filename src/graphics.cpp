@@ -3399,6 +3399,10 @@ namespace Boidsish {
 		impl->input_callbacks.push_back(callback);
 	}
 
+	ShaderHandle Visualizer::RegisterShader(std::shared_ptr<Shader> shader) {
+		return impl->shader_table.Register(std::make_unique<RenderShader>(shader));
+	}
+
 	std::optional<glm::vec3> Visualizer::ScreenToWorld(double screen_x, double screen_y) const {
 		glm::vec3 screen_pos(screen_x, impl->height - screen_y, 0.0f);
 

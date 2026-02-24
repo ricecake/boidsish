@@ -12,70 +12,48 @@ using namespace Boidsish;
 
 int main() {
 	try {
-		Visualizer viz(1024, 768, "SDF Approximation Test");
+		Visualizer viz(1280, 720, "SDF Approximation Test");
 
 		// Load model and precompute SDF
-		// We'll use the cat model as it's a good complex shape
-		auto model = std::make_shared<Model>("assets/Mesh_Cat.obj", false, true);
-		model->SetScale(glm::vec3(0.1f));
-		model->SetPosition(-10.0f, 5.0f, 0.0f); // Move model to the left
+		auto cat_model = std::make_shared<Model>("assets/Mesh_Cat.obj", false, true);
+		cat_model->SetScale(glm::vec3(0.1f));
+		cat_model->SetPosition(-10.0f, 5.0f, 0.0f);
 
-		// Create a separate model for the SDF visualization to avoid state conflicts
-		auto sdf_viz_model = std::make_shared<Model>("assets/Mesh_Cat.obj", false, false);
-		sdf_viz_model->SetScale(glm::vec3(0.1f));
-		sdf_viz_model->SetPosition(10.0f, 5.0f, 0.0f); // Move SDF viz to the right
+		// Create a separate model for the SDF visualization using a Cube
+		auto sdf_cube = std::make_shared<Model>("assets/cube.obj", false, false);
+		AABB local_aabb = cat_model->GetLocalAABB();
+		glm::vec3 size = local_aabb.max - local_aabb.min;
+		// Cube.obj is 2x2x2 (-1 to 1). Scale it to cover the AABB.
+		sdf_cube->SetScale(size * 0.1f * 0.5f * 1.05f);
+		// Center the cube at the same relative position as the cat
+		glm::vec3 center = (local_aabb.min + local_aabb.max) * 0.5f;
+		sdf_cube->SetPosition(10.0f + center.x * 0.1f, 5.0f + center.y * 0.1f, 0.0f + center.z * 0.1f);
 
-		// Load visualization shader
+		// Load and register visualization shader
 		auto viz_shader = std::make_shared<Shader>("shaders/sdf/sdf_viz.vert", "shaders/sdf/sdf_viz.frag");
+		ShaderHandle viz_handle = viz.RegisterShader(viz_shader);
+
+		// Set the custom shader on the cube instance
+		sdf_cube->SetShader(viz_shader, viz_handle);
 
 		viz.AddShapeHandler([&](float /* time */) {
 			auto shapes = std::vector<std::shared_ptr<Shape>>();
 
 			// Both stationary for easier comparison
+			shapes.push_back(cat_model);
+			shapes.push_back(sdf_cube);
 
-			// Render the real model normally (it will use its default shader unless hijacked)
-			shapes.push_back(model);
-
-			// Render the SDF visualization
-			// This is a bit of a hack since we're using Shape::shader which is global
-			// but it works for this isolated test.
-			// We only want the hijacking to apply to sdf_viz_model.
-			// However, in this simple framework, Shape::shader applies to all Shapes if set.
-			// So we'll render them in separate groups or just handle it in the shader.
-
-			// Actually, let's just use two shape handlers or something.
-			// Or better: set Shape::shader only when needed.
-			// But the renderer will call all of them.
-
-			return shapes;
-		});
-
-		// Add a second handler for the SDF viz to demonstrate different rendering
-		viz.AddShapeHandler([&](float /* time */) {
-			auto shapes = std::vector<std::shared_ptr<Shape>>();
-
-			// We'll use a local scope to set the shader and uniforms
-			// Note: This relies on how Visualizer calls these, which might be risky.
-			// A better way is to use the shader hijacking carefully.
-
-			Shape::shader = viz_shader;
-
+			// Set uniforms for raymarching
 			viz_shader->use();
-			glm::mat4 model_mat = sdf_viz_model->GetModelMatrix();
-			viz_shader->setMat4("u_invModel", glm::inverse(model_mat));
-
-			AABB local_aabb = sdf_viz_model->GetLocalAABB();
 			viz_shader->setVec3("u_min_bounds", local_aabb.min);
 			viz_shader->setVec3("u_max_bounds", local_aabb.max);
 			viz_shader->setVec3("u_viewPos", viz.GetCamera().pos());
-			viz_shader->setFloat("u_scale", sdf_viz_model->GetScale().x);
 
-			GLuint sdf_tex = model->GetSdfTexture(); // Get from the precomputed one
+			GLuint sdf_tex = cat_model->GetSdfTexture();
 			glActiveTexture(GL_TEXTURE0);
 			glBindTexture(GL_TEXTURE_3D, sdf_tex);
 			viz_shader->setInt("u_sdf_texture", 0);
 
-			shapes.push_back(sdf_viz_model);
 			return shapes;
 		});
 
