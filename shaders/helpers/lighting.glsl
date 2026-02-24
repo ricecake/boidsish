@@ -408,10 +408,11 @@ vec4 apply_lighting_pbr(vec3 frag_pos, vec3 normal, vec3 albedo, float roughness
 	vec3  F_env = fresnelSchlickRoughness(NdotV, F0_env, roughness);
 
 	// Fake environment color - gradient from horizon to sky
+	// Scaled by ambient_light to respond to time-of-day
 	float upAmount = R.y * 0.5 + 0.5;
 	vec3  envColor = mix(
-        vec3(0.3, 0.35, 0.4), // Horizon/ground color
-        vec3(0.6, 0.7, 0.9),  // Sky color
+        ambient_light * 0.2, // Ground color (approximate bounce)
+        ambient_light * 1.2, // Sky color (approximate)
         smoothstep(0.0, 0.7, upAmount)
     );
 
@@ -486,7 +487,11 @@ vec4 apply_lighting_pbr_no_shadows(vec3 frag_pos, vec3 normal, vec3 albedo, floa
 	float NdotV = max(dot(N, V), 0.0);
 	vec3  F_env = fresnelSchlickRoughness(NdotV, F0_env, roughness);
 	float upAmount = R.y * 0.5 + 0.5;
-	vec3  envColor = mix(vec3(0.3, 0.35, 0.4), vec3(0.6, 0.7, 0.9), smoothstep(0.0, 0.7, upAmount));
+	vec3  envColor = mix(
+        ambient_light * 0.2,
+        ambient_light * 1.2,
+        smoothstep(0.0, 0.7, upAmount)
+    );
 	float smoothness = 1.0 - roughness;
 	float envStrength = smoothness * smoothness * 0.8;
 	vec3  ambientSpecular = F_env * envColor * envStrength * ao;
