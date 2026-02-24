@@ -277,6 +277,7 @@ add_dependencies(tests
     test_vector
     test_thread_pool
     test_spline
+    test_shader_framework
     test_deformation_overlap
     test_collision
 )

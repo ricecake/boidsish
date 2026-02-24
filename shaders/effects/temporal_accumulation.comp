@@ -1,7 +1,7 @@
 #version 430 core
 layout(local_size_x = 8, local_size_y = 8) in;
 
-layout(binding = 0, r16f) uniform image2D outResult;
+layout(binding = 0, rgba16f) uniform image2D outResult;
 
 uniform sampler2D uCurrentFrame;
 uniform sampler2D uHistoryFrame;
@@ -38,9 +38,10 @@ void main() {
 	// Sample 3x3 neighborhood of current frame
 	vec4 m1 = vec4(0.0);
 	vec4 m2 = vec4(0.0);
+	vec2 currentTexelSize = 1.0 / textureSize(uCurrentFrame, 0);
 	for (int y = -1; y <= 1; y++) {
 		for (int x = -1; x <= 1; x++) {
-			vec4 val = texture(uCurrentFrame, uv + vec2(x, y) * texelSize);
+			vec4 val = texture(uCurrentFrame, uv + vec2(x, y) * currentTexelSize);
 			m1 += val;
 			m2 += val * val;
 		}
