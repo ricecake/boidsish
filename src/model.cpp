@@ -277,8 +277,14 @@ namespace Boidsish {
 	}
 
 	// Model implementation
-	Model::Model(const std::string& path, bool no_cull): no_cull_(no_cull) {
-		m_data = AssetManager::GetInstance().GetModelData(path);
+	Model::Model(const std::string& path, bool no_cull, bool precompute_sdf): no_cull_(no_cull) {
+		m_data = AssetManager::GetInstance().GetModelData(path, precompute_sdf);
+	}
+
+	unsigned int Model::GetSdfTexture() const {
+		if (!m_data)
+			return 0;
+		return AssetManager::GetInstance().GetSdfTexture(m_data);
 	}
 
 	void Model::PrepareResources(Megabuffer* mb) const {
@@ -354,7 +360,7 @@ namespace Boidsish {
 			}
 			packet.draw_mode = GL_TRIANGLES;
 			packet.index_type = GL_UNSIGNED_INT;
-			packet.shader_id = shader ? shader->ID : 0;
+			packet.shader_id = GetShader() ? GetShader()->ID : 0;
 
 			packet.uniforms.model = model_matrix;
 			packet.uniforms.color = glm::vec4(
@@ -370,6 +376,10 @@ namespace Boidsish {
 			packet.uniforms.use_texture = !mesh.textures.empty();
 			packet.uniforms.is_colossal = IsColossal();
 
+			packet.uniforms.sdf_aabb_min = glm::vec4(m_data->aabb.min, 0.0f);
+			packet.uniforms.sdf_aabb_max = glm::vec4(m_data->aabb.max, 0.0f);
+			packet.uniforms.has_sdf = m_data->sdf_initialized;
+
 			packet.casts_shadows = CastsShadows();
 
 			uint32_t texture_hash = 0;
@@ -382,7 +392,7 @@ namespace Boidsish {
 			}
 
 			RenderLayer layer = (packet.uniforms.color.w < 0.99f) ? RenderLayer::Transparent : RenderLayer::Opaque;
-			packet.shader_handle = shader_handle;
+			packet.shader_handle = GetShaderHandle();
 			packet.material_handle = MaterialHandle(texture_hash);
 
 			// Calculate depth for sorting

@@ -349,6 +349,16 @@ namespace Boidsish {
 				}
 			} // namespace SdfVolumes
 
+			namespace SdfApproximation {
+				constexpr int GridResolution() {
+					return 128;
+				}
+
+				constexpr int JfaIterations() {
+					return 7; // 2^7 = 128
+				}
+			} // namespace SdfApproximation
+
 			namespace Trails {
 				constexpr int DefaultMaxLength() {
 					return 250;

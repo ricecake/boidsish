@@ -134,8 +134,14 @@ namespace Boidsish {
 		int   use_vertex_color = 0;     // 4 bytes
 		float checkpoint_radius = 0.0f; // 4 bytes -> 16 bytes
 
-		// Padding to 256 bytes for SSBO alignment safety (176 + 80 = 256)
-		float padding[20];
+		// SDF Data (for effects/test)
+		glm::vec4 sdf_aabb_min = glm::vec4(0.0f); // 16 bytes
+		glm::vec4 sdf_aabb_max = glm::vec4(0.0f); // 16 bytes
+		int       has_sdf = 0;                    // 4 bytes
+		float     sdf_padding[3];                 // 12 bytes -> 16 bytes
+
+		// Padding to 256 bytes for SSBO alignment safety (176 + 32 + 48 = 256)
+		float padding[12];
 	};
 
 	/**

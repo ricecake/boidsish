@@ -10,6 +10,8 @@
 struct ma_engine;
 struct ma_resource_manager_data_source;
 
+class ComputeShader;
+
 namespace Boidsish {
 
 	struct ModelData;
@@ -29,7 +31,12 @@ namespace Boidsish {
 		/**
 		 * @brief Load or retrieve a cached model.
 		 */
-		std::shared_ptr<ModelData> GetModelData(const std::string& path);
+		std::shared_ptr<ModelData> GetModelData(const std::string& path, bool precompute_sdf = false);
+
+		/**
+		 * @brief Get the SDF texture for a model, generating it if necessary.
+		 */
+		GLuint GetSdfTexture(std::shared_ptr<ModelData> data);
 
 		/**
 		 * @brief Load or retrieve a cached texture.
@@ -57,6 +64,11 @@ namespace Boidsish {
 		std::map<std::string, std::shared_ptr<ModelData>>                       m_models;
 		std::map<std::string, GLuint>                                           m_textures;
 		std::map<std::string, std::shared_ptr<ma_resource_manager_data_source>> m_audio_sources;
+
+		// Cached SDF compute shaders
+		std::unique_ptr<ComputeShader> m_sdf_voxelize_sh;
+		std::unique_ptr<ComputeShader> m_sdf_jfa_sh;
+		std::unique_ptr<ComputeShader> m_sdf_final_sh;
 	};
 
 } // namespace Boidsish
