@@ -6,7 +6,6 @@
 #include "post_processing/effects/BloomEffect.h"
 #include "post_processing/effects/FilmGrainEffect.h"
 #include "post_processing/effects/GtaoEffect.h"
-#include "post_processing/effects/SsaoEffect.h"
 #include "post_processing/effects/ToneMappingEffect.h"
 
 namespace Boidsish {
@@ -107,28 +106,6 @@ namespace Boidsish {
 						float ssdi_intensity = gtao_effect->GetSSDIIntensity();
 						if (ImGui::SliderFloat("SSDI Intensity##GTAO", &ssdi_intensity, 0.0f, 5.0f)) {
 							gtao_effect->SetSSDIIntensity(ssdi_intensity);
-						}
-					}
-				}
-
-				if (effect->GetName() == "SSAO" && is_enabled) {
-					auto ssao_effect = std::dynamic_pointer_cast<PostProcessing::SsaoEffect>(effect);
-					if (ssao_effect) {
-						float radius = ssao_effect->GetRadius();
-						if (ImGui::SliderFloat("Radius", &radius, 0.01f, 2.0f)) {
-							ssao_effect->SetRadius(radius);
-						}
-						float bias = ssao_effect->GetBias();
-						if (ImGui::SliderFloat("Bias", &bias, 0.001f, 0.1f)) {
-							ssao_effect->SetBias(bias);
-						}
-						float intensity = ssao_effect->GetIntensity();
-						if (ImGui::SliderFloat("Intensity##SSAO", &intensity, 0.0f, 5.0f)) {
-							ssao_effect->SetIntensity(intensity);
-						}
-						float power = ssao_effect->GetPower();
-						if (ImGui::SliderFloat("Power##SSAO", &power, 0.1f, 5.0f)) {
-							ssao_effect->SetPower(power);
 						}
 					}
 				}

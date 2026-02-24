@@ -9,9 +9,25 @@ layout(std430, binding = 2) buffer UniformsSSBO {
 	CommonUniforms uniforms_data[];
 };
 
+// SSBO for decor/foliage instancing (binding 10)
+layout(std430, binding = 10) buffer SSBOInstances {
+	mat4 ssboInstanceMatrices[];
+};
+
+#include "helpers/noise.glsl"
+#include "helpers/shockwave.glsl"
+#include "lighting.glsl"
+#include "temporal_data.glsl"
+#include "visual_effects.glsl"
+
 uniform bool uUseMDI = false;
+uniform bool useSSBOInstancing = false;
 uniform mat4 lightSpaceMatrix;
 uniform mat4 model;
+
+uniform vec3  u_aabbMin;
+uniform vec3  u_aabbMax;
+uniform float u_windResponsiveness = 1.0;
 
 void main() {
 #ifdef GL_ARB_shader_draw_parameters
@@ -22,7 +38,39 @@ void main() {
 
 	int  vUniformIndex = uUseMDI ? drawID : -1;
 	bool use_ssbo = uUseMDI && vUniformIndex >= 0;
-	mat4 current_model = use_ssbo ? uniforms_data[vUniformIndex].model : model;
 
-	gl_Position = lightSpaceMatrix * current_model * vec4(aPos, 1.0);
+	mat4 current_model = use_ssbo ? uniforms_data[vUniformIndex].model : model;
+	bool current_useSSBOInstancing = use_ssbo ? (uniforms_data[vUniformIndex].use_ssbo_instancing != 0)
+											  : useSSBOInstancing;
+
+	mat4 modelMatrix;
+	if (current_useSSBOInstancing) {
+		modelMatrix = ssboInstanceMatrices[gl_InstanceID];
+	} else {
+		modelMatrix = current_model;
+	}
+
+	vec3 worldPos = vec3(modelMatrix * vec4(aPos, 1.0));
+
+	// Apply sway for decor (matches vis.vert logic)
+	if (current_useSSBOInstancing) {
+		vec3  instanceCenter = vec3(modelMatrix[3]);
+		float instanceScale = length(vec3(modelMatrix[0]));
+
+		// Shockwave displacement
+		worldPos += getShockwaveDisplacement(instanceCenter, (aPos.y - u_aabbMin.y) * instanceScale, true);
+
+		// Wind sway
+		if (wind_strength > 0.0) {
+			float localHeight = max(0.0, aPos.y - u_aabbMin.y);
+			float totalHeight = max(0.001, u_aabbMax.y - u_aabbMin.y);
+			float normalizedHeight = clamp(localHeight / totalHeight, 0.0, 1.0);
+
+			vec2 windNudge = curlNoise2D(instanceCenter.xz * wind_frequency + time * wind_speed * 0.5) * wind_strength *
+				u_windResponsiveness;
+			worldPos.xz += windNudge * pow(normalizedHeight, 1.2);
+		}
+	}
+
+	gl_Position = lightSpaceMatrix * vec4(worldPos, 1.0);
 }

@@ -109,11 +109,6 @@ namespace Boidsish {
 		config.SetBool(pp_section, "tone_mapping_enabled", scene.post_processing.tone_mapping_enabled);
 		config.SetBool(pp_section, "film_grain_enabled", scene.post_processing.film_grain_enabled);
 		config.SetFloat(pp_section, "film_grain_intensity", scene.post_processing.film_grain_intensity);
-		config.SetBool(pp_section, "ssao_enabled", scene.post_processing.ssao_enabled);
-		config.SetFloat(pp_section, "ssao_radius", scene.post_processing.ssao_radius);
-		config.SetFloat(pp_section, "ssao_bias", scene.post_processing.ssao_bias);
-		config.SetFloat(pp_section, "ssao_intensity", scene.post_processing.ssao_intensity);
-		config.SetFloat(pp_section, "ssao_power", scene.post_processing.ssao_power);
 		config.SetBool(pp_section, "negative_enabled", scene.post_processing.negative_enabled);
 		config.SetBool(pp_section, "glitch_enabled", scene.post_processing.glitch_enabled);
 		config.SetBool(pp_section, "optical_flow_enabled", scene.post_processing.optical_flow_enabled);
@@ -215,11 +210,6 @@ namespace Boidsish {
 		scene.post_processing.tone_mapping_enabled = config.GetBool(pp_section, "tone_mapping_enabled", false);
 		scene.post_processing.film_grain_enabled = config.GetBool(pp_section, "film_grain_enabled", false);
 		scene.post_processing.film_grain_intensity = config.GetFloat(pp_section, "film_grain_intensity", 0.02f);
-		scene.post_processing.ssao_enabled = config.GetBool(pp_section, "ssao_enabled", false);
-		scene.post_processing.ssao_radius = config.GetFloat(pp_section, "ssao_radius", 0.5f);
-		scene.post_processing.ssao_bias = config.GetFloat(pp_section, "ssao_bias", 0.1f);
-		scene.post_processing.ssao_intensity = config.GetFloat(pp_section, "ssao_intensity", 1.0f);
-		scene.post_processing.ssao_power = config.GetFloat(pp_section, "ssao_power", 1.0f);
 		scene.post_processing.negative_enabled = config.GetBool(pp_section, "negative_enabled", false);
 		scene.post_processing.glitch_enabled = config.GetBool(pp_section, "glitch_enabled", false);
 		scene.post_processing.optical_flow_enabled = config.GetBool(pp_section, "optical_flow_enabled", false);

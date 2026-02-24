@@ -20,8 +20,7 @@ namespace Boidsish {
 					const std::string& key = pair.first;
 					const ConfigValue& val_info = pair.second;
 
-					if (key.contains("artistic_effect_") || key == "render_scale" || key == "enable_shadows" ||
-					    key == "enable_floor_reflection") {
+					if (key.contains("artistic_effect_") || key == "render_scale" || key == "enable_shadows") {
 						continue;
 					}
 
@@ -163,11 +162,6 @@ namespace Boidsish {
 					bool  enable_shadows = config_manager.GetAppSettingBool("enable_shadows", true);
 					if (ImGui::Checkbox("Enable Shadows", &enable_shadows)) {
 						config_manager.SetBool("enable_shadows", enable_shadows);
-					}
-
-					bool enable_reflections = config_manager.GetAppSettingBool("enable_floor_reflection", true);
-					if (ImGui::Checkbox("Enable Floor Reflections", &enable_reflections)) {
-						config_manager.SetBool("enable_floor_reflection", enable_reflections);
 					}
 				}
 

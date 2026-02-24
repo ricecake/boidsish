@@ -24,7 +24,7 @@ namespace Boidsish {
 			gtao_shader_ = std::make_unique<ComputeShader>("shaders/effects/gtao.comp");
 			composite_shader_ = std::make_unique<Shader>(
 				"shaders/postprocess.vert",
-				"shaders/effects/ssao_composite.frag"
+				"shaders/effects/ao_composite.frag"
 			);
 			temporal_accumulator_.Initialize(width, height, GL_RGBA16F);
 
