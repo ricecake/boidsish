@@ -27,6 +27,8 @@ struct Emitter {
 	int  id;         // 4 bytes -> total 16
 	vec3 dimensions; // 12 bytes
 	int  type;       // 4 bytes -> total 16
+	float sweep;     // 4 bytes
+	int  _padding[3];
 };
 
 layout(std430, binding = 1) buffer EmitterBuffer {

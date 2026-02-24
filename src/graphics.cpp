@@ -3802,10 +3802,11 @@ namespace Boidsish {
 		int              max_particles,
 		float            lifetime,
 		EmitterType      type,
-		const glm::vec3& dimensions
+		const glm::vec3& dimensions,
+		float            sweep
 	) {
 		return impl->fire_effect_manager->AddEffect(
-			position, style, direction, velocity, max_particles, lifetime, type, dimensions
+			position, style, direction, velocity, max_particles, lifetime, type, dimensions, sweep
 		);
 	}
 

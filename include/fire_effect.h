@@ -16,7 +16,7 @@ namespace Boidsish {
 		Null
 	};
 
-	enum class EmitterType { Point = 0, Box = 1, Sphere = 2, Beam = 3 };
+	enum class EmitterType { Point = 0, Box = 1, Sphere = 2, Beam = 3, Model = 4 };
 
 	class FireEffect {
 	public:
@@ -28,7 +28,8 @@ namespace Boidsish {
 			int              max_particles = -1,
 			float            lifetime = -1.0f,
 			EmitterType      type = EmitterType::Point,
-			const glm::vec3& dimensions = glm::vec3(0.0f)
+			const glm::vec3& dimensions = glm::vec3(0.0f),
+			float            sweep = 1.0f
 		);
 
 		void SetPosition(const glm::vec3& pos) { position_ = pos; }
@@ -42,6 +43,8 @@ namespace Boidsish {
 		void SetDimensions(const glm::vec3& dim) { dimensions_ = dim; }
 
 		void SetType(EmitterType type) { type_ = type; }
+
+		void SetSweep(float sweep) { sweep_ = sweep; }
 
 		void SetActive(bool active) { active_ = active; }
 
@@ -57,7 +60,9 @@ namespace Boidsish {
 
 		EmitterType GetType() const { return type_; }
 
-		const int GetId() const { return id_; }
+		float GetSweep() const { return sweep_; }
+
+		int GetId() const { return id_; }
 
 		int GetMaxParticles() const { return max_particles_; }
 
@@ -84,6 +89,7 @@ namespace Boidsish {
 		float             lived_ = 0.0f;
 		glm::vec3         dimensions_;
 		EmitterType       type_;
+		float             sweep_ = 1.0f;
 	};
 
 } // namespace Boidsish

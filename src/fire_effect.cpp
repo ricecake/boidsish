@@ -10,7 +10,8 @@ namespace Boidsish {
 		int              max_particles,
 		float            lifetime,
 		EmitterType      type,
-		const glm::vec3& dimensions
+		const glm::vec3& dimensions,
+		float            sweep
 	):
 		position_(position),
 		style_(style),
@@ -20,6 +21,7 @@ namespace Boidsish {
 		max_particles_(max_particles),
 		lifetime_(lifetime),
 		dimensions_(dimensions),
-		type_(type) {}
+		type_(type),
+		sweep_(sweep) {}
 
 } // namespace Boidsish

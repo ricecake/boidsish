@@ -23,6 +23,8 @@ struct Emitter {
 	int  id;         // 4 bytes -> total 16
 	vec3 dimensions; // 12 bytes
 	int  type;       // 4 bytes -> total 16
+	float sweep;     // 4 bytes
+	int  _padding[3];
 };
 
 layout(std430, binding = 0) buffer ParticleBuffer {
@@ -226,12 +228,33 @@ void main() {
 
 				// Determine spawn position based on emitter type
 				vec3 spawn_pos = emitter.position;
-				if (emitter.type == 1) { // Box
-					spawn_pos += (rand3(seed) - 0.5) * emitter.dimensions;
+				if (emitter.type == 1 || emitter.type == 4) { // Box or Model (approximated as Box)
+					vec3 r = rand3(seed) - 0.5;
+					// Apply sweep effect (spawn only where r.y is below sweep threshold)
+					// sweep 1.0 = full box, 0.0 = none
+					if (r.y + 0.5 > emitter.sweep) {
+						p.pos.w = 0.0;
+						particles[gid] = p;
+						return;
+					}
+					spawn_pos += r * emitter.dimensions;
 				} else if (emitter.type == 2) { // Sphere
-					spawn_pos += normalize(random_vec) * rand(seed.yx) * emitter.dimensions.x;
+					vec3 r = normalize(random_vec) * rand(seed.yx);
+					// Sweep for sphere: spawn only where r.y < (sweep * 2.0 - 1.0)
+					if (r.y > (emitter.sweep * 2.0 - 1.0)) {
+						p.pos.w = 0.0;
+						particles[gid] = p;
+						return;
+					}
+					spawn_pos += r * emitter.dimensions.x;
 				} else if (emitter.type == 3) { // Beam
-					spawn_pos += normalize(emitter.direction) * rand(seed) * emitter.dimensions.x;
+					float r = rand(seed);
+					if (r > emitter.sweep) {
+						p.pos.w = 0.0;
+						particles[gid] = p;
+						return;
+					}
+					spawn_pos += normalize(emitter.direction) * r * emitter.dimensions.x;
 				}
 
 				if (p.style == 0) { // MissileExhaust

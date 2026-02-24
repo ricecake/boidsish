@@ -60,6 +60,19 @@ int main() {
 			glm::vec3(5.0f, 1.0f, 5.0f)
 		);
 
+		// 5. Dissolving Model (approximated as Box for now)
+		auto dissolve_effect = vis.AddFireEffect(
+			glm::vec3(0.0f, 10.0f, -20.0f),
+			Boidsish::FireEffectStyle::Bubbles,
+			glm::vec3(0, 1, 0),
+			glm::vec3(0, 0, 0),
+			-1,
+			-1.0f,
+			Boidsish::EmitterType::Model,
+			glm::vec3(10.0f, 20.0f, 10.0f),
+			1.0f // Initial sweep (fully visible)
+		);
+
 		std::vector<std::shared_ptr<Boidsish::Shape>> vec;
 		vis.AddShapeHandler([&](float time) {
 			// Animate the moving box
@@ -71,6 +84,12 @@ int main() {
 			// Rotate the beam
 			if (beam_fire) {
 				beam_fire->SetDirection(glm::vec3(sin(time), cos(time), 0));
+			}
+
+			// Animate the dissolve sweep
+			if (dissolve_effect) {
+				float sweep = (sin(time * 0.5f) * 0.5f + 0.5f); // Ping-pong between 0 and 1
+				dissolve_effect->SetSweep(sweep);
 			}
 
 			return vec;

@@ -272,7 +272,8 @@ namespace Boidsish {
 			int              max_particles = -1,
 			float            lifetime = -1.0f,
 			EmitterType      type = EmitterType::Point,
-			const glm::vec3& dimensions = glm::vec3(0.0f)
+			const glm::vec3& dimensions = glm::vec3(0.0f),
+			float            sweep = 1.0f
 		);
 		void                         RemoveFireEffect(const std::shared_ptr<FireEffect>& effect) const;
 		std::shared_ptr<SoundEffect> AddSoundEffect(

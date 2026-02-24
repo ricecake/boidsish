@@ -128,7 +128,8 @@ namespace Boidsish {
 		int              max_particles,
 		float            lifetime,
 		EmitterType      type,
-		const glm::vec3& dimensions
+		const glm::vec3& dimensions,
+		float            sweep
 	) {
 		std::lock_guard<std::mutex> lock(mutex_);
 		_EnsureShaderAndBuffers();
@@ -142,7 +143,7 @@ namespace Boidsish {
 		for (size_t i = 0; i < effects_.size(); ++i) {
 			if (!effects_[i]) {
 				effects_[i] = std::make_shared<FireEffect>(
-					position, style, direction, velocity, max_particles, lifetime, type, dimensions
+					position, style, direction, velocity, max_particles, lifetime, type, dimensions, sweep
 				);
 				needs_reallocation_ = true;
 				return effects_[i];
@@ -152,7 +153,7 @@ namespace Boidsish {
 		// If no inactive slots, add a new one if under capacity
 		if (effects_.size() < kMaxEmitters) {
 			auto effect = std::make_shared<FireEffect>(
-				position, style, direction, velocity, max_particles, lifetime, type, dimensions
+				position, style, direction, velocity, max_particles, lifetime, type, dimensions, sweep
 			);
 			effects_.push_back(effect);
 			needs_reallocation_ = true;
@@ -225,12 +226,13 @@ namespace Boidsish {
 				     effect->GetVelocity(),
 				     effect->GetId(),
 				     effect->GetDimensions(),
-				     (int)effect->GetType()}
+				     (int)effect->GetType(),
+				     effect->GetSweep()}
 				);
 			} else {
 				// Add a placeholder for inactive emitters to maintain indexing
 				emitters.push_back(
-					{glm::vec3(0), 0, glm::vec3(0), 0, glm::vec3(0), 0, glm::vec3(0), 0}
+					{glm::vec3(0), 0, glm::vec3(0), 0, glm::vec3(0), 0, glm::vec3(0), 0, 0.0f}
 				);
 			}
 		}
