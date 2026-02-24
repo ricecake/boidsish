@@ -24,28 +24,50 @@ uniform vec3 u_min_bounds;
 uniform vec3 u_max_bounds;
 uniform int  u_grid_res;
 
-float dot2(vec3 v) {
-	return dot(v, v);
-}
-
-float distPointTriangleSq(vec3 p, vec3 v0, vec3 v1, vec3 v2) {
+vec3 closestPointOnTriangle(vec3 p, vec3 v0, vec3 v1, vec3 v2) {
 	vec3 v10 = v1 - v0;
+	vec3 v20 = v2 - v0;
 	vec3 vp0 = p - v0;
-	vec3 v21 = v2 - v1;
-	vec3 vp1 = p - v1;
-	vec3 v02 = v0 - v2;
-	vec3 vp2 = p - v2;
-	vec3 nor = cross(v10, v02);
 
-	if (sign(dot(cross(v10, nor), vp0)) + sign(dot(cross(v21, nor), vp1)) + sign(dot(cross(v02, nor), vp2)) < 2.0) {
-		return min(min(
-					   dot2(v10 * clamp(dot(v10, vp0) / dot2(v10), 0.0, 1.0) - vp0),
-					   dot2(v21 * clamp(dot(v21, vp1) / dot2(v21), 0.0, 1.0) - vp1)
-				   ),
-				   dot2(v02 * clamp(dot(v02, vp2) / dot2(v02), 0.0, 1.0) - vp2));
-	} else {
-		return dot(nor, vp0) * dot(nor, vp0) / dot2(nor);
+	float d1 = dot(v10, vp0);
+	float d2 = dot(v20, vp0);
+	if (d1 <= 0.0 && d2 <= 0.0)
+		return v0;
+
+	vec3 vp1 = p - v1;
+	float d3 = dot(v10, vp1);
+	float d4 = dot(v20, vp1);
+	if (d3 >= 0.0 && d4 <= d3)
+		return v1;
+
+	float vc = d1 * d4 - d3 * d2;
+	if (vc <= 0.0 && d1 >= 0.0 && d3 <= 0.0) {
+		float v = d1 / (d1 - d3);
+		return v0 + v * v10;
 	}
+
+	vec3 vp2 = p - v2;
+	float d5 = dot(v10, vp2);
+	float d6 = dot(v20, vp2);
+	if (d6 >= 0.0 && d5 <= d6)
+		return v2;
+
+	float vb = d5 * d2 - d1 * d6;
+	if (vb <= 0.0 && d2 >= 0.0 && d6 <= d2) {
+		float w = d2 / (d2 - d6);
+		return v0 + w * v20;
+	}
+
+	float va = d3 * d6 - d5 * d4;
+	if (va <= 0.0 && (d4 - d3) >= 0.0 && (d5 - d6) >= 0.0) {
+		float w = (d4 - d3) / ((d4 - d3) + (d5 - d6));
+		return v1 + w * (v2 - v1);
+	}
+
+	float denom = 1.0 / (va + vb + vc);
+	float v = vb * denom;
+	float w = vc * denom;
+	return v0 + v * v10 + w * v20;
 }
 
 void main() {
@@ -53,7 +75,6 @@ void main() {
 	if (tri_idx * 3 >= u_num_indices)
 		return;
 
-	// Get triangle vertices
 	Vertex vert0 = vertices[indices[tri_idx * 3 + 0]];
 	Vertex vert1 = vertices[indices[tri_idx * 3 + 1]];
 	Vertex vert2 = vertices[indices[tri_idx * 3 + 2]];
@@ -62,7 +83,6 @@ void main() {
 	vec3 v1 = vec3(vert1.px, vert1.py, vert1.pz);
 	vec3 v2 = vec3(vert2.px, vert2.py, vert2.pz);
 
-	// Triangle AABB in voxel space
 	vec3 size = u_max_bounds - u_min_bounds;
 	vec3 inv_size = vec3(
 		size.x > 0.0001 ? 1.0 / size.x : 0.0,
@@ -77,23 +97,26 @@ void main() {
 	vec3 tri_min = min(v0_vox, min(v1_vox, v2_vox));
 	vec3 tri_max = max(v0_vox, max(v1_vox, v2_vox));
 
-	ivec3 min_vox = ivec3(max(vec3(0), floor(tri_min - 0.5)));
-	ivec3 max_vox = ivec3(min(vec3(u_grid_res - 1), ceil(tri_max + 0.5)));
+	// Increase search area slightly to ensure we don't miss any voxels that should be seeded
+	ivec3 min_vox = ivec3(max(vec3(0), floor(tri_min - 1.0)));
+	ivec3 max_vox = ivec3(min(vec3(u_grid_res - 1), ceil(tri_max + 1.0)));
 
 	vec3 normal = normalize(cross(v1 - v0, v2 - v0));
 	vec3 voxel_size = size / float(u_grid_res);
-	float threshold_sq = dot(voxel_size, voxel_size) * 0.5; // Roughly half voxel diagonal squared
+	float threshold_sq = dot(voxel_size, voxel_size) * 1.5; // Slightly larger threshold for better coverage
 
-	// For each voxel in AABB, mark it if close enough to triangle
 	for (int z = min_vox.z; z <= max_vox.z; ++z) {
 		for (int y = min_vox.y; y <= max_vox.y; ++y) {
 			for (int x = min_vox.x; x <= max_vox.x; ++x) {
 				vec3  vox_center_world = u_min_bounds + (vec3(x, y, z) + 0.5) * voxel_size;
-				float d_sq = distPointTriangleSq(vox_center_world, v0, v1, v2);
+				vec3  closest = closestPointOnTriangle(vox_center_world, v0, v1, v2);
+				vec3  diff = vox_center_world - closest;
+				float d_sq = dot(diff, diff);
 
 				if (d_sq < threshold_sq) {
 					ivec3 vox = ivec3(x, y, z);
-					imageStore(u_seed_texture, vox, vec4(vec3(vox), 1.0));
+					// Store WORLD position of closest point
+					imageStore(u_seed_texture, vox, vec4(closest, 1.0));
 					imageStore(u_normal_texture, vox, vec4(normal, 1.0));
 				}
 			}

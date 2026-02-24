@@ -8,19 +8,24 @@ layout(rgba32f, binding = 3) uniform image3D u_write_normal;
 
 uniform int  u_step;
 uniform int  u_grid_res;
-uniform vec3 u_voxel_size;
+uniform vec3 u_min_bounds;
+uniform vec3 u_max_bounds;
 
 void main() {
 	ivec3 vox = ivec3(gl_GlobalInvocationID);
 	if (any(greaterThanEqual(vox, ivec3(u_grid_res))))
 		return;
 
+	vec3 size = u_max_bounds - u_min_bounds;
+	vec3 voxel_size = size / float(u_grid_res);
+	vec3 vox_center_world = u_min_bounds + (vec3(vox) + 0.5) * voxel_size;
+
 	vec4  best_seed = imageLoad(u_read_seed, vox);
 	vec4  best_normal = imageLoad(u_read_normal, vox);
 	float min_dist_sq = 1e20;
 
 	if (best_seed.w > 0.5) {
-		vec3 diff = (vec3(vox) - best_seed.xyz) * u_voxel_size;
+		vec3 diff = vox_center_world - best_seed.xyz;
 		min_dist_sq = dot(diff, diff);
 	}
 
@@ -36,7 +41,7 @@ void main() {
 
 				vec4 n_seed = imageLoad(u_read_seed, neighbor);
 				if (n_seed.w > 0.5) {
-					vec3  diff = (vec3(vox) - n_seed.xyz) * u_voxel_size;
+					vec3  diff = vox_center_world - n_seed.xyz;
 					float d_sq = dot(diff, diff);
 					if (d_sq < min_dist_sq) {
 						min_dist_sq = d_sq;

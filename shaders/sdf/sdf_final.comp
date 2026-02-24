@@ -6,33 +6,32 @@ layout(rgba32f, binding = 1) uniform image3D u_normal_texture;
 layout(rgba32f, binding = 2) uniform image3D u_final_texture;
 
 uniform int  u_grid_res;
-uniform vec3 u_voxel_size;
+uniform vec3 u_min_bounds;
+uniform vec3 u_max_bounds;
 
 void main() {
 	ivec3 vox = ivec3(gl_GlobalInvocationID);
 	if (any(greaterThanEqual(vox, ivec3(u_grid_res))))
 		return;
 
+	vec3 size = u_max_bounds - u_min_bounds;
+	vec3 voxel_size = size / float(u_grid_res);
+	vec3 vox_center_world = u_min_bounds + (vec3(vox) + 0.5) * voxel_size;
+
 	vec4 seed = imageLoad(u_seed_texture, vox);
 	vec4 normal = imageLoad(u_normal_texture, vox);
 
 	if (seed.w < 0.5) {
-		// Should not happen if JFA reached everywhere, but just in case
 		imageStore(u_final_texture, vox, vec4(1000.0, 0, 0, 1.0));
 		return;
 	}
 
-	vec3  to_seed_vox = seed.xyz - vec3(vox);
-	vec3  to_seed_world = to_seed_vox * u_voxel_size;
+	vec3  to_seed_world = seed.xyz - vox_center_world;
 	float dist = length(to_seed_world);
 
 	// Determine sign: dot(vector_from_seed_to_vox, normal)
-	// If positive, vox is "outside" (in direction of normal)
-	// If negative, vox is "inside"
 	vec3  from_seed_to_vox = -to_seed_world;
 	float sign = dot(from_seed_to_vox, normal.xyz) >= 0.0 ? 1.0 : -1.0;
 
-	// Store signed distance in R channel.
-	// We can also store the normal in GBA if needed for effects.
 	imageStore(u_final_texture, vox, vec4(dist * sign, normal.xyz));
 }

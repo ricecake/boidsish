@@ -294,12 +294,14 @@ namespace Boidsish {
 		);
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, ebo);
 
-		// 3. Load Shaders
-		ComputeShader voxelize_sh("shaders/sdf/sdf_voxelize.comp");
-		ComputeShader jfa_sh("shaders/sdf/sdf_jfa.comp");
-		ComputeShader final_sh("shaders/sdf/sdf_final.comp");
+		// 3. Load Shaders (Lazy initialization and caching)
+		if (!m_sdf_voxelize_sh) {
+			m_sdf_voxelize_sh = std::make_unique<ComputeShader>("shaders/sdf/sdf_voxelize.comp");
+			m_sdf_jfa_sh = std::make_unique<ComputeShader>("shaders/sdf/sdf_jfa.comp");
+			m_sdf_final_sh = std::make_unique<ComputeShader>("shaders/sdf/sdf_final.comp");
+		}
 
-		if (!voxelize_sh.isValid() || !jfa_sh.isValid() || !final_sh.isValid()) {
+		if (!m_sdf_voxelize_sh->isValid() || !m_sdf_jfa_sh->isValid() || !m_sdf_final_sh->isValid()) {
 			logger::ERROR("Failed to load SDF compute shaders");
 			// Cleanup
 			glDeleteTextures(1, &seed_tex_a);
@@ -313,24 +315,23 @@ namespace Boidsish {
 		}
 
 		// 4. Voxelize (Seed JFA)
-		voxelize_sh.use();
-		voxelize_sh.setUint("u_num_indices", (unsigned int)all_indices.size());
-		voxelize_sh.setVec3("u_min_bounds", data->aabb.min);
-		voxelize_sh.setVec3("u_max_bounds", data->aabb.max);
-		voxelize_sh.setInt("u_grid_res", grid_res);
+		m_sdf_voxelize_sh->use();
+		m_sdf_voxelize_sh->setUint("u_num_indices", (unsigned int)all_indices.size());
+		m_sdf_voxelize_sh->setVec3("u_min_bounds", data->aabb.min);
+		m_sdf_voxelize_sh->setVec3("u_max_bounds", data->aabb.max);
+		m_sdf_voxelize_sh->setInt("u_grid_res", grid_res);
 
 		glBindImageTexture(0, seed_tex_a, 0, GL_TRUE, 0, GL_WRITE_ONLY, GL_RGBA32F);
 		glBindImageTexture(1, normal_tex_a, 0, GL_TRUE, 0, GL_WRITE_ONLY, GL_RGBA32F);
 
-		voxelize_sh.dispatch((all_indices.size() / 3 + 255) / 256, 1, 1);
+		m_sdf_voxelize_sh->dispatch((all_indices.size() / 3 + 255) / 256, 1, 1);
 		glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
 
 		// 5. JFA Iterations
-		jfa_sh.use();
-		jfa_sh.setInt("u_grid_res", grid_res);
-		glm::vec3 size = data->aabb.max - data->aabb.min;
-		glm::vec3 voxel_size = size / float(grid_res);
-		jfa_sh.setVec3("u_voxel_size", voxel_size);
+		m_sdf_jfa_sh->use();
+		m_sdf_jfa_sh->setInt("u_grid_res", grid_res);
+		m_sdf_jfa_sh->setVec3("u_min_bounds", data->aabb.min);
+		m_sdf_jfa_sh->setVec3("u_max_bounds", data->aabb.max);
 
 		GLuint read_seed = seed_tex_a;
 		GLuint read_normal = normal_tex_a;
@@ -339,14 +340,14 @@ namespace Boidsish {
 
 		for (int i = 0; i < jfa_iters; ++i) {
 			int step = 1 << (jfa_iters - 1 - i);
-			jfa_sh.setInt("u_step", step);
+			m_sdf_jfa_sh->setInt("u_step", step);
 
 			glBindImageTexture(0, read_seed, 0, GL_TRUE, 0, GL_READ_ONLY, GL_RGBA32F);
 			glBindImageTexture(1, read_normal, 0, GL_TRUE, 0, GL_READ_ONLY, GL_RGBA32F);
 			glBindImageTexture(2, write_seed, 0, GL_TRUE, 0, GL_WRITE_ONLY, GL_RGBA32F);
 			glBindImageTexture(3, write_normal, 0, GL_TRUE, 0, GL_WRITE_ONLY, GL_RGBA32F);
 
-			jfa_sh.dispatch((grid_res + 3) / 4, (grid_res + 3) / 4, (grid_res + 3) / 4);
+			m_sdf_jfa_sh->dispatch((grid_res + 3) / 4, (grid_res + 3) / 4, (grid_res + 3) / 4);
 			glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
 
 			std::swap(read_seed, write_seed);
@@ -354,15 +355,16 @@ namespace Boidsish {
 		}
 
 		// 6. Final Pass (Distance and Sign)
-		final_sh.use();
-		final_sh.setInt("u_grid_res", grid_res);
-		final_sh.setVec3("u_voxel_size", voxel_size);
+		m_sdf_final_sh->use();
+		m_sdf_final_sh->setInt("u_grid_res", grid_res);
+		m_sdf_final_sh->setVec3("u_min_bounds", data->aabb.min);
+		m_sdf_final_sh->setVec3("u_max_bounds", data->aabb.max);
 
 		glBindImageTexture(0, read_seed, 0, GL_TRUE, 0, GL_READ_ONLY, GL_RGBA32F);
 		glBindImageTexture(1, read_normal, 0, GL_TRUE, 0, GL_READ_ONLY, GL_RGBA32F);
 		glBindImageTexture(2, final_tex, 0, GL_TRUE, 0, GL_WRITE_ONLY, GL_RGBA32F);
 
-		final_sh.dispatch((grid_res + 3) / 4, (grid_res + 3) / 4, (grid_res + 3) / 4);
+		m_sdf_final_sh->dispatch((grid_res + 3) / 4, (grid_res + 3) / 4, (grid_res + 3) / 4);
 		glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
 
 		// 7. Cleanup
