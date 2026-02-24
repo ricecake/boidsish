@@ -1096,8 +1096,8 @@ namespace Boidsish {
 			frame_config_.artistic_glitched = cfg.GetAppSettingBool("artistic_effect_glitched", false);
 			frame_config_.artistic_wireframe = cfg.GetAppSettingBool("artistic_effect_wireframe", false);
 			frame_config_.enable_shadows = cfg.GetAppSettingBool("enable_shadows", true);
-			frame_config_.wind_strength = cfg.GetAppSettingFloat("wind_strength", 0.5f);
-			frame_config_.wind_speed = cfg.GetAppSettingFloat("wind_speed", 1.0f);
+			frame_config_.wind_strength = cfg.GetAppSettingFloat("wind_strength", 0.15f);
+			frame_config_.wind_speed = cfg.GetAppSettingFloat("wind_speed", 0.15f);
 			frame_config_.wind_frequency = cfg.GetAppSettingFloat("wind_frequency", 0.1f);
 		}
 

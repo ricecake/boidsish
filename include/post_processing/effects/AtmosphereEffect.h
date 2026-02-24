@@ -95,7 +95,7 @@ namespace Boidsish {
 			float mie_scale_ = 0.1f; // Reduced default to prevent "washed out" haze
 			float mie_anisotropy_ = 0.8f;
 			float multi_scat_scale_ = 0.1f;
-			float ambient_scat_scale_ = 0.1f;
+			float ambient_scat_scale_ = 0.750f;
 
 			GLuint transmittance_lut_ = 0;
 			GLuint multi_scattering_lut_ = 0;
