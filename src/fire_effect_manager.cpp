@@ -126,7 +126,9 @@ namespace Boidsish {
 		const glm::vec3& direction,
 		const glm::vec3& velocity,
 		int              max_particles,
-		float            lifetime
+		float            lifetime,
+		EmitterType      type,
+		const glm::vec3& dimensions
 	) {
 		std::lock_guard<std::mutex> lock(mutex_);
 		_EnsureShaderAndBuffers();
@@ -139,8 +141,9 @@ namespace Boidsish {
 		// Find an inactive slot to reuse
 		for (size_t i = 0; i < effects_.size(); ++i) {
 			if (!effects_[i]) {
-				effects_[i] =
-					std::make_shared<FireEffect>(position, style, direction, velocity, max_particles, lifetime);
+				effects_[i] = std::make_shared<FireEffect>(
+					position, style, direction, velocity, max_particles, lifetime, type, dimensions
+				);
 				needs_reallocation_ = true;
 				return effects_[i];
 			}
@@ -148,7 +151,9 @@ namespace Boidsish {
 
 		// If no inactive slots, add a new one if under capacity
 		if (effects_.size() < kMaxEmitters) {
-			auto effect = std::make_shared<FireEffect>(position, style, direction, velocity, max_particles, lifetime);
+			auto effect = std::make_shared<FireEffect>(
+				position, style, direction, velocity, max_particles, lifetime, type, dimensions
+			);
 			effects_.push_back(effect);
 			needs_reallocation_ = true;
 			return effect;
@@ -218,11 +223,15 @@ namespace Boidsish {
 				     effect->GetDirection(),
 				     1, // is_active
 				     effect->GetVelocity(),
-				     effect->GetId()}
+				     effect->GetId(),
+				     effect->GetDimensions(),
+				     (int)effect->GetType()}
 				);
 			} else {
 				// Add a placeholder for inactive emitters to maintain indexing
-				emitters.push_back({glm::vec3(0), 0, glm::vec3(0), 0, glm::vec3(0), 0});
+				emitters.push_back(
+					{glm::vec3(0), 0, glm::vec3(0), 0, glm::vec3(0), 0, glm::vec3(0), 0}
+				);
 			}
 		}
 
