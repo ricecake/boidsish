@@ -1,7 +1,9 @@
 #include "model.h"
 
 #include <algorithm>
+#include <cstdlib>
 #include <iostream>
+#include <limits>
 
 #include "asset_manager.h"
 #include "logger.h"
@@ -451,6 +453,133 @@ namespace Boidsish {
 
 	unsigned int Model::TextureFromFile(const char* path, const std::string& directory, bool /* gamma */) {
 		return AssetManager::GetInstance().GetTexture(path, directory);
+	}
+
+	glm::vec3 ModelSlice::GetRandomPoint() const {
+		if (triangles.empty())
+			return glm::vec3(0.0f);
+
+		// 1. Calculate areas of all triangles
+		std::vector<float> areas;
+		float              totalArea = 0.0f;
+		for (size_t i = 0; i < triangles.size(); i += 3) {
+			glm::vec3 a = triangles[i];
+			glm::vec3 b = triangles[i + 1];
+			glm::vec3 c = triangles[i + 2];
+			float     area = 0.5f * glm::length(glm::cross(b - a, c - a));
+			areas.push_back(area);
+			totalArea += area;
+		}
+
+		if (totalArea <= 0.00001f)
+			return triangles[0];
+
+		// 2. Pick a random triangle based on area
+		float  r = static_cast<float>(rand()) / static_cast<float>(RAND_MAX) * totalArea;
+		size_t pickedTriangle = 0;
+		for (size_t i = 0; i < areas.size(); ++i) {
+			r -= areas[i];
+			if (r <= 0) {
+				pickedTriangle = i;
+				break;
+			}
+		}
+
+		// 3. Pick a random point in the picked triangle
+		float u = static_cast<float>(rand()) / static_cast<float>(RAND_MAX);
+		float v = static_cast<float>(rand()) / static_cast<float>(RAND_MAX);
+		if (u + v > 1.0f) {
+			u = 1.0f - u;
+			v = 1.0f - v;
+		}
+
+		size_t idx = pickedTriangle * 3;
+		return triangles[idx] + u * (triangles[idx + 1] - triangles[idx]) + v * (triangles[idx + 2] - triangles[idx]);
+	}
+
+	ModelSlice Model::GetSlice(const glm::vec3& direction, float scale) const {
+		ModelSlice slice;
+		if (!m_data)
+			return slice;
+
+		float mag = glm::length(direction);
+		glm::vec3 n = (mag > 0.0001f) ? glm::normalize(direction) : glm::vec3(0, 1, 0);
+
+		std::vector<Vertex>       vertices;
+		std::vector<unsigned int> indices;
+		GetGeometry(vertices, indices);
+
+		if (vertices.empty())
+			return slice;
+
+		// Transform vertices to world space
+		glm::mat4 modelMatrix = GetModelMatrix();
+		for (auto& v : vertices) {
+			v.Position = glm::vec3(modelMatrix * glm::vec4(v.Position, 1.0f));
+		}
+
+		// Find min/max distance along n
+		float dMin = std::numeric_limits<float>::max();
+		float dMax = -std::numeric_limits<float>::max();
+		for (const auto& v : vertices) {
+			float d = glm::dot(n, v.Position);
+			dMin = std::min(dMin, d);
+			dMax = std::max(dMax, d);
+		}
+
+		float dTarget = dMin + scale * (dMax - dMin);
+
+		// Find intersection segments
+		std::vector<std::pair<glm::vec3, glm::vec3>> segments;
+		for (size_t i = 0; i < indices.size(); i += 3) {
+			glm::vec3 p[3] = {
+				vertices[indices[i]].Position,
+				vertices[indices[i + 1]].Position,
+				vertices[indices[i + 2]].Position
+			};
+			float h[3];
+			for (int j = 0; j < 3; ++j)
+				h[j] = glm::dot(n, p[j]) - dTarget;
+
+			std::vector<glm::vec3> intersections;
+			for (int j = 0; j < 3; ++j) {
+				int next = (j + 1) % 3;
+				// Check if the edge crosses or touches the plane
+				if ((h[j] <= 0 && h[next] > 0) || (h[j] > 0 && h[next] <= 0)) {
+					float t = -h[j] / (h[next] - h[j]);
+					intersections.push_back(p[j] + t * (p[next] - p[j]));
+				}
+			}
+
+			// We only care about intersections that form a segment within this triangle
+			if (intersections.size() == 2) {
+				segments.push_back({intersections[0], intersections[1]});
+			} else if (intersections.size() == 3) {
+				// This happens if the triangle lies exactly on the plane
+				segments.push_back({intersections[0], intersections[1]});
+				segments.push_back({intersections[1], intersections[2]});
+				segments.push_back({intersections[2], intersections[0]});
+			}
+		}
+
+		if (segments.empty())
+			return slice;
+
+		// Calculate centroid of all intersection points
+		glm::vec3 centroid(0.0f);
+		for (const auto& s : segments) {
+			centroid += s.first + s.second;
+		}
+		centroid /= static_cast<float>(segments.size() * 2);
+
+		// Create triangle soup by fanning from the centroid to each intersection segment
+		for (const auto& s : segments) {
+			slice.triangles.push_back(centroid);
+			slice.triangles.push_back(s.first);
+			slice.triangles.push_back(s.second);
+		}
+
+		return slice;
 	}
 
 } // namespace Boidsish
