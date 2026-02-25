@@ -95,6 +95,7 @@ int main(int argc, char** argv) {
     auto& config = ConfigManager::GetInstance();
     config.SetBool("render_skybox", false);
     config.SetBool("render_terrain", false);
+    config.SetBool("render_decor", false);
     config.SetBool("day_night_cycle", false);
     config.SetBool("enable_floor", true);
 
