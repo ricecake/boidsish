@@ -57,6 +57,8 @@ layout(std430, binding = 4) buffer SliceDataBuffer {
 
 uniform float u_delta_time;
 uniform float u_time;
+uniform float u_ambientDensity;
+uniform float u_ambientCullDistance;
 uniform int   u_num_emitters;
 uniform int   u_num_chunks;
 
@@ -198,6 +200,72 @@ const float kCinderLifetime = 8.0;
 const float kCinderDriftIntensity = 4.0;
 const float kCinderBuoyancy = 1.5;
 
+void handleTerrainCollision(inout Particle p) {
+	bool collided = false;
+	for (int i = 0; i < u_num_chunks; i++) {
+		ChunkInfo chunk = chunks[i];
+		if (p.pos.x >= chunk.worldOffset.x && p.pos.x < chunk.worldOffset.x + chunk.size &&
+		    p.pos.z >= chunk.worldOffset.y && p.pos.z < chunk.worldOffset.y + chunk.size) {
+			vec2  uv = (p.pos.xz - chunk.worldOffset) / chunk.size;
+			vec4  terrain = texture(u_heightmapArray, vec3(uv, chunk.slice));
+			float height = terrain.r;
+			vec3  normal = vec3(terrain.g, terrain.b, terrain.a);
+
+			if (p.pos.y < height) {
+				p.pos.y = height + 0.05;
+				p.vel.xyz = reflect(p.vel.xyz, normal) * 0.4;
+				collided = true;
+			}
+			break;
+		}
+	}
+
+	if (!collided && p.pos.y <= 0.0) {
+		p.pos.y = 0.1;
+		p.vel.y *= -0.25;
+		p.vel.xz *= 0.8;
+	}
+}
+
+void updateAmbientParticle(inout Particle p, float dt, float time) {
+	float maxSpeed = 2.0;
+	int   sub_style = p.emitter_id;
+
+	if (sub_style == 0 || sub_style == 1) { // Leaf or Petal
+		float curlInfluence = 1.2;
+		p.vel.xyz += curlNoise(p.pos.xyz, time) * curlInfluence * dt;
+		p.vel.y -= 0.1 * dt; // Slight gravity
+		p.vel.xyz *= pow(0.98, dt / 0.016);
+	} else if (sub_style == 2) { // Bubble
+		float curlInfluence = 0.5;
+		p.vel.xyz += curlNoise(p.pos.xyz, time) * curlInfluence * dt;
+		p.vel.y += 0.4 * dt; // Rising
+		p.vel.xyz *= pow(0.97, dt / 0.016);
+		maxSpeed = 1.5;
+	} else if (sub_style == 3) { // Snowflake
+		float curlInfluence = 0.3;
+		p.vel.xyz += curlNoise(p.pos.xyz, time) * curlInfluence * dt;
+		p.vel.y -= 0.5 * dt; // Falling
+		p.vel.xyz *= pow(0.99, dt / 0.016);
+		maxSpeed = 1.2;
+	} else if (sub_style == 4) { // Firefly
+		float curlInfluence = 0.8;
+		p.vel.xyz += curlNoise(p.pos.xyz, time) * curlInfluence * dt;
+		p.vel.y += 0.15 * dt; // Gentle rising
+		p.vel.xyz *= pow(0.99, dt / 0.016);
+	} else {
+		p.vel.xyz += curlNoise(p.pos.xyz, time) * dt;
+		p.vel.xyz *= pow(0.99, dt / 0.016);
+	}
+
+	if (length(p.vel.xyz) > maxSpeed) {
+		p.vel.xyz = normalize(p.vel.xyz) * maxSpeed;
+	}
+
+	p.pos.xyz += p.vel.xyz * dt;
+	handleTerrainCollision(p);
+}
+
 layout(local_size_x = 256, local_size_y = 1, local_size_z = 1) in;
 
 void main() {
@@ -331,7 +399,7 @@ void main() {
 
 		// --- 3b. Sparse Ambient Respawn ---
 		vec2 seed = vec2(float(gid), u_time);
-		if (u_num_chunks > 0 && rand(seed) < 0.005) {
+		if (u_num_chunks > 0 && rand(seed) < u_ambientDensity) {
 			// Try a few times to find a chunk closer to the camera
 			for (int i = 0; i < 3; i++) {
 				int       chunk_idx = int(rand(seed.yx + float(i) * 0.1) * u_num_chunks) % u_num_chunks;
@@ -340,7 +408,7 @@ void main() {
 				vec3      pos = vec3(chunk.worldOffset.x + local_pos.x, 0, chunk.worldOffset.y + local_pos.y);
 
 				// Only spawn closer to camera
-				if (distance(pos.xz, viewPos.xz) > 500.0)
+				if (distance(pos.xz, viewPos.xz) > u_ambientCullDistance)
 					continue;
 
 				vec2  uv = local_pos / chunk.size;
@@ -353,8 +421,6 @@ void main() {
 				// Biomes: Sand=0, LushGrass=1, DryGrass=2, Forest=3, AlpineMeadow=4, BrownRock=5, GreyRock=6, Snow=7
 				bool valid_biome = (biome_idx >= 0 && biome_idx <= 4) || biome_idx == 7;
 				if (valid_biome) {
-					p.pos = vec4(pos.x, height + 1.0 + rand(seed + 3.3) * 2.0, pos.z, 10.0 + rand(seed + 4.4) * 5.0);
-					p.vel = vec4(rand3(seed + 5.5) * 0.5, 0.0);
 					p.style = 5; // Ambient
 					p.emitter_index = biome_idx;
 
@@ -379,7 +445,17 @@ void main() {
 					}
 
 					p.emitter_id = sub_style;
+					float total_lifetime = 10.0 + rand(seed + 4.4) * 5.0;
+					float skipped_time = rand(seed + 7.7) * total_lifetime;
+					p.pos = vec4(pos.x, height + 1.0 + rand(seed + 3.3) * 2.0, pos.z, total_lifetime - skipped_time);
+					p.vel = vec4(rand3(seed + 5.5) * 0.5, 0.0);
 					p.epicenter = p.pos.xyz;
+
+					// Fast-forward
+					if (skipped_time > 0.001) {
+						updateAmbientParticle(p, skipped_time, u_time - skipped_time);
+					}
+
 					particles[gid] = p;
 					return;
 				}
@@ -400,35 +476,9 @@ void main() {
 	// --- 4. Update Logic (Only for Alive Particles) ---
 	float maxSpeed = 10.0;
 	if (p.style == 5) { // Ambient
-		maxSpeed = 2.0;
-		int sub_style = p.emitter_id;
-
-		if (sub_style == 0 || sub_style == 1) { // Leaf or Petal
-			float curlInfluence = 1.2;
-			p.vel.xyz += curlNoise(p.pos.xyz, u_time) * curlInfluence * u_delta_time;
-			p.vel.y -= 0.1 * u_delta_time; // Slight gravity
-			p.vel.xyz *= 0.98;
-		} else if (sub_style == 2) { // Bubble
-			float curlInfluence = 0.5;
-			p.vel.xyz += curlNoise(p.pos.xyz, u_time) * curlInfluence * u_delta_time;
-			p.vel.y += 0.4 * u_delta_time; // Rising
-			p.vel.xyz *= 0.97;
-			maxSpeed = 1.5;
-		} else if (sub_style == 3) { // Snowflake
-			float curlInfluence = 0.3;
-			p.vel.xyz += curlNoise(p.pos.xyz, u_time) * curlInfluence * u_delta_time;
-			p.vel.y -= 0.5 * u_delta_time; // Falling
-			p.vel.xyz *= 0.99;
-			maxSpeed = 1.2;
-		} else if (sub_style == 4) { // Firefly
-			float curlInfluence = 0.8;
-			p.vel.xyz += curlNoise(p.pos.xyz, u_time) * curlInfluence * u_delta_time;
-			p.vel.y += 0.15 * u_delta_time; // Gentle rising
-			p.vel.xyz *= 0.99;
-		} else {
-			p.vel.xyz += curlNoise(p.pos.xyz, u_time) * u_delta_time;
-			p.vel.xyz *= 0.99;
-		}
+		updateAmbientParticle(p, u_delta_time, u_time);
+		particles[gid] = p;
+		return;
 	} else if (p.style == 0) {
 		maxSpeed = kExhaustSpeed;
 		p.vel.xyz -= p.vel.xyz * kExhaustDrag * 2 * (1 - (p.vel.xyz / 30)) * u_delta_time;
@@ -489,31 +539,7 @@ void main() {
 
 	p.pos.xyz += p.vel.xyz * u_delta_time;
 
-	// Terrain collision and reflection
-	bool collided = false;
-	for (int i = 0; i < u_num_chunks; i++) {
-		ChunkInfo chunk = chunks[i];
-		if (p.pos.x >= chunk.worldOffset.x && p.pos.x < chunk.worldOffset.x + chunk.size &&
-		    p.pos.z >= chunk.worldOffset.y && p.pos.z < chunk.worldOffset.y + chunk.size) {
-			vec2  uv = (p.pos.xz - chunk.worldOffset) / chunk.size;
-			vec4  terrain = texture(u_heightmapArray, vec3(uv, chunk.slice));
-			float height = terrain.r;
-			vec3  normal = vec3(terrain.g, terrain.b, terrain.a);
-
-			if (p.pos.y < height) {
-				p.pos.y = height + 0.05;
-				p.vel.xyz = reflect(p.vel.xyz, normal) * 0.4;
-				collided = true;
-			}
-			break;
-		}
-	}
-
-	if (!collided && p.pos.y <= 0.0) {
-		p.pos.y = 0.1;
-		p.vel.y *= -0.25;
-		p.vel.xz *= 0.8;
-	}
+	handleTerrainCollision(p);
 
 	particles[gid] = p;
 }

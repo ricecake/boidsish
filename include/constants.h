@@ -293,6 +293,14 @@ namespace Boidsish {
 				constexpr int ComputeGroupSize() {
 					return 256;
 				}
+
+				constexpr float DefaultAmbientDensity() {
+					return 0.005f;
+				}
+
+				constexpr float DefaultAmbientCullDistance() {
+					return 200.0f;
+				}
 			} // namespace Particles
 
 			namespace Explosions {

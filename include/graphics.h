@@ -95,6 +95,8 @@ namespace Boidsish {
 		float wind_strength = 0.15f;
 		float wind_speed = 0.15f;
 		float wind_frequency = 0.1f;
+		float ambient_density = 0.005f;
+		float ambient_cull_distance = 200.0f;
 	};
 
 	enum class CameraMode { FREE, AUTO, TRACKING, STATIONARY, CHASE, PATH_FOLLOW };
