@@ -82,13 +82,14 @@ void main() {
 	vec3  c_dissolve_normal = use_ssbo ? uniforms_data[vUniformIndex].dissolve_plane_normal : vec3(0, 1, 0);
 	float c_dissolve_dist = use_ssbo ? uniforms_data[vUniformIndex].dissolve_plane_dist : 0.0;
 
+	float fade = 1.0;
 	if (c_dissolve_enabled) {
 		if (dot(FragPos, c_dissolve_normal) > c_dissolve_dist) {
+			// fade = 1.0-smoothstep(0, dot(FragPos, c_dissolve_normal), c_dissolve_dist);
 			discard;
 		}
 	}
 
-	float fade = 1.0;
 	if (!c_isColossal) {
 		float dist = length(FragPos.xz - viewPos.xz);
 		float fade_start = 540.0 * worldScale;

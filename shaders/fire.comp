@@ -241,6 +241,10 @@ void main() {
 				vec3 spawn_pos = emitter.position;
 
 				if (emitter.use_slice_data != 0) {
+					if (abs(lifeTimeModifier - emitter.sweep) > 0.001) {
+						return;
+					}
+
 					spawn_pos = slice_data[emitter.slice_data_offset + (gid % emitter.slice_data_count)].xyz;
 				} else if (emitter.type == 1 || emitter.type == 4) { // Box or Model (approximated as Box)
 					vec3 r = rand3(seed) - 0.5;
