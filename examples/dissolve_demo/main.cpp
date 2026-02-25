@@ -22,6 +22,7 @@ int main() {
 		teapot->SetUsePBR(true);
 		teapot->SetRoughness(0.2f);
 		teapot->SetMetallic(0.8f);
+		teapot->SetDissolveFadeThickness(1.0f);
 		vis.AddShape(teapot);
 
 		// Add fire effect for the dissolve
@@ -40,37 +41,51 @@ int main() {
         );
 		vis.SetFireEffectSourceModel(dissolve_fire, teapot);
 
-		// // Another one with sparkles
-		// auto dissolve_sparks = vis.AddFireEffect(
-		// 	teapot_pos,
-		// 	Boidsish::FireEffectStyle::Sparks,
-		// 	glm::vec3(0, 1, 0),
-		// 	glm::vec3(0, 0, 0),
-		// 	1000,
-		// 	-1.0f,
-		// 	Boidsish::EmitterType::Model,
-		// 	glm::vec3(20.0f, 20.0f, 20.0f),
-		// 	1.0f
-		// );
-		// vis.SetFireEffectSourceModel(dissolve_sparks, teapot);
+		struct DemoState {
+			float sweep = 1.0f;
+			float sweep_direction = -1.0f;
+			float wait_timer = 0.0f;
+			bool  is_waiting = false;
+		} state;
 
-		vis.AddShapeHandler([&](float time) {
-			float sweep = (sin(time * 0.5f) * 0.5f + 0.5f); // Ping-pong between 0 and 1
+		vis.AddShapeHandler([&](float /* time */) {
+			float delta_time = 1.0f / 60.0f; // Approximate
 
-			// Arbitrary direction that rotates
-			glm::vec3 dir(sin(time * 0.3f), cos(time * 0.3f), sin(time * 0.2f));
-			dir = glm::normalize(dir);
+			if (state.is_waiting) {
+				state.wait_timer -= delta_time;
+				if (state.wait_timer <= 0.0f) {
+					state.is_waiting = false;
+				}
+				return std::vector<std::shared_ptr<Boidsish::Shape>>{};
+			}
 
-			teapot->SetDissolveSweep(dir, sweep);
+			state.sweep += state.sweep_direction * delta_time * 0.5f;
+
+			bool finished = false;
+			if (state.sweep <= 0.0f) {
+				state.sweep = 0.0f;
+				state.sweep_direction = 1.0f;
+				finished = true;
+			} else if (state.sweep >= 1.0f) {
+				state.sweep = 1.0f;
+				state.sweep_direction = -1.0f;
+				finished = true;
+			}
+
+			// Arbitrary direction that stays constant for one sweep but could be rotated
+			glm::vec3 dir(0, 1, 0);
+			teapot->SetDissolveSweep(dir, state.sweep);
 
 			if (dissolve_fire) {
-				dissolve_fire->SetSweep(sweep);
+				dissolve_fire->SetSweep(state.sweep);
 				dissolve_fire->SetDirection(dir);
+
+				if (finished) {
+					dissolve_fire->ClearParticles();
+					state.is_waiting = true;
+					state.wait_timer = 1.0f;
+				}
 			}
-			// if (dissolve_sparks) {
-			// 	dissolve_sparks->SetSweep(sweep);
-			// 	dissolve_sparks->SetDirection(dir);
-			// }
 
 			return std::vector<std::shared_ptr<Boidsish::Shape>>{};
 		});

@@ -417,6 +417,7 @@ namespace Boidsish {
 			packet.uniforms.dissolve_enabled = dissolve_enabled_ ? 1 : 0;
 			packet.uniforms.dissolve_plane_normal = dissolve_plane_normal_;
 			packet.uniforms.dissolve_plane_dist = actual_dissolve_dist;
+			packet.uniforms.dissolve_fade_thickness = dissolve_fade_thickness_;
 
 			packet.casts_shadows = CastsShadows();
 
@@ -429,7 +430,8 @@ namespace Boidsish {
 				texture_hash ^= tex.id + 0x9e3779b9 + (texture_hash << 6) + (texture_hash >> 2);
 			}
 
-			RenderLayer layer = (packet.uniforms.color.w < 0.99f) ? RenderLayer::Transparent : RenderLayer::Opaque;
+			RenderLayer layer = (packet.uniforms.color.w < 0.99f || dissolve_enabled_) ? RenderLayer::Transparent
+																					   : RenderLayer::Opaque;
 			packet.shader_handle = shader_handle;
 			packet.material_handle = MaterialHandle(texture_hash);
 
@@ -628,6 +630,12 @@ namespace Boidsish {
 			slice.triangles.push_back(centroid);
 			slice.triangles.push_back(s.first);
 			slice.triangles.push_back(s.second);
+
+			// Calculate area of this triangle
+			glm::vec3 a = centroid;
+			glm::vec3 b = s.first;
+			glm::vec3 c = s.second;
+			slice.area += 0.5f * glm::length(glm::cross(b - a, c - a));
 		}
 
 		return slice;

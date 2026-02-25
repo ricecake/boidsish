@@ -138,10 +138,12 @@ namespace Boidsish {
 		glm::vec3 dissolve_plane_normal = glm::vec3(0, 1, 0); // 12 bytes
 		float     dissolve_plane_dist = 0.0f;                 // 4 bytes -> 16 bytes
 		int       dissolve_enabled = 0;                       // 4 bytes
+		float     dissolve_fade_thickness = 0.5f;             // 4 bytes
 
 		// Padding to 256 bytes for SSBO alignment safety (176 + 80 = 256)
 		// Used 20 bytes (5 floats) from padding. 20 - 5 = 15.
-		float padding[15];
+		// Added dissolve_fade_thickness (4 bytes). 15 - 1 = 14.
+		float padding[14];
 	};
 
 	/**

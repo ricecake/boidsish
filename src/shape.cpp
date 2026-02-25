@@ -57,11 +57,12 @@ namespace Boidsish {
 		packet.uniforms.dissolve_enabled = dissolve_enabled_ ? 1 : 0;
 		packet.uniforms.dissolve_plane_normal = dissolve_plane_normal_;
 		packet.uniforms.dissolve_plane_dist = dissolve_plane_dist_;
+		packet.uniforms.dissolve_fade_thickness = dissolve_fade_thickness_;
 
 		packet.casts_shadows = CastsShadows();
 
-		// Default to Opaque layer unless alpha is less than 1.0
-		RenderLayer layer = (a_ < 0.99f) ? RenderLayer::Transparent : RenderLayer::Opaque;
+		// Default to Opaque layer unless alpha is less than 1.0 or dissolve is enabled
+		RenderLayer layer = (a_ < 0.99f || dissolve_enabled_) ? RenderLayer::Transparent : RenderLayer::Opaque;
 
 		// Handles would typically be managed by a higher-level system (e.g., AssetManager)
 		packet.shader_handle = shader_handle;

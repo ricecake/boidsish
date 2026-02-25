@@ -231,20 +231,24 @@ namespace Boidsish {
 					effect->GetPosition(),
 					(int)effect->GetStyle(),
 					effect->GetDirection(),
-					1, // is_active
+					effect->IsActive() ? 1 : 0, // is_active
 					effect->GetVelocity(),
 					effect->GetId(),
 					effect->GetDimensions(),
 					(int)effect->GetType(),
 					effect->GetSweep(),
-					0, // use_slice_data
-					0, // slice_data_offset
-					0  // slice_data_count
+					0,    // use_slice_data
+					0,    // slice_data_offset
+					0,    // slice_data_count
+					0.0f, // slice_area
+					effect->NeedsClear() ? 1 : 0,
+					{0, 0} // padding
 				};
 
 				auto model = effect->GetSourceModel();
 				if (effect->GetType() == EmitterType::Model && model) {
 					ModelSlice slice = model->GetSlice(effect->GetDirection(), effect->GetSweep());
+					emitter.slice_area = slice.area;
 					if (!slice.triangles.empty()) {
 						emitter.use_slice_data = 1;
 						emitter.slice_data_offset = static_cast<int>(slice_points.size());
@@ -256,10 +260,16 @@ namespace Boidsish {
 					}
 				}
 
+				if (effect->NeedsClear()) {
+					effect->ResetClearRequest();
+				}
+
 				emitters.push_back(emitter);
 			} else {
 				// Add a placeholder for inactive emitters to maintain indexing
-				emitters.push_back({glm::vec3(0), 0, glm::vec3(0), 0, glm::vec3(0), 0, glm::vec3(0), 0, 0.0f, 0, 0, 0});
+				emitters.push_back(
+					{glm::vec3(0), 0, glm::vec3(0), 0, glm::vec3(0), 0, glm::vec3(0), 0, 0.0f, 0, 0, 0, 0.0f, 0, {0, 0}}
+				);
 			}
 		}
 

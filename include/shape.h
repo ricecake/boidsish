@@ -56,7 +56,8 @@ namespace Boidsish {
 			use_pbr_(other.use_pbr_),
 			dissolve_enabled_(other.dissolve_enabled_),
 			dissolve_plane_normal_(other.dissolve_plane_normal_),
-			dissolve_plane_dist_(other.dissolve_plane_dist_) {}
+			dissolve_plane_dist_(other.dissolve_plane_dist_),
+			dissolve_fade_thickness_(other.dissolve_fade_thickness_) {}
 
 		Shape& operator=(Shape&& other) noexcept {
 			if (this != &other) {
@@ -93,6 +94,7 @@ namespace Boidsish {
 				dissolve_enabled_ = other.dissolve_enabled_;
 				dissolve_plane_normal_ = other.dissolve_plane_normal_;
 				dissolve_plane_dist_ = other.dissolve_plane_dist_;
+				dissolve_fade_thickness_ = other.dissolve_fade_thickness_;
 			}
 			return *this;
 		}
@@ -348,6 +350,13 @@ namespace Boidsish {
 
 		inline float GetDissolveDist() const { return dissolve_plane_dist_; }
 
+		inline float GetDissolveFadeThickness() const { return dissolve_fade_thickness_; }
+
+		inline void SetDissolveFadeThickness(float thickness) {
+			dissolve_fade_thickness_ = thickness;
+			MarkDirty();
+		}
+
 		// Static shader reference
 		static std::shared_ptr<Shader> shader;
 		static ShaderHandle            shader_handle;
@@ -403,7 +412,8 @@ namespace Boidsish {
 			use_pbr_(false),
 			dissolve_enabled_(false),
 			dissolve_plane_normal_(0, 1, 0),
-			dissolve_plane_dist_(0.0f) {}
+			dissolve_plane_dist_(0.0f),
+			dissolve_fade_thickness_(0.5f) {}
 
 		glm::quat rotation_;
 		glm::vec3 scale_;
@@ -438,6 +448,7 @@ namespace Boidsish {
 		bool      dissolve_enabled_;
 		glm::vec3 dissolve_plane_normal_;
 		float     dissolve_plane_dist_;
+		float     dissolve_fade_thickness_;
 
 	public:
 		// Shared sphere mesh (public for instancing support)
