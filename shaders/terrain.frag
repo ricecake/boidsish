@@ -417,7 +417,7 @@ void main() {
 	// ========================================================================
 	// Neon 80s Synth Style (Night Theme)
 	// ========================================================================
-	if (nightFactor > 0.0) {
+	// if (nightFactor > 0.0) {
 		// Synthwave grid lines
 		float gridScale = 0.05; // Lines every 20 units
 		vec2  gridUV = FragPos.xz * gridScale;
@@ -436,20 +436,20 @@ void main() {
 		vec3 magenta = vec3(1.0, 0.0, 1.0);
 
 		// Blend albedo towards dark purple/magenta for that 80s look
-		vec3 newLighting = mix(lighting, lighting * vec3(0.4, 0.1, 0.5), nightFactor * 0.7);
+		vec3 newLighting = mix(lighting, lighting * vec3(0.4, 0.1, 0.5), 0.7);
 
 		// Add cyan grid with magenta glow
-		newLighting += gridLine * cyan * nightFactor * 0.8;
-		newLighting += gridGlowFactor * magenta * nightFactor * 0.4;
+		newLighting += gridLine * cyan * 0.8;
+		newLighting += gridGlowFactor * magenta * 0.4;
 
 		// Height-based neon pulse/glow
 		float heightGlow = smoothstep(0.0, 100.0 * worldScale, FragPos.y);
-		newLighting += magenta * heightGlow * nightFactor * (0.8 + 0.2 * sin(time * 0.5));
+		newLighting += magenta * heightGlow * (0.8 + 0.2 * sin(time * 0.5));
 
 		float nightNoise = fastWorley3d(vec3(FragPos.xy / (25 * worldScale), time * 0.08));
 		float nightFade = smoothstep(fade_start - 10, fade_end, dist + nightNoise * 100.0);
-		lighting = mix(lighting, newLighting, nightFade);
-	}
+		lighting = mix(mix(lighting, newLighting, smoothstep(fade_start-50, fade_end+50, dist+50)), newLighting, nightFade);
+	// }
 
 	// ========================================================================
 	// Distance Fade
