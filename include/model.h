@@ -67,6 +67,20 @@ namespace Boidsish {
 		AABB                 aabb;
 	};
 
+	/**
+	 * @brief A rough polygon approximation of a slice of the model.
+	 * Represented as a triangle soup for easy random point sampling.
+	 */
+	struct ModelSlice {
+		std::vector<glm::vec3> triangles; // Triangle soup: 3 vertices per triangle
+
+		/**
+		 * @brief Returns a random point within the slice.
+		 * @return A point in world space.
+		 */
+		glm::vec3 GetRandomPoint() const;
+	};
+
 	class Model: public Shape {
 	public:
 		// Constructor, expects a filepath to a 3D model.
@@ -85,12 +99,27 @@ namespace Boidsish {
 
 		void GetGeometry(std::vector<Vertex>& vertices, std::vector<unsigned int>& indices) const override;
 
+		/**
+		 * @brief Projects the given vector through the model and takes a perpendicular slice
+		 * at a distance implied by the scale (0.0 to 1.0).
+		 * @param direction The direction vector (in world space).
+		 * @param scale The normalized distance along the model's extent in that direction.
+		 * @return A ModelSlice containing a rough polygon approximation of the slice.
+		 */
+		ModelSlice GetSlice(const glm::vec3& direction, float scale) const;
+
 		const std::vector<Mesh>& getMeshes() const;
 
 		void SetBaseRotation(const glm::quat& rotation) { base_rotation_ = rotation; }
 
 		// Returns unique key for this model file - models loaded from the same file can be instanced together
 		std::string GetInstanceKey() const override;
+
+		/**
+		 * @brief Set dissolve using a normalized sweep value (0.0 to 1.0)
+		 * which is automatically mapped to the model's extent in the given direction.
+		 */
+		void SetDissolveSweep(const glm::vec3& direction, float sweep);
 
 		// Get the model path
 		const std::string& GetModelPath() const;
@@ -103,6 +132,9 @@ namespace Boidsish {
 		glm::quat                  base_rotation_ = glm::quat(1.0f, 0.0f, 0.0f, 0.0f);
 		std::shared_ptr<ModelData> m_data;
 		bool                       no_cull_ = false;
+
+		float dissolve_sweep_ = 0.0f;
+		bool  use_dissolve_sweep_ = false;
 
 		static unsigned int TextureFromFile(const char* path, const std::string& directory, bool gamma = false);
 	};

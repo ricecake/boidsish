@@ -274,7 +274,9 @@ namespace Boidsish {
 			const glm::vec3& dimensions = glm::vec3(0.0f),
 			float            sweep = 1.0f
 		);
-		void                         RemoveFireEffect(const std::shared_ptr<FireEffect>& effect) const;
+		void RemoveFireEffect(const std::shared_ptr<FireEffect>& effect) const;
+		void
+		SetFireEffectSourceModel(const std::shared_ptr<FireEffect>& effect, const std::shared_ptr<Model>& model) const;
 		std::shared_ptr<SoundEffect> AddSoundEffect(
 			const std::string& filepath,
 			const glm::vec3&   position,

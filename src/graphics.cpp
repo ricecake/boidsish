@@ -3720,6 +3720,15 @@ namespace Boidsish {
 		impl->fire_effect_manager->RemoveEffect(effect);
 	}
 
+	void Visualizer::SetFireEffectSourceModel(
+		const std::shared_ptr<FireEffect>& effect,
+		const std::shared_ptr<Model>&      model
+	) const {
+		if (effect) {
+			effect->SetSourceModel(model);
+		}
+	}
+
 	std::shared_ptr<SoundEffect> Visualizer::AddSoundEffect(
 		const std::string& filepath,
 		const glm::vec3&   position,

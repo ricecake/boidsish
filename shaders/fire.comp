@@ -24,7 +24,9 @@ struct Emitter {
 	vec3  dimensions; // 12 bytes
 	int   type;       // 4 bytes -> total 16
 	float sweep;      // 4 bytes
-	int   _padding[3];
+	int   use_slice_data;
+	int   slice_data_offset;
+	int   slice_data_count;
 };
 
 layout(std430, binding = 0) buffer ParticleBuffer {
@@ -47,6 +49,10 @@ struct ChunkInfo {
 
 layout(std430, binding = 3) buffer ChunkInfoBuffer {
 	ChunkInfo chunks[];
+};
+
+layout(std430, binding = 4) buffer SliceDataBuffer {
+	vec4 slice_data[];
 };
 
 uniform float u_delta_time;
@@ -187,6 +193,11 @@ const float kGlitterLifetime = 3.5;
 const float kGlitterDrag = 1.2;
 const float kGlitterGravity = 4.0;
 
+const float kCinderSpeed = 1.0;
+const float kCinderLifetime = 8.0;
+const float kCinderDriftIntensity = 4.0;
+const float kCinderBuoyancy = 1.5;
+
 layout(local_size_x = 256, local_size_y = 1, local_size_z = 1) in;
 
 void main() {
@@ -228,16 +239,32 @@ void main() {
 
 				// Determine spawn position based on emitter type
 				vec3 spawn_pos = emitter.position;
-				if (emitter.type == 1 || emitter.type == 4) { // Box or Model (approximated as Box)
+
+				if (emitter.use_slice_data != 0) {
+					spawn_pos = slice_data[emitter.slice_data_offset + (gid % emitter.slice_data_count)].xyz;
+				} else if (emitter.type == 1 || emitter.type == 4) { // Box or Model (approximated as Box)
 					vec3 r = rand3(seed) - 0.5;
-					// Apply sweep effect (spawn only where r.y is below sweep threshold)
-					// sweep 1.0 = full box, 0.0 = none
-					if (r.y + 0.5 > emitter.sweep) {
+					vec3 rel_p = r * emitter.dimensions;
+
+					// Improved sweep logic for arbitrary direction
+					if (length(emitter.direction) > 0.001) {
+						vec3  n = normalize(emitter.direction);
+						float h = dot(rel_p, n);
+						// We need an estimate of the half-extent along n
+						float extent = dot(abs(n), emitter.dimensions * 0.5);
+						float normalized_h = (h / (extent * 2.0)) + 0.5;
+
+						if (normalized_h > emitter.sweep) {
+							p.pos.w = 0.0;
+							particles[gid] = p;
+							return;
+						}
+					} else if (r.y + 0.5 > emitter.sweep) {
 						p.pos.w = 0.0;
 						particles[gid] = p;
 						return;
 					}
-					spawn_pos += r * emitter.dimensions;
+					spawn_pos += rel_p;
 				} else if (emitter.type == 2) { // Sphere
 					vec3 r = normalize(random_vec) * rand(seed.yx);
 					// Sweep for sphere: spawn only where r.y < (sweep * 2.0 - 1.0)
@@ -286,6 +313,12 @@ void main() {
 				} else if (p.style == 7) { // Fireflies
 					p.pos = vec4(spawn_pos, 5.0 + rand(seed) * 5.0);
 					p.vel = vec4(rand3(seed) * 0.1, 0.0);
+				} else if (p.style == 8) { // Debug
+					p.pos = vec4(spawn_pos, 10.0);
+					p.vel = vec4(0.0, 0.0, 0.0, 0.0);
+				} else if (p.style == 9) { // Cinder
+					p.pos = vec4(spawn_pos, kCinderLifetime * (0.8 + 0.4 * rand(seed)));
+					p.vel = vec4(normalize(random_vec) * kCinderSpeed * rand(seed.yx), 0.0);
 				}
 				particles[gid] = p;
 				return;
@@ -431,13 +464,22 @@ void main() {
 		p.vel.y += 0.15 * u_delta_time; // Gentle rising
 		p.vel.xyz *= 0.99;
 		maxSpeed = 2.0;
+	} else if (p.style == 8) { // Debug
+		p.vel.xyz = vec3(0.0);
+	} else if (p.style == 9) { // Cinder
+		float ageFactor = clamp(1.0 - (p.pos.w / kCinderLifetime), 0.0, 1.0);
+		float curlInfluence = ageFactor * kCinderDriftIntensity;
+		p.vel.xyz += curlNoise(p.pos.xyz, u_time) * curlInfluence * u_delta_time;
+		p.vel.y += kCinderBuoyancy * ageFactor * u_delta_time;
+		p.vel.xyz *= 0.98; // Drag
+		maxSpeed = 5.0;
 	}
 
-	if (p.style != 3 && p.style != 4 && p.style != 5 && p.style != 6 && p.style != 7) {
+	if (p.style != 3 && p.style != 4 && p.style != 5 && p.style != 6 && p.style != 7 && p.style != 8 && p.style != 9) {
 		p.vel.y -= 0.05 * u_delta_time;
 	}
 
-	if (p.style != 5 && p.style != 6 && p.style != 7) {
+	if (p.style != 5 && p.style != 6 && p.style != 7 && p.style != 8 && p.style != 9) {
 		p.vel += vec4(mix(curlNoise(p.pos.xyz, u_time) * 3, vec3(0, 0, 0), length(p.vel) / maxSpeed), 0) * u_delta_time;
 	}
 

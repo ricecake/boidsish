@@ -1,7 +1,6 @@
 #ifndef ATMOSPHERE_COMMON_GLSL
 #define ATMOSPHERE_COMMON_GLSL
 
-
 #include "../helpers/constants.glsl"
 
 // Physical Constants

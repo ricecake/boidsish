@@ -7,6 +7,7 @@
 #include "biome_properties.h"
 #include "graphics.h" // For logger
 #include "logger.h"
+#include "model.h"
 #include <GL/glew.h>
 #include <glm/gtc/type_ptr.hpp>
 
@@ -45,6 +46,9 @@ namespace Boidsish {
 		}
 		if (terrain_chunk_buffer_ != 0) {
 			glDeleteBuffers(1, &terrain_chunk_buffer_);
+		}
+		if (slice_data_buffer_ != 0) {
+			glDeleteBuffers(1, &slice_data_buffer_);
 		}
 		if (dummy_vao_ != 0) {
 			glDeleteVertexArrays(1, &dummy_vao_);
@@ -109,6 +113,11 @@ namespace Boidsish {
 		glBindBuffer(GL_SHADER_STORAGE_BUFFER, terrain_chunk_buffer_);
 		// Pre-allocate for 1024 chunks as a reasonable default
 		glBufferData(GL_SHADER_STORAGE_BUFFER, 1024 * sizeof(glm::vec4), nullptr, GL_DYNAMIC_DRAW);
+
+		glGenBuffers(1, &slice_data_buffer_);
+		glBindBuffer(GL_SHADER_STORAGE_BUFFER, slice_data_buffer_);
+		// Max emitters (64) * 64 points per slice as a default
+		glBufferData(GL_SHADER_STORAGE_BUFFER, kMaxEmitters * 64 * sizeof(glm::vec4), nullptr, GL_DYNAMIC_DRAW);
 
 		glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
 
@@ -211,26 +220,59 @@ namespace Boidsish {
 			needs_reallocation_ = false;
 		}
 
-		// --- Update Emitters ---
-		std::vector<Emitter> emitters;
+		// --- Update Emitters and Slice Data ---
+		std::vector<Emitter>   emitters;
+		std::vector<glm::vec4> slice_points;
 		emitters.reserve(effects_.size());
+
 		for (const auto& effect : effects_) {
 			if (effect) {
-				emitters.push_back(
-					{effect->GetPosition(),
-				     (int)effect->GetStyle(),
-				     effect->GetDirection(),
-				     1, // is_active
-				     effect->GetVelocity(),
-				     effect->GetId(),
-				     effect->GetDimensions(),
-				     (int)effect->GetType(),
-				     effect->GetSweep()}
-				);
+				Emitter emitter = {
+					effect->GetPosition(),
+					(int)effect->GetStyle(),
+					effect->GetDirection(),
+					1, // is_active
+					effect->GetVelocity(),
+					effect->GetId(),
+					effect->GetDimensions(),
+					(int)effect->GetType(),
+					effect->GetSweep(),
+					0, // use_slice_data
+					0, // slice_data_offset
+					0  // slice_data_count
+				};
+
+				auto model = effect->GetSourceModel();
+				if (effect->GetType() == EmitterType::Model && model) {
+					ModelSlice slice = model->GetSlice(effect->GetDirection(), effect->GetSweep());
+					if (!slice.triangles.empty()) {
+						emitter.use_slice_data = 1;
+						emitter.slice_data_offset = static_cast<int>(slice_points.size());
+						emitter.slice_data_count = 64; // Sample 64 points per slice
+
+						for (int i = 0; i < emitter.slice_data_count; ++i) {
+							slice_points.push_back(glm::vec4(slice.GetRandomPoint(), 1.0f));
+						}
+					}
+				}
+
+				emitters.push_back(emitter);
 			} else {
 				// Add a placeholder for inactive emitters to maintain indexing
-				emitters.push_back({glm::vec3(0), 0, glm::vec3(0), 0, glm::vec3(0), 0, glm::vec3(0), 0, 0.0f});
+				emitters.push_back({glm::vec3(0), 0, glm::vec3(0), 0, glm::vec3(0), 0, glm::vec3(0), 0, 0.0f, 0, 0, 0});
 			}
+		}
+
+		if (!slice_points.empty()) {
+			glBindBuffer(GL_SHADER_STORAGE_BUFFER, slice_data_buffer_);
+			// Ensure buffer is large enough
+			size_t required_size = slice_points.size() * sizeof(glm::vec4);
+			GLint  current_size = 0;
+			glGetBufferParameteriv(GL_SHADER_STORAGE_BUFFER, GL_BUFFER_SIZE, &current_size);
+			if (required_size > (size_t)current_size) {
+				glBufferData(GL_SHADER_STORAGE_BUFFER, required_size * 2, nullptr, GL_DYNAMIC_DRAW);
+			}
+			glBufferSubData(GL_SHADER_STORAGE_BUFFER, 0, required_size, slice_points.data());
 		}
 
 		// Update emitter buffer, only reallocating if capacity exceeded
@@ -274,6 +316,7 @@ namespace Boidsish {
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, emitter_buffer_);
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 2, indirection_buffer_);
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 3, terrain_chunk_buffer_);
+		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 4, slice_data_buffer_);
 
 		if (heightmap_texture != 0) {
 			glActiveTexture(GL_TEXTURE7);
@@ -307,6 +350,7 @@ namespace Boidsish {
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, 0);
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 2, 0);
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 3, 0);
+		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 4, 0);
 	}
 
 	void FireEffectManager::_UpdateParticleAllocation() {

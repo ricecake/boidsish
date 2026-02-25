@@ -2,7 +2,6 @@
 #define HELPERS_LIGHTING_GLSL
 
 #include "../helpers/constants.glsl"
-
 #include "../lighting.glsl"
 
 const int LIGHT_TYPE_POINT = 0;

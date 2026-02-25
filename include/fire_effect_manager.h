@@ -30,7 +30,9 @@ namespace Boidsish {
 		glm::vec3 dimensions; // 12 bytes
 		int       type;       // 4 bytes -> total 16
 		float     sweep;      // 4 bytes
-		int       _padding[3];
+		int       use_slice_data;
+		int       slice_data_offset;
+		int       slice_data_count;
 	};
 
 	class FireEffectManager {
@@ -89,6 +91,7 @@ namespace Boidsish {
 		GLuint emitter_buffer_{0};
 		GLuint indirection_buffer_{0};
 		GLuint terrain_chunk_buffer_{0};
+		GLuint slice_data_buffer_{0};
 		GLuint dummy_vao_{0};
 
 		bool   initialized_{false};

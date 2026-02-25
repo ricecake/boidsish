@@ -1,10 +1,26 @@
 #pragma once
 
+#include <memory>
+
 #include <glm/glm.hpp>
 
 namespace Boidsish {
 
-	enum class FireEffectStyle { MissileExhaust, Explosion, Fire, Sparks, Glitter, Ambient, Bubbles, Fireflies, Null };
+	class Model;
+
+	enum class FireEffectStyle {
+		MissileExhaust,
+		Explosion,
+		Fire,
+		Sparks,
+		Glitter,
+		Ambient,
+		Bubbles,
+		Fireflies,
+		Debug,
+		Cinder,
+		Null
+	};
 
 	enum class EmitterType { Point = 0, Box = 1, Sphere = 2, Beam = 3, Model = 4 };
 
@@ -52,6 +68,10 @@ namespace Boidsish {
 
 		float GetSweep() const { return sweep_; }
 
+		void SetSourceModel(std::shared_ptr<Model> model) { source_model_ = model; }
+
+		std::shared_ptr<Model> GetSourceModel() const { return source_model_.lock(); }
+
 		int GetId() const { return id_; }
 
 		int GetMaxParticles() const { return max_particles_; }
@@ -67,19 +87,20 @@ namespace Boidsish {
 		void SetLived(float lived) { lived_ = lived; }
 
 	private:
-		inline static int count = 1;
-		glm::vec3         position_;
-		FireEffectStyle   style_;
-		glm::vec3         direction_;
-		int               id_;
-		glm::vec3         velocity_;
-		int               max_particles_;
-		bool              active_{true};
-		float             lifetime_ = -1.0f;
-		float             lived_ = 0.0f;
-		glm::vec3         dimensions_;
-		EmitterType       type_;
-		float             sweep_ = 1.0f;
+		inline static int    count = 1;
+		glm::vec3            position_;
+		FireEffectStyle      style_;
+		glm::vec3            direction_;
+		int                  id_;
+		glm::vec3            velocity_;
+		int                  max_particles_;
+		bool                 active_{true};
+		float                lifetime_ = -1.0f;
+		float                lived_ = 0.0f;
+		glm::vec3            dimensions_;
+		EmitterType          type_;
+		float                sweep_ = 1.0f;
+		std::weak_ptr<Model> source_model_;
 	};
 
 } // namespace Boidsish
