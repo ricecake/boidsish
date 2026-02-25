@@ -62,10 +62,20 @@ namespace Boidsish {
 	}
 
 	void DecorManager::AddDecorType(const std::string& model_path, const DecorProperties& props) {
+		AddDecorType(std::make_shared<Model>(model_path), props);
+	}
+
+	void DecorManager::AddDecorType(std::shared_ptr<Model> model, float density) {
+		DecorProperties props;
+		props.SetDensity(density);
+		AddDecorType(model, props);
+	}
+
+	void DecorManager::AddDecorType(std::shared_ptr<Model> model, const DecorProperties& props) {
 		_Initialize();
 
 		DecorType type;
-		type.model = std::make_shared<Model>(model_path);
+		type.model = model;
 		type.props = props;
 
 		// Main instance storage (persistent)

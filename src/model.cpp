@@ -281,6 +281,8 @@ namespace Boidsish {
 		m_data = AssetManager::GetInstance().GetModelData(path);
 	}
 
+	Model::Model(std::shared_ptr<ModelData> data, bool no_cull): Shape(), m_data(data), no_cull_(no_cull) {}
+
 	void Model::PrepareResources(Megabuffer* mb) const {
 		if (!m_data || !mb)
 			return;
