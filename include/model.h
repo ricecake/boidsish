@@ -73,6 +73,7 @@ namespace Boidsish {
 	 */
 	struct ModelSlice {
 		std::vector<glm::vec3> triangles; // Triangle soup: 3 vertices per triangle
+		float                  area = 0.0f;
 
 		/**
 		 * @brief Returns a random point within the slice.

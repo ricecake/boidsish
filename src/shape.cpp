@@ -67,6 +67,8 @@ namespace Boidsish {
 		packet.shader_handle = shader_handle;
 		packet.material_handle = MaterialHandle(0);
 
+		packet.no_cull = dissolve_enabled_;
+
 		// Calculate depth for sorting
 		float normalized_depth = context.CalculateNormalizedDepth(world_pos);
 		packet.sort_key = CalculateSortKey(
@@ -76,7 +78,8 @@ namespace Boidsish {
 			packet.draw_mode,
 			packet.index_count > 0,
 			packet.material_handle,
-			normalized_depth
+			normalized_depth,
+			packet.no_cull
 		);
 
 		out_packets.push_back(packet);

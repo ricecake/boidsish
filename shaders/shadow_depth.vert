@@ -1,5 +1,6 @@
 #version 460 core
 #extension GL_ARB_shader_draw_parameters : enable
+#extension GL_GOOGLE_include_directive : enable
 
 layout(location = 0) in vec3 aPos;
 
@@ -29,6 +30,13 @@ uniform vec3  u_aabbMin;
 uniform vec3  u_aabbMax;
 uniform float u_windResponsiveness = 1.0;
 
+uniform bool  dissolve_enabled = false;
+uniform vec3  dissolve_plane_normal = vec3(0, 1, 0);
+uniform float dissolve_plane_dist = 0.0;
+
+out vec3 FragPos;
+flat out int vUniformIndex;
+
 void main() {
 #ifdef GL_ARB_shader_draw_parameters
 	int drawID = gl_DrawIDARB;
@@ -36,7 +44,7 @@ void main() {
 	int drawID = gl_DrawID;
 #endif
 
-	int  vUniformIndex = uUseMDI ? drawID : -1;
+	vUniformIndex = uUseMDI ? drawID : -1;
 	bool use_ssbo = uUseMDI && vUniformIndex >= 0;
 
 	mat4 current_model = use_ssbo ? uniforms_data[vUniformIndex].model : model;
@@ -51,6 +59,7 @@ void main() {
 	}
 
 	vec3 worldPos = vec3(modelMatrix * vec4(aPos, 1.0));
+	FragPos = worldPos;
 
 	// Apply sway for decor (matches vis.vert logic)
 	if (current_useSSBOInstancing) {

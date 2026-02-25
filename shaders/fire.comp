@@ -27,6 +27,9 @@ struct Emitter {
 	int   use_slice_data;
 	int   slice_data_offset;
 	int   slice_data_count;
+	float slice_area;
+	int   request_clear;
+	int   _padding_emitter[2];
 };
 
 layout(std430, binding = 0) buffer ParticleBuffer {
@@ -210,11 +213,13 @@ void main() {
 	Particle p = particles[gid];
 	int      emitter_index = particle_to_emitter_map[gid];
 
-	// --- 1. Hijack/Reassignment Logic ---
+	// --- 1. Hijack/Reassignment/Clear Logic ---
 	// If this particle is needed by a fire emitter, but it's currently doing something else (like ambient)
 	// or it was assigned to a DIFFERENT emitter previously, we force it to die so it can respawn.
+	// Also check if a clear has been requested for this emitter.
 	if (emitter_index != -1 && u_num_emitters > 0 && emitter_index < u_num_emitters) {
-		if ((p.style == 5 || p.emitter_id != emitters[emitter_index].id) && p.pos.w > 0.0) {
+		Emitter emitter = emitters[emitter_index];
+		if ((emitter.request_clear != 0 || p.style == 5 || p.emitter_id != emitter.id) && p.pos.w > 0.0) {
 			p.pos.w = 0.0;
 		}
 	}
@@ -241,12 +246,18 @@ void main() {
 				vec3 spawn_pos = emitter.position;
 
 				if (emitter.use_slice_data != 0) {
-					if (abs(lifeTimeModifier - emitter.sweep) > 0.001) {
+					// Use a window proportional to the slice area for consistent particle density.
+					float window = clamp(emitter.slice_area * 0.0001, 0.0005, 0.05);
+					if (abs(lifeTimeModifier - emitter.sweep) > window) {
 						return;
 					}
 
 					spawn_pos = slice_data[emitter.slice_data_offset + (gid % emitter.slice_data_count)].xyz;
-				} else if (emitter.type == 1 || emitter.type == 4) { // Box or Model (approximated as Box)
+				} else if (emitter.type == 4) { // Model but no slice data (not hitting model yet)
+					p.pos.w = 0.0;
+					particles[gid] = p;
+					return;
+				} else if (emitter.type == 1) { // Box
 					vec3 r = rand3(seed) - 0.5;
 					vec3 rel_p = r * emitter.dimensions;
 

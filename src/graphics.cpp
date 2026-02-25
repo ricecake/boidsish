@@ -1329,6 +1329,7 @@ namespace Boidsish {
 				unsigned int                           vao;
 				unsigned int                           draw_mode;
 				unsigned int                           index_type;
+				bool                                   no_cull;
 				std::vector<RenderPacket::TextureInfo> textures;
 				uint32_t                               first_command;
 				uint32_t                               command_count;
@@ -1348,6 +1349,8 @@ namespace Boidsish {
 				if (a.index_type != b.index_type)
 					return false;
 				if ((a.index_count > 0) != (b.index_count > 0))
+					return false;
+				if (a.no_cull != b.no_cull)
 					return false;
 
 				// 2. Shader breaks (unless overridden)
@@ -1427,6 +1430,7 @@ namespace Boidsish {
 					new_batch.vao = packet.vao;
 					new_batch.draw_mode = packet.draw_mode;
 					new_batch.index_type = packet.index_type;
+					new_batch.no_cull = packet.no_cull;
 					new_batch.textures = packet.textures;
 					new_batch.first_command = is_indexed ? mdi_elements_count : mdi_arrays_count;
 					new_batch.command_count = 0;
@@ -1523,6 +1527,12 @@ namespace Boidsish {
 					current_vao = batch.vao;
 				}
 
+				if (batch.no_cull) {
+					glDisable(GL_CULL_FACE);
+				} else {
+					glEnable(GL_CULL_FACE);
+				}
+
 				if (batch.is_indexed) {
 					glBindBuffer(GL_DRAW_INDIRECT_BUFFER, indirect_elements_buffer->GetBufferId());
 					glMultiDrawElementsIndirect(
@@ -1547,6 +1557,8 @@ namespace Boidsish {
 
 			if (current_vao != 0)
 				glBindVertexArray(0);
+
+			glEnable(GL_CULL_FACE); // Restore default
 
 			for (auto* s : used_shaders) {
 				s->use();
