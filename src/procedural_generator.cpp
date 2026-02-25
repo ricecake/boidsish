@@ -32,6 +32,17 @@ namespace Boidsish {
 			}
 		};
 
+		std::map<char, std::string> ParseRules(const std::vector<std::string>& ruleStrings) {
+			std::map<char, std::string> rules;
+			for (const auto& rule : ruleStrings) {
+				size_t pos = rule.find('=');
+				if (pos != std::string::npos && pos > 0) {
+					rules[rule[0]] = rule.substr(pos + 1);
+				}
+			}
+			return rules;
+		}
+
 		void AddPuffball(
 			std::vector<Vertex>&       vertices,
 			std::vector<unsigned int>& indices,
@@ -291,7 +302,12 @@ namespace Boidsish {
 		return std::make_shared<Model>(CreateModelDataFromGeometry(vertices, indices, glm::vec3(1.0f)));
 	}
 
-	std::shared_ptr<Model> ProceduralGenerator::GenerateFlower(unsigned int seed) {
+	std::shared_ptr<Model> ProceduralGenerator::GenerateFlower(
+		unsigned int                    seed,
+		const std::string&              custom_axiom,
+		const std::vector<std::string>& custom_rules,
+		int                             iterations
+	) {
 		std::mt19937                          gen(seed);
 		std::uniform_real_distribution<float> dis(-0.1f, 0.1f);
 
@@ -299,16 +315,21 @@ namespace Boidsish {
 		std::vector<unsigned int> indices;
 
 		LSystem lsys;
-		int     ruleset = seed % 2;
-		if (ruleset == 0) {
-			lsys.axiom = "F";
-			lsys.rules['F'] = "FF-[+F+F]";
+		if (custom_axiom.empty()) {
+			int ruleset = seed % 2;
+			if (ruleset == 0) {
+				lsys.axiom = "F";
+				lsys.rules['F'] = "FF-[+F+F]";
+			} else {
+				lsys.axiom = "F";
+				lsys.rules['F'] = "F[+F]F[-F]F";
+			}
 		} else {
-			lsys.axiom = "F";
-			lsys.rules['F'] = "F[+F]F[-F]F";
+			lsys.axiom = custom_axiom;
+			lsys.rules = ParseRules(custom_rules);
 		}
 
-		std::string expanded = lsys.expand(2);
+		std::string expanded = lsys.expand(iterations);
 
 		std::stack<TurtleState> stack;
 		TurtleState             current = {glm::vec3(0, 0, 0), glm::quat(1, 0, 0, 0), 0.04f};
@@ -379,7 +400,12 @@ namespace Boidsish {
 		return std::make_shared<Model>(CreateModelDataFromGeometry(vertices, indices, glm::vec3(1.0f)), true);
 	}
 
-	std::shared_ptr<Model> ProceduralGenerator::GenerateTree(unsigned int seed) {
+	std::shared_ptr<Model> ProceduralGenerator::GenerateTree(
+		unsigned int                    seed,
+		const std::string&              custom_axiom,
+		const std::vector<std::string>& custom_rules,
+		int                             iterations
+	) {
 		std::mt19937                          gen(seed);
 		std::uniform_real_distribution<float> dis(-0.1f, 0.1f);
 
@@ -387,17 +413,22 @@ namespace Boidsish {
 		std::vector<unsigned int> indices;
 
 		LSystem lsys;
-		int     ruleset = seed % 2;
-		if (ruleset == 0) {
-			lsys.axiom = "X";
-			lsys.rules['X'] = "F[&+X][&/X][^-X][^\\X]";
-			lsys.rules['F'] = "SFF";
+		if (custom_axiom.empty()) {
+			int ruleset = seed % 2;
+			if (ruleset == 0) {
+				lsys.axiom = "X";
+				lsys.rules['X'] = "F[&+X][&/X][^-X][^\\X]";
+				lsys.rules['F'] = "SFF";
+			} else {
+				lsys.axiom = "X";
+				lsys.rules['X'] = "F[+X][-X][&X][^X]";
+				lsys.rules['F'] = "FF";
+			}
 		} else {
-			lsys.axiom = "X";
-			lsys.rules['X'] = "F[+X][-X][&X][^X]";
-			lsys.rules['F'] = "FF";
+			lsys.axiom = custom_axiom;
+			lsys.rules = ParseRules(custom_rules);
 		}
-		std::string expanded = lsys.expand(3);
+		std::string expanded = lsys.expand(iterations);
 
 		std::stack<TurtleState> stack;
 		TurtleState             current = {glm::vec3(0, 0, 0), glm::quat(1, 0, 0, 0), 0.25f};

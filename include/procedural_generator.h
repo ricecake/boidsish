@@ -18,8 +18,10 @@ namespace Boidsish {
 
 		static std::shared_ptr<Model> GenerateRock(unsigned int seed);
 		static std::shared_ptr<Model> GenerateGrass(unsigned int seed);
-		static std::shared_ptr<Model> GenerateFlower(unsigned int seed);
-		static std::shared_ptr<Model> GenerateTree(unsigned int seed);
+		static std::shared_ptr<Model>
+		GenerateFlower(unsigned int seed, const std::string& axiom = "", const std::vector<std::string>& rules = {}, int iterations = 2);
+		static std::shared_ptr<Model>
+		GenerateTree(unsigned int seed, const std::string& axiom = "", const std::vector<std::string>& rules = {}, int iterations = 3);
 
 	private:
 		struct TurtleState {
