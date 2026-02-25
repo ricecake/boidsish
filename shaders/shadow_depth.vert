@@ -57,6 +57,13 @@ void main() {
 		vec3  instanceCenter = vec3(modelMatrix[3]);
 		float instanceScale = length(vec3(modelMatrix[0]));
 
+		// Calculate the center of the base of the AABB in world space
+		vec3 localBaseCenter = vec3((u_aabbMin.x + u_aabbMax.x) * 0.5, u_aabbMin.y, (u_aabbMin.z + u_aabbMax.z) * 0.5);
+		vec3 worldBaseCenter = vec3(modelMatrix * vec4(localBaseCenter, 1.0));
+
+		// Distance from vertex to base center before swaying
+		float distToCenter = distance(worldPos, worldBaseCenter);
+
 		// Shockwave displacement
 		worldPos += getShockwaveDisplacement(instanceCenter, (aPos.y - u_aabbMin.y) * instanceScale, true);
 
@@ -69,6 +76,13 @@ void main() {
 			vec2 windNudge = curlNoise2D(instanceCenter.xz * wind_frequency + time * wind_speed * 0.5) * wind_strength *
 				u_windResponsiveness;
 			worldPos.xz += windNudge * pow(normalizedHeight, 1.2);
+		}
+
+		// Re-normalize to maintain original distance from base center (bowing effect)
+		vec3 direction = worldPos - worldBaseCenter;
+		float newDist = length(direction);
+		if (newDist > 0.001) {
+			worldPos = worldBaseCenter + (direction / newDist) * distToCenter;
 		}
 	}
 
