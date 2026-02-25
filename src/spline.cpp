@@ -18,16 +18,16 @@ namespace Boidsish {
 			     3.0f * (-p0 + 3.0f * p1 - 3.0f * p2 + p3) * (t * t));
 		}
 
-		const int   CYLINDER_SEGMENTS = 12;
 		const float EDGE_RADIUS_SCALE = 0.005f;
-		const int   CURVE_SEGMENTS = 10;
 
 		std::vector<VertexData> GenerateTube(
 			const std::vector<Vector3>&   points,
 			const std::vector<Vector3>&   ups,
 			const std::vector<float>&     sizes,
 			const std::vector<glm::vec3>& colors,
-			bool                          is_looping
+			bool                          is_looping,
+			int                           curve_segments,
+			int                           cylinder_segments
 		) {
 			std::vector<VertexData> all_vertices_data;
 			if (points.size() < 2)
@@ -50,24 +50,24 @@ namespace Boidsish {
 				std::vector<std::vector<VertexData>> rings;
 				Vector3                              last_normal = ups[p1_idx];
 
-				for (int j = 0; j <= CURVE_SEGMENTS; ++j) {
+				for (int j = 0; j <= curve_segments; ++j) {
 					std::vector<VertexData> ring;
-					float                   t = (float)j / CURVE_SEGMENTS;
+					float                   t = (float)j / curve_segments;
 
 					Vector3   point = CatmullRom(t, p0, p1, p2, p3);
 					glm::vec3 color = (1 - t) * colors[p1_idx] + t * colors[p2_idx];
 					float     r = ((1 - t) * sizes[p1_idx] + t * sizes[p2_idx]) * EDGE_RADIUS_SCALE;
 
 					Vector3 tangent;
-					if (j < CURVE_SEGMENTS) {
-						Vector3 next_point = CatmullRom((float)(j + 1) / CURVE_SEGMENTS, p0, p1, p2, p3);
+					if (j < curve_segments) {
+						Vector3 next_point = CatmullRom((float)(j + 1) / curve_segments, p0, p1, p2, p3);
 						if ((next_point - point).MagnitudeSquared() < 1e-6) {
 							tangent = Vector3(0, 1, 0);
 						} else {
 							tangent = (next_point - point).Normalized();
 						}
 					} else {
-						Vector3 prev_point = CatmullRom((float)(j - 1) / CURVE_SEGMENTS, p0, p1, p2, p3);
+						Vector3 prev_point = CatmullRom((float)(j - 1) / curve_segments, p0, p1, p2, p3);
 						if ((point - prev_point).MagnitudeSquared() < 1e-6) {
 							tangent = Vector3(0, 1, 0);
 						} else {
@@ -87,8 +87,8 @@ namespace Boidsish {
 					Vector3 bitangent = tangent.Cross(normal).Normalized();
 					last_normal = normal;
 
-					for (int k = 0; k <= CYLINDER_SEGMENTS; ++k) {
-						float   angle = 2.0f * std::numbers::pi * k / CYLINDER_SEGMENTS;
+					for (int k = 0; k <= cylinder_segments; ++k) {
+						float   angle = 2.0f * std::numbers::pi * k / cylinder_segments;
 						Vector3 cn = (normal * cos(angle) + bitangent * sin(angle)).Normalized();
 						Vector3 pos = point + cn * r;
 						ring.push_back({glm::vec3(pos.x, pos.y, pos.z), glm::vec3(cn.x, cn.y, cn.z), color});
@@ -96,8 +96,8 @@ namespace Boidsish {
 					rings.push_back(ring);
 				}
 
-				for (int j = 0; j < CURVE_SEGMENTS; ++j) {
-					for (int k = 0; k < CYLINDER_SEGMENTS; ++k) {
+				for (int j = 0; j < curve_segments; ++j) {
+					for (int k = 0; k < cylinder_segments; ++k) {
 						all_vertices_data.push_back(rings[j][k]);
 						all_vertices_data.push_back(rings[j][k + 1]);
 						all_vertices_data.push_back(rings[j + 1][k]);

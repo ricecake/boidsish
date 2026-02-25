@@ -297,6 +297,10 @@ add_executable(test_mesh_optimizer tests/test_mesh_optimizer.cpp)
 target_link_libraries(test_mesh_optimizer PRIVATE boidsish GTest::GTest GTest::Main)
 set_target_properties(test_mesh_optimizer PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}" EXCLUDE_FROM_ALL TRUE)
 add_test(NAME test_mesh_optimizer COMMAND test_mesh_optimizer)
+add_executable(test_procedural_generator tests/test_procedural_generator.cpp)
+target_link_libraries(test_procedural_generator PRIVATE boidsish GTest::GTest GTest::Main)
+set_target_properties(test_procedural_generator PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}" EXCLUDE_FROM_ALL TRUE)
+add_test(NAME test_procedural_generator COMMAND test_procedural_generator)
 
 add_executable(test_shape_scaling tests/test_shape_scaling.cpp)
 target_link_libraries(test_shape_scaling PRIVATE boidsish GTest::GTest GTest::Main)
@@ -319,4 +323,5 @@ add_dependencies(tests
     test_model_slice
     test_mesh_optimizer
     test_shape_scaling
+    test_procedural_generator
 )
