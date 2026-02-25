@@ -53,7 +53,10 @@ namespace Boidsish {
 			roughness_(other.roughness_),
 			metallic_(other.metallic_),
 			ao_(other.ao_),
-			use_pbr_(other.use_pbr_) {}
+			use_pbr_(other.use_pbr_),
+			dissolve_enabled_(other.dissolve_enabled_),
+			dissolve_plane_normal_(other.dissolve_plane_normal_),
+			dissolve_plane_dist_(other.dissolve_plane_dist_) {}
 
 		Shape& operator=(Shape&& other) noexcept {
 			if (this != &other) {
@@ -87,6 +90,9 @@ namespace Boidsish {
 				metallic_ = other.metallic_;
 				ao_ = other.ao_;
 				use_pbr_ = other.use_pbr_;
+				dissolve_enabled_ = other.dissolve_enabled_;
+				dissolve_plane_normal_ = other.dissolve_plane_normal_;
+				dissolve_plane_dist_ = other.dissolve_plane_dist_;
 			}
 			return *this;
 		}
@@ -319,6 +325,29 @@ namespace Boidsish {
 			MarkDirty();
 		}
 
+		/**
+		 * @brief Set the dissolve plane for the shape.
+		 * Fragments where dot(FragPos, direction) > dist will be discarded.
+		 * dist is usually calculated based on sweep (0.0 to 1.0) and model extent.
+		 */
+		virtual void SetDissolve(const glm::vec3& direction, float dist) {
+			dissolve_plane_normal_ = direction;
+			dissolve_plane_dist_ = dist;
+			dissolve_enabled_ = true;
+			MarkDirty();
+		}
+
+		inline void DisableDissolve() {
+			dissolve_enabled_ = false;
+			MarkDirty();
+		}
+
+		inline bool IsDissolveEnabled() const { return dissolve_enabled_; }
+
+		inline const glm::vec3& GetDissolveNormal() const { return dissolve_plane_normal_; }
+
+		inline float GetDissolveDist() const { return dissolve_plane_dist_; }
+
 		// Static shader reference
 		static std::shared_ptr<Shader> shader;
 		static ShaderHandle            shader_handle;
@@ -371,7 +400,10 @@ namespace Boidsish {
 			roughness_(0.5f),
 			metallic_(0.0f),
 			ao_(1.0f),
-			use_pbr_(false) {}
+			use_pbr_(false),
+			dissolve_enabled_(false),
+			dissolve_plane_normal_(0, 1, 0),
+			dissolve_plane_dist_(0.0f) {}
 
 		glm::quat rotation_;
 		glm::vec3 scale_;
@@ -401,6 +433,11 @@ namespace Boidsish {
 		float     metallic_;
 		float     ao_;
 		bool      use_pbr_;
+
+	protected:
+		bool      dissolve_enabled_;
+		glm::vec3 dissolve_plane_normal_;
+		float     dissolve_plane_dist_;
 
 	public:
 		// Shared sphere mesh (public for instancing support)

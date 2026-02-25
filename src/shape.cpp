@@ -54,6 +54,10 @@ namespace Boidsish {
 		packet.uniforms.use_texture = false; // Default for base sphere shape
 		packet.uniforms.is_colossal = is_colossal_;
 
+		packet.uniforms.dissolve_enabled = dissolve_enabled_ ? 1 : 0;
+		packet.uniforms.dissolve_plane_normal = dissolve_plane_normal_;
+		packet.uniforms.dissolve_plane_dist = dissolve_plane_dist_;
+
 		packet.casts_shadows = CastsShadows();
 
 		// Default to Opaque layer unless alpha is less than 1.0

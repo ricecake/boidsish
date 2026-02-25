@@ -327,6 +327,30 @@ namespace Boidsish {
 			glDisable(GL_CULL_FACE);
 		}
 
+		if (dissolve_enabled_) {
+			shader.setBool("dissolve_enabled", true);
+			shader.setVec3("dissolve_plane_normal", dissolve_plane_normal_);
+			float dist = dissolve_plane_dist_;
+			if (use_dissolve_sweep_) {
+				// Calculate dMin, dMax on the fly if using sweep
+				float     dMin = std::numeric_limits<float>::max();
+				float     dMax = -std::numeric_limits<float>::max();
+				glm::vec3 n = glm::normalize(dissolve_plane_normal_);
+
+				AABB worldAABB = m_data->aabb.Transform(model);
+				// A simple approximation using AABB corners is much faster than all vertices
+				for (int j = 0; j < 8; ++j) {
+					float d = glm::dot(n, worldAABB.GetCorner(j));
+					dMin = std::min(dMin, d);
+					dMax = std::max(dMax, d);
+				}
+				dist = dMin + dissolve_sweep_ * (dMax - dMin);
+			}
+			shader.setFloat("dissolve_plane_dist", dist);
+		} else {
+			shader.setBool("dissolve_enabled", false);
+		}
+
 		for (unsigned int i = 0; i < m_data->meshes.size(); i++) {
 			m_data->meshes[i].render(shader); // Use the passed shader, not Shape::shader
 		}
@@ -342,6 +366,21 @@ namespace Boidsish {
 
 		glm::mat4 model_matrix = GetModelMatrix();
 		glm::vec3 world_pos = glm::vec3(model_matrix[3]);
+
+		float actual_dissolve_dist = dissolve_plane_dist_;
+		if (dissolve_enabled_ && use_dissolve_sweep_) {
+			float     dMin = std::numeric_limits<float>::max();
+			float     dMax = -std::numeric_limits<float>::max();
+			glm::vec3 n = glm::normalize(dissolve_plane_normal_);
+
+			AABB worldAABB = m_data->aabb.Transform(model_matrix);
+			for (int j = 0; j < 8; ++j) {
+				float d = glm::dot(n, worldAABB.GetCorner(j));
+				dMin = std::min(dMin, d);
+				dMax = std::max(dMax, d);
+			}
+			actual_dissolve_dist = dMin + dissolve_sweep_ * (dMax - dMin);
+		}
 
 		for (const auto& mesh : m_data->meshes) {
 			RenderPacket packet;
@@ -371,6 +410,10 @@ namespace Boidsish {
 			packet.uniforms.ao = GetAO();
 			packet.uniforms.use_texture = !mesh.textures.empty();
 			packet.uniforms.is_colossal = IsColossal();
+
+			packet.uniforms.dissolve_enabled = dissolve_enabled_ ? 1 : 0;
+			packet.uniforms.dissolve_plane_normal = dissolve_plane_normal_;
+			packet.uniforms.dissolve_plane_dist = actual_dissolve_dist;
 
 			packet.casts_shadows = CastsShadows();
 
@@ -449,6 +492,14 @@ namespace Boidsish {
 	const std::string& Model::GetModelPath() const {
 		static const std::string empty;
 		return m_data ? m_data->model_path : empty;
+	}
+
+	void Model::SetDissolveSweep(const glm::vec3& direction, float sweep) {
+		dissolve_plane_normal_ = direction;
+		dissolve_sweep_ = sweep;
+		use_dissolve_sweep_ = true;
+		dissolve_enabled_ = true;
+		MarkDirty();
 	}
 
 	unsigned int Model::TextureFromFile(const char* path, const std::string& directory, bool /* gamma */) {

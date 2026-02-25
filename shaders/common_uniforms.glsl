@@ -25,5 +25,8 @@ struct CommonUniforms {
 	int   use_ssbo_instancing;
 	int   use_vertex_color;
 	float checkpoint_radius;
-	float padding[20];
+	vec3  dissolve_plane_normal;
+	float dissolve_plane_dist;
+	int   dissolve_enabled;
+	float padding[15];
 };
