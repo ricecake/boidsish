@@ -45,6 +45,7 @@ namespace Boidsish {
 		void                                         Update(const Frustum& frustum, const Camera& camera) override;
 		const std::vector<std::shared_ptr<Terrain>>& GetVisibleChunks() const override;
 		std::vector<std::shared_ptr<Terrain>>        GetVisibleChunksCopy() const override;
+		std::shared_ptr<Terrain>                     GetChunkAt(int cx, int cz) const override;
 
 		// Legacy method names for compatibility (call the interface methods)
 		void update(const Frustum& frustum, const Camera& camera) { Update(frustum, camera); }
