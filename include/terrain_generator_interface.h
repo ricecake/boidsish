@@ -71,6 +71,15 @@ namespace Boidsish {
 		virtual const std::vector<std::shared_ptr<Terrain>>& GetVisibleChunks() const = 0;
 
 		/**
+		 * @brief Get a specific terrain chunk by its grid coordinates.
+		 *
+		 * @param cx Chunk X coordinate
+		 * @param cz Chunk Z coordinate
+		 * @return shared_ptr to the chunk if cached, nullptr otherwise
+		 */
+		virtual std::shared_ptr<Terrain> GetChunkAt(int cx, int cz) const = 0;
+
+		/**
 		 * @brief Get a thread-safe copy of visible chunks.
 		 *
 		 * Creates a snapshot of the visible chunks that can be safely

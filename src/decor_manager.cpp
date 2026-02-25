@@ -7,6 +7,7 @@
 #include "geometry.h"
 #include "graphics.h"
 #include "logger.h"
+#include "terrain.h"
 #include "terrain_generator_interface.h"
 #include "terrain_render_manager.h"
 #include <GL/glew.h>
@@ -346,6 +347,12 @@ namespace Boidsish {
 					);
 				}
 
+				// Clear from terrain
+				auto terrain_chunk = terrain_gen.GetChunkAt(key.first, key.second);
+				if (terrain_chunk) {
+					terrain_chunk->ClearDecorInstances();
+				}
+
 				it = active_chunks_.erase(it);
 			} else {
 				++it;
@@ -431,6 +438,36 @@ namespace Boidsish {
 				}
 			}
 			glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
+
+			// 5. Read back decor data for interaction
+			for (const auto& [key, block] : chunks_to_generate) {
+				auto terrain_chunk = terrain_gen.GetChunkAt(key.first, key.second);
+				if (!terrain_chunk)
+					continue;
+
+				std::vector<DecorInstance> chunk_decor;
+				chunk_decor.reserve(kInstancesPerChunk); // Probable upper bound per type, but let's be reasonable
+
+				for (size_t i = 0; i < decor_types_.size(); ++i) {
+					auto&                  type = decor_types_[i];
+					std::vector<glm::mat4> matrices(kInstancesPerChunk);
+
+					glBindBuffer(GL_SHADER_STORAGE_BUFFER, type.ssbo);
+					glGetBufferSubData(
+						GL_SHADER_STORAGE_BUFFER,
+						block * kInstancesPerChunk * sizeof(glm::mat4),
+						kInstancesPerChunk * sizeof(glm::mat4),
+						matrices.data()
+					);
+
+					for (const auto& m : matrices) {
+						if (m[3][3] != 0.0f) { // Valid instance
+							chunk_decor.push_back({m, (int)i});
+						}
+					}
+				}
+				terrain_chunk->SetDecorInstances(std::move(chunk_decor));
+			}
 		}
 	}
 

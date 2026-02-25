@@ -10,6 +10,11 @@ namespace Boidsish {
 
 	class TerrainRenderManager;
 
+	struct DecorInstance {
+		glm::mat4 transform;
+		int       type_index;
+	};
+
 	class Terrain: public Shape {
 	public:
 		Terrain(
@@ -69,6 +74,10 @@ namespace Boidsish {
 
 		bool IsManagedByRenderManager() const { return managed_by_render_manager_; }
 
+		void                              SetDecorInstances(std::vector<DecorInstance> instances) { decor_instances_ = std::move(instances); }
+		const std::vector<DecorInstance>& GetDecorInstances() const { return decor_instances_; }
+		void                              ClearDecorInstances() { decor_instances_.clear(); }
+
 	private:
 		std::vector<float>        vertex_data_; // Interleaved for GPU
 		std::vector<unsigned int> indices_;
@@ -77,6 +86,8 @@ namespace Boidsish {
 		int          index_count_;
 
 		bool managed_by_render_manager_ = false;
+
+		std::vector<DecorInstance> decor_instances_;
 	};
 
 } // namespace Boidsish

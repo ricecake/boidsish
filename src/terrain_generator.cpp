@@ -407,6 +407,15 @@ namespace Boidsish {
 		return visible_chunks_;
 	}
 
+	std::shared_ptr<Terrain> TerrainGenerator::GetChunkAt(int cx, int cz) const {
+		std::lock_guard<std::recursive_mutex> lock(chunk_cache_mutex_);
+		auto                                  it = chunk_cache_.find({cx, cz});
+		if (it != chunk_cache_.end()) {
+			return it->second;
+		}
+		return nullptr;
+	}
+
 	std::vector<std::shared_ptr<Terrain>> TerrainGenerator::GetVisibleChunksCopy() const {
 		std::lock_guard<std::mutex> lock(visible_chunks_mutex_);
 		return visible_chunks_;
