@@ -80,12 +80,12 @@ namespace Boidsish {
 			ImGui::Separator();
 			ImGui::Text("Wind Effect");
 
-			float wind_strength = config.GetAppSettingFloat("wind_strength", 0.5f);
+			float wind_strength = config.GetAppSettingFloat("wind_strength", 0.15f);
 			if (ImGui::SliderFloat("Wind Strength", &wind_strength, 0.0f, 5.0f)) {
 				config.SetFloat("wind_strength", wind_strength);
 			}
 
-			float wind_speed = config.GetAppSettingFloat("wind_speed", 1.0f);
+			float wind_speed = config.GetAppSettingFloat("wind_speed", 0.15f);
 			if (ImGui::SliderFloat("Wind Speed", &wind_speed, 0.0f, 10.0f)) {
 				config.SetFloat("wind_speed", wind_speed);
 			}

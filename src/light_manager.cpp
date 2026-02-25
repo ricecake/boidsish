@@ -67,22 +67,6 @@ namespace Boidsish {
 					_cycle.time += 24.0f;
 			}
 
-			// Update night factor for transitions (10-15 seconds)
-			// At speed 0.25, 1 hour = 4 seconds. 12 seconds = 3 hours.
-			float transition_duration = 3.0f; // in hours
-			float t = _cycle.time;
-			_cycle.night_factor = 0.0f;
-			if (t >= 22.0f || t < 9.0f) {
-				float wt = (t < 12.0f) ? t + 24.0f : t;
-				if (wt < 22.0f + transition_duration) {
-					_cycle.night_factor = (wt - 22.0f) / transition_duration;
-				} else if (wt < 30.0f) {
-					_cycle.night_factor = 1.0f;
-				} else {
-					_cycle.night_factor = std::max(0.0f, 1.0f - (wt - 30.0f) / transition_duration);
-				}
-			}
-
 			// Update default directional light
 			if (!_lights.empty() && _lights[0].type == DIRECTIONAL_LIGHT) {
 				float sun_angle_deg = (_cycle.time / 24.0f) * 360.0f;
@@ -94,19 +78,29 @@ namespace Boidsish {
 				_lights[0].azimuth = 90.0f;
 				_lights[0].UpdateDirectionFromAngles();
 
-				// Adjust intensity based on elevation (dim at sunrise/sunset)
+				// With physical atmosphere, we don't manually dim the sun.
+				// The atmosphere LUTs (transmittance) will handle the color and intensity
+				// change naturally. We keep the sun "on" as long as it's not deep below horizon.
 				float elevation_rad = glm::radians(_lights[0].elevation);
 				float sun_vis = glm::sin(elevation_rad);
-				if (sun_vis > 0) {
-					_lights[0].base_intensity = std::clamp(sun_vis * 2.0f, 0.0f, 1.0f);
+
+				// Keep sun at base intensity when above horizon.
+				// Dim it only when it's significantly below to avoid sudden pops if the atmosphere
+				// doesn't perfectly occlude it at -1 degree.
+				if (sun_vis > -0.1f) {
+					_lights[0].base_intensity = 1.0f;
 				} else {
 					_lights[0].base_intensity = 0.0f;
 				}
 
-				// Update ambient light
+				// Update night factor for transitions based on sun visibility
+				// This synchronizes the post-processing and terrain night effects with the atmosphere
+				_cycle.night_factor = glm::smoothstep(0.2f, -0.2f, sun_vis);
+
+				// Basic fallback ambient - mostly handled by Atmosphere system now
 				glm::vec3 day_ambient = Constants::General::Colors::DefaultAmbient();
 				glm::vec3 night_ambient = day_ambient * 0.15f;
-				float     ambient_factor = std::max(0.0f, sun_vis);
+				float     ambient_factor = std::clamp(sun_vis * 5.0f + 0.5f, 0.0f, 1.0f);
 				_ambient_light = glm::mix(night_ambient, day_ambient, ambient_factor);
 			}
 		}

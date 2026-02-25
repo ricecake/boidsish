@@ -152,6 +152,7 @@ void main() {
 		float alpha = max(smoothstep(0.15, 0.08, distToCenter), exp(-distToCenter * 3.0) * 0.8);
 		outColor = vec4(result, alpha * fade * c_objectAlpha);
 	} else if (c_isColossal) {
+		// Restore colossal haze style
 		vec3  skyColor = vec3(0.2, 0.4, 0.8);
 		float haze_start = 0.0;
 		float haze_end = 150.0;
@@ -178,7 +179,8 @@ void main() {
 		}
 
 		outColor = vec4(result, final_alpha);
-		outColor = mix(vec4(0.0, 0.7, 0.7, final_alpha) * length(outColor), outColor, step(1, fade));
+		// Restore deliberate cyan style for distant objects
+		outColor = mix(vec4(0.0, 0.7, 0.7, final_alpha) * length(outColor), outColor, step(1.0, fade));
 	}
 
 	// if (nightFactor > 0) {

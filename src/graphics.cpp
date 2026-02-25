@@ -16,6 +16,7 @@
 #include "UIManager.h"
 #include "akira_effect.h"
 #include "arcade_text.h"
+#include "atmosphere_manager.h"
 #include "audio_manager.h"
 #include "checkpoint_ring.h"
 #include "clone_manager.h"
@@ -350,31 +351,33 @@ namespace Boidsish {
 	};
 
 	struct Visualizer::VisualizerImpl {
-		Visualizer*                           parent;
-		GLFWwindow*                           window;
-		int                                   width, height;
-		Camera                                camera;
-		std::vector<ShapeFunction>            shape_functions;
-		std::vector<std::shared_ptr<Shape>>   shapes;            // Legacy shapes from callbacks
-		std::map<int, std::shared_ptr<Shape>> persistent_shapes; // New persistent shapes
-		std::vector<std::shared_ptr<Shape>>   transient_effects; // Short-lived effects like CurvedText
-		ConcurrentQueue<ShapeCommand>         shape_command_queue;
-		std::unique_ptr<CloneManager>         clone_manager;
-		std::unique_ptr<FireEffectManager>    fire_effect_manager;
-		std::unique_ptr<NoiseManager>         noise_manager;
-		std::unique_ptr<MeshExplosionManager> mesh_explosion_manager;
-		std::unique_ptr<SoundEffectManager>   sound_effect_manager;
-		std::unique_ptr<ShockwaveManager>     shockwave_manager;
-		std::unique_ptr<AkiraEffectManager>   akira_effect_manager;
-		std::unique_ptr<SdfVolumeManager>     sdf_volume_manager;
-		std::unique_ptr<ShadowManager>        shadow_manager;
-		std::unique_ptr<SceneManager>         scene_manager;
-		std::unique_ptr<DecorManager>         decor_manager;
-		std::map<int, std::shared_ptr<Trail>> trails;
-		std::map<int, float>                  trail_last_update;
-		LightManager                          light_manager;
-		ShaderTable                           shader_table;
-		RenderQueue                           render_queue;
+		Visualizer*                                       parent;
+		GLFWwindow*                                       window;
+		int                                               width, height;
+		Camera                                            camera;
+		std::vector<ShapeFunction>                        shape_functions;
+		std::vector<std::shared_ptr<Shape>>               shapes;            // Legacy shapes from callbacks
+		std::map<int, std::shared_ptr<Shape>>             persistent_shapes; // New persistent shapes
+		std::vector<std::shared_ptr<Shape>>               transient_effects; // Short-lived effects like CurvedText
+		ConcurrentQueue<ShapeCommand>                     shape_command_queue;
+		std::unique_ptr<CloneManager>                     clone_manager;
+		std::unique_ptr<FireEffectManager>                fire_effect_manager;
+		std::unique_ptr<NoiseManager>                     noise_manager;
+		std::unique_ptr<MeshExplosionManager>             mesh_explosion_manager;
+		std::unique_ptr<SoundEffectManager>               sound_effect_manager;
+		std::unique_ptr<ShockwaveManager>                 shockwave_manager;
+		std::unique_ptr<AkiraEffectManager>               akira_effect_manager;
+		std::unique_ptr<SdfVolumeManager>                 sdf_volume_manager;
+		std::unique_ptr<ShadowManager>                    shadow_manager;
+		std::unique_ptr<AtmosphereManager>                atmosphere_manager;
+		std::shared_ptr<PostProcessing::AtmosphereEffect> atmosphere_effect;
+		std::unique_ptr<SceneManager>                     scene_manager;
+		std::unique_ptr<DecorManager>                     decor_manager;
+		std::map<int, std::shared_ptr<Trail>>             trails;
+		std::map<int, float>                              trail_last_update;
+		LightManager                                      light_manager;
+		ShaderTable                                       shader_table;
+		RenderQueue                                       render_queue;
 
 		InputState                                             input_state{};
 		std::vector<InputCallback>                             input_callbacks;
@@ -701,6 +704,8 @@ namespace Boidsish {
 			shadow_manager = std::make_unique<ShadowManager>();
 			scene_manager = std::make_unique<SceneManager>("scenes");
 			decor_manager = std::make_unique<DecorManager>();
+			atmosphere_manager = std::make_unique<AtmosphereManager>();
+			atmosphere_manager->Initialize();
 			audio_manager = std::make_unique<AudioManager>();
 			sound_effect_manager = std::make_unique<SoundEffectManager>(audio_manager.get());
 			trail_render_manager = std::make_unique<TrailRenderManager>();
@@ -980,7 +985,7 @@ namespace Boidsish {
 				super_speed_effect->SetEnabled(true);
 				post_processing_manager_->AddEffect(super_speed_effect);
 
-				auto atmosphere_effect = std::make_shared<PostProcessing::AtmosphereEffect>();
+				atmosphere_effect = std::make_shared<PostProcessing::AtmosphereEffect>();
 				atmosphere_effect->SetEnabled(true);
 				post_processing_manager_->AddEffect(atmosphere_effect);
 
@@ -1091,8 +1096,8 @@ namespace Boidsish {
 			frame_config_.artistic_glitched = cfg.GetAppSettingBool("artistic_effect_glitched", false);
 			frame_config_.artistic_wireframe = cfg.GetAppSettingBool("artistic_effect_wireframe", false);
 			frame_config_.enable_shadows = cfg.GetAppSettingBool("enable_shadows", true);
-			frame_config_.wind_strength = cfg.GetAppSettingFloat("wind_strength", 0.5f);
-			frame_config_.wind_speed = cfg.GetAppSettingFloat("wind_speed", 1.0f);
+			frame_config_.wind_strength = cfg.GetAppSettingFloat("wind_strength", 0.15f);
+			frame_config_.wind_speed = cfg.GetAppSettingFloat("wind_speed", 0.15f);
 			frame_config_.wind_frequency = cfg.GetAppSettingFloat("wind_frequency", 0.1f);
 		}
 
@@ -1680,6 +1685,22 @@ namespace Boidsish {
 			sky_shader->use();
 			sky_shader->setMat4("invProjection", glm::inverse(projection));
 			sky_shader->setMat4("invView", glm::inverse(view));
+
+			if (atmosphere_manager) {
+				atmosphere_manager->BindTextures(10);
+				sky_shader->setInt("u_transmittanceLUT", 10);
+				sky_shader->setInt("u_multiScatteringLUT", 11);
+				sky_shader->setInt("u_skyViewLUT", 12);
+
+				glm::vec3 sun_color = glm::vec3(1.0f);
+				float     sun_intensity = 1.0f;
+				if (!light_manager.GetLights().empty()) {
+					sun_color = light_manager.GetLights()[0].color;
+					sun_intensity = light_manager.GetLights()[0].intensity;
+				}
+				sky_shader->setVec3("u_sunRadiance", sun_color * sun_intensity * 20.0f);
+			}
+
 			glBindVertexArray(sky_vao);
 			glDrawArrays(GL_TRIANGLES, 0, 3);
 			glBindVertexArray(0);
@@ -2481,6 +2502,50 @@ namespace Boidsish {
 			impl->camera.fov
 		);
 		impl->audio_manager->Update();
+
+		// Update atmosphere LUTs
+		if (impl->atmosphere_manager) {
+			glm::vec3 sun_dir = glm::normalize(glm::vec3(0.0f, 1.0f, 0.0f)); // Default
+			glm::vec3 sun_color = glm::vec3(1.0f);
+			float     sun_intensity = 1.0f;
+
+			if (!impl->light_manager.GetLights().empty()) {
+				const auto& main_light = impl->light_manager.GetLights()[0];
+				if (main_light.type == DIRECTIONAL_LIGHT) {
+					sun_dir = glm::normalize(-main_light.direction);
+				} else {
+					sun_dir = glm::normalize(main_light.position - impl->camera.pos());
+				}
+				sun_color = main_light.color;
+				sun_intensity = main_light.intensity;
+			}
+
+			if (impl->atmosphere_effect) {
+				impl->atmosphere_manager->SetRayleighScale(impl->atmosphere_effect->GetRayleighScale());
+				impl->atmosphere_manager->SetMieScale(impl->atmosphere_effect->GetMieScale());
+				impl->atmosphere_manager->SetMieAnisotropy(impl->atmosphere_effect->GetMieAnisotropy());
+				impl->atmosphere_manager->SetMultiScatteringScale(impl->atmosphere_effect->GetMultiScatScale());
+				impl->atmosphere_manager->SetAmbientScatteringScale(impl->atmosphere_effect->GetAmbientScatScale());
+			}
+
+			// We multiply sun intensity by a large factor for the atmosphere model
+			// Standard directional light 1.0 is too dim for physical scattering.
+			// 20.0 is a reasonable physical-ish sun radiance.
+			impl->atmosphere_manager->Update(sun_dir, sun_color, sun_intensity * 20.0f, impl->camera.pos());
+
+			// Sync ambient light from atmosphere to ensure decor and world match
+			glm::vec3 estimated_ambient = impl->atmosphere_manager->GetAmbientEstimate();
+			impl->light_manager.SetAmbientLight(estimated_ambient);
+
+			if (impl->atmosphere_effect) {
+				impl->atmosphere_effect->SetAtmosphereLUTs(
+					impl->atmosphere_manager->GetTransmittanceLUT(),
+					impl->atmosphere_manager->GetMultiScatteringLUT(),
+					impl->atmosphere_manager->GetSkyViewLUT(),
+					impl->atmosphere_manager->GetAerialPerspectiveLUT()
+				);
+			}
+		}
 
 		glm::mat4 view = impl->SetupMatrices();
 		glm::mat4 current_vp = impl->projection * view;

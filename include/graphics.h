@@ -92,8 +92,8 @@ namespace Boidsish {
 		bool  artistic_glitched = false;
 		bool  artistic_wireframe = false;
 		bool  enable_shadows = true;
-		float wind_strength = 0.5f;
-		float wind_speed = 1.0f;
+		float wind_strength = 0.15f;
+		float wind_speed = 0.15f;
 		float wind_frequency = 0.1f;
 	};
 
