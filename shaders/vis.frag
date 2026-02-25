@@ -53,7 +53,6 @@ uniform float ao = 1.0;
 uniform bool  dissolve_enabled = false;
 uniform vec3  dissolve_plane_normal = vec3(0, 1, 0);
 uniform float dissolve_plane_dist = 0.0;
-uniform float dissolve_fade_thickness = 0.5;
 
 uniform sampler2D texture_diffuse1;
 uniform bool      use_texture;
@@ -87,17 +86,10 @@ void main() {
                                        : dissolve_enabled;
 	vec3  c_dissolve_normal = use_ssbo ? uniforms_data[vUniformIndex].dissolve_plane_normal : dissolve_plane_normal;
 	float c_dissolve_dist = use_ssbo ? uniforms_data[vUniformIndex].dissolve_plane_dist : dissolve_plane_dist;
-	float c_dissolve_fade_thickness = use_ssbo ? uniforms_data[vUniformIndex].dissolve_fade_thickness
-											   : dissolve_fade_thickness;
 
 	float fade = 1.0;
 	if (c_dissolve_enabled) {
-		float dist_to_plane = dot(FragPos, c_dissolve_normal) - c_dissolve_dist;
-		// Trail behind the slice: alpha 1 at the slice, fading to 0 over thickness in the swept direction
-		float dissolve_fade = clamp(1.0 - dist_to_plane / max(0.001, c_dissolve_fade_thickness), 0.0, 1.0);
-		fade *= dissolve_fade;
-
-		if (fade <= 0.001) {
+		if (dot(FragPos, c_dissolve_normal) > c_dissolve_dist) {
 			discard;
 		}
 	}

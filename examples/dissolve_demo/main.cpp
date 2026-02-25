@@ -22,7 +22,6 @@ int main() {
 		teapot->SetUsePBR(true);
 		teapot->SetRoughness(0.2f);
 		teapot->SetMetallic(0.8f);
-		teapot->SetDissolveFadeThickness(1.0f);
 		vis.AddShape(teapot);
 
 		// Add fire effect for the dissolve

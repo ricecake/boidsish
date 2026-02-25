@@ -33,7 +33,6 @@ uniform float u_windResponsiveness = 1.0;
 uniform bool  dissolve_enabled = false;
 uniform vec3  dissolve_plane_normal = vec3(0, 1, 0);
 uniform float dissolve_plane_dist = 0.0;
-uniform float dissolve_fade_thickness = 0.5;
 
 out vec3 FragPos;
 flat out int vUniformIndex;
