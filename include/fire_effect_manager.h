@@ -62,6 +62,9 @@ namespace Boidsish {
 			GLuint           noise_texture = 0
 		);
 
+		void SetAmbientDensity(float density) { ambient_density_ = density; }
+		void SetAmbientCullDistance(float distance) { ambient_cull_distance_ = distance; }
+
 		// Add a new fire effect and return a pointer to it
 		std::shared_ptr<FireEffect> AddEffect(
 			const glm::vec3& position,
@@ -98,6 +101,8 @@ namespace Boidsish {
 		bool   needs_reallocation_{false};
 		float  time_{0.0f};
 		size_t emitter_buffer_capacity_{0}; // Track capacity to avoid per-frame reallocation
+		float  ambient_density_ = Constants::Class::Particles::DefaultAmbientDensity();
+		float  ambient_cull_distance_ = Constants::Class::Particles::DefaultAmbientCullDistance();
 
 		static const int kMaxParticles = Constants::Class::Particles::MaxParticles();
 		static const int kMaxEmitters = Constants::Class::Particles::MaxEmitters();

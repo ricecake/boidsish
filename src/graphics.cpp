@@ -1099,6 +1099,14 @@ namespace Boidsish {
 			frame_config_.wind_strength = cfg.GetAppSettingFloat("wind_strength", 0.15f);
 			frame_config_.wind_speed = cfg.GetAppSettingFloat("wind_speed", 0.15f);
 			frame_config_.wind_frequency = cfg.GetAppSettingFloat("wind_frequency", 0.1f);
+			frame_config_.ambient_density = cfg.GetAppSettingFloat(
+				"ambient_particle_density",
+				Constants::Class::Particles::DefaultAmbientDensity()
+			);
+			frame_config_.ambient_cull_distance = cfg.GetAppSettingFloat(
+				"ambient_particle_cull_distance",
+				Constants::Class::Particles::DefaultAmbientCullDistance()
+			);
 		}
 
 		~VisualizerImpl() {
@@ -2681,6 +2689,8 @@ namespace Boidsish {
 
 		// Update clone manager
 		impl->clone_manager->Update(impl->simulation_time, impl->camera.pos());
+		impl->fire_effect_manager->SetAmbientDensity(impl->frame_config_.ambient_density);
+		impl->fire_effect_manager->SetAmbientCullDistance(impl->frame_config_.ambient_cull_distance);
 		impl->fire_effect_manager->Update(
 			impl->simulation_delta_time,
 			impl->simulation_time,

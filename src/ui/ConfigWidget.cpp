@@ -163,6 +163,24 @@ namespace Boidsish {
 					if (ImGui::Checkbox("Enable Shadows", &enable_shadows)) {
 						config_manager.SetBool("enable_shadows", enable_shadows);
 					}
+
+					ImGui::Separator();
+					ImGui::Text("Ambient Particles");
+					float density = config_manager.GetAppSettingFloat(
+						"ambient_particle_density",
+						Constants::Class::Particles::DefaultAmbientDensity()
+					);
+					if (ImGui::SliderFloat("Ambient Density", &density, 0.0f, 0.05f, "%.4f")) {
+						config_manager.SetFloat("ambient_particle_density", density);
+					}
+
+					float cull_dist = config_manager.GetAppSettingFloat(
+						"ambient_particle_cull_distance",
+						Constants::Class::Particles::DefaultAmbientCullDistance()
+					);
+					if (ImGui::SliderFloat("Ambient Cull Distance", &cull_dist, 50.0f, 1000.0f)) {
+						config_manager.SetFloat("ambient_particle_cull_distance", cull_dist);
+					}
 				}
 
 				RenderSection("global", true);

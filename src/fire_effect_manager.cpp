@@ -309,6 +309,8 @@ namespace Boidsish {
 		compute_shader_->use();
 		compute_shader_->setFloat("u_delta_time", delta_time);
 		compute_shader_->setFloat("u_time", time_);
+		compute_shader_->setFloat("u_ambientDensity", ambient_density_);
+		compute_shader_->setFloat("u_ambientCullDistance", ambient_cull_distance_);
 		compute_shader_->setInt("u_num_emitters", emitters.size());
 		compute_shader_->setInt("u_num_chunks", static_cast<int>(chunk_info.size()));
 
