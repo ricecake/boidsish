@@ -9,6 +9,7 @@
 #include "biome_properties.h"
 #include "frustum.h"
 #include "model.h"
+#include "procedural_generator.h"
 #include <glm/glm.hpp>
 #include <shader.h>
 
@@ -76,6 +77,9 @@ namespace Boidsish {
 		// Populates the manager with default decor (trees, rocks, etc.)
 		// Only adds if no decor types have been added yet.
 		void PopulateDefaultDecor();
+
+		// Adds a procedurally generated decor with multiple variants
+		void AddProceduralDecor(ProceduralType type, const DecorProperties& props, int variants = 3);
 
 		// Static helpers for getting default properties
 		static DecorProperties GetDefaultTreeProperties();
