@@ -4,7 +4,19 @@
 
 namespace Boidsish {
 
-	enum class FireEffectStyle { MissileExhaust, Explosion, Fire, Sparks, Glitter, Ambient, Bubbles, Fireflies, Null };
+	enum class FireEffectStyle {
+		MissileExhaust,
+		Explosion,
+		Fire,
+		Sparks,
+		Glitter,
+		Ambient,
+		Bubbles,
+		Fireflies,
+		Debug,
+		Cinder,
+		Null
+	};
 
 	enum class EmitterType { Point = 0, Box = 1, Sphere = 2, Beam = 3, Model = 4 };
 

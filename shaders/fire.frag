@@ -58,7 +58,7 @@ void main() {
 
 	vec3  color = vec3(0.0);
 	float alpha = 0.0;
-	if (v_style == 0 || v_style == 3 || v_style == 4 || v_style == 5 || v_style == 6 || v_style == 7 || v_style == 28) {
+	if (v_style == 0 || v_style == 3 || v_style == 4 || v_style == 5 || v_style == 6 || v_style == 7 || v_style == 8 || v_style == 9 || v_style == 28) {
 		if (v_style == 3) {                       // Sparks
 			vec3 hot_color = vec3(1.0, 1.0, 1.0); // White
 			vec3 mid_color = vec3(1.0, 0.8, 0.3); // Bright Yellow/Orange
@@ -197,6 +197,27 @@ void main() {
 
 			color = mix(iridescent_color, vec3(1.0), fresnel) + specular;
 			alpha = 0.75;
+		} else if (v_style == 8) {               // Debug
+			float hue = v_lifetime * 0.5;        // Shift through spectrum
+			color = 0.6 + 0.4 * cos(hue * 6.28 + vec3(0, 2, 4));
+			color *= 3.0;                        // Bright for bloom
+			alpha = 1.0;
+		} else if (v_style == 9) {               // Cinder
+			// Irregular shape via noise
+			float n = snoise3d(vec3(gl_PointCoord * 6.0, float(gl_PrimitiveID)));
+			shapeMask = smoothstep(0.2 + n * 0.15, 0.05, distSq);
+
+			// Color: dark grey with orange highlights
+			float cNoise = snoise3d(v_pos.xyz * 15.0 + u_time * 0.2);
+			vec3  darkGrey = vec3(0.1);
+			vec3  sootyGrey = vec3(0.25);
+			color = mix(darkGrey, sootyGrey, cNoise * 0.5 + 0.5);
+
+			float highlights = smoothstep(0.4, 0.9, snoise3d(v_pos.xyz * 40.0 + u_time));
+			vec3  orange = vec3(2.5, 0.8, 0.2);
+			color = mix(color, orange, highlights);
+
+			alpha = smoothstep(0.0, 0.5, v_lifetime);
 		} else if (v_style == 0) { // Exhaust (Smoke)
 			color = vec3(0.1);     // Dark smoke
 			alpha = v_lifetime * 0.4;

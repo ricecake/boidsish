@@ -99,9 +99,11 @@ void main() {
 			gl_PointSize = (1.0 - (1.0 - v_lifetime) * (1.0 - v_lifetime)) * 60.0; // Starts large, shrinks fast
 		} else if (p.style == 3) {                                                 // Sparks
 			gl_PointSize = 4.0 + v_lifetime * 20.0;
-		} else if (p.style == 4) {                                 // Glitter
-			gl_PointSize = 6.0;                                    // Small, consistent square
-		} else if (p.style == 5 || p.style == 6 || p.style == 7) { // Ambient, Bubbles, or Fireflies
+		} else if (p.style == 4) { // Glitter
+			gl_PointSize = 6.0;      // Small, consistent square
+		} else if (p.style == 8) { // Debug
+			gl_PointSize = 8.0;      // Fixed size point
+		} else if (p.style == 5 || p.style == 6 || p.style == 7 || p.style == 9) { // Ambient, Bubbles, Fireflies, Cinder
 			// Prominent size but attenuated by distance
 			gl_PointSize = 15.0 / (-view_pos.z * 0.05);
 
@@ -109,6 +111,9 @@ void main() {
 			float size_var = fract(sin(float(gl_VertexID) * 123.456) * 456.789);
 			if (p.style == 6 || (p.style == 5 && v_emitter_id == 2)) { // Bubbles vary more in size
 				gl_PointSize *= (0.5 + size_var * 1.5);
+			} else if (p.style == 9) { // Cinders are a bit smaller but vary
+				gl_PointSize *= (0.6 + size_var * 0.4);
+				gl_PointSize *= 0.8;
 			} else {
 				gl_PointSize *= (0.8 + size_var * 0.4);
 			}
