@@ -124,7 +124,9 @@ namespace Boidsish {
 			std::vector<unsigned int>&    indices,
 			const std::vector<glm::vec3>& pts,
 			const std::vector<float>&     radii,
-			const std::vector<glm::vec3>& colors
+			const std::vector<glm::vec3>& colors,
+			int                           curve_segments = 10,
+			int                           cylinder_segments = 12
 		) {
 			if (pts.size() < 2)
 				return;
@@ -141,7 +143,7 @@ namespace Boidsish {
 				s_colors.push_back(colors[i]);
 			}
 
-			auto v_data = Spline::GenerateTube(s_pts, s_ups, s_sizes, s_colors, false);
+			auto v_data = Spline::GenerateTube(s_pts, s_ups, s_sizes, s_colors, false, curve_segments, cylinder_segments);
 
 			unsigned int base = vertices.size();
 			for (const auto& vd : v_data) {
@@ -157,7 +159,53 @@ namespace Boidsish {
 				indices.push_back(base + i);
 			}
 		}
+
+		void WeldVertices(std::vector<Vertex>& vertices, std::vector<unsigned int>& indices) {
+			if (vertices.empty() || indices.empty())
+				return;
+
+			std::vector<Vertex>            new_vertices;
+			std::vector<unsigned int>      new_indices;
+			std::map<size_t, unsigned int> vertex_map;
+
+			auto hash_vertex = [](const Vertex& v) {
+				size_t h1 = std::hash<float>{}(std::round(v.Position.x * 1000.0f));
+				size_t h2 = std::hash<float>{}(std::round(v.Position.y * 1000.0f));
+				size_t h3 = std::hash<float>{}(std::round(v.Position.z * 1000.0f));
+				return h1 ^ (h2 << 1) ^ (h3 << 2);
+			};
+
+			new_indices.reserve(indices.size());
+
+			for (unsigned int idx : indices) {
+				const Vertex& v = vertices[idx];
+				size_t        h = hash_vertex(v);
+
+				if (vertex_map.find(h) == vertex_map.end()) {
+					vertex_map[h] = static_cast<unsigned int>(new_vertices.size());
+					new_vertices.push_back(v);
+				}
+				new_indices.push_back(vertex_map[h]);
+			}
+
+			vertices = std::move(new_vertices);
+			indices = std::move(new_indices);
+		}
 	} // namespace
+
+	std::shared_ptr<Model> ProceduralGenerator::Generate(ProceduralType type, unsigned int seed) {
+		switch (type) {
+		case ProceduralType::Rock:
+			return GenerateRock(seed);
+		case ProceduralType::Grass:
+			return GenerateGrass(seed);
+		case ProceduralType::Flower:
+			return GenerateFlower(seed);
+		case ProceduralType::Tree:
+			return GenerateTree(seed);
+		}
+		return nullptr;
+	}
 
 	std::shared_ptr<Model> ProceduralGenerator::GenerateRock(unsigned int seed) {
 		std::mt19937                          gen(seed);
@@ -249,10 +297,14 @@ namespace Boidsish {
 		std::vector<unsigned int> indices;
 
 		LSystem lsys;
-		lsys.axiom = "F";
-		// lsys.rules['F'] = "F[+F][-F]";
-		lsys.rules['F'] = "FF-[+F+F]";
-		lsys.rules['X'] = "F-[[X]+X]+F[+FX]-X";
+		int     ruleset = seed % 2;
+		if (ruleset == 0) {
+			lsys.axiom = "F";
+			lsys.rules['F'] = "FF-[+F+F]";
+		} else {
+			lsys.axiom = "F";
+			lsys.rules['F'] = "F[+F]F[-F]F";
+		}
 
 		std::string expanded = lsys.expand(2);
 
@@ -264,34 +316,51 @@ namespace Boidsish {
 		glm::vec3 stemCol(0.2f, 0.6f, 0.2f);
 		glm::vec3 petalCol(0.9f + dis(gen), 0.2f + dis(gen), 0.4f + dis(gen));
 
+		std::vector<glm::vec3> branch_pts;
+		std::vector<float>     branch_radii;
+		std::vector<glm::vec3> branch_cols;
+
+		auto flushBranch = [&]() {
+			if (branch_pts.size() >= 2) {
+				AddSplineTube(vertices, indices, branch_pts, branch_radii, branch_cols, 4, 6);
+			}
+			branch_pts.clear();
+			branch_radii.clear();
+			branch_cols.clear();
+		};
+
 		for (char c : expanded) {
 			if (c == 'F') {
-				std::vector<glm::vec3> pts = {current.position};
-				std::vector<float>     radii = {current.thickness};
-				std::vector<glm::vec3> colors = {stemCol};
-
+				if (branch_pts.empty()) {
+					branch_pts.push_back(current.position);
+					branch_radii.push_back(current.thickness);
+					branch_cols.push_back(stemCol);
+				}
 				current.position += current.orientation * glm::vec3(0, step, 0);
-				pts.push_back(current.position);
 				current.thickness *= 0.85f;
-				radii.push_back(current.thickness);
-				colors.push_back(stemCol);
-
-				AddSplineTube(vertices, indices, pts, radii, colors);
-			} else if (c == '+') {
-				current.orientation = current.orientation * glm::angleAxis(angle + dis(gen), glm::vec3(1, 0, 0));
-			} else if (c == '-') {
-				current.orientation = current.orientation * glm::angleAxis(-angle + dis(gen), glm::vec3(1, 0, 0));
-			} else if (c == '&') { // Pitch
-				current.orientation = current.orientation * glm::angleAxis(angle, glm::vec3(0, 0, 1));
-			} else if (c == '^') {
-				current.orientation = current.orientation * glm::angleAxis(-angle, glm::vec3(0, 0, 1));
-			} else if (c == '\\') { // Roll
-				current.orientation = current.orientation * glm::angleAxis(angle, glm::vec3(0, 1, 0));
-			} else if (c == '/') {
-				current.orientation = current.orientation * glm::angleAxis(-angle, glm::vec3(0, 1, 0));
+				branch_pts.push_back(current.position);
+				branch_radii.push_back(current.thickness);
+				branch_cols.push_back(stemCol);
+			} else if (c == '+' || c == '-' || c == '&' || c == '^' || c == '\\' || c == '/') {
+				// We keep points in the same spline for smooth curves, unless we want sharp joints.
+				// For L-systems, rotation usually happens between segments.
+				if (c == '+')
+					current.orientation = current.orientation * glm::angleAxis(angle + dis(gen), glm::vec3(1, 0, 0));
+				else if (c == '-')
+					current.orientation = current.orientation * glm::angleAxis(-angle + dis(gen), glm::vec3(1, 0, 0));
+				else if (c == '&')
+					current.orientation = current.orientation * glm::angleAxis(angle, glm::vec3(0, 0, 1));
+				else if (c == '^')
+					current.orientation = current.orientation * glm::angleAxis(-angle, glm::vec3(0, 0, 1));
+				else if (c == '\\')
+					current.orientation = current.orientation * glm::angleAxis(angle, glm::vec3(0, 1, 0));
+				else if (c == '/')
+					current.orientation = current.orientation * glm::angleAxis(-angle, glm::vec3(0, 1, 0));
 			} else if (c == '[') {
+				flushBranch();
 				stack.push(current);
 			} else if (c == ']') {
+				flushBranch();
 				// Flower head
 				AddPuffball(vertices, indices, current.position, 0.15f, glm::vec3(1.0f, 0.9f, 0.2f), gen);
 				for (int i = 0; i < 6; ++i) {
@@ -303,6 +372,7 @@ namespace Boidsish {
 				stack.pop();
 			}
 		}
+		flushBranch();
 
 		return std::make_shared<Model>(CreateModelDataFromGeometry(vertices, indices, glm::vec3(1.0f)), true);
 	}
@@ -315,9 +385,16 @@ namespace Boidsish {
 		std::vector<unsigned int> indices;
 
 		LSystem lsys;
-		lsys.axiom = "X";
-		lsys.rules['X'] = "F[&+X][&/X][^-X][^\\X]"; // More 3D branching
-		lsys.rules['F'] = "SFF";                    // S for scale
+		int     ruleset = seed % 2;
+		if (ruleset == 0) {
+			lsys.axiom = "X";
+			lsys.rules['X'] = "F[&+X][&/X][^-X][^\\X]";
+			lsys.rules['F'] = "SFF";
+		} else {
+			lsys.axiom = "X";
+			lsys.rules['X'] = "F[+X][-X][&X][^X]";
+			lsys.rules['F'] = "FF";
+		}
 		std::string expanded = lsys.expand(3);
 
 		std::stack<TurtleState> stack;
@@ -328,39 +405,54 @@ namespace Boidsish {
 		glm::vec3 woodCol(0.35f, 0.25f, 0.15f);
 		glm::vec3 leafCol(0.1f, 0.45f + dis(gen), 0.1f);
 
+		std::vector<glm::vec3> branch_pts;
+		std::vector<float>     branch_radii;
+		std::vector<glm::vec3> branch_cols;
+
+		auto flushBranch = [&]() {
+			if (branch_pts.size() >= 2) {
+				AddSplineTube(vertices, indices, branch_pts, branch_radii, branch_cols, 6, 8);
+			}
+			branch_pts.clear();
+			branch_radii.clear();
+			branch_cols.clear();
+		};
+
 		for (char c : expanded) {
 			if (c == 'F') {
-				std::vector<glm::vec3> pts = {current.position};
-				std::vector<float>     radii = {current.thickness};
-				std::vector<glm::vec3> colors = {woodCol};
-
+				if (branch_pts.empty()) {
+					branch_pts.push_back(current.position);
+					branch_radii.push_back(current.thickness);
+					branch_cols.push_back(woodCol);
+				}
 				// Add some jitter to the path
 				glm::vec3 nextPos = current.position + current.orientation * glm::vec3(0, step, 0);
 				nextPos += current.orientation * glm::vec3(dis(gen) * 0.2f, 0, dis(gen) * 0.2f);
 
 				current.position = nextPos;
-				pts.push_back(current.position);
-				radii.push_back(current.thickness);
-				colors.push_back(woodCol);
-
-				AddSplineTube(vertices, indices, pts, radii, colors);
-			} else if (c == '+') {
-				current.orientation = current.orientation * glm::angleAxis(angle + dis(gen), glm::vec3(1, 0, 0));
-			} else if (c == '-') {
-				current.orientation = current.orientation * glm::angleAxis(-angle + dis(gen), glm::vec3(1, 0, 0));
-			} else if (c == '&') {
-				current.orientation = current.orientation * glm::angleAxis(angle + dis(gen), glm::vec3(0, 0, 1));
-			} else if (c == '^') {
-				current.orientation = current.orientation * glm::angleAxis(-angle + dis(gen), glm::vec3(0, 0, 1));
-			} else if (c == '\\') {
-				current.orientation = current.orientation * glm::angleAxis(angle + dis(gen), glm::vec3(0, 1, 0));
-			} else if (c == '/') {
-				current.orientation = current.orientation * glm::angleAxis(-angle + dis(gen), glm::vec3(0, 1, 0));
+				branch_pts.push_back(current.position);
+				branch_radii.push_back(current.thickness);
+				branch_cols.push_back(woodCol);
+			} else if (c == '+' || c == '-' || c == '&' || c == '^' || c == '\\' || c == '/') {
+				if (c == '+')
+					current.orientation = current.orientation * glm::angleAxis(angle + dis(gen), glm::vec3(1, 0, 0));
+				else if (c == '-')
+					current.orientation = current.orientation * glm::angleAxis(-angle + dis(gen), glm::vec3(1, 0, 0));
+				else if (c == '&')
+					current.orientation = current.orientation * glm::angleAxis(angle + dis(gen), glm::vec3(0, 0, 1));
+				else if (c == '^')
+					current.orientation = current.orientation * glm::angleAxis(-angle + dis(gen), glm::vec3(0, 0, 1));
+				else if (c == '\\')
+					current.orientation = current.orientation * glm::angleAxis(angle + dis(gen), glm::vec3(0, 1, 0));
+				else if (c == '/')
+					current.orientation = current.orientation * glm::angleAxis(-angle + dis(gen), glm::vec3(0, 1, 0));
 			} else if (c == '[') {
+				flushBranch();
 				stack.push(current);
 				// Area conservation: D^2 = sum d_i^2. For 4 branches, each d = D / 2.
 				current.thickness *= 0.5f;
 			} else if (c == ']') {
+				flushBranch();
 				// Leaf cluster
 				if (current.thickness < 0.15f) {
 					AddPuffball(vertices, indices, current.position, 0.6f, leafCol, gen);
@@ -369,15 +461,21 @@ namespace Boidsish {
 				stack.pop();
 			}
 		}
+		flushBranch();
 
 		return std::make_shared<Model>(CreateModelDataFromGeometry(vertices, indices, glm::vec3(1.0f)), true);
 	}
 
 	std::shared_ptr<ModelData> ProceduralGenerator::CreateModelDataFromGeometry(
-		const std::vector<Vertex>&       vertices,
-		const std::vector<unsigned int>& indices,
+		const std::vector<Vertex>&       vertices_in,
+		const std::vector<unsigned int>& indices_in,
 		const glm::vec3&                 diffuseColor
 	) {
+		std::vector<Vertex>       vertices = vertices_in;
+		std::vector<unsigned int> indices = indices_in;
+
+		WeldVertices(vertices, indices);
+
 		auto data = std::make_shared<ModelData>();
 
 		Mesh mesh(vertices, indices, {});

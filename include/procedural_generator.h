@@ -10,8 +10,12 @@
 
 namespace Boidsish {
 
+	enum class ProceduralType { Rock, Grass, Flower, Tree };
+
 	class ProceduralGenerator {
 	public:
+		static std::shared_ptr<Model> Generate(ProceduralType type, unsigned int seed);
+
 		static std::shared_ptr<Model> GenerateRock(unsigned int seed);
 		static std::shared_ptr<Model> GenerateGrass(unsigned int seed);
 		static std::shared_ptr<Model> GenerateFlower(unsigned int seed);

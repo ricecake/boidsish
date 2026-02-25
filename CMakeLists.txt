@@ -291,6 +291,11 @@ target_link_libraries(test_model_slice PRIVATE boidsish GTest::GTest GTest::Main
 set_target_properties(test_model_slice PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}" EXCLUDE_FROM_ALL TRUE)
 add_test(NAME test_model_slice COMMAND test_model_slice)
 
+add_executable(test_procedural_generator tests/test_procedural_generator.cpp)
+target_link_libraries(test_procedural_generator PRIVATE boidsish GTest::GTest GTest::Main)
+set_target_properties(test_procedural_generator PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}" EXCLUDE_FROM_ALL TRUE)
+add_test(NAME test_procedural_generator COMMAND test_procedural_generator)
+
 # Group all tests into a single target for convenience
 add_custom_target(tests)
 add_dependencies(tests
@@ -305,4 +310,5 @@ add_dependencies(tests
     test_deformation_overlap
     test_collision
     test_model_slice
+    test_procedural_generator
 )

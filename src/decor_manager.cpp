@@ -117,100 +117,92 @@ namespace Boidsish {
 		decor_types_.push_back(type);
 	}
 
+	void DecorManager::AddProceduralDecor(ProceduralType type, const DecorProperties& props, int variants) {
+		if (variants <= 0)
+			return;
+
+		float variant_min_density = props.min_density / variants;
+		float variant_max_density = props.max_density / variants;
+
+		for (int i = 0; i < variants; ++i) {
+			auto            model = ProceduralGenerator::Generate(type, 1337 + i);
+			DecorProperties variant_props = props;
+			variant_props.min_density = variant_min_density;
+			variant_props.max_density = variant_max_density;
+
+			AddDecorType(model, variant_props);
+		}
+	}
+
 	void DecorManager::PopulateDefaultDecor() {
 		if (!decor_types_.empty())
 			return;
 
-		AddDecorType(
-			"assets/decor/Apple tree/AppleTree.obj",
-			{
-				.min_density = 0.025f,
-				.max_density = 0.05f,
-				.base_scale = 0.5f,
-				.scale_variance = 0.01f,
-				.min_height = 5.0f,
-				.max_height = 95.0f,
-				// .min_slope = 0,
-		        // .max_slope = 1.0,
-		        // .base_rotation = glm::vec3(0.0f),
-				.random_yaw = true,
-				// .align_to_terrain = true,
-				.biomes = {Biome::LushGrass, Biome::Forest, Biome::AlpineMeadow}
-				// .detail_distance = 0
-			}
-		);
-		AddDecorType(
-			"assets/decor/Dead tree/PUSHILIN_dead_tree.obj",
+		// Procedural Trees
+		AddProceduralDecor(
+			ProceduralType::Tree,
 			{
 				.min_density = 0.05f,
-				.max_density = 0.075f,
+				.max_density = 0.1f,
 				.base_scale = 1.0f,
-				.scale_variance = 0.1f,
-				.min_height = 30.0f,
-				.max_height = 95.0f,
-				// .min_slope = 0,
-		        // .max_slope = 1.0,
-		        // .base_rotation = glm::vec3(0.0f),
-				.random_yaw = true,
-				// .align_to_terrain = true,
-				.biomes = {Biome::DryGrass, Biome::AlpineMeadow, Biome::BrownRock}
-				// .detail_distance
-			}
-		);
-		AddDecorType(
-			"assets/decor/Tree/tree01.obj",
-			{
-				.min_density = 0.05f,
-				.max_density = 0.075f,
-				.base_scale = 0.015f,
-				.scale_variance = 0.01f,
+				.scale_variance = 0.2f,
 				.min_height = 5.0f,
-				.max_height = 95.0f,
-				// .min_slope = 0,
-		        // .max_slope = 1.0,
-		        // .base_rotation = glm::vec3(0.0f),
+				.max_height = 150.0f,
 				.random_yaw = true,
-				// .align_to_terrain = true,
-				.biomes = {Biome::LushGrass, Biome::Forest}
-				// .detail_distance
-			}
+				.biomes = {Biome::Forest, Biome::LushGrass}
+			},
+			3
 		);
 
-		AddDecorType(
-			"assets/decor/Rose bush/Mesh_RoseBush.obj",
+		// Procedural Flowers
+		AddProceduralDecor(
+			ProceduralType::Flower,
 			{
-				.min_density = 0.05f,
-				.max_density = 0.075f,
-				.base_scale = 0.05f,
-				.scale_variance = 0.01f,
+				.min_density = 0.1f,
+				.max_density = 0.2f,
+				.base_scale = 0.5f,
+				.scale_variance = 0.1f,
 				.min_height = 5.0f,
-				.max_height = 95.0f,
-				// .min_slope = 0,
-		        // .max_slope = 1.0,
-		        // .base_rotation = glm::vec3(0.0f),
+				.max_height = 100.0f,
 				.random_yaw = true,
 				.align_to_terrain = true,
 				.biomes = {Biome::LushGrass, Biome::AlpineMeadow}
-				// .detail_distance
-			}
+			},
+			4
 		);
-		AddDecorType(
-			"assets/decor/Sunflower/PUSHILIN_sunflower.obj",
+
+		// Procedural Rocks
+		AddProceduralDecor(
+			ProceduralType::Rock,
 			{
-				.min_density = 0.05f,
-				.max_density = 0.075f,
-				.base_scale = 0.5f,
-				.scale_variance = 0.01f,
-				.min_height = 5.0f,
-				.max_height = 95.0f,
-				// .min_slope = 0,
-		        // .max_slope = 1.0,
-		        // .base_rotation = glm::vec3(0.0f),
+				.min_density = 0.2f,
+				.max_density = 0.4f,
+				.base_scale = 0.2f,
+				.scale_variance = 0.1f,
+				.min_height = 0.0f,
+				.max_height = 1000.0f,
 				.random_yaw = true,
-				// .align_to_terrain
-				.biomes = {Biome::LushGrass, Biome::AlpineMeadow}
-				// .detail_distance
-			}
+				.align_to_terrain = true,
+				.biomes = {Biome::BrownRock, Biome::GreyRock, Biome::DryGrass}
+			},
+			5
+		);
+
+		// Procedural Grass
+		AddProceduralDecor(
+			ProceduralType::Grass,
+			{
+				.min_density = 0.5f,
+				.max_density = 1.0f,
+				.base_scale = 0.3f,
+				.scale_variance = 0.1f,
+				.min_height = 0.0f,
+				.max_height = 200.0f,
+				.random_yaw = true,
+				.align_to_terrain = true,
+				.biomes = {Biome::LushGrass, Biome::DryGrass, Biome::Forest, Biome::AlpineMeadow}
+			},
+			2
 		);
 	}
 

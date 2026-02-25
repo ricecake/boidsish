@@ -9,6 +9,7 @@
 #include "logger.h"
 #include "shader.h"
 #include <GL/glew.h>
+#include <GLFW/glfw3.h>
 #include <glm/gtc/matrix_transform.hpp>
 
 namespace Boidsish {
@@ -41,6 +42,11 @@ namespace Boidsish {
 
 		if (VAO != 0)
 			return;
+
+		// Safety check for OpenGL context - skip setup if no context is available (e.g. in tests)
+		if (glfwGetCurrentContext() == nullptr) {
+			return;
+		}
 
 		glGenVertexArrays(1, &VAO);
 		glGenBuffers(1, &VBO);
