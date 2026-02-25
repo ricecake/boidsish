@@ -21,7 +21,9 @@ namespace Boidsish {
 			const std::vector<Vector3>&   ups,
 			const std::vector<float>&     sizes,
 			const std::vector<glm::vec3>& colors,
-			bool                          is_looping
+			bool                          is_looping,
+			int                           curve_segments = 10,
+			int                           cylinder_segments = 12
 		);
 
 	} // namespace Spline
