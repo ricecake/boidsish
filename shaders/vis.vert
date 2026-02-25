@@ -160,6 +160,13 @@ void main() {
 	// Apply shockwave displacement (sway for decor)
 	// Calculate at instanceCenter to prevent warping, scale by world-relative height
 	if (current_useSSBOInstancing) {
+		// Calculate the center of the base of the AABB in world space
+		vec3 localBaseCenter = vec3((u_aabbMin.x + u_aabbMax.x) * 0.5, u_aabbMin.y, (u_aabbMin.z + u_aabbMax.z) * 0.5);
+		vec3 worldBaseCenter = vec3(modelMatrix * vec4(localBaseCenter, 1.0));
+
+		// Distance from vertex to base center before swaying
+		float distToCenter = distance(FragPos, worldBaseCenter);
+
 		FragPos += getShockwaveDisplacement(instanceCenter, (aPos.y - u_aabbMin.y) * instanceScale, true);
 
 		// Apply wind sway
@@ -176,6 +183,13 @@ void main() {
 
 			// Scale nudge by height (bending effect)
 			FragPos.xz += windNudge * pow(normalizedHeight, 1.2);
+		}
+
+		// Re-normalize to maintain original distance from base center (bowing effect)
+		vec3 direction = FragPos - worldBaseCenter;
+		float newDist = length(direction);
+		if (newDist > 0.001) {
+			FragPos = worldBaseCenter + (direction / newDist) * distToCenter;
 		}
 	}
 
