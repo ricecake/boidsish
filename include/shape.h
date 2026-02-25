@@ -377,6 +377,9 @@ namespace Boidsish {
 		static std::shared_ptr<Shader> shader;
 		static ShaderHandle            shader_handle;
 
+		// Unique ID counter
+		static std::atomic<int> s_nextId;
+
 		// Sphere mesh generation
 		static void InitSphereMesh(Megabuffer* megabuffer = nullptr);
 		static void DestroySphereMesh();
@@ -401,7 +404,7 @@ namespace Boidsish {
 			int   trail_length = 0,
 			float trail_thickness = Constants::Class::Trails::BaseThickness()
 		):
-			id_(id),
+			id_(id == 0 ? s_nextId++ : id),
 			x_(x),
 			y_(y),
 			z_(z),

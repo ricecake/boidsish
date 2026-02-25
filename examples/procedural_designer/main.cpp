@@ -21,6 +21,7 @@ public:
         m_gridSize = 3;
         m_spacing = 5.0f;
         m_iterations = 3;
+        m_seedOffset = 0;
 
         Generate(); // Initial generation
     }
@@ -37,8 +38,10 @@ public:
             ImGui::SliderInt("Iterations", &m_iterations, 1, 6);
             ImGui::SliderInt("Grid Size", &m_gridSize, 1, 10);
             ImGui::SliderFloat("Spacing", &m_spacing, 1.0f, 20.0f);
+            ImGui::InputInt("Seed Offset", &m_seedOffset);
 
             if (ImGui::Button("Generate")) {
+                m_seedOffset += m_gridSize * m_gridSize;
                 Generate();
             }
         }
@@ -62,7 +65,7 @@ private:
 
         for (int i = 0; i < m_gridSize; ++i) {
             for (int j = 0; j < m_gridSize; ++j) {
-                unsigned int seed = i * m_gridSize + j + 12345;
+                unsigned int seed = i * m_gridSize + j + 12345 + m_seedOffset;
                 std::shared_ptr<Model> model;
                 if (m_type == 0) {
                     model = ProceduralGenerator::GenerateFlower(seed, axiom, ruleList, m_iterations);
@@ -87,6 +90,7 @@ private:
     int m_gridSize;
     float m_spacing;
     int m_iterations;
+    int m_seedOffset;
 };
 
 int main(int argc, char** argv) {
