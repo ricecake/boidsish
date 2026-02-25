@@ -1,8 +1,11 @@
 #pragma once
 
 #include <glm/glm.hpp>
+#include <memory>
 
 namespace Boidsish {
+
+	class Model;
 
 	enum class FireEffectStyle { MissileExhaust, Explosion, Fire, Sparks, Glitter, Ambient, Bubbles, Fireflies, Null };
 
@@ -52,6 +55,10 @@ namespace Boidsish {
 
 		float GetSweep() const { return sweep_; }
 
+		void SetSourceModel(std::shared_ptr<Model> model) { source_model_ = model; }
+
+		std::shared_ptr<Model> GetSourceModel() const { return source_model_.lock(); }
+
 		int GetId() const { return id_; }
 
 		int GetMaxParticles() const { return max_particles_; }
@@ -77,9 +84,10 @@ namespace Boidsish {
 		bool              active_{true};
 		float             lifetime_ = -1.0f;
 		float             lived_ = 0.0f;
-		glm::vec3         dimensions_;
-		EmitterType       type_;
-		float             sweep_ = 1.0f;
+		glm::vec3              dimensions_;
+		EmitterType            type_;
+		float                  sweep_ = 1.0f;
+		std::weak_ptr<Model>   source_model_;
 	};
 
 } // namespace Boidsish

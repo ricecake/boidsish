@@ -115,6 +115,12 @@ namespace Boidsish {
 		// Returns unique key for this model file - models loaded from the same file can be instanced together
 		std::string GetInstanceKey() const override;
 
+		/**
+		 * @brief Set dissolve using a normalized sweep value (0.0 to 1.0)
+		 * which is automatically mapped to the model's extent in the given direction.
+		 */
+		void SetDissolveSweep(const glm::vec3& direction, float sweep);
+
 		// Get the model path
 		const std::string& GetModelPath() const;
 
@@ -126,6 +132,9 @@ namespace Boidsish {
 		glm::quat                  base_rotation_ = glm::quat(1.0f, 0.0f, 0.0f, 0.0f);
 		std::shared_ptr<ModelData> m_data;
 		bool                       no_cull_ = false;
+
+		float dissolve_sweep_ = 0.0f;
+		bool  use_dissolve_sweep_ = false;
 
 		static unsigned int TextureFromFile(const char* path, const std::string& directory, bool gamma = false);
 	};

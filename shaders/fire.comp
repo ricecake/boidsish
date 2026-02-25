@@ -24,7 +24,9 @@ struct Emitter {
 	vec3  dimensions; // 12 bytes
 	int   type;       // 4 bytes -> total 16
 	float sweep;      // 4 bytes
-	int   _padding[3];
+	int   use_slice_data;
+	int   slice_data_offset;
+	int   slice_data_count;
 };
 
 layout(std430, binding = 0) buffer ParticleBuffer {
@@ -47,6 +49,10 @@ struct ChunkInfo {
 
 layout(std430, binding = 3) buffer ChunkInfoBuffer {
 	ChunkInfo chunks[];
+};
+
+layout(std430, binding = 4) buffer SliceDataBuffer {
+	vec4 slice_data[];
 };
 
 uniform float u_delta_time;
@@ -228,16 +234,32 @@ void main() {
 
 				// Determine spawn position based on emitter type
 				vec3 spawn_pos = emitter.position;
-				if (emitter.type == 1 || emitter.type == 4) { // Box or Model (approximated as Box)
+
+				if (emitter.use_slice_data != 0) {
+					spawn_pos = slice_data[emitter.slice_data_offset + (gid % emitter.slice_data_count)].xyz;
+				} else if (emitter.type == 1 || emitter.type == 4) { // Box or Model (approximated as Box)
 					vec3 r = rand3(seed) - 0.5;
-					// Apply sweep effect (spawn only where r.y is below sweep threshold)
-					// sweep 1.0 = full box, 0.0 = none
-					if (r.y + 0.5 > emitter.sweep) {
+					vec3 rel_p = r * emitter.dimensions;
+
+					// Improved sweep logic for arbitrary direction
+					if (length(emitter.direction) > 0.001) {
+						vec3  n = normalize(emitter.direction);
+						float h = dot(rel_p, n);
+						// We need an estimate of the half-extent along n
+						float extent = dot(abs(n), emitter.dimensions * 0.5);
+						float normalized_h = (h / (extent * 2.0)) + 0.5;
+
+						if (normalized_h > emitter.sweep) {
+							p.pos.w = 0.0;
+							particles[gid] = p;
+							return;
+						}
+					} else if (r.y + 0.5 > emitter.sweep) {
 						p.pos.w = 0.0;
 						particles[gid] = p;
 						return;
 					}
-					spawn_pos += r * emitter.dimensions;
+					spawn_pos += rel_p;
 				} else if (emitter.type == 2) { // Sphere
 					vec3 r = normalize(random_vec) * rand(seed.yx);
 					// Sweep for sphere: spawn only where r.y < (sweep * 2.0 - 1.0)
