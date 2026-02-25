@@ -62,10 +62,20 @@ namespace Boidsish {
 	}
 
 	void DecorManager::AddDecorType(const std::string& model_path, const DecorProperties& props) {
+		AddDecorType(std::make_shared<Model>(model_path), props);
+	}
+
+	void DecorManager::AddDecorType(std::shared_ptr<Model> model, float density) {
+		DecorProperties props;
+		props.SetDensity(density);
+		AddDecorType(model, props);
+	}
+
+	void DecorManager::AddDecorType(std::shared_ptr<Model> model, const DecorProperties& props) {
 		_Initialize();
 
 		DecorType type;
-		type.model = std::make_shared<Model>(model_path);
+		type.model = model;
 		type.props = props;
 
 		// Main instance storage (persistent)
@@ -514,6 +524,10 @@ namespace Boidsish {
 			// Bind the culled instances SSBO
 			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 10, type.visible_ssbo);
 
+			if (type.model->IsNoCull()) {
+				glDisable(GL_CULL_FACE);
+			}
+
 			shader->setVec3("u_aabbMin", type.model->GetAABB().min);
 			shader->setVec3("u_aabbMax", type.model->GetAABB().max);
 			shader->setFloat("u_windResponsiveness", type.props.wind_responsiveness);
@@ -533,6 +547,7 @@ namespace Boidsish {
 					}
 				}
 				shader->setBool("use_texture", hasDiffuse);
+				shader->setBool("useVertexColor", true); // Enable vertex color for decor
 				mesh.bindTextures(*shader);
 
 				glBindVertexArray(mesh.getVAO());
@@ -541,6 +556,10 @@ namespace Boidsish {
 					GL_UNSIGNED_INT,
 					(void*)(mi * sizeof(DrawElementsIndirectCommand))
 				);
+			}
+
+			if (type.model->IsNoCull()) {
+				glEnable(GL_CULL_FACE);
 			}
 		}
 

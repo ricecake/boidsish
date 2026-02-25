@@ -32,7 +32,7 @@ int main() {
             Boidsish::FireEffectStyle::Fireflies,
             glm::vec3(0, 1, 0), // direction
             glm::vec3(0, 0, 0), // velocity
-            -1,               // max particles
+            -1,                 // max particles
             -1.0f,              // lifetime
             Boidsish::EmitterType::Model,
             glm::vec3(20.0f, 20.0f, 20.0f), // dimensions

@@ -86,6 +86,9 @@ namespace Boidsish {
 		// Constructor, expects a filepath to a 3D model.
 		Model(const std::string& path, bool no_cull = false);
 
+		// Constructor for programmatically created model data.
+		Model(std::shared_ptr<ModelData> data, bool no_cull = false);
+
 		void PrepareResources(Megabuffer* megabuffer = nullptr) const override;
 
 		// Render the model
@@ -123,6 +126,8 @@ namespace Boidsish {
 
 		// Get the model path
 		const std::string& GetModelPath() const;
+
+		bool IsNoCull() const { return no_cull_; }
 
 		// Exposed for AssetManager to fill during loading
 		friend class AssetManager;

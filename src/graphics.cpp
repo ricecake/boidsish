@@ -372,7 +372,7 @@ namespace Boidsish {
 		std::unique_ptr<AtmosphereManager>                atmosphere_manager;
 		std::shared_ptr<PostProcessing::AtmosphereEffect> atmosphere_effect;
 		std::unique_ptr<SceneManager>                     scene_manager;
-		std::unique_ptr<DecorManager>                     decor_manager;
+		std::shared_ptr<DecorManager>                     decor_manager;
 		std::map<int, std::shared_ptr<Trail>>             trails;
 		std::map<int, float>                              trail_last_update;
 		LightManager                                      light_manager;
@@ -3706,6 +3706,10 @@ namespace Boidsish {
 
 	DecorManager* Visualizer::GetDecorManager() {
 		return impl->decor_manager.get();
+	}
+
+	void Visualizer::SetDecorManager(std::shared_ptr<DecorManager> decor_manager) {
+		impl->decor_manager = decor_manager;
 	}
 
 	PostProcessing::PostProcessingManager& Visualizer::GetPostProcessingManager() {

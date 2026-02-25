@@ -483,6 +483,7 @@ namespace Boidsish {
 		LightManager&                          GetLightManager();
 		FireEffectManager*                     GetFireEffectManager();
 		DecorManager*                          GetDecorManager();
+		void                                   SetDecorManager(std::shared_ptr<DecorManager> decor_manager);
 		PostProcessing::PostProcessingManager& GetPostProcessingManager();
 		float                                  GetLastFrameTime() const;
 
