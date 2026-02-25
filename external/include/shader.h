@@ -488,7 +488,9 @@ protected:
 					}
 
 					if (!fullPath.empty()) {
+						finalSource += "//START " + includePath + "\n";
 						finalSource += loadShaderSource(fullPath, includedFiles);
+						finalSource += "//END " + includePath + "\n";
 					} else {
 						std::cerr << "ERROR::SHADER::INCLUDE_NOT_FOUND: " << includePath
 								  << " (searched in relative, shaders/, and external/)" << std::endl;

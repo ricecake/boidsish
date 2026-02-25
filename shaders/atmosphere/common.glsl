@@ -1,7 +1,8 @@
 #ifndef ATMOSPHERE_COMMON_GLSL
 #define ATMOSPHERE_COMMON_GLSL
 
-#define PI 3.14159265359
+
+#include "../helpers/constants.glsl"
 
 // Physical Constants
 const float kEarthRadius = 6360.0;    // km

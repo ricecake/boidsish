@@ -1,6 +1,8 @@
 #ifndef HELPERS_LIGHTING_GLSL
 #define HELPERS_LIGHTING_GLSL
 
+#include "../helpers/constants.glsl"
+
 #include "../lighting.glsl"
 
 const int LIGHT_TYPE_POINT = 0;
@@ -194,8 +196,6 @@ float get_luminance(vec3 color) {
 // ============================================================================
 // PBR Functions (Cook-Torrance BRDF)
 // ============================================================================
-
-const float PI = 3.14159265359;
 
 // Normal Distribution Function (GGX/Trowbridge-Reitz)
 float DistributionGGX(vec3 N, vec3 H, float roughness) {
