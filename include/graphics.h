@@ -55,7 +55,7 @@ namespace Boidsish {
 #include "frustum.h"
 
 namespace Boidsish {
-	enum class ShapeCommandType { Add, Remove };
+	enum class ShapeCommandType { Add, Remove, Clear };
 
 	struct ShapeCommand {
 		ShapeCommandType       type;
@@ -193,6 +193,7 @@ namespace Boidsish {
 
 		void AddShape(std::shared_ptr<Shape> shape);
 		void RemoveShape(int shape_id);
+		void ClearShapes();
 
 		// Legacy method name for compatibility
 		void SetDotFunction(ShapeFunction func) { AddShapeHandler(func); }

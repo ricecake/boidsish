@@ -296,6 +296,11 @@ target_link_libraries(test_procedural_generator PRIVATE boidsish GTest::GTest GT
 set_target_properties(test_procedural_generator PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}" EXCLUDE_FROM_ALL TRUE)
 add_test(NAME test_procedural_generator COMMAND test_procedural_generator)
 
+add_executable(test_procedural_custom tests/test_procedural_custom.cpp)
+target_link_libraries(test_procedural_custom PRIVATE boidsish GTest::GTest GTest::Main)
+set_target_properties(test_procedural_custom PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}" EXCLUDE_FROM_ALL TRUE)
+add_test(NAME test_procedural_custom COMMAND test_procedural_custom)
+
 # Group all tests into a single target for convenience
 add_custom_target(tests)
 add_dependencies(tests
@@ -311,4 +316,5 @@ add_dependencies(tests
     test_collision
     test_model_slice
     test_procedural_generator
+    test_procedural_custom
 )

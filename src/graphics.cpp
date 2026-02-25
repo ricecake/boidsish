@@ -2251,6 +2251,10 @@ namespace Boidsish {
 		impl->shape_command_queue.push({ShapeCommandType::Remove, nullptr, shape_id});
 	}
 
+	void Visualizer::ClearShapes() {
+		impl->shape_command_queue.push({ShapeCommandType::Clear, nullptr, 0});
+	}
+
 	void Visualizer::ClearShapeHandlers() {
 		impl->shape_functions.clear();
 	}
@@ -2421,6 +2425,9 @@ namespace Boidsish {
 				break;
 			case ShapeCommandType::Remove:
 				impl->persistent_shapes.erase(command.shape_id);
+				break;
+			case ShapeCommandType::Clear:
+				impl->persistent_shapes.clear();
 				break;
 			}
 		}
