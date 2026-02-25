@@ -19,6 +19,7 @@ layout(std430, binding = 10) buffer SSBOInstances {
 #include "lighting.glsl"
 #include "temporal_data.glsl"
 #include "visual_effects.glsl"
+#include "helpers/fast_noise.glsl"
 
 uniform bool uUseMDI = false;
 uniform bool useSSBOInstancing = false;
@@ -73,7 +74,8 @@ void main() {
 			float totalHeight = max(0.001, u_aabbMax.y - u_aabbMin.y);
 			float normalizedHeight = clamp(localHeight / totalHeight, 0.0, 1.0);
 
-			vec2 windNudge = curlNoise2D(instanceCenter.xz * wind_frequency + time * wind_speed * 0.5) * wind_strength *
+			float fateFactor = fastWorley3d(vec3(instanceCenter.xz/10, time*0.5)) * 0.5 + 0.5;
+			vec2 windNudge = fateFactor * curlNoise2D(instanceCenter.xz * wind_frequency + time * wind_speed * 0.5) * wind_strength *
 				u_windResponsiveness;
 			worldPos.xz += windNudge * normalizedHeight * pow(normalizedHeight, 1.2);
 		}

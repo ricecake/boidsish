@@ -28,8 +28,8 @@ int main(int argc, char** argv) {
 	DecorProperties grass_props;
 	grass_props.min_height = 0.1f;
 	grass_props.wind_responsiveness = 1.2f;
-	grass_props.wind_rim_highlight = 0.1f;
-	grass_props.SetDensity(0.75f);
+	grass_props.wind_rim_highlight = 1.1f;
+	grass_props.SetDensity(1.0f);
 	grass_props.biomes = {Biome::LushGrass, Biome::Forest};
 	grass_props.align_to_terrain = true;
 	decor_manager->AddDecorType(grass, grass_props);
