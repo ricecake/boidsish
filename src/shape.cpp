@@ -20,6 +20,7 @@ namespace Boidsish {
 	MegabufferAllocation    Shape::sphere_alloc_;
 	std::shared_ptr<Shader> Shape::shader = nullptr;
 	ShaderHandle            Shape::shader_handle = ShaderHandle(0);
+	std::atomic<int>        Shape::s_nextId{1};
 
 	void Shape::GenerateRenderPackets(std::vector<RenderPacket>& out_packets, const RenderContext& context) const {
 		if (sphere_vao_ == 0) {
