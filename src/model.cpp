@@ -371,6 +371,7 @@ namespace Boidsish {
 			packet.uniforms.ao = GetAO();
 			packet.uniforms.use_texture = !mesh.textures.empty();
 			packet.uniforms.is_colossal = IsColossal();
+			packet.uniforms.use_vertex_color = 1;
 
 			packet.casts_shadows = CastsShadows();
 

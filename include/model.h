@@ -98,6 +98,8 @@ namespace Boidsish {
 		// Get the model path
 		const std::string& GetModelPath() const;
 
+		bool IsNoCull() const { return no_cull_; }
+
 		// Exposed for AssetManager to fill during loading
 		friend class AssetManager;
 
