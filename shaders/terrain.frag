@@ -441,6 +441,7 @@ void main() {
 		// Add cyan grid with magenta glow
 		newLighting += gridLine * cyan * 0.8;
 		newLighting += gridGlowFactor * magenta * 0.4;
+		vec3 gridLight = newLighting;
 
 		// Height-based neon pulse/glow
 		float heightGlow = smoothstep(0.0, 100.0 * worldScale, FragPos.y);
@@ -448,7 +449,7 @@ void main() {
 
 		float nightNoise = fastWorley3d(vec3(FragPos.xy / (25 * worldScale), time * 0.08));
 		float nightFade = smoothstep(fade_start - 10, fade_end, dist + nightNoise * 100.0);
-		lighting = mix(mix(lighting, newLighting, smoothstep(fade_start-50, fade_end+50, dist+50)), newLighting, nightFade);
+		lighting = mix(mix(lighting, gridLight, smoothstep(fade_start-150, fade_end-20, dist)), newLighting, nightFade);
 	// }
 
 	// ========================================================================
