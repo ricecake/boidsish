@@ -67,6 +67,10 @@ namespace Boidsish {
 		// Full overload with all properties
 		void AddDecorType(const std::string& model_path, const DecorProperties& props);
 
+		// Overloads for using existing Model objects
+		void AddDecorType(std::shared_ptr<Model> model, float density);
+		void AddDecorType(std::shared_ptr<Model> model, const DecorProperties& props);
+
 		// Populates the manager with default decor (trees, rocks, etc.)
 		// Only adds if no decor types have been added yet.
 		void PopulateDefaultDecor();
