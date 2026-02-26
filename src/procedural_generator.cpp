@@ -381,13 +381,14 @@ namespace Boidsish {
 		const glm::vec3&                 diffuseColor
 	) {
 		auto data = std::make_shared<ModelData>();
+		data->model_path = "procedural_" + std::to_string(reinterpret_cast<uintptr_t>(data.get()));
 
 		std::vector<Vertex>       vertices = vertices_in;
 		std::vector<unsigned int> indices = indices_in;
 
 		auto& config = ConfigManager::GetInstance();
 		if (config.GetAppSettingBool("mesh_optimizer_enabled", true)) {
-			MeshOptimizerUtil::Optimize(vertices, indices);
+			MeshOptimizerUtil::Optimize(vertices, indices, data->model_path);
 		}
 
 		Mesh mesh(vertices, indices, {});
@@ -405,8 +406,6 @@ namespace Boidsish {
 		} else {
 			data->aabb = AABB(glm::vec3(-0.5f), glm::vec3(0.5f));
 		}
-
-		data->model_path = "procedural_" + std::to_string(reinterpret_cast<uintptr_t>(data.get()));
 
 		return data;
 	}

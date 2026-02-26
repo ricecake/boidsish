@@ -94,10 +94,10 @@ namespace Boidsish {
 			auto& config = ConfigManager::GetInstance();
 			if (config.GetAppSettingBool("mesh_simplifier_enabled", false)) {
 				float ratio = config.GetAppSettingFloat("mesh_simplifier_target_ratio", 0.5f);
-				MeshOptimizerUtil::Simplify(vertices, indices, ratio);
+				MeshOptimizerUtil::Simplify(vertices, indices, ratio, data.model_path);
 			}
 			if (config.GetAppSettingBool("mesh_optimizer_enabled", true)) {
-				MeshOptimizerUtil::Optimize(vertices, indices);
+				MeshOptimizerUtil::Optimize(vertices, indices, data.model_path);
 			}
 
 			aiMaterial* material = scene->mMaterials[mesh->mMaterialIndex];

@@ -22,7 +22,7 @@ TEST(MeshOptimizerTest, OptimizeBasicMesh) {
     size_t original_vertex_count = vertices.size();
     size_t original_index_count = indices.size();
 
-    MeshOptimizerUtil::Optimize(vertices, indices);
+    MeshOptimizerUtil::Optimize(vertices, indices, "test_quad");
 
     EXPECT_EQ(vertices.size(), original_vertex_count);
     EXPECT_EQ(indices.size(), original_index_count);
@@ -55,7 +55,7 @@ TEST(MeshOptimizerTest, SimplifyMesh) {
     size_t original_index_count = indices.size();
 
     // Simplify to 50%
-    MeshOptimizerUtil::Simplify(vertices, indices, 0.5f);
+    MeshOptimizerUtil::Simplify(vertices, indices, 0.5f, "test_grid");
 
     EXPECT_LE(indices.size(), original_index_count);
 
