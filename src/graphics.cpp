@@ -1385,10 +1385,10 @@ namespace Boidsish {
 					return false;
 				if (a.uniforms.use_ssbo_instancing != b.uniforms.use_ssbo_instancing)
 					return false;
-		if (a.uniforms.use_skinning != b.uniforms.use_skinning)
-			return false;
-		if (a.uniforms.bone_matrices_offset != b.uniforms.bone_matrices_offset)
-			return false;
+				if (a.uniforms.use_skinning != b.uniforms.use_skinning)
+					return false;
+				if (a.uniforms.bone_matrices_offset != b.uniforms.bone_matrices_offset)
+					return false;
 
 				// 4. Textures (only if not a shadow pass)
 				if (!is_shadow_pass) {
