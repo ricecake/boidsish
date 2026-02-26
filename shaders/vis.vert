@@ -21,8 +21,8 @@ layout(std430, binding = 10) buffer SSBOInstances {
 	mat4 ssboInstanceMatrices[];
 };
 
-// SSBO for bone matrices (binding 11)
-layout(std430, binding = 11) buffer BoneMatricesSSBO {
+// SSBO for bone matrices (binding 12)
+layout(std430, binding = 12) buffer BoneMatricesSSBO {
 	mat4 boneMatrices[];
 };
 
@@ -99,11 +99,11 @@ void main() {
 	vec3 displacedNormal = aNormal;
 
 	if (current_use_skinning) {
-		vec4 totalPosition = vec4(0.0);
-		vec3 totalNormal = vec3(0.0);
-		bool hasWeights = false;
+		vec4  totalPosition = vec4(0.0);
+		vec3  totalNormal = vec3(0.0);
+		float totalWeight = 0.0;
 		for (int i = 0; i < 4; i++) {
-			if (aBoneIDs[i] == -1)
+			if (aBoneIDs[i] < 0 || aBoneIDs[i] >= 100)
 				continue;
 
 			mat4 boneMatrix;
@@ -113,14 +113,12 @@ void main() {
 				boneMatrix = finalBonesMatrices[aBoneIDs[i]];
 			}
 
-			vec4 localPosition = boneMatrix * vec4(aPos, 1.0);
-			totalPosition += localPosition * aWeights[i];
-			vec3 localNormal = mat3(boneMatrix) * aNormal;
-			totalNormal += localNormal * aWeights[i];
-			hasWeights = true;
+			totalPosition += (boneMatrix * vec4(aPos, 1.0)) * aWeights[i];
+			totalNormal += (mat3(boneMatrix) * aNormal) * aWeights[i];
+			totalWeight += aWeights[i];
 		}
-		if (hasWeights) {
-			displacedPos = totalPosition.xyz;
+		if (totalWeight > 0.001) {
+			displacedPos = totalPosition.xyz / totalWeight;
 			displacedNormal = normalize(totalNormal);
 		}
 	}

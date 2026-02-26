@@ -347,7 +347,7 @@ namespace Boidsish {
 			glDisable(GL_CULL_FACE);
 		}
 
-		if (m_animator && m_animator->GetCurrentAnimationIndex() != -1) {
+		if (m_animator && !m_data->bone_info_map.empty()) {
 			shader.setBool("use_skinning", true);
 			// For non-MDI rendering, we upload bones to a uniform array if the shader supports it,
 			// or the caller must have set up the SSBO and bone_matrices_offset.
@@ -450,7 +450,7 @@ namespace Boidsish {
 			packet.uniforms.dissolve_plane_normal = dissolve_plane_normal_;
 			packet.uniforms.dissolve_plane_dist = actual_dissolve_dist;
 
-			if (m_animator && m_animator->GetCurrentAnimationIndex() != -1) {
+			if (m_animator && !m_data->bone_info_map.empty()) {
 				packet.uniforms.use_skinning = 1;
 				packet.bone_matrices = m_animator->GetFinalBoneMatrices();
 			}
@@ -560,6 +560,7 @@ namespace Boidsish {
 	void Model::UpdateAnimation(float dt) {
 		if (m_animator) {
 			m_animator->UpdateAnimation(dt);
+			MarkDirty();
 		}
 	}
 

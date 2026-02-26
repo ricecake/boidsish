@@ -221,7 +221,18 @@ namespace Boidsish {
 			glVertexAttribPointer(8, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)offsetof(Vertex, Color));
 			glEnableVertexAttribArray(8);
 
+			// Bone IDs
+			glEnableVertexAttribArray(9);
+			glVertexAttribIPointer(9, 4, GL_INT, sizeof(Vertex), (void*)offsetof(Vertex, m_BoneIDs));
+
+			// Bone Weights
+			glEnableVertexAttribArray(10);
+			glVertexAttribPointer(10, 4, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)offsetof(Vertex, m_Weights));
+
 			glBindVertexArray(0);
+
+			// Ensure all attribute arrays are disabled by default on the global VAO
+			// (actually they are part of VAO state, so this is fine)
 
 			static_v_limit_ = Constants::Class::Megabuffer::StaticVertexLimit();
 			static_i_limit_ = Constants::Class::Megabuffer::StaticIndexLimit();
@@ -1046,6 +1057,12 @@ namespace Boidsish {
 
 		void SetupShaderBindings(ShaderBase& shader_to_setup) {
 			shader_to_setup.use();
+			shader_to_setup.setBool("uUseMDI", false);
+			shader_to_setup.setBool("useSSBOInstancing", false);
+			shader_to_setup.setBool("use_skinning", false);
+			shader_to_setup.setInt("bone_matrices_offset", -1);
+			shader_to_setup.setMat4("model", glm::mat4(1.0f));
+			shader_to_setup.setVec4("clipPlane", glm::vec4(0.0f));
 			if (noise_manager) {
 				noise_manager->BindDefault(shader_to_setup);
 			}
@@ -1368,6 +1385,10 @@ namespace Boidsish {
 					return false;
 				if (a.uniforms.use_ssbo_instancing != b.uniforms.use_ssbo_instancing)
 					return false;
+		if (a.uniforms.use_skinning != b.uniforms.use_skinning)
+			return false;
+		if (a.uniforms.bone_matrices_offset != b.uniforms.bone_matrices_offset)
+			return false;
 
 				// 4. Textures (only if not a shadow pass)
 				if (!is_shadow_pass) {
@@ -1520,7 +1541,7 @@ namespace Boidsish {
 					}
 				}
 
-				s->setBool("uUseMDI", true);
+				// s->setBool("uUseMDI", true); // Moved below SSBO binding
 
 				// Bind SSBO for this batch's uniforms (replaces uBaseUniformIndex)
 				glBindBufferRange(
@@ -1534,11 +1555,12 @@ namespace Boidsish {
 				// Bind bone matrices SSBO
 				glBindBufferRange(
 					GL_SHADER_STORAGE_BUFFER,
-					11,
+					12,
 					bone_matrices_ssbo->GetBufferId(),
 					bone_matrices_ssbo->GetFrameOffset(),
 					bone_matrices_ssbo->GetElementCount() * sizeof(glm::mat4)
 				);
+				s->setBool("uUseMDI", true);
 
 				if (!is_shadow_pass) {
 					for (size_t i = 0; i < batch.textures.size(); ++i) {
