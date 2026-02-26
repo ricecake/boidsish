@@ -1,4 +1,5 @@
-#pragma once
+#ifndef ENVIRONMENT_WIDGET_H
+#define ENVIRONMENT_WIDGET_H
 
 #include "IWidget.h"
 
@@ -17,3 +18,5 @@ namespace Boidsish {
 		};
 	} // namespace UI
 } // namespace Boidsish
+
+#endif // ENVIRONMENT_WIDGET_H

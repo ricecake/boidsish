@@ -13,6 +13,7 @@
 
 #include "ConfigManager.h"
 #include "NoiseManager.h"
+#include "SceneManager.h"
 #include "UIManager.h"
 #include "akira_effect.h"
 #include "arcade_text.h"

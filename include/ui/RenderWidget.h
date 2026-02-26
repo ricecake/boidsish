@@ -1,4 +1,5 @@
-#pragma once
+#ifndef RENDER_WIDGET_H
+#define RENDER_WIDGET_H
 
 #include "IWidget.h"
 
@@ -17,3 +18,5 @@ namespace Boidsish {
 		};
 	} // namespace UI
 } // namespace Boidsish
+
+#endif // RENDER_WIDGET_H

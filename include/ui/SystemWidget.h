@@ -1,4 +1,5 @@
-#pragma once
+#ifndef SYSTEM_WIDGET_H
+#define SYSTEM_WIDGET_H
 
 #include <optional>
 
@@ -34,3 +35,5 @@ namespace Boidsish {
 		};
 	} // namespace UI
 } // namespace Boidsish
+
+#endif // SYSTEM_WIDGET_H

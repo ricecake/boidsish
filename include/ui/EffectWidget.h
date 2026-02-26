@@ -1,4 +1,5 @@
-#pragma once
+#ifndef EFFECT_WIDGET_H
+#define EFFECT_WIDGET_H
 
 #include "IWidget.h"
 
@@ -17,3 +18,5 @@ namespace Boidsish {
 		};
 	} // namespace UI
 } // namespace Boidsish
+
+#endif // EFFECT_WIDGET_H
