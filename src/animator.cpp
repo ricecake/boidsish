@@ -136,13 +136,25 @@ namespace Boidsish {
 			}
 		} else {
 			// Robust name matching for Assimp/FBX.
-			// FBX often adds prefixes/suffixes to nodes.
+			// FBX often adds prefixes/suffixes or namespaces (e.g., "ModelName:BoneName")
 			for (auto const& [boneName, info] : m_ModelData->bone_info_map) {
 				bool match = false;
 
-				// 1. Simple substring matching (carefully)
-				if (nodeName.find(boneName) != std::string::npos || boneName.find(nodeName) != std::string::npos) {
+				// 1. Substring matching (carefully)
+				// Check if nodeName contains boneName or vice versa, typically separated by ':' or '_'
+				size_t nodeColon = nodeName.find_last_of(':');
+				std::string nodeSimple = (nodeColon == std::string::npos) ? nodeName : nodeName.substr(nodeColon + 1);
+
+				size_t boneColon = boneName.find_last_of(':');
+				std::string boneSimple = (boneColon == std::string::npos) ? boneName : boneName.substr(boneColon + 1);
+
+				if (nodeSimple == boneSimple) {
 					match = true;
+				} else if (nodeName.find(boneName) != std::string::npos || boneName.find(nodeName) != std::string::npos) {
+					// Fallback to substring only if reasonable length to avoid false positives
+					if (boneName.length() > 3 && nodeName.length() > 3) {
+						match = true;
+					}
 				}
 
 				if (match) {
