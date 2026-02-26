@@ -75,31 +75,51 @@ namespace Boidsish {
 								&nrComponents,
 								0
 							);
+
+							if (imageData) {
+								glGenTextures(1, &texture.id);
+								GLenum format = GL_RGB;
+								if (nrComponents == 1)
+									format = GL_RED;
+								else if (nrComponents == 3)
+									format = GL_RGB;
+								else if (nrComponents == 4)
+									format = GL_RGBA;
+
+								glBindTexture(GL_TEXTURE_2D, texture.id);
+								glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+								glTexImage2D(GL_TEXTURE_2D, 0, format, width, height, 0, format, GL_UNSIGNED_BYTE, imageData);
+								glGenerateMipmap(GL_TEXTURE_2D);
+
+								glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+								glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+								glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+								glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+
+								stbi_image_free(imageData);
+								logger::LOG("Compressed embedded texture loaded: {}", str.C_Str());
+							} else {
+								logger::ERROR("Failed to load compressed embedded texture: {}", str.C_Str());
+								texture.id = 0;
+							}
 						} else {
-							// Uncompressed texture
-							imageData = stbi_load_from_memory(
-								reinterpret_cast<unsigned char*>(embeddedTexture->pcData),
-								embeddedTexture->mWidth * embeddedTexture->mHeight * 4, // Rough estimate or handle properly
-								&width,
-								&height,
-								&nrComponents,
-								0
-							);
-						}
-
-						if (imageData) {
+							// Uncompressed texture (Assimp uses ARGB8888 or BGRA8888)
+							// Assimp documentation says: "Each pixel is stored in 32-bit (8 bits per channel)"
+							// Most common is BGRA.
 							glGenTextures(1, &texture.id);
-							GLenum format = GL_RGB;
-							if (nrComponents == 1)
-								format = GL_RED;
-							else if (nrComponents == 3)
-								format = GL_RGB;
-							else if (nrComponents == 4)
-								format = GL_RGBA;
-
 							glBindTexture(GL_TEXTURE_2D, texture.id);
 							glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
-							glTexImage2D(GL_TEXTURE_2D, 0, format, width, height, 0, format, GL_UNSIGNED_BYTE, imageData);
+							glTexImage2D(
+								GL_TEXTURE_2D,
+								0,
+								GL_RGBA,
+								embeddedTexture->mWidth,
+								embeddedTexture->mHeight,
+								0,
+								GL_BGRA,
+								GL_UNSIGNED_BYTE,
+								embeddedTexture->pcData
+							);
 							glGenerateMipmap(GL_TEXTURE_2D);
 
 							glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
@@ -107,14 +127,22 @@ namespace Boidsish {
 							glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
 							glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 
-							stbi_image_free(imageData);
-							logger::LOG("Embedded texture loaded: {}", str.C_Str());
-						} else {
-							logger::ERROR("Failed to load embedded texture: {}", str.C_Str());
-							texture.id = 0;
+							logger::LOG("Raw embedded texture loaded: {} ({}x{})", str.C_Str(), embeddedTexture->mWidth, embeddedTexture->mHeight);
 						}
 					} else {
-						texture.id = AssetManager::GetInstance().GetTexture(str.C_Str(), directory);
+						// Robust file-based texture lookup
+						std::string texture_path = str.C_Str();
+						texture.id = AssetManager::GetInstance().GetTexture(texture_path, directory);
+
+						if (texture.id == 0) {
+							// Try resolving filename only in model directory
+							size_t last_sep = texture_path.find_last_of("/\\");
+							if (last_sep != std::string::npos) {
+								std::string filename = texture_path.substr(last_sep + 1);
+								logger::LOG("Texture failed to load, trying fallback: {}/{}", directory, filename);
+								texture.id = AssetManager::GetInstance().GetTexture(filename, directory);
+							}
+						}
 					}
 					texture.type = typeName;
 					texture.path = str.C_Str();
@@ -171,14 +199,52 @@ namespace Boidsish {
 			}
 		}
 
-		void ExtractBoneWeightForVertices(std::vector<Vertex>& vertices, aiMesh* mesh, ModelData& data) {
+		Mesh ProcessMesh(
+			aiMesh*            mesh,
+			const aiScene*     scene,
+			ModelData&         data,
+			const std::string& directory,
+			const glm::mat4&   globalTransform
+		);
+
+		void ExtractBoneWeightForVertices(
+			std::vector<Vertex>& vertices,
+			aiMesh*              mesh,
+			ModelData&           data,
+			const glm::mat4&     globalMeshTransform,
+			const std::string&   nodeName
+		) {
+			if (mesh->mNumBones == 0) {
+				// Mesh has no bones - assign to the node itself to follow hierarchy
+				int boneID = -1;
+				if (data.bone_info_map.find(nodeName) == data.bone_info_map.end()) {
+					BoneInfo newBoneInfo;
+					newBoneInfo.id = data.bone_count;
+					newBoneInfo.offset = glm::inverse(globalMeshTransform);
+					data.bone_info_map[nodeName] = newBoneInfo;
+					boneID = data.bone_count;
+					data.bone_count++;
+				} else {
+					boneID = data.bone_info_map[nodeName].id;
+				}
+				for (auto& vertex : vertices) {
+					SetVertexBoneData(vertex, boneID, 1.0f);
+				}
+				return;
+			}
+
 			for (unsigned int boneIndex = 0; boneIndex < mesh->mNumBones; ++boneIndex) {
 				int         boneID = -1;
 				std::string boneName = mesh->mBones[boneIndex]->mName.C_Str();
+				glm::mat4   offset = ConvertMatrixToGLMFormat(mesh->mBones[boneIndex]->mOffsetMatrix);
+
+				// Normalize offset to be root-space instead of mesh-space
+				glm::mat4 rootOffset = offset * glm::inverse(globalMeshTransform);
+
 				if (data.bone_info_map.find(boneName) == data.bone_info_map.end()) {
 					BoneInfo newBoneInfo;
 					newBoneInfo.id = data.bone_count;
-					newBoneInfo.offset = ConvertMatrixToGLMFormat(mesh->mBones[boneIndex]->mOffsetMatrix);
+					newBoneInfo.offset = rootOffset;
 					data.bone_info_map[boneName] = newBoneInfo;
 					boneID = data.bone_count;
 					data.bone_count++;
@@ -198,25 +264,30 @@ namespace Boidsish {
 			}
 		}
 
-		Mesh ProcessMesh(aiMesh* mesh, const aiScene* scene, ModelData& data, const std::string& directory) {
+		Mesh ProcessMesh(
+			aiMesh*            mesh,
+			const aiScene*     scene,
+			ModelData&         data,
+			const std::string& directory,
+			const glm::mat4&   globalTransform,
+			const std::string& nodeName
+		) {
 			std::vector<Vertex>       vertices;
 			std::vector<unsigned int> indices;
 			std::vector<Texture>      textures;
+
+			glm::mat3 normalMatrix = glm::transpose(glm::inverse(glm::mat3(globalTransform)));
 
 			for (unsigned int i = 0; i < mesh->mNumVertices; i++) {
 				Vertex    vertex;
 				SetVertexBoneDataToDefault(vertex);
 
-				glm::vec3 vector;
-				vector.x = mesh->mVertices[i].x;
-				vector.y = mesh->mVertices[i].y;
-				vector.z = mesh->mVertices[i].z;
-				vertex.Position = vector;
+				glm::vec4 localPos(mesh->mVertices[i].x, mesh->mVertices[i].y, mesh->mVertices[i].z, 1.0f);
+				vertex.Position = glm::vec3(globalTransform * localPos);
+
 				if (mesh->HasNormals()) {
-					vector.x = mesh->mNormals[i].x;
-					vector.y = mesh->mNormals[i].y;
-					vector.z = mesh->mNormals[i].z;
-					vertex.Normal = vector;
+					glm::vec3 localNorm(mesh->mNormals[i].x, mesh->mNormals[i].y, mesh->mNormals[i].z);
+					vertex.Normal = glm::normalize(normalMatrix * localNorm);
 				}
 				if (mesh->mTextureCoords[0]) {
 					glm::vec2 vec;
@@ -229,7 +300,7 @@ namespace Boidsish {
 				vertices.push_back(vertex);
 			}
 
-			ExtractBoneWeightForVertices(vertices, mesh, data);
+			ExtractBoneWeightForVertices(vertices, mesh, data, globalTransform, nodeName);
 
 			for (unsigned int i = 0; i < mesh->mNumFaces; i++) {
 				aiFace face = mesh->mFaces[i];
@@ -258,6 +329,13 @@ namespace Boidsish {
 
 			std::vector<Texture> diffuseMaps =
 				LoadMaterialTextures(material, aiTextureType_DIFFUSE, "texture_diffuse", data, directory, scene);
+			if (diffuseMaps.empty()) {
+				// Fallback for some models (e.g. GLTF/OBJ sometimes use BASE_COLOR or AMBIENT as diffuse)
+				diffuseMaps = LoadMaterialTextures(material, aiTextureType_BASE_COLOR, "texture_diffuse", data, directory, scene);
+				if (diffuseMaps.empty()) {
+					diffuseMaps = LoadMaterialTextures(material, aiTextureType_AMBIENT, "texture_diffuse", data, directory, scene);
+				}
+			}
 			textures.insert(textures.end(), diffuseMaps.begin(), diffuseMaps.end());
 			std::vector<Texture> specularMaps =
 				LoadMaterialTextures(material, aiTextureType_SPECULAR, "texture_specular", data, directory, scene);
@@ -284,13 +362,22 @@ namespace Boidsish {
 			return out_mesh;
 		}
 
-		void ProcessNode(aiNode* node, const aiScene* scene, ModelData& data, const std::string& directory) {
+		void ProcessNode(
+			aiNode*            node,
+			const aiScene*     scene,
+			ModelData&         data,
+			const std::string& directory,
+			const glm::mat4&   parentTransform
+		) {
+			glm::mat4 globalTransform = parentTransform * ConvertMatrixToGLMFormat(node->mTransformation);
+			std::string nodeName = node->mName.C_Str();
+
 			for (unsigned int i = 0; i < node->mNumMeshes; i++) {
 				aiMesh* mesh = scene->mMeshes[node->mMeshes[i]];
-				data.meshes.push_back(ProcessMesh(mesh, scene, data, directory));
+				data.meshes.push_back(ProcessMesh(mesh, scene, data, directory, globalTransform, nodeName));
 			}
 			for (unsigned int i = 0; i < node->mNumChildren; i++) {
-				ProcessNode(node->mChildren[i], scene, data, directory);
+				ProcessNode(node->mChildren[i], scene, data, directory, globalTransform);
 			}
 		}
 
@@ -386,9 +473,9 @@ namespace Boidsish {
 			data->directory = ".";
 		}
 
-		data->global_inverse_transform = glm::inverse(ConvertMatrixToGLMFormat(scene->mRootNode->mTransformation));
+		data->global_inverse_transform = glm::mat4(1.0f); // Vertices are already in root space
 
-		ProcessNode(scene->mRootNode, scene, *data, data->directory);
+		ProcessNode(scene->mRootNode, scene, *data, data->directory, glm::mat4(1.0f));
 		ReadHierarchyData(data->root_node, scene->mRootNode);
 		ReadAnimations(scene, *data);
 
