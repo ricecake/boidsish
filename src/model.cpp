@@ -433,6 +433,8 @@ namespace Boidsish {
 			packet.shader_handle = shader_handle;
 			packet.material_handle = MaterialHandle(texture_hash);
 
+			packet.no_cull = no_cull_ || dissolve_enabled_;
+
 			// Calculate depth for sorting
 			float normalized_depth = context.CalculateNormalizedDepth(world_pos);
 			packet.sort_key = CalculateSortKey(
@@ -442,7 +444,8 @@ namespace Boidsish {
 				packet.draw_mode,
 				packet.index_count > 0,
 				packet.material_handle,
-				normalized_depth
+				normalized_depth,
+				packet.no_cull
 			);
 
 			out_packets.push_back(packet);
@@ -628,6 +631,12 @@ namespace Boidsish {
 			slice.triangles.push_back(centroid);
 			slice.triangles.push_back(s.first);
 			slice.triangles.push_back(s.second);
+
+			// Calculate area of this triangle
+			glm::vec3 a = centroid;
+			glm::vec3 b = s.first;
+			glm::vec3 c = s.second;
+			slice.area += 0.5f * glm::length(glm::cross(b - a, c - a));
 		}
 
 		return slice;

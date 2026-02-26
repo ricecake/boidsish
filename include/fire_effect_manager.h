@@ -33,6 +33,9 @@ namespace Boidsish {
 		int       use_slice_data;
 		int       slice_data_offset;
 		int       slice_data_count;
+		float     slice_area;
+		int       request_clear;
+		int       _padding_emitter[2];
 	};
 
 	class FireEffectManager {

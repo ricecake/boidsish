@@ -1,4 +1,5 @@
 #version 460 core
+#extension GL_GOOGLE_include_directive : enable
 layout(location = 0) out vec4 FragColor;
 layout(location = 1) out vec2 Velocity;
 
@@ -49,6 +50,10 @@ uniform float roughness = 0.5;
 uniform float metallic = 0.0;
 uniform float ao = 1.0;
 
+uniform bool  dissolve_enabled = false;
+uniform vec3  dissolve_plane_normal = vec3(0, 1, 0);
+uniform float dissolve_plane_dist = 0.0;
+
 uniform sampler2D texture_diffuse1;
 uniform bool      use_texture;
 uniform float     u_windRimHighlight;
@@ -77,15 +82,13 @@ void main() {
 	bool  c_isColossal = use_ssbo ? (uniforms_data[vUniformIndex].is_colossal != 0) : isColossal;
 	bool  c_useVertexColor = use_ssbo ? (uniforms_data[vUniformIndex].use_vertex_color != 0) : (useVertexColor != 0);
 
-	bool  c_dissolve_enabled = use_ssbo ? (uniforms_data[vUniformIndex].dissolve_enabled != 0)
-                                       : false; // fallback not implemented for non-SSBO yet
-	vec3  c_dissolve_normal = use_ssbo ? uniforms_data[vUniformIndex].dissolve_plane_normal : vec3(0, 1, 0);
-	float c_dissolve_dist = use_ssbo ? uniforms_data[vUniformIndex].dissolve_plane_dist : 0.0;
+	bool  c_dissolve_enabled = use_ssbo ? (uniforms_data[vUniformIndex].dissolve_enabled != 0) : dissolve_enabled;
+	vec3  c_dissolve_normal = use_ssbo ? uniforms_data[vUniformIndex].dissolve_plane_normal : dissolve_plane_normal;
+	float c_dissolve_dist = use_ssbo ? uniforms_data[vUniformIndex].dissolve_plane_dist : dissolve_plane_dist;
 
 	float fade = 1.0;
 	if (c_dissolve_enabled) {
 		if (dot(FragPos, c_dissolve_normal) > c_dissolve_dist) {
-			// fade = 1.0-smoothstep(0, dot(FragPos, c_dissolve_normal), c_dissolve_dist);
 			discard;
 		}
 	}

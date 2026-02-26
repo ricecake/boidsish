@@ -60,6 +60,23 @@ TEST(ModelSliceTest, MultipleTriangles) {
     EXPECT_TRUE(hitT2);
 }
 
+TEST(ModelSliceTest, AreaCalculation) {
+    ModelSlice slice;
+    // Triangle 1: Area 0.5
+    slice.triangles.push_back(glm::vec3(0, 0, 0));
+    slice.triangles.push_back(glm::vec3(1, 0, 0));
+    slice.triangles.push_back(glm::vec3(0, 1, 0));
+    slice.area += 0.5f; // In real usage, this is filled by Model::GetSlice
+
+    // Triangle 2: Area 2.0 (2x2 square split in half)
+    slice.triangles.push_back(glm::vec3(0, 0, 10));
+    slice.triangles.push_back(glm::vec3(2, 0, 10));
+    slice.triangles.push_back(glm::vec3(0, 2, 10));
+    slice.area += 2.0f;
+
+    EXPECT_NEAR(slice.area, 2.5f, 0.0001f);
+}
+
 TEST(ModelSliceTest, ZeroAreaTriangle) {
     ModelSlice slice;
     // Degenerate triangle

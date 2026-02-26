@@ -197,6 +197,9 @@ namespace Boidsish {
 
 		// Pass identification
 		bool casts_shadows = true;
+
+		// State flags
+		bool no_cull = false;
 	};
 
 	/**
@@ -271,7 +274,8 @@ namespace Boidsish {
 		uint32_t       draw_mode,
 		bool           is_indexed,
 		MaterialHandle material,
-		float          depth
+		float          depth,
+		bool           no_cull = false
 	) {
 		uint64_t key = 0;
 		// Layer: 8 bits (56-63)
@@ -285,19 +289,19 @@ namespace Boidsish {
 			key |= (static_cast<uint64_t>(shader.id) & 0xFFF) << 12;
 			key |= (static_cast<uint64_t>(material.id) & 0xFFF);
 		} else {
-			// Opaque Key: [Layer: 8] [Shader: 16] [VAO: 12] [Draw State: 4] [Material: 16] [Depth: 8]
+			// Opaque Key: [Layer: 8] [Shader: 16] [VAO: 11] [Draw State: 5] [Material: 16] [Depth: 8]
 			// Groups by state first to maximize MDI batching.
-			// VAO expanded to 12 bits (supports up to 4096 unique VAOs)
 
 			// Shader: 16 bits (40-55)
 			key |= (static_cast<uint64_t>(shader.id) & 0xFFFF) << 40;
-			// VAO: 12 bits (28-39) - expanded from 8 bits to prevent ID collisions
-			key |= (static_cast<uint64_t>(vao) & 0xFFF) << 28;
+			// VAO: 11 bits (29-39) - groups by buffer state
+			key |= (static_cast<uint64_t>(vao) & 0x7FF) << 29;
 
-			// Draw State: 4 bits (24-27) - is_indexed (1 bit) + draw_mode (3 bits)
+			// Draw State: 5 bits (24-28) - is_indexed (1 bit) + no_cull (1 bit) + draw_mode (3 bits)
 			uint8_t draw_state = 0;
-			draw_state |= (is_indexed ? 0x8 : 0x0);
-			draw_state |= (static_cast<uint8_t>(draw_mode) & 0x7);
+			draw_state |= (is_indexed ? 0x10 : 0x0);
+			draw_state |= (no_cull ? 0x08 : 0x0);
+			draw_state |= (static_cast<uint8_t>(draw_mode) & 0x07);
 			key |= (static_cast<uint64_t>(draw_state)) << 24;
 
 			// Material: 16 bits (8-23)

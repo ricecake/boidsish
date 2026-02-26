@@ -20,12 +20,12 @@ layout(std430, binding = 10) buffer SSBOInstances {
 };
 
 #include "frustum.glsl"
+#include "helpers/fast_noise.glsl"
 #include "helpers/lighting.glsl"
 #include "helpers/shockwave.glsl"
 #include "temporal_data.glsl"
 #include "visual_effects.glsl"
 #include "visual_effects.vert"
-#include "helpers/fast_noise.glsl"
 
 out vec3     FragPos;
 out vec4     CurPosition;
@@ -178,9 +178,9 @@ void main() {
 
 			// Use instanceCenter for coherent wind across the whole object
 			// We use a combination of world position and time for the noise seed
-			float fateFactor = fastWorley3d(vec3(instanceCenter.xz/10, time*0.5)) * 0.5 + 0.5;
-			vec2 windNudge = fateFactor * curlNoise2D(instanceCenter.xz * wind_frequency + time * wind_speed * 0.5) * wind_strength *
-				u_windResponsiveness;
+			float fateFactor = fastWorley3d(vec3(instanceCenter.xz / 10, time * 0.5)) * 0.5 + 0.5;
+			vec2  windNudge = fateFactor * curlNoise2D(instanceCenter.xz * wind_frequency + time * wind_speed * 0.5) *
+				wind_strength * u_windResponsiveness;
 			WindDeflection = length(windNudge);
 
 			// Scale nudge by height (bending effect)

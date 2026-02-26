@@ -1,5 +1,6 @@
 #pragma once
 
+#include <atomic>
 #include <memory>
 
 #include <glm/glm.hpp>
@@ -86,6 +87,12 @@ namespace Boidsish {
 
 		void SetLived(float lived) { lived_ = lived; }
 
+		void ClearParticles() { needs_clear_ = true; }
+
+		bool NeedsClear() const { return needs_clear_; }
+
+		void ResetClearRequest() { needs_clear_ = false; }
+
 	private:
 		inline static int    count = 1;
 		glm::vec3            position_;
@@ -101,6 +108,7 @@ namespace Boidsish {
 		EmitterType          type_;
 		float                sweep_ = 1.0f;
 		std::weak_ptr<Model> source_model_;
+		std::atomic<bool>    needs_clear_{false};
 	};
 
 } // namespace Boidsish
