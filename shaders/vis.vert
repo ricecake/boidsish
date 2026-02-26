@@ -176,7 +176,8 @@ void main() {
 
 			// 1. Calculate raw wind magnitude and direction
 			float fateFactor = fastWorley3d(vec3(instanceCenter.xz / 25.0, time * 0.25)) * 0.5 + 0.75;
-			vec2 rawWindNudge = fateFactor * curlNoise2D(instanceCenter.xz * wind_frequency + time * wind_speed * 0.5) * wind_strength * u_windResponsiveness;
+			vec2 rawWindNudge = fateFactor * curlNoise2D(instanceCenter.xz * wind_frequency + time * wind_speed * 0.5) *
+				wind_strength * u_windResponsiveness;
 
 			float windMag = length(rawWindNudge);
 
@@ -192,7 +193,8 @@ void main() {
 				WindDeflection = resistedWindMag;
 
 				// 3. Calculate bending angle based on resisted wind and height
-				float bendAngle = resistedWindMag * pow(normalizedHeight, 1.2) * smoothstep(0.05, 1.0, normalizedHeight);
+				float bendAngle = resistedWindMag * pow(normalizedHeight, 1.2) *
+					smoothstep(0.05, 1.0, normalizedHeight);
 
 				// 4. Arc Mapping via Rodrigues' Rotation Formula
 				// Find the axis perpendicular to both Up and the Wind direction
@@ -203,14 +205,12 @@ void main() {
 				float sinTheta = sin(bendAngle);
 
 				// Rotate the vertex offset around the base pivot
-				vec3 rotatedOffset = offset * cosTheta +
-									cross(rotationAxis, offset) * sinTheta +
-									rotationAxis * dot(rotationAxis, offset) * (1.0 - cosTheta);
+				vec3 rotatedOffset = offset * cosTheta + cross(rotationAxis, offset) * sinTheta +
+					rotationAxis * dot(rotationAxis, offset) * (1.0 - cosTheta);
 
 				FragPos = worldBaseCenter + rotatedOffset;
 			}
 		}
-
 	}
 
 	Normal = mat3(transpose(inverse(modelMatrix))) * displacedNormal;
