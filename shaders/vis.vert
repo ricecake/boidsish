@@ -161,14 +161,11 @@ void main() {
 	// Apply shockwave displacement (sway for decor)
 	// Calculate at instanceCenter to prevent warping, scale by world-relative height
 	if (current_useSSBOInstancing) {
-		// Calculate the center of the base of the AABB in world space
+		// Calculate the center of the base in world space (the pivot point)
 		vec3 localBaseCenter = vec3((u_aabbMin.x + u_aabbMax.x) * 0.5, u_aabbMin.y, (u_aabbMin.z + u_aabbMax.z) * 0.5);
 		vec3 worldBaseCenter = vec3(modelMatrix * vec4(localBaseCenter, 1.0));
-		vec3 pointAnchor = vec3(FragPos.x, worldBaseCenter.y, FragPos.z);
 
-		// Distance from vertex to base center before swaying
-		float distToCenter = distance(FragPos, pointAnchor);
-
+		// Shockwave displacement (applied before wind sway)
 		FragPos += getShockwaveDisplacement(instanceCenter, (aPos.y - u_aabbMin.y) * instanceScale, true);
 
 		// Apply wind sway
@@ -177,23 +174,43 @@ void main() {
 			float totalHeight = max(0.001, u_aabbMax.y - u_aabbMin.y);
 			float normalizedHeight = clamp(localHeight / totalHeight, 0.0, 1.0);
 
-			// Use instanceCenter for coherent wind across the whole object
-			// We use a combination of world position and time for the noise seed
-			float fateFactor = fastWorley3d(vec3(instanceCenter.xz / 25, time * 0.25)) * 0.5 + 0.75;
-			vec2  windNudge = fateFactor * curlNoise2D(instanceCenter.xz * wind_frequency + time * wind_speed * 0.5) *
-				wind_strength * u_windResponsiveness;
-			WindDeflection = length(windNudge);
+			// 1. Calculate raw wind magnitude and direction
+			float fateFactor = fastWorley3d(vec3(instanceCenter.xz / 25.0, time * 0.25)) * 0.5 + 0.75;
+			vec2 rawWindNudge = fateFactor * curlNoise2D(instanceCenter.xz * wind_frequency + time * wind_speed * 0.5) * wind_strength * u_windResponsiveness;
 
-			// Scale nudge by height (bending effect)
-			FragPos.xz += windNudge * normalizedHeight * pow(normalizedHeight, 1.2);
+			float windMag = length(rawWindNudge);
+
+			if (windMag > 0.001) {
+				vec2 windDir2D = rawWindNudge / windMag;
+				vec3 windDir = vec3(windDir2D.x, 0.0, windDir2D.y);
+
+				// 2. Apply Asymptotic Resistance (tanh)
+				// Limits maximum deflection so the tree never folds completely flat
+				float maxDeflection = 1.3; // Adjust to tune maximum bend angle limit
+				float resistedWindMag = maxDeflection * tanh(windMag / maxDeflection);
+
+				WindDeflection = resistedWindMag;
+
+				// 3. Calculate bending angle based on resisted wind and height
+				float bendAngle = resistedWindMag * pow(normalizedHeight, 1.2) * smoothstep(0.05, 1.0, normalizedHeight);
+
+				// 4. Arc Mapping via Rodrigues' Rotation Formula
+				// Find the axis perpendicular to both Up and the Wind direction
+				vec3 rotationAxis = normalize(cross(vec3(0.0, 1.0, 0.0), windDir));
+				vec3 offset = FragPos - worldBaseCenter;
+
+				float cosTheta = cos(bendAngle);
+				float sinTheta = sin(bendAngle);
+
+				// Rotate the vertex offset around the base pivot
+				vec3 rotatedOffset = offset * cosTheta +
+									cross(rotationAxis, offset) * sinTheta +
+									rotationAxis * dot(rotationAxis, offset) * (1.0 - cosTheta);
+
+				FragPos = worldBaseCenter + rotatedOffset;
+			}
 		}
 
-		// Re-normalize to maintain original distance from base center (bowing effect)
-		vec3  direction = FragPos - pointAnchor;
-		float newDist = length(direction);
-		if (newDist > 0.001) {
-			FragPos = pointAnchor + (direction / newDist) * distToCenter;
-		}
 	}
 
 	Normal = mat3(transpose(inverse(modelMatrix))) * displacedNormal;
