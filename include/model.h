@@ -24,6 +24,7 @@ namespace Boidsish {
 		// Mesh Data
 		std::vector<Vertex>       vertices;
 		std::vector<unsigned int> indices;
+		std::vector<unsigned int> shadow_indices;
 		std::vector<Texture>      textures;
 
 		// Material Data
@@ -31,7 +32,12 @@ namespace Boidsish {
 		float     opacity = 1.0f;
 
 		// Constructor
-		Mesh(std::vector<Vertex> vertices, std::vector<unsigned int> indices, std::vector<Texture> textures);
+		Mesh(
+			std::vector<Vertex>       vertices,
+			std::vector<unsigned int> indices,
+			std::vector<Texture>      textures,
+			std::vector<unsigned int> shadow_indices = {}
+		);
 
 		// Render the mesh
 		void render() const;
@@ -47,11 +53,14 @@ namespace Boidsish {
 
 		unsigned int getEBO() const { return EBO; }
 
+		unsigned int getShadowEBO() const { return shadow_EBO; }
+
 		MegabufferAllocation allocation;
+		MegabufferAllocation shadow_allocation;
 
 	private:
 		// Render data
-		unsigned int VAO = 0, VBO = 0, EBO = 0;
+		unsigned int VAO = 0, VBO = 0, EBO = 0, shadow_EBO = 0;
 
 		// Initializes all the buffer objects/arrays
 		void setupMesh(Megabuffer* megabuffer = nullptr);

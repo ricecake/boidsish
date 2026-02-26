@@ -176,6 +176,10 @@ namespace Boidsish {
 		unsigned int base_vertex = 0;
 		unsigned int first_index = 0;
 
+		// Shadow optimized version
+		unsigned int shadow_index_count = 0;
+		uint32_t     shadow_first_index = 0;
+
 		// OpenGL drawing mode (e.g., GL_TRIANGLES)
 		unsigned int draw_mode = 0;
 		// OpenGL index type (e.g., GL_UNSIGNED_INT)

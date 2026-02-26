@@ -394,11 +394,16 @@ namespace Boidsish {
 			MeshOptimizerUtil::Simplify(vertices, indices, error, ratio, (unsigned int)flags, data->model_path);
 		}
 
+		std::vector<unsigned int> shadow_indices;
 		if (config.GetAppSettingBool("mesh_optimizer_enabled", true)) {
 			MeshOptimizerUtil::Optimize(vertices, indices, data->model_path);
+
+			if (config.GetAppSettingBool("mesh_optimizer_shadow_indices_enabled", true)) {
+				MeshOptimizerUtil::GenerateShadowIndices(vertices, indices, shadow_indices);
+			}
 		}
 
-		Mesh mesh(vertices, indices, {});
+		Mesh mesh(vertices, indices, {}, shadow_indices);
 		mesh.diffuseColor = diffuseColor;
 		data->meshes.push_back(mesh);
 

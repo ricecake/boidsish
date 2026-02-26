@@ -48,10 +48,11 @@ namespace Boidsish {
 		DecorProperties        props;
 
 		// GPU resources
-		unsigned int ssbo = 0;            // Main storage (persistent)
-		unsigned int visible_ssbo = 0;    // Culled storage (per-frame)
-		unsigned int indirect_buffer = 0; // MDI commands
-		unsigned int count_buffer = 0;    // For culling atomic counter
+		unsigned int ssbo = 0;                   // Main storage (persistent)
+		unsigned int visible_ssbo = 0;           // Culled storage (per-frame)
+		unsigned int indirect_buffer = 0;        // MDI commands
+		unsigned int shadow_indirect_buffer = 0; // MDI commands for shadow pass
+		unsigned int count_buffer = 0;           // For culling atomic counter
 
 		// Cached instance count (read back after compute, used during render)
 		unsigned int cached_count = 0;
@@ -88,6 +89,13 @@ namespace Boidsish {
 			const ITerrainGenerator&              terrain_gen,
 			std::shared_ptr<TerrainRenderManager> render_manager
 		);
+
+		/**
+		 * @brief Prepares the resources for all decor types.
+		 * This ensures models are uploaded to the megabuffer and indirect buffers are initialized.
+		 */
+		void PrepareResources(Megabuffer* mb);
+
 		void Render(
 			const glm::mat4&                view,
 			const glm::mat4&                projection,

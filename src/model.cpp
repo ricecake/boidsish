@@ -19,10 +19,16 @@ namespace Boidsish {
 	}
 
 	// Mesh implementation
-	Mesh::Mesh(std::vector<Vertex> vertices, std::vector<unsigned int> indices, std::vector<Texture> textures) {
+	Mesh::Mesh(
+		std::vector<Vertex>       vertices,
+		std::vector<unsigned int> indices,
+		std::vector<Texture>      textures,
+		std::vector<unsigned int> shadow_indices
+	) {
 		this->vertices = vertices;
 		this->indices = indices;
 		this->textures = textures;
+		this->shadow_indices = shadow_indices;
 
 		setupMesh(nullptr); // Initial setup (legacy if no megabuffer yet)
 	}
@@ -31,10 +37,29 @@ namespace Boidsish {
 		if (mb) {
 			if (allocation.valid)
 				return;
-			allocation = mb->AllocateStatic(vertices.size(), indices.size());
+
+			// Allocate space for primary geometry
+			allocation = mb->AllocateStatic(static_cast<uint32_t>(vertices.size()), static_cast<uint32_t>(indices.size()));
 			if (allocation.valid) {
-				mb->Upload(allocation, vertices.data(), vertices.size(), indices.data(), indices.size());
+				mb->Upload(allocation, vertices.data(), static_cast<uint32_t>(vertices.size()), indices.data(), static_cast<uint32_t>(indices.size()));
 				VAO = mb->GetVAO();
+
+				// If shadow indices are provided, allocate space for them in the same Megabuffer
+				if (!shadow_indices.empty()) {
+					// Use 0 for vertex_count as we're reusing the primary vertex buffer allocation
+					shadow_allocation = mb->AllocateStatic(0, static_cast<uint32_t>(shadow_indices.size()));
+					if (shadow_allocation.valid) {
+						// Match base_vertex from primary allocation
+						shadow_allocation.base_vertex = allocation.base_vertex;
+						mb->Upload(
+							shadow_allocation,
+							nullptr,
+							0,
+							shadow_indices.data(),
+							static_cast<uint32_t>(shadow_indices.size())
+						);
+					}
+				}
 			}
 			return;
 		}
@@ -51,8 +76,16 @@ namespace Boidsish {
 
 		glBufferData(GL_ARRAY_BUFFER, vertices.size() * sizeof(Vertex), &vertices[0], GL_STATIC_DRAW);
 
+		// Combine primary and shadow indices into a single EBO
 		glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, EBO);
-		glBufferData(GL_ELEMENT_ARRAY_BUFFER, indices.size() * sizeof(unsigned int), &indices[0], GL_STATIC_DRAW);
+		size_t primary_size = indices.size() * sizeof(unsigned int);
+		size_t shadow_size = shadow_indices.size() * sizeof(unsigned int);
+		glBufferData(GL_ELEMENT_ARRAY_BUFFER, primary_size + shadow_size, nullptr, GL_STATIC_DRAW);
+		glBufferSubData(GL_ELEMENT_ARRAY_BUFFER, 0, primary_size, indices.data());
+		if (!shadow_indices.empty()) {
+			glBufferSubData(GL_ELEMENT_ARRAY_BUFFER, primary_size, shadow_size, shadow_indices.data());
+			shadow_EBO = EBO; // Reuse the same EBO but with different offset (handled during draw)
+		}
 
 		// Vertex Positions
 		glEnableVertexAttribArray(0);
@@ -395,6 +428,15 @@ namespace Boidsish {
 				packet.base_vertex = mesh.allocation.base_vertex;
 				packet.first_index = mesh.allocation.first_index;
 			}
+
+			if (mesh.shadow_allocation.valid) {
+				packet.shadow_index_count = mesh.shadow_allocation.index_count;
+				packet.shadow_first_index = mesh.shadow_allocation.first_index;
+			} else if (!mesh.shadow_indices.empty()) {
+				packet.shadow_index_count = static_cast<unsigned int>(mesh.shadow_indices.size());
+				packet.shadow_first_index = static_cast<uint32_t>(mesh.indices.size());
+			}
+
 			packet.draw_mode = GL_TRIANGLES;
 			packet.index_type = GL_UNSIGNED_INT;
 			packet.shader_id = shader ? shader->ID : 0;
