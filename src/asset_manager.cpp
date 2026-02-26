@@ -34,23 +34,107 @@ namespace Boidsish {
 
 	// Helper for Assimp processing (moved from Model class)
 	namespace {
-		void ProcessNode(aiNode* node, const aiScene* scene, ModelData& data, const std::string& directory);
-		Mesh ProcessMesh(aiMesh* mesh, const aiScene* scene, ModelData& data, const std::string& directory);
 		std::vector<Texture> LoadMaterialTextures(
 			aiMaterial*        mat,
 			aiTextureType      type,
 			std::string        typeName,
 			ModelData&         data,
 			const std::string& directory
-		);
-
-		void ProcessNode(aiNode* node, const aiScene* scene, ModelData& data, const std::string& directory) {
-			for (unsigned int i = 0; i < node->mNumMeshes; i++) {
-				aiMesh* mesh = scene->mMeshes[node->mMeshes[i]];
-				data.meshes.push_back(ProcessMesh(mesh, scene, data, directory));
+		) {
+			std::vector<Texture> textures;
+			for (unsigned int i = 0; i < mat->GetTextureCount(type); i++) {
+				aiString str;
+				mat->GetTexture(type, i, &str);
+				bool skip = false;
+				for (unsigned int j = 0; j < data.textures_loaded.size(); j++) {
+					if (std::strcmp(data.textures_loaded[j].path.data(), str.C_Str()) == 0) {
+						textures.push_back(data.textures_loaded[j]);
+						skip = true;
+						break;
+					}
+				}
+				if (!skip) {
+					Texture texture;
+					texture.id = AssetManager::GetInstance().GetTexture(str.C_Str(), directory);
+					texture.type = typeName;
+					texture.path = str.C_Str();
+					textures.push_back(texture);
+					data.textures_loaded.push_back(texture);
+				}
 			}
-			for (unsigned int i = 0; i < node->mNumChildren; i++) {
-				ProcessNode(node->mChildren[i], scene, data, directory);
+			return textures;
+		}
+
+		glm::mat4 ConvertMatrixToGLMFormat(const aiMatrix4x4& from) {
+			glm::mat4 to;
+			to[0][0] = from.a1;
+			to[1][0] = from.a2;
+			to[2][0] = from.a3;
+			to[3][0] = from.a4;
+			to[0][1] = from.b1;
+			to[1][1] = from.b2;
+			to[2][1] = from.b3;
+			to[3][1] = from.b4;
+			to[0][2] = from.c1;
+			to[1][2] = from.c2;
+			to[2][2] = from.c3;
+			to[3][2] = from.c4;
+			to[0][3] = from.d1;
+			to[1][3] = from.d2;
+			to[2][3] = from.d3;
+			to[3][3] = from.d4;
+			return to;
+		}
+
+		glm::vec3 GetGLMVec(const aiVector3D& vec) {
+			return glm::vec3(vec.x, vec.y, vec.z);
+		}
+
+		glm::quat GetGLMQuat(const aiQuaternion& pOrientation) {
+			return glm::quat(pOrientation.w, pOrientation.x, pOrientation.y, pOrientation.z);
+		}
+
+		void SetVertexBoneDataToDefault(Vertex& vertex) {
+			for (int i = 0; i < MAX_BONE_INFLUENCE; i++) {
+				vertex.m_BoneIDs[i] = -1;
+				vertex.m_Weights[i] = 0.0f;
+			}
+		}
+
+		void SetVertexBoneData(Vertex& vertex, int boneID, float weight) {
+			for (int i = 0; i < MAX_BONE_INFLUENCE; i++) {
+				if (vertex.m_BoneIDs[i] < 0) {
+					vertex.m_Weights[i] = weight;
+					vertex.m_BoneIDs[i] = boneID;
+					break;
+				}
+			}
+		}
+
+		void ExtractBoneWeightForVertices(std::vector<Vertex>& vertices, aiMesh* mesh, ModelData& data) {
+			for (unsigned int boneIndex = 0; boneIndex < mesh->mNumBones; ++boneIndex) {
+				int         boneID = -1;
+				std::string boneName = mesh->mBones[boneIndex]->mName.C_Str();
+				if (data.bone_info_map.find(boneName) == data.bone_info_map.end()) {
+					BoneInfo newBoneInfo;
+					newBoneInfo.id = data.bone_count;
+					newBoneInfo.offset = ConvertMatrixToGLMFormat(mesh->mBones[boneIndex]->mOffsetMatrix);
+					data.bone_info_map[boneName] = newBoneInfo;
+					boneID = data.bone_count;
+					data.bone_count++;
+				} else {
+					boneID = data.bone_info_map[boneName].id;
+				}
+				assert(boneID != -1);
+				auto weights = mesh->mBones[boneIndex]->mWeights;
+				int  numWeights = mesh->mBones[boneIndex]->mNumWeights;
+
+				for (int weightIndex = 0; weightIndex < numWeights; ++weightIndex) {
+					int   vertexId = weights[weightIndex].mVertexId;
+					float weight = weights[weightIndex].mWeight;
+					assert(vertexId < vertices.size());
+					SetVertexBoneData(vertices[vertexId], boneID, weight);
+				}
 			}
 		}
 
@@ -61,6 +145,8 @@ namespace Boidsish {
 
 			for (unsigned int i = 0; i < mesh->mNumVertices; i++) {
 				Vertex    vertex;
+				SetVertexBoneDataToDefault(vertex);
+
 				glm::vec3 vector;
 				vector.x = mesh->mVertices[i].x;
 				vector.y = mesh->mVertices[i].y;
@@ -82,6 +168,9 @@ namespace Boidsish {
 				}
 				vertices.push_back(vertex);
 			}
+
+			ExtractBoneWeightForVertices(vertices, mesh, data);
+
 			for (unsigned int i = 0; i < mesh->mNumFaces; i++) {
 				aiFace face = mesh->mFaces[i];
 				for (unsigned int j = 0; j < face.mNumIndices; j++)
@@ -118,36 +207,78 @@ namespace Boidsish {
 			return out_mesh;
 		}
 
-		std::vector<Texture> LoadMaterialTextures(
-			aiMaterial*        mat,
-			aiTextureType      type,
-			std::string        typeName,
-			ModelData&         data,
-			const std::string& directory
-		) {
-			std::vector<Texture> textures;
-			for (unsigned int i = 0; i < mat->GetTextureCount(type); i++) {
-				aiString str;
-				mat->GetTexture(type, i, &str);
-				bool skip = false;
-				for (unsigned int j = 0; j < data.textures_loaded.size(); j++) {
-					if (std::strcmp(data.textures_loaded[j].path.data(), str.C_Str()) == 0) {
-						textures.push_back(data.textures_loaded[j]);
-						skip = true;
-						break;
-					}
-				}
-				if (!skip) {
-					Texture texture;
-					texture.id = AssetManager::GetInstance().GetTexture(str.C_Str(), directory);
-					texture.type = typeName;
-					texture.path = str.C_Str();
-					textures.push_back(texture);
-					data.textures_loaded.push_back(texture);
-				}
+		void ProcessNode(aiNode* node, const aiScene* scene, ModelData& data, const std::string& directory) {
+			for (unsigned int i = 0; i < node->mNumMeshes; i++) {
+				aiMesh* mesh = scene->mMeshes[node->mMeshes[i]];
+				data.meshes.push_back(ProcessMesh(mesh, scene, data, directory));
 			}
-			return textures;
+			for (unsigned int i = 0; i < node->mNumChildren; i++) {
+				ProcessNode(node->mChildren[i], scene, data, directory);
+			}
 		}
+
+		void ReadHierarchyData(NodeData& dest, const aiNode* src) {
+			assert(src);
+
+			dest.name = src->mName.data;
+			dest.transformation = ConvertMatrixToGLMFormat(src->mTransformation);
+			dest.childrenCount = src->mNumChildren;
+
+			for (unsigned int i = 0; i < src->mNumChildren; i++) {
+				NodeData newData;
+				ReadHierarchyData(newData, src->mChildren[i]);
+				dest.children.push_back(newData);
+			}
+		}
+
+		void ReadAnimations(const aiScene* scene, ModelData& data) {
+			for (unsigned int i = 0; i < scene->mNumAnimations; i++) {
+				aiAnimation* aiAnim = scene->mAnimations[i];
+				Animation    anim;
+				anim.name = aiAnim->mName.C_Str();
+				anim.duration = (float)aiAnim->mDuration;
+				anim.ticksPerSecond = (int)aiAnim->mTicksPerSecond;
+
+				for (unsigned int j = 0; j < aiAnim->mNumChannels; j++) {
+					aiNodeAnim*   channel = aiAnim->mChannels[j];
+					BoneAnimation boneAnim;
+					boneAnim.name = channel->mNodeName.data;
+
+					boneAnim.numPositions = channel->mNumPositionKeys;
+					for (unsigned int k = 0; k < boneAnim.numPositions; k++) {
+						aiVector3D  aiVec = channel->mPositionKeys[k].mValue;
+						float       timeStamp = (float)channel->mPositionKeys[k].mTime;
+						KeyPosition data_pos;
+						data_pos.position = GetGLMVec(aiVec);
+						data_pos.timeStamp = timeStamp;
+						boneAnim.positions.push_back(data_pos);
+					}
+
+					boneAnim.numRotations = channel->mNumRotationKeys;
+					for (unsigned int k = 0; k < boneAnim.numRotations; k++) {
+						aiQuaternion aiQuat = channel->mRotationKeys[k].mValue;
+						float        timeStamp = (float)channel->mRotationKeys[k].mTime;
+						KeyRotation  data_rot;
+						data_rot.orientation = GetGLMQuat(aiQuat);
+						data_rot.timeStamp = timeStamp;
+						boneAnim.rotations.push_back(data_rot);
+					}
+
+					boneAnim.numScalings = channel->mNumScalingKeys;
+					for (unsigned int k = 0; k < boneAnim.numScalings; k++) {
+						aiVector3D aiVec = channel->mScalingKeys[k].mValue;
+						float      timeStamp = (float)channel->mScalingKeys[k].mTime;
+						KeyScale   data_scale;
+						data_scale.scale = GetGLMVec(aiVec);
+						data_scale.timeStamp = timeStamp;
+						boneAnim.scales.push_back(data_scale);
+					}
+					anim.boneAnimations.push_back(boneAnim);
+				}
+				data.animations.push_back(anim);
+			}
+		}
+
 	} // anonymous namespace
 
 	std::shared_ptr<ModelData> AssetManager::GetModelData(const std::string& path) {
@@ -178,6 +309,8 @@ namespace Boidsish {
 		}
 
 		ProcessNode(scene->mRootNode, scene, *data, data->directory);
+		ReadHierarchyData(data->root_node, scene->mRootNode);
+		ReadAnimations(scene, *data);
 
 		// Calculate AABB
 		glm::vec3 min(std::numeric_limits<float>::max());

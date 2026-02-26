@@ -13,6 +13,8 @@
 
 namespace Boidsish {
 
+	#define MAX_BONE_INFLUENCE 4
+
 	/**
 	 * @brief Standard vertex format used across the rendering system.
 	 */
@@ -21,6 +23,11 @@ namespace Boidsish {
 		glm::vec3 Normal;
 		glm::vec2 TexCoords;
 		glm::vec3 Color = glm::vec3(1.0f);
+
+		// bone indexes which will influence this vertex
+		int m_BoneIDs[MAX_BONE_INFLUENCE] = {-1, -1, -1, -1};
+		// weights from each bone
+		float m_Weights[MAX_BONE_INFLUENCE] = {0.0f, 0.0f, 0.0f, 0.0f};
 	};
 
 	/**
@@ -139,9 +146,13 @@ namespace Boidsish {
 		float     dissolve_plane_dist = 0.0f;                 // 4 bytes -> 16 bytes
 		int       dissolve_enabled = 0;                       // 4 bytes
 
-		// Padding to 256 bytes for SSBO alignment safety (176 + 80 = 256)
-		// Used 20 bytes (5 floats) from padding. 20 - 5 = 15.
-		float padding[15];
+		// Skeletal Animation
+		int   bone_matrices_offset = -1; // 4 bytes
+		int   use_skinning = 0;          // 4 bytes
+		float anim_padding[2];           // 8 bytes -> 16 bytes
+
+		// Padding to 256 bytes for SSBO alignment safety
+		float padding[11];
 	};
 
 	/**
@@ -200,6 +211,9 @@ namespace Boidsish {
 
 		// State flags
 		bool no_cull = false;
+
+		// Skeletal Animation
+		std::vector<glm::mat4> bone_matrices;
 	};
 
 	/**

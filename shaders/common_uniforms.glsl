@@ -28,5 +28,8 @@ struct CommonUniforms {
 	vec3  dissolve_plane_normal;
 	float dissolve_plane_dist;
 	int   dissolve_enabled;
-	float padding[15];
+	int   bone_matrices_offset;
+	int   use_skinning;
+	float anim_padding[2];
+	float padding[11];
 };
