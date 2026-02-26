@@ -118,4 +118,24 @@ namespace Boidsish {
 		vertices = std::move(optimized_vertices);
 	}
 
+	void MeshOptimizerUtil::GenerateShadowIndices(
+		const std::vector<Vertex>&       vertices,
+		const std::vector<unsigned int>& indices,
+		std::vector<unsigned int>&       out_shadow_indices
+	) {
+		if (indices.empty() || vertices.empty())
+			return;
+
+		out_shadow_indices.resize(indices.size());
+		meshopt_generateShadowIndexBuffer(
+			out_shadow_indices.data(),
+			indices.data(),
+			indices.size(),
+			&vertices[0].Position.x,
+			vertices.size(),
+			sizeof(glm::vec3),
+			sizeof(Vertex)
+		);
+	}
+
 } // namespace Boidsish

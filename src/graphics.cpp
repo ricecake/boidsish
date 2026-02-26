@@ -1446,9 +1446,11 @@ namespace Boidsish {
 
 				if (is_indexed) {
 					DrawElementsIndirectCommand cmd{};
-					cmd.count = packet.index_count;
+					bool                        use_shadow_indices = (is_shadow_pass && packet.shadow_index_count > 0);
+					cmd.count = use_shadow_indices ? packet.shadow_index_count : packet.index_count;
 					cmd.instanceCount = std::max(1, packet.instance_count);
-					cmd.firstIndex = packet.first_index + (uses_megabuffer ? index_frame_offset : 0);
+					cmd.firstIndex = (use_shadow_indices ? packet.shadow_first_index : packet.first_index) +
+						(uses_megabuffer ? index_frame_offset : 0);
 					cmd.baseVertex = static_cast<int32_t>(
 						packet.base_vertex + (uses_megabuffer ? vertex_frame_offset : 0)
 					);
@@ -3203,6 +3205,7 @@ namespace Boidsish {
 		// --- Warm up terrain cache ---
 		if (impl->decor_manager) {
 			impl->decor_manager->PopulateDefaultDecor();
+			impl->decor_manager->PrepareResources(impl->megabuffer.get());
 		}
 
 		if (impl->terrain_generator) {
