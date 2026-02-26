@@ -16,10 +16,18 @@ int main(int argc, char** argv) {
 		auto creature = std::make_shared<WalkingCreature>(0, 0, 0, 0, 4.0f);
 		creature->SetClampedToTerrain(true);
 
+		// Add creature's spotlight to the light manager
+		vis.GetLightManager().AddLight(creature->GetSpotlight());
+		size_t spotlight_idx = vis.GetLightManager().GetLights().size() - 1;
+
 		// Use a shape handler to update and return the creature for rendering
-		vis.AddShapeHandler([&creature, &vis](float time) {
+		vis.AddShapeHandler([&creature, &vis, spotlight_idx](float time) {
 			creature->SetCameraPosition(vis.GetCamera().pos());
 			creature->Update(vis.GetLastFrameTime());
+
+			// Sync spotlight
+			vis.GetLightManager().GetLights()[spotlight_idx] = creature->GetSpotlight();
+
 			return std::vector<std::shared_ptr<Shape>>{creature};
 		});
 

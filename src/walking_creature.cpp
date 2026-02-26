@@ -19,6 +19,8 @@ WalkingCreature::WalkingCreature(int id, float x, float y, float z, float length
     look_target_pos_ = current_pos_ + glm::vec3(0, 0, 10);
     current_head_dir_ = glm::vec3(0, 0, 1);
 
+    spotlight_ = Light::CreateSpot(current_pos_, glm::vec3(0, 0, 1), 20.0f, glm::vec3(1.0f), 15.0f, 25.0f);
+
     // Add Body Node - significantly larger than others
     body_node_idx_ = AddVertex(Vector3(0, height_, 0), length * 0.8f, 0.8f, 0.4f, 0.2f, 1.0f).GetId();
 
@@ -165,6 +167,19 @@ void WalkingCreature::UpdateMovement(float delta_time) {
             look_timer_ = 2.0f + (std::rand() % 300) / 100.0f;
         }
     }
+
+    // Spotlight random changes
+    light_change_timer_ -= delta_time;
+    if (light_change_timer_ <= 0.0f) {
+        light_change_timer_ = 1.0f + (std::rand() % 300) / 100.0f;
+        spotlight_.color = glm::vec3((std::rand() % 100) / 100.0f, (std::rand() % 100) / 100.0f, (std::rand() % 100) / 100.0f);
+        if (glm::length(spotlight_.color) < 0.2f) spotlight_.color = glm::vec3(1.0f); // Ensure it's not too dark
+
+        float inner = 5.0f + (std::rand() % 20);
+        float outer = inner + 5.0f + (std::rand() % 15);
+        spotlight_.inner_cutoff = glm::cos(glm::radians(inner));
+        spotlight_.outer_cutoff = glm::cos(glm::radians(outer));
+    }
 }
 
 void WalkingCreature::UpdateNodes(float delta_time) {
@@ -203,6 +218,10 @@ void WalkingCreature::UpdateNodes(float delta_time) {
     }
 
     V(head_node_idx_).position = Vector3(head_world - current_pos_);
+
+    // Update Spotlight
+    spotlight_.position = head_world;
+    spotlight_.direction = current_head_dir_;
 }
 
 }
