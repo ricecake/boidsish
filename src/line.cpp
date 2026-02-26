@@ -194,7 +194,8 @@ namespace Boidsish {
 
 		packet.casts_shadows = CastsShadows();
 
-		RenderLayer layer = IsTransparent() ? RenderLayer::Transparent : RenderLayer::Opaque;
+		RenderLayer layer = (IsTransparent() || style_ == Style::LASER) ? RenderLayer::Transparent
+																	   : RenderLayer::Opaque;
 		packet.shader_handle = shader_handle;
 		packet.material_handle = MaterialHandle(0);
 
@@ -206,7 +207,8 @@ namespace Boidsish {
 			packet.draw_mode,
 			packet.index_count > 0,
 			packet.material_handle,
-			normalized_depth
+			normalized_depth,
+			false // Lines usually don't need no_cull
 		);
 
 		out_packets.push_back(packet);
