@@ -65,6 +65,16 @@ namespace Boidsish {
 		GetAppSettingBool("artistic_effect_shimmery", false);
 		GetAppSettingBool("artistic_effect_glitched", false);
 		GetAppSettingBool("artistic_effect_wireframe", false);
+
+		// Mesh optimization settings
+		GetAppSettingBool("mesh_optimizer_enabled", true);
+		GetAppSettingBool("mesh_simplifier_enabled", false);
+		GetAppSettingFloat("mesh_simplifier_target_ratio", 0.5f); // Keep as a limit
+
+		GetAppSettingFloat("mesh_simplifier_error_prebuild", 0.01f);
+		GetAppSettingFloat("mesh_simplifier_error_procedural", 0.05f);
+		GetAppSettingInt("mesh_simplifier_aggression_prebuild", 0);
+		GetAppSettingInt("mesh_simplifier_aggression_procedural", 40); // High: Prune | Permissive
 	}
 
 	void ConfigManager::Shutdown() {

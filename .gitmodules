@@ -31,3 +31,6 @@
 [submodule "external/Bonxai"]
 	path = external/Bonxai
 	url = https://github.com/facontidavide/Bonxai.git
+[submodule "external/meshoptimizer"]
+	path = external/meshoptimizer
+	url = https://github.com/zeux/meshoptimizer

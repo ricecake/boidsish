@@ -3,7 +3,9 @@
 #include <algorithm>
 #include <iostream>
 
+#include "ConfigManager.h"
 #include "logger.h"
+#include "mesh_optimizer_util.h"
 #include "miniaudio.h"
 #include "model.h"
 #include "stb_image.h"
@@ -86,6 +88,18 @@ namespace Boidsish {
 				aiFace face = mesh->mFaces[i];
 				for (unsigned int j = 0; j < face.mNumIndices; j++)
 					indices.push_back(face.mIndices[j]);
+			}
+
+			// Apply mesh optimization/simplification before finalizing the mesh
+			auto& config = ConfigManager::GetInstance();
+			if (config.GetAppSettingBool("mesh_simplifier_enabled", false)) {
+				float error = config.GetAppSettingFloat("mesh_simplifier_error_prebuild", 0.01f);
+				float ratio = config.GetAppSettingFloat("mesh_simplifier_target_ratio", 0.5f);
+				int   flags = config.GetAppSettingInt("mesh_simplifier_aggression_prebuild", 0);
+				MeshOptimizerUtil::Simplify(vertices, indices, error, ratio, (unsigned int)flags, data.model_path);
+			}
+			if (config.GetAppSettingBool("mesh_optimizer_enabled", true)) {
+				MeshOptimizerUtil::Optimize(vertices, indices, data.model_path);
 			}
 
 			aiMaterial* material = scene->mMaterials[mesh->mMaterialIndex];

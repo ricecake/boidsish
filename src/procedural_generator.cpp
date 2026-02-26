@@ -3,6 +3,8 @@
 #include <numbers>
 #include <random>
 
+#include "ConfigManager.h"
+#include "mesh_optimizer_util.h"
 #include "spline.h"
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/quaternion.hpp>
@@ -374,11 +376,27 @@ namespace Boidsish {
 	}
 
 	std::shared_ptr<ModelData> ProceduralGenerator::CreateModelDataFromGeometry(
-		const std::vector<Vertex>&       vertices,
-		const std::vector<unsigned int>& indices,
+		const std::vector<Vertex>&       vertices_in,
+		const std::vector<unsigned int>& indices_in,
 		const glm::vec3&                 diffuseColor
 	) {
 		auto data = std::make_shared<ModelData>();
+		data->model_path = "procedural_" + std::to_string(reinterpret_cast<uintptr_t>(data.get()));
+
+		std::vector<Vertex>       vertices = vertices_in;
+		std::vector<unsigned int> indices = indices_in;
+
+		auto& config = ConfigManager::GetInstance();
+		if (config.GetAppSettingBool("mesh_simplifier_enabled", false)) {
+			float error = config.GetAppSettingFloat("mesh_simplifier_error_procedural", 0.05f);
+			float ratio = config.GetAppSettingFloat("mesh_simplifier_target_ratio", 0.5f);
+			int   flags = config.GetAppSettingInt("mesh_simplifier_aggression_procedural", 40);
+			MeshOptimizerUtil::Simplify(vertices, indices, error, ratio, (unsigned int)flags, data->model_path);
+		}
+
+		if (config.GetAppSettingBool("mesh_optimizer_enabled", true)) {
+			MeshOptimizerUtil::Optimize(vertices, indices, data->model_path);
+		}
 
 		Mesh mesh(vertices, indices, {});
 		mesh.diffuseColor = diffuseColor;
@@ -395,8 +413,6 @@ namespace Boidsish {
 		} else {
 			data->aabb = AABB(glm::vec3(-0.5f), glm::vec3(0.5f));
 		}
-
-		data->model_path = "procedural_" + std::to_string(reinterpret_cast<uintptr_t>(data.get()));
 
 		return data;
 	}
