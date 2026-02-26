@@ -25,8 +25,8 @@ int main() {
 		floor->SetScale(glm::vec3(100.0f, 1.0f, 100.0f));
 		viz.AddShape(floor);
 
-		// Add a light to see something
-		Light sun = Light::CreateDirectional(glm::vec3(-1.0f, -1.0f, -1.0f), glm::vec3(1.0f, 0.9f, 0.8f), 1.5f);
+		// Add a light to see something (azimuth 45, elevation 45)
+		Light sun = Light::CreateDirectional(45.0f, 45.0f, 1.5f, glm::vec3(1.0f, 0.9f, 0.8f));
 		viz.GetLightManager().AddLight(sun);
 
 		viz.AddPrepareCallback([](Visualizer& v) {

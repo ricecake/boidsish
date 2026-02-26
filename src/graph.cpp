@@ -100,7 +100,7 @@ namespace Boidsish {
 						tangent = (point2 - point1).Normalized();
 					}
 
-					if (abs(tangent.y) < 0.999)
+					if (std::abs(tangent.y) < 0.999)
 						last_normal = tangent.Cross(Vector3(0, 1, 0)).Normalized();
 					else
 						last_normal = tangent.Cross(Vector3(1, 0, 0)).Normalized();
@@ -133,7 +133,7 @@ namespace Boidsish {
 
 					Vector3 normal = last_normal - tangent * tangent.Dot(last_normal);
 					if (normal.MagnitudeSquared() < 1e-6) {
-						if (abs(tangent.y) < 0.999)
+						if (std::abs(tangent.y) < 0.999)
 							normal = tangent.Cross(Vector3(0, 1, 0)).Normalized();
 						else
 							normal = tangent.Cross(Vector3(1, 0, 0)).Normalized();
@@ -250,7 +250,7 @@ namespace Boidsish {
 					tangent = (point2 - point1).Normalized();
 				}
 
-				if (abs(tangent.y) < 0.999)
+				if (std::abs(tangent.y) < 0.999)
 					last_normal = tangent.Cross(Vector3(0, 1, 0)).Normalized();
 				else
 					last_normal = tangent.Cross(Vector3(1, 0, 0)).Normalized();
@@ -283,7 +283,7 @@ namespace Boidsish {
 
 				Vector3 normal = last_normal - tangent * tangent.Dot(last_normal);
 				if (normal.MagnitudeSquared() < 1e-6) {
-					if (abs(tangent.y) < 0.999)
+					if (std::abs(tangent.y) < 0.999)
 						normal = tangent.Cross(Vector3(0, 1, 0)).Normalized();
 					else
 						normal = tangent.Cross(Vector3(1, 0, 0)).Normalized();
