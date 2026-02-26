@@ -548,7 +548,7 @@ namespace Boidsish {
 		glm::vec2 pos = glm::vec2(sx, sz);
 		glm::vec2 warped_pos = pos + warp;
 
-		float control_value = getBiomeControlValue(sx, sz);
+		float control_value = GetBiomeControlValue(sx, sz);
 
 		if (std::isnan(control_value) || std::isinf(control_value)) {
 			control_value = 0.0f;
@@ -603,7 +603,7 @@ namespace Boidsish {
 				// Calculate biome info
 				float sx = worldX / world_scale_;
 				float sz = worldZ / world_scale_;
-				float control_value = getBiomeControlValue(sx, sz);
+				float control_value = GetBiomeControlValue(sx, sz);
 				int   low_idx;
 				float t;
 				GetBiomeIndicesAndWeights(control_value, low_idx, t);
@@ -998,7 +998,7 @@ namespace Boidsish {
 		return pixels;
 	}
 
-	float TerrainGenerator::getBiomeControlValue(float x, float z) const {
+	float TerrainGenerator::GetBiomeControlValue(float x, float z) const {
 		// Note: coordinates already scaled if called from pointGenerate
 		glm::vec2 pos(x, z);
 		pos *= control_noise_scale_;

@@ -314,6 +314,7 @@ namespace Boidsish {
 		 */
 		virtual std::vector<glm::vec3> GetPath(glm::vec2 start_pos, int num_points, float step_size) const = 0;
 		virtual glm::vec3              GetPathData(float x, float z) const = 0;
+		virtual float                  GetBiomeControlValue(float x, float z) const = 0;
 
 	protected:
 		// Protected constructor - only derived classes can instantiate

@@ -9,6 +9,95 @@
 
 using namespace Boidsish;
 
+// Helper to replicate shader hashing for stable random values
+float shader_hash(uint32_t x) {
+	x = ((x >> 16) ^ x) * 0x45d9f3b;
+	x = ((x >> 16) ^ x) * 0x45d9f3b;
+	x = (x >> 16) ^ x;
+	return static_cast<float>(x) / 4294967295.0f;
+}
+
+// Simplified CPU-side version of the decor placement logic
+// Returns a list of nearby tree positions
+std::vector<glm::vec2> GetNearbyTrees(const glm::vec3& cameraPos, std::shared_ptr<ITerrainGenerator> terrainGen) {
+	std::vector<glm::vec2> trees;
+	if (!terrainGen)
+		return trees;
+
+	const float worldScale = terrainGen->GetWorldScale();
+	const float chunkSize = 32.0f * worldScale;
+	const float gridSize = 32.0f;
+	const float step = chunkSize / gridSize;
+
+	// Check current and neighboring chunks
+	int minChunkX = static_cast<int>(std::floor((cameraPos.x - 10.0f) / chunkSize));
+	int maxChunkX = static_cast<int>(std::floor((cameraPos.x + 10.0f) / chunkSize));
+	int minChunkZ = static_cast<int>(std::floor((cameraPos.z - 10.0f) / chunkSize));
+	int maxChunkZ = static_cast<int>(std::floor((cameraPos.z + 10.0f) / chunkSize));
+
+	for (int cx = minChunkX; cx <= maxChunkX; ++cx) {
+		for (int cz = minChunkZ; cz <= maxChunkZ; ++cz) {
+			glm::vec2 chunkWorldOffset(cx * chunkSize, cz * chunkSize);
+
+			// Replicate placement logic for each of the 3 tree types in PopulateDefaultDecor
+			for (int typeIdx = 0; typeIdx < 3; ++typeIdx) {
+				float minDensity, maxDensity, minHeight, maxHeight;
+
+				if (typeIdx == 0) { // Apple Tree
+					minDensity = 0.025f; maxDensity = 0.05f; minHeight = 5.0f; maxHeight = 95.0f;
+				} else if (typeIdx == 1) { // Dead Tree
+					minDensity = 0.05f; maxDensity = 0.075f; minHeight = 30.0f; maxHeight = 95.0f;
+				} else { // Tree01
+					minDensity = 0.05f; maxDensity = 0.075f; minHeight = 5.0f; maxHeight = 95.0f;
+				}
+
+				for (int gx = 0; gx < 32; ++gx) {
+					for (int gz = 0; gz < 32; ++gz) {
+						glm::vec2 localOffset(static_cast<float>(gx) * step, static_cast<float>(gz) * step);
+						glm::vec2 worldPos = chunkWorldOffset + localOffset;
+
+						// Stable seeding
+						uint32_t seedX = static_cast<uint32_t>(std::abs(worldPos.x));
+						uint32_t seedY = static_cast<uint32_t>(std::abs(worldPos.y));
+						uint32_t seed = (seedX * 1973 + seedY * 9277 + static_cast<uint32_t>(typeIdx) * 26699) | 1u;
+
+						// Jitter
+						worldPos += glm::vec2(shader_hash(seed), shader_hash(seed + 1234u)) * step * 0.9f;
+
+						// Only check trees near the camera
+						float distToCam = glm::distance(worldPos, glm::vec2(cameraPos.x, cameraPos.z));
+						if (distToCam > 5.0f) continue;
+
+						// Sample terrain
+						auto [height, normal] = terrainGen->GetTerrainPropertiesAtPoint(worldPos.x, worldPos.y);
+						if (height < minHeight * worldScale || height > maxHeight * worldScale) continue;
+
+						// Biome check
+						float controlValue = terrainGen->GetBiomeControlValue(worldPos.x / worldScale, worldPos.y / worldScale);
+
+						bool biomeMatch = false;
+						if (typeIdx == 0 && controlValue > 0.1f && controlValue < 0.6f) biomeMatch = true;
+						if (typeIdx == 1 && controlValue > 0.4f && controlValue < 0.8f) biomeMatch = true;
+						if (typeIdx == 2 && controlValue > 0.1f && controlValue < 0.5f) biomeMatch = true;
+
+						if (!biomeMatch) continue;
+
+						// Density check
+						float noiseVal = Simplex::noise(worldPos / (worldScale * 50.0f));
+						float combinedNoise = (noiseVal + 1.0f) * 0.5f;
+						float effectiveDensity = glm::mix(minDensity, maxDensity, combinedNoise);
+
+						if (shader_hash(seed + 5678) <= effectiveDensity) {
+							trees.push_back(worldPos);
+						}
+					}
+				}
+			}
+		}
+	}
+	return trees;
+}
+
 int main() {
 	try {
 		// Initialize the visualizer
@@ -92,8 +181,26 @@ int main() {
 			bool isMoving = glm::length(moveDir) > 0.001f;
 			if (isMoving) {
 				moveDir = glm::normalize(moveDir);
-				camera.x += moveDir.x * currentSpeed * dt;
-				camera.z += moveDir.z * currentSpeed * dt;
+				float nextX = camera.x + moveDir.x * currentSpeed * dt;
+				float nextZ = camera.z + moveDir.z * currentSpeed * dt;
+
+				// Collision detection with trees
+				auto nearbyTrees = GetNearbyTrees(glm::vec3(nextX, camera.y, nextZ), terrain);
+				const float collisionRadius = 0.8f; // Radius of the player capsule
+
+				for (const auto& treePos : nearbyTrees) {
+					float dist = glm::distance(glm::vec2(nextX, nextZ), treePos);
+					if (dist < collisionRadius) {
+						// Simple collision response: slide along the obstacle
+						glm::vec2 toCamera = glm::normalize(glm::vec2(nextX, nextZ) - treePos);
+						glm::vec2 correctedPos = treePos + toCamera * collisionRadius;
+						nextX = correctedPos.x;
+						nextZ = correctedPos.y;
+					}
+				}
+
+				camera.x = nextX;
+				camera.z = nextZ;
 
 				// Update bobbing cycle based on speed
 				float cycleSpeed = isSprinting ? 12.0f : 8.0f;
@@ -105,8 +212,6 @@ int main() {
 			} else {
 				// Fade out bobbing when standing still
 				bobAmount = glm::mix(bobAmount, 0.0f, dt * 5.0f);
-				// Slowly reset cycle to 0 to avoid jumping when starting to move again
-				// (Optional: could just let it stay at current value)
 			}
 
 			// 3. Footstep Sounds
@@ -120,9 +225,19 @@ int main() {
 			lastBobSin = currentBobSin;
 
 			// 4. Ground Clamping
-			// Get terrain height at current position and set camera height
-			auto [terrainHeight, terrainNormal] = viz.GetTerrainPropertiesAtPoint(camera.x, camera.z);
-			float targetHeight = terrainHeight + eyeHeight;
+			// Average terrain height around current position for smoother movement
+			const float sampleRadius = 0.5f;
+			float       totalHeight = 0.0f;
+
+			// Sample 5 points (center and 4 around it)
+			float h0 = std::get<0>(viz.GetTerrainPropertiesAtPoint(camera.x, camera.z));
+			float h1 = std::get<0>(viz.GetTerrainPropertiesAtPoint(camera.x + sampleRadius, camera.z));
+			float h2 = std::get<0>(viz.GetTerrainPropertiesAtPoint(camera.x - sampleRadius, camera.z));
+			float h3 = std::get<0>(viz.GetTerrainPropertiesAtPoint(camera.x, camera.z + sampleRadius));
+			float h4 = std::get<0>(viz.GetTerrainPropertiesAtPoint(camera.x, camera.z - sampleRadius));
+
+			totalHeight = (h0 + h1 + h2 + h3 + h4) / 5.0f;
+			float targetHeight = totalHeight + eyeHeight;
 
 			// Apply bobbing to the camera height for extra realism
 			targetHeight += sin(bobCycle * 2.0f) * bobAmount * 0.04f;
