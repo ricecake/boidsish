@@ -1,6 +1,7 @@
 #include "graphics.h"
 #include "model.h"
 #include "animator.h"
+#include "asset_manager.h"
 #include <iostream>
 
 using namespace Boidsish;
@@ -51,6 +52,22 @@ int main() {
 			std::cout << "WARNING: Model has no meshes!" << std::endl;
 		} else {
 			std::cout << "Model loaded with " << bird->getMeshes().size() << " meshes." << std::endl;
+		}
+
+		// Diagnostics
+		AABB aabb = bird->GetAABB();
+		std::cout << "Model AABB Min: (" << aabb.min.x << ", " << aabb.min.y << ", " << aabb.min.z << ")" << std::endl;
+		std::cout << "Model AABB Max: (" << aabb.max.x << ", " << aabb.max.y << ", " << aabb.max.z << ")" << std::endl;
+
+		auto animator = bird->GetAnimator();
+		if (animator) {
+			auto data = AssetManager::GetInstance().GetModelData(model_path);
+			if (data) {
+				std::cout << "Animations found: " << data->animations.size() << std::endl;
+				for (size_t i = 0; i < data->animations.size(); i++) {
+					std::cout << "  [" << i << "] " << data->animations[i].name << std::endl;
+				}
+			}
 		}
 
 		viz.Run();

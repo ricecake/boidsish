@@ -132,6 +132,7 @@ namespace Boidsish {
 		// Animation Data
 		std::map<std::string, BoneInfo> bone_info_map;
 		int                             bone_count = 0;
+		glm::mat4                       global_inverse_transform = glm::mat4(1.0f);
 		std::vector<Animation>          animations;
 		NodeData                        root_node;
 	};

@@ -41,12 +41,16 @@ namespace Boidsish {
 			aiTextureType      type,
 			std::string        typeName,
 			ModelData&         data,
-			const std::string& directory
+			const std::string& directory,
+			const aiScene*     scene
 		) {
 			std::vector<Texture> textures;
 			for (unsigned int i = 0; i < mat->GetTextureCount(type); i++) {
 				aiString str;
 				mat->GetTexture(type, i, &str);
+
+				// Handle embedded textures
+				const aiTexture* embeddedTexture = scene->GetEmbeddedTexture(str.C_Str());
 				bool skip = false;
 				for (unsigned int j = 0; j < data.textures_loaded.size(); j++) {
 					if (std::strcmp(data.textures_loaded[j].path.data(), str.C_Str()) == 0) {
@@ -57,7 +61,61 @@ namespace Boidsish {
 				}
 				if (!skip) {
 					Texture texture;
-					texture.id = AssetManager::GetInstance().GetTexture(str.C_Str(), directory);
+					if (embeddedTexture) {
+						// Load embedded texture
+						int            width, height, nrComponents;
+						unsigned char* imageData = nullptr;
+						if (embeddedTexture->mHeight == 0) {
+							// Compressed texture (e.g. png, jpg)
+							imageData = stbi_load_from_memory(
+								reinterpret_cast<unsigned char*>(embeddedTexture->pcData),
+								embeddedTexture->mWidth,
+								&width,
+								&height,
+								&nrComponents,
+								0
+							);
+						} else {
+							// Uncompressed texture
+							imageData = stbi_load_from_memory(
+								reinterpret_cast<unsigned char*>(embeddedTexture->pcData),
+								embeddedTexture->mWidth * embeddedTexture->mHeight * 4, // Rough estimate or handle properly
+								&width,
+								&height,
+								&nrComponents,
+								0
+							);
+						}
+
+						if (imageData) {
+							glGenTextures(1, &texture.id);
+							GLenum format = GL_RGB;
+							if (nrComponents == 1)
+								format = GL_RED;
+							else if (nrComponents == 3)
+								format = GL_RGB;
+							else if (nrComponents == 4)
+								format = GL_RGBA;
+
+							glBindTexture(GL_TEXTURE_2D, texture.id);
+							glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+							glTexImage2D(GL_TEXTURE_2D, 0, format, width, height, 0, format, GL_UNSIGNED_BYTE, imageData);
+							glGenerateMipmap(GL_TEXTURE_2D);
+
+							glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+							glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+							glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+							glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+
+							stbi_image_free(imageData);
+							logger::LOG("Embedded texture loaded: {}", str.C_Str());
+						} else {
+							logger::ERROR("Failed to load embedded texture: {}", str.C_Str());
+							texture.id = 0;
+						}
+					} else {
+						texture.id = AssetManager::GetInstance().GetTexture(str.C_Str(), directory);
+					}
 					texture.type = typeName;
 					texture.path = str.C_Str();
 					textures.push_back(texture);
@@ -199,16 +257,16 @@ namespace Boidsish {
 			aiMaterial* material = scene->mMaterials[mesh->mMaterialIndex];
 
 			std::vector<Texture> diffuseMaps =
-				LoadMaterialTextures(material, aiTextureType_DIFFUSE, "texture_diffuse", data, directory);
+				LoadMaterialTextures(material, aiTextureType_DIFFUSE, "texture_diffuse", data, directory, scene);
 			textures.insert(textures.end(), diffuseMaps.begin(), diffuseMaps.end());
 			std::vector<Texture> specularMaps =
-				LoadMaterialTextures(material, aiTextureType_SPECULAR, "texture_specular", data, directory);
+				LoadMaterialTextures(material, aiTextureType_SPECULAR, "texture_specular", data, directory, scene);
 			textures.insert(textures.end(), specularMaps.begin(), specularMaps.end());
 			std::vector<Texture> normalMaps =
-				LoadMaterialTextures(material, aiTextureType_HEIGHT, "texture_normal", data, directory);
+				LoadMaterialTextures(material, aiTextureType_HEIGHT, "texture_normal", data, directory, scene);
 			textures.insert(textures.end(), normalMaps.begin(), normalMaps.end());
 			std::vector<Texture> heightMaps =
-				LoadMaterialTextures(material, aiTextureType_AMBIENT, "texture_height", data, directory);
+				LoadMaterialTextures(material, aiTextureType_AMBIENT, "texture_height", data, directory, scene);
 			textures.insert(textures.end(), heightMaps.begin(), heightMaps.end());
 
 			Mesh out_mesh(vertices, indices, textures, shadow_indices);
@@ -327,6 +385,8 @@ namespace Boidsish {
 		} else {
 			data->directory = ".";
 		}
+
+		data->global_inverse_transform = glm::inverse(ConvertMatrixToGLMFormat(scene->mRootNode->mTransformation));
 
 		ProcessNode(scene->mRootNode, scene, *data, data->directory);
 		ReadHierarchyData(data->root_node, scene->mRootNode);

@@ -132,17 +132,24 @@ namespace Boidsish {
 			int index = it->second.id;
 			glm::mat4 offset = it->second.offset;
 			if (index >= 0 && (size_t)index < m_FinalBoneMatrices.size()) {
-				m_FinalBoneMatrices[index] = globalTransformation * offset;
+				m_FinalBoneMatrices[index] = m_ModelData->global_inverse_transform * globalTransformation * offset;
 			}
 		} else {
-			// If node name doesn't match a bone exactly, try searching for it as a substring or case-insensitive
-			// (Assimp node names sometimes have extra suffixes like _$AssimpFbx$_)
-			for (auto const& [name, info] : m_ModelData->bone_info_map) {
-				if (nodeName.find(name) != std::string::npos || name.find(nodeName) != std::string::npos) {
+			// Robust name matching for Assimp/FBX.
+			// FBX often adds prefixes/suffixes to nodes.
+			for (auto const& [boneName, info] : m_ModelData->bone_info_map) {
+				bool match = false;
+
+				// 1. Simple substring matching (carefully)
+				if (nodeName.find(boneName) != std::string::npos || boneName.find(nodeName) != std::string::npos) {
+					match = true;
+				}
+
+				if (match) {
 					int index = info.id;
 					glm::mat4 offset = info.offset;
 					if (index >= 0 && (size_t)index < m_FinalBoneMatrices.size()) {
-						m_FinalBoneMatrices[index] = globalTransformation * offset;
+						m_FinalBoneMatrices[index] = m_ModelData->global_inverse_transform * globalTransformation * offset;
 					}
 					break;
 				}
