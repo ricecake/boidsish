@@ -309,9 +309,9 @@ namespace Boidsish {
 		logger::LOG("Model loading from disk: {}", path);
 		Assimp::Importer importer;
 		const aiScene*   scene = importer.ReadFile(
-            path,
-            aiProcess_Triangulate | aiProcess_FlipUVs | aiProcess_GenNormals
-        );
+			path,
+			aiProcess_Triangulate | aiProcess_FlipUVs | aiProcess_GenNormals | aiProcess_LimitBoneWeights
+		);
 
 		if (!scene || scene->mFlags & AI_SCENE_FLAGS_INCOMPLETE || !scene->mRootNode) {
 			logger::ERROR("ASSIMP Error: {}", importer.GetErrorString());
@@ -320,6 +320,7 @@ namespace Boidsish {
 
 		auto data = std::make_shared<ModelData>();
 		data->model_path = path;
+		logger::LOG("Attempting to load model: {}", path);
 		size_t last_slash = path.find_last_of("/\\");
 		if (last_slash != std::string::npos) {
 			data->directory = path.substr(0, last_slash);
@@ -330,6 +331,8 @@ namespace Boidsish {
 		ProcessNode(scene->mRootNode, scene, *data, data->directory);
 		ReadHierarchyData(data->root_node, scene->mRootNode);
 		ReadAnimations(scene, *data);
+
+		logger::LOG("Model loaded: {} bones, {} animations", data->bone_count, data->animations.size());
 
 		// Calculate AABB
 		glm::vec3 min(std::numeric_limits<float>::max());

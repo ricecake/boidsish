@@ -14,10 +14,8 @@ namespace Boidsish {
 
 	void Animator::SetModelData(std::shared_ptr<ModelData> modelData) {
 		m_ModelData = modelData;
-		if (m_ModelData) {
-			m_FinalBoneMatrices.clear();
-			m_FinalBoneMatrices.resize(100, glm::mat4(1.0f));
-		}
+		m_FinalBoneMatrices.clear();
+		m_FinalBoneMatrices.resize(100, glm::mat4(1.0f));
 	}
 
 	void Animator::UpdateAnimation(float dt) {
@@ -26,6 +24,9 @@ namespace Boidsish {
 			float ticksPerSecond = (animation.ticksPerSecond != 0) ? (float)animation.ticksPerSecond : 24.0f;
 			m_CurrentTime += ticksPerSecond * dt;
 			m_CurrentTime = std::fmod(m_CurrentTime, animation.duration);
+			CalculateBoneTransform(m_ModelData->root_node, glm::mat4(1.0f));
+		} else if (m_ModelData) {
+			// Even if no animation is playing, we should still update bone matrices to bind pose
 			CalculateBoneTransform(m_ModelData->root_node, glm::mat4(1.0f));
 		}
 	}
@@ -50,7 +51,7 @@ namespace Boidsish {
 		glm::mat4 nodeTransform = node.transformation;
 
 		// Check if this node has an animation
-		if (m_CurrentAnimationIndex >= 0) {
+		if (m_CurrentAnimationIndex >= 0 && (size_t)m_CurrentAnimationIndex < m_ModelData->animations.size()) {
 			auto& animation = m_ModelData->animations[m_CurrentAnimationIndex];
 			// Find BoneAnimation for this node
 			for (const auto& boneAnim : animation.boneAnimations) {
@@ -132,6 +133,19 @@ namespace Boidsish {
 			glm::mat4 offset = it->second.offset;
 			if (index >= 0 && (size_t)index < m_FinalBoneMatrices.size()) {
 				m_FinalBoneMatrices[index] = globalTransformation * offset;
+			}
+		} else {
+			// If node name doesn't match a bone exactly, try searching for it as a substring or case-insensitive
+			// (Assimp node names sometimes have extra suffixes like _$AssimpFbx$_)
+			for (auto const& [name, info] : m_ModelData->bone_info_map) {
+				if (nodeName.find(name) != std::string::npos || name.find(nodeName) != std::string::npos) {
+					int index = info.id;
+					glm::mat4 offset = info.offset;
+					if (index >= 0 && (size_t)index < m_FinalBoneMatrices.size()) {
+						m_FinalBoneMatrices[index] = globalTransformation * offset;
+					}
+					break;
+				}
 			}
 		}
 
