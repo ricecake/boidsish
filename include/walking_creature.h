@@ -18,8 +18,10 @@ namespace Boidsish {
 	private:
 		struct Leg {
 			int       node_idx;
+			int       knee_node_idx;
 			glm::vec3 rest_offset;     // local to body
 			glm::vec3 world_foot_pos;
+			glm::vec3 world_knee_pos;
 			glm::vec3 step_start_pos;
 			glm::vec3 step_target_pos;
 			float     progress = 1.0f; // 1.0 = planted
@@ -40,6 +42,7 @@ namespace Boidsish {
 
 		glm::vec3 target_pos_;
 		glm::vec3 camera_pos_;
+		glm::vec3 current_head_dir_;
 
 		int                      current_sequence_idx_ = 0;
 		const std::array<int, 4> sequence_ = {0, 2, 1, 3}; // FL(0), BR(2), FR(1), BL(3)
@@ -51,7 +54,7 @@ namespace Boidsish {
 		bool      is_looking_at_camera_ = true;
 
 		void UpdateMovement(float delta_time);
-		void UpdateNodes();
+		void UpdateNodes(float delta_time);
 	};
 
 } // namespace Boidsish
