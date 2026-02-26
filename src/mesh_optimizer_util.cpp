@@ -50,7 +50,9 @@ namespace Boidsish {
 	void MeshOptimizerUtil::Simplify(
 		std::vector<Vertex>&       vertices,
 		std::vector<unsigned int>& indices,
+		float                      target_error,
 		float                      target_ratio,
+		unsigned int               flags,
 		const std::string&         model_name
 	) {
 		if (indices.empty() || vertices.empty())
@@ -60,14 +62,15 @@ namespace Boidsish {
 		size_t vertex_count = vertices.size();
 
 		logger::LOG(
-			"Simplifying mesh for model: {} (target ratio: {}, original indices: {})",
+			"Simplifying mesh for model: {} (target error: {}, target ratio: {}, flags: {}, original indices: {})",
 			model_name,
+			target_error,
 			target_ratio,
+			flags,
 			index_count
 		);
 
 		size_t target_index_count = static_cast<size_t>(index_count * target_ratio);
-		float  target_error = 0.01f; // 1% error threshold
 
 		std::vector<unsigned int> simplified_indices(index_count);
 		size_t                    simplified_index_count = meshopt_simplify(
@@ -79,7 +82,8 @@ namespace Boidsish {
             sizeof(Vertex),
             target_index_count,
             target_error,
-            0 // flags
+            flags,
+            nullptr
         );
 
 		simplified_indices.resize(simplified_index_count);

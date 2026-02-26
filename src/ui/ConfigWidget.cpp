@@ -20,7 +20,8 @@ namespace Boidsish {
 					const std::string& key = pair.first;
 					const ConfigValue& val_info = pair.second;
 
-					if (key.contains("artistic_effect_") || key == "render_scale" || key == "enable_shadows") {
+					if (key.contains("artistic_effect_") || key == "render_scale" || key == "enable_shadows" ||
+						key.contains("mesh_simplifier_") || key == "mesh_optimizer_enabled") {
 						continue;
 					}
 
@@ -162,6 +163,56 @@ namespace Boidsish {
 					bool  enable_shadows = config_manager.GetAppSettingBool("enable_shadows", true);
 					if (ImGui::Checkbox("Enable Shadows", &enable_shadows)) {
 						config_manager.SetBool("enable_shadows", enable_shadows);
+					}
+				}
+
+				if (ImGui::CollapsingHeader("Mesh Optimization", ImGuiTreeNodeFlags_DefaultOpen)) {
+					auto& config_manager = ConfigManager::GetInstance();
+
+					bool mesh_opt = config_manager.GetAppSettingBool("mesh_optimizer_enabled", true);
+					if (ImGui::Checkbox("Enable Optimizer", &mesh_opt)) {
+						config_manager.SetBool("mesh_optimizer_enabled", mesh_opt);
+					}
+
+					bool mesh_simp = config_manager.GetAppSettingBool("mesh_simplifier_enabled", false);
+					if (ImGui::Checkbox("Enable Simplifier", &mesh_simp)) {
+						config_manager.SetBool("mesh_simplifier_enabled", mesh_simp);
+					}
+
+					if (mesh_simp) {
+						float ratio = config_manager.GetAppSettingFloat("mesh_simplifier_target_ratio", 0.5f);
+						if (ImGui::SliderFloat("Global Ratio Limit", &ratio, 0.01f, 1.0f)) {
+							config_manager.SetFloat("mesh_simplifier_target_ratio", ratio);
+						}
+
+						ImGui::Separator();
+						ImGui::Text("Pre-build Assets");
+						float err_pb = config_manager.GetAppSettingFloat("mesh_simplifier_error_prebuild", 0.01f);
+						if (ImGui::SliderFloat("Error Rate (Pre-build)", &err_pb, 0.001f, 0.2f, "%.3f")) {
+							config_manager.SetFloat("mesh_simplifier_error_prebuild", err_pb);
+						}
+
+						int         agg_pb = config_manager.GetAppSettingInt("mesh_simplifier_aggression_prebuild", 0);
+						const char* agg_levels[] = {"Low", "Medium", "High"};
+						int         current_agg_pb = (agg_pb == 40) ? 2 : (agg_pb == 8 ? 1 : 0);
+						if (ImGui::Combo("Aggression (Pre-build)", &current_agg_pb, agg_levels, 3)) {
+							int new_agg = (current_agg_pb == 2) ? 40 : (current_agg_pb == 1 ? 8 : 0);
+							config_manager.SetInt("mesh_simplifier_aggression_prebuild", new_agg);
+						}
+
+						ImGui::Separator();
+						ImGui::Text("Procedural Models");
+						float err_proc = config_manager.GetAppSettingFloat("mesh_simplifier_error_procedural", 0.05f);
+						if (ImGui::SliderFloat("Error Rate (Procedural)", &err_proc, 0.001f, 0.2f, "%.3f")) {
+							config_manager.SetFloat("mesh_simplifier_error_procedural", err_proc);
+						}
+
+						int agg_proc = config_manager.GetAppSettingInt("mesh_simplifier_aggression_procedural", 40);
+						int current_agg_proc = (agg_proc == 40) ? 2 : (agg_proc == 8 ? 1 : 0);
+						if (ImGui::Combo("Aggression (Procedural)", &current_agg_proc, agg_levels, 3)) {
+							int new_agg = (current_agg_proc == 2) ? 40 : (current_agg_proc == 1 ? 8 : 0);
+							config_manager.SetInt("mesh_simplifier_aggression_procedural", new_agg);
+						}
 					}
 				}
 

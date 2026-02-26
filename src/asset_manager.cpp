@@ -93,8 +93,10 @@ namespace Boidsish {
 			// Apply mesh optimization/simplification before finalizing the mesh
 			auto& config = ConfigManager::GetInstance();
 			if (config.GetAppSettingBool("mesh_simplifier_enabled", false)) {
+				float error = config.GetAppSettingFloat("mesh_simplifier_error_prebuild", 0.01f);
 				float ratio = config.GetAppSettingFloat("mesh_simplifier_target_ratio", 0.5f);
-				MeshOptimizerUtil::Simplify(vertices, indices, ratio, data.model_path);
+				int   flags = config.GetAppSettingInt("mesh_simplifier_aggression_prebuild", 0);
+				MeshOptimizerUtil::Simplify(vertices, indices, error, ratio, (unsigned int)flags, data.model_path);
 			}
 			if (config.GetAppSettingBool("mesh_optimizer_enabled", true)) {
 				MeshOptimizerUtil::Optimize(vertices, indices, data.model_path);

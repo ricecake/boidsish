@@ -54,8 +54,8 @@ TEST(MeshOptimizerTest, SimplifyMesh) {
 
     size_t original_index_count = indices.size();
 
-    // Simplify to 50%
-    MeshOptimizerUtil::Simplify(vertices, indices, 0.5f, "test_grid");
+    // Simplify with 1% error
+    MeshOptimizerUtil::Simplify(vertices, indices, 0.01f, 0.5f, 0, "test_grid");
 
     EXPECT_LE(indices.size(), original_index_count);
 

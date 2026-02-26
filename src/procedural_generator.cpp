@@ -387,6 +387,13 @@ namespace Boidsish {
 		std::vector<unsigned int> indices = indices_in;
 
 		auto& config = ConfigManager::GetInstance();
+		if (config.GetAppSettingBool("mesh_simplifier_enabled", false)) {
+			float error = config.GetAppSettingFloat("mesh_simplifier_error_procedural", 0.05f);
+			float ratio = config.GetAppSettingFloat("mesh_simplifier_target_ratio", 0.5f);
+			int   flags = config.GetAppSettingInt("mesh_simplifier_aggression_procedural", 40);
+			MeshOptimizerUtil::Simplify(vertices, indices, error, ratio, (unsigned int)flags, data->model_path);
+		}
+
 		if (config.GetAppSettingBool("mesh_optimizer_enabled", true)) {
 			MeshOptimizerUtil::Optimize(vertices, indices, data->model_path);
 		}
