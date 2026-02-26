@@ -3,6 +3,8 @@
 #include <numbers>
 #include <random>
 
+#include "ConfigManager.h"
+#include "mesh_optimizer_util.h"
 #include "spline.h"
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/quaternion.hpp>
@@ -374,11 +376,19 @@ namespace Boidsish {
 	}
 
 	std::shared_ptr<ModelData> ProceduralGenerator::CreateModelDataFromGeometry(
-		const std::vector<Vertex>&       vertices,
-		const std::vector<unsigned int>& indices,
+		const std::vector<Vertex>&       vertices_in,
+		const std::vector<unsigned int>& indices_in,
 		const glm::vec3&                 diffuseColor
 	) {
 		auto data = std::make_shared<ModelData>();
+
+		std::vector<Vertex>       vertices = vertices_in;
+		std::vector<unsigned int> indices = indices_in;
+
+		auto& config = ConfigManager::GetInstance();
+		if (config.GetAppSettingBool("mesh_optimizer_enabled", true)) {
+			MeshOptimizerUtil::Optimize(vertices, indices);
+		}
 
 		Mesh mesh(vertices, indices, {});
 		mesh.diffuseColor = diffuseColor;

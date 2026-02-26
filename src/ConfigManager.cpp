@@ -65,6 +65,11 @@ namespace Boidsish {
 		GetAppSettingBool("artistic_effect_shimmery", false);
 		GetAppSettingBool("artistic_effect_glitched", false);
 		GetAppSettingBool("artistic_effect_wireframe", false);
+
+		// Mesh optimization settings
+		GetAppSettingBool("mesh_optimizer_enabled", true);
+		GetAppSettingBool("mesh_simplifier_enabled", false);
+		GetAppSettingFloat("mesh_simplifier_target_ratio", 0.5f);
 	}
 
 	void ConfigManager::Shutdown() {

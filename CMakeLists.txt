@@ -41,6 +41,7 @@ set(BUILD_TESTING OFF CACHE BOOL "Disable submodule tests" FORCE)
 add_subdirectory(external/task-thread-pool)
 add_subdirectory(external/poolSTL)
 add_subdirectory(external/libmorton)
+add_subdirectory(external/meshoptimizer)
 
 # Bonxai - header-only voxel grid library (only need core, not ROS/map modules)
 set(BONXAI_INCLUDE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/external/Bonxai/bonxai_core/include")
@@ -80,6 +81,7 @@ target_link_libraries(boidsish
         ${ASSIMP_LIBRARIES}
         ZLIB::ZLIB
         libmorton::libmorton
+        meshoptimizer
         Threads::Threads
         glm::glm
 )
@@ -291,6 +293,11 @@ target_link_libraries(test_model_slice PRIVATE boidsish GTest::GTest GTest::Main
 set_target_properties(test_model_slice PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}" EXCLUDE_FROM_ALL TRUE)
 add_test(NAME test_model_slice COMMAND test_model_slice)
 
+add_executable(test_mesh_optimizer tests/test_mesh_optimizer.cpp)
+target_link_libraries(test_mesh_optimizer PRIVATE boidsish GTest::GTest GTest::Main)
+set_target_properties(test_mesh_optimizer PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}" EXCLUDE_FROM_ALL TRUE)
+add_test(NAME test_mesh_optimizer COMMAND test_mesh_optimizer)
+
 # Group all tests into a single target for convenience
 add_custom_target(tests)
 add_dependencies(tests
@@ -305,4 +312,5 @@ add_dependencies(tests
     test_deformation_overlap
     test_collision
     test_model_slice
+    test_mesh_optimizer
 )
