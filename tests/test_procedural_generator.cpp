@@ -20,6 +20,16 @@ TEST(ProceduralGeneratorTest, GenerateAllTypes) {
     auto tree = ProceduralGenerator::Generate(ProceduralType::Tree, 101112);
     ASSERT_NE(tree, nullptr);
     EXPECT_GT(tree->getMeshes().size(), 0);
+
+    auto scTree = ProceduralGenerator::Generate(ProceduralType::TreeSpaceColonization, 1337);
+    ASSERT_NE(scTree, nullptr);
+    EXPECT_GT(scTree->getMeshes().size(), 0);
+
+    size_t totalVertices = 0;
+    for (const auto& mesh : scTree->getMeshes()) {
+        totalVertices += mesh.vertices.size();
+    }
+    EXPECT_GT(totalVertices, 0);
 }
 
 TEST(ProceduralGeneratorTest, MultipleVariants) {
