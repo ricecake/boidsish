@@ -30,7 +30,7 @@ namespace Boidsish {
 		if (edges.empty())
 			return;
 
-		bool nodes_changed = false;
+		bool nodes_changed = is_dynamic_;
 		if (cached_vertex_positions_.size() != vertices.size()) {
 			nodes_changed = true;
 		} else {
@@ -177,8 +177,12 @@ namespace Boidsish {
 				vertices_to_upload.push_back(v);
 			}
 
-			if (!allocation_.valid || allocation_.vertex_count != static_cast<uint32_t>(vertices_to_upload.size())) {
+			if (nodes_changed) {
+				allocation_ = mb->AllocateDynamic(static_cast<uint32_t>(vertices_to_upload.size()), 0);
+				is_dynamic_ = true;
+			} else if (!allocation_.valid || allocation_.vertex_count != static_cast<uint32_t>(vertices_to_upload.size())) {
 				allocation_ = mb->AllocateStatic(static_cast<uint32_t>(vertices_to_upload.size()), 0);
+				is_dynamic_ = false;
 			}
 
 			if (allocation_.valid) {

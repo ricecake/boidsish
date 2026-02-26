@@ -107,6 +107,7 @@ namespace Boidsish {
 		mutable bool                 buffers_initialized_ = false;
 		mutable std::vector<Vector3> cached_vertex_positions_;
 		mutable MegabufferAllocation allocation_;
+		mutable bool                 is_dynamic_ = false;
 	};
 
 } // namespace Boidsish

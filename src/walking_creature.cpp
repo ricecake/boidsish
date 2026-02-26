@@ -51,6 +51,7 @@ WalkingCreature::WalkingCreature(int id, float x, float y, float z, float length
 }
 
 void WalkingCreature::Update(float delta_time) {
+    current_pos_ = glm::vec3(GetX(), GetY(), GetZ());
     UpdateMovement(delta_time);
     UpdateNodes(delta_time);
     MarkDirty();
@@ -84,11 +85,14 @@ void WalkingCreature::UpdateMovement(float delta_time) {
         if (walk_phi_ >= 2.0f) walk_phi_ -= 2.0f;
     }
 
+    glm::vec3 current_forward = glm::vec3(std::sin(glm::radians(current_yaw_)), 0, std::cos(glm::radians(current_yaw_)));
+
     for (int j = 0; j < 4; ++j) {
         int leg_idx = sequence_[j];
         float leg_phi_start = j * 0.5f;
         float leg_phi = walk_phi_ - leg_phi_start;
-        if (leg_phi < 0) leg_phi += 2.0f;
+        while (leg_phi < 0) leg_phi += 2.0f;
+        while (leg_phi >= 2.0f) leg_phi -= 2.0f;
 
         if (is_walking_ && leg_phi < 1.0f) { // Leg is moving
             if (!legs_[leg_idx].is_moving) {
@@ -98,14 +102,15 @@ void WalkingCreature::UpdateMovement(float delta_time) {
                 float step_length = 0.25f * length_;
                 glm::mat4 rotation = glm::rotate(glm::mat4(1.0f), glm::radians(current_yaw_), glm::vec3(0, 1, 0));
                 glm::vec3 rotated_offset = glm::vec3(rotation * glm::vec4(legs_[leg_idx].rest_offset, 1.0f));
-                legs_[leg_idx].step_target_pos = current_pos_ + rotated_offset + glm::vec3(std::sin(glm::radians(current_yaw_)), 0, std::cos(glm::radians(current_yaw_))) * (step_length * 0.5f);
+
+                // Target is ahead of where body will be at end of step
+                legs_[leg_idx].step_target_pos = current_pos_ + rotated_offset + current_forward * (step_length * 0.75f);
             }
 
             legs_[leg_idx].progress = leg_phi;
             float p = legs_[leg_idx].progress;
             float theta = 2.0f * std::numbers::pi_v<float> * p;
 
-            // Foot Cycloid
             float horizontal_p = (theta - std::sin(theta)) / (2.0f * std::numbers::pi_v<float>);
             float vertical_p = (1.0f - std::cos(theta)) / 2.0f;
 
@@ -120,10 +125,11 @@ void WalkingCreature::UpdateMovement(float delta_time) {
             float knee_vertical_p = (1.0f - std::cos(knee_theta)) / 2.0f;
 
             glm::mat4 rotation = glm::rotate(glm::mat4(1.0f), glm::radians(current_yaw_), glm::vec3(0, 1, 0));
-            glm::vec3 body_joint_world = current_pos_ + glm::vec3(rotation * glm::vec4(0.0f, height_, 0.0f, 1.0f)) + glm::vec3(rotation * glm::vec4(legs_[leg_idx].rest_offset.x, 0.0f, legs_[leg_idx].rest_offset.z, 0.0f));
+            glm::vec3 body_joint_world = current_pos_ + glm::vec3(rotation * glm::vec4(legs_[leg_idx].rest_offset.x, 0.0f, legs_[leg_idx].rest_offset.z, 0.0f));
+            body_joint_world.y += height_;
 
             glm::vec3 mid_pos = glm::mix(body_joint_world, legs_[leg_idx].world_foot_pos, 0.5f);
-            float knee_step_height = length_ * 0.1f;
+            float knee_step_height = length_ * 0.15f;
             legs_[leg_idx].world_knee_pos = mid_pos + glm::vec3(0, height_ * 0.3f + knee_vertical_p * knee_step_height, 0);
 
             // Push knee outwards slightly for the arch
@@ -131,15 +137,17 @@ void WalkingCreature::UpdateMovement(float delta_time) {
             legs_[leg_idx].world_knee_pos += out_dir * (length_ * 0.1f * knee_vertical_p);
 
         } else {
-            legs_[leg_idx].is_moving = false;
-            legs_[leg_idx].progress = 1.0f;
+            if (legs_[leg_idx].is_moving) {
+                legs_[leg_idx].is_moving = false;
+                legs_[leg_idx].progress = 1.0f;
+                legs_[leg_idx].world_foot_pos = legs_[leg_idx].step_target_pos;
+                legs_[leg_idx].world_foot_pos.y = current_pos_.y; // Ensure it's on ground
+            }
 
-            // If not walking, keep feet at rest position relative to current pos/yaw
+            // Re-calculate knee even when planted
             glm::mat4 rotation = glm::rotate(glm::mat4(1.0f), glm::radians(current_yaw_), glm::vec3(0, 1, 0));
-            glm::vec3 rotated_offset = glm::vec3(rotation * glm::vec4(legs_[leg_idx].rest_offset, 1.0f));
-            legs_[leg_idx].world_foot_pos = current_pos_ + rotated_offset;
-
-            glm::vec3 body_joint_world = current_pos_ + glm::vec3(rotation * glm::vec4(0.0f, height_, 0.0f, 1.0f)) + glm::vec3(rotation * glm::vec4(legs_[leg_idx].rest_offset.x, 0.0f, legs_[leg_idx].rest_offset.z, 0.0f));
+            glm::vec3 body_joint_world = current_pos_ + glm::vec3(rotation * glm::vec4(legs_[leg_idx].rest_offset.x, 0.0f, legs_[leg_idx].rest_offset.z, 0.0f));
+            body_joint_world.y += height_;
             legs_[leg_idx].world_knee_pos = glm::mix(body_joint_world, legs_[leg_idx].world_foot_pos, 0.5f) + glm::vec3(0, height_ * 0.3f, 0);
         }
     }

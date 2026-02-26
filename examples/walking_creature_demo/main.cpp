@@ -14,6 +14,7 @@ int main(int argc, char** argv) {
 
 		// Create the walking creature at the origin
 		auto creature = std::make_shared<WalkingCreature>(0, 0, 0, 0, 4.0f);
+		creature->SetClampedToTerrain(true);
 
 		// Use a shape handler to update and return the creature for rendering
 		vis.AddShapeHandler([&creature, &vis](float time) {
