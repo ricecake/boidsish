@@ -8,10 +8,26 @@
 #include "spline.h"
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/quaternion.hpp>
+#include <glm/gtx/norm.hpp>
 
 namespace Boidsish {
 
 	namespace {
+		struct SCNode {
+			int              id;
+			int              parentId;
+			glm::vec3        pos;
+			float            radius = 0.1f;
+			std::vector<int> children;
+			glm::vec3        growthDir = {0, 0, 0};
+			int              attractorCount = 0;
+		};
+
+		struct SCAttractor {
+			glm::vec3 pos;
+			bool      active = true;
+		};
+
 		struct LSystem {
 			std::string                 axiom;
 			std::map<char, std::string> rules;
@@ -252,6 +268,8 @@ namespace Boidsish {
 			return GenerateFlower(seed);
 		case ProceduralType::Tree:
 			return GenerateTree(seed);
+		case ProceduralType::TreeSpaceColonization:
+			return GenerateSpaceColonizationTree(seed);
 		}
 		return nullptr;
 	}
@@ -434,6 +452,171 @@ namespace Boidsish {
 		flushBranch();
 
 		return std::make_shared<Model>(CreateModelDataFromGeometry(vertices, indices, glm::vec3(1.0f)), true);
+	}
+
+	std::shared_ptr<Model> ProceduralGenerator::GenerateSpaceColonizationTree(unsigned int seed) {
+		std::mt19937 gen(seed);
+
+		// Parameters
+		const float killDistance = 0.5f;
+		const float influenceRadius = 1.5f;
+		const float growthStep = 0.3f;
+		const int   numAttractors = 400;
+		const float exponent = 2.0f; // Leonardo's rule
+
+		std::vector<SCAttractor> attractors;
+		std::uniform_real_distribution<float> crownX(-3.0f, 3.0f);
+		std::uniform_real_distribution<float> crownY(3.0f, 10.0f);
+		std::uniform_real_distribution<float> crownZ(-3.0f, 3.0f);
+
+		for (int i = 0; i < numAttractors; ++i) {
+			attractors.push_back({{crownX(gen), crownY(gen), crownZ(gen)}, true});
+		}
+
+		std::vector<SCNode> nodes;
+		// Root nodes (trunk) to reach the crown
+		nodes.push_back({0, -1, {0, 0, 0}});
+		int initialTrunkNodes = 10;
+		for (int i = 1; i <= initialTrunkNodes; ++i) {
+			nodes.push_back({i, i - 1, {0, (float)i * growthStep, 0}});
+			nodes[i - 1].children.push_back(i);
+		}
+
+		bool growthOccurred = true;
+		int  iterations = 0;
+		while (growthOccurred && iterations < 200) {
+			growthOccurred = false;
+			iterations++;
+
+			// Reset growth
+			for (auto& n : nodes) {
+				n.growthDir = {0, 0, 0};
+				n.attractorCount = 0;
+			}
+
+			// Association
+			for (size_t i = 0; i < attractors.size(); ++i) {
+				if (!attractors[i].active)
+					continue;
+
+				int   closestNode = -1;
+				float minDistSq = influenceRadius * influenceRadius;
+
+				for (size_t n = 0; n < nodes.size(); ++n) {
+					float d2 = glm::distance2(attractors[i].pos, nodes[n].pos);
+					if (d2 < minDistSq) {
+						minDistSq = d2;
+						closestNode = (int)n;
+					}
+				}
+
+				if (closestNode != -1) {
+					nodes[closestNode].growthDir += glm::normalize(attractors[i].pos - nodes[closestNode].pos);
+					nodes[closestNode].attractorCount++;
+				}
+			}
+
+			// Growth
+			size_t currentSize = nodes.size();
+			for (size_t i = 0; i < currentSize; ++i) {
+				if (nodes[i].attractorCount > 0) {
+					glm::vec3 nextPos = nodes[i].pos + glm::normalize(nodes[i].growthDir) * growthStep;
+
+					// Avoid duplicates/overlapping nodes too close
+					bool tooClose = false;
+					for(size_t n=0; n<nodes.size(); ++n) {
+						if (glm::distance2(nextPos, nodes[n].pos) < (growthStep * growthStep * 0.25f)) {
+							tooClose = true;
+							break;
+						}
+					}
+
+					if (!tooClose) {
+						SCNode newNode;
+						newNode.id = (int)nodes.size();
+						newNode.parentId = (int)i;
+						newNode.pos = nextPos;
+						nodes[i].children.push_back(newNode.id);
+						nodes.push_back(newNode);
+						growthOccurred = true;
+					}
+				}
+			}
+
+			// Pruning
+			for (size_t i = 0; i < attractors.size(); ++i) {
+				if (!attractors[i].active)
+					continue;
+				for (const auto& n : nodes) {
+					if (glm::distance2(attractors[i].pos, n.pos) < (killDistance * killDistance)) {
+						attractors[i].active = false;
+						break;
+					}
+				}
+			}
+		}
+
+		// Thickness calculation (Leonardo's Rule)
+		for (int i = (int)nodes.size() - 1; i >= 0; --i) {
+			if (nodes[i].children.empty()) {
+				nodes[i].radius = 0.05f;
+			} else {
+				float sumArea = 0.0f;
+				for (int childIdx : nodes[i].children) {
+					sumArea += std::pow(nodes[childIdx].radius, exponent);
+				}
+				nodes[i].radius = std::pow(sumArea, 1.0f / exponent);
+			}
+		}
+
+		// Convert to Spline::Graph format
+		std::vector<Spline::GraphNode> s_nodes;
+		for (const auto& n : nodes) {
+			s_nodes.push_back({Vector3(n.pos), n.radius / 0.005f, {0.35f, 0.25f, 0.15f}});
+		}
+
+		std::vector<Spline::GraphEdge> s_edges;
+		for (const auto& n : nodes) {
+			if (n.parentId != -1) {
+				s_edges.push_back({n.parentId, n.id});
+			}
+		}
+
+		// Generate mesh with low poly settings
+		auto v_data = Spline::GenerateGraphTube(s_nodes, s_edges, 2, 4);
+
+		std::vector<Vertex> vertices;
+		std::vector<unsigned int> indices;
+		for (const auto& vd : v_data) {
+			Vertex v;
+			v.Position = vd.pos;
+			v.Normal = vd.normal;
+			v.Color = vd.color;
+			v.TexCoords = {0.5f, 0.5f};
+			vertices.push_back(v);
+		}
+		for (unsigned int i = 0; i < vertices.size(); ++i) indices.push_back(i);
+
+		auto data = CreateModelDataFromGeometry(vertices, indices, {1,1,1});
+
+		// Add some leaves at terminal nodes
+		std::vector<Vertex> leaf_vertices;
+		std::vector<unsigned int> leaf_indices;
+		glm::vec3 leafCol(0.1f, 0.45f, 0.1f);
+		for (const auto& n : nodes) {
+			if (nodes[n.id].children.empty()) {
+				AddPuffball(leaf_vertices, leaf_indices, n.pos, 0.4f, leafCol, gen);
+			}
+		}
+
+		if (!leaf_vertices.empty()) {
+			auto leaf_data = CreateModelDataFromGeometry(leaf_vertices, leaf_indices, {1,1,1});
+			for (const auto& mesh : leaf_data->meshes) {
+				data->meshes.push_back(mesh);
+			}
+		}
+
+		return std::make_shared<Model>(data, true);
 	}
 
 	std::shared_ptr<Model> ProceduralGenerator::GenerateTree(
