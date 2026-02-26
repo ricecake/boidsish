@@ -34,6 +34,17 @@ namespace Boidsish {
 			unsigned int               flags = 0,
 			const std::string&         model_name = "unknown"
 		);
+
+		/**
+		 * @brief Generates an index buffer optimized for shadow passes.
+		 * Multiple vertices with the same position will be remapped to a single index
+		 * to improve vertex cache performance during position-only rendering.
+		 */
+		static void GenerateShadowIndices(
+			const std::vector<Vertex>&       vertices,
+			const std::vector<unsigned int>& indices,
+			std::vector<unsigned int>&       out_shadow_indices
+		);
 	};
 
 } // namespace Boidsish

@@ -98,8 +98,13 @@ namespace Boidsish {
 				int   flags = config.GetAppSettingInt("mesh_simplifier_aggression_prebuild", 0);
 				MeshOptimizerUtil::Simplify(vertices, indices, error, ratio, (unsigned int)flags, data.model_path);
 			}
+			std::vector<unsigned int> shadow_indices;
 			if (config.GetAppSettingBool("mesh_optimizer_enabled", true)) {
 				MeshOptimizerUtil::Optimize(vertices, indices, data.model_path);
+
+				if (config.GetAppSettingBool("mesh_optimizer_shadow_indices_enabled", true)) {
+					MeshOptimizerUtil::GenerateShadowIndices(vertices, indices, shadow_indices);
+				}
 			}
 
 			aiMaterial* material = scene->mMaterials[mesh->mMaterialIndex];
@@ -117,7 +122,7 @@ namespace Boidsish {
 				LoadMaterialTextures(material, aiTextureType_AMBIENT, "texture_height", data, directory);
 			textures.insert(textures.end(), heightMaps.begin(), heightMaps.end());
 
-			Mesh out_mesh(vertices, indices, textures);
+			Mesh out_mesh(vertices, indices, textures, shadow_indices);
 
 			aiColor3D color(1.0f, 1.0f, 1.0f);
 			if (material->Get(AI_MATKEY_COLOR_DIFFUSE, color) == AI_SUCCESS) {

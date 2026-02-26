@@ -28,6 +28,8 @@ namespace Boidsish {
 				glDeleteBuffers(1, &type.count_buffer);
 			if (type.indirect_buffer != 0)
 				glDeleteBuffers(1, &type.indirect_buffer);
+			if (type.shadow_indirect_buffer != 0)
+				glDeleteBuffers(1, &type.shadow_indirect_buffer);
 		}
 	}
 
@@ -102,6 +104,16 @@ namespace Boidsish {
 
 		glGenBuffers(1, &type.indirect_buffer);
 		glBindBuffer(GL_DRAW_INDIRECT_BUFFER, type.indirect_buffer);
+		glBufferData(
+			GL_DRAW_INDIRECT_BUFFER,
+			num_meshes * sizeof(DrawElementsIndirectCommand),
+			commands.data(),
+			GL_STATIC_DRAW
+		);
+
+		// Shadow indirect commands
+		glGenBuffers(1, &type.shadow_indirect_buffer);
+		glBindBuffer(GL_DRAW_INDIRECT_BUFFER, type.shadow_indirect_buffer);
 		glBufferData(
 			GL_DRAW_INDIRECT_BUFFER,
 			num_meshes * sizeof(DrawElementsIndirectCommand),
@@ -252,6 +264,64 @@ namespace Boidsish {
 		props.wind_responsiveness = 0.0f;
 		props.wind_rim_highlight = 0.0f;
 		return props;
+	}
+
+	void DecorManager::PrepareResources(Megabuffer* mb) {
+		if (!mb)
+			return;
+
+		for (auto& type : decor_types_) {
+			type.model->PrepareResources(mb);
+
+			// Update indirect buffers with correct Megabuffer offsets
+			const auto&                              meshes = type.model->getMeshes();
+			size_t                                   num_meshes = meshes.size();
+			std::vector<DrawElementsIndirectCommand> commands(num_meshes);
+			std::vector<DrawElementsIndirectCommand> shadow_commands(num_meshes);
+
+			for (size_t i = 0; i < num_meshes; ++i) {
+				const auto& mesh = meshes[i];
+				// Regular commands
+				commands[i].count = mesh.allocation.valid ? mesh.allocation.index_count
+														  : static_cast<uint32_t>(mesh.indices.size());
+				commands[i].instanceCount = 0;
+				commands[i].firstIndex = mesh.allocation.valid ? mesh.allocation.first_index : 0;
+				commands[i].baseVertex = mesh.allocation.valid ? mesh.allocation.base_vertex : 0;
+				commands[i].baseInstance = 0;
+
+				// Shadow commands
+				if (mesh.shadow_allocation.valid) {
+					shadow_commands[i].count = mesh.shadow_allocation.index_count;
+					shadow_commands[i].firstIndex = mesh.shadow_allocation.first_index;
+				} else if (!mesh.shadow_indices.empty()) {
+					shadow_commands[i].count = static_cast<uint32_t>(mesh.shadow_indices.size());
+					shadow_commands[i].firstIndex = static_cast<uint32_t>(mesh.indices.size());
+				} else {
+					shadow_commands[i].count = commands[i].count;
+					shadow_commands[i].firstIndex = commands[i].firstIndex;
+				}
+				shadow_commands[i].instanceCount = 0;
+				shadow_commands[i].baseVertex = commands[i].baseVertex;
+				shadow_commands[i].baseInstance = 0;
+			}
+
+			glBindBuffer(GL_DRAW_INDIRECT_BUFFER, type.indirect_buffer);
+			glBufferSubData(
+				GL_DRAW_INDIRECT_BUFFER,
+				0,
+				num_meshes * sizeof(DrawElementsIndirectCommand),
+				commands.data()
+			);
+
+			glBindBuffer(GL_DRAW_INDIRECT_BUFFER, type.shadow_indirect_buffer);
+			glBufferSubData(
+				GL_DRAW_INDIRECT_BUFFER,
+				0,
+				num_meshes * sizeof(DrawElementsIndirectCommand),
+				shadow_commands.data()
+			);
+		}
+		glBindBuffer(GL_DRAW_INDIRECT_BUFFER, 0);
 	}
 
 	void DecorManager::Update(
@@ -484,11 +554,15 @@ namespace Boidsish {
 
 			glMemoryBarrier(GL_ATOMIC_COUNTER_BARRIER_BIT | GL_SHADER_STORAGE_BARRIER_BIT);
 
-			// Update indirect commands
+			// Update indirect commands for both regular and shadow passes
 			update_commands_shader_->use();
 			update_commands_shader_->setInt("u_numCommands", (int)type.model->getMeshes().size());
-			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 2, type.indirect_buffer);
 			glBindBufferBase(GL_ATOMIC_COUNTER_BUFFER, 0, type.count_buffer);
+
+			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 2, type.indirect_buffer);
+			glDispatchCompute(1, 1, 1);
+
+			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 2, type.shadow_indirect_buffer);
 			glDispatchCompute(1, 1, 1);
 
 			glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT | GL_COMMAND_BARRIER_BIT);
@@ -533,8 +607,12 @@ namespace Boidsish {
 			shader->setFloat("u_windResponsiveness", type.props.wind_responsiveness);
 			shader->setFloat("u_windRimHighlight", type.props.wind_rim_highlight);
 
-			// Bind the indirect buffer
-			glBindBuffer(GL_DRAW_INDIRECT_BUFFER, type.indirect_buffer);
+			// Bind the appropriate indirect buffer
+			if (is_shadow_pass) {
+				glBindBuffer(GL_DRAW_INDIRECT_BUFFER, type.shadow_indirect_buffer);
+			} else {
+				glBindBuffer(GL_DRAW_INDIRECT_BUFFER, type.indirect_buffer);
+			}
 
 			const auto& meshes = type.model->getMeshes();
 			for (size_t mi = 0; mi < meshes.size(); ++mi) {

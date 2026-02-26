@@ -33,6 +33,44 @@ TEST(MeshOptimizerTest, OptimizeBasicMesh) {
     }
 }
 
+TEST(MeshOptimizerTest, GenerateShadowIndices) {
+    std::vector<Vertex> vertices;
+    std::vector<unsigned int> indices;
+
+    // Create a cube with duplicated vertices for hard normals
+    // 8 positions, but 24 vertices
+    for (int i = 0; i < 8; ++i) {
+        glm::vec3 pos((i & 1) ? 1.0f : 0.0f, (i & 2) ? 1.0f : 0.0f, (i & 4) ? 1.0f : 0.0f);
+        // Add 3 versions of each position with different normals
+        vertices.push_back({pos, glm::vec3(1,0,0), glm::vec2(0,0)});
+        vertices.push_back({pos, glm::vec3(0,1,0), glm::vec2(0,0)});
+        vertices.push_back({pos, glm::vec3(0,0,1), glm::vec2(0,0)});
+    }
+
+    // Just some dummy triangles
+    indices = {0, 3, 6, 9, 12, 15};
+
+    std::vector<unsigned int> shadow_indices;
+    MeshOptimizerUtil::GenerateShadowIndices(vertices, indices, shadow_indices);
+
+    EXPECT_EQ(shadow_indices.size(), indices.size());
+
+    // Check if indices are remapped.
+    // For example, vertex 1 and vertex 2 have the same position as vertex 0.
+    // meshopt_generateShadowIndexBuffer should remap indices pointing to 1 or 2 to point to 0.
+
+    // In our case, 0, 3, 6, 9, 12, 15 all have different positions, so they might not be merged.
+    // Let's add indices that we KNOW should be merged.
+    indices = {0, 1, 2}; // All three refer to the same position: pos of i=0
+    MeshOptimizerUtil::GenerateShadowIndices(vertices, indices, shadow_indices);
+
+    EXPECT_EQ(shadow_indices[0], shadow_indices[1]);
+    EXPECT_EQ(shadow_indices[0], shadow_indices[2]);
+
+    // All should point to index 0 (the first vertex with that position)
+    EXPECT_EQ(shadow_indices[0], 0);
+}
+
 TEST(MeshOptimizerTest, SimplifyMesh) {
     std::vector<Vertex> vertices;
     std::vector<unsigned int> indices;
