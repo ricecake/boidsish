@@ -43,18 +43,20 @@ namespace Boidsish {
 			return rules;
 		}
 
+
 		void AddPuffball(
 			std::vector<Vertex>&       vertices,
 			std::vector<unsigned int>& indices,
 			glm::vec3                  center,
 			float                      radius,
 			glm::vec3                  color,
-			std::mt19937&              gen
+			std::mt19937&              gen,
+			glm::vec3                  scale = glm::vec3(1.0f)
 		) {
-			std::uniform_real_distribution<float> dis(-0.1f * radius, 0.1f * radius);
+			std::uniform_real_distribution<float> dis(-0.05f * radius, 0.05f * radius);
 			unsigned int                          base = vertices.size();
-			const int                             lat_segments = 8;
-			const int                             lon_segments = 8;
+			const int                             lat_segments = 4;
+			const int                             lon_segments = 4;
 
 			for (int lat = 0; lat <= lat_segments; ++lat) {
 				float theta = lat * (float)std::numbers::pi / lat_segments;
@@ -69,7 +71,7 @@ namespace Boidsish {
 					glm::vec3 jitter(dis(gen), dis(gen), dis(gen));
 
 					Vertex v;
-					v.Position = center + (normal * radius) + jitter;
+					v.Position = center + (normal * radius * scale);
 					v.Normal = normal;
 					v.Color = color;
 					v.TexCoords = glm::vec2((float)lon / lon_segments, (float)lat / lat_segments);
@@ -99,12 +101,20 @@ namespace Boidsish {
 			glm::vec3                  pos,
 			glm::quat                  ori,
 			float                      size,
-			glm::vec3                  color
+			glm::vec3                  color,
+			bool                       arrowhead = false
 		) {
 			unsigned int base = vertices.size();
+			unsigned int start_indices = static_cast<unsigned int>(indices.size());
 
-			// More rounded leaf shape (diamond with midpoints)
-			std::vector<glm::vec3> pts = {{0, 0, 0}, {0.3f, 0.5f, 0.1f}, {0, 1.0f, 0}, {-0.3f, 0.5f, -0.1f}};
+			std::vector<glm::vec3> pts;
+			if (arrowhead) {
+				// Arrowhead shape with a slight notch
+				pts = {{0, 0, 0}, {0.5f, 0.1f, 0}, {0, 1.0f, 0}, {-0.5f, 0.1f, 0}, {0, 0.2f, 0}};
+			} else {
+				// More rounded leaf shape (diamond with midpoints)
+				pts = {{0, 0, 0}, {0.3f, 0.5f, 0.1f}, {0, 1.0f, 0}, {-0.3f, 0.5f, -0.1f}};
+			}
 
 			for (auto& p : pts) {
 				p = pos + ori * (p * size);
@@ -116,20 +126,46 @@ namespace Boidsish {
 				vertices.push_back(v);
 			}
 
-			indices.push_back(base);
-			indices.push_back(base + 1);
-			indices.push_back(base + 2);
-			indices.push_back(base);
-			indices.push_back(base + 2);
-			indices.push_back(base + 3);
+			if (arrowhead) {
+				indices.push_back(base + 0);
+				indices.push_back(base + 1);
+				indices.push_back(base + 4);
 
-			// Double sided
-			indices.push_back(base);
-			indices.push_back(base + 2);
-			indices.push_back(base + 1);
-			indices.push_back(base);
-			indices.push_back(base + 3);
-			indices.push_back(base + 2);
+				indices.push_back(base + 1);
+				indices.push_back(base + 2);
+				indices.push_back(base + 4);
+
+				indices.push_back(base + 2);
+				indices.push_back(base + 3);
+				indices.push_back(base + 4);
+
+				indices.push_back(base + 3);
+				indices.push_back(base + 0);
+				indices.push_back(base + 4);
+
+				// Double sided (only for current triangles)
+				size_t cur_indices = indices.size();
+				for (size_t i = start_indices; i < cur_indices; i += 3) {
+					indices.push_back(indices[i + 2]);
+					indices.push_back(indices[i + 1]);
+					indices.push_back(indices[i]);
+				}
+			} else {
+				indices.push_back(base);
+				indices.push_back(base + 1);
+				indices.push_back(base + 2);
+				indices.push_back(base);
+				indices.push_back(base + 2);
+				indices.push_back(base + 3);
+
+				// Double sided
+				indices.push_back(base);
+				indices.push_back(base + 2);
+				indices.push_back(base + 1);
+				indices.push_back(base);
+				indices.push_back(base + 3);
+				indices.push_back(base + 2);
+			}
 		}
 
 		void AddSplineTube(
@@ -385,11 +421,11 @@ namespace Boidsish {
 			} else if (c == ']') {
 				flushBranch();
 				// Flower head
-				AddPuffball(vertices, indices, current.position, 0.15f, glm::vec3(1.0f, 0.9f, 0.2f), gen);
+				AddPuffball(vertices, indices, current.position, 0.15f, glm::vec3(1.0f, 0.9f, 0.2f), gen, glm::vec3(1.0f, 0.4f, 1.0f));
 				for (int i = 0; i < 6; ++i) {
 					glm::quat petalOri = current.orientation * glm::angleAxis(i * 1.04f, glm::vec3(0, 1, 0));
 					petalOri = petalOri * glm::angleAxis(1.0f, glm::vec3(1, 0, 0));
-					AddLeaf(vertices, indices, current.position, petalOri, 0.3f, petalCol);
+					AddLeaf(vertices, indices, current.position, petalOri, 0.3f, petalCol, true);
 				}
 				current = stack.top();
 				stack.pop();
