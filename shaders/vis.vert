@@ -164,9 +164,10 @@ void main() {
 		// Calculate the center of the base of the AABB in world space
 		vec3 localBaseCenter = vec3((u_aabbMin.x + u_aabbMax.x) * 0.5, u_aabbMin.y, (u_aabbMin.z + u_aabbMax.z) * 0.5);
 		vec3 worldBaseCenter = vec3(modelMatrix * vec4(localBaseCenter, 1.0));
+		vec3 pointAnchor = vec3(FragPos.x, worldBaseCenter.y, FragPos.z);
 
 		// Distance from vertex to base center before swaying
-		float distToCenter = distance(FragPos, worldBaseCenter);
+		float distToCenter = distance(FragPos, pointAnchor);
 
 		FragPos += getShockwaveDisplacement(instanceCenter, (aPos.y - u_aabbMin.y) * instanceScale, true);
 
@@ -178,7 +179,7 @@ void main() {
 
 			// Use instanceCenter for coherent wind across the whole object
 			// We use a combination of world position and time for the noise seed
-			float fateFactor = fastWorley3d(vec3(instanceCenter.xz / 10, time * 0.5)) * 0.5 + 0.5;
+			float fateFactor = fastWorley3d(vec3(instanceCenter.xz / 25, time * 0.25)) * 0.5 + 0.75;
 			vec2  windNudge = fateFactor * curlNoise2D(instanceCenter.xz * wind_frequency + time * wind_speed * 0.5) *
 				wind_strength * u_windResponsiveness;
 			WindDeflection = length(windNudge);
@@ -188,10 +189,10 @@ void main() {
 		}
 
 		// Re-normalize to maintain original distance from base center (bowing effect)
-		vec3  direction = FragPos - worldBaseCenter;
+		vec3  direction = FragPos - pointAnchor;
 		float newDist = length(direction);
 		if (newDist > 0.001) {
-			FragPos = worldBaseCenter + (direction / newDist) * distToCenter;
+			FragPos = pointAnchor + (direction / newDist) * distToCenter;
 		}
 	}
 
