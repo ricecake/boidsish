@@ -57,6 +57,7 @@ namespace Boidsish {
 		packet.uniforms.dissolve_enabled = dissolve_enabled_ ? 1 : 0;
 		packet.uniforms.dissolve_plane_normal = dissolve_plane_normal_;
 		packet.uniforms.dissolve_plane_dist = dissolve_plane_dist_;
+		packet.uniforms.no_cull = dissolve_enabled_ ? 1 : 0;
 
 		packet.casts_shadows = CastsShadows();
 
@@ -76,7 +77,8 @@ namespace Boidsish {
 			packet.draw_mode,
 			packet.index_count > 0,
 			packet.material_handle,
-			normalized_depth
+			normalized_depth,
+			packet.uniforms.no_cull != 0
 		);
 
 		out_packets.push_back(packet);

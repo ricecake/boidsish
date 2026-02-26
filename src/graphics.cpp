@@ -1334,6 +1334,7 @@ namespace Boidsish {
 				uint32_t                               command_count;
 				bool                                   is_indexed;
 				uint32_t                               base_uniform_index;
+				bool                                   no_cull;
 			};
 
 			std::vector<Batch> batches;
@@ -1356,10 +1357,12 @@ namespace Boidsish {
 						return false;
 				}
 
-				// 3. Uniform flags that affect vertex processing
+				// 3. Uniform flags that affect vertex processing or state
 				if (a.uniforms.is_colossal != b.uniforms.is_colossal)
 					return false;
 				if (a.uniforms.use_ssbo_instancing != b.uniforms.use_ssbo_instancing)
+					return false;
+				if (a.uniforms.no_cull != b.uniforms.no_cull)
 					return false;
 
 				// 4. Textures (only if not a shadow pass)
@@ -1432,6 +1435,7 @@ namespace Boidsish {
 					new_batch.command_count = 0;
 					new_batch.is_indexed = is_indexed;
 					new_batch.base_uniform_index = frame_element_offset + mdi_uniform_count;
+					new_batch.no_cull = (packet.uniforms.no_cull != 0);
 					batches.push_back(new_batch);
 				}
 
@@ -1473,7 +1477,22 @@ namespace Boidsish {
 			unsigned int          current_bound_shader_id = 0;
 			std::set<ShaderBase*> used_shaders;
 
+			// Ensure consistent starting state
+			glEnable(GL_DEPTH_TEST);
+			glDepthFunc(GL_LEQUAL);
+			bool current_cull_enabled = true;
+			glEnable(GL_CULL_FACE);
+			glCullFace(GL_BACK);
+
 			for (const auto& batch : batches) {
+				if (batch.no_cull && current_cull_enabled) {
+					glDisable(GL_CULL_FACE);
+					current_cull_enabled = false;
+				} else if (!batch.no_cull && !current_cull_enabled) {
+					glEnable(GL_CULL_FACE);
+					current_cull_enabled = true;
+				}
+
 				RenderShader* render_shader = shader_table.Get(batch.shader_handle);
 				if (!render_shader)
 					continue;
@@ -1553,6 +1572,10 @@ namespace Boidsish {
 				s->setBool("uUseMDI", false);
 				s->setBool("enableFrustumCulling", false);
 			}
+
+			// Restore default state
+			glEnable(GL_CULL_FACE);
+			glDepthMask(GL_TRUE);
 
 			glBindBuffer(GL_DRAW_INDIRECT_BUFFER, 0);
 			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 2, 0);
@@ -1706,7 +1729,7 @@ namespace Boidsish {
 			glBindVertexArray(0);
 
 			// Restore depth state
-			glDepthFunc(GL_LESS);
+			glDepthFunc(GL_LEQUAL);
 			glDepthMask(GL_TRUE);
 		}
 
@@ -1718,8 +1741,12 @@ namespace Boidsish {
 			BindShadows(*plane_shader);
 
 			glEnable(GL_DEPTH_TEST);
+			glDepthFunc(GL_LEQUAL);
 			glEnable(GL_BLEND);
 			glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+			glEnable(GL_CULL_FACE);
+			glCullFace(GL_BACK);
+
 			plane_shader->use();
 
 			float     world_scale = terrain_generator ? terrain_generator->GetWorldScale() : 1.0f;
@@ -2618,7 +2645,8 @@ namespace Boidsish {
 								packet.draw_mode,
 								packet.index_count > 0,
 								packet.material_handle,
-								normalized_depth
+								normalized_depth,
+								packet.uniforms.no_cull != 0
 							);
 							local_packets.push_back(std::move(packet));
 						}

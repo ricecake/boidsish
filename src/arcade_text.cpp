@@ -172,7 +172,8 @@ namespace Boidsish {
 				packet.draw_mode,
 				packet.index_count > 0,
 				packet.material_handle,
-				normalized_depth
+				normalized_depth,
+				false
 			);
 
 			return packet;
