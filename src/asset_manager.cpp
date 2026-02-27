@@ -184,6 +184,8 @@ namespace Boidsish {
 						texture.path = str.C_Str();
 						textures.push_back(texture);
 						data.textures_loaded.push_back(texture);
+					} else {
+						logger::WARNING("Texture failed to load and was skipped: {}", str.C_Str());
 					}
 				}
 			}
@@ -369,6 +371,12 @@ namespace Boidsish {
 				} else {
 					vertex.TexCoords = glm::vec2(0.0f, 0.0f);
 				}
+
+				if (mesh->HasVertexColors(0)) {
+					aiColor4D col = mesh->mColors[0][i];
+					vertex.Color = glm::vec3(col.r, col.g, col.b);
+				}
+
 				vertices.push_back(vertex);
 			}
 
@@ -406,6 +414,12 @@ namespace Boidsish {
 				diffuseMaps = LoadMaterialTextures(material, aiTextureType_BASE_COLOR, "texture_diffuse", data, directory, scene);
 				if (diffuseMaps.empty()) {
 					diffuseMaps = LoadMaterialTextures(material, aiTextureType_AMBIENT, "texture_diffuse", data, directory, scene);
+					if (diffuseMaps.empty()) {
+						diffuseMaps = LoadMaterialTextures(material, aiTextureType_EMISSIVE, "texture_diffuse", data, directory, scene);
+						if (diffuseMaps.empty()) {
+							diffuseMaps = LoadMaterialTextures(material, aiTextureType_LIGHTMAP, "texture_diffuse", data, directory, scene);
+						}
+					}
 				}
 			}
 			textures.insert(textures.end(), diffuseMaps.begin(), diffuseMaps.end());
@@ -420,6 +434,7 @@ namespace Boidsish {
 			textures.insert(textures.end(), heightMaps.begin(), heightMaps.end());
 
 			Mesh out_mesh(vertices, indices, textures, shadow_indices);
+			out_mesh.has_vertex_colors = mesh->HasVertexColors(0);
 
 			aiColor3D color(1.0f, 1.0f, 1.0f);
 			if (material->Get(AI_MATKEY_COLOR_DIFFUSE, color) == AI_SUCCESS) {
@@ -594,6 +609,8 @@ namespace Boidsish {
 		if (it != m_textures.end()) {
 			return it->second;
 		}
+
+		logger::LOG("Attempting to load texture: {}", fullPath);
 
 		unsigned int textureID;
 		glGenTextures(1, &textureID);
