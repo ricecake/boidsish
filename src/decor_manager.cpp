@@ -517,6 +517,8 @@ namespace Boidsish {
 	void DecorManager::Render(
 		const glm::mat4&                view,
 		const glm::mat4&                projection,
+		int                             viewport_width,
+		int                             viewport_height,
 		const std::optional<glm::mat4>& light_space_matrix,
 		Shader*                         shader_override
 	) {
@@ -527,8 +529,9 @@ namespace Boidsish {
 
 		// 1. GPU Culling Pass
 		// Use light space matrix directly for shadow pass culling
-		Frustum frustum = is_shadow_pass ? Frustum::FromViewProjection(glm::mat4(1.0f), *light_space_matrix)
-										 : Frustum::FromViewProjection(view, projection);
+		Frustum   frustum = is_shadow_pass ? Frustum::FromViewProjection(glm::mat4(1.0f), *light_space_matrix)
+                                         : Frustum::FromViewProjection(view, projection);
+		glm::mat4 viewProj = is_shadow_pass ? *light_space_matrix : projection * view;
 
 		culling_shader_->use();
 		for (int p = 0; p < 6; ++p) {
@@ -538,6 +541,9 @@ namespace Boidsish {
 			);
 		}
 		culling_shader_->setInt("u_totalSlots", kMaxInstancesPerType);
+		culling_shader_->setMat4("u_viewProj", viewProj);
+		culling_shader_->setVec2("u_viewportSize", glm::vec2((float)viewport_width, (float)viewport_height));
+		culling_shader_->setFloat("u_minPixelSize", min_pixel_size_);
 
 		for (auto& type : decor_types_) {
 			// Reset atomic counter
@@ -547,6 +553,9 @@ namespace Boidsish {
 
 			// Cull instances
 			culling_shader_->use();
+			culling_shader_->setVec3("u_aabbMin", type.model->GetAABB().min);
+			culling_shader_->setVec3("u_aabbMax", type.model->GetAABB().max);
+
 			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, type.ssbo);
 			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, type.visible_ssbo);
 			glBindBufferBase(GL_ATOMIC_COUNTER_BUFFER, 0, type.count_buffer);

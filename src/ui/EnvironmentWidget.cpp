@@ -119,6 +119,17 @@ namespace Boidsish {
 						if (ImGui::Checkbox("Enable Foliage", &enabled)) {
 							decor_manager->SetEnabled(enabled);
 						}
+
+						if (enabled) {
+							float threshold = ConfigManager::GetInstance().GetAppSettingFloat(
+								"foliage_culling_pixel_threshold",
+								10.0f
+							);
+							if (ImGui::SliderFloat("Foliage Pixel Threshold", &threshold, 0.0f, 50.0f)) {
+								ConfigManager::GetInstance().SetFloat("foliage_culling_pixel_threshold", threshold);
+							}
+							ImGui::Text("Higher = cull larger objects, 0 = disable size culling");
+						}
 					}
 				}
 
