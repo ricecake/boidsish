@@ -16,9 +16,9 @@ int main() {
 		vis.SetCameraMode(Boidsish::CameraMode::STATIONARY);
 
 		// Load a model
-		auto teapot = std::make_shared<Boidsish::Model>("assets/utah_teapot.obj");
-		teapot->SetPosition(0, 10, 0);
-		teapot->SetScale(glm::vec3(2.0f));
+		auto teapot = std::make_shared<Boidsish::Model>("assets/Mesh_Cat.obj");
+		teapot->SetPosition(0, 9, 0);
+		teapot->SetScale(glm::vec3(0.1250f));
 		teapot->SetUsePBR(true);
 		teapot->SetRoughness(0.2f);
 		teapot->SetMetallic(0.8f);
@@ -29,7 +29,7 @@ int main() {
 		glm::vec3 teapot_pos(teapot->GetX(), teapot->GetY(), teapot->GetZ());
 		auto      dissolve_fire = vis.AddFireEffect(
             teapot_pos,
-            Boidsish::FireEffectStyle::Debug,
+            Boidsish::FireEffectStyle::Fireflies,
             glm::vec3(0, 1, 0), // direction
             glm::vec3(0, 0, 0), // velocity
             -1,                 // max particles
@@ -47,8 +47,8 @@ int main() {
 			bool  is_waiting = false;
 		} state;
 
-		vis.AddShapeHandler([&](float /* time */) {
-			float delta_time = 1.0f / 60.0f; // Approximate
+		vis.AddShapeHandler([&](float time) {
+			float delta_time = vis.GetLastFrameTime(); // 1.0f / 60.0f; // Approximate
 
 			if (state.is_waiting) {
 				state.wait_timer -= delta_time;
@@ -58,7 +58,7 @@ int main() {
 				return std::vector<std::shared_ptr<Boidsish::Shape>>{};
 			}
 
-			state.sweep += state.sweep_direction * delta_time * 0.5f;
+			state.sweep += state.sweep_direction * delta_time * 0.25f;
 
 			bool finished = false;
 			if (state.sweep <= 0.0f) {
@@ -72,7 +72,10 @@ int main() {
 			}
 
 			// Arbitrary direction that stays constant for one sweep but could be rotated
-			glm::vec3 dir(0, 1, 0);
+			// glm::vec3 dir(0, 1, 0);
+			// Arbitrary direction that rotates
+			glm::vec3 dir(sin(time * 0.3f), state.sweep_direction * cos(time * 0.3f), sin(time * 0.2f));
+			dir = glm::normalize(dir);
 			teapot->SetDissolveSweep(dir, state.sweep);
 
 			if (dissolve_fire) {
