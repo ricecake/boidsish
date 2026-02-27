@@ -206,6 +206,31 @@ namespace Boidsish {
 			MarkDirty();
 		}
 
+		/**
+		 * @brief Scales the shape uniformly so its dimension on the specified axis matches max_dim.
+		 *
+		 * @param max_dim The target dimension for the specified axis
+		 * @param axis The axis index (0=X, 1=Y, 2=Z)
+		 */
+		void SetScaleToMaxDimension(float max_dim, int axis);
+
+		/**
+		 * @brief Scales the shape uniformly so its dimension on the specified axis is a ratio
+		 * of another shape's dimension on the same axis.
+		 *
+		 * @param other The reference shape
+		 * @param ratio The scale factor relative to the other shape
+		 * @param axis The axis index (0=X, 1=Y, 2=Z)
+		 */
+		void SetScaleRelativeTo(const Shape& other, float ratio, int axis);
+
+		/**
+		 * @brief Scales the shape uniformly to fit entirely inside another shape's AABB.
+		 *
+		 * @param other The shape to fit inside
+		 */
+		void SetScaleToFitInside(const Shape& other);
+
 		inline int GetTrailLength() const { return trail_length_; }
 
 		inline void SetTrailLength(int length) { trail_length_ = length; }
