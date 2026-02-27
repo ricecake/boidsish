@@ -221,7 +221,18 @@ namespace Boidsish {
 			glVertexAttribPointer(8, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)offsetof(Vertex, Color));
 			glEnableVertexAttribArray(8);
 
+			// Bone IDs
+			glEnableVertexAttribArray(9);
+			glVertexAttribIPointer(9, 4, GL_INT, sizeof(Vertex), (void*)offsetof(Vertex, m_BoneIDs));
+
+			// Bone Weights
+			glEnableVertexAttribArray(10);
+			glVertexAttribPointer(10, 4, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)offsetof(Vertex, m_Weights));
+
 			glBindVertexArray(0);
+
+			// Ensure all attribute arrays are disabled by default on the global VAO
+			// (actually they are part of VAO state, so this is fine)
 
 			static_v_limit_ = Constants::Class::Megabuffer::StaticVertexLimit();
 			static_i_limit_ = Constants::Class::Megabuffer::StaticIndexLimit();
@@ -399,6 +410,7 @@ namespace Boidsish {
 		std::unique_ptr<PersistentBuffer<DrawArraysIndirectCommand>>   indirect_arrays_buffer;
 		std::unique_ptr<PersistentBuffer<CommonUniforms>>              uniforms_ssbo;
 		std::unique_ptr<PersistentBuffer<FrustumDataGPU>>              frustum_ssbo;
+		std::unique_ptr<PersistentBuffer<glm::mat4>>                   bone_matrices_ssbo;
 		GLsync                                                         mdi_fences[3]{0, 0, 0};
 
 		// MDI offset tracking across layers within a single frame
@@ -406,6 +418,7 @@ namespace Boidsish {
 		uint32_t mdi_arrays_count = 0;
 		uint32_t mdi_uniform_count = 0;
 		uint32_t mdi_frustum_count = 0;
+		uint32_t mdi_bone_count = 0;
 
 		std::shared_ptr<Shader> shader;
 		std::shared_ptr<Shader> plane_shader;
@@ -680,6 +693,7 @@ namespace Boidsish {
 			);
 			uniforms_ssbo = std::make_unique<PersistentBuffer<CommonUniforms>>(GL_SHADER_STORAGE_BUFFER, 65536);
 			frustum_ssbo = std::make_unique<PersistentBuffer<FrustumDataGPU>>(GL_UNIFORM_BUFFER, 64);
+			bone_matrices_ssbo = std::make_unique<PersistentBuffer<glm::mat4>>(GL_SHADER_STORAGE_BUFFER, 65536);
 			if (ConfigManager::GetInstance().GetAppSettingBool("enable_effects", true)) {
 				postprocess_shader_ = std::make_shared<Shader>("shaders/postprocess.vert", "shaders/postprocess.frag");
 				shader_table.Register(std::make_unique<RenderShader>(postprocess_shader_));
@@ -1034,6 +1048,12 @@ namespace Boidsish {
 
 		void SetupShaderBindings(ShaderBase& shader_to_setup) {
 			shader_to_setup.use();
+			shader_to_setup.setBool("uUseMDI", false);
+			shader_to_setup.setBool("useSSBOInstancing", false);
+			shader_to_setup.setBool("use_skinning", false);
+			shader_to_setup.setInt("bone_matrices_offset", -1);
+			shader_to_setup.setMat4("model", glm::mat4(1.0f));
+			shader_to_setup.setVec4("clipPlane", glm::vec4(0.0f));
 			if (noise_manager) {
 				noise_manager->BindDefault(shader_to_setup);
 			}
@@ -1304,6 +1324,7 @@ namespace Boidsish {
 			DrawElementsIndirectCommand* elements_cmd_ptr = indirect_elements_buffer->GetFrameDataPtr();
 			DrawArraysIndirectCommand*   arrays_cmd_ptr = indirect_arrays_buffer->GetFrameDataPtr();
 			CommonUniforms*              uniforms_ptr = uniforms_ssbo->GetFrameDataPtr();
+			glm::mat4*                   bones_ptr = bone_matrices_ssbo->GetFrameDataPtr();
 
 			uint32_t max_elements = 65536; // Buffer capacity
 			uint32_t frame_element_offset = uniforms_ssbo->GetCurrentBufferIndex() * max_elements;
@@ -1354,6 +1375,10 @@ namespace Boidsish {
 				if (a.uniforms.is_colossal != b.uniforms.is_colossal)
 					return false;
 				if (a.uniforms.use_ssbo_instancing != b.uniforms.use_ssbo_instancing)
+					return false;
+				if (a.uniforms.use_skinning != b.uniforms.use_skinning)
+					return false;
+				if (a.uniforms.bone_matrices_offset != b.uniforms.bone_matrices_offset)
 					return false;
 
 				// 4. Textures (only if not a shadow pass)
@@ -1413,6 +1438,20 @@ namespace Boidsish {
 
 				// Copy uniforms to persistent SSBO
 				uniforms_ptr[mdi_uniform_count] = packet.uniforms;
+
+				// Handle skeletal animation data
+				if (!packet.bone_matrices.empty()) {
+					uint32_t bone_count = static_cast<uint32_t>(packet.bone_matrices.size());
+					if (mdi_bone_count + bone_count <= 65536) {
+						std::memcpy(
+							&bones_ptr[mdi_bone_count],
+							packet.bone_matrices.data(),
+							bone_count * sizeof(glm::mat4)
+						);
+						uniforms_ptr[mdi_uniform_count].bone_matrices_offset = (int)mdi_bone_count;
+						mdi_bone_count += bone_count;
+					}
+				}
 
 				if (batches.empty() || !last_processed_packet || !can_batch(*last_processed_packet, packet)) {
 					Batch new_batch;
@@ -1495,7 +1534,7 @@ namespace Boidsish {
 					}
 				}
 
-				s->setBool("uUseMDI", true);
+				// s->setBool("uUseMDI", true); // Moved below SSBO binding
 
 				// Bind SSBO for this batch's uniforms (replaces uBaseUniformIndex)
 				glBindBufferRange(
@@ -1506,11 +1545,38 @@ namespace Boidsish {
 					batch.command_count * sizeof(CommonUniforms)
 				);
 
+				// Bind bone matrices SSBO
+				glBindBufferRange(
+					GL_SHADER_STORAGE_BUFFER,
+					12,
+					bone_matrices_ssbo->GetBufferId(),
+					bone_matrices_ssbo->GetFrameOffset(),
+					bone_matrices_ssbo->GetElementCount() * sizeof(glm::mat4)
+				);
+				s->setBool("uUseMDI", true);
+
 				if (!is_shadow_pass) {
+					unsigned int diffuseNr = 1;
+					unsigned int specularNr = 1;
+					unsigned int normalNr = 1;
+					unsigned int heightNr = 1;
+
 					for (size_t i = 0; i < batch.textures.size(); ++i) {
 						glActiveTexture(GL_TEXTURE0 + i);
 						glBindTexture(GL_TEXTURE_2D, batch.textures[i].id);
-						s->setInt(batch.textures[i].type.c_str(), i);
+
+						std::string number;
+						std::string name = batch.textures[i].type;
+						if (name == "texture_diffuse")
+							number = std::to_string(diffuseNr++);
+						else if (name == "texture_specular")
+							number = std::to_string(specularNr++);
+						else if (name == "texture_normal")
+							number = std::to_string(normalNr++);
+						else if (name == "texture_height")
+							number = std::to_string(heightNr++);
+
+						s->setInt((name + number).c_str(), i);
 					}
 					s->setBool("use_texture", !batch.textures.empty());
 				}
@@ -2377,6 +2443,7 @@ namespace Boidsish {
 		impl->indirect_arrays_buffer->AdvanceFrame();
 		impl->uniforms_ssbo->AdvanceFrame();
 		impl->frustum_ssbo->AdvanceFrame();
+		impl->bone_matrices_ssbo->AdvanceFrame();
 		impl->megabuffer->AdvanceFrame();
 
 		int current_idx = impl->uniforms_ssbo->GetCurrentBufferIndex(); // I need to add this method or keep track
@@ -2391,6 +2458,7 @@ namespace Boidsish {
 		impl->mdi_arrays_count = 0;
 		impl->mdi_uniform_count = 0;
 		impl->mdi_frustum_count = 0;
+		impl->mdi_bone_count = 0;
 
 		impl->shapes.clear();
 

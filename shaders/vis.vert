@@ -5,6 +5,8 @@ layout(location = 0) in vec3 aPos;
 layout(location = 1) in vec3 aNormal;
 layout(location = 2) in vec2 aTexCoords;
 layout(location = 8) in vec3 aVertexColor;
+layout(location = 9) in ivec4 aBoneIDs;
+layout(location = 10) in vec4 aWeights;
 
 #include "common_uniforms.glsl"
 
@@ -17,6 +19,11 @@ uniform bool uUseMDI = false;
 // SSBO for decor/foliage instancing (binding 10)
 layout(std430, binding = 10) buffer SSBOInstances {
 	mat4 ssboInstanceMatrices[];
+};
+
+// SSBO for bone matrices (binding 12)
+layout(std430, binding = 12) buffer BoneMatricesSSBO {
+	mat4 boneMatrices[];
 };
 
 #include "frustum.glsl"
@@ -39,6 +46,9 @@ out float    WindDeflection;
 flat out int vUniformIndex;
 
 uniform mat4  model;
+uniform mat4  finalBonesMatrices[100];
+uniform bool  use_skinning = false;
+uniform int   bone_matrices_offset = -1;
 uniform mat4  view;
 uniform mat4  projection;
 uniform vec4  clipPlane;
@@ -71,6 +81,8 @@ void main() {
 	bool use_ssbo = uUseMDI && vUniformIndex >= 0;
 
 	mat4  current_model = use_ssbo ? uniforms_data[vUniformIndex].model : model;
+	bool  current_use_skinning = use_ssbo ? (uniforms_data[vUniformIndex].use_skinning != 0) : use_skinning;
+	int   current_bone_offset = use_ssbo ? uniforms_data[vUniformIndex].bone_matrices_offset : bone_matrices_offset;
 	bool  current_isArcadeText = use_ssbo ? (uniforms_data[vUniformIndex].is_arcade_text != 0) : isArcadeText;
 	int   current_arcadeWaveMode = use_ssbo ? uniforms_data[vUniformIndex].arcade_wave_mode : arcadeWaveMode;
 	float current_arcadeWaveAmplitude = use_ssbo ? uniforms_data[vUniformIndex].arcade_wave_amplitude
@@ -85,6 +97,31 @@ void main() {
 	WindDeflection = 0.0;
 	vec3 displacedPos = aPos;
 	vec3 displacedNormal = aNormal;
+
+	if (current_use_skinning) {
+		vec4  totalPosition = vec4(0.0);
+		vec3  totalNormal = vec3(0.0);
+		float totalWeight = 0.0;
+		for (int i = 0; i < 4; i++) {
+			if (aBoneIDs[i] < 0 || aBoneIDs[i] >= 100)
+				continue;
+
+			mat4 boneMatrix;
+			if (use_ssbo && current_bone_offset >= 0) {
+				boneMatrix = boneMatrices[current_bone_offset + aBoneIDs[i]];
+			} else {
+				boneMatrix = finalBonesMatrices[aBoneIDs[i]];
+			}
+
+			totalPosition += (boneMatrix * vec4(aPos, 1.0)) * aWeights[i];
+			totalNormal += (mat3(boneMatrix) * aNormal) * aWeights[i];
+			totalWeight += aWeights[i];
+		}
+		if (totalWeight > 0.001) {
+			displacedPos = totalPosition.xyz / totalWeight;
+			displacedNormal = normalize(totalNormal);
+		}
+	}
 
 	if (current_isArcadeText) {
 		float x = aTexCoords.x;
