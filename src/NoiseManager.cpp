@@ -115,11 +115,6 @@ namespace Boidsish {
 		glBindImageTexture(3, cloud_detail_texture_, 0, GL_TRUE, 0, GL_WRITE_ONLY, GL_RGBA32F);
 		glBindImageTexture(4, weather_map_, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA32F);
 
-		// We need to dispatch enough groups to cover the largest texture (cloud_base_size = 128)
-		// Or dispatch separately for each.
-		// For simplicity, we'll dispatch based on the largest dimension.
-		int max_size = std::max({size_, cloud_base_size_, cloud_detail_size_, weather_map_size_ / 4});
-
 		glDispatchCompute(weather_map_size_ / 4, weather_map_size_ / 4, 1);
 		glDispatchCompute(cloud_base_size_ / 4, cloud_base_size_ / 4, cloud_base_size_ / 4);
 

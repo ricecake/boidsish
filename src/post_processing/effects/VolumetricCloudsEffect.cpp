@@ -17,6 +17,10 @@ namespace Boidsish {
 				glDeleteFramebuffers(2, history_fbo_);
 				glDeleteTextures(2, history_texture_);
 			}
+			if (low_res_fbo_ != 0) {
+				glDeleteFramebuffers(1, &low_res_fbo_);
+				glDeleteTextures(1, &low_res_cloud_texture_);
+			}
 		}
 
 		void VolumetricCloudsEffect::Initialize(int width, int height) {
@@ -84,9 +88,9 @@ namespace Boidsish {
 			GLuint sourceTexture,
 			GLuint depthTexture,
 			GLuint /* velocityTexture */,
-			const glm::mat4& viewMatrix,
-			const glm::mat4& projectionMatrix,
-			const glm::vec3& cameraPos
+			const glm::mat4& /* viewMatrix */,
+			const glm::mat4& /* projectionMatrix */,
+			const glm::vec3& /* cameraPos */
 		) {
 			// 1. Raymarch at low resolution
 			glBindFramebuffer(GL_FRAMEBUFFER, low_res_fbo_);
@@ -98,11 +102,6 @@ namespace Boidsish {
 			shader_->setInt("weatherMap", 4);
 			shader_->setInt("curlNoise", 5);
 			shader_->setInt("historyTexture", 6);
-
-			shader_->setFloat("time", time_);
-			shader_->setVec3("cameraPos", cameraPos);
-			shader_->setMat4("invView", glm::inverse(viewMatrix));
-			shader_->setMat4("invProjection", glm::inverse(projectionMatrix));
 
 			shader_->setFloat("u_cloudHeight", cloud_height_);
 			shader_->setFloat("u_cloudThickness", cloud_thickness_);
@@ -142,10 +141,6 @@ namespace Boidsish {
 			glActiveTexture(GL_TEXTURE2);
 			glBindTexture(GL_TEXTURE_2D, depthTexture);
 
-			glDrawArrays(GL_TRIANGLES, 0, 6);
-
-			// 3. Final output to screen (or next effect)
-			glBindFramebuffer(GL_FRAMEBUFFER, 0); // Overwritten by PostProcessingManager
 			glDrawArrays(GL_TRIANGLES, 0, 6);
 
 			current_history_ = 1 - current_history_;

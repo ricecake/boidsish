@@ -22,17 +22,7 @@ uniform float u_warpPush;
 #include "../lighting.glsl"
 #include "../helpers/noise.glsl"
 #include "../atmosphere/common.glsl"
-
-layout(std140, binding = 6) uniform TemporalData_Clouds {
-	mat4  currentViewProjection;
-	mat4  prevViewProjection;
-	mat4  uProjection;
-	mat4  invProjection_Clouds;
-	mat4  invView_Clouds;
-	vec2  texelSize;
-	int   frameIndex;
-	float padding_clouds;
-};
+#include "../temporal_data.glsl"
 
 #define EARTH_RADIUS_METERS 6360000.0
 #define CLOUD_START_HEIGHT u_cloudHeight
@@ -110,14 +100,24 @@ float light_energy(vec3 p, vec3 L, vec3 weather) {
     return beer_powder(total_density * shadow_step_size * 0.01);
 }
 
+float blue_noise_jitter(vec2 p) {
+    p = floor(p);
+    p += 1337.0 * fract(float(frameIndex) * 0.1);
+    p = floor(p/5.5)*5.5;
+    p = fract(p * 0.1) + 1.0 + p * vec2(0.0002, 0.0003);
+    float a = fract(1.0 / (0.000001 * p.x * p.y + 0.00001));
+    a = fract(1.0 / (0.000001234 * a + 0.00001));
+    return a;
+}
+
 void main() {
     float depth = texture(depthTexture, TexCoords).r;
 
     float z = depth * 2.0 - 1.0;
     vec4  clipSpacePosition = vec4(TexCoords * 2.0 - 1.0, z, 1.0);
-    vec4  viewSpacePosition = invProjection_Clouds * clipSpacePosition;
+    vec4  viewSpacePosition = invProjection * clipSpacePosition;
     viewSpacePosition /= viewSpacePosition.w;
-    vec3 worldPos = (invView_Clouds * viewSpacePosition).xyz;
+    vec3 worldPos = (invView * viewSpacePosition).xyz;
 
     vec3  rayDir = normalize(worldPos - viewPos);
     float sceneDist = length(worldPos - viewPos);
@@ -149,7 +149,7 @@ void main() {
         sunColor = lights[0].color * lights[0].intensity;
     }
 
-    float jitter = fract(sin(dot(TexCoords, vec2(12.9898, 78.233))) * 43758.5453);
+    float jitter = blue_noise_jitter(gl_FragCoord.xy);
     int   steps = 64;
     float step_size = (t_max - t_min) / float(steps);
     float t = t_min + jitter * step_size;
