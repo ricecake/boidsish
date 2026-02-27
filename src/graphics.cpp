@@ -1099,6 +1099,7 @@ namespace Boidsish {
 			frame_config_.render_terrain = cfg.GetAppSettingBool("render_terrain", true);
 			frame_config_.render_skybox = cfg.GetAppSettingBool("render_skybox", true);
 			frame_config_.render_floor = cfg.GetAppSettingBool("render_floor", true);
+			frame_config_.render_decor = cfg.GetAppSettingBool("render_decor", true);
 			frame_config_.artistic_ripple = cfg.GetAppSettingBool("artistic_effect_ripple", false);
 			frame_config_.artistic_color_shift = cfg.GetAppSettingBool("artistic_effect_color_shift", false);
 			frame_config_.artistic_black_and_white = cfg.GetAppSettingBool("artistic_effect_black_and_white", false);
@@ -1110,6 +1111,10 @@ namespace Boidsish {
 			frame_config_.wind_strength = cfg.GetAppSettingFloat("wind_strength", 0.065f);
 			frame_config_.wind_speed = cfg.GetAppSettingFloat("wind_speed", 0.075f);
 			frame_config_.wind_frequency = cfg.GetAppSettingFloat("wind_frequency", 0.01f);
+
+			if (decor_manager) {
+				decor_manager->SetEnabled(frame_config_.render_decor);
+			}
 		}
 
 		~VisualizerImpl() {
@@ -2322,6 +2327,10 @@ namespace Boidsish {
 		impl->shape_command_queue.push({ShapeCommandType::Remove, nullptr, shape_id});
 	}
 
+	void Visualizer::ClearShapes() {
+		impl->shape_command_queue.push({ShapeCommandType::Clear, nullptr, 0});
+	}
+
 	void Visualizer::ClearShapeHandlers() {
 		impl->shape_functions.clear();
 	}
@@ -2494,6 +2503,9 @@ namespace Boidsish {
 				break;
 			case ShapeCommandType::Remove:
 				impl->persistent_shapes.erase(command.shape_id);
+				break;
+			case ShapeCommandType::Clear:
+				impl->persistent_shapes.clear();
 				break;
 			}
 		}
