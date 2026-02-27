@@ -1,93 +1,70 @@
 #include "procedural_mesher.h"
-#include <glm/gtx/norm.hpp>
-#include <algorithm>
-#include <map>
+#include "spline.h"
 #include "mesh_optimizer_util.h"
 #include "ConfigManager.h"
+#include <numbers>
 
 namespace Boidsish {
 
     namespace {
-        // Polynomial smooth minimum (union)
-        float smin(float a, float b, float k, float& weight) {
-            float h = std::clamp(0.5f + 0.5f * (b - a) / k, 0.0f, 1.0f);
-            weight = h;
-            return glm::mix(b, a, h) - k * h * (1.0f - h);
-        }
+        const float SPLINE_RADIUS_SCALE = 0.005f;
 
-        float sdCapsule(glm::vec3 p, glm::vec3 a, glm::vec3 b, float ra, float rb) {
-            glm::vec3 pa = p - a, ba = b - a;
-            float h = std::clamp(glm::dot(pa, ba) / glm::dot(ba, ba), 0.0f, 1.0f);
-            return glm::length(pa - ba * h) - glm::mix(ra, rb, h);
-        }
+        void GenerateUVSphere(
+            std::vector<Vertex>& vertices,
+            std::vector<unsigned int>& indices,
+            glm::vec3 center, float radius, glm::vec3 color,
+            int lat_segments, int lon_segments
+        ) {
+            unsigned int base = (unsigned int)vertices.size();
 
-        float sdSphere(glm::vec3 p, glm::vec3 center, float s) {
-            return glm::length(p - center) - s;
-        }
-    }
+            for (int lat = 0; lat <= lat_segments; ++lat) {
+                float theta = lat * (float)std::numbers::pi / lat_segments;
+                float sinTheta = std::sin(theta);
+                float cosTheta = std::cos(theta);
+                for (int lon = 0; lon <= lon_segments; ++lon) {
+                    float phi = lon * 2.0f * (float)std::numbers::pi / lon_segments;
+                    float sinPhi = std::sin(phi);
+                    float cosPhi = std::cos(phi);
 
-    float ProceduralMesher::SampleSDF(const glm::vec3& p, const ProceduralIR& ir, const SDFConfig& config, glm::vec3& out_color) {
-        float min_dist = 1e10f;
-        glm::vec3 blended_color(0.0f);
-        float total_weight = 0.0f;
+                    glm::vec3 normal(sinTheta * cosPhi, cosTheta, sinTheta * sinPhi);
 
-        for (const auto& e : ir.elements) {
-            float d = 1e10f;
-            if (e.type == ProceduralElementType::Tube) {
-                d = sdCapsule(p, e.position, e.end_position, e.radius, e.end_radius);
-            } else if (e.type == ProceduralElementType::Hub || e.type == ProceduralElementType::Puffball) {
-                d = sdSphere(p, e.position, e.radius);
-            } else {
-                continue;
+                    Vertex v;
+                    v.Position = center + normal * radius;
+                    v.Normal = normal;
+                    v.Color = color;
+                    v.TexCoords = glm::vec2((float)lon / lon_segments, (float)lat / lat_segments);
+                    vertices.push_back(v);
+                }
             }
 
-            float w;
-            if (min_dist > 1e9f) {
-                min_dist = d;
-                blended_color = e.color;
-                total_weight = 1.0f;
-            } else {
-                min_dist = smin(min_dist, d, config.smooth_k, w);
-                blended_color = glm::mix(blended_color, e.color, 1.0f - w);
+            for (int lat = 0; lat < lat_segments; ++lat) {
+                for (int lon = 0; lon < lon_segments; ++lon) {
+                    unsigned int first = base + lat * (lon_segments + 1) + lon;
+                    unsigned int second = first + lon_segments + 1;
+
+                    indices.push_back(first);
+                    indices.push_back(first + 1);
+                    indices.push_back(second);
+
+                    indices.push_back(second);
+                    indices.push_back(first + 1);
+                    indices.push_back(second + 1);
+                }
             }
         }
-
-        out_color = blended_color;
-        return min_dist;
     }
 
     std::shared_ptr<Model> ProceduralMesher::GenerateModel(const ProceduralIR& ir) {
         if (ir.elements.empty()) return nullptr;
 
-        SDFConfig config;
-        config.grid_size = 0.1f; // Adjust for quality/speed
-        config.smooth_k = 0.15f;
+        auto data = GenerateDirectMesh(ir);
 
-        // Calculate bounds
-        glm::vec3 bmin(1e10f), bmax(-1e10f);
-        for (const auto& e : ir.elements) {
-            bmin = glm::min(bmin, e.position - glm::vec3(e.radius + config.grid_size * 2));
-            bmax = glm::max(bmax, e.position + glm::vec3(e.radius + config.grid_size * 2));
-            if (e.type == ProceduralElementType::Tube) {
-                bmin = glm::min(bmin, e.end_position - glm::vec3(e.end_radius + config.grid_size * 2));
-                bmax = glm::max(bmax, e.end_position + glm::vec3(e.end_radius + config.grid_size * 2));
-            }
-        }
-        config.bounds_min = bmin;
-        config.bounds_max = bmax;
-
-        auto data = GenerateSurfaceNets(ir, config);
-
-        // Add Leaves (which are 2D shapes, not easily SDF'd without thick volume)
-        // We add them as separate meshes for simplicity, or we could SDF them too if we wanted.
-        // For now, immediate geometry for leaves is fine and matches existing style.
-        // Wait, IR has leaves. We should add them to the model data.
-
+        // Add Leaf geometry as a separate mesh
         std::vector<Vertex> leaf_vertices;
         std::vector<unsigned int> leaf_indices;
 
         auto AddLeafGeom = [&](glm::vec3 pos, glm::quat ori, float size, glm::vec3 color) {
-            unsigned int base = leaf_vertices.size();
+            unsigned int base = (unsigned int)leaf_vertices.size();
             std::vector<glm::vec3> pts = {{0, 0, 0}, {0.3f, 0.5f, 0.1f}, {0, 1.0f, 0}, {-0.3f, 0.5f, -0.1f}};
             for (auto& p : pts) {
                 p = pos + ori * (p * size);
@@ -120,175 +97,127 @@ namespace Boidsish {
         return std::make_shared<Model>(data, true);
     }
 
-    std::shared_ptr<ModelData> ProceduralMesher::GenerateSurfaceNets(const ProceduralIR& ir, const SDFConfig& config) {
+    std::shared_ptr<ModelData> ProceduralMesher::GenerateDirectMesh(const ProceduralIR& ir) {
         auto data = std::make_shared<ModelData>();
-        data->model_path = "procedural_sdf_" + std::to_string(reinterpret_cast<uintptr_t>(data.get()));
+        data->model_path = "procedural_direct_" + std::to_string(reinterpret_cast<uintptr_t>(data.get()));
 
         std::vector<Vertex> vertices;
         std::vector<unsigned int> indices;
 
-        glm::ivec3 dims = glm::ivec3((config.bounds_max - config.bounds_min) / config.grid_size) + 1;
-        auto get_pos = [&](int x, int y, int z) {
-            return config.bounds_min + glm::vec3(x, y, z) * config.grid_size;
-        };
+        // === PHASE 1: Extract branches and generate tube geometry ===
+        //
+        // A branch is a chain of connected Tubes (with optional ControlPoints as
+        // curve guides) that starts from a root element or a Hub child and ends
+        // at a terminal element (Puffball, Leaf, Hub, or no children).
 
-        std::vector<float> grid(dims.x * dims.y * dims.z);
-        std::vector<glm::vec3> color_grid(dims.x * dims.y * dims.z);
+        // Find branch starting points: root tubes, or tubes that are children of Hubs
+        std::vector<int> branch_starts;
+        for (int i = 0; i < (int)ir.elements.size(); ++i) {
+            const auto& e = ir.elements[i];
+            if (e.type != ProceduralElementType::Tube) continue;
 
-        for (int z = 0; z < dims.z; ++z) {
-            for (int y = 0; y < dims.y; ++y) {
-                for (int x = 0; x < dims.x; ++x) {
-                    glm::vec3 color;
-                    grid[x + y * dims.x + z * dims.x * dims.y] = SampleSDF(get_pos(x, y, z), ir, config, color);
-                    color_grid[x + y * dims.x + z * dims.x * dims.y] = color;
+            if (e.parent == -1) {
+                branch_starts.push_back(i);
+            } else if (ir.elements[e.parent].type == ProceduralElementType::Hub) {
+                branch_starts.push_back(i);
+            }
+        }
+
+        for (int start_idx : branch_starts) {
+            std::vector<Vector3> points;
+            std::vector<Vector3> ups;
+            std::vector<float> sizes;
+            std::vector<glm::vec3> colors;
+
+            int current_idx = start_idx;
+            bool first = true;
+
+            while (current_idx != -1) {
+                const auto& e = ir.elements[current_idx];
+
+                if (e.type != ProceduralElementType::Tube) {
+                    current_idx = -1;
+                    break;
+                }
+
+                // Add tube start position (only for the first tube in the chain)
+                if (first) {
+                    points.push_back(Vector3(e.position));
+                    ups.push_back(Vector3(0, 1, 0));
+                    sizes.push_back(e.radius / SPLINE_RADIUS_SCALE);
+                    colors.push_back(e.color);
+                    first = false;
+                }
+
+                // Check if this tube has a ControlPoint child (curve midpoint)
+                int cp_child_idx = -1;
+                int next_tube_idx = -1;
+
+                if (e.children.size() == 1) {
+                    int child_idx = e.children[0];
+                    const auto& child = ir.elements[child_idx];
+
+                    if (child.type == ProceduralElementType::ControlPoint) {
+                        cp_child_idx = child_idx;
+                        // The CP's child (if Tube) continues the branch
+                        if (child.children.size() == 1 &&
+                            ir.elements[child.children[0]].type == ProceduralElementType::Tube) {
+                            next_tube_idx = child.children[0];
+                        }
+                    } else if (child.type == ProceduralElementType::Tube) {
+                        next_tube_idx = child_idx;
+                    }
+                    // Hub, Puffball, Leaf = end of branch (next_tube_idx stays -1)
+                }
+
+                // If there's a control point, insert it BEFORE the tube end position
+                // so the spline curves through it: start → CP → end
+                if (cp_child_idx != -1) {
+                    const auto& cp = ir.elements[cp_child_idx];
+                    points.push_back(Vector3(cp.position));
+                    ups.push_back(Vector3(0, 1, 0));
+                    sizes.push_back(cp.radius / SPLINE_RADIUS_SCALE);
+                    colors.push_back(cp.color);
+                }
+
+                // Add tube end position
+                points.push_back(Vector3(e.end_position));
+                ups.push_back(Vector3(0, 1, 0));
+                sizes.push_back(e.end_radius / SPLINE_RADIUS_SCALE);
+                colors.push_back(e.color);
+
+                current_idx = next_tube_idx;
+            }
+
+            if (points.size() >= 2) {
+                auto tube_data = Spline::GenerateTube(points, ups, sizes, colors, false, 10, 8);
+
+                unsigned int base = (unsigned int)vertices.size();
+                for (const auto& vd : tube_data) {
+                    Vertex v;
+                    v.Position = vd.pos;
+                    v.Normal = vd.normal;
+                    v.Color = vd.color;
+                    v.TexCoords = glm::vec2(0.5f);
+                    vertices.push_back(v);
+                }
+                // Triangle soup: every 3 consecutive vertices form a triangle
+                for (unsigned int i = 0; i < (unsigned int)tube_data.size(); ++i) {
+                    indices.push_back(base + i);
                 }
             }
         }
 
-        std::map<int, unsigned int> vert_map;
-
-        for (int z = 0; z < dims.z - 1; ++z) {
-            for (int y = 0; y < dims.y - 1; ++y) {
-                for (int x = 0; x < dims.x - 1; ++x) {
-                    int corner_indices[8] = {
-                        x + y * dims.x + z * dims.x * dims.y,
-                        (x + 1) + y * dims.x + z * dims.x * dims.y,
-                        (x + 1) + (y + 1) * dims.x + z * dims.x * dims.y,
-                        x + (y + 1) * dims.x + z * dims.x * dims.y,
-                        x + y * dims.x + (z + 1) * dims.x * dims.y,
-                        (x + 1) + y * dims.x + (z + 1) * dims.x * dims.y,
-                        (x + 1) + (y + 1) * dims.x + (z + 1) * dims.x * dims.y,
-                        x + (y + 1) * dims.x + (z + 1) * dims.x * dims.y
-                    };
-
-                    int mask = 0;
-                    for (int i = 0; i < 8; ++i) {
-                        if (grid[corner_indices[i]] < 0.0f) mask |= (1 << i);
-                    }
-
-                    if (mask == 0 || mask == 255) continue;
-
-                    // Edge crossings
-                    glm::vec3 vert_pos(0.0f);
-                    glm::vec3 vert_color(0.0f);
-                    int edge_count = 0;
-
-                    const int edges[12][2] = {
-                        {0,1}, {1,2}, {2,3}, {3,0},
-                        {4,5}, {5,6}, {6,7}, {7,4},
-                        {0,4}, {1,5}, {2,6}, {3,7}
-                    };
-
-                    for (int i = 0; i < 12; ++i) {
-                        int i1 = edges[i][0];
-                        int i2 = edges[i][1];
-                        bool v1 = (mask & (1 << i1)) != 0;
-                        bool v2 = (mask & (1 << i2)) != 0;
-                        if (v1 != v2) {
-                            float f1 = grid[corner_indices[i1]];
-                            float f2 = grid[corner_indices[i2]];
-                            float t = -f1 / (f2 - f1);
-                            vert_pos += glm::mix(get_pos(x + (i1 & 1), y + ((i1 >> 1) & 1), z + ((i1 >> 2) & 1)),
-                                                 get_pos(x + (i2 & 1), y + ((i2 >> 1) & 1), z + ((i2 >> 2) & 1)), t);
-                            vert_color += glm::mix(color_grid[corner_indices[i1]], color_grid[corner_indices[i2]], t);
-                            edge_count++;
-                        }
-                    }
-
-                    if (edge_count > 0) {
-                        Vertex v;
-                        v.Position = vert_pos / (float)edge_count;
-                        v.Color = vert_color / (float)edge_count;
-                        v.Normal = glm::vec3(0, 0, 0); // Placeholder
-                        v.TexCoords = glm::vec2(0.5f);
-                        vert_map[x + y * dims.x + z * dims.x * dims.y] = (unsigned int)vertices.size();
-                        vertices.push_back(v);
-                    }
-                }
+        // === PHASE 2: Generate sphere geometry for Hubs and Puffballs ===
+        for (const auto& e : ir.elements) {
+            if (e.type == ProceduralElementType::Hub) {
+                GenerateUVSphere(vertices, indices, e.position, e.radius, e.color, 6, 6);
+            } else if (e.type == ProceduralElementType::Puffball) {
+                GenerateUVSphere(vertices, indices, e.position, e.radius, e.color, 8, 8);
             }
         }
 
-        // Generate faces
-        for (int z = 1; z < dims.z - 1; ++z) {
-            for (int y = 1; y < dims.y - 1; ++y) {
-                for (int x = 1; x < dims.x - 1; ++x) {
-                    bool v0 = grid[x + y * dims.x + z * dims.x * dims.y] < 0.0f;
-
-                    // X-axis edge
-                    if (v0 != (grid[(x + 1) + y * dims.x + z * dims.x * dims.y] < 0.0f)) {
-                        int quad[4] = {
-                            x + y * dims.x + z * dims.x * dims.y,
-                            x + (y - 1) * dims.x + z * dims.x * dims.y,
-                            x + (y - 1) * dims.x + (z - 1) * dims.x * dims.y,
-                            x + y * dims.x + (z - 1) * dims.x * dims.y
-                        };
-                        if (vert_map.count(quad[0]) && vert_map.count(quad[1]) && vert_map.count(quad[2]) && vert_map.count(quad[3])) {
-                            if (v0) {
-                                indices.push_back(vert_map[quad[0]]); indices.push_back(vert_map[quad[1]]); indices.push_back(vert_map[quad[2]]);
-                                indices.push_back(vert_map[quad[0]]); indices.push_back(vert_map[quad[2]]); indices.push_back(vert_map[quad[3]]);
-                            } else {
-                                indices.push_back(vert_map[quad[0]]); indices.push_back(vert_map[quad[2]]); indices.push_back(vert_map[quad[1]]);
-                                indices.push_back(vert_map[quad[0]]); indices.push_back(vert_map[quad[3]]); indices.push_back(vert_map[quad[2]]);
-                            }
-                        }
-                    }
-                    // Y-axis edge
-                    if (v0 != (grid[x + (y + 1) * dims.x + z * dims.x * dims.y] < 0.0f)) {
-                        int quad[4] = {
-                            x + y * dims.x + z * dims.x * dims.y,
-                            (x - 1) + y * dims.x + z * dims.x * dims.y,
-                            (x - 1) + y * dims.x + (z - 1) * dims.x * dims.y,
-                            x + y * dims.x + (z - 1) * dims.x * dims.y
-                        };
-                        if (vert_map.count(quad[0]) && vert_map.count(quad[1]) && vert_map.count(quad[2]) && vert_map.count(quad[3])) {
-                            if (!v0) {
-                                indices.push_back(vert_map[quad[0]]); indices.push_back(vert_map[quad[1]]); indices.push_back(vert_map[quad[2]]);
-                                indices.push_back(vert_map[quad[0]]); indices.push_back(vert_map[quad[2]]); indices.push_back(vert_map[quad[3]]);
-                            } else {
-                                indices.push_back(vert_map[quad[0]]); indices.push_back(vert_map[quad[2]]); indices.push_back(vert_map[quad[1]]);
-                                indices.push_back(vert_map[quad[0]]); indices.push_back(vert_map[quad[3]]); indices.push_back(vert_map[quad[2]]);
-                            }
-                        }
-                    }
-                    // Z-axis edge
-                    if (v0 != (grid[x + y * dims.x + (z + 1) * dims.x * dims.y] < 0.0f)) {
-                        int quad[4] = {
-                            x + y * dims.x + z * dims.x * dims.y,
-                            (x - 1) + y * dims.x + z * dims.x * dims.y,
-                            (x - 1) + (y - 1) * dims.x + z * dims.x * dims.y,
-                            x + (y - 1) * dims.x + z * dims.x * dims.y
-                        };
-                        if (vert_map.count(quad[0]) && vert_map.count(quad[1]) && vert_map.count(quad[2]) && vert_map.count(quad[3])) {
-                            if (v0) {
-                                indices.push_back(vert_map[quad[0]]); indices.push_back(vert_map[quad[1]]); indices.push_back(vert_map[quad[2]]);
-                                indices.push_back(vert_map[quad[0]]); indices.push_back(vert_map[quad[2]]); indices.push_back(vert_map[quad[3]]);
-                            } else {
-                                indices.push_back(vert_map[quad[0]]); indices.push_back(vert_map[quad[2]]); indices.push_back(vert_map[quad[1]]);
-                                indices.push_back(vert_map[quad[0]]); indices.push_back(vert_map[quad[3]]); indices.push_back(vert_map[quad[2]]);
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        // Calculate Normals
-        for (size_t i = 0; i < indices.size(); i += 3) {
-            glm::vec3 v1 = vertices[indices[i]].Position;
-            glm::vec3 v2 = vertices[indices[i+1]].Position;
-            glm::vec3 v3 = vertices[indices[i+2]].Position;
-            glm::vec3 n = glm::cross(v2 - v1, v3 - v1);
-            vertices[indices[i]].Normal += n;
-            vertices[indices[i+1]].Normal += n;
-            vertices[indices[i+2]].Normal += n;
-        }
-        for (auto& v : vertices) {
-            if (glm::length2(v.Normal) > 1e-6f)
-                v.Normal = glm::normalize(v.Normal);
-            else
-                v.Normal = glm::vec3(0, 1, 0);
-        }
-
+        // === PHASE 3: Optimize ===
         auto& config_mgr = ConfigManager::GetInstance();
         if (config_mgr.GetAppSettingBool("mesh_simplifier_enabled", false)) {
             MeshOptimizerUtil::Simplify(vertices, indices, 0.05f, 0.5f, 40, data->model_path);

@@ -18,6 +18,7 @@ namespace Boidsish {
         while (changed) {
             changed = false;
             std::vector<bool> to_remove(ir.elements.size(), false);
+            std::vector<ProceduralElement> control_points_to_add;
 
             for (int i = 0; i < (int)ir.elements.size(); ++i) {
                 if (to_remove[i]) continue;
@@ -33,22 +34,54 @@ namespace Boidsish {
                 // Check if they are collinear and have similar color
                 glm::vec3 d1 = glm::normalize(e1.end_position - e1.position);
                 glm::vec3 d2 = glm::normalize(e2.end_position - e2.position);
+                float alignment = glm::dot(d1, d2);
 
-                if (glm::dot(d1, d2) > 0.999f && glm::distance2(e1.color, e2.color) < 0.001f) {
-                    // Merge e2 into e1
-                    e1.end_position = e2.end_position;
-                    e1.end_radius = e2.end_radius;
-                    e1.length = glm::distance(e1.position, e1.end_position);
-                    e1.children = e2.children;
+                if (alignment > 0.95f && glm::distance2(e1.color, e2.color) < 0.001f) {
+                    // If nearly but not perfectly collinear, preserve the junction as a ControlPoint
+                    if (alignment < 0.999f) {
+                        ProceduralElement cp;
+                        cp.type = ProceduralElementType::ControlPoint;
+                        cp.position = e1.end_position;
+                        cp.radius = e1.end_radius;
+                        cp.color = e1.color;
+                        cp.parent = i;
+                        cp.children = e2.children;
 
-                    // Update children's parent pointer
-                    for (int child_of_child : e2.children) {
-                        ir.elements[child_of_child].parent = i;
+                        int cp_idx = (int)ir.elements.size() + (int)control_points_to_add.size();
+
+                        // Update children's parent pointer to the control point
+                        for (int child_of_child : e2.children) {
+                            ir.elements[child_of_child].parent = cp_idx;
+                        }
+
+                        // Merge tube geometry: extend e1 to e2's end
+                        e1.end_position = e2.end_position;
+                        e1.end_radius = e2.end_radius;
+                        e1.length = glm::distance(e1.position, e1.end_position);
+                        e1.children = { cp_idx };
+
+                        control_points_to_add.push_back(cp);
+                    } else {
+                        // Perfectly collinear: simple merge, no control point needed
+                        e1.end_position = e2.end_position;
+                        e1.end_radius = e2.end_radius;
+                        e1.length = glm::distance(e1.position, e1.end_position);
+                        e1.children = e2.children;
+
+                        // Update children's parent pointer
+                        for (int child_of_child : e2.children) {
+                            ir.elements[child_of_child].parent = i;
+                        }
                     }
 
                     to_remove[child_idx] = true;
                     changed = true;
                 }
+            }
+
+            // Add any new control points
+            for (const auto& cp : control_points_to_add) {
+                ir.elements.push_back(cp);
             }
 
             if (changed) {
@@ -73,32 +106,49 @@ namespace Boidsish {
     }
 
     void ProceduralOptimizer::HandleJunctions(ProceduralIR& ir) {
-        // Identify points where multiple tubes meet and insert hubs
+        // Identify points where multiple tubes or control points branch and insert hubs
         std::vector<ProceduralElement> hubs_to_add;
 
         for (int i = 0; i < (int)ir.elements.size(); ++i) {
             auto& e = ir.elements[i];
+            if (e.children.size() <= 1) continue;
+
             if (e.type == ProceduralElementType::Tube) {
-                if (e.children.size() > 1) {
-                    // Junction at end_position
-                    ProceduralElement hub;
-                    hub.type = ProceduralElementType::Hub;
-                    hub.position = e.end_position;
-                    hub.radius = e.end_radius * 1.1f; // Slightly larger for better blending
-                    hub.color = e.color;
-                    hub.parent = i;
-                    hub.children = e.children;
+                // Junction at end_position
+                ProceduralElement hub;
+                hub.type = ProceduralElementType::Hub;
+                hub.position = e.end_position;
+                hub.radius = e.end_radius * 1.1f;
+                hub.color = e.color;
+                hub.parent = i;
+                hub.children = e.children;
 
-                    int hub_idx = (int)ir.elements.size() + (int)hubs_to_add.size();
+                int hub_idx = (int)ir.elements.size() + (int)hubs_to_add.size();
 
-                    // Re-route children to the hub
-                    for (int child_idx : e.children) {
-                        ir.elements[child_idx].parent = hub_idx;
-                    }
-                    e.children = { hub_idx };
-
-                    hubs_to_add.push_back(hub);
+                for (int child_idx : e.children) {
+                    ir.elements[child_idx].parent = hub_idx;
                 }
+                e.children = { hub_idx };
+
+                hubs_to_add.push_back(hub);
+            } else if (e.type == ProceduralElementType::ControlPoint) {
+                // Junction at control point position
+                ProceduralElement hub;
+                hub.type = ProceduralElementType::Hub;
+                hub.position = e.position;
+                hub.radius = e.radius * 1.1f;
+                hub.color = e.color;
+                hub.parent = i;
+                hub.children = e.children;
+
+                int hub_idx = (int)ir.elements.size() + (int)hubs_to_add.size();
+
+                for (int child_idx : e.children) {
+                    ir.elements[child_idx].parent = hub_idx;
+                }
+                e.children = { hub_idx };
+
+                hubs_to_add.push_back(hub);
             }
         }
 

@@ -11,7 +11,8 @@ namespace Boidsish {
         Tube,
         Hub,
         Leaf,
-        Puffball
+        Puffball,
+        ControlPoint // Spline waypoint: preserves curve shape, generates no geometry
     };
 
     struct ProceduralElement {
@@ -102,6 +103,23 @@ namespace Boidsish {
         int AddPuffball(glm::vec3 pos, float r, glm::vec3 col, int parent_idx = -1) {
             ProceduralElement e;
             e.type = ProceduralElementType::Puffball;
+            e.position = pos;
+            e.radius = r;
+            e.color = col;
+            e.parent = parent_idx;
+
+            int idx = static_cast<int>(elements.size());
+            elements.push_back(e);
+
+            if (parent_idx != -1 && parent_idx < idx) {
+                elements[parent_idx].children.push_back(idx);
+            }
+            return idx;
+        }
+
+        int AddControlPoint(glm::vec3 pos, float r, glm::vec3 col, int parent_idx = -1) {
+            ProceduralElement e;
+            e.type = ProceduralElementType::ControlPoint;
             e.position = pos;
             e.radius = r;
             e.color = col;
