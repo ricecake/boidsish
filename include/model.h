@@ -33,6 +33,7 @@ namespace Boidsish {
 		// Material Data
 		glm::vec3 diffuseColor = glm::vec3(1.0f);
 		float     opacity = 1.0f;
+		bool      has_vertex_colors = false;
 
 		// Constructor
 		Mesh(std::vector<Vertex> vertices, std::vector<unsigned int> indices, std::vector<Texture> textures);

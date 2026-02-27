@@ -444,7 +444,7 @@ namespace Boidsish {
 			packet.uniforms.ao = GetAO();
 			packet.uniforms.use_texture = !mesh.textures.empty();
 			packet.uniforms.is_colossal = IsColossal();
-			packet.uniforms.use_vertex_color = 1;
+			packet.uniforms.use_vertex_color = mesh.has_vertex_colors ? 1 : 0;
 
 			packet.uniforms.dissolve_enabled = dissolve_enabled_ ? 1 : 0;
 			packet.uniforms.dissolve_plane_normal = dissolve_plane_normal_;

@@ -1,1 +1,2 @@
-Error: Failed to initialize GLFW
+GLFW Error 65543: GLX: Failed to create context: GLXBadFBConfig
+Error: Failed to create GLFW window
