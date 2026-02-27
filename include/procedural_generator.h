@@ -7,6 +7,7 @@
 #include <vector>
 
 #include "model.h"
+#include "procedural_ir.h"
 
 namespace Boidsish {
 
@@ -23,6 +24,21 @@ namespace Boidsish {
 		static std::shared_ptr<Model>
 		GenerateTree(unsigned int seed, const std::string& axiom = "", const std::vector<std::string>& rules = {}, int iterations = 3);
 		static std::shared_ptr<Model> GenerateSpaceColonizationTree(unsigned int seed);
+
+		static ProceduralIR GenerateGrassIR(unsigned int seed);
+		static ProceduralIR GenerateFlowerIR(
+			unsigned int                    seed,
+			const std::string&              axiom = "",
+			const std::vector<std::string>& rules = {},
+			int                             iterations = 2
+		);
+		static ProceduralIR GenerateTreeIR(
+			unsigned int                    seed,
+			const std::string&              axiom = "",
+			const std::vector<std::string>& rules = {},
+			int                             iterations = 3
+		);
+		static ProceduralIR GenerateSpaceColonizationTreeIR(unsigned int seed);
 
 	private:
 		struct TurtleState {
