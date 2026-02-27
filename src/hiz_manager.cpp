@@ -15,8 +15,10 @@ HiZManager::~HiZManager() {
 }
 
 void HiZManager::Initialize(int width, int height) {
-	width_ = width;
-	height_ = height;
+	render_width_ = width;
+	render_height_ = height;
+	hiz_width_ = std::max(1, width / 2);
+	hiz_height_ = std::max(1, height / 2);
 
 	generate_shader_ = std::make_unique<ComputeShader>("shaders/hiz_generate.comp");
 	if (!generate_shader_->isValid()) {
@@ -29,23 +31,24 @@ void HiZManager::Initialize(int width, int height) {
 }
 
 void HiZManager::Resize(int width, int height) {
-	if (width == width_ && height == height_)
+	if (width == render_width_ && height == render_height_)
 		return;
 
-	width_ = width;
-	height_ = height;
+	render_width_ = width;
+	render_height_ = height;
+	hiz_width_ = std::max(1, width / 2);
+	hiz_height_ = std::max(1, height / 2);
 
 	DestroyTexture();
 	CreateTexture();
 }
 
 void HiZManager::CreateTexture() {
-	// Compute mip count: floor(log2(max(w,h))) + 1
-	mip_count_ = 1 + static_cast<int>(std::floor(std::log2(std::max(width_, height_))));
+	mip_count_ = 1 + static_cast<int>(std::floor(std::log2(std::max(hiz_width_, hiz_height_))));
 
 	glGenTextures(1, &hiz_texture_);
 	glBindTexture(GL_TEXTURE_2D, hiz_texture_);
-	glTexStorage2D(GL_TEXTURE_2D, mip_count_, GL_R32F, width_, height_);
+	glTexStorage2D(GL_TEXTURE_2D, mip_count_, GL_R32F, hiz_width_, hiz_height_);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST_MIPMAP_NEAREST);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
@@ -66,28 +69,25 @@ void HiZManager::GeneratePyramid(GLuint depthTexture) {
 
 	generate_shader_->use();
 
-	int src_w = width_;
-	int src_h = height_;
+	// Mip 0 source is the full-resolution depth buffer.
+	// All subsequent mips source from the previous Hi-Z mip.
+	int src_w = render_width_;
+	int src_h = render_height_;
 
 	for (int mip = 0; mip < mip_count_; ++mip) {
-		int dst_w = std::max(1, width_ >> mip);
-		int dst_h = std::max(1, height_ >> mip);
-
-		// Mip 0: direct 1:1 copy from depth buffer (same resolution)
-		// Mip 1+: 2x2 MAX downsample from previous Hi-Z mip
-		generate_shader_->setBool("u_directCopy", mip == 0);
+		int dst_w = std::max(1, hiz_width_ >> mip);
+		int dst_h = std::max(1, hiz_height_ >> mip);
 
 		// Set source size uniform
-		generate_shader_->setInt("u_srcSize", 0); // dummy - overwritten by ivec2 below
 		glUniform2i(glGetUniformLocation(generate_shader_->ID, "u_srcSize"), src_w, src_h);
 
 		// Bind source texture
 		glActiveTexture(GL_TEXTURE0);
 		if (mip == 0) {
-			// Mip 0: read from the depth buffer directly
+			// Mip 0: 2x MAX downsample from full-res depth buffer → half-res Hi-Z base
 			glBindTexture(GL_TEXTURE_2D, depthTexture);
 		} else {
-			// Mip N: read from previous Hi-Z mip level
+			// Mip N: 2x MAX downsample from previous Hi-Z mip
 			glBindTexture(GL_TEXTURE_2D, hiz_texture_);
 			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_BASE_LEVEL, mip - 1);
 			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, mip - 1);
@@ -115,8 +115,6 @@ void HiZManager::GeneratePyramid(GLuint depthTexture) {
 	glBindTexture(GL_TEXTURE_2D, 0);
 
 	// Ensure all Hi-Z mip data is visible to subsequent texture fetches.
-	// The parameter reset above can invalidate driver texture caches on some
-	// implementations (notably macOS), so an additional barrier is needed here.
 	glMemoryBarrier(GL_TEXTURE_FETCH_BARRIER_BIT);
 }
 

@@ -34,8 +34,8 @@ public:
 
 	GLuint GetHiZTexture() const { return hiz_texture_; }
 	int    GetMipCount() const { return mip_count_; }
-	int    GetWidth() const { return width_; }
-	int    GetHeight() const { return height_; }
+	int    GetWidth() const { return hiz_width_; }
+	int    GetHeight() const { return hiz_height_; }
 	bool   IsInitialized() const { return initialized_; }
 
 private:
@@ -44,8 +44,10 @@ private:
 
 	std::unique_ptr<ComputeShader> generate_shader_;
 	GLuint                         hiz_texture_ = 0;
-	int                            width_ = 0;
-	int                            height_ = 0;
+	int                            render_width_ = 0;  // Full render resolution (depth buffer size)
+	int                            render_height_ = 0;
+	int                            hiz_width_ = 0;     // Hi-Z base resolution (half render res)
+	int                            hiz_height_ = 0;
 	int                            mip_count_ = 0;
 	bool                           initialized_ = false;
 };
