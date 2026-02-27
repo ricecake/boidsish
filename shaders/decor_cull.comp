@@ -90,6 +90,12 @@ bool isOccluded(vec3 pos, float radius) {
 		return false;
 	}
 
+	// If the object was entirely off-screen in the previous frame,
+	// the Hi-Z has no valid data for it - conservatively keep visible
+	if (maxScreen.x < 0.0 || minScreen.x > 1.0 || maxScreen.y < 0.0 || minScreen.y > 1.0) {
+		return false;
+	}
+
 	// Apply small expansion for temporal safety
 	vec2 expand = 4.0 / vec2(u_hizSize);
 	minScreen -= expand;

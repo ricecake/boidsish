@@ -73,6 +73,10 @@ void HiZManager::GeneratePyramid(GLuint depthTexture) {
 		int dst_w = std::max(1, width_ >> mip);
 		int dst_h = std::max(1, height_ >> mip);
 
+		// Mip 0: direct 1:1 copy from depth buffer (same resolution)
+		// Mip 1+: 2x2 MAX downsample from previous Hi-Z mip
+		generate_shader_->setBool("u_directCopy", mip == 0);
+
 		// Set source size uniform
 		generate_shader_->setInt("u_srcSize", 0); // dummy - overwritten by ivec2 below
 		glUniform2i(glGetUniformLocation(generate_shader_->ID, "u_srcSize"), src_w, src_h);
