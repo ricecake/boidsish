@@ -116,6 +116,10 @@ bool isOccluded(vec3 pos, float radius) {
 	hizDepth = max(hizDepth, textureLod(u_hizTexture, rect.xw, float(mipLevel)).r);
 	hizDepth = max(hizDepth, textureLod(u_hizTexture, rect.zw, float(mipLevel)).r);
 
+	// If Hi-Z reads as zero/near-zero, the data is invalid (uninitialized or
+	// stale due to a memory barrier issue). Conservatively keep the object visible.
+	if (hizDepth < 0.0001) return false;
+
 	return nearestDepth > hizDepth;
 }
 

@@ -147,6 +147,13 @@ void main() {
 	hizDepth = max(hizDepth, textureLod(u_hizTexture, screenRect.xw, float(mipLevel)).r);
 	hizDepth = max(hizDepth, textureLod(u_hizTexture, screenRect.zw, float(mipLevel)).r);
 
+	// If Hi-Z reads as zero/near-zero, the data is invalid (uninitialized or
+	// stale due to a memory barrier issue). Conservatively keep the object visible.
+	if (hizDepth < 0.0001) {
+		visibility[idx] = 1u;
+		return;
+	}
+
 	// Object is occluded if its nearest depth is farther than the Hi-Z max depth.
 	// In standard OpenGL depth: smaller values = closer to camera.
 	// nearestDepth > hizDepth means the closest part of the AABB is behind everything in the Hi-Z region.

@@ -113,6 +113,11 @@ void HiZManager::GeneratePyramid(GLuint depthTexture) {
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_BASE_LEVEL, 0);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, mip_count_ - 1);
 	glBindTexture(GL_TEXTURE_2D, 0);
+
+	// Ensure all Hi-Z mip data is visible to subsequent texture fetches.
+	// The parameter reset above can invalidate driver texture caches on some
+	// implementations (notably macOS), so an additional barrier is needed here.
+	glMemoryBarrier(GL_TEXTURE_FETCH_BARRIER_BIT);
 }
 
 } // namespace Boidsish
