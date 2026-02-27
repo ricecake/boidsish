@@ -12,36 +12,37 @@ int main() {
 		Visualizer viz(1280, 720, "Animation Demo");
 
 		// Try to load the bird
-		auto model_path = "assets/smolbird.fbx";
+		auto model_path = "/home/ricecake/Documents/Assets/Models/anim/Cow.fbx";
 		auto bird = std::make_shared<Model>(model_path);
 
 		bird->SetPosition(0.0f, 5.0f, 0.0f);
-		bird->SetScale(glm::vec3(1.0f));
+		bird->SetScale(glm::vec3(0.10f));
 		bird->SetAnimation(0);
 		viz.AddShape(bird);
 
-		// Add a floor for reference
-		auto floor = std::make_shared<Model>("assets/quad.obj");
-		floor->SetPosition(0.0f, 0.0f, 0.0f);
-		floor->SetScale(glm::vec3(100.0f, 1.0f, 100.0f));
-		viz.AddShape(floor);
+		// // Add a floor for reference
+		// auto floor = std::make_shared<Model>("assets/quad.obj");
+		// floor->SetPosition(0.0f, 0.0f, 0.0f);
+		// floor->SetScale(glm::vec3(100.0f, 1.0f, 100.0f));
+		// viz.AddShape(floor);
 
-		// Add a light to see something
-		Light sun = Light::CreateDirectional(45.0f, 45.0f, 1.5f, glm::vec3(1.0f, 0.9f, 0.8f));
-		viz.GetLightManager().AddLight(sun);
+		// // Add a light to see something
+		// Light sun = Light::CreateDirectional(45.0f, 45.0f, 1.5f, glm::vec3(1.0f, 0.9f, 0.8f));
+		// viz.GetLightManager().AddLight(sun);
 
-		viz.AddPrepareCallback([](Visualizer& v) {
-			v.GetCamera().x = 0.0f;
-			v.GetCamera().y = 10.0f;
-			v.GetCamera().z = 25.0f;
-			v.GetCamera().pitch = -15.0f;
-			v.GetCamera().yaw = 0.0f;
-		});
+		// viz.AddPrepareCallback([](Visualizer& v) {
+		// 	v.GetCamera().x = 0.0f;
+		// 	v.GetCamera().y = 10.0f;
+		// 	v.GetCamera().z = 25.0f;
+		// 	v.GetCamera().pitch = -15.0f;
+		// 	v.GetCamera().yaw = 0.0f;
+		// });
 
 		static float animTimer = 0.0f;
 		static int currentAnim = 0;
 
-		viz.AddShapeHandler([&](float dt) {
+		viz.AddShapeHandler([&](float) {
+			auto dt = viz.GetLastFrameTime();
 			bird->UpdateAnimation(dt);
 			// Slow rotate bird
 			bird->SetRotation(glm::angleAxis(dt * 0.5f, glm::vec3(0, 1, 0)) * bird->GetRotation());
