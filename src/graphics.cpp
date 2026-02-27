@@ -13,6 +13,7 @@
 
 #include "ConfigManager.h"
 #include "NoiseManager.h"
+#include "SceneManager.h"
 #include "UIManager.h"
 #include "akira_effect.h"
 #include "arcade_text.h"
@@ -63,11 +64,10 @@
 #include "terrain_render_manager.h"
 #include "trail.h"
 #include "trail_render_manager.h"
-#include "ui/ConfigWidget.h"
-#include "ui/EffectsWidget.h"
-#include "ui/LightsWidget.h"
-#include "ui/PostProcessingWidget.h"
-#include "ui/SceneWidget.h"
+#include "ui/EffectWidget.h"
+#include "ui/EnvironmentWidget.h"
+#include "ui/RenderWidget.h"
+#include "ui/SystemWidget.h"
 #include "ui/hud_widget.h"
 #include "visual_effects.h"
 #include <GL/glew.h>
@@ -1005,21 +1005,12 @@ namespace Boidsish {
 				}
 
 				// --- UI ---
-				auto post_processing_widget = std::make_shared<UI::PostProcessingWidget>(*post_processing_manager_);
-				ui_manager->AddWidget(post_processing_widget);
 			}
 
-			auto config_widget = std::make_shared<UI::ConfigWidget>(*parent);
-			ui_manager->AddWidget(config_widget);
-
-			auto effects_widget = std::make_shared<UI::EffectsWidget>(parent);
-			ui_manager->AddWidget(effects_widget);
-
-			auto lights_widget = std::make_shared<UI::LightsWidget>(light_manager);
-			ui_manager->AddWidget(lights_widget);
-
-			auto scene_widget = std::make_shared<UI::SceneWidget>(*scene_manager, *parent);
-			ui_manager->AddWidget(scene_widget);
+			ui_manager->AddWidget(std::make_shared<UI::EnvironmentWidget>(*parent));
+			ui_manager->AddWidget(std::make_shared<UI::EffectWidget>(*parent));
+			ui_manager->AddWidget(std::make_shared<UI::RenderWidget>(*parent));
+			ui_manager->AddWidget(std::make_shared<UI::SystemWidget>(*parent, *scene_manager));
 		}
 
 		void BindShadows(Shader& s) {
