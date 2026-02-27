@@ -24,10 +24,10 @@ namespace Boidsish {
 			float ticksPerSecond = (animation.ticksPerSecond != 0) ? (float)animation.ticksPerSecond : 24.0f;
 			m_CurrentTime += ticksPerSecond * dt;
 			m_CurrentTime = std::fmod(m_CurrentTime, animation.duration);
-			CalculateBoneTransform(m_ModelData->root_node, m_ModelData->global_inverse_transform);
+			CalculateBoneTransform(m_ModelData->root_node, glm::mat4(1.0f));
 		} else if (m_ModelData) {
 			// Even if no animation is playing, we should still update bone matrices to bind pose
-			CalculateBoneTransform(m_ModelData->root_node, m_ModelData->global_inverse_transform);
+			CalculateBoneTransform(m_ModelData->root_node, glm::mat4(1.0f));
 		}
 	}
 
