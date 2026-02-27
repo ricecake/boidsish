@@ -246,6 +246,74 @@ namespace Boidsish {
 		MarkDirty();
 	}
 
+	void Shape::SetScaleToMaxDimension(float max_dim, int axis) {
+		if (axis < 0 || axis > 2)
+			return;
+
+		AABB  aabb = GetAABB();
+		float current_dim = aabb.max[axis] - aabb.min[axis];
+
+		if (current_dim > 0.0001f) {
+			float factor = max_dim / current_dim;
+			SetScale(scale_ * factor);
+		} else {
+			// If current scale is too small, try with unit scale to find the base dimension
+			glm::vec3 original_scale = scale_;
+			scale_ = glm::vec3(1.0f);
+			aabb = GetAABB();
+			current_dim = aabb.max[axis] - aabb.min[axis];
+			if (current_dim > 0.0001f) {
+				float factor = max_dim / current_dim;
+				SetScale(glm::vec3(factor));
+			} else {
+				scale_ = original_scale; // Restore if we still can't determine dimension
+			}
+		}
+	}
+
+	void Shape::SetScaleRelativeTo(const Shape& other, float ratio, int axis) {
+		if (axis < 0 || axis > 2)
+			return;
+
+		AABB  other_aabb = other.GetAABB();
+		float target_dim = (other_aabb.max[axis] - other_aabb.min[axis]) * ratio;
+		SetScaleToMaxDimension(target_dim, axis);
+	}
+
+	void Shape::SetScaleToFitInside(const Shape& other) {
+		AABB current = GetAABB();
+		AABB target = other.GetAABB();
+
+		glm::vec3 current_dims = current.max - current.min;
+		glm::vec3 target_dims = target.max - target.min;
+
+		// If current dimensions are zero, try with unit scale
+		if (glm::length(current_dims) < 0.0001f) {
+			glm::vec3 original_scale = scale_;
+			scale_ = glm::vec3(1.0f);
+			current = GetAABB();
+			current_dims = current.max - current.min;
+			if (glm::length(current_dims) < 0.0001f) {
+				scale_ = original_scale;
+				return;
+			}
+		}
+
+		float factor = std::numeric_limits<float>::max();
+		bool  found = false;
+
+		for (int i = 0; i < 3; ++i) {
+			if (current_dims[i] > 0.0001f) {
+				factor = std::min(factor, target_dims[i] / current_dims[i]);
+				found = true;
+			}
+		}
+
+		if (found && factor != std::numeric_limits<float>::max()) {
+			SetScale(scale_ * factor);
+		}
+	}
+
 	bool Shape::Intersects(const Ray& ray, float& t) const {
 		return GetAABB().Intersects(ray, t);
 	}
