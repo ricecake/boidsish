@@ -49,6 +49,16 @@ namespace Boidsish {
 
 				// Handle embedded textures
 				const aiTexture* embeddedTexture = scene->GetEmbeddedTexture(str.C_Str());
+				if (!embeddedTexture) {
+					// Fallback: try filename only for embedded textures
+					std::string texture_path = str.C_Str();
+					size_t last_sep = texture_path.find_last_of("/\\");
+					std::string filename = (last_sep != std::string::npos) ? texture_path.substr(last_sep + 1) : texture_path;
+					if (filename != texture_path) {
+						embeddedTexture = scene->GetEmbeddedTexture(filename.c_str());
+					}
+				}
+
 				bool skip = false;
 				for (unsigned int j = 0; j < data.textures_loaded.size(); j++) {
 					if (std::strcmp(data.textures_loaded[j].path.data(), str.C_Str()) == 0) {
@@ -65,24 +75,19 @@ namespace Boidsish {
 						unsigned char* imageData = nullptr;
 						if (embeddedTexture->mHeight == 0) {
 							// Compressed texture (e.g. png, jpg)
+							// Force 4 components (RGBA) for consistency
 							imageData = stbi_load_from_memory(
 								reinterpret_cast<unsigned char*>(embeddedTexture->pcData),
 								embeddedTexture->mWidth,
 								&width,
 								&height,
 								&nrComponents,
-								0
+								4
 							);
 
 							if (imageData) {
 								glGenTextures(1, &texture.id);
-								GLenum format = GL_RGB;
-								if (nrComponents == 1)
-									format = GL_RED;
-								else if (nrComponents == 3)
-									format = GL_RGB;
-								else if (nrComponents == 4)
-									format = GL_RGBA;
+								GLenum format = GL_RGBA;
 
 								glBindTexture(GL_TEXTURE_2D, texture.id);
 								glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
@@ -204,6 +209,7 @@ namespace Boidsish {
 			const aiScene*     scene,
 			ModelData&         data,
 			const std::string& directory,
+			const std::string& nodeName,
 			const glm::mat4&   globalTransform
 		);
 
@@ -211,7 +217,8 @@ namespace Boidsish {
 			std::vector<Vertex>& vertices,
 			aiMesh*              mesh,
 			ModelData&           data,
-			const std::string&   nodeName
+			const std::string&   nodeName,
+			const glm::mat4&     globalTransform
 		) {
 			if (mesh->mNumBones == 0) {
 				// Mesh has no bones - assign to the node itself to follow hierarchy
@@ -219,7 +226,8 @@ namespace Boidsish {
 				if (data.bone_info_map.find(nodeName) == data.bone_info_map.end()) {
 					BoneInfo newBoneInfo;
 					newBoneInfo.id = data.bone_count;
-					newBoneInfo.offset = glm::mat4(1.0f); // Identity for non-boned meshes following node
+					// Virtual bone offset must account for pre-transformed vertices
+					newBoneInfo.offset = glm::inverse(globalTransform);
 					data.bone_info_map[nodeName] = newBoneInfo;
 					boneID = data.bone_count;
 					data.bone_count++;
@@ -240,7 +248,8 @@ namespace Boidsish {
 				if (data.bone_info_map.find(boneName) == data.bone_info_map.end()) {
 					BoneInfo newBoneInfo;
 					newBoneInfo.id = data.bone_count;
-					newBoneInfo.offset = offset;
+					// Adjusted offset to account for pre-transformed vertices in root space
+					newBoneInfo.offset = offset * glm::inverse(globalTransform);
 					data.bone_info_map[boneName] = newBoneInfo;
 					boneID = data.bone_count;
 					data.bone_count++;
@@ -279,7 +288,8 @@ namespace Boidsish {
 			const aiScene*     scene,
 			ModelData&         data,
 			const std::string& directory,
-			const std::string& nodeName
+			const std::string& nodeName,
+			const glm::mat4&   globalTransform
 		) {
 			std::vector<Vertex>       vertices;
 			std::vector<unsigned int> indices;
@@ -289,10 +299,14 @@ namespace Boidsish {
 				Vertex    vertex;
 				SetVertexBoneDataToDefault(vertex);
 
-				vertex.Position = glm::vec3(mesh->mVertices[i].x, mesh->mVertices[i].y, mesh->mVertices[i].z);
+				// Pre-transform vertices to root space
+				glm::vec4 pos = globalTransform * glm::vec4(mesh->mVertices[i].x, mesh->mVertices[i].y, mesh->mVertices[i].z, 1.0f);
+				vertex.Position = glm::vec3(pos);
 
 				if (mesh->HasNormals()) {
-					vertex.Normal = glm::vec3(mesh->mNormals[i].x, mesh->mNormals[i].y, mesh->mNormals[i].z);
+					// Pre-transform normals to root space
+					glm::vec3 normal = glm::vec3(mesh->mNormals[i].x, mesh->mNormals[i].y, mesh->mNormals[i].z);
+					vertex.Normal = normalize(glm::mat3(transpose(inverse(globalTransform))) * normal);
 				}
 				if (mesh->mTextureCoords[0]) {
 					glm::vec2 vec;
@@ -305,7 +319,7 @@ namespace Boidsish {
 				vertices.push_back(vertex);
 			}
 
-			ExtractBoneWeightForVertices(vertices, mesh, data, nodeName);
+			ExtractBoneWeightForVertices(vertices, mesh, data, nodeName, globalTransform);
 
 			for (unsigned int i = 0; i < mesh->mNumFaces; i++) {
 				aiFace face = mesh->mFaces[i];
@@ -354,16 +368,19 @@ namespace Boidsish {
 			aiNode*            node,
 			const aiScene*     scene,
 			ModelData&         data,
-			const std::string& directory
+			const std::string& directory,
+			const glm::mat4&   parentTransform = glm::mat4(1.0f)
 		) {
 			std::string nodeName = node->mName.C_Str();
+			glm::mat4   nodeTransform = ConvertMatrixToGLMFormat(node->mTransformation);
+			glm::mat4   globalTransform = parentTransform * nodeTransform;
 
 			for (unsigned int i = 0; i < node->mNumMeshes; i++) {
 				aiMesh* mesh = scene->mMeshes[node->mMeshes[i]];
-				data.meshes.push_back(ProcessMesh(mesh, scene, data, directory, nodeName));
+				data.meshes.push_back(ProcessMesh(mesh, scene, data, directory, nodeName, globalTransform));
 			}
 			for (unsigned int i = 0; i < node->mNumChildren; i++) {
-				ProcessNode(node->mChildren[i], scene, data, directory);
+				ProcessNode(node->mChildren[i], scene, data, directory, globalTransform);
 			}
 		}
 
@@ -459,7 +476,7 @@ namespace Boidsish {
 			data->directory = ".";
 		}
 
-		data->global_inverse_transform = glm::inverse(ConvertMatrixToGLMFormat(scene->mRootNode->mTransformation));
+		data->global_inverse_transform = glm::mat4(1.0f); // Pre-transformed to root, so identity is fine
 
 		ProcessNode(scene->mRootNode, scene, *data, data->directory);
 		ReadHierarchyData(data->root_node, scene->mRootNode);
@@ -467,33 +484,18 @@ namespace Boidsish {
 
 		logger::LOG("Model loaded: {} bones, {} animations", data->bone_count, data->animations.size());
 
-		// Helper to calculate AABB from nodes
-		struct AABBCalc {
-			static void UpdateAABB(aiNode* node, const glm::mat4& parentTransform, const aiScene* scene, glm::vec3& min, glm::vec3& max, bool& has_vertices) {
-				glm::mat4 globalTransform = parentTransform * ConvertMatrixToGLMFormat(node->mTransformation);
-
-				for (unsigned int i = 0; i < node->mNumMeshes; i++) {
-					aiMesh* mesh = scene->mMeshes[node->mMeshes[i]];
-					for (unsigned int j = 0; j < mesh->mNumVertices; j++) {
-						glm::vec4 localPos(mesh->mVertices[j].x, mesh->mVertices[j].y, mesh->mVertices[j].z, 1.0f);
-						glm::vec3 worldPos = glm::vec3(globalTransform * localPos);
-						min = glm::min(min, worldPos);
-						max = glm::max(max, worldPos);
-						has_vertices = true;
-					}
-				}
-
-				for (unsigned int i = 0; i < node->mNumChildren; i++) {
-					UpdateAABB(node->mChildren[i], globalTransform, scene, min, max, has_vertices);
-				}
-			}
-		};
-
-		// Calculate AABB
+		// Calculate AABB from pre-transformed meshes
 		glm::vec3 min(std::numeric_limits<float>::max());
 		glm::vec3 max(-std::numeric_limits<float>::max());
 		bool      has_vertices = false;
-		AABBCalc::UpdateAABB(scene->mRootNode, glm::mat4(1.0f), scene, min, max, has_vertices);
+
+		for (const auto& mesh : data->meshes) {
+			for (const auto& vertex : mesh.vertices) {
+				min = glm::min(min, vertex.Position);
+				max = glm::max(max, vertex.Position);
+				has_vertices = true;
+			}
+		}
 
 		if (has_vertices) {
 			data->aabb = AABB(min, max);
