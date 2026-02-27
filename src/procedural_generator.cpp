@@ -5,6 +5,8 @@
 
 #include "ConfigManager.h"
 #include "mesh_optimizer_util.h"
+#include "procedural_mesher.h"
+#include "procedural_optimizer.h"
 #include "spline.h"
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/quaternion.hpp>
@@ -259,18 +261,34 @@ namespace Boidsish {
 	} // namespace
 
 	std::shared_ptr<Model> ProceduralGenerator::Generate(ProceduralType type, unsigned int seed) {
+		ProceduralIR ir;
+		bool         use_ir = true;
+
 		switch (type) {
 		case ProceduralType::Rock:
 			return GenerateRock(seed);
 		case ProceduralType::Grass:
-			return GenerateGrass(seed);
+			ir = GenerateGrassIR(seed);
+			break;
 		case ProceduralType::Flower:
-			return GenerateFlower(seed);
+			ir = GenerateFlowerIR(seed);
+			break;
 		case ProceduralType::Tree:
-			return GenerateTree(seed);
+			ir = GenerateTreeIR(seed);
+			break;
 		case ProceduralType::TreeSpaceColonization:
-			return GenerateSpaceColonizationTree(seed);
+			ir = GenerateSpaceColonizationTreeIR(seed);
+			break;
+		default:
+			use_ir = false;
+			break;
 		}
+
+		if (use_ir) {
+			ProceduralOptimizer::Optimize(ir);
+			return ProceduralMesher::GenerateModel(ir);
+		}
+
 		return nullptr;
 	}
 
@@ -318,12 +336,12 @@ namespace Boidsish {
 		return std::make_shared<Model>(CreateModelDataFromGeometry(vertices, indices, glm::vec3(1.0f)));
 	}
 
-	std::shared_ptr<Model> ProceduralGenerator::GenerateGrass(unsigned int seed) {
+	ProceduralIR ProceduralGenerator::GenerateGrassIR(unsigned int seed) {
 		std::mt19937                          gen(seed);
 		std::uniform_real_distribution<float> dis(-0.1f, 0.1f);
 
-		std::vector<Vertex>       vertices;
-		std::vector<unsigned int> indices;
+		ProceduralIR ir;
+		ir.name = "grass";
 
 		const int num_blades = 5;
 		for (int i = 0; i < num_blades; ++i) {
@@ -331,32 +349,35 @@ namespace Boidsish {
 			float s = std::sin(angle);
 			float c = std::cos(angle);
 
-			std::vector<glm::vec3> pts;
-			std::vector<float>     radii;
-			std::vector<glm::vec3> colors;
-
 			glm::vec3 basePos(c * 0.1f, 0, s * 0.1f);
 			glm::vec3 grassCol(0.1f, 0.5f + dis(gen), 0.1f);
 
-			pts.push_back(basePos);
-			radii.push_back(0.05f);
-			colors.push_back(grassCol);
+			glm::vec3 p1 = basePos;
+			float     r1 = 0.05f;
+			glm::vec3 c1 = grassCol;
 
-			pts.push_back(basePos + glm::vec3(dis(gen), 0.5f, dis(gen)));
-			radii.push_back(0.03f);
-			colors.push_back(grassCol * 1.2f);
+			glm::vec3 p2 = basePos + glm::vec3(dis(gen), 0.5f, dis(gen));
+			float     r2 = 0.03f;
+			glm::vec3 c2 = grassCol * 1.2f;
 
-			pts.push_back(basePos + glm::vec3(dis(gen) * 2.0f, 1.0f, dis(gen) * 2.0f));
-			radii.push_back(0.005f);
-			colors.push_back(grassCol * 1.5f);
+			glm::vec3 p3 = basePos + glm::vec3(dis(gen) * 2.0f, 1.0f, dis(gen) * 2.0f);
+			float     r3 = 0.005f;
+			glm::vec3 c3 = grassCol * 1.5f;
 
-			AddSplineTube(vertices, indices, pts, radii, colors);
+			int id1 = ir.AddTube(p1, p2, r1, r2, c1);
+			ir.AddTube(p2, p3, r2, r3, c2, id1);
 		}
 
-		return std::make_shared<Model>(CreateModelDataFromGeometry(vertices, indices, glm::vec3(1.0f)));
+		return ir;
 	}
 
-	std::shared_ptr<Model> ProceduralGenerator::GenerateFlower(
+	std::shared_ptr<Model> ProceduralGenerator::GenerateGrass(unsigned int seed) {
+		auto ir = GenerateGrassIR(seed);
+		ProceduralOptimizer::Optimize(ir);
+		return ProceduralMesher::GenerateModel(ir);
+	}
+
+	ProceduralIR ProceduralGenerator::GenerateFlowerIR(
 		unsigned int                    seed,
 		const std::string&              custom_axiom,
 		const std::vector<std::string>& custom_rules,
@@ -365,8 +386,8 @@ namespace Boidsish {
 		std::mt19937                          gen(seed);
 		std::uniform_real_distribution<float> dis(-0.1f, 0.1f);
 
-		std::vector<Vertex>       vertices;
-		std::vector<unsigned int> indices;
+		ProceduralIR ir;
+		ir.name = "flower";
 
 		LSystem lsys;
 		if (custom_axiom.empty()) {
@@ -385,42 +406,30 @@ namespace Boidsish {
 
 		std::string expanded = lsys.expand(iterations);
 
-		std::stack<TurtleState> stack;
-		TurtleState             current = {glm::vec3(0, 0, 0), glm::quat(1, 0, 0, 0), 0.04f};
-		float                   angle = 0.5f;
-		float                   step = 0.4f;
+		struct TurtleStateIR {
+			glm::vec3 position;
+			glm::quat orientation;
+			float     thickness;
+			int       last_node_idx;
+		};
+
+		std::stack<TurtleStateIR> stack;
+		TurtleStateIR             current = {glm::vec3(0, 0, 0), glm::quat(1, 0, 0, 0), 0.04f, -1};
+		float                     angle = 0.5f;
+		float                     step = 0.4f;
 
 		glm::vec3 stemCol(0.2f, 0.6f, 0.2f);
 		glm::vec3 petalCol(0.9f + dis(gen), 0.2f + dis(gen), 0.4f + dis(gen));
 
-		std::vector<glm::vec3> branch_pts;
-		std::vector<float>     branch_radii;
-		std::vector<glm::vec3> branch_cols;
-
-		auto flushBranch = [&]() {
-			if (branch_pts.size() >= 2) {
-				AddSplineTube(vertices, indices, branch_pts, branch_radii, branch_cols, 4, 6);
-			}
-			branch_pts.clear();
-			branch_radii.clear();
-			branch_cols.clear();
-		};
-
 		for (char c : expanded) {
 			if (c == 'F') {
-				if (branch_pts.empty()) {
-					branch_pts.push_back(current.position);
-					branch_radii.push_back(current.thickness);
-					branch_cols.push_back(stemCol);
-				}
-				current.position += current.orientation * glm::vec3(0, step, 0);
-				current.thickness *= 0.85f;
-				branch_pts.push_back(current.position);
-				branch_radii.push_back(current.thickness);
-				branch_cols.push_back(stemCol);
+				glm::vec3 next_pos = current.position + current.orientation * glm::vec3(0, step, 0);
+				float     next_thickness = current.thickness * 0.85f;
+				int       id = ir.AddTube(current.position, next_pos, current.thickness, next_thickness, stemCol, current.last_node_idx);
+				current.position = next_pos;
+				current.thickness = next_thickness;
+				current.last_node_idx = id;
 			} else if (c == '+' || c == '-' || c == '&' || c == '^' || c == '\\' || c == '/') {
-				// We keep points in the same spline for smooth curves, unless we want sharp joints.
-				// For L-systems, rotation usually happens between segments.
 				if (c == '+')
 					current.orientation = current.orientation * glm::angleAxis(angle + dis(gen), glm::vec3(1, 0, 0));
 				else if (c == '-')
@@ -434,27 +443,41 @@ namespace Boidsish {
 				else if (c == '/')
 					current.orientation = current.orientation * glm::angleAxis(-angle, glm::vec3(0, 1, 0));
 			} else if (c == '[') {
-				flushBranch();
 				stack.push(current);
 			} else if (c == ']') {
-				flushBranch();
 				// Flower head
-				AddPuffball(vertices, indices, current.position, 0.15f, glm::vec3(1.0f, 0.9f, 0.2f), gen, glm::vec3(1.0f, 0.4f, 1.0f));
+				ir.AddPuffball(current.position, 0.15f, glm::vec3(1.0f, 0.9f, 0.2f), current.last_node_idx);
 				for (int i = 0; i < 6; ++i) {
 					glm::quat petalOri = current.orientation * glm::angleAxis(i * 1.04f, glm::vec3(0, 1, 0));
 					petalOri = petalOri * glm::angleAxis(1.0f, glm::vec3(1, 0, 0));
-					AddLeaf(vertices, indices, current.position, petalOri, 0.3f, petalCol, true);
+					ir.AddLeaf(current.position, petalOri, 0.3f, petalCol, current.last_node_idx);
 				}
 				current = stack.top();
 				stack.pop();
 			}
 		}
-		flushBranch();
 
-		return std::make_shared<Model>(CreateModelDataFromGeometry(vertices, indices, glm::vec3(1.0f)), true);
+		return ir;
+	}
+
+	std::shared_ptr<Model> ProceduralGenerator::GenerateFlower(
+		unsigned int                    seed,
+		const std::string&              custom_axiom,
+		const std::vector<std::string>& custom_rules,
+		int                             iterations
+	) {
+		auto ir = GenerateFlowerIR(seed, custom_axiom, custom_rules, iterations);
+		ProceduralOptimizer::Optimize(ir);
+		return ProceduralMesher::GenerateModel(ir);
 	}
 
 	std::shared_ptr<Model> ProceduralGenerator::GenerateSpaceColonizationTree(unsigned int seed) {
+		auto ir = GenerateSpaceColonizationTreeIR(seed);
+		ProceduralOptimizer::Optimize(ir);
+		return ProceduralMesher::GenerateModel(ir);
+	}
+
+	ProceduralIR ProceduralGenerator::GenerateSpaceColonizationTreeIR(unsigned int seed) {
 		std::mt19937 gen(seed);
 
 		// Parameters
@@ -569,57 +592,31 @@ namespace Boidsish {
 			}
 		}
 
-		// Convert to Spline::Graph format
-		std::vector<Spline::GraphNode> s_nodes;
-		for (const auto& n : nodes) {
-			s_nodes.push_back({Vector3(n.pos), n.radius / 0.005f, {0.35f, 0.25f, 0.15f}});
-		}
-
-		std::vector<Spline::GraphEdge> s_edges;
-		for (const auto& n : nodes) {
-			if (n.parentId != -1) {
-				s_edges.push_back({n.parentId, n.id});
-			}
-		}
-
-		// Generate mesh with low poly settings
-		auto v_data = Spline::GenerateGraphTube(s_nodes, s_edges, 2, 4);
-
-		std::vector<Vertex> vertices;
-		std::vector<unsigned int> indices;
-		for (const auto& vd : v_data) {
-			Vertex v;
-			v.Position = vd.pos;
-			v.Normal = vd.normal;
-			v.Color = vd.color;
-			v.TexCoords = {0.5f, 0.5f};
-			vertices.push_back(v);
-		}
-		for (unsigned int i = 0; i < vertices.size(); ++i) indices.push_back(i);
-
-		auto data = CreateModelDataFromGeometry(vertices, indices, {1,1,1});
-
-		// Add some leaves at terminal nodes
-		std::vector<Vertex> leaf_vertices;
-		std::vector<unsigned int> leaf_indices;
+		ProceduralIR ir;
+		ir.name = "sc_tree";
+		glm::vec3 woodCol(0.35f, 0.25f, 0.15f);
 		glm::vec3 leafCol(0.1f, 0.45f, 0.1f);
-		for (const auto& n : nodes) {
-			if (nodes[n.id].children.empty()) {
-				AddPuffball(leaf_vertices, leaf_indices, n.pos, 0.4f, leafCol, gen);
+
+		std::vector<int> node_to_ir(nodes.size(), -1);
+		for (size_t i = 0; i < nodes.size(); ++i) {
+			if (nodes[i].parentId != -1) {
+				int parent_ir = node_to_ir[nodes[i].parentId];
+				node_to_ir[i] = ir.AddTube(nodes[nodes[i].parentId].pos, nodes[i].pos, nodes[nodes[i].parentId].radius, nodes[i].radius, woodCol, parent_ir);
+			} else {
+				node_to_ir[i] = ir.AddHub(nodes[i].pos, nodes[i].radius, woodCol);
 			}
 		}
 
-		if (!leaf_vertices.empty()) {
-			auto leaf_data = CreateModelDataFromGeometry(leaf_vertices, leaf_indices, {1,1,1});
-			for (const auto& mesh : leaf_data->meshes) {
-				data->meshes.push_back(mesh);
+		for (size_t i = 0; i < nodes.size(); ++i) {
+			if (nodes[i].children.empty()) {
+				ir.AddPuffball(nodes[i].pos, 0.4f, leafCol, node_to_ir[i]);
 			}
 		}
 
-		return std::make_shared<Model>(data, true);
+		return ir;
 	}
 
-	std::shared_ptr<Model> ProceduralGenerator::GenerateTree(
+	ProceduralIR ProceduralGenerator::GenerateTreeIR(
 		unsigned int                    seed,
 		const std::string&              custom_axiom,
 		const std::vector<std::string>& custom_rules,
@@ -628,8 +625,8 @@ namespace Boidsish {
 		std::mt19937                          gen(seed);
 		std::uniform_real_distribution<float> dis(-0.1f, 0.1f);
 
-		std::vector<Vertex>       vertices;
-		std::vector<unsigned int> indices;
+		ProceduralIR ir;
+		ir.name = "tree";
 
 		LSystem lsys;
 		if (custom_axiom.empty()) {
@@ -649,42 +646,29 @@ namespace Boidsish {
 		}
 		std::string expanded = lsys.expand(iterations);
 
-		std::stack<TurtleState> stack;
-		TurtleState             current = {glm::vec3(0, 0, 0), glm::quat(1, 0, 0, 0), 0.25f};
-		float                   angle = 0.5f;
-		float                   step = 0.6f;
+		struct TurtleStateIR {
+			glm::vec3 position;
+			glm::quat orientation;
+			float     thickness;
+			int       last_node_idx;
+		};
+
+		std::stack<TurtleStateIR> stack;
+		TurtleStateIR             current = {glm::vec3(0, 0, 0), glm::quat(1, 0, 0, 0), 0.25f, -1};
+		float                     angle = 0.5f;
+		float                     step = 0.6f;
 
 		glm::vec3 woodCol(0.35f, 0.25f, 0.15f);
 		glm::vec3 leafCol(0.1f, 0.45f + dis(gen), 0.1f);
 
-		std::vector<glm::vec3> branch_pts;
-		std::vector<float>     branch_radii;
-		std::vector<glm::vec3> branch_cols;
-
-		auto flushBranch = [&]() {
-			if (branch_pts.size() >= 2) {
-				AddSplineTube(vertices, indices, branch_pts, branch_radii, branch_cols, 6, 8);
-			}
-			branch_pts.clear();
-			branch_radii.clear();
-			branch_cols.clear();
-		};
-
 		for (char c : expanded) {
 			if (c == 'F') {
-				if (branch_pts.empty()) {
-					branch_pts.push_back(current.position);
-					branch_radii.push_back(current.thickness);
-					branch_cols.push_back(woodCol);
-				}
-				// Add some jitter to the path
 				glm::vec3 nextPos = current.position + current.orientation * glm::vec3(0, step, 0);
 				nextPos += current.orientation * glm::vec3(dis(gen) * 0.2f, 0, dis(gen) * 0.2f);
 
+				int id = ir.AddTube(current.position, nextPos, current.thickness, current.thickness, woodCol, current.last_node_idx);
 				current.position = nextPos;
-				branch_pts.push_back(current.position);
-				branch_radii.push_back(current.thickness);
-				branch_cols.push_back(woodCol);
+				current.last_node_idx = id;
 			} else if (c == '+' || c == '-' || c == '&' || c == '^' || c == '\\' || c == '/') {
 				if (c == '+')
 					current.orientation = current.orientation * glm::angleAxis(angle + dis(gen), glm::vec3(1, 0, 0));
@@ -699,23 +683,29 @@ namespace Boidsish {
 				else if (c == '/')
 					current.orientation = current.orientation * glm::angleAxis(-angle + dis(gen), glm::vec3(0, 1, 0));
 			} else if (c == '[') {
-				flushBranch();
 				stack.push(current);
-				// Area conservation: D^2 = sum d_i^2. For 4 branches, each d = D / 2.
-				current.thickness *= 0.5f;
+				current.thickness *= 0.707f; // Slightly more conservative area conservation
 			} else if (c == ']') {
-				flushBranch();
-				// Leaf cluster
 				if (current.thickness < 0.15f) {
-					AddPuffball(vertices, indices, current.position, 0.6f, leafCol, gen);
+					ir.AddPuffball(current.position, 0.6f, leafCol, current.last_node_idx);
 				}
 				current = stack.top();
 				stack.pop();
 			}
 		}
-		flushBranch();
 
-		return std::make_shared<Model>(CreateModelDataFromGeometry(vertices, indices, glm::vec3(1.0f)), false);
+		return ir;
+	}
+
+	std::shared_ptr<Model> ProceduralGenerator::GenerateTree(
+		unsigned int                    seed,
+		const std::string&              custom_axiom,
+		const std::vector<std::string>& custom_rules,
+		int                             iterations
+	) {
+		auto ir = GenerateTreeIR(seed, custom_axiom, custom_rules, iterations);
+		ProceduralOptimizer::Optimize(ir);
+		return ProceduralMesher::GenerateModel(ir);
 	}
 
 	std::shared_ptr<ModelData> ProceduralGenerator::CreateModelDataFromGeometry(
