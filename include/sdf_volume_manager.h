@@ -10,7 +10,7 @@
 namespace Boidsish {
 
 	class Shape;
-	class Frustum;
+	struct Frustum;
 	template <typename T>
 	class PersistentBuffer;
 
