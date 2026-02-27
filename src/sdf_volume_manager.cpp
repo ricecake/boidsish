@@ -86,8 +86,9 @@ namespace Boidsish {
 				std::memcpy(gpu_ptr + num_positive_, negatives.data(), num_negative_ * sizeof(SdfSourceGPU));
 			}
 
-			// Ensure CPU writes are visible to GPU before draw call
-			glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
+			// Ensure CPU writes are visible to GPU before draw call.
+			// Using GL_ALL_BARRIER_BITS for absolute safety given the report of black frames.
+			glMemoryBarrier(GL_ALL_BARRIER_BITS);
 		} else {
 			global_min_ = glm::vec3(0.0f);
 			global_max_ = glm::vec3(0.0f);
