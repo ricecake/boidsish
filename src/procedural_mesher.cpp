@@ -94,7 +94,7 @@ namespace Boidsish {
             data->meshes.push_back(leaf_mesh);
         }
 
-        return std::make_shared<Model>(data, true);
+        return std::make_shared<Model>(data, false);
     }
 
     std::shared_ptr<ModelData> ProceduralMesher::GenerateDirectMesh(const ProceduralIR& ir) {
@@ -213,7 +213,7 @@ namespace Boidsish {
             if (e.type == ProceduralElementType::Hub) {
                 GenerateUVSphere(vertices, indices, e.position, e.radius, e.color, 6, 6);
             } else if (e.type == ProceduralElementType::Puffball) {
-                GenerateUVSphere(vertices, indices, e.position, e.radius, e.color, 8, 8);
+                GenerateUVSphere(vertices, indices, e.position, e.radius, e.color, 4, 4);
             }
         }
 
