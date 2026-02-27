@@ -2708,6 +2708,9 @@ namespace Boidsish {
 		impl->shockwave_manager->UpdateShaderData();
 		impl->shockwave_manager->BindUBO(Constants::UboBinding::Shockwaves());
 
+		impl->sdf_volume_manager->UpdateFromShapes(impl->shapes, context.frustum);
+		impl->sdf_volume_manager->BindSSBO(Constants::UboBinding::SdfVolumes());
+
 		if (impl->decor_manager && impl->terrain_generator && impl->terrain_render_manager) {
 			impl->decor_manager->SetMinPixelSize(
 				ConfigManager::GetInstance().GetAppSettingFloat("foliage_culling_pixel_threshold", 10.0f)
@@ -3053,6 +3056,18 @@ namespace Boidsish {
 		GLuint current_depth = impl->main_fbo_depth_texture_;
 
 		if (effects_enabled) {
+			// Update SdfVolumeEffect with current metadata before applying
+			glm::vec3 sdfMin, sdfMax;
+			int       numPos, numNeg;
+			impl->sdf_volume_manager->GetBoundingBox(sdfMin, sdfMax);
+			impl->sdf_volume_manager->GetSourceCounts(numPos, numNeg);
+
+			for (auto& effect : impl->post_processing_manager_->GetPreToneMappingEffects()) {
+				if (auto sdfEffect = std::dynamic_pointer_cast<PostProcessing::SdfVolumeEffect>(effect)) {
+					sdfEffect->SetSdfData(sdfMin, sdfMax, numPos, numNeg);
+				}
+			}
+
 			impl->post_processing_manager_
 				->BeginApply(current_texture, impl->main_fbo_, current_depth, impl->main_fbo_velocity_texture_);
 			impl->post_processing_manager_
@@ -3809,18 +3824,6 @@ namespace Boidsish {
 		if (impl->akira_effect_manager) {
 			impl->akira_effect_manager->Trigger(position, radius);
 		}
-	}
-
-	int Visualizer::AddSdfSource(const SdfSource& source) {
-		return impl->sdf_volume_manager->AddSource(source);
-	}
-
-	void Visualizer::UpdateSdfSource(int id, const SdfSource& source) {
-		impl->sdf_volume_manager->UpdateSource(id, source);
-	}
-
-	void Visualizer::RemoveSdfSource(int id) {
-		impl->sdf_volume_manager->RemoveSource(id);
 	}
 
 	void Visualizer::ExplodeShape(std::shared_ptr<Shape> shape, float intensity, const glm::vec3& velocity) {

@@ -325,13 +325,6 @@ namespace Boidsish {
 		void TriggerAkira(const glm::vec3& position, float radius);
 
 		/**
-		 * @brief SDF Volume management
-		 */
-		int  AddSdfSource(const SdfSource& source);
-		void UpdateSdfSource(int id, const SdfSource& source);
-		void RemoveSdfSource(int id);
-
-		/**
 		 * @brief Create an explosion with fire particles and shockwave.
 		 *
 		 * Convenience method that combines fire effect with shockwave for

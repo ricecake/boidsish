@@ -26,6 +26,13 @@ namespace Boidsish {
 
 			void SetTime(float time) override { time_ = time; }
 
+			void SetSdfData(const glm::vec3& min, const glm::vec3& max, int pos, int neg) {
+				sdfMin_ = min;
+				sdfMax_ = max;
+				numPositive_ = pos;
+				numNegative_ = neg;
+			}
+
 			bool IsEarly() const override { return true; }
 
 		private:
@@ -33,6 +40,11 @@ namespace Boidsish {
 			int                     width_;
 			int                     height_;
 			float                   time_ = 0.0f;
+
+			glm::vec3 sdfMin_{0.0f};
+			glm::vec3 sdfMax_{0.0f};
+			int       numPositive_ = 0;
+			int       numNegative_ = 0;
 		};
 
 	} // namespace PostProcessing

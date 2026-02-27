@@ -2,19 +2,23 @@
 
 #include <random>
 
-#include "dot.h"
+#include "sdf_shape.h"
 #include "sdf_volume_manager.h"
 #include <glm/gtx/quaternion.hpp>
 
 namespace Boidsish {
 
-	SdfBoid::SdfBoid(int id, bool predator): Entity<Dot>(id), is_predator_(predator) {
+	SdfBoid::SdfBoid(int id, bool predator): Entity<SdfShape>(id), is_predator_(predator) {
 		if (predator) {
 			SetColor(1.0f, 0.1f, 0.1f);
-			SetSize(12.0f);
+			SetSize(15.0f);
+			shape_->SetCharge(-1.0f);
+			shape_->SetSmoothness(4.0f);
 		} else {
 			SetColor(0.2f, 0.6f, 1.0f);
-			SetSize(8.0f);
+			SetSize(10.0f);
+			shape_->SetCharge(1.0f);
+			shape_->SetSmoothness(4.0f);
 		}
 	}
 
@@ -107,18 +111,6 @@ namespace Boidsish {
 			boid->SetPosition(dis(gen), dis(gen), dis(gen));
 			boid->SetVelocity(dis_vel(gen), dis_vel(gen), dis_vel(gen));
 
-			// Create SDF source
-			SdfSource source;
-			source.position = boid->GetPosition().Toglm();
-			source.radius = is_predator ? 25.0f : 10.0f;
-			source.color = is_predator ? glm::vec3(1.0f, 0.2f, 0.2f) : glm::vec3(0.2f, 0.6f, 1.0f);
-			source.charge = is_predator ? -5.0f : 1.0f; // Predator cancels, others merge
-			source.smoothness = 4.0f;
-			source.type = 0; // Sphere
-
-			int sid = visualizer->AddSdfSource(source);
-			boid->SetSdfSourceId(sid);
-
 			AddEntity(i, std::dynamic_pointer_cast<EntityBase>(boid));
 		}
 	}
@@ -132,16 +124,8 @@ namespace Boidsish {
 
 	void SdfBoidHandler::OnEntityUpdated(std::shared_ptr<EntityBase> entity) {
 		auto boid = std::dynamic_pointer_cast<SdfBoid>(entity);
-		if (boid && vis) {
-			SdfSource source;
-			source.position = boid->GetPosition().Toglm();
-			source.radius = boid->IsPredator() ? 15.0f : 10.0f;
-			source.color = boid->IsPredator() ? glm::vec3(1.0f, 0.2f, 0.2f) : glm::vec3(0.2f, 0.6f, 1.0f);
-			source.charge = boid->IsPredator() ? -1.0f : 1.0f;
-			source.smoothness = 4.0f;
-			source.type = 0;
-
-			vis->UpdateSdfSource(boid->GetSdfSourceId(), source);
+		if (boid) {
+			boid->UpdateShape();
 		}
 	}
 
