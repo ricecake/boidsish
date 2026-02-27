@@ -1556,10 +1556,27 @@ namespace Boidsish {
 				s->setBool("uUseMDI", true);
 
 				if (!is_shadow_pass) {
+					unsigned int diffuseNr = 1;
+					unsigned int specularNr = 1;
+					unsigned int normalNr = 1;
+					unsigned int heightNr = 1;
+
 					for (size_t i = 0; i < batch.textures.size(); ++i) {
 						glActiveTexture(GL_TEXTURE0 + i);
 						glBindTexture(GL_TEXTURE_2D, batch.textures[i].id);
-						s->setInt(batch.textures[i].type.c_str(), i);
+
+						std::string number;
+						std::string name = batch.textures[i].type;
+						if (name == "texture_diffuse")
+							number = std::to_string(diffuseNr++);
+						else if (name == "texture_specular")
+							number = std::to_string(specularNr++);
+						else if (name == "texture_normal")
+							number = std::to_string(normalNr++);
+						else if (name == "texture_height")
+							number = std::to_string(heightNr++);
+
+						s->setInt((name + number).c_str(), i);
 					}
 					s->setBool("use_texture", !batch.textures.empty());
 				}
