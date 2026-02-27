@@ -2703,8 +2703,6 @@ namespace Boidsish {
 		if (impl->akira_effect_manager && impl->terrain_generator) {
 			impl->akira_effect_manager->Update(impl->simulation_delta_time, *impl->terrain_generator);
 		}
-		impl->sdf_volume_manager->UpdateUBO();
-		impl->sdf_volume_manager->BindUBO(Constants::UboBinding::SdfVolumes());
 		impl->shockwave_manager->UpdateShaderData();
 		impl->shockwave_manager->BindUBO(Constants::UboBinding::Shockwaves());
 
