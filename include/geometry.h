@@ -139,9 +139,16 @@ namespace Boidsish {
 		float     dissolve_plane_dist = 0.0f;                 // 4 bytes -> 16 bytes
 		int       dissolve_enabled = 0;                       // 4 bytes
 
-		// Padding to 256 bytes for SSBO alignment safety (176 + 80 = 256)
-		// Used 20 bytes (5 floats) from padding. 20 - 5 = 15.
-		float padding[15];
+		// Occlusion culling AABB (world space) - individual floats for std430 alignment safety
+		float aabb_min_x = 0.0f; // 4 bytes
+		float aabb_min_y = 0.0f; // 4 bytes
+		float aabb_min_z = 0.0f; // 4 bytes
+		float aabb_max_x = 0.0f; // 4 bytes
+		float aabb_max_y = 0.0f; // 4 bytes
+		float aabb_max_z = 0.0f; // 4 bytes
+
+		// Padding to 256 bytes for SSBO alignment safety
+		float padding[9];
 	};
 
 	/**

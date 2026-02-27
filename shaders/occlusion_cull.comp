@@ -1,0 +1,150 @@
+#version 430 core
+
+layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
+
+#include "common_uniforms.glsl"
+#include "temporal_data.glsl"
+
+// Input: per-draw uniforms (same SSBO the vertex shader reads, contains AABBs)
+layout(std430, binding = 2) readonly buffer UniformsSSBO {
+	CommonUniforms uniforms_data[];
+};
+
+// Output: per-draw visibility (1 = visible, 0 = occluded)
+layout(std430, binding = 12) buffer OcclusionVisibility {
+	uint visibility[];
+};
+
+// Hi-Z pyramid texture
+uniform sampler2D u_hizTexture;
+uniform int       u_drawCount;
+uniform ivec2     u_hizSize;         // Mip 0 dimensions
+uniform int       u_hizMipCount;
+uniform float     u_screenExpansion; // Pixel expansion for temporal safety
+
+// Project world-space AABB to screen-space rect in previous frame's clip space.
+// Returns false if the AABB is entirely behind the camera.
+bool projectAABB(vec3 aabbMin, vec3 aabbMax, mat4 vp, out vec4 screenRect, out float nearestDepth) {
+	vec2 minScreen = vec2(1e30);
+	vec2 maxScreen = vec2(-1e30);
+	nearestDepth = 1.0;
+	int cornersInFront = 0;
+
+	for (int i = 0; i < 8; i++) {
+		vec3 corner = vec3(
+			(i & 1) != 0 ? aabbMax.x : aabbMin.x,
+			(i & 2) != 0 ? aabbMax.y : aabbMin.y,
+			(i & 4) != 0 ? aabbMax.z : aabbMin.z
+		);
+		vec4 clip = vp * vec4(corner, 1.0);
+
+		if (clip.w <= 0.0) {
+			// Corner behind camera - continue checking others
+			continue;
+		}
+
+		cornersInFront++;
+		vec3 ndc = clip.xyz / clip.w;
+		vec2 uv = ndc.xy * 0.5 + 0.5;
+
+		minScreen = min(minScreen, uv);
+		maxScreen = max(maxScreen, uv);
+
+		// Depth in [0,1] (OpenGL default mapping)
+		float d = ndc.z * 0.5 + 0.5;
+		nearestDepth = min(nearestDepth, d);
+	}
+
+	if (cornersInFront == 0) {
+		// All corners behind camera
+		screenRect = vec4(0.0);
+		nearestDepth = 0.0;
+		return false;
+	}
+
+	if (cornersInFront < 8) {
+		// Some corners behind camera - straddling near plane.
+		// Be conservative: expand to full screen, use nearest possible depth.
+		screenRect = vec4(0.0, 0.0, 1.0, 1.0);
+		nearestDepth = 0.0;
+		return true;
+	}
+
+	// Apply screen-space expansion for temporal safety
+	vec2 expand = u_screenExpansion / vec2(u_hizSize);
+	minScreen -= expand;
+	maxScreen += expand;
+
+	// Clamp to [0,1]
+	screenRect = clamp(vec4(minScreen, maxScreen), 0.0, 1.0);
+	return true;
+}
+
+void main() {
+	uint idx = gl_GlobalInvocationID.x;
+	if (idx >= u_drawCount) return;
+
+	vec3 aabbMin = vec3(uniforms_data[idx].aabb_min_x,
+	                    uniforms_data[idx].aabb_min_y,
+	                    uniforms_data[idx].aabb_min_z);
+	vec3 aabbMax = vec3(uniforms_data[idx].aabb_max_x,
+	                    uniforms_data[idx].aabb_max_y,
+	                    uniforms_data[idx].aabb_max_z);
+
+	// Skip degenerate AABBs (lines, text, particles that don't want culling)
+	if (aabbMin == aabbMax) {
+		visibility[idx] = 1u;
+		return;
+	}
+
+	// Skip colossal objects (skybox) - always visible
+	if (uniforms_data[idx].is_colossal != 0) {
+		visibility[idx] = 1u;
+		return;
+	}
+
+	// Skip transparent objects - they're not in the depth buffer
+	if (uniforms_data[idx].color.a < 0.99) {
+		visibility[idx] = 1u;
+		return;
+	}
+
+	vec4  screenRect;
+	float nearestDepth;
+
+	// Project AABB into previous frame's clip space (matches the Hi-Z pyramid)
+	if (!projectAABB(aabbMin, aabbMax, prevViewProjection, screenRect, nearestDepth)) {
+		// Fully behind camera - frustum culling handles this
+		visibility[idx] = 1u;
+		return;
+	}
+
+	// If the AABB covers most of the screen, skip occlusion test (likely visible)
+	vec2 screenSize = screenRect.zw - screenRect.xy;
+	if (screenSize.x * screenSize.y > 0.5) {
+		visibility[idx] = 1u;
+		return;
+	}
+
+	// Choose Hi-Z mip level: want the AABB to cover roughly 2x2 texels
+	vec2  pixelSize = screenSize * vec2(u_hizSize);
+	float maxPixelDim = max(pixelSize.x, pixelSize.y);
+	int   mipLevel = clamp(int(ceil(log2(max(maxPixelDim, 1.0) / 2.0))), 0, u_hizMipCount - 1);
+
+	// Sample Hi-Z at 4 corners of the screen rect at the chosen mip level
+	// Take max across all samples (most conservative - farthest depth in the region)
+	float hizDepth = 0.0;
+	hizDepth = max(hizDepth, textureLod(u_hizTexture, screenRect.xy, float(mipLevel)).r);
+	hizDepth = max(hizDepth, textureLod(u_hizTexture, screenRect.zy, float(mipLevel)).r);
+	hizDepth = max(hizDepth, textureLod(u_hizTexture, screenRect.xw, float(mipLevel)).r);
+	hizDepth = max(hizDepth, textureLod(u_hizTexture, screenRect.zw, float(mipLevel)).r);
+
+	// Object is occluded if its nearest depth is farther than the Hi-Z max depth.
+	// In standard OpenGL depth: smaller values = closer to camera.
+	// nearestDepth > hizDepth means the closest part of the AABB is behind everything in the Hi-Z region.
+	if (nearestDepth > hizDepth) {
+		visibility[idx] = 0u; // Occluded
+	} else {
+		visibility[idx] = 1u; // Visible
+	}
+}

@@ -28,5 +28,11 @@ struct CommonUniforms {
 	vec3  dissolve_plane_normal;
 	float dissolve_plane_dist;
 	int   dissolve_enabled;
-	float padding[15];
+	float aabb_min_x;
+	float aabb_min_y;
+	float aabb_min_z;
+	float aabb_max_x;
+	float aabb_max_y;
+	float aabb_max_z;
+	float padding[9];
 };

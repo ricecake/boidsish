@@ -545,6 +545,17 @@ namespace Boidsish {
 		culling_shader_->setVec2("u_viewportSize", glm::vec2((float)viewport_width, (float)viewport_height));
 		culling_shader_->setFloat("u_minPixelSize", min_pixel_size_);
 
+		// Hi-Z occlusion culling uniforms
+		culling_shader_->setBool("u_enableHiZ", hiz_enabled_ && !is_shadow_pass);
+		if (hiz_enabled_ && !is_shadow_pass) {
+			glActiveTexture(GL_TEXTURE15);
+			glBindTexture(GL_TEXTURE_2D, hiz_texture_);
+			culling_shader_->setInt("u_hizTexture", 15);
+			culling_shader_->setMat4("u_prevViewProjection", hiz_prev_vp_);
+			glUniform2i(glGetUniformLocation(culling_shader_->ID, "u_hizSize"), hiz_width_, hiz_height_);
+			culling_shader_->setInt("u_hizMipCount", hiz_mip_count_);
+		}
+
 		for (auto& type : decor_types_) {
 			// Reset atomic counter
 			unsigned int zero = 0;

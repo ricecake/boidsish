@@ -42,6 +42,10 @@ namespace Boidsish {
 			constexpr int AutoExposure() {
 				return 11;
 			}
+
+			constexpr int OcclusionVisibility() {
+				return 12;
+			}
 		} // namespace SsboBinding
 
 		namespace General {

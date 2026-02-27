@@ -48,6 +48,12 @@ uniform bool  useSSBOInstancing = false;
 uniform bool  isLine = false;
 uniform bool  enableFrustumCulling = false;
 uniform float frustumCullRadius = 5.0; // Approximate object radius for sphere test
+uniform bool  enableHiZCulling = false;
+
+// Hi-Z occlusion visibility (per-draw, written by occlusion_cull.comp)
+layout(std430, binding = 12) readonly buffer OcclusionVisibility {
+	uint hiz_visibility[];
+};
 
 uniform vec3  u_aabbMin;
 uniform vec3  u_aabbMax;
@@ -152,6 +158,18 @@ void main() {
 			Normal = vec3(0.0, 1.0, 0.0);
 			TexCoords = vec2(0.0);
 			gl_ClipDistance[0] = -1.0; // Clip it
+			return;
+		}
+	}
+
+	// Hi-Z occlusion culling - output degenerate triangle if occluded by previous frame's depth
+	if (enableHiZCulling && uUseMDI && !current_isColossal) {
+		if (hiz_visibility[drawID] == 0u) {
+			gl_Position = vec4(0.0, 0.0, -2.0, 1.0);
+			FragPos = vec3(0.0);
+			Normal = vec3(0.0, 1.0, 0.0);
+			TexCoords = vec2(0.0);
+			gl_ClipDistance[0] = -1.0;
 			return;
 		}
 	}
