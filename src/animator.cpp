@@ -137,27 +137,26 @@ namespace Boidsish {
 		} else {
 			// Robust name matching for Assimp/FBX.
 			// FBX often adds prefixes/suffixes or namespaces (e.g., "ModelName:BoneName")
+			// or Assimp might add "_$AssimpFbx$_"
+			auto cleanse = [](const std::string& name) {
+				std::string s = name;
+				// Remove FBX namespace prefix
+				size_t colon = s.find_last_of(':');
+				if (colon != std::string::npos)
+					s = s.substr(colon + 1);
+
+				// Remove Assimp FBX magic suffix
+				size_t magic = s.find("_$AssimpFbx$_");
+				if (magic != std::string::npos)
+					s = s.substr(0, magic);
+
+				return s;
+			};
+
+			std::string cleanNode = cleanse(nodeName);
+
 			for (auto const& [boneName, info] : m_ModelData->bone_info_map) {
-				bool match = false;
-
-				// 1. Substring matching (carefully)
-				// Check if nodeName contains boneName or vice versa, typically separated by ':' or '_'
-				size_t nodeColon = nodeName.find_last_of(':');
-				std::string nodeSimple = (nodeColon == std::string::npos) ? nodeName : nodeName.substr(nodeColon + 1);
-
-				size_t boneColon = boneName.find_last_of(':');
-				std::string boneSimple = (boneColon == std::string::npos) ? boneName : boneName.substr(boneColon + 1);
-
-				if (nodeSimple == boneSimple) {
-					match = true;
-				} else if (nodeName.find(boneName) != std::string::npos || boneName.find(nodeName) != std::string::npos) {
-					// Fallback to substring only if reasonable length to avoid false positives
-					if (boneName.length() > 3 && nodeName.length() > 3) {
-						match = true;
-					}
-				}
-
-				if (match) {
+				if (cleanNode == cleanse(boneName)) {
 					int index = info.id;
 					glm::mat4 offset = info.offset;
 					if (index >= 0 && (size_t)index < m_FinalBoneMatrices.size()) {

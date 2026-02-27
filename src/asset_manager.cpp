@@ -36,6 +36,45 @@ namespace Boidsish {
 
 	// Helper for Assimp processing (moved from Model class)
 	namespace {
+		const aiTexture* FindEmbeddedTexture(const aiScene* scene, const char* path) {
+			if (!scene || !path)
+				return nullptr;
+
+			// 1. Direct match (Assimp's internal map)
+			const aiTexture* tex = scene->GetEmbeddedTexture(path);
+			if (tex)
+				return tex;
+
+			std::string texture_path = path;
+			size_t      last_sep = texture_path.find_last_of("/\\");
+			std::string filename = (last_sep != std::string::npos) ? texture_path.substr(last_sep + 1) : texture_path;
+
+			// 2. Filename only match via GetEmbeddedTexture
+			if (filename != texture_path) {
+				tex = scene->GetEmbeddedTexture(filename.c_str());
+				if (tex)
+					return tex;
+			}
+
+			// 3. Manual iteration - some FBX files use internal indices or names that don't match the path
+			for (unsigned int i = 0; i < scene->mNumTextures; ++i) {
+				const aiTexture* current = scene->mTextures[i];
+				if (!current)
+					continue;
+
+				// Check if the internal name matches the filename
+				std::string internal_name = current->mFilename.C_Str();
+				size_t      int_sep = internal_name.find_last_of("/\\");
+				std::string int_filename = (int_sep != std::string::npos) ? internal_name.substr(int_sep + 1)
+																		  : internal_name;
+
+				if (filename == int_filename)
+					return current;
+			}
+
+			return nullptr;
+		}
+
 		std::vector<Texture> LoadMaterialTextures(
 			aiMaterial*        mat,
 			aiTextureType      type,
@@ -50,16 +89,7 @@ namespace Boidsish {
 				mat->GetTexture(type, i, &str);
 
 				// Handle embedded textures
-				const aiTexture* embeddedTexture = scene->GetEmbeddedTexture(str.C_Str());
-				if (!embeddedTexture) {
-					// Fallback: try filename only for embedded textures
-					std::string texture_path = str.C_Str();
-					size_t last_sep = texture_path.find_last_of("/\\");
-					std::string filename = (last_sep != std::string::npos) ? texture_path.substr(last_sep + 1) : texture_path;
-					if (filename != texture_path) {
-						embeddedTexture = scene->GetEmbeddedTexture(filename.c_str());
-					}
-				}
+				const aiTexture* embeddedTexture = FindEmbeddedTexture(scene, str.C_Str());
 
 				bool skip = false;
 				for (unsigned int j = 0; j < data.textures_loaded.size(); j++) {
@@ -222,6 +252,12 @@ namespace Boidsish {
 			const std::string&   nodeName,
 			const glm::mat4&     globalTransform
 		) {
+			struct BoneWeight {
+				int   boneID;
+				float weight;
+			};
+			std::vector<std::vector<BoneWeight>> allWeights(vertices.size());
+
 			if (mesh->mNumBones == 0) {
 				// Mesh has no bones - assign to the node itself to follow hierarchy
 				int boneID = -1;
@@ -266,20 +302,35 @@ namespace Boidsish {
 					int   vertexId = weights[weightIndex].mVertexId;
 					float weight = weights[weightIndex].mWeight;
 					assert(vertexId < (int)vertices.size());
-					SetVertexBoneData(vertices[vertexId], boneID, weight);
+					allWeights[vertexId].push_back({boneID, weight});
 				}
 			}
 
-			// Normalize weights to 1.0
-			for (auto& vertex : vertices) {
-				float totalWeight = 0.0f;
-				for (int i = 0; i < MAX_BONE_INFLUENCE; i++) {
-					if (vertex.m_BoneIDs[i] != -1)
-						totalWeight += vertex.m_Weights[i];
+			// For each vertex, sort weights and keep top MAX_BONE_INFLUENCE
+			for (size_t vIdx = 0; vIdx < vertices.size(); ++vIdx) {
+				auto& weights = allWeights[vIdx];
+				if (weights.empty())
+					continue;
+
+				// Sort descending by weight
+				std::sort(weights.begin(), weights.end(), [](const BoneWeight& a, const BoneWeight& b) {
+					return a.weight > b.weight;
+				});
+
+				// Keep only top MAX_BONE_INFLUENCE
+				if (weights.size() > MAX_BONE_INFLUENCE) {
+					weights.resize(MAX_BONE_INFLUENCE);
 				}
+
+				// Normalize and set in vertex
+				float totalWeight = 0.0f;
+				for (const auto& bw : weights)
+					totalWeight += bw.weight;
+
 				if (totalWeight > 0.0f) {
-					for (int i = 0; i < MAX_BONE_INFLUENCE; i++) {
-						vertex.m_Weights[i] /= totalWeight;
+					for (size_t i = 0; i < weights.size(); ++i) {
+						vertices[vIdx].m_BoneIDs[i] = weights[i].boneID;
+						vertices[vIdx].m_Weights[i] = weights[i].weight / totalWeight;
 					}
 				}
 			}
@@ -477,7 +528,8 @@ namespace Boidsish {
 		Assimp::Importer importer;
 		const aiScene*   scene = importer.ReadFile(
 			path,
-			aiProcess_Triangulate | aiProcess_FlipUVs | aiProcess_GenNormals | aiProcess_LimitBoneWeights
+			aiProcess_Triangulate | aiProcess_FlipUVs | aiProcess_GenNormals | aiProcess_LimitBoneWeights |
+				aiProcess_PopulateArmatureData
 		);
 
 		if (!scene || scene->mFlags & AI_SCENE_FLAGS_INCOMPLETE || !scene->mRootNode) {
