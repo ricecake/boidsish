@@ -723,11 +723,6 @@ namespace Boidsish {
 		const std::vector<unsigned int>& indices_in,
 		const glm::vec3&                 diffuseColor
 	) {
-		std::vector<Vertex>       vertices = vertices_in;
-		std::vector<unsigned int> indices = indices_in;
-
-		WeldVertices(vertices, indices);
-
 		auto data = std::make_shared<ModelData>();
 		data->model_path = "procedural_" + std::to_string(reinterpret_cast<uintptr_t>(data.get()));
 
