@@ -24,10 +24,10 @@ namespace Boidsish {
 			float ticksPerSecond = (animation.ticksPerSecond != 0) ? (float)animation.ticksPerSecond : 24.0f;
 			m_CurrentTime += ticksPerSecond * dt;
 			m_CurrentTime = std::fmod(m_CurrentTime, animation.duration);
-			CalculateBoneTransform(m_ModelData->root_node, glm::mat4(1.0f));
+			CalculateBoneTransform(m_ModelData->root_node, m_ModelData->global_inverse_transform);
 		} else if (m_ModelData) {
 			// Even if no animation is playing, we should still update bone matrices to bind pose
-			CalculateBoneTransform(m_ModelData->root_node, glm::mat4(1.0f));
+			CalculateBoneTransform(m_ModelData->root_node, m_ModelData->global_inverse_transform);
 		}
 	}
 
@@ -132,7 +132,7 @@ namespace Boidsish {
 			int index = it->second.id;
 			glm::mat4 offset = it->second.offset;
 			if (index >= 0 && (size_t)index < m_FinalBoneMatrices.size()) {
-				m_FinalBoneMatrices[index] = m_ModelData->global_inverse_transform * globalTransformation * offset;
+				m_FinalBoneMatrices[index] = globalTransformation * offset;
 			}
 		} else {
 			// Robust name matching for Assimp/FBX.
@@ -161,7 +161,7 @@ namespace Boidsish {
 					int index = info.id;
 					glm::mat4 offset = info.offset;
 					if (index >= 0 && (size_t)index < m_FinalBoneMatrices.size()) {
-						m_FinalBoneMatrices[index] = m_ModelData->global_inverse_transform * globalTransformation * offset;
+						m_FinalBoneMatrices[index] = globalTransformation * offset;
 					}
 					break;
 				}
