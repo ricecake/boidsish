@@ -281,6 +281,8 @@ namespace Boidsish {
 		// Shapes with the same key share the same mesh data
 		virtual std::string GetInstanceKey() const = 0;
 
+		virtual bool IsSdf() const { return false; }
+
 		/**
 		 * @brief Indicates if the shape has transparent components and should be
 		 * rendered in the transparent pass.

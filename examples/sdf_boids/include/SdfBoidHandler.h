@@ -2,25 +2,20 @@
 
 #include <vector>
 
-#include "dot.h"
+#include "sdf_shape.h"
 #include "entity.h"
 
 namespace Boidsish {
 
-	class SdfBoid: public Entity<Dot> {
+	class SdfBoid: public Entity<SdfShape> {
 	public:
 		SdfBoid(int id, bool predator = false);
 		void UpdateEntity(const EntityHandler& handler, float time, float delta_time) override;
 
 		bool IsPredator() const { return is_predator_; }
 
-		int GetSdfSourceId() const { return sdf_source_id_; }
-
-		void SetSdfSourceId(int id) { sdf_source_id_ = id; }
-
 	private:
 		bool is_predator_;
-		int  sdf_source_id_ = -1;
 	};
 
 	class SdfBoidHandler: public EntityHandler {

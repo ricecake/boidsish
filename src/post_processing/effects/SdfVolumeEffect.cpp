@@ -27,12 +27,7 @@ namespace Boidsish {
 			if (effects_idx != GL_INVALID_INDEX) {
 				glUniformBlockBinding(shader_->ID, effects_idx, Constants::UboBinding::VisualEffects());
 			}
-			GLuint sdf_volumes_idx = glGetUniformBlockIndex(shader_->ID, "SdfVolumes");
-			if (sdf_volumes_idx != GL_INVALID_INDEX) {
-				glUniformBlockBinding(shader_->ID, sdf_volumes_idx, Constants::UboBinding::SdfVolumes());
-			}
 
-			// Explicitly set standard sampler bindings
 			shader_->setInt("shadowMaps", 4);
 
 			width_ = width;
@@ -58,6 +53,11 @@ namespace Boidsish {
 			shader_->setMat4("invView", glm::inverse(viewMatrix));
 			shader_->setMat4("invProjection", glm::inverse(projectionMatrix));
 			shader_->setFloat("time", time_);
+
+			shader_->setVec3("sdfMin", sdfMin_);
+			shader_->setVec3("sdfMax", sdfMax_);
+			shader_->setInt("numPositiveSources", numPositive_);
+			shader_->setInt("numNegativeSources", numNegative_);
 
 			glActiveTexture(GL_TEXTURE0);
 			glBindTexture(GL_TEXTURE_2D, sourceTexture);

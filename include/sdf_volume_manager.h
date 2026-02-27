@@ -1,6 +1,5 @@
 #pragma once
 
-#include <map>
 #include <memory>
 #include <vector>
 
@@ -9,6 +8,11 @@
 #include <glm/glm.hpp>
 
 namespace Boidsish {
+
+	class Shape;
+	struct Frustum;
+	template <typename T>
+	class PersistentBuffer;
 
 	struct SdfSource {
 		glm::vec3 position;
@@ -19,7 +23,7 @@ namespace Boidsish {
 		int       type;   // 0 for sphere, can add more later
 	};
 
-	// GPU-friendly structure for UBO
+	// GPU-friendly structure for SSBO
 	struct SdfSourceGPU {
 		glm::vec4 position_radius;    // xyz: pos, w: radius
 		glm::vec4 color_smoothness;   // rgb: color, a: smoothness
@@ -32,24 +36,29 @@ namespace Boidsish {
 		~SdfVolumeManager();
 
 		void Initialize();
-		void UpdateUBO();
-		void BindUBO(GLuint binding_point) const;
+		void UpdateFromShapes(const std::vector<std::shared_ptr<Shape>>& shapes, const Frustum& frustum);
+		void BindSSBO(GLuint binding_point) const;
 
-		int  AddSource(const SdfSource& source);
-		void UpdateSource(int id, const SdfSource& source);
-		void RemoveSource(int id);
-		void Clear();
+		void GetBoundingBox(glm::vec3& min, glm::vec3& max) const {
+			min = global_min_;
+			max = global_max_;
+		}
 
-		size_t GetSourceCount() const { return sources_.size(); }
+		void GetSourceCounts(int& positive, int& negative) const {
+			positive = num_positive_;
+			negative = num_negative_;
+		}
 
 	private:
-		GLuint ubo_ = 0;
-		bool   initialized_ = false;
+		std::unique_ptr<PersistentBuffer<SdfSourceGPU>> ssbo_;
+		bool                                            initialized_ = false;
 
-		std::map<int, SdfSource> sources_;
-		int                      next_id_ = 0;
+		glm::vec3 global_min_{0.0f};
+		glm::vec3 global_max_{0.0f};
+		int       num_positive_ = 0;
+		int       num_negative_ = 0;
 
-		static constexpr size_t kMaxSources = Constants::Class::SdfVolumes::MaxSources();
+		static constexpr size_t kMaxSources = 4096;
 	};
 
 } // namespace Boidsish
