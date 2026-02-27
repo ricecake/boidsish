@@ -66,6 +66,9 @@ namespace Boidsish {
 		GetAppSettingBool("artistic_effect_glitched", false);
 		GetAppSettingBool("artistic_effect_wireframe", false);
 
+		// Foliage culling settings
+		GetAppSettingFloat("foliage_culling_pixel_threshold", 4.0f);
+
 		// Mesh optimization settings
 		GetAppSettingBool("mesh_optimizer_enabled", true);
 		GetAppSettingBool("mesh_simplifier_enabled", false);

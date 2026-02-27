@@ -2718,6 +2718,9 @@ namespace Boidsish {
 		impl->shockwave_manager->BindUBO(Constants::UboBinding::Shockwaves());
 
 		if (impl->decor_manager && impl->terrain_generator && impl->terrain_render_manager) {
+			impl->decor_manager->SetMinPixelSize(
+				ConfigManager::GetInstance().GetAppSettingFloat("foliage_culling_pixel_threshold", 4.0f)
+			);
 			impl->decor_manager->Update(
 				impl->simulation_delta_time,
 				impl->camera,
@@ -2978,6 +2981,8 @@ namespace Boidsish {
 					impl->decor_manager->Render(
 						view,
 						impl->projection,
+						ShadowManager::kShadowMapSize,
+						ShadowManager::kShadowMapSize,
 						impl->shadow_manager->GetLightSpaceMatrix(info.map_index),
 						impl->shadow_manager->GetShadowShaderPtr().get()
 					);
@@ -3046,7 +3051,7 @@ namespace Boidsish {
 		// impl->RenderShapes(view, impl->shapes, impl->simulation_time, std::nullopt);
 		impl->ExecuteRenderQueue(impl->render_queue, view, impl->projection, impl->camera.pos(), RenderLayer::Opaque);
 		if (impl->decor_manager) {
-			impl->decor_manager->Render(view, impl->projection);
+			impl->decor_manager->Render(view, impl->projection, impl->render_width, impl->render_height);
 		}
 
 		// Render sky AFTER opaque geometry so early-Z rejects covered fragments

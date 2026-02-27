@@ -18,6 +18,11 @@ layout(binding = 0) uniform atomic_uint visibleCount;
 
 uniform int  u_totalSlots;
 uniform vec4 u_frustumPlanes[6];
+uniform mat4 u_viewProj;
+uniform vec2 u_viewportSize;
+uniform float u_minPixelSize;
+uniform vec3 u_aabbMin;
+uniform vec3 u_aabbMax;
 
 bool isInFrustum(vec3 pos, float radius) {
 	for (int i = 0; i < 6; i++) {
@@ -26,6 +31,17 @@ bool isInFrustum(vec3 pos, float radius) {
 		}
 	}
 	return true;
+}
+
+bool isAABBInFrustum(mat4 modelMatrix, vec3 aabbMin, vec3 aabbMax) {
+	// Simple conservative check: sphere from AABB
+	vec3 center = (aabbMin + aabbMax) * 0.5;
+	vec3 worldCenter = vec3(modelMatrix * vec4(center, 1.0));
+
+	vec3 extent = (aabbMax - aabbMin) * 0.5;
+	float radius = length(extent * mat3(modelMatrix)); // Approximate world radius
+
+	return isInFrustum(worldCenter, radius);
 }
 
 void main() {
@@ -41,10 +57,41 @@ void main() {
 	if (s2 < 0.0001)
 		return;
 
-	vec3  pos = inst.model[3].xyz;
-	float radius = 10.0; // Conservatively large radius for decor
+	if (isAABBInFrustum(inst.model, u_aabbMin, u_aabbMax)) {
+		// Screen-space size check
+		if (u_minPixelSize > 0.0) {
+			vec3 corners[8];
+			corners[0] = vec3(u_aabbMin.x, u_aabbMin.y, u_aabbMin.z);
+			corners[1] = vec3(u_aabbMin.x, u_aabbMin.y, u_aabbMax.z);
+			corners[2] = vec3(u_aabbMin.x, u_aabbMax.y, u_aabbMin.z);
+			corners[3] = vec3(u_aabbMin.x, u_aabbMax.y, u_aabbMax.z);
+			corners[4] = vec3(u_aabbMax.x, u_aabbMin.y, u_aabbMin.z);
+			corners[5] = vec3(u_aabbMax.x, u_aabbMin.y, u_aabbMax.z);
+			corners[6] = vec3(u_aabbMax.x, u_aabbMax.y, u_aabbMin.z);
+			corners[7] = vec3(u_aabbMax.x, u_aabbMax.y, u_aabbMax.z);
 
-	if (isInFrustum(pos, radius)) {
+			vec2 minP = vec2(2.0);
+			vec2 maxP = vec2(-2.0);
+			bool allBehind = true;
+
+			for (int i = 0; i < 8; i++) {
+				vec4 clipPos = u_viewProj * inst.model * vec4(corners[i], 1.0);
+				if (clipPos.w > 0.0) {
+					vec2 ndc = clipPos.xy / clipPos.w;
+					minP = min(minP, ndc);
+					maxP = max(maxP, ndc);
+					allBehind = false;
+				}
+			}
+
+			if (allBehind) return;
+
+			vec2 screenSize = (maxP - minP) * 0.5 * u_viewportSize;
+			if (max(screenSize.x, screenSize.y) < u_minPixelSize) {
+				return;
+			}
+		}
+
 		uint destIdx = atomicCounterIncrement(visibleCount);
 		visible_instances[destIdx] = inst;
 	}

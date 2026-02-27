@@ -99,6 +99,8 @@ namespace Boidsish {
 		void Render(
 			const glm::mat4&                view,
 			const glm::mat4&                projection,
+			int                             viewport_width,
+			int                             viewport_height,
 			const std::optional<glm::mat4>& light_space_matrix = std::nullopt,
 			Shader*                         shader_override = nullptr
 		);
@@ -115,6 +117,9 @@ namespace Boidsish {
 
 		// Maximum distance at which decor is placed at all
 		void SetMaxDistance(float distance) { max_decor_distance_ = distance; }
+
+		// Minimum screen-space size in pixels for culling
+		void SetMinPixelSize(float size) { min_pixel_size_ = size; }
 
 	private:
 		void _Initialize();
@@ -151,6 +156,7 @@ namespace Boidsish {
 		float density_falloff_start_ = 200.0f;
 		float density_falloff_end_ = 500.0f;
 		float max_decor_distance_ = 600.0f;
+		float min_pixel_size_ = 4.0f;
 
 		static constexpr int kInstancesPerChunk = 1024;
 		static constexpr int kMaxActiveChunks = 2048;
