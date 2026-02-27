@@ -75,11 +75,13 @@ vec4 map(vec3 p) {
 
 vec3 getNormal(vec3 p) {
 	vec2 e = vec2(0.01, 0.0);
-	return normalize(vec3(
+	vec3 n = vec3(
 		map(p + e.xyy).a - map(p - e.xyy).a,
 		map(p + e.yxy).a - map(p - e.yxy).a,
 		map(p + e.yyx).a - map(p - e.yyx).a
-	));
+	);
+	float len = length(n);
+	return len > 0.0001 ? n / len : vec3(0, 1, 0);
 }
 
 float sdBox(vec3 p, vec3 b) {
@@ -112,7 +114,7 @@ void main() {
 
 	// Optimization: Global AABB check
 	vec3 boxCenter = (sdfMin + sdfMax) * 0.5;
-	vec3 boxHalfExtents = (sdfMax - sdfMin) * 0.5 + vec3(10.0); // Add margin for smoothness
+	vec3 boxHalfExtents = (sdfMax - sdfMin) * 0.5 + vec3(15.0); // Add margin for smoothness
 
 	float t = 0.0;
 
@@ -124,24 +126,21 @@ void main() {
 	vec4  res;
 	bool  hit = false;
 
-	for (int i = 0; i < 96; ++i) { // Iteration limit
+	// Stabilize loop
+	for (int i = 0; i < 96; ++i) {
 		if (t > sceneDistance || t > 1500.0)
 			break;
 
 		vec3 p = cameraPos + rayDir * t;
 
-		float dBox = sdBox(p - boxCenter, boxHalfExtents);
-		if (dBox > 50.0) {
-			t += dBox;
-			continue;
-		}
-
 		res = map(p);
-		if (res.a < 0.01) {
+		if (res.a < 0.005) { // Tightened hit threshold
 			hit = true;
 			break;
 		}
-		t += res.a;
+
+		// Ensure positive progress
+		t += max(res.a, 0.001);
 	}
 
 	if (hit) {

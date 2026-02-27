@@ -41,6 +41,7 @@ namespace Boidsish {
 		glm::vec3 max_pt(std::numeric_limits<float>::lowest());
 		bool      any_visible = false;
 
+		size_t total_count = 0;
 		for (const auto& shape : shapes) {
 			if (!shape->IsSdf())
 				continue;
@@ -51,24 +52,24 @@ namespace Boidsish {
 			if (!frustum.IsBoxInFrustum(aabb.min, aabb.max))
 				continue;
 
+			if (total_count >= kMaxSources)
+				break;
+
 			SdfSourceGPU data;
 			data.position_radius = glm::vec4(sdf_shape->GetX(), sdf_shape->GetY(), sdf_shape->GetZ(), sdf_shape->GetRadius());
 			data.color_smoothness = glm::vec4(sdf_shape->GetR(), sdf_shape->GetG(), sdf_shape->GetB(), sdf_shape->GetSmoothness());
 			data.charge_type_unused = glm::vec4(sdf_shape->GetCharge(), static_cast<float>(sdf_shape->GetSdfType()), 0.0f, 0.0f);
 
 			if (sdf_shape->GetCharge() >= 0.0f) {
-				if (positives.size() < kMaxSources) {
-					positives.push_back(data);
-				}
+				positives.push_back(data);
 			} else {
-				if (negatives.size() < kMaxSources) {
-					negatives.push_back(data);
-				}
+				negatives.push_back(data);
 			}
 
 			min_pt = glm::min(min_pt, aabb.min);
 			max_pt = glm::max(max_pt, aabb.max);
 			any_visible = true;
+			total_count++;
 		}
 
 		num_positive_ = static_cast<int>(positives.size());
@@ -84,6 +85,9 @@ namespace Boidsish {
 			if (num_negative_ > 0) {
 				std::memcpy(gpu_ptr + num_positive_, negatives.data(), num_negative_ * sizeof(SdfSourceGPU));
 			}
+
+			// Ensure CPU writes are visible to GPU before draw call
+			glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
 		} else {
 			global_min_ = glm::vec3(0.0f);
 			global_max_ = glm::vec3(0.0f);
@@ -92,12 +96,14 @@ namespace Boidsish {
 
 	void SdfVolumeManager::BindSSBO(GLuint binding_point) const {
 		if (ssbo_) {
+			// Always bind the full capacity of the current segment to avoid size-zero issues
+			// and ensure the shader can safely access the buffer even if counts are zero.
 			glBindBufferRange(
 				GL_SHADER_STORAGE_BUFFER,
 				binding_point,
 				ssbo_->GetBufferId(),
 				ssbo_->GetFrameOffset(),
-				(num_positive_ + num_negative_) * sizeof(SdfSourceGPU)
+				kMaxSources * sizeof(SdfSourceGPU)
 			);
 		}
 	}

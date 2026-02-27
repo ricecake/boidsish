@@ -158,7 +158,9 @@ namespace Boidsish {
 		) {
 			effect->SetTime(time);
 			glBindFramebuffer(GL_FRAMEBUFFER, pingpong_fbo_[fbo_index_]);
-			glClear(GL_COLOR_BUFFER_BIT);
+			// Note: glClear(GL_COLOR_BUFFER_BIT) removed here.
+			// Post-processing effects are expected to write to every pixel of the full-screen quad.
+			// This avoids an extra clear and potential black-frame issues if some effects don't write.
 
 			// Post-processing quads should not be depth-tested or write to depth buffer
 			glDisable(GL_DEPTH_TEST);
