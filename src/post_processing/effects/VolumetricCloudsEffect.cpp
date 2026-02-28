@@ -72,7 +72,6 @@ namespace Boidsish {
 					std::cerr << "ERROR::FRAMEBUFFER:: Cloud history FBO is not complete!" << std::endl;
 			}
 
-			// We keep low_res_fbo_ just in case, but pass 1 will draw to history directly.
 			glGenFramebuffers(1, &low_res_fbo_);
 			glGenTextures(1, &low_res_cloud_texture_);
 			glBindFramebuffer(GL_FRAMEBUFFER, low_res_fbo_);
@@ -93,10 +92,13 @@ namespace Boidsish {
 			const glm::mat4& /* projectionMatrix */,
 			const glm::vec3& /* cameraPos */
 		) {
+			// Save current draw FBO and viewport
 			GLint previous_fbo;
 			glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING, &previous_fbo);
+			GLint viewport[4];
+			glGetIntegerv(GL_VIEWPORT, viewport);
 
-			// 1. Raymarch at low resolution directly into history
+			// 1. Raymarch at low resolution directly into history (which accumulates)
 			glBindFramebuffer(GL_FRAMEBUFFER, history_fbo_[current_history_]);
 			glViewport(0, 0, low_res_width_, low_res_height_);
 			shader_->use();
@@ -130,9 +132,9 @@ namespace Boidsish {
 
 			glDrawArrays(GL_TRIANGLES, 0, 6);
 
-			// 2. Final composite at full resolution
+			// 2. Final composite at full resolution into the original target FBO
 			glBindFramebuffer(GL_FRAMEBUFFER, previous_fbo);
-			glViewport(0, 0, width_, height_);
+			glViewport(viewport[0], viewport[1], viewport[2], viewport[3]);
 			upsample_shader_->use();
 			upsample_shader_->setInt("sceneTexture", 0);
 			upsample_shader_->setInt("cloudTexture", 1);

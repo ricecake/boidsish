@@ -27,10 +27,6 @@ uniform float u_warpPush;
 #define CLOUD_START_HEIGHT u_cloudHeight
 #define CLOUD_END_HEIGHT (u_cloudHeight + u_cloudThickness)
 
-float remap_local(float value, float low1, float high1, float low2, float high2) {
-    return low2 + (value - low1) * (high2 - low2) / (high1 - low1);
-}
-
 // Ray-Sphere intersection for cloud layer
 bool raySphereIntersection(vec3 ro, vec3 rd, float r, out float t) {
     vec3  center = vec3(0, -EARTH_RADIUS_METERS, 0);
@@ -55,10 +51,10 @@ float get_density(vec3 p, vec3 weather) {
 
     vec4 base_noise = texture(cloudBaseNoise, p * 0.0001 + time * 0.01);
     float low_freq_fbm = base_noise.g * 0.625 + base_noise.b * 0.25 + base_noise.a * 0.125;
-    float base_cloud = remap_local(base_noise.r, -(1.0 - low_freq_fbm), 1.0, 0.0, 1.0);
+    float base_cloud = remap(base_noise.r, -(1.0 - low_freq_fbm), 1.0, 0.0, 1.0);
 
     float coverage = weather.r * u_cloudCoverage;
-    float density = remap_local(base_cloud, 1.0 - coverage, 1.0, 0.0, 1.0);
+    float density = remap(base_cloud, 1.0 - coverage, 1.0, 0.0, 1.0);
     density *= coverage;
 
     // Shaping based on height
@@ -73,7 +69,7 @@ float get_density(vec3 p, vec3 weather) {
         float high_freq_fbm = detail_noise.r * 0.625 + detail_noise.g * 0.25 + detail_noise.b * 0.125;
 
         float modifier = mix(high_freq_fbm, 1.0 - high_freq_fbm, clamp(height_fraction * 10.0, 0.0, 1.0));
-        density = remap_local(density, modifier * 0.2, 1.0, 0.0, 1.0);
+        density = remap(density, modifier * 0.2, 1.0, 0.0, 1.0);
     }
 
     return clamp(density * u_cloudDensity, 0.0, 1.0);
@@ -180,7 +176,6 @@ void main() {
     vec4 currentCloud = vec4(lighting, opacity);
 
     // Improved Temporal Reprojection
-    // Reproject a point at cloud altitude for better stability
     vec3 cloudPlanePos = viewPos + rayDir * mix(t_min, t_max, 0.5);
     vec4 prevClipPos = prevViewProjection * vec4(cloudPlanePos, 1.0);
     vec2 prevUV = (prevClipPos.xy / prevClipPos.w) * 0.5 + 0.5;

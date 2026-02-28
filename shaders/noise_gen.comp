@@ -85,10 +85,6 @@ float perlin3d_tiled(vec3 p, float tile) {
                mix(mix(e, g, w.x), mix(h, j, w.x), w.y), w.z) * 0.5 + 0.5;
 }
 
-float remap(float value, float low1, float high1, float low2, float high2) {
-    return low2 + (value - low1) * (high2 - low2) / (high1 - low1);
-}
-
 void main() {
 	ivec3 texelCoord = ivec3(gl_GlobalInvocationID.xyz);
 
