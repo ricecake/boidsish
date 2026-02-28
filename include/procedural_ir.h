@@ -29,6 +29,7 @@ namespace Boidsish {
 		float length;     // Calculated length for Tubes.
 
 		glm::vec3 color;
+		int       variant = 0; // Shape variant for Leaf, etc.
 
 		// Hierarchy
 		int              parent = -1;
@@ -81,13 +82,21 @@ namespace Boidsish {
 			return idx;
 		}
 
-		int AddLeaf(glm::vec3 pos, glm::quat ori, float size, glm::vec3 col, int parent_idx = -1) {
+		int AddLeaf(
+			glm::vec3 pos,
+			glm::quat ori,
+			float     size,
+			glm::vec3 col,
+			int       variant = 0,
+			int       parent_idx = -1
+		) {
 			ProceduralElement e;
 			e.type = ProceduralElementType::Leaf;
 			e.position = pos;
 			e.orientation = ori;
 			e.radius = size; // Using radius as size
 			e.color = col;
+			e.variant = variant;
 			e.parent = parent_idx;
 
 			int idx = static_cast<int>(elements.size());
@@ -99,12 +108,13 @@ namespace Boidsish {
 			return idx;
 		}
 
-		int AddPuffball(glm::vec3 pos, float r, glm::vec3 col, int parent_idx = -1) {
+		int AddPuffball(glm::vec3 pos, float r, glm::vec3 col, int variant = 0, int parent_idx = -1) {
 			ProceduralElement e;
 			e.type = ProceduralElementType::Puffball;
 			e.position = pos;
 			e.radius = r;
 			e.color = col;
+			e.variant = variant;
 			e.parent = parent_idx;
 
 			int idx = static_cast<int>(elements.size());
