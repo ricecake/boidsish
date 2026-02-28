@@ -27,17 +27,10 @@ uniform float u_warpPush;
 #define CLOUD_START_HEIGHT u_cloudHeight
 #define CLOUD_END_HEIGHT (u_cloudHeight + u_cloudThickness)
 
-// Ray-Sphere intersection for cloud layer
-bool raySphereIntersection(vec3 ro, vec3 rd, float r, out float t) {
-    vec3  center = vec3(0, -EARTH_RADIUS_METERS, 0);
-    vec3  oc = ro - center;
-    float b = dot(oc, rd);
-    float c = dot(oc, oc) - r * r;
-    float h = b * b - c;
-    if (h < 0.0) return false;
-    h = sqrt(h);
-    t = -b + h;
-    if (t < 0.0) t = -b + h;
+// Simple Ray-Plane intersection for cloud layer
+bool rayPlaneIntersection(vec3 ro, vec3 rd, float h, out float t) {
+    if (abs(rd.y) < 1e-6) return false;
+    t = (h - ro.y) / rd.y;
     return t >= 0.0;
 }
 
@@ -49,23 +42,23 @@ float get_density(vec3 p, vec3 weather) {
     vec3 push_vec = normalize(p - viewPos);
     p += push_vec * u_warpPush * 1000.0;
 
-    vec4 base_noise = texture(cloudBaseNoise, p * 0.0001 + time * 0.01);
+    vec4 base_noise = texture(cloudBaseNoise, p * 0.00005 + time * 0.005);
     float low_freq_fbm = base_noise.g * 0.625 + base_noise.b * 0.25 + base_noise.a * 0.125;
     float base_cloud = remap(base_noise.r, -(1.0 - low_freq_fbm), 1.0, 0.0, 1.0);
 
     float coverage = weather.r * u_cloudCoverage;
-    float density = remap(base_cloud, clamp(1.0 - coverage, 0.0, 0.99), 1.0, 0.0, 1.0);
+    float density = remap(base_cloud, clamp(1.0 - coverage, 0.01, 0.99), 1.0, 0.0, 1.0);
     density *= coverage;
 
     // Shaping based on height
     float vertical_shape = smoothstep(0.0, 0.1, height_fraction) * smoothstep(1.0, 0.9, height_fraction);
     density *= vertical_shape;
 
-    if (density > 0.0) {
-        vec3 curl = texture(curlNoise, p * 0.001).rgb;
+    if (density > 0.01) {
+        vec3 curl = texture(curlNoise, p * 0.0005).rgb;
         p += curl * height_fraction * u_cloudWarp * 500.0;
 
-        vec4 detail_noise = texture(cloudDetailNoise, p * 0.001 + time * 0.05);
+        vec4 detail_noise = texture(cloudDetailNoise, p * 0.0005 + time * 0.02);
         float high_freq_fbm = detail_noise.r * 0.625 + detail_noise.g * 0.25 + detail_noise.b * 0.125;
 
         float modifier = mix(high_freq_fbm, 1.0 - high_freq_fbm, clamp(height_fraction * 10.0, 0.0, 1.0));
@@ -75,16 +68,18 @@ float get_density(vec3 p, vec3 weather) {
     return clamp(density * u_cloudDensity, 0.0, 1.0);
 }
 
-float beer_powder(float d) {
-    return exp(-d) * (1.0 - exp(-d * 2.0));
+float beer_law(float d) {
+    return exp(-d);
 }
 
-float henyey_greenstein(float cos_theta, float g) {
-    float g2 = g * g;
-    return (1.0 - g2) / (4.0 * PI * pow(max(1e-4, 1.0 + g2 - 2.0 * g * cos_theta), 1.5));
+// Improved Beer-Powder for better edges and thickness
+float beer_powder(float d, float local_d) {
+    float beer = exp(-d);
+    float powder = 1.0 - exp(-d * 2.0);
+    return beer * max(powder, 0.7);
 }
 
-float light_energy(vec3 p, vec3 L, vec3 weather) {
+float light_energy(vec3 p, vec3 L, vec3 weather, float local_d) {
     float shadow_steps = 6.0;
     float shadow_step_size = u_cloudThickness / shadow_steps;
     float total_density = 0.0;
@@ -92,7 +87,8 @@ float light_energy(vec3 p, vec3 L, vec3 weather) {
         vec3 sp = p + L * (float(i) + 0.5) * shadow_step_size;
         total_density += get_density(sp, weather);
     }
-    return beer_powder(total_density * shadow_step_size * 0.01);
+    // Return something that is 1.0 if total_density is 0
+    return beer_law(total_density * shadow_step_size * 0.01);
 }
 
 float blue_noise_jitter(vec2 p) {
@@ -116,11 +112,11 @@ void main() {
 
     vec3  rayDir = normalize(worldPos - viewPos);
     float sceneDist = length(worldPos - viewPos);
-    if (depth == 1.0) sceneDist = 1e10;
+    if (depth == 1.0) sceneDist = 100000.0;
 
     float t_start, t_end;
-    bool hit_start = raySphereIntersection(viewPos, rayDir, EARTH_RADIUS_METERS + CLOUD_START_HEIGHT, t_start);
-    bool hit_end = raySphereIntersection(viewPos, rayDir, EARTH_RADIUS_METERS + CLOUD_END_HEIGHT, t_end);
+    bool hit_start = rayPlaneIntersection(viewPos, rayDir, CLOUD_START_HEIGHT, t_start);
+    bool hit_end = rayPlaneIntersection(viewPos, rayDir, CLOUD_END_HEIGHT, t_end);
 
     if (!hit_start && !hit_end) {
         FragColor = vec4(0.0);
@@ -130,7 +126,7 @@ void main() {
     float t_min = min(t_start, t_end);
     float t_max = max(t_start, t_end);
     t_min = max(t_min, 0.0);
-    t_max = min(t_max, sceneDist);
+    t_max = min(t_max, min(sceneDist, 50000.0));
 
     if (t_min >= t_max) {
         FragColor = vec4(0.0);
@@ -152,7 +148,9 @@ void main() {
     float opacity = 0.0;
     vec3  lighting = vec3(0.0);
     float cos_theta = dot(rayDir, sunDir);
-    float phase = mix(henyey_greenstein(cos_theta, 0.8), henyey_greenstein(cos_theta, -0.2), 0.5);
+    // Henyey-Greenstein phase function
+    float g = 0.6;
+    float phase = (1.0 - g*g) / (4.0 * PI * pow(1.0 + g*g - 2.0 * g * cos_theta, 1.5));
 
     for (int i = 0; i < steps; i++) {
         if (opacity >= 0.99) break;
@@ -162,9 +160,9 @@ void main() {
         float d = get_density(p, weather);
 
         if (d > 0.01) {
-            float e = light_energy(p, sunDir, weather);
-            vec3  step_light = sunColor * e * phase + ambient_light * 0.1;
-            float sample_opacity = d * step_size * 0.01;
+            float e = light_energy(p, sunDir, weather, d);
+            vec3  step_light = sunColor * e * phase + ambient_light * 0.2;
+            float sample_opacity = d * step_size * 0.005;
 
             lighting += (1.0 - opacity) * sample_opacity * step_light;
             opacity += (1.0 - opacity) * sample_opacity;
@@ -173,17 +171,28 @@ void main() {
         t += step_size;
     }
 
+    // Robustness: check for NaN/Inf
+    if (any(isnan(lighting)) || isnan(opacity) || any(isinf(lighting)) || isinf(opacity)) {
+        lighting = vec3(0.0);
+        opacity = 0.0;
+    }
+
     vec4 currentCloud = vec4(lighting, opacity);
 
-    // Improved Temporal Reprojection
+    // Temporal Reprojection
     vec3 cloudPlanePos = viewPos + rayDir * mix(t_min, t_max, 0.5);
     vec4 prevClipPos = prevViewProjection * vec4(cloudPlanePos, 1.0);
     vec2 prevUV = (prevClipPos.xy / prevClipPos.w) * 0.5 + 0.5;
 
     if (prevUV.x >= 0.0 && prevUV.x <= 1.0 && prevUV.y >= 0.0 && prevUV.y <= 1.0) {
         vec4 history = texture(historyTexture, prevUV);
-        float alpha = (frameIndex < 10) ? 0.5 : 0.95;
-        currentCloud = mix(currentCloud, history, alpha);
+        if (!any(isnan(history)) && !any(isinf(history))) {
+            float alpha = (frameIndex < 30) ? 0.4 : 0.95;
+            // Only mix if history is not black or if we are far into the simulation
+            if (history.a > 0.001 || frameIndex > 100) {
+                currentCloud = mix(currentCloud, history, alpha);
+            }
+        }
     }
 
     FragColor = currentCloud;

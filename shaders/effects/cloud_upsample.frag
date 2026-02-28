@@ -35,11 +35,14 @@ void main() {
         }
     }
 
-    if (totalWeight > 0.0) {
+    if (totalWeight > 1e-6) {
         cloudColor /= totalWeight;
     } else {
         cloudColor = texture(cloudTexture, TexCoords);
     }
+
+    // Safety check for NaN
+    if (any(isnan(cloudColor))) cloudColor = vec4(0.0);
 
     vec3 finalColor = sceneColor * (1.0 - cloudColor.a) + cloudColor.rgb;
     FragColor = vec4(finalColor, 1.0);
