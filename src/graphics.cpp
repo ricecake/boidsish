@@ -49,6 +49,7 @@
 #include "post_processing/effects/SuperSpeedEffect.h"
 #include "post_processing/effects/TimeStutterEffect.h"
 #include "post_processing/effects/ToneMappingEffect.h"
+#include "post_processing/effects/VolumetricCloudsEffect.h"
 #include "post_processing/effects/WhispTrailEffect.h"
 #include "render_queue.h"
 #include "sdf_volume_manager.h"
@@ -382,8 +383,9 @@ namespace Boidsish {
 		std::unique_ptr<SdfVolumeManager>                 sdf_volume_manager;
 		std::unique_ptr<ShadowManager>                    shadow_manager;
 		std::unique_ptr<AtmosphereManager>                atmosphere_manager;
-		std::shared_ptr<PostProcessing::AtmosphereEffect> atmosphere_effect;
-		std::unique_ptr<SceneManager>                     scene_manager;
+		std::shared_ptr<PostProcessing::AtmosphereEffect>     atmosphere_effect;
+		std::shared_ptr<PostProcessing::VolumetricCloudsEffect> volumetric_clouds_effect;
+		std::unique_ptr<SceneManager>                          scene_manager;
 		std::shared_ptr<DecorManager>                     decor_manager;
 		std::map<int, std::shared_ptr<Trail>>             trails;
 		std::map<int, float>                              trail_last_update;
@@ -1026,6 +1028,10 @@ namespace Boidsish {
 				atmosphere_effect = std::make_shared<PostProcessing::AtmosphereEffect>();
 				atmosphere_effect->SetEnabled(true);
 				post_processing_manager_->AddEffect(atmosphere_effect);
+
+				volumetric_clouds_effect = std::make_shared<PostProcessing::VolumetricCloudsEffect>();
+				volumetric_clouds_effect->SetEnabled(true);
+				post_processing_manager_->AddEffect(volumetric_clouds_effect);
 
 				auto bloom_effect = std::make_shared<PostProcessing::BloomEffect>(render_width, render_height);
 				bloom_effect->SetEnabled(true);
@@ -2714,6 +2720,16 @@ namespace Boidsish {
 					impl->atmosphere_manager->GetMultiScatteringLUT(),
 					impl->atmosphere_manager->GetSkyViewLUT(),
 					impl->atmosphere_manager->GetAerialPerspectiveLUT()
+				);
+			}
+
+			if (impl->volumetric_clouds_effect && impl->noise_manager) {
+				auto textures = impl->noise_manager->GetTextures();
+				impl->volumetric_clouds_effect->SetNoiseTextures(
+					textures.cloud_base,
+					textures.cloud_detail,
+					textures.weather_map,
+					textures.curl
 				);
 			}
 		}

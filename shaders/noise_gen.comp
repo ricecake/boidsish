@@ -4,6 +4,9 @@ layout(local_size_x = 4, local_size_y = 4, local_size_z = 4) in;
 
 layout(rgba32f, binding = 0) uniform image3D noiseTexture;
 layout(rgba32f, binding = 1) uniform image3D curlTexture;
+layout(rgba32f, binding = 2) uniform image3D cloudBaseTexture;
+layout(rgba32f, binding = 3) uniform image3D cloudDetailTexture;
+layout(rgba32f, binding = 4) uniform image2D weatherMap;
 
 #include "helpers/noise.glsl"
 
@@ -44,13 +47,8 @@ vec3 computeFbmCurl(vec3 p, int octaves) {
 	return total;
 }
 
-// 3D Simplex noise wrapper
-float simplex3d(vec3 p) {
-	return snoise3d(p);
-}
-
-// 3D Worley/Cellular noise
-float worley3d(vec3 p) {
+// 3D Worley/Cellular noise - Tiled
+float worley3d_tiled(vec3 p, float tile) {
 	vec3  i = floor(p);
 	vec3  f = fract(p);
 	float minDist = 1.0;
@@ -58,7 +56,7 @@ float worley3d(vec3 p) {
 		for (int y = -1; y <= 1; y++) {
 			for (int x = -1; x <= 1; x++) {
 				vec3 neighbor = vec3(float(x), float(y), float(z));
-				vec3 point = hash33(i + neighbor);
+				vec3 point = hash33(mod(i + neighbor, tile));
 				vec3 diff = neighbor + point - f;
 				minDist = min(minDist, dot(diff, diff));
 			}
@@ -67,49 +65,101 @@ float worley3d(vec3 p) {
 	return sqrt(minDist);
 }
 
-// 3D FBM Simplex
-float fbm3d(vec3 p) {
-	float value = 0.0;
-	float amplitude = 0.5;
-	for (int i = 0; i < 4; i++) {
-		value += amplitude * snoise3d(p);
-		p *= 2.0;
-		amplitude *= 0.5;
-	}
-	return value;
+// Tiled Perlin Noise
+float perlin3d_tiled(vec3 p, float tile) {
+    vec3 i = floor(p);
+    vec3 f = fract(p);
+
+    vec3 w = f * f * (3.0 - 2.0 * f);
+
+    float a = dot(hash33(mod(i + vec3(0,0,0), tile)) - 0.5, f - vec3(0,0,0));
+    float b = dot(hash33(mod(i + vec3(1,0,0), tile)) - 0.5, f - vec3(1,0,0));
+    float c = dot(hash33(mod(i + vec3(0,1,0), tile)) - 0.5, f - vec3(0,1,0));
+    float d = dot(hash33(mod(i + vec3(1,1,0), tile)) - 0.5, f - vec3(1,1,0));
+    float e = dot(hash33(mod(i + vec3(0,0,1), tile)) - 0.5, f - vec3(0,0,1));
+    float g = dot(hash33(mod(i + vec3(1,0,1), tile)) - 0.5, f - vec3(1,0,1));
+    float h = dot(hash33(mod(i + vec3(0,1,1), tile)) - 0.5, f - vec3(0,1,1));
+    float j = dot(hash33(mod(i + vec3(1,1,1), tile)) - 0.5, f - vec3(1,1,1));
+
+    return mix(mix(mix(a, b, w.x), mix(c, d, w.x), w.y),
+               mix(mix(e, g, w.x), mix(h, j, w.x), w.y), w.z) * 0.5 + 0.5;
 }
 
 void main() {
 	ivec3 texelCoord = ivec3(gl_GlobalInvocationID.xyz);
-	ivec3 size = imageSize(noiseTexture);
 
-	if (any(greaterThanEqual(texelCoord, size))) {
-		return;
-	}
+    // 1. Original Noise & Curl Generation (64^3)
+    ivec3 noiseSize = imageSize(noiseTexture);
+	if (all(lessThan(texelCoord, noiseSize))) {
+        vec3 p = vec3(texelCoord) / vec3(noiseSize);
+        vec3 p_scaled = p * 8.0;
 
-	vec3 p = vec3(texelCoord) / vec3(size);
+        float n_simplex = snoise3d(p_scaled) * 0.5 + 0.5;
+        float n_worley = 1.0 - worley3d_tiled(p_scaled, 8.0);
 
-	// Scale for interesting frequencies
-	vec3 p_scaled = p * 8.0;
+        float n_fbm = 0.0;
+        float amplitude = 0.5;
+        vec3 p_fbm = p_scaled;
+        for (int i = 0; i < 4; i++) {
+            n_fbm += amplitude * snoise3d(p_fbm);
+            p_fbm *= 2.0;
+            amplitude *= 0.5;
+        }
+        n_fbm = n_fbm * 0.5 + 0.5;
 
-	float n_simplex = simplex3d(p_scaled) * 0.5 + 0.5;
-	float n_worley = 1.0 - worley3d(p_scaled);
-	float n_fbm = fbm3d(p_scaled) * 0.5 + 0.5;
+        vec3 warp = vec3(
+            snoise3d(p_scaled + vec3(0.0)),
+            snoise3d(p_scaled + vec3(1.2, 3.4, 5.6)),
+            snoise3d(p_scaled + vec3(5.6, 1.2, 3.4))
+        );
+        float n_warped = snoise3d(p_scaled + warp * 2.0) * 0.5 + 0.5;
 
-	// Warped FBM
-	vec3 warp = vec3(
-		fbm3d(p_scaled + vec3(0.0, 0.0, 0.0)),
-		fbm3d(p_scaled + vec3(1.2, 3.4, 5.6)),
-		fbm3d(p_scaled + vec3(5.6, 1.2, 3.4))
-	);
-	float n_warped = fbm3d(p_scaled + warp * 2.0) * 0.5 + 0.5;
+        imageStore(noiseTexture, texelCoord, vec4(n_simplex, n_worley, n_fbm, n_warped));
 
-	imageStore(noiseTexture, texelCoord, vec4(n_simplex, n_worley, n_fbm, n_warped));
+        vec3 curl = computeCurl(p_scaled);
+        float fbmCurl = length(computeFbmCurl(p_scaled, 3));
+        imageStore(curlTexture, texelCoord, vec4(curl, fbmCurl));
+    }
 
-	// Generate Curl Noise
-	vec3  curl = computeCurl(p_scaled);
-	float fbmCurl = length(computeFbmCurl(p_scaled, 3));
+    // 2. Cloud Base Noise (128^3 recommended)
+    ivec3 baseSize = imageSize(cloudBaseTexture);
+    if (all(lessThan(texelCoord, baseSize))) {
+        vec3 p = vec3(texelCoord) / vec3(baseSize);
 
-	// Store Curl RGB and a variant (FBM curl magnitude) in Alpha
-	imageStore(curlTexture, texelCoord, vec4(curl, fbmCurl));
+        // Perlin-Worley
+        float p0 = perlin3d_tiled(p * 4.0, 4.0);
+        float w0 = 1.0 - worley3d_tiled(p * 4.0, 4.0);
+        float pw = remap(p0, w0, 1.0, 0.0, 1.0);
+
+        float w1 = 1.0 - worley3d_tiled(p * 8.0, 8.0);
+        float w2 = 1.0 - worley3d_tiled(p * 16.0, 16.0);
+        float w3 = 1.0 - worley3d_tiled(p * 32.0, 32.0);
+
+        imageStore(cloudBaseTexture, texelCoord, vec4(pw, w1, w2, w3));
+    }
+
+    // 3. Cloud Detail Noise (32^3 recommended)
+    ivec3 detailSize = imageSize(cloudDetailTexture);
+    if (all(lessThan(texelCoord, detailSize))) {
+        vec3 p = vec3(texelCoord) / vec3(detailSize);
+
+        float w0 = 1.0 - worley3d_tiled(p * 4.0, 4.0);
+        float w1 = 1.0 - worley3d_tiled(p * 8.0, 8.0);
+        float w2 = 1.0 - worley3d_tiled(p * 16.0, 16.0);
+
+        imageStore(cloudDetailTexture, texelCoord, vec4(w0, w1, w2, 0.0));
+    }
+
+    // 4. Weather Map (2D)
+    ivec2 weatherSize = imageSize(weatherMap);
+    if (all(lessThan(texelCoord.xy, weatherSize)) && texelCoord.z == 0) {
+        vec2 uv = vec2(texelCoord.xy) / vec2(weatherSize);
+
+        // Generate interesting weather patterns
+        float coverage = snoise(uv * 4.0) * 0.5 + 0.5;
+        float precipitation = snoise(uv * 8.0 + 10.0) * 0.5 + 0.5;
+        float type = snoise(uv * 2.0 + 20.0) * 0.5 + 0.5;
+
+        imageStore(weatherMap, texelCoord.xy, vec4(coverage, precipitation, type, 1.0));
+    }
 }

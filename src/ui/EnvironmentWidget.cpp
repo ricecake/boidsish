@@ -6,6 +6,7 @@
 #include "imgui.h"
 #include "post_processing/PostProcessingManager.h"
 #include "post_processing/effects/AtmosphereEffect.h"
+#include "post_processing/effects/VolumetricCloudsEffect.h"
 #include "terrain_generator_interface.h"
 
 namespace Boidsish {
@@ -34,6 +35,7 @@ namespace Boidsish {
 					auto& manager = m_visualizer.GetPostProcessingManager();
 					for (auto& effect : manager.GetPreToneMappingEffects()) {
 						if (effect->GetName() == "Atmosphere") {
+							ImGui::PushID("AtmosphereEffect");
 							bool is_enabled = effect->IsEnabled();
 							if (ImGui::Checkbox("Enable Atmosphere", &is_enabled)) {
 								effect->SetEnabled(is_enabled);
@@ -57,19 +59,19 @@ namespace Boidsish {
 										atmosphere_effect->SetHazeColor(haze_color);
 									}
 									float cloud_density = atmosphere_effect->GetCloudDensity();
-									if (ImGui::SliderFloat("Cloud Density", &cloud_density, 0.0f, 1.0f)) {
+									if (ImGui::SliderFloat("Atmo Cloud Density", &cloud_density, 0.0f, 1.0f)) {
 										atmosphere_effect->SetCloudDensity(cloud_density);
 									}
 									float cloud_altitude = atmosphere_effect->GetCloudAltitude();
-									if (ImGui::SliderFloat("Cloud Altitude", &cloud_altitude, 0.0f, 200.0f)) {
+									if (ImGui::SliderFloat("Atmo Cloud Altitude", &cloud_altitude, 0.0f, 500.0f)) {
 										atmosphere_effect->SetCloudAltitude(cloud_altitude);
 									}
 									float cloud_thickness = atmosphere_effect->GetCloudThickness();
-									if (ImGui::SliderFloat("Cloud Thickness", &cloud_thickness, 0.0f, 50.0f)) {
+									if (ImGui::SliderFloat("Atmo Cloud Thickness", &cloud_thickness, 0.0f, 200.0f)) {
 										atmosphere_effect->SetCloudThickness(cloud_thickness);
 									}
 									glm::vec3 cloud_color = atmosphere_effect->GetCloudColor();
-									if (ImGui::ColorEdit3("Cloud Color", &cloud_color[0])) {
+									if (ImGui::ColorEdit3("Atmo Cloud Color", &cloud_color[0])) {
 										atmosphere_effect->SetCloudColor(cloud_color);
 									}
 
@@ -97,7 +99,52 @@ namespace Boidsish {
 									}
 								}
 							}
-							break;
+							ImGui::PopID();
+						}
+
+						if (effect->GetName() == "VolumetricClouds") {
+							ImGui::PushID("VolumetricCloudsEffect");
+							bool is_enabled = effect->IsEnabled();
+							if (ImGui::Checkbox("Enable Volumetric Clouds", &is_enabled)) {
+								effect->SetEnabled(is_enabled);
+							}
+
+							if (is_enabled) {
+								auto clouds_effect = std::dynamic_pointer_cast<PostProcessing::VolumetricCloudsEffect>(
+									effect
+								);
+								if (clouds_effect) {
+									float height = clouds_effect->GetCloudHeight();
+									if (ImGui::SliderFloat("Base Altitude", &height, 0.0f, 5000.0f)) {
+										clouds_effect->SetCloudHeight(height);
+									}
+									float thickness = clouds_effect->GetCloudThickness();
+									if (ImGui::SliderFloat("Cloud Thickness", &thickness, 1.0f, 2000.0f)) {
+										clouds_effect->SetCloudThickness(thickness);
+									}
+									float density = clouds_effect->GetCloudDensity();
+									if (ImGui::SliderFloat("Layer Density", &density, 0.0f, 5.0f)) {
+										clouds_effect->SetCloudDensity(density);
+									}
+									float coverage = clouds_effect->GetCloudCoverage();
+									if (ImGui::SliderFloat("Total Coverage", &coverage, 0.0f, 1.0f)) {
+										clouds_effect->SetCloudCoverage(coverage);
+									}
+									float warp = clouds_effect->GetCloudWarp();
+									if (ImGui::SliderFloat("Noise Warp", &warp, 0.0f, 5.0f)) {
+										clouds_effect->SetCloudWarp(warp);
+									}
+									float type = clouds_effect->GetCloudType();
+									if (ImGui::SliderFloat("Cloud Type Map", &type, 0.0f, 1.0f)) {
+										clouds_effect->SetCloudType(type);
+									}
+									float push = clouds_effect->GetWarpPush();
+									if (ImGui::SliderFloat("User Warp Push", &push, 0.0f, 5.0f)) {
+										clouds_effect->SetWarpPush(push);
+									}
+								}
+							}
+							ImGui::PopID();
 						}
 					}
 				}
