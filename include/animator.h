@@ -27,6 +27,12 @@ namespace Boidsish {
 
 		int GetCurrentAnimationIndex() const { return m_CurrentAnimationIndex; }
 
+		// Manual bone control
+		void      SetBoneLocalTransform(const std::string& boneName, const glm::mat4& transform);
+		glm::mat4 GetBoneLocalTransform(const std::string& boneName) const;
+		glm::mat4 GetBoneModelSpaceTransform(const std::string& boneName) const;
+		std::string GetBoneParentName(const std::string& boneName) const;
+
 	private:
 		void CalculateBoneTransform(const NodeData& node, glm::mat4 parentTransform);
 
@@ -34,6 +40,9 @@ namespace Boidsish {
 		std::shared_ptr<ModelData> m_ModelData;
 		float                      m_CurrentTime = 0.0f;
 		int                        m_CurrentAnimationIndex = -1;
+
+		std::map<std::string, glm::mat4> m_LocalOverrides;
+		std::map<std::string, glm::mat4> m_GlobalMatrices; // Model-space transforms of nodes
 	};
 
 } // namespace Boidsish
