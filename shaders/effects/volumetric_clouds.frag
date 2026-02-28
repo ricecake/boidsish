@@ -42,7 +42,7 @@ bool raySphereIntersection(vec3 ro, vec3 rd, float r, out float t) {
 }
 
 float get_density(vec3 p, vec3 weather) {
-    float height_fraction = (p.y - CLOUD_START_HEIGHT) / u_cloudThickness;
+    float height_fraction = (p.y - CLOUD_START_HEIGHT) / max(u_cloudThickness, 1.0);
     if (height_fraction < 0.0 || height_fraction > 1.0) return 0.0;
 
     // Warp p to "push" clouds away
@@ -54,7 +54,7 @@ float get_density(vec3 p, vec3 weather) {
     float base_cloud = remap(base_noise.r, -(1.0 - low_freq_fbm), 1.0, 0.0, 1.0);
 
     float coverage = weather.r * u_cloudCoverage;
-    float density = remap(base_cloud, 1.0 - coverage, 1.0, 0.0, 1.0);
+    float density = remap(base_cloud, clamp(1.0 - coverage, 0.0, 0.99), 1.0, 0.0, 1.0);
     density *= coverage;
 
     // Shaping based on height
@@ -161,7 +161,7 @@ void main() {
         vec3 weather = texture(weatherMap, p.xz * 0.00001).rgb;
         float d = get_density(p, weather);
 
-        if (d > 0.0) {
+        if (d > 0.01) {
             float e = light_energy(p, sunDir, weather);
             vec3  step_light = sunColor * e * phase + ambient_light * 0.1;
             float sample_opacity = d * step_size * 0.01;
@@ -182,7 +182,8 @@ void main() {
 
     if (prevUV.x >= 0.0 && prevUV.x <= 1.0 && prevUV.y >= 0.0 && prevUV.y <= 1.0) {
         vec4 history = texture(historyTexture, prevUV);
-        currentCloud = mix(history, currentCloud, 0.05);
+        float alpha = (frameIndex < 10) ? 0.5 : 0.95;
+        currentCloud = mix(currentCloud, history, alpha);
     }
 
     FragColor = currentCloud;

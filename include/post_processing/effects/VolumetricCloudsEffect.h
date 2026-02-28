@@ -69,6 +69,7 @@ namespace Boidsish {
 
 		private:
 			void CreateBuffers();
+			void ClearBuffers();
 
 			std::unique_ptr<Shader> shader_;
 			std::unique_ptr<Shader> upsample_shader_;

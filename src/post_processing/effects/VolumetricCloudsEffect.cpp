@@ -43,6 +43,7 @@ namespace Boidsish {
 			low_res_height_ = height / 2;
 
 			CreateBuffers();
+			ClearBuffers();
 		}
 
 		void VolumetricCloudsEffect::CreateBuffers() {
@@ -84,6 +85,17 @@ namespace Boidsish {
 			glBindFramebuffer(GL_FRAMEBUFFER, 0);
 		}
 
+		void VolumetricCloudsEffect::ClearBuffers() {
+			float clearColor[] = {0.0f, 0.0f, 0.0f, 0.0f};
+			for (int i = 0; i < 2; i++) {
+				glBindFramebuffer(GL_FRAMEBUFFER, history_fbo_[i]);
+				glClearBufferfv(GL_COLOR, 0, clearColor);
+			}
+			glBindFramebuffer(GL_FRAMEBUFFER, low_res_fbo_);
+			glClearBufferfv(GL_COLOR, 0, clearColor);
+			glBindFramebuffer(GL_FRAMEBUFFER, 0);
+		}
+
 		void VolumetricCloudsEffect::Apply(
 			GLuint sourceTexture,
 			GLuint depthTexture,
@@ -92,13 +104,12 @@ namespace Boidsish {
 			const glm::mat4& /* projectionMatrix */,
 			const glm::vec3& /* cameraPos */
 		) {
-			// Save current draw FBO and viewport
 			GLint previous_fbo;
 			glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING, &previous_fbo);
 			GLint viewport[4];
 			glGetIntegerv(GL_VIEWPORT, viewport);
 
-			// 1. Raymarch at low resolution directly into history (which accumulates)
+			// 1. Raymarch at low resolution directly into history
 			glBindFramebuffer(GL_FRAMEBUFFER, history_fbo_[current_history_]);
 			glViewport(0, 0, low_res_width_, low_res_height_);
 			shader_->use();
@@ -132,7 +143,7 @@ namespace Boidsish {
 
 			glDrawArrays(GL_TRIANGLES, 0, 6);
 
-			// 2. Final composite at full resolution into the original target FBO
+			// 2. Final composite at full resolution
 			glBindFramebuffer(GL_FRAMEBUFFER, previous_fbo);
 			glViewport(viewport[0], viewport[1], viewport[2], viewport[3]);
 			upsample_shader_->use();
@@ -158,6 +169,7 @@ namespace Boidsish {
 			low_res_width_ = width / 2;
 			low_res_height_ = height / 2;
 			CreateBuffers();
+			ClearBuffers();
 		}
 
 	} // namespace PostProcessing

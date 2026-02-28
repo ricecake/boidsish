@@ -101,6 +101,7 @@ namespace Boidsish {
 						}
 
 						if (effect->GetName() == "VolumetricClouds") {
+							ImGui::PushID("VolumetricClouds");
 							bool is_enabled = effect->IsEnabled();
 							if (ImGui::Checkbox("Enable Volumetric Clouds", &is_enabled)) {
 								effect->SetEnabled(is_enabled);
@@ -141,6 +142,7 @@ namespace Boidsish {
 									}
 								}
 							}
+							ImGui::PopID();
 						}
 					}
 				}

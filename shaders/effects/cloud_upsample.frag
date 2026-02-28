@@ -21,14 +21,25 @@ void main() {
         for(int y = -1; y <= 1; y++) {
             vec2 uv = TexCoords + vec2(x, y) * texelSize;
             float sampleDepth = texture(depthTexture, uv).r;
-            float weight = 1.0 / (0.0001 + abs(depth - sampleDepth) * 1000.0);
+
+            // Gaussian weight based on space
+            float spaceWeight = exp(-0.5 * (x*x + y*y) / (1.0 * 1.0));
+
+            // Exponential weight based on depth similarity
+            float depthWeight = exp(-abs(depth - sampleDepth) * 5000.0);
+
+            float weight = spaceWeight * depthWeight;
 
             cloudColor += texture(cloudTexture, uv) * weight;
             totalWeight += weight;
         }
     }
 
-    cloudColor /= max(totalWeight, 0.0001);
+    if (totalWeight > 0.0) {
+        cloudColor /= totalWeight;
+    } else {
+        cloudColor = texture(cloudTexture, TexCoords);
+    }
 
     vec3 finalColor = sceneColor * (1.0 - cloudColor.a) + cloudColor.rgb;
     FragColor = vec4(finalColor, 1.0);
