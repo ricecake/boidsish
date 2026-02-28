@@ -279,6 +279,7 @@ namespace Boidsish {
 		void UpdateAnimation(float dt);
 
 		Animator* GetAnimator() const { return m_animator.get(); }
+		std::shared_ptr<ModelData> GetData() const { return m_data; }
 
 		// Manual bone manipulation
 		void                     AddBone(const std::string& name, const std::string& parentName, const glm::mat4& localTransform);
