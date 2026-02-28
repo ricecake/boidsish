@@ -61,7 +61,7 @@ namespace Boidsish {
 			for (int i = 0; i < 2; i++) {
 				glBindFramebuffer(GL_FRAMEBUFFER, history_fbo_[i]);
 				glBindTexture(GL_TEXTURE_2D, history_texture_[i]);
-				glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, width_, height_, 0, GL_RGBA, GL_FLOAT, nullptr);
+				glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, low_res_width_, low_res_height_, 0, GL_RGBA, GL_FLOAT, nullptr);
 				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
 				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
@@ -72,6 +72,7 @@ namespace Boidsish {
 					std::cerr << "ERROR::FRAMEBUFFER:: Cloud history FBO is not complete!" << std::endl;
 			}
 
+			// We keep low_res_fbo_ just in case, but pass 1 will draw to history directly.
 			glGenFramebuffers(1, &low_res_fbo_);
 			glGenTextures(1, &low_res_cloud_texture_);
 			glBindFramebuffer(GL_FRAMEBUFFER, low_res_fbo_);
@@ -92,8 +93,11 @@ namespace Boidsish {
 			const glm::mat4& /* projectionMatrix */,
 			const glm::vec3& /* cameraPos */
 		) {
-			// 1. Raymarch at low resolution
-			glBindFramebuffer(GL_FRAMEBUFFER, low_res_fbo_);
+			GLint previous_fbo;
+			glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING, &previous_fbo);
+
+			// 1. Raymarch at low resolution directly into history
+			glBindFramebuffer(GL_FRAMEBUFFER, history_fbo_[current_history_]);
 			glViewport(0, 0, low_res_width_, low_res_height_);
 			shader_->use();
 			shader_->setInt("depthTexture", 1);
@@ -126,8 +130,8 @@ namespace Boidsish {
 
 			glDrawArrays(GL_TRIANGLES, 0, 6);
 
-			// 2. Upsample and combine with history
-			glBindFramebuffer(GL_FRAMEBUFFER, history_fbo_[current_history_]);
+			// 2. Final composite at full resolution
+			glBindFramebuffer(GL_FRAMEBUFFER, previous_fbo);
 			glViewport(0, 0, width_, height_);
 			upsample_shader_->use();
 			upsample_shader_->setInt("sceneTexture", 0);
@@ -137,7 +141,7 @@ namespace Boidsish {
 			glActiveTexture(GL_TEXTURE0);
 			glBindTexture(GL_TEXTURE_2D, sourceTexture);
 			glActiveTexture(GL_TEXTURE1);
-			glBindTexture(GL_TEXTURE_2D, low_res_cloud_texture_);
+			glBindTexture(GL_TEXTURE_2D, history_texture_[current_history_]);
 			glActiveTexture(GL_TEXTURE2);
 			glBindTexture(GL_TEXTURE_2D, depthTexture);
 

@@ -17,19 +17,26 @@ void main() {
     vec4 cloudColor = vec4(0.0);
     float totalWeight = 0.0;
 
+    // 3x3 kernel for upsampling
     for(int x = -1; x <= 1; x++) {
         for(int y = -1; y <= 1; y++) {
             vec2 uv = TexCoords + vec2(x, y) * texelSize;
             float sampleDepth = texture(depthTexture, uv).r;
+
+            // Weight based on depth similarity
             float weight = 1.0 / (0.0001 + abs(depth - sampleDepth) * 1000.0);
+
+            // Further weight by distance from center
+            weight *= (1.0 - length(vec2(x, y)) * 0.25);
 
             cloudColor += texture(cloudTexture, uv) * weight;
             totalWeight += weight;
         }
     }
 
-    cloudColor /= totalWeight;
+    cloudColor /= max(totalWeight, 0.0001);
 
+    // Composite clouds over scene
     vec3 finalColor = sceneColor * (1.0 - cloudColor.a) + cloudColor.rgb;
     FragColor = vec4(finalColor, 1.0);
 }

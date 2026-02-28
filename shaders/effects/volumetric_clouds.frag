@@ -3,7 +3,6 @@ out vec4 FragColor;
 
 in vec2 TexCoords;
 
-uniform sampler2D sceneTexture;
 uniform sampler2D depthTexture;
 uniform sampler3D cloudBaseNoise;
 uniform sampler3D cloudDetailNoise;
@@ -86,7 +85,7 @@ float beer_powder(float d) {
 
 float henyey_greenstein(float cos_theta, float g) {
     float g2 = g * g;
-    return (1.0 - g2) / (4.0 * PI * pow(1.0 + g2 - 2.0 * g * cos_theta, 1.5));
+    return (1.0 - g2) / (4.0 * PI * pow(max(1e-4, 1.0 + g2 - 2.0 * g * cos_theta), 1.5));
 }
 
 float light_energy(vec3 p, vec3 L, vec3 weather) {
@@ -180,8 +179,10 @@ void main() {
 
     vec4 currentCloud = vec4(lighting, opacity);
 
-    // Temporal Reprojection
-    vec4 prevClipPos = prevViewProjection * vec4(worldPos, 1.0);
+    // Improved Temporal Reprojection
+    // Reproject a point at cloud altitude for better stability
+    vec3 cloudPlanePos = viewPos + rayDir * mix(t_min, t_max, 0.5);
+    vec4 prevClipPos = prevViewProjection * vec4(cloudPlanePos, 1.0);
     vec2 prevUV = (prevClipPos.xy / prevClipPos.w) * 0.5 + 0.5;
 
     if (prevUV.x >= 0.0 && prevUV.x <= 1.0 && prevUV.y >= 0.0 && prevUV.y <= 1.0) {
