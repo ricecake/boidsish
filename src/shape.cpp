@@ -59,6 +59,20 @@ namespace Boidsish {
 		packet.uniforms.dissolve_plane_normal = dissolve_plane_normal_;
 		packet.uniforms.dissolve_plane_dist = dissolve_plane_dist_;
 
+		// Occlusion culling AABB with velocity expansion
+		AABB worldAABB = GetAABB();
+		glm::vec3 velocity = world_pos - GetLastPosition();
+		if (glm::dot(velocity, velocity) > 0.001f) {
+			worldAABB.min = glm::min(worldAABB.min, worldAABB.min - velocity);
+			worldAABB.max = glm::max(worldAABB.max, worldAABB.max + velocity);
+		}
+		packet.uniforms.aabb_min_x = worldAABB.min.x;
+		packet.uniforms.aabb_min_y = worldAABB.min.y;
+		packet.uniforms.aabb_min_z = worldAABB.min.z;
+		packet.uniforms.aabb_max_x = worldAABB.max.x;
+		packet.uniforms.aabb_max_y = worldAABB.max.y;
+		packet.uniforms.aabb_max_z = worldAABB.max.z;
+
 		packet.casts_shadows = CastsShadows();
 
 		// Default to Opaque layer unless alpha is less than 1.0

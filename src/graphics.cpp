@@ -26,6 +26,7 @@
 #include "dot.h"
 #include "entity.h"
 #include "fire_effect_manager.h"
+#include "hiz_manager.h"
 #include "hud.h"
 #include "hud_manager.h"
 #include "light_manager.h"
@@ -420,6 +421,12 @@ namespace Boidsish {
 		uint32_t mdi_frustum_count = 0;
 		uint32_t mdi_bone_count = 0;
 
+		// Hi-Z occlusion culling
+		std::unique_ptr<HiZManager>    hiz_manager;
+		std::unique_ptr<ComputeShader> occlusion_cull_shader_;
+		GLuint                         occlusion_visibility_ssbo_{0};
+		bool                           enable_hiz_culling_{true};
+
 		std::shared_ptr<Shader> shader;
 		std::shared_ptr<Shader> plane_shader;
 		std::shared_ptr<Shader> sky_shader;
@@ -694,6 +701,20 @@ namespace Boidsish {
 			uniforms_ssbo = std::make_unique<PersistentBuffer<CommonUniforms>>(GL_SHADER_STORAGE_BUFFER, 65536);
 			frustum_ssbo = std::make_unique<PersistentBuffer<FrustumDataGPU>>(GL_UNIFORM_BUFFER, 64);
 			bone_matrices_ssbo = std::make_unique<PersistentBuffer<glm::mat4>>(GL_SHADER_STORAGE_BUFFER, 65536);
+
+			// Hi-Z occlusion culling
+			hiz_manager = std::make_unique<HiZManager>();
+			occlusion_cull_shader_ = std::make_unique<ComputeShader>("shaders/occlusion_cull.comp");
+			if (!occlusion_cull_shader_->isValid()) {
+				logger::WARNING("Hi-Z occlusion culling shader failed to compile - disabling");
+				enable_hiz_culling_ = false;
+			}
+			// Create visibility SSBO (GPU-only buffer, written by compute, read by vertex shader)
+			glGenBuffers(1, &occlusion_visibility_ssbo_);
+			glBindBuffer(GL_SHADER_STORAGE_BUFFER, occlusion_visibility_ssbo_);
+			std::vector<uint32_t> initial_vis(65536, 1u); // All visible initially
+			glBufferStorage(GL_SHADER_STORAGE_BUFFER, 65536 * sizeof(uint32_t), initial_vis.data(), 0);
+			glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
 			if (ConfigManager::GetInstance().GetAppSettingBool("enable_effects", true)) {
 				postprocess_shader_ = std::make_shared<Shader>("shaders/postprocess.vert", "shaders/postprocess.frag");
 				shader_table.Register(std::make_unique<RenderShader>(postprocess_shader_));
@@ -946,6 +967,9 @@ namespace Boidsish {
 				std::make_unique<RenderShader>(shadow_manager->GetShadowShaderPtr())
 			);
 
+			// Initialize Hi-Z manager with render dimensions
+			hiz_manager->Initialize(render_width, render_height);
+
 			if (postprocess_shader_) {
 				// --- Post Processing Manager ---
 				post_processing_manager_ = std::make_unique<PostProcessing::PostProcessingManager>(
@@ -1176,6 +1200,10 @@ namespace Boidsish {
 				glDeleteBuffers(1, &visual_effects_ubo);
 			}
 
+			if (occlusion_visibility_ssbo_) {
+				glDeleteBuffers(1, &occlusion_visibility_ssbo_);
+			}
+
 			if (window)
 				glfwDestroyWindow(window);
 			glfwTerminate();
@@ -1314,7 +1342,8 @@ namespace Boidsish {
 			const std::optional<ShaderHandle>& shader_override = std::nullopt,
 			const std::optional<glm::mat4>&    light_space_mat = std::nullopt,
 			const std::optional<glm::vec4>&    clip_plane = std::nullopt,
-			bool                               is_shadow_pass = false
+			bool                               is_shadow_pass = false,
+			bool                               dispatch_hiz_occlusion = false
 		) {
 			const auto& packets = queue.GetPackets(layer);
 			if (packets.empty())
@@ -1509,6 +1538,46 @@ namespace Boidsish {
 				GL_CLIENT_MAPPED_BUFFER_BARRIER_BIT | GL_COMMAND_BARRIER_BIT | GL_SHADER_STORAGE_BARRIER_BIT
 			);
 
+			// Hi-Z occlusion culling dispatch (between uniform fill and draw calls)
+			if (dispatch_hiz_occlusion && occlusion_cull_shader_ && occlusion_cull_shader_->isValid() &&
+				hiz_manager && hiz_manager->IsInitialized() && mdi_uniform_count > 0) {
+				occlusion_cull_shader_->use();
+
+				// Bind uniforms SSBO (current frame's data) for compute to read AABBs
+				glBindBufferRange(
+					GL_SHADER_STORAGE_BUFFER,
+					2,
+					uniforms_ssbo->GetBufferId(),
+					frame_element_offset * sizeof(CommonUniforms),
+					mdi_uniform_count * sizeof(CommonUniforms)
+				);
+
+				// Bind visibility SSBO for compute to write
+				glBindBufferBase(
+					GL_SHADER_STORAGE_BUFFER,
+					Constants::SsboBinding::OcclusionVisibility(),
+					occlusion_visibility_ssbo_
+				);
+
+				// Bind Hi-Z texture
+				glActiveTexture(GL_TEXTURE15);
+				glBindTexture(GL_TEXTURE_2D, hiz_manager->GetHiZTexture());
+				occlusion_cull_shader_->setInt("u_hizTexture", 15);
+
+				// Set uniforms
+				occlusion_cull_shader_->setInt("u_drawCount", static_cast<int>(mdi_uniform_count));
+				glUniform2i(
+					glGetUniformLocation(occlusion_cull_shader_->ID, "u_hizSize"),
+					hiz_manager->GetWidth(),
+					hiz_manager->GetHeight()
+				);
+				occlusion_cull_shader_->setInt("u_hizMipCount", hiz_manager->GetMipCount());
+				occlusion_cull_shader_->setFloat("u_screenExpansion", 4.0f);
+
+				glDispatchCompute((mdi_uniform_count + 63) / 64, 1, 1);
+				glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
+			}
+
 			// 2. Execute batches
 			unsigned int          current_vao = 0;
 			unsigned int          current_bound_shader_id = 0;
@@ -1529,6 +1598,7 @@ namespace Boidsish {
 					s->setMat4("projection", proj_mat);
 					s->setFloat("time", simulation_time);
 					s->setBool("enableFrustumCulling", !is_shadow_pass);
+					s->setBool("enableHiZCulling", dispatch_hiz_occlusion && !is_shadow_pass);
 					if (light_space_mat) {
 						s->setMat4("lightSpaceMatrix", *light_space_mat);
 					}
@@ -1553,12 +1623,23 @@ namespace Boidsish {
 				// Bind bone matrices SSBO
 				glBindBufferRange(
 					GL_SHADER_STORAGE_BUFFER,
-					12,
+					Constants::SsboBinding::BoneMatrix(),
 					bone_matrices_ssbo->GetBufferId(),
 					bone_matrices_ssbo->GetFrameOffset(),
 					bone_matrices_ssbo->GetElementCount() * sizeof(glm::mat4)
 				);
 				s->setBool("uUseMDI", true);
+
+				// Bind visibility SSBO for Hi-Z occlusion culling (matching uniform indexing)
+				if (dispatch_hiz_occlusion && !is_shadow_pass) {
+					glBindBufferRange(
+						GL_SHADER_STORAGE_BUFFER,
+						Constants::SsboBinding::OcclusionVisibility(),
+						occlusion_visibility_ssbo_,
+						(batch.base_uniform_index - frame_element_offset) * sizeof(uint32_t),
+						batch.command_count * sizeof(uint32_t)
+					);
+				}
 
 				if (!is_shadow_pass) {
 					unsigned int diffuseNr = 1;
@@ -2298,6 +2379,11 @@ namespace Boidsish {
 				NULL
 			);
 
+			// --- Resize Hi-Z pyramid ---
+			if (hiz_manager && hiz_manager->IsInitialized()) {
+				hiz_manager->Resize(render_width, render_height);
+			}
+
 			// --- Resize post-processing manager ---
 			if (post_processing_manager_) {
 				post_processing_manager_->Resize(render_width, render_height);
@@ -2634,6 +2720,15 @@ namespace Boidsish {
 
 		glm::mat4 view = impl->SetupMatrices();
 		glm::mat4 current_vp = impl->projection * view;
+
+		// Save previous frame's VP for Hi-Z reprojection (before we overwrite it)
+		glm::mat4 hiz_prev_vp = impl->prev_view_projection;
+
+		// Generate Hi-Z pyramid from previous frame's depth buffer (still in main_fbo_depth_texture_)
+		if (impl->hiz_manager && impl->hiz_manager->IsInitialized() && impl->enable_hiz_culling_ &&
+			impl->frame_count_ > 0) {
+			impl->hiz_manager->GeneratePyramid(impl->main_fbo_depth_texture_);
+		}
 
 		// Update Temporal UBO for motion blur and reprojection
 		TemporalUbo temporal_data;
@@ -3120,8 +3215,32 @@ namespace Boidsish {
 
 		impl->UpdateFrustumUbo(view, impl->projection, impl->camera.pos());
 		// impl->RenderShapes(view, impl->shapes, impl->simulation_time, std::nullopt);
-		impl->ExecuteRenderQueue(impl->render_queue, view, impl->projection, impl->camera.pos(), RenderLayer::Opaque);
+		impl->ExecuteRenderQueue(
+			impl->render_queue,
+			view,
+			impl->projection,
+			impl->camera.pos(),
+			RenderLayer::Opaque,
+			std::nullopt,
+			std::nullopt,
+			std::nullopt,
+			false,
+			impl->enable_hiz_culling_ && impl->frame_count_ > 0
+		);
 		if (impl->decor_manager) {
+			// Set Hi-Z data for decor occlusion culling
+			if (impl->hiz_manager && impl->hiz_manager->IsInitialized() && impl->enable_hiz_culling_ &&
+				impl->frame_count_ > 0) {
+				impl->decor_manager->SetHiZData(
+					impl->hiz_manager->GetHiZTexture(),
+					impl->hiz_manager->GetWidth(),
+					impl->hiz_manager->GetHeight(),
+					impl->hiz_manager->GetMipCount(),
+					hiz_prev_vp
+				);
+			} else {
+				impl->decor_manager->SetHiZEnabled(false);
+			}
 			impl->decor_manager->Render(view, impl->projection, impl->render_width, impl->render_height);
 		}
 

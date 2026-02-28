@@ -511,6 +511,19 @@ namespace Boidsish {
 				packet.uniforms.use_skinning = 1;
 				packet.bone_matrices = m_animator->GetFinalBoneMatrices();
 			}
+			// Occlusion culling AABB with velocity expansion
+			AABB meshAABB = m_data->aabb.Transform(model_matrix);
+			glm::vec3 velocity = world_pos - GetLastPosition();
+			if (glm::dot(velocity, velocity) > 0.001f) {
+				meshAABB.min = glm::min(meshAABB.min, meshAABB.min - velocity);
+				meshAABB.max = glm::max(meshAABB.max, meshAABB.max + velocity);
+			}
+			packet.uniforms.aabb_min_x = meshAABB.min.x;
+			packet.uniforms.aabb_min_y = meshAABB.min.y;
+			packet.uniforms.aabb_min_z = meshAABB.min.z;
+			packet.uniforms.aabb_max_x = meshAABB.max.x;
+			packet.uniforms.aabb_max_y = meshAABB.max.y;
+			packet.uniforms.aabb_max_z = meshAABB.max.z;
 
 			packet.casts_shadows = CastsShadows();
 

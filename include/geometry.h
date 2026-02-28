@@ -151,8 +151,16 @@ namespace Boidsish {
 		int   use_skinning = 0;          // 4 bytes
 		float anim_padding[2];           // 8 bytes -> 16 bytes
 
+		// Occlusion culling AABB (world space) - individual floats for std430 alignment safety
+		float aabb_min_x = 0.0f; // 4 bytes
+		float aabb_min_y = 0.0f; // 4 bytes
+		float aabb_min_z = 0.0f; // 4 bytes
+		float aabb_max_x = 0.0f; // 4 bytes
+		float aabb_max_y = 0.0f; // 4 bytes
+		float aabb_max_z = 0.0f; // 4 bytes
+
 		// Padding to 256 bytes for SSBO alignment safety
-		float padding[11];
+		float padding[5];
 	};
 
 	/**

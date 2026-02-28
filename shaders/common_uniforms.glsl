@@ -31,5 +31,11 @@ struct CommonUniforms {
 	int   bone_matrices_offset;
 	int   use_skinning;
 	float anim_padding[2];
-	float padding[11];
+	float aabb_min_x;
+	float aabb_min_y;
+	float aabb_min_z;
+	float aabb_max_x;
+	float aabb_max_y;
+	float aabb_max_z;
+	float padding[5];
 };
