@@ -61,7 +61,7 @@ uniform float frustumCullRadius = 5.0; // Approximate object radius for sphere t
 uniform bool  enableHiZCulling = false;
 
 // Hi-Z occlusion visibility (per-draw, written by occlusion_cull.comp)
-layout(std430, binding = 12) readonly buffer OcclusionVisibility {
+layout(std430, binding = 13) readonly buffer OcclusionVisibility {
 	uint hiz_visibility[];
 };
 

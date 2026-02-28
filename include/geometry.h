@@ -142,14 +142,13 @@ namespace Boidsish {
 		float checkpoint_radius = 0.0f; // 4 bytes -> 16 bytes
 
 		// Dissolve Effects
-		glm::vec3 dissolve_plane_normal = glm::vec3(0, 1, 0); // 12 bytes
-		float     dissolve_plane_dist = 0.0f;                 // 4 bytes -> 16 bytes
-		int       dissolve_enabled = 0;                       // 4 bytes
+		glm::vec4 dissolve_plane_normal_dist = glm::vec4(0, 1, 0, 0); // 16 bytes (xyz=normal, w=dist)
+		int       dissolve_enabled = 0;                              // 4 bytes
 
 		// Skeletal Animation
 		int   bone_matrices_offset = -1; // 4 bytes
 		int   use_skinning = 0;          // 4 bytes
-		float anim_padding[2];           // 8 bytes -> 16 bytes
+		float anim_padding[3];           // 12 bytes -> 24 bytes (padded to reach offset 224 for AABB)
 
 		// Occlusion culling AABB (world space) - individual floats for std430 alignment safety
 		float aabb_min_x = 0.0f; // 4 bytes
@@ -160,7 +159,7 @@ namespace Boidsish {
 		float aabb_max_z = 0.0f; // 4 bytes
 
 		// Padding to 256 bytes for SSBO alignment safety
-		float padding[5];
+		float padding[4];
 	};
 
 	/**

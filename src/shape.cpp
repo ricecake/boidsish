@@ -56,8 +56,7 @@ namespace Boidsish {
 		packet.uniforms.is_colossal = is_colossal_;
 
 		packet.uniforms.dissolve_enabled = dissolve_enabled_ ? 1 : 0;
-		packet.uniforms.dissolve_plane_normal = dissolve_plane_normal_;
-		packet.uniforms.dissolve_plane_dist = dissolve_plane_dist_;
+		packet.uniforms.dissolve_plane_normal_dist = glm::vec4(dissolve_plane_normal_, dissolve_plane_dist_);
 
 		// Occlusion culling AABB with velocity expansion
 		AABB worldAABB = GetAABB();
