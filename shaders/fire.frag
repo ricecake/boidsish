@@ -205,16 +205,16 @@ void main() {
 			alpha = 1.0;
 		} else if (v_style == 9) { // Cinder
 			// Irregular shape via noise
-			float n = snoise3d(vec3(gl_PointCoord * 6.0, float(gl_PrimitiveID)));
+			float n = snoise(vec3(gl_PointCoord * 6.0, float(gl_PrimitiveID)));
 			shapeMask = smoothstep(0.2 + n * 0.15, 0.05, distSq);
 
 			// Color: dark grey with orange highlights
-			float cNoise = snoise3d(v_pos.xyz * 15.0 + u_time * 0.2);
+			float cNoise = snoise(v_pos.xyz * 15.0 + u_time * 0.2);
 			vec3  darkGrey = vec3(0.1);
 			vec3  sootyGrey = vec3(0.25);
 			color = mix(darkGrey, sootyGrey, cNoise * 0.5 + 0.5);
 
-			float highlights = smoothstep(0.4, 0.9, snoise3d(v_pos.xyz * 40.0 + u_time));
+			float highlights = smoothstep(0.4, 0.9, snoise(v_pos.xyz * 40.0 + u_time));
 			vec3  orange = vec3(2.5, 0.8, 0.2);
 			color = mix(color, orange, highlights);
 

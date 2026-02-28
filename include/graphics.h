@@ -91,6 +91,7 @@ namespace Boidsish {
 		bool  artistic_shimmery = false;
 		bool  artistic_glitched = false;
 		bool  artistic_wireframe = false;
+		bool  artistic_cloak = false;
 		bool  enable_shadows = true;
 		float wind_strength = 0.15f;
 		float wind_speed = 0.15f;
@@ -552,6 +553,7 @@ namespace Boidsish {
 		bool IsShimmeryEffectEnabled() const;
 		bool IsGlitchedEffectEnabled() const;
 		bool IsWireframeEffectEnabled() const;
+		bool IsCloakEffectEnabled() const;
 
 	private:
 		struct VisualizerImpl;

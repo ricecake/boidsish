@@ -54,6 +54,7 @@ namespace Boidsish {
 			metallic_(other.metallic_),
 			ao_(other.ao_),
 			use_pbr_(other.use_pbr_),
+			cloak_enabled_(other.cloak_enabled_),
 			dissolve_enabled_(other.dissolve_enabled_),
 			dissolve_plane_normal_(other.dissolve_plane_normal_),
 			dissolve_plane_dist_(other.dissolve_plane_dist_) {}
@@ -90,6 +91,7 @@ namespace Boidsish {
 				metallic_ = other.metallic_;
 				ao_ = other.ao_;
 				use_pbr_ = other.use_pbr_;
+				cloak_enabled_ = other.cloak_enabled_;
 				dissolve_enabled_ = other.dissolve_enabled_;
 				dissolve_plane_normal_ = other.dissolve_plane_normal_;
 				dissolve_plane_dist_ = other.dissolve_plane_dist_;
@@ -148,7 +150,13 @@ namespace Boidsish {
 		virtual glm::mat4 GetModelMatrix() const = 0;
 
 		// Get the active visual effects for this shape
-		virtual std::vector<VisualEffect> GetActiveEffects() const { return {}; }
+		virtual std::vector<VisualEffect> GetActiveEffects() const {
+			std::vector<VisualEffect> effects;
+			if (cloak_enabled_) {
+				effects.push_back(VisualEffect::CLOAK);
+			}
+			return effects;
+		}
 
 		virtual void GetGeometry(std::vector<Vertex>& vertices, std::vector<unsigned int>& indices) const;
 
@@ -350,6 +358,13 @@ namespace Boidsish {
 			MarkDirty();
 		}
 
+		inline bool IsCloakEnabled() const { return cloak_enabled_; }
+
+		inline void SetCloakEnabled(bool cloak) {
+			cloak_enabled_ = cloak;
+			MarkDirty();
+		}
+
 		/**
 		 * @brief Set the dissolve plane for the shape.
 		 * Fragments where dot(FragPos, direction) > dist will be discarded.
@@ -426,6 +441,7 @@ namespace Boidsish {
 			metallic_(0.0f),
 			ao_(1.0f),
 			use_pbr_(false),
+			cloak_enabled_(false),
 			dissolve_enabled_(false),
 			dissolve_plane_normal_(0, 1, 0),
 			dissolve_plane_dist_(0.0f) {}
@@ -458,6 +474,7 @@ namespace Boidsish {
 		float     metallic_;
 		float     ao_;
 		bool      use_pbr_;
+		bool      cloak_enabled_;
 
 	protected:
 		bool      dissolve_enabled_;

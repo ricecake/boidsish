@@ -60,6 +60,11 @@ namespace Boidsish {
 					if (ImGui::Checkbox("Wireframe", &wireframe_enabled)) {
 						config.SetBool("artistic_effect_wireframe", wireframe_enabled);
 					}
+
+					bool cloak_enabled = config.GetAppSettingBool("artistic_effect_cloak", false);
+					if (ImGui::Checkbox("Cloak", &cloak_enabled)) {
+						config.SetBool("artistic_effect_cloak", cloak_enabled);
+					}
 				}
 
 				// 2. Post-Processing Effects (from PostProcessingWidget)

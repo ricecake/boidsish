@@ -1,6 +1,7 @@
 #ifndef ARTISTIC_EFFECTS_FRAG
 #define ARTISTIC_EFFECTS_FRAG
 
+#include "helpers/noise.glsl"
 #include "visual_effects.glsl"
 
 vec3 applyBlackAndWhite(vec3 color) {
@@ -74,14 +75,29 @@ vec3 applyWireframe(vec3 color, vec3 barycentric) {
 	return color;
 }
 
-vec3 applyArtisticEffects(vec3 color, vec3 fragPos, vec3 barycentric, float time) {
-	color = applyBlackAndWhite(color);
-	color = applyColorShift(color, fragPos, time);
-	color = applyNegative(color);
-	color = applyShimmery(color, time);
-	color = applyGlitched(color, fragPos, time);
-	color = applyWireframe(color, barycentric);
-	return color;
+vec4 applyCloak(vec4 outColor, vec3 fragPos, float time, float rim, int perObjectEnabled) {
+	if (cloak_enabled == 1 || perObjectEnabled == 1) {
+		vec3  warp_offset = vec3(fbm(fragPos + time * 0.05));
+		float nebula_noise = fbm(fragPos + warp_offset * 0.5);
+
+		return rim * (1.0 - outColor) + mix(vec4(outColor.rgb, 0.0), rim + outColor, nebula_noise);
+	}
+	return outColor;
+}
+
+vec4 applyArtisticEffects(vec4 color, vec3 fragPos, vec3 barycentric, float time, float rim, int perObjectCloak) {
+	vec3 rgb = color.rgb;
+	rgb = applyBlackAndWhite(rgb);
+	rgb = applyColorShift(rgb, fragPos, time);
+	rgb = applyNegative(rgb);
+	rgb = applyShimmery(rgb, time);
+	rgb = applyGlitched(rgb, fragPos, time);
+	rgb = applyWireframe(rgb, barycentric);
+
+	vec4 result = vec4(rgb, color.a);
+	result = applyCloak(result, fragPos, time, rim, perObjectCloak);
+
+	return result;
 }
 
 #endif

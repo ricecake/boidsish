@@ -9,6 +9,7 @@ namespace Boidsish {
 		SHIMMERY,
 		GLITCHED,
 		WIREFRAME,
+		CLOAK,
 		FREEZE_FRAME_TRAIL,
 	};
 
@@ -20,6 +21,7 @@ namespace Boidsish {
 		int   shimmery_enabled;
 		int   glitched_enabled;
 		int   wireframe_enabled;
+		int   cloak_enabled;
 		float wind_strength;
 		float wind_speed;
 		float wind_frequency;

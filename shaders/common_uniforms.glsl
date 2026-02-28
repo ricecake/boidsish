@@ -28,5 +28,6 @@ struct CommonUniforms {
 	vec3  dissolve_plane_normal;
 	float dissolve_plane_dist;
 	int   dissolve_enabled;
-	float padding[15];
+	int   cloak_enabled;
+	float padding[14];
 };

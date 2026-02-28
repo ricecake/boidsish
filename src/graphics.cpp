@@ -1086,6 +1086,7 @@ namespace Boidsish {
 			frame_config_.artistic_shimmery = cfg.GetAppSettingBool("artistic_effect_shimmery", false);
 			frame_config_.artistic_glitched = cfg.GetAppSettingBool("artistic_effect_glitched", false);
 			frame_config_.artistic_wireframe = cfg.GetAppSettingBool("artistic_effect_wireframe", false);
+			frame_config_.artistic_cloak = cfg.GetAppSettingBool("artistic_effect_cloak", false);
 			frame_config_.enable_shadows = cfg.GetAppSettingBool("enable_shadows", true);
 			frame_config_.wind_strength = cfg.GetAppSettingFloat("wind_strength", 0.065f);
 			frame_config_.wind_speed = cfg.GetAppSettingFloat("wind_speed", 0.075f);
@@ -2730,6 +2731,8 @@ namespace Boidsish {
 						ubo_data.ripple_enabled = 1;
 					} else if (effect == VisualEffect::COLOR_SHIFT) {
 						ubo_data.color_shift_enabled = 1;
+					} else if (effect == VisualEffect::CLOAK) {
+						ubo_data.cloak_enabled = 1;
 					} else if (effect == VisualEffect::FREEZE_FRAME_TRAIL) {
 						impl->clone_manager->CaptureClone(shape, impl->simulation_time);
 					}
@@ -2742,6 +2745,7 @@ namespace Boidsish {
 			ubo_data.shimmery_enabled = impl->frame_config_.artistic_shimmery;
 			ubo_data.glitched_enabled = impl->frame_config_.artistic_glitched;
 			ubo_data.wireframe_enabled = impl->frame_config_.artistic_wireframe;
+			ubo_data.cloak_enabled = ubo_data.cloak_enabled || impl->frame_config_.artistic_cloak;
 			ubo_data.color_shift_enabled = ubo_data.color_shift_enabled || impl->frame_config_.artistic_color_shift;
 			ubo_data.wind_strength = impl->frame_config_.wind_strength;
 			ubo_data.wind_speed = impl->frame_config_.wind_speed;
@@ -3493,6 +3497,9 @@ namespace Boidsish {
 		case VisualEffect::WIREFRAME:
 			SetEffectEnabled(effect, !config.GetAppSettingBool("artistic_effect_wireframe", false));
 			break;
+		case VisualEffect::CLOAK:
+			SetEffectEnabled(effect, !config.GetAppSettingBool("artistic_effect_cloak", false));
+			break;
 		case VisualEffect::FREEZE_FRAME_TRAIL:
 			break;
 		}
@@ -3521,6 +3528,9 @@ namespace Boidsish {
 			break;
 		case VisualEffect::WIREFRAME:
 			config.SetBool("artistic_effect_wireframe", enabled);
+			break;
+		case VisualEffect::CLOAK:
+			config.SetBool("artistic_effect_cloak", enabled);
 			break;
 		case VisualEffect::FREEZE_FRAME_TRAIL:
 			break;
@@ -4048,5 +4058,9 @@ namespace Boidsish {
 
 	bool Visualizer::IsWireframeEffectEnabled() const {
 		return ConfigManager::GetInstance().GetAppSettingBool("artistic_effect_wireframe", false);
+	}
+
+	bool Visualizer::IsCloakEffectEnabled() const {
+		return ConfigManager::GetInstance().GetAppSettingBool("artistic_effect_cloak", false);
 	}
 } // namespace Boidsish

@@ -57,6 +57,7 @@ uniform float dissolve_plane_dist = 0.0;
 uniform sampler2D texture_diffuse1;
 uniform bool      use_texture;
 uniform float     u_windRimHighlight;
+uniform int       u_cloak_enabled = 0;
 
 void main() {
 	bool  use_ssbo = uUseMDI && vUniformIndex >= 0;
@@ -85,6 +86,7 @@ void main() {
 	bool  c_dissolve_enabled = use_ssbo ? (uniforms_data[vUniformIndex].dissolve_enabled != 0) : dissolve_enabled;
 	vec3  c_dissolve_normal = use_ssbo ? uniforms_data[vUniformIndex].dissolve_plane_normal : dissolve_plane_normal;
 	float c_dissolve_dist = use_ssbo ? uniforms_data[vUniformIndex].dissolve_plane_dist : dissolve_plane_dist;
+	int   c_cloak_enabled = use_ssbo ? uniforms_data[vUniformIndex].cloak_enabled : u_cloak_enabled;
 
 	float fade = 1.0;
 	if (c_dissolve_enabled) {
@@ -112,6 +114,7 @@ void main() {
 	}
 
 	vec3 norm = normalize(Normal);
+	float rim = pow(1.0 - max(dot(norm, normalize(viewPos - FragPos)), 0.0), 3.0);
 
 	float baseAlpha = c_objectAlpha;
 
@@ -127,14 +130,11 @@ void main() {
 	float spec_lum = lightResult.a;
 
 	// Apply wind-driven rim highlight
-	float rim = pow(1.0 - max(dot(norm, normalize(viewPos - FragPos)), 0.0), 3.0);
 	result += rim * WindDeflection * u_windRimHighlight * vec3(1.0);
 
 	if (c_use_texture) {
 		result *= texture(texture_diffuse1, TexCoords).rgb;
 	}
-
-	result = applyArtisticEffects(result, FragPos, barycentric, time);
 
 	if (c_isLine && c_lineStyle == 1) { // LASER style
 		// Use Y axis for radial glow as defined in Line::InitLineMesh
@@ -197,6 +197,8 @@ void main() {
 		// Restore deliberate cyan style for distant objects
 		outColor = mix(vec4(0.0, 0.7, 0.7, final_alpha) * length(outColor), outColor, step(1.0, fade));
 	}
+
+	outColor = applyArtisticEffects(outColor, FragPos, barycentric, time, rim, c_cloak_enabled);
 
 	// if (nightFactor > 0) {
 	// outColor += nightFactor * (sin(length(FragPos.xz - viewPos.xz * 0.1) + time) * 0.5 + 0.5) * vec4(0, 7, 0, 1);
