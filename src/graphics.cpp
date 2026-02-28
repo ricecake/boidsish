@@ -26,6 +26,7 @@
 #include "dot.h"
 #include "entity.h"
 #include "fire_effect_manager.h"
+#include "hiz_manager.h"
 #include "hud.h"
 #include "hud_manager.h"
 #include "light_manager.h"
@@ -221,7 +222,18 @@ namespace Boidsish {
 			glVertexAttribPointer(8, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)offsetof(Vertex, Color));
 			glEnableVertexAttribArray(8);
 
+			// Bone IDs
+			glEnableVertexAttribArray(9);
+			glVertexAttribIPointer(9, 4, GL_INT, sizeof(Vertex), (void*)offsetof(Vertex, m_BoneIDs));
+
+			// Bone Weights
+			glEnableVertexAttribArray(10);
+			glVertexAttribPointer(10, 4, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)offsetof(Vertex, m_Weights));
+
 			glBindVertexArray(0);
+
+			// Ensure all attribute arrays are disabled by default on the global VAO
+			// (actually they are part of VAO state, so this is fine)
 
 			static_v_limit_ = Constants::Class::Megabuffer::StaticVertexLimit();
 			static_i_limit_ = Constants::Class::Megabuffer::StaticIndexLimit();
@@ -399,6 +411,7 @@ namespace Boidsish {
 		std::unique_ptr<PersistentBuffer<DrawArraysIndirectCommand>>   indirect_arrays_buffer;
 		std::unique_ptr<PersistentBuffer<CommonUniforms>>              uniforms_ssbo;
 		std::unique_ptr<PersistentBuffer<FrustumDataGPU>>              frustum_ssbo;
+		std::unique_ptr<PersistentBuffer<glm::mat4>>                   bone_matrices_ssbo;
 		GLsync                                                         mdi_fences[3]{0, 0, 0};
 
 		// MDI offset tracking across layers within a single frame
@@ -406,6 +419,13 @@ namespace Boidsish {
 		uint32_t mdi_arrays_count = 0;
 		uint32_t mdi_uniform_count = 0;
 		uint32_t mdi_frustum_count = 0;
+		uint32_t mdi_bone_count = 0;
+
+		// Hi-Z occlusion culling
+		std::unique_ptr<HiZManager>    hiz_manager;
+		std::unique_ptr<ComputeShader> occlusion_cull_shader_;
+		GLuint                         occlusion_visibility_ssbo_{0};
+		bool                           enable_hiz_culling_{true};
 
 		std::shared_ptr<Shader> shader;
 		std::shared_ptr<Shader> plane_shader;
@@ -680,6 +700,21 @@ namespace Boidsish {
 			);
 			uniforms_ssbo = std::make_unique<PersistentBuffer<CommonUniforms>>(GL_SHADER_STORAGE_BUFFER, 65536);
 			frustum_ssbo = std::make_unique<PersistentBuffer<FrustumDataGPU>>(GL_UNIFORM_BUFFER, 64);
+			bone_matrices_ssbo = std::make_unique<PersistentBuffer<glm::mat4>>(GL_SHADER_STORAGE_BUFFER, 65536);
+
+			// Hi-Z occlusion culling
+			hiz_manager = std::make_unique<HiZManager>();
+			occlusion_cull_shader_ = std::make_unique<ComputeShader>("shaders/occlusion_cull.comp");
+			if (!occlusion_cull_shader_->isValid()) {
+				logger::WARNING("Hi-Z occlusion culling shader failed to compile - disabling");
+				enable_hiz_culling_ = false;
+			}
+			// Create visibility SSBO (GPU-only buffer, written by compute, read by vertex shader)
+			glGenBuffers(1, &occlusion_visibility_ssbo_);
+			glBindBuffer(GL_SHADER_STORAGE_BUFFER, occlusion_visibility_ssbo_);
+			std::vector<uint32_t> initial_vis(65536, 1u); // All visible initially
+			glBufferStorage(GL_SHADER_STORAGE_BUFFER, 65536 * sizeof(uint32_t), initial_vis.data(), 0);
+			glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
 			if (ConfigManager::GetInstance().GetAppSettingBool("enable_effects", true)) {
 				postprocess_shader_ = std::make_shared<Shader>("shaders/postprocess.vert", "shaders/postprocess.frag");
 				shader_table.Register(std::make_unique<RenderShader>(postprocess_shader_));
@@ -932,6 +967,9 @@ namespace Boidsish {
 				std::make_unique<RenderShader>(shadow_manager->GetShadowShaderPtr())
 			);
 
+			// Initialize Hi-Z manager with render dimensions
+			hiz_manager->Initialize(render_width, render_height);
+
 			if (postprocess_shader_) {
 				// --- Post Processing Manager ---
 				post_processing_manager_ = std::make_unique<PostProcessing::PostProcessingManager>(
@@ -1034,6 +1072,12 @@ namespace Boidsish {
 
 		void SetupShaderBindings(ShaderBase& shader_to_setup) {
 			shader_to_setup.use();
+			shader_to_setup.setBool("uUseMDI", false);
+			shader_to_setup.setBool("useSSBOInstancing", false);
+			shader_to_setup.setBool("use_skinning", false);
+			shader_to_setup.setInt("bone_matrices_offset", -1);
+			shader_to_setup.setMat4("model", glm::mat4(1.0f));
+			shader_to_setup.setVec4("clipPlane", glm::vec4(0.0f));
 			if (noise_manager) {
 				noise_manager->BindDefault(shader_to_setup);
 			}
@@ -1079,6 +1123,7 @@ namespace Boidsish {
 			frame_config_.render_terrain = cfg.GetAppSettingBool("render_terrain", true);
 			frame_config_.render_skybox = cfg.GetAppSettingBool("render_skybox", true);
 			frame_config_.render_floor = cfg.GetAppSettingBool("render_floor", true);
+			frame_config_.render_decor = cfg.GetAppSettingBool("render_decor", true);
 			frame_config_.artistic_ripple = cfg.GetAppSettingBool("artistic_effect_ripple", false);
 			frame_config_.artistic_color_shift = cfg.GetAppSettingBool("artistic_effect_color_shift", false);
 			frame_config_.artistic_black_and_white = cfg.GetAppSettingBool("artistic_effect_black_and_white", false);
@@ -1090,6 +1135,10 @@ namespace Boidsish {
 			frame_config_.wind_strength = cfg.GetAppSettingFloat("wind_strength", 0.065f);
 			frame_config_.wind_speed = cfg.GetAppSettingFloat("wind_speed", 0.075f);
 			frame_config_.wind_frequency = cfg.GetAppSettingFloat("wind_frequency", 0.01f);
+
+			if (decor_manager) {
+				decor_manager->SetEnabled(frame_config_.render_decor);
+			}
 		}
 
 		~VisualizerImpl() {
@@ -1149,6 +1198,10 @@ namespace Boidsish {
 
 			if (visual_effects_ubo) {
 				glDeleteBuffers(1, &visual_effects_ubo);
+			}
+
+			if (occlusion_visibility_ssbo_) {
+				glDeleteBuffers(1, &occlusion_visibility_ssbo_);
 			}
 
 			if (window)
@@ -1289,7 +1342,8 @@ namespace Boidsish {
 			const std::optional<ShaderHandle>& shader_override = std::nullopt,
 			const std::optional<glm::mat4>&    light_space_mat = std::nullopt,
 			const std::optional<glm::vec4>&    clip_plane = std::nullopt,
-			bool                               is_shadow_pass = false
+			bool                               is_shadow_pass = false,
+			bool                               dispatch_hiz_occlusion = false
 		) {
 			const auto& packets = queue.GetPackets(layer);
 			if (packets.empty())
@@ -1304,6 +1358,7 @@ namespace Boidsish {
 			DrawElementsIndirectCommand* elements_cmd_ptr = indirect_elements_buffer->GetFrameDataPtr();
 			DrawArraysIndirectCommand*   arrays_cmd_ptr = indirect_arrays_buffer->GetFrameDataPtr();
 			CommonUniforms*              uniforms_ptr = uniforms_ssbo->GetFrameDataPtr();
+			glm::mat4*                   bones_ptr = bone_matrices_ssbo->GetFrameDataPtr();
 
 			uint32_t max_elements = 65536; // Buffer capacity
 			uint32_t frame_element_offset = uniforms_ssbo->GetCurrentBufferIndex() * max_elements;
@@ -1354,6 +1409,10 @@ namespace Boidsish {
 				if (a.uniforms.is_colossal != b.uniforms.is_colossal)
 					return false;
 				if (a.uniforms.use_ssbo_instancing != b.uniforms.use_ssbo_instancing)
+					return false;
+				if (a.uniforms.use_skinning != b.uniforms.use_skinning)
+					return false;
+				if (a.uniforms.bone_matrices_offset != b.uniforms.bone_matrices_offset)
 					return false;
 
 				// 4. Textures (only if not a shadow pass)
@@ -1414,6 +1473,20 @@ namespace Boidsish {
 				// Copy uniforms to persistent SSBO
 				uniforms_ptr[mdi_uniform_count] = packet.uniforms;
 
+				// Handle skeletal animation data
+				if (!packet.bone_matrices.empty()) {
+					uint32_t bone_count = static_cast<uint32_t>(packet.bone_matrices.size());
+					if (mdi_bone_count + bone_count <= 65536) {
+						std::memcpy(
+							&bones_ptr[mdi_bone_count],
+							packet.bone_matrices.data(),
+							bone_count * sizeof(glm::mat4)
+						);
+						uniforms_ptr[mdi_uniform_count].bone_matrices_offset = (int)mdi_bone_count;
+						mdi_bone_count += bone_count;
+					}
+				}
+
 				if (batches.empty() || !last_processed_packet || !can_batch(*last_processed_packet, packet)) {
 					Batch new_batch;
 					new_batch.shader_handle = shader_override.value_or(packet.shader_handle);
@@ -1465,6 +1538,46 @@ namespace Boidsish {
 				GL_CLIENT_MAPPED_BUFFER_BARRIER_BIT | GL_COMMAND_BARRIER_BIT | GL_SHADER_STORAGE_BARRIER_BIT
 			);
 
+			// Hi-Z occlusion culling dispatch (between uniform fill and draw calls)
+			if (dispatch_hiz_occlusion && occlusion_cull_shader_ && occlusion_cull_shader_->isValid() && hiz_manager &&
+			    hiz_manager->IsInitialized() && mdi_uniform_count > 0) {
+				occlusion_cull_shader_->use();
+
+				// Bind uniforms SSBO (current frame's data) for compute to read AABBs
+				glBindBufferRange(
+					GL_SHADER_STORAGE_BUFFER,
+					2,
+					uniforms_ssbo->GetBufferId(),
+					frame_element_offset * sizeof(CommonUniforms),
+					mdi_uniform_count * sizeof(CommonUniforms)
+				);
+
+				// Bind visibility SSBO for compute to write
+				glBindBufferBase(
+					GL_SHADER_STORAGE_BUFFER,
+					Constants::SsboBinding::OcclusionVisibility(),
+					occlusion_visibility_ssbo_
+				);
+
+				// Bind Hi-Z texture
+				glActiveTexture(GL_TEXTURE15);
+				glBindTexture(GL_TEXTURE_2D, hiz_manager->GetHiZTexture());
+				occlusion_cull_shader_->setInt("u_hizTexture", 15);
+
+				// Set uniforms
+				occlusion_cull_shader_->setInt("u_drawCount", static_cast<int>(mdi_uniform_count));
+				glUniform2i(
+					glGetUniformLocation(occlusion_cull_shader_->ID, "u_hizSize"),
+					hiz_manager->GetWidth(),
+					hiz_manager->GetHeight()
+				);
+				occlusion_cull_shader_->setInt("u_hizMipCount", hiz_manager->GetMipCount());
+				occlusion_cull_shader_->setFloat("u_screenExpansion", 4.0f);
+
+				glDispatchCompute((mdi_uniform_count + 63) / 64, 1, 1);
+				glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
+			}
+
 			// 2. Execute batches
 			unsigned int          current_vao = 0;
 			unsigned int          current_bound_shader_id = 0;
@@ -1485,6 +1598,7 @@ namespace Boidsish {
 					s->setMat4("projection", proj_mat);
 					s->setFloat("time", simulation_time);
 					s->setBool("enableFrustumCulling", !is_shadow_pass);
+					s->setBool("enableHiZCulling", dispatch_hiz_occlusion && !is_shadow_pass);
 					if (light_space_mat) {
 						s->setMat4("lightSpaceMatrix", *light_space_mat);
 					}
@@ -1495,7 +1609,7 @@ namespace Boidsish {
 					}
 				}
 
-				s->setBool("uUseMDI", true);
+				// s->setBool("uUseMDI", true); // Moved below SSBO binding
 
 				// Bind SSBO for this batch's uniforms (replaces uBaseUniformIndex)
 				glBindBufferRange(
@@ -1506,11 +1620,49 @@ namespace Boidsish {
 					batch.command_count * sizeof(CommonUniforms)
 				);
 
+				// Bind bone matrices SSBO
+				glBindBufferRange(
+					GL_SHADER_STORAGE_BUFFER,
+					Constants::SsboBinding::BoneMatrix(),
+					bone_matrices_ssbo->GetBufferId(),
+					bone_matrices_ssbo->GetFrameOffset(),
+					bone_matrices_ssbo->GetElementCount() * sizeof(glm::mat4)
+				);
+				s->setBool("uUseMDI", true);
+
+				// Bind visibility SSBO for Hi-Z occlusion culling (matching uniform indexing)
+				if (dispatch_hiz_occlusion && !is_shadow_pass) {
+					glBindBufferRange(
+						GL_SHADER_STORAGE_BUFFER,
+						Constants::SsboBinding::OcclusionVisibility(),
+						occlusion_visibility_ssbo_,
+						(batch.base_uniform_index - frame_element_offset) * sizeof(uint32_t),
+						batch.command_count * sizeof(uint32_t)
+					);
+				}
+
 				if (!is_shadow_pass) {
+					unsigned int diffuseNr = 1;
+					unsigned int specularNr = 1;
+					unsigned int normalNr = 1;
+					unsigned int heightNr = 1;
+
 					for (size_t i = 0; i < batch.textures.size(); ++i) {
 						glActiveTexture(GL_TEXTURE0 + i);
 						glBindTexture(GL_TEXTURE_2D, batch.textures[i].id);
-						s->setInt(batch.textures[i].type.c_str(), i);
+
+						std::string number;
+						std::string name = batch.textures[i].type;
+						if (name == "texture_diffuse")
+							number = std::to_string(diffuseNr++);
+						else if (name == "texture_specular")
+							number = std::to_string(specularNr++);
+						else if (name == "texture_normal")
+							number = std::to_string(normalNr++);
+						else if (name == "texture_height")
+							number = std::to_string(heightNr++);
+
+						s->setInt((name + number).c_str(), i);
 					}
 					s->setBool("use_texture", !batch.textures.empty());
 				}
@@ -2227,6 +2379,11 @@ namespace Boidsish {
 				NULL
 			);
 
+			// --- Resize Hi-Z pyramid ---
+			if (hiz_manager && hiz_manager->IsInitialized()) {
+				hiz_manager->Resize(render_width, render_height);
+			}
+
 			// --- Resize post-processing manager ---
 			if (post_processing_manager_) {
 				post_processing_manager_->Resize(render_width, render_height);
@@ -2254,6 +2411,10 @@ namespace Boidsish {
 
 	void Visualizer::RemoveShape(int shape_id) {
 		impl->shape_command_queue.push({ShapeCommandType::Remove, nullptr, shape_id});
+	}
+
+	void Visualizer::ClearShapes() {
+		impl->shape_command_queue.push({ShapeCommandType::Clear, nullptr, 0});
 	}
 
 	void Visualizer::ClearShapeHandlers() {
@@ -2377,6 +2538,7 @@ namespace Boidsish {
 		impl->indirect_arrays_buffer->AdvanceFrame();
 		impl->uniforms_ssbo->AdvanceFrame();
 		impl->frustum_ssbo->AdvanceFrame();
+		impl->bone_matrices_ssbo->AdvanceFrame();
 		impl->megabuffer->AdvanceFrame();
 
 		int current_idx = impl->uniforms_ssbo->GetCurrentBufferIndex(); // I need to add this method or keep track
@@ -2391,6 +2553,7 @@ namespace Boidsish {
 		impl->mdi_arrays_count = 0;
 		impl->mdi_uniform_count = 0;
 		impl->mdi_frustum_count = 0;
+		impl->mdi_bone_count = 0;
 
 		impl->shapes.clear();
 
@@ -2426,6 +2589,9 @@ namespace Boidsish {
 				break;
 			case ShapeCommandType::Remove:
 				impl->persistent_shapes.erase(command.shape_id);
+				break;
+			case ShapeCommandType::Clear:
+				impl->persistent_shapes.clear();
 				break;
 			}
 		}
@@ -2554,6 +2720,15 @@ namespace Boidsish {
 
 		glm::mat4 view = impl->SetupMatrices();
 		glm::mat4 current_vp = impl->projection * view;
+
+		// Save previous frame's VP for Hi-Z reprojection (before we overwrite it)
+		glm::mat4 hiz_prev_vp = impl->prev_view_projection;
+
+		// Generate Hi-Z pyramid from previous frame's depth buffer (still in main_fbo_depth_texture_)
+		if (impl->hiz_manager && impl->hiz_manager->IsInitialized() && impl->enable_hiz_culling_ &&
+		    impl->frame_count_ > 0) {
+			impl->hiz_manager->GeneratePyramid(impl->main_fbo_depth_texture_);
+		}
 
 		// Update Temporal UBO for motion blur and reprojection
 		TemporalUbo temporal_data;
@@ -3040,8 +3215,32 @@ namespace Boidsish {
 
 		impl->UpdateFrustumUbo(view, impl->projection, impl->camera.pos());
 		// impl->RenderShapes(view, impl->shapes, impl->simulation_time, std::nullopt);
-		impl->ExecuteRenderQueue(impl->render_queue, view, impl->projection, impl->camera.pos(), RenderLayer::Opaque);
+		impl->ExecuteRenderQueue(
+			impl->render_queue,
+			view,
+			impl->projection,
+			impl->camera.pos(),
+			RenderLayer::Opaque,
+			std::nullopt,
+			std::nullopt,
+			std::nullopt,
+			false,
+			impl->enable_hiz_culling_ && impl->frame_count_ > 0
+		);
 		if (impl->decor_manager) {
+			// Set Hi-Z data for decor occlusion culling
+			if (impl->hiz_manager && impl->hiz_manager->IsInitialized() && impl->enable_hiz_culling_ &&
+			    impl->frame_count_ > 0) {
+				impl->decor_manager->SetHiZData(
+					impl->hiz_manager->GetHiZTexture(),
+					impl->hiz_manager->GetWidth(),
+					impl->hiz_manager->GetHeight(),
+					impl->hiz_manager->GetMipCount(),
+					hiz_prev_vp
+				);
+			} else {
+				impl->decor_manager->SetHiZEnabled(false);
+			}
 			impl->decor_manager->Render(view, impl->projection, impl->render_width, impl->render_height);
 		}
 

@@ -9,6 +9,7 @@
 #include "biome_properties.h"
 #include "frustum.h"
 #include "model.h"
+#include "procedural_generator.h"
 #include <glm/glm.hpp>
 #include <shader.h>
 
@@ -77,6 +78,9 @@ namespace Boidsish {
 		// Only adds if no decor types have been added yet.
 		void PopulateDefaultDecor();
 
+		// Adds a procedurally generated decor with multiple variants
+		void AddProceduralDecor(ProceduralType type, const DecorProperties& props, int variants = 3);
+
 		// Static helpers for getting default properties
 		static DecorProperties GetDefaultTreeProperties();
 		static DecorProperties GetDefaultDeadTreeProperties();
@@ -108,6 +112,18 @@ namespace Boidsish {
 		void SetEnabled(bool enabled) { enabled_ = enabled; }
 
 		bool IsEnabled() const { return enabled_; }
+
+		/// Set Hi-Z occlusion data for GPU culling. Call each frame before Render().
+		void SetHiZData(GLuint hiz_texture, int hiz_width, int hiz_height, int mip_count, const glm::mat4& prev_vp) {
+			hiz_texture_ = hiz_texture;
+			hiz_width_ = hiz_width;
+			hiz_height_ = hiz_height;
+			hiz_mip_count_ = mip_count;
+			hiz_prev_vp_ = prev_vp;
+			hiz_enabled_ = true;
+		}
+
+		void SetHiZEnabled(bool enabled) { hiz_enabled_ = enabled; }
 
 		// Distance at which density starts to fall off from max toward min
 		void SetDensityFalloffStart(float distance) { density_falloff_start_ = distance; }
@@ -157,6 +173,14 @@ namespace Boidsish {
 		float density_falloff_end_ = 500.0f;
 		float max_decor_distance_ = 600.0f;
 		float min_pixel_size_ = 4.0f;
+
+		// Hi-Z occlusion culling data (set per-frame by SetHiZData)
+		GLuint    hiz_texture_ = 0;
+		int       hiz_width_ = 0;
+		int       hiz_height_ = 0;
+		int       hiz_mip_count_ = 0;
+		glm::mat4 hiz_prev_vp_{1.0f};
+		bool      hiz_enabled_ = false;
 
 		static constexpr int kInstancesPerChunk = 1024;
 		static constexpr int kMaxActiveChunks = 2048;
