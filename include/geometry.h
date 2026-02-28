@@ -155,12 +155,12 @@ namespace Boidsish {
 		float aabb_min_x = 0.0f; // 4 bytes
 		float aabb_min_y = 0.0f; // 4 bytes
 		float aabb_min_z = 0.0f; // 4 bytes
-		float aabb_max_x = 0.0f; // 4 bytes
+		float aabb_max_x = 0.0f; // 4 bytes -> 16
 		float aabb_max_y = 0.0f; // 4 bytes
 		float aabb_max_z = 0.0f; // 4 bytes
-
+		float oclusion_padding [2];       // 8 bytes -> 16
 		// Padding to 256 bytes for SSBO alignment safety
-		float padding[5];
+		float padding[3];
 	};
 
 	/**

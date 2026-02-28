@@ -37,5 +37,6 @@ struct CommonUniforms {
 	float aabb_max_x;
 	float aabb_max_y;
 	float aabb_max_z;
-	float padding[5];
+	float occlusion_padding[2];
+	float padding[3];
 };
