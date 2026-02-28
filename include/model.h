@@ -52,6 +52,9 @@ namespace Boidsish {
 		// Bind textures for external rendering (e.g., instanced rendering with custom shaders)
 		void bindTextures(Shader& shader) const;
 
+		void Cleanup();
+		void UploadToGPU();
+
 		unsigned int getVAO() const { return VAO; }
 
 		unsigned int getVBO() const { return VBO; }
@@ -199,11 +202,26 @@ namespace Boidsish {
 
 			BoneInfo info;
 			info.id = bone_count++;
-			// Offset matrix transforms vertex from model space to bone space.
-			// Since we don't have mesh vertices weighted to this new bone yet,
-			// we'll just set it to identity or calculate it if needed.
-			// Usually, programmatic bones are for IK/Transform markers.
-			info.offset = glm::mat4(1.0f);
+
+			// Calculate offset matrix (inverse of global bind transform)
+			glm::mat4 parentGlobal = glm::mat4(1.0f);
+			if (!parentName.empty()) {
+				std::function<bool(const NodeData&, glm::mat4, glm::mat4&)> findGlobal =
+					[&](const NodeData& n, glm::mat4 p, glm::mat4& out) -> bool {
+					glm::mat4 g = p * n.transformation;
+					if (n.name == parentName) {
+						out = g;
+						return true;
+					}
+					for (const auto& c : n.children) {
+						if (findGlobal(c, g, out))
+							return true;
+					}
+					return false;
+				};
+				findGlobal(root_node, glm::mat4(1.0f), parentGlobal);
+			}
+			info.offset = glm::inverse(parentGlobal * localTransform);
 			bone_info_map[name] = info;
 		}
 	};
@@ -292,6 +310,8 @@ namespace Boidsish {
 		void      SetBoneWorldPosition(const std::string& boneName, const glm::vec3& worldPos);
 		glm::quat GetBoneWorldRotation(const std::string& boneName) const;
 		void      SetBoneWorldRotation(const std::string& boneName, const glm::quat& worldRot);
+
+		void SkinToHierarchy();
 
 		// IK
 		void SolveIK(

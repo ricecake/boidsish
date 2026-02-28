@@ -53,6 +53,7 @@ public:
         model = std::make_shared<Model>(data);
         model->SetPosition(0, 0, 0);
         model->UpdateAnimation(0);
+        model->SkinToHierarchy();
 
         // Apply constraints
         BoneConstraint cone;

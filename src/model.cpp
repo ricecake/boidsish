@@ -130,6 +130,28 @@ namespace Boidsish {
 		glBindVertexArray(0);
 	}
 
+	void Mesh::Cleanup() {
+		if (VAO != 0) {
+			glDeleteVertexArrays(1, &VAO);
+			VAO = 0;
+		}
+		if (VBO != 0) {
+			glDeleteBuffers(1, &VBO);
+			VBO = 0;
+		}
+		if (EBO != 0) {
+			glDeleteBuffers(1, &EBO);
+			EBO = 0;
+		}
+		shadow_EBO = 0;
+		allocation.valid = false;
+		shadow_allocation.valid = false;
+	}
+
+	void Mesh::UploadToGPU() {
+		setupMesh(nullptr);
+	}
+
 	void Mesh::render() const {
 		// Check if Shape::shader is valid before rendering
 		if (!Shape::shader || !Shape::shader->isValid())
@@ -721,6 +743,86 @@ namespace Boidsish {
 		localTransform[3] = glm::vec4(localPos, 1.0f);
 		m_animator->SetBoneLocalTransform(boneName, localTransform);
 		MarkDirty();
+	}
+
+	void Model::SkinToHierarchy() {
+		if (!m_data || !m_animator)
+			return;
+
+		EnsureUniqueModelData();
+		m_animator->UpdateAnimation(0.0f); // Make sure global matrices are current
+
+		struct BoneData {
+			std::string name;
+			int         id;
+			glm::vec3   start;
+			glm::vec3   end;
+		};
+		std::vector<BoneData> bones;
+
+		for (const auto& [name, info] : m_data->bone_info_map) {
+			BoneData bd;
+			bd.name = name;
+			bd.id = info.id;
+			bd.start = glm::vec3(m_animator->GetBoneModelSpaceTransform(name)[3]);
+
+			// Try to find end from children
+			const NodeData* node = m_data->root_node.FindNode(name);
+			if (node && !node->children.empty()) {
+				bd.end = glm::vec3(m_animator->GetBoneModelSpaceTransform(node->children[0].name)[3]);
+			} else {
+				bd.end = bd.start; // Effector or no children
+			}
+			bones.push_back(bd);
+		}
+
+		for (auto& mesh : m_data->meshes) {
+			for (auto& vertex : mesh.vertices) {
+				// Reset bone data
+				for (int i = 0; i < MAX_BONE_INFLUENCE; ++i) {
+					vertex.m_BoneIDs[i] = -1;
+					vertex.m_Weights[i] = 0.0f;
+				}
+
+				// Simple proximity to bone segment
+				struct Candidate {
+					int   id;
+					float dist;
+				};
+				std::vector<Candidate> candidates;
+
+				for (const auto& bone : bones) {
+					float d = 0;
+					if (bone.start == bone.end) {
+						d = glm::distance(vertex.Position, bone.start);
+					} else {
+						// Point-line segment distance
+						glm::vec3 ba = bone.end - bone.start;
+						glm::vec3 pa = vertex.Position - bone.start;
+						float     h = glm::clamp(glm::dot(pa, ba) / glm::dot(ba, ba), 0.0f, 1.0f);
+						d = glm::length(pa - ba * h);
+					}
+					candidates.push_back({bone.id, d});
+				}
+
+				std::sort(candidates.begin(), candidates.end(), [](const Candidate& a, const Candidate& b) {
+					return a.dist < b.dist;
+				});
+
+				// Assign top weights (simple falloff)
+				float totalInvDist = 0;
+				for (int i = 0; i < MAX_BONE_INFLUENCE && i < (int)candidates.size(); ++i) {
+					float w = 1.0f / (candidates[i].dist + 0.001f);
+					totalInvDist += w;
+				}
+				for (int i = 0; i < MAX_BONE_INFLUENCE && i < (int)candidates.size(); ++i) {
+					vertex.m_BoneIDs[i] = candidates[i].id;
+					vertex.m_Weights[i] = (1.0f / (candidates[i].dist + 0.001f)) / totalInvDist;
+				}
+			}
+			mesh.Cleanup();
+			mesh.UploadToGPU();
+		}
 	}
 
 	void Model::SolveIK(
