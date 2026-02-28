@@ -109,7 +109,7 @@ namespace Boidsish {
 			GLint viewport[4];
 			glGetIntegerv(GL_VIEWPORT, viewport);
 
-			// 1. Raymarch at low resolution directly into history
+			// 1. Raymarch directly into current history buffer
 			glBindFramebuffer(GL_FRAMEBUFFER, history_fbo_[current_history_]);
 			glViewport(0, 0, low_res_width_, low_res_height_);
 			shader_->use();
@@ -143,7 +143,7 @@ namespace Boidsish {
 
 			glDrawArrays(GL_TRIANGLES, 0, 6);
 
-			// 2. Final composite at full resolution
+			// 2. Composite result into post-processing chain at full resolution
 			glBindFramebuffer(GL_FRAMEBUFFER, previous_fbo);
 			glViewport(viewport[0], viewport[1], viewport[2], viewport[3]);
 			upsample_shader_->use();

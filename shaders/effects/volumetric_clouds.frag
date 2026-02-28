@@ -41,7 +41,7 @@ float get_density(vec3 p, vec3 weather) {
     vec3 push_vec = normalize(p - viewPos);
     p += push_vec * u_warpPush * 2000.0;
 
-    vec4 base_noise = texture(cloudBaseNoise, p * 0.00005 + time * 0.005);
+    vec4 base_noise = texture(cloudBaseNoise, p * 0.0001 + time * 0.005);
     float low_freq_fbm = base_noise.g * 0.625 + base_noise.b * 0.25 + base_noise.a * 0.125;
     float base_cloud = remap(base_noise.r, -(1.0 - low_freq_fbm), 1.0, 0.0, 1.0);
 
@@ -50,14 +50,14 @@ float get_density(vec3 p, vec3 weather) {
     density *= coverage;
 
     // Shaping based on height
-    float vertical_shape = smoothstep(0.0, 0.1, height_fraction) * smoothstep(1.0, 0.9, height_fraction);
+    float vertical_shape = smoothstep(0.0, 0.15, height_fraction) * smoothstep(1.0, 0.8, height_fraction);
     density *= vertical_shape;
 
     if (density > 0.01) {
-        vec3 curl = texture(curlNoise, p * 0.0005).rgb;
+        vec3 curl = texture(curlNoise, p * 0.001).rgb;
         p += curl * height_fraction * u_cloudWarp * 500.0;
 
-        vec4 detail_noise = texture(cloudDetailNoise, p * 0.0005 + time * 0.02);
+        vec4 detail_noise = texture(cloudDetailNoise, p * 0.001 + time * 0.02);
         float high_freq_fbm = detail_noise.r * 0.625 + detail_noise.g * 0.25 + detail_noise.b * 0.125;
 
         float modifier = mix(high_freq_fbm, 1.0 - high_freq_fbm, clamp(height_fraction * 10.0, 0.0, 1.0));
@@ -75,7 +75,10 @@ float light_energy(vec3 p, vec3 L, vec3 weather) {
         vec3 sp = p + L * (float(i) + 0.5) * shadow_step_size;
         total_density += get_density(sp, weather);
     }
-    return exp(-total_density * shadow_step_size * 0.005);
+    float d = total_density * shadow_step_size * 0.01;
+    float beer = exp(-d);
+    float powder = 1.0 - exp(-d * 2.0);
+    return beer * max(powder, 0.7);
 }
 
 float blue_noise_jitter(vec2 p) {
@@ -128,14 +131,13 @@ void main() {
     }
 
     float jitter = blue_noise_jitter(gl_FragCoord.xy);
-    int   steps = 48; // Balanced for performance and quality
+    int   steps = 48;
     float step_size = (t_max - t_min) / float(steps);
     float t = t_min + jitter * step_size;
 
     float transmittance = 1.0;
     vec3  lighting = vec3(0.0);
     float cos_theta = dot(rayDir, sunDir);
-    // Henyey-Greenstein
     float g = 0.6;
     float phase = (1.0 - g*g) / (4.0 * PI * pow(1.0 + g*g - 2.0 * g * cos_theta, 1.5));
 
@@ -148,7 +150,7 @@ void main() {
 
         if (d > 0.01) {
             float e = light_energy(p, sunDir, weather);
-            vec3  step_light = sunColor * e * phase + ambient_light * 0.15;
+            vec3  step_light = sunColor * e * phase * 2.0 + ambient_light * 0.5;
             float extinction = d * 0.05;
             float sample_transmittance = exp(-extinction * step_size);
 
@@ -162,7 +164,6 @@ void main() {
     lighting = clamp(lighting, 0.0, 10.0);
     float opacity = clamp(1.0 - transmittance, 0.0, 1.0);
 
-    // Robustness: check for NaN/Inf
     if (any(isnan(lighting)) || isnan(opacity) || any(isinf(lighting)) || isinf(opacity)) {
         lighting = vec3(0.0);
         opacity = 0.0;
@@ -170,19 +171,26 @@ void main() {
 
     vec4 currentCloud = vec4(lighting, opacity);
 
-    // Temporal Reprojection
+    // Temporal Reprojection with neighborhood-based rejection
     vec3 cloudPlanePos = viewPos + rayDir * mix(t_min, t_max, 0.5);
     vec4 prevClipPos = prevViewProjection * vec4(cloudPlanePos, 1.0);
     vec2 prevUV = (prevClipPos.xy / prevClipPos.w) * 0.5 + 0.5;
 
     if (prevUV.x >= 0.0 && prevUV.x <= 1.0 && prevUV.y >= 0.0 && prevUV.y <= 1.0) {
         vec4 history = texture(historyTexture, prevUV);
+
+        // Rejection logic: if history is zero/invalid, or if camera moved too much
+        // we use a much higher alpha for current frame
+        float alpha = 0.15; // default update weight (0.85 history)
+
+        // Neighborhood clamping isn't easily possible here without more texture samples,
+        // but we can reject black history if we currently have signal.
+        if (history.a < 0.001 && currentCloud.a > 0.01) {
+            alpha = 1.0;
+        }
+
         if (!any(isnan(history)) && !any(isinf(history))) {
-            float alpha = (frameIndex < 30) ? 0.3 : 0.95;
-            // Only mix if history is not zero to avoid black patches spreading
-            if (history.a > 0.0) {
-                currentCloud = mix(currentCloud, history, alpha);
-            }
+            currentCloud = mix(history, currentCloud, alpha);
         }
     }
 

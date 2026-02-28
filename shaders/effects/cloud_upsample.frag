@@ -19,16 +19,11 @@ void main() {
 
     for(int x = -1; x <= 1; x++) {
         for(int y = -1; y <= 1; y++) {
-            vec2 uv = TexCoords + vec2(x, y) * texelSize;
+            vec2 uv = TexCoords + vec2(float(x), float(y)) * texelSize;
             float sampleDepth = texture(depthTexture, uv).r;
 
-            // Gaussian weight based on space
-            float spaceWeight = exp(-0.5 * (float(x*x + y*y)) / (1.0 * 1.0));
-
-            // Exponential weight based on depth similarity
-            float depthWeight = exp(-abs(depth - sampleDepth) * 5000.0);
-
-            float weight = spaceWeight * depthWeight;
+            // Weight based on depth similarity
+            float weight = 1.0 / (0.0001 + abs(depth - sampleDepth) * 1000.0);
 
             cloudColor += texture(cloudTexture, uv) * weight;
             totalWeight += weight;
@@ -41,12 +36,7 @@ void main() {
         cloudColor = texture(cloudTexture, TexCoords);
     }
 
-    // Safety check for NaN/Inf
-    if (any(isnan(cloudColor)) || any(isinf(cloudColor))) {
-        cloudColor = vec4(0.0);
-    }
-
-    // Clamping cloud emission
+    // Final Clamp
     cloudColor.rgb = clamp(cloudColor.rgb, 0.0, 10.0);
     cloudColor.a = clamp(cloudColor.a, 0.0, 1.0);
 
