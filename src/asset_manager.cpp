@@ -439,6 +439,11 @@ namespace Boidsish {
 			aiColor3D color(1.0f, 1.0f, 1.0f);
 			if (material->Get(AI_MATKEY_COLOR_DIFFUSE, color) == AI_SUCCESS) {
 				out_mesh.diffuseColor = glm::vec3(color.r, color.g, color.b);
+				// If the model has a diffuse texture but the material color is black,
+				// default to white so the texture is visible.
+				if (!diffuseMaps.empty() && glm::length(out_mesh.diffuseColor) < 0.001f) {
+					out_mesh.diffuseColor = glm::vec3(1.0f);
+				}
 			}
 
 			float opacity = 1.0f;

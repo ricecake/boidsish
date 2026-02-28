@@ -104,11 +104,15 @@ void main() {
 		}
 	}
 
-	vec3 final_color;
+	vec3 albedo;
 	if (c_useVertexColor) {
-		final_color = vs_color;
+		albedo = vs_color;
 	} else {
-		final_color = c_objectColor;
+		albedo = c_objectColor;
+	}
+
+	if (c_use_texture) {
+		albedo *= texture(texture_diffuse1, TexCoords).rgb;
 	}
 
 	vec3 norm = normalize(Normal);
@@ -118,9 +122,9 @@ void main() {
 	// Choose between PBR and legacy lighting
 	vec4 lightResult;
 	if (c_usePBR) {
-		lightResult = apply_lighting_pbr(FragPos, norm, final_color * baseAlpha, c_roughness, c_metallic, c_ao);
+		lightResult = apply_lighting_pbr(FragPos, norm, albedo * baseAlpha, c_roughness, c_metallic, c_ao);
 	} else {
-		lightResult = apply_lighting(FragPos, norm, final_color * baseAlpha, 1.0);
+		lightResult = apply_lighting(FragPos, norm, albedo * baseAlpha, 1.0);
 	}
 
 	vec3  result = lightResult.rgb;
@@ -129,10 +133,6 @@ void main() {
 	// Apply wind-driven rim highlight
 	float rim = pow(1.0 - max(dot(norm, normalize(viewPos - FragPos)), 0.0), 3.0);
 	result += rim * WindDeflection * u_windRimHighlight * vec3(1.0);
-
-	if (c_use_texture) {
-		result *= texture(texture_diffuse1, TexCoords).rgb;
-	}
 
 	result = applyArtisticEffects(result, FragPos, barycentric, time);
 
@@ -150,7 +150,7 @@ void main() {
 		float innerGlow = exp(-distToCenter * 10.0) * 0.5;
 
 		vec3 coreColor = vec3(1.0, 1.0, 1.0); // Core is white
-		vec3 glowColor = final_color;         // Glow is the object color
+		vec3 glowColor = albedo;             // Glow is the object color
 
 		vec3 laserColor = mix(glowColor, coreColor, core);
 		laserColor += glowColor * glow;

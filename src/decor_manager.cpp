@@ -685,7 +685,7 @@ namespace Boidsish {
 					}
 				}
 				shader->setBool("use_texture", hasDiffuse);
-				shader->setBool("useVertexColor", true); // Enable vertex color for decor
+				shader->setBool("useVertexColor", mesh.has_vertex_colors && !hasDiffuse);
 				mesh.bindTextures(*shader);
 
 				glBindVertexArray(mesh.getVAO());
