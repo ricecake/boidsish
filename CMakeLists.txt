@@ -311,6 +311,11 @@ target_link_libraries(test_procedural_custom PRIVATE boidsish GTest::GTest GTest
 set_target_properties(test_procedural_custom PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}" EXCLUDE_FROM_ALL TRUE)
 add_test(NAME test_procedural_custom COMMAND test_procedural_custom)
 
+add_executable(test_procedural_enhancements tests/test_procedural_enhancements.cpp)
+target_link_libraries(test_procedural_enhancements PRIVATE boidsish GTest::GTest GTest::Main)
+set_target_properties(test_procedural_enhancements PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}" EXCLUDE_FROM_ALL TRUE)
+add_test(NAME test_procedural_enhancements COMMAND test_procedural_enhancements)
+
 # Group all tests into a single target for convenience
 add_custom_target(tests)
 add_dependencies(tests
@@ -329,4 +334,5 @@ add_dependencies(tests
     test_shape_scaling
     test_procedural_generator
     test_procedural_custom
+    test_procedural_enhancements
 )
