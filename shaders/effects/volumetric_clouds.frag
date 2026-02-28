@@ -178,17 +178,10 @@ void main() {
 
     if (prevUV.x >= 0.0 && prevUV.x <= 1.0 && prevUV.y >= 0.0 && prevUV.y <= 1.0) {
         vec4 history = texture(historyTexture, prevUV);
-
-        // Rejection logic: if history is zero/invalid, or if camera moved too much
-        // we use a much higher alpha for current frame
-        float alpha = 0.15; // default update weight (0.85 history)
-
-        // Neighborhood clamping isn't easily possible here without more texture samples,
-        // but we can reject black history if we currently have signal.
+        float alpha = 0.15;
         if (history.a < 0.001 && currentCloud.a > 0.01) {
             alpha = 1.0;
         }
-
         if (!any(isnan(history)) && !any(isinf(history))) {
             currentCloud = mix(history, currentCloud, alpha);
         }

@@ -36,7 +36,12 @@ void main() {
         cloudColor = texture(cloudTexture, TexCoords);
     }
 
-    // Final Clamp
+    // Safety check for NaN/Inf
+    if (any(isnan(cloudColor)) || any(isinf(cloudColor))) {
+        cloudColor = vec4(0.0);
+    }
+
+    // Clamping cloud emission
     cloudColor.rgb = clamp(cloudColor.rgb, 0.0, 10.0);
     cloudColor.a = clamp(cloudColor.a, 0.0, 1.0);
 
