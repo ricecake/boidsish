@@ -75,13 +75,13 @@ namespace Boidsish {
 			std::unique_ptr<Shader> upsample_shader_;
 			float                   time_ = 0.0f;
 
-			float cloud_height_ = 1500.0f;
+			float cloud_height_ = 1200.0f;
 			float cloud_thickness_ = 500.0f;
-			float cloud_density_ = 0.5f;
-			float cloud_coverage_ = 0.5f;
+			float cloud_density_ = 0.8f;
+			float cloud_coverage_ = 0.6f;
 			float cloud_warp_ = 1.0f;
 			float cloud_type_ = 0.5f;
-			float warp_push_ = 1.0f;
+			float warp_push_ = 0.5f;
 
 			GLuint cloud_base_noise_ = 0;
 			GLuint cloud_detail_noise_ = 0;

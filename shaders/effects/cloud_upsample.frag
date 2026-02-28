@@ -23,7 +23,7 @@ void main() {
             float sampleDepth = texture(depthTexture, uv).r;
 
             // Gaussian weight based on space
-            float spaceWeight = exp(-0.5 * (x*x + y*y) / (1.0 * 1.0));
+            float spaceWeight = exp(-0.5 * (float(x*x + y*y)) / (1.0 * 1.0));
 
             // Exponential weight based on depth similarity
             float depthWeight = exp(-abs(depth - sampleDepth) * 5000.0);
@@ -41,8 +41,14 @@ void main() {
         cloudColor = texture(cloudTexture, TexCoords);
     }
 
-    // Safety check for NaN
-    if (any(isnan(cloudColor))) cloudColor = vec4(0.0);
+    // Safety check for NaN/Inf
+    if (any(isnan(cloudColor)) || any(isinf(cloudColor))) {
+        cloudColor = vec4(0.0);
+    }
+
+    // Clamping cloud emission
+    cloudColor.rgb = clamp(cloudColor.rgb, 0.0, 10.0);
+    cloudColor.a = clamp(cloudColor.a, 0.0, 1.0);
 
     vec3 finalColor = sceneColor * (1.0 - cloudColor.a) + cloudColor.rgb;
     FragColor = vec4(finalColor, 1.0);

@@ -23,7 +23,6 @@ uniform float u_warpPush;
 #include "../atmosphere/common.glsl"
 #include "../temporal_data.glsl"
 
-#define EARTH_RADIUS_METERS 6360000.0
 #define CLOUD_START_HEIGHT u_cloudHeight
 #define CLOUD_END_HEIGHT (u_cloudHeight + u_cloudThickness)
 
@@ -40,7 +39,7 @@ float get_density(vec3 p, vec3 weather) {
 
     // Warp p to "push" clouds away
     vec3 push_vec = normalize(p - viewPos);
-    p += push_vec * u_warpPush * 1000.0;
+    p += push_vec * u_warpPush * 2000.0;
 
     vec4 base_noise = texture(cloudBaseNoise, p * 0.00005 + time * 0.005);
     float low_freq_fbm = base_noise.g * 0.625 + base_noise.b * 0.25 + base_noise.a * 0.125;
@@ -68,27 +67,15 @@ float get_density(vec3 p, vec3 weather) {
     return clamp(density * u_cloudDensity, 0.0, 1.0);
 }
 
-float beer_law(float d) {
-    return exp(-d);
-}
-
-// Improved Beer-Powder for better edges and thickness
-float beer_powder(float d, float local_d) {
-    float beer = exp(-d);
-    float powder = 1.0 - exp(-d * 2.0);
-    return beer * max(powder, 0.7);
-}
-
-float light_energy(vec3 p, vec3 L, vec3 weather, float local_d) {
-    float shadow_steps = 6.0;
+float light_energy(vec3 p, vec3 L, vec3 weather) {
+    float shadow_steps = 4.0;
     float shadow_step_size = u_cloudThickness / shadow_steps;
     float total_density = 0.0;
     for (int i = 0; i < int(shadow_steps); i++) {
         vec3 sp = p + L * (float(i) + 0.5) * shadow_step_size;
         total_density += get_density(sp, weather);
     }
-    // Return something that is 1.0 if total_density is 0
-    return beer_law(total_density * shadow_step_size * 0.01);
+    return exp(-total_density * shadow_step_size * 0.005);
 }
 
 float blue_noise_jitter(vec2 p) {
@@ -141,35 +128,39 @@ void main() {
     }
 
     float jitter = blue_noise_jitter(gl_FragCoord.xy);
-    int   steps = 64;
+    int   steps = 48; // Balanced for performance and quality
     float step_size = (t_max - t_min) / float(steps);
     float t = t_min + jitter * step_size;
 
-    float opacity = 0.0;
+    float transmittance = 1.0;
     vec3  lighting = vec3(0.0);
     float cos_theta = dot(rayDir, sunDir);
-    // Henyey-Greenstein phase function
+    // Henyey-Greenstein
     float g = 0.6;
     float phase = (1.0 - g*g) / (4.0 * PI * pow(1.0 + g*g - 2.0 * g * cos_theta, 1.5));
 
     for (int i = 0; i < steps; i++) {
-        if (opacity >= 0.99) break;
+        if (transmittance <= 0.01) break;
 
         vec3 p = viewPos + rayDir * t;
         vec3 weather = texture(weatherMap, p.xz * 0.00001).rgb;
         float d = get_density(p, weather);
 
         if (d > 0.01) {
-            float e = light_energy(p, sunDir, weather, d);
-            vec3  step_light = sunColor * e * phase + ambient_light * 0.2;
-            float sample_opacity = d * step_size * 0.005;
+            float e = light_energy(p, sunDir, weather);
+            vec3  step_light = sunColor * e * phase + ambient_light * 0.15;
+            float extinction = d * 0.05;
+            float sample_transmittance = exp(-extinction * step_size);
 
-            lighting += (1.0 - opacity) * sample_opacity * step_light;
-            opacity += (1.0 - opacity) * sample_opacity;
+            lighting += transmittance * (1.0 - sample_transmittance) * step_light;
+            transmittance *= sample_transmittance;
         }
 
         t += step_size;
     }
+
+    lighting = clamp(lighting, 0.0, 10.0);
+    float opacity = clamp(1.0 - transmittance, 0.0, 1.0);
 
     // Robustness: check for NaN/Inf
     if (any(isnan(lighting)) || isnan(opacity) || any(isinf(lighting)) || isinf(opacity)) {
@@ -187,9 +178,9 @@ void main() {
     if (prevUV.x >= 0.0 && prevUV.x <= 1.0 && prevUV.y >= 0.0 && prevUV.y <= 1.0) {
         vec4 history = texture(historyTexture, prevUV);
         if (!any(isnan(history)) && !any(isinf(history))) {
-            float alpha = (frameIndex < 30) ? 0.4 : 0.95;
-            // Only mix if history is not black or if we are far into the simulation
-            if (history.a > 0.001 || frameIndex > 100) {
+            float alpha = (frameIndex < 30) ? 0.3 : 0.95;
+            // Only mix if history is not zero to avoid black patches spreading
+            if (history.a > 0.0) {
                 currentCloud = mix(currentCloud, history, alpha);
             }
         }
