@@ -201,6 +201,8 @@ namespace Boidsish {
 		// Get the model path
 		const std::string& GetModelPath() const;
 
+		std::shared_ptr<ModelData> GetData() const { return m_data; }
+
 		bool IsNoCull() const { return no_cull_; }
 
 		// Animation

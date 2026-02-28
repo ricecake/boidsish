@@ -44,42 +44,40 @@ namespace Boidsish {
 				glm::vec3 d2 = glm::normalize(e2.end_position - e2.position);
 				float     alignment = glm::dot(d1, d2);
 
-				if (alignment > 0.95f && glm::distance2(e1.color, e2.color) < 0.001f) {
-					// If nearly but not perfectly collinear, preserve the junction as a ControlPoint
-					if (alignment < 0.999f) {
-						ProceduralElement cp;
-						cp.type = ProceduralElementType::ControlPoint;
-						cp.position = e1.end_position;
-						cp.radius = e1.end_radius;
-						cp.color = e1.color;
-						cp.parent = i;
-						cp.children = e2.children;
+				// If nearly but not perfectly collinear, preserve the junction as a ControlPoint
+				if (alignment < 0.999f) {
+					ProceduralElement cp;
+					cp.type = ProceduralElementType::ControlPoint;
+					cp.position = e1.end_position;
+					cp.radius = e1.end_radius;
+					cp.color = e1.color;
+					cp.parent = i;
+					cp.children = e2.children;
 
-						int cp_idx = (int)ir.elements.size() + (int)control_points_to_add.size();
+					int cp_idx = (int)ir.elements.size() + (int)control_points_to_add.size();
 
-						// Update children's parent pointer to the control point
-						for (int child_of_child : e2.children) {
-							ir.elements[child_of_child].parent = cp_idx;
-						}
+					// Update children's parent pointer to the control point
+					for (int child_of_child : e2.children) {
+						ir.elements[child_of_child].parent = cp_idx;
+					}
 
-						// Merge tube geometry: extend e1 to e2's end
-						e1.end_position = e2.end_position;
-						e1.end_radius = e2.end_radius;
-						e1.length = glm::distance(e1.position, e1.end_position);
-						e1.children = {cp_idx};
+					// Merge tube geometry: extend e1 to e2's end
+					e1.end_position = e2.end_position;
+					e1.end_radius = e2.end_radius;
+					e1.length = glm::distance(e1.position, e1.end_position);
+					e1.children = {cp_idx};
 
-						control_points_to_add.push_back(cp);
-					} else {
-						// Perfectly collinear: simple merge, no control point needed
-						e1.end_position = e2.end_position;
-						e1.end_radius = e2.end_radius;
-						e1.length = glm::distance(e1.position, e1.end_position);
-						e1.children = e2.children;
+					control_points_to_add.push_back(cp);
+				} else {
+					// Perfectly collinear: simple merge, no control point needed
+					e1.end_position = e2.end_position;
+					e1.end_radius = e2.end_radius;
+					e1.length = glm::distance(e1.position, e1.end_position);
+					e1.children = e2.children;
 
-						// Update children's parent pointer
-						for (int child_of_child : e2.children) {
-							ir.elements[child_of_child].parent = i;
-						}
+					// Update children's parent pointer
+					for (int child_of_child : e2.children) {
+						ir.elements[child_of_child].parent = i;
 					}
 
 					to_remove[child_idx] = true;

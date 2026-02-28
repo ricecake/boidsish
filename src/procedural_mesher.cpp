@@ -11,6 +11,13 @@ namespace Boidsish {
 	namespace {
 		const float SPLINE_RADIUS_SCALE = 0.005f;
 
+		struct BoneSegment {
+			int       parent_bone;
+			glm::mat4 offset;
+			glm::vec3 start;
+			glm::vec3 end;
+		};
+
 		void GenerateUVSphere(
 			std::vector<Vertex>&       vertices,
 			std::vector<unsigned int>& indices,
@@ -18,7 +25,8 @@ namespace Boidsish {
 			float                      radius,
 			glm::vec3                  color,
 			int                        lat_segments,
-			int                        lon_segments
+			int                        lon_segments,
+			glm::vec3                  scale = glm::vec3(1.0f)
 		) {
 			unsigned int base = (unsigned int)vertices.size();
 
@@ -34,8 +42,8 @@ namespace Boidsish {
 					glm::vec3 normal(sinTheta * cosPhi, cosTheta, sinTheta * sinPhi);
 
 					Vertex v;
-					v.Position = center + normal * radius;
-					v.Normal = normal;
+					v.Position = center + normal * radius * scale;
+					v.Normal = glm::normalize(normal / scale); // Adjusted normal for non-uniform scale
 					v.Color = color;
 					v.TexCoords = glm::vec2((float)lon / lon_segments, (float)lat / lat_segments);
 					vertices.push_back(v);
@@ -57,83 +65,92 @@ namespace Boidsish {
 				}
 			}
 		}
+
+		void AssignBoneWeights(std::vector<Vertex>& vertices, const std::vector<BoneSegment>& bone_segments) {
+			if (bone_segments.empty())
+				return;
+
+			for (auto& v : vertices) {
+				float best_dist = 1e10f;
+				int   best_bone = -1;
+				for (int b = 0; b < (int)bone_segments.size(); ++b) {
+					const auto& bs = bone_segments[b];
+					glm::vec3   ab = bs.end - bs.start;
+					glm::vec3   ap = v.Position - bs.start;
+					float       t = glm::clamp(glm::dot(ap, ab) / glm::dot(ab, ab), 0.0f, 1.0f);
+					float       d = glm::distance(v.Position, bs.start + t * ab);
+					if (d < best_dist) {
+						best_dist = d;
+						best_bone = b;
+					}
+				}
+				if (best_bone != -1) {
+					v.m_BoneIDs[0] = best_bone;
+					v.m_Weights[0] = 1.0f;
+				}
+			}
+		}
+
 	} // namespace
 
 	std::shared_ptr<Model> ProceduralMesher::GenerateModel(const ProceduralIR& ir) {
 		if (ir.elements.empty())
 			return nullptr;
 
-		auto data = GenerateDirectMesh(ir);
-
-		// Add Leaf geometry as a separate mesh
-		std::vector<Vertex>       leaf_vertices;
-		std::vector<unsigned int> leaf_indices;
-
-		auto AddLeafGeom = [&](glm::vec3 pos, glm::quat ori, float size, glm::vec3 color) {
-			unsigned int           base = (unsigned int)leaf_vertices.size();
-			std::vector<glm::vec3> pts = {{0, 0, 0}, {0.3f, 0.5f, 0.1f}, {0, 1.0f, 0}, {-0.3f, 0.5f, -0.1f}};
-			for (auto& p : pts) {
-				p = pos + ori * (p * size);
-				Vertex v;
-				v.Position = p;
-				v.Normal = ori * glm::vec3(0, 0, 1);
-				v.Color = color;
-				v.TexCoords = glm::vec2(0.5f);
-				leaf_vertices.push_back(v);
-			}
-			leaf_indices.push_back(base);
-			leaf_indices.push_back(base + 1);
-			leaf_indices.push_back(base + 2);
-			leaf_indices.push_back(base);
-			leaf_indices.push_back(base + 2);
-			leaf_indices.push_back(base + 3);
-			// Double sided
-			leaf_indices.push_back(base);
-			leaf_indices.push_back(base + 2);
-			leaf_indices.push_back(base + 1);
-			leaf_indices.push_back(base);
-			leaf_indices.push_back(base + 3);
-			leaf_indices.push_back(base + 2);
-		};
-
-		for (const auto& e : ir.elements) {
-			if (e.type == ProceduralElementType::Leaf) {
-				AddLeafGeom(e.position, e.orientation, e.radius, e.color);
-			}
-		}
-
-		if (!leaf_vertices.empty()) {
-			Boidsish::Mesh leaf_mesh(leaf_vertices, leaf_indices, {}, {});
-			leaf_mesh.diffuseColor = {1, 1, 1};
-			data->meshes.push_back(leaf_mesh);
-		}
-
-		return std::make_shared<Model>(data, false);
-	}
-
-	std::shared_ptr<ModelData> ProceduralMesher::GenerateDirectMesh(const ProceduralIR& ir) {
-		auto data = std::make_shared<ModelData>();
+		// 1. Pre-calculate bones if it's a critter
+		std::vector<BoneSegment> bone_segments;
+		std::vector<int>         element_to_bone(ir.elements.size(), -1);
+		auto                     data = std::make_shared<ModelData>();
 		data->model_path = "procedural_direct_" + std::to_string(reinterpret_cast<uintptr_t>(data.get()));
 
-		std::vector<Vertex>       vertices;
-		std::vector<unsigned int> indices;
+		if (ir.name == "critter") {
+			for (int i = 0; i < (int)ir.elements.size(); ++i) {
+				const auto& e = ir.elements[i];
+				if (e.type == ProceduralElementType::Tube && e.length > 0.1f) {
+					BoneSegment bs;
+					bs.start = e.position;
+					bs.end = e.end_position;
+					bs.parent_bone = (e.parent != -1) ? element_to_bone[e.parent] : -1;
 
-		// === PHASE 1: Extract branches and generate tube geometry ===
-		//
-		// A branch is a chain of connected Tubes (with optional ControlPoints as
-		// curve guides) that starts from a root element or a Hub child and ends
-		// at a terminal element (Puffball, Leaf, Hub, or no children).
+					glm::vec3 dir = glm::normalize(bs.end - bs.start);
+					glm::vec3 up = (std::abs(dir.y) < 0.9f) ? glm::vec3(0, 1, 0) : glm::vec3(1, 0, 0);
+					glm::vec3 right = glm::normalize(glm::cross(up, dir));
+					up = glm::normalize(glm::cross(dir, right));
 
-		// Find branch starting points: root tubes, or tubes that are children of Hubs
+					glm::mat4 bone_to_model(1.0f);
+					bone_to_model[0] = glm::vec4(right, 0);
+					bone_to_model[1] = glm::vec4(dir, 0);
+					bone_to_model[2] = glm::vec4(up, 0);
+					bone_to_model[3] = glm::vec4(bs.start, 1);
+
+					bs.offset = glm::inverse(bone_to_model);
+
+					int bone_id = (int)bone_segments.size();
+					bone_segments.push_back(bs);
+					element_to_bone[i] = bone_id;
+
+					BoneInfo info;
+					info.id = bone_id;
+					info.offset = bs.offset;
+					data->bone_info_map["bone_" + std::to_string(bone_id)] = info;
+					data->bone_count++;
+				} else if (e.parent != -1) {
+					element_to_bone[i] = element_to_bone[e.parent];
+				}
+			}
+		}
+
+		// 2. Generate Primary Mesh (Tubes, Hubs, Puffballs)
+		std::vector<Vertex>       main_vertices;
+		std::vector<unsigned int> main_indices;
+
+		// Generate tubes
 		std::vector<int> branch_starts;
 		for (int i = 0; i < (int)ir.elements.size(); ++i) {
 			const auto& e = ir.elements[i];
 			if (e.type != ProceduralElementType::Tube)
 				continue;
-
-			if (e.parent == -1) {
-				branch_starts.push_back(i);
-			} else if (ir.elements[e.parent].type == ProceduralElementType::Hub) {
+			if (e.parent == -1 || ir.elements[e.parent].type == ProceduralElementType::Hub) {
 				branch_starts.push_back(i);
 			}
 		}
@@ -143,19 +160,12 @@ namespace Boidsish {
 			std::vector<Vector3>   ups;
 			std::vector<float>     sizes;
 			std::vector<glm::vec3> colors;
-
-			int  current_idx = start_idx;
-			bool first = true;
-
+			int                    current_idx = start_idx;
+			bool                   first = true;
 			while (current_idx != -1) {
 				const auto& e = ir.elements[current_idx];
-
-				if (e.type != ProceduralElementType::Tube) {
-					current_idx = -1;
+				if (e.type != ProceduralElementType::Tube)
 					break;
-				}
-
-				// Add tube start position (only for the first tube in the chain)
 				if (first) {
 					points.push_back(Vector3(e.position));
 					ups.push_back(Vector3(0, 1, 0));
@@ -163,30 +173,20 @@ namespace Boidsish {
 					colors.push_back(e.color);
 					first = false;
 				}
-
-				// Check if this tube has a ControlPoint child (curve midpoint)
 				int cp_child_idx = -1;
 				int next_tube_idx = -1;
-
 				if (e.children.size() == 1) {
-					int         child_idx = e.children[0];
-					const auto& child = ir.elements[child_idx];
-
-					if (child.type == ProceduralElementType::ControlPoint) {
+					int child_idx = e.children[0];
+					if (ir.elements[child_idx].type == ProceduralElementType::ControlPoint) {
 						cp_child_idx = child_idx;
-						// The CP's child (if Tube) continues the branch
-						if (child.children.size() == 1 &&
-						    ir.elements[child.children[0]].type == ProceduralElementType::Tube) {
-							next_tube_idx = child.children[0];
+						if (ir.elements[child_idx].children.size() == 1 &&
+						    ir.elements[ir.elements[child_idx].children[0]].type == ProceduralElementType::Tube) {
+							next_tube_idx = ir.elements[child_idx].children[0];
 						}
-					} else if (child.type == ProceduralElementType::Tube) {
+					} else if (ir.elements[child_idx].type == ProceduralElementType::Tube) {
 						next_tube_idx = child_idx;
 					}
-					// Hub, Puffball, Leaf = end of branch (next_tube_idx stays -1)
 				}
-
-				// If there's a control point, insert it BEFORE the tube end position
-				// so the spline curves through it: start → CP → end
 				if (cp_child_idx != -1) {
 					const auto& cp = ir.elements[cp_child_idx];
 					points.push_back(Vector3(cp.position));
@@ -194,73 +194,164 @@ namespace Boidsish {
 					sizes.push_back(cp.radius / SPLINE_RADIUS_SCALE);
 					colors.push_back(cp.color);
 				}
-
-				// Add tube end position
 				points.push_back(Vector3(e.end_position));
 				ups.push_back(Vector3(0, 1, 0));
 				sizes.push_back(e.end_radius / SPLINE_RADIUS_SCALE);
 				colors.push_back(e.color);
-
 				current_idx = next_tube_idx;
 			}
-
 			if (points.size() >= 2) {
-				auto tube_data = Spline::GenerateTube(points, ups, sizes, colors, false, 10, 8);
-
-				unsigned int base = (unsigned int)vertices.size();
+				auto         tube_data = Spline::GenerateTube(points, ups, sizes, colors, false, 10, 8);
+				unsigned int base = (unsigned int)main_vertices.size();
 				for (const auto& vd : tube_data) {
 					Vertex v;
 					v.Position = vd.pos;
 					v.Normal = vd.normal;
 					v.Color = vd.color;
 					v.TexCoords = glm::vec2(0.5f);
-					vertices.push_back(v);
+					main_vertices.push_back(v);
 				}
-				// Triangle soup: every 3 consecutive vertices form a triangle
-				for (unsigned int i = 0; i < (unsigned int)tube_data.size(); ++i) {
-					indices.push_back(base + i);
-				}
+				for (unsigned int i = 0; i < (unsigned int)tube_data.size(); ++i)
+					main_indices.push_back(base + i);
 			}
 		}
 
-		// === PHASE 2: Generate sphere geometry for Hubs and Puffballs ===
-		for (const auto& e : ir.elements) {
+		// Generate Hubs and Puffballs
+		for (int i = 0; i < (int)ir.elements.size(); ++i) {
+			const auto& e = ir.elements[i];
 			if (e.type == ProceduralElementType::Hub) {
-				GenerateUVSphere(vertices, indices, e.position, e.radius, e.color, 6, 6);
+				GenerateUVSphere(main_vertices, main_indices, e.position, e.radius, e.color, 6, 6);
 			} else if (e.type == ProceduralElementType::Puffball) {
-				GenerateUVSphere(vertices, indices, e.position, e.radius, e.color, 4, 4);
+				if (e.variant == 1)
+					GenerateUVSphere(
+						main_vertices,
+						main_indices,
+						e.position,
+						e.radius,
+						e.color,
+						8,
+						8,
+						glm::vec3(1.0f, 0.4f, 1.0f)
+					);
+				else
+					GenerateUVSphere(main_vertices, main_indices, e.position, e.radius, e.color, 4, 4);
 			}
 		}
 
-		// === PHASE 3: Optimize ===
-		auto& config_mgr = ConfigManager::GetInstance();
-		if (config_mgr.GetAppSettingBool("mesh_simplifier_enabled", false)) {
-			MeshOptimizerUtil::Simplify(vertices, indices, 0.05f, 0.5f, 40, data->model_path);
-		}
+		// 3. Generate Leaves
+		std::vector<Vertex>       leaf_vertices;
+		std::vector<unsigned int> leaf_indices;
+		auto AddLeafGeom = [&](glm::vec3 pos, glm::quat ori, float size, glm::vec3 color, int variant) {
+			unsigned int           base = (unsigned int)leaf_vertices.size();
+			std::vector<glm::vec3> pts;
+			if (variant == 1)
+				pts = {{0, 0, 0}, {0.1f, 0.5f, 0}, {0, 1.2f, 0}, {-0.1f, 0.5f, 0}};
+			else if (variant == 2)
+				pts = {
+					{0, 0, 0},
+					{0.4f, 0.2f, 0},
+					{0.2f, 0.4f, 0},
+					{0.5f, 0.6f, 0},
+					{0, 1.0f, 0},
+					{-0.5f, 0.6f, 0},
+					{-0.2f, 0.4f, 0},
+					{-0.4f, 0.2f, 0}
+				};
+			else if (variant == 3)
+				pts = {{0, 0, 0}, {0.4f, 0.4f, 0}, {0.2f, 0.8f, 0}, {0, 0.7f, 0}, {-0.2f, 0.8f, 0}, {-0.4f, 0.4f, 0}};
+			else
+				pts = {{0, 0, 0}, {0.3f, 0.5f, 0.1f}, {0, 1.0f, 0}, {-0.3f, 0.5f, -0.1f}};
 
-		std::vector<unsigned int> shadow_indices;
-		if (config_mgr.GetAppSettingBool("mesh_optimizer_enabled", true)) {
-			MeshOptimizerUtil::Optimize(vertices, indices, data->model_path);
-			if (config_mgr.GetAppSettingBool("mesh_optimizer_shadow_indices_enabled", true)) {
-				MeshOptimizerUtil::GenerateShadowIndices(vertices, indices, shadow_indices);
+			for (auto& p : pts) {
+				p = pos + ori * (p * size);
+				Vertex v;
+				v.Position = p;
+				v.Normal = ori * glm::vec3(0, 0, 1);
+				v.Color = color;
+				v.TexCoords = glm::vec2(0.5f);
+				leaf_vertices.push_back(v);
 			}
+			for (size_t i = 1; i < pts.size() - 1; ++i) {
+				leaf_indices.push_back(base);
+				leaf_indices.push_back(base + (unsigned int)i);
+				leaf_indices.push_back(base + (unsigned int)i + 1);
+				leaf_indices.push_back(base);
+				leaf_indices.push_back(base + (unsigned int)i + 1);
+				leaf_indices.push_back(base + (unsigned int)i);
+			}
+		};
+
+		for (const auto& e : ir.elements) {
+			if (e.type == ProceduralElementType::Leaf)
+				AddLeafGeom(e.position, e.orientation, e.radius, e.color, e.variant);
 		}
 
-		Boidsish::Mesh mesh_obj(vertices, indices, {}, shadow_indices);
-		mesh_obj.diffuseColor = {1, 1, 1};
-		data->meshes.push_back(mesh_obj);
+		// 4. Weighting, Repositioning, and AABB
+		if (ir.name == "critter") {
+			AssignBoneWeights(main_vertices, bone_segments);
+			AssignBoneWeights(leaf_vertices, bone_segments);
+		}
 
-		if (!vertices.empty()) {
-			glm::vec3 min = vertices[0].Position;
-			glm::vec3 max = vertices[0].Position;
-			for (const auto& v : vertices) {
-				min = glm::min(min, v.Position);
-				max = glm::max(max, v.Position);
+		// Calculate AABB and reposition
+		glm::vec3 min(1e10f), max(-1e10f);
+		bool      has_any = false;
+		auto      update_aabb = [&](const std::vector<Vertex>& verts) {
+            for (const auto& v : verts) {
+                min = glm::min(min, v.Position);
+                max = glm::max(max, v.Position);
+                has_any = true;
+            }
+		};
+		update_aabb(main_vertices);
+		update_aabb(leaf_vertices);
+
+		if (has_any) {
+			if (ir.name == "critter") {
+				float y_offset = -min.y;
+				for (auto& v : main_vertices)
+					v.Position.y += y_offset;
+				for (auto& v : leaf_vertices)
+					v.Position.y += y_offset;
+				max.y += y_offset;
+				min.y = 0;
+				for (auto& pair : data->bone_info_map)
+					pair.second.offset = pair.second.offset *
+						glm::translate(glm::mat4(1.0f), glm::vec3(0, -y_offset, 0));
 			}
 			data->aabb = AABB(min, max);
 		}
 
-		return data;
+		// 5. Finalize Meshes
+		auto finalize_mesh =
+			[&](std::vector<Vertex>& vertices, std::vector<unsigned int>& indices, bool use_simplifier) {
+				if (vertices.empty())
+					return;
+				auto& config = ConfigManager::GetInstance();
+				if (use_simplifier && config.GetAppSettingBool("mesh_simplifier_enabled", false))
+					MeshOptimizerUtil::Simplify(vertices, indices, 0.05f, 0.5f, 40, data->model_path);
+
+				std::vector<unsigned int> shadow_indices;
+				if (config.GetAppSettingBool("mesh_optimizer_enabled", true)) {
+					MeshOptimizerUtil::Optimize(vertices, indices, data->model_path);
+					if (config.GetAppSettingBool("mesh_optimizer_shadow_indices_enabled", true))
+						MeshOptimizerUtil::GenerateShadowIndices(vertices, indices, shadow_indices);
+				}
+				Mesh m(vertices, indices, {}, shadow_indices);
+				m.diffuseColor = {1, 1, 1};
+				m.has_vertex_colors = true;
+				data->meshes.push_back(m);
+			};
+
+		finalize_mesh(main_vertices, main_indices, true);
+		finalize_mesh(leaf_vertices, leaf_indices, false);
+
+		return std::make_shared<Model>(data, false);
+	}
+
+	std::shared_ptr<ModelData> ProceduralMesher::GenerateDirectMesh(const ProceduralIR& ir) {
+		// Redundant with GenerateModel but kept for interface compatibility if needed, though GenerateModel now does
+		// the heavy lifting
+		return nullptr;
 	}
 
 } // namespace Boidsish
