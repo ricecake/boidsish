@@ -31,6 +31,9 @@ uniform ivec2     u_hizSize;
 uniform int       u_hizMipCount;
 uniform bool      u_enableHiZ;
 
+#include "helpers/terrain_shadows.glsl"
+uniform vec3 u_lightDir; // From point to light
+
 bool isInFrustum(vec3 pos, float radius) {
 	for (int i = 0; i < 6; i++) {
 		if (dot(u_frustumPlanes[i].xyz, pos) + u_frustumPlanes[i].w < -radius) {
@@ -182,6 +185,12 @@ void main() {
 		float radius = 10.0; // Conservatively large radius for decor
 		if (isOccluded(pos, radius))
 			return;
+
+		// Terrain shadow culling: skip if entirely in terrain shadow
+		if (u_lightDir.y > 0.0) {
+			if (isPointInTerrainShadow(pos, u_lightDir))
+				return;
+		}
 
 		uint destIdx = atomicCounterIncrement(visibleCount);
 		visible_instances[destIdx] = inst;
