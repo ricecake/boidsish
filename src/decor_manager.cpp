@@ -548,7 +548,9 @@ namespace Boidsish {
 		int                             viewport_width,
 		int                             viewport_height,
 		const std::optional<glm::mat4>& light_space_matrix,
-		Shader*                         shader_override
+		Shader*                         shader_override,
+		const std::optional<glm::vec3>& light_dir,
+		std::shared_ptr<TerrainRenderManager> render_manager
 	) {
 		if (!enabled_ || !initialized_ || decor_types_.empty())
 			return;
@@ -572,6 +574,16 @@ namespace Boidsish {
 		culling_shader_->setMat4("u_viewProj", viewProj);
 		culling_shader_->setVec2("u_viewportSize", glm::vec2((float)viewport_width, (float)viewport_height));
 		culling_shader_->setFloat("u_minPixelSize", min_pixel_size_);
+
+		if (light_dir.has_value()) {
+			culling_shader_->setVec3("u_lightDir", *light_dir);
+		} else {
+			culling_shader_->setVec3("u_lightDir", 0, 0, 0);
+		}
+
+		if (render_manager) {
+			render_manager->BindTerrainData(*culling_shader_);
+		}
 
 		// Hi-Z occlusion culling uniforms
 		culling_shader_->setBool("u_enableHiZ", hiz_enabled_ && !is_shadow_pass);

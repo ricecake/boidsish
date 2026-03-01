@@ -1053,6 +1053,9 @@ namespace Boidsish {
 
 		void BindShadows(Shader& s) {
 			s.use();
+			if (terrain_render_manager) {
+				terrain_render_manager->BindTerrainData(s);
+			}
 			if (shadow_manager && shadow_manager->IsInitialized() && frame_config_.enable_shadows) {
 				shadow_manager->BindForRendering(s);
 				std::array<int, 10> shadow_indices;
@@ -1072,6 +1075,9 @@ namespace Boidsish {
 
 		void SetupShaderBindings(ShaderBase& shader_to_setup) {
 			shader_to_setup.use();
+			if (terrain_render_manager) {
+				terrain_render_manager->BindTerrainData(shader_to_setup);
+			}
 			shader_to_setup.setBool("uUseMDI", false);
 			shader_to_setup.setBool("useSSBOInstancing", false);
 			shader_to_setup.setBool("use_skinning", false);
@@ -3131,6 +3137,13 @@ namespace Boidsish {
 					(float)impl->width / (float)impl->height
 				);
 
+				glm::vec3 light_dir_to_light;
+				if (info.light->type == DIRECTIONAL_LIGHT) {
+					light_dir_to_light = glm::normalize(-info.light->direction);
+				} else {
+					light_dir_to_light = glm::normalize(info.light->position - scene_center);
+				}
+
 				impl->ExecuteRenderQueue(
 					impl->render_queue,
 					view, // Base view
@@ -3150,7 +3163,9 @@ namespace Boidsish {
 						ShadowManager::kShadowMapSize,
 						ShadowManager::kShadowMapSize,
 						impl->shadow_manager->GetLightSpaceMatrix(info.map_index),
-						impl->shadow_manager->GetShadowShaderPtr().get()
+						impl->shadow_manager->GetShadowShaderPtr().get(),
+						light_dir_to_light,
+						impl->terrain_render_manager
 					);
 				}
 
