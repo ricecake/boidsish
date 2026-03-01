@@ -56,7 +56,7 @@ namespace Boidsish {
 
 		void UpdateMovement(float delta_time);
 		void UpdateSkeleton(float delta_time);
-		void UpdateBalance();
+		void UpdateBalance(float delta_time);
 	};
 
 } // namespace Boidsish
