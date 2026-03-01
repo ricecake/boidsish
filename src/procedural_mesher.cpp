@@ -96,18 +96,19 @@ namespace Boidsish {
 					return a.dist < b.dist;
 				});
 
+				// Shorter falloff (squared distance) and fewer bones for better stability
 				float total_inv_dist = 0;
 				int   count = 0;
-				for (int i = 0; i < 4 && i < (int)candidates.size(); ++i) {
-					if (candidates[i].dist < 2.0f || i == 0) {
-						total_inv_dist += 1.0f / (candidates[i].dist + 0.001f);
-						count++;
-					}
+				for (int i = 0; i < 2 && i < (int)candidates.size(); ++i) {
+					float d2 = candidates[i].dist * candidates[i].dist;
+					total_inv_dist += 1.0f / (d2 + 0.0001f);
+					count++;
 				}
 
 				for (int i = 0; i < count; ++i) {
+					float d2 = candidates[i].dist * candidates[i].dist;
 					v.m_BoneIDs[i] = candidates[i].id;
-					v.m_Weights[i] = (1.0f / (candidates[i].dist + 0.001f)) / total_inv_dist;
+					v.m_Weights[i] = (1.0f / (d2 + 0.0001f)) / total_inv_dist;
 				}
 				for (int i = count; i < 4; ++i) {
 					v.m_BoneIDs[i] = -1;
@@ -318,7 +319,17 @@ namespace Boidsish {
 						bs.end = e.end_position;
 						bs.end.y += y_offset;
 						glm::vec3 dir = glm::normalize(bs.end - bs.start);
-						glm::vec3 up = (std::abs(dir.y) < 0.9f) ? glm::vec3(0, 1, 0) : glm::vec3(1, 0, 0);
+
+                        // Min-twist basis generation
+                        glm::vec3 up(0, 1, 0);
+                        if (bs.parent_bone != -1) {
+                            up = glm::vec3(bone_global_transforms[bs.parent_bone][2]); // Use parent's Up
+                        }
+
+                        if (std::abs(glm::dot(dir, up)) > 0.99f) {
+                            up = (std::abs(dir.y) < 0.9f) ? glm::vec3(0, 1, 0) : glm::vec3(1, 0, 0);
+                        }
+
 						glm::vec3 right = glm::normalize(glm::cross(up, dir));
 						up = glm::normalize(glm::cross(dir, right));
 
@@ -328,7 +339,12 @@ namespace Boidsish {
 						bone_to_model[3] = glm::vec4(bs.start, 1);
 					} else {
 						bs.end = bs.start;
-						bone_to_model = glm::translate(glm::mat4(1.0f), bs.start);
+                        if (bs.parent_bone != -1) {
+                            // Match parent orientation for Hubs
+                            bone_to_model = glm::translate(glm::mat4(1.0f), bs.start) * glm::mat4(glm::mat3(bone_global_transforms[bs.parent_bone]));
+                        } else {
+						    bone_to_model = glm::translate(glm::mat4(1.0f), bs.start);
+                        }
 					}
 
 					int bone_id = (int)bone_segments.size();

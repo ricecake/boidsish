@@ -1036,9 +1036,7 @@ namespace Boidsish {
 		std::string parentOfRoot = m_animator->GetBoneParentName(chain[0]);
 		if (!parentOfRoot.empty()) {
 			currentParentGlobal = m_animator->GetBoneModelSpaceTransform(parentOfRoot);
-		} else {
-            // Root bone of the whole model (e.g. "body") might have a transformation relative to identity
-        }
+		}
 
 		for (size_t i = 0; i < positions.size() - 1; ++i) {
 			glm::vec3 start = positions[i];
@@ -1054,21 +1052,49 @@ namespace Boidsish {
 
             glm::vec3 bindDir(0, 1, 0);
             if (node && childNode) {
-                // childNode->transformation is local to node.
-                // For tubes, it's often along the Y axis of the bone.
                 bindDir = glm::normalize(glm::vec3(childNode->transformation[3]));
             }
 
 			if (glm::any(glm::isnan(bindDir)) || glm::length(bindDir) < 0.001f)
 				bindDir = glm::vec3(0, 1, 0);
 
-			// Calculate new global rotation for this bone
-			glm::quat q = glm::rotation(bindDir, dir);
+			// Calculate new global orientation for this bone.
+            // We want 'bindDir' to point towards 'dir' while minimizing twist relative to parent.
 
-			if (glm::any(glm::isnan(q)))
-				q = glm::quat(1, 0, 0, 0);
+            // 1. Minimum rotation to align bindDir with dir
+            glm::quat q = glm::rotation(bindDir, dir);
+            if (glm::any(glm::isnan(q))) q = glm::quat(1, 0, 0, 0);
 
-			// New global transform for this bone (without scale)
+            // 2. Twist correction: minimize relative twist to bind pose
+            // Use parent orientation as a reference for 'up' to avoid sudden flips.
+
+            glm::vec3 bindRight = glm::vec3(node->transformation[0]);
+            if (glm::length(bindRight) < 0.001f) bindRight = glm::vec3(1, 0, 0);
+            else bindRight = glm::normalize(bindRight);
+
+            glm::vec3 parentRight = glm::vec3(currentParentGlobal[0]);
+            glm::vec3 targetRight = parentRight - glm::dot(parentRight, dir) * dir;
+            if (glm::length(targetRight) < 0.001f) {
+                glm::vec3 parentUp = glm::vec3(currentParentGlobal[1]);
+                targetRight = glm::cross(dir, parentUp);
+                if (glm::length(targetRight) < 0.001f) targetRight = glm::vec3(1, 0, 0);
+            }
+            targetRight = glm::normalize(targetRight);
+
+            glm::vec3 currentRight = glm::normalize(glm::vec3(glm::toMat4(q) * glm::vec4(bindRight, 0.0f)));
+
+            float dot = glm::clamp(glm::dot(currentRight, targetRight), -1.0f, 1.0f);
+            float twistAngle = std::acos(dot);
+            glm::vec3 cross = glm::cross(currentRight, targetRight);
+            if (glm::dot(cross, dir) < 0) twistAngle = -twistAngle;
+
+            const auto& constraint = GetBoneConstraint(chain[i]);
+            twistAngle = glm::clamp(glm::degrees(twistAngle), -constraint.maxTwistAngle, constraint.maxTwistAngle);
+
+            glm::quat twistQ = glm::angleAxis(glm::radians(twistAngle), dir);
+            q = twistQ * q;
+
+			// Final global transform for this bone
 			glm::mat4 newGlobal = glm::translate(glm::mat4(1.0f), start) * glm::toMat4(q);
 
 			// Convert to local relative to updated parent
