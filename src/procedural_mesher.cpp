@@ -99,7 +99,7 @@ namespace Boidsish {
 				// Shorter falloff (squared distance) and fewer bones for better stability
 				float total_inv_dist = 0;
 				int   count = 0;
-				for (int i = 0; i < 2 && i < (int)candidates.size(); ++i) {
+				for (int i = 0; i < 4 && i < (int)candidates.size(); ++i) {
 					float d2 = candidates[i].dist * candidates[i].dist;
 					total_inv_dist += 1.0f / (d2 + 0.0001f);
 					count++;

@@ -49,17 +49,10 @@ namespace Boidsish {
 
 		glm::vec3 target_pos_;
 		glm::vec3 camera_pos_;
-		glm::vec3 current_head_dir_;
 
 		Light spotlight_;
-		float light_change_timer_ = 0.0f;
 
 		bool  is_walking_ = false;
-		float walk_phi_ = 0.0f;
-
-		float     look_timer_ = 0.0f;
-		glm::vec3 look_target_pos_;
-		bool      is_looking_at_camera_ = true;
 
 		void UpdateMovement(float delta_time);
 		void UpdateSkeleton(float delta_time);
