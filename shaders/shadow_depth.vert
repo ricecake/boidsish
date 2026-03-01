@@ -3,6 +3,8 @@
 #extension GL_GOOGLE_include_directive : enable
 
 layout(location = 0) in vec3 aPos;
+layout(location = 9) in ivec4 aBoneIDs;
+layout(location = 10) in vec4 aWeights;
 
 #include "common_uniforms.glsl"
 
@@ -13,6 +15,11 @@ layout(std430, binding = 2) buffer UniformsSSBO {
 // SSBO for decor/foliage instancing (binding 10)
 layout(std430, binding = 10) buffer SSBOInstances {
 	mat4 ssboInstanceMatrices[];
+};
+
+// SSBO for bone matrices (binding 12)
+layout(std430, binding = 12) buffer BoneMatricesSSBO {
+	mat4 boneMatrices[];
 };
 
 #include "helpers/fast_noise.glsl"
@@ -26,6 +33,9 @@ uniform bool uUseMDI = false;
 uniform bool useSSBOInstancing = false;
 uniform mat4 lightSpaceMatrix;
 uniform mat4 model;
+uniform mat4 finalBonesMatrices[100];
+uniform bool use_skinning = false;
+uniform int  bone_matrices_offset = -1;
 
 uniform vec3  u_aabbMin;
 uniform vec3  u_aabbMax;
@@ -51,6 +61,8 @@ void main() {
 	mat4 current_model = use_ssbo ? uniforms_data[vUniformIndex].model : model;
 	bool current_useSSBOInstancing = use_ssbo ? (uniforms_data[vUniformIndex].use_ssbo_instancing != 0)
 											  : useSSBOInstancing;
+	bool current_use_skinning = use_ssbo ? (uniforms_data[vUniformIndex].use_skinning != 0) : use_skinning;
+	int  current_bone_offset = use_ssbo ? uniforms_data[vUniformIndex].bone_matrices_offset : bone_matrices_offset;
 
 	mat4 modelMatrix;
 	if (current_useSSBOInstancing) {
@@ -59,7 +71,30 @@ void main() {
 		modelMatrix = current_model;
 	}
 
-	vec3 worldPos = vec3(modelMatrix * vec4(aPos, 1.0));
+	vec3 displacedPos = aPos;
+	if (current_use_skinning) {
+		vec4  totalPosition = vec4(0.0);
+		float totalWeight = 0.0;
+		for (int i = 0; i < 4; i++) {
+			if (aBoneIDs[i] < 0 || aBoneIDs[i] >= 100)
+				continue;
+
+			mat4 boneMatrix;
+			if (use_ssbo && current_bone_offset >= 0) {
+				boneMatrix = boneMatrices[current_bone_offset + aBoneIDs[i]];
+			} else {
+				boneMatrix = finalBonesMatrices[aBoneIDs[i]];
+			}
+
+			totalPosition += (boneMatrix * vec4(aPos, 1.0)) * aWeights[i];
+			totalWeight += aWeights[i];
+		}
+		if (totalWeight > 0.001) {
+			displacedPos = totalPosition.xyz / totalWeight;
+		}
+	}
+
+	vec3 worldPos = vec3(modelMatrix * vec4(displacedPos, 1.0));
 	FragPos = worldPos;
 
 	// Apply sway for decor (matches vis.vert logic)

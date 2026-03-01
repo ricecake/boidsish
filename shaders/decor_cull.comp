@@ -24,6 +24,13 @@ uniform float u_minPixelSize;
 uniform vec3  u_aabbMin;
 uniform vec3  u_aabbMax;
 
+// Hi-Z occlusion culling uniforms
+uniform sampler2D u_hizTexture;
+uniform mat4      u_prevViewProjection;
+uniform ivec2     u_hizSize;
+uniform int       u_hizMipCount;
+uniform bool      u_enableHiZ;
+
 bool isInFrustum(vec3 pos, float radius) {
 	for (int i = 0; i < 6; i++) {
 		if (dot(u_frustumPlanes[i].xyz, pos) + u_frustumPlanes[i].w < -radius) {
@@ -42,6 +49,83 @@ bool isAABBInFrustum(mat4 modelMatrix, vec3 aabbMin, vec3 aabbMax) {
 	float radius = length(extent * mat3(modelMatrix)); // Approximate world radius
 
 	return isInFrustum(worldCenter, radius);
+}
+
+bool isOccluded(vec3 pos, float radius) {
+	if (!u_enableHiZ)
+		return false;
+
+	// Conservative AABB from sphere
+	vec3 aabbMin = pos - vec3(radius);
+	vec3 aabbMax = pos + vec3(radius);
+
+	// Project 8 corners into previous frame clip space
+	vec2  minScreen = vec2(1e30);
+	vec2  maxScreen = vec2(-1e30);
+	float nearestDepth = 1.0;
+	int   cornersInFront = 0;
+
+	for (int i = 0; i < 8; i++) {
+		vec3 corner = vec3(
+			(i & 1) != 0 ? aabbMax.x : aabbMin.x,
+			(i & 2) != 0 ? aabbMax.y : aabbMin.y,
+			(i & 4) != 0 ? aabbMax.z : aabbMin.z
+		);
+		vec4 clip = u_prevViewProjection * vec4(corner, 1.0);
+
+		if (clip.w <= 0.0)
+			continue;
+
+		cornersInFront++;
+		vec3 ndc = clip.xyz / clip.w;
+		vec2 uv = ndc.xy * 0.5 + 0.5;
+
+		minScreen = min(minScreen, uv);
+		maxScreen = max(maxScreen, uv);
+		nearestDepth = min(nearestDepth, ndc.z * 0.5 + 0.5);
+	}
+
+	if (cornersInFront == 0)
+		return false;
+
+	if (cornersInFront < 8) {
+		// Straddling near plane - conservatively keep visible
+		return false;
+	}
+
+	// If the object was entirely off-screen in the previous frame,
+	// the Hi-Z has no valid data for it - conservatively keep visible
+	if (maxScreen.x < 0.0 || minScreen.x > 1.0 || maxScreen.y < 0.0 || minScreen.y > 1.0) {
+		return false;
+	}
+
+	// Apply small expansion for temporal safety
+	vec2 expand = 4.0 / vec2(u_hizSize);
+	minScreen -= expand;
+	maxScreen += expand;
+
+	vec2 screenSize = maxScreen - minScreen;
+	if (screenSize.x * screenSize.y > 0.5)
+		return false;
+
+	vec2  pixelSize = screenSize * vec2(u_hizSize);
+	float maxPixelDim = max(pixelSize.x, pixelSize.y);
+	int   mipLevel = clamp(int(ceil(log2(max(maxPixelDim, 1.0) / 2.0))), 0, u_hizMipCount - 1);
+
+	vec4 rect = clamp(vec4(minScreen, maxScreen), 0.0, 1.0);
+
+	float hizDepth = 0.0;
+	hizDepth = max(hizDepth, textureLod(u_hizTexture, rect.xy, float(mipLevel)).r);
+	hizDepth = max(hizDepth, textureLod(u_hizTexture, rect.zy, float(mipLevel)).r);
+	hizDepth = max(hizDepth, textureLod(u_hizTexture, rect.xw, float(mipLevel)).r);
+	hizDepth = max(hizDepth, textureLod(u_hizTexture, rect.zw, float(mipLevel)).r);
+
+	// If Hi-Z reads as zero/near-zero, the data is invalid (uninitialized or
+	// stale due to a memory barrier issue). Conservatively keep the object visible.
+	if (hizDepth < 0.0001)
+		return false;
+
+	return nearestDepth > hizDepth;
 }
 
 void main() {
@@ -92,6 +176,12 @@ void main() {
 				return;
 			}
 		}
+
+		// Hi-Z occlusion check using instance world position and conservative radius
+		vec3  pos = inst.model[3].xyz;
+		float radius = 10.0; // Conservatively large radius for decor
+		if (isOccluded(pos, radius))
+			return;
 
 		uint destIdx = atomicCounterIncrement(visibleCount);
 		visible_instances[destIdx] = inst;

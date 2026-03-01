@@ -22,8 +22,10 @@ void main() {
             vec2 uv = TexCoords + vec2(float(x), float(y)) * texelSize;
             float sampleDepth = texture(depthTexture, uv).r;
 
-            // Weight based on depth similarity
-            float weight = 1.0 / (0.0001 + abs(depth - sampleDepth) * 1000.0);
+            // Weight based on depth similarity and spatial distance
+            float spatialWeight = exp(-(x*x + y*y) * 0.5);
+            float depthWeight = exp(-abs(depth - sampleDepth) * 5000.0);
+            float weight = spatialWeight * depthWeight;
 
             cloudColor += texture(cloudTexture, uv) * weight;
             totalWeight += weight;

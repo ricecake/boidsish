@@ -5,10 +5,12 @@
 #include <iostream>
 #include <limits>
 
+#include "animator.h"
 #include "asset_manager.h"
 #include "logger.h"
 #include "shader.h"
 #include <GL/glew.h>
+#include <GLFW/glfw3.h>
 #include <glm/gtc/matrix_transform.hpp>
 
 namespace Boidsish {
@@ -76,6 +78,11 @@ namespace Boidsish {
 		if (VAO != 0)
 			return;
 
+		// Safety check for OpenGL context - skip setup if no context is available (e.g. in tests)
+		if (glfwGetCurrentContext() == nullptr) {
+			return;
+		}
+
 		glGenVertexArrays(1, &VAO);
 		glGenBuffers(1, &VBO);
 		glGenBuffers(1, &EBO);
@@ -108,6 +115,14 @@ namespace Boidsish {
 		// Vertex Color
 		glEnableVertexAttribArray(8);
 		glVertexAttribPointer(8, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)offsetof(Vertex, Color));
+
+		// Bone IDs
+		glEnableVertexAttribArray(9);
+		glVertexAttribIPointer(9, 4, GL_INT, sizeof(Vertex), (void*)offsetof(Vertex, m_BoneIDs));
+
+		// Bone Weights
+		glEnableVertexAttribArray(10);
+		glVertexAttribPointer(10, 4, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)offsetof(Vertex, m_Weights));
 
 		glBindVertexArray(0);
 	}
@@ -323,9 +338,18 @@ namespace Boidsish {
 	// Model implementation
 	Model::Model(const std::string& path, bool no_cull): no_cull_(no_cull) {
 		m_data = AssetManager::GetInstance().GetModelData(path);
+		if (m_data) {
+			m_animator = std::make_unique<Animator>(m_data);
+		}
 	}
 
-	Model::Model(std::shared_ptr<ModelData> data, bool no_cull): Shape(), m_data(data), no_cull_(no_cull) {}
+	Model::Model(std::shared_ptr<ModelData> data, bool no_cull): Shape(), m_data(data), no_cull_(no_cull) {
+		if (m_data) {
+			m_animator = std::make_unique<Animator>(m_data);
+		}
+	}
+
+	Model::~Model() = default;
 
 	void Model::PrepareResources(Megabuffer* mb) const {
 		if (!m_data || !mb)
@@ -369,6 +393,20 @@ namespace Boidsish {
 
 		if (this->no_cull_) {
 			glDisable(GL_CULL_FACE);
+		}
+
+		if (m_animator && !m_data->bone_info_map.empty()) {
+			shader.setBool("use_skinning", true);
+			// For non-MDI rendering, we upload bones to a uniform array if the shader supports it,
+			// or the caller must have set up the SSBO and bone_matrices_offset.
+			// To keep it simple and compatible with existing shaders, we'll use uniforms here if needed.
+			const auto& boneMatrices = m_animator->GetFinalBoneMatrices();
+			for (size_t i = 0; i < boneMatrices.size() && i < 100; i++) {
+				std::string name = "finalBonesMatrices[" + std::to_string(i) + "]";
+				shader.setMat4(name.c_str(), boneMatrices[i]);
+			}
+		} else {
+			shader.setBool("use_skinning", false);
 		}
 
 		if (dissolve_enabled_) {
@@ -461,13 +499,40 @@ namespace Boidsish {
 			packet.uniforms.roughness = GetRoughness();
 			packet.uniforms.metallic = GetMetallic();
 			packet.uniforms.ao = GetAO();
-			packet.uniforms.use_texture = !mesh.textures.empty();
+
+			bool has_diffuse = false;
+			for (const auto& tex : mesh.textures) {
+				if (tex.type == "texture_diffuse") {
+					has_diffuse = true;
+					break;
+				}
+			}
+
+			packet.uniforms.use_texture = has_diffuse ? 1 : 0;
 			packet.uniforms.is_colossal = IsColossal();
-			packet.uniforms.use_vertex_color = 1;
+			packet.uniforms.use_vertex_color = (mesh.has_vertex_colors && !has_diffuse) ? 1 : 0;
 
 			packet.uniforms.dissolve_enabled = dissolve_enabled_ ? 1 : 0;
 			packet.uniforms.dissolve_plane_normal = dissolve_plane_normal_;
 			packet.uniforms.dissolve_plane_dist = actual_dissolve_dist;
+
+			if (m_animator && !m_data->bone_info_map.empty()) {
+				packet.uniforms.use_skinning = 1;
+				packet.bone_matrices = m_animator->GetFinalBoneMatrices();
+			}
+			// Occlusion culling AABB with velocity expansion
+			AABB      meshAABB = m_data->aabb.Transform(model_matrix);
+			glm::vec3 velocity = world_pos - GetLastPosition();
+			if (glm::dot(velocity, velocity) > 0.001f) {
+				meshAABB.min = glm::min(meshAABB.min, meshAABB.min - velocity);
+				meshAABB.max = glm::max(meshAABB.max, meshAABB.max + velocity);
+			}
+			packet.uniforms.aabb_min_x = meshAABB.min.x;
+			packet.uniforms.aabb_min_y = meshAABB.min.y;
+			packet.uniforms.aabb_min_z = meshAABB.min.z;
+			packet.uniforms.aabb_max_x = meshAABB.max.x;
+			packet.uniforms.aabb_max_y = meshAABB.max.y;
+			packet.uniforms.aabb_max_z = meshAABB.max.z;
 
 			packet.casts_shadows = CastsShadows();
 
@@ -557,6 +622,25 @@ namespace Boidsish {
 		use_dissolve_sweep_ = true;
 		dissolve_enabled_ = true;
 		MarkDirty();
+	}
+
+	void Model::SetAnimation(int index) {
+		if (m_animator) {
+			m_animator->PlayAnimation(index);
+		}
+	}
+
+	void Model::SetAnimation(const std::string& name) {
+		if (m_animator) {
+			m_animator->PlayAnimation(name);
+		}
+	}
+
+	void Model::UpdateAnimation(float dt) {
+		if (m_animator) {
+			m_animator->UpdateAnimation(dt);
+			MarkDirty();
+		}
 	}
 
 	unsigned int Model::TextureFromFile(const char* path, const std::string& directory, bool /* gamma */) {

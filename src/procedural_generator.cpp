@@ -5,13 +5,31 @@
 
 #include "ConfigManager.h"
 #include "mesh_optimizer_util.h"
+#include "procedural_mesher.h"
+#include "procedural_optimizer.h"
 #include "spline.h"
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/quaternion.hpp>
+#include <glm/gtx/norm.hpp>
 
 namespace Boidsish {
 
 	namespace {
+		struct SCNode {
+			int              id;
+			int              parentId;
+			glm::vec3        pos;
+			float            radius = 0.1f;
+			std::vector<int> children;
+			glm::vec3        growthDir = {0, 0, 0};
+			int              attractorCount = 0;
+		};
+
+		struct SCAttractor {
+			glm::vec3 pos;
+			bool      active = true;
+		};
+
 		struct LSystem {
 			std::string                 axiom;
 			std::map<char, std::string> rules;
@@ -25,12 +43,27 @@ namespace Boidsish {
 							next += rules.at(c);
 						else
 							next += c;
+					if (next.length() > 10000)
+						break;
 					}
 					current = next;
+				if (current.length() > 10000)
+					break;
 				}
 				return current;
 			}
 		};
+
+		std::map<char, std::string> ParseRules(const std::vector<std::string>& ruleStrings) {
+			std::map<char, std::string> rules;
+			for (const auto& rule : ruleStrings) {
+				size_t pos = rule.find('=');
+				if (pos != std::string::npos && pos > 0) {
+					rules[rule[0]] = rule.substr(pos + 1);
+				}
+			}
+			return rules;
+		}
 
 		void AddPuffball(
 			std::vector<Vertex>&       vertices,
@@ -38,12 +71,13 @@ namespace Boidsish {
 			glm::vec3                  center,
 			float                      radius,
 			glm::vec3                  color,
-			std::mt19937&              gen
+			std::mt19937&              gen,
+			glm::vec3                  scale = glm::vec3(1.0f)
 		) {
-			std::uniform_real_distribution<float> dis(-0.1f * radius, 0.1f * radius);
+			std::uniform_real_distribution<float> dis(-0.05f * radius, 0.05f * radius);
 			unsigned int                          base = vertices.size();
-			const int                             lat_segments = 8;
-			const int                             lon_segments = 8;
+			const int                             lat_segments = 4;
+			const int                             lon_segments = 4;
 
 			for (int lat = 0; lat <= lat_segments; ++lat) {
 				float theta = lat * (float)std::numbers::pi / lat_segments;
@@ -58,7 +92,7 @@ namespace Boidsish {
 					glm::vec3 jitter(dis(gen), dis(gen), dis(gen));
 
 					Vertex v;
-					v.Position = center + (normal * radius) + jitter;
+					v.Position = center + (normal * radius * scale);
 					v.Normal = normal;
 					v.Color = color;
 					v.TexCoords = glm::vec2((float)lon / lon_segments, (float)lat / lat_segments);
@@ -88,12 +122,20 @@ namespace Boidsish {
 			glm::vec3                  pos,
 			glm::quat                  ori,
 			float                      size,
-			glm::vec3                  color
+			glm::vec3                  color,
+			bool                       arrowhead = false
 		) {
 			unsigned int base = vertices.size();
+			unsigned int start_indices = static_cast<unsigned int>(indices.size());
 
-			// More rounded leaf shape (diamond with midpoints)
-			std::vector<glm::vec3> pts = {{0, 0, 0}, {0.3f, 0.5f, 0.1f}, {0, 1.0f, 0}, {-0.3f, 0.5f, -0.1f}};
+			std::vector<glm::vec3> pts;
+			if (arrowhead) {
+				// Arrowhead shape with a slight notch
+				pts = {{0, 0, 0}, {0.5f, 0.1f, 0}, {0, 1.0f, 0}, {-0.5f, 0.1f, 0}, {0, 0.2f, 0}};
+			} else {
+				// More rounded leaf shape (diamond with midpoints)
+				pts = {{0, 0, 0}, {0.3f, 0.5f, 0.1f}, {0, 1.0f, 0}, {-0.3f, 0.5f, -0.1f}};
+			}
 
 			for (auto& p : pts) {
 				p = pos + ori * (p * size);
@@ -105,20 +147,46 @@ namespace Boidsish {
 				vertices.push_back(v);
 			}
 
-			indices.push_back(base);
-			indices.push_back(base + 1);
-			indices.push_back(base + 2);
-			indices.push_back(base);
-			indices.push_back(base + 2);
-			indices.push_back(base + 3);
+			if (arrowhead) {
+				indices.push_back(base + 0);
+				indices.push_back(base + 1);
+				indices.push_back(base + 4);
 
-			// Double sided
-			indices.push_back(base);
-			indices.push_back(base + 2);
-			indices.push_back(base + 1);
-			indices.push_back(base);
-			indices.push_back(base + 3);
-			indices.push_back(base + 2);
+				indices.push_back(base + 1);
+				indices.push_back(base + 2);
+				indices.push_back(base + 4);
+
+				indices.push_back(base + 2);
+				indices.push_back(base + 3);
+				indices.push_back(base + 4);
+
+				indices.push_back(base + 3);
+				indices.push_back(base + 0);
+				indices.push_back(base + 4);
+
+				// Double sided (only for current triangles)
+				size_t cur_indices = indices.size();
+				for (size_t i = start_indices; i < cur_indices; i += 3) {
+					indices.push_back(indices[i + 2]);
+					indices.push_back(indices[i + 1]);
+					indices.push_back(indices[i]);
+				}
+			} else {
+				indices.push_back(base);
+				indices.push_back(base + 1);
+				indices.push_back(base + 2);
+				indices.push_back(base);
+				indices.push_back(base + 2);
+				indices.push_back(base + 3);
+
+				// Double sided
+				indices.push_back(base);
+				indices.push_back(base + 2);
+				indices.push_back(base + 1);
+				indices.push_back(base);
+				indices.push_back(base + 3);
+				indices.push_back(base + 2);
+			}
 		}
 
 		void AddSplineTube(
@@ -126,7 +194,9 @@ namespace Boidsish {
 			std::vector<unsigned int>&    indices,
 			const std::vector<glm::vec3>& pts,
 			const std::vector<float>&     radii,
-			const std::vector<glm::vec3>& colors
+			const std::vector<glm::vec3>& colors,
+			int                           curve_segments = 10,
+			int                           cylinder_segments = 12
 		) {
 			if (pts.size() < 2)
 				return;
@@ -143,7 +213,8 @@ namespace Boidsish {
 				s_colors.push_back(colors[i]);
 			}
 
-			auto v_data = Spline::GenerateTube(s_pts, s_ups, s_sizes, s_colors, false);
+			auto v_data =
+				Spline::GenerateTube(s_pts, s_ups, s_sizes, s_colors, false, curve_segments, cylinder_segments);
 
 			unsigned int base = vertices.size();
 			for (const auto& vd : v_data) {
@@ -159,7 +230,68 @@ namespace Boidsish {
 				indices.push_back(base + i);
 			}
 		}
+
+		void WeldVertices(std::vector<Vertex>& vertices, std::vector<unsigned int>& indices) {
+			if (vertices.empty() || indices.empty())
+				return;
+
+			std::vector<Vertex>            new_vertices;
+			std::vector<unsigned int>      new_indices;
+			std::map<size_t, unsigned int> vertex_map;
+
+			auto hash_vertex = [](const Vertex& v) {
+				size_t h1 = std::hash<float>{}(std::round(v.Position.x * 1000.0f));
+				size_t h2 = std::hash<float>{}(std::round(v.Position.y * 1000.0f));
+				size_t h3 = std::hash<float>{}(std::round(v.Position.z * 1000.0f));
+				return h1 ^ (h2 << 1) ^ (h3 << 2);
+			};
+
+			new_indices.reserve(indices.size());
+
+			for (unsigned int idx : indices) {
+				const Vertex& v = vertices[idx];
+				size_t        h = hash_vertex(v);
+
+				if (vertex_map.find(h) == vertex_map.end()) {
+					vertex_map[h] = static_cast<unsigned int>(new_vertices.size());
+					new_vertices.push_back(v);
+				}
+				new_indices.push_back(vertex_map[h]);
+			}
+
+			vertices = std::move(new_vertices);
+			indices = std::move(new_indices);
+		}
 	} // namespace
+
+	std::shared_ptr<Model> ProceduralGenerator::Generate(ProceduralType type, unsigned int seed) {
+		ProceduralIR ir;
+
+		switch (type) {
+		case ProceduralType::Rock:
+			return GenerateRock(seed);
+		case ProceduralType::Grass:
+			ir = GenerateGrassIR(seed);
+			break;
+		case ProceduralType::Flower:
+			ir = GenerateFlowerIR(seed);
+			break;
+		case ProceduralType::Tree:
+			ir = GenerateTreeIR(seed);
+			break;
+		case ProceduralType::TreeSpaceColonization:
+			ir = GenerateSpaceColonizationTreeIR(seed);
+			break;
+		case ProceduralType::Critter:
+			ir = GenerateCritterIR(seed);
+			break;
+		default:
+			return nullptr;
+		}
+
+		ProceduralOptimizer::Optimize(ir);
+		return ProceduralMesher::GenerateModel(ir);
+	}
 
 	std::shared_ptr<Model> ProceduralGenerator::GenerateRock(unsigned int seed) {
 		std::mt19937                          gen(seed);
@@ -205,12 +337,12 @@ namespace Boidsish {
 		return std::make_shared<Model>(CreateModelDataFromGeometry(vertices, indices, glm::vec3(1.0f)));
 	}
 
-	std::shared_ptr<Model> ProceduralGenerator::GenerateGrass(unsigned int seed) {
+	ProceduralIR ProceduralGenerator::GenerateGrassIR(unsigned int seed) {
 		std::mt19937                          gen(seed);
 		std::uniform_real_distribution<float> dis(-0.1f, 0.1f);
 
-		std::vector<Vertex>       vertices;
-		std::vector<unsigned int> indices;
+		ProceduralIR ir;
+		ir.name = "grass";
 
 		const int num_blades = 5;
 		for (int i = 0; i < num_blades; ++i) {
@@ -218,161 +350,531 @@ namespace Boidsish {
 			float s = std::sin(angle);
 			float c = std::cos(angle);
 
-			std::vector<glm::vec3> pts;
-			std::vector<float>     radii;
-			std::vector<glm::vec3> colors;
-
 			glm::vec3 basePos(c * 0.1f, 0, s * 0.1f);
 			glm::vec3 grassCol(0.1f, 0.5f + dis(gen), 0.1f);
 
-			pts.push_back(basePos);
-			radii.push_back(0.05f);
-			colors.push_back(grassCol);
+			glm::vec3 p1 = basePos;
+			float     r1 = 0.05f;
+			glm::vec3 c1 = grassCol;
 
-			pts.push_back(basePos + glm::vec3(dis(gen), 0.5f, dis(gen)));
-			radii.push_back(0.03f);
-			colors.push_back(grassCol * 1.2f);
+			glm::vec3 p2 = basePos + glm::vec3(dis(gen), 0.5f, dis(gen));
+			float     r2 = 0.03f;
+			glm::vec3 c2 = grassCol * 1.2f;
 
-			pts.push_back(basePos + glm::vec3(dis(gen) * 2.0f, 1.0f, dis(gen) * 2.0f));
-			radii.push_back(0.005f);
-			colors.push_back(grassCol * 1.5f);
+			glm::vec3 p3 = basePos + glm::vec3(dis(gen) * 2.0f, 1.0f, dis(gen) * 2.0f);
+			float     r3 = 0.005f;
+			glm::vec3 c3 = grassCol * 1.5f;
 
-			AddSplineTube(vertices, indices, pts, radii, colors);
+			int id1 = ir.AddTube(p1, p2, r1, r2, c1);
+			ir.AddTube(p2, p3, r2, r3, c2, id1);
 		}
 
-		return std::make_shared<Model>(CreateModelDataFromGeometry(vertices, indices, glm::vec3(1.0f)));
+		return ir;
 	}
 
-	std::shared_ptr<Model> ProceduralGenerator::GenerateFlower(unsigned int seed) {
+	std::shared_ptr<Model> ProceduralGenerator::GenerateGrass(unsigned int seed) {
+		auto ir = GenerateGrassIR(seed);
+		ProceduralOptimizer::Optimize(ir);
+		return ProceduralMesher::GenerateModel(ir);
+	}
+
+	ProceduralIR ProceduralGenerator::GenerateFlowerIR(
+		unsigned int                    seed,
+		const std::string&              custom_axiom,
+		const std::vector<std::string>& custom_rules,
+		int                             iterations
+	) {
 		std::mt19937                          gen(seed);
 		std::uniform_real_distribution<float> dis(-0.1f, 0.1f);
 
-		std::vector<Vertex>       vertices;
-		std::vector<unsigned int> indices;
+		ProceduralIR ir;
+		ir.name = "flower";
 
 		LSystem lsys;
-		lsys.axiom = "F";
-		// lsys.rules['F'] = "F[+F][-F]";
-		lsys.rules['F'] = "FF-[+F+F]";
-		lsys.rules['X'] = "F-[[X]+X]+F[+FX]-X";
+		if (custom_axiom.empty()) {
+			int ruleset = seed % 2;
+			if (ruleset == 0) {
+				lsys.axiom = "F";
+				lsys.rules['F'] = "FF-[+F+F]";
+			} else {
+				lsys.axiom = "F";
+				lsys.rules['F'] = "F[+F]F[-F]F";
+			}
+		} else {
+			lsys.axiom = custom_axiom;
+			lsys.rules = ParseRules(custom_rules);
+		}
 
-		std::string expanded = lsys.expand(2);
+		std::string expanded = lsys.expand(iterations);
 
-		std::stack<TurtleState> stack;
-		TurtleState             current = {glm::vec3(0, 0, 0), glm::quat(1, 0, 0, 0), 0.04f};
-		float                   angle = 0.5f;
-		float                   step = 0.4f;
+		struct TurtleStateIR {
+			glm::vec3 position;
+			glm::quat orientation;
+			float     thickness;
+			int       last_node_idx;
+			glm::vec3 color;
+			int       color_idx;
+			int       variant;
+		};
 
-		glm::vec3 stemCol(0.2f, 0.6f, 0.2f);
-		glm::vec3 petalCol(0.9f + dis(gen), 0.2f + dis(gen), 0.4f + dis(gen));
+		std::vector<glm::vec3> palette = {
+			{0.2f, 0.6f, 0.2f}, // Green (stem)
+			{0.9f, 0.2f, 0.4f}, // Red/Pink
+			{0.9f, 0.9f, 0.2f}, // Yellow
+			{0.2f, 0.4f, 0.9f}, // Blue
+			{0.6f, 0.2f, 0.8f}, // Purple
+			{0.9f, 0.5f, 0.1f}  // Orange
+		};
+
+		std::stack<TurtleStateIR> stack;
+		TurtleStateIR             current = {glm::vec3(0, 0, 0), glm::quat(1, 0, 0, 0), 0.04f, -1, palette[0], 0, 0};
+		float                     angle = 0.5f;
+		float                     step = 0.4f;
 
 		for (char c : expanded) {
 			if (c == 'F') {
-				std::vector<glm::vec3> pts = {current.position};
-				std::vector<float>     radii = {current.thickness};
-				std::vector<glm::vec3> colors = {stemCol};
-
-				current.position += current.orientation * glm::vec3(0, step, 0);
-				pts.push_back(current.position);
-				current.thickness *= 0.85f;
-				radii.push_back(current.thickness);
-				colors.push_back(stemCol);
-
-				AddSplineTube(vertices, indices, pts, radii, colors);
-			} else if (c == '+') {
-				current.orientation = current.orientation * glm::angleAxis(angle + dis(gen), glm::vec3(1, 0, 0));
-			} else if (c == '-') {
-				current.orientation = current.orientation * glm::angleAxis(-angle + dis(gen), glm::vec3(1, 0, 0));
-			} else if (c == '&') { // Pitch
-				current.orientation = current.orientation * glm::angleAxis(angle, glm::vec3(0, 0, 1));
-			} else if (c == '^') {
-				current.orientation = current.orientation * glm::angleAxis(-angle, glm::vec3(0, 0, 1));
-			} else if (c == '\\') { // Roll
-				current.orientation = current.orientation * glm::angleAxis(angle, glm::vec3(0, 1, 0));
-			} else if (c == '/') {
-				current.orientation = current.orientation * glm::angleAxis(-angle, glm::vec3(0, 1, 0));
+				glm::vec3 next_pos = current.position + current.orientation * glm::vec3(0, step, 0);
+				float     next_thickness = current.thickness * 0.85f;
+				int       id = ir.AddTube(
+                    current.position,
+                    next_pos,
+                    current.thickness,
+                    next_thickness,
+                    current.color,
+                    current.last_node_idx
+                );
+				current.position = next_pos;
+				current.thickness = next_thickness;
+				current.last_node_idx = id;
+			} else if (c == 'L') {
+				ir.AddLeaf(
+					current.position,
+					current.orientation,
+					0.3f,
+					current.color,
+					current.variant,
+					current.last_node_idx
+				);
+			} else if (c == 'P') {
+				ir.AddPuffball(current.position, 0.15f, current.color, 0, current.last_node_idx);
+			} else if (c == 'B') {
+				ir.AddPuffball(current.position, 0.15f, current.color, 1, current.last_node_idx);
+			} else if (c == '\'') {
+				current.color_idx = (current.color_idx + 1) % palette.size();
+				current.color = palette[current.color_idx];
+			} else if (c == '!') {
+				current.thickness *= 0.8f;
+			} else if (isdigit(c)) {
+				current.variant = c - '0';
+			} else if (c == '+' || c == '-' || c == '&' || c == '^' || c == '\\' || c == '/') {
+				if (c == '+')
+					current.orientation = current.orientation * glm::angleAxis(angle + dis(gen), glm::vec3(1, 0, 0));
+				else if (c == '-')
+					current.orientation = current.orientation * glm::angleAxis(-angle + dis(gen), glm::vec3(1, 0, 0));
+				else if (c == '&')
+					current.orientation = current.orientation * glm::angleAxis(angle, glm::vec3(0, 0, 1));
+				else if (c == '^')
+					current.orientation = current.orientation * glm::angleAxis(-angle, glm::vec3(0, 0, 1));
+				else if (c == '\\')
+					current.orientation = current.orientation * glm::angleAxis(angle, glm::vec3(0, 1, 0));
+				else if (c == '/')
+					current.orientation = current.orientation * glm::angleAxis(-angle, glm::vec3(0, 1, 0));
 			} else if (c == '[') {
 				stack.push(current);
 			} else if (c == ']') {
-				// Flower head
-				AddPuffball(vertices, indices, current.position, 0.15f, glm::vec3(1.0f, 0.9f, 0.2f), gen);
-				for (int i = 0; i < 6; ++i) {
-					glm::quat petalOri = current.orientation * glm::angleAxis(i * 1.04f, glm::vec3(0, 1, 0));
-					petalOri = petalOri * glm::angleAxis(1.0f, glm::vec3(1, 0, 0));
-					AddLeaf(vertices, indices, current.position, petalOri, 0.3f, petalCol);
+				// Legacy flower head if it was just an empty branch ending
+				if (custom_axiom.empty()) {
+					ir.AddPuffball(current.position, 0.15f, glm::vec3(1.0f, 0.9f, 0.2f), 1, current.last_node_idx);
+					for (int i = 0; i < 6; ++i) {
+						glm::quat petalOri = current.orientation * glm::angleAxis(i * 1.04f, glm::vec3(0, 1, 0));
+						petalOri = petalOri * glm::angleAxis(1.0f, glm::vec3(1, 0, 0));
+						ir.AddLeaf(current.position, petalOri, 0.3f, palette[1], 0, current.last_node_idx);
+					}
 				}
 				current = stack.top();
 				stack.pop();
 			}
 		}
 
-		return std::make_shared<Model>(CreateModelDataFromGeometry(vertices, indices, glm::vec3(1.0f)), true);
+		return ir;
 	}
 
-	std::shared_ptr<Model> ProceduralGenerator::GenerateTree(unsigned int seed) {
+	std::shared_ptr<Model> ProceduralGenerator::GenerateFlower(
+		unsigned int                    seed,
+		const std::string&              custom_axiom,
+		const std::vector<std::string>& custom_rules,
+		int                             iterations
+	) {
+		auto ir = GenerateFlowerIR(seed, custom_axiom, custom_rules, iterations);
+		ProceduralOptimizer::Optimize(ir);
+		return ProceduralMesher::GenerateModel(ir);
+	}
+
+	std::shared_ptr<Model> ProceduralGenerator::GenerateSpaceColonizationTree(unsigned int seed) {
+		auto ir = GenerateSpaceColonizationTreeIR(seed);
+		ProceduralOptimizer::Optimize(ir);
+		return ProceduralMesher::GenerateModel(ir);
+	}
+
+	ProceduralIR ProceduralGenerator::GenerateSpaceColonizationTreeIR(unsigned int seed) {
+		std::mt19937 gen(seed);
+
+		// Parameters
+		const float killDistance = 0.5f;
+		const float influenceRadius = 1.5f;
+		const float growthStep = 0.3f;
+		const int   numAttractors = 400;
+		const float exponent = 2.0f; // Leonardo's rule
+
+		std::vector<SCAttractor>              attractors;
+		std::uniform_real_distribution<float> crownX(-3.0f, 3.0f);
+		std::uniform_real_distribution<float> crownY(3.0f, 10.0f);
+		std::uniform_real_distribution<float> crownZ(-3.0f, 3.0f);
+
+		for (int i = 0; i < numAttractors; ++i) {
+			attractors.push_back({{crownX(gen), crownY(gen), crownZ(gen)}, true});
+		}
+
+		std::vector<SCNode> nodes;
+		// Root nodes (trunk) to reach the crown
+		nodes.push_back({0, -1, {0, 0, 0}});
+		int initialTrunkNodes = 10;
+		for (int i = 1; i <= initialTrunkNodes; ++i) {
+			nodes.push_back({i, i - 1, {0, (float)i * growthStep, 0}});
+			nodes[i - 1].children.push_back(i);
+		}
+
+		bool growthOccurred = true;
+		int  iterations = 0;
+		while (growthOccurred && iterations < 200 && nodes.size() < 2000) {
+			growthOccurred = false;
+			iterations++;
+
+			// Reset growth
+			for (auto& n : nodes) {
+				n.growthDir = {0, 0, 0};
+				n.attractorCount = 0;
+			}
+
+			// Association
+			for (size_t i = 0; i < attractors.size(); ++i) {
+				if (!attractors[i].active)
+					continue;
+
+				int   closestNode = -1;
+				float minDistSq = influenceRadius * influenceRadius;
+
+				for (size_t n = 0; n < nodes.size(); ++n) {
+					float d2 = glm::distance2(attractors[i].pos, nodes[n].pos);
+					if (d2 < minDistSq) {
+						minDistSq = d2;
+						closestNode = (int)n;
+					}
+				}
+
+				if (closestNode != -1) {
+					nodes[closestNode].growthDir += glm::normalize(attractors[i].pos - nodes[closestNode].pos);
+					nodes[closestNode].attractorCount++;
+				}
+			}
+
+			// Growth
+			size_t currentSize = nodes.size();
+			for (size_t i = 0; i < currentSize; ++i) {
+				if (nodes[i].attractorCount > 0) {
+					glm::vec3 nextPos = nodes[i].pos + glm::normalize(nodes[i].growthDir) * growthStep;
+
+					// Avoid duplicates/overlapping nodes too close
+					bool tooClose = false;
+					for (size_t n = 0; n < nodes.size(); ++n) {
+						if (glm::distance2(nextPos, nodes[n].pos) < (growthStep * growthStep * 0.25f)) {
+							tooClose = true;
+							break;
+						}
+					}
+
+					if (!tooClose) {
+						SCNode newNode;
+						newNode.id = (int)nodes.size();
+						newNode.parentId = (int)i;
+						newNode.pos = nextPos;
+						nodes[i].children.push_back(newNode.id);
+						nodes.push_back(newNode);
+						growthOccurred = true;
+					}
+				}
+			}
+
+			// Pruning
+			for (size_t i = 0; i < attractors.size(); ++i) {
+				if (!attractors[i].active)
+					continue;
+				for (const auto& n : nodes) {
+					if (glm::distance2(attractors[i].pos, n.pos) < (killDistance * killDistance)) {
+						attractors[i].active = false;
+						break;
+					}
+				}
+			}
+		}
+
+		// Thickness calculation (Leonardo's Rule)
+		for (int i = (int)nodes.size() - 1; i >= 0; --i) {
+			if (nodes[i].children.empty()) {
+				nodes[i].radius = 0.05f;
+			} else {
+				float sumArea = 0.0f;
+				for (int childIdx : nodes[i].children) {
+					sumArea += std::pow(nodes[childIdx].radius, exponent);
+				}
+				nodes[i].radius = std::pow(sumArea, 1.0f / exponent);
+			}
+		}
+
+		ProceduralIR ir;
+		ir.name = "sc_tree";
+		glm::vec3 woodCol(0.35f, 0.25f, 0.15f);
+		glm::vec3 leafCol(0.1f, 0.45f, 0.1f);
+
+		std::vector<int> node_to_ir(nodes.size(), -1);
+		for (size_t i = 0; i < nodes.size(); ++i) {
+			if (nodes[i].parentId != -1) {
+				int parent_ir = node_to_ir[nodes[i].parentId];
+				node_to_ir[i] = ir.AddTube(
+					nodes[nodes[i].parentId].pos,
+					nodes[i].pos,
+					nodes[nodes[i].parentId].radius,
+					nodes[i].radius,
+					woodCol,
+					parent_ir
+				);
+			} else {
+				node_to_ir[i] = ir.AddHub(nodes[i].pos, nodes[i].radius, woodCol);
+			}
+		}
+
+		for (size_t i = 0; i < nodes.size(); ++i) {
+			if (nodes[i].children.empty()) {
+				ir.AddPuffball(nodes[i].pos, 0.4f, leafCol, node_to_ir[i]);
+			}
+		}
+
+		return ir;
+	}
+
+	ProceduralIR ProceduralGenerator::GenerateTreeIR(
+		unsigned int                    seed,
+		const std::string&              custom_axiom,
+		const std::vector<std::string>& custom_rules,
+		int                             iterations
+	) {
 		std::mt19937                          gen(seed);
 		std::uniform_real_distribution<float> dis(-0.1f, 0.1f);
 
-		std::vector<Vertex>       vertices;
-		std::vector<unsigned int> indices;
+		ProceduralIR ir;
+		ir.name = "tree";
 
 		LSystem lsys;
-		lsys.axiom = "X";
-		lsys.rules['X'] = "F[&+X][&/X][^-X][^\\X]"; // More 3D branching
-		lsys.rules['F'] = "SFF";                    // S for scale
-		std::string expanded = lsys.expand(3);
+		if (custom_axiom.empty()) {
+			int ruleset = seed % 2;
+			if (ruleset == 0) {
+				lsys.axiom = "X";
+				lsys.rules['X'] = "F[&+X][&/X][^-X][^\\X]";
+				lsys.rules['F'] = "SFF";
+			} else {
+				lsys.axiom = "X";
+				lsys.rules['X'] = "F[+X][-X][&X][^X]";
+				lsys.rules['F'] = "FF";
+			}
+		} else {
+			lsys.axiom = custom_axiom;
+			lsys.rules = ParseRules(custom_rules);
+		}
+		std::string expanded = lsys.expand(iterations);
 
-		std::stack<TurtleState> stack;
-		TurtleState             current = {glm::vec3(0, 0, 0), glm::quat(1, 0, 0, 0), 0.25f};
-		float                   angle = 0.5f;
-		float                   step = 0.6f;
+		struct TurtleStateIR {
+			glm::vec3 position;
+			glm::quat orientation;
+			float     thickness;
+			int       last_node_idx;
+		};
+
+		std::stack<TurtleStateIR> stack;
+		TurtleStateIR             current = {glm::vec3(0, 0, 0), glm::quat(1, 0, 0, 0), 0.25f, -1};
+		float                     angle = 0.5f;
+		float                     step = 0.6f;
 
 		glm::vec3 woodCol(0.35f, 0.25f, 0.15f);
 		glm::vec3 leafCol(0.1f, 0.45f + dis(gen), 0.1f);
 
 		for (char c : expanded) {
 			if (c == 'F') {
-				std::vector<glm::vec3> pts = {current.position};
-				std::vector<float>     radii = {current.thickness};
-				std::vector<glm::vec3> colors = {woodCol};
-
-				// Add some jitter to the path
 				glm::vec3 nextPos = current.position + current.orientation * glm::vec3(0, step, 0);
 				nextPos += current.orientation * glm::vec3(dis(gen) * 0.2f, 0, dis(gen) * 0.2f);
 
+				int id = ir.AddTube(
+					current.position,
+					nextPos,
+					current.thickness,
+					current.thickness,
+					woodCol,
+					current.last_node_idx
+				);
 				current.position = nextPos;
-				pts.push_back(current.position);
-				radii.push_back(current.thickness);
-				colors.push_back(woodCol);
-
-				AddSplineTube(vertices, indices, pts, radii, colors);
-			} else if (c == '+') {
-				current.orientation = current.orientation * glm::angleAxis(angle + dis(gen), glm::vec3(1, 0, 0));
-			} else if (c == '-') {
-				current.orientation = current.orientation * glm::angleAxis(-angle + dis(gen), glm::vec3(1, 0, 0));
-			} else if (c == '&') {
-				current.orientation = current.orientation * glm::angleAxis(angle + dis(gen), glm::vec3(0, 0, 1));
-			} else if (c == '^') {
-				current.orientation = current.orientation * glm::angleAxis(-angle + dis(gen), glm::vec3(0, 0, 1));
-			} else if (c == '\\') {
-				current.orientation = current.orientation * glm::angleAxis(angle + dis(gen), glm::vec3(0, 1, 0));
-			} else if (c == '/') {
-				current.orientation = current.orientation * glm::angleAxis(-angle + dis(gen), glm::vec3(0, 1, 0));
+				current.last_node_idx = id;
+			} else if (c == '+' || c == '-' || c == '&' || c == '^' || c == '\\' || c == '/') {
+				if (c == '+')
+					current.orientation = current.orientation * glm::angleAxis(angle + dis(gen), glm::vec3(1, 0, 0));
+				else if (c == '-')
+					current.orientation = current.orientation * glm::angleAxis(-angle + dis(gen), glm::vec3(1, 0, 0));
+				else if (c == '&')
+					current.orientation = current.orientation * glm::angleAxis(angle + dis(gen), glm::vec3(0, 0, 1));
+				else if (c == '^')
+					current.orientation = current.orientation * glm::angleAxis(-angle + dis(gen), glm::vec3(0, 0, 1));
+				else if (c == '\\')
+					current.orientation = current.orientation * glm::angleAxis(angle + dis(gen), glm::vec3(0, 1, 0));
+				else if (c == '/')
+					current.orientation = current.orientation * glm::angleAxis(-angle + dis(gen), glm::vec3(0, 1, 0));
 			} else if (c == '[') {
 				stack.push(current);
-				// Area conservation: D^2 = sum d_i^2. For 4 branches, each d = D / 2.
-				current.thickness *= 0.5f;
+				current.thickness *= 0.707f; // Slightly more conservative area conservation
 			} else if (c == ']') {
-				// Leaf cluster
 				if (current.thickness < 0.15f) {
-					AddPuffball(vertices, indices, current.position, 0.6f, leafCol, gen);
+					ir.AddPuffball(current.position, 0.6f, leafCol, current.last_node_idx);
 				}
 				current = stack.top();
 				stack.pop();
 			}
 		}
 
-		return std::make_shared<Model>(CreateModelDataFromGeometry(vertices, indices, glm::vec3(1.0f)), false);
+		return ir;
+	}
+
+	std::shared_ptr<Model> ProceduralGenerator::GenerateTree(
+		unsigned int                    seed,
+		const std::string&              custom_axiom,
+		const std::vector<std::string>& custom_rules,
+		int                             iterations
+	) {
+		auto ir = GenerateTreeIR(seed, custom_axiom, custom_rules, iterations);
+		ProceduralOptimizer::Optimize(ir);
+		return ProceduralMesher::GenerateModel(ir);
+	}
+
+	std::shared_ptr<Model> ProceduralGenerator::GenerateCritter(
+		unsigned int                    seed,
+		const std::string&              custom_axiom,
+		const std::vector<std::string>& custom_rules,
+		int                             iterations
+	) {
+		auto ir = GenerateCritterIR(seed, custom_axiom, custom_rules, iterations);
+		ProceduralOptimizer::Optimize(ir);
+		return ProceduralMesher::GenerateModel(ir);
+	}
+
+	ProceduralIR ProceduralGenerator::GenerateCritterIR(
+		unsigned int                    seed,
+		const std::string&              custom_axiom,
+		const std::vector<std::string>& custom_rules,
+		int                             iterations
+	) {
+		std::mt19937                          gen(seed);
+		std::uniform_real_distribution<float> dis(-0.1f, 0.1f);
+
+		ProceduralIR ir;
+		ir.name = "critter";
+
+		LSystem lsys;
+		if (custom_axiom.empty()) {
+			lsys.axiom = "F";
+			lsys.rules['F'] = "F[+F]F[-F]F";
+		} else {
+			lsys.axiom = custom_axiom;
+			lsys.rules = ParseRules(custom_rules);
+		}
+
+		std::string expanded = lsys.expand(iterations);
+
+		struct TurtleStateIR {
+			glm::vec3 position;
+			glm::quat orientation;
+			float     thickness;
+			int       last_node_idx;
+			glm::vec3 color;
+			int       color_idx;
+			int       variant;
+		};
+
+		std::vector<glm::vec3> palette = {
+			{0.5f, 0.35f, 0.25f}, // Brown
+			{0.8f, 0.4f, 0.1f},   // Orange
+			{0.2f, 0.2f, 0.2f},   // Dark Grey
+			{0.7f, 0.7f, 0.7f},   // Light Grey
+			{0.9f, 0.1f, 0.1f}    // Red
+		};
+
+		std::stack<TurtleStateIR> stack;
+		TurtleStateIR             current = {glm::vec3(0, 0, 0), glm::quat(1, 0, 0, 0), 0.1f, -1, palette[0], 0, 0};
+		float                     angle = 0.4f;
+		float                     step = 0.5f;
+
+		for (char c : expanded) {
+			if (c == 'F') {
+				glm::vec3 next_pos = current.position + current.orientation * glm::vec3(0, step, 0);
+				float     next_thickness = current.thickness * 0.95f;
+				int       id = ir.AddTube(
+                    current.position,
+                    next_pos,
+                    current.thickness,
+                    next_thickness,
+                    current.color,
+                    current.last_node_idx
+                );
+				current.position = next_pos;
+				current.thickness = next_thickness;
+				current.last_node_idx = id;
+			} else if (c == 'L') {
+				ir.AddLeaf(
+					current.position,
+					current.orientation,
+					0.4f,
+					current.color,
+					current.variant,
+					current.last_node_idx
+				);
+			} else if (c == 'P') {
+				ir.AddPuffball(current.position, 0.2f, current.color, 0, current.last_node_idx);
+			} else if (c == 'B') {
+				ir.AddPuffball(current.position, 0.2f, current.color, 1, current.last_node_idx);
+			} else if (c == '\'') {
+				current.color_idx = (current.color_idx + 1) % palette.size();
+				current.color = palette[current.color_idx];
+			} else if (c == '!') {
+				current.thickness *= 0.8f;
+			} else if (isdigit(c)) {
+				current.variant = c - '0';
+			} else if (c == '+' || c == '-' || c == '&' || c == '^' || c == '\\' || c == '/') {
+				if (c == '+')
+					current.orientation = current.orientation * glm::angleAxis(angle + dis(gen), glm::vec3(1, 0, 0));
+				else if (c == '-')
+					current.orientation = current.orientation * glm::angleAxis(-angle + dis(gen), glm::vec3(1, 0, 0));
+				else if (c == '&')
+					current.orientation = current.orientation * glm::angleAxis(angle, glm::vec3(0, 0, 1));
+				else if (c == '^')
+					current.orientation = current.orientation * glm::angleAxis(-angle, glm::vec3(0, 0, 1));
+				else if (c == '\\')
+					current.orientation = current.orientation * glm::angleAxis(angle, glm::vec3(0, 1, 0));
+				else if (c == '/')
+					current.orientation = current.orientation * glm::angleAxis(-angle, glm::vec3(0, 1, 0));
+			} else if (c == '[') {
+				stack.push(current);
+			} else if (c == ']') {
+				current = stack.top();
+				stack.pop();
+			}
+		}
+
+		return ir;
 	}
 
 	std::shared_ptr<ModelData> ProceduralGenerator::CreateModelDataFromGeometry(

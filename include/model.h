@@ -1,5 +1,7 @@
 #pragma once
 
+#include <map>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -12,6 +14,8 @@
 class Shader;
 
 namespace Boidsish {
+
+	class Animator;
 
 	struct Texture {
 		unsigned int id;
@@ -30,6 +34,7 @@ namespace Boidsish {
 		// Material Data
 		glm::vec3 diffuseColor = glm::vec3(1.0f);
 		float     opacity = 1.0f;
+		bool      has_vertex_colors = false;
 
 		// Constructor
 		Mesh(
@@ -68,12 +73,69 @@ namespace Boidsish {
 		friend class Model;
 	};
 
+	struct BoneInfo {
+		/*id is index in finalBoneMatrices*/
+		int id;
+
+		/*offset matrix transforms vertex from model space to bone space*/
+		glm::mat4 offset;
+	};
+
+	struct KeyPosition {
+		glm::vec3 position;
+		float     timeStamp;
+	};
+
+	struct KeyRotation {
+		glm::quat orientation;
+		float     timeStamp;
+	};
+
+	struct KeyScale {
+		glm::vec3 scale;
+		float     timeStamp;
+	};
+
+	struct BoneAnimation {
+		std::vector<KeyPosition> positions;
+		std::vector<KeyRotation> rotations;
+		std::vector<KeyScale>    scales;
+		int                      numPositions;
+		int                      numRotations;
+		int                      numScalings;
+
+		glm::mat4   localTransform;
+		std::string name;
+		int         id;
+	};
+
+	struct NodeData {
+		glm::mat4             transformation;
+		std::string           name;
+		int                   childrenCount;
+		std::vector<NodeData> children;
+	};
+
+	struct Animation {
+		float                      duration;
+		int                        ticksPerSecond;
+		std::vector<BoneAnimation> boneAnimations;
+		std::string                name;
+	};
+
 	struct ModelData {
 		std::vector<Mesh>    meshes;
 		std::vector<Texture> textures_loaded;
 		std::string          directory;
 		std::string          model_path;
 		AABB                 aabb;
+
+		// Animation Data
+		std::map<std::string, BoneInfo> bone_info_map;
+		int                             bone_count = 0;
+		glm::mat4                       global_inverse_transform = glm::mat4(1.0f);
+		std::vector<Animation>          animations;
+		NodeData                        root_node;
 	};
 
 	/**
@@ -98,6 +160,8 @@ namespace Boidsish {
 
 		// Constructor for programmatically created model data.
 		Model(std::shared_ptr<ModelData> data, bool no_cull = false);
+
+		~Model();
 
 		void PrepareResources(Megabuffer* megabuffer = nullptr) const override;
 
@@ -137,7 +201,16 @@ namespace Boidsish {
 		// Get the model path
 		const std::string& GetModelPath() const;
 
+		std::shared_ptr<ModelData> GetData() const { return m_data; }
+
 		bool IsNoCull() const { return no_cull_; }
+
+		// Animation
+		void SetAnimation(int index);
+		void SetAnimation(const std::string& name);
+		void UpdateAnimation(float dt);
+
+		Animator* GetAnimator() const { return m_animator.get(); }
 
 		// Exposed for AssetManager to fill during loading
 		friend class AssetManager;
@@ -146,6 +219,7 @@ namespace Boidsish {
 		// Model data
 		glm::quat                  base_rotation_ = glm::quat(1.0f, 0.0f, 0.0f, 0.0f);
 		std::shared_ptr<ModelData> m_data;
+		std::unique_ptr<Animator>  m_animator;
 		bool                       no_cull_ = false;
 
 		float dissolve_sweep_ = 0.0f;

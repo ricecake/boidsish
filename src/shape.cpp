@@ -20,6 +20,7 @@ namespace Boidsish {
 	MegabufferAllocation    Shape::sphere_alloc_;
 	std::shared_ptr<Shader> Shape::shader = nullptr;
 	ShaderHandle            Shape::shader_handle = ShaderHandle(0);
+	std::atomic<int>        Shape::s_nextId{1};
 
 	void Shape::GenerateRenderPackets(std::vector<RenderPacket>& out_packets, const RenderContext& context) const {
 		if (sphere_vao_ == 0) {
@@ -57,6 +58,20 @@ namespace Boidsish {
 		packet.uniforms.dissolve_enabled = dissolve_enabled_ ? 1 : 0;
 		packet.uniforms.dissolve_plane_normal = dissolve_plane_normal_;
 		packet.uniforms.dissolve_plane_dist = dissolve_plane_dist_;
+
+		// Occlusion culling AABB with velocity expansion
+		AABB      worldAABB = GetAABB();
+		glm::vec3 velocity = world_pos - GetLastPosition();
+		if (glm::dot(velocity, velocity) > 0.001f) {
+			worldAABB.min = glm::min(worldAABB.min, worldAABB.min - velocity);
+			worldAABB.max = glm::max(worldAABB.max, worldAABB.max + velocity);
+		}
+		packet.uniforms.aabb_min_x = worldAABB.min.x;
+		packet.uniforms.aabb_min_y = worldAABB.min.y;
+		packet.uniforms.aabb_min_z = worldAABB.min.z;
+		packet.uniforms.aabb_max_x = worldAABB.max.x;
+		packet.uniforms.aabb_max_y = worldAABB.max.y;
+		packet.uniforms.aabb_max_z = worldAABB.max.z;
 
 		packet.casts_shadows = CastsShadows();
 

@@ -129,100 +129,128 @@ namespace Boidsish {
 		decor_types_.push_back(type);
 	}
 
+	void DecorManager::AddProceduralDecor(ProceduralType type, const DecorProperties& props, int variants) {
+		if (variants <= 0)
+			return;
+
+		float variant_min_density = props.min_density / variants;
+		float variant_max_density = props.max_density / variants;
+
+		for (int i = 0; i < variants; ++i) {
+			auto            model = ProceduralGenerator::Generate(type, 1337 + i);
+			DecorProperties variant_props = props;
+			variant_props.min_density = variant_min_density;
+			variant_props.max_density = variant_max_density;
+
+			AddDecorType(model, variant_props);
+		}
+	}
+
 	void DecorManager::PopulateDefaultDecor() {
 		if (!decor_types_.empty())
 			return;
 
 		AddDecorType(
 			"assets/decor/Apple tree/AppleTree.obj",
-			{
-				.min_density = 0.025f,
-				.max_density = 0.05f,
-				.base_scale = 0.5f,
-				.scale_variance = 0.01f,
-				.min_height = 5.0f,
-				.max_height = 95.0f,
-				// .min_slope = 0,
-		        // .max_slope = 1.0,
-		        // .base_rotation = glm::vec3(0.0f),
-				.random_yaw = true,
-				// .align_to_terrain = true,
-				.biomes = {Biome::LushGrass, Biome::Forest, Biome::AlpineMeadow}
-				// .detail_distance = 0
-			}
-		);
-		AddDecorType(
-			"assets/decor/Dead tree/PUSHILIN_dead_tree.obj",
-			{
-				.min_density = 0.05f,
-				.max_density = 0.075f,
-				.base_scale = 1.0f,
-				.scale_variance = 0.1f,
-				.min_height = 30.0f,
-				.max_height = 95.0f,
-				// .min_slope = 0,
-		        // .max_slope = 1.0,
-		        // .base_rotation = glm::vec3(0.0f),
-				.random_yaw = true,
-				// .align_to_terrain = true,
-				.biomes = {Biome::DryGrass, Biome::AlpineMeadow, Biome::BrownRock}
-				// .detail_distance
-			}
+			{.min_density = 0.005f,
+		     .max_density = 0.01f,
+		     .base_scale = 0.5f,
+		     .scale_variance = 0.01f,
+		     .min_height = 5.0f,
+		     .max_height = 95.0f,
+		     .random_yaw = true,
+		     .biomes = {Biome::Forest, Biome::AlpineMeadow},
+		     .wind_responsiveness = 0.3f}
 		);
 		AddDecorType(
 			"assets/decor/Tree/tree01.obj",
-			{
-				.min_density = 0.05f,
-				.max_density = 0.075f,
-				.base_scale = 0.015f,
-				.scale_variance = 0.01f,
-				.min_height = 5.0f,
-				.max_height = 95.0f,
-				// .min_slope = 0,
-		        // .max_slope = 1.0,
-		        // .base_rotation = glm::vec3(0.0f),
-				.random_yaw = true,
-				// .align_to_terrain = true,
-				.biomes = {Biome::LushGrass, Biome::Forest}
-				// .detail_distance
-			}
+			{.min_density = 0.01f,
+		     .max_density = 0.02f,
+		     .base_scale = 0.015f,
+		     .scale_variance = 0.01f,
+		     .min_height = 5.0f,
+		     .max_height = 95.0f,
+		     .random_yaw = true,
+		     .biomes = {Biome::LushGrass, Biome::Forest},
+		     .wind_responsiveness = 0.5f}
 		);
 
 		AddDecorType(
 			"assets/decor/Rose bush/Mesh_RoseBush.obj",
-			{
-				.min_density = 0.05f,
-				.max_density = 0.075f,
-				.base_scale = 0.05f,
-				.scale_variance = 0.01f,
-				.min_height = 5.0f,
-				.max_height = 95.0f,
-				// .min_slope = 0,
-		        // .max_slope = 1.0,
-		        // .base_rotation = glm::vec3(0.0f),
-				.random_yaw = true,
-				.align_to_terrain = true,
-				.biomes = {Biome::LushGrass, Biome::AlpineMeadow}
-				// .detail_distance
-			}
+			{.min_density = 0.001f,
+		     .max_density = 0.005f,
+		     .base_scale = 0.05f,
+		     .scale_variance = 0.01f,
+		     .min_height = 5.0f,
+		     .max_height = 95.0f,
+		     .random_yaw = true,
+		     .align_to_terrain = true,
+		     .biomes = {Biome::LushGrass, Biome::AlpineMeadow},
+		     .wind_responsiveness = 0.25f}
 		);
 		AddDecorType(
 			"assets/decor/Sunflower/PUSHILIN_sunflower.obj",
-			{
-				.min_density = 0.05f,
-				.max_density = 0.075f,
-				.base_scale = 0.5f,
-				.scale_variance = 0.01f,
-				.min_height = 5.0f,
-				.max_height = 95.0f,
-				// .min_slope = 0,
-		        // .max_slope = 1.0,
-		        // .base_rotation = glm::vec3(0.0f),
-				.random_yaw = true,
-				// .align_to_terrain
-				.biomes = {Biome::LushGrass, Biome::AlpineMeadow}
-				// .detail_distance
-			}
+			{.min_density = 0.01f,
+		     .max_density = 0.05f,
+		     .base_scale = 0.5f,
+		     .scale_variance = 0.01f,
+		     .min_height = 5.0f,
+		     .max_height = 95.0f,
+		     .random_yaw = true,
+		     .biomes = {Biome::LushGrass, Biome::AlpineMeadow},
+		     .wind_responsiveness = 0.25f}
+		);
+
+		// // Procedural Flowers
+		// AddProceduralDecor(
+		// 	ProceduralType::Flower,
+		// 	{
+		// 		.min_density = 0.1f,
+		// 		.max_density = 0.2f,
+		// 		.base_scale = 0.5f,
+		// 		.scale_variance = 0.1f,
+		// 		.min_height = 5.0f,
+		// 		.max_height = 100.0f,
+		// 		.random_yaw = true,
+		// 		.align_to_terrain = true,
+		// 		.biomes = {Biome::LushGrass, Biome::AlpineMeadow}
+		// 	},
+		// 	4
+		// );
+
+		// Procedural Rocks
+		// AddProceduralDecor(
+		// 	ProceduralType::Rock,
+		// 	{
+		// 		.min_density = 0.02f,
+		// 		.max_density = 0.04f,
+		// 		.base_scale = 0.4f,
+		// 		.scale_variance = 0.1f,
+		// 		.min_height = 0.01f,
+		// 		.max_height = 1000.0f,
+		// 		.random_yaw = true,
+		// 		.align_to_terrain = true,
+		// 		.biomes = {Biome::BrownRock, Biome::GreyRock, Biome::DryGrass},
+		// 		.wind_responsiveness = 0
+		// 	},
+		// 	2
+		// );
+
+		// Procedural Grass
+		AddProceduralDecor(
+			ProceduralType::Grass,
+			{.min_density = 0.15f,
+		     .max_density = 0.25f,
+		     .base_scale = 0.5f,
+		     .scale_variance = 0.1f,
+		     .min_height = 0.01f,
+		     .max_height = 200.0f,
+		     .random_yaw = true,
+		     .align_to_terrain = true,
+		     .biomes = {Biome::LushGrass, Biome::DryGrass, Biome::Forest, Biome::AlpineMeadow},
+		     .wind_responsiveness = 1,
+		     .wind_rim_highlight = 1.0f},
+			2
 		);
 	}
 
@@ -545,6 +573,17 @@ namespace Boidsish {
 		culling_shader_->setVec2("u_viewportSize", glm::vec2((float)viewport_width, (float)viewport_height));
 		culling_shader_->setFloat("u_minPixelSize", min_pixel_size_);
 
+		// Hi-Z occlusion culling uniforms
+		culling_shader_->setBool("u_enableHiZ", hiz_enabled_ && !is_shadow_pass);
+		if (hiz_enabled_ && !is_shadow_pass) {
+			glActiveTexture(GL_TEXTURE15);
+			glBindTexture(GL_TEXTURE_2D, hiz_texture_);
+			culling_shader_->setInt("u_hizTexture", 15);
+			culling_shader_->setMat4("u_prevViewProjection", hiz_prev_vp_);
+			glUniform2i(glGetUniformLocation(culling_shader_->ID, "u_hizSize"), hiz_width_, hiz_height_);
+			culling_shader_->setInt("u_hizMipCount", hiz_mip_count_);
+		}
+
 		for (auto& type : decor_types_) {
 			// Reset atomic counter
 			unsigned int zero = 0;
@@ -634,7 +673,7 @@ namespace Boidsish {
 					}
 				}
 				shader->setBool("use_texture", hasDiffuse);
-				shader->setBool("useVertexColor", true); // Enable vertex color for decor
+				shader->setBool("useVertexColor", mesh.has_vertex_colors && !hasDiffuse);
 				mesh.bindTextures(*shader);
 
 				glBindVertexArray(mesh.getVAO());

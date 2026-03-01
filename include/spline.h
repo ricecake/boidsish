@@ -16,12 +16,32 @@ namespace Boidsish {
 			glm::vec3 pos, normal, color;
 		};
 
+		struct GraphNode {
+			Vector3   position;
+			float     size;
+			glm::vec3 color;
+		};
+
+		struct GraphEdge {
+			int from;
+			int to;
+		};
+
+		std::vector<VertexData> GenerateGraphTube(
+			const std::vector<GraphNode>& nodes,
+			const std::vector<GraphEdge>& edges,
+			int                           curve_segments = 10,
+			int                           cylinder_segments = 12
+		);
+
 		std::vector<VertexData> GenerateTube(
 			const std::vector<Vector3>&   points,
 			const std::vector<Vector3>&   ups,
 			const std::vector<float>&     sizes,
 			const std::vector<glm::vec3>& colors,
-			bool                          is_looping
+			bool                          is_looping,
+			int                           curve_segments = 10,
+			int                           cylinder_segments = 12
 		);
 
 	} // namespace Spline

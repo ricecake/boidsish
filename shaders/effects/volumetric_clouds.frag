@@ -37,21 +37,31 @@ float get_density(vec3 p, vec3 weather) {
     float height_fraction = (p.y - CLOUD_START_HEIGHT) / max(u_cloudThickness, 1.0);
     if (height_fraction < 0.0 || height_fraction > 1.0) return 0.0;
 
-    // Warp p to "push" clouds away
-    vec3 push_vec = normalize(p - viewPos);
-    p += push_vec * u_warpPush * 2000.0;
+    // Warp p to "push" clouds away from the player
+    vec3 delta = p - viewPos;
+    float dist = length(delta);
+    if (dist < 8000.0) {
+        float push_factor = (1.0 - smoothstep(0.0, 8000.0, dist)) * u_warpPush;
+        p += normalize(delta) * push_factor * 2000.0;
+    }
 
     vec4 base_noise = texture(cloudBaseNoise, p * 0.0001 + time * 0.005);
     float low_freq_fbm = base_noise.g * 0.625 + base_noise.b * 0.25 + base_noise.a * 0.125;
     float base_cloud = remap(base_noise.r, -(1.0 - low_freq_fbm), 1.0, 0.0, 1.0);
 
+    // Mix weather coverage with global coverage
     float coverage = weather.r * u_cloudCoverage;
-    float density = remap(base_cloud, clamp(1.0 - coverage, 0.01, 0.99), 1.0, 0.0, 1.0);
-    density *= coverage;
 
-    // Shaping based on height
-    float vertical_shape = smoothstep(0.0, 0.15, height_fraction) * smoothstep(1.0, 0.8, height_fraction);
-    density *= vertical_shape;
+    // Use u_cloudType to bias the weather map type channel (weather.b)
+    float type = clamp(weather.b + (u_cloudType - 0.5) * 2.0, 0.0, 1.0);
+
+    // Height-based density profiles (Stratus vs Cumulus)
+    float stratus_shape = smoothstep(0.0, 0.1, height_fraction) * smoothstep(0.3, 0.2, height_fraction);
+    float cumulus_shape = smoothstep(0.0, 0.2, height_fraction) * smoothstep(0.9, 0.7, height_fraction);
+    float vertical_shape = mix(stratus_shape, cumulus_shape, type);
+
+    float density = remap(base_cloud, clamp(1.0 - coverage, 0.01, 0.99), 1.0, 0.0, 1.0);
+    density *= coverage * vertical_shape;
 
     if (density > 0.01) {
         vec3 curl = texture(curlNoise, p * 0.001).rgb;
@@ -150,8 +160,8 @@ void main() {
 
         if (d > 0.01) {
             float e = light_energy(p, sunDir, weather);
-            vec3  step_light = sunColor * e * phase * 2.0 + ambient_light * 0.5;
-            float extinction = d * 0.05;
+            vec3  step_light = sunColor * e * phase * 4.0 + ambient_light * 2.0;
+            float extinction = d * 0.04; // Reduced extinction for brighter clouds
             float sample_transmittance = exp(-extinction * step_size);
 
             lighting += transmittance * (1.0 - sample_transmittance) * step_light;
@@ -178,11 +188,19 @@ void main() {
 
     if (prevUV.x >= 0.0 && prevUV.x <= 1.0 && prevUV.y >= 0.0 && prevUV.y <= 1.0) {
         vec4 history = texture(historyTexture, prevUV);
-        float alpha = 0.15;
-        if (history.a < 0.001 && currentCloud.a > 0.01) {
-            alpha = 1.0;
+
+        // Rejection based on depth occlusion to prevent bleeding over terrain
+        float historyDepth = texture(depthTexture, prevUV).r;
+        bool occluded = depth < historyDepth - 0.001;
+
+        float alpha = occluded ? 1.0 : 0.05; // Use smaller alpha for better stability
+
+        // Rapid manifestation for new clouds
+        if (history.a < 0.01 && currentCloud.a > 0.01) {
+            alpha = 0.5;
         }
-        if (!any(isnan(history)) && !any(isinf(history))) {
+
+        if (!any(isnan(history)) && !any(isinf(history)) && !occluded) {
             currentCloud = mix(history, currentCloud, alpha);
         }
     }
