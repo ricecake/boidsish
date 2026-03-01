@@ -420,9 +420,11 @@ void main() {
 			vec3 L;
 			float atten;
 			calculateLightContribution(0, FragPos, L, atten);
-			if (isPointInTerrainShadow(FragPos, L)) {
-				lighting = mix(lighting, vec3(1.0, 0.0, 1.0), 0.5);
-			}
+			int dbg = isPointInTerrainShadowDebug(FragPos, L);
+			if (dbg == 1) lighting = mix(lighting, vec3(1, 0, 0), 0.5); // Red: Out of bounds
+			else if (dbg == 2) lighting = mix(lighting, vec3(1, 1, 0), 0.5); // Yellow: No slice
+			else if (dbg == 3) lighting = mix(lighting, vec3(1, 0, 1), 0.5); // Magenta: Shadow hit
+			else if (dbg == 0) lighting = mix(lighting, vec3(0, 1, 0), 0.2); // Green: Trace finished, no hit
 		}
 	}
 
