@@ -20,6 +20,7 @@ namespace Boidsish {
 		int   shimmery_enabled;
 		int   glitched_enabled;
 		int   wireframe_enabled;
+		int   terrain_shadow_debug;
 		float wind_strength;
 		float wind_speed;
 		float wind_frequency;

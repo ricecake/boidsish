@@ -3,6 +3,7 @@
 
 #include "../helpers/constants.glsl"
 #include "../lighting.glsl"
+#include "terrain_shadows.glsl"
 
 const int LIGHT_TYPE_POINT = 0;
 const int LIGHT_TYPE_DIRECTIONAL = 1;
@@ -16,6 +17,13 @@ const int LIGHT_TYPE_FLASH = 4;    // Explosion/flash light (rapid falloff)
  * Uses PCF (Percentage Closer Filtering) for soft shadow edges.
  */
 float calculateShadow(int light_index, vec3 frag_pos, vec3 normal, vec3 light_dir) {
+	// Optimization: Quick terrain raycast for directional lights (Sun)
+	if (lights[light_index].type == LIGHT_TYPE_DIRECTIONAL) {
+		if (isPointInTerrainShadow(frag_pos, light_dir)) {
+			return 0.0;
+		}
+	}
+
 	int shadow_index = lightShadowIndices[light_index];
 
 	// Early out for invalid indices or when no shadow lights are active

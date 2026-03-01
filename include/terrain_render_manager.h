@@ -11,6 +11,8 @@
 #include <glm/glm.hpp>
 
 class Shader;
+class ShaderBase;
+class ComputeShader;
 
 namespace Boidsish {
 
@@ -130,6 +132,11 @@ namespace Boidsish {
 		 */
 		std::vector<glm::vec4> GetChunkInfo(float world_scale) const;
 
+		/**
+		 * @brief Bind terrain data textures and UBO to a shader.
+		 */
+		void BindTerrainData(ShaderBase& shader_base) const;
+
 		void SetNoise(const GLuint& noise, const GLuint& curl) {
 			if (noise != 0) {
 				noise_texture_ = noise;
@@ -141,6 +148,16 @@ namespace Boidsish {
 		}
 
 	private:
+		/**
+		 * @brief Update the global chunk grid and max height textures.
+		 */
+		void UpdateGridTextures(float world_scale);
+
+		/**
+		 * @brief Generate mipmaps for the max height grid using MAX reduction.
+		 */
+		void GenerateMaxHeightMips();
+
 		// Per-chunk metadata (CPU side)
 		struct ChunkInfo {
 			int       texture_slice; // Index into texture array
@@ -187,6 +204,13 @@ namespace Boidsish {
 		GLuint noise_texture_ = 0;
 		GLuint curl_texture_ = 0;
 		GLuint biome_ubo_ = 0; // UBO for BiomeShaderProperties
+
+		// Global terrain grid resources
+		GLuint chunk_grid_texture_ = 0;      // GL_TEXTURE_2D (R16I: texture_slice index, -1 if none)
+		GLuint max_height_grid_texture_ = 0; // GL_TEXTURE_2D (R32F: max_y, mips for hierarchical check)
+		GLuint terrain_data_ubo_ = 0;        // UBO for grid parameters
+
+		std::unique_ptr<ComputeShader> grid_mip_shader_;
 
 		// Grid mesh data
 		size_t grid_index_count_ = 0;

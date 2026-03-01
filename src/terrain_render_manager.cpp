@@ -6,9 +6,14 @@
 #include "biome_properties.h"
 #include "constants.h"
 #include "graphics.h" // For Frustum
-#include <shader.h>
+#include "shader.h"
 
 namespace Boidsish {
+
+	struct TerrainDataUbo {
+		glm::ivec4 origin_size;    // x, z, size, unused
+		glm::vec4  terrain_params; // chunk_size, world_scale, unused, unused
+	};
 
 	TerrainRenderManager::TerrainRenderManager(int chunk_size, int max_chunks):
 		chunk_size_(chunk_size), max_chunks_(max_chunks), heightmap_resolution_(chunk_size + 1) {
@@ -31,6 +36,33 @@ namespace Boidsish {
 			shader_biomes.data()
 		);
 		glBindBuffer(GL_UNIFORM_BUFFER, 0);
+
+		// Create TerrainData UBO
+		glGenBuffers(1, &terrain_data_ubo_);
+		glBindBuffer(GL_UNIFORM_BUFFER, terrain_data_ubo_);
+		glBufferData(GL_UNIFORM_BUFFER, sizeof(TerrainDataUbo), nullptr, GL_DYNAMIC_DRAW);
+		glBindBuffer(GL_UNIFORM_BUFFER, 0);
+
+		// Global terrain grid resources
+		int grid_size = Constants::Class::Terrain::SliceMapSize();
+		glGenTextures(1, &chunk_grid_texture_);
+		glBindTexture(GL_TEXTURE_2D, chunk_grid_texture_);
+		glTexStorage2D(GL_TEXTURE_2D, 1, GL_R16I, grid_size, grid_size);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+
+		glGenTextures(1, &max_height_grid_texture_);
+		glBindTexture(GL_TEXTURE_2D, max_height_grid_texture_);
+		int mips = 1 + static_cast<int>(std::floor(std::log2(grid_size)));
+		glTexStorage2D(GL_TEXTURE_2D, mips, GL_R32F, grid_size, grid_size);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST_MIPMAP_NEAREST);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+
+		grid_mip_shader_ = std::make_unique<ComputeShader>("shaders/terrain_hiz_generate.comp");
 
 		// Create instance buffer first so we can set up VAO attributes
 		// Pre-allocate for max_chunks to avoid reallocation
@@ -58,6 +90,12 @@ namespace Boidsish {
 			glDeleteTextures(1, &biome_texture_);
 		if (biome_ubo_)
 			glDeleteBuffers(1, &biome_ubo_);
+		if (chunk_grid_texture_)
+			glDeleteTextures(1, &chunk_grid_texture_);
+		if (max_height_grid_texture_)
+			glDeleteTextures(1, &max_height_grid_texture_);
+		if (terrain_data_ubo_)
+			glDeleteBuffers(1, &terrain_data_ubo_);
 	}
 
 	void TerrainRenderManager::CreateGridMesh() {
@@ -485,6 +523,8 @@ namespace Boidsish {
 		last_camera_pos_ = camera_pos;
 		last_world_scale_ = world_scale;
 
+		UpdateGridTextures(world_scale);
+
 		visible_instances_.clear();
 		visible_instances_.reserve(chunks_.size());
 
@@ -574,6 +614,101 @@ namespace Boidsish {
 			glBufferSubData(GL_ARRAY_BUFFER, 0, required_size, visible_instances_.data());
 			glBindBuffer(GL_ARRAY_BUFFER, 0);
 		}
+	}
+
+	void TerrainRenderManager::UpdateGridTextures(float world_scale) {
+		int grid_size = Constants::Class::Terrain::SliceMapSize();
+		int half_grid = grid_size / 2;
+
+		float scaled_chunk_size = chunk_size_ * world_scale;
+		int   center_chunk_x = static_cast<int>(std::floor(last_camera_pos_.x / scaled_chunk_size));
+		int   center_chunk_z = static_cast<int>(std::floor(last_camera_pos_.z / scaled_chunk_size));
+
+		int origin_x = center_chunk_x - half_grid;
+		int origin_z = center_chunk_z - half_grid;
+
+		std::vector<int16_t> slice_data(grid_size * grid_size, -1);
+		std::vector<float>   height_data(grid_size * grid_size, -10000.0f);
+
+		for (const auto& [key, chunk] : chunks_) {
+			int lx = key.first - origin_x;
+			int lz = key.second - origin_z;
+
+			if (lx >= 0 && lx < grid_size && lz >= 0 && lz < grid_size) {
+				int idx = lz * grid_size + lx;
+				slice_data[idx] = static_cast<int16_t>(chunk.texture_slice);
+				height_data[idx] = chunk.max_y;
+			}
+		}
+
+		glBindTexture(GL_TEXTURE_2D, chunk_grid_texture_);
+		glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, grid_size, grid_size, GL_RED_INTEGER, GL_SHORT, slice_data.data());
+
+		glBindTexture(GL_TEXTURE_2D, max_height_grid_texture_);
+		glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, grid_size, grid_size, GL_RED, GL_FLOAT, height_data.data());
+
+		GenerateMaxHeightMips();
+
+		TerrainDataUbo ubo{};
+		ubo.origin_size = glm::ivec4(origin_x, origin_z, grid_size, 0);
+		ubo.terrain_params = glm::vec4(static_cast<float>(chunk_size_), world_scale, 0.0f, 0.0f);
+
+		glBindBuffer(GL_UNIFORM_BUFFER, terrain_data_ubo_);
+		glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(TerrainDataUbo), &ubo);
+		glBindBuffer(GL_UNIFORM_BUFFER, 0);
+	}
+
+	void TerrainRenderManager::GenerateMaxHeightMips() {
+		if (!grid_mip_shader_ || !grid_mip_shader_->isValid())
+			return;
+
+		int grid_size = Constants::Class::Terrain::SliceMapSize();
+		int mips = 1 + static_cast<int>(std::floor(std::log2(grid_size)));
+
+		grid_mip_shader_->use();
+
+		for (int mip = 1; mip < mips; ++mip) {
+			int dst_w = std::max(1, grid_size >> mip);
+			int dst_h = std::max(1, grid_size >> mip);
+
+			int src_w = std::max(1, grid_size >> (mip - 1));
+			int src_h = std::max(1, grid_size >> (mip - 1));
+
+			grid_mip_shader_->setVec2("u_srcSize", glm::vec2(src_w, src_h));
+
+			glActiveTexture(GL_TEXTURE0);
+			glBindTexture(GL_TEXTURE_2D, max_height_grid_texture_);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_BASE_LEVEL, mip - 1);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, mip - 1);
+			grid_mip_shader_->setInt("u_srcDepth", 0);
+
+			glBindImageTexture(0, max_height_grid_texture_, mip, GL_FALSE, 0, GL_WRITE_ONLY, GL_R32F);
+
+			glDispatchCompute((dst_w + 7) / 8, (dst_h + 7) / 8, 1);
+			glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | GL_TEXTURE_FETCH_BARRIER_BIT);
+		}
+
+		glBindTexture(GL_TEXTURE_2D, max_height_grid_texture_);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_BASE_LEVEL, 0);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, mips - 1);
+		glBindTexture(GL_TEXTURE_2D, 0);
+	}
+
+	void TerrainRenderManager::BindTerrainData(ShaderBase& shader_base) const {
+		shader_base.use();
+		glActiveTexture(GL_TEXTURE11);
+		glBindTexture(GL_TEXTURE_2D, chunk_grid_texture_);
+		shader_base.setInt("u_chunkGrid", 11);
+
+		glActiveTexture(GL_TEXTURE12);
+		glBindTexture(GL_TEXTURE_2D, max_height_grid_texture_);
+		shader_base.setInt("u_maxHeightGrid", 12);
+
+		glActiveTexture(GL_TEXTURE13);
+		glBindTexture(GL_TEXTURE_2D_ARRAY, heightmap_texture_);
+		shader_base.setInt("u_heightmapArray", 13);
+
+		glBindBufferBase(GL_UNIFORM_BUFFER, Constants::UboBinding::TerrainData(), terrain_data_ubo_);
 	}
 
 	void TerrainRenderManager::Render(

@@ -14,6 +14,7 @@ in float      tessFactor;
 #include "helpers/fast_noise.glsl"
 #include "helpers/lighting.glsl"
 #include "helpers/terrain_noise.glsl"
+#include "visual_effects.glsl"
 // #include "helpers/noise.glsl"
 
 uniform bool uIsShadowPass = false;
@@ -413,6 +414,19 @@ void main() {
 
 	// Final Lighting
 	vec3 lighting = apply_lighting_pbr(FragPos, perturbedNorm, albedo, roughness, metallic, 1.0).rgb;
+
+	if (terrain_shadow_debug != 0) {
+		if (num_lights > 0) {
+			vec3 L;
+			float atten;
+			calculateLightContribution(0, FragPos, L, atten);
+			int dbg = isPointInTerrainShadowDebug(FragPos, L);
+			if (dbg == 1) lighting = mix(lighting, vec3(1, 0, 0), 0.5); // Red: Out of bounds
+			else if (dbg == 2) lighting = mix(lighting, vec3(1, 1, 0), 0.5); // Yellow: No slice
+			else if (dbg == 3) lighting = mix(lighting, vec3(1, 0, 1), 0.5); // Magenta: Shadow hit
+			else if (dbg == 0) lighting = mix(lighting, vec3(0, 1, 0), 0.2); // Green: Trace finished, no hit
+		}
+	}
 
 	// ========================================================================
 	// Neon 80s Synth Style (Night Theme)

@@ -1,4 +1,4 @@
-#version 460 core
+#version 430 core
 #extension GL_GOOGLE_include_directive : enable
 layout(location = 0) out vec4 FragColor;
 layout(location = 1) out vec2 Velocity;
@@ -135,6 +135,19 @@ void main() {
 	result += rim * WindDeflection * u_windRimHighlight * vec3(1.0);
 
 	result = applyArtisticEffects(result, FragPos, barycentric, time);
+
+	if (terrain_shadow_debug != 0) {
+		if (num_lights > 0) {
+			vec3 L;
+			float atten;
+			calculateLightContribution(0, FragPos, L, atten);
+			int dbg = isPointInTerrainShadowDebug(FragPos, L);
+			if (dbg == 1) result = mix(result, vec3(1, 0, 0), 0.5); // Red: Out of bounds
+			else if (dbg == 2) result = mix(result, vec3(1, 1, 0), 0.5); // Yellow: No slice
+			else if (dbg == 3) result = mix(result, vec3(1, 0, 1), 0.5); // Magenta: Shadow hit
+			else if (dbg == 0) result = mix(result, vec3(0, 1, 0), 0.2); // Green: Trace finished, no hit
+		}
+	}
 
 	if (c_isLine && c_lineStyle == 1) { // LASER style
 		// Use Y axis for radial glow as defined in Line::InitLineMesh
