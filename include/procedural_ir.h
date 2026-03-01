@@ -18,6 +18,7 @@ namespace Boidsish {
 
 	struct ProceduralElement {
 		ProceduralElementType type;
+		std::string           name;
 
 		// Geometric properties
 		glm::vec3 position;     // For Hub, Leaf, Puffball: center. For Tube: start point.
@@ -45,9 +46,18 @@ namespace Boidsish {
 
 		void AddElement(const ProceduralElement& element) { elements.push_back(element); }
 
-		int AddTube(glm::vec3 start, glm::vec3 end, float start_r, float end_r, glm::vec3 col, int parent_idx = -1) {
+		int AddTube(
+			glm::vec3          start,
+			glm::vec3          end,
+			float              start_r,
+			float              end_r,
+			glm::vec3          col,
+			int                parent_idx = -1,
+			const std::string& name = ""
+		) {
 			ProceduralElement e;
 			e.type = ProceduralElementType::Tube;
+			e.name = name;
 			e.position = start;
 			e.end_position = end;
 			e.radius = start_r;
@@ -65,9 +75,10 @@ namespace Boidsish {
 			return idx;
 		}
 
-		int AddHub(glm::vec3 pos, float r, glm::vec3 col, int parent_idx = -1) {
+		int AddHub(glm::vec3 pos, float r, glm::vec3 col, int parent_idx = -1, const std::string& name = "") {
 			ProceduralElement e;
 			e.type = ProceduralElementType::Hub;
+			e.name = name;
 			e.position = pos;
 			e.radius = r;
 			e.color = col;
@@ -82,9 +93,18 @@ namespace Boidsish {
 			return idx;
 		}
 
-		int AddLeaf(glm::vec3 pos, glm::quat ori, float size, glm::vec3 col, int variant = 0, int parent_idx = -1) {
+		int AddLeaf(
+			glm::vec3          pos,
+			glm::quat          ori,
+			float              size,
+			glm::vec3          col,
+			int                variant = 0,
+			int                parent_idx = -1,
+			const std::string& name = ""
+		) {
 			ProceduralElement e;
 			e.type = ProceduralElementType::Leaf;
+			e.name = name;
 			e.position = pos;
 			e.orientation = ori;
 			e.radius = size; // Using radius as size
@@ -101,9 +121,17 @@ namespace Boidsish {
 			return idx;
 		}
 
-		int AddPuffball(glm::vec3 pos, float r, glm::vec3 col, int variant = 0, int parent_idx = -1) {
+		int AddPuffball(
+			glm::vec3          pos,
+			float              r,
+			glm::vec3          col,
+			int                variant = 0,
+			int                parent_idx = -1,
+			const std::string& name = ""
+		) {
 			ProceduralElement e;
 			e.type = ProceduralElementType::Puffball;
+			e.name = name;
 			e.position = pos;
 			e.radius = r;
 			e.color = col;
@@ -119,9 +147,16 @@ namespace Boidsish {
 			return idx;
 		}
 
-		int AddControlPoint(glm::vec3 pos, float r, glm::vec3 col, int parent_idx = -1) {
+		int AddControlPoint(
+			glm::vec3          pos,
+			float              r,
+			glm::vec3          col,
+			int                parent_idx = -1,
+			const std::string& name = ""
+		) {
 			ProceduralElement e;
 			e.type = ProceduralElementType::ControlPoint;
+			e.name = name;
 			e.position = pos;
 			e.radius = r;
 			e.color = col;

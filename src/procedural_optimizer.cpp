@@ -39,9 +39,15 @@ namespace Boidsish {
 				if (to_remove[child_idx])
 					continue;
 
-				// Check if they are collinear and have similar color
-				glm::vec3 d1 = glm::normalize(e1.end_position - e1.position);
-				glm::vec3 d2 = glm::normalize(e2.end_position - e2.position);
+				// Check if they are collinear
+				glm::vec3 diff1 = e1.end_position - e1.position;
+				glm::vec3 diff2 = e2.end_position - e2.position;
+
+				if (glm::length2(diff1) < 1e-9f || glm::length2(diff2) < 1e-9f)
+					continue;
+
+				glm::vec3 d1 = glm::normalize(diff1);
+				glm::vec3 d2 = glm::normalize(diff2);
 				float     alignment = glm::dot(d1, d2);
 
 				// If nearly but not perfectly collinear, preserve the junction as a ControlPoint
@@ -68,6 +74,8 @@ namespace Boidsish {
 					e1.children = {cp_idx};
 
 					control_points_to_add.push_back(cp);
+					to_remove[child_idx] = true;
+					changed = true;
 				} else {
 					// Perfectly collinear: simple merge, no control point needed
 					e1.end_position = e2.end_position;
@@ -88,24 +96,33 @@ namespace Boidsish {
 			// Add any new control points
 			for (const auto& cp : control_points_to_add) {
 				ir.elements.push_back(cp);
+				to_remove.push_back(false);
 			}
 
 			if (changed) {
 				std::vector<ProceduralElement> new_elements;
 				std::map<int, int>             old_to_new;
 				for (int i = 0; i < (int)ir.elements.size(); ++i) {
-					if (!to_remove[i]) {
-						old_to_new[i] = (int)new_elements.size();
-						new_elements.push_back(ir.elements[i]);
-					}
+					if (i < (int)to_remove.size() && to_remove[i])
+						continue;
+
+					old_to_new[i] = (int)new_elements.size();
+					new_elements.push_back(ir.elements[i]);
 				}
 
 				for (auto& e : new_elements) {
-					if (e.parent != -1)
-						e.parent = old_to_new[e.parent];
-					for (int& child : e.children) {
-						child = old_to_new[child];
+					if (e.parent != -1) {
+						auto it = old_to_new.find(e.parent);
+						e.parent = (it != old_to_new.end()) ? it->second : -1;
 					}
+					std::vector<int> new_children;
+					for (int child : e.children) {
+						auto it = old_to_new.find(child);
+						if (it != old_to_new.end()) {
+							new_children.push_back(it->second);
+						}
+					}
+					e.children = std::move(new_children);
 				}
 				ir.elements = std::move(new_elements);
 			}

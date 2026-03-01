@@ -16,6 +16,7 @@ namespace Boidsish {
 			glm::mat4 offset;
 			glm::vec3 start;
 			glm::vec3 end;
+			bool      is_hub = false;
 		};
 
 		void GenerateUVSphere(
@@ -71,22 +72,47 @@ namespace Boidsish {
 				return;
 
 			for (auto& v : vertices) {
-				float best_dist = 1e10f;
-				int   best_bone = -1;
+				struct Candidate {
+					int   id;
+					float dist;
+				};
+				std::vector<Candidate> candidates;
+
 				for (int b = 0; b < (int)bone_segments.size(); ++b) {
 					const auto& bs = bone_segments[b];
-					glm::vec3   ab = bs.end - bs.start;
-					glm::vec3   ap = v.Position - bs.start;
-					float       t = glm::clamp(glm::dot(ap, ab) / glm::dot(ab, ab), 0.0f, 1.0f);
-					float       d = glm::distance(v.Position, bs.start + t * ab);
-					if (d < best_dist) {
-						best_dist = d;
-						best_bone = b;
+					float       d = 0;
+					if (bs.is_hub || glm::distance(bs.start, bs.end) < 0.001f) {
+						d = glm::distance(v.Position, bs.start);
+					} else {
+						glm::vec3 ab = bs.end - bs.start;
+						glm::vec3 ap = v.Position - bs.start;
+						float     t = glm::clamp(glm::dot(ap, ab) / glm::dot(ab, ab), 0.0f, 1.0f);
+						d = glm::distance(v.Position, bs.start + t * ab);
 					}
+					candidates.push_back({b, d});
 				}
-				if (best_bone != -1) {
-					v.m_BoneIDs[0] = best_bone;
-					v.m_Weights[0] = 1.0f;
+
+				std::sort(candidates.begin(), candidates.end(), [](const Candidate& a, const Candidate& b) {
+					return a.dist < b.dist;
+				});
+
+				// Shorter falloff (squared distance) and fewer bones for better stability
+				float total_inv_dist = 0;
+				int   count = 0;
+				for (int i = 0; i < 2 && i < (int)candidates.size(); ++i) {
+					float d2 = candidates[i].dist * candidates[i].dist;
+					total_inv_dist += 1.0f / (d2 + 0.0001f);
+					count++;
+				}
+
+				for (int i = 0; i < count; ++i) {
+					float d2 = candidates[i].dist * candidates[i].dist;
+					v.m_BoneIDs[i] = candidates[i].id;
+					v.m_Weights[i] = (1.0f / (d2 + 0.0001f)) / total_inv_dist;
+				}
+				for (int i = count; i < 4; ++i) {
+					v.m_BoneIDs[i] = -1;
+					v.m_Weights[i] = 0.0f;
 				}
 			}
 		}
@@ -97,50 +123,10 @@ namespace Boidsish {
 		if (ir.elements.empty())
 			return nullptr;
 
-		// 1. Pre-calculate bones if it's a critter
-		std::vector<BoneSegment> bone_segments;
-		std::vector<int>         element_to_bone(ir.elements.size(), -1);
-		auto                     data = std::make_shared<ModelData>();
+		auto data = std::make_shared<ModelData>();
 		data->model_path = "procedural_direct_" + std::to_string(reinterpret_cast<uintptr_t>(data.get()));
 
-		if (ir.name == "critter") {
-			for (int i = 0; i < (int)ir.elements.size(); ++i) {
-				const auto& e = ir.elements[i];
-				if (e.type == ProceduralElementType::Tube && e.length > 0.1f) {
-					BoneSegment bs;
-					bs.start = e.position;
-					bs.end = e.end_position;
-					bs.parent_bone = (e.parent != -1) ? element_to_bone[e.parent] : -1;
-
-					glm::vec3 dir = glm::normalize(bs.end - bs.start);
-					glm::vec3 up = (std::abs(dir.y) < 0.9f) ? glm::vec3(0, 1, 0) : glm::vec3(1, 0, 0);
-					glm::vec3 right = glm::normalize(glm::cross(up, dir));
-					up = glm::normalize(glm::cross(dir, right));
-
-					glm::mat4 bone_to_model(1.0f);
-					bone_to_model[0] = glm::vec4(right, 0);
-					bone_to_model[1] = glm::vec4(dir, 0);
-					bone_to_model[2] = glm::vec4(up, 0);
-					bone_to_model[3] = glm::vec4(bs.start, 1);
-
-					bs.offset = glm::inverse(bone_to_model);
-
-					int bone_id = (int)bone_segments.size();
-					bone_segments.push_back(bs);
-					element_to_bone[i] = bone_id;
-
-					BoneInfo info;
-					info.id = bone_id;
-					info.offset = bs.offset;
-					data->bone_info_map["bone_" + std::to_string(bone_id)] = info;
-					data->bone_count++;
-				} else if (e.parent != -1) {
-					element_to_bone[i] = element_to_bone[e.parent];
-				}
-			}
-		}
-
-		// 2. Generate Primary Mesh (Tubes, Hubs, Puffballs)
+		// 1. Generate Primary Mesh Geometry (Tubes, Hubs, Puffballs)
 		std::vector<Vertex>       main_vertices;
 		std::vector<unsigned int> main_indices;
 
@@ -238,7 +224,7 @@ namespace Boidsish {
 			}
 		}
 
-		// 3. Generate Leaves
+		// Generate Leaves
 		std::vector<Vertex>       leaf_vertices;
 		std::vector<unsigned int> leaf_indices;
 		auto AddLeafGeom = [&](glm::vec3 pos, glm::quat ori, float size, glm::vec3 color, int variant) {
@@ -286,13 +272,7 @@ namespace Boidsish {
 				AddLeafGeom(e.position, e.orientation, e.radius, e.color, e.variant);
 		}
 
-		// 4. Weighting, Repositioning, and AABB
-		if (ir.name == "critter") {
-			AssignBoneWeights(main_vertices, bone_segments);
-			AssignBoneWeights(leaf_vertices, bone_segments);
-		}
-
-		// Calculate AABB and reposition
+		// Calculate AABB and repositioning offset
 		glm::vec3 min(1e10f), max(-1e10f);
 		bool      has_any = false;
 		auto      update_aabb = [&](const std::vector<Vertex>& verts) {
@@ -305,23 +285,96 @@ namespace Boidsish {
 		update_aabb(main_vertices);
 		update_aabb(leaf_vertices);
 
-		if (has_any) {
-			if (ir.name == "critter") {
-				float y_offset = -min.y;
-				for (auto& v : main_vertices)
-					v.Position.y += y_offset;
-				for (auto& v : leaf_vertices)
-					v.Position.y += y_offset;
-				max.y += y_offset;
-				min.y = 0;
-				for (auto& pair : data->bone_info_map)
-					pair.second.offset = pair.second.offset *
-						glm::translate(glm::mat4(1.0f), glm::vec3(0, -y_offset, 0));
-			}
+		float y_offset = 0;
+		if (has_any && ir.name == "critter") {
+			y_offset = -min.y;
+			for (auto& v : main_vertices)
+				v.Position.y += y_offset;
+			for (auto& v : leaf_vertices)
+				v.Position.y += y_offset;
+			max.y += y_offset;
+			min.y = 0;
+			data->aabb = AABB(min, max);
+		} else if (has_any) {
 			data->aabb = AABB(min, max);
 		}
 
-		// 5. Finalize Meshes
+		// 2. Create bones and weights if it's a critter
+		if (ir.name == "critter") {
+			std::vector<BoneSegment> bone_segments;
+			std::vector<int>         element_to_bone(ir.elements.size(), -1);
+			std::vector<glm::mat4>   bone_global_transforms;
+
+			for (int i = 0; i < (int)ir.elements.size(); ++i) {
+				const auto& e = ir.elements[i];
+				if ((e.type == ProceduralElementType::Tube && e.length > 0.1f) || e.type == ProceduralElementType::Hub) {
+					BoneSegment bs;
+					bs.start = e.position;
+					bs.start.y += y_offset;
+					bs.parent_bone = (e.parent != -1) ? element_to_bone[e.parent] : -1;
+					bs.is_hub = (e.type == ProceduralElementType::Hub);
+
+					glm::mat4 bone_to_model(1.0f);
+					if (e.type == ProceduralElementType::Tube) {
+						bs.end = e.end_position;
+						bs.end.y += y_offset;
+						glm::vec3 dir = glm::normalize(bs.end - bs.start);
+
+                        // Min-twist basis generation
+                        glm::vec3 up(0, 1, 0);
+                        if (bs.parent_bone != -1) {
+                            up = glm::vec3(bone_global_transforms[bs.parent_bone][2]); // Use parent's Up
+                        }
+
+                        if (std::abs(glm::dot(dir, up)) > 0.99f) {
+                            up = (std::abs(dir.y) < 0.9f) ? glm::vec3(0, 1, 0) : glm::vec3(1, 0, 0);
+                        }
+
+						glm::vec3 right = glm::normalize(glm::cross(up, dir));
+						up = glm::normalize(glm::cross(dir, right));
+
+						bone_to_model[0] = glm::vec4(right, 0);
+						bone_to_model[1] = glm::vec4(dir, 0);
+						bone_to_model[2] = glm::vec4(up, 0);
+						bone_to_model[3] = glm::vec4(bs.start, 1);
+					} else {
+						bs.end = bs.start;
+                        if (bs.parent_bone != -1) {
+                            // Match parent orientation for Hubs
+                            bone_to_model = glm::translate(glm::mat4(1.0f), bs.start) * glm::mat4(glm::mat3(bone_global_transforms[bs.parent_bone]));
+                        } else {
+						    bone_to_model = glm::translate(glm::mat4(1.0f), bs.start);
+                        }
+					}
+
+					int bone_id = (int)bone_segments.size();
+					bone_segments.push_back(bs);
+					bone_global_transforms.push_back(bone_to_model);
+					element_to_bone[i] = bone_id;
+
+					std::string bone_name = e.name.empty() ? ("bone_" + std::to_string(bone_id)) : e.name;
+					int         parent_bone_idx = bs.parent_bone;
+					std::string parent_name = (parent_bone_idx != -1)
+						? (ir.elements[ir.elements[i].parent].name.empty()
+					           ? ("bone_" + std::to_string(parent_bone_idx))
+					           : ir.elements[ir.elements[i].parent].name)
+						: "";
+
+					glm::mat4 local_transform = bone_to_model;
+					if (parent_bone_idx != -1) {
+						local_transform = glm::inverse(bone_global_transforms[parent_bone_idx]) * bone_to_model;
+					}
+
+					data->AddBone(bone_name, parent_name, local_transform);
+				} else if (e.parent != -1) {
+					element_to_bone[i] = element_to_bone[e.parent];
+				}
+			}
+			AssignBoneWeights(main_vertices, bone_segments);
+			AssignBoneWeights(leaf_vertices, bone_segments);
+		}
+
+		// 3. Finalize Meshes
 		auto finalize_mesh =
 			[&](std::vector<Vertex>& vertices, std::vector<unsigned int>& indices, bool use_simplifier) {
 				if (vertices.empty())
