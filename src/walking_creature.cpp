@@ -21,27 +21,33 @@ namespace Boidsish {
 			glm::vec3 bodyColor(0.4f, 0.45f, 0.5f);
 			glm::vec3 legColor(0.3f, 0.32f, 0.35f);
 
-			int bodyIdx = ir.AddHub(glm::vec3(0, height, 0), length * 0.5f, bodyColor, -1, "body");
+			// Flat body pod
+			int bodyIdx = ir.AddHub(glm::vec3(0, height, 0), length * 0.45f, bodyColor, -1, "body");
+			ir.AddHub(glm::vec3(length * 0.3f, height, 0), length * 0.35f, bodyColor, bodyIdx);
+			ir.AddHub(glm::vec3(-length * 0.3f, height, 0), length * 0.35f, bodyColor, bodyIdx);
+			ir.AddHub(glm::vec3(0, height, length * 0.4f), length * 0.35f, bodyColor, bodyIdx);
+			ir.AddHub(glm::vec3(0, height, -length * 0.4f), length * 0.35f, bodyColor, bodyIdx);
 
 			const char* legPrefixes[] = {"FL", "FR", "BR", "BL"};
 			glm::vec3   offsets[] = {
-                {-width * 0.7f, 0.0f, length * 0.4f},
-                {width * 0.7f, 0.0f, length * 0.4f},
-                {width * 0.7f, 0.0f, -length * 0.4f},
-                {-width * 0.7f, 0.0f, -length * 0.4f}
+                {-width * 0.4f, 0.0f, length * 0.35f},
+                {width * 0.4f, 0.0f, length * 0.35f},
+                {width * 0.4f, 0.0f, -length * 0.35f},
+                {-width * 0.4f, 0.0f, -length * 0.35f}
             };
 
 			for (int i = 0; i < 4; ++i) {
 				std::string prefix = legPrefixes[i];
-				glm::vec3   basePos = glm::vec3(0, height, 0) + offsets[i] * 0.6f;
-				glm::vec3   kneePos = basePos + glm::vec3(offsets[i].x * 0.8f, height * 0.2f, offsets[i].z * 0.2f);
-				glm::vec3   footPos = basePos + glm::vec3(offsets[i].x * 1.2f, -height, offsets[i].z * 0.5f);
+				glm::vec3   basePos = glm::vec3(0, height, 0) + offsets[i];
+				// Arching spider-tank legs: wide hips, high knees
+				glm::vec3   kneePos = basePos + glm::vec3(offsets[i].x * 0.8f, height * 1.2f, 0);
+				glm::vec3   footPos = basePos + glm::vec3(offsets[i].x * 2.0f, -height, 0);
 
-				int upperIdx = ir.AddTube(basePos, kneePos, length * 0.15f, length * 0.12f, legColor, bodyIdx, prefix + "_upper");
-				ir.AddHub(basePos, length * 0.15f, legColor, upperIdx); // Visual hip joint attached to upper leg
-				int lowerIdx = ir.AddTube(kneePos, footPos, length * 0.12f, length * 0.1f, legColor, upperIdx, prefix + "_lower");
-				ir.AddControlPoint(footPos, length * 0.1f, legColor, lowerIdx, prefix + "_effector");
-				ir.AddPuffball(footPos, length * 0.15f, legColor, 0, lowerIdx);
+				int upperIdx = ir.AddTube(basePos, kneePos, length * 0.1f, length * 0.08f, legColor, bodyIdx, prefix + "_upper");
+				ir.AddHub(basePos, length * 0.12f, legColor, upperIdx);
+				int lowerIdx = ir.AddTube(kneePos, footPos, length * 0.08f, length * 0.06f, legColor, upperIdx, prefix + "_lower");
+				ir.AddControlPoint(footPos, length * 0.06f, legColor, lowerIdx, prefix + "_effector");
+				ir.AddPuffball(footPos, length * 0.12f, legColor, 0, lowerIdx);
 			}
 
 			auto model = ProceduralMesher::GenerateModel(ir);
@@ -50,10 +56,10 @@ namespace Boidsish {
 	}
 
 	WalkingCreature::WalkingCreature(int id, float x, float y, float z, float length):
-		Model(CreateCreatureData(length, length * 1.2f, length * 0.3f)), length_(length) {
+		Model(CreateCreatureData(length, length * 1.5f, length * 0.3f)), length_(length) {
 		SetId(id);
 		SetPosition(x, y, z);
-		width_ = length * 1.2f;
+		width_ = length * 1.5f;
 		height_ = length * 0.3f;
 		current_pos_ = glm::vec3(x, y, z);
 		target_pos_ = current_pos_;
@@ -63,14 +69,14 @@ namespace Boidsish {
 
 		const char* legPrefixes[] = {"FL", "FR", "BR", "BL"};
 		glm::vec3   offsets[] = {
-            {-width_ * 0.7f, 0.0f, length_ * 0.4f},
-            {width_ * 0.7f, 0.0f, length_ * 0.4f},
-            {width_ * 0.7f, 0.0f, -length_ * 0.4f},
-            {-width_ * 0.7f, 0.0f, -length_ * 0.4f}
+            {-width_ * 0.4f, 0.0f, length_ * 0.35f},
+            {width_ * 0.4f, 0.0f, length_ * 0.35f},
+            {width_ * 0.4f, 0.0f, -length_ * 0.35f},
+            {-width_ * 0.4f, 0.0f, -length_ * 0.35f}
         };
 
 		for (int i = 0; i < 4; ++i) {
-			legs_[i].bone_name = "body";
+			legs_[i].bone_name = std::string(legPrefixes[i]) + "_upper";
 			legs_[i].thigh_bone_name = std::string(legPrefixes[i]) + "_upper";
 			legs_[i].knee_bone_name = std::string(legPrefixes[i]) + "_lower";
 			legs_[i].foot_bone_name = std::string(legPrefixes[i]) + "_effector";
@@ -80,8 +86,8 @@ namespace Boidsish {
 
 			BoneConstraint upperConstraint;
 			upperConstraint.type = ConstraintType::Cone;
-			upperConstraint.coneAngle = 30.0f;
-            upperConstraint.maxTwistAngle = 10.0f;
+			upperConstraint.coneAngle = 25.0f;
+            upperConstraint.maxTwistAngle = 5.0f;
 			SetBoneConstraint(legs_[i].thigh_bone_name, upperConstraint);
 
             BoneConstraint lowerConstraint;
@@ -214,7 +220,8 @@ namespace Boidsish {
 		UpdateAnimation(delta_time);
 
 		for (int i = 0; i < 4; ++i) {
-			SolveIK(legs_[i].foot_bone_name, legs_[i].world_foot_pos, 0.01f, 30, legs_[i].bone_name, {"body", legs_[i].thigh_bone_name});
+			// IK starting from the thigh bone (upper), so the body isn't affected.
+			SolveIK(legs_[i].foot_bone_name, legs_[i].world_foot_pos, 0.01f, 30, legs_[i].bone_name);
 		}
 
 		spotlight_.position = GetBoneWorldPosition("body");

@@ -96,19 +96,21 @@ namespace Boidsish {
 					return a.dist < b.dist;
 				});
 
-				// Shorter falloff (squared distance) and fewer bones for better stability
+				// Stable skinning falloff (6th power) to prevent smearing and extreme warping
 				float total_inv_dist = 0;
 				int   count = 0;
 				for (int i = 0; i < 4 && i < (int)candidates.size(); ++i) {
 					float d2 = candidates[i].dist * candidates[i].dist;
-					total_inv_dist += 1.0f / (d2 + 0.0001f);
+                    float d6 = d2 * d2 * d2;
+					total_inv_dist += 1.0f / (d6 + 0.0001f);
 					count++;
 				}
 
 				for (int i = 0; i < count; ++i) {
 					float d2 = candidates[i].dist * candidates[i].dist;
+                    float d6 = d2 * d2 * d2;
 					v.m_BoneIDs[i] = candidates[i].id;
-					v.m_Weights[i] = (1.0f / (d2 + 0.0001f)) / total_inv_dist;
+					v.m_Weights[i] = (1.0f / (d6 + 0.0001f)) / total_inv_dist;
 				}
 				for (int i = count; i < 4; ++i) {
 					v.m_BoneIDs[i] = -1;

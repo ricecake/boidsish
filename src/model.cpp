@@ -988,10 +988,12 @@ namespace Boidsish {
 						glm::vec3 dir = glm::normalize(positions[i + 1] - positions[i]);
 						glm::vec3 parentDir = glm::normalize(positions[i] - prevPos);
 
-						if (glm::any(glm::isnan(dir)) || glm::length(dir) < 0.001f)
+						if (glm::any(glm::isnan(dir)) || glm::length(dir) < 0.0001f)
 							dir = parentDir;
-						if (glm::any(glm::isnan(parentDir)) || glm::length(parentDir) < 0.001f)
+						if (glm::any(glm::isnan(parentDir)) || glm::length(parentDir) < 0.0001f)
 							parentDir = glm::vec3(0, 1, 0);
+                        dir = glm::normalize(dir);
+                        parentDir = glm::normalize(parentDir);
 
 						if (constraint.type == ConstraintType::Hinge) {
 							glm::vec3 planeNormal = constraint.axis;
