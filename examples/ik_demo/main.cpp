@@ -93,6 +93,7 @@ public:
     }
 
     void SetTarget(glm::vec3 pos) {
+        model->ResetBones(); // Reset to avoid accumulation errors and skewed scales
         animStart = model->GetBoneWorldPosition("bone_effector");
         animEnd = pos;
         animTime = 0;

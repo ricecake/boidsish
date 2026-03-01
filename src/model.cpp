@@ -38,6 +38,35 @@ namespace Boidsish {
 		setupMesh(nullptr); // Initial setup (legacy if no megabuffer yet)
 	}
 
+	Mesh::Mesh(const Mesh& other) {
+		vertices = other.vertices;
+		indices = other.indices;
+		shadow_indices = other.shadow_indices;
+		textures = other.textures;
+		diffuseColor = other.diffuseColor;
+		opacity = other.opacity;
+		has_vertex_colors = other.has_vertex_colors;
+
+		// Do not copy VAO/VBO/EBO handles - setupMesh will create new ones if needed
+		VAO = VBO = EBO = shadow_EBO = 0;
+		allocation.valid = false;
+		shadow_allocation.valid = false;
+	}
+
+	Mesh& Mesh::operator=(const Mesh& other) {
+		if (this != &other) {
+			Cleanup();
+			vertices = other.vertices;
+			indices = other.indices;
+			shadow_indices = other.shadow_indices;
+			textures = other.textures;
+			diffuseColor = other.diffuseColor;
+			opacity = other.opacity;
+			has_vertex_colors = other.has_vertex_colors;
+		}
+		return *this;
+	}
+
 	void Mesh::setupMesh(Megabuffer* mb) {
 		if (mb) {
 			if (allocation.valid)
@@ -793,7 +822,7 @@ namespace Boidsish {
 
 				for (const auto& bone : bones) {
 					float d = 0;
-					if (bone.start == bone.end) {
+					if (glm::distance(bone.start, bone.end) < 0.001f) {
 						d = glm::distance(vertex.Position, bone.start);
 					} else {
 						// Point-line segment distance
@@ -811,18 +840,36 @@ namespace Boidsish {
 
 				// Assign top weights (simple falloff)
 				float totalInvDist = 0;
+				int   numWeights = 0;
 				for (int i = 0; i < MAX_BONE_INFLUENCE && i < (int)candidates.size(); ++i) {
-					float w = 1.0f / (candidates[i].dist + 0.001f);
-					totalInvDist += w;
+					if (candidates[i].dist < 5.0f) { // Only weight nearby bones
+						float w = 1.0f / (candidates[i].dist + 0.001f);
+						totalInvDist += w;
+						numWeights++;
+					}
 				}
-				for (int i = 0; i < MAX_BONE_INFLUENCE && i < (int)candidates.size(); ++i) {
-					vertex.m_BoneIDs[i] = candidates[i].id;
-					vertex.m_Weights[i] = (1.0f / (candidates[i].dist + 0.001f)) / totalInvDist;
+
+				if (numWeights > 0) {
+					for (int i = 0; i < numWeights; ++i) {
+						vertex.m_BoneIDs[i] = candidates[i].id;
+						vertex.m_Weights[i] = (1.0f / (candidates[i].dist + 0.001f)) / totalInvDist;
+					}
+				} else if (!candidates.empty()) {
+					// Fallback to closest bone if none are "nearby"
+					vertex.m_BoneIDs[0] = candidates[0].id;
+					vertex.m_Weights[0] = 1.0f;
 				}
 			}
 			mesh.Cleanup();
 			mesh.UploadToGPU();
 		}
+	}
+
+	void Model::ResetBones() {
+		if (m_animator) {
+			m_animator->ResetLocalOverrides();
+		}
+		MarkDirty();
 	}
 
 	void Model::SolveIK(
@@ -974,41 +1021,59 @@ namespace Boidsish {
 		}
 
 		// Apply positions back to animator
+		// We re-traverse from root to effector to compute consistent local rotations
+		glm::mat4 currentParentGlobal = glm::mat4(1.0f);
+		std::string parentOfRoot = m_animator->GetBoneParentName(chain[0]);
+		if (!parentOfRoot.empty()) {
+			currentParentGlobal = m_animator->GetBoneModelSpaceTransform(parentOfRoot);
+		}
+
 		for (size_t i = 0; i < positions.size() - 1; ++i) {
-			glm::vec3 diff = positions[i + 1] - positions[i];
-			glm::vec3 curDir;
-			if (glm::length(diff) < 0.0001f) {
-				curDir = glm::vec3(0, 1, 0); // Default
-			} else {
-				curDir = glm::normalize(diff);
-			}
+			glm::vec3 start = positions[i];
+			glm::vec3 end = positions[i + 1];
+			glm::vec3 dir = glm::normalize(end - start);
 
-			// Find default dir from bind pose
-			glm::mat4 bindModel = m_animator->GetBoneModelSpaceTransform(chain[i]);
-			glm::mat4 nextBindModel = m_animator->GetBoneModelSpaceTransform(chain[i + 1]);
-			glm::vec3 bindDirVec = glm::vec3(nextBindModel[3]) - glm::vec3(bindModel[3]);
-			glm::vec3 bindDir;
-			if (glm::length(bindDirVec) < 0.0001f) {
+			if (glm::any(glm::isnan(dir)))
+				dir = glm::vec3(0, 1, 0);
+
+			// Reference direction in bind space (usually along an axis)
+			glm::mat4 bindLocal = m_data->root_node.FindNode(chain[i])->transformation;
+			glm::vec3 bindPos = glm::vec3(bindLocal[3]);
+
+			// Find end position in bind space from child
+			glm::vec3 bindEndPos = glm::vec3(m_data->root_node.FindNode(chain[i + 1])->transformation[3]);
+			glm::vec3 bindDir = glm::normalize(bindEndPos); // Relative to chain[i]
+
+			if (glm::any(glm::isnan(bindDir)))
 				bindDir = glm::vec3(0, 1, 0);
-			} else {
-				bindDir = glm::normalize(bindDirVec);
-			}
 
-			glm::quat rot = glm::rotation(bindDir, curDir);
-			glm::mat4 local = m_animator->GetBoneLocalTransform(chain[i]);
-			glm::vec3 scale = glm::vec3(glm::length(local[0]), glm::length(local[1]), glm::length(local[2]));
-			glm::vec3 pos = glm::vec3(local[3]);
+			// Calculate new global rotation for this bone
+			// It should point from positions[i] to positions[i+1]
+			// We use a simple look-at approach or rotation-between-vectors
+			glm::quat q = glm::rotation(bindDir, dir);
 
-			// Extract bind local rotation
-			glm::mat4 parentBindModel = glm::mat4(1.0f);
-			std::string parentName = m_animator->GetBoneParentName(chain[i]);
-			if (!parentName.empty())
-				parentBindModel = m_animator->GetBoneModelSpaceTransform(parentName);
-			glm::quat bindLocalRot = glm::quat_cast(glm::inverse(parentBindModel) * bindModel);
+			if (glm::any(glm::isnan(q)))
+				q = glm::quat(1, 0, 0, 0);
 
-			local = glm::translate(glm::mat4(1.0f), pos) * glm::toMat4(rot * bindLocalRot) *
-				glm::scale(glm::mat4(1.0f), scale);
+			// New global transform for this bone
+			glm::mat4 newGlobal = glm::translate(glm::mat4(1.0f), start) * glm::toMat4(q);
+
+			// Convert to local relative to updated parent
+			glm::mat4 local = glm::inverse(currentParentGlobal) * newGlobal;
+
+			// Keep original scale
+			glm::mat4 oldLocal = m_animator->GetBoneLocalTransform(chain[i]);
+			glm::vec3 scale(glm::length(oldLocal[0]), glm::length(oldLocal[1]), glm::length(oldLocal[2]));
+
+			// Reconstruct local with position, rotation and scale
+			glm::vec3 localPos = glm::vec3(local[3]);
+			glm::quat localRot = glm::quat_cast(local);
+			local = glm::translate(glm::mat4(1.0f), localPos) * glm::toMat4(localRot) * glm::scale(glm::mat4(1.0f), scale);
+
 			m_animator->SetBoneLocalTransform(chain[i], local);
+
+			// Update parent global for next iteration
+			currentParentGlobal = newGlobal;
 		}
 
 		// Handle effector orientation if provided

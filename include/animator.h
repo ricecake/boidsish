@@ -33,6 +33,8 @@ namespace Boidsish {
 		glm::mat4 GetBoneModelSpaceTransform(const std::string& boneName) const;
 		std::string GetBoneParentName(const std::string& boneName) const;
 
+		void ResetLocalOverrides() { m_LocalOverrides.clear(); }
+
 	private:
 		void CalculateBoneTransform(const NodeData& node, glm::mat4 parentTransform);
 

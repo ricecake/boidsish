@@ -44,6 +44,10 @@ namespace Boidsish {
 			std::vector<unsigned int> shadow_indices = {}
 		);
 
+		// Copying meshes should not copy GPU handles
+		Mesh(const Mesh& other);
+		Mesh& operator=(const Mesh& other);
+
 		// Render the mesh
 		void render() const;
 		void render(Shader& shader) const; // Render with specific shader (for shadow pass, etc.)
@@ -312,6 +316,7 @@ namespace Boidsish {
 		void      SetBoneWorldRotation(const std::string& boneName, const glm::quat& worldRot);
 
 		void SkinToHierarchy();
+		void ResetBones();
 
 		// IK
 		void SolveIK(
