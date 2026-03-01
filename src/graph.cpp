@@ -23,14 +23,14 @@ namespace Boidsish {
 	}
 
 	const int   CYLINDER_SEGMENTS = 12;
-	const float EDGE_RADIUS_SCALE = 0.005f;
+	const float EDGE_RADIUS_SCALE = 0.02f;
 	const int   CURVE_SEGMENTS = 10;
 
 	void Graph::PrepareResources(Megabuffer* mb) const {
 		if (edges.empty())
 			return;
 
-		bool nodes_changed = false;
+		bool nodes_changed = is_dynamic_;
 		if (cached_vertex_positions_.size() != vertices.size()) {
 			nodes_changed = true;
 		} else {
@@ -177,9 +177,17 @@ namespace Boidsish {
 				vertices_to_upload.push_back(v);
 			}
 
-			allocation_ = mb->AllocateStatic(vertices_to_upload.size(), 0);
+			if (nodes_changed) {
+				allocation_ = mb->AllocateDynamic(static_cast<uint32_t>(vertices_to_upload.size()), 0);
+				is_dynamic_ = true;
+			} else if (!allocation_.valid ||
+			           allocation_.vertex_count != static_cast<uint32_t>(vertices_to_upload.size())) {
+				allocation_ = mb->AllocateStatic(static_cast<uint32_t>(vertices_to_upload.size()), 0);
+				is_dynamic_ = false;
+			}
+
 			if (allocation_.valid) {
-				mb->Upload(allocation_, vertices_to_upload.data(), vertices_to_upload.size());
+				mb->Upload(allocation_, vertices_to_upload.data(), static_cast<uint32_t>(vertices_to_upload.size()));
 				graph_vao_ = mb->GetVAO();
 			}
 
