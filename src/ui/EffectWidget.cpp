@@ -60,6 +60,11 @@ namespace Boidsish {
 					if (ImGui::Checkbox("Wireframe", &wireframe_enabled)) {
 						config.SetBool("artistic_effect_wireframe", wireframe_enabled);
 					}
+
+					bool terrain_shadow_debug = config.GetAppSettingBool("terrain_shadow_debug", false);
+					if (ImGui::Checkbox("Terrain Shadow Debug", &terrain_shadow_debug)) {
+						config.SetBool("terrain_shadow_debug", terrain_shadow_debug);
+					}
 				}
 
 				// 2. Post-Processing Effects (from PostProcessingWidget)
