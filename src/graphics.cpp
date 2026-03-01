@@ -1115,6 +1115,10 @@ namespace Boidsish {
 			if (temporal_idx != GL_INVALID_INDEX) {
 				glUniformBlockBinding(shader_to_setup.ID, temporal_idx, Constants::UboBinding::TemporalData());
 			}
+			GLuint terrain_idx = glGetUniformBlockIndex(shader_to_setup.ID, "TerrainData");
+			if (terrain_idx != GL_INVALID_INDEX) {
+				glUniformBlockBinding(shader_to_setup.ID, terrain_idx, Constants::UboBinding::TerrainData());
+			}
 		}
 
 		void SetupAkiraBindings() {

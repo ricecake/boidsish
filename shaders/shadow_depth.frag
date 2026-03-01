@@ -1,4 +1,4 @@
-#version 460 core
+#version 430 core
 #extension GL_GOOGLE_include_directive : enable
 
 #include "common_uniforms.glsl"
