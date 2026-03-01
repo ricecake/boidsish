@@ -14,7 +14,7 @@ int main(int argc, char** argv) {
 
 		// Create the walking creature at the origin
 		auto creature = std::make_shared<WalkingCreature>(0, 0, 0, 0, 16.0f);
-		creature->SetClampedToTerrain(true);
+		// creature->SetClampedToTerrain(true);
 
 		// Add creature's spotlight to the light manager
 		vis.GetLightManager().AddLight(creature->GetSpotlight());
@@ -26,7 +26,7 @@ int main(int argc, char** argv) {
 			creature->Update(vis.GetLastFrameTime());
 
 			// Sync spotlight
-			vis.GetLightManager().GetLights()[spotlight_idx] = creature->GetSpotlight();
+			// vis.GetLightManager().GetLights()[spotlight_idx] = creature->GetSpotlight();
 
 			return std::vector<std::shared_ptr<Shape>>{creature};
 		});

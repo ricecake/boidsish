@@ -984,6 +984,13 @@ namespace Boidsish {
 					// Apply constraints
 					const auto& constraint = GetBoneConstraint(chain[i]);
 					if (constraint.type != ConstraintType::None) {
+                        // Find current local frame for bone
+                        glm::mat4 currentParentMS = glm::mat4(1.0f);
+                        if (i > 0) {
+                            // This is slightly wrong during iterations, but better than global assumed dirs.
+                            // Ideally we'd maintain the global rotation of each segment in the FABRIK chain.
+                        }
+
 						glm::vec3 prevPos = (i == 0) ? (positions[0] + glm::vec3(0, 1, 0)) : positions[i - 1];
 						glm::vec3 dir = glm::normalize(positions[i + 1] - positions[i]);
 						glm::vec3 parentDir = glm::normalize(positions[i] - prevPos);
@@ -1031,7 +1038,6 @@ namespace Boidsish {
 		}
 
 		// Apply positions back to animator
-		// We re-traverse from root to effector to compute consistent local rotations
 		glm::mat4   currentParentGlobal = glm::mat4(1.0f);
 		std::string parentOfRoot = m_animator->GetBoneParentName(chain[0]);
 		if (!parentOfRoot.empty()) {
@@ -1046,38 +1052,67 @@ namespace Boidsish {
 			if (glm::any(glm::isnan(dir)))
 				dir = glm::vec3(0, 1, 0);
 
-			// Reference direction in bind space (usually along an axis)
-			glm::mat4 bindLocal = m_data->root_node.FindNode(chain[i])->transformation;
-			glm::vec3 bindPos = glm::vec3(bindLocal[3]);
+			// Find reference direction in bind space
+            const NodeData* node = m_data->root_node.FindNode(chain[i]);
+            const NodeData* childNode = m_data->root_node.FindNode(chain[i + 1]);
 
-			// Find end position in bind space from child
-			glm::vec3 bindEndPos = glm::vec3(m_data->root_node.FindNode(chain[i + 1])->transformation[3]);
-			glm::vec3 bindDir = glm::normalize(bindEndPos); // Relative to chain[i]
+            glm::vec3 bindDir(0, 1, 0);
+            if (node && childNode) {
+                bindDir = glm::normalize(glm::vec3(childNode->transformation[3]));
+            }
 
-			if (glm::any(glm::isnan(bindDir)))
+			if (glm::any(glm::isnan(bindDir)) || glm::length(bindDir) < 0.001f)
 				bindDir = glm::vec3(0, 1, 0);
 
-			// Calculate new global rotation for this bone
-			// It should point from positions[i] to positions[i+1]
-			// We use a simple look-at approach or rotation-between-vectors
-			glm::quat q = glm::rotation(bindDir, dir);
+			// 1. Minimum rotation to align bindDir with dir
+            glm::quat q = glm::rotation(bindDir, dir);
+            if (glm::any(glm::isnan(q))) q = glm::quat(1, 0, 0, 0);
 
-			if (glm::any(glm::isnan(q)))
-				q = glm::quat(1, 0, 0, 0);
+            // 2. Twist correction: align the bone's 'right' vector with the reference frame to minimize mangling.
+            glm::vec3 bindRight = glm::vec3(node->transformation[0]);
+            if (glm::length(bindRight) < 0.001f) bindRight = glm::vec3(1, 0, 0);
+            else bindRight = glm::normalize(bindRight);
 
-			// New global transform for this bone
+            // Reference 'right' from parent orientation
+            glm::vec3 parentRight = glm::vec3(currentParentGlobal[0]);
+            // Project parentRight onto plane perpendicular to 'dir'
+            glm::vec3 targetRight = parentRight - glm::dot(parentRight, dir) * dir;
+            if (glm::length(targetRight) < 0.001f) {
+                glm::vec3 parentUp = glm::vec3(currentParentGlobal[1]);
+                targetRight = glm::cross(dir, parentUp);
+                if (glm::length(targetRight) < 0.001f) targetRight = glm::vec3(1, 0, 0);
+            }
+            targetRight = glm::normalize(targetRight);
+
+            // Current 'right' vector after alignment rotation
+            glm::vec3 currentRight = glm::normalize(glm::vec3(glm::toMat4(q) * glm::vec4(bindRight, 0.0f)));
+
+            float dot = glm::clamp(glm::dot(currentRight, targetRight), -1.0f, 1.0f);
+            float twistAngle = std::acos(dot);
+            glm::vec3 cross = glm::cross(currentRight, targetRight);
+            if (glm::dot(cross, dir) < 0) twistAngle = -twistAngle;
+
+            // Apply twist constraint
+            const auto& constraint = GetBoneConstraint(chain[i]);
+            twistAngle = glm::clamp(glm::degrees(twistAngle), -constraint.maxTwistAngle, constraint.maxTwistAngle);
+
+            glm::quat twistQ = glm::angleAxis(glm::radians(twistAngle), dir);
+            q = twistQ * q;
+
+			// Final global transform for this bone
 			glm::mat4 newGlobal = glm::translate(glm::mat4(1.0f), start) * glm::toMat4(q);
 
 			// Convert to local relative to updated parent
 			glm::mat4 local = glm::inverse(currentParentGlobal) * newGlobal;
 
-			// Keep original scale
+			// Reconstruct local with position and rotation
+			glm::vec3 localPos = glm::vec3(local[3]);
+			glm::quat localRot = glm::quat_cast(local);
+
+            // Preserve original scale
 			glm::mat4 oldLocal = m_animator->GetBoneLocalTransform(chain[i]);
 			glm::vec3 scale(glm::length(oldLocal[0]), glm::length(oldLocal[1]), glm::length(oldLocal[2]));
 
-			// Reconstruct local with position, rotation and scale
-			glm::vec3 localPos = glm::vec3(local[3]);
-			glm::quat localRot = glm::quat_cast(local);
 			local = glm::translate(glm::mat4(1.0f), localPos) * glm::toMat4(localRot) *
 				glm::scale(glm::mat4(1.0f), scale);
 

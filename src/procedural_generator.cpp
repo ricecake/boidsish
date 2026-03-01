@@ -37,15 +37,23 @@ namespace Boidsish {
 			std::string expand(int iterations) {
 				std::string current = axiom;
 				for (int i = 0; i < iterations; ++i) {
+					if (current.length() > 10000)
+						break;
 					std::string next;
 					for (char c : current) {
 						if (rules.count(c))
 							next += rules.at(c);
 						else
 							next += c;
+						if (next.length() > 10000)
+							break;
 					}
 					current = next;
+					if (current.length() > 10000)
+						break;
 				}
+				if (current.length() > 10000)
+					current = current.substr(0, 10000);
 				return current;
 			}
 		};
@@ -597,8 +605,12 @@ namespace Boidsish {
 						nodes[i].children.push_back(newNode.id);
 						nodes.push_back(newNode);
 						growthOccurred = true;
+						if (nodes.size() > 2000)
+							break;
 					}
 				}
+				if (nodes.size() > 2000)
+					break;
 			}
 
 			// Pruning
@@ -612,6 +624,8 @@ namespace Boidsish {
 					}
 				}
 			}
+			if (nodes.size() > 2000)
+				break;
 		}
 
 		// Thickness calculation (Leonardo's Rule)

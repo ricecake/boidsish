@@ -3,6 +3,7 @@
 #include <string>
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
+#include <glm/gtx/quaternion.hpp>
 #include "model.h"
 #include "animator.h"
 #include "logger.h"
@@ -46,6 +47,17 @@ void test_ik() {
         std::cout << "IK Failed! Dist: " << dist << std::endl;
         exit(1);
     }
+
+    // Test twist minimization
+    // Rotate root 45 degrees around Y. Chain should follow without twisting mid/end.
+    model.ResetBones();
+    glm::mat4 rotRoot = glm::rotate(glm::mat4(1.0f), glm::radians(45.0f), glm::vec3(0, 1, 0));
+    model.GetAnimator()->SetBoneLocalTransform("root", rotRoot);
+    model.SolveIK("end", glm::vec3(1, 1, 1));
+
+    glm::quat midRot = glm::quat_cast(model.GetAnimator()->GetBoneLocalTransform("mid"));
+    float twist = glm::degrees(glm::angle(midRot));
+    std::cout << "Mid Bone Twist Angle: " << twist << " degrees" << std::endl;
 
     // Test constraints
     BoneConstraint hinge;

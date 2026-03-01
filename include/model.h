@@ -87,7 +87,8 @@ namespace Boidsish {
 		glm::vec3      axis = glm::vec3(1, 0, 0); // For Hinge
 		float          minAngle = -180.0f;        // In degrees
 		float          maxAngle = 180.0f;
-		float          coneAngle = 45.0f; // For Cone
+		float          coneAngle = 45.0f;     // For Cone
+		float          maxTwistAngle = 180.0f; // In degrees
 	};
 
 	struct BoneInfo {
