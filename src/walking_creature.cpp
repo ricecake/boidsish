@@ -21,10 +21,8 @@ namespace Boidsish {
 			glm::vec3 bodyColor(0.8f, 0.4f, 0.2f);
 			glm::vec3 legColor(0.7f, 0.35f, 0.15f);
 
-			// Body - main hub
 			int bodyIdx = ir.AddHub(glm::vec3(0, height, 0), length * 0.45f, bodyColor, -1, "body");
 
-			// Legs
 			const char* legPrefixes[] = {"FL", "FR", "BR", "BL"};
 			glm::vec3   offsets[] = {
                 {-width / 2.0f, 0.0f, length / 2.2f},
@@ -37,22 +35,16 @@ namespace Boidsish {
 				std::string prefix = legPrefixes[i];
 				glm::vec3   basePos = glm::vec3(0, height, 0) + offsets[i];
 
-				// Upper leg
 				glm::vec3 kneePos = basePos + glm::vec3(offsets[i].x * 0.5f, -height * 0.4f, offsets[i].z * 0.1f);
 				int upperIdx = ir.AddTube(basePos, kneePos, length * 0.12f, length * 0.1f, legColor, bodyIdx, prefix + "_upper");
 
-				// Lower leg
 				glm::vec3 footPos = basePos + glm::vec3(offsets[i].x * 0.2f, -height, 0);
 				int lowerIdx = ir.AddTube(kneePos, footPos, length * 0.1f, length * 0.08f, legColor, upperIdx, prefix + "_lower");
 
-				// Tip effector for IK
                 ir.AddControlPoint(footPos, 0.01f, legColor, lowerIdx, prefix + "_effector");
-
-				// Visual foot
 				ir.AddPuffball(footPos, length * 0.1f, legColor, 0, lowerIdx);
 			}
 
-			// Neck and Head
 			glm::vec3 neckBase(0, height, length * 0.35f);
             glm::vec3 headPos = neckBase + glm::vec3(0, length * 0.3f, length * 0.3f);
 			int neckIdx = ir.AddTube(neckBase, headPos, length * 0.12f, length * 0.1f, bodyColor, bodyIdx, "neck");
@@ -94,7 +86,6 @@ namespace Boidsish {
 			legs_[i].world_foot_pos = current_pos_ + legs_[i].rest_offset;
 			legs_[i].world_foot_pos.y = current_pos_.y;
 
-			// Constraints
 			BoneConstraint upperConstraint;
 			upperConstraint.type = ConstraintType::Cone;
 			upperConstraint.coneAngle = 40.0f;
@@ -155,7 +146,6 @@ namespace Boidsish {
 
 		glm::mat4 rotation = glm::rotate(glm::mat4(1.0f), glm::radians(current_yaw_), glm::vec3(0, 1, 0));
 
-		// Gait: Synchronous diagonal pairs
 		int moving_count = 0;
 		for (int i = 0; i < 4; ++i)
 			if (legs_[i].is_moving)
@@ -218,6 +208,10 @@ namespace Boidsish {
 			glm::vec3 diff = target_body_pos - com;
 			diff.y = 0;
 			body_offset_ = glm::mix(body_offset_, diff, 0.1f);
+
+            // Safety: clamp body offset
+            float max_off = length_ * 0.5f;
+            if (glm::length(body_offset_) > max_off) body_offset_ = glm::normalize(body_offset_) * max_off;
 		}
 	}
 
@@ -225,6 +219,9 @@ namespace Boidsish {
 		glm::mat4 bodyTransform = GetAnimator()->GetBoneLocalTransform("body");
 		bodyTransform[3] = glm::vec4(glm::vec3(0, height_, 0) + body_offset_, 1.0f);
 		GetAnimator()->SetBoneLocalTransform("body", bodyTransform);
+
+		// Ensure global matrices are updated so SolveIK starts from the correct hip positions
+		UpdateAnimation(0.0f);
 
 		for (int i = 0; i < 4; ++i) {
 			SolveIK(legs_[i].foot_bone_name, legs_[i].world_foot_pos, 0.01f, 30, legs_[i].bone_name);

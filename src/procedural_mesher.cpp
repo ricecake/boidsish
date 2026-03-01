@@ -307,12 +307,12 @@ namespace Boidsish {
 
 			for (int i = 0; i < (int)ir.elements.size(); ++i) {
 				const auto& e = ir.elements[i];
-				if ((e.type == ProceduralElementType::Tube && e.length > 0.1f) || e.type == ProceduralElementType::Hub) {
+				if ((e.type == ProceduralElementType::Tube && e.length > 0.1f) || e.type == ProceduralElementType::Hub || e.type == ProceduralElementType::ControlPoint) {
 					BoneSegment bs;
 					bs.start = e.position;
 					bs.start.y += y_offset;
 					bs.parent_bone = (e.parent != -1) ? element_to_bone[e.parent] : -1;
-					bs.is_hub = (e.type == ProceduralElementType::Hub);
+					bs.is_hub = (e.type != ProceduralElementType::Tube);
 
 					glm::mat4 bone_to_model(1.0f);
 					if (e.type == ProceduralElementType::Tube) {
@@ -320,7 +320,6 @@ namespace Boidsish {
 						bs.end.y += y_offset;
 						glm::vec3 dir = glm::normalize(bs.end - bs.start);
 
-                        // Min-twist basis generation
                         glm::vec3 up(0, 1, 0);
                         if (bs.parent_bone != -1) {
                             up = glm::vec3(bone_global_transforms[bs.parent_bone][2]); // Use parent's Up
@@ -340,7 +339,6 @@ namespace Boidsish {
 					} else {
 						bs.end = bs.start;
                         if (bs.parent_bone != -1) {
-                            // Match parent orientation for Hubs
                             bone_to_model = glm::translate(glm::mat4(1.0f), bs.start) * glm::mat4(glm::mat3(bone_global_transforms[bs.parent_bone]));
                         } else {
 						    bone_to_model = glm::translate(glm::mat4(1.0f), bs.start);

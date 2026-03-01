@@ -984,6 +984,13 @@ namespace Boidsish {
 					// Apply constraints
 					const auto& constraint = GetBoneConstraint(chain[i]);
 					if (constraint.type != ConstraintType::None) {
+                        // Find current local frame for bone
+                        glm::mat4 currentParentMS = glm::mat4(1.0f);
+                        if (i > 0) {
+                            // This is slightly wrong during iterations, but better than global assumed dirs.
+                            // Ideally we'd maintain the global rotation of each segment in the FABRIK chain.
+                        }
+
 						glm::vec3 prevPos = (i == 0) ? (positions[0] + glm::vec3(0, 1, 0)) : positions[i - 1];
 						glm::vec3 dir = glm::normalize(positions[i + 1] - positions[i]);
 						glm::vec3 parentDir = glm::normalize(positions[i] - prevPos);
@@ -1031,7 +1038,6 @@ namespace Boidsish {
 		}
 
 		// Apply positions back to animator
-		// We re-traverse from root to effector to compute consistent local rotations
 		glm::mat4   currentParentGlobal = glm::mat4(1.0f);
 		std::string parentOfRoot = m_animator->GetBoneParentName(chain[0]);
 		if (!parentOfRoot.empty()) {
@@ -1058,21 +1064,18 @@ namespace Boidsish {
 			if (glm::any(glm::isnan(bindDir)) || glm::length(bindDir) < 0.001f)
 				bindDir = glm::vec3(0, 1, 0);
 
-			// Calculate new global orientation for this bone.
-            // We want 'bindDir' to point towards 'dir' while minimizing twist relative to parent.
-
-            // 1. Minimum rotation to align bindDir with dir
+			// 1. Minimum rotation to align bindDir with dir
             glm::quat q = glm::rotation(bindDir, dir);
             if (glm::any(glm::isnan(q))) q = glm::quat(1, 0, 0, 0);
 
-            // 2. Twist correction: minimize relative twist to bind pose
-            // Use parent orientation as a reference for 'up' to avoid sudden flips.
-
+            // 2. Twist correction: align the bone's 'right' vector with the reference frame to minimize mangling.
             glm::vec3 bindRight = glm::vec3(node->transformation[0]);
             if (glm::length(bindRight) < 0.001f) bindRight = glm::vec3(1, 0, 0);
             else bindRight = glm::normalize(bindRight);
 
+            // Reference 'right' from parent orientation
             glm::vec3 parentRight = glm::vec3(currentParentGlobal[0]);
+            // Project parentRight onto plane perpendicular to 'dir'
             glm::vec3 targetRight = parentRight - glm::dot(parentRight, dir) * dir;
             if (glm::length(targetRight) < 0.001f) {
                 glm::vec3 parentUp = glm::vec3(currentParentGlobal[1]);
@@ -1081,6 +1084,7 @@ namespace Boidsish {
             }
             targetRight = glm::normalize(targetRight);
 
+            // Current 'right' vector after alignment rotation
             glm::vec3 currentRight = glm::normalize(glm::vec3(glm::toMat4(q) * glm::vec4(bindRight, 0.0f)));
 
             float dot = glm::clamp(glm::dot(currentRight, targetRight), -1.0f, 1.0f);
@@ -1088,6 +1092,7 @@ namespace Boidsish {
             glm::vec3 cross = glm::cross(currentRight, targetRight);
             if (glm::dot(cross, dir) < 0) twistAngle = -twistAngle;
 
+            // Apply twist constraint
             const auto& constraint = GetBoneConstraint(chain[i]);
             twistAngle = glm::clamp(glm::degrees(twistAngle), -constraint.maxTwistAngle, constraint.maxTwistAngle);
 
