@@ -5,6 +5,7 @@
 	#define GLM_ENABLE_EXPERIMENTAL
 #endif
 #include <cmath>
+#include <functional>
 
 #include <glm/gtx/quaternion.hpp>
 
@@ -21,6 +22,7 @@ namespace Boidsish {
 	}
 
 	void Animator::UpdateAnimation(float dt) {
+		m_GlobalMatrices.clear();
 		if (m_ModelData && m_CurrentAnimationIndex >= 0 &&
 		    (size_t)m_CurrentAnimationIndex < m_ModelData->animations.size()) {
 			auto& animation = m_ModelData->animations[m_CurrentAnimationIndex];
@@ -50,12 +52,61 @@ namespace Boidsish {
 		}
 	}
 
+	void Animator::SetBoneLocalTransform(const std::string& boneName, const glm::mat4& transform) {
+		m_LocalOverrides[boneName] = transform;
+	}
+
+	glm::mat4 Animator::GetBoneLocalTransform(const std::string& boneName) const {
+		auto it = m_LocalOverrides.find(boneName);
+		if (it != m_LocalOverrides.end()) {
+			return it->second;
+		}
+		if (m_ModelData) {
+			const NodeData* node = m_ModelData->root_node.FindNode(boneName);
+			if (node) {
+				return node->transformation;
+			}
+		}
+		return glm::mat4(1.0f);
+	}
+
+	glm::mat4 Animator::GetBoneModelSpaceTransform(const std::string& boneName) const {
+		auto it = m_GlobalMatrices.find(boneName);
+		if (it != m_GlobalMatrices.end()) {
+			return it->second;
+		}
+		// If not cached, it might be because CalculateBoneTransform hasn't run or node doesn't exist
+		return glm::mat4(1.0f);
+	}
+
+	std::string Animator::GetBoneParentName(const std::string& boneName) const {
+		if (!m_ModelData)
+			return "";
+		// Recursive search for parent
+		std::function<std::string(const NodeData&, const std::string&)> findParent =
+			[&](const NodeData& node, const std::string& target) -> std::string {
+			for (const auto& child : node.children) {
+				if (child.name == target) {
+					return node.name;
+				}
+				std::string p = findParent(child, target);
+				if (!p.empty())
+					return p;
+			}
+			return "";
+		};
+		return findParent(m_ModelData->root_node, boneName);
+	}
+
 	void Animator::CalculateBoneTransform(const NodeData& node, glm::mat4 parentTransform) {
 		std::string nodeName = node.name;
 		glm::mat4   nodeTransform = node.transformation;
 
-		// Check if this node has an animation
-		if (m_CurrentAnimationIndex >= 0 && (size_t)m_CurrentAnimationIndex < m_ModelData->animations.size()) {
+		// Check for manual overrides first
+		auto overIt = m_LocalOverrides.find(nodeName);
+		if (overIt != m_LocalOverrides.end()) {
+			nodeTransform = overIt->second;
+		} else if (m_CurrentAnimationIndex >= 0 && (size_t)m_CurrentAnimationIndex < m_ModelData->animations.size()) {
 			auto& animation = m_ModelData->animations[m_CurrentAnimationIndex];
 			// Find BoneAnimation for this node
 			for (const auto& boneAnim : animation.boneAnimations) {
@@ -139,12 +190,13 @@ namespace Boidsish {
 		}
 
 		glm::mat4 globalTransformation = parentTransform * nodeTransform;
+		m_GlobalMatrices[nodeName] = globalTransformation;
 
 		auto it = m_ModelData->bone_info_map.find(nodeName);
 		if (it != m_ModelData->bone_info_map.end()) {
 			int       index = it->second.id;
 			glm::mat4 offset = it->second.offset;
-			if (index >= 0 && (size_t)index < m_FinalBoneMatrices.size()) {
+			if (index >= 0 && (size_t)index < (int)m_FinalBoneMatrices.size()) {
 				m_FinalBoneMatrices[index] = globalTransformation * offset;
 			}
 		} else {

@@ -44,6 +44,10 @@ namespace Boidsish {
 			std::vector<unsigned int> shadow_indices = {}
 		);
 
+		// Copying meshes should not copy GPU handles
+		Mesh(const Mesh& other);
+		Mesh& operator=(const Mesh& other);
+
 		// Render the mesh
 		void render() const;
 		void render(Shader& shader) const; // Render with specific shader (for shadow pass, etc.)
@@ -51,6 +55,9 @@ namespace Boidsish {
 
 		// Bind textures for external rendering (e.g., instanced rendering with custom shaders)
 		void bindTextures(Shader& shader) const;
+
+		void Cleanup();
+		void UploadToGPU();
 
 		unsigned int getVAO() const { return VAO; }
 
@@ -73,12 +80,24 @@ namespace Boidsish {
 		friend class Model;
 	};
 
+	enum class ConstraintType { None, Hinge, Cone };
+
+	struct BoneConstraint {
+		ConstraintType type = ConstraintType::None;
+		glm::vec3      axis = glm::vec3(1, 0, 0); // For Hinge
+		float          minAngle = -180.0f;        // In degrees
+		float          maxAngle = 180.0f;
+		float          coneAngle = 45.0f; // For Cone
+	};
+
 	struct BoneInfo {
 		/*id is index in finalBoneMatrices*/
 		int id;
 
 		/*offset matrix transforms vertex from model space to bone space*/
 		glm::mat4 offset;
+
+		BoneConstraint constraint;
 	};
 
 	struct KeyPosition {
@@ -110,10 +129,32 @@ namespace Boidsish {
 	};
 
 	struct NodeData {
-		glm::mat4             transformation;
+		glm::mat4             transformation = glm::mat4(1.0f);
 		std::string           name;
-		int                   childrenCount;
+		int                   childrenCount = 0;
 		std::vector<NodeData> children;
+
+		NodeData* FindNode(const std::string& name) {
+			if (this->name == name)
+				return this;
+			for (auto& child : children) {
+				NodeData* found = child.FindNode(name);
+				if (found)
+					return found;
+			}
+			return nullptr;
+		}
+
+		const NodeData* FindNode(const std::string& name) const {
+			if (this->name == name)
+				return this;
+			for (auto& child : children) {
+				const NodeData* found = child.FindNode(name);
+				if (found)
+					return found;
+			}
+			return nullptr;
+		}
 	};
 
 	struct Animation {
@@ -136,6 +177,53 @@ namespace Boidsish {
 		glm::mat4                       global_inverse_transform = glm::mat4(1.0f);
 		std::vector<Animation>          animations;
 		NodeData                        root_node;
+
+		void AddBone(const std::string& name, const std::string& parentName, const glm::mat4& localTransform) {
+			if (bone_info_map.find(name) != bone_info_map.end())
+				return;
+
+			NodeData* parentNode = root_node.FindNode(parentName);
+			if (!parentNode && !parentName.empty())
+				return;
+
+			NodeData newNode;
+			newNode.name = name;
+			newNode.transformation = localTransform;
+			newNode.childrenCount = 0;
+
+			if (parentNode) {
+				parentNode->children.push_back(newNode);
+				parentNode->childrenCount++;
+			} else {
+				// If no parent, it's either root or should be attached to root
+				root_node.children.push_back(newNode);
+				root_node.childrenCount++;
+			}
+
+			BoneInfo info;
+			info.id = bone_count++;
+
+			// Calculate offset matrix (inverse of global bind transform)
+			glm::mat4 parentGlobal = glm::mat4(1.0f);
+			if (!parentName.empty()) {
+				std::function<bool(const NodeData&, glm::mat4, glm::mat4&)> findGlobal =
+					[&](const NodeData& n, glm::mat4 p, glm::mat4& out) -> bool {
+					glm::mat4 g = p * n.transformation;
+					if (n.name == parentName) {
+						out = g;
+						return true;
+					}
+					for (const auto& c : n.children) {
+						if (findGlobal(c, g, out))
+							return true;
+					}
+					return false;
+				};
+				findGlobal(root_node, glm::mat4(1.0f), parentGlobal);
+			}
+			info.offset = glm::inverse(parentGlobal * localTransform);
+			bone_info_map[name] = info;
+		}
 	};
 
 	/**
@@ -212,10 +300,49 @@ namespace Boidsish {
 
 		Animator* GetAnimator() const { return m_animator.get(); }
 
+		std::shared_ptr<ModelData> GetData() const { return m_data; }
+
+		// Manual bone manipulation
+		void AddBone(const std::string& name, const std::string& parentName, const glm::mat4& localTransform);
+		std::vector<std::string> GetEffectors() const;
+
+		void           SetBoneConstraint(const std::string& boneName, const BoneConstraint& constraint);
+		BoneConstraint GetBoneConstraint(const std::string& boneName) const;
+
+		glm::vec3 GetBoneWorldPosition(const std::string& boneName) const;
+		void      SetBoneWorldPosition(const std::string& boneName, const glm::vec3& worldPos);
+		glm::quat GetBoneWorldRotation(const std::string& boneName) const;
+		void      SetBoneWorldRotation(const std::string& boneName, const glm::quat& worldRot);
+
+		void SkinToHierarchy();
+		void ResetBones();
+
+		// IK
+		void SolveIK(
+			const std::string&              effectorName,
+			const glm::vec3&                targetWorldPos,
+			float                           tolerance = 0.01f,
+			int                             maxIterations = 20,
+			const std::string&              rootBoneName = "",
+			const std::vector<std::string>& lockedBones = {}
+		);
+
+		void SolveIK(
+			const std::string&              effectorName,
+			const glm::vec3&                targetWorldPos,
+			const glm::quat&                targetWorldRot,
+			float                           tolerance = 0.01f,
+			int                             maxIterations = 20,
+			const std::string&              rootBoneName = "",
+			const std::vector<std::string>& lockedBones = {}
+		);
+
 		// Exposed for AssetManager to fill during loading
 		friend class AssetManager;
 
 	private:
+		void EnsureUniqueModelData();
+
 		// Model data
 		glm::quat                  base_rotation_ = glm::quat(1.0f, 0.0f, 0.0f, 0.0f);
 		std::shared_ptr<ModelData> m_data;
