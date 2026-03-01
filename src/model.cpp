@@ -1036,7 +1036,9 @@ namespace Boidsish {
 		std::string parentOfRoot = m_animator->GetBoneParentName(chain[0]);
 		if (!parentOfRoot.empty()) {
 			currentParentGlobal = m_animator->GetBoneModelSpaceTransform(parentOfRoot);
-		}
+		} else {
+            // Root bone of the whole model (e.g. "body") might have a transformation relative to identity
+        }
 
 		for (size_t i = 0; i < positions.size() - 1; ++i) {
 			glm::vec3 start = positions[i];
@@ -1046,38 +1048,40 @@ namespace Boidsish {
 			if (glm::any(glm::isnan(dir)))
 				dir = glm::vec3(0, 1, 0);
 
-			// Reference direction in bind space (usually along an axis)
-			glm::mat4 bindLocal = m_data->root_node.FindNode(chain[i])->transformation;
-			glm::vec3 bindPos = glm::vec3(bindLocal[3]);
+			// Find reference direction in bind space
+            const NodeData* node = m_data->root_node.FindNode(chain[i]);
+            const NodeData* childNode = m_data->root_node.FindNode(chain[i + 1]);
 
-			// Find end position in bind space from child
-			glm::vec3 bindEndPos = glm::vec3(m_data->root_node.FindNode(chain[i + 1])->transformation[3]);
-			glm::vec3 bindDir = glm::normalize(bindEndPos); // Relative to chain[i]
+            glm::vec3 bindDir(0, 1, 0);
+            if (node && childNode) {
+                // childNode->transformation is local to node.
+                // For tubes, it's often along the Y axis of the bone.
+                bindDir = glm::normalize(glm::vec3(childNode->transformation[3]));
+            }
 
-			if (glm::any(glm::isnan(bindDir)))
+			if (glm::any(glm::isnan(bindDir)) || glm::length(bindDir) < 0.001f)
 				bindDir = glm::vec3(0, 1, 0);
 
 			// Calculate new global rotation for this bone
-			// It should point from positions[i] to positions[i+1]
-			// We use a simple look-at approach or rotation-between-vectors
 			glm::quat q = glm::rotation(bindDir, dir);
 
 			if (glm::any(glm::isnan(q)))
 				q = glm::quat(1, 0, 0, 0);
 
-			// New global transform for this bone
+			// New global transform for this bone (without scale)
 			glm::mat4 newGlobal = glm::translate(glm::mat4(1.0f), start) * glm::toMat4(q);
 
 			// Convert to local relative to updated parent
 			glm::mat4 local = glm::inverse(currentParentGlobal) * newGlobal;
 
-			// Keep original scale
+			// Reconstruct local with position and rotation
+			glm::vec3 localPos = glm::vec3(local[3]);
+			glm::quat localRot = glm::quat_cast(local);
+
+            // Preserve original scale
 			glm::mat4 oldLocal = m_animator->GetBoneLocalTransform(chain[i]);
 			glm::vec3 scale(glm::length(oldLocal[0]), glm::length(oldLocal[1]), glm::length(oldLocal[2]));
 
-			// Reconstruct local with position, rotation and scale
-			glm::vec3 localPos = glm::vec3(local[3]);
-			glm::quat localRot = glm::quat_cast(local);
 			local = glm::translate(glm::mat4(1.0f), localPos) * glm::toMat4(localRot) *
 				glm::scale(glm::mat4(1.0f), scale);
 

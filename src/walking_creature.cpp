@@ -90,6 +90,7 @@ namespace Boidsish {
 			legs_[i].foot_bone_name = std::string(legPrefixes[i]) + "_foot";
 			legs_[i].rest_offset = offsets[i] + glm::vec3(0, -height_, 0);
 			legs_[i].world_foot_pos = current_pos_ + legs_[i].rest_offset;
+			legs_[i].world_foot_pos.y = current_pos_.y; // Clamp to ground initially
 
 			// Apply constraints
 			BoneConstraint kneeConstraint;
@@ -151,8 +152,10 @@ namespace Boidsish {
 				moving_count++;
 
 		for (int i = 0; i < 4; ++i) {
-			glm::vec3 ideal_world_foot = current_pos_ + glm::vec3(rotation * glm::vec4(legs_[i].rest_offset, 1.0f));
-			float     d = glm::distance(legs_[i].world_foot_pos, ideal_world_foot);
+			glm::vec3 ideal_world_foot = current_pos_ + glm::vec3(rotation * glm::vec4(legs_[i].rest_offset.x, 0.0f, legs_[i].rest_offset.z, 1.0f));
+			ideal_world_foot.y = current_pos_.y;
+
+			float d = glm::distance(legs_[i].world_foot_pos, ideal_world_foot);
 
 			if (!legs_[i].is_moving && d > length_ * 0.3f && moving_count < 2) {
 				// Prevent same-side legs from moving together if possible, or just use a simple alternating gait
@@ -171,6 +174,7 @@ namespace Boidsish {
 					legs_[i].progress = 0.0f;
 					legs_[i].step_start_pos = legs_[i].world_foot_pos;
 					legs_[i].step_target_pos = ideal_world_foot + velocity * step_duration_ * 1.5f;
+					legs_[i].step_target_pos.y = current_pos_.y;
 					moving_count++;
 				}
 			}
@@ -181,13 +185,17 @@ namespace Boidsish {
 					legs_[i].progress = 1.0f;
 					legs_[i].is_moving = false;
 					legs_[i].world_foot_pos = legs_[i].step_target_pos;
+					legs_[i].world_foot_pos.y = current_pos_.y;
 				} else {
 					float p = legs_[i].progress;
 					// Arching path
 					float height_offset = std::sin(p * std::numbers::pi_v<float>) * length_ * 0.2f;
 					legs_[i].world_foot_pos = glm::mix(legs_[i].step_start_pos, legs_[i].step_target_pos, p);
-					legs_[i].world_foot_pos.y += height_offset;
+					legs_[i].world_foot_pos.y = current_pos_.y + height_offset;
 				}
+			} else {
+				// Ensure planted feet stay on ground if terrain moves (though here it's static usually)
+				legs_[i].world_foot_pos.y = current_pos_.y;
 			}
 		}
 	}
@@ -236,7 +244,10 @@ namespace Boidsish {
 
 		current_head_dir_ = glm::normalize(glm::mix(current_head_dir_, target_look_dir, std::min(1.0f, delta_time * 4.0f)));
 
-		SolveIK("head", head_base_world + current_head_dir_ * (length_ * 0.3f), 0.01f, 5, "neck");
+		glm::vec3 head_target = head_base_world + current_head_dir_ * (length_ * 0.3f);
+		if (head_target.y < current_pos_.y + height_ * 0.2f) head_target.y = current_pos_.y + height_ * 0.2f;
+
+		SolveIK("head", head_target, 0.01f, 5, "neck");
 
 		// Update Spotlight
 		spotlight_.position = GetBoneWorldPosition("head");
