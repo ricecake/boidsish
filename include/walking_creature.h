@@ -24,6 +24,7 @@ namespace Boidsish {
 	private:
 		struct Leg {
 			std::string bone_name;
+			std::string thigh_bone_name;
 			std::string knee_bone_name;
 			std::string foot_bone_name;
 

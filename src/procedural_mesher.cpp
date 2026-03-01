@@ -329,7 +329,7 @@ namespace Boidsish {
                             up = (std::abs(dir.y) < 0.9f) ? glm::vec3(0, 1, 0) : glm::vec3(1, 0, 0);
                         }
 
-						glm::vec3 right = glm::normalize(glm::cross(up, dir));
+						glm::vec3 right = glm::normalize(glm::cross(dir, up));
 						up = glm::normalize(glm::cross(dir, right));
 
 						bone_to_model[0] = glm::vec4(right, 0);

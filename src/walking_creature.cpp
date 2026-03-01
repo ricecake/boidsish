@@ -34,14 +34,14 @@ namespace Boidsish {
 			for (int i = 0; i < 4; ++i) {
 				std::string prefix = legPrefixes[i];
 				glm::vec3   basePos = glm::vec3(0, height, 0) + offsets[i];
-
 				glm::vec3 kneePos = basePos + glm::vec3(offsets[i].x * 0.5f, -height * 0.4f, offsets[i].z * 0.1f);
-				int upperIdx = ir.AddTube(basePos, kneePos, length * 0.12f, length * 0.1f, legColor, bodyIdx, prefix + "_upper");
-
 				glm::vec3 footPos = basePos + glm::vec3(offsets[i].x * 0.2f, -height, 0);
-				int lowerIdx = ir.AddTube(kneePos, footPos, length * 0.1f, length * 0.08f, legColor, upperIdx, prefix + "_lower");
 
-                ir.AddControlPoint(footPos, 0.01f, legColor, lowerIdx, prefix + "_effector");
+				int hipIdx = ir.AddHub(basePos, length * 0.12f, legColor, bodyIdx, prefix + "_hip");
+				int upperIdx = ir.AddTube(basePos, kneePos, length * 0.12f, length * 0.11f, legColor, hipIdx, prefix + "_upper");
+				int kneeIdx = ir.AddControlPoint(kneePos, length * 0.11f, legColor, upperIdx, prefix+"_knee");
+				int lowerIdx = ir.AddTube(kneePos, footPos, length * 0.11f, length * 0.1f, legColor, kneeIdx, prefix + "_lower");
+                ir.AddControlPoint(footPos, length * 0.1f, legColor, lowerIdx, prefix + "_effector");
 				ir.AddPuffball(footPos, length * 0.1f, legColor, 0, lowerIdx);
 			}
 
@@ -79,8 +79,9 @@ namespace Boidsish {
         };
 
 		for (int i = 0; i < 4; ++i) {
-			legs_[i].bone_name = std::string(legPrefixes[i]) + "_upper";
-			legs_[i].knee_bone_name = std::string(legPrefixes[i]) + "_upper";
+			legs_[i].bone_name = std::string(legPrefixes[i]) + "_hip";
+			legs_[i].thigh_bone_name = std::string(legPrefixes[i]) + "_upper";
+			legs_[i].knee_bone_name = std::string(legPrefixes[i]) + "_knee";
 			legs_[i].foot_bone_name = std::string(legPrefixes[i]) + "_effector";
 			legs_[i].rest_offset = offsets[i] + glm::vec3(0, -height_, 0);
 			legs_[i].world_foot_pos = current_pos_ + legs_[i].rest_offset;
@@ -90,7 +91,7 @@ namespace Boidsish {
 			upperConstraint.type = ConstraintType::Cone;
 			upperConstraint.coneAngle = 40.0f;
             upperConstraint.maxTwistAngle = 20.0f;
-			SetBoneConstraint(legs_[i].bone_name, upperConstraint);
+			SetBoneConstraint(legs_[i].thigh_bone_name, upperConstraint);
 
             BoneConstraint lowerConstraint;
             lowerConstraint.type = ConstraintType::Hinge;
@@ -221,7 +222,7 @@ namespace Boidsish {
 		GetAnimator()->SetBoneLocalTransform("body", bodyTransform);
 
 		// Ensure global matrices are updated so SolveIK starts from the correct hip positions
-		UpdateAnimation(0.0f);
+		UpdateAnimation(delta_time);
 
 		for (int i = 0; i < 4; ++i) {
 			SolveIK(legs_[i].foot_bone_name, legs_[i].world_foot_pos, 0.01f, 30, legs_[i].bone_name);
@@ -265,7 +266,7 @@ namespace Boidsish {
 			spotlight_.outer_cutoff = glm::cos(glm::radians(outer));
 		}
 
-		UpdateAnimation(0.0f);
+		UpdateAnimation(delta_time);
 	}
 
 } // namespace Boidsish
