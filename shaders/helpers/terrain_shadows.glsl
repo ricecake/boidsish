@@ -2,10 +2,8 @@
 #define TERRAIN_SHADOWS_GLSL
 
 layout(std140) uniform TerrainData {
-	ivec2 u_gridOrigin;
-	int   u_gridSize;
-	float u_chunkSize;
-	float u_worldScale;
+	ivec4 u_originSize;
+	vec4  u_terrainParams;
 };
 
 uniform isampler2D    u_chunkGrid;
@@ -14,13 +12,13 @@ uniform sampler2D     u_maxHeightGrid;
 uniform sampler2DArray u_heightmapArray;
 
 float getTerrainHeight(vec2 worldXZ) {
-	if (u_worldScale <= 0.0) return -10000.0;
-	float scaledChunkSize = u_chunkSize * u_worldScale;
+	if (u_terrainParams.y <= 0.0) return -10000.0;
+	float scaledChunkSize = u_terrainParams.x * u_terrainParams.y;
 	ivec2 chunkCoord = ivec2(floor(worldXZ / scaledChunkSize));
-	ivec2 localGridCoord = chunkCoord - u_gridOrigin;
+	ivec2 localGridCoord = chunkCoord - u_originSize.xz;
 
-	if (localGridCoord.x < 0 || localGridCoord.x >= u_gridSize ||
-	    localGridCoord.y < 0 || localGridCoord.y >= u_gridSize) {
+	if (localGridCoord.x < 0 || localGridCoord.x >= u_originSize.z ||
+	    localGridCoord.y < 0 || localGridCoord.y >= u_originSize.z) {
 		return -10000.0;
 	}
 
@@ -33,15 +31,15 @@ float getTerrainHeight(vec2 worldXZ) {
 }
 
 bool isPointInTerrainShadow(vec3 worldPos, vec3 lightDir) {
-	if (u_worldScale <= 0.0) return false;
+	if (u_terrainParams.y <= 0.0) return false;
 	// lightDir is from fragment to light
 	if (lightDir.y <= 0.0)
 		return false;
 
-	float scaledChunkSize = u_chunkSize * u_worldScale;
+	float scaledChunkSize = u_terrainParams.x * u_terrainParams.y;
 	// Use a small bias to avoid self-shadowing acne
-	float t = 0.2 * u_worldScale;
-	float maxDist = 800.0 * u_worldScale;
+	float t = 0.2 * u_terrainParams.y;
+	float maxDist = 800.0 * u_terrainParams.y;
 
 	// Avoid division by zero
 	vec3 safeInvDir = 1.0 / (abs(lightDir) + vec3(1e-6));
@@ -52,55 +50,63 @@ bool isPointInTerrainShadow(vec3 worldPos, vec3 lightDir) {
 		iter++;
 		vec3  p = worldPos + t * lightDir;
 		ivec2 chunkCoord = ivec2(floor(p.xz / scaledChunkSize));
-		ivec2 localGridCoord = chunkCoord - u_gridOrigin;
+		ivec2 localGridCoord = chunkCoord - u_originSize.xz;
 
-		if (localGridCoord.x < 0 || localGridCoord.x >= u_gridSize ||
-		    localGridCoord.y < 0 || localGridCoord.y >= u_gridSize) {
+		if (localGridCoord.x < 0 || localGridCoord.x >= u_originSize.z ||
+		    localGridCoord.y < 0 || localGridCoord.y >= u_originSize.z) {
 			break; // Out of grid bounds
 		}
 
-		bool skipped = false;
-		// Hierarchical skipping using Max Height Mips
-		for (int lod = 5; lod >= 1; --lod) {
-			int   levelSize = 1 << lod;
-			ivec2 lodGridCoord = localGridCoord / levelSize;
-			float maxHeight = textureLod(u_maxHeightGrid, (vec2(lodGridCoord) + 0.5) / float(u_gridSize >> lod), float(lod)).r;
-
-			if (p.y > maxHeight) {
-				// Ray is above max height of this large region and moving up.
-				// Skip to the edge of this region.
-				vec2 regionMin = vec2(u_gridOrigin + lodGridCoord * levelSize) * scaledChunkSize;
-				vec2 regionMax = regionMin + vec2(levelSize) * scaledChunkSize;
-
-				// Distance to exit region boundaries
-				vec2 planes = mix(regionMin, regionMax, step(0.0, lightDir.xz));
-				vec2 tExitXZ = (planes - worldPos.xz) * safeInvDir.xz;
-				float tExit = min(tExitXZ.x, tExitXZ.y);
-
-				if (tExit > t) {
-					t = tExit + 0.05 * u_worldScale;
-					skipped = true;
-				}
-				break;
-			}
+		// Check actual chunk height
+		int slice = texelFetch(u_chunkGrid, localGridCoord, 0).r;
+		if (slice >= 0) {
+			vec2  uv = (p.xz - vec2(chunkCoord) * scaledChunkSize) / scaledChunkSize;
+			float h = texture(u_heightmapArray, vec3(uv, float(slice))).r;
+			if (p.y < h)
+				return true; // Hit terrain!
 		}
 
-		if (!skipped) {
-			// At LOD 0 (or couldn't skip), check actual chunk height
-			int slice = texelFetch(u_chunkGrid, localGridCoord, 0).r;
-			if (slice >= 0) {
-				vec2  uv = (p.xz - vec2(chunkCoord) * scaledChunkSize) / scaledChunkSize;
-				float h = texture(u_heightmapArray, vec3(uv, float(slice))).r;
-				if (p.y < h)
-					return true; // Hit terrain!
-			}
-
-			// Traditional ray march step for the detailed part
-			t += 2.0 * u_worldScale;
-		}
+		// Progress ray
+		t += 2.0 * u_terrainParams.y;
 	}
 
 	return false;
+}
+
+int isPointInTerrainShadowDebug(vec3 worldPos, vec3 lightDir) {
+	if (u_terrainParams.y <= 0.0) return -1;
+	if (lightDir.y <= 0.0) return -2;
+
+	float scaledChunkSize = u_terrainParams.x * u_terrainParams.y;
+	float t = 0.2 * u_terrainParams.y;
+	float maxDist = 800.0 * u_terrainParams.y;
+
+	int iter = 0;
+	while (t < maxDist && iter < 64) {
+		iter++;
+		vec3  p = worldPos + t * lightDir;
+		ivec2 chunkCoord = ivec2(floor(p.xz / scaledChunkSize));
+		ivec2 localGridCoord = chunkCoord - u_originSize.xz;
+
+		if (localGridCoord.x < 0 || localGridCoord.x >= u_originSize.z ||
+		    localGridCoord.y < 0 || localGridCoord.y >= u_originSize.z) {
+			return 1; // Out of bounds
+		}
+
+		int slice = texelFetch(u_chunkGrid, localGridCoord, 0).r;
+		if (slice < 0) {
+			return 2; // No slice
+		}
+
+		vec2  uv = (p.xz - vec2(chunkCoord) * scaledChunkSize) / scaledChunkSize;
+		float h = texture(u_heightmapArray, vec3(uv, float(slice))).r;
+		if (p.y < h)
+			return 3; // Hit!
+
+		t += 4.0 * u_terrainParams.y;
+	}
+
+	return 0; // Miss
 }
 
 #endif
