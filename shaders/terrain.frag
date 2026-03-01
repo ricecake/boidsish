@@ -14,6 +14,7 @@ in float      tessFactor;
 #include "helpers/fast_noise.glsl"
 #include "helpers/lighting.glsl"
 #include "helpers/terrain_noise.glsl"
+#include "visual_effects.glsl"
 // #include "helpers/noise.glsl"
 
 uniform bool uIsShadowPass = false;
@@ -413,6 +414,17 @@ void main() {
 
 	// Final Lighting
 	vec3 lighting = apply_lighting_pbr(FragPos, perturbedNorm, albedo, roughness, metallic, 1.0).rgb;
+
+	if (terrain_shadow_debug != 0) {
+		if (num_lights > 0) {
+			vec3 L;
+			float atten;
+			calculateLightContribution(0, FragPos, L, atten);
+			if (isPointInTerrainShadow(FragPos, L)) {
+				lighting = mix(lighting, vec3(1.0, 0.0, 1.0), 0.5);
+			}
+		}
+	}
 
 	// ========================================================================
 	// Neon 80s Synth Style (Night Theme)

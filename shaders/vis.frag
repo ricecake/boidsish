@@ -136,6 +136,17 @@ void main() {
 
 	result = applyArtisticEffects(result, FragPos, barycentric, time);
 
+	if (terrain_shadow_debug != 0) {
+		if (num_lights > 0) {
+			vec3 L;
+			float atten;
+			calculateLightContribution(0, FragPos, L, atten);
+			if (isPointInTerrainShadow(FragPos, L)) {
+				result = mix(result, vec3(1.0, 0.0, 1.0), 0.5);
+			}
+		}
+	}
+
 	if (c_isLine && c_lineStyle == 1) { // LASER style
 		// Use Y axis for radial glow as defined in Line::InitLineMesh
 		float distToCenter = abs(TexCoords.y - 0.5) * 2.0;
