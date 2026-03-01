@@ -16,6 +16,7 @@ namespace Boidsish {
 			glm::mat4 offset;
 			glm::vec3 start;
 			glm::vec3 end;
+			bool      is_hub = false;
 		};
 
 		void GenerateUVSphere(
@@ -75,10 +76,15 @@ namespace Boidsish {
 				int   best_bone = -1;
 				for (int b = 0; b < (int)bone_segments.size(); ++b) {
 					const auto& bs = bone_segments[b];
-					glm::vec3   ab = bs.end - bs.start;
-					glm::vec3   ap = v.Position - bs.start;
-					float       t = glm::clamp(glm::dot(ap, ab) / glm::dot(ab, ab), 0.0f, 1.0f);
-					float       d = glm::distance(v.Position, bs.start + t * ab);
+					float       d = 0;
+					if (bs.is_hub || glm::distance(bs.start, bs.end) < 0.001f) {
+						d = glm::distance(v.Position, bs.start);
+					} else {
+						glm::vec3 ab = bs.end - bs.start;
+						glm::vec3 ap = v.Position - bs.start;
+						float     t = glm::clamp(glm::dot(ap, ab) / glm::dot(ab, ab), 0.0f, 1.0f);
+						d = glm::distance(v.Position, bs.start + t * ab);
+					}
 					if (d < best_dist) {
 						best_dist = d;
 						best_bone = b;
@@ -100,40 +106,57 @@ namespace Boidsish {
 		// 1. Pre-calculate bones if it's a critter
 		std::vector<BoneSegment> bone_segments;
 		std::vector<int>         element_to_bone(ir.elements.size(), -1);
+		std::vector<glm::mat4>   bone_global_transforms;
 		auto                     data = std::make_shared<ModelData>();
 		data->model_path = "procedural_direct_" + std::to_string(reinterpret_cast<uintptr_t>(data.get()));
 
 		if (ir.name == "critter") {
 			for (int i = 0; i < (int)ir.elements.size(); ++i) {
 				const auto& e = ir.elements[i];
-				if (e.type == ProceduralElementType::Tube && e.length > 0.1f) {
+				if ((e.type == ProceduralElementType::Tube && e.length > 0.1f) || e.type == ProceduralElementType::Hub) {
 					BoneSegment bs;
 					bs.start = e.position;
-					bs.end = e.end_position;
 					bs.parent_bone = (e.parent != -1) ? element_to_bone[e.parent] : -1;
-
-					glm::vec3 dir = glm::normalize(bs.end - bs.start);
-					glm::vec3 up = (std::abs(dir.y) < 0.9f) ? glm::vec3(0, 1, 0) : glm::vec3(1, 0, 0);
-					glm::vec3 right = glm::normalize(glm::cross(up, dir));
-					up = glm::normalize(glm::cross(dir, right));
+					bs.is_hub = (e.type == ProceduralElementType::Hub);
 
 					glm::mat4 bone_to_model(1.0f);
-					bone_to_model[0] = glm::vec4(right, 0);
-					bone_to_model[1] = glm::vec4(dir, 0);
-					bone_to_model[2] = glm::vec4(up, 0);
-					bone_to_model[3] = glm::vec4(bs.start, 1);
+					if (e.type == ProceduralElementType::Tube) {
+						bs.end = e.end_position;
+						glm::vec3 dir = glm::normalize(bs.end - bs.start);
+						glm::vec3 up = (std::abs(dir.y) < 0.9f) ? glm::vec3(0, 1, 0) : glm::vec3(1, 0, 0);
+						glm::vec3 right = glm::normalize(glm::cross(up, dir));
+						up = glm::normalize(glm::cross(dir, right));
+
+						bone_to_model[0] = glm::vec4(right, 0);
+						bone_to_model[1] = glm::vec4(dir, 0);
+						bone_to_model[2] = glm::vec4(up, 0);
+						bone_to_model[3] = glm::vec4(bs.start, 1);
+					} else {
+						bs.end = e.position;
+						bone_to_model = glm::translate(glm::mat4(1.0f), bs.start);
+					}
 
 					bs.offset = glm::inverse(bone_to_model);
 
 					int bone_id = (int)bone_segments.size();
 					bone_segments.push_back(bs);
+					bone_global_transforms.push_back(bone_to_model);
 					element_to_bone[i] = bone_id;
 
-					BoneInfo info;
-					info.id = bone_id;
-					info.offset = bs.offset;
-					data->bone_info_map["bone_" + std::to_string(bone_id)] = info;
-					data->bone_count++;
+					std::string bone_name = e.name.empty() ? ("bone_" + std::to_string(bone_id)) : e.name;
+					int         parent_bone_idx = bs.parent_bone;
+					std::string parent_name = (parent_bone_idx != -1)
+						? (ir.elements[ir.elements[i].parent].name.empty()
+					           ? ("bone_" + std::to_string(parent_bone_idx))
+					           : ir.elements[ir.elements[i].parent].name)
+						: "";
+
+					glm::mat4 local_transform = bone_to_model;
+					if (parent_bone_idx != -1) {
+						local_transform = glm::inverse(bone_global_transforms[parent_bone_idx]) * bone_to_model;
+					}
+
+					data->AddBone(bone_name, parent_name, local_transform);
 				} else if (e.parent != -1) {
 					element_to_bone[i] = element_to_bone[e.parent];
 				}
