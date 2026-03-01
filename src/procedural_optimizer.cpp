@@ -18,12 +18,15 @@ namespace Boidsish {
 			return;
 
 		bool changed = true;
-		while (changed) {
+		int  safety_counter = 0;
+		while (changed && safety_counter < 10) {
 			changed = false;
+			safety_counter++;
 			std::vector<bool>              to_remove(ir.elements.size(), false);
 			std::vector<ProceduralElement> control_points_to_add;
 
-			for (int i = 0; i < (int)ir.elements.size(); ++i) {
+			int original_count = (int)ir.elements.size();
+			for (int i = 0; i < original_count; ++i) {
 				if (to_remove[i])
 					continue;
 				auto& e1 = ir.elements[i];

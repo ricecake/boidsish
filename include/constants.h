@@ -187,7 +187,7 @@ namespace Boidsish {
 		namespace Class {
 			namespace Terrain {
 				constexpr int SliceMapSize() {
-					return 1024;
+					return 128;
 				}
 			} // namespace Terrain
 

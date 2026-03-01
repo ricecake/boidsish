@@ -1,7 +1,7 @@
 #ifndef TERRAIN_SHADOWS_GLSL
 #define TERRAIN_SHADOWS_GLSL
 
-layout(std140, binding = 8) uniform TerrainData {
+layout(std140) uniform TerrainData {
 	ivec2 u_gridOrigin;
 	int   u_gridSize;
 	float u_chunkSize;
@@ -14,6 +14,7 @@ uniform sampler2D     u_maxHeightGrid;
 uniform sampler2DArray u_heightmapArray;
 
 float getTerrainHeight(vec2 worldXZ) {
+	if (u_worldScale <= 0.0) return -10000.0;
 	float scaledChunkSize = u_chunkSize * u_worldScale;
 	ivec2 chunkCoord = ivec2(floor(worldXZ / scaledChunkSize));
 	ivec2 localGridCoord = chunkCoord - u_gridOrigin;
@@ -32,6 +33,7 @@ float getTerrainHeight(vec2 worldXZ) {
 }
 
 bool isPointInTerrainShadow(vec3 worldPos, vec3 lightDir) {
+	if (u_worldScale <= 0.0) return false;
 	// lightDir is from fragment to light
 	if (lightDir.y <= 0.0)
 		return false;
@@ -45,7 +47,9 @@ bool isPointInTerrainShadow(vec3 worldPos, vec3 lightDir) {
 	vec3 safeInvDir = 1.0 / (abs(lightDir) + vec3(1e-6));
 	safeInvDir *= sign(lightDir);
 
-	while (t < maxDist) {
+	int iter = 0;
+	while (t < maxDist && iter < 64) {
+		iter++;
 		vec3  p = worldPos + t * lightDir;
 		ivec2 chunkCoord = ivec2(floor(p.xz / scaledChunkSize));
 		ivec2 localGridCoord = chunkCoord - u_gridOrigin;
@@ -73,8 +77,10 @@ bool isPointInTerrainShadow(vec3 worldPos, vec3 lightDir) {
 				vec2 tExitXZ = (planes - worldPos.xz) * safeInvDir.xz;
 				float tExit = min(tExitXZ.x, tExitXZ.y);
 
-				t = tExit + 0.05 * u_worldScale;
-				skipped = true;
+				if (tExit > t) {
+					t = tExit + 0.05 * u_worldScale;
+					skipped = true;
+				}
 				break;
 			}
 		}
