@@ -942,7 +942,7 @@ namespace Boidsish {
 			// Target out of reach
 			for (size_t i = 0; i < positions.size() - 1; ++i) {
 				float r = glm::distance(targetPos, positions[i]);
-				if (r < 0.001f) {
+				if (r < 0.001f || std::isnan(r)) {
 					positions[i + 1] = positions[i] + glm::vec3(0, 0.001f, 0);
 					r = 0.001f;
 				}
@@ -960,7 +960,7 @@ namespace Boidsish {
 					if (lockedSet.count(chain[i]))
 						continue;
 					float r = glm::distance(positions[i + 1], positions[i]);
-					if (r < 0.0001f) {
+					if (r < 0.0001f || std::isnan(r)) {
 						positions[i] = positions[i + 1] + glm::vec3(0, 0.0001f, 0);
 						r = 0.0001f;
 					}
@@ -974,7 +974,7 @@ namespace Boidsish {
 					if (lockedSet.count(chain[i + 1]))
 						continue;
 					float r = glm::distance(positions[i + 1], positions[i]);
-					if (r < 0.0001f) {
+					if (r < 0.0001f || std::isnan(r)) {
 						positions[i + 1] = positions[i] + glm::vec3(0, 0.0001f, 0);
 						r = 0.0001f;
 					}
@@ -984,16 +984,16 @@ namespace Boidsish {
 					// Apply constraints
 					const auto& constraint = GetBoneConstraint(chain[i]);
 					if (constraint.type != ConstraintType::None) {
-                        // Find current local frame for bone
-                        glm::mat4 currentParentMS = glm::mat4(1.0f);
-                        if (i > 0) {
-                            // This is slightly wrong during iterations, but better than global assumed dirs.
-                            // Ideally we'd maintain the global rotation of each segment in the FABRIK chain.
-                        }
-
 						glm::vec3 prevPos = (i == 0) ? (positions[0] + glm::vec3(0, 1, 0)) : positions[i - 1];
 						glm::vec3 dir = glm::normalize(positions[i + 1] - positions[i]);
 						glm::vec3 parentDir = glm::normalize(positions[i] - prevPos);
+
+						if (glm::any(glm::isnan(dir)) || glm::length(dir) < 0.0001f)
+							dir = parentDir;
+						if (glm::any(glm::isnan(parentDir)) || glm::length(parentDir) < 0.0001f)
+							parentDir = glm::vec3(0, 1, 0);
+                        dir = glm::normalize(dir);
+                        parentDir = glm::normalize(parentDir);
 
 						if (constraint.type == ConstraintType::Hinge) {
 							glm::vec3 planeNormal = constraint.axis;
