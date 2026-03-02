@@ -1779,6 +1779,9 @@ namespace Boidsish {
 			std::optional<Frustum>          shadow_frustum = std::nullopt,
 			float                           quality_override = -1.0f
 		) {
+			if (is_shadow_pass) {
+				return;
+			}
 			if (!terrain_generator || !ConfigManager::GetInstance().GetAppSettingBool("render_terrain", true))
 				return;
 
@@ -2990,7 +2993,8 @@ namespace Boidsish {
 		}
 
 		// --- Shadow Pass (render depth from each shadow-casting light) ---
-		if (impl->shadow_manager && impl->shadow_manager->IsInitialized() && impl->frame_config_.enable_shadows) {
+		auto light_count = impl->light_manager.GetShadowCastingLightCount();
+		if (impl->shadow_manager && impl->shadow_manager->IsInitialized() && impl->frame_config_.enable_shadows && light_count > 0) {
 			glEnable(GL_DEPTH_TEST);
 			std::vector<Light*> shadow_lights = impl->light_manager.GetShadowCastingLights();
 
@@ -3174,17 +3178,6 @@ namespace Boidsish {
 						impl->terrain_render_manager
 					);
 				}
-
-				glDisable(GL_CULL_FACE);
-				impl->RenderTerrain(
-					impl->shadow_manager->GetLightSpaceMatrix(info.map_index),
-					glm::mat4(1.0f),
-					std::nullopt,
-					true,
-					impl->shadow_manager->GetShadowFrustum(info.map_index)
-				);
-				glEnable(GL_CULL_FACE);
-				glCullFace(GL_FRONT);
 
 				impl->shadow_manager->EndShadowPass();
 

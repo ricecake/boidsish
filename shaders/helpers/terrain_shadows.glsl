@@ -31,11 +31,13 @@ float getTerrainHeight(vec2 worldXZ) {
 	return texture(u_heightmapArray, vec3(uv, float(slice))).r;
 }
 
-bool isPointInTerrainShadow(vec3 worldPos, vec3 normal, vec3 lightDir) {
-	if (u_originSize.w < 1) return false;
+float terrainShadowCoverage(vec3 worldPos, vec3 normal, vec3 lightDir) {
+	if (u_originSize.w < 1) return 1.0;
 	// lightDir is from fragment to light
-	if (lightDir.y <= 0.0)
-		return false;
+	// if (sundownShadow < 1.00) {
+	if (lightDir.y <= 0.0) {
+		return 0.0;
+	}
 
 	float scaledChunkSize = u_terrainParams.x * u_terrainParams.y;
 
@@ -45,6 +47,7 @@ bool isPointInTerrainShadow(vec3 worldPos, vec3 normal, vec3 lightDir) {
 	float t = 0.0;
 	float maxDist = 1200.0 * u_terrainParams.y;
 
+	float closest = 1.0;
 	int iter = 0;
 	while (t < maxDist && iter < 80) {
 		iter++;
@@ -81,15 +84,23 @@ bool isPointInTerrainShadow(vec3 worldPos, vec3 normal, vec3 lightDir) {
 		if (slice >= 0) {
 			vec2  uv_chunk = (p.xz - vec2(chunkCoord) * scaledChunkSize) / scaledChunkSize;
 			float h = texture(u_heightmapArray, vec3(uv_chunk, float(slice))).r;
-			if (p.y < h)
-				return true; // Hit terrain!
+			if (p.y < h) {
+				return 0.0; // Hit terrain!
+			}
+
+			closest = min(closest, 8.0*((p.y-h)/t));
 		}
 
 		// Step size at LOD 0: proportional to world scale for smoothness
 		t += 2.0 * u_terrainParams.y;
 	}
 
-	return false;
+	return closest;
+}
+
+
+bool isPointInTerrainShadow(vec3 worldPos, vec3 normal, vec3 lightDir) {
+	return terrainShadowCoverage(worldPos, normal, lightDir) <= 0.0;
 }
 
 int isPointInTerrainShadowDebug(vec3 worldPos, vec3 normal, vec3 lightDir) {

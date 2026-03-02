@@ -219,7 +219,7 @@ namespace Boidsish {
 	std::vector<Light*> LightManager::GetShadowCastingLights() {
 		std::vector<Light*> shadow_lights;
 		for (auto& light : _lights) {
-			if (light.casts_shadow) {
+			if (light.casts_shadow && light.intensity > 0.0f) {
 				shadow_lights.push_back(&light);
 			}
 		}
@@ -229,7 +229,7 @@ namespace Boidsish {
 	int LightManager::GetShadowCastingLightCount() const {
 		int count = 0;
 		for (const auto& light : _lights) {
-			if (light.casts_shadow) {
+			if (light.casts_shadow && light.intensity > 0.0f) {
 				++count;
 			}
 		}

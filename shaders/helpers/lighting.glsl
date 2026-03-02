@@ -18,9 +18,11 @@ const int LIGHT_TYPE_FLASH = 4;    // Explosion/flash light (rapid falloff)
  */
 float calculateShadow(int light_index, vec3 frag_pos, vec3 normal, vec3 light_dir) {
 	// Optimization: Quick terrain raycast for directional lights (Sun)
+	float terrainShadow = 1.0;
 	if (lights[light_index].type == LIGHT_TYPE_DIRECTIONAL) {
-		if (isPointInTerrainShadow(frag_pos, normal, light_dir)) {
-			return 0.0;
+		terrainShadow = terrainShadowCoverage(frag_pos, normal, light_dir);
+		if (terrainShadow <= 0.0) {
+			return terrainShadow;
 		}
 	}
 
@@ -189,7 +191,7 @@ float calculateShadow(int light_index, vec3 frag_pos, vec3 normal, vec3 light_di
 		}
 	}
 
-	return shadow;
+	return min(terrainShadow, shadow);
 }
 
 /**

@@ -43,6 +43,8 @@ namespace Boidsish {
 	private:
 		void _Initialize();
 
+		bool active_ = false;
+		float elapsed = 0.0f;
 		bool                           initialized_ = false;
 		unsigned int                   ssbo_ = 0;
 		unsigned int                   vao_ = 0;
