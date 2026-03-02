@@ -8,8 +8,8 @@ uniform sampler2D u_srcDepth;
 // Destination: current mip level being generated
 layout(r32f, binding = 0) uniform writeonly image2D u_dstMip;
 
-// Source dimensions
-uniform vec2 u_srcSize;
+// Source level
+uniform int u_srcLevel;
 
 void main() {
 	ivec2 pixel = ivec2(gl_GlobalInvocationID.xy);
@@ -19,13 +19,13 @@ void main() {
 		return;
 
 	// Each destination pixel covers a 2x2 block in the source
-	vec2 srcTexelSize = 1.0 / u_srcSize;
-	vec2 uv = (vec2(pixel) * 2.0 + 1.0) * srcTexelSize;
+	ivec2 srcCoord = pixel * 2;
 
-	float d00 = texture(u_srcDepth, uv + vec2(-0.5, -0.5) * srcTexelSize).r;
-	float d10 = texture(u_srcDepth, uv + vec2(0.5, -0.5) * srcTexelSize).r;
-	float d01 = texture(u_srcDepth, uv + vec2(-0.5, 0.5) * srcTexelSize).r;
-	float d11 = texture(u_srcDepth, uv + vec2(0.5, 0.5) * srcTexelSize).r;
+	// Explicitly sample the 4 source texels from the previous mip level
+	float d00 = texelFetch(u_srcDepth, srcCoord + ivec2(0, 0), u_srcLevel).r;
+	float d10 = texelFetch(u_srcDepth, srcCoord + ivec2(1, 0), u_srcLevel).r;
+	float d01 = texelFetch(u_srcDepth, srcCoord + ivec2(0, 1), u_srcLevel).r;
+	float d11 = texelFetch(u_srcDepth, srcCoord + ivec2(1, 1), u_srcLevel).r;
 
 	// MAX for conservative terrain height skipping
 	float maxVal = max(max(d00, d10), max(d01, d11));
