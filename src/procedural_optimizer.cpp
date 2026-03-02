@@ -18,12 +18,14 @@ namespace Boidsish {
 			return;
 
 		bool changed = true;
-		while (changed) {
+		int  safety_counter = 0;
+		while (changed && safety_counter++ < 10) {
 			changed = false;
-			std::vector<bool>              to_remove(ir.elements.size(), false);
+			size_t                         initial_count = ir.elements.size();
+			std::vector<bool>              to_remove(initial_count, false);
 			std::vector<ProceduralElement> control_points_to_add;
 
-			for (int i = 0; i < (int)ir.elements.size(); ++i) {
+			for (int i = 0; i < (int)initial_count; ++i) {
 				if (to_remove[i])
 					continue;
 				auto& e1 = ir.elements[i];
@@ -58,7 +60,9 @@ namespace Boidsish {
 
 					// Update children's parent pointer to the control point
 					for (int child_of_child : e2.children) {
-						ir.elements[child_of_child].parent = cp_idx;
+						if (child_of_child >= 0 && child_of_child < (int)ir.elements.size()) {
+							ir.elements[child_of_child].parent = cp_idx;
+						}
 					}
 
 					// Merge tube geometry: extend e1 to e2's end
@@ -68,6 +72,8 @@ namespace Boidsish {
 					e1.children = {cp_idx};
 
 					control_points_to_add.push_back(cp);
+					to_remove[child_idx] = true;
+					changed = true;
 				} else {
 					// Perfectly collinear: simple merge, no control point needed
 					e1.end_position = e2.end_position;
