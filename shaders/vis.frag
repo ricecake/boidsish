@@ -141,7 +141,7 @@ void main() {
 			vec3 L;
 			float atten;
 			calculateLightContribution(0, FragPos, L, atten);
-			int dbg = isPointInTerrainShadowDebug(FragPos, L);
+			int dbg = isPointInTerrainShadowDebug(FragPos, norm, L);
 			if (dbg == 11) result = vec3(1, 0, 0); // Red: x < 0
 			else if (dbg == 12) result = vec3(1, 0.5, 0); // Orange: x >= size
 			else if (dbg == 13) result = vec3(1, 1, 0); // Yellow: y < 0

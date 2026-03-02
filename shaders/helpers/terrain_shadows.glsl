@@ -31,21 +31,24 @@ float getTerrainHeight(vec2 worldXZ) {
 	return texture(u_heightmapArray, vec3(uv, float(slice))).r;
 }
 
-bool isPointInTerrainShadow(vec3 worldPos, vec3 lightDir) {
+bool isPointInTerrainShadow(vec3 worldPos, vec3 normal, vec3 lightDir) {
 	if (u_originSize.w < 1) return false;
 	// lightDir is from fragment to light
 	if (lightDir.y <= 0.0)
 		return false;
 
 	float scaledChunkSize = u_terrainParams.x * u_terrainParams.y;
-	// Use a small bias to avoid self-shadowing acne
-	float t = 0.5 * u_terrainParams.y;
-	float maxDist = 800.0 * u_terrainParams.y;
+
+	// Better initial bias: move along normal and a bit along light direction.
+	// This dramatically reduces shadow acne.
+	vec3 p_start = worldPos + normal * (0.2 * u_terrainParams.y) + lightDir * (0.1 * u_terrainParams.y);
+	float t = 0.0;
+	float maxDist = 1200.0 * u_terrainParams.y;
 
 	int iter = 0;
-	while (t < maxDist && iter < 64) {
+	while (t < maxDist && iter < 80) {
 		iter++;
-		vec3  p = worldPos + t * lightDir;
+		vec3  p = p_start + t * lightDir;
 		vec2  gridPos = p.xz / scaledChunkSize;
 		ivec2 chunkCoord = ivec2(floor(gridPos));
 		ivec2 localGridCoord = chunkCoord - u_originSize.xy;
@@ -55,15 +58,21 @@ bool isPointInTerrainShadow(vec3 worldPos, vec3 lightDir) {
 			break; // Out of grid bounds
 		}
 
-		// Hierarchical Skipping: Sample a coarse mip to see if we're entirely above this 8x8 chunk area
 		vec2  gridUV = (vec2(localGridCoord) + 0.5) / float(u_originSize.z);
-		float h_max = textureLod(u_maxHeightGrid, gridUV, 3.0).r;
 
-		if (p.y > h_max) {
-			// Skip distance is the vertical height difference divided by light slope (sin of altitude)
-			// This is conservative because we only consider the max height of the 8x8 region.
-			float skip_dist = (p.y - h_max) / lightDir.y;
-			t += max(skip_dist, 8.0 * scaledChunkSize);
+		// Coarse Skip: Mip 3 covers 8x8 chunks (256x256 units if scale=1)
+		float h_max3 = textureLod(u_maxHeightGrid, gridUV, 3.0).r;
+		if (p.y > h_max3 + 1.0) {
+			// Skip by a safe multiple of chunk size (e.g., 4 chunks)
+			t += 4.0 * scaledChunkSize;
+			continue;
+		}
+
+		// Fine Skip: Mip 1 covers 2x2 chunks (64x64 units if scale=1)
+		float h_max1 = textureLod(u_maxHeightGrid, gridUV, 1.0).r;
+		if (p.y > h_max1 + 0.5) {
+			// Skip by one chunk size
+			t += scaledChunkSize;
 			continue;
 		}
 
@@ -76,27 +85,28 @@ bool isPointInTerrainShadow(vec3 worldPos, vec3 lightDir) {
 				return true; // Hit terrain!
 		}
 
-		// Use a smaller step at LOD 0 for accuracy
-		t += 1.0 * u_terrainParams.y;
+		// Step size at LOD 0: proportional to world scale for smoothness
+		t += 2.0 * u_terrainParams.y;
 	}
 
 	return false;
 }
 
-int isPointInTerrainShadowDebug(vec3 worldPos, vec3 lightDir) {
+int isPointInTerrainShadowDebug(vec3 worldPos, vec3 normal, vec3 lightDir) {
 	if (u_originSize.w < 1) return -3; // Blue
 	if (u_terrainParams.y <= 0.0) return -1; // Cyan
 	if (u_terrainParams.x <= 0.0) return -4; // White (Invalid chunkSize)
 	if (lightDir.y <= 0.0) return -2; // Orange-ish (Light below horizon)
 
 	float scaledChunkSize = u_terrainParams.x * u_terrainParams.y;
-	float t = 0.5 * u_terrainParams.y;
-	float maxDist = 800.0 * u_terrainParams.y;
+	vec3 p_start = worldPos + normal * (0.2 * u_terrainParams.y) + lightDir * (0.1 * u_terrainParams.y);
+	float t = 0.0;
+	float maxDist = 1200.0 * u_terrainParams.y;
 
 	int iter = 0;
-	while (t < maxDist && iter < 64) {
+	while (t < maxDist && iter < 80) {
 		iter++;
-		vec3  p = worldPos + t * lightDir;
+		vec3  p = p_start + t * lightDir;
 		vec2  gridPos = p.xz / scaledChunkSize;
 		ivec2 chunkCoord = ivec2(floor(gridPos));
 		ivec2 localGridCoord = chunkCoord - u_originSize.xy;
@@ -108,12 +118,17 @@ int isPointInTerrainShadowDebug(vec3 worldPos, vec3 lightDir) {
 
 		if (u_originSize.z != 128) return 5; // White/Debug: Invalid grid size
 
-		// Hierarchical check in debug mode
 		vec2  gridUV = (vec2(localGridCoord) + 0.5) / float(u_originSize.z);
-		float h_max = textureLod(u_maxHeightGrid, gridUV, 3.0).r;
-		if (p.y > h_max) {
-			float skip_dist = (p.y - h_max) / lightDir.y;
-			t += max(skip_dist, 8.0 * scaledChunkSize);
+
+		float h_max3 = textureLod(u_maxHeightGrid, gridUV, 3.0).r;
+		if (p.y > h_max3 + 1.0) {
+			t += 4.0 * scaledChunkSize;
+			continue;
+		}
+
+		float h_max1 = textureLod(u_maxHeightGrid, gridUV, 1.0).r;
+		if (p.y > h_max1 + 0.5) {
+			t += scaledChunkSize;
 			continue;
 		}
 
@@ -127,7 +142,7 @@ int isPointInTerrainShadowDebug(vec3 worldPos, vec3 lightDir) {
 		if (p.y < h)
 			return 3; // Hit! (Magenta)
 
-		t += 1.0 * u_terrainParams.y;
+		t += 2.0 * u_terrainParams.y;
 	}
 
 	return 0; // Miss (Green)

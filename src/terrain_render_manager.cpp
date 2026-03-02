@@ -671,15 +671,13 @@ namespace Boidsish {
 			int dst_w = std::max(1, grid_size >> mip);
 			int dst_h = std::max(1, grid_size >> mip);
 
-			int src_w = std::max(1, grid_size >> (mip - 1));
-			int src_h = std::max(1, grid_size >> (mip - 1));
-
-			grid_mip_shader_->setVec2("u_srcSize", glm::vec2(src_w, src_h));
+			grid_mip_shader_->setInt("u_srcLevel", mip - 1);
 
 			glActiveTexture(GL_TEXTURE0);
 			glBindTexture(GL_TEXTURE_2D, max_height_grid_texture_);
-			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_BASE_LEVEL, mip - 1);
-			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, mip - 1);
+			// Reset levels to allow access to all levels during mip generation
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_BASE_LEVEL, 0);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, mips - 1);
 			grid_mip_shader_->setInt("u_srcDepth", 0);
 
 			glBindImageTexture(0, max_height_grid_texture_, mip, GL_FALSE, 0, GL_WRITE_ONLY, GL_R32F);

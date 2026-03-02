@@ -188,7 +188,8 @@ void main() {
 
 		// Terrain shadow culling: skip if entirely in terrain shadow
 		if (u_lightDir.y > 0.0) {
-			if (isPointInTerrainShadow(pos, u_lightDir))
+			// For foliage culling, we assume an upward normal for terrain shadow checks
+			if (isPointInTerrainShadow(pos, vec3(0, 1, 0), u_lightDir))
 				return;
 		}
 
