@@ -190,12 +190,20 @@ namespace Boidsish {
 			current_fragment_index_ = second_part;
 		}
 		glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
+		active_ = true;
+		elapsed = 0.0f;
 	}
 
 	void MeshExplosionManager::Update(float delta_time, float time) {
 		if (!initialized_ || !compute_shader_ || !compute_shader_->isValid())
 			return;
+
 		time_ = time;
+		elapsed += delta_time;
+
+		if (!active_ || elapsed >= 4.0f) {
+			return;
+		}
 
 		compute_shader_->use();
 		compute_shader_->setFloat("u_delta_time", delta_time);
@@ -209,6 +217,10 @@ namespace Boidsish {
 	void MeshExplosionManager::Render(const glm::mat4& view, const glm::mat4& projection, const glm::vec3& camera_pos) {
 		if (!initialized_ || !compute_shader_ || !compute_shader_->isValid())
 			return;
+
+		if (!active_ || elapsed >= 4.0f) {
+			return;
+		}
 
 		glEnable(GL_BLEND);
 		glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);

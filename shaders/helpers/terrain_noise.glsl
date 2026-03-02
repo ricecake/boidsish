@@ -107,4 +107,91 @@ float[6] fbm_detail(vec3 p) {
 	return values;
 }
 
+// Standard 2D hash for pseudo-random impulse generation
+vec2 hash22(vec2 p) {
+	p = vec2(dot(p, vec2(127.1, 311.7)), dot(p, vec2(269.5, 183.3)));
+	return fract(sin(p) * 43758.5453123);
+}
+
+// pos: The world or UV coordinate being shaded
+// curlVec: The sampled vector from curl texture at 'pos'
+// time: Animation time to drive the wind ripples
+// freq: The spatial frequency of the ripples inside the gust
+// bandwidth: Controls the tightness of the Gaussian envelope (higher = smaller/sharper gusts)
+// sparsity: Threshold to cull impulses (0.0 to 1.0, higher = sparser gusts)
+float gaborWindNoise(vec2 pos, vec2 curlVec, float time, float freq, float bandwidth, float sparsity) {
+	vec2 gridId = floor(pos);
+	vec2 gridFract = fract(pos);
+
+	float noiseAcc = 0.0;
+
+	// Normalize the sampled curl vector to strictly control the ripple direction
+	vec2 dir = length(curlVec) > 0.001 ? normalize(curlVec) : vec2(1.0, 0.0);
+	vec2 F = dir * freq;
+
+	// 3x3 grid traversal to find neighboring impulses
+	for (int y = -1; y <= 1; y++) {
+		for (int x = -1; x <= 1; x++) {
+			vec2 neighborOffset = vec2(float(x), float(y));
+			vec2 cellId = gridId + neighborOffset;
+
+			// Generate random properties for this cell's impulse
+			vec2 randVal = hash22(cellId);
+
+			// Check for sparsity: skip this cell entirely if it doesn't meet the threshold
+			if (randVal.y < sparsity)
+				continue;
+
+			// Calculate vector from fragment to the random impulse position in the neighbor cell
+			vec2 impulsePos = neighborOffset + randVal;
+			vec2 p = gridFract - impulsePos;
+
+			// Distance squared for the Gaussian envelope
+			float distSq = dot(p, p);
+
+			// 1. Evaluate the Gaussian Envelope
+			// e^(-pi * a^2 * d^2)
+			float envelope = exp(-3.14159 * bandwidth * bandwidth * distSq);
+
+			// 2. Evaluate the Harmonic Carrier
+			// Animate phase with time, offset randomly per cell so they don't pulse synchronously
+			float phase = (time * 5.0) + (randVal.x * 6.28318);
+			float carrier = cos(6.28318 * dot(F, p) + phase);
+
+			// Accumulate the result, scaling intensity by the random value for variety
+			noiseAcc += randVal.y * envelope * carrier;
+		}
+	}
+
+	return noiseAcc;
+}
+
+float tangentGabor(
+	vec3  worldPos,
+	vec3  worldNormal,
+	vec3  curlVec3D,
+	float time,
+	float freq,
+	float bandwidth,
+	float sparsity
+) {
+	// 1. Construct the TBN frame
+	vec3 N = normalize(worldNormal);
+
+	// Choose an 'up' vector, switching to X-axis if the normal is perfectly vertical
+	vec3 referenceUp = abs(N.y) < 0.999 ? vec3(0.0, 1.0, 0.0) : vec3(1.0, 0.0, 0.0);
+
+	vec3 T = normalize(cross(referenceUp, N));
+	vec3 B = normalize(cross(N, T));
+
+	// 2. Project world position into 2D surface space
+	vec2 surfacePos = vec2(dot(worldPos, T), dot(worldPos, B));
+
+	// 3. Project 3D wind curl vector into 2D surface space
+	vec2 surfaceCurl = vec2(dot(curlVec3D, T), dot(curlVec3D, B));
+
+	// 4. Evaluate the 2D Gabor Noise
+	return gaborWindNoise(surfacePos, surfaceCurl, time, freq, bandwidth, sparsity);
+}
+
 #endif // TERRAIN_NOISE_GLSL

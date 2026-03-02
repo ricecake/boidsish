@@ -36,6 +36,10 @@ namespace Boidsish {
 			constexpr int Biomes() {
 				return 7;
 			}
+
+			constexpr int TerrainData() {
+				return 8;
+			}
 		} // namespace UboBinding
 
 		namespace SsboBinding {
@@ -181,6 +185,12 @@ namespace Boidsish {
 		} // namespace Library
 
 		namespace Class {
+			namespace Terrain {
+				constexpr int SliceMapSize() {
+					return 128;
+				}
+			} // namespace Terrain
+
 			namespace Shadows {
 				constexpr int MaxLights() {
 					return 10;
