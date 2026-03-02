@@ -36,17 +36,16 @@ float getTerrainHeight(vec2 worldXZ) {
 float terrainShadowCoverage(vec3 worldPos, vec3 normal, vec3 lightDir) {
 	if (u_originSize.w < 1) return 1.0;
 	// lightDir is from fragment to light
-	// if (sundownShadow < 1.00) {
-	if (lightDir.y <= 0.0) {
-		return fastFbm3d(worldPos);
-		return 0.0;
+	float sundownShadow = smoothstep(0.0, 0.02, lightDir.y);
+	if (lightDir.y <= 0.02) {
+		return sundownShadow;
 	}
 
 	float scaledChunkSize = u_terrainParams.x * u_terrainParams.y;
 
 	// Better initial bias: move along normal and a bit along light direction.
 	// This dramatically reduces shadow acne.
-	vec3 p_start = worldPos + normal * (0.2 * u_terrainParams.y) + lightDir * (0.2 * u_terrainParams.y);
+	vec3 p_start = worldPos + normal * (0.2 * u_terrainParams.y) + lightDir * 1.5;
 	float t = 0.0;
 	float maxDist = 1200.0 * u_terrainParams.y;
 
@@ -98,7 +97,7 @@ float terrainShadowCoverage(vec3 worldPos, vec3 normal, vec3 lightDir) {
 		t += 2.0 * u_terrainParams.y;
 	}
 
-	return closest * (fastFbm3d(worldPos/350+lightDir*(1-dot(lightDir, normal))+vec3(1*0.001)) * 0.5 + 0.5);
+	return closest;// * (fastFbm3d(worldPos/350+lightDir*(1-dot(lightDir, normal))+vec3(1*0.001)) * 0.5 + 0.5);
 }
 
 

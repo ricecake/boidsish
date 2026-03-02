@@ -414,14 +414,19 @@ void main() {
 
 	// Final Lighting
 	float fateFactor = fastWorley3d(vec3(FragPos.xz / 50.0, time * 0.25)) * 0.5 + 0.50;
-	vec3 rawWindNudge = fateFactor * fastCurl3d(FragPos.xyz * 0.0005 + time * 0.0125 * 0.5);
+	vec3 windForce = fastCurl3d(vec3(FragPos.x*0.0005+time*0.00125, FragPos.y*0.001, FragPos.z*0.0005 + time * 0.0125));
+	vec3 rawWindNudge = (fateFactor * windForce);// / (abs(normalize(FragPos).y - normalize(windForce).y));
 
 	vec3 light_dir = normalize(lights[0].position - FragPos);
 	float rim = max(dot(light_dir, normalize(viewPos - FragPos)), 0.0);
 	// albedo += (1-dot(rawWindNudge, perturbedNorm)) * rim * albedo;
-	float windDistortion = smoothstep(0, 1, (max(0, dot(vec3(0, 1, 0), perturbedNorm)) * abs(min(0, dot(rawWindNudge, perturbedNorm)))));
-	albedo *= mix(1.0, 1.25, windDistortion);
-	roughness *= mix(1.0, 1.25, windDistortion);
+	float windDistortion = pow(1-smoothstep(0, 1, (max(0, dot(vec3(0, 1, 0), perturbedNorm)) * ((1-dot(rawWindNudge, perturbedNorm))/2))), 9.0);
+	float plainRipple = tangentGabor(FragPos, norm, -1*windDistortion*rawWindNudge, time, 0.5, 0.00001, 0.75) * 0.5 + 0.5;
+	float windRipple = windDistortion * plainRipple;
+	float grassFactor = smoothstep(0.25, 0.5, max(dot(albedo, COL_GRASS_LUSH), dot(albedo, COL_GRASS_DRY)));
+	albedo *= mix(1, mix(1.0, 1.25, windDistortion) * mix(1.0, 1.05, windRipple), grassFactor);
+	roughness *= mix(1.25, 1.0, windDistortion) * mix(1, mix(1.5, 1.0, windRipple), grassFactor);
+	// perturbedNorm += rawWindNudge * mix(0.0, 1.05, plainRipple);
 
 	vec3 lighting = apply_lighting_pbr(FragPos, perturbedNorm, albedo, roughness, metallic, 1.0).rgb;
 
