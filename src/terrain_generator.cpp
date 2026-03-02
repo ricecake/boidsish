@@ -773,13 +773,14 @@ namespace Boidsish {
 		return getPathDataFlat(glm::vec2(x / world_scale_, z / world_scale_));
 	}
 
+	glm::vec3 TerrainGenerator::getPathDataFlat(float x, float z) const {
+		return getPathDataFlat(glm::vec2(x, z));
+	}
+
 	glm::vec3 TerrainGenerator::getPathDataFlat(glm::vec2 pos) const {
 		return Simplex::dnoise(pos * kPathFrequency);
 	}
 
-	glm::vec3 TerrainGenerator::getPathDataFlat(float x, float z) const {
-		return Simplex::dnoise((glm::vec2(x, z)) * kPathFrequency);
-	}
 
 	glm::vec3 TerrainGenerator::getPathInfluence(float x, float z) const {
 		glm::vec3 noise = getPathDataFlat(x, z);
