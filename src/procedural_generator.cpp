@@ -43,8 +43,16 @@ namespace Boidsish {
 							next += rules.at(c);
 						else
 							next += c;
+
+						// Safety check to prevent exponential string growth OOM
+						if (next.length() > 10000) {
+							break;
+						}
 					}
 					current = next;
+					if (current.length() > 10000) {
+						break;
+					}
 				}
 				return current;
 			}
@@ -542,7 +550,7 @@ namespace Boidsish {
 
 		bool growthOccurred = true;
 		int  iterations = 0;
-		while (growthOccurred && iterations < 200) {
+		while (growthOccurred && iterations < 2000) { // Safety bound
 			growthOccurred = false;
 			iterations++;
 
