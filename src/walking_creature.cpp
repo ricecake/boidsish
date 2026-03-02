@@ -21,33 +21,38 @@ namespace Boidsish {
 			glm::vec3 bodyColor(0.4f, 0.45f, 0.5f);
 			glm::vec3 legColor(0.3f, 0.32f, 0.35f);
 
-			// Flat body pod
-			int bodyIdx = ir.AddHub(glm::vec3(0, height, 0), length * 0.45f, bodyColor, -1, "body");
-			ir.AddHub(glm::vec3(length * 0.3f, height, 0), length * 0.35f, bodyColor, bodyIdx);
-			ir.AddHub(glm::vec3(-length * 0.3f, height, 0), length * 0.35f, bodyColor, bodyIdx);
-			ir.AddHub(glm::vec3(0, height, length * 0.4f), length * 0.35f, bodyColor, bodyIdx);
-			ir.AddHub(glm::vec3(0, height, -length * 0.4f), length * 0.35f, bodyColor, bodyIdx);
+			// Low-profile wide disk body
+			int bodyIdx = ir.AddHub(glm::vec3(0, height, 0), length * 0.5f, bodyColor, -1, "body");
+			ir.AddHub(glm::vec3(length * 0.3f, height, 0), length * 0.4f, bodyColor, bodyIdx);
+			ir.AddHub(glm::vec3(-length * 0.3f, height, 0), length * 0.4f, bodyColor, bodyIdx);
+			ir.AddHub(glm::vec3(0, height, length * 0.35f), length * 0.4f, bodyColor, bodyIdx);
+			ir.AddHub(glm::vec3(0, height, -length * 0.35f), length * 0.4f, bodyColor, bodyIdx);
 
 			const char* legPrefixes[] = {"FL", "FR", "BR", "BL"};
-			glm::vec3   offsets[] = {
-                {-width * 0.4f, 0.0f, length * 0.35f},
-                {width * 0.4f, 0.0f, length * 0.35f},
-                {width * 0.4f, 0.0f, -length * 0.35f},
-                {-width * 0.4f, 0.0f, -length * 0.35f}
+            float halfW = width * 0.5f;
+            float halfL = length * 0.5f;
+			glm::vec3   hipOffsets[] = {
+                {-halfW * 0.6f, 0.0f, halfL * 0.8f},
+                {halfW * 0.6f, 0.0f, halfL * 0.8f},
+                {halfW * 0.6f, 0.0f, -halfL * 0.8f},
+                {-halfW * 0.6f, 0.0f, -halfL * 0.8f}
             };
 
 			for (int i = 0; i < 4; ++i) {
 				std::string prefix = legPrefixes[i];
-				glm::vec3   basePos = glm::vec3(0, height, 0) + offsets[i];
-				// Arching spider-tank legs: wide hips, high knees
-				glm::vec3   kneePos = basePos + glm::vec3(offsets[i].x * 0.8f, height * 1.2f, 0);
-				glm::vec3   footPos = basePos + glm::vec3(offsets[i].x * 2.0f, -height, 0);
+				glm::vec3   basePos = glm::vec3(0, height, 0) + hipOffsets[i];
 
-				int upperIdx = ir.AddTube(basePos, kneePos, length * 0.1f, length * 0.08f, legColor, bodyIdx, prefix + "_upper");
-				ir.AddHub(basePos, length * 0.12f, legColor, upperIdx);
-				int lowerIdx = ir.AddTube(kneePos, footPos, length * 0.08f, length * 0.06f, legColor, upperIdx, prefix + "_lower");
-				ir.AddControlPoint(footPos, length * 0.06f, legColor, lowerIdx, prefix + "_effector");
-				ir.AddPuffball(footPos, length * 0.12f, legColor, 0, lowerIdx);
+                float footR = length * 0.12f;
+				// High-arching spider legs: OUT and UP to knee, then OUT and DOWN to foot
+				glm::vec3   kneePos = basePos + glm::vec3(hipOffsets[i].x * 1.5f, height * 1.5f, 0.0f);
+				glm::vec3   footPos = basePos + glm::vec3(hipOffsets[i].x * 3.0f, -height + footR, 0.0f);
+
+				ir.AddHub(basePos, length * 0.15f, legColor, bodyIdx); // Visual hip joint
+				int upperIdx = ir.AddTube(basePos, kneePos, length * 0.12f, length * 0.1f, legColor, bodyIdx, prefix + "_upper");
+                ir.AddHub(kneePos, length * 0.12f, legColor, upperIdx); // Visual knee joint
+				int lowerIdx = ir.AddTube(kneePos, footPos, length * 0.1f, length * 0.08f, legColor, upperIdx, prefix + "_lower");
+				ir.AddControlPoint(footPos, length * 0.08f, legColor, lowerIdx, prefix + "_effector");
+				ir.AddPuffball(footPos, footR, legColor, 0, lowerIdx);
 			}
 
 			auto model = ProceduralMesher::GenerateModel(ir);
@@ -56,11 +61,11 @@ namespace Boidsish {
 	}
 
 	WalkingCreature::WalkingCreature(int id, float x, float y, float z, float length):
-		Model(CreateCreatureData(length, length * 1.5f, length * 0.3f)), length_(length) {
+		Model(CreateCreatureData(length, length * 2.0f, length * 0.25f)), length_(length) {
 		SetId(id);
 		SetPosition(x, y, z);
-		width_ = length * 1.5f;
-		height_ = length * 0.3f;
+		width_ = length * 2.0f;
+		height_ = length * 0.25f;
 		current_pos_ = glm::vec3(x, y, z);
 		target_pos_ = current_pos_;
 		camera_pos_ = current_pos_ + glm::vec3(0, 5, 10);
@@ -68,11 +73,13 @@ namespace Boidsish {
 		spotlight_ = Light::CreateSpot(current_pos_, glm::vec3(0, 0, 1), 40.0f, glm::vec3(0.5f, 0.7f, 1.0f), 25.0f, 35.0f);
 
 		const char* legPrefixes[] = {"FL", "FR", "BR", "BL"};
-		glm::vec3   offsets[] = {
-            {-width_ * 0.4f, 0.0f, length_ * 0.35f},
-            {width_ * 0.4f, 0.0f, length_ * 0.35f},
-            {width_ * 0.4f, 0.0f, -length_ * 0.35f},
-            {-width_ * 0.4f, 0.0f, -length_ * 0.35f}
+        float halfW = width_ * 0.5f;
+        float halfL = length_ / 2.0f;
+		glm::vec3   hipOffsets[] = {
+            {-halfW * 0.6f, 0.0f, halfL * 0.8f},
+            {halfW * 0.6f, 0.0f, halfL * 0.8f},
+            {halfW * 0.6f, 0.0f, -halfL * 0.8f},
+            {-halfW * 0.6f, 0.0f, -halfL * 0.8f}
         };
 
 		for (int i = 0; i < 4; ++i) {
@@ -80,22 +87,25 @@ namespace Boidsish {
 			legs_[i].thigh_bone_name = std::string(legPrefixes[i]) + "_upper";
 			legs_[i].knee_bone_name = std::string(legPrefixes[i]) + "_lower";
 			legs_[i].foot_bone_name = std::string(legPrefixes[i]) + "_effector";
-			legs_[i].rest_offset = offsets[i] + glm::vec3(0, -height_, 0);
-			legs_[i].world_foot_pos = current_pos_ + legs_[i].rest_offset;
-			legs_[i].world_foot_pos.y = current_pos_.y;
+
+            // rest_offset must match footPos in CreateCreatureData (model space)
+            float footR = length_ * 0.12f;
+            legs_[i].rest_offset = hipOffsets[i] + glm::vec3(hipOffsets[i].x * 3.0f, footR, 0.0f);
+			legs_[i].world_foot_pos = current_pos_ + glm::vec3(legs_[i].rest_offset.x, 0.0f, legs_[i].rest_offset.z);
+			legs_[i].world_foot_pos.y = current_pos_.y + footR;
 
 			BoneConstraint upperConstraint;
 			upperConstraint.type = ConstraintType::Cone;
-			upperConstraint.coneAngle = 25.0f;
-            upperConstraint.maxTwistAngle = 5.0f;
+			upperConstraint.coneAngle = 80.0f;
+            upperConstraint.maxTwistAngle = 20.0f;
 			SetBoneConstraint(legs_[i].thigh_bone_name, upperConstraint);
 
             BoneConstraint lowerConstraint;
             lowerConstraint.type = ConstraintType::Hinge;
-            lowerConstraint.axis = glm::normalize(glm::cross(glm::vec3(0, 1, 0), offsets[i]));
-            lowerConstraint.minAngle = 0.0f;
-            lowerConstraint.maxAngle = 90.0f;
-            lowerConstraint.maxTwistAngle = 5.0f;
+            lowerConstraint.axis = glm::normalize(glm::cross(glm::vec3(0, 1, 0), hipOffsets[i]));
+            lowerConstraint.minAngle = -20.0f;
+            lowerConstraint.maxAngle = 120.0f;
+            lowerConstraint.maxTwistAngle = 10.0f;
             SetBoneConstraint(legs_[i].knee_bone_name, lowerConstraint);
 		}
 	}
@@ -150,7 +160,8 @@ namespace Boidsish {
 
 			for (int i = 0; i < 4; ++i) {
 				glm::vec3 ideal_world_foot = current_pos_ + glm::vec3(rotation * glm::vec4(legs_[i].rest_offset.x, 0.0f, legs_[i].rest_offset.z, 1.0f));
-				float     d = glm::distance(legs_[i].world_foot_pos, ideal_world_foot);
+				float     d = glm::distance(glm::vec2(legs_[i].world_foot_pos.x, legs_[i].world_foot_pos.z),
+                                           glm::vec2(ideal_world_foot.x, ideal_world_foot.z));
 				if (d > max_dist) {
 					max_dist = d;
 					best_leg = i;
@@ -161,28 +172,30 @@ namespace Boidsish {
 				legs_[best_leg].is_moving = true;
 				legs_[best_leg].progress = 0.0f;
 				legs_[best_leg].step_start_pos = legs_[best_leg].world_foot_pos;
+                float footR = length_ * 0.12f;
 				glm::vec3 local_ideal = current_pos_ + glm::vec3(rotation * glm::vec4(legs_[best_leg].rest_offset.x, 0.0f, legs_[best_leg].rest_offset.z, 1.0f));
 				legs_[best_leg].step_target_pos = local_ideal + velocity * step_duration_ * 3.0f;
-				legs_[best_leg].step_target_pos.y = current_pos_.y;
+				legs_[best_leg].step_target_pos.y = current_pos_.y + footR;
 			}
 		}
 
 		for (int i = 0; i < 4; ++i) {
+            float footR = length_ * 0.12f;
 			if (legs_[i].is_moving) {
 				legs_[i].progress += delta_time / step_duration_;
 				if (legs_[i].progress >= 1.0f) {
 					legs_[i].progress = 1.0f;
 					legs_[i].is_moving = false;
 					legs_[i].world_foot_pos = legs_[i].step_target_pos;
-					legs_[i].world_foot_pos.y = current_pos_.y;
+					legs_[i].world_foot_pos.y = current_pos_.y + footR;
 				} else {
 					float p = legs_[i].progress;
-					float height_offset = std::sin(p * std::numbers::pi_v<float>) * length_ * 0.15f;
+					float height_lift = std::sin(p * std::numbers::pi_v<float>) * length_ * 0.2f;
 					legs_[i].world_foot_pos = glm::mix(legs_[i].step_start_pos, legs_[i].step_target_pos, p);
-					legs_[i].world_foot_pos.y = current_pos_.y + height_offset;
+					legs_[i].world_foot_pos.y = current_pos_.y + footR + height_lift;
 				}
 			} else {
-				legs_[i].world_foot_pos.y = current_pos_.y;
+				legs_[i].world_foot_pos.y = current_pos_.y + footR;
 			}
 		}
 	}
@@ -200,7 +213,8 @@ namespace Boidsish {
 
 		if (planted_count > 0) {
 			support_center /= (float)planted_count;
-			glm::vec3 target_body_pos = support_center + glm::vec3(0, height_, 0);
+            float footR = length_ * 0.12f;
+			glm::vec3 target_body_pos = glm::vec3(support_center.x, current_pos_.y + height_, support_center.z);
 			glm::vec3 diff = target_body_pos - com;
 			diff.y = 0;
 			body_offset_ = glm::mix(body_offset_, diff, (1.0f - std::exp(-delta_time * 5.0f)));
@@ -220,8 +234,7 @@ namespace Boidsish {
 		UpdateAnimation(delta_time);
 
 		for (int i = 0; i < 4; ++i) {
-			// IK starting from the thigh bone (upper), so the body isn't affected.
-			SolveIK(legs_[i].foot_bone_name, legs_[i].world_foot_pos, 0.01f, 30, legs_[i].bone_name);
+			SolveIK(legs_[i].foot_bone_name, legs_[i].world_foot_pos, 0.01f, 30, legs_[i].bone_name, {"body", "critter"});
 		}
 
 		spotlight_.position = GetBoneWorldPosition("body");
