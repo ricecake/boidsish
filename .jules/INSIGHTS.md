@@ -33,10 +33,16 @@
 - **Learning**: Caching uniform locations on the CPU side is a standard optimization that reduces the overhead of the rendering loop, especially when many uniforms are updated frequently.
 
 ### 6. Missing Resource Cleanup in Visualizer
-- **Issue Type**: Memory Leak (OpenGL Buffer)
+- **Issue Type**: Memory Leak (OpenGL Buffer & Sync Objects)
 - **Location**: `src/graphics.cpp`, `VisualizerImpl::~VisualizerImpl`
-- **Evidence**: `frustum_ubo` was created in the constructor but not deleted in the destructor.
-- **Learning**: Centralized resource management or a more robust RAII wrapper system could mitigate missed cleanups as the codebase grows.
+- **Evidence**: `temporal_data_ubo` and `mdi_fences` were missing from the destructor.
+- **Learning**: Uniform buffers and synchronization primitives must be explicitly managed, as they occupy driver-side resources.
+
+### 7. Redundant Member and Dead Code
+- **Issue Type**: Code Quality (Dead Code)
+- **Location**: `src/graphics.cpp`, `VisualizerImpl`
+- **Evidence**: `frustum_ubo` was declared but never initialized or used, as the MDI pipeline has moved to using `frustum_ssbo`.
+- **Learning**: As systems evolve (e.g., from standard UBOs to Persistent MDI buffers), old members should be removed to reduce cognitive load and prevent initialization of unused resources.
 
 ## Rationale for Fixes
 - **Fix 1**: Add missing `glDelete*` calls to `VisualizerImpl` destructor to ensure all main scene resources are freed.
@@ -45,4 +51,5 @@
 - **Fix 4**: Add a virtual destructor to `ShaderBase` that calls `glDeleteProgram(ID)`.
 - **Fix 5**: Implement uniform location caching in `ShaderBase` using a `std::unordered_map` to minimize `glGetUniformLocation` overhead.
 - **Fix 6**: Disable copy operations and implement move operations for `ShaderBase` (Rule of Five) to safely manage OpenGL program ownership.
-- **Fix 7**: Add `glDeleteBuffers(1, &frustum_ubo)` to `VisualizerImpl` destructor.
+- **Fix 7**: Add `glDeleteBuffers(1, &temporal_data_ubo)` and cleanup loop for `mdi_fences` to `VisualizerImpl` destructor.
+- **Fix 8**: Remove the unused `frustum_ubo` member from `VisualizerImpl`.
