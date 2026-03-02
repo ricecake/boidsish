@@ -781,7 +781,6 @@ namespace Boidsish {
 		return Simplex::dnoise(pos * kPathFrequency);
 	}
 
-
 	glm::vec3 TerrainGenerator::getPathInfluence(float x, float z) const {
 		glm::vec3 noise = getPathDataFlat(x, z);
 		float     distance_from_spine = std::abs(noise.x);
