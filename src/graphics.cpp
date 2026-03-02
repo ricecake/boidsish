@@ -1053,6 +1053,9 @@ namespace Boidsish {
 
 		void BindShadows(Shader& s) {
 			s.use();
+			if (terrain_render_manager) {
+				terrain_render_manager->BindTerrainData(s);
+			}
 			if (shadow_manager && shadow_manager->IsInitialized() && frame_config_.enable_shadows) {
 				shadow_manager->BindForRendering(s);
 				std::array<int, 10> shadow_indices;
@@ -1072,6 +1075,9 @@ namespace Boidsish {
 
 		void SetupShaderBindings(ShaderBase& shader_to_setup) {
 			shader_to_setup.use();
+			if (terrain_render_manager) {
+				terrain_render_manager->BindTerrainData(shader_to_setup);
+			}
 			shader_to_setup.setBool("uUseMDI", false);
 			shader_to_setup.setBool("useSSBOInstancing", false);
 			shader_to_setup.setBool("use_skinning", false);
@@ -1109,6 +1115,10 @@ namespace Boidsish {
 			if (temporal_idx != GL_INVALID_INDEX) {
 				glUniformBlockBinding(shader_to_setup.ID, temporal_idx, Constants::UboBinding::TemporalData());
 			}
+			GLuint terrain_idx = glGetUniformBlockIndex(shader_to_setup.ID, "TerrainData");
+			if (terrain_idx != GL_INVALID_INDEX) {
+				glUniformBlockBinding(shader_to_setup.ID, terrain_idx, Constants::UboBinding::TerrainData());
+			}
 		}
 
 		void SetupAkiraBindings() {
@@ -1131,6 +1141,7 @@ namespace Boidsish {
 			frame_config_.artistic_shimmery = cfg.GetAppSettingBool("artistic_effect_shimmery", false);
 			frame_config_.artistic_glitched = cfg.GetAppSettingBool("artistic_effect_glitched", false);
 			frame_config_.artistic_wireframe = cfg.GetAppSettingBool("artistic_effect_wireframe", false);
+			frame_config_.terrain_shadow_debug = cfg.GetAppSettingBool("terrain_shadow_debug", false);
 			frame_config_.enable_shadows = cfg.GetAppSettingBool("enable_shadows", true);
 			frame_config_.wind_strength = cfg.GetAppSettingFloat("wind_strength", 0.065f);
 			frame_config_.wind_speed = cfg.GetAppSettingFloat("wind_speed", 0.075f);
@@ -2917,6 +2928,7 @@ namespace Boidsish {
 			ubo_data.shimmery_enabled = impl->frame_config_.artistic_shimmery;
 			ubo_data.glitched_enabled = impl->frame_config_.artistic_glitched;
 			ubo_data.wireframe_enabled = impl->frame_config_.artistic_wireframe;
+			ubo_data.terrain_shadow_debug = impl->frame_config_.terrain_shadow_debug;
 			ubo_data.color_shift_enabled = ubo_data.color_shift_enabled || impl->frame_config_.artistic_color_shift;
 			ubo_data.wind_strength = impl->frame_config_.wind_strength;
 			ubo_data.wind_speed = impl->frame_config_.wind_speed;
@@ -3131,6 +3143,13 @@ namespace Boidsish {
 					(float)impl->width / (float)impl->height
 				);
 
+				glm::vec3 light_dir_to_light;
+				if (info.light->type == DIRECTIONAL_LIGHT) {
+					light_dir_to_light = glm::normalize(-info.light->direction);
+				} else {
+					light_dir_to_light = glm::normalize(info.light->position - scene_center);
+				}
+
 				impl->ExecuteRenderQueue(
 					impl->render_queue,
 					view, // Base view
@@ -3150,7 +3169,9 @@ namespace Boidsish {
 						ShadowManager::kShadowMapSize,
 						ShadowManager::kShadowMapSize,
 						impl->shadow_manager->GetLightSpaceMatrix(info.map_index),
-						impl->shadow_manager->GetShadowShaderPtr().get()
+						impl->shadow_manager->GetShadowShaderPtr().get(),
+						light_dir_to_light,
+						impl->terrain_render_manager
 					);
 				}
 

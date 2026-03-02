@@ -1,4 +1,4 @@
-#version 460 core
+#version 430 core
 #extension GL_GOOGLE_include_directive : enable
 layout(location = 0) out vec4 FragColor;
 layout(location = 1) out vec2 Velocity;
@@ -135,6 +135,27 @@ void main() {
 	result += rim * WindDeflection * u_windRimHighlight * vec3(1.0);
 
 	result = applyArtisticEffects(result, FragPos, barycentric, time);
+
+	if (terrain_shadow_debug != 0) {
+		if (num_lights > 0) {
+			vec3 L;
+			float atten;
+			calculateLightContribution(0, FragPos, L, atten);
+			int dbg = isPointInTerrainShadowDebug(FragPos, norm, L);
+			if (dbg == 11) result = vec3(1, 0, 0); // Red: x < 0
+			else if (dbg == 12) result = vec3(1, 0.5, 0); // Orange: x >= size
+			else if (dbg == 13) result = vec3(1, 1, 0); // Yellow: y < 0
+			else if (dbg == 14) result = vec3(0, 1, 1); // Cyan: y >= size
+			else if (dbg == 5) result = vec3(1, 1, 1); // White: Invalid grid size
+			else if (dbg == 2) result = mix(result, vec3(1, 0, 0), 0.8); // Dark Red: No slice
+			else if (dbg == 3) result = mix(result, vec3(1, 0, 1), 0.5); // Magenta: Shadow hit
+			else if (dbg == 0) result = mix(result, vec3(0, 1, 0), 0.2); // Green: Trace finished, no hit
+			else if (dbg == -3) result = vec3(0, 0, 1); // Blue: UBO not bound
+			else if (dbg == -1) result = vec3(0.5, 0, 0.5); // Purple: worldScale invalid
+			else if (dbg == -4) result = vec3(1, 1, 1); // White: chunkSize invalid
+			else if (dbg == -2) result = vec3(0.5, 0.2, 0); // Brown: Light below horizon
+		}
+	}
 
 	if (c_isLine && c_lineStyle == 1) { // LASER style
 		// Use Y axis for radial glow as defined in Line::InitLineMesh

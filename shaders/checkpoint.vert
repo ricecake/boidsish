@@ -1,5 +1,4 @@
 #version 460 core
-#extension GL_ARB_shader_draw_parameters : enable
 
 layout(location = 0) in vec3 aPos;
 layout(location = 1) in vec3 aNormal;
@@ -27,11 +26,7 @@ uniform mat4 projection;
 uniform vec4 clipPlane;
 
 void main() {
-#ifdef GL_ARB_shader_draw_parameters
-	int drawID = gl_DrawIDARB;
-#else
 	int drawID = gl_DrawID;
-#endif
 
 	vUniformIndex = uUseMDI ? drawID : -1;
 	bool use_ssbo = uUseMDI && vUniformIndex >= 0;

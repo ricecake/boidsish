@@ -14,6 +14,7 @@ in float      tessFactor;
 #include "helpers/fast_noise.glsl"
 #include "helpers/lighting.glsl"
 #include "helpers/terrain_noise.glsl"
+#include "visual_effects.glsl"
 // #include "helpers/noise.glsl"
 
 uniform bool uIsShadowPass = false;
@@ -413,6 +414,27 @@ void main() {
 
 	// Final Lighting
 	vec3 lighting = apply_lighting_pbr(FragPos, perturbedNorm, albedo, roughness, metallic, 1.0).rgb;
+
+	if (terrain_shadow_debug != 0) {
+		if (num_lights > 0) {
+			vec3 L;
+			float atten;
+			calculateLightContribution(0, FragPos, L, atten);
+			int dbg = isPointInTerrainShadowDebug(FragPos, perturbedNorm, L);
+			if (dbg == 11) lighting = vec3(1, 0, 0); // Red: x < 0
+			else if (dbg == 12) lighting = vec3(1, 0.5, 0); // Orange: x >= size
+			else if (dbg == 13) lighting = vec3(1, 1, 0); // Yellow: y < 0
+			else if (dbg == 14) lighting = vec3(0, 1, 1); // Cyan: y >= size
+			else if (dbg == 5) lighting = vec3(1, 1, 1); // White: Invalid grid size
+			else if (dbg == 2) lighting = mix(lighting, vec3(1, 0, 0), 0.8); // Dark Red: No slice
+			else if (dbg == 3) lighting = mix(lighting, vec3(1, 0, 1), 0.5); // Magenta: Shadow hit
+			else if (dbg == 0) lighting = mix(lighting, vec3(0, 1, 0), 0.2); // Green: Trace finished, no hit
+			else if (dbg == -3) lighting = vec3(0, 0, 1); // Blue: UBO not bound
+			else if (dbg == -1) lighting = vec3(0.5, 0, 0.5); // Purple: worldScale invalid
+			else if (dbg == -4) lighting = vec3(1, 1, 1); // White: chunkSize invalid
+			else if (dbg == -2) lighting = vec3(0.5, 0.2, 0); // Brown: Light below horizon
+		}
+	}
 
 	// ========================================================================
 	// Neon 80s Synth Style (Night Theme)
