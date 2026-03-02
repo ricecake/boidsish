@@ -43,6 +43,8 @@ namespace Boidsish {
 							next += rules.at(c);
 						else
 							next += c;
+						if (next.length() > 10000)
+							return next; // Safety cap
 					}
 					current = next;
 				}
@@ -590,13 +592,15 @@ namespace Boidsish {
 					}
 
 					if (!tooClose) {
-						SCNode newNode;
-						newNode.id = (int)nodes.size();
-						newNode.parentId = (int)i;
-						newNode.pos = nextPos;
-						nodes[i].children.push_back(newNode.id);
-						nodes.push_back(newNode);
-						growthOccurred = true;
+						if (nodes.size() < 2000) { // Safety cap
+							SCNode newNode;
+							newNode.id = (int)nodes.size();
+							newNode.parentId = (int)i;
+							newNode.pos = nextPos;
+							nodes[i].children.push_back(newNode.id);
+							nodes.push_back(newNode);
+							growthOccurred = true;
+						}
 					}
 				}
 			}

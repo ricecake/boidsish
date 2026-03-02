@@ -56,6 +56,7 @@ uniform float ripple_strength;
 uniform bool  isColossal = false;
 uniform bool  useSSBOInstancing = false;
 uniform bool  isLine = false;
+uniform bool  uUseCompaction = false;
 uniform bool  enableFrustumCulling = false;
 uniform float frustumCullRadius = 5.0; // Approximate object radius for sphere test
 uniform bool  enableHiZCulling = false;
@@ -200,7 +201,8 @@ void main() {
 	}
 
 	// Hi-Z occlusion culling - output degenerate triangle if occluded by previous frame's depth
-	if (enableHiZCulling && uUseMDI && !current_isColossal) {
+	// (Legacy path - if not using command compaction)
+	if (enableHiZCulling && uUseMDI && !current_isColossal && !uUseCompaction) {
 		if (hiz_visibility[drawID] == 0u) {
 			gl_Position = vec4(0.0, 0.0, -2.0, 1.0);
 			FragPos = vec3(0.0);

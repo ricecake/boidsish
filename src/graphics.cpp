@@ -51,6 +51,7 @@
 #include "post_processing/effects/ToneMappingEffect.h"
 #include "post_processing/effects/WhispTrailEffect.h"
 #include "render_queue.h"
+#include "profiler.h"
 #include "sdf_volume_manager.h"
 #include "shader_table.h"
 #include "shadow_manager.h"
@@ -421,7 +422,11 @@ namespace Boidsish {
 		uint32_t mdi_frustum_count = 0;
 		uint32_t mdi_bone_count = 0;
 
-		// Hi-Z occlusion culling
+		// GPU Culling & Command Compaction
+		std::unique_ptr<ComputeShader> cull_shader;
+		std::unique_ptr<PersistentBuffer<DrawElementsIndirectCommand>> compacted_elements_buffer;
+
+		// Hi-Z occlusion culling (legacy/simple path)
 		std::unique_ptr<HiZManager>    hiz_manager;
 		std::unique_ptr<ComputeShader> occlusion_cull_shader_;
 		GLuint                         occlusion_visibility_ssbo_{0};
@@ -701,6 +706,13 @@ namespace Boidsish {
 			uniforms_ssbo = std::make_unique<PersistentBuffer<CommonUniforms>>(GL_SHADER_STORAGE_BUFFER, 65536);
 			frustum_ssbo = std::make_unique<PersistentBuffer<FrustumDataGPU>>(GL_UNIFORM_BUFFER, 64);
 			bone_matrices_ssbo = std::make_unique<PersistentBuffer<glm::mat4>>(GL_SHADER_STORAGE_BUFFER, 65536);
+
+			// GPU Culling & Command Compaction
+			cull_shader = std::make_unique<ComputeShader>("shaders/cull.comp");
+			compacted_elements_buffer = std::make_unique<PersistentBuffer<DrawElementsIndirectCommand>>(
+				GL_DRAW_INDIRECT_BUFFER,
+				65536
+			);
 
 			// Hi-Z occlusion culling
 			hiz_manager = std::make_unique<HiZManager>();
@@ -1204,6 +1216,12 @@ namespace Boidsish {
 				glDeleteBuffers(1, &occlusion_visibility_ssbo_);
 			}
 
+			for (int i = 0; i < 3; ++i) {
+				if (mdi_fences[i]) {
+					glDeleteSync(mdi_fences[i]);
+				}
+			}
+
 			if (window)
 				glfwDestroyWindow(window);
 			glfwTerminate();
@@ -1361,7 +1379,7 @@ namespace Boidsish {
 			glm::mat4*                   bones_ptr = bone_matrices_ssbo->GetFrameDataPtr();
 
 			uint32_t max_elements = 65536; // Buffer capacity
-			uint32_t frame_element_offset = uniforms_ssbo->GetCurrentBufferIndex() * max_elements;
+			uint32_t batch_element_offset = uniforms_ssbo->GetCurrentBufferIndex() * max_elements;
 
 			uint32_t vertex_frame_offset = megabuffer->GetVertexFrameOffset();
 			uint32_t index_frame_offset = megabuffer->GetIndexFrameOffset();
@@ -1412,11 +1430,11 @@ namespace Boidsish {
 					return false;
 				if (a.uniforms.use_skinning != b.uniforms.use_skinning)
 					return false;
-				if (a.uniforms.bone_matrices_offset != b.uniforms.bone_matrices_offset)
-					return false;
+				// bone_matrices_offset is read from SSBO per-instance, no need to break batch
 
-				// 4. Textures (only if not a shadow pass)
-				if (!is_shadow_pass) {
+				// 4. Textures (only if not a shadow pass and NOT using bindless)
+				bool use_bindless = GLEW_ARB_bindless_texture != 0;
+				if (!is_shadow_pass && !use_bindless) {
 					if (a.textures.size() != b.textures.size())
 						return false;
 					for (size_t i = 0; i < a.textures.size(); ++i) {
@@ -1499,7 +1517,7 @@ namespace Boidsish {
 					new_batch.first_command = is_indexed ? mdi_elements_count : mdi_arrays_count;
 					new_batch.command_count = 0;
 					new_batch.is_indexed = is_indexed;
-					new_batch.base_uniform_index = frame_element_offset + mdi_uniform_count;
+					new_batch.base_uniform_index = batch_element_offset + mdi_uniform_count;
 					batches.push_back(new_batch);
 				}
 
@@ -1538,47 +1556,67 @@ namespace Boidsish {
 				GL_CLIENT_MAPPED_BUFFER_BARRIER_BIT | GL_COMMAND_BARRIER_BIT | GL_SHADER_STORAGE_BARRIER_BIT
 			);
 
-			// Hi-Z occlusion culling dispatch (between uniform fill and draw calls)
-			if (dispatch_hiz_occlusion && occlusion_cull_shader_ && occlusion_cull_shader_->isValid() && hiz_manager &&
-			    hiz_manager->IsInitialized() && mdi_uniform_count > 0) {
-				occlusion_cull_shader_->use();
+			// GPU Culling & Command Updating dispatch
+			bool use_compaction = !is_shadow_pass && cull_shader && cull_shader->isValid() && mdi_uniform_count > 0;
 
-				// Bind uniforms SSBO (current frame's data) for compute to read AABBs
+			if (use_compaction || (dispatch_hiz_occlusion && occlusion_cull_shader_ && occlusion_cull_shader_->isValid() &&
+								   hiz_manager && hiz_manager->IsInitialized() && mdi_uniform_count > 0)) {
+				ComputeShader* cs = use_compaction ? cull_shader.get() : occlusion_cull_shader_.get();
+				cs->use();
+
+				if (use_compaction) {
+					glBindBufferRange(
+						GL_SHADER_STORAGE_BUFFER,
+						16,
+						indirect_elements_buffer->GetBufferId(),
+						indirect_elements_buffer->GetFrameOffset(),
+						mdi_elements_count * sizeof(DrawElementsIndirectCommand)
+					);
+					glBindBufferRange(
+						GL_SHADER_STORAGE_BUFFER,
+						17,
+						compacted_elements_buffer->GetBufferId(),
+						compacted_elements_buffer->GetFrameOffset(),
+						mdi_elements_count * sizeof(DrawElementsIndirectCommand)
+					);
+					cs->setInt("u_numCommands", (int)mdi_elements_count);
+					cs->setInt("u_baseCommandIndex", 0);
+					cs->setInt("u_baseUniformIndex", (int)batch_element_offset);
+				} else {
+					cs->setInt("u_drawCount", (int)mdi_uniform_count);
+				}
+
 				glBindBufferRange(
 					GL_SHADER_STORAGE_BUFFER,
 					2,
 					uniforms_ssbo->GetBufferId(),
-					frame_element_offset * sizeof(CommonUniforms),
-					mdi_uniform_count * sizeof(CommonUniforms)
+					0, // Bind full buffer so we can index with u_baseUniformIndex
+					uniforms_ssbo->GetElementCount() * sizeof(CommonUniforms)
 				);
 
-				// Bind visibility SSBO for compute to write
 				glBindBufferBase(
 					GL_SHADER_STORAGE_BUFFER,
 					Constants::SsboBinding::OcclusionVisibility(),
 					occlusion_visibility_ssbo_
 				);
 
-				// Bind Hi-Z texture
 				glActiveTexture(GL_TEXTURE15);
 				glBindTexture(GL_TEXTURE_2D, hiz_manager->GetHiZTexture());
-				occlusion_cull_shader_->setInt("u_hizTexture", 15);
-
-				// Set uniforms
-				occlusion_cull_shader_->setInt("u_drawCount", static_cast<int>(mdi_uniform_count));
-				glUniform2i(
-					glGetUniformLocation(occlusion_cull_shader_->ID, "u_hizSize"),
-					hiz_manager->GetWidth(),
-					hiz_manager->GetHeight()
-				);
-				occlusion_cull_shader_->setInt("u_hizMipCount", hiz_manager->GetMipCount());
-				occlusion_cull_shader_->setFloat("u_screenExpansion", 4.0f);
+				cs->setInt("u_hizTexture", 15);
+				cs->setBool("u_enableOcclusionCulling", true);
+				cs->setBool("u_enableFrustumCulling", true);
+				glUniform2i(glGetUniformLocation(cs->ID, "u_hizSize"), hiz_manager->GetWidth(), hiz_manager->GetHeight());
+				cs->setInt("u_hizMipCount", hiz_manager->GetMipCount());
+				cs->setFloat("u_screenExpansion", 4.0f);
 
 				glDispatchCompute((mdi_uniform_count + 63) / 64, 1, 1);
-				glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
+				glMemoryBarrier(GL_COMMAND_BARRIER_BIT | GL_SHADER_STORAGE_BARRIER_BIT);
 			}
 
 			// 2. Execute batches
+			PROJECT_PROFILE_SCOPE("MDI::ExecuteBatches");
+
+
 			unsigned int          current_vao = 0;
 			unsigned int          current_bound_shader_id = 0;
 			std::set<ShaderBase*> used_shaders;
@@ -1598,7 +1636,8 @@ namespace Boidsish {
 					s->setMat4("projection", proj_mat);
 					s->setFloat("time", simulation_time);
 					s->setBool("enableFrustumCulling", !is_shadow_pass);
-					s->setBool("enableHiZCulling", dispatch_hiz_occlusion && !is_shadow_pass);
+					s->setBool("enableHiZCulling", (dispatch_hiz_occlusion || use_compaction) && !is_shadow_pass);
+					s->setBool("uUseCompaction", use_compaction);
 					if (light_space_mat) {
 						s->setMat4("lightSpaceMatrix", *light_space_mat);
 					}
@@ -1636,7 +1675,7 @@ namespace Boidsish {
 						GL_SHADER_STORAGE_BUFFER,
 						Constants::SsboBinding::OcclusionVisibility(),
 						occlusion_visibility_ssbo_,
-						(batch.base_uniform_index - frame_element_offset) * sizeof(uint32_t),
+						(batch.base_uniform_index - batch_element_offset) * sizeof(uint32_t),
 						batch.command_count * sizeof(uint32_t)
 					);
 				}
@@ -1679,12 +1718,18 @@ namespace Boidsish {
 				}
 
 				if (batch.is_indexed) {
-					glBindBuffer(GL_DRAW_INDIRECT_BUFFER, indirect_elements_buffer->GetBufferId());
+					if (use_compaction) {
+						glBindBuffer(GL_DRAW_INDIRECT_BUFFER, compacted_elements_buffer->GetBufferId());
+					} else {
+						glBindBuffer(GL_DRAW_INDIRECT_BUFFER, indirect_elements_buffer->GetBufferId());
+					}
+
 					glMultiDrawElementsIndirect(
 						batch.draw_mode,
 						batch.index_type,
-						(void*)(uintptr_t)(indirect_elements_buffer->GetFrameOffset() +
-					                       batch.first_command * sizeof(DrawElementsIndirectCommand)),
+						(void*)(uintptr_t)((use_compaction ? compacted_elements_buffer->GetFrameOffset()
+														   : indirect_elements_buffer->GetFrameOffset()) +
+										   batch.first_command * sizeof(DrawElementsIndirectCommand)),
 						batch.command_count,
 						sizeof(DrawElementsIndirectCommand)
 					);
@@ -2426,6 +2471,7 @@ namespace Boidsish {
 	}
 
 	void Visualizer::Update() {
+		PROJECT_PROFILE_SCOPE("Visualizer::Update");
 		impl->frame_count_++;
 		impl->hud_manager->Update(impl->input_state.delta_time, impl->camera);
 
@@ -2531,6 +2577,7 @@ namespace Boidsish {
 	}
 
 	void Visualizer::Render() {
+		PROJECT_PROFILE_SCOPE("Visualizer::Render");
 		impl->RefreshFrameConfig();
 
 		// Advance persistent buffers and handle synchronization
@@ -2539,6 +2586,7 @@ namespace Boidsish {
 		impl->uniforms_ssbo->AdvanceFrame();
 		impl->frustum_ssbo->AdvanceFrame();
 		impl->bone_matrices_ssbo->AdvanceFrame();
+		impl->compacted_elements_buffer->AdvanceFrame();
 		impl->megabuffer->AdvanceFrame();
 
 		int current_idx = impl->uniforms_ssbo->GetCurrentBufferIndex(); // I need to add this method or keep track

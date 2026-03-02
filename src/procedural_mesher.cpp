@@ -162,7 +162,9 @@ namespace Boidsish {
 			std::vector<glm::vec3> colors;
 			int                    current_idx = start_idx;
 			bool                   first = true;
-			while (current_idx != -1) {
+			int                    segment_count = 0;
+			while (current_idx != -1 && segment_count < 1000) {
+				segment_count++;
 				const auto& e = ir.elements[current_idx];
 				if (e.type != ProceduralElementType::Tube)
 					break;
@@ -177,14 +179,19 @@ namespace Boidsish {
 				int next_tube_idx = -1;
 				if (e.children.size() == 1) {
 					int child_idx = e.children[0];
-					if (ir.elements[child_idx].type == ProceduralElementType::ControlPoint) {
-						cp_child_idx = child_idx;
-						if (ir.elements[child_idx].children.size() == 1 &&
-						    ir.elements[ir.elements[child_idx].children[0]].type == ProceduralElementType::Tube) {
-							next_tube_idx = ir.elements[child_idx].children[0];
+					if (child_idx >= 0 && child_idx < (int)ir.elements.size()) {
+						if (ir.elements[child_idx].type == ProceduralElementType::ControlPoint) {
+							cp_child_idx = child_idx;
+							if (ir.elements[child_idx].children.size() == 1) {
+								int g_child_idx = ir.elements[child_idx].children[0];
+								if (g_child_idx >= 0 && g_child_idx < (int)ir.elements.size() &&
+								    ir.elements[g_child_idx].type == ProceduralElementType::Tube) {
+									next_tube_idx = g_child_idx;
+								}
+							}
+						} else if (ir.elements[child_idx].type == ProceduralElementType::Tube) {
+							next_tube_idx = child_idx;
 						}
-					} else if (ir.elements[child_idx].type == ProceduralElementType::Tube) {
-						next_tube_idx = child_idx;
 					}
 				}
 				if (cp_child_idx != -1) {
@@ -198,6 +205,9 @@ namespace Boidsish {
 				ups.push_back(Vector3(0, 1, 0));
 				sizes.push_back(e.end_radius / SPLINE_RADIUS_SCALE);
 				colors.push_back(e.color);
+
+				if (next_tube_idx == current_idx)
+					break; // Prevent immediate cycle
 				current_idx = next_tube_idx;
 			}
 			if (points.size() >= 2) {

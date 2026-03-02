@@ -18,12 +18,16 @@ namespace Boidsish {
 			return;
 
 		bool changed = true;
-		while (changed) {
+		int  safety_counter = 0;
+		while (changed && safety_counter < 10) {
 			changed = false;
-			std::vector<bool>              to_remove(ir.elements.size(), false);
+			safety_counter++;
+
+			size_t            original_count = ir.elements.size();
+			std::vector<bool> to_remove(original_count, false);
 			std::vector<ProceduralElement> control_points_to_add;
 
-			for (int i = 0; i < (int)ir.elements.size(); ++i) {
+			for (int i = 0; i < (int)original_count; ++i) {
 				if (to_remove[i])
 					continue;
 				auto& e1 = ir.elements[i];
@@ -32,7 +36,11 @@ namespace Boidsish {
 				if (e1.children.size() != 1)
 					continue;
 
-				int   child_idx = e1.children[0];
+				int child_idx = e1.children[0];
+				// Only consolidate with original elements to avoid infinite growth
+				if (child_idx < 0 || child_idx >= (int)original_count)
+					continue;
+
 				auto& e2 = ir.elements[child_idx];
 				if (e2.type != ProceduralElementType::Tube)
 					continue;
@@ -58,7 +66,9 @@ namespace Boidsish {
 
 					// Update children's parent pointer to the control point
 					for (int child_of_child : e2.children) {
-						ir.elements[child_of_child].parent = cp_idx;
+						if (child_of_child >= 0 && child_of_child < (int)original_count) {
+							ir.elements[child_of_child].parent = cp_idx;
+						}
 					}
 
 					// Merge tube geometry: extend e1 to e2's end
@@ -68,6 +78,8 @@ namespace Boidsish {
 					e1.children = {cp_idx};
 
 					control_points_to_add.push_back(cp);
+					to_remove[child_idx] = true;
+					changed = true;
 				} else {
 					// Perfectly collinear: simple merge, no control point needed
 					e1.end_position = e2.end_position;
@@ -77,7 +89,9 @@ namespace Boidsish {
 
 					// Update children's parent pointer
 					for (int child_of_child : e2.children) {
-						ir.elements[child_of_child].parent = i;
+						if (child_of_child >= 0 && child_of_child < (int)original_count) {
+							ir.elements[child_of_child].parent = i;
+						}
 					}
 
 					to_remove[child_idx] = true;
@@ -93,11 +107,13 @@ namespace Boidsish {
 			if (changed) {
 				std::vector<ProceduralElement> new_elements;
 				std::map<int, int>             old_to_new;
-				for (int i = 0; i < (int)ir.elements.size(); ++i) {
-					if (!to_remove[i]) {
-						old_to_new[i] = (int)new_elements.size();
-						new_elements.push_back(ir.elements[i]);
-					}
+				size_t                         final_count = ir.elements.size();
+				for (int i = 0; i < (int)final_count; ++i) {
+					if (i < (int)original_count && to_remove[i])
+						continue;
+
+					old_to_new[i] = (int)new_elements.size();
+					new_elements.push_back(ir.elements[i]);
 				}
 
 				for (auto& e : new_elements) {

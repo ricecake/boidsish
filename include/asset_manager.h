@@ -39,6 +39,11 @@ namespace Boidsish {
 		GLuint GetTexture(const std::string& path, const std::string& directory = "");
 
 		/**
+		 * @brief Get a bindless handle for a texture. Automatically makes it resident.
+		 */
+		GLuint64 GetBindlessHandle(GLuint textureId);
+
+		/**
 		 * @brief Load or retrieve a cached audio data source.
 		 * @param path File path to the audio file
 		 * @param engine Pointer to the miniaudio engine (required for the resource manager)
@@ -56,6 +61,7 @@ namespace Boidsish {
 
 		std::map<std::string, std::shared_ptr<ModelData>>                       m_models;
 		std::map<std::string, GLuint>                                           m_textures;
+		std::map<GLuint, GLuint64>                                              m_bindless_handles;
 		std::map<std::string, std::shared_ptr<ma_resource_manager_data_source>> m_audio_sources;
 	};
 
