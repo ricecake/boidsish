@@ -1,5 +1,6 @@
 #version 460 core
 #extension GL_GOOGLE_include_directive : enable
+#extension GL_ARB_bindless_texture : enable
 layout(location = 0) out vec4 FragColor;
 layout(location = 1) out vec2 Velocity;
 
@@ -112,7 +113,15 @@ void main() {
 	}
 
 	if (c_use_texture) {
+#if defined(GL_ARB_bindless_texture)
+		if (use_ssbo && any(notEqual(uniforms_data[vUniformIndex].diffuse_handle, uvec2(0, 0)))) {
+			albedo *= texture(sampler2D(uniforms_data[vUniformIndex].diffuse_handle), TexCoords).rgb;
+		} else {
+			albedo *= texture(texture_diffuse1, TexCoords).rgb;
+		}
+#else
 		albedo *= texture(texture_diffuse1, TexCoords).rgb;
+#endif
 	}
 
 	vec3 norm = normalize(Normal);

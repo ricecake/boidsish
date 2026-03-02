@@ -151,6 +151,10 @@ namespace Boidsish {
 		int   use_skinning = 0;          // 4 bytes
 		float anim_padding[2];           // 8 bytes -> 16 bytes
 
+		// Bindless Textures
+		uint64_t diffuse_handle = 0; // 8 bytes
+		uint64_t normal_handle = 0;  // 8 bytes -> 16 bytes
+
 		// Occlusion culling AABB (world space) - individual floats for std430 alignment safety
 		float aabb_min_x = 0.0f;   // 4 bytes
 		float aabb_min_y = 0.0f;   // 4 bytes

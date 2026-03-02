@@ -26,6 +26,13 @@ namespace Boidsish {
 	}
 
 	void AssetManager::Clear() {
+		for (auto& [id, handle] : m_bindless_handles) {
+			if (glIsTextureHandleResidentARB(handle)) {
+				glMakeTextureHandleNonResidentARB(handle);
+			}
+		}
+		m_bindless_handles.clear();
+
 		for (auto& [path, textureId] : m_textures) {
 			glDeleteTextures(1, &textureId);
 		}
@@ -692,6 +699,27 @@ namespace Boidsish {
 		}
 
 		return textureID;
+	}
+
+	GLuint64 AssetManager::GetBindlessHandle(GLuint textureId) {
+		if (textureId == 0)
+			return 0;
+
+		auto it = m_bindless_handles.find(textureId);
+		if (it != m_bindless_handles.end()) {
+			return it->second;
+		}
+
+		if (GLEW_ARB_bindless_texture) {
+			GLuint64 handle = glGetTextureHandleARB(textureId);
+			if (handle != 0) {
+				glMakeTextureHandleResidentARB(handle);
+				m_bindless_handles[textureId] = handle;
+				return handle;
+			}
+		}
+
+		return 0;
 	}
 
 	std::shared_ptr<ma_resource_manager_data_source>

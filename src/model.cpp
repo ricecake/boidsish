@@ -563,6 +563,13 @@ namespace Boidsish {
 			}
 
 			packet.uniforms.use_texture = has_diffuse ? 1 : 0;
+			for (const auto& tex : mesh.textures) {
+				if (tex.type == "texture_diffuse") {
+					packet.uniforms.diffuse_handle = AssetManager::GetInstance().GetBindlessHandle(tex.id);
+				} else if (tex.type == "texture_normal") {
+					packet.uniforms.normal_handle = AssetManager::GetInstance().GetBindlessHandle(tex.id);
+				}
+			}
 			packet.uniforms.is_colossal = IsColossal();
 			packet.uniforms.use_vertex_color = (mesh.has_vertex_colors && !has_diffuse) ? 1 : 0;
 

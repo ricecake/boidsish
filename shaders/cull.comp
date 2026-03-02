@@ -11,7 +11,7 @@ layout(std430, binding = 2) readonly buffer UniformsSSBO {
 	CommonUniforms uniforms_data[];
 };
 
-// Input/Output: Draw commands to be compacted
+// Input/Output: Draw commands to be updated
 struct DrawElementsIndirectCommand {
 	uint count;
 	uint instanceCount;
@@ -20,26 +20,19 @@ struct DrawElementsIndirectCommand {
 	uint baseInstance;
 };
 
-layout(std430, binding = 4) readonly buffer InputCommands {
+layout(std430, binding = 16) readonly buffer InputCommands {
 	DrawElementsIndirectCommand input_commands[];
 };
 
-layout(std430, binding = 5) writeonly buffer OutputCommands {
+layout(std430, binding = 17) writeonly buffer OutputCommands {
 	DrawElementsIndirectCommand output_commands[];
-};
-
-layout(std430, binding = 14) writeonly buffer VisibleIndices {
-	uint visible_indices[];
-};
-
-// Atomic counter for compaction
-layout(std430, binding = 6) buffer AtomicCounter {
-	uint draw_count;
 };
 
 // Hi-Z pyramid texture
 uniform sampler2D u_hizTexture;
-uniform int       u_totalCommandCount;
+uniform int       u_numCommands;       // Number of commands in the current call
+uniform int       u_baseCommandIndex;  // Offset into the frame's indirect buffer
+uniform int       u_baseUniformIndex;  // Offset into the frame's uniform buffer
 uniform ivec2     u_hizSize;
 uniform int       u_hizMipCount;
 uniform float     u_screenExpansion;
@@ -87,23 +80,26 @@ bool projectAABB(vec3 aabbMin, vec3 aabbMax, mat4 vp, out vec4 screenRect, out f
 }
 
 void main() {
-	uint idx = gl_GlobalInvocationID.x;
-	if (idx >= u_totalCommandCount) return;
+	uint localIdx = gl_GlobalInvocationID.x;
+	if (localIdx >= u_numCommands) return;
 
-	vec3 aabbMin = vec3(uniforms_data[idx].aabb_min_x, uniforms_data[idx].aabb_min_y, uniforms_data[idx].aabb_min_z);
-	vec3 aabbMax = vec3(uniforms_data[idx].aabb_max_x, uniforms_data[idx].aabb_max_y, uniforms_data[idx].aabb_max_z);
+	uint cmdIdx = u_baseCommandIndex + localIdx;
+	uint uniIdx = u_baseUniformIndex + localIdx;
+
+	vec3 aabbMin = vec3(uniforms_data[uniIdx].aabb_min_x, uniforms_data[uniIdx].aabb_min_y, uniforms_data[uniIdx].aabb_min_z);
+	vec3 aabbMax = vec3(uniforms_data[uniIdx].aabb_max_x, uniforms_data[uniIdx].aabb_max_y, uniforms_data[uniIdx].aabb_max_z);
 
 	bool visible = true;
 
 	// 1. Frustum Culling
-	if (u_enableFrustumCulling && uniforms_data[idx].is_colossal == 0 && aabbMin != aabbMax) {
+	if (u_enableFrustumCulling && uniforms_data[uniIdx].is_colossal == 0 && aabbMin != aabbMax) {
 		if (!isAABBInFrustum(aabbMin, aabbMax)) {
 			visible = false;
 		}
 	}
 
 	// 2. Occlusion Culling (Hi-Z)
-	if (visible && u_enableOcclusionCulling && uniforms_data[idx].is_colossal == 0 && aabbMin != aabbMax && uniforms_data[idx].color.a > 0.99) {
+	if (visible && u_enableOcclusionCulling && uniforms_data[uniIdx].is_colossal == 0 && aabbMin != aabbMax && uniforms_data[uniIdx].color.a > 0.99) {
 		vec4 screenRect;
 		float nearestDepth;
 		if (projectAABB(aabbMin, aabbMax, prevViewProjection, screenRect, nearestDepth)) {
@@ -126,10 +122,10 @@ void main() {
 		}
 	}
 
-	if (visible) {
-		uint outIdx = atomicAdd(draw_count, 1);
-		output_commands[outIdx] = input_commands[idx];
-		visible_indices[outIdx] = idx;
-		output_commands[outIdx].baseInstance = idx;
+	// 1-to-1 mapping preserves relative offsets for batching
+	DrawElementsIndirectCommand cmd = input_commands[cmdIdx];
+	if (!visible) {
+		cmd.instanceCount = 0;
 	}
+	output_commands[cmdIdx] = cmd;
 }
