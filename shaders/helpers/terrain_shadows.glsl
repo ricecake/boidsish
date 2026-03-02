@@ -1,6 +1,8 @@
 #ifndef TERRAIN_SHADOWS_GLSL
 #define TERRAIN_SHADOWS_GLSL
 
+#include "fast_noise.glsl"
+
 layout(std140, binding = 8) uniform TerrainData {
 	ivec4 u_originSize;    // x, y=z, z=size, w=isBound
 	vec4  u_terrainParams; // x=chunkSize, y=worldScale
@@ -36,6 +38,7 @@ float terrainShadowCoverage(vec3 worldPos, vec3 normal, vec3 lightDir) {
 	// lightDir is from fragment to light
 	// if (sundownShadow < 1.00) {
 	if (lightDir.y <= 0.0) {
+		return fastFbm3d(worldPos);
 		return 0.0;
 	}
 
@@ -43,7 +46,7 @@ float terrainShadowCoverage(vec3 worldPos, vec3 normal, vec3 lightDir) {
 
 	// Better initial bias: move along normal and a bit along light direction.
 	// This dramatically reduces shadow acne.
-	vec3 p_start = worldPos + normal * (0.2 * u_terrainParams.y) + lightDir * (0.1 * u_terrainParams.y);
+	vec3 p_start = worldPos + normal * (0.2 * u_terrainParams.y) + lightDir * (0.2 * u_terrainParams.y);
 	float t = 0.0;
 	float maxDist = 1200.0 * u_terrainParams.y;
 
@@ -95,7 +98,7 @@ float terrainShadowCoverage(vec3 worldPos, vec3 normal, vec3 lightDir) {
 		t += 2.0 * u_terrainParams.y;
 	}
 
-	return closest;
+	return closest * (fastFbm3d(worldPos/350+lightDir*(1-dot(lightDir, normal))+vec3(1*0.001)) * 0.5 + 0.5);
 }
 
 

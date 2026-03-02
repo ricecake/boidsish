@@ -391,9 +391,9 @@ void main() {
 
 		// Use finite difference to approximate the gradient of the noise field
 		float eps = 0.015;
-		float n = fastWorley3d(0.5 * scaledFragPos * roughnessScale);
-		float nx = fastWorley3d(0.5 * (scaledFragPos + vec3(eps, 0.0, 0.0)) * roughnessScale);
-		float nz = fastWorley3d(0.5 * (scaledFragPos + vec3(0.0, 0.0, eps)) * roughnessScale);
+		float n = fastWorley3d(0.1 * scaledFragPos * roughnessScale);
+		float nx = fastWorley3d(0.1 * (scaledFragPos + vec3(eps, 0.0, 0.0)) * roughnessScale);
+		float nz = fastWorley3d(0.1 * (scaledFragPos + vec3(0.0, 0.0, eps)) * roughnessScale);
 
 		// Compute local tangent space to orient the perturbation
 		vec3 tangent = normalize(cross(norm, vec3(0, 0, 1)));
@@ -413,6 +413,17 @@ void main() {
 	}
 
 	// Final Lighting
+	float fateFactor = fastWorley3d(vec3(FragPos.xz / 5000.0, time * 0.25)) * 0.5 + 0.50;
+	vec3 rawWindNudge = fateFactor * fastCurl3d(FragPos.xyz * 0.005 + time * 0.125 * 0.5);
+
+	vec3 light_dir = normalize(lights[0].position - FragPos);
+	float rim = max(dot(light_dir, normalize(viewPos - FragPos)), 0.0);
+	// albedo += (1-dot(rawWindNudge, perturbedNorm)) * rim * albedo;
+	roughness *= 1+abs(
+		max(0, dot(vec3(0, 1, 0), perturbedNorm)) *
+		min(0, dot(rawWindNudge, perturbedNorm))
+	) * rim;
+
 	vec3 lighting = apply_lighting_pbr(FragPos, perturbedNorm, albedo, roughness, metallic, 1.0).rgb;
 
 	if (terrain_shadow_debug != 0) {
