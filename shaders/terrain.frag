@@ -431,9 +431,7 @@ void main() {
 			),
 		9.0
 	);
-	float plainRipple = tangentSpaceCrunches(FragPos, norm, -1 * windDistortion * rawWindNudge, time, 0.005, 0.1, 0.75) *
-			0.5 +
-		0.5;
+	float plainRipple = tangentPhasor(FragPos, norm, -1 * windDistortion * rawWindNudge, time, 0.005, 0.1, 0.75) * 0.5 + 0.5;
 	float windRipple = windDistortion * plainRipple;
 	float grassFactor = smoothstep(0.25, 0.5, max(dot(albedo, COL_GRASS_LUSH), dot(albedo, COL_GRASS_DRY)));
 

@@ -166,6 +166,104 @@ float gaborWindNoise(vec2 pos, vec2 curlVec, float time, float freq, float bandw
 	return noiseAcc;
 }
 
+
+// Example: A very sharp, isolated crest for a wind gust
+float customWaveProfile(float phase) {
+    // Map atan (-pi to pi) to a 0.0 -> 1.0 range
+    float normalizedPhase = (phase / 6.28318) + 0.5;
+
+    // Create a sharp peak that falls off quickly
+    return pow(sin(normalizedPhase * 3.14159), 12.0);
+}
+
+float phasorWindNoise(vec2 pos, vec2 curlVec, float time, float freq, float bandwidth, float sparsity) {
+	vec2 gridId = floor(pos);
+	vec2 gridFract = fract(pos);
+
+	vec2 noiseAcc = vec2(0);
+
+	// Normalize the sampled curl vector to strictly control the ripple direction
+	vec2 dir = length(curlVec) > 0.001 ? normalize(curlVec) : vec2(1.0, 0.0);
+	vec2 F = dir * freq;
+
+	/*
+	Do like this, but only look at the "nodes" that are to the side of this one.
+	*/
+
+	// 3x3 grid traversal to find neighboring impulses
+	for (int y = -1; y <= 1; y++) {
+		for (int x = -1; x <= 1; x++) {
+			vec2 neighborOffset = vec2(float(x), float(y));
+			vec2 cellId = gridId + neighborOffset;
+
+			// Generate random properties for this cell's impulse
+			vec2 randVal = hash22(cellId);
+
+			// Check for sparsity: skip this cell entirely if it doesn't meet the threshold
+			if (randVal.y < sparsity)
+				continue;
+
+			// Calculate vector from fragment to the random impulse position in the neighbor cell
+			vec2 impulsePos = neighborOffset + randVal;
+			vec2 p = gridFract - impulsePos;
+
+			// Distance squared for the Gaussian envelope
+			float distSq = dot(p, p);
+
+			// 1. Evaluate the Gaussian Envelope
+			// e^(-pi * a^2 * d^2)
+			float envelope = exp(-3.14159 * bandwidth * bandwidth * distSq);
+			float phase = (time * 5.0) + (randVal.x * 6.28318);
+
+
+			// Phasor Noise
+			float angle = 6.28318 * dot(F, p) + phase;
+			// Convert the angle to a complex number (a 2D directional vector)
+			vec2 phasor = vec2(cos(angle), sin(angle));
+			noiseAcc += randVal.y * envelope * phasor;
+		}
+	}
+
+	// Extract final amplitude and phase
+	float amplitude = length(noiseAcc);
+	float finalPhase = atan(noiseAcc.y, noiseAcc.x);
+
+	// Pass the unified phase into ANY periodic function
+	float result = amplitude * customWaveProfile(finalPhase);
+
+	return result;
+}
+
+
+float tangentPhasor(
+	vec3  worldPos,
+	vec3  worldNormal,
+	vec3  curlVec3D,
+	float time,
+	float freq,
+	float bandwidth,
+	float sparsity
+) {
+	// 1. Construct the TBN frame
+	vec3 N = normalize(worldNormal);
+
+	// Choose an 'up' vector, switching to X-axis if the normal is perfectly vertical
+	vec3 referenceUp = abs(N.y) < 0.999 ? vec3(0.0, 1.0, 0.0) : vec3(1.0, 0.0, 0.0);
+
+	vec3 T = normalize(cross(referenceUp, N));
+	vec3 B = normalize(cross(N, T));
+
+	// 2. Project world position into 2D surface space
+	vec2 surfacePos = vec2(dot(worldPos, T), dot(worldPos, B));
+
+	// 3. Project 3D wind curl vector into 2D surface space
+	vec2 surfaceCurl = vec2(dot(curlVec3D, T), dot(curlVec3D, B));
+
+	// 4. Evaluate the 2D Gabor Noise
+	return phasorWindNoise(surfacePos, surfaceCurl, time, freq, bandwidth, sparsity);
+}
+
+
 float tangentSpaceCrunches(
 	vec3  worldPos,
 	vec3  worldNormal,
@@ -186,9 +284,10 @@ float tangentSpaceCrunches(
 	vec2 dir = normalize(vec2(dot(curlVec3D, T), dot(curlVec3D, B)));
 	vec2 odir = vec2(-dir.x, dir.y);
 
-	// 4. Evaluate the 2D Gabor Noise
-	vec2 gridId = floor(surfacePos);
-	vec2 gridFract = fract(surfacePos);
+
+	// vec2 w = worldPos - surfacePos;
+	// vec2 thing = (sin(w/2)*sin(w/2))/sin(2/2);
+
 
 	vec2 F = surfacePos+dir * bandwidth;
 	vec2 oF = surfacePos+odir * sparsity;
