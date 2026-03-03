@@ -79,6 +79,7 @@ namespace Boidsish {
 			ssr_shader_->setFloat("uMaxDistance", max_distance_);
 			ssr_shader_->setFloat("uStride", stride_);
 			ssr_shader_->setFloat("uThickness", thickness_);
+			ssr_shader_->setFloat("uHiZMip", 3.0f);
 
 			glActiveTexture(GL_TEXTURE0);
 			glBindTexture(GL_TEXTURE_2D, context.depthTexture);
@@ -116,9 +117,11 @@ namespace Boidsish {
 			glDrawArrays(GL_TRIANGLES, 0, 6);
 
 			glDisable(GL_BLEND);
-			// glBindFramebuffer(GL_FRAMEBUFFER, 0); // REMOVED: Breaking post-processing chain
 
 			// 3. Composite pass
+			glBindFramebuffer(GL_FRAMEBUFFER, context.targetFbo);
+			glViewport(0, 0, width_, height_);
+
 			composite_shader_->use();
 			composite_shader_->setInt("uSceneTexture", 0);
 			composite_shader_->setInt("uSsrTexture", 1);

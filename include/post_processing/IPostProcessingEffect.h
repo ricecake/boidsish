@@ -16,6 +16,7 @@ namespace Boidsish {
 			GLuint normalRoughnessTexture; // G-Buffer
 			GLuint albedoMetallicTexture;  // G-Buffer
 			GLuint hizTexture;
+			GLuint targetFbo;
 
 			glm::mat4 viewMatrix;
 			glm::mat4 projectionMatrix;

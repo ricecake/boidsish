@@ -71,6 +71,8 @@ namespace Boidsish {
 				std::shared_ptr<IPostProcessingEffect> effect,
 				const glm::mat4&                       viewMatrix,
 				const glm::mat4&                       projectionMatrix,
+				const glm::mat4&                       invViewMatrix,
+				const glm::mat4&                       invProjectionMatrix,
 				const glm::vec3&                       cameraPos,
 				float                                  time
 			);

@@ -123,9 +123,12 @@ namespace Boidsish {
 		) {
 			DetachDepthFromPingPongFBOs();
 
+			glm::mat4 invView = glm::inverse(viewMatrix);
+			glm::mat4 invProj = glm::inverse(projectionMatrix);
+
 			for (const auto& effect : pre_tone_mapping_effects_) {
 				if (effect->IsEnabled() && effect->IsEarly()) {
-					ApplyEffectInternal(effect, viewMatrix, projectionMatrix, cameraPos, time);
+					ApplyEffectInternal(effect, viewMatrix, projectionMatrix, invView, invProj, cameraPos, time);
 				}
 			}
 		}
@@ -136,14 +139,17 @@ namespace Boidsish {
 			const glm::vec3& cameraPos,
 			float            time
 		) {
+			glm::mat4 invView = glm::inverse(viewMatrix);
+			glm::mat4 invProj = glm::inverse(projectionMatrix);
+
 			for (const auto& effect : pre_tone_mapping_effects_) {
 				if (effect->IsEnabled() && !effect->IsEarly()) {
-					ApplyEffectInternal(effect, viewMatrix, projectionMatrix, cameraPos, time);
+					ApplyEffectInternal(effect, viewMatrix, projectionMatrix, invView, invProj, cameraPos, time);
 				}
 			}
 
 			if (tone_mapping_effect_ && tone_mapping_effect_->IsEnabled()) {
-				ApplyEffectInternal(tone_mapping_effect_, viewMatrix, projectionMatrix, cameraPos, time);
+				ApplyEffectInternal(tone_mapping_effect_, viewMatrix, projectionMatrix, invView, invProj, cameraPos, time);
 			}
 
 			glBindFramebuffer(GL_FRAMEBUFFER, 0);
@@ -162,11 +168,14 @@ namespace Boidsish {
 			std::shared_ptr<IPostProcessingEffect> effect,
 			const glm::mat4&                       viewMatrix,
 			const glm::mat4&                       projectionMatrix,
+			const glm::mat4&                       invViewMatrix,
+			const glm::mat4&                       invProjectionMatrix,
 			const glm::vec3&                       cameraPos,
 			float                                  time
 		) {
 			effect->SetTime(time);
-			glBindFramebuffer(GL_FRAMEBUFFER, pingpong_fbo_[fbo_index_]);
+			GLuint targetFbo = pingpong_fbo_[fbo_index_];
+			glBindFramebuffer(GL_FRAMEBUFFER, targetFbo);
 			glClear(GL_COLOR_BUFFER_BIT);
 
 			// Post-processing quads should not be depth-tested or write to depth buffer
@@ -180,10 +189,11 @@ namespace Boidsish {
 			context.normalRoughnessTexture = normal_roughness_texture_;
 			context.albedoMetallicTexture = albedo_metallic_texture_;
 			context.hizTexture = hiz_texture_;
+			context.targetFbo = targetFbo;
 			context.viewMatrix = viewMatrix;
 			context.projectionMatrix = projectionMatrix;
-			context.invViewMatrix = glm::inverse(viewMatrix);
-			context.invProjectionMatrix = glm::inverse(projectionMatrix);
+			context.invViewMatrix = invViewMatrix;
+			context.invProjectionMatrix = invProjectionMatrix;
 			context.cameraPos = cameraPos;
 			context.time = time;
 			context.width = width_;

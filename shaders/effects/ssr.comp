@@ -19,6 +19,7 @@ uniform float uTime;
 uniform float uMaxDistance = 100.0;
 uniform float uStride = 2.0;
 uniform float uThickness = 0.5;
+uniform float uHiZMip = 3.0;
 
 #define PI 3.14159265359
 
@@ -124,7 +125,7 @@ void main() {
 
         // Sample Hi-Z (Mip 2 covers 4x4 area, Mip 3 covers 8x8)
         // Red channel is MIN depth in the region.
-        float hizMin = textureLod(uHiZTexture, currentUV, 3.0).r;
+        float hizMin = textureLod(uHiZTexture, currentUV, uHiZMip).r;
 
         // If the ray is clearly in front of the minimum depth in this large region, we can skip ahead.
         // We calculate how much distance along the ray is needed to reach hizMin.

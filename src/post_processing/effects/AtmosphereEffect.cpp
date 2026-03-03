@@ -48,8 +48,8 @@ namespace Boidsish {
 			shader_->setInt("depthTexture", 1);
 			shader_->setFloat("time", time_);
 			shader_->setVec3("cameraPos", cameraPos);
-			shader_->setMat4("invView", glm::inverse(viewMatrix));
-			shader_->setMat4("invProjection", glm::inverse(projectionMatrix));
+			shader_->setMat4("invView", context.invViewMatrix);
+			shader_->setMat4("invProjection", context.invProjectionMatrix);
 
 			shader_->setFloat("hazeDensity", haze_density_);
 			shader_->setFloat("hazeHeight", haze_height_);

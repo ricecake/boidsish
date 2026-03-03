@@ -58,11 +58,6 @@ namespace Boidsish {
 			const glm::mat4& viewMatrix = context.viewMatrix;
 			const glm::mat4& projectionMatrix = context.projectionMatrix;
 			const glm::vec3& cameraPos = context.cameraPos;
-			// Save original state
-			GLint previous_fbo;
-			glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING, &previous_fbo);
-			GLint viewport[4];
-			glGetIntegerv(GL_VIEWPORT, viewport);
 
 			int read_idx = current_read_;
 			int write_idx = 1 - current_read_;
@@ -86,8 +81,8 @@ namespace Boidsish {
 			glDrawArrays(GL_TRIANGLES, 0, 6);
 
 			// 2. Blit the result to the main output (the manager's FBO)
-			glBindFramebuffer(GL_FRAMEBUFFER, previous_fbo);
-			glViewport(viewport[0], viewport[1], viewport[2], viewport[3]); // Restore viewport
+			glBindFramebuffer(GL_FRAMEBUFFER, context.targetFbo);
+			glViewport(0, 0, width_, height_);
 
 			blit_shader_->use();
 			blit_shader_->setInt("sceneTexture", 0);

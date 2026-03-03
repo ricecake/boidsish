@@ -60,8 +60,6 @@ namespace Boidsish {
 			const glm::mat4& viewMatrix = context.viewMatrix;
 			const glm::mat4& projectionMatrix = context.projectionMatrix;
 			const glm::vec3& cameraPos = context.cameraPos;
-			GLint previous_fbo;
-			glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING, &previous_fbo);
 
 			// Capture snapshot periodically into our internal buffer
 			if (time_ - last_capture_time_ > kCaptureInterval) {
@@ -81,7 +79,7 @@ namespace Boidsish {
 			}
 
 			// Now, render the final output to the buffer that was originally bound.
-			glBindFramebuffer(GL_FRAMEBUFFER, previous_fbo);
+			glBindFramebuffer(GL_FRAMEBUFFER, context.targetFbo);
 			glViewport(0, 0, width_, height_); // Set viewport for the destination
 
 			// Apply the effect by blending the source texture and our strobe texture
