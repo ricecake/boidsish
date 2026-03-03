@@ -63,6 +63,7 @@ namespace Boidsish {
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 
 		grid_mip_shader_ = std::make_unique<ComputeShader>("shaders/terrain_hiz_generate.comp");
+		shading_compute_shader_ = std::make_unique<ComputeShader>("shaders/terrain_shading.comp");
 
 		// Create instance buffer first so we can set up VAO attributes
 		// Pre-allocate for max_chunks to avoid reallocation
@@ -96,6 +97,15 @@ namespace Boidsish {
 			glDeleteTextures(1, &max_height_grid_texture_);
 		if (terrain_data_ubo_)
 			glDeleteBuffers(1, &terrain_data_ubo_);
+
+		if (shading_cache_a_)
+			glDeleteTextures(1, &shading_cache_a_);
+		if (shading_cache_b_)
+			glDeleteTextures(1, &shading_cache_b_);
+		if (shading_status_ssbo_)
+			glDeleteBuffers(1, &shading_status_ssbo_);
+		if (batch_data_ssbo_)
+			glDeleteBuffers(1, &batch_data_ssbo_);
 	}
 
 	void TerrainRenderManager::CreateGridMesh() {
@@ -179,7 +189,8 @@ namespace Boidsish {
 	}
 
 	void TerrainRenderManager::EnsureTextureCapacity(int required_slices) {
-		if (heightmap_texture_ && biome_texture_ && required_slices <= max_chunks_) {
+		if (heightmap_texture_ && biome_texture_ && shading_cache_a_ && shading_cache_b_ &&
+			shading_status_ssbo_ && required_slices <= max_chunks_) {
 			return; // Already have enough capacity
 		}
 
@@ -211,6 +222,23 @@ namespace Boidsish {
 			if (biome_texture_) {
 				glDeleteTextures(1, &biome_texture_);
 				biome_texture_ = 0;
+			}
+
+			if (shading_cache_a_) {
+				glDeleteTextures(1, &shading_cache_a_);
+				shading_cache_a_ = 0;
+			}
+			if (shading_cache_b_) {
+				glDeleteTextures(1, &shading_cache_b_);
+				shading_cache_b_ = 0;
+			}
+			if (shading_status_ssbo_) {
+				glDeleteBuffers(1, &shading_status_ssbo_);
+				shading_status_ssbo_ = 0;
+			}
+			if (batch_data_ssbo_) {
+				glDeleteBuffers(1, &batch_data_ssbo_);
+				batch_data_ssbo_ = 0;
 			}
 
 			// Reset slice tracking since all data is lost
@@ -275,6 +303,32 @@ namespace Boidsish {
 		glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 		glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
 		glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+
+		// Create shading cache texture arrays
+		glGenTextures(1, &shading_cache_a_);
+		glBindTexture(GL_TEXTURE_2D_ARRAY, shading_cache_a_);
+		glTexStorage3D(GL_TEXTURE_2D_ARRAY, 1, GL_RGBA16F, shading_cache_resolution_, shading_cache_resolution_, max_chunks_);
+		glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+		glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+		glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+		glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+
+		glGenTextures(1, &shading_cache_b_);
+		glBindTexture(GL_TEXTURE_2D_ARRAY, shading_cache_b_);
+		glTexStorage3D(GL_TEXTURE_2D_ARRAY, 1, GL_RGBA16F, shading_cache_resolution_, shading_cache_resolution_, max_chunks_);
+		glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+		glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+		glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+		glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+
+		// Create shading status SSBO
+		glGenBuffers(1, &shading_status_ssbo_);
+		glBindBuffer(GL_SHADER_STORAGE_BUFFER, shading_status_ssbo_);
+		std::vector<int32_t> initial_status(max_chunks_, 0);
+		glBufferData(GL_SHADER_STORAGE_BUFFER, max_chunks_ * sizeof(int32_t), initial_status.data(), GL_DYNAMIC_DRAW);
+		glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
+
+		shading_ready_cpu_.assign(max_chunks_, 0);
 
 		glBindTexture(GL_TEXTURE_2D_ARRAY, 0);
 	}
@@ -460,6 +514,13 @@ namespace Boidsish {
 			info.world_offset = glm::vec2(world_offset.x, world_offset.z);
 
 			chunks_[chunk_key] = info;
+
+			// Mark shading as not ready
+			shading_ready_cpu_[slice] = 0;
+			int32_t not_ready = 0;
+			glBindBuffer(GL_SHADER_STORAGE_BUFFER, shading_status_ssbo_);
+			glBufferSubData(GL_SHADER_STORAGE_BUFFER, slice * sizeof(int32_t), sizeof(int32_t), &not_ready);
+			glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
 		} // mutex released here
 
 		// Call eviction callback outside the lock to avoid deadlock
@@ -476,8 +537,17 @@ namespace Boidsish {
 			return;
 		}
 
+		int slice = it->second.texture_slice;
+
+		// Mark shading as not ready for reuse
+		shading_ready_cpu_[slice] = 0;
+		int32_t not_ready = 0;
+		glBindBuffer(GL_SHADER_STORAGE_BUFFER, shading_status_ssbo_);
+		glBufferSubData(GL_SHADER_STORAGE_BUFFER, slice * sizeof(int32_t), sizeof(int32_t), &not_ready);
+		glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
+
 		// Return slice to free list
-		free_slices_.push_back(it->second.texture_slice);
+		free_slices_.push_back(slice);
 		chunks_.erase(it);
 	}
 
@@ -532,6 +602,8 @@ namespace Boidsish {
 		struct VisibleChunk {
 			InstanceData instance;
 			float        distance_sq;
+			int          slice;
+			bool         needs_shading;
 		};
 
 		std::vector<VisibleChunk> visible_chunks;
@@ -558,7 +630,9 @@ namespace Boidsish {
 				);
 				float dist_sq = glm::dot(chunk_center - camera_pos_2d, chunk_center - camera_pos_2d);
 
-				visible_chunks.push_back({instance, dist_sq});
+				bool needs_shading = shading_ready_cpu_[chunk.texture_slice] == 0;
+
+				visible_chunks.push_back({instance, dist_sq, chunk.texture_slice, needs_shading});
 			}
 		}
 
@@ -566,6 +640,77 @@ namespace Boidsish {
 		std::sort(visible_chunks.begin(), visible_chunks.end(), [](const VisibleChunk& a, const VisibleChunk& b) {
 			return a.distance_sq < b.distance_sq;
 		});
+
+		// Pick batch of chunks to shade
+		std::vector<VisibleChunk*> chunks_to_shade;
+		for (auto& vc : visible_chunks) {
+			if (vc.needs_shading) {
+				chunks_to_shade.push_back(&vc);
+				if (chunks_to_shade.size() >= 4)
+					break;
+			}
+		}
+
+		if (!chunks_to_shade.empty() && shading_compute_shader_ && shading_compute_shader_->isValid()) {
+			shading_compute_shader_->use();
+
+			// Prepare batch data SSBO
+			struct BatchData {
+				glm::vec4 worldOffset_and_slice;
+			};
+			std::vector<BatchData> batch_data;
+			for (auto* vc : chunks_to_shade) {
+				batch_data.push_back({vc->instance.world_offset_and_slice});
+			}
+
+			if (batch_data_ssbo_ == 0)
+				glGenBuffers(1, &batch_data_ssbo_);
+			glBindBuffer(GL_SHADER_STORAGE_BUFFER, batch_data_ssbo_);
+			glBufferData(GL_SHADER_STORAGE_BUFFER, batch_data.size() * sizeof(BatchData), batch_data.data(), GL_DYNAMIC_DRAW);
+			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 2, batch_data_ssbo_);
+
+			// Bind textures
+			glActiveTexture(GL_TEXTURE0);
+			glBindTexture(GL_TEXTURE_2D_ARRAY, heightmap_texture_);
+			shading_compute_shader_->setInt("uHeightmap", 0);
+
+			glActiveTexture(GL_TEXTURE1);
+			glBindTexture(GL_TEXTURE_2D_ARRAY, biome_texture_);
+			shading_compute_shader_->setInt("uBiomeMap", 1);
+
+			glActiveTexture(GL_TEXTURE5);
+			glBindTexture(GL_TEXTURE_3D, noise_texture_);
+			shading_compute_shader_->setInt("u_noiseTexture", 5);
+
+			glActiveTexture(GL_TEXTURE6);
+			glBindTexture(GL_TEXTURE_3D, curl_texture_);
+			shading_compute_shader_->setInt("u_curlTexture", 6);
+
+			glBindBufferBase(GL_UNIFORM_BUFFER, Constants::UboBinding::Biomes(), biome_ubo_);
+			glBindBufferBase(GL_UNIFORM_BUFFER, Constants::UboBinding::TerrainData(), terrain_data_ubo_);
+
+			// Bind images
+			glBindImageTexture(0, shading_cache_a_, 0, GL_TRUE, 0, GL_WRITE_ONLY, GL_RGBA16F);
+			glBindImageTexture(1, shading_cache_b_, 0, GL_TRUE, 0, GL_WRITE_ONLY, GL_RGBA16F);
+
+			// Bind status SSBO
+			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 14, shading_status_ssbo_);
+
+			shading_compute_shader_->setFloat("uChunkSize", chunk_size_ * world_scale);
+			shading_compute_shader_->setInt("u_shadingCacheResolution", shading_cache_resolution_);
+
+			glDispatchCompute((shading_cache_resolution_ + 7) / 8, (shading_cache_resolution_ + 7) / 8, static_cast<GLuint>(chunks_to_shade.size()));
+			glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | GL_SHADER_STORAGE_BARRIER_BIT);
+
+			// Mark as ready
+			int32_t ready = 1;
+			glBindBuffer(GL_SHADER_STORAGE_BUFFER, shading_status_ssbo_);
+			for (auto* vc : chunks_to_shade) {
+				shading_ready_cpu_[vc->slice] = 1;
+				glBufferSubData(GL_SHADER_STORAGE_BUFFER, vc->slice * sizeof(int32_t), sizeof(int32_t), &ready);
+			}
+			glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
+		}
 
 		// Build final instance list
 		for (const auto& vc : visible_chunks) {
@@ -709,6 +854,20 @@ namespace Boidsish {
 		glBindBufferBase(GL_UNIFORM_BUFFER, Constants::UboBinding::TerrainData(), terrain_data_ubo_);
 	}
 
+	void TerrainRenderManager::BindShadingCache(ShaderBase& shader_base) const {
+		shader_base.use();
+		glActiveTexture(GL_TEXTURE14);
+		glBindTexture(GL_TEXTURE_2D_ARRAY, shading_cache_a_);
+		shader_base.setInt("u_shadingCacheA", 14);
+
+		glActiveTexture(GL_TEXTURE15);
+		glBindTexture(GL_TEXTURE_2D_ARRAY, shading_cache_b_);
+		shader_base.setInt("u_shadingCacheB", 15);
+
+		// Use a dedicated binding point for shading status
+		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 14, shading_status_ssbo_);
+	}
+
 	void TerrainRenderManager::Render(
 		Shader&                         shader,
 		const glm::mat4&                view,
@@ -748,6 +907,8 @@ namespace Boidsish {
 		glActiveTexture(GL_TEXTURE1);
 		glBindTexture(GL_TEXTURE_2D_ARRAY, biome_texture_);
 		shader.setInt("uBiomeMap", 1);
+
+		BindShadingCache(shader);
 
 		glActiveTexture(GL_TEXTURE5);
 		glBindTexture(GL_TEXTURE_3D, noise_texture_);
