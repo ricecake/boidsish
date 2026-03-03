@@ -173,7 +173,7 @@ float customWaveProfile(float phase) {
     float normalizedPhase = (phase / 6.28318) + 0.5;
 
     // Create a sharp peak that falls off quickly
-    return pow(sin(normalizedPhase * 3.14159), 12.0);
+    return smoothstep(0.5, 1, pow(sin(normalizedPhase * 3.14159), 3.0));
 }
 
 float phasorWindNoise(vec2 pos, vec2 curlVec, float time, float freq, float bandwidth, float sparsity) {
@@ -193,6 +193,7 @@ float phasorWindNoise(vec2 pos, vec2 curlVec, float time, float freq, float band
 	// 3x3 grid traversal to find neighboring impulses
 	for (int y = -1; y <= 1; y++) {
 		for (int x = -1; x <= 1; x++) {
+			// vec2 neighborOffset = vec2(float(x * abs(x*x)), float(y * abs(y*y)));
 			vec2 neighborOffset = vec2(float(x), float(y));
 			vec2 cellId = gridId + neighborOffset;
 
@@ -215,12 +216,11 @@ float phasorWindNoise(vec2 pos, vec2 curlVec, float time, float freq, float band
 			float envelope = exp(-3.14159 * bandwidth * bandwidth * distSq);
 			float phase = (time * 5.0) + (randVal.x * 6.28318);
 
-
 			// Phasor Noise
 			float angle = 6.28318 * dot(F, p) + phase;
 			// Convert the angle to a complex number (a 2D directional vector)
 			vec2 phasor = vec2(cos(angle), sin(angle));
-			noiseAcc += randVal.y * envelope * phasor;
+			noiseAcc += envelope * phasor;
 		}
 	}
 
