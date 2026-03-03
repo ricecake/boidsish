@@ -43,8 +43,15 @@ namespace Boidsish {
 							next += rules.at(c);
 						else
 							next += c;
+
+						if (next.length() > 10000) {
+							return next; // Safety cap
+						}
 					}
 					current = next;
+					if (current.length() > 10000) {
+						break;
+					}
 				}
 				return current;
 			}
@@ -589,7 +596,7 @@ namespace Boidsish {
 						}
 					}
 
-					if (!tooClose) {
+					if (!tooClose && nodes.size() < 2000) {
 						SCNode newNode;
 						newNode.id = (int)nodes.size();
 						newNode.parentId = (int)i;
