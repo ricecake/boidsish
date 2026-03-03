@@ -14,13 +14,57 @@ layout(std430, binding = 2) buffer IndirectBuffer {
 	DrawElementsIndirectCommand commands[];
 };
 
+layout(std430, binding = 3) readonly buffer VisibilityBitfields {
+	uint visibility_bits[];
+};
+
+layout(std430, binding = 4) writeonly buffer VisibleInstances {
+	mat4 visible_instances[];
+};
+
+layout(std430, binding = 5) readonly buffer MainInstances {
+	mat4 all_instances[];
+};
+
 layout(binding = 0) uniform atomic_uint visibleCount;
 
 uniform int u_numCommands;
+uniform int u_totalSlots;
+uniform int u_passMask; // 1=Camera, 2=Shadow0, 4=Shadow1, 8=Shadow2, 16=Shadow3
+
+#define PASS_CAMERA_FRUSTUM (1 << 0)
+#define PASS_SHADOW_0       (1 << 1)
+#define PASS_SHADOW_1       (1 << 2)
+#define PASS_SHADOW_2       (1 << 3)
+#define PASS_SHADOW_3       (1 << 4)
+#define PASS_OCCLUSION      (1 << 5)
 
 void main() {
-	uint count = atomicCounter(visibleCount);
-	for (int i = 0; i < u_numCommands; ++i) {
-		commands[i].instanceCount = count;
-	}
+    uint gid = gl_GlobalInvocationID.x;
+
+    if (gid >= u_totalSlots) return;
+
+    uint bits = visibility_bits[gid];
+
+    // Check if passed the requested mask (including occlusion if it's the camera pass)
+    bool passed = false;
+    if (u_passMask == PASS_CAMERA_FRUSTUM) {
+        passed = (bits & (PASS_CAMERA_FRUSTUM | PASS_OCCLUSION)) == (PASS_CAMERA_FRUSTUM | PASS_OCCLUSION);
+    } else {
+        passed = (bits & u_passMask) != 0;
+    }
+
+    if (passed) {
+        uint destIdx = atomicCounterIncrement(visibleCount);
+        visible_instances[destIdx] = all_instances[gid];
+    }
+
+    barrier();
+
+    if (gid == 0) {
+        uint count = atomicCounter(visibleCount);
+        for (int i = 0; i < u_numCommands; ++i) {
+            commands[i].instanceCount = count;
+        }
+    }
 }

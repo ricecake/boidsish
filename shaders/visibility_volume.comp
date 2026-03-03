@@ -1,0 +1,79 @@
+#version 430 core
+
+layout(local_size_x = 4, local_size_y = 4, local_size_z = 4) in;
+
+layout(r16ui, binding = 0) uniform writeonly uimage3D u_visibilityVolume;
+
+uniform vec3  u_volumeOrigin;
+uniform float u_voxelSize;
+uniform int   u_volumeSize;
+uniform float u_time;
+
+uniform vec4  u_cameraFrustumPlanes[6];
+uniform mat4  u_shadowMatrices[4];
+uniform mat4  u_prevViewProj;
+uniform sampler2D u_hizTexture;
+uniform ivec2 u_hizSize;
+uniform int   u_hizMipCount;
+
+#define PASS_CAMERA_FRUSTUM (1 << 0)
+#define PASS_SHADOW_0       (1 << 1)
+#define PASS_SHADOW_1       (1 << 2)
+#define PASS_SHADOW_2       (1 << 3)
+#define PASS_SHADOW_3       (1 << 4)
+#define PASS_OCCLUSION      (1 << 5)
+
+bool isInFrustum(vec3 pos, vec4 planes[6]) {
+    for (int i = 0; i < 6; i++) {
+        if (dot(planes[i].xyz, pos) + planes[i].w < 0.0) {
+            return false;
+        }
+    }
+    return true;
+}
+
+bool isInOrthoFrustum(vec3 pos, mat4 lightSpaceMatrix) {
+    vec4 clip = lightSpaceMatrix * vec4(pos, 1.0);
+    return all(greaterThanEqual(clip.xyz, vec3(-1.0))) && all(lessThanEqual(clip.xyz, vec3(1.0)));
+}
+
+bool isOccluded(vec3 pos) {
+    vec4 clip = u_prevViewProj * vec4(pos, 1.0);
+    if (clip.w <= 0.0) return false;
+
+    vec3 ndc = clip.xyz / clip.w;
+    vec2 uv = ndc.xy * 0.5 + 0.5;
+    if (any(lessThan(uv, vec2(0.0))) || any(greaterThan(uv, vec2(1.0)))) return false;
+
+    float depth = ndc.z * 0.5 + 0.5;
+    float hizDepth = textureLod(u_hizTexture, uv, 0.0).r;
+    if (hizDepth < 0.0001) return false;
+
+    return depth > hizDepth + 0.001;
+}
+
+void main() {
+    ivec3 gid = ivec3(gl_GlobalInvocationID);
+    if (any(greaterThanEqual(gid, ivec3(u_volumeSize)))) return;
+
+    // Temporal jitter for voxel sampling to reduce aliasing artifacts
+    vec3 jitter = (vec3(
+        fract(sin(dot(vec4(gid, u_time), vec4(12.9898, 78.233, 45.164, 9.123)))),
+        fract(sin(dot(vec4(gid.yzx, u_time), vec4(12.9898, 78.233, 45.164, 9.123)))),
+        fract(sin(dot(vec4(gid.zxy, u_time), vec4(12.9898, 78.233, 45.164, 9.123))))
+    ) - 0.5) * 0.5;
+
+    vec3 voxelCenter = u_volumeOrigin + (vec3(gid) + 0.5 + jitter) * u_voxelSize;
+    uint mask = 0;
+
+    if (isInFrustum(voxelCenter, u_cameraFrustumPlanes)) mask |= PASS_CAMERA_FRUSTUM;
+
+    if (isInOrthoFrustum(voxelCenter, u_shadowMatrices[0])) mask |= PASS_SHADOW_0;
+    if (isInOrthoFrustum(voxelCenter, u_shadowMatrices[1])) mask |= PASS_SHADOW_1;
+    if (isInOrthoFrustum(voxelCenter, u_shadowMatrices[2])) mask |= PASS_SHADOW_2;
+    if (isInOrthoFrustum(voxelCenter, u_shadowMatrices[3])) mask |= PASS_SHADOW_3;
+
+    if (!isOccluded(voxelCenter)) mask |= PASS_OCCLUSION;
+
+    imageStore(u_visibilityVolume, gid, uvec4(mask, 0, 0, 0));
+}

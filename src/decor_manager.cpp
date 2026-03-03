@@ -22,6 +22,8 @@ namespace Boidsish {
 		for (auto& type : decor_types_) {
 			if (type.ssbo != 0)
 				glDeleteBuffers(1, &type.ssbo);
+			if (type.visibility_ssbo != 0)
+				glDeleteBuffers(1, &type.visibility_ssbo);
 			if (type.visible_ssbo != 0)
 				glDeleteBuffers(1, &type.visible_ssbo);
 			if (type.count_buffer != 0)
@@ -84,6 +86,11 @@ namespace Boidsish {
 		glGenBuffers(1, &type.ssbo);
 		glBindBuffer(GL_SHADER_STORAGE_BUFFER, type.ssbo);
 		glBufferData(GL_SHADER_STORAGE_BUFFER, kMaxInstancesPerType * sizeof(glm::mat4), nullptr, GL_STATIC_DRAW);
+
+		// Visibility bitfields
+		glGenBuffers(1, &type.visibility_ssbo);
+		glBindBuffer(GL_SHADER_STORAGE_BUFFER, type.visibility_ssbo);
+		glBufferData(GL_SHADER_STORAGE_BUFFER, kMaxInstancesPerType * sizeof(uint32_t), nullptr, GL_DYNAMIC_DRAW);
 
 		// Visible instances (filled per frame)
 		glGenBuffers(1, &type.visible_ssbo);
@@ -357,7 +364,10 @@ namespace Boidsish {
 		const Camera&                         camera,
 		const Frustum&                        frustum,
 		const ITerrainGenerator&              terrain_gen,
-		std::shared_ptr<TerrainRenderManager> render_manager
+		std::shared_ptr<TerrainRenderManager> render_manager,
+		GLuint                                visibility_volume,
+		glm::vec3                             volume_origin,
+		float                                 voxel_size
 	) {
 		if (!enabled_ || !initialized_ || decor_types_.empty())
 			return;
@@ -369,6 +379,33 @@ namespace Boidsish {
 			return;
 
 		_UpdateAllocation(camera, frustum, terrain_gen, render_manager);
+
+		// Track camera velocity
+		glm::vec3 camera_pos = glm::vec3(camera.x, camera.y, camera.z);
+		if (delta_time > 0.0f) {
+			camera_velocity_ = (camera_pos - last_camera_pos_) / delta_time;
+		}
+		last_camera_pos_ = camera_pos;
+
+		// GPU Culling Pass using Visibility Volume
+		culling_shader_->use();
+		culling_shader_->setVec3("u_volumeOrigin", volume_origin);
+		culling_shader_->setFloat("u_voxelSize", voxel_size);
+		culling_shader_->setVec3("u_cameraPos", camera_pos);
+		culling_shader_->setVec3("u_cameraVelocity", camera_velocity_);
+		culling_shader_->setFloat("u_deltaTime", delta_time);
+
+		glActiveTexture(GL_TEXTURE10);
+		glBindTexture(GL_TEXTURE_3D, visibility_volume);
+		culling_shader_->setInt("u_visibilityVolume", 10);
+
+		for (auto& type : decor_types_) {
+			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, type.ssbo);
+			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, type.visibility_ssbo);
+
+			glDispatchCompute(kMaxInstancesPerType / 64, 1, 1);
+		}
+		glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
 	}
 
 	void DecorManager::_UpdateAllocation(
@@ -550,81 +587,40 @@ namespace Boidsish {
 		const std::optional<glm::mat4>&       light_space_matrix,
 		Shader*                               shader_override,
 		const std::optional<glm::vec3>&       light_dir,
-		std::shared_ptr<TerrainRenderManager> render_manager
+		std::shared_ptr<TerrainRenderManager> render_manager,
+		int                                   cascade_index
 	) {
 		if (!enabled_ || !initialized_ || decor_types_.empty())
 			return;
 
 		bool is_shadow_pass = light_space_matrix.has_value();
 
-		// 1. GPU Culling Pass
-		// Use light space matrix directly for shadow pass culling
-		Frustum   frustum = is_shadow_pass ? Frustum::FromViewProjection(glm::mat4(1.0f), *light_space_matrix)
-                                         : Frustum::FromViewProjection(view, projection);
-		glm::mat4 viewProj = is_shadow_pass ? *light_space_matrix : projection * view;
-
-		culling_shader_->use();
-		for (int p = 0; p < 6; ++p) {
-			culling_shader_->setVec4(
-				"u_frustumPlanes[" + std::to_string(p) + "]",
-				glm::vec4(frustum.planes[p].normal, frustum.planes[p].distance)
-			);
-		}
-		culling_shader_->setInt("u_totalSlots", kMaxInstancesPerType);
-		culling_shader_->setMat4("u_viewProj", viewProj);
-		culling_shader_->setVec2("u_viewportSize", glm::vec2((float)viewport_width, (float)viewport_height));
-		culling_shader_->setFloat("u_minPixelSize", min_pixel_size_);
-
-		if (light_dir.has_value()) {
-			culling_shader_->setVec3("u_lightDir", *light_dir);
-		} else {
-			culling_shader_->setVec3("u_lightDir", 0, 0, 0);
-		}
-
-		if (render_manager) {
-			render_manager->BindTerrainData(*culling_shader_);
-		}
-
-		// Hi-Z occlusion culling uniforms
-		culling_shader_->setBool("u_enableHiZ", hiz_enabled_ && !is_shadow_pass);
-		if (hiz_enabled_ && !is_shadow_pass) {
-			glActiveTexture(GL_TEXTURE15);
-			glBindTexture(GL_TEXTURE_2D, hiz_texture_);
-			culling_shader_->setInt("u_hizTexture", 15);
-			culling_shader_->setMat4("u_prevViewProjection", hiz_prev_vp_);
-			glUniform2i(glGetUniformLocation(culling_shader_->ID, "u_hizSize"), hiz_width_, hiz_height_);
-			culling_shader_->setInt("u_hizMipCount", hiz_mip_count_);
-		}
-
 		for (auto& type : decor_types_) {
-			// Reset atomic counter
+			// Update indirect commands for both regular and shadow passes
+			update_commands_shader_->use();
+			update_commands_shader_->setInt("u_numCommands", (int)type.model->getMeshes().size());
+			update_commands_shader_->setInt("u_totalSlots", kMaxInstancesPerType);
+			glBindBufferBase(GL_ATOMIC_COUNTER_BUFFER, 0, type.count_buffer);
+			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 3, type.visibility_ssbo);
+			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 5, type.ssbo);
+
 			unsigned int zero = 0;
 			glBindBuffer(GL_ATOMIC_COUNTER_BUFFER, type.count_buffer);
 			glBufferSubData(GL_ATOMIC_COUNTER_BUFFER, 0, sizeof(unsigned int), &zero);
 
-			// Cull instances
-			culling_shader_->use();
-			culling_shader_->setVec3("u_aabbMin", type.model->GetAABB().min);
-			culling_shader_->setVec3("u_aabbMax", type.model->GetAABB().max);
+			if (is_shadow_pass) {
+				// Shadow pass filtering
+				int passMask = (cascade_index >= 0) ? (1 << (cascade_index + 1)) : 0x1E;
+				update_commands_shader_->setInt("u_passMask", passMask);
+				glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 2, type.shadow_indirect_buffer);
+			} else {
+				// Camera pass filtering
+				update_commands_shader_->setInt("u_passMask", 1); // PASS_CAMERA_FRUSTUM
+				glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 2, type.indirect_buffer);
+				glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 4, type.visible_ssbo);
+			}
 
-			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, type.ssbo);
-			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, type.visible_ssbo);
-			glBindBufferBase(GL_ATOMIC_COUNTER_BUFFER, 0, type.count_buffer);
 			glDispatchCompute(kMaxInstancesPerType / 64, 1, 1);
-
-			glMemoryBarrier(GL_ATOMIC_COUNTER_BARRIER_BIT | GL_SHADER_STORAGE_BARRIER_BIT);
-
-			// Update indirect commands for both regular and shadow passes
-			update_commands_shader_->use();
-			update_commands_shader_->setInt("u_numCommands", (int)type.model->getMeshes().size());
-			glBindBufferBase(GL_ATOMIC_COUNTER_BUFFER, 0, type.count_buffer);
-
-			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 2, type.indirect_buffer);
-			glDispatchCompute(1, 1, 1);
-
-			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 2, type.shadow_indirect_buffer);
-			glDispatchCompute(1, 1, 1);
-
 			glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT | GL_COMMAND_BARRIER_BIT);
 		}
 
