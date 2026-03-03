@@ -32,10 +32,18 @@ void main() {
     vec3 viewDir = normalize(-viewPos4.xyz / viewPos4.w);
 
     float cosTheta = max(dot(viewNormal, viewDir), 0.0);
-    float F0 = 0.04;
+    float F0 = mix(0.04, 1.0, metallic); // Simplified F0
     float fresnel = F0 + (1.0 - F0) * pow(1.0 - cosTheta, 5.0);
 
-    vec3 finalColor = sceneColor + reflectionColor * reflectionMask * uIntensity * mix(fresnel, 1.0, metallic);
+    // For non-metals, we blend based on fresnel (energy conservation)
+    // For metals, the reflection IS the color
+    vec3 finalColor;
+    if (metallic > 0.5) {
+        finalColor = mix(sceneColor, reflectionColor, fresnel * reflectionMask * uIntensity);
+    } else {
+        // Non-metal: mix reflection on top of scene color based on fresnel
+        finalColor = sceneColor + reflectionColor * reflectionMask * uIntensity * fresnel;
+    }
 
     FragColor = vec4(finalColor, 1.0);
 }

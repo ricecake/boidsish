@@ -36,6 +36,11 @@ vec3 hash3(vec2 p) {
     return fract((p3.xxy+p3.yxx)*p3.zyx);
 }
 
+float linearDepth(float depth) {
+    float z = depth * 2.0 - 1.0;
+    return (2.0 * uProjection[3][2]) / (uProjection[2][2] + z);
+}
+
 // GGX Importance Sampling for Stochastic Reflections
 vec3 importanceSampleGGX(vec2 xi, vec3 n, float roughness) {
     float a = roughness * roughness;
@@ -113,7 +118,9 @@ void main() {
     vec2 hitUV;
 
     // Optimized Raymarching using Hi-Z Min-Depth Skipping
-    float currentStep = 0.1;
+    float currentStep = uStride;
+    float prevStep = 0.0;
+
     for(int i=0; i<64; i++) {
         vec3 marchPos = rayOrigin + rayDir * currentStep;
         vec3 projected = project(marchPos);
@@ -123,27 +130,44 @@ void main() {
 
         float currentDepth = projected.z * 0.5 + 0.5;
 
-        // Sample Hi-Z (Mip 2 covers 4x4 area, Mip 3 covers 8x8)
         // Red channel is MIN depth in the region.
         float hizMin = textureLod(uHiZTexture, currentUV, uHiZMip).r;
 
-        // If the ray is clearly in front of the minimum depth in this large region, we can skip ahead.
-        // We calculate how much distance along the ray is needed to reach hizMin.
         if (currentDepth < hizMin) {
-            // Project a position at hizMin back to find distance (approximation)
-            // Or just skip by a fixed large amount scaled by depth
+            // The ray is in front of everything in this Hi-Z region
+            prevStep = currentStep;
             currentStep += uStride * 4.0;
         } else {
-            // Near potential intersection, use fine steps
             float sampledDepth = texture(uDepthTexture, currentUV).r;
             if (currentDepth > sampledDepth) {
-                // Potential hit, check thickness to avoid reflecting backfaces or distant objects
-                if ((currentDepth - sampledDepth) < (uThickness / -viewPos.z)) {
+                // Potential hit
+                float viewDepth = -marchPos.z;
+                float sceneViewDepth = linearDepth(sampledDepth);
+
+                if (viewDepth > sceneViewDepth && (viewDepth - sceneViewDepth) < uThickness) {
+                    // Refine intersection using Binary Search
+                    float start = prevStep;
+                    float end = currentStep;
+                    for (int j = 0; j < 4; j++) {
+                        float mid = (start + end) * 0.5;
+                        vec3 midPos = rayOrigin + rayDir * mid;
+                        vec3 midProj = project(midPos);
+                        vec2 midUV = midProj.xy * 0.5 + 0.5;
+                        float midDepth = midProj.z * 0.5 + 0.5;
+                        float sampleMid = texture(uDepthTexture, midUV).r;
+
+                        if (midDepth > sampleMid) end = mid;
+                        else start = mid;
+                    }
+
                     hit = true;
-                    hitUV = currentUV;
+                    vec3 finalPos = rayOrigin + rayDir * end;
+                    vec3 finalProj = project(finalPos);
+                    hitUV = finalProj.xy * 0.5 + 0.5;
                     break;
                 }
             }
+            prevStep = currentStep;
             currentStep += uStride;
         }
 

@@ -45,9 +45,9 @@ namespace Boidsish {
 			int height_ = 0;
 
 			float intensity_ = 1.0f;
-			float max_distance_ = 100.0f;
-			float stride_ = 2.0f;
-			float thickness_ = 0.5f;
+			float max_distance_ = 150.0f;
+			float stride_ = 1.0f;
+			float thickness_ = 0.2f;
 		};
 
 	}
