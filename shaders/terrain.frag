@@ -431,7 +431,7 @@ void main() {
 			),
 		9.0
 	);
-	float plainRipple = tangentGabor(FragPos, norm, -1 * windDistortion * rawWindNudge, time, 0.5, 0.00001, 0.75) *
+	float plainRipple = tangentSpaceCrunches(FragPos, norm, -1 * windDistortion * rawWindNudge, time, 0.5, 0.00001, 0.75) *
 			0.5 +
 		0.5;
 	float windRipple = windDistortion * plainRipple;

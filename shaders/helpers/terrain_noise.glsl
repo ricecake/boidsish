@@ -166,6 +166,36 @@ float gaborWindNoise(vec2 pos, vec2 curlVec, float time, float freq, float bandw
 	return noiseAcc;
 }
 
+float tangentSpaceCrunches(
+	vec3  worldPos,
+	vec3  worldNormal,
+	vec3  curlVec3D,
+	float time,
+	float freq,
+	float bandwidth,
+	float sparsity
+) {
+	// 1. Construct the TBN frame
+	vec3 N = normalize(worldNormal);
+	vec3 referenceUp = abs(N.y) < 0.999 ? vec3(0.0, 1.0, 0.0) : vec3(1.0, 0.0, 0.0);
+	vec3 T = normalize(cross(referenceUp, N));
+	vec3 B = normalize(cross(N, T));
+
+	// 2. Project world position into 2D surface space
+	vec2 surfacePos = vec2(dot(worldPos, T), dot(worldPos, B));
+	vec2 dir = normalize(vec2(dot(curlVec3D, T), dot(curlVec3D, B)));
+	vec2 odir = vec2(-dir.x, dir.y);
+
+	// 4. Evaluate the 2D Gabor Noise
+	vec2 gridId = floor(surfacePos);
+	vec2 gridFract = fract(surfacePos);
+
+	vec2 F = dir * freq;
+	vec2 oF = odir * freq;
+	return clamp(sin(time*dot(F, oF))+cos(time*dot(F, oF)), -1, 1);
+}
+
+
 float tangentGabor(
 	vec3  worldPos,
 	vec3  worldNormal,
