@@ -105,16 +105,18 @@ namespace Boidsish {
 
 				for (auto& e : new_elements) {
 					if (e.parent != -1) {
-						if (old_to_new.count(e.parent))
-							e.parent = old_to_new[e.parent];
+						auto it = old_to_new.find(e.parent);
+						if (it != old_to_new.end())
+							e.parent = it->second;
 						else
 							e.parent = -1;
 					}
 
 					std::vector<int> new_children;
 					for (int child : e.children) {
-						if (old_to_new.count(child))
-							new_children.push_back(old_to_new[child]);
+						auto it = old_to_new.find(child);
+						if (it != old_to_new.end())
+							new_children.push_back(it->second);
 					}
 					e.children = std::move(new_children);
 				}

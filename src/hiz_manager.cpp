@@ -48,7 +48,7 @@ namespace Boidsish {
 
 		glGenTextures(1, &hiz_texture_);
 		glBindTexture(GL_TEXTURE_2D, hiz_texture_);
-		glTexStorage2D(GL_TEXTURE_2D, mip_count_, GL_R32F, hiz_width_, hiz_height_);
+		glTexStorage2D(GL_TEXTURE_2D, mip_count_, GL_RG32F, hiz_width_, hiz_height_);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST_MIPMAP_NEAREST);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
@@ -80,6 +80,7 @@ namespace Boidsish {
 
 			// Set source size uniform
 			glUniform2i(glGetUniformLocation(generate_shader_->ID, "u_srcSize"), src_w, src_h);
+			generate_shader_->setBool("u_isFirstMip", mip == 0);
 
 			// Bind source texture
 			glActiveTexture(GL_TEXTURE0);
@@ -95,7 +96,7 @@ namespace Boidsish {
 			generate_shader_->setInt("u_srcDepth", 0);
 
 			// Bind destination mip as image
-			glBindImageTexture(0, hiz_texture_, mip, GL_FALSE, 0, GL_WRITE_ONLY, GL_R32F);
+			glBindImageTexture(0, hiz_texture_, mip, GL_FALSE, 0, GL_WRITE_ONLY, GL_RG32F);
 
 			// Dispatch
 			glDispatchCompute((dst_w + 7) / 8, (dst_h + 7) / 8, 1);

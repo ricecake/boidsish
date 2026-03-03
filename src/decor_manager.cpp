@@ -85,12 +85,13 @@ namespace Boidsish {
 		// Main instance storage (persistent)
 		glGenBuffers(1, &type.ssbo);
 		glBindBuffer(GL_SHADER_STORAGE_BUFFER, type.ssbo);
-		glBufferData(GL_SHADER_STORAGE_BUFFER, kMaxInstancesPerType * sizeof(glm::mat4), nullptr, GL_STATIC_DRAW);
+		glBufferData(GL_SHADER_STORAGE_BUFFER, kMaxInstancesPerType * sizeof(glm::mat4), nullptr, GL_DYNAMIC_DRAW);
 
 		// Visibility bitfields
 		glGenBuffers(1, &type.visibility_ssbo);
 		glBindBuffer(GL_SHADER_STORAGE_BUFFER, type.visibility_ssbo);
-		glBufferData(GL_SHADER_STORAGE_BUFFER, kMaxInstancesPerType * sizeof(uint32_t), nullptr, GL_DYNAMIC_DRAW);
+		std::vector<uint32_t> initial_visibility(kMaxInstancesPerType, 0);
+		glBufferData(GL_SHADER_STORAGE_BUFFER, kMaxInstancesPerType * sizeof(uint32_t), initial_visibility.data(), GL_DYNAMIC_DRAW);
 
 		// Visible instances (filled per frame)
 		glGenBuffers(1, &type.visible_ssbo);
@@ -115,7 +116,7 @@ namespace Boidsish {
 			GL_DRAW_INDIRECT_BUFFER,
 			num_meshes * sizeof(DrawElementsIndirectCommand),
 			commands.data(),
-			GL_STATIC_DRAW
+			GL_DYNAMIC_DRAW
 		);
 
 		// Shadow indirect commands
@@ -125,7 +126,7 @@ namespace Boidsish {
 			GL_DRAW_INDIRECT_BUFFER,
 			num_meshes * sizeof(DrawElementsIndirectCommand),
 			commands.data(),
-			GL_STATIC_DRAW
+			GL_DYNAMIC_DRAW
 		);
 
 		// Atomic counter for culling
@@ -308,6 +309,11 @@ namespace Boidsish {
 		for (auto& type : decor_types_) {
 			type.model->PrepareResources(mb);
 
+			// Zero out visibility bitfields to prevent stale culling data
+			glBindBuffer(GL_SHADER_STORAGE_BUFFER, type.visibility_ssbo);
+			std::vector<uint32_t> zeros(kMaxInstancesPerType, 0);
+			glBufferSubData(GL_SHADER_STORAGE_BUFFER, 0, kMaxInstancesPerType * sizeof(uint32_t), zeros.data());
+
 			// Update indirect buffers with correct Megabuffer offsets
 			const auto&                              meshes = type.model->getMeshes();
 			size_t                                   num_meshes = meshes.size();
@@ -394,6 +400,7 @@ namespace Boidsish {
 		culling_shader_->setVec3("u_cameraPos", camera_pos);
 		culling_shader_->setVec3("u_cameraVelocity", camera_velocity_);
 		culling_shader_->setFloat("u_deltaTime", delta_time);
+		culling_shader_->setInt("u_totalSlots", kMaxInstancesPerType);
 
 		glActiveTexture(GL_TEXTURE10);
 		glBindTexture(GL_TEXTURE_3D, visibility_volume);
@@ -603,6 +610,7 @@ namespace Boidsish {
 			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 3, type.visibility_ssbo);
 			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 5, type.ssbo);
 			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 4, type.visible_ssbo);
+			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 15, type.count_buffer); // Reusing as SSBO for count
 
 			unsigned int zero = 0;
 			glBindBuffer(GL_ATOMIC_COUNTER_BUFFER, type.count_buffer);
@@ -629,7 +637,10 @@ namespace Boidsish {
 			}
 			glDispatchCompute(1, 1, 1);
 
-			glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT | GL_COMMAND_BARRIER_BIT);
+			glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT | GL_COMMAND_BARRIER_BIT | GL_ATOMIC_COUNTER_BARRIER_BIT);
+
+			// Bind the visibility bitfields SSBO for the vertex shader
+			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 14, type.visibility_ssbo);
 		}
 
 		// 2. Rendering Pass
@@ -644,6 +655,7 @@ namespace Boidsish {
 			shader->setMat4("lightSpaceMatrix", *light_space_matrix);
 		}
 		shader->setMat4("model", glm::mat4(1.0f));
+		shader->setBool("uUseMDI", false);
 		shader->setBool("useSSBOInstancing", true);
 		shader->setBool("isTextEffect", false);
 		shader->setBool("isColossal", false);
@@ -674,8 +686,10 @@ namespace Boidsish {
 			// Bind the appropriate indirect buffer
 			if (is_shadow_pass) {
 				glBindBuffer(GL_DRAW_INDIRECT_BUFFER, type.shadow_indirect_buffer);
+				shader->setUint("u_passMask", (cascade_index >= 0) ? (1u << (cascade_index + 1)) : 0x1Eu);
 			} else {
 				glBindBuffer(GL_DRAW_INDIRECT_BUFFER, type.indirect_buffer);
+				shader->setUint("u_passMask", 0x21u); // PASS_CAMERA_FRUSTUM | PASS_OCCLUSION
 			}
 
 			const auto& meshes = type.model->getMeshes();

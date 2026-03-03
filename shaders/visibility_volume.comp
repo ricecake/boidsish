@@ -46,10 +46,17 @@ bool isOccluded(vec3 pos) {
     if (any(lessThan(uv, vec2(0.0))) || any(greaterThan(uv, vec2(1.0)))) return false;
 
     float depth = ndc.z * 0.5 + 0.5;
-    float hizDepth = textureLod(u_hizTexture, uv, 0.0).r;
-    if (hizDepth < 0.0001) return false;
+    // Sample Hi-Z: Red is MIN depth, Green is MAX depth
+    // We use a high mip level for the volume to be extra conservative and avoid flickering
+    float mip = 3.0;
+    vec2 hizDepth = textureLod(u_hizTexture, uv, mip).rg;
 
-    return depth > hizDepth + 0.001;
+    // If MAX depth is near zero, it's likely uninitialized or clear color (if 0)
+    // In standard depth, 1.0 is far, 0.0 is near.
+    if (hizDepth.y < 0.0001) return false;
+
+    // Conservative culling: if voxel's point is significantly behind the area's farthest point
+    return depth > hizDepth.y + 0.05;
 }
 
 void main() {

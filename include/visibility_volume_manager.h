@@ -27,8 +27,8 @@ namespace Boidsish {
 	 */
 	class VisibilityVolumeManager {
 	public:
-		static constexpr int kVolumeSize = 64;
-		static constexpr float kVoxelSize = 8.0f; // 8 meters per voxel -> 512m coverage
+		static constexpr int kVolumeSize = 128;
+		static constexpr float kVoxelSize = 10.0f; // 10 meters per voxel -> 1280m coverage
 
 		VisibilityVolumeManager();
 		~VisibilityVolumeManager();

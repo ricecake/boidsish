@@ -26,6 +26,13 @@ layout(std430, binding = 12) buffer BoneMatricesSSBO {
 };
 
 #include "frustum.glsl"
+
+layout(std430, binding = 14) readonly buffer VisibilityBitfields {
+	uint visibility_bits[];
+};
+
+uniform uint u_passMask = 0u;
+
 #include "helpers/fast_noise.glsl"
 #include "helpers/lighting.glsl"
 #include "helpers/shockwave.glsl"
@@ -192,6 +199,20 @@ void main() {
 			gl_ClipDistance[0] = -1.0; // Clip it
 			return;
 		}
+	}
+
+	// Hi-Z occlusion culling and Visibility Volume check
+	if (uUseMDI && !current_isColossal) {
+	    // Check bitmask (Bit 0 = Frustum, Bit 5 = Occlusion)
+	    uint bits = visibility_bits[drawID];
+	    if (u_passMask != 0u && (bits & u_passMask) != u_passMask) {
+	        gl_Position = vec4(0.0, 0.0, -2.0, 1.0);
+			FragPos = vec3(0.0);
+			Normal = vec3(0.0, 1.0, 0.0);
+			TexCoords = vec2(0.0);
+			gl_ClipDistance[0] = -1.0;
+			return;
+	    }
 	}
 
 

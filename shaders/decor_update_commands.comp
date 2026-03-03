@@ -28,6 +28,10 @@ layout(std430, binding = 5) readonly buffer MainInstances {
 
 layout(binding = 0) uniform atomic_uint visibleCount;
 
+layout(std430, binding = 15) buffer BatchData {
+    uint u_visibleCount;
+};
+
 uniform int u_numCommands;
 uniform int u_totalSlots;
 uniform int u_passMask; // 1=Camera, 2=Shadow0, 4=Shadow1, 8=Shadow2, 16=Shadow3
@@ -63,6 +67,7 @@ void main() {
     } else {
         if (gid == 0) {
             uint count = atomicCounter(visibleCount);
+            u_visibleCount = count; // Save for CPU readback/debugging if needed
             for (int i = 0; i < u_numCommands; ++i) {
                 commands[i].instanceCount = count;
             }
