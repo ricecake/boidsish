@@ -8,6 +8,7 @@
 #include "post_processing/effects/BloomEffect.h"
 #include "post_processing/effects/FilmGrainEffect.h"
 #include "post_processing/effects/GtaoEffect.h"
+#include "post_processing/effects/SsrEffect.h"
 #include "post_processing/effects/ToneMappingEffect.h"
 
 namespace Boidsish {
@@ -100,6 +101,28 @@ namespace Boidsish {
 								float max_exposure = auto_exposure_effect->GetMaxExposure();
 								if (ImGui::SliderFloat("Max Exposure", &max_exposure, 1.0f, 100.0f)) {
 									auto_exposure_effect->SetMaxExposure(max_exposure);
+								}
+							}
+						}
+
+						if (effect->GetName() == "SSR" && is_enabled) {
+							auto ssr_effect = std::dynamic_pointer_cast<PostProcessing::SsrEffect>(effect);
+							if (ssr_effect) {
+								float intensity = ssr_effect->GetIntensity();
+								if (ImGui::SliderFloat("Intensity##SSR", &intensity, 0.0f, 2.0f)) {
+									ssr_effect->SetIntensity(intensity);
+								}
+								float max_dist = ssr_effect->GetMaxDistance();
+								if (ImGui::SliderFloat("Max Distance##SSR", &max_dist, 10.0f, 500.0f)) {
+									ssr_effect->SetMaxDistance(max_dist);
+								}
+								float stride = ssr_effect->GetStride();
+								if (ImGui::SliderFloat("Stride##SSR", &stride, 1.0f, 10.0f)) {
+									ssr_effect->SetStride(stride);
+								}
+								float thickness = ssr_effect->GetThickness();
+								if (ImGui::SliderFloat("Thickness##SSR", &thickness, 0.01f, 2.0f)) {
+									ssr_effect->SetThickness(thickness);
 								}
 							}
 						}

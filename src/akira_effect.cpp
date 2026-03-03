@@ -46,13 +46,15 @@ namespace Boidsish {
 		}
 	}
 
-	void AkiraEffectManager::Render(const glm::mat4& view, const glm::mat4& projection, float /* time */) {
+	void AkiraEffectManager::Render(const glm::mat4& view, const glm::mat4& projection, float time) {
 		if (effects_.empty())
 			return;
 
 		shader_->use();
 		shader_->setMat4("view", view);
+		shader_->setMat4("viewMatrix", view);
 		shader_->setMat4("projection", projection);
+		shader_->setFloat("time", time);
 
 		glBindVertexArray(Shape::sphere_vao_);
 

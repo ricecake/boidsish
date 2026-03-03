@@ -159,8 +159,10 @@ namespace Boidsish {
 		float aabb_max_y = 0.0f;   // 4 bytes
 		float aabb_max_z = 0.0f;   // 4 bytes
 		float oclusion_padding[2]; // 8 bytes -> 16
+		// SSR Toggles
+		int ssr_enabled = 1; // 4 bytes
 		// Padding to 256 bytes for SSBO alignment safety
-		float padding[3];
+		float padding[2];
 	};
 
 	/**

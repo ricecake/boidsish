@@ -18,6 +18,7 @@ in float      tessFactor;
 // #include "helpers/noise.glsl"
 
 uniform bool uIsShadowPass = false;
+uniform mat4 view;
 
 // Biome texture array: RG8 - R=low_idx, G=t
 uniform sampler2DArray uBiomeMap;

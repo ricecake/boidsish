@@ -39,14 +39,13 @@ namespace Boidsish {
 			height_ = height;
 		}
 
-		void SdfVolumeEffect::Apply(
-			GLuint sourceTexture,
-			GLuint depthTexture,
-			GLuint /* velocityTexture */,
-			const glm::mat4& viewMatrix,
-			const glm::mat4& projectionMatrix,
-			const glm::vec3& cameraPos
-		) {
+		void SdfVolumeEffect::Apply(const PostProcessingContext& context) {
+			GLuint           sourceTexture = context.sourceTexture;
+			GLuint           depthTexture = context.depthTexture;
+			GLuint           velocityTexture = context.velocityTexture;
+			const glm::mat4& viewMatrix = context.viewMatrix;
+			const glm::mat4& projectionMatrix = context.projectionMatrix;
+			const glm::vec3& cameraPos = context.cameraPos;
 			if (!shader_ || !shader_->isValid())
 				return;
 
@@ -55,8 +54,8 @@ namespace Boidsish {
 			shader_->setInt("depthTexture", 1);
 			shader_->setVec2("screenSize", glm::vec2(width_, height_));
 			shader_->setVec3("cameraPos", cameraPos);
-			shader_->setMat4("invView", glm::inverse(viewMatrix));
-			shader_->setMat4("invProjection", glm::inverse(projectionMatrix));
+			shader_->setMat4("invView", context.invViewMatrix);
+			shader_->setMat4("invProjection", context.invProjectionMatrix);
 			shader_->setFloat("time", time_);
 
 			glActiveTexture(GL_TEXTURE0);

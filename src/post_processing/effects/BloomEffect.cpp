@@ -107,18 +107,13 @@ namespace Boidsish {
 			glBindFramebuffer(GL_FRAMEBUFFER, 0);
 		}
 
-		void BloomEffect::Apply(
-			GLuint sourceTexture,
-			GLuint depthTexture,
-			GLuint /* velocityTexture */,
-			const glm::mat4& viewMatrix,
-			const glm::mat4& projectionMatrix,
-			const glm::vec3& cameraPos
-		) {
-			GLint originalFBO;
-			glGetIntegerv(GL_FRAMEBUFFER_BINDING, &originalFBO);
-			GLint originalViewport[4];
-			glGetIntegerv(GL_VIEWPORT, originalViewport);
+		void BloomEffect::Apply(const PostProcessingContext& context) {
+			GLuint           sourceTexture = context.sourceTexture;
+			GLuint           depthTexture = context.depthTexture;
+			GLuint           velocityTexture = context.velocityTexture;
+			const glm::mat4& viewMatrix = context.viewMatrix;
+			const glm::mat4& projectionMatrix = context.projectionMatrix;
+			const glm::vec3& cameraPos = context.cameraPos;
 
 			// 1. Bright pass - extract bright pixels
 			glBindFramebuffer(GL_FRAMEBUFFER, _brightPassFBO);
@@ -173,8 +168,8 @@ namespace Boidsish {
 			glDisable(GL_BLEND);
 
 			// 4. Final composite with scene
-			glBindFramebuffer(GL_FRAMEBUFFER, originalFBO);
-			glViewport(originalViewport[0], originalViewport[1], originalViewport[2], originalViewport[3]);
+			glBindFramebuffer(GL_FRAMEBUFFER, context.targetFbo);
+			glViewport(0, 0, _width, _height);
 			_compositeShader->use();
 			_compositeShader->setInt("sceneTexture", 0);
 			_compositeShader->setInt("bloomBlur", 1);

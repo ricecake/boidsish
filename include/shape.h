@@ -54,6 +54,7 @@ namespace Boidsish {
 			metallic_(other.metallic_),
 			ao_(other.ao_),
 			use_pbr_(other.use_pbr_),
+			ssr_enabled_(other.ssr_enabled_),
 			dissolve_enabled_(other.dissolve_enabled_),
 			dissolve_plane_normal_(other.dissolve_plane_normal_),
 			dissolve_plane_dist_(other.dissolve_plane_dist_) {}
@@ -90,6 +91,7 @@ namespace Boidsish {
 				metallic_ = other.metallic_;
 				ao_ = other.ao_;
 				use_pbr_ = other.use_pbr_;
+				ssr_enabled_ = other.ssr_enabled_;
 				dissolve_enabled_ = other.dissolve_enabled_;
 				dissolve_plane_normal_ = other.dissolve_plane_normal_;
 				dissolve_plane_dist_ = other.dissolve_plane_dist_;
@@ -350,6 +352,13 @@ namespace Boidsish {
 			MarkDirty();
 		}
 
+		inline bool IsSSREnabled() const { return ssr_enabled_; }
+
+		inline void SetSSREnabled(bool enabled) {
+			ssr_enabled_ = enabled;
+			MarkDirty();
+		}
+
 		/**
 		 * @brief Set the dissolve plane for the shape.
 		 * Fragments where dot(FragPos, direction) > dist will be discarded.
@@ -429,6 +438,7 @@ namespace Boidsish {
 			metallic_(0.0f),
 			ao_(1.0f),
 			use_pbr_(false),
+			ssr_enabled_(true),
 			dissolve_enabled_(false),
 			dissolve_plane_normal_(0, 1, 0),
 			dissolve_plane_dist_(0.0f) {}
@@ -461,6 +471,7 @@ namespace Boidsish {
 		float     metallic_;
 		float     ao_;
 		bool      use_pbr_;
+		bool      ssr_enabled_;
 
 	protected:
 		bool      dissolve_enabled_;

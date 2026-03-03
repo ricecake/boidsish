@@ -1,0 +1,185 @@
+#version 430 core
+#extension GL_GOOGLE_include_directive : enable
+
+layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
+
+layout(rgba16f, binding = 0) uniform writeonly image2D uSsrImage;
+
+uniform sampler2D uDepthTexture;
+uniform sampler2D uNormalRoughnessTexture;
+uniform sampler2D uSceneTexture;
+uniform sampler2D uHiZTexture;
+
+#include "../temporal_data.glsl"
+
+uniform mat4  uView;
+uniform vec2  uScreenSize;
+uniform float uTime;
+
+uniform float uMaxDistance = 100.0;
+uniform float uStride = 2.0;
+uniform float uThickness = 0.5;
+uniform float uHiZMip = 3.0;
+
+#define PI 3.14159265359
+
+// Hash function for stochastic jitter
+float hash(vec2 p) {
+    p = fract(p * vec2(123.34, 456.21));
+    p += dot(p, p + 45.32);
+    return fract(p.x * p.y);
+}
+
+vec3 hash3(vec2 p) {
+    vec3 p3 = fract(vec3(p.xyx) * vec3(.1031, .1030, .0973));
+    p3 += dot(p3, p3.yxz+33.33);
+    return fract((p3.xxy+p3.yxx)*p3.zyx);
+}
+
+float linearDepth(float depth) {
+    float z = depth * 2.0 - 1.0;
+    return (2.0 * uProjection[3][2]) / (uProjection[2][2] + z);
+}
+
+// GGX Importance Sampling for Stochastic Reflections
+vec3 importanceSampleGGX(vec2 xi, vec3 n, float roughness) {
+    float a = roughness * roughness;
+    float phi = 2.0 * PI * xi.x;
+    float cosTheta = sqrt((1.0 - xi.y) / (1.0 + (a*a - 1.0) * xi.y));
+    float sinTheta = sqrt(1.0 - cosTheta * cosTheta);
+
+    vec3 h;
+    h.x = cos(phi) * sinTheta;
+    h.y = sin(phi) * sinTheta;
+    h.z = cosTheta;
+
+    vec3 up = abs(n.z) < 0.999 ? vec3(0,0,1) : vec3(1,0,0);
+    vec3 tangent = normalize(cross(up, n));
+    vec3 bitangent = cross(n, tangent);
+
+    return tangent * h.x + bitangent * h.y + n * h.z;
+}
+
+vec3 viewToWorld(vec3 viewPos) {
+	return (invView * vec4(viewPos, 1.0)).xyz;
+}
+
+vec3 worldToView(vec3 worldPos) {
+	return (uView * vec4(worldPos, 1.0)).xyz;
+}
+
+vec3 project(vec3 viewPos) {
+	vec4 projected = uProjection * vec4(viewPos, 1.0);
+	return projected.xyz / projected.w;
+}
+
+void main() {
+    ivec2 pixel = ivec2(gl_GlobalInvocationID.xy);
+    if (pixel.x >= int(uScreenSize.x) || pixel.y >= int(uScreenSize.y)) return;
+
+    vec2 uv = (vec2(pixel) + 0.5) / uScreenSize;
+    float depth = texture(uDepthTexture, uv).r;
+
+    if (depth >= 1.0) {
+        imageStore(uSsrImage, pixel, vec4(0.0));
+        return;
+    }
+
+    vec4 normRough = texture(uNormalRoughnessTexture, uv);
+    vec3 viewNormal = normalize(normRough.xyz * 2.0 - 1.0);
+    float roughness = normRough.w;
+
+    // SSR only for reflective surfaces (roughness < 0.6)
+    if (roughness > 0.6) {
+        imageStore(uSsrImage, pixel, vec4(0.0));
+        return;
+    }
+
+    vec3 ndcPos = vec3(uv * 2.0 - 1.0, depth * 2.0 - 1.0);
+    vec4 viewPos4 = invProjection * vec4(ndcPos, 1.0);
+    vec3 viewPos = viewPos4.xyz / viewPos4.w;
+
+    // Stochastic Jitter
+    vec3 jitter = hash3(uv + uTime);
+    vec3 h = importanceSampleGGX(jitter.xy, viewNormal, roughness);
+    vec3 reflectDir = reflect(normalize(viewPos), h);
+
+    if (dot(reflectDir, viewNormal) < 0.0) reflectDir = reflect(normalize(viewPos), viewNormal);
+
+    // Hierarchical-Z Raymarching (Optimized)
+    vec3 rayOrigin = viewPos;
+    vec3 rayDir = reflectDir;
+
+    float maxDist = uMaxDistance;
+    float stepSize = uStride;
+
+    vec3 currentPos = rayOrigin + rayDir * 0.1;
+    bool hit = false;
+    vec2 hitUV;
+
+    // Optimized Raymarching using Hi-Z Min-Depth Skipping
+    float currentStep = uStride;
+    float prevStep = 0.0;
+
+    for(int i=0; i<64; i++) {
+        vec3 marchPos = rayOrigin + rayDir * currentStep;
+        vec3 projected = project(marchPos);
+        vec2 currentUV = projected.xy * 0.5 + 0.5;
+
+        if (currentUV.x < 0.0 || currentUV.x > 1.0 || currentUV.y < 0.0 || currentUV.y > 1.0) break;
+
+        float currentDepth = projected.z * 0.5 + 0.5;
+
+        // Red channel is MIN depth in the region.
+        float hizMin = textureLod(uHiZTexture, currentUV, uHiZMip).r;
+
+        if (currentDepth < hizMin) {
+            // The ray is in front of everything in this Hi-Z region
+            prevStep = currentStep;
+            currentStep += uStride * 4.0;
+        } else {
+            float sampledDepth = texture(uDepthTexture, currentUV).r;
+            if (currentDepth > sampledDepth) {
+                // Potential hit
+                float viewDepth = -marchPos.z;
+                float sceneViewDepth = linearDepth(sampledDepth);
+
+                if (viewDepth > sceneViewDepth && (viewDepth - sceneViewDepth) < uThickness) {
+                    // Refine intersection using Binary Search
+                    float start = prevStep;
+                    float end = currentStep;
+                    for (int j = 0; j < 4; j++) {
+                        float mid = (start + end) * 0.5;
+                        vec3 midPos = rayOrigin + rayDir * mid;
+                        vec3 midProj = project(midPos);
+                        vec2 midUV = midProj.xy * 0.5 + 0.5;
+                        float midDepth = midProj.z * 0.5 + 0.5;
+                        float sampleMid = texture(uDepthTexture, midUV).r;
+
+                        if (midDepth > sampleMid) end = mid;
+                        else start = mid;
+                    }
+
+                    hit = true;
+                    vec3 finalPos = rayOrigin + rayDir * end;
+                    vec3 finalProj = project(finalPos);
+                    hitUV = finalProj.xy * 0.5 + 0.5;
+                    break;
+                }
+            }
+            prevStep = currentStep;
+            currentStep += uStride;
+        }
+
+        if (currentStep > uMaxDistance) break;
+    }
+
+    vec4 result = vec4(0.0);
+    if (hit) {
+        vec3 reflectedColor = texture(uSceneTexture, hitUV).rgb;
+        float edgeFade = 1.0 - smoothstep(0.8, 1.0, length(hitUV * 2.0 - 1.0));
+        result = vec4(reflectedColor, edgeFade);
+    }
+
+    imageStore(uSsrImage, pixel, result);
+}

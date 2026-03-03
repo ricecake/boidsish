@@ -162,7 +162,9 @@ namespace Boidsish {
 			std::vector<glm::vec3> colors;
 			int                    current_idx = start_idx;
 			bool                   first = true;
-			while (current_idx != -1) {
+			int safety_limit = 0;
+			while (current_idx != -1 && safety_limit < 1000) {
+				safety_limit++;
 				const auto& e = ir.elements[current_idx];
 				if (e.type != ProceduralElementType::Tube)
 					break;

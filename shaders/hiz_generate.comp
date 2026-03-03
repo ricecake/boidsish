@@ -6,7 +6,7 @@ layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
 uniform sampler2D u_srcDepth;
 
 // Destination: current mip level being generated
-layout(r32f, binding = 0) uniform writeonly image2D u_dstMip;
+layout(rg32f, binding = 0) uniform writeonly image2D u_dstMip;
 
 // Source dimensions (for UV calculation)
 uniform ivec2 u_srcSize;
@@ -22,13 +22,40 @@ void main() {
 	vec2 srcTexelSize = 1.0 / vec2(u_srcSize);
 	vec2 uv = (vec2(pixel) * 2.0 + 1.0) * srcTexelSize;
 
-	float d00 = texture(u_srcDepth, uv + vec2(-0.5, -0.5) * srcTexelSize).r;
-	float d10 = texture(u_srcDepth, uv + vec2(0.5, -0.5) * srcTexelSize).r;
-	float d01 = texture(u_srcDepth, uv + vec2(-0.5, 0.5) * srcTexelSize).r;
-	float d11 = texture(u_srcDepth, uv + vec2(0.5, 0.5) * srcTexelSize).r;
+	// Note: u_srcDepth is either the depth buffer (r) or previous Hi-Z mip (rg)
+	vec4 d00_v = texture(u_srcDepth, uv + vec2(-0.5, -0.5) * srcTexelSize);
+	vec4 d10_v = texture(u_srcDepth, uv + vec2(0.5, -0.5) * srcTexelSize);
+	vec4 d01_v = texture(u_srcDepth, uv + vec2(-0.5, 0.5) * srcTexelSize);
+	vec4 d11_v = texture(u_srcDepth, uv + vec2(0.5, 0.5) * srcTexelSize);
 
-	// MAX for conservative occlusion testing
-	float maxDepth = max(max(d00, d10), max(d01, d11));
+	float d00 = d00_v.r;
+	float d10 = d10_v.r;
+	float d01 = d01_v.r;
+	float d11 = d11_v.r;
 
-	imageStore(u_dstMip, pixel, vec4(maxDepth));
+	float minDepth = min(min(d00, d10), min(d01, d11));
+	float maxDepth;
+
+	// If source is the depth buffer, max depth is just the max of red channels
+	// If source is a previous Hi-Z mip, we want the max of the green channels
+	// For simplicity, we can use the source size or just check mip index if passed.
+	// But actually, for Min/Max pyramid, Max is always the green channel of mips > 0.
+	// Let's assume we use Green channel for Max in all Hi-Z mips.
+
+	// If it's mip 0, we're sampling the main depth buffer, so max of R.
+	// We can detect if we're sampling from Hi-Z by checking if the source size matches the depth buffer size.
+	// A more robust way is to always store min/max in RG and sample them.
+
+	// Let's re-read: the texture() call returns rg if it's the Hi-Z texture.
+	// If it's the depth buffer, it only has r.
+	// For mips > 0, we should use the max of the source's maxes.
+
+	float m00 = d00_v.g == 0.0 ? d00 : d00_v.g;
+	float m10 = d10_v.g == 0.0 ? d10 : d10_v.g;
+	float m01 = d01_v.g == 0.0 ? d01 : d01_v.g;
+	float m11 = d11_v.g == 0.0 ? d11 : d11_v.g;
+
+	maxDepth = max(max(m00, m10), max(m01, m11));
+
+	imageStore(u_dstMip, pixel, vec4(minDepth, maxDepth, 0.0, 0.0));
 }

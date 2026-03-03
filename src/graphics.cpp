@@ -45,6 +45,7 @@
 #include "post_processing/effects/NegativeEffect.h"
 #include "post_processing/effects/OpticalFlowEffect.h"
 #include "post_processing/effects/SdfVolumeEffect.h"
+#include "post_processing/effects/SsrEffect.h"
 #include "post_processing/effects/StrobeEffect.h"
 #include "post_processing/effects/SuperSpeedEffect.h"
 #include "post_processing/effects/TimeStutterEffect.h"
@@ -436,6 +437,7 @@ namespace Boidsish {
 		GLuint                  plane_vao{0}, plane_vbo{0}, sky_vao{0}, blur_quad_vao{0}, blur_quad_vbo{0};
 		GLuint main_fbo_{0}, main_fbo_texture_{0}, main_fbo_velocity_texture_{0}, main_fbo_depth_texture_{0},
 			main_fbo_rbo_{0};
+		GLuint m_NormalPBRTexture{0}, m_AlbedoMetallicTexture{0};
 		GLuint    lighting_ubo{0};
 		GLuint    visual_effects_ubo{0};
 		GLuint    temporal_data_ubo{0};
@@ -930,6 +932,22 @@ namespace Boidsish {
 			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 			glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT1, GL_TEXTURE_2D, main_fbo_velocity_texture_, 0);
 
+			// Normal + Roughness (G-Buffer)
+			glGenTextures(1, &m_NormalPBRTexture);
+			glBindTexture(GL_TEXTURE_2D, m_NormalPBRTexture);
+			glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, render_width, render_height, 0, GL_RGBA, GL_FLOAT, NULL);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+			glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT2, GL_TEXTURE_2D, m_NormalPBRTexture, 0);
+
+			// Albedo + Metallic (G-Buffer)
+			glGenTextures(1, &m_AlbedoMetallicTexture);
+			glBindTexture(GL_TEXTURE_2D, m_AlbedoMetallicTexture);
+			glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, render_width, render_height, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+			glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT3, GL_TEXTURE_2D, m_AlbedoMetallicTexture, 0);
+
 			// Depth-stencil texture (for shockwave depth testing and stencil operations)
 			// Using GL_DEPTH24_STENCIL8 allows sampling depth while also providing stencil
 			glGenTextures(1, &main_fbo_depth_texture_);
@@ -1034,6 +1052,10 @@ namespace Boidsish {
 				auto sdf_volume_effect = std::make_shared<PostProcessing::SdfVolumeEffect>();
 				sdf_volume_effect->SetEnabled(true);
 				post_processing_manager_->AddEffect(sdf_volume_effect);
+
+				auto ssr_effect = std::make_shared<PostProcessing::SsrEffect>();
+				ssr_effect->SetEnabled(true);
+				post_processing_manager_->AddEffect(ssr_effect);
 
 				if (enable_hdr_) {
 					auto tone_mapping_effect = std::make_shared<PostProcessing::ToneMappingEffect>();
@@ -1152,6 +1174,11 @@ namespace Boidsish {
 		}
 
 		~VisualizerImpl() {
+			if (m_NormalPBRTexture)
+				glDeleteTextures(1, &m_NormalPBRTexture);
+			if (m_AlbedoMetallicTexture)
+				glDeleteTextures(1, &m_AlbedoMetallicTexture);
+
 			ConfigManager::GetInstance().SetInt("window_width", width);
 			ConfigManager::GetInstance().SetInt("window_height", height);
 			ConfigManager::GetInstance().SetBool("fullscreen", is_fullscreen_);
@@ -1605,6 +1632,7 @@ namespace Boidsish {
 					s->use();
 					current_bound_shader_id = s->ID;
 					s->setMat4("view", view_mat);
+					s->setMat4("viewMatrix", view_mat);
 					s->setMat4("projection", proj_mat);
 					s->setFloat("time", simulation_time);
 					s->setBool("enableFrustumCulling", !is_shadow_pass);
@@ -2378,6 +2406,12 @@ namespace Boidsish {
 			glBindTexture(GL_TEXTURE_2D, main_fbo_velocity_texture_);
 			glTexImage2D(GL_TEXTURE_2D, 0, GL_RG16F, render_width, render_height, 0, GL_RG, GL_FLOAT, NULL);
 
+			// Resize G-Buffer textures
+			glBindTexture(GL_TEXTURE_2D, m_NormalPBRTexture);
+			glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, render_width, render_height, 0, GL_RGBA, GL_FLOAT, NULL);
+			glBindTexture(GL_TEXTURE_2D, m_AlbedoMetallicTexture);
+			glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, render_width, render_height, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
+
 			// Resize depth-stencil texture
 			glBindTexture(GL_TEXTURE_2D, main_fbo_depth_texture_);
 			glTexImage2D(
@@ -2741,6 +2775,11 @@ namespace Boidsish {
 		if (impl->hiz_manager && impl->hiz_manager->IsInitialized() && impl->enable_hiz_culling_ &&
 		    impl->frame_count_ > 0) {
 			impl->hiz_manager->GeneratePyramid(impl->main_fbo_depth_texture_);
+		}
+
+		// Update Hi-Z for SSR if enabled
+		if (impl->hiz_manager && impl->hiz_manager->IsInitialized()) {
+			impl->post_processing_manager_->SetHiZ(impl->hiz_manager->GetHiZTexture());
 		}
 
 		// Update Temporal UBO for motion blur and reprojection
@@ -3209,8 +3248,13 @@ namespace Boidsish {
 		} else {
 			glBindFramebuffer(GL_FRAMEBUFFER, impl->main_fbo_);
 			glViewport(0, 0, impl->render_width, impl->render_height);
-			GLuint attachments[2] = {GL_COLOR_ATTACHMENT0, GL_COLOR_ATTACHMENT1};
-			glDrawBuffers(2, attachments);
+			GLuint attachments[4] = {
+				GL_COLOR_ATTACHMENT0,
+				GL_COLOR_ATTACHMENT1,
+				GL_COLOR_ATTACHMENT2,
+				GL_COLOR_ATTACHMENT3
+			};
+			glDrawBuffers(4, attachments);
 		}
 
 		glEnable(GL_DEPTH_TEST);
@@ -3265,6 +3309,7 @@ namespace Boidsish {
 		GLuint current_depth = impl->main_fbo_depth_texture_;
 
 		if (effects_enabled) {
+			impl->post_processing_manager_->SetGBuffer(impl->m_NormalPBRTexture, impl->m_AlbedoMetallicTexture);
 			impl->post_processing_manager_
 				->BeginApply(current_texture, impl->main_fbo_, current_depth, impl->main_fbo_velocity_texture_);
 			impl->post_processing_manager_

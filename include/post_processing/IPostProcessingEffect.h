@@ -9,18 +9,30 @@
 namespace Boidsish {
 	namespace PostProcessing {
 
+		struct PostProcessingContext {
+			GLuint sourceTexture;
+			GLuint depthTexture;
+			GLuint velocityTexture;
+			GLuint normalRoughnessTexture; // G-Buffer
+			GLuint albedoMetallicTexture;  // G-Buffer
+			GLuint hizTexture;
+			GLuint targetFbo;
+
+			glm::mat4 viewMatrix;
+			glm::mat4 projectionMatrix;
+			glm::mat4 invViewMatrix;
+			glm::mat4 invProjectionMatrix;
+			glm::vec3 cameraPos;
+			float     time;
+			int       width;
+			int       height;
+		};
+
 		class IPostProcessingEffect {
 		public:
 			virtual ~IPostProcessingEffect() = default;
 
-			virtual void Apply(
-				GLuint           sourceTexture,
-				GLuint           depthTexture,
-				GLuint           velocityTexture,
-				const glm::mat4& viewMatrix,
-				const glm::mat4& projectionMatrix,
-				const glm::vec3& cameraPos
-			) = 0;
+			virtual void Apply(const PostProcessingContext& context) = 0;
 			virtual void Initialize(int width, int height) = 0;
 			virtual void Resize(int width, int height) = 0;
 

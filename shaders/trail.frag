@@ -1,6 +1,8 @@
 #version 430 core
 layout(location = 0) out vec4 FragColor;
 layout(location = 1) out vec2 Velocity;
+layout(location = 2) out vec4 NormalRoughness;
+layout(location = 3) out vec4 AlbedoMetallic;
 
 in vec3  vs_color;
 in vec3  vs_normal;
@@ -16,6 +18,7 @@ uniform bool  useRocketTrail;
 uniform bool  usePBR;         // Enable PBR lighting for trails
 uniform float trailRoughness; // PBR roughness [0=mirror, 1=matte]
 uniform float trailMetallic;  // PBR metallic [0=dielectric, 1=metal]
+uniform mat4  view;
 
 #include "helpers/noise.glsl"
 
@@ -108,4 +111,9 @@ void main() {
 	vec2 a = (CurPosition.xy / CurPosition.w) * 0.5 + 0.5;
 	vec2 b = (PrevPosition.xy / PrevPosition.w) * 0.5 + 0.5;
 	Velocity = a - b;
+
+	// G-Buffer for SSR
+	vec3 viewNormal = normalize(mat3(view) * norm);
+	NormalRoughness = vec4(viewNormal * 0.5 + 0.5, useIridescence ? 0.1 : 0.8);
+	AlbedoMetallic = vec4(vs_color, usePBR ? trailMetallic : 0.0);
 }

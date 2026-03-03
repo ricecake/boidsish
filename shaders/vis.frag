@@ -2,6 +2,8 @@
 #extension GL_GOOGLE_include_directive : enable
 layout(location = 0) out vec4 FragColor;
 layout(location = 1) out vec2 Velocity;
+layout(location = 2) out vec4 NormalRoughness;
+layout(location = 3) out vec4 AlbedoMetallic;
 
 #include "common_uniforms.glsl"
 
@@ -57,6 +59,7 @@ uniform float dissolve_plane_dist = 0.0;
 uniform sampler2D texture_diffuse1;
 uniform bool      use_texture;
 uniform float     u_windRimHighlight;
+uniform mat4      view;
 
 void main() {
 	bool  use_ssbo = uUseMDI && vUniformIndex >= 0;
@@ -81,6 +84,7 @@ void main() {
 											  : arcadeRainbowFrequency;
 	bool  c_isColossal = use_ssbo ? (uniforms_data[vUniformIndex].is_colossal != 0) : isColossal;
 	bool  c_useVertexColor = use_ssbo ? (uniforms_data[vUniformIndex].use_vertex_color != 0) : (useVertexColor != 0);
+	bool  c_ssr_enabled = use_ssbo ? (uniforms_data[vUniformIndex].ssr_enabled != 0) : true;
 
 	bool  c_dissolve_enabled = use_ssbo ? (uniforms_data[vUniformIndex].dissolve_enabled != 0) : dissolve_enabled;
 	vec3  c_dissolve_normal = use_ssbo ? uniforms_data[vUniformIndex].dissolve_plane_normal : dissolve_plane_normal;
@@ -208,4 +212,12 @@ void main() {
 	vec2 a = (CurPosition.xy / CurPosition.w) * 0.5 + 0.5;
 	vec2 b = (PrevPosition.xy / PrevPosition.w) * 0.5 + 0.5;
 	Velocity = a - b;
+
+	// Populate G-Buffer for SSR
+	vec3 viewNormal = normalize(mat3(view) * norm);
+	NormalRoughness = vec4(viewNormal * 0.5 + 0.5, c_roughness);
+	if (!c_ssr_enabled) {
+		NormalRoughness.w = 1.0; // Force high roughness to skip SSR
+	}
+	AlbedoMetallic = vec4(albedo, c_metallic);
 }

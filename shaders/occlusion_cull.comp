@@ -138,11 +138,12 @@ void main() {
 
 	// Sample Hi-Z at 4 corners of the screen rect at the chosen mip level
 	// Take max across all samples (most conservative - farthest depth in the region)
+	// Note: Green channel stores MAX depth in our dual-channel Hi-Z
 	float hizDepth = 0.0;
-	hizDepth = max(hizDepth, textureLod(u_hizTexture, screenRect.xy, float(mipLevel)).r);
-	hizDepth = max(hizDepth, textureLod(u_hizTexture, screenRect.zy, float(mipLevel)).r);
-	hizDepth = max(hizDepth, textureLod(u_hizTexture, screenRect.xw, float(mipLevel)).r);
-	hizDepth = max(hizDepth, textureLod(u_hizTexture, screenRect.zw, float(mipLevel)).r);
+	hizDepth = max(hizDepth, textureLod(u_hizTexture, screenRect.xy, float(mipLevel)).g);
+	hizDepth = max(hizDepth, textureLod(u_hizTexture, screenRect.zy, float(mipLevel)).g);
+	hizDepth = max(hizDepth, textureLod(u_hizTexture, screenRect.xw, float(mipLevel)).g);
+	hizDepth = max(hizDepth, textureLod(u_hizTexture, screenRect.zw, float(mipLevel)).g);
 
 	// If Hi-Z reads as zero/near-zero, the data is invalid (uninitialized or
 	// stale due to a memory barrier issue). Conservatively keep the object visible.
