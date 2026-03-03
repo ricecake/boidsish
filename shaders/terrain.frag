@@ -436,9 +436,10 @@ void main() {
 		0.5;
 	float windRipple = windDistortion * plainRipple;
 	float grassFactor = smoothstep(0.25, 0.5, max(dot(albedo, COL_GRASS_LUSH), dot(albedo, COL_GRASS_DRY)));
-	albedo *= mix(1, mix(1.0, 1.25, windDistortion) * mix(1.0, 1.05, windRipple), grassFactor);
-	roughness *= mix(1.25, 1.0, windDistortion) * mix(1, mix(1.5, 1.0, windRipple), grassFactor);
-	// perturbedNorm += rawWindNudge * mix(0.0, 1.05, plainRipple);
+
+	albedo *= mix(1, mix(1.0, 1.25, windDistortion) * mix(1.0, 1.15, windRipple), grassFactor);
+	roughness *= mix(1.25, 1.0, windDistortion) * mix(1, mix(1.75, 1.0, windRipple), grassFactor);
+	perturbedNorm = mix(perturbedNorm, normalize(perturbedNorm + (normalize(rawWindNudge) * mix(0.0, 1.05, plainRipple)) * 0.23), grassFactor);
 
 	vec3 lighting = apply_lighting_pbr(FragPos, perturbedNorm, albedo, roughness, metallic, 1.0).rgb;
 

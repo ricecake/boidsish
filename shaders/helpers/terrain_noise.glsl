@@ -192,7 +192,7 @@ float tangentSpaceCrunches(
 
 	vec2 F = dir * freq;
 	vec2 oF = odir * freq;
-	return clamp(sin(time*dot(F, oF))+cos(time*dot(F, oF)), -1, 1);
+	return clamp(sin(time*dot(F, oF))*cos(time*freq*fract(dot(F, oF))), -1, 1);
 }
 
 
