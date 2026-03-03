@@ -282,16 +282,13 @@ float tangentSpaceCrunches(
 	// 2. Project world position into 2D surface space
 	vec2 surfacePos = vec2(dot(worldPos, T), dot(worldPos, B));
 	vec2 dir = normalize(vec2(dot(curlVec3D, T), dot(curlVec3D, B)));
-	vec2 odir = vec2(-dir.x, dir.y);
-
-
-	// vec2 w = worldPos - surfacePos;
-	// vec2 thing = (sin(w/2)*sin(w/2))/sin(2/2);
-
+	vec2 odir = vec2(dir.y, -dir.x);
 
 	vec2 F = surfacePos+dir * bandwidth;
 	vec2 oF = surfacePos+odir * sparsity;
 	return clamp(dot(sin(F*freq*dot(F, oF)), cos(oF*freq*(dot(F, oF)))), -1, 1);
+
+	// return (dot(surfacePos+dir * bandwidth, floor(surfacePos) - surfacePos) - dot(surfacePos+odir * bandwidth, floor(surfacePos) - surfacePos)) * sin(time * 0.01);
 }
 
 
