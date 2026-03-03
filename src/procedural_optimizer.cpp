@@ -104,11 +104,19 @@ namespace Boidsish {
 				}
 
 				for (auto& e : new_elements) {
-					if (e.parent != -1)
-						e.parent = old_to_new[e.parent];
-					for (int& child : e.children) {
-						child = old_to_new[child];
+					if (e.parent != -1) {
+						if (old_to_new.count(e.parent))
+							e.parent = old_to_new[e.parent];
+						else
+							e.parent = -1;
 					}
+
+					std::vector<int> new_children;
+					for (int child : e.children) {
+						if (old_to_new.count(child))
+							new_children.push_back(old_to_new[child]);
+					}
+					e.children = std::move(new_children);
 				}
 				ir.elements = std::move(new_elements);
 			}
