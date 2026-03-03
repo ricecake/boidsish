@@ -10,126 +10,19 @@ layout(std430, binding = 0) readonly buffer MainInstances {
 	Instance all_instances[];
 };
 
-layout(std430, binding = 1) writeonly buffer VisibleInstances {
-	Instance visible_instances[];
+layout(std430, binding = 1) buffer VisibilityBitfields {
+	uint visibility_bits[];
 };
 
-layout(binding = 0) uniform atomic_uint visibleCount;
-
 uniform int   u_totalSlots;
-uniform vec4  u_frustumPlanes[6];
-uniform mat4  u_viewProj;
-uniform vec2  u_viewportSize;
-uniform float u_minPixelSize;
-uniform vec3  u_aabbMin;
-uniform vec3  u_aabbMax;
+uniform vec3  u_volumeOrigin;
+uniform float u_voxelSize;
+uniform usampler3D u_visibilityVolume;
 
-// Hi-Z occlusion culling uniforms
-uniform sampler2D u_hizTexture;
-uniform mat4      u_prevViewProjection;
-uniform ivec2     u_hizSize;
-uniform int       u_hizMipCount;
-uniform bool      u_enableHiZ;
-
-#include "helpers/terrain_shadows.glsl"
-uniform vec3 u_lightDir; // From point to light
-
-bool isInFrustum(vec3 pos, float radius) {
-	for (int i = 0; i < 6; i++) {
-		if (dot(u_frustumPlanes[i].xyz, pos) + u_frustumPlanes[i].w < -radius) {
-			return false;
-		}
-	}
-	return true;
-}
-
-bool isAABBInFrustum(mat4 modelMatrix, vec3 aabbMin, vec3 aabbMax) {
-	// Simple conservative check: sphere from AABB
-	vec3 center = (aabbMin + aabbMax) * 0.5;
-	vec3 worldCenter = vec3(modelMatrix * vec4(center, 1.0));
-
-	vec3  extent = (aabbMax - aabbMin) * 0.5;
-	float radius = length(extent * mat3(modelMatrix)); // Approximate world radius
-
-	return isInFrustum(worldCenter, radius);
-}
-
-bool isOccluded(vec3 pos, float radius) {
-	if (!u_enableHiZ)
-		return false;
-
-	// Conservative AABB from sphere
-	vec3 aabbMin = pos - vec3(radius);
-	vec3 aabbMax = pos + vec3(radius);
-
-	// Project 8 corners into previous frame clip space
-	vec2  minScreen = vec2(1e30);
-	vec2  maxScreen = vec2(-1e30);
-	float nearestDepth = 1.0;
-	int   cornersInFront = 0;
-
-	for (int i = 0; i < 8; i++) {
-		vec3 corner = vec3(
-			(i & 1) != 0 ? aabbMax.x : aabbMin.x,
-			(i & 2) != 0 ? aabbMax.y : aabbMin.y,
-			(i & 4) != 0 ? aabbMax.z : aabbMin.z
-		);
-		vec4 clip = u_prevViewProjection * vec4(corner, 1.0);
-
-		if (clip.w <= 0.0)
-			continue;
-
-		cornersInFront++;
-		vec3 ndc = clip.xyz / clip.w;
-		vec2 uv = ndc.xy * 0.5 + 0.5;
-
-		minScreen = min(minScreen, uv);
-		maxScreen = max(maxScreen, uv);
-		nearestDepth = min(nearestDepth, ndc.z * 0.5 + 0.5);
-	}
-
-	if (cornersInFront == 0)
-		return false;
-
-	if (cornersInFront < 8) {
-		// Straddling near plane - conservatively keep visible
-		return false;
-	}
-
-	// If the object was entirely off-screen in the previous frame,
-	// the Hi-Z has no valid data for it - conservatively keep visible
-	if (maxScreen.x < 0.0 || minScreen.x > 1.0 || maxScreen.y < 0.0 || minScreen.y > 1.0) {
-		return false;
-	}
-
-	// Apply small expansion for temporal safety
-	vec2 expand = 4.0 / vec2(u_hizSize);
-	minScreen -= expand;
-	maxScreen += expand;
-
-	vec2 screenSize = maxScreen - minScreen;
-	if (screenSize.x * screenSize.y > 0.5)
-		return false;
-
-	vec2  pixelSize = screenSize * vec2(u_hizSize);
-	float maxPixelDim = max(pixelSize.x, pixelSize.y);
-	int   mipLevel = clamp(int(ceil(log2(max(maxPixelDim, 1.0) / 2.0))), 0, u_hizMipCount - 1);
-
-	vec4 rect = clamp(vec4(minScreen, maxScreen), 0.0, 1.0);
-
-	float hizDepth = 0.0;
-	hizDepth = max(hizDepth, textureLod(u_hizTexture, rect.xy, float(mipLevel)).r);
-	hizDepth = max(hizDepth, textureLod(u_hizTexture, rect.zy, float(mipLevel)).r);
-	hizDepth = max(hizDepth, textureLod(u_hizTexture, rect.xw, float(mipLevel)).r);
-	hizDepth = max(hizDepth, textureLod(u_hizTexture, rect.zw, float(mipLevel)).r);
-
-	// If Hi-Z reads as zero/near-zero, the data is invalid (uninitialized or
-	// stale due to a memory barrier issue). Conservatively keep the object visible.
-	if (hizDepth < 0.0001)
-		return false;
-
-	return nearestDepth > hizDepth;
-}
+// Incremental update uniforms
+uniform vec3  u_cameraPos;
+uniform vec3  u_cameraVelocity;
+uniform float u_deltaTime;
 
 void main() {
 	uint idx = gl_GlobalInvocationID.x;
@@ -139,61 +32,31 @@ void main() {
 	Instance inst = all_instances[idx];
 
 	// Check if active (scale > 0)
-	// Magnitude of the first column
 	float s2 = dot(inst.model[0].xyz, inst.model[0].xyz);
-	if (s2 < 0.0001)
+	if (s2 < 0.0001) {
+		visibility_bits[idx] = 0;
 		return;
+	}
 
-	if (isAABBInFrustum(inst.model, u_aabbMin, u_aabbMax)) {
-		// Screen-space size check
-		if (u_minPixelSize > 0.0) {
-			vec3 corners[8];
-			corners[0] = vec3(u_aabbMin.x, u_aabbMin.y, u_aabbMin.z);
-			corners[1] = vec3(u_aabbMin.x, u_aabbMin.y, u_aabbMax.z);
-			corners[2] = vec3(u_aabbMin.x, u_aabbMax.y, u_aabbMin.z);
-			corners[3] = vec3(u_aabbMin.x, u_aabbMax.y, u_aabbMax.z);
-			corners[4] = vec3(u_aabbMax.x, u_aabbMin.y, u_aabbMin.z);
-			corners[5] = vec3(u_aabbMax.x, u_aabbMin.y, u_aabbMax.z);
-			corners[6] = vec3(u_aabbMax.x, u_aabbMax.y, u_aabbMin.z);
-			corners[7] = vec3(u_aabbMax.x, u_aabbMax.y, u_aabbMax.z);
+	vec3 pos = inst.model[3].xyz;
 
-			vec2 minP = vec2(2.0);
-			vec2 maxP = vec2(-2.0);
-			bool allBehind = true;
+	// Fast incremental update check: skip if camera movement is low and we're not near a voxel boundary
+	float cameraMove = length(u_cameraVelocity) * u_deltaTime;
+	vec3 voxelCoords = (pos - u_volumeOrigin) / u_voxelSize;
+	vec3 fractCoords = fract(voxelCoords);
+	float edgeMargin = 0.1; // 10% margin near edges to trigger re-check
 
-			for (int i = 0; i < 8; i++) {
-				vec4 clipPos = u_viewProj * inst.model * vec4(corners[i], 1.0);
-				if (clipPos.w > 0.0) {
-					vec2 ndc = clipPos.xy / clipPos.w;
-					minP = min(minP, ndc);
-					maxP = max(maxP, ndc);
-					allBehind = false;
-				}
-			}
+	bool nearEdge = any(lessThan(fractCoords, vec3(edgeMargin))) || any(greaterThan(fractCoords, vec3(1.0 - edgeMargin)));
 
-			if (allBehind)
-				return;
+	// Re-check visibility if we moved significantly or are near a voxel boundary
+	if (cameraMove > 0.5 || nearEdge || visibility_bits[idx] == 0) {
+		ivec3 volumeSize = textureSize(u_visibilityVolume, 0);
+		ivec3 voxelIdx = ivec3(floor(voxelCoords));
 
-			vec2 screenSize = (maxP - minP) * 0.5 * u_viewportSize;
-			if (max(screenSize.x, screenSize.y) < u_minPixelSize) {
-				return;
-			}
+		if (any(lessThan(voxelIdx, ivec3(0))) || any(greaterThanEqual(voxelIdx, volumeSize))) {
+			visibility_bits[idx] = 0;
+		} else {
+			visibility_bits[idx] = texelFetch(u_visibilityVolume, voxelIdx, 0).r;
 		}
-
-		// Hi-Z occlusion check using instance world position and conservative radius
-		vec3  pos = inst.model[3].xyz;
-		float radius = 10.0; // Conservatively large radius for decor
-		if (isOccluded(pos, radius))
-			return;
-
-		// Terrain shadow culling: skip if entirely in terrain shadow
-		if (u_lightDir.y > 0.0) {
-			// For foliage culling, we assume an upward normal for terrain shadow checks
-			if (isPointInTerrainShadow(pos, vec3(0, 1, 0), u_lightDir))
-				return;
-		}
-
-		uint destIdx = atomicCounterIncrement(visibleCount);
-		visible_instances[destIdx] = inst;
 	}
 }

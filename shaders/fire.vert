@@ -59,7 +59,7 @@ void main() {
 	v_epicenter = p.epicenter;
 
 	uint bits = visibility_bits[gl_VertexID];
-	bool isVisible = (bits & 0x21) == 0x21; // Camera + Occlusion
+	bool isVisible = (bits & 33u) == 33u; // 0x21: PASS_CAMERA_FRUSTUM | PASS_OCCLUSION
 
 	if (p.pos.w <= 0.0 || !isVisible) {
 		// Don't draw dead or culled particles

@@ -44,6 +44,10 @@ layout(std430, binding = 2) buffer IndirectionBuffer {
 	int particle_to_emitter_map[];
 };
 
+layout(std430, binding = 5) buffer VisibilityBitfields {
+	uint visibility_bits[];
+};
+
 struct ChunkInfo {
 	vec2  worldOffset;
 	float slice;
@@ -62,6 +66,10 @@ uniform float u_delta_time;
 uniform float u_time;
 uniform int   u_num_emitters;
 uniform int   u_num_chunks;
+
+uniform vec3       u_volumeOrigin;
+uniform float      u_voxelSize;
+uniform usampler3D u_visibilityVolume;
 
 uniform sampler3D      u_curlTexture;
 uniform sampler2DArray u_heightmapArray;
@@ -527,4 +535,18 @@ void main() {
 	}
 
 	particles[gid] = p;
+
+	// Update visibility bitmask for this particle
+	if (p.pos.w > 0.0) {
+		ivec3 volumeSize = textureSize(u_visibilityVolume, 0);
+		ivec3 voxelIdx = ivec3(floor((p.pos.xyz - u_volumeOrigin) / u_voxelSize));
+
+		if (any(lessThan(voxelIdx, ivec3(0))) || any(greaterThanEqual(voxelIdx, volumeSize))) {
+			visibility_bits[gid] = 0;
+		} else {
+			visibility_bits[gid] = texelFetch(u_visibilityVolume, voxelIdx, 0).r;
+		}
+	} else {
+		visibility_bits[gid] = 0;
+	}
 }

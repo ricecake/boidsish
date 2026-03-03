@@ -21,10 +21,6 @@ layout(std430, binding = 12) buffer BoneMatricesSSBO {
 	mat4 boneMatrices[];
 };
 
-layout(std430, binding = 14) buffer VisibilityBitfields {
-	uint visibility_bits[];
-};
-
 #include "helpers/fast_noise.glsl"
 #include "helpers/noise.glsl"
 #include "helpers/shockwave.glsl"

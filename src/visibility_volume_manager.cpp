@@ -104,7 +104,7 @@ namespace Boidsish {
 		glBindImageTexture(0, volume_texture_, 0, GL_TRUE, 0, GL_WRITE_ONLY, GL_R16UI);
 
 		glDispatchCompute(kVolumeSize / 4, kVolumeSize / 4, kVolumeSize / 4);
-		glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
+		glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | GL_TEXTURE_FETCH_BARRIER_BIT);
 	}
 
 } // namespace Boidsish

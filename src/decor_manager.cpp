@@ -613,6 +613,7 @@ namespace Boidsish {
 				int passMask = (cascade_index >= 0) ? (1 << (cascade_index + 1)) : 0x1E;
 				update_commands_shader_->setInt("u_passMask", passMask);
 				glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 2, type.shadow_indirect_buffer);
+				glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 4, type.visible_ssbo);
 			} else {
 				// Camera pass filtering
 				update_commands_shader_->setInt("u_passMask", 1); // PASS_CAMERA_FRUSTUM

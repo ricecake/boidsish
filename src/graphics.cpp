@@ -65,6 +65,7 @@
 #include "terrain_render_manager.h"
 #include "trail.h"
 #include "trail_render_manager.h"
+#include "visibility_volume_manager.h"
 #include "ui/EffectWidget.h"
 #include "ui/EnvironmentWidget.h"
 #include "ui/RenderWidget.h"
@@ -403,6 +404,7 @@ namespace Boidsish {
 		std::shared_ptr<ITerrainGenerator>    terrain_generator;
 		std::shared_ptr<TerrainRenderManager> terrain_render_manager;
 		std::unique_ptr<TrailRenderManager>   trail_render_manager;
+		std::unique_ptr<VisibilityVolumeManager> visibility_volume_manager;
 
 		std::unique_ptr<MegabufferImpl> megabuffer;
 
@@ -726,6 +728,8 @@ namespace Boidsish {
 			}
 			noise_manager = std::make_unique<NoiseManager>();
 			noise_manager->Initialize();
+			visibility_volume_manager = std::make_unique<VisibilityVolumeManager>();
+			visibility_volume_manager->Initialize();
 			clone_manager = std::make_unique<CloneManager>();
 			fire_effect_manager = std::make_unique<FireEffectManager>();
 			fire_effect_manager->Initialize(); // Must initialize on main thread with GL context
@@ -2743,6 +2747,19 @@ namespace Boidsish {
 			impl->hiz_manager->GeneratePyramid(impl->main_fbo_depth_texture_);
 		}
 
+		// Update Visibility Volume at the start of the frame
+		if (impl->visibility_volume_manager) {
+			impl->visibility_volume_manager->Update(
+				impl->camera,
+				view,
+				impl->projection,
+				impl->shadow_manager.get(),
+				impl->hiz_manager ? impl->hiz_manager->GetHiZTexture() : 0,
+				hiz_prev_vp,
+				impl->simulation_time
+			);
+		}
+
 		// Update Temporal UBO for motion blur and reprojection
 		TemporalUbo temporal_data;
 		temporal_data.viewProjection = current_vp;
@@ -2883,7 +2900,10 @@ namespace Boidsish {
 			impl->terrain_render_manager ? impl->terrain_render_manager->GetHeightmapTexture() : 0,
 			impl->noise_manager ? impl->noise_manager->GetCurlTexture() : 0,
 			impl->terrain_render_manager ? impl->terrain_render_manager->GetBiomeTexture() : 0,
-			impl->lighting_ubo
+			impl->lighting_ubo,
+			impl->visibility_volume_manager ? impl->visibility_volume_manager->GetVolumeTexture() : 0,
+			impl->visibility_volume_manager ? impl->visibility_volume_manager->GetVolumeOrigin() : glm::vec3(0.0f),
+			impl->visibility_volume_manager ? impl->visibility_volume_manager->GetVoxelSize() : 0.0f
 		);
 		impl->mesh_explosion_manager->Update(impl->simulation_delta_time, impl->simulation_time);
 		impl->sound_effect_manager->Update(impl->simulation_delta_time);
@@ -2905,7 +2925,10 @@ namespace Boidsish {
 				impl->camera,
 				generator_frustum,
 				*impl->terrain_generator,
-				impl->terrain_render_manager
+				impl->terrain_render_manager,
+				impl->visibility_volume_manager ? impl->visibility_volume_manager->GetVolumeTexture() : 0,
+				impl->visibility_volume_manager ? impl->visibility_volume_manager->GetVolumeOrigin() : glm::vec3(0.0f),
+				impl->visibility_volume_manager ? impl->visibility_volume_manager->GetVoxelSize() : 0.0f
 			);
 		}
 
@@ -3174,7 +3197,8 @@ namespace Boidsish {
 						impl->shadow_manager->GetLightSpaceMatrix(info.map_index),
 						impl->shadow_manager->GetShadowShaderPtr().get(),
 						light_dir_to_light,
-						impl->terrain_render_manager
+						impl->terrain_render_manager,
+						info.cascade_index
 					);
 				}
 
