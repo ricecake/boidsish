@@ -596,32 +596,39 @@ namespace Boidsish {
 		bool is_shadow_pass = light_space_matrix.has_value();
 
 		for (auto& type : decor_types_) {
-			// Update indirect commands for both regular and shadow passes
 			update_commands_shader_->use();
 			update_commands_shader_->setInt("u_numCommands", (int)type.model->getMeshes().size());
 			update_commands_shader_->setInt("u_totalSlots", kMaxInstancesPerType);
 			glBindBufferBase(GL_ATOMIC_COUNTER_BUFFER, 0, type.count_buffer);
 			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 3, type.visibility_ssbo);
 			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 5, type.ssbo);
+			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 4, type.visible_ssbo);
 
 			unsigned int zero = 0;
 			glBindBuffer(GL_ATOMIC_COUNTER_BUFFER, type.count_buffer);
 			glBufferSubData(GL_ATOMIC_COUNTER_BUFFER, 0, sizeof(unsigned int), &zero);
 
+			// Mode 0: Filter and Compact
+			update_commands_shader_->setInt("u_mode", 0);
 			if (is_shadow_pass) {
-				// Shadow pass filtering
 				int passMask = (cascade_index >= 0) ? (1 << (cascade_index + 1)) : 0x1E;
 				update_commands_shader_->setInt("u_passMask", passMask);
-				glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 2, type.shadow_indirect_buffer);
-				glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 4, type.visible_ssbo);
 			} else {
-				// Camera pass filtering
 				update_commands_shader_->setInt("u_passMask", 1); // PASS_CAMERA_FRUSTUM
-				glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 2, type.indirect_buffer);
-				glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 4, type.visible_ssbo);
 			}
-
 			glDispatchCompute(kMaxInstancesPerType / 64, 1, 1);
+
+			glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT | GL_ATOMIC_COUNTER_BARRIER_BIT);
+
+			// Mode 1: Update Indirect Commands
+			update_commands_shader_->setInt("u_mode", 1);
+			if (is_shadow_pass) {
+				glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 2, type.shadow_indirect_buffer);
+			} else {
+				glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 2, type.indirect_buffer);
+			}
+			glDispatchCompute(1, 1, 1);
+
 			glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT | GL_COMMAND_BARRIER_BIT);
 		}
 
