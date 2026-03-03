@@ -190,9 +190,9 @@ float tangentSpaceCrunches(
 	vec2 gridId = floor(surfacePos);
 	vec2 gridFract = fract(surfacePos);
 
-	vec2 F = dir * freq;
-	vec2 oF = odir * freq;
-	return clamp(sin(time*dot(F, oF))*cos(time*freq*fract(dot(F, oF))), -1, 1);
+	vec2 F = surfacePos+dir * bandwidth;
+	vec2 oF = surfacePos+odir * sparsity;
+	return clamp(dot(sin(F*freq*dot(F, oF)), cos(oF*freq*(dot(F, oF)))), -1, 1);
 }
 
 
