@@ -65,6 +65,15 @@ namespace Boidsish {
 			InitializeFBOs();
 		}
 
+		void PostProcessingManager::SetGBuffer(GLuint normalRoughness, GLuint albedoMetallic) {
+			normal_roughness_texture_ = normalRoughness;
+			albedo_metallic_texture_ = albedoMetallic;
+		}
+
+		void PostProcessingManager::SetHiZ(GLuint hizTexture) {
+			hiz_texture_ = hizTexture;
+		}
+
 		void PostProcessingManager::BeginApply(
 			GLuint sourceTexture,
 			GLuint sourceFbo,
@@ -164,8 +173,24 @@ namespace Boidsish {
 			glDisable(GL_DEPTH_TEST);
 			glDepthMask(GL_FALSE);
 
+			PostProcessingContext context;
+			context.sourceTexture = current_texture_;
+			context.depthTexture = depth_texture_;
+			context.velocityTexture = velocity_texture_;
+			context.normalRoughnessTexture = normal_roughness_texture_;
+			context.albedoMetallicTexture = albedo_metallic_texture_;
+			context.hizTexture = hiz_texture_;
+			context.viewMatrix = viewMatrix;
+			context.projectionMatrix = projectionMatrix;
+			context.invViewMatrix = glm::inverse(viewMatrix);
+			context.invProjectionMatrix = glm::inverse(projectionMatrix);
+			context.cameraPos = cameraPos;
+			context.time = time;
+			context.width = width_;
+			context.height = height_;
+
 			glBindVertexArray(quad_vao_);
-			effect->Apply(current_texture_, depth_texture_, velocity_texture_, viewMatrix, projectionMatrix, cameraPos);
+			effect->Apply(context);
 			glBindVertexArray(0);
 
 			glEnable(GL_DEPTH_TEST);

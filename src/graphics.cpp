@@ -45,6 +45,7 @@
 #include "post_processing/effects/NegativeEffect.h"
 #include "post_processing/effects/OpticalFlowEffect.h"
 #include "post_processing/effects/SdfVolumeEffect.h"
+#include "post_processing/effects/SsrEffect.h"
 #include "post_processing/effects/StrobeEffect.h"
 #include "post_processing/effects/SuperSpeedEffect.h"
 #include "post_processing/effects/TimeStutterEffect.h"
@@ -1034,6 +1035,10 @@ namespace Boidsish {
 				auto sdf_volume_effect = std::make_shared<PostProcessing::SdfVolumeEffect>();
 				sdf_volume_effect->SetEnabled(true);
 				post_processing_manager_->AddEffect(sdf_volume_effect);
+
+				auto ssr_effect = std::make_shared<PostProcessing::SsrEffect>();
+				ssr_effect->SetEnabled(true);
+				post_processing_manager_->AddEffect(ssr_effect);
 
 				if (enable_hdr_) {
 					auto tone_mapping_effect = std::make_shared<PostProcessing::ToneMappingEffect>();
@@ -2741,6 +2746,11 @@ namespace Boidsish {
 		if (impl->hiz_manager && impl->hiz_manager->IsInitialized() && impl->enable_hiz_culling_ &&
 		    impl->frame_count_ > 0) {
 			impl->hiz_manager->GeneratePyramid(impl->main_fbo_depth_texture_);
+		}
+
+		// Update Hi-Z for SSR if enabled
+		if (impl->hiz_manager && impl->hiz_manager->IsInitialized()) {
+			impl->post_processing_manager_->SetHiZ(impl->hiz_manager->GetHiZTexture());
 		}
 
 		// Update Temporal UBO for motion blur and reprojection

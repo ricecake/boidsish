@@ -9,7 +9,10 @@ in vec3     v_epicenter;
 flat in int v_style;
 flat in int v_emitter_index;
 flat in int v_emitter_id;
-out vec4    FragColor;
+layout(location = 0) out vec4 FragColor;
+layout(location = 1) out vec2 Velocity;
+layout(location = 2) out vec4 NormalRoughness;
+layout(location = 3) out vec4 AlbedoMetallic;
 
 uniform float u_time;
 uniform vec3  u_biomeAlbedos[8];
@@ -279,4 +282,7 @@ void main() {
 	}
 
 	FragColor = vec4(color, alpha);
+	Velocity = vec2(0.0);
+	NormalRoughness = vec4(0, 0, 1, 1);
+	AlbedoMetallic = vec4(color, 0);
 }

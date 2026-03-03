@@ -20,14 +20,7 @@ namespace Boidsish {
 			~GtaoEffect();
 
 			void Initialize(int width, int height) override;
-			void Apply(
-				GLuint           sourceTexture,
-				GLuint           depthTexture,
-				GLuint           velocityTexture,
-				const glm::mat4& viewMatrix,
-				const glm::mat4& projectionMatrix,
-				const glm::vec3& cameraPos
-			) override;
+			void Apply(const PostProcessingContext& context) override;
 			void Resize(int width, int height) override;
 
 			void SetIntensity(float intensity) { intensity_ = intensity; }

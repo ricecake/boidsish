@@ -1,6 +1,8 @@
 #version 430 core
 layout(location = 0) out vec4 FragColor;
 layout(location = 1) out vec2 Velocity;
+layout(location = 2) out vec4 NormalRoughness;
+layout(location = 3) out vec4 AlbedoMetallic;
 
 #include "common_uniforms.glsl"
 
@@ -96,4 +98,8 @@ void main() {
 	vec2 a = (CurPosition.xy / CurPosition.w) * 0.5 + 0.5;
 	vec2 b = (PrevPosition.xy / PrevPosition.w) * 0.5 + 0.5;
 	Velocity = a - b;
+
+	// G-Buffer for SSR (Checkpoint rings are transparent but we fill something)
+	NormalRoughness = vec4(0.0, 0.0, 1.0, 0.5);
+	AlbedoMetallic = vec4(finalColor, 0.0);
 }

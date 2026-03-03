@@ -21,6 +21,8 @@ namespace Boidsish {
 			void SetToneMappingEffect(std::shared_ptr<IPostProcessingEffect> effect);
 
 			void SetSharedDepthTexture(GLuint texture);
+			void SetGBuffer(GLuint normalRoughness, GLuint albedoMetallic);
+			void SetHiZ(GLuint hizTexture);
 
 			void BeginApply(GLuint sourceTexture, GLuint sourceFbo, GLuint depthTexture, GLuint velocityTexture);
 
@@ -81,6 +83,9 @@ namespace Boidsish {
 			GLuint pingpong_fbo_[2];
 			GLuint pingpong_texture_[2];
 			GLuint shared_depth_texture_ = 0;
+			GLuint normal_roughness_texture_ = 0;
+			GLuint albedo_metallic_texture_ = 0;
+			GLuint hiz_texture_ = 0;
 
 			// State for multi-stage application
 			GLuint current_texture_ = 0;

@@ -14,40 +14,23 @@ namespace Boidsish {
 			~AutoExposureEffect();
 
 			void Initialize(int width, int height) override;
-			void Apply(
-				GLuint           sourceTexture,
-				GLuint           depthTexture,
-				GLuint           velocityTexture,
-				const glm::mat4& viewMatrix,
-				const glm::mat4& projectionMatrix,
-				const glm::vec3& cameraPos
-			) override;
+			void Apply(const PostProcessingContext& context) override;
 			void Resize(int width, int height) override;
-
-			void SetSpeedUp(float s) { speedUp_ = s; }
-
-			float GetSpeedUp() const { return speedUp_; }
-
-			void SetSpeedDown(float s) { speedDown_ = s; }
-
-			float GetSpeedDown() const { return speedDown_; }
-
-			void SetTargetLuminance(float t) { targetLuminance_ = t; }
-
-			float GetTargetLuminance() const { return targetLuminance_; }
-
-			void SetMinExposure(float m) { minExposure_ = m; }
-
-			float GetMinExposure() const { return minExposure_; }
-
-			void SetMaxExposure(float m) { maxExposure_ = m; }
-
-			float GetMaxExposure() const { return maxExposure_; }
-
 			void SetEnabled(bool enabled) override;
 			void SetTime(float time) override;
 
 			void SetNightFactor(float factor) override { nightFactor_ = factor; }
+
+			void  SetSpeedUp(float s) { speedUp_ = s; }
+			float GetSpeedUp() const { return speedUp_; }
+			void  SetSpeedDown(float s) { speedDown_ = s; }
+			float GetSpeedDown() const { return speedDown_; }
+			void  SetTargetLuminance(float l) { targetLuminance_ = l; }
+			float GetTargetLuminance() const { return targetLuminance_; }
+			void  SetMinExposure(float m) { minExposure_ = m; }
+			float GetMinExposure() const { return minExposure_; }
+			void  SetMaxExposure(float m) { maxExposure_ = m; }
+			float GetMaxExposure() const { return maxExposure_; }
 
 		private:
 			std::unique_ptr<ComputeShader> computeShader_;

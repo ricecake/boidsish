@@ -1,6 +1,9 @@
 #version 430 core
 
-out vec4 FragColor;
+layout(location = 0) out vec4 FragColor;
+layout(location = 1) out vec2 Velocity;
+layout(location = 2) out vec4 NormalRoughness;
+layout(location = 3) out vec4 AlbedoMetallic;
 
 #include "helpers/lighting.glsl"
 
@@ -11,6 +14,7 @@ in vec2 TexCoords;
 uniform float growthProgress;
 uniform float fadeProgress;
 uniform int   phase; // 0: GROWING, 1: FADING
+uniform mat4  view;
 
 void main() {
 	vec3 N = normalize(Normal);
@@ -51,4 +55,7 @@ void main() {
 	}
 
 	FragColor = litColor;
+	Velocity = vec2(0.0);
+	NormalRoughness = vec4(normalize(mat3(view) * N) * 0.5 + 0.5, 0.05); // Sharp reflections for Akira
+	AlbedoMetallic = vec4(baseColor, 0.9); // High metallic
 }

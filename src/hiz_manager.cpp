@@ -48,7 +48,10 @@ namespace Boidsish {
 
 		glGenTextures(1, &hiz_texture_);
 		glBindTexture(GL_TEXTURE_2D, hiz_texture_);
-		glTexStorage2D(GL_TEXTURE_2D, mip_count_, GL_R32F, hiz_width_, hiz_height_);
+		// Use RG32F to store both Min and Max depth
+		// Red channel: Min depth (for SSR raymarching)
+		// Green channel: Max depth (for conservative occlusion culling)
+		glTexStorage2D(GL_TEXTURE_2D, mip_count_, GL_RG32F, hiz_width_, hiz_height_);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST_MIPMAP_NEAREST);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
@@ -95,7 +98,7 @@ namespace Boidsish {
 			generate_shader_->setInt("u_srcDepth", 0);
 
 			// Bind destination mip as image
-			glBindImageTexture(0, hiz_texture_, mip, GL_FALSE, 0, GL_WRITE_ONLY, GL_R32F);
+			glBindImageTexture(0, hiz_texture_, mip, GL_FALSE, 0, GL_WRITE_ONLY, GL_RG32F);
 
 			// Dispatch
 			glDispatchCompute((dst_w + 7) / 8, (dst_h + 7) / 8, 1);
