@@ -35,13 +35,17 @@ struct TerrainMaterial {
  * Calculate valley/ridge factor using noise-based curvature approximation.
  */
 float calculateValleyFactor(vec3 pos) {
+	// Use texture-based noise for performance
 	float scale = 0.02;
-	float center = length(pos * scale);
+	float center = fastSimplex3d(pos * scale);
+
+	// Sample neighbors for Laplacian approximation
 	float dx = 5.0;
-	float north = length((pos + vec3(0, 0, dx)) * scale);
-	float south = length((pos - vec3(0, 0, dx)) * scale);
-	float east = length((pos + vec3(dx, 0, 0)) * scale);
-	float west = length((pos - vec3(dx, 0, 0)) * scale);
+	float north = fastSimplex3d((pos + vec3(0, 0, dx)) * scale);
+	float south = fastSimplex3d((pos - vec3(0, 0, dx)) * scale);
+	float east = fastSimplex3d((pos + vec3(dx, 0, 0)) * scale);
+	float west = fastSimplex3d((pos - vec3(dx, 0, 0)) * scale);
+
 	float laplacian = (north + south + east + west) / 4.0 - center;
 	return laplacian * 10.0;
 }
@@ -50,9 +54,15 @@ float calculateValleyFactor(vec3 pos) {
  * Calculate moisture based on height, valley factor, and noise
  */
 float calculateMoisture(float height, float valleyFactor, vec3 pos) {
+	// Base moisture decreases with altitude (less rain at high elevations)
 	float baseMoisture = 1.0 - smoothstep(0.0, HEIGHT_PEAK, height) * 0.6;
+
+	// Valleys are more moist (water collects there)
 	float valleyMoisture = clamp(-valleyFactor * 0.5, 0.0, 0.4);
-	float noiseMoisture = snoise(pos * 0.03) * 0.2;
+
+	// Add some noise variation (texture-based)
+	float noiseMoisture = fastSimplex3d(pos * 0.03) * 0.2;
+
 	return clamp(baseMoisture + valleyMoisture + noiseMoisture, 0.0, 1.0);
 }
 

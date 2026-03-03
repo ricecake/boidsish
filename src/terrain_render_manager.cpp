@@ -521,6 +521,8 @@ namespace Boidsish {
 			glBindBuffer(GL_SHADER_STORAGE_BUFFER, shading_status_ssbo_);
 			glBufferSubData(GL_SHADER_STORAGE_BUFFER, slice * sizeof(int32_t), sizeof(int32_t), &not_ready);
 			glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
+
+			is_grid_dirty_ = true;
 		} // mutex released here
 
 		// Call eviction callback outside the lock to avoid deadlock
@@ -549,6 +551,7 @@ namespace Boidsish {
 		// Return slice to free list
 		free_slices_.push_back(slice);
 		chunks_.erase(it);
+		is_grid_dirty_ = true;
 	}
 
 	bool TerrainRenderManager::HasChunk(std::pair<int, int> chunk_key) const {
@@ -593,7 +596,17 @@ namespace Boidsish {
 		last_camera_pos_ = camera_pos;
 		last_world_scale_ = world_scale;
 
-		UpdateGridTextures(world_scale);
+		float      scaled_chunk_size = chunk_size_ * world_scale;
+		glm::ivec2 current_camera_chunk(
+			static_cast<int>(std::floor(camera_pos.x / scaled_chunk_size)),
+			static_cast<int>(std::floor(camera_pos.z / scaled_chunk_size))
+		);
+
+		if (current_camera_chunk != last_camera_chunk_ || is_grid_dirty_) {
+			UpdateGridTextures(world_scale);
+			last_camera_chunk_ = current_camera_chunk;
+			is_grid_dirty_ = false;
+		}
 
 		visible_instances_.clear();
 		visible_instances_.reserve(chunks_.size());
@@ -602,6 +615,7 @@ namespace Boidsish {
 		struct VisibleChunk {
 			InstanceData instance;
 			float        distance_sq;
+			float        view_priority;
 			int          slice;
 			bool         needs_shading;
 		};
@@ -610,6 +624,10 @@ namespace Boidsish {
 		visible_chunks.reserve(chunks_.size());
 
 		glm::vec2 camera_pos_2d(camera_pos.x, camera_pos.z);
+
+		// Prioritize chunks that are in front of the camera using frustum's near plane normal
+		glm::vec3 front = -frustum.planes[4].normal; // Plane 4 is Near, 5 is Far
+		glm::vec2 front_2d = glm::normalize(glm::vec2(front.x, front.z));
 
 		for (const auto& [key, chunk] : chunks_) {
 			if (IsChunkVisible(chunk, frustum, world_scale)) {
@@ -623,16 +641,20 @@ namespace Boidsish {
 				instance.bounds = glm::vec4(chunk.min_y, chunk.max_y, 0.0f, 0.0f);
 
 				// Calculate distance from chunk center to camera
-				float     scaled_chunk_size = chunk_size_ * world_scale;
 				glm::vec2 chunk_center(
 					chunk.world_offset.x + scaled_chunk_size * 0.5f,
 					chunk.world_offset.y + scaled_chunk_size * 0.5f
 				);
-				float dist_sq = glm::dot(chunk_center - camera_pos_2d, chunk_center - camera_pos_2d);
+				glm::vec2 to_chunk = chunk_center - camera_pos_2d;
+				float     dist_sq = glm::dot(to_chunk, to_chunk);
 
-				bool needs_shading = shading_ready_cpu_[chunk.texture_slice] == 0;
+				bool  needs_shading = shading_ready_cpu_[chunk.texture_slice] == 0;
+				float alignment = glm::dot(glm::normalize(to_chunk), front_2d);
 
-				visible_chunks.push_back({instance, dist_sq, chunk.texture_slice, needs_shading});
+				// Higher priority for chunks in front (alignment close to 1) and close (small distance)
+				float priority = alignment / (1.0f + std::sqrt(dist_sq));
+
+				visible_chunks.push_back({instance, dist_sq, priority, chunk.texture_slice, needs_shading});
 			}
 		}
 
@@ -641,14 +663,21 @@ namespace Boidsish {
 			return a.distance_sq < b.distance_sq;
 		});
 
-		// Pick batch of chunks to shade
+		// Pick batch of chunks to shade based on view priority
 		std::vector<VisibleChunk*> chunks_to_shade;
+		std::vector<VisibleChunk*> unshaded_pool;
 		for (auto& vc : visible_chunks) {
 			if (vc.needs_shading) {
-				chunks_to_shade.push_back(&vc);
-				if (chunks_to_shade.size() >= 4)
-					break;
+				unshaded_pool.push_back(&vc);
 			}
+		}
+
+		std::sort(unshaded_pool.begin(), unshaded_pool.end(), [](const VisibleChunk* a, const VisibleChunk* b) {
+			return a->view_priority > b->view_priority;
+		});
+
+		for (size_t i = 0; i < std::min(unshaded_pool.size(), (size_t)16); ++i) {
+			chunks_to_shade.push_back(unshaded_pool[i]);
 		}
 
 		if (!chunks_to_shade.empty() && shading_compute_shader_ && shading_compute_shader_->isValid()) {
@@ -667,7 +696,7 @@ namespace Boidsish {
 				glGenBuffers(1, &batch_data_ssbo_);
 			glBindBuffer(GL_SHADER_STORAGE_BUFFER, batch_data_ssbo_);
 			glBufferData(GL_SHADER_STORAGE_BUFFER, batch_data.size() * sizeof(BatchData), batch_data.data(), GL_DYNAMIC_DRAW);
-			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 2, batch_data_ssbo_);
+			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 15, batch_data_ssbo_);
 
 			// Bind textures
 			glActiveTexture(GL_TEXTURE0);
@@ -702,7 +731,9 @@ namespace Boidsish {
 			glDispatchCompute((shading_cache_resolution_ + 7) / 8, (shading_cache_resolution_ + 7) / 8, static_cast<GLuint>(chunks_to_shade.size()));
 			glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | GL_SHADER_STORAGE_BARRIER_BIT);
 
-			// Mark as ready
+			// Mark as ready (batch updates if possible, but glBufferSubData is fine for small counts)
+			// For 16 chunks, 16 small calls might be slightly slower than one large one if they were contiguous.
+			// Since they are likely not contiguous, we'll keep individual calls for now or batch if they are close.
 			int32_t ready = 1;
 			glBindBuffer(GL_SHADER_STORAGE_BUFFER, shading_status_ssbo_);
 			for (auto* vc : chunks_to_shade) {

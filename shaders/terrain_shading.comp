@@ -42,7 +42,7 @@ struct BatchData {
     vec4 worldOffset_and_slice; // xyz = worldOffset, w = slice
 };
 
-layout(std430, binding = 2) buffer BatchDataBuffer {
+layout(std430, binding = 15) buffer BatchDataBuffer {
     BatchData batches[];
 };
 

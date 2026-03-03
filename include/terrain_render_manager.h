@@ -240,6 +240,8 @@ namespace Boidsish {
 
 		// Camera position for LRU eviction (updated by PrepareForRender)
 		glm::vec3 last_camera_pos_{0.0f, 0.0f, 0.0f};
+		glm::ivec2 last_camera_chunk_{std::numeric_limits<int>::max(), std::numeric_limits<int>::max()};
+		bool      is_grid_dirty_ = true;
 		float     last_world_scale_ = 1.0f;
 
 		// Thread safety
