@@ -38,11 +38,17 @@ namespace Boidsish {
 				std::string current = axiom;
 				for (int i = 0; i < iterations; ++i) {
 					std::string next;
+					next.reserve(current.length() * 2);
 					for (char c : current) {
 						if (rules.count(c))
 							next += rules.at(c);
 						else
 							next += c;
+
+						// Safety cap for expansion to prevent 'bad allocation' or infinite loops
+						if (next.length() > 10000) {
+							return next;
+						}
 					}
 					current = next;
 				}
@@ -542,7 +548,7 @@ namespace Boidsish {
 
 		bool growthOccurred = true;
 		int  iterations = 0;
-		while (growthOccurred && iterations < 200) {
+		while (growthOccurred && iterations < 200 && nodes.size() < 2000) {
 			growthOccurred = false;
 			iterations++;
 

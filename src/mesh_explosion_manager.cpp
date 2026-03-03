@@ -228,6 +228,7 @@ namespace Boidsish {
 
 		render_shader_->use();
 		render_shader_->setMat4("u_view", view);
+		render_shader_->setMat4("view", view);
 		render_shader_->setMat4("u_projection", projection);
 
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, ssbo_);

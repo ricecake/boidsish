@@ -1,4 +1,5 @@
 #include "post_processing/effects/SsrEffect.h"
+#include "constants.h"
 #include "logger.h"
 #include <glm/gtc/type_ptr.hpp>
 
@@ -11,7 +12,6 @@ namespace Boidsish {
 
 		SsrEffect::~SsrEffect() {
 			if (ssr_texture_) glDeleteTextures(1, &ssr_texture_);
-			if (prev_ssr_texture_) glDeleteTextures(1, &prev_ssr_texture_);
 			if (temporal_texture_) glDeleteTextures(1, &temporal_texture_);
 			if (temporal_fbo_) glDeleteFramebuffers(1, &temporal_fbo_);
 		}
@@ -21,6 +21,17 @@ namespace Boidsish {
 			composite_shader_ = std::make_unique<Shader>("shaders/postprocess.vert", "shaders/effects/ssr_composite.frag");
 			passthrough_shader_ = std::make_unique<Shader>("shaders/postprocess.vert", "shaders/postprocess.frag");
 
+			// Setup UBO bindings
+			GLuint ssr_temporal_idx = glGetUniformBlockIndex(ssr_shader_->ID, "TemporalData");
+			if (ssr_temporal_idx != GL_INVALID_INDEX) {
+				glUniformBlockBinding(ssr_shader_->ID, ssr_temporal_idx, Constants::UboBinding::TemporalData());
+			}
+
+			GLuint comp_temporal_idx = glGetUniformBlockIndex(composite_shader_->ID, "TemporalData");
+			if (comp_temporal_idx != GL_INVALID_INDEX) {
+				glUniformBlockBinding(composite_shader_->ID, comp_temporal_idx, Constants::UboBinding::TemporalData());
+			}
+
 			CreateFBOs(width, height);
 			width_ = width;
 			height_ = height;
@@ -28,7 +39,6 @@ namespace Boidsish {
 
 		void SsrEffect::CreateFBOs(int width, int height) {
 			if (ssr_texture_) glDeleteTextures(1, &ssr_texture_);
-			if (prev_ssr_texture_) glDeleteTextures(1, &prev_ssr_texture_);
 			if (temporal_texture_) glDeleteTextures(1, &temporal_texture_);
 			if (temporal_fbo_) glDeleteFramebuffers(1, &temporal_fbo_);
 
@@ -43,7 +53,6 @@ namespace Boidsish {
 			};
 
 			createTex(ssr_texture_, GL_RGBA16F);
-			createTex(prev_ssr_texture_, GL_RGBA16F);
 			createTex(temporal_texture_, GL_RGBA16F);
 
 			glGenFramebuffers(1, &temporal_fbo_);
@@ -107,11 +116,7 @@ namespace Boidsish {
 			glDrawArrays(GL_TRIANGLES, 0, 6);
 
 			glDisable(GL_BLEND);
-			glBindFramebuffer(GL_FRAMEBUFFER, 0);
-
-			// Copy temporal back to prev for next frame
-			glCopyImageSubData(temporal_texture_, GL_TEXTURE_2D, 0, 0, 0, 0,
-			                   prev_ssr_texture_, GL_TEXTURE_2D, 0, 0, 0, 0, width_, height_, 1);
+			// glBindFramebuffer(GL_FRAMEBUFFER, 0); // REMOVED: Breaking post-processing chain
 
 			// 3. Composite pass
 			composite_shader_->use();
@@ -126,6 +131,12 @@ namespace Boidsish {
 			glBindTexture(GL_TEXTURE_2D, temporal_texture_);
 			glActiveTexture(GL_TEXTURE2);
 			glBindTexture(GL_TEXTURE_2D, context.albedoMetallicTexture);
+			glActiveTexture(GL_TEXTURE3);
+			glBindTexture(GL_TEXTURE_2D, context.depthTexture);
+			composite_shader_->setInt("uDepthTexture", 3);
+			glActiveTexture(GL_TEXTURE4);
+			glBindTexture(GL_TEXTURE_2D, context.normalRoughnessTexture);
+			composite_shader_->setInt("uNormalRoughnessTexture", 4);
 
 			glDrawArrays(GL_TRIANGLES, 0, 6);
 		}

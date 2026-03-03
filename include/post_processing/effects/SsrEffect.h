@@ -38,7 +38,6 @@ namespace Boidsish {
 			std::unique_ptr<Shader> passthrough_shader_;
 
 			GLuint ssr_texture_ = 0;
-			GLuint prev_ssr_texture_ = 0; // For temporal accumulation
 			GLuint temporal_texture_ = 0;
 			GLuint temporal_fbo_ = 0;
 
