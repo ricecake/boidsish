@@ -20,6 +20,28 @@ namespace Boidsish {
 		model_->UpdateAnimation(0.0f);
 		model_->SetPosition(x, y, z);
 
+		// Apply IK constraints to each leg
+		{
+			std::string leg_names[4] = {"FL", "FR", "BR", "BL"};
+			for (const auto& n : leg_names) {
+				// Upper leg: moderate hip roll limit
+				BoneConstraint upper;
+				upper.minTwist = -15.0f;
+				upper.maxTwist = 15.0f;
+				model_->SetBoneConstraint(n + "_upper", upper);
+
+				// Lower leg: hinge (bend in one plane) + tight twist limit
+				BoneConstraint lower;
+				lower.type = ConstraintType::Hinge;
+				lower.axis = glm::vec3(1, 0, 0);
+				lower.minAngle = -90.0f;
+				lower.maxAngle = 10.0f;
+				lower.minTwist = -5.0f;
+				lower.maxTwist = 5.0f;
+				model_->SetBoneConstraint(n + "_lower", lower);
+			}
+		}
+
 		// Setup legs tracking
 		legs_.resize(4);
 		std::string names[4] = {"FL", "FR", "BR", "BL"};
