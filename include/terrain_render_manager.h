@@ -137,6 +137,11 @@ namespace Boidsish {
 		 */
 		void BindTerrainData(ShaderBase& shader_base) const;
 
+		/**
+		 * @brief Bind shading cache textures to a shader.
+		 */
+		void BindShadingCache(ShaderBase& shader_base) const;
+
 		void SetNoise(const GLuint& noise, const GLuint& curl) {
 			if (noise != 0) {
 				noise_texture_ = noise;
@@ -210,6 +215,14 @@ namespace Boidsish {
 		GLuint max_height_grid_texture_ = 0; // GL_TEXTURE_2D (R32F: max_y, mips for hierarchical check)
 		GLuint terrain_data_ubo_ = 0;        // UBO for grid parameters
 
+		// Shading cache resources
+		GLuint                         shading_cache_a_ = 0;      // GL_TEXTURE_2D_ARRAY (RGBA16F: albedo.rgb, roughness)
+		GLuint                         shading_cache_b_ = 0;      // GL_TEXTURE_2D_ARRAY (RGBA16F: normal.rgb, metallic)
+		GLuint                         shading_status_ssbo_ = 0;  // SSBO (R32I: 0=not ready, 1=ready)
+		GLuint                         batch_data_ssbo_ = 0;      // SSBO for batch info
+		std::unique_ptr<ComputeShader> shading_compute_shader_;
+		int                            shading_cache_resolution_ = 128;
+
 		std::unique_ptr<ComputeShader> grid_mip_shader_;
 
 		// Grid mesh data
@@ -217,7 +230,8 @@ namespace Boidsish {
 
 		// Chunk management
 		std::map<std::pair<int, int>, ChunkInfo> chunks_;
-		std::vector<int>                         free_slices_; // Available texture slices
+		std::vector<int8_t>                      shading_ready_cpu_; // CPU-side status (0=not ready, 1=ready)
+		std::vector<int>                         free_slices_;       // Available texture slices
 		int                                      next_slice_ = 0;
 
 		// Per-frame instance data
@@ -226,6 +240,8 @@ namespace Boidsish {
 
 		// Camera position for LRU eviction (updated by PrepareForRender)
 		glm::vec3 last_camera_pos_{0.0f, 0.0f, 0.0f};
+		glm::ivec2 last_camera_chunk_{std::numeric_limits<int>::max(), std::numeric_limits<int>::max()};
+		bool      is_grid_dirty_ = true;
 		float     last_world_scale_ = 1.0f;
 
 		// Thread safety

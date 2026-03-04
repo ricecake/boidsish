@@ -27,7 +27,7 @@ namespace Boidsish {
 
 			int original_count = (int)ir.elements.size();
 			for (int i = 0; i < original_count; ++i) {
-				if (to_remove[i])
+				if (i < (int)to_remove.size() && to_remove[i])
 					continue;
 				auto& e1 = ir.elements[i];
 				if (e1.type != ProceduralElementType::Tube)
@@ -36,6 +36,9 @@ namespace Boidsish {
 					continue;
 
 				int   child_idx = e1.children[0];
+				if (child_idx < 0 || child_idx >= original_count)
+					continue;
+
 				auto& e2 = ir.elements[child_idx];
 				if (e2.type != ProceduralElementType::Tube)
 					continue;
@@ -61,7 +64,9 @@ namespace Boidsish {
 
 					// Update children's parent pointer to the control point
 					for (int child_of_child : e2.children) {
-						ir.elements[child_of_child].parent = cp_idx;
+						if (child_of_child >= 0 && child_of_child < (int)ir.elements.size()) {
+							ir.elements[child_of_child].parent = cp_idx;
+						}
 					}
 
 					// Merge tube geometry: extend e1 to e2's end
@@ -80,7 +85,9 @@ namespace Boidsish {
 
 					// Update children's parent pointer
 					for (int child_of_child : e2.children) {
-						ir.elements[child_of_child].parent = i;
+						if (child_of_child >= 0 && child_of_child < (int)ir.elements.size()) {
+							ir.elements[child_of_child].parent = i;
+						}
 					}
 
 					to_remove[child_idx] = true;
@@ -97,7 +104,7 @@ namespace Boidsish {
 				std::vector<ProceduralElement> new_elements;
 				std::map<int, int>             old_to_new;
 				for (int i = 0; i < (int)ir.elements.size(); ++i) {
-					if (!to_remove[i]) {
+					if (i >= (int)to_remove.size() || !to_remove[i]) {
 						old_to_new[i] = (int)new_elements.size();
 						new_elements.push_back(ir.elements[i]);
 					}
@@ -119,7 +126,8 @@ namespace Boidsish {
 		// Identify points where multiple tubes or control points branch and insert hubs
 		std::vector<ProceduralElement> hubs_to_add;
 
-		for (int i = 0; i < (int)ir.elements.size(); ++i) {
+		int original_count = (int)ir.elements.size();
+		for (int i = 0; i < original_count; ++i) {
 			auto& e = ir.elements[i];
 			if (e.children.size() <= 1)
 				continue;
@@ -137,7 +145,9 @@ namespace Boidsish {
 				int hub_idx = (int)ir.elements.size() + (int)hubs_to_add.size();
 
 				for (int child_idx : e.children) {
-					ir.elements[child_idx].parent = hub_idx;
+					if (child_idx >= 0 && child_idx < (int)ir.elements.size()) {
+						ir.elements[child_idx].parent = hub_idx;
+					}
 				}
 				e.children = {hub_idx};
 
@@ -155,7 +165,9 @@ namespace Boidsish {
 				int hub_idx = (int)ir.elements.size() + (int)hubs_to_add.size();
 
 				for (int child_idx : e.children) {
-					ir.elements[child_idx].parent = hub_idx;
+					if (child_idx >= 0 && child_idx < (int)ir.elements.size()) {
+						ir.elements[child_idx].parent = hub_idx;
+					}
 				}
 				e.children = {hub_idx};
 
