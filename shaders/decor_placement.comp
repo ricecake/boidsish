@@ -101,7 +101,7 @@ void main() {
 	uint y = gl_GlobalInvocationID.y;
 
 	// Calculate unique index within the chunk's block
-	uint localIndex = x + y * 32; // 32x32 threads in dispatch
+	uint localIndex = x + y * 16; // 16x16 threads in dispatch
 	uint index = u_baseInstanceIndex + localIndex;
 
 	if (index >= u_maxInstances)
@@ -110,9 +110,11 @@ void main() {
 	// Default: inactive
 	instances[index] = mat4(0.0);
 	u_active[index] = 0;
+	u_aabbs[index].min_pt = vec4(1e30, 1e30, 1e30, 0.0);
+	u_aabbs[index].max_pt = vec4(-1e30, -1e30, -1e30, 0.0);
 
-	// Grid size is determined by dispatch (4x4 groups of 8x8 = 32x32 placement points per chunk)
-	float gridSize = 32.0;
+	// Grid size is determined by dispatch (2x2 groups of 8x8 = 16x16 placement points per chunk)
+	float gridSize = 16.0;
 	float step = u_chunkSize / gridSize;
 
 	// Calculate world position within this chunk

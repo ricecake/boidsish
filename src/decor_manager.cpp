@@ -562,7 +562,7 @@ namespace Boidsish {
 							placement_shader_->setFloat("u_chunkSize", chunk.w);
 							placement_shader_->setInt("u_baseInstanceIndex", block * kInstancesPerChunk);
 
-							glDispatchCompute(4, 4, 1); // 32x32 = 1024 threads
+							glDispatchCompute(2, 2, 1); // 16x16 = 256 threads
 							break;
 						}
 					}
