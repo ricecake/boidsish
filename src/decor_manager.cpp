@@ -30,6 +30,10 @@ namespace Boidsish {
 				glDeleteBuffers(1, &type.indirect_buffer);
 			if (type.shadow_indirect_buffer != 0)
 				glDeleteBuffers(1, &type.shadow_indirect_buffer);
+			if (type.aabb_ssbo != 0)
+				glDeleteBuffers(1, &type.aabb_ssbo);
+			if (type.active_ssbo != 0)
+				glDeleteBuffers(1, &type.active_ssbo);
 		}
 	}
 
@@ -126,7 +130,18 @@ namespace Boidsish {
 		glBindBuffer(GL_ATOMIC_COUNTER_BUFFER, type.count_buffer);
 		glBufferData(GL_ATOMIC_COUNTER_BUFFER, sizeof(unsigned int), nullptr, GL_DYNAMIC_DRAW);
 
-		decor_types_.push_back(type);
+		// LBVH resources
+		glGenBuffers(1, &type.aabb_ssbo);
+		glBindBuffer(GL_SHADER_STORAGE_BUFFER, type.aabb_ssbo);
+		glBufferData(GL_SHADER_STORAGE_BUFFER, kMaxInstancesPerType * sizeof(LBVH_AABB), nullptr, GL_DYNAMIC_DRAW);
+
+		glGenBuffers(1, &type.active_ssbo);
+		glBindBuffer(GL_SHADER_STORAGE_BUFFER, type.active_ssbo);
+		glBufferData(GL_SHADER_STORAGE_BUFFER, kMaxInstancesPerType * sizeof(uint32_t), nullptr, GL_DYNAMIC_DRAW);
+
+		type.lbvh = std::make_unique<LBVHManager>();
+
+		decor_types_.push_back(std::move(type));
 	}
 
 	void DecorManager::AddProceduralDecor(ProceduralType type, const DecorProperties& props, int variants) {
@@ -444,6 +459,7 @@ namespace Boidsish {
 				}
 
 				// Zero out the block in all SSBOs to ensure it doesn't render
+				uint32_t zero = 0;
 				for (auto& type : decor_types_) {
 					glBindBuffer(GL_SHADER_STORAGE_BUFFER, type.ssbo);
 					glBufferSubData(
@@ -451,6 +467,18 @@ namespace Boidsish {
 						block * kInstancesPerChunk * sizeof(glm::mat4),
 						zeros.size() * sizeof(glm::mat4),
 						zeros.data()
+					);
+
+					// Also zero out active flags for LBVH
+					glBindBuffer(GL_SHADER_STORAGE_BUFFER, type.active_ssbo);
+					glClearBufferSubData(
+						GL_SHADER_STORAGE_BUFFER,
+						GL_R32UI,
+						block * kInstancesPerChunk * sizeof(uint32_t),
+						kInstancesPerChunk * sizeof(uint32_t),
+						GL_RED_INTEGER,
+						GL_UNSIGNED_INT,
+						&zero
 					);
 				}
 
@@ -520,6 +548,8 @@ namespace Boidsish {
 				placement_shader_->setVec3("u_aabbMax", type.model->GetAABB().max);
 
 				glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, type.ssbo);
+				glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, type.aabb_ssbo);
+				glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 2, type.active_ssbo);
 
 				for (const auto& [key, block] : chunks_to_generate) {
 					// Find the chunk info for this key
@@ -539,6 +569,16 @@ namespace Boidsish {
 				}
 			}
 			glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
+
+			// Rebuild LBVH for types that were updated
+			glm::vec3 scene_min =
+				glm::vec3(camera.x - max_decor_distance_ * world_scale, -100.0f, camera.z - max_decor_distance_ * world_scale);
+			glm::vec3 scene_max =
+				glm::vec3(camera.x + max_decor_distance_ * world_scale, 1000.0f, camera.z + max_decor_distance_ * world_scale);
+
+			for (auto& type : decor_types_) {
+				type.lbvh->Build(type.aabb_ssbo, type.active_ssbo, kMaxInstancesPerType, scene_min, scene_max);
+			}
 		}
 	}
 
