@@ -38,6 +38,9 @@ namespace Boidsish {
 		if (particle_buffer_ != 0) {
 			glDeleteBuffers(1, &particle_buffer_);
 		}
+		if (visibility_bitfield_ssbo_ != 0) {
+			glDeleteBuffers(1, &visibility_bitfield_ssbo_);
+		}
 		if (emitter_buffer_ != 0) {
 			glDeleteBuffers(1, &emitter_buffer_);
 		}
@@ -99,6 +102,10 @@ namespace Boidsish {
 		// Zero out the buffer to ensure lifetimes start at 0
 		std::vector<uint8_t> zero_data(kMaxParticles * sizeof(Particle), 0);
 		glBufferSubData(GL_SHADER_STORAGE_BUFFER, 0, zero_data.size(), zero_data.data());
+
+		glGenBuffers(1, &visibility_bitfield_ssbo_);
+		glBindBuffer(GL_SHADER_STORAGE_BUFFER, visibility_bitfield_ssbo_);
+		glBufferData(GL_SHADER_STORAGE_BUFFER, kMaxParticles * sizeof(uint32_t), nullptr, GL_DYNAMIC_DRAW);
 
 		glGenBuffers(1, &emitter_buffer_);
 		glBindBuffer(GL_SHADER_STORAGE_BUFFER, emitter_buffer_);
@@ -191,7 +198,10 @@ namespace Boidsish {
 		GLuint                        heightmap_texture,
 		GLuint                        curl_noise_texture,
 		GLuint                        biome_texture,
-		GLuint                        lighting_ubo
+		GLuint                        lighting_ubo,
+		GLuint                        visibility_volume,
+		glm::vec3                     volume_origin,
+		float                         voxel_size
 	) {
 		std::lock_guard<std::mutex> lock(mutex_);
 		if (!initialized_ || !compute_shader_ || !compute_shader_->isValid()) {
@@ -322,8 +332,12 @@ namespace Boidsish {
 		compute_shader_->setInt("u_num_emitters", emitters.size());
 		compute_shader_->setInt("u_num_chunks", static_cast<int>(chunk_info.size()));
 
+		compute_shader_->setVec3("u_volumeOrigin", volume_origin);
+		compute_shader_->setFloat("u_voxelSize", voxel_size);
+
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, particle_buffer_);
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, emitter_buffer_);
+		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 5, visibility_bitfield_ssbo_);
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 2, indirection_buffer_);
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 3, terrain_chunk_buffer_);
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 4, slice_data_buffer_);
@@ -348,6 +362,12 @@ namespace Boidsish {
 
 		if (lighting_ubo != 0) {
 			glBindBufferBase(GL_UNIFORM_BUFFER, Constants::UboBinding::Lighting(), lighting_ubo);
+		}
+
+		if (visibility_volume != 0) {
+			glActiveTexture(GL_TEXTURE10);
+			glBindTexture(GL_TEXTURE_3D, visibility_volume);
+			compute_shader_->setInt("u_visibilityVolume", 10);
 		}
 
 		// Dispatch enough groups to cover all particles
@@ -555,6 +575,7 @@ namespace Boidsish {
 		render_shader_->setFloat("frustumCullRadius", 2.0f); // Particle cull radius
 
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, particle_buffer_);
+		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 5, visibility_bitfield_ssbo_);
 
 		// We don't have a VAO for the particles since we generate them in the shader.
 		// We can just draw the number of particles we have.

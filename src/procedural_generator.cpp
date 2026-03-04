@@ -36,6 +36,7 @@ namespace Boidsish {
 
 			std::string expand(int iterations) {
 				std::string current = axiom;
+				const size_t MAX_EXPANSION = 10000;
 				for (int i = 0; i < iterations; ++i) {
 					std::string next;
 					for (char c : current) {
@@ -43,8 +44,14 @@ namespace Boidsish {
 							next += rules.at(c);
 						else
 							next += c;
+
+						if (next.length() > MAX_EXPANSION) break;
 					}
 					current = next;
+					if (current.length() > MAX_EXPANSION) {
+						current = current.substr(0, MAX_EXPANSION);
+						break;
+					}
 				}
 				return current;
 			}

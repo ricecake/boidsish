@@ -65,6 +65,7 @@
 #include "terrain_render_manager.h"
 #include "trail.h"
 #include "trail_render_manager.h"
+#include "visibility_volume_manager.h"
 #include "ui/EffectWidget.h"
 #include "ui/EnvironmentWidget.h"
 #include "ui/RenderWidget.h"
@@ -403,6 +404,7 @@ namespace Boidsish {
 		std::shared_ptr<ITerrainGenerator>    terrain_generator;
 		std::shared_ptr<TerrainRenderManager> terrain_render_manager;
 		std::unique_ptr<TrailRenderManager>   trail_render_manager;
+		std::unique_ptr<VisibilityVolumeManager> visibility_volume_manager;
 
 		std::unique_ptr<MegabufferImpl> megabuffer;
 
@@ -712,8 +714,8 @@ namespace Boidsish {
 			// Create visibility SSBO (GPU-only buffer, written by compute, read by vertex shader)
 			glGenBuffers(1, &occlusion_visibility_ssbo_);
 			glBindBuffer(GL_SHADER_STORAGE_BUFFER, occlusion_visibility_ssbo_);
-			std::vector<uint32_t> initial_vis(65536, 1u); // All visible initially
-			glBufferStorage(GL_SHADER_STORAGE_BUFFER, 65536 * sizeof(uint32_t), initial_vis.data(), 0);
+			std::vector<uint32_t> initial_vis(65536, 0x3Fu); // All bits set initially (visible)
+			glBufferData(GL_SHADER_STORAGE_BUFFER, 65536 * sizeof(uint32_t), initial_vis.data(), GL_DYNAMIC_DRAW);
 			glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
 			if (ConfigManager::GetInstance().GetAppSettingBool("enable_effects", true)) {
 				postprocess_shader_ = std::make_shared<Shader>("shaders/postprocess.vert", "shaders/postprocess.frag");
@@ -726,6 +728,8 @@ namespace Boidsish {
 			}
 			noise_manager = std::make_unique<NoiseManager>();
 			noise_manager->Initialize();
+			visibility_volume_manager = std::make_unique<VisibilityVolumeManager>();
+			visibility_volume_manager->Initialize();
 			clone_manager = std::make_unique<CloneManager>();
 			fire_effect_manager = std::make_unique<FireEffectManager>();
 			fire_effect_manager->Initialize(); // Must initialize on main thread with GL context
@@ -1583,6 +1587,18 @@ namespace Boidsish {
 				);
 				occlusion_cull_shader_->setInt("u_hizMipCount", hiz_manager->GetMipCount());
 				occlusion_cull_shader_->setFloat("u_screenExpansion", 4.0f);
+				occlusion_cull_shader_->setFloat("u_near", 0.1f);
+				float world_scale = terrain_generator ? terrain_generator->GetWorldScale() : 1.0f;
+				occlusion_cull_shader_->setFloat("u_far", 1000.0f * std::max(1.0f, world_scale));
+
+				// Visibility Volume for initial bitmask
+				if (visibility_volume_manager) {
+					glActiveTexture(GL_TEXTURE10);
+					glBindTexture(GL_TEXTURE_3D, visibility_volume_manager->GetVolumeTexture());
+					occlusion_cull_shader_->setInt("u_visibilityVolume", 10);
+					occlusion_cull_shader_->setVec3("u_volumeOrigin", visibility_volume_manager->GetVolumeOrigin());
+					occlusion_cull_shader_->setFloat("u_voxelSize", visibility_volume_manager->GetVoxelSize());
+				}
 
 				glDispatchCompute((mdi_uniform_count + 63) / 64, 1, 1);
 				glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
@@ -1617,6 +1633,19 @@ namespace Boidsish {
 					} else {
 						s->setVec4("clipPlane", glm::vec4(0, 0, 0, 0));
 					}
+
+					// Set pass mask for Visibility Volume check in vertex shader
+					if (is_shadow_pass) {
+						// We don't have the cascade index here, but we can assume we want to check the frustum
+						// Most objects in the render queue are submitted per cascade in the shadow loop.
+						// The shadow loop in Render() sets the shadow matrices in the volume manager.
+						// For now, let's disable specific cascade culling for general MDI shapes to be safe,
+						// or use a generic mask if possible.
+						s->setUint("u_passMask", 0u); // Disable bitmask culling for general shapes in shadows for now
+					} else {
+						// Camera pass: check frustum (bit 0) and occlusion (bit 5)
+						s->setUint("u_passMask", 0x21u);
+					}
 				}
 
 				// s->setBool("uUseMDI", true); // Moved below SSBO binding
@@ -1641,7 +1670,8 @@ namespace Boidsish {
 				s->setBool("uUseMDI", true);
 
 				// Bind visibility SSBO for Hi-Z occlusion culling (matching uniform indexing)
-				if (dispatch_hiz_occlusion && !is_shadow_pass) {
+				// Always bind for non-shadow passes to ensure shader has valid data
+				if (!is_shadow_pass) {
 					glBindBufferRange(
 						GL_SHADER_STORAGE_BUFFER,
 						Constants::SsboBinding::OcclusionVisibility(),
@@ -2568,6 +2598,13 @@ namespace Boidsish {
 		impl->mdi_frustum_count = 0;
 		impl->mdi_bone_count = 0;
 
+		// Clear visibility SSBO to "visible" (0x3F) to prevent stale data culling
+		if (impl->occlusion_visibility_ssbo_) {
+			uint32_t visible_all = 0x3F;
+			glBindBuffer(GL_SHADER_STORAGE_BUFFER, impl->occlusion_visibility_ssbo_);
+			glClearBufferData(GL_SHADER_STORAGE_BUFFER, GL_R32UI, GL_RED_INTEGER, GL_UNSIGNED_INT, &visible_all);
+		}
+
 		impl->shapes.clear();
 
 		// Update and collect transient effects
@@ -2743,6 +2780,19 @@ namespace Boidsish {
 			impl->hiz_manager->GeneratePyramid(impl->main_fbo_depth_texture_);
 		}
 
+		// Update Visibility Volume at the start of the frame
+		if (impl->visibility_volume_manager) {
+			impl->visibility_volume_manager->Update(
+				impl->camera,
+				view,
+				impl->projection,
+				impl->shadow_manager.get(),
+				impl->hiz_manager ? impl->hiz_manager->GetHiZTexture() : 0,
+				hiz_prev_vp,
+				impl->simulation_time
+			);
+		}
+
 		// Update Temporal UBO for motion blur and reprojection
 		TemporalUbo temporal_data;
 		temporal_data.viewProjection = current_vp;
@@ -2883,7 +2933,10 @@ namespace Boidsish {
 			impl->terrain_render_manager ? impl->terrain_render_manager->GetHeightmapTexture() : 0,
 			impl->noise_manager ? impl->noise_manager->GetCurlTexture() : 0,
 			impl->terrain_render_manager ? impl->terrain_render_manager->GetBiomeTexture() : 0,
-			impl->lighting_ubo
+			impl->lighting_ubo,
+			impl->visibility_volume_manager ? impl->visibility_volume_manager->GetVolumeTexture() : 0,
+			impl->visibility_volume_manager ? impl->visibility_volume_manager->GetVolumeOrigin() : glm::vec3(0.0f),
+			impl->visibility_volume_manager ? impl->visibility_volume_manager->GetVoxelSize() : 0.0f
 		);
 		impl->mesh_explosion_manager->Update(impl->simulation_delta_time, impl->simulation_time);
 		impl->sound_effect_manager->Update(impl->simulation_delta_time);
@@ -2905,7 +2958,10 @@ namespace Boidsish {
 				impl->camera,
 				generator_frustum,
 				*impl->terrain_generator,
-				impl->terrain_render_manager
+				impl->terrain_render_manager,
+				impl->visibility_volume_manager ? impl->visibility_volume_manager->GetVolumeTexture() : 0,
+				impl->visibility_volume_manager ? impl->visibility_volume_manager->GetVolumeOrigin() : glm::vec3(0.0f),
+				impl->visibility_volume_manager ? impl->visibility_volume_manager->GetVoxelSize() : 0.0f
 			);
 		}
 
@@ -3174,7 +3230,8 @@ namespace Boidsish {
 						impl->shadow_manager->GetLightSpaceMatrix(info.map_index),
 						impl->shadow_manager->GetShadowShaderPtr().get(),
 						light_dir_to_light,
-						impl->terrain_render_manager
+						impl->terrain_render_manager,
+						info.cascade_index
 					);
 				}
 

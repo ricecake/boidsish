@@ -26,6 +26,13 @@ layout(std430, binding = 12) buffer BoneMatricesSSBO {
 };
 
 #include "frustum.glsl"
+
+layout(std430, binding = 14) readonly buffer VisibilityBitfields {
+	uint visibility_bits[];
+};
+
+uniform uint u_passMask = 0u;
+
 #include "helpers/fast_noise.glsl"
 #include "helpers/lighting.glsl"
 #include "helpers/shockwave.glsl"
@@ -61,7 +68,7 @@ uniform bool  enableHiZCulling = false;
 
 // Hi-Z occlusion visibility (per-draw, written by occlusion_cull.comp)
 layout(std430, binding = 13) readonly buffer OcclusionVisibility {
-	uint hiz_visibility[];
+	uint visibility_bits_mdi[];
 };
 
 uniform vec3  u_aabbMin;
@@ -194,17 +201,20 @@ void main() {
 		}
 	}
 
-	// Hi-Z occlusion culling - output degenerate triangle if occluded by previous frame's depth
-	if (enableHiZCulling && uUseMDI && !current_isColossal) {
-		if (hiz_visibility[drawID] == 0u) {
-			gl_Position = vec4(0.0, 0.0, -2.0, 1.0);
+	// Hi-Z occlusion culling and Visibility Volume check
+	if (uUseMDI && !current_isColossal) {
+	    // Check bitmask (Bit 0 = Frustum, Bit 5 = Occlusion)
+	    uint bits = visibility_bits_mdi[drawID];
+	    if (u_passMask != 0u && (bits & u_passMask) != u_passMask) {
+	        gl_Position = vec4(0.0, 0.0, -2.0, 1.0);
 			FragPos = vec3(0.0);
 			Normal = vec3(0.0, 1.0, 0.0);
 			TexCoords = vec2(0.0);
 			gl_ClipDistance[0] = -1.0;
 			return;
-		}
+	    }
 	}
+
 
 	FragPos = vec3(modelMatrix * vec4(displacedPos, 1.0));
 

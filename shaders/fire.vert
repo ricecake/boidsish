@@ -35,6 +35,10 @@ layout(std430, binding = 1) buffer EmitterBuffer {
 	Emitter emitters[];
 };
 
+layout(std430, binding = 5) buffer VisibilityBitfields {
+	uint visibility_bits[];
+};
+
 uniform mat4  u_view;
 uniform mat4  u_projection;
 uniform vec3  u_camera_pos;
@@ -54,15 +58,21 @@ void main() {
 	v_pos = p.pos;
 	v_epicenter = p.epicenter;
 
-	if (p.pos.w <= 0.0) {
-		// Don't draw dead particles
-		gl_Position = vec4(-1000.0, -1000.0, -1000.0, 1.0);
-		gl_PointSize = 0.0;
-		v_style = -1; // A dead particle has no style
-		v_emitter_index = -1;
-		v_emitter_id = -1;
-	} else if (enableFrustumCulling && !isSphereInFrustum(p.pos.xyz, frustumCullRadius)) {
-		// Frustum culling - particle is outside view
+	uint bits = visibility_bits[gl_VertexID];
+	// 0x21: PASS_CAMERA_FRUSTUM | PASS_OCCLUSION
+	bool isVisible = (bits & 33u) == 33u;
+
+	// Fallback conservative check for screen edge stability
+	if (isVisible) {
+		// If voxel check passed, still do a per-particle sphere check but with a large radius
+		// this helps with flickering when the volume resolution is too coarse for fast moving particles
+		if (!isSphereInFrustum(p.pos.xyz, 2.0)) {
+			isVisible = false;
+		}
+	}
+
+	if (p.pos.w <= 0.0 || !isVisible) {
+		// Don't draw dead or culled particles
 		gl_Position = vec4(-1000.0, -1000.0, -1000.0, 1.0);
 		gl_PointSize = 0.0;
 		v_style = -1;

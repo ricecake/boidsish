@@ -160,9 +160,14 @@ namespace Boidsish {
 			std::vector<Vector3>   ups;
 			std::vector<float>     sizes;
 			std::vector<glm::vec3> colors;
+			std::set<int>          visited;
 			int                    current_idx = start_idx;
 			bool                   first = true;
-			while (current_idx != -1) {
+			int                    segment_count = 0;
+			while (current_idx != -1 && segment_count < 1000) {
+				if (visited.count(current_idx)) break; // Cycle detection
+				visited.insert(current_idx);
+				segment_count++;
 				const auto& e = ir.elements[current_idx];
 				if (e.type != ProceduralElementType::Tube)
 					break;

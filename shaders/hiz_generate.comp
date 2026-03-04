@@ -6,10 +6,11 @@ layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
 uniform sampler2D u_srcDepth;
 
 // Destination: current mip level being generated
-layout(r32f, binding = 0) uniform writeonly image2D u_dstMip;
+layout(rg32f, binding = 0) uniform writeonly image2D u_dstMip;
 
 // Source dimensions (for UV calculation)
 uniform ivec2 u_srcSize;
+uniform bool  u_isFirstMip;
 
 void main() {
 	ivec2 pixel = ivec2(gl_GlobalInvocationID.xy);
@@ -22,13 +23,46 @@ void main() {
 	vec2 srcTexelSize = 1.0 / vec2(u_srcSize);
 	vec2 uv = (vec2(pixel) * 2.0 + 1.0) * srcTexelSize;
 
-	float d00 = texture(u_srcDepth, uv + vec2(-0.5, -0.5) * srcTexelSize).r;
-	float d10 = texture(u_srcDepth, uv + vec2(0.5, -0.5) * srcTexelSize).r;
-	float d01 = texture(u_srcDepth, uv + vec2(-0.5, 0.5) * srcTexelSize).r;
-	float d11 = texture(u_srcDepth, uv + vec2(0.5, 0.5) * srcTexelSize).r;
+	vec4 d00 = texture(u_srcDepth, uv + vec2(-0.5, -0.5) * srcTexelSize);
+	vec4 d10 = texture(u_srcDepth, uv + vec2(0.5, -0.5) * srcTexelSize);
+	vec4 d01 = texture(u_srcDepth, uv + vec2(-0.5, 0.5) * srcTexelSize);
+	vec4 d11 = texture(u_srcDepth, uv + vec2(0.5, 0.5) * srcTexelSize);
 
-	// MAX for conservative occlusion testing
-	float maxDepth = max(max(d00, d10), max(d01, d11));
+    // If source is the depth buffer, it's R32F, so we need to treat it differently
+    // Actually texture() on a single channel texture returns (r, r, r, 1) or (r, 0, 0, 1)
 
-	imageStore(u_dstMip, pixel, vec4(maxDepth));
+    float minDepth, maxDepth;
+    if (u_srcSize.x > imageSize(u_dstMip).x) { // Very crude check if src is depth buffer or prev mip
+        // This is not very reliable. Better use a uniform.
+    }
+
+    // For mip generation, if src is RG32F, Red is min, Green is max
+    // If src is Depth buffer, Red is depth
+
+    float min00 = d00.r, max00 = d00.r;
+    float min10 = d10.r, max10 = d10.r;
+    float min01 = d01.r, max01 = d01.r;
+    float min11 = d11.r, max11 = d11.r;
+
+    // Check if we are reading from an RG32F texture (mips > 0)
+    // We can use a trick: textureQueryLevels or just a uniform.
+    // Let's assume if it's not mip 0 of Hi-Z, it's RG32F.
+    // But u_srcDepth is bound to either depth buffer or Hi-Z.
+
+    // Let's check the number of components in the texture.
+    // sampler2D doesn't easily reveal this.
+
+    // Better: always store min/max. For depth buffer, min=max=depth.
+    // For prev mip, min=r, max=g.
+
+    if (u_isFirstMip) {
+        minDepth = min(min(d00.r, d10.r), min(d01.r, d11.r));
+        maxDepth = max(max(d00.r, d10.r), max(d01.r, d11.r));
+    } else {
+        // Red is MIN, Green is MAX
+        minDepth = min(min(d00.r, d10.r), min(d01.r, d11.r));
+        maxDepth = max(max(d00.g, d10.g), max(d01.g, d11.g));
+    }
+
+	imageStore(u_dstMip, pixel, vec4(minDepth, maxDepth, 0.0, 0.0));
 }

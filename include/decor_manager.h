@@ -50,6 +50,7 @@ namespace Boidsish {
 
 		// GPU resources
 		unsigned int ssbo = 0;                   // Main storage (persistent)
+		unsigned int visibility_ssbo = 0;       // Persistent visibility bitfields
 		unsigned int visible_ssbo = 0;           // Culled storage (per-frame)
 		unsigned int indirect_buffer = 0;        // MDI commands
 		unsigned int shadow_indirect_buffer = 0; // MDI commands for shadow pass
@@ -91,7 +92,10 @@ namespace Boidsish {
 			const Camera&                         camera,
 			const Frustum&                        frustum,
 			const ITerrainGenerator&              terrain_gen,
-			std::shared_ptr<TerrainRenderManager> render_manager
+			std::shared_ptr<TerrainRenderManager> render_manager,
+			GLuint                                visibility_volume = 0,
+			glm::vec3                             volume_origin = glm::vec3(0.0f),
+			float                                 voxel_size = 0.0f
 		);
 
 		/**
@@ -108,7 +112,8 @@ namespace Boidsish {
 			const std::optional<glm::mat4>&       light_space_matrix = std::nullopt,
 			Shader*                               shader_override = nullptr,
 			const std::optional<glm::vec3>&       light_dir = std::nullopt,
-			std::shared_ptr<TerrainRenderManager> render_manager = nullptr
+			std::shared_ptr<TerrainRenderManager> render_manager = nullptr,
+			int                                   cascade_index = -1
 		);
 
 		void SetEnabled(bool enabled) { enabled_ = enabled; }
@@ -168,6 +173,7 @@ namespace Boidsish {
 
 		// Caching - only regenerate when camera moves significantly
 		glm::vec3 last_camera_pos_ = glm::vec3(0.0f);
+		glm::vec3 camera_velocity_ = glm::vec3(0.0f);
 		float     last_world_scale_ = 0.0f;
 
 		// Distance-based density parameters
