@@ -1,0 +1,16 @@
+#version 430 core
+layout(local_size_x = 1) in;
+#include "../helpers/lbvh.glsl"
+
+void main() {
+    float t;
+    lbvh_raycast(vec3(0), vec3(0,1,0), t, 0);
+    lbvh_occluded(vec3(0), vec3(0,1,0), 10.0, 0);
+
+    vec4 f[6];
+    for(int i=0; i<6; ++i) f[i] = vec4(0,1,0,0);
+
+    int vis[128];
+    int count;
+    lbvh_frustum_test(f, 0, vis, count);
+}

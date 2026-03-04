@@ -1,0 +1,70 @@
+#version 430 core
+
+layout(local_size_x = 256) in;
+
+struct AABB {
+    vec3 min_pt;
+    float _pad1;
+    vec3 max_pt;
+    float _pad2;
+};
+
+layout(std430, binding = 0) readonly buffer InputAABBs {
+    AABB u_aabbs[];
+};
+
+layout(std430, binding = 1) writeonly buffer MortonCodes {
+    uint u_mortonCodes[];
+};
+
+layout(std430, binding = 2) writeonly buffer ObjectIndices {
+    uint u_objectIndices[];
+};
+
+layout(std430, binding = 3) readonly buffer ActiveFlags {
+    uint u_activeFlags[];
+};
+
+uniform int u_numObjects;
+uniform vec3 u_sceneMin;
+uniform vec3 u_sceneMax;
+
+// Expands a 10-bit integer into 30 bits by inserting 2 zeros after each bit.
+uint expandBits(uint v) {
+    v = (v * 0x00010001u) & 0xFF0000FFu;
+    v = (v * 0x00000101u) & 0x0F00F00Fu;
+    v = (v * 0x00000011u) & 0xC30C30C3u;
+    v = (v * 0x00000005u) & 0x49249249u;
+    return v;
+}
+
+// Calculates a 30-bit Morton code for a 3D point normalized to [0,1]^3.
+uint morton3D(vec3 p) {
+    p = clamp(p * 1024.0f, 0.0f, 1023.0f);
+    uint x = expandBits(uint(p.x));
+    uint y = expandBits(uint(p.y));
+    uint z = expandBits(uint(p.z));
+    return (x << 2) | (y << 1) | z;
+}
+
+void main() {
+    uint idx = gl_GlobalInvocationID.x;
+    if (idx >= u_numObjects) return;
+
+    if (u_activeFlags[idx] == 0) {
+        // Inactive objects get a special Morton code (all 1s)
+        // so they sit at the end of the sorted array and can be ignored.
+        u_mortonCodes[idx] = 0xFFFFFFFFu;
+        u_objectIndices[idx] = idx;
+        return;
+    }
+
+    AABB aabb = u_aabbs[idx];
+    vec3 center = (aabb.min_pt + aabb.max_pt) * 0.5f;
+
+    // Normalize center to [0, 1] based on scene bounds
+    vec3 normPos = (center - u_sceneMin) / (u_sceneMax - u_sceneMin);
+
+    u_mortonCodes[idx] = morton3D(normPos);
+    u_objectIndices[idx] = idx;
+}

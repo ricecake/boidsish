@@ -14,6 +14,7 @@ int main() {
     // 2. Setup LBVH
     LBVHManager lbvh;
     std::vector<LBVH_AABB> aabbs;
+    std::vector<uint32_t> active;
 
     // Create some random AABBs
     std::mt19937 rng(42);
@@ -23,27 +24,23 @@ int main() {
     for (int i = 0; i < 100; ++i) {
         glm::vec3 pos(dist(rng), dist(rng), dist(rng));
         float s = size_dist(rng);
-        aabbs.push_back({pos - glm::vec3(s), 0, pos + glm::vec3(s), 0});
+        aabbs.push_back({glm::vec4(pos - glm::vec3(s), 0.0f), glm::vec4(pos + glm::vec3(s), 0.0f)});
+        active.push_back(1);
     }
 
     std::cout << "Building LBVH for 100 objects..." << std::endl;
-    lbvh.Build(aabbs, glm::vec3(-60.0f), glm::vec3(60.0f));
+    lbvh.Build(aabbs, active, glm::vec3(-60.0f), glm::vec3(60.0f));
     std::cout << "LBVH Build complete." << std::endl;
 
     // 3. Move some objects and refit
     for (int i = 0; i < 10; ++i) {
-        aabbs[i].min_pt += glm::vec3(0.1f);
-        aabbs[i].max_pt += glm::vec3(0.1f);
+        aabbs[i].min_pt += glm::vec4(0.1f, 0.1f, 0.1f, 0.0f);
+        aabbs[i].max_pt += glm::vec4(0.1f, 0.1f, 0.1f, 0.0f);
     }
 
     std::cout << "Refitting LBVH..." << std::endl;
     lbvh.Refit(aabbs);
     std::cout << "Refit complete." << std::endl;
-
-    // Note: Since this is a headless environment, we can't easily run a
-    // full raytracing shader and check results visually, but the fact that
-    // Build() and Refit() ran without crashing (and shaders are validated)
-    // is a strong indicator of correctness.
 
     std::cout << "LBVH Test PASSED (no crashes during GPU construction/refit)." << std::endl;
 
