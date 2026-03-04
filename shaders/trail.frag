@@ -95,7 +95,19 @@ void main() {
 		FragColor = vec4(final_color, 0.85 * camera_fade); // Slightly more opaque for better visibility
 	} else if (usePBR) {
 		// --- Standard PBR Trail (no shadows for trails) ---
-		vec3 result = apply_lighting_pbr_no_shadows(vs_frag_pos, norm, vs_color, trailRoughness, trailMetallic, 1.0)
+		vec3 result = apply_lighting_pbr_no_shadows(
+						  vs_frag_pos,
+						  norm,
+						  vs_color,
+						  trailRoughness,
+						  trailMetallic,
+						  1.0,
+						  vec2(0.0),
+						  mat2(0.0),
+						  false,
+						  0.0,
+						  0.0
+					  )
 						  .rgb;
 		FragColor = vec4(result, camera_fade);
 	} else {

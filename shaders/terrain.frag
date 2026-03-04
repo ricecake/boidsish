@@ -452,7 +452,20 @@ void main() {
 	roughness *= mix(1.25, 1.0, windDistortion);
 	perturbedNorm = mix(perturbedNorm, normalize(perturbedNorm + (normalize(rawWindNudge)) * 0.23), grassFactor);
 
-	vec3 lighting = apply_lighting_pbr(FragPos, perturbedNorm, albedo, roughness, metallic, 1.0).rgb;
+	mat2 uv_J = mat2(dFdx(TexCoords), dFdy(TexCoords));
+	vec3 lighting = apply_lighting_pbr(
+		FragPos,
+		perturbedNorm,
+		albedo,
+		roughness,
+		metallic,
+		1.0,
+		TexCoords,
+		uv_J,
+		false,
+		0.0,
+		0.0
+	).rgb;
 
 	// ========================================================================
 	// Neon 80s Synth Style (Night Theme)

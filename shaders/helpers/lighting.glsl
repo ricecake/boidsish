@@ -4,6 +4,7 @@
 #include "../helpers/constants.glsl"
 #include "../lighting.glsl"
 #include "terrain_shadows.glsl"
+#include "microfacet_glinting.glsl"
 
 const int LIGHT_TYPE_POINT = 0;
 const int LIGHT_TYPE_DIRECTIONAL = 1;
@@ -347,7 +348,19 @@ const float PBR_INTENSITY_BOOST = 4.0;
  * @param metallic Metallic property [0=dielectric, 1=metal]
  * @param ao Ambient occlusion [0=fully occluded, 1=no occlusion]
  */
-vec4 apply_lighting_pbr(vec3 frag_pos, vec3 normal, vec3 albedo, float roughness, float metallic, float ao) {
+vec4 apply_lighting_pbr(
+	vec3  frag_pos,
+	vec3  normal,
+	vec3  albedo,
+	float roughness,
+	float metallic,
+	float ao,
+	vec2  uv,
+	mat2  uv_J,
+	bool  use_glint,
+	float glint_roughness,
+	float glint_density
+) {
 	vec3 N = normalize(normal);
 	vec3 V = normalize(viewPos - frag_pos);
 
@@ -379,7 +392,29 @@ vec4 apply_lighting_pbr(vec3 frag_pos, vec3 normal, vec3 albedo, float roughness
 		vec3 radiance = lights[i].color * attenuation;
 
 		// Cook-Torrance BRDF
-		float NDF = DistributionGGX(N, H, roughness);
+		float NDF;
+		if (use_glint) {
+			// Transform H to local tangent space for glint NDF
+			vec3 tangent = normalize(cross(N, vec3(0, 0, 1)));
+			if (abs(N.z) > 0.9)
+				tangent = normalize(cross(N, vec3(1, 0, 0)));
+			vec3  bitangent = cross(N, tangent);
+			mat3  TBN = mat3(tangent, bitangent, N);
+			vec3  h_local = transpose(TBN) * H;
+			float glint_ndf_val = glint_ndf(
+				h_local,
+				roughness,
+				glint_roughness,
+				uv,
+				uv_J,
+				glint_density,
+				DEFAULT_PIXEL_FILTER_SIZE
+			);
+			NDF = glint_ndf_val;
+		} else {
+			NDF = DistributionGGX(N, H, roughness);
+		}
+
 		float G = GeometrySmith(N, V, L, roughness);
 		vec3  F = fresnelSchlick(max(dot(H, V), 0.0), F0);
 
@@ -445,7 +480,19 @@ vec4 apply_lighting_pbr(vec3 frag_pos, vec3 normal, vec3 albedo, float roughness
  * Supports all light types (point, directional, spot).
  * Returns vec4(color.rgb, specular_luminance).
  */
-vec4 apply_lighting_pbr_no_shadows(vec3 frag_pos, vec3 normal, vec3 albedo, float roughness, float metallic, float ao) {
+vec4 apply_lighting_pbr_no_shadows(
+	vec3  frag_pos,
+	vec3  normal,
+	vec3  albedo,
+	float roughness,
+	float metallic,
+	float ao,
+	vec2  uv,
+	mat2  uv_J,
+	bool  use_glint,
+	float glint_roughness,
+	float glint_density
+) {
 	vec3 N = normalize(normal);
 	vec3 V = normalize(viewPos - frag_pos);
 
@@ -470,7 +517,18 @@ vec4 apply_lighting_pbr_no_shadows(vec3 frag_pos, vec3 normal, vec3 albedo, floa
 		}
 		vec3 radiance = lights[i].color * attenuation;
 
-		float NDF = DistributionGGX(N, H, roughness);
+		float NDF;
+		if (use_glint) {
+			vec3 tangent = normalize(cross(N, vec3(0, 0, 1)));
+			if (abs(N.z) > 0.9)
+				tangent = normalize(cross(N, vec3(1, 0, 0)));
+			vec3  bitangent = cross(N, tangent);
+			mat3  TBN = mat3(tangent, bitangent, N);
+			vec3  h_local = transpose(TBN) * H;
+			NDF = glint_ndf(h_local, roughness, glint_roughness, uv, uv_J, glint_density, DEFAULT_PIXEL_FILTER_SIZE);
+		} else {
+			NDF = DistributionGGX(N, H, roughness);
+		}
 		float G = GeometrySmith(N, V, L, roughness);
 		vec3  F = fresnelSchlick(max(dot(H, V), 0.0), F0);
 
@@ -771,7 +829,19 @@ vec4 apply_emissive_surface_pbr(
 	emission += emissive_color * fresnel * emissive_intensity * 0.3;
 
 	// PBR lit component for non-emissive parts
-	vec4 pbr_lit = apply_lighting_pbr_no_shadows(frag_pos, normal, base_albedo, roughness, metallic, 1.0);
+	vec4 pbr_lit = apply_lighting_pbr_no_shadows(
+		frag_pos,
+		normal,
+		base_albedo,
+		roughness,
+		metallic,
+		1.0,
+		vec2(0.0),
+		mat2(0.0),
+		false,
+		0.0,
+		0.0
+	);
 
 	// Blend based on emissive mask
 	return mix(pbr_lit, vec4(emission, get_luminance(emission)), emissive_mask);

@@ -86,6 +86,10 @@ void main() {
 	vec3  c_dissolve_normal = use_ssbo ? uniforms_data[vUniformIndex].dissolve_plane_normal : dissolve_plane_normal;
 	float c_dissolve_dist = use_ssbo ? uniforms_data[vUniformIndex].dissolve_plane_dist : dissolve_plane_dist;
 
+	bool  c_useGlint = use_ssbo ? (uniforms_data[vUniformIndex].use_glint != 0) : false;
+	float c_glintRoughness = use_ssbo ? uniforms_data[vUniformIndex].glint_roughness : 0.01;
+	float c_glintDensity = use_ssbo ? uniforms_data[vUniformIndex].glint_density : 1000.0;
+
 	float fade = 1.0;
 	if (c_dissolve_enabled) {
 		if (dot(FragPos, c_dissolve_normal) > c_dissolve_dist) {
@@ -122,7 +126,20 @@ void main() {
 	// Choose between PBR and legacy lighting
 	vec4 lightResult;
 	if (c_usePBR) {
-		lightResult = apply_lighting_pbr(FragPos, norm, albedo * baseAlpha, c_roughness, c_metallic, c_ao);
+		mat2 uv_J = mat2(dFdx(TexCoords), dFdy(TexCoords));
+		lightResult = apply_lighting_pbr(
+			FragPos,
+			norm,
+			albedo * baseAlpha,
+			c_roughness,
+			c_metallic,
+			c_ao,
+			TexCoords,
+			uv_J,
+			c_useGlint,
+			c_glintRoughness,
+			c_glintDensity
+		);
 	} else {
 		lightResult = apply_lighting(FragPos, norm, albedo * baseAlpha, 1.0);
 	}
