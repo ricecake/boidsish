@@ -27,7 +27,7 @@ namespace Boidsish {
 
 			int original_count = (int)ir.elements.size();
 			for (int i = 0; i < original_count; ++i) {
-				if (to_remove[i])
+				if (i < (int)to_remove.size() && to_remove[i])
 					continue;
 				auto& e1 = ir.elements[i];
 				if (e1.type != ProceduralElementType::Tube)
@@ -104,7 +104,7 @@ namespace Boidsish {
 				std::vector<ProceduralElement> new_elements;
 				std::map<int, int>             old_to_new;
 				for (int i = 0; i < (int)ir.elements.size(); ++i) {
-					if (!to_remove[i]) {
+					if (i >= (int)to_remove.size() || !to_remove[i]) {
 						old_to_new[i] = (int)new_elements.size();
 						new_elements.push_back(ir.elements[i]);
 					}

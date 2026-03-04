@@ -189,8 +189,18 @@ void main() {
 		vec4 cacheB = texture(u_shadingCacheB, vec3(TexCoords, TextureSlice));
 		albedo = cacheA.rgb;
 		roughness = cacheA.a;
-		perturbedNorm = normalize(cacheB.rgb);
 		metallic = cacheB.a;
+
+		// Re-apply perturbFactor to the baked displacement
+		vec3 bakedPerturb = cacheB.rgb;
+		perturbedNorm = normalize(norm + bakedPerturb * smoothstep(0.1, 1.0, perturbFactor));
+
+		// Toksvig Factor: Adjust roughness based on normal length after interpolation
+		float ft = length(norm + bakedPerturb * smoothstep(0.1, 1.0, perturbFactor));
+		ft = clamp(ft, 0.01, 1.0);
+		float r2 = roughness * roughness;
+		float newGloss = r2 / (ft * (1.0 + (1.0 - ft) / r2));
+		roughness = sqrt(newGloss);
 	} else {
 		calculateProceduralMaterial(FragPos, normalize(Normal), TexCoords, TextureSlice, perturbFactor, albedo, roughness, metallic, perturbedNorm);
 	}

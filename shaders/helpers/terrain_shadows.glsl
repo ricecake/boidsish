@@ -2,11 +2,7 @@
 #define TERRAIN_SHADOWS_GLSL
 
 #include "fast_noise.glsl"
-
-layout(std140, binding = 8) uniform TerrainData {
-	ivec4 u_originSize;    // x, y=z, z=size, w=isBound
-	vec4  u_terrainParams; // x=chunkSize, y=worldScale
-};
+#include "terrain_common_structs.glsl"
 
 uniform isampler2D u_chunkGrid;
 uniform sampler2D  u_maxHeightGrid;
@@ -14,15 +10,15 @@ uniform sampler2D  u_maxHeightGrid;
 uniform sampler2DArray u_heightmapArray;
 
 float getTerrainHeight(vec2 worldXZ) {
-	if (u_originSize.w < 1)
+	if (u_terrain.origin_size.w < 1)
 		return -10000.0;
-	float scaledChunkSize = u_terrainParams.x * u_terrainParams.y;
+	float scaledChunkSize = u_terrain.terrain_params.x * u_terrain.terrain_params.w;
 	vec2  gridPos = worldXZ / scaledChunkSize;
 	ivec2 chunkCoord = ivec2(floor(gridPos));
-	ivec2 localGridCoord = chunkCoord - u_originSize.xy;
+	ivec2 localGridCoord = chunkCoord - u_terrain.origin_size.xy;
 
-	if (localGridCoord.x < 0 || localGridCoord.x >= u_originSize.z || localGridCoord.y < 0 ||
-	    localGridCoord.y >= u_originSize.z) {
+	if (localGridCoord.x < 0 || localGridCoord.x >= u_terrain.origin_size.z || localGridCoord.y < 0 ||
+	    localGridCoord.y >= u_terrain.origin_size.z) {
 		return -9999.0; // Debug value
 	}
 
@@ -35,7 +31,7 @@ float getTerrainHeight(vec2 worldXZ) {
 }
 
 float terrainShadowCoverage(vec3 worldPos, vec3 normal, vec3 lightDir) {
-	if (u_originSize.w < 1)
+	if (u_terrain.origin_size.w < 1)
 		return 1.0;
 	// lightDir is from fragment to light
 	float sundownShadow = smoothstep(0.0, 0.02, lightDir.y);
@@ -43,13 +39,13 @@ float terrainShadowCoverage(vec3 worldPos, vec3 normal, vec3 lightDir) {
 		return sundownShadow;
 	}
 
-	float scaledChunkSize = u_terrainParams.x * u_terrainParams.y;
+	float scaledChunkSize = u_terrain.terrain_params.x * u_terrain.terrain_params.w;
 
 	// Better initial bias: move along normal and a bit along light direction.
 	// This dramatically reduces shadow acne.
-	vec3  p_start = worldPos + normal * (0.2 * u_terrainParams.y) + lightDir * 1.5;
+	vec3  p_start = worldPos + normal * (0.2 * u_terrain.terrain_params.w) + lightDir * 1.5;
 	float t = 0.0;
-	float maxDist = 1200.0 * u_terrainParams.y;
+	float maxDist = 1200.0 * u_terrain.terrain_params.w;
 
 	float closest = 1.0;
 	int   iter = 0;
@@ -58,14 +54,14 @@ float terrainShadowCoverage(vec3 worldPos, vec3 normal, vec3 lightDir) {
 		vec3  p = p_start + t * lightDir;
 		vec2  gridPos = p.xz / scaledChunkSize;
 		ivec2 chunkCoord = ivec2(floor(gridPos));
-		ivec2 localGridCoord = chunkCoord - u_originSize.xy;
+		ivec2 localGridCoord = chunkCoord - u_terrain.origin_size.xy;
 
-		if (localGridCoord.x < 0 || localGridCoord.x >= u_originSize.z || localGridCoord.y < 0 ||
-		    localGridCoord.y >= u_originSize.z) {
+		if (localGridCoord.x < 0 || localGridCoord.x >= u_terrain.origin_size.z || localGridCoord.y < 0 ||
+		    localGridCoord.y >= u_terrain.origin_size.z) {
 			break; // Out of grid bounds
 		}
 
-		vec2 gridUV = (vec2(localGridCoord) + 0.5) / float(u_originSize.z);
+		vec2 gridUV = (vec2(localGridCoord) + 0.5) / float(u_terrain.origin_size.z);
 
 		// Coarse Skip: Mip 3 covers 8x8 chunks (256x256 units if scale=1)
 		float h_max3 = textureLod(u_maxHeightGrid, gridUV, 3.0).r;
@@ -96,7 +92,7 @@ float terrainShadowCoverage(vec3 worldPos, vec3 normal, vec3 lightDir) {
 		}
 
 		// Step size at LOD 0: proportional to world scale for smoothness
-		t += 2.0 * u_terrainParams.y;
+		t += 2.0 * u_terrain.terrain_params.w;
 	}
 
 	return closest; // * (fastFbm3d(worldPos/350+lightDir*(1-dot(lightDir, normal))+vec3(1*0.001)) * 0.5 + 0.5);
@@ -107,19 +103,19 @@ bool isPointInTerrainShadow(vec3 worldPos, vec3 normal, vec3 lightDir) {
 }
 
 int isPointInTerrainShadowDebug(vec3 worldPos, vec3 normal, vec3 lightDir) {
-	if (u_originSize.w < 1)
+	if (u_terrain.origin_size.w < 1)
 		return -3; // Blue
-	if (u_terrainParams.y <= 0.0)
+	if (u_terrain.terrain_params.w <= 0.0)
 		return -1; // Cyan
-	if (u_terrainParams.x <= 0.0)
+	if (u_terrain.terrain_params.x <= 0.0)
 		return -4; // White (Invalid chunkSize)
 	if (lightDir.y <= 0.0)
 		return -2; // Orange-ish (Light below horizon)
 
-	float scaledChunkSize = u_terrainParams.x * u_terrainParams.y;
-	vec3  p_start = worldPos + normal * (0.2 * u_terrainParams.y) + lightDir * (0.1 * u_terrainParams.y);
+	float scaledChunkSize = u_terrain.terrain_params.x * u_terrain.terrain_params.w;
+	vec3  p_start = worldPos + normal * (0.2 * u_terrain.terrain_params.w) + lightDir * (0.1 * u_terrain.terrain_params.w);
 	float t = 0.0;
-	float maxDist = 1200.0 * u_terrainParams.y;
+	float maxDist = 1200.0 * u_terrain.terrain_params.w;
 
 	int iter = 0;
 	while (t < maxDist && iter < 80) {
@@ -127,21 +123,21 @@ int isPointInTerrainShadowDebug(vec3 worldPos, vec3 normal, vec3 lightDir) {
 		vec3  p = p_start + t * lightDir;
 		vec2  gridPos = p.xz / scaledChunkSize;
 		ivec2 chunkCoord = ivec2(floor(gridPos));
-		ivec2 localGridCoord = chunkCoord - u_originSize.xy;
+		ivec2 localGridCoord = chunkCoord - u_terrain.origin_size.xy;
 
 		if (localGridCoord.x < 0)
 			return 11;
-		if (localGridCoord.x >= u_originSize.z)
+		if (localGridCoord.x >= u_terrain.origin_size.z)
 			return 12;
 		if (localGridCoord.y < 0)
 			return 13;
-		if (localGridCoord.y >= u_originSize.z)
+		if (localGridCoord.y >= u_terrain.origin_size.z)
 			return 14;
 
-		if (u_originSize.z != 128)
+		if (u_terrain.origin_size.z != 128)
 			return 5; // White/Debug: Invalid grid size
 
-		vec2 gridUV = (vec2(localGridCoord) + 0.5) / float(u_originSize.z);
+		vec2 gridUV = (vec2(localGridCoord) + 0.5) / float(u_terrain.origin_size.z);
 
 		float h_max3 = textureLod(u_maxHeightGrid, gridUV, 3.0).r;
 		if (p.y > h_max3 + 1.0) {
@@ -165,7 +161,7 @@ int isPointInTerrainShadowDebug(vec3 worldPos, vec3 normal, vec3 lightDir) {
 		if (p.y < h)
 			return 3; // Hit! (Magenta)
 
-		t += 2.0 * u_terrainParams.y;
+		t += 2.0 * u_terrain.terrain_params.w;
 	}
 
 	return 0; // Miss (Green)
