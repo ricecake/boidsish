@@ -9,9 +9,9 @@
 
 namespace Boidsish {
 
-	RedDotEnemy::RedDotEnemy(int id, Vector3 pos) : Entity<Dot>(id, 100.0f, 1.0f, 0.0f, 0.0f, 1.0f) {
+	RedDotEnemy::RedDotEnemy(int id, Vector3 pos) : Entity<Dot>(id) {
 		SetPosition(pos);
-		shape_->SetScale(glm::vec3(0.5f)); // Make it a visible dot
+		SetSize(470.0f); // Half the size of SteeringProbe dot
 		SetColor(1.0f, 0.0f, 0.0f); // Red
 		PickHoverOffset();
 	}

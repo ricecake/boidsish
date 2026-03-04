@@ -109,7 +109,7 @@ void SetupFPSHUD(Visualizer& viz) {
 
 	// Hide flight HUD elements
 	if (g_health_gauge) g_health_gauge->SetVisible(false);
-	if (g_weapon_selector) g_weapon_selector->SetVisible(false);
+	if (g_weapon_selector) g_weapon_selector->SetVisible(true);
 
 	// Keep score visible
 	if (g_score_indicator) g_score_indicator->SetVisible(true);
@@ -251,6 +251,22 @@ int main() {
 					kittywumpus_selected_weapon = (kittywumpus_selected_weapon + 1) % 4;
 					g_weapon_selector->SetSelectedIndex(kittywumpus_selected_weapon);
 				}
+				if (state.key_down[GLFW_KEY_1]) {
+					kittywumpus_selected_weapon = 0;
+					g_weapon_selector->SetSelectedIndex(kittywumpus_selected_weapon);
+				}
+				if (state.key_down[GLFW_KEY_2]) {
+					kittywumpus_selected_weapon = 1;
+					g_weapon_selector->SetSelectedIndex(kittywumpus_selected_weapon);
+				}
+				if (state.key_down[GLFW_KEY_3]) {
+					kittywumpus_selected_weapon = 2;
+					g_weapon_selector->SetSelectedIndex(kittywumpus_selected_weapon);
+				}
+				if (state.key_down[GLFW_KEY_4]) {
+					kittywumpus_selected_weapon = 3;
+					g_weapon_selector->SetSelectedIndex(kittywumpus_selected_weapon);
+				}
 				break;
 
 			case GameState::FIRST_PERSON_MODE:
@@ -273,6 +289,22 @@ int main() {
 				// Weapon switching
 				if (state.key_down[GLFW_KEY_F]) {
 					kittywumpus_selected_weapon = (kittywumpus_selected_weapon + 1) % 4;
+					g_weapon_selector->SetSelectedIndex(kittywumpus_selected_weapon);
+				}
+				if (state.key_down[GLFW_KEY_1]) {
+					kittywumpus_selected_weapon = 0;
+					g_weapon_selector->SetSelectedIndex(kittywumpus_selected_weapon);
+				}
+				if (state.key_down[GLFW_KEY_2]) {
+					kittywumpus_selected_weapon = 1;
+					g_weapon_selector->SetSelectedIndex(kittywumpus_selected_weapon);
+				}
+				if (state.key_down[GLFW_KEY_3]) {
+					kittywumpus_selected_weapon = 2;
+					g_weapon_selector->SetSelectedIndex(kittywumpus_selected_weapon);
+				}
+				if (state.key_down[GLFW_KEY_4]) {
+					kittywumpus_selected_weapon = 3;
 					g_weapon_selector->SetSelectedIndex(kittywumpus_selected_weapon);
 				}
 
