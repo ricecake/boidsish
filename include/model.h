@@ -88,6 +88,11 @@ namespace Boidsish {
 		float          minAngle = -180.0f;        // In degrees
 		float          maxAngle = 180.0f;
 		float          coneAngle = 45.0f; // For Cone
+
+		// Twist (axial roll) limits in degrees, orthogonal to type.
+		// Default ±180° = unconstrained. Can combine with any ConstraintType.
+		float minTwist = -180.0f;
+		float maxTwist = 180.0f;
 	};
 
 	struct BoneInfo {

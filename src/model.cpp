@@ -1070,6 +1070,34 @@ namespace Boidsish {
 			if (glm::any(glm::isnan(q)))
 				q = glm::quat(1, 0, 0, 0);
 
+			// Apply twist (axial roll) limits via swing-twist decomposition
+			const auto& twistConstraint = GetBoneConstraint(chain[i]);
+			if (twistConstraint.minTwist > -180.0f || twistConstraint.maxTwist < 180.0f) {
+				glm::vec3 twistAxis = bindDir;
+				glm::vec3 qv(q.x, q.y, q.z);
+				glm::vec3 proj = glm::dot(qv, twistAxis) * twistAxis;
+
+				glm::quat twist(q.w, proj.x, proj.y, proj.z);
+				float     twistLen = glm::length(twist);
+				if (twistLen > 1e-6f) {
+					twist /= twistLen;
+
+					glm::quat swing = q * glm::inverse(twist);
+
+					float twistAngle = glm::degrees(
+						2.0f * std::atan2(glm::dot(glm::vec3(twist.x, twist.y, twist.z), twistAxis), twist.w)
+					);
+					twistAngle = glm::clamp(twistAngle, twistConstraint.minTwist, twistConstraint.maxTwist);
+
+					float halfRad = glm::radians(twistAngle) * 0.5f;
+					twist = glm::quat(std::cos(halfRad), std::sin(halfRad) * twistAxis);
+
+					q = swing * twist;
+					if (glm::any(glm::isnan(q)))
+						q = glm::quat(1, 0, 0, 0);
+				}
+			}
+
 			// New global transform for this bone
 			glm::mat4 newGlobal = glm::translate(glm::mat4(1.0f), start) * glm::toMat4(q);
 

@@ -1,8 +1,10 @@
 #include <iostream>
+#include <cmath>
 #include <vector>
 #include <string>
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
+#include <glm/gtx/quaternion.hpp>
 #include "model.h"
 #include "animator.h"
 #include "logger.h"
@@ -61,7 +63,63 @@ void test_ik() {
     std::cout << "Constrained Effector Pos: " << finalPos.x << ", " << finalPos.y << ", " << finalPos.z << std::endl;
 }
 
+void test_twist_constraints() {
+    auto data = std::make_shared<ModelData>();
+    data->model_path = "test_twist_model";
+
+    // 3-bone chain along Y: root(0,0,0) -> mid(0,1,0) -> end(0,2,0)
+    data->AddBone("root", "", glm::mat4(1.0f));
+    data->AddBone("mid", "root", glm::translate(glm::mat4(1.0f), glm::vec3(0, 1, 0)));
+    data->AddBone("end", "mid", glm::translate(glm::mat4(1.0f), glm::vec3(0, 1, 0)));
+
+    Model model(data);
+    model.SetPosition(0, 0, 0);
+    model.UpdateAnimation(0);
+
+    // Set tight twist limits on mid bone: ±5°
+    BoneConstraint tc;
+    tc.minTwist = -5.0f;
+    tc.maxTwist = 5.0f;
+    model.SetBoneConstraint("mid", tc);
+
+    // Solve IK with a target that would induce twist if unconstrained.
+    // Target off to the side — the minimum-arc rotation from (0,1,0) to a
+    // diagonal direction naturally introduces some axial roll.
+    glm::vec3 target(0.5f, 1.5f, 0.5f);
+    model.SolveIK("end", target, 0.05f, 30);
+
+    // Extract mid bone's world rotation and decompose twist around bind dir
+    glm::quat midRot = model.GetBoneWorldRotation("mid");
+    glm::vec3 bindDir(0, 1, 0); // bind direction of the mid->end segment
+
+    // Swing-twist decomposition
+    glm::vec3 qv(midRot.x, midRot.y, midRot.z);
+    glm::vec3 proj = glm::dot(qv, bindDir) * bindDir;
+    glm::quat twist(midRot.w, proj.x, proj.y, proj.z);
+    float twistLen = glm::length(twist);
+    float twistAngle = 0.0f;
+    if (twistLen > 1e-6f) {
+        twist /= twistLen;
+        twistAngle = glm::degrees(
+            2.0f * std::atan2(glm::dot(glm::vec3(twist.x, twist.y, twist.z), bindDir), twist.w)
+        );
+    }
+
+    std::cout << "Twist angle on mid bone: " << twistAngle << " degrees" << std::endl;
+
+    // Allow some numerical slack (1° beyond the limit)
+    float slack = 1.0f;
+    if (twistAngle < tc.minTwist - slack || twistAngle > tc.maxTwist + slack) {
+        std::cout << "Twist constraint FAILED! Angle " << twistAngle
+                  << " outside [" << tc.minTwist << ", " << tc.maxTwist << "]" << std::endl;
+        exit(1);
+    }
+    std::cout << "Twist constraint OK" << std::endl;
+}
+
 int main() {
     test_ik();
+    test_twist_constraints();
+    std::cout << "All IK tests passed." << std::endl;
     return 0;
 }
