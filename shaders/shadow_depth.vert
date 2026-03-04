@@ -24,8 +24,8 @@ layout(std430, binding = 12) buffer BoneMatricesSSBO {
 #include "helpers/fast_noise.glsl"
 #include "helpers/noise.glsl"
 
-layout(std430, binding = 14) readonly buffer VisibilityBitfields {
-	uint visibility_bits[];
+layout(std430, binding = 13) readonly buffer VisibilityBitfieldsMDI {
+	uint visibility_bits_mdi[];
 };
 
 uniform uint u_passMask = 0u;
@@ -99,8 +99,8 @@ void main() {
 	FragPos = worldPos;
 
 	if (uUseMDI) {
-		uint bits = visibility_bits[drawID];
-		if (u_passMask != 0u && (bits & u_passMask) == 0u) {
+		uint bits = visibility_bits_mdi[drawID];
+		if (u_passMask != 0u && (bits & u_passMask) != u_passMask) {
 			gl_Position = vec4(0.0, 0.0, -2.0, 1.0);
 			return;
 		}

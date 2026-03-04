@@ -68,7 +68,7 @@ uniform bool  enableHiZCulling = false;
 
 // Hi-Z occlusion visibility (per-draw, written by occlusion_cull.comp)
 layout(std430, binding = 13) readonly buffer OcclusionVisibility {
-	uint hiz_visibility[];
+	uint visibility_bits_mdi[];
 };
 
 uniform vec3  u_aabbMin;
@@ -204,7 +204,7 @@ void main() {
 	// Hi-Z occlusion culling and Visibility Volume check
 	if (uUseMDI && !current_isColossal) {
 	    // Check bitmask (Bit 0 = Frustum, Bit 5 = Occlusion)
-	    uint bits = visibility_bits[drawID];
+	    uint bits = visibility_bits_mdi[drawID];
 	    if (u_passMask != 0u && (bits & u_passMask) != u_passMask) {
 	        gl_Position = vec4(0.0, 0.0, -2.0, 1.0);
 			FragPos = vec3(0.0);

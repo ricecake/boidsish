@@ -714,8 +714,8 @@ namespace Boidsish {
 			// Create visibility SSBO (GPU-only buffer, written by compute, read by vertex shader)
 			glGenBuffers(1, &occlusion_visibility_ssbo_);
 			glBindBuffer(GL_SHADER_STORAGE_BUFFER, occlusion_visibility_ssbo_);
-			std::vector<uint32_t> initial_vis(65536, 1u); // All visible initially
-			glBufferStorage(GL_SHADER_STORAGE_BUFFER, 65536 * sizeof(uint32_t), initial_vis.data(), 0);
+			std::vector<uint32_t> initial_vis(65536, 0x3Fu); // All bits set initially (visible)
+			glBufferData(GL_SHADER_STORAGE_BUFFER, 65536 * sizeof(uint32_t), initial_vis.data(), GL_DYNAMIC_DRAW);
 			glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
 			if (ConfigManager::GetInstance().GetAppSettingBool("enable_effects", true)) {
 				postprocess_shader_ = std::make_shared<Shader>("shaders/postprocess.vert", "shaders/postprocess.frag");
@@ -1587,6 +1587,18 @@ namespace Boidsish {
 				);
 				occlusion_cull_shader_->setInt("u_hizMipCount", hiz_manager->GetMipCount());
 				occlusion_cull_shader_->setFloat("u_screenExpansion", 4.0f);
+				occlusion_cull_shader_->setFloat("u_near", 0.1f);
+				float world_scale = terrain_generator ? terrain_generator->GetWorldScale() : 1.0f;
+				occlusion_cull_shader_->setFloat("u_far", 1000.0f * std::max(1.0f, world_scale));
+
+				// Visibility Volume for initial bitmask
+				if (visibility_volume_manager) {
+					glActiveTexture(GL_TEXTURE10);
+					glBindTexture(GL_TEXTURE_3D, visibility_volume_manager->GetVolumeTexture());
+					occlusion_cull_shader_->setInt("u_visibilityVolume", 10);
+					occlusion_cull_shader_->setVec3("u_volumeOrigin", visibility_volume_manager->GetVolumeOrigin());
+					occlusion_cull_shader_->setFloat("u_voxelSize", visibility_volume_manager->GetVoxelSize());
+				}
 
 				glDispatchCompute((mdi_uniform_count + 63) / 64, 1, 1);
 				glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
@@ -1621,6 +1633,19 @@ namespace Boidsish {
 					} else {
 						s->setVec4("clipPlane", glm::vec4(0, 0, 0, 0));
 					}
+
+					// Set pass mask for Visibility Volume check in vertex shader
+					if (is_shadow_pass) {
+						// We don't have the cascade index here, but we can assume we want to check the frustum
+						// Most objects in the render queue are submitted per cascade in the shadow loop.
+						// The shadow loop in Render() sets the shadow matrices in the volume manager.
+						// For now, let's disable specific cascade culling for general MDI shapes to be safe,
+						// or use a generic mask if possible.
+						s->setUint("u_passMask", 0u); // Disable bitmask culling for general shapes in shadows for now
+					} else {
+						// Camera pass: check frustum (bit 0) and occlusion (bit 5)
+						s->setUint("u_passMask", 0x21u);
+					}
 				}
 
 				// s->setBool("uUseMDI", true); // Moved below SSBO binding
@@ -1645,7 +1670,8 @@ namespace Boidsish {
 				s->setBool("uUseMDI", true);
 
 				// Bind visibility SSBO for Hi-Z occlusion culling (matching uniform indexing)
-				if (dispatch_hiz_occlusion && !is_shadow_pass) {
+				// Always bind for non-shadow passes to ensure shader has valid data
+				if (!is_shadow_pass) {
 					glBindBufferRange(
 						GL_SHADER_STORAGE_BUFFER,
 						Constants::SsboBinding::OcclusionVisibility(),
@@ -2571,6 +2597,13 @@ namespace Boidsish {
 		impl->mdi_uniform_count = 0;
 		impl->mdi_frustum_count = 0;
 		impl->mdi_bone_count = 0;
+
+		// Clear visibility SSBO to "visible" (0x3F) to prevent stale data culling
+		if (impl->occlusion_visibility_ssbo_) {
+			uint32_t visible_all = 0x3F;
+			glBindBuffer(GL_SHADER_STORAGE_BUFFER, impl->occlusion_visibility_ssbo_);
+			glClearBufferData(GL_SHADER_STORAGE_BUFFER, GL_R32UI, GL_RED_INTEGER, GL_UNSIGNED_INT, &visible_all);
+		}
 
 		impl->shapes.clear();
 
