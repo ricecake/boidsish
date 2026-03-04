@@ -63,18 +63,18 @@ namespace Boidsish {
 
 		for (int i = 0; i < 4; ++i) {
 			// Hip hub - NOT a bone (IK will start from upper leg)
-			int hip = ir.AddHub(offsets[i], length_ * 0.1f, leg_col, body, names[i] + "_hip", false);
+			int hip = ir.AddHub(offsets[i], length_ * 0.12f, leg_col, body, names[i] + "_hip", false);
 
-			// Upper leg: Arching upwards
-			glm::vec3 upper_end = offsets[i] + glm::vec3(offsets[i].x > 0 ? 0.5f : -0.5f, height_ * 1.5f, 0);
+			// Upper leg: Arching upwards and outwards
+			glm::vec3 upper_end = offsets[i] + glm::vec3(offsets[i].x > 0 ? 1.5f : -1.5f, height_ * 2.0f, 0);
 			int       upper =
-				ir.AddTube(offsets[i], upper_end, length_ * 0.08f, length_ * 0.05f, leg_col, hip, names[i] + "_upper", true);
+				ir.AddTube(offsets[i], upper_end, length_ * 0.1f, length_ * 0.08f, leg_col, hip, names[i] + "_upper", true);
 
 			// Lower leg: Down to ground (leave room for foot)
-			float     foot_h = length_ * 0.05f;
-			glm::vec3 lower_end = upper_end + glm::vec3(0, -height_ * 2.3f + foot_h, 0);
+			float     foot_h = length_ * 0.08f;
+			glm::vec3 lower_end = upper_end + glm::vec3(0, -height_ * 3.5f + foot_h, 0);
 			int       lower =
-				ir.AddTube(upper_end, lower_end, length_ * 0.05f, length_ * 0.03f, leg_col, upper, names[i] + "_lower", true);
+				ir.AddTube(upper_end, lower_end, length_ * 0.08f, length_ * 0.06f, leg_col, upper, names[i] + "_lower", true);
 
 			// Foot: Wedge - NOT a bone
 			ir.AddWedge(
@@ -106,7 +106,7 @@ namespace Boidsish {
 		// Apply IK to position legs on the ground
 		// We use the lower leg as the effector because it's the last bone in the chain
 		for (auto& leg : legs_) {
-			model_->SolveIK(leg.name + "_lower", leg.world_foot_pos, 0.01f, 15, "body");
+			model_->SolveIK(leg.name + "_lower", leg.world_foot_pos, 0.01f, 20, "body");
 		}
 		model_->UpdateAnimation(delta_time);
 	}
