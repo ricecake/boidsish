@@ -10,11 +10,14 @@
 #include <thread>
 #include <chrono>
 
-#include "stb_image_write.h"
+// Prototype for stb_image_write (it's already in libboidsish.a)
+extern "C" int stbi_write_png(char const *filename, int w, int h, int comp, void const *data, int stride_in_bytes);
 
 using namespace Boidsish;
 
 int main() {
+    std::cout << "Starting Decor LBVH Raytracing Example..." << std::endl;
+
     // 1. Initialize Visualizer
     Visualizer visualizer(1280, 720, "Decor LBVH Raytracing");
 
@@ -26,19 +29,21 @@ int main() {
         return -1;
     }
 
-    // Increase density for the example to ensure we see something
+    // Increase density for the example and allow all biomes and height ranges
     DecorProperties tree_props = DecorManager::GetDefaultTreeProperties();
-    tree_props.min_density = 0.5f;
+    tree_props.min_density = 0.9f;
     tree_props.max_density = 1.0f;
-    tree_props.biomes = {Biome::LushGrass, Biome::Forest, Biome::AlpineMeadow, Biome::DryGrass};
+    tree_props.min_height = -500.0f;
+    tree_props.max_height = 1000.0f;
+    tree_props.biomes = {Biome::LushGrass, Biome::Forest, Biome::AlpineMeadow, Biome::DryGrass, Biome::BrownRock, Biome::GreyRock, Biome::Snow};
     decor_manager->AddDecorType("assets/decor/Tree/tree01.obj", tree_props);
 
-    // 3. Setup Camera
+    // 3. Setup Camera - look from above at the center
     Camera cam;
     cam.x = 0.0f;
-    cam.y = 50.0f;
-    cam.z = 0.0f;
-    cam.pitch = -20.0f; // Look more towards the horizon
+    cam.y = 100.0f;
+    cam.z = 100.0f;
+    cam.pitch = -45.0f;
     cam.yaw = 0.0f;
     visualizer.SetCamera(cam);
 
@@ -67,14 +72,23 @@ int main() {
     std::cout << "Warming up and generating decor..." << std::endl;
 
     // Run for enough frames to ensure terrain chunks are loaded and decor is generated
-    for (int frame = 0; frame < 50; ++frame) {
+    for (int frame = 0; frame < 60; ++frame) {
         visualizer.Update();
         visualizer.Render();
 
-        if (frame % 10 == 0) {
+        if (frame % 20 == 0) {
             int total_objects = 0;
             for (const auto& type : decor_manager->GetDecorTypes()) {
-                if (type.lbvh) total_objects += type.lbvh->GetNumObjects();
+                if (type.lbvh) {
+                    total_objects += type.lbvh->GetNumObjects();
+
+                    // Diagnostic: Read back root AABB
+                    LBVHNode root;
+                    glBindBuffer(GL_SHADER_STORAGE_BUFFER, type.lbvh->GetNodesBuffer());
+                    glGetBufferSubData(GL_SHADER_STORAGE_BUFFER, 0, sizeof(LBVHNode), &root);
+                    std::cout << "  Type root AABB: (" << root.min_pt_left.x << "," << root.min_pt_left.y << "," << root.min_pt_left.z
+                              << ") to (" << root.max_pt_right.x << "," << root.max_pt_right.y << "," << root.max_pt_right.z << ")" << std::endl;
+                }
             }
             std::cout << "Frame " << frame << ", total potential objects in LBVHs: " << total_objects << std::endl;
         }
