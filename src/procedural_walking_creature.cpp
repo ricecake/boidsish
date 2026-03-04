@@ -17,6 +17,7 @@ namespace Boidsish {
 
 		ProceduralIR ir = GenerateIR();
 		model_ = ProceduralMesher::GenerateModel(ir);
+		model_->UpdateAnimation(0.0f);
 		model_->SetPosition(x, y, z);
 
 		// Setup legs tracking
@@ -76,7 +77,7 @@ namespace Boidsish {
 			int       lower =
 				ir.AddTube(upper_end, lower_end, length_ * 0.08f, length_ * 0.06f, leg_col, upper, names[i] + "_lower", true);
 
-			// Foot: Wedge - NOT a bone
+			// Foot: Wedge - bone so it can be the IK end-effector
 			ir.AddWedge(
 				lower_end + glm::vec3(0, -foot_h, 0),
 				glm::quat(1, 0, 0, 0),
@@ -84,7 +85,7 @@ namespace Boidsish {
 				foot_col,
 				lower,
 				names[i] + "_foot",
-				false
+				true
 			);
 		}
 
@@ -104,9 +105,9 @@ namespace Boidsish {
 		model_->SetRotation(glm::angleAxis(glm::radians(current_yaw_), glm::vec3(0, 1, 0)));
 
 		// Apply IK to position legs on the ground
-		// We use the lower leg as the effector because it's the last bone in the chain
+		// Each leg has its own 3-joint chain: [upper, lower, foot]
 		for (auto& leg : legs_) {
-			model_->SolveIK(leg.name + "_lower", leg.world_foot_pos, 0.01f, 20, "body");
+			model_->SolveIK(leg.effector_name, leg.world_foot_pos, 0.01f, 20, leg.name + "_upper");
 		}
 		model_->UpdateAnimation(delta_time);
 	}
