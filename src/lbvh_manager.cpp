@@ -147,7 +147,7 @@ void LBVHManager::Build(const std::vector<LBVH_AABB>& aabbs, const std::vector<u
             glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, block_sums_ssbo_);
             glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, total_zeros_ssbo_);
             glDispatchCompute(1, 1, 1);
-            glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
+            glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT | GL_BUFFER_UPDATE_BARRIER_BIT);
 
             // Add back to individual elements
             prefix_sum_add_shader_->use();
@@ -162,7 +162,7 @@ void LBVHManager::Build(const std::vector<LBVH_AABB>& aabbs, const std::vector<u
             glBindBuffer(GL_COPY_READ_BUFFER, block_sums_ssbo_);
             glBindBuffer(GL_COPY_WRITE_BUFFER, total_zeros_ssbo_);
             glCopyBufferSubData(GL_COPY_READ_BUFFER, GL_COPY_WRITE_BUFFER, 0, 0, sizeof(uint32_t));
-            glMemoryBarrier(GL_BUFFER_UPDATE_BARRIER_BIT);
+            glMemoryBarrier(GL_BUFFER_UPDATE_BARRIER_BIT | GL_SHADER_STORAGE_BARRIER_BIT);
         }
 
         sort_step2_shader_->use();
