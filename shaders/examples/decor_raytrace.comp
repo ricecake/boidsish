@@ -1,0 +1,38 @@
+#version 430 core
+
+layout(local_size_x = 16, local_size_y = 16) in;
+
+layout(rgba32f, binding = 0) uniform image2D u_outputTex;
+layout(r32f, binding = 1) uniform image2D u_depthTex;
+
+uniform vec3 u_cameraPos;
+uniform mat4 u_invView;
+uniform mat4 u_invProj;
+
+#include "../helpers/lbvh.glsl"
+
+void main() {
+    ivec2 pixel = ivec2(gl_GlobalInvocationID.xy);
+    ivec2 size = imageSize(u_outputTex);
+    if (pixel.x >= size.x || pixel.y >= size.y) return;
+
+    vec2 uv = (vec2(pixel) + 0.5) / vec2(size);
+    vec4 ndc = vec4(uv * 2.0 - 1.0, 0.0, 1.0);
+    vec4 viewPos = u_invProj * ndc;
+    viewPos /= viewPos.w;
+    vec3 worldDir = normalize((u_invView * vec4(viewPos.xyz, 0.0)).xyz);
+
+    float hit_t;
+    int hit_idx = lbvh_raycast(u_cameraPos, worldDir, hit_t, 0);
+
+    float current_depth = imageLoad(u_depthTex, pixel).r;
+
+    if (hit_idx != -1 && hit_t < current_depth) {
+        vec3 color = vec3(0.5, 0.8, 0.2); // Hit color
+        // Simple shading
+        color *= (1.0 / (1.0 + hit_t * 0.01));
+
+        imageStore(u_outputTex, pixel, vec4(color, 1.0));
+        imageStore(u_depthTex, pixel, vec4(hit_t, 0.0, 0.0, 0.0));
+    }
+}

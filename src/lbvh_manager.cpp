@@ -32,6 +32,9 @@ void LBVHManager::_AllocateBuffers(int num_objects) {
     glGenBuffers(1, &nodes_ssbo_);
     glBindBuffer(GL_SHADER_STORAGE_BUFFER, nodes_ssbo_);
     glBufferData(GL_SHADER_STORAGE_BUFFER, num_nodes * sizeof(LBVHNode), nullptr, GL_DYNAMIC_DRAW);
+    uint32_t zero = 0;
+    glClearBufferData(GL_SHADER_STORAGE_BUFFER, GL_R32UI, GL_RED_INTEGER, GL_UNSIGNED_INT, &zero);
+    glMemoryBarrier(GL_BUFFER_UPDATE_BARRIER_BIT);
 
     glGenBuffers(1, &aabb_ssbo_);
     glBindBuffer(GL_SHADER_STORAGE_BUFFER, aabb_ssbo_);
@@ -108,6 +111,28 @@ void LBVHManager::Build(const std::vector<LBVH_AABB>& aabbs, const std::vector<u
     glBindBuffer(GL_SHADER_STORAGE_BUFFER, active_ssbo_);
     glBufferSubData(GL_SHADER_STORAGE_BUFFER, 0, n * sizeof(uint32_t), active.data());
 
+    _BuildGPU(n, scene_min, scene_max);
+}
+
+void LBVHManager::Build(GLuint external_aabb_ssbo, GLuint external_active_ssbo, int n, glm::vec3 scene_min, glm::vec3 scene_max) {
+    if (n <= 0) return;
+    _AllocateBuffers(n);
+
+    // Copy from external buffers to internal buffers
+    glBindBuffer(GL_COPY_READ_BUFFER, external_aabb_ssbo);
+    glBindBuffer(GL_COPY_WRITE_BUFFER, aabb_ssbo_);
+    glCopyBufferSubData(GL_COPY_READ_BUFFER, GL_COPY_WRITE_BUFFER, 0, 0, n * sizeof(LBVH_AABB));
+
+    glBindBuffer(GL_COPY_READ_BUFFER, external_active_ssbo);
+    glBindBuffer(GL_COPY_WRITE_BUFFER, active_ssbo_);
+    glCopyBufferSubData(GL_COPY_READ_BUFFER, GL_COPY_WRITE_BUFFER, 0, 0, n * sizeof(uint32_t));
+
+    glMemoryBarrier(GL_BUFFER_UPDATE_BARRIER_BIT);
+
+    _BuildGPU(n, scene_min, scene_max);
+}
+
+void LBVHManager::_BuildGPU(int n, glm::vec3 scene_min, glm::vec3 scene_max) {
     morton_shader_->use();
     morton_shader_->setInt("u_numObjects", n);
     morton_shader_->setVec3("u_sceneMin", scene_min);
@@ -188,7 +213,20 @@ void LBVHManager::Build(const std::vector<LBVH_AABB>& aabbs, const std::vector<u
     glDispatchCompute((2 * n - 1 + 255) / 256, 1, 1);
     glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
 
-    Refit(aabbs);
+    // Initial Refit to compute bounds from leaves to root
+    int num_internal = std::max(1, n - 1);
+    uint32_t zero = 0;
+    glBindBuffer(GL_SHADER_STORAGE_BUFFER, refit_counters_ssbo_);
+    glClearBufferData(GL_SHADER_STORAGE_BUFFER, GL_R32UI, GL_RED_INTEGER, GL_UNSIGNED_INT, &zero);
+    glMemoryBarrier(GL_BUFFER_UPDATE_BARRIER_BIT);
+
+    refit_shader_->use();
+    refit_shader_->setInt("u_numObjects", n);
+    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, aabb_ssbo_);
+    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, refit_counters_ssbo_);
+    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 20, nodes_ssbo_);
+    glDispatchCompute((n + 255) / 256, 1, 1);
+    glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
 }
 
 void LBVHManager::Refit(const std::vector<LBVH_AABB>& aabbs) {

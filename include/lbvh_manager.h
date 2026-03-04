@@ -37,6 +37,17 @@ namespace Boidsish {
         void Build(const std::vector<LBVH_AABB>& aabbs, const std::vector<uint32_t>& active, glm::vec3 scene_min, glm::vec3 scene_max);
 
         /**
+         * @brief Builds a full LBVH from existing GPU buffers.
+         *
+         * @param aabb_ssbo SSBO containing LBVH_AABB data.
+         * @param active_ssbo SSBO containing uint32_t active flags.
+         * @param n Number of objects.
+         * @param scene_min Minimum bounds of the scene.
+         * @param scene_max Maximum bounds of the scene.
+         */
+        void Build(GLuint aabb_ssbo, GLuint active_ssbo, int n, glm::vec3 scene_min, glm::vec3 scene_max);
+
+        /**
          * @brief Updates the AABBs of existing nodes without changing the tree structure.
          * Useful for moving objects that don't significantly change their relative topology.
          *
@@ -56,6 +67,7 @@ namespace Boidsish {
     private:
         void _AllocateBuffers(int num_objects);
         void _CleanupBuffers();
+        void _BuildGPU(int n, glm::vec3 scene_min, glm::vec3 scene_max);
 
         int num_objects_ = 0;
 

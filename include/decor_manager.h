@@ -8,6 +8,7 @@
 
 #include "biome_properties.h"
 #include "frustum.h"
+#include "lbvh_manager.h"
 #include "model.h"
 #include "procedural_generator.h"
 #include <glm/glm.hpp>
@@ -55,8 +56,22 @@ namespace Boidsish {
 		unsigned int shadow_indirect_buffer = 0; // MDI commands for shadow pass
 		unsigned int count_buffer = 0;           // For culling atomic counter
 
+		// LBVH resources
+		unsigned int aabb_ssbo = 0;
+		unsigned int active_ssbo = 0;
+		std::unique_ptr<LBVHManager> lbvh;
+
 		// Cached instance count (read back after compute, used during render)
 		unsigned int cached_count = 0;
+
+		DecorType() = default;
+		~DecorType() = default;
+
+		// Move-only
+		DecorType(DecorType&&) noexcept = default;
+		DecorType& operator=(DecorType&&) noexcept = default;
+		DecorType(const DecorType&) = delete;
+		DecorType& operator=(const DecorType&) = delete;
 	};
 
 	class DecorManager {
@@ -139,6 +154,8 @@ namespace Boidsish {
 		// Minimum screen-space size in pixels for culling
 		void SetMinPixelSize(float size) { min_pixel_size_ = size; }
 
+		const std::vector<DecorType>& GetDecorTypes() const { return decor_types_; }
+
 	private:
 		void _Initialize();
 		void _UpdateAllocation(
@@ -184,9 +201,9 @@ namespace Boidsish {
 		glm::mat4 hiz_prev_vp_{1.0f};
 		bool      hiz_enabled_ = false;
 
-		static constexpr int kInstancesPerChunk = 1024;
-		static constexpr int kMaxActiveChunks = 2048;
-		static constexpr int kMaxInstancesPerType = kInstancesPerChunk * kMaxActiveChunks; // 2,097,152
+		static constexpr int kInstancesPerChunk = 256;
+		static constexpr int kMaxActiveChunks = 576;
+		static constexpr int kMaxInstancesPerType = kInstancesPerChunk * kMaxActiveChunks; // 147,456
 	};
 
 } // namespace Boidsish

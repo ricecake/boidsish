@@ -18,6 +18,7 @@ layout(std430, binding = 20) readonly buffer LBVHNodes {
 
 // Intersection of a ray with an AABB
 float intersectAABB(vec3 ray_origin, vec3 ray_dir, vec3 aabb_min, vec3 aabb_max) {
+    if (any(greaterThan(aabb_min, aabb_max))) return 1e30;
     vec3 t_min = (aabb_min - ray_origin) / ray_dir;
     vec3 t_max = (aabb_max - ray_origin) / ray_dir;
     vec3 t1 = min(t_min, t_max);
