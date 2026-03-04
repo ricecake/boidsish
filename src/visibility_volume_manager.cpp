@@ -70,7 +70,15 @@ namespace Boidsish {
 
 		// Snap volume to voxel grid to reduce flickering/shimmering
 		glm::vec3 cameraPos(camera.x, camera.y, camera.z);
-		volume_origin_ = glm::floor((cameraPos - glm::vec3(kVolumeSize * kVoxelSize * 0.5f)) / kVoxelSize) * kVoxelSize;
+		glm::vec3 new_origin =
+			glm::floor((cameraPos - glm::vec3(kVolumeSize * kVoxelSize * 0.5f)) / kVoxelSize) * kVoxelSize;
+
+		if (new_origin != volume_origin_) {
+			// If volume shifted, clear it to prevent history artifacts from wrong world positions
+			uint32_t zero = 0;
+			glClearTexImage(volume_texture_, 0, GL_RED_INTEGER, GL_UNSIGNED_SHORT, &zero);
+			volume_origin_ = new_origin;
+		}
 
 		volume_compute_shader_->use();
 		volume_compute_shader_->setVec3("u_volumeOrigin", volume_origin_);
@@ -85,6 +93,9 @@ namespace Boidsish {
 				glm::vec4(cam_frustum.planes[i].normal, cam_frustum.planes[i].distance)
 			);
 		}
+
+	volume_compute_shader_->setFloat("u_near", 0.1f);
+	volume_compute_shader_->setFloat("u_far", 1000.0f);
 
 		if (shadow_manager) {
 			for (int i = 0; i < 4; ++i) {
@@ -101,7 +112,7 @@ namespace Boidsish {
 		glBindTexture(GL_TEXTURE_2D, hiz_texture);
 		volume_compute_shader_->setInt("u_hizTexture", 0);
 
-		glBindImageTexture(0, volume_texture_, 0, GL_TRUE, 0, GL_WRITE_ONLY, GL_R16UI);
+		glBindImageTexture(0, volume_texture_, 0, GL_TRUE, 0, GL_READ_WRITE, GL_R16UI);
 
 		glDispatchCompute(kVolumeSize / 4, kVolumeSize / 4, kVolumeSize / 4);
 		glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | GL_TEXTURE_FETCH_BARRIER_BIT);

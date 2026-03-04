@@ -59,7 +59,17 @@ void main() {
 	v_epicenter = p.epicenter;
 
 	uint bits = visibility_bits[gl_VertexID];
-	bool isVisible = (bits & 33u) == 33u; // 0x21: PASS_CAMERA_FRUSTUM | PASS_OCCLUSION
+	// 0x21: PASS_CAMERA_FRUSTUM | PASS_OCCLUSION
+	bool isVisible = (bits & 33u) == 33u;
+
+	// Fallback conservative check for screen edge stability
+	if (isVisible) {
+		// If voxel check passed, still do a per-particle sphere check but with a large radius
+		// this helps with flickering when the volume resolution is too coarse for fast moving particles
+		if (!isSphereInFrustum(p.pos.xyz, 2.0)) {
+			isVisible = false;
+		}
+	}
 
 	if (p.pos.w <= 0.0 || !isVisible) {
 		// Don't draw dead or culled particles

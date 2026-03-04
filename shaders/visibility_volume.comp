@@ -2,7 +2,7 @@
 
 layout(local_size_x = 4, local_size_y = 4, local_size_z = 4) in;
 
-layout(r16ui, binding = 0) uniform writeonly uimage3D u_visibilityVolume;
+layout(r16ui, binding = 0) uniform uimage3D u_visibilityVolume;
 
 uniform vec3  u_volumeOrigin;
 uniform float u_voxelSize;
@@ -15,6 +15,8 @@ uniform mat4  u_prevViewProj;
 uniform sampler2D u_hizTexture;
 uniform ivec2 u_hizSize;
 uniform int   u_hizMipCount;
+uniform float u_near;
+uniform float u_far;
 
 #define PASS_CAMERA_FRUSTUM (1 << 0)
 #define PASS_SHADOW_0       (1 << 1)
@@ -23,18 +25,18 @@ uniform int   u_hizMipCount;
 #define PASS_SHADOW_3       (1 << 4)
 #define PASS_OCCLUSION      (1 << 5)
 
-bool isInFrustum(vec3 pos, vec4 planes[6]) {
+bool isInFrustum(vec3 pos, vec4 planes[6], float margin) {
     for (int i = 0; i < 6; i++) {
-        if (dot(planes[i].xyz, pos) + planes[i].w < 0.0) {
+        if (dot(planes[i].xyz, pos) + planes[i].w < -margin) {
             return false;
         }
     }
     return true;
 }
 
-bool isInOrthoFrustum(vec3 pos, mat4 lightSpaceMatrix) {
+bool isInOrthoFrustum(vec3 pos, mat4 lightSpaceMatrix, float margin) {
     vec4 clip = lightSpaceMatrix * vec4(pos, 1.0);
-    return all(greaterThanEqual(clip.xyz, vec3(-1.0))) && all(lessThanEqual(clip.xyz, vec3(1.0)));
+    return all(greaterThanEqual(clip.xyz, vec3(-1.0 - margin))) && all(lessThanEqual(clip.xyz, vec3(1.0 + margin)));
 }
 
 bool isOccluded(vec3 pos) {
@@ -43,20 +45,32 @@ bool isOccluded(vec3 pos) {
 
     vec3 ndc = clip.xyz / clip.w;
     vec2 uv = ndc.xy * 0.5 + 0.5;
-    if (any(lessThan(uv, vec2(0.0))) || any(greaterThan(uv, vec2(1.0)))) return false;
+
+    // Near screen edges, culling is risky due to reprojection artifacts
+    float edgeMargin = 0.05;
+    if (any(lessThan(uv, vec2(edgeMargin))) || any(greaterThan(uv, vec2(1.0 - edgeMargin)))) return false;
 
     float depth = ndc.z * 0.5 + 0.5;
     // Sample Hi-Z: Red is MIN depth, Green is MAX depth
-    // We use a high mip level for the volume to be extra conservative and avoid flickering
+    // Mip 3.0 covers an 8x8 block of pixels
     float mip = 3.0;
     vec2 hizDepth = textureLod(u_hizTexture, uv, mip).rg;
 
-    // If MAX depth is near zero, it's likely uninitialized or clear color (if 0)
-    // In standard depth, 1.0 is far, 0.0 is near.
-    if (hizDepth.y < 0.0001) return false;
+    // In our depth buffer, 1.0 is far (sky), 0.0 is near.
+    // If the MAX depth in this region is the sky, nothing is occluded.
+    if (hizDepth.y >= 0.999) return false;
 
-    // Conservative culling: if voxel's point is significantly behind the area's farthest point
-    return depth > hizDepth.y + 0.05;
+    // Convert to linear depth for better bias scaling
+    float z_ndc = ndc.z; // -1 to 1
+    float linearZ = (2.0 * u_near * u_far) / (u_far + u_near - z_ndc * (u_far - u_near));
+
+    float maxZ_ndc = hizDepth.y * 2.0 - 1.0;
+    float maxLinearZ = (2.0 * u_near * u_far) / (u_far + u_near - maxZ_ndc * (u_far - u_near));
+
+    // Scaling bias: further objects need larger absolute bias to account for precision loss
+    float bias = 0.5 + (linearZ * 0.01);
+
+    return linearZ > (maxLinearZ + bias);
 }
 
 void main() {
@@ -71,16 +85,32 @@ void main() {
     ) - 0.5) * 0.5;
 
     vec3 voxelCenter = u_volumeOrigin + (vec3(gid) + 0.5 + jitter) * u_voxelSize;
-    uint mask = 0;
+    uint currentMask = 0;
 
-    if (isInFrustum(voxelCenter, u_cameraFrustumPlanes)) mask |= PASS_CAMERA_FRUSTUM;
+    // Use a small margin for frustum tests in the volume to be extra conservative
+    float frustumMargin = u_voxelSize * 0.5;
+    if (isInFrustum(voxelCenter, u_cameraFrustumPlanes, frustumMargin)) currentMask |= PASS_CAMERA_FRUSTUM;
 
-    if (isInOrthoFrustum(voxelCenter, u_shadowMatrices[0])) mask |= PASS_SHADOW_0;
-    if (isInOrthoFrustum(voxelCenter, u_shadowMatrices[1])) mask |= PASS_SHADOW_1;
-    if (isInOrthoFrustum(voxelCenter, u_shadowMatrices[2])) mask |= PASS_SHADOW_2;
-    if (isInOrthoFrustum(voxelCenter, u_shadowMatrices[3])) mask |= PASS_SHADOW_3;
+    float shadowMargin = 0.05; // 5% margin in NDC
+    if (isInOrthoFrustum(voxelCenter, u_shadowMatrices[0], shadowMargin)) currentMask |= PASS_SHADOW_0;
+    if (isInOrthoFrustum(voxelCenter, u_shadowMatrices[1], shadowMargin)) currentMask |= PASS_SHADOW_1;
+    if (isInOrthoFrustum(voxelCenter, u_shadowMatrices[2], shadowMargin)) currentMask |= PASS_SHADOW_2;
+    if (isInOrthoFrustum(voxelCenter, u_shadowMatrices[3], shadowMargin)) currentMask |= PASS_SHADOW_3;
 
-    if (!isOccluded(voxelCenter)) mask |= PASS_OCCLUSION;
+    if (!isOccluded(voxelCenter)) currentMask |= PASS_OCCLUSION;
 
-    imageStore(u_visibilityVolume, gid, uvec4(mask, 0, 0, 0));
+    // Temporal persistence using history bits in the R16UI texture
+    // Bits 0-5: Result mask (current | history)
+    // Bits 6-11: Current raw mask
+    uint prevValue = imageLoad(u_visibilityVolume, gid).r;
+    uint prevRawMask = (prevValue >> 6) & 0x3F;
+
+    // Result is visible if it was visible in either this frame or the last one (conservative)
+    uint resultMask = currentMask | prevRawMask;
+
+    // Store result mask in bits 0-5 and current raw mask in bits 6-11 for the next frame
+    // We only use the lowest 6 bits for the final visibility check (resultMask)
+    uint nextValue = (resultMask & 0x3F) | ((currentMask & 0x3F) << 6);
+
+    imageStore(u_visibilityVolume, gid, uvec4(nextValue, 0, 0, 0));
 }
