@@ -270,6 +270,12 @@ int main() {
 				// Takeoff trigger (hold SPACE)
 				controller->holding_takeoff_key = state.keys[GLFW_KEY_SPACE];
 
+				// Weapon switching
+				if (state.key_down[GLFW_KEY_F]) {
+					kittywumpus_selected_weapon = (kittywumpus_selected_weapon + 1) % 4;
+					g_weapon_selector->SetSelectedIndex(kittywumpus_selected_weapon);
+				}
+
 				// Update takeoff charge display
 				if (g_takeoff_charge_indicator) {
 					float charge = g_game_state.GetTakeoffChargeProgress() * 100.0f;
@@ -279,7 +285,7 @@ int main() {
 			}
 
 			// Update game state
-			g_game_state.Update(state.delta_time, *visualizer, g_plane, *controller);
+			g_game_state.Update(state.delta_time, *visualizer, *g_handler, g_plane, *controller);
 
 			// Handle HUD transitions
 			GameState new_state = g_game_state.GetState();
