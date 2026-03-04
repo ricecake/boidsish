@@ -59,6 +59,9 @@ struct TerrainMaterial {
 	float metallic;
 	float normalScale;
 	float normalStrength;
+	bool use_glint;
+	float glint_density;
+	float glint_roughness;
 };
 
 /**
@@ -106,6 +109,9 @@ float calculateMoisture(float height, float valleyFactor, vec3 pos) {
 TerrainMaterial getBiomeMaterial(float height, float moisture, float noise) {
 	TerrainMaterial mat;
 	mat.metallic = 0.0;
+	mat.use_glint = false;
+	mat.glint_density = 0.0;
+	mat.glint_roughness = 0.0;
 	// Distort height with noise for natural boundaries
 	float h = height + noise * 8.0;
 
@@ -116,6 +122,9 @@ TerrainMaterial getBiomeMaterial(float height, float moisture, float noise) {
 		mat.roughness = mix(0.9, 0.4, wetness);
 		mat.normalScale = 40.0;
 		mat.normalStrength = mix(0.1, 0.05, wetness);
+		mat.use_glint = true;
+		mat.glint_density = 35.0;
+		mat.glint_roughness = 1.0;
 		return mat;
 	}
 
@@ -176,6 +185,9 @@ TerrainMaterial getBiomeMaterial(float height, float moisture, float noise) {
 		mat.roughness = mix(0.6, 0.5, t * 0.3);
 		mat.normalScale = mix(4.0, 25.0, t * 0.3);
 		mat.normalStrength = mix(0.2, 0.05, t * 0.3);
+		mat.use_glint = true;
+		mat.glint_roughness = mix(0.90, 0.5, t);
+		mat.glint_density = mix(1, 50, t);
 		return mat;
 	}
 
@@ -189,6 +201,10 @@ TerrainMaterial getBiomeMaterial(float height, float moisture, float noise) {
 	mat.roughness = mix(0.5, 0.4, t);
 	mat.normalScale = mix(25.0, 30.0, t);
 	mat.normalStrength = mix(0.05, 0.03, t);
+	mat.use_glint = true;
+	mat.glint_roughness = mix(0.5, 0.1, t);
+	mat.glint_density = mix(50, 1000, t);
+
 	return mat;
 }
 
@@ -451,6 +467,8 @@ void main() {
 	albedo *= mix(1, mix(1.0, 1.25, windDistortion), grassFactor);
 	roughness *= mix(1.25, 1.0, windDistortion);
 	perturbedNorm = mix(perturbedNorm, normalize(perturbedNorm + (normalize(rawWindNudge)) * 0.23), grassFactor);
+	biomeMat.glint_roughness = mix(biomeMat.glint_roughness, biomeMat.glint_roughness * windDistortion * 0.001, windDistortion);
+	biomeMat.glint_density = mix(biomeMat.glint_density, biomeMat.glint_density * windDistortion * 50, windDistortion);
 
 	mat2 uv_J = mat2(dFdx(TexCoords), dFdy(TexCoords));
 	vec3 lighting = apply_lighting_pbr(
@@ -462,9 +480,9 @@ void main() {
 		1.0,
 		TexCoords,
 		uv_J,
-		false,
-		0.0,
-		0.0
+		biomeMat.use_glint,
+		biomeMat.glint_roughness,
+		biomeMat.glint_density
 	).rgb;
 
 	// ========================================================================
