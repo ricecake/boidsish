@@ -42,7 +42,7 @@ namespace Boidsish {
 
 	ProceduralIR ProceduralWalkingCreature::GenerateIR() {
 		ProceduralIR ir;
-		ir.name = "procedural_walker";
+		ir.name = "critter";
 
 		glm::vec3 body_col(0.6f, 0.6f, 0.7f);
 		glm::vec3 leg_col(0.4f, 0.4f, 0.45f);
@@ -65,25 +65,38 @@ namespace Boidsish {
 			// Hip hub
 			int hip = ir.AddHub(offsets[i], length_ * 0.1f, leg_col, body, names[i] + "_hip", true);
 
-			// Upper leg: Pyramid pointing down
-			glm::vec3 upper_end = offsets[i] + glm::vec3(offsets[i].x > 0 ? 0.2f : -0.2f, -height_ * 0.8f, 0);
-			int upper = ir.AddTube(offsets[i], upper_end, length_ * 0.08f, length_ * 0.05f, leg_col, hip, names[i] + "_upper", true);
+			// Upper leg: Arching upwards
+			glm::vec3 upper_end = offsets[i] + glm::vec3(offsets[i].x > 0 ? 0.5f : -0.5f, height_ * 1.5f, 0);
+			int       upper =
+				ir.AddTube(offsets[i], upper_end, length_ * 0.08f, length_ * 0.05f, leg_col, hip, names[i] + "_upper", true);
 
-			// Lower leg: Tube
-			glm::vec3 lower_end = upper_end + glm::vec3(0, -height_ * 0.8f, 0);
-			int lower = ir.AddTube(upper_end, lower_end, length_ * 0.05f, length_ * 0.03f, leg_col, upper, names[i] + "_lower", true);
+			// Lower leg: Down to ground
+			glm::vec3 lower_end = upper_end + glm::vec3(0, -height_ * 2.3f, 0);
+			int       lower =
+				ir.AddTube(upper_end, lower_end, length_ * 0.05f, length_ * 0.03f, leg_col, upper, names[i] + "_lower", true);
 
 			// Foot: Wedge
-			ir.AddWedge(lower_end, glm::quat(1, 0, 0, 0),
-						glm::vec3(length_ * 0.1f, length_ * 0.05f, length_ * 0.15f),
-						foot_col, lower, names[i] + "_foot", true);
+			ir.AddWedge(
+				lower_end,
+				glm::quat(1, 0, 0, 0),
+				glm::vec3(length_ * 0.1f, length_ * 0.05f, length_ * 0.15f),
+				foot_col,
+				lower,
+				names[i] + "_foot",
+				true
+			);
 		}
 
 		return ir;
 	}
 
 	void ProceduralWalkingCreature::Update(float delta_time) {
+		current_pos_ = glm::vec3(GetX(), GetY(), GetZ());
+
 		UpdateMovement(delta_time);
+
+		// Update outer shape position so callers/tests see the movement
+		SetPosition(current_pos_.x, current_pos_.y, current_pos_.z);
 
 		// Update model transform before IK so world-to-model conversions are correct
 		model_->SetPosition(current_pos_.x, current_pos_.y, current_pos_.z);
@@ -138,20 +151,20 @@ namespace Boidsish {
 					legs_[leg_idx].step_start_pos = legs_[leg_idx].world_foot_pos;
 
 					glm::vec3 rotated_offset = glm::vec3(rotation * glm::vec4(legs_[leg_idx].rest_offset, 1.0f));
-					float step_dist = length_ * 0.4f;
+					float     step_dist = length_ * 0.4f;
 					legs_[leg_idx].step_target_pos = current_pos_ + rotated_offset + forward * step_dist;
-					legs_[leg_idx].step_target_pos.y = 0;
+					legs_[leg_idx].step_target_pos.y = current_pos_.y;
 				}
 
 				float p = leg_phi;
 				float h = std::sin(p * std::numbers::pi_v<float>) * length_ * 0.2f;
 				legs_[leg_idx].world_foot_pos = glm::mix(legs_[leg_idx].step_start_pos, legs_[leg_idx].step_target_pos, p);
-				legs_[leg_idx].world_foot_pos.y = h;
+				legs_[leg_idx].world_foot_pos.y = current_pos_.y + h;
 			} else {
 				if (legs_[leg_idx].is_moving) {
 					legs_[leg_idx].is_moving = false;
 					legs_[leg_idx].world_foot_pos = legs_[leg_idx].step_target_pos;
-					legs_[leg_idx].world_foot_pos.y = 0;
+					legs_[leg_idx].world_foot_pos.y = current_pos_.y;
 				}
 			}
 		}
