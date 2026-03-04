@@ -201,6 +201,7 @@ void LBVHManager::Refit(const std::vector<LBVH_AABB>& aabbs) {
     uint32_t zero = 0;
     glBindBuffer(GL_SHADER_STORAGE_BUFFER, refit_counters_ssbo_);
     glClearBufferData(GL_SHADER_STORAGE_BUFFER, GL_R32UI, GL_RED_INTEGER, GL_UNSIGNED_INT, &zero);
+    glMemoryBarrier(GL_BUFFER_UPDATE_BARRIER_BIT);
 
     refit_shader_->use();
     refit_shader_->setInt("u_numObjects", n);

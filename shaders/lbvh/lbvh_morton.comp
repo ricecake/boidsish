@@ -3,10 +3,8 @@
 layout(local_size_x = 256) in;
 
 struct AABB {
-    vec3 min_pt;
-    float _pad1;
-    vec3 max_pt;
-    float _pad2;
+    vec4 min_pt;
+    vec4 max_pt;
 };
 
 layout(std430, binding = 0) readonly buffer InputAABBs {
@@ -52,17 +50,14 @@ void main() {
     if (idx >= u_numObjects) return;
 
     if (u_activeFlags[idx] == 0) {
-        // Inactive objects get a special Morton code (all 1s)
-        // so they sit at the end of the sorted array and can be ignored.
         u_mortonCodes[idx] = 0xFFFFFFFFu;
         u_objectIndices[idx] = idx;
         return;
     }
 
     AABB aabb = u_aabbs[idx];
-    vec3 center = (aabb.min_pt + aabb.max_pt) * 0.5f;
+    vec3 center = (aabb.min_pt.xyz + aabb.max_pt.xyz) * 0.5f;
 
-    // Normalize center to [0, 1] based on scene bounds
     vec3 normPos = (center - u_sceneMin) / (u_sceneMax - u_sceneMin);
 
     u_mortonCodes[idx] = morton3D(normPos);

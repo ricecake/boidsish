@@ -10,11 +10,6 @@ layout(std430, binding = 1) writeonly buffer TotalSum {
     uint u_totalSum;
 };
 
-// bit_counts of the last element, needed to calculate total zeros without CPU readback
-layout(std430, binding = 2) readonly buffer LastBitCount {
-    uint u_lastBitCount[];
-};
-
 uniform uint u_numElements;
 
 shared uint shared_data[512];
