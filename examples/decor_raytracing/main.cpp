@@ -25,14 +25,20 @@ int main() {
         std::cerr << "Decor manager not found" << std::endl;
         return -1;
     }
-    decor_manager->PopulateDefaultDecor();
+
+    // Increase density for the example to ensure we see something
+    DecorProperties tree_props = DecorManager::GetDefaultTreeProperties();
+    tree_props.min_density = 0.5f;
+    tree_props.max_density = 1.0f;
+    tree_props.biomes = {Biome::LushGrass, Biome::Forest, Biome::AlpineMeadow, Biome::DryGrass};
+    decor_manager->AddDecorType("assets/decor/Tree/tree01.obj", tree_props);
 
     // 3. Setup Camera
     Camera cam;
     cam.x = 0.0f;
-    cam.y = 80.0f; // Higher up to see more
+    cam.y = 50.0f;
     cam.z = 0.0f;
-    cam.pitch = -45.0f;
+    cam.pitch = -20.0f; // Look more towards the horizon
     cam.yaw = 0.0f;
     visualizer.SetCamera(cam);
 
@@ -61,10 +67,17 @@ int main() {
     std::cout << "Warming up and generating decor..." << std::endl;
 
     // Run for enough frames to ensure terrain chunks are loaded and decor is generated
-    for (int frame = 0; frame < 100; ++frame) {
+    for (int frame = 0; frame < 50; ++frame) {
         visualizer.Update();
-        // Force a small delay to allow async terrain generation if any (though usually sync in these tests)
-        // std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        visualizer.Render();
+
+        if (frame % 10 == 0) {
+            int total_objects = 0;
+            for (const auto& type : decor_manager->GetDecorTypes()) {
+                if (type.lbvh) total_objects += type.lbvh->GetNumObjects();
+            }
+            std::cout << "Frame " << frame << ", total potential objects in LBVHs: " << total_objects << std::endl;
+        }
     }
 
     std::cout << "Starting raytrace..." << std::endl;
@@ -80,10 +93,10 @@ int main() {
     glClearTexImage(depth_tex, 0, GL_RED, GL_FLOAT, &clearDepth);
 
     // Raytrace against each decor type's LBVH
-    int types_with_objects = 0;
+    int types_traced = 0;
     for (const auto& type : decor_manager->GetDecorTypes()) {
         if (type.lbvh && type.lbvh->GetNumObjects() > 0) {
-            types_with_objects++;
+            types_traced++;
             raytrace_shader.use();
             raytrace_shader.setVec3("u_cameraPos", cameraPos);
             raytrace_shader.setMat4("u_invView", glm::inverse(view));
@@ -99,7 +112,7 @@ int main() {
         }
     }
 
-    std::cout << "Raytraced against " << types_with_objects << " decor types." << std::endl;
+    std::cout << "Raytraced against " << types_traced << " decor types." << std::endl;
 
     // Save output texture to PNG
     std::vector<float> pixels(1280 * 720 * 4);

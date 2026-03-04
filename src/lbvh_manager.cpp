@@ -32,6 +32,8 @@ void LBVHManager::_AllocateBuffers(int num_objects) {
     glGenBuffers(1, &nodes_ssbo_);
     glBindBuffer(GL_SHADER_STORAGE_BUFFER, nodes_ssbo_);
     glBufferData(GL_SHADER_STORAGE_BUFFER, num_nodes * sizeof(LBVHNode), nullptr, GL_DYNAMIC_DRAW);
+    uint32_t zero = 0;
+    glClearBufferData(GL_SHADER_STORAGE_BUFFER, GL_R32UI, GL_RED_INTEGER, GL_UNSIGNED_INT, &zero);
 
     glGenBuffers(1, &aabb_ssbo_);
     glBindBuffer(GL_SHADER_STORAGE_BUFFER, aabb_ssbo_);
