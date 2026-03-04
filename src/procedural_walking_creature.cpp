@@ -26,6 +26,8 @@ namespace Boidsish {
 			for (const auto& n : leg_names) {
 				// Upper leg: moderate hip roll limit
 				BoneConstraint upper;
+				upper.type = ConstraintType::Cone;
+				upper.coneAngle = 160.0f;
 				upper.minTwist = -15.0f;
 				upper.maxTwist = 15.0f;
 				model_->SetBoneConstraint(n + "_upper", upper);
