@@ -51,8 +51,9 @@ set_directory_properties(PROPERTIES COMPILE_OPTIONS "${OLD_COMPILE_OPTIONS}")
 # 3. Define the Library
 # Finds all .cpp files in src/
 file(GLOB_RECURSE LIB_SOURCES "src/*.cpp")
+file(GLOB_RECURSE INC_SOURCES "include/*.h")
 
-add_library(boidsish STATIC ${LIB_SOURCES})
+add_library(boidsish STATIC ${LIB_SOURCES} ${INC_SOURCES})
 target_compile_definitions(boidsish PUBLIC GLM_ENABLE_EXPERIMENTAL)
 
 target_include_directories(boidsish
