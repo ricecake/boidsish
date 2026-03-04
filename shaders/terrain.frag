@@ -30,15 +30,6 @@ layout(std430, binding = 14) buffer ShadingStatus {
     int shading_status[];
 };
 
-struct BiomeProperties {
-	vec4 albedo_roughness; // rgb = albedo, w = roughness
-	vec4 params;           // x = metallic, y = detailStrength, z = detailScale, w = unused
-};
-
-layout(std140, binding = 7) uniform BiomeData {
-	BiomeProperties biomes[8];
-};
-
 #include "helpers/terrain_material.glsl"
 
 void calculateProceduralMaterial(

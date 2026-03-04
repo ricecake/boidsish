@@ -117,6 +117,12 @@ void main() {
     float normalStrength = finalMaterial.normalStrength;
     float normalScale = finalMaterial.normalScale;
 
+    // View direction for prioritization (baked into the cache)
+    vec3 vDir = normalize(viewPos - FragPos);
+
+    // Calculate perturbFactor using shared common logic
+    float pFactor = perturbLevel(FragPos, vDir, false, worldScale, viewPos, 1.0, 32.0);
+
     if (normalStrength > 0.0) {
         float roughnessScale = normalScale * 0.05;
         vec3 scaledFragPos = FragPos / worldScale;

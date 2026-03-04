@@ -3,6 +3,8 @@
 
 #include "terrain_common_structs.glsl"
 
+#ifndef TERRAIN_MATERIAL_STRUCTS
+#define TERRAIN_MATERIAL_STRUCTS
 struct BiomeProperties {
 	vec4 albedo_roughness; // rgb = albedo, w = roughness
 	vec4 params;           // x = metallic, y = detailStrength, z = detailScale, w = unused
@@ -11,6 +13,7 @@ struct BiomeProperties {
 layout(std140, binding = 7) uniform BiomeData {
 	BiomeProperties biomes[8];
 };
+#endif
 
 // Constants from terrain.frag
 #define HEIGHT_BEACH_END (3.0 * worldScale)
