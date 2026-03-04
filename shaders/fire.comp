@@ -206,6 +206,9 @@ void main() {
 
 	// --- 2. Lifetime Update ---
 	p.pos.w -= u_delta_time;
+	if (distance(p.pos.xz, viewPos.xz) > 5.0 && dot(p.pos.xz - viewPos.xz, viewDir.xz) < 0) {
+		p.pos.w = 0;
+	}
 
 	// --- 3. Respawn Logic ---
 	if (p.pos.w <= 0.0) {
@@ -316,19 +319,45 @@ void main() {
 
 		// --- 3b. Sparse Ambient Respawn ---
 		vec2 seed = vec2(float(gid), u_time);
-		if (u_num_chunks > 0 && rand(seed) < 0.0005) {
+		if (u_num_chunks > 0 && rand(seed) < 0.005) {
 			// Try a few times to find a chunk closer to the camera
 			for (int i = 0; i < 1; i++) {
-				int       chunk_idx = int(rand(seed.yx + float(i) * 0.1) * u_num_chunks) % u_num_chunks;
-				ChunkInfo chunk = chunks[chunk_idx];
-				vec2      local_pos = vec2(rand(seed + 1.1 + float(i)), rand(seed + 2.2 + float(i))) * chunk.size;
-				vec3      pos = vec3(chunk.worldOffset.x + local_pos.x, 0, chunk.worldOffset.y + local_pos.y);
+				/*
+					Pick a random point, but do it based on angle from viewDir.
+					Above, if something is behind the camera, despawn it.
+				*/
+
+				float dist = 5+(rand(seed + 1.1 + float(i)) * 350.0);
+				vec2 baseDir = normalize(viewDir.xz);
+				float r = rand(seed + 2.2 + float(i)) * 2 - 1;
+				// float offsetAngle =  pow(r, 3) * 1.57079632679; // Bias toward 0
+				float offsetAngle =  r * (1-abs(r)) * 1.57079632679; // Bias toward 0
+
+				float c = cos(offsetAngle);
+				float s = sin(offsetAngle);
+				mat2 rotationMatrix = mat2(c, -s, s, c);
+
+				vec2 rotatedOffset = (rotationMatrix * baseDir) * dist;
+
+				vec3 pos = vec3(viewPos.x + rotatedOffset.x, 0.0, viewPos.z + rotatedOffset.y);
+
+				int chunk_idx;
+				ChunkInfo chunk;
+				for (int i = 0; i < u_num_chunks; i++) {
+					chunk = chunks[i];
+					if (pos.x >= chunk.worldOffset.x && pos.x < chunk.worldOffset.x + chunk.size &&
+						pos.z >= chunk.worldOffset.y && pos.z < chunk.worldOffset.y + chunk.size) {
+						chunk_idx = i;
+						break;
+					}
+				}
+				vec2      local_pos = vec2(pos.x - chunk.worldOffset.x, pos.y - chunk.worldOffset.y);
 
 				// Only spawn closer to camera
 				if (distance(pos.xz, viewPos.xz) <= 350.0) {
 					vec2  uv = local_pos / chunk.size;
 					vec4  terrain = texture(u_heightmapArray, vec3(uv, chunk.slice));
-					float height = terrain.r;
+					float height = terrain.r + 0.05;
 					vec2  biome_data = texture(u_biomeMap, vec3(uv, chunk.slice)).rg;
 					int   biome_idx = int(biome_data.x * 255.0 + 0.5);
 
