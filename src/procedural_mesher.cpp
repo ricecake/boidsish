@@ -328,9 +328,9 @@ namespace Boidsish {
 				else
 					dir = glm::normalize(dir);
 
-				glm::vec3 up = (std::abs(dir.y) < 0.9f) ? glm::vec3(0, 1, 0) : glm::vec3(1, 0, 0);
-				glm::vec3 right = glm::normalize(glm::cross(up, dir));
-				up = glm::normalize(glm::cross(dir, right));
+				glm::vec3 up_hint = (std::abs(dir.y) < 0.9f) ? glm::vec3(0, 1, 0) : glm::vec3(1, 0, 0);
+				glm::vec3 right = glm::normalize(glm::cross(dir, up_hint));
+				glm::vec3 up = glm::normalize(glm::cross(right, dir));
 
 				glm::mat4 bone_to_model(1.0f);
 				bone_to_model[0] = glm::vec4(right, 0);
@@ -578,6 +578,17 @@ namespace Boidsish {
 
 			if (mode == SkinningMode::Rigid) {
 				int bone_id = element_to_bone[job.element_idx];
+				// If this specific element isn't a bone, find its nearest bone ancestor
+				if (bone_id == -1) {
+					int curr = job.element_idx;
+					while (curr != -1) {
+						if (element_to_bone[curr] != -1) {
+							bone_id = element_to_bone[curr];
+							break;
+						}
+						curr = ir.elements[curr].parent;
+					}
+				}
 				AssignRigidWeights(verts, job.start_v, job.end_v, bone_id);
 			} else if (mode == SkinningMode::Smooth) {
 				AssignBoneWeights(verts, bone_segments, job.start_v, job.end_v);
@@ -606,9 +617,26 @@ namespace Boidsish {
 					v.Position.y += y_offset;
 				max.y += y_offset;
 				min.y = 0;
-				for (auto& pair : data->bone_info_map)
-					pair.second.offset = pair.second.offset *
-						glm::translate(glm::mat4(1.0f), glm::vec3(0, -y_offset, 0));
+
+				// Shift the entire skeleton root to match the mesh shift
+				// We update the root-level bone transformations to include this translation
+				for (auto& node : data->root_node.children) {
+					node.transformation = glm::translate(glm::mat4(1.0f), glm::vec3(0, y_offset, 0)) *
+						node.transformation;
+				}
+
+				// Re-calculate all offset matrices because the global bind pose has shifted
+				std::function<void(NodeData&, glm::mat4)> updateOffsets = [&](NodeData& n, glm::mat4 p) {
+					glm::mat4 g = p * n.transformation;
+					auto      it = data->bone_info_map.find(n.name);
+					if (it != data->bone_info_map.end()) {
+						it->second.offset = glm::inverse(g);
+					}
+					for (auto& child : n.children) {
+						updateOffsets(child, g);
+					}
+				};
+				updateOffsets(data->root_node, glm::mat4(1.0f));
 			}
 			data->aabb = AABB(min, max);
 		}
