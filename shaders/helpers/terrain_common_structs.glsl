@@ -10,6 +10,6 @@ layout(std140, binding = 8) uniform TerrainData {
     TerrainDataUbo u_terrain;
 };
 
-#define worldScale u_terrain.terrain_params.w
+#define worldScale u_terrain.terrain_params.y
 
 #endif // TERRAIN_COMMON_STRUCTS_GLSL

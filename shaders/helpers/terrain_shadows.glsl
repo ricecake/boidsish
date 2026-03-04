@@ -12,7 +12,7 @@ uniform sampler2DArray u_heightmapArray;
 float getTerrainHeight(vec2 worldXZ) {
 	if (u_terrain.origin_size.w < 1)
 		return -10000.0;
-	float scaledChunkSize = u_terrain.terrain_params.x * u_terrain.terrain_params.w;
+	float scaledChunkSize = u_terrain.terrain_params.x * u_terrain.terrain_params.y;
 	vec2  gridPos = worldXZ / scaledChunkSize;
 	ivec2 chunkCoord = ivec2(floor(gridPos));
 	ivec2 localGridCoord = chunkCoord - u_terrain.origin_size.xy;
@@ -39,13 +39,13 @@ float terrainShadowCoverage(vec3 worldPos, vec3 normal, vec3 lightDir) {
 		return sundownShadow;
 	}
 
-	float scaledChunkSize = u_terrain.terrain_params.x * u_terrain.terrain_params.w;
+	float scaledChunkSize = u_terrain.terrain_params.x * u_terrain.terrain_params.y;
 
 	// Better initial bias: move along normal and a bit along light direction.
 	// This dramatically reduces shadow acne.
-	vec3  p_start = worldPos + normal * (0.2 * u_terrain.terrain_params.w) + lightDir * 1.5;
+	vec3  p_start = worldPos + normal * (0.2 * u_terrain.terrain_params.y) + lightDir * 1.5;
 	float t = 0.0;
-	float maxDist = 1200.0 * u_terrain.terrain_params.w;
+	float maxDist = 1200.0 * u_terrain.terrain_params.y;
 
 	float closest = 1.0;
 	int   iter = 0;
@@ -92,7 +92,7 @@ float terrainShadowCoverage(vec3 worldPos, vec3 normal, vec3 lightDir) {
 		}
 
 		// Step size at LOD 0: proportional to world scale for smoothness
-		t += 2.0 * u_terrain.terrain_params.w;
+		t += 2.0 * u_terrain.terrain_params.y;
 	}
 
 	return closest; // * (fastFbm3d(worldPos/350+lightDir*(1-dot(lightDir, normal))+vec3(1*0.001)) * 0.5 + 0.5);
@@ -105,17 +105,17 @@ bool isPointInTerrainShadow(vec3 worldPos, vec3 normal, vec3 lightDir) {
 int isPointInTerrainShadowDebug(vec3 worldPos, vec3 normal, vec3 lightDir) {
 	if (u_terrain.origin_size.w < 1)
 		return -3; // Blue
-	if (u_terrain.terrain_params.w <= 0.0)
+	if (u_terrain.terrain_params.y <= 0.0)
 		return -1; // Cyan
 	if (u_terrain.terrain_params.x <= 0.0)
 		return -4; // White (Invalid chunkSize)
 	if (lightDir.y <= 0.0)
 		return -2; // Orange-ish (Light below horizon)
 
-	float scaledChunkSize = u_terrain.terrain_params.x * u_terrain.terrain_params.w;
-	vec3  p_start = worldPos + normal * (0.2 * u_terrain.terrain_params.w) + lightDir * (0.1 * u_terrain.terrain_params.w);
+	float scaledChunkSize = u_terrain.terrain_params.x * u_terrain.terrain_params.y;
+	vec3  p_start = worldPos + normal * (0.2 * u_terrain.terrain_params.y) + lightDir * (0.1 * u_terrain.terrain_params.y);
 	float t = 0.0;
-	float maxDist = 1200.0 * u_terrain.terrain_params.w;
+	float maxDist = 1200.0 * u_terrain.terrain_params.y;
 
 	int iter = 0;
 	while (t < maxDist && iter < 80) {
@@ -161,7 +161,7 @@ int isPointInTerrainShadowDebug(vec3 worldPos, vec3 normal, vec3 lightDir) {
 		if (p.y < h)
 			return 3; // Hit! (Magenta)
 
-		t += 2.0 * u_terrain.terrain_params.w;
+		t += 2.0 * u_terrain.terrain_params.y;
 	}
 
 	return 0; // Miss (Green)
