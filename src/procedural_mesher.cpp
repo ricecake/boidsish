@@ -361,8 +361,16 @@ namespace Boidsish {
 				}
 
 				glm::mat4 local = bs.offset; // This is actually inv(global) right now
-				if (bs.parent_bone != -1) {
-					local = bone_segments[bs.parent_bone].offset * glm::inverse(bs.offset);
+				if (!pname.empty()) {
+					// We need the parent's global bind transform.
+					// Find the parent bone info in the map.
+					auto it = data->bone_info_map.find(pname);
+					if (it != data->bone_info_map.end()) {
+						glm::mat4 parentGlobal = glm::inverse(it->second.offset);
+						local = glm::inverse(parentGlobal) * glm::inverse(bs.offset);
+					} else {
+						local = glm::inverse(bs.offset);
+					}
 				} else {
 					local = glm::inverse(bs.offset);
 				}
