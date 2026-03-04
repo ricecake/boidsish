@@ -345,11 +345,30 @@ namespace Boidsish {
 				element_to_bone[i] = bone_id;
 
 				std::string bname = e.name.empty() ? ("bone_" + std::to_string(bone_id)) : e.name;
-				BoneInfo    info;
-				info.id = bone_id;
-				info.offset = bs.offset;
-				data->bone_info_map[bname] = info;
-				data->bone_count++;
+				std::string pname = "";
+				if (e.parent != -1) {
+					int p_elem = e.parent;
+					while (p_elem != -1) {
+						if (ir.elements[p_elem].is_bone || (ir.name == "critter" &&
+						                                    ir.elements[p_elem].type == ProceduralElementType::Tube &&
+						                                    ir.elements[p_elem].length > 0.1f)) {
+							pname = ir.elements[p_elem].name.empty() ? ("bone_" + std::to_string(element_to_bone[p_elem]))
+																	 : ir.elements[p_elem].name;
+							break;
+						}
+						p_elem = ir.elements[p_elem].parent;
+					}
+				}
+
+				glm::mat4 local = bs.offset; // This is actually inv(global) right now
+				if (bs.parent_bone != -1) {
+					local = bone_segments[bs.parent_bone].offset * glm::inverse(bs.offset);
+				} else {
+					local = glm::inverse(bs.offset);
+				}
+
+				data->AddBone(bname, pname, local);
+				element_to_bone[i] = bone_id;
 			} else if (e.parent != -1) {
 				element_to_bone[i] = element_to_bone[e.parent];
 			}
