@@ -8,6 +8,8 @@
 #include "terrain_render_manager.h"
 #include "shader.h"
 
+#include "stb_image_write.h"
+
 using namespace Boidsish;
 
 int main() {
@@ -57,7 +59,7 @@ int main() {
     std::cout << "Starting main loop..." << std::endl;
 
     // Run for a few frames to let things stabilize/initialize
-    for (int frame = 0; frame < 10; ++frame) {
+    for (int frame = 0; frame < 20; ++frame) {
         // Update visualizer (this updates terrain and decor internally)
         visualizer.Update();
 
@@ -92,7 +94,26 @@ int main() {
         std::cout << "Frame " << frame << " complete." << std::endl;
     }
 
-    std::cout << "Decor Raytracing Example complete." << std::endl;
+    // Save output texture to PNG
+    std::vector<float> pixels(1280 * 720 * 4);
+    glBindTexture(GL_TEXTURE_2D, output_tex);
+    glGetTexImage(GL_TEXTURE_2D, 0, GL_RGBA, GL_FLOAT, pixels.data());
+
+    std::vector<unsigned char> png_data(1280 * 720 * 3);
+    for (int y = 0; y < 720; ++y) {
+        for (int x = 0; x < 1280; ++x) {
+            int idx = (y * 1280 + x);
+            // Flip Y for STB
+            int target_idx = ((719 - y) * 1280 + x);
+            png_data[target_idx * 3 + 0] = static_cast<unsigned char>(glm::clamp(pixels[idx * 4 + 0], 0.0f, 1.0f) * 255.0f);
+            png_data[target_idx * 3 + 1] = static_cast<unsigned char>(glm::clamp(pixels[idx * 4 + 1], 0.0f, 1.0f) * 255.0f);
+            png_data[target_idx * 3 + 2] = static_cast<unsigned char>(glm::clamp(pixels[idx * 4 + 2], 0.0f, 1.0f) * 255.0f);
+        }
+    }
+
+    stbi_write_png("raytrace_result.png", 1280, 720, 3, png_data.data(), 1280 * 3);
+
+    std::cout << "Decor Raytracing Example complete. Saved result to raytrace_result.png" << std::endl;
 
     return 0;
 }
