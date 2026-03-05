@@ -4,6 +4,7 @@
 #include <glm/gtx/quaternion.hpp>
 #include <numbers>
 #include <algorithm>
+#include "procedural_ir.h"
 
 namespace Boidsish {
 
@@ -11,7 +12,7 @@ namespace Boidsish {
 		: Shape(), length_(length) {
 		SetId(id);
 		width_ = length * 0.8f;
-		height_ = length * 0.4f;
+		height_ = length * 0.74f;
 		current_pos_ = glm::vec3(x, y, z);
 		target_pos_ = current_pos_;
 
@@ -25,22 +26,22 @@ namespace Boidsish {
 			std::string leg_names[4] = {"FL", "FR", "BR", "BL"};
 			for (const auto& n : leg_names) {
 				// Upper leg: moderate hip roll limit
-				BoneConstraint upper;
-				upper.type = ConstraintType::Cone;
-				upper.coneAngle = 160.0f;
-				upper.minTwist = -15.0f;
-				upper.maxTwist = 15.0f;
-				model_->SetBoneConstraint(n + "_upper", upper);
+				// BoneConstraint upper;
+				// upper.type = ConstraintType::Cone;
+				// upper.coneAngle = 160.0f;
+				// upper.minTwist = -15.0f;
+				// upper.maxTwist = 15.0f;
+				// model_->SetBoneConstraint(n + "_upper", upper);
 
 				// Lower leg: hinge (bend in one plane) + tight twist limit
-				BoneConstraint lower;
-				lower.type = ConstraintType::Hinge;
-				lower.axis = glm::vec3(1, 0, 0);
-				lower.minAngle = -90.0f;
-				lower.maxAngle = 10.0f;
-				lower.minTwist = -5.0f;
-				lower.maxTwist = 5.0f;
-				model_->SetBoneConstraint(n + "_lower", lower);
+				// BoneConstraint lower;
+				// lower.type = ConstraintType::Hinge;
+				// lower.axis = glm::vec3(1, 0, 0);
+				// lower.minAngle = -90.0f;
+				// lower.maxAngle = 10.0f;
+				// lower.minTwist = -5.0f;
+				// lower.maxTwist = 5.0f;
+				// model_->SetBoneConstraint(n + "_lower", lower);
 			}
 		}
 
@@ -48,10 +49,10 @@ namespace Boidsish {
 		legs_.resize(4);
 		std::string names[4] = {"FL", "FR", "BR", "BL"};
 		glm::vec3 offsets[4] = {
-			{-width_ * 0.5f, 0, length_ * 0.5f},
-			{ width_ * 0.5f, 0, length_ * 0.5f},
-			{ width_ * 0.5f, 0, -length_ * 0.5f},
-			{-width_ * 0.5f, 0, -length_ * 0.5f}
+			{-width_ * 0.975f, 0, length_ * 0.975f},
+			{ width_ * 0.975f, 0, length_ * 0.975f},
+			{ width_ * 0.975f, 0, -length_ * 0.975f},
+			{-width_ * 0.975f, 0, -length_ * 0.975f}
 		};
 
 		for (int i = 0; i < 4; ++i) {
@@ -76,30 +77,30 @@ namespace Boidsish {
 		// Body: A Box
 		int body = ir.AddBox(glm::vec3(0, height_, 0), glm::quat(1, 0, 0, 0),
 							 glm::vec3(width_ * 0.5f, height_ * 0.3f, length_ * 0.5f),
-							 body_col, -1, "body", true);
+							 body_col, -1, "body", true, SkinningMode::Rigid);
 
 		std::string names[4] = {"FL", "FR", "BR", "BL"};
 		glm::vec3 offsets[4] = {
-			{-width_ * 0.4f, height_ * 0.8f,  length_ * 0.4f},
-			{ width_ * 0.4f, height_ * 0.8f,  length_ * 0.4f},
-			{ width_ * 0.4f, height_ * 0.8f, -length_ * 0.4f},
-			{-width_ * 0.4f, height_ * 0.8f, -length_ * 0.4f}
+			{-width_ * 0.64f, height_ * 0.8f,  length_ * 0.64f},
+			{ width_ * 0.64f, height_ * 0.8f,  length_ * 0.64f},
+			{ width_ * 0.64f, height_ * 0.8f, -length_ * 0.64f},
+			{-width_ * 0.64f, height_ * 0.8f, -length_ * 0.64f}
 		};
 
 		for (int i = 0; i < 4; ++i) {
 			// Hip hub - NOT a bone (IK will start from upper leg)
-			int hip = ir.AddHub(offsets[i], length_ * 0.12f, leg_col, body, names[i] + "_hip", false);
+			int hip = ir.AddHub(offsets[i], length_ * 0.12f, leg_col, body, names[i] + "_hip", false, SkinningMode::Rigid);
 
 			// Upper leg: Arching upwards and outwards
-			glm::vec3 upper_end = offsets[i] + glm::vec3(offsets[i].x > 0 ? 1.5f : -1.5f, height_ * 2.0f, 0);
+			glm::vec3 upper_end = offsets[i] + glm::vec3(offsets[i].x > 0 ? 1.5f : -1.5f, height_ * 1.5f, 0);
 			int       upper =
-				ir.AddTube(offsets[i], upper_end, length_ * 0.1f, length_ * 0.08f, leg_col, hip, names[i] + "_upper", true);
+				ir.AddTube(offsets[i], upper_end, length_ * 0.1f, length_ * 0.08f, leg_col, hip, names[i] + "_upper", true, SkinningMode::Rigid);
 
 			// Lower leg: Down to ground (leave room for foot)
 			float     foot_h = length_ * 0.08f;
-			glm::vec3 lower_end = upper_end + glm::vec3(0, -height_ * 3.5f + foot_h, 0);
+			glm::vec3 lower_end = upper_end + glm::vec3(0, -height_ * 3.0f + foot_h, 0);
 			int       lower =
-				ir.AddTube(upper_end, lower_end, length_ * 0.08f, length_ * 0.06f, leg_col, upper, names[i] + "_lower", true);
+				ir.AddTube(upper_end, lower_end, length_ * 0.08f, length_ * 0.06f, leg_col, upper, names[i] + "_lower", true, SkinningMode::Rigid);
 
 			// Foot: Wedge - bone so it can be the IK end-effector
 			ir.AddWedge(
@@ -151,7 +152,7 @@ namespace Boidsish {
 			while (yaw_diff < -180.0f) yaw_diff += 360.0f;
 			current_yaw_ += yaw_diff * std::min(1.0f, delta_time * 3.0f);
 
-			float speed = length_ * 0.5f;
+			float speed = length_ * 0.75f;
 			current_pos_ += glm::vec3(std::sin(glm::radians(current_yaw_)), 0, std::cos(glm::radians(current_yaw_))) * speed * delta_time;
 		} else {
 			is_walking_ = false;

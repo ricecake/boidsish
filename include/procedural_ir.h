@@ -62,7 +62,8 @@ namespace Boidsish {
 			glm::vec3          col,
 			int                parent_idx = -1,
 			const std::string& name = "",
-			bool               is_bone = false
+			bool               is_bone = false,
+			SkinningMode       skin = SkinningMode::Auto
 		) {
 			ProceduralElement e;
 			e.type = ProceduralElementType::Tube;
@@ -91,7 +92,8 @@ namespace Boidsish {
 			glm::vec3          col,
 			int                parent_idx = -1,
 			const std::string& name = "",
-			bool               is_bone = false
+			bool               is_bone = false,
+			SkinningMode       skin = SkinningMode::Auto
 		) {
 			ProceduralElement e;
 			e.type = ProceduralElementType::Hub;
@@ -119,7 +121,8 @@ namespace Boidsish {
 			int                variant = 0,
 			int                parent_idx = -1,
 			const std::string& name = "",
-			bool               is_bone = false
+			bool               is_bone = false,
+			SkinningMode       skin = SkinningMode::Auto
 		) {
 			ProceduralElement e;
 			e.type = ProceduralElementType::Leaf;
@@ -148,7 +151,8 @@ namespace Boidsish {
 			int                variant = 0,
 			int                parent_idx = -1,
 			const std::string& name = "",
-			bool               is_bone = false
+			bool               is_bone = false,
+			SkinningMode       skin = SkinningMode::Auto
 		) {
 			ProceduralElement e;
 			e.type = ProceduralElementType::Puffball;
@@ -176,7 +180,8 @@ namespace Boidsish {
 			glm::vec3          col,
 			int                parent_idx = -1,
 			const std::string& name = "",
-			bool               is_bone = false
+			bool               is_bone = false,
+			SkinningMode       skin = SkinningMode::Auto
 		) {
 			ProceduralElement e;
 			e.type = ProceduralElementType::Box;
@@ -204,7 +209,8 @@ namespace Boidsish {
 			glm::vec3          col,
 			int                parent_idx = -1,
 			const std::string& name = "",
-			bool               is_bone = false
+			bool               is_bone = false,
+			SkinningMode       skin = SkinningMode::Auto
 		) {
 			ProceduralElement e;
 			e.type = ProceduralElementType::Wedge;
@@ -232,7 +238,8 @@ namespace Boidsish {
 			glm::vec3          col,
 			int                parent_idx = -1,
 			const std::string& name = "",
-			bool               is_bone = false
+			bool               is_bone = false,
+			SkinningMode       skin = SkinningMode::Auto
 		) {
 			ProceduralElement e;
 			e.type = ProceduralElementType::Pyramid;
