@@ -4,6 +4,7 @@
 #include <glm/gtx/quaternion.hpp>
 #include <numbers>
 #include <algorithm>
+#include <cmath>
 #include "procedural_ir.h"
 
 namespace Boidsish {
@@ -22,37 +23,75 @@ namespace Boidsish {
 		model_->SetPosition(x, y, z);
 
 		// Apply IK constraints to each leg
+		// All legs bend in XY planes (same Z per leg), so hinge axis = Z.
+		// The cone constraint on upper uses the bind-pose direction as reference
+		// (fixed in SolveIK), so coneAngle is degrees of deviation from rest pose.
 		{
 			std::string leg_names[4] = {"FL", "FR", "BR", "BL"};
-			for (const auto& n : leg_names) {
-				// Upper leg: moderate hip roll limit
-				// BoneConstraint upper;
-				// upper.type = ConstraintType::Cone;
-				// upper.coneAngle = 160.0f;
-				// upper.minTwist = -15.0f;
-				// upper.maxTwist = 15.0f;
-				// model_->SetBoneConstraint(n + "_upper", upper);
+			for (const std::string& n : {"FL", "BL"}) {
+				// Upper leg: cone limit relative to bind-pose direction
+				BoneConstraint upper;
+				upper.type = ConstraintType::Cone;
+				upper.coneAngle = 60.0f;
+				upper.minTwist = -15.0f;
+				upper.maxTwist = 15.0f;
+				model_->SetBoneConstraint(n + "_upper", upper);
 
-				// Lower leg: hinge (bend in one plane) + tight twist limit
+				// // Lower leg: hinge around Z-axis + tight twist limit
+				// // Angle sign depends on leg side (FL/BL positive, FR/BR negative).
+				// // Symmetric limits accommodate both.
 				// BoneConstraint lower;
 				// lower.type = ConstraintType::Hinge;
-				// lower.axis = glm::vec3(1, 0, 0);
-				// lower.minAngle = -90.0f;
-				// lower.maxAngle = 10.0f;
+				// lower.axis = glm::vec3(0, 0, 1);
+				// lower.minAngle = -10.0f;
+				// lower.maxAngle = -130.0f;
 				// lower.minTwist = -5.0f;
 				// lower.maxTwist = 5.0f;
 				// model_->SetBoneConstraint(n + "_lower", lower);
 			}
+
+			for (const std::string& n : {"FR", "BR"}) {
+				// Upper leg: cone limit relative to bind-pose direction
+				BoneConstraint upper;
+				upper.type = ConstraintType::Cone;
+				upper.coneAngle = 60.0f;
+				upper.minTwist = -15.0f;
+				upper.maxTwist = 15.0f;
+				model_->SetBoneConstraint(n + "_upper", upper);
+
+				// Lower leg: hinge around Z-axis + tight twist limit
+				// Angle sign depends on leg side (FL/BL positive, FR/BR negative).
+				// Symmetric limits accommodate both.
+				BoneConstraint lower;
+				lower.type = ConstraintType::Hinge;
+				lower.axis = glm::vec3(0, 0, 1);
+				lower.minAngle = -130.0f;
+				lower.maxAngle = 20.0f;
+				lower.minTwist = -5.0f;
+				lower.maxTwist = 5.0f;
+				model_->SetBoneConstraint(n + "_lower", lower);
+			}
+
 		}
 
-		// Setup legs tracking
+		// Setup legs tracking — rest offsets computed from the same geometry as GenerateIR
 		legs_.resize(4);
 		std::string names[4] = {"FL", "FR", "BR", "BL"};
+
+		float hip_lateral = width_ * 0.64f;
+		float upper_horiz = length_ * 0.35f;
+		float knee_y = height_ * 0.8f + height_ * 0.05f;
+		float foot_h_rest = length_ * 0.08f;
+		float drop = knee_y - foot_h_rest;
+		float lower_horiz = drop * std::tan(glm::radians(-30.0f));
+		float total_lateral = hip_lateral + upper_horiz + lower_horiz;
+		float z_offset = length_ * 0.64f;
+
 		glm::vec3 offsets[4] = {
-			{-width_ * 0.975f, 0, length_ * 0.975f},
-			{ width_ * 0.975f, 0, length_ * 0.975f},
-			{ width_ * 0.975f, 0, -length_ * 0.975f},
-			{-width_ * 0.975f, 0, -length_ * 0.975f}
+			{-total_lateral, 0,  z_offset},
+			{ total_lateral, 0,  z_offset},
+			{ total_lateral, 0, -z_offset},
+			{-total_lateral, 0, -z_offset}
 		};
 
 		for (int i = 0; i < 4; ++i) {
@@ -89,18 +128,24 @@ namespace Boidsish {
 
 		for (int i = 0; i < 4; ++i) {
 			// Hip hub - NOT a bone (IK will start from upper leg)
-			int hip = ir.AddHub(offsets[i], length_ * 0.12f, leg_col, body, names[i] + "_hip", false, SkinningMode::Rigid);
+			int hip = ir.AddHub(offsets[i], length_ * 0.08f, leg_col, body, names[i] + "_hip", false, SkinningMode::Rigid);
 
-			// Upper leg: Arching upwards and outwards
-			glm::vec3 upper_end = offsets[i] + glm::vec3(offsets[i].x > 0 ? 1.5f : -1.5f, height_ * 1.5f, 0);
+			// Upper leg: nearly horizontal, going outward with a few degrees upward tilt
+			float out_sign = (offsets[i].x > 0) ? 1.0f : -1.0f;
+			float upper_horiz = length_ * 0.35f;
+			float upper_vert = height_ * 0.05f;
+			glm::vec3 upper_end = offsets[i] + glm::vec3(out_sign * upper_horiz, upper_vert, 0);
 			int       upper =
-				ir.AddTube(offsets[i], upper_end, length_ * 0.1f, length_ * 0.08f, leg_col, hip, names[i] + "_upper", true, SkinningMode::Rigid);
+				ir.AddTube(offsets[i], upper_end, length_ * 0.1f, length_ * 0.08f, leg_col, hip, names[i] + "_upper", true, SkinningMode::Smooth);
 
-			// Lower leg: Down to ground (leave room for foot)
+			// Lower leg: ~30° from vertical, reaching ground level
 			float     foot_h = length_ * 0.08f;
-			glm::vec3 lower_end = upper_end + glm::vec3(0, -height_ * 3.0f + foot_h, 0);
+			float     knee_y = upper_end.y;
+			float     drop = knee_y - foot_h;
+			float     lower_h = drop * std::tan(glm::radians(0.0f));
+			glm::vec3 lower_end = upper_end + glm::vec3(out_sign * lower_h, -drop, 0);
 			int       lower =
-				ir.AddTube(upper_end, lower_end, length_ * 0.08f, length_ * 0.06f, leg_col, upper, names[i] + "_lower", true, SkinningMode::Rigid);
+				ir.AddTube(upper_end, lower_end, length_ * 0.08f, length_ * 0.06f, leg_col, upper, names[i] + "_lower", true, SkinningMode::Smooth);
 
 			// Foot: Wedge - bone so it can be the IK end-effector
 			ir.AddWedge(
@@ -128,6 +173,28 @@ namespace Boidsish {
 		// Update model transform before IK so world-to-model conversions are correct
 		model_->SetPosition(current_pos_.x, current_pos_.y, current_pos_.z);
 		model_->SetRotation(glm::angleAxis(glm::radians(current_yaw_), glm::vec3(0, 1, 0)));
+
+		// One-time diagnostic: print bone positions and IK targets
+		static bool diag_printed = false;
+		if (!diag_printed) {
+			diag_printed = true;
+			auto print_v = [](const char* label, glm::vec3 v) {
+				printf("  %s: (%.3f, %.3f, %.3f)\n", label, v.x, v.y, v.z);
+			};
+			printf("=== Walking Creature IK Diagnostic ===\n");
+			printf("Model pos: (%.3f, %.3f, %.3f)\n", current_pos_.x, current_pos_.y, current_pos_.z);
+			for (auto& leg : legs_) {
+				printf("Leg %s:\n", leg.name.c_str());
+				print_v("  world_foot_target", leg.world_foot_pos);
+				print_v("  upper (model-space)", model_->GetBoneWorldPosition(leg.name + "_upper"));
+				print_v("  lower (model-space)", model_->GetBoneWorldPosition(leg.name + "_lower"));
+				print_v("  foot  (model-space)", model_->GetBoneWorldPosition(leg.name + "_foot"));
+			}
+			printf("  body (model-space): ");
+			auto bp = model_->GetBoneWorldPosition("body");
+			printf("(%.3f, %.3f, %.3f)\n", bp.x, bp.y, bp.z);
+			printf("======================================\n");
+		}
 
 		// Apply IK to position legs on the ground
 		// Each leg has its own 3-joint chain: [upper, lower, foot]
@@ -185,7 +252,7 @@ namespace Boidsish {
 				}
 
 				float p = leg_phi;
-				float h = std::sin(p * std::numbers::pi_v<float>) * length_ * 0.2f;
+				float h = std::sin(p * std::numbers::pi_v<float>) * length_ * 0.15f;
 				legs_[leg_idx].world_foot_pos = glm::mix(legs_[leg_idx].step_start_pos, legs_[leg_idx].step_target_pos, p);
 				legs_[leg_idx].world_foot_pos.y = current_pos_.y + h;
 			} else {
