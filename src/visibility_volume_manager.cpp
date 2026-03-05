@@ -95,6 +95,7 @@ namespace Boidsish {
 		}
 
 	volume_compute_shader_->setFloat("u_near", 0.1f);
+	// Use a fixed far plane for the volume to match standard engine expectations
 	volume_compute_shader_->setFloat("u_far", 1000.0f);
 
 		if (shadow_manager) {
