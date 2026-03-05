@@ -36,25 +36,6 @@ void main() {
         // This is not very reliable. Better use a uniform.
     }
 
-    // For mip generation, if src is RG32F, Red is min, Green is max
-    // If src is Depth buffer, Red is depth
-
-    float min00 = d00.r, max00 = d00.r;
-    float min10 = d10.r, max10 = d10.r;
-    float min01 = d01.r, max01 = d01.r;
-    float min11 = d11.r, max11 = d11.r;
-
-    // Check if we are reading from an RG32F texture (mips > 0)
-    // We can use a trick: textureQueryLevels or just a uniform.
-    // Let's assume if it's not mip 0 of Hi-Z, it's RG32F.
-    // But u_srcDepth is bound to either depth buffer or Hi-Z.
-
-    // Let's check the number of components in the texture.
-    // sampler2D doesn't easily reveal this.
-
-    // Better: always store min/max. For depth buffer, min=max=depth.
-    // For prev mip, min=r, max=g.
-
     if (u_isFirstMip) {
         minDepth = min(min(d00.r, d10.r), min(d01.r, d11.r));
         maxDepth = max(max(d00.r, d10.r), max(d01.r, d11.r));

@@ -145,8 +145,7 @@ namespace Boidsish {
 		float checkpoint_radius = 0.0f; // 4 -> 16 bytes [160-175]
 
 		// Block 7 (Dissolve)
-		glm::vec3 dissolve_plane_normal = glm::vec3(0, 1, 0); // 12
-		float     dissolve_plane_dist = 0.0f;                 // 4 -> 16 bytes [176-191]
+		glm::vec4 dissolve_plane = glm::vec4(0, 1, 0, 0); // xyz=normal, w=dist [176-191]
 
 		// Block 8 (Misc State)
 		int   dissolve_enabled = 0;      // 4
@@ -155,16 +154,10 @@ namespace Boidsish {
 		float padding_misc = 0.0f;       // 4 -> 16 bytes [192-207]
 
 		// Block 9 (AABB Min)
-		float aabb_min_x = 0.0f;    // 4
-		float aabb_min_y = 0.0f;    // 4
-		float aabb_min_z = 0.0f;    // 4
-		float padding_aabb1 = 0.0f; // 4 -> 16 bytes [208-223]
+		glm::vec4 aabb_min = glm::vec4(0.0f); // xyz=min, w=unused [208-223]
 
 		// Block 10 (AABB Max)
-		float aabb_max_x = 0.0f;    // 4
-		float aabb_max_y = 0.0f;    // 4
-		float aabb_max_z = 0.0f;    // 4
-		float padding_aabb2 = 0.0f; // 4 -> 16 bytes [224-239]
+		glm::vec4 aabb_max = glm::vec4(0.0f); // xyz=max, w=unused [224-239]
 
 		// Block 11 (Final Padding to 256)
 		float padding_final[4]; // 16 bytes [240-255]

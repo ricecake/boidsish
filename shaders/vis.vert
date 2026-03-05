@@ -32,6 +32,7 @@ layout(std430, binding = 14) readonly buffer VisibilityBitfields {
 };
 
 uniform uint u_passMask = 0u;
+uniform int  u_mdiBaseIndex = 0;
 
 #include "helpers/fast_noise.glsl"
 #include "helpers/lighting.glsl"
@@ -85,7 +86,7 @@ uniform float arcadeWaveSpeed = 5.0;
 void main() {
 	int drawID = gl_DrawID;
 
-	vUniformIndex = uUseMDI ? drawID : -1;
+	vUniformIndex = uUseMDI ? (u_mdiBaseIndex + drawID) : -1;
 	bool use_ssbo = uUseMDI && vUniformIndex >= 0;
 
 	mat4  current_model = use_ssbo ? uniforms_data[vUniformIndex].model : model;
@@ -204,7 +205,7 @@ void main() {
 	// Hi-Z occlusion culling and Visibility Volume check
 	if (uUseMDI && !current_isColossal) {
 	    // Check bitmask (Bit 0 = Frustum, Bit 5 = Occlusion)
-	    uint bits = visibility_bits_mdi[drawID];
+	    uint bits = visibility_bits_mdi[vUniformIndex];
 	    if (u_passMask != 0u && (bits & u_passMask) != u_passMask) {
 	        gl_Position = vec4(0.0, 0.0, -2.0, 1.0);
 			FragPos = vec3(0.0);

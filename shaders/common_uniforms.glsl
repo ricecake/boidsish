@@ -39,8 +39,7 @@ struct CommonUniforms {
 	float checkpoint_radius; // [160-175]
 
 	// Block 7
-	vec3  dissolve_plane_normal;
-	float dissolve_plane_dist; // [176-191]
+	vec4  dissolve_plane; // [176-191]
 
 	// Block 8
 	int   dissolve_enabled;
@@ -49,16 +48,10 @@ struct CommonUniforms {
 	float padding_misc; // [192-207]
 
 	// Block 9
-	float aabb_min_x;
-	float aabb_min_y;
-	float aabb_min_z;
-	float padding_aabb1; // [208-223]
+	vec4  aabb_min; // [208-223]
 
 	// Block 10
-	float aabb_max_x;
-	float aabb_max_y;
-	float aabb_max_z;
-	float padding_aabb2; // [224-239]
+	vec4  aabb_max; // [224-239]
 
 	// Block 11
 	float padding_final[4]; // [240-255]

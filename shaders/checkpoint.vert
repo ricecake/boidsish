@@ -12,6 +12,7 @@ layout(std430, binding = 2) buffer UniformsSSBO {
 };
 
 uniform bool uUseMDI = false;
+uniform int  u_mdiBaseIndex = 0;
 
 out vec3     FragPos;
 out vec3     Normal;
@@ -28,7 +29,7 @@ uniform vec4 clipPlane;
 void main() {
 	int drawID = gl_DrawID;
 
-	vUniformIndex = uUseMDI ? drawID : -1;
+	vUniformIndex = uUseMDI ? (u_mdiBaseIndex + drawID) : -1;
 	bool use_ssbo = uUseMDI && vUniformIndex >= 0;
 	mat4 current_model = use_ssbo ? uniforms_data[vUniformIndex].model : model;
 

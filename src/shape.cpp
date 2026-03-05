@@ -56,8 +56,7 @@ namespace Boidsish {
 		packet.uniforms.is_colossal = is_colossal_;
 
 		packet.uniforms.dissolve_enabled = dissolve_enabled_ ? 1 : 0;
-		packet.uniforms.dissolve_plane_normal = dissolve_plane_normal_;
-		packet.uniforms.dissolve_plane_dist = dissolve_plane_dist_;
+		packet.uniforms.dissolve_plane = glm::vec4(dissolve_plane_normal_, dissolve_plane_dist_);
 
 		// Occlusion culling AABB with velocity expansion
 		AABB      worldAABB = GetAABB();
@@ -66,12 +65,8 @@ namespace Boidsish {
 			worldAABB.min = glm::min(worldAABB.min, worldAABB.min - velocity);
 			worldAABB.max = glm::max(worldAABB.max, worldAABB.max + velocity);
 		}
-		packet.uniforms.aabb_min_x = worldAABB.min.x;
-		packet.uniforms.aabb_min_y = worldAABB.min.y;
-		packet.uniforms.aabb_min_z = worldAABB.min.z;
-		packet.uniforms.aabb_max_x = worldAABB.max.x;
-		packet.uniforms.aabb_max_y = worldAABB.max.y;
-		packet.uniforms.aabb_max_z = worldAABB.max.z;
+		packet.uniforms.aabb_min = glm::vec4(worldAABB.min, 0.0f);
+		packet.uniforms.aabb_max = glm::vec4(worldAABB.max, 0.0f);
 
 		packet.casts_shadows = CastsShadows();
 

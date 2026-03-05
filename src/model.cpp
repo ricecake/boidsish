@@ -567,8 +567,7 @@ namespace Boidsish {
 			packet.uniforms.use_vertex_color = (mesh.has_vertex_colors && !has_diffuse) ? 1 : 0;
 
 			packet.uniforms.dissolve_enabled = dissolve_enabled_ ? 1 : 0;
-			packet.uniforms.dissolve_plane_normal = dissolve_plane_normal_;
-			packet.uniforms.dissolve_plane_dist = actual_dissolve_dist;
+			packet.uniforms.dissolve_plane = glm::vec4(dissolve_plane_normal_, actual_dissolve_dist);
 
 			if (m_animator && !m_data->bone_info_map.empty()) {
 				packet.uniforms.use_skinning = 1;
@@ -581,12 +580,8 @@ namespace Boidsish {
 				meshAABB.min = glm::min(meshAABB.min, meshAABB.min - velocity);
 				meshAABB.max = glm::max(meshAABB.max, meshAABB.max + velocity);
 			}
-			packet.uniforms.aabb_min_x = meshAABB.min.x;
-			packet.uniforms.aabb_min_y = meshAABB.min.y;
-			packet.uniforms.aabb_min_z = meshAABB.min.z;
-			packet.uniforms.aabb_max_x = meshAABB.max.x;
-			packet.uniforms.aabb_max_y = meshAABB.max.y;
-			packet.uniforms.aabb_max_z = meshAABB.max.z;
+			packet.uniforms.aabb_min = glm::vec4(meshAABB.min, 0.0f);
+			packet.uniforms.aabb_max = glm::vec4(meshAABB.max, 0.0f);
 
 			packet.casts_shadows = CastsShadows();
 
