@@ -95,7 +95,13 @@ void SetupFlightHUD(Visualizer& viz) {
 	if (g_health_gauge) g_health_gauge->SetVisible(true);
 	if (g_score_indicator) g_score_indicator->SetVisible(true);
 	if (g_streak_indicator) g_streak_indicator->SetVisible(true);
-	if (g_weapon_selector) g_weapon_selector->SetVisible(true);
+	if (g_weapon_selector) {
+		g_weapon_selector->SetVisible(true);
+		g_weapon_selector->SetTexturePaths(
+			{"assets/missile-icon.png", "assets/bomb-icon.png", "assets/bullet-icon.png", "assets/icon.png"}
+		);
+		g_weapon_selector->SetSelectedIndex(kittywumpus_selected_weapon);
+	}
 
 	// Hide FPS elements
 	if (g_crosshair_msg) g_crosshair_msg->SetVisible(false);
@@ -109,7 +115,19 @@ void SetupFPSHUD(Visualizer& viz) {
 
 	// Hide flight HUD elements
 	if (g_health_gauge) g_health_gauge->SetVisible(false);
-	if (g_weapon_selector) g_weapon_selector->SetVisible(false);
+
+	// Normalize weapon selection for FPS mode (only 0 and 3 are supported)
+	if (kittywumpus_selected_weapon != 0 && kittywumpus_selected_weapon != 3) {
+		kittywumpus_selected_weapon = 3;
+	}
+
+	if (g_weapon_selector) {
+		g_weapon_selector->SetVisible(true);
+		g_weapon_selector->SetTexturePaths({"assets/missile-icon.png", "assets/icon.png"});
+		// Map weapon indices to FPS Icons (0 -> 0 (CatMissile), 3 -> 1 (Other))
+		int fps_idx = (kittywumpus_selected_weapon == 0) ? 0 : 1;
+		g_weapon_selector->SetSelectedIndex(fps_idx);
+	}
 
 	// Keep score visible
 	if (g_score_indicator) g_score_indicator->SetVisible(true);
@@ -251,6 +269,22 @@ int main() {
 					kittywumpus_selected_weapon = (kittywumpus_selected_weapon + 1) % 4;
 					g_weapon_selector->SetSelectedIndex(kittywumpus_selected_weapon);
 				}
+				if (state.key_down[GLFW_KEY_1]) {
+					kittywumpus_selected_weapon = 0;
+					g_weapon_selector->SetSelectedIndex(kittywumpus_selected_weapon);
+				}
+				if (state.key_down[GLFW_KEY_2]) {
+					kittywumpus_selected_weapon = 1;
+					g_weapon_selector->SetSelectedIndex(kittywumpus_selected_weapon);
+				}
+				if (state.key_down[GLFW_KEY_3]) {
+					kittywumpus_selected_weapon = 2;
+					g_weapon_selector->SetSelectedIndex(kittywumpus_selected_weapon);
+				}
+				if (state.key_down[GLFW_KEY_4]) {
+					kittywumpus_selected_weapon = 3;
+					g_weapon_selector->SetSelectedIndex(kittywumpus_selected_weapon);
+				}
 				break;
 
 			case GameState::FIRST_PERSON_MODE:
@@ -270,6 +304,25 @@ int main() {
 				// Takeoff trigger (hold SPACE)
 				controller->holding_takeoff_key = state.keys[GLFW_KEY_SPACE];
 
+				// Weapon switching
+				if (state.key_down[GLFW_KEY_F]) {
+					if (kittywumpus_selected_weapon == 0) {
+						kittywumpus_selected_weapon = 3;
+					} else {
+						kittywumpus_selected_weapon = 0;
+					}
+					int fps_idx = (kittywumpus_selected_weapon == 0) ? 0 : 1;
+					g_weapon_selector->SetSelectedIndex(fps_idx);
+				}
+				if (state.key_down[GLFW_KEY_1]) {
+					kittywumpus_selected_weapon = 0;
+					g_weapon_selector->SetSelectedIndex(0);
+				}
+				if (state.key_down[GLFW_KEY_2]) {
+					kittywumpus_selected_weapon = 3;
+					g_weapon_selector->SetSelectedIndex(1);
+				}
+
 				// Update takeoff charge display
 				if (g_takeoff_charge_indicator) {
 					float charge = g_game_state.GetTakeoffChargeProgress() * 100.0f;
@@ -279,7 +332,7 @@ int main() {
 			}
 
 			// Update game state
-			g_game_state.Update(state.delta_time, *visualizer, g_plane, *controller);
+			g_game_state.Update(state.delta_time, *visualizer, *g_handler, g_plane, *controller);
 
 			// Handle HUD transitions
 			GameState new_state = g_game_state.GetState();

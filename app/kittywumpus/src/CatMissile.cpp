@@ -330,6 +330,10 @@ namespace Boidsish {
 		}
 
 		auto pos = GetPosition();
+		if (auto* pp_handler = dynamic_cast<const KittywumpusHandler*>(&handler)) {
+			pp_handler->TriggerRadiusDamage(pos.Toglm(), 15.0f, 50.0f);
+		}
+
 		handler.EnqueueVisualizerAction([exhaust = exhaust_effect_]() {
 			if (exhaust) {
 				exhaust->SetLifetime(0.25f);

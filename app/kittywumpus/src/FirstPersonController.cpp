@@ -5,13 +5,18 @@
 #include "KittywumpusInputController.h"
 #include "graphics.h"
 #include "light.h"
+#include "KittywumpusHandler.h"
+#include "CatMissile.h"
 #include <GLFW/glfw3.h>
 
 namespace Boidsish {
 
+extern int kittywumpus_selected_weapon;
+
 FirstPersonController::FirstPersonController() {}
 
-void FirstPersonController::Initialize(Visualizer& viz, const glm::vec3& position, float initial_yaw) {
+void FirstPersonController::Initialize(Visualizer& viz, KittywumpusHandler& handler, const glm::vec3& position, float initial_yaw) {
+	(void)handler;
 	position_ = position;
 	yaw_ = initial_yaw;
 	pitch_ = 0.0f;
@@ -44,6 +49,7 @@ void FirstPersonController::Initialize(Visualizer& viz, const glm::vec3& positio
 
 void FirstPersonController::Update(
 	Visualizer& viz,
+	KittywumpusHandler& handler,
 	const KittywumpusInputController& input,
 	float delta_time
 ) {
@@ -52,6 +58,10 @@ void FirstPersonController::Update(
 	UpdateCamera(viz, input, delta_time);
 	UpdateMovement(viz, input, delta_time);
 	UpdateFPSRig(viz, delta_time);
+
+	if (fire_cooldown_ > 0) {
+		fire_cooldown_ -= delta_time;
+	}
 
 	// Handle weapon effects (mouse button charging)
 	// Right Click - Explosion
@@ -66,15 +76,37 @@ void FirstPersonController::Update(
 			float intensity = 1.0f + right_hold_time_ * 2.0f;
 			viz.CreateExplosion(*target, intensity);
 			viz.AddSoundEffect("assets/rocket_explosion.wav", *target, {0, 0, 0}, glm::min(intensity, 5.0f));
+			handler.TriggerRadiusDamage(*target, 10.0f * intensity, 50.0f * intensity);
 		}
 		right_hold_time_ = 0.0f;
 		right_was_down_ = false;
 	}
 
-	// Left Click - Glitter
+	// Left Click - Glitter / Selected Weapon
 	if (input.mouse_left) {
-		left_hold_time_ += delta_time;
-		left_was_down_ = true;
+		if (kittywumpus_selected_weapon == 0) { // CatMissile
+			if (fire_cooldown_ <= 0) {
+				auto cam_pos = viz.GetCamera().pos();
+				auto cam_fwd = viz.GetCamera().front();
+				auto cam_up = viz.GetCamera().up();
+				auto cam_right = glm::normalize(glm::cross(cam_fwd, cam_up));
+
+				glm::quat orient = glm::quatLookAt(cam_fwd, cam_up);
+				glm::vec3 spawn_pos = cam_pos + cam_fwd * 2.0f + cam_right * 0.5f;
+				glm::vec3 initial_vel = cam_fwd * 20.0f;
+				handler.QueueAddEntity<CatMissile>(
+					Vector3(spawn_pos.x, spawn_pos.y, spawn_pos.z),
+					orient,
+					glm::vec3(0, 0, -1),
+					Vector3(initial_vel.x, initial_vel.y, initial_vel.z),
+					false
+				);
+				fire_cooldown_ = 0.75f;
+			}
+		} else {
+			left_hold_time_ += delta_time;
+			left_was_down_ = true;
+		}
 	} else if (left_was_down_ && input.mouse_left_released) {
 		int width, height;
 		glfwGetWindowSize(viz.GetWindow(), &width, &height);
@@ -98,6 +130,7 @@ void FirstPersonController::Update(
 			viz.GetLightManager().AddLight(flash);
 
 			viz.AddSoundEffect("assets/rocket_explosion.wav", *target, {0, 0, 0}, glm::min(intensity, 5.0f));
+			handler.TriggerRadiusDamage(*target, 8.0f * intensity, 30.0f * intensity);
 		}
 		left_hold_time_ = 0.0f;
 		left_was_down_ = false;

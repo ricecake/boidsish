@@ -10,6 +10,7 @@
 #include "Potshot.h"
 #include "Swooper.h"
 #include "VortexFlockingEntity.h"
+#include "RedDotEnemy.h"
 #include "checkpoint_ring.h"
 #include "constants.h"
 #include "graphics.h"
@@ -180,10 +181,21 @@ void KittywumpusHandler::PreTimestep(float time, float delta_time) {
 	}
 
 	// Skip enemy spawning and launcher management if not flying
-	// INTEGRATION_POINT: Add ground enemy spawning when is_flying_ == false
 	if (!is_flying_) {
 		// In FPS mode, we might want different enemy behavior
-		// For now, just skip aerial threats
+		enemy_spawn_timer_ -= delta_time;
+		if (enemy_spawn_timer_ <= 0) {
+			enemy_spawn_timer_ = 4.0f + std::uniform_real_distribution<float>(0, 3.0f)(eng_);
+			auto player = GetEntitiesByType<KittywumpusPlane>();
+			if (!player.empty()) {
+				auto pos = player[0]->GetPosition().Toglm();
+				auto forward = vis->GetCamera().front();
+				auto spawn_pos = FindOccludedSpawnPosition(pos, forward);
+				if (spawn_pos) {
+					QueueAddEntity<RedDotEnemy>(Vector3(spawn_pos->x, spawn_pos->y, spawn_pos->z));
+				}
+			}
+		}
 		return;
 	}
 
@@ -424,6 +436,13 @@ KittywumpusHandler::FindOccludedSpawnPosition(const glm::vec3& player_pos, const
 		}
 	}
 	return std::nullopt;
+}
+
+void KittywumpusHandler::TriggerRadiusDamage(const glm::vec3& position, float radius, float damage) const {
+	auto targets = GetEntitiesInRadius<EntityBase>(Vector3(position.x, position.y, position.z), radius);
+	for (auto& target : targets) {
+		target->OnHit(*this, damage);
+	}
 }
 
 } // namespace Boidsish

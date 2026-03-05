@@ -7,6 +7,7 @@
 namespace Boidsish {
 
 class Visualizer;
+class KittywumpusHandler;
 class KittywumpusPlane;
 struct KittywumpusInputController;
 
@@ -30,6 +31,7 @@ public:
 	void Update(
 		float dt,
 		Visualizer& viz,
+		KittywumpusHandler& handler,
 		std::shared_ptr<KittywumpusPlane> plane,
 		const KittywumpusInputController& input
 	);
@@ -50,11 +52,11 @@ public:
 	std::shared_ptr<class Model> GetFPSRigModel() const;
 
 private:
-	void TransitionTo(GameState new_state, Visualizer& viz, std::shared_ptr<KittywumpusPlane> plane);
-	void UpdateFlightMode(float dt, Visualizer& viz, std::shared_ptr<KittywumpusPlane> plane, const KittywumpusInputController& input);
-	void UpdateLandingTransition(float dt, Visualizer& viz, std::shared_ptr<KittywumpusPlane> plane);
-	void UpdateFirstPersonMode(float dt, Visualizer& viz, std::shared_ptr<KittywumpusPlane> plane, const KittywumpusInputController& input);
-	void UpdateTakeoffTransition(float dt, Visualizer& viz, std::shared_ptr<KittywumpusPlane> plane);
+	void TransitionTo(GameState new_state, Visualizer& viz, KittywumpusHandler& handler, std::shared_ptr<KittywumpusPlane> plane);
+	void UpdateFlightMode(float dt, Visualizer& viz, KittywumpusHandler& handler, std::shared_ptr<KittywumpusPlane> plane, const KittywumpusInputController& input);
+	void UpdateLandingTransition(float dt, Visualizer& viz, KittywumpusHandler& handler, std::shared_ptr<KittywumpusPlane> plane);
+	void UpdateFirstPersonMode(float dt, Visualizer& viz, KittywumpusHandler& handler, std::shared_ptr<KittywumpusPlane> plane, const KittywumpusInputController& input);
+	void UpdateTakeoffTransition(float dt, Visualizer& viz, KittywumpusHandler& handler, std::shared_ptr<KittywumpusPlane> plane);
 
 	GameState state_ = GameState::MAIN_MENU;
 	float transition_time_ = 0.0f;
