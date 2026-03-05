@@ -235,7 +235,8 @@ if(GLSLANG_VALIDATOR_EXE)
 
     add_custom_target(glcheck DEPENDS ${VALIDATION_OUTPUTS})
 else()
-    message(WARNING "glslangValidator not found. The 'glcheck' target will not be available.")
+    message(WARNING "glslangValidator not found. 'glcheck' target will be empty.")
+    add_custom_target(glcheck)
 endif()
 
 add_executable(test_rigid_body tests/test_rigid_body.cpp)
