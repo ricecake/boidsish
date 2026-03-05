@@ -22,23 +22,46 @@ namespace Boidsish {
 		model_->UpdateAnimation(0.0f);
 		model_->SetPosition(x, y, z);
 
-		// Setup leg constraints
 		std::string names[4] = {"FL", "FR", "BR", "BL"};
+
+		// Geometry constants (shared between constraints and rest offsets)
+		float upper_horiz = length_ * 0.35f;
+		float upper_arch = height_ * 0.4f;
+		float knee_y = height_ * 0.8f + upper_arch;
+		float foot_h_rest = length_ * 0.08f;
+		float drop = knee_y - foot_h_rest;
+		float lower_horiz = drop * std::tan(glm::radians(15.0f));
+		float hip_lateral = width_ * 0.64f;
+
+		// Compute hinge rest angle from bind-pose geometry.
+		// Use positive-X convention (right side); per-side axis flip makes the
+		// signed angle identical for both sides.
+		glm::vec3 upper_dir = glm::normalize(glm::vec3(upper_horiz, upper_arch, 0));
+		glm::vec3 lower_dir = glm::normalize(glm::vec3(lower_horiz, -drop, 0));
+		float rest_dot = glm::clamp(glm::dot(upper_dir, lower_dir), -1.0f, 1.0f);
+		float rest_angle = glm::degrees(std::acos(rest_dot));
+		// Sign: cross_z = upper_horiz*(-drop) - upper_arch*lower_horiz < 0
+		// With right-side axis (0,0,-1): dot(cross,(0,0,-1)) > 0 → positive angle.
+		// With left-side axis (0,0,1): actual left-side dirs give same positive angle.
+		// So unsigned acos value is correct for both sides.
+
+		// Setup leg constraints
 		for (int i = 0; i < 4; ++i) {
-			// Upper leg: cone constraint — allows natural range in all directions
+			bool is_left = (i == 0 || i == 3); // FL=0, BL=3
+
+			// Upper leg: twist-only — full directional freedom, prevents axial roll
 			BoneConstraint upper_c;
-			upper_c.type = ConstraintType::Cone;
-			upper_c.coneAngle = 60.0f;
 			upper_c.minTwist = -15.0f;
 			upper_c.maxTwist = 15.0f;
 			model_->SetBoneConstraint(names[i] + "_upper", upper_c);
 
-			// Lower leg: hinge — knees bend in XY plane only
+			// Lower leg: hinge in bending plane, rest-angle-relative limits
 			BoneConstraint lower_c;
 			lower_c.type = ConstraintType::Hinge;
-			lower_c.axis = glm::vec3(0, 0, 1);
-			lower_c.minAngle = -90.0f;
-			lower_c.maxAngle = 90.0f;
+			lower_c.axis = is_left ? glm::vec3(0, 0, 1) : glm::vec3(0, 0, -1);
+			lower_c.restAngle = rest_angle;
+			lower_c.minAngle = -60.0f;  // Allow 60° more bending from rest
+			lower_c.maxAngle = 60.0f;   // Allow 60° straightening from rest
 			lower_c.minTwist = -5.0f;
 			lower_c.maxTwist = 5.0f;
 			model_->SetBoneConstraint(names[i] + "_lower", lower_c);
@@ -46,14 +69,6 @@ namespace Boidsish {
 
 		// Setup legs tracking — rest offsets match GenerateIR foot positions exactly
 		legs_.resize(4);
-
-		float hip_lateral = width_ * 0.64f;
-		float upper_horiz = length_ * 0.35f;
-		float upper_arch = height_ * 0.4f;
-		float knee_y = height_ * 0.8f + upper_arch;
-		float foot_h_rest = length_ * 0.08f;
-		float drop = knee_y - foot_h_rest;
-		float lower_horiz = drop * std::tan(glm::radians(15.0f));
 		float total_lateral = hip_lateral + upper_horiz + lower_horiz;
 		float z_offset = length_ * 0.64f;
 
