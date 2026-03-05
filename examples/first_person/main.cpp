@@ -34,6 +34,12 @@ int main() {
 		float bobCycle = 0.0f;
 		float bobAmount = 0.0f;
 		float lastBobSin = 0.0f;
+		float smoothedGroundHeight = 0.0f;
+
+		// Initialize smoothed ground height
+		auto [initialTerrainHeight, initialTerrainNormal] = viz.GetTerrainPropertiesAtPoint(0.0f, 0.0f);
+		(void)initialTerrainNormal;
+		smoothedGroundHeight = initialTerrainHeight;
 
 		// Set camera mode to STATIONARY to take full control over movement
 		// but manually disable the cursor for a first-person feel.
@@ -119,10 +125,18 @@ int main() {
 			}
 			lastBobSin = currentBobSin;
 
-			// 4. Ground Clamping
-			// Get terrain height at current position and set camera height
-			auto [terrainHeight, terrainNormal] = viz.GetTerrainPropertiesAtPoint(camera.x, camera.z);
-			float targetHeight = terrainHeight + eyeHeight;
+			// 4. Ground Clamping with spatial and temporal smoothing
+			float h0 = std::get<0>(viz.GetTerrainPropertiesAtPoint(camera.x, camera.z));
+			float h1 = std::get<0>(viz.GetTerrainPropertiesAtPoint(camera.x + 0.4f, camera.z));
+			float h2 = std::get<0>(viz.GetTerrainPropertiesAtPoint(camera.x - 0.4f, camera.z));
+			float h3 = std::get<0>(viz.GetTerrainPropertiesAtPoint(camera.x, camera.z + 0.4f));
+			float h4 = std::get<0>(viz.GetTerrainPropertiesAtPoint(camera.x, camera.z - 0.4f));
+			float avgTerrainHeight = (h0 + h1 + h2 + h3 + h4) / 5.0f;
+
+			// Smoothly interpolate ground height (temporal smoothing)
+			smoothedGroundHeight = glm::mix(smoothedGroundHeight, avgTerrainHeight, dt * 5.0f);
+
+			float targetHeight = smoothedGroundHeight + eyeHeight;
 
 			// Apply bobbing to the camera height for extra realism
 			targetHeight += sin(bobCycle * 2.0f) * bobAmount * 0.04f;

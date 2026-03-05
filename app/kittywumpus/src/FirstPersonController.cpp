@@ -34,6 +34,11 @@ void FirstPersonController::Initialize(Visualizer& viz, const glm::vec3& positio
 	cam.yaw = yaw_;
 	cam.pitch = pitch_;
 
+	// Initialize ground height smoothing
+	auto [initial_terrain_height, initial_terrain_normal] = viz.GetTerrainPropertiesAtPoint(position_.x, position_.z);
+	(void)initial_terrain_normal;
+	smoothed_ground_height_ = initial_terrain_height;
+
 	// Reset bobbing state
 	bob_cycle_ = 0.0f;
 	bob_amount_ = 0.0f;
@@ -177,16 +182,24 @@ void FirstPersonController::UpdateMovement(
 	}
 	last_bob_sin_ = current_bob_sin;
 
-	// Ground clamping
-	auto [terrain_height, terrain_normal] = viz.GetTerrainPropertiesAtPoint(position_.x, position_.z);
-	(void)terrain_normal;
-	float target_height = terrain_height + kEyeHeight;
+	// Ground clamping with spatial and temporal smoothing
+	float h0 = std::get<0>(viz.GetTerrainPropertiesAtPoint(position_.x, position_.z));
+	float h1 = std::get<0>(viz.GetTerrainPropertiesAtPoint(position_.x + 0.4f, position_.z));
+	float h2 = std::get<0>(viz.GetTerrainPropertiesAtPoint(position_.x - 0.4f, position_.z));
+	float h3 = std::get<0>(viz.GetTerrainPropertiesAtPoint(position_.x, position_.z + 0.4f));
+	float h4 = std::get<0>(viz.GetTerrainPropertiesAtPoint(position_.x, position_.z - 0.4f));
+	float avg_terrain_height = (h0 + h1 + h2 + h3 + h4) / 5.0f;
+
+	// Smoothly interpolate ground height (temporal smoothing)
+	smoothed_ground_height_ = glm::mix(smoothed_ground_height_, avg_terrain_height, delta_time * 5.0f);
+
+	float target_height = smoothed_ground_height_ + kEyeHeight;
 
 	// Apply bobbing to camera height
 	target_height += sin(bob_cycle_ * 2.0f) * bob_amount_ * 0.04f;
 
 	// Smoothly interpolate height
-	position_.y = glm::mix(position_.y, terrain_height, delta_time * 15.0f);
+	position_.y = glm::mix(position_.y, smoothed_ground_height_, delta_time * 15.0f);
 	camera.x = position_.x;
 	camera.y = glm::mix(camera.y, target_height, delta_time * 15.0f);
 	camera.z = position_.z;
