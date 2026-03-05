@@ -337,7 +337,7 @@ void main() {
 				    Above, if something is behind the camera, despawn it.
 				*/
 
-				float dist = 10 + (rand(seed + 1.1 + float(i)) * 350.0);
+				float dist = 20 + (rand(seed + 1.1 + float(i)) * 350.0);
 				vec2  baseDir = normalize(viewDir.xz);
 				float r = rand(seed + 2.2 + float(i)) * 2 - 1;
 				// float offsetAngle =  pow(r, 3) * 1.57079632679; // Bias toward 0
