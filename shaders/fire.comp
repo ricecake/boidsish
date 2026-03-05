@@ -201,9 +201,7 @@ void updateAmbientParticle(inout Particle p, float dt, float time) {
 	vec3 basePushDir = normalize(mix(terrainSafeReject, camToParticle, directionBlend));
 	vec3 finalPushDir = normalize(basePushDir + curlNoise(p.pos.xyz, time) * noiseWeight);
 
-	if (inwardSpeed > 0.0) {
-		p.vel.xyz -= (-camToParticle) * inwardSpeed * sphereInfluence;
-	}
+	p.vel.xyz += step(0, inwardSpeed) * (camToParticle)*inwardSpeed * sphereInfluence;
 	p.vel.xyz += camToParticle * mildRepulsionStrength * sphereInfluence;
 	p.vel.xyz += finalPushDir * pushStrength * forwardFalloff * axisFalloff * isFront;
 
