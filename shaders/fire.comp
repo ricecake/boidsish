@@ -175,42 +175,41 @@ void updateAmbientParticle(inout Particle p, float dt, float time) {
 		p.vel.xyz *= pow(0.99, dt / 0.016);
 	}
 
-vec3 relativePos = p.pos.xyz - viewPos;
-float distToCam = length(relativePos);
-vec3 camToParticle = distToCam > 0.001 ? relativePos / distToCam : vec3(0.0, 1.0, 0.0);
+	float mildRepulsionStrength = 2.0;
+	float capsuleWidth = 40.0;
+	float noiseWeight = 0.5;
+	float pushStrength = 15.0;
 
-float projection = dot(relativePos, viewDir);
-vec3 rejectDir = relativePos - (projection * viewDir);
-float distToAxis = length(rejectDir);
-vec3 rejectNorm = distToAxis > 0.001 ? rejectDir / distToAxis : vec3(0.0, 1.0, 0.0);
+	vec3  relativePos = p.pos.xyz - viewPos;
+	float distToCam = length(relativePos);
+	vec3  camToParticle = distToCam > 0.001 ? relativePos / distToCam : vec3(0.0, 1.0, 0.0);
+	float projection = dot(relativePos, viewDir);
+	vec3  rejectDir = relativePos - (projection * viewDir);
+	float distToAxis = length(rejectDir);
+	float sphereInfluence = smoothstep(20.0, 10.0, distToCam);
+	float inwardSpeed = dot(p.vel.xyz, -camToParticle);
+	float isFront = step(0.0, projection);
+	float forwardFalloff = smoothstep(150.0, 0.0, distToCam);
+	float axisFalloff = smoothstep(capsuleWidth, 0.0, distToAxis);
+	float directionBlend = clamp(distToCam / 150.0, 0.0, 1.0);
+	vec3  rejectNorm = distToAxis > 0.001 ? rejectDir / distToAxis : vec3(0.0, 1.0, 0.0);
+	vec3  flatReject = vec3(rejectNorm.x, 0.0, rejectNorm.z);
+	vec3  lateralPush = length(flatReject) > 0.001 ? normalize(flatReject) : vec3(1.0, 0.0, 0.0);
+	vec3  terrainSafeReject = normalize(
+        mix(rejectNorm, lateralPush + vec3(0, -rejectNorm.y, 0), smoothstep(0.25, -1, rejectNorm.y))
+    );
+	vec3 basePushDir = normalize(mix(terrainSafeReject, camToParticle, directionBlend));
+	vec3 finalPushDir = normalize(basePushDir + curlNoise(p.pos.xyz, time) * noiseWeight);
 
-float sphereInfluence = smoothstep(20.0, 10.0, distToCam);
-float inwardSpeed = dot(p.vel.xyz, -camToParticle);
-if (inwardSpeed > 0.0) {
-    p.vel.xyz -= (-camToParticle) * inwardSpeed * sphereInfluence;
-}
-float mildRepulsionStrength = 2.0;
-p.vel.xyz += camToParticle * mildRepulsionStrength * sphereInfluence;
+	if (inwardSpeed > 0.0) {
+		p.vel.xyz -= (-camToParticle) * inwardSpeed * sphereInfluence;
+	}
+	p.vel.xyz += camToParticle * mildRepulsionStrength * sphereInfluence;
+	p.vel.xyz += finalPushDir * pushStrength * forwardFalloff * axisFalloff * isFront;
 
-float isFront = step(0.0, projection);
-float forwardFalloff = smoothstep(150.0, 0.0, distToCam);
-float capsuleWidth = 40.0;
-float axisFalloff = smoothstep(capsuleWidth, 0.0, distToAxis);
-float directionBlend = clamp(distToCam / 150.0, 0.0, 1.0);
-vec3 flatReject = vec3(rejectNorm.x, 0.0, rejectNorm.z);
-vec3 lateralPush = length(flatReject) > 0.001 ? normalize(flatReject) : vec3(1.0, 0.0, 0.0);
-vec3 terrainSafeReject = normalize(mix(rejectNorm, lateralPush, abs(rejectNorm.y)));
-vec3 basePushDir = normalize(mix(terrainSafeReject, camToParticle, directionBlend));
-
-float noiseWeight = 0.5;
-vec3 finalPushDir = normalize(basePushDir + curlNoise(p.pos.xyz, time) * noiseWeight);
-
-float pushStrength = 15.0;
-p.vel.xyz += finalPushDir * pushStrength * forwardFalloff * axisFalloff * isFront;
-
-if (length(p.vel.xyz) > maxSpeed) {
-    p.vel.xyz = normalize(p.vel.xyz) * maxSpeed;
-}
+	if (length(p.vel.xyz) > maxSpeed) {
+		p.vel.xyz = normalize(p.vel.xyz) * maxSpeed;
+	}
 
 	p.pos.xyz += p.vel.xyz * dt;
 	handleTerrainCollision(p);
