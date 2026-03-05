@@ -382,15 +382,31 @@ namespace Boidsish {
 			}
 		}
 
+		// Reassign non-bone joint elements (e.g. hips) to their bone child
+		// rather than their bone ancestor. A hub sitting at a joint should
+		// move with the outgoing limb, not the parent body.
+		for (int i = 0; i < (int)ir.elements.size(); ++i) {
+			const auto& e = ir.elements[i];
+			if (e.is_bone)
+				continue;
+			for (int child : e.children) {
+				if (element_to_bone[child] != -1 && ir.elements[child].is_bone) {
+					element_to_bone[i] = element_to_bone[child];
+					break;
+				}
+			}
+		}
+
 		// 2. Generate Primary Mesh
 		std::vector<Vertex>       main_vertices;
 		std::vector<unsigned int> main_indices;
 
 		struct SkinJob {
-			int start_v;
-			int end_v;
-			int element_idx;
-			int mode; // Bits 0-7: SkinningMode, Bit 31: IsLeaf
+			int              start_v;
+			int              end_v;
+			int              element_idx;
+			int              mode; // Bits 0-7: SkinningMode, Bit 31: IsLeaf
+			std::vector<int> segment_bones; // Per-spline-segment bone ID (tube chains only)
 		};
 		std::vector<SkinJob> skin_jobs;
 
@@ -408,13 +424,20 @@ namespace Boidsish {
 				std::vector<float>     sizes;
 				std::vector<glm::vec3> colors;
 
-				int  curr = i;
-				bool first = true;
+				int              curr = i;
+				bool             first = true;
+				std::vector<int> segment_bones; // bone_id per spline segment
+				SkinningMode     chain_mode = SkinningMode::Smooth;
 				while (curr != -1) {
 					const auto& te = ir.elements[curr];
 					if (te.type != ProceduralElementType::Tube || handled[curr])
 						break;
 					handled[curr] = true;
+
+					int curr_bone = element_to_bone[curr];
+					// If any tube in the chain requests Rigid, use it for the chain
+					if (te.skinning_mode == SkinningMode::Rigid)
+						chain_mode = SkinningMode::Rigid;
 
 					if (first) {
 						points.push_back(Vector3(te.position));
@@ -436,6 +459,7 @@ namespace Boidsish {
 							ups.push_back(Vector3(0, 1, 0));
 							sizes.push_back(cp.radius / SPLINE_RADIUS_SCALE);
 							colors.push_back(cp.color);
+							segment_bones.push_back(curr_bone); // CP segment belongs to this tube's bone
 							for (int cp_child : cp.children) {
 								if (ir.elements[cp_child].type == ProceduralElementType::Tube) {
 									next = cp_child;
@@ -449,6 +473,7 @@ namespace Boidsish {
 					ups.push_back(Vector3(0, 1, 0));
 					sizes.push_back(te.end_radius / SPLINE_RADIUS_SCALE);
 					colors.push_back(te.color);
+					segment_bones.push_back(curr_bone); // End segment belongs to this tube's bone
 					curr = next;
 				}
 
@@ -467,7 +492,13 @@ namespace Boidsish {
 					for (unsigned int k = 0; k < (unsigned int)tube_data.size(); ++k)
 						main_indices.push_back(base + k);
 
-					skin_jobs.push_back({v_start, (int)main_vertices.size(), i, (int)SkinningMode::Smooth});
+					SkinJob job;
+					job.start_v = v_start;
+					job.end_v = (int)main_vertices.size();
+					job.element_idx = i;
+					job.mode = (int)chain_mode;
+					job.segment_bones = std::move(segment_bones);
+					skin_jobs.push_back(std::move(job));
 				}
 			}
 		}
@@ -576,7 +607,25 @@ namespace Boidsish {
 			SkinningMode         mode = (SkinningMode)(job.mode & 0x7FFFFFFF);
 			std::vector<Vertex>& verts = is_leaf ? leaf_vertices : main_vertices;
 
-			if (mode == SkinningMode::Rigid) {
+			if (!job.segment_bones.empty()) {
+				// Tube chain: assign bones by spline segment index.
+				// The spline generates vertices segment-by-segment in order, with each
+				// segment producing the same number of vertices. This avoids the geometric
+				// ambiguity of distance-based assignment when bone segments have different
+				// orientations (e.g. diagonal upper leg vs vertical lower leg).
+				int num_segments = (int)job.segment_bones.size();
+				int total_verts = job.end_v - job.start_v;
+				int verts_per_segment = (num_segments > 0) ? (total_verts / num_segments) : total_verts;
+				for (int vi = job.start_v; vi < job.end_v; ++vi) {
+					int seg_idx = (verts_per_segment > 0) ? ((vi - job.start_v) / verts_per_segment) : 0;
+					seg_idx = std::min(seg_idx, num_segments - 1);
+					int bone_id = job.segment_bones[seg_idx];
+					if (bone_id != -1) {
+						verts[vi].m_BoneIDs[0] = bone_id;
+						verts[vi].m_Weights[0] = 1.0f;
+					}
+				}
+			} else if (mode == SkinningMode::Rigid) {
 				int bone_id = element_to_bone[job.element_idx];
 				// If this specific element isn't a bone, find its nearest bone ancestor
 				if (bone_id == -1) {

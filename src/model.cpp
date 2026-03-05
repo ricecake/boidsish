@@ -937,6 +937,15 @@ namespace Boidsish {
 		}
 
 		glm::vec3 rootPos = positions[0];
+		// Save bind-pose direction of first bone for constraint reference.
+		// Without this, the first bone's constraint uses (0,-1,0) as "parent direction"
+		// which has no relation to the actual bone orientation.
+		glm::vec3 rootBindDir = (positions.size() >= 2)
+			? glm::normalize(positions[1] - positions[0])
+			: glm::vec3(0, 1, 0);
+		if (glm::any(glm::isnan(rootBindDir)))
+			rootBindDir = glm::vec3(0, 1, 0);
+
 		float     totalLength = 0;
 		for (float l : lengths)
 			totalLength += l;
@@ -989,7 +998,7 @@ namespace Boidsish {
 					// Apply constraints
 					const auto& constraint = GetBoneConstraint(chain[i]);
 					if (constraint.type != ConstraintType::None) {
-						glm::vec3 prevPos = (i == 0) ? (positions[0] + glm::vec3(0, 1, 0)) : positions[i - 1];
+						glm::vec3 prevPos = (i == 0) ? (positions[0] - rootBindDir) : positions[i - 1];
 						glm::vec3 dir = glm::normalize(positions[i + 1] - positions[i]);
 						glm::vec3 parentDir = glm::normalize(positions[i] - prevPos);
 
@@ -1081,6 +1090,11 @@ namespace Boidsish {
 				float     twistLen = glm::length(twist);
 				if (twistLen > 1e-6f) {
 					twist /= twistLen;
+
+					// Ensure canonical hemisphere: avoid interpreting a pure swing
+					// (projection ≈ 0) with negative w as ±180° of twist.
+					if (twist.w < 0.0f)
+						twist = -twist;
 
 					glm::quat swing = q * glm::inverse(twist);
 
