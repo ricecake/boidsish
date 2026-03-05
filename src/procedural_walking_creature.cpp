@@ -22,68 +22,38 @@ namespace Boidsish {
 		model_->UpdateAnimation(0.0f);
 		model_->SetPosition(x, y, z);
 
-		// Apply IK constraints to each leg
-		// All legs bend in XY planes (same Z per leg), so hinge axis = Z.
-		// The cone constraint on upper uses the bind-pose direction as reference
-		// (fixed in SolveIK), so coneAngle is degrees of deviation from rest pose.
-		{
-			std::string leg_names[4] = {"FL", "FR", "BR", "BL"};
-			for (const std::string& n : {"FL", "BL"}) {
-				// Upper leg: cone limit relative to bind-pose direction
-				BoneConstraint upper;
-				upper.type = ConstraintType::Cone;
-				upper.coneAngle = 60.0f;
-				upper.minTwist = -15.0f;
-				upper.maxTwist = 15.0f;
-				model_->SetBoneConstraint(n + "_upper", upper);
+		// Setup leg constraints
+		std::string names[4] = {"FL", "FR", "BR", "BL"};
+		for (int i = 0; i < 4; ++i) {
+			// Upper leg: cone constraint — allows natural range in all directions
+			BoneConstraint upper_c;
+			upper_c.type = ConstraintType::Cone;
+			upper_c.coneAngle = 60.0f;
+			upper_c.minTwist = -15.0f;
+			upper_c.maxTwist = 15.0f;
+			model_->SetBoneConstraint(names[i] + "_upper", upper_c);
 
-				// // Lower leg: hinge around Z-axis + tight twist limit
-				// // Angle sign depends on leg side (FL/BL positive, FR/BR negative).
-				// // Symmetric limits accommodate both.
-				// BoneConstraint lower;
-				// lower.type = ConstraintType::Hinge;
-				// lower.axis = glm::vec3(0, 0, 1);
-				// lower.minAngle = -10.0f;
-				// lower.maxAngle = -130.0f;
-				// lower.minTwist = -5.0f;
-				// lower.maxTwist = 5.0f;
-				// model_->SetBoneConstraint(n + "_lower", lower);
-			}
-
-			for (const std::string& n : {"FR", "BR"}) {
-				// Upper leg: cone limit relative to bind-pose direction
-				BoneConstraint upper;
-				upper.type = ConstraintType::Cone;
-				upper.coneAngle = 60.0f;
-				upper.minTwist = -15.0f;
-				upper.maxTwist = 15.0f;
-				model_->SetBoneConstraint(n + "_upper", upper);
-
-				// Lower leg: hinge around Z-axis + tight twist limit
-				// Angle sign depends on leg side (FL/BL positive, FR/BR negative).
-				// Symmetric limits accommodate both.
-				BoneConstraint lower;
-				lower.type = ConstraintType::Hinge;
-				lower.axis = glm::vec3(0, 0, 1);
-				lower.minAngle = -130.0f;
-				lower.maxAngle = 20.0f;
-				lower.minTwist = -5.0f;
-				lower.maxTwist = 5.0f;
-				model_->SetBoneConstraint(n + "_lower", lower);
-			}
-
+			// Lower leg: hinge — knees bend in XY plane only
+			BoneConstraint lower_c;
+			lower_c.type = ConstraintType::Hinge;
+			lower_c.axis = glm::vec3(0, 0, 1);
+			lower_c.minAngle = -90.0f;
+			lower_c.maxAngle = 90.0f;
+			lower_c.minTwist = -5.0f;
+			lower_c.maxTwist = 5.0f;
+			model_->SetBoneConstraint(names[i] + "_lower", lower_c);
 		}
 
-		// Setup legs tracking — rest offsets computed from the same geometry as GenerateIR
+		// Setup legs tracking — rest offsets match GenerateIR foot positions exactly
 		legs_.resize(4);
-		std::string names[4] = {"FL", "FR", "BR", "BL"};
 
 		float hip_lateral = width_ * 0.64f;
 		float upper_horiz = length_ * 0.35f;
-		float knee_y = height_ * 0.8f + height_ * 0.05f;
+		float upper_arch = height_ * 0.4f;
+		float knee_y = height_ * 0.8f + upper_arch;
 		float foot_h_rest = length_ * 0.08f;
 		float drop = knee_y - foot_h_rest;
-		float lower_horiz = drop * std::tan(glm::radians(-30.0f));
+		float lower_horiz = drop * std::tan(glm::radians(15.0f));
 		float total_lateral = hip_lateral + upper_horiz + lower_horiz;
 		float z_offset = length_ * 0.64f;
 
@@ -130,19 +100,20 @@ namespace Boidsish {
 			// Hip hub - NOT a bone (IK will start from upper leg)
 			int hip = ir.AddHub(offsets[i], length_ * 0.08f, leg_col, body, names[i] + "_hip", false, SkinningMode::Rigid);
 
-			// Upper leg: nearly horizontal, going outward with a few degrees upward tilt
+			// Upper leg: moderate upward arch, going outward
+			// Knee is above the hip so the leg forms a natural arch (knee points up/out)
 			float out_sign = (offsets[i].x > 0) ? 1.0f : -1.0f;
 			float upper_horiz = length_ * 0.35f;
-			float upper_vert = height_ * 0.05f;
-			glm::vec3 upper_end = offsets[i] + glm::vec3(out_sign * upper_horiz, upper_vert, 0);
+			float upper_arch = height_ * 0.4f;
+			glm::vec3 upper_end = offsets[i] + glm::vec3(out_sign * upper_horiz, upper_arch, 0);
 			int       upper =
 				ir.AddTube(offsets[i], upper_end, length_ * 0.1f, length_ * 0.08f, leg_col, hip, names[i] + "_upper", true, SkinningMode::Smooth);
 
-			// Lower leg: ~30° from vertical, reaching ground level
+			// Lower leg: mostly down, 15° outward tilt to widen stance
 			float     foot_h = length_ * 0.08f;
 			float     knee_y = upper_end.y;
 			float     drop = knee_y - foot_h;
-			float     lower_h = drop * std::tan(glm::radians(0.0f));
+			float     lower_h = drop * std::tan(glm::radians(15.0f));
 			glm::vec3 lower_end = upper_end + glm::vec3(out_sign * lower_h, -drop, 0);
 			int       lower =
 				ir.AddTube(upper_end, lower_end, length_ * 0.08f, length_ * 0.06f, leg_col, upper, names[i] + "_lower", true, SkinningMode::Smooth);
