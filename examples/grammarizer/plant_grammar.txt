@@ -1,0 +1,19 @@
+# Plant Generator Grammar ##############################
+
+1 ROOT SEED
+
+1 SEED SPIRAL_VINE
+1 SEED FRACTAL_BUSH
+
+# --- Spiral Vine ---
+# Continuously translates and rotates.
+# C (ControlPoint) smooths the spline without over-generating tube geometry.
+0.85 SPIRAL_VINE F \ C SPIRAL_VINE
+0.10 SPIRAL_VINE F \ [ & L ] SPIRAL_VINE
+0.05 SPIRAL_VINE F P
+
+# --- Fractal Bush ---
+# Classic stochastic branching using stack pushes.
+# H (Hub) is placed at splitting junctions.
+0.75 FRACTAL_BUSH F H [ + FRACTAL_BUSH ] [ - FRACTAL_BUSH ]
+0.25 FRACTAL_BUSH F L
