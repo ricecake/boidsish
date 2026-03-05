@@ -189,7 +189,7 @@ void KittywumpusHandler::PreTimestep(float time, float delta_time) {
 			auto player = GetEntitiesByType<KittywumpusPlane>();
 			if (!player.empty()) {
 				auto pos = player[0]->GetPosition().Toglm();
-				auto forward = player[0]->GetOrientation() * glm::vec3(0, 0, -1);
+				auto forward = vis->GetCamera().front();
 				auto spawn_pos = FindOccludedSpawnPosition(pos, forward);
 				if (spawn_pos) {
 					QueueAddEntity<RedDotEnemy>(Vector3(spawn_pos->x, spawn_pos->y, spawn_pos->z));

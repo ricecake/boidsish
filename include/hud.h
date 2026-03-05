@@ -257,6 +257,8 @@ namespace Boidsish {
 
 		int GetSelectedIndex() const { return m_selectedIndex; }
 
+		void SetTexturePaths(const std::vector<std::string>& paths) { m_texture_paths = paths; }
+
 	private:
 		std::vector<std::string> m_texture_paths;
 		glm::vec2                m_icon_size;
