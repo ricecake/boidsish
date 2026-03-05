@@ -102,66 +102,74 @@ namespace Boidsish {
 	/**
 	 * @brief Grouped common uniforms for easier management and use across objects.
 	 * Layout matches std430 for use in SSBOs.
+	 * Must be exactly 256 bytes for consistent SSBO alignment.
 	 */
 	struct CommonUniforms {
-		glm::mat4 model = glm::mat4(1.0f); // 64 bytes
-		glm::vec4 color = glm::vec4(1.0f); // 16 bytes (xyz=color, w=alpha)
+		glm::mat4 model = glm::mat4(1.0f); // 64 bytes [0-63]
+		glm::vec4 color = glm::vec4(1.0f); // 16 bytes [64-79]
 
-		// Material/PBR
-		int   use_pbr = 0;      // 4 bytes
-		float roughness = 0.5f; // 4 bytes
-		float metallic = 0.0f;  // 4 bytes
-		float ao = 1.0f;        // 4 bytes -> 16 bytes
+		// Block 1 (Material/Features)
+		int   use_pbr = 0;      // 4
+		float roughness = 0.5f; // 4
+		float metallic = 0.0f;  // 4
+		float ao = 1.0f;        // 4 -> 16 bytes [80-95]
 
-		// Feature Flags
-		int use_texture = 0;    // 4 bytes
-		int is_line = 0;        // 4 bytes
-		int line_style = 0;     // 4 bytes
-		int is_text_effect = 0; // 4 bytes -> 16 bytes
+		// Block 2 (Feature Flags)
+		int use_texture = 0;    // 4
+		int is_line = 0;        // 4
+		int line_style = 0;     // 4
+		int is_text_effect = 0; // 4 -> 16 bytes [96-111]
 
-		// Text/Arcade Effects
-		float text_fade_progress = 1.0f; // 4 bytes
-		float text_fade_softness = 0.1f; // 4 bytes
-		int   text_fade_mode = 0;        // 4 bytes
-		int   is_arcade_text = 0;        // 4 bytes -> 16 bytes
+		// Block 3 (Text Fade)
+		float text_fade_progress = 1.0f; // 4
+		float text_fade_softness = 0.1f; // 4
+		int   text_fade_mode = 0;        // 4
+		int   is_arcade_text = 0;        // 4 -> 16 bytes [112-127]
 
-		int   arcade_wave_mode = 0;          // 4 bytes
-		float arcade_wave_amplitude = 0.5f;  // 4 bytes
-		float arcade_wave_frequency = 10.0f; // 4 bytes
-		float arcade_wave_speed = 5.0f;      // 4 bytes -> 16 bytes
+		// Block 4 (Arcade Wave)
+		int   arcade_wave_mode = 0;          // 4
+		float arcade_wave_amplitude = 0.5f;  // 4
+		float arcade_wave_frequency = 10.0f; // 4
+		float arcade_wave_speed = 5.0f;      // 4 -> 16 bytes [128-143]
 
-		int   arcade_rainbow_enabled = 0;      // 4 bytes
-		float arcade_rainbow_speed = 2.0f;     // 4 bytes
-		float arcade_rainbow_frequency = 5.0f; // 4 bytes
-		int   checkpoint_style = 0;            // 4 bytes -> 16 bytes
+		// Block 5 (Arcade Rainbow)
+		int   arcade_rainbow_enabled = 0;      // 4
+		float arcade_rainbow_speed = 2.0f;     // 4
+		float arcade_rainbow_frequency = 5.0f; // 4
+		int   checkpoint_style = 0;            // 4 -> 16 bytes [144-159]
 
-		// Rendering State Flags
-		int   is_colossal = 0;          // 4 bytes
-		int   use_ssbo_instancing = 0;  // 4 bytes
-		int   use_vertex_color = 0;     // 4 bytes
-		float checkpoint_radius = 0.0f; // 4 bytes -> 16 bytes
+		// Block 6 (State Flags)
+		int   is_colossal = 0;          // 4
+		int   use_ssbo_instancing = 0;  // 4
+		int   use_vertex_color = 0;     // 4
+		float checkpoint_radius = 0.0f; // 4 -> 16 bytes [160-175]
 
-		// Dissolve Effects
-		glm::vec3 dissolve_plane_normal = glm::vec3(0, 1, 0); // 12 bytes
-		float     dissolve_plane_dist = 0.0f;                 // 4 bytes -> 16 bytes
-		int       dissolve_enabled = 0;                       // 4 bytes
+		// Block 7 (Dissolve)
+		glm::vec3 dissolve_plane_normal = glm::vec3(0, 1, 0); // 12
+		float     dissolve_plane_dist = 0.0f;                 // 4 -> 16 bytes [176-191]
 
-		// Skeletal Animation
-		int   bone_matrices_offset = -1; // 4 bytes
-		int   use_skinning = 0;          // 4 bytes
-		float anim_padding[2];           // 8 bytes -> 16 bytes
+		// Block 8 (Misc State)
+		int   dissolve_enabled = 0;      // 4
+		int   bone_matrices_offset = -1; // 4
+		int   use_skinning = 0;          // 4
+		float padding_misc = 0.0f;       // 4 -> 16 bytes [192-207]
 
-		// Occlusion culling AABB (world space) - individual floats for std430 alignment safety
-		float aabb_min_x = 0.0f;   // 4 bytes
-		float aabb_min_y = 0.0f;   // 4 bytes
-		float aabb_min_z = 0.0f;   // 4 bytes
-		float aabb_max_x = 0.0f;   // 4 bytes -> 16
-		float aabb_max_y = 0.0f;   // 4 bytes
-		float aabb_max_z = 0.0f;   // 4 bytes
-		float oclusion_padding[2]; // 8 bytes -> 16
-		// Padding to 256 bytes for SSBO alignment safety
-		float padding[3];
+		// Block 9 (AABB Min)
+		float aabb_min_x = 0.0f;    // 4
+		float aabb_min_y = 0.0f;    // 4
+		float aabb_min_z = 0.0f;    // 4
+		float padding_aabb1 = 0.0f; // 4 -> 16 bytes [208-223]
+
+		// Block 10 (AABB Max)
+		float aabb_max_x = 0.0f;    // 4
+		float aabb_max_y = 0.0f;    // 4
+		float aabb_max_z = 0.0f;    // 4
+		float padding_aabb2 = 0.0f; // 4 -> 16 bytes [224-239]
+
+		// Block 11 (Final Padding to 256)
+		float padding_final[4]; // 16 bytes [240-255]
 	};
+	static_assert(sizeof(CommonUniforms) == 256, "CommonUniforms must be exactly 256 bytes for SSBO alignment");
 
 	/**
 	 * @brief Contains all the data necessary for a single draw call.

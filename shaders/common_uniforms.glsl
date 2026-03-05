@@ -1,42 +1,65 @@
 struct CommonUniforms {
-	mat4  model;
-	vec4  color;
+	mat4  model; // [0-63]
+	vec4  color; // [64-79]
+
+	// Block 1
 	int   use_pbr;
 	float roughness;
 	float metallic;
-	float ao;
+	float ao; // [80-95]
+
+	// Block 2
 	int   use_texture;
 	int   is_line;
 	int   line_style;
-	int   is_text_effect;
+	int   is_text_effect; // [96-111]
+
+	// Block 3
 	float text_fade_progress;
 	float text_fade_softness;
 	int   text_fade_mode;
-	int   is_arcade_text;
+	int   is_arcade_text; // [112-127]
+
+	// Block 4
 	int   arcade_wave_mode;
 	float arcade_wave_amplitude;
 	float arcade_wave_frequency;
-	float arcade_wave_speed;
+	float arcade_wave_speed; // [128-143]
+
+	// Block 5
 	int   arcade_rainbow_enabled;
 	float arcade_rainbow_speed;
 	float arcade_rainbow_frequency;
-	int   checkpoint_style;
+	int   checkpoint_style; // [144-159]
+
+	// Block 6
 	int   is_colossal;
 	int   use_ssbo_instancing;
 	int   use_vertex_color;
-	float checkpoint_radius;
+	float checkpoint_radius; // [160-175]
+
+	// Block 7
 	vec3  dissolve_plane_normal;
-	float dissolve_plane_dist;
+	float dissolve_plane_dist; // [176-191]
+
+	// Block 8
 	int   dissolve_enabled;
 	int   bone_matrices_offset;
 	int   use_skinning;
-	float anim_padding[2];
+	float padding_misc; // [192-207]
+
+	// Block 9
 	float aabb_min_x;
 	float aabb_min_y;
 	float aabb_min_z;
+	float padding_aabb1; // [208-223]
+
+	// Block 10
 	float aabb_max_x;
 	float aabb_max_y;
 	float aabb_max_z;
-	float occlusion_padding[2];
-	float padding[3];
+	float padding_aabb2; // [224-239]
+
+	// Block 11
+	float padding_final[4]; // [240-255]
 };
