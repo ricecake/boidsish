@@ -47,6 +47,8 @@ public:
 	// Game state awareness
 	void SetGameStateFlying(bool is_flying) { is_flying_ = is_flying; }
 	bool IsFlying() const { return is_flying_; }
+
+	void TriggerRadiusDamage(const glm::vec3& position, float radius, float damage) const;
 	void SetInMainMenu(bool in_menu) { in_main_menu_ = in_menu; }
 	bool IsInMainMenu() const { return in_main_menu_; }
 

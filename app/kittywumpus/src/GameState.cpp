@@ -18,35 +18,36 @@ GameStateManager::GameStateManager() {}
 void GameStateManager::Update(
 	float dt,
 	Visualizer& viz,
+	KittywumpusHandler& handler,
 	std::shared_ptr<KittywumpusPlane> plane,
 	const KittywumpusInputController& input
 ) {
 	switch (state_) {
 	case GameState::MAIN_MENU:
 		if (WasAnyKeyPressed(input)) {
-			TransitionTo(GameState::FLIGHT_MODE, viz, plane);
+			TransitionTo(GameState::FLIGHT_MODE, viz, handler, plane);
 		}
 		break;
 
 	case GameState::FLIGHT_MODE:
-		UpdateFlightMode(dt, viz, plane, input);
+		UpdateFlightMode(dt, viz, handler, plane, input);
 		break;
 
 	case GameState::LANDING_TRANSITION:
-		UpdateLandingTransition(dt, viz, plane);
+		UpdateLandingTransition(dt, viz, handler, plane);
 		break;
 
 	case GameState::FIRST_PERSON_MODE:
-		UpdateFirstPersonMode(dt, viz, plane, input);
+		UpdateFirstPersonMode(dt, viz, handler, plane, input);
 		break;
 
 	case GameState::TAKEOFF_TRANSITION:
-		UpdateTakeoffTransition(dt, viz, plane);
+		UpdateTakeoffTransition(dt, viz, handler, plane);
 		break;
 
 	case GameState::GAME_OVER:
 		if (WasAnyKeyPressed(input)) {
-			TransitionTo(GameState::MAIN_MENU, viz, plane);
+			TransitionTo(GameState::MAIN_MENU, viz, handler, plane);
 		}
 		break;
 	}
@@ -89,6 +90,7 @@ bool GameStateManager::WasAnyKeyPressed(const KittywumpusInputController& input)
 void GameStateManager::TransitionTo(
 	GameState new_state,
 	Visualizer& viz,
+	KittywumpusHandler& handler,
 	std::shared_ptr<KittywumpusPlane> plane
 ) {
 	// Exit current state
@@ -146,7 +148,7 @@ void GameStateManager::TransitionTo(
 			auto fwd = plane->GetOrientation() * glm::vec3(0, 0, -1);
 			float yaw = glm::degrees(atan2(fwd.x, -fwd.z));
 
-			s_fps_controller.Initialize(viz, fps_pos, yaw);
+			s_fps_controller.Initialize(viz, handler, fps_pos, yaw);
 		}
 		break;
 
@@ -168,6 +170,7 @@ void GameStateManager::TransitionTo(
 void GameStateManager::UpdateFlightMode(
 	float dt,
 	Visualizer& viz,
+	KittywumpusHandler& handler,
 	std::shared_ptr<KittywumpusPlane> plane,
 	const KittywumpusInputController& input
 ) {
@@ -177,7 +180,7 @@ void GameStateManager::UpdateFlightMode(
 
 	// Check for death
 	if (plane->GetHealth() <= 0 && plane->GetPlaneState() == KittywumpusPlane::PlaneState::DEAD) {
-		TransitionTo(GameState::GAME_OVER, viz, plane);
+		TransitionTo(GameState::GAME_OVER, viz, handler, plane);
 		return;
 	}
 
@@ -190,13 +193,14 @@ void GameStateManager::UpdateFlightMode(
 	if (input.holding_land_key && height_above_ground < kLandingHeightThreshold) {
 		// Begin landing
 		plane->BeginLanding();
-		TransitionTo(GameState::LANDING_TRANSITION, viz, plane);
+		TransitionTo(GameState::LANDING_TRANSITION, viz, handler, plane);
 	}
 }
 
 void GameStateManager::UpdateLandingTransition(
 	float dt,
 	Visualizer& viz,
+	KittywumpusHandler& handler,
 	std::shared_ptr<KittywumpusPlane> plane
 ) {
 	transition_time_ += dt;
@@ -228,18 +232,19 @@ void GameStateManager::UpdateLandingTransition(
 
 	// Transition complete
 	if (transition_time_ >= kLandingTransitionDuration) {
-		TransitionTo(GameState::FIRST_PERSON_MODE, viz, plane);
+		TransitionTo(GameState::FIRST_PERSON_MODE, viz, handler, plane);
 	}
 }
 
 void GameStateManager::UpdateFirstPersonMode(
 	float dt,
 	Visualizer& viz,
+	KittywumpusHandler& handler,
 	std::shared_ptr<KittywumpusPlane> plane,
 	const KittywumpusInputController& input
 ) {
 	// Update FPS controller
-	s_fps_controller.Update(viz, input, dt);
+	s_fps_controller.Update(viz, handler, input, dt);
 
 	// Update plane position to match player (for enemies/world logic)
 	if (plane) {
@@ -259,7 +264,7 @@ void GameStateManager::UpdateFirstPersonMode(
 			if (plane) {
 				plane->BeginTakeoff(s_fps_controller.GetYaw(), viz);
 			}
-			TransitionTo(GameState::TAKEOFF_TRANSITION, viz, plane);
+			TransitionTo(GameState::TAKEOFF_TRANSITION, viz, handler, plane);
 		}
 	} else {
 		// Reset charge if released early
@@ -270,6 +275,7 @@ void GameStateManager::UpdateFirstPersonMode(
 void GameStateManager::UpdateTakeoffTransition(
 	float dt,
 	Visualizer& viz,
+	KittywumpusHandler& handler,
 	std::shared_ptr<KittywumpusPlane> plane
 ) {
 	transition_time_ += dt;
@@ -309,7 +315,7 @@ void GameStateManager::UpdateTakeoffTransition(
 
 	// Transition complete
 	if (transition_time_ >= kTakeoffTransitionDuration) {
-		TransitionTo(GameState::FLIGHT_MODE, viz, plane);
+		TransitionTo(GameState::FLIGHT_MODE, viz, handler, plane);
 	}
 }
 

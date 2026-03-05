@@ -8,6 +8,7 @@
 namespace Boidsish {
 
 class Visualizer;
+class KittywumpusHandler;
 struct KittywumpusInputController;
 
 // INTEGRATION_POINT: Extend for future FPS features
@@ -19,11 +20,12 @@ public:
 	FirstPersonController();
 
 	// Initialize the controller with a starting position
-	void Initialize(Visualizer& viz, const glm::vec3& position, float initial_yaw);
+	void Initialize(Visualizer& viz, KittywumpusHandler& handler, const glm::vec3& position, float initial_yaw);
 
 	// Update movement, camera, and FPS rig
 	void Update(
 		Visualizer& viz,
+		KittywumpusHandler& handler,
 		const KittywumpusInputController& input,
 		float delta_time
 	);
@@ -76,6 +78,7 @@ private:
 	float smoothed_ground_height_ = 0.0f;
 
 	// Head bobbing state
+	float fire_cooldown_ = 0.0f;
 	float bob_cycle_ = 0.0f;
 	float bob_amount_ = 0.0f;
 	float last_bob_sin_ = 0.0f;
