@@ -1004,25 +1004,38 @@ namespace Boidsish {
 
 						if (constraint.type == ConstraintType::Hinge) {
 							glm::vec3 planeNormal = constraint.axis;
-							// Project dir onto plane
+
+							// Project both dir and parentDir onto hinge plane
 							glm::vec3 projected = dir - glm::dot(dir, planeNormal) * planeNormal;
+							glm::vec3 parentProj = parentDir - glm::dot(parentDir, planeNormal) * planeNormal;
+
 							if (glm::length(projected) < 0.001f) {
 								projected = glm::cross(planeNormal, glm::vec3(0, 1, 0));
 								if (glm::length(projected) < 0.001f)
 									projected = glm::cross(planeNormal, glm::vec3(1, 0, 0));
 							}
+							if (glm::length(parentProj) < 0.001f) {
+								parentProj = glm::cross(planeNormal, glm::vec3(0, 1, 0));
+								if (glm::length(parentProj) < 0.001f)
+									parentProj = glm::cross(planeNormal, glm::vec3(1, 0, 0));
+							}
 							projected = glm::normalize(projected);
+							parentProj = glm::normalize(parentProj);
 
-							// Angle limit
-							float     dot = glm::clamp(glm::dot(projected, parentDir), -1.0f, 1.0f);
+							// Signed angle from parent to current direction on hinge plane
+							float     dot = glm::clamp(glm::dot(projected, parentProj), -1.0f, 1.0f);
 							float     angle = glm::degrees(std::acos(dot));
-							glm::vec3 side = glm::cross(parentDir, projected);
+							glm::vec3 side = glm::cross(parentProj, projected);
 							if (glm::dot(side, planeNormal) < 0)
 								angle = -angle;
 
-							angle = glm::clamp(angle, constraint.minAngle, constraint.maxAngle);
-							glm::mat4 rot = glm::rotate(glm::mat4(1.0f), glm::radians(angle), planeNormal);
-							dir = glm::normalize(glm::vec3(rot * glm::vec4(parentDir, 0.0f)));
+							// Clamp as deviation from bind-pose rest angle
+							float deviation = angle - constraint.restAngle;
+							deviation = glm::clamp(deviation, constraint.minAngle, constraint.maxAngle);
+							float clampedAngle = constraint.restAngle + deviation;
+
+							glm::mat4 rot = glm::rotate(glm::mat4(1.0f), glm::radians(clampedAngle), planeNormal);
+							dir = glm::normalize(glm::vec3(rot * glm::vec4(parentProj, 0.0f)));
 						} else if (constraint.type == ConstraintType::Cone) {
 							float dot = glm::clamp(glm::dot(dir, parentDir), -1.0f, 1.0f);
 							float angle = glm::degrees(std::acos(dot));
