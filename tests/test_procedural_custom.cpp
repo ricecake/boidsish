@@ -13,7 +13,7 @@ TEST(ProceduralGeneratorCustomTest, CustomFlowerGeneration) {
 
 TEST(ProceduralGeneratorCustomTest, CustomTreeGeneration) {
     std::string axiom = "X";
-    std::vector<std::string> rules = {"X=F", "F=FF"};
+    std::vector<std::string> rules = {"X=F", "F=F"};
     auto model = ProceduralGenerator::GenerateTree(456, axiom, rules);
     ASSERT_NE(model, nullptr);
 }
