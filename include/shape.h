@@ -56,7 +56,9 @@ namespace Boidsish {
 			use_pbr_(other.use_pbr_),
 			dissolve_enabled_(other.dissolve_enabled_),
 			dissolve_plane_normal_(other.dissolve_plane_normal_),
-			dissolve_plane_dist_(other.dissolve_plane_dist_) {}
+			dissolve_plane_dist_(other.dissolve_plane_dist_),
+			is_refractive_(other.is_refractive_),
+			refractive_index_(other.refractive_index_) {}
 
 		Shape& operator=(Shape&& other) noexcept {
 			if (this != &other) {
@@ -93,6 +95,8 @@ namespace Boidsish {
 				dissolve_enabled_ = other.dissolve_enabled_;
 				dissolve_plane_normal_ = other.dissolve_plane_normal_;
 				dissolve_plane_dist_ = other.dissolve_plane_dist_;
+				is_refractive_ = other.is_refractive_;
+				refractive_index_ = other.refractive_index_;
 			}
 			return *this;
 		}
@@ -373,6 +377,16 @@ namespace Boidsish {
 
 		inline float GetDissolveDist() const { return dissolve_plane_dist_; }
 
+		inline bool IsRefractive() const { return is_refractive_; }
+
+		inline float GetRefractiveIndex() const { return refractive_index_; }
+
+		inline void SetRefractive(bool enabled, float index = 1.0f) {
+			is_refractive_ = enabled;
+			refractive_index_ = index;
+			MarkDirty();
+		}
+
 		// Static shader reference
 		static std::shared_ptr<Shader> shader;
 		static ShaderHandle            shader_handle;
@@ -431,7 +445,9 @@ namespace Boidsish {
 			use_pbr_(false),
 			dissolve_enabled_(false),
 			dissolve_plane_normal_(0, 1, 0),
-			dissolve_plane_dist_(0.0f) {}
+			dissolve_plane_dist_(0.0f),
+			is_refractive_(false),
+			refractive_index_(1.0f) {}
 
 		glm::quat rotation_;
 		glm::vec3 scale_;
@@ -466,6 +482,8 @@ namespace Boidsish {
 		bool      dissolve_enabled_;
 		glm::vec3 dissolve_plane_normal_;
 		float     dissolve_plane_dist_;
+		bool      is_refractive_;
+		float     refractive_index_;
 
 	public:
 		// Shared sphere mesh (public for instancing support)

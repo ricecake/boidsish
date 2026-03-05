@@ -487,6 +487,9 @@ namespace Boidsish {
 			shader.setBool("dissolve_enabled", false);
 		}
 
+		shader.setBool("is_refractive", is_refractive_);
+		shader.setFloat("refractive_index", refractive_index_);
+
 		for (unsigned int i = 0; i < m_data->meshes.size(); i++) {
 			m_data->meshes[i].render(shader); // Use the passed shader, not Shape::shader
 		}
@@ -569,6 +572,8 @@ namespace Boidsish {
 			packet.uniforms.dissolve_enabled = dissolve_enabled_ ? 1 : 0;
 			packet.uniforms.dissolve_plane_normal = dissolve_plane_normal_;
 			packet.uniforms.dissolve_plane_dist = actual_dissolve_dist;
+			packet.uniforms.is_refractive = is_refractive_ ? 1 : 0;
+			packet.uniforms.refractive_index = refractive_index_;
 
 			if (m_animator && !m_data->bone_info_map.empty()) {
 				packet.uniforms.use_skinning = 1;

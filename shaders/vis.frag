@@ -4,6 +4,7 @@ layout(location = 0) out vec4 FragColor;
 layout(location = 1) out vec2 Velocity;
 
 #include "common_uniforms.glsl"
+#include "temporal_data.glsl"
 
 layout(std430, binding = 2) buffer UniformsSSBO {
 	CommonUniforms uniforms_data[];
@@ -54,9 +55,14 @@ uniform bool  dissolve_enabled = false;
 uniform vec3  dissolve_plane_normal = vec3(0, 1, 0);
 uniform float dissolve_plane_dist = 0.0;
 
+uniform bool  is_refractive = false;
+uniform float refractive_index = 1.0;
+
 uniform sampler2D texture_diffuse1;
 uniform bool      use_texture;
 uniform float     u_windRimHighlight;
+
+uniform sampler2D refractionTexture;
 
 void main() {
 	bool  use_ssbo = uUseMDI && vUniformIndex >= 0;
@@ -85,6 +91,8 @@ void main() {
 	bool  c_dissolve_enabled = use_ssbo ? (uniforms_data[vUniformIndex].dissolve_enabled != 0) : dissolve_enabled;
 	vec3  c_dissolve_normal = use_ssbo ? uniforms_data[vUniformIndex].dissolve_plane_normal : dissolve_plane_normal;
 	float c_dissolve_dist = use_ssbo ? uniforms_data[vUniformIndex].dissolve_plane_dist : dissolve_plane_dist;
+	bool  c_is_refractive = use_ssbo ? (uniforms_data[vUniformIndex].is_refractive != 0) : is_refractive;
+	float c_refractive_index = use_ssbo ? uniforms_data[vUniformIndex].refractive_index : refractive_index;
 
 	float fade = 1.0;
 	if (c_dissolve_enabled) {
@@ -118,6 +126,22 @@ void main() {
 	vec3 norm = normalize(Normal);
 
 	float baseAlpha = c_objectAlpha;
+
+	if (c_is_refractive) {
+		vec3 V = normalize(FragPos - viewPos);
+		vec3 R = refract(V, norm, 1.0 / max(c_refractive_index, 1.0));
+
+		// Generalized refraction: project refracted ray back to screen space
+		// We use a fixed distance fallback for simplicity, but could sample depth buffer for better accuracy
+		vec3  refractedPos = FragPos + R * 5.0; // Assume background is 5 units away
+		vec4  refractedClip = viewProjection * vec4(refractedPos, 1.0);
+		vec2  refractedUV = (refractedClip.xy / refractedClip.w) * 0.5 + 0.5;
+		float distToEdge = min(min(refractedUV.x, 1.0 - refractedUV.x), min(refractedUV.y, 1.0 - refractedUV.y));
+		float edgeFade = smoothstep(0.0, 0.05, distToEdge);
+
+		vec3 refractionColor = texture(refractionTexture, refractedUV).rgb;
+		albedo = mix(albedo, refractionColor, edgeFade);
+	}
 
 	// Choose between PBR and legacy lighting
 	vec4 lightResult;
