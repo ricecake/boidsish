@@ -175,9 +175,19 @@ void updateAmbientParticle(inout Particle p, float dt, float time) {
 		p.vel.xyz *= pow(0.99, dt / 0.016);
 	}
 
+	vec3  relativePos = p.pos.xyz - viewPos;
+	float projection = dot(relativePos, viewDir);
+	vec3  rejectDir = relativePos - (projection * viewDir);
+
+	p.vel.xyz += 1 / (1 + length(relativePos)) *
+		(normalize(rejectDir + curlNoise(p.pos.xyz, time))); // +cross(viewDir, rejectDir));
+
 	if (length(p.vel.xyz) > maxSpeed) {
 		p.vel.xyz = normalize(p.vel.xyz) * maxSpeed;
 	}
+
+	float inwardSpeed = dot(p.vel.xyz, -normalize(rejectDir));
+	p.vel.xyz -= (-normalize(rejectDir)) * max(0, inwardSpeed) * 1.25; // * brakingFactor * outerLayerMask;
 
 	p.pos.xyz += p.vel.xyz * dt;
 	handleTerrainCollision(p);
@@ -327,7 +337,7 @@ void main() {
 				    Above, if something is behind the camera, despawn it.
 				*/
 
-				float dist = 5 + (rand(seed + 1.1 + float(i)) * 350.0);
+				float dist = 10 + (rand(seed + 1.1 + float(i)) * 350.0);
 				vec2  baseDir = normalize(viewDir.xz);
 				float r = rand(seed + 2.2 + float(i)) * 2 - 1;
 				// float offsetAngle =  pow(r, 3) * 1.57079632679; // Bias toward 0

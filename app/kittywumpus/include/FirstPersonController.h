@@ -72,6 +72,9 @@ private:
 	// FPS Rig for view model
 	std::shared_ptr<FPSRig> fps_rig_;
 
+	// Ground height smoothing
+	float smoothed_ground_height_ = 0.0f;
+
 	// Head bobbing state
 	float bob_cycle_ = 0.0f;
 	float bob_amount_ = 0.0f;
