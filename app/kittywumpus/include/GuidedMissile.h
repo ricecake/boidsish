@@ -17,10 +17,16 @@ namespace Boidsish {
 	public:
 		GuidedMissile(int id = 0, Vector3 pos = {0, 0, 0});
 
+		using EntityBase::OnHit;
 		void UpdateEntity(const EntityHandler& handler, float time, float delta_time) override;
+		void OnHit(const EntityHandler& handler, float damage, const glm::vec3& hit_point) override;
 		void Explode(const EntityHandler& handler, bool hit_target);
 
+		bool IsTargetable() const override { return !exploded_ && !is_dying_; }
+
 	private:
+		bool                         is_dying_ = false;
+		float                        dissolve_timer_ = 0.0f;
 		// Constants
 		static constexpr float lifetime_ = 12.0f;
 		static constexpr float kExplosionDisplayTime = 2.0f;

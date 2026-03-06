@@ -30,8 +30,10 @@ namespace Boidsish {
 			death_timer_ += delta_time;
 			float t = glm::clamp(death_timer_ / kDeathDuration, 0.0f, 1.0f);
 
-			// Turn black
+			// Turn black and dissolve
 			SetColor(1.0f - t, 0.0f, 0.0f);
+			float sweep = 1.0f - t;
+			SetDissolve(glm::vec3(0, 1, 0), GetPosition().y + (sweep * 2.0f - 1.0f) * GetSize());
 
 			if (death_timer_ >= kDeathDuration) {
 				auto pos = GetPosition().Toglm();
@@ -98,17 +100,22 @@ namespace Boidsish {
 		}
 	}
 
-	void RedDotEnemy::OnHit(const EntityHandler& handler, float damage) {
+	void RedDotEnemy::OnHit(const EntityHandler& handler, float damage, const glm::vec3& hit_point) {
 		if (state_ != State::ALIVE) return;
 
 		health_ -= damage;
+
+		// Apply tumble
+		glm::vec3 force = glm::normalize(GetPosition().Toglm() - hit_point) * damage * 50.0f;
+		AddForceAtPoint(force, hit_point);
+
 		if (health_ <= 0) {
-			state_ = State::DYING;
-			death_timer_ = 0.0f;
-			SetVelocity(Vector3(0, 0, 0));
 			if (auto* pp_handler = dynamic_cast<const KittywumpusHandler*>(&handler)) {
 				pp_handler->AddScore(500, "Red Dot Neutralized");
 			}
+			state_ = State::DYING;
+			death_timer_ = 0.0f;
+			SetVelocity(Vector3(0, 0, 0));
 		}
 	}
 
