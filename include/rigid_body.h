@@ -67,6 +67,15 @@ public:
 	void AddForce(const glm::vec3& force);         // Add force in world coordinates
 	void AddRelativeForce(const glm::vec3& force); // Add force in local coordinates
 
+	/**
+	 * @brief Applies a force at a specific point in world space.
+	 * This calculates and applies the resulting torque as cross(point - position, force).
+	 *
+	 * @param force Force vector in world space.
+	 * @param point Point of application in world space.
+	 */
+	void AddForceAtPoint(const glm::vec3& force, const glm::vec3& point);
+
 	void AddTorque(const glm::vec3& torque);         // Add torque in world coordinates
 	void AddRelativeTorque(const glm::vec3& torque); // Add torque in local coordinates
 
