@@ -50,6 +50,10 @@ namespace Boidsish {
 
 		// GPU resources
 		unsigned int ssbo = 0;                   // Main storage (persistent)
+		unsigned int aabb_ssbo = 0;              // World-space AABBs for BVH
+		unsigned int active_ssbo = 0;            // Active flags for BVH
+		std::unique_ptr<LBVHManager> lbvh;       // TLAS for this type
+
 		unsigned int visible_ssbo = 0;           // Culled storage (per-frame)
 		unsigned int indirect_buffer = 0;        // MDI commands
 		unsigned int shadow_indirect_buffer = 0; // MDI commands for shadow pass
@@ -138,6 +142,8 @@ namespace Boidsish {
 
 		// Minimum screen-space size in pixels for culling
 		void SetMinPixelSize(float size) { min_pixel_size_ = size; }
+
+		const std::vector<DecorType>& GetDecorTypes() const { return decor_types_; }
 
 	private:
 		void _Initialize();

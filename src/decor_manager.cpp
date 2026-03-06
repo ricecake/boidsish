@@ -22,6 +22,10 @@ namespace Boidsish {
 		for (auto& type : decor_types_) {
 			if (type.ssbo != 0)
 				glDeleteBuffers(1, &type.ssbo);
+			if (type.aabb_ssbo != 0)
+				glDeleteBuffers(1, &type.aabb_ssbo);
+			if (type.active_ssbo != 0)
+				glDeleteBuffers(1, &type.active_ssbo);
 			if (type.visible_ssbo != 0)
 				glDeleteBuffers(1, &type.visible_ssbo);
 			if (type.count_buffer != 0)
@@ -76,7 +80,8 @@ namespace Boidsish {
 	void DecorManager::AddDecorType(std::shared_ptr<Model> model, const DecorProperties& props) {
 		_Initialize();
 
-		DecorType type;
+		decor_types_.emplace_back();
+		DecorType& type = decor_types_.back();
 		type.model = model;
 		type.props = props;
 
@@ -84,6 +89,18 @@ namespace Boidsish {
 		glGenBuffers(1, &type.ssbo);
 		glBindBuffer(GL_SHADER_STORAGE_BUFFER, type.ssbo);
 		glBufferData(GL_SHADER_STORAGE_BUFFER, kMaxInstancesPerType * sizeof(glm::mat4), nullptr, GL_STATIC_DRAW);
+
+		// AABBs for BVH
+		glGenBuffers(1, &type.aabb_ssbo);
+		glBindBuffer(GL_SHADER_STORAGE_BUFFER, type.aabb_ssbo);
+		glBufferData(GL_SHADER_STORAGE_BUFFER, kMaxInstancesPerType * sizeof(LBVH_AABB), nullptr, GL_STATIC_DRAW);
+
+		// Active flags for BVH
+		glGenBuffers(1, &type.active_ssbo);
+		glBindBuffer(GL_SHADER_STORAGE_BUFFER, type.active_ssbo);
+		glBufferData(GL_SHADER_STORAGE_BUFFER, kMaxInstancesPerType * sizeof(uint32_t), nullptr, GL_STATIC_DRAW);
+
+		type.lbvh = std::make_unique<LBVHManager>();
 
 		// Visible instances (filled per frame)
 		glGenBuffers(1, &type.visible_ssbo);
@@ -125,8 +142,6 @@ namespace Boidsish {
 		glGenBuffers(1, &type.count_buffer);
 		glBindBuffer(GL_ATOMIC_COUNTER_BUFFER, type.count_buffer);
 		glBufferData(GL_ATOMIC_COUNTER_BUFFER, sizeof(unsigned int), nullptr, GL_DYNAMIC_DRAW);
-
-		decor_types_.push_back(type);
 	}
 
 	void DecorManager::AddProceduralDecor(ProceduralType type, const DecorProperties& props, int variants) {
@@ -431,6 +446,7 @@ namespace Boidsish {
 
 		std::vector<glm::mat4> zeros; // Reused for zeroing out blocks
 
+		bool chunks_evicted = false;
 		for (auto it = active_chunks_.begin(); it != active_chunks_.end();) {
 			auto key = it->first;
 			bool should_keep = std::find(active_keys.begin(), active_keys.end(), key) != active_keys.end();
@@ -438,6 +454,7 @@ namespace Boidsish {
 			if (!should_keep) {
 				int block = it->second.block_index;
 				free_blocks_.push_back(block);
+				chunks_evicted = true;
 
 				if (zeros.empty()) {
 					zeros.assign(kInstancesPerChunk, glm::mat4(0.0f));
@@ -451,6 +468,16 @@ namespace Boidsish {
 						block * kInstancesPerChunk * sizeof(glm::mat4),
 						zeros.size() * sizeof(glm::mat4),
 						zeros.data()
+					);
+
+					// Also zero out active flags for BVH
+					std::vector<uint32_t> active_zeros(kInstancesPerChunk, 0);
+					glBindBuffer(GL_SHADER_STORAGE_BUFFER, type.active_ssbo);
+					glBufferSubData(
+						GL_SHADER_STORAGE_BUFFER,
+						block * kInstancesPerChunk * sizeof(uint32_t),
+						active_zeros.size() * sizeof(uint32_t),
+						active_zeros.data()
 					);
 				}
 
@@ -482,7 +509,7 @@ namespace Boidsish {
 		}
 
 		// 4. Dispatch placement compute for new/dirty chunks
-		if (!chunks_to_generate.empty()) {
+		if (!chunks_to_generate.empty() || chunks_evicted) {
 			placement_shader_->use();
 			placement_shader_->setVec2("u_cameraPos", glm::vec2(camera.x, camera.z));
 			placement_shader_->setFloat("u_maxTerrainHeight", terrain_gen.GetMaxHeight());
@@ -520,6 +547,8 @@ namespace Boidsish {
 				placement_shader_->setVec3("u_aabbMax", type.model->GetAABB().max);
 
 				glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, type.ssbo);
+				glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, type.aabb_ssbo);
+				glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 2, type.active_ssbo);
 
 				for (const auto& [key, block] : chunks_to_generate) {
 					// Find the chunk info for this key
@@ -539,6 +568,17 @@ namespace Boidsish {
 				}
 			}
 			glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
+
+			// Rebuild BVHs for all types
+			for (auto& type : decor_types_) {
+				type.lbvh->Build(
+					kMaxInstancesPerType,
+					type.aabb_ssbo,
+					type.active_ssbo,
+					glm::vec3(-10000.0f), // Reasonable scene bounds
+					glm::vec3(10000.0f)
+				);
+			}
 		}
 	}
 

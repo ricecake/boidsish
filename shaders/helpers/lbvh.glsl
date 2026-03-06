@@ -123,4 +123,78 @@ bool lbvh_frustum_test(vec4 frustum[6], int root_idx, out int visible_indices[12
     return visible_count > 0;
 }
 
+// Intersect a ray with a single triangle
+float intersectTriangle(vec3 origin, vec3 dir, vec3 v0, vec3 v1, vec3 v2) {
+    vec3 e1 = v1 - v0;
+    vec3 e2 = v2 - v0;
+    vec3 h = cross(dir, e2);
+    float a = dot(e1, h);
+    if (a > -0.00001 && a < 0.00001) return 1e30;
+    float f = 1.0 / a;
+    vec3 s = origin - v0;
+    float u = f * dot(s, h);
+    if (u < 0.0 || u > 1.0) return 1e30;
+    vec3 q = cross(s, e1);
+    float v = f * dot(dir, q);
+    if (v < 0.0 || u + v > 1.0) return 1e30;
+    float t = f * dot(e2, q);
+    if (t > 0.00001) return t;
+    return 1e30;
+}
+
+// Instanced Ray-LBVH nearest intersection
+// tlas_root: root of the top-level BVH (instances)
+// tlas_nodes_binding: binding point for TLAS nodes
+// blas_nodes_binding: binding point for BLAS nodes (triangles)
+// instance_matrices_binding: binding point for instance world matrices
+// triangle_indices_binding: binding point for triangle indices
+// triangle_vertices_binding: binding point for triangle vertices
+int lbvh_raycast_instanced(
+    vec3 origin, vec3 dir, out float hit_t,
+    int tlas_root,
+    int tlas_nodes_binding,
+    int blas_nodes_binding,
+    int instance_matrices_binding,
+    int triangle_indices_binding,
+    int triangle_vertices_binding
+) {
+    hit_t = 1e30;
+    int hit_instance_idx = -1;
+    int hit_triangle_idx = -1;
+
+    if (tlas_root < 0) return -1;
+
+    int stack[32];
+    int stack_ptr = 0;
+    stack[stack_ptr++] = tlas_root;
+
+    // TLAS Traversal
+    while (stack_ptr > 0) {
+        int node_idx = stack[--stack_ptr];
+
+        // Use manual binding access since we can't easily switch buffer bindings dynamically in GLSL
+        // We assume the caller has set up these specific bindings
+        LBVHNode node = u_lbvhNodes[node_idx]; // TLAS nodes assumed to be in binding 20 by default or via u_lbvhNodes
+
+        float t = intersectAABB(origin, dir, node.min_pt_left.xyz, node.max_pt_right.xyz);
+        if (t < hit_t) {
+            if (node.object_idx != -1) {
+                int instance_idx = node.object_idx;
+
+                // Get instance matrix (binding 0 for DecorInstances)
+                // mat4 world_mat = ssboInstances[instance_idx]; // This needs another binding
+                // We'll need a way to access these. Let's assume standard bindings for now.
+
+                // For now, let's keep the logic abstract and refine it in the implementation of the validation shader
+                // because GLSL doesn't support dynamic binding indices for buffers.
+            } else {
+                stack[stack_ptr++] = int(node.max_pt_right.w);
+                stack[stack_ptr++] = int(node.min_pt_left.w);
+            }
+        }
+        if (stack_ptr >= 32) break;
+    }
+    return hit_instance_idx;
+}
+
 #endif

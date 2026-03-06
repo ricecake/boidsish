@@ -1,0 +1,124 @@
+#version 430 core
+
+layout(local_size_x = 1, local_size_y = 1) in;
+
+#include "../helpers/lbvh.glsl"
+
+struct Vertex {
+    vec3 position;
+    vec3 normal;
+    vec2 texCoords;
+    vec3 color;
+    vec4 weights;
+    ivec4 boneIds;
+};
+
+// Bindings for Decor TLAS and BLAS
+layout(std430, binding = 0) readonly buffer DecorInstances {
+    mat4 u_instances[];
+};
+
+// TLAS Nodes (binding 20 from lbvh.glsl)
+layout(std430, binding = 21) readonly buffer BLASNodes {
+    LBVHNode u_blasNodes[];
+};
+
+layout(std430, binding = 22) readonly buffer TriangleIndices {
+    uint u_triangleIndices[];
+};
+
+layout(std430, binding = 23) readonly buffer TriangleVertices {
+    Vertex u_triangleVertices[];
+};
+
+layout(std430, binding = 30) writeonly buffer HitResult {
+    vec4 hit_pos; // xyz = position, w = distance
+    int instance_idx;
+    int triangle_idx;
+};
+
+uniform vec3 u_rayOrigin;
+uniform vec3 u_rayDir;
+uniform int u_tlasRoot;
+uniform int u_blasRoot;
+
+void main() {
+    hit_pos = vec4(0.0, 0.0, 0.0, 1e30);
+    instance_idx = -1;
+    triangle_idx = -1;
+
+    if (u_tlasRoot < 0) return;
+
+    int stack[32];
+    int stack_ptr = 0;
+    stack[stack_ptr++] = u_tlasRoot;
+
+    float best_t = 1e30;
+    int best_instance = -1;
+    int best_triangle = -1;
+
+    // TLAS Traversal
+    while (stack_ptr > 0) {
+        int node_idx = stack[--stack_ptr];
+        LBVHNode node = u_lbvhNodes[node_idx]; // TLAS nodes in binding 20
+
+        float t = intersectAABB(u_rayOrigin, u_rayDir, node.min_pt_left.xyz, node.max_pt_right.xyz);
+        if (t < best_t) {
+            if (node.object_idx != -1) {
+                int inst_idx = node.object_idx;
+                mat4 world_mat = u_instances[inst_idx];
+                mat4 inv_mat = inverse(world_mat);
+
+                // Transform ray to local space
+                vec3 local_origin = (inv_mat * vec4(u_rayOrigin, 1.0)).xyz;
+                vec3 local_dir = normalize((inv_mat * vec4(u_rayDir, 0.0)).xyz);
+                float dir_len = length((inv_mat * vec4(u_rayDir, 0.0)).xyz);
+
+                // BLAS Traversal
+                int b_stack[32];
+                int b_stack_ptr = 0;
+                b_stack[b_stack_ptr++] = u_blasRoot;
+
+                while (b_stack_ptr > 0) {
+                    int b_node_idx = b_stack[--b_stack_ptr];
+                    LBVHNode b_node = u_blasNodes[b_node_idx];
+
+                    float bt = intersectAABB(local_origin, local_dir, b_node.min_pt_left.xyz, b_node.max_pt_right.xyz);
+                    if (bt * dir_len < best_t) {
+                        if (b_node.object_idx != -1) {
+                            int tri_idx = b_node.object_idx;
+                            uint i0 = u_triangleIndices[tri_idx * 3 + 0];
+                            uint i1 = u_triangleIndices[tri_idx * 3 + 1];
+                            uint i2 = u_triangleIndices[tri_idx * 3 + 2];
+
+                            vec3 v0 = u_triangleVertices[i0].position;
+                            vec3 v1 = u_triangleVertices[i1].position;
+                            vec3 v2 = u_triangleVertices[i2].position;
+
+                            float tt = intersectTriangle(local_origin, local_dir, v0, v1, v2);
+                            if (tt * dir_len < best_t) {
+                                best_t = tt * dir_len;
+                                best_instance = inst_idx;
+                                best_triangle = tri_idx;
+                            }
+                        } else {
+                            b_stack[b_stack_ptr++] = int(b_node.max_pt_right.w);
+                            b_stack[b_stack_ptr++] = int(b_node.min_pt_left.w);
+                        }
+                    }
+                    if (b_stack_ptr >= 32) break;
+                }
+            } else {
+                stack[stack_ptr++] = int(node.max_pt_right.w);
+                stack[stack_ptr++] = int(node.min_pt_left.w);
+            }
+        }
+        if (stack_ptr >= 32) break;
+    }
+
+    if (best_instance != -1) {
+        hit_pos = vec4(u_rayOrigin + u_rayDir * best_t, best_t);
+        instance_idx = best_instance;
+        triangle_idx = best_triangle;
+    }
+}

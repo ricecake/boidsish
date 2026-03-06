@@ -411,6 +411,81 @@ namespace Boidsish {
 		for (auto& mesh : m_data->meshes) {
 			mesh.setupMesh(mb);
 		}
+
+		if (m_data->lbvh)
+			return; // Already built
+
+		// Build BLAS
+		std::vector<Vertex>       all_vertices;
+		std::vector<unsigned int> all_indices;
+		GetGeometry(all_vertices, all_indices);
+
+		if (all_indices.empty())
+			return;
+
+		m_data->total_triangles = static_cast<int>(all_indices.size() / 3);
+		m_data->lbvh = std::make_unique<LBVHManager>();
+
+		// Create SSBOs for triangle data
+		glGenBuffers(1, &m_data->triangle_vertices_ssbo);
+		glBindBuffer(GL_SHADER_STORAGE_BUFFER, m_data->triangle_vertices_ssbo);
+		glBufferData(
+			GL_SHADER_STORAGE_BUFFER,
+			all_vertices.size() * sizeof(Vertex),
+			all_vertices.data(),
+			GL_STATIC_DRAW
+		);
+
+		glGenBuffers(1, &m_data->triangle_indices_ssbo);
+		glBindBuffer(GL_SHADER_STORAGE_BUFFER, m_data->triangle_indices_ssbo);
+		glBufferData(
+			GL_SHADER_STORAGE_BUFFER,
+			all_indices.size() * sizeof(unsigned int),
+			all_indices.data(),
+			GL_STATIC_DRAW
+		);
+
+		glGenBuffers(1, &m_data->triangle_aabb_ssbo);
+		glBindBuffer(GL_SHADER_STORAGE_BUFFER, m_data->triangle_aabb_ssbo);
+		glBufferData(
+			GL_SHADER_STORAGE_BUFFER,
+			m_data->total_triangles * sizeof(LBVH_AABB),
+			nullptr,
+			GL_STREAM_DRAW
+		);
+
+		glGenBuffers(1, &m_data->triangle_active_ssbo);
+		glBindBuffer(GL_SHADER_STORAGE_BUFFER, m_data->triangle_active_ssbo);
+		std::vector<uint32_t> active(m_data->total_triangles, 1);
+		glBufferData(
+			GL_SHADER_STORAGE_BUFFER,
+			m_data->total_triangles * sizeof(uint32_t),
+			active.data(),
+			GL_STATIC_DRAW
+		);
+
+		// Compute triangle AABBs
+		static std::unique_ptr<ComputeShader> triangle_aabb_shader;
+		if (!triangle_aabb_shader) {
+			triangle_aabb_shader = std::make_unique<ComputeShader>("shaders/lbvh/lbvh_model_triangles.comp");
+		}
+
+		triangle_aabb_shader->use();
+		triangle_aabb_shader->setInt("u_numTriangles", m_data->total_triangles);
+		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, m_data->triangle_vertices_ssbo);
+		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, m_data->triangle_indices_ssbo);
+		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 2, m_data->triangle_aabb_ssbo);
+		glDispatchCompute((m_data->total_triangles + 255) / 256, 1, 1);
+		glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
+
+		// Build LBVH
+		m_data->lbvh->Build(
+			m_data->total_triangles,
+			m_data->triangle_aabb_ssbo,
+			m_data->triangle_active_ssbo,
+			m_data->aabb.min,
+			m_data->aabb.max
+		);
 	}
 
 	void Model::render() const {
