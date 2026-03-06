@@ -3513,15 +3513,11 @@ namespace Boidsish {
 		impl->input_callbacks.push_back(callback);
 	}
 
-	std::optional<glm::vec3> Visualizer::ScreenToWorld(double screen_x, double screen_y) const {
+	Ray Visualizer::GetRayFromScreen(double screen_x, double screen_y) const {
 		glm::vec3 screen_pos(screen_x, impl->height - screen_y, 0.0f);
-
 		glm::vec4 viewport(0.0f, 0.0f, impl->width, impl->height);
 
 		glm::mat4 view = impl->SetupMatrices(impl->camera);
-
-		glm::vec3 world_pos = glm::unProject(screen_pos, view, impl->projection, viewport);
-
 		const auto& cam = impl->camera;
 		glm::vec3   ray_origin = cam.pos();
 
@@ -3529,6 +3525,20 @@ namespace Boidsish {
 		glm::vec3 far_plane_pos = glm::unProject(screen_pos, view, impl->projection, viewport);
 
 		glm::vec3 ray_dir = glm::normalize(far_plane_pos - ray_origin);
+
+		return Ray(ray_origin, ray_dir);
+	}
+
+	std::optional<glm::vec3> Visualizer::ScreenToWorld(double screen_x, double screen_y) const {
+		glm::vec3 screen_pos(screen_x, impl->height - screen_y, 0.0f);
+
+		glm::vec4 viewport(0.0f, 0.0f, impl->width, impl->height);
+
+		glm::mat4 view = impl->SetupMatrices(impl->camera);
+
+		Ray ray = GetRayFromScreen(screen_x, screen_y);
+		glm::vec3 ray_origin = ray.origin;
+		glm::vec3 ray_dir = ray.direction;
 
 		float world_scale = impl->terrain_generator ? impl->terrain_generator->GetWorldScale() : 1.0f;
 		float max_ray_dist = 1000.0f * std::max(1.0f, world_scale);

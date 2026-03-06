@@ -242,6 +242,15 @@ namespace Boidsish {
 		// Add an input callback to the chain of handlers.
 		void AddInputCallback(InputCallback callback);
 
+		/**
+		 * @brief Generates a ray from a screen-space coordinate.
+		 *
+		 * @param screen_x X coordinate in pixels (0 is left)
+		 * @param screen_y Y coordinate in pixels (0 is top)
+		 * @return Ray in world space
+		 */
+		Ray GetRayFromScreen(double screen_x, double screen_y) const;
+
 		std::optional<glm::vec3> ScreenToWorld(double screen_x, double screen_y) const;
 
 		void SetChaseCamera(std::shared_ptr<EntityBase> target);

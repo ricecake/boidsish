@@ -233,6 +233,14 @@ void RigidBody::AddRelativeForce(const glm::vec3& force) {
 	AddForce(world_force);
 }
 
+void RigidBody::AddForceAtPoint(const glm::vec3& force, const glm::vec3& point) {
+	glm::vec3 r = point - GetPosition();
+	glm::vec3 torque = glm::cross(r, force);
+
+	AddForce(force);
+	AddTorque(torque);
+}
+
 void RigidBody::AddTorque(const glm::vec3& torque) {
 	wrench_accumulator_.real += glm::quat(0, torque.x, torque.y, torque.z);
 }
