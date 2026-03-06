@@ -273,7 +273,11 @@ namespace Boidsish {
 			shape_->SetMetallic(metallic_);
 			shape_->SetUsePBR(use_pbr_);
 			shape_->SetRotation(rigid_body_.GetOrientation());
-			shape_->SetDissolve(dissolve_plane_normal_, dissolve_plane_dist_);
+			if (dissolve_enabled_) {
+				shape_->SetDissolve(dissolve_plane_normal_, dissolve_plane_dist_);
+			} else {
+				shape_->DisableDissolve();
+			}
 			// For dots, we can also update the size
 			if (auto dot = std::dynamic_pointer_cast<Dot>(shape_)) {
 				dot->SetSize(size_);
