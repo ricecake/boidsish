@@ -16,6 +16,16 @@
 
 namespace Boidsish {
 
+	AssetManager::AssetManager() {
+		// Detect bindless texture support
+		m_bindless_supported = glewIsExtensionSupported("GL_ARB_bindless_texture");
+		if (m_bindless_supported) {
+			logger::LOG("Bindless textures are supported and will be used.");
+		} else {
+			logger::WARNING("Bindless textures are NOT supported on this hardware.");
+		}
+	}
+
 	AssetManager& AssetManager::GetInstance() {
 		static AssetManager instance;
 		return instance;
@@ -26,6 +36,13 @@ namespace Boidsish {
 	}
 
 	void AssetManager::Clear() {
+		if (m_bindless_supported) {
+			for (uint64_t handle : m_resident_handles) {
+				glMakeTextureHandleNonResidentARB(handle);
+			}
+		}
+		m_resident_handles.clear();
+
 		for (auto& [path, textureId] : m_textures) {
 			glDeleteTextures(1, &textureId);
 		}
@@ -141,6 +158,8 @@ namespace Boidsish {
 								glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
 								glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 
+								texture.handle = AssetManager::GetInstance().GetTextureHandle(texture.id);
+
 								stbi_image_free(imageData);
 								logger::LOG("Compressed embedded texture loaded: {}", str.C_Str());
 							} else {
@@ -172,6 +191,8 @@ namespace Boidsish {
 							glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
 							glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 
+							texture.handle = AssetManager::GetInstance().GetTextureHandle(texture.id);
+
 							logger::LOG(
 								"Raw embedded texture loaded: {} ({}x{})",
 								str.C_Str(),
@@ -194,6 +215,7 @@ namespace Boidsish {
 								texture.id = AssetManager::GetInstance().GetTexture(filename, directory);
 							}
 						}
+						texture.handle = AssetManager::GetInstance().GetTextureHandle(texture.id);
 					}
 					if (texture.id != 0) {
 						texture.type = typeName;
@@ -578,6 +600,18 @@ namespace Boidsish {
 
 	} // anonymous namespace
 
+	uint64_t AssetManager::GetTextureHandle(GLuint texture_id) {
+		if (!m_bindless_supported || texture_id == 0)
+			return 0;
+
+		uint64_t handle = glGetTextureHandleARB(texture_id);
+		if (handle != 0 && m_resident_handles.find(handle) == m_resident_handles.end()) {
+			glMakeTextureHandleResidentARB(handle);
+			m_resident_handles.insert(handle);
+		}
+		return handle;
+	}
+
 	std::shared_ptr<ModelData> AssetManager::GetModelData(const std::string& path) {
 		auto it = m_models.find(path);
 		if (it != m_models.end()) {
@@ -680,6 +714,9 @@ namespace Boidsish {
 			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
 			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
 			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+
+			// We don't get a handle here because GetTexture returns a GLuint.
+			// The caller (ModelData/Mesh) will use GetTextureHandle when needed.
 
 			stbi_image_free(data);
 			logger::LOG("Texture loaded and cached: {}", fullPath);

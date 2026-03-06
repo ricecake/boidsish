@@ -566,9 +566,17 @@ namespace Boidsish {
 			packet.uniforms.is_colossal = IsColossal();
 			packet.uniforms.use_vertex_color = (mesh.has_vertex_colors && !has_diffuse) ? 1 : 0;
 
+			for (const auto& tex : mesh.textures) {
+				if (tex.type == "texture_diffuse")
+					packet.uniforms.diffuse_handle = tex.handle;
+				else if (tex.type == "texture_normal")
+					packet.uniforms.normal_handle = tex.handle;
+				else if (tex.type == "texture_specular")
+					packet.uniforms.specular_handle = tex.handle;
+			}
+
 			packet.uniforms.dissolve_enabled = dissolve_enabled_ ? 1 : 0;
-			packet.uniforms.dissolve_plane_normal = dissolve_plane_normal_;
-			packet.uniforms.dissolve_plane_dist = actual_dissolve_dist;
+			packet.uniforms.dissolve_plane = glm::vec4(dissolve_plane_normal_, actual_dissolve_dist);
 
 			if (m_animator && !m_data->bone_info_map.empty()) {
 				packet.uniforms.use_skinning = 1;

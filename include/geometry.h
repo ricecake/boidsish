@@ -104,64 +104,65 @@ namespace Boidsish {
 	 * Layout matches std430 for use in SSBOs.
 	 */
 	struct CommonUniforms {
-		glm::mat4 model = glm::mat4(1.0f); // 64 bytes
-		glm::vec4 color = glm::vec4(1.0f); // 16 bytes (xyz=color, w=alpha)
+		glm::mat4 model = glm::mat4(1.0f); // 64
+		glm::vec4 color = glm::vec4(1.0f); // 16 -> 80
 
-		// Material/PBR
-		int   use_pbr = 0;      // 4 bytes
-		float roughness = 0.5f; // 4 bytes
-		float metallic = 0.0f;  // 4 bytes
-		float ao = 1.0f;        // 4 bytes -> 16 bytes
+		float roughness = 0.5f;
+		float metallic = 0.0f;
+		float ao = 1.0f;
+		int   use_pbr = 0; // 16 -> 96
 
-		// Feature Flags
-		int use_texture = 0;    // 4 bytes
-		int is_line = 0;        // 4 bytes
-		int line_style = 0;     // 4 bytes
-		int is_text_effect = 0; // 4 bytes -> 16 bytes
+		int use_texture = 0;
+		int is_line = 0;
+		int line_style = 0;
+		int is_text_effect = 0; // 16 -> 112
 
-		// Text/Arcade Effects
-		float text_fade_progress = 1.0f; // 4 bytes
-		float text_fade_softness = 0.1f; // 4 bytes
-		int   text_fade_mode = 0;        // 4 bytes
-		int   is_arcade_text = 0;        // 4 bytes -> 16 bytes
+		float text_fade_progress = 1.0f;
+		float text_fade_softness = 0.1f;
+		int   text_fade_mode = 0;
+		int   is_arcade_text = 0; // 16 -> 128
 
-		int   arcade_wave_mode = 0;          // 4 bytes
-		float arcade_wave_amplitude = 0.5f;  // 4 bytes
-		float arcade_wave_frequency = 10.0f; // 4 bytes
-		float arcade_wave_speed = 5.0f;      // 4 bytes -> 16 bytes
+		int   arcade_wave_mode = 0;
+		float arcade_wave_amplitude = 0.5f;
+		float arcade_wave_frequency = 10.0f;
+		float arcade_wave_speed = 5.0f; // 16 -> 144
 
-		int   arcade_rainbow_enabled = 0;      // 4 bytes
-		float arcade_rainbow_speed = 2.0f;     // 4 bytes
-		float arcade_rainbow_frequency = 5.0f; // 4 bytes
-		int   checkpoint_style = 0;            // 4 bytes -> 16 bytes
+		int   arcade_rainbow_enabled = 0;
+		float arcade_rainbow_speed = 2.0f;
+		float arcade_rainbow_frequency = 5.0f;
+		int   checkpoint_style = 0; // 16 -> 160
 
-		// Rendering State Flags
-		int   is_colossal = 0;          // 4 bytes
-		int   use_ssbo_instancing = 0;  // 4 bytes
-		int   use_vertex_color = 0;     // 4 bytes
-		float checkpoint_radius = 0.0f; // 4 bytes -> 16 bytes
+		int   is_colossal = 0;
+		int   use_ssbo_instancing = 0;
+		int   use_vertex_color = 0;
+		float checkpoint_radius = 0.0f; // 16 -> 176
 
-		// Dissolve Effects
-		glm::vec3 dissolve_plane_normal = glm::vec3(0, 1, 0); // 12 bytes
-		float     dissolve_plane_dist = 0.0f;                 // 4 bytes -> 16 bytes
-		int       dissolve_enabled = 0;                       // 4 bytes
+		glm::vec4 dissolve_plane = glm::vec4(0, 1, 0, 0); // xyz=normal, w=dist. 16 -> 192
 
-		// Skeletal Animation
-		int   bone_matrices_offset = -1; // 4 bytes
-		int   use_skinning = 0;          // 4 bytes
-		float anim_padding[2];           // 8 bytes -> 16 bytes
+		int dissolve_enabled = 0;
+		int bone_matrices_offset = -1;
+		int use_skinning = 0;
+		int padding_skeletal = 0; // 16 -> 208
 
-		// Occlusion culling AABB (world space) - individual floats for std430 alignment safety
-		float aabb_min_x = 0.0f;   // 4 bytes
-		float aabb_min_y = 0.0f;   // 4 bytes
-		float aabb_min_z = 0.0f;   // 4 bytes
-		float aabb_max_x = 0.0f;   // 4 bytes -> 16
-		float aabb_max_y = 0.0f;   // 4 bytes
-		float aabb_max_z = 0.0f;   // 4 bytes
-		float oclusion_padding[2]; // 8 bytes -> 16
-		// Padding to 256 bytes for SSBO alignment safety
-		float padding[3];
+		float aabb_min_x = 0.0f;
+		float aabb_min_y = 0.0f;
+		float aabb_min_z = 0.0f;
+		float aabb_max_x = 0.0f; // 16 -> 224
+
+		float aabb_max_y = 0.0f;
+		float aabb_max_z = 0.0f;
+		float wind_responsiveness = 1.0f;
+		float wind_rim_highlight = 0.0f; // 16 -> 240
+
+		uint64_t diffuse_handle = 0;
+		uint64_t normal_handle = 0; // 16 -> 256
+
+		uint64_t specular_handle = 0;
+		uint64_t padding_handles = 0; // 16 -> 272
+
+		uint64_t padding_end[30]; // 240 -> 512
 	};
+	static_assert(sizeof(CommonUniforms) == 512, "CommonUniforms must be exactly 512 bytes for std430 alignment");
 
 	/**
 	 * @brief Contains all the data necessary for a single draw call.

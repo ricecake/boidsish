@@ -19,18 +19,29 @@ namespace Boidsish {
 	// Use DrawElementsIndirectCommand from geometry.h
 
 	DecorManager::~DecorManager() {
-		for (auto& type : decor_types_) {
-			if (type.ssbo != 0)
-				glDeleteBuffers(1, &type.ssbo);
-			if (type.visible_ssbo != 0)
-				glDeleteBuffers(1, &type.visible_ssbo);
-			if (type.count_buffer != 0)
-				glDeleteBuffers(1, &type.count_buffer);
-			if (type.indirect_buffer != 0)
-				glDeleteBuffers(1, &type.indirect_buffer);
-			if (type.shadow_indirect_buffer != 0)
-				glDeleteBuffers(1, &type.shadow_indirect_buffer);
-		}
+		_CleanupGpuResources();
+	}
+
+	void DecorManager::_CleanupGpuResources() {
+		if (global_ssbo != 0)
+			glDeleteBuffers(1, &global_ssbo);
+		if (global_visible_ssbo != 0)
+			glDeleteBuffers(1, &global_visible_ssbo);
+		if (global_uniforms_ssbo != 0)
+			glDeleteBuffers(1, &global_uniforms_ssbo);
+		if (global_count_buffer != 0)
+			glDeleteBuffers(1, &global_count_buffer);
+		if (global_indirect_buffer != 0)
+			glDeleteBuffers(1, &global_indirect_buffer);
+		if (global_shadow_indirect_buffer != 0)
+			glDeleteBuffers(1, &global_shadow_indirect_buffer);
+
+		global_ssbo = 0;
+		global_visible_ssbo = 0;
+		global_uniforms_ssbo = 0;
+		global_count_buffer = 0;
+		global_indirect_buffer = 0;
+		global_shadow_indirect_buffer = 0;
 	}
 
 	void DecorManager::_Initialize() {
@@ -80,53 +91,10 @@ namespace Boidsish {
 		type.model = model;
 		type.props = props;
 
-		// Main instance storage (persistent)
-		glGenBuffers(1, &type.ssbo);
-		glBindBuffer(GL_SHADER_STORAGE_BUFFER, type.ssbo);
-		glBufferData(GL_SHADER_STORAGE_BUFFER, kMaxInstancesPerType * sizeof(glm::mat4), nullptr, GL_STATIC_DRAW);
-
-		// Visible instances (filled per frame)
-		glGenBuffers(1, &type.visible_ssbo);
-		glBindBuffer(GL_SHADER_STORAGE_BUFFER, type.visible_ssbo);
-		glBufferData(GL_SHADER_STORAGE_BUFFER, kMaxInstancesPerType * sizeof(glm::mat4), nullptr, GL_DYNAMIC_DRAW);
-
-		// Indirect commands (one per mesh)
-		const auto&                              meshes = type.model->getMeshes();
-		size_t                                   num_meshes = meshes.size();
-		std::vector<DrawElementsIndirectCommand> commands(num_meshes);
-		for (size_t i = 0; i < num_meshes; ++i) {
-			commands[i].count = static_cast<unsigned int>(meshes[i].indices.size());
-			commands[i].instanceCount = 0; // Filled by GPU
-			commands[i].firstIndex = 0;    // Standard mesh rendering
-			commands[i].baseVertex = 0;
-			commands[i].baseInstance = 0;
-		}
-
-		glGenBuffers(1, &type.indirect_buffer);
-		glBindBuffer(GL_DRAW_INDIRECT_BUFFER, type.indirect_buffer);
-		glBufferData(
-			GL_DRAW_INDIRECT_BUFFER,
-			num_meshes * sizeof(DrawElementsIndirectCommand),
-			commands.data(),
-			GL_STATIC_DRAW
-		);
-
-		// Shadow indirect commands
-		glGenBuffers(1, &type.shadow_indirect_buffer);
-		glBindBuffer(GL_DRAW_INDIRECT_BUFFER, type.shadow_indirect_buffer);
-		glBufferData(
-			GL_DRAW_INDIRECT_BUFFER,
-			num_meshes * sizeof(DrawElementsIndirectCommand),
-			commands.data(),
-			GL_STATIC_DRAW
-		);
-
-		// Atomic counter for culling
-		glGenBuffers(1, &type.count_buffer);
-		glBindBuffer(GL_ATOMIC_COUNTER_BUFFER, type.count_buffer);
-		glBufferData(GL_ATOMIC_COUNTER_BUFFER, sizeof(unsigned int), nullptr, GL_DYNAMIC_DRAW);
-
 		decor_types_.push_back(type);
+
+		// Re-initialize all buffers because offsets/sizes have changed
+		_CleanupGpuResources();
 	}
 
 	void DecorManager::AddProceduralDecor(ProceduralType type, const DecorProperties& props, int variants) {
@@ -295,60 +263,137 @@ namespace Boidsish {
 	}
 
 	void DecorManager::PrepareResources(Megabuffer* mb) {
-		if (!mb)
+		if (!mb || decor_types_.empty())
 			return;
 
+		size_t num_types = decor_types_.size();
+		size_t total_instances = num_types * kMaxInstancesPerType;
+		size_t total_meshes = 0;
 		for (auto& type : decor_types_) {
 			type.model->PrepareResources(mb);
+			total_meshes += type.model->getMeshes().size();
+		}
 
-			// Update indirect buffers with correct Megabuffer offsets
-			const auto&                              meshes = type.model->getMeshes();
-			size_t                                   num_meshes = meshes.size();
-			std::vector<DrawElementsIndirectCommand> commands(num_meshes);
-			std::vector<DrawElementsIndirectCommand> shadow_commands(num_meshes);
+		if (global_ssbo == 0) {
+			glGenBuffers(1, &global_ssbo);
+			glBindBuffer(GL_SHADER_STORAGE_BUFFER, global_ssbo);
+			glBufferData(GL_SHADER_STORAGE_BUFFER, total_instances * sizeof(glm::mat4), nullptr, GL_STATIC_DRAW);
 
-			for (size_t i = 0; i < num_meshes; ++i) {
-				const auto& mesh = meshes[i];
+			glGenBuffers(1, &global_visible_ssbo);
+			glBindBuffer(GL_SHADER_STORAGE_BUFFER, global_visible_ssbo);
+			glBufferData(GL_SHADER_STORAGE_BUFFER, total_instances * sizeof(glm::mat4), nullptr, GL_DYNAMIC_DRAW);
+
+			glGenBuffers(1, &global_uniforms_ssbo);
+			glBindBuffer(GL_SHADER_STORAGE_BUFFER, global_uniforms_ssbo);
+			glBufferData(GL_SHADER_STORAGE_BUFFER, total_meshes * sizeof(CommonUniforms), nullptr, GL_STATIC_DRAW);
+
+			glGenBuffers(1, &global_count_buffer);
+			glBindBuffer(GL_ATOMIC_COUNTER_BUFFER, global_count_buffer);
+			glBufferData(GL_ATOMIC_COUNTER_BUFFER, num_types * sizeof(unsigned int), nullptr, GL_DYNAMIC_DRAW);
+
+			glGenBuffers(1, &global_indirect_buffer);
+			glBindBuffer(GL_DRAW_INDIRECT_BUFFER, global_indirect_buffer);
+			glBufferData(GL_DRAW_INDIRECT_BUFFER, total_meshes * sizeof(DrawElementsIndirectCommand), nullptr, GL_STATIC_DRAW);
+
+			glGenBuffers(1, &global_shadow_indirect_buffer);
+			glBindBuffer(GL_DRAW_INDIRECT_BUFFER, global_shadow_indirect_buffer);
+			glBufferData(GL_DRAW_INDIRECT_BUFFER, total_meshes * sizeof(DrawElementsIndirectCommand), nullptr, GL_STATIC_DRAW);
+		}
+
+		std::vector<DrawElementsIndirectCommand> commands(total_meshes);
+		std::vector<DrawElementsIndirectCommand> shadow_commands(total_meshes);
+		std::vector<CommonUniforms>              uniforms(total_meshes);
+
+		unsigned int current_instance_offset = 0;
+		unsigned int current_mesh_offset = 0;
+
+		for (size_t i = 0; i < num_types; ++i) {
+			auto&       type = decor_types_[i];
+			const auto& meshes = type.model->getMeshes();
+			size_t      num_meshes = meshes.size();
+
+			type.instance_offset = current_instance_offset;
+			type.mesh_offset = current_mesh_offset;
+
+			for (size_t mi = 0; mi < num_meshes; ++mi) {
+				const auto& mesh = meshes[mi];
+				size_t      idx = current_mesh_offset + mi;
+
 				// Regular commands
-				commands[i].count = mesh.allocation.valid ? mesh.allocation.index_count
-														  : static_cast<uint32_t>(mesh.indices.size());
-				commands[i].instanceCount = 0;
-				commands[i].firstIndex = mesh.allocation.valid ? mesh.allocation.first_index : 0;
-				commands[i].baseVertex = mesh.allocation.valid ? mesh.allocation.base_vertex : 0;
-				commands[i].baseInstance = 0;
+				commands[idx].count = mesh.allocation.valid ? mesh.allocation.index_count
+															: static_cast<uint32_t>(mesh.indices.size());
+				commands[idx].instanceCount = 0;
+				commands[idx].firstIndex = mesh.allocation.valid ? mesh.allocation.first_index : 0;
+				commands[idx].baseVertex = mesh.allocation.valid ? mesh.allocation.base_vertex : 0;
+				commands[idx].baseInstance = type.instance_offset; // Key for global SSBO indexing
 
 				// Shadow commands
 				if (mesh.shadow_allocation.valid) {
-					shadow_commands[i].count = mesh.shadow_allocation.index_count;
-					shadow_commands[i].firstIndex = mesh.shadow_allocation.first_index;
+					shadow_commands[idx].count = mesh.shadow_allocation.index_count;
+					shadow_commands[idx].firstIndex = mesh.shadow_allocation.first_index;
 				} else if (!mesh.shadow_indices.empty()) {
-					shadow_commands[i].count = static_cast<uint32_t>(mesh.shadow_indices.size());
-					shadow_commands[i].firstIndex = static_cast<uint32_t>(mesh.indices.size());
+					shadow_commands[idx].count = static_cast<uint32_t>(mesh.shadow_indices.size());
+					shadow_commands[idx].firstIndex = static_cast<uint32_t>(mesh.indices.size());
 				} else {
-					shadow_commands[i].count = commands[i].count;
-					shadow_commands[i].firstIndex = commands[i].firstIndex;
+					shadow_commands[idx].count = commands[idx].count;
+					shadow_commands[idx].firstIndex = commands[idx].firstIndex;
 				}
-				shadow_commands[i].instanceCount = 0;
-				shadow_commands[i].baseVertex = commands[i].baseVertex;
-				shadow_commands[i].baseInstance = 0;
+				shadow_commands[idx].instanceCount = 0;
+				shadow_commands[idx].baseVertex = commands[idx].baseVertex;
+				shadow_commands[idx].baseInstance = commands[idx].baseInstance;
+
+				// Prepare common uniforms for this mesh
+				uniforms[idx].model = glm::mat4(1.0f);
+				uniforms[idx].color = glm::vec4(1.0f);
+				uniforms[idx].use_pbr = 0;
+				uniforms[idx].roughness = 0.5f;
+				uniforms[idx].metallic = 0.0f;
+				uniforms[idx].ao = 1.0f;
+
+				uniforms[idx].wind_responsiveness = type.props.wind_responsiveness;
+				uniforms[idx].wind_rim_highlight = type.props.wind_rim_highlight;
+
+				bool has_diffuse = false;
+				for (const auto& tex : mesh.textures) {
+					if (tex.type == "texture_diffuse") {
+						uniforms[idx].diffuse_handle = tex.handle;
+						has_diffuse = true;
+					} else if (tex.type == "texture_normal") {
+						uniforms[idx].normal_handle = tex.handle;
+					} else if (tex.type == "texture_specular") {
+						uniforms[idx].specular_handle = tex.handle;
+					}
+				}
+				uniforms[idx].use_texture = has_diffuse ? 1 : 0;
+				uniforms[idx].is_colossal = 0;
+				uniforms[idx].use_ssbo_instancing = 1;
+				uniforms[idx].use_vertex_color = (mesh.has_vertex_colors && !has_diffuse) ? 1 : 0;
+
+				// Set AABB for culling (use model-space AABB from data)
+				if (type.model->GetData()) {
+					AABB aabb = type.model->GetData()->aabb;
+					uniforms[idx].aabb_min_x = aabb.min.x;
+					uniforms[idx].aabb_min_y = aabb.min.y;
+					uniforms[idx].aabb_min_z = aabb.min.z;
+					uniforms[idx].aabb_max_x = aabb.max.x;
+					uniforms[idx].aabb_max_y = aabb.max.y;
+					uniforms[idx].aabb_max_z = aabb.max.z;
+				}
 			}
 
-			glBindBuffer(GL_DRAW_INDIRECT_BUFFER, type.indirect_buffer);
-			glBufferSubData(
-				GL_DRAW_INDIRECT_BUFFER,
-				0,
-				num_meshes * sizeof(DrawElementsIndirectCommand),
-				commands.data()
-			);
-
-			glBindBuffer(GL_DRAW_INDIRECT_BUFFER, type.shadow_indirect_buffer);
-			glBufferSubData(
-				GL_DRAW_INDIRECT_BUFFER,
-				0,
-				num_meshes * sizeof(DrawElementsIndirectCommand),
-				shadow_commands.data()
-			);
+			current_instance_offset += kMaxInstancesPerType;
+			current_mesh_offset += static_cast<unsigned int>(num_meshes);
 		}
+
+		glBindBuffer(GL_DRAW_INDIRECT_BUFFER, global_indirect_buffer);
+		glBufferSubData(GL_DRAW_INDIRECT_BUFFER, 0, total_meshes * sizeof(DrawElementsIndirectCommand), commands.data());
+
+		glBindBuffer(GL_DRAW_INDIRECT_BUFFER, global_shadow_indirect_buffer);
+		glBufferSubData(GL_DRAW_INDIRECT_BUFFER, 0, total_meshes * sizeof(DrawElementsIndirectCommand), shadow_commands.data());
+
+		glBindBuffer(GL_SHADER_STORAGE_BUFFER, global_uniforms_ssbo);
+		glBufferSubData(GL_SHADER_STORAGE_BUFFER, 0, total_meshes * sizeof(CommonUniforms), uniforms.data());
+
 		glBindBuffer(GL_DRAW_INDIRECT_BUFFER, 0);
 	}
 
@@ -444,11 +489,11 @@ namespace Boidsish {
 				}
 
 				// Zero out the block in all SSBOs to ensure it doesn't render
+				glBindBuffer(GL_SHADER_STORAGE_BUFFER, global_ssbo);
 				for (auto& type : decor_types_) {
-					glBindBuffer(GL_SHADER_STORAGE_BUFFER, type.ssbo);
 					glBufferSubData(
 						GL_SHADER_STORAGE_BUFFER,
-						block * kInstancesPerChunk * sizeof(glm::mat4),
+						(type.instance_offset + block * kInstancesPerChunk) * sizeof(glm::mat4),
 						zeros.size() * sizeof(glm::mat4),
 						zeros.data()
 					);
@@ -500,6 +545,8 @@ namespace Boidsish {
 			glBindTexture(GL_TEXTURE_2D_ARRAY, biome_texture);
 			placement_shader_->setInt("u_biomeMap", 1);
 
+			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, global_ssbo);
+
 			for (size_t i = 0; i < decor_types_.size(); ++i) {
 				auto& type = decor_types_[i];
 				placement_shader_->setFloat("u_minDensity", type.props.min_density);
@@ -519,8 +566,6 @@ namespace Boidsish {
 				placement_shader_->setVec3("u_aabbMin", type.model->GetAABB().min);
 				placement_shader_->setVec3("u_aabbMax", type.model->GetAABB().max);
 
-				glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, type.ssbo);
-
 				for (const auto& [key, block] : chunks_to_generate) {
 					// Find the chunk info for this key
 					for (const auto& chunk : chunk_info) {
@@ -530,7 +575,7 @@ namespace Boidsish {
 							placement_shader_->setVec2("u_chunkWorldOffset", glm::vec2(chunk.x, chunk.y));
 							placement_shader_->setFloat("u_chunkSlice", chunk.z);
 							placement_shader_->setFloat("u_chunkSize", chunk.w);
-							placement_shader_->setInt("u_baseInstanceIndex", block * kInstancesPerChunk);
+							placement_shader_->setInt("u_baseInstanceIndex", type.instance_offset + block * kInstancesPerChunk);
 
 							glDispatchCompute(4, 4, 1); // 32x32 = 1024 threads
 							break;
@@ -596,37 +641,53 @@ namespace Boidsish {
 			culling_shader_->setInt("u_hizMipCount", hiz_mip_count_);
 		}
 
-		for (auto& type : decor_types_) {
-			// Reset atomic counter
-			unsigned int zero = 0;
-			glBindBuffer(GL_ATOMIC_COUNTER_BUFFER, type.count_buffer);
-			glBufferSubData(GL_ATOMIC_COUNTER_BUFFER, 0, sizeof(unsigned int), &zero);
+		// Reset all atomic counters in one go
+		std::vector<unsigned int> zeros(decor_types_.size(), 0);
+		glBindBuffer(GL_ATOMIC_COUNTER_BUFFER, global_count_buffer);
+		glBufferSubData(GL_ATOMIC_COUNTER_BUFFER, 0, zeros.size() * sizeof(unsigned int), zeros.data());
+
+		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, global_ssbo);
+		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, global_visible_ssbo);
+
+		for (size_t i = 0; i < decor_types_.size(); ++i) {
+			auto& type = decor_types_[i];
 
 			// Cull instances
 			culling_shader_->use();
 			culling_shader_->setVec3("u_aabbMin", type.model->GetAABB().min);
 			culling_shader_->setVec3("u_aabbMax", type.model->GetAABB().max);
+			culling_shader_->setInt("u_baseInstanceIndex", type.instance_offset);
 
-			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, type.ssbo);
-			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, type.visible_ssbo);
-			glBindBufferBase(GL_ATOMIC_COUNTER_BUFFER, 0, type.count_buffer);
+			glBindBufferRange(GL_ATOMIC_COUNTER_BUFFER, 0, global_count_buffer, i * sizeof(unsigned int), sizeof(unsigned int));
 			glDispatchCompute(kMaxInstancesPerType / 64, 1, 1);
-
-			glMemoryBarrier(GL_ATOMIC_COUNTER_BARRIER_BIT | GL_SHADER_STORAGE_BARRIER_BIT);
-
-			// Update indirect commands for both regular and shadow passes
-			update_commands_shader_->use();
-			update_commands_shader_->setInt("u_numCommands", (int)type.model->getMeshes().size());
-			glBindBufferBase(GL_ATOMIC_COUNTER_BUFFER, 0, type.count_buffer);
-
-			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 2, type.indirect_buffer);
-			glDispatchCompute(1, 1, 1);
-
-			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 2, type.shadow_indirect_buffer);
-			glDispatchCompute(1, 1, 1);
-
-			glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT | GL_COMMAND_BARRIER_BIT);
 		}
+
+		glMemoryBarrier(GL_ATOMIC_COUNTER_BARRIER_BIT | GL_SHADER_STORAGE_BARRIER_BIT);
+
+		// Update indirect commands for all types and meshes
+		update_commands_shader_->use();
+		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, global_count_buffer);
+
+		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, global_count_buffer);
+		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 2, global_indirect_buffer);
+		for (size_t i = 0; i < decor_types_.size(); ++i) {
+			auto& type = decor_types_[i];
+			update_commands_shader_->setInt("u_numCommands", (int)type.model->getMeshes().size());
+			update_commands_shader_->setInt("u_baseCommandIndex", type.mesh_offset);
+			update_commands_shader_->setInt("u_counterIndex", (int)i);
+			glDispatchCompute(1, 1, 1);
+		}
+
+		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 2, global_shadow_indirect_buffer);
+		for (size_t i = 0; i < decor_types_.size(); ++i) {
+			auto& type = decor_types_[i];
+			update_commands_shader_->setInt("u_numCommands", (int)type.model->getMeshes().size());
+			update_commands_shader_->setInt("u_baseCommandIndex", type.mesh_offset);
+			update_commands_shader_->setInt("u_counterIndex", (int)i);
+			glDispatchCompute(1, 1, 1);
+		}
+
+		glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT | GL_COMMAND_BARRIER_BIT);
 
 		// 2. Rendering Pass
 		Shader* shader = shader_override ? shader_override : Shape::shader.get();
@@ -652,58 +713,66 @@ namespace Boidsish {
 			ConfigManager::GetInstance().GetAppSettingBool("artistic_effect_ripple", false) ? 0.05f : 0.0f
 		);
 
-		for (size_t i = 0; i < decor_types_.size(); ++i) {
-			auto& type = decor_types_[i];
+		bool use_bindless = glewIsExtensionSupported("GL_ARB_bindless_texture");
+		shader->setBool("uUseBindless", use_bindless);
 
-			// Bind the culled instances SSBO
-			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 10, type.visible_ssbo);
+		// Bind the global culled instances SSBO
+		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 10, global_visible_ssbo);
 
-			if (type.model->IsNoCull()) {
-				glDisable(GL_CULL_FACE);
-			}
+		// Bind the appropriate global indirect buffer
+		GLuint current_indirect_buffer = is_shadow_pass ? global_shadow_indirect_buffer : global_indirect_buffer;
+		glBindBuffer(GL_DRAW_INDIRECT_BUFFER, current_indirect_buffer);
 
-			shader->setVec3("u_aabbMin", type.model->GetAABB().min);
-			shader->setVec3("u_aabbMax", type.model->GetAABB().max);
-			shader->setFloat("u_windResponsiveness", type.props.wind_responsiveness);
-			shader->setFloat("u_windRimHighlight", type.props.wind_rim_highlight);
+		struct DrawBatch {
+			GLuint       vao;
+			unsigned int first_command;
+			unsigned int command_count;
+		};
+		std::vector<DrawBatch> draw_batches;
 
-			// Bind the appropriate indirect buffer
-			if (is_shadow_pass) {
-				glBindBuffer(GL_DRAW_INDIRECT_BUFFER, type.shadow_indirect_buffer);
-			} else {
-				glBindBuffer(GL_DRAW_INDIRECT_BUFFER, type.indirect_buffer);
-			}
+		unsigned int total_meshes = 0;
+		for (const auto& type : decor_types_) {
+			const auto&  meshes = type.model->getMeshes();
+			unsigned int type_num_meshes = static_cast<unsigned int>(meshes.size());
 
-			const auto& meshes = type.model->getMeshes();
-			for (size_t mi = 0; mi < meshes.size(); ++mi) {
-				const auto& mesh = meshes[mi];
-				bool        hasDiffuse = false;
-				for (const auto& t : mesh.textures) {
-					if (t.type == "texture_diffuse") {
-						hasDiffuse = true;
-						break;
-					}
+			for (unsigned int mi = 0; mi < type_num_meshes; ++mi) {
+				GLuint vao = meshes[mi].getVAO();
+				if (draw_batches.empty() || draw_batches.back().vao != vao) {
+					draw_batches.push_back({vao, total_meshes + mi, 0});
 				}
-				shader->setBool("use_texture", hasDiffuse);
-				shader->setBool("useVertexColor", mesh.has_vertex_colors && !hasDiffuse);
-				mesh.bindTextures(*shader);
-
-				glBindVertexArray(mesh.getVAO());
-				glDrawElementsIndirect(
-					GL_TRIANGLES,
-					GL_UNSIGNED_INT,
-					(void*)(mi * sizeof(DrawElementsIndirectCommand))
-				);
+				draw_batches.back().command_count++;
 			}
+			total_meshes += type_num_meshes;
+		}
 
-			if (type.model->IsNoCull()) {
-				glEnable(GL_CULL_FACE);
-			}
+		for (const auto& batch : draw_batches) {
+			glBindVertexArray(batch.vao);
+
+			// Bind the uniforms for this VAO batch
+			glBindBufferRange(
+				GL_SHADER_STORAGE_BUFFER,
+				2,
+				global_uniforms_ssbo,
+				batch.first_command * sizeof(CommonUniforms),
+				batch.command_count * sizeof(CommonUniforms)
+			);
+
+			shader->setBool("uUseMDI", true);
+
+			glMultiDrawElementsIndirect(
+				GL_TRIANGLES,
+				GL_UNSIGNED_INT,
+				(void*)(uintptr_t)(batch.first_command * sizeof(DrawElementsIndirectCommand)),
+				batch.command_count,
+				sizeof(DrawElementsIndirectCommand)
+			);
 		}
 
 		glBindVertexArray(0);
 		glBindBuffer(GL_DRAW_INDIRECT_BUFFER, 0);
 		shader->setBool("useSSBOInstancing", false);
+		shader->setBool("uUseMDI", false);
+		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 2, 0);
 	}
 
 } // namespace Boidsish

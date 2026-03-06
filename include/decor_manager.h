@@ -48,12 +48,9 @@ namespace Boidsish {
 		std::shared_ptr<Model> model;
 		DecorProperties        props;
 
-		// GPU resources
-		unsigned int ssbo = 0;                   // Main storage (persistent)
-		unsigned int visible_ssbo = 0;           // Culled storage (per-frame)
-		unsigned int indirect_buffer = 0;        // MDI commands
-		unsigned int shadow_indirect_buffer = 0; // MDI commands for shadow pass
-		unsigned int count_buffer = 0;           // For culling atomic counter
+		// Global SSBO offsets
+		unsigned int instance_offset = 0; // Offset in global_ssbo
+		unsigned int mesh_offset = 0;     // Offset in global_indirect_buffer
 
 		// Cached instance count (read back after compute, used during render)
 		unsigned int cached_count = 0;
@@ -140,6 +137,7 @@ namespace Boidsish {
 		void SetMinPixelSize(float size) { min_pixel_size_ = size; }
 
 	private:
+		void _CleanupGpuResources();
 		void _Initialize();
 		void _UpdateAllocation(
 			const Camera&                         camera,
@@ -155,6 +153,14 @@ namespace Boidsish {
 		std::unique_ptr<ComputeShader> culling_shader_;
 		std::unique_ptr<ComputeShader> update_commands_shader_;
 		std::shared_ptr<Shader>        render_shader_;
+
+		// Consolidated GPU resources
+		unsigned int global_ssbo = 0;                   // Main storage (persistent)
+		unsigned int global_visible_ssbo = 0;           // Culled storage (per-frame)
+		unsigned int global_uniforms_ssbo = 0;          // Per-mesh uniforms
+		unsigned int global_indirect_buffer = 0;        // MDI commands
+		unsigned int global_shadow_indirect_buffer = 0; // MDI commands for shadow pass
+		unsigned int global_count_buffer = 0;           // For culling atomic counters (one per type)
 
 		// Block allocation
 		struct ChunkAllocation {

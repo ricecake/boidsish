@@ -1,4 +1,6 @@
 #version 460 core
+#extension GL_ARB_bindless_texture : enable
+#extension GL_ARB_gpu_shader_int64 : enable
 
 layout(location = 0) in vec3 aPos;
 layout(location = 1) in vec3 aNormal;
@@ -67,6 +69,7 @@ layout(std430, binding = 13) readonly buffer OcclusionVisibility {
 uniform vec3  u_aabbMin;
 uniform vec3  u_aabbMax;
 uniform float u_windResponsiveness;
+uniform float u_windRimHighlight;
 
 // Arcade Text Effects
 uniform bool  isArcadeText = false;
@@ -77,6 +80,7 @@ uniform float arcadeWaveSpeed = 5.0;
 
 void main() {
 	int drawID = gl_DrawID;
+	// Use gl_BaseInstance for offset if not using DrawID native support (already used for SSBO instances)
 
 	vUniformIndex = uUseMDI ? drawID : -1;
 	bool use_ssbo = uUseMDI && vUniformIndex >= 0;
@@ -94,6 +98,8 @@ void main() {
 	bool  current_isColossal = use_ssbo ? (uniforms_data[vUniformIndex].is_colossal != 0) : isColossal;
 	bool  current_useSSBOInstancing = use_ssbo ? (uniforms_data[vUniformIndex].use_ssbo_instancing != 0)
                                               : useSSBOInstancing;
+	float current_windResponsiveness = use_ssbo ? uniforms_data[vUniformIndex].wind_responsiveness
+												: u_windResponsiveness;
 
 	WindDeflection = 0.0;
 	vec3 displacedPos = aPos;
@@ -168,7 +174,7 @@ void main() {
 
 	mat4 modelMatrix;
 	if (current_useSSBOInstancing) {
-		modelMatrix = ssboInstanceMatrices[gl_InstanceID];
+		modelMatrix = ssboInstanceMatrices[gl_InstanceID + gl_BaseInstance];
 	} else {
 		modelMatrix = current_model;
 	}
@@ -211,23 +217,26 @@ void main() {
 	// Apply shockwave displacement (sway for decor)
 	// Calculate at instanceCenter to prevent warping, scale by world-relative height
 	if (current_useSSBOInstancing) {
+		vec3 c_aabbMin = use_ssbo ? vec3(uniforms_data[vUniformIndex].aabb_min_x, uniforms_data[vUniformIndex].aabb_min_y, uniforms_data[vUniformIndex].aabb_min_z) : u_aabbMin;
+		vec3 c_aabbMax = use_ssbo ? vec3(uniforms_data[vUniformIndex].aabb_max_x, uniforms_data[vUniformIndex].aabb_max_y, uniforms_data[vUniformIndex].aabb_max_z) : u_aabbMax;
+
 		// Calculate the center of the base in world space (the pivot point)
-		vec3 localBaseCenter = vec3((u_aabbMin.x + u_aabbMax.x) * 0.5, u_aabbMin.y, (u_aabbMin.z + u_aabbMax.z) * 0.5);
+		vec3 localBaseCenter = vec3((c_aabbMin.x + c_aabbMax.x) * 0.5, c_aabbMin.y, (c_aabbMin.z + c_aabbMax.z) * 0.5);
 		vec3 worldBaseCenter = vec3(modelMatrix * vec4(localBaseCenter, 1.0));
 
 		// Shockwave displacement (applied before wind sway)
-		FragPos += getShockwaveDisplacement(instanceCenter, (aPos.y - u_aabbMin.y) * instanceScale, true);
+		FragPos += getShockwaveDisplacement(instanceCenter, (aPos.y - c_aabbMin.y) * instanceScale, true);
 
 		// Apply wind sway
 		if (wind_strength > 0.0) {
-			float localHeight = max(0.0, aPos.y - u_aabbMin.y);
-			float totalHeight = max(0.001, u_aabbMax.y - u_aabbMin.y);
+			float localHeight = max(0.0, aPos.y - c_aabbMin.y);
+			float totalHeight = max(0.001, c_aabbMax.y - c_aabbMin.y);
 			float normalizedHeight = clamp(localHeight / totalHeight, 0.0, 1.0);
 
 			// 1. Calculate raw wind magnitude and direction
 			float fateFactor = fastWorley3d(vec3(instanceCenter.xz / 25.0, time * 0.25)) * 0.5 + 0.75;
 			vec2 rawWindNudge = fateFactor * curlNoise2D(instanceCenter.xz * wind_frequency + time * wind_speed * 0.5) *
-				wind_strength * u_windResponsiveness;
+				wind_strength * current_windResponsiveness;
 
 			float windMag = length(rawWindNudge);
 

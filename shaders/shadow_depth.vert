@@ -1,5 +1,6 @@
 #version 460 core
 #extension GL_GOOGLE_include_directive : enable
+#extension GL_ARB_gpu_shader_int64 : enable
 
 layout(location = 0) in vec3 aPos;
 layout(location = 9) in ivec4 aBoneIDs;
@@ -61,7 +62,7 @@ void main() {
 
 	mat4 modelMatrix;
 	if (current_useSSBOInstancing) {
-		modelMatrix = ssboInstanceMatrices[gl_InstanceID];
+		modelMatrix = ssboInstanceMatrices[gl_InstanceID + gl_BaseInstance];
 	} else {
 		modelMatrix = current_model;
 	}
@@ -97,25 +98,29 @@ void main() {
 		vec3  instanceCenter = vec3(modelMatrix[3]);
 		float instanceScale = length(vec3(modelMatrix[0]));
 
+		vec3 c_aabbMin = use_ssbo ? vec3(uniforms_data[vUniformIndex].aabb_min_x, uniforms_data[vUniformIndex].aabb_min_y, uniforms_data[vUniformIndex].aabb_min_z) : u_aabbMin;
+		vec3 c_aabbMax = use_ssbo ? vec3(uniforms_data[vUniformIndex].aabb_max_x, uniforms_data[vUniformIndex].aabb_max_y, uniforms_data[vUniformIndex].aabb_max_z) : u_aabbMax;
+		float current_windResponsiveness = use_ssbo ? uniforms_data[vUniformIndex].wind_responsiveness : u_windResponsiveness;
+
 		// Calculate the center of the base of the AABB in world space
-		vec3 localBaseCenter = vec3((u_aabbMin.x + u_aabbMax.x) * 0.5, u_aabbMin.y, (u_aabbMin.z + u_aabbMax.z) * 0.5);
+		vec3 localBaseCenter = vec3((c_aabbMin.x + c_aabbMax.x) * 0.5, c_aabbMin.y, (c_aabbMin.z + c_aabbMax.z) * 0.5);
 		vec3 worldBaseCenter = vec3(modelMatrix * vec4(localBaseCenter, 1.0));
 
 		// Distance from vertex to base center before swaying
 		float distToCenter = distance(worldPos, worldBaseCenter);
 
 		// Shockwave displacement
-		worldPos += getShockwaveDisplacement(instanceCenter, (aPos.y - u_aabbMin.y) * instanceScale, true);
+		worldPos += getShockwaveDisplacement(instanceCenter, (aPos.y - c_aabbMin.y) * instanceScale, true);
 
 		// Wind sway
 		if (wind_strength > 0.0) {
-			float localHeight = max(0.0, aPos.y - u_aabbMin.y);
-			float totalHeight = max(0.001, u_aabbMax.y - u_aabbMin.y);
+			float localHeight = max(0.0, aPos.y - c_aabbMin.y);
+			float totalHeight = max(0.001, c_aabbMax.y - c_aabbMin.y);
 			float normalizedHeight = clamp(localHeight / totalHeight, 0.0, 1.0);
 
 			float fateFactor = fastWorley3d(vec3(instanceCenter.xz / 10, time * 0.5)) * 0.5 + 0.5;
 			vec2  windNudge = fateFactor * curlNoise2D(instanceCenter.xz * wind_frequency + time * wind_speed * 0.5) *
-				wind_strength * u_windResponsiveness;
+				wind_strength * current_windResponsiveness;
 			worldPos.xz += windNudge * normalizedHeight * pow(normalizedHeight, 1.2);
 		}
 

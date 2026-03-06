@@ -1,5 +1,6 @@
 #version 430 core
 #extension GL_GOOGLE_include_directive : enable
+#extension GL_ARB_gpu_shader_int64 : enable
 
 #include "common_uniforms.glsl"
 
@@ -18,8 +19,8 @@ uniform float dissolve_plane_dist = 0.0;
 void main() {
 	bool  use_ssbo = uUseMDI && vUniformIndex >= 0;
 	bool  c_dissolve_enabled = use_ssbo ? (uniforms_data[vUniformIndex].dissolve_enabled != 0) : dissolve_enabled;
-	vec3  c_dissolve_normal = use_ssbo ? uniforms_data[vUniformIndex].dissolve_plane_normal : dissolve_plane_normal;
-	float c_dissolve_dist = use_ssbo ? uniforms_data[vUniformIndex].dissolve_plane_dist : dissolve_plane_dist;
+	vec3  c_dissolve_normal = use_ssbo ? uniforms_data[vUniformIndex].dissolve_plane.xyz : dissolve_plane_normal;
+	float c_dissolve_dist = use_ssbo ? uniforms_data[vUniformIndex].dissolve_plane.w : dissolve_plane_dist;
 
 	if (c_dissolve_enabled) {
 		if (dot(FragPos, c_dissolve_normal) > c_dissolve_dist) {
