@@ -1647,8 +1647,8 @@ namespace Boidsish {
 						GL_SHADER_STORAGE_BUFFER,
 						Constants::SsboBinding::OcclusionVisibility(),
 						occlusion_visibility_ssbo_,
-						(batch.base_uniform_index - frame_element_offset) * sizeof(uint32_t),
-						batch.command_count * sizeof(uint32_t)
+						0,
+						(frame_element_offset + indirect_elements_buffer->GetElementCount()) * sizeof(uint32_t)
 					);
 				}
 

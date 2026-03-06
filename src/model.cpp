@@ -576,8 +576,7 @@ namespace Boidsish {
 			}
 
 			packet.uniforms.dissolve_enabled = dissolve_enabled_ ? 1 : 0;
-			packet.uniforms.dissolve_plane_normal = dissolve_plane_normal_;
-			packet.uniforms.dissolve_plane_dist = actual_dissolve_dist;
+			packet.uniforms.dissolve_plane = glm::vec4(dissolve_plane_normal_, actual_dissolve_dist);
 
 			if (m_animator && !m_data->bone_info_map.empty()) {
 				packet.uniforms.use_skinning = 1;

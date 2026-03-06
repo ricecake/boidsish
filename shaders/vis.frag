@@ -88,8 +88,8 @@ void main() {
 	bool  c_useVertexColor = use_ssbo ? (uniforms_data[vUniformIndex].use_vertex_color != 0) : (useVertexColor != 0);
 
 	bool  c_dissolve_enabled = use_ssbo ? (uniforms_data[vUniformIndex].dissolve_enabled != 0) : dissolve_enabled;
-	vec3  c_dissolve_normal = use_ssbo ? uniforms_data[vUniformIndex].dissolve_plane_normal : dissolve_plane_normal;
-	float c_dissolve_dist = use_ssbo ? uniforms_data[vUniformIndex].dissolve_plane_dist : dissolve_plane_dist;
+	vec3  c_dissolve_normal = use_ssbo ? uniforms_data[vUniformIndex].dissolve_plane.xyz : dissolve_plane_normal;
+	float c_dissolve_dist = use_ssbo ? uniforms_data[vUniformIndex].dissolve_plane.w : dissolve_plane_dist;
 
 	float fade = 1.0;
 	if (c_dissolve_enabled) {
@@ -159,9 +159,12 @@ void main() {
 	vec3  result = lightResult.rgb;
 	float spec_lum = lightResult.a;
 
+	float current_windRimHighlight = use_ssbo ? uniforms_data[vUniformIndex].wind_rim_highlight
+											  : u_windRimHighlight;
+
 	// Apply wind-driven rim highlight
 	float rim = pow(1.0 - max(dot(norm, normalize(viewPos - FragPos)), 0.0), 3.0);
-	result += rim * WindDeflection * u_windRimHighlight * vec3(1.0);
+	result += rim * WindDeflection * current_windRimHighlight * vec3(1.0);
 
 	result = applyArtisticEffects(result, FragPos, barycentric, time);
 

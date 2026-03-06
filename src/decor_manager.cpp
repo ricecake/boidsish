@@ -350,6 +350,9 @@ namespace Boidsish {
 				uniforms[idx].metallic = 0.0f;
 				uniforms[idx].ao = 1.0f;
 
+				uniforms[idx].wind_responsiveness = type.props.wind_responsiveness;
+				uniforms[idx].wind_rim_highlight = type.props.wind_rim_highlight;
+
 				bool has_diffuse = false;
 				for (const auto& tex : mesh.textures) {
 					if (tex.type == "texture_diffuse") {
@@ -365,6 +368,17 @@ namespace Boidsish {
 				uniforms[idx].is_colossal = 0;
 				uniforms[idx].use_ssbo_instancing = 1;
 				uniforms[idx].use_vertex_color = (mesh.has_vertex_colors && !has_diffuse) ? 1 : 0;
+
+				// Set AABB for culling (use model-space AABB from data)
+				if (type.model->GetData()) {
+					AABB aabb = type.model->GetData()->aabb;
+					uniforms[idx].aabb_min_x = aabb.min.x;
+					uniforms[idx].aabb_min_y = aabb.min.y;
+					uniforms[idx].aabb_min_z = aabb.min.z;
+					uniforms[idx].aabb_max_x = aabb.max.x;
+					uniforms[idx].aabb_max_y = aabb.max.y;
+					uniforms[idx].aabb_max_z = aabb.max.z;
+				}
 			}
 
 			current_instance_offset += kMaxInstancesPerType;
@@ -654,16 +668,22 @@ namespace Boidsish {
 		update_commands_shader_->use();
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, global_count_buffer);
 
+		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, global_count_buffer);
+		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 2, global_indirect_buffer);
 		for (size_t i = 0; i < decor_types_.size(); ++i) {
 			auto& type = decor_types_[i];
 			update_commands_shader_->setInt("u_numCommands", (int)type.model->getMeshes().size());
 			update_commands_shader_->setInt("u_baseCommandIndex", type.mesh_offset);
 			update_commands_shader_->setInt("u_counterIndex", (int)i);
-
-			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 2, global_indirect_buffer);
 			glDispatchCompute(1, 1, 1);
+		}
 
-			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 2, global_shadow_indirect_buffer);
+		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 2, global_shadow_indirect_buffer);
+		for (size_t i = 0; i < decor_types_.size(); ++i) {
+			auto& type = decor_types_[i];
+			update_commands_shader_->setInt("u_numCommands", (int)type.model->getMeshes().size());
+			update_commands_shader_->setInt("u_baseCommandIndex", type.mesh_offset);
+			update_commands_shader_->setInt("u_counterIndex", (int)i);
 			glDispatchCompute(1, 1, 1);
 		}
 
