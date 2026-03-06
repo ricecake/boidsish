@@ -383,7 +383,7 @@ namespace Boidsish {
 		}
 
 		int avg_particles_per_unlimited = 0;
-		int fire_budget = kMaxParticles * 8 / 10; // Reserve 20% for ambient by default
+		int fire_budget = kMaxParticles; // Emitters can now consume the entire pool if needed
 		if (num_unlimited_emitters > 0) {
 			int available_for_unlimited = fire_budget - total_particle_demand;
 			if (available_for_unlimited > 0) {
@@ -415,10 +415,7 @@ namespace Boidsish {
 		// --- 2. Calculate Current Distribution ---
 		std::vector<int>              current_counts(effects_.size(), 0);
 		std::vector<int>              general_nulls;
-		std::vector<int>              reserved_nulls;
 		std::vector<std::vector<int>> particles_by_emitter(effects_.size());
-
-		int reserved_start = kMaxParticles * 8 / 10;
 
 		// Iterate backwards to prioritize lower indices for fire emitters when taking from null lists
 		for (int i = kMaxParticles - 1; i >= 0; --i) {
@@ -428,11 +425,7 @@ namespace Boidsish {
 				particles_by_emitter[emitter_index].push_back(i);
 			} else {
 				particle_to_emitter_map_[i] = -1; // Explicitly return to ambient pool
-				if (i < reserved_start) {
-					general_nulls.push_back(i);
-				} else {
-					reserved_nulls.push_back(i);
-				}
+				general_nulls.push_back(i);
 			}
 		}
 
@@ -476,23 +469,7 @@ namespace Boidsish {
 			}
 		}
 
-		// Second, use reserved null particles if still needed
-		while (!to_fill.empty() && !reserved_nulls.empty()) {
-			int emitter_index = to_fill.top().second;
-			to_fill.pop();
-			int particle_index = reserved_nulls.back();
-			reserved_nulls.pop_back();
-
-			particle_to_emitter_map_[particle_index] = emitter_index;
-			ideal_counts[emitter_index]--;
-			if (ideal_counts[emitter_index] > current_counts[emitter_index]) {
-				float need = (float)(ideal_counts[emitter_index] - current_counts[emitter_index]) /
-					ideal_counts[emitter_index];
-				to_fill.push({need, emitter_index});
-			}
-		}
-
-		// Third, use reclaimed particles from over-budget emitters if still needed
+		// Second, use reclaimed particles from over-budget emitters if still needed
 		while (!to_fill.empty() && !to_reclaim.empty()) {
 			int emitter_index = to_fill.top().second;
 			to_fill.pop();
