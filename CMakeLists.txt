@@ -54,6 +54,7 @@ file(GLOB_RECURSE LIB_SOURCES "src/*.cpp")
 
 add_library(boidsish STATIC ${LIB_SOURCES})
 target_compile_definitions(boidsish PUBLIC GLM_ENABLE_EXPERIMENTAL)
+target_compile_definitions(boidsish PUBLIC BOIDSISH_BUILD_DIR="${CMAKE_BINARY_DIR}")
 
 target_include_directories(boidsish
     PUBLIC
