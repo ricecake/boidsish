@@ -205,6 +205,34 @@ namespace Boidsish {
 		return glm::vec3(suggested_pos.x, std::max(suggested_pos.y, min_y), suggested_pos.z);
 	}
 
+	std::shared_ptr<EntityBase>
+	EntityHandler::RaycastEntities(const Ray& ray, float& out_t, glm::vec3& out_hit_point) const {
+		std::shared_ptr<EntityBase> closest_entity = nullptr;
+		float                       min_t = std::numeric_limits<float>::max();
+
+		for (const auto& [id, entity] : entities_) {
+			auto shape = entity->GetShape();
+			if (!shape)
+				continue;
+
+			float t;
+			if (shape->Intersects(ray, t)) {
+				if (t < min_t) {
+					min_t = t;
+					closest_entity = entity;
+				}
+			}
+		}
+
+		if (closest_entity) {
+			out_t = min_t;
+			out_hit_point = ray.origin + ray.direction * min_t;
+			return closest_entity;
+		}
+
+		return nullptr;
+	}
+
 	EntityHandler::~EntityHandler() {
 		std::lock_guard<std::mutex> lock(requests_mutex_);
 		for (auto& request : modification_requests_) {

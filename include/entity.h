@@ -101,6 +101,10 @@ namespace Boidsish {
 
 		void SetVelocity(const glm::vec3& vel) { rigid_body_.SetLinearVelocity(vel); }
 
+		void AddForceAtPoint(const glm::vec3& force, const glm::vec3& point) {
+			rigid_body_.AddForceAtPoint(force, point);
+		}
+
 		// Visual properties
 		float GetSize() const { return size_; }
 
@@ -313,6 +317,17 @@ namespace Boidsish {
 			auto it = entities_.find(id);
 			return (it != entities_.end()) ? it->second : nullptr;
 		}
+
+		/**
+		 * @brief Raycast against all entities to find the closest intersection.
+		 *
+		 * @param ray The ray to test against
+		 * @param out_t Output: distance to the intersection point
+		 * @param out_hit_point Output: world-space hit point
+		 * @return Pointer to the closest hit entity, or nullptr if none hit
+		 */
+		std::shared_ptr<EntityBase>
+		RaycastEntities(const Ray& ray, float& out_t, glm::vec3& out_hit_point) const;
 
 		// Get all entities (for iteration)
 		const std::map<int, std::shared_ptr<EntityBase>>& GetAllEntities() const { return entities_; }
