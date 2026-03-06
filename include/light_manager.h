@@ -18,7 +18,9 @@ namespace Boidsish {
 			float night_factor = 0.0f; // 0.0 (day) to 1.0 (night)
 		};
 
-		void                AddLight(const Light& light);
+		int                 AddLight(const Light& light);
+		void                RemoveLight(int id);
+		Light*              GetLight(int id);
 		std::vector<Light>& GetLights();
 		void                Update(float deltaTime);
 		glm::vec3           GetAmbientLight() const;
@@ -45,6 +47,7 @@ namespace Boidsish {
 		std::vector<Light> _lights{Light::CreateDirectional(0.0f, 45.0f, 1.0f, {1.0f, 0.50196f, 0.25098f}, true)};
 		glm::vec3          _ambient_light = Constants::General::Colors::DefaultAmbient();
 		DayNightCycle      _cycle;
+		int                _next_light_id = 1;
 		/*
 		    ambient: 53/58/44
 		    def: 231/27/0 @0,100,-100->0,-5.7,7.5 and 6.3 intense
