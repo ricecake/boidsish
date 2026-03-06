@@ -37,6 +37,7 @@ struct CommonUniforms {
 	float aabb_max_x;
 	float aabb_max_y;
 	float aabb_max_z;
-	float occlusion_padding[2];
+	int   is_refractive;
+	float refractive_index;
 	float padding[3];
 };

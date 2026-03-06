@@ -240,6 +240,14 @@ public:
 		m_UniformValues[loc] = UniformValue{value};
 	}
 
+	void trySetInt(const std::string& name, int value) const {
+		int loc = getUniformLocation(name);
+		if (loc != -1) {
+			glUniform1i(loc, value);
+			m_UniformValues[loc] = UniformValue{value};
+		}
+	}
+
 	// ------------------------------------------------------------------------
 	void setFloat(const std::string& name, float value) const {
 		int loc = getUniformLocation(name);
