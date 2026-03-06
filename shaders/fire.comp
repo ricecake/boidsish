@@ -213,6 +213,21 @@ void updateAmbientParticle(inout Particle p, float dt, float time) {
 	handleTerrainCollision(p);
 }
 
+// A standard 32-bit integer hash
+uint hash(uint x) {
+	x ^= x >> 16;
+	x *= 0x7feb352dU;
+	x ^= x >> 15;
+	x *= 0x846ca68bU;
+	x ^= x >> 16;
+	return x;
+}
+
+// Convert the hashed integer to a float in [0.0, 1.0]
+float randomFloat(uint state) {
+	return float(hash(state)) / 4294967295.0; // Divide by 0xFFFFFFFF
+}
+
 layout(local_size_x = 256, local_size_y = 1, local_size_z = 1) in;
 
 void main() {
@@ -351,90 +366,92 @@ void main() {
 		vec2 seed = vec2(float(gid), u_time);
 		if (u_num_chunks > 0 && rand(seed) < 0.005) {
 			// Try a few times to find a chunk closer to the camera
-			for (int i = 0; i < 1; i++) {
-				/*
-				    Pick a random point, but do it based on angle from viewDir.
-				    Above, if something is behind the camera, despawn it.
-				*/
+			/*
+			    Pick a random point, but do it based on angle from viewDir.
+			    Above, if something is behind the camera, despawn it.
+			*/
 
-				float dist = 20 + (rand(seed + 1.1 + float(i)) * 350.0);
-				vec2  baseDir = normalize(viewDir.xz);
-				float r = rand(seed + 2.2 + float(i)) * 2 - 1;
-				// float offsetAngle =  pow(r, 3) * 1.57079632679; // Bias toward 0
-				float offsetAngle = r * (1 - abs(r)) * 1.57079632679; // Bias toward 0
+			uint particleSeed = uint(seed);
 
-				float c = cos(offsetAngle);
-				float s = sin(offsetAngle);
-				mat2  rotationMatrix = mat2(c, -s, s, c);
+			float r_dist = randomFloat(particleSeed);
+			float dist = sqrt(100.0 + r_dist * 122400.0); // sqrt(r_min^2 + U * (r_max^2 - r_min^2))
 
-				vec2 rotatedOffset = (rotationMatrix * baseDir) * dist;
+			float u_angle = randomFloat(hash(particleSeed)) * 2.0 - 1.0;
+			float shaped_angle = mix(u_angle, u_angle * u_angle * u_angle, 0.6);
+			float offsetAngle = shaped_angle * 0.78539816339;
 
-				vec3 pos = vec3(viewPos.x + rotatedOffset.x, 0.0, viewPos.z + rotatedOffset.y);
+			float c = cos(offsetAngle);
+			float s = sin(offsetAngle);
 
-				int       chunk_idx;
-				ChunkInfo chunk;
-				for (int i = 0; i < u_num_chunks; i++) {
-					chunk = chunks[i];
-					if (pos.x >= chunk.worldOffset.x && pos.x < chunk.worldOffset.x + chunk.size &&
-					    pos.z >= chunk.worldOffset.y && pos.z < chunk.worldOffset.y + chunk.size) {
-						chunk_idx = i;
-						break;
-					}
+			mat2 rotationMatrix = mat2(c, -s, s, c);
+
+			vec2 baseDir = normalize(viewDir.xz);
+			vec2 rotatedOffset = (rotationMatrix * baseDir) * dist;
+
+			vec3 pos = vec3(viewPos.x + rotatedOffset.x, 0.0, viewPos.z + rotatedOffset.y);
+
+			int       chunk_idx;
+			ChunkInfo chunk;
+			for (int i = 0; i < u_num_chunks; i++) {
+				chunk = chunks[i];
+				if (pos.x >= chunk.worldOffset.x && pos.x < chunk.worldOffset.x + chunk.size &&
+				    pos.z >= chunk.worldOffset.y && pos.z < chunk.worldOffset.y + chunk.size) {
+					chunk_idx = i;
+					break;
 				}
-				vec2 local_pos = vec2(pos.x - chunk.worldOffset.x, pos.y - chunk.worldOffset.y);
+			}
+			vec2 local_pos = vec2(pos.x - chunk.worldOffset.x, pos.y - chunk.worldOffset.y);
 
-				// Only spawn closer to camera
-				if (distance(pos.xz, viewPos.xz) <= 350.0) {
-					vec2  uv = local_pos / chunk.size;
-					vec4  terrain = texture(u_heightmapArray, vec3(uv, chunk.slice));
-					float height = terrain.r + 0.05;
-					vec2  biome_data = texture(u_biomeMap, vec3(uv, chunk.slice)).rg;
-					int   biome_idx = int(biome_data.x * 255.0 + 0.5);
+			// Only spawn closer to camera
+			if (distance(pos.xz, viewPos.xz) <= 350.0) {
+				vec2  uv = local_pos / chunk.size;
+				vec4  terrain = texture(u_heightmapArray, vec3(uv, chunk.slice));
+				float height = terrain.r + 0.05;
+				vec2  biome_data = texture(u_biomeMap, vec3(uv, chunk.slice)).rg;
+				int   biome_idx = int(biome_data.x * 255.0 + 0.5);
 
-					// Check emitters and if close enough to a fire emitter change to cinder and ash.
-					// Biomes: Sand=0, LushGrass=1, DryGrass=2, Forest=3, AlpineMeadow=4, BrownRock=5, GreyRock=6,
-					// Snow=7
-					bool valid_biome = (biome_idx >= 0 && biome_idx <= 4) || biome_idx == 7;
-					if (valid_biome) {
-						p.style = 5; // Ambient
-						p.emitter_index = biome_idx;
+				// Check emitters and if close enough to a fire emitter change to cinder and ash.
+				// Biomes: Sand=0, LushGrass=1, DryGrass=2, Forest=3, AlpineMeadow=4, BrownRock=5, GreyRock=6,
+				// Snow=7
+				bool valid_biome = (biome_idx >= 0 && biome_idx <= 4) || biome_idx == 7;
+				if (valid_biome) {
+					p.style = 5; // Ambient
+					p.emitter_index = biome_idx;
 
-						// Select sub-style based on biome and time
-						int sub_style = 0; // Default: Leaf
-						if (biome_idx == 7) {
-							sub_style = 3; // Snowflake
-						} else if (biome_idx == 0) {
-							sub_style = 2; // Bubble
+					// Select sub-style based on biome and time
+					int sub_style = 0; // Default: Leaf
+					if (biome_idx == 7) {
+						sub_style = 3; // Snowflake
+					} else if (biome_idx == 0) {
+						sub_style = 2; // Bubble
+					} else {
+						if (nightFactor > 0.5) {
+							sub_style = 4; // Firefly
 						} else {
-							if (nightFactor > 0.5) {
-								sub_style = 4; // Firefly
+							// Randomly choose between Leaf and Petal in vegetated biomes
+							float r = rand(seed + 6.6);
+							if (biome_idx == 4) { // Alpine Meadow has more petals
+								sub_style = (r < 0.7) ? 1 : 0;
 							} else {
-								// Randomly choose between Leaf and Petal in vegetated biomes
-								float r = rand(seed + 6.6);
-								if (biome_idx == 4) { // Alpine Meadow has more petals
-									sub_style = (r < 0.7) ? 1 : 0;
-								} else {
-									sub_style = (r < 0.2) ? 1 : 0;
-								}
+								sub_style = (r < 0.2) ? 1 : 0;
 							}
 						}
-
-						p.emitter_id = sub_style;
-						float total_lifetime = 10.0 + rand(seed + 4.4) * 5.0;
-						float skipped_time = rand(seed + 7.7) * total_lifetime;
-						p.pos =
-							vec4(pos.x, height + 1.0 + rand(seed + 3.3) * 2.0, pos.z, total_lifetime - skipped_time);
-						p.vel = vec4(rand3(seed + 5.5) * 0.5, 0.0);
-						p.epicenter = p.pos.xyz;
-
-						// Fast-forward
-						if (skipped_time > 0.001) {
-							updateAmbientParticle(p, skipped_time, u_time - skipped_time);
-						}
-
-						particles[gid] = p;
-						return;
 					}
+
+					p.emitter_id = sub_style;
+					float total_lifetime = 10.0 + rand(seed + 4.4) * 5.0;
+					float skipped_time = rand(seed + 7.7) * total_lifetime;
+					p.pos = vec4(pos.x, height + 1.0 + rand(seed + 3.3) * 2.0, pos.z, total_lifetime - skipped_time);
+					p.vel = vec4(rand3(seed + 5.5) * 0.5, 0.0);
+					p.epicenter = p.pos.xyz;
+
+					// Fast-forward
+					if (skipped_time > 0.001) {
+						updateAmbientParticle(p, skipped_time, u_time - skipped_time);
+					}
+
+					particles[gid] = p;
+					return;
 				}
 			}
 		}
