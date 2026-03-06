@@ -53,6 +53,17 @@ namespace Boidsish {
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+
+		// Initialize all mip levels to far-plane depth (1.0, 1.0) so that any reads
+		// before the first GeneratePyramid return "sky" values, which the isOccluded
+		// safety check treats as "not occluded" (conservative).
+		float clear_color[] = {1.0f, 1.0f, 0.0f, 0.0f};
+		for (int mip = 0; mip < mip_count_; ++mip) {
+			int w = std::max(1, hiz_width_ >> mip);
+			int h = std::max(1, hiz_height_ >> mip);
+			glClearTexSubImage(hiz_texture_, mip, 0, 0, 0, w, h, 1, GL_RG, GL_FLOAT, clear_color);
+		}
+
 		glBindTexture(GL_TEXTURE_2D, 0);
 	}
 

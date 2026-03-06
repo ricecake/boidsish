@@ -60,6 +60,10 @@ bool isOccluded(vec3 pos) {
     // If the MAX depth in this region is the sky, nothing is occluded.
     if (hizDepth.y >= 0.999) return false;
 
+    // If depth is near zero (uninitialized Hi-Z, cleared depth, or invalid data),
+    // conservatively assume not occluded to prevent false culling.
+    if (hizDepth.y < 0.001) return false;
+
     // Convert to linear depth for better bias scaling
     float z_ndc = ndc.z; // -1 to 1
     float linearZ = (2.0 * u_near * u_far) / (u_far + u_near - z_ndc * (u_far - u_near));

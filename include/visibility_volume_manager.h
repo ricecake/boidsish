@@ -23,7 +23,7 @@ namespace Boidsish {
 	 * - Bit 2: Inside Shadow Cascade 1
 	 * - Bit 3: Inside Shadow Cascade 2
 	 * - Bit 4: Inside Shadow Cascade 3
-	 * - Bit 5: Occluded by Hi-Z
+	 * - Bit 5: Passed Hi-Z occlusion test (NOT occluded)
 	 */
 	class VisibilityVolumeManager {
 	public:
@@ -41,7 +41,8 @@ namespace Boidsish {
 			ShadowManager* shadow_manager,
 			GLuint hiz_texture,
 			const glm::mat4& hiz_prev_vp,
-			float time
+			float time,
+			float far_plane = 1000.0f
 		);
 
 		GLuint GetVolumeTexture() const { return volume_texture_; }

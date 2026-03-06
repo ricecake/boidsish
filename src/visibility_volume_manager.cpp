@@ -63,7 +63,8 @@ namespace Boidsish {
 		ShadowManager* shadow_manager,
 		GLuint hiz_texture,
 		const glm::mat4& hiz_prev_vp,
-		float time
+		float time,
+		float far_plane
 	) {
 		if (!initialized_ || !volume_compute_shader_ || !volume_compute_shader_->isValid())
 			return;
@@ -95,8 +96,7 @@ namespace Boidsish {
 		}
 
 	volume_compute_shader_->setFloat("u_near", 0.1f);
-	// Use a fixed far plane for the volume to match standard engine expectations
-	volume_compute_shader_->setFloat("u_far", 1000.0f);
+	volume_compute_shader_->setFloat("u_far", far_plane);
 
 		if (shadow_manager) {
 			for (int i = 0; i < 4; ++i) {

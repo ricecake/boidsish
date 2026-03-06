@@ -2791,16 +2791,21 @@ namespace Boidsish {
 			impl->hiz_manager->GeneratePyramid(impl->main_fbo_depth_texture_);
 		}
 
-		// Update Visibility Volume at the start of the frame
-		if (impl->visibility_volume_manager) {
+		// Update Visibility Volume at the start of the frame (only after Hi-Z has been generated)
+		if (impl->visibility_volume_manager && impl->hiz_manager &&
+		    impl->hiz_manager->IsInitialized() && impl->enable_hiz_culling_ &&
+		    impl->frame_count_ > 0) {
+			float vis_world_scale = impl->terrain_generator ? impl->terrain_generator->GetWorldScale() : 1.0f;
+			float vis_far_plane = 1000.0f * std::max(1.0f, vis_world_scale);
 			impl->visibility_volume_manager->Update(
 				impl->camera,
 				view,
 				impl->projection,
 				impl->shadow_manager.get(),
-				impl->hiz_manager ? impl->hiz_manager->GetHiZTexture() : 0,
+				impl->hiz_manager->GetHiZTexture(),
 				hiz_prev_vp,
-				impl->simulation_time
+				impl->simulation_time,
+				vis_far_plane
 			);
 		}
 
