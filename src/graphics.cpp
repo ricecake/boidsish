@@ -3310,7 +3310,14 @@ namespace Boidsish {
 		}
 
 		// Capture background for refraction before rendering transparency
-		glBindFramebuffer(GL_READ_FRAMEBUFFER, effects_enabled ? impl->post_processing_manager_->GetCurrentFBO() : impl->main_fbo_);
+		if (skip_intermediate) {
+			glBindFramebuffer(GL_READ_FRAMEBUFFER, 0);
+		} else {
+			glBindFramebuffer(
+				GL_READ_FRAMEBUFFER,
+				effects_enabled ? impl->post_processing_manager_->GetCurrentFBO() : impl->main_fbo_
+			);
+		}
 		glBindTexture(GL_TEXTURE_2D, impl->refraction_texture_);
 		glCopyTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, 0, 0, impl->render_width, impl->render_height);
 		glBindFramebuffer(GL_READ_FRAMEBUFFER, 0);

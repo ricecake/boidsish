@@ -150,16 +150,22 @@ void main() {
 
 		// Generalized refraction: project refracted ray back to screen space
 		// We use a fixed distance fallback for simplicity, but could sample depth buffer for better accuracy
-		vec3  refractedPos = FragPos + R * 10.0; // Increased fallback distance for more pronounced refraction
+		vec3  refractedPos = FragPos + R * 10.0; // Fallback distance
 		vec4  refractedClip = viewProjection * vec4(refractedPos, 1.0);
 		vec2  refractedUV = (refractedClip.xy / refractedClip.w) * 0.5 + 0.5;
+
+		// Use the direct screen-space offset if IOR is close to 1.0 for better "vanishing"
+		vec2 screenUV = gl_FragCoord.xy * texelSize;
+		refractedUV = mix(screenUV, refractedUV, smoothstep(1.0, 1.01, c_refractive_index));
+
 		float distToEdge = min(min(refractedUV.x, 1.0 - refractedUV.x), min(refractedUV.y, 1.0 - refractedUV.y));
 		float edgeFade = smoothstep(0.0, 0.05, distToEdge);
 
 		vec3 refractionColor = texture(refractionTexture, refractedUV).rgb;
 		// Blend refraction with the lit surface color.
-		// If c_objectAlpha is low, refraction dominates.
-		result = mix(result, refractionColor, edgeFade * (1.0 - c_objectAlpha * 0.5));
+		// For refractive objects, we treat the object alpha as a tint rather than traditional transparency.
+		result = mix(refractionColor, result * c_objectColor, c_objectAlpha * 0.5) * edgeFade +
+			refractionColor * (1.0 - edgeFade);
 	}
 
 	if (c_isLine && c_lineStyle == 1) { // LASER style
@@ -203,8 +209,9 @@ void main() {
 	} else {
 		float final_alpha = clamp((baseAlpha + spec_lum) * fade, 0.0, 1.0);
 		if (c_is_refractive) {
-			// Ensure refractive objects are at least partially opaque to trigger the transparent pass correctly
-			final_alpha = max(final_alpha, 0.5 * fade);
+			// Refractive objects should be fully opaque in the blender since they've already
+			// sampled the background themselves.
+			final_alpha = fade;
 		}
 
 		if (c_isTextEffect) {

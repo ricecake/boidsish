@@ -31,13 +31,13 @@ std::vector<std::shared_ptr<Shape>> RefractionExample(float time) {
 	shapes.push_back(glassSphere);
 
 	// 2. Create some "background" objects to see the refraction
-	for (int i = 0; i < 8; ++i) {
-		float angle = (float)i * (2.0f * 3.14159f / 8.0f) + time * 0.2f;
-		float x = cos(angle) * 5.0f;
-		float z = sin(angle) * 5.0f;
-		float y = sin(time + (float)i) * 2.0f;
+	for (int i = 0; i < 20; ++i) {
+		float angle = (float)i * (2.0f * 3.14159f / 10.0f) + time * 0.5f;
+		float x = cos(angle) * (3.0f + (float)(i % 3));
+		float z = sin(angle) * (3.0f + (float)(i % 3));
+		float y = sin(time * 2.0f + (float)i) * 3.0f;
 
-		auto backgroundDot = std::make_shared<Dot>(10 + i, x, y, z, 50.0f);
+		auto backgroundDot = std::make_shared<Dot>(10 + i, x, y, z, 40.0f);
 		backgroundDot->SetColor(
 			(float)i / 8.0f,
 			1.0f - (float)i / 8.0f,
