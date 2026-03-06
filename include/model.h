@@ -19,6 +19,7 @@ namespace Boidsish {
 
 	struct Texture {
 		unsigned int id;
+		uint64_t     handle = 0;
 		std::string  type;
 		std::string  path;
 	};

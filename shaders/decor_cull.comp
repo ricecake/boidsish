@@ -17,6 +17,7 @@ layout(std430, binding = 1) writeonly buffer VisibleInstances {
 layout(binding = 0) uniform atomic_uint visibleCount;
 
 uniform int   u_totalSlots;
+uniform int   u_baseInstanceIndex;
 uniform vec4  u_frustumPlanes[6];
 uniform mat4  u_viewProj;
 uniform vec2  u_viewportSize;
@@ -132,11 +133,12 @@ bool isOccluded(vec3 pos, float radius) {
 }
 
 void main() {
-	uint idx = gl_GlobalInvocationID.x;
-	if (idx >= u_totalSlots)
+	uint localIdx = gl_GlobalInvocationID.x;
+	if (localIdx >= u_totalSlots)
 		return;
 
-	Instance inst = all_instances[idx];
+	uint globalIdx = u_baseInstanceIndex + localIdx;
+	Instance inst = all_instances[globalIdx];
 
 	// Check if active (scale > 0)
 	// Magnitude of the first column
@@ -194,6 +196,6 @@ void main() {
 		}
 
 		uint destIdx = atomicCounterIncrement(visibleCount);
-		visible_instances[destIdx] = inst;
+		visible_instances[u_baseInstanceIndex + destIdx] = inst;
 	}
 }

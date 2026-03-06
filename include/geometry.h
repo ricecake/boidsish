@@ -147,20 +147,21 @@ namespace Boidsish {
 		int       dissolve_enabled = 0;                       // 4 bytes
 
 		// Skeletal Animation
-		int   bone_matrices_offset = -1; // 4 bytes
-		int   use_skinning = 0;          // 4 bytes
-		float anim_padding[2];           // 8 bytes -> 16 bytes
+		int bone_matrices_offset = -1; // 4 bytes
+		int use_skinning = 0;          // 4 bytes
 
 		// Occlusion culling AABB (world space) - individual floats for std430 alignment safety
-		float aabb_min_x = 0.0f;   // 4 bytes
-		float aabb_min_y = 0.0f;   // 4 bytes
-		float aabb_min_z = 0.0f;   // 4 bytes
-		float aabb_max_x = 0.0f;   // 4 bytes -> 16
-		float aabb_max_y = 0.0f;   // 4 bytes
-		float aabb_max_z = 0.0f;   // 4 bytes
-		float oclusion_padding[2]; // 8 bytes -> 16
-		// Padding to 256 bytes for SSBO alignment safety
-		float padding[3];
+		float aabb_min_x = 0.0f; // 4 bytes
+		float aabb_min_y = 0.0f; // 4 bytes
+		float aabb_min_z = 0.0f; // 4 bytes
+		float aabb_max_x = 0.0f; // 4 bytes
+		float aabb_max_y = 0.0f; // 4 bytes
+		float aabb_max_z = 0.0f; // 4 bytes
+
+		float    handle_padding = 0.0f; // 4 bytes to align handles to 8 bytes
+		uint64_t diffuse_handle = 0;    // 8 bytes
+		uint64_t normal_handle = 0;     // 8 bytes
+		uint64_t specular_handle = 0;   // 8 bytes
 	};
 
 	/**

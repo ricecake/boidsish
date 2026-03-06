@@ -168,7 +168,7 @@ void main() {
 
 	mat4 modelMatrix;
 	if (current_useSSBOInstancing) {
-		modelMatrix = ssboInstanceMatrices[gl_InstanceID];
+		modelMatrix = ssboInstanceMatrices[gl_InstanceID + gl_BaseInstance];
 	} else {
 		modelMatrix = current_model;
 	}

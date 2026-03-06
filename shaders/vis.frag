@@ -1,5 +1,6 @@
-#version 430 core
+#version 460 core
 #extension GL_GOOGLE_include_directive : enable
+#extension GL_ARB_bindless_texture : enable
 layout(location = 0) out vec4 FragColor;
 layout(location = 1) out vec2 Velocity;
 
@@ -55,7 +56,10 @@ uniform vec3  dissolve_plane_normal = vec3(0, 1, 0);
 uniform float dissolve_plane_dist = 0.0;
 
 uniform sampler2D texture_diffuse1;
+uniform sampler2D texture_normal1;
+uniform sampler2D texture_specular1;
 uniform bool      use_texture;
+uniform bool      uUseBindless = false;
 uniform float     u_windRimHighlight;
 
 void main() {
@@ -111,11 +115,20 @@ void main() {
 		albedo = c_objectColor;
 	}
 
-	if (c_use_texture) {
-		albedo *= texture(texture_diffuse1, TexCoords).rgb;
-	}
-
 	vec3 norm = normalize(Normal);
+
+	if (c_use_texture) {
+		if (uUseBindless) {
+			albedo *= texture(sampler2D(uniforms_data[vUniformIndex].diffuse_handle), TexCoords).rgb;
+			if (c_usePBR && uniforms_data[vUniformIndex].normal_handle != uvec2(0)) {
+				vec3 normalMap = texture(sampler2D(uniforms_data[vUniformIndex].normal_handle), TexCoords).rgb;
+				// TODO: Implement proper TBN for bindless normal mapping
+				// norm = normalize(norm + (normalMap * 2.0 - 1.0) * 0.1);
+			}
+		} else {
+			albedo *= texture(texture_diffuse1, TexCoords).rgb;
+		}
+	}
 
 	float baseAlpha = c_objectAlpha;
 

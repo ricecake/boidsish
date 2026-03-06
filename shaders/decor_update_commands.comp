@@ -14,13 +14,17 @@ layout(std430, binding = 2) buffer IndirectBuffer {
 	DrawElementsIndirectCommand commands[];
 };
 
-layout(binding = 0) uniform atomic_uint visibleCount;
+layout(std430, binding = 0) readonly buffer AtomicCounters {
+	uint counters[];
+};
 
 uniform int u_numCommands;
+uniform int u_baseCommandIndex;
+uniform int u_counterIndex;
 
 void main() {
-	uint count = atomicCounter(visibleCount);
+	uint count = counters[u_counterIndex];
 	for (int i = 0; i < u_numCommands; ++i) {
-		commands[i].instanceCount = count;
+		commands[u_baseCommandIndex + i].instanceCount = count;
 	}
 }

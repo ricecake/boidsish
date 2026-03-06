@@ -1425,8 +1425,8 @@ namespace Boidsish {
 				if (a.uniforms.bone_matrices_offset != b.uniforms.bone_matrices_offset)
 					return false;
 
-				// 4. Textures (only if not a shadow pass)
-				if (!is_shadow_pass) {
+				// 4. Textures (only if not a shadow pass AND not using bindless)
+				if (!is_shadow_pass && !glewIsExtensionSupported("GL_ARB_bindless_texture")) {
 					if (a.textures.size() != b.textures.size())
 						return false;
 					for (size_t i = 0; i < a.textures.size(); ++i) {
@@ -1607,6 +1607,7 @@ namespace Boidsish {
 					s->setMat4("view", view_mat);
 					s->setMat4("projection", proj_mat);
 					s->setFloat("time", simulation_time);
+					s->setBool("uUseBindless", glewIsExtensionSupported("GL_ARB_bindless_texture"));
 					s->setBool("enableFrustumCulling", !is_shadow_pass);
 					s->setBool("enableHiZCulling", dispatch_hiz_occlusion && !is_shadow_pass);
 					if (light_space_mat) {
@@ -1651,7 +1652,7 @@ namespace Boidsish {
 					);
 				}
 
-				if (!is_shadow_pass) {
+				if (!is_shadow_pass && !glewIsExtensionSupported("GL_ARB_bindless_texture")) {
 					unsigned int diffuseNr = 1;
 					unsigned int specularNr = 1;
 					unsigned int normalNr = 1;
