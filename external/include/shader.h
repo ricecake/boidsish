@@ -11,6 +11,7 @@
 #include <unordered_map>
 #include <variant>
 #include <vector>
+#include <filesystem>
 
 #include <GL/glew.h>
 #include <glm/glm.hpp>
@@ -429,6 +430,72 @@ protected:
 	}
 
 	std::string loadShaderSource(const std::string& path, std::set<std::string>& includedFiles) {
+		namespace fs = std::filesystem;
+		fs::path p(path);
+		bool     isTopLevel = includedFiles.empty();
+
+		// 1. If we are explicitly loading a unified shader, just load it from disk.
+		if (p.string().find(".unified.") != std::string::npos) {
+			if (isTopLevel) {
+				return loadFromFile(path);
+			}
+		}
+
+		std::string unifiedPath;
+		if (isTopLevel) {
+			std::string unifiedName = p.stem().string() + ".unified" + p.extension().string();
+
+			// 2. Determine where we'd expect the unified file
+#ifdef BOIDSISH_BUILD_DIR
+			fs::path buildDir(BOIDSISH_BUILD_DIR);
+			fs::path p_abs = fs::absolute(p);
+			fs::path build_abs = fs::absolute(buildDir);
+
+			// Check if already in build dir
+			auto it_p = p_abs.begin();
+			auto it_b = build_abs.begin();
+			bool alreadyInBuild = true;
+			while (it_b != build_abs.end()) {
+				if (it_p == p_abs.end() || *it_p != *it_b) {
+					alreadyInBuild = false;
+					break;
+				}
+				++it_p;
+				++it_b;
+			}
+
+			if (alreadyInBuild) {
+				unifiedPath = "";
+			} else {
+				// Reconstruct relative to 'shaders/'
+				std::string p_str = p.string();
+				size_t      s_idx = p_str.find("shaders/");
+				if (s_idx != std::string::npos) {
+					unifiedPath = (buildDir / p_str.substr(s_idx)).replace_filename(unifiedName).string();
+				} else {
+					unifiedPath = (buildDir / "shaders" / p.filename()).replace_filename(unifiedName).string();
+				}
+			}
+#else
+			unifiedPath = (p.parent_path() / unifiedName).string();
+#endif
+
+			// 3. Try loading from unifiedPath
+			if (!unifiedPath.empty()) {
+				std::string content = loadFromFile(unifiedPath);
+				if (!content.empty())
+					return content;
+			}
+
+			// 4. Try loading from next to original
+			fs::path nextToOriginal = p.parent_path() / unifiedName;
+			if (nextToOriginal.string() != unifiedPath) {
+				std::string content = loadFromFile(nextToOriginal.string());
+				if (!content.empty())
+					return content;
+			}
+		}
+
 		if (includedFiles.count(path)) {
 			// Prevent circular inclusion
 			return "";
@@ -510,12 +577,41 @@ protected:
 			}
 		}
 
+		if (isTopLevel && !finalSource.empty() && !unifiedPath.empty()) {
+			// Don't overwrite if it already exists (likely we just loaded it)
+			if (!fs::exists(unifiedPath)) {
+				try {
+					fs::path up(unifiedPath);
+					// Ensure the directory exists
+					std::filesystem::create_directories(up.parent_path());
+					std::ofstream out(unifiedPath);
+					if (out.is_open()) {
+						out << finalSource;
+					}
+				} catch (...) {
+				}
+			}
+		}
+
 		return finalSource;
 	}
 
 	// utility function for checking shader compilation/linking errors.
 	// Returns true if successful, false if error occurred.
 	// ------------------------------------------------------------------------
+	std::string loadFromFile(const std::string& path) {
+		namespace fs = std::filesystem;
+		if (fs::exists(path) && !fs::is_directory(path)) {
+			std::ifstream f(path);
+			if (f.is_open()) {
+				std::stringstream ss;
+				ss << f.rdbuf();
+				return ss.str();
+			}
+		}
+		return "";
+	}
+
 	bool checkCompileErrors(GLuint shader, std::string type, std::string filePath) {
 		GLint  success;
 		GLchar infoLog[1024];
