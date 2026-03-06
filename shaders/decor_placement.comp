@@ -261,11 +261,6 @@ void main() {
 
 	instances[index] = m;
 
-	// Output AABB for BVH
-	AABB worldAABB;
-	worldAABB.min = vec4(m * vec4(u_aabbMin, 1.0)).xyz;
-	worldAABB.max = vec4(m * vec4(u_aabbMax, 1.0)).xyz;
-
 	// Proper AABB for transformed boxes
 	vec3 corners[8];
 	corners[0] = (m * vec4(u_aabbMin.x, u_aabbMin.y, u_aabbMin.z, 1.0)).xyz;
