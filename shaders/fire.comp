@@ -117,6 +117,9 @@ const float kCinderLifetime = 8.0;
 const float kCinderDriftIntensity = 4.0;
 const float kCinderBuoyancy = 1.5;
 
+const float kAmbientHeightThreshold = 40.0;
+const float kFireflyHeightThreshold = 100.0;
+
 void handleTerrainCollision(inout Particle p) {
 	bool collided = false;
 	for (int i = 0; i < u_num_chunks; i++) {
@@ -227,9 +230,9 @@ void main() {
 
 	// --- 1. Hijack/Reassignment Logic ---
 	// If this particle is needed by a fire emitter, but it's currently doing something else (like ambient)
-	// or it was assigned to a DIFFERENT emitter previously, we force it to die so it can respawn.
+	// we force it to die so it can respawn immediately. Active emitters do NOT hijack from each other.
 	if (emitter_index != -1 && u_num_emitters > 0 && emitter_index < u_num_emitters) {
-		if ((p.style == 5 || p.emitter_id != emitters[emitter_index].id) && p.pos.w > 0.0) {
+		if (p.style == 5 && p.pos.w > 0.0) {
 			p.pos.w = 0.0;
 		}
 	}
@@ -349,6 +352,20 @@ void main() {
 
 		// --- 3b. Sparse Ambient Respawn ---
 		vec2 seed = vec2(float(gid), u_time);
+
+		// Calculate altitude above terrain at camera position
+		float groundHeight = 0.0;
+		for (int i = 0; i < u_num_chunks; i++) {
+			ChunkInfo chunk = chunks[i];
+			if (viewPos.x >= chunk.worldOffset.x && viewPos.x < chunk.worldOffset.x + chunk.size &&
+			    viewPos.z >= chunk.worldOffset.y && viewPos.z < chunk.worldOffset.y + chunk.size) {
+				vec2 uv = (viewPos.xz - chunk.worldOffset) / chunk.size;
+				groundHeight = texture(u_heightmapArray, vec3(uv, chunk.slice)).r;
+				break;
+			}
+		}
+		float altitude = viewPos.y - groundHeight;
+
 		if (u_num_chunks > 0 && rand(seed) < 0.005) {
 			// Try a few times to find a chunk closer to the camera
 			for (int i = 0; i < 1; i++) {
@@ -420,6 +437,16 @@ void main() {
 						}
 
 						p.emitter_id = sub_style;
+
+						// Ambient particles shouldn't spawn if the player is too high above the terrain.
+						// This threshold is higher for fireflies.
+						float threshold = (sub_style == 4) ? kFireflyHeightThreshold : kAmbientHeightThreshold;
+						if (altitude > threshold) {
+							p.pos.w = 0.0;
+							particles[gid] = p;
+							return;
+						}
+
 						float total_lifetime = 10.0 + rand(seed + 4.4) * 5.0;
 						float skipped_time = rand(seed + 7.7) * total_lifetime;
 						p.pos =
