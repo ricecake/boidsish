@@ -40,14 +40,14 @@ namespace Boidsish {
 						config_manager.SetBool("mesh_optimizer_enabled", mesh_opt);
 					}
 
-					bool mesh_simp = config_manager.GetAppSettingBool("mesh_simplifier_enabled", false);
+					bool mesh_simp = config_manager.GetAppSettingBool("mesh_simplifier_enabled", true);
 					if (ImGui::Checkbox("Enable Simplifier", &mesh_simp)) {
 						config_manager.SetBool("mesh_simplifier_enabled", mesh_simp);
 					}
 
 					if (mesh_simp) {
-						float ratio = config_manager.GetAppSettingFloat("mesh_simplifier_target_ratio", 0.5f);
-						if (ImGui::SliderFloat("Global Ratio Limit", &ratio, 0.01f, 1.0f)) {
+						float ratio = config_manager.GetAppSettingFloat("mesh_simplifier_target_ratio", 0.0f);
+						if (ImGui::SliderFloat("Global Ratio Limit", &ratio, 0.00f, 1.0f)) {
 							config_manager.SetFloat("mesh_simplifier_target_ratio", ratio);
 						}
 
