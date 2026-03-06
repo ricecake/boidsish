@@ -49,8 +49,35 @@ namespace Boidsish {
 		}
 	}
 
-	void LightManager::AddLight(const Light& light) {
-		_lights.push_back(light);
+	int LightManager::AddLight(const Light& light) {
+		Light l = light;
+		if (l.id == -1) {
+			l.id = _next_light_id++;
+		}
+		_lights.push_back(l);
+		return l.id;
+	}
+
+	void LightManager::RemoveLight(int id) {
+		if (id == -1)
+			return;
+		for (auto it = _lights.begin(); it != _lights.end(); ++it) {
+			if (it->id == id) {
+				_lights.erase(it);
+				return;
+			}
+		}
+	}
+
+	Light* LightManager::GetLight(int id) {
+		if (id == -1)
+			return nullptr;
+		for (auto& light : _lights) {
+			if (light.id == id) {
+				return &light;
+			}
+		}
+		return nullptr;
 	}
 
 	std::vector<Light>& LightManager::GetLights() {
