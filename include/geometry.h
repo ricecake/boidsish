@@ -164,6 +164,8 @@ namespace Boidsish {
 		float padding[3];
 	};
 
+	static_assert(sizeof(CommonUniforms) == 256, "CommonUniforms must be exactly 256 bytes for SSBO alignment");
+
 	/**
 	 * @brief Contains all the data necessary for a single draw call.
 	 * This decouples the what-to-render from the how-to-render.

@@ -127,22 +127,6 @@ void main() {
 
 	float baseAlpha = c_objectAlpha;
 
-	if (c_is_refractive) {
-		vec3 V = normalize(FragPos - viewPos);
-		vec3 R = refract(V, norm, 1.0 / max(c_refractive_index, 1.0));
-
-		// Generalized refraction: project refracted ray back to screen space
-		// We use a fixed distance fallback for simplicity, but could sample depth buffer for better accuracy
-		vec3  refractedPos = FragPos + R * 5.0; // Assume background is 5 units away
-		vec4  refractedClip = viewProjection * vec4(refractedPos, 1.0);
-		vec2  refractedUV = (refractedClip.xy / refractedClip.w) * 0.5 + 0.5;
-		float distToEdge = min(min(refractedUV.x, 1.0 - refractedUV.x), min(refractedUV.y, 1.0 - refractedUV.y));
-		float edgeFade = smoothstep(0.0, 0.05, distToEdge);
-
-		vec3 refractionColor = texture(refractionTexture, refractedUV).rgb;
-		albedo = mix(albedo, refractionColor, edgeFade);
-	}
-
 	// Choose between PBR and legacy lighting
 	vec4 lightResult;
 	if (c_usePBR) {
@@ -159,6 +143,24 @@ void main() {
 	result += rim * WindDeflection * u_windRimHighlight * vec3(1.0);
 
 	result = applyArtisticEffects(result, FragPos, barycentric, time);
+
+	if (c_is_refractive) {
+		vec3 V = normalize(FragPos - viewPos);
+		vec3 R = refract(V, norm, 1.0 / max(c_refractive_index, 1.0));
+
+		// Generalized refraction: project refracted ray back to screen space
+		// We use a fixed distance fallback for simplicity, but could sample depth buffer for better accuracy
+		vec3  refractedPos = FragPos + R * 10.0; // Increased fallback distance for more pronounced refraction
+		vec4  refractedClip = viewProjection * vec4(refractedPos, 1.0);
+		vec2  refractedUV = (refractedClip.xy / refractedClip.w) * 0.5 + 0.5;
+		float distToEdge = min(min(refractedUV.x, 1.0 - refractedUV.x), min(refractedUV.y, 1.0 - refractedUV.y));
+		float edgeFade = smoothstep(0.0, 0.05, distToEdge);
+
+		vec3 refractionColor = texture(refractionTexture, refractedUV).rgb;
+		// Blend refraction with the lit surface color.
+		// If c_objectAlpha is low, refraction dominates.
+		result = mix(result, refractionColor, edgeFade * (1.0 - c_objectAlpha * 0.5));
+	}
 
 	if (c_isLine && c_lineStyle == 1) { // LASER style
 		// Use Y axis for radial glow as defined in Line::InitLineMesh
@@ -200,6 +202,10 @@ void main() {
 		outColor = vec4(final_haze_color, 1.0);
 	} else {
 		float final_alpha = clamp((baseAlpha + spec_lum) * fade, 0.0, 1.0);
+		if (c_is_refractive) {
+			// Ensure refractive objects are at least partially opaque to trigger the transparent pass correctly
+			final_alpha = max(final_alpha, 0.5 * fade);
+		}
 
 		if (c_isTextEffect) {
 			float alpha_factor = 1.0;

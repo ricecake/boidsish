@@ -23,7 +23,7 @@ std::vector<std::shared_ptr<Shape>> RefractionExample(float time) {
 	float ior = 1.0f + cycle * 0.5f;
 
 	glassSphere->SetRefractive(true, ior);
-	glassSphere->SetColor(1.0f, 1.0f, 1.0f, 0.2f); // Slightly white tint, mostly transparent
+	glassSphere->SetColor(1.0f, 1.0f, 1.0f, 0.4f); // Slightly higher alpha for better surface visibility
 	glassSphere->SetUsePBR(true);
 	glassSphere->SetRoughness(0.05f); // Very smooth
 	glassSphere->SetMetallic(0.0f);
