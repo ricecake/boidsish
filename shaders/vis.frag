@@ -1,6 +1,7 @@
-#version 460 core
+#version 430 core
 #extension GL_GOOGLE_include_directive : enable
 #extension GL_ARB_bindless_texture : enable
+#extension GL_ARB_gpu_shader_int64 : enable
 layout(location = 0) out vec4 FragColor;
 layout(location = 1) out vec2 Velocity;
 
@@ -118,16 +119,31 @@ void main() {
 	vec3 norm = normalize(Normal);
 
 	if (c_use_texture) {
+#ifdef GL_ARB_bindless_texture
 		if (uUseBindless) {
 			albedo *= texture(sampler2D(uniforms_data[vUniformIndex].diffuse_handle), TexCoords).rgb;
-			if (c_usePBR && uniforms_data[vUniformIndex].normal_handle != uvec2(0)) {
+			if (uniforms_data[vUniformIndex].normal_handle != uvec2(0)) {
 				vec3 normalMap = texture(sampler2D(uniforms_data[vUniformIndex].normal_handle), TexCoords).rgb;
-				// TODO: Implement proper TBN for bindless normal mapping
-				// norm = normalize(norm + (normalMap * 2.0 - 1.0) * 0.1);
+				normalMap = normalize(normalMap * 2.0 - 1.0);
+
+				// Screen-space TBN calculation
+				vec3 p_dx = dFdx(FragPos);
+				vec3 p_dy = dFdy(FragPos);
+				vec2 tc_dx = dFdx(TexCoords);
+				vec2 tc_dy = dFdy(TexCoords);
+				vec3 n = normalize(Normal);
+				vec3 t = normalize(p_dx * tc_dy.t - p_dy * tc_dx.t);
+				vec3 b = normalize(cross(n, t));
+				mat3 tbn = mat3(t, b, n);
+
+				norm = normalize(tbn * normalMap);
 			}
 		} else {
 			albedo *= texture(texture_diffuse1, TexCoords).rgb;
 		}
+#else
+		albedo *= texture(texture_diffuse1, TexCoords).rgb;
+#endif
 	}
 
 	float baseAlpha = c_objectAlpha;

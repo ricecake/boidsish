@@ -77,6 +77,7 @@ uniform float arcadeWaveSpeed = 5.0;
 
 void main() {
 	int drawID = gl_DrawID;
+	// Use gl_BaseInstance for offset if not using DrawID native support (already used for SSBO instances)
 
 	vUniformIndex = uUseMDI ? drawID : -1;
 	bool use_ssbo = uUseMDI && vUniformIndex >= 0;
