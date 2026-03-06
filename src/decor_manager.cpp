@@ -343,6 +343,7 @@ namespace Boidsish {
 				shadow_commands[idx].baseInstance = commands[idx].baseInstance;
 
 				// Prepare common uniforms for this mesh
+				uniforms[idx].model = glm::mat4(1.0f);
 				uniforms[idx].color = glm::vec4(1.0f);
 				uniforms[idx].use_pbr = 0;
 				uniforms[idx].roughness = 0.5f;
@@ -362,6 +363,7 @@ namespace Boidsish {
 				}
 				uniforms[idx].use_texture = has_diffuse ? 1 : 0;
 				uniforms[idx].is_colossal = 0;
+				uniforms[idx].use_ssbo_instancing = 1;
 				uniforms[idx].use_vertex_color = (mesh.has_vertex_colors && !has_diffuse) ? 1 : 0;
 			}
 

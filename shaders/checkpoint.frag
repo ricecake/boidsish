@@ -1,4 +1,5 @@
 #version 430 core
+#extension GL_ARB_gpu_shader_int64 : enable
 layout(location = 0) out vec4 FragColor;
 layout(location = 1) out vec2 Velocity;
 
