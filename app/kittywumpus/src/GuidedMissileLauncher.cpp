@@ -27,6 +27,19 @@ namespace Boidsish {
 	}
 
 	void GuidedMissileLauncher::UpdateEntity(const EntityHandler& handler, float time, float delta_time) {
+		if (is_dying_) {
+			dissolve_timer_ += delta_time;
+			float sweep = 1.0f - glm::clamp(dissolve_timer_ / 2.0f, 0.0f, 1.0f);
+			if (auto model = std::dynamic_pointer_cast<Model>(shape_)) {
+				model->SetDissolveSweep(glm::vec3(0, 1, 0), sweep);
+			}
+			if (dissolve_timer_ >= 2.0f) {
+				handler.QueueRemoveEntity(id_);
+			}
+			UpdateShape();
+			return;
+		}
+
 		if (!approach_point_set_) {
 			auto  pos = GetPosition().Toglm();
 			float max_neighbor_h = pos.y;
@@ -133,12 +146,19 @@ namespace Boidsish {
 		}
 	}
 
-	void GuidedMissileLauncher::OnHit(const EntityHandler& handler, float damage) {
+	void GuidedMissileLauncher::OnHit(const EntityHandler& handler, float damage, const glm::vec3& hit_point) {
 		(void)damage;
-		Destroy(handler);
+		Destroy(handler, hit_point);
 	}
 
-	void GuidedMissileLauncher::Destroy(const EntityHandler& handler) {
+	void GuidedMissileLauncher::Destroy(const EntityHandler& handler, const glm::vec3& hit_point) {
+		if (is_dying_) return;
+		is_dying_ = true;
+
+		// Apply tumble
+		glm::vec3 force = glm::normalize(GetPosition().Toglm() - hit_point) * 100.0f;
+		AddForceAtPoint(force, hit_point);
+
 		// Award points for destroying the launcher
 		if (auto* pp_handler = dynamic_cast<const KittywumpusHandler*>(&handler)) {
 			pp_handler->AddScore(500, "Launcher Destroyed");

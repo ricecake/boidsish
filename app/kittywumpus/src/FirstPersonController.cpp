@@ -76,12 +76,23 @@ void FirstPersonController::Update(
 	} else if (right_was_down_ && input.mouse_right_released) {
 		int width, height;
 		glfwGetWindowSize(viz.GetWindow(), &width, &height);
-		auto target = viz.ScreenToWorld(width / 2.0, height / 2.0);
-		if (target) {
+		auto ray = viz.GetRayFromScreen(width / 2.0, height / 2.0);
+		float t;
+		glm::vec3 hit_point;
+		auto entity = handler.RaycastEntities(ray, t, hit_point);
+		if (entity) {
 			float intensity = 1.0f + right_hold_time_ * 2.0f;
-			viz.CreateExplosion(*target, intensity);
-			viz.AddSoundEffect("assets/rocket_explosion.wav", *target, {0, 0, 0}, glm::min(intensity, 5.0f));
-			handler.TriggerRadiusDamage(*target, 10.0f * intensity, 50.0f * intensity);
+			viz.CreateExplosion(hit_point, intensity);
+			viz.AddSoundEffect("assets/rocket_explosion.wav", hit_point, {0, 0, 0}, glm::min(intensity, 5.0f));
+			handler.TriggerRadiusDamage(hit_point, 10.0f * intensity, 50.0f * intensity);
+		} else {
+			auto target = viz.ScreenToWorld(width / 2.0, height / 2.0);
+			if (target) {
+				float intensity = 1.0f + right_hold_time_ * 2.0f;
+				viz.CreateExplosion(*target, intensity);
+				viz.AddSoundEffect("assets/rocket_explosion.wav", *target, {0, 0, 0}, glm::min(intensity, 5.0f));
+				handler.TriggerRadiusDamage(*target, 10.0f * intensity, 50.0f * intensity);
+			}
 		}
 		right_hold_time_ = 0.0f;
 		right_was_down_ = false;
@@ -115,27 +126,54 @@ void FirstPersonController::Update(
 	} else if (left_was_down_ && input.mouse_left_released) {
 		int width, height;
 		glfwGetWindowSize(viz.GetWindow(), &width, &height);
-		auto target = viz.ScreenToWorld(width / 2.0, height / 2.0);
-		if (target) {
+		auto ray = viz.GetRayFromScreen(width / 2.0, height / 2.0);
+		float t;
+		glm::vec3 hit_point;
+		auto entity = handler.RaycastEntities(ray, t, hit_point);
+		if (entity) {
 			float intensity = 1.0f + left_hold_time_ * 2.0f;
-			// Glitter effect
+			entity->OnHit(handler, 10.0f * intensity, hit_point);
+
 			viz.AddFireEffect(
-				*target,
+				hit_point,
 				FireEffectStyle::Glitter,
 				{0, 0, 0},
 				{0, 0, 0},
 				static_cast<int>(500 * intensity),
 				0.5f
 			);
-			viz.CreateShockwave(*target, intensity, 30.0f * intensity, 1.5f, {0, 1, 0}, {0.8f, 0.2f, 1.0f});
+			viz.CreateShockwave(hit_point, intensity, 30.0f * intensity, 1.5f, {0, 1, 0}, {0.8f, 0.2f, 1.0f});
 
-			Light flash = Light::CreateFlash(*target, 45.0f * intensity, {0.8f, 0.5f, 1.0f}, 45.0f * intensity);
+			Light flash = Light::CreateFlash(hit_point, 45.0f * intensity, {0.8f, 0.5f, 1.0f}, 45.0f * intensity);
 			flash.auto_remove = true;
 			flash.SetEaseOut(0.4f * intensity);
 			viz.GetLightManager().AddLight(flash);
 
-			viz.AddSoundEffect("assets/rocket_explosion.wav", *target, {0, 0, 0}, glm::min(intensity, 5.0f));
-			handler.TriggerRadiusDamage(*target, 8.0f * intensity, 30.0f * intensity);
+			viz.AddSoundEffect("assets/rocket_explosion.wav", hit_point, {0, 0, 0}, glm::min(intensity, 5.0f));
+			handler.TriggerRadiusDamage(hit_point, 8.0f * intensity, 30.0f * intensity);
+		} else {
+			auto target = viz.ScreenToWorld(width / 2.0, height / 2.0);
+			if (target) {
+				float intensity = 1.0f + left_hold_time_ * 2.0f;
+				// Glitter effect
+				viz.AddFireEffect(
+					*target,
+					FireEffectStyle::Glitter,
+					{0, 0, 0},
+					{0, 0, 0},
+					static_cast<int>(500 * intensity),
+					0.5f
+				);
+				viz.CreateShockwave(*target, intensity, 30.0f * intensity, 1.5f, {0, 1, 0}, {0.8f, 0.2f, 1.0f});
+
+				Light flash = Light::CreateFlash(*target, 45.0f * intensity, {0.8f, 0.5f, 1.0f}, 45.0f * intensity);
+				flash.auto_remove = true;
+				flash.SetEaseOut(0.4f * intensity);
+				viz.GetLightManager().AddLight(flash);
+
+				viz.AddSoundEffect("assets/rocket_explosion.wav", *target, {0, 0, 0}, glm::min(intensity, 5.0f));
+				handler.TriggerRadiusDamage(*target, 8.0f * intensity, 30.0f * intensity);
+			}
 		}
 		left_hold_time_ = 0.0f;
 		left_was_down_ = false;

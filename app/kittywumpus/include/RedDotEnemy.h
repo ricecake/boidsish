@@ -9,8 +9,9 @@ namespace Boidsish {
 	public:
 		RedDotEnemy(int id, Vector3 pos);
 
+		using EntityBase::OnHit;
 		void UpdateEntity(const EntityHandler& handler, float time, float delta_time) override;
-		void OnHit(const EntityHandler& handler, float damage) override;
+		void OnHit(const EntityHandler& handler, float damage, const glm::vec3& hit_point) override;
 
 		bool IsTargetable() const override { return state_ == State::ALIVE; }
 

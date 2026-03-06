@@ -15,7 +15,18 @@ namespace Boidsish {
 
 	void VortexFlockingEntity::UpdateEntity(const EntityHandler& handler, float time, float delta_time) {
 		(void)time;       // Mark unused
-		(void)delta_time; // Mark unused
+
+		if (is_dying_) {
+			dissolve_timer_ += delta_time;
+			float sweep = 1.0f - glm::clamp(dissolve_timer_ / 2.0f, 0.0f, 1.0f);
+			SetDissolve(glm::vec3(0, 1, 0), GetPosition().y + (sweep * 2.0f - 1.0f) * GetSize());
+			if (dissolve_timer_ >= 2.0f) {
+				handler.QueueRemoveEntity(id_);
+			}
+			UpdateShape();
+			return;
+		}
+
 		auto& spatial_handler = static_cast<const SpatialEntityHandler&>(handler);
 
 		const auto& entities = spatial_handler.GetEntitiesInRadius<VortexFlockingEntity>(GetPosition(), 256.0f);
@@ -112,6 +123,25 @@ namespace Boidsish {
 		float speed = GetVelocity().Magnitude();
 		float color_mix = std::min(1.0f, dist_to_com / 40.0f);
 		SetColor(0.2f + color_mix * 0.8f, 1.0f - speed / max_speed, 0.8f, 1.0f);
+	}
+
+	void VortexFlockingEntity::OnHit(const EntityHandler& handler, float damage, const glm::vec3& hit_point) {
+		if (is_dying_) return;
+		health_ -= damage;
+
+		// Apply tumble
+		glm::vec3 force = glm::normalize(GetPosition().Toglm() - hit_point) * damage * 10.0f;
+		AddForceAtPoint(force, hit_point);
+
+		if (health_ <= 0) {
+			is_dying_ = true;
+			auto pos = GetPosition().Toglm();
+			handler.EnqueueVisualizerAction([pos, &handler, this]() {
+				handler.vis->CreateExplosion(pos, 0.5f);
+				handler.vis->AddFireEffect(pos, FireEffectStyle::Cinder, glm::vec3(0, 1, 0), glm::vec3(0, 1, 0), 20, 1.0f);
+			});
+			SetVelocity(Vector3(0, 0, 0));
+		}
 	}
 
 } // namespace Boidsish

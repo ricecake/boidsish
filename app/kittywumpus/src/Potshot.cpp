@@ -39,6 +39,20 @@ namespace Boidsish {
 
 	void Potshot::UpdateEntity(const EntityHandler& handler, float time, float delta_time) {
 		(void)time;
+
+		if (is_dying_) {
+			dissolve_timer_ += delta_time;
+			float sweep = 1.0f - glm::clamp(dissolve_timer_ / 2.0f, 0.0f, 1.0f);
+			if (auto model = std::dynamic_pointer_cast<Model>(shape_)) {
+				model->SetDissolveSweep(glm::vec3(0, 1, 0), sweep);
+			}
+			if (dissolve_timer_ >= 2.0f) {
+				handler.QueueRemoveEntity(id_);
+			}
+			UpdateShape();
+			return;
+		}
+
 		lived_ += delta_time;
 		if (lived_ > lifetime_) {
 			handler.QueueRemoveEntity(id_);
@@ -155,17 +169,25 @@ namespace Boidsish {
 		}
 	}
 
-	void Potshot::OnHit(const EntityHandler& handler, float damage) {
+	void Potshot::OnHit(const EntityHandler& handler, float damage, const glm::vec3& hit_point) {
+		if (is_dying_) return;
 		health_ -= damage;
+
+		// Apply tumble
+		glm::vec3 force = glm::normalize(GetPosition().Toglm() - hit_point) * damage * 20.0f;
+		AddForceAtPoint(force, hit_point);
+
 		if (health_ <= 0) {
+			is_dying_ = true;
 			auto pos = GetPosition().Toglm();
 			handler.EnqueueVisualizerAction([pos, &handler, this]() {
 				handler.vis->CreateExplosion(pos, 0.8f);
-				handler.QueueRemoveEntity(this->id_);
+				handler.vis->AddFireEffect(pos, FireEffectStyle::Cinder, glm::vec3(0, 1, 0), glm::vec3(0, 1, 0), 80, 1.0f);
 			});
 			if (auto* pp_handler = dynamic_cast<const KittywumpusHandler*>(&handler)) {
 				pp_handler->AddScore(300, "Potshot Destroyed");
 			}
+			SetVelocity(Vector3(0, 0, 0));
 		}
 	}
 

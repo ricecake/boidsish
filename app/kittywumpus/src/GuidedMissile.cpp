@@ -90,6 +90,19 @@ namespace Boidsish {
 	}
 
 	void GuidedMissile::UpdateEntity(const EntityHandler& handler, float time, float delta_time) {
+		if (is_dying_) {
+			dissolve_timer_ += delta_time;
+			float sweep = 1.0f - glm::clamp(dissolve_timer_ / 2.0f, 0.0f, 1.0f);
+			if (auto model = std::dynamic_pointer_cast<Model>(shape_)) {
+				model->SetDissolveSweep(glm::vec3(0, 1, 0), sweep);
+			}
+			if (dissolve_timer_ >= 2.0f) {
+				handler.QueueRemoveEntity(id_);
+			}
+			UpdateShape();
+			return;
+		}
+
 		lived_ += delta_time;
 		auto pos = GetPosition();
 		auto vel = GetVelocity();
@@ -288,11 +301,26 @@ namespace Boidsish {
 		}
 	}
 
+	void GuidedMissile::OnHit(const EntityHandler& handler, float damage, const glm::vec3& hit_point) {
+		if (exploded_ || is_dying_) return;
+
+		// Apply tumble
+		glm::vec3 force = glm::normalize(GetPosition().Toglm() - hit_point) * damage * 5.0f;
+		AddForceAtPoint(force, hit_point);
+
+		// Missiles are fragile
+		Explode(handler, false);
+	}
+
 	void GuidedMissile::Explode(const EntityHandler& handler, bool hit_target) {
-		if (exploded_)
+		if (exploded_ || is_dying_)
 			return;
 
-		shape_->SetHidden(true);
+		is_dying_ = true;
+		dissolve_timer_ = 0.0f;
+		lived_ = 0.0f;
+		SetVelocity(Vector3(0, 0, 0));
+
 		auto pos = GetPosition();
 		handler.EnqueueVisualizerAction([pos, &handler]() {
 			handler.vis->AddFireEffect(

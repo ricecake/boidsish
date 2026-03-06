@@ -48,8 +48,13 @@ namespace Boidsish {
 
 		// Generic interaction for weapons/collisions
 		virtual void OnHit(const EntityHandler& handler, float damage) {
+			OnHit(handler, damage, rigid_body_.GetPosition());
+		}
+
+		virtual void OnHit(const EntityHandler& handler, float damage, const glm::vec3& hit_point) {
 			(void)handler;
 			(void)damage;
+			(void)hit_point;
 		}
 
 		virtual bool IsTargetable() const { return false; }
@@ -162,6 +167,17 @@ namespace Boidsish {
 
 		void SetOrientToVelocity(bool enabled) { orient_to_velocity_ = enabled; }
 
+		void SetDissolve(const glm::vec3& normal, float dist) {
+			dissolve_enabled_ = true;
+			dissolve_plane_normal_ = normal;
+			dissolve_plane_dist_ = dist;
+		}
+
+		virtual void SetDissolveSweep(const glm::vec3& direction, float sweep) {
+			(void)direction;
+			(void)sweep;
+		}
+
 		void SetPath(std::shared_ptr<Path> path, float speed) {
 			path_ = path;
 			path_speed_ = speed;
@@ -204,12 +220,26 @@ namespace Boidsish {
 		// Path constraint
 		std::shared_ptr<Path> constraint_path_;
 		float                 constraint_radius_ = 0.0f;
+
+		// Dissolve
+		bool      dissolve_enabled_ = false;
+		glm::vec3 dissolve_plane_normal_ = glm::vec3(0, 1, 0);
+		float     dissolve_plane_dist_ = 0.0f;
 	};
 
 	// Template-based entity class that takes a shape
 	template <typename ShapeType = Dot>
 	class Entity: public EntityBase {
 	public:
+		void SetDissolveSweep(const glm::vec3& direction, float sweep) override {
+			if constexpr (std::is_same_v<ShapeType, Model>) {
+				if (shape_) {
+					shape_->SetDissolveSweep(direction, sweep);
+					dissolve_enabled_ = true;
+				}
+			}
+		}
+
 		template <typename... ShapeArgs>
 		Entity(int id = 0, ShapeArgs... args): EntityBase(id), shape_(nullptr) {
 			shape_ = std::make_shared<ShapeType>(std::forward<ShapeArgs>(args)...);
@@ -243,6 +273,11 @@ namespace Boidsish {
 			shape_->SetMetallic(metallic_);
 			shape_->SetUsePBR(use_pbr_);
 			shape_->SetRotation(rigid_body_.GetOrientation());
+			if (dissolve_enabled_) {
+				shape_->SetDissolve(dissolve_plane_normal_, dissolve_plane_dist_);
+			} else {
+				shape_->DisableDissolve();
+			}
 			// For dots, we can also update the size
 			if (auto dot = std::dynamic_pointer_cast<Dot>(shape_)) {
 				dot->SetSize(size_);

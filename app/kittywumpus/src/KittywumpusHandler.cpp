@@ -5,6 +5,7 @@
 #include <set>
 
 #include "CongaMarcher.h"
+#include "ChargerEnemy.h"
 #include "GuidedMissileLauncher.h"
 #include "KittywumpusPlane.h"
 #include "Potshot.h"
@@ -192,7 +193,11 @@ void KittywumpusHandler::PreTimestep(float time, float delta_time) {
 				auto forward = vis->GetCamera().front();
 				auto spawn_pos = FindOccludedSpawnPosition(pos, forward);
 				if (spawn_pos) {
-					QueueAddEntity<RedDotEnemy>(Vector3(spawn_pos->x, spawn_pos->y, spawn_pos->z));
+					if (std::uniform_real_distribution<float>(0, 1)(eng_) < 0.5f) {
+						QueueAddEntity<RedDotEnemy>(Vector3(spawn_pos->x, spawn_pos->y, spawn_pos->z));
+					} else {
+						QueueAddEntity<ChargerEnemy>(Vector3(spawn_pos->x, spawn_pos->y, spawn_pos->z));
+					}
 				}
 			}
 		}
@@ -375,7 +380,7 @@ void KittywumpusHandler::PreTimestep(float time, float delta_time) {
 			auto spawn_pos = FindOccludedSpawnPosition(pos, forward);
 
 			if (spawn_pos) {
-				std::uniform_int_distribution<int> enemy_type(0, 2);
+				std::uniform_int_distribution<int> enemy_type(0, 3);
 				int                                type = enemy_type(eng_);
 
 				if (type == 0) {
@@ -392,9 +397,12 @@ void KittywumpusHandler::PreTimestep(float time, float delta_time) {
 				} else if (type == 1) {
 					// Swooper
 					QueueAddEntity<Swooper>(Vector3(spawn_pos->x, spawn_pos->y, spawn_pos->z));
-				} else {
+				} else if (type == 2) {
 					// Potshot
 					QueueAddEntity<Potshot>(Vector3(spawn_pos->x, spawn_pos->y, spawn_pos->z));
+				} else {
+					// Charger
+					QueueAddEntity<ChargerEnemy>(Vector3(spawn_pos->x, spawn_pos->y, spawn_pos->z));
 				}
 			}
 		}
@@ -441,7 +449,7 @@ KittywumpusHandler::FindOccludedSpawnPosition(const glm::vec3& player_pos, const
 void KittywumpusHandler::TriggerRadiusDamage(const glm::vec3& position, float radius, float damage) const {
 	auto targets = GetEntitiesInRadius<EntityBase>(Vector3(position.x, position.y, position.z), radius);
 	for (auto& target : targets) {
-		target->OnHit(*this, damage);
+		target->OnHit(*this, damage, position);
 	}
 }
 

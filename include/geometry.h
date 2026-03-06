@@ -141,27 +141,31 @@ namespace Boidsish {
 		int   use_vertex_color = 0;     // 4 bytes
 		float checkpoint_radius = 0.0f; // 4 bytes -> 16 bytes
 
-		// Dissolve Effects
-		glm::vec3 dissolve_plane_normal = glm::vec3(0, 1, 0); // 12 bytes
-		float     dissolve_plane_dist = 0.0f;                 // 4 bytes -> 16 bytes
-		int       dissolve_enabled = 0;                       // 4 bytes
+		// Dissolve Effects (16 bytes)
+		glm::vec3 dissolve_plane_normal = glm::vec3(0, 1, 0);
+		float     dissolve_plane_dist = 0.0f;
 
-		// Skeletal Animation
-		int   bone_matrices_offset = -1; // 4 bytes
-		int   use_skinning = 0;          // 4 bytes
-		float anim_padding[2];           // 8 bytes -> 16 bytes
+		// State & Skel (16 bytes)
+		int dissolve_enabled = 0;
+		int bone_matrices_offset = -1;
+		int use_skinning = 0;
+		int padding_skel = 0;
 
-		// Occlusion culling AABB (world space) - individual floats for std430 alignment safety
-		float aabb_min_x = 0.0f;   // 4 bytes
-		float aabb_min_y = 0.0f;   // 4 bytes
-		float aabb_min_z = 0.0f;   // 4 bytes
-		float aabb_max_x = 0.0f;   // 4 bytes -> 16
-		float aabb_max_y = 0.0f;   // 4 bytes
-		float aabb_max_z = 0.0f;   // 4 bytes
-		float oclusion_padding[2]; // 8 bytes -> 16
-		// Padding to 256 bytes for SSBO alignment safety
-		float padding[3];
+		// AABB 1 (16 bytes)
+		float aabb_min_x = 0.0f;
+		float aabb_min_y = 0.0f;
+		float aabb_min_z = 0.0f;
+		float aabb_max_x = 0.0f;
+
+		// AABB 2 (16 bytes)
+		float aabb_max_y = 0.0f;
+		float aabb_max_z = 0.0f;
+		float padding_aabb[2];
+
+		// Final Padding (16 bytes)
+		float padding[4];
 	};
+	static_assert(sizeof(CommonUniforms) == 256, "CommonUniforms must be 256 bytes for std430 alignment");
 
 	/**
 	 * @brief Contains all the data necessary for a single draw call.
