@@ -208,6 +208,29 @@ namespace Boidsish {
 			total_triangles = 0;
 		}
 
+		ModelData& operator=(const ModelData& other) {
+			if (this != &other) {
+				meshes = other.meshes;
+				textures_loaded = other.textures_loaded;
+				directory = other.directory;
+				model_path = other.model_path;
+				aabb = other.aabb;
+				bone_info_map = other.bone_info_map;
+				bone_count = other.bone_count;
+				global_inverse_transform = other.global_inverse_transform;
+				animations = other.animations;
+				root_node = other.root_node;
+				// LBVH is not copied, it will be rebuilt if needed
+				lbvh = nullptr;
+				triangle_aabb_ssbo = 0;
+				triangle_active_ssbo = 0;
+				triangle_indices_ssbo = 0;
+				triangle_vertices_ssbo = 0;
+				total_triangles = 0;
+			}
+			return *this;
+		}
+
 		void AddBone(const std::string& name, const std::string& parentName, const glm::mat4& localTransform) {
 			if (bone_info_map.find(name) != bone_info_map.end())
 				return;
