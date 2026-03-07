@@ -91,6 +91,10 @@ namespace Boidsish {
 		if (comp_lighting_idx != GL_INVALID_INDEX) {
 			glUniformBlockBinding(compute_shader_->ID, comp_lighting_idx, Constants::UboBinding::Lighting());
 		}
+		GLuint comp_culling_idx = glGetUniformBlockIndex(compute_shader_->ID, "CullingDataBlock");
+		if (comp_culling_idx != GL_INVALID_INDEX) {
+			glUniformBlockBinding(compute_shader_->ID, comp_culling_idx, Constants::UboBinding::CullingData());
+		}
 
 		// Create buffers
 		glGenBuffers(1, &particle_buffer_);
@@ -191,7 +195,11 @@ namespace Boidsish {
 		GLuint                        heightmap_texture,
 		GLuint                        curl_noise_texture,
 		GLuint                        biome_texture,
-		GLuint                        lighting_ubo
+		GLuint                        lighting_ubo,
+		GLuint                        culling_ubo,
+		GLuint                        hiz_texture,
+		glm::ivec2                    hiz_size,
+		int                           hiz_mip_count
 	) {
 		std::lock_guard<std::mutex> lock(mutex_);
 		if (!initialized_ || !compute_shader_ || !compute_shader_->isValid()) {
@@ -348,6 +356,18 @@ namespace Boidsish {
 
 		if (lighting_ubo != 0) {
 			glBindBufferBase(GL_UNIFORM_BUFFER, Constants::UboBinding::Lighting(), lighting_ubo);
+		}
+
+		if (culling_ubo != 0) {
+			glBindBufferBase(GL_UNIFORM_BUFFER, Constants::UboBinding::CullingData(), culling_ubo);
+		}
+
+		if (hiz_texture != 0) {
+			glActiveTexture(GL_TEXTURE15);
+			glBindTexture(GL_TEXTURE_2D, hiz_texture);
+			compute_shader_->setInt("u_hizTexture", 15);
+			glUniform2i(glGetUniformLocation(compute_shader_->ID, "u_hizSize"), hiz_size.x, hiz_size.y);
+			compute_shader_->setInt("u_hizMipCount", hiz_mip_count);
 		}
 
 		// Dispatch enough groups to cover all particles

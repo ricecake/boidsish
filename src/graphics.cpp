@@ -526,9 +526,19 @@ namespace Boidsish {
 		std::array<ShadowMapState, 16> shadow_map_states_;
 		int shadow_update_round_robin_ = 0; // For ensuring all cascades get updated periodically
 
+		// Culling parameters for distance-based LOD and occlusion
+		struct CullingUbo {
+			float minPixelSize;     // Screen-space pixel threshold for culling
+			float nightVisionBoost; // Boost factor for render distance at night
+			float viewportHeight;   // Current render height for pixel size calc
+			float padding;
+		};
+
 		// Performance optimization: batched UBO updates and config caching
 		std::vector<LightGPU> gpu_lights_cache_;
 		LightingUbo           lighting_ubo_data_;
+		CullingUbo            culling_ubo_data_;
+		GLuint                culling_ubo{0};
 		FrameConfigCache      frame_config_;
 
 		task_thread_pool::task_thread_pool thread_pool;
@@ -763,6 +773,19 @@ namespace Boidsish {
 				temporal_data_ubo,
 				0,
 				sizeof(TemporalUbo)
+			);
+
+			// Culling Data UBO
+			glGenBuffers(1, &culling_ubo);
+			glBindBuffer(GL_UNIFORM_BUFFER, culling_ubo);
+			glBufferData(GL_UNIFORM_BUFFER, sizeof(CullingUbo), NULL, GL_DYNAMIC_DRAW);
+			glBindBuffer(GL_UNIFORM_BUFFER, 0);
+			glBindBufferRange(
+				GL_UNIFORM_BUFFER,
+				Constants::UboBinding::CullingData(),
+				culling_ubo,
+				0,
+				sizeof(CullingUbo)
 			);
 
 			// Pre-allocate lighting cache for batched UBO updates
@@ -1228,6 +1251,10 @@ namespace Boidsish {
 
 			if (occlusion_visibility_ssbo_) {
 				glDeleteBuffers(1, &occlusion_visibility_ssbo_);
+			}
+
+			if (culling_ubo) {
+				glDeleteBuffers(1, &culling_ubo);
 			}
 
 			if (window)
@@ -2914,7 +2941,12 @@ namespace Boidsish {
 			impl->terrain_render_manager ? impl->terrain_render_manager->GetHeightmapTexture() : 0,
 			impl->noise_manager ? impl->noise_manager->GetCurlTexture() : 0,
 			impl->terrain_render_manager ? impl->terrain_render_manager->GetBiomeTexture() : 0,
-			impl->lighting_ubo
+			impl->lighting_ubo,
+			impl->culling_ubo,
+			impl->hiz_manager ? impl->hiz_manager->GetHiZTexture() : 0,
+			impl->hiz_manager ? glm::ivec2(impl->hiz_manager->GetWidth(), impl->hiz_manager->GetHeight())
+							  : glm::ivec2(0),
+			impl->hiz_manager ? impl->hiz_manager->GetMipCount() : 0
 		);
 		impl->mesh_explosion_manager->Update(impl->simulation_delta_time, impl->simulation_time);
 		impl->sound_effect_manager->Update(impl->simulation_delta_time);
@@ -3008,6 +3040,24 @@ namespace Boidsish {
 			// Single buffer upload instead of 8 separate calls
 			glBindBuffer(GL_UNIFORM_BUFFER, impl->lighting_ubo);
 			glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(LightingUbo), &impl->lighting_ubo_data_);
+			glBindBuffer(GL_UNIFORM_BUFFER, 0);
+		}
+
+		// Update Culling Data UBO
+		{
+			impl->culling_ubo_data_.minPixelSize = ConfigManager::GetInstance().GetAppSettingFloat(
+				"foliage_culling_pixel_threshold",
+				10.0f
+			);
+			impl->culling_ubo_data_.nightVisionBoost = ConfigManager::GetInstance().GetAppSettingFloat(
+				"night_vision_boost",
+				0.5f
+			);
+			impl->culling_ubo_data_.viewportHeight = static_cast<float>(impl->render_height);
+			impl->culling_ubo_data_.padding = 0.0f;
+
+			glBindBuffer(GL_UNIFORM_BUFFER, impl->culling_ubo);
+			glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(VisualizerImpl::CullingUbo), &impl->culling_ubo_data_);
 			glBindBuffer(GL_UNIFORM_BUFFER, 0);
 		}
 
