@@ -26,7 +26,7 @@ namespace Boidsish {
 		);
 
 		void UpdateEntity(const EntityHandler& handler, float time, float delta_time) override;
-		void Explode(const EntityHandler& handler, bool hit_target);
+		void Explode(const EntityHandler& handler, bool hit_target, bool timeout = false);
 
 	private:
 		// Constants
@@ -40,6 +40,7 @@ namespace Boidsish {
 		std::shared_ptr<EntityBase>  target_ = nullptr;
 		std::shared_ptr<SoundEffect> launch_sound_ = nullptr;
 		std::shared_ptr<SoundEffect> explode_sound_ = nullptr;
+		int                          thruster_light_id_ = -1;
 		bool                         leftHanded_ = true;
 
 		// Flight model

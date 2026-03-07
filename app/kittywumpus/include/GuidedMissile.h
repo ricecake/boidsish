@@ -18,7 +18,7 @@ namespace Boidsish {
 		GuidedMissile(int id = 0, Vector3 pos = {0, 0, 0});
 
 		void UpdateEntity(const EntityHandler& handler, float time, float delta_time) override;
-		void Explode(const EntityHandler& handler, bool hit_target);
+		void Explode(const EntityHandler& handler, bool hit_target, bool timeout = false);
 
 	private:
 		// Constants
@@ -35,6 +35,7 @@ namespace Boidsish {
 		KittywumpusPlane*                  target_ = nullptr;
 		float                        jamming_intensity_ = 0.0f;
 		std::shared_ptr<ArcadeText>  text_ = nullptr;
+		int                          thruster_light_id_ = -1;
 
 		// Flight model
 		std::random_device rd_;

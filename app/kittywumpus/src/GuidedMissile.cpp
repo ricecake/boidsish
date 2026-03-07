@@ -109,7 +109,7 @@ namespace Boidsish {
 		}
 
 		if (lived_ >= lifetime_) {
-			Explode(handler, false);
+			Explode(handler, false, true);
 			return;
 		}
 
@@ -163,6 +163,34 @@ namespace Boidsish {
 		if (lived_ < kLaunchTime) {
 			rigid_body_.AddRelativeForce(glm::vec3(0, 0, -600));
 		} else {
+			if (thruster_light_id_ == -1) {
+				handler.EnqueueVisualizerAction([this, &handler, pos]() {
+					Light thruster = Light::CreateFlash(
+						pos.Toglm(),
+						15.0f,                       // Initial flash intensity
+						glm::vec3(1.0f, 0.6f, 0.2f), // Warm rocket orange
+						5.0f                         // Small radius for thruster
+					);
+					// Rocket fire: start brighter then quickly fade to steady
+					thruster.SetEaseOut(0.2f); // Quick fade for the "flash" part
+					this->thruster_light_id_ = handler.vis->GetLightManager().AddLight(thruster);
+				});
+			} else {
+				handler.EnqueueVisualizerAction([id = thruster_light_id_, &handler, p = pos.Toglm()]() {
+					Light* l = handler.vis->GetLightManager().GetLight(id);
+					if (l) {
+						l->position = p;
+						// If the "flash" ease-out has finished, it would have been removed if auto_remove was true.
+						// But for a tracking thruster, we want a steady light after the initial pop.
+						// The EaseOut behavior we set above had loop = false, so it will finish.
+						// Let's check if it finished and reset to a steady light.
+						if (l->behavior.timer >= l->behavior.period) {
+							l->behavior.type = LightBehaviorType::NONE;
+							l->intensity = 3.0f; // Steady intense spot
+						}
+					}
+				});
+			}
 			auto [height, norm] = handler.vis->GetTerrainPropertiesAtPoint(pos.x, pos.z);
 			if (pos.y < height) {
 				Explode(handler, false);
@@ -288,20 +316,27 @@ namespace Boidsish {
 		}
 	}
 
-	void GuidedMissile::Explode(const EntityHandler& handler, bool hit_target) {
+	void GuidedMissile::Explode(const EntityHandler& handler, bool hit_target, bool timeout) {
 		if (exploded_)
 			return;
 
 		shape_->SetHidden(true);
+
+		if (thruster_light_id_ != -1) {
+			handler.EnqueueVisualizerAction([id = thruster_light_id_, &handler]() {
+				handler.vis->GetLightManager().RemoveLight(id);
+			});
+			thruster_light_id_ = -1;
+		}
 		auto pos = GetPosition();
-		handler.EnqueueVisualizerAction([pos, &handler]() {
+		handler.EnqueueVisualizerAction([pos, timeout, &handler]() {
 			handler.vis->AddFireEffect(
 				glm::vec3(pos.x, pos.y, pos.z),
 				FireEffectStyle::Explosion,
 				glm::vec3(0, 1, 0),
 				glm::vec3(0, 0, 0),
-				-1,
-				1.0f
+				timeout ? 100 : -1,
+				timeout ? 0.3f : 1.0f
 			);
 		});
 
@@ -315,9 +350,13 @@ namespace Boidsish {
 		exploded_ = true;
 		lived_ = 0.0f;
 		SetVelocity(Vector3(0, 0, 0));
-		handler.EnqueueVisualizerAction([this, pos, &handler]() {
-			this->explode_sound_ =
-				handler.vis->AddSoundEffect("assets/rocket_explosion.wav", pos.Toglm(), GetVelocity().Toglm(), 20.0f);
+		handler.EnqueueVisualizerAction([this, pos, timeout, &handler]() {
+			this->explode_sound_ = handler.vis->AddSoundEffect(
+				"assets/rocket_explosion.wav",
+				pos.Toglm(),
+				GetVelocity().Toglm(),
+				timeout ? 5.0f : 20.0f
+			);
 		});
 
 		if (hit_target) {

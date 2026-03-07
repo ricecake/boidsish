@@ -77,6 +77,7 @@ namespace Boidsish {
 	 * @brief Light source data structure for rendering.
 	 */
 	struct Light {
+		int       id = -1;
 		glm::vec3 position;
 		float     intensity;
 		float     base_intensity; // Original intensity before behaviors
@@ -159,6 +160,7 @@ namespace Boidsish {
 			behavior.type = LightBehaviorType::EASE_OUT;
 			behavior.period = duration;
 			behavior.timer = 0.0f;
+			behavior.loop = false;
 		}
 
 		void SetEaseInOut(float duration) {
