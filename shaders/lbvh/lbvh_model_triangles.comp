@@ -1,0 +1,50 @@
+#version 430 core
+
+layout(local_size_x = 256) in;
+
+struct Vertex {
+    vec3 position;
+    vec3 normal;
+    vec2 texCoords;
+    vec3 color;
+    vec4 weights;
+    ivec4 boneIds;
+};
+
+struct AABB {
+    vec4 min_pt;
+    vec4 max_pt;
+};
+
+layout(std430, binding = 0) readonly buffer Vertices {
+    Vertex u_vertices[];
+};
+
+layout(std430, binding = 1) readonly buffer Indices {
+    uint u_indices[];
+};
+
+layout(std430, binding = 2) writeonly buffer OutputAABBs {
+    AABB u_aabbs[];
+};
+
+uniform int u_numTriangles;
+
+void main() {
+    uint idx = gl_GlobalInvocationID.x;
+    if (idx >= u_numTriangles) return;
+
+    uint i0 = u_indices[idx * 3 + 0];
+    uint i1 = u_indices[idx * 3 + 1];
+    uint i2 = u_indices[idx * 3 + 2];
+
+    vec3 v0 = u_vertices[i0].position;
+    vec3 v1 = u_vertices[i1].position;
+    vec3 v2 = u_vertices[i2].position;
+
+    vec3 min_pt = min(v0, min(v1, v2));
+    vec3 max_pt = max(v0, max(v1, v2));
+
+    u_aabbs[idx].min_pt = vec4(min_pt, 0.0);
+    u_aabbs[idx].max_pt = vec4(max_pt, 0.0);
+}

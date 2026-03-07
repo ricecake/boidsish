@@ -108,6 +108,26 @@ void LBVHManager::Build(const std::vector<LBVH_AABB>& aabbs, const std::vector<u
     glBindBuffer(GL_SHADER_STORAGE_BUFFER, active_ssbo_);
     glBufferSubData(GL_SHADER_STORAGE_BUFFER, 0, n * sizeof(uint32_t), active.data());
 
+    Build(n, aabb_ssbo_, active_ssbo_, scene_min, scene_max);
+}
+
+void LBVHManager::Build(int n, GLuint aabb_ssbo, GLuint active_ssbo, glm::vec3 scene_min, glm::vec3 scene_max) {
+    if (n <= 0) return;
+    _AllocateBuffers(n);
+
+    // If external buffers provided, copy them to our internal ones
+    if (aabb_ssbo != aabb_ssbo_) {
+        glBindBuffer(GL_COPY_READ_BUFFER, aabb_ssbo);
+        glBindBuffer(GL_COPY_WRITE_BUFFER, aabb_ssbo_);
+        glCopyBufferSubData(GL_COPY_READ_BUFFER, GL_COPY_WRITE_BUFFER, 0, 0, n * sizeof(LBVH_AABB));
+    }
+    if (active_ssbo != active_ssbo_) {
+        glBindBuffer(GL_COPY_READ_BUFFER, active_ssbo);
+        glBindBuffer(GL_COPY_WRITE_BUFFER, active_ssbo_);
+        glCopyBufferSubData(GL_COPY_READ_BUFFER, GL_COPY_WRITE_BUFFER, 0, 0, n * sizeof(uint32_t));
+    }
+    glMemoryBarrier(GL_BUFFER_UPDATE_BARRIER_BIT);
+
     morton_shader_->use();
     morton_shader_->setInt("u_numObjects", n);
     morton_shader_->setVec3("u_sceneMin", scene_min);
@@ -188,7 +208,7 @@ void LBVHManager::Build(const std::vector<LBVH_AABB>& aabbs, const std::vector<u
     glDispatchCompute((2 * n - 1 + 255) / 256, 1, 1);
     glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
 
-    Refit(aabbs);
+    Refit(aabb_ssbo_);
 }
 
 void LBVHManager::Refit(const std::vector<LBVH_AABB>& aabbs) {
@@ -197,6 +217,20 @@ void LBVHManager::Refit(const std::vector<LBVH_AABB>& aabbs) {
 
     glBindBuffer(GL_SHADER_STORAGE_BUFFER, aabb_ssbo_);
     glBufferSubData(GL_SHADER_STORAGE_BUFFER, 0, n * sizeof(LBVH_AABB), aabbs.data());
+
+    Refit(aabb_ssbo_);
+}
+
+void LBVHManager::Refit(GLuint aabb_ssbo) {
+    int n = num_objects_;
+    if (n <= 0) return;
+
+    if (aabb_ssbo != aabb_ssbo_) {
+        glBindBuffer(GL_COPY_READ_BUFFER, aabb_ssbo);
+        glBindBuffer(GL_COPY_WRITE_BUFFER, aabb_ssbo_);
+        glCopyBufferSubData(GL_COPY_READ_BUFFER, GL_COPY_WRITE_BUFFER, 0, 0, n * sizeof(LBVH_AABB));
+        glMemoryBarrier(GL_BUFFER_UPDATE_BARRIER_BIT);
+    }
 
     int num_internal = std::max(1, n - 1);
     uint32_t zero = 0;
@@ -214,6 +248,7 @@ void LBVHManager::Refit(const std::vector<LBVH_AABB>& aabbs) {
 }
 
 void LBVHManager::Bind(GLuint binding) const {
+    if (this == nullptr || nodes_ssbo_ == 0) return;
     glBindBufferBase(GL_SHADER_STORAGE_BUFFER, binding, nodes_ssbo_);
 }
 

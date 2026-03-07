@@ -5,6 +5,7 @@
 #include <string>
 #include <vector>
 
+#include "lbvh_manager.h"
 #include "shape.h"
 #include <assimp/Importer.hpp>
 #include <assimp/postprocess.h>
@@ -171,12 +172,76 @@ namespace Boidsish {
 		std::string          model_path;
 		AABB                 aabb;
 
+		// BLAS
+		std::unique_ptr<LBVHManager> lbvh;
+		GLuint triangle_aabb_ssbo = 0;
+		GLuint triangle_active_ssbo = 0;
+		GLuint triangle_indices_ssbo = 0; // Flattened indices across all meshes
+		GLuint triangle_vertices_ssbo = 0; // Flattened vertices across all meshes
+		int total_triangles = 0;
+
 		// Animation Data
 		std::map<std::string, BoneInfo> bone_info_map;
 		int                             bone_count = 0;
 		glm::mat4                       global_inverse_transform = glm::mat4(1.0f);
 		std::vector<Animation>          animations;
 		NodeData                        root_node;
+
+		ModelData() = default;
+		~ModelData() {
+			if (triangle_vertices_ssbo) glDeleteBuffers(1, &triangle_vertices_ssbo);
+			if (triangle_indices_ssbo) glDeleteBuffers(1, &triangle_indices_ssbo);
+			if (triangle_aabb_ssbo) glDeleteBuffers(1, &triangle_aabb_ssbo);
+			if (triangle_active_ssbo) glDeleteBuffers(1, &triangle_active_ssbo);
+		}
+
+		ModelData(const ModelData& other) {
+			meshes = other.meshes;
+			textures_loaded = other.textures_loaded;
+			directory = other.directory;
+			model_path = other.model_path;
+			aabb = other.aabb;
+			bone_info_map = other.bone_info_map;
+			bone_count = other.bone_count;
+			global_inverse_transform = other.global_inverse_transform;
+			animations = other.animations;
+			root_node = other.root_node;
+			// LBVH is not copied, it will be rebuilt if needed
+			lbvh = nullptr;
+			triangle_aabb_ssbo = 0;
+			triangle_active_ssbo = 0;
+			triangle_indices_ssbo = 0;
+			triangle_vertices_ssbo = 0;
+			total_triangles = 0;
+		}
+
+		ModelData& operator=(const ModelData& other) {
+			if (this != &other) {
+				if (triangle_vertices_ssbo) glDeleteBuffers(1, &triangle_vertices_ssbo);
+				if (triangle_indices_ssbo) glDeleteBuffers(1, &triangle_indices_ssbo);
+				if (triangle_aabb_ssbo) glDeleteBuffers(1, &triangle_aabb_ssbo);
+				if (triangle_active_ssbo) glDeleteBuffers(1, &triangle_active_ssbo);
+
+				meshes = other.meshes;
+				textures_loaded = other.textures_loaded;
+				directory = other.directory;
+				model_path = other.model_path;
+				aabb = other.aabb;
+				bone_info_map = other.bone_info_map;
+				bone_count = other.bone_count;
+				global_inverse_transform = other.global_inverse_transform;
+				animations = other.animations;
+				root_node = other.root_node;
+				// LBVH is not copied, it will be rebuilt if needed
+				lbvh = nullptr;
+				triangle_aabb_ssbo = 0;
+				triangle_active_ssbo = 0;
+				triangle_indices_ssbo = 0;
+				triangle_vertices_ssbo = 0;
+				total_triangles = 0;
+			}
+			return *this;
+		}
 
 		void AddBone(const std::string& name, const std::string& parentName, const glm::mat4& localTransform) {
 			if (bone_info_map.find(name) != bone_info_map.end())

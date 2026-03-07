@@ -37,12 +37,30 @@ namespace Boidsish {
         void Build(const std::vector<LBVH_AABB>& aabbs, const std::vector<uint32_t>& active, glm::vec3 scene_min, glm::vec3 scene_max);
 
         /**
+         * @brief Builds a full LBVH using existing SSBOs for AABBs and active flags.
+         *
+         * @param num_objects Number of objects in the buffers.
+         * @param aabb_ssbo SSBO containing LBVH_AABB structures.
+         * @param active_ssbo SSBO containing uint32_t active flags.
+         * @param scene_min Minimum bounds of the scene.
+         * @param scene_max Maximum bounds of the scene.
+         */
+        void Build(int num_objects, GLuint aabb_ssbo, GLuint active_ssbo, glm::vec3 scene_min, glm::vec3 scene_max);
+
+        /**
          * @brief Updates the AABBs of existing nodes without changing the tree structure.
          * Useful for moving objects that don't significantly change their relative topology.
          *
          * @param aabbs The updated bounding boxes (must match original count and order).
          */
         void Refit(const std::vector<LBVH_AABB>& aabbs);
+
+        /**
+         * @brief Updates the AABBs of existing nodes using an existing SSBO for AABBs.
+         *
+         * @param aabb_ssbo SSBO containing updated LBVH_AABB structures.
+         */
+        void Refit(GLuint aabb_ssbo);
 
         /**
          * @brief Bind the LBVH nodes SSBO to the specified binding point.
