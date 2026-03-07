@@ -4,6 +4,7 @@ layout(location = 0) out vec4 FragColor;
 layout(location = 1) out vec2 Velocity;
 
 #include "common_uniforms.glsl"
+#include "temporal_data.glsl"
 
 layout(std430, binding = 2) buffer UniformsSSBO {
 	CommonUniforms uniforms_data[];
@@ -54,9 +55,14 @@ uniform bool  dissolve_enabled = false;
 uniform vec3  dissolve_plane_normal = vec3(0, 1, 0);
 uniform float dissolve_plane_dist = 0.0;
 
+uniform bool  is_refractive = false;
+uniform float refractive_index = 1.0;
+
 uniform sampler2D texture_diffuse1;
 uniform bool      use_texture;
 uniform float     u_windRimHighlight;
+
+uniform sampler2D refractionTexture;
 
 void main() {
 	bool  use_ssbo = uUseMDI && vUniformIndex >= 0;
@@ -85,6 +91,8 @@ void main() {
 	bool  c_dissolve_enabled = use_ssbo ? (uniforms_data[vUniformIndex].dissolve_enabled != 0) : dissolve_enabled;
 	vec3  c_dissolve_normal = use_ssbo ? uniforms_data[vUniformIndex].dissolve_plane_normal : dissolve_plane_normal;
 	float c_dissolve_dist = use_ssbo ? uniforms_data[vUniformIndex].dissolve_plane_dist : dissolve_plane_dist;
+	bool  c_is_refractive = use_ssbo ? (uniforms_data[vUniformIndex].is_refractive != 0) : is_refractive;
+	float c_refractive_index = use_ssbo ? uniforms_data[vUniformIndex].refractive_index : refractive_index;
 
 	float fade = 1.0;
 	if (c_dissolve_enabled) {
@@ -136,6 +144,30 @@ void main() {
 
 	result = applyArtisticEffects(result, FragPos, barycentric, time);
 
+	if (c_is_refractive) {
+		vec3 V = normalize(FragPos - viewPos);
+		vec3 R = refract(V, norm, 1.0 / max(c_refractive_index, 1.0));
+
+		// Generalized refraction: project refracted ray back to screen space
+		// We use a fixed distance fallback for simplicity, but could sample depth buffer for better accuracy
+		vec3 refractedPos = FragPos + R * 10.0; // Fallback distance
+		vec4 refractedClip = viewProjection * vec4(refractedPos, 1.0);
+		vec2 refractedUV = (refractedClip.xy / refractedClip.w) * 0.5 + 0.5;
+
+		// Use the direct screen-space offset if IOR is close to 1.0 for better "vanishing"
+		vec2 screenUV = gl_FragCoord.xy * texelSize;
+		refractedUV = mix(screenUV, refractedUV, smoothstep(1.0, 1.01, c_refractive_index));
+
+		float distToEdge = min(min(refractedUV.x, 1.0 - refractedUV.x), min(refractedUV.y, 1.0 - refractedUV.y));
+		float edgeFade = smoothstep(0.0, 0.05, distToEdge);
+
+		vec3 refractionColor = texture(refractionTexture, refractedUV).rgb;
+		// Blend refraction with the lit surface color.
+		// For refractive objects, we treat the object alpha as a tint rather than traditional transparency.
+		result = mix(refractionColor, result * c_objectColor, c_objectAlpha * 0.5) * edgeFade +
+			refractionColor * (1.0 - edgeFade);
+	}
+
 	if (c_isLine && c_lineStyle == 1) { // LASER style
 		// Use Y axis for radial glow as defined in Line::InitLineMesh
 		float distToCenter = abs(TexCoords.y - 0.5) * 2.0;
@@ -176,6 +208,11 @@ void main() {
 		outColor = vec4(final_haze_color, 1.0);
 	} else {
 		float final_alpha = clamp((baseAlpha + spec_lum) * fade, 0.0, 1.0);
+		if (c_is_refractive) {
+			// Refractive objects should be fully opaque in the blender since they've already
+			// sampled the background themselves.
+			final_alpha = fade;
+		}
 
 		if (c_isTextEffect) {
 			float alpha_factor = 1.0;

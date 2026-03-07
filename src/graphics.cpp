@@ -435,7 +435,7 @@ namespace Boidsish {
 		ShaderHandle            shadow_shader_handle{0};
 		GLuint                  plane_vao{0}, plane_vbo{0}, sky_vao{0}, blur_quad_vao{0}, blur_quad_vbo{0};
 		GLuint main_fbo_{0}, main_fbo_texture_{0}, main_fbo_velocity_texture_{0}, main_fbo_depth_texture_{0},
-			main_fbo_rbo_{0};
+			main_fbo_rbo_{0}, refraction_texture_{0};
 		GLuint    lighting_ubo{0};
 		GLuint    visual_effects_ubo{0};
 		GLuint    temporal_data_ubo{0};
@@ -922,6 +922,19 @@ namespace Boidsish {
 			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 			glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, main_fbo_texture_, 0);
 
+			// Refraction attachment (copy of scene before transparency)
+			glGenTextures(1, &refraction_texture_);
+			glBindTexture(GL_TEXTURE_2D, refraction_texture_);
+			if (enable_hdr_) {
+				glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB16F, render_width, render_height, 0, GL_RGB, GL_FLOAT, NULL);
+			} else {
+				glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, render_width, render_height, 0, GL_RGB, GL_UNSIGNED_BYTE, NULL);
+			}
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+
 			// Velocity attachment
 			glGenTextures(1, &main_fbo_velocity_texture_);
 			glBindTexture(GL_TEXTURE_2D, main_fbo_velocity_texture_);
@@ -1200,6 +1213,9 @@ namespace Boidsish {
 				glDeleteTextures(1, &main_fbo_texture_);
 				glDeleteTextures(1, &main_fbo_velocity_texture_);
 				glDeleteTextures(1, &main_fbo_depth_texture_);
+				if (refraction_texture_) {
+					glDeleteTextures(1, &refraction_texture_);
+				}
 			}
 
 			if (lighting_ubo) {
@@ -1616,6 +1632,13 @@ namespace Boidsish {
 						s->setVec4("clipPlane", *clip_plane);
 					} else {
 						s->setVec4("clipPlane", glm::vec4(0, 0, 0, 0));
+					}
+
+					if (!is_shadow_pass) {
+						// Bind refraction texture to a fixed unit (14) if not a shadow pass
+						glActiveTexture(GL_TEXTURE14);
+						glBindTexture(GL_TEXTURE_2D, refraction_texture_);
+						s->trySetInt("refractionTexture", 14);
 					}
 				}
 
@@ -2377,6 +2400,14 @@ namespace Boidsish {
 			// Resize velocity texture
 			glBindTexture(GL_TEXTURE_2D, main_fbo_velocity_texture_);
 			glTexImage2D(GL_TEXTURE_2D, 0, GL_RG16F, render_width, render_height, 0, GL_RG, GL_FLOAT, NULL);
+
+			// Resize refraction texture
+			glBindTexture(GL_TEXTURE_2D, refraction_texture_);
+			if (enable_hdr_) {
+				glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB16F, render_width, render_height, 0, GL_RGB, GL_FLOAT, NULL);
+			} else {
+				glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, render_width, render_height, 0, GL_RGB, GL_UNSIGNED_BYTE, NULL);
+			}
 
 			// Resize depth-stencil texture
 			glBindTexture(GL_TEXTURE_2D, main_fbo_depth_texture_);
@@ -3277,6 +3308,19 @@ namespace Boidsish {
 			glBindFramebuffer(GL_FRAMEBUFFER, impl->post_processing_manager_->GetCurrentFBO());
 			current_texture = impl->post_processing_manager_->GetFinalTexture();
 		}
+
+		// Capture background for refraction before rendering transparency
+		if (skip_intermediate) {
+			glBindFramebuffer(GL_READ_FRAMEBUFFER, 0);
+		} else {
+			glBindFramebuffer(
+				GL_READ_FRAMEBUFFER,
+				effects_enabled ? impl->post_processing_manager_->GetCurrentFBO() : impl->main_fbo_
+			);
+		}
+		glBindTexture(GL_TEXTURE_2D, impl->refraction_texture_);
+		glCopyTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, 0, 0, impl->render_width, impl->render_height);
+		glBindFramebuffer(GL_READ_FRAMEBUFFER, 0);
 
 		// Render transparent shapes after sky and early post-processing
 		// impl->UpdateFrustumUbo(view, impl->projection, impl->camera.pos());
