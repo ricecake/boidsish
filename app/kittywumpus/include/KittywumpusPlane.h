@@ -72,6 +72,7 @@ private:
 	int                                        beam_id_ = -1;
 	bool                                       beam_spawn_queued_ = false;
 	float                                      fire_effect_timer_ = 0.0f;
+	float                                      dying_timer_ = 0.0f;
 	std::shared_ptr<FireEffect>                dying_fire_effect_;
 	float                                      spiral_intensity_ = 1.0f;
 	mutable std::mutex                         effect_mutex_;

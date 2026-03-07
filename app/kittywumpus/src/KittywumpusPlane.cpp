@@ -183,6 +183,11 @@ void KittywumpusPlane::UpdateEntity(const EntityHandler& handler, float time, fl
 
 	if (state_ == PlaneState::ALIVE && health_ <= 0) {
 		state_ = PlaneState::DYING;
+		dying_timer_ = 0.0f;
+	}
+
+	if (state_ == PlaneState::DYING) {
+		dying_timer_ += delta_time;
 	}
 
 	// Update heading lock timer (used during takeoff)
@@ -380,19 +385,26 @@ void KittywumpusPlane::UpdateEntity(const EntityHandler& handler, float time, fl
 	// --- Auto-leveling ---
 	if (state_ == PlaneState::DYING) {
 		target_rot_velocity *= 0.2f;
-		target_rot_velocity.z += 0.75f * spiral_intensity_ * sin(time / 3);
-		target_rot_velocity.x += 0.5f * spiral_intensity_ * sin(time / 5);
+		// target_rot_velocity.z += 1.5f * spiral_intensity_ * (sin(time * 2.1f) + 0.5f * sin(time * 5.4f));
+		// target_rot_velocity.x += 1.0f * spiral_intensity_ * (sin(time * 1.7f) + 0.5f * sin(time * 4.2f));
+		target_rot_velocity.y += 0.8f * spiral_intensity_ * (sin(time * 1.3f) + 0.5f * sin(time * 3.8f));
 	}
 
-	if (!controller_->pitch_up && !controller_->pitch_down && !controller_->yaw_left && !controller_->yaw_right &&
-	    !controller_->roll_left && !controller_->roll_right) {
+	bool should_auto_level = (!controller_->pitch_up && !controller_->pitch_down && !controller_->yaw_left &&
+	                          !controller_->yaw_right && !controller_->roll_left && !controller_->roll_right) ||
+	                         (state_ == PlaneState::DYING);
+
+	if (should_auto_level) {
 		glm::vec3 world_up = glm::vec3(0.0f, 1.0f, 0.0f);
-		glm::vec3 plane_forward_world = orientation_ * glm::vec3(0.0f, 0.0f, -1.0f);
+		float     level_speed = kAutoLevelSpeed;
 
 		if (state_ == PlaneState::DYING) {
-			world_up = glm::normalize(glm::vec3(0.0f, 1.0f, -0.40f));
+			float downward_bias = std::min(0.2f * dying_timer_, 2.0f);
+			world_up = glm::normalize(glm::vec3(0.0f, 1.0f, -0.40f - downward_bias));
+			level_speed *= 2.0f;
 		}
 
+		glm::vec3 plane_forward_world = orientation_ * glm::vec3(0.0f, 0.0f, -1.0f);
 		glm::vec3 world_up_in_local = glm::inverse(orientation_) * world_up;
 
 		float pitch_error = glm::asin(glm::dot(plane_forward_world, world_up));
@@ -402,8 +414,8 @@ void KittywumpusPlane::UpdateEntity(const EntityHandler& handler, float time, fl
 			roll_error = 0.0f;
 		}
 
-		target_rot_velocity.x -= pitch_error * kAutoLevelSpeed;
-		target_rot_velocity.z -= roll_error * kAutoLevelSpeed;
+		target_rot_velocity.x -= pitch_error * level_speed;
+		target_rot_velocity.z -= roll_error * level_speed;
 	}
 
 	if (my_beam && (my_beam->IsCharging() || my_beam->IsFiring() || my_beam->IsShrinking())) {
@@ -557,6 +569,7 @@ void KittywumpusPlane::ResetState() {
 	is_grounded_ = false;
 	heading_lock_timer_ = 0.0f;
 	chaff_timer_ = 0.0f;
+	dying_timer_ = 0.0f;
 	forward_speed_ = 20.0f;
 	spiral_intensity_ = 1.0f;
 	super_speed_state_ = SuperSpeedState::NORMAL;
