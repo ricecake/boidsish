@@ -45,21 +45,37 @@ bool isOccluded(vec3 center, float radius, sampler2D hizTexture, ivec2 hizSize, 
     if (clipPos.w <= 0.0) return false; // Behind camera
 
     vec3 ndc = clipPos.xyz / clipPos.w;
+    // Map NDC Z from [-1, 1] to [0, 1] for depth comparison
+    float nearestDepth = ndc.z * 0.5 + 0.5;
+
     if (abs(ndc.x) > 1.1 || abs(ndc.y) > 1.1) return false; // Out of frustum (rough)
 
     vec2 uv = ndc.xy * 0.5 + 0.5;
 
     // Calculate required mip level based on screen-space footprint
+    // Screen-space radius in pixels
     float screenRadius = (radius * u_viewportHeight * uProjection[1][1]) / (2.0 * clipPos.w);
-    float lod = log2(screenRadius * 2.0);
-    lod = clamp(lod, 0.0, float(hizMipCount - 1));
+    float maxPixelDim = screenRadius * 2.0;
 
-    float depth = textureLod(hizTexture, uv, lod).r;
+    // Calculate LOD based on size
+    int lod = clamp(int(ceil(log2(max(maxPixelDim, 1.0) / 2.0))), 0, hizMipCount - 1);
 
-    // NDZ depth is usually [0, 1] where 0 is near, 1 is far.
-    // However, our Hi-Z might be linear or reversed.
-    // Assuming standard GL depth:
-    return ndc.z > depth + 0.0001;
+    // Perform conservative Hi-Z test by sampling 4 texels at the appropriate LOD
+    // This is more robust than a single point sample
+    float offset = screenRadius / float(hizSize.x); // Approximate UV offset
+
+    float hizDepth = 0.0;
+    hizDepth = max(hizDepth, textureLod(hizTexture, uv + vec2(-offset, -offset), float(lod)).r);
+    hizDepth = max(hizDepth, textureLod(hizTexture, uv + vec2(offset, -offset), float(lod)).r);
+    hizDepth = max(hizDepth, textureLod(hizTexture, uv + vec2(-offset, offset), float(lod)).r);
+    hizDepth = max(hizDepth, textureLod(hizTexture, uv + vec2(offset, offset), float(lod)).r);
+
+    // If Hi-Z reads as zero/near-zero, the data is invalid (uninitialized or
+    // stale due to a memory barrier issue). Conservatively keep the object visible.
+    if (hizDepth < 0.0001)
+        return false;
+
+    return nearestDepth > hizDepth + 0.0001;
 }
 
 #endif // CULLING_GLSL
