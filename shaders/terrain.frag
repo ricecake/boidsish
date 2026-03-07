@@ -261,7 +261,8 @@ void main() {
 	}
 
 	float dist = length(FragPos.xz - viewPos.xz);
-	float n_fade = snoise(vec3(FragPos.xy / (25 * worldScale), time * 0.08));
+	// float n_fade = snoise(vec3(FragPos.xy / (25 * worldScale), time * 0.08));
+	float n_fade = fastSimplex3d(vec3(FragPos.xy / (125 * worldScale), time * 0.09));
 	float fade_start = 560.0 * worldScale;
 	float fade_end = 570.0 * worldScale;
 	float fade = 1.0 - smoothstep(fade_start, fade_end, dist + n_fade * 40.0);

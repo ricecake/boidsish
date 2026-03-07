@@ -184,7 +184,7 @@ namespace Boidsish {
 		glm::mat4 hiz_prev_vp_{1.0f};
 		bool      hiz_enabled_ = false;
 
-		static constexpr int kInstancesPerChunk = 256;
+		static constexpr int kInstancesPerChunk = 1024;
 		static constexpr int kMaxActiveChunks = 576;
 		static constexpr int kMaxInstancesPerType = kInstancesPerChunk * kMaxActiveChunks; // 147,456
 	};
