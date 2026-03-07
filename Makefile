@@ -5,6 +5,7 @@ CONFIG = Release
 .PHONY: all clean format run clean-build
 
 all:
+	rm -rf $(BUILD_DIR)/shaders/
 	@cmake -B $(BUILD_DIR) -DCMAKE_BUILD_TYPE=$(CONFIG)
 	@cmake --build $(BUILD_DIR) --parallel
 
