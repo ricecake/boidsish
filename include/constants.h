@@ -40,6 +40,10 @@ namespace Boidsish {
 			constexpr int TerrainData() {
 				return 8;
 			}
+
+			constexpr int CullingData() {
+				return 9;
+			}
 		} // namespace UboBinding
 
 		namespace SsboBinding {
