@@ -28,8 +28,8 @@ struct Emitter {
 	int   slice_data_offset;
 	int   slice_data_count;
 	float slice_area;
-	int request_clear;
-	int _padding_emitter[2];
+	int   request_clear;
+	int   _padding_emitter[2];
 };
 
 layout(std430, binding = 0) buffer ParticleBuffer {
@@ -249,7 +249,8 @@ void main() {
 	// Also check if a clear has been requested for this emitter.
 	if (emitter_index != -1 && u_num_emitters > 0 && emitter_index < u_num_emitters) {
 		Emitter emitter = emitters[emitter_index];
-		if ((emitter.request_clear != 0 || p.style == 5 || p.emitter_id != emitter.id) && p.pos.w > 0.0) {
+		if (emitter.request_clear != 0 || (p.style == 5 && p.pos.w > 0.0) ||
+		    (p.emitter_id != emitter.id && p.pos.w <= 0.50)) {
 			p.pos.w = 0.0;
 		}
 	}
@@ -282,14 +283,14 @@ void main() {
 					// Use a window proportional to the slice area for consistent particle density.
 					float window = clamp(emitter.slice_area * 0.0001, 0.0005, 0.05);
 					if (abs(lifeTimeModifier - emitter.sweep) > window) {
-							return;
+						return;
 					}
 
 					spawn_pos = slice_data[emitter.slice_data_offset + (gid % emitter.slice_data_count)].xyz;
 				} else if (emitter.type == 4) { // Model but no slice data (not hitting model yet)
-						p.pos.w = 0.0;
-						particles[gid] = p;
-						return;
+					p.pos.w = 0.0;
+					particles[gid] = p;
+					return;
 				} else if (emitter.type == 1) { // Box
 					vec3 r = rand3(seed) - 0.5;
 					vec3 rel_p = r * emitter.dimensions;
