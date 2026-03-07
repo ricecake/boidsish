@@ -55,18 +55,19 @@ namespace Boidsish {
 
 		// Flow along path
 		glm::vec2 flow_dir = glm::vec2(-gradient.y, gradient.x);
-		glm::vec3 velocity = glm::vec3(flow_dir.x, 0, flow_dir.y) * 40.0f;
+		glm::vec3 velocity = glm::vec3(flow_dir.x, 0, flow_dir.y) * 25.0f;
 
 		// Correct towards spine if too far
 		if (std::abs(dist_from_spine) > 50.0f) {
-			glm::vec3 correction = glm::vec3(-gradient.x, 0, -gradient.y) * dist_from_spine * 0.5f;
+			glm::vec3 correction = glm::vec3(-gradient.x, 0, -gradient.y) * dist_from_spine * 0.2f;
 			velocity += correction;
 		}
 
 		// Ground clamping
 		auto [h, norm] = handler.GetTerrainPropertiesAtPoint(pos.x, pos.z);
 		float target_y = h + 2.0f;
-		pos.y = glm::mix(pos.y, target_y, delta_time * 5.0f);
+		if (pos.y < h) pos.y = h; // Snap up if underground
+		pos.y = glm::mix(pos.y, target_y, delta_time * 10.0f);
 
 		SetPosition(pos.x, pos.y, pos.z);
 		SetVelocity(Vector3(velocity.x, velocity.y, velocity.z));
@@ -106,8 +107,14 @@ namespace Boidsish {
 			return;
 		}
 
-		glm::vec3 vel = glm::normalize(to_target) * 60.0f;
+		glm::vec3 vel = glm::normalize(to_target) * 40.0f;
 		SetVelocity(Vector3(vel.x, vel.y, vel.z));
+
+		// Ensure we stay above ground during positioning
+		auto [h, norm] = handler.GetTerrainPropertiesAtPoint(pos.x, pos.z);
+		if (pos.y < h + 2.0f) pos.y = h + 2.0f;
+		SetPosition(pos.x, pos.y, pos.z);
+
 		state_timer_ += delta_time;
 	}
 

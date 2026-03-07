@@ -211,8 +211,11 @@ namespace Boidsish {
 		float                       min_t = std::numeric_limits<float>::max();
 
 		for (const auto& [id, entity] : entities_) {
+			if (!entity->IsTargetable())
+				continue;
+
 			auto shape = entity->GetShape();
-			if (!shape)
+			if (!shape || shape->IsHidden())
 				continue;
 
 			float t;
