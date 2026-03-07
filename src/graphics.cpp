@@ -3309,6 +3309,15 @@ namespace Boidsish {
 			current_texture = impl->post_processing_manager_->GetFinalTexture();
 		}
 
+		// Render transparent/particle effects so they are captured in the refraction texture
+		impl->fire_effect_manager
+			->Render(view, impl->projection, impl->camera.pos(), impl->noise_manager->GetNoiseTexture());
+		impl->mesh_explosion_manager->Render(view, impl->projection, impl->camera.pos());
+		if (impl->akira_effect_manager) {
+			impl->akira_effect_manager->Render(view, impl->projection, impl->simulation_time);
+		}
+		impl->RenderTrails(view, std::nullopt);
+
 		// Capture background for refraction before rendering transparency
 		if (skip_intermediate) {
 			glBindFramebuffer(GL_READ_FRAMEBUFFER, 0);
@@ -3336,15 +3345,6 @@ namespace Boidsish {
 		);
 
 		glDepthMask(GL_TRUE);
-
-		// Render transparent/particle effects last
-		impl->fire_effect_manager
-			->Render(view, impl->projection, impl->camera.pos(), impl->noise_manager->GetNoiseTexture());
-		impl->mesh_explosion_manager->Render(view, impl->projection, impl->camera.pos());
-		if (impl->akira_effect_manager) {
-			impl->akira_effect_manager->Render(view, impl->projection, impl->simulation_time);
-		}
-		impl->RenderTrails(view, std::nullopt);
 
 		if (effects_enabled) {
 			// --- Post-processing Pass (renders FBO texture to screen) ---
