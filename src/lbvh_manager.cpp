@@ -248,6 +248,7 @@ void LBVHManager::Refit(GLuint aabb_ssbo) {
 }
 
 void LBVHManager::Bind(GLuint binding) const {
+    if (this == nullptr || nodes_ssbo_ == 0) return;
     glBindBufferBase(GL_SHADER_STORAGE_BUFFER, binding, nodes_ssbo_);
 }
 

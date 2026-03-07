@@ -73,12 +73,13 @@ int main() {
             raycast_shader.setVec3("u_rayDir", ray_dir);
 
             // Bind TLAS for the first decor type
+            if (decor_manager.GetDecorTypes().empty()) break;
             auto& type = decor_manager.GetDecorTypes()[0];
-            type.lbvh->Bind(20);
+            if (type.lbvh) type.lbvh->Bind(20);
 
             // Bind BLAS for the model
             auto model_data = type.model->GetData();
-            model_data->lbvh->Bind(21);
+            if (model_data->lbvh) model_data->lbvh->Bind(21);
 
             // Bind other buffers
             glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, type.ssbo);
@@ -86,8 +87,8 @@ int main() {
             glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 23, model_data->triangle_vertices_ssbo);
             glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 30, hit_ssbo);
 
-            raycast_shader.setInt("u_tlasRoot", type.lbvh->GetRootIndex());
-            raycast_shader.setInt("u_blasRoot", model_data->lbvh->GetRootIndex());
+            raycast_shader.setInt("u_tlasRoot", type.lbvh ? type.lbvh->GetRootIndex() : -1);
+            raycast_shader.setInt("u_blasRoot", model_data->lbvh ? model_data->lbvh->GetRootIndex() : -1);
 
             glDispatchCompute(1, 1, 1);
             glMemoryBarrier(GL_BUFFER_UPDATE_BARRIER_BIT);

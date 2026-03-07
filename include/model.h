@@ -188,6 +188,13 @@ namespace Boidsish {
 		NodeData                        root_node;
 
 		ModelData() = default;
+		~ModelData() {
+			if (triangle_vertices_ssbo) glDeleteBuffers(1, &triangle_vertices_ssbo);
+			if (triangle_indices_ssbo) glDeleteBuffers(1, &triangle_indices_ssbo);
+			if (triangle_aabb_ssbo) glDeleteBuffers(1, &triangle_aabb_ssbo);
+			if (triangle_active_ssbo) glDeleteBuffers(1, &triangle_active_ssbo);
+		}
+
 		ModelData(const ModelData& other) {
 			meshes = other.meshes;
 			textures_loaded = other.textures_loaded;
@@ -210,6 +217,11 @@ namespace Boidsish {
 
 		ModelData& operator=(const ModelData& other) {
 			if (this != &other) {
+				if (triangle_vertices_ssbo) glDeleteBuffers(1, &triangle_vertices_ssbo);
+				if (triangle_indices_ssbo) glDeleteBuffers(1, &triangle_indices_ssbo);
+				if (triangle_aabb_ssbo) glDeleteBuffers(1, &triangle_aabb_ssbo);
+				if (triangle_active_ssbo) glDeleteBuffers(1, &triangle_active_ssbo);
+
 				meshes = other.meshes;
 				textures_loaded = other.textures_loaded;
 				directory = other.directory;

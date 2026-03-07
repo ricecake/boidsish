@@ -383,7 +383,17 @@ namespace Boidsish {
 		if (!render_manager)
 			return;
 
+		float world_scale = terrain_gen.GetWorldScale();
+
+		// Threshold for significant camera movement to trigger allocation update
+		float move_threshold = 5.0f * world_scale;
+		if (glm::distance(glm::vec2(camera.x, camera.z), glm::vec2(last_camera_pos_.x, last_camera_pos_.z)) <
+		    move_threshold) {
+			return;
+		}
+
 		_UpdateAllocation(camera, frustum, terrain_gen, render_manager);
+		last_camera_pos_ = glm::vec3(camera.x, camera.y, camera.z);
 	}
 
 	void DecorManager::_UpdateAllocation(
@@ -471,6 +481,7 @@ namespace Boidsish {
 					);
 
 					// Also zero out active flags for BVH
+					type.lbvh_dirty = true;
 					std::vector<uint32_t> active_zeros(kInstancesPerChunk, 0);
 					glBindBuffer(GL_SHADER_STORAGE_BUFFER, type.active_ssbo);
 					glBufferSubData(
@@ -562,6 +573,7 @@ namespace Boidsish {
 							placement_shader_->setInt("u_baseInstanceIndex", block * kInstancesPerChunk);
 
 							glDispatchCompute(4, 4, 1); // 32x32 = 1024 threads
+							type.lbvh_dirty = true;
 							break;
 						}
 					}
@@ -571,6 +583,9 @@ namespace Boidsish {
 
 			// Rebuild BVHs for all types
 			for (auto& type : decor_types_) {
+				if (!type.lbvh_dirty) continue;
+				type.lbvh_dirty = false;
+
 				type.lbvh->Build(
 					kMaxInstancesPerType,
 					type.aabb_ssbo,
