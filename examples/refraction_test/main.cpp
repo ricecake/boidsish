@@ -5,6 +5,7 @@
 
 #include "dot.h"
 #include "graphics.h"
+#include "model.h"
 
 using namespace Boidsish;
 
@@ -15,15 +16,24 @@ std::vector<std::shared_ptr<Shape>> RefractionExample(float time) {
 	std::vector<std::shared_ptr<Shape>> shapes;
 
 	// 1. Create a large central "glass" sphere
-	auto glassSphere = std::make_shared<Dot>(1, 0.0f, 0.0f, 0.0f, 200.0f); // Size 2.0 in world units
+	auto glassSphere = std::make_shared<Model>("assets/Mesh_Cat.obj");
+	glassSphere->SetPosition(0, 9, 0);
+	glassSphere->SetScale(glm::vec3(0.1250f));
+
+	// auto glassSphere = std::make_shared<Dot>(1, 0.0f, 0.0f, 0.0f, 200.0f); // Size 2.0 in world units
 
 	// Index of refraction animation:
 	// Cycles from 1.5 (glass-like) down to 1.0 (invisible) over a 10s period.
 	float cycle = (sin(time * 0.5f) * 0.5f + 0.5f);
-	float ior = 1.0f + cycle * 0.5f;
+	float ior = 1.0f + cycle * 0.51f;
 
 	glassSphere->SetRefractive(true, ior);
-	glassSphere->SetColor(1.0f, 1.0f, 1.0f, 0.4f); // Slightly higher alpha for better surface visibility
+	glassSphere->SetColor(
+		1.0f,
+		1.0f,
+		1.0f,
+		0.01f
+	); // glm::smoothstep(0.33f, 0.66f, cycle)); // Slightly higher alpha for better surface visibility
 	glassSphere->SetUsePBR(true);
 	glassSphere->SetRoughness(0.05f); // Very smooth
 	glassSphere->SetMetallic(0.0f);

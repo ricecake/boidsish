@@ -13,6 +13,7 @@ layout(std430, binding = 2) buffer UniformsSSBO {
 uniform bool uUseMDI = false;
 flat in int  vUniformIndex;
 
+#include "helpers/fast_noise.glsl"
 #include "helpers/lighting.glsl"
 #include "visual_effects.frag"
 #include "visual_effects.glsl"
@@ -146,26 +147,64 @@ void main() {
 
 	if (c_is_refractive) {
 		vec3 V = normalize(FragPos - viewPos);
-		vec3 R = refract(V, norm, 1.0 / max(c_refractive_index, 1.0));
 
-		// Generalized refraction: project refracted ray back to screen space
-		// We use a fixed distance fallback for simplicity, but could sample depth buffer for better accuracy
-		vec3 refractedPos = FragPos + R * 10.0; // Fallback distance
-		vec4 refractedClip = viewProjection * vec4(refractedPos, 1.0);
-		vec2 refractedUV = (refractedClip.xy / refractedClip.w) * 0.5 + 0.5;
-
-		// Use the direct screen-space offset if IOR is close to 1.0 for better "vanishing"
 		vec2 screenUV = gl_FragCoord.xy * texelSize;
-		refractedUV = mix(screenUV, refractedUV, smoothstep(1.0, 1.01, c_refractive_index));
 
-		float distToEdge = min(min(refractedUV.x, 1.0 - refractedUV.x), min(refractedUV.y, 1.0 - refractedUV.y));
+		// vec3 a = vec3(0.5, 0.5, 0.5);
+		// vec3 b = vec3(0.5, 0.5, 0.5);
+		// vec3 c = vec3(1.0, 1.0, 1.0);
+		// vec3 d = vec3(0.0, 0.33, 0.67); // Shifts for R, G, B
+
+		vec3 a = vec3(0.5, 0.5, 0.5);
+		vec3 b = vec3(0.5, 0.5, 0.5);
+		vec3 c = vec3(0.8, 0.8, 0.8);
+		vec3 d = vec3(0.0, 0.33, 0.67); // Shifts for R, G, B
+
+		vec3  refractionColor = vec3(0);
+		vec3  refractionAcc = vec3(0);
+		int   steps = 5;
+		float jitter = fastWarpedFbm3d(vec3(screenUV * 0.125, time * 0.125)) * 0.5 + 0.5;
+		for (int i = 0; i < steps; i++) {
+			vec3 R = refract(
+				V,
+				norm,
+				1.0 / max(c_refractive_index + jitter * ((float(i) / float(steps - 1)) * 0.15), 1.0)
+			);
+			// Generalized refraction: project refracted ray back to screen space
+			// We use a fixed distance fallback for simplicity, but could sample depth buffer for better accuracy
+			vec3 refractedPos = FragPos + R * 10.0; // Fallback distance
+			vec4 refractedClip = viewProjection * vec4(refractedPos, 1.0);
+			vec2 refractedUV = (refractedClip.xy / refractedClip.w) * 0.5 + 0.5;
+
+			// Use the direct screen-space offset if IOR is close to 1.0 for better "vanishing"
+			refractedUV = mix(screenUV, refractedUV, smoothstep(1.0, 1.01, c_refractive_index));
+
+			float distToEdge = min(min(refractedUV.x, 1.0 - refractedUV.x), min(refractedUV.y, 1.0 - refractedUV.y));
+
+			vec3 rawColor = texture(refractionTexture, refractedUV).rgb;
+			vec3 testColor = (a + b * cos(6.28318 * (c * (float(i * jitter) / float(steps - 1)) + d)));
+			refractionColor += rawColor * testColor;
+			refractionAcc += testColor;
+			// vec3 nRawColor = normalize(rawColor);
+			// refractionColor.r += (rawColor.r) * dot(rawColor, (testColor));
+			// refractionColor.g += (rawColor.g) * dot(rawColor, (testColor));
+			// refractionColor.b += (rawColor.b) * dot(rawColor, (testColor));
+		}
+
+		refractionColor /= refractionAcc;
+
+		vec4  cl = viewProjection * vec4(FragPos, 1.0);
+		vec2  uv = (cl.xy / cl.w) * 0.5 + 0.5;
+		float distToEdge = min(min(uv.x, 1.0 - uv.x), min(uv.y, 1.0 - uv.y));
 		float edgeFade = smoothstep(0.0, 0.05, distToEdge);
 
-		vec3 refractionColor = texture(refractionTexture, refractedUV).rgb;
 		// Blend refraction with the lit surface color.
 		// For refractive objects, we treat the object alpha as a tint rather than traditional transparency.
-		result = mix(refractionColor, result * c_objectColor, c_objectAlpha * 0.5) * edgeFade +
-			refractionColor * (1.0 - edgeFade);
+		// result = refractionColor;
+		result = mix(refractionColor, result * c_objectColor, c_objectAlpha * 0.25) * edgeFade +
+			mix(refractionColor * (1.0 - edgeFade),
+		        2 * (refractionColor / length(refractionColor)),
+		        pow(1.0 - abs(dot(viewDir, norm)), 10.0));
 	}
 
 	if (c_isLine && c_lineStyle == 1) { // LASER style

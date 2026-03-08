@@ -266,9 +266,9 @@ void main() {
 	Normal = mat3(transpose(inverse(modelMatrix))) * displacedNormal;
 	TexCoords = aTexCoords;
 	vs_color = aVertexColor;
-	if (wireframe_enabled == 1) {
-		barycentric = getBarycentric();
-	}
+	// if (wireframe_enabled == 1) {
+	barycentric = getBarycentric();
+	// }
 
 	if (current_isColossal) {
 		mat4 staticView = mat4(mat3(view));
