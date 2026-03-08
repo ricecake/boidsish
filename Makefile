@@ -19,6 +19,7 @@ check:
 	@cmake --build $(BUILD_DIR) --target check
 
 glcheck:
+	rm -rf $(BUILD_DIR)/shaders_preprocessed/
 	@cmake -B $(BUILD_DIR) -DCMAKE_BUILD_TYPE=$(CONFIG)
 	@cmake --build $(BUILD_DIR) --target glcheck
 
