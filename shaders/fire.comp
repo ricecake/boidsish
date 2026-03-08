@@ -376,7 +376,7 @@ void main() {
 
 		// --- 3b. Sparse Ambient Respawn ---
 		vec2 seed = vec2(float(gid), u_time);
-		if (u_num_chunks > 0 && rand(seed) < 0.005) {
+		if (u_num_chunks > 0 && rand(seed) < 0.0005) {
 			// Try a few times to find a chunk closer to the camera
 			/*
 			    Pick a random point, but do it based on angle from viewDir.

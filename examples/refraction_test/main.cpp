@@ -15,7 +15,7 @@ std::vector<std::shared_ptr<Shape>> RefractionExample(float time) {
 	std::vector<std::shared_ptr<Shape>> shapes;
 
 	// 1. Create a large central "glass" sphere
-	auto glassSphere = std::make_shared<Dot>(1, 0.0f, 0.0f, 0.0f, 200.0f); // Size 2.0 in world units
+	auto glassSphere = std::make_shared<Dot>(1, 0.0f, 10.0f, 0.0f, 300.0f); // Size 2.0 in world units
 
 	// Index of refraction animation:
 	// Cycles from 1.5 (glass-like) down to 1.0 (invisible) over a 10s period.
@@ -23,7 +23,7 @@ std::vector<std::shared_ptr<Shape>> RefractionExample(float time) {
 	float ior = 1.0f + cycle * 0.5f;
 
 	glassSphere->SetRefractive(true, ior);
-	glassSphere->SetColor(1.0f, 1.0f, 1.0f, 0.4f); // Slightly higher alpha for better surface visibility
+	glassSphere->SetColor(1.0f, 1.0f, 1.0f, 0.14f); // Slightly higher alpha for better surface visibility
 	glassSphere->SetUsePBR(true);
 	glassSphere->SetRoughness(0.05f); // Very smooth
 	glassSphere->SetMetallic(0.0f);
