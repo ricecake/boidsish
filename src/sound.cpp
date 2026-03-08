@@ -14,14 +14,15 @@ namespace Boidsish {
 		bool               loop,
 		float              volume,
 		bool               spatialized,
-		const glm::vec3&   position
+		const glm::vec3&   position,
+		ma_sound_group*    group
 	) {
 		if (!engine) {
 			logger::ERROR("Sound created with null audio engine.");
 			return;
 		}
 
-		ma_result result = ma_sound_init_from_file(engine, filepath.c_str(), 0, NULL, NULL, &_sound);
+		ma_result result = ma_sound_init_from_file(engine, filepath.c_str(), 0, group, NULL, &_sound);
 		if (result != MA_SUCCESS) {
 			logger::ERROR("Failed to load sound file: {}", filepath);
 			return;
@@ -51,6 +52,12 @@ namespace Boidsish {
 	void Sound::SetVolume(float volume) {
 		if (_initialized) {
 			ma_sound_set_volume(&_sound, volume);
+		}
+	}
+
+	void Sound::SetPitch(float pitch) {
+		if (_initialized) {
+			ma_sound_set_pitch(&_sound, pitch);
 		}
 	}
 

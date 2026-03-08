@@ -15,7 +15,8 @@ namespace Boidsish {
 			bool               loop = false,
 			float              volume = 1.0f,
 			bool               spatialized = true,
-			const glm::vec3&   position = {0, 0, 0}
+			const glm::vec3&   position = {0, 0, 0},
+			ma_sound_group*    group = nullptr
 		);
 		~Sound();
 
@@ -27,6 +28,7 @@ namespace Boidsish {
 
 		void SetPosition(const glm::vec3& position);
 		void SetVolume(float volume);
+		void SetPitch(float pitch);
 		void SetLooping(bool loop);
 		bool IsDone();
 
