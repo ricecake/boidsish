@@ -71,8 +71,7 @@ namespace Boidsish {
 	}
 
 	AABB Dot::GetLocalAABB() const {
-		float radius = size_ * 0.01f;
-		return AABB(glm::vec3(-radius), glm::vec3(radius));
+		return AABB(glm::vec3(-1.0f), glm::vec3(1.0f));
 	}
 
 } // namespace Boidsish
