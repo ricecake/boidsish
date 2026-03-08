@@ -437,17 +437,45 @@ protected:
 		return 0;
 	}
 
-	std::string loadShaderSource(const std::string& path, std::set<std::string>& includedFiles) {
-		namespace fs = std::filesystem;
-		fs::path p(path);
-		bool     isTopLevel = includedFiles.empty();
-
-		// 1. If we are explicitly loading a unified shader, just load it from disk.
-		if (p.string().find(".unified.") != std::string::npos) {
-			if (isTopLevel) {
-				return loadFromFile(path);
+	std::string generateIncludeGuard(const std::string& path) {
+		std::string guard = "G";
+		for (char c : path) {
+			if (std::isalnum(c)) {
+				guard += (char)std::toupper(c);
+			} else if (!guard.empty() && guard.back() != '_') {
+				guard += '_';
 			}
 		}
+		while (!guard.empty() && guard.back() == '_') {
+			guard.pop_back();
+		}
+		return guard;
+	}
+
+	std::string loadShaderSource(const std::string& path, std::set<std::string>& includedFiles) {
+		namespace fs = std::filesystem;
+		fs::path p = fs::absolute(fs::path(path));
+		try {
+			p = fs::weakly_canonical(p);
+			fs::path root = fs::current_path();
+			// Use relative path if possible for cleaner guards
+			if (p.string().find(root.string()) == 0) {
+				p = fs::relative(p, root);
+			}
+		} catch (...) {
+		}
+
+		std::string processedPath = p.string();
+		bool        isTopLevel = includedFiles.empty();
+
+		// 1. If we are explicitly loading a unified shader, just load it from disk.
+		if (processedPath.find(".unified.") != std::string::npos) {
+			if (isTopLevel) {
+				return loadFromFile(processedPath);
+			}
+		}
+
+		std::string sourceCode = loadFromFile(processedPath);
 
 		std::string unifiedPath;
 		if (isTopLevel) {
@@ -488,93 +516,124 @@ protected:
 			unifiedPath = (p.parent_path() / unifiedName).string();
 #endif
 
-			// 3. Try loading from unifiedPath
-			if (!unifiedPath.empty()) {
-				std::string content = loadFromFile(unifiedPath);
-				if (!content.empty())
-					return content;
-			}
+			if (sourceCode.empty()) {
+				// 3. Try loading from unifiedPath
+				if (!unifiedPath.empty()) {
+					sourceCode = loadFromFile(unifiedPath);
+					if (!sourceCode.empty())
+						return sourceCode;
+				}
 
-			// 4. Try loading from next to original
-			fs::path nextToOriginal = p.parent_path() / unifiedName;
-			if (nextToOriginal.string() != unifiedPath) {
-				std::string content = loadFromFile(nextToOriginal.string());
-				if (!content.empty())
-					return content;
+				// 4. Try loading from next to original
+				fs::path nextToOriginal = p.parent_path() / unifiedName;
+				if (nextToOriginal.string() != unifiedPath) {
+					sourceCode = loadFromFile(nextToOriginal.string());
+					if (!sourceCode.empty())
+						return sourceCode;
+				}
 			}
 		}
 
-		if (includedFiles.count(path)) {
+		if (sourceCode.empty()) {
+			if (!isTopLevel) {
+				std::cerr << "ERROR::SHADER::FILE_NOT_SUCCESSFULLY_READ: " << processedPath << std::endl;
+			}
+			return "";
+		}
+
+		if (includedFiles.count(processedPath)) {
 			// Prevent circular inclusion
 			return "";
 		}
-		includedFiles.insert(path);
+		includedFiles.insert(processedPath);
 
-		std::string   sourceCode;
-		std::ifstream shaderFile;
-		shaderFile.exceptions(std::ifstream::failbit | std::ifstream::badbit);
-
-		try {
-			shaderFile.open(path);
-			std::stringstream shaderStream;
-			shaderStream << shaderFile.rdbuf();
-			shaderFile.close();
-			sourceCode = shaderStream.str();
-		} catch (std::ifstream::failure& e) {
-			std::cerr << "ERROR::SHADER::FILE_NOT_SUCCESSFULLY_READ: " << path << " " << e.what() << std::endl;
-			return "";
-		}
-
+		std::string        guard = generateIncludeGuard(processedPath);
 		std::string        finalSource;
+		std::string        versionLine;
 		std::istringstream iss(sourceCode);
 		std::string        line;
 
-		size_t      last_slash_idx = path.rfind('/');
-		std::string directory = "";
-		if (std::string::npos != last_slash_idx) {
-			directory = path.substr(0, last_slash_idx);
-		}
+		std::string preVersionContent;
+		std::string postVersionContent;
+		bool        foundVersion = false;
 
 		while (std::getline(iss, line)) {
-			if (line.substr(0, 8) == "#include") {
+			// Trim leading whitespace for checks
+			std::string trimmed = line;
+			size_t      firstNonWhitespace = trimmed.find_first_not_of(" \t\r\n");
+			if (firstNonWhitespace != std::string::npos) {
+				trimmed.erase(0, firstNonWhitespace);
+			}
+
+			// Always look for #include, even before #version (though unusual)
+			if (trimmed.substr(0, 8) == "#include") {
 				size_t firstQuote = line.find('"');
 				size_t lastQuote = line.rfind('"');
 				if (firstQuote != std::string::npos && lastQuote != std::string::npos && firstQuote < lastQuote) {
 					std::string includePath = line.substr(firstQuote + 1, lastQuote - firstQuote - 1);
 
 					// Search order: 1. Relative to current file, 2. relative to 'shaders/', 3. relative to 'external/'
-					std::vector<std::string> searchPaths;
-					if (!directory.empty()) {
-						searchPaths.push_back(directory + "/" + includePath);
-					} else {
-						searchPaths.push_back(includePath);
-					}
-					searchPaths.push_back("shaders/" + includePath);
-					searchPaths.push_back("external/" + includePath);
+					std::vector<fs::path> searchPaths;
+					searchPaths.push_back(p.parent_path() / includePath);
+					searchPaths.push_back(fs::path("shaders") / includePath);
+					searchPaths.push_back(fs::path("external") / includePath);
 
-					std::string fullPath = "";
+					std::string fullPathStr = "";
 					for (const auto& candidate : searchPaths) {
-						std::ifstream checkFile(candidate);
-						if (checkFile.is_open()) {
-							fullPath = candidate;
-							checkFile.close();
+						if (fs::exists(candidate) && !fs::is_directory(candidate)) {
+							fullPathStr = candidate.string();
 							break;
 						}
 					}
 
-					if (!fullPath.empty()) {
-						finalSource += "//START " + includePath + "\n";
-						finalSource += loadShaderSource(fullPath, includedFiles);
-						finalSource += "//END " + includePath + "\n";
+					if (!fullPathStr.empty()) {
+						std::string includedSource = loadShaderSource(fullPathStr, includedFiles);
+						std::string commentStart = "//START " + includePath + "\n";
+						std::string commentEnd = "//END " + includePath + " (returning to " + processedPath + ")\n";
+
+						if (foundVersion) {
+							postVersionContent += commentStart + includedSource;
+							if (!includedSource.empty() && includedSource.back() != '\n')
+								postVersionContent += "\n";
+							postVersionContent += commentEnd;
+						} else {
+							preVersionContent += commentStart + includedSource;
+							if (!includedSource.empty() && includedSource.back() != '\n')
+								preVersionContent += "\n";
+							preVersionContent += commentEnd;
+						}
 					} else {
 						std::cerr << "ERROR::SHADER::INCLUDE_NOT_FOUND: " << includePath
 								  << " (searched in relative, shaders/, and external/)" << std::endl;
 					}
+					continue;
 				}
+			}
+
+			if (!foundVersion) {
+				if (trimmed.substr(0, 8) == "#version") {
+					versionLine = line + "\n";
+					foundVersion = true;
+					continue;
+				}
+				preVersionContent += line + "\n";
 			} else {
-				finalSource += line + "\n";
+				postVersionContent += line + "\n";
 			}
 		}
+
+		// If no #version was found, all content is effectively post-version for the purpose of guards
+		if (!foundVersion) {
+			postVersionContent = preVersionContent;
+			preVersionContent = "";
+		}
+
+		finalSource = versionLine;
+		finalSource += "#ifndef " + guard + "\n";
+		finalSource += "#define " + guard + "\n";
+		finalSource += preVersionContent;
+		finalSource += postVersionContent;
+		finalSource += "#endif // " + guard + "\n";
 
 		// Apply variable replacements (e.g., [[MAX_LIGHTS]])
 		for (auto const& [placeholder, value] : GetReplacements()) {
@@ -586,18 +645,14 @@ protected:
 		}
 
 		if (isTopLevel && !finalSource.empty() && !unifiedPath.empty()) {
-			// Don't overwrite if it already exists (likely we just loaded it)
-			if (!fs::exists(unifiedPath)) {
-				try {
-					fs::path up(unifiedPath);
-					// Ensure the directory exists
-					std::filesystem::create_directories(up.parent_path());
-					std::ofstream out(unifiedPath);
-					if (out.is_open()) {
-						out << finalSource;
-					}
-				} catch (...) {
+			try {
+				fs::path up(unifiedPath);
+				std::filesystem::create_directories(up.parent_path());
+				std::ofstream out(unifiedPath);
+				if (out.is_open()) {
+					out << finalSource;
 				}
+			} catch (...) {
 			}
 		}
 
