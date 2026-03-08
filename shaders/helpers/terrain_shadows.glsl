@@ -1,7 +1,7 @@
 #ifndef TERRAIN_SHADOWS_GLSL
 #define TERRAIN_SHADOWS_GLSL
 
-#include "fast_noise.glsl"
+#include "helpers/fast_noise.glsl"
 
 layout(std140, binding = 8) uniform TerrainData {
 	ivec4 u_originSize;    // x, y=z, z=size, w=isBound

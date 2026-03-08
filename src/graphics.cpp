@@ -2943,6 +2943,8 @@ namespace Boidsish {
 			impl->terrain_render_manager ? impl->terrain_render_manager->GetBiomeTexture() : 0,
 			impl->lighting_ubo,
 			impl->culling_ubo,
+			impl->temporal_data_ubo,
+			impl->frustum_ubo,
 			impl->hiz_manager ? impl->hiz_manager->GetHiZTexture() : 0,
 			impl->hiz_manager ? glm::ivec2(impl->hiz_manager->GetWidth(), impl->hiz_manager->GetHeight())
 							  : glm::ivec2(0),
@@ -3255,7 +3257,11 @@ namespace Boidsish {
 						impl->shadow_manager->GetLightSpaceMatrix(info.map_index),
 						impl->shadow_manager->GetShadowShaderPtr().get(),
 						light_dir_to_light,
-						impl->terrain_render_manager
+						impl->terrain_render_manager,
+						impl->lighting_ubo,
+						impl->culling_ubo,
+						impl->temporal_data_ubo,
+						impl->frustum_ubo
 					);
 				}
 
@@ -3335,7 +3341,20 @@ namespace Boidsish {
 			} else {
 				impl->decor_manager->SetHiZEnabled(false);
 			}
-			impl->decor_manager->Render(view, impl->projection, impl->render_width, impl->render_height);
+			impl->decor_manager->Render(
+				view,
+				impl->projection,
+				impl->render_width,
+				impl->render_height,
+				std::nullopt,
+				nullptr,
+				std::nullopt,
+				impl->terrain_render_manager,
+				impl->lighting_ubo,
+				impl->culling_ubo,
+				impl->temporal_data_ubo,
+				impl->frustum_ubo
+			);
 		}
 
 		// Render sky AFTER opaque geometry so early-Z rejects covered fragments

@@ -1,5 +1,5 @@
-#ifndef CONSTANTS
-#define CONSTANTS
+#ifndef HELPERS_CONSTANTS_GLSL
+#define HELPERS_CONSTANTS_GLSL
 
 const float PI = 3.14159265359;
 

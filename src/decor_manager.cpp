@@ -550,7 +550,11 @@ namespace Boidsish {
 		const std::optional<glm::mat4>&       light_space_matrix,
 		Shader*                               shader_override,
 		const std::optional<glm::vec3>&       light_dir,
-		std::shared_ptr<TerrainRenderManager> render_manager
+		std::shared_ptr<TerrainRenderManager> render_manager,
+		GLuint                                lighting_ubo,
+		GLuint                                culling_ubo,
+		GLuint                                temporal_ubo,
+		GLuint                                frustum_ubo
 	) {
 		if (!enabled_ || !initialized_ || decor_types_.empty())
 			return;
@@ -573,7 +577,18 @@ namespace Boidsish {
 		culling_shader_->setInt("u_totalSlots", kMaxInstancesPerType);
 		culling_shader_->setMat4("u_viewProj", viewProj);
 		culling_shader_->setVec2("u_viewportSize", glm::vec2((float)viewport_width, (float)viewport_height));
-		culling_shader_->setFloat("u_minPixelSize", min_pixel_size_);
+		if (lighting_ubo != 0) {
+			glBindBufferBase(GL_UNIFORM_BUFFER, Constants::UboBinding::Lighting(), lighting_ubo);
+		}
+		if (culling_ubo != 0) {
+			glBindBufferBase(GL_UNIFORM_BUFFER, Constants::UboBinding::CullingData(), culling_ubo);
+		}
+		if (temporal_ubo != 0) {
+			glBindBufferBase(GL_UNIFORM_BUFFER, Constants::UboBinding::TemporalData(), temporal_ubo);
+		}
+		if (frustum_ubo != 0) {
+			glBindBufferBase(GL_UNIFORM_BUFFER, Constants::UboBinding::FrustumData(), frustum_ubo);
+		}
 
 		if (light_dir.has_value()) {
 			culling_shader_->setVec3("u_lightDir", *light_dir);

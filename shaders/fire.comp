@@ -64,8 +64,6 @@ uniform float u_time;
 uniform int   u_num_emitters;
 uniform int   u_num_chunks;
 
-uniform sampler3D      u_curlTexture;
-uniform sampler2DArray u_heightmapArray;
 uniform sampler2DArray u_biomeMap;
 uniform sampler2D      u_hizTexture;
 uniform ivec2          u_hizSize;
@@ -85,13 +83,13 @@ vec3 rand3(vec2 co) {
 vec3 curlNoise(vec3 p, float time) {
 	float noiseScale = 0.02;
 	vec3  lookupPos = p * noiseScale + vec3(0, 0, time * 0.1);
-	return texture(u_curlTexture, lookupPos).rgb;
+	return fastCurl3d(lookupPos);
 }
 
 float fbmCurlMagnitude(vec3 p, float time) {
 	float noiseScale = 0.02;
 	vec3  lookupPos = p * noiseScale + vec3(0, 0, time * 0.1);
-	return texture(u_curlTexture, lookupPos).a;
+	return fastFbmCurl3d(lookupPos);
 }
 
 // Simulation parameters
@@ -272,7 +270,8 @@ void main() {
 
 	// --- 2. Lifetime Update ---
 	p.pos.w -= u_delta_time;
-	if (distance(p.pos.xz, viewPos.xz) > 5.0 && dot(p.pos.xz - viewPos.xz, viewDir.xz) < 0) {
+	// Use viewDir from Lighting UBO
+	if (distance(p.pos.xz, viewPos.xz) > 5.0 && dot(p.pos.xyz - viewPos, viewDir) < 0) {
 		p.pos.w = 0;
 	}
 

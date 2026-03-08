@@ -58,6 +58,8 @@ namespace Boidsish {
 			GLuint                        biome_texture = 0,
 			GLuint                        lighting_ubo = 0,
 			GLuint                        culling_ubo = 0,
+			GLuint                        temporal_ubo = 0,
+			GLuint                        frustum_ubo = 0,
 			GLuint                        hiz_texture = 0,
 			glm::ivec2                    hiz_size = glm::ivec2(0),
 			int                           hiz_mip_count = 0
