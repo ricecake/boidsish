@@ -156,6 +156,8 @@ namespace Boidsish {
 
 		void GenerateRenderPackets(std::vector<RenderPacket>& out_packets, const RenderContext& context) const override;
 
+		AABB GetLocalAABB() const override;
+
 		void PrepareResources(Megabuffer* megabuffer = nullptr) const override;
 
 		std::string GetInstanceKey() const override { return "delaunay_blob_" + std::to_string(id_); }

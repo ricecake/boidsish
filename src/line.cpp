@@ -163,6 +163,11 @@ namespace Boidsish {
 		return model;
 	}
 
+	AABB Line::GetLocalAABB() const {
+		// Line mesh is roughly from 0 to 1 in X, and -0.5 to 0.5 in Y, Z
+		return AABB(glm::vec3(0.0f, -0.5f, -0.5f), glm::vec3(1.0f, 0.5f, 0.5f));
+	}
+
 	void Line::GenerateRenderPackets(std::vector<RenderPacket>& out_packets, const RenderContext& context) const {
 		if (line_vao_ == 0) {
 			InitLineMesh(context.megabuffer);

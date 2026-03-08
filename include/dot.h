@@ -36,7 +36,7 @@ namespace Boidsish {
 
 		void GenerateRenderPackets(std::vector<RenderPacket>& out_packets, const RenderContext& context) const override;
 		bool Intersects(const Ray& ray, float& t) const override;
-		AABB GetAABB() const override;
+		AABB GetLocalAABB() const override;
 
 		bool CastsShadows() const override { return false; }
 

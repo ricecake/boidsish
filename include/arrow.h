@@ -29,6 +29,9 @@ namespace Boidsish {
 
 		void GenerateRenderPackets(std::vector<RenderPacket>& out_packets, const RenderContext& context) const override;
 
+		AABB      GetLocalAABB() const override;
+		glm::vec3 GetTrailAttachmentPoint() const override;
+
 		// Arrows are not instanced (each has unique geometry)
 		std::string GetInstanceKey() const override { return "Arrow:" + std::to_string(GetId()); }
 

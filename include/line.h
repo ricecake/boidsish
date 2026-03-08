@@ -51,6 +51,8 @@ namespace Boidsish {
 		static void InitLineMesh(Megabuffer* megabuffer = nullptr);
 		static void DestroyLineMesh();
 
+		AABB GetLocalAABB() const override;
+
 		std::string GetInstanceKey() const override { return "Line:" + std::to_string(GetId()); }
 
 	private:

@@ -893,7 +893,23 @@ namespace Boidsish {
 		model = glm::translate(model, glm::vec3(GetX(), GetY(), GetZ()));
 		model = model * glm::mat4_cast(rotation_);
 		model = glm::scale(model, scale_);
+		model = glm::translate(model, model_offset_);
 		return model;
+	}
+
+	AABB DelaunayBlob::GetLocalAABB() const {
+		if (points_.empty())
+			return local_aabb_;
+
+		glm::vec3 min_pt(std::numeric_limits<float>::max());
+		glm::vec3 max_pt(std::numeric_limits<float>::lowest());
+
+		for (const auto& [_, cp] : points_) {
+			min_pt = glm::min(min_pt, cp.position);
+			max_pt = glm::max(max_pt, cp.position);
+		}
+
+		return AABB(min_pt, max_pt);
 	}
 
 	glm::vec3 DelaunayBlob::GetCentroid() const {

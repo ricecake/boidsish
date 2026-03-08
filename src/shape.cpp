@@ -336,6 +336,23 @@ namespace Boidsish {
 	}
 
 	AABB Shape::GetAABB() const {
-		return local_aabb_.Transform(GetModelMatrix());
+		return GetLocalAABB().Transform(GetModelMatrix());
+	}
+
+	glm::vec3 Shape::GetTrailAttachmentPoint() const {
+		glm::mat4 model_matrix = GetModelMatrix();
+		if (trail_offset_set_) {
+			return glm::vec3(model_matrix * glm::vec4(trail_offset_, 1.0f));
+		}
+
+		// Fallback: Default to center-back of AABB
+		AABB local_aabb = GetLocalAABB();
+		// Local Z-negative is forward in this engine's convention (usually)
+		// but let's look at the center of the back face of the AABB.
+		glm::vec3 center = (local_aabb.min + local_aabb.max) * 0.5f;
+		glm::vec3 trail_local = center;
+		trail_local.z = local_aabb.max.z; // back face center
+
+		return glm::vec3(model_matrix * glm::vec4(trail_local, 1.0f));
 	}
 } // namespace Boidsish

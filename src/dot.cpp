@@ -62,29 +62,17 @@ namespace Boidsish {
 		model *= glm::mat4_cast(GetRotation());
 		glm::vec3 combined_scale = GetScale() * size_ * 0.01f;
 		model = glm::scale(model, combined_scale);
+		model = glm::translate(model, model_offset_);
 		return model;
 	}
 
 	bool Dot::Intersects(const Ray& ray, float& t) const {
-		glm::vec3 center(GetX(), GetY(), GetZ());
-		float     radius = size_ * 0.01f * GetScale().x; // Assuming uniform scale for dot
-		glm::vec3 L = center - ray.origin;
-		float     tca = glm::dot(L, ray.direction);
-		if (tca < 0)
-			return false;
-		float d2 = glm::dot(L, L) - tca * tca;
-		float r2 = radius * radius;
-		if (d2 > r2)
-			return false;
-		float thc = sqrt(r2 - d2);
-		t = tca - thc;
-		return true;
+		return GetAABB().Intersects(ray, t);
 	}
 
-	AABB Dot::GetAABB() const {
-		glm::vec3 center(GetX(), GetY(), GetZ());
-		float     radius = size_ * 0.01f * GetScale().x;
-		return AABB(center - glm::vec3(radius), center + glm::vec3(radius));
+	AABB Dot::GetLocalAABB() const {
+		float radius = size_ * 0.01f;
+		return AABB(glm::vec3(-radius), glm::vec3(radius));
 	}
 
 } // namespace Boidsish
