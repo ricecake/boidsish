@@ -2716,6 +2716,7 @@ namespace Boidsish {
 			impl->camera_velocity_,
 			impl->camera.fov
 		);
+		impl->audio_manager->SetGlobalPitch(impl->time_scale);
 		impl->audio_manager->Update();
 
 		// Update atmosphere LUTs

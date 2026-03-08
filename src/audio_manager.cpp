@@ -19,7 +19,9 @@ namespace Boidsish {
 
 	struct AudioManager::AudioManagerImpl {
 		ma_engine                                     engine;
+		ma_sound_group                                master_group;
 		bool                                          initialized = false;
+		bool                                          master_group_initialized = false;
 		std::list<std::weak_ptr<Sound>>               sounds;
 		std::shared_ptr<Sound>                        m_music;
 		std::map<std::string, std::shared_ptr<Sound>> m_ambient_sounds;
@@ -40,6 +42,14 @@ namespace Boidsish {
 				initialized = false;
 			} else {
 				initialized = true;
+
+				result = ma_sound_group_init(&engine, 0, NULL, &master_group);
+				if (result != MA_SUCCESS) {
+					logger::ERROR("Failed to initialize master sound group.");
+					master_group_initialized = false;
+				} else {
+					master_group_initialized = true;
+				}
 			}
 		}
 
@@ -49,6 +59,11 @@ namespace Boidsish {
 			m_music.reset();
 			m_ambient_sounds.clear();
 			sounds.clear();
+
+			if (master_group_initialized) {
+				ma_sound_group_uninit(&master_group);
+				master_group_initialized = false;
+			}
 
 			if (initialized) {
 				ma_engine_uninit(&engine);
@@ -83,13 +98,29 @@ namespace Boidsish {
 	void AudioManager::PlayMusic(const std::string& filepath, bool loop, float volume) {
 		if (!m_pimpl->initialized)
 			return;
-		m_pimpl->m_music = std::make_shared<Sound>(&m_pimpl->engine, filepath, loop, volume, false);
+		m_pimpl->m_music = std::make_shared<Sound>(
+			&m_pimpl->engine,
+			filepath,
+			loop,
+			volume,
+			false,
+			glm::vec3(0.0f),
+			m_pimpl->master_group_initialized ? &m_pimpl->master_group : nullptr
+		);
 	}
 
 	void AudioManager::PlayAmbientSound(const std::string& name, const std::string& filepath, bool loop, float volume) {
 		if (!m_pimpl->initialized)
 			return;
-		m_pimpl->m_ambient_sounds[name] = std::make_shared<Sound>(&m_pimpl->engine, filepath, loop, volume, false);
+		m_pimpl->m_ambient_sounds[name] = std::make_shared<Sound>(
+			&m_pimpl->engine,
+			filepath,
+			loop,
+			volume,
+			false,
+			glm::vec3(0.0f),
+			m_pimpl->master_group_initialized ? &m_pimpl->master_group : nullptr
+		);
 	}
 
 	void AudioManager::StopAmbientSound(const std::string& name) {
@@ -112,10 +143,24 @@ namespace Boidsish {
 			return nullptr;
 		}
 
-		auto sound = std::make_shared<Sound>(&m_pimpl->engine, filepath, loop, volume, true);
+		auto sound = std::make_shared<Sound>(
+			&m_pimpl->engine,
+			filepath,
+			loop,
+			volume,
+			true,
+			position,
+			m_pimpl->master_group_initialized ? &m_pimpl->master_group : nullptr
+		);
 		sound->SetPosition(position);
 		m_pimpl->sounds.push_back(sound);
 		return sound;
+	}
+
+	void AudioManager::SetGlobalPitch(float pitch) {
+		if (m_pimpl->master_group_initialized) {
+			ma_sound_group_set_pitch(&m_pimpl->master_group, pitch);
+		}
 	}
 
 	void AudioManager::Update() {
