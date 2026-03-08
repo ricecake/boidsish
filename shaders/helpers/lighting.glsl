@@ -1,9 +1,10 @@
 #ifndef HELPERS_LIGHTING_GLSL
 #define HELPERS_LIGHTING_GLSL
 
-#include "../helpers/constants.glsl"
-#include "../lighting.glsl"
-#include "terrain_shadows.glsl"
+#include "helpers/constants.glsl"
+#include "lighting.glsl"
+#include "helpers/terrain_shadows.glsl"
+#include "helpers/fast_noise.glsl"
 
 const int LIGHT_TYPE_POINT = 0;
 const int LIGHT_TYPE_DIRECTIONAL = 1;

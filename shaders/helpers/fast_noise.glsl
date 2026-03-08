@@ -1,3 +1,6 @@
+#ifndef HELPERS_FAST_NOISE_GLSL
+#define HELPERS_FAST_NOISE_GLSL
+
 // Helper functions for fast texture-based noise lookups
 // Requires a 3D texture sampler named 'u_noiseTexture' bound to some unit.
 
@@ -45,3 +48,5 @@ vec3 fastCurl3d(vec3 p) {
 float fastFbmCurl3d(vec3 p) {
 	return texture(u_curlTexture, p).a;
 }
+
+#endif // HELPERS_FAST_NOISE_GLSL

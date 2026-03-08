@@ -197,6 +197,8 @@ namespace Boidsish {
 		GLuint                        biome_texture,
 		GLuint                        lighting_ubo,
 		GLuint                        culling_ubo,
+		GLuint                        temporal_ubo,
+		GLuint                        frustum_ubo,
 		GLuint                        hiz_texture,
 		glm::ivec2                    hiz_size,
 		int                           hiz_mip_count
@@ -356,6 +358,14 @@ namespace Boidsish {
 
 		if (lighting_ubo != 0) {
 			glBindBufferBase(GL_UNIFORM_BUFFER, Constants::UboBinding::Lighting(), lighting_ubo);
+		}
+
+		if (temporal_ubo != 0) {
+			glBindBufferBase(GL_UNIFORM_BUFFER, Constants::UboBinding::TemporalData(), temporal_ubo);
+		}
+
+		if (frustum_ubo != 0) {
+			glBindBufferBase(GL_UNIFORM_BUFFER, Constants::UboBinding::FrustumData(), frustum_ubo);
 		}
 
 		if (culling_ubo != 0) {

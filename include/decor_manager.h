@@ -108,7 +108,11 @@ namespace Boidsish {
 			const std::optional<glm::mat4>&       light_space_matrix = std::nullopt,
 			Shader*                               shader_override = nullptr,
 			const std::optional<glm::vec3>&       light_dir = std::nullopt,
-			std::shared_ptr<TerrainRenderManager> render_manager = nullptr
+			std::shared_ptr<TerrainRenderManager> render_manager = nullptr,
+			unsigned int                          lighting_ubo = 0,
+			unsigned int                          culling_ubo = 0,
+			unsigned int                          temporal_ubo = 0,
+			unsigned int                          frustum_ubo = 0
 		);
 
 		void SetEnabled(bool enabled) { enabled_ = enabled; }

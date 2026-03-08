@@ -17,9 +17,6 @@ layout(std430, binding = 1) writeonly buffer VisibleInstances {
 layout(binding = 0) uniform atomic_uint visibleCount;
 
 uniform int   u_totalSlots;
-uniform vec4  u_frustumPlanes[6];
-uniform mat4  u_viewProj;
-uniform vec2  u_viewportSize;
 uniform vec3  u_aabbMin;
 uniform vec3  u_aabbMax;
 
@@ -31,27 +28,10 @@ uniform bool      u_enableHiZ;
 
 #include "helpers/terrain_shadows.glsl"
 #include "helpers/culling.glsl"
+#include "frustum.glsl"
 uniform vec3 u_lightDir; // From point to light
 
-bool isInFrustum(vec3 pos, float radius) {
-	for (int i = 0; i < 6; i++) {
-		if (dot(u_frustumPlanes[i].xyz, pos) + u_frustumPlanes[i].w < -radius) {
-			return false;
-		}
-	}
-	return true;
-}
 
-bool isAABBInFrustum(mat4 modelMatrix, vec3 aabbMin, vec3 aabbMax) {
-	// Simple conservative check: sphere from AABB
-	vec3 center = (aabbMin + aabbMax) * 0.5;
-	vec3 worldCenter = vec3(modelMatrix * vec4(center, 1.0));
-
-	vec3  extent = (aabbMax - aabbMin) * 0.5;
-	float radius = length(extent * mat3(modelMatrix)); // Approximate world radius
-
-	return isInFrustum(worldCenter, radius);
-}
 
 void main() {
 	uint idx = gl_GlobalInvocationID.x;
@@ -66,11 +46,16 @@ void main() {
 	if (s2 < 0.0001)
 		return;
 
-	if (isAABBInFrustum(inst.model, u_aabbMin, u_aabbMax)) {
+	// Calculate world center and radius for frustum check
+	vec3  center = (u_aabbMin + u_aabbMax) * 0.5;
+	vec3  worldCenter = vec3(inst.model * vec4(center, 1.0));
+	vec3  extent = (u_aabbMax - u_aabbMin) * 0.5;
+	float worldRadius = length(extent * mat3(inst.model));
+
+	if (isSphereInFrustum(worldCenter, worldRadius)) {
 		vec3 pos = inst.model[3].xyz;
 
 		// Screen-space size check
-		float worldRadius = length((u_aabbMax - u_aabbMin) * 0.5 * mat3(inst.model));
 		float maxDist = getMaxRenderDistance(worldRadius, 0.1);
 
 		if (distance(pos, viewPos) > maxDist) {
