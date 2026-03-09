@@ -38,6 +38,6 @@ void main() {
 
 	gl_Position = projection * view * vec4(FragPos, 1.0);
 	CurPosition = gl_Position;
-	PrevPosition = prevViewProjection * vec4(FragPos, 1.0);
+	PrevPosition = td.prevViewProjection * vec4(FragPos, 1.0);
 	gl_ClipDistance[0] = dot(vec4(FragPos, 1.0), clipPlane);
 }
