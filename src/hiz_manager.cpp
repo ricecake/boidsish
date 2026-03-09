@@ -17,8 +17,8 @@ namespace Boidsish {
 	void HiZManager::Initialize(int width, int height) {
 		render_width_ = width;
 		render_height_ = height;
-		hiz_width_ = std::max(1, width / 2);
-		hiz_height_ = std::max(1, height / 2);
+		hiz_width_ = width;
+		hiz_height_ = height;
 
 		generate_shader_ = std::make_unique<ComputeShader>("shaders/hiz_generate.comp");
 		if (!generate_shader_->isValid()) {
@@ -36,8 +36,8 @@ namespace Boidsish {
 
 		render_width_ = width;
 		render_height_ = height;
-		hiz_width_ = std::max(1, width / 2);
-		hiz_height_ = std::max(1, height / 2);
+		hiz_width_ = width;
+		hiz_height_ = height;
 
 		DestroyTexture();
 		CreateTexture();
@@ -63,11 +63,13 @@ namespace Boidsish {
 		}
 	}
 
-	void HiZManager::GeneratePyramid(GLuint depthTexture) {
+	void HiZManager::GeneratePyramid(GLuint depthTexture, float near, float far) {
 		if (!initialized_ || !generate_shader_->isValid())
 			return;
 
 		generate_shader_->use();
+		generate_shader_->setFloat("u_near", near);
+		generate_shader_->setFloat("u_far", far);
 
 		// Mip 0 source is the full-resolution depth buffer.
 		// All subsequent mips source from the previous Hi-Z mip.
@@ -78,13 +80,15 @@ namespace Boidsish {
 			int dst_w = std::max(1, hiz_width_ >> mip);
 			int dst_h = std::max(1, hiz_height_ >> mip);
 
+			generate_shader_->setBool("u_isMip0", (mip == 0));
+
 			// Set source size uniform
 			glUniform2i(glGetUniformLocation(generate_shader_->ID, "u_srcSize"), src_w, src_h);
 
 			// Bind source texture
 			glActiveTexture(GL_TEXTURE0);
 			if (mip == 0) {
-				// Mip 0: 2x MAX downsample from full-res depth buffer → half-res Hi-Z base
+				// Mip 0: 1x copy with linearization from full-res depth buffer → full-res Hi-Z base
 				glBindTexture(GL_TEXTURE_2D, depthTexture);
 			} else {
 				// Mip N: 2x MAX downsample from previous Hi-Z mip
@@ -108,7 +112,7 @@ namespace Boidsish {
 			src_h = dst_h;
 		}
 
-		// Reset texture parameters if we modified them
+		// Reset texture parameters to expose the full mip chain for subsequent use
 		glBindTexture(GL_TEXTURE_2D, hiz_texture_);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_BASE_LEVEL, 0);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, mip_count_ - 1);
