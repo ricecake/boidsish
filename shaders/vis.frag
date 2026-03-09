@@ -13,6 +13,32 @@ layout(std430, binding = 2) buffer UniformsSSBO {
 uniform bool uUseMDI = false;
 flat in int  vUniformIndex;
 
+#define BINDLESS_SUPPORTED
+#extension GL_ARB_bindless_texture : enable
+
+uniform sampler3D u_noiseTexture;
+uniform sampler3D u_curlTexture;
+
+vec4 sampleNoise(vec3 p) {
+	if (uUseMDI && vUniformIndex >= 0) {
+		uvec2 handle = uniforms_data[vUniformIndex].noise_handle;
+		if (handle.x != 0 || handle.y != 0) {
+			return texture(sampler3D(handle), p);
+		}
+	}
+	return texture(u_noiseTexture, p);
+}
+
+vec4 sampleCurl(vec3 p) {
+	if (uUseMDI && vUniformIndex >= 0) {
+		uvec2 handle = uniforms_data[vUniformIndex].curl_handle;
+		if (handle.x != 0 || handle.y != 0) {
+			return texture(sampler3D(handle), p);
+		}
+	}
+	return texture(u_curlTexture, p);
+}
+
 #include "helpers/fast_noise.glsl"
 #include "helpers/lighting.glsl"
 #include "visual_effects.frag"

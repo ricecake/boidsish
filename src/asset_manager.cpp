@@ -25,7 +25,36 @@ namespace Boidsish {
 		Clear();
 	}
 
+	void AssetManager::Initialize() {
+		m_bindless_supported = GLEW_ARB_bindless_texture != 0;
+		if (m_bindless_supported) {
+			logger::LOG("Bindless textures supported - initializing management.");
+		}
+	}
+
+	GLuint64 AssetManager::GetTextureHandle(GLuint texture_id) {
+		if (!m_bindless_supported)
+			return 0;
+
+		auto it = m_texture_handles.find(texture_id);
+		if (it != m_texture_handles.end()) {
+			return it->second;
+		}
+
+		GLuint64 handle = glGetTextureHandleARB(texture_id);
+		glMakeTextureHandleResidentARB(handle);
+		m_texture_handles[texture_id] = handle;
+		return handle;
+	}
+
 	void AssetManager::Clear() {
+		if (m_bindless_supported) {
+			for (auto& [id, handle] : m_texture_handles) {
+				glMakeTextureHandleNonResidentARB(handle);
+			}
+			m_texture_handles.clear();
+		}
+
 		for (auto& [path, textureId] : m_textures) {
 			glDeleteTextures(1, &textureId);
 		}

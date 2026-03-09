@@ -1,5 +1,6 @@
 #include "graphics.h"
 
+#include "asset_manager.h"
 #include <array>
 #include <chrono>
 #include <iostream>
@@ -626,6 +627,8 @@ namespace Boidsish {
 			// Clear any GL errors from glewExperimental
 			while (glGetError() != GL_NO_ERROR) {
 			}
+
+			AssetManager::GetInstance().Initialize();
 
 			// Enable OpenGL debug output if configured
 			if (ConfigManager::GetInstance().GetAppSettingBool("enable_gl_debug", false)) {
@@ -1498,6 +1501,24 @@ namespace Boidsish {
 
 				// Copy uniforms to persistent SSBO
 				uniforms_ptr[mdi_uniform_count] = packet.uniforms;
+
+				// Inject bindless handles for noise textures if supported
+				if (noise_manager) {
+					GLuint64 noise_h = noise_manager->GetNoiseHandle();
+					GLuint64 curl_h = noise_manager->GetCurlHandle();
+					if (noise_h != 0) {
+						uniforms_ptr[mdi_uniform_count].noise_handle = glm::uvec2(
+							(uint32_t)(noise_h & 0xFFFFFFFF),
+							(uint32_t)(noise_h >> 32)
+						);
+					}
+					if (curl_h != 0) {
+						uniforms_ptr[mdi_uniform_count].curl_handle = glm::uvec2(
+							(uint32_t)(curl_h & 0xFFFFFFFF),
+							(uint32_t)(curl_h >> 32)
+						);
+					}
+				}
 
 				// Handle skeletal animation data
 				if (!packet.bone_matrices.empty()) {

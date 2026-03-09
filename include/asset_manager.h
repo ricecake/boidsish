@@ -50,12 +50,31 @@ namespace Boidsish {
 		 */
 		void Clear();
 
+		/**
+		 * @brief Check if bindless textures (GL_ARB_bindless_texture) are supported by the GPU.
+		 */
+		bool IsBindlessSupported() const { return m_bindless_supported; }
+
+		/**
+		 * @brief Get or create a bindless texture handle for the given texture ID.
+		 * The handle is automatically made resident if support is available.
+		 */
+		GLuint64 GetTextureHandle(GLuint texture_id);
+
+		/**
+		 * @brief Initialize the asset manager, checking for extension support.
+		 */
+		void Initialize();
+
 	private:
 		AssetManager() = default;
 		~AssetManager();
 
+		bool m_bindless_supported = false;
+
 		std::map<std::string, std::shared_ptr<ModelData>>                       m_models;
 		std::map<std::string, GLuint>                                           m_textures;
+		std::map<GLuint, GLuint64>                                              m_texture_handles;
 		std::map<std::string, std::shared_ptr<ma_resource_manager_data_source>> m_audio_sources;
 	};
 

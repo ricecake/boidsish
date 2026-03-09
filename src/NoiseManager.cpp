@@ -1,5 +1,6 @@
 #include "NoiseManager.h"
 
+#include "asset_manager.h"
 #include "logger.h"
 #include <GL/glew.h>
 
@@ -42,6 +43,11 @@ namespace Boidsish {
 		glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_R, GL_REPEAT);
 
 		glBindTexture(GL_TEXTURE_3D, 0);
+
+		if (AssetManager::GetInstance().IsBindlessSupported()) {
+			noise_handle_ = AssetManager::GetInstance().GetTextureHandle(noise_texture_);
+			curl_noise_handle_ = AssetManager::GetInstance().GetTextureHandle(curl_noise_texture_);
+		}
 
 		Generate();
 	}
