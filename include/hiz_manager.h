@@ -31,7 +31,9 @@ namespace Boidsish {
 		/// Call at the START of each frame, before occlusion culling.
 		/// The depth texture should contain the previous frame's depth data.
 		/// @param depthTexture The main FBO depth texture (GL_DEPTH24_STENCIL8 or GL_DEPTH_COMPONENT)
-		void GeneratePyramid(GLuint depthTexture);
+		/// @param near Linear near plane
+		/// @param far Linear far plane
+		void GeneratePyramid(GLuint depthTexture, float near, float far);
 
 		GLuint GetHiZTexture() const { return hiz_texture_; }
 
@@ -51,7 +53,7 @@ namespace Boidsish {
 		GLuint                         hiz_texture_ = 0;
 		int                            render_width_ = 0; // Full render resolution (depth buffer size)
 		int                            render_height_ = 0;
-		int                            hiz_width_ = 0; // Hi-Z base resolution (half render res)
+		int                            hiz_width_ = 0; // Hi-Z base resolution
 		int                            hiz_height_ = 0;
 		int                            mip_count_ = 0;
 		bool                           initialized_ = false;

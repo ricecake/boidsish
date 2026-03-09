@@ -65,6 +65,12 @@ uniform float     u_windRimHighlight;
 
 uniform sampler2D refractionTexture;
 
+// New depth resources for screen-space effects
+uniform sampler2D u_prevDepthTexture;
+uniform sampler2D u_hizTexture;
+
+#include "helpers/depth.glsl"
+
 void main() {
 	bool  use_ssbo = uUseMDI && vUniformIndex >= 0;
 	vec3  c_objectColor = use_ssbo ? uniforms_data[vUniformIndex].color.rgb : objectColor;

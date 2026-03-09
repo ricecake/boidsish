@@ -1100,6 +1100,8 @@ namespace Boidsish {
 			if (noise_manager) {
 				noise_manager->BindDefault(shader_to_setup);
 			}
+			shader_to_setup.trySetInt("u_prevDepthTexture", 13);
+			shader_to_setup.trySetInt("u_hizTexture", 15);
 			GLuint sdf_volumes_idx = glGetUniformBlockIndex(shader_to_setup.ID, "SdfVolumes");
 			if (sdf_volumes_idx != GL_INVALID_INDEX) {
 				glUniformBlockBinding(shader_to_setup.ID, sdf_volumes_idx, Constants::UboBinding::SdfVolumes());
@@ -1639,6 +1641,15 @@ namespace Boidsish {
 						glActiveTexture(GL_TEXTURE14);
 						glBindTexture(GL_TEXTURE_2D, refraction_texture_);
 						s->trySetInt("refractionTexture", 14);
+
+						// Bind Hi-Z and previous depth for screen-space effects
+						if (hiz_manager && hiz_manager->IsInitialized()) {
+							glActiveTexture(GL_TEXTURE15);
+							glBindTexture(GL_TEXTURE_2D, hiz_manager->GetHiZTexture());
+						}
+
+						glActiveTexture(GL_TEXTURE13);
+						glBindTexture(GL_TEXTURE_2D, main_fbo_depth_texture_);
 					}
 				}
 
@@ -2768,12 +2779,6 @@ namespace Boidsish {
 		// Save previous frame's VP for Hi-Z reprojection (before we overwrite it)
 		glm::mat4 hiz_prev_vp = impl->prev_view_projection;
 
-		// Generate Hi-Z pyramid from previous frame's depth buffer (still in main_fbo_depth_texture_)
-		if (impl->hiz_manager && impl->hiz_manager->IsInitialized() && impl->enable_hiz_culling_ &&
-		    impl->frame_count_ > 0) {
-			impl->hiz_manager->GeneratePyramid(impl->main_fbo_depth_texture_);
-		}
-
 		// Update Temporal UBO for motion blur and reprojection
 		TemporalUbo temporal_data;
 		temporal_data.viewProjection = current_vp;
@@ -2783,7 +2788,18 @@ namespace Boidsish {
 		temporal_data.invView = glm::inverse(view);
 		temporal_data.texelSize = glm::vec2(1.0f / impl->render_width, 1.0f / impl->render_height);
 		temporal_data.frameIndex = static_cast<int>(impl->frame_count_);
-		temporal_data.padding = 0.0f;
+
+		// Extract near/far planes from projection matrix
+		float A = impl->projection[2][2];
+		float B = impl->projection[3][2];
+		temporal_data.nearPlane = B / (A - 1.0f);
+		temporal_data.farPlane = B / (A + 1.0f);
+
+		// Generate Hi-Z pyramid from previous frame's depth buffer (still in main_fbo_depth_texture_)
+		if (impl->hiz_manager && impl->hiz_manager->IsInitialized() && impl->enable_hiz_culling_ &&
+		    impl->frame_count_ > 0) {
+			impl->hiz_manager->GeneratePyramid(impl->main_fbo_depth_texture_, temporal_data.nearPlane, temporal_data.farPlane);
+		}
 
 		glBindBuffer(GL_UNIFORM_BUFFER, impl->temporal_data_ubo);
 		glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(TemporalUbo), &temporal_data);
