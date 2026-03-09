@@ -1,5 +1,7 @@
 #version 430 core
 #extension GL_GOOGLE_include_directive : enable
+#extension GL_ARB_bindless_texture : enable
+#extension GL_ARB_gpu_shader_int64 : enable
 layout(location = 0) out vec4 FragColor;
 layout(location = 1) out vec2 Velocity;
 
@@ -11,6 +13,7 @@ layout(std430, binding = 2) buffer UniformsSSBO {
 };
 
 uniform bool uUseMDI = false;
+uniform bool uUseBindless = false;
 flat in int  vUniformIndex;
 
 #include "helpers/fast_noise.glsl"
@@ -121,7 +124,16 @@ void main() {
 	}
 
 	if (c_use_texture) {
-		albedo *= texture(texture_diffuse1, TexCoords).rgb;
+		bool bindless_active = false;
+#if defined(GL_ARB_bindless_texture)
+		if (uUseBindless && use_ssbo && any(notEqual(uniforms_data[vUniformIndex].diffuse_handle, uvec2(0)))) {
+			albedo *= texture(sampler2D(uniforms_data[vUniformIndex].diffuse_handle), TexCoords).rgb;
+			bindless_active = true;
+		}
+#endif
+		if (!bindless_active) {
+			albedo *= texture(texture_diffuse1, TexCoords).rgb;
+		}
 	}
 
 	vec3 norm = normalize(Normal);

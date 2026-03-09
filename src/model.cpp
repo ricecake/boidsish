@@ -575,6 +575,22 @@ namespace Boidsish {
 			packet.uniforms.is_refractive = is_refractive_ ? 1 : 0;
 			packet.uniforms.refractive_index = refractive_index_;
 
+			// Bindless texture handles
+			auto& am = AssetManager::GetInstance();
+			for (const auto& tex : mesh.textures) {
+				uint64_t handle = am.GetBindlessHandle(tex.id);
+				if (tex.type == "texture_diffuse") {
+					packet.uniforms.diffuse_handle_low = (uint32_t)(handle & 0xFFFFFFFF);
+					packet.uniforms.diffuse_handle_high = (uint32_t)(handle >> 32);
+				} else if (tex.type == "texture_normal") {
+					packet.uniforms.normal_handle_low = (uint32_t)(handle & 0xFFFFFFFF);
+					packet.uniforms.normal_handle_high = (uint32_t)(handle >> 32);
+				} else if (tex.type == "texture_specular") {
+					packet.uniforms.specular_handle_low = (uint32_t)(handle & 0xFFFFFFFF);
+					packet.uniforms.specular_handle_high = (uint32_t)(handle >> 32);
+				}
+			}
+
 			if (m_animator && !m_data->bone_info_map.empty()) {
 				packet.uniforms.use_skinning = 1;
 				packet.bone_matrices = m_animator->GetFinalBoneMatrices();

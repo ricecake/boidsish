@@ -160,11 +160,25 @@ namespace Boidsish {
 		float aabb_max_z = 0.0f;       // 4 bytes
 		int   is_refractive = 0;       // 4 bytes
 		float refractive_index = 1.0f; // 4 bytes -> 16
-		// Padding to 256 bytes for SSBO alignment safety
-		float padding[3];
+		float alignment_padding = 0.0f; // 4 bytes -> ensure handles start at 248
+
+		// Use floats for alignment safety across different compilers and std430.
+		// These will be bit-cast to uint64_t in shaders.
+		uint32_t diffuse_handle_low = 0;
+		uint32_t diffuse_handle_high = 0;
+		uint32_t normal_handle_low = 0;
+		uint32_t normal_handle_high = 0; // 16 bytes
+
+		uint32_t specular_handle_low = 0;
+		uint32_t specular_handle_high = 0;
+		uint32_t padding_low = 0;
+		uint32_t padding_high = 0; // 16 bytes
+
+		// Padding to 512 bytes for SSBO alignment safety
+		float padding_final[58];
 	};
 
-	static_assert(sizeof(CommonUniforms) == 256, "CommonUniforms must be exactly 256 bytes for SSBO alignment");
+	static_assert(sizeof(CommonUniforms) == 512, "CommonUniforms must be exactly 512 bytes for SSBO alignment");
 
 	/**
 	 * @brief Contains all the data necessary for a single draw call.
