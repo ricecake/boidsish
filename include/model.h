@@ -47,6 +47,7 @@ namespace Boidsish {
 		// Copying meshes should not copy GPU handles
 		Mesh(const Mesh& other);
 		Mesh& operator=(const Mesh& other);
+		~Mesh();
 
 		// Render the mesh
 		void render() const;
