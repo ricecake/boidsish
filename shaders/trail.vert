@@ -83,5 +83,5 @@ void main() {
 
 	CurPosition = gl_Position;
 	// Assume static for velocity (camera-relative only)
-	PrevPosition = prevViewProjection * world_pos;
+	PrevPosition = td.prevViewProjection * world_pos;
 }

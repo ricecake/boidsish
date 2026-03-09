@@ -19,5 +19,5 @@ void main() {
 	Normal = vec3(0.0, 1.0, 0.0);
 	gl_Position = projection * view * vec4(WorldPos, 1.0);
 	CurPosition = gl_Position;
-	PrevPosition = prevViewProjection * vec4(WorldPos, 1.0);
+	PrevPosition = td.prevViewProjection * vec4(WorldPos, 1.0);
 }
