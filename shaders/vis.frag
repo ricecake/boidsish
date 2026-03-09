@@ -67,6 +67,7 @@ uniform sampler2D refractionTexture;
 
 // New depth resources for screen-space effects
 uniform sampler2D u_prevDepthTexture;
+uniform sampler2D u_prevColorTexture;
 uniform sampler2D u_hizTexture;
 
 #include "helpers/depth.glsl"
