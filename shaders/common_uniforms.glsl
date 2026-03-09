@@ -39,5 +39,11 @@ struct CommonUniforms {
 	float aabb_max_z;
 	int   is_refractive;
 	float refractive_index;
-	float padding[3];
+
+	// Bindless handles
+	uint  alignment_padding;
+	uvec2 noise_handle;
+	uvec2 curl_handle;
+
+	float padding[62];
 };
