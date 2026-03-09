@@ -31,6 +31,8 @@ uniform ivec2     u_hizSize;
 uniform int       u_hizMipCount;
 uniform bool      u_enableHiZ;
 
+#include "temporal_data.glsl"
+#include "helpers/depth.glsl"
 #include "helpers/terrain_shadows.glsl"
 uniform vec3 u_lightDir; // From point to light
 
@@ -128,7 +130,10 @@ bool isOccluded(vec3 pos, float radius) {
 	if (hizDepth < 0.0001)
 		return false;
 
-	return nearestDepth > hizDepth;
+	// Linearize nearestDepth before comparison
+	float linearNearestDepth = linearizeDepth(nearestDepth, nearPlane, farPlane);
+
+	return linearNearestDepth > hizDepth;
 }
 
 void main() {

@@ -65,6 +65,12 @@ uniform float     u_windRimHighlight;
 
 uniform sampler2D refractionTexture;
 
+// New depth resources for screen-space effects
+uniform sampler2D u_prevDepthTexture;
+uniform sampler2D u_hizTexture;
+
+#include "helpers/depth.glsl"
+
 void main() {
 	bool  use_ssbo = uUseMDI && vUniformIndex >= 0;
 	vec3  c_objectColor = use_ssbo ? uniforms_data[vUniformIndex].color.rgb : objectColor;
@@ -164,6 +170,12 @@ void main() {
 		vec3  refractionAcc = vec3(0);
 		int   steps = 5;
 		float jitter = fastWarpedFbm3d(vec3(screenUV * 0.125, time * 0.125)) * 0.5 + 0.5;
+
+		// Sample linearized depth from the Hi-Z buffer (Mip 0 is full res linearized depth)
+		float backgroundDepth = textureLod(u_hizTexture, screenUV, 0.0).r;
+		float currentLinearDepth = linearizeDepth(gl_FragCoord.z, nearPlane, farPlane);
+		float depthDifference = max(0.0, backgroundDepth - currentLinearDepth);
+
 		for (int i = 0; i < steps; i++) {
 			vec3 R = refract(
 				V,
@@ -171,8 +183,8 @@ void main() {
 				1.0 / max(c_refractive_index + jitter * ((float(i) / float(steps - 1)) * 0.15), 1.0)
 			);
 			// Generalized refraction: project refracted ray back to screen space
-			// We use a fixed distance fallback for simplicity, but could sample depth buffer for better accuracy
-			vec3 refractedPos = FragPos + R * 10.0; // Fallback distance
+			// Use the actual depth difference to background geometry instead of a fixed fallback
+			vec3 refractedPos = FragPos + R * depthDifference;
 			vec4 refractedClip = viewProjection * vec4(refractedPos, 1.0);
 			vec2 refractedUV = (refractedClip.xy / refractedClip.w) * 0.5 + 0.5;
 

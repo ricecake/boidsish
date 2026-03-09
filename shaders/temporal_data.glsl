@@ -6,5 +6,7 @@ layout(std140, binding = 6) uniform TemporalData {
 	mat4  invView;
 	vec2  texelSize;
 	int   frameIndex;
-	float padding_temporal;
+	float nearPlane;
+	float farPlane;
+	float padding_temporal[3];
 };
