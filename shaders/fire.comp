@@ -415,7 +415,7 @@ void main() {
 			vec2 local_pos = vec2(pos.x - chunk.worldOffset.x, pos.y - chunk.worldOffset.y);
 
 			// Only spawn closer to camera
-			if (distance(pos.xz, viewPos.xz) <= 350.0) {
+			if (distance(pos.xyz, viewPos.xyz) <= 350.0) {
 				vec2  uv = local_pos / chunk.size;
 				vec4  terrain = texture(u_heightmapArray, vec3(uv, chunk.slice));
 				float height = terrain.r + 0.05;

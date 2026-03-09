@@ -574,7 +574,9 @@ protected:
 
 					// Search order: 1. Relative to current file, 2. relative to 'shaders/', 3. relative to 'external/'
 					std::vector<fs::path> searchPaths;
-					searchPaths.push_back(p.parent_path() / includePath);
+					if (includePath != path) {
+						searchPaths.push_back(p.parent_path() / includePath);
+					}
 					searchPaths.push_back(fs::path("shaders") / includePath);
 					searchPaths.push_back(fs::path("external") / includePath);
 
