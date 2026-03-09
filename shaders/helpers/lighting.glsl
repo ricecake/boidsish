@@ -2,7 +2,7 @@
 #define HELPERS_LIGHTING_GLSL
 
 #include "helpers/constants.glsl"
-#include "lighting.glsl"
+#include "../lighting.glsl"
 #include "helpers/terrain_shadows.glsl"
 #include "helpers/fast_noise.glsl"
 

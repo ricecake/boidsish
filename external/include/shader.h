@@ -588,8 +588,8 @@ protected:
 
 					if (!fullPathStr.empty()) {
 						std::string includedSource = loadShaderSource(fullPathStr, includedFiles);
-						std::string commentStart = "//START " + includePath + "\n";
-						std::string commentEnd = "//END " + includePath + " (returning to " + processedPath + ")\n";
+						std::string commentStart = "//START " + fullPathStr + "\n";
+						std::string commentEnd = "//END " + fullPathStr + " (returning to " + processedPath + ")\n";
 
 						if (foundVersion) {
 							postVersionContent += commentStart + includedSource;
