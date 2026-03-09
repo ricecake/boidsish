@@ -10,6 +10,11 @@ layout(r32f, binding = 0) uniform writeonly image2D u_dstMip;
 
 // Source dimensions (for UV calculation)
 uniform ivec2 u_srcSize;
+uniform float u_near;
+uniform float u_far;
+uniform bool  u_isMip0;
+
+#include "helpers/depth.glsl"
 
 void main() {
 	ivec2 pixel = ivec2(gl_GlobalInvocationID.xy);
@@ -18,17 +23,26 @@ void main() {
 	if (pixel.x >= dstSize.x || pixel.y >= dstSize.y)
 		return;
 
-	// Each destination pixel covers a 2x2 block in the source
 	vec2 srcTexelSize = 1.0 / vec2(u_srcSize);
-	vec2 uv = (vec2(pixel) * 2.0 + 1.0) * srcTexelSize;
+	float resultDepth;
 
-	float d00 = texture(u_srcDepth, uv + vec2(-0.5, -0.5) * srcTexelSize).r;
-	float d10 = texture(u_srcDepth, uv + vec2(0.5, -0.5) * srcTexelSize).r;
-	float d01 = texture(u_srcDepth, uv + vec2(-0.5, 0.5) * srcTexelSize).r;
-	float d11 = texture(u_srcDepth, uv + vec2(0.5, 0.5) * srcTexelSize).r;
+	if (u_isMip0) {
+		// Mip 0: 1x copy with linearization
+		vec2 uv = (vec2(pixel) + 0.5) * srcTexelSize;
+		float depth = texture(u_srcDepth, uv).r;
+		resultDepth = linearizeDepth(depth, u_near, u_far);
+	} else {
+		// Mip N: 2x MAX downsample from previous linearized Hi-Z mip
+		vec2 uv = (vec2(pixel) * 2.0 + 1.0) * srcTexelSize;
 
-	// MAX for conservative occlusion testing
-	float maxDepth = max(max(d00, d10), max(d01, d11));
+		float d00 = texture(u_srcDepth, uv + vec2(-0.5, -0.5) * srcTexelSize).r;
+		float d10 = texture(u_srcDepth, uv + vec2(0.5, -0.5) * srcTexelSize).r;
+		float d01 = texture(u_srcDepth, uv + vec2(-0.5, 0.5) * srcTexelSize).r;
+		float d11 = texture(u_srcDepth, uv + vec2(0.5, 0.5) * srcTexelSize).r;
 
-	imageStore(u_dstMip, pixel, vec4(maxDepth));
+		// MAX for conservative occlusion testing
+		resultDepth = max(max(d00, d10), max(d01, d11));
+	}
+
+	imageStore(u_dstMip, pixel, vec4(resultDepth));
 }
