@@ -26,12 +26,44 @@ namespace Boidsish {
 	}
 
 	void AssetManager::Clear() {
+		for (auto& [textureId, handle] : m_resident_handles) {
+			glMakeTextureHandleNonResidentARB(handle);
+		}
+		m_resident_handles.clear();
+
 		for (auto& [path, textureId] : m_textures) {
 			glDeleteTextures(1, &textureId);
 		}
 		m_textures.clear();
 		m_models.clear();
 		m_audio_sources.clear();
+	}
+
+	void AssetManager::Initialize() {
+		if (GLEW_ARB_bindless_texture) {
+			m_bindless_supported = true;
+			logger::LOG("GL_ARB_bindless_texture is supported.");
+		} else {
+			m_bindless_supported = false;
+			logger::WARNING("GL_ARB_bindless_texture is NOT supported - falling back to standard binding.");
+		}
+	}
+
+	uint64_t AssetManager::GetBindlessHandle(GLuint textureId) {
+		if (!m_bindless_supported || textureId == 0)
+			return 0;
+
+		auto it = m_resident_handles.find(textureId);
+		if (it != m_resident_handles.end()) {
+			return it->second;
+		}
+
+		uint64_t handle = glGetTextureHandleARB(textureId);
+		if (handle != 0) {
+			glMakeTextureHandleResidentARB(handle);
+			m_resident_handles[textureId] = handle;
+		}
+		return handle;
 	}
 
 	// Helper for Assimp processing (moved from Model class)

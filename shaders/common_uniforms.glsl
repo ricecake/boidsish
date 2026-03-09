@@ -1,3 +1,5 @@
+#extension GL_ARB_gpu_shader_int64 : enable
+
 struct CommonUniforms {
 	mat4  model;
 	vec4  color;
@@ -39,5 +41,11 @@ struct CommonUniforms {
 	float aabb_max_z;
 	int   is_refractive;
 	float refractive_index;
-	float padding[3];
+	float alignment_padding;
+
+	uvec2 diffuse_handle;
+	uvec2 normal_handle;
+	uvec2 specular_handle;
+	uvec2 padding_uint64;
+	float padding_final[58];
 };

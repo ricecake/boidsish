@@ -27,6 +27,11 @@ namespace Boidsish {
 		AssetManager& operator=(const AssetManager&) = delete;
 
 		/**
+		 * @brief Initialize the asset manager and detect GPU features (e.g., Bindless Textures).
+		 */
+		void Initialize();
+
+		/**
 		 * @brief Load or retrieve a cached model.
 		 */
 		std::shared_ptr<ModelData> GetModelData(const std::string& path);
@@ -37,6 +42,14 @@ namespace Boidsish {
 		 * @param directory Optional base directory for resolving relative paths
 		 */
 		GLuint GetTexture(const std::string& path, const std::string& directory = "");
+
+		/**
+		 * @brief Get the bindless handle for a texture.
+		 * @return 64-bit handle, or 0 if not supported or texture not found.
+		 */
+		uint64_t GetBindlessHandle(GLuint textureId);
+
+		bool IsBindlessSupported() const { return m_bindless_supported; }
 
 		/**
 		 * @brief Load or retrieve a cached audio data source.
@@ -56,7 +69,10 @@ namespace Boidsish {
 
 		std::map<std::string, std::shared_ptr<ModelData>>                       m_models;
 		std::map<std::string, GLuint>                                           m_textures;
+		std::map<GLuint, uint64_t>                                              m_resident_handles;
 		std::map<std::string, std::shared_ptr<ma_resource_manager_data_source>> m_audio_sources;
+
+		bool m_bindless_supported = false;
 	};
 
 } // namespace Boidsish

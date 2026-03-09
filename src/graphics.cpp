@@ -1,4 +1,5 @@
 #include "graphics.h"
+#include "profiling.h"
 
 #include <array>
 #include <chrono>
@@ -13,6 +14,7 @@
 
 #include "ConfigManager.h"
 #include "NoiseManager.h"
+#include "asset_manager.h"
 #include "SceneManager.h"
 #include "UIManager.h"
 #include "akira_effect.h"
@@ -1371,6 +1373,7 @@ namespace Boidsish {
 			bool                               is_shadow_pass = false,
 			bool                               dispatch_hiz_occlusion = false
 		) {
+			PROJECT_PROFILE_SCOPE("ExecuteRenderQueue");
 			const auto& packets = queue.GetPackets(layer);
 			if (packets.empty())
 				return;
@@ -1441,8 +1444,8 @@ namespace Boidsish {
 				if (a.uniforms.bone_matrices_offset != b.uniforms.bone_matrices_offset)
 					return false;
 
-				// 4. Textures (only if not a shadow pass)
-				if (!is_shadow_pass) {
+				// 4. Textures (only if not a shadow pass and NOT using bindless)
+				if (!is_shadow_pass && !AssetManager::GetInstance().IsBindlessSupported()) {
 					if (a.textures.size() != b.textures.size())
 						return false;
 					for (size_t i = 0; i < a.textures.size(); ++i) {
@@ -1640,6 +1643,8 @@ namespace Boidsish {
 						glBindTexture(GL_TEXTURE_2D, refraction_texture_);
 						s->trySetInt("refractionTexture", 14);
 					}
+
+					s->setBool("uUseBindless", AssetManager::GetInstance().IsBindlessSupported());
 				}
 
 				// s->setBool("uUseMDI", true); // Moved below SSBO binding
@@ -1674,7 +1679,7 @@ namespace Boidsish {
 					);
 				}
 
-				if (!is_shadow_pass) {
+				if (!is_shadow_pass && !AssetManager::GetInstance().IsBindlessSupported()) {
 					unsigned int diffuseNr = 1;
 					unsigned int specularNr = 1;
 					unsigned int normalNr = 1;
@@ -2575,6 +2580,7 @@ namespace Boidsish {
 	}
 
 	void Visualizer::Render() {
+		PROJECT_PROFILE_SCOPE("Visualizer::Render");
 		impl->RefreshFrameConfig();
 
 		// Advance persistent buffers and handle synchronization
