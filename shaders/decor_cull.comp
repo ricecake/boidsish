@@ -56,15 +56,15 @@ void main() {
 		vec3 pos = inst.model[3].xyz;
 
 		// Screen-space size check
-		float maxDist = getMaxRenderDistance(worldRadius, 0.1);
+		float maxDist = getMaxRenderDistance(worldRadius, 1.0);
 
 		if (distance(pos, viewPos) > maxDist) {
 			return;
 		}
 
 		// Hi-Z occlusion check using instance world position and conservative radius
-		if (u_enableHiZ && isOccluded(pos, worldRadius, u_hizTexture, u_hizSize, u_hizMipCount))
-			return;
+		// if (u_enableHiZ && isOccluded(pos, worldRadius, u_hizTexture, u_hizSize, u_hizMipCount))
+		// 	return;
 
 		// Terrain shadow culling: skip if entirely in terrain shadow
 		if (u_lightDir.y > 0.0) {

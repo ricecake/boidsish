@@ -248,11 +248,14 @@ void main() {
 	// Skip update if particle is occluded and not extremely close
 	if (p.pos.w > 0.0) {
 		float distToCam = distance(p.pos.xyz, viewPos);
-		if (distToCam > 10.0 && isOccluded(p.pos.xyz, 0.5, u_hizTexture, u_hizSize, u_hizMipCount)) {
+		if (distToCam > 10.0 && isOccluded(p.pos.xyz, 15, u_hizTexture, u_hizSize, u_hizMipCount)) {
 			// Still need to decrease lifetime to eventually die, but skip heavy math
-			p.pos.w -= u_delta_time;
-			particles[gid] = p;
-			return;
+			if (p.style != 5) {
+				p.pos.w -= u_delta_time;
+				particles[gid] = p;
+				return;
+			}
+			p.pos.w = 0.0;
 		}
 	}
 
@@ -429,8 +432,8 @@ void main() {
 			vec2 local_pos = vec2(pos.x - chunk.worldOffset.x, pos.y - chunk.worldOffset.y);
 
 			// Only spawn if within render distance based on style
-			float luminosity = (nightFactor > 0.5) ? 1.0 : 0.1; // Fireflies are bright at night
-			float maxDist = getMaxRenderDistance(0.5, luminosity);
+			float luminosity = mix(0.1, 1.0, nightFactor); // Fireflies are bright at night
+			float maxDist = min(350.0, getMaxRenderDistance(15, luminosity));
 
 			if (distance(pos.xz, viewPos.xz) <= maxDist) {
 				vec2  uv = local_pos / chunk.size;
