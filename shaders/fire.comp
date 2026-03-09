@@ -375,16 +375,10 @@ void main() {
 		}
 
 		// --- 3b. Sparse Ambient Respawn ---
-		vec2 seed = vec2(float(gid), u_time);
-		if (u_num_chunks > 0 && rand(seed) < 0.005) {
-			// Try a few times to find a chunk closer to the camera
-			/*
-			    Pick a random point, but do it based on angle from viewDir.
-			    Above, if something is behind the camera, despawn it.
-			*/
-
-			uint particleSeed = uint(seed);
-
+		vec2 spawnSeed = vec2(float(gid) * 0.123, u_time * 0.456);
+		if (u_num_chunks > 0 && rand(spawnSeed) < 0.005) {
+			// Random location around camera using a stable but time-dependent seed
+			uint  particleSeed = hash(gid ^ uint(u_time * 10.0));
 			float r_dist = randomFloat(particleSeed);
 			float dist = sqrt(100.0 + r_dist * 122400.0); // sqrt(r_min^2 + U * (r_max^2 - r_min^2))
 
@@ -402,27 +396,37 @@ void main() {
 
 			vec3 pos = vec3(viewPos.x + rotatedOffset.x, 0.0, viewPos.z + rotatedOffset.y);
 
-			int       chunk_idx;
+			int       chunk_idx = -1;
 			ChunkInfo chunk;
 			for (int i = 0; i < u_num_chunks; i++) {
-				chunk = chunks[i];
-				if (pos.x >= chunk.worldOffset.x && pos.x < chunk.worldOffset.x + chunk.size &&
-				    pos.z >= chunk.worldOffset.y && pos.z < chunk.worldOffset.y + chunk.size) {
+				if (pos.x >= chunks[i].worldOffset.x && pos.x < chunks[i].worldOffset.x + chunks[i].size &&
+				    pos.z >= chunks[i].worldOffset.y && pos.z < chunks[i].worldOffset.y + chunks[i].size) {
+					chunk = chunks[i];
 					chunk_idx = i;
 					break;
 				}
 			}
-			vec2 local_pos = vec2(pos.x - chunk.worldOffset.x, pos.y - chunk.worldOffset.y);
 
-			// Only spawn closer to camera
-			if (distance(pos.xz, viewPos.xz) <= 350.0) {
+			// Only spawn if we found a valid chunk and it's within distance
+			if (chunk_idx != -1 && distance(pos.xz, viewPos.xz) <= 350.0) {
+				// Add jitter to the spawn position to prevent grid-like patterns
+				vec3 jitter = (rand3(spawnSeed + 0.1) - 0.5) * 4.0;
+				pos.x += jitter.x;
+				pos.z += jitter.z;
+
+				vec2  local_pos = vec2(pos.x - chunk.worldOffset.x, pos.z - chunk.worldOffset.y);
 				vec2  uv = local_pos / chunk.size;
 				vec4  terrain = texture(u_heightmapArray, vec3(uv, chunk.slice));
 				float height = terrain.r + 0.05;
 				vec2  biome_data = texture(u_biomeMap, vec3(uv, chunk.slice)).rg;
-				int   biome_idx = int(biome_data.x * 255.0 + 0.5);
 
-				// Check emitters and if close enough to a fire emitter change to cinder and ash.
+				// Proportional Biome Blending: biome_data.x is low_idx, biome_data.y is t
+				int biome_idx = int(biome_data.x * 255.0 + 0.5);
+				if (rand(spawnSeed + 0.987) < biome_data.y) {
+					biome_idx = min(biome_idx + 1, 7);
+				}
+
+				// Check biomes and select appropriate particle type
 				// Biomes: Sand=0, LushGrass=1, DryGrass=2, Forest=3, AlpineMeadow=4, BrownRock=5, GreyRock=6,
 				// Snow=7
 				bool valid_biome = (biome_idx >= 0 && biome_idx <= 4) || biome_idx == 7;
@@ -441,7 +445,7 @@ void main() {
 							sub_style = 4; // Firefly
 						} else {
 							// Randomly choose between Leaf and Petal in vegetated biomes
-							float r = rand(seed + 6.6);
+							float r = rand(spawnSeed + 6.6);
 							if (biome_idx == 4) { // Alpine Meadow has more petals
 								sub_style = (r < 0.7) ? 1 : 0;
 							} else {
@@ -451,10 +455,10 @@ void main() {
 					}
 
 					p.emitter_id = sub_style;
-					float total_lifetime = 10.0 + rand(seed + 4.4) * 5.0;
-					float skipped_time = rand(seed + 7.7) * total_lifetime;
-					p.pos = vec4(pos.x, height + 1.0 + rand(seed + 3.3) * 2.0, pos.z, total_lifetime - skipped_time);
-					p.vel = vec4(rand3(seed + 5.5) * 0.5, 0.0);
+					float total_lifetime = 10.0 + rand(spawnSeed + 4.4) * 5.0;
+					float skipped_time = rand(spawnSeed + 7.7) * total_lifetime;
+					p.pos = vec4(pos.x, height + 1.0 + rand(spawnSeed + 3.3) * 2.0, pos.z, total_lifetime - skipped_time);
+					p.vel = vec4(rand3(spawnSeed + 5.5) * 0.5, 0.0);
 					p.epicenter = p.pos.xyz;
 
 					// Fast-forward
