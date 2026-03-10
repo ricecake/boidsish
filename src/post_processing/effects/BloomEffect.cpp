@@ -17,9 +17,7 @@ namespace Boidsish {
 			_horizontalFlareFBO(0),
 			_horizontalFlareTexture(0),
 			_verticalFlareFBO(0),
-			_verticalFlareTexture(0),
-			_flarePingPongFBO(0),
-			_flarePingPongTexture(0) {
+			_verticalFlareTexture(0) {
 			name_ = "Bloom";
 		}
 
@@ -36,8 +34,18 @@ namespace Boidsish {
 			glDeleteFramebuffers(1, &_verticalFlareFBO);
 			glDeleteTextures(1, &_verticalFlareTexture);
 
-			glDeleteFramebuffers(1, &_flarePingPongFBO);
-			glDeleteTextures(1, &_flarePingPongTexture);
+			for (const auto& mip : _flareBrightMipChain) {
+				glDeleteFramebuffers(1, &mip.fbo);
+				glDeleteTextures(1, &mip.texture);
+			}
+			for (const auto& mip : _hFlareMipChain) {
+				glDeleteFramebuffers(1, &mip.fbo);
+				glDeleteTextures(1, &mip.texture);
+			}
+			for (const auto& mip : _vFlareMipChain) {
+				glDeleteFramebuffers(1, &mip.fbo);
+				glDeleteTextures(1, &mip.texture);
+			}
 
 			for (const auto& mip : _mipChain) {
 				glDeleteFramebuffers(1, &mip.fbo);
@@ -88,8 +96,21 @@ namespace Boidsish {
 			glDeleteFramebuffers(1, &_verticalFlareFBO);
 			glDeleteTextures(1, &_verticalFlareTexture);
 
-			glDeleteFramebuffers(1, &_flarePingPongFBO);
-			glDeleteTextures(1, &_flarePingPongTexture);
+			for (const auto& mip : _flareBrightMipChain) {
+				glDeleteFramebuffers(1, &mip.fbo);
+				glDeleteTextures(1, &mip.texture);
+			}
+			_flareBrightMipChain.clear();
+			for (const auto& mip : _hFlareMipChain) {
+				glDeleteFramebuffers(1, &mip.fbo);
+				glDeleteTextures(1, &mip.texture);
+			}
+			_hFlareMipChain.clear();
+			for (const auto& mip : _vFlareMipChain) {
+				glDeleteFramebuffers(1, &mip.fbo);
+				glDeleteTextures(1, &mip.texture);
+			}
+			_vFlareMipChain.clear();
 
 			for (const auto& mip : _mipChain) {
 				glDeleteFramebuffers(1, &mip.fbo);
@@ -148,16 +169,40 @@ namespace Boidsish {
 			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 			glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, _verticalFlareTexture, 0);
 
-			glGenFramebuffers(1, &_flarePingPongFBO);
-			glBindFramebuffer(GL_FRAMEBUFFER, _flarePingPongFBO);
-			glGenTextures(1, &_flarePingPongTexture);
-			glBindTexture(GL_TEXTURE_2D, _flarePingPongTexture);
-			glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB16F, flareWidth, flareHeight, 0, GL_RGB, GL_FLOAT, NULL);
-			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-			glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, _flarePingPongTexture, 0);
+			glm::vec2 flareMipSize((float)flareWidth, (float)flareHeight);
+			for (int i = 0; i < 4; i++) {
+				flareMipSize /= 2.0f;
+
+				auto setupMip = [&](std::vector<BloomMip>& chain) {
+					BloomMip mip;
+					mip.size = flareMipSize;
+					glGenFramebuffers(1, &mip.fbo);
+					glBindFramebuffer(GL_FRAMEBUFFER, mip.fbo);
+					glGenTextures(1, &mip.texture);
+					glBindTexture(GL_TEXTURE_2D, mip.texture);
+					glTexImage2D(
+						GL_TEXTURE_2D,
+						0,
+						GL_RGB16F,
+						(int)mip.size.x,
+						(int)mip.size.y,
+						0,
+						GL_RGB,
+						GL_FLOAT,
+						NULL
+					);
+					glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+					glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+					glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+					glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+					glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, mip.texture, 0);
+					chain.push_back(mip);
+				};
+
+				setupMip(_flareBrightMipChain);
+				setupMip(_hFlareMipChain);
+				setupMip(_vFlareMipChain);
+			}
 
 			glm::vec2 mipSize((float)_width, (float)_height);
 
@@ -274,35 +319,80 @@ namespace Boidsish {
 			glBindTexture(GL_TEXTURE_2D, sourceTexture);
 			glDrawArrays(GL_TRIANGLES, 0, 6);
 
-			// 4b. Horizontal streak (multi-pass for length and smoothness)
-			GLuint flareInput = _flareBrightPassTexture;
+			// 4b. Downsample flare bright pass
+			_downsampleShader->use();
+			GLuint flareDownsampleInput = _flareBrightPassTexture;
+			for (size_t i = 0; i < _flareBrightMipChain.size(); i++) {
+				glBindFramebuffer(GL_FRAMEBUFFER, _flareBrightMipChain[i].fbo);
+				glViewport(0, 0, _flareBrightMipChain[i].size.x, _flareBrightMipChain[i].size.y);
+				glActiveTexture(GL_TEXTURE0);
+				glBindTexture(GL_TEXTURE_2D, flareDownsampleInput);
+				glDrawArrays(GL_TRIANGLES, 0, 6);
+				flareDownsampleInput = _flareBrightMipChain[i].texture;
+			}
+
+			// 4c. Horizontal blurs on each mip
 			_streakShader->use();
 			_streakShader->setInt("image", 0);
 			_streakShader->setVec2("direction", 1.0f, 0.0f);
+			_streakShader->setFloat("offset", 1.0f);
 
-			for (int i = 0; i < 4; ++i) {
-				glBindFramebuffer(GL_FRAMEBUFFER, (i % 2 == 0) ? _flarePingPongFBO : _horizontalFlareFBO);
-				_streakShader->setFloat("offset", (float)std::pow(4.0f, i));
+			for (size_t i = 0; i < _hFlareMipChain.size(); i++) {
+				glBindFramebuffer(GL_FRAMEBUFFER, _hFlareMipChain[i].fbo);
+				glViewport(0, 0, _hFlareMipChain[i].size.x, _hFlareMipChain[i].size.y);
 				glActiveTexture(GL_TEXTURE0);
-				glBindTexture(GL_TEXTURE_2D, flareInput);
+				glBindTexture(GL_TEXTURE_2D, _flareBrightMipChain[i].texture);
 				glDrawArrays(GL_TRIANGLES, 0, 6);
-				flareInput = (i % 2 == 0) ? _flarePingPongTexture : _horizontalFlareTexture;
 			}
-			// Final result for horizontal is in _horizontalFlareTexture (since i=3 is odd)
 
-			// 4c. Vertical streak (multi-pass for length and smoothness)
-			flareInput = _flareBrightPassTexture;
+			// 4d. Vertical blurs on each mip
 			_streakShader->setVec2("direction", 0.0f, 1.0f);
-
-			for (int i = 0; i < 4; ++i) {
-				glBindFramebuffer(GL_FRAMEBUFFER, (i % 2 == 0) ? _flarePingPongFBO : _verticalFlareFBO);
-				_streakShader->setFloat("offset", (float)std::pow(4.0f, i));
+			for (size_t i = 0; i < _vFlareMipChain.size(); i++) {
+				glBindFramebuffer(GL_FRAMEBUFFER, _vFlareMipChain[i].fbo);
+				glViewport(0, 0, _vFlareMipChain[i].size.x, _vFlareMipChain[i].size.y);
 				glActiveTexture(GL_TEXTURE0);
-				glBindTexture(GL_TEXTURE_2D, flareInput);
+				glBindTexture(GL_TEXTURE_2D, _flareBrightMipChain[i].texture);
 				glDrawArrays(GL_TRIANGLES, 0, 6);
-				flareInput = (i % 2 == 0) ? _flarePingPongTexture : _verticalFlareTexture;
 			}
-			// Final result for vertical is in _verticalFlareTexture (since i=3 is odd)
+
+			// 4e. Accumulate flares (Upsample and merge)
+			_upsampleShader->use();
+			_upsampleShader->setFloat("filterRadius", 1.0f);
+			glEnable(GL_BLEND);
+			glBlendFunc(GL_ONE, GL_ONE);
+
+			// Horizontal accumulation
+			// Clear base
+			glBindFramebuffer(GL_FRAMEBUFFER, _horizontalFlareFBO);
+			glViewport(0, 0, _width / 2, _height / 2);
+			glClear(GL_COLOR_BUFFER_BIT);
+
+			for (int i = (int)_hFlareMipChain.size() - 1; i >= 0; i--) {
+				const auto& src = _hFlareMipChain[i];
+				glBindFramebuffer(GL_FRAMEBUFFER, _horizontalFlareFBO);
+				glViewport(0, 0, _width / 2, _height / 2);
+				_upsampleShader->setVec2("srcResolution", src.size.x, src.size.y);
+				glActiveTexture(GL_TEXTURE0);
+				glBindTexture(GL_TEXTURE_2D, src.texture);
+				glDrawArrays(GL_TRIANGLES, 0, 6);
+			}
+
+			// Vertical accumulation
+			glBindFramebuffer(GL_FRAMEBUFFER, _verticalFlareFBO);
+			glViewport(0, 0, _width / 2, _height / 2);
+			glClear(GL_COLOR_BUFFER_BIT);
+
+			for (int i = (int)_vFlareMipChain.size() - 1; i >= 0; i--) {
+				const auto& src = _vFlareMipChain[i];
+				glBindFramebuffer(GL_FRAMEBUFFER, _verticalFlareFBO);
+				glViewport(0, 0, _width / 2, _height / 2);
+				_upsampleShader->setVec2("srcResolution", src.size.x, src.size.y);
+				glActiveTexture(GL_TEXTURE0);
+				glBindTexture(GL_TEXTURE_2D, src.texture);
+				glDrawArrays(GL_TRIANGLES, 0, 6);
+			}
+
+			glDisable(GL_BLEND);
 
 			// 5. Final composite with scene
 			glBindFramebuffer(GL_FRAMEBUFFER, originalFBO);

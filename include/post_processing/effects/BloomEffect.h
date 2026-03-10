@@ -71,14 +71,15 @@ namespace Boidsish {
 			GLuint _flareBrightPassFBO;
 			GLuint _flareBrightPassTexture;
 
+			std::vector<BloomMip> _flareBrightMipChain;
+			std::vector<BloomMip> _hFlareMipChain;
+			std::vector<BloomMip> _vFlareMipChain;
+
 			GLuint _horizontalFlareFBO;
 			GLuint _horizontalFlareTexture;
 
 			GLuint _verticalFlareFBO;
 			GLuint _verticalFlareTexture;
-
-			GLuint _flarePingPongFBO;
-			GLuint _flarePingPongTexture;
 
 			int   _width, _height;
 			float intensity_ = 0.15f;
