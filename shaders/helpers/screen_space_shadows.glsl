@@ -3,6 +3,7 @@
 
 #include "depth.glsl"
 #include "../temporal_data.glsl"
+#include "fast_noise.glsl"
 
 uniform sampler2D u_hizTexture;
 
@@ -22,15 +23,24 @@ float screenSpaceShadowCoverage(vec3 worldPos, vec3 normal, vec3 lightDir) {
 		return 0.0;
 
 	// Start with a small bias to prevent self-shadowing
-	vec3 p_start = worldPos + normal * (0.1 * worldScale) + lightDir * (0.2 * worldScale);
+	// Bias should be larger than typical depth buffer precision errors
+	vec3 p_start = worldPos + normal * (0.1 * worldScale) + lightDir * (0.4 * worldScale);
 
-	float t = 0.2 * worldScale;
-	float maxDist = 60.0 * worldScale; // Local shadows only
+	float t = 0.5 * worldScale;
+	float maxDist = 80.0 * worldScale; // Local shadows only
 	float closest = 1.0;
 	int   iter = 0;
 
-	// Hierarchical Hi-Z raymarching
-	while (t < maxDist && iter < 40) {
+	// Raymarching
+	// We use a smaller step size and more iterations for reliability on thin objects
+	float stepSize = 0.5 * worldScale;
+
+	// Temporal/Spatial dithering to hide banding and stamping
+	// We use worldPos and time for a stable but varied dither pattern
+	float dither = (fastWorley3d(worldPos * 5.0 + time) * 0.5 + 0.5) * stepSize;
+	t += dither;
+
+	while (t < maxDist && iter < 120) {
 		iter++;
 		vec3 p = p_start + lightDir * t;
 
@@ -48,40 +58,30 @@ float screenSpaceShadowCoverage(vec3 worldPos, vec3 normal, vec3 lightDir) {
 
 		float rayLinearDepth = linearizeDepth(prevNdc.z * 0.5 + 0.5, td.nearPlane, td.farPlane);
 
-		// Determine mip level based on step size for hierarchical skipping
-		// Larger t -> larger screenspace footprint -> higher mip
-		int mip = clamp(int(log2(t / worldScale)), 0, 4);
-
-		// Sample Hi-Z (stores MAX linearized depth in each tile)
-		float hizMaxDepth = textureLod(u_hizTexture, prevUV, float(mip)).r;
-
-		// If ray is still "in front" of the max depth in this tile, we can skip ahead
-		if (rayLinearDepth < hizMaxDepth - (0.5 * worldScale)) {
-			// Skip ahead proportional to mip level
-			t += (1.0 + float(mip)) * worldScale;
-			continue;
-		}
-
-		// At LOD 0, perform actual occlusion and penumbra tests
+		// Sample depth from previous frame
 		float sampledDepth = textureLod(u_hizTexture, prevUV, 0.0).r;
 		float depthDiff = rayLinearDepth - sampledDepth;
 
-		float thickness = 4.0 * worldScale;
+		// Assumption of object thickness to avoid shadows being cast by the background
+		// Trees can be quite thick (foliage/trunks).
+		float thickness = (10.0 + t * 0.1) * worldScale;
 
 		if (depthDiff > 0.0) {
 			// Ray is behind sampled geometry
 			if (depthDiff < thickness) {
-				return 0.0; // Hit!
+				// We found an occluder.
+				// Apply a small fade near the thickness edge to reduce artifacts
+				float hitStrength = smoothstep(thickness, thickness * 0.7, depthDiff);
+				return mix(1.0, 0.0, hitStrength);
 			}
-			// Passing behind object - no hit, but don't skip
+			// Passing behind object - continue search
 		} else {
-			// Ray is clearing the geometry. Calculate closeness for soft penumbra.
-			// Formula: penumbra = shadow_factor * (dist_to_geometry / distance_traveled)
-			// Matches terrain shadow logic: closest = min(closest, k * (depth_diff / t))
-			closest = min(closest, 8.0 * ((-depthDiff) / t));
+			// Ray is in front of geometry. Calculate contact hardening penumbra.
+			// Formula: k * (distance_to_geometry / distance_from_source)
+			closest = min(closest, 12.0 * ((-depthDiff) / t));
 		}
 
-		t += 1.0 * worldScale;
+		t += stepSize;
 	}
 
 	return clamp(closest, 0.0, 1.0);
