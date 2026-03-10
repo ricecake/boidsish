@@ -3,6 +3,7 @@
 
 uniform sampler3D u_noiseTexture;
 uniform sampler3D u_curlTexture;
+uniform sampler2D u_blueNoiseTexture;
 
 // R: Simplex 3D
 float fastSimplex3d(vec3 p) {
@@ -44,4 +45,8 @@ vec3 fastCurl3d(vec3 p) {
 // FBM Curl magnitude lookup
 float fastFbmCurl3d(vec3 p) {
 	return texture(u_curlTexture, p).a;
+}
+
+float fastBlueNoise2d(vec2 p) {
+	return texture(u_blueNoiseTexture, p).a;
 }
