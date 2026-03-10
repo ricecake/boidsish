@@ -41,6 +41,8 @@ namespace Boidsish {
 		std::shared_ptr<Sound>
 		CreateSound(const std::string& filepath, const glm::vec3& position, float volume = 1.0f, bool loop = false);
 
+		void SetGlobalPitch(float pitch);
+
 		void Update();
 
 	private:
