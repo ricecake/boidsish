@@ -322,6 +322,21 @@ namespace Boidsish {
 		void ResetBones();
 
 		// IK
+		struct IKTarget {
+			std::string effectorName;
+			glm::vec3   targetWorldPos;
+			glm::quat   targetWorldRot = glm::quat(0, 0, 0, 0);
+			float       weight = 1.0f;
+			std::string rootBoneName = "";
+			int         chainLength = 0;
+		};
+
+		void SolveIK(
+			const std::vector<IKTarget>&    targets,
+			float                           tolerance = 0.01f,
+			int                             maxIterations = 20
+		);
+
 		void SolveIK(
 			const std::string&              effectorName,
 			const glm::vec3&                targetWorldPos,
