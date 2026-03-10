@@ -1,4 +1,5 @@
 #include "walking_tank.h"
+#include "procedural_mesher.h"
 #include <numbers>
 #include <algorithm>
 #include <glm/gtc/matrix_transform.hpp>
@@ -7,7 +8,7 @@
 namespace Boidsish {
 
 	WalkingTank::WalkingTank(int id, float x, float y, float z) :
-		Entity<Model>(id, std::make_shared<ModelData>()) {
+		Entity<Model>(id) {
 
 		rigid_body_.SetPosition(glm::vec3(x, y, z));
 		target_pos_ = glm::vec3(x, y, z);
@@ -23,37 +24,66 @@ namespace Boidsish {
 	}
 
 	void WalkingTank::InitializeRig() {
-		auto data = shape_->GetData();
+		ProceduralIR ir;
+		ir.name = "tank_mesh";
 
-		// Build a simple robotic rig
-		// Body
-		data->AddBone("body", "", glm::mat4(1.0f));
+		float hip_h = 1.0f;
+		float knee_h = 0.5f;
+		float foot_h = 0.0f;
+		float body_h = 0.9f;
+
+		// Body Hub
+		int body_hub = ir.AddHub(glm::vec3(0, body_h, 0), 0.8f, glm::vec3(0.4f, 0.45f, 0.4f));
+		// Turret
+		ir.AddHub(glm::vec3(0, body_h + 0.4f, 0.2f), 0.5f, glm::vec3(0.35f, 0.4f, 0.35f), body_hub);
 
 		// 4 Legs
-		float w = 1.0f;
-		float l = 1.0f;
-		float h = 0.5f;
+		float w = 0.8f;
+		float l = 0.8f;
 
-		std::vector<std::string> leg_names = {"FL", "FR", "BL", "BR"};
 		std::vector<glm::vec3> offsets = {
-			{-w, -h,  l}, { w, -h,  l},
-			{-w, -h, -l}, { w, -h, -l}
+			{-w, hip_h,  l}, { w, hip_h,  l},
+			{-w, hip_h, -l}, { w, hip_h, -l}
 		};
 
 		for(int i = 0; i < 4; ++i) {
-			std::string base = leg_names[i] + "_base";
-			std::string knee = leg_names[i] + "_knee";
-			std::string foot = leg_names[i] + "_foot";
+			glm::vec3 base_pos = offsets[i];
+			glm::vec3 knee_pos = base_pos + glm::vec3(0, knee_h - hip_h, 0.3f);
+			glm::vec3 foot_pos = knee_pos + glm::vec3(0, foot_h - knee_h, -0.3f);
 
-			// Robotic legs: pivot out, then down, then down to foot
-			data->AddBone(base, "body", glm::translate(glm::mat4(1.0f), offsets[i]));
-			data->AddBone(knee, base, glm::translate(glm::mat4(1.0f), glm::vec3(0, -0.5f, 0.2f)));
-			data->AddBone(foot, knee, glm::translate(glm::mat4(1.0f), glm::vec3(0, -0.5f, -0.2f)));
+			// Leg geometry
+			int hip = ir.AddHub(base_pos, 0.2f, glm::vec3(0.3f), body_hub);
+			int u_leg = ir.AddTube(base_pos, knee_pos, 0.12f, 0.1f, glm::vec3(0.35f), hip);
+			int knee = ir.AddHub(knee_pos, 0.15f, glm::vec3(0.3f), u_leg);
+			int l_leg = ir.AddTube(knee_pos, foot_pos, 0.1f, 0.08f, glm::vec3(0.35f), knee);
+			ir.AddHub(foot_pos, 0.12f, glm::vec3(0.2f), l_leg);
+		}
+
+		shape_ = ProceduralMesher::GenerateModel(ir);
+
+		// Build skeleton manually
+		shape_->AddBone("body", "", glm::translate(glm::mat4(1.0f), glm::vec3(0, body_h, 0)));
+
+		legs_.clear();
+		for(int i = 0; i < 4; ++i) {
+			std::string leg_prefix = "leg_" + std::to_string(i);
+			glm::vec3 base_pos = offsets[i];
+			glm::vec3 knee_pos = base_pos + glm::vec3(0, knee_h - hip_h, 0.3f);
+			glm::vec3 foot_pos = knee_pos + glm::vec3(0, foot_h - knee_h, -0.3f);
+
+			glm::vec3 hip_rel = base_pos - glm::vec3(0, body_h, 0);
+			shape_->AddBone(leg_prefix + "_hip", "body", glm::translate(glm::mat4(1.0f), hip_rel));
+
+			glm::vec3 knee_rel = knee_pos - base_pos;
+			shape_->AddBone(leg_prefix + "_knee", leg_prefix + "_hip", glm::translate(glm::mat4(1.0f), knee_rel));
+
+			glm::vec3 foot_rel = foot_pos - knee_pos;
+			shape_->AddBone(leg_prefix + "_foot", leg_prefix + "_knee", glm::translate(glm::mat4(1.0f), foot_rel));
 
 			Leg leg;
-			leg.name = leg_names[i];
-			leg.effector = foot;
-			leg.rest_offset = offsets[i] + glm::vec3(0, -1.0f, 0);
+			leg.name = leg_prefix;
+			leg.effector = leg_prefix + "_foot";
+			leg.rest_offset = foot_pos;
 			leg.world_foot_pos = rigid_body_.GetPosition() + leg.rest_offset;
 			legs_.push_back(leg);
 		}
@@ -69,6 +99,12 @@ namespace Boidsish {
 
 	void WalkingTank::UpdateMovement(const EntityHandler& handler, float delta_time) {
 		glm::vec3 current_pos = rigid_body_.GetPosition();
+
+		// Ground clamping
+		auto [terrain_h, normal] = handler.GetTerrainPropertiesAtPoint(current_pos.x, current_pos.z);
+		current_pos.y = terrain_h;
+		rigid_body_.SetPosition(current_pos);
+
 		glm::vec3 diff = target_pos_ - current_pos;
 		diff.y = 0;
 		float dist = glm::length(diff);
@@ -85,7 +121,8 @@ namespace Boidsish {
 			current_yaw_ += yaw_diff * std::min(1.0f, delta_time * 2.0f);
 
 			float speed = 1.5f;
-			rigid_body_.SetPosition(current_pos + glm::vec3(std::sin(glm::radians(current_yaw_)), 0, std::cos(glm::radians(current_yaw_))) * speed * delta_time);
+			current_pos += glm::vec3(std::sin(glm::radians(current_yaw_)), 0, std::cos(glm::radians(current_yaw_))) * speed * delta_time;
+			rigid_body_.SetPosition(current_pos);
 		}
 
 		rigid_body_.SetOrientation(glm::angleAxis(glm::radians(current_yaw_), glm::vec3(0, 1, 0)));
@@ -116,12 +153,12 @@ namespace Boidsish {
 				float t = leg_phi; // 0 to 1
 				// Robotic parabolic step
 				legs_[i].world_foot_pos = glm::mix(legs_[i].step_start_pos, legs_[i].step_target_pos, t);
-				legs_[i].world_foot_pos.y = rigid_body_.GetPosition().y - 1.0f + std::sin(t * std::numbers::pi_v<float>) * step_height_;
+				legs_[i].world_foot_pos.y = rigid_body_.GetPosition().y + std::sin(t * std::numbers::pi_v<float>) * step_height_;
 			} else {
 				if (legs_[i].is_moving) {
 					legs_[i].is_moving = false;
 					legs_[i].world_foot_pos = legs_[i].step_target_pos;
-					legs_[i].world_foot_pos.y = rigid_body_.GetPosition().y - 1.0f;
+					legs_[i].world_foot_pos.y = rigid_body_.GetPosition().y;
 				}
 
 				// Keep foot planted relative to ground if body moves
