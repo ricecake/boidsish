@@ -26,8 +26,11 @@ namespace Boidsish {
 		void      render() const override;
 		void      render(Shader& shader, const glm::mat4& model_matrix) const override;
 		glm::mat4 GetModelMatrix() const override;
+		glm::mat4 GetInternalMatrix() const override;
 
 		void GenerateRenderPackets(std::vector<RenderPacket>& out_packets, const RenderContext& context) const override;
+
+		AABB GetLocalAABB() const override;
 
 		// Terrain chunks are not instanced (each has unique geometry)
 		std::string GetInstanceKey() const override { return "Terrain:" + std::to_string(GetId()); }

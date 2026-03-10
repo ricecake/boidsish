@@ -426,14 +426,7 @@ namespace Boidsish {
 		if (!m_data)
 			return;
 
-		// Create model matrix from shape properties
-		glm::mat4 model = glm::mat4(1.0f);
-		model = glm::translate(model, glm::vec3(GetX(), GetY(), GetZ()));
-		model *= glm::mat4_cast(GetRotation());
-		model *= glm::mat4_cast(base_rotation_);
-		model = glm::scale(model, GetScale());
-
-		shader.setMat4("model", model);
+		shader.setMat4("model", model_matrix);
 		shader.setVec3("objectColor", GetR(), GetG(), GetB());
 		shader.setFloat("objectAlpha", GetA());
 
@@ -473,7 +466,7 @@ namespace Boidsish {
 				float     dMax = -std::numeric_limits<float>::max();
 				glm::vec3 n = glm::normalize(dissolve_plane_normal_);
 
-				AABB worldAABB = m_data->aabb.Transform(model);
+				AABB worldAABB = m_data->aabb.Transform(model_matrix);
 				// A simple approximation using AABB corners is much faster than all vertices
 				for (int j = 0; j < 8; ++j) {
 					float d = glm::dot(n, worldAABB.GetCorner(j));
@@ -628,11 +621,14 @@ namespace Boidsish {
 	}
 
 	glm::mat4 Model::GetModelMatrix() const {
+		return GetEntityMatrix() * GetInternalMatrix();
+	}
+
+	glm::mat4 Model::GetInternalMatrix() const {
 		glm::mat4 model = glm::mat4(1.0f);
-		model = glm::translate(model, glm::vec3(GetX(), GetY(), GetZ()));
-		model *= glm::mat4_cast(GetRotation());
-		model *= glm::mat4_cast(base_rotation_);
 		model = glm::scale(model, GetScale());
+		model *= glm::mat4_cast(base_rotation_);
+		model = glm::translate(model, model_offset_);
 		return model;
 	}
 
@@ -640,10 +636,16 @@ namespace Boidsish {
 		return GetAABB().Intersects(ray, t);
 	}
 
-	AABB Model::GetAABB() const {
+	AABB Model::GetLocalAABB() const {
 		if (!m_data)
-			return AABB();
-		return m_data->aabb.Transform(GetModelMatrix());
+			return local_aabb_;
+		// Returns the raw authored AABB. GetTrailAttachmentPoint uses this to pick a
+		// vertex in local space, which is then transformed by the full model matrix.
+		return m_data->aabb;
+	}
+
+	AABB Model::GetAABB() const {
+		return GetLocalAABB().Transform(GetModelMatrix());
 	}
 
 	void Model::GetGeometry(std::vector<Vertex>& vertices, std::vector<unsigned int>& indices) const {

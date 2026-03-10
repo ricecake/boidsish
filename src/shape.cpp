@@ -336,6 +336,47 @@ namespace Boidsish {
 	}
 
 	AABB Shape::GetAABB() const {
-		return local_aabb_.Transform(GetModelMatrix());
+		return GetLocalAABB().Transform(GetModelMatrix());
+	}
+
+	glm::mat4 Shape::GetEntityMatrix() const {
+		glm::mat4 model = glm::mat4(1.0f);
+		model = glm::translate(model, glm::vec3(x_, y_, z_));
+		model *= glm::mat4_cast(rotation_);
+		return model;
+	}
+
+	glm::mat4 Shape::GetInternalMatrix() const {
+		glm::mat4 model = glm::mat4(1.0f);
+		model = glm::scale(model, scale_);
+		model = glm::translate(model, model_offset_);
+		return model;
+	}
+
+	glm::vec3 Shape::GetTrailAttachmentPoint() const {
+		if (trail_offset_set_) {
+			return glm::vec3(GetModelMatrix() * glm::vec4(trail_offset_, 1.0f));
+		}
+
+		// Default attachment: Use the local AABB to find the "back" of the geometry.
+		// The local AABB is in "Entity space" (after internal offsets but before world transform).
+		AABB      local_aabb = GetLocalAABB();
+		glm::vec3 extent = local_aabb.max - local_aabb.min;
+		glm::vec3 center = (local_aabb.min + local_aabb.max) * 0.5f;
+		glm::vec3 trail_point_entity_space = center;
+
+		// Heuristic: Attach to the "back" of the longest axis.
+		// We assume models face -Z by default (Forward is -Z), so back is +Z (max.z).
+		if (extent.z >= extent.x && extent.z >= extent.y) {
+			trail_point_entity_space.z = local_aabb.max.z;
+		} else if (extent.y >= extent.x && extent.y >= extent.z) {
+			// For vertical objects, assume min.y is the base.
+			trail_point_entity_space.y = local_aabb.min.y;
+		} else {
+			// For X-aligned, assume min.x is back.
+			trail_point_entity_space.x = local_aabb.min.x;
+		}
+
+		return glm::vec3(GetEntityMatrix() * glm::vec4(trail_point_entity_space, 1.0f));
 	}
 } // namespace Boidsish

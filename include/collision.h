@@ -62,6 +62,8 @@ namespace Boidsish {
 
 		bool IsEmpty() const { return min.x >= max.x || min.y >= max.y || min.z >= max.z; }
 
+		AABB Translate(const glm::vec3& offset) const { return AABB(min + offset, max + offset); }
+
 		glm::vec3 GetCorner(int i) const {
 			return glm::vec3((i & 1) ? max.x : min.x, (i & 2) ? max.y : min.y, (i & 4) ? max.z : min.z);
 		}

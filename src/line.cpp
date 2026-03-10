@@ -143,6 +143,10 @@ namespace Boidsish {
 	}
 
 	glm::mat4 Line::GetModelMatrix() const {
+		return GetInternalMatrix();
+	}
+
+	glm::mat4 Line::GetInternalMatrix() const {
 		glm::vec3 start = GetStart();
 		glm::vec3 direction = end_ - start;
 		float     length = glm::length(direction);
@@ -156,11 +160,18 @@ namespace Boidsish {
 		// Calculate rotation to align X-axis (our line mesh grows along X) with direction
 		glm::quat rotation = glm::rotation(glm::vec3(1.0f, 0.0f, 0.0f), norm_dir);
 
+		// Line is unique as it doesn't use GetEntityMatrix() because start/end define its position/rotation
 		glm::mat4 model = glm::translate(glm::mat4(1.0f), start);
 		model *= glm::toMat4(rotation);
 		model = glm::scale(model, glm::vec3(length, width_, width_));
+		model = glm::translate(model, model_offset_);
 
 		return model;
+	}
+
+	AABB Line::GetLocalAABB() const {
+		// Line mesh is roughly from 0 to 1 in X, and -0.5 to 0.5 in Y, Z
+		return AABB(glm::vec3(0.0f, -0.5f, -0.5f), glm::vec3(1.0f, 0.5f, 0.5f));
 	}
 
 	void Line::GenerateRenderPackets(std::vector<RenderPacket>& out_packets, const RenderContext& context) const {

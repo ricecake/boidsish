@@ -452,10 +452,28 @@ namespace Boidsish {
 	}
 
 	glm::mat4 Graph::GetModelMatrix() const {
+		return GetEntityMatrix() * GetInternalMatrix();
+	}
+
+	glm::mat4 Graph::GetInternalMatrix() const {
 		glm::mat4 model = glm::mat4(1.0f);
-		model = glm::translate(model, glm::vec3(GetX(), GetY(), GetZ()));
-		// Graph doesn't have its own rotation or scale, so we don't apply them here.
+		model = glm::translate(model, model_offset_);
 		return model;
+	}
+
+	AABB Graph::GetLocalAABB() const {
+		if (vertices.empty())
+			return local_aabb_;
+
+		glm::vec3 min_pt(std::numeric_limits<float>::max());
+		glm::vec3 max_pt(std::numeric_limits<float>::lowest());
+
+		for (const auto& node : vertices) {
+			min_pt = glm::min(min_pt, node.position.Toglm() - glm::vec3(node.size));
+			max_pt = glm::max(max_pt, node.position.Toglm() + glm::vec3(node.size));
+		}
+
+		return AABB(min_pt, max_pt);
 	}
 
 } // namespace Boidsish

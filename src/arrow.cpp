@@ -4,6 +4,7 @@
 #include <vector>
 
 #include "shader.h"
+#include <GLFW/glfw3.h>
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/quaternion.hpp>
@@ -59,16 +60,37 @@ namespace Boidsish {
 	}
 
 	glm::mat4 Arrow::GetModelMatrix() const {
+		return GetEntityMatrix() * GetInternalMatrix();
+	}
+
+	glm::mat4 Arrow::GetInternalMatrix() const {
 		glm::mat4 model = glm::mat4(1.0f);
-		model = glm::translate(model, glm::vec3(GetX(), GetY(), GetZ()));
-		model = model * glm::mat4_cast(GetRotation());
 		model = glm::scale(model, GetScale());
+		model = glm::translate(model, model_offset_);
 		return model;
+	}
+
+	AABB Arrow::GetLocalAABB() const {
+		float length = 1.0f;
+		float radius = std::max(cone_radius_, rod_radius_);
+		return AABB(glm::vec3(-radius, 0.0f, -radius), glm::vec3(radius, length, radius));
+	}
+
+	glm::vec3 Arrow::GetTrailAttachmentPoint() const {
+		if (trail_offset_set_) {
+			return glm::vec3(GetModelMatrix() * glm::vec4(trail_offset_, 1.0f));
+		}
+		// Default to start of rod (origin in local space, before model_offset_)
+		return glm::vec3(GetModelMatrix() * glm::vec4(0.0f, 0.0f, 0.0f, 1.0f));
 	}
 
 	void Arrow::InitArrowMesh(Megabuffer* mb) const {
 		if (rod_vao_ != 0 || rod_alloc_.valid)
 			return;
+
+		if (!mb && glfwGetCurrentContext() == nullptr) {
+			return;
+		}
 
 		// Rod generation
 		std::vector<float> rod_vertices;

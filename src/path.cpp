@@ -213,9 +213,29 @@ namespace Boidsish {
 	}
 
 	glm::mat4 Path::GetModelMatrix() const {
+		return GetEntityMatrix() * GetInternalMatrix();
+	}
+
+	glm::mat4 Path::GetInternalMatrix() const {
 		glm::mat4 model = glm::mat4(1.0f);
-		model = glm::translate(model, glm::vec3(GetX(), GetY(), GetZ()));
+		model = glm::translate(model, model_offset_);
 		return model;
+	}
+
+	AABB Path::GetLocalAABB() const {
+		if (waypoints_.empty())
+			return local_aabb_;
+
+		glm::vec3 min_pt(std::numeric_limits<float>::max());
+		glm::vec3 max_pt(std::numeric_limits<float>::lowest());
+
+		for (const auto& w : waypoints_) {
+			glm::vec3 pos = w.position.Toglm();
+			min_pt = glm::min(min_pt, pos - glm::vec3(w.size));
+			max_pt = glm::max(max_pt, pos + glm::vec3(w.size));
+		}
+
+		return AABB(min_pt, max_pt);
 	}
 
 	PathUpdateResult Path::CalculateUpdate(

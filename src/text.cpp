@@ -415,10 +415,13 @@ namespace Boidsish {
 	}
 
 	glm::mat4 Text::GetModelMatrix() const {
+		return GetEntityMatrix() * GetInternalMatrix();
+	}
+
+	glm::mat4 Text::GetInternalMatrix() const {
 		glm::mat4 model = glm::mat4(1.0f);
-		model = glm::translate(model, glm::vec3(GetX(), GetY(), GetZ()));
-		model = model * glm::mat4_cast(GetRotation());
 		model = glm::scale(model, GetScale());
+		model = glm::translate(model, model_offset_);
 		return model;
 	}
 
@@ -472,5 +475,20 @@ namespace Boidsish {
 		);
 
 		out_packets.push_back(packet);
+	}
+
+	AABB Text::GetLocalAABB() const {
+		if (mesh_vertices_.empty())
+			return local_aabb_;
+
+		glm::vec3 min_pt(std::numeric_limits<float>::max());
+		glm::vec3 max_pt(std::numeric_limits<float>::lowest());
+
+		for (const auto& v : mesh_vertices_) {
+			min_pt = glm::min(min_pt, v.Position);
+			max_pt = glm::max(max_pt, v.Position);
+		}
+
+		return AABB(min_pt, max_pt);
 	}
 } // namespace Boidsish

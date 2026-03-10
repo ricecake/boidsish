@@ -58,7 +58,10 @@ namespace Boidsish {
 			dissolve_plane_normal_(other.dissolve_plane_normal_),
 			dissolve_plane_dist_(other.dissolve_plane_dist_),
 			is_refractive_(other.is_refractive_),
-			refractive_index_(other.refractive_index_) {}
+			refractive_index_(other.refractive_index_),
+			model_offset_(other.model_offset_),
+			trail_offset_(other.trail_offset_),
+			trail_offset_set_(other.trail_offset_set_) {}
 
 		Shape& operator=(Shape&& other) noexcept {
 			if (this != &other) {
@@ -97,6 +100,9 @@ namespace Boidsish {
 				dissolve_plane_dist_ = other.dissolve_plane_dist_;
 				is_refractive_ = other.is_refractive_;
 				refractive_index_ = other.refractive_index_;
+				model_offset_ = other.model_offset_;
+				trail_offset_ = other.trail_offset_;
+				trail_offset_set_ = other.trail_offset_set_;
 			}
 			return *this;
 		}
@@ -151,6 +157,19 @@ namespace Boidsish {
 		virtual void      render(Shader& shader, const glm::mat4& model_matrix) const = 0;
 		virtual glm::mat4 GetModelMatrix() const = 0;
 
+		/**
+		 * @brief Returns the matrix that transforms from entity-local space to world space.
+		 * This includes the entity's position and rotation, but NOT its internal visual offsets,
+		 * base rotation, or scale.
+		 */
+		virtual glm::mat4 GetEntityMatrix() const;
+
+		/**
+		 * @brief Returns the matrix for internal visual adjustments (scale, base rotation, model offset).
+		 * This is applied relative to the entity's pivot.
+		 */
+		virtual glm::mat4 GetInternalMatrix() const;
+
 		// Get the active visual effects for this shape
 		virtual std::vector<VisualEffect> GetActiveEffects() const { return {}; }
 
@@ -166,6 +185,8 @@ namespace Boidsish {
 		inline float GetY() const { return y_; }
 
 		inline float GetZ() const { return z_; }
+
+		inline glm::vec3 GetPosition() const { return glm::vec3(x_, y_, z_); }
 
 		inline void SetPosition(float x, float y, float z) {
 			x_ = x;
@@ -301,6 +322,20 @@ namespace Boidsish {
 		virtual float GetBoundingRadius() const { return 5.0f; }
 
 		/**
+		 * @brief Get the local axis-aligned bounding box (AABB) for this shape.
+		 *
+		 * @return AABB in local coordinates
+		 */
+		virtual AABB GetLocalAABB() const { return local_aabb_; }
+
+		/**
+		 * @brief Returns the world-space point where a trail should be attached.
+		 *
+		 * @return glm::vec3 attachment point in world space
+		 */
+		virtual glm::vec3 GetTrailAttachmentPoint() const;
+
+		/**
 		 * @brief Test for intersection with a ray.
 		 *
 		 * @param ray The ray to test against
@@ -381,6 +416,21 @@ namespace Boidsish {
 
 		inline float GetRefractiveIndex() const { return refractive_index_; }
 
+		inline void SetModelOffset(const glm::vec3& offset) {
+			model_offset_ = offset;
+			MarkDirty();
+		}
+
+		inline const glm::vec3& GetModelOffset() const { return model_offset_; }
+
+		inline void SetTrailOffset(const glm::vec3& offset) {
+			trail_offset_ = offset;
+			trail_offset_set_ = true;
+			MarkDirty();
+		}
+
+		inline const glm::vec3& GetTrailOffset() const { return trail_offset_; }
+
 		inline void SetRefractive(bool enabled, float index = 1.0f) {
 			is_refractive_ = enabled;
 			refractive_index_ = index;
@@ -447,7 +497,10 @@ namespace Boidsish {
 			dissolve_plane_normal_(0, 1, 0),
 			dissolve_plane_dist_(0.0f),
 			is_refractive_(false),
-			refractive_index_(1.0f) {}
+			refractive_index_(1.0f),
+			model_offset_(0.0f),
+			trail_offset_(0.0f),
+			trail_offset_set_(false) {}
 
 		glm::quat rotation_;
 		glm::vec3 scale_;
@@ -484,6 +537,10 @@ namespace Boidsish {
 		float     dissolve_plane_dist_;
 		bool      is_refractive_;
 		float     refractive_index_;
+
+		glm::vec3 model_offset_;
+		glm::vec3 trail_offset_;
+		bool      trail_offset_set_;
 
 	public:
 		// Shared sphere mesh (public for instancing support)
