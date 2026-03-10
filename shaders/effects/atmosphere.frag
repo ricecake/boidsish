@@ -96,15 +96,17 @@ void main() {
 	if (t_start < t_end) {
 		float cloudAcc = 0.0;
 		int   samples = 6;
-		float jitter = fract(sin(dot(TexCoords, vec2(12.9898, 78.233))) * 43758.5453);
+		float jitter = fastBlueNoise2d(worldPos.xz);
+		// float jitter = fract(sin(dot(TexCoords, vec2(12.9898, 78.233))) * 43758.5453);
 		for (int i = 0; i < samples; i++) {
 			float t = mix(t_start, t_end, (float(i) + jitter) / float(samples));
 			vec3  p = cameraPos + rayDir * t;
-			float h = (p.y - scaledCloudAltitude) / max(scaledCloudThickness, 0.001);
-			float tapering = smoothstep(0.0, 0.2, h) * smoothstep(1.0, 0.5, h);
-			vec3  noise_p = (p / worldScale) * 0.015 + vec3(0, time * 0.0001, 0);
-			float noise = fastFbm3d(noise_p) * 0.5 + 0.5; // Using pre-computed FBM
-			float d = smoothstep(0.2, 0.6, noise * (i + (1 - noise))) * cloudDensity * tapering;
+			float h = (p.y - scaledCloudAltitude) / max(100+scaledCloudThickness, 0.001);
+			float tapering = 1;//smoothstep(0.0, 0.5, h) * smoothstep(1.0, 0.5, h);
+			// vec3  noise_p = (p/worldScale) * 0.00005;
+			// float noise = fastWorley3d(noise_p) * 0.5 + 0.5; // Using pre-computed FBM
+			float noise = fastWorley3d(vec3(p.xz / (350 * worldScale), time * 0.01));
+			float d = smoothstep(0.2, 0.6, noise) * cloudDensity * tapering;
 			cloudAcc += d;
 		}
 		cloudFactor = 1.0 - exp(-cloudAcc * (t_end - t_start) * 0.05 / float(samples));
