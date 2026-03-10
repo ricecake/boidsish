@@ -143,6 +143,29 @@ namespace Boidsish {
 								if (ImGui::SliderFloat("Threshold", &threshold, 0.0f, 3.0f)) {
 									bloom_effect->SetThreshold(threshold);
 								}
+
+								ImGui::Separator();
+								ImGui::Text("Lens Flare");
+
+								float flare_threshold = bloom_effect->GetFlareThreshold();
+								if (ImGui::SliderFloat("Flare Threshold", &flare_threshold, 0.0f, 5.0f)) {
+									bloom_effect->SetFlareThreshold(flare_threshold);
+								}
+
+								float flare_intensity = bloom_effect->GetFlareIntensity();
+								if (ImGui::SliderFloat("Flare Intensity", &flare_intensity, 0.0f, 2.0f)) {
+									bloom_effect->SetFlareIntensity(flare_intensity);
+								}
+
+								float v_intensity = bloom_effect->GetVerticalFlareIntensity();
+								if (ImGui::SliderFloat("Vertical Intensity", &v_intensity, 0.0f, 1.0f)) {
+									bloom_effect->SetVerticalFlareIntensity(v_intensity);
+								}
+
+								float h_intensity = bloom_effect->GetHorizontalFlareIntensity();
+								if (ImGui::SliderFloat("Horizontal Intensity", &h_intensity, 0.0f, 1.0f)) {
+									bloom_effect->SetHorizontalFlareIntensity(h_intensity);
+								}
 							}
 						}
 					}

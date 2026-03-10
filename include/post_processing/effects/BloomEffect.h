@@ -42,6 +42,18 @@ namespace Boidsish {
 
 			float GetThreshold() const { return threshold_; }
 
+			void  SetFlareIntensity(float intensity) { flareIntensity_ = intensity; }
+			float GetFlareIntensity() const { return flareIntensity_; }
+
+			void  SetFlareThreshold(float threshold) { flareThreshold_ = threshold; }
+			float GetFlareThreshold() const { return flareThreshold_; }
+
+			void  SetHorizontalFlareIntensity(float intensity) { horizontalFlareIntensity_ = intensity; }
+			float GetHorizontalFlareIntensity() const { return horizontalFlareIntensity_; }
+
+			void  SetVerticalFlareIntensity(float intensity) { verticalFlareIntensity_ = intensity; }
+			float GetVerticalFlareIntensity() const { return verticalFlareIntensity_; }
+
 		private:
 			void InitializeFBOs();
 
@@ -49,14 +61,30 @@ namespace Boidsish {
 			std::unique_ptr<Shader> _downsampleShader;
 			std::unique_ptr<Shader> _upsampleShader;
 			std::unique_ptr<Shader> _compositeShader;
+			std::unique_ptr<Shader> _streakShader;
 
 			GLuint                _brightPassFBO;
 			GLuint                _brightPassTexture;
 			std::vector<BloomMip> _mipChain;
 
+			// Flare resources
+			GLuint _flareBrightPassFBO;
+			GLuint _flareBrightPassTexture;
+
+			GLuint _horizontalFlareFBO;
+			GLuint _horizontalFlareTexture;
+
+			GLuint _verticalFlareFBO;
+			GLuint _verticalFlareTexture;
+
 			int   _width, _height;
 			float intensity_ = 0.15f;
 			float threshold_ = 1.0f;
+
+			float flareIntensity_ = 0.1f;
+			float flareThreshold_ = 1.5f;
+			float horizontalFlareIntensity_ = 0.75f;
+			float verticalFlareIntensity_ = 0.25f;
 		};
 
 	} // namespace PostProcessing

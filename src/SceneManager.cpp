@@ -94,6 +94,18 @@ namespace Boidsish {
 		config.SetBool(pp_section, "bloom_enabled", scene.post_processing.bloom_enabled);
 		config.SetFloat(pp_section, "bloom_intensity", scene.post_processing.bloom_intensity);
 		config.SetFloat(pp_section, "bloom_threshold", scene.post_processing.bloom_threshold);
+		config.SetFloat(pp_section, "bloom_flare_intensity", scene.post_processing.bloom_flare_intensity);
+		config.SetFloat(pp_section, "bloom_flare_threshold", scene.post_processing.bloom_flare_threshold);
+		config.SetFloat(
+			pp_section,
+			"bloom_flare_horizontal_intensity",
+			scene.post_processing.bloom_flare_horizontal_intensity
+		);
+		config.SetFloat(
+			pp_section,
+			"bloom_flare_vertical_intensity",
+			scene.post_processing.bloom_flare_vertical_intensity
+		);
 		config.SetBool(pp_section, "atmosphere_enabled", scene.post_processing.atmosphere_enabled);
 		config.SetFloat(pp_section, "haze_density", scene.post_processing.haze_density);
 		config.SetFloat(pp_section, "haze_height", scene.post_processing.haze_height);
@@ -195,6 +207,18 @@ namespace Boidsish {
 		scene.post_processing.bloom_enabled = config.GetBool(pp_section, "bloom_enabled", false);
 		scene.post_processing.bloom_intensity = config.GetFloat(pp_section, "bloom_intensity", 0.1f);
 		scene.post_processing.bloom_threshold = config.GetFloat(pp_section, "bloom_threshold", 1.0f);
+		scene.post_processing.bloom_flare_intensity = config.GetFloat(pp_section, "bloom_flare_intensity", 0.1f);
+		scene.post_processing.bloom_flare_threshold = config.GetFloat(pp_section, "bloom_flare_threshold", 1.5f);
+		scene.post_processing.bloom_flare_horizontal_intensity = config.GetFloat(
+			pp_section,
+			"bloom_flare_horizontal_intensity",
+			0.75f
+		);
+		scene.post_processing.bloom_flare_vertical_intensity = config.GetFloat(
+			pp_section,
+			"bloom_flare_vertical_intensity",
+			0.25f
+		);
 		scene.post_processing.atmosphere_enabled = config.GetBool(pp_section, "atmosphere_enabled", true);
 		scene.post_processing.haze_density = config.GetFloat(pp_section, "haze_density", 0.005f);
 		scene.post_processing.haze_height = config.GetFloat(pp_section, "haze_height", 20.0f);
