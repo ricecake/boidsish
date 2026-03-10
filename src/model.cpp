@@ -900,16 +900,8 @@ namespace Boidsish {
 		);
 	}
 
-	void Model::SolveIK(
-		const std::string&              effectorName,
-		const glm::vec3&                targetWorldPos,
-		const glm::quat&                targetWorldRot,
-		float                           tolerance,
-		int                             maxIterations,
-		const std::string&              rootBoneName,
-		const std::vector<std::string>& lockedBones
-	) {
-		if (!m_animator || !m_data)
+	void Model::SolveIK(const std::vector<IKTarget>& targets, float tolerance, int maxIterations) {
+		if (!m_animator || !m_data || targets.empty())
 			return;
 
 		// 1. Create a solver using the FABRIK algorithm
@@ -935,13 +927,12 @@ namespace Boidsish {
 			bone_to_ik_node[node.name] = ik_node;
 
 			// Set initial position and rotation in local space
-			glm::mat4 localTransform = m_animator->GetBoneLocalTransform(node.name);
+			// We use the bind pose (node.transformation) for the initial pose to ensure
+			// bone lengths are calculated correctly and do not drift over time.
+			glm::mat4 localTransform = node.transformation;
 			glm::vec3 pos = glm::vec3(localTransform[3]);
 			glm::quat rot = glm::quat_cast(localTransform);
 
-			// FABRIK needs a distance to parent, which it calculates from initial positions if we call rebuild.
-			// But it needs these positions to be in world space during solving.
-			// The solver actually handles TR_L2G, but we need to ensure the local positions are correct.
 			ik_node->position = ik.vec3.vec3((ikreal_t)pos.x, (ikreal_t)pos.y, (ikreal_t)pos.z);
 			ik_node->rotation = ik.quat.quat((ikreal_t)rot.x, (ikreal_t)rot.y, (ikreal_t)rot.z, (ikreal_t)rot.w);
 
@@ -952,74 +943,65 @@ namespace Boidsish {
 		};
 
 		struct ik_node_t* root = buildTree(m_data->root_node, nullptr);
-
-		// Initialize distances (essential for FABRIK)
 		ik.solver.set_tree(solver, root);
-		ik.solver.update_distances(solver);
 
-		// 3. Attach an effector at the target bone
-		auto it = bone_to_ik_node.find(effectorName);
-		if (it != bone_to_ik_node.end()) {
-			struct ik_effector_t* eff = solver->effector->create();
-			solver->effector->attach(eff, it->second);
+		// 3. Attach all effectors
+		glm::mat4 invModel = glm::inverse(GetModelMatrix());
+		bool      has_rotations = false;
 
-			// Set target position in model space
-			glm::mat4 invModel = glm::inverse(GetModelMatrix());
-			glm::vec3 targetPosModel = glm::vec3(invModel * glm::vec4(targetWorldPos, 1.0f));
-			eff->target_position =
-				ik.vec3.vec3((ikreal_t)targetPosModel.x, (ikreal_t)targetPosModel.y, (ikreal_t)targetPosModel.z);
+		for (const auto& target : targets) {
+			auto it = bone_to_ik_node.find(target.effectorName);
+			if (it != bone_to_ik_node.end()) {
+				struct ik_effector_t* eff = solver->effector->create();
+				solver->effector->attach(eff, it->second);
 
-			if (targetWorldRot != glm::quat(0, 0, 0, 0)) {
-				solver->flags |= IK_ENABLE_TARGET_ROTATIONS;
-				glm::quat targetRotModel = glm::quat_cast(invModel) * targetWorldRot;
-				eff->target_rotation = ik.quat.quat(
-					(ikreal_t)targetRotModel.x,
-					(ikreal_t)targetRotModel.y,
-					(ikreal_t)targetRotModel.z,
-					(ikreal_t)targetRotModel.w
-				);
-			}
-		}
+				// Set target position in model space
+				glm::vec3 targetPosModel = glm::vec3(invModel * glm::vec4(target.targetWorldPos, 1.0f));
+				eff->target_position =
+					ik.vec3.vec3((ikreal_t)targetPosModel.x, (ikreal_t)targetPosModel.y, (ikreal_t)targetPosModel.z);
+				eff->weight = (ikreal_t)target.weight;
 
-		// 4. Set chain length and root
-		if (!rootBoneName.empty()) {
-			auto rootIt = bone_to_ik_node.find(rootBoneName);
-			if (rootIt != bone_to_ik_node.end() && it != bone_to_ik_node.end()) {
-				// Calculate chain length from effector to root
-				int         length = 0;
-				std::string current = effectorName;
-				while (!current.empty() && current != rootBoneName) {
-					current = m_animator->GetBoneParentName(current);
-					length++;
+				if (target.targetWorldRot != glm::quat(0, 0, 0, 0)) {
+					has_rotations = true;
+					glm::quat targetRotModel = glm::quat_cast(invModel) * target.targetWorldRot;
+					eff->target_rotation = ik.quat.quat(
+						(ikreal_t)targetRotModel.x,
+						(ikreal_t)targetRotModel.y,
+						(ikreal_t)targetRotModel.z,
+						(ikreal_t)targetRotModel.w
+					);
 				}
-				if (current == rootBoneName) {
-					it->second->effector->chain_length = (uint16_t)length;
+
+				if (target.chainLength > 0) {
+					eff->chain_length = (uint16_t)target.chainLength;
+				} else if (!target.rootBoneName.empty()) {
+					int         length = 0;
+					std::string current = target.effectorName;
+					while (!current.empty() && current != target.rootBoneName) {
+						current = m_animator->GetBoneParentName(current);
+						length++;
+					}
+					if (current == target.rootBoneName) {
+						eff->chain_length = (uint16_t)length;
+					}
 				}
 			}
 		}
 
-		// 5. Apply Constraints
-		for (auto const& [name, ik_node] : bone_to_ik_node) {
-			BoneConstraint constraint = GetBoneConstraint(name);
-			if (constraint.type != ConstraintType::None) {
-				// TheComet/ik doesn't have a direct hinge/cone constraint yet in the version we have,
-				// but we can try to use its custom constraint mechanism if available.
-				// For now, we'll keep the logic simple and rely on FABRIK's default behavior.
-			}
+		if (has_rotations) {
+			solver->flags |= IK_ENABLE_TARGET_ROTATIONS;
 		}
 
-		// 6. Solve
-		if (ik.solver.rebuild(solver) != IK_OK) {
+		// 4. Solve
+		if (ik.solver.rebuild(solver) == IK_OK) {
+			ik.solver.update_distances(solver);
+			ik.solver.solve(solver);
+		} else {
 			logger::ERROR("IK solver rebuild failed!");
 		}
-		ik.solver.update_distances(solver);
-		if (ik.solver.solve(solver) < 0) {
-			logger::ERROR("IK solver failed!");
-		}
 
-		// 7. Apply the results back to the animator
+		// 5. Apply the results back to the animator
 		for (auto const& [name, ik_node] : bone_to_ik_node) {
-			// Convert ik_node back to local transform
 			glm::vec3 pos((float)ik_node->position.x, (float)ik_node->position.y, (float)ik_node->position.z);
 			glm::quat rot(
 				(float)ik_node->rotation.w,
@@ -1036,11 +1018,28 @@ namespace Boidsish {
 			m_animator->SetBoneLocalTransform(name, local);
 		}
 
-		// 8. Cleanup
+		// 6. Cleanup
 		ik.solver.destroy(solver);
-
-		// Important: we need to update the model-space transforms after overriding local ones
 		UpdateAnimation(0.0f);
+	}
+
+	void Model::SolveIK(
+		const std::string&              effectorName,
+		const glm::vec3&                targetWorldPos,
+		const glm::quat&                targetWorldRot,
+		float                           tolerance,
+		int                             maxIterations,
+		const std::string&              rootBoneName,
+		const std::vector<std::string>& lockedBones
+	) {
+		IKTarget target;
+		target.effectorName = effectorName;
+		target.targetWorldPos = targetWorldPos;
+		target.targetWorldRot = targetWorldRot;
+		target.rootBoneName = rootBoneName;
+
+		std::vector<IKTarget> targets = {target};
+		SolveIK(targets, tolerance, maxIterations);
 	}
 
 	glm::quat Model::GetBoneWorldRotation(const std::string& boneName) const {
