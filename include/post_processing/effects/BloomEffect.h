@@ -77,6 +77,9 @@ namespace Boidsish {
 			GLuint _verticalFlareFBO;
 			GLuint _verticalFlareTexture;
 
+			GLuint _flarePingPongFBO;
+			GLuint _flarePingPongTexture;
+
 			int   _width, _height;
 			float intensity_ = 0.15f;
 			float threshold_ = 1.0f;

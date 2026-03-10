@@ -17,7 +17,9 @@ namespace Boidsish {
 			_horizontalFlareFBO(0),
 			_horizontalFlareTexture(0),
 			_verticalFlareFBO(0),
-			_verticalFlareTexture(0) {
+			_verticalFlareTexture(0),
+			_flarePingPongFBO(0),
+			_flarePingPongTexture(0) {
 			name_ = "Bloom";
 		}
 
@@ -33,6 +35,9 @@ namespace Boidsish {
 
 			glDeleteFramebuffers(1, &_verticalFlareFBO);
 			glDeleteTextures(1, &_verticalFlareTexture);
+
+			glDeleteFramebuffers(1, &_flarePingPongFBO);
+			glDeleteTextures(1, &_flarePingPongTexture);
 
 			for (const auto& mip : _mipChain) {
 				glDeleteFramebuffers(1, &mip.fbo);
@@ -82,6 +87,9 @@ namespace Boidsish {
 
 			glDeleteFramebuffers(1, &_verticalFlareFBO);
 			glDeleteTextures(1, &_verticalFlareTexture);
+
+			glDeleteFramebuffers(1, &_flarePingPongFBO);
+			glDeleteTextures(1, &_flarePingPongTexture);
 
 			for (const auto& mip : _mipChain) {
 				glDeleteFramebuffers(1, &mip.fbo);
@@ -139,6 +147,17 @@ namespace Boidsish {
 			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
 			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 			glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, _verticalFlareTexture, 0);
+
+			glGenFramebuffers(1, &_flarePingPongFBO);
+			glBindFramebuffer(GL_FRAMEBUFFER, _flarePingPongFBO);
+			glGenTextures(1, &_flarePingPongTexture);
+			glBindTexture(GL_TEXTURE_2D, _flarePingPongTexture);
+			glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB16F, flareWidth, flareHeight, 0, GL_RGB, GL_FLOAT, NULL);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+			glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, _flarePingPongTexture, 0);
 
 			glm::vec2 mipSize((float)_width, (float)_height);
 
@@ -249,32 +268,41 @@ namespace Boidsish {
 			glBindFramebuffer(GL_FRAMEBUFFER, _flareBrightPassFBO);
 			glViewport(0, 0, _width / 2, _height / 2);
 			_brightPassShader->use();
+			_brightPassShader->setInt("sceneTexture", 0);
 			_brightPassShader->setFloat("threshold", flareThreshold_);
 			glActiveTexture(GL_TEXTURE0);
 			glBindTexture(GL_TEXTURE_2D, sourceTexture);
 			glDrawArrays(GL_TRIANGLES, 0, 6);
 
-			// 4b. Horizontal streak
-			glBindFramebuffer(GL_FRAMEBUFFER, _horizontalFlareFBO);
+			// 4b. Horizontal streak (multi-pass for length and smoothness)
+			GLuint flareInput = _flareBrightPassTexture;
 			_streakShader->use();
 			_streakShader->setInt("image", 0);
 			_streakShader->setVec2("direction", 1.0f, 0.0f);
-			_streakShader->setInt("samples", 16);
-			_streakShader->setFloat("spacing", 4.0f);
-			glActiveTexture(GL_TEXTURE0);
-			glBindTexture(GL_TEXTURE_2D, _flareBrightPassTexture);
-			glDrawArrays(GL_TRIANGLES, 0, 6);
 
-			// 4c. Vertical streak
-			glBindFramebuffer(GL_FRAMEBUFFER, _verticalFlareFBO);
-			_streakShader->use();
-			_streakShader->setInt("image", 0);
+			for (int i = 0; i < 4; ++i) {
+				glBindFramebuffer(GL_FRAMEBUFFER, (i % 2 == 0) ? _flarePingPongFBO : _horizontalFlareFBO);
+				_streakShader->setFloat("offset", (float)std::pow(4.0f, i));
+				glActiveTexture(GL_TEXTURE0);
+				glBindTexture(GL_TEXTURE_2D, flareInput);
+				glDrawArrays(GL_TRIANGLES, 0, 6);
+				flareInput = (i % 2 == 0) ? _flarePingPongTexture : _horizontalFlareTexture;
+			}
+			// Final result for horizontal is in _horizontalFlareTexture (since i=3 is odd)
+
+			// 4c. Vertical streak (multi-pass for length and smoothness)
+			flareInput = _flareBrightPassTexture;
 			_streakShader->setVec2("direction", 0.0f, 1.0f);
-			_streakShader->setInt("samples", 16);
-			_streakShader->setFloat("spacing", 4.0f);
-			glActiveTexture(GL_TEXTURE0);
-			glBindTexture(GL_TEXTURE_2D, _flareBrightPassTexture);
-			glDrawArrays(GL_TRIANGLES, 0, 6);
+
+			for (int i = 0; i < 4; ++i) {
+				glBindFramebuffer(GL_FRAMEBUFFER, (i % 2 == 0) ? _flarePingPongFBO : _verticalFlareFBO);
+				_streakShader->setFloat("offset", (float)std::pow(4.0f, i));
+				glActiveTexture(GL_TEXTURE0);
+				glBindTexture(GL_TEXTURE_2D, flareInput);
+				glDrawArrays(GL_TRIANGLES, 0, 6);
+				flareInput = (i % 2 == 0) ? _flarePingPongTexture : _verticalFlareTexture;
+			}
+			// Final result for vertical is in _verticalFlareTexture (since i=3 is odd)
 
 			// 5. Final composite with scene
 			glBindFramebuffer(GL_FRAMEBUFFER, originalFBO);
