@@ -21,9 +21,11 @@ uniform vec3  cloudColorUniform;
 uniform sampler2D u_transmittanceLUT;
 uniform sampler3D u_aerialPerspectiveLUT;
 
+uniform sampler2D u_blueNoiseTexture;
+
 #include "../atmosphere/common.glsl"
 #include "../helpers/lighting.glsl"
-#include "../helpers/noise.glsl"
+#include "../helpers/fast_noise.glsl"
 
 vec3 sampleAerialPerspective(vec3 rd, float distKM) {
 	float azimuth = atan(rd.x, -rd.z);
@@ -51,16 +53,6 @@ float sampleAerialPerspectiveTransmittance(vec3 rd, float distKM) {
 	return texture(u_aerialPerspectiveLUT, vec3(u, v, w)).a;
 }
 
-float fbm(vec2 p) {
-	float v = 0.0;
-	float a = 0.5;
-	for (int i = 0; i < 4; i++) {
-		v += a * snoise(p);
-		p *= 2.0;
-		a *= 0.5;
-	}
-	return v;
-}
 
 void main() {
 	float depth = texture(depthTexture, TexCoords).r;
@@ -112,7 +104,8 @@ void main() {
 			vec3  p = cameraPos + rayDir * t;
 			float h = (p.y - scaledCloudAltitude) / max(scaledCloudThickness, 0.001);
 			float tapering = smoothstep(0.0, 0.2, h) * smoothstep(1.0, 0.5, h);
-			float noise = fbm((p.xz / worldScale) * 0.015 + jitter * time * 0.0001 + (p.y / worldScale) * 0.02);
+			vec3  noise_p = (p / worldScale) * 0.015 + vec3(0, time * 0.0001, 0);
+			float noise = fastFbm3d(noise_p) * 0.5 + 0.5; // Using pre-computed FBM
 			float d = smoothstep(0.2, 0.6, noise * (i + (1 - noise))) * cloudDensity * tapering;
 			cloudAcc += d;
 		}

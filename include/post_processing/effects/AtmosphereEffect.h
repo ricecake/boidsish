@@ -2,6 +2,7 @@
 
 #include <memory>
 
+#include "NoiseManager.h"
 #include "post_processing/IPostProcessingEffect.h"
 
 class Shader; // Forward declaration
@@ -88,6 +89,8 @@ namespace Boidsish {
 				aerial_perspective_lut_ = aerialPerspective;
 			}
 
+			void SetNoiseTextures(const NoiseTextures& textures) { noise_textures_ = textures; }
+
 		private:
 			std::unique_ptr<Shader> shader_;
 			float                   time_ = 0.0f;
@@ -110,6 +113,8 @@ namespace Boidsish {
 			GLuint multi_scattering_lut_ = 0;
 			GLuint sky_view_lut_ = 0;
 			GLuint aerial_perspective_lut_ = 0;
+
+			NoiseTextures noise_textures_ = {0, 0, 0};
 
 			int width_ = 0;
 			int height_ = 0;

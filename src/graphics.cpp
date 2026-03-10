@@ -1879,6 +1879,10 @@ namespace Boidsish {
 			sky_shader->setMat4("invProjection", glm::inverse(projection));
 			sky_shader->setMat4("invView", glm::inverse(view));
 
+			if (noise_manager) {
+				noise_manager->BindDefault(*sky_shader);
+			}
+
 			if (atmosphere_manager) {
 				atmosphere_manager->BindTextures(10);
 				sky_shader->setInt("u_transmittanceLUT", 10);
@@ -2760,6 +2764,9 @@ namespace Boidsish {
 					impl->atmosphere_manager->GetSkyViewLUT(),
 					impl->atmosphere_manager->GetAerialPerspectiveLUT()
 				);
+				if (impl->noise_manager) {
+					impl->atmosphere_effect->SetNoiseTextures(impl->noise_manager->GetTextures());
+				}
 			}
 		}
 
