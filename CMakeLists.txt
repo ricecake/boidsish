@@ -42,6 +42,7 @@ add_subdirectory(external/task-thread-pool)
 add_subdirectory(external/poolSTL)
 add_subdirectory(external/libmorton)
 add_subdirectory(external/meshoptimizer)
+add_subdirectory(external/ik)
 
 # Bonxai - header-only voxel grid library (only need core, not ROS/map modules)
 set(BONXAI_INCLUDE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/external/Bonxai/bonxai_core/include")
@@ -85,6 +86,7 @@ target_link_libraries(boidsish
         meshoptimizer
         Threads::Threads
         glm::glm
+        ik
 )
 
 # 5. Build Examples
