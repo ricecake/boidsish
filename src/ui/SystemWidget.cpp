@@ -208,6 +208,12 @@ namespace Boidsish {
 										scene.post_processing.bloom_enabled = bloom->IsEnabled();
 										scene.post_processing.bloom_intensity = bloom->GetIntensity();
 										scene.post_processing.bloom_threshold = bloom->GetThreshold();
+										scene.post_processing.bloom_flare_intensity = bloom->GetFlareIntensity();
+										scene.post_processing.bloom_flare_threshold = bloom->GetFlareThreshold();
+										scene.post_processing.bloom_flare_horizontal_intensity = bloom
+											->GetHorizontalFlareIntensity();
+										scene.post_processing.bloom_flare_vertical_intensity = bloom
+											->GetVerticalFlareIntensity();
 									} else if (auto atmos = std::dynamic_pointer_cast<PostProcessing::AtmosphereEffect>(
 												   effect
 											   )) {
@@ -318,6 +324,14 @@ namespace Boidsish {
 										bloom->SetEnabled(scene.post_processing.bloom_enabled);
 										bloom->SetIntensity(scene.post_processing.bloom_intensity);
 										bloom->SetThreshold(scene.post_processing.bloom_threshold);
+										bloom->SetFlareIntensity(scene.post_processing.bloom_flare_intensity);
+										bloom->SetFlareThreshold(scene.post_processing.bloom_flare_threshold);
+										bloom->SetHorizontalFlareIntensity(
+											scene.post_processing.bloom_flare_horizontal_intensity
+										);
+										bloom->SetVerticalFlareIntensity(
+											scene.post_processing.bloom_flare_vertical_intensity
+										);
 									} else if (auto atmos = std::dynamic_pointer_cast<PostProcessing::AtmosphereEffect>(
 												   effect
 											   )) {

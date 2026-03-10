@@ -34,6 +34,10 @@ namespace Boidsish {
 			bool  bloom_enabled = false;
 			float bloom_intensity = 0.1f;
 			float bloom_threshold = 1.0f;
+			float bloom_flare_intensity = 0.1f;
+			float bloom_flare_threshold = 1.5f;
+			float bloom_flare_horizontal_intensity = 0.75f;
+			float bloom_flare_vertical_intensity = 0.25f;
 
 			bool      atmosphere_enabled = true;
 			float     haze_density = 0.005f;
