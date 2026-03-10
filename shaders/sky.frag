@@ -7,9 +7,6 @@ in vec2 TexCoords;
 #include "atmosphere/common.glsl"
 #include "helpers/lighting.glsl"
 
-uniform mat4 invProjection;
-uniform mat4 invView;
-
 uniform sampler2D u_transmittanceLUT;
 uniform sampler2D u_skyViewLUT;
 
@@ -131,8 +128,8 @@ float starLayer(vec3 dir) {
 
 void main() {
 	vec4 clip = vec4(TexCoords * 2.0 - 1.0, 1.0, 1.0);
-	vec4 view_ray = invProjection * clip;
-	vec3 world_ray = (invView * vec4(view_ray.xy, -1.0, 0.0)).xyz;
+	vec4 view_ray = td.invProjection * clip;
+	vec3 world_ray = (td.invView * vec4(view_ray.xy, -1.0, 0.0)).xyz;
 	world_ray = normalize(world_ray);
 
 	vec3 sunDir = vec3(0, 1, 0);
@@ -173,7 +170,7 @@ void main() {
 	// Ensure we are in front of the sun
 	sunMask *= step(0.99, rayLocalZ);
 
-	float r = kEarthRadius + viewPos.y / 1000.0;
+	float r = kEarthRadius + td.viewPos.y / 1000.0;
 	vec3  sunTransmittance = getTransmittance(r, sunDir.y);
 	// Use u_sunRadiance if available (via AtmosphereManager) or fallback to simple sunColor
 	vec3 radiance = length(u_sunRadiance) > 0.0 ? u_sunRadiance : (sunColor * 20.0);

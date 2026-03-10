@@ -1,6 +1,8 @@
 #ifndef HELPERS_DEPTH_GLSL
 #define HELPERS_DEPTH_GLSL
 
+#include "../temporal_data.glsl"
+
 /**
  * Linearize depth from the depth buffer.
  * Converts from non-linear depth buffer value to linear view-space distance.

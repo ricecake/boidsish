@@ -7,8 +7,6 @@ uniform sampler2D sceneTexture;
 uniform sampler2D depthTexture;
 
 uniform vec3 cameraPos;
-uniform mat4 invView;
-uniform mat4 invProjection;
 
 uniform float hazeDensity;
 uniform float hazeHeight;
@@ -68,9 +66,9 @@ void main() {
 
 	float z = depth * 2.0 - 1.0;
 	vec4  clipSpacePosition = vec4(TexCoords * 2.0 - 1.0, z, 1.0);
-	vec4  viewSpacePosition = invProjection * clipSpacePosition;
+	vec4  viewSpacePosition = td.invProjection * clipSpacePosition;
 	viewSpacePosition /= viewSpacePosition.w;
-	vec3 worldPos = (invView * viewSpacePosition).xyz;
+	vec3 worldPos = (td.invView * viewSpacePosition).xyz;
 
 	vec3  rayDir = normalize(worldPos - cameraPos);
 	float dist = length(worldPos - cameraPos);

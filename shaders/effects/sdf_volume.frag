@@ -7,9 +7,9 @@ uniform sampler2D sceneTexture;
 uniform sampler2D depthTexture;
 uniform vec2      screenSize;
 uniform vec3      cameraPos;
-uniform mat4      invView;
-uniform mat4      invProjection;
 uniform float     time;
+
+#include "../temporal_data.glsl"
 
 struct SdfSource {
 	vec4 position_radius;  // xyz: pos, w: radius
@@ -90,16 +90,16 @@ void main() {
 
 	// Reconstruct scene world position to get depth limit
 	vec4 ndcPos = vec4(TexCoords * 2.0 - 1.0, depth * 2.0 - 1.0, 1.0);
-	vec4 viewPos = invProjection * ndcPos;
+	vec4 viewPos = td.invProjection * ndcPos;
 	viewPos /= viewPos.w;
-	vec4  worldPos = invView * viewPos;
+	vec4  worldPos = td.invView * viewPos;
 	float sceneDistance = length(worldPos.xyz - cameraPos);
 	if (depth >= 0.999999)
 		sceneDistance = 10000.0;
 
 	// Ray direction
-	vec4 target = invProjection * vec4(TexCoords * 2.0 - 1.0, 1.0, 1.0);
-	vec3 rayDir = normalize((invView * vec4(normalize(target.xyz), 0.0)).xyz);
+	vec4 target = td.invProjection * vec4(TexCoords * 2.0 - 1.0, 1.0, 1.0);
+	vec3 rayDir = normalize((td.invView * vec4(normalize(target.xyz), 0.0)).xyz);
 
 	float t = 0.0;
 	vec4  res;

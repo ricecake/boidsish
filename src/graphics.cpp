@@ -2786,6 +2786,7 @@ namespace Boidsish {
 		temporal_data.uProjection = impl->projection;
 		temporal_data.invProjection = glm::inverse(impl->projection);
 		temporal_data.invView = glm::inverse(view);
+		temporal_data.viewPos = impl->camera.pos();
 		temporal_data.texelSize = glm::vec2(1.0f / impl->render_width, 1.0f / impl->render_height);
 		temporal_data.frameIndex = static_cast<int>(impl->frame_count_);
 

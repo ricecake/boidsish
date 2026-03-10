@@ -10,10 +10,9 @@ uniform vec2      screenSize;
 uniform vec3      cameraPos;
 uniform mat4      viewMatrix;
 uniform mat4      projMatrix;
-uniform float     nearPlane;
-uniform float     farPlane;
 
 #include "../helpers/shockwave.glsl"
+#include "../temporal_data.glsl"
 
 /**
  * Linearize depth from the depth buffer
@@ -21,7 +20,7 @@ uniform float     farPlane;
  */
 float linearizeDepth(float depth) {
 	float z = depth * 2.0 - 1.0; // Back to NDC
-	return (2.0 * nearPlane * farPlane) / (farPlane + nearPlane - z * (farPlane - nearPlane));
+	return (2.0 * td.nearPlane * td.farPlane) / (td.farPlane + td.nearPlane - z * (td.farPlane - td.nearPlane));
 }
 
 /**

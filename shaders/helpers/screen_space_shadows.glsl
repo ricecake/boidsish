@@ -22,15 +22,16 @@ float screenSpaceShadowCoverage(vec3 worldPos, vec3 normal, vec3 lightDir) {
 		return 0.0;
 
 	// Start with a small bias to prevent self-shadowing
-	vec3 p_start = worldPos + normal * (0.05 * worldScale) + lightDir * (0.1 * worldScale);
+	vec3 p_start = worldPos + normal * (0.1 * worldScale) + lightDir * (0.2 * worldScale);
 
-	float t = 0.1 * worldScale;
+	float t = 0.2 * worldScale;
 	float maxDist = 60.0 * worldScale; // Local shadows only
 	float closest = 1.0;
-	int   maxSteps = 40;
-	float stepSize = 1.5 * worldScale;
+	int   iter = 0;
 
-	for (int i = 0; i < maxSteps && t < maxDist; i++) {
+	// Hierarchical Hi-Z raymarching
+	while (t < maxDist && iter < 40) {
+		iter++;
 		vec3 p = p_start + lightDir * t;
 
 		// Project to previous frame's screen space using temporal data
@@ -45,30 +46,42 @@ float screenSpaceShadowCoverage(vec3 worldPos, vec3 normal, vec3 lightDir) {
 		if (prevUV.x < 0.0 || prevUV.x > 1.0 || prevUV.y < 0.0 || prevUV.y > 1.0)
 			break;
 
-		// Sample Hi-Z (which stores linearized max depth from previous frame)
-		// Mip 0 is full resolution linearized depth
-		float sampledLinearDepth = textureLod(u_hizTexture, prevUV, 0.0).r;
 		float rayLinearDepth = linearizeDepth(prevNdc.z * 0.5 + 0.5, td.nearPlane, td.farPlane);
 
-		float depthDiff = sampledLinearDepth - rayLinearDepth; // Positive if ray is in front of geometry
+		// Determine mip level based on step size for hierarchical skipping
+		// Larger t -> larger screenspace footprint -> higher mip
+		int mip = clamp(int(log2(t / worldScale)), 0, 4);
 
-		// Thickness heuristic: Screen-space depth doesn't tell us the "back" of objects.
-		// We assume objects have a certain world-space thickness.
-		float thickness = 3.0 * worldScale;
+		// Sample Hi-Z (stores MAX linearized depth in each tile)
+		float hizMaxDepth = textureLod(u_hizTexture, prevUV, float(mip)).r;
 
-		if (depthDiff < 0.0) {
-			// Ray is behind the sampled depth
-			if (-depthDiff < thickness) {
-				return 0.0; // Hit! Occluded by screen-space geometry
-			}
-			// If it's deeper than thickness, we assume it's passing behind the object (e.g. through a tree)
-		} else {
-			// Ray is in front of geometry. Calculate "closeness" for soft shadows.
-			// Smaller depthDiff / t means we are passing very close to an edge.
-			closest = min(closest, 10.0 * (depthDiff / t));
+		// If ray is still "in front" of the max depth in this tile, we can skip ahead
+		if (rayLinearDepth < hizMaxDepth - (0.5 * worldScale)) {
+			// Skip ahead proportional to mip level
+			t += (1.0 + float(mip)) * worldScale;
+			continue;
 		}
 
-		t += stepSize;
+		// At LOD 0, perform actual occlusion and penumbra tests
+		float sampledDepth = textureLod(u_hizTexture, prevUV, 0.0).r;
+		float depthDiff = rayLinearDepth - sampledDepth;
+
+		float thickness = 4.0 * worldScale;
+
+		if (depthDiff > 0.0) {
+			// Ray is behind sampled geometry
+			if (depthDiff < thickness) {
+				return 0.0; // Hit!
+			}
+			// Passing behind object - no hit, but don't skip
+		} else {
+			// Ray is clearing the geometry. Calculate closeness for soft penumbra.
+			// Formula: penumbra = shadow_factor * (dist_to_geometry / distance_traveled)
+			// Matches terrain shadow logic: closest = min(closest, k * (depth_diff / t))
+			closest = min(closest, 8.0 * ((-depthDiff) / t));
+		}
+
+		t += 1.0 * worldScale;
 	}
 
 	return clamp(closest, 0.0, 1.0);

@@ -7,11 +7,13 @@ layout(std140, binding = 6) uniform TemporalData {
 	mat4  uProjection;
 	mat4  invProjection;
 	mat4  invView;
+	vec3  viewPos;
+	float padding_pos;
 	vec2  texelSize;
 	int   frameIndex;
 	float nearPlane;
 	float farPlane;
-	float padding_temporal[3];
+	float padding_temporal[2];
 } td;
 
 #endif
