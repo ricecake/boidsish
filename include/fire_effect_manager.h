@@ -88,9 +88,12 @@ namespace Boidsish {
 		mutable std::mutex                       mutex_;
 
 		std::unique_ptr<ComputeShader> compute_shader_;
+		std::unique_ptr<ComputeShader> grid_build_shader_;
 		std::unique_ptr<Shader>        render_shader_;
 
 		GLuint particle_buffer_{0};
+		GLuint grid_heads_buffer_{0};
+		GLuint grid_next_buffer_{0};
 		GLuint emitter_buffer_{0};
 		GLuint indirection_buffer_{0};
 		GLuint terrain_chunk_buffer_{0};
