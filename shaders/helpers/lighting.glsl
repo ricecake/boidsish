@@ -30,7 +30,7 @@ float calculateShadow(int light_index, vec3 frag_pos, vec3 normal, vec3 light_di
 		// Also check screen-space shadows for decor objects
 		ssShadow = screenSpaceShadowCoverage(frag_pos, normal, light_dir);
 		if (ssShadow <= 0.0) {
-			return 0.0;
+			return ssShadow;
 		}
 	}
 

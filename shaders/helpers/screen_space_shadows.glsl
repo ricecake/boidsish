@@ -22,7 +22,7 @@ float screenSpaceShadowCoverage(vec3 worldPos, vec3 normal, vec3 lightDir) {
 		return 0.0;
 
 	// Start with a small bias to prevent self-shadowing
-	vec3 p_start = worldPos + normal * (0.05 * worldScale) + lightDir * (0.1 * worldScale);
+	vec3 p_start = worldPos + lightDir * (1.51 * worldScale);
 
 	float t = 0.1 * worldScale;
 	float maxDist = 60.0 * worldScale; // Local shadows only
@@ -54,7 +54,7 @@ float screenSpaceShadowCoverage(vec3 worldPos, vec3 normal, vec3 lightDir) {
 
 		// Thickness heuristic: Screen-space depth doesn't tell us the "back" of objects.
 		// We assume objects have a certain world-space thickness.
-		float thickness = 3.0 * worldScale;
+		float thickness = 5.0;
 
 		if (depthDiff < 0.0) {
 			// Ray is behind the sampled depth
@@ -62,16 +62,15 @@ float screenSpaceShadowCoverage(vec3 worldPos, vec3 normal, vec3 lightDir) {
 				return 0.0; // Hit! Occluded by screen-space geometry
 			}
 			// If it's deeper than thickness, we assume it's passing behind the object (e.g. through a tree)
-		} else {
-			// Ray is in front of geometry. Calculate "closeness" for soft shadows.
-			// Smaller depthDiff / t means we are passing very close to an edge.
-			closest = min(closest, 10.0 * (depthDiff / t));
 		}
+		// Ray is in front of geometry. Calculate "closeness" for soft shadows.
+		// Smaller depthDiff / t means we are passing very close to an edge.
+		closest = min(closest, 8.0 * (abs(depthDiff) / t));
 
 		t += stepSize;
 	}
 
-	return clamp(closest, 0.0, 1.0);
+	return closest;
 }
 
 #endif // SCREEN_SPACE_SHADOWS_GLSL
