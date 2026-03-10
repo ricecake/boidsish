@@ -37,14 +37,15 @@ TEST(OffsetTest, ShapeOffsets) {
 }
 
 TEST(OffsetTest, TrailAttachmentPoint) {
-    Dot dot(1, 0, 0, 0, 100.0f); // radius 1.0
+    Dot dot(1, 0, 0, 0, 100.0f); // radius 1.0 (Dot::GetModelMatrix uses size*0.01)
 
-    // Default attachment: center-back of AABB
-    // AABB is [-1, 1], center is 0, back is z=1
+    // Default attachment: center-back of AABB.
+    // Dot has local AABB [-1, 1] on all axes.
+    // The heuristic now favors Z.
     glm::vec3 attachment = dot.GetTrailAttachmentPoint();
     EXPECT_FLOAT_EQ(attachment.x, 0.0f);
     EXPECT_FLOAT_EQ(attachment.y, 0.0f);
-    EXPECT_FLOAT_EQ(attachment.z, 1.0f);
+    EXPECT_FLOAT_EQ(attachment.z, -1.0f);
 
     // Explicit attachment
     dot.SetTrailOffset(glm::vec3(0, 0, 5.0f));
@@ -53,8 +54,8 @@ TEST(OffsetTest, TrailAttachmentPoint) {
 }
 
 TEST(OffsetTest, ArrowAttachment) {
-    Arrow arrow(1); // length 1.0, default
-    // Default attachment for arrow should be at local origin
+    Arrow arrow(1); // length 1.0, default. AABB is [-0.05, 0, -0.05] to [0.05, 1, 0.05]
+    // Default attachment for arrow should be at local origin (min.y)
     glm::vec3 attachment = arrow.GetTrailAttachmentPoint();
-    EXPECT_FLOAT_EQ(attachment.z, 0.0f);
+    EXPECT_FLOAT_EQ(attachment.y, 0.0f);
 }

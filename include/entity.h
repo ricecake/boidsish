@@ -160,6 +160,17 @@ namespace Boidsish {
 
 		void SetUsePBR(bool use_pbr) { use_pbr_ = use_pbr; }
 
+		void SetModelOffset(const glm::vec3& offset) { model_offset_ = offset; }
+
+		glm::vec3 GetModelOffset() const { return model_offset_; }
+
+		void SetTrailOffset(const glm::vec3& offset) {
+			trail_offset_ = offset;
+			trail_offset_set_ = true;
+		}
+
+		glm::vec3 GetTrailOffset() const { return trail_offset_; }
+
 		void SetOrientToVelocity(bool enabled) { orient_to_velocity_ = enabled; }
 
 		void SetPath(std::shared_ptr<Path> path, float speed) {
@@ -192,6 +203,9 @@ namespace Boidsish {
 		float     roughness_ = 0.5f;
 		float     metallic_ = 0.0f;
 		bool      use_pbr_ = false;
+		glm::vec3 model_offset_ = glm::vec3(0.0f);
+		glm::vec3 trail_offset_ = glm::vec3(0.0f);
+		bool      trail_offset_set_ = false;
 		bool      orient_to_velocity_ = false;
 
 		// Path following
@@ -242,6 +256,10 @@ namespace Boidsish {
 			shape_->SetRoughness(roughness_);
 			shape_->SetMetallic(metallic_);
 			shape_->SetUsePBR(use_pbr_);
+			shape_->SetModelOffset(model_offset_);
+			if (trail_offset_set_) {
+				shape_->SetTrailOffset(trail_offset_);
+			}
 			shape_->SetRotation(rigid_body_.GetOrientation());
 			// For dots, we can also update the size
 			if (auto dot = std::dynamic_pointer_cast<Dot>(shape_)) {

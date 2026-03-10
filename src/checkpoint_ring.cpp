@@ -218,6 +218,7 @@ namespace Boidsish {
 		model = model * glm::mat4_cast(GetRotation());
 		// Scale by radius * 2 because the ring is at 0.5 in UV space
 		model = glm::scale(model, glm::vec3(radius_ * 2.0f));
+		model = glm::translate(model, model_offset_);
 		return model;
 	}
 

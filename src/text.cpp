@@ -419,6 +419,7 @@ namespace Boidsish {
 		model = glm::translate(model, glm::vec3(GetX(), GetY(), GetZ()));
 		model = model * glm::mat4_cast(GetRotation());
 		model = glm::scale(model, GetScale());
+		model = glm::translate(model, model_offset_);
 		return model;
 	}
 

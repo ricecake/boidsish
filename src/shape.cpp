@@ -345,13 +345,25 @@ namespace Boidsish {
 			return glm::vec3(model_matrix * glm::vec4(trail_offset_, 1.0f));
 		}
 
-		// Fallback: Default to center-back of AABB
-		AABB local_aabb = GetLocalAABB();
-		// Local Z-negative is forward in this engine's convention (usually)
-		// but let's look at the center of the back face of the AABB.
+		// Fallback: Use heuristic to find the "back" of the object based on its longest axis.
+		AABB      local_aabb = GetLocalAABB();
+		glm::vec3 extent = local_aabb.max - local_aabb.min;
 		glm::vec3 center = (local_aabb.min + local_aabb.max) * 0.5f;
 		glm::vec3 trail_local = center;
-		trail_local.z = local_aabb.max.z; // back face center
+
+		// We check Z first as it's the primary axis of motion for most objects.
+		if (extent.z >= extent.x && extent.z >= extent.y) {
+			// Z is longest axis. In this engine, Forward is +Z, so min.z is back.
+			// User feedback confirmed max.z was "pretty far forward".
+			trail_local.z = local_aabb.min.z;
+		} else if (extent.y >= extent.x && extent.y >= extent.z) {
+			// Y is longest axis (common for arrows or vertical objects).
+			// Assume upward growth, so min Y is the tail.
+			trail_local.y = local_aabb.min.y;
+		} else {
+			// X is longest axis.
+			trail_local.x = local_aabb.min.x;
+		}
 
 		return glm::vec3(model_matrix * glm::vec4(trail_local, 1.0f));
 	}

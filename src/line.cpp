@@ -159,6 +159,7 @@ namespace Boidsish {
 		glm::mat4 model = glm::translate(glm::mat4(1.0f), start);
 		model *= glm::toMat4(rotation);
 		model = glm::scale(model, glm::vec3(length, width_, width_));
+		model = glm::translate(model, model_offset_);
 
 		return model;
 	}
