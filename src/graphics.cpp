@@ -434,8 +434,8 @@ namespace Boidsish {
 		std::shared_ptr<Shader> postprocess_shader_;
 		ShaderHandle            shadow_shader_handle{0};
 		GLuint                  plane_vao{0}, plane_vbo{0}, sky_vao{0}, blur_quad_vao{0}, blur_quad_vbo{0};
-		GLuint main_fbo_{0}, main_fbo_texture_{0}, main_fbo_velocity_texture_{0}, main_fbo_depth_texture_{0},
-			main_fbo_rbo_{0}, refraction_texture_{0};
+		GLuint main_fbo_{0}, main_fbo_texture_{0}, main_fbo_prev_color_texture_{0},
+			main_fbo_velocity_texture_{0}, main_fbo_depth_texture_{0}, main_fbo_rbo_{0}, refraction_texture_{0};
 		GLuint    lighting_ubo{0};
 		GLuint    visual_effects_ubo{0};
 		GLuint    temporal_data_ubo{0};
@@ -922,6 +922,23 @@ namespace Boidsish {
 			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 			glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, main_fbo_texture_, 0);
 
+			// Previous frame color texture
+			glGenTextures(1, &main_fbo_prev_color_texture_);
+			glBindTexture(GL_TEXTURE_2D, main_fbo_prev_color_texture_);
+			if (enable_hdr_) {
+				glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB16F, render_width, render_height, 0, GL_RGB, GL_FLOAT, NULL);
+			} else {
+				glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, render_width, render_height, 0, GL_RGB, GL_UNSIGNED_BYTE, NULL);
+			}
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+
+			// Clear to black to prevent artifacts on first frame
+			float black[] = {0.0f, 0.0f, 0.0f, 0.0f};
+			glClearTexImage(main_fbo_prev_color_texture_, 0, GL_RGB, GL_FLOAT, black);
+
 			// Refraction attachment (copy of scene before transparency)
 			glGenTextures(1, &refraction_texture_);
 			glBindTexture(GL_TEXTURE_2D, refraction_texture_);
@@ -1101,6 +1118,7 @@ namespace Boidsish {
 				noise_manager->BindDefault(shader_to_setup);
 			}
 			shader_to_setup.trySetInt("u_prevDepthTexture", 13);
+			shader_to_setup.trySetInt("u_prevColorTexture", 16);
 			shader_to_setup.trySetInt("u_hizTexture", 15);
 			GLuint sdf_volumes_idx = glGetUniformBlockIndex(shader_to_setup.ID, "SdfVolumes");
 			if (sdf_volumes_idx != GL_INVALID_INDEX) {
@@ -1217,6 +1235,9 @@ namespace Boidsish {
 				glDeleteTextures(1, &main_fbo_depth_texture_);
 				if (refraction_texture_) {
 					glDeleteTextures(1, &refraction_texture_);
+				}
+				if (main_fbo_prev_color_texture_) {
+					glDeleteTextures(1, &main_fbo_prev_color_texture_);
 				}
 			}
 
@@ -1650,6 +1671,9 @@ namespace Boidsish {
 
 						glActiveTexture(GL_TEXTURE13);
 						glBindTexture(GL_TEXTURE_2D, main_fbo_depth_texture_);
+
+						glActiveTexture(GL_TEXTURE16);
+						glBindTexture(GL_TEXTURE_2D, main_fbo_prev_color_texture_);
 					}
 				}
 
@@ -2408,6 +2432,14 @@ namespace Boidsish {
 			} else {
 				glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, render_width, render_height, 0, GL_RGB, GL_UNSIGNED_BYTE, NULL);
 			}
+			// Resize previous color texture
+			glBindTexture(GL_TEXTURE_2D, main_fbo_prev_color_texture_);
+			if (enable_hdr_) {
+				glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB16F, render_width, render_height, 0, GL_RGB, GL_FLOAT, NULL);
+			} else {
+				glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, render_width, render_height, 0, GL_RGB, GL_UNSIGNED_BYTE, NULL);
+			}
+
 			// Resize velocity texture
 			glBindTexture(GL_TEXTURE_2D, main_fbo_velocity_texture_);
 			glTexImage2D(GL_TEXTURE_2D, 0, GL_RG16F, render_width, render_height, 0, GL_RG, GL_FLOAT, NULL);
@@ -3445,6 +3477,13 @@ namespace Boidsish {
 		for (const auto& shape : impl->shapes) {
 			shape->UpdateLastPosition();
 		}
+
+		// Capture current frame for next frame's u_prevColorTexture
+		// We capture the main scene texture after post-processing if enabled, or the raw scene if not.
+		glBindFramebuffer(GL_READ_FRAMEBUFFER, (effects_enabled) ? impl->post_processing_manager_->GetCurrentFBO() : impl->main_fbo_);
+		glBindTexture(GL_TEXTURE_2D, impl->main_fbo_prev_color_texture_);
+		glCopyTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, 0, 0, impl->render_width, impl->render_height);
+		glBindFramebuffer(GL_READ_FRAMEBUFFER, 0);
 
 		// --- UI Pass (renders on top of the fullscreen quad) ---
 		impl->ui_manager->Render();

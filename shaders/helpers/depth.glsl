@@ -16,6 +16,29 @@ float linearizeDepth(float depth, float near, float far) {
 }
 
 /**
+ * Read linearized depth from the Hi-Z buffer.
+ * Hi-Z stores linearized depth directly in Mip 0.
+ *
+ * @param uv Normalized screen coordinates.
+ * @param hizTexture The Hi-Z depth texture.
+ * @return The linear view-space depth.
+ */
+float getLinearDepth(vec2 uv, sampler2D hizTexture) {
+	return textureLod(hizTexture, uv, 0.0).r;
+}
+
+/**
+ * Sample the previous frame's color buffer.
+ *
+ * @param uv Normalized screen coordinates.
+ * @param prevColorTexture The previous frame's color texture.
+ * @return The RGB color from the previous frame.
+ */
+vec3 getPrevColor(vec2 uv, sampler2D prevColorTexture) {
+	return texture(prevColorTexture, uv).rgb;
+}
+
+/**
  * Reconstruct view-space position from screen UV and depth.
  *
  * @param uv Normalized screen coordinates (0.0 to 1.0).
@@ -75,6 +98,9 @@ vec3 getViewRay(vec2 uv, mat4 invProj, mat4 invView) {
  */
 vec3 projectToScreen(vec3 worldPos, mat4 viewProj) {
 	vec4 clipPos = viewProj * vec4(worldPos, 1.0);
+	if (abs(clipPos.w) < 0.001) {
+		return vec3(-1.0);
+	}
 	vec3 ndc = clipPos.xyz / clipPos.w;
 	return vec3(ndc.xy * 0.5 + 0.5, ndc.z * 0.5 + 0.5);
 }
@@ -122,6 +148,68 @@ bool traceScreenSpaceRay(
 			return true;
 		}
 	}
+	return false;
+}
+
+/**
+ * Perform hierarchical screen-space ray tracing using a Hi-Z pyramid.
+ * Accelerates intersection testing by skipping empty space using lower mip levels.
+ *
+ * @param rayOrigin World-space ray origin.
+ * @param rayDir Normalized world-space ray direction.
+ * @param hizTexture Hi-Z texture (Mip 0 must be linearized depth).
+ * @param viewProj Combined view-projection matrix.
+ * @param near Near plane distance.
+ * @param far Far plane distance.
+ * @param maxDistance Maximum world-space distance to trace.
+ * @param maxMip Maximum mip level to use for acceleration.
+ * @param hitPos Output parameter for the world-space hit position.
+ * @return True if a hit was found.
+ */
+bool traceScreenSpaceRayHiZ(
+	vec3           rayOrigin,
+	vec3           rayDir,
+	sampler2D      hizTexture,
+	mat4           viewProj,
+	float          near,
+	float          far,
+	float          maxDistance,
+	int            maxMip,
+	out vec3       hitPos
+) {
+	float t = 0.1; // Start slightly away from origin
+	int   mip = 0;
+	vec3  currentPos;
+
+	// Hierarchical traversal
+	for (int i = 0; i < 64; i++) {
+		currentPos = rayOrigin + rayDir * t;
+		vec3 screenCoord = projectToScreen(currentPos, viewProj);
+
+		// If the point is behind the camera or off screen, the ray missed
+		if (screenCoord.x < 0.0 || screenCoord.x > 1.0 || screenCoord.y < 0.0 || screenCoord.y > 1.0 || t > maxDistance)
+			return false;
+
+		float sampledLinearDepth = textureLod(hizTexture, screenCoord.xy, float(mip)).r;
+		float currentLinearDepth = linearizeDepth(screenCoord.z, near, far);
+
+		// Use a small bias to avoid self-intersection artifacts
+		if (currentLinearDepth > sampledLinearDepth + 0.05) {
+			if (mip == 0) {
+				// Potential hit at finest level
+				hitPos = currentPos;
+				return true;
+			}
+			// Descent: go to finer mip level
+			mip--;
+		} else {
+			// Ascent: step forward and try coarser mip level
+			float stepSize = pow(2.0, float(mip)) * (maxDistance / 256.0);
+			t += stepSize;
+			mip = min(mip + 1, maxMip);
+		}
+	}
+
 	return false;
 }
 
