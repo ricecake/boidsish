@@ -38,6 +38,12 @@ namespace Boidsish {
 		if (particle_buffer_ != 0) {
 			glDeleteBuffers(1, &particle_buffer_);
 		}
+		if (grid_heads_buffer_ != 0) {
+			glDeleteBuffers(1, &grid_heads_buffer_);
+		}
+		if (grid_next_buffer_ != 0) {
+			glDeleteBuffers(1, &grid_next_buffer_);
+		}
 		if (emitter_buffer_ != 0) {
 			glDeleteBuffers(1, &emitter_buffer_);
 		}
@@ -66,6 +72,11 @@ namespace Boidsish {
 			logger::ERROR("Failed to compile fire compute shader - fire effects will be disabled");
 			initialized_ = true; // Mark as initialized to prevent repeated attempts
 			return;
+		}
+
+		grid_build_shader_ = std::make_unique<ComputeShader>("shaders/particle_grid_build.comp");
+		if (!grid_build_shader_->isValid()) {
+			logger::ERROR("Failed to compile particle grid build shader");
 		}
 
 		render_shader_ = std::make_unique<Shader>("shaders/fire.vert", "shaders/fire.frag");
@@ -99,6 +110,19 @@ namespace Boidsish {
 		// Zero out the buffer to ensure lifetimes start at 0
 		std::vector<uint8_t> zero_data(kMaxParticles * sizeof(Particle), 0);
 		glBufferSubData(GL_SHADER_STORAGE_BUFFER, 0, zero_data.size(), zero_data.data());
+
+		glGenBuffers(1, &grid_heads_buffer_);
+		glBindBuffer(GL_SHADER_STORAGE_BUFFER, grid_heads_buffer_);
+		glBufferData(
+			GL_SHADER_STORAGE_BUFFER,
+			Constants::Class::Particles::ParticleGridSize() * sizeof(int),
+			nullptr,
+			GL_DYNAMIC_DRAW
+		);
+
+		glGenBuffers(1, &grid_next_buffer_);
+		glBindBuffer(GL_SHADER_STORAGE_BUFFER, grid_next_buffer_);
+		glBufferData(GL_SHADER_STORAGE_BUFFER, kMaxParticles * sizeof(int), nullptr, GL_DYNAMIC_DRAW);
 
 		glGenBuffers(1, &emitter_buffer_);
 		glBindBuffer(GL_SHADER_STORAGE_BUFFER, emitter_buffer_);
@@ -321,6 +345,8 @@ namespace Boidsish {
 		compute_shader_->setFloat("u_time", time_);
 		compute_shader_->setInt("u_num_emitters", emitters.size());
 		compute_shader_->setInt("u_num_chunks", static_cast<int>(chunk_info.size()));
+		compute_shader_->setUint("u_grid_size", Constants::Class::Particles::ParticleGridSize());
+		compute_shader_->setFloat("u_cell_size", Constants::Class::Particles::ParticleGridCellSize());
 
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, particle_buffer_);
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, emitter_buffer_);
@@ -350,6 +376,38 @@ namespace Boidsish {
 			glBindBufferBase(GL_UNIFORM_BUFFER, Constants::UboBinding::Lighting(), lighting_ubo);
 		}
 
+		// --- Build Spatial Grid ---
+		if (grid_build_shader_ && grid_build_shader_->isValid()) {
+			grid_build_shader_->use();
+			grid_build_shader_->setUint("u_grid_size", Constants::Class::Particles::ParticleGridSize());
+			grid_build_shader_->setFloat("u_cell_size", Constants::Class::Particles::ParticleGridCellSize());
+			grid_build_shader_->setInt("u_num_particles", kMaxParticles);
+
+			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, particle_buffer_);
+			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::ParticleGridHeads(), grid_heads_buffer_);
+			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::ParticleGridNext(), grid_next_buffer_);
+
+			// Mode 0: Clear
+			grid_build_shader_->setInt("u_mode", 0);
+			glDispatchCompute(
+				(Constants::Class::Particles::ParticleGridSize() / Constants::Class::Particles::ComputeGroupSize()) + 1,
+				1,
+				1
+			);
+			glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
+
+			// Mode 1: Build
+			grid_build_shader_->setInt("u_mode", 1);
+			glDispatchCompute((kMaxParticles / Constants::Class::Particles::ComputeGroupSize()) + 1, 1, 1);
+			glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
+		}
+
+		// --- Dispatch Main Particle Compute Shader ---
+		compute_shader_->use();
+		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, particle_buffer_);
+		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::ParticleGridHeads(), grid_heads_buffer_);
+		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::ParticleGridNext(), grid_next_buffer_);
+
 		// Dispatch enough groups to cover all particles
 		glDispatchCompute((kMaxParticles / Constants::Class::Particles::ComputeGroupSize()) + 1, 1, 1);
 
@@ -357,6 +415,8 @@ namespace Boidsish {
 		glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
 
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, 0);
+		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::ParticleGridHeads(), 0);
+		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::ParticleGridNext(), 0);
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, 0);
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 2, 0);
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 3, 0);

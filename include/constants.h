@@ -54,6 +54,14 @@ namespace Boidsish {
 			constexpr int OcclusionVisibility() {
 				return 13;
 			}
+
+			constexpr int ParticleGridHeads() {
+				return 14;
+			}
+
+			constexpr int ParticleGridNext() {
+				return 15;
+			}
 		} // namespace SsboBinding
 
 		namespace General {
@@ -310,6 +318,14 @@ namespace Boidsish {
 
 				constexpr int ComputeGroupSize() {
 					return 256;
+				}
+
+				constexpr int ParticleGridSize() {
+					return 131072;
+				}
+
+				constexpr float ParticleGridCellSize() {
+					return 2.0f;
 				}
 			} // namespace Particles
 
