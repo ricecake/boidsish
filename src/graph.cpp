@@ -452,9 +452,11 @@ namespace Boidsish {
 	}
 
 	glm::mat4 Graph::GetModelMatrix() const {
+		return GetEntityMatrix() * GetInternalMatrix();
+	}
+
+	glm::mat4 Graph::GetInternalMatrix() const {
 		glm::mat4 model = glm::mat4(1.0f);
-		model = glm::translate(model, glm::vec3(GetX(), GetY(), GetZ()));
-		// Graph doesn't have its own rotation or scale, so we don't apply them here.
 		model = glm::translate(model, model_offset_);
 		return model;
 	}

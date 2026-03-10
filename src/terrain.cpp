@@ -121,8 +121,11 @@ namespace Boidsish {
 	}
 
 	glm::mat4 Terrain::GetModelMatrix() const {
+		return GetEntityMatrix() * GetInternalMatrix();
+	}
+
+	glm::mat4 Terrain::GetInternalMatrix() const {
 		glm::mat4 model = glm::mat4(1.0f);
-		model = glm::translate(model, glm::vec3(GetX(), GetY(), GetZ()));
 		model = glm::translate(model, model_offset_);
 		return model;
 	}

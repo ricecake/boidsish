@@ -60,9 +60,11 @@ namespace Boidsish {
 	}
 
 	glm::mat4 Arrow::GetModelMatrix() const {
+		return GetEntityMatrix() * GetInternalMatrix();
+	}
+
+	glm::mat4 Arrow::GetInternalMatrix() const {
 		glm::mat4 model = glm::mat4(1.0f);
-		model = glm::translate(model, glm::vec3(GetX(), GetY(), GetZ()));
-		model = model * glm::mat4_cast(GetRotation());
 		model = glm::scale(model, GetScale());
 		model = glm::translate(model, model_offset_);
 		return model;

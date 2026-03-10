@@ -213,13 +213,20 @@ namespace Boidsish {
 	}
 
 	glm::mat4 CheckpointRingShape::GetModelMatrix() const {
+		return GetEntityMatrix() * GetInternalMatrix();
+	}
+
+	glm::mat4 CheckpointRingShape::GetInternalMatrix() const {
 		glm::mat4 model = glm::mat4(1.0f);
-		model = glm::translate(model, glm::vec3(GetX(), GetY(), GetZ()));
-		model = model * glm::mat4_cast(GetRotation());
 		// Scale by radius * 2 because the ring is at 0.5 in UV space
 		model = glm::scale(model, glm::vec3(radius_ * 2.0f));
 		model = glm::translate(model, model_offset_);
 		return model;
+	}
+
+	AABB CheckpointRingShape::GetLocalAABB() const {
+		// Unit quad: from -1 to 1 in X and Y
+		return AABB(glm::vec3(-1.0f, -1.0f, 0.0f), glm::vec3(1.0f, 1.0f, 0.0f));
 	}
 
 	CheckpointRing::CheckpointRing(

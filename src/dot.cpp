@@ -57,9 +57,11 @@ namespace Boidsish {
 	}
 
 	glm::mat4 Dot::GetModelMatrix() const {
+		return GetEntityMatrix() * GetInternalMatrix();
+	}
+
+	glm::mat4 Dot::GetInternalMatrix() const {
 		glm::mat4 model = glm::mat4(1.0f);
-		model = glm::translate(model, glm::vec3(GetX(), GetY(), GetZ()));
-		model *= glm::mat4_cast(GetRotation());
 		glm::vec3 combined_scale = GetScale() * size_ * 0.01f;
 		model = glm::scale(model, combined_scale);
 		model = glm::translate(model, model_offset_);

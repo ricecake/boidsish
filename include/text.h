@@ -39,8 +39,10 @@ namespace Boidsish {
 		virtual void render() const override;
 		virtual void render(Shader& shader, const glm::mat4& model_matrix) const override;
 		glm::mat4    GetModelMatrix() const override;
+		glm::mat4    GetInternalMatrix() const override;
 
 		void GenerateRenderPackets(std::vector<RenderPacket>& out_packets, const RenderContext& context) const override;
+		AABB GetLocalAABB() const override;
 
 		// Text objects are not instanced (each has unique geometry)
 		std::string GetInstanceKey() const override { return "Text:" + std::to_string(GetId()); }

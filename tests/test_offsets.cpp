@@ -17,7 +17,7 @@ TEST(OffsetTest, AABBTranslate) {
 }
 
 TEST(OffsetTest, ShapeOffsets) {
-    Dot dot(1, 0, 0, 0, 100.0f); // radius 1.0
+    Dot dot(1, 0, 0, 0, 100.0f); // radius 1.0 (size 100 * 0.01)
     dot.SetModelOffset(glm::vec3(0, 0, -2.0f));
 
     // Model matrix should include offset
@@ -41,11 +41,11 @@ TEST(OffsetTest, TrailAttachmentPoint) {
 
     // Default attachment: center-back of AABB.
     // Dot has local AABB [-1, 1] on all axes.
-    // The heuristic now favors Z.
+    // The heuristic now favors Z and picks max.z as back (assuming -Z forward convention).
     glm::vec3 attachment = dot.GetTrailAttachmentPoint();
     EXPECT_FLOAT_EQ(attachment.x, 0.0f);
     EXPECT_FLOAT_EQ(attachment.y, 0.0f);
-    EXPECT_FLOAT_EQ(attachment.z, -1.0f);
+    EXPECT_FLOAT_EQ(attachment.z, 1.0f);
 
     // Explicit attachment
     dot.SetTrailOffset(glm::vec3(0, 0, 5.0f));

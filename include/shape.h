@@ -157,6 +157,19 @@ namespace Boidsish {
 		virtual void      render(Shader& shader, const glm::mat4& model_matrix) const = 0;
 		virtual glm::mat4 GetModelMatrix() const = 0;
 
+		/**
+		 * @brief Returns the matrix that transforms from entity-local space to world space.
+		 * This includes the entity's position and rotation, but NOT its internal visual offsets,
+		 * base rotation, or scale.
+		 */
+		virtual glm::mat4 GetEntityMatrix() const;
+
+		/**
+		 * @brief Returns the matrix for internal visual adjustments (scale, base rotation, model offset).
+		 * This is applied relative to the entity's pivot.
+		 */
+		virtual glm::mat4 GetInternalMatrix() const;
+
 		// Get the active visual effects for this shape
 		virtual std::vector<VisualEffect> GetActiveEffects() const { return {}; }
 
