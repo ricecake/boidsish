@@ -287,7 +287,7 @@ void main() {
 		CurPosition = gl_Position;
 		// Since we don't have previous model matrix, we assume static objects for velocity
 		// This is sufficient for GTAO and most environment reprojection.
-		PrevPosition = prevViewProjection * vec4(FragPos, 1.0);
+		PrevPosition = td.prevViewProjection * vec4(FragPos, 1.0);
 	}
 
 	gl_ClipDistance[0] = dot(vec4(FragPos, 1.0), clipPlane);

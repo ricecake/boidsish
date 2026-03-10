@@ -67,7 +67,6 @@ uniform sampler2D refractionTexture;
 
 // New depth resources for screen-space effects
 uniform sampler2D u_prevDepthTexture;
-uniform sampler2D u_hizTexture;
 
 #include "helpers/depth.glsl"
 
@@ -154,7 +153,7 @@ void main() {
 	if (c_is_refractive) {
 		vec3 V = normalize(FragPos - viewPos);
 
-		vec2 screenUV = gl_FragCoord.xy * texelSize;
+		vec2 screenUV = gl_FragCoord.xy * td.texelSize;
 
 		// vec3 a = vec3(0.5, 0.5, 0.5);
 		// vec3 b = vec3(0.5, 0.5, 0.5);
@@ -173,7 +172,7 @@ void main() {
 
 		// Sample linearized depth from the Hi-Z buffer (Mip 0 is full res linearized depth)
 		float backgroundDepth = textureLod(u_hizTexture, screenUV, 0.0).r;
-		float currentLinearDepth = linearizeDepth(gl_FragCoord.z, nearPlane, farPlane);
+		float currentLinearDepth = linearizeDepth(gl_FragCoord.z, td.nearPlane, td.farPlane);
 		float depthDifference = max(0.0, backgroundDepth - currentLinearDepth);
 
 		for (int i = 0; i < steps; i++) {
@@ -185,7 +184,7 @@ void main() {
 			// Generalized refraction: project refracted ray back to screen space
 			// Use the actual depth difference to background geometry instead of a fixed fallback
 			vec3 refractedPos = FragPos + R * depthDifference;
-			vec4 refractedClip = viewProjection * vec4(refractedPos, 1.0);
+			vec4 refractedClip = td.viewProjection * vec4(refractedPos, 1.0);
 			vec2 refractedUV = (refractedClip.xy / refractedClip.w) * 0.5 + 0.5;
 
 			// Use the direct screen-space offset if IOR is close to 1.0 for better "vanishing"
@@ -205,7 +204,7 @@ void main() {
 
 		refractionColor /= refractionAcc;
 
-		vec4  cl = viewProjection * vec4(FragPos, 1.0);
+		vec4  cl = td.viewProjection * vec4(FragPos, 1.0);
 		vec2  uv = (cl.xy / cl.w) * 0.5 + 0.5;
 		float distToEdge = min(min(uv.x, 1.0 - uv.x), min(uv.y, 1.0 - uv.y));
 		float edgeFade = smoothstep(0.0, 0.05, distToEdge);

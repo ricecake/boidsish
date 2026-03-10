@@ -131,7 +131,7 @@ bool isOccluded(vec3 pos, float radius) {
 		return false;
 
 	// Linearize nearestDepth before comparison
-	float linearNearestDepth = linearizeDepth(nearestDepth, nearPlane, farPlane);
+	float linearNearestDepth = linearizeDepth(nearestDepth, td.nearPlane, td.farPlane);
 
 	return linearNearestDepth > hizDepth;
 }
