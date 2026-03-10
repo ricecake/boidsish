@@ -4,6 +4,7 @@
 #include "../helpers/constants.glsl"
 #include "../lighting.glsl"
 #include "terrain_shadows.glsl"
+#include "screen_space_shadows.glsl"
 
 const int LIGHT_TYPE_POINT = 0;
 const int LIGHT_TYPE_DIRECTIONAL = 1;
@@ -19,10 +20,17 @@ const int LIGHT_TYPE_FLASH = 4;    // Explosion/flash light (rapid falloff)
 float calculateShadow(int light_index, vec3 frag_pos, vec3 normal, vec3 light_dir) {
 	// Optimization: Quick terrain raycast for directional lights (Sun)
 	float terrainShadow = 1.0;
+	float ssShadow = 1.0;
 	if (lights[light_index].type == LIGHT_TYPE_DIRECTIONAL) {
 		terrainShadow = terrainShadowCoverage(frag_pos, normal, light_dir);
 		if (terrainShadow <= 0.0) {
 			return terrainShadow;
+		}
+
+		// Also check screen-space shadows for decor objects
+		ssShadow = screenSpaceShadowCoverage(frag_pos, normal, light_dir);
+		if (ssShadow <= 0.0) {
+			return 0.0;
 		}
 	}
 
@@ -191,7 +199,7 @@ float calculateShadow(int light_index, vec3 frag_pos, vec3 normal, vec3 light_di
 		}
 	}
 
-	return min(terrainShadow, shadow);
+	return min(min(terrainShadow, ssShadow), shadow);
 }
 
 /**

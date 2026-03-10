@@ -119,7 +119,7 @@ void main() {
 	float nearestDepth;
 
 	// Project AABB into previous frame's clip space (matches the Hi-Z pyramid)
-	if (!projectAABB(aabbMin, aabbMax, prevViewProjection, screenRect, nearestDepth)) {
+	if (!projectAABB(aabbMin, aabbMax, td.prevViewProjection, screenRect, nearestDepth)) {
 		// Fully behind camera - frustum culling handles this
 		visibility[idx] = 1u;
 		return;
@@ -154,7 +154,7 @@ void main() {
 	}
 
 	// Linearize nearestDepth before comparison
-	float linearNearestDepth = linearizeDepth(nearestDepth, nearPlane, farPlane);
+	float linearNearestDepth = linearizeDepth(nearestDepth, td.nearPlane, td.farPlane);
 
 	// Object is occluded if its nearest depth is farther than the Hi-Z max depth.
 	if (linearNearestDepth > hizDepth) {

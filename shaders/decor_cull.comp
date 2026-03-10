@@ -26,7 +26,6 @@ uniform vec3  u_aabbMax;
 
 // Hi-Z occlusion culling uniforms
 uniform sampler2D u_hizTexture;
-uniform mat4      u_prevViewProjection;
 uniform ivec2     u_hizSize;
 uniform int       u_hizMipCount;
 uniform bool      u_enableHiZ;
@@ -76,7 +75,7 @@ bool isOccluded(vec3 pos, float radius) {
 			(i & 2) != 0 ? aabbMax.y : aabbMin.y,
 			(i & 4) != 0 ? aabbMax.z : aabbMin.z
 		);
-		vec4 clip = u_prevViewProjection * vec4(corner, 1.0);
+		vec4 clip = td.prevViewProjection * vec4(corner, 1.0);
 
 		if (clip.w <= 0.0)
 			continue;
@@ -131,7 +130,7 @@ bool isOccluded(vec3 pos, float radius) {
 		return false;
 
 	// Linearize nearestDepth before comparison
-	float linearNearestDepth = linearizeDepth(nearestDepth, nearPlane, farPlane);
+	float linearNearestDepth = linearizeDepth(nearestDepth, td.nearPlane, td.farPlane);
 
 	return linearNearestDepth > hizDepth;
 }
