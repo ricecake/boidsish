@@ -218,8 +218,9 @@ void main() {
 		float reflectionWeight = 0.0;
 
 		// We start the ray slightly off the surface to avoid self-intersection
+		// Increased offset to 0.25m for better safety
 		if (traceScreenSpaceRayHiZ(
-				FragPos + norm * 0.1,
+				FragPos + norm * 0.25,
 				reflectDir,
 				u_hizTexture,
 				viewProjection,
@@ -232,6 +233,13 @@ void main() {
 			vec3 screenCoord = projectToScreen(hitPos, viewProjection);
 			reflectionColor = getPrevColor(screenCoord.xy, u_prevColorTexture);
 			reflectionWeight = 1.0;
+
+			// NaN and sanity check: Prevent fireflies from invalid/infinite colors
+			if (any(isnan(reflectionColor)) || any(isinf(reflectionColor))) {
+				reflectionColor = vec3(0);
+				reflectionWeight = 0.0;
+			}
+			reflectionColor = clamp(reflectionColor, 0.0, 10.0);
 		}
 
 		// Blend refraction with the lit surface color.
@@ -239,7 +247,8 @@ void main() {
 		result = mix(refractionColor, result * c_objectColor, c_objectAlpha * 0.25) * edgeFade;
 
 		// Glancing angle effects: blend in reflection and a boost to existing color
-		float fresnel = pow(1.0 - abs(dot(viewDir, norm)), 5.0);
+		// Sharper Fresnel (exp 10) for more localized glancing highlights
+		float fresnel = pow(1.0 - abs(dot(viewDir, norm)), 10.0);
 		vec3  glancingColor = mix(
 			 2.0 * (refractionColor / max(0.1, length(refractionColor))),
 			 reflectionColor,

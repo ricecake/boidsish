@@ -98,6 +98,9 @@ vec3 getViewRay(vec2 uv, mat4 invProj, mat4 invView) {
  */
 vec3 projectToScreen(vec3 worldPos, mat4 viewProj) {
 	vec4 clipPos = viewProj * vec4(worldPos, 1.0);
+	if (abs(clipPos.w) < 0.001) {
+		return vec3(-1.0);
+	}
 	vec3 ndc = clipPos.xyz / clipPos.w;
 	return vec3(ndc.xy * 0.5 + 0.5, ndc.z * 0.5 + 0.5);
 }
@@ -183,13 +186,15 @@ bool traceScreenSpaceRayHiZ(
 		currentPos = rayOrigin + rayDir * t;
 		vec3 screenCoord = projectToScreen(currentPos, viewProj);
 
+		// If the point is behind the camera or off screen, the ray missed
 		if (screenCoord.x < 0.0 || screenCoord.x > 1.0 || screenCoord.y < 0.0 || screenCoord.y > 1.0 || t > maxDistance)
 			return false;
 
 		float sampledLinearDepth = textureLod(hizTexture, screenCoord.xy, float(mip)).r;
 		float currentLinearDepth = linearizeDepth(screenCoord.z, near, far);
 
-		if (currentLinearDepth > sampledLinearDepth) {
+		// Use a small bias to avoid self-intersection artifacts
+		if (currentLinearDepth > sampledLinearDepth + 0.05) {
 			if (mip == 0) {
 				// Potential hit at finest level
 				hitPos = currentPos;

@@ -935,6 +935,10 @@ namespace Boidsish {
 			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
 			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 
+			// Clear to black to prevent artifacts on first frame
+			float black[] = {0.0f, 0.0f, 0.0f, 0.0f};
+			glClearTexImage(main_fbo_prev_color_texture_, 0, GL_RGB, GL_FLOAT, black);
+
 			// Refraction attachment (copy of scene before transparency)
 			glGenTextures(1, &refraction_texture_);
 			glBindTexture(GL_TEXTURE_2D, refraction_texture_);
