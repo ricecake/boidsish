@@ -3474,15 +3474,15 @@ namespace Boidsish {
 			shape->UpdateLastPosition();
 		}
 
-		// --- UI Pass (renders on top of the fullscreen quad) ---
-		impl->ui_manager->Render();
-
 		// Capture current frame for next frame's u_prevColorTexture
 		// We capture the main scene texture after post-processing if enabled, or the raw scene if not.
 		glBindFramebuffer(GL_READ_FRAMEBUFFER, (effects_enabled) ? impl->post_processing_manager_->GetCurrentFBO() : impl->main_fbo_);
 		glBindTexture(GL_TEXTURE_2D, impl->main_fbo_prev_color_texture_);
 		glCopyTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, 0, 0, impl->render_width, impl->render_height);
 		glBindFramebuffer(GL_READ_FRAMEBUFFER, 0);
+
+		// --- UI Pass (renders on top of the fullscreen quad) ---
+		impl->ui_manager->Render();
 
 		// Create synchronization fence for the current frame's buffers
 		if (impl->mdi_fences[current_idx])

@@ -211,13 +211,42 @@ void main() {
 		float distToEdge = min(min(uv.x, 1.0 - uv.x), min(uv.y, 1.0 - uv.y));
 		float edgeFade = smoothstep(0.0, 0.05, distToEdge);
 
+		// --- Screen Space Reflection (SSR) via Hi-Z ---
+		vec3  reflectDir = reflect(V, norm);
+		vec3  hitPos;
+		vec3  reflectionColor = vec3(0);
+		float reflectionWeight = 0.0;
+
+		// We start the ray slightly off the surface to avoid self-intersection
+		if (traceScreenSpaceRayHiZ(
+				FragPos + norm * 0.1,
+				reflectDir,
+				u_hizTexture,
+				viewProjection,
+				nearPlane,
+				farPlane,
+				100.0,
+				5,
+				hitPos
+			)) {
+			vec3 screenCoord = projectToScreen(hitPos, viewProjection);
+			reflectionColor = getPrevColor(screenCoord.xy, u_prevColorTexture);
+			reflectionWeight = 1.0;
+		}
+
 		// Blend refraction with the lit surface color.
 		// For refractive objects, we treat the object alpha as a tint rather than traditional transparency.
-		// result = refractionColor;
-		result = mix(refractionColor, result * c_objectColor, c_objectAlpha * 0.25) * edgeFade +
-			mix(refractionColor * (1.0 - edgeFade),
-		        2 * (refractionColor / length(refractionColor)),
-		        pow(1.0 - abs(dot(viewDir, norm)), 10.0));
+		result = mix(refractionColor, result * c_objectColor, c_objectAlpha * 0.25) * edgeFade;
+
+		// Glancing angle effects: blend in reflection and a boost to existing color
+		float fresnel = pow(1.0 - abs(dot(viewDir, norm)), 5.0);
+		vec3  glancingColor = mix(
+			 2.0 * (refractionColor / max(0.1, length(refractionColor))),
+			 reflectionColor,
+			 reflectionWeight
+		);
+
+		result += glancingColor * fresnel * edgeFade;
 	}
 
 	if (c_isLine && c_lineStyle == 1) { // LASER style
