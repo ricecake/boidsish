@@ -63,10 +63,20 @@ namespace Boidsish {
 			velocity += correction;
 		}
 
-		// Ground clamping
+		// Ground clamping with AABB awareness
 		auto [h, norm] = handler.GetTerrainPropertiesAtPoint(pos.x, pos.z);
-		float target_y = h + 2.0f;
-		if (pos.y < h) pos.y = h; // Snap up if underground
+		float vertical_offset = 0.0f;
+		if (shape_) {
+			// Dogplane is roughly centered, so its bottom is -height/2
+			// We want bottom to be at h + small margin
+			vertical_offset = (shape_->GetScale().y * 0.5f);
+		}
+		float target_y = h + vertical_offset + 0.5f;
+		if (pos.y < target_y) {
+			pos.y = target_y;
+			glm::vec3 vel = GetVelocity().Toglm();
+			if (vel.y < 0) SetVelocity(Vector3(vel.x, 0, vel.z));
+		}
 		pos.y = glm::mix(pos.y, target_y, delta_time * 10.0f);
 
 		SetPosition(pos.x, pos.y, pos.z);
@@ -112,7 +122,13 @@ namespace Boidsish {
 
 		// Ensure we stay above ground during positioning
 		auto [h, norm] = handler.GetTerrainPropertiesAtPoint(pos.x, pos.z);
-		if (pos.y < h + 2.0f) pos.y = h + 2.0f;
+		float vertical_offset = (shape_ ? shape_->GetScale().y * 0.5f : 0.0f);
+		float target_y = h + vertical_offset + 0.5f;
+		if (pos.y < target_y) {
+			pos.y = target_y;
+			glm::vec3 vel = GetVelocity().Toglm();
+			if (vel.y < 0) SetVelocity(Vector3(vel.x, 0, vel.z));
+		}
 		SetPosition(pos.x, pos.y, pos.z);
 
 		state_timer_ += delta_time;

@@ -72,6 +72,12 @@ namespace Boidsish {
 		float dist_to_player = glm::length(to_player);
 
 		glm::vec3 target_pos = player_pos - glm::normalize(to_player) * 20.0f + hover_offset_;
+
+		// Ground clamping for RedDot
+		auto [h, norm] = handler.GetTerrainPropertiesAtPoint(target_pos.x, target_pos.z);
+		float min_y = h + GetSize() * 0.01f + 2.0f;
+		if (target_pos.y < min_y) target_pos.y = min_y;
+
 		glm::vec3 move_dir = target_pos - current_pos;
 		if (glm::length(move_dir) > 0.1f) {
 			glm::vec3 vel = glm::normalize(move_dir) * 5.0f;

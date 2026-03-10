@@ -156,8 +156,10 @@ namespace Boidsish {
 
 		// Terrain avoidance/snap
 		auto [h, norm] = handler.GetTerrainPropertiesAtPoint(current_pos.x, current_pos.z);
-		if (current_pos.y < h + 2.0f) {
-			SetPosition(current_pos.x, h + 2.0f, current_pos.z);
+		float vertical_offset = (shape_ ? shape_->GetScale().y * 0.5f : 0.0f);
+		float target_y = h + vertical_offset + 2.0f;
+		if (current_pos.y < target_y) {
+			SetPosition(current_pos.x, target_y, current_pos.z);
 			rigid_body_.AddForce(glm::vec3(0, 200.0f, 0));
 			glm::vec3 vel = GetVelocity().Toglm();
 			if (vel.y < 0) {
