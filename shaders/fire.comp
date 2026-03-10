@@ -221,10 +221,10 @@ void updateAmbientParticle(inout Particle p, float dt, float time) {
 		p.vel.xyz *= pow(0.99, dt / 0.016);
 	}
 
-	float mildRepulsionStrength = 2.0;
-	float capsuleWidth = 40.0;
+	float mildRepulsionStrength = 5.0;
+	float capsuleWidth = 50.0;
 	float noiseWeight = 0.5;
-	float pushStrength = 15.0;
+	float pushStrength = 20.0;
 
 	vec3  relativePos = p.pos.xyz - viewPos;
 	float distToCam = length(relativePos);
@@ -468,6 +468,7 @@ void main() {
 				vec3 jitter = (rand3(spawnSeed + 0.1) - 0.5) * 4.0;
 				pos.x += jitter.x;
 				pos.z += jitter.z;
+				pos += 5 * viewDir;
 
 				// Check biomes and select appropriate particle type
 				// Biomes: Sand=0, LushGrass=1, DryGrass=2, Forest=3, AlpineMeadow=4, BrownRock=5, GreyRock=6,

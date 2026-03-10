@@ -31,10 +31,10 @@ float calculateShadow(int light_index, vec3 frag_pos, vec3 normal, vec3 light_di
 	// Early out for invalid indices or when no shadow lights are active
 	// This MUST return before any texture operations to avoid driver issues
 	if (shadow_index < 0) {
-		return 1.0; // No shadow for this light
+		return terrainShadow; // No shadow for this light
 	}
 	if (numShadowLights <= 0) {
-		return 1.0; // No shadow maps active at all
+		return terrainShadow; // No shadow maps active at all
 	}
 
 	// Handle Cascaded Shadow Maps for directional lights
@@ -80,7 +80,7 @@ float calculateShadow(int light_index, vec3 frag_pos, vec3 normal, vec3 light_di
 	}
 
 	if (shadow_index >= MAX_SHADOW_MAPS) {
-		return 1.0; // Index out of bounds
+		return terrainShadow; // Index out of bounds
 	}
 
 	// Transform fragment position to light space
@@ -88,7 +88,7 @@ float calculateShadow(int light_index, vec3 frag_pos, vec3 normal, vec3 light_di
 
 	// Perspective divide (guard against division by zero)
 	if (abs(frag_pos_light_space.w) < 0.0001) {
-		return 1.0;
+		return terrainShadow;
 	}
 	vec3 proj_coords = frag_pos_light_space.xyz / frag_pos_light_space.w;
 
@@ -98,7 +98,7 @@ float calculateShadow(int light_index, vec3 frag_pos, vec3 normal, vec3 light_di
 	// Check if fragment is outside the shadow map frustum
 	if (proj_coords.x < 0.0 || proj_coords.x > 1.0 || proj_coords.y < 0.0 || proj_coords.y > 1.0 ||
 	    proj_coords.z > 1.0 || proj_coords.z < 0.0) {
-		return 1.0; // Outside shadow frustum, fully lit
+		return terrainShadow; // Outside shadow frustum, fully lit
 	}
 
 	// Current depth from light's perspective
