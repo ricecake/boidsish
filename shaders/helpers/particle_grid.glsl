@@ -79,6 +79,11 @@ float trace_particle_density(vec3 rayOrigin, vec3 rayDir, float maxDist, float s
 		// Volumetric accumulation: d is density, exp(-d) is transmission
 		totalDensity += d * stepSize;
 
+		// Early exit if the medium is already practically opaque
+		if (exp(-totalDensity * 0.05) < 0.01) {
+			break;
+		}
+
 		t += stepSize;
 	}
 

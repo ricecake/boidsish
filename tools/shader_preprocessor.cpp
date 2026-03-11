@@ -33,6 +33,8 @@ int main(int argc, char** argv) {
     ShaderBase::RegisterConstant("MAX_CASCADES", Boidsish::Constants::Class::Shadows::MaxCascades());
     ShaderBase::RegisterConstant("CHUNK_SIZE", Boidsish::Constants::Class::Terrain::ChunkSize());
     ShaderBase::RegisterConstant("MAX_SHOCKWAVES", Boidsish::Constants::Class::Shockwaves::MaxShockwaves());
+    ShaderBase::RegisterConstant("PARTICLE_GRID_SIZE", Boidsish::Constants::Class::Particles::ParticleGridSize());
+    ShaderBase::RegisterConstant("PARTICLE_GRID_CELL_SIZE", Boidsish::Constants::Class::Particles::ParticleGridCellSize());
 
     Preprocessor p;
     std::string processed = p.process(inputPath);
