@@ -66,20 +66,24 @@ float cloudPhase(float cosTheta) {
 	return mix(henyeyGreenstein(0.8, cosTheta), henyeyGreenstein(-0.2, cosTheta), 0.5);
 }
 
-float beerPowder(float d) {
-	return exp(-d) * (1.0 - exp(-d * 2.0));
+float beerPowder(float d, float local_d) {
+	return max(exp(-d), exp(-d * 0.5) * 0.7 * (1.0 - exp(-local_d * 2.0)));
 }
 
-float getCloudDensity(vec3 p, float altitude, float thickness) {
+float getCloudDensity(vec3 p, float altitude, float thickness, bool simplified) {
 	float h = (p.y - altitude) / max(thickness, 0.001);
 	float tapering = smoothstep(0.0, 0.15, h) * smoothstep(1.0, 0.8, h);
 	if (tapering <= 0.0) return 0.0;
 
 	// Use multiple scales of noise for volumetric detail
-	vec3 p_scaled = p / (2500.0 * worldScale);
-	float base = fastWorley3d(vec3(p_scaled.xz, time * 0.008));
+	vec3 p_scaled = p / (2000.0 * worldScale);
+	float base = fastWorley3d(vec3(p_scaled.xz, time * 0.002));
 
-	float detail = fastFbm3d(vec3(p.xz / (1000.0 * worldScale), p.y / (2000.0 * worldScale) + time * 0.05));
+	if (simplified) {
+		return smoothstep(0.4, 0.7, base) * cloudDensity * tapering;
+	}
+
+	float detail = fastWarpedFbm3d(vec3(p.xz / (1000.0 * worldScale), p.y / (400.0 * worldScale) + time * 0.005));
 	detail = detail * 0.5 + 0.5;
 
 	float noise = remap(base, detail * 0.3, 1.0, 0.0, 1.0);
@@ -115,10 +119,9 @@ void main() {
 	float transmittance = sampleAerialPerspectiveTransmittance(rayDir, distKM);
 
 	// 2. Cloud Layer (Simplified but preserved)
-	float cloudFactor = 0.0;
 	vec3  cloudColor = vec3(0.0);
 
-	float scaledCloudAltitude = (200+cloudAltitude) * worldScale;
+	float scaledCloudAltitude = cloudAltitude * worldScale;
 	float scaledCloudThickness = (150+cloudThickness) * worldScale;
 
 	float t_start = (scaledCloudAltitude - cameraPos.y) / (rayDir.y + 0.000001);
@@ -132,7 +135,7 @@ void main() {
 	t_start = max(t_start, 0.0);
 	t_end = min(t_end, dist);
 
-	float cloudTransmittance = 5.0;
+	float cloudTransmittance = 1.0;
 	if (t_start < t_end) {
 		vec3  lightEnergy = vec3(0.0);
 		int   samples = 24;
@@ -142,32 +145,36 @@ void main() {
 		for (int i = 0; i < samples; i++) {
 			float t = mix(t_start, t_end, (float(i) + jitter) / float(samples));
 			vec3  p = cameraPos + rayDir * t;
-			float d = getCloudDensity(p, scaledCloudAltitude, scaledCloudThickness);
+			float d = getCloudDensity(p, scaledCloudAltitude, scaledCloudThickness, false);
 
 			if (d > 0.01) {
 				float stepDensity = d * stepSize * 0.01;
-
-				// Nested loop for self-shadowing towards the primary light (sun)
-				float shadowDensity = 0.0;
-				int   shadowSamples = 6;
-				vec3  L = (lights[0].type == 1) ? normalize(-lights[0].direction) : normalize(lights[0].position - p);
-				float shadowStepSize = scaledCloudThickness / float(shadowSamples) * 0.5;
-
-				for (int j = 0; j < shadowSamples; j++) {
-					vec3 sp = p + L * (float(j) + 0.5) * shadowStepSize;
-					shadowDensity += getCloudDensity(sp, scaledCloudAltitude, scaledCloudThickness);
-				}
-
-				float opticalDepthToLight = shadowDensity * shadowStepSize * 0.02;
-				float shadowTerm = beerPowder(opticalDepthToLight);
-
-				// Beer-Powder and Phase integration
-				float cosTheta = dot(rayDir, L);
-				float phase = cloudPhase(cosTheta);
 				float transmittanceAtStep = exp(-stepDensity);
 
-				vec3 S = (lights[0].color * lights[0].intensity * shadowTerm * phase) + (ambient_light);
+				vec3 stepScattering = vec3(0.0);
+				for (int j = 0; j < min(num_lights, 4); j++) {
+					vec3  L = (lights[j].type == 1) ? normalize(-lights[j].direction) : normalize(lights[j].position - p);
+					float cosTheta = dot(rayDir, L);
+					float phase = (j == 0) ? cloudPhase(cosTheta) : 1.0 / (4.0 * PI);
 
+					float shadowTerm = 1.0;
+					if (j == 0) {
+						// Shadow march only for the primary light
+						float shadowDensity = 0.0;
+						int   shadowSamples = 4;
+						float shadowStepSize = scaledCloudThickness / float(shadowSamples) * 0.5;
+						for (int k = 0; k < shadowSamples; k++) {
+							vec3 sp = p + L * (float(k) + 0.5) * shadowStepSize;
+							shadowDensity += getCloudDensity(sp, scaledCloudAltitude, scaledCloudThickness, true);
+						}
+						float opticalDepthToLight = shadowDensity * shadowStepSize * 0.02;
+						shadowTerm = beerPowder(opticalDepthToLight, d);
+					}
+
+					stepScattering += lights[j].color * lights[j].intensity * shadowTerm * phase;
+				}
+
+				vec3 S = stepScattering + (ambient_light * 0.1);
 				lightEnergy += cloudTransmittance * S * stepDensity;
 				cloudTransmittance *= transmittanceAtStep;
 

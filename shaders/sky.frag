@@ -79,7 +79,7 @@ void main() {
 	float rayLocalZ = dot(world_ray, sunDir);
 
 	// Distort vertical axis near horizon
-	float atmosphericRefraction = 1.0 + 0.6 * exp(-max(0.0, sunDir.y * 10.0));
+	float atmosphericRefraction = 1.0 + 0.75 * exp(-max(0.0, sunDir.y * 10.0));
 	float flattenedY = rayLocalY * atmosphericRefraction;
 
 	// Effective angle to sun center
@@ -101,15 +101,15 @@ void main() {
 	// 3. Stars and Nebula
 	vec3 stars = starLayer(world_ray) * vec3(1.0, 0.9, 0.8);
 
-	// vec3  p = world_ray * 0.1; // Adjust scale for pre-generated noise
-	// vec3  warp_offset = fastCurl3d(p + time * 0.005) * 0.1;
-	// float nebula_noise = fastFbm3d(p*0.5 + warp_offset) * 0.5 + 0.5;
-	// vec3  nebula = mix(vec3(0.0, 0.1, 0.4), vec3(0.8, 0.2, 0.7), nebula_noise) * 0.4;
+	vec3  p = world_ray * 0.1; // Adjust scale for pre-generated noise
+	vec3  warp_offset = fastCurl3d(p + time * 0.005) * 0.1;
+	float nebula_noise = fastFbm3d(p*0.5 + warp_offset) * 0.5 + 0.5;
+	vec3  nebula = mix(vec3(0.0, 0.1, 0.4), vec3(0.8, 0.2, 0.7), nebula_noise) * 0.4;
 
 	vec3 skyTransmittance = getTransmittance(r, world_ray.y);
-	// vec3 spaceBackground = (stars + nebula) * skyTransmittance;
+	vec3 spaceBackground = (stars + nebula) * skyTransmittance;
 
-	vec3 finalColor = skyRadiance + sunDisc;// + spaceBackground;
+	vec3 finalColor = skyRadiance + sunDisc + spaceBackground;
 
 	FragColor = vec4(finalColor, 1.0);
 }
