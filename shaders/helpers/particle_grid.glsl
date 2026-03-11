@@ -31,8 +31,8 @@ const float u_cell_size = [[PARTICLE_GRID_CELL_SIZE]];
 const uint  u_volume_size = [[PARTICLE_VOLUME_SIZE]];
 const float u_volume_scale = [[PARTICLE_VOLUME_SCALE]];
 
-uniform usampler3D u_particleVolume;
-uniform vec3       u_particleVolumeCenter;
+uniform sampler3D u_particleVolume;
+uniform vec3      u_particleVolumeCenter;
 
 #include "fast_noise.glsl"
 
@@ -46,10 +46,8 @@ float get_particle_density(vec3 pos, float radius) {
 		return 0.0;
 	}
 
-	// Use hardware linear filtering on the density volume (if supported by usampler3D/R32UI)
-	// Actually, usampler3D doesn't support linear filtering. We'll use texelFetch or texture.
-	// Since it's R32UI, we sample and convert to float.
-	return float(texture(u_particleVolume, uvw).r);
+	// Leveraging hardware trilinear interpolation for smooth density fields
+	return texture(u_particleVolume, uvw).r;
 }
 
 // Simple raymarching through the grid
@@ -62,10 +60,10 @@ float trace_particle_density(vec3 rayOrigin, vec3 rayDir, float maxDist, float s
 	float jitter = fastSimplex3d(rayOrigin * 0.1 + rayDir * 0.1) * stepSize;
 	t += jitter;
 
-	for (int i = 0; i < 128; i++) {
-		if (t > maxDist)
-			break;
+	// Dynamically determine step count but cap for safety
+	int steps = clamp(int(maxDist / stepSize), 1, 128);
 
+	for (int i = 0; i < steps; i++) {
 		vec3 p = rayOrigin + rayDir * t;
 		float d = get_particle_density(p, radius);
 

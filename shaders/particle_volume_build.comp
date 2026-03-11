@@ -25,6 +25,16 @@ uniform vec3  u_centerPos;
 const uint  u_volume_size = [[PARTICLE_VOLUME_SIZE]];
 const float u_volume_scale = [[PARTICLE_VOLUME_SCALE]];
 
+void imageAtomicAddFloat(ivec3 coords, float val) {
+	uint expected = imageLoad(u_particleVolume, coords).x;
+	uint actual;
+
+	while ((actual = imageAtomicCompSwap(u_particleVolume, coords, expected, floatBitsToUint(uintBitsToFloat(expected) + val))) !=
+	       expected) {
+		expected = actual;
+	}
+}
+
 void main() {
 	uint gid = gl_GlobalInvocationID.x;
 
@@ -50,7 +60,7 @@ void main() {
 				if (voxelPos.x >= 0 && voxelPos.x < int(u_volume_size) &&
 				    voxelPos.y >= 0 && voxelPos.y < int(u_volume_size) &&
 				    voxelPos.z >= 0 && voxelPos.z < int(u_volume_size)) {
-					imageAtomicAdd(u_particleVolume, voxelPos, 1u);
+					imageAtomicAddFloat(voxelPos, 1.0);
 				}
 			}
 		}

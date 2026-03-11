@@ -135,9 +135,9 @@ namespace Boidsish {
 		int volume_size = Constants::Class::Particles::ParticleVolumeSize();
 		glGenTextures(1, &particle_density_texture_);
 		glBindTexture(GL_TEXTURE_3D, particle_density_texture_);
-		glTexStorage3D(GL_TEXTURE_3D, 1, GL_R32UI, volume_size, volume_size, volume_size);
-		glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-		glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+		glTexStorage3D(GL_TEXTURE_3D, 1, GL_R32F, volume_size, volume_size, volume_size);
+		glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+		glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 		glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
 		glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 		glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE);
@@ -424,6 +424,7 @@ namespace Boidsish {
 			volume_build_shader_->setVec3("u_centerPos", view_pos);
 
 			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::ParticleBuffer(), particle_buffer_);
+			// We treat the R32F texture as R32UI for bitwise atomic operations in the build shader
 			glBindImageTexture(0, particle_density_texture_, 0, GL_TRUE, 0, GL_READ_WRITE, GL_R32UI);
 
 			// Mode 0: Clear
