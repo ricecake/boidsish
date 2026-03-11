@@ -13,7 +13,7 @@ struct Particle {
 	int  _padding[2];
 };
 
-layout(std430, binding = 0) buffer ParticleBuffer {
+layout(std430, binding = 16) buffer ParticleBuffer {
 	Particle particles[];
 };
 
@@ -103,6 +103,8 @@ void main() {
 			gl_PointSize = 6.0;    // Small, consistent square
 		} else if (p.style == 8) { // Debug
 			gl_PointSize = 8.0;    // Fixed size point
+		} else if (p.style == 10) { // Volumetric
+			gl_PointSize = 4.0;
 		} else if (p.style == 5 || p.style == 6 || p.style == 7 ||
 		           p.style == 9) { // Ambient, Bubbles, Fireflies, Cinder
 			// Prominent size but attenuated by distance

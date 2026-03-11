@@ -1639,6 +1639,27 @@ namespace Boidsish {
 						glActiveTexture(GL_TEXTURE14);
 						glBindTexture(GL_TEXTURE_2D, refraction_texture_);
 						s->trySetInt("refractionTexture", 14);
+
+						// Bind particle grid SSBOs for density/volumetric sampling
+						if (fire_effect_manager) {
+							glBindBufferBase(
+								GL_SHADER_STORAGE_BUFFER,
+								Constants::SsboBinding::ParticleBuffer(),
+								fire_effect_manager->GetParticleBuffer()
+							);
+							glBindBufferBase(
+								GL_SHADER_STORAGE_BUFFER,
+								Constants::SsboBinding::ParticleGridHeads(),
+								fire_effect_manager->GetGridHeadsBuffer()
+							);
+							glBindBufferBase(
+								GL_SHADER_STORAGE_BUFFER,
+								Constants::SsboBinding::ParticleGridNext(),
+								fire_effect_manager->GetGridNextBuffer()
+							);
+							s->trySetUint("u_grid_size", Constants::Class::Particles::ParticleGridSize());
+							s->trySetFloat("u_cell_size", Constants::Class::Particles::ParticleGridCellSize());
+						}
 					}
 				}
 

@@ -20,6 +20,7 @@ namespace Boidsish {
 		Fireflies,
 		Debug,
 		Cinder,
+		Volumetric,
 		Null
 	};
 

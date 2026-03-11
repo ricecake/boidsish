@@ -49,6 +49,10 @@ namespace Boidsish {
 		// Returns true if fire effects are available (compute shader compiled successfully)
 		bool IsAvailable() const;
 
+		GLuint GetParticleBuffer() const { return particle_buffer_; }
+		GLuint GetGridHeadsBuffer() const { return grid_heads_buffer_; }
+		GLuint GetGridNextBuffer() const { return grid_next_buffer_; }
+
 		void Update(
 			float                         delta_time,
 			float                         time,

@@ -348,7 +348,7 @@ namespace Boidsish {
 		compute_shader_->setUint("u_grid_size", Constants::Class::Particles::ParticleGridSize());
 		compute_shader_->setFloat("u_cell_size", Constants::Class::Particles::ParticleGridCellSize());
 
-		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, particle_buffer_);
+		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::ParticleBuffer(), particle_buffer_);
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, emitter_buffer_);
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 2, indirection_buffer_);
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 3, terrain_chunk_buffer_);
@@ -383,7 +383,7 @@ namespace Boidsish {
 			grid_build_shader_->setFloat("u_cell_size", Constants::Class::Particles::ParticleGridCellSize());
 			grid_build_shader_->setInt("u_num_particles", kMaxParticles);
 
-			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, particle_buffer_);
+			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::ParticleBuffer(), particle_buffer_);
 			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::ParticleGridHeads(), grid_heads_buffer_);
 			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::ParticleGridNext(), grid_next_buffer_);
 
@@ -404,7 +404,7 @@ namespace Boidsish {
 
 		// --- Dispatch Main Particle Compute Shader ---
 		compute_shader_->use();
-		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, particle_buffer_);
+		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::ParticleBuffer(), particle_buffer_);
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::ParticleGridHeads(), grid_heads_buffer_);
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::ParticleGridNext(), grid_next_buffer_);
 
@@ -414,7 +414,7 @@ namespace Boidsish {
 		// Ensure memory operations are finished before rendering
 		glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
 
-		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, 0);
+		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::ParticleBuffer(), 0);
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::ParticleGridHeads(), 0);
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::ParticleGridNext(), 0);
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, 0);
@@ -614,7 +614,7 @@ namespace Boidsish {
 		render_shader_->setBool("enableFrustumCulling", true);
 		render_shader_->setFloat("frustumCullRadius", 2.0f); // Particle cull radius
 
-		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, particle_buffer_);
+		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::ParticleBuffer(), particle_buffer_);
 
 		// We don't have a VAO for the particles since we generate them in the shader.
 		// We can just draw the number of particles we have.
@@ -623,7 +623,7 @@ namespace Boidsish {
 		glDrawArrays(GL_POINTS, 0, kMaxParticles);
 		glBindVertexArray(0);
 
-		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, 0);
+		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::ParticleBuffer(), 0);
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, 0);
 
 		glDepthMask(GL_TRUE);                              // Re-enable depth writing

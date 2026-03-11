@@ -62,6 +62,10 @@ namespace Boidsish {
 			constexpr int ParticleGridNext() {
 				return 15;
 			}
+
+			constexpr int ParticleBuffer() {
+				return 16;
+			}
 		} // namespace SsboBinding
 
 		namespace General {
