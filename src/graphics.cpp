@@ -4326,6 +4326,10 @@ namespace Boidsish {
 		return impl->noise_manager->GetCurlTexture();
 	}
 
+	glm::vec3 Visualizer::GetParticleVolumeOrigin() const {
+		return impl->fire_effect_manager->GetParticleVolumeOrigin();
+	}
+
 	AudioManager& Visualizer::GetAudioManager() {
 		return *impl->audio_manager;
 	}

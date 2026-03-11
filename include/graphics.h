@@ -503,6 +503,7 @@ namespace Boidsish {
 
 		unsigned int GetNoiseTexture() const;
 		unsigned int GetCurlTexture() const;
+		glm::vec3    GetParticleVolumeOrigin() const;
 
 		Config&       GetConfig();
 		AudioManager& GetAudioManager();
