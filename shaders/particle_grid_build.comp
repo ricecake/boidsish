@@ -28,8 +28,8 @@ layout(std430, binding = 15) buffer ParticleGridNext {
 
 uniform int   u_mode; // 0: Clear, 1: Build
 uniform int   u_num_particles;
-uniform uint  u_grid_size;
-uniform float u_cell_size;
+const uint  u_grid_size = [[PARTICLE_GRID_SIZE]];
+const float u_cell_size = [[PARTICLE_GRID_CELL_SIZE]];
 
 void main() {
 	uint gid = gl_GlobalInvocationID.x;

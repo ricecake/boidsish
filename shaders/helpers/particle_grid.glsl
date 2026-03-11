@@ -25,14 +25,14 @@ layout(std430, binding = 15) readonly buffer ParticleGridNext {
 	int grid_next[];
 };
 
-uniform uint  u_grid_size;
-uniform float u_cell_size;
+const uint  u_grid_size = [[PARTICLE_GRID_SIZE]];
+const float u_cell_size = [[PARTICLE_GRID_CELL_SIZE]];
+
+#include "fast_noise.glsl"
 
 float get_particle_density(vec3 pos, float radius) {
 	float density = 0.0;
 	float radiusSq = radius * radius;
-
-	ivec3 cellPos = ivec3(floor(pos / u_cell_size));
 
 	// Scan neighboring cells
 	for (int x = -1; x <= 1; x++) {
@@ -65,12 +65,19 @@ float trace_particle_density(vec3 rayOrigin, vec3 rayDir, float maxDist, float s
 	float totalDensity = 0.0;
 	float t = 0.0;
 
+	// Jitter starting position to reduce stepping artifacts
+	float jitter = fastSimplex3d(rayOrigin * 0.1 + rayDir * 0.1) * stepSize;
+	t += jitter;
+
 	for (int i = 0; i < 128; i++) {
 		if (t > maxDist)
 			break;
 
 		vec3 p = rayOrigin + rayDir * t;
-		totalDensity += get_particle_density(p, radius) * stepSize;
+		float d = get_particle_density(p, radius);
+
+		// Volumetric accumulation: d is density, exp(-d) is transmission
+		totalDensity += d * stepSize;
 
 		t += stepSize;
 	}

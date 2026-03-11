@@ -345,8 +345,6 @@ namespace Boidsish {
 		compute_shader_->setFloat("u_time", time_);
 		compute_shader_->setInt("u_num_emitters", emitters.size());
 		compute_shader_->setInt("u_num_chunks", static_cast<int>(chunk_info.size()));
-		compute_shader_->setUint("u_grid_size", Constants::Class::Particles::ParticleGridSize());
-		compute_shader_->setFloat("u_cell_size", Constants::Class::Particles::ParticleGridCellSize());
 
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::ParticleBuffer(), particle_buffer_);
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, emitter_buffer_);
@@ -379,8 +377,6 @@ namespace Boidsish {
 		// --- Build Spatial Grid ---
 		if (grid_build_shader_ && grid_build_shader_->isValid()) {
 			grid_build_shader_->use();
-			grid_build_shader_->setUint("u_grid_size", Constants::Class::Particles::ParticleGridSize());
-			grid_build_shader_->setFloat("u_cell_size", Constants::Class::Particles::ParticleGridCellSize());
 			grid_build_shader_->setInt("u_num_particles", kMaxParticles);
 
 			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::ParticleBuffer(), particle_buffer_);

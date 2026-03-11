@@ -71,8 +71,8 @@ uniform float u_delta_time;
 uniform float u_time;
 uniform int   u_num_emitters;
 uniform int   u_num_chunks;
-uniform uint  u_grid_size;
-uniform float u_cell_size;
+const uint  u_grid_size = [[PARTICLE_GRID_SIZE]];
+const float u_cell_size = [[PARTICLE_GRID_CELL_SIZE]];
 
 uniform sampler3D      u_curlTexture;
 uniform sampler2DArray u_heightmapArray;
