@@ -52,6 +52,10 @@ float sampleAerialPerspectiveTransmittance(vec3 rd, float distKM) {
 }
 
 
+float remap(float value, float low1, float high1, float low2, float high2) {
+	return low2 + (value - low1) * (high2 - low2) / max(0.0001, (high1 - low1));
+}
+
 void main() {
 	float depth = texture(depthTexture, TexCoords).r;
 	vec3  sceneColor = texture(sceneTexture, TexCoords).rgb;
@@ -80,7 +84,7 @@ void main() {
 	vec3  cloudColor = vec3(0.0);
 
 	float scaledCloudAltitude = cloudAltitude * worldScale;
-	float scaledCloudThickness = cloudThickness * worldScale;
+	float scaledCloudThickness = (150+cloudThickness) * worldScale;
 
 	float t_start = (scaledCloudAltitude - cameraPos.y) / (rayDir.y + 0.000001);
 	float t_end = (scaledCloudAltitude + scaledCloudThickness - cameraPos.y) / (rayDir.y + 0.000001);
@@ -95,20 +99,25 @@ void main() {
 
 	if (t_start < t_end) {
 		float cloudAcc = 0.0;
-		int   samples = 6;
-		float jitter = fastBlueNoise2d(worldPos.xz);
-		// float jitter = fract(sin(dot(TexCoords, vec2(12.9898, 78.233))) * 43758.5453);
+		int   samples = 16;
+		float jitter = fastBlueNoise2d(worldPos.xz + vec2(sin(time*0.07), cos(time*-0.05)));
+
 		for (int i = 0; i < samples; i++) {
 			float t = mix(t_start, t_end, (float(i) + jitter) / float(samples));
 			vec3  p = cameraPos + rayDir * t;
-			float h = (p.y - scaledCloudAltitude) / max(100+scaledCloudThickness, 0.001);
-			float tapering = 1;//smoothstep(0.0, 0.5, h) * smoothstep(1.0, 0.5, h);
-			// vec3  noise_p = (p/worldScale) * 0.00005;
-			// float noise = fastWorley3d(noise_p) * 0.5 + 0.5; // Using pre-computed FBM
-			float noise = fastWorley3d(vec3(p.xz / (350 * worldScale), time * 0.01));
-			float d = smoothstep(0.2, 0.6, noise) * cloudDensity * tapering;
+			float h_mod = 1;//fastWorley3d(vec3(p.xz / (50-0 * worldScale), time * 0.005)) * 0.5 + 0.5;
+			float h = (p.y - scaledCloudAltitude) / max(100 * h_mod + scaledCloudThickness, 0.001);
+
+			float tapering = smoothstep(0.0, 0.15, h) * smoothstep(1.0, 0.85, h);
+
+			float noise = fastWorley3d(vec3(p.xz / (1500 * worldScale), time * 0.005));
+			noise = remap(noise, fastWarpedFbm3d(vec3(p.xz / (550 * worldScale), p.y + sin(time * 0.005))), 1, 0, 1);
+
+			float d = smoothstep(0.4, 0.6, noise) * cloudDensity * tapering;
+
 			cloudAcc += d;
 		}
+
 		cloudFactor = 1.0 - exp(-cloudAcc * (t_end - t_start) * 0.05 / float(samples));
 		vec3 intersect = cameraPos + rayDir * mix(t_start, t_end, 0.5);
 		vec3 cloudScattering = vec3(0.0);
