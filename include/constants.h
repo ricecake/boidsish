@@ -331,6 +331,14 @@ namespace Boidsish {
 				constexpr float ParticleGridCellSize() {
 					return 2.0f;
 				}
+
+				constexpr int ParticleVolumeSize() {
+					return 128;
+				}
+
+				constexpr float ParticleVolumeScale() {
+					return 2.0f;
+				}
 			} // namespace Particles
 
 			namespace Explosions {

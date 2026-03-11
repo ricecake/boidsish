@@ -28,35 +28,28 @@ layout(std430, binding = 15) readonly buffer ParticleGridNext {
 const uint  u_grid_size = [[PARTICLE_GRID_SIZE]];
 const float u_cell_size = [[PARTICLE_GRID_CELL_SIZE]];
 
+const uint  u_volume_size = [[PARTICLE_VOLUME_SIZE]];
+const float u_volume_scale = [[PARTICLE_VOLUME_SCALE]];
+
+uniform usampler3D u_particleVolume;
+uniform vec3       u_particleVolumeCenter;
+
 #include "fast_noise.glsl"
 
 float get_particle_density(vec3 pos, float radius) {
-	float density = 0.0;
-	float radiusSq = radius * radius;
+	// Sample from the 3D density volume for O(1) lookups
+	vec3  relPos = pos - u_particleVolumeCenter;
+	vec3  volumeCoords = (relPos / u_volume_scale) + vec3(u_volume_size * 0.5);
+	vec3  uvw = volumeCoords / float(u_volume_size);
 
-	// Scan neighboring cells
-	for (int x = -1; x <= 1; x++) {
-		for (int y = -1; y <= 1; y++) {
-			for (int z = -1; z <= 1; z++) {
-				uint cellIdx = get_cell_idx(pos + vec3(x, y, z) * u_cell_size, u_cell_size, u_grid_size);
-				int  pIdx = grid_heads[cellIdx];
-
-				int safety = 0;
-				while (pIdx != -1 && safety < 100) {
-					vec3  pPos = particles[pIdx].pos.xyz;
-					float distSq = dot(pos - pPos, pos - pPos);
-					if (distSq < radiusSq) {
-						float dist = sqrt(distSq);
-						// Quadratic falloff for smoother density
-						density += 1.0 - (dist / radius);
-					}
-					pIdx = grid_next[pIdx];
-					safety++;
-				}
-			}
-		}
+	if (uvw.x < 0.0 || uvw.x > 1.0 || uvw.y < 0.0 || uvw.y > 1.0 || uvw.z < 0.0 || uvw.z > 1.0) {
+		return 0.0;
 	}
-	return density;
+
+	// Use hardware linear filtering on the density volume (if supported by usampler3D/R32UI)
+	// Actually, usampler3D doesn't support linear filtering. We'll use texelFetch or texture.
+	// Since it's R32UI, we sample and convert to float.
+	return float(texture(u_particleVolume, uvw).r);
 }
 
 // Simple raymarching through the grid
@@ -69,7 +62,7 @@ float trace_particle_density(vec3 rayOrigin, vec3 rayDir, float maxDist, float s
 	float jitter = fastSimplex3d(rayOrigin * 0.1 + rayDir * 0.1) * stepSize;
 	t += jitter;
 
-	for (int i = 0; i < 64; i++) {
+	for (int i = 0; i < 128; i++) {
 		if (t > maxDist)
 			break;
 

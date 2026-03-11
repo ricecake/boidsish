@@ -103,6 +103,8 @@ namespace Boidsish {
 		// Particle Grid
 		ShaderBase::RegisterConstant("PARTICLE_GRID_SIZE", Constants::Class::Particles::ParticleGridSize());
 		ShaderBase::RegisterConstant("PARTICLE_GRID_CELL_SIZE", Constants::Class::Particles::ParticleGridCellSize());
+		ShaderBase::RegisterConstant("PARTICLE_VOLUME_SIZE", Constants::Class::Particles::ParticleVolumeSize());
+		ShaderBase::RegisterConstant("PARTICLE_VOLUME_SCALE", Constants::Class::Particles::ParticleVolumeScale());
 
 		registered = true;
 	}
@@ -2915,6 +2917,7 @@ namespace Boidsish {
 		impl->fire_effect_manager->Update(
 			impl->simulation_delta_time,
 			impl->simulation_time,
+			impl->camera.pos(),
 			impl->terrain_render_manager
 				? impl->terrain_render_manager->GetChunkInfo(impl->terrain_generator->GetWorldScale())
 				: std::vector<glm::vec4>{},
@@ -2949,6 +2952,10 @@ namespace Boidsish {
 				Constants::SsboBinding::ParticleGridNext(),
 				impl->fire_effect_manager->GetGridNextBuffer()
 			);
+
+			// Bind density volume texture for sampling
+			glActiveTexture(GL_TEXTURE17);
+			glBindTexture(GL_TEXTURE_3D, impl->fire_effect_manager->GetParticleVolumeTexture());
 		}
 		impl->shockwave_manager->UpdateShaderData();
 		impl->shockwave_manager->BindUBO(Constants::UboBinding::Shockwaves());

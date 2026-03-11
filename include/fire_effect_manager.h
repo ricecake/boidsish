@@ -52,10 +52,12 @@ namespace Boidsish {
 		GLuint GetParticleBuffer() const { return particle_buffer_; }
 		GLuint GetGridHeadsBuffer() const { return grid_heads_buffer_; }
 		GLuint GetGridNextBuffer() const { return grid_next_buffer_; }
+		GLuint GetParticleVolumeTexture() const { return particle_density_texture_; }
 
 		void Update(
 			float                         delta_time,
 			float                         time,
+			const glm::vec3&              view_pos,
 			const std::vector<glm::vec4>& chunk_info = {},
 			GLuint                        heightmap_texture = 0,
 			GLuint                        curl_noise_texture = 0,
@@ -93,11 +95,13 @@ namespace Boidsish {
 
 		std::unique_ptr<ComputeShader> compute_shader_;
 		std::unique_ptr<ComputeShader> grid_build_shader_;
+		std::unique_ptr<ComputeShader> volume_build_shader_;
 		std::unique_ptr<Shader>        render_shader_;
 
 		GLuint particle_buffer_{0};
 		GLuint grid_heads_buffer_{0};
 		GLuint grid_next_buffer_{0};
+		GLuint particle_density_texture_{0};
 		GLuint emitter_buffer_{0};
 		GLuint indirection_buffer_{0};
 		GLuint terrain_chunk_buffer_{0};

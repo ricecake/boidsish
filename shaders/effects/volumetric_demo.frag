@@ -37,12 +37,13 @@ void main() {
 
 	// Simple volumetric coloring
 	vec3 fogColor = vec3(0.5, 0.7, 1.0);
-	float transmission = exp(-density * 0.05);
+	// Boost the density factor for the demo to make it very visible
+	float transmission = exp(-density * 0.2);
 
 	vec3 finalColor = mix(fogColor, sceneColor, transmission);
 
 	// Add some "glow" where density is high
-	finalColor += fogColor * (1.0 - transmission) * 0.5;
+	finalColor += fogColor * (1.0 - transmission) * 0.8;
 
 	FragColor = vec4(finalColor, 1.0);
 }

@@ -38,7 +38,9 @@ namespace Boidsish {
 				shader_->setInt("depthTexture", 1);
 				shader_->setInt("u_noiseTexture", 5);
 				shader_->setInt("u_curlTexture", 6);
+				shader_->setInt("u_particleVolume", 17);
 				shader_->setVec3("cameraPos", cameraPos);
+				shader_->setVec3("u_particleVolumeCenter", cameraPos);
 				shader_->setFloat("time", time_);
 				shader_->setMat4("invView", glm::inverse(viewMatrix));
 				shader_->setMat4("invProjection", glm::inverse(projectionMatrix));

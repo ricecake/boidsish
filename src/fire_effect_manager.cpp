@@ -44,6 +44,9 @@ namespace Boidsish {
 		if (grid_next_buffer_ != 0) {
 			glDeleteBuffers(1, &grid_next_buffer_);
 		}
+		if (particle_density_texture_ != 0) {
+			glDeleteTextures(1, &particle_density_texture_);
+		}
 		if (emitter_buffer_ != 0) {
 			glDeleteBuffers(1, &emitter_buffer_);
 		}
@@ -77,6 +80,11 @@ namespace Boidsish {
 		grid_build_shader_ = std::make_unique<ComputeShader>("shaders/particle_grid_build.comp");
 		if (!grid_build_shader_->isValid()) {
 			logger::ERROR("Failed to compile particle grid build shader");
+		}
+
+		volume_build_shader_ = std::make_unique<ComputeShader>("shaders/particle_volume_build.comp");
+		if (!volume_build_shader_->isValid()) {
+			logger::ERROR("Failed to compile particle volume build shader");
 		}
 
 		render_shader_ = std::make_unique<Shader>("shaders/fire.vert", "shaders/fire.frag");
@@ -123,6 +131,16 @@ namespace Boidsish {
 		glGenBuffers(1, &grid_next_buffer_);
 		glBindBuffer(GL_SHADER_STORAGE_BUFFER, grid_next_buffer_);
 		glBufferData(GL_SHADER_STORAGE_BUFFER, kMaxParticles * sizeof(int), nullptr, GL_DYNAMIC_DRAW);
+
+		int volume_size = Constants::Class::Particles::ParticleVolumeSize();
+		glGenTextures(1, &particle_density_texture_);
+		glBindTexture(GL_TEXTURE_3D, particle_density_texture_);
+		glTexStorage3D(GL_TEXTURE_3D, 1, GL_R32UI, volume_size, volume_size, volume_size);
+		glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+		glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+		glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+		glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+		glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE);
 
 		glGenBuffers(1, &emitter_buffer_);
 		glBindBuffer(GL_SHADER_STORAGE_BUFFER, emitter_buffer_);
@@ -211,6 +229,7 @@ namespace Boidsish {
 	void FireEffectManager::Update(
 		float                         delta_time,
 		float                         time,
+		const glm::vec3&              view_pos,
 		const std::vector<glm::vec4>& chunk_info,
 		GLuint                        heightmap_texture,
 		GLuint                        curl_noise_texture,
@@ -396,6 +415,30 @@ namespace Boidsish {
 			grid_build_shader_->setInt("u_mode", 1);
 			glDispatchCompute((kMaxParticles / Constants::Class::Particles::ComputeGroupSize()) + 1, 1, 1);
 			glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
+		}
+
+		// --- Build Density Volume ---
+		if (volume_build_shader_ && volume_build_shader_->isValid()) {
+			volume_build_shader_->use();
+			volume_build_shader_->setInt("u_num_particles", kMaxParticles);
+			volume_build_shader_->setVec3("u_centerPos", view_pos);
+
+			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::ParticleBuffer(), particle_buffer_);
+			glBindImageTexture(0, particle_density_texture_, 0, GL_TRUE, 0, GL_READ_WRITE, GL_R32UI);
+
+			// Mode 0: Clear
+			int volume_size = Constants::Class::Particles::ParticleVolumeSize();
+			int num_voxels = volume_size * volume_size * volume_size;
+			volume_build_shader_->setInt("u_mode", 0);
+			glDispatchCompute((num_voxels + 255) / 256, 1, 1);
+			glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
+
+			// Mode 1: Build
+			volume_build_shader_->setInt("u_mode", 1);
+			glDispatchCompute((kMaxParticles + 255) / 256, 1, 1);
+			glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
+
+			glBindImageTexture(0, 0, 0, GL_TRUE, 0, GL_READ_WRITE, GL_R32UI);
 		}
 
 		// --- Dispatch Main Particle Compute Shader ---
