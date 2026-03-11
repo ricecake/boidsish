@@ -30,8 +30,8 @@ void main() {
 		sceneDistance = 500.0;
 
 	// Trace through the particle grid
-	float maxDist = min(sceneDistance, 200.0);
-	float stepSize = 1.0;
+	float maxDist = min(sceneDistance, 1000.0);
+	float stepSize = 2.0;
 	float radius = 4.0;
 	float density = trace_particle_density(cameraPos, rayDir, maxDist, stepSize, radius);
 

@@ -61,7 +61,7 @@ float trace_particle_density(vec3 rayOrigin, vec3 rayDir, float maxDist, float s
 	t += jitter;
 
 	// Dynamically determine step count but cap for safety
-	int steps = clamp(int(maxDist / stepSize), 1, 128);
+	int steps = clamp(int(maxDist / stepSize), 1, 512);
 
 	for (int i = 0; i < steps; i++) {
 		vec3 p = rayOrigin + rayDir * t;
