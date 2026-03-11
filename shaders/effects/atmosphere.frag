@@ -56,6 +56,10 @@ float remap(float value, float low1, float high1, float low2, float high2) {
 	return low2 + (value - low1) * (high2 - low2) / max(0.0001, (high1 - low1));
 }
 
+// float rayleighPhase(float cosTheta) {
+// 	return 3.0 / (16.0 * PI) * (1.0 + cosTheta * cosTheta);
+// }
+
 float henyeyGreenstein(float g, float cosTheta) {
 	float g2 = g * g;
 	return (1.0 - g2) / (4.0 * PI * pow(1.0 + g2 - 2.0 * g * cosTheta, 1.5));
@@ -72,18 +76,21 @@ float beerPowder(float d, float local_d) {
 
 float getCloudDensity(vec3 p, float altitude, float thickness, bool simplified) {
 	float h = (p.y - altitude) / max(thickness, 0.001);
-	float tapering = smoothstep(0.0, 0.15, h) * smoothstep(1.0, 0.8, h);
-	if (tapering <= 0.0) return 0.0;
+	float tapering = smoothstep(0.0, 0.05, h) * smoothstep(1.0, 0.95, h);
+	if (tapering <= 0.01) return 0.0;
+
+	p += 2.0*fastCurl3d(vec3(p.xz/500.0, time/60.0));
 
 	// Use multiple scales of noise for volumetric detail
-	vec3 p_scaled = p / (2000.0 * worldScale);
-	float base = fastWorley3d(vec3(p_scaled.xz, time * 0.002));
+	vec3 p_scaled = p / (1000.0 * worldScale);
+	float base = fastWorley3d(vec3(p_scaled.xz, p_scaled.y+time * 0.002));
+	base = remap(base, -1.0, 1.0, 0.0, 1.0);
 
 	if (simplified) {
-		return smoothstep(0.4, 0.7, base) * cloudDensity * tapering;
+		return smoothstep(0.4, 0.8, base) * cloudDensity * tapering;
 	}
 
-	float detail = fastWarpedFbm3d(vec3(p.xz / (1000.0 * worldScale), p.y / (400.0 * worldScale) + time * 0.005));
+	float detail = fastWarpedFbm3d(vec3(p.xz / (500.0 * worldScale), p.y / (40.0 * worldScale) + time * 0.05));
 	detail = detail * 0.5 + 0.5;
 
 	float noise = remap(base, detail * 0.3, 1.0, 0.0, 1.0);
@@ -138,7 +145,7 @@ void main() {
 	float cloudTransmittance = 1.0;
 	if (t_start < t_end) {
 		vec3  lightEnergy = vec3(0.0);
-		int   samples = 24;
+		int   samples = 16;
 		float stepSize = (t_end - t_start) / float(samples);
 		float jitter = fastBlueNoise2d(TexCoords * 10.0 + vec2(sin(time * 0.07), cos(time * -0.05)));
 
@@ -155,20 +162,20 @@ void main() {
 				for (int j = 0; j < min(num_lights, 4); j++) {
 					vec3  L = (lights[j].type == 1) ? normalize(-lights[j].direction) : normalize(lights[j].position - p);
 					float cosTheta = dot(rayDir, L);
-					float phase = (j == 0) ? cloudPhase(cosTheta) : 1.0 / (4.0 * PI);
+					float phase = (j == 0) ? rayleighPhase(cosTheta)+cloudPhase(cosTheta) : 1.0 / (4.0 * PI);
 
 					float shadowTerm = 1.0;
 					if (j == 0) {
 						// Shadow march only for the primary light
 						float shadowDensity = 0.0;
-						int   shadowSamples = 4;
+						int   shadowSamples = 2;
 						float shadowStepSize = scaledCloudThickness / float(shadowSamples) * 0.5;
 						for (int k = 0; k < shadowSamples; k++) {
 							vec3 sp = p + L * (float(k) + 0.5) * shadowStepSize;
 							shadowDensity += getCloudDensity(sp, scaledCloudAltitude, scaledCloudThickness, true);
 						}
 						float opticalDepthToLight = shadowDensity * shadowStepSize * 0.02;
-						shadowTerm = beerPowder(opticalDepthToLight, d);
+						shadowTerm += beerPowder(opticalDepthToLight, d);
 					}
 
 					stepScattering += lights[j].color * lights[j].intensity * shadowTerm * phase;
