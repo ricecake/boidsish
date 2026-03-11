@@ -501,6 +501,9 @@ namespace Boidsish {
 		float GetRenderScale() const;
 		void  SetRenderScale(float scale);
 
+		unsigned int GetNoiseTexture() const;
+		unsigned int GetCurlTexture() const;
+
 		Config&       GetConfig();
 		AudioManager& GetAudioManager();
 

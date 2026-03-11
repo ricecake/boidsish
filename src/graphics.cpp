@@ -4310,6 +4310,14 @@ namespace Boidsish {
 		impl->ResizeInternalFramebuffers();
 	}
 
+	unsigned int Visualizer::GetNoiseTexture() const {
+		return impl->noise_manager->GetNoiseTexture();
+	}
+
+	unsigned int Visualizer::GetCurlTexture() const {
+		return impl->noise_manager->GetCurlTexture();
+	}
+
 	AudioManager& Visualizer::GetAudioManager() {
 		return *impl->audio_manager;
 	}

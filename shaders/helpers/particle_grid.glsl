@@ -69,7 +69,7 @@ float trace_particle_density(vec3 rayOrigin, vec3 rayDir, float maxDist, float s
 	float jitter = fastSimplex3d(rayOrigin * 0.1 + rayDir * 0.1) * stepSize;
 	t += jitter;
 
-	for (int i = 0; i < 128; i++) {
+	for (int i = 0; i < 64; i++) {
 		if (t > maxDist)
 			break;
 

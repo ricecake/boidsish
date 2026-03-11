@@ -14,7 +14,7 @@ namespace Boidsish {
 
 		class VolumetricDemoEffect: public IPostProcessingEffect {
 		public:
-			VolumetricDemoEffect(): width_(0), height_(0) {
+			VolumetricDemoEffect(Visualizer& vis): vis_(vis), width_(0), height_(0) {
 				name_ = "VolumetricDemo";
 			}
 			virtual ~VolumetricDemoEffect() = default;
@@ -36,6 +36,8 @@ namespace Boidsish {
 				shader_->use();
 				shader_->setInt("sceneTexture", 0);
 				shader_->setInt("depthTexture", 1);
+				shader_->setInt("u_noiseTexture", 5);
+				shader_->setInt("u_curlTexture", 6);
 				shader_->setVec3("cameraPos", cameraPos);
 				shader_->setFloat("time", time_);
 				shader_->setMat4("invView", glm::inverse(viewMatrix));
@@ -46,8 +48,17 @@ namespace Boidsish {
 				glActiveTexture(GL_TEXTURE1);
 				glBindTexture(GL_TEXTURE_2D, depthTexture);
 
+				glActiveTexture(GL_TEXTURE5);
+				glBindTexture(GL_TEXTURE_3D, vis_.GetNoiseTexture());
+				glActiveTexture(GL_TEXTURE6);
+				glBindTexture(GL_TEXTURE_3D, vis_.GetCurlTexture());
+
 				glDrawArrays(GL_TRIANGLES, 0, 6);
 
+				glActiveTexture(GL_TEXTURE6);
+				glBindTexture(GL_TEXTURE_3D, 0);
+				glActiveTexture(GL_TEXTURE5);
+				glBindTexture(GL_TEXTURE_3D, 0);
 				glActiveTexture(GL_TEXTURE1);
 				glBindTexture(GL_TEXTURE_2D, 0);
 				glActiveTexture(GL_TEXTURE0);
@@ -64,6 +75,7 @@ namespace Boidsish {
 			bool IsEarly() const override { return true; }
 
 		private:
+			Visualizer&             vis_;
 			std::unique_ptr<Shader> shader_;
 			int                     width_;
 			int                     height_;
@@ -94,7 +106,7 @@ int main() {
 
 		// Register the custom post-processing effect
 		vis.AddPrepareCallback([](Boidsish::Visualizer& v) {
-			auto effect = std::make_shared<Boidsish::PostProcessing::VolumetricDemoEffect>();
+			auto effect = std::make_shared<Boidsish::PostProcessing::VolumetricDemoEffect>(v);
 			v.GetPostProcessingManager().AddEffect(effect);
 			effect->SetEnabled(true);
 		});
