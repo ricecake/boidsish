@@ -27,6 +27,20 @@ TEST(ProceduralGeneratorTest, GenerateCritter) {
     EXPECT_FALSE(data->bone_info_map.empty());
 }
 
+TEST(ProceduralGeneratorTest, SpaceColonizationVariants) {
+    for (int i = 0; i < 6; ++i) {
+        auto tree = ProceduralGenerator::Generate(ProceduralType::TreeSpaceColonization, i);
+        ASSERT_NE(tree, nullptr);
+        EXPECT_GT(tree->getMeshes().size(), 0);
+
+        size_t totalVertices = 0;
+        for (const auto& mesh : tree->getMeshes()) {
+            totalVertices += mesh.vertices.size();
+        }
+        EXPECT_GT(totalVertices, 0);
+    }
+}
+
 TEST(ProceduralGeneratorTest, FlowerNewShapes) {
     // Axiom that uses new symbols: 'B' for button, 'L' for leaf, digits for variants
     std::string axiom = "FB'1L2L";
