@@ -13,10 +13,10 @@ namespace Boidsish {
 
 		class VolumetricDemoEffect: public IPostProcessingEffect {
 		public:
-			VolumetricDemoEffect(): width_(0), height_(0) {}
+			VolumetricDemoEffect(): width_(0), height_(0) {
+				name_ = "VolumetricDemo";
+			}
 			virtual ~VolumetricDemoEffect() = default;
-
-			std::string GetName() const override { return "VolumetricDemo"; }
 
 			void Initialize(int width, int height) override {
 				width_ = width;
