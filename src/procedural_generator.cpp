@@ -527,32 +527,35 @@ namespace Boidsish {
 
 		// Variant-specific parameter overrides
 		if (variant == 1) { // Sphere
-			numAttractors = 500;
-			influenceRadius = 1.8f;
-		} else if (variant == 2) { // Umbrella
 			numAttractors = 600;
-			initialTrunkNodes = 20;
 			influenceRadius = 2.0f;
+		} else if (variant == 2) { // Umbrella
+			numAttractors = 700;
+			initialTrunkNodes = 25;
+			influenceRadius = 2.5f;
 		} else if (variant == 3) { // Spread out
-			numAttractors = 300;
-			influenceRadius = 3.0f;
+			numAttractors = 400;
+			influenceRadius = 3.5f;
 			growthStep = 0.5f;
 		} else if (variant == 4) { // Spiral
-			numAttractors = 450;
-			influenceRadius = 1.2f;
+			numAttractors = 500;
+			influenceRadius = 1.5f;
 			exponent = 2.5f;
 		} else if (variant == 5) { // Sparse half capsule
-			numAttractors = 250;
+			numAttractors = 350;
 			killDistance = 0.7f;
+			influenceRadius = 2.0f;
 		}
 
 		std::vector<SCAttractor> attractors;
 		std::uniform_real_distribution<float> dis(-1.0f, 1.0f);
 
+		glm::vec3 crownBase(0.0f);
 		for (int i = 0; i < numAttractors; ++i) {
 			glm::vec3 pos(0.0f);
 			if (variant == 0) { // Box
 				pos = glm::vec3(dis(gen) * 3.0f, 3.0f + (dis(gen) + 1.0f) * 3.5f, dis(gen) * 3.0f);
+				crownBase = glm::vec3(0, 3, 0);
 			} else if (variant == 1) { // Sphere
 				float phi = (dis(gen) + 1.0f) * (float)std::numbers::pi;
 				float theta = (dis(gen) + 1.0f) * 0.5f * (float)std::numbers::pi;
@@ -562,6 +565,7 @@ namespace Boidsish {
 					7.0f + r * std::cos(theta),
 					r * std::sin(theta) * std::sin(phi)
 				);
+				crownBase = glm::vec3(0, 7, 0);
 			} else if (variant == 2) { // Umbrella
 				float angle = (dis(gen) + 1.0f) * (float)std::numbers::pi;
 				float r = std::sqrt((dis(gen) + 1.0f) * 0.5f) * 5.0f;
@@ -570,8 +574,10 @@ namespace Boidsish {
 					9.0f + dis(gen) * 1.0f,
 					r * std::sin(angle)
 				);
+				crownBase = glm::vec3(0, 9, 0);
 			} else if (variant == 3) { // Spread out
 				pos = glm::vec3(dis(gen) * 8.0f, 4.0f + (dis(gen) + 1.0f) * 6.0f, dis(gen) * 8.0f);
+				crownBase = glm::vec3(0, 4, 0);
 			} else if (variant == 4) { // Spiral
 				float t = (dis(gen) + 1.0f) * 0.5f;
 				float angle = t * 4.0f * (float)std::numbers::pi;
@@ -581,6 +587,7 @@ namespace Boidsish {
 					2.0f + t * 8.0f + dis(gen) * 0.5f,
 					r * std::sin(angle)
 				);
+				crownBase = glm::vec3(0, 2, 0);
 			} else if (variant == 5) { // Sparse half capsule
 				float phi = (dis(gen) + 1.0f) * (float)std::numbers::pi;
 				float theta = (dis(gen) + 1.0f) * 0.25f * (float)std::numbers::pi;
@@ -590,8 +597,21 @@ namespace Boidsish {
 					6.0f + r * std::cos(theta),
 					r * std::sin(theta) * std::sin(phi)
 				);
+				crownBase = glm::vec3(0, 6, 0);
 			}
 			attractors.push_back({pos, true});
+		}
+
+		// Add lure attractors to guide trunk to crown
+		float trunkTopY = (float)initialTrunkNodes * growthStep;
+		if (crownBase.y > trunkTopY) {
+			int numLures = 30;
+			for (int i = 0; i < numLures; ++i) {
+				float t = (float)i / (float)numLures;
+				glm::vec3 lurePos = glm::vec3(0, trunkTopY + t * (crownBase.y - trunkTopY), 0);
+				lurePos += glm::vec3(dis(gen) * 0.5f, 0, dis(gen) * 0.5f);
+				attractors.push_back({lurePos, true});
+			}
 		}
 
 		std::vector<SCNode> nodes;
