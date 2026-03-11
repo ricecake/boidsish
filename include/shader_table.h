@@ -52,6 +52,8 @@ namespace Boidsish {
 			}
 		}
 
+		const std::unordered_map<ShaderHandle, std::unique_ptr<RenderShader>>& GetShaders() const { return m_shaders; }
+
 	private:
 		uint32_t                                                        m_nextId = 0;
 		std::unordered_map<ShaderHandle, std::unique_ptr<RenderShader>> m_shaders;

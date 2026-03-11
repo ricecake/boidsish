@@ -249,6 +249,22 @@ public:
 		}
 	}
 
+	void trySetUint(const std::string& name, unsigned int value) const {
+		int loc = getUniformLocation(name);
+		if (loc != -1) {
+			glUniform1ui(loc, value);
+			m_UniformValues[loc] = UniformValue{value};
+		}
+	}
+
+	void trySetFloat(const std::string& name, float value) const {
+		int loc = getUniformLocation(name);
+		if (loc != -1) {
+			glUniform1f(loc, value);
+			m_UniformValues[loc] = UniformValue{value};
+		}
+	}
+
 	// ------------------------------------------------------------------------
 	void setFloat(const std::string& name, float value) const {
 		int loc = getUniformLocation(name);

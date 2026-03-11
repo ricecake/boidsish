@@ -14,7 +14,7 @@ struct Particle {
 	int  _padding[2];
 };
 
-layout(std430, binding = 0) readonly buffer ParticleBuffer {
+layout(std430, binding = 16) readonly buffer ParticleBuffer {
 	Particle particles[];
 };
 
@@ -28,8 +28,8 @@ layout(std430, binding = 15) buffer ParticleGridNext {
 
 uniform int   u_mode; // 0: Clear, 1: Build
 uniform int   u_num_particles;
-uniform uint  u_grid_size;
-uniform float u_cell_size;
+const uint  u_grid_size = [[PARTICLE_GRID_SIZE]];
+const float u_cell_size = [[PARTICLE_GRID_CELL_SIZE]];
 
 void main() {
 	uint gid = gl_GlobalInvocationID.x;
@@ -40,8 +40,9 @@ void main() {
 		}
 	} else {
 		if (gid < u_num_particles) {
-			// Only add alive particles to the grid
-			if (particles[gid].pos.w > 0.0) {
+			// Only add alive non-volumetric particles to the linked-list grid
+			// Volumetric particles use the 3D density volume instead
+			if (particles[gid].pos.w > 0.0 && particles[gid].style != 10) {
 				uint cell_idx = get_cell_idx(particles[gid].pos.xyz, u_cell_size, u_grid_size);
 
 				// Atomically swap the head of the list

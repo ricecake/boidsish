@@ -59,7 +59,7 @@ void main() {
 	vec3  color = vec3(0.0);
 	float alpha = 0.0;
 	if (v_style == 0 || v_style == 3 || v_style == 4 || v_style == 5 || v_style == 6 || v_style == 7 || v_style == 8 ||
-	    v_style == 9 || v_style == 28) {
+	    v_style == 9 || v_style == 10 || v_style == 28) {
 		if (v_style == 3) {                       // Sparks
 			vec3 hot_color = vec3(1.0, 1.0, 1.0); // White
 			vec3 mid_color = vec3(1.0, 0.8, 0.3); // Bright Yellow/Orange
@@ -203,6 +203,11 @@ void main() {
 			color = 0.6 + 0.4 * cos(hue * 6.28 + vec3(0, 2, 4));
 			color *= 3.0; // Bright for bloom
 			alpha = 1.0;
+		} else if (v_style == 10) { // Volumetric
+			// Volumetric particles are usually invisible or very subtle when rendered as points
+			// as they are intended to be sampled by a volumetric shader.
+			color = vec3(0.5, 0.7, 1.0);
+			alpha = 0.1 * shapeMask * smoothstep(0.0, 1.0, v_lifetime);
 		} else if (v_style == 9) { // Cinder
 			// Irregular shape via noise
 			float n = snoise3d(vec3(gl_PointCoord * 6.0, float(gl_PrimitiveID)));

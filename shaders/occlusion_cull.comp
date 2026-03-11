@@ -11,7 +11,7 @@ layout(std430, binding = 2) readonly buffer UniformsSSBO {
 };
 
 // Output: per-draw visibility (1 = visible, 0 = occluded)
-layout(std430, binding = 12) buffer OcclusionVisibility {
+layout(std430, binding = 13) buffer OcclusionVisibility {
 	uint visibility[];
 };
 

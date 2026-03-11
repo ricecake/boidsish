@@ -62,6 +62,10 @@ namespace Boidsish {
 			constexpr int ParticleGridNext() {
 				return 15;
 			}
+
+			constexpr int ParticleBuffer() {
+				return 16;
+			}
 		} // namespace SsboBinding
 
 		namespace General {
@@ -326,6 +330,14 @@ namespace Boidsish {
 
 				constexpr float ParticleGridCellSize() {
 					return 2.0f;
+				}
+
+				constexpr int ParticleVolumeSize() {
+					return 256;
+				}
+
+				constexpr float ParticleVolumeScale() {
+					return 4.0f;
 				}
 			} // namespace Particles
 

@@ -33,7 +33,7 @@ struct Emitter {
 	int   _padding_emitter[2];
 };
 
-layout(std430, binding = 0) buffer ParticleBuffer {
+layout(std430, binding = 16) buffer ParticleBuffer {
 	Particle particles[];
 };
 
@@ -71,8 +71,8 @@ uniform float u_delta_time;
 uniform float u_time;
 uniform int   u_num_emitters;
 uniform int   u_num_chunks;
-uniform uint  u_grid_size;
-uniform float u_cell_size;
+const uint  u_grid_size = [[PARTICLE_GRID_SIZE]];
+const float u_cell_size = [[PARTICLE_GRID_CELL_SIZE]];
 
 uniform sampler3D      u_curlTexture;
 uniform sampler2DArray u_heightmapArray;
@@ -130,6 +130,10 @@ const float kCinderSpeed = 1.0;
 const float kCinderLifetime = 8.0;
 const float kCinderDriftIntensity = 4.0;
 const float kCinderBuoyancy = 1.5;
+
+const float kVolumetricSpeed = 1.5;
+const float kVolumetricLifetime = 15.0;
+const float kVolumetricDrag = 0.8;
 
 void handleTerrainCollision(inout Particle p) {
 	bool collided = false;
@@ -411,6 +415,9 @@ void main() {
 				} else if (p.style == 9) { // Cinder
 					p.pos = vec4(spawn_pos, kCinderLifetime * (0.8 + 0.4 * rand(seed)));
 					p.vel = vec4(normalize(random_vec) * kCinderSpeed * rand(seed.yx), 0.0);
+				} else if (p.style == 10) { // Volumetric
+					p.pos = vec4(spawn_pos, kVolumetricLifetime * (0.5 + 0.5 * rand(seed)));
+					p.vel = vec4(emitter.velocity + random_vec * kVolumetricSpeed, 0.0);
 				}
 				particles[gid] = p;
 				return;
@@ -582,13 +589,19 @@ void main() {
 		p.vel.y += kCinderBuoyancy * ageFactor * u_delta_time;
 		p.vel.xyz *= 0.98; // Drag
 		maxSpeed = 5.0;
+	} else if (p.style == 10) { // Volumetric
+		float curlInfluence = 1.0;
+		p.vel.xyz += curlNoise(p.pos.xyz, u_time) * curlInfluence * u_delta_time;
+		p.vel.xyz -= p.vel.xyz * kVolumetricDrag * u_delta_time;
+		maxSpeed = 3.0;
 	}
 
-	if (p.style != 3 && p.style != 4 && p.style != 5 && p.style != 6 && p.style != 7 && p.style != 8 && p.style != 9) {
+	if (p.style != 3 && p.style != 4 && p.style != 5 && p.style != 6 && p.style != 7 && p.style != 8 && p.style != 9 &&
+	    p.style != 10) {
 		p.vel.y -= 0.05 * u_delta_time;
 	}
 
-	if (p.style != 5 && p.style != 6 && p.style != 7 && p.style != 8 && p.style != 9) {
+	if (p.style != 5 && p.style != 6 && p.style != 7 && p.style != 8 && p.style != 9 && p.style != 10) {
 		p.vel += vec4(mix(curlNoise(p.pos.xyz, u_time) * 3, vec3(0, 0, 0), length(p.vel) / maxSpeed), 0) * u_delta_time;
 	}
 

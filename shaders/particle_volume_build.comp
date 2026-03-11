@@ -1,0 +1,69 @@
+#version 430 core
+
+layout(local_size_x = 256, local_size_y = 1, local_size_z = 1) in;
+
+struct Particle {
+	vec4 pos; // Position (w is lifetime)
+	vec4 vel; // Velocity (w is unused)
+	vec3 epicenter;
+	int  style;
+	int  emitter_index;
+	int  emitter_id;
+	int  _padding[2];
+};
+
+layout(std430, binding = 16) readonly buffer ParticleBuffer {
+	Particle particles[];
+};
+
+layout(r32ui, binding = 0) uniform uimage3D u_particleVolume;
+
+uniform int   u_mode; // 0: Clear, 1: Build
+uniform int   u_num_particles;
+uniform vec3  u_gridOrigin;
+
+const uint  u_volume_size = [[PARTICLE_VOLUME_SIZE]];
+const float u_volume_scale = [[PARTICLE_VOLUME_SCALE]];
+
+void imageAtomicAddFloat(ivec3 coords, float val) {
+	uint expected = imageLoad(u_particleVolume, coords).x;
+	uint actual;
+
+	while ((actual = imageAtomicCompSwap(u_particleVolume, coords, expected, floatBitsToUint(uintBitsToFloat(expected) + val))) !=
+	       expected) {
+		expected = actual;
+	}
+}
+
+void main() {
+	uint gid = gl_GlobalInvocationID.x;
+
+	if (u_mode == 0) {
+		// Clear mode: gid iterates over volume voxels
+		if (gid < (u_volume_size * u_volume_size * u_volume_size)) {
+			ivec3 voxelPos = ivec3(
+				gid % u_volume_size,
+				(gid / u_volume_size) % u_volume_size,
+				gid / (u_volume_size * u_volume_size)
+			);
+			imageStore(u_particleVolume, voxelPos, uvec4(0));
+		}
+	} else {
+		// Build mode: gid iterates over particles
+		if (gid < u_num_particles) {
+			// Only Volumetric style (10) contributes to the density volume
+			if (particles[gid].pos.w > 0.0 && particles[gid].style == 10) {
+				vec3 relPos = particles[gid].pos.xyz - u_gridOrigin;
+				vec3 volumeCoords = relPos / u_volume_scale;
+
+				ivec3 voxelPos = ivec3(floor(volumeCoords));
+
+				if (voxelPos.x >= 0 && voxelPos.x < int(u_volume_size) &&
+				    voxelPos.y >= 0 && voxelPos.y < int(u_volume_size) &&
+				    voxelPos.z >= 0 && voxelPos.z < int(u_volume_size)) {
+					imageAtomicAddFloat(voxelPos, 1.0);
+				}
+			}
+		}
+	}
+}

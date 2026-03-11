@@ -100,6 +100,12 @@ namespace Boidsish {
 		// Effects
 		ShaderBase::RegisterConstant("MAX_SHOCKWAVES", Constants::Class::Shockwaves::MaxShockwaves());
 
+		// Particle Grid
+		ShaderBase::RegisterConstant("PARTICLE_GRID_SIZE", Constants::Class::Particles::ParticleGridSize());
+		ShaderBase::RegisterConstant("PARTICLE_GRID_CELL_SIZE", Constants::Class::Particles::ParticleGridCellSize());
+		ShaderBase::RegisterConstant("PARTICLE_VOLUME_SIZE", Constants::Class::Particles::ParticleVolumeSize());
+		ShaderBase::RegisterConstant("PARTICLE_VOLUME_SCALE", Constants::Class::Particles::ParticleVolumeScale());
+
 		registered = true;
 	}
 
@@ -1639,6 +1645,7 @@ namespace Boidsish {
 						glActiveTexture(GL_TEXTURE14);
 						glBindTexture(GL_TEXTURE_2D, refraction_texture_);
 						s->trySetInt("refractionTexture", 14);
+
 					}
 				}
 
@@ -2577,6 +2584,7 @@ namespace Boidsish {
 	void Visualizer::Render() {
 		impl->RefreshFrameConfig();
 
+
 		// Advance persistent buffers and handle synchronization
 		impl->indirect_elements_buffer->AdvanceFrame();
 		impl->indirect_arrays_buffer->AdvanceFrame();
@@ -2909,6 +2917,8 @@ namespace Boidsish {
 		impl->fire_effect_manager->Update(
 			impl->simulation_delta_time,
 			impl->simulation_time,
+			impl->camera.pos(),
+			impl->camera.front(),
 			impl->terrain_render_manager
 				? impl->terrain_render_manager->GetChunkInfo(impl->terrain_generator->GetWorldScale())
 				: std::vector<glm::vec4>{},
@@ -2925,6 +2935,29 @@ namespace Boidsish {
 		}
 		impl->sdf_volume_manager->UpdateUBO();
 		impl->sdf_volume_manager->BindUBO(Constants::UboBinding::SdfVolumes());
+
+		// Bind particle grid SSBOs for density/volumetric sampling - globally for all shaders
+		if (impl->fire_effect_manager) {
+			glBindBufferBase(
+				GL_SHADER_STORAGE_BUFFER,
+				Constants::SsboBinding::ParticleBuffer(),
+				impl->fire_effect_manager->GetParticleBuffer()
+			);
+			glBindBufferBase(
+				GL_SHADER_STORAGE_BUFFER,
+				Constants::SsboBinding::ParticleGridHeads(),
+				impl->fire_effect_manager->GetGridHeadsBuffer()
+			);
+			glBindBufferBase(
+				GL_SHADER_STORAGE_BUFFER,
+				Constants::SsboBinding::ParticleGridNext(),
+				impl->fire_effect_manager->GetGridNextBuffer()
+			);
+
+			// Bind density volume texture for sampling
+			glActiveTexture(GL_TEXTURE17);
+			glBindTexture(GL_TEXTURE_3D, impl->fire_effect_manager->GetParticleVolumeTexture());
+		}
 		impl->shockwave_manager->UpdateShaderData();
 		impl->shockwave_manager->BindUBO(Constants::UboBinding::Shockwaves());
 
@@ -4283,6 +4316,18 @@ namespace Boidsish {
 	void Visualizer::SetRenderScale(float scale) {
 		impl->render_scale = std::clamp(scale, 0.1f, 1.0f);
 		impl->ResizeInternalFramebuffers();
+	}
+
+	unsigned int Visualizer::GetNoiseTexture() const {
+		return impl->noise_manager->GetNoiseTexture();
+	}
+
+	unsigned int Visualizer::GetCurlTexture() const {
+		return impl->noise_manager->GetCurlTexture();
+	}
+
+	glm::vec3 Visualizer::GetParticleVolumeOrigin() const {
+		return impl->fire_effect_manager->GetParticleVolumeOrigin();
 	}
 
 	AudioManager& Visualizer::GetAudioManager() {
