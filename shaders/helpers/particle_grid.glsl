@@ -32,14 +32,14 @@ const uint  u_volume_size = [[PARTICLE_VOLUME_SIZE]];
 const float u_volume_scale = [[PARTICLE_VOLUME_SCALE]];
 
 uniform sampler3D u_particleVolume;
-uniform vec3      u_particleVolumeCenter;
+uniform vec3      u_particleVolumeOrigin;
 
 #include "fast_noise.glsl"
 
 float get_particle_density(vec3 pos, float radius) {
 	// Sample from the 3D density volume for O(1) lookups
-	vec3  relPos = pos - u_particleVolumeCenter;
-	vec3  volumeCoords = (relPos / u_volume_scale) + vec3(u_volume_size * 0.5);
+	vec3  relPos = pos - u_particleVolumeOrigin;
+	vec3  volumeCoords = relPos / u_volume_scale;
 	vec3  uvw = volumeCoords / float(u_volume_size);
 
 	if (uvw.x < 0.0 || uvw.x > 1.0 || uvw.y < 0.0 || uvw.y > 1.0 || uvw.z < 0.0 || uvw.z > 1.0) {

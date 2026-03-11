@@ -2918,6 +2918,7 @@ namespace Boidsish {
 			impl->simulation_delta_time,
 			impl->simulation_time,
 			impl->camera.pos(),
+			impl->camera.front(),
 			impl->terrain_render_manager
 				? impl->terrain_render_manager->GetChunkInfo(impl->terrain_generator->GetWorldScale())
 				: std::vector<glm::vec4>{},

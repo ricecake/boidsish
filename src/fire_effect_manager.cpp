@@ -230,6 +230,7 @@ namespace Boidsish {
 		float                         delta_time,
 		float                         time,
 		const glm::vec3&              view_pos,
+		const glm::vec3&              view_dir,
 		const std::vector<glm::vec4>& chunk_info,
 		GLuint                        heightmap_texture,
 		GLuint                        curl_noise_texture,
@@ -421,7 +422,19 @@ namespace Boidsish {
 		if (volume_build_shader_ && volume_build_shader_->isValid()) {
 			volume_build_shader_->use();
 			volume_build_shader_->setInt("u_num_particles", kMaxParticles);
-			volume_build_shader_->setVec3("u_centerPos", view_pos);
+
+			// Position the grid such that it encompasses as much of the camera view frustum as possible,
+			// with the camera pinned to one of the sides.
+			float volume_size_units = Constants::Class::Particles::ParticleVolumeSize() *
+				Constants::Class::Particles::ParticleVolumeScale();
+			float offset_dist = volume_size_units * 0.45f; // Slightly less than half to keep camera inside
+			glm::vec3 raw_center = view_pos + view_dir * offset_dist;
+
+			// Snap the grid origin to multiples of the voxel size to prevent flickering
+			float voxel_size = Constants::Class::Particles::ParticleVolumeScale();
+			volume_origin_ = glm::floor((raw_center - glm::vec3(volume_size_units * 0.5f)) / voxel_size) * voxel_size;
+
+			volume_build_shader_->setVec3("u_gridOrigin", volume_origin_);
 
 			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::ParticleBuffer(), particle_buffer_);
 			// We treat the R32F texture as R32UI for bitwise atomic operations in the build shader
@@ -437,7 +450,7 @@ namespace Boidsish {
 			// Mode 1: Build
 			volume_build_shader_->setInt("u_mode", 1);
 			glDispatchCompute((kMaxParticles + 255) / 256, 1, 1);
-			glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
+			glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | GL_TEXTURE_FETCH_BARRIER_BIT);
 
 			glBindImageTexture(0, 0, 0, GL_TRUE, 0, GL_READ_WRITE, GL_R32UI);
 		}

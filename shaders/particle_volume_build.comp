@@ -20,7 +20,7 @@ layout(r32ui, binding = 0) uniform uimage3D u_particleVolume;
 
 uniform int   u_mode; // 0: Clear, 1: Build
 uniform int   u_num_particles;
-uniform vec3  u_centerPos;
+uniform vec3  u_gridOrigin;
 
 const uint  u_volume_size = [[PARTICLE_VOLUME_SIZE]];
 const float u_volume_scale = [[PARTICLE_VOLUME_SCALE]];
@@ -51,9 +51,10 @@ void main() {
 	} else {
 		// Build mode: gid iterates over particles
 		if (gid < u_num_particles) {
-			if (particles[gid].pos.w > 0.0) {
-				vec3 relPos = particles[gid].pos.xyz - u_centerPos;
-				vec3 volumeCoords = (relPos / u_volume_scale) + vec3(u_volume_size * 0.5);
+			// Only Volumetric style (10) contributes to the density volume
+			if (particles[gid].pos.w > 0.0 && particles[gid].style == 10) {
+				vec3 relPos = particles[gid].pos.xyz - u_gridOrigin;
+				vec3 volumeCoords = relPos / u_volume_scale;
 
 				ivec3 voxelPos = ivec3(floor(volumeCoords));
 

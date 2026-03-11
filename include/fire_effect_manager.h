@@ -53,11 +53,13 @@ namespace Boidsish {
 		GLuint GetGridHeadsBuffer() const { return grid_heads_buffer_; }
 		GLuint GetGridNextBuffer() const { return grid_next_buffer_; }
 		GLuint GetParticleVolumeTexture() const { return particle_density_texture_; }
+		glm::vec3 GetParticleVolumeOrigin() const { return volume_origin_; }
 
 		void Update(
 			float                         delta_time,
 			float                         time,
 			const glm::vec3&              view_pos,
+			const glm::vec3&              view_dir,
 			const std::vector<glm::vec4>& chunk_info = {},
 			GLuint                        heightmap_texture = 0,
 			GLuint                        curl_noise_texture = 0,
@@ -108,10 +110,11 @@ namespace Boidsish {
 		GLuint slice_data_buffer_{0};
 		GLuint dummy_vao_{0};
 
-		bool   initialized_{false};
-		bool   needs_reallocation_{false};
-		float  time_{0.0f};
-		size_t emitter_buffer_capacity_{0}; // Track capacity to avoid per-frame reallocation
+		bool      initialized_{false};
+		bool      needs_reallocation_{false};
+		float     time_{0.0f};
+		glm::vec3 volume_origin_{0.0f};
+		size_t    emitter_buffer_capacity_{0}; // Track capacity to avoid per-frame reallocation
 
 		static const int kMaxParticles = Constants::Class::Particles::MaxParticles();
 		static const int kMaxEmitters = Constants::Class::Particles::MaxEmitters();
