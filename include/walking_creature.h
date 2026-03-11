@@ -18,6 +18,9 @@ namespace Boidsish {
 
 		void SetCameraPosition(const glm::vec3& camera_pos) { camera_pos_ = camera_pos; }
 
+		void SetHeight(float height) { height_ = height; }
+		void SetStepDuration(float duration) { step_duration_ = duration; }
+
 		const Light& GetSpotlight() const { return spotlight_; }
 
 	private:
