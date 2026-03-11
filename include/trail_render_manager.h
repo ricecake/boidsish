@@ -5,12 +5,14 @@
 #include <mutex>
 #include <optional>
 #include <vector>
+#include <unordered_map>
 
 #include "constants.h"
 #include <GL/glew.h>
 #include <glm/glm.hpp>
 
 class Shader;
+class ComputeShader;
 
 namespace Boidsish {
 
@@ -131,12 +133,13 @@ namespace Boidsish {
 
 	private:
 		struct TrailAllocation {
-			size_t vertex_offset; // Offset in vertices (not bytes)
-			size_t max_vertices;  // Maximum vertices allocated for this trail
-			size_t head;          // Ring buffer head
-			size_t tail;          // Ring buffer tail
-			size_t vertex_count;  // Current active vertex count
-			bool   is_full;       // Ring buffer full flag
+			int    internal_index; // Contiguous index for SSBO
+			size_t vertex_offset;  // Offset in vertices (not bytes)
+			size_t max_vertices;   // Maximum vertices allocated for this trail
+			size_t head;           // Ring buffer head
+			size_t tail;           // Ring buffer tail
+			size_t vertex_count;   // Current active vertex count
+			bool   is_full;        // Ring buffer full flag
 
 			// Per-trail shader parameters
 			bool  iridescent = false;
@@ -152,6 +155,15 @@ namespace Boidsish {
 			bool needs_upload = false;
 		};
 
+		// GPU-side parameter structure (std430 compatible)
+		struct TrailParamsGPU {
+			glm::vec4 min_bound; // w = base_thickness
+			glm::vec4 max_bound; // w = roughness
+			glm::uvec4 config1;  // x=vertex_offset, y=max_vertices, z=head, w=tail
+			glm::uvec4 config2;  // x=vertex_count, y=is_full, z=iridescent, w=rocket_trail
+			glm::vec4 config3;   // x=use_pbr, y=metallic, zw=padding
+		};
+
 		// OpenGL indirect draw command structure
 		struct DrawArraysIndirectCommand {
 			GLuint count;
@@ -162,11 +174,20 @@ namespace Boidsish {
 
 		// Buffer management
 		void EnsureBufferCapacity(size_t required_vertices);
+		void _UpdateParamsSSBO();
 
 		// OpenGL resources
 		GLuint vao_ = 0;
 		GLuint vbo_ = 0;
 		GLuint draw_command_buffer_ = 0;
+		GLuint trail_params_ssbo_ = 0;
+		GLuint atomic_counter_buffer_ = 0;
+
+		// Persistent mapping pointers
+		float* persistent_vbo_ptr_ = nullptr;
+
+		// Compute shader for culling
+		std::unique_ptr<ComputeShader> compute_shader_;
 
 		// Buffer capacity (in vertices, not bytes)
 		size_t vertex_capacity_ = 0;
@@ -174,6 +195,11 @@ namespace Boidsish {
 
 		// Trail allocations
 		std::map<int, TrailAllocation> trail_allocations_;
+		std::vector<int>               internal_to_trail_id_;
+		std::unordered_map<int, int>   trail_id_to_internal_;
+
+		// GPU parameters local copy
+		std::vector<TrailParamsGPU> trail_params_gpu_;
 
 		// Pending vertex data for upload
 		std::map<int, std::vector<float>> pending_vertex_data_;
@@ -186,14 +212,16 @@ namespace Boidsish {
 
 		std::vector<FreeBlock> free_list_;
 
-		// Draw commands
+		// Draw commands (for fallback or CPU reference)
 		std::vector<DrawArraysIndirectCommand> draw_commands_;
 		bool                                   draw_commands_dirty_ = true;
+		bool                                   params_dirty_ = true;
 
 		// Thread safety
 		mutable std::mutex mutex_;
 
 		// Constants
+		static constexpr size_t MAX_TRAILS = 2048;
 		static constexpr size_t FLOATS_PER_VERTEX =
 			Constants::Class::Trails::FloatsPerVertex(); // pos(3) + normal(3) + color(3)
 		static constexpr size_t INITIAL_VERTEX_CAPACITY =
