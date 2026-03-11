@@ -58,15 +58,19 @@ float remap(float value, float low1, float high1, float low2, float high2) {
 
 float henyeyGreenstein(float g, float cosTheta) {
 	float g2 = g * g;
-	return (1.0 - g2) / (4.0 * PI * pow(1.0 + g2 - 2.0 * g * cosTheta, 1.5));
+	return (1.0 - g2) / (4.0 * PI * pow(max(0.0001, 1.0 + g2 - 2.0 * g * cosTheta), 1.5));
 }
 
 float cloudPhase(float cosTheta) {
 	// Dual-lobe Henyey-Greenstein for forward and back scattering
-	return mix(henyeyGreenstein(0.8, cosTheta), henyeyGreenstein(-0.2, cosTheta), 0.5);
+	// Blended with a large isotropic component to ensure visibility at all angles
+	float hg = mix(henyeyGreenstein(0.7, cosTheta), henyeyGreenstein(-0.2, cosTheta), 0.5);
+	return mix(hg, 1.0 / (4.0 * PI), 0.4);
 }
 
 float beerPowder(float d, float local_d) {
+	// Approximation of multiple scattering (Beer-Powder law)
+	// Ensuring sunny side isn't black when d is small
 	return max(exp(-d), exp(-d * 0.5) * 0.7 * (1.0 - exp(-local_d * 2.0)));
 }
 
@@ -148,6 +152,7 @@ void main() {
 			float d = getCloudDensity(p, scaledCloudAltitude, scaledCloudThickness, false);
 
 			if (d > 0.01) {
+				float h = (p.y - scaledCloudAltitude) / max(scaledCloudThickness, 0.001);
 				float stepDensity = d * stepSize * 0.01;
 				float transmittanceAtStep = exp(-stepDensity);
 
@@ -168,13 +173,21 @@ void main() {
 							shadowDensity += getCloudDensity(sp, scaledCloudAltitude, scaledCloudThickness, true);
 						}
 						float opticalDepthToLight = shadowDensity * shadowStepSize * 0.02;
-						shadowTerm = beerPowder(opticalDepthToLight, d);
+
+						// More aggressive multiple scattering approximation
+						float beer = beerPowder(opticalDepthToLight, d);
+						float multScat = exp(-opticalDepthToLight * 0.1) * 0.5;
+						shadowTerm = mix(beer, multScat, 0.4);
 					}
 
 					stepScattering += lights[j].color * lights[j].intensity * shadowTerm * phase;
 				}
 
-				vec3 S = stepScattering + (ambient_light * 0.1);
+				// Enhanced ambient - mix in sky color based on height in the cloud layer
+				vec3 cloudSkyColor = mix(hazeColor, vec3(0.7, 0.8, 1.0) * ambient_light, h);
+				vec3 ambient = mix(ambient_light, cloudSkyColor, 0.5) * 0.5;
+
+				vec3 S = stepScattering + ambient;
 				lightEnergy += cloudTransmittance * S * stepDensity;
 				cloudTransmittance *= transmittanceAtStep;
 
