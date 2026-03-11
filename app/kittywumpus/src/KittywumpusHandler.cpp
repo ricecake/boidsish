@@ -11,6 +11,7 @@
 #include "Swooper.h"
 #include "VortexFlockingEntity.h"
 #include "RedDotEnemy.h"
+#include "RefractiveStalker.h"
 #include "checkpoint_ring.h"
 #include "constants.h"
 #include "graphics.h"
@@ -192,7 +193,11 @@ void KittywumpusHandler::PreTimestep(float time, float delta_time) {
 				auto forward = vis->GetCamera().front();
 				auto spawn_pos = FindOccludedSpawnPosition(pos, forward);
 				if (spawn_pos) {
-					QueueAddEntity<RedDotEnemy>(Vector3(spawn_pos->x, spawn_pos->y, spawn_pos->z));
+					if (std::uniform_real_distribution<float>(0, 1)(eng_) < 0.3f) {
+						QueueAddEntity<RefractiveStalker>(glm::vec3(spawn_pos->x, spawn_pos->y, spawn_pos->z));
+					} else {
+						QueueAddEntity<RedDotEnemy>(Vector3(spawn_pos->x, spawn_pos->y, spawn_pos->z));
+					}
 				}
 			}
 		}
@@ -375,7 +380,7 @@ void KittywumpusHandler::PreTimestep(float time, float delta_time) {
 			auto spawn_pos = FindOccludedSpawnPosition(pos, forward);
 
 			if (spawn_pos) {
-				std::uniform_int_distribution<int> enemy_type(0, 2);
+				std::uniform_int_distribution<int> enemy_type(0, 3);
 				int                                type = enemy_type(eng_);
 
 				if (type == 0) {
@@ -392,9 +397,12 @@ void KittywumpusHandler::PreTimestep(float time, float delta_time) {
 				} else if (type == 1) {
 					// Swooper
 					QueueAddEntity<Swooper>(Vector3(spawn_pos->x, spawn_pos->y, spawn_pos->z));
-				} else {
+				} else if (type == 2) {
 					// Potshot
 					QueueAddEntity<Potshot>(Vector3(spawn_pos->x, spawn_pos->y, spawn_pos->z));
+				} else {
+					// Refractive Stalker
+					QueueAddEntity<RefractiveStalker>(glm::vec3(spawn_pos->x, spawn_pos->y, spawn_pos->z));
 				}
 			}
 		}
