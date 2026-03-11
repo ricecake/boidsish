@@ -333,11 +333,11 @@ namespace Boidsish {
 				}
 
 				constexpr int ParticleVolumeSize() {
-					return 128;
+					return 256;
 				}
 
 				constexpr float ParticleVolumeScale() {
-					return 2.0f;
+					return 4.0f;
 				}
 			} // namespace Particles
 

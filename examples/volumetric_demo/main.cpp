@@ -96,15 +96,32 @@ int main() {
 		vis.SetCameraMode(Boidsish::CameraMode::FREE);
 
 		// Add a bunch of Volumetric particles
+		std::vector<std::shared_ptr<Boidsish::FireEffect>> emitters;
 		for (int i = 0; i < 5; ++i) {
-			vis.AddFireEffect(
+			auto e = vis.AddFireEffect(
 				glm::vec3(-20.0f + i * 10.0f, 5.0f, 0.0f),
 				Boidsish::FireEffectStyle::Volumetric,
 				{0.0f, 1.0f, 0.0f},
 				glm::vec3(0),
 				2000 // max particles per emitter
 			);
+			emitters.push_back(e);
 		}
+
+		// Add movement to emitters
+		vis.AddInputCallback([emitters](const Boidsish::InputState& state) {
+			static float totalTime = 0.0f;
+			totalTime += state.delta_time;
+
+			for (size_t i = 0; i < emitters.size(); ++i) {
+				if (emitters[i]) {
+					float x = -30.0f + static_cast<float>(i) * 15.0f;
+					float y = 5.0f + sin(totalTime * 0.5f + static_cast<float>(i)) * 10.0f;
+					float z = cos(totalTime * 0.3f + static_cast<float>(i)) * 20.0f;
+					emitters[i]->SetPosition(glm::vec3(x, y, z));
+				}
+			}
+		});
 
 		// Register the custom post-processing effect
 		vis.AddPrepareCallback([](Boidsish::Visualizer& v) {
