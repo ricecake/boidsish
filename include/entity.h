@@ -6,6 +6,8 @@
 #include <map>
 #include <memory>
 #include <mutex>
+#include <typeindex>
+#include <typeinfo>
 #include <vector>
 
 #include "dot.h"
@@ -291,6 +293,7 @@ namespace Boidsish {
 
 		virtual void AddEntity(int id, std::shared_ptr<EntityBase> entity) {
 			entities_[id] = entity;
+			InvalidateTypeCaches();
 			if (vis) {
 				entity->UpdateShape();
 				vis->AddShape(entity->GetShape());
@@ -306,6 +309,7 @@ namespace Boidsish {
 				}
 			}
 			entities_.erase(id);
+			InvalidateTypeCaches();
 		}
 
 		std::shared_ptr<EntityBase> GetEntity(int id) {
@@ -333,27 +337,37 @@ namespace Boidsish {
 
 		// Get entities by type (template method)
 		template <typename T>
-		auto GetEntitiesByType() {
-			std::vector<std::shared_ptr<T>> result;
-			for (auto& pair : entities_) {
-				auto typed_entity = std::dynamic_pointer_cast<T>(pair.second);
-				if (typed_entity) {
-					result.push_back(typed_entity);
+		std::vector<std::shared_ptr<T>> GetEntitiesByType() {
+			std::lock_guard<std::mutex> lock(cache_mutex_);
+			auto&                      cache = GetTypeCache<T>();
+			if (!cache.valid) {
+				cache.entities.clear();
+				for (auto& pair : entities_) {
+					auto typed_entity = std::dynamic_pointer_cast<T>(pair.second);
+					if (typed_entity) {
+						cache.entities.push_back(typed_entity);
+					}
 				}
+				cache.valid = true;
 			}
-			return result;
+			return cache.entities;
 		}
 
 		template <typename T>
 		std::vector<T*> GetEntitiesByType() const {
-			std::vector<T*> result;
-			for (const auto& pair : entities_) {
-				T* typed_entity = dynamic_cast<T*>(pair.second.get());
-				if (typed_entity) {
-					result.push_back(typed_entity);
+			std::lock_guard<std::mutex> lock(cache_mutex_);
+			auto&                      cache = GetTypeCacheRaw<T>();
+			if (!cache.valid) {
+				cache.entities.clear();
+				for (const auto& pair : entities_) {
+					T* typed_entity = dynamic_cast<T*>(pair.second.get());
+					if (typed_entity) {
+						cache.entities.push_back(typed_entity);
+					}
 				}
+				cache.valid = true;
 			}
-			return result;
+			return cache.entities;
 		}
 
 		// Get total entity count
@@ -471,6 +485,65 @@ namespace Boidsish {
 		}
 
 		std::shared_ptr<Visualizer> vis;
+
+	private:
+		// Type-based caching for GetEntitiesByType
+		struct TypeCacheBase {
+			bool valid = false;
+
+			virtual ~TypeCacheBase() = default;
+			virtual void Invalidate() = 0;
+		};
+
+		template <typename T>
+		struct TypeCache: public TypeCacheBase {
+			std::vector<std::shared_ptr<T>> entities;
+			void                            Invalidate() override {
+				valid = false;
+				entities.clear();
+			}
+		};
+
+		template <typename T>
+		struct TypeCacheRaw: public TypeCacheBase {
+			std::vector<T*> entities;
+			void            Invalidate() override {
+				valid = false;
+				entities.clear();
+			}
+		};
+
+		template <typename T>
+		TypeCache<T>& GetTypeCache() const {
+			auto& cache_ptr = type_caches_[std::type_index(typeid(T))];
+			if (!cache_ptr) {
+				cache_ptr = std::make_unique<TypeCache<T>>();
+			}
+			return static_cast<TypeCache<T>&>(*cache_ptr);
+		}
+
+		template <typename T>
+		TypeCacheRaw<T>& GetTypeCacheRaw() const {
+			auto& cache_ptr = type_caches_raw_[std::type_index(typeid(T))];
+			if (!cache_ptr) {
+				cache_ptr = std::make_unique<TypeCacheRaw<T>>();
+			}
+			return static_cast<TypeCacheRaw<T>&>(*cache_ptr);
+		}
+
+		void InvalidateTypeCaches() {
+			std::lock_guard<std::mutex> lock(cache_mutex_);
+			for (auto& pair : type_caches_) {
+				pair.second->Invalidate();
+			}
+			for (auto& pair : type_caches_raw_) {
+				pair.second->Invalidate();
+			}
+		}
+
+		mutable std::map<std::type_index, std::unique_ptr<TypeCacheBase>> type_caches_;
+		mutable std::map<std::type_index, std::unique_ptr<TypeCacheBase>> type_caches_raw_;
+		mutable std::mutex                                                cache_mutex_;
 
 	protected:
 		// Override these for custom behavior

@@ -77,21 +77,25 @@ namespace Boidsish {
 		// We do this BEFORE processing modification requests (removals)
 		// to ensure any actions enqueued by entities that are about to be removed
 		// can still access the entity state if needed.
+		std::vector<std::function<void()>> current_frame_requests;
 		{
 			std::lock_guard<std::mutex> lock(visualizer_mutex_);
-			for (auto& request : post_frame_requests_) {
-				request();
-			}
+			current_frame_requests = std::move(post_frame_requests_);
 			post_frame_requests_.clear();
+		}
+		for (auto& request : current_frame_requests) {
+			request();
 		}
 
 		// Process modification requests (Add/Remove Entity)
+		std::vector<std::function<void()>> current_frame_mods;
 		{
 			std::lock_guard<std::mutex> lock(requests_mutex_);
-			for (auto& request : modification_requests_) {
-				request();
-			}
+			current_frame_mods = std::move(modification_requests_);
 			modification_requests_.clear();
+		}
+		for (auto& request : current_frame_mods) {
+			request();
 		}
 
 		// Generate shapes from entity states
@@ -234,16 +238,24 @@ namespace Boidsish {
 	}
 
 	EntityHandler::~EntityHandler() {
-		std::lock_guard<std::mutex> lock(requests_mutex_);
-		for (auto& request : modification_requests_) {
+		std::vector<std::function<void()>> final_mod_requests;
+		{
+			std::lock_guard<std::mutex> lock(requests_mutex_);
+			final_mod_requests = std::move(modification_requests_);
+			modification_requests_.clear();
+		}
+		for (auto& request : final_mod_requests) {
 			request();
 		}
-		modification_requests_.clear();
 
-		std::lock_guard<std::mutex> lock2(visualizer_mutex_);
-		for (auto& request : post_frame_requests_) {
+		std::vector<std::function<void()>> final_vis_requests;
+		{
+			std::lock_guard<std::mutex> lock(visualizer_mutex_);
+			final_vis_requests = std::move(post_frame_requests_);
+			post_frame_requests_.clear();
+		}
+		for (auto& request : final_vis_requests) {
 			request();
 		}
-		post_frame_requests_.clear();
 	}
 } // namespace Boidsish
