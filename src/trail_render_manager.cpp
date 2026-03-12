@@ -42,8 +42,8 @@ namespace Boidsish {
 		glGenBuffers(1, &tess_ebo_);
 		glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, tess_ebo_);
 
-		const int TRAIL_SEGMENTS = 8;
-		const int MAX_RINGS = 1024;
+		const int             TRAIL_SEGMENTS = 8;
+		const int             MAX_RINGS = 1024;
 		std::vector<uint32_t> indices;
 		indices.reserve((MAX_RINGS - 1) * TRAIL_SEGMENTS * 6);
 
@@ -52,15 +52,15 @@ namespace Boidsish {
 				uint32_t curr_ring = r * (TRAIL_SEGMENTS + 1);
 				uint32_t next_ring = (r + 1) * (TRAIL_SEGMENTS + 1);
 
-				// Triangle 1
+				// CCW Winding: (curr, s) -> (next, s+1) -> (next, s)
 				indices.push_back(curr_ring + s);
+				indices.push_back(next_ring + s + 1);
 				indices.push_back(next_ring + s);
-				indices.push_back(next_ring + s + 1);
 
-				// Triangle 2
+				// CCW Winding: (curr, s) -> (curr, s+1) -> (next, s+1)
 				indices.push_back(curr_ring + s);
-				indices.push_back(next_ring + s + 1);
 				indices.push_back(curr_ring + s + 1);
+				indices.push_back(next_ring + s + 1);
 			}
 		}
 		glBufferData(GL_ELEMENT_ARRAY_BUFFER, indices.size() * sizeof(uint32_t), indices.data(), GL_STATIC_DRAW);
@@ -77,15 +77,28 @@ namespace Boidsish {
 		glBindBuffer(GL_SHADER_STORAGE_BUFFER, instances_ssbo_);
 		glBufferData(GL_SHADER_STORAGE_BUFFER, 200 * 12 * sizeof(uint32_t), nullptr, GL_DYNAMIC_DRAW);
 
+		// Create Spine SSBO
+		glGenBuffers(1, &spine_ssbo_);
+		glBindBuffer(GL_SHADER_STORAGE_BUFFER, spine_ssbo_);
+		// Max trails (200) * Max rings (1024) * TrailSpinePoint size (4 vec4 = 64 bytes)
+		glBufferData(GL_SHADER_STORAGE_BUFFER, 200 * 1024 * 64, nullptr, GL_DYNAMIC_DRAW);
+
 		glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
 	}
 
 	TrailRenderManager::~TrailRenderManager() {
-		if (vao_) glDeleteVertexArrays(1, &vao_);
-		if (tess_vbo_) glDeleteBuffers(1, &tess_vbo_);
-		if (tess_ebo_) glDeleteBuffers(1, &tess_ebo_);
-		if (points_ssbo_) glDeleteBuffers(1, &points_ssbo_);
-		if (instances_ssbo_) glDeleteBuffers(1, &instances_ssbo_);
+		if (vao_)
+			glDeleteVertexArrays(1, &vao_);
+		if (tess_vbo_)
+			glDeleteBuffers(1, &tess_vbo_);
+		if (tess_ebo_)
+			glDeleteBuffers(1, &tess_ebo_);
+		if (points_ssbo_)
+			glDeleteBuffers(1, &points_ssbo_);
+		if (instances_ssbo_)
+			glDeleteBuffers(1, &instances_ssbo_);
+		if (spine_ssbo_)
+			glDeleteBuffers(1, &spine_ssbo_);
 	}
 
 	bool TrailRenderManager::RegisterTrail(int trail_id, size_t max_points) {
@@ -280,6 +293,7 @@ namespace Boidsish {
 		tess_shader_->setInt("u_num_instances", trail_allocations_.size());
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 18, points_ssbo_);
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 19, instances_ssbo_);
+		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 20, spine_ssbo_);
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, tess_vbo_);
 
 		glDispatchCompute(trail_allocations_.size(), 1, 1);
@@ -330,6 +344,7 @@ namespace Boidsish {
 			packet.uniforms.use_pbr = alloc.use_pbr ? 1 : 0;
 			packet.uniforms.roughness = alloc.roughness;
 			packet.uniforms.metallic = alloc.metallic;
+			packet.uniforms.ao = alloc.base_thickness; // Pass thickness via AO field
 			packet.uniforms.use_vertex_color = 1;
 
 			// Add custom flags for trail effects
