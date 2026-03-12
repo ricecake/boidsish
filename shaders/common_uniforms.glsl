@@ -30,7 +30,8 @@ struct CommonUniforms {
 	int   dissolve_enabled;
 	int   bone_matrices_offset;
 	int   use_skinning;
-	float anim_padding[2];
+	float frustum_cull_radius;
+	float anim_padding;
 	float aabb_min_x;
 	float aabb_min_y;
 	float aabb_min_z;

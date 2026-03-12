@@ -15,10 +15,20 @@ namespace Boidsish {
 	MegabufferAllocation Line::line_allocation_;
 
 	Line::Line(int id, glm::vec3 start, glm::vec3 end, float width, float r, float g, float b, float a):
-		Shape(id, start.x, start.y, start.z, r, g, b, a), end_(end), width_(width), style_(Style::SOLID) {}
+		Shape(id, start.x, start.y, start.z, r, g, b, a), end_(end), width_(width), style_(Style::SOLID) {
+		// Update local AABB relative to start position
+		glm::vec3 relative_end = end - start;
+		local_aabb_.min = glm::min(glm::vec3(0.0f), relative_end) - glm::vec3(width);
+		local_aabb_.max = glm::max(glm::vec3(0.0f), relative_end) + glm::vec3(width);
+	}
 
 	Line::Line(glm::vec3 start, glm::vec3 end, float width):
-		Shape(0, start.x, start.y, start.z, 1.0f, 1.0f, 1.0f, 1.0f), end_(end), width_(width), style_(Style::SOLID) {}
+		Shape(0, start.x, start.y, start.z, 1.0f, 1.0f, 1.0f, 1.0f), end_(end), width_(width), style_(Style::SOLID) {
+		// Update local AABB relative to start position
+		glm::vec3 relative_end = end - start;
+		local_aabb_.min = glm::min(glm::vec3(0.0f), relative_end) - glm::vec3(width);
+		local_aabb_.max = glm::max(glm::vec3(0.0f), relative_end) + glm::vec3(width);
+	}
 
 	void Line::InitLineMesh(Megabuffer* mb) {
 		if (line_vao_ != 0 && line_allocation_.valid)
@@ -191,6 +201,16 @@ namespace Boidsish {
 
 		packet.uniforms.is_line = 1;
 		packet.uniforms.line_style = static_cast<int>(style_);
+		packet.uniforms.frustum_cull_radius = GetBoundingRadius();
+
+		// Occlusion culling AABB
+		AABB      worldAABB = GetAABB();
+		packet.uniforms.aabb_min_x = worldAABB.min.x;
+		packet.uniforms.aabb_min_y = worldAABB.min.y;
+		packet.uniforms.aabb_min_z = worldAABB.min.z;
+		packet.uniforms.aabb_max_x = worldAABB.max.x;
+		packet.uniforms.aabb_max_y = worldAABB.max.y;
+		packet.uniforms.aabb_max_z = worldAABB.max.z;
 
 		packet.casts_shadows = CastsShadows();
 

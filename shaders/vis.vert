@@ -92,6 +92,8 @@ void main() {
 												 : arcadeWaveFrequency;
 	float current_arcadeWaveSpeed = use_ssbo ? uniforms_data[vUniformIndex].arcade_wave_speed : arcadeWaveSpeed;
 	bool  current_isColossal = use_ssbo ? (uniforms_data[vUniformIndex].is_colossal != 0) : isColossal;
+	float current_frustum_cull_radius = use_ssbo ? uniforms_data[vUniformIndex].frustum_cull_radius
+												 : frustumCullRadius;
 	bool  current_useSSBOInstancing = use_ssbo ? (uniforms_data[vUniformIndex].use_ssbo_instancing != 0)
                                               : useSSBOInstancing;
 
@@ -175,12 +177,12 @@ void main() {
 
 	// Extract world position (translation from model matrix)
 	vec3  instanceCenter = vec3(modelMatrix[3]);
-	float instanceScale = length(vec3(modelMatrix[0])); // Approximate scale from first column
+	float maxScale = max(max(length(vec3(modelMatrix[0])), length(vec3(modelMatrix[1]))), length(vec3(modelMatrix[2])));
 
 	// GPU frustum culling - output degenerate triangle if outside frustum
 	if (enableFrustumCulling && !current_isColossal) {
 		// Use sphere test with approximate radius based on scale
-		float effectiveRadius = frustumCullRadius * instanceScale;
+		float effectiveRadius = current_frustum_cull_radius * maxScale;
 
 		if (!isSphereInFrustum(instanceCenter, effectiveRadius)) {
 			// Output degenerate triangle (all vertices at same point)
@@ -216,7 +218,7 @@ void main() {
 		vec3 worldBaseCenter = vec3(modelMatrix * vec4(localBaseCenter, 1.0));
 
 		// Shockwave displacement (applied before wind sway)
-		FragPos += getShockwaveDisplacement(instanceCenter, (aPos.y - u_aabbMin.y) * instanceScale, true);
+	FragPos += getShockwaveDisplacement(instanceCenter, (aPos.y - u_aabbMin.y) * maxScale, true);
 
 		// Apply wind sway
 		if (wind_strength > 0.0) {

@@ -271,6 +271,16 @@ namespace Boidsish {
 			packet.uniforms.metallic = GetMetallic();
 			packet.uniforms.ao = GetAO();
 			packet.uniforms.is_colossal = IsColossal();
+			packet.uniforms.frustum_cull_radius = GetBoundingRadius();
+
+			// Occlusion culling AABB
+			AABB      worldAABB = GetAABB();
+			packet.uniforms.aabb_min_x = worldAABB.min.x;
+			packet.uniforms.aabb_min_y = worldAABB.min.y;
+			packet.uniforms.aabb_min_z = worldAABB.min.z;
+			packet.uniforms.aabb_max_x = worldAABB.max.x;
+			packet.uniforms.aabb_max_y = worldAABB.max.y;
+			packet.uniforms.aabb_max_z = worldAABB.max.z;
 
 			RenderLayer layer = (GetA() < 0.99f) ? RenderLayer::Transparent : RenderLayer::Opaque;
 			float       normalized_depth = context.CalculateNormalizedDepth(world_pos);
@@ -306,6 +316,16 @@ namespace Boidsish {
 			packet.uniforms.metallic = GetMetallic();
 			packet.uniforms.ao = GetAO();
 			packet.uniforms.is_colossal = IsColossal();
+			packet.uniforms.frustum_cull_radius = GetBoundingRadius();
+
+			// Occlusion culling AABB
+			AABB      worldAABB = GetAABB();
+			packet.uniforms.aabb_min_x = worldAABB.min.x;
+			packet.uniforms.aabb_min_y = worldAABB.min.y;
+			packet.uniforms.aabb_min_z = worldAABB.min.z;
+			packet.uniforms.aabb_max_x = worldAABB.max.x;
+			packet.uniforms.aabb_max_y = worldAABB.max.y;
+			packet.uniforms.aabb_max_z = worldAABB.max.z;
 
 			packet.casts_shadows = CastsShadows();
 

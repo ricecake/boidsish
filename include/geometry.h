@@ -149,7 +149,8 @@ namespace Boidsish {
 		// Skeletal Animation
 		int   bone_matrices_offset = -1; // 4 bytes
 		int   use_skinning = 0;          // 4 bytes
-		float anim_padding[2];           // 8 bytes -> 16 bytes
+		float frustum_cull_radius = 5.0f; // 4 bytes
+		float anim_padding = 0.0f;       // 4 bytes -> 16 bytes
 
 		// Occlusion culling AABB (world space) - individual floats for std430 alignment safety
 		float aabb_min_x = 0.0f;       // 4 bytes

@@ -298,7 +298,10 @@ namespace Boidsish {
 		 *
 		 * @return float bounding radius in world units
 		 */
-		virtual float GetBoundingRadius() const { return 5.0f; }
+		virtual float GetBoundingRadius() const {
+			glm::vec3 furthest = glm::max(glm::abs(local_aabb_.min), glm::abs(local_aabb_.max));
+			return glm::length(furthest);
+		}
 
 		/**
 		 * @brief Test for intersection with a ray.
