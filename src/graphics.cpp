@@ -1,5 +1,6 @@
 #include "graphics.h"
 
+#include <algorithm>
 #include <array>
 #include <chrono>
 #include <iostream>
@@ -491,6 +492,8 @@ namespace Boidsish {
 		glm::vec2 camera_angular_velocity_{0.0f, 0.0f};
 		float     avg_frame_time_{1.0f / 60.0f};
 		float     tess_quality_multiplier_{1.0f};
+
+		std::vector<CameraState> camera_state_stack_;
 
 		// Camera shake state
 		float     shake_intensity = 0.0f;
@@ -3552,6 +3555,202 @@ namespace Boidsish {
 
 	void Visualizer::SetCamera(const Camera& camera) {
 		impl->camera = camera;
+	}
+
+	CameraState Visualizer::CaptureCameraState() const {
+		CameraState state;
+		state.camera = impl->camera;
+		state.mode = impl->camera_mode;
+
+		state.auto_camera_time = impl->auto_camera_time;
+		state.auto_camera_angle = impl->auto_camera_angle;
+		state.auto_camera_height_offset = impl->auto_camera_height_offset;
+		state.auto_camera_distance = impl->auto_camera_distance;
+
+		state.tracked_dot_index = impl->tracked_dot_index;
+		state.single_track_orbit_yaw = impl->single_track_orbit_yaw;
+		state.single_track_orbit_pitch = impl->single_track_orbit_pitch;
+		state.single_track_distance = impl->single_track_distance;
+
+		state.chase_target = impl->chase_target_;
+		state.current_chase_target_index = impl->current_chase_target_index_;
+
+		state.path_target = impl->path_target_;
+		state.path_segment_index = impl->path_segment_index_;
+		state.path_t = impl->path_t_;
+		state.path_direction = impl->path_direction_;
+		state.path_orientation = impl->path_orientation_;
+		state.path_auto_bank_angle = impl->path_auto_bank_angle_;
+
+		return state;
+	}
+
+	void Visualizer::PushCameraState() {
+		impl->camera_state_stack_.push_back(CaptureCameraState());
+	}
+
+	void Visualizer::PopCameraState() {
+		if (impl->camera_state_stack_.empty())
+			return;
+
+		CameraState state = std::move(impl->camera_state_stack_.back());
+		impl->camera_state_stack_.pop_back();
+
+		// Apply mode first
+		SetCameraMode(state.mode);
+
+		// Special logic for follow modes: don't restore position if it would cause a jump
+		bool is_follow_mode =
+			(state.mode == CameraMode::AUTO || state.mode == CameraMode::TRACKING || state.mode == CameraMode::CHASE ||
+		     state.mode == CameraMode::PATH_FOLLOW);
+
+		if (!is_follow_mode) {
+			impl->camera = state.camera;
+		} else {
+			// Restore non-spatial camera properties even in follow mode
+			impl->camera.fov = state.camera.fov;
+			impl->camera.speed = state.camera.speed;
+			impl->camera.follow_distance = state.camera.follow_distance;
+			impl->camera.follow_elevation = state.camera.follow_elevation;
+			impl->camera.follow_look_ahead = state.camera.follow_look_ahead;
+			impl->camera.follow_responsiveness = state.camera.follow_responsiveness;
+			impl->camera.path_smoothing = state.camera.path_smoothing;
+			impl->camera.path_bank_factor = state.camera.path_bank_factor;
+			impl->camera.path_bank_speed = state.camera.path_bank_speed;
+		}
+
+		// Restore internal mode states
+		impl->auto_camera_time = state.auto_camera_time;
+		impl->auto_camera_angle = state.auto_camera_angle;
+		impl->auto_camera_height_offset = state.auto_camera_height_offset;
+		impl->auto_camera_distance = state.auto_camera_distance;
+
+		impl->tracked_dot_index = state.tracked_dot_index;
+		impl->single_track_orbit_yaw = state.single_track_orbit_yaw;
+		impl->single_track_orbit_pitch = state.single_track_orbit_pitch;
+		impl->single_track_distance = state.single_track_distance;
+
+		impl->chase_target_ = state.chase_target;
+		impl->current_chase_target_index_ = state.current_chase_target_index;
+
+		impl->path_target_ = state.path_target;
+		impl->path_segment_index_ = state.path_segment_index;
+		impl->path_t_ = state.path_t;
+		impl->path_direction_ = state.path_direction;
+		impl->path_orientation_ = state.path_orientation;
+		impl->path_auto_bank_angle_ = state.path_auto_bank_angle;
+	}
+
+	void Visualizer::LookAt(const glm::vec3& target) {
+		glm::vec3 pos = impl->camera.pos();
+		if (glm::distance(pos, target) < 0.001f)
+			return;
+		glm::vec3 front = glm::normalize(target - pos);
+		impl->camera.yaw = glm::degrees(atan2(front.x, -front.z));
+		impl->camera.pitch = glm::degrees(asin(front.y));
+		impl->camera.pitch = std::clamp(impl->camera.pitch, -89.0f, 89.0f);
+		impl->camera.roll = 0.0f;
+	}
+
+	void Visualizer::LookAt(const glm::vec3& target, const glm::vec3& local_offset) {
+		glm::vec3 eye = target + local_offset;
+		impl->camera.x = eye.x;
+		impl->camera.y = eye.y;
+		impl->camera.z = eye.z;
+		LookAt(target);
+	}
+
+	void Visualizer::LookAt(const glm::vec3& target, std::shared_ptr<Shape> eye_object) {
+		if (!eye_object)
+			return;
+		impl->camera.x = eye_object->GetX();
+		impl->camera.y = eye_object->GetY();
+		impl->camera.z = eye_object->GetZ();
+		LookAt(target);
+	}
+
+	void Visualizer::LookAt(const glm::vec3& target, std::shared_ptr<EntityBase> eye_entity) {
+		if (!eye_entity)
+			return;
+		Vector3 pos = eye_entity->GetPosition();
+		impl->camera.x = pos.x;
+		impl->camera.y = pos.y;
+		impl->camera.z = pos.z;
+		LookAt(target);
+	}
+
+	void Visualizer::LookAt(std::shared_ptr<Shape> target) {
+		if (!target)
+			return;
+		LookAt(glm::vec3(target->GetX(), target->GetY(), target->GetZ()));
+	}
+
+	void Visualizer::LookAt(std::shared_ptr<Shape> target, const glm::vec3& local_offset) {
+		if (!target)
+			return;
+		glm::mat4 model = target->GetModelMatrix();
+		glm::vec3 eye = glm::vec3(model * glm::vec4(local_offset, 1.0f));
+		impl->camera.x = eye.x;
+		impl->camera.y = eye.y;
+		impl->camera.z = eye.z;
+		LookAt(glm::vec3(target->GetX(), target->GetY(), target->GetZ()));
+	}
+
+	void Visualizer::LookAt(std::shared_ptr<Shape> target, std::shared_ptr<Shape> eye_object) {
+		if (!target || !eye_object)
+			return;
+		impl->camera.x = eye_object->GetX();
+		impl->camera.y = eye_object->GetY();
+		impl->camera.z = eye_object->GetZ();
+		LookAt(target);
+	}
+
+	void Visualizer::LookAt(std::shared_ptr<Shape> target, std::shared_ptr<EntityBase> eye_entity) {
+		if (!target || !eye_entity)
+			return;
+		Vector3 pos = eye_entity->GetPosition();
+		impl->camera.x = pos.x;
+		impl->camera.y = pos.y;
+		impl->camera.z = pos.z;
+		LookAt(target);
+	}
+
+	void Visualizer::LookAt(std::shared_ptr<EntityBase> target) {
+		if (!target)
+			return;
+		Vector3 pos = target->GetPosition();
+		LookAt(glm::vec3(pos.x, pos.y, pos.z));
+	}
+
+	void Visualizer::LookAt(std::shared_ptr<EntityBase> target, const glm::vec3& local_offset) {
+		if (!target)
+			return;
+		glm::vec3 pos = glm::vec3(target->GetPosition().x, target->GetPosition().y, target->GetPosition().z);
+		glm::quat ori = target->GetOrientation();
+		glm::vec3 eye = pos + (ori * local_offset);
+		impl->camera.x = eye.x;
+		impl->camera.y = eye.y;
+		impl->camera.z = eye.z;
+		LookAt(pos);
+	}
+
+	void Visualizer::LookAt(std::shared_ptr<EntityBase> target, std::shared_ptr<Shape> eye_object) {
+		if (!target || !eye_object)
+			return;
+		impl->camera.x = eye_object->GetX();
+		impl->camera.y = eye_object->GetY();
+		impl->camera.z = eye_object->GetZ();
+		LookAt(target);
+	}
+
+	void Visualizer::LookAt(std::shared_ptr<EntityBase> target, std::shared_ptr<EntityBase> eye_entity) {
+		if (!target || !eye_entity)
+			return;
+		Vector3 pos = eye_entity->GetPosition();
+		impl->camera.x = pos.x;
+		impl->camera.y = pos.y;
+		impl->camera.z = pos.z;
+		LookAt(target);
 	}
 
 	void Visualizer::AddInputCallback(InputCallback callback) {

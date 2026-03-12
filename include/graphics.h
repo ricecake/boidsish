@@ -103,8 +103,9 @@ namespace Boidsish {
 	// Forward declaration for PrepareCallback
 	class Visualizer;
 
-	using InputCallback = std::function<void(const InputState&)>;
-	using PrepareCallback = std::function<void(Visualizer&)>;
+	// Forward declarations for CameraState
+	class EntityBase;
+	class Path;
 
 	// Camera structure for 3D view control
 	struct Camera {
@@ -177,6 +178,41 @@ namespace Boidsish {
 		glm::vec3 pos() const { return glm::vec3(x, y, z); }
 	};
 
+	/**
+	 * @brief Captures the full state of the camera system, including its mode and parameters.
+	 */
+	struct CameraState {
+		Camera     camera;
+		CameraMode mode;
+
+		// Auto camera state
+		float auto_camera_time;
+		float auto_camera_angle;
+		float auto_camera_height_offset;
+		float auto_camera_distance;
+
+		// Tracking camera state
+		int   tracked_dot_index;
+		float single_track_orbit_yaw;
+		float single_track_orbit_pitch;
+		float single_track_distance;
+
+		// Chase camera state
+		std::shared_ptr<EntityBase> chase_target;
+		int                         current_chase_target_index;
+
+		// Path follow camera state
+		std::shared_ptr<Path> path_target;
+		int                   path_segment_index;
+		float                 path_t;
+		int                   path_direction;
+		glm::quat             path_orientation;
+		float                 path_auto_bank_angle;
+	};
+
+	using InputCallback = std::function<void(const InputState&)>;
+	using PrepareCallback = std::function<void(Visualizer&)>;
+
 	// Main visualization class
 	class Terrain;
 	class TerrainGenerator;
@@ -238,6 +274,27 @@ namespace Boidsish {
 
 		// Set camera position and orientation
 		void SetCamera(const Camera& camera);
+
+		// Camera state management
+		CameraState CaptureCameraState() const;
+		void        PushCameraState();
+		void        PopCameraState();
+
+		// LookAt methods
+		void LookAt(const glm::vec3& target);
+		void LookAt(const glm::vec3& target, const glm::vec3& local_offset);
+		void LookAt(const glm::vec3& target, std::shared_ptr<Shape> eye_object);
+		void LookAt(const glm::vec3& target, std::shared_ptr<EntityBase> eye_entity);
+
+		void LookAt(std::shared_ptr<Shape> target);
+		void LookAt(std::shared_ptr<Shape> target, const glm::vec3& local_offset);
+		void LookAt(std::shared_ptr<Shape> target, std::shared_ptr<Shape> eye_object);
+		void LookAt(std::shared_ptr<Shape> target, std::shared_ptr<EntityBase> eye_entity);
+
+		void LookAt(std::shared_ptr<EntityBase> target);
+		void LookAt(std::shared_ptr<EntityBase> target, const glm::vec3& local_offset);
+		void LookAt(std::shared_ptr<EntityBase> target, std::shared_ptr<Shape> eye_object);
+		void LookAt(std::shared_ptr<EntityBase> target, std::shared_ptr<EntityBase> eye_entity);
 
 		// Add an input callback to the chain of handlers.
 		void AddInputCallback(InputCallback callback);
