@@ -1879,10 +1879,6 @@ namespace Boidsish {
 			sky_shader->setMat4("invProjection", glm::inverse(projection));
 			sky_shader->setMat4("invView", glm::inverse(view));
 
-			if (noise_manager) {
-				noise_manager->BindDefault(*sky_shader);
-			}
-
 			if (atmosphere_manager) {
 				atmosphere_manager->BindTextures(10);
 				sky_shader->setInt("u_transmittanceLUT", 10);

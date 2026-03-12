@@ -21,8 +21,6 @@ uniform vec3  cloudColorUniform;
 uniform sampler2D u_transmittanceLUT;
 uniform sampler3D u_aerialPerspectiveLUT;
 
-uniform sampler2D u_blueNoiseTexture;
-
 #include "../atmosphere/common.glsl"
 #include "../helpers/lighting.glsl"
 #include "../helpers/fast_noise.glsl"

@@ -1,8 +1,12 @@
 // Helper functions for fast texture-based noise lookups
-// Requires a 3D texture sampler named 'u_noiseTexture' bound to some unit.
+// Requires noise texture samplers bound to fixed units:
+// u_noiseTexture: 3D, unit 5, R=Simplex/G=Worley/B=FBM/A=Warped
+// u_curlTexture: 3D, unit 6, RGB=Curl/A=FBM Curl Mag
+// u_blueNoiseTexture: 2D, unit 7, RGBA tiling blue noise at 4 frequencies
 
 uniform sampler3D u_noiseTexture;
 uniform sampler3D u_curlTexture;
+uniform sampler2D u_blueNoiseTexture;
 
 // R: Simplex 3D
 float fastSimplex3d(vec3 p) {
@@ -44,4 +48,17 @@ vec3 fastCurl3d(vec3 p) {
 // FBM Curl magnitude lookup
 float fastFbmCurl3d(vec3 p) {
 	return texture(u_curlTexture, p).a;
+}
+
+// Blue Noise lookups (at different frequencies)
+float fastBlueNoise(vec2 uv, int frequencyIndex) {
+	vec4 bn = texture(u_blueNoiseTexture, uv);
+	if (frequencyIndex == 0) return bn.r;
+	if (frequencyIndex == 1) return bn.g;
+	if (frequencyIndex == 2) return bn.b;
+	return bn.a;
+}
+
+float fastBlueNoise(vec2 uv) {
+	return texture(u_blueNoiseTexture, uv).r;
 }
