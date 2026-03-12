@@ -1,5 +1,6 @@
 #pragma once
 
+#include <deque>
 #include <map>
 #include <memory>
 #include <mutex>
@@ -7,6 +8,7 @@
 #include <vector>
 
 #include "constants.h"
+#include "geometry.h"
 #include <GL/glew.h>
 #include <glm/glm.hpp>
 
@@ -68,24 +70,22 @@ namespace Boidsish {
 		bool HasTrail(int trail_id) const;
 
 		/**
-		 * @brief Update trail vertex data.
+		 * @brief Update trail point data.
 		 *
 		 * @param trail_id The trail to update
-		 * @param vertices Vertex data (position + normal + color per vertex)
+		 * @param points Control points (position + color)
 		 * @param head Ring buffer head index
 		 * @param tail Ring buffer tail index
-		 * @param vertex_count Number of active vertices
 		 * @param is_full Whether the ring buffer has wrapped
 		 */
 		void UpdateTrailData(
-			int                       trail_id,
-			const std::vector<float>& vertices,
-			size_t                    head,
-			size_t                    tail,
-			size_t                    vertex_count,
-			bool                      is_full,
-			const glm::vec3&          min_bound,
-			const glm::vec3&          max_bound
+			int                                                trail_id,
+			const std::deque<std::pair<glm::vec3, glm::vec3>>& points,
+			size_t                                             head,
+			size_t                                             tail,
+			bool                                               is_full,
+			const glm::vec3&                                   min_bound,
+			const glm::vec3&                                   max_bound
 		);
 
 		/**
@@ -102,18 +102,16 @@ namespace Boidsish {
 		);
 
 		/**
-		 * @brief Render all registered trails in a single draw call.
+		 * @brief Generate render packets for all active trails.
 		 *
-		 * @param shader The trail shader to use
-		 * @param view The view matrix
-		 * @param projection The projection matrix
-		 * @param clip_plane Optional clip plane for reflection rendering
+		 * @param out_packets Vector to append packets to
+		 * @param context Render context
+		 * @param shader_handle Handle to the trail shader
 		 */
-		void Render(
-			Shader&                         shader,
-			const glm::mat4&                view,
-			const glm::mat4&                projection,
-			const std::optional<glm::vec4>& clip_plane
+		void GetRenderPackets(
+			std::vector<RenderPacket>& out_packets,
+			const RenderContext&       context,
+			ShaderHandle               shader_handle
 		);
 
 		/**
@@ -131,11 +129,11 @@ namespace Boidsish {
 
 	private:
 		struct TrailAllocation {
-			size_t vertex_offset; // Offset in vertices (not bytes)
-			size_t max_vertices;  // Maximum vertices allocated for this trail
+			size_t points_offset; // Offset in TrailPoints SSBO
+			size_t max_points;    // Maximum points allocated for this trail
 			size_t head;          // Ring buffer head
 			size_t tail;          // Ring buffer tail
-			size_t vertex_count;  // Current active vertex count
+			size_t vertex_offset; // Offset in generated VBO
 			bool   is_full;       // Ring buffer full flag
 
 			// Per-trail shader parameters
@@ -152,31 +150,25 @@ namespace Boidsish {
 			bool needs_upload = false;
 		};
 
-		// OpenGL indirect draw command structure
-		struct DrawArraysIndirectCommand {
-			GLuint count;
-			GLuint instanceCount;
-			GLuint first;
-			GLuint baseInstance;
-		};
-
 		// Buffer management
-		void EnsureBufferCapacity(size_t required_vertices);
+		void EnsureBufferCapacity(size_t required_points);
 
 		// OpenGL resources
 		GLuint vao_ = 0;
-		GLuint vbo_ = 0;
-		GLuint draw_command_buffer_ = 0;
+		GLuint tess_vbo_ = 0;
+		GLuint tess_ebo_ = 0;
+		GLuint points_ssbo_ = 0;
+		GLuint instances_ssbo_ = 0;
 
-		// Buffer capacity (in vertices, not bytes)
-		size_t vertex_capacity_ = 0;
-		size_t vertex_usage_ = 0;
+		// Buffer capacity
+		size_t points_capacity_ = 0;
+		size_t points_usage_ = 0;
 
 		// Trail allocations
 		std::map<int, TrailAllocation> trail_allocations_;
 
-		// Pending vertex data for upload
-		std::map<int, std::vector<float>> pending_vertex_data_;
+		// Pending point data for upload
+		std::map<int, std::vector<float>> pending_point_data_;
 
 		// Free list for reusing deallocated space
 		struct FreeBlock {
@@ -186,19 +178,19 @@ namespace Boidsish {
 
 		std::vector<FreeBlock> free_list_;
 
-		// Draw commands
-		std::vector<DrawArraysIndirectCommand> draw_commands_;
-		bool                                   draw_commands_dirty_ = true;
+		// Free list for vertex blocks
+		std::vector<size_t> free_vertex_slots_;
+		size_t next_vertex_slot_ = 0;
 
 		// Thread safety
 		mutable std::mutex mutex_;
 
+		// Compute shader for tessellation
+		std::unique_ptr<class ComputeShader> tess_shader_;
+
 		// Constants
-		static constexpr size_t FLOATS_PER_VERTEX =
-			Constants::Class::Trails::FloatsPerVertex(); // pos(3) + normal(3) + color(3)
-		static constexpr size_t INITIAL_VERTEX_CAPACITY =
-			Constants::Class::Trails::InitialVertexCapacity(); // 500k vertices
-		static constexpr float GROWTH_FACTOR = Constants::Class::Trails::GrowthFactor();
+		static constexpr size_t INITIAL_POINTS_CAPACITY = 100000;
+		static constexpr float  GROWTH_FACTOR = Constants::Class::Trails::GrowthFactor();
 	};
 
 } // namespace Boidsish

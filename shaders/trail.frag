@@ -1,4 +1,4 @@
-#version 430 core
+#version 460 core
 layout(location = 0) out vec4 FragColor;
 layout(location = 1) out vec2 Velocity;
 
@@ -8,6 +8,15 @@ in vec3  vs_frag_pos;
 in float vs_progress;
 in vec4  CurPosition;
 in vec4  PrevPosition;
+flat in int vUniformIndex;
+
+#include "common_uniforms.glsl"
+
+layout(std430, binding = 2) buffer UniformsSSBO {
+	CommonUniforms uniforms_data[];
+};
+
+uniform bool uUseMDI = false;
 
 #include "helpers/lighting.glsl"
 
@@ -20,6 +29,15 @@ uniform float trailMetallic;  // PBR metallic [0=dielectric, 1=metal]
 #include "helpers/noise.glsl"
 
 void main() {
+	bool use_ssbo = uUseMDI && vUniformIndex >= 0;
+
+	int flags = use_ssbo ? uniforms_data[vUniformIndex].is_line : 0;
+	bool current_useIridescence = use_ssbo ? (flags & 1) != 0 : useIridescence;
+	bool current_useRocketTrail = use_ssbo ? (flags & 2) != 0 : useRocketTrail;
+	bool current_usePBR = use_ssbo ? (uniforms_data[vUniformIndex].use_pbr != 0) : usePBR;
+	float current_trailRoughness = use_ssbo ? uniforms_data[vUniformIndex].roughness : trailRoughness;
+	float current_trailMetallic = use_ssbo ? uniforms_data[vUniformIndex].metallic : trailMetallic;
+
 	vec3 norm = normalize(vs_normal);
 	vec3 view_dir = normalize(viewPos - vs_frag_pos);
 
@@ -27,7 +45,7 @@ void main() {
 	float dist_to_cam = length(viewPos - vs_frag_pos);
 	float camera_fade = smoothstep(3.0, 10.0, dist_to_cam);
 
-	if (useRocketTrail) {
+	if (current_useRocketTrail) {
 		// --- Rocket Trail Effect with Emissive Glow ---
 		float flame_threshold = 0.9;
 		float flicker = snoise(vec2(time * 20.0, vs_frag_pos.x * 5.0)) * 0.5 + 0.5;
@@ -73,10 +91,10 @@ void main() {
 
 			FragColor = vec4(lit_smoke, alpha * camera_fade);
 		}
-	} else if (useIridescence) {
+	} else if (current_useIridescence) {
 		// --- PBR Iridescent Trail ---
 		// Low roughness for sharp, mirror-like reflections
-		float roughness = usePBR ? trailRoughness : 0.15;
+		float roughness = current_usePBR ? current_trailRoughness : 0.15;
 
 		// Apply PBR iridescent lighting (no shadows for trail effects)
 		vec4 iridescent_result_vec = apply_lighting_pbr_iridescent_no_shadows(
@@ -93,9 +111,9 @@ void main() {
 		vec3  final_color = mix(iridescent_result, vec3(1.0), fresnel * 0.3);
 
 		FragColor = vec4(final_color, 0.85 * camera_fade); // Slightly more opaque for better visibility
-	} else if (usePBR) {
+	} else if (current_usePBR) {
 		// --- Standard PBR Trail (no shadows for trails) ---
-		vec3 result = apply_lighting_pbr_no_shadows(vs_frag_pos, norm, vs_color, trailRoughness, trailMetallic, 1.0)
+		vec3 result = apply_lighting_pbr_no_shadows(vs_frag_pos, norm, vs_color, current_trailRoughness, current_trailMetallic, 1.0)
 						  .rgb;
 		FragColor = vec4(result, camera_fade);
 	} else {
