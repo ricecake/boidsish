@@ -937,6 +937,15 @@ namespace Boidsish {
 		}
 
 		glm::vec3 rootPos = positions[0];
+		// Save bind-pose direction of first bone for constraint reference.
+		// Without this, the first bone's constraint uses (0,-1,0) as "parent direction"
+		// which has no relation to the actual bone orientation.
+		glm::vec3 rootBindDir = (positions.size() >= 2)
+			? glm::normalize(positions[1] - positions[0])
+			: glm::vec3(0, 1, 0);
+		if (glm::any(glm::isnan(rootBindDir)))
+			rootBindDir = glm::vec3(0, 1, 0);
+
 		float     totalLength = 0;
 		for (float l : lengths)
 			totalLength += l;
@@ -989,31 +998,44 @@ namespace Boidsish {
 					// Apply constraints
 					const auto& constraint = GetBoneConstraint(chain[i]);
 					if (constraint.type != ConstraintType::None) {
-						glm::vec3 prevPos = (i == 0) ? (positions[0] + glm::vec3(0, 1, 0)) : positions[i - 1];
+						glm::vec3 prevPos = (i == 0) ? (positions[0] - rootBindDir) : positions[i - 1];
 						glm::vec3 dir = glm::normalize(positions[i + 1] - positions[i]);
 						glm::vec3 parentDir = glm::normalize(positions[i] - prevPos);
 
 						if (constraint.type == ConstraintType::Hinge) {
 							glm::vec3 planeNormal = constraint.axis;
-							// Project dir onto plane
+
+							// Project both dir and parentDir onto hinge plane
 							glm::vec3 projected = dir - glm::dot(dir, planeNormal) * planeNormal;
+							glm::vec3 parentProj = parentDir - glm::dot(parentDir, planeNormal) * planeNormal;
+
 							if (glm::length(projected) < 0.001f) {
 								projected = glm::cross(planeNormal, glm::vec3(0, 1, 0));
 								if (glm::length(projected) < 0.001f)
 									projected = glm::cross(planeNormal, glm::vec3(1, 0, 0));
 							}
+							if (glm::length(parentProj) < 0.001f) {
+								parentProj = glm::cross(planeNormal, glm::vec3(0, 1, 0));
+								if (glm::length(parentProj) < 0.001f)
+									parentProj = glm::cross(planeNormal, glm::vec3(1, 0, 0));
+							}
 							projected = glm::normalize(projected);
+							parentProj = glm::normalize(parentProj);
 
-							// Angle limit
-							float     dot = glm::clamp(glm::dot(projected, parentDir), -1.0f, 1.0f);
+							// Signed angle from parent to current direction on hinge plane
+							float     dot = glm::clamp(glm::dot(projected, parentProj), -1.0f, 1.0f);
 							float     angle = glm::degrees(std::acos(dot));
-							glm::vec3 side = glm::cross(parentDir, projected);
+							glm::vec3 side = glm::cross(parentProj, projected);
 							if (glm::dot(side, planeNormal) < 0)
 								angle = -angle;
 
-							angle = glm::clamp(angle, constraint.minAngle, constraint.maxAngle);
-							glm::mat4 rot = glm::rotate(glm::mat4(1.0f), glm::radians(angle), planeNormal);
-							dir = glm::normalize(glm::vec3(rot * glm::vec4(parentDir, 0.0f)));
+							// Clamp as deviation from bind-pose rest angle
+							float deviation = angle - constraint.restAngle;
+							deviation = glm::clamp(deviation, constraint.minAngle, constraint.maxAngle);
+							float clampedAngle = constraint.restAngle + deviation;
+
+							glm::mat4 rot = glm::rotate(glm::mat4(1.0f), glm::radians(clampedAngle), planeNormal);
+							dir = glm::normalize(glm::vec3(rot * glm::vec4(parentProj, 0.0f)));
 						} else if (constraint.type == ConstraintType::Cone) {
 							float dot = glm::clamp(glm::dot(dir, parentDir), -1.0f, 1.0f);
 							float angle = glm::degrees(std::acos(dot));
@@ -1069,6 +1091,39 @@ namespace Boidsish {
 
 			if (glm::any(glm::isnan(q)))
 				q = glm::quat(1, 0, 0, 0);
+
+			// Apply twist (axial roll) limits via swing-twist decomposition
+			const auto& twistConstraint = GetBoneConstraint(chain[i]);
+			if (twistConstraint.minTwist > -180.0f || twistConstraint.maxTwist < 180.0f) {
+				glm::vec3 twistAxis = bindDir;
+				glm::vec3 qv(q.x, q.y, q.z);
+				glm::vec3 proj = glm::dot(qv, twistAxis) * twistAxis;
+
+				glm::quat twist(q.w, proj.x, proj.y, proj.z);
+				float     twistLen = glm::length(twist);
+				if (twistLen > 1e-6f) {
+					twist /= twistLen;
+
+					// Ensure canonical hemisphere: avoid interpreting a pure swing
+					// (projection ≈ 0) with negative w as ±180° of twist.
+					if (twist.w < 0.0f)
+						twist = -twist;
+
+					glm::quat swing = q * glm::inverse(twist);
+
+					float twistAngle = glm::degrees(
+						2.0f * std::atan2(glm::dot(glm::vec3(twist.x, twist.y, twist.z), twistAxis), twist.w)
+					);
+					twistAngle = glm::clamp(twistAngle, twistConstraint.minTwist, twistConstraint.maxTwist);
+
+					float halfRad = glm::radians(twistAngle) * 0.5f;
+					twist = glm::quat(std::cos(halfRad), std::sin(halfRad) * twistAxis);
+
+					q = swing * twist;
+					if (glm::any(glm::isnan(q)))
+						q = glm::quat(1, 0, 0, 0);
+				}
+			}
 
 			// New global transform for this bone
 			glm::mat4 newGlobal = glm::translate(glm::mat4(1.0f), start) * glm::toMat4(q);

@@ -317,10 +317,21 @@ add_executable(test_procedural_enhancements tests/test_procedural_enhancements.c
 target_link_libraries(test_procedural_enhancements PRIVATE boidsish GTest::GTest GTest::Main)
 set_target_properties(test_procedural_enhancements PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}" EXCLUDE_FROM_ALL TRUE)
 add_test(NAME test_procedural_enhancements COMMAND test_procedural_enhancements)
+
+add_executable(test_procedural_walking tests/test_procedural_walking.cpp)
+target_link_libraries(test_procedural_walking PRIVATE boidsish GTest::GTest GTest::Main)
+set_target_properties(test_procedural_walking PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}" EXCLUDE_FROM_ALL TRUE)
+add_test(NAME test_procedural_walking COMMAND test_procedural_walking)
+
 add_executable(test_ik tests/test_ik.cpp)
 target_link_libraries(test_ik PRIVATE boidsish)
 set_target_properties(test_ik PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}" EXCLUDE_FROM_ALL TRUE)
 add_test(NAME test_ik COMMAND test_ik)
+
+add_executable(test_camera_system tests/test_camera_system.cpp)
+target_link_libraries(test_camera_system PRIVATE boidsish GTest::GTest GTest::Main)
+set_target_properties(test_camera_system PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}" EXCLUDE_FROM_ALL TRUE)
+add_test(NAME test_camera_system COMMAND test_camera_system)
 
 # Group all tests into a single target for convenience
 add_custom_target(tests)
@@ -341,5 +352,7 @@ add_dependencies(tests
     test_procedural_generator
     test_procedural_custom
     test_procedural_enhancements
+    test_procedural_walking
     test_ik
+    test_camera_system
 )

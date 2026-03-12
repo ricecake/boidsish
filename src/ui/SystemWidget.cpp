@@ -111,6 +111,14 @@ namespace Boidsish {
 						m_visualizer.CycleChaseTarget();
 					}
 
+					if (ImGui::Button("Push State")) {
+						m_visualizer.PushCameraState();
+					}
+					ImGui::SameLine();
+					if (ImGui::Button("Pop State")) {
+						m_visualizer.PopCameraState();
+					}
+
 					ImGui::Separator();
 					ImGui::Text("Follow Settings");
 					Camera& cam = m_visualizer.GetCamera();

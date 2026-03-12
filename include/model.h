@@ -85,9 +85,15 @@ namespace Boidsish {
 	struct BoneConstraint {
 		ConstraintType type = ConstraintType::None;
 		glm::vec3      axis = glm::vec3(1, 0, 0); // For Hinge
-		float          minAngle = -180.0f;        // In degrees
+		float          minAngle = -180.0f;        // In degrees — deviation from restAngle
 		float          maxAngle = 180.0f;
+		float          restAngle = 0.0f;          // Bind-pose angle on the hinge plane (degrees)
 		float          coneAngle = 45.0f; // For Cone
+
+		// Twist (axial roll) limits in degrees, orthogonal to type.
+		// Default ±180° = unconstrained. Can combine with any ConstraintType.
+		float minTwist = -180.0f;
+		float maxTwist = 180.0f;
 	};
 
 	struct BoneInfo {
