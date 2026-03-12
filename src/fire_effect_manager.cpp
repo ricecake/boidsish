@@ -162,7 +162,8 @@ namespace Boidsish {
 		float            lifetime,
 		EmitterType      type,
 		const glm::vec3& dimensions,
-		float            sweep
+		float            sweep,
+		float            emission_rate
 	) {
 		std::lock_guard<std::mutex> lock(mutex_);
 		_EnsureShaderAndBuffers();
@@ -175,8 +176,18 @@ namespace Boidsish {
 		// Find an inactive slot to reuse
 		for (size_t i = 0; i < effects_.size(); ++i) {
 			if (!effects_[i]) {
-				effects_[i] = std::make_shared<
-					FireEffect>(position, style, direction, velocity, max_particles, lifetime, type, dimensions, sweep);
+				effects_[i] = std::make_shared<FireEffect>(
+					position,
+					style,
+					direction,
+					velocity,
+					max_particles,
+					lifetime,
+					type,
+					dimensions,
+					sweep,
+					emission_rate
+				);
 				needs_reallocation_ = true;
 				return effects_[i];
 			}
@@ -184,8 +195,18 @@ namespace Boidsish {
 
 		// If no inactive slots, add a new one if under capacity
 		if (effects_.size() < kMaxEmitters) {
-			auto effect = std::make_shared<
-				FireEffect>(position, style, direction, velocity, max_particles, lifetime, type, dimensions, sweep);
+			auto effect = std::make_shared<FireEffect>(
+				position,
+				style,
+				direction,
+				velocity,
+				max_particles,
+				lifetime,
+				type,
+				dimensions,
+				sweep,
+				emission_rate
+			);
 			effects_.push_back(effect);
 			needs_reallocation_ = true;
 			return effect;
@@ -249,7 +270,8 @@ namespace Boidsish {
 		std::vector<glm::vec4> slice_points;
 		emitters.reserve(effects_.size());
 
-		for (const auto& effect : effects_) {
+		for (size_t i = 0; i < effects_.size(); ++i) {
+			const auto& effect = effects_[i];
 			if (effect) {
 				Emitter emitter = {
 					effect->GetPosition(),
@@ -266,7 +288,8 @@ namespace Boidsish {
 					0,    // slice_data_count
 					0.0f, // slice_area
 					effect->NeedsClear() ? 1 : 0,
-					{0, 0} // padding
+					effect->GetEmissionRate(),
+					(i < assigned_counts_.size()) ? assigned_counts_[i] : 0
 				};
 
 				auto model = effect->GetSourceModel();
@@ -292,7 +315,7 @@ namespace Boidsish {
 			} else {
 				// Add a placeholder for inactive emitters to maintain indexing
 				emitters.push_back(
-					{glm::vec3(0), 0, glm::vec3(0), 0, glm::vec3(0), 0, glm::vec3(0), 0, 0.0f, 0, 0, 0, 0.0f, 0, {0, 0}}
+					{glm::vec3(0), 0, glm::vec3(0), 0, glm::vec3(0), 0, glm::vec3(0), 0, 0.0f, 0, 0, 0, 0.0f, 0, -1.0f, 0}
 				);
 			}
 		}
@@ -565,6 +588,14 @@ namespace Boidsish {
 				float need = (float)(ideal_counts[emitter_index] - current_counts[emitter_index]) /
 					ideal_counts[emitter_index];
 				to_fill.push({need, emitter_index});
+			}
+		}
+
+		// --- 5. Update assigned_counts_ ---
+		assigned_counts_.assign(effects_.size(), 0);
+		for (int emitter_idx : particle_to_emitter_map_) {
+			if (emitter_idx >= 0 && emitter_idx < (int)assigned_counts_.size()) {
+				assigned_counts_[emitter_idx]++;
 			}
 		}
 	}

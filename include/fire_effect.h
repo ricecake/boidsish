@@ -36,7 +36,8 @@ namespace Boidsish {
 			float            lifetime = -1.0f,
 			EmitterType      type = EmitterType::Point,
 			const glm::vec3& dimensions = glm::vec3(0.0f),
-			float            sweep = 1.0f
+			float            sweep = 1.0f,
+			float            emission_rate = -1.0f
 		);
 
 		void SetPosition(const glm::vec3& pos) { position_ = pos; }
@@ -55,6 +56,8 @@ namespace Boidsish {
 
 		void SetActive(bool active) { active_ = active; }
 
+		void SetEmissionRate(float rate) { emission_rate_ = rate; }
+
 		const glm::vec3& GetPosition() const { return position_; }
 
 		FireEffectStyle GetStyle() const { return style_; }
@@ -68,6 +71,8 @@ namespace Boidsish {
 		EmitterType GetType() const { return type_; }
 
 		float GetSweep() const { return sweep_; }
+
+		float GetEmissionRate() const { return emission_rate_; }
 
 		void SetSourceModel(std::shared_ptr<Model> model) { source_model_ = model; }
 
@@ -107,6 +112,7 @@ namespace Boidsish {
 		glm::vec3            dimensions_;
 		EmitterType          type_;
 		float                sweep_ = 1.0f;
+		float                emission_rate_ = -1.0f;
 		std::weak_ptr<Model> source_model_;
 		std::atomic<bool>    needs_clear_{false};
 	};

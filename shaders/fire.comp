@@ -30,7 +30,8 @@ struct Emitter {
 	int   slice_data_count;
 	float slice_area;
 	int   request_clear;
-	int   _padding_emitter[2];
+	float emission_rate;
+	int   assigned_count;
 };
 
 layout(std430, binding = 0) buffer ParticleBuffer {
@@ -309,7 +310,18 @@ void main() {
 		// --- 3a. Fire Effect Respawn ---
 		if (emitter_index != -1 && u_num_emitters > 0 && emitter_index < u_num_emitters) {
 			Emitter emitter = emitters[emitter_index];
+
 			if (emitter.is_active != 0) {
+				// Probability-based emission rate control
+				if (emitter.emission_rate > 0.0) {
+					float p_spawn = (emitter.emission_rate * u_delta_time) / float(max(1, emitter.assigned_count));
+					if (rand(vec2(float(gid), u_time + 0.123)) > p_spawn) {
+						p.pos.w = 0.0;
+						particles[gid] = p;
+						return;
+					}
+				}
+
 				p.emitter_index = emitter_index;
 				p.emitter_id = emitter.id;
 				p.style = emitter.style;
