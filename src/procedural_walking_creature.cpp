@@ -45,27 +45,27 @@ namespace Boidsish {
 		// With left-side axis (0,0,1): actual left-side dirs give same positive angle.
 		// So unsigned acos value is correct for both sides.
 
-		// Setup leg constraints
-		for (int i = 0; i < 4; ++i) {
-			bool is_left = (i == 0 || i == 3); // FL=0, BL=3
+		// // Setup leg constraints
+		// for (int i = 0; i < 4; ++i) {
+		// 	bool is_left = (i == 0 || i == 3); // FL=0, BL=3
 
-			// Upper leg: twist-only — full directional freedom, prevents axial roll
-			BoneConstraint upper_c;
-			upper_c.minTwist = -15.0f;
-			upper_c.maxTwist = 15.0f;
-			model_->SetBoneConstraint(names[i] + "_upper", upper_c);
+		// 	// Upper leg: twist-only — full directional freedom, prevents axial roll
+		// 	BoneConstraint upper_c;
+		// 	upper_c.minTwist = -15.0f;
+		// 	upper_c.maxTwist = 15.0f;
+		// 	model_->SetBoneConstraint(names[i] + "_upper", upper_c);
 
-			// Lower leg: hinge in bending plane, rest-angle-relative limits
-			BoneConstraint lower_c;
-			lower_c.type = ConstraintType::Hinge;
-			lower_c.axis = is_left ? glm::vec3(0, 0, 1) : glm::vec3(0, 0, -1);
-			lower_c.restAngle = rest_angle;
-			lower_c.minAngle = -60.0f;  // Allow 60° more bending from rest
-			lower_c.maxAngle = 60.0f;   // Allow 60° straightening from rest
-			lower_c.minTwist = -5.0f;
-			lower_c.maxTwist = 5.0f;
-			model_->SetBoneConstraint(names[i] + "_lower", lower_c);
-		}
+		// 	// Lower leg: hinge in bending plane, rest-angle-relative limits
+		// 	BoneConstraint lower_c;
+		// 	lower_c.type = ConstraintType::Hinge;
+		// 	lower_c.axis = is_left ? glm::vec3(0, 0, 1) : glm::vec3(0, 0, -1);
+		// 	lower_c.restAngle = rest_angle;
+		// 	lower_c.minAngle = -60.0f;  // Allow 60° more bending from rest
+		// 	lower_c.maxAngle = 60.0f;   // Allow 60° straightening from rest
+		// 	lower_c.minTwist = -5.0f;
+		// 	lower_c.maxTwist = 5.0f;
+		// 	model_->SetBoneConstraint(names[i] + "_lower", lower_c);
+		// }
 
 		// Setup legs tracking — rest offsets match GenerateIR foot positions exactly
 		legs_.resize(4);
