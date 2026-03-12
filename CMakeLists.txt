@@ -317,6 +317,12 @@ add_executable(test_procedural_enhancements tests/test_procedural_enhancements.c
 target_link_libraries(test_procedural_enhancements PRIVATE boidsish GTest::GTest GTest::Main)
 set_target_properties(test_procedural_enhancements PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}" EXCLUDE_FROM_ALL TRUE)
 add_test(NAME test_procedural_enhancements COMMAND test_procedural_enhancements)
+
+add_executable(test_procedural_walking tests/test_procedural_walking.cpp)
+target_link_libraries(test_procedural_walking PRIVATE boidsish GTest::GTest GTest::Main)
+set_target_properties(test_procedural_walking PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}" EXCLUDE_FROM_ALL TRUE)
+add_test(NAME test_procedural_walking COMMAND test_procedural_walking)
+
 add_executable(test_ik tests/test_ik.cpp)
 target_link_libraries(test_ik PRIVATE boidsish)
 set_target_properties(test_ik PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}" EXCLUDE_FROM_ALL TRUE)
@@ -346,6 +352,7 @@ add_dependencies(tests
     test_procedural_generator
     test_procedural_custom
     test_procedural_enhancements
+    test_procedural_walking
     test_ik
     test_camera_system
 )

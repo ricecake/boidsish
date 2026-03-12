@@ -66,18 +66,198 @@ namespace Boidsish {
 			}
 		}
 
-		void AssignBoneWeights(std::vector<Vertex>& vertices, const std::vector<BoneSegment>& bone_segments) {
+		void GenerateBox(
+			std::vector<Vertex>&       vertices,
+			std::vector<unsigned int>& indices,
+			glm::vec3                  center,
+			glm::quat                  orientation,
+			glm::vec3                  half_extents,
+			glm::vec3                  color
+		) {
+			glm::vec3 corners[8] =
+				{{-1, -1, -1}, {1, -1, -1}, {1, 1, -1}, {-1, 1, -1}, {-1, -1, 1}, {1, -1, 1}, {1, 1, 1}, {-1, 1, 1}};
+			for (int i = 0; i < 8; ++i)
+				corners[i] *= half_extents;
+
+			struct Face {
+				glm::vec3 normal;
+				int       v[4];
+				glm::vec2 uv[4];
+			};
+
+			Face faces[6] = {
+				{{0, 0, -1}, {0, 3, 2, 1}, {{0, 0}, {0, 1}, {1, 1}, {1, 0}}}, // Back
+				{{0, 0, 1}, {4, 5, 6, 7}, {{0, 0}, {1, 0}, {1, 1}, {0, 1}}},  // Front
+				{{-1, 0, 0}, {0, 4, 7, 3}, {{0, 0}, {1, 0}, {1, 1}, {0, 1}}}, // Left
+				{{1, 0, 0}, {1, 2, 6, 5}, {{0, 0}, {0, 1}, {1, 1}, {1, 0}}},  // Right
+				{{0, -1, 0}, {0, 1, 5, 4}, {{0, 0}, {1, 0}, {1, 1}, {0, 1}}}, // Bottom
+				{{0, 1, 0}, {3, 7, 6, 2}, {{0, 0}, {0, 1}, {1, 1}, {1, 0}}}   // Top
+			};
+
+			for (int i = 0; i < 6; ++i) {
+				unsigned int face_base = (unsigned int)vertices.size();
+				glm::vec3    normal = orientation * faces[i].normal;
+				for (int j = 0; j < 4; ++j) {
+					Vertex v;
+					v.Position = center + orientation * corners[faces[i].v[j]];
+					v.Normal = normal;
+					v.Color = color;
+					v.TexCoords = faces[i].uv[j];
+					vertices.push_back(v);
+				}
+				indices.push_back(face_base + 0);
+				indices.push_back(face_base + 1);
+				indices.push_back(face_base + 2);
+				indices.push_back(face_base + 0);
+				indices.push_back(face_base + 2);
+				indices.push_back(face_base + 3);
+			}
+		}
+
+		void GenerateWedge(
+			std::vector<Vertex>&       vertices,
+			std::vector<unsigned int>& indices,
+			glm::vec3                  center,
+			glm::quat                  orientation,
+			glm::vec3                  half_extents,
+			glm::vec3                  color
+		) {
+			glm::vec3 c[6] = {{-1, -1, -1}, {1, -1, -1}, {1, 1, -1}, {-1, 1, -1}, {-1, -1, 1}, {1, -1, 1}};
+			for (int i = 0; i < 6; ++i)
+				c[i] *= half_extents;
+
+			auto add_tri = [&](int i1, int i2, int i3, glm::vec3 n) {
+				unsigned int b = (unsigned int)vertices.size();
+				Vertex       v;
+				v.Normal = orientation * n;
+				v.Color = color;
+				v.Position = center + orientation * c[i1];
+				v.TexCoords = {0, 0};
+				vertices.push_back(v);
+				v.Position = center + orientation * c[i2];
+				v.TexCoords = {1, 0};
+				vertices.push_back(v);
+				v.Position = center + orientation * c[i3];
+				v.TexCoords = {0.5, 1};
+				vertices.push_back(v);
+				indices.push_back(b);
+				indices.push_back(b + 1);
+				indices.push_back(b + 2);
+			};
+			auto add_quad = [&](int i1, int i2, int i3, int i4, glm::vec3 n) {
+				unsigned int b = (unsigned int)vertices.size();
+				Vertex       v;
+				v.Normal = orientation * n;
+				v.Color = color;
+				v.Position = center + orientation * c[i1];
+				v.TexCoords = {0, 0};
+				vertices.push_back(v);
+				v.Position = center + orientation * c[i2];
+				v.TexCoords = {1, 0};
+				vertices.push_back(v);
+				v.Position = center + orientation * c[i3];
+				v.TexCoords = {1, 1};
+				vertices.push_back(v);
+				v.Position = center + orientation * c[i4];
+				v.TexCoords = {0, 1};
+				vertices.push_back(v);
+				indices.push_back(b);
+				indices.push_back(b + 1);
+				indices.push_back(b + 2);
+				indices.push_back(b);
+				indices.push_back(b + 2);
+				indices.push_back(b + 3);
+			};
+
+			add_quad(0, 3, 2, 1, {0, 0, -1});                                                   // Back
+			add_quad(0, 1, 5, 4, {0, -1, 0});                                                   // Bottom
+			add_quad(4, 5, 2, 3, glm::normalize(glm::vec3(0, half_extents.z, half_extents.y))); // Slope
+			add_tri(0, 4, 3, {-1, 0, 0});                                                       // Left
+			add_tri(1, 2, 5, {1, 0, 0});                                                        // Right
+		}
+
+		void GeneratePyramid(
+			std::vector<Vertex>&       vertices,
+			std::vector<unsigned int>& indices,
+			glm::vec3                  center,
+			glm::quat                  orientation,
+			glm::vec3                  half_extents,
+			glm::vec3                  color
+		) {
+			glm::vec3 c[5] = {{0, 1, 0}, {-1, -1, 1}, {1, -1, 1}, {1, -1, -1}, {-1, -1, -1}};
+			for (int i = 0; i < 5; ++i)
+				c[i] *= half_extents;
+
+			auto add_tri = [&](int i1, int i2, int i3) {
+				glm::vec3    n = glm::normalize(glm::cross(c[i2] - c[i1], c[i3] - c[i1]));
+				unsigned int b = (unsigned int)vertices.size();
+				Vertex       v;
+				v.Normal = orientation * n;
+				v.Color = color;
+				v.Position = center + orientation * c[i1];
+				v.TexCoords = {0.5, 1};
+				vertices.push_back(v);
+				v.Position = center + orientation * c[i2];
+				v.TexCoords = {0, 0};
+				vertices.push_back(v);
+				v.Position = center + orientation * c[i3];
+				v.TexCoords = {1, 0};
+				vertices.push_back(v);
+				indices.push_back(b);
+				indices.push_back(b + 1);
+				indices.push_back(b + 2);
+			};
+
+			add_tri(0, 1, 2); // Front
+			add_tri(0, 2, 3); // Right
+			add_tri(0, 3, 4); // Back
+			add_tri(0, 4, 1); // Left
+
+			unsigned int b = (unsigned int)vertices.size();
+			Vertex       v;
+			v.Normal = orientation * glm::vec3(0, -1, 0);
+			v.Color = color;
+			v.Position = center + orientation * c[1];
+			v.TexCoords = {0, 0};
+			vertices.push_back(v);
+			v.Position = center + orientation * c[4];
+			v.TexCoords = {0, 1};
+			vertices.push_back(v);
+			v.Position = center + orientation * c[3];
+			v.TexCoords = {1, 1};
+			vertices.push_back(v);
+			v.Position = center + orientation * c[2];
+			v.TexCoords = {1, 0};
+			vertices.push_back(v);
+			indices.push_back(b);
+			indices.push_back(b + 1);
+			indices.push_back(b + 2);
+			indices.push_back(b);
+			indices.push_back(b + 2);
+			indices.push_back(b + 3);
+		}
+
+		void AssignBoneWeights(
+			std::vector<Vertex>&            vertices,
+			const std::vector<BoneSegment>& bone_segments,
+			int                             start_idx = 0,
+			int                             end_idx = -1
+		) {
 			if (bone_segments.empty())
 				return;
+			if (end_idx == -1)
+				end_idx = (int)vertices.size();
 
-			for (auto& v : vertices) {
+			for (int i = start_idx; i < end_idx; ++i) {
+				auto& v = vertices[i];
 				float best_dist = 1e10f;
 				int   best_bone = -1;
 				for (int b = 0; b < (int)bone_segments.size(); ++b) {
 					const auto& bs = bone_segments[b];
 					glm::vec3   ab = bs.end - bs.start;
 					glm::vec3   ap = v.Position - bs.start;
-					float       t = glm::clamp(glm::dot(ap, ab) / glm::dot(ab, ab), 0.0f, 1.0f);
+					float       denom = glm::dot(ab, ab);
+					float       t = (denom > 1e-6f) ? glm::clamp(glm::dot(ap, ab) / denom, 0.0f, 1.0f) : 0.0f;
 					float       d = glm::distance(v.Position, bs.start + t * ab);
 					if (d < best_dist) {
 						best_dist = d;
@@ -91,136 +271,242 @@ namespace Boidsish {
 			}
 		}
 
+		void AssignRigidWeights(std::vector<Vertex>& vertices, int start_idx, int end_idx, int bone_id) {
+			if (bone_id == -1)
+				return;
+			for (int i = start_idx; i < end_idx; ++i) {
+				vertices[i].m_BoneIDs[0] = bone_id;
+				vertices[i].m_Weights[0] = 1.0f;
+			}
+		}
+
 	} // namespace
 
 	std::shared_ptr<Model> ProceduralMesher::GenerateModel(const ProceduralIR& ir) {
 		if (ir.elements.empty())
 			return nullptr;
 
-		// 1. Pre-calculate bones if it's a critter
+		// 1. Bone calculation
 		std::vector<BoneSegment> bone_segments;
 		std::vector<int>         element_to_bone(ir.elements.size(), -1);
 		auto                     data = std::make_shared<ModelData>();
 		data->model_path = "procedural_direct_" + std::to_string(reinterpret_cast<uintptr_t>(data.get()));
 
-		if (ir.name == "critter") {
-			for (int i = 0; i < (int)ir.elements.size(); ++i) {
-				const auto& e = ir.elements[i];
-				if (e.type == ProceduralElementType::Tube && e.length > 0.1f) {
-					BoneSegment bs;
+		for (int i = 0; i < (int)ir.elements.size(); ++i) {
+			const auto& e = ir.elements[i];
+			bool        should_be_bone = e.is_bone ||
+				(ir.name == "critter" && e.type == ProceduralElementType::Tube && e.length > 0.1f);
+
+			if (should_be_bone) {
+				BoneSegment bs;
+				if (e.type == ProceduralElementType::Tube) {
 					bs.start = e.position;
 					bs.end = e.end_position;
-					bs.parent_bone = (e.parent != -1) ? element_to_bone[e.parent] : -1;
+				} else {
+					bs.start = e.position;
+					bs.end = e.position + e.orientation * glm::vec3(0, 0.1f, 0);
+				}
+				bs.parent_bone = (e.parent != -1) ? element_to_bone[e.parent] : -1;
 
-					glm::vec3 dir = glm::normalize(bs.end - bs.start);
-					glm::vec3 up = (std::abs(dir.y) < 0.9f) ? glm::vec3(0, 1, 0) : glm::vec3(1, 0, 0);
-					glm::vec3 right = glm::normalize(glm::cross(up, dir));
-					up = glm::normalize(glm::cross(dir, right));
+				glm::vec3 dir = bs.end - bs.start;
+				float     len = glm::length(dir);
+				if (len < 0.001f)
+					dir = e.orientation * glm::vec3(0, 1, 0);
+				else
+					dir = glm::normalize(dir);
 
-					glm::mat4 bone_to_model(1.0f);
-					bone_to_model[0] = glm::vec4(right, 0);
-					bone_to_model[1] = glm::vec4(dir, 0);
-					bone_to_model[2] = glm::vec4(up, 0);
-					bone_to_model[3] = glm::vec4(bs.start, 1);
+				glm::vec3 up_hint = (std::abs(dir.y) < 0.9f) ? glm::vec3(0, 1, 0) : glm::vec3(1, 0, 0);
+				glm::vec3 right = glm::normalize(glm::cross(dir, up_hint));
+				glm::vec3 up = glm::normalize(glm::cross(right, dir));
 
-					bs.offset = glm::inverse(bone_to_model);
+				glm::mat4 bone_to_model(1.0f);
+				bone_to_model[0] = glm::vec4(right, 0);
+				bone_to_model[1] = glm::vec4(dir, 0);
+				bone_to_model[2] = glm::vec4(up, 0);
+				bone_to_model[3] = glm::vec4(bs.start, 1);
 
-					int bone_id = (int)bone_segments.size();
-					bone_segments.push_back(bs);
-					element_to_bone[i] = bone_id;
+				bs.offset = glm::inverse(bone_to_model);
 
-					BoneInfo info;
-					info.id = bone_id;
-					info.offset = bs.offset;
-					data->bone_info_map["bone_" + std::to_string(bone_id)] = info;
-					data->bone_count++;
-				} else if (e.parent != -1) {
-					element_to_bone[i] = element_to_bone[e.parent];
+				int bone_id = (int)bone_segments.size();
+				bone_segments.push_back(bs);
+				element_to_bone[i] = bone_id;
+
+				std::string bname = e.name.empty() ? ("bone_" + std::to_string(bone_id)) : e.name;
+				std::string pname = "";
+				if (e.parent != -1) {
+					int p_elem = e.parent;
+					while (p_elem != -1) {
+						if (ir.elements[p_elem].is_bone ||
+						    (ir.name == "critter" && ir.elements[p_elem].type == ProceduralElementType::Tube &&
+						     ir.elements[p_elem].length > 0.1f)) {
+							pname = ir.elements[p_elem].name.empty()
+								? ("bone_" + std::to_string(element_to_bone[p_elem]))
+								: ir.elements[p_elem].name;
+							break;
+						}
+						p_elem = ir.elements[p_elem].parent;
+					}
+				}
+
+				glm::mat4 local = bs.offset; // This is actually inv(global) right now
+				if (!pname.empty()) {
+					// We need the parent's global bind transform.
+					// Find the parent bone info in the map.
+					auto it = data->bone_info_map.find(pname);
+					if (it != data->bone_info_map.end()) {
+						glm::mat4 parentGlobal = glm::inverse(it->second.offset);
+						local = glm::inverse(parentGlobal) * glm::inverse(bs.offset);
+					} else {
+						local = glm::inverse(bs.offset);
+					}
+				} else {
+					local = glm::inverse(bs.offset);
+				}
+
+				data->AddBone(bname, pname, local);
+				element_to_bone[i] = bone_id;
+			} else if (e.parent != -1) {
+				element_to_bone[i] = element_to_bone[e.parent];
+			}
+		}
+
+		// Reassign non-bone joint elements (e.g. hips) to their bone child
+		// rather than their bone ancestor. A hub sitting at a joint should
+		// move with the outgoing limb, not the parent body.
+		for (int i = 0; i < (int)ir.elements.size(); ++i) {
+			const auto& e = ir.elements[i];
+			if (e.is_bone)
+				continue;
+			for (int child : e.children) {
+				if (element_to_bone[child] != -1 && ir.elements[child].is_bone) {
+					element_to_bone[i] = element_to_bone[child];
+					break;
 				}
 			}
 		}
 
-		// 2. Generate Primary Mesh (Tubes, Hubs, Puffballs)
+		// 2. Generate Primary Mesh
 		std::vector<Vertex>       main_vertices;
 		std::vector<unsigned int> main_indices;
 
-		// Generate tubes
-		std::vector<int> branch_starts;
+		struct SkinJob {
+			int              start_v;
+			int              end_v;
+			int              element_idx;
+			int              mode;          // Bits 0-7: SkinningMode, Bit 31: IsLeaf
+			std::vector<int> segment_bones; // Per-spline-segment bone ID (tube chains only)
+		};
+
+		std::vector<SkinJob> skin_jobs;
+
+		// Tubes handled via spline if multiple connected
+		std::vector<bool> handled(ir.elements.size(), false);
 		for (int i = 0; i < (int)ir.elements.size(); ++i) {
 			const auto& e = ir.elements[i];
-			if (e.type != ProceduralElementType::Tube)
+			if (e.type != ProceduralElementType::Tube || handled[i])
 				continue;
-			if (e.parent == -1 || ir.elements[e.parent].type == ProceduralElementType::Hub) {
-				branch_starts.push_back(i);
-			}
-		}
 
-		for (int start_idx : branch_starts) {
-			std::vector<Vector3>   points;
-			std::vector<Vector3>   ups;
-			std::vector<float>     sizes;
-			std::vector<glm::vec3> colors;
-			int                    current_idx = start_idx;
-			bool                   first = true;
-			while (current_idx != -1) {
-				const auto& e = ir.elements[current_idx];
-				if (e.type != ProceduralElementType::Tube)
-					break;
-				if (first) {
-					points.push_back(Vector3(e.position));
-					ups.push_back(Vector3(0, 1, 0));
-					sizes.push_back(e.radius / SPLINE_RADIUS_SCALE);
-					colors.push_back(e.color);
-					first = false;
-				}
-				int cp_child_idx = -1;
-				int next_tube_idx = -1;
-				if (e.children.size() == 1) {
-					int child_idx = e.children[0];
-					if (ir.elements[child_idx].type == ProceduralElementType::ControlPoint) {
-						cp_child_idx = child_idx;
-						if (ir.elements[child_idx].children.size() == 1 &&
-						    ir.elements[ir.elements[child_idx].children[0]].type == ProceduralElementType::Tube) {
-							next_tube_idx = ir.elements[child_idx].children[0];
-						}
-					} else if (ir.elements[child_idx].type == ProceduralElementType::Tube) {
-						next_tube_idx = child_idx;
+			// Spline tube branch detection
+			if (e.parent == -1 || ir.elements[e.parent].type != ProceduralElementType::Tube) {
+				std::vector<Vector3>   points;
+				std::vector<Vector3>   ups;
+				std::vector<float>     sizes;
+				std::vector<glm::vec3> colors;
+
+				int              curr = i;
+				bool             first = true;
+				std::vector<int> segment_bones; // bone_id per spline segment
+				SkinningMode     chain_mode = SkinningMode::Smooth;
+				while (curr != -1) {
+					const auto& te = ir.elements[curr];
+					if (te.type != ProceduralElementType::Tube || handled[curr])
+						break;
+					handled[curr] = true;
+
+					int curr_bone = element_to_bone[curr];
+					// If any tube in the chain requests Rigid, use it for the chain
+					if (te.skinning_mode == SkinningMode::Rigid)
+						chain_mode = SkinningMode::Rigid;
+
+					if (first) {
+						points.push_back(Vector3(te.position));
+						ups.push_back(Vector3(0, 1, 0));
+						sizes.push_back(te.radius / SPLINE_RADIUS_SCALE);
+						colors.push_back(te.color);
+						first = false;
 					}
-				}
-				if (cp_child_idx != -1) {
-					const auto& cp = ir.elements[cp_child_idx];
-					points.push_back(Vector3(cp.position));
+					// Find next tube or control point
+					int next = -1;
+					for (int child : te.children) {
+						if (ir.elements[child].type == ProceduralElementType::Tube) {
+							next = child;
+							break;
+						}
+						if (ir.elements[child].type == ProceduralElementType::ControlPoint) {
+							const auto& cp = ir.elements[child];
+							points.push_back(Vector3(cp.position));
+							ups.push_back(Vector3(0, 1, 0));
+							sizes.push_back(cp.radius / SPLINE_RADIUS_SCALE);
+							colors.push_back(cp.color);
+							segment_bones.push_back(curr_bone); // CP segment belongs to this tube's bone
+							for (int cp_child : cp.children) {
+								if (ir.elements[cp_child].type == ProceduralElementType::Tube) {
+									next = cp_child;
+									break;
+								}
+							}
+							break;
+						}
+					}
+					points.push_back(Vector3(te.end_position));
 					ups.push_back(Vector3(0, 1, 0));
-					sizes.push_back(cp.radius / SPLINE_RADIUS_SCALE);
-					colors.push_back(cp.color);
+					sizes.push_back(te.end_radius / SPLINE_RADIUS_SCALE);
+					colors.push_back(te.color);
+					segment_bones.push_back(curr_bone); // End segment belongs to this tube's bone
+					curr = next;
 				}
-				points.push_back(Vector3(e.end_position));
-				ups.push_back(Vector3(0, 1, 0));
-				sizes.push_back(e.end_radius / SPLINE_RADIUS_SCALE);
-				colors.push_back(e.color);
-				current_idx = next_tube_idx;
-			}
-			if (points.size() >= 2) {
-				auto         tube_data = Spline::GenerateTube(points, ups, sizes, colors, false, 10, 8);
-				unsigned int base = (unsigned int)main_vertices.size();
-				for (const auto& vd : tube_data) {
-					Vertex v;
-					v.Position = vd.pos;
-					v.Normal = vd.normal;
-					v.Color = vd.color;
-					v.TexCoords = glm::vec2(0.5f);
-					main_vertices.push_back(v);
+
+				if (points.size() >= 2) {
+					int          v_start = (int)main_vertices.size();
+					auto         tube_data = Spline::GenerateTube(points, ups, sizes, colors, false, 10, 8);
+					unsigned int base = (unsigned int)main_vertices.size();
+					for (const auto& vd : tube_data) {
+						Vertex v;
+						v.Position = vd.pos;
+						v.Normal = vd.normal;
+						v.Color = vd.color;
+						v.TexCoords = glm::vec2(0.5f);
+						main_vertices.push_back(v);
+					}
+					for (unsigned int k = 0; k < (unsigned int)tube_data.size(); ++k)
+						main_indices.push_back(base + k);
+
+					SkinJob job;
+					job.start_v = v_start;
+					job.end_v = (int)main_vertices.size();
+					job.element_idx = i;
+					job.mode = (int)chain_mode;
+					job.segment_bones = std::move(segment_bones);
+					skin_jobs.push_back(std::move(job));
 				}
-				for (unsigned int i = 0; i < (unsigned int)tube_data.size(); ++i)
-					main_indices.push_back(base + i);
 			}
 		}
 
-		// Generate Hubs and Puffballs
+		// Hubs, Boxes, Wedges, Pyramids, Puffballs
 		for (int i = 0; i < (int)ir.elements.size(); ++i) {
 			const auto& e = ir.elements[i];
+			if (handled[i])
+				continue;
+			int v_start = (int)main_vertices.size();
+
 			if (e.type == ProceduralElementType::Hub) {
 				GenerateUVSphere(main_vertices, main_indices, e.position, e.radius, e.color, 6, 6);
+			} else if (e.type == ProceduralElementType::Box) {
+				GenerateBox(main_vertices, main_indices, e.position, e.orientation, e.dimensions, e.color);
+			} else if (e.type == ProceduralElementType::Wedge) {
+				GenerateWedge(main_vertices, main_indices, e.position, e.orientation, e.dimensions, e.color);
+			} else if (e.type == ProceduralElementType::Pyramid) {
+				GeneratePyramid(main_vertices, main_indices, e.position, e.orientation, e.dimensions, e.color);
 			} else if (e.type == ProceduralElementType::Puffball) {
 				if (e.variant == 1)
 					GenerateUVSphere(
@@ -235,7 +521,18 @@ namespace Boidsish {
 					);
 				else
 					GenerateUVSphere(main_vertices, main_indices, e.position, e.radius, e.color, 4, 4);
+			} else {
+				continue;
 			}
+
+			SkinningMode sm = e.skinning_mode;
+			if (sm == SkinningMode::Auto) {
+				if (e.type == ProceduralElementType::Hub || e.type == ProceduralElementType::Puffball)
+					sm = SkinningMode::Smooth;
+				else
+					sm = SkinningMode::Rigid;
+			}
+			skin_jobs.push_back({v_start, (int)main_vertices.size(), i, (int)sm});
 		}
 
 		// 3. Generate Leaves
@@ -281,15 +578,60 @@ namespace Boidsish {
 			}
 		};
 
-		for (const auto& e : ir.elements) {
-			if (e.type == ProceduralElementType::Leaf)
+		for (int i = 0; i < (int)ir.elements.size(); ++i) {
+			const auto& e = ir.elements[i];
+			if (e.type == ProceduralElementType::Leaf) {
+				int v_start = (int)leaf_vertices.size();
 				AddLeafGeom(e.position, e.orientation, e.radius, e.color, e.variant);
+
+				SkinningMode sm = e.skinning_mode;
+				if (sm == SkinningMode::Auto)
+					sm = SkinningMode::Rigid;
+				skin_jobs.push_back({v_start, (int)leaf_vertices.size(), i, (int)sm | (int)0x80000000}); // Mark as leaf
+			}
 		}
 
 		// 4. Weighting, Repositioning, and AABB
-		if (ir.name == "critter") {
-			AssignBoneWeights(main_vertices, bone_segments);
-			AssignBoneWeights(leaf_vertices, bone_segments);
+		for (auto& job : skin_jobs) {
+			bool                 is_leaf = (job.mode & 0x80000000) != 0;
+			SkinningMode         mode = (SkinningMode)(job.mode & 0x7FFFFFFF);
+			std::vector<Vertex>& verts = is_leaf ? leaf_vertices : main_vertices;
+
+			if (!job.segment_bones.empty()) {
+				// Tube chain: assign bones by spline segment index.
+				// The spline generates vertices segment-by-segment in order, with each
+				// segment producing the same number of vertices. This avoids the geometric
+				// ambiguity of distance-based assignment when bone segments have different
+				// orientations (e.g. diagonal upper leg vs vertical lower leg).
+				int num_segments = (int)job.segment_bones.size();
+				int total_verts = job.end_v - job.start_v;
+				int verts_per_segment = (num_segments > 0) ? (total_verts / num_segments) : total_verts;
+				for (int vi = job.start_v; vi < job.end_v; ++vi) {
+					int seg_idx = (verts_per_segment > 0) ? ((vi - job.start_v) / verts_per_segment) : 0;
+					seg_idx = std::min(seg_idx, num_segments - 1);
+					int bone_id = job.segment_bones[seg_idx];
+					if (bone_id != -1) {
+						verts[vi].m_BoneIDs[0] = bone_id;
+						verts[vi].m_Weights[0] = 1.0f;
+					}
+				}
+			} else if (mode == SkinningMode::Rigid) {
+				int bone_id = element_to_bone[job.element_idx];
+				// If this specific element isn't a bone, find its nearest bone ancestor
+				if (bone_id == -1) {
+					int curr = job.element_idx;
+					while (curr != -1) {
+						if (element_to_bone[curr] != -1) {
+							bone_id = element_to_bone[curr];
+							break;
+						}
+						curr = ir.elements[curr].parent;
+					}
+				}
+				AssignRigidWeights(verts, job.start_v, job.end_v, bone_id);
+			} else if (mode == SkinningMode::Smooth) {
+				AssignBoneWeights(verts, bone_segments, job.start_v, job.end_v);
+			}
 		}
 
 		// Calculate AABB and reposition
@@ -314,9 +656,26 @@ namespace Boidsish {
 					v.Position.y += y_offset;
 				max.y += y_offset;
 				min.y = 0;
-				for (auto& pair : data->bone_info_map)
-					pair.second.offset = pair.second.offset *
-						glm::translate(glm::mat4(1.0f), glm::vec3(0, -y_offset, 0));
+
+				// Shift the entire skeleton root to match the mesh shift
+				// We update the root-level bone transformations to include this translation
+				for (auto& node : data->root_node.children) {
+					node.transformation = glm::translate(glm::mat4(1.0f), glm::vec3(0, y_offset, 0)) *
+						node.transformation;
+				}
+
+				// Re-calculate all offset matrices because the global bind pose has shifted
+				std::function<void(NodeData&, glm::mat4)> updateOffsets = [&](NodeData& n, glm::mat4 p) {
+					glm::mat4 g = p * n.transformation;
+					auto      it = data->bone_info_map.find(n.name);
+					if (it != data->bone_info_map.end()) {
+						it->second.offset = glm::inverse(g);
+					}
+					for (auto& child : n.children) {
+						updateOffsets(child, g);
+					}
+				};
+				updateOffsets(data->root_node, glm::mat4(1.0f));
 			}
 			data->aabb = AABB(min, max);
 		}
