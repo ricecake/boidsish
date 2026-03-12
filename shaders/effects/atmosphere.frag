@@ -19,6 +19,7 @@ uniform float cloudThickness;
 uniform vec3  cloudColorUniform;
 
 uniform sampler2D u_transmittanceLUT;
+uniform sampler2D u_skyViewLUT;
 uniform sampler3D u_aerialPerspectiveLUT;
 
 #include "../atmosphere/common.glsl"
@@ -51,6 +52,18 @@ float sampleAerialPerspectiveTransmittance(vec3 rd, float distKM) {
 	return texture(u_aerialPerspectiveLUT, vec3(u, v, w)).a;
 }
 
+vec3 sampleSkyView(vec3 rd) {
+	float azimuth = atan(rd.x, -rd.z);
+	if (azimuth < 0.0)
+		azimuth += 2.0 * PI;
+	float elevation = asin(clamp(rd.y, -1.0, 1.0));
+
+	float u = azimuth / (2.0 * PI);
+	float adjV = sqrt(abs(elevation) / (PI * 0.5));
+	float v = (elevation < 0.0) ? (1.0 - adjV) * 0.5 : (adjV + 1.0) * 0.5;
+
+	return texture(u_skyViewLUT, vec2(u, v)).rgb;
+}
 
 float remap(float value, float low1, float high1, float low2, float high2) {
 	return low2 + (value - low1) * (high2 - low2) / max(0.0001, (high1 - low1));
@@ -71,7 +84,7 @@ float cloudPhase(float cosTheta) {
 float beerPowder(float d, float local_d) {
 	// Approximation of multiple scattering (Beer-Powder law)
 	// Ensuring sunny side isn't black when d is small
-	return max(exp(-d), exp(-d * 0.5) * 0.7 * (1.0 - exp(-local_d * 2.0)));
+	return max(exp(-d), exp(-d * 0.15) * 0.7 * (1.0 - exp(-local_d * 2.0)));
 }
 
 float getCloudDensity(vec3 p, float altitude, float thickness, bool simplified) {
@@ -146,6 +159,8 @@ void main() {
 		float stepSize = (t_end - t_start) / float(samples);
 		float jitter = fastBlueNoise2d(TexCoords * 10.0 + vec2(sin(time * 0.07), cos(time * -0.05)));
 
+		vec3 zenithRadiance = sampleSkyView(vec3(0, 1, 0)) * 4.0;
+
 		for (int i = 0; i < samples; i++) {
 			float t = mix(t_start, t_end, (float(i) + jitter) / float(samples));
 			vec3  p = cameraPos + rayDir * t;
@@ -177,15 +192,14 @@ void main() {
 						// More aggressive multiple scattering approximation
 						float beer = beerPowder(opticalDepthToLight, d);
 						float multScat = exp(-opticalDepthToLight * 0.1) * 0.5;
-						shadowTerm = mix(beer, multScat, 0.4);
+						shadowTerm = mix(beer, multScat, 0.7);
 					}
 
 					stepScattering += lights[j].color * lights[j].intensity * shadowTerm * phase;
 				}
 
-				// Enhanced ambient - mix in sky color based on height in the cloud layer
-				vec3 cloudSkyColor = mix(hazeColor, vec3(0.7, 0.8, 1.0) * ambient_light, h);
-				vec3 ambient = mix(ambient_light, cloudSkyColor, 0.5) * 0.5;
+				// Enhanced ambient - use zenith radiance from sky-view LUT
+				vec3 ambient = mix(ambient_light, zenithRadiance, 0.5) * 0.5;
 
 				vec3 S = stepScattering + ambient;
 				lightEnergy += cloudTransmittance * S * stepDensity;
