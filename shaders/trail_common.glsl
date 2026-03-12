@@ -22,3 +22,10 @@ struct TrailVertex {
 	vec4 normal; // xyz: normal, w: ?
 	vec4 color;  // rgb: color, w: ?
 };
+
+struct TrailSpinePoint {
+	vec4 pos;     // xyz: position
+	vec4 color;   // rgb: color
+	vec4 tangent; // xyz: tangent
+	vec4 normal;  // xyz: normal
+};

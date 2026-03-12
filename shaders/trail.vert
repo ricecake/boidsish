@@ -33,7 +33,7 @@ void main() {
 	bool use_ssbo = uUseMDI && vUniformIndex >= 0;
 
 	mat4  current_model = use_ssbo ? uniforms_data[vUniformIndex].model : model;
-	float base_thickness = use_ssbo ? 1.0 : 1.0; // Handled by compute now
+	float base_thickness = use_ssbo ? uniforms_data[vUniformIndex].ao : 0.06;
 	int   flags = use_ssbo ? uniforms_data[vUniformIndex].is_line : 0;
 	bool  useRocketTrail = (flags & 2) != 0;
 
@@ -48,12 +48,10 @@ void main() {
 			vec2(mix(2 / (Progress + 0.01), 2 * Progress, Progress) * noise_freq, mix(time / 3.5, time / 2, Progress))
 		);
 
-		// Use a conservative thickness for billowing if not available in uniforms
-		float billow_thickness = 0.06;
-		offset += aNormal.xyz * noise * noise_strength * billow_thickness;
+		offset += aNormal.xyz * noise * noise_strength * base_thickness;
 
 		// Make the trail expand as it gets older (lower progress)
-		offset += aNormal.xyz * billow_thickness * mix(5, 0, Progress) * mix(4 * (noise * 0.5 + 0.5), 4, Progress);
+		offset += aNormal.xyz * base_thickness * mix(5, 0, Progress) * mix(4 * (noise * 0.5 + 0.5), 4, Progress);
 	}
 
 	vec3 final_pos = aPos.xyz + offset;

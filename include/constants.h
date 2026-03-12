@@ -70,6 +70,10 @@ namespace Boidsish {
 			constexpr int TrailInstances() {
 				return 19;
 			}
+
+			constexpr int TrailSpineData() {
+				return 20;
+			}
 		} // namespace SsboBinding
 
 		namespace General {

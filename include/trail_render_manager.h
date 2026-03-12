@@ -159,6 +159,7 @@ namespace Boidsish {
 		GLuint tess_ebo_ = 0;
 		GLuint points_ssbo_ = 0;
 		GLuint instances_ssbo_ = 0;
+		GLuint spine_ssbo_ = 0;
 
 		// Buffer capacity
 		size_t points_capacity_ = 0;

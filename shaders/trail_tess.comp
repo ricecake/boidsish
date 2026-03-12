@@ -12,6 +12,10 @@ layout(std430, binding = 19) readonly buffer TrailInstancesSSBO {
 	TrailInstance instances[];
 };
 
+layout(std430, binding = 20) buffer TrailSpineSSBO {
+	TrailSpinePoint spine[];
+};
+
 layout(std430, binding = 0) writeonly buffer GeneratedVBO {
 	TrailVertex out_vertices[];
 };
@@ -21,11 +25,6 @@ uniform int u_num_instances;
 const int TRAIL_SEGMENTS = 8;
 const int CURVE_SEGMENTS = 4;
 const int MAX_RINGS_PER_TRAIL = 1024;
-
-shared vec3 shared_positions[MAX_RINGS_PER_TRAIL];
-shared vec3 shared_colors[MAX_RINGS_PER_TRAIL];
-shared vec3 shared_tangents[MAX_RINGS_PER_TRAIL];
-shared vec3 shared_normals[MAX_RINGS_PER_TRAIL];
 
 vec3 CatmullRom(float t, vec3 p0, vec3 p1, vec3 p2, vec3 p3) {
 	return 0.5 * ((2.0 * p1) + (-p0 + p2) * t + (2.0 * p0 - 5.0 * p1 + 4.0 * p2 - p3) * (t * t) +
@@ -41,7 +40,6 @@ vec3 TransportFrame(vec3 prev_normal, vec3 prev_tangent, vec3 curr_tangent) {
 	float dot_val = clamp(dot(prev_tangent, curr_tangent), -1.0, 1.0);
 	float angle = acos(dot_val);
 
-	// Rodrigues' rotation formula
 	return prev_normal * cos(angle) + cross(axis, prev_normal) * sin(angle) + axis * dot(axis, prev_normal) * (1.0 - cos(angle));
 }
 
@@ -55,11 +53,13 @@ void main() {
 	uint num_points = inst.is_full != 0 ? inst.max_points : inst.tail;
 	if (num_points < 2) return;
 
-	// 1. Interpolate Spine
 	uint num_segments = num_points - 1;
 	uint total_rings = num_segments * CURVE_SEGMENTS + 1;
 	if (total_rings > MAX_RINGS_PER_TRAIL) total_rings = MAX_RINGS_PER_TRAIL;
 
+	uint spine_base = trail_idx * MAX_RINGS_PER_TRAIL;
+
+	// 1. Interpolate Spine
 	for (uint i = gl_LocalInvocationID.x; i < total_rings; i += gl_WorkGroupSize.x) {
 		uint seg_idx = i / CURVE_SEGMENTS;
 		if (seg_idx >= num_segments) seg_idx = num_segments - 1;
@@ -87,15 +87,14 @@ void main() {
 			p3 = points[inst.points_offset + p3_idx].pos.xyz;
 		}
 
-		shared_positions[i] = CatmullRom(t, p0, p1, p2, p3);
+		spine[spine_base + i].pos = vec4(CatmullRom(t, p0, p1, p2, p3), 1.0);
 
 		vec3 c1 = points[inst.points_offset + p1_idx].color.rgb;
 		vec3 c2 = points[inst.points_offset + p2_idx].color.rgb;
-
 		vec3 c0 = (seg_idx == 0) ? c1 : points[inst.points_offset + ((inst.head + seg_idx - 1) % inst.max_points)].color.rgb;
 		vec3 c3 = (seg_idx + 1 >= num_segments) ? c2 : points[inst.points_offset + ((inst.head + seg_idx + 2) % inst.max_points)].color.rgb;
 
-		shared_colors[i] = CatmullRom(t, c0, c1, c2, c3);
+		spine[spine_base + i].color = vec4(CatmullRom(t, c0, c1, c2, c3), 1.0);
 	}
 
 	barrier();
@@ -105,19 +104,21 @@ void main() {
 		for (uint i = 0; i < total_rings; i++) {
 			vec3 tangent;
 			if (i < total_rings - 1) {
-				tangent = normalize(shared_positions[i + 1] - shared_positions[i]);
+				tangent = normalize(spine[spine_base + i + 1].pos.xyz - spine[spine_base + i].pos.xyz);
 			} else {
-				tangent = shared_tangents[i - 1];
+				tangent = spine[spine_base + i - 1].tangent.xyz;
 			}
-			shared_tangents[i] = tangent;
+			spine[spine_base + i].tangent = vec4(tangent, 0.0);
 
 			if (i == 0) {
+				vec3 normal;
 				if (abs(tangent.y) < 0.999)
-					shared_normals[i] = normalize(cross(tangent, vec3(0, 1, 0)));
+					normal = normalize(cross(tangent, vec3(0, 1, 0)));
 				else
-					shared_normals[i] = normalize(cross(tangent, vec3(1, 0, 0)));
+					normal = normalize(cross(tangent, vec3(1, 0, 0)));
+				spine[spine_base + i].normal = vec4(normal, 0.0);
 			} else {
-				shared_normals[i] = normalize(TransportFrame(shared_normals[i - 1], shared_tangents[i - 1], tangent));
+				spine[spine_base + i].normal = vec4(normalize(TransportFrame(spine[spine_base + i - 1].normal.xyz, spine[spine_base + i - 1].tangent.xyz, tangent)), 0.0);
 			}
 		}
 	}
@@ -130,10 +131,10 @@ void main() {
 		uint ring_idx = i / verts_per_ring;
 		uint vertex_in_ring = i % verts_per_ring;
 
-		vec3 pos = shared_positions[ring_idx];
-		vec3 col = shared_colors[ring_idx];
-		vec3 tangent = shared_tangents[ring_idx];
-		vec3 normal = shared_normals[ring_idx];
+		vec3 pos = spine[spine_base + ring_idx].pos.xyz;
+		vec3 col = spine[spine_base + ring_idx].color.rgb;
+		vec3 tangent = spine[spine_base + ring_idx].tangent.xyz;
+		vec3 normal = spine[spine_base + ring_idx].normal.xyz;
 		vec3 binormal = normalize(cross(tangent, normal));
 
 		float progress = float(ring_idx) / float(total_rings - 1);
