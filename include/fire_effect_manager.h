@@ -35,7 +35,8 @@ namespace Boidsish {
 		int       slice_data_count;
 		float     slice_area;
 		int       request_clear;
-		int       _padding_emitter[2];
+		float     emission_rate;
+		int       assigned_count;
 	};
 
 	class FireEffectManager {
@@ -75,7 +76,8 @@ namespace Boidsish {
 			float            lifetime = -1.0f,
 			EmitterType      type = EmitterType::Point,
 			const glm::vec3& dimensions = glm::vec3(0.0f),
-			float            sweep = 1.0f
+			float            sweep = 1.0f,
+			float            emission_rate = -1.0f
 		);
 		void RemoveEffect(const std::shared_ptr<FireEffect>& effect);
 
@@ -84,6 +86,7 @@ namespace Boidsish {
 		void _UpdateParticleAllocation();
 
 		std::vector<std::shared_ptr<FireEffect>> effects_;
+		std::vector<int>                         assigned_counts_;
 		std::vector<int>                         particle_to_emitter_map_;
 		mutable std::mutex                       mutex_;
 

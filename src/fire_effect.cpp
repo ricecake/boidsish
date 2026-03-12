@@ -11,7 +11,8 @@ namespace Boidsish {
 		float            lifetime,
 		EmitterType      type,
 		const glm::vec3& dimensions,
-		float            sweep
+		float            sweep,
+		float            emission_rate
 	):
 		position_(position),
 		style_(style),
@@ -22,6 +23,7 @@ namespace Boidsish {
 		lifetime_(lifetime),
 		dimensions_(dimensions),
 		type_(type),
-		sweep_(sweep) {}
+		sweep_(sweep),
+		emission_rate_(emission_rate) {}
 
 } // namespace Boidsish
