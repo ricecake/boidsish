@@ -65,10 +65,22 @@ namespace Boidsish {
 			shader_->setInt("u_skyViewLUT", 12);
 			shader_->setInt("u_aerialPerspectiveLUT", 13);
 
+			shader_->trySetInt("u_noiseTexture", 5);
+			shader_->trySetInt("u_curlTexture", 6);
+			shader_->trySetInt("u_blueNoiseTexture", 7);
+
 			glActiveTexture(GL_TEXTURE0);
 			glBindTexture(GL_TEXTURE_2D, sourceTexture);
 			glActiveTexture(GL_TEXTURE1);
 			glBindTexture(GL_TEXTURE_2D, depthTexture);
+
+			// Bind Noise Textures
+			glActiveTexture(GL_TEXTURE5);
+			glBindTexture(GL_TEXTURE_3D, noise_textures_.noise);
+			glActiveTexture(GL_TEXTURE6);
+			glBindTexture(GL_TEXTURE_3D, noise_textures_.curl);
+			glActiveTexture(GL_TEXTURE7);
+			glBindTexture(GL_TEXTURE_2D, noise_textures_.blue_noise);
 
 			// Bind Atmosphere LUTs
 			glActiveTexture(GL_TEXTURE10);

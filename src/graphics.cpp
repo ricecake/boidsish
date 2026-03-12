@@ -2763,6 +2763,9 @@ namespace Boidsish {
 					impl->atmosphere_manager->GetSkyViewLUT(),
 					impl->atmosphere_manager->GetAerialPerspectiveLUT()
 				);
+				if (impl->noise_manager) {
+					impl->atmosphere_effect->SetNoiseTextures(impl->noise_manager->GetTextures());
+				}
 			}
 		}
 
