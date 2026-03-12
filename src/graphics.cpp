@@ -431,6 +431,7 @@ namespace Boidsish {
 		std::shared_ptr<Shader> plane_shader;
 		std::shared_ptr<Shader> sky_shader;
 		std::shared_ptr<Shader> trail_shader;
+		ShaderHandle            trail_shader_handle;
 		std::shared_ptr<Shader> postprocess_shader_;
 		ShaderHandle            shadow_shader_handle{0};
 		GLuint                  plane_vao{0}, plane_vbo{0}, sky_vao{0}, blur_quad_vao{0}, blur_quad_vbo{0};
@@ -672,7 +673,7 @@ namespace Boidsish {
 			Shape::shader_handle = shader_table.Register(std::make_unique<RenderShader>(shader));
 
 			trail_shader = std::make_shared<Shader>("shaders/trail.vert", "shaders/trail.frag");
-			shader_table.Register(std::make_unique<RenderShader>(trail_shader));
+			trail_shader_handle = shader_table.Register(std::make_unique<RenderShader>(trail_shader));
 
 			if (ConfigManager::GetInstance().GetAppSettingBool("enable_floor", true)) {
 				plane_shader = std::make_shared<Shader>("shaders/plane.vert", "shaders/plane.frag");
@@ -1295,35 +1296,6 @@ namespace Boidsish {
 
 		glm::mat4 SetupMatrices() { return SetupMatrices(camera); }
 
-		void UpdateTrails(const std::vector<std::shared_ptr<Shape>>& shapes, float time) {
-			CleanupOldTrails(time, shapes);
-			for (const auto& shape : shapes) {
-				if (shape->GetTrailLength() > 0 && !paused) {
-					if (trails.find(shape->GetId()) == trails.end()) {
-						trails[shape->GetId()] = std::make_shared<Trail>(
-							shape->GetTrailLength(),
-							shape->GetTrailThickness()
-						);
-						if (shape->IsTrailIridescent()) {
-							trails[shape->GetId()]->SetIridescence(true);
-						}
-						if (shape->IsTrailRocket()) {
-							trails[shape->GetId()]->SetUseRocketTrail(true);
-						}
-						if (shape->GetTrailPBR()) {
-							trails[shape->GetId()]->SetUsePBR(true);
-							trails[shape->GetId()]->SetRoughness(shape->GetTrailRoughness());
-							trails[shape->GetId()]->SetMetallic(shape->GetTrailMetallic());
-						}
-					}
-					trails[shape->GetId()]->AddPoint(
-						glm::vec3(shape->GetX(), shape->GetY(), shape->GetZ()),
-						glm::vec3(shape->GetR(), shape->GetG(), shape->GetB())
-					);
-					trail_last_update[shape->GetId()] = time;
-				}
-			}
-		}
 
 		void RenderShapes(
 			const glm::mat4&                           view,
@@ -1360,7 +1332,7 @@ namespace Boidsish {
 		}
 
 		void ExecuteRenderQueue(
-			const RenderQueue&                 queue,
+			RenderQueue&                       queue,
 			const glm::mat4&                   view_mat,
 			const glm::mat4&                   proj_mat,
 			const glm::vec3&                   camera_pos,
@@ -1371,6 +1343,19 @@ namespace Boidsish {
 			bool                               is_shadow_pass = false,
 			bool                               dispatch_hiz_occlusion = false
 		) {
+			// Integrate trails into the render queue for the transparent layer
+			if (layer == RenderLayer::Transparent && trail_render_manager && !is_shadow_pass) {
+				RenderContext context;
+				context.view = view_mat;
+				context.projection = proj_mat;
+				context.view_pos = camera_pos;
+				context.frustum = Frustum::FromViewProjection(view_mat, proj_mat);
+
+				trail_render_manager->GetRenderPackets(queue.GetPacketsMutable(RenderLayer::Transparent), context, trail_shader_handle);
+				// Re-sort might be needed but typically transparent is sorted anyway.
+				// For now, assume it's fine or re-sort.
+			}
+
 			const auto& packets = queue.GetPackets(layer);
 			if (packets.empty())
 				return;
@@ -1749,18 +1734,43 @@ namespace Boidsish {
 			glActiveTexture(GL_TEXTURE0);
 		}
 
-		void RenderTrails(const glm::mat4& view, const std::optional<glm::vec4>& clip_plane) {
-			// Use batched render manager if available
+		void UpdateTrails(const std::vector<std::shared_ptr<Shape>>& shapes, float time) {
+			CleanupOldTrails(time, shapes);
+			for (const auto& shape : shapes) {
+				if (shape->GetTrailLength() > 0 && !paused) {
+					if (trails.find(shape->GetId()) == trails.end()) {
+						trails[shape->GetId()] = std::make_shared<Trail>(
+							shape->GetTrailLength(),
+							shape->GetTrailThickness()
+						);
+						if (shape->IsTrailIridescent()) {
+							trails[shape->GetId()]->SetIridescence(true);
+						}
+						if (shape->IsTrailRocket()) {
+							trails[shape->GetId()]->SetUseRocketTrail(true);
+						}
+						if (shape->GetTrailPBR()) {
+							trails[shape->GetId()]->SetUsePBR(true);
+							trails[shape->GetId()]->SetRoughness(shape->GetTrailRoughness());
+							trails[shape->GetId()]->SetMetallic(shape->GetTrailMetallic());
+						}
+					}
+					trails[shape->GetId()]->AddPoint(
+						glm::vec3(shape->GetX(), shape->GetY(), shape->GetZ()),
+						glm::vec3(shape->GetR(), shape->GetG(), shape->GetB())
+					);
+					trail_last_update[shape->GetId()] = time;
+				}
+			}
+
+			// Sync with render manager
 			if (trail_render_manager) {
-				// Update trail data in the render manager
 				for (auto& [trail_id, trail] : trails) {
 					if (!trail_render_manager->HasTrail(trail_id)) {
-						// Register new trail
-						trail_render_manager->RegisterTrail(trail_id, trail->GetMaxVertexCount());
+						trail_render_manager->RegisterTrail(trail_id, trail->GetMaxPoints());
 						trail->SetManagedByRenderManager(true);
 					}
 
-					// Update trail parameters
 					trail_render_manager->SetTrailParams(
 						trail_id,
 						trail->GetIridescent(),
@@ -1771,14 +1781,12 @@ namespace Boidsish {
 						trail->GetBaseThickness()
 					);
 
-					// Update vertex data if dirty
 					if (trail->IsDirty()) {
 						trail_render_manager->UpdateTrailData(
 							trail_id,
-							trail->GetInterleavedVertexData(),
+							trail->GetPoints(),
 							trail->GetHead(),
 							trail->GetTail(),
-							trail->GetVertexCount(),
 							trail->IsFull(),
 							trail->GetMinBound(),
 							trail->GetMaxBound()
@@ -1786,10 +1794,7 @@ namespace Boidsish {
 						trail->ClearDirty();
 					}
 				}
-
-				// Commit updates and render all trails
 				trail_render_manager->CommitUpdates();
-				trail_render_manager->Render(*trail_shader, view, projection, clip_plane);
 			}
 		}
 
@@ -3317,7 +3322,6 @@ namespace Boidsish {
 		if (impl->akira_effect_manager) {
 			impl->akira_effect_manager->Render(view, impl->projection, impl->simulation_time);
 		}
-		impl->RenderTrails(view, std::nullopt);
 
 		// Capture background for refraction before rendering transparency
 		if (skip_intermediate) {

@@ -62,6 +62,18 @@ namespace Boidsish {
 			constexpr int ParticleGridNext() {
 				return 15;
 			}
+
+			constexpr int TrailPoints() {
+				return 18;
+			}
+
+			constexpr int TrailInstances() {
+				return 19;
+			}
+
+			constexpr int TrailSpineData() {
+				return 20;
+			}
 		} // namespace SsboBinding
 
 		namespace General {
