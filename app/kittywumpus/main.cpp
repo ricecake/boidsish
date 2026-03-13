@@ -158,18 +158,6 @@ int main() {
 		auto terrain = visualizer->GetTerrain();
 		terrain->SetWorldScale(2.0f);
 
-		auto decor = visualizer->GetDecorManager();
-
-		DecorProperties teapot_props;
-		teapot_props.min_height = 0.01;
-		teapot_props.max_height = 95.0f;
-		teapot_props.min_density = 0.1f;
-		teapot_props.max_density = 0.11f;
-		teapot_props.base_scale = 0.008f;
-		teapot_props.scale_variance = 0.01f;
-		teapot_props.align_to_terrain = true;
-		decor->AddDecorType("assets/tree01.obj", teapot_props);
-
 		// Initialize weapon selector
 		std::vector<std::string> weaponIcons =
 			{"assets/missile-icon.png", "assets/bomb-icon.png", "assets/bullet-icon.png", "assets/icon.png"};

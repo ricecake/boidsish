@@ -30,16 +30,6 @@ int main() {
 
 		auto decor = visualizer->GetDecorManager();
 
-		DecorProperties teapot_props;
-		teapot_props.min_height = 0.01;
-		teapot_props.max_height = 95.0f;
-		teapot_props.min_density = 0.1f;
-		teapot_props.max_density = 0.11f;
-		teapot_props.base_scale = 0.008f;
-		teapot_props.scale_variance = 0.01f;
-		teapot_props.align_to_terrain = true; // Align to slope
-		decor->AddDecorType("assets/tree01.obj", teapot_props);
-
 		/*
 		Want to admust the foliage so that it picks a density between min and max for each chunk as the target density.
 		Then it should distribute items such that each one gets placed correctly.
