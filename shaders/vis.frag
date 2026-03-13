@@ -7,7 +7,7 @@ layout(location = 1) out vec2 Velocity;
 #include "common_uniforms.glsl"
 #include "temporal_data.glsl"
 
-layout(std430, binding = 9) buffer UniformsSSBO {
+layout(std430, binding = 30) buffer UniformsSSBO {
 	CommonUniforms uniforms_data[];
 };
 
@@ -156,7 +156,7 @@ void main() {
 			calculateLightContribution(i, FragPos, L, atten);
 			combinedShadow = min(combinedShadow, calculateShadow(i, FragPos, norm, L));
 		}
-		if (combinedShadow > 0.0 && combinedShadow < 1.0) {
+		if (combinedShadow > 0.01 && combinedShadow < 0.99) {
 			gl_FragStencilRefARB = 1;
 		}
 	}

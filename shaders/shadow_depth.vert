@@ -7,12 +7,12 @@ layout(location = 10) in vec4 aWeights;
 
 #include "common_uniforms.glsl"
 
-layout(std430, binding = 9) buffer UniformsSSBO {
+layout(std430, binding = 30) buffer UniformsSSBO {
 	CommonUniforms uniforms_data[];
 };
 
 // SSBO for decor/foliage instancing (binding 21)
-layout(std430, binding = 21) buffer SSBOInstances {
+layout(std430, binding = 31) buffer SSBOInstances {
 	mat4 ssboInstanceMatrices[];
 };
 

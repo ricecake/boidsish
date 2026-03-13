@@ -44,11 +44,11 @@ namespace Boidsish {
 
 		namespace SsboBinding {
 			constexpr int Uniforms() {
-				return 9;
+				return 30;
 			}
 
 			constexpr int VisibleInstances() {
-				return 21;
+				return 31;
 			}
 
 			constexpr int AutoExposure() {

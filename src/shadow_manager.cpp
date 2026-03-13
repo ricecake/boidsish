@@ -387,6 +387,8 @@ namespace Boidsish {
 	void ShadowManager::BlurShadowMaps(int num_lights) {
 		if (!initialized_ || num_lights <= 0) return;
 
+		glActiveTexture(GL_TEXTURE0);
+
 		// Disable depth compare mode temporarily for blurring
 		glBindTexture(GL_TEXTURE_2D_ARRAY, shadow_map_array_);
 		glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_COMPARE_MODE, GL_NONE);
@@ -409,7 +411,6 @@ namespace Boidsish {
 			glBindFramebuffer(GL_FRAMEBUFFER, shadow_blur_fbo_);
 			glFramebufferTextureLayer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, shadow_blur_texture_array_, 0, i);
 
-			glActiveTexture(GL_TEXTURE0);
 			glBindTexture(GL_TEXTURE_2D_ARRAY, shadow_map_array_);
 
 			shadow_blur_shader_->setVec2("direction", glm::vec2(1.0f, 0.0f));
