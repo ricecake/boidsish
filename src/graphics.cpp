@@ -3036,7 +3036,7 @@ namespace Boidsish {
 
 		// --- Shadow Pass (render depth from each shadow-casting light) ---
 		auto light_count = impl->light_manager.GetShadowCastingLightCount();
-		if (impl->shadow_manager && impl->shadow_manager->IsInitialized() && impl->frame_config_.enable_shadows &&
+		if (false && impl->shadow_manager && impl->shadow_manager->IsInitialized() && impl->frame_config_.enable_shadows &&
 		    light_count > 0) {
 			glEnable(GL_DEPTH_TEST);
 
@@ -3173,7 +3173,7 @@ namespace Boidsish {
 			if (maps_to_update.empty() && !shadow_map_registry.empty()) {
 				impl->shadow_update_round_robin_ = (impl->shadow_update_round_robin_ + 1) % shadow_map_registry.size();
 				// Every other frame, force a background update (was every 4th)
-				if (impl->frame_count_ % 2 == 0) {
+				if (impl->frame_count_ % 4 == 0) {
 					maps_to_update.push_back(shadow_map_registry[impl->shadow_update_round_robin_].map_index);
 				}
 			}
@@ -3202,18 +3202,6 @@ namespace Boidsish {
 					light_dir_to_light = glm::normalize(info.light->position - scene_center);
 				}
 
-				impl->ExecuteRenderQueue(
-					impl->render_queue,
-					view, // Base view
-					impl->projection,
-					impl->camera.pos(),
-					RenderLayer::Opaque,
-					impl->shadow_shader_handle,
-					impl->shadow_manager->GetLightSpaceMatrix(info.map_index),
-					std::nullopt,
-					true
-				);
-
 				if (impl->decor_manager) {
 					impl->decor_manager->Render(
 						view,
@@ -3226,6 +3214,19 @@ namespace Boidsish {
 						impl->terrain_render_manager
 					);
 				}
+
+				impl->ExecuteRenderQueue(
+					impl->render_queue,
+					view, // Base view
+					impl->projection,
+					impl->camera.pos(),
+					RenderLayer::Opaque,
+					impl->shadow_shader_handle,
+					impl->shadow_manager->GetLightSpaceMatrix(info.map_index),
+					std::nullopt,
+					true
+				);
+
 
 				impl->shadow_manager->EndShadowPass();
 
@@ -3270,28 +3271,13 @@ namespace Boidsish {
 
 		view = impl->SetupMatrices();
 
-		// Render opaque geometry first (terrain, plane, shapes) to populate depth buffer
-		impl->RenderPlane(view);
-		impl->RenderTerrain(view, impl->projection, std::nullopt);
-
 		// ALWAYS bind shadow maps (even if empty) to prevent sampler errors
 		// An unbound sampler2DArrayShadow can cause shader failures on some GPUs
 		impl->BindShadows(*impl->shader);
 
 		impl->UpdateFrustumUbo(view, impl->projection, impl->camera.pos());
-		// impl->RenderShapes(view, impl->shapes, impl->simulation_time, std::nullopt);
-		impl->ExecuteRenderQueue(
-			impl->render_queue,
-			view,
-			impl->projection,
-			impl->camera.pos(),
-			RenderLayer::Opaque,
-			std::nullopt,
-			std::nullopt,
-			std::nullopt,
-			false,
-			impl->enable_hiz_culling_ && impl->frame_count_ > 0
-		);
+
+		// Render opaque geometry first (terrain, plane, shapes) to populate depth buffer
 		if (impl->decor_manager) {
 			// Set Hi-Z data for decor occlusion culling
 			if (impl->hiz_manager && impl->hiz_manager->IsInitialized() && impl->enable_hiz_culling_ &&
@@ -3308,6 +3294,22 @@ namespace Boidsish {
 			}
 			impl->decor_manager->Render(view, impl->projection, impl->render_width, impl->render_height);
 		}
+
+		impl->ExecuteRenderQueue(
+			impl->render_queue,
+			view,
+			impl->projection,
+			impl->camera.pos(),
+			RenderLayer::Opaque,
+			std::nullopt,
+			std::nullopt,
+			std::nullopt,
+			false,
+			impl->enable_hiz_culling_ && impl->frame_count_ > 0
+		);
+
+		impl->RenderTerrain(view, impl->projection, std::nullopt);
+		impl->RenderPlane(view);
 
 		// Render sky AFTER opaque geometry so early-Z rejects covered fragments
 		// This avoids expensive noise calculations for pixels already drawn
