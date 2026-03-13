@@ -223,22 +223,36 @@ public:
 	// ------------------------------------------------------------------------
 	void setBool(const std::string& name, bool value) const {
 		int loc = getUniformLocation(name);
-		glUniform1i(loc, (int)value);
-		m_UniformValues[loc] = UniformValue{value};
+		if (loc != -1) {
+			glUniform1i(loc, (int)value);
+			m_UniformValues[loc] = UniformValue{value};
+		}
 	}
 
 	// ------------------------------------------------------------------------
 	void setUint(const std::string& name, unsigned int value) const {
 		int loc = getUniformLocation(name);
-		glUniform1ui(loc, value);
-		m_UniformValues[loc] = UniformValue{value};
+		if (loc != -1) {
+			glUniform1ui(loc, value);
+			m_UniformValues[loc] = UniformValue{value};
+		}
+	}
+
+	void trySetUint(const std::string& name, unsigned int value) const {
+		int loc = getUniformLocation(name);
+		if (loc != -1) {
+			glUniform1ui(loc, value);
+			m_UniformValues[loc] = UniformValue{value};
+		}
 	}
 
 	// ------------------------------------------------------------------------
 	void setInt(const std::string& name, int value) const {
 		int loc = getUniformLocation(name);
-		glUniform1i(loc, value);
-		m_UniformValues[loc] = UniformValue{value};
+		if (loc != -1) {
+			glUniform1i(loc, value);
+			m_UniformValues[loc] = UniformValue{value};
+		}
 	}
 
 	void trySetInt(const std::string& name, int value) const {
@@ -252,75 +266,105 @@ public:
 	// ------------------------------------------------------------------------
 	void setFloat(const std::string& name, float value) const {
 		int loc = getUniformLocation(name);
-		glUniform1f(loc, value);
-		m_UniformValues[loc] = UniformValue{value};
+		if (loc != -1) {
+			glUniform1f(loc, value);
+			m_UniformValues[loc] = UniformValue{value};
+		}
+	}
+
+	void trySetFloat(const std::string& name, float value) const {
+		int loc = getUniformLocation(name);
+		if (loc != -1) {
+			glUniform1f(loc, value);
+			m_UniformValues[loc] = UniformValue{value};
+		}
 	}
 
 	// ------------------------------------------------------------------------
 	void setVec2(const std::string& name, const glm::vec2& value) const {
 		int loc = getUniformLocation(name);
-		glUniform2fv(loc, 1, &value[0]);
-		m_UniformValues[loc] = UniformValue{value};
+		if (loc != -1) {
+			glUniform2fv(loc, 1, &value[0]);
+			m_UniformValues[loc] = UniformValue{value};
+		}
 	}
 
 	void setVec2(const std::string& name, float x, float y) const {
 		int loc = getUniformLocation(name);
-		glUniform2f(loc, x, y);
-		m_UniformValues[loc] = UniformValue{glm::vec2(x, y)};
+		if (loc != -1) {
+			glUniform2f(loc, x, y);
+			m_UniformValues[loc] = UniformValue{glm::vec2(x, y)};
+		}
 	}
 
 	// ------------------------------------------------------------------------
 	void setVec3(const std::string& name, const glm::vec3& value) const {
 		int loc = getUniformLocation(name);
-		glUniform3fv(loc, 1, &value[0]);
-		m_UniformValues[loc] = UniformValue{value};
+		if (loc != -1) {
+			glUniform3fv(loc, 1, &value[0]);
+			m_UniformValues[loc] = UniformValue{value};
+		}
 	}
 
 	void setVec3(const std::string& name, float x, float y, float z) const {
 		int loc = getUniformLocation(name);
-		glUniform3f(loc, x, y, z);
-		m_UniformValues[loc] = UniformValue{glm::vec3(x, y, z)};
+		if (loc != -1) {
+			glUniform3f(loc, x, y, z);
+			m_UniformValues[loc] = UniformValue{glm::vec3(x, y, z)};
+		}
 	}
 
 	// ------------------------------------------------------------------------
 	void setVec4(const std::string& name, const glm::vec4& value) const {
 		int loc = getUniformLocation(name);
-		glUniform4fv(loc, 1, &value[0]);
-		m_UniformValues[loc] = UniformValue{value};
+		if (loc != -1) {
+			glUniform4fv(loc, 1, &value[0]);
+			m_UniformValues[loc] = UniformValue{value};
+		}
 	}
 
 	void setVec4(const std::string& name, float x, float y, float z, float w) const {
 		int loc = getUniformLocation(name);
-		glUniform4f(loc, x, y, z, w);
-		m_UniformValues[loc] = UniformValue{glm::vec4(x, y, z, w)};
+		if (loc != -1) {
+			glUniform4f(loc, x, y, z, w);
+			m_UniformValues[loc] = UniformValue{glm::vec4(x, y, z, w)};
+		}
 	}
 
 	// ------------------------------------------------------------------------
 	void setMat2(const std::string& name, const glm::mat2& mat) const {
 		int loc = getUniformLocation(name);
-		glUniformMatrix2fv(loc, 1, GL_FALSE, &mat[0][0]);
-		m_UniformValues[loc] = UniformValue{mat};
+		if (loc != -1) {
+			glUniformMatrix2fv(loc, 1, GL_FALSE, &mat[0][0]);
+			m_UniformValues[loc] = UniformValue{mat};
+		}
 	}
 
 	// ------------------------------------------------------------------------
 	void setMat3(const std::string& name, const glm::mat3& mat) const {
 		int loc = getUniformLocation(name);
-		glUniformMatrix3fv(loc, 1, GL_FALSE, &mat[0][0]);
-		m_UniformValues[loc] = UniformValue{mat};
+		if (loc != -1) {
+			glUniformMatrix3fv(loc, 1, GL_FALSE, &mat[0][0]);
+			m_UniformValues[loc] = UniformValue{mat};
+		}
 	}
 
 	// ------------------------------------------------------------------------
 	void setMat4(const std::string& name, const glm::mat4& mat) const {
 		int loc = getUniformLocation(name);
-		glUniformMatrix4fv(loc, 1, GL_FALSE, &mat[0][0]);
-		m_UniformValues[loc] = UniformValue{mat};
+		if (loc != -1) {
+			glUniformMatrix4fv(loc, 1, GL_FALSE, &mat[0][0]);
+			m_UniformValues[loc] = UniformValue{mat};
+		}
 	}
 
 	// ------------------------------------------------------------------------
 	void setIntArray(const std::string& name, const int* values, int count) const {
 		int loc = getUniformLocation(name);
-		glUniform1iv(loc, count, values);
-		m_UniformValues[loc] = UniformValue{std::vector<int>(values, values + count)};
+		if (loc != -1) {
+			glUniform1iv(loc, count, values);
+			m_UniformValues[loc] = UniformValue{std::vector<int>(values, values + count)};
+		}
 	}
 
 protected:
