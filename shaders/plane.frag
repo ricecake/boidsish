@@ -146,7 +146,7 @@ void main() {
 			calculateLightContribution(i, WorldPos, L, atten);
 			combinedShadow = min(combinedShadow, calculateShadow(i, WorldPos, norm, L));
 		}
-		if (combinedShadow > 0.0 && combinedShadow < 1.0) {
+		if (combinedShadow > 0.01 && combinedShadow < 0.99) {
 			gl_FragStencilRefARB = 1;
 		}
 	}
