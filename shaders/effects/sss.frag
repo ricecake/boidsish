@@ -41,8 +41,8 @@ void main() {
 
 	// Improved Screen Space Shadow Raymarch
 	float shadow = 1.0;
-	float stepSize = 0.25 * worldScale;
-	int numSteps = 32;
+	float stepSize = 0.1 * worldScale;
+	int numSteps = 64;
 	vec3 rayPos = worldPos + lightDir * stepSize;
 
 	for (int i = 0; i < numSteps; ++i) {

@@ -77,6 +77,55 @@ float calculateShadow(int light_index, vec3 frag_pos, vec3 normal, vec3 light_di
 }
 
 /**
+ * Calculate shadow factor using ONLY the shadow map (ignores terrain raytracing).
+ * Used for stencil marking to ensure Screen Space Shadows correctly augment the shadow map.
+ */
+float calculateShadowMapOnly(int light_index, vec3 frag_pos, vec3 normal, vec3 light_dir) {
+	int shadow_index = lightShadowIndices[light_index];
+
+	if (shadow_index < 0 || numShadowLights <= 0) {
+		return 1.0;
+	}
+
+	if (shadow_index >= MAX_SHADOW_MAPS) {
+		return 1.0;
+	}
+
+	vec4 frag_pos_light_space = lightSpaceMatrices[shadow_index] * vec4(frag_pos, 1.0);
+
+	if (abs(frag_pos_light_space.w) < 0.0001) {
+		return 1.0;
+	}
+	vec3 proj_coords = frag_pos_light_space.xyz / frag_pos_light_space.w;
+	proj_coords = proj_coords * 0.5 + 0.5;
+
+	if (proj_coords.x < 0.0 || proj_coords.x > 1.0 || proj_coords.y < 0.0 || proj_coords.y > 1.0 ||
+	    proj_coords.z > 1.0 || proj_coords.z < 0.0) {
+		return 1.0;
+	}
+
+	float current_depth = proj_coords.z;
+	float slope_factor = max(1.0 - dot(normal, light_dir), 0.0);
+	float bias = clamp(0.0001 + 0.001 * slope_factor, 0.0001, 0.01);
+
+	float shadow = 0.0;
+	vec2 texel_size = 1.0 / vec2(textureSize(shadowMaps, 0).xy);
+	float sample_count = 0.0;
+
+	for (int x = -1; x <= 1; ++x) {
+		for (int y = -1; y <= 1; ++y) {
+			vec2 offset = vec2(x, y) * texel_size;
+			vec4 shadow_coord = vec4(proj_coords.xy + offset, float(shadow_index), current_depth - bias);
+			shadow += texture(shadowMaps, shadow_coord);
+			sample_count += 1.0;
+		}
+	}
+	shadow /= sample_count;
+
+	return shadow;
+}
+
+/**
  * Calculate the relative luminance of a color.
  * Used for determining how much a specular highlight should contribute to fragment opacity.
  */

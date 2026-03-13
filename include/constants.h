@@ -14,7 +14,7 @@ namespace Boidsish {
 			}
 
 			constexpr int Shadows() {
-				return 10;
+				return 2;
 			}
 
 			constexpr int FrustumData() {
@@ -44,11 +44,11 @@ namespace Boidsish {
 
 		namespace SsboBinding {
 			constexpr int Uniforms() {
-				return 30;
+				return 9;
 			}
 
 			constexpr int VisibleInstances() {
-				return 31;
+				return 10;
 			}
 
 			constexpr int AutoExposure() {

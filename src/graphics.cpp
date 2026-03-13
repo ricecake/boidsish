@@ -1570,7 +1570,7 @@ namespace Boidsish {
 				// Bind uniforms SSBO (current frame's data) for compute to read AABBs
 				glBindBufferRange(
 					GL_SHADER_STORAGE_BUFFER,
-					Constants::SsboBinding::Uniforms(),
+					9,
 					uniforms_ssbo->GetBufferId(),
 					frame_element_offset * sizeof(CommonUniforms),
 					mdi_uniform_count * sizeof(CommonUniforms)
@@ -1651,7 +1651,7 @@ namespace Boidsish {
 				// Bind SSBO for this batch's uniforms (replaces uBaseUniformIndex)
 				glBindBufferRange(
 					GL_SHADER_STORAGE_BUFFER,
-					Constants::SsboBinding::Uniforms(),
+					9,
 					uniforms_ssbo->GetBufferId(),
 					batch.base_uniform_index * sizeof(CommonUniforms),
 					batch.command_count * sizeof(CommonUniforms)
@@ -1749,7 +1749,7 @@ namespace Boidsish {
 			}
 
 			glBindBuffer(GL_DRAW_INDIRECT_BUFFER, 0);
-			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::Uniforms(), 0);
+			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 9, 0);
 			glActiveTexture(GL_TEXTURE0);
 		}
 
@@ -3245,6 +3245,7 @@ namespace Boidsish {
 				if (impl->terrain_generator && impl->terrain_render_manager) {
 					Terrain::terrain_shader_->use();
 					Terrain::terrain_shader_->setMat4("lightSpaceMatrix", impl->shadow_manager->GetLightSpaceMatrix(info.map_index));
+					Terrain::terrain_shader_->setBool("uIsShadowPass", true);
 
 					impl->RenderTerrain(
 						view,
@@ -3253,6 +3254,9 @@ namespace Boidsish {
 						true,
 						impl->shadow_manager->GetShadowFrustum(info.map_index)
 					);
+
+					Terrain::terrain_shader_->use();
+					Terrain::terrain_shader_->setBool("uIsShadowPass", false);
 				}
 
 				impl->shadow_manager->EndShadowPass();

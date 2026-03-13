@@ -144,7 +144,7 @@ void main() {
 			vec3  L;
 			float atten;
 			calculateLightContribution(i, WorldPos, L, atten);
-			combinedShadow = min(combinedShadow, calculateShadow(i, WorldPos, norm, L));
+			combinedShadow = min(combinedShadow, calculateShadowMapOnly(i, WorldPos, norm, L));
 		}
 		if (combinedShadow > 0.01 && combinedShadow < 0.99) {
 			gl_FragStencilRefARB = 1;

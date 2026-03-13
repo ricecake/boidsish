@@ -657,7 +657,7 @@ namespace Boidsish {
 			auto& type = decor_types_[i];
 
 			// Bind the culled instances SSBO
-			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::VisibleInstances(), type.visible_ssbo);
+			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 10, type.visible_ssbo);
 
 			if (type.model->IsNoCull()) {
 				glDisable(GL_CULL_FACE);

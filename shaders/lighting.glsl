@@ -27,7 +27,7 @@ layout(std140) uniform Lighting {
 	vec3  viewDir;
 };
 
-// Shadow mapping UBO (binding set via glUniformBlockBinding to point 10)
+// Shadow mapping UBO (binding set via glUniformBlockBinding to point 2)
 layout(std140) uniform Shadows {
 	mat4 lightSpaceMatrices[MAX_SHADOW_MAPS];
 	vec4 cascadeSplits;

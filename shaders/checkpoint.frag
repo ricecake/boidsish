@@ -4,7 +4,7 @@ layout(location = 1) out vec2 Velocity;
 
 #include "common_uniforms.glsl"
 
-layout(std430, binding = 30) buffer UniformsSSBO {
+layout(std430, binding = 9) buffer UniformsSSBO {
 	CommonUniforms uniforms_data[];
 };
 

@@ -452,7 +452,7 @@ void main() {
 			vec3  L;
 			float atten;
 			calculateLightContribution(i, FragPos, L, atten);
-			combinedShadow = min(combinedShadow, calculateShadow(i, FragPos, perturbedNorm, L));
+			combinedShadow = min(combinedShadow, calculateShadowMapOnly(i, FragPos, perturbedNorm, L));
 		}
 		if (combinedShadow > 0.01 && combinedShadow < 0.99) {
 			gl_FragStencilRefARB = 1;
