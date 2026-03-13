@@ -16,7 +16,14 @@ vec3 worldPosFromDepth(float d) {
 	return worldSpacePosition.xyz / worldSpacePosition.w;
 }
 
+uniform bool uDebugSSS = false;
+
 void main() {
+	if (uDebugSSS) {
+		FragColor = vec4(1.0, 0.0, 1.0, 1.0); // Bright magenta for stencil-marked areas
+		return;
+	}
+
 	float d = texture(depthTexture, TexCoords).r;
 	if (d >= 1.0) {
 		FragColor = texture(sceneTexture, TexCoords);
@@ -32,10 +39,10 @@ void main() {
 		lightDir = normalize(lights[0].position - worldPos);
 	}
 
-	// Simple Screen Space Shadow Raymarch
+	// Improved Screen Space Shadow Raymarch
 	float shadow = 1.0;
-	float stepSize = 0.5;
-	int numSteps = 16;
+	float stepSize = 0.25 * worldScale;
+	int numSteps = 32;
 	vec3 rayPos = worldPos + lightDir * stepSize;
 
 	for (int i = 0; i < numSteps; ++i) {
@@ -48,8 +55,10 @@ void main() {
 		float sampledDepth = texture(depthTexture, uv).r;
 		float currentDepth = screenPos.z * 0.5 + 0.5;
 
-		if (currentDepth > sampledDepth + 0.0001) {
-			shadow = 0.5; // Soften the SSS shadow
+		// Use a depth thickness threshold to avoid self-occlusion and "leaking"
+		float depthDiff = currentDepth - sampledDepth;
+		if (depthDiff > 0.0001 && depthDiff < 0.01) {
+			shadow = 0.4;
 			break;
 		}
 

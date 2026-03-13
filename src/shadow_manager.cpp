@@ -435,9 +435,11 @@ namespace Boidsish {
 		// Restore depth compare mode
 		glBindTexture(GL_TEXTURE_2D_ARRAY, shadow_map_array_);
 		glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_COMPARE_MODE, GL_COMPARE_REF_TO_TEXTURE);
+		glBindTexture(GL_TEXTURE_2D_ARRAY, shadow_blur_texture_array_);
+		glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_COMPARE_MODE, GL_COMPARE_REF_TO_TEXTURE);
 	}
 
-	void ShadowManager::BindForRendering(Shader& shader, int texture_unit) {
+	void ShadowManager::BindForRendering(ShaderBase& shader, int texture_unit) {
 		glActiveTexture(GL_TEXTURE0 + texture_unit);
 		glBindTexture(GL_TEXTURE_2D_ARRAY, shadow_map_array_);
 		shader.use();
