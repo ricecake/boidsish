@@ -3041,6 +3041,7 @@ namespace Boidsish {
 			glEnable(GL_DEPTH_TEST);
 
 			if (impl->noise_manager) {
+				impl->shadow_manager->GetShadowShader().use();
 				impl->noise_manager->BindDefault(*impl->shadow_manager->GetShadowShaderPtr());
 			}
 
