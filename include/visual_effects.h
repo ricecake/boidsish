@@ -12,7 +12,7 @@ namespace Boidsish {
 		FREEZE_FRAME_TRAIL,
 	};
 
-	struct VisualEffectsUbo {
+	struct alignas(16) VisualEffectsUbo {
 		int   ripple_enabled;
 		int   color_shift_enabled;
 		int   black_and_white_enabled;
