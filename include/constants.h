@@ -14,7 +14,7 @@ namespace Boidsish {
 			}
 
 			constexpr int Shadows() {
-				return 2;
+				return 10;
 			}
 
 			constexpr int FrustumData() {

@@ -1078,13 +1078,13 @@ namespace Boidsish {
 			ui_manager->AddWidget(std::make_shared<UI::SystemWidget>(*parent, *scene_manager));
 		}
 
-		void BindShadows(Shader& s) {
+		void BindShadows(ShaderBase& s) {
 			s.use();
 			if (terrain_render_manager) {
 				terrain_render_manager->BindTerrainData(s);
 			}
 			if (shadow_manager && shadow_manager->IsInitialized() && frame_config_.enable_shadows) {
-				shadow_manager->BindForRendering(s);
+				shadow_manager->BindForRendering(s, 10);
 				std::array<int, 10> shadow_indices;
 				shadow_indices.fill(-1);
 				const auto& all_lights = light_manager.GetLights();
@@ -1093,7 +1093,7 @@ namespace Boidsish {
 				}
 				s.setIntArray("lightShadowIndices", shadow_indices.data(), 10);
 			} else {
-				s.setInt("shadowMaps", 4);
+				s.setInt("shadowMaps", 10);
 				std::array<int, 10> shadow_indices;
 				shadow_indices.fill(-1);
 				s.setIntArray("lightShadowIndices", shadow_indices.data(), 10);
@@ -1618,6 +1618,12 @@ namespace Boidsish {
 				if (s->ID != current_bound_shader_id) {
 					s->use();
 					current_bound_shader_id = s->ID;
+
+					// Bind shadow maps for all shaders
+					if (!is_shadow_pass) {
+						BindShadows(*s);
+					}
+
 					s->setMat4("view", view_mat);
 					s->setMat4("projection", proj_mat);
 					s->setFloat("time", simulation_time);

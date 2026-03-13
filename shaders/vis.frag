@@ -149,11 +149,14 @@ void main() {
 	// Stencil marking for Screen Space Shadows (penumbra areas)
 #ifdef GL_ARB_shader_stencil_export
 	if (numShadowLights > 0) {
-		vec3  L;
-		float atten;
-		calculateLightContribution(0, FragPos, L, atten);
-		float s = calculateShadow(0, FragPos, norm, L);
-		if (s > 0.0 && s < 1.0) {
+		float combinedShadow = 1.0;
+		for (int i = 0; i < num_lights; ++i) {
+			vec3  L;
+			float atten;
+			calculateLightContribution(i, FragPos, L, atten);
+			combinedShadow = min(combinedShadow, calculateShadow(i, FragPos, norm, L));
+		}
+		if (combinedShadow > 0.0 && combinedShadow < 1.0) {
 			gl_FragStencilRefARB = 1;
 		}
 	}

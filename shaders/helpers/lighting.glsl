@@ -57,9 +57,21 @@ float calculateShadow(int light_index, vec3 frag_pos, vec3 normal, vec3 light_di
 	float slope_factor = max(1.0 - dot(normal, light_dir), 0.0);
 	float bias = clamp(0.0001 + 0.001 * slope_factor, 0.0001, 0.01);
 
-	// Single-tap shadow sampling (map is already blurred)
-	vec4 shadow_coord = vec4(proj_coords.xy, float(shadow_index), current_depth - bias);
-	float shadow = texture(shadowMaps, shadow_coord);
+	// PCF - sample multiple texels for soft shadows
+	// This creates the penumbra needed for the stencil marking logic
+	float shadow = 0.0;
+	vec2 texel_size = 1.0 / vec2(textureSize(shadowMaps, 0).xy);
+	float sample_count = 0.0;
+
+	for (int x = -1; x <= 1; ++x) {
+		for (int y = -1; y <= 1; ++y) {
+			vec2 offset = vec2(x, y) * texel_size;
+			vec4 shadow_coord = vec4(proj_coords.xy + offset, float(shadow_index), current_depth - bias);
+			shadow += texture(shadowMaps, shadow_coord);
+			sample_count += 1.0;
+		}
+	}
+	shadow /= sample_count;
 
 	return min(terrainShadow, shadow);
 }
