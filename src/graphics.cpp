@@ -1570,7 +1570,7 @@ namespace Boidsish {
 				// Bind uniforms SSBO (current frame's data) for compute to read AABBs
 				glBindBufferRange(
 					GL_SHADER_STORAGE_BUFFER,
-					9,
+					Constants::SsboBinding::Uniforms(),
 					uniforms_ssbo->GetBufferId(),
 					frame_element_offset * sizeof(CommonUniforms),
 					mdi_uniform_count * sizeof(CommonUniforms)
@@ -1651,7 +1651,7 @@ namespace Boidsish {
 				// Bind SSBO for this batch's uniforms (replaces uBaseUniformIndex)
 				glBindBufferRange(
 					GL_SHADER_STORAGE_BUFFER,
-					9,
+					Constants::SsboBinding::Uniforms(),
 					uniforms_ssbo->GetBufferId(),
 					batch.base_uniform_index * sizeof(CommonUniforms),
 					batch.command_count * sizeof(CommonUniforms)
@@ -1749,7 +1749,7 @@ namespace Boidsish {
 			}
 
 			glBindBuffer(GL_DRAW_INDIRECT_BUFFER, 0);
-			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 9, 0);
+			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::Uniforms(), 0);
 			glActiveTexture(GL_TEXTURE0);
 		}
 
@@ -1825,9 +1825,6 @@ namespace Boidsish {
 			std::optional<Frustum>          shadow_frustum = std::nullopt,
 			float                           quality_override = -1.0f
 		) {
-			if (is_shadow_pass) {
-				return;
-			}
 			if (!terrain_generator || !ConfigManager::GetInstance().GetAppSettingBool("render_terrain", true))
 				return;
 
@@ -3246,6 +3243,9 @@ namespace Boidsish {
 
 				// 3. Render terrain
 				if (impl->terrain_generator && impl->terrain_render_manager) {
+					Terrain::terrain_shader_->use();
+					Terrain::terrain_shader_->setMat4("lightSpaceMatrix", impl->shadow_manager->GetLightSpaceMatrix(info.map_index));
+
 					impl->RenderTerrain(
 						view,
 						impl->projection,

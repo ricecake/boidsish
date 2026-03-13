@@ -43,6 +43,14 @@ namespace Boidsish {
 		} // namespace UboBinding
 
 		namespace SsboBinding {
+			constexpr int Uniforms() {
+				return 9;
+			}
+
+			constexpr int VisibleInstances() {
+				return 21;
+			}
+
 			constexpr int AutoExposure() {
 				return 11;
 			}
