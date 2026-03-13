@@ -36,6 +36,10 @@ namespace Boidsish {
 
 			virtual bool IsEarly() const { return false; }
 
+			virtual bool ShouldClearBeforeApply() const { return true; }
+
+			virtual bool NeedsStencil() const { return false; }
+
 		protected:
 			std::string name_;
 			bool        is_enabled_ = true;

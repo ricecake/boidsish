@@ -158,7 +158,19 @@ namespace Boidsish {
 		) {
 			effect->SetTime(time);
 			glBindFramebuffer(GL_FRAMEBUFFER, pingpong_fbo_[fbo_index_]);
-			glClear(GL_COLOR_BUFFER_BIT);
+
+			if (effect->ShouldClearBeforeApply()) {
+				glClear(GL_COLOR_BUFFER_BIT);
+			} else {
+				// Blit the source texture to the target FBO
+				glBindFramebuffer(GL_READ_FRAMEBUFFER, current_fbo_);
+				glBlitFramebuffer(0, 0, width_, height_, 0, 0, width_, height_, GL_COLOR_BUFFER_BIT, GL_NEAREST);
+				glBindFramebuffer(GL_DRAW_FRAMEBUFFER, pingpong_fbo_[fbo_index_]);
+			}
+
+			if (effect->NeedsStencil() && shared_depth_texture_ != 0) {
+				glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_TEXTURE_2D, shared_depth_texture_, 0);
+			}
 
 			// Post-processing quads should not be depth-tested or write to depth buffer
 			glDisable(GL_DEPTH_TEST);
@@ -170,6 +182,10 @@ namespace Boidsish {
 
 			glEnable(GL_DEPTH_TEST);
 			glDepthMask(GL_TRUE);
+
+			if (effect->NeedsStencil()) {
+				glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_TEXTURE_2D, 0, 0);
+			}
 
 			current_texture_ = pingpong_texture_[fbo_index_];
 			current_fbo_ = pingpong_fbo_[fbo_index_];

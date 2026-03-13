@@ -18,6 +18,8 @@ namespace Boidsish {
 							   const glm::vec3& cameraPos) override;
 			virtual void Resize(int width, int height) override;
 			virtual bool IsEarly() const override { return true; }
+			virtual bool ShouldClearBeforeApply() const override { return false; }
+			virtual bool NeedsStencil() const override { return true; }
 
 		private:
 			std::unique_ptr<Shader> sss_shader_;

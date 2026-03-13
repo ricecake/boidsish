@@ -35,6 +35,7 @@ namespace Boidsish {
 			glEnable(GL_STENCIL_TEST);
 			glStencilFunc(GL_EQUAL, 1, 0xFF);
 			glStencilOp(GL_KEEP, GL_KEEP, GL_KEEP);
+			glStencilMask(0x00); // Don't write to stencil
 
 			glDrawArrays(GL_TRIANGLES, 0, 6);
 
