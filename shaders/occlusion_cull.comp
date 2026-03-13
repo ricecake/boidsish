@@ -18,6 +18,8 @@ layout(std430, binding = 13) buffer OcclusionVisibility {
 // Hi-Z pyramid texture
 uniform sampler2D u_hizTexture;
 uniform int       u_drawCount;
+uniform uint      uFrameUniformOffset;
+uniform uint      uBaseDrawID;
 uniform ivec2     u_hizSize; // Mip 0 dimensions
 uniform int       u_hizMipCount;
 uniform float     u_screenExpansion; // Pixel expansion for temporal safety
@@ -93,24 +95,34 @@ void main() {
 	if (idx >= u_drawCount)
 		return;
 
-	vec3 aabbMin = vec3(uniforms_data[idx].aabb_min_x, uniforms_data[idx].aabb_min_y, uniforms_data[idx].aabb_min_z);
-	vec3 aabbMax = vec3(uniforms_data[idx].aabb_max_x, uniforms_data[idx].aabb_max_y, uniforms_data[idx].aabb_max_z);
+	uint absoluteIdx = uFrameUniformOffset + uBaseDrawID + idx;
+
+	vec3 aabbMin = vec3(
+		uniforms_data[absoluteIdx].aabb_min_x,
+		uniforms_data[absoluteIdx].aabb_min_y,
+		uniforms_data[absoluteIdx].aabb_min_z
+	);
+	vec3 aabbMax = vec3(
+		uniforms_data[absoluteIdx].aabb_max_x,
+		uniforms_data[absoluteIdx].aabb_max_y,
+		uniforms_data[absoluteIdx].aabb_max_z
+	);
 
 	// Skip degenerate AABBs (lines, text, particles that don't want culling)
 	if (aabbMin == aabbMax) {
-		visibility[idx] = 1u;
+		visibility[absoluteIdx] = 1u;
 		return;
 	}
 
 	// Skip colossal objects (skybox) - always visible
-	if (uniforms_data[idx].is_colossal != 0) {
-		visibility[idx] = 1u;
+	if (uniforms_data[absoluteIdx].is_colossal != 0) {
+		visibility[absoluteIdx] = 1u;
 		return;
 	}
 
 	// Skip transparent objects - they're not in the depth buffer
-	if (uniforms_data[idx].color.a < 0.99) {
-		visibility[idx] = 1u;
+	if (uniforms_data[absoluteIdx].color.a < 0.99) {
+		visibility[absoluteIdx] = 1u;
 		return;
 	}
 
@@ -120,14 +132,14 @@ void main() {
 	// Project AABB into previous frame's clip space (matches the Hi-Z pyramid)
 	if (!projectAABB(aabbMin, aabbMax, prevViewProjection, screenRect, nearestDepth)) {
 		// Fully behind camera - frustum culling handles this
-		visibility[idx] = 1u;
+		visibility[uBaseDrawID + idx] = 1u;
 		return;
 	}
 
 	// If the AABB covers most of the screen, skip occlusion test (likely visible)
 	vec2 screenSize = screenRect.zw - screenRect.xy;
 	if (screenSize.x * screenSize.y > 0.5) {
-		visibility[idx] = 1u;
+		visibility[uBaseDrawID + idx] = 1u;
 		return;
 	}
 
@@ -147,7 +159,7 @@ void main() {
 	// If Hi-Z reads as zero/near-zero, the data is invalid (uninitialized or
 	// stale due to a memory barrier issue). Conservatively keep the object visible.
 	if (hizDepth < 0.0001) {
-		visibility[idx] = 1u;
+		visibility[uBaseDrawID + idx] = 1u;
 		return;
 	}
 
@@ -155,8 +167,8 @@ void main() {
 	// In standard OpenGL depth: smaller values = closer to camera.
 	// nearestDepth > hizDepth means the closest part of the AABB is behind everything in the Hi-Z region.
 	if (nearestDepth > hizDepth) {
-		visibility[idx] = 0u; // Occluded
+		visibility[absoluteIdx] = 0u; // Occluded
 	} else {
-		visibility[idx] = 1u; // Visible
+		visibility[absoluteIdx] = 1u; // Visible
 	}
 }
