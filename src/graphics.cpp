@@ -1570,7 +1570,7 @@ namespace Boidsish {
 				// Bind uniforms SSBO (current frame's data) for compute to read AABBs
 				glBindBufferRange(
 					GL_SHADER_STORAGE_BUFFER,
-					2,
+					9,
 					uniforms_ssbo->GetBufferId(),
 					frame_element_offset * sizeof(CommonUniforms),
 					mdi_uniform_count * sizeof(CommonUniforms)
@@ -1651,7 +1651,7 @@ namespace Boidsish {
 				// Bind SSBO for this batch's uniforms (replaces uBaseUniformIndex)
 				glBindBufferRange(
 					GL_SHADER_STORAGE_BUFFER,
-					2,
+					9,
 					uniforms_ssbo->GetBufferId(),
 					batch.base_uniform_index * sizeof(CommonUniforms),
 					batch.command_count * sizeof(CommonUniforms)
@@ -1749,7 +1749,7 @@ namespace Boidsish {
 			}
 
 			glBindBuffer(GL_DRAW_INDIRECT_BUFFER, 0);
-			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 2, 0);
+			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 9, 0);
 			glActiveTexture(GL_TEXTURE0);
 		}
 
@@ -3217,6 +3217,7 @@ namespace Boidsish {
 					light_dir_to_light = glm::normalize(info.light->position - scene_center);
 				}
 
+				// 1. Render static/dynamic shapes
 				impl->ExecuteRenderQueue(
 					impl->render_queue,
 					view, // Base view
@@ -3229,6 +3230,7 @@ namespace Boidsish {
 					true
 				);
 
+				// 2. Render decor/foliage
 				if (impl->decor_manager) {
 					impl->decor_manager->Render(
 						view,
@@ -3239,6 +3241,17 @@ namespace Boidsish {
 						impl->shadow_manager->GetShadowShaderPtr().get(),
 						light_dir_to_light,
 						impl->terrain_render_manager
+					);
+				}
+
+				// 3. Render terrain
+				if (impl->terrain_generator && impl->terrain_render_manager) {
+					impl->RenderTerrain(
+						view,
+						impl->projection,
+						std::nullopt,
+						true,
+						impl->shadow_manager->GetShadowFrustum(info.map_index)
 					);
 				}
 
