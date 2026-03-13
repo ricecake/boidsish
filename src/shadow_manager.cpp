@@ -69,11 +69,9 @@ namespace Boidsish {
 
 		// Clear all shadow map layers to max depth (1.0)
 		// This ensures unused layers don't cause artifacts
-		for (int i = 0; i < kMaxShadowMaps; ++i) {
-			glFramebufferTextureLayer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, shadow_map_array_, 0, i);
-			glClearDepth(1.0);
-			glClear(GL_DEPTH_BUFFER_BIT);
-		}
+		glFramebufferTexture(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, shadow_map_array_, 0);
+		glClearDepth(1.0);
+		glClear(GL_DEPTH_BUFFER_BIT);
 
 		glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
