@@ -1663,15 +1663,19 @@ namespace Boidsish {
 				);
 				s->setBool("uUseMDI", true);
 
-				// Bind visibility SSBO for Hi-Z occlusion culling (matching uniform indexing)
+				// Bind visibility SSBO for Hi-Z occlusion culling
 				if (dispatch_hiz_occlusion && !is_shadow_pass) {
-					glBindBufferRange(
+					// We bind the entire buffer from the start of current frame's region
+					// and use a uniform offset in the shader to avoid alignment issues
+					// with glBindBufferRange (which requires 16-256 byte alignment).
+					glBindBufferBase(
 						GL_SHADER_STORAGE_BUFFER,
 						Constants::SsboBinding::OcclusionVisibility(),
-						occlusion_visibility_ssbo_,
-						(batch.base_uniform_index - frame_element_offset) * sizeof(uint32_t),
-						batch.command_count * sizeof(uint32_t)
+						occlusion_visibility_ssbo_
 					);
+					s->setUint("uBaseDrawID", batch.base_uniform_index - frame_element_offset);
+				} else {
+					s->setUint("uBaseDrawID", 0);
 				}
 
 				if (!is_shadow_pass) {

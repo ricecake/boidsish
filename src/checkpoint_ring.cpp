@@ -17,6 +17,9 @@ namespace Boidsish {
 	CheckpointRingShape::CheckpointRingShape(float radius, CheckpointStyle style):
 		Shape(), radius_(radius), style_(style) {
 		SetUsePBR(false);
+		// Quad mesh for ring is [-1, 1] in local space.
+		// radius_ is applied via model matrix scale.
+		local_aabb_ = AABB(glm::vec3(-1.0f), glm::vec3(1.0f));
 	}
 
 	void CheckpointRingShape::InitQuadMesh(Megabuffer* mb) {

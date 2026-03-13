@@ -24,6 +24,8 @@ namespace Boidsish {
 		float a
 	):
 		Shape(id, x, y, z, r, g, b, a), cone_height_(cone_height), cone_radius_(cone_radius), rod_radius_(rod_radius) {
+		float max_r = std::max(cone_radius_, rod_radius_);
+		local_aabb_ = AABB(glm::vec3(-max_r, 0.0f, -max_r), glm::vec3(max_r, 1.0f, max_r));
 		InitArrowMesh(nullptr);
 	}
 
