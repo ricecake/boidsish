@@ -638,6 +638,7 @@ namespace Boidsish {
 		shader->setMat4("projection", projection);
 		if (is_shadow_pass) {
 			shader->setMat4("lightSpaceMatrix", *light_space_matrix);
+			shader->setBool("uIsShadowPass", true);
 		}
 		shader->setMat4("model", glm::mat4(1.0f));
 		shader->setBool("useSSBOInstancing", true);
@@ -656,7 +657,7 @@ namespace Boidsish {
 			auto& type = decor_types_[i];
 
 			// Bind the culled instances SSBO
-			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 10, type.visible_ssbo);
+			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::VisibleInstances(), type.visible_ssbo);
 
 			if (type.model->IsNoCull()) {
 				glDisable(GL_CULL_FACE);
@@ -704,6 +705,7 @@ namespace Boidsish {
 		glBindVertexArray(0);
 		glBindBuffer(GL_DRAW_INDIRECT_BUFFER, 0);
 		shader->setBool("useSSBOInstancing", false);
+		shader->setBool("uIsShadowPass", false);
 	}
 
 } // namespace Boidsish
