@@ -510,6 +510,16 @@ namespace Boidsish {
 		packet.uniforms.use_texture = 0;
 		packet.uniforms.use_vertex_color = 1; // Graph uses vertex colors
 		packet.uniforms.is_colossal = IsColossal();
+		packet.uniforms.frustum_cull_radius = GetBoundingRadius();
+
+		// Occlusion culling AABB for edges
+		AABB      worldAABB = GetAABB();
+		packet.uniforms.aabb_min_x = worldAABB.min.x;
+		packet.uniforms.aabb_min_y = worldAABB.min.y;
+		packet.uniforms.aabb_min_z = worldAABB.min.z;
+		packet.uniforms.aabb_max_x = worldAABB.max.x;
+		packet.uniforms.aabb_max_y = worldAABB.max.y;
+		packet.uniforms.aabb_max_z = worldAABB.max.z;
 
 		packet.casts_shadows = CastsShadows();
 

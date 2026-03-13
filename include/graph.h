@@ -83,7 +83,21 @@ namespace Boidsish {
 		Node& AddVertex(const Vector3& pos, float Size = 0, float R = 0, float G = 0, float B = 0, float A = 0) {
 			buffers_initialized_ = false;
 			MarkDirty();
-			return vertices.emplace_back(weak_from_this(), static_cast<int>(vertices.size()), pos, Size, R, G, B, A);
+			auto& node =
+				vertices.emplace_back(weak_from_this(), static_cast<int>(vertices.size()), pos, Size, R, G, B, A);
+
+			// Update AABB
+			glm::vec3 p(pos.x, pos.y, pos.z);
+			float     r = Size * 0.01f; // Standard dot size to world units
+			if (vertices.size() == 1) {
+				local_aabb_.min = p - glm::vec3(r);
+				local_aabb_.max = p + glm::vec3(r);
+			} else {
+				local_aabb_.min = glm::min(local_aabb_.min, p - glm::vec3(r));
+				local_aabb_.max = glm::max(local_aabb_.max, p + glm::vec3(r));
+			}
+
+			return node;
 		}
 
 		Edge& AddEdge(const Node& a, const Node& b) {

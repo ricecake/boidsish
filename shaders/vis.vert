@@ -58,6 +58,8 @@ uniform bool  isLine = false;
 uniform bool  enableFrustumCulling = false;
 uniform float frustumCullRadius = 5.0; // Approximate object radius for sphere test
 uniform bool  enableHiZCulling = false;
+uniform uint  uFrameUniformOffset = 0;
+uniform uint  uBaseDrawID = 0; // Offset into visibility buffer
 
 // Hi-Z occlusion visibility (per-draw, written by occlusion_cull.comp)
 layout(std430, binding = 13) readonly buffer OcclusionVisibility {
@@ -78,7 +80,8 @@ uniform float arcadeWaveSpeed = 5.0;
 void main() {
 	int drawID = gl_DrawID;
 
-	vUniformIndex = uUseMDI ? drawID : -1;
+	// Use absolute indexing since we bind the entire buffer starting from offset 0
+	vUniformIndex = uUseMDI ? int(uFrameUniformOffset + uBaseDrawID + uint(drawID)) : -1;
 	bool use_ssbo = uUseMDI && vUniformIndex >= 0;
 
 	mat4  current_model = use_ssbo ? uniforms_data[vUniformIndex].model : model;
@@ -92,6 +95,8 @@ void main() {
 												 : arcadeWaveFrequency;
 	float current_arcadeWaveSpeed = use_ssbo ? uniforms_data[vUniformIndex].arcade_wave_speed : arcadeWaveSpeed;
 	bool  current_isColossal = use_ssbo ? (uniforms_data[vUniformIndex].is_colossal != 0) : isColossal;
+	float current_frustum_cull_radius = use_ssbo ? uniforms_data[vUniformIndex].frustum_cull_radius
+												 : frustumCullRadius;
 	bool  current_useSSBOInstancing = use_ssbo ? (uniforms_data[vUniformIndex].use_ssbo_instancing != 0)
                                               : useSSBOInstancing;
 
@@ -175,12 +180,14 @@ void main() {
 
 	// Extract world position (translation from model matrix)
 	vec3  instanceCenter = vec3(modelMatrix[3]);
-	float instanceScale = length(vec3(modelMatrix[0])); // Approximate scale from first column
+	float maxScale = max(max(length(vec3(modelMatrix[0])), length(vec3(modelMatrix[1]))), length(vec3(modelMatrix[2])));
+	// Ensure maxScale is at least 1.0 to avoid zero-radius culling if scale is near zero
+	maxScale = max(maxScale, 1.0);
 
 	// GPU frustum culling - output degenerate triangle if outside frustum
 	if (enableFrustumCulling && !current_isColossal) {
 		// Use sphere test with approximate radius based on scale
-		float effectiveRadius = frustumCullRadius * instanceScale;
+		float effectiveRadius = current_frustum_cull_radius * maxScale;
 
 		if (!isSphereInFrustum(instanceCenter, effectiveRadius)) {
 			// Output degenerate triangle (all vertices at same point)
@@ -196,7 +203,7 @@ void main() {
 
 	// Hi-Z occlusion culling - output degenerate triangle if occluded by previous frame's depth
 	if (enableHiZCulling && uUseMDI && !current_isColossal) {
-		if (hiz_visibility[drawID] == 0u) {
+		if (hiz_visibility[vUniformIndex] == 0u) {
 			gl_Position = vec4(0.0, 0.0, -2.0, 1.0);
 			FragPos = vec3(0.0);
 			Normal = vec3(0.0, 1.0, 0.0);
@@ -216,7 +223,7 @@ void main() {
 		vec3 worldBaseCenter = vec3(modelMatrix * vec4(localBaseCenter, 1.0));
 
 		// Shockwave displacement (applied before wind sway)
-		FragPos += getShockwaveDisplacement(instanceCenter, (aPos.y - u_aabbMin.y) * instanceScale, true);
+	FragPos += getShockwaveDisplacement(instanceCenter, (aPos.y - u_aabbMin.y) * maxScale, true);
 
 		// Apply wind sway
 		if (wind_strength > 0.0) {

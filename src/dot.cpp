@@ -12,7 +12,11 @@
 namespace Boidsish {
 
 	Dot::Dot(int id, float x, float y, float z, float size, float r, float g, float b, float a, int trail_length):
-		Shape(id, x, y, z, r, g, b, a, trail_length), size_(size) {}
+		Shape(id, x, y, z, r, g, b, a, trail_length), size_(size) {
+		// Dot mesh is a unit sphere. The size_ is applied as part of the model matrix scale.
+		// Thus the local AABB is [-1, 1].
+		local_aabb_ = AABB(glm::vec3(-1.0f), glm::vec3(1.0f));
+	}
 
 	void Dot::render() const {
 		render(*shader, GetModelMatrix());
@@ -67,7 +71,7 @@ namespace Boidsish {
 
 	bool Dot::Intersects(const Ray& ray, float& t) const {
 		glm::vec3 center(GetX(), GetY(), GetZ());
-		float     radius = size_ * 0.01f * GetScale().x; // Assuming uniform scale for dot
+		float     radius = size_ * 0.01f * GetScale().x;
 		glm::vec3 L = center - ray.origin;
 		float     tca = glm::dot(L, ray.direction);
 		if (tca < 0)
@@ -82,9 +86,7 @@ namespace Boidsish {
 	}
 
 	AABB Dot::GetAABB() const {
-		glm::vec3 center(GetX(), GetY(), GetZ());
-		float     radius = size_ * 0.01f * GetScale().x;
-		return AABB(center - glm::vec3(radius), center + glm::vec3(radius));
+		return local_aabb_.Transform(GetModelMatrix());
 	}
 
 } // namespace Boidsish

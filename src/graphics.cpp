@@ -713,10 +713,11 @@ namespace Boidsish {
 				enable_hiz_culling_ = false;
 			}
 			// Create visibility SSBO (GPU-only buffer, written by compute, read by vertex shader)
+			// Must be triple-buffered to match MDI uniforms capacity!
 			glGenBuffers(1, &occlusion_visibility_ssbo_);
 			glBindBuffer(GL_SHADER_STORAGE_BUFFER, occlusion_visibility_ssbo_);
-			std::vector<uint32_t> initial_vis(65536, 1u); // All visible initially
-			glBufferStorage(GL_SHADER_STORAGE_BUFFER, 65536 * sizeof(uint32_t), initial_vis.data(), 0);
+			std::vector<uint32_t> initial_vis(65536 * 3, 1u); // All visible initially across all 3 frame segments
+			glBufferStorage(GL_SHADER_STORAGE_BUFFER, 65536 * 3 * sizeof(uint32_t), initial_vis.data(), 0);
 			glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
 			if (ConfigManager::GetInstance().GetAppSettingBool("enable_effects", true)) {
 				postprocess_shader_ = std::make_shared<Shader>("shaders/postprocess.vert", "shaders/postprocess.frag");
@@ -1374,6 +1375,7 @@ namespace Boidsish {
 			bool                               is_shadow_pass = false,
 			bool                               dispatch_hiz_occlusion = false
 		) {
+			uint32_t initial_mdi_uniform_count = mdi_uniform_count;
 			const auto& packets = queue.GetPackets(layer);
 			if (packets.empty())
 				return;
@@ -1568,20 +1570,21 @@ namespace Boidsish {
 			);
 
 			// Hi-Z occlusion culling dispatch (between uniform fill and draw calls)
+			// Only process packets added in THIS call to ExecuteRenderQueue.
+			uint32_t current_call_count = mdi_uniform_count - initial_mdi_uniform_count;
+
 			if (dispatch_hiz_occlusion && occlusion_cull_shader_ && occlusion_cull_shader_->isValid() && hiz_manager &&
-			    hiz_manager->IsInitialized() && mdi_uniform_count > 0) {
+			    hiz_manager->IsInitialized() && current_call_count > 0) {
 				occlusion_cull_shader_->use();
 
-				// Bind uniforms SSBO (current frame's data) for compute to read AABBs
-				glBindBufferRange(
+				// Bind uniforms SSBO (entire buffer)
+				glBindBufferBase(
 					GL_SHADER_STORAGE_BUFFER,
 					2,
-					uniforms_ssbo->GetBufferId(),
-					frame_element_offset * sizeof(CommonUniforms),
-					mdi_uniform_count * sizeof(CommonUniforms)
+					uniforms_ssbo->GetBufferId()
 				);
 
-				// Bind visibility SSBO for compute to write
+				// Bind visibility SSBO for compute to write (entire buffer)
 				glBindBufferBase(
 					GL_SHADER_STORAGE_BUFFER,
 					Constants::SsboBinding::OcclusionVisibility(),
@@ -1594,7 +1597,9 @@ namespace Boidsish {
 				occlusion_cull_shader_->setInt("u_hizTexture", 15);
 
 				// Set uniforms
-				occlusion_cull_shader_->setInt("u_drawCount", static_cast<int>(mdi_uniform_count));
+				occlusion_cull_shader_->setInt("u_drawCount", static_cast<int>(current_call_count));
+				occlusion_cull_shader_->setUint("uFrameUniformOffset", frame_element_offset);
+				occlusion_cull_shader_->setUint("uBaseDrawID", initial_mdi_uniform_count);
 				glUniform2i(
 					glGetUniformLocation(occlusion_cull_shader_->ID, "u_hizSize"),
 					hiz_manager->GetWidth(),
@@ -1603,7 +1608,7 @@ namespace Boidsish {
 				occlusion_cull_shader_->setInt("u_hizMipCount", hiz_manager->GetMipCount());
 				occlusion_cull_shader_->setFloat("u_screenExpansion", 4.0f);
 
-				glDispatchCompute((mdi_uniform_count + 63) / 64, 1, 1);
+				glDispatchCompute((current_call_count + 63) / 64, 1, 1);
 				glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
 			}
 
@@ -1645,15 +1650,11 @@ namespace Boidsish {
 					}
 				}
 
-				// s->setBool("uUseMDI", true); // Moved below SSBO binding
-
-				// Bind SSBO for this batch's uniforms (replaces uBaseUniformIndex)
-				glBindBufferRange(
+				// Bind uniforms SSBO (entire buffer)
+				glBindBufferBase(
 					GL_SHADER_STORAGE_BUFFER,
 					2,
-					uniforms_ssbo->GetBufferId(),
-					batch.base_uniform_index * sizeof(CommonUniforms),
-					batch.command_count * sizeof(CommonUniforms)
+					uniforms_ssbo->GetBufferId()
 				);
 
 				// Bind bone matrices SSBO
@@ -1666,15 +1667,21 @@ namespace Boidsish {
 				);
 				s->setBool("uUseMDI", true);
 
-				// Bind visibility SSBO for Hi-Z occlusion culling (matching uniform indexing)
+				// Bind visibility SSBO for Hi-Z occlusion culling
 				if (dispatch_hiz_occlusion && !is_shadow_pass) {
-					glBindBufferRange(
+					// We bind the entire buffer from the start of current frame's region
+					// and use a uniform offset in the shader to avoid alignment issues
+					// with glBindBufferRange (which requires 16-256 byte alignment).
+					glBindBufferBase(
 						GL_SHADER_STORAGE_BUFFER,
 						Constants::SsboBinding::OcclusionVisibility(),
-						occlusion_visibility_ssbo_,
-						(batch.base_uniform_index - frame_element_offset) * sizeof(uint32_t),
-						batch.command_count * sizeof(uint32_t)
+						occlusion_visibility_ssbo_
 					);
+					s->setUint("uFrameUniformOffset", frame_element_offset);
+					s->setUint("uBaseDrawID", batch.base_uniform_index - frame_element_offset);
+				} else {
+					s->setUint("uFrameUniformOffset", 0);
+					s->setUint("uBaseDrawID", 0);
 				}
 
 				if (!is_shadow_pass) {

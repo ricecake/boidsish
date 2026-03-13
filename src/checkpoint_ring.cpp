@@ -17,6 +17,9 @@ namespace Boidsish {
 	CheckpointRingShape::CheckpointRingShape(float radius, CheckpointStyle style):
 		Shape(), radius_(radius), style_(style) {
 		SetUsePBR(false);
+		// Quad mesh for ring is [-1, 1] in local space.
+		// radius_ is applied via model matrix scale.
+		local_aabb_ = AABB(glm::vec3(-1.0f), glm::vec3(1.0f));
 	}
 
 	void CheckpointRingShape::InitQuadMesh(Megabuffer* mb) {
@@ -190,6 +193,16 @@ namespace Boidsish {
 
 		packet.uniforms.checkpoint_style = static_cast<int>(style_);
 		packet.uniforms.checkpoint_radius = radius_;
+		packet.uniforms.frustum_cull_radius = GetBoundingRadius();
+
+		// Occlusion culling AABB
+		AABB      worldAABB = GetAABB();
+		packet.uniforms.aabb_min_x = worldAABB.min.x;
+		packet.uniforms.aabb_min_y = worldAABB.min.y;
+		packet.uniforms.aabb_min_z = worldAABB.min.z;
+		packet.uniforms.aabb_max_x = worldAABB.max.x;
+		packet.uniforms.aabb_max_y = worldAABB.max.y;
+		packet.uniforms.aabb_max_z = worldAABB.max.z;
 
 		packet.casts_shadows = CastsShadows();
 
