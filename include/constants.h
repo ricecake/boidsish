@@ -14,7 +14,7 @@ namespace Boidsish {
 			}
 
 			constexpr int Shadows() {
-				return 2;
+				return 10;
 			}
 
 			constexpr int FrustumData() {
@@ -217,7 +217,7 @@ namespace Boidsish {
 				}
 
 				constexpr int MaxCascades() {
-					return 4;
+					return 1;
 				}
 
 				constexpr int MaxShadowMaps() {
@@ -225,7 +225,7 @@ namespace Boidsish {
 				}
 
 				constexpr int MapSize() {
-					return 2048;
+					return 1024;
 				}
 
 				constexpr float DefaultSceneRadius() {
@@ -240,7 +240,7 @@ namespace Boidsish {
 				// Near splits are tighter for crisp close shadows
 				// Far cascade acts as catchall for distant terrain
 				constexpr float CascadeSplit0() {
-					return 20.0f;
+					return 1000.0f;
 				}
 
 				constexpr float CascadeSplit1() {

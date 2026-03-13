@@ -46,6 +46,7 @@
 #include "post_processing/effects/NegativeEffect.h"
 #include "post_processing/effects/OpticalFlowEffect.h"
 #include "post_processing/effects/SdfVolumeEffect.h"
+#include "post_processing/effects/SssEffect.h"
 #include "post_processing/effects/StrobeEffect.h"
 #include "post_processing/effects/SuperSpeedEffect.h"
 #include "post_processing/effects/TimeStutterEffect.h"
@@ -647,6 +648,10 @@ namespace Boidsish {
 					std::cout << "[OpenGL] Version: " << glGetString(GL_VERSION) << "\n";
 					std::cout << "[OpenGL] Renderer: " << glGetString(GL_RENDERER) << "\n";
 					std::cout << "[OpenGL] GLSL Version: " << glGetString(GL_SHADING_LANGUAGE_VERSION) << "\n";
+
+					if (!GLEW_ARB_shader_stencil_export) {
+						logger::WARNING("GL_ARB_shader_stencil_export not supported - SSS mask will be empty");
+					}
 				} else {
 					std::cerr << "[OpenGL] Warning: Debug context requested but not available\n";
 				}
@@ -1053,6 +1058,10 @@ namespace Boidsish {
 				sdf_volume_effect->SetEnabled(true);
 				post_processing_manager_->AddEffect(sdf_volume_effect);
 
+				auto sss_effect = std::make_shared<PostProcessing::SssEffect>();
+				sss_effect->SetEnabled(true);
+				post_processing_manager_->AddEffect(sss_effect);
+
 				if (enable_hdr_) {
 					auto tone_mapping_effect = std::make_shared<PostProcessing::ToneMappingEffect>();
 					tone_mapping_effect->SetEnabled(true);
@@ -1069,13 +1078,13 @@ namespace Boidsish {
 			ui_manager->AddWidget(std::make_shared<UI::SystemWidget>(*parent, *scene_manager));
 		}
 
-		void BindShadows(Shader& s) {
+		void BindShadows(ShaderBase& s) {
 			s.use();
 			if (terrain_render_manager) {
 				terrain_render_manager->BindTerrainData(s);
 			}
 			if (shadow_manager && shadow_manager->IsInitialized() && frame_config_.enable_shadows) {
-				shadow_manager->BindForRendering(s);
+				shadow_manager->BindForRendering(s, 10);
 				std::array<int, 10> shadow_indices;
 				shadow_indices.fill(-1);
 				const auto& all_lights = light_manager.GetLights();
@@ -1084,7 +1093,7 @@ namespace Boidsish {
 				}
 				s.setIntArray("lightShadowIndices", shadow_indices.data(), 10);
 			} else {
-				s.setInt("shadowMaps", 4);
+				s.setInt("shadowMaps", 10);
 				std::array<int, 10> shadow_indices;
 				shadow_indices.fill(-1);
 				s.setIntArray("lightShadowIndices", shadow_indices.data(), 10);
@@ -1609,6 +1618,12 @@ namespace Boidsish {
 				if (s->ID != current_bound_shader_id) {
 					s->use();
 					current_bound_shader_id = s->ID;
+
+					// Bind shadow maps for all shaders
+					if (!is_shadow_pass) {
+						BindShadows(*s);
+					}
+
 					s->setMat4("view", view_mat);
 					s->setMat4("projection", proj_mat);
 					s->setFloat("time", simulation_time);
@@ -3246,6 +3261,7 @@ namespace Boidsish {
 			// Update global last shadow camera state
 			impl->last_shadow_update_camera_front = impl->camera.front();
 
+			impl->shadow_manager->BlurShadowMaps(next_map_idx);
 			impl->shadow_manager->UpdateShadowUBO(shadow_lights);
 
 			// Unbind shadow FBO once after all passes are complete
@@ -3268,7 +3284,12 @@ namespace Boidsish {
 		}
 
 		glEnable(GL_DEPTH_TEST);
-		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+		glEnable(GL_STENCIL_TEST);
+		glStencilFunc(GL_ALWAYS, 0, 0xFF);
+		glStencilOp(GL_KEEP, GL_KEEP, GL_REPLACE);
+		glStencilMask(0xFF);
+		glClearStencil(0);
+		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
 
 		view = impl->SetupMatrices();
 
@@ -3357,6 +3378,7 @@ namespace Boidsish {
 		// Render transparent shapes after sky and early post-processing
 		// impl->UpdateFrustumUbo(view, impl->projection, impl->camera.pos());
 		glEnable(GL_BLEND);
+		glDisable(GL_STENCIL_TEST);
 		glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 		glDepthMask(GL_FALSE);
 		impl->ExecuteRenderQueue(

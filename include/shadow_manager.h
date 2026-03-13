@@ -10,6 +10,7 @@
 #include <glm/glm.hpp>
 
 class Shader;
+class ShaderBase;
 
 namespace Boidsish {
 
@@ -103,7 +104,7 @@ namespace Boidsish {
 		 * @param shader The shader to set up shadow samplers for
 		 * @param texture_unit The texture unit to bind the shadow map array to
 		 */
-		void BindForRendering(Shader& shader, int texture_unit = 10);
+		void BindForRendering(ShaderBase& shader, int texture_unit = 10);
 
 		/**
 		 * @brief Update the shadow UBO with current light-space matrices.
@@ -142,6 +143,13 @@ namespace Boidsish {
 		 */
 		Frustum GetShadowFrustum(int map_index) const;
 
+		/**
+		 * @brief Apply blurring to the shadow maps.
+		 *
+		 * @param num_lights Number of active shadow-casting lights
+		 */
+		void BlurShadowMaps(int num_lights);
+
 	private:
 		bool                    initialized_ = false;
 		GLuint                  shadow_fbo_ = 0;
@@ -149,12 +157,21 @@ namespace Boidsish {
 		GLuint                  shadow_ubo_ = 0;
 		std::shared_ptr<Shader> shadow_shader_;
 
+		// Blurring resources
+		GLuint                  shadow_blur_fbo_ = 0;
+		GLuint                  shadow_blur_texture_array_ = 0; // Ping-pong buffer
+		std::shared_ptr<Shader> shadow_blur_shader_;
+		GLuint                  blur_quad_vao_ = 0;
+		GLuint                  blur_quad_vbo_ = 0;
+
+		void InitializeBlurResources();
+
 		int                                   active_shadow_count_ = 0;
 		std::array<glm::mat4, kMaxShadowMaps> light_space_matrices_;
 		// Cascade splits: logarithmic distribution for better near-field detail
 		// Near splits are tighter for crisp close shadows
 		// Far cascade (3) acts as catchall extending to very distant terrain
-		std::array<float, kMaxCascades> cascade_splits_ = {20.0f, 50.0f, 150.0f, 700.0f};
+		std::array<float, kMaxCascades> cascade_splits_ = {1000.0f};
 
 		std::vector<glm::vec4> GetFrustumCornersWorldSpace(const glm::mat4& proj, const glm::mat4& view);
 	};

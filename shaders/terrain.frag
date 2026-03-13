@@ -1,4 +1,5 @@
 #version 430 core
+#extension GL_ARB_shader_stencil_export : enable
 layout(location = 0) out vec4 FragColor;
 layout(location = 1) out vec2 Velocity;
 
@@ -442,6 +443,22 @@ void main() {
 	// perturbedNorm += rawWindNudge * mix(0.0, 1.05, plainRipple);
 
 	vec3 lighting = apply_lighting_pbr(FragPos, perturbedNorm, albedo, roughness, metallic, 1.0).rgb;
+
+	// Stencil marking for Screen Space Shadows (penumbra areas)
+#ifdef GL_ARB_shader_stencil_export
+	if (numShadowLights > 0) {
+		float combinedShadow = 1.0;
+		for (int i = 0; i < num_lights; ++i) {
+			vec3  L;
+			float atten;
+			calculateLightContribution(i, FragPos, L, atten);
+			combinedShadow = min(combinedShadow, calculateShadow(i, FragPos, perturbedNorm, L));
+		}
+		if (combinedShadow > 0.0 && combinedShadow < 1.0) {
+			gl_FragStencilRefARB = 1;
+		}
+	}
+#endif
 
 	// ========================================================================
 	// Neon 80s Synth Style (Night Theme)

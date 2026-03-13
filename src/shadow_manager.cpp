@@ -91,8 +91,66 @@ namespace Boidsish {
 		glBindBufferBase(GL_UNIFORM_BUFFER, Constants::UboBinding::Shadows(), shadow_ubo_);
 		glBindBuffer(GL_UNIFORM_BUFFER, 0);
 
+		InitializeBlurResources();
+
 		initialized_ = true;
 		logger::INFO("ShadowManager initialized with {} shadow map slots", kMaxShadowMaps);
+	}
+
+	void ShadowManager::InitializeBlurResources() {
+		// Create blur shader
+		shadow_blur_shader_ = std::make_shared<Shader>("shaders/shadow_blur.vert", "shaders/shadow_blur.frag");
+
+		// Create blur texture array (ping-pong buffer)
+		glGenTextures(1, &shadow_blur_texture_array_);
+		glBindTexture(GL_TEXTURE_2D_ARRAY, shadow_blur_texture_array_);
+		glTexImage3D(
+			GL_TEXTURE_2D_ARRAY,
+			0,
+			GL_DEPTH_COMPONENT24,
+			kShadowMapSize,
+			kShadowMapSize,
+			kMaxShadowMaps,
+			0,
+			GL_DEPTH_COMPONENT,
+			GL_FLOAT,
+			nullptr
+		);
+		glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+		glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+		glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER);
+		glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_BORDER);
+		float border_color[] = {1.0f, 1.0f, 1.0f, 1.0f};
+		glTexParameterfv(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_BORDER_COLOR, border_color);
+
+		// Create blur FBO
+		glGenFramebuffers(1, &shadow_blur_fbo_);
+		glBindFramebuffer(GL_FRAMEBUFFER, shadow_blur_fbo_);
+		glDrawBuffer(GL_NONE);
+		glReadBuffer(GL_NONE);
+		glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+		// Create blur quad VAO/VBO
+		float quad_vertices[] = {
+			// positions   // texCoords
+			-1.0f,  1.0f, 0.0f, 1.0f,
+			-1.0f, -1.0f, 0.0f, 0.0f,
+			 1.0f, -1.0f, 1.0f, 0.0f,
+
+			-1.0f,  1.0f, 0.0f, 1.0f,
+			 1.0f, -1.0f, 1.0f, 0.0f,
+			 1.0f,  1.0f, 1.0f, 1.0f
+		};
+		glGenVertexArrays(1, &blur_quad_vao_);
+		glBindVertexArray(blur_quad_vao_);
+		glGenBuffers(1, &blur_quad_vbo_);
+		glBindBuffer(GL_ARRAY_BUFFER, blur_quad_vbo_);
+		glBufferData(GL_ARRAY_BUFFER, sizeof(quad_vertices), quad_vertices, GL_STATIC_DRAW);
+		glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)0);
+		glEnableVertexAttribArray(0);
+		glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)(2 * sizeof(float)));
+		glEnableVertexAttribArray(1);
+		glBindVertexArray(0);
 	}
 
 	void ShadowManager::BeginShadowPass(
@@ -323,7 +381,65 @@ namespace Boidsish {
 		return frustum;
 	}
 
-	void ShadowManager::BindForRendering(Shader& shader, int texture_unit) {
+	void ShadowManager::BlurShadowMaps(int num_lights) {
+		if (!initialized_ || num_lights <= 0) return;
+
+		// Disable depth compare mode temporarily for blurring
+		glBindTexture(GL_TEXTURE_2D_ARRAY, shadow_map_array_);
+		glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_COMPARE_MODE, GL_NONE);
+		glBindTexture(GL_TEXTURE_2D_ARRAY, shadow_blur_texture_array_);
+		glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_COMPARE_MODE, GL_NONE);
+
+		glDisable(GL_CULL_FACE);
+		glDisable(GL_BLEND);
+		glEnable(GL_DEPTH_TEST);
+		glDepthFunc(GL_ALWAYS); // We want to overwrite the depth buffer
+
+		shadow_blur_shader_->use();
+		shadow_blur_shader_->setInt("shadowMaps", 0);
+		shadow_blur_shader_->setVec2("texelSize", glm::vec2(1.0f / kShadowMapSize));
+
+		glBindVertexArray(blur_quad_vao_);
+
+		for (int i = 0; i < num_lights; ++i) {
+			// Horizontal pass: shadow_map_array_ -> shadow_blur_texture_array_
+			glBindFramebuffer(GL_FRAMEBUFFER, shadow_blur_fbo_);
+			glFramebufferTextureLayer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, shadow_blur_texture_array_, 0, i);
+
+			glActiveTexture(GL_TEXTURE0);
+			glBindTexture(GL_TEXTURE_2D_ARRAY, shadow_map_array_);
+
+			shadow_blur_shader_->setVec2("direction", glm::vec2(1.0f, 0.0f));
+			shadow_blur_shader_->setInt("layer", i);
+
+			glViewport(0, 0, kShadowMapSize, kShadowMapSize);
+			glClear(GL_DEPTH_BUFFER_BIT);
+			glDrawArrays(GL_TRIANGLES, 0, 6);
+
+			// Vertical pass: shadow_blur_texture_array_ -> shadow_map_array_
+			glFramebufferTextureLayer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, shadow_map_array_, 0, i);
+
+			glBindTexture(GL_TEXTURE_2D_ARRAY, shadow_blur_texture_array_);
+
+			shadow_blur_shader_->setVec2("direction", glm::vec2(0.0f, 1.0f));
+			// layer is already set to i
+
+			glClear(GL_DEPTH_BUFFER_BIT);
+			glDrawArrays(GL_TRIANGLES, 0, 6);
+		}
+
+		glBindFramebuffer(GL_FRAMEBUFFER, 0);
+		glBindVertexArray(0);
+		glDepthFunc(GL_LEQUAL);
+
+		// Restore depth compare mode
+		glBindTexture(GL_TEXTURE_2D_ARRAY, shadow_map_array_);
+		glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_COMPARE_MODE, GL_COMPARE_REF_TO_TEXTURE);
+		glBindTexture(GL_TEXTURE_2D_ARRAY, shadow_blur_texture_array_);
+		glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_COMPARE_MODE, GL_COMPARE_REF_TO_TEXTURE);
+	}
+
+	void ShadowManager::BindForRendering(ShaderBase& shader, int texture_unit) {
 		glActiveTexture(GL_TEXTURE0 + texture_unit);
 		glBindTexture(GL_TEXTURE_2D_ARRAY, shadow_map_array_);
 		shader.use();
