@@ -710,10 +710,11 @@ namespace Boidsish {
 				enable_hiz_culling_ = false;
 			}
 			// Create visibility SSBO (GPU-only buffer, written by compute, read by vertex shader)
+			// Must be triple-buffered to match MDI uniforms capacity!
 			glGenBuffers(1, &occlusion_visibility_ssbo_);
 			glBindBuffer(GL_SHADER_STORAGE_BUFFER, occlusion_visibility_ssbo_);
-			std::vector<uint32_t> initial_vis(65536, 1u); // All visible initially
-			glBufferStorage(GL_SHADER_STORAGE_BUFFER, 65536 * sizeof(uint32_t), initial_vis.data(), 0);
+			std::vector<uint32_t> initial_vis(65536 * 3, 1u); // All visible initially across all 3 frame segments
+			glBufferStorage(GL_SHADER_STORAGE_BUFFER, 65536 * 3 * sizeof(uint32_t), initial_vis.data(), 0);
 			glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
 			if (ConfigManager::GetInstance().GetAppSettingBool("enable_effects", true)) {
 				postprocess_shader_ = std::make_shared<Shader>("shaders/postprocess.vert", "shaders/postprocess.frag");
