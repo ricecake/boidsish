@@ -976,6 +976,7 @@ namespace Boidsish {
 
 			// --- Shadow Manager (initialize unconditionally) ---
 			shadow_manager->Initialize();
+			SetupShaderBindings(*shadow_manager->GetShadowShaderPtr());
 			shadow_shader_handle = shader_table.Register(
 				std::make_unique<RenderShader>(shadow_manager->GetShadowShaderPtr())
 			);
@@ -3027,6 +3028,11 @@ namespace Boidsish {
 		if (impl->shadow_manager && impl->shadow_manager->IsInitialized() && impl->frame_config_.enable_shadows &&
 		    light_count > 0) {
 			glEnable(GL_DEPTH_TEST);
+
+			if (impl->noise_manager) {
+				impl->noise_manager->BindDefault(*impl->shadow_manager->GetShadowShaderPtr());
+			}
+
 			std::vector<Light*> shadow_lights = impl->light_manager.GetShadowCastingLights();
 
 			// 1. Assign stable map indices and identify maps
@@ -3228,6 +3234,9 @@ namespace Boidsish {
 			impl->last_shadow_update_camera_front = impl->camera.front();
 
 			impl->shadow_manager->UpdateShadowUBO(shadow_lights);
+
+			// Unbind shadow FBO once after all passes are complete
+			glBindFramebuffer(GL_FRAMEBUFFER, 0);
 		}
 
 		bool effects_enabled = impl->frame_config_.effects_enabled;
