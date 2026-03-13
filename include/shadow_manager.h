@@ -156,9 +156,6 @@ namespace Boidsish {
 		// Far cascade (3) acts as catchall extending to very distant terrain
 		std::array<float, kMaxCascades> cascade_splits_ = {20.0f, 50.0f, 150.0f, 700.0f};
 
-		// Previous viewport for restoration
-		GLint prev_viewport_[4];
-
 		std::vector<glm::vec4> GetFrustumCornersWorldSpace(const glm::mat4& proj, const glm::mat4& view);
 	};
 

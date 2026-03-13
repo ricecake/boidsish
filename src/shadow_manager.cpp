@@ -111,9 +111,6 @@ namespace Boidsish {
 			return;
 		}
 
-		// Store current viewport
-		glGetIntegerv(GL_VIEWPORT, prev_viewport_);
-
 		// Calculate light-space matrix
 		glm::vec3 light_dir = glm::normalize(light.direction);
 		if (light.type != DIRECTIONAL_LIGHT && light.type != SPOT_LIGHT) {
@@ -253,11 +250,6 @@ namespace Boidsish {
 		glBindFramebuffer(GL_FRAMEBUFFER, shadow_fbo_);
 		glFramebufferTextureLayer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, shadow_map_array_, 0, map_index);
 
-		GLenum status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
-		if (status != GL_FRAMEBUFFER_COMPLETE) {
-			logger::ERROR("Shadow FBO incomplete for map {}: {}", map_index, status);
-		}
-
 		glViewport(0, 0, kShadowMapSize, kShadowMapSize);
 		glClear(GL_DEPTH_BUFFER_BIT);
 
@@ -273,12 +265,6 @@ namespace Boidsish {
 	void ShadowManager::EndShadowPass() {
 		// Restore culling state
 		glCullFace(GL_BACK);
-
-		// Restore previous viewport
-		glViewport(prev_viewport_[0], prev_viewport_[1], prev_viewport_[2], prev_viewport_[3]);
-
-		// Unbind framebuffer
-		glBindFramebuffer(GL_FRAMEBUFFER, 0);
 	}
 
 	const glm::mat4& ShadowManager::GetLightSpaceMatrix(int map_index) const {
