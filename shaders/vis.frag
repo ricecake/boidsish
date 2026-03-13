@@ -1,5 +1,6 @@
 #version 430 core
 #extension GL_GOOGLE_include_directive : enable
+#extension GL_ARB_shader_stencil_export : enable
 layout(location = 0) out vec4 FragColor;
 layout(location = 1) out vec2 Velocity;
 
@@ -144,6 +145,19 @@ void main() {
 	result += rim * WindDeflection * u_windRimHighlight * vec3(1.0);
 
 	result = applyArtisticEffects(result, FragPos, barycentric, time);
+
+	// Stencil marking for Screen Space Shadows (penumbra areas)
+#ifdef GL_ARB_shader_stencil_export
+	if (numShadowLights > 0) {
+		vec3  L;
+		float atten;
+		calculateLightContribution(0, FragPos, L, atten);
+		float s = calculateShadow(0, FragPos, norm, L);
+		if (s > 0.0 && s < 1.0) {
+			gl_FragStencilRefARB = 1;
+		}
+	}
+#endif
 
 	if (c_is_refractive) {
 		vec3 V = normalize(FragPos - viewPos);

@@ -1,4 +1,5 @@
 #version 430 core
+#extension GL_ARB_shader_stencil_export : enable
 layout(location = 0) out vec4 FragColor;
 layout(location = 1) out vec2 Velocity;
 
@@ -134,6 +135,19 @@ void main() {
 	vec3 norm = normalize(Normal);
 	vec3 surfaceColor = vec3(0.05, 0.05, 0.08);
 	vec3 lighting = apply_lighting(WorldPos, norm, surfaceColor, 0.8).rgb;
+
+	// Stencil marking for Screen Space Shadows (penumbra areas)
+#ifdef GL_ARB_shader_stencil_export
+	if (numShadowLights > 0) {
+		vec3  L;
+		float atten;
+		calculateLightContribution(0, WorldPos, L, atten);
+		float s = calculateShadow(0, WorldPos, norm, L);
+		if (s > 0.0 && s < 1.0) {
+			gl_FragStencilRefARB = 1;
+		}
+	}
+#endif
 
 	// --- Combine colors ---
 	vec3 final_color = lighting * surfaceColor + grid_color;
