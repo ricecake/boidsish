@@ -3048,7 +3048,7 @@ namespace Boidsish {
 
 		// --- Shadow Pass (render depth from each shadow-casting light) ---
 		auto light_count = impl->light_manager.GetShadowCastingLightCount();
-		if (false && impl->shadow_manager && impl->shadow_manager->IsInitialized() && impl->frame_config_.enable_shadows &&
+		if (impl->shadow_manager && impl->shadow_manager->IsInitialized() && impl->frame_config_.enable_shadows &&
 		    light_count > 0) {
 			glEnable(GL_DEPTH_TEST);
 
