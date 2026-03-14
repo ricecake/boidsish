@@ -3254,7 +3254,7 @@ namespace Boidsish {
 			// Update global last shadow camera state
 			impl->last_shadow_update_camera_front = impl->camera.front();
 
-			impl->shadow_manager->BlurShadowMaps(next_map_idx);
+			// impl->shadow_manager->BlurShadowMaps(next_map_idx);
 			impl->shadow_manager->UpdateShadowUBO(shadow_lights);
 
 			// Unbind shadow FBO once after all passes are complete

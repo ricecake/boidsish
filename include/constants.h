@@ -225,7 +225,7 @@ namespace Boidsish {
 				}
 
 				constexpr int MapSize() {
-					return 2048;
+					return 1024;
 				}
 
 				constexpr float DefaultSceneRadius() {

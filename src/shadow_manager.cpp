@@ -320,6 +320,7 @@ namespace Boidsish {
 
 	void ShadowManager::EndShadowPass() {
 		// Restore culling state
+		glEnable(GL_CULL_FACE);
 		glCullFace(GL_BACK);
 	}
 
@@ -431,6 +432,9 @@ namespace Boidsish {
 
 		glBindFramebuffer(GL_FRAMEBUFFER, 0);
 		glBindVertexArray(0);
+		glEnable(GL_CULL_FACE);
+		glCullFace(GL_BACK);
+
 		glDepthFunc(GL_LEQUAL);
 
 		// Restore depth compare mode
