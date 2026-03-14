@@ -25,21 +25,16 @@ namespace Boidsish {
 			sss_shader_->use();
 			sss_shader_->setInt("sceneTexture", 0);
 			sss_shader_->setInt("depthTexture", 1);
+			sss_shader_->setInt("sssTileMask", 2);
 
 			glActiveTexture(GL_TEXTURE0);
 			glBindTexture(GL_TEXTURE_2D, sourceTexture);
 			glActiveTexture(GL_TEXTURE1);
 			glBindTexture(GL_TEXTURE_2D, depthTexture);
-
-			// Restrict processing to stencil values of 1
-			glEnable(GL_STENCIL_TEST);
-			glStencilFunc(GL_EQUAL, 1, 0xFF);
-			glStencilOp(GL_KEEP, GL_KEEP, GL_KEEP);
-			glStencilMask(0x00); // Don't write to stencil
+			glActiveTexture(GL_TEXTURE2);
+			glBindTexture(GL_TEXTURE_2D_ARRAY, tile_mask_array_);
 
 			glDrawArrays(GL_TRIANGLES, 0, 6);
-
-			glDisable(GL_STENCIL_TEST);
 		}
 
 		void SssEffect::Resize(int width, int height) {

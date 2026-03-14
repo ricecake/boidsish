@@ -6,6 +6,7 @@ in vec2 TexCoords;
 
 uniform sampler2D sceneTexture;
 uniform sampler2D depthTexture;
+uniform usampler2DArray sssTileMask;
 
 #include "../temporal_data.glsl"
 #include "../lighting.glsl"
@@ -42,6 +43,22 @@ void main() {
 	}
 
 	vec3 worldPos = worldPosFromDepth(d);
+
+	// Tile-based optimization: check if this fragment needs screen space shadows
+	// Project to first light's shadow space
+	if (numShadowLights > 0) {
+		vec4 lightSpacePos = lightSpaceMatrices[0] * vec4(worldPos, 1.0);
+		vec3 projCoords = lightSpacePos.xyz / lightSpacePos.w;
+		projCoords = projCoords * 0.5 + 0.5;
+
+		if (projCoords.x >= 0.0 && projCoords.x <= 1.0 && projCoords.y >= 0.0 && projCoords.y <= 1.0) {
+			uint maskValue = texture(sssTileMask, vec3(projCoords.xy, 0.0)).r;
+			if (maskValue == 0) {
+				FragColor = texture(sceneTexture, TexCoords);
+				return;
+			}
+		}
+	}
 
 	vec3 lightDir;
 	if (lights[0].type == 1) {

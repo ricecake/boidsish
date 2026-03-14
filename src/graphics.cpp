@@ -1060,6 +1060,7 @@ namespace Boidsish {
 
 				auto sss_effect = std::make_shared<PostProcessing::SssEffect>();
 				sss_effect->SetEnabled(true);
+				sss_effect->SetTileMask(shadow_manager->GetSssTileMaskArray());
 				post_processing_manager_->AddEffect(sss_effect);
 
 				if (enable_hdr_) {
@@ -3255,6 +3256,7 @@ namespace Boidsish {
 			impl->last_shadow_update_camera_front = impl->camera.front();
 
 			// impl->shadow_manager->BlurShadowMaps(next_map_idx);
+			impl->shadow_manager->ClassifyShadowTiles(next_map_idx);
 			impl->shadow_manager->UpdateShadowUBO(shadow_lights);
 
 			// Unbind shadow FBO once after all passes are complete

@@ -10,6 +10,7 @@
 #include <glm/glm.hpp>
 
 class Shader;
+class ComputeShader;
 
 namespace Boidsish {
 
@@ -149,6 +150,18 @@ namespace Boidsish {
 		 */
 		void BlurShadowMaps(int num_lights);
 
+		/**
+		 * @brief Classify shadow map tiles to identify areas needing screen-space shadow tracing.
+		 *
+		 * @param num_lights Number of active shadow-casting lights
+		 */
+		void ClassifyShadowTiles(int num_lights);
+
+		/**
+		 * @brief Get the SSS tile mask texture array.
+		 */
+		GLuint GetSssTileMaskArray() const { return sss_tile_mask_array_; }
+
 	private:
 		bool                    initialized_ = false;
 		GLuint                  shadow_fbo_ = 0;
@@ -163,7 +176,12 @@ namespace Boidsish {
 		GLuint                  blur_quad_vao_ = 0;
 		GLuint                  blur_quad_vbo_ = 0;
 
+		// SSS tile classification resources
+		GLuint                         sss_tile_mask_array_ = 0;
+		std::shared_ptr<ComputeShader> sss_tile_classify_shader_;
+
 		void InitializeBlurResources();
+		void InitializeSssClassificationResources();
 
 		int                                   active_shadow_count_ = 0;
 		std::array<glm::mat4, kMaxShadowMaps> light_space_matrices_;
