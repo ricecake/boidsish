@@ -1,6 +1,8 @@
 #pragma once
 
+#include "constants.h"
 #include "post_processing/IPostProcessingEffect.h"
+#include <array>
 #include <memory>
 #include <shader.h>
 
@@ -23,10 +25,15 @@ namespace Boidsish {
 
 			void SetTileMask(GLuint mask_array) { tile_mask_array_ = mask_array; }
 
+			void SetLightShadowIndices(const std::array<int, Constants::Class::Shadows::MaxLights()>& indices) {
+				light_shadow_indices_ = indices;
+			}
+
 		private:
 			std::unique_ptr<Shader> sss_shader_;
-			int width_, height_;
-			GLuint tile_mask_array_ = 0;
+			int                     width_, height_;
+			GLuint                  tile_mask_array_ = 0;
+			std::array<int, Constants::Class::Shadows::MaxLights()> light_shadow_indices_;
 		};
 
 	}

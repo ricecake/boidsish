@@ -8,6 +8,7 @@ namespace Boidsish {
 		SssEffect::SssEffect() {
 			name_ = "ScreenSpaceShadows";
 			is_enabled_ = true;
+			light_shadow_indices_.fill(-1);
 		}
 
 		SssEffect::~SssEffect() {}
@@ -49,6 +50,8 @@ namespace Boidsish {
 			glBindTexture(GL_TEXTURE_2D, depthTexture);
 			glActiveTexture(GL_TEXTURE2);
 			glBindTexture(GL_TEXTURE_2D_ARRAY, tile_mask_array_);
+
+			sss_shader_->setIntArray("lightShadowIndices", light_shadow_indices_.data(), (int)light_shadow_indices_.size());
 
 			glDrawArrays(GL_TRIANGLES, 0, 6);
 		}

@@ -3336,6 +3336,20 @@ namespace Boidsish {
 		GLuint current_depth = impl->main_fbo_depth_texture_;
 
 		if (effects_enabled) {
+			// Update SssEffect with current light shadow indices before applying
+			const auto& all_lights = impl->light_manager.GetLights();
+			std::array<int, Constants::Class::Shadows::MaxLights()> shadow_indices;
+			shadow_indices.fill(-1);
+			for (size_t j = 0; j < all_lights.size() && j < shadow_indices.size(); ++j) {
+				shadow_indices[j] = all_lights[j].shadow_map_index;
+			}
+
+			for (auto& effect : impl->post_processing_manager_->GetPreToneMappingEffects()) {
+				if (auto sss = std::dynamic_pointer_cast<PostProcessing::SssEffect>(effect)) {
+					sss->SetLightShadowIndices(shadow_indices);
+				}
+			}
+
 			impl->post_processing_manager_
 				->BeginApply(current_texture, impl->main_fbo_, current_depth, impl->main_fbo_velocity_texture_);
 			impl->post_processing_manager_
