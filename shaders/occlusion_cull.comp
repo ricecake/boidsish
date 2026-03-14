@@ -6,7 +6,7 @@ layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
 #include "temporal_data.glsl"
 
 // Input: per-draw uniforms (same SSBO the vertex shader reads, contains AABBs)
-layout(std430, binding = 30) readonly buffer UniformsSSBO {
+layout(std430, binding = 2) readonly buffer UniformsSSBO {
 	CommonUniforms uniforms_data[];
 };
 

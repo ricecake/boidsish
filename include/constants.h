@@ -14,7 +14,7 @@ namespace Boidsish {
 			}
 
 			constexpr int Shadows() {
-				return 10;
+				return 2;
 			}
 
 			constexpr int FrustumData() {
@@ -43,14 +43,6 @@ namespace Boidsish {
 		} // namespace UboBinding
 
 		namespace SsboBinding {
-			constexpr int Uniforms() {
-				return 30;
-			}
-
-			constexpr int VisibleInstances() {
-				return 31;
-			}
-
 			constexpr int AutoExposure() {
 				return 11;
 			}
@@ -225,7 +217,7 @@ namespace Boidsish {
 				}
 
 				constexpr int MaxCascades() {
-					return 1;
+					return 4;
 				}
 
 				constexpr int MaxShadowMaps() {
@@ -233,7 +225,7 @@ namespace Boidsish {
 				}
 
 				constexpr int MapSize() {
-					return 1024;
+					return 2048;
 				}
 
 				constexpr float DefaultSceneRadius() {
@@ -248,7 +240,7 @@ namespace Boidsish {
 				// Near splits are tighter for crisp close shadows
 				// Far cascade acts as catchall for distant terrain
 				constexpr float CascadeSplit0() {
-					return 1000.0f;
+					return 20.0f;
 				}
 
 				constexpr float CascadeSplit1() {

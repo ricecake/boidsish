@@ -10,7 +10,6 @@
 #include <glm/glm.hpp>
 
 class Shader;
-class ShaderBase;
 
 namespace Boidsish {
 
@@ -104,7 +103,7 @@ namespace Boidsish {
 		 * @param shader The shader to set up shadow samplers for
 		 * @param texture_unit The texture unit to bind the shadow map array to
 		 */
-		void BindForRendering(ShaderBase& shader, int texture_unit = 10);
+		void BindForRendering(Shader& shader, int texture_unit = 10);
 
 		/**
 		 * @brief Update the shadow UBO with current light-space matrices.
@@ -171,7 +170,7 @@ namespace Boidsish {
 		// Cascade splits: logarithmic distribution for better near-field detail
 		// Near splits are tighter for crisp close shadows
 		// Far cascade (3) acts as catchall extending to very distant terrain
-		std::array<float, kMaxCascades> cascade_splits_ = {1000.0f};
+		std::array<float, kMaxCascades> cascade_splits_ = {20.0f, 50.0f, 150.0f, 700.0f};
 
 		std::vector<glm::vec4> GetFrustumCornersWorldSpace(const glm::mat4& proj, const glm::mat4& view);
 	};

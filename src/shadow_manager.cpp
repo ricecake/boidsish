@@ -214,8 +214,7 @@ namespace Boidsish {
 
 			// Pull the shadow camera back to include casters outside the view frustum
 			// Use cascade-dependent pull-back to balance precision vs coverage
-		// Increased pull-back for single large shadow map coverage
-		float pull_back = frustum_radius + scene_radius * 2.0f;
+			float pull_back = frustum_radius + scene_radius * 0.5f;
 			light_view = glm::lookAt(center - light_dir * pull_back, center, up);
 
 			// Calculate tight ortho bounds in light space
@@ -308,8 +307,6 @@ namespace Boidsish {
 		glFramebufferTextureLayer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, shadow_map_array_, 0, map_index);
 
 		glViewport(0, 0, kShadowMapSize, kShadowMapSize);
-		glEnable(GL_DEPTH_TEST);
-		glDepthMask(GL_TRUE);
 		glClear(GL_DEPTH_BUFFER_BIT);
 
 		// Enable front-face culling to reduce shadow acne
@@ -443,7 +440,7 @@ namespace Boidsish {
 		glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_COMPARE_MODE, GL_COMPARE_REF_TO_TEXTURE);
 	}
 
-	void ShadowManager::BindForRendering(ShaderBase& shader, int texture_unit) {
+	void ShadowManager::BindForRendering(Shader& shader, int texture_unit) {
 		glActiveTexture(GL_TEXTURE0 + texture_unit);
 		glBindTexture(GL_TEXTURE_2D_ARRAY, shadow_map_array_);
 		shader.use();

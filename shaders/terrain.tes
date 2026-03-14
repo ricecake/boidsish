@@ -26,8 +26,6 @@ uniform float          uChunkSize;
 
 uniform mat4 view;
 uniform mat4 projection;
-uniform mat4 lightSpaceMatrix;
-uniform bool uIsShadowPass = false;
 uniform vec4 clipPlane;
 
 #include "helpers/shockwave.glsl"
@@ -79,11 +77,7 @@ void main() {
 	TextureSlice = slice;
 
 	// Final vertex position
-	if (uIsShadowPass) {
-		gl_Position = lightSpaceMatrix * vec4(FragPos, 1.0);
-	} else {
-		gl_Position = projection * view * vec4(FragPos, 1.0);
-	}
+	gl_Position = projection * view * vec4(FragPos, 1.0);
 
 	CurPosition = gl_Position;
 	PrevPosition = prevViewProjection * vec4(FragPos, 1.0);

@@ -12,7 +12,7 @@ flat in int vUniformIndex;
 
 #include "common_uniforms.glsl"
 
-layout(std430, binding = 30) buffer UniformsSSBO {
+layout(std430, binding = 2) buffer UniformsSSBO {
 	CommonUniforms uniforms_data[];
 };
 
