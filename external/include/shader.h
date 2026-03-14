@@ -1,6 +1,7 @@
 #ifndef SHADER_H
 #define SHADER_H
 
+#include <cstdint>
 #include <cstdio>
 #include <fstream>
 #include <iostream>
@@ -19,7 +20,7 @@
 class ShaderBase {
 public:
 	struct UniformValue {
-		std::variant<std::monostate, bool, int, unsigned int, float, glm::vec2, glm::vec3, glm::vec4, glm::mat2, glm::mat3, glm::mat4, std::vector<int>> value;
+		std::variant<std::monostate, bool, int, unsigned int, uint64_t, float, glm::vec2, glm::vec3, glm::vec4, glm::mat2, glm::mat3, glm::mat4, std::vector<int>> value;
 
 		UniformValue() = default;
 		template<typename T, typename = std::enable_if_t<!std::is_same_v<std::decay_t<T>, UniformValue>>>
@@ -40,6 +41,8 @@ public:
 						glUniform1i(location, arg);
 					else if constexpr (std::is_same_v<T, unsigned int>)
 						glUniform1ui(location, arg);
+					else if constexpr (std::is_same_v<T, uint64_t>)
+						glUniformHandleui64ARB(location, arg);
 					else if constexpr (std::is_same_v<T, float>)
 						glUniform1f(location, arg);
 					else if constexpr (std::is_same_v<T, glm::vec2>)
@@ -101,6 +104,10 @@ public:
 		void setUint(const std::string& name, unsigned int value) {
 			capture(name);
 			shader.setUint(name, value);
+		}
+		void setHandle64(const std::string& name, uint64_t value) {
+			capture(name);
+			shader.setHandle64(name, value);
 		}
 		void setFloat(const std::string& name, float value) {
 			capture(name);
@@ -232,6 +239,20 @@ public:
 		int loc = getUniformLocation(name);
 		glUniform1ui(loc, value);
 		m_UniformValues[loc] = UniformValue{value};
+	}
+
+	void setHandle64(const std::string& name, uint64_t value) const {
+		int loc = getUniformLocation(name);
+		glUniformHandleui64ARB(loc, value);
+		m_UniformValues[loc] = UniformValue{value};
+	}
+
+	void trySetHandle64(const std::string& name, uint64_t value) const {
+		int loc = getUniformLocation(name);
+		if (loc != -1) {
+			glUniformHandleui64ARB(loc, value);
+			m_UniformValues[loc] = UniformValue{value};
+		}
 	}
 
 	// ------------------------------------------------------------------------
@@ -393,6 +414,11 @@ protected:
 		case GL_UNSIGNED_INT: {
 			unsigned int v;
 			glGetUniformuiv(ID, loc, &v);
+			return {v};
+		}
+		case GL_UNSIGNED_INT64_ARB: {
+			uint64_t v;
+			glGetUniformui64vARB(ID, loc, &v);
 			return {v};
 		}
 		case GL_FLOAT_MAT2: {
