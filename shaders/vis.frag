@@ -146,22 +146,6 @@ void main() {
 
 	result = applyArtisticEffects(result, FragPos, barycentric, time);
 
-	// Stencil marking for Screen Space Shadows (penumbra areas)
-#ifdef GL_ARB_shader_stencil_export
-	if (numShadowLights > 0) {
-		float combinedShadow = 1.0;
-		for (int i = 0; i < num_lights; ++i) {
-			vec3  L;
-			float atten;
-			calculateLightContribution(i, FragPos, L, atten);
-			combinedShadow = min(combinedShadow, calculateShadow(i, FragPos, norm, L));
-		}
-		if (combinedShadow > 0.01 && combinedShadow < 0.99) {
-			gl_FragStencilRefARB = 1;
-		}
-	}
-#endif
-
 	if (c_is_refractive) {
 		vec3 V = normalize(FragPos - viewPos);
 

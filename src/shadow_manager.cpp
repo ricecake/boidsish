@@ -92,6 +92,7 @@ namespace Boidsish {
 		glBindBuffer(GL_UNIFORM_BUFFER, 0);
 
 		InitializeBlurResources();
+		InitializeSssClassificationResources();
 
 		initialized_ = true;
 		logger::INFO("ShadowManager initialized with {} shadow map slots", kMaxShadowMaps);
@@ -441,6 +442,60 @@ namespace Boidsish {
 		glBindTexture(GL_TEXTURE_2D_ARRAY, shadow_map_array_);
 		glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_COMPARE_MODE, GL_COMPARE_REF_TO_TEXTURE);
 		glBindTexture(GL_TEXTURE_2D_ARRAY, shadow_blur_texture_array_);
+		glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_COMPARE_MODE, GL_COMPARE_REF_TO_TEXTURE);
+	}
+
+	void ShadowManager::InitializeSssClassificationResources() {
+		// Create classification compute shader
+		sss_tile_classify_shader_ = std::make_shared<ComputeShader>("shaders/effects/sss_tile_classify.comp");
+
+		// Create tile mask texture array (R8UI)
+		// 1024 / 16 = 64
+		int mask_size = kShadowMapSize / 16;
+		glGenTextures(1, &sss_tile_mask_array_);
+		glBindTexture(GL_TEXTURE_2D_ARRAY, sss_tile_mask_array_);
+		glTexImage3D(
+			GL_TEXTURE_2D_ARRAY,
+			0,
+			GL_R8UI,
+			mask_size,
+			mask_size,
+			kMaxShadowMaps,
+			0,
+			GL_RED_INTEGER,
+			GL_UNSIGNED_BYTE,
+			nullptr
+		);
+		glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+		glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+		glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+		glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+	}
+
+	void ShadowManager::ClassifyShadowTiles(int num_lights) {
+		if (!initialized_ || num_lights <= 0 || !sss_tile_classify_shader_ || !sss_tile_classify_shader_->isValid())
+			return;
+
+		// Disable depth compare mode temporarily for sampling raw depth
+		glActiveTexture(GL_TEXTURE0);
+		glBindTexture(GL_TEXTURE_2D_ARRAY, shadow_map_array_);
+		glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_COMPARE_MODE, GL_NONE);
+
+		sss_tile_classify_shader_->use();
+		sss_tile_classify_shader_->setInt("shadowMaps", 0);
+
+		glBindImageTexture(0, sss_tile_mask_array_, 0, GL_TRUE, 0, GL_WRITE_ONLY, GL_R8UI);
+
+		// Each work group processes 16x16 pixels
+		// num_lights corresponds to layers
+		int dispatch_size = kShadowMapSize / 16;
+		glDispatchCompute(dispatch_size, dispatch_size, num_lights);
+
+		// Ensure image writes are visible to subsequent texture sampling in the post-processing pass
+		glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | GL_TEXTURE_FETCH_BARRIER_BIT);
+
+		// Restore depth compare mode
+		glBindTexture(GL_TEXTURE_2D_ARRAY, shadow_map_array_);
 		glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_COMPARE_MODE, GL_COMPARE_REF_TO_TEXTURE);
 	}
 

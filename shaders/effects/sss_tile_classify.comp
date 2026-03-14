@@ -1,0 +1,45 @@
+#version 430 core
+
+layout(local_size_x = 16, local_size_y = 16) in;
+
+// Input: Shadow map texture array
+// Note: ShadowManager must disable GL_TEXTURE_COMPARE_MODE before dispatching this
+layout(binding = 0) uniform sampler2DArray shadowMaps;
+
+// Output: Low-resolution tile mask (e.g., 64x64 for 1024x1024 shadow map)
+layout(binding = 0, r8ui) writeonly uniform uimage2DArray tileMask;
+
+shared uint tileNeedsTracing;
+
+void main() {
+    uint layer = gl_WorkGroupID.z;
+    ivec2 texSize = textureSize(shadowMaps, 0).xy;
+    ivec2 texCoord = ivec2(gl_GlobalInvocationID.xy);
+
+    if (gl_LocalInvocationIndex == 0) {
+        tileNeedsTracing = 0;
+    }
+    barrier();
+
+    if (texCoord.x < texSize.x && texCoord.y < texSize.y) {
+        float depth = texelFetch(shadowMaps, ivec3(texCoord, layer), 0).r;
+
+        // Simple edge detection: compare with right and bottom neighbors
+        float depthRight = texelFetch(shadowMaps, ivec3(min(texCoord.x + 1, texSize.x - 1), texCoord.y, layer), 0).r;
+        float depthBottom = texelFetch(shadowMaps, ivec3(texCoord.x, min(texCoord.y + 1, texSize.y - 1), layer), 0).r;
+
+        float diff = max(abs(depth - depthRight), abs(depth - depthBottom));
+
+        // If we find a significant depth difference, this tile contains an edge
+        // We use a small threshold to detect even subtle edges.
+        if (depth < 0.9999 && diff > 0.00001) {
+            atomicExchange(tileNeedsTracing, 1);
+        }
+    }
+
+    barrier();
+
+    if (gl_LocalInvocationIndex == 0) {
+        imageStore(tileMask, ivec3(gl_WorkGroupID.xy, layer), uvec4(tileNeedsTracing, 0, 0, 0));
+    }
+}

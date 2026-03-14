@@ -1,4 +1,5 @@
 #include "post_processing/effects/SssEffect.h"
+#include "constants.h"
 #include <GL/glew.h>
 
 namespace Boidsish {
@@ -7,6 +8,7 @@ namespace Boidsish {
 		SssEffect::SssEffect() {
 			name_ = "ScreenSpaceShadows";
 			is_enabled_ = true;
+			light_shadow_indices_.fill(-1);
 		}
 
 		SssEffect::~SssEffect() {}
@@ -15,6 +17,21 @@ namespace Boidsish {
 			width_ = width;
 			height_ = height;
 			sss_shader_ = std::make_unique<Shader>("shaders/postprocess.vert", "shaders/effects/sss.frag");
+
+			if (sss_shader_ && sss_shader_->ID) {
+				GLuint lighting_idx = glGetUniformBlockIndex(sss_shader_->ID, "Lighting");
+				if (lighting_idx != GL_INVALID_INDEX) {
+					glUniformBlockBinding(sss_shader_->ID, lighting_idx, Constants::UboBinding::Lighting());
+				}
+				GLuint shadows_idx = glGetUniformBlockIndex(sss_shader_->ID, "Shadows");
+				if (shadows_idx != GL_INVALID_INDEX) {
+					glUniformBlockBinding(sss_shader_->ID, shadows_idx, Constants::UboBinding::Shadows());
+				}
+				GLuint temporal_idx = glGetUniformBlockIndex(sss_shader_->ID, "TemporalData");
+				if (temporal_idx != GL_INVALID_INDEX) {
+					glUniformBlockBinding(sss_shader_->ID, temporal_idx, Constants::UboBinding::TemporalData());
+				}
+			}
 		}
 
 		void SssEffect::Apply(GLuint sourceTexture, GLuint depthTexture, GLuint /*velocityTexture*/,
@@ -25,21 +42,18 @@ namespace Boidsish {
 			sss_shader_->use();
 			sss_shader_->setInt("sceneTexture", 0);
 			sss_shader_->setInt("depthTexture", 1);
+			sss_shader_->setInt("sssTileMask", 2);
 
 			glActiveTexture(GL_TEXTURE0);
 			glBindTexture(GL_TEXTURE_2D, sourceTexture);
 			glActiveTexture(GL_TEXTURE1);
 			glBindTexture(GL_TEXTURE_2D, depthTexture);
+			glActiveTexture(GL_TEXTURE2);
+			glBindTexture(GL_TEXTURE_2D_ARRAY, tile_mask_array_);
 
-			// Restrict processing to stencil values of 1
-			glEnable(GL_STENCIL_TEST);
-			glStencilFunc(GL_EQUAL, 1, 0xFF);
-			glStencilOp(GL_KEEP, GL_KEEP, GL_KEEP);
-			glStencilMask(0x00); // Don't write to stencil
+			sss_shader_->setIntArray("lightShadowIndices", light_shadow_indices_.data(), (int)light_shadow_indices_.size());
 
 			glDrawArrays(GL_TRIANGLES, 0, 6);
-
-			glDisable(GL_STENCIL_TEST);
 		}
 
 		void SssEffect::Resize(int width, int height) {
