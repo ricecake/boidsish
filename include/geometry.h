@@ -99,6 +99,9 @@ namespace Boidsish {
 	 */
 	enum class RenderLayer : uint8_t { Background = 0, Opaque = 1, Transparent = 2, UI = 3, Overlay = 4 };
 
+	struct RenderPacket;
+	using RenderPacketHandle = PoolHandle<RenderPacket>;
+
 	/**
 	 * @brief Grouped common uniforms for easier management and use across objects.
 	 * Layout matches std430 for use in SSBOs.
@@ -273,9 +276,9 @@ namespace Boidsish {
 
 		/**
 		 * @brief Returns cached packets if available, nullptr otherwise.
-		 * @return Pointer to cached packets, or nullptr if dirty/not cached.
+		 * @return Pointer to cached packet handles, or nullptr if dirty/not cached.
 		 */
-		virtual std::vector<RenderPacket>* GetCachedPackets() { return nullptr; }
+		virtual const std::vector<RenderPacketHandle>* GetCachedPackets() { return nullptr; }
 
 		/**
 		 * @brief Stores generated packets in the cache.

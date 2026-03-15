@@ -240,6 +240,10 @@ else()
     add_custom_target(glcheck)
 endif()
 
+add_executable(test_pool tests/test_pool.cpp)
+target_link_libraries(test_pool boidsish GTest::gtest_main)
+add_test(NAME PoolTest COMMAND test_pool)
+
 add_executable(test_rigid_body tests/test_rigid_body.cpp)
 target_link_libraries(test_rigid_body PRIVATE boidsish GTest::GTest GTest::Main)
 set_target_properties(test_rigid_body PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}" EXCLUDE_FROM_ALL TRUE)
