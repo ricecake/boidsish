@@ -684,7 +684,7 @@ namespace Boidsish {
 						break;
 					}
 				}
-				shader->setBool("use_texture", hasDiffuse);
+				shader->setInt("use_texture", hasDiffuse ? 1 : 0);
 				shader->setBool("useVertexColor", mesh.has_vertex_colors && !hasDiffuse);
 				mesh.bindTextures(*shader);
 
