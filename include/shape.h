@@ -20,9 +20,15 @@ namespace Boidsish {
 	// Base class for all renderable shapes
 	class Shape: public Geometry {
 	public:
-		virtual ~Shape() = default;
+		virtual ~Shape() {
+			for (auto handle : cached_packet_handles_) {
+				s_packetPool.FreeById(handle.GetId());
+			}
+		}
 
-		// Move operations (std::atomic is not copyable, so we need explicit move semantics)
+		Shape(const Shape&) = delete;
+		Shape& operator=(const Shape&) = delete;
+
 		Shape(Shape&& other) noexcept:
 			Geometry(std::move(other)),
 			rotation_(std::move(other.rotation_)),
@@ -31,7 +37,7 @@ namespace Boidsish {
 			clamp_to_terrain_(other.clamp_to_terrain_),
 			ground_offset_(other.ground_offset_),
 			render_dirty_(other.render_dirty_.load(std::memory_order_relaxed)),
-			cached_packets_(std::move(other.cached_packets_)),
+			cached_packet_handles_(std::move(other.cached_packet_handles_)),
 			id_(other.id_),
 			x_(other.x_),
 			y_(other.y_),
@@ -69,7 +75,7 @@ namespace Boidsish {
 				clamp_to_terrain_ = other.clamp_to_terrain_;
 				ground_offset_ = other.ground_offset_;
 				render_dirty_.store(other.render_dirty_.load(std::memory_order_relaxed), std::memory_order_relaxed);
-				cached_packets_ = std::move(other.cached_packets_);
+				cached_packet_handles_ = std::move(other.cached_packet_handles_);
 				id_ = other.id_;
 				x_ = other.x_;
 				y_ = other.y_;
@@ -101,10 +107,6 @@ namespace Boidsish {
 			return *this;
 		}
 
-		// Delete copy operations (atomic is not copyable)
-		Shape(const Shape&) = delete;
-		Shape& operator=(const Shape&) = delete;
-
 		// Update the shape's state
 		virtual void Update(float delta_time) { (void)delta_time; }
 
@@ -128,11 +130,19 @@ namespace Boidsish {
 
 		void MarkDirty() override { render_dirty_.store(true, std::memory_order_release); }
 
-		std::vector<RenderPacket>* GetCachedPackets() override {
-			return render_dirty_.load(std::memory_order_acquire) ? nullptr : &cached_packets_;
+		const std::vector<RenderPacketHandle>* GetCachedPackets() override {
+			return render_dirty_.load(std::memory_order_acquire) ? nullptr : &cached_packet_handles_;
 		}
 
-		void CachePackets(std::vector<RenderPacket>&& packets) override { cached_packets_ = std::move(packets); }
+		void CachePackets(std::vector<RenderPacket>&& packets) override {
+			for (auto handle : cached_packet_handles_) {
+				s_packetPool.FreeById(handle.GetId());
+			}
+			cached_packet_handles_.clear();
+			for (auto& p : packets) {
+				cached_packet_handles_.push_back(s_packetPool.Allocate(std::move(p)));
+			}
+		}
 
 		/// @}
 
@@ -456,8 +466,8 @@ namespace Boidsish {
 		float     ground_offset_;
 
 		// Dirty flag pattern for packet caching (thread-safe)
-		mutable std::atomic<bool>         render_dirty_{true};
-		mutable std::vector<RenderPacket> cached_packets_;
+		mutable std::atomic<bool>               render_dirty_{true};
+		mutable std::vector<RenderPacketHandle> cached_packet_handles_;
 
 	private:
 		int       id_;
@@ -492,6 +502,8 @@ namespace Boidsish {
 		static unsigned int         sphere_ebo_;
 		static int                  sphere_vertex_count_;
 		static MegabufferAllocation sphere_alloc_;
+
+		static Pool<RenderPacket> s_packetPool;
 	};
 
 	// Function type for user-defined shape generation

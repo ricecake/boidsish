@@ -2836,7 +2836,11 @@ namespace Boidsish {
 					if (auto* cached = shape->GetCachedPackets(); cached && !cached->empty()) {
 						// Use cached packets - update sort_keys for current camera position
 						// Iterate by value to copy directly, then move into local_packets
-						for (auto packet : *cached) {
+						for (auto handle : *cached) {
+							auto* packet_ptr = Shape::s_packetPool.Get(handle.GetId());
+							if (!packet_ptr) continue;
+							RenderPacket packet = *packet_ptr;
+
 							// Recalculate sort_key with current camera position
 							glm::vec3   world_pos = glm::vec3(packet.uniforms.model[3]);
 							float       normalized_depth = context.CalculateNormalizedDepth(world_pos);

@@ -18,6 +18,7 @@ namespace Boidsish {
 	unsigned int            Shape::sphere_ebo_ = 0;
 	int                     Shape::sphere_vertex_count_ = 0;
 	MegabufferAllocation    Shape::sphere_alloc_;
+	Pool<RenderPacket>      Shape::s_packetPool(16384);
 	std::shared_ptr<Shader> Shape::shader = nullptr;
 	ShaderHandle            Shape::shader_handle = ShaderHandle(0);
 	std::atomic<int>        Shape::s_nextId{1};

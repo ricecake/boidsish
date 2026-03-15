@@ -5,6 +5,7 @@
 
 #include "handle.h"
 #include "render_shader.h"
+#include "pool.h"
 
 namespace Boidsish {
 
@@ -24,9 +25,8 @@ namespace Boidsish {
 		 * @return A unique handle for the registered shader.
 		 */
 		ShaderHandle Register(std::unique_ptr<RenderShader> shader) {
-			ShaderHandle handle(++m_nextId);
-			m_shaders[handle] = std::move(shader);
-			return handle;
+			auto handle = m_shaderPool.Allocate(std::move(shader));
+			return ShaderHandle{handle.GetId()};
 		}
 
 		/**
@@ -34,27 +34,30 @@ namespace Boidsish {
 		 * @return Pointer to the shader, or nullptr if not found.
 		 */
 		RenderShader* Get(ShaderHandle handle) const {
-			auto it = m_shaders.find(handle);
-			return it != m_shaders.end() ? it->second.get() : nullptr;
+			if (auto s = m_shaderPool.Get(handle.id)) {
+				return s->get();
+			}
+			return nullptr;
 		}
 
 		/**
 		 * @brief Unregister and destroy a shader by its handle.
 		 */
-		void Unregister(ShaderHandle handle) { m_shaders.erase(handle); }
+		void Unregister(ShaderHandle handle) {
+			m_shaderPool.FreeById(handle.id);
+		}
 
 		/**
 		 * @brief Flush all shaders in the table, applying pending uniform changes.
 		 */
 		void FlushAll() {
-			for (auto& [handle, shader] : m_shaders) {
+			m_shaderPool.ForEach([](std::unique_ptr<RenderShader>& shader) {
 				shader->Flush();
-			}
+			});
 		}
 
 	private:
-		uint32_t                                                        m_nextId = 0;
-		std::unordered_map<ShaderHandle, std::unique_ptr<RenderShader>> m_shaders;
+		Pool<std::unique_ptr<RenderShader>> m_shaderPool;
 	};
 
 } // namespace Boidsish
