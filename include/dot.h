@@ -38,7 +38,7 @@ namespace Boidsish {
 		bool Intersects(const Ray& ray, float& t) const override;
 		AABB GetAABB() const override;
 
-		bool CastsShadows() const override { return false; }
+		bool GetDefaultCastsShadows() const override { return false; }
 
 		float GetBoundingRadius() const override { return size_; }
 

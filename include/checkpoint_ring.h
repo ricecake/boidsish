@@ -38,7 +38,7 @@ namespace Boidsish {
 
 		bool IsTransparent() const override { return true; }
 
-		bool CastsShadows() const override { return false; }
+		bool GetDefaultCastsShadows() const override { return false; }
 
 		float GetBoundingRadius() const override { return radius_ * 2.0f; }
 
