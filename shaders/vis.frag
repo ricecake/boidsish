@@ -60,8 +60,15 @@ uniform bool  is_refractive = false;
 uniform float refractive_index = 1.0;
 
 uniform sampler2D texture_diffuse1;
-uniform bool      use_texture;
-uniform float     u_windRimHighlight;
+uniform sampler2D texture_normal1;
+uniform sampler2D texture_metallic1;
+uniform sampler2D texture_roughness1;
+uniform sampler2D texture_ao1;
+uniform sampler2D texture_emissive1;
+
+// use_texture is a bitmask (see common_uniforms.glsl)
+uniform int   use_texture;
+uniform float u_windRimHighlight;
 
 uniform sampler2D refractionTexture;
 
@@ -73,7 +80,7 @@ void main() {
 	float c_roughness = use_ssbo ? uniforms_data[vUniformIndex].roughness : roughness;
 	float c_metallic = use_ssbo ? uniforms_data[vUniformIndex].metallic : metallic;
 	float c_ao = use_ssbo ? uniforms_data[vUniformIndex].ao : ao;
-	bool  c_use_texture = use_ssbo ? (uniforms_data[vUniformIndex].use_texture != 0) : use_texture;
+	int   c_use_texture = use_ssbo ? uniforms_data[vUniformIndex].use_texture : use_texture;
 	bool  c_isLine = use_ssbo ? (uniforms_data[vUniformIndex].is_line != 0) : isLine;
 	int   c_lineStyle = use_ssbo ? uniforms_data[vUniformIndex].line_style : lineStyle;
 	bool  c_isTextEffect = use_ssbo ? (uniforms_data[vUniformIndex].is_text_effect != 0) : isTextEffect;
@@ -120,20 +127,58 @@ void main() {
 		albedo = c_objectColor;
 	}
 
-	if (c_use_texture) {
+	bool has_diffuse = (c_use_texture & 1) != 0;
+	bool has_normal = (c_use_texture & 2) != 0;
+	bool has_metallic = (c_use_texture & 4) != 0;
+	bool has_roughness = (c_use_texture & 8) != 0;
+	bool has_ao = (c_use_texture & 16) != 0;
+	bool has_emissive = (c_use_texture & 32) != 0;
+
+	if (has_diffuse) {
 		albedo *= texture(texture_diffuse1, TexCoords).rgb;
 	}
 
 	vec3 norm = normalize(Normal);
+	if (has_normal) {
+		// Normal mapping logic (simplified, assuming tangent space matches vertex layout)
+		// For now we just use the texture normal as a hint or replacement
+		// A full TBN implementation would be better if tangents are available.
+		vec3 mappedNormal = texture(texture_normal1, TexCoords).rgb * 2.0 - 1.0;
+		// Simple blending/reorientation if no tangents are provided in vertex format
+		// This is a placeholder for full normal mapping
+		norm = normalize(mix(norm, mappedNormal, 0.5));
+	}
+
+	float tex_metallic = c_metallic;
+	if (has_metallic) {
+		tex_metallic *= texture(texture_metallic1, TexCoords).r;
+	}
+
+	float tex_roughness = c_roughness;
+	if (has_roughness) {
+		tex_roughness *= texture(texture_roughness1, TexCoords).r;
+	}
+
+	float tex_ao = c_ao;
+	if (has_ao) {
+		tex_ao *= texture(texture_ao1, TexCoords).r;
+	}
+
+	vec3 emissive = vec3(0.0);
+	if (has_emissive) {
+		emissive = texture(texture_emissive1, TexCoords).rgb;
+	}
 
 	float baseAlpha = c_objectAlpha;
 
 	// Choose between PBR and legacy lighting
 	vec4 lightResult;
 	if (c_usePBR) {
-		lightResult = apply_lighting_pbr(FragPos, norm, albedo * baseAlpha, c_roughness, c_metallic, c_ao);
+		lightResult = apply_lighting_pbr(FragPos, norm, albedo * baseAlpha, tex_roughness, tex_metallic, tex_ao);
+		lightResult.rgb += emissive;
 	} else {
 		lightResult = apply_lighting(FragPos, norm, albedo * baseAlpha, 1.0);
+		lightResult.rgb += emissive;
 	}
 
 	vec3  result = lightResult.rgb;

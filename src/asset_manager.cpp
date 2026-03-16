@@ -425,52 +425,86 @@ namespace Boidsish {
 
 			aiMaterial* material = scene->mMaterials[mesh->mMaterialIndex];
 
+			// 1. Diffuse/Base Color
 			std::vector<Texture> diffuseMaps =
 				LoadMaterialTextures(material, aiTextureType_DIFFUSE, "texture_diffuse", data, directory, scene);
 			if (diffuseMaps.empty()) {
-				// Fallback for some models (e.g. GLTF/OBJ sometimes use BASE_COLOR or AMBIENT as diffuse)
+				// Fallback for GLTF and modern FBX
 				diffuseMaps =
 					LoadMaterialTextures(material, aiTextureType_BASE_COLOR, "texture_diffuse", data, directory, scene);
-				if (diffuseMaps.empty()) {
-					diffuseMaps = LoadMaterialTextures(
+			}
+			textures.insert(textures.end(), diffuseMaps.begin(), diffuseMaps.end());
+
+			// 2. Specular Maps
+			std::vector<Texture> specularMaps =
+				LoadMaterialTextures(material, aiTextureType_SPECULAR, "texture_specular", data, directory, scene);
+			textures.insert(textures.end(), specularMaps.begin(), specularMaps.end());
+
+			// 3. Normal Maps
+			std::vector<Texture> normalMaps =
+				LoadMaterialTextures(material, aiTextureType_NORMALS, "texture_normal", data, directory, scene);
+			if (normalMaps.empty()) {
+				// Fallback to HEIGHT (often used for normals in OBJ/older FBX)
+				normalMaps =
+					LoadMaterialTextures(material, aiTextureType_HEIGHT, "texture_normal", data, directory, scene);
+				if (normalMaps.empty()) {
+					// GLTF camera-space normals
+					normalMaps = LoadMaterialTextures(
 						material,
-						aiTextureType_AMBIENT,
-						"texture_diffuse",
+						aiTextureType_NORMAL_CAMERA,
+						"texture_normal",
 						data,
 						directory,
 						scene
 					);
-					if (diffuseMaps.empty()) {
-						diffuseMaps = LoadMaterialTextures(
-							material,
-							aiTextureType_EMISSIVE,
-							"texture_diffuse",
-							data,
-							directory,
-							scene
-						);
-						if (diffuseMaps.empty()) {
-							diffuseMaps = LoadMaterialTextures(
-								material,
-								aiTextureType_LIGHTMAP,
-								"texture_diffuse",
-								data,
-								directory,
-								scene
-							);
-						}
-					}
 				}
 			}
-			textures.insert(textures.end(), diffuseMaps.begin(), diffuseMaps.end());
-			std::vector<Texture> specularMaps =
-				LoadMaterialTextures(material, aiTextureType_SPECULAR, "texture_specular", data, directory, scene);
-			textures.insert(textures.end(), specularMaps.begin(), specularMaps.end());
-			std::vector<Texture> normalMaps =
-				LoadMaterialTextures(material, aiTextureType_HEIGHT, "texture_normal", data, directory, scene);
 			textures.insert(textures.end(), normalMaps.begin(), normalMaps.end());
+
+			// 4. Metallic Maps (GLTF/PBR)
+			std::vector<Texture> metallicMaps =
+				LoadMaterialTextures(material, aiTextureType_METALNESS, "texture_metallic", data, directory, scene);
+			textures.insert(textures.end(), metallicMaps.begin(), metallicMaps.end());
+
+			// 5. Roughness Maps (GLTF/PBR)
+			std::vector<Texture> roughnessMaps = LoadMaterialTextures(
+				material,
+				aiTextureType_DIFFUSE_ROUGHNESS,
+				"texture_roughness",
+				data,
+				directory,
+				scene
+			);
+			if (roughnessMaps.empty()) {
+				// Fallback for some exporters
+				roughnessMaps = LoadMaterialTextures(
+					material,
+					aiTextureType_SHININESS,
+					"texture_roughness",
+					data,
+					directory,
+					scene
+				);
+			}
+			textures.insert(textures.end(), roughnessMaps.begin(), roughnessMaps.end());
+
+			// 6. Ambient Occlusion Maps
+			std::vector<Texture> aoMaps =
+				LoadMaterialTextures(material, aiTextureType_AMBIENT_OCCLUSION, "texture_ao", data, directory, scene);
+			if (aoMaps.empty()) {
+				// Traditional AMBIENT often stores AO in modern PBR workflows
+				aoMaps = LoadMaterialTextures(material, aiTextureType_AMBIENT, "texture_ao", data, directory, scene);
+			}
+			textures.insert(textures.end(), aoMaps.begin(), aoMaps.end());
+
+			// 7. Emissive Maps
+			std::vector<Texture> emissiveMaps =
+				LoadMaterialTextures(material, aiTextureType_EMISSIVE, "texture_emissive", data, directory, scene);
+			textures.insert(textures.end(), emissiveMaps.begin(), emissiveMaps.end());
+
+			// 8. Height/Displacement Maps (Distinct from normals)
 			std::vector<Texture> heightMaps =
-				LoadMaterialTextures(material, aiTextureType_AMBIENT, "texture_height", data, directory, scene);
+				LoadMaterialTextures(material, aiTextureType_DISPLACEMENT, "texture_height", data, directory, scene);
 			textures.insert(textures.end(), heightMaps.begin(), heightMaps.end());
 
 			Mesh out_mesh(vertices, indices, textures, shadow_indices);

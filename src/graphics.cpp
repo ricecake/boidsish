@@ -1686,7 +1686,24 @@ namespace Boidsish {
 
 						s->setInt((name + number).c_str(), i);
 					}
-					s->setBool("use_texture", !batch.textures.empty());
+					// Note: use_texture is now a bitmask handled in RenderPacket::uniforms (SSBO)
+					// This uniform is only used for non-MDI fallback or special passes
+					int use_texture_mask = 0;
+					for (const auto& tex : batch.textures) {
+						if (tex.type == "texture_diffuse")
+							use_texture_mask |= 1;
+						else if (tex.type == "texture_normal")
+							use_texture_mask |= 2;
+						else if (tex.type == "texture_metallic")
+							use_texture_mask |= 4;
+						else if (tex.type == "texture_roughness")
+							use_texture_mask |= 8;
+						else if (tex.type == "texture_ao")
+							use_texture_mask |= 16;
+						else if (tex.type == "texture_emissive")
+							use_texture_mask |= 32;
+					}
+					s->setInt("use_texture", use_texture_mask);
 				}
 
 				if (batch.vao != current_vao) {

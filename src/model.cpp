@@ -200,18 +200,32 @@ namespace Boidsish {
 		unsigned int specularNr = 1;
 		unsigned int normalNr = 1;
 		unsigned int heightNr = 1;
+		unsigned int metallicNr = 1;
+		unsigned int roughnessNr = 1;
+		unsigned int aoNr = 1;
+		unsigned int emissiveNr = 1;
 
 		// Ensure the correct shader is bound before setting uniforms
 		Shape::shader->use();
 
+		int  use_texture_mask = 0;
 		bool hasDiffuse = false;
 		for (const auto& t : textures) {
 			if (t.type == "texture_diffuse") {
 				hasDiffuse = true;
-				break;
-			}
+				use_texture_mask |= 1;
+			} else if (t.type == "texture_normal")
+				use_texture_mask |= 2;
+			else if (t.type == "texture_metallic")
+				use_texture_mask |= 4;
+			else if (t.type == "texture_roughness")
+				use_texture_mask |= 8;
+			else if (t.type == "texture_ao")
+				use_texture_mask |= 16;
+			else if (t.type == "texture_emissive")
+				use_texture_mask |= 32;
 		}
-		Shape::shader->setBool("use_texture", hasDiffuse);
+		Shape::shader->setInt("use_texture", use_texture_mask);
 
 		Shape::shader->setVec3("objectColor", diffuseColor);
 		Shape::shader->setFloat("objectAlpha", opacity);
@@ -229,6 +243,14 @@ namespace Boidsish {
 				number = std::to_string(normalNr++); // transfer unsigned int to string
 			else if (name == "texture_height")
 				number = std::to_string(heightNr++); // transfer unsigned int to string
+			else if (name == "texture_metallic")
+				number = std::to_string(metallicNr++);
+			else if (name == "texture_roughness")
+				number = std::to_string(roughnessNr++);
+			else if (name == "texture_ao")
+				number = std::to_string(aoNr++);
+			else if (name == "texture_emissive")
+				number = std::to_string(emissiveNr++);
 
 			// now set the sampler to the correct texture unit
 			Shape::shader->setInt((name + number).c_str(), i);
@@ -279,14 +301,22 @@ namespace Boidsish {
 			return;
 		}
 
-		bool hasDiffuse = false;
+		int use_texture_mask = 0;
 		for (const auto& t : textures) {
-			if (t.type == "texture_diffuse") {
-				hasDiffuse = true;
-				break;
-			}
+			if (t.type == "texture_diffuse")
+				use_texture_mask |= 1;
+			else if (t.type == "texture_normal")
+				use_texture_mask |= 2;
+			else if (t.type == "texture_metallic")
+				use_texture_mask |= 4;
+			else if (t.type == "texture_roughness")
+				use_texture_mask |= 8;
+			else if (t.type == "texture_ao")
+				use_texture_mask |= 16;
+			else if (t.type == "texture_emissive")
+				use_texture_mask |= 32;
 		}
-		shader.setBool("use_texture", hasDiffuse);
+		shader.setInt("use_texture", use_texture_mask);
 
 		shader.setVec3("objectColor", diffuseColor);
 		shader.setFloat("objectAlpha", opacity);
@@ -371,6 +401,11 @@ namespace Boidsish {
 		unsigned int specularNr = 1;
 		unsigned int normalNr = 1;
 		unsigned int heightNr = 1;
+		unsigned int metallicNr = 1;
+		unsigned int roughnessNr = 1;
+		unsigned int aoNr = 1;
+		unsigned int emissiveNr = 1;
+
 		for (unsigned int i = 0; i < textures.size(); i++) {
 			glActiveTexture(GL_TEXTURE0 + i);
 			std::string number;
@@ -383,6 +418,14 @@ namespace Boidsish {
 				number = std::to_string(normalNr++);
 			else if (name == "texture_height")
 				number = std::to_string(heightNr++);
+			else if (name == "texture_metallic")
+				number = std::to_string(metallicNr++);
+			else if (name == "texture_roughness")
+				number = std::to_string(roughnessNr++);
+			else if (name == "texture_ao")
+				number = std::to_string(aoNr++);
+			else if (name == "texture_emissive")
+				number = std::to_string(emissiveNr++);
 
 			shader.setInt((name + number).c_str(), i);
 			glBindTexture(GL_TEXTURE_2D, textures[i].id);
@@ -557,15 +600,25 @@ namespace Boidsish {
 			packet.uniforms.metallic = GetMetallic();
 			packet.uniforms.ao = GetAO();
 
+			int  use_texture_mask = 0;
 			bool has_diffuse = false;
 			for (const auto& tex : mesh.textures) {
 				if (tex.type == "texture_diffuse") {
 					has_diffuse = true;
-					break;
-				}
+					use_texture_mask |= 1;
+				} else if (tex.type == "texture_normal")
+					use_texture_mask |= 2;
+				else if (tex.type == "texture_metallic")
+					use_texture_mask |= 4;
+				else if (tex.type == "texture_roughness")
+					use_texture_mask |= 8;
+				else if (tex.type == "texture_ao")
+					use_texture_mask |= 16;
+				else if (tex.type == "texture_emissive")
+					use_texture_mask |= 32;
 			}
 
-			packet.uniforms.use_texture = has_diffuse ? 1 : 0;
+			packet.uniforms.use_texture = use_texture_mask;
 			packet.uniforms.is_colossal = IsColossal();
 			packet.uniforms.use_vertex_color = (mesh.has_vertex_colors && !has_diffuse) ? 1 : 0;
 

@@ -5,6 +5,9 @@ struct CommonUniforms {
 	float roughness;
 	float metallic;
 	float ao;
+	// use_texture is a bitmask:
+	// Bit 0 (1): Diffuse, Bit 1 (2): Normal, Bit 2 (4): Metallic,
+	// Bit 3 (8): Roughness, Bit 4 (16): AO, Bit 5 (32): Emissive
 	int   use_texture;
 	int   is_line;
 	int   line_style;
