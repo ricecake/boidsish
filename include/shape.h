@@ -3,6 +3,7 @@
 #include <atomic>
 #include <functional>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -58,7 +59,8 @@ namespace Boidsish {
 			dissolve_plane_normal_(other.dissolve_plane_normal_),
 			dissolve_plane_dist_(other.dissolve_plane_dist_),
 			is_refractive_(other.is_refractive_),
-			refractive_index_(other.refractive_index_) {}
+			refractive_index_(other.refractive_index_),
+			shadow_caster_override_(other.shadow_caster_override_) {}
 
 		Shape& operator=(Shape&& other) noexcept {
 			if (this != &other) {
@@ -97,6 +99,7 @@ namespace Boidsish {
 				dissolve_plane_dist_ = other.dissolve_plane_dist_;
 				is_refractive_ = other.is_refractive_;
 				refractive_index_ = other.refractive_index_;
+				shadow_caster_override_ = other.shadow_caster_override_;
 			}
 			return *this;
 		}
@@ -272,7 +275,19 @@ namespace Boidsish {
 			MarkDirty();
 		}
 
-		virtual bool CastsShadows() const { return !is_colossal_; }
+		bool CastsShadows() const {
+			if (shadow_caster_override_.has_value()) {
+				return shadow_caster_override_.value();
+			}
+			return GetDefaultCastsShadows();
+		}
+
+		inline void SetShadowOverride(std::optional<bool> casts_shadows) {
+			shadow_caster_override_ = casts_shadows;
+			MarkDirty();
+		}
+
+		inline std::optional<bool> GetShadowOverride() const { return shadow_caster_override_; }
 
 		inline bool IsHidden() const { return is_hidden_; }
 
@@ -447,7 +462,10 @@ namespace Boidsish {
 			dissolve_plane_normal_(0, 1, 0),
 			dissolve_plane_dist_(0.0f),
 			is_refractive_(false),
-			refractive_index_(1.0f) {}
+			refractive_index_(1.0f),
+			shadow_caster_override_(std::nullopt) {}
+
+		virtual bool GetDefaultCastsShadows() const { return !is_colossal_; }
 
 		glm::quat rotation_;
 		glm::vec3 scale_;
@@ -477,6 +495,8 @@ namespace Boidsish {
 		float     metallic_;
 		float     ao_;
 		bool      use_pbr_;
+
+		std::optional<bool> shadow_caster_override_;
 
 	protected:
 		bool      dissolve_enabled_;
