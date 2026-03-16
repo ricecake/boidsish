@@ -47,6 +47,10 @@ namespace Boidsish {
 				return 9;
 			}
 
+			constexpr int VisibleInstances() {
+				return 10;
+			}
+
 			constexpr int AutoExposure() {
 				return 11;
 			}
@@ -89,6 +93,22 @@ namespace Boidsish {
 
 			constexpr int DecorIndirect() {
 				return 21;
+			}
+
+			constexpr int DecorMainInstances() {
+				return 25;
+			}
+
+			constexpr int EmitterBuffer() {
+				return 22;
+			}
+
+			constexpr int TerrainChunkInfo() {
+				return 23;
+			}
+
+			constexpr int SliceData() {
+				return 24;
 			}
 		} // namespace SsboBinding
 
