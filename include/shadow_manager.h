@@ -72,7 +72,8 @@ namespace Boidsish {
 			int              cascade_index = -1,
 			const glm::mat4& view = glm::mat4(1.0f),
 			float            fov = Constants::Class::Shadows::DefaultFOV(),
-			float            aspect = 1.0f
+			float            aspect = 1.0f,
+			bool             clear = true
 		);
 
 		/**
