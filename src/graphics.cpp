@@ -2619,6 +2619,10 @@ namespace Boidsish {
 		impl->mdi_frustum_count = 0;
 		impl->mdi_bone_count = 0;
 
+		// --- 1. BASIC INFORMATION READINESS ---
+		// We collect all shapes and update the camera first so that we can start
+		// the asynchronous packet generation as early as possible.
+
 		impl->shapes.clear();
 
 		// Update and collect transient effects
@@ -2632,10 +2636,6 @@ namespace Boidsish {
 				++it;
 			}
 		}
-
-		// --- 1. RENDER SCENE TO FBO ---
-		// Note: The reflection and blur passes are pre-passes that generate textures for the main scene.
-		// They have their own FBOs. The main scene pass below is what we want to capture.
 
 		// Shape generation and updates (must happen before any rendering)
 		if (!impl->shape_functions.empty()) {
@@ -2674,7 +2674,18 @@ namespace Boidsish {
 			}
 		}
 
-		// --- Shadow Optimization: Check for object movement and camera proximity ---
+		// --- Camera and Audio Updates ---
+		if (impl->camera_mode == CameraMode::TRACKING) {
+			impl->UpdateSingleTrackCamera(impl->input_state.delta_time, impl->shapes);
+		} else if (impl->camera_mode == CameraMode::AUTO) {
+			impl->UpdateAutoCamera(impl->input_state.delta_time, impl->shapes);
+		} else if (impl->camera_mode == CameraMode::CHASE) {
+			impl->UpdateChaseCamera(impl->input_state.delta_time);
+		} else if (impl->camera_mode == CameraMode::PATH_FOLLOW) {
+			impl->UpdatePathFollowCamera(impl->input_state.delta_time);
+		}
+
+		// --- Shadow Optimization Pre-calc ---
 		impl->any_shadow_caster_moved = false;
 		glm::vec3 scene_center(0.0f);
 		bool      has_shapes = !impl->shapes.empty();
@@ -2703,10 +2714,7 @@ namespace Boidsish {
 		float distance_to_scene = has_shapes ? glm::distance(impl->camera.pos(), scene_center) : 0.0f;
 		bool  has_terrain = (impl->terrain_generator != nullptr);
 
-		// For terrain, we should ensure the shadow map covers the camera area.
-		// If we are far from the shapes, or if terrain is the focus, center on camera.
 		if (has_terrain || distance_to_scene > impl->shadow_update_distance_threshold) {
-			// Snap scene_center to a grid to reduce shadow flickering when camera moves
 			float grid_size = 10.0f;
 			scene_center.x = std::floor(impl->camera.pos().x / grid_size) * grid_size;
 			scene_center.y = std::floor(impl->camera.pos().y / grid_size) * grid_size;
@@ -2714,19 +2722,6 @@ namespace Boidsish {
 			impl->camera_is_close_to_scene = true;
 		} else {
 			impl->camera_is_close_to_scene = (distance_to_scene < impl->shadow_update_distance_threshold);
-		}
-
-		impl->UpdateTrails(impl->shapes, impl->simulation_time);
-
-		// --- Camera and Audio Updates ---
-		if (impl->camera_mode == CameraMode::TRACKING) {
-			impl->UpdateSingleTrackCamera(impl->input_state.delta_time, impl->shapes);
-		} else if (impl->camera_mode == CameraMode::AUTO) {
-			impl->UpdateAutoCamera(impl->input_state.delta_time, impl->shapes);
-		} else if (impl->camera_mode == CameraMode::CHASE) {
-			impl->UpdateChaseCamera(impl->input_state.delta_time);
-		} else if (impl->camera_mode == CameraMode::PATH_FOLLOW) {
-			impl->UpdatePathFollowCamera(impl->input_state.delta_time);
 		}
 
 		impl->audio_manager->UpdateListener(
@@ -2738,6 +2733,8 @@ namespace Boidsish {
 		);
 		impl->audio_manager->SetGlobalPitch(impl->time_scale);
 		impl->audio_manager->Update();
+
+		impl->UpdateTrails(impl->shapes, impl->simulation_time);
 
 		// Update atmosphere LUTs
 		if (impl->atmosphere_manager) {
@@ -2815,10 +2812,15 @@ namespace Boidsish {
 
 		impl->prev_view_projection = current_vp;
 
-		// --- Data-Driven Render Queue Collection ---
+		// --- Resource Preparation (Main Thread) ---
+		for (const auto& shape : impl->shapes) {
+			shape->PrepareResources(impl->megabuffer.get());
+		}
+
+		// --- ASYNCHRONOUS PACKET GENERATION ---
+		// Start this early to overlap with other CPU work.
 		impl->render_queue.Clear();
 
-		// Prepare render context with updated view matrix
 		RenderContext context;
 		context.view = view;
 		context.projection = impl->projection;
@@ -2831,11 +2833,6 @@ namespace Boidsish {
 		context.shader_table = &impl->shader_table;
 		context.megabuffer = impl->megabuffer.get();
 
-		// --- Resource Preparation (Main Thread) ---
-		for (const auto& shape : impl->shapes) {
-			shape->PrepareResources(impl->megabuffer.get());
-		}
-
 		const size_t                   num_shapes = impl->shapes.size();
 		const size_t                   chunk_size = 64;
 		std::vector<std::future<void>> packet_futures;
@@ -2845,16 +2842,11 @@ namespace Boidsish {
 			size_t end = std::min(i + chunk_size, num_shapes);
 			packet_futures.push_back(impl->thread_pool.submit([this, impl_ptr, i, end, context]() {
 				std::vector<RenderPacket> local_packets;
-				// Reserve a reasonable amount to avoid frequent reallocations
 				local_packets.reserve(end - i);
 				for (size_t j = i; j < end; ++j) {
 					auto& shape = impl_ptr->shapes[j];
-					// Check for cached packets (dirty flag pattern)
 					if (auto* cached = shape->GetCachedPackets(); cached && !cached->empty()) {
-						// Use cached packets - update sort_keys for current camera position
-						// Iterate by value to copy directly, then move into local_packets
 						for (auto packet : *cached) {
-							// Recalculate sort_key with current camera position
 							glm::vec3   world_pos = glm::vec3(packet.uniforms.model[3]);
 							float       normalized_depth = context.CalculateNormalizedDepth(world_pos);
 							RenderLayer layer = (packet.uniforms.color.a < 0.99f) ? RenderLayer::Transparent
@@ -2871,14 +2863,11 @@ namespace Boidsish {
 							local_packets.push_back(std::move(packet));
 						}
 					} else {
-						// Generate new packets and cache them
 						std::vector<RenderPacket> new_packets;
 						shape->GenerateRenderPackets(new_packets, context);
-						// Copy packets to local_packets before caching
 						for (const auto& packet : new_packets) {
 							local_packets.push_back(packet);
 						}
-						// Cache for future frames
 						shape->CachePackets(std::move(new_packets));
 						shape->MarkClean();
 					}
@@ -2889,30 +2878,24 @@ namespace Boidsish {
 			}));
 		}
 
-		// Wait for all packet generation tasks to complete
-		for (auto& f : packet_futures) {
-			f.get();
-		}
-
-		impl->render_queue.Sort(impl->thread_pool);
+		// --- CPU WORK OVERLAP ---
+		// While packets are generating on worker threads, the main thread performs
+		// system updates and UBO preparation.
 
 		// Calculate frustum for terrain generation and decor placement
 		Frustum generator_frustum;
 		if (impl->terrain_generator) {
-			// Create a widened and predictive frustum for the generator
-			// This helps pre-generate chunks just out of view and in the direction of rotation
-			float     world_scale = impl->terrain_generator->GetWorldScale();
-			float     far_plane = 1000.0f * std::max(1.0f, world_scale);
-			float     generator_fov = impl->camera.fov + 15.0f; // 15 degrees wider FOV
+			float     world_scale_val = impl->terrain_generator->GetWorldScale();
+			float     far_plane_val = 1000.0f * std::max(1.0f, world_scale_val);
+			float     generator_fov = impl->camera.fov + 15.0f;
 			glm::mat4 generator_proj = glm::perspective(
 				glm::radians(generator_fov),
 				(float)impl->width / (float)impl->height,
 				0.1f,
-				far_plane
+				far_plane_val
 			);
 
-			// Predictive orientation based on current angular velocity
-			float lead_time = 0.4f; // Look 0.4 seconds into the future
+			float lead_time = 0.4f;
 			float predicted_yaw = impl->camera.yaw + impl->camera_angular_velocity_.x * lead_time;
 			float predicted_pitch = impl->camera.pitch + impl->camera_angular_velocity_.y * lead_time;
 
@@ -2927,7 +2910,6 @@ namespace Boidsish {
 			impl->terrain_generator->Update(generator_frustum, impl->camera);
 		}
 
-		// Update clone manager
 		impl->clone_manager->Update(impl->simulation_time, impl->camera.pos());
 		impl->fire_effect_manager->Update(
 			impl->simulation_delta_time,
@@ -2964,7 +2946,6 @@ namespace Boidsish {
 			);
 		}
 
-		// UBO Updates - using cached config values
 		if (impl->frame_config_.effects_enabled) {
 			VisualEffectsUbo ubo_data{};
 			for (const auto& shape : impl->shapes) {
@@ -2979,7 +2960,6 @@ namespace Boidsish {
 				}
 			}
 
-			// Use cached config values instead of per-call lookups
 			ubo_data.black_and_white_enabled = impl->frame_config_.artistic_black_and_white;
 			ubo_data.negative_enabled = impl->frame_config_.artistic_negative;
 			ubo_data.shimmery_enabled = impl->frame_config_.artistic_shimmery;
@@ -2998,7 +2978,6 @@ namespace Boidsish {
 			glBindBuffer(GL_UNIFORM_BUFFER, 0);
 		}
 
-		// Batched lighting UBO update - single glBufferSubData instead of 8 calls
 		{
 			if (CheckpointRingShape::GetShader()) {
 				CheckpointRingShape::GetShader()->use();
@@ -3007,13 +2986,11 @@ namespace Boidsish {
 			const auto& lights = impl->light_manager.GetLights();
 			int         num_lights = std::min(static_cast<int>(lights.size()), 10);
 
-			// Reuse cached vector to avoid per-frame allocation
 			impl->gpu_lights_cache_.clear();
 			for (int i = 0; i < num_lights; ++i) {
 				impl->gpu_lights_cache_.push_back(lights[i].ToGPU());
 			}
 
-			// Fill the UBO struct in one pass
 			std::memset(&impl->lighting_ubo_data_, 0, sizeof(LightingUbo));
 			std::memcpy(impl->lighting_ubo_data_.lights, impl->gpu_lights_cache_.data(), num_lights * sizeof(LightGPU));
 			impl->lighting_ubo_data_.num_lights = num_lights;
@@ -3029,13 +3006,11 @@ namespace Boidsish {
 			impl->lighting_ubo_data_.time = impl->simulation_time;
 			impl->lighting_ubo_data_.view_dir = impl->camera.front();
 
-			// Single buffer upload instead of 8 separate calls
 			glBindBuffer(GL_UNIFORM_BUFFER, impl->lighting_ubo);
 			glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(LightingUbo), &impl->lighting_ubo_data_);
 			glBindBuffer(GL_UNIFORM_BUFFER, 0);
 		}
 
-		// Update Frustum UBO for GPU-side culling
 		{
 			glm::mat4 view_mat = glm::lookAt(
 				impl->camera.pos(),
@@ -3045,27 +3020,29 @@ namespace Boidsish {
 			impl->UpdateFrustumUbo(view_mat, impl->projection, impl->camera.pos());
 		}
 
-		// --- Shadow Pass (render depth from each shadow-casting light) ---
+		// --- PHASE 1 SHADOW PASS (Decor) ---
+		// We can render decor into shadow maps while shapes' packets are generating.
+		struct MapUpdateInfo {
+			int    map_index;
+			Light* light;
+			int    cascade_index; // -1 for standard
+			float  weight;
+		};
+		std::vector<MapUpdateInfo> shadow_map_registry;
+		std::vector<int>           maps_to_update;
+		std::vector<Light*>        shadow_lights;
+
 		auto light_count = impl->light_manager.GetShadowCastingLightCount();
 		if (impl->shadow_manager && impl->shadow_manager->IsInitialized() && impl->frame_config_.enable_shadows &&
 		    light_count > 0) {
 			glEnable(GL_DEPTH_TEST);
-			std::vector<Light*> shadow_lights = impl->light_manager.GetShadowCastingLights();
+			shadow_lights = impl->light_manager.GetShadowCastingLights();
 
-			// 1. Assign stable map indices and identify maps
 			for (auto& light : impl->light_manager.GetLights()) {
 				light.shadow_map_index = -1;
 			}
 
-			struct MapUpdateInfo {
-				int    map_index;
-				Light* light;
-				int    cascade_index; // -1 for standard
-				float  weight;
-			};
-
-			std::vector<MapUpdateInfo> shadow_map_registry;
-			int                        next_map_idx = 0;
+			int next_map_idx = 0;
 			for (auto light : shadow_lights) {
 				if (next_map_idx >= ShadowManager::kMaxShadowMaps)
 					break;
@@ -3073,8 +3050,6 @@ namespace Boidsish {
 				if (light->type == DIRECTIONAL_LIGHT) {
 					for (int c = 0; c < ShadowManager::kMaxCascades; ++c) {
 						if (next_map_idx < ShadowManager::kMaxShadowMaps) {
-							// Cascade 0 (near) needs updates most frequently for close detail
-							// Cascade 3 (far) can tolerate more staleness but still needs rotation updates
 							float weight = (c == 0) ? 8.0f : (c == 1) ? 4.0f : (c == 2) ? 2.0f : 1.0f;
 							shadow_map_registry.push_back({next_map_idx++, light, c, weight});
 						}
@@ -3084,41 +3059,29 @@ namespace Boidsish {
 				}
 			}
 
-			// 2. Calculate camera rotation delta for rotation-sensitive updates
-			// Rotation affects ALL cascades because the frustum shape changes
 			float camera_rotation_delta = 1.0f - glm::dot(impl->camera.front(), impl->last_shadow_update_camera_front);
-			bool  significant_rotation = camera_rotation_delta > 0.001f; // ~2.5 degrees
-			bool  major_rotation = camera_rotation_delta > 0.01f;        // ~8 degrees
+			bool  significant_rotation = camera_rotation_delta > 0.001f;
+			bool  major_rotation = camera_rotation_delta > 0.01f;
 
-			// 3. Identify maps that need update with improved priority calculation
-			std::vector<int> maps_to_update;
-			// Allow more updates per frame during rotation to prevent stale far cascades
 			const int max_updates_per_frame = major_rotation ? 4 : (significant_rotation ? 3 : 2);
 
 			for (const auto& info : shadow_map_registry) {
 				auto& state = impl->shadow_map_states_[info.map_index];
-
 				float camera_move_dist = glm::distance(impl->camera.pos(), state.last_pos);
 				float rotation_change = 1.0f - glm::dot(impl->camera.front(), state.last_front);
 				bool  light_moved = glm::distance(info.light->position, state.last_light_pos) > 0.1f ||
 					glm::distance(info.light->direction, state.last_light_dir) > 0.01f;
 
-				// CRITICAL: Far cascades are MORE sensitive to rotation, not less!
-				// A small camera rotation causes the far frustum to sweep across large world areas
-				// Cascade 3 frustum corner can move 100s of units from a few degrees of rotation
 				float rotation_sensitivity = (info.cascade_index == 0) ? 50.0f
 					: (info.cascade_index == 1)                        ? 100.0f
 					: (info.cascade_index == 2)                        ? 200.0f
 																	   : 400.0f;
 				state.rotation_accumulator += rotation_change * rotation_sensitivity;
 
-				// Movement thresholds: near cascades need fine updates, far can be coarser
 				float movement_threshold = (info.cascade_index == 0) ? 0.5f
 					: (info.cascade_index == 1)                      ? 2.0f
 					: (info.cascade_index == 2)                      ? 5.0f
 																	 : 10.0f;
-
-				// Rotation threshold: far cascades should update on smaller rotation changes
 				float rotation_threshold = (info.cascade_index == 0) ? 1.0f
 					: (info.cascade_index == 1)                      ? 0.7f
 					: (info.cascade_index == 2)                      ? 0.5f
@@ -3130,97 +3093,63 @@ namespace Boidsish {
 					(has_terrain && (needs_movement_update || needs_rotation_update));
 
 				if (movement_detected && impl->camera_is_close_to_scene) {
-					// Weight by cascade importance
 					float urgency = info.weight;
-					// Rotation urgency scales with cascade distance (far cascades are more affected)
-					if (needs_rotation_update) {
-						float rotation_multiplier = 1.5f + info.cascade_index * 0.5f;
-						urgency *= rotation_multiplier;
-					}
+					if (needs_rotation_update)
+						urgency *= (1.5f + info.cascade_index * 0.5f);
 					if (impl->any_shadow_caster_moved)
 						urgency *= 1.5f;
 					state.debt += urgency;
 				} else {
-					// Background refresh rate - far cascades refresh slightly faster
-					// to catch distant terrain changes
-					float background_rate = 0.02f + info.cascade_index * 0.005f;
-					state.debt += background_rate;
+					state.debt += (0.02f + info.cascade_index * 0.005f);
 				}
 			}
 
-			// 4. Select cascades to update - prioritize by debt but ensure round-robin fairness
 			std::vector<std::pair<float, int>> debt_sorted;
-			// Lower threshold during rotation for faster convergence
-			float debt_threshold = significant_rotation ? 1.5f : 2.5f;
+			float                             debt_threshold = significant_rotation ? 1.5f : 2.5f;
 			for (const auto& info : shadow_map_registry) {
 				auto& state = impl->shadow_map_states_[info.map_index];
-				if (state.debt >= debt_threshold) {
+				if (state.debt >= debt_threshold)
 					debt_sorted.push_back({state.debt, info.map_index});
-				}
 			}
 			std::sort(debt_sorted.begin(), debt_sorted.end(), std::greater<>());
 
-			for (int i = 0; i < std::min((int)debt_sorted.size(), max_updates_per_frame); ++i) {
+			for (int i = 0; i < std::min((int)debt_sorted.size(), max_updates_per_frame); ++i)
 				maps_to_update.push_back(debt_sorted[i].second);
-			}
 
-			// Force immediate update of ALL cascades on major rotation
-			// This prevents the jarring "stale cascade" effect when turning quickly
 			if (major_rotation && maps_to_update.size() < shadow_map_registry.size()) {
 				for (const auto& info : shadow_map_registry) {
-					if (std::find(maps_to_update.begin(), maps_to_update.end(), info.map_index) ==
-					    maps_to_update.end()) {
+					if (std::find(maps_to_update.begin(), maps_to_update.end(), info.map_index) == maps_to_update.end())
 						maps_to_update.push_back(info.map_index);
-					}
 				}
 			}
 
-			// Ensure at least one cascade gets updated via round-robin if nothing urgent
 			if (maps_to_update.empty() && !shadow_map_registry.empty()) {
 				impl->shadow_update_round_robin_ = (impl->shadow_update_round_robin_ + 1) % shadow_map_registry.size();
-				// Every other frame, force a background update (was every 4th)
-				if (impl->frame_count_ % 2 == 0) {
+				if (impl->frame_count_ % 2 == 0)
 					maps_to_update.push_back(shadow_map_registry[impl->shadow_update_round_robin_].map_index);
-				}
 			}
 
-			// 5. Update selected maps
+			// Phase 1: Render Decor and Terrain into shadow maps
 			for (int map_idx : maps_to_update) {
 				const auto& info = shadow_map_registry[map_idx];
-				auto&       state = impl->shadow_map_states_[map_idx];
-
-				float world_scale = impl->terrain_generator ? impl->terrain_generator->GetWorldScale() : 1.0f;
+				float       world_scale_val = impl->terrain_generator ? impl->terrain_generator->GetWorldScale() : 1.0f;
 				impl->shadow_manager->BeginShadowPass(
 					info.map_index,
 					*info.light,
 					scene_center,
-					500.0f * std::max(1.0f, world_scale),
+					500.0f * std::max(1.0f, world_scale_val),
 					info.cascade_index,
 					view,
 					impl->camera.fov,
-					(float)impl->width / (float)impl->height
-				);
-
-				glm::vec3 light_dir_to_light;
-				if (info.light->type == DIRECTIONAL_LIGHT) {
-					light_dir_to_light = glm::normalize(-info.light->direction);
-				} else {
-					light_dir_to_light = glm::normalize(info.light->position - scene_center);
-				}
-
-				impl->ExecuteRenderQueue(
-					impl->render_queue,
-					view, // Base view
-					impl->projection,
-					impl->camera.pos(),
-					RenderLayer::Opaque,
-					impl->shadow_shader_handle,
-					impl->shadow_manager->GetLightSpaceMatrix(info.map_index),
-					std::nullopt,
-					true
+					(float)impl->width / (float)impl->height,
+					true // Clear depth
 				);
 
 				if (impl->decor_manager) {
+					glm::vec3 light_dir_to_light = (info.light->type == DIRECTIONAL_LIGHT)
+						? glm::normalize(-info.light->direction)
+						: glm::normalize(info.light->position - scene_center);
+
 					impl->decor_manager->Render(
 						view,
 						impl->projection,
@@ -3232,24 +3161,61 @@ namespace Boidsish {
 						impl->terrain_render_manager
 					);
 				}
+				impl->shadow_manager->EndShadowPass();
+			}
+		}
+
+		// --- SYNC POINT ---
+		// Wait for all packet generation tasks to complete
+		for (auto& f : packet_futures) {
+			f.get();
+		}
+		impl->render_queue.Sort(impl->thread_pool);
+
+		// --- PHASE 2 SHADOW PASS (Shapes) ---
+		if (!maps_to_update.empty()) {
+			for (int map_idx : maps_to_update) {
+				const auto& info = shadow_map_registry[map_idx];
+				auto&       state = impl->shadow_map_states_[map_idx];
+				float       world_scale_val = impl->terrain_generator ? impl->terrain_generator->GetWorldScale() : 1.0f;
+
+				impl->shadow_manager->BeginShadowPass(
+					info.map_index,
+					*info.light,
+					scene_center,
+					500.0f * std::max(1.0f, world_scale_val),
+					info.cascade_index,
+					view,
+					impl->camera.fov,
+					(float)impl->width / (float)impl->height,
+					false // DO NOT CLEAR - keep decor shadows
+				);
+
+				impl->ExecuteRenderQueue(
+					impl->render_queue,
+					view,
+					impl->projection,
+					impl->camera.pos(),
+					RenderLayer::Opaque,
+					impl->shadow_shader_handle,
+					impl->shadow_manager->GetLightSpaceMatrix(info.map_index),
+					std::nullopt,
+					true
+				);
 
 				impl->shadow_manager->EndShadowPass();
 
+				// Update state after both phases complete
 				state.debt = 0.0f;
 				state.rotation_accumulator = 0.0f;
 				state.last_update_frame = impl->frame_count_;
 				state.last_light_space_matrix = impl->shadow_manager->GetLightSpaceMatrix(info.map_index);
-
-				// Update last known positions for this specific shadow map
 				state.last_pos = impl->camera.pos();
 				state.last_front = impl->camera.front();
 				state.last_light_pos = info.light->position;
 				state.last_light_dir = info.light->direction;
 			}
-
-			// Update global last shadow camera state
 			impl->last_shadow_update_camera_front = impl->camera.front();
-
 			impl->shadow_manager->UpdateShadowUBO(shadow_lights);
 		}
 
