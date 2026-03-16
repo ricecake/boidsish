@@ -43,6 +43,10 @@ namespace Boidsish {
 		} // namespace UboBinding
 
 		namespace SsboBinding {
+			constexpr int Uniforms() {
+				return 9;
+			}
+
 			constexpr int AutoExposure() {
 				return 11;
 			}
@@ -61,6 +65,30 @@ namespace Boidsish {
 
 			constexpr int ParticleGridNext() {
 				return 15;
+			}
+
+			constexpr int ParticleBuffer() {
+				return 16;
+			}
+
+			constexpr int FireIndirection() {
+				return 17;
+			}
+
+			constexpr int TrailPoints() {
+				return 18;
+			}
+
+			constexpr int TrailInstances() {
+				return 19;
+			}
+
+			constexpr int TrailSpineData() {
+				return 20;
+			}
+
+			constexpr int DecorIndirect() {
+				return 21;
 			}
 		} // namespace SsboBinding
 

@@ -716,7 +716,12 @@ namespace Boidsish {
 			glGenBuffers(1, &occlusion_visibility_ssbo_);
 			glBindBuffer(GL_SHADER_STORAGE_BUFFER, occlusion_visibility_ssbo_);
 			std::vector<uint32_t> initial_vis(65536, 1u); // All visible initially
-			glBufferStorage(GL_SHADER_STORAGE_BUFFER, 65536 * sizeof(uint32_t), initial_vis.data(), 0);
+			glBufferStorage(
+				GL_SHADER_STORAGE_BUFFER,
+				65536 * sizeof(uint32_t),
+				initial_vis.data(),
+				GL_DYNAMIC_STORAGE_BIT
+			);
 			glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
 			if (ConfigManager::GetInstance().GetAppSettingBool("enable_effects", true)) {
 				postprocess_shader_ = std::make_shared<Shader>("shaders/postprocess.vert", "shaders/postprocess.frag");
@@ -1575,7 +1580,7 @@ namespace Boidsish {
 				// Bind uniforms SSBO (current frame's data) for compute to read AABBs
 				glBindBufferRange(
 					GL_SHADER_STORAGE_BUFFER,
-					2,
+					Constants::SsboBinding::Uniforms(),
 					uniforms_ssbo->GetBufferId(),
 					frame_element_offset * sizeof(CommonUniforms),
 					mdi_uniform_count * sizeof(CommonUniforms)
@@ -1650,7 +1655,7 @@ namespace Boidsish {
 				// Bind SSBO for this batch's uniforms (replaces uBaseUniformIndex)
 				glBindBufferRange(
 					GL_SHADER_STORAGE_BUFFER,
-					2,
+					Constants::SsboBinding::Uniforms(),
 					uniforms_ssbo->GetBufferId(),
 					batch.base_uniform_index * sizeof(CommonUniforms),
 					batch.command_count * sizeof(CommonUniforms)
@@ -1765,7 +1770,7 @@ namespace Boidsish {
 			}
 
 			glBindBuffer(GL_DRAW_INDIRECT_BUFFER, 0);
-			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 2, 0);
+			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::Uniforms(), 0);
 			glActiveTexture(GL_TEXTURE0);
 		}
 

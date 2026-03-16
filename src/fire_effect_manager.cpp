@@ -350,7 +350,7 @@ namespace Boidsish {
 
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, particle_buffer_);
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, emitter_buffer_);
-		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 2, indirection_buffer_);
+		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::FireIndirection(), indirection_buffer_);
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 3, terrain_chunk_buffer_);
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 4, slice_data_buffer_);
 
@@ -418,7 +418,7 @@ namespace Boidsish {
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::ParticleGridHeads(), 0);
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::ParticleGridNext(), 0);
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, 0);
-		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 2, 0);
+		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::FireIndirection(), 0);
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 3, 0);
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 4, 0);
 	}

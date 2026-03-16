@@ -619,10 +619,10 @@ namespace Boidsish {
 			update_commands_shader_->setInt("u_numCommands", (int)type.model->getMeshes().size());
 			glBindBufferBase(GL_ATOMIC_COUNTER_BUFFER, 0, type.count_buffer);
 
-			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 2, type.indirect_buffer);
+			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::DecorIndirect(), type.indirect_buffer);
 			glDispatchCompute(1, 1, 1);
 
-			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 2, type.shadow_indirect_buffer);
+			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::DecorIndirect(), type.shadow_indirect_buffer);
 			glDispatchCompute(1, 1, 1);
 
 			glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT | GL_COMMAND_BARRIER_BIT);
