@@ -3039,7 +3039,7 @@ namespace Boidsish {
 		std::vector<Light*>        shadow_lights;
 
 		auto light_count = impl->light_manager.GetShadowCastingLightCount();
-		if (false && impl->shadow_manager && impl->shadow_manager->IsInitialized() && impl->frame_config_.enable_shadows &&
+		if (impl->shadow_manager && impl->shadow_manager->IsInitialized() && impl->frame_config_.enable_shadows &&
 		    light_count > 0) {
 			glEnable(GL_DEPTH_TEST);
 
@@ -3138,7 +3138,7 @@ namespace Boidsish {
 			if (maps_to_update.empty() && !shadow_map_registry.empty()) {
 				impl->shadow_update_round_robin_ = (impl->shadow_update_round_robin_ + 1) % shadow_map_registry.size();
 				// Every other frame, force a background update (was every 4th)
-				if (impl->frame_count_ % 4 == 0) {
+				if (impl->frame_count_ % 2 == 0) {
 					maps_to_update.push_back(shadow_map_registry[impl->shadow_update_round_robin_].map_index);
 				}
 			}
