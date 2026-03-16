@@ -2,6 +2,8 @@
 #include "pool.h"
 #include <string>
 #include <memory>
+#include <thread>
+#include <vector>
 
 using namespace Boidsish;
 
@@ -73,4 +75,29 @@ TEST(PoolTest, GetAsShared) {
     // Changing through shared_ptr affects pool
     *shared = 100;
     EXPECT_EQ(*h1, 100);
+}
+
+TEST(PoolTest, MultiThreadedAllocation) {
+    Pool<int> pool;
+    const int num_threads = 8;
+    const int ops_per_thread = 1000;
+    std::vector<std::thread> threads;
+
+    for (int i = 0; i < num_threads; ++i) {
+        threads.emplace_back([&pool, i]() {
+            std::vector<PoolHandle<int>> handles;
+            for (int j = 0; j < ops_per_thread; ++j) {
+                handles.push_back(pool.Allocate(i * 10000 + j));
+            }
+            for (auto& h : handles) {
+                pool.Free(h);
+            }
+        });
+    }
+
+    for (auto& t : threads) {
+        t.join();
+    }
+
+    EXPECT_EQ(pool.Size(), 0);
 }

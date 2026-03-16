@@ -6,6 +6,7 @@
 #include <type_traits>
 #include <memory>
 #include <algorithm>
+#include <mutex>
 
 namespace Boidsish {
 
@@ -16,6 +17,9 @@ public:
     virtual bool IsValid(uint32_t id) const = 0;
     virtual T* Get(uint32_t id) = 0;
     virtual const T* Get(uint32_t id) const = 0;
+
+    virtual void lock() const = 0;
+    virtual void unlock() const = 0;
 };
 
 /**
@@ -87,6 +91,7 @@ public:
 
     template <typename... Args>
     Handle Allocate(Args&&... args) {
+        std::lock_guard<std::recursive_mutex> lock(mutex_);
         if (free_slots_.empty()) {
             Grow();
         }
@@ -105,11 +110,13 @@ public:
     }
 
     void Free(Handle handle) {
+        std::lock_guard<std::recursive_mutex> lock(mutex_);
         if (!IsValid(handle.GetId())) return;
         FreeById(handle.GetId());
     }
 
     void FreeById(uint32_t id) {
+        std::lock_guard<std::recursive_mutex> lock(mutex_);
         if (!IsValid(id)) return;
         uint32_t sparse_index = UnpackIndex(id);
         uint32_t dense_index = sparse_[sparse_index];
@@ -131,6 +138,7 @@ public:
     }
 
     bool IsValid(uint32_t id) const override {
+        std::lock_guard<std::recursive_mutex> lock(mutex_);
         if (id == 0) return false;
         uint32_t index = UnpackIndex(id);
         if (index >= generations_.size()) return false;
@@ -139,17 +147,24 @@ public:
     }
 
     T* Get(uint32_t id) override {
+        std::lock_guard<std::recursive_mutex> lock(mutex_);
         if (!IsValid(id)) return nullptr;
         return &data_[sparse_[UnpackIndex(id)]];
     }
 
     const T* Get(uint32_t id) const override {
+        std::lock_guard<std::recursive_mutex> lock(mutex_);
         if (!IsValid(id)) return nullptr;
         return &data_[sparse_[UnpackIndex(id)]];
     }
 
-    size_t Size() const { return data_.size(); }
+    size_t Size() const {
+        std::lock_guard<std::recursive_mutex> lock(mutex_);
+        return data_.size();
+    }
 
+    // Warning: begin/end are not thread-safe if the pool can be modified during iteration.
+    // Use ForEach instead.
     auto begin() { return data_.begin(); }
     auto end() { return data_.end(); }
     auto begin() const { return data_.begin(); }
@@ -157,6 +172,7 @@ public:
 
     template <typename Func>
     void ForEach(Func&& func) {
+        std::lock_guard<std::recursive_mutex> lock(mutex_);
         for (auto& item : data_) {
             func(item);
         }
@@ -164,12 +180,14 @@ public:
 
     template <typename Func>
     void ForEach(Func&& func) const {
+        std::lock_guard<std::recursive_mutex> lock(mutex_);
         for (const auto& item : data_) {
             func(item);
         }
     }
 
     void Clear() {
+        std::lock_guard<std::recursive_mutex> lock(mutex_);
         data_.clear();
         dense_to_sparse_.clear();
         for (auto& gen : generations_) {
@@ -187,9 +205,13 @@ public:
      * Useful for backward compatibility with systems expecting shared_ptrs.
      */
     std::shared_ptr<T> GetAsShared(uint32_t id) {
+        std::lock_guard<std::recursive_mutex> lock(mutex_);
         if (!IsValid(id)) return nullptr;
         return std::shared_ptr<T>(Get(id), [](T*){});
     }
+
+    void lock() const override { mutex_.lock(); }
+    void unlock() const override { mutex_.unlock(); }
 
 private:
     void Grow() {
@@ -219,6 +241,7 @@ private:
     std::vector<uint32_t> sparse_;
     std::vector<uint16_t> generations_;
     std::vector<uint32_t> free_slots_;
+    mutable std::recursive_mutex mutex_;
 };
 
 } // namespace Boidsish

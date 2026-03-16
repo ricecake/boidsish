@@ -2833,10 +2833,13 @@ namespace Boidsish {
 				for (size_t j = i; j < end; ++j) {
 					auto& shape = impl_ptr->shapes[j];
 					// Check for cached packets (dirty flag pattern)
-					if (auto* cached = shape->GetCachedPackets(); cached && !cached->empty()) {
+					static thread_local std::vector<RenderPacketHandle> local_handles;
+					if (shape->GetCachedPacketHandles(local_handles) && !local_handles.empty()) {
 						// Use cached packets - update sort_keys for current camera position
 						// Iterate by value to copy directly, then move into local_packets
-						for (auto handle : *cached) {
+						// Protect access to the global packet pool during packet retrieval
+						std::lock_guard<IPool<RenderPacket>> pool_lock(Shape::s_packetPool);
+						for (auto handle : local_handles) {
 							auto* packet_ptr = Shape::s_packetPool.Get(handle.GetId());
 							if (!packet_ptr) continue;
 							RenderPacket packet = *packet_ptr;

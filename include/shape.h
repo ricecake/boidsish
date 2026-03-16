@@ -3,6 +3,7 @@
 #include <atomic>
 #include <functional>
 #include <memory>
+#include <mutex>
 #include <string>
 #include <vector>
 
@@ -21,6 +22,7 @@ namespace Boidsish {
 	class Shape: public Geometry {
 	public:
 		virtual ~Shape() {
+			std::lock_guard<std::mutex> lock(cache_mutex_);
 			for (auto handle : cached_packet_handles_) {
 				s_packetPool.FreeById(handle.GetId());
 			}
@@ -134,7 +136,21 @@ namespace Boidsish {
 			return render_dirty_.load(std::memory_order_acquire) ? nullptr : &cached_packet_handles_;
 		}
 
+		/**
+		 * @brief Thread-safe retrieval of cached packet handles.
+		 * Copies handles to a local vector to avoid race conditions during iteration.
+		 * @param out_handles Vector to receive the copied handles.
+		 * @return true if packets were retrieved from cache, false if dirty.
+		 */
+		bool GetCachedPacketHandles(std::vector<RenderPacketHandle>& out_handles) const {
+			if (render_dirty_.load(std::memory_order_acquire)) return false;
+			std::lock_guard<std::mutex> lock(cache_mutex_);
+			out_handles = cached_packet_handles_;
+			return true;
+		}
+
 		void CachePackets(std::vector<RenderPacket>&& packets) override {
+			std::lock_guard<std::mutex> lock(cache_mutex_);
 			for (auto handle : cached_packet_handles_) {
 				s_packetPool.FreeById(handle.GetId());
 			}
@@ -468,6 +484,7 @@ namespace Boidsish {
 		// Dirty flag pattern for packet caching (thread-safe)
 		mutable std::atomic<bool>               render_dirty_{true};
 		mutable std::vector<RenderPacketHandle> cached_packet_handles_;
+		mutable std::mutex                      cache_mutex_;
 
 	private:
 		int       id_;
