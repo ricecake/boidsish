@@ -105,7 +105,8 @@ namespace Boidsish {
 		int              cascade_index,
 		const glm::mat4& view,
 		float            fov,
-		float            aspect
+		float            aspect,
+		bool             clear
 	) {
 		if (!initialized_ || map_index >= kMaxShadowMaps) {
 			return;
@@ -259,7 +260,9 @@ namespace Boidsish {
 		}
 
 		glViewport(0, 0, kShadowMapSize, kShadowMapSize);
-		glClear(GL_DEPTH_BUFFER_BIT);
+		if (clear) {
+			glClear(GL_DEPTH_BUFFER_BIT);
+		}
 
 		// Enable front-face culling to reduce shadow acne
 		glEnable(GL_CULL_FACE);
