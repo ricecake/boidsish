@@ -519,7 +519,7 @@ namespace Boidsish {
 				placement_shader_->setVec3("u_aabbMin", type.model->GetAABB().min);
 				placement_shader_->setVec3("u_aabbMax", type.model->GetAABB().max);
 
-				glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, type.ssbo);
+			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::DecorMainInstances(), type.ssbo);
 
 				for (const auto& [key, block] : chunks_to_generate) {
 					// Find the chunk info for this key
@@ -607,8 +607,8 @@ namespace Boidsish {
 			culling_shader_->setVec3("u_aabbMin", type.model->GetAABB().min);
 			culling_shader_->setVec3("u_aabbMax", type.model->GetAABB().max);
 
-			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, type.ssbo);
-			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, type.visible_ssbo);
+			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::DecorMainInstances(), type.ssbo);
+			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::VisibleInstances(), type.visible_ssbo);
 			glBindBufferBase(GL_ATOMIC_COUNTER_BUFFER, 0, type.count_buffer);
 			glDispatchCompute(kMaxInstancesPerType / 64, 1, 1);
 
@@ -619,10 +619,10 @@ namespace Boidsish {
 			update_commands_shader_->setInt("u_numCommands", (int)type.model->getMeshes().size());
 			glBindBufferBase(GL_ATOMIC_COUNTER_BUFFER, 0, type.count_buffer);
 
-			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 2, type.indirect_buffer);
+			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::DecorIndirect(), type.indirect_buffer);
 			glDispatchCompute(1, 1, 1);
 
-			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 2, type.shadow_indirect_buffer);
+			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::DecorIndirect(), type.shadow_indirect_buffer);
 			glDispatchCompute(1, 1, 1);
 
 			glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT | GL_COMMAND_BARRIER_BIT);
@@ -656,7 +656,7 @@ namespace Boidsish {
 			auto& type = decor_types_[i];
 
 			// Bind the culled instances SSBO
-			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 10, type.visible_ssbo);
+			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::VisibleInstances(), type.visible_ssbo);
 
 			if (type.model->IsNoCull()) {
 				glDisable(GL_CULL_FACE);

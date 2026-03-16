@@ -13,7 +13,7 @@ struct Particle {
 	int  _padding[2];
 };
 
-layout(std430, binding = 0) buffer ParticleBuffer {
+layout(std430, binding = 16) buffer ParticleBuffer {
 	Particle particles[];
 };
 
@@ -31,7 +31,7 @@ struct Emitter {
 	int   _padding[3];
 };
 
-layout(std430, binding = 1) buffer EmitterBuffer {
+layout(std430, binding = 22) buffer EmitterBuffer {
 	Emitter emitters[];
 };
 

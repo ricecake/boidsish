@@ -6,11 +6,11 @@ struct Instance {
 	mat4 model;
 };
 
-layout(std430, binding = 0) readonly buffer MainInstances {
+layout(std430, binding = 25) readonly buffer MainInstances {
 	Instance all_instances[];
 };
 
-layout(std430, binding = 1) writeonly buffer VisibleInstances {
+layout(std430, binding = 10) writeonly buffer VisibleInstances {
 	Instance visible_instances[];
 };
 

@@ -33,15 +33,15 @@ struct Emitter {
 	int   _padding_emitter[2];
 };
 
-layout(std430, binding = 0) buffer ParticleBuffer {
+layout(std430, binding = 16) buffer ParticleBuffer {
 	Particle particles[];
 };
 
-layout(std430, binding = 1) buffer EmitterBuffer {
+layout(std430, binding = 22) buffer EmitterBuffer {
 	Emitter emitters[];
 };
 
-layout(std430, binding = 2) buffer IndirectionBuffer {
+layout(std430, binding = 17) buffer IndirectionBuffer {
 	int particle_to_emitter_map[];
 };
 
@@ -51,11 +51,11 @@ struct ChunkInfo {
 	float size;
 };
 
-layout(std430, binding = 3) buffer ChunkInfoBuffer {
+layout(std430, binding = 23) buffer ChunkInfoBuffer {
 	ChunkInfo chunks[];
 };
 
-layout(std430, binding = 4) buffer SliceDataBuffer {
+layout(std430, binding = 24) buffer SliceDataBuffer {
 	vec4 slice_data[];
 };
 
