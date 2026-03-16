@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <iostream>
 
+#include "bindless_texture_manager.h"
 #include "ConfigManager.h"
 #include "logger.h"
 #include "mesh_optimizer_util.h"
@@ -26,6 +27,7 @@ namespace Boidsish {
 	}
 
 	void AssetManager::Clear() {
+		BindlessTextureManager::GetInstance().Shutdown();
 		for (auto& [path, textureId] : m_textures) {
 			glDeleteTextures(1, &textureId);
 		}
@@ -718,6 +720,11 @@ namespace Boidsish {
 			stbi_image_free(data);
 			logger::LOG("Texture loaded and cached: {}", fullPath);
 			m_textures[fullPath] = textureID;
+
+			// Pre-warm bindless handle if supported
+			if (BindlessTextureManager::GetInstance().IsSupported()) {
+				BindlessTextureManager::GetInstance().GetHandle(textureID);
+			}
 		} else {
 			logger::ERROR("Texture failed to load at path: {}", fullPath);
 			stbi_image_free(data);

@@ -31,8 +31,10 @@
 #include "hud.h"
 #include "hud_manager.h"
 #include "light_manager.h"
+#include "bindless_texture_manager.h"
 #include "line.h"
 #include "logger.h"
+#include "profiler.h"
 #include "mesh_explosion_manager.h"
 #include "path.h"
 #include "persistent_buffer.h"
@@ -428,6 +430,15 @@ namespace Boidsish {
 		GLuint                         occlusion_visibility_ssbo_{0};
 		bool                           enable_hiz_culling_{true};
 
+		// Cached uniform locations for hot paths
+		struct OcclusionUniforms {
+			GLint hizTexture = -1;
+			GLint drawCount = -1;
+			GLint hizSize = -1;
+			GLint hizMipCount = -1;
+			GLint screenExpansion = -1;
+		} occlusion_locs_;
+
 		std::shared_ptr<Shader> shader;
 		std::shared_ptr<Shader> plane_shader;
 		std::shared_ptr<Shader> sky_shader;
@@ -708,7 +719,13 @@ namespace Boidsish {
 			// Hi-Z occlusion culling
 			hiz_manager = std::make_unique<HiZManager>();
 			occlusion_cull_shader_ = std::make_unique<ComputeShader>("shaders/occlusion_cull.comp");
-			if (!occlusion_cull_shader_->isValid()) {
+			if (occlusion_cull_shader_->isValid()) {
+				occlusion_locs_.hizTexture = glGetUniformLocation(occlusion_cull_shader_->ID, "u_hizTexture");
+				occlusion_locs_.drawCount = glGetUniformLocation(occlusion_cull_shader_->ID, "u_drawCount");
+				occlusion_locs_.hizSize = glGetUniformLocation(occlusion_cull_shader_->ID, "u_hizSize");
+				occlusion_locs_.hizMipCount = glGetUniformLocation(occlusion_cull_shader_->ID, "u_hizMipCount");
+				occlusion_locs_.screenExpansion = glGetUniformLocation(occlusion_cull_shader_->ID, "u_screenExpansion");
+			} else {
 				logger::WARNING("Hi-Z occlusion culling shader failed to compile - disabling");
 				enable_hiz_culling_ = false;
 			}
@@ -1299,6 +1316,7 @@ namespace Boidsish {
 		glm::mat4 SetupMatrices() { return SetupMatrices(camera); }
 
 		void UpdateTrails(const std::vector<std::shared_ptr<Shape>>& shapes, float time) {
+			PROJECT_PROFILE_SCOPE("UpdateTrails");
 			CleanupOldTrails(time, shapes);
 			for (const auto& shape : shapes) {
 				if (shape->GetTrailLength() > 0 && !paused) {
@@ -1374,6 +1392,7 @@ namespace Boidsish {
 			bool                               is_shadow_pass = false,
 			bool                               dispatch_hiz_occlusion = false
 		) {
+			PROJECT_PROFILE_SCOPE("ExecuteRenderQueue");
 			const auto& packets = queue.GetPackets(layer);
 			if (packets.empty())
 				return;
@@ -1444,13 +1463,16 @@ namespace Boidsish {
 				if (a.uniforms.bone_matrices_offset != b.uniforms.bone_matrices_offset)
 					return false;
 
-				// 4. Textures (only if not a shadow pass)
+				// 4. Textures (only if not a shadow pass and NOT using bindless)
 				if (!is_shadow_pass) {
-					if (a.textures.size() != b.textures.size())
-						return false;
-					for (size_t i = 0; i < a.textures.size(); ++i) {
-						if (a.textures[i].id != b.textures[i].id)
+					bool use_bindless = BindlessTextureManager::GetInstance().IsSupported();
+					if (!use_bindless) {
+						if (a.textures.size() != b.textures.size())
 							return false;
+						for (size_t i = 0; i < a.textures.size(); ++i) {
+							if (a.textures[i].id != b.textures[i].id)
+								return false;
+						}
 					}
 				}
 
@@ -1501,6 +1523,19 @@ namespace Boidsish {
 
 				// Copy uniforms to persistent SSBO
 				uniforms_ptr[mdi_uniform_count] = packet.uniforms;
+
+				// Populate bindless handles if supported
+				if (BindlessTextureManager::GetInstance().IsSupported()) {
+					for (const auto& tex : packet.textures) {
+						if (tex.type == "texture_diffuse") {
+							uniforms_ptr[mdi_uniform_count].diffuse_handle =
+								BindlessTextureManager::GetInstance().GetHandle(tex.id);
+						} else if (tex.type == "texture_normal") {
+							uniforms_ptr[mdi_uniform_count].normal_handle =
+								BindlessTextureManager::GetInstance().GetHandle(tex.id);
+						}
+					}
+				}
 
 				// Handle skeletal animation data
 				if (!packet.bone_matrices.empty()) {
@@ -1591,17 +1626,18 @@ namespace Boidsish {
 				// Bind Hi-Z texture
 				glActiveTexture(GL_TEXTURE15);
 				glBindTexture(GL_TEXTURE_2D, hiz_manager->GetHiZTexture());
-				occlusion_cull_shader_->setInt("u_hizTexture", 15);
+				if (occlusion_locs_.hizTexture != -1)
+					glUniform1i(occlusion_locs_.hizTexture, 15);
 
-				// Set uniforms
-				occlusion_cull_shader_->setInt("u_drawCount", static_cast<int>(mdi_uniform_count));
-				glUniform2i(
-					glGetUniformLocation(occlusion_cull_shader_->ID, "u_hizSize"),
-					hiz_manager->GetWidth(),
-					hiz_manager->GetHeight()
-				);
-				occlusion_cull_shader_->setInt("u_hizMipCount", hiz_manager->GetMipCount());
-				occlusion_cull_shader_->setFloat("u_screenExpansion", 4.0f);
+				// Set uniforms using cached locations
+				if (occlusion_locs_.drawCount != -1)
+					glUniform1i(occlusion_locs_.drawCount, static_cast<int>(mdi_uniform_count));
+				if (occlusion_locs_.hizSize != -1)
+					glUniform2i(occlusion_locs_.hizSize, hiz_manager->GetWidth(), hiz_manager->GetHeight());
+				if (occlusion_locs_.hizMipCount != -1)
+					glUniform1i(occlusion_locs_.hizMipCount, hiz_manager->GetMipCount());
+				if (occlusion_locs_.screenExpansion != -1)
+					glUniform1f(occlusion_locs_.screenExpansion, 4.0f);
 
 				glDispatchCompute((mdi_uniform_count + 63) / 64, 1, 1);
 				glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
@@ -1677,7 +1713,9 @@ namespace Boidsish {
 					);
 				}
 
-				if (!is_shadow_pass) {
+				bool use_bindless = BindlessTextureManager::GetInstance().IsSupported();
+
+				if (!is_shadow_pass && !use_bindless) {
 					unsigned int diffuseNr = 1;
 					unsigned int specularNr = 1;
 					unsigned int normalNr = 1;
@@ -1821,6 +1859,7 @@ namespace Boidsish {
 			std::optional<Frustum>          shadow_frustum = std::nullopt,
 			float                           quality_override = -1.0f
 		) {
+			PROJECT_PROFILE_SCOPE("RenderTerrain");
 			if (is_shadow_pass) {
 				return;
 			}
@@ -2595,6 +2634,7 @@ namespace Boidsish {
 	}
 
 	void Visualizer::Render() {
+		PROJECT_PROFILE_SCOPE("Visualizer::Render");
 		impl->RefreshFrameConfig();
 
 		// Advance persistent buffers and handle synchronization

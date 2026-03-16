@@ -253,10 +253,7 @@ namespace Boidsish {
 		glBindFramebuffer(GL_FRAMEBUFFER, shadow_fbo_);
 		glFramebufferTextureLayer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, shadow_map_array_, 0, map_index);
 
-		GLenum status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
-		if (status != GL_FRAMEBUFFER_COMPLETE) {
-			logger::ERROR("Shadow FBO incomplete for map {}: {}", map_index, status);
-		}
+		// Removed glCheckFramebufferStatus from hot path
 
 		glViewport(0, 0, kShadowMapSize, kShadowMapSize);
 		glClear(GL_DEPTH_BUFFER_BIT);

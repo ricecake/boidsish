@@ -3,6 +3,7 @@
 layout(location = 0) out vec4 FragColor;
 layout(location = 1) out vec2 Velocity;
 
+#extension GL_ARB_bindless_texture : enable
 #include "common_uniforms.glsl"
 #include "temporal_data.glsl"
 
@@ -134,16 +135,35 @@ void main() {
 	bool has_ao = (c_use_texture & 16) != 0;
 	bool has_emissive = (c_use_texture & 32) != 0;
 
+	bool use_bindless = false;
+#ifdef GL_ARB_bindless_texture
+	use_bindless = true;
+#endif
+
 	if (has_diffuse) {
+#ifdef GL_ARB_bindless_texture
+		if (use_ssbo && uniforms_data[vUniformIndex].diffuse_handle != uvec2(0)) {
+			albedo *= texture(sampler2D(uniforms_data[vUniformIndex].diffuse_handle), TexCoords).rgb;
+		} else {
+			albedo *= texture(texture_diffuse1, TexCoords).rgb;
+		}
+#else
 		albedo *= texture(texture_diffuse1, TexCoords).rgb;
+#endif
 	}
 
 	vec3 norm = normalize(Normal);
 	if (has_normal) {
-		// Normal mapping logic (simplified, assuming tangent space matches vertex layout)
-		// For now we just use the texture normal as a hint or replacement
-		// A full TBN implementation would be better if tangents are available.
-		vec3 mappedNormal = texture(texture_normal1, TexCoords).rgb * 2.0 - 1.0;
+		vec3 mappedNormal;
+#ifdef GL_ARB_bindless_texture
+		if (use_ssbo && uniforms_data[vUniformIndex].normal_handle != uvec2(0)) {
+			mappedNormal = texture(sampler2D(uniforms_data[vUniformIndex].normal_handle), TexCoords).rgb * 2.0 - 1.0;
+		} else {
+			mappedNormal = texture(texture_normal1, TexCoords).rgb * 2.0 - 1.0;
+		}
+#else
+		mappedNormal = texture(texture_normal1, TexCoords).rgb * 2.0 - 1.0;
+#endif
 		// Simple blending/reorientation if no tangents are provided in vertex format
 		// This is a placeholder for full normal mapping
 		norm = normalize(mix(norm, mappedNormal, 0.5));

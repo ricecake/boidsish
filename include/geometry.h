@@ -152,19 +152,20 @@ namespace Boidsish {
 		// Skeletal Animation
 		int   bone_matrices_offset = -1; // 4 bytes
 		int   use_skinning = 0;          // 4 bytes
-		float anim_padding[2];           // 8 bytes -> 16 bytes
 
 		// Occlusion culling AABB (world space) - individual floats for std430 alignment safety
 		float aabb_min_x = 0.0f;       // 4 bytes
 		float aabb_min_y = 0.0f;       // 4 bytes
 		float aabb_min_z = 0.0f;       // 4 bytes
-		float aabb_max_x = 0.0f;       // 4 bytes -> 16
+		float aabb_max_x = 0.0f;       // 4 bytes
 		float aabb_max_y = 0.0f;       // 4 bytes
 		float aabb_max_z = 0.0f;       // 4 bytes
 		int   is_refractive = 0;       // 4 bytes
-		float refractive_index = 1.0f; // 4 bytes -> 16
-		// Padding to 256 bytes for SSBO alignment safety
-		float padding[3];
+		float refractive_index = 1.0f; // 4 bytes
+
+		// Bindless Texture Handles (64-bit each, std430 alignment: 8 bytes)
+		uint64_t diffuse_handle = 0; // 8 bytes
+		uint64_t normal_handle = 0;  // 8 bytes
 	};
 
 	static_assert(sizeof(CommonUniforms) == 256, "CommonUniforms must be exactly 256 bytes for SSBO alignment");
