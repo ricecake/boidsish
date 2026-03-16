@@ -35,8 +35,14 @@
 ### 6. Missing Resource Cleanup in Visualizer
 - **Issue Type**: Memory Leak (OpenGL Buffer)
 - **Location**: `src/graphics.cpp`, `VisualizerImpl::~VisualizerImpl`
-- **Evidence**: `frustum_ubo` was created in the constructor but not deleted in the destructor.
+- **Evidence**: `temporal_data_ubo` was created in the constructor but missing from the destructor. `frustum_ubo` was unused and leaked.
 - **Learning**: Centralized resource management or a more robust RAII wrapper system could mitigate missed cleanups as the codebase grows.
+
+### 7. Improper Shared Resource Management in Shapes
+- **Issue Type**: Critical Bug (Resource Corruption)
+- **Location**: `src/shape.cpp`, `src/line.cpp`, `src/arrow.cpp`
+- **Evidence**: Shapes using the global Megabuffer were calling `glDeleteVertexArrays` and `glDeleteBuffers` on the Megabuffer's VAO/VBO in their cleanup routines.
+- **Learning**: Ownership of shared resources must be explicitly tracked. Objects should only delete resources they strictly own to prevent "use-after-free" style GPU corruption.
 
 ## Rationale for Fixes
 - **Fix 1**: Add missing `glDelete*` calls to `VisualizerImpl` destructor to ensure all main scene resources are freed.
@@ -45,4 +51,5 @@
 - **Fix 4**: Add a virtual destructor to `ShaderBase` that calls `glDeleteProgram(ID)`.
 - **Fix 5**: Implement uniform location caching in `ShaderBase` using a `std::unordered_map` to minimize `glGetUniformLocation` overhead.
 - **Fix 6**: Disable copy operations and implement move operations for `ShaderBase` (Rule of Five) to safely manage OpenGL program ownership.
-- **Fix 7**: Add `glDeleteBuffers(1, &frustum_ubo)` to `VisualizerImpl` destructor.
+- **Fix 7**: Add missing `glDeleteBuffers` for `temporal_data_ubo` and remove unused `frustum_ubo` in `VisualizerImpl`.
+- **Fix 8**: Update shape cleanup routines (`DestroySphereMesh`, `DestroyLineMesh`, `DestroyArrowMesh`) to conditionally delete OpenGL objects only if they are not managed by the Megabuffer.

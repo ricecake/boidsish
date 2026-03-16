@@ -101,10 +101,13 @@ namespace Boidsish {
 
 	void Line::DestroyLineMesh() {
 		if (line_vao_ != 0) {
-			glDeleteVertexArrays(1, &line_vao_);
-			glDeleteBuffers(1, &line_vbo_);
+			if (!line_allocation_.valid) {
+				glDeleteVertexArrays(1, &line_vao_);
+				glDeleteBuffers(1, &line_vbo_);
+			}
 			line_vao_ = 0;
 			line_vbo_ = 0;
+			line_allocation_.valid = false;
 		}
 	}
 

@@ -234,14 +234,22 @@ namespace Boidsish {
 
 	void Arrow::DestroyArrowMesh() {
 		if (rod_vao_ != 0) {
-			glDeleteVertexArrays(1, &rod_vao_);
-			glDeleteBuffers(1, &rod_vbo_);
+			if (!rod_alloc_.valid) {
+				glDeleteVertexArrays(1, &rod_vao_);
+				glDeleteBuffers(1, &rod_vbo_);
+			}
 			rod_vao_ = 0;
+			rod_vbo_ = 0;
+			rod_alloc_.valid = false;
 		}
 		if (cone_vao_ != 0) {
-			glDeleteVertexArrays(1, &cone_vao_);
-			glDeleteBuffers(1, &cone_vbo_);
+			if (!cone_alloc_.valid) {
+				glDeleteVertexArrays(1, &cone_vao_);
+				glDeleteBuffers(1, &cone_vbo_);
+			}
 			cone_vao_ = 0;
+			cone_vbo_ = 0;
+			cone_alloc_.valid = false;
 		}
 	}
 

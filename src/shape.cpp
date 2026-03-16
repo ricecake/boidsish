@@ -213,15 +213,18 @@ namespace Boidsish {
 
 	void Shape::DestroySphereMesh() {
 		if (sphere_vao_ != 0) {
-			glDeleteVertexArrays(1, &sphere_vao_);
-			glDeleteBuffers(1, &sphere_vbo_);
-			if (sphere_ebo_ != 0) {
-				glDeleteBuffers(1, &sphere_ebo_);
+			if (!sphere_alloc_.valid) {
+				glDeleteVertexArrays(1, &sphere_vao_);
+				glDeleteBuffers(1, &sphere_vbo_);
+				if (sphere_ebo_ != 0) {
+					glDeleteBuffers(1, &sphere_ebo_);
+				}
 			}
 			sphere_vao_ = 0;
 			sphere_vbo_ = 0;
 			sphere_ebo_ = 0;
 			sphere_vertex_count_ = 0;
+			sphere_alloc_.valid = false;
 		}
 	}
 
