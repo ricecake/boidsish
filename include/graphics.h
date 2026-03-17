@@ -429,6 +429,11 @@ namespace Boidsish {
 		void AddSdfExplosion(const glm::vec3& position, float max_radius = 10.0f, float duration = 2.0f);
 
 		/**
+		 * @brief Add an SDF-based volumetric explosion effect.
+		 */
+		void AddSdfVolumetricExplosion(const glm::vec3& position, float max_radius = 10.0f, float duration = 2.0f);
+
+		/**
 		 * @brief A high-level effect helper that combines mesh explosion, hiding the original shape,
 		 * and spawning fire/shockwave effects.
 		 *
