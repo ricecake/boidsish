@@ -22,12 +22,12 @@ struct DecorTypeParams {
 	uvec4 flags;         // x=biomeMask, y=randomYaw, z=alignToTerrain, w=typeIndex
 };
 
-layout(std140, binding = 1) uniform DecorTypeBlock {
+layout(std140, binding = 30) uniform DecorTypeBlock {
 	DecorTypeParams types[32];
 };
 
 // Global placement params (uploaded once per dispatch frame)
-layout(std140, binding = 2) uniform GlobalPlacementParams {
+layout(std140, binding = 31) uniform GlobalPlacementParams {
 	vec4 u_cameraAndScale;    // xy=cameraPos, z=worldScale, w=maxTerrainHeight
 	vec4 u_distanceParams;    // x=densityFalloffStart, y=densityFalloffEnd, z=maxDecorDistance, w=maxInstances
 };
@@ -38,7 +38,7 @@ struct ChunkParams {
 	ivec4 indices;         // x=baseInstanceIndex, yzw=unused
 };
 
-layout(std430, binding = 2) readonly buffer ChunkParamsBlock {
+layout(std430, binding = 26) readonly buffer ChunkParamsBlock {
 	ChunkParams chunks[];
 };
 
