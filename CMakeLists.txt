@@ -255,6 +255,11 @@ target_link_libraries(test_config PRIVATE boidsish GTest::GTest GTest::Main)
 set_target_properties(test_config PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}" EXCLUDE_FROM_ALL TRUE)
 add_test(NAME test_config COMMAND test_config)
 
+add_executable(test_logger tests/test_logger.cpp)
+target_link_libraries(test_logger PRIVATE boidsish GTest::GTest GTest::Main)
+set_target_properties(test_logger PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}" EXCLUDE_FROM_ALL TRUE)
+add_test(NAME test_logger COMMAND test_logger)
+
 add_executable(test_concurrent_queue tests/test_concurrent_queue.cpp)
 target_link_libraries(test_concurrent_queue PRIVATE boidsish GTest::GTest GTest::Main)
 set_target_properties(test_concurrent_queue PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}" EXCLUDE_FROM_ALL TRUE)
@@ -344,6 +349,7 @@ add_dependencies(tests
     test_rigid_body
     test_terrain
     test_config
+    test_logger
     test_concurrent_queue
     test_vector
     test_thread_pool
