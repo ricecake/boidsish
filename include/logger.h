@@ -279,7 +279,7 @@ namespace Boidsish {
 }
 
 namespace logger {
-	void Configure(const Boidsish::Config& cfg);
+	void Configure(Boidsish::Config& cfg);
 }
 
 namespace logger {

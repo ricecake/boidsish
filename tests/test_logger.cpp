@@ -55,6 +55,11 @@ TEST(LoggerTest, FileLogging) {
         cfg.Save();
         logger::Configure(cfg);
 
+        // Verify config was populated with defaults
+        EXPECT_TRUE(cfg.HasKey("logging", "info_console"));
+        EXPECT_TRUE(cfg.HasKey("logging", "debug_console"));
+        EXPECT_EQ(cfg.GetBool("logging", "debug_console", true), false);
+
         logger::INFO("Log to file");
     }
 

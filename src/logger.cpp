@@ -18,10 +18,36 @@ namespace logger {
 		return LogLevel::LOG;
 	}
 
-	void Configure(const Boidsish::Config& cfg) {
-		auto section = cfg.GetSection("logging");
-		if (section.empty())
-			return;
+	void Configure(Boidsish::Config& cfg) {
+		bool was_empty = !cfg.HasSection("logging");
+
+		// Establish default values if they don't exist
+		if (!cfg.HasKey("logging", "console_enabled"))
+			cfg.SetBool("logging", "console_enabled", true);
+		if (!cfg.HasKey("logging", "log_file"))
+			cfg.SetString("logging", "log_file", "");
+
+		// For each level, set default enabled state for both console and file
+		for (int i = 0; i <= (int)LogLevel::DEBUG; ++i) {
+			LogLevel    level = (LogLevel)i;
+			std::string key   = std::string(levelString(level));
+			std::transform(key.begin(), key.end(), key.begin(), [](unsigned char c) { return std::tolower(c); });
+
+			std::string console_key = key + "_console";
+			if (!cfg.HasKey("logging", console_key)) {
+				// INFO and below enabled by default for console, DEBUG disabled
+				cfg.SetBool("logging", console_key, level != LogLevel::DEBUG);
+			}
+
+			std::string file_key = key + "_file";
+			if (!cfg.HasKey("logging", file_key)) {
+				cfg.SetBool("logging", file_key, true);
+			}
+		}
+
+		// Save the config if we added any defaults
+		// This makes the config file self-documenting for logging
+		cfg.Save();
 
 		auto& multi = defaultLogger.backend;
 		multi.clearBackends();
@@ -35,14 +61,7 @@ namespace logger {
 				std::string key   = std::string(levelString(level));
 				std::transform(key.begin(), key.end(), key.begin(), [](unsigned char c) { return std::tolower(c); });
 				key += "_console";
-				bool default_val = true;
-				// If global "level" is specified, use it as default for all
-				std::string global_level_str = cfg.GetString("logging", "console_level", "");
-				if (!global_level_str.empty()) {
-					LogLevel global_level = stringToLogLevel(global_level_str);
-					default_val           = (int)level <= (int)global_level;
-				}
-				console->setLogLevel(level, cfg.GetBool("logging", key, default_val));
+				console->setLogLevel(level, cfg.GetBool("logging", key, true));
 			}
 			multi.addBackend(std::move(console));
 		}
