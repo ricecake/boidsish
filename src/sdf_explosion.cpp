@@ -48,17 +48,17 @@ namespace Boidsish {
 		if (f < 0.2f) {
 			// Phase 1: Rapid expansion
 			base_radius_ = max_radius_ * (f / 0.2f);
-			noise_intensity_ = max_radius_ * 0.1f * (f / 0.2f);
+			noise_intensity_ = max_radius_ * 0.2f * (f / 0.2f);
 		} else if (f < 0.5f) {
 			// Phase 2: Growth and increasing noise
 			float f2 = (f - 0.2f) / 0.3f;
 			base_radius_ = max_radius_ * (1.0f + f2 * 0.2f);
-			noise_intensity_ = max_radius_ * (0.1f + f2 * 0.4f);
+			noise_intensity_ = max_radius_ * (0.2f + f2 * 0.6f);
 		} else {
 			// Phase 3: Shrinking while noise increases
 			float f3 = (f - 0.5f) / 0.5f;
 			base_radius_ = max_radius_ * 1.2f * (1.0f - f3);
-			noise_intensity_ = max_radius_ * (0.5f + f3 * 0.5f);
+			noise_intensity_ = max_radius_ * (0.8f + f3 * 0.7f);
 		}
 
 		glm::vec3 center(GetX(), GetY(), GetZ());
@@ -80,12 +80,12 @@ namespace Boidsish {
 			SdfSource source;
 			source.position = pos[i];
 			source.radius = base_radius_;
-			source.color = glm::vec3(1.0f, 0.5f, 0.1f);
-			source.smoothness = base_radius_ * 0.5f;
+			source.color = glm::vec3(1.0f, 0.45f, 0.05f); // More orange albedo
+			source.smoothness = base_radius_ * 0.6f;
 			source.charge = 1.0f;
 			source.type = 1; // TYPE_EXPLOSION
 			source.noise_intensity = noise_intensity_;
-			source.noise_scale = 2.0f / std::max(0.1f, base_radius_);
+			source.noise_scale = 1.5f / std::max(0.1f, base_radius_);
 
 			manager_->UpdateSource(source_ids_[i], source);
 		}

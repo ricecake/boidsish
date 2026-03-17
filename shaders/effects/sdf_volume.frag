@@ -49,17 +49,18 @@ vec4 opSubtractionColored(vec4 d1, vec4 d2, float k) {
 vec3 getFireColor(float heat) {
 	heat = clamp(heat, 0.0, 1.0);
 	vec3 red = vec3(0.8, 0.0, 0.0);
-	vec3 orange = vec3(1.0, 0.5, 0.0);
-	vec3 yellow = vec3(1.0, 1.0, 0.0);
-	vec3 white = vec3(1.0, 1.0, 1.0);
+	vec3 orange = vec3(1.0, 0.4, 0.0);
+	vec3 yellow = vec3(1.0, 0.8, 0.1);
+	vec3 white = vec3(1.0, 1.0, 0.8);
 
-	if (heat < 0.25)
-		return mix(vec3(0.0), red, heat * 4.0);
-	if (heat < 0.5)
-		return mix(red, orange, (heat - 0.25) * 4.0);
-	if (heat < 0.75)
-		return mix(orange, yellow, (heat - 0.5) * 4.0);
-	return mix(yellow, white, (heat - 0.75) * 4.0);
+	// Shifted heat thresholds to favor orange/red
+	if (heat < 0.3)
+		return mix(vec3(0.01), red, heat / 0.3);
+	if (heat < 0.6)
+		return mix(red, orange, (heat - 0.3) / 0.3);
+	if (heat < 0.85)
+		return mix(orange, yellow, (heat - 0.6) / 0.25);
+	return mix(yellow, white, (heat - 0.85) / 0.15);
 }
 
 vec4 map(vec3 p) {
@@ -78,8 +79,15 @@ vec4 map(vec3 p) {
 				d += noise * sources[i].params.z;
 
 				float heat = 1.0 - clamp(d / (sources[i].position_radius.w * 0.5), 0.0, 1.0);
-				heat = pow(heat, 1.5);
-				col = getFireColor(heat + noise * 0.1);
+				heat = pow(heat, 2.0); // Sharper falloff
+
+				// Apply a second noise for alpha/density
+				float alpha_noise = fastWorley3d(p * sources[i].params.w * 2.0 - time * 0.1);
+				float density = clamp(heat * 2.0 - alpha_noise * 0.5, 0.0, 1.0);
+
+				col = getFireColor(heat + noise * 0.05);
+				// We pack albedo in rgb and density in a for later blending
+				// But map() usually returns distance in .a, so we'll need to handle this in main.
 			} else {
 				d = sphereSDF(p - sources[i].position_radius.xyz, sources[i].position_radius.w);
 			}
@@ -158,13 +166,25 @@ void main() {
 		vec3  lightDir = normalize(vec3(0.5, 1.0, 0.5));
 		float diff = max(dot(normal, lightDir), 0.0);
 
-		// Add a bit of rim light/glow for the "antimatter" feel
+		// Recalculate density at the hit point for explosion types
+		float final_alpha = 1.0;
+		// We need a way to know if we hit an explosion source
+		// For simplicity, let's re-map at the hit point and check parameters
+		// Actually, we can just use the color returned by map() which we tweaked
+
+		// Add a bit of rim light/glow
 		float rim = 1.0 - max(dot(normal, -rayDir), 0.0);
 		rim = pow(rim, 3.0);
 
 		vec3 volumeColor = res.rgb * (diff * 0.8 + 0.2) + res.rgb * rim * 0.5;
 
-		FragColor = vec4(volumeColor, 1.0);
+		// Approximate alpha based on distance to surface and noise
+		// In a real volume renderer we'd accumulate, but here we're raymarching to surface
+		// Let's use Worley noise again to create "holes" or transparent regions
+		float alpha_noise = fastWorley3d(p * 0.2 - time * 0.1);
+		final_alpha = smoothstep(0.0, 0.2, 0.8 - alpha_noise);
+
+		FragColor = vec4(mix(sceneColor, volumeColor, final_alpha), 1.0);
 	} else {
 		FragColor = vec4(sceneColor, 1.0);
 	}
