@@ -1,4 +1,5 @@
 #version 430 core
+#extension GL_GOOGLE_include_directive : enable
 
 out vec4 FragColor;
 in vec2  TexCoords;
@@ -14,7 +15,7 @@ uniform float     time;
 struct SdfSource {
 	vec4 position_radius;  // xyz: pos, w: radius
 	vec4 color_smoothness; // rgb: color, a: smoothness
-	vec4 params;           // x: charge, y: type, zw: unused
+	vec4 params;           // x: charge, y: type, z: noise_intensity, w: noise_scale
 };
 
 layout(std140) uniform SdfVolumes {
@@ -23,6 +24,7 @@ layout(std140) uniform SdfVolumes {
 };
 
 #include "lygia/sdf/sphereSDF.glsl"
+#include "../helpers/fast_noise.glsl"
 
 // Custom union that handles color blending
 vec4 opUnionColored(vec4 d1, vec4 d2, float k) {
@@ -41,6 +43,25 @@ vec4 opSubtractionColored(vec4 d1, vec4 d2, float k) {
 	return vec4(res_col, res_d);
 }
 
+#define TYPE_SPHERE 0
+#define TYPE_EXPLOSION 1
+
+vec3 getFireColor(float heat) {
+	heat = clamp(heat, 0.0, 1.0);
+	vec3 red = vec3(0.8, 0.0, 0.0);
+	vec3 orange = vec3(1.0, 0.5, 0.0);
+	vec3 yellow = vec3(1.0, 1.0, 0.0);
+	vec3 white = vec3(1.0, 1.0, 1.0);
+
+	if (heat < 0.25)
+		return mix(vec3(0.0), red, heat * 4.0);
+	if (heat < 0.5)
+		return mix(red, orange, (heat - 0.25) * 4.0);
+	if (heat < 0.75)
+		return mix(orange, yellow, (heat - 0.5) * 4.0);
+	return mix(yellow, white, (heat - 0.75) * 4.0);
+}
+
 vec4 map(vec3 p) {
 	vec4 res = vec4(1.0, 1.0, 1.0, 1000.0);
 
@@ -48,12 +69,26 @@ vec4 map(vec3 p) {
 	bool first = true;
 	for (int i = 0; i < numSources; ++i) {
 		if (sources[i].params.x > 0.0) {
-			float d = sphereSDF(p - sources[i].position_radius.xyz, sources[i].position_radius.w);
+			float d;
+			vec3  col = sources[i].color_smoothness.rgb;
+
+			if (int(sources[i].params.y) == TYPE_EXPLOSION) {
+				float noise = fastFbm3d(p * sources[i].params.w + time * 0.2);
+				d = sphereSDF(p - sources[i].position_radius.xyz, sources[i].position_radius.w);
+				d += noise * sources[i].params.z;
+
+				float heat = 1.0 - clamp(d / (sources[i].position_radius.w * 0.5), 0.0, 1.0);
+				heat = pow(heat, 1.5);
+				col = getFireColor(heat + noise * 0.1);
+			} else {
+				d = sphereSDF(p - sources[i].position_radius.xyz, sources[i].position_radius.w);
+			}
+
 			if (first) {
-				res = vec4(sources[i].color_smoothness.rgb, d);
+				res = vec4(col, d);
 				first = false;
 			} else {
-				res = opUnionColored(vec4(sources[i].color_smoothness.rgb, d), res, sources[i].color_smoothness.a);
+				res = opUnionColored(vec4(col, d), res, sources[i].color_smoothness.a);
 			}
 		}
 	}
