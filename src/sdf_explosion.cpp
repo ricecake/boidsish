@@ -16,8 +16,8 @@ namespace Boidsish {
 		max_radius_(max_radius),
 		duration_(duration) {
 
-		orbit_speeds_ = glm::vec3(4.3f, 3.7f, 5.1f);
-		distance_rates_ = glm::vec3(2.1f, 2.7f, 1.9f);
+		orbit_speeds_ = glm::vec3(2.0f, -3.0f, 5.0f);
+		distance_rates_ = glm::vec3(2.0f, 3.0f, 5.0f);
 
 		SdfSource source;
 		source.position = position;
@@ -56,9 +56,9 @@ namespace Boidsish {
 			noise_intensity_ = max_radius_ * (0.2f + f2 * 0.6f);
 		} else {
 			// Phase 3: Shrinking while noise increases
-			float f3 = (f - 0.5f) / 0.5f;
+			float f3 = (f - 0.5f) / 0.45f;
 			base_radius_ = max_radius_ * 1.2f * (1.0f - f3);
-			noise_intensity_ = max_radius_ * (0.8f + f3 * 0.7f);
+			noise_intensity_ = max_radius_ * (0.4f + f3 * 0.7f);
 		}
 
 		glm::vec3 center(GetX(), GetY(), GetZ());
