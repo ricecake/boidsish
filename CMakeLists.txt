@@ -17,6 +17,7 @@ find_package(glm REQUIRED)
 find_package(assimp REQUIRED)
 find_package(ZLIB REQUIRED)
 find_package(Threads REQUIRED)
+find_package(OpenMP)
 
 # 1. Define ImGui FIRST so FastNoise2 can see it
 add_library(imgui STATIC
@@ -61,6 +62,7 @@ target_include_directories(boidsish
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
         $<INSTALL_INTERFACE:include>
         external/include
+        external/tinybvh
         external/libmorton/include
         ${BONXAI_INCLUDE_DIR}
         ${IMGUI_DIR}/
@@ -86,6 +88,10 @@ target_link_libraries(boidsish
         Threads::Threads
         glm::glm
 )
+
+if(OpenMP_CXX_FOUND)
+    target_link_libraries(boidsish PUBLIC OpenMP::OpenMP_CXX)
+endif()
 
 # 5. Build Examples
 file(GLOB EXAMPLE_DIRS "examples/*")
@@ -176,6 +182,10 @@ set_target_properties(check PROPERTIES EXCLUDE_FROM_ALL TRUE)
 add_executable(shader_preprocessor tools/shader_preprocessor.cpp)
 target_link_libraries(shader_preprocessor PRIVATE boidsish)
 add_dependencies(check shader_preprocessor)
+
+# Add model to SDF utility
+add_executable(model_to_sdf tools/model_to_sdf.cpp)
+target_link_libraries(model_to_sdf PRIVATE boidsish)
 
 # Find glslangValidator
 find_program(GLSLANG_VALIDATOR_EXE NAMES glslangValidator)
