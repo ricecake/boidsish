@@ -385,8 +385,8 @@ namespace Boidsish {
 			g.density_scale = glm::vec4(t.props.min_density, t.props.max_density, t.props.base_scale, t.props.scale_variance);
 			g.height_slope = glm::vec4(t.props.min_height, t.props.max_height, t.props.min_slope, t.props.max_slope);
 			g.rotation = glm::vec4(glm::radians(t.props.base_rotation), t.props.detail_distance);
-			g.aabb_min = glm::vec4(t.model->GetAABB().min, 0.0f);
-			g.aabb_max = glm::vec4(t.model->GetAABB().max, 0.0f);
+			g.aabb_min = glm::vec4(t.model->GetData()->aabb.min, 0.0f);
+			g.aabb_max = glm::vec4(t.model->GetData()->aabb.max, 0.0f);
 			g.flags = glm::uvec4(
 				static_cast<uint32_t>(t.props.biomes),
 				t.props.random_yaw ? 1u : 0u,
@@ -617,9 +617,9 @@ namespace Boidsish {
 			glBindTexture(GL_TEXTURE_2D_ARRAY, biome_texture);
 			placement_shader_->setInt("u_biomeMap", 1);
 
-			glBindBufferBase(GL_UNIFORM_BUFFER, 1, decor_props_ubo_);
-			glBindBufferBase(GL_UNIFORM_BUFFER, 2, placement_globals_ubo_);
-			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 2, chunk_params_ssbo_);
+			glBindBufferBase(GL_UNIFORM_BUFFER, Constants::UboBinding::DecorProps(), decor_props_ubo_);
+			glBindBufferBase(GL_UNIFORM_BUFFER, Constants::UboBinding::DecorPlacementGlobals(), placement_globals_ubo_);
+			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::DecorChunkParams(), chunk_params_ssbo_);
 
 			for (size_t i = 0; i < decor_types_.size(); ++i) {
 				placement_shader_->setInt("u_typeIndex", (int)i);
@@ -698,8 +698,8 @@ namespace Boidsish {
 
 			// Cull instances
 			culling_shader_->use();
-			culling_shader_->setVec3("u_aabbMin", type.model->GetAABB().min);
-			culling_shader_->setVec3("u_aabbMax", type.model->GetAABB().max);
+			culling_shader_->setVec3("u_aabbMin", type.model->GetData()->aabb.min);
+			culling_shader_->setVec3("u_aabbMax", type.model->GetData()->aabb.max);
 
 			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, type.ssbo);
 			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, type.visible_ssbo);
@@ -756,8 +756,8 @@ namespace Boidsish {
 				glDisable(GL_CULL_FACE);
 			}
 
-			shader->setVec3("u_aabbMin", type.model->GetAABB().min);
-			shader->setVec3("u_aabbMax", type.model->GetAABB().max);
+			shader->setVec3("u_aabbMin", type.model->GetData()->aabb.min);
+			shader->setVec3("u_aabbMax", type.model->GetData()->aabb.max);
 			shader->setFloat("u_windResponsiveness", type.props.wind_responsiveness);
 			shader->setFloat("u_windRimHighlight", type.props.wind_rim_highlight);
 
