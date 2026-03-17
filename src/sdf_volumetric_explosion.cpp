@@ -16,6 +16,8 @@ namespace Boidsish {
 		max_radius_(max_radius),
 		duration_(duration) {
 
+		SetHidden(true);
+
 		SdfSource source;
 		source.position = position;
 		source.radius = 0.0f;

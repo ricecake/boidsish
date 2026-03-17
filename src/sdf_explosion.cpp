@@ -16,6 +16,8 @@ namespace Boidsish {
 		max_radius_(max_radius),
 		duration_(duration) {
 
+		SetHidden(true);
+
 		orbit_speeds_ = glm::vec3(2.0f, -3.0f, 5.0f);
 		distance_rates_ = glm::vec3(2.0f, 3.0f, 5.0f);
 
