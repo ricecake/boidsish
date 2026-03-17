@@ -101,29 +101,47 @@ void main() {
 		vec3 localBaseCenter = vec3((u_aabbMin.x + u_aabbMax.x) * 0.5, u_aabbMin.y, (u_aabbMin.z + u_aabbMax.z) * 0.5);
 		vec3 worldBaseCenter = vec3(modelMatrix * vec4(localBaseCenter, 1.0));
 
-		// Distance from vertex to base center before swaying
-		float distToCenter = distance(worldPos, worldBaseCenter);
-
-		// Shockwave displacement
+		// Shockwave displacement (applied before wind sway)
 		worldPos += getShockwaveDisplacement(instanceCenter, (aPos.y - u_aabbMin.y) * instanceScale, true);
 
-		// Wind sway
+		// Apply wind sway (matches vis.vert logic)
 		if (wind_strength > 0.0) {
 			float localHeight = max(0.0, aPos.y - u_aabbMin.y);
 			float totalHeight = max(0.001, u_aabbMax.y - u_aabbMin.y);
 			float normalizedHeight = clamp(localHeight / totalHeight, 0.0, 1.0);
 
-			float fateFactor = fastWorley3d(vec3(instanceCenter.xz / 10, time * 0.5)) * 0.5 + 0.5;
-			vec2  windNudge = fateFactor * curlNoise2D(instanceCenter.xz * wind_frequency + time * wind_speed * 0.5) *
+			// 1. Calculate raw wind magnitude and direction
+			float fateFactor = fastWorley3d(vec3(instanceCenter.xz / 25.0, time * 0.25)) * 0.5 + 0.75;
+			vec2 rawWindNudge = fateFactor * curlNoise2D(instanceCenter.xz * wind_frequency + time * wind_speed * 0.5) *
 				wind_strength * u_windResponsiveness;
-			worldPos.xz += windNudge * normalizedHeight * pow(normalizedHeight, 1.2);
-		}
 
-		// Re-normalize to maintain original distance from base center (bowing effect)
-		vec3  direction = worldPos - worldBaseCenter;
-		float newDist = length(direction);
-		if (newDist > 0.001) {
-			worldPos = worldBaseCenter + (direction / newDist) * distToCenter;
+			float windMag = length(rawWindNudge);
+
+			if (windMag > 0.001) {
+				vec2 windDir2D = rawWindNudge / windMag;
+				vec3 windDir = vec3(windDir2D.x, 0.0, windDir2D.y);
+
+				// 2. Apply Asymptotic Resistance (tanh)
+				float maxDeflection = 1.3;
+				float resistedWindMag = maxDeflection * tanh(windMag / maxDeflection);
+
+				// 3. Calculate bending angle based on resisted wind and height
+				float bendAngle = resistedWindMag * pow(normalizedHeight, 1.2) *
+					smoothstep(0.05, 1.0, normalizedHeight);
+
+				// 4. Arc Mapping via Rodrigues' Rotation Formula
+				vec3 rotationAxis = normalize(cross(vec3(0.0, 1.0, 0.0), windDir));
+				vec3 offset = worldPos - worldBaseCenter;
+
+				float cosTheta = cos(bendAngle);
+				float sinTheta = sin(bendAngle);
+
+				// Rotate the vertex offset around the base pivot
+				vec3 rotatedOffset = offset * cosTheta + cross(rotationAxis, offset) * sinTheta +
+					rotationAxis * dot(rotationAxis, offset) * (1.0 - cosTheta);
+
+				worldPos = worldBaseCenter + rotatedOffset;
+			}
 		}
 	}
 

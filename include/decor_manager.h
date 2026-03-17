@@ -193,7 +193,7 @@ namespace Boidsish {
 		// Grace period: keep decor blocks alive for this many frames after their
 		// terrain chunk disappears from the render manager (e.g. due to LRU eviction).
 		// Prevents regeneration churn when chunks cycle in and out.
-		static constexpr uint32_t kChunkGracePeriodFrames = 60;
+		static constexpr uint32_t kChunkGracePeriodFrames = 1;
 
 		// Cached camera state for terrain occlusion and priority sorting
 		glm::vec3 camera_pos_ = glm::vec3(0.0f);

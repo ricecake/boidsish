@@ -40,6 +40,14 @@ namespace Boidsish {
 			constexpr int TerrainData() {
 				return 8;
 			}
+
+			constexpr int DecorProps() {
+				return 30;
+			}
+
+			constexpr int DecorPlacementGlobals() {
+				return 31;
+			}
 		} // namespace UboBinding
 
 		namespace SsboBinding {
@@ -73,6 +81,10 @@ namespace Boidsish {
 
 			constexpr int TrailSpineData() {
 				return 20;
+			}
+
+			constexpr int DecorChunkParams() {
+				return 26;
 			}
 		} // namespace SsboBinding
 
