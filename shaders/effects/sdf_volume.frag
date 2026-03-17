@@ -56,15 +56,14 @@ float VolumetricExplosion(vec3 p, vec3 center, float radius, float noise_intensi
 	return d;
 }
 
-vec3 computeVolumetricColor(float density, float dist_to_center) {
-	vec3 result = mix(vec3(1.0, 0.9, 0.8), vec3(0.4, 0.15, 0.1), density);
+vec3 computeVolumetricColor(float density, float dist) {
+	vec3 result = mix(vec3(1.0, 0.9, 0.8), vec3(0.4, 0.15, 0.1), clamp(density, 0.0, 1.0));
 	vec3 colCenter = 7.0 * vec3(0.8, 1.0, 1.0);
 	vec3 colEdge = 1.5 * vec3(0.48, 0.53, 0.5);
-	result *= mix(colCenter, colEdge, min((dist_to_center + 0.05) / 0.9, 1.15));
+	result *= mix(colCenter, colEdge, clamp((dist + 0.05) / 0.9, 0.0, 1.0));
 	return result;
 }
 
-// Custom union that handles color blending
 vec4 opUnionColored(vec4 d1, vec4 d2, float k) {
 	float h = clamp(0.5 + 0.5 * (d2.a - d1.a) / k, 0.0, 1.0);
 	float res_d = mix(d2.a, d1.a, h) - k * h * (1.0 - h);
@@ -72,7 +71,6 @@ vec4 opUnionColored(vec4 d1, vec4 d2, float k) {
 	return vec4(res_col, res_d);
 }
 
-// Custom subtraction that handles color for "antimatter" effect
 vec4 opSubtractionColored(vec4 d1, vec4 d2, float k) {
 	float h = clamp(0.5 - 0.5 * (d2.a + d1.a) / k, 0.0, 1.0);
 	float res_d = mix(d2.a, -d1.a, h) + k * h * (1.0 - h);
@@ -96,137 +94,113 @@ vec3 getFireColor(float heat) {
 	return 3.0 * mix(yellow, white, (heat - 0.85) / 0.15);
 }
 
-// --- Map Function ---
-
-vec4 map(vec3 p) {
+vec4 mapOpaque(vec3 p) {
 	vec4 res = vec4(1.0, 1.0, 1.0, 1000.0);
-
-	// First pass: Union of positive charges
 	bool first = true;
 	for (int i = 0; i < numSources; ++i) {
-		if (sources[i].params.x > 0.0) {
+		int type = int(sources[i].params.y);
+		if (type != TYPE_VOLUMETRIC) {
 			float d;
-			vec3  col = sources[i].color_smoothness.rgb;
-
-			int type = int(sources[i].params.y);
+			vec3 col = sources[i].color_smoothness.rgb;
 			if (type == TYPE_EXPLOSION) {
 				float alpha_noise = fastWorley3d(p * 0.05 * sources[i].params.w + time * 0.005);
 				float noise = fastWarpedFbm3d(p * alpha_noise * sources[i].params.w + time * 0.02);
 				noise = mix(noise, alpha_noise, fastSimplex3d(vec3(alpha_noise, noise, noise * alpha_noise)));
 				d = sphereSDF(p - sources[i].position_radius.xyz, sources[i].position_radius.w);
 				d += noise * sources[i].params.z;
-
 				float heat = 1.0 - clamp(d / (sources[i].position_radius.w * 0.05), 0.0, 1.0);
 				heat = pow(heat, 2.50);
 				col = getFireColor(heat * sources[i].params.w + noise * 5.0) * 2.0;
-			} else if (type == TYPE_VOLUMETRIC) {
-				d = VolumetricExplosion(p, sources[i].position_radius.xyz, sources[i].position_radius.w, sources[i].params.z, sources[i].params.w);
-				float density = clamp(-d, 0.0, 1.0);
-				col = computeVolumetricColor(density, length(p - sources[i].position_radius.xyz) / sources[i].position_radius.w);
 			} else {
 				d = sphereSDF(p - sources[i].position_radius.xyz, sources[i].position_radius.w);
 			}
 
-			if (first) {
-				res = vec4(col, d);
-				first = false;
+			if (sources[i].params.x > 0.0) {
+				if (first) { res = vec4(col, d); first = false; }
+				else { res = opUnionColored(vec4(col, d), res, sources[i].color_smoothness.a); }
 			} else {
-				res = opUnionColored(vec4(col, d), res, sources[i].color_smoothness.a);
+				if (!first) { res = opSubtractionColored(vec4(col, d), res, sources[i].color_smoothness.a); }
 			}
 		}
 	}
-
-	// Second pass: Subtraction of negative charges
-	for (int i = 0; i < numSources; ++i) {
-		if (sources[i].params.x < 0.0) {
-			float d = sphereSDF(p - sources[i].position_radius.xyz, sources[i].position_radius.w);
-			if (!first) {
-				res = opSubtractionColored(
-					vec4(sources[i].color_smoothness.rgb, d),
-					res,
-					sources[i].color_smoothness.a
-				);
-			}
-		}
-	}
-
 	return res;
 }
-
-vec3 getNormal(vec3 p) {
-	vec2 e = vec2(0.01, 0.0);
-	return normalize(vec3(
-		map(p + e.xyy).a - map(p - e.xyy).a,
-		map(p + e.yxy).a - map(p - e.yxy).a,
-		map(p + e.yyx).a - map(p - e.yyx).a
-	));
-}
-
-// --- Main ---
 
 void main() {
 	vec3  sceneColor = texture(sceneTexture, TexCoords).rgb;
 	float depth = texture(depthTexture, TexCoords).r;
-
-	// Reconstruct scene world position to get depth limit
 	vec4 ndcPos = vec4(TexCoords * 2.0 - 1.0, depth * 2.0 - 1.0, 1.0);
 	vec4 viewPos = invProjection * ndcPos;
 	viewPos /= viewPos.w;
 	vec4  worldPos = invView * viewPos;
 	float sceneDistance = length(worldPos.xyz - cameraPos);
-	if (depth >= 0.999999)
-		sceneDistance = 10000.0;
-
-	// Ray direction
+	if (depth >= 0.999999) sceneDistance = 10000.0;
 	vec4 target = invProjection * vec4(TexCoords * 2.0 - 1.0, 1.0, 1.0);
 	vec3 rayDir = normalize((invView * vec4(normalize(target.xyz), 0.0)).xyz);
 
-	float t = fastBlueNoise(TexCoords * screenSize);
-	vec4  res;
-	bool  hit = false;
-
-	bool hasVolumetric = false;
-	for (int j = 0; j < numSources; ++j) {
-		if (int(sources[j].params.y) == TYPE_VOLUMETRIC) {
-			hasVolumetric = true;
-			break;
-		}
-	}
+	float t = fastBlueNoise(TexCoords * screenSize) * 0.1;
+	vec4 sum = vec4(0.0);
+	float td = 0.0;
 
 	for (int i = 0; i < 96; ++i) {
 		vec3 p = cameraPos + rayDir * t;
-		res = map(p);
 
-		if (res.a < 0.01) {
-			hit = true;
+		vec4 resOpaque = mapOpaque(p);
+		if (resOpaque.a < 0.01) {
+			vec2 e = vec2(0.01, 0.0);
+			vec3 normal = normalize(vec3(
+				mapOpaque(p + e.xyy).a - mapOpaque(p - e.xyy).a,
+				mapOpaque(p + e.yxy).a - mapOpaque(p - e.yxy).a,
+				mapOpaque(p + e.yyx).a - mapOpaque(p - e.yyx).a
+			));
+			vec3 lightDir = normalize(vec3(0.5, 1.0, 0.5));
+			float diff = max(dot(normal, lightDir), 0.0);
+			float rim = pow(1.0 - max(dot(normal, -rayDir), 0.0), 3.0);
+			vec3 col = resOpaque.rgb * (diff * 0.8 + 0.2) + resOpaque.rgb * rim * 0.5;
+			sum = sum + vec4(col, 1.0) * (1.0 - sum.a);
 			break;
 		}
 
-		if (hasVolumetric) {
-			// Optimized step size for volumetric types
-			float stepSize = abs(res.a) + 0.07;
-			stepSize = max(stepSize, 0.03);
-			t += stepSize * 0.5;
-		} else {
-			t += res.a;
+		float minVolD = 1000.0;
+		int nearestVol = -1;
+		for (int k = 0; k < numSources; ++k) {
+			if (int(sources[k].params.y) == TYPE_VOLUMETRIC) {
+				float dVol = VolumetricExplosion(p, sources[k].position_radius.xyz, sources[k].position_radius.w, sources[k].params.z, sources[k].params.w);
+				if (dVol < minVolD) {
+					minVolD = dVol;
+					nearestVol = k;
+				}
+			}
 		}
 
-		if (t > sceneDistance || t > 1500.0)
-			break;
+		float dv = 1000.0;
+		if (nearestVol != -1) {
+			dv = abs(minVolD) + 0.07;
+			if (dv < 0.1) {
+				float ld = 0.1 - dv;
+				float w = (1.0 - sum.a) * ld;
+				td += w + 1.0 / 200.0;
+				float distToCenter = length(p - sources[nearestVol].position_radius.xyz);
+				vec4 col = vec4(computeVolumetricColor(td, distToCenter / sources[nearestVol].position_radius.w), td);
+
+				vec3 lightColor = vec3(1.0, 0.5, 0.25);
+				sum.rgb += (lightColor / exp(distToCenter * distToCenter * distToCenter * 0.08) / 30.0) * (1.0 - sum.a);
+				sum.rgb += sum.a * sum.rgb * 0.2 / max(distToCenter, 0.01);
+
+				col.a *= 0.2;
+				col.rgb *= col.a;
+				sum = sum + col * (1.0 - sum.a);
+			}
+			td += 1.0 / 70.0;
+		}
+
+		float stepSize = min(resOpaque.a, max(dv, 0.03) * 0.5);
+		t += stepSize;
+
+		if (t > sceneDistance || t > 1500.0 || sum.a > 0.99) break;
 	}
 
-	if (hit) {
-		vec3  p = cameraPos + rayDir * t;
-		vec3  normal = getNormal(p);
-		vec3  lightDir = normalize(vec3(0.5, 1.0, 0.5));
-		float diff = max(dot(normal, lightDir), 0.0);
-
-		float rim = 1.0 - max(dot(normal, -rayDir), 0.0);
-		rim = pow(rim, 3.0);
-
-		vec3 volumeColor = res.rgb * (diff * 0.8 + 0.2) + res.rgb * rim * 0.5;
-		FragColor = vec4(mix(sceneColor, volumeColor, 1.0), 1.0);
-	} else {
-		FragColor = vec4(sceneColor, 1.0);
-	}
+	sum = clamp(sum, 0.0, 1.0);
+	sum.rgb = sum.rgb * sum.rgb * (3.0 - 2.0 * sum.rgb);
+	FragColor = vec4(mix(sceneColor, sum.rgb, sum.a), 1.0);
 }
