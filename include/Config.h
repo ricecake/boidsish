@@ -25,6 +25,8 @@ namespace Boidsish {
 
 		std::vector<std::string>           GetSections() const;
 		std::map<std::string, std::string> GetSection(const std::string& section) const;
+		bool                               HasSection(const std::string& section) const;
+		bool HasKey(const std::string& section, const std::string& key) const;
 
 	private:
 		std::string                                               m_filename;

@@ -138,4 +138,14 @@ namespace Boidsish {
 		}
 		return {};
 	}
+
+	bool Config::HasSection(const std::string& section) const { return m_data.contains(section); }
+
+	bool Config::HasKey(const std::string& section, const std::string& key) const {
+		auto it = m_data.find(section);
+		if (it != m_data.end()) {
+			return it->second.contains(key);
+		}
+		return false;
+	}
 } // namespace Boidsish
