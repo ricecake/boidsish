@@ -19,13 +19,18 @@ int main() {
 
 	viz.AddInputCallback([&](const InputState& state) {
 		if (state.mouse_button_down[0]) {
-			viz.AddSdfExplosion(glm::vec3(0, 5, 0), 10.0f, 2.5f);
+			viz.AddSdfExplosion(glm::vec3(-15, 5, 0), 10.0f, 2.5f);
 			logger::INFO("Spawned SDF Explosion via Mouse Click");
+		}
+		if (state.mouse_button_down[1]) {
+			viz.AddSdfVolumetricExplosion(glm::vec3(15, 5, 0), 10.0f, 2.5f);
+			logger::INFO("Spawned SDF Volumetric Explosion via Right Click");
 		}
 	});
 
 	viz.AddPrepareCallback([&](Visualizer& v) {
-		v.AddSdfExplosion(glm::vec3(0, 5, 0), 10.0f, 2.5f);
+		v.AddSdfExplosion(glm::vec3(-15, 5, 0), 10.0f, 2.5f);
+		v.AddSdfVolumetricExplosion(glm::vec3(15, 5, 0), 10.0f, 2.5f);
 	});
 
 	while (!viz.ShouldClose()) {
@@ -33,7 +38,8 @@ int main() {
 
 		timer += viz.GetLastFrameTime();
 		if (timer >= spawn_interval) {
-			viz.AddSdfExplosion(glm::vec3(0, 5, 0), 10.0f, 2.5f);
+			viz.AddSdfExplosion(glm::vec3(-15, 5, 0), 10.0f, 2.5f);
+			viz.AddSdfVolumetricExplosion(glm::vec3(15, 5, 0), 10.0f, 2.5f);
 			timer = 0.0f;
 		}
 
