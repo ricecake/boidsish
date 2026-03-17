@@ -387,6 +387,7 @@ namespace Boidsish {
 				UploadHeightmapSlice(it->second.texture_slice, heightmap, reordered_normals, reordered_biomes);
 				it->second.min_y = min_y;
 				it->second.max_y = max_y;
+				it->second.update_count++;
 				return;
 			}
 
@@ -804,6 +805,23 @@ namespace Boidsish {
 					static_cast<float>(chunk_size_ * world_scale)
 				)
 			);
+		}
+		return result;
+	}
+
+	std::vector<TerrainRenderManager::DecorChunkData> TerrainRenderManager::GetDecorChunkData(float world_scale) const {
+		std::lock_guard<std::mutex>     lock(mutex_);
+		std::vector<DecorChunkData>     result;
+		result.reserve(chunks_.size());
+		float scaled_chunk_size = static_cast<float>(chunk_size_ * world_scale);
+		for (const auto& [key, chunk] : chunks_) {
+			result.push_back({
+				key,
+				chunk.world_offset,
+				static_cast<float>(chunk.texture_slice),
+				scaled_chunk_size,
+				chunk.update_count,
+			});
 		}
 		return result;
 	}

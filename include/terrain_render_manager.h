@@ -133,6 +133,24 @@ namespace Boidsish {
 		std::vector<glm::vec4> GetChunkInfo(float world_scale) const;
 
 		/**
+		 * @brief Pre-computed chunk data for decor placement.
+		 * Avoids repeated key derivation and separate update_count queries.
+		 */
+		struct DecorChunkData {
+			std::pair<int, int> key;          // integer chunk coordinate
+			glm::vec2           world_offset; // world-space offset
+			float               slice;        // texture array slice
+			float               chunk_size;   // world-space chunk size
+			uint32_t            update_count; // re-upload counter for deformation detection
+		};
+
+		/**
+		 * @brief Get all registered chunks with pre-computed keys and update counts.
+		 * Single mutex acquisition, no intermediate map construction.
+		 */
+		std::vector<DecorChunkData> GetDecorChunkData(float world_scale) const;
+
+		/**
 		 * @brief Bind terrain data textures and UBO to a shader.
 		 */
 		void BindTerrainData(ShaderBase& shader_base) const;
@@ -160,10 +178,11 @@ namespace Boidsish {
 
 		// Per-chunk metadata (CPU side)
 		struct ChunkInfo {
-			int       texture_slice; // Index into texture array
-			float     min_y;         // For frustum culling
-			float     max_y;         // For frustum culling
-			glm::vec2 world_offset;  // (chunk_x * chunk_size, chunk_z * chunk_size)
+			int       texture_slice;    // Index into texture array
+			float     min_y;            // For frustum culling
+			float     max_y;            // For frustum culling
+			glm::vec2 world_offset;     // (chunk_x * chunk_size, chunk_z * chunk_size)
+			uint32_t  update_count = 0; // Incremented each time chunk data is re-uploaded
 		};
 
 		// Per-instance data sent to GPU (std140 layout)

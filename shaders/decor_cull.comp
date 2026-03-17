@@ -14,9 +14,14 @@ layout(std430, binding = 1) writeonly buffer VisibleInstances {
 	Instance visible_instances[];
 };
 
+layout(std430, binding = 3) readonly buffer BlockValidity {
+	uint block_valid[];
+};
+
 layout(binding = 0) uniform atomic_uint visibleCount;
 
 uniform int   u_totalSlots;
+uniform int   u_instancesPerBlock;
 uniform vec4  u_frustumPlanes[6];
 uniform mat4  u_viewProj;
 uniform vec2  u_viewportSize;
@@ -32,7 +37,8 @@ uniform int       u_hizMipCount;
 uniform bool      u_enableHiZ;
 
 #include "helpers/terrain_shadows.glsl"
-uniform vec3 u_lightDir; // From point to light
+uniform vec3 u_lightDir;   // From point to light (shadow pass only)
+uniform vec3 u_cameraPos;  // World-space camera position (main pass only)
 
 bool isInFrustum(vec3 pos, float radius) {
 	for (int i = 0; i < 6; i++) {
@@ -52,6 +58,71 @@ bool isAABBInFrustum(mat4 modelMatrix, vec3 aabbMin, vec3 aabbMax) {
 	float radius = length(extent * mat3(modelMatrix)); // Approximate world radius
 
 	return isInFrustum(worldCenter, radius);
+}
+
+// Check if terrain blocks the line of sight from camera to the instance.
+// Uses hierarchical terrain heightmap raymarching (same technique as terrain shadows,
+// but along the camera→instance direction instead of light direction).
+bool isOccludedByTerrain(vec3 pos) {
+	if (u_originSize.w < 1)
+		return false;
+
+	vec3 toCamera = u_cameraPos - pos;
+	float distToCamera = length(toCamera);
+	if (distToCamera < 1.0)
+		return false;
+
+	vec3 dir = toCamera / distToCamera;
+
+	float scaledChunkSize = u_terrainParams.x * u_terrainParams.y;
+
+	// Start a bit above the instance to avoid self-occlusion
+	vec3  p_start = pos + vec3(0, 1.0, 0) + dir * 2.0;
+	float t = 0.0;
+	// Only march up to camera distance (no need to go further)
+	float maxDist = distToCamera - 4.0;
+
+	int iter = 0;
+	while (t < maxDist && iter < 40) {
+		iter++;
+		vec3  p = p_start + t * dir;
+		vec2  gridPos = p.xz / scaledChunkSize;
+		ivec2 chunkCoord = ivec2(floor(gridPos));
+		ivec2 localGridCoord = chunkCoord - u_originSize.xy;
+
+		if (localGridCoord.x < 0 || localGridCoord.x >= u_originSize.z ||
+		    localGridCoord.y < 0 || localGridCoord.y >= u_originSize.z) {
+			break;
+		}
+
+		vec2 gridUV = (vec2(localGridCoord) + 0.5) / float(u_originSize.z);
+
+		// Coarse skip using max height mips
+		float h_max3 = textureLod(u_maxHeightGrid, gridUV, 3.0).r;
+		if (p.y > h_max3 + 2.0) {
+			t += 4.0 * scaledChunkSize;
+			continue;
+		}
+
+		float h_max1 = textureLod(u_maxHeightGrid, gridUV, 1.0).r;
+		if (p.y > h_max1 + 1.0) {
+			t += scaledChunkSize;
+			continue;
+		}
+
+		int slice = texelFetch(u_chunkGrid, localGridCoord, 0).r;
+		if (slice >= 0) {
+			vec2  uv_chunk = (p.xz - vec2(chunkCoord) * scaledChunkSize) / scaledChunkSize;
+			float h = texture(u_heightmapArray, vec3(uv_chunk, float(slice))).r;
+			if (p.y < h) {
+				return true; // Terrain blocks line of sight
+			}
+		}
+
+		t += 4.0 * u_terrainParams.y;
+	}
+
+	return false;
 }
 
 bool isOccluded(vec3 pos, float radius) {
@@ -136,10 +207,15 @@ void main() {
 	if (idx >= u_totalSlots)
 		return;
 
+	// Early-out: skip entire freed blocks without reading instance data.
+	// This replaces expensive CPU-side zeroing of 64KB per type per freed block.
+	uint blockIdx = idx / uint(u_instancesPerBlock);
+	if (block_valid[blockIdx] == 0u)
+		return;
+
 	Instance inst = all_instances[idx];
 
 	// Check if active (scale > 0)
-	// Magnitude of the first column
 	float s2 = dot(inst.model[0].xyz, inst.model[0].xyz);
 	if (s2 < 0.0001)
 		return;
@@ -186,10 +262,14 @@ void main() {
 		if (isOccluded(pos, radius))
 			return;
 
-		// Terrain shadow culling: skip if entirely in terrain shadow
+		// Terrain-based culling
 		if (u_lightDir.y > 0.0) {
-			// For foliage culling, we assume an upward normal for terrain shadow checks
+			// Shadow pass: skip instances entirely in terrain shadow
 			if (isPointInTerrainShadow(pos, vec3(0, 1, 0), u_lightDir))
+				return;
+		} else if (u_cameraPos != vec3(0.0)) {
+			// Main pass: skip instances occluded by terrain from camera's perspective
+			if (isOccludedByTerrain(pos))
 				return;
 		}
 
