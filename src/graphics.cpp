@@ -1190,6 +1190,11 @@ namespace Boidsish {
 
 			ConfigManager::GetInstance().Shutdown();
 
+			// Clear all shapes first because they hold pointers to managers (like SdfVolumeManager)
+			persistent_shapes.clear();
+			transient_effects.clear();
+			shapes.clear();
+
 			// SoundEffectManager holds Sound objects that reference AudioManager's engine
 			sound_effect_manager.reset();
 
@@ -1201,6 +1206,15 @@ namespace Boidsish {
 
 			// Explicitly reset UI manager before destroying window context
 			ui_manager.reset();
+
+			// SDF Volume Manager owns GL resources (UBO)
+			sdf_volume_manager.reset();
+			noise_manager.reset();
+			shadow_manager.reset();
+			atmosphere_manager.reset();
+			fire_effect_manager.reset();
+			mesh_explosion_manager.reset();
+			hiz_manager.reset();
 
 			Shape::DestroySphereMesh();
 			Line::DestroyLineMesh();

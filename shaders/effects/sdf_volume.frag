@@ -58,9 +58,9 @@ float VolumetricExplosion(vec3 p, vec3 center, float radius, float noise_intensi
 
 vec3 computeVolumetricColor(float density, float dist) {
 	vec3 result = mix(vec3(1.0, 0.9, 0.8), vec3(0.4, 0.15, 0.1), clamp(density, 0.0, 1.0));
-	vec3 colCenter = 7.0 * vec3(0.8, 1.0, 1.0);
-	vec3 colEdge = 1.5 * vec3(0.48, 0.53, 0.5);
-	result *= mix(colCenter, colEdge, clamp((dist + 0.05) / 0.9, 0.0, 1.0));
+	vec3 colCenter = 10.0 * vec3(0.9, 1.0, 1.0);
+	vec3 colEdge = 1.0 * vec3(0.4, 0.2, 0.1);
+	result *= mix(colCenter, colEdge, clamp(dist, 0.0, 1.0));
 	return result;
 }
 
@@ -175,26 +175,29 @@ void main() {
 
 		float dv = 1000.0;
 		if (nearestVol != -1) {
-			dv = abs(minVolD) + 0.07;
-			if (dv < 0.1) {
-				float ld = 0.1 - dv;
+			dv = minVolD; // Use raw distance for volumetric
+			if (dv < 0.2) {
+				float h = 0.2;
+				float ld = h - dv;
 				float w = (1.0 - sum.a) * ld;
-				td += w + 1.0 / 200.0;
-				float distToCenter = length(p - sources[nearestVol].position_radius.xyz);
-				vec4 col = vec4(computeVolumetricColor(td, distToCenter / sources[nearestVol].position_radius.w), td);
+				td += w + 1.0 / 150.0;
 
-				vec3 lightColor = vec3(1.0, 0.5, 0.25);
-				sum.rgb += (lightColor / exp(distToCenter * distToCenter * distToCenter * 0.08) / 30.0) * (1.0 - sum.a);
+				float distToCenter = length(p - sources[nearestVol].position_radius.xyz);
+				float normDist = distToCenter / sources[nearestVol].position_radius.w;
+				vec4 col = vec4(computeVolumetricColor(td, normDist), td);
+
+				vec3 lightColor = vec3(1.0, 0.6, 0.3);
+				sum.rgb += (lightColor / exp(distToCenter * distToCenter * 0.1) / 20.0) * (1.0 - sum.a);
 				sum.rgb += sum.a * sum.rgb * 0.2 / max(distToCenter, 0.01);
 
-				col.a *= 0.2;
+				col.a *= 0.4;
 				col.rgb *= col.a;
 				sum = sum + col * (1.0 - sum.a);
 			}
-			td += 1.0 / 70.0;
+			dv = abs(dv) + 0.05;
 		}
 
-		float stepSize = min(resOpaque.a, max(dv, 0.03) * 0.5);
+		float stepSize = min(resOpaque.a, max(dv, 0.02) * 0.6);
 		t += stepSize;
 
 		if (t > sceneDistance || t > 1500.0 || sum.a > 0.99) break;
