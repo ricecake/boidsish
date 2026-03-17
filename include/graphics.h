@@ -424,6 +424,11 @@ namespace Boidsish {
 		ExplodeShape(std::shared_ptr<Shape> shape, float intensity = 1.0f, const glm::vec3& velocity = glm::vec3(0.0f));
 
 		/**
+		 * @brief Add an SDF-based explosion effect.
+		 */
+		void AddSdfExplosion(const glm::vec3& position, float max_radius = 10.0f, float duration = 2.0f);
+
+		/**
 		 * @brief A high-level effect helper that combines mesh explosion, hiding the original shape,
 		 * and spawning fire/shockwave effects.
 		 *
