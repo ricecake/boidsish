@@ -53,6 +53,18 @@ namespace Boidsish {
 			shader_->use();
 			shader_->setInt("sceneTexture", 0);
 			shader_->setInt("depthTexture", 1);
+
+			if (noise_texture_ != 0) {
+				glActiveTexture(GL_TEXTURE5);
+				glBindTexture(GL_TEXTURE_3D, noise_texture_);
+				shader_->setInt("u_noiseTexture", 5);
+			}
+			if (curl_noise_texture_ != 0) {
+				glActiveTexture(GL_TEXTURE6);
+				glBindTexture(GL_TEXTURE_3D, curl_noise_texture_);
+				shader_->setInt("u_curlTexture", 6);
+			}
+
 			shader_->setVec2("screenSize", glm::vec2(width_, height_));
 			shader_->setVec3("cameraPos", cameraPos);
 			shader_->setMat4("invView", glm::inverse(viewMatrix));

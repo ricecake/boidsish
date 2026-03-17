@@ -17,13 +17,15 @@ namespace Boidsish {
 		float     smoothness;
 		float     charge; // Positive for union, negative for subtraction
 		int       type;   // 0 for sphere, can add more later
+		float     noise_intensity = 0.0f;
+		float     noise_scale = 1.0f;
 	};
 
 	// GPU-friendly structure for UBO
 	struct SdfSourceGPU {
 		glm::vec4 position_radius;    // xyz: pos, w: radius
 		glm::vec4 color_smoothness;   // rgb: color, a: smoothness
-		glm::vec4 charge_type_unused; // x: charge, y: type, zw: unused
+		glm::vec4 charge_type_noise;  // x: charge, y: type, z: noise_intensity, w: noise_scale
 	};
 
 	class SdfVolumeManager {
