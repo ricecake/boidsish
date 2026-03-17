@@ -61,7 +61,10 @@ namespace Boidsish {
                             tinybvh::bvhvec3(dir.x, dir.y, dir.z)
                         );
                         int hits = 0;
-                        while (bvh.Intersect(ray) >= 0) {
+                        while (true) {
+                            bvh.Intersect(ray);
+                            if (ray.hit.t >= BVH_FAR) break;
+
                             hits++;
                             float dist = ray.hit.t;
                             ray.O = ray.O + (dist + 0.0001f) * ray.D;
@@ -160,12 +163,14 @@ namespace Boidsish {
 
         logger::INFO("SdfUtils: Starting JFA with max step {}...", step);
 
+        std::vector<Seed> seeds_next = seeds;
+
         while (step >= 1) {
             #pragma omp parallel for collapse(3)
             for (int z = 0; z < (int)grid.res.z; ++z) {
                 for (int y = 0; y < (int)grid.res.y; ++y) {
                     for (int x = 0; x < (int)grid.res.x; ++x) {
-                        Seed best_s = get_seed(x, y, z);
+                        Seed best_s = seeds[z * grid.res.y * grid.res.x + y * grid.res.x + x];
                         float best_dist_sq = std::numeric_limits<float>::max();
                         if (best_s.x != -1) {
                             float dx = best_s.x - x;
@@ -178,24 +183,33 @@ namespace Boidsish {
                             for (int dy = -1; dy <= 1; ++dy) {
                                 for (int dx = -1; dx <= 1; ++dx) {
                                     if (dx == 0 && dy == 0 && dz == 0) continue;
-                                    Seed s = get_seed(x + dx * step, y + dy * step, z + dz * step);
-                                    if (s.x != -1) {
-                                        float diff_x = s.x - x;
-                                        float diff_y = s.y - y;
-                                        float diff_z = s.z - z;
-                                        float d_sq = diff_x * diff_x + diff_y * diff_y + diff_z * diff_z;
-                                        if (d_sq < best_dist_sq) {
-                                            best_dist_sq = d_sq;
-                                            best_s = s;
+                                    int nx = x + dx * step;
+                                    int ny = y + dy * step;
+                                    int nz = z + dz * step;
+
+                                    if (nx >= 0 && nx < (int)grid.res.x &&
+                                        ny >= 0 && ny < (int)grid.res.y &&
+                                        nz >= 0 && nz < (int)grid.res.z) {
+                                        Seed s = seeds[nz * grid.res.y * grid.res.x + ny * grid.res.x + nx];
+                                        if (s.x != -1) {
+                                            float diff_x = s.x - x;
+                                            float diff_y = s.y - y;
+                                            float diff_z = s.z - z;
+                                            float d_sq = diff_x * diff_x + diff_y * diff_y + diff_z * diff_z;
+                                            if (d_sq < best_dist_sq) {
+                                                best_dist_sq = d_sq;
+                                                best_s = s;
+                                            }
                                         }
                                     }
                                 }
                             }
                         }
-                        set_seed(x, y, z, best_s);
+                        seeds_next[z * grid.res.y * grid.res.x + y * grid.res.x + x] = best_s;
                     }
                 }
             }
+            seeds = seeds_next;
             step /= 2;
         }
 

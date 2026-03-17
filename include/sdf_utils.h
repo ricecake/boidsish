@@ -16,7 +16,41 @@ namespace Boidsish {
         std::vector<float> distances;
 
         float GetDistance(uint32_t x, uint32_t y, uint32_t z) const {
+            x = std::clamp(x, 0u, res.x - 1);
+            y = std::clamp(y, 0u, res.y - 1);
+            z = std::clamp(z, 0u, res.z - 1);
             return distances[z * res.y * res.x + y * res.x + x];
+        }
+
+        float Sample(glm::vec3 world_pos) const {
+            glm::vec3 size = aabb_max - aabb_min;
+            glm::vec3 local_pos = (world_pos - aabb_min) / size * glm::vec3(res - glm::uvec3(1));
+
+            if (world_pos.x < aabb_min.x || world_pos.x > aabb_max.x ||
+                world_pos.y < aabb_min.y || world_pos.y > aabb_max.y ||
+                world_pos.z < aabb_min.z || world_pos.z > aabb_max.z) {
+                // Return a large positive value for positions far outside,
+                // or approximate with distance to AABB
+                glm::vec3 d = glm::max(aabb_min - world_pos, world_pos - aabb_max);
+                return glm::length(glm::max(d, 0.0f));
+            }
+
+            glm::uvec3 base = glm::uvec3(glm::floor(local_pos));
+            glm::vec3 frac = local_pos - glm::vec3(base);
+
+            auto g = [&](uint32_t x, uint32_t y, uint32_t z) {
+                return GetDistance(base.x + x, base.y + y, base.z + z);
+            };
+
+            float c00 = g(0, 0, 0) * (1.0f - frac.x) + g(1, 0, 0) * frac.x;
+            float c01 = g(0, 0, 1) * (1.0f - frac.x) + g(1, 0, 1) * frac.x;
+            float c10 = g(0, 1, 0) * (1.0f - frac.x) + g(1, 1, 0) * frac.x;
+            float c11 = g(0, 1, 1) * (1.0f - frac.x) + g(1, 1, 1) * frac.x;
+
+            float c0 = c00 * (1.0f - frac.y) + c10 * frac.y;
+            float c1 = c01 * (1.0f - frac.y) + c11 * frac.y;
+
+            return c0 * (1.0f - frac.z) + c1 * frac.z;
         }
     };
 
