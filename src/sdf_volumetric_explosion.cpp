@@ -35,6 +35,12 @@ namespace Boidsish {
 		manager_->RemoveSource(source_id_);
 	}
 
+
+
+double easeOutCirc( double t ) {
+    return sqrt( t );
+}
+
 double easeInOutCirc( double t ) {
     if( t < 0.5 ) {
         return (1 - sqrt( 1 - 2 * t )) * 0.5;
@@ -48,6 +54,13 @@ double easeOutQuint( double t ) {
     return 1 + t * t2 * t2;
 }
 
+
+double easeInQuint( double t ) {
+    double t2 = t * t;
+    return t * t2 * t2;
+}
+
+
 	void SdfVolumetricExplosion::Update(float delta_time) {
 		time_lived_ += delta_time;
 		auto f = std::clamp(time_lived_ / duration_, 0.0f, 1.0f);
@@ -57,21 +70,23 @@ double easeOutQuint( double t ) {
 		float noise_scale;
 
 
-		// auto factor = std::lerp(easeOutQuint(f), easeInOutCirc(1-f), f);
-// 		if (f < 0.5) {
-// 			current_radius = max_radius_ * easeInOutCirc(f);
-// 			// current_radius = easeInOutCirc(f);
-// 			// noise_intensity = easeInOutCirc(f);
-// 		} else if (f > 0.5) {
-// 			current_radius = max_radius_ * easeInOutCirc(1.0-f);
-// 			// noise_intensity = easeOutQuint(1-f);
-// 		}
+		// auto factor = std::lerp(easeOutCirc(f), easeInQuint(1.0-f), f);
+		// if (f < 0.5) {
+			// current_radius = max_radius_ * easeInOutCirc(f);
+			// current_radius = easeInOutCirc(f);
+			// noise_intensity = easeInOutCirc(f);
+		// } else if (f > 0.5) {
+			// current_radius = max_radius_ * easeInOutCirc(1.0-f);
+			// current_radius = max_radius_ * easeInOutCirc(1.0f-f);
+		// }
 // 		else {
 // current_radius = max_radius_;
 // 		}
-// 		// noise_intensity = max_radius_ * f;
+		// noise_intensity = max_radius_ * f;
+		// noise_scale = 0.5 * f;
 		// current_radius = max_radius_ * factor;
 		auto factor = sin(f*M_PI);
+		// auto factor = f <= 0.5f ? easeOutCirc(f/0.5f) : easeInQuint(1.0-(f/0.5));
 		current_radius = max_radius_ * factor;//sin(f*M_PI);
 		// noise_intensity = std::clamp(easeInOutCirc(f), 0.5, 1.25);
 		// noise_scale = std::clamp(easeInOutCirc(f), 0.25, 0.75);

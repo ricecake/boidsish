@@ -60,8 +60,8 @@ float VolumetricExplosion(vec3 p, vec3 center, float radius, float noise_intensi
 	// d += (fastFbm3d(p*warp / (10.0*dist) * d)*0.5+0.5) * smoothstep(0, 0.25, dist);
 	d += (fastFbm3d(p*warp / (10.0*noise_intensity) * d)*0.5+0.5) * smoothstep(0, 0.25, noise_intensity);
 	// d += SpiralNoiseC(pos * 0.6*smoothstep(0, 0.75, dist) + 333.0);
-	// d += pow(1-abs(fastWarpedFbm3d(pos/10.0 * 0.6*smoothstep(0, 0.75, dist) + warp*time*0.00005)), 12);
-	d += pow(1-abs(fastWarpedFbm3d(pos/10.0 *smoothstep(0, 0.75, noise_intensity) + time*0.1)), 15);
+	d += pow(1-abs(fastWarpedFbm3d(pos/10.0 * 0.6*smoothstep(0, 0.75, dist) + warp*time*0.00005)), 12);
+	d += pow(1-abs(fastWorley3d(pos/10.0 *smoothstep(0, 0.75, noise_intensity) + time)), 15);
 	return d;
 }
 
