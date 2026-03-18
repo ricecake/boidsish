@@ -26,9 +26,10 @@ namespace Boidsish {
 
 			void SetTime(float time) override { time_ = time; }
 
-			void SetNoiseTextures(GLuint noise, GLuint curl) {
+			void SetNoiseTextures(GLuint noise, GLuint curl, GLuint blue = 0) {
 				noise_texture_ = noise;
 				curl_noise_texture_ = curl;
+				blue_noise_texture_ = blue;
 			}
 
 			bool IsEarly() const override { return true; }
@@ -39,6 +40,7 @@ namespace Boidsish {
 			std::unique_ptr<Shader> shader_;
 			GLuint                  noise_texture_ = 0;
 			GLuint                  curl_noise_texture_ = 0;
+			GLuint                  blue_noise_texture_ = 0;
 			int                     width_;
 			int                     height_;
 			float                   time_ = 0.0f;

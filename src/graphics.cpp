@@ -53,6 +53,7 @@
 #include "post_processing/effects/WhispTrailEffect.h"
 #include "render_queue.h"
 #include "sdf_explosion.h"
+#include "sdf_volumetric_explosion.h"
 #include "sdf_volume_manager.h"
 #include "shader_table.h"
 #include "shadow_manager.h"
@@ -1050,7 +1051,11 @@ namespace Boidsish {
 
 				auto sdf_volume_effect = std::make_shared<PostProcessing::SdfVolumeEffect>();
 				sdf_volume_effect->SetEnabled(true);
-				sdf_volume_effect->SetNoiseTextures(noise_manager->GetNoiseTexture(), noise_manager->GetCurlTexture());
+				sdf_volume_effect->SetNoiseTextures(
+					noise_manager->GetNoiseTexture(),
+					noise_manager->GetCurlTexture(),
+					noise_manager->GetBlueNoiseTexture()
+				);
 				post_processing_manager_->AddEffect(sdf_volume_effect);
 
 				if (enable_hdr_) {
@@ -1185,6 +1190,11 @@ namespace Boidsish {
 
 			ConfigManager::GetInstance().Shutdown();
 
+			// Clear all shapes first because they hold pointers to managers (like SdfVolumeManager)
+			persistent_shapes.clear();
+			transient_effects.clear();
+			shapes.clear();
+
 			// SoundEffectManager holds Sound objects that reference AudioManager's engine
 			sound_effect_manager.reset();
 
@@ -1196,6 +1206,15 @@ namespace Boidsish {
 
 			// Explicitly reset UI manager before destroying window context
 			ui_manager.reset();
+
+			// SDF Volume Manager owns GL resources (UBO)
+			sdf_volume_manager.reset();
+			noise_manager.reset();
+			shadow_manager.reset();
+			atmosphere_manager.reset();
+			fire_effect_manager.reset();
+			mesh_explosion_manager.reset();
+			hiz_manager.reset();
 
 			Shape::DestroySphereMesh();
 			Line::DestroyLineMesh();
@@ -4318,6 +4337,12 @@ namespace Boidsish {
 	void Visualizer::AddSdfExplosion(const glm::vec3& position, float max_radius, float duration) {
 		auto explosion =
 			std::make_shared<SdfExplosion>(impl->sdf_volume_manager.get(), position, max_radius, duration);
+		impl->transient_effects.push_back(explosion);
+	}
+
+	void Visualizer::AddSdfVolumetricExplosion(const glm::vec3& position, float max_radius, float duration) {
+		auto explosion =
+			std::make_shared<SdfVolumetricExplosion>(impl->sdf_volume_manager.get(), position, max_radius, duration);
 		impl->transient_effects.push_back(explosion);
 	}
 

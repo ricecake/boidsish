@@ -59,6 +59,12 @@ namespace Boidsish {
 				glBindTexture(GL_TEXTURE_3D, noise_texture_);
 				shader_->setInt("u_noiseTexture", 5);
 			}
+
+			if (blue_noise_texture_ != 0) {
+				glActiveTexture(GL_TEXTURE7);
+				glBindTexture(GL_TEXTURE_2D, blue_noise_texture_);
+				shader_->setInt("u_blueNoiseTexture", 7);
+			}
 			if (curl_noise_texture_ != 0) {
 				glActiveTexture(GL_TEXTURE6);
 				glBindTexture(GL_TEXTURE_3D, curl_noise_texture_);
