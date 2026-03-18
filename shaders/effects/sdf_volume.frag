@@ -36,7 +36,8 @@ const float nudge = 4.0;
 const float normalizer = 1.0 / sqrt(1.0 + nudge * nudge);
 
 float SpiralNoiseC(vec3 p) {
-	float n = -abs(mod(time * 1.2, 4.0) - 2.0);
+	// float n = -abs(mod(time * 1.2, 4.0) - 2.0);
+	float n = -(sin(time * 1.2) + 1.0);
 	// float n = 0.0;//-mod(time, 2.0);
 	float iter = 2.0;
 	for (int i = 0; i < 8; i++) {
@@ -62,7 +63,7 @@ float VolumetricExplosion(vec3 p, vec3 center, float radius, float noise_intensi
 	d += (fastFbm3d(p*warp / (10.0*noise_intensity) * d)*0.5+0.5) * smoothstep(0, 0.25, noise_intensity);
 	d += SpiralNoiseC(pos * 0.6*smoothstep(0, 0.75, noise_intensity) + 333.0);
 	d += pow(1-abs(fastWarpedFbm3d(pos/10.0 * 0.6*smoothstep(0, 0.75, dist) + warp*time*0.00005)), 5);
-	d += fastWorley3d(pos/10.0 *smoothstep(0, 0.75, d) + time*0.5);
+	d += fastWorley3d(pos/10.0 *smoothstep(0, 0.75, d) + time*0.05);
 	return d;
 }
 
