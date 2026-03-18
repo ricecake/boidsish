@@ -216,6 +216,7 @@ void getVolumetricDensity(vec3 p, out vec3 outColor, out float outDensity, out f
 	// For simplicity and performance, we'll use a fixed size small array
 	int closestIndices[8];
 	float closestDists[8];
+	for (int i = 0; i < 8; ++i) closestDists[i] = 1000.0;
 	int nFound = 0;
 	int nToFind = clamp(numNeighbors, 1, 8);
 
@@ -253,9 +254,17 @@ void getVolumetricDensity(vec3 p, out vec3 outColor, out float outDensity, out f
 	if (totalWeight > 0.0) {
 		outColor /= totalWeight;
 		// Blend with center/edge logic similar to original computeVolumetricColor
-		// but using the closest source's distance for normalization
-		float normDist = closestDists[0] / sources[closestIndices[0]].position_radius.w;
-		outColor = computeVolumetricColor(outDensity, normDist + 1.0); // +1 because d=0 is at surface
+		// but using the closest source's distance for normalization.
+		// normDist here is 0 at center, roughly 1 at edge.
+		float distToCenter = length(p - sources[closestIndices[0]].position_radius.xyz);
+		float normDist = distToCenter / sources[closestIndices[0]].position_radius.w;
+
+		vec3 vCol = computeVolumetricColor(outDensity, normDist);
+		outColor = mix(outColor, vCol, 0.5); // Blend boid color with atmospheric effect
+
+		// Restore glow effect
+		vec3 lightColor = vec3(1.0, 0.6, 0.3);
+		outColor += (lightColor / exp(distToCenter * distToCenter * 0.1) / 20.0);
 	}
 }
 
@@ -323,7 +332,7 @@ void main() {
 			stepSize = min(resOpaque.a, minRadius * minStepMultiplier);
 		} else {
 			// Stepping towards a volumetric source or opaque surface
-			stepSize = min(resOpaque.a, dv);
+			stepSize = min(resOpaque.a, dv * 0.95);
 		}
 
 		t += max(stepSize, 0.02);

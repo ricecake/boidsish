@@ -25,7 +25,7 @@ namespace Boidsish {
 		glBindBuffer(GL_UNIFORM_BUFFER, 0);
 
 		initialized_ = true;
-		logger::INFO("SdfVolumeManager initialized");
+		logger::INFO("SdfVolumeManager initialized with size " + std::to_string(ubo_size));
 	}
 
 	void SdfVolumeManager::UpdateUBO() {
