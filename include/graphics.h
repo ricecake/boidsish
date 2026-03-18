@@ -398,6 +398,7 @@ namespace Boidsish {
 		int  AddSdfSource(const SdfSource& source);
 		void UpdateSdfSource(int id, const SdfSource& source);
 		void RemoveSdfSource(int id);
+		void SetSdfNeighborCount(int count);
 
 		/**
 		 * @brief Create an explosion with fire particles and shockwave.

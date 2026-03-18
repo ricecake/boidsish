@@ -4330,6 +4330,10 @@ namespace Boidsish {
 		impl->sdf_volume_manager->RemoveSource(id);
 	}
 
+	void Visualizer::SetSdfNeighborCount(int count) {
+		impl->sdf_volume_manager->SetNumNeighbors(count);
+	}
+
 	void Visualizer::ExplodeShape(std::shared_ptr<Shape> shape, float intensity, const glm::vec3& velocity) {
 		impl->mesh_explosion_manager->ExplodeShape(shape, intensity, velocity);
 	}

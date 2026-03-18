@@ -115,6 +115,8 @@ namespace Boidsish {
 			source.charge = is_predator ? -5.0f : 1.0f; // Predator cancels, others merge
 			source.smoothness = 4.0f;
 			source.type = 0; // Sphere
+			source.density_cutoff = 1.0f;
+			source.step_size_multiplier = 0.5f;
 
 			int sid = visualizer->AddSdfSource(source);
 			boid->SetSdfSourceId(sid);
@@ -140,6 +142,8 @@ namespace Boidsish {
 			source.charge = boid->IsPredator() ? -1.0f : 1.0f;
 			source.smoothness = 4.0f;
 			source.type = 0;
+			source.density_cutoff = 1.0f;
+			source.step_size_multiplier = 0.5f;
 
 			vis->UpdateSdfSource(boid->GetSdfSourceId(), source);
 		}
