@@ -51,10 +51,14 @@ float SpiralNoiseC(vec3 p) {
 
 float VolumetricExplosion(vec3 p, vec3 center, float radius, float noise_intensity, float noise_scale) {
 	// float d = sphereSDF((p - center)*noise_scale, radius * smoothstep(0, 0.5, noise_intensity));
-	float d = sphereSDF((p - center), radius);
+	float dist = distance(p, center);
+	vec3 pos = p - center;
+	float d = sphereSDF(pos, radius * (fastWorley3d(p/50.0+time*0.05*1/radius)*0.5+0.60));
 
-	d += fastWarpedFbm3d(p*fastWorley3d(p*noise_intensity/(20.0*radius)) / (10.0*radius) * noise_scale) * smoothstep(0, 0.5, noise_intensity);
-	d += SpiralNoiseC((p - center) * 0.6*smoothstep(0, 0.8, noise_intensity) + 333.0);
+	vec3 warp = fastCurl3d((p+time)/ (10.0*d));
+	// d += fastWarpedFbm3d(p*fastWorley3d(p*noise_intensity/(20.0*radius)) / (10.0*radius) * noise_scale) * smoothstep(0, 0.5, noise_intensity);
+	d += (fastFbm3d(p*warp / (10.0*dist) * d)*0.5+0.5) * smoothstep(0, 0.25, dist);
+	d += SpiralNoiseC(pos * 0.6*smoothstep(0, 0.75, dist) + 333.0);
 	return d;
 }
 
