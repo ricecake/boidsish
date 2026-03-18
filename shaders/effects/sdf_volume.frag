@@ -223,7 +223,7 @@ void getVolumetricDensity(vec3 p, out vec3 outColor, out float outDensity, out f
 	for (int i = 0; i < numSources; ++i) {
 		if (int(sources[i].params.y) == TYPE_VOLUMETRIC) {
 			float d = sphereSDF(p - sources[i].position_radius.xyz, sources[i].position_radius.w);
-			if (d < 0.5) { // Only consider if near or inside
+			if (d < 1.0) { // Only consider if near or inside
 				// Insert into sorted list of closest
 				int j = nFound;
 				while (j > 0 && d < closestDists[j-1]) {
@@ -310,29 +310,29 @@ void main() {
 
 		float stepSize = 1.0;
 
-		if (dv < 0.2) {
-			// Inside or very near a volumetric source
+		if (dv < 0.0) {
+			// Inside a volumetric source
 			vec3 vColor;
 			float vDensity, vMaxDensityCutoff;
 			getVolumetricDensity(p, vColor, vDensity, vMaxDensityCutoff);
 
 			if (vDensity > 0.0) {
-				float weight = (1.0 - sum.a) * vDensity * 0.2;
-				accumulatedDensity += weight;
+				float weight = vDensity * 0.2;
+				accumulatedDensity += weight * (1.0 - sum.a);
 
-				vec4 col = vec4(vColor, vDensity);
-				col.a *= 0.1;
+				vec4 col = vec4(vColor, vDensity * 0.1);
 				col.rgb *= col.a;
 				sum = sum + col * (1.0 - sum.a);
 
 				if (accumulatedDensity >= vMaxDensityCutoff) {
+					sum.a = 1.0;
 					break;
 				}
 			}
 			stepSize = min(resOpaque.a, minRadius * minStepMultiplier);
 		} else {
 			// Stepping towards a volumetric source or opaque surface
-			stepSize = min(resOpaque.a, dv * 0.95);
+			stepSize = min(resOpaque.a, dv + 0.05);
 		}
 
 		t += max(stepSize, 0.02);

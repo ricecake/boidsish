@@ -634,6 +634,7 @@ namespace Boidsish {
 			return;
 
 		shader->use();
+		shader->setBool("uUseMDI", false);
 		shader->setMat4("view", view);
 		shader->setMat4("projection", projection);
 		if (is_shadow_pass) {

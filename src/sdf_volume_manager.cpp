@@ -50,9 +50,9 @@ namespace Boidsish {
 
 		glBindBuffer(GL_UNIFORM_BUFFER, ubo_);
 
-		// Update count and num_neighbors in header
-		int header[2] = {static_cast<int>(gpu_data.size()), num_neighbors_};
-		glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(header), header);
+		// Update count and num_neighbors in header (16 bytes total)
+		int header[4] = {static_cast<int>(gpu_data.size()), num_neighbors_, 0, 0};
+		glBufferSubData(GL_UNIFORM_BUFFER, 0, 16, header);
 
 		// Update array data
 		if (!gpu_data.empty()) {
