@@ -122,15 +122,30 @@ namespace Boidsish {
 		 */
 		void PrepareResources(Megabuffer* mb);
 
-		void Render(
+		/**
+		 * @brief Performs GPU culling for all decor types.
+		 * Should be called once per pass (main camera or shadow-casting light) before Render().
+		 * Results are stored in the respective indirect buffers and visible SSBOs.
+		 */
+		void Cull(
 			const glm::mat4&                      view,
 			const glm::mat4&                      projection,
 			int                                   viewport_width,
 			int                                   viewport_height,
 			const std::optional<glm::mat4>&       light_space_matrix = std::nullopt,
-			Shader*                               shader_override = nullptr,
 			const std::optional<glm::vec3>&       light_dir = std::nullopt,
 			std::shared_ptr<TerrainRenderManager> render_manager = nullptr
+		);
+
+		/**
+		 * @brief Renders the already-culled decor instances.
+		 * Uses the results from the most recent Cull() call.
+		 */
+		void Render(
+			const glm::mat4&                view,
+			const glm::mat4&                projection,
+			const std::optional<glm::mat4>& light_space_matrix = std::nullopt,
+			Shader*                         shader_override = nullptr
 		);
 
 		void SetEnabled(bool enabled) { enabled_ = enabled; }

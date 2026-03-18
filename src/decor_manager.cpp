@@ -657,13 +657,12 @@ namespace Boidsish {
 		}
 	}
 
-	void DecorManager::Render(
+	void DecorManager::Cull(
 		const glm::mat4&                      view,
 		const glm::mat4&                      projection,
 		int                                   viewport_width,
 		int                                   viewport_height,
 		const std::optional<glm::mat4>&       light_space_matrix,
-		Shader*                               shader_override,
 		const std::optional<glm::vec3>&       light_dir,
 		std::shared_ptr<TerrainRenderManager> render_manager
 	) {
@@ -672,7 +671,6 @@ namespace Boidsish {
 
 		bool is_shadow_pass = light_space_matrix.has_value();
 
-		// 1. GPU Culling Pass
 		// Use light space matrix directly for shadow pass culling
 		Frustum   frustum = is_shadow_pass ? Frustum::FromViewProjection(glm::mat4(1.0f), *light_space_matrix)
                                          : Frustum::FromViewProjection(view, projection);
@@ -748,8 +746,19 @@ namespace Boidsish {
 
 			glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT | GL_COMMAND_BARRIER_BIT);
 		}
+	}
 
-		// 2. Rendering Pass
+	void DecorManager::Render(
+		const glm::mat4&                view,
+		const glm::mat4&                projection,
+		const std::optional<glm::mat4>& light_space_matrix,
+		Shader*                         shader_override
+	) {
+		if (!enabled_ || !initialized_ || decor_types_.empty())
+			return;
+
+		bool is_shadow_pass = light_space_matrix.has_value();
+
 		Shader* shader = shader_override ? shader_override : Shape::shader.get();
 		if (!shader)
 			return;
