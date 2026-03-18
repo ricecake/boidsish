@@ -35,20 +35,58 @@ namespace Boidsish {
 		manager_->RemoveSource(source_id_);
 	}
 
+double easeInOutCirc( double t ) {
+    if( t < 0.5 ) {
+        return (1 - sqrt( 1 - 2 * t )) * 0.5;
+    } else {
+        return (1 + sqrt( 2 * t - 1 )) * 0.5;
+    }
+}
+
+double easeOutQuint( double t ) {
+    double t2 = (--t) * t;
+    return 1 + t * t2 * t2;
+}
+
 	void SdfVolumetricExplosion::Update(float delta_time) {
 		time_lived_ += delta_time;
-		float f = std::clamp(time_lived_ / duration_, 0.0f, 1.0f);
+		auto f = std::clamp(time_lived_ / duration_, 0.0f, 1.0f);
 
 		float current_radius;
 		float noise_intensity;
+		float noise_scale;
 
-		if (f < 0.2f) {
-			current_radius = max_radius_ * (f / 0.2f);
-			noise_intensity = 1.0f * (f / 0.2f);
-		} else {
-			current_radius = max_radius_ * (1.0f + 0.2f * (f - 0.2f) / 0.8f);
-			noise_intensity = 1.0f * (1.0f - (f - 0.2f) / 0.8f);
-		}
+
+		auto factor = std::lerp(easeOutQuint(f), easeInOutCirc(1-f), f);
+// 		if (f < 0.5) {
+// 			current_radius = max_radius_ * easeInOutCirc(f);
+// 			// current_radius = easeInOutCirc(f);
+// 			// noise_intensity = easeInOutCirc(f);
+// 		} else if (f > 0.5) {
+// 			current_radius = max_radius_ * easeInOutCirc(1.0-f);
+// 			// noise_intensity = easeOutQuint(1-f);
+// 		}
+// 		else {
+// current_radius = max_radius_;
+// 		}
+// 		// noise_intensity = max_radius_ * f;
+		// current_radius = max_radius_ * factor;
+		current_radius = max_radius_ * sin(f*M_PI);
+		// noise_intensity = std::clamp(easeInOutCirc(f), 0.5, 1.25);
+		// noise_scale = std::clamp(easeInOutCirc(f), 0.25, 0.75);
+		noise_intensity = std::clamp(factor, 0.5, 1.25);
+		noise_scale = std::clamp(factor, 0.25, 0.75);
+
+
+
+		// if (f < 0.2f) {
+		// 	current_radius = max_radius_ * (f / 0.2f);
+		// 	noise_intensity = 1.0f * (f / 0.2f);
+		// } else {
+		// 	current_radius = max_radius_ * (1.0f + 0.2f * (f - 0.2f) / 0.8f);
+		// 	// noise_intensity = 1.0f * (f / 0.2f);
+		// 	noise_intensity = 1.0f * (1.0f - (f - 0.2f) / 0.8f);
+		// }
 
 		SdfSource source;
 		source.position = glm::vec3(GetX(), GetY(), GetZ());
@@ -58,7 +96,7 @@ namespace Boidsish {
 		source.charge = 1.0f;
 		source.type = 2; // TYPE_VOLUMETRIC
 		source.noise_intensity = noise_intensity;
-		source.noise_scale = 0.5f;
+		source.noise_scale = noise_scale;
 
 		manager_->UpdateSource(source_id_, source);
 	}
