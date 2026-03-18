@@ -55,18 +55,21 @@ float VolumetricExplosion(vec3 p, vec3 center, float radius, float noise_intensi
 	vec3 pos = p - center;
 	float d = sphereSDF(pos, radius * (fastWorley3d(p/50.0+time*0.05*1/radius)*0.5+0.60));
 
-	vec3 warp = fastCurl3d((p+time)/ (10.0*d));
+	vec3 warp = fastCurl3d((p+time)/ (10.0*noise_intensity));
 	// d += fastWarpedFbm3d(p*fastWorley3d(p*noise_intensity/(20.0*radius)) / (10.0*radius) * noise_scale) * smoothstep(0, 0.5, noise_intensity);
-	d += (fastFbm3d(p*warp / (10.0*dist) * d)*0.5+0.5) * smoothstep(0, 0.25, dist);
-	d += SpiralNoiseC(pos * 0.6*smoothstep(0, 0.75, dist) + 333.0);
+	// d += (fastFbm3d(p*warp / (10.0*dist) * d)*0.5+0.5) * smoothstep(0, 0.25, dist);
+	d += (fastFbm3d(p*warp / (10.0*noise_intensity) * d)*0.5+0.5) * smoothstep(0, 0.25, noise_intensity);
+	// d += SpiralNoiseC(pos * 0.6*smoothstep(0, 0.75, dist) + 333.0);
+	// d += pow(1-abs(fastWarpedFbm3d(pos/10.0 * 0.6*smoothstep(0, 0.75, dist) + warp*time*0.00005)), 12);
+	d += pow(1-abs(fastWarpedFbm3d(pos/10.0 *smoothstep(0, 0.75, noise_intensity) + time*0.1)), 15);
 	return d;
 }
 
 vec3 computeVolumetricColor(float density, float dist) {
 	// vec3 result = mix(vec3(1.0, 0.9, 0.8), vec3(0.4, 0.15, 0.1), clamp(density, 0.0, 1.0));
 	vec3 result = mix(vec3(1.0, 0.9, 0.8), vec3(0.4, 0.15, 0.1), smoothstep(0, 0.6, density));
-	vec3 colCenter = 15.0 * vec3(0.9, 1.0, 1.0);
-	vec3 colEdge = 8.0 * vec3(0.4, 0.2, 0.1);
+	vec3 colCenter = 6.0 * vec3(0.9, 1.0, 1.0);
+	vec3 colEdge = 9.0 * vec3(0.4, 0.2, 0.1);
 	result *= mix(colCenter, colEdge, clamp(dist, 0.0, 1.0));
 	return result;
 }
