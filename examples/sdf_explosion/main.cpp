@@ -40,7 +40,7 @@ int main() {
 		timer += viz.GetLastFrameTime();
 		if (timer >= spawn_interval) {
 			// viz.AddSdfExplosion(glm::vec3(-15, 5, 0), 10.0f, 2.5f);
-			viz.AddSdfVolumetricExplosion(glm::vec3(15, 5, 0), 10.0f, 3.0f);
+			viz.AddSdfVolumetricExplosion(glm::vec3(15, 5, 0), 20.0f, 3.0f);
 			timer = 0.0f;
 		}
 
