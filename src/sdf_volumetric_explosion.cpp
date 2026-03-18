@@ -57,7 +57,7 @@ double easeOutQuint( double t ) {
 		float noise_scale;
 
 
-		auto factor = std::lerp(easeOutQuint(f), easeInOutCirc(1-f), f);
+		// auto factor = std::lerp(easeOutQuint(f), easeInOutCirc(1-f), f);
 // 		if (f < 0.5) {
 // 			current_radius = max_radius_ * easeInOutCirc(f);
 // 			// current_radius = easeInOutCirc(f);
@@ -71,11 +71,12 @@ double easeOutQuint( double t ) {
 // 		}
 // 		// noise_intensity = max_radius_ * f;
 		// current_radius = max_radius_ * factor;
-		current_radius = max_radius_ * sin(f*M_PI);
+		auto factor = sin(f*M_PI);
+		current_radius = max_radius_ * factor;//sin(f*M_PI);
 		// noise_intensity = std::clamp(easeInOutCirc(f), 0.5, 1.25);
 		// noise_scale = std::clamp(easeInOutCirc(f), 0.25, 0.75);
-		noise_intensity = std::clamp(factor, 0.5, 1.25);
-		noise_scale = std::clamp(factor, 0.25, 0.75);
+		noise_intensity = 0.5 * std::clamp(factor, 0.0, 1.00);
+		noise_scale = 0.5*std::clamp(factor, 0.0, 1.00);
 
 
 
