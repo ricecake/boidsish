@@ -60,6 +60,9 @@ double easeInQuint( double t ) {
     return t * t2 * t2;
 }
 
+auto adsr(auto attack, auto sustain, auto f) {
+	return glm::smoothstep(0.0f, attack, f) * (1.0f - glm::smoothstep(sustain, 1.0f, f));
+}
 
 	void SdfVolumetricExplosion::Update(float delta_time) {
 		time_lived_ += delta_time;
@@ -85,13 +88,20 @@ double easeInQuint( double t ) {
 		// noise_intensity = max_radius_ * f;
 		// noise_scale = 0.5 * f;
 		// current_radius = max_radius_ * factor;
-		auto factor = sin(f*M_PI);
 		// auto factor = f <= 0.5f ? easeOutCirc(f/0.5f) : easeInQuint(1.0-(f/0.5));
-		current_radius = max_radius_ * factor;//sin(f*M_PI);
+
+		// auto factor = sin(f*M_PI);
+		// current_radius = max_radius_ * factor;//sin(f*M_PI);
+		// noise_intensity = 0.5 * std::clamp(factor, 0.0, 1.00);
+		// noise_scale = 0.5*std::clamp(factor, 0.0, 1.00);
+
 		// noise_intensity = std::clamp(easeInOutCirc(f), 0.5, 1.25);
 		// noise_scale = std::clamp(easeInOutCirc(f), 0.25, 0.75);
-		noise_intensity = 0.5 * std::clamp(factor, 0.0, 1.00);
-		noise_scale = 0.5*std::clamp(factor, 0.0, 1.00);
+
+
+		current_radius = max_radius_ * adsr(0.15f, 0.60f, f);
+		noise_intensity = 0.5f * adsr(0.05f, 0.85f, f);
+		noise_scale = 0.5f * adsr(0.05f, 0.60f, f);
 
 
 

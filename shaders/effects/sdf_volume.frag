@@ -32,6 +32,30 @@ layout(std140) uniform SdfVolumes {
 
 // --- Helper Functions ---
 
+
+float ridged_fBm(vec3 p) {
+    float sum = 0.0;
+    float amp = 0.5;
+    float freq = 1.0;
+
+    for(int i = 0; i < 4; i++) {
+        // Assume snoise returns a value from -1.0 to 1.0
+        float n = fastSimplex3d(p * freq);
+
+        // 1.0 - abs() creates the sharp crease at the 0-crossing
+        n = 1.0 - abs(n);
+
+        // Squaring it narrows the ridges, making them look sharper
+        n *= n;
+
+        sum += n * amp;
+        freq *= 2.0; // Lacunarity (scale of the next layer)
+        amp *= 0.5;  // Gain (influence of the next layer)
+    }
+    return sum;
+}
+
+
 const float nudge = 4.0;
 const float normalizer = 1.0 / sqrt(1.0 + nudge * nudge);
 
@@ -55,14 +79,15 @@ float VolumetricExplosion(vec3 p, vec3 center, float radius, float noise_intensi
 	// float d = sphereSDF((p - center)*noise_scale, radius * smoothstep(0, 0.5, noise_intensity));
 	float dist = distance(p, center);
 	vec3 pos = p - center;
-	float d = sphereSDF(pos, radius * (fastWorley3d(p/50.0+time*0.05*1/radius)*0.5+0.60));
+	float d = sphereSDF(pos, radius * (fastWarpedFbm3d(p/30.0+time*0.8*1/radius)*0.65+0.98));
 
 	vec3 warp = fastCurl3d((p+time)/ (10.0*noise_intensity));
 	// d += fastWarpedFbm3d(p*fastWorley3d(p*noise_intensity/(20.0*radius)) / (10.0*radius) * noise_scale) * smoothstep(0, 0.5, noise_intensity);
 	// d += (fastFbm3d(p*warp / (10.0*dist) * d)*0.5+0.5) * smoothstep(0, 0.25, dist);
-	d += (fastFbm3d(p*warp / (10.0*noise_intensity) * d)*0.5+0.5) * smoothstep(0, 0.25, noise_intensity);
-	d += SpiralNoiseC(pos * 0.6*smoothstep(0, 0.75, noise_intensity) + 333.0);
+	d += (fastFbm3d(p*warp / (10.0*noise_intensity) * d*time*0.5)*0.5+0.5) * smoothstep(0, 0.25, noise_intensity);
+	d += ridged_fBm(pos/10.0 * smoothstep(0, 0.5, noise_intensity)+time*0.5);
 	d += pow(1-abs(fastWarpedFbm3d(pos/10.0 * 0.6*smoothstep(0, 0.75, dist) + warp*time*0.00005)), 5);
+	// d += fastWarpedFbm3d(pos/10.0 * 0.6*smoothstep(0, 0.75, dist) + warp*time*0.00005);
 	d += fastWorley3d(pos/10.0 *smoothstep(0, 0.75, d) + time*0.05);
 	return d;
 }
