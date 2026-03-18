@@ -44,14 +44,15 @@ namespace Boidsish {
 			data.color_smoothness = glm::vec4(source.color, source.smoothness);
 			data.charge_type_noise =
 				glm::vec4(source.charge, static_cast<float>(source.type), source.noise_intensity, source.noise_scale);
+			data.extra_params = glm::vec4(source.density_cutoff, source.step_size_multiplier, 0.0f, 0.0f);
 			gpu_data.push_back(data);
 		}
 
 		glBindBuffer(GL_UNIFORM_BUFFER, ubo_);
 
-		// Update count
-		int count = static_cast<int>(gpu_data.size());
-		glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(int), &count);
+		// Update count and num_neighbors in header
+		int header[2] = {static_cast<int>(gpu_data.size()), num_neighbors_};
+		glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(header), header);
 
 		// Update array data
 		if (!gpu_data.empty()) {

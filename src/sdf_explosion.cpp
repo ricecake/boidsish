@@ -30,6 +30,8 @@ namespace Boidsish {
 		source.type = 1; // TYPE_EXPLOSION
 		source.noise_intensity = 0.0f;
 		source.noise_scale = 1.0f / (max_radius * 0.5f);
+		source.density_cutoff = 1.0f;
+		source.step_size_multiplier = 0.5f;
 
 		for (int i = 0; i < 3; ++i) {
 			source_ids_[i] = manager_->AddSource(source);
@@ -88,6 +90,8 @@ namespace Boidsish {
 			source.type = 1; // TYPE_EXPLOSION
 			source.noise_intensity = noise_intensity_;
 			source.noise_scale = 1.5f / std::max(0.1f, base_radius_);
+			source.density_cutoff = 1.0f;
+			source.step_size_multiplier = 0.5f;
 
 			manager_->UpdateSource(source_ids_[i], source);
 		}

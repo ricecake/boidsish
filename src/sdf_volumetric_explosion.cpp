@@ -27,6 +27,8 @@ namespace Boidsish {
 		source.type = 2; // TYPE_VOLUMETRIC
 		source.noise_intensity = 0.0f;
 		source.noise_scale = 1.0f;
+		source.density_cutoff = 1.0f;
+		source.step_size_multiplier = 0.25f;
 
 		source_id_ = manager_->AddSource(source);
 	}
@@ -123,6 +125,8 @@ auto adsr(auto attack, auto sustain, auto f) {
 		source.type = 2; // TYPE_VOLUMETRIC
 		source.noise_intensity = noise_intensity;
 		source.noise_scale = noise_scale;
+		source.density_cutoff = 1.0f;
+		source.step_size_multiplier = 0.25f;
 
 		manager_->UpdateSource(source_id_, source);
 	}
