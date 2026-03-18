@@ -3462,11 +3462,6 @@ namespace Boidsish {
 		}
 
 		// --- Warm up terrain cache ---
-		if (impl->decor_manager) {
-			impl->decor_manager->PopulateDefaultDecor();
-			impl->decor_manager->PrepareResources(impl->megabuffer.get());
-		}
-
 		if (impl->terrain_generator) {
 			logger::LOG("Warming up terrain cache around camera position...");
 
@@ -3481,6 +3476,13 @@ namespace Boidsish {
 				0.1f,
 				far_plane
 			);
+
+			if (impl->decor_manager) {
+				impl->decor_manager->PopulateDefaultDecor();
+				impl->decor_manager->PrepareResources(impl->megabuffer.get());
+
+				impl->decor_manager->Render(view, impl->projection, impl->render_width, impl->render_height);
+			}
 
 			// Update terrain once to start chunk loading around the camera
 			impl->terrain_generator->Update(impl->CalculateFrustum(view, proj), impl->camera);

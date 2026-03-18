@@ -197,7 +197,9 @@ namespace Boidsish {
 
 		// Cached camera state for terrain occlusion and priority sorting
 		glm::vec3 camera_pos_ = glm::vec3(0.0f);
-		glm::vec2 camera_forward_2d_ = glm::vec2(0.0f, -1.0f); // XZ plane forward direction
+		glm::vec2 camera_forward_2d_ = glm::vec2(0.0f, -1.0f);
+		glm::vec2 camera_rotation_delta_ = glm::vec2(0.0f);     // per-frame turn direction (XZ)
+		glm::vec2 prev_camera_forward_2d_ = glm::vec2(0.0f, -1.0f);
 		float     last_world_scale_ = 0.0f;
 
 		// Cap on new chunks generated per frame to avoid spikes

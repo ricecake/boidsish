@@ -433,7 +433,10 @@ namespace Boidsish {
 		frame_counter_++;
 		camera_pos_ = camera.pos();
 		glm::vec3 fwd = camera.front();
-		camera_forward_2d_ = glm::normalize(glm::vec2(fwd.x, fwd.z));
+		glm::vec2 new_forward = glm::normalize(glm::vec2(fwd.x, fwd.z));
+		camera_rotation_delta_ = new_forward - prev_camera_forward_2d_;
+		prev_camera_forward_2d_ = camera_forward_2d_;
+		camera_forward_2d_ = new_forward;
 		_UpdateAllocation(camera, frustum, terrain_gen, render_manager);
 	}
 
@@ -469,6 +472,13 @@ namespace Boidsish {
 		std::vector<CandidateChunk> candidates;
 		candidates.reserve(all_chunks.size());
 
+		// Predict where the camera will be looking based on current rotation.
+		// Chunks in the turn direction get a priority boost.
+		float     rotation_magnitude = glm::length(camera_rotation_delta_);
+		glm::vec2 rotation_dir = (rotation_magnitude > 0.001f)
+			? camera_rotation_delta_ / rotation_magnitude
+			: glm::vec2(0.0f);
+
 		for (int i = 0; i < (int)all_chunks.size(); ++i) {
 			const auto& cd = all_chunks[i];
 			glm::vec2   center = cd.world_offset + glm::vec2(cd.chunk_size * 0.5f);
@@ -476,14 +486,31 @@ namespace Boidsish {
 			if (dist > max_dist)
 				continue;
 
-			// Priority: weight distance, but penalize chunks behind the camera.
-			// dot with forward gives [-1, 1]; remap to [0, 2] penalty multiplier.
 			glm::vec2 to_chunk = (dist > 0.1f) ? glm::normalize(center - cam_xz) : camera_forward_2d_;
 			float     facing = glm::dot(camera_forward_2d_, to_chunk); // 1=ahead, -1=behind
-			float     direction_penalty = 1.0f - facing * 0.4f; // ahead=0.6x, behind=1.4x
-			float     priority = dist * direction_penalty;
 
-			candidates.push_back({i, priority});
+			// Aggressive nonlinear penalty: ahead chunks are cheap, behind are expensive.
+			// facing  1.0 (ahead)  → weight ~0.3
+			// facing  0.0 (side)   → weight ~2.0
+			// facing -1.0 (behind) → weight ~5.0
+			float facing_weight;
+			if (facing > 0.0f) {
+				facing_weight = 0.3f + 1.7f * (1.0f - facing); // 0.3 → 2.0
+			} else {
+				facing_weight = 2.0f + 3.0f * (-facing); // 2.0 → 5.0
+			}
+
+			// Rotation prediction: reduce priority for chunks the camera is turning toward.
+			// The dot of rotation_dir with to_chunk is positive when turning towards it.
+			if (rotation_magnitude > 0.001f) {
+				float turn_alignment = glm::dot(rotation_dir, to_chunk);
+				// Scale by rotation speed — faster turns get stronger prediction
+				float turn_boost = turn_alignment * std::min(rotation_magnitude * 30.0f, 1.5f);
+				facing_weight -= turn_boost; // negative turn_boost = chunk behind the turn
+				facing_weight = std::max(facing_weight, 0.1f);
+			}
+
+			candidates.push_back({i, dist * facing_weight});
 		}
 
 		// 2. Mark all candidate chunks as seen; evict stale chunks.
