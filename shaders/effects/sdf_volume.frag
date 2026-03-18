@@ -16,7 +16,7 @@ struct SdfSource {
 	vec4 position_radius;  // xyz: pos, w: radius
 	vec4 color_smoothness; // rgb: color, a: smoothness
 	vec4 params;           // x: charge, y: type, z: noise_intensity, w: noise_scale
-	vec4 extra_params;     // x: density_cutoff, y: step_size_multiplier, zw: padding
+	vec4 extra_params;     // x: density_cutoff, y: step_size_multiplier
 };
 
 layout(std140) uniform SdfVolumes {
@@ -212,8 +212,6 @@ void getVolumetricDensity(vec3 p, out vec3 outColor, out float outDensity, out f
 	outMaxDensityCutoff = 0.0;
 	float totalWeight = 0.0;
 
-	// We want the N closest sources.
-	// For simplicity and performance, we'll use a fixed size small array
 	int closestIndices[8];
 	float closestDists[8];
 	for (int i = 0; i < 8; ++i) closestDists[i] = 1000.0;
@@ -223,8 +221,7 @@ void getVolumetricDensity(vec3 p, out vec3 outColor, out float outDensity, out f
 	for (int i = 0; i < numSources; ++i) {
 		if (int(sources[i].params.y) == TYPE_VOLUMETRIC) {
 			float d = sphereSDF(p - sources[i].position_radius.xyz, sources[i].position_radius.w);
-			if (d < 1.0) { // Only consider if near or inside
-				// Insert into sorted list of closest
+			if (d < 1.0) {
 				int j = nFound;
 				while (j > 0 && d < closestDists[j-1]) {
 					if (j < nToFind) {
@@ -253,16 +250,12 @@ void getVolumetricDensity(vec3 p, out vec3 outColor, out float outDensity, out f
 
 	if (totalWeight > 0.0) {
 		outColor /= totalWeight;
-		// Blend with center/edge logic similar to original computeVolumetricColor
-		// but using the closest source's distance for normalization.
-		// normDist here is 0 at center, roughly 1 at edge.
 		float distToCenter = length(p - sources[closestIndices[0]].position_radius.xyz);
 		float normDist = distToCenter / sources[closestIndices[0]].position_radius.w;
 
 		vec3 vCol = computeVolumetricColor(outDensity, normDist);
-		outColor = mix(outColor, vCol, 0.5); // Blend boid color with atmospheric effect
+		outColor = mix(outColor, vCol, 0.5);
 
-		// Restore glow effect
 		vec3 lightColor = vec3(1.0, 0.6, 0.3);
 		outColor += (lightColor / exp(distToCenter * distToCenter * 0.1) / 20.0);
 	}
@@ -287,7 +280,6 @@ void main() {
 	for (int i = 0; i < 96; ++i) {
 		vec3 p = cameraPos + rayDir * t;
 
-		// Surface evaluation
 		vec4 resOpaque = getOpaqueSDF(p);
 		if (resOpaque.a < 0.01) {
 			vec2 e = vec2(0.01, 0.0);
@@ -304,14 +296,12 @@ void main() {
 			break;
 		}
 
-		// Volumetric evaluation
 		float minStepMultiplier, minRadius;
 		float dv = getVolumetricDistance(p, minStepMultiplier, minRadius);
 
 		float stepSize = 1.0;
 
 		if (dv < 0.0) {
-			// Inside a volumetric source
 			vec3 vColor;
 			float vDensity, vMaxDensityCutoff;
 			getVolumetricDensity(p, vColor, vDensity, vMaxDensityCutoff);
@@ -331,7 +321,6 @@ void main() {
 			}
 			stepSize = min(resOpaque.a, minRadius * minStepMultiplier);
 		} else {
-			// Stepping towards a volumetric source or opaque surface
 			stepSize = min(resOpaque.a, dv + 0.05);
 		}
 

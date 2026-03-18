@@ -25,7 +25,7 @@ namespace Boidsish {
 		glBindBuffer(GL_UNIFORM_BUFFER, 0);
 
 		initialized_ = true;
-		logger::INFO("SdfVolumeManager initialized with size " + std::to_string(ubo_size));
+		logger::INFO("SdfVolumeManager initialized");
 	}
 
 	void SdfVolumeManager::UpdateUBO() {
@@ -50,7 +50,7 @@ namespace Boidsish {
 
 		glBindBuffer(GL_UNIFORM_BUFFER, ubo_);
 
-		// Update count and num_neighbors in header (16 bytes total)
+		// Update count and num_neighbors in header (16 bytes total for std140 padding)
 		int header[4] = {static_cast<int>(gpu_data.size()), num_neighbors_, 0, 0};
 		glBufferSubData(GL_UNIFORM_BUFFER, 0, 16, header);
 
