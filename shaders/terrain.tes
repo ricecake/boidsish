@@ -1,6 +1,6 @@
 #version 420 core
 
-layout(quads, fractional_odd_spacing, cw) in;
+layout(quads, equal_spacing, cw) in;
 
 // Input from Tessellation Control Shader
 in vec3       LocalPos_TC_out[];

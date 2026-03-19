@@ -96,6 +96,11 @@ float GetEdgeTessLevel(vec3 p0, vec3 p1, vec3 n0, vec3 n1) {
 
 	float finalLevel = baseLevel * silhouetteBoost * curvatureBoost;
 
+	// Snap to nearest lower power of two to ensure stability across chunk edges.
+	// This guarantees that both sides of an edge always resolve to the same level
+	// and that vertices align with heightmap texel boundaries.
+	finalLevel = exp2(floor(log2(max(1.0, finalLevel))));
+
 	return clamp(finalLevel, uTessLevelMin, uTessLevelMax);
 }
 
