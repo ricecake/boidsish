@@ -49,6 +49,17 @@ float GetEdgeTessLevel(vec3 p0, vec3 p1, vec3 n0, vec3 n1) {
 	vec4 clip0 = projection * view * vec4(p0, 1.0);
 	vec4 clip1 = projection * view * vec4(p1, 1.0);
 
+	vec3  midPos = (p0 + p1) * 0.5;
+	vec3  midNormal = normalize(n0 + n1);
+
+	if (dot(viewDir.xz, midPos.xz - viewPos.xz) < -10.0 && distance(midPos.xz, viewPos.xz) > 10.0) {
+		return -1;
+	}
+
+	if (dot(midNormal, viewDir) > 0.25) {
+		return -1;
+	}
+
 	// Guard against points behind camera
 	if (clip0.w <= 0.0 && clip1.w <= 0.0)
 		return uTessLevelMin;
@@ -66,14 +77,11 @@ float GetEdgeTessLevel(vec3 p0, vec3 p1, vec3 n0, vec3 n1) {
 
 	// Base tessellation: target pixels per segment
 	// Target ~8 pixels per triangle edge for high quality, 16 for medium, 32 for low
-	float targetPixels = 8.0 / uTessQualityMultiplier;
+	float targetPixels = 12.0 / uTessQualityMultiplier;
 	float baseLevel = pixelLength / targetPixels;
 
 	// 1. SILHOUETTE BOOST
 	// Boost tessellation for edges that form the silhouette to keep curves smooth
-	vec3  midPos = (p0 + p1) * 0.5;
-	vec3  midNormal = normalize(n0 + n1);
-	vec3  viewDir = normalize(viewPos - midPos);
 	float silhouetteFactor = 1.0 - abs(dot(midNormal, viewDir));
 
 	// Distance fade for silhouette boost to avoid over-tessellating distant silhouettes

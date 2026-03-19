@@ -246,7 +246,7 @@ namespace Boidsish {
 		GLuint block_validity_ssbo_ = 0;
 
 		static constexpr int kInstancesPerChunk = 1024;
-		static constexpr int kMaxActiveChunks = 576;
+		static constexpr int kMaxActiveChunks = 1024;
 		static constexpr int kMaxInstancesPerType = kInstancesPerChunk * kMaxActiveChunks; // 147,456
 	};
 
