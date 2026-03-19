@@ -16,6 +16,9 @@ flat out float TextureSlice_TC_out[];
 flat out vec3  WorldOffset_TC_out[];
 out float      perturbFactor_TC_out[];
 out float      tessFactor_TC_out[];
+out vec3 WorldPos_TC_out[];
+out vec3 WorldNorm_TC_out[];
+
 
 // Heightmap texture array: R=height, GBA=normal
 uniform sampler2DArray uHeightmap;
@@ -51,14 +54,6 @@ float GetEdgeTessLevel(vec3 p0, vec3 p1, vec3 n0, vec3 n1) {
 
 	vec3  midPos = (p0 + p1) * 0.5;
 	vec3  midNormal = normalize(n0 + n1);
-
-	if (dot(viewDir.xz, midPos.xz - viewPos.xz) < -10.0 && distance(midPos.xz, viewPos.xz) > 10.0) {
-		return -1;
-	}
-
-	if (dot(midNormal, viewDir) > 0.25) {
-		return -1;
-	}
 
 	// Guard against points behind camera
 	if (clip0.w <= 0.0 && clip1.w <= 0.0)
@@ -137,11 +132,13 @@ void main() {
 	vec3 pos, norm;
 	sampleHeightmap(TexCoords_VS_out[gl_InvocationID], slice, worldOffset, pos, norm);
 
+	WorldPos_TC_out[gl_InvocationID] = pos;
+	WorldNorm_TC_out[gl_InvocationID] = norm;
+
 	// Calculate a representative tessellation factor for the vertex (used for shading effects)
 	// We use a small offset to estimate local screen-space size
 	float vTess = GetEdgeTessLevel(pos, pos + vec3(uChunkSize * 0.03, 0, 0), norm, norm);
 	tessFactor_TC_out[gl_InvocationID] = vTess;
-	// perturbFactor_TC_out[gl_InvocationID] = clamp(vTess / uTessLevelMax, 0.0, 1.0);
 	perturbFactor_TC_out[gl_InvocationID] = perturbLevel(pos, viewForward[gl_InvocationID]);
 
 	if (gl_InvocationID == 0) {
@@ -149,10 +146,40 @@ void main() {
 		vec3 worldPos0, worldPos1, worldPos2, worldPos3;
 		vec3 normal0, normal1, normal2, normal3;
 
-		sampleHeightmap(TexCoords_VS_out[0], slice, worldOffset, worldPos0, normal0);
-		sampleHeightmap(TexCoords_VS_out[1], slice, worldOffset, worldPos1, normal1);
-		sampleHeightmap(TexCoords_VS_out[2], slice, worldOffset, worldPos2, normal2);
-		sampleHeightmap(TexCoords_VS_out[3], slice, worldOffset, worldPos3, normal3);
+		worldPos0 = WorldPos_TC_out[0];
+		worldPos1 = WorldPos_TC_out[1];
+		worldPos2 = WorldPos_TC_out[2];
+		worldPos3 = WorldPos_TC_out[3];
+
+		normal0 = WorldNorm_TC_out[0];
+		normal1 = WorldNorm_TC_out[1];
+		normal2 = WorldNorm_TC_out[2];
+		normal3 = WorldNorm_TC_out[3];
+
+		bool behind =
+		(dot(viewDir.xz, (worldPos3 - worldPos0).xz - viewPos.xz) < -10.0) && (distance((worldPos3 - worldPos0).xz, viewPos.xz) > 10.0) &&
+		(dot(viewDir.xz, (worldPos0 - worldPos1).xz - viewPos.xz) < -10.0) && (distance((worldPos0 - worldPos1).xz, viewPos.xz) > 10.0) &&
+		(dot(viewDir.xz, (worldPos1 - worldPos2).xz - viewPos.xz) < -10.0) && (distance((worldPos1 - worldPos2).xz, viewPos.xz) > 10.0) &&
+		(dot(viewDir.xz, (worldPos2 - worldPos3).xz - viewPos.xz) < -10.0) && (distance((worldPos2 - worldPos3).xz, viewPos.xz) > 10.0);
+
+		bool reject = false;
+		if (behind) {
+			reject = true;
+		}
+
+		// vec3 norms = normalize(cross(worldPos0 - worldPos2, worldPos1 - worldPos3));
+
+		// if (dot(norms, normalize(viewDir)) > 0.5) {
+		// 	reject = true;
+		// }
+
+		if (reject) {
+			gl_TessLevelOuter[0] = -1;
+			gl_TessLevelOuter[1] = -1;
+			gl_TessLevelOuter[2] = -1;
+			gl_TessLevelOuter[3] = -1;
+			return;
+		}
 
 		// Project each edge to screen space and determine tessellation level
 		// Correct Mapping for Quads:
