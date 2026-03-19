@@ -13,6 +13,7 @@ out vec2       TexCoords_VS_out; // Heightmap UV
 out vec3       viewForward;
 flat out float TextureSlice_VS_out; // Which slice in texture array
 flat out vec3  WorldOffset_VS_out;  // World offset for this chunk
+flat out vec4  Bounds_VS_out;       // Min/max Y bounds
 
 uniform mat4 view;
 
@@ -27,6 +28,7 @@ void main() {
 	// Pass instance data to later stages
 	TextureSlice_VS_out = aWorldOffsetAndSlice.w;
 	WorldOffset_VS_out = aWorldOffsetAndSlice.xyz;
+	Bounds_VS_out = aBounds;
 
 	// Output flat local position (Y will be displaced in TES after heightmap lookup)
 	gl_Position = vec4(aPos, 1.0);
