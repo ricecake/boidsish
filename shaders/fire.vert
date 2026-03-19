@@ -45,13 +45,14 @@ uniform vec3  u_camera_pos;
 uniform bool  enableFrustumCulling = false;
 uniform float frustumCullRadius = 1.0;
 
-out float    v_lifetime;
-out vec4     view_pos;
-out vec4     v_pos;
-out vec3     v_epicenter;
-flat out int v_style;
-flat out int v_emitter_index;
-flat out int v_emitter_id;
+out float     v_lifetime;
+out vec4      view_pos;
+out vec4      v_pos;
+out vec3      v_epicenter;
+flat out int  v_style;
+flat out int  v_emitter_index;
+flat out int  v_emitter_id;
+flat out uint v_particle_idx;
 
 void main() {
 	uint particle_idx = visible_indices[gl_VertexID];
@@ -66,6 +67,7 @@ void main() {
 		v_style = p.style;
 		v_emitter_index = p.emitter_index;
 		v_emitter_id = p.emitter_id;
+		v_particle_idx = particle_idx;
 
 		// // Base size on style
 		// float base_size = 10.0;

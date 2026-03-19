@@ -431,8 +431,11 @@ void main() {
 
 		if (p.pos.w <= 0.0) {
 			// --- 3b. Sparse Ambient Respawn ---
+			// Only allow ambient spawning for a portion of the total particle pool based on density.
+			// Use the end of the particle pool to avoid conflict with fire emitters which prioritize the start.
+			uint ambient_limit = uint(particles.length() * u_ambient_density);
 			vec2 spawnSeed = vec2(float(gid) * 0.123, u_time * 0.456);
-			if (u_num_chunks > 0 && rand(spawnSeed) < u_ambient_density * 0.05) {
+			if (gid >= (particles.length() - ambient_limit) && u_num_chunks > 0 && rand(spawnSeed) < 0.05) {
 				// Random location around camera using a stable but time-dependent seed
 				uint  particleSeed = hash(gid ^ uint(u_time * 10.0));
 				float r_dist = randomFloat(particleSeed);
