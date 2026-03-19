@@ -8,6 +8,7 @@ in vec2       TexCoords_VS_out[];
 in vec3       viewForward[];
 flat in float TextureSlice_VS_out[];
 flat in vec3  WorldOffset_VS_out[];
+flat in vec4  Bounds_VS_out[];
 
 // Output to Tessellation Evaluation Shader
 out vec3       LocalPos_TC_out[];
@@ -25,6 +26,7 @@ uniform sampler2DArray uHeightmap;
 uniform float          uChunkSize;
 
 #include "helpers/lighting.glsl"
+#include "frustum.glsl"
 
 uniform float uTessLevelMax = 32.0;
 uniform float uTessLevelMin = 1.0;
@@ -156,22 +158,47 @@ void main() {
 		normal2 = WorldNorm_TC_out[2];
 		normal3 = WorldNorm_TC_out[3];
 
-		bool behind =
-		(dot(viewDir.xz, (worldPos3 - worldPos0).xz - viewPos.xz) < -10.0) && (distance((worldPos3 - worldPos0).xz, viewPos.xz) > 10.0) &&
-		(dot(viewDir.xz, (worldPos0 - worldPos1).xz - viewPos.xz) < -10.0) && (distance((worldPos0 - worldPos1).xz, viewPos.xz) > 10.0) &&
-		(dot(viewDir.xz, (worldPos1 - worldPos2).xz - viewPos.xz) < -10.0) && (distance((worldPos1 - worldPos2).xz, viewPos.xz) > 10.0) &&
-		(dot(viewDir.xz, (worldPos2 - worldPos3).xz - viewPos.xz) < -10.0) && (distance((worldPos2 - worldPos3).xz, viewPos.xz) > 10.0);
-
 		bool reject = false;
-		if (behind) {
-			reject = true;
+
+		// 1. Frustum Culling (AABB-based)
+		if (!uIsShadowPass) {
+			// Get XZ bounds from the 4 corner vertices of the patch
+			vec3 minCorner = min(min(worldPos0, worldPos1), min(worldPos2, worldPos3));
+			vec3 maxCorner = max(max(worldPos0, worldPos1), max(worldPos2, worldPos3));
+
+			// Use the chunk's full height range for safety since the interior of the patch
+			// might be higher/lower than its corners.
+			minCorner.y = Bounds_VS_out[0].x;
+			maxCorner.y = Bounds_VS_out[0].y;
+
+			if (!isAABBInFrustum(minCorner, maxCorner)) {
+				reject = true;
+			}
+
+			// 2. Conservative Backface Culling
+			if (!reject) {
+				// A patch is only safely back-facing if ALL indicators agree.
+				// For heightmaps, we check corner normals and a rough geometric normal.
+				// Winding is CW, so cross(v3-v0, v1-v0) gives an upward-facing normal.
+				vec3  faceNormal = normalize(cross(worldPos3 - worldPos0, worldPos1 - worldPos0));
+				float margin = 0.1; // Small margin to avoid culling patches the camera is very close to or on
+
+				// A normal 'N' is back-facing if the vector from surface to camera 'V' is on the opposite side.
+				// i.e., dot(N, V) < 0
+				bool faceBack = dot(faceNormal, viewPos - worldPos0) < -margin;
+				bool n0Back = dot(normal0, viewPos - worldPos0) < -margin;
+				bool n1Back = dot(normal1, viewPos - worldPos1) < -margin;
+				bool n2Back = dot(normal2, viewPos - worldPos2) < -margin;
+				bool n3Back = dot(normal3, viewPos - worldPos3) < -margin;
+
+				// Only reject if ALL normals agree it's back-facing.
+				// This ensures we don't cull patches that are visible due to high curvature or displacement
+				// that isn't captured by just the corner normals.
+				if (faceBack && n0Back && n1Back && n2Back && n3Back) {
+					reject = true;
+				}
+			}
 		}
-
-		// vec3 norms = normalize(cross(worldPos0 - worldPos2, worldPos1 - worldPos3));
-
-		// if (dot(norms, normalize(viewDir)) > 0.5) {
-		// 	reject = true;
-		// }
 
 		if (reject) {
 			gl_TessLevelOuter[0] = -1;
