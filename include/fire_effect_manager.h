@@ -52,6 +52,7 @@ namespace Boidsish {
 		void Update(
 			float                         delta_time,
 			float                         time,
+			float                         ambient_density = 0.15f,
 			const std::vector<glm::vec4>& chunk_info = {},
 			GLuint                        heightmap_texture = 0,
 			GLuint                        curl_noise_texture = 0,
@@ -98,6 +99,8 @@ namespace Boidsish {
 		GLuint indirection_buffer_{0};
 		GLuint terrain_chunk_buffer_{0};
 		GLuint slice_data_buffer_{0};
+		GLuint visible_indices_buffer_{0};
+		GLuint draw_command_buffer_{0};
 		GLuint dummy_vao_{0};
 
 		bool   initialized_{false};

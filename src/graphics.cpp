@@ -1159,6 +1159,10 @@ namespace Boidsish {
 			frame_config_.artistic_shimmery = cfg.GetAppSettingBool("artistic_effect_shimmery", false);
 			frame_config_.artistic_glitched = cfg.GetAppSettingBool("artistic_effect_glitched", false);
 			frame_config_.artistic_wireframe = cfg.GetAppSettingBool("artistic_effect_wireframe", false);
+			frame_config_.ambient_particle_density = cfg.GetAppSettingFloat(
+				"ambient_particle_density",
+				Constants::Class::Particles::DefaultAmbientDensity()
+			);
 			frame_config_.enable_shadows = cfg.GetAppSettingBool("enable_shadows", true);
 			frame_config_.wind_strength = cfg.GetAppSettingFloat("wind_strength", 0.065f);
 			frame_config_.wind_speed = cfg.GetAppSettingFloat("wind_speed", 0.075f);
@@ -2920,6 +2924,7 @@ namespace Boidsish {
 		impl->fire_effect_manager->Update(
 			impl->simulation_delta_time,
 			impl->simulation_time,
+			impl->frame_config_.ambient_particle_density,
 			impl->terrain_render_manager
 				? impl->terrain_render_manager->GetChunkInfo(impl->terrain_generator->GetWorldScale())
 				: std::vector<glm::vec4>{},

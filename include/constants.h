@@ -351,6 +351,10 @@ namespace Boidsish {
 				constexpr float ParticleGridCellSize() {
 					return 2.0f;
 				}
+
+				constexpr float DefaultAmbientDensity() {
+					return 0.15f;
+				}
 			} // namespace Particles
 
 			namespace Explosions {

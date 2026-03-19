@@ -38,6 +38,12 @@ namespace Boidsish {
 		if (particle_buffer_ != 0) {
 			glDeleteBuffers(1, &particle_buffer_);
 		}
+		if (visible_indices_buffer_ != 0) {
+			glDeleteBuffers(1, &visible_indices_buffer_);
+		}
+		if (draw_command_buffer_ != 0) {
+			glDeleteBuffers(1, &draw_command_buffer_);
+		}
 		if (grid_heads_buffer_ != 0) {
 			glDeleteBuffers(1, &grid_heads_buffer_);
 		}
@@ -143,7 +149,16 @@ namespace Boidsish {
 		// Max emitters (64) * 64 points per slice as a default
 		glBufferData(GL_SHADER_STORAGE_BUFFER, kMaxEmitters * 64 * sizeof(glm::vec4), nullptr, GL_DYNAMIC_DRAW);
 
+		glGenBuffers(1, &visible_indices_buffer_);
+		glBindBuffer(GL_SHADER_STORAGE_BUFFER, visible_indices_buffer_);
+		glBufferData(GL_SHADER_STORAGE_BUFFER, kMaxParticles * sizeof(uint32_t), nullptr, GL_DYNAMIC_DRAW);
+
+		glGenBuffers(1, &draw_command_buffer_);
+		glBindBuffer(GL_DRAW_INDIRECT_BUFFER, draw_command_buffer_);
+		glBufferData(GL_DRAW_INDIRECT_BUFFER, 4 * sizeof(uint32_t), nullptr, GL_DYNAMIC_DRAW);
+
 		glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
+		glBindBuffer(GL_DRAW_INDIRECT_BUFFER, 0);
 
 		particle_to_emitter_map_.resize(kMaxParticles, -1);
 
@@ -211,6 +226,7 @@ namespace Boidsish {
 	void FireEffectManager::Update(
 		float                         delta_time,
 		float                         time,
+		float                         ambient_density,
 		const std::vector<glm::vec4>& chunk_info,
 		GLuint                        heightmap_texture,
 		GLuint                        curl_noise_texture,
@@ -339,10 +355,16 @@ namespace Boidsish {
 			);
 		}
 
+		// Reset draw command count
+		glBindBuffer(GL_SHADER_STORAGE_BUFFER, draw_command_buffer_);
+		uint32_t draw_cmd_init[4] = {0, 1, 0, 0}; // count, instanceCount, first, baseInstance
+		glBufferSubData(GL_SHADER_STORAGE_BUFFER, 0, sizeof(draw_cmd_init), draw_cmd_init);
+
 		// --- Dispatch Compute Shader ---
 		compute_shader_->use();
 		compute_shader_->setFloat("u_delta_time", delta_time);
 		compute_shader_->setFloat("u_time", time_);
+		compute_shader_->setFloat("u_ambient_density", ambient_density);
 		compute_shader_->setInt("u_num_emitters", emitters.size());
 		compute_shader_->setInt("u_num_chunks", static_cast<int>(chunk_info.size()));
 		compute_shader_->setUint("u_grid_size", Constants::Class::Particles::ParticleGridSize());
@@ -353,6 +375,8 @@ namespace Boidsish {
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 2, indirection_buffer_);
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 3, terrain_chunk_buffer_);
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 4, slice_data_buffer_);
+		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 10, visible_indices_buffer_);
+		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 21, draw_command_buffer_);
 
 		if (heightmap_texture != 0) {
 			glActiveTexture(GL_TEXTURE7);
@@ -412,7 +436,9 @@ namespace Boidsish {
 		glDispatchCompute((kMaxParticles / Constants::Class::Particles::ComputeGroupSize()) + 1, 1, 1);
 
 		// Ensure memory operations are finished before rendering
-		glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
+		// GL_SHADER_STORAGE_BARRIER_BIT: for visible_indices_buffer_ used in vertex shader
+		// GL_COMMAND_BARRIER_BIT: for draw_command_buffer_ used in glDrawArraysIndirect
+		glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT | GL_COMMAND_BARRIER_BIT);
 
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, 0);
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::ParticleGridHeads(), 0);
@@ -421,6 +447,8 @@ namespace Boidsish {
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 2, 0);
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 3, 0);
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 4, 0);
+		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 10, 0);
+		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 21, 0);
 	}
 
 	void FireEffectManager::_UpdateParticleAllocation() {
@@ -603,6 +631,7 @@ namespace Boidsish {
 		}
 
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, emitter_buffer_);
+		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 10, visible_indices_buffer_);
 
 		if (noise_texture != 0) {
 			glActiveTexture(GL_TEXTURE5);
@@ -617,14 +646,17 @@ namespace Boidsish {
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, particle_buffer_);
 
 		// We don't have a VAO for the particles since we generate them in the shader.
-		// We can just draw the number of particles we have.
+		// We use indirect rendering to draw only visible particles.
 		// A dummy VAO is required by OpenGL 4.3 core profile.
 		glBindVertexArray(dummy_vao_);
-		glDrawArrays(GL_POINTS, 0, kMaxParticles);
+		glBindBuffer(GL_DRAW_INDIRECT_BUFFER, draw_command_buffer_);
+		glDrawArraysIndirect(GL_POINTS, 0);
+		glBindBuffer(GL_DRAW_INDIRECT_BUFFER, 0);
 		glBindVertexArray(0);
 
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, 0);
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, 0);
+		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 10, 0);
 
 		glDepthMask(GL_TRUE);                              // Re-enable depth writing
 		glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA); // Reset blend mode
