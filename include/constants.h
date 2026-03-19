@@ -86,6 +86,34 @@ namespace Boidsish {
 			constexpr int DecorChunkParams() {
 				return 26;
 			}
+
+			constexpr int VisibleParticleIndices() {
+				return 27;
+			}
+
+			constexpr int ParticleDrawCommand() {
+				return 28;
+			}
+
+			constexpr int ParticleBuffer() {
+				return 16;
+			}
+
+			constexpr int EmitterBuffer() {
+				return 22;
+			}
+
+			constexpr int IndirectionBuffer() {
+				return 17;
+			}
+
+			constexpr int TerrainChunkInfo() {
+				return 23;
+			}
+
+			constexpr int SliceData() {
+				return 24;
+			}
 		} // namespace SsboBinding
 
 		namespace General {
@@ -350,6 +378,10 @@ namespace Boidsish {
 
 				constexpr float ParticleGridCellSize() {
 					return 2.0f;
+				}
+
+				constexpr float DefaultAmbientDensity() {
+					return 0.15f;
 				}
 			} // namespace Particles
 

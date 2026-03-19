@@ -1,5 +1,6 @@
 #include "ConfigManager.h"
 
+#include "constants.h"
 #include "logger.h"
 #include <algorithm>
 #include <cctype>
@@ -70,6 +71,9 @@ namespace Boidsish {
 
 		// Foliage culling settings
 		GetAppSettingFloat("foliage_culling_pixel_threshold", 10.0f);
+
+		// Particle settings
+		GetAppSettingFloat("ambient_particle_density", Constants::Class::Particles::DefaultAmbientDensity());
 
 		// Mesh optimization settings
 		GetAppSettingBool("mesh_optimizer_enabled", true);
