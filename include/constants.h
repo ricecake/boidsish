@@ -114,6 +114,14 @@ namespace Boidsish {
 			constexpr int SliceData() {
 				return 24;
 			}
+
+			constexpr int TerrainVisiblePatches() {
+				return 29;
+			}
+
+			constexpr int TerrainIndirect() {
+				return 32;
+			}
 		} // namespace SsboBinding
 
 		namespace General {

@@ -1,4 +1,4 @@
-#version 430 core
+#version 420 core
 
 // Per-vertex attributes (from small patch quad mesh)
 layout(location = 0) in vec3 aPos;       // Range [0, 1]

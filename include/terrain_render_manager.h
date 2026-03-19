@@ -22,25 +22,11 @@ namespace Boidsish {
 	 * @brief High-performance instanced terrain rendering with heightmap lookup.
 	 *
 	 * Architecture:
-	 * - Single flat grid mesh (NxN quads) instanced for all visible chunks
+	 * - Single flat grid mesh (1x1 quad) instanced for all visible patches
+	 * - Each chunk is divided into 8x8 patches (64 total) for fine-grained culling
 	 * - Heightmap stored in texture array (one slice per chunk)
-	 * - Per-instance data: world offset + heightmap slice index + bounds
-	 * - CPU frustum culling filters visible chunks before rendering
+	 * - GPU-side culling (frustum + Hi-Z) populates an indirect draw buffer
 	 * - Tessellation shader samples heightmap for vertex displacement
-	 *
-	 * Benefits:
-	 * - Single instanced draw call for all terrain
-	 * - Efficient frustum culling on CPU before draw
-	 * - Minimal vertex buffer (just one flat grid)
-	 * - Heightmap data doesn't need mesh-layout ordering
-	 * - GPU does displacement, reducing CPU→GPU bandwidth
-	 *
-	 * Data flow:
-	 * 1. TerrainGenerator produces heightmap data per chunk
-	 * 2. RegisterChunk() uploads heightmap to texture array slice
-	 * 3. Each frame: PrepareForRender() builds visible instance list
-	 * 4. Render() issues single instanced draw call
-	 * 5. TES shader samples heightmap to displace flat grid vertices
 	 */
 	class TerrainRenderManager {
 	public:
@@ -51,11 +37,6 @@ namespace Boidsish {
 		TerrainRenderManager(const TerrainRenderManager&) = delete;
 		TerrainRenderManager& operator=(const TerrainRenderManager&) = delete;
 
-		/**
-		 * @brief Register a terrain chunk for rendering.
-		 *
-		 * Extracts heights from positions and uploads to texture array.
-		 */
 		void RegisterChunk(
 			std::pair<int, int>              chunk_key,
 			const std::vector<glm::vec3>&    positions,
@@ -67,24 +48,9 @@ namespace Boidsish {
 			const glm::vec3&                 world_offset
 		);
 
-		/**
-		 * @brief Unregister a terrain chunk, freeing its texture slice.
-		 */
 		void UnregisterChunk(std::pair<int, int> chunk_key);
-
-		/**
-		 * @brief Check if a chunk is registered.
-		 */
 		bool HasChunk(std::pair<int, int> chunk_key) const;
-
-		/**
-		 * @brief Perform frustum culling and prepare instance buffer.
-		 */
 		void PrepareForRender(const Frustum& frustum, const glm::vec3& camera_pos, float world_scale = 1.0f);
-
-		/**
-		 * @brief Render all visible terrain chunks with single instanced draw.
-		 */
 		void Render(
 			Shader&                         shader,
 			const glm::mat4&                view,
@@ -94,164 +60,97 @@ namespace Boidsish {
 			float                           tess_quality_multiplier
 		);
 
-		/**
-		 * @brief Commit any pending updates (no-op for this implementation).
-		 */
 		void CommitUpdates() {}
-
-		/**
-		 * @brief Set a callback to be notified when a chunk is evicted due to LRU.
-		 *
-		 * This allows TerrainGenerator to remove the chunk from its cache
-		 * so it will be regenerated when needed.
-		 */
 		void SetEvictionCallback(std::function<void(std::pair<int, int>)> callback) { eviction_callback_ = callback; }
 
-		/**
-		 * @brief Get statistics.
-		 */
 		size_t GetRegisteredChunkCount() const;
 		size_t GetVisibleChunkCount() const;
-
 		int GetChunkSize() const { return chunk_size_; }
-
-		/**
-		 * @brief Get the heightmap texture array for shader binding.
-		 */
 		GLuint GetHeightmapTexture() const { return heightmap_texture_; }
-
-		/**
-		 * @brief Get the biome texture array for shader binding.
-		 */
 		GLuint GetBiomeTexture() const { return biome_texture_; }
 
-		/**
-		 * @brief Get info about all registered chunks for external use (e.g., decor placement).
-		 * Returns a vector of (world_offset_x, world_offset_z, texture_slice, chunk_size).
-		 * @param world_scale The world scale to apply to the chunk size.
-		 */
 		std::vector<glm::vec4> GetChunkInfo(float world_scale) const;
 
-		/**
-		 * @brief Pre-computed chunk data for decor placement.
-		 * Avoids repeated key derivation and separate update_count queries.
-		 */
 		struct DecorChunkData {
-			std::pair<int, int> key;          // integer chunk coordinate
-			glm::vec2           world_offset; // world-space offset
-			float               slice;        // texture array slice
-			float               chunk_size;   // world-space chunk size
-			uint32_t            update_count; // re-upload counter for deformation detection
+			std::pair<int, int> key;
+			glm::vec2           world_offset;
+			float               slice;
+			float               chunk_size;
+			uint32_t            update_count;
 		};
-
-		/**
-		 * @brief Get all registered chunks with pre-computed keys and update counts.
-		 * Single mutex acquisition, no intermediate map construction.
-		 */
 		std::vector<DecorChunkData> GetDecorChunkData(float world_scale) const;
 
-		/**
-		 * @brief Bind terrain data textures and UBO to a shader.
-		 */
 		void BindTerrainData(ShaderBase& shader_base) const;
 
-		void SetNoise(const GLuint& noise, const GLuint& curl) {
-			if (noise != 0) {
-				noise_texture_ = noise;
-			}
+		void SetHiZData(GLuint texture, int width, int height, int mips, const glm::mat4& prev_vp) {
+			hiz_texture_ = texture;
+			hiz_width_ = width;
+			hiz_height_ = height;
+			hiz_mip_count_ = mips;
+			hiz_prev_vp_ = prev_vp;
+		}
 
-			if (curl != 0) {
-				curl_texture_ = curl;
-			}
+		void SetNoise(const GLuint& noise, const GLuint& curl) {
+			if (noise != 0) noise_texture_ = noise;
+			if (curl != 0) curl_texture_ = curl;
 		}
 
 	private:
-		/**
-		 * @brief Update the global chunk grid and max height textures.
-		 */
 		void UpdateGridTextures(float world_scale);
-
-		/**
-		 * @brief Generate mipmaps for the max height grid using MAX reduction.
-		 */
 		void GenerateMaxHeightMips();
+		void UpdateChunkMetadata();
 
-		// Per-chunk metadata (CPU side)
 		struct ChunkInfo {
-			int       texture_slice;    // Index into texture array
-			float     min_y;            // For frustum culling
-			float     max_y;            // For frustum culling
-			glm::vec2 world_offset;     // (chunk_x * chunk_size, chunk_z * chunk_size)
-			uint32_t  update_count = 0; // Incremented each time chunk data is re-uploaded
+			int       texture_slice;
+			float     min_y;
+			float     max_y;
+			glm::vec2 world_offset;
+			uint32_t  update_count = 0;
+			int       gpu_index = -1;
 		};
 
-		// Per-instance data sent to GPU (std140 layout)
-		struct alignas(16) InstanceData {
-			glm::vec4 world_offset_and_slice; // xyz = world offset, w = texture slice index
-			glm::vec4 bounds;                 // xy = min/max Y for this chunk (for shader LOD)
+		struct ChunkMetadataGPU {
+			glm::vec4 world_offset_slice; // x, z, slice, active
+			glm::vec4 bounds;             // min_y, max_y, 0, 0
 		};
 
-		// Frustum culling helper
 		bool IsChunkVisible(const ChunkInfo& chunk, const Frustum& frustum, float world_scale) const;
-
-		// Create the flat grid mesh
 		void CreateGridMesh();
-
-		// Create/resize the heightmap texture array
 		void EnsureTextureCapacity(int required_slices);
+		void UploadHeightmapSlice(int slice, const std::vector<float>& h, const std::vector<glm::vec3>& n, const std::vector<glm::vec2>& b);
 
-		// Upload heightmap data to a texture slice
-		void UploadHeightmapSlice(
-			int                           slice,
-			const std::vector<float>&     heightmap,
-			const std::vector<glm::vec3>& normals,
-			const std::vector<glm::vec2>& biomes
-		);
+		int chunk_size_;
+		int max_chunks_;
+		int heightmap_resolution_;
 
-		// Configuration
-		int chunk_size_;           // Grid size per chunk (e.g., 32)
-		int max_chunks_;           // Maximum chunks in texture array
-		int heightmap_resolution_; // (chunk_size + 1) for vertex corners
+		GLuint grid_vao_ = 0, grid_vbo_ = 0, grid_ebo_ = 0;
+		GLuint heightmap_texture_ = 0, biome_texture_ = 0;
+		GLuint noise_texture_ = 0, curl_texture_ = 0, biome_ubo_ = 0;
 
-		// OpenGL resources
-		GLuint grid_vao_ = 0;
-		GLuint grid_vbo_ = 0;
-		GLuint grid_ebo_ = 0;
-		GLuint instance_vbo_ = 0;
-		GLuint heightmap_texture_ = 0; // GL_TEXTURE_2D_ARRAY (RGBA16F: height, normal.xyz)
-		GLuint biome_texture_ = 0;     // GL_TEXTURE_2D_ARRAY (RG8: low_idx, t)
-		GLuint noise_texture_ = 0;
-		GLuint curl_texture_ = 0;
-		GLuint biome_ubo_ = 0; // UBO for BiomeShaderProperties
+		GLuint chunk_metadata_ssbo_ = 0, visible_patches_ssbo_ = 0, indirect_buffer_ = 0;
+		std::unique_ptr<ComputeShader> cull_shader_;
 
-		// Global terrain grid resources
-		GLuint chunk_grid_texture_ = 0;      // GL_TEXTURE_2D (R16I: texture_slice index, -1 if none)
-		GLuint max_height_grid_texture_ = 0; // GL_TEXTURE_2D (R32F: max_y, mips for hierarchical check)
-		GLuint terrain_data_ubo_ = 0;        // UBO for grid parameters
-
+		GLuint chunk_grid_texture_ = 0, max_height_grid_texture_ = 0, terrain_data_ubo_ = 0;
 		std::unique_ptr<ComputeShader> grid_mip_shader_;
 
-		// Grid mesh data
 		size_t grid_index_count_ = 0;
-
-		// Chunk management
 		std::map<std::pair<int, int>, ChunkInfo> chunks_;
-		std::vector<int>                         free_slices_; // Available texture slices
-		int                                      next_slice_ = 0;
+		std::vector<int> free_slices_;
+		int next_slice_ = 0;
 
-		// Per-frame instance data
-		std::vector<InstanceData> visible_instances_;
-		size_t                    instance_buffer_capacity_ = 0;
+		std::vector<int> free_gpu_indices_;
+		int next_gpu_index_ = 0;
+		bool chunk_metadata_dirty_ = false;
 
-		// Camera position for LRU eviction (updated by PrepareForRender)
+		GLuint hiz_texture_ = 0;
+		int hiz_width_ = 0, hiz_height_ = 0, hiz_mip_count_ = 0;
+		glm::mat4 hiz_prev_vp_{1.0f};
+
 		glm::vec3 last_camera_pos_{0.0f, 0.0f, 0.0f};
 		float     last_world_scale_ = 1.0f;
 
-		// Thread safety
-		mutable std::mutex mutex_;
-
-		// Eviction callback for notifying TerrainGenerator
+		mutable std::recursive_mutex mutex_;
 		std::function<void(std::pair<int, int>)> eviction_callback_;
 	};
 
-} // namespace Boidsish
+}
