@@ -1,4 +1,4 @@
-#version 420 core
+#version 430 core
 
 // Per-vertex attributes (from small patch quad mesh)
 layout(location = 0) in vec3 aPos;       // Range [0, 1]
@@ -38,11 +38,11 @@ void main() {
 	// Extract camera forward vector
 	viewForward = vec3(-view[0][2], -view[1][2], -view[2][2]);
 
-	VisiblePatch patch = visible_patches[gl_InstanceID];
-	ChunkMetadata chunk = chunks[patch.chunk_index];
+	VisiblePatch terrain_patch = visible_patches[gl_InstanceID];
+	ChunkMetadata chunk = chunks[terrain_patch.chunk_index];
 
 	float patchSize = uChunkSize / 8.0;
-	vec2  patchOffset = vec2(float(patch.patch_x), float(patch.patch_z)) * patchSize;
+	vec2  patchOffset = vec2(float(terrain_patch.patch_x), float(terrain_patch.patch_z)) * patchSize;
 
 	// Scale and offset local position
 	vec3 localPos = aPos;

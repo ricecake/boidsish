@@ -65,6 +65,20 @@ namespace Boidsish {
 		grid_mip_shader_ = std::make_unique<ComputeShader>("shaders/terrain_hiz_generate.comp");
 		cull_shader_ = std::make_unique<ComputeShader>("shaders/terrain_cull.comp");
 
+		if (cull_shader_ && cull_shader_->isValid()) {
+			cull_num_chunks_loc_ = glGetUniformLocation(cull_shader_->ID, "u_numChunks");
+			cull_chunk_size_loc_ = glGetUniformLocation(cull_shader_->ID, "u_chunkSize");
+			for (int i = 0; i < 6; ++i) {
+				std::string name = "u_frustumPlanes[" + std::to_string(i) + "]";
+				cull_frustum_planes_loc_[i] = glGetUniformLocation(cull_shader_->ID, name.c_str());
+			}
+			cull_enable_hiz_loc_ = glGetUniformLocation(cull_shader_->ID, "u_enableHiZ");
+			cull_hiz_texture_loc_ = glGetUniformLocation(cull_shader_->ID, "u_hizTexture");
+			cull_prev_vp_loc_ = glGetUniformLocation(cull_shader_->ID, "u_prevViewProjection");
+			cull_hiz_size_loc_ = glGetUniformLocation(cull_shader_->ID, "u_hizSize");
+			cull_hiz_mip_count_loc_ = glGetUniformLocation(cull_shader_->ID, "u_hizMipCount");
+		}
+
 		// GPU Culling Resources
 		glGenBuffers(1, &chunk_metadata_ssbo_);
 		glBindBuffer(GL_SHADER_STORAGE_BUFFER, chunk_metadata_ssbo_);
@@ -346,24 +360,26 @@ namespace Boidsish {
 		glBindBuffer(GL_DRAW_INDIRECT_BUFFER, indirect_buffer_);
 		glBufferSubData(GL_DRAW_INDIRECT_BUFFER, 0, sizeof(DrawElementsIndirectCommand), &cmd);
 		cull_shader_->use();
-		cull_shader_->setInt("u_numChunks", next_gpu_index_);
-		cull_shader_->setFloat("u_chunkSize", static_cast<float>(chunk_size_ * world_scale));
+		if (cull_num_chunks_loc_ != -1) glUniform1i(cull_num_chunks_loc_, next_gpu_index_);
+		if (cull_chunk_size_loc_ != -1) glUniform1f(cull_chunk_size_loc_, static_cast<float>(chunk_size_ * world_scale));
 		for (int i = 0; i < 6; ++i) {
-			cull_shader_->setVec4("u_frustumPlanes[" + std::to_string(i) + "]", glm::vec4(frustum.planes[i].normal, frustum.planes[i].distance));
+			if (cull_frustum_planes_loc_[i] != -1) {
+				glUniform4f(cull_frustum_planes_loc_[i], frustum.planes[i].normal.x, frustum.planes[i].normal.y, frustum.planes[i].normal.z, frustum.planes[i].distance);
+			}
 		}
 		bool enableHiZ = (hiz_texture_ != 0);
-		cull_shader_->setBool("u_enableHiZ", enableHiZ);
+		if (cull_enable_hiz_loc_ != -1) glUniform1i(cull_enable_hiz_loc_, enableHiZ);
 		if (enableHiZ) {
 			glActiveTexture(GL_TEXTURE15);
 			glBindTexture(GL_TEXTURE_2D, hiz_texture_);
-			cull_shader_->setInt("u_hizTexture", 15);
-			cull_shader_->setMat4("u_prevViewProjection", hiz_prev_vp_);
-			glUniform2i(glGetUniformLocation(cull_shader_->ID, "u_hizSize"), hiz_width_, hiz_height_);
-			cull_shader_->setInt("u_hizMipCount", hiz_mip_count_);
+			if (cull_hiz_texture_loc_ != -1) glUniform1i(cull_hiz_texture_loc_, 15);
+			if (cull_prev_vp_loc_ != -1) glUniformMatrix4fv(cull_prev_vp_loc_, 1, GL_FALSE, &hiz_prev_vp_[0][0]);
+			if (cull_hiz_size_loc_ != -1) glUniform2i(cull_hiz_size_loc_, hiz_width_, hiz_height_);
+			if (cull_hiz_mip_count_loc_ != -1) glUniform1i(cull_hiz_mip_count_loc_, hiz_mip_count_);
 		}
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, chunk_metadata_ssbo_);
-		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, visible_patches_ssbo_);
-		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 2, indirect_buffer_);
+		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::TerrainVisiblePatches(), visible_patches_ssbo_);
+		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::TerrainIndirect(), indirect_buffer_);
 		glDispatchCompute((next_gpu_index_ * 64 + 63) / 64, 1, 1);
 		glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT | GL_COMMAND_BARRIER_BIT);
 	}
@@ -482,7 +498,15 @@ namespace Boidsish {
 	}
 
 	size_t TerrainRenderManager::GetVisibleChunkCount() const {
-		return 0;
+		std::lock_guard<std::recursive_mutex> lock(mutex_);
+		if (indirect_buffer_ == 0) return 0;
+
+		DrawElementsIndirectCommand cmd;
+		glBindBuffer(GL_DRAW_INDIRECT_BUFFER, indirect_buffer_);
+		glGetBufferSubData(GL_DRAW_INDIRECT_BUFFER, 0, sizeof(DrawElementsIndirectCommand), &cmd);
+		glBindBuffer(GL_DRAW_INDIRECT_BUFFER, 0);
+
+		return static_cast<size_t>(cmd.instanceCount);
 	}
 
 	std::vector<glm::vec4> TerrainRenderManager::GetChunkInfo(float world_scale) const {

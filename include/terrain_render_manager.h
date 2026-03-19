@@ -130,6 +130,16 @@ namespace Boidsish {
 		GLuint chunk_metadata_ssbo_ = 0, visible_patches_ssbo_ = 0, indirect_buffer_ = 0;
 		std::unique_ptr<ComputeShader> cull_shader_;
 
+		// Cached uniform locations for cull_shader_
+		GLint cull_num_chunks_loc_ = -1;
+		GLint cull_chunk_size_loc_ = -1;
+		GLint cull_frustum_planes_loc_[6];
+		GLint cull_enable_hiz_loc_ = -1;
+		GLint cull_hiz_texture_loc_ = -1;
+		GLint cull_prev_vp_loc_ = -1;
+		GLint cull_hiz_size_loc_ = -1;
+		GLint cull_hiz_mip_count_loc_ = -1;
+
 		GLuint chunk_grid_texture_ = 0, max_height_grid_texture_ = 0, terrain_data_ubo_ = 0;
 		std::unique_ptr<ComputeShader> grid_mip_shader_;
 
