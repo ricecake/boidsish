@@ -2931,7 +2931,9 @@ namespace Boidsish {
 			impl->terrain_render_manager ? impl->terrain_render_manager->GetHeightmapTexture() : 0,
 			impl->noise_manager ? impl->noise_manager->GetCurlTexture() : 0,
 			impl->terrain_render_manager ? impl->terrain_render_manager->GetBiomeTexture() : 0,
-			impl->lighting_ubo
+			impl->lighting_ubo,
+			impl->frustum_ssbo->GetBufferId(),
+			impl->frustum_ssbo->GetFrameOffset() + impl->mdi_frustum_count * sizeof(FrustumDataGPU)
 		);
 		impl->mesh_explosion_manager->Update(impl->simulation_delta_time, impl->simulation_time);
 		impl->sound_effect_manager->Update(impl->simulation_delta_time);

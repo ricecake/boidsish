@@ -108,6 +108,10 @@ namespace Boidsish {
 		if (comp_lighting_idx != GL_INVALID_INDEX) {
 			glUniformBlockBinding(compute_shader_->ID, comp_lighting_idx, Constants::UboBinding::Lighting());
 		}
+		GLuint comp_frustum_idx = glGetUniformBlockIndex(compute_shader_->ID, "FrustumData");
+		if (comp_frustum_idx != GL_INVALID_INDEX) {
+			glUniformBlockBinding(compute_shader_->ID, comp_frustum_idx, Constants::UboBinding::FrustumData());
+		}
 
 		// Create buffers
 		glGenBuffers(1, &particle_buffer_);
@@ -231,7 +235,9 @@ namespace Boidsish {
 		GLuint                        heightmap_texture,
 		GLuint                        curl_noise_texture,
 		GLuint                        biome_texture,
-		GLuint                        lighting_ubo
+		GLuint                        lighting_ubo,
+		GLuint                        frustum_ubo,
+		GLintptr                      frustum_offset
 	) {
 		std::lock_guard<std::mutex> lock(mutex_);
 		if (!initialized_ || !compute_shader_ || !compute_shader_->isValid()) {
@@ -370,13 +376,13 @@ namespace Boidsish {
 		compute_shader_->setUint("u_grid_size", Constants::Class::Particles::ParticleGridSize());
 		compute_shader_->setFloat("u_cell_size", Constants::Class::Particles::ParticleGridCellSize());
 
-		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, particle_buffer_);
-		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, emitter_buffer_);
-		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 2, indirection_buffer_);
-		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 3, terrain_chunk_buffer_);
-		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 4, slice_data_buffer_);
-		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 10, visible_indices_buffer_);
-		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 21, draw_command_buffer_);
+		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 16, particle_buffer_);
+		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 22, emitter_buffer_);
+		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 17, indirection_buffer_);
+		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 23, terrain_chunk_buffer_);
+		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 24, slice_data_buffer_);
+		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 27, visible_indices_buffer_);
+		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 28, draw_command_buffer_);
 
 		if (heightmap_texture != 0) {
 			glActiveTexture(GL_TEXTURE7);
@@ -400,6 +406,16 @@ namespace Boidsish {
 			glBindBufferBase(GL_UNIFORM_BUFFER, Constants::UboBinding::Lighting(), lighting_ubo);
 		}
 
+		if (frustum_ubo != 0) {
+			glBindBufferRange(
+				GL_UNIFORM_BUFFER,
+				Constants::UboBinding::FrustumData(),
+				frustum_ubo,
+				frustum_offset,
+				sizeof(FrustumDataGPU)
+			);
+		}
+
 		// --- Build Spatial Grid ---
 		if (grid_build_shader_ && grid_build_shader_->isValid()) {
 			grid_build_shader_->use();
@@ -407,7 +423,7 @@ namespace Boidsish {
 			grid_build_shader_->setFloat("u_cell_size", Constants::Class::Particles::ParticleGridCellSize());
 			grid_build_shader_->setInt("u_num_particles", kMaxParticles);
 
-			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, particle_buffer_);
+			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 16, particle_buffer_);
 			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::ParticleGridHeads(), grid_heads_buffer_);
 			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::ParticleGridNext(), grid_next_buffer_);
 
@@ -428,7 +444,7 @@ namespace Boidsish {
 
 		// --- Dispatch Main Particle Compute Shader ---
 		compute_shader_->use();
-		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, particle_buffer_);
+		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 16, particle_buffer_);
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::ParticleGridHeads(), grid_heads_buffer_);
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::ParticleGridNext(), grid_next_buffer_);
 
@@ -440,15 +456,15 @@ namespace Boidsish {
 		// GL_COMMAND_BARRIER_BIT: for draw_command_buffer_ used in glDrawArraysIndirect
 		glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT | GL_COMMAND_BARRIER_BIT);
 
-		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, 0);
+		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 16, 0);
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::ParticleGridHeads(), 0);
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::ParticleGridNext(), 0);
-		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, 0);
-		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 2, 0);
-		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 3, 0);
-		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 4, 0);
-		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 10, 0);
-		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 21, 0);
+		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 22, 0);
+		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 17, 0);
+		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 23, 0);
+		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 24, 0);
+		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 27, 0);
+		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 28, 0);
 	}
 
 	void FireEffectManager::_UpdateParticleAllocation() {
@@ -630,8 +646,8 @@ namespace Boidsish {
 			glUniformBlockBinding(render_shader_->ID, lighting_idx, Constants::UboBinding::Lighting());
 		}
 
-		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, emitter_buffer_);
-		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 10, visible_indices_buffer_);
+		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 22, emitter_buffer_);
+		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 27, visible_indices_buffer_);
 
 		if (noise_texture != 0) {
 			glActiveTexture(GL_TEXTURE5);
@@ -643,7 +659,7 @@ namespace Boidsish {
 		render_shader_->setBool("enableFrustumCulling", true);
 		render_shader_->setFloat("frustumCullRadius", 2.0f); // Particle cull radius
 
-		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, particle_buffer_);
+		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 16, particle_buffer_);
 
 		// We don't have a VAO for the particles since we generate them in the shader.
 		// We use indirect rendering to draw only visible particles.
@@ -654,9 +670,9 @@ namespace Boidsish {
 		glBindBuffer(GL_DRAW_INDIRECT_BUFFER, 0);
 		glBindVertexArray(0);
 
-		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, 0);
-		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, 0);
-		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 10, 0);
+		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 16, 0);
+		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 22, 0);
+		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 27, 0);
 
 		glDepthMask(GL_TRUE);                              // Re-enable depth writing
 		glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA); // Reset blend mode

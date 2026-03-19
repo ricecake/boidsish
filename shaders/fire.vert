@@ -13,7 +13,7 @@ struct Particle {
 	int  _padding[2];
 };
 
-layout(std430, binding = 0) buffer ParticleBuffer {
+layout(std430, binding = 16) readonly buffer ParticleBuffer {
 	Particle particles[];
 };
 
@@ -31,11 +31,11 @@ struct Emitter {
 	int   _padding[3];
 };
 
-layout(std430, binding = 1) buffer EmitterBuffer {
+layout(std430, binding = 22) readonly buffer EmitterBuffer {
 	Emitter emitters[];
 };
 
-layout(std430, binding = 10) readonly buffer VisibleIndicesBuffer {
+layout(std430, binding = 27) readonly buffer VisibleIndicesBuffer {
 	uint visible_indices[];
 };
 
