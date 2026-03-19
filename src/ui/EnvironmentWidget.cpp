@@ -133,7 +133,17 @@ namespace Boidsish {
 					}
 				}
 
-				// 4. Wind (from EffectsWidget)
+				// 4. Particles
+				if (ImGui::CollapsingHeader("Particles", ImGuiTreeNodeFlags_DefaultOpen)) {
+					auto& config = ConfigManager::GetInstance();
+					float density = config.GetAppSettingFloat("ambient_particle_density", 0.15f);
+					if (ImGui::SliderFloat("Ambient Density", &density, 0.0f, 1.0f)) {
+						config.SetFloat("ambient_particle_density", density);
+					}
+					ImGui::Text("Controls the spawn rate of ambient particles.");
+				}
+
+				// 5. Wind (from EffectsWidget)
 				if (ImGui::CollapsingHeader("Wind", ImGuiTreeNodeFlags_DefaultOpen)) {
 					auto& config = ConfigManager::GetInstance();
 

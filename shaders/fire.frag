@@ -2,14 +2,15 @@
 
 #include "lighting.glsl"
 
-in float    v_lifetime;
-in vec4     view_pos;
-in vec4     v_pos;
-in vec3     v_epicenter;
-flat in int v_style;
-flat in int v_emitter_index;
-flat in int v_emitter_id;
-out vec4    FragColor;
+in float      v_lifetime;
+in vec4       view_pos;
+in vec4       v_pos;
+in vec3       v_epicenter;
+flat in int   v_style;
+flat in int   v_emitter_index;
+flat in int   v_emitter_id;
+flat in uint  v_particle_idx;
+out vec4      FragColor;
 
 uniform float u_time;
 uniform vec3  u_biomeAlbedos[8];
@@ -76,7 +77,7 @@ void main() {
 		} else if (v_style == 4) { // Glitter
 			// Glitter uses a colorful rainbow shift
 			// We use u_time and v_lifetime to create motion in the color space
-			float hue = u_time * 2.0 + v_lifetime * 1.5 + float(gl_PrimitiveID) * 0.1;
+			float hue = u_time * 2.0 + v_lifetime * 1.5 + float(v_particle_idx) * 0.1;
 			color = 0.6 + 0.4 * cos(hue + vec3(0, 2, 4));
 
 			// Add a bit of "twinkle" based on time and position
@@ -108,7 +109,7 @@ void main() {
 				if (v_emitter_index == 4)
 					petal_base = vec3(1.0, 0.9, 0.2); // Alpine Meadow has yellow flowers
 
-				float color_var = sin(float(gl_PrimitiveID) * 0.5) * 0.5 + 0.5;
+				float color_var = sin(float(v_particle_idx) * 0.5) * 0.5 + 0.5;
 				color = mix(petal_base, vec3(1.0, 1.0, 1.0), color_var * 0.4);
 
 				float flutter = sin(u_time * 8.0 + v_pos.x * 2.0) * 0.4 + 0.6;
@@ -141,7 +142,7 @@ void main() {
 			} else if (sub_style == 4) {                      // Firefly
 				vec3 firefly_base = vec3(0.7, 0.9, 0.1);      // Yellow-Green
 				color = mix(firefly_base, biome_albedo, 0.4); // Biome biased
-				float twinkle = sin(u_time * 6.0 + float(gl_PrimitiveID)) * 0.5 + 0.5;
+				float twinkle = sin(u_time * 6.0 + float(v_particle_idx)) * 0.5 + 0.5;
 				color *= (2.0 + twinkle * 8.0);
 				alpha = (0.4 + twinkle * 0.6) * smoothstep(0.0, 0.5, v_lifetime);
 			}
@@ -167,7 +168,7 @@ void main() {
 			alpha = 0.6 * smoothstep(0.0, 0.5, v_lifetime);
 		} else if (v_style == 7) {                    // Fireflies
 			vec3  firefly_base = vec3(0.7, 0.9, 0.1); // Yellow-Green
-			float twinkle = sin(u_time * 6.0 + float(gl_PrimitiveID)) * 0.5 + 0.5;
+			float twinkle = sin(u_time * 6.0 + float(v_particle_idx)) * 0.5 + 0.5;
 			color = firefly_base * (2.0 + twinkle * 8.0);
 			alpha = (0.4 + twinkle * 0.6) * smoothstep(0.0, 0.5, v_lifetime);
 		} else if (v_style == 28) {
@@ -205,7 +206,7 @@ void main() {
 			alpha = 1.0;
 		} else if (v_style == 9) { // Cinder
 			// Irregular shape via noise
-			float n = snoise3d(vec3(gl_PointCoord * 6.0, float(gl_PrimitiveID)));
+			float n = snoise3d(vec3(gl_PointCoord * 6.0, float(v_particle_idx)));
 			shapeMask = smoothstep(0.2 + n * 0.15, 0.05, distSq);
 
 			// Color: dark grey with orange highlights
