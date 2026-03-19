@@ -3144,38 +3144,72 @@ namespace Boidsish {
 			}
 
 			// Phase 1: Render Decor and Terrain into shadow maps
+			// Group updates by light to reuse culling results
+			std::map<Light*, std::vector<int>> updates_by_light;
 			for (int map_idx : maps_to_update) {
-				const auto& info = shadow_map_registry[map_idx];
-				float       world_scale_val = impl->terrain_generator ? impl->terrain_generator->GetWorldScale() : 1.0f;
-				impl->shadow_manager->BeginShadowPass(
-					info.map_index,
-					*info.light,
-					scene_center,
-					500.0f * std::max(1.0f, world_scale_val),
-					info.cascade_index,
-					view,
-					impl->camera.fov,
-					(float)impl->width / (float)impl->height,
-					true // Clear depth
-				);
+				updates_by_light[shadow_map_registry[map_idx].light].push_back(map_idx);
+			}
 
+			for (auto& [light, map_indices] : updates_by_light) {
 				if (impl->decor_manager) {
-					glm::vec3 light_dir_to_light = (info.light->type == DIRECTIONAL_LIGHT)
-						? glm::normalize(-info.light->direction)
-						: glm::normalize(info.light->position - scene_center);
+					// Cull once for this light using the most encompassing cascade's frustum
+					// Usually the last cascade has the largest frustum.
+					int   best_map_idx = -1;
+					float max_split = -1.0f;
+					for (int map_idx : map_indices) {
+						int cascade = shadow_map_registry[map_idx].cascade_index;
+						if (cascade == -1) {
+							best_map_idx = map_idx;
+							break;
+						}
+						float split = impl->shadow_manager->GetCascadeSplits()[cascade];
+						if (split > max_split) {
+							max_split = split;
+							best_map_idx = map_idx;
+						}
+					}
 
-					impl->decor_manager->Render(
+					const auto& best_info = shadow_map_registry[best_map_idx];
+					glm::vec3   light_dir_to_light = (light->type == DIRECTIONAL_LIGHT)
+						? glm::normalize(-light->direction)
+						: glm::normalize(light->position - scene_center);
+
+					impl->decor_manager->Cull(
 						view,
 						impl->projection,
 						ShadowManager::kShadowMapSize,
 						ShadowManager::kShadowMapSize,
-						impl->shadow_manager->GetLightSpaceMatrix(info.map_index),
-						impl->shadow_manager->GetShadowShaderPtr().get(),
+						impl->shadow_manager->GetLightSpaceMatrix(best_info.map_index),
 						light_dir_to_light,
 						impl->terrain_render_manager
 					);
 				}
-				impl->shadow_manager->EndShadowPass();
+
+				for (int map_idx : map_indices) {
+					const auto& info = shadow_map_registry[map_idx];
+					float       world_scale_val = impl->terrain_generator ? impl->terrain_generator->GetWorldScale() : 1.0f;
+					impl->shadow_manager->BeginShadowPass(
+						info.map_index,
+						*info.light,
+						scene_center,
+						500.0f * std::max(1.0f, world_scale_val),
+						info.cascade_index,
+						view,
+						impl->camera.fov,
+						(float)impl->width / (float)impl->height,
+						true // Clear depth
+					);
+
+					if (impl->decor_manager) {
+						impl->decor_manager->Render(
+							view,
+							impl->projection,
+							impl->shadow_manager->GetLightSpaceMatrix(info.map_index),
+							impl->shadow_manager->GetShadowShaderPtr().get()
+						);
+					}
+					impl->shadow_manager->EndShadowPass();
+				}
 			}
 		}
 
@@ -3277,7 +3311,16 @@ namespace Boidsish {
 			} else {
 				impl->decor_manager->SetHiZEnabled(false);
 			}
-			impl->decor_manager->Render(view, impl->projection, impl->render_width, impl->render_height);
+			impl->decor_manager->Cull(
+				view,
+				impl->projection,
+				impl->render_width,
+				impl->render_height,
+				std::nullopt,
+				std::nullopt,
+				impl->terrain_render_manager
+			);
+			impl->decor_manager->Render(view, impl->projection);
 		}
 
 		impl->ExecuteRenderQueue(
@@ -3481,7 +3524,8 @@ namespace Boidsish {
 				impl->decor_manager->PopulateDefaultDecor();
 				impl->decor_manager->PrepareResources(impl->megabuffer.get());
 
-				impl->decor_manager->Render(view, impl->projection, impl->render_width, impl->render_height);
+				impl->decor_manager->Cull(view, impl->projection, impl->render_width, impl->render_height);
+				impl->decor_manager->Render(view, impl->projection);
 			}
 
 			// Update terrain once to start chunk loading around the camera
