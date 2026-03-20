@@ -436,6 +436,7 @@ namespace Boidsish {
 		std::shared_ptr<Shader> postprocess_shader_;
 		ShaderHandle            shadow_shader_handle{0};
 		GLuint                  plane_vao{0}, plane_vbo{0}, sky_vao{0}, blur_quad_vao{0}, blur_quad_vbo{0};
+		int                     plane_index_count{0};
 		GLuint main_fbo_{0}, main_fbo_texture_{0}, main_fbo_velocity_texture_{0}, main_fbo_depth_texture_{0},
 			main_fbo_rbo_{0}, refraction_texture_{0};
 		GLuint    lighting_ubo{0};
@@ -880,35 +881,68 @@ namespace Boidsish {
 			}
 
 			if (plane_shader) {
-				float quad_vertices[] = {
-					// Definitive CCW winding
-					-1.0f,
-					0.0f,
-					1.0f,
-					1.0f,
-					0.0f,
-					-1.0f,
-					-1.0f,
-					0.0f,
-					-1.0f,
-					-1.0f,
-					0.0f,
-					1.0f,
-					1.0f,
-					0.0f,
-					1.0f,
-					1.0f,
-					0.0f,
-					-1.0f
-				};
+				// Generate a tessellated grid for the floor plane
+				// This allows the non-linear warping to be applied per-vertex,
+				// ensuring it matches the terrain's curvature.
+				const int             grid_size = 64;
+				std::vector<float>    grid_vertices;
+				std::vector<uint32_t> grid_indices;
+
+				for (int z = 0; z <= grid_size; ++z) {
+					for (int x = 0; x <= grid_size; ++x) {
+						float x_pos = (float)x / (float)grid_size * 2.0f - 1.0f;
+						float z_pos = (float)z / (float)grid_size * 2.0f - 1.0f;
+						grid_vertices.push_back(x_pos);
+						grid_vertices.push_back(0.0f);
+						grid_vertices.push_back(z_pos);
+					}
+				}
+
+				for (int z = 0; z < grid_size; ++z) {
+					for (int x = 0; x < grid_size; ++x) {
+						int row1 = z * (grid_size + 1);
+						int row2 = (z + 1) * (grid_size + 1);
+
+						// Triangle 1
+						grid_indices.push_back(row1 + x);
+						grid_indices.push_back(row2 + x);
+						grid_indices.push_back(row2 + x + 1);
+
+						// Triangle 2
+						grid_indices.push_back(row1 + x);
+						grid_indices.push_back(row2 + x + 1);
+						grid_indices.push_back(row1 + x + 1);
+					}
+				}
+
 				glGenVertexArrays(1, &plane_vao);
 				glBindVertexArray(plane_vao);
+
 				glGenBuffers(1, &plane_vbo);
 				glBindBuffer(GL_ARRAY_BUFFER, plane_vbo);
-				glBufferData(GL_ARRAY_BUFFER, sizeof(quad_vertices), quad_vertices, GL_STATIC_DRAW);
+				glBufferData(
+					GL_ARRAY_BUFFER,
+					grid_vertices.size() * sizeof(float),
+					grid_vertices.data(),
+					GL_STATIC_DRAW
+				);
+
+				GLuint ebo;
+				glGenBuffers(1, &ebo);
+				glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ebo);
+				glBufferData(
+					GL_ELEMENT_ARRAY_BUFFER,
+					grid_indices.size() * sizeof(uint32_t),
+					grid_indices.data(),
+					GL_STATIC_DRAW
+				);
+
 				glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
 				glEnableVertexAttribArray(0);
 				glBindVertexArray(0);
+
+				// Store index count for rendering
+				plane_index_count = static_cast<int>(grid_indices.size());
 			}
 
 			// --- Main Scene Framebuffer ---
@@ -1954,7 +1988,7 @@ namespace Boidsish {
 			plane_shader->setMat4("view", view);
 			plane_shader->setMat4("projection", projection);
 			glBindVertexArray(plane_vao);
-			glDrawArrays(GL_TRIANGLES, 0, 6);
+			glDrawElements(GL_TRIANGLES, plane_index_count, GL_UNSIGNED_INT, 0);
 			glBindVertexArray(0);
 		}
 

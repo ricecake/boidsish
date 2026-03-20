@@ -15,7 +15,7 @@ uniform mat4 projection;
 #include "visual_effects.glsl"
 
 void main() {
-	WorldPos = vec3(model * vec4(aPos, 1.0));
+	WorldPos = vec3(model * vec4(aPos * 1000.0, 1.0));
 	WorldPos.xz += viewPos.xz;
 	Normal = vec3(0.0, 1.0, 0.0);
 	vec4 vPos = view * vec4(WorldPos, 1.0);
