@@ -1868,6 +1868,18 @@ namespace Boidsish {
 
 				// Prepare for rendering (frustum culling for instanced renderer)
 				float world_scale = terrain_generator ? terrain_generator->GetWorldScale() : 1.0f;
+
+				// Pass Hi-Z data for occlusion culling if available
+				if (hiz_manager && hiz_manager->IsInitialized() && enable_hiz_culling_ && frame_count_ > 0) {
+					terrain_render_manager->SetHiZData(
+						hiz_manager->GetHiZTexture(),
+						hiz_manager->GetWidth(),
+						hiz_manager->GetHeight(),
+						hiz_manager->GetMipCount(),
+						prev_view_projection
+					);
+				}
+
 				terrain_render_manager->PrepareForRender(frustum, camera.pos(), world_scale);
 
 				terrain_render_manager
