@@ -90,7 +90,9 @@ namespace Boidsish {
 		std::vector<int>                         particle_to_emitter_map_;
 		mutable std::mutex                       mutex_;
 
-		std::unique_ptr<ComputeShader> compute_shader_;
+		std::unique_ptr<ComputeShader> lifecycle_shader_;
+		std::unique_ptr<ComputeShader> behavior_shader_;
+		std::unique_ptr<ComputeShader> fixup_shader_;
 		std::unique_ptr<ComputeShader> grid_build_shader_;
 		std::unique_ptr<Shader>        render_shader_;
 
@@ -102,7 +104,9 @@ namespace Boidsish {
 		GLuint terrain_chunk_buffer_{0};
 		GLuint slice_data_buffer_{0};
 		GLuint visible_indices_buffer_{0};
+		GLuint live_indices_buffer_{0};
 		GLuint draw_command_buffer_{0};
+		GLuint behavior_command_buffer_{0};
 		GLuint dummy_vao_{0};
 
 		bool   initialized_{false};

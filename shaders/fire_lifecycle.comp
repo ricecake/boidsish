@@ -1,0 +1,48 @@
+#version 430 core
+
+#define COMPUTE_SHADER
+#include "particle_types.glsl"
+#include "particle_helpers.glsl"
+#include "particle_behavior.glsl"
+#include "particle_lifecycle.glsl"
+#include "lighting.glsl"
+#include "frustum.glsl"
+
+uniform float u_delta_time;
+uniform float u_time;
+uniform float u_ambient_density;
+uniform int   u_num_emitters;
+uniform int   u_num_chunks;
+uniform uint  u_grid_size;
+uniform float u_cell_size;
+
+uniform sampler3D      u_curlTexture;
+uniform sampler2DArray u_heightmapArray;
+uniform sampler2DArray u_biomeMap;
+
+layout(local_size_x = 256, local_size_y = 1, local_size_z = 1) in;
+
+void main() {
+	uint gid = gl_GlobalInvocationID.x;
+
+	if (gid >= particles.length()) {
+		return;
+	}
+
+	Particle p = particles[gid];
+	int      emitter_index = particle_to_emitter_map[gid];
+
+	// --- 1 & 2. Lifecycle: Hijack/Clear and Lifetime Update ---
+	if (updateLifetime(p, gid, emitter_index, u_num_emitters, u_delta_time, viewPos, viewDir)) {
+		// --- 3. Respawn Logic ---
+		respawnParticle(p, gid, emitter_index, u_num_emitters, u_time, u_delta_time, u_ambient_density, u_num_chunks, viewPos, viewDir, nightFactor, u_curlTexture, u_heightmapArray, u_biomeMap, u_cell_size, u_grid_size);
+	}
+
+	particles[gid] = p;
+
+	// If alive after lifecycle update, add to live indices for behavior pass
+	if (p.pos.w > 0.0) {
+		uint idx = atomicAdd(behavior_command.num_groups_x, 1);
+		live_indices[idx] = gid;
+	}
+}

@@ -1,0 +1,16 @@
+#version 430 core
+
+#define COMPUTE_SHADER
+#include "particle_types.glsl"
+
+layout(local_size_x = 1, local_size_y = 1, local_size_z = 1) in;
+
+void main() {
+	// behavior_command.num_groups_x currently holds the total count of live particles.
+	// We need to convert it to the number of work groups.
+	// num_groups = (count + group_size - 1) / group_size
+	uint count = behavior_command.num_groups_x;
+	behavior_command.num_groups_x = (count + 255) / 256;
+	behavior_command.num_groups_y = 1;
+	behavior_command.num_groups_z = 1;
+}

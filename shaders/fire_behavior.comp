@@ -1,0 +1,43 @@
+#version 430 core
+
+#define COMPUTE_SHADER
+#include "particle_types.glsl"
+#include "particle_helpers.glsl"
+#include "particle_behavior.glsl"
+#include "particle_lifecycle.glsl"
+#include "lighting.glsl"
+#include "frustum.glsl"
+
+uniform float u_delta_time;
+uniform float u_time;
+uniform float u_ambient_density;
+uniform int   u_num_emitters;
+uniform int   u_num_chunks;
+uniform uint  u_grid_size;
+uniform float u_cell_size;
+
+uniform sampler3D      u_curlTexture;
+uniform sampler2DArray u_heightmapArray;
+uniform sampler2DArray u_biomeMap;
+
+layout(local_size_x = 256, local_size_y = 1, local_size_z = 1) in;
+
+void main() {
+	uint live_idx = gl_GlobalInvocationID.x;
+
+	// Note: behavior_command.num_groups_x stores the count of live particles
+	if (live_idx >= behavior_command.num_groups_x) {
+		return;
+	}
+
+	uint gid = live_indices[live_idx];
+	Particle p = particles[gid];
+
+	// --- 4. Update Logic (Only for Alive Particles) ---
+	updateBehavior(p, u_delta_time, u_time, viewPos, viewDir, u_cell_size, u_grid_size, u_curlTexture, u_num_chunks, u_heightmapArray);
+
+	particles[gid] = p;
+
+	// --- 5. Visibility and Compaction ---
+	handleVisibility(p, gid);
+}

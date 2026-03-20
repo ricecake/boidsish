@@ -44,6 +44,12 @@ struct DrawArraysIndirectCommand {
 	uint baseInstance;
 };
 
+struct DispatchIndirectCommand {
+	uint num_groups_x;
+	uint num_groups_y;
+	uint num_groups_z;
+};
+
 #ifdef COMPUTE_SHADER
 layout(std430, binding = 16) buffer ParticleBuffer {
 	Particle particles[];
@@ -56,6 +62,10 @@ layout(std430, binding = 22) buffer EmitterBuffer {
 layout(std430, binding = 27) writeonly buffer VisibleIndicesBuffer {
 	uint visible_indices[];
 };
+
+layout(std430, binding = 33) buffer LiveIndicesBuffer {
+	uint live_indices[];
+};
 #else
 layout(std430, binding = 16) readonly buffer ParticleBuffer {
 	Particle particles[];
@@ -67,6 +77,10 @@ layout(std430, binding = 22) readonly buffer EmitterBuffer {
 
 layout(std430, binding = 27) readonly buffer VisibleIndicesBuffer {
 	uint visible_indices[];
+};
+
+layout(std430, binding = 33) readonly buffer LiveIndicesBuffer {
+	uint live_indices[];
 };
 #endif
 
@@ -84,6 +98,10 @@ layout(std430, binding = 24) buffer SliceDataBuffer {
 
 layout(std430, binding = 28) buffer DrawCommandBuffer {
 	DrawArraysIndirectCommand draw_command;
+};
+
+layout(std430, binding = 34) buffer BehaviorCommandBuffer {
+	DispatchIndirectCommand behavior_command;
 };
 
 layout(std430, binding = 14) readonly buffer ParticleGridHeads {
