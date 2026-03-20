@@ -72,11 +72,10 @@ namespace Boidsish {
 				std::string name = "u_frustumPlanes[" + std::to_string(i) + "]";
 				cull_frustum_planes_loc_[i] = glGetUniformLocation(cull_shader_->ID, name.c_str());
 			}
-			cull_enable_hiz_loc_ = glGetUniformLocation(cull_shader_->ID, "u_enableHiZ");
-			cull_hiz_texture_loc_ = glGetUniformLocation(cull_shader_->ID, "u_hizTexture");
-			cull_prev_vp_loc_ = glGetUniformLocation(cull_shader_->ID, "u_prevViewProjection");
-			cull_hiz_size_loc_ = glGetUniformLocation(cull_shader_->ID, "u_hizSize");
-			cull_hiz_mip_count_loc_ = glGetUniformLocation(cull_shader_->ID, "u_hizMipCount");
+			cull_camera_pos_loc_ = glGetUniformLocation(cull_shader_->ID, "u_cameraPos");
+			cull_chunk_grid_loc_ = glGetUniformLocation(cull_shader_->ID, "u_chunkGrid");
+			cull_max_height_grid_loc_ = glGetUniformLocation(cull_shader_->ID, "u_maxHeightGrid");
+			cull_heightmap_array_loc_ = glGetUniformLocation(cull_shader_->ID, "u_heightmapArray");
 		}
 
 		// GPU Culling Resources
@@ -346,6 +345,15 @@ namespace Boidsish {
 
 	void TerrainRenderManager::PrepareForRender(const Frustum& frustum, const glm::vec3& camera_pos, float world_scale) {
 		std::lock_guard<std::recursive_mutex> lock(mutex_);
+
+		// Async readback of previous frame's visible patch count to avoid stalls
+		if (indirect_buffer_ != 0) {
+			DrawElementsIndirectCommand cmd;
+			glBindBuffer(GL_DRAW_INDIRECT_BUFFER, indirect_buffer_);
+			glGetBufferSubData(GL_DRAW_INDIRECT_BUFFER, offsetof(DrawElementsIndirectCommand, instanceCount), sizeof(uint32_t), &cmd.instanceCount);
+			cached_visible_patch_count_ = cmd.instanceCount;
+		}
+
 		last_camera_pos_ = camera_pos;
 		last_world_scale_ = world_scale;
 		UpdateGridTextures(world_scale);
@@ -367,19 +375,23 @@ namespace Boidsish {
 				glUniform4f(cull_frustum_planes_loc_[i], frustum.planes[i].normal.x, frustum.planes[i].normal.y, frustum.planes[i].normal.z, frustum.planes[i].distance);
 			}
 		}
-		bool enableHiZ = (hiz_texture_ != 0);
-		if (cull_enable_hiz_loc_ != -1) glUniform1i(cull_enable_hiz_loc_, enableHiZ);
-		if (enableHiZ) {
-			glActiveTexture(GL_TEXTURE15);
-			glBindTexture(GL_TEXTURE_2D, hiz_texture_);
-			if (cull_hiz_texture_loc_ != -1) glUniform1i(cull_hiz_texture_loc_, 15);
-			if (cull_prev_vp_loc_ != -1) glUniformMatrix4fv(cull_prev_vp_loc_, 1, GL_FALSE, &hiz_prev_vp_[0][0]);
-			if (cull_hiz_size_loc_ != -1) glUniform2i(cull_hiz_size_loc_, hiz_width_, hiz_height_);
-			if (cull_hiz_mip_count_loc_ != -1) glUniform1i(cull_hiz_mip_count_loc_, hiz_mip_count_);
-		}
+
+		if (cull_camera_pos_loc_ != -1) glUniform3f(cull_camera_pos_loc_, camera_pos.x, camera_pos.y, camera_pos.z);
+		glActiveTexture(GL_TEXTURE11);
+		glBindTexture(GL_TEXTURE_2D, chunk_grid_texture_);
+		if (cull_chunk_grid_loc_ != -1) glUniform1i(cull_chunk_grid_loc_, 11);
+		glActiveTexture(GL_TEXTURE12);
+		glBindTexture(GL_TEXTURE_2D, max_height_grid_texture_);
+		if (cull_max_height_grid_loc_ != -1) glUniform1i(cull_max_height_grid_loc_, 12);
+		glActiveTexture(GL_TEXTURE13);
+		glBindTexture(GL_TEXTURE_2D_ARRAY, heightmap_texture_);
+		if (cull_heightmap_array_loc_ != -1) glUniform1i(cull_heightmap_array_loc_, 13);
+
+		glBindBufferBase(GL_UNIFORM_BUFFER, Constants::UboBinding::TerrainData(), terrain_data_ubo_);
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, chunk_metadata_ssbo_);
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::TerrainVisiblePatches(), visible_patches_ssbo_);
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::TerrainIndirect(), indirect_buffer_);
+
 		glDispatchCompute((next_gpu_index_ * 64 + 63) / 64, 1, 1);
 		glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT | GL_COMMAND_BARRIER_BIT);
 	}
@@ -392,28 +404,39 @@ namespace Boidsish {
 		int center_chunk_z = static_cast<int>(std::floor(last_camera_pos_.z / scaled_chunk_size));
 		int origin_x = center_chunk_x - half_grid;
 		int origin_z = center_chunk_z - half_grid;
-		std::vector<int16_t> slice_data(grid_size * grid_size, -1);
-		std::vector<float> height_data(grid_size * grid_size, -10000.0f);
-		for (const auto& [key, chunk] : chunks_) {
-			int lx = key.first - origin_x;
-			int lz = key.second - origin_z;
-			if (lx >= 0 && lx < grid_size && lz >= 0 && lz < grid_size) {
-				int idx = lz * grid_size + lx;
-				slice_data[idx] = static_cast<int16_t>(chunk.texture_slice);
-				height_data[idx] = chunk.max_y;
+
+		bool grid_moved = (origin_x != last_grid_origin_x_ || origin_z != last_grid_origin_z_);
+		bool scale_changed = (world_scale != last_grid_world_scale_);
+
+		if (grid_moved || scale_changed || chunk_metadata_dirty_) {
+			std::vector<int16_t> slice_data(grid_size * grid_size, -1);
+			std::vector<float> height_data(grid_size * grid_size, -10000.0f);
+			for (const auto& [key, chunk] : chunks_) {
+				int lx = key.first - origin_x;
+				int lz = key.second - origin_z;
+				if (lx >= 0 && lx < grid_size && lz >= 0 && lz < grid_size) {
+					int idx = lz * grid_size + lx;
+					slice_data[idx] = static_cast<int16_t>(chunk.texture_slice);
+					height_data[idx] = chunk.max_y;
+				}
 			}
+			glBindTexture(GL_TEXTURE_2D, chunk_grid_texture_);
+			glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, grid_size, grid_size, GL_RED_INTEGER, GL_SHORT, slice_data.data());
+			glBindTexture(GL_TEXTURE_2D, max_height_grid_texture_);
+			glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, grid_size, grid_size, GL_RED, GL_FLOAT, height_data.data());
+			GenerateMaxHeightMips();
+
+			TerrainDataUbo ubo{};
+			ubo.origin_size = glm::ivec4(origin_x, origin_z, grid_size, 1);
+			ubo.terrain_params = glm::vec4(static_cast<float>(chunk_size_), world_scale, 0.0f, 0.0f);
+			glBindBuffer(GL_UNIFORM_BUFFER, terrain_data_ubo_);
+			glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(TerrainDataUbo), &ubo);
+			glBindBuffer(GL_UNIFORM_BUFFER, 0);
+
+			last_grid_origin_x_ = origin_x;
+			last_grid_origin_z_ = origin_z;
+			last_grid_world_scale_ = world_scale;
 		}
-		glBindTexture(GL_TEXTURE_2D, chunk_grid_texture_);
-		glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, grid_size, grid_size, GL_RED_INTEGER, GL_SHORT, slice_data.data());
-		glBindTexture(GL_TEXTURE_2D, max_height_grid_texture_);
-		glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, grid_size, grid_size, GL_RED, GL_FLOAT, height_data.data());
-		GenerateMaxHeightMips();
-		TerrainDataUbo ubo{};
-		ubo.origin_size = glm::ivec4(origin_x, origin_z, grid_size, 1);
-		ubo.terrain_params = glm::vec4(static_cast<float>(chunk_size_), world_scale, 0.0f, 0.0f);
-		glBindBuffer(GL_UNIFORM_BUFFER, terrain_data_ubo_);
-		glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(TerrainDataUbo), &ubo);
-		glBindBuffer(GL_UNIFORM_BUFFER, 0);
 	}
 
 	void TerrainRenderManager::GenerateMaxHeightMips() {
@@ -499,14 +522,7 @@ namespace Boidsish {
 
 	size_t TerrainRenderManager::GetVisibleChunkCount() const {
 		std::lock_guard<std::recursive_mutex> lock(mutex_);
-		if (indirect_buffer_ == 0) return 0;
-
-		DrawElementsIndirectCommand cmd;
-		glBindBuffer(GL_DRAW_INDIRECT_BUFFER, indirect_buffer_);
-		glGetBufferSubData(GL_DRAW_INDIRECT_BUFFER, 0, sizeof(DrawElementsIndirectCommand), &cmd);
-		glBindBuffer(GL_DRAW_INDIRECT_BUFFER, 0);
-
-		return static_cast<size_t>(cmd.instanceCount);
+		return cached_visible_patch_count_;
 	}
 
 	std::vector<glm::vec4> TerrainRenderManager::GetChunkInfo(float world_scale) const {

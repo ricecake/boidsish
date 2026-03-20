@@ -134,11 +134,10 @@ namespace Boidsish {
 		GLint cull_num_chunks_loc_ = -1;
 		GLint cull_chunk_size_loc_ = -1;
 		GLint cull_frustum_planes_loc_[6];
-		GLint cull_enable_hiz_loc_ = -1;
-		GLint cull_hiz_texture_loc_ = -1;
-		GLint cull_prev_vp_loc_ = -1;
-		GLint cull_hiz_size_loc_ = -1;
-		GLint cull_hiz_mip_count_loc_ = -1;
+		GLint cull_camera_pos_loc_ = -1;
+		GLint cull_chunk_grid_loc_ = -1;
+		GLint cull_max_height_grid_loc_ = -1;
+		GLint cull_heightmap_array_loc_ = -1;
 
 		GLuint chunk_grid_texture_ = 0, max_height_grid_texture_ = 0, terrain_data_ubo_ = 0;
 		std::unique_ptr<ComputeShader> grid_mip_shader_;
@@ -158,6 +157,12 @@ namespace Boidsish {
 
 		glm::vec3 last_camera_pos_{0.0f, 0.0f, 0.0f};
 		float     last_world_scale_ = 1.0f;
+
+		int       last_grid_origin_x_ = 0;
+		int       last_grid_origin_z_ = 0;
+		float     last_grid_world_scale_ = -1.0f;
+
+		size_t    cached_visible_patch_count_ = 0;
 
 		mutable std::recursive_mutex mutex_;
 		std::function<void(std::pair<int, int>)> eviction_callback_;

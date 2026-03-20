@@ -38,17 +38,20 @@ uniform int   u_numChunks;
 uniform float u_chunkSize;
 uniform vec4  u_frustumPlanes[6];
 
-// Hi-Z occlusion culling uniforms
-uniform sampler2D u_hizTexture;
-uniform mat4      u_prevViewProjection;
-uniform ivec2     u_hizSize;
-uniform int       u_hizMipCount;
-uniform bool      u_enableHiZ;
+// Raymarching-based occlusion uniforms
+uniform vec3       u_cameraPos;
+uniform isampler2D u_chunkGrid;
+uniform sampler2D  u_maxHeightGrid;
+uniform sampler2DArray u_heightmapArray;
+
+layout(std140, binding = 8) uniform TerrainData {
+	ivec4 u_originSize;    // x, y=z, z=size, w=isBound
+	vec4  u_terrainParams; // x=chunkSize, y=worldScale
+};
 
 bool isAABBInFrustum(vec3 minCorner, vec3 maxCorner) {
 	for (int i = 0; i < 6; i++) {
 		vec3 normal = u_frustumPlanes[i].xyz;
-		// Find the positive vertex (corner most in direction of plane normal)
 		vec3 pVertex = vec3(
 			normal.x >= 0.0 ? maxCorner.x : minCorner.x,
 			normal.y >= 0.0 ? maxCorner.y : minCorner.y,
@@ -61,75 +64,62 @@ bool isAABBInFrustum(vec3 minCorner, vec3 maxCorner) {
 	return true;
 }
 
-bool isOccluded(vec3 minCorner, vec3 maxCorner) {
-	if (!u_enableHiZ)
-		return false;
+bool isOccluded(vec3 center, float radius) {
+	// Raymarch from camera to the patch center.
+	// If we hit terrain before reaching the patch, it's occluded.
+	vec3 rayOrigin = u_cameraPos;
+	vec3 rayDir = center - rayOrigin;
+	float distToPatch = length(rayDir);
 
-	// Project 8 corners into previous frame clip space
-	vec2  minScreen = vec2(1e30);
-	vec2  maxScreen = vec2(-1e30);
-	float nearestDepth = 1.0;
-	int   cornersInFront = 0;
+	if (distToPatch < 5.0) return false; // Too close to occlude reliably
 
-	for (int i = 0; i < 8; i++) {
-		vec3 corner = vec3(
-			(i & 1) != 0 ? maxCorner.x : minCorner.x,
-			(i & 2) != 0 ? maxCorner.y : minCorner.y,
-			(i & 4) != 0 ? maxCorner.z : minCorner.z
-		);
-		vec4 clip = u_prevViewProjection * vec4(corner, 1.0);
+	rayDir /= distToPatch;
 
-		if (clip.w <= 0.0)
+	// Fast DDA-like traversal using the maxHeightGrid to skip empty chunks
+	float scaledChunkSize = u_terrainParams.x * u_terrainParams.y;
+	float t = 5.0; // Start a bit away from camera
+
+	int iter = 0;
+	while (t < distToPatch - radius && iter < 64) {
+		iter++;
+		vec3 p = rayOrigin + rayDir * t;
+
+		vec2 gridPos = p.xz / scaledChunkSize;
+		ivec2 chunkCoord = ivec2(floor(gridPos));
+		ivec2 localGridCoord = chunkCoord - u_originSize.xy;
+
+		if (localGridCoord.x < 0 || localGridCoord.x >= u_originSize.z ||
+		    localGridCoord.y < 0 || localGridCoord.y >= u_originSize.z) {
+			// Out of terrain bounds, can't be occluded by terrain
+			t += scaledChunkSize;
 			continue;
+		}
 
-		cornersInFront++;
-		vec3 ndc = clip.xyz / clip.w;
-		vec2 uv = ndc.xy * 0.5 + 0.5;
+		vec2 gridUV = (vec2(localGridCoord) + 0.5) / float(u_originSize.z);
 
-		minScreen = min(minScreen, uv);
-		maxScreen = max(maxScreen, uv);
-		nearestDepth = min(nearestDepth, ndc.z * 0.5 + 0.5);
+		// Hierarchical skip using u_maxHeightGrid
+		float h_max3 = textureLod(u_maxHeightGrid, gridUV, 3.0).r;
+		if (p.y > h_max3 + 2.0) {
+			// Ray is well above everything in this 8x8 chunk area
+			t += scaledChunkSize * 4.0;
+			continue;
+		}
+
+		float h_max0 = textureLod(u_maxHeightGrid, gridUV, 0.0).r;
+		if (p.y < h_max0) {
+			// Ray is below the maximum height of this chunk, might be occluded
+			int slice = texelFetch(u_chunkGrid, localGridCoord, 0).r;
+			if (slice >= 0) {
+				vec2 uv = (p.xz - vec2(chunkCoord) * scaledChunkSize) / scaledChunkSize;
+				float h = texture(u_heightmapArray, vec3(uv, float(slice))).r;
+				if (p.y < h - 1.0) return true; // Occluded!
+			}
+		}
+
+		t += scaledChunkSize * 0.5;
 	}
 
-	if (cornersInFront == 0)
-		return false;
-
-	if (cornersInFront < 8) {
-		// Straddling near plane - conservatively keep visible
-		return false;
-	}
-
-	// If the patch was entirely off-screen in the previous frame,
-	// the Hi-Z has no valid data for it - conservatively keep visible
-	if (maxScreen.x < 0.0 || minScreen.x > 1.0 || maxScreen.y < 0.0 || minScreen.y > 1.0) {
-		return false;
-	}
-
-	// Apply small expansion for temporal safety
-	vec2 expand = 4.0 / vec2(u_hizSize);
-	minScreen -= expand;
-	maxScreen += expand;
-
-	vec2 screenSize = maxScreen - minScreen;
-	if (screenSize.x * screenSize.y > 0.5)
-		return false;
-
-	vec2  pixelSize = screenSize * vec2(u_hizSize);
-	float maxPixelDim = max(pixelSize.x, pixelSize.y);
-	int   mipLevel = clamp(int(ceil(log2(max(maxPixelDim, 1.0) / 2.0))), 0, u_hizMipCount - 1);
-
-	vec4 rect = clamp(vec4(minScreen, maxScreen), 0.0, 1.0);
-
-	float hizDepth = 0.0;
-	hizDepth = max(hizDepth, textureLod(u_hizTexture, rect.xy, float(mipLevel)).r);
-	hizDepth = max(hizDepth, textureLod(u_hizTexture, rect.zy, float(mipLevel)).r);
-	hizDepth = max(hizDepth, textureLod(u_hizTexture, rect.xw, float(mipLevel)).r);
-	hizDepth = max(hizDepth, textureLod(u_hizTexture, rect.zw, float(mipLevel)).r);
-
-	if (hizDepth < 0.0001)
-		return false;
-
-	return nearestDepth > hizDepth;
+	return false;
 }
 
 void main() {
@@ -160,12 +150,13 @@ void main() {
 	);
 
 	// Add margin for displacement
-	float margin = patchSize * 0.5;
+	float margin = patchSize * 0.25;
 	vec3  minBound = minCorner - margin;
 	vec3  maxBound = maxCorner + margin;
 
 	if (isAABBInFrustum(minBound, maxBound)) {
-		if (!isOccluded(minBound, maxBound)) {
+		vec3 center = (minBound + maxBound) * 0.5;
+		if (!isOccluded(center, patchSize * 0.7)) {
 			uint destIdx = atomicAdd(command.instanceCount, 1);
 			visible_patches[destIdx].chunk_index = chunkIdx;
 			visible_patches[destIdx].patch_x = px;
