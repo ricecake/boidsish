@@ -64,59 +64,77 @@ bool isAABBInFrustum(vec3 minCorner, vec3 maxCorner) {
 	return true;
 }
 
-bool isOccluded(vec3 center, float radius) {
-	// Raymarch from camera to the patch center.
-	// If we hit terrain before reaching the patch, it's occluded.
+bool isOccluded(vec3 center, float radius, ivec2 targetChunk) {
 	vec3 rayOrigin = u_cameraPos;
 	vec3 rayDir = center - rayOrigin;
 	float distToPatch = length(rayDir);
 
-	if (distToPatch < 5.0) return false; // Too close to occlude reliably
+	if (distToPatch < 10.0) return false;
 
 	rayDir /= distToPatch;
 
-	// Fast DDA-like traversal using the maxHeightGrid to skip empty chunks
 	float scaledChunkSize = u_terrainParams.x * u_terrainParams.y;
-	float t = 5.0; // Start a bit away from camera
+	vec2  gridPos = rayOrigin.xz / scaledChunkSize;
+	ivec2 currentChunk = ivec2(floor(gridPos));
 
-	int iter = 0;
+	vec2  stepDir = sign(rayDir.xz);
+	vec2  safeRayDir = vec2(abs(rayDir.x) < 1e-6 ? 1e-6 : abs(rayDir.x), abs(rayDir.z) < 1e-6 ? 1e-6 : abs(rayDir.z));
+	vec2  tDelta = scaledChunkSize / safeRayDir;
+
+	vec2 tMax;
+	tMax.x = (stepDir.x > 0.0) ? (floor(gridPos.x) + 1.0 - gridPos.x) * tDelta.x : (gridPos.x - floor(gridPos.x)) * tDelta.x;
+	tMax.y = (stepDir.y > 0.0) ? (floor(gridPos.y) + 1.0 - gridPos.y) * tDelta.y : (gridPos.y - floor(gridPos.y)) * tDelta.y;
+
+	float t = 0.0;
+	int   iter = 0;
+
+	// DDA traversal
 	while (t < distToPatch - radius && iter < 64) {
 		iter++;
-		vec3 p = rayOrigin + rayDir * t;
 
-		vec2 gridPos = p.xz / scaledChunkSize;
-		ivec2 chunkCoord = ivec2(floor(gridPos));
-		ivec2 localGridCoord = chunkCoord - u_originSize.xy;
+		// If we've reached the target chunk, stop to avoid self-occlusion
+		if (currentChunk == targetChunk) break;
 
-		if (localGridCoord.x < 0 || localGridCoord.x >= u_originSize.z ||
-		    localGridCoord.y < 0 || localGridCoord.y >= u_originSize.z) {
-			// Out of terrain bounds, can't be occluded by terrain
-			t += scaledChunkSize;
-			continue;
-		}
+		ivec2 localGridCoord = currentChunk - u_originSize.xy;
+		if (localGridCoord.x >= 0 && localGridCoord.x < u_originSize.z &&
+		    localGridCoord.y >= 0 && localGridCoord.y < u_originSize.z) {
 
-		vec2 gridUV = (vec2(localGridCoord) + 0.5) / float(u_originSize.z);
+			vec2  gridUV = (vec2(localGridCoord) + 0.5) / float(u_originSize.z);
+			float rayYAtT = rayOrigin.y + t * rayDir.y;
 
-		// Hierarchical skip using u_maxHeightGrid
-		float h_max3 = textureLod(u_maxHeightGrid, gridUV, 3.0).r;
-		if (p.y > h_max3 + 2.0) {
-			// Ray is well above everything in this 8x8 chunk area
-			t += scaledChunkSize * 4.0;
-			continue;
-		}
-
-		float h_max0 = textureLod(u_maxHeightGrid, gridUV, 0.0).r;
-		if (p.y < h_max0) {
-			// Ray is below the maximum height of this chunk, might be occluded
-			int slice = texelFetch(u_chunkGrid, localGridCoord, 0).r;
-			if (slice >= 0) {
-				vec2 uv = (p.xz - vec2(chunkCoord) * scaledChunkSize) / scaledChunkSize;
-				float h = texture(u_heightmapArray, vec3(uv, float(slice))).r;
-				if (p.y < h - 1.0) return true; // Occluded!
+			// Hierarchical skip
+			float h_max3 = textureLod(u_maxHeightGrid, gridUV, 3.0).r;
+			if (rayYAtT < h_max3) {
+				float h_max0 = textureLod(u_maxHeightGrid, gridUV, 0.0).r;
+				if (rayYAtT < h_max0) {
+					int slice = texelFetch(u_chunkGrid, localGridCoord, 0).r;
+					if (slice >= 0) {
+						// Sub-march inside chunk
+						float tNext = min(tMax.x, tMax.y);
+						float tEnd = min(tNext, distToPatch - radius);
+						float subT = t;
+						float subStep = 2.0 * u_terrainParams.y;
+						while (subT < tEnd) {
+							vec3 p = rayOrigin + rayDir * subT;
+							vec2 uv_chunk = (p.xz - vec2(currentChunk) * scaledChunkSize) / scaledChunkSize;
+							float h = texture(u_heightmapArray, vec3(uv_chunk, float(slice))).r;
+							if (p.y < h - 2.0) return true; // Hit!
+							subT += subStep;
+						}
+					}
+				}
 			}
 		}
 
-		t += scaledChunkSize * 0.5;
+		if (tMax.x < tMax.y) {
+			t = tMax.x;
+			tMax.x += tDelta.x;
+			currentChunk.x += int(stepDir.x);
+		} else {
+			t = tMax.y;
+			tMax.y += tDelta.y;
+			currentChunk.y += int(stepDir.y);
+		}
 	}
 
 	return false;
@@ -156,7 +174,8 @@ void main() {
 
 	if (isAABBInFrustum(minBound, maxBound)) {
 		vec3 center = (minBound + maxBound) * 0.5;
-		if (!isOccluded(center, patchSize * 0.7)) {
+		ivec2 targetChunk = ivec2(floor(chunk.world_offset_slice.xy / (u_chunkSize)));
+		if (!isOccluded(center, patchSize * 0.5, targetChunk)) {
 			uint destIdx = atomicAdd(command.instanceCount, 1);
 			visible_patches[destIdx].chunk_index = chunkIdx;
 			visible_patches[destIdx].patch_x = px;

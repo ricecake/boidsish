@@ -97,6 +97,10 @@ namespace Boidsish {
 
 		CreateGridMesh();
 		EnsureTextureCapacity(max_chunks);
+
+		// Force initial grid update
+		last_grid_origin_x_ = 1000000;
+		last_grid_origin_z_ = 1000000;
 	}
 
 	TerrainRenderManager::~TerrainRenderManager() {
@@ -296,6 +300,7 @@ namespace Boidsish {
 	}
 
 	void TerrainRenderManager::UnregisterChunk(std::pair<int, int> chunk_key) {
+		std::lock_guard<std::recursive_mutex> lock(mutex_);
 		auto it = chunks_.find(chunk_key);
 		if (it == chunks_.end()) return;
 		free_slices_.push_back(it->second.texture_slice);
@@ -305,6 +310,7 @@ namespace Boidsish {
 		glBufferSubData(GL_SHADER_STORAGE_BUFFER, it->second.gpu_index * sizeof(ChunkMetadataGPU), sizeof(ChunkMetadataGPU), &inactive);
 		free_gpu_indices_.push_back(it->second.gpu_index);
 		chunks_.erase(it);
+		chunk_metadata_dirty_ = true;
 	}
 
 	bool TerrainRenderManager::HasChunk(std::pair<int, int> chunk_key) const {
