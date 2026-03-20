@@ -8,6 +8,10 @@
 #include "procedural_mesher.h"
 #include "procedural_optimizer.h"
 #include "spline.h"
+#include "graphics.h"
+#include "terrain_generator_interface.h"
+#include "terrain_deformation_manager.h"
+#include "terrain_deformations.h"
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/quaternion.hpp>
 #include <glm/gtx/norm.hpp>
@@ -791,6 +795,16 @@ namespace Boidsish {
 		glm::vec3 windowColor(0.8f, 0.9f, 1.0f);
 		glm::vec3 windowEmissive(1.5f, 1.2f, 0.5f);
 
+		// Foundation
+		ProceduralElement foundation;
+		foundation.type = ProceduralElementType::Box;
+		foundation.position = glm::vec3(0, -0.4f, 0);
+		foundation.dimensions = glm::vec3(width + 0.2f, 0.4f, depth + 0.2f);
+		foundation.color = glm::vec3(0.4f, 0.42f, 0.45f);
+		foundation.roughness = 0.9f;
+		foundation.metallic = 0.1f;
+		ir.AddElement(foundation);
+
 		// Core structure
 		for (int i = 0; i < floors; ++i) {
 			float     h = floorHeight;
@@ -978,6 +992,35 @@ namespace Boidsish {
 		}
 
 		return ir;
+	}
+
+	void ProceduralGenerator::LevelTerrainForModel(Visualizer& viz, std::shared_ptr<Model> model, float blend_distance) {
+		if (!model || !model->GetData())
+			return;
+
+		glm::vec3 pos = model->GetPosition();
+		glm::quat rot = model->GetRotation();
+		AABB      aabb = model->GetData()->aabb;
+
+		// Footprint dimensions (unscaled)
+		float half_width = (aabb.max.x - aabb.min.x) * 0.5f * model->GetScale().x;
+		float half_depth = (aabb.max.z - aabb.min.z) * 0.5f * model->GetScale().z;
+
+		// Calculate rotation in radians (around Y)
+		glm::vec3 forward = rot * glm::vec3(0, 0, 1);
+		float     rot_y = std::atan2(forward.x, forward.z);
+
+		// Center of the foundation at terrain level
+		glm::vec3 center = pos;
+
+		viz.GetTerrain()->AddFlattenSquare(
+			center,
+			half_width,
+			half_depth,
+			blend_distance,
+			rot_y
+		);
+		viz.GetTerrain()->InvalidateDeformedChunks();
 	}
 
 	std::shared_ptr<ModelData> ProceduralGenerator::CreateModelDataFromGeometry(

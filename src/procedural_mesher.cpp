@@ -413,6 +413,7 @@ namespace Boidsish {
 			std::vector<Vertex>       vertices;
 			std::vector<unsigned int> indices;
 			MaterialKey               material;
+			bool                      is_leaf = false;
 		};
 
 		std::map<MaterialKey, MeshData> grouped_meshes;
@@ -495,9 +496,11 @@ namespace Boidsish {
 				}
 
 				if (points.size() >= 2) {
-					auto&        group = grouped_meshes[mat];
-					group.material = mat;
-					int          v_start = (int)group.vertices.size();
+					if (grouped_meshes.find(mat) == grouped_meshes.end()) {
+						grouped_meshes[mat].material = mat;
+					}
+					auto& group = grouped_meshes[mat];
+					int   v_start = (int)group.vertices.size();
 					auto         tube_data = Spline::GenerateTube(points, ups, sizes, colors, false, 10, 8);
 					unsigned int base = (unsigned int)group.vertices.size();
 					for (const auto& vd : tube_data) {
@@ -529,8 +532,10 @@ namespace Boidsish {
 				continue;
 
 			MaterialKey mat = {e.roughness, e.metallic, e.ao, e.emissiveColor};
-			auto&       group = grouped_meshes[mat];
-			group.material = mat;
+			if (grouped_meshes.find(mat) == grouped_meshes.end()) {
+				grouped_meshes[mat].material = mat;
+			}
+			auto& group = grouped_meshes[mat];
 			int         v_start = (int)group.vertices.size();
 
 			if (e.type == ProceduralElementType::Hub) {
@@ -614,9 +619,12 @@ namespace Boidsish {
 			const auto& e = ir.elements[i];
 			if (e.type == ProceduralElementType::Leaf) {
 				MaterialKey mat = {e.roughness, e.metallic, e.ao, e.emissiveColor};
-				auto&       group = grouped_meshes[mat];
-				group.material = mat;
-				int         v_start = (int)group.vertices.size();
+				if (grouped_meshes.find(mat) == grouped_meshes.end()) {
+					grouped_meshes[mat].material = mat;
+				}
+				auto& group = grouped_meshes[mat];
+				group.is_leaf = true;
+				int v_start = (int)group.vertices.size();
 				AddLeafGeom(group.vertices, group.indices, e.position, e.orientation, e.radius, e.color, e.variant);
 
 				SkinningMode sm = e.skinning_mode;
@@ -702,11 +710,12 @@ namespace Boidsish {
 			data->aabb = AABB(min, max);
 		}
 
-		auto finalize_mesh = [&](MeshData& group, bool use_simplifier) {
+		auto finalize_mesh = [&](MeshData& group) {
 			if (group.vertices.empty())
 				return;
 			auto& config = ConfigManager::GetInstance();
-			if (use_simplifier && config.GetAppSettingBool("mesh_simplifier_enabled", false))
+			bool  should_simplify = !group.is_leaf;
+			if (should_simplify && config.GetAppSettingBool("mesh_simplifier_enabled", false))
 				MeshOptimizerUtil::Simplify(group.vertices, group.indices, 0.05f, 0.5f, 40, data->model_path);
 
 			std::vector<unsigned int> shadow_indices;
@@ -726,7 +735,7 @@ namespace Boidsish {
 		};
 
 		for (auto& [key, group] : grouped_meshes) {
-			finalize_mesh(group, true);
+			finalize_mesh(group);
 		}
 
 		return std::make_shared<Model>(data, false);

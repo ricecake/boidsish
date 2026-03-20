@@ -45,6 +45,10 @@ namespace Boidsish {
 		textures = other.textures;
 		diffuseColor = other.diffuseColor;
 		opacity = other.opacity;
+		roughness = other.roughness;
+		metallic = other.metallic;
+		ao = other.ao;
+		emissiveColor = other.emissiveColor;
 		has_vertex_colors = other.has_vertex_colors;
 
 		// Do not copy VAO/VBO/EBO handles - setupMesh will create new ones if needed
@@ -62,6 +66,10 @@ namespace Boidsish {
 			textures = other.textures;
 			diffuseColor = other.diffuseColor;
 			opacity = other.opacity;
+			roughness = other.roughness;
+			metallic = other.metallic;
+			ao = other.ao;
+			emissiveColor = other.emissiveColor;
 			has_vertex_colors = other.has_vertex_colors;
 		}
 		return *this;
@@ -229,6 +237,10 @@ namespace Boidsish {
 
 		Shape::shader->setVec3("objectColor", diffuseColor);
 		Shape::shader->setFloat("objectAlpha", opacity);
+		Shape::shader->setFloat("roughness", roughness);
+		Shape::shader->setFloat("metallic", metallic);
+		Shape::shader->setFloat("ao", ao);
+		Shape::shader->setVec3("emissiveColor", emissiveColor);
 
 		for (unsigned int i = 0; i < textures.size(); i++) {
 			glActiveTexture(GL_TEXTURE0 + i); // active proper texture unit before binding
@@ -320,6 +332,10 @@ namespace Boidsish {
 
 		shader.setVec3("objectColor", diffuseColor);
 		shader.setFloat("objectAlpha", opacity);
+		shader.setFloat("roughness", roughness);
+		shader.setFloat("metallic", metallic);
+		shader.setFloat("ao", ao);
+		shader.setVec3("emissiveColor", emissiveColor);
 
 		// Bind textures using the provided shader
 		bindTextures(shader);
@@ -596,9 +612,12 @@ namespace Boidsish {
 				GetA() * mesh.opacity
 			);
 			packet.uniforms.use_pbr = UsePBR();
-			packet.uniforms.roughness = GetRoughness();
-			packet.uniforms.metallic = GetMetallic();
-			packet.uniforms.ao = GetAO();
+			packet.uniforms.roughness = mesh.roughness;
+			packet.uniforms.metallic = mesh.metallic;
+			packet.uniforms.ao = mesh.ao;
+			packet.uniforms.emissive_r = mesh.emissiveColor.r;
+			packet.uniforms.emissive_g = mesh.emissiveColor.g;
+			packet.uniforms.emissive_b = mesh.emissiveColor.b;
 
 			int  use_texture_mask = 0;
 			bool has_diffuse = false;

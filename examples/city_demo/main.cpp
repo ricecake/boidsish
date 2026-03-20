@@ -12,9 +12,19 @@ std::vector<std::shared_ptr<Model>> city_models;
 void PrepareCity(Visualizer& viz) {
 	for (int x = -2; x <= 2; ++x) {
 		for (int z = -2; z <= 2; ++z) {
+			float world_x = x * 15.0f;
+			float world_z = z * 15.0f;
+
+			// Sample terrain height to place building correctly
+			auto [terrain_height, terrain_normal] = viz.GetTerrainPropertiesAtPoint(world_x, world_z);
+
 			unsigned int seed = (x + 10) * 100 + (z + 10);
 			auto building = ProceduralGenerator::Generate(ProceduralType::Structure, seed);
-			building->SetPosition(x * 10.0f, 0, z * 10.0f);
+			building->SetPosition(world_x, terrain_height, world_z);
+
+			// Level the terrain under the building
+			ProceduralGenerator::LevelTerrainForModel(viz, building);
+
 			viz.AddShape(building);
 			city_models.push_back(building);
 		}

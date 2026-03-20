@@ -30,6 +30,19 @@ TEST(ProceduralGeneratorTest, GenerateAllTypes) {
         totalVertices += mesh.vertices.size();
     }
     EXPECT_GT(totalVertices, 0);
+
+    auto structure = ProceduralGenerator::Generate(ProceduralType::Structure, 2024);
+    ASSERT_NE(structure, nullptr);
+    EXPECT_GT(structure->getMeshes().size(), 1); // Should have multiple meshes for different materials
+
+    bool hasEmissive = false;
+    for (const auto& mesh : structure->getMeshes()) {
+        if (glm::length(mesh.emissiveColor) > 0.1f) {
+            hasEmissive = true;
+            break;
+        }
+    }
+    EXPECT_TRUE(hasEmissive);
 }
 
 TEST(ProceduralGeneratorTest, MultipleVariants) {

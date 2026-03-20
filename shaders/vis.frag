@@ -173,6 +173,7 @@ void main() {
 	if (has_emissive) {
 		emissive = texture(texture_emissive1, TexCoords).rgb;
 	}
+	emissive += c_emissive_color * nightFactor;
 
 	float baseAlpha = c_objectAlpha;
 
