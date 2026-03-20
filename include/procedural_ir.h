@@ -35,6 +35,10 @@ namespace Boidsish {
 		glm::vec3 dimensions = glm::vec3(1.0f); // For Box, Wedge, Pyramid
 
 		glm::vec3 color = glm::vec3(1.0f);
+		float     roughness = 0.5f;
+		float     metallic = 0.0f;
+		float     ao = 1.0f;
+		glm::vec3 emissiveColor = glm::vec3(0.0f);
 		int       variant = 0; // Shape variant for Leaf, etc.
 
 		// Hierarchy
@@ -52,7 +56,12 @@ namespace Boidsish {
 		std::vector<ProceduralElement> elements;
 		std::string                    name;
 
-		void AddElement(const ProceduralElement& element) { elements.push_back(element); }
+		void AddElement(ProceduralElement element) {
+			for (int& child : element.children) {
+				child = -1; // Clear children indices as they are not valid in the new context
+			}
+			elements.push_back(element);
+		}
 
 		int AddTube(
 			glm::vec3          start,

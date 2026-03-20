@@ -11,7 +11,9 @@
 
 namespace Boidsish {
 
-	enum class ProceduralType { Rock, Grass, Flower, Tree, TreeSpaceColonization, Critter };
+	class Visualizer;
+
+	enum class ProceduralType { Rock, Grass, Flower, Tree, TreeSpaceColonization, Critter, Structure };
 
 	class ProceduralGenerator {
 	public:
@@ -59,6 +61,13 @@ namespace Boidsish {
 			const std::vector<std::string>& rules = {},
 			int                             iterations = 3
 		);
+		static ProceduralIR GenerateStructureIR(unsigned int seed);
+
+		/**
+		 * @brief Helper to level the terrain underneath a model's footprint.
+		 * Uses FlattenSquareDeformation to create a flat area at the model's base.
+		 */
+		static void LevelTerrainForModel(Visualizer& viz, std::shared_ptr<Model> model, float blend_distance = 2.0f);
 
 	private:
 		struct TurtleState {

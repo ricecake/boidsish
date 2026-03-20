@@ -164,7 +164,9 @@ namespace Boidsish {
 		int   is_refractive = 0;       // 4 bytes
 		float refractive_index = 1.0f; // 4 bytes -> 16
 		// Padding to 256 bytes for SSBO alignment safety
-		float padding[3];
+		float emissive_r = 0.0f;
+		float emissive_g = 0.0f;
+		float emissive_b = 0.0f;
 	};
 
 	static_assert(sizeof(CommonUniforms) == 256, "CommonUniforms must be exactly 256 bytes for SSBO alignment");
