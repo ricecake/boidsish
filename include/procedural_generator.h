@@ -11,7 +11,7 @@
 
 namespace Boidsish {
 
-	enum class ProceduralType { Rock, Grass, Flower, Tree, TreeSpaceColonization, Critter };
+	enum class ProceduralType { Rock, Grass, Flower, Tree, TreeSpaceColonization, Critter, Structure };
 
 	class ProceduralGenerator {
 	public:
@@ -59,6 +59,7 @@ namespace Boidsish {
 			const std::vector<std::string>& rules = {},
 			int                             iterations = 3
 		);
+		static ProceduralIR GenerateStructureIR(unsigned int seed);
 
 	private:
 		struct TurtleState {
