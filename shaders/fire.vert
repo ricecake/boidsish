@@ -1,6 +1,7 @@
 #version 430 core
 
 #include "frustum.glsl"
+#include "visual_effects.glsl"
 
 // Must match the C++ struct layout in fire_effect.h
 struct Particle {
@@ -62,6 +63,7 @@ void main() {
 
 	{
 		view_pos = u_view * vec4(p.pos.xyz, 1.0);
+		view_pos = warpViewSpace(view_pos);
 		gl_Position = u_projection * view_pos;
 		v_lifetime = p.pos.w;
 		v_style = p.style;

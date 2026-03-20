@@ -283,11 +283,16 @@ void main() {
 		PrevPosition =
 			gl_Position; // Sky box doesn't move relative to camera normally, or we don't care about its velocity
 	} else {
-		gl_Position = projection * view * vec4(FragPos, 1.0);
+		vec4 vPos = view * vec4(FragPos, 1.0);
+		vPos = warpViewSpace(vPos);
+		gl_Position = projection * vPos;
+
 		CurPosition = gl_Position;
 		// Since we don't have previous model matrix, we assume static objects for velocity
 		// This is sufficient for GTAO and most environment reprojection.
-		PrevPosition = prevViewProjection * vec4(FragPos, 1.0);
+		vec4 prevVPos = prevView * vec4(FragPos, 1.0);
+		prevVPos = warpViewSpace(prevVPos);
+		PrevPosition = uProjection * prevVPos;
 	}
 
 	gl_ClipDistance[0] = dot(vec4(FragPos, 1.0), clipPlane);

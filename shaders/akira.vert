@@ -1,5 +1,7 @@
 #version 420 core
 
+#include "visual_effects.glsl"
+
 layout(location = 0) in vec3 aPos;
 layout(location = 1) in vec3 aNormal;
 layout(location = 2) in vec2 aTexCoords;
@@ -17,5 +19,7 @@ void main() {
 	Normal = mat3(transpose(inverse(model))) * aNormal;
 	TexCoords = aTexCoords;
 
-	gl_Position = projection * view * vec4(FragPos, 1.0);
+	vec4 vPos = view * vec4(FragPos, 1.0);
+	vPos = warpViewSpace(vPos);
+	gl_Position = projection * vPos;
 }

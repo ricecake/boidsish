@@ -444,6 +444,7 @@ namespace Boidsish {
 		GLuint    frustum_ubo{0};
 		glm::mat4 projection;
 		glm::mat4 prev_view_projection{1.0f};
+		glm::mat4 prev_view{1.0f};
 
 		double last_mouse_x = 0.0, last_mouse_y = 0.0;
 		bool   first_mouse = true;
@@ -1167,6 +1168,8 @@ namespace Boidsish {
 			frame_config_.wind_strength = cfg.GetAppSettingFloat("wind_strength", 0.065f);
 			frame_config_.wind_speed = cfg.GetAppSettingFloat("wind_speed", 0.075f);
 			frame_config_.wind_frequency = cfg.GetAppSettingFloat("wind_frequency", 0.01f);
+			frame_config_.world_scale_exponent = cfg.GetAppSettingFloat("world_scale_exponent", 1.0f);
+			frame_config_.world_scale_reference = cfg.GetAppSettingFloat("world_scale_reference", 100.0f);
 
 			if (decor_manager) {
 				decor_manager->SetEnabled(frame_config_.render_decor);
@@ -2812,6 +2815,7 @@ namespace Boidsish {
 		temporal_data.uProjection = impl->projection;
 		temporal_data.invProjection = glm::inverse(impl->projection);
 		temporal_data.invView = glm::inverse(view);
+		temporal_data.prevView = impl->prev_view;
 		temporal_data.texelSize = glm::vec2(1.0f / impl->render_width, 1.0f / impl->render_height);
 		temporal_data.frameIndex = static_cast<int>(impl->frame_count_);
 		temporal_data.padding = 0.0f;
@@ -2821,6 +2825,7 @@ namespace Boidsish {
 		glBindBuffer(GL_UNIFORM_BUFFER, 0);
 
 		impl->prev_view_projection = current_vp;
+		impl->prev_view = view;
 
 		// --- Resource Preparation (Main Thread) ---
 		for (const auto& shape : impl->shapes) {
@@ -2982,6 +2987,8 @@ namespace Boidsish {
 			ubo_data.wind_strength = impl->frame_config_.wind_strength;
 			ubo_data.wind_speed = impl->frame_config_.wind_speed;
 			ubo_data.wind_frequency = impl->frame_config_.wind_frequency;
+			ubo_data.world_scale_exponent = impl->frame_config_.world_scale_exponent;
+			ubo_data.world_scale_reference = impl->frame_config_.world_scale_reference;
 			if (impl->frame_config_.artistic_ripple) {
 				ubo_data.ripple_enabled = 1;
 			}

@@ -4,6 +4,7 @@ layout(std140, binding = 6) uniform TemporalData {
 	mat4  uProjection;
 	mat4  invProjection;
 	mat4  invView;
+	mat4  prevView;
 	vec2  texelSize;
 	int   frameIndex;
 	float padding_temporal;

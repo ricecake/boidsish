@@ -14,12 +14,13 @@ namespace Boidsish {
 		glm::mat4 uProjection;        // offset 128, 64 bytes
 		glm::mat4 invProjection;      // offset 192, 64 bytes
 		glm::mat4 invView;            // offset 256, 64 bytes
-		glm::vec2 texelSize;          // offset 320, 8 bytes
-		int       frameIndex;         // offset 328, 4 bytes
-		float     padding;            // offset 332, 4 bytes
-	}; // Total: 336 bytes
+		glm::mat4 prevView;           // offset 320, 64 bytes
+		glm::vec2 texelSize;          // offset 384, 8 bytes
+		int       frameIndex;         // offset 392, 4 bytes
+		float     padding;            // offset 396, 4 bytes
+	}; // Total: 400 bytes
 
-	static_assert(sizeof(TemporalUbo) == 336, "TemporalUbo size mismatch for std140");
+	static_assert(sizeof(TemporalUbo) == 400, "TemporalUbo size mismatch for std140");
 } // namespace Boidsish
 
 #endif // TEMPORAL_DATA_H

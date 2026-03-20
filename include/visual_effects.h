@@ -23,6 +23,7 @@ namespace Boidsish {
 		float wind_strength;
 		float wind_speed;
 		float wind_frequency;
-		float _pad; // Padding for 16-byte alignment
+		float world_scale_exponent;
+		float world_scale_reference;
 	};
 } // namespace Boidsish

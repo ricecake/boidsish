@@ -12,12 +12,18 @@ uniform mat4 projection;
 
 #include "helpers/lighting.glsl"
 #include "temporal_data.glsl"
+#include "visual_effects.glsl"
 
 void main() {
 	WorldPos = vec3(model * vec4(aPos, 1.0));
 	WorldPos.xz += viewPos.xz;
 	Normal = vec3(0.0, 1.0, 0.0);
-	gl_Position = projection * view * vec4(WorldPos, 1.0);
+	vec4 vPos = view * vec4(WorldPos, 1.0);
+	vPos = warpViewSpace(vPos);
+	gl_Position = projection * vPos;
+
 	CurPosition = gl_Position;
-	PrevPosition = prevViewProjection * vec4(WorldPos, 1.0);
+	vec4 prevVPos = prevView * vec4(WorldPos, 1.0);
+	prevVPos = warpViewSpace(prevVPos);
+	PrevPosition = uProjection * prevVPos;
 }
