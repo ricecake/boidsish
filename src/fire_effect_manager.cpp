@@ -193,8 +193,8 @@ namespace Boidsish {
 
 		glGenBuffers(1, &behavior_command_buffer_);
 		glBindBuffer(GL_DRAW_INDIRECT_BUFFER, behavior_command_buffer_);
-		// DispatchIndirectCommand: 3 * uint32_t
-		glBufferData(GL_DRAW_INDIRECT_BUFFER, 3 * sizeof(uint32_t), nullptr, GL_DYNAMIC_DRAW);
+		// DispatchIndirectCommand: 4 * uint32_t (num_groups_x, y, z, and count)
+		glBufferData(GL_DRAW_INDIRECT_BUFFER, 4 * sizeof(uint32_t), nullptr, GL_DYNAMIC_DRAW);
 
 		glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
 		glBindBuffer(GL_DRAW_INDIRECT_BUFFER, 0);
@@ -404,7 +404,7 @@ namespace Boidsish {
 		glBufferSubData(GL_SHADER_STORAGE_BUFFER, 0, sizeof(draw_cmd_init), draw_cmd_init);
 
 		glBindBuffer(GL_SHADER_STORAGE_BUFFER, behavior_command_buffer_);
-		uint32_t behavior_cmd_init[3] = {0, 1, 1}; // num_groups_x, num_groups_y, num_groups_z
+		uint32_t behavior_cmd_init[4] = {0, 1, 1, 0}; // num_groups_x, num_groups_y, num_groups_z, count
 		glBufferSubData(GL_SHADER_STORAGE_BUFFER, 0, sizeof(behavior_cmd_init), behavior_cmd_init);
 
 		// --- Common Bindings ---
@@ -461,7 +461,16 @@ namespace Boidsish {
 			);
 		}
 
-		// --- Build Spatial Grid ---
+		// --- Phase 1: Lifecycle ---
+		// Handle aging and respawning first so Phase 2/3 work with valid particles
+		bind_textures_and_uniforms(lifecycle_shader_.get());
+		glDispatchCompute((kMaxParticles / Constants::Class::Particles::ComputeGroupSize()) + 1, 1, 1);
+
+		// Barrier to ensure particles and live indices are updated
+		glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
+
+		// --- Phase 2: Build Spatial Grid ---
+		// Build grid using the results of Phase 1
 		if (grid_build_shader_ && grid_build_shader_->isValid()) {
 			grid_build_shader_->use();
 			grid_build_shader_->setUint("u_grid_size", Constants::Class::Particles::ParticleGridSize());
@@ -487,20 +496,14 @@ namespace Boidsish {
 			glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
 		}
 
-		// --- Dispatch Phase 1: Lifecycle ---
-		bind_textures_and_uniforms(lifecycle_shader_.get());
-		glDispatchCompute((kMaxParticles / Constants::Class::Particles::ComputeGroupSize()) + 1, 1, 1);
-
-		// Barrier to ensure live indices and behavior command are ready
-		glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT | GL_COMMAND_BARRIER_BIT);
-
-		// --- Phase 2: Command Fixup ---
+		// --- Phase 3: Command Fixup ---
 		fixup_shader_->use();
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 34, behavior_command_buffer_);
 		glDispatchCompute(1, 1, 1);
 		glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT | GL_COMMAND_BARRIER_BIT);
 
-		// --- Phase 3: Behavior ---
+		// --- Phase 4: Behavior ---
+		// Processes only live particles identified in Phase 1, using grid from Phase 2
 		bind_textures_and_uniforms(behavior_shader_.get());
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::ParticleGridHeads(), grid_heads_buffer_);
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::ParticleGridNext(), grid_next_buffer_);

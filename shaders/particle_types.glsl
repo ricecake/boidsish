@@ -48,6 +48,7 @@ struct DispatchIndirectCommand {
 	uint num_groups_x;
 	uint num_groups_y;
 	uint num_groups_z;
+	uint count;
 };
 
 #ifdef COMPUTE_SHADER
@@ -66,6 +67,14 @@ layout(std430, binding = 27) writeonly buffer VisibleIndicesBuffer {
 layout(std430, binding = 33) buffer LiveIndicesBuffer {
 	uint live_indices[];
 };
+
+layout(std430, binding = 14) buffer ParticleGridHeads {
+	int grid_heads[];
+};
+
+layout(std430, binding = 15) buffer ParticleGridNext {
+	int grid_next[];
+};
 #else
 layout(std430, binding = 16) readonly buffer ParticleBuffer {
 	Particle particles[];
@@ -81,6 +90,14 @@ layout(std430, binding = 27) readonly buffer VisibleIndicesBuffer {
 
 layout(std430, binding = 33) readonly buffer LiveIndicesBuffer {
 	uint live_indices[];
+};
+
+layout(std430, binding = 14) readonly buffer ParticleGridHeads {
+	int grid_heads[];
+};
+
+layout(std430, binding = 15) readonly buffer ParticleGridNext {
+	int grid_next[];
 };
 #endif
 
@@ -102,14 +119,6 @@ layout(std430, binding = 28) buffer DrawCommandBuffer {
 
 layout(std430, binding = 34) buffer BehaviorCommandBuffer {
 	DispatchIndirectCommand behavior_command;
-};
-
-layout(std430, binding = 14) readonly buffer ParticleGridHeads {
-	int grid_heads[];
-};
-
-layout(std430, binding = 15) readonly buffer ParticleGridNext {
-	int grid_next[];
 };
 
 #endif

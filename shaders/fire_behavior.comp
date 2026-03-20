@@ -25,8 +25,8 @@ layout(local_size_x = 256, local_size_y = 1, local_size_z = 1) in;
 void main() {
 	uint live_idx = gl_GlobalInvocationID.x;
 
-	// Note: behavior_command.num_groups_x stores the count of live particles
-	if (live_idx >= behavior_command.num_groups_x) {
+	// Use the preserved particle count for the early-exit check
+	if (live_idx >= behavior_command.count) {
 		return;
 	}
 
