@@ -6,6 +6,7 @@ layout(location = 2) in vec2 aTexCoords;
 
 #include "common_uniforms.glsl"
 #include "temporal_data.glsl"
+#include "visual_effects.glsl"
 
 layout(std430, binding = 2) buffer UniformsSSBO {
 	CommonUniforms uniforms_data[];
@@ -36,8 +37,13 @@ void main() {
 	Normal = mat3(transpose(inverse(current_model))) * aNormal;
 	TexCoords = aTexCoords;
 
-	gl_Position = projection * view * vec4(FragPos, 1.0);
+	vec4 vPos = view * vec4(FragPos, 1.0);
+	vPos = warpViewSpace(vPos);
+	gl_Position = projection * vPos;
+
 	CurPosition = gl_Position;
-	PrevPosition = prevViewProjection * vec4(FragPos, 1.0);
+	vec4 prevVPos = prevView * vec4(FragPos, 1.0);
+	prevVPos = warpViewSpace(prevVPos);
+	PrevPosition = uProjection * prevVPos;
 	gl_ClipDistance[0] = dot(vec4(FragPos, 1.0), clipPlane);
 }

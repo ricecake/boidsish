@@ -113,6 +113,19 @@ namespace Boidsish {
 						ImGui::Text("Higher = larger world, Lower = smaller world");
 					}
 
+					ImGui::Separator();
+					ImGui::Text("World Warp (Non-linear Scale)");
+					auto& config = ConfigManager::GetInstance();
+					float warp_exponent = config.GetAppSettingFloat("world_scale_exponent", 1.0f);
+					if (ImGui::SliderFloat("Warp Exponent", &warp_exponent, 0.1f, 3.0f, "%.2f")) {
+						config.SetFloat("world_scale_exponent", warp_exponent);
+					}
+					float warp_ref = config.GetAppSettingFloat("world_scale_reference", 100.0f);
+					if (ImGui::SliderFloat("Warp Reference", &warp_ref, 1.0f, 1000.0f, "%.0f")) {
+						config.SetFloat("world_scale_reference", warp_ref);
+					}
+					ImGui::Text("1.0 = Linear. <1.0 = Far objects larger. >1.0 = Far objects smaller.");
+
 					auto decor_manager = m_visualizer.GetDecorManager();
 					if (decor_manager) {
 						bool enabled = decor_manager->IsEnabled();

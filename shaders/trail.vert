@@ -24,6 +24,7 @@ uniform vec4 clipPlane;
 #include "helpers/lighting.glsl"
 #include "helpers/noise.glsl"
 #include "temporal_data.glsl"
+#include "visual_effects.glsl"
 
 out vec4 CurPosition;
 out vec4 PrevPosition;
@@ -63,8 +64,12 @@ void main() {
 
 	vec4 world_pos = current_model * vec4(final_pos, 1.0);
 	gl_ClipDistance[0] = dot(world_pos, clipPlane);
-	gl_Position = projection * view * world_pos;
+	vec4 vPos = view * world_pos;
+	vPos = warpViewSpace(vPos);
+	gl_Position = projection * vPos;
 
 	CurPosition = gl_Position;
-	PrevPosition = prevViewProjection * world_pos;
+	vec4 prevVPos = prevView * world_pos;
+	prevVPos = warpViewSpace(prevVPos);
+	PrevPosition = uProjection * prevVPos;
 }
