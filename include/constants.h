@@ -114,6 +114,14 @@ namespace Boidsish {
 			constexpr int SliceData() {
 				return 24;
 			}
+
+			constexpr int LiveParticleIndices() {
+				return 33;
+			}
+
+			constexpr int BehaviorDrawCommand() {
+				return 34;
+			}
 		} // namespace SsboBinding
 
 		namespace General {

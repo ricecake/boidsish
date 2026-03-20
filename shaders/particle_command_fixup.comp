@@ -1,0 +1,20 @@
+#version 430 core
+
+#define COMPUTE_SHADER
+#include "particle_types.glsl"
+
+layout(local_size_x = 1, local_size_y = 1, local_size_z = 1) in;
+
+void main() {
+	// Phase 1 (Lifecycle) wrote the total count of live particles into num_groups_x.
+	uint count = behavior_command.num_groups_x;
+
+	// Preserve the original count for the behavior shader to use for its early exit.
+	behavior_command.count = count;
+
+	// Calculate the actual number of work groups for the indirect dispatch.
+	// num_groups = (count + group_size - 1) / group_size
+	behavior_command.num_groups_x = (count + 255) / 256;
+	behavior_command.num_groups_y = 1;
+	behavior_command.num_groups_z = 1;
+}
