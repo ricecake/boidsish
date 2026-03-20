@@ -331,7 +331,7 @@ namespace Boidsish {
 				}
 
 				constexpr int MaxViewDistance() {
-					return 24;
+					return 30;
 				}
 
 				constexpr int UnloadDistanceBuffer() {

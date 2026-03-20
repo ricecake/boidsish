@@ -113,7 +113,7 @@ bool testPointOccluded(vec3 p_test, ivec2 targetChunk) {
 							vec3 p = rayOrigin + rayDir * subT;
 							vec2 uv_chunk = (p.xz - vec2(currentChunk) * scaledChunkSize) / scaledChunkSize;
 							float h = texture(u_heightmapArray, vec3(uv_chunk, float(slice))).r;
-							if (p.y < h - 1.0) return true; // Occluded!
+							if (p.y < h - 4.0) return true; // Hit! (Increased bias)
 							subT += subStep;
 						}
 					}
@@ -152,17 +152,23 @@ void main() {
 	float patchSize = u_chunkSize / 8.0;
 	float slice = chunk.world_offset_slice.z;
 
-	// Sample corner heights for more accurate patch AABB
-	vec2 uv00 = vec2(float(px), float(pz)) / 8.0;
-	vec2 uv11 = vec2(float(px+1), float(pz+1)) / 8.0;
+	// Sample 3x3 height grid for accurate patch AABB
+	vec2 uv0 = vec2(float(px), float(pz)) / 8.0;
+	vec2 uv1 = vec2(float(px) + 0.5, float(pz) + 0.5) / 8.0;
+	vec2 uv2 = vec2(float(px+1), float(pz+1)) / 8.0;
 
-	float h00 = texture(u_heightmapArray, vec3(uv00, slice)).r;
-	float h10 = texture(u_heightmapArray, vec3(uv11.x, uv00.y, slice)).r;
-	float h01 = texture(u_heightmapArray, vec3(uv00.x, uv11.y, slice)).r;
-	float h11 = texture(u_heightmapArray, vec3(uv11.x, uv11.y, slice)).r;
+	float h00 = texture(u_heightmapArray, vec3(uv0.x, uv0.y, slice)).r;
+	float h10 = texture(u_heightmapArray, vec3(uv1.x, uv0.y, slice)).r;
+	float h20 = texture(u_heightmapArray, vec3(uv2.x, uv0.y, slice)).r;
+	float h01 = texture(u_heightmapArray, vec3(uv0.x, uv1.y, slice)).r;
+	float h11 = texture(u_heightmapArray, vec3(uv1.x, uv1.y, slice)).r;
+	float h21 = texture(u_heightmapArray, vec3(uv2.x, uv1.y, slice)).r;
+	float h02 = texture(u_heightmapArray, vec3(uv0.x, uv2.y, slice)).r;
+	float h12 = texture(u_heightmapArray, vec3(uv1.x, uv2.y, slice)).r;
+	float h22 = texture(u_heightmapArray, vec3(uv2.x, uv2.y, slice)).r;
 
-	float pMinY = min(min(h00, h10), min(h01, h11));
-	float pMaxY = max(max(h00, h10), max(h01, h11));
+	float pMinY = min(min(min(min(min(min(min(min(h00, h10), h20), h01), h11), h21), h02), h12), h22);
+	float pMaxY = max(max(max(max(max(max(max(max(h00, h10), h20), h01), h11), h21), h02), h12), h22);
 
 	vec3 minCorner = vec3(chunk.world_offset_slice.x + float(px) * patchSize, pMinY, chunk.world_offset_slice.y + float(pz) * patchSize);
 	vec3 maxCorner = vec3(minCorner.x + patchSize, pMaxY, minCorner.z + patchSize);
@@ -175,8 +181,12 @@ void main() {
 	if (isAABBInFrustum(minBound, maxBound)) {
 		ivec2 targetChunk = ivec2(floor(chunk.world_offset_slice.xy / (u_chunkSize)));
 
-		// Full occlusion test: Check 4 top corners of patch AABB
+		// Extremely conservative full occlusion test: Check all 8 corners of patch AABB
 		bool occluded = true;
+		occluded = occluded && testPointOccluded(vec3(minCorner.x, minCorner.y, minCorner.z), targetChunk);
+		occluded = occluded && testPointOccluded(vec3(maxCorner.x, minCorner.y, minCorner.z), targetChunk);
+		occluded = occluded && testPointOccluded(vec3(minCorner.x, minCorner.y, maxCorner.z), targetChunk);
+		occluded = occluded && testPointOccluded(vec3(maxCorner.x, minCorner.y, maxCorner.z), targetChunk);
 		occluded = occluded && testPointOccluded(vec3(minCorner.x, maxCorner.y, minCorner.z), targetChunk);
 		occluded = occluded && testPointOccluded(vec3(maxCorner.x, maxCorner.y, minCorner.z), targetChunk);
 		occluded = occluded && testPointOccluded(vec3(minCorner.x, maxCorner.y, maxCorner.z), targetChunk);

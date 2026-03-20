@@ -831,7 +831,7 @@ namespace Boidsish {
 				// Chunk size must match terrain_generator.h (32)
 				GLint max_layers = 0;
 				glGetIntegerv(GL_MAX_ARRAY_TEXTURE_LAYERS, &max_layers);
-				int initial_chunks = std::min(2048, max_layers > 0 ? max_layers : 512);
+				int initial_chunks = std::min(4096, max_layers > 0 ? max_layers : 512);
 				logger::LOG(
 					"Terrain render manager: GPU supports " + std::to_string(max_layers) +
 					" texture array layers, using " + std::to_string(initial_chunks)
