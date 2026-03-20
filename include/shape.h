@@ -170,6 +170,8 @@ namespace Boidsish {
 
 		inline float GetZ() const { return z_; }
 
+		inline glm::vec3 GetPosition() const { return glm::vec3(x_, y_, z_); }
+
 		inline void SetPosition(float x, float y, float z) {
 			x_ = x;
 			y_ = y;

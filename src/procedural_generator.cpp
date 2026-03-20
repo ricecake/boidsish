@@ -8,6 +8,10 @@
 #include "procedural_mesher.h"
 #include "procedural_optimizer.h"
 #include "spline.h"
+#include "graphics.h"
+#include "terrain_generator_interface.h"
+#include "terrain_deformation_manager.h"
+#include "terrain_deformations.h"
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/quaternion.hpp>
 #include <glm/gtx/norm.hpp>
@@ -280,6 +284,9 @@ namespace Boidsish {
 			break;
 		case ProceduralType::Critter:
 			ir = GenerateCritterIR(seed);
+			break;
+		case ProceduralType::Structure:
+			ir = GenerateStructureIR(seed);
 			break;
 		default:
 			return nullptr;
@@ -768,6 +775,120 @@ namespace Boidsish {
 		return ProceduralMesher::GenerateModel(ir);
 	}
 
+	ProceduralIR ProceduralGenerator::GenerateStructureIR(unsigned int seed) {
+		std::mt19937                          gen(seed);
+		std::uniform_real_distribution<float> dis(-0.1f, 0.1f);
+		std::uniform_real_distribution<float> sizeDis(1.0f, 3.0f);
+		std::uniform_int_distribution<int>    floorDis(1, 5);
+		std::uniform_real_distribution<float> colorDis(0.2f, 0.8f);
+
+		ProceduralIR ir;
+		ir.name = "structure";
+
+		int   floors = floorDis(gen);
+		float width = sizeDis(gen);
+		float depth = sizeDis(gen);
+		float floorHeight = 1.5f;
+
+		glm::vec3 wallColor(colorDis(gen), colorDis(gen), colorDis(gen));
+		glm::vec3 roofColor(colorDis(gen), colorDis(gen), colorDis(gen));
+		glm::vec3 windowColor(0.8f, 0.9f, 1.0f);
+		glm::vec3 windowEmissive(1.5f, 1.2f, 0.5f);
+
+		// Foundation
+		ProceduralElement foundation;
+		foundation.type = ProceduralElementType::Box;
+		foundation.position = glm::vec3(0, -0.4f, 0);
+		foundation.dimensions = glm::vec3(width + 0.2f, 0.4f, depth + 0.2f);
+		foundation.color = glm::vec3(0.4f, 0.42f, 0.45f);
+		foundation.roughness = 0.9f;
+		foundation.metallic = 0.1f;
+		ir.AddElement(foundation);
+
+		// Core structure
+		for (int i = 0; i < floors; ++i) {
+			float     h = floorHeight;
+			glm::vec3 pos(0, (i + 0.5f) * h, 0);
+			glm::vec3 dims(width, h * 0.5f, depth);
+
+			ProceduralElement e;
+			e.type = ProceduralElementType::Box;
+			e.position = pos;
+			e.dimensions = dims;
+			e.color = wallColor;
+			e.roughness = 0.8f;
+			ir.AddElement(e);
+
+			// Windows
+			int numWindowsW = static_cast<int>(width * 2);
+			int numWindowsD = static_cast<int>(depth * 2);
+
+			auto addWindow = [&](glm::vec3 wPos, glm::quat wOri) {
+				ProceduralElement w;
+				w.type = ProceduralElementType::Box;
+				w.position = wPos;
+				w.orientation = wOri;
+				w.dimensions = glm::vec3(0.3f, 0.4f, 0.05f);
+				w.color = windowColor;
+				w.emissiveColor = windowEmissive;
+				w.metallic = 0.9f;
+				w.roughness = 0.1f;
+				w.ao = 1.0f;
+				ir.AddElement(w);
+			};
+
+			for (int j = 0; j < numWindowsW; ++j) {
+				float x = -width + (j + 0.5f) * (2.0f * width / numWindowsW);
+				addWindow(glm::vec3(x, pos.y, depth + 0.01f), glm::quat(1, 0, 0, 0));
+				addWindow(glm::vec3(x, pos.y, -depth - 0.01f), glm::quat(1, 0, 0, 0));
+			}
+			for (int j = 0; j < numWindowsD; ++j) {
+				float z = -depth + (j + 0.5f) * (2.0f * depth / numWindowsD);
+				addWindow(glm::vec3(width + 0.01f, pos.y, z), glm::angleAxis(1.57f, glm::vec3(0, 1, 0)));
+				addWindow(glm::vec3(-width - 0.01f, pos.y, z), glm::angleAxis(1.57f, glm::vec3(0, 1, 0)));
+			}
+		}
+
+		// Door on first floor
+		ProceduralElement door;
+		door.type = ProceduralElementType::Box;
+		door.position = glm::vec3(0, 0.6f, depth + 0.02f);
+		door.dimensions = glm::vec3(0.4f, 0.6f, 0.05f);
+		door.color = glm::vec3(0.3f, 0.2f, 0.1f);
+		door.roughness = 0.7f;
+		ir.AddElement(door);
+
+		// Roof
+		int roofStyle = seed % 3;
+		if (roofStyle == 0) {
+			// Gabled
+			ProceduralElement roof;
+			roof.type = ProceduralElementType::Wedge;
+			roof.position = glm::vec3(0, floors * floorHeight + 0.5f, 0);
+			roof.dimensions = glm::vec3(width + 0.2f, 0.5f, depth + 0.1f);
+			roof.color = roofColor;
+			ir.AddElement(roof);
+		} else if (roofStyle == 1) {
+			// Pyramidal
+			ProceduralElement roof;
+			roof.type = ProceduralElementType::Pyramid;
+			roof.position = glm::vec3(0, floors * floorHeight + 0.5f, 0);
+			roof.dimensions = glm::vec3(width + 0.2f, 0.5f, depth + 0.2f);
+			roof.color = roofColor;
+			ir.AddElement(roof);
+		} else {
+			// Flat with border
+			ProceduralElement roof;
+			roof.type = ProceduralElementType::Box;
+			roof.position = glm::vec3(0, floors * floorHeight + 0.05f, 0);
+			roof.dimensions = glm::vec3(width + 0.1f, 0.05f, depth + 0.1f);
+			roof.color = roofColor;
+			ir.AddElement(roof);
+		}
+
+		return ir;
+	}
+
 	ProceduralIR ProceduralGenerator::GenerateCritterIR(
 		unsigned int                    seed,
 		const std::string&              custom_axiom,
@@ -871,6 +992,35 @@ namespace Boidsish {
 		}
 
 		return ir;
+	}
+
+	void ProceduralGenerator::LevelTerrainForModel(Visualizer& viz, std::shared_ptr<Model> model, float blend_distance) {
+		if (!model || !model->GetData())
+			return;
+
+		glm::vec3 pos = model->GetPosition();
+		glm::quat rot = model->GetRotation();
+		AABB      aabb = model->GetData()->aabb;
+
+		// Footprint dimensions (unscaled)
+		float half_width = (aabb.max.x - aabb.min.x) * 0.5f * model->GetScale().x;
+		float half_depth = (aabb.max.z - aabb.min.z) * 0.5f * model->GetScale().z;
+
+		// Calculate rotation in radians (around Y)
+		glm::vec3 forward = rot * glm::vec3(0, 0, 1);
+		float     rot_y = std::atan2(forward.x, forward.z);
+
+		// Center of the foundation at terrain level
+		glm::vec3 center = pos;
+
+		viz.GetTerrain()->AddFlattenSquare(
+			center,
+			half_width,
+			half_depth,
+			blend_distance,
+			rot_y
+		);
+		viz.GetTerrain()->InvalidateDeformedChunks();
 	}
 
 	std::shared_ptr<ModelData> ProceduralGenerator::CreateModelDataFromGeometry(

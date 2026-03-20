@@ -58,6 +58,7 @@ uniform float dissolve_plane_dist = 0.0;
 
 uniform bool  is_refractive = false;
 uniform float refractive_index = 1.0;
+uniform vec3  emissiveColor = vec3(0.0);
 
 uniform sampler2D texture_diffuse1;
 uniform sampler2D texture_normal1;
@@ -101,6 +102,10 @@ void main() {
 	float c_dissolve_dist = use_ssbo ? uniforms_data[vUniformIndex].dissolve_plane_dist : dissolve_plane_dist;
 	bool  c_is_refractive = use_ssbo ? (uniforms_data[vUniformIndex].is_refractive != 0) : is_refractive;
 	float c_refractive_index = use_ssbo ? uniforms_data[vUniformIndex].refractive_index : refractive_index;
+	vec3  c_emissive_color = use_ssbo ? vec3(uniforms_data[vUniformIndex].emissive_r,
+                                            uniforms_data[vUniformIndex].emissive_g,
+                                            uniforms_data[vUniformIndex].emissive_b)
+                                     : emissiveColor;
 
 	float fade = 1.0;
 	if (c_dissolve_enabled) {
@@ -168,6 +173,7 @@ void main() {
 	if (has_emissive) {
 		emissive = texture(texture_emissive1, TexCoords).rgb;
 	}
+	emissive += c_emissive_color * nightFactor;
 
 	float baseAlpha = c_objectAlpha;
 
