@@ -1,0 +1,202 @@
+#version 430 core
+
+layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
+
+struct ChunkMetadata {
+	vec4  world_offset_slice; // x, z, slice, active(1.0/0.0)
+	vec4  bounds;             // min_y, max_y, 0, 0
+};
+
+struct VisiblePatch {
+	uint chunk_index;
+	uint patch_x; // 0-7
+	uint patch_z; // 0-7
+	uint _padding;
+};
+
+struct DrawElementsIndirectCommand {
+	uint count;
+	uint instanceCount;
+	uint firstIndex;
+	uint baseVertex;
+	uint baseInstance;
+};
+
+layout(std430, binding = 0) readonly buffer ChunkMetadataBuffer {
+	ChunkMetadata chunks[];
+};
+
+layout(std430, binding = 29) writeonly buffer VisiblePatchBuffer {
+	VisiblePatch visible_patches[];
+};
+
+layout(std430, binding = 32) buffer IndirectBuffer {
+	DrawElementsIndirectCommand command;
+};
+
+uniform int   u_numChunks;
+uniform float u_chunkSize;
+uniform vec4  u_frustumPlanes[6];
+
+// Raymarching-based occlusion uniforms
+uniform vec3       u_cameraPos;
+uniform isampler2D u_chunkGrid;
+uniform sampler2D  u_maxHeightGrid;
+uniform sampler2DArray u_heightmapArray;
+
+layout(std140, binding = 8) uniform TerrainData {
+	ivec4 u_originSize;    // x, y=z, z=size, w=isBound
+	vec4  u_terrainParams; // x=chunkSize, y=worldScale
+};
+
+bool isAABBInFrustum(vec3 minCorner, vec3 maxCorner) {
+	for (int i = 0; i < 6; i++) {
+		vec3 normal = u_frustumPlanes[i].xyz;
+		vec3 pVertex = vec3(
+			normal.x >= 0.0 ? maxCorner.x : minCorner.x,
+			normal.y >= 0.0 ? maxCorner.y : minCorner.y,
+			normal.z >= 0.0 ? maxCorner.z : minCorner.z
+		);
+		if (dot(normal, pVertex) + u_frustumPlanes[i].w < 0.0) {
+			return false;
+		}
+	}
+	return true;
+}
+
+bool testPointOccluded(vec3 p_test, ivec2 targetChunk) {
+	vec3 rayOrigin = u_cameraPos;
+	vec3 rayDir = p_test - rayOrigin;
+	float distToPoint = length(rayDir);
+
+	if (distToPoint < 10.0) return false;
+
+	rayDir /= distToPoint;
+
+	float scaledChunkSize = u_terrainParams.x * u_terrainParams.y;
+	vec2  gridPos = rayOrigin.xz / scaledChunkSize;
+	ivec2 currentChunk = ivec2(floor(gridPos));
+
+	vec2  stepDir = sign(rayDir.xz);
+	vec2  safeRayDir = vec2(abs(rayDir.x) < 1e-6 ? 1e-6 : abs(rayDir.x), abs(rayDir.z) < 1e-6 ? 1e-6 : abs(rayDir.z));
+	vec2  tDelta = scaledChunkSize / safeRayDir;
+
+	vec2 tMax;
+	tMax.x = (stepDir.x > 0.0) ? (floor(gridPos.x) + 1.0 - gridPos.x) * tDelta.x : (gridPos.x - floor(gridPos.x)) * tDelta.x;
+	tMax.y = (stepDir.y > 0.0) ? (floor(gridPos.y) + 1.0 - gridPos.y) * tDelta.y : (gridPos.y - floor(gridPos.y)) * tDelta.y;
+
+	float t = 0.0;
+	int   iter = 0;
+
+	while (t < distToPoint - 2.0 && iter < 64) {
+		iter++;
+		if (currentChunk == targetChunk) break;
+
+		ivec2 localGridCoord = currentChunk - u_originSize.xy;
+		if (localGridCoord.x >= 0 && localGridCoord.x < u_originSize.z &&
+		    localGridCoord.y >= 0 && localGridCoord.y < u_originSize.z) {
+
+			vec2  gridUV = (vec2(localGridCoord) + 0.5) / float(u_originSize.z);
+			float rayYAtT = rayOrigin.y + t * rayDir.y;
+
+			float h_max3 = textureLod(u_maxHeightGrid, gridUV, 3.0).r;
+			if (rayYAtT < h_max3) {
+				float h_max0 = textureLod(u_maxHeightGrid, gridUV, 0.0).r;
+				if (rayYAtT < h_max0) {
+					int slice = texelFetch(u_chunkGrid, localGridCoord, 0).r;
+					if (slice >= 0) {
+						float tNext = min(tMax.x, tMax.y);
+						float tEnd = min(tNext, distToPoint - 2.0);
+						float subT = t;
+						float subStep = 2.0 * u_terrainParams.y;
+						while (subT < tEnd) {
+							vec3 p = rayOrigin + rayDir * subT;
+							vec2 uv_chunk = (p.xz - vec2(currentChunk) * scaledChunkSize) / scaledChunkSize;
+							float h = texture(u_heightmapArray, vec3(uv_chunk, float(slice))).r;
+							if (p.y < h - 4.0) return true; // Hit! (Increased bias)
+							subT += subStep;
+						}
+					}
+				}
+			}
+		}
+
+		if (tMax.x < tMax.y) {
+			t = tMax.x;
+			tMax.x += tDelta.x;
+			currentChunk.x += int(stepDir.x);
+		} else {
+			t = tMax.y;
+			tMax.y += tDelta.y;
+			currentChunk.y += int(stepDir.y);
+		}
+	}
+	return false;
+}
+
+void main() {
+	uint idx = gl_GlobalInvocationID.x;
+	uint chunkIdx = idx / 64;
+	uint patchIdx = idx % 64;
+
+	if (chunkIdx >= u_numChunks)
+		return;
+
+	ChunkMetadata chunk = chunks[chunkIdx];
+	if (chunk.world_offset_slice.w < 0.5)
+		return;
+
+	uint px = patchIdx % 8;
+	uint pz = patchIdx / 8;
+
+	float patchSize = u_chunkSize / 8.0;
+	float slice = chunk.world_offset_slice.z;
+
+	// Sample 3x3 height grid for accurate patch AABB
+	vec2 uv0 = vec2(float(px), float(pz)) / 8.0;
+	vec2 uv1 = vec2(float(px) + 0.5, float(pz) + 0.5) / 8.0;
+	vec2 uv2 = vec2(float(px+1), float(pz+1)) / 8.0;
+
+	float h00 = texture(u_heightmapArray, vec3(uv0.x, uv0.y, slice)).r;
+	float h10 = texture(u_heightmapArray, vec3(uv1.x, uv0.y, slice)).r;
+	float h20 = texture(u_heightmapArray, vec3(uv2.x, uv0.y, slice)).r;
+	float h01 = texture(u_heightmapArray, vec3(uv0.x, uv1.y, slice)).r;
+	float h11 = texture(u_heightmapArray, vec3(uv1.x, uv1.y, slice)).r;
+	float h21 = texture(u_heightmapArray, vec3(uv2.x, uv1.y, slice)).r;
+	float h02 = texture(u_heightmapArray, vec3(uv0.x, uv2.y, slice)).r;
+	float h12 = texture(u_heightmapArray, vec3(uv1.x, uv2.y, slice)).r;
+	float h22 = texture(u_heightmapArray, vec3(uv2.x, uv2.y, slice)).r;
+
+	float pMinY = min(min(min(min(min(min(min(min(h00, h10), h20), h01), h11), h21), h02), h12), h22);
+	float pMaxY = max(max(max(max(max(max(max(max(h00, h10), h20), h01), h11), h21), h02), h12), h22);
+
+	vec3 minCorner = vec3(chunk.world_offset_slice.x + float(px) * patchSize, pMinY, chunk.world_offset_slice.y + float(pz) * patchSize);
+	vec3 maxCorner = vec3(minCorner.x + patchSize, pMaxY, minCorner.z + patchSize);
+
+	// Add margin for displacement effects
+	float margin = 2.0 * u_terrainParams.y;
+	vec3  minBound = minCorner - vec3(margin, margin, margin);
+	vec3  maxBound = maxCorner + vec3(margin, margin, margin);
+
+	if (isAABBInFrustum(minBound, maxBound)) {
+		ivec2 targetChunk = ivec2(floor(chunk.world_offset_slice.xy / (u_chunkSize)));
+
+		// Extremely conservative full occlusion test: Check all 8 corners of patch AABB
+		bool occluded = true;
+		occluded = occluded && testPointOccluded(vec3(minCorner.x, minCorner.y, minCorner.z), targetChunk);
+		occluded = occluded && testPointOccluded(vec3(maxCorner.x, minCorner.y, minCorner.z), targetChunk);
+		occluded = occluded && testPointOccluded(vec3(minCorner.x, minCorner.y, maxCorner.z), targetChunk);
+		occluded = occluded && testPointOccluded(vec3(maxCorner.x, minCorner.y, maxCorner.z), targetChunk);
+		occluded = occluded && testPointOccluded(vec3(minCorner.x, maxCorner.y, minCorner.z), targetChunk);
+		occluded = occluded && testPointOccluded(vec3(maxCorner.x, maxCorner.y, minCorner.z), targetChunk);
+		occluded = occluded && testPointOccluded(vec3(minCorner.x, maxCorner.y, maxCorner.z), targetChunk);
+		occluded = occluded && testPointOccluded(vec3(maxCorner.x, maxCorner.y, maxCorner.z), targetChunk);
+
+		if (!occluded) {
+			uint destIdx = atomicAdd(command.instanceCount, 1);
+			visible_patches[destIdx].chunk_index = chunkIdx;
+			visible_patches[destIdx].patch_x = px;
+			visible_patches[destIdx].patch_z = pz;
+		}
+	}
+}

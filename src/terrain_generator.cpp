@@ -92,6 +92,8 @@ namespace Boidsish {
 		for (const auto& b : kBiomes) {
 			max_h = std::max(max_h, b.floorLevel);
 		}
+		// Add safety margin for displacement and deformations
+		max_h = (max_h + 50.0f) * world_scale_;
 
 		std::lock_guard<std::recursive_mutex> lock(chunk_cache_mutex_);
 
@@ -195,9 +197,9 @@ namespace Boidsish {
 		// Priority: 1) In frustum and close, 2) In frustum and far, 3) Out of frustum but close
 		// This prevents pop-in by pre-registering nearby chunks even if not visible yet
 		if (render_manager_) {
-			const int   max_registrations_per_frame = 32; // Increased for faster catch-up
-			const float preload_distance_sq = (dynamic_view_distance * scaled_chunk_size * 0.5f) *
-				(dynamic_view_distance * scaled_chunk_size * 0.5f);
+			const int   max_registrations_per_frame = 128; // Increased for faster catch-up
+			const float preload_distance_sq = (dynamic_view_distance * scaled_chunk_size * 0.9f) *
+				(dynamic_view_distance * scaled_chunk_size * 0.9f);
 
 			// Collect chunks needing registration with their distances and frustum status
 			struct ChunkToRegister {

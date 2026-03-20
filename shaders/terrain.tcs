@@ -26,7 +26,6 @@ uniform sampler2DArray uHeightmap;
 uniform float          uChunkSize;
 
 #include "helpers/lighting.glsl"
-#include "frustum.glsl"
 
 uniform float uTessLevelMax = 32.0;
 uniform float uTessLevelMin = 1.0;
@@ -56,7 +55,7 @@ bool isLess(ivec3 a, ivec3 b) {
 }
 
 float GetEdgeTessLevel(vec3 p0, vec3 p1, vec3 n0, vec3 n1) {
-	// Sort vertices deterministically to ensure shared edges between chunks
+	// Sort vertices deterministically to ensure shared edges between patches
 	// produce identical results regardless of vertex order.
 	vec3 lp0 = p0;
 	vec3 lp1 = p1;
@@ -184,60 +183,7 @@ void main() {
 		normal2 = WorldNorm_TC_out[2];
 		normal3 = WorldNorm_TC_out[3];
 
-		bool reject = false;
-
-		// 1. Frustum Culling (AABB-based)
-		if (!uIsShadowPass) {
-			// Get XZ bounds from the 4 corner vertices of the patch
-			vec3 minCorner = min(min(worldPos0, worldPos1), min(worldPos2, worldPos3));
-			vec3 maxCorner = max(max(worldPos0, worldPos1), max(worldPos2, worldPos3));
-
-			// Use the chunk's full height range for safety
-			minCorner.y = Bounds_VS_out[0].x;
-			maxCorner.y = Bounds_VS_out[0].y;
-
-			// Add a margin to the AABB to prevent flickering and account for displacement (shockwaves)
-			float marginAABB = uChunkSize * 1.5;
-			minCorner -= marginAABB;
-			maxCorner += marginAABB;
-
-			// Proximity check: don't cull things very close to the camera to avoid popping/clipping
-			float distToCam = distance(viewPos, (minCorner + maxCorner) * 0.5);
-
-			if (distToCam > uChunkSize * 2.0) {
-				if (!isAABBInFrustum(minCorner, maxCorner)) {
-					reject = true;
-				}
-
-				// 2. Conservative Backface Culling
-				if (!reject) {
-					// A patch is only safely back-facing if ALL indicators agree.
-					// For heightmaps, we check corner normals and a rough geometric normal.
-					// Winding is CW, so cross(v3-v0, v1-v0) gives an upward-facing normal.
-					vec3  faceNormal = normalize(cross(worldPos3 - worldPos0, worldPos1 - worldPos0));
-					float marginDot = -0.5;
-
-					bool faceBack = dot(faceNormal, viewPos - worldPos0) < -marginDot;
-					bool n0Back = dot(normal0, viewPos - worldPos0) < -marginDot;
-					bool n1Back = dot(normal1, viewPos - worldPos1) < -marginDot;
-					bool n2Back = dot(normal2, viewPos - worldPos2) < -marginDot;
-					bool n3Back = dot(normal3, viewPos - worldPos3) < -marginDot;
-
-					// Only reject if ALL normals agree it's back-facing.
-					if (faceBack && n0Back && n1Back && n2Back && n3Back) {
-						reject = true;
-					}
-				}
-			}
-		}
-
-		if (reject) {
-			gl_TessLevelOuter[0] = -1;
-			gl_TessLevelOuter[1] = -1;
-			gl_TessLevelOuter[2] = -1;
-			gl_TessLevelOuter[3] = -1;
-			return;
-		}
+		// Culling is now handled by compute shader, so we always proceed to set tessellation factors.
 
 		// Project each edge to screen space and determine tessellation level
 		// Correct Mapping for Quads:
