@@ -122,6 +122,14 @@ namespace Boidsish {
 			constexpr int TerrainIndirect() {
 				return 32;
 			}
+
+			constexpr int LiveParticleIndices() {
+				return 33;
+			}
+
+			constexpr int BehaviorDrawCommand() {
+				return 34;
+			}
 		} // namespace SsboBinding
 
 		namespace General {
