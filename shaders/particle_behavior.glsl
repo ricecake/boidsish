@@ -68,11 +68,15 @@ void updateAmbientParticle(inout Particle p, float dt, float time, vec3 viewPos,
 
 	// Simple repulsion from other particles using the spatial grid
 	if (sub_style > 0) { // Skip debug
-		p.vel.w += p.extras[0] * dt;
 
 		float twinkle_t = float(time) - float(p.extras[1]);
-		if (p.vel.w >= 1.0 && twinkle_t >= 2.0) {
-			p.vel.w -= 1.0;
+		if (p.vel.w <= 1.0 && twinkle_t >= p.extras[0]) {
+			p.vel.w += dt/p.extras[0];
+		}
+
+		if (p.vel.w >= 1.0 && twinkle_t >= 0.75) {
+			// p.vel.w -= 1.0;
+			p.vel.w = 0;
 			p.extras[1] = time;
 		}
 		else{
@@ -86,7 +90,7 @@ void updateAmbientParticle(inout Particle p, float dt, float time, vec3 viewPos,
 							if (otherIdx != int(gl_GlobalInvocationID.x)) {
 								Particle  otherP = particles[otherIdx];
 								if (otherP.vel.w >= 1.0) {
-									p.vel.w += otherP.vel.w/distance(otherP.pos.xyz, p.pos.xyz);
+									p.vel.w += (otherP.vel.w-1.0)/pow(distance(otherP.pos.xyz, p.pos.xyz), 2);
 								}
 							}
 							otherIdx = grid_next[otherIdx];

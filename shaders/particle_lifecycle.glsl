@@ -190,9 +190,9 @@ void respawnParticle(inout Particle p, uint gid, int emitter_index, int num_emit
 						} else {
 							if (nightFactor > 0.5){
 								sub_style = 4; // Firefly
-								p.extras[0] = 1/(3.0+2.0*fract(randomFloat(hash(particleSeed))));
-								p.extras[1] = time;
-								p.vel.w = 3.0*p.extras[0];
+								p.extras[0] = 3.0+2.0*fract(randomFloat(hash(particleSeed)));
+								p.extras[1] = 0.0;
+								p.vel.w = 0.0;
 							}
 							else {
 								float r = rand(spawnSeed + 6.6);
