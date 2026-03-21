@@ -4,6 +4,7 @@ layout(local_size_x = 4, local_size_y = 4, local_size_z = 4) in;
 
 layout(rgba32f, binding = 0) uniform image3D noiseTexture;
 layout(rgba32f, binding = 1) uniform image3D curlTexture;
+layout(rgba32f, binding = 2) uniform image3D extraNoiseTexture;
 
 // Forward declare mod289 etc to satisfy pnoise/psrdnoise if they are included later
 // Actually, lygia files include them.
@@ -99,6 +100,18 @@ float fbm3d_tiling(vec3 p, float period) {
 	return value;
 }
 
+// Tiling 3D Ridge noise (based on Simplex)
+float ridge3d_tiling(vec3 p, float period) {
+	vec3  g;
+	float n = psrdnoise(p, vec3(period), 0.0, g);
+	return 1.0 - abs(n);
+}
+
+// Tiling 3D Gradient noise (classic Perlin)
+float gradient3d_tiling(vec3 p, float period) {
+	return pnoise(p, vec3(period)) * 0.5 + 0.5;
+}
+
 void main() {
 	ivec3 texelCoord = ivec3(gl_GlobalInvocationID.xyz);
 	ivec3 size = imageSize(noiseTexture);
@@ -132,4 +145,10 @@ void main() {
 
 	// Store Curl RGB and a variant (FBM curl magnitude) in Alpha
 	imageStore(curlTexture, texelCoord, vec4(curl, fbmCurl));
+
+	// Extra Noises
+	float n_ridge = ridge3d_tiling(p_scaled, NOISE_PERIOD);
+	float n_gradient = gradient3d_tiling(p_scaled, NOISE_PERIOD);
+
+	imageStore(extraNoiseTexture, texelCoord, vec4(n_ridge, n_gradient, 0.0, 1.0));
 }
