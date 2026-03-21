@@ -274,7 +274,8 @@ namespace Boidsish {
 		GLuint                        lighting_ubo,
 		GLuint                        frustum_ubo,
 		GLintptr                      frustum_offset,
-		GLuint                        extra_noise_texture
+		GLuint                        extra_noise_texture,
+		GLuint                        voxel_pool_texture
 	) {
 		std::lock_guard<std::mutex> lock(mutex_);
 		if (!initialized_ || !lifecycle_shader_ || !lifecycle_shader_->isValid() || !behavior_shader_ ||
@@ -451,6 +452,10 @@ namespace Boidsish {
 				glActiveTexture(GL_TEXTURE9);
 				glBindTexture(GL_TEXTURE_3D, extra_noise_texture);
 				shader->setInt("u_extraNoiseTexture", 9);
+			}
+
+			if (voxel_pool_texture != 0) {
+				glBindImageTexture(0, voxel_pool_texture, 0, GL_TRUE, 0, GL_READ_WRITE, GL_R32F);
 			}
 		};
 

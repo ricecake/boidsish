@@ -130,6 +130,22 @@ namespace Boidsish {
 			constexpr int BehaviorDrawCommand() {
 				return 34;
 			}
+
+			constexpr int VoxelHashTable() {
+				return 35;
+			}
+
+			constexpr int VoxelBrickVotes() {
+				return 36;
+			}
+
+			constexpr int VoxelFreeList() {
+				return 37;
+			}
+
+			constexpr int VoxelBrickMetadata() {
+				return 38;
+			}
 		} // namespace SsboBinding
 
 		namespace General {
@@ -550,6 +566,24 @@ namespace Boidsish {
 					return 1000000;
 				}
 			} // namespace Megabuffer
+
+			namespace VoxelBricks {
+				constexpr int BrickSize() {
+					return 8;
+				}
+
+				constexpr float VoxelSize() {
+					return 0.25f;
+				}
+
+				constexpr int MaxBricks() {
+					return 4096;
+				}
+
+				constexpr int HashTableSize() {
+					return 16384;
+				}
+			} // namespace VoxelBricks
 
 			namespace Checkpoint {
 				constexpr float DefaultRadius() {
