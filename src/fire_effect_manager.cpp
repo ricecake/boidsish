@@ -273,7 +273,8 @@ namespace Boidsish {
 		GLuint                        biome_texture,
 		GLuint                        lighting_ubo,
 		GLuint                        frustum_ubo,
-		GLintptr                      frustum_offset
+		GLintptr                      frustum_offset,
+		GLuint                        extra_noise_texture
 	) {
 		std::lock_guard<std::mutex> lock(mutex_);
 		if (!initialized_ || !lifecycle_shader_ || !lifecycle_shader_->isValid() || !behavior_shader_ ||
@@ -444,6 +445,12 @@ namespace Boidsish {
 				glActiveTexture(GL_TEXTURE8);
 				glBindTexture(GL_TEXTURE_2D_ARRAY, biome_texture);
 				shader->setInt("u_biomeMap", 8);
+			}
+
+			if (extra_noise_texture != 0) {
+				glActiveTexture(GL_TEXTURE9);
+				glBindTexture(GL_TEXTURE_3D, extra_noise_texture);
+				shader->setInt("u_extraNoiseTexture", 9);
 			}
 		};
 
@@ -679,7 +686,8 @@ namespace Boidsish {
 		const glm::mat4& view,
 		const glm::mat4& projection,
 		const glm::vec3& camera_pos,
-		GLuint           noise_texture
+		GLuint           noise_texture,
+		GLuint           extra_noise_texture
 	) {
 		std::lock_guard<std::mutex> lock(mutex_);
 		if (!initialized_ || !lifecycle_shader_ || !lifecycle_shader_->isValid() || !behavior_shader_ ||
@@ -716,6 +724,12 @@ namespace Boidsish {
 			glActiveTexture(GL_TEXTURE5);
 			glBindTexture(GL_TEXTURE_3D, noise_texture);
 			render_shader_->setInt("u_noiseTexture", 5);
+		}
+
+		if (extra_noise_texture != 0) {
+			glActiveTexture(GL_TEXTURE8);
+			glBindTexture(GL_TEXTURE_3D, extra_noise_texture);
+			render_shader_->setInt("u_extraNoiseTexture", 8);
 		}
 
 		// Enable GPU frustum culling for particles
