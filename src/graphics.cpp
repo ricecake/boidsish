@@ -816,13 +816,8 @@ namespace Boidsish {
 			logger::LOG("HudWidget created and added.");
 
 			if (terrain_generator) {
-				// Use terrain shaders with heightmap texture lookup
-				Terrain::terrain_shader_ = std::make_shared<Shader>(
-					"shaders/terrain.vert",
-					"shaders/terrain.frag",
-					"shaders/terrain.tcs",
-					"shaders/terrain.tes"
-				);
+				// Use mesh-based terrain shaders
+				Terrain::terrain_shader_ = std::make_shared<Shader>("shaders/terrain.vert", "shaders/terrain.frag");
 				Terrain::terrain_shader_handle = shader_table.Register(
 					std::make_unique<RenderShader>(Terrain::terrain_shader_)
 				);
@@ -2951,9 +2946,9 @@ namespace Boidsish {
 			impl->terrain_render_manager
 				? impl->terrain_render_manager->GetChunkInfo(impl->terrain_generator->GetWorldScale())
 				: std::vector<glm::vec4>{},
-			impl->terrain_render_manager ? impl->terrain_render_manager->GetHeightmapTexture() : 0,
+				impl->terrain_render_manager ? impl->terrain_render_manager->GetTerrainVbo() : 0,
 			impl->noise_manager ? impl->noise_manager->GetCurlTexture() : 0,
-			impl->terrain_render_manager ? impl->terrain_render_manager->GetBiomeTexture() : 0,
+				0, // biome texture removed
 			impl->lighting_ubo,
 			impl->frustum_ssbo->GetBufferId(),
 			impl->frustum_ssbo->GetFrameOffset() + impl->mdi_frustum_count * sizeof(FrustumDataGPU),

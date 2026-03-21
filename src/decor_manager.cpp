@@ -439,9 +439,8 @@ namespace Boidsish {
 	) {
 		float world_scale = terrain_gen.GetWorldScale();
 
-		GLuint heightmap_texture = render_manager->GetHeightmapTexture();
-		GLuint biome_texture = render_manager->GetBiomeTexture();
-		if (heightmap_texture == 0 || biome_texture == 0)
+		GLuint terrain_vbo = render_manager->GetTerrainVbo();
+		if (terrain_vbo == 0)
 			return;
 
 		// Single call: gets keys, offsets, slices, sizes, and update counts
@@ -628,13 +627,7 @@ namespace Boidsish {
 			// Bind everything once, then one dispatch per type
 			placement_shader_->use();
 
-			glActiveTexture(GL_TEXTURE0);
-			glBindTexture(GL_TEXTURE_2D_ARRAY, heightmap_texture);
-			placement_shader_->setInt("u_heightmapArray", 0);
-
-			glActiveTexture(GL_TEXTURE1);
-			glBindTexture(GL_TEXTURE_2D_ARRAY, biome_texture);
-			placement_shader_->setInt("u_biomeMap", 1);
+			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 4, terrain_vbo);
 
 			glBindBufferBase(GL_UNIFORM_BUFFER, Constants::UboBinding::DecorProps(), decor_props_ubo_);
 			glBindBufferBase(GL_UNIFORM_BUFFER, Constants::UboBinding::DecorPlacementGlobals(), placement_globals_ubo_);
