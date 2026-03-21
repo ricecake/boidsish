@@ -67,11 +67,14 @@ void updateAmbientParticle(inout Particle p, float dt, float time, vec3 viewPos,
 	int   sub_style = p.emitter_id;
 
 	// Simple repulsion from other particles using the spatial grid
-	if (sub_style > 0) { // Skip debug
+	if (sub_style == 4) { // Skip debug
 
 		float twinkle_t = float(time) - float(p.extras[1]);
-		if (p.vel.w <= 1.0 && twinkle_t >= p.extras[0]) {
-			p.vel.w += dt/p.extras[0];
+
+		bool is_refractory = (twinkle_t < 0.75);
+
+		if (!is_refractory) {
+			p.vel.w += dt / p.extras[0];
 		}
 
 		if (p.vel.w >= 1.0 && twinkle_t >= 0.75) {
@@ -79,7 +82,7 @@ void updateAmbientParticle(inout Particle p, float dt, float time, vec3 viewPos,
 			p.vel.w = 0;
 			p.extras[1] = time;
 		}
-		else{
+		if (!is_refractory) {
 			for (int x = -1; x <= 1; x++) {
 				for (int y = -1; y <= 1; y++) {
 					for (int z = -1; z <= 1; z++) {
@@ -89,8 +92,12 @@ void updateAmbientParticle(inout Particle p, float dt, float time, vec3 viewPos,
 						while (otherIdx != -1 && safety < 100) {
 							if (otherIdx != int(gl_GlobalInvocationID.x)) {
 								Particle  otherP = particles[otherIdx];
-								if (otherP.vel.w >= 1.0) {
-									p.vel.w += (otherP.vel.w-1.0)/pow(distance(otherP.pos.xyz, p.pos.xyz), 2);
+								float other_twinkle_t = float(time) - float(otherP.extras[1]);
+								if (other_twinkle_t < (dt * 2.0)) {
+									float distSq = pow(distance(otherP.pos.xyz, p.pos.xyz), 2.0);
+
+									float pulse_strength = 0.15;
+									p.vel.w += pulse_strength / max(distSq, 0.01);
 								}
 							}
 							otherIdx = grid_next[otherIdx];
@@ -99,6 +106,10 @@ void updateAmbientParticle(inout Particle p, float dt, float time, vec3 viewPos,
 					}
 				}
 			}
+		}
+		if (p.vel.w >= 1.0 && !is_refractory) {
+			p.vel.w = 0.0;
+			p.extras[1] = time; // This instantly resets twinkle_t to 0, entering refractory
 		}
 	}
 
