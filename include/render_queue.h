@@ -62,6 +62,11 @@ namespace Boidsish {
 		}
 
 		/**
+		 * @brief Get a mutable reference to the list of packets for a specific layer.
+		 */
+		std::vector<RenderPacket>& GetPacketsMutable(RenderLayer layer) { return m_layers[static_cast<size_t>(layer)]; }
+
+		/**
 		 * @brief Clear the queue for the next frame.
 		 * @note Should only be called from main thread after rendering completes.
 		 */

@@ -8,6 +8,7 @@ in vec2       TexCoords_VS_out[];
 in vec3       viewForward[];
 flat in float TextureSlice_VS_out[];
 flat in vec3  WorldOffset_VS_out[];
+flat in vec4  Bounds_VS_out[];
 
 // Output to Tessellation Evaluation Shader
 out vec3       LocalPos_TC_out[];
@@ -16,6 +17,8 @@ flat out float TextureSlice_TC_out[];
 flat out vec3  WorldOffset_TC_out[];
 out float      perturbFactor_TC_out[];
 out float      tessFactor_TC_out[];
+out vec3       WorldPos_TC_out[];
+out vec3       WorldNorm_TC_out[];
 
 // Heightmap texture array: R=height, GBA=normal
 uniform sampler2DArray uHeightmap;
@@ -23,7 +26,7 @@ uniform float          uChunkSize;
 
 #include "helpers/lighting.glsl"
 
-uniform float uTessLevelMax = 32.0;
+uniform float uTessLevelMax = 4.0;
 uniform float uTessLevelMin = 1.0;
 uniform float uTessQualityMultiplier = 1.0;
 uniform bool  uIsShadowPass = false;
@@ -44,18 +47,46 @@ void sampleHeightmap(vec2 uv, float slice, vec3 worldOffset, out vec3 worldPos, 
 	worldPos.z = worldOffset.z + uv.y * uChunkSize;
 }
 
+bool isLess(ivec3 a, ivec3 b) {
+	if (a.x != b.x)
+		return a.x < b.x;
+	if (a.y != b.y)
+		return a.y < b.y;
+	return a.z < b.z;
+}
+
 float GetEdgeTessLevel(vec3 p0, vec3 p1, vec3 n0, vec3 n1) {
+	// Sort vertices deterministically to ensure shared edges between patches
+	// produce identical results regardless of vertex order.
+	vec3 lp0 = p0;
+	vec3 lp1 = p1;
+	vec3 ln0 = n0;
+	vec3 ln1 = n1;
+	if (!isLess(ivec3(1000 * lp0), ivec3(1000 * lp1))) {
+		lp0 = p1;
+		lp1 = p0;
+		ln0 = n1;
+		ln1 = n0;
+	}
+
 	// Project to clip space
-	vec4 clip0 = projection * view * vec4(p0, 1.0);
-	vec4 clip1 = projection * view * vec4(p1, 1.0);
+	vec4 clip0 = projection * view * vec4(lp0, 1.0);
+	vec4 clip1 = projection * view * vec4(lp1, 1.0);
+
+	vec3 midPos = (lp0 + lp1) * 0.5;
+	vec3 midNormal = normalize(ln0 + ln1);
 
 	// Guard against points behind camera
 	if (clip0.w <= 0.0 && clip1.w <= 0.0)
 		return uTessLevelMin;
 
 	// Perspective divide to get NDC
-	vec2 ndc0 = clip0.xy / max(clip0.w, 0.01);
-	vec2 ndc1 = clip1.xy / max(clip1.w, 0.01);
+	// Use a smaller epsilon but clamp NDC to prevent extreme values at screen edges
+	vec2 ndc0 = clip0.xy / max(clip0.w, 0.0001);
+	vec2 ndc1 = clip1.xy / max(clip1.w, 0.0001);
+
+	ndc0 = clamp(ndc0, vec2(-2.0), vec2(2.0));
+	ndc1 = clamp(ndc1, vec2(-2.0), vec2(2.0));
 
 	// Convert to pixel coordinates
 	vec2 pixel0 = (ndc0 * 0.5 + 0.5) * uViewportSize;
@@ -67,25 +98,29 @@ float GetEdgeTessLevel(vec3 p0, vec3 p1, vec3 n0, vec3 n1) {
 	// Base tessellation: target pixels per segment
 	// Target ~8 pixels per triangle edge for high quality, 16 for medium, 32 for low
 	float targetPixels = 8.0 / uTessQualityMultiplier;
-	float baseLevel = pixelLength / targetPixels;
+	float baseLevel = round(pixelLength / targetPixels);
 
 	// 1. SILHOUETTE BOOST
 	// Boost tessellation for edges that form the silhouette to keep curves smooth
-	vec3  midPos = (p0 + p1) * 0.5;
-	vec3  midNormal = normalize(n0 + n1);
-	vec3  viewDir = normalize(viewPos - midPos);
 	float silhouetteFactor = 1.0 - abs(dot(midNormal, viewDir));
 
 	// Distance fade for silhouette boost to avoid over-tessellating distant silhouettes
 	float dist = distance(viewPos, midPos);
-	float silhouetteBoost = mix(1.0, 4.0, silhouetteFactor * smoothstep(1000.0 * worldScale, 200.0 * worldScale, dist));
+	float silhouetteBoost = round(
+		mix(1.0, 4.0, silhouetteFactor * smoothstep(1000.0 * worldScale, 200.0 * worldScale, dist))
+	);
 
 	// 2. CURVATURE BOOST
 	// Boost tessellation where surface normal changes rapidly
-	float curvatureFactor = 1.0 - dot(n0, n1);
-	float curvatureBoost = mix(1.0, 4.0, clamp(curvatureFactor * 10.0, 0.0, 1.0));
+	float curvatureFactor = 1.0 - dot(ln0, ln1);
+	float curvatureBoost = round(mix(1.0, 4.0, clamp(curvatureFactor * 10.0, 0.0, 1.0)));
 
 	float finalLevel = baseLevel * silhouetteBoost * curvatureBoost;
+
+	// Snap to nearest power of two to ensure stability across chunk edges.
+	// Using round() provides more natural transitions than floor().
+	// Ensure at least 2.0 for fractional_even_spacing compatibility.
+	finalLevel = roundEven(finalLevel);
 
 	return clamp(finalLevel, uTessLevelMin, uTessLevelMax);
 }
@@ -129,11 +164,13 @@ void main() {
 	vec3 pos, norm;
 	sampleHeightmap(TexCoords_VS_out[gl_InvocationID], slice, worldOffset, pos, norm);
 
+	WorldPos_TC_out[gl_InvocationID] = pos;
+	WorldNorm_TC_out[gl_InvocationID] = norm;
+
 	// Calculate a representative tessellation factor for the vertex (used for shading effects)
 	// We use a small offset to estimate local screen-space size
 	float vTess = GetEdgeTessLevel(pos, pos + vec3(uChunkSize * 0.03, 0, 0), norm, norm);
 	tessFactor_TC_out[gl_InvocationID] = vTess;
-	// perturbFactor_TC_out[gl_InvocationID] = clamp(vTess / uTessLevelMax, 0.0, 1.0);
 	perturbFactor_TC_out[gl_InvocationID] = perturbLevel(pos, viewForward[gl_InvocationID]);
 
 	if (gl_InvocationID == 0) {
@@ -141,10 +178,17 @@ void main() {
 		vec3 worldPos0, worldPos1, worldPos2, worldPos3;
 		vec3 normal0, normal1, normal2, normal3;
 
-		sampleHeightmap(TexCoords_VS_out[0], slice, worldOffset, worldPos0, normal0);
-		sampleHeightmap(TexCoords_VS_out[1], slice, worldOffset, worldPos1, normal1);
-		sampleHeightmap(TexCoords_VS_out[2], slice, worldOffset, worldPos2, normal2);
-		sampleHeightmap(TexCoords_VS_out[3], slice, worldOffset, worldPos3, normal3);
+		worldPos0 = WorldPos_TC_out[0];
+		worldPos1 = WorldPos_TC_out[1];
+		worldPos2 = WorldPos_TC_out[2];
+		worldPos3 = WorldPos_TC_out[3];
+
+		normal0 = WorldNorm_TC_out[0];
+		normal1 = WorldNorm_TC_out[1];
+		normal2 = WorldNorm_TC_out[2];
+		normal3 = WorldNorm_TC_out[3];
+
+		// Culling is now handled by compute shader, so we always proceed to set tessellation factors.
 
 		// Project each edge to screen space and determine tessellation level
 		// Correct Mapping for Quads:

@@ -269,6 +269,12 @@ namespace Boidsish {
 		 */
 		void InvalidateDeformedChunks(std::optional<uint32_t> deformation_id = std::nullopt) override;
 
+		/**
+		 * @brief Process any pending deformation-triggered regenerations.
+		 * Called internally during Update().
+		 */
+		void ProcessPendingDeformations();
+
 	private:
 		glm::vec2 findClosestPointOnPath(glm::vec2 sample_pos) const;
 		glm::vec3 getPathInfluence(float x, float z) const;
@@ -327,6 +333,12 @@ namespace Boidsish {
 		std::map<std::pair<int, int>, std::shared_ptr<Terrain>>            chunk_cache_;
 		std::vector<std::shared_ptr<Terrain>>                              visible_chunks_;
 		std::map<std::pair<int, int>, TaskHandle<TerrainGenerationResult>> pending_chunks_;
+
+		// Deformation-specific async management
+		std::map<std::pair<int, int>, TaskHandle<TerrainGenerationResult>> pending_deformations_;
+		std::vector<uint32_t>                                              queued_deformation_ids_;
+		mutable std::mutex                                                 deformation_queue_mutex_;
+
 		mutable std::recursive_mutex chunk_cache_mutex_; // Recursive to allow eviction callback
 		mutable std::mutex           visible_chunks_mutex_;
 		std::random_device           rd_;

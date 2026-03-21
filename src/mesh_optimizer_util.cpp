@@ -76,17 +76,17 @@ namespace Boidsish {
 
 		std::vector<unsigned int> simplified_indices(index_count);
 		size_t                    simplified_index_count = meshopt_simplify(
-            simplified_indices.data(),
-            indices.data(),
-            index_count,
-            &vertices[0].Position.x,
-            vertex_count,
-            sizeof(Vertex),
-            target_index_count,
-            target_error,
-            flags,
-            nullptr
-        );
+			simplified_indices.data(),
+			indices.data(),
+			index_count,
+			&vertices[0].Position.x,
+			vertex_count,
+			sizeof(Vertex),
+			target_index_count,
+			target_error,
+			flags,
+			nullptr
+		);
 
 		simplified_indices.resize(simplified_index_count);
 		indices = std::move(simplified_indices);

@@ -72,7 +72,8 @@ namespace Boidsish {
 			int              cascade_index = -1,
 			const glm::mat4& view = glm::mat4(1.0f),
 			float            fov = Constants::Class::Shadows::DefaultFOV(),
-			float            aspect = 1.0f
+			float            aspect = 1.0f,
+			bool             clear = true
 		);
 
 		/**
@@ -155,9 +156,6 @@ namespace Boidsish {
 		// Near splits are tighter for crisp close shadows
 		// Far cascade (3) acts as catchall extending to very distant terrain
 		std::array<float, kMaxCascades> cascade_splits_ = {20.0f, 50.0f, 150.0f, 700.0f};
-
-		// Previous viewport for restoration
-		GLint prev_viewport_[4];
 
 		std::vector<glm::vec4> GetFrustumCornersWorldSpace(const glm::mat4& proj, const glm::mat4& view);
 	};

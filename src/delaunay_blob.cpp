@@ -280,8 +280,8 @@ namespace Boidsish {
 			// Degenerate tetrahedron (coplanar points)
 			glm::vec3 center = (a + b + c + d) * 0.25f;
 			float     max_dist = std::max(
-                {glm::distance(center, a), glm::distance(center, b), glm::distance(center, c), glm::distance(center, d)}
-            );
+				{glm::distance(center, a), glm::distance(center, b), glm::distance(center, c), glm::distance(center, d)}
+			);
 			return {center, max_dist * max_dist * 1e6f}; // Large radius for degenerate case
 		}
 

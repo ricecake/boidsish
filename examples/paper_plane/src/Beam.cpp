@@ -184,9 +184,9 @@ namespace Boidsish {
 					glm::vec3 beam_mid = (start + end) * 0.5f;
 					float     beam_len = glm::distance(start, end);
 					auto      line_targets = spatial_handler->GetEntitiesInRadius<EntityBase>(
-                        Vector3(beam_mid.x, beam_mid.y, beam_mid.z),
-                        (beam_len * 0.5f) + 15.0f
-                    );
+						Vector3(beam_mid.x, beam_mid.y, beam_mid.z),
+						(beam_len * 0.5f) + 15.0f
+					);
 
 					for (auto& target : line_targets) {
 						if (target->GetId() == owner_id_ || damaged_ids.count(target->GetId()))

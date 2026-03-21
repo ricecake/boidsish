@@ -28,16 +28,16 @@ int main() {
 		// Use a large enough volume to cover the model
 		glm::vec3 teapot_pos(teapot->GetX(), teapot->GetY(), teapot->GetZ());
 		auto      dissolve_fire = vis.AddFireEffect(
-            teapot_pos,
-            Boidsish::FireEffectStyle::Fireflies,
-            glm::vec3(0, 1, 0), // direction
-            glm::vec3(0, 0, 0), // velocity
-            -1,                 // max particles
-            -1.0f,              // lifetime
-            Boidsish::EmitterType::Model,
-            glm::vec3(20.0f, 20.0f, 20.0f), // dimensions
-            1.0f                            // Initial sweep
-        );
+			teapot_pos,
+			Boidsish::FireEffectStyle::Fireflies,
+			glm::vec3(0, 1, 0), // direction
+			glm::vec3(0, 0, 0), // velocity
+			-1,                 // max particles
+			-1.0f,              // lifetime
+			Boidsish::EmitterType::Model,
+			glm::vec3(20.0f, 20.0f, 20.0f), // dimensions
+			1.0f                            // Initial sweep
+		);
 		vis.SetFireEffectSourceModel(dissolve_fire, teapot);
 
 		struct DemoState {

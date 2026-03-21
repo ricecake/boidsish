@@ -153,9 +153,11 @@ namespace Boidsish {
 								} else if (lights[i].behavior.type == LightBehaviorType::PULSE) {
 									ImGui::DragFloat("Period", &lights[i].behavior.period, 0.1f, 0.1f, 10.0f);
 									ImGui::DragFloat("Amplitude", &lights[i].behavior.amplitude, 0.01f, 0.0f, 1.0f);
-								} else if (lights[i].behavior.type == LightBehaviorType::EASE_IN ||
-								           lights[i].behavior.type == LightBehaviorType::EASE_OUT ||
-								           lights[i].behavior.type == LightBehaviorType::EASE_IN_OUT) {
+								} else if (
+									lights[i].behavior.type == LightBehaviorType::EASE_IN ||
+									lights[i].behavior.type == LightBehaviorType::EASE_OUT ||
+									lights[i].behavior.type == LightBehaviorType::EASE_IN_OUT
+								) {
 									ImGui::DragFloat("Duration", &lights[i].behavior.period, 0.1f, 0.1f, 10.0f);
 								} else if (lights[i].behavior.type == LightBehaviorType::FLICKER) {
 									ImGui::DragFloat(

@@ -1,39 +1,8 @@
 #version 430 core
 
 #include "frustum.glsl"
-
-// Must match the C++ struct layout in fire_effect.h
-struct Particle {
-	vec4 pos; // Position (w is lifetime)
-	vec4 vel; // Velocity (w is unused)
-	vec3 epicenter;
-	int  style;
-	int  emitter_index;
-	int  emitter_id;
-	int  _padding[2];
-};
-
-layout(std430, binding = 0) buffer ParticleBuffer {
-	Particle particles[];
-};
-
-// Must match the C++ Emitter struct in fire_effect_manager.h
-struct Emitter {
-	vec3  position;   // 12 bytes
-	int   style;      // 4 bytes -> total 16
-	vec3  direction;  // 12 bytes
-	int   is_active;  // 4 bytes -> total 16
-	vec3  velocity;   // 12 bytes
-	int   id;         // 4 bytes -> total 16
-	vec3  dimensions; // 12 bytes
-	int   type;       // 4 bytes -> total 16
-	float sweep;      // 4 bytes
-	int   _padding[3];
-};
-
-layout(std430, binding = 1) buffer EmitterBuffer {
-	Emitter emitters[];
-};
+#include "lighting.glsl"
+#include "particle_types.glsl"
 
 uniform mat4  u_view;
 uniform mat4  u_projection;
@@ -41,55 +10,32 @@ uniform vec3  u_camera_pos;
 uniform bool  enableFrustumCulling = false;
 uniform float frustumCullRadius = 1.0;
 
-out float    v_lifetime;
-out vec4     view_pos;
-out vec4     v_pos;
-out vec3     v_epicenter;
-flat out int v_style;
-flat out int v_emitter_index;
-flat out int v_emitter_id;
+out float         v_lifetime;
+out vec4          view_pos;
+out vec4          v_pos;
+out float         v_extra[2];
+out vec3          v_epicenter;
+flat out int      v_style;
+flat out int      v_emitter_index;
+flat out int      v_emitter_id;
+flat out uint     v_particle_idx;
+flat out Particle v_p;
 
 void main() {
-	Particle p = particles[gl_VertexID];
+	uint     particle_idx = visible_indices[gl_VertexID];
+	Particle p = particles[particle_idx];
 	v_pos = p.pos;
 	v_epicenter = p.epicenter;
+	v_extra = p.extras;
 
-	if (p.pos.w <= 0.0) {
-		// Don't draw dead particles
-		gl_Position = vec4(-1000.0, -1000.0, -1000.0, 1.0);
-		gl_PointSize = 0.0;
-		v_style = -1; // A dead particle has no style
-		v_emitter_index = -1;
-		v_emitter_id = -1;
-	} else if (enableFrustumCulling && !isSphereInFrustum(p.pos.xyz, frustumCullRadius)) {
-		// Frustum culling - particle is outside view
-		gl_Position = vec4(-1000.0, -1000.0, -1000.0, 1.0);
-		gl_PointSize = 0.0;
-		v_style = -1;
-		v_emitter_index = -1;
-		v_emitter_id = -1;
-	} else {
+	{
 		view_pos = u_view * vec4(p.pos.xyz, 1.0);
 		gl_Position = u_projection * view_pos;
 		v_lifetime = p.pos.w;
 		v_style = p.style;
 		v_emitter_index = p.emitter_index;
 		v_emitter_id = p.emitter_id;
-
-		// // Base size on style
-		// float base_size = 10.0;
-		// if (p.style == 0) { // Exhaust
-		//     base_size = 15.0;
-		// } else if (p.style == 1) { // Explosion
-		//     base_size = 40.0;
-		// } else { // Fire
-		//     base_size = 25.0;
-		// }
-
-		// // Attenuate size by distance and lifetime
-		// float distance_factor = 1.0 / (-view_pos.z * 0.1);
-		// float lifetime_factor = p.pos.w; // Fades out as lifetime decreases
-		// gl_PointSize = base_size * distance_factor * lifetime_factor;
+		v_particle_idx = particle_idx;
 
 		// Set point size based on lifetime and style
 		if (p.style == 0) { // Rocket Trail
@@ -99,17 +45,17 @@ void main() {
 			gl_PointSize = (1.0 - (1.0 - v_lifetime) * (1.0 - v_lifetime)) * 60.0; // Starts large, shrinks fast
 		} else if (p.style == 3) {                                                 // Sparks
 			gl_PointSize = 4.0 + v_lifetime * 20.0;
-		} else if (p.style == 4) { // Glitter
-			gl_PointSize = 6.0;    // Small, consistent square
-		} else if (p.style == 8) { // Debug
-			gl_PointSize = 8.0;    // Fixed size point
-		} else if (p.style == 5 || p.style == 6 || p.style == 7 ||
-		           p.style == 9) { // Ambient, Bubbles, Fireflies, Cinder
+		} else if (p.style == 4) {                                                 // Glitter
+			gl_PointSize = 6.0;                                                    // Small, consistent square
+		} else if (p.style == 8) {                                                 // Debug
+			gl_PointSize = 8.0;                                                    // Fixed size point
+		} else if (p.style == 5 || p.style == 6 || p.style == 7 || p.style == 9) { // Ambient, Bubbles, Fireflies,
+			                                                                       // Cinder
 			// Prominent size but attenuated by distance
 			gl_PointSize = 15.0 / (-view_pos.z * 0.05);
 
 			// Vary size by sub-style and random factor
-			float size_var = fract(sin(float(gl_VertexID) * 123.456) * 456.789);
+			float size_var = fract(sin(float(particle_idx) * 123.456) * 456.789);
 			if (p.style == 6 || (p.style == 5 && v_emitter_id == 2)) { // Bubbles vary more in size
 				gl_PointSize *= (0.5 + size_var * 1.5);
 			} else if (p.style == 9) { // Cinders are a bit smaller but vary
@@ -125,50 +71,3 @@ void main() {
 		}
 	}
 }
-
-/*
-#version 430 core
-
-// No vertex attributes needed, we'll get data from the SSBO
-
-struct Particle {
-    vec4 position; // w component is lifetime
-    vec4 velocity;
-};
-
-// Corrected SSBO layout
-layout(std430, binding = 0) readonly buffer ParticleBuffer {
-    Particle particles[];
-};
-
-uniform mat4 u_view;
-uniform mat4 u_projection;
-uniform int u_style;
-
-out float v_lifetime;
-
-void main() {
-    // Get the particle for the current vertex
-    Particle p = particles[gl_VertexID];
-
-    // Pass lifetime to the fragment shader
-    v_lifetime = p.position.w;
-
-    // If the particle is dead, move it off-screen to avoid rendering artifacts
-    if (v_lifetime <= 0.0) {
-        gl_Position = vec4(-1000.0, -1000.0, -1000.0, 1.0);
-    } else {
-        // Transform the world position to clip space
-        gl_Position = u_projection * u_view * vec4(p.position.xyz, 1.0);
-    }
-
-    // Set point size based on lifetime and style
-    if (u_style == 0) { // Default Fire
-        gl_PointSize = smoothstep(2.0 * (1.0 - v_lifetime), v_lifetime, v_lifetime / 2.5) * 25.0;
-    } else if (u_style == 1) { // Rocket Trail
-        gl_PointSize = smoothstep((1.0 - v_lifetime), v_lifetime, v_lifetime / 2.0) * 15.0; // Smaller, more consistent
-size } else if (u_style == 2) { // Explosion gl_PointSize = (1.0 - (1.0 - v_lifetime) * (1.0 - v_lifetime)) * 30.0; //
-Starts large, shrinks fast } else { gl_PointSize = 25.0; // Default size
-    }
-}
-*/

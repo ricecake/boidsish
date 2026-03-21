@@ -8,49 +8,41 @@ layout(std430, binding = 0) buffer DecorInstances {
 	mat4 instances[];
 };
 
-uniform int u_maxInstances;
-uniform int u_baseInstanceIndex;
+// Heightmap and biome textures from TerrainRenderManager
+uniform sampler2DArray u_heightmapArray; // RGBA16F: R=height, GBA=normal.xyz
+uniform sampler2DArray u_biomeMap;       // RG8: R=low_idx, G=t
 
-// Heightmap texture array from TerrainRenderManager
-// Format: RGBA16F where R=height, G=normal.x, B=normal.y, A=normal.z
-uniform sampler2DArray u_heightmapArray;
-// Biome map: RG8 - R=low_idx, G=t
-uniform sampler2DArray u_biomeMap;
-uniform vec2           u_cameraPos;
-uniform float          u_maxTerrainHeight;
+// Per-type properties (uploaded once in PrepareResources)
+struct DecorTypeParams {
+	vec4  densityScale; // x=minDensity, y=maxDensity, z=baseScale, w=scaleVariance
+	vec4  heightSlope;  // x=minHeight, y=maxHeight, z=minSlope, w=maxSlope
+	vec4  rotation;     // xyz=baseRotation (radians), w=detailDistance
+	vec4  aabbMin;      // xyz=model AABB min
+	vec4  aabbMax;      // xyz=model AABB max
+	uvec4 flags;        // x=biomeMask, y=randomYaw, z=alignToTerrain, w=typeIndex
+};
 
-// Frustum planes for culling (vec4: xyz=normal, w=distance)
-uniform vec4 u_frustumPlanes[6];
+layout(std140, binding = 30) uniform DecorTypeBlock {
+	DecorTypeParams types[32];
+};
 
-// Distance-based density falloff
-uniform float u_densityFalloffStart; // Full density within this distance
-uniform float u_densityFalloffEnd;   // Minimum density beyond this distance
-uniform float u_maxDecorDistance;    // No decor beyond this distance
+// Global placement params (uploaded once per dispatch frame)
+layout(std140, binding = 31) uniform GlobalPlacementParams {
+	vec4 u_cameraAndScale; // xy=cameraPos, z=worldScale, w=maxTerrainHeight
+	vec4 u_distanceParams; // x=densityFalloffStart, y=densityFalloffEnd, z=maxDecorDistance, w=maxInstances
+};
 
-// Per-chunk uniforms
-uniform vec2  u_chunkWorldOffset;
-uniform float u_chunkSlice;
-uniform float u_chunkSize;
+// Per-chunk params (one entry per chunk being generated, indexed by gl_WorkGroupID.z)
+struct ChunkParams {
+	vec4  offsetSliceSize; // xy=worldOffset, z=slice, w=chunkSize
+	ivec4 indices;         // x=baseInstanceIndex, yzw=unused
+};
 
-// Per-type uniforms
-uniform float u_minDensity; // Minimum density (at far distance)
-uniform float u_maxDensity; // Maximum density (at close distance)
-uniform float u_baseScale;
-uniform float u_scaleVariance;
-uniform float u_minHeight;
-uniform float u_maxHeight;
-uniform float u_minSlope;
-uniform float u_maxSlope;
-uniform vec3  u_baseRotation;   // Base rotation in radians (pitch, yaw, roll)
-uniform bool  u_randomYaw;      // Whether to apply random Y rotation
-uniform bool  u_alignToTerrain; // If true, align to terrain normal; if false, use world up
-uniform uint  u_biomeMask;      // Bitmask of allowed biomes
-uniform float u_detailDistance; // If > 0, only place within this distance
-uniform int   u_typeIndex;
-uniform float u_worldScale;
+layout(std430, binding = 26) readonly buffer ChunkParamsBlock {
+	ChunkParams chunks[];
+};
 
-uniform vec3 u_aabbMin;
-uniform vec3 u_aabbMax;
+uniform int u_typeIndex;
 
 // Simple hash for random values
 float hash(uint x) {
@@ -58,16 +50,6 @@ float hash(uint x) {
 	x = ((x >> 16) ^ x) * 0x45d9f3b;
 	x = (x >> 16) ^ x;
 	return float(x) / 4294967295.0;
-}
-
-// Check if a point is inside the frustum
-bool isInFrustum(vec3 pos) {
-	for (int i = 0; i < 6; i++) {
-		if (dot(u_frustumPlanes[i].xyz, pos) + u_frustumPlanes[i].w < -5.0) {
-			return false; // Small margin for decor size
-		}
-	}
-	return true;
 }
 
 // Build rotation matrix from Euler angles (XYZ order)
@@ -84,93 +66,110 @@ mat3 rotationFromEuler(vec3 angles) {
 }
 
 void main() {
-	uint x = gl_GlobalInvocationID.x;
-	uint y = gl_GlobalInvocationID.y;
+	uint x = gl_GlobalInvocationID.x % 32u; // local X within the 4x4 workgroup grid
+	uint y = gl_GlobalInvocationID.y % 32u; // local Y within the 4x4 workgroup grid
 
-	// Calculate unique index within the chunk's block
-	uint localIndex = x + y * 32; // 32x32 threads in dispatch
-	uint index = u_baseInstanceIndex + localIndex;
+	// Read chunk params from SSBO using Z workgroup as chunk index
+	uint        chunkIdx = gl_WorkGroupID.z;
+	ChunkParams cp = chunks[chunkIdx];
+	vec2        chunkWorldOffset = cp.offsetSliceSize.xy;
+	float       chunkSlice = cp.offsetSliceSize.z;
+	float       chunkSize = cp.offsetSliceSize.w;
+	int         baseInstanceIdx = cp.indices.x;
 
-	if (index >= u_maxInstances)
+	// Read global params from UBO
+	vec2  cameraPos = u_cameraAndScale.xy;
+	float worldScale = u_cameraAndScale.z;
+	float maxTerrainHeight = u_cameraAndScale.w;
+	float densityFalloffStart = u_distanceParams.x;
+	float densityFalloffEnd = u_distanceParams.y;
+	float maxDecorDistance = u_distanceParams.z;
+	int   maxInstances = int(u_distanceParams.w);
+
+	uint localIndex = x + y * 32u;
+	uint index = uint(baseInstanceIdx) + localIndex;
+
+	if (index >= maxInstances)
 		return;
 
-	// Default: inactive
 	instances[index] = mat4(0.0);
 
-	// Grid size is determined by dispatch (4x4 groups of 8x8 = 32x32 placement points per chunk)
+	// Read per-type properties from UBO
+	DecorTypeParams tp = types[u_typeIndex];
+	float           minDensity = tp.densityScale.x;
+	float           maxDensity = tp.densityScale.y;
+	float           pBaseScale = tp.densityScale.z;
+	float           scaleVariance = tp.densityScale.w;
+	float           minHeight = tp.heightSlope.x;
+	float           maxHeight = tp.heightSlope.y;
+	float           minSlope = tp.heightSlope.z;
+	float           maxSlope = tp.heightSlope.w;
+	vec3            baseRotation = tp.rotation.xyz;
+	float           detailDistance = tp.rotation.w;
+	vec3            aabbMin = tp.aabbMin.xyz;
+	vec3            aabbMax = tp.aabbMax.xyz;
+	uint            biomeMask = tp.flags.x;
+	bool            randomYaw = tp.flags.y != 0u;
+	bool            alignToTerrain = tp.flags.z != 0u;
+
 	float gridSize = 32.0;
-	float step = u_chunkSize / gridSize;
+	float step = chunkSize / gridSize;
 
-	// Calculate world position within this chunk
 	vec2 localOffset = vec2(float(x), float(y)) * step;
-	vec2 worldPos = u_chunkWorldOffset + localOffset;
+	vec2 worldPos = chunkWorldOffset + localOffset;
 
-	// Use world position for stable seeding
 	uint seedX = uint(abs(worldPos.x));
 	uint seedY = uint(abs(worldPos.y));
 	uint seed = (seedX * 1973 + seedY * 9277 + uint(u_typeIndex) * 26699) | 1u;
 
-	// Add some jitter within the cell
 	worldPos += vec2(hash(seed), hash(seed + 1234u)) * step * 0.9;
 
-	// Scale world position for noise to match terrain scaling
-	vec2 scaledWorldPos = worldPos / u_worldScale;
+	vec2 scaledWorldPos = worldPos / worldScale;
 
-	// Clamp to chunk bounds
-	if (worldPos.x < u_chunkWorldOffset.x || worldPos.x >= u_chunkWorldOffset.x + u_chunkSize ||
-	    worldPos.y < u_chunkWorldOffset.y || worldPos.y >= u_chunkWorldOffset.y + u_chunkSize)
+	if (worldPos.x < chunkWorldOffset.x || worldPos.x >= chunkWorldOffset.x + chunkSize ||
+	    worldPos.y < chunkWorldOffset.y || worldPos.y >= chunkWorldOffset.y + chunkSize)
 		return;
 
-	// Map local position within chunk to UV [0,1]
-	vec2 uv = (worldPos - u_chunkWorldOffset) / u_chunkSize;
+	vec2 uv = (worldPos - chunkWorldOffset) / chunkSize;
 
-	// Sample heightmap array texture
-	// Format: R=height (raw), G=normal.x, B=normal.y, A=normal.z
-	vec4 terrainSample = textureLod(u_heightmapArray, vec3(uv, u_chunkSlice), 0.0);
+	vec4 terrainSample = textureLod(u_heightmapArray, vec3(uv, chunkSlice), 0.0);
 
-	// Height is stored directly (not normalized) in TerrainRenderManager
 	float height = terrainSample.r;
 	vec3  normal = vec3(terrainSample.g, terrainSample.b, terrainSample.a);
 
-	// Check constraints
-	if (height < u_minHeight * u_worldScale || height > u_maxHeight * u_worldScale)
+	if (height < minHeight * worldScale || height > maxHeight * worldScale)
 		return;
-	float slope = 1.0 - normal.y; // 0 is flat, 1 is vertical
-	if (slope < u_minSlope || slope > u_maxSlope)
+	float slope = 1.0 - normal.y;
+	if (slope < minSlope || slope > maxSlope)
 		return;
 
-	// Very low frequency noise for large-scale density "biomes"
 	float biomeNoise = snoise(scaledWorldPos * 0.0005);
-	// Coherent noise for natural distribution variation
 	float noiseVal = snoise(scaledWorldPos * 0.02);
 	float combinedNoise = (biomeNoise * 0.85 + noiseVal * 0.15 + 1.0) * 0.5;
 	combinedNoise = clamp(combinedNoise, 0.0, 1.0);
 
-	float effectiveDensity = mix(u_minDensity, u_maxDensity, combinedNoise);
+	float effectiveDensity = mix(minDensity, maxDensity, combinedNoise);
 
-	// Distance-based density falloff
-	float distToCam = distance(worldPos, u_cameraPos);
+	float distToCam = distance(worldPos, cameraPos);
 
-	// Detail distance check
-	if (u_detailDistance > 0.0 && distToCam > u_detailDistance * u_worldScale)
+	if (detailDistance > 0.0 && distToCam > detailDistance * worldScale)
 		return;
 
-	float distanceFactor = 1.0 - smoothstep(u_densityFalloffStart, u_densityFalloffEnd, distToCam);
+	float distanceFactor = 1.0 - smoothstep(densityFalloffStart, densityFalloffEnd, distToCam);
 	effectiveDensity *= mix(0.2, 1.0, distanceFactor);
 
-	if (distToCam > u_maxDecorDistance)
+	if (distToCam > maxDecorDistance)
 		return;
 
-	// Biome mask check
-	vec2  biomeData = textureLod(u_biomeMap, vec3(uv, u_chunkSlice), 0.0).rg;
+	vec2  biomeData = textureLod(u_biomeMap, vec3(uv, chunkSlice), 0.0).rg;
 	int   lowIdx = int(biomeData.r * 255.0 + 0.5);
 	int   highIdx = min(lowIdx + 1, 7);
 	float t = biomeData.g;
 
 	float allowedWeight = 0.0;
-	if ((u_biomeMask & (1u << uint(lowIdx))) != 0u)
+	if ((biomeMask & (1u << uint(lowIdx))) != 0u)
 		allowedWeight += (1.0 - t);
-	if ((u_biomeMask & (1u << uint(highIdx))) != 0u)
+	if ((biomeMask & (1u << uint(highIdx))) != 0u)
 		allowedWeight += t;
 
 	if (allowedWeight < 0.01)
@@ -178,43 +177,30 @@ void main() {
 
 	effectiveDensity *= allowedWeight;
 
-	// Random density check using effective density
 	if (hash(seed + 5678) > effectiveDensity)
 		return;
 
-	// Create world position
 	vec3 worldPos3D = vec3(worldPos.x, height, worldPos.y);
 
-	// We no longer frustum cull here, we do it per frame in decor_cull.comp
-	// This allows objects just outside the frustum to still cast shadows.
-
-	// Create model matrix with scale and rotation
-	// Use noise for scale variation as well for more coherent "growth" patterns
 	float scaleNoise = (snoise(scaledWorldPos * 0.1) + 1.0) * 0.5;
 
-	// Base scale is proportional to world scale to keep relative size
-	float baseScale = u_baseScale * u_worldScale;
-	float s = baseScale + (scaleNoise * 2.0 - 1.0) * (u_scaleVariance * u_worldScale);
+	float bScale = pBaseScale * worldScale;
+	float s = bScale + (scaleNoise * 2.0 - 1.0) * (scaleVariance * worldScale);
 
-	// Build rotation: base rotation + optional random yaw
-	vec3 rotation = u_baseRotation;
-	if (u_randomYaw) {
-		rotation.y += hash(seed + 3456) * 6.28318;
+	vec3 rot = baseRotation;
+	if (randomYaw) {
+		rot.y += hash(seed + 3456) * 6.28318;
 	}
-	mat3 rotMat = rotationFromEuler(rotation);
+	mat3 rotMat = rotationFromEuler(rot);
 
-	// Apply terrain alignment if enabled
-	if (u_alignToTerrain) {
-		// Build a rotation matrix that aligns Y-up to terrain normal
+	if (alignToTerrain) {
 		vec3 up = vec3(0.0, 1.0, 0.0);
 		vec3 terrainUp = normalize(normal);
 
-		// Handle edge case where normal is already up or down
 		if (abs(dot(up, terrainUp)) < 0.999) {
 			vec3  axis = normalize(cross(up, terrainUp));
 			float angle = acos(clamp(dot(up, terrainUp), -1.0, 1.0));
 
-			// Rodrigues' rotation formula
 			float c = cos(angle);
 			float s_angle = sin(angle);
 			float t = 1.0 - c;
@@ -231,23 +217,18 @@ void main() {
 				t * axis.z * axis.z + c
 			);
 
-			// Apply terrain alignment after base rotation
 			rotMat = terrainRot * rotMat;
 		}
 	}
 
-	// Apply scale to rotation matrix
 	mat3 scaledRot = rotMat * s;
 
-	// Build final model matrix
 	mat4 m = mat4(1.0);
 	m[0] = vec4(scaledRot[0], 0.0);
 	m[1] = vec4(scaledRot[1], 0.0);
 	m[2] = vec4(scaledRot[2], 0.0);
 
-	// Adjust position so AABB base is on terrain
-	// We want the center of the AABB base in local space to be at worldPos3D
-	vec3 localBottom = vec3((u_aabbMin.x + u_aabbMax.x) * 0.5, u_aabbMin.y, (u_aabbMin.z + u_aabbMax.z) * 0.5);
+	vec3 localBottom = vec3((aabbMin.x + aabbMax.x) * 0.5, aabbMin.y, (aabbMin.z + aabbMax.z) * 0.5);
 	vec3 worldBottomOffset = scaledRot * localBottom;
 	m[3] = vec4(worldPos3D - worldBottomOffset, 1.0);
 

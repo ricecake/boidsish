@@ -4,6 +4,9 @@
 #include <cctype>
 #include <iostream>
 
+#include "constants.h"
+#include "logger.h"
+
 namespace Boidsish {
 
 	ConfigManager* ConfigManager::m_instance = nullptr;
@@ -26,6 +29,7 @@ namespace Boidsish {
 	}
 
 	void ConfigManager::Initialize(const std::string& app_name) {
+		logger::Configure(m_config);
 		m_appName = app_name;
 
 		// Sanitize app_name to create a valid section name
@@ -68,6 +72,9 @@ namespace Boidsish {
 
 		// Foliage culling settings
 		GetAppSettingFloat("foliage_culling_pixel_threshold", 10.0f);
+
+		// Particle settings
+		GetAppSettingFloat("ambient_particle_density", Constants::Class::Particles::DefaultAmbientDensity());
 
 		// Mesh optimization settings
 		GetAppSettingBool("mesh_optimizer_enabled", true);

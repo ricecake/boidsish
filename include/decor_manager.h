@@ -44,6 +44,28 @@ namespace Boidsish {
 		}
 	};
 
+	// Matches std140 layout in decor_placement.comp GlobalPlacementParams UBO
+	struct alignas(16) PlacementGlobalsGPU {
+		glm::vec4 camera_and_scale; // xy=cameraPos, z=worldScale, w=maxTerrainHeight
+		glm::vec4 distance_params;  // x=densityFalloffStart, y=densityFalloffEnd, z=maxDecorDistance, w=maxInstances
+	};
+
+	// Matches std430 layout in decor_placement.comp ChunkParams SSBO
+	struct ChunkParamsGPU {
+		glm::vec4  offset_slice_size; // xy=worldOffset, z=slice, w=chunkSize
+		glm::ivec4 indices;           // x=baseInstanceIndex, yzw=unused
+	};
+
+	// Matches std140 layout in decor_placement.comp DecorTypeParams UBO
+	struct alignas(16) DecorTypeGPU {
+		glm::vec4  density_scale; // x=minDensity, y=maxDensity, z=baseScale, w=scaleVariance
+		glm::vec4  height_slope;  // x=minHeight, y=maxHeight, z=minSlope, w=maxSlope
+		glm::vec4  rotation;      // xyz=baseRotation (radians), w=detailDistance
+		glm::vec4  aabb_min;      // xyz=model AABB min, w=unused
+		glm::vec4  aabb_max;      // xyz=model AABB max, w=unused
+		glm::uvec4 flags;         // x=biomeMask, y=randomYaw, z=alignToTerrain, w=typeIndex
+	};
+
 	struct DecorType {
 		std::shared_ptr<Model> model;
 		DecorProperties        props;
@@ -100,15 +122,30 @@ namespace Boidsish {
 		 */
 		void PrepareResources(Megabuffer* mb);
 
-		void Render(
+		/**
+		 * @brief Performs GPU culling for all decor types.
+		 * Should be called once per pass (main camera or shadow-casting light) before Render().
+		 * Results are stored in the respective indirect buffers and visible SSBOs.
+		 */
+		void Cull(
 			const glm::mat4&                      view,
 			const glm::mat4&                      projection,
 			int                                   viewport_width,
 			int                                   viewport_height,
 			const std::optional<glm::mat4>&       light_space_matrix = std::nullopt,
-			Shader*                               shader_override = nullptr,
 			const std::optional<glm::vec3>&       light_dir = std::nullopt,
 			std::shared_ptr<TerrainRenderManager> render_manager = nullptr
+		);
+
+		/**
+		 * @brief Renders the already-culled decor instances.
+		 * Uses the results from the most recent Cull() call.
+		 */
+		void Render(
+			const glm::mat4&                view,
+			const glm::mat4&                projection,
+			const std::optional<glm::mat4>& light_space_matrix = std::nullopt,
+			Shader*                         shader_override = nullptr
 		);
 
 		void SetEnabled(bool enabled) { enabled_ = enabled; }
@@ -159,16 +196,35 @@ namespace Boidsish {
 		// Block allocation
 		struct ChunkAllocation {
 			int      block_index;
-			uint32_t terrain_version;
+			uint32_t update_count = 0; // mirrors the render manager's per-chunk update_count
 			bool     is_dirty;
+			uint32_t last_seen_frame = 0; // frame when chunk was last present in chunk_info
 		};
 
 		std::map<std::pair<int, int>, ChunkAllocation> active_chunks_;
 		std::vector<int>                               free_blocks_;
+		uint32_t                                       frame_counter_ = 0;
 
-		// Caching - only regenerate when camera moves significantly
-		glm::vec3 last_camera_pos_ = glm::vec3(0.0f);
+		// Grace period: keep decor blocks alive for this many frames after their
+		// terrain chunk disappears from the render manager (e.g. due to LRU eviction).
+		// Prevents regeneration churn when chunks cycle in and out.
+		static constexpr uint32_t kChunkGracePeriodFrames = 1;
+
+		// Cached camera state for terrain occlusion and priority sorting
+		glm::vec3 camera_pos_ = glm::vec3(0.0f);
+		glm::vec2 camera_forward_2d_ = glm::vec2(0.0f, -1.0f);
+		glm::vec2 camera_rotation_delta_ = glm::vec2(0.0f); // per-frame turn direction (XZ)
+		glm::vec2 prev_camera_forward_2d_ = glm::vec2(0.0f, -1.0f);
 		float     last_world_scale_ = 0.0f;
+
+		// Cap on new chunks generated per frame to avoid spikes
+		static constexpr int kMaxNewChunksPerFrame = 24;
+
+		// Per-type properties UBO for placement shader (uploaded in PrepareResources)
+		GLuint decor_props_ubo_ = 0;
+		// Global placement params UBO and per-chunk SSBO (uploaded per dispatch frame)
+		GLuint placement_globals_ubo_ = 0;
+		GLuint chunk_params_ssbo_ = 0;
 
 		// Distance-based density parameters
 		float density_falloff_start_ = 200.0f;
@@ -184,8 +240,13 @@ namespace Boidsish {
 		glm::mat4 hiz_prev_vp_{1.0f};
 		bool      hiz_enabled_ = false;
 
+		// Block validity SSBO: one uint per block. 1=valid (has placed decor),
+		// 0=invalid (freed, stale data). Checked by cull shader to skip freed blocks
+		// without needing to zero 64KB of instance data per type.
+		GLuint block_validity_ssbo_ = 0;
+
 		static constexpr int kInstancesPerChunk = 1024;
-		static constexpr int kMaxActiveChunks = 576;
+		static constexpr int kMaxActiveChunks = 1024;
 		static constexpr int kMaxInstancesPerType = kInstancesPerChunk * kMaxActiveChunks; // 147,456
 	};
 

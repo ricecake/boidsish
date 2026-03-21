@@ -621,10 +621,10 @@ namespace Boidsish {
 		logger::LOG("Model loading from disk: {}", path);
 		Assimp::Importer importer;
 		const aiScene*   scene = importer.ReadFile(
-            path,
-            aiProcess_Triangulate | aiProcess_FlipUVs | aiProcess_GenNormals | aiProcess_LimitBoneWeights |
-                aiProcess_PopulateArmatureData
-        );
+			path,
+			aiProcess_Triangulate | aiProcess_FlipUVs | aiProcess_GenNormals | aiProcess_LimitBoneWeights |
+				aiProcess_PopulateArmatureData
+		);
 
 		if (!scene || scene->mFlags & AI_SCENE_FLAGS_INCOMPLETE || !scene->mRootNode) {
 			logger::ERROR("ASSIMP Error: {}", importer.GetErrorString());

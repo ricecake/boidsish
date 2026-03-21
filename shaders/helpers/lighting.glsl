@@ -420,10 +420,10 @@ vec4 apply_lighting_pbr(vec3 frag_pos, vec3 normal, vec3 albedo, float roughness
 	// Scaled by ambient_light to respond to time-of-day
 	float upAmount = R.y * 0.5 + 0.5;
 	vec3  envColor = mix(
-        ambient_light * 0.2, // Ground color (approximate bounce)
-        ambient_light * 1.2, // Sky color (approximate)
-        smoothstep(0.0, 0.7, upAmount)
-    );
+		ambient_light * 0.2, // Ground color (approximate bounce)
+		ambient_light * 1.2, // Sky color (approximate)
+		smoothstep(0.0, 0.7, upAmount)
+	);
 
 	// Environment reflection strength based on smoothness
 	float smoothness = 1.0 - roughness;
@@ -596,10 +596,10 @@ vec3 calculate_iridescence(vec3 view_dir, vec3 normal, vec3 base_color, float ti
 	// Add time-based swirl for animation
 	float swirl = sin(time_offset * 0.5) * 0.5 + 0.5;
 	vec3  iridescent = vec3(
-        sin(angle_factor * 10.0 + swirl * 5.0) * 0.5 + 0.5,
-        sin(angle_factor * 10.0 + swirl * 5.0 + 2.0) * 0.5 + 0.5,
-        sin(angle_factor * 10.0 + swirl * 5.0 + 4.0) * 0.5 + 0.5
-    );
+		sin(angle_factor * 10.0 + swirl * 5.0) * 0.5 + 0.5,
+		sin(angle_factor * 10.0 + swirl * 5.0 + 2.0) * 0.5 + 0.5,
+		sin(angle_factor * 10.0 + swirl * 5.0 + 4.0) * 0.5 + 0.5
+	);
 
 	// Blend with base color based on angle
 	return mix(base_color, iridescent, angle_factor * 0.8 + 0.2);

@@ -69,11 +69,9 @@ namespace Boidsish {
 
 		// Clear all shadow map layers to max depth (1.0)
 		// This ensures unused layers don't cause artifacts
-		for (int i = 0; i < kMaxShadowMaps; ++i) {
-			glFramebufferTextureLayer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, shadow_map_array_, 0, i);
-			glClearDepth(1.0);
-			glClear(GL_DEPTH_BUFFER_BIT);
-		}
+		glFramebufferTexture(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, shadow_map_array_, 0);
+		glClearDepth(1.0);
+		glClear(GL_DEPTH_BUFFER_BIT);
 
 		glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
@@ -105,14 +103,12 @@ namespace Boidsish {
 		int              cascade_index,
 		const glm::mat4& view,
 		float            fov,
-		float            aspect
+		float            aspect,
+		bool             clear
 	) {
 		if (!initialized_ || map_index >= kMaxShadowMaps) {
 			return;
 		}
-
-		// Store current viewport
-		glGetIntegerv(GL_VIEWPORT, prev_viewport_);
 
 		// Calculate light-space matrix
 		glm::vec3 light_dir = glm::normalize(light.direction);
@@ -253,13 +249,10 @@ namespace Boidsish {
 		glBindFramebuffer(GL_FRAMEBUFFER, shadow_fbo_);
 		glFramebufferTextureLayer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, shadow_map_array_, 0, map_index);
 
-		GLenum status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
-		if (status != GL_FRAMEBUFFER_COMPLETE) {
-			logger::ERROR("Shadow FBO incomplete for map {}: {}", map_index, status);
-		}
-
 		glViewport(0, 0, kShadowMapSize, kShadowMapSize);
-		glClear(GL_DEPTH_BUFFER_BIT);
+		if (clear) {
+			glClear(GL_DEPTH_BUFFER_BIT);
+		}
 
 		// Enable front-face culling to reduce shadow acne
 		glEnable(GL_CULL_FACE);
@@ -273,12 +266,6 @@ namespace Boidsish {
 	void ShadowManager::EndShadowPass() {
 		// Restore culling state
 		glCullFace(GL_BACK);
-
-		// Restore previous viewport
-		glViewport(prev_viewport_[0], prev_viewport_[1], prev_viewport_[2], prev_viewport_[3]);
-
-		// Unbind framebuffer
-		glBindFramebuffer(GL_FRAMEBUFFER, 0);
 	}
 
 	const glm::mat4& ShadowManager::GetLightSpaceMatrix(int map_index) const {

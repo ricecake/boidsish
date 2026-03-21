@@ -1,6 +1,8 @@
 #include "procedural_mesher.h"
 
+#include <cmath>
 #include <numbers>
+#include <set>
 
 #include "ConfigManager.h"
 #include "mesh_optimizer_util.h"
@@ -258,7 +260,8 @@ namespace Boidsish {
 					glm::vec3   ap = v.Position - bs.start;
 					float       denom = glm::dot(ab, ab);
 					float       t = (denom > 1e-6f) ? glm::clamp(glm::dot(ap, ab) / denom, 0.0f, 1.0f) : 0.0f;
-					float       d = glm::distance(v.Position, bs.start + t * ab);
+					float       t_clamped = glm::clamp(t, 0.0f, 1.0f);
+					float       d = glm::distance(v.Position, bs.start + t_clamped * ab);
 					if (d < best_dist) {
 						best_dist = d;
 						best_bone = b;
@@ -279,6 +282,29 @@ namespace Boidsish {
 				vertices[i].m_Weights[0] = 1.0f;
 			}
 		}
+
+		struct MaterialKey {
+			float     roughness;
+			float     metallic;
+			float     ao;
+			glm::vec3 emissive;
+
+			bool operator<(const MaterialKey& o) const {
+				if (std::abs(roughness - o.roughness) > 1e-4f)
+					return roughness < o.roughness;
+				if (std::abs(metallic - o.metallic) > 1e-4f)
+					return metallic < o.metallic;
+				if (std::abs(ao - o.ao) > 1e-4f)
+					return ao < o.ao;
+				if (std::abs(emissive.r - o.emissive.r) > 1e-4f)
+					return emissive.r < o.emissive.r;
+				if (std::abs(emissive.g - o.emissive.g) > 1e-4f)
+					return emissive.g < o.emissive.g;
+				if (std::abs(emissive.b - o.emissive.b) > 1e-4f)
+					return emissive.b < o.emissive.b;
+				return false;
+			}
+		};
 
 	} // namespace
 
@@ -351,7 +377,6 @@ namespace Boidsish {
 				glm::mat4 local = bs.offset; // This is actually inv(global) right now
 				if (!pname.empty()) {
 					// We need the parent's global bind transform.
-					// Find the parent bone info in the map.
 					auto it = data->bone_info_map.find(pname);
 					if (it != data->bone_info_map.end()) {
 						glm::mat4 parentGlobal = glm::inverse(it->second.offset);
@@ -370,9 +395,7 @@ namespace Boidsish {
 			}
 		}
 
-		// Reassign non-bone joint elements (e.g. hips) to their bone child
-		// rather than their bone ancestor. A hub sitting at a joint should
-		// move with the outgoing limb, not the parent body.
+		// Joint reassignment
 		for (int i = 0; i < (int)ir.elements.size(); ++i) {
 			const auto& e = ir.elements[i];
 			if (e.is_bone)
@@ -385,28 +408,34 @@ namespace Boidsish {
 			}
 		}
 
-		// 2. Generate Primary Mesh
-		std::vector<Vertex>       main_vertices;
-		std::vector<unsigned int> main_indices;
+		// 2. Generate Mesh Elements grouped by Material
+		struct MeshData {
+			std::vector<Vertex>       vertices;
+			std::vector<unsigned int> indices;
+			MaterialKey               material;
+			bool                      is_leaf = false;
+		};
+
+		std::map<MaterialKey, MeshData> grouped_meshes;
 
 		struct SkinJob {
 			int              start_v;
 			int              end_v;
 			int              element_idx;
-			int              mode;          // Bits 0-7: SkinningMode, Bit 31: IsLeaf
-			std::vector<int> segment_bones; // Per-spline-segment bone ID (tube chains only)
+			int              mode;
+			std::vector<int> segment_bones;
+			MaterialKey      material;
 		};
 
 		std::vector<SkinJob> skin_jobs;
 
-		// Tubes handled via spline if multiple connected
+		// Tubes handled via spline
 		std::vector<bool> handled(ir.elements.size(), false);
 		for (int i = 0; i < (int)ir.elements.size(); ++i) {
 			const auto& e = ir.elements[i];
 			if (e.type != ProceduralElementType::Tube || handled[i])
 				continue;
 
-			// Spline tube branch detection
 			if (e.parent == -1 || ir.elements[e.parent].type != ProceduralElementType::Tube) {
 				std::vector<Vector3>   points;
 				std::vector<Vector3>   ups;
@@ -415,8 +444,10 @@ namespace Boidsish {
 
 				int              curr = i;
 				bool             first = true;
-				std::vector<int> segment_bones; // bone_id per spline segment
+				std::vector<int> segment_bones;
 				SkinningMode     chain_mode = SkinningMode::Smooth;
+				MaterialKey      mat = {e.roughness, e.metallic, e.ao, e.emissiveColor};
+
 				while (curr != -1) {
 					const auto& te = ir.elements[curr];
 					if (te.type != ProceduralElementType::Tube || handled[curr])
@@ -424,7 +455,6 @@ namespace Boidsish {
 					handled[curr] = true;
 
 					int curr_bone = element_to_bone[curr];
-					// If any tube in the chain requests Rigid, use it for the chain
 					if (te.skinning_mode == SkinningMode::Rigid)
 						chain_mode = SkinningMode::Rigid;
 
@@ -435,7 +465,6 @@ namespace Boidsish {
 						colors.push_back(te.color);
 						first = false;
 					}
-					// Find next tube or control point
 					int next = -1;
 					for (int child : te.children) {
 						if (ir.elements[child].type == ProceduralElementType::Tube) {
@@ -448,7 +477,7 @@ namespace Boidsish {
 							ups.push_back(Vector3(0, 1, 0));
 							sizes.push_back(cp.radius / SPLINE_RADIUS_SCALE);
 							colors.push_back(cp.color);
-							segment_bones.push_back(curr_bone); // CP segment belongs to this tube's bone
+							segment_bones.push_back(curr_bone);
 							for (int cp_child : cp.children) {
 								if (ir.elements[cp_child].type == ProceduralElementType::Tube) {
 									next = cp_child;
@@ -462,56 +491,66 @@ namespace Boidsish {
 					ups.push_back(Vector3(0, 1, 0));
 					sizes.push_back(te.end_radius / SPLINE_RADIUS_SCALE);
 					colors.push_back(te.color);
-					segment_bones.push_back(curr_bone); // End segment belongs to this tube's bone
+					segment_bones.push_back(curr_bone);
 					curr = next;
 				}
 
 				if (points.size() >= 2) {
-					int          v_start = (int)main_vertices.size();
+					if (grouped_meshes.find(mat) == grouped_meshes.end()) {
+						grouped_meshes[mat].material = mat;
+					}
+					auto&        group = grouped_meshes[mat];
+					int          v_start = (int)group.vertices.size();
 					auto         tube_data = Spline::GenerateTube(points, ups, sizes, colors, false, 10, 8);
-					unsigned int base = (unsigned int)main_vertices.size();
+					unsigned int base = (unsigned int)group.vertices.size();
 					for (const auto& vd : tube_data) {
 						Vertex v;
 						v.Position = vd.pos;
 						v.Normal = vd.normal;
 						v.Color = vd.color;
 						v.TexCoords = glm::vec2(0.5f);
-						main_vertices.push_back(v);
+						group.vertices.push_back(v);
 					}
 					for (unsigned int k = 0; k < (unsigned int)tube_data.size(); ++k)
-						main_indices.push_back(base + k);
+						group.indices.push_back(base + k);
 
 					SkinJob job;
 					job.start_v = v_start;
-					job.end_v = (int)main_vertices.size();
+					job.end_v = (int)group.vertices.size();
 					job.element_idx = i;
 					job.mode = (int)chain_mode;
 					job.segment_bones = std::move(segment_bones);
+					job.material = mat;
 					skin_jobs.push_back(std::move(job));
 				}
 			}
 		}
 
-		// Hubs, Boxes, Wedges, Pyramids, Puffballs
 		for (int i = 0; i < (int)ir.elements.size(); ++i) {
 			const auto& e = ir.elements[i];
 			if (handled[i])
 				continue;
-			int v_start = (int)main_vertices.size();
+
+			MaterialKey mat = {e.roughness, e.metallic, e.ao, e.emissiveColor};
+			if (grouped_meshes.find(mat) == grouped_meshes.end()) {
+				grouped_meshes[mat].material = mat;
+			}
+			auto& group = grouped_meshes[mat];
+			int   v_start = (int)group.vertices.size();
 
 			if (e.type == ProceduralElementType::Hub) {
-				GenerateUVSphere(main_vertices, main_indices, e.position, e.radius, e.color, 6, 6);
+				GenerateUVSphere(group.vertices, group.indices, e.position, e.radius, e.color, 6, 6);
 			} else if (e.type == ProceduralElementType::Box) {
-				GenerateBox(main_vertices, main_indices, e.position, e.orientation, e.dimensions, e.color);
+				GenerateBox(group.vertices, group.indices, e.position, e.orientation, e.dimensions, e.color);
 			} else if (e.type == ProceduralElementType::Wedge) {
-				GenerateWedge(main_vertices, main_indices, e.position, e.orientation, e.dimensions, e.color);
+				GenerateWedge(group.vertices, group.indices, e.position, e.orientation, e.dimensions, e.color);
 			} else if (e.type == ProceduralElementType::Pyramid) {
-				GeneratePyramid(main_vertices, main_indices, e.position, e.orientation, e.dimensions, e.color);
+				GeneratePyramid(group.vertices, group.indices, e.position, e.orientation, e.dimensions, e.color);
 			} else if (e.type == ProceduralElementType::Puffball) {
 				if (e.variant == 1)
 					GenerateUVSphere(
-						main_vertices,
-						main_indices,
+						group.vertices,
+						group.indices,
 						e.position,
 						e.radius,
 						e.color,
@@ -520,7 +559,7 @@ namespace Boidsish {
 						glm::vec3(1.0f, 0.4f, 1.0f)
 					);
 				else
-					GenerateUVSphere(main_vertices, main_indices, e.position, e.radius, e.color, 4, 4);
+					GenerateUVSphere(group.vertices, group.indices, e.position, e.radius, e.color, 4, 4);
 			} else {
 				continue;
 			}
@@ -532,14 +571,17 @@ namespace Boidsish {
 				else
 					sm = SkinningMode::Rigid;
 			}
-			skin_jobs.push_back({v_start, (int)main_vertices.size(), i, (int)sm});
+			skin_jobs.push_back({v_start, (int)group.vertices.size(), i, (int)sm, {}, mat});
 		}
 
-		// 3. Generate Leaves
-		std::vector<Vertex>       leaf_vertices;
-		std::vector<unsigned int> leaf_indices;
-		auto AddLeafGeom = [&](glm::vec3 pos, glm::quat ori, float size, glm::vec3 color, int variant) {
-			unsigned int           base = (unsigned int)leaf_vertices.size();
+		auto AddLeafGeom = [&](std::vector<Vertex>&       vertices,
+		                       std::vector<unsigned int>& indices,
+		                       glm::vec3                  pos,
+		                       glm::quat                  ori,
+		                       float                      size,
+		                       glm::vec3                  color,
+		                       int                        variant) {
+			unsigned int           base = (unsigned int)vertices.size();
 			std::vector<glm::vec3> pts;
 			if (variant == 1)
 				pts = {{0, 0, 0}, {0.1f, 0.5f, 0}, {0, 1.2f, 0}, {-0.1f, 0.5f, 0}};
@@ -566,43 +608,42 @@ namespace Boidsish {
 				v.Normal = ori * glm::vec3(0, 0, 1);
 				v.Color = color;
 				v.TexCoords = glm::vec2(0.5f);
-				leaf_vertices.push_back(v);
+				vertices.push_back(v);
 			}
 			for (size_t i = 1; i < pts.size() - 1; ++i) {
-				leaf_indices.push_back(base);
-				leaf_indices.push_back(base + (unsigned int)i);
-				leaf_indices.push_back(base + (unsigned int)i + 1);
-				leaf_indices.push_back(base);
-				leaf_indices.push_back(base + (unsigned int)i + 1);
-				leaf_indices.push_back(base + (unsigned int)i);
+				indices.push_back(base);
+				indices.push_back(base + (unsigned int)i);
+				indices.push_back(base + (unsigned int)i + 1);
+				indices.push_back(base);
+				indices.push_back(base + (unsigned int)i + 1);
+				indices.push_back(base + (unsigned int)i);
 			}
 		};
 
 		for (int i = 0; i < (int)ir.elements.size(); ++i) {
 			const auto& e = ir.elements[i];
 			if (e.type == ProceduralElementType::Leaf) {
-				int v_start = (int)leaf_vertices.size();
-				AddLeafGeom(e.position, e.orientation, e.radius, e.color, e.variant);
+				MaterialKey mat = {e.roughness, e.metallic, e.ao, e.emissiveColor};
+				if (grouped_meshes.find(mat) == grouped_meshes.end()) {
+					grouped_meshes[mat].material = mat;
+				}
+				auto& group = grouped_meshes[mat];
+				group.is_leaf = true;
+				int v_start = (int)group.vertices.size();
+				AddLeafGeom(group.vertices, group.indices, e.position, e.orientation, e.radius, e.color, e.variant);
 
 				SkinningMode sm = e.skinning_mode;
 				if (sm == SkinningMode::Auto)
 					sm = SkinningMode::Rigid;
-				skin_jobs.push_back({v_start, (int)leaf_vertices.size(), i, (int)sm | (int)0x80000000}); // Mark as leaf
+				skin_jobs.push_back({v_start, (int)group.vertices.size(), i, (int)sm, {}, mat});
 			}
 		}
 
-		// 4. Weighting, Repositioning, and AABB
 		for (auto& job : skin_jobs) {
-			bool                 is_leaf = (job.mode & 0x80000000) != 0;
-			SkinningMode         mode = (SkinningMode)(job.mode & 0x7FFFFFFF);
-			std::vector<Vertex>& verts = is_leaf ? leaf_vertices : main_vertices;
+			SkinningMode         mode = (SkinningMode)job.mode;
+			std::vector<Vertex>& verts = grouped_meshes[job.material].vertices;
 
 			if (!job.segment_bones.empty()) {
-				// Tube chain: assign bones by spline segment index.
-				// The spline generates vertices segment-by-segment in order, with each
-				// segment producing the same number of vertices. This avoids the geometric
-				// ambiguity of distance-based assignment when bone segments have different
-				// orientations (e.g. diagonal upper leg vs vertical lower leg).
 				int num_segments = (int)job.segment_bones.size();
 				int total_verts = job.end_v - job.start_v;
 				int verts_per_segment = (num_segments > 0) ? (total_verts / num_segments) : total_verts;
@@ -617,7 +658,6 @@ namespace Boidsish {
 				}
 			} else if (mode == SkinningMode::Rigid) {
 				int bone_id = element_to_bone[job.element_idx];
-				// If this specific element isn't a bone, find its nearest bone ancestor
 				if (bone_id == -1) {
 					int curr = job.element_idx;
 					while (curr != -1) {
@@ -634,37 +674,32 @@ namespace Boidsish {
 			}
 		}
 
-		// Calculate AABB and reposition
 		glm::vec3 min(1e10f), max(-1e10f);
 		bool      has_any = false;
-		auto      update_aabb = [&](const std::vector<Vertex>& verts) {
-            for (const auto& v : verts) {
-                min = glm::min(min, v.Position);
-                max = glm::max(max, v.Position);
-                has_any = true;
-            }
-		};
-		update_aabb(main_vertices);
-		update_aabb(leaf_vertices);
+
+		for (auto& [key, group] : grouped_meshes) {
+			for (const auto& v : group.vertices) {
+				min = glm::min(min, v.Position);
+				max = glm::max(max, v.Position);
+				has_any = true;
+			}
+		}
 
 		if (has_any) {
 			if (ir.name == "critter") {
 				float y_offset = -min.y;
-				for (auto& v : main_vertices)
-					v.Position.y += y_offset;
-				for (auto& v : leaf_vertices)
-					v.Position.y += y_offset;
+				for (auto& [key, group] : grouped_meshes) {
+					for (auto& v : group.vertices)
+						v.Position.y += y_offset;
+				}
 				max.y += y_offset;
 				min.y = 0;
 
-				// Shift the entire skeleton root to match the mesh shift
-				// We update the root-level bone transformations to include this translation
 				for (auto& node : data->root_node.children) {
 					node.transformation = glm::translate(glm::mat4(1.0f), glm::vec3(0, y_offset, 0)) *
 						node.transformation;
 				}
 
-				// Re-calculate all offset matrices because the global bind pose has shifted
 				std::function<void(NodeData&, glm::mat4)> updateOffsets = [&](NodeData& n, glm::mat4 p) {
 					glm::mat4 g = p * n.transformation;
 					auto      it = data->bone_info_map.find(n.name);
@@ -680,36 +715,38 @@ namespace Boidsish {
 			data->aabb = AABB(min, max);
 		}
 
-		// 5. Finalize Meshes
-		auto finalize_mesh =
-			[&](std::vector<Vertex>& vertices, std::vector<unsigned int>& indices, bool use_simplifier) {
-				if (vertices.empty())
-					return;
-				auto& config = ConfigManager::GetInstance();
-				if (use_simplifier && config.GetAppSettingBool("mesh_simplifier_enabled", false))
-					MeshOptimizerUtil::Simplify(vertices, indices, 0.05f, 0.5f, 40, data->model_path);
+		auto finalize_mesh = [&](MeshData& group) {
+			if (group.vertices.empty())
+				return;
+			auto& config = ConfigManager::GetInstance();
+			bool  should_simplify = !group.is_leaf;
+			if (should_simplify && config.GetAppSettingBool("mesh_simplifier_enabled", false))
+				MeshOptimizerUtil::Simplify(group.vertices, group.indices, 0.05f, 0.5f, 40, data->model_path);
 
-				std::vector<unsigned int> shadow_indices;
-				if (config.GetAppSettingBool("mesh_optimizer_enabled", true)) {
-					MeshOptimizerUtil::Optimize(vertices, indices, data->model_path);
-					if (config.GetAppSettingBool("mesh_optimizer_shadow_indices_enabled", true))
-						MeshOptimizerUtil::GenerateShadowIndices(vertices, indices, shadow_indices);
-				}
-				Mesh m(vertices, indices, {}, shadow_indices);
-				m.diffuseColor = {1, 1, 1};
-				m.has_vertex_colors = true;
-				data->meshes.push_back(m);
-			};
+			std::vector<unsigned int> shadow_indices;
+			if (config.GetAppSettingBool("mesh_optimizer_enabled", true)) {
+				MeshOptimizerUtil::Optimize(group.vertices, group.indices, data->model_path);
+				if (config.GetAppSettingBool("mesh_optimizer_shadow_indices_enabled", true))
+					MeshOptimizerUtil::GenerateShadowIndices(group.vertices, group.indices, shadow_indices);
+			}
+			Mesh m(group.vertices, group.indices, {}, shadow_indices);
+			m.diffuseColor = {1, 1, 1};
+			m.has_vertex_colors = true;
+			m.roughness = group.material.roughness;
+			m.metallic = group.material.metallic;
+			m.ao = group.material.ao;
+			m.emissiveColor = group.material.emissive;
+			data->meshes.push_back(m);
+		};
 
-		finalize_mesh(main_vertices, main_indices, true);
-		finalize_mesh(leaf_vertices, leaf_indices, false);
+		for (auto& [key, group] : grouped_meshes) {
+			finalize_mesh(group);
+		}
 
 		return std::make_shared<Model>(data, false);
 	}
 
 	std::shared_ptr<ModelData> ProceduralMesher::GenerateDirectMesh(const ProceduralIR& ir) {
-		// Redundant with GenerateModel but kept for interface compatibility if needed, though GenerateModel now does
-		// the heavy lifting
 		return nullptr;
 	}
 

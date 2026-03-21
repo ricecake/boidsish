@@ -84,9 +84,9 @@ namespace Boidsish {
 
 		float height_factor = std::max(1.0f, camera.y / 5.0f);
 		int   dynamic_view_distance = std::min(
-            Constants::Class::Terrain::MaxViewDistance(),
-            static_cast<int>(view_distance_ * height_factor)
-        );
+			Constants::Class::Terrain::MaxViewDistance() * 2,
+			static_cast<int>(view_distance_ * height_factor * 1.5f)
+		);
 
 		float max_h = 0.0f;
 		for (const auto& b : kBiomes) {
@@ -195,9 +195,9 @@ namespace Boidsish {
 		// Priority: 1) In frustum and close, 2) In frustum and far, 3) Out of frustum but close
 		// This prevents pop-in by pre-registering nearby chunks even if not visible yet
 		if (render_manager_) {
-			const int   max_registrations_per_frame = 32; // Increased for faster catch-up
-			const float preload_distance_sq = (dynamic_view_distance * scaled_chunk_size * 0.5f) *
-				(dynamic_view_distance * scaled_chunk_size * 0.5f);
+			const int   max_registrations_per_frame = 64; // Increased for faster catch-up
+			const float preload_distance_sq = (dynamic_view_distance * scaled_chunk_size * 0.75f) *
+				(dynamic_view_distance * scaled_chunk_size * 0.75f);
 
 			// Collect chunks needing registration with their distances and frustum status
 			struct ChunkToRegister {
@@ -293,6 +293,8 @@ namespace Boidsish {
 			pending_chunks_.at(key).cancel();
 			pending_chunks_.erase(key);
 		}
+
+		ProcessPendingDeformations();
 
 		// Commit any pending buffer updates to the render manager
 		if (render_manager_) {
@@ -588,7 +590,7 @@ namespace Boidsish {
 		float chunk_max_x = chunk_min_x + scaled_chunk_size;
 		float chunk_max_z = chunk_min_z + scaled_chunk_size;
 		bool  chunk_has_deformations = deformation_manager_
-										  .ChunkHasDeformations(chunk_min_x, chunk_min_z, chunk_max_x, chunk_max_z);
+										   .ChunkHasDeformations(chunk_min_x, chunk_min_z, chunk_max_x, chunk_max_z);
 
 		// Generate heightmap
 
@@ -674,16 +676,8 @@ namespace Boidsish {
 			for (int j = 0; j < num_vertices_z; ++j) {
 				float y = heightmap[i][j][0];
 
-				// Force perimeter normals to be perfectly vertical to ensure
-				// consistency across chunk boundaries. This prevents "cracks"
-				// where tessellation levels might otherwise differ due to
-				// inconsistent normal-based boosts.
 				float dx = heightmap[i][j][1];
 				float dz = heightmap[i][j][2];
-				if (i == 0 || i == num_vertices_x - 1 || j == 0 || j == num_vertices_z - 1) {
-					dx = 0.0f;
-					dz = 0.0f;
-				}
 
 				positions.emplace_back(i * world_scale_, y, j * world_scale_);
 				normals.push_back(diffToNorm(dx, dz));
@@ -1421,103 +1415,169 @@ namespace Boidsish {
 	}
 
 	void TerrainGenerator::InvalidateDeformedChunks(std::optional<uint32_t> deformation_id) {
-		std::lock_guard<std::recursive_mutex> lock(chunk_cache_mutex_);
-		terrain_version_++;
-
-		std::vector<std::pair<int, int>> chunks_to_regenerate;
-		float                            scaled_chunk_size = static_cast<float>(chunk_size_) * world_scale_;
-
+		std::lock_guard<std::mutex> lock(deformation_queue_mutex_);
 		if (deformation_id.has_value()) {
-			// Invalidate only chunks affected by the specific deformation
-			auto deformation = deformation_manager_.GetDeformation(deformation_id.value());
-			if (!deformation) {
-				return;
+			queued_deformation_ids_.push_back(deformation_id.value());
+		} else {
+			// Special value for "all"
+			queued_deformation_ids_.push_back(0);
+		}
+	}
+
+	void TerrainGenerator::ProcessPendingDeformations() {
+		std::vector<uint32_t> current_deformations;
+		{
+			std::lock_guard<std::mutex> lock(deformation_queue_mutex_);
+			if (queued_deformation_ids_.empty()) {
+				// Still need to process completed async tasks even if no new deformations
+			} else {
+				current_deformations = std::move(queued_deformation_ids_);
+				queued_deformation_ids_.clear();
 			}
+		}
+
+		float scaled_chunk_size = static_cast<float>(chunk_size_) * world_scale_;
+
+		// 1. Process completed deformation tasks
+		std::vector<std::pair<int, int>> completed_keys;
+		bool                             any_completed = false;
+		{
+			std::lock_guard<std::recursive_mutex> lock(chunk_cache_mutex_);
+			for (auto& pair : pending_deformations_) {
+				if (pair.second.is_ready()) {
+					try {
+						TerrainGenerationResult result = pair.second.get();
+						if (result.has_terrain) {
+							auto new_terrain = std::make_shared<Terrain>(
+								result.indices,
+								result.positions,
+								result.normals,
+								result.biomes,
+								result.proxy
+							);
+							new_terrain->SetPosition(
+								result.chunk_x * scaled_chunk_size,
+								0,
+								result.chunk_z * scaled_chunk_size
+							);
+
+							if (render_manager_) {
+								new_terrain->SetManagedByRenderManager(true);
+								render_manager_->RegisterChunk(
+									pair.first,
+									new_terrain->vertices,
+									new_terrain->normals,
+									new_terrain->biomes,
+									new_terrain->GetIndices(),
+									new_terrain->proxy.minY,
+									new_terrain->proxy.maxY,
+									glm::vec3(result.chunk_x * scaled_chunk_size, 0, result.chunk_z * scaled_chunk_size)
+								);
+							} else {
+								new_terrain->setupMesh();
+							}
+							chunk_cache_[pair.first] = new_terrain;
+						} else {
+							if (render_manager_) {
+								render_manager_->UnregisterChunk(pair.first);
+							}
+							chunk_cache_.erase(pair.first);
+						}
+						completed_keys.push_back(pair.first);
+						any_completed = true;
+					} catch (...) {
+						completed_keys.push_back(pair.first);
+					}
+				}
+			}
+		}
+
+		for (const auto& key : completed_keys) {
+			pending_deformations_.erase(key);
+		}
+
+		if (any_completed) {
+			terrain_version_++;
+		}
+
+		if (current_deformations.empty())
+			return;
+
+		// 2. Identify all chunks that need regeneration from NEW deformations
+		std::set<std::pair<int, int>> chunks_to_regenerate;
+		bool                          all_deformed = false;
+
+		for (uint32_t def_id : current_deformations) {
+			if (def_id == 0) {
+				all_deformed = true;
+				break;
+			}
+
+			auto deformation = deformation_manager_.GetDeformation(def_id);
+			if (!deformation)
+				continue;
 
 			glm::vec3 def_min, def_max;
 			deformation->GetBounds(def_min, def_max);
 
-			// Convert to chunk coordinates
 			int min_chunk_x = static_cast<int>(std::floor(def_min.x / scaled_chunk_size));
 			int max_chunk_x = static_cast<int>(std::floor(def_max.x / scaled_chunk_size));
 			int min_chunk_z = static_cast<int>(std::floor(def_min.z / scaled_chunk_size));
 			int max_chunk_z = static_cast<int>(std::floor(def_max.z / scaled_chunk_size));
 
-			for (auto& [chunk_key, terrain] : chunk_cache_) {
-				if (chunk_key.first >= min_chunk_x && chunk_key.first <= max_chunk_x &&
-				    chunk_key.second >= min_chunk_z && chunk_key.second <= max_chunk_z) {
-					chunks_to_regenerate.push_back(chunk_key);
+			for (int x = min_chunk_x; x <= max_chunk_x; ++x) {
+				for (int z = min_chunk_z; z <= max_chunk_z; ++z) {
+					chunks_to_regenerate.insert({x, z});
 				}
 			}
-		} else {
-			// Invalidate all chunks that have any deformation
-			for (auto& [chunk_key, terrain] : chunk_cache_) {
-				float chunk_min_x = static_cast<float>(chunk_key.first) * scaled_chunk_size;
-				float chunk_min_z = static_cast<float>(chunk_key.second) * scaled_chunk_size;
+		}
+
+		if (all_deformed) {
+			std::lock_guard<std::recursive_mutex> lock(chunk_cache_mutex_);
+			for (auto const& [key, terrain] : chunk_cache_) {
+				float chunk_min_x = static_cast<float>(key.first) * scaled_chunk_size;
+				float chunk_min_z = static_cast<float>(key.second) * scaled_chunk_size;
 				float chunk_max_x = chunk_min_x + scaled_chunk_size;
 				float chunk_max_z = chunk_min_z + scaled_chunk_size;
 
 				if (deformation_manager_.ChunkHasDeformations(chunk_min_x, chunk_min_z, chunk_max_x, chunk_max_z)) {
-					chunks_to_regenerate.push_back(chunk_key);
+					chunks_to_regenerate.insert(key);
 				}
 			}
 		}
 
-		// Cancel any pending chunks that would be affected (they'll have stale data)
-		for (const auto& chunk_key : chunks_to_regenerate) {
-			auto pending_it = pending_chunks_.find(chunk_key);
-			if (pending_it != pending_chunks_.end()) {
-				pending_it->second.cancel();
-				pending_chunks_.erase(pending_it);
-			}
-		}
+		// 3. Filter to only chunks we already have in cache (don't generate new areas just because of deformation)
+		// and enqueue regeneration tasks
+		{
+			std::lock_guard<std::recursive_mutex> lock(chunk_cache_mutex_);
+			for (const auto& key : chunks_to_regenerate) {
+				if (chunk_cache_.count(key) > 0) {
+					// Cancel any existing pending generation for this chunk
+					auto it = pending_chunks_.find(key);
+					if (it != pending_chunks_.end()) {
+						it->second.cancel();
+						pending_chunks_.erase(it);
+					}
 
-		// Regenerate chunks in-place to avoid visual holes
-		// Strategy: Generate new data first, then atomically swap
-		for (const auto& chunk_key : chunks_to_regenerate) {
-			// Generate the updated chunk data (includes deformations)
-			TerrainGenerationResult result = generateChunkData(chunk_key.first, chunk_key.second);
+					// Cancel any existing pending DEFORMATION generation for this chunk
+					auto it_def = pending_deformations_.find(key);
+					if (it_def != pending_deformations_.end()) {
+						it_def->second.cancel();
+						pending_deformations_.erase(it_def);
+					}
 
-			if (result.has_terrain) {
-				// Create new terrain object with deformed data
-				auto new_terrain = std::make_shared<Terrain>(
-					result.indices,
-					result.positions,
-					result.normals,
-					result.biomes,
-					result.proxy
-				);
-				new_terrain->SetPosition(result.chunk_x * scaled_chunk_size, 0, result.chunk_z * scaled_chunk_size);
-
-				if (render_manager_) {
-					new_terrain->SetManagedByRenderManager(true);
-					// RegisterChunk handles updates - if chunk already exists, it just updates the heightmap texture
-					// This is the key: the texture update happens in-place without removing the chunk first
-					render_manager_->RegisterChunk(
-						chunk_key,
-						new_terrain->vertices,
-						new_terrain->normals,
-						new_terrain->biomes,
-						new_terrain->GetIndices(),
-						new_terrain->proxy.minY,
-						new_terrain->proxy.maxY,
-						glm::vec3(chunk_key.first * scaled_chunk_size, 0, chunk_key.second * scaled_chunk_size)
+					// Enqueue new high-priority regeneration
+					pending_deformations_.emplace(
+						key,
+						thread_pool_.enqueue(
+							TaskPriority::HIGH,
+							&TerrainGenerator::generateChunkData,
+							this,
+							key.first,
+							key.second
+						)
 					);
-				} else {
-					// Legacy rendering: set up mesh (will replace old GPU resources)
-					new_terrain->setupMesh();
 				}
-
-				// Atomically replace the cache entry
-				// The old Terrain object will be destroyed, freeing its resources
-				chunk_cache_[chunk_key] = new_terrain;
-			} else {
-				// Deformation removed all terrain from this chunk (rare case)
-				// In this case we do need to remove it
-				if (render_manager_) {
-					render_manager_->UnregisterChunk(chunk_key);
-				}
-				chunk_cache_.erase(chunk_key);
 			}
 		}
 	}

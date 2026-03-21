@@ -114,11 +114,11 @@ namespace Boidsish {
 
 		std::string names[4] = {"FL", "FR", "BR", "BL"};
 		glm::vec3   offsets[4] = {
-            {-width_ * 0.64f, height_ * 0.8f, length_ * 0.64f},
-            {width_ * 0.64f, height_ * 0.8f, length_ * 0.64f},
-            {width_ * 0.64f, height_ * 0.8f, -length_ * 0.64f},
-            {-width_ * 0.64f, height_ * 0.8f, -length_ * 0.64f}
-        };
+			{-width_ * 0.64f, height_ * 0.8f, length_ * 0.64f},
+			{width_ * 0.64f, height_ * 0.8f, length_ * 0.64f},
+			{width_ * 0.64f, height_ * 0.8f, -length_ * 0.64f},
+			{-width_ * 0.64f, height_ * 0.8f, -length_ * 0.64f}
+		};
 
 		for (int i = 0; i < 4; ++i) {
 			// Hip hub - NOT a bone (IK will start from upper leg)
@@ -132,16 +132,16 @@ namespace Boidsish {
 			float     upper_arch = height_ * 0.4f;
 			glm::vec3 upper_end = offsets[i] + glm::vec3(out_sign * upper_horiz, upper_arch, 0);
 			int       upper = ir.AddTube(
-                offsets[i],
-                upper_end,
-                length_ * 0.1f,
-                length_ * 0.08f,
-                leg_col,
-                hip,
-                names[i] + "_upper",
-                true,
-                SkinningMode::Smooth
-            );
+				offsets[i],
+				upper_end,
+				length_ * 0.1f,
+				length_ * 0.08f,
+				leg_col,
+				hip,
+				names[i] + "_upper",
+				true,
+				SkinningMode::Smooth
+			);
 
 			// Lower leg: mostly down, 15° outward tilt to widen stance
 			float     foot_h = length_ * 0.08f;
@@ -150,16 +150,16 @@ namespace Boidsish {
 			float     lower_h = drop * std::tan(glm::radians(15.0f));
 			glm::vec3 lower_end = upper_end + glm::vec3(out_sign * lower_h, -drop, 0);
 			int       lower = ir.AddTube(
-                upper_end,
-                lower_end,
-                length_ * 0.08f,
-                length_ * 0.06f,
-                leg_col,
-                upper,
-                names[i] + "_lower",
-                true,
-                SkinningMode::Smooth
-            );
+				upper_end,
+				lower_end,
+				length_ * 0.08f,
+				length_ * 0.06f,
+				leg_col,
+				upper,
+				names[i] + "_lower",
+				true,
+				SkinningMode::Smooth
+			);
 
 			// Foot: Wedge - bone so it can be the IK end-effector
 			ir.AddWedge(

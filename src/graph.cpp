@@ -180,8 +180,9 @@ namespace Boidsish {
 			if (nodes_changed) {
 				allocation_ = mb->AllocateDynamic(static_cast<uint32_t>(vertices_to_upload.size()), 0);
 				is_dynamic_ = true;
-			} else if (!allocation_.valid ||
-			           allocation_.vertex_count != static_cast<uint32_t>(vertices_to_upload.size())) {
+			} else if (
+				!allocation_.valid || allocation_.vertex_count != static_cast<uint32_t>(vertices_to_upload.size())
+			) {
 				allocation_ = mb->AllocateStatic(static_cast<uint32_t>(vertices_to_upload.size()), 0);
 				is_dynamic_ = false;
 			}

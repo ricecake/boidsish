@@ -34,6 +34,10 @@ namespace Boidsish {
 		// Material Data
 		glm::vec3 diffuseColor = glm::vec3(1.0f);
 		float     opacity = 1.0f;
+		float     roughness = 0.5f;
+		float     metallic = 0.0f;
+		float     ao = 1.0f;
+		glm::vec3 emissiveColor = glm::vec3(0.0f);
 		bool      has_vertex_colors = false;
 
 		// Constructor

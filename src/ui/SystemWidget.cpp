@@ -6,12 +6,14 @@
 
 #include "ConfigManager.h"
 #include "SceneManager.h"
+#include "UIManager.h"
 #include "graphics.h"
 #include "imgui.h"
 #include "post_processing/PostProcessingManager.h"
 #include "post_processing/effects/AtmosphereEffect.h"
 #include "post_processing/effects/BloomEffect.h"
 #include "post_processing/effects/FilmGrainEffect.h"
+#include "ui/ProfilerWidget.h"
 
 namespace Boidsish {
 	namespace UI {
@@ -216,9 +218,9 @@ namespace Boidsish {
 										scene.post_processing.bloom_enabled = bloom->IsEnabled();
 										scene.post_processing.bloom_intensity = bloom->GetIntensity();
 										scene.post_processing.bloom_threshold = bloom->GetThreshold();
-									} else if (auto atmos = std::dynamic_pointer_cast<PostProcessing::AtmosphereEffect>(
-												   effect
-											   )) {
+									} else if (
+										auto atmos = std::dynamic_pointer_cast<PostProcessing::AtmosphereEffect>(effect)
+									) {
 										scene.post_processing.atmosphere_enabled = atmos->IsEnabled();
 										scene.post_processing.haze_density = atmos->GetHazeDensity();
 										scene.post_processing.haze_height = atmos->GetHazeHeight();
@@ -227,9 +229,9 @@ namespace Boidsish {
 										scene.post_processing.cloud_altitude = atmos->GetCloudAltitude();
 										scene.post_processing.cloud_thickness = atmos->GetCloudThickness();
 										scene.post_processing.cloud_color = atmos->GetCloudColor();
-									} else if (auto fg = std::dynamic_pointer_cast<PostProcessing::FilmGrainEffect>(
-												   effect
-											   )) {
+									} else if (
+										auto fg = std::dynamic_pointer_cast<PostProcessing::FilmGrainEffect>(effect)
+									) {
 										scene.post_processing.film_grain_enabled = fg->IsEnabled();
 										scene.post_processing.film_grain_intensity = fg->GetIntensity();
 									} else if (effect->GetName() == "Negative") {
@@ -326,9 +328,9 @@ namespace Boidsish {
 										bloom->SetEnabled(scene.post_processing.bloom_enabled);
 										bloom->SetIntensity(scene.post_processing.bloom_intensity);
 										bloom->SetThreshold(scene.post_processing.bloom_threshold);
-									} else if (auto atmos = std::dynamic_pointer_cast<PostProcessing::AtmosphereEffect>(
-												   effect
-											   )) {
+									} else if (
+										auto atmos = std::dynamic_pointer_cast<PostProcessing::AtmosphereEffect>(effect)
+									) {
 										atmos->SetEnabled(scene.post_processing.atmosphere_enabled);
 										atmos->SetHazeDensity(scene.post_processing.haze_density);
 										atmos->SetHazeHeight(scene.post_processing.haze_height);
@@ -337,9 +339,9 @@ namespace Boidsish {
 										atmos->SetCloudAltitude(scene.post_processing.cloud_altitude);
 										atmos->SetCloudThickness(scene.post_processing.cloud_thickness);
 										atmos->SetCloudColor(scene.post_processing.cloud_color);
-									} else if (auto fg = std::dynamic_pointer_cast<PostProcessing::FilmGrainEffect>(
-												   effect
-											   )) {
+									} else if (
+										auto fg = std::dynamic_pointer_cast<PostProcessing::FilmGrainEffect>(effect)
+									) {
 										fg->SetEnabled(scene.post_processing.film_grain_enabled);
 										fg->SetIntensity(scene.post_processing.film_grain_intensity);
 									} else if (effect->GetName() == "Negative") {
@@ -372,6 +374,14 @@ namespace Boidsish {
 
 				// 4. Picking Tool (from EffectsWidget)
 				if (ImGui::CollapsingHeader("Tools", ImGuiTreeNodeFlags_DefaultOpen)) {
+					auto profiler_widget = m_visualizer.GetUIManager().GetWidget<ProfilerWidget>();
+					if (profiler_widget) {
+						bool show_profiler = profiler_widget->IsVisible();
+						if (ImGui::Checkbox("Show Profiler", &show_profiler)) {
+							profiler_widget->SetVisible(show_profiler);
+						}
+					}
+
 					if (ImGui::Button("Get World Coordinates")) {
 						m_is_picking_enabled = true;
 					}

@@ -234,15 +234,15 @@ namespace Boidsish {
 			// 3. Populate forbidden coordinates based on CURRENT launchers and cooldowns
 			std::set<std::pair<int, int>> forbidden_coords;
 			auto                          exclude_neighborhood = [&](const std::pair<int, int>& coord) {
-                int cx = coord.first;
-                int cz = coord.second;
-                int step = Constants::Class::Terrain::ChunkSize();
-                int range = 3; // Exclude 2 chunks in every direction
-                for (int dx = -range; dx <= range; ++dx) {
-                    for (int dz = -range; dz <= range; ++dz) {
-                        forbidden_coords.insert({cx + dx * step, cz + dz * step});
-                    }
-                }
+				int cx = coord.first;
+				int cz = coord.second;
+				int step = Constants::Class::Terrain::ChunkSize();
+				int range = 3; // Exclude 2 chunks in every direction
+				for (int dx = -range; dx <= range; ++dx) {
+					for (int dz = -range; dz <= range; ++dz) {
+						forbidden_coords.insert({cx + dx * step, cz + dz * step});
+					}
+				}
 			};
 
 			for (const auto& pair : spawned_launchers_) {

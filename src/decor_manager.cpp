@@ -31,6 +31,14 @@ namespace Boidsish {
 			if (type.shadow_indirect_buffer != 0)
 				glDeleteBuffers(1, &type.shadow_indirect_buffer);
 		}
+		if (block_validity_ssbo_ != 0)
+			glDeleteBuffers(1, &block_validity_ssbo_);
+		if (decor_props_ubo_ != 0)
+			glDeleteBuffers(1, &decor_props_ubo_);
+		if (placement_globals_ubo_ != 0)
+			glDeleteBuffers(1, &placement_globals_ubo_);
+		if (chunk_params_ssbo_ != 0)
+			glDeleteBuffers(1, &chunk_params_ssbo_);
 	}
 
 	void DecorManager::_Initialize() {
@@ -53,6 +61,22 @@ namespace Boidsish {
 		for (int i = kMaxActiveChunks - 1; i >= 0; --i) {
 			free_blocks_.push_back(i);
 		}
+
+		// Block validity buffer: one uint per block, all initially invalid (0).
+		glGenBuffers(1, &block_validity_ssbo_);
+		glBindBuffer(GL_SHADER_STORAGE_BUFFER, block_validity_ssbo_);
+		std::vector<uint32_t> validity(kMaxActiveChunks, 0);
+		glBufferData(GL_SHADER_STORAGE_BUFFER, kMaxActiveChunks * sizeof(uint32_t), validity.data(), GL_DYNAMIC_DRAW);
+		glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
+
+		// Global placement params UBO (small, updated per dispatch)
+		glGenBuffers(1, &placement_globals_ubo_);
+		glBindBuffer(GL_UNIFORM_BUFFER, placement_globals_ubo_);
+		glBufferData(GL_UNIFORM_BUFFER, sizeof(PlacementGlobalsGPU), nullptr, GL_DYNAMIC_DRAW);
+		glBindBuffer(GL_UNIFORM_BUFFER, 0);
+
+		// Per-chunk params SSBO (resized as needed per dispatch)
+		glGenBuffers(1, &chunk_params_ssbo_);
 
 		initialized_ = true;
 	}
@@ -350,6 +374,35 @@ namespace Boidsish {
 			);
 		}
 		glBindBuffer(GL_DRAW_INDIRECT_BUFFER, 0);
+
+		// Build and upload per-type properties UBO for the placement shader.
+		// This replaces 16+ uniform calls per type with a single UBO bind.
+		static constexpr int      kMaxDecorTypes = 32;
+		std::vector<DecorTypeGPU> gpu_types(decor_types_.size());
+		for (size_t i = 0; i < decor_types_.size(); ++i) {
+			auto& t = decor_types_[i];
+			auto& g = gpu_types[i];
+			g.density_scale =
+				glm::vec4(t.props.min_density, t.props.max_density, t.props.base_scale, t.props.scale_variance);
+			g.height_slope = glm::vec4(t.props.min_height, t.props.max_height, t.props.min_slope, t.props.max_slope);
+			g.rotation = glm::vec4(glm::radians(t.props.base_rotation), t.props.detail_distance);
+			g.aabb_min = glm::vec4(t.model->GetData()->aabb.min, 0.0f);
+			g.aabb_max = glm::vec4(t.model->GetData()->aabb.max, 0.0f);
+			g.flags = glm::uvec4(
+				static_cast<uint32_t>(t.props.biomes),
+				t.props.random_yaw ? 1u : 0u,
+				t.props.align_to_terrain ? 1u : 0u,
+				static_cast<uint32_t>(i)
+			);
+		}
+
+		if (decor_props_ubo_ == 0) {
+			glGenBuffers(1, &decor_props_ubo_);
+		}
+		glBindBuffer(GL_UNIFORM_BUFFER, decor_props_ubo_);
+		glBufferData(GL_UNIFORM_BUFFER, kMaxDecorTypes * sizeof(DecorTypeGPU), nullptr, GL_DYNAMIC_DRAW);
+		glBufferSubData(GL_UNIFORM_BUFFER, 0, gpu_types.size() * sizeof(DecorTypeGPU), gpu_types.data());
+		glBindBuffer(GL_UNIFORM_BUFFER, 0);
 	}
 
 	void DecorManager::Update(
@@ -368,6 +421,13 @@ namespace Boidsish {
 		if (!render_manager)
 			return;
 
+		frame_counter_++;
+		camera_pos_ = camera.pos();
+		glm::vec3 fwd = camera.front();
+		glm::vec2 new_forward = glm::normalize(glm::vec2(fwd.x, fwd.z));
+		camera_rotation_delta_ = new_forward - prev_camera_forward_2d_;
+		prev_camera_forward_2d_ = camera_forward_2d_;
+		camera_forward_2d_ = new_forward;
 		_UpdateAllocation(camera, frustum, terrain_gen, render_manager);
 	}
 
@@ -379,118 +439,194 @@ namespace Boidsish {
 	) {
 		float world_scale = terrain_gen.GetWorldScale();
 
-		// Get the heightmap and biome texture arrays from the terrain render manager
 		GLuint heightmap_texture = render_manager->GetHeightmapTexture();
 		GLuint biome_texture = render_manager->GetBiomeTexture();
 		if (heightmap_texture == 0 || biome_texture == 0)
 			return;
 
-		auto chunk_info = render_manager->GetChunkInfo(world_scale);
-		if (chunk_info.empty())
+		// Single call: gets keys, offsets, slices, sizes, and update counts
+		// in one mutex acquisition with no intermediate map construction.
+		auto all_chunks = render_manager->GetDecorChunkData(world_scale);
+		if (all_chunks.empty())
 			return;
 
-		uint32_t current_terrain_version = terrain_gen.GetVersion();
+		// 1. Filter by distance — no frustum check (GPU cull handles that).
+		// Build a flat lookup by index for the dispatch phase.
+		glm::vec2 cam_xz(camera.x, camera.z);
+		float     max_dist = max_decor_distance_ * world_scale;
 
-		// 1. Identify chunks that should be active (within range and visible/preload)
-		std::vector<std::pair<float, std::pair<int, int>>> chunks_to_keep;
-		const float                                        kPreloadRadius = 128.0f * world_scale;
+		// Reuse a flat vector of indices into all_chunks for the active set
+		struct CandidateChunk {
+			int   src_index; // index into all_chunks
+			float priority;  // lower = generate sooner (front-of-camera bias)
+		};
 
-		for (const auto& chunk : chunk_info) {
-			glm::vec2 chunk_offset(chunk.x, chunk.y);
-			float     chunk_size = chunk.w;
-			glm::vec2 chunk_center_2d = chunk_offset + glm::vec2(chunk_size * 0.5f);
+		std::vector<CandidateChunk> candidates;
+		candidates.reserve(all_chunks.size());
 
-			float dist = glm::distance(glm::vec2(camera.x, camera.z), chunk_center_2d);
-			if (dist > max_decor_distance_ * world_scale)
+		// Predict where the camera will be looking based on current rotation.
+		// Chunks in the turn direction get a priority boost.
+		float     rotation_magnitude = glm::length(camera_rotation_delta_);
+		glm::vec2 rotation_dir = (rotation_magnitude > 0.001f) ? camera_rotation_delta_ / rotation_magnitude
+															   : glm::vec2(0.0f);
+
+		for (int i = 0; i < (int)all_chunks.size(); ++i) {
+			const auto& cd = all_chunks[i];
+			glm::vec2   center = cd.world_offset + glm::vec2(cd.chunk_size * 0.5f);
+			float       dist = glm::distance(cam_xz, center);
+			if (dist > max_dist)
 				continue;
 
-			// Approximate AABB for frustum culling
-			glm::vec3 chunk_min(chunk_offset.x, -100.0f * world_scale, chunk_offset.y);
-			glm::vec3 chunk_max(
-				chunk_offset.x + chunk_size,
-				terrain_gen.GetMaxHeight() + 100.0f * world_scale,
-				chunk_offset.y + chunk_size
-			);
+			glm::vec2 to_chunk = (dist > 0.1f) ? glm::normalize(center - cam_xz) : camera_forward_2d_;
+			float     facing = glm::dot(camera_forward_2d_, to_chunk); // 1=ahead, -1=behind
 
-			bool in_preload = dist < kPreloadRadius;
-			bool in_frustum = frustum.IsBoxInFrustum(chunk_min, chunk_max);
+			// Aggressive nonlinear penalty: ahead chunks are cheap, behind are expensive.
+			// facing  1.0 (ahead)  → weight ~0.3
+			// facing  0.0 (side)   → weight ~2.0
+			// facing -1.0 (behind) → weight ~5.0
+			float facing_weight;
+			if (facing > 0.0f) {
+				facing_weight = 0.3f + 1.7f * (1.0f - facing); // 0.3 → 2.0
+			} else {
+				facing_weight = 2.0f + 3.0f * (-facing); // 2.0 → 5.0
+			}
 
-			if (!in_preload && !in_frustum)
-				continue;
+			// Rotation prediction: reduce priority for chunks the camera is turning toward.
+			// The dot of rotation_dir with to_chunk is positive when turning towards it.
+			if (rotation_magnitude > 0.001f) {
+				float turn_alignment = glm::dot(rotation_dir, to_chunk);
+				// Scale by rotation speed — faster turns get stronger prediction
+				float turn_boost = turn_alignment * std::min(rotation_magnitude * 30.0f, 1.5f);
+				facing_weight -= turn_boost; // negative turn_boost = chunk behind the turn
+				facing_weight = std::max(facing_weight, 0.1f);
+			}
 
-			// Store key and distance (for priority)
-			int cx = static_cast<int>(std::floor(chunk.x / chunk.w + 0.5f));
-			int cz = static_cast<int>(std::floor(chunk.y / chunk.w + 0.5f));
-			chunks_to_keep.push_back({dist, {cx, cz}});
+			candidates.push_back({i, dist * facing_weight});
 		}
 
-		// 2. Cull chunks that are no longer in range or visible
+		// 2. Mark all candidate chunks as seen; evict stale chunks.
+		// Use a flat sorted vector for presence checking instead of std::set.
 		std::vector<std::pair<int, int>> active_keys;
-		for (const auto& ck : chunks_to_keep)
-			active_keys.push_back(ck.second);
+		active_keys.reserve(candidates.size());
+		for (const auto& c : candidates)
+			active_keys.push_back(all_chunks[c.src_index].key);
+		std::sort(active_keys.begin(), active_keys.end());
 
-		std::vector<glm::mat4> zeros; // Reused for zeroing out blocks
+		int chunks_freed = 0;
 
 		for (auto it = active_chunks_.begin(); it != active_chunks_.end();) {
-			auto key = it->first;
-			bool should_keep = std::find(active_keys.begin(), active_keys.end(), key) != active_keys.end();
+			bool is_present = std::binary_search(active_keys.begin(), active_keys.end(), it->first);
 
-			if (!should_keep) {
+			if (is_present) {
+				it->second.last_seen_frame = frame_counter_;
+				++it;
+			} else if (frame_counter_ - it->second.last_seen_frame > kChunkGracePeriodFrames) {
 				int block = it->second.block_index;
 				free_blocks_.push_back(block);
 
-				if (zeros.empty()) {
-					zeros.assign(kInstancesPerChunk, glm::mat4(0.0f));
-				}
-
-				// Zero out the block in all SSBOs to ensure it doesn't render
-				for (auto& type : decor_types_) {
-					glBindBuffer(GL_SHADER_STORAGE_BUFFER, type.ssbo);
-					glBufferSubData(
-						GL_SHADER_STORAGE_BUFFER,
-						block * kInstancesPerChunk * sizeof(glm::mat4),
-						zeros.size() * sizeof(glm::mat4),
-						zeros.data()
-					);
-				}
+				// Mark block invalid in the validity buffer (4 bytes, not 64KB×6 types).
+				// The cull shader checks this and skips instances in invalid blocks.
+				uint32_t zero = 0;
+				glBindBuffer(GL_SHADER_STORAGE_BUFFER, block_validity_ssbo_);
+				glBufferSubData(GL_SHADER_STORAGE_BUFFER, block * sizeof(uint32_t), sizeof(uint32_t), &zero);
 
 				it = active_chunks_.erase(it);
+				chunks_freed++;
 			} else {
 				++it;
 			}
 		}
 
-		// 3. Allocate blocks for new chunks
-		std::sort(chunks_to_keep.begin(), chunks_to_keep.end()); // Closer first
+		// 3. Sort candidates by priority (front-of-camera + close first).
+		std::sort(candidates.begin(), candidates.end(), [](const auto& a, const auto& b) {
+			return a.priority < b.priority;
+		});
 
-		std::vector<std::pair<std::pair<int, int>, int>> chunks_to_generate;
+		// 4. Allocate and collect chunks to generate, with per-frame cap.
+		struct GenerateEntry {
+			int src_index; // index into all_chunks (for dispatch data)
+			int block;     // SSBO block index
+		};
 
-		for (const auto& vc : chunks_to_keep) {
-			auto key = vc.second;
-			if (active_chunks_.find(key) == active_chunks_.end()) {
-				if (!free_blocks_.empty()) {
-					int block = free_blocks_.back();
-					free_blocks_.pop_back();
-					active_chunks_[key] = {block, current_terrain_version, true};
-					chunks_to_generate.push_back({key, block});
-				}
-			} else if (active_chunks_[key].terrain_version != current_terrain_version) {
-				active_chunks_[key].terrain_version = current_terrain_version;
-				active_chunks_[key].is_dirty = true;
-				chunks_to_generate.push_back({key, active_chunks_[key].block_index});
+		std::vector<GenerateEntry> chunks_to_generate;
+		int                        chunks_new = 0;
+		int                        chunks_deform_dirty = 0;
+
+		for (const auto& cand : candidates) {
+			const auto& cd = all_chunks[cand.src_index];
+			auto        it = active_chunks_.find(cd.key);
+
+			if (it == active_chunks_.end()) {
+				if (chunks_new >= kMaxNewChunksPerFrame)
+					continue; // defer to next frame
+				if (free_blocks_.empty())
+					continue;
+
+				int block = free_blocks_.back();
+				free_blocks_.pop_back();
+				active_chunks_[cd.key] = {block, cd.update_count, true, frame_counter_};
+				chunks_to_generate.push_back({cand.src_index, block});
+				chunks_new++;
+			} else if (it->second.update_count != cd.update_count) {
+				it->second.update_count = cd.update_count;
+				it->second.is_dirty = true;
+				chunks_to_generate.push_back({cand.src_index, it->second.block_index});
+				chunks_deform_dirty++;
 			}
 		}
 
-		// 4. Dispatch placement compute for new/dirty chunks
+		// if (!chunks_to_generate.empty()) {
+		// 	logger::WARNING(
+		// 		"Decor placement: generating {} chunks (new={}, deform_dirty={}, freed={}, active={}, free_blocks={})",
+		// 		chunks_to_generate.size(),
+		// 		chunks_new,
+		// 		chunks_deform_dirty,
+		// 		chunks_freed,
+		// 		active_chunks_.size(),
+		// 		free_blocks_.size()
+		// 	);
+		// }
+
+		// 5. Dispatch placement compute for new/dirty chunks.
 		if (!chunks_to_generate.empty()) {
+			int num_chunks = (int)chunks_to_generate.size();
+
+			// Mark all blocks being generated as valid in one batch.
+			glBindBuffer(GL_SHADER_STORAGE_BUFFER, block_validity_ssbo_);
+			for (const auto& entry : chunks_to_generate) {
+				uint32_t one = 1;
+				glBufferSubData(GL_SHADER_STORAGE_BUFFER, entry.block * sizeof(uint32_t), sizeof(uint32_t), &one);
+			}
+
+			// Upload global placement params (once per dispatch frame)
+			PlacementGlobalsGPU globals;
+			globals.camera_and_scale = glm::vec4(cam_xz, world_scale, terrain_gen.GetMaxHeight());
+			globals.distance_params = glm::vec4(
+				density_falloff_start_ * world_scale,
+				density_falloff_end_ * world_scale,
+				max_decor_distance_ * world_scale,
+				static_cast<float>(kMaxInstancesPerType)
+			);
+			glBindBuffer(GL_UNIFORM_BUFFER, placement_globals_ubo_);
+			glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(PlacementGlobalsGPU), &globals);
+
+			// Upload per-chunk params SSBO (all chunks in one buffer)
+			std::vector<ChunkParamsGPU> chunk_gpu(num_chunks);
+			for (int j = 0; j < num_chunks; ++j) {
+				const auto& cd = all_chunks[chunks_to_generate[j].src_index];
+				chunk_gpu[j].offset_slice_size = glm::vec4(cd.world_offset, cd.slice, cd.chunk_size);
+				chunk_gpu[j].indices = glm::ivec4(chunks_to_generate[j].block * kInstancesPerChunk, 0, 0, 0);
+			}
+			glBindBuffer(GL_SHADER_STORAGE_BUFFER, chunk_params_ssbo_);
+			glBufferData(
+				GL_SHADER_STORAGE_BUFFER,
+				num_chunks * sizeof(ChunkParamsGPU),
+				chunk_gpu.data(),
+				GL_STREAM_DRAW
+			);
+
+			// Bind everything once, then one dispatch per type
 			placement_shader_->use();
-			placement_shader_->setVec2("u_cameraPos", glm::vec2(camera.x, camera.z));
-			placement_shader_->setFloat("u_maxTerrainHeight", terrain_gen.GetMaxHeight());
-			placement_shader_->setInt("u_maxInstances", kMaxInstancesPerType);
-			placement_shader_->setFloat("u_worldScale", world_scale);
-			placement_shader_->setFloat("u_densityFalloffStart", density_falloff_start_ * world_scale);
-			placement_shader_->setFloat("u_densityFalloffEnd", density_falloff_end_ * world_scale);
-			placement_shader_->setFloat("u_maxDecorDistance", max_decor_distance_ * world_scale);
 
 			glActiveTexture(GL_TEXTURE0);
 			glBindTexture(GL_TEXTURE_2D_ARRAY, heightmap_texture);
@@ -500,55 +636,25 @@ namespace Boidsish {
 			glBindTexture(GL_TEXTURE_2D_ARRAY, biome_texture);
 			placement_shader_->setInt("u_biomeMap", 1);
 
+			glBindBufferBase(GL_UNIFORM_BUFFER, Constants::UboBinding::DecorProps(), decor_props_ubo_);
+			glBindBufferBase(GL_UNIFORM_BUFFER, Constants::UboBinding::DecorPlacementGlobals(), placement_globals_ubo_);
+			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::DecorChunkParams(), chunk_params_ssbo_);
+
 			for (size_t i = 0; i < decor_types_.size(); ++i) {
-				auto& type = decor_types_[i];
-				placement_shader_->setFloat("u_minDensity", type.props.min_density);
-				placement_shader_->setFloat("u_maxDensity", type.props.max_density);
-				placement_shader_->setFloat("u_baseScale", type.props.base_scale);
-				placement_shader_->setFloat("u_scaleVariance", type.props.scale_variance);
-				placement_shader_->setFloat("u_minHeight", type.props.min_height);
-				placement_shader_->setFloat("u_maxHeight", type.props.max_height);
-				placement_shader_->setFloat("u_minSlope", type.props.min_slope);
-				placement_shader_->setFloat("u_maxSlope", type.props.max_slope);
-				placement_shader_->setVec3("u_baseRotation", glm::radians(type.props.base_rotation));
-				placement_shader_->setBool("u_randomYaw", type.props.random_yaw);
-				placement_shader_->setBool("u_alignToTerrain", type.props.align_to_terrain);
-				placement_shader_->setUint("u_biomeMask", (uint32_t)type.props.biomes);
-				placement_shader_->setFloat("u_detailDistance", type.props.detail_distance);
 				placement_shader_->setInt("u_typeIndex", (int)i);
-				placement_shader_->setVec3("u_aabbMin", type.model->GetAABB().min);
-				placement_shader_->setVec3("u_aabbMax", type.model->GetAABB().max);
-
-				glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, type.ssbo);
-
-				for (const auto& [key, block] : chunks_to_generate) {
-					// Find the chunk info for this key
-					for (const auto& chunk : chunk_info) {
-						int cx = static_cast<int>(std::floor(chunk.x / chunk.w + 0.5f));
-						int cz = static_cast<int>(std::floor(chunk.y / chunk.w + 0.5f));
-						if (cx == key.first && cz == key.second) {
-							placement_shader_->setVec2("u_chunkWorldOffset", glm::vec2(chunk.x, chunk.y));
-							placement_shader_->setFloat("u_chunkSlice", chunk.z);
-							placement_shader_->setFloat("u_chunkSize", chunk.w);
-							placement_shader_->setInt("u_baseInstanceIndex", block * kInstancesPerChunk);
-
-							glDispatchCompute(4, 4, 1); // 32x32 = 1024 threads
-							break;
-						}
-					}
-				}
+				glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, decor_types_[i].ssbo);
+				glDispatchCompute(4, 4, num_chunks); // Z = chunk index
 			}
 			glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
 		}
 	}
 
-	void DecorManager::Render(
+	void DecorManager::Cull(
 		const glm::mat4&                      view,
 		const glm::mat4&                      projection,
 		int                                   viewport_width,
 		int                                   viewport_height,
 		const std::optional<glm::mat4>&       light_space_matrix,
-		Shader*                               shader_override,
 		const std::optional<glm::vec3>&       light_dir,
 		std::shared_ptr<TerrainRenderManager> render_manager
 	) {
@@ -557,10 +663,9 @@ namespace Boidsish {
 
 		bool is_shadow_pass = light_space_matrix.has_value();
 
-		// 1. GPU Culling Pass
 		// Use light space matrix directly for shadow pass culling
 		Frustum   frustum = is_shadow_pass ? Frustum::FromViewProjection(glm::mat4(1.0f), *light_space_matrix)
-                                         : Frustum::FromViewProjection(view, projection);
+										   : Frustum::FromViewProjection(view, projection);
 		glm::mat4 viewProj = is_shadow_pass ? *light_space_matrix : projection * view;
 
 		culling_shader_->use();
@@ -577,8 +682,10 @@ namespace Boidsish {
 
 		if (light_dir.has_value()) {
 			culling_shader_->setVec3("u_lightDir", *light_dir);
+			culling_shader_->setVec3("u_cameraPos", 0, 0, 0);
 		} else {
 			culling_shader_->setVec3("u_lightDir", 0, 0, 0);
+			culling_shader_->setVec3("u_cameraPos", camera_pos_);
 		}
 
 		if (render_manager) {
@@ -596,6 +703,10 @@ namespace Boidsish {
 			culling_shader_->setInt("u_hizMipCount", hiz_mip_count_);
 		}
 
+		// Bind block validity buffer once for all types (shared allocation scheme)
+		culling_shader_->setInt("u_instancesPerBlock", kInstancesPerChunk);
+		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 3, block_validity_ssbo_);
+
 		for (auto& type : decor_types_) {
 			// Reset atomic counter
 			unsigned int zero = 0;
@@ -604,8 +715,8 @@ namespace Boidsish {
 
 			// Cull instances
 			culling_shader_->use();
-			culling_shader_->setVec3("u_aabbMin", type.model->GetAABB().min);
-			culling_shader_->setVec3("u_aabbMax", type.model->GetAABB().max);
+			culling_shader_->setVec3("u_aabbMin", type.model->GetData()->aabb.min);
+			culling_shader_->setVec3("u_aabbMax", type.model->GetData()->aabb.max);
 
 			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, type.ssbo);
 			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, type.visible_ssbo);
@@ -627,8 +738,19 @@ namespace Boidsish {
 
 			glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT | GL_COMMAND_BARRIER_BIT);
 		}
+	}
 
-		// 2. Rendering Pass
+	void DecorManager::Render(
+		const glm::mat4&                view,
+		const glm::mat4&                projection,
+		const std::optional<glm::mat4>& light_space_matrix,
+		Shader*                         shader_override
+	) {
+		if (!enabled_ || !initialized_ || decor_types_.empty())
+			return;
+
+		bool is_shadow_pass = light_space_matrix.has_value();
+
 		Shader* shader = shader_override ? shader_override : Shape::shader.get();
 		if (!shader)
 			return;
@@ -662,8 +784,8 @@ namespace Boidsish {
 				glDisable(GL_CULL_FACE);
 			}
 
-			shader->setVec3("u_aabbMin", type.model->GetAABB().min);
-			shader->setVec3("u_aabbMax", type.model->GetAABB().max);
+			shader->setVec3("u_aabbMin", type.model->GetData()->aabb.min);
+			shader->setVec3("u_aabbMax", type.model->GetData()->aabb.max);
 			shader->setFloat("u_windResponsiveness", type.props.wind_responsiveness);
 			shader->setFloat("u_windRimHighlight", type.props.wind_rim_highlight);
 

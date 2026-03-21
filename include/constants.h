@@ -40,6 +40,14 @@ namespace Boidsish {
 			constexpr int TerrainData() {
 				return 8;
 			}
+
+			constexpr int DecorProps() {
+				return 30;
+			}
+
+			constexpr int DecorPlacementGlobals() {
+				return 31;
+			}
 		} // namespace UboBinding
 
 		namespace SsboBinding {
@@ -61,6 +69,66 @@ namespace Boidsish {
 
 			constexpr int ParticleGridNext() {
 				return 15;
+			}
+
+			constexpr int TrailPoints() {
+				return 18;
+			}
+
+			constexpr int TrailInstances() {
+				return 19;
+			}
+
+			constexpr int TrailSpineData() {
+				return 20;
+			}
+
+			constexpr int DecorChunkParams() {
+				return 26;
+			}
+
+			constexpr int VisibleParticleIndices() {
+				return 27;
+			}
+
+			constexpr int ParticleDrawCommand() {
+				return 28;
+			}
+
+			constexpr int ParticleBuffer() {
+				return 16;
+			}
+
+			constexpr int EmitterBuffer() {
+				return 22;
+			}
+
+			constexpr int IndirectionBuffer() {
+				return 17;
+			}
+
+			constexpr int TerrainChunkInfo() {
+				return 23;
+			}
+
+			constexpr int SliceData() {
+				return 24;
+			}
+
+			constexpr int TerrainVisiblePatches() {
+				return 29;
+			}
+
+			constexpr int TerrainIndirect() {
+				return 32;
+			}
+
+			constexpr int LiveParticleIndices() {
+				return 33;
+			}
+
+			constexpr int BehaviorDrawCommand() {
+				return 34;
 			}
 		} // namespace SsboBinding
 
@@ -326,6 +394,10 @@ namespace Boidsish {
 
 				constexpr float ParticleGridCellSize() {
 					return 2.0f;
+				}
+
+				constexpr float DefaultAmbientDensity() {
+					return 0.15f;
 				}
 			} // namespace Particles
 

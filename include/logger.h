@@ -1,13 +1,19 @@
 #pragma once
 
+#include <concepts>
 #include <cstdint>
+#include <fstream>
 #include <iostream>
+#include <memory>
 #if __has_include(<source_location>)
 	#include <source_location>
 #endif
 #include <sstream>
 #include <string>
-#include <string_view>         // Add this
+#include <string_view>
+#include <tuple>
+#include <utility>
+#include <vector>
 using namespace std::literals; // required for ""sv
 
 namespace logger {
@@ -65,17 +71,91 @@ namespace logger {
 	}
 
 	class Backend { // abstract base class for backend
-	protected:
+	public:
 		virtual ~Backend() = default;
-		virtual bool render(const std::string_view& str) = 0;
+		virtual bool render(const LogLevel level, const std::string_view& str) = 0;
+		virtual bool isEnabled(LogLevel level) const = 0;
+		virtual void setLogLevel(LogLevel level, bool enabled) = 0;
 	};
 
-	class ConsoleBackend: public Backend {
+	class BaseBackend: public Backend {
+	protected:
+		uint8_t enabled_mask = 0xFF;
+
 	public:
-		bool render(const std::string_view& str) override {
+		bool isEnabled(LogLevel level) const override {
+			return (enabled_mask & (1 << static_cast<uint8_t>(level))) != 0;
+		}
+
+		void setLogLevel(LogLevel level, bool enabled) override {
+			if (enabled)
+				enabled_mask |= (1 << static_cast<uint8_t>(level));
+			else
+				enabled_mask &= ~(1 << static_cast<uint8_t>(level));
+		}
+	};
+
+	class ConsoleBackend: public BaseBackend {
+	public:
+		bool render(const LogLevel level, const std::string_view& str) override {
+			if (!isEnabled(level))
+				return false;
 			std::cout << str << std::endl;
 			return true;
 		}
+	};
+
+	class FileBackend: public BaseBackend {
+		std::ofstream file;
+
+	public:
+		FileBackend(const std::string& filename) { file.open(filename, std::ios::app); }
+
+		bool render(const LogLevel level, const std::string_view& str) override {
+			if (!isEnabled(level))
+				return false;
+			if (file.is_open()) {
+				file << str << std::endl;
+				return true;
+			}
+			return false;
+		}
+	};
+
+	class MultiBackend: public Backend {
+		std::vector<std::unique_ptr<Backend>> backends;
+
+	public:
+		MultiBackend() { backends.push_back(std::make_unique<ConsoleBackend>()); }
+
+		void addBackend(std::unique_ptr<Backend> backend) { backends.push_back(std::move(backend)); }
+
+		void clearBackends() { backends.clear(); }
+
+		bool render(const LogLevel level, const std::string_view& str) override {
+			bool success = false;
+			for (auto& b : backends) {
+				if (b->render(level, str))
+					success = true;
+			}
+			return success;
+		}
+
+		bool isEnabled(LogLevel level) const override {
+			for (auto& b : backends) {
+				if (b->isEnabled(level))
+					return true;
+			}
+			return false;
+		}
+
+		void setLogLevel(LogLevel level, bool enabled) override {
+			for (auto& b : backends) {
+				b->setLogLevel(level, enabled);
+			}
+		}
+
+		auto& getBackends() { return backends; }
 	};
 
 	struct LogSource {
@@ -90,8 +170,10 @@ namespace logger {
 	template <class B>
 		requires std::derived_from<B, Backend>
 	class Logger {
+	public:
 		B backend;
 
+	private:
 		template <typename... Ts>
 		void doLogging(const LogLevel& level, const LogSource& src, Ts&&... flags) {
 			std::string       message(src.msg);
@@ -99,16 +181,27 @@ namespace logger {
 
 			size_t searchPos = 0;
 			auto   process = [&](auto&& arg) {
-                size_t pos = message.find("{}", searchPos);
-                if (pos != std::string::npos) {
-                    std::stringstream ss;
-                    ss << arg;
-                    std::string replacement = ss.str();
-                    message.replace(pos, 2, replacement);
-                    searchPos = pos + replacement.length();
-                } else {
-                    tags << "[" << arg << "] ";
-                }
+				std::stringstream ss;
+				using T = std::remove_cvref_t<decltype(arg)>;
+
+				if constexpr (requires { typename std::tuple_size<T>::type; }) {
+					if constexpr (std::tuple_size_v<T> == 2) {
+						ss << std::get<0>(arg) << " => [" << std::get<1>(arg) << "]";
+					} else {
+						ss << arg;
+					}
+				} else {
+					ss << arg;
+				}
+
+				std::string replacement = ss.str();
+				size_t      pos = message.find("{}", searchPos);
+				if (pos != std::string::npos) {
+					message.replace(pos, 2, replacement);
+					searchPos = pos + replacement.length();
+				} else {
+					tags << "[" << replacement << "] ";
+				}
 			};
 
 			(process(std::forward<Ts>(flags)), ...);
@@ -123,63 +216,79 @@ namespace logger {
 			};
 
 			std::string logStr = format(log);
-			backend.render(logStr);
+			backend.render(level, logStr);
 		}
 
 	public:
 		template <typename... Ts>
-		void LOG(LogSource& src, Ts&&... flags) {
-			doLogging(LogLevel::LOG, src, std::forward<Ts>(flags)...);
+		void LOG(LogSource src, Ts&&... flags) {
+			if (backend.isEnabled(LogLevel::LOG))
+				doLogging(LogLevel::LOG, src, std::forward<Ts>(flags)...);
 		};
 
 		template <typename... Ts>
-		void INFO(LogSource& src, Ts&&... flags) {
-			doLogging(LogLevel::INFO, src, std::forward<Ts>(flags)...);
+		void INFO(LogSource src, Ts&&... flags) {
+			if (backend.isEnabled(LogLevel::INFO))
+				doLogging(LogLevel::INFO, src, std::forward<Ts>(flags)...);
 		};
 
 		template <typename... Ts>
-		void WARNING(LogSource& src, Ts&&... flags) {
-			doLogging(LogLevel::WARNING, src, std::forward<Ts>(flags)...);
+		void WARNING(LogSource src, Ts&&... flags) {
+			if (backend.isEnabled(LogLevel::WARNING))
+				doLogging(LogLevel::WARNING, src, std::forward<Ts>(flags)...);
 		};
 
 		template <typename... Ts>
-		void ERROR(LogSource& src, Ts&&... flags) {
-			doLogging(LogLevel::ERROR, src, std::forward<Ts>(flags)...);
+		void ERROR(LogSource src, Ts&&... flags) {
+			if (backend.isEnabled(LogLevel::ERROR))
+				doLogging(LogLevel::ERROR, src, std::forward<Ts>(flags)...);
 		};
 
 		template <typename... Ts>
-		void DEBUG(LogSource& src, Ts&&... flags) {
-			doLogging(LogLevel::DEBUG, src, std::forward<Ts>(flags)...);
+		void DEBUG(LogSource src, Ts&&... flags) {
+			if (backend.isEnabled(LogLevel::DEBUG))
+				doLogging(LogLevel::DEBUG, src, std::forward<Ts>(flags)...);
 		};
 	};
 
-	inline static Logger<ConsoleBackend> defaultLogger;
+	inline Logger<MultiBackend> defaultLogger;
 
 	template <typename... Ts>
-	void LOG(LogSource src, Ts&&... flags) {
+	inline void LOG(LogSource src, Ts&&... flags) {
 		defaultLogger.LOG(src, std::forward<Ts>(flags)...);
 	};
 
 	template <typename... Ts>
-	void ERROR(LogSource src, Ts&&... flags) {
+	inline void ERROR(LogSource src, Ts&&... flags) {
 		defaultLogger.ERROR(src, std::forward<Ts>(flags)...);
 	};
 
 	template <typename... Ts>
-	void DEBUG(LogSource src, Ts&&... flags) {
+	inline void DEBUG(LogSource src, Ts&&... flags) {
 		defaultLogger.DEBUG(src, std::forward<Ts>(flags)...);
 	};
 
 	template <typename... Ts>
-	void INFO(LogSource src, Ts&&... flags) {
+	inline void INFO(LogSource src, Ts&&... flags) {
 		defaultLogger.INFO(src, std::forward<Ts>(flags)...);
 	};
 
 	template <typename... Ts>
-	void WARNING(LogSource src, Ts&&... flags) {
+	inline void WARNING(LogSource src, Ts&&... flags) {
 		defaultLogger.WARNING(src, std::forward<Ts>(flags)...);
 	};
 
+}; // namespace logger
+
+namespace Boidsish {
+	class Config;
+}
+
+namespace logger {
+	void Configure(Boidsish::Config& cfg);
+}
+
+namespace logger {
 	// What if these were classes, whose initializers did the logging?  A lot more would be definitively known at
 	// compile time...
 

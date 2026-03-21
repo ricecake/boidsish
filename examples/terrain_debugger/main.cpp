@@ -71,13 +71,13 @@ void generateHeightmap(const Boidsish::TerrainGenerator& generator, int width, i
 void generateBiomeMap(const Boidsish::TerrainGenerator& generator, int width, int height) {
 	std::vector<unsigned char> pixels(width * height * 3);
 	glm::vec3                  biome_colors[] = {
-        {0.0f, 0.0f, 1.0f}, // Blue
-        {0.0f, 1.0f, 0.0f}, // Green
-        {1.0f, 1.0f, 0.0f}, // Yellow
-        {1.0f, 0.5f, 0.0f}, // Orange
-        {1.0f, 0.0f, 0.0f}, // Red
-        {1.0f, 0.0f, 1.0f}  // Magenta
-    };
+		{0.0f, 0.0f, 1.0f}, // Blue
+		{0.0f, 1.0f, 0.0f}, // Green
+		{1.0f, 1.0f, 0.0f}, // Yellow
+		{1.0f, 0.5f, 0.0f}, // Orange
+		{1.0f, 0.0f, 0.0f}, // Red
+		{1.0f, 0.0f, 1.0f}  // Magenta
+	};
 
 	for (int y = 0; y < height; ++y) {
 		for (int x = 0; x < width; ++x) {
