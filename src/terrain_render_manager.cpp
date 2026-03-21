@@ -531,6 +531,11 @@ namespace Boidsish {
 		glActiveTexture(GL_TEXTURE13);
 		glBindTexture(GL_TEXTURE_2D_ARRAY, heightmap_texture_);
 		shader_base.setInt("u_heightmapArray", 13);
+		if (extra_noise_texture_ != 0) {
+			glActiveTexture(GL_TEXTURE8);
+			glBindTexture(GL_TEXTURE_3D, extra_noise_texture_);
+			shader_base.setInt("u_extraNoiseTexture", 8);
+		}
 		glBindBufferBase(GL_UNIFORM_BUFFER, Constants::UboBinding::TerrainData(), terrain_data_ubo_);
 	}
 
@@ -560,6 +565,11 @@ namespace Boidsish {
 		glActiveTexture(GL_TEXTURE6);
 		glBindTexture(GL_TEXTURE_3D, curl_texture_);
 		shader.setInt("u_curlTexture", 6);
+		if (extra_noise_texture_ != 0) {
+			glActiveTexture(GL_TEXTURE8);
+			glBindTexture(GL_TEXTURE_3D, extra_noise_texture_);
+			shader.setInt("u_extraNoiseTexture", 8);
+		}
 		glBindBufferBase(GL_UNIFORM_BUFFER, Constants::UboBinding::Biomes(), biome_ubo_);
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, chunk_metadata_ssbo_);
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::TerrainVisiblePatches(), visible_patches_ssbo_);

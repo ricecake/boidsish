@@ -68,6 +68,7 @@ namespace Boidsish {
 			shader_->trySetInt("u_noiseTexture", 5);
 			shader_->trySetInt("u_curlTexture", 6);
 			shader_->trySetInt("u_blueNoiseTexture", 7);
+			shader_->trySetInt("u_extraNoiseTexture", 8);
 
 			glActiveTexture(GL_TEXTURE0);
 			glBindTexture(GL_TEXTURE_2D, sourceTexture);
@@ -81,6 +82,8 @@ namespace Boidsish {
 			glBindTexture(GL_TEXTURE_3D, noise_textures_.curl);
 			glActiveTexture(GL_TEXTURE7);
 			glBindTexture(GL_TEXTURE_2D, noise_textures_.blue_noise);
+			glActiveTexture(GL_TEXTURE8);
+			glBindTexture(GL_TEXTURE_3D, noise_textures_.extra_noise);
 
 			// Bind Atmosphere LUTs
 			glActiveTexture(GL_TEXTURE10);

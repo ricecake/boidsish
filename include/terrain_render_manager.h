@@ -90,9 +90,13 @@ namespace Boidsish {
 			hiz_prev_vp_ = prev_vp;
 		}
 
-		void SetNoise(const GLuint& noise, const GLuint& curl) {
-			if (noise != 0) noise_texture_ = noise;
-			if (curl != 0) curl_texture_ = curl;
+		void SetNoise(const GLuint& noise, const GLuint& curl, const GLuint& extra = 0) {
+			if (noise != 0)
+				noise_texture_ = noise;
+			if (curl != 0)
+				curl_texture_ = curl;
+			if (extra != 0)
+				extra_noise_texture_ = extra;
 		}
 
 	private:
@@ -125,7 +129,7 @@ namespace Boidsish {
 
 		GLuint grid_vao_ = 0, grid_vbo_ = 0, grid_ebo_ = 0;
 		GLuint heightmap_texture_ = 0, biome_texture_ = 0;
-		GLuint noise_texture_ = 0, curl_texture_ = 0, biome_ubo_ = 0;
+		GLuint noise_texture_ = 0, curl_texture_ = 0, extra_noise_texture_ = 0, biome_ubo_ = 0;
 
 		GLuint chunk_metadata_ssbo_ = 0, visible_patches_ssbo_ = 0, indirect_buffer_ = 0;
 		std::unique_ptr<ComputeShader> cull_shader_;

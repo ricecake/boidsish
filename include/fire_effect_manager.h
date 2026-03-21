@@ -59,13 +59,15 @@ namespace Boidsish {
 			GLuint                        biome_texture = 0,
 			GLuint                        lighting_ubo = 0,
 			GLuint                        frustum_ubo = 0,
-			GLintptr                      frustum_offset = 0
+			GLintptr                      frustum_offset = 0,
+			GLuint                        extra_noise_texture = 0
 		);
 		void Render(
 			const glm::mat4& view,
 			const glm::mat4& projection,
 			const glm::vec3& camera_pos,
-			GLuint           noise_texture = 0
+			GLuint           noise_texture = 0,
+			GLuint           extra_noise_texture = 0
 		);
 
 		// Add a new fire effect and return a pointer to it
