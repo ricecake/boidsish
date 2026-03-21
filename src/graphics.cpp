@@ -63,11 +63,13 @@
 #include "terrain.h"
 #include "terrain_generator.h"
 #include "terrain_generator_interface.h"
+#include "profiler.h"
 #include "terrain_render_manager.h"
 #include "trail.h"
 #include "trail_render_manager.h"
 #include "ui/EffectWidget.h"
 #include "ui/EnvironmentWidget.h"
+#include "ui/ProfilerWidget.h"
 #include "ui/RenderWidget.h"
 #include "ui/SystemWidget.h"
 #include "ui/hud_widget.h"
@@ -1067,6 +1069,7 @@ namespace Boidsish {
 			ui_manager->AddWidget(std::make_shared<UI::EffectWidget>(*parent));
 			ui_manager->AddWidget(std::make_shared<UI::RenderWidget>(*parent));
 			ui_manager->AddWidget(std::make_shared<UI::SystemWidget>(*parent, *scene_manager));
+			ui_manager->AddWidget(std::make_shared<UI::ProfilerWidget>());
 		}
 
 		void BindShadows(Shader& s) {
@@ -2512,6 +2515,7 @@ namespace Boidsish {
 	}
 
 	void Visualizer::Update() {
+		PROJECT_PROFILE_SCOPE("Update");
 		impl->frame_count_++;
 		impl->hud_manager->Update(impl->input_state.delta_time, impl->camera);
 
@@ -2531,6 +2535,8 @@ namespace Boidsish {
 
 		impl->input_state.delta_time = impl->time_scale * delta_time;
 		impl->simulation_delta_time = impl->paused ? 0.0f : impl->input_state.delta_time;
+
+		Profiler::GetInstance().Update(delta_time);
 
 		for (const auto& callback : impl->input_callbacks) {
 			if (callback) {
@@ -2617,6 +2623,7 @@ namespace Boidsish {
 	}
 
 	void Visualizer::Render() {
+		PROJECT_PROFILE_SCOPE("Render");
 		impl->RefreshFrameConfig();
 
 		// Advance persistent buffers and handle synchronization
@@ -4582,5 +4589,9 @@ namespace Boidsish {
 
 	bool Visualizer::IsWireframeEffectEnabled() const {
 		return ConfigManager::GetInstance().GetAppSettingBool("artistic_effect_wireframe", false);
+	}
+
+	UI::UIManager& Visualizer::GetUIManager() {
+		return *impl->ui_manager;
 	}
 } // namespace Boidsish

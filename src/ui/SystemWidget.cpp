@@ -1,6 +1,8 @@
 #include "ui/SystemWidget.h"
 
 #include <ctime>
+#include "UIManager.h"
+#include "ui/ProfilerWidget.h"
 #include <iomanip>
 #include <sstream>
 
@@ -372,6 +374,14 @@ namespace Boidsish {
 
 				// 4. Picking Tool (from EffectsWidget)
 				if (ImGui::CollapsingHeader("Tools", ImGuiTreeNodeFlags_DefaultOpen)) {
+					auto profiler_widget = m_visualizer.GetUIManager().GetWidget<ProfilerWidget>();
+					if (profiler_widget) {
+						bool show_profiler = profiler_widget->IsVisible();
+						if (ImGui::Checkbox("Show Profiler", &show_profiler)) {
+							profiler_widget->SetVisible(show_profiler);
+						}
+					}
+
 					if (ImGui::Button("Get World Coordinates")) {
 						m_is_picking_enabled = true;
 					}

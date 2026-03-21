@@ -26,6 +26,16 @@ namespace Boidsish {
 			void AddWidget(std::shared_ptr<IWidget> widget);
 			void Render();
 
+			template <typename T>
+			std::shared_ptr<T> GetWidget() {
+				for (auto& widget : m_widgets) {
+					if (auto casted = std::dynamic_pointer_cast<T>(widget)) {
+						return casted;
+					}
+				}
+				return nullptr;
+			}
+
 			void ToggleMenus() { m_show_menus = !m_show_menus; }
 
 		private:
