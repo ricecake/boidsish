@@ -32,6 +32,11 @@ test:
 run: all
 	@./$(BUILD_DIR)/$(X)
 
+profile:
+	rm -rf $(BUILD_DIR)/shaders/
+	@cmake -B $(BUILD_DIR) -DCMAKE_BUILD_TYPE=$(CONFIG) -DENABLE_PROFILING=ON
+	@cmake --build $(BUILD_DIR) --parallel
+
 packages:
 	sudo apt install libassimp-dev libassimp5 assimp-utils libgl1-mesa-dev libglfw3-dev libglew-dev libglm-dev xvfb imagemagick libgtest-dev
 
