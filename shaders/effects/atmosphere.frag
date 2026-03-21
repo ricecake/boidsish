@@ -104,7 +104,7 @@ void main() {
 
 	if (t_start < t_end) {
 		float cloudAcc = 0.0;
-		int   samples = 12 * int(weatherThickness / cloudThickness);
+		int   samples = 4 * int(weatherThickness / cloudThickness);
 		float jitter = fastBlueNoise(TexCoords * 10.0 + vec2(sin(time * 0.07), cos(time * -0.05)));
 		for (int i = 0; i < samples; i++) {
 			float t = mix(t_start, t_end, (float(i) + jitter) / float(samples));
@@ -118,7 +118,7 @@ void main() {
 			vec3 p_scaled = p / (1000.0 * worldScale);
 
 			float noise = fastWorley3d(vec3(p_scaled.xz, p_scaled.y + time * 0.01));
-			float erosion = fastSimplex3d(p / (550.0 * worldScale)) * 0.5 + 0.5;
+			float erosion = fastRidge3d(p / (600.0 * worldScale)) * 0.5 + 0.5;
 			noise = remap(noise, 1 - erosion, 1.0, 0.0, 1.0);
 
 			float d = smoothstep(0.2, 0.6, noise) * (workingCloudDensity)*tapering;

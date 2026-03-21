@@ -11,6 +11,7 @@ namespace Boidsish {
 		GLuint noise;
 		GLuint curl;
 		GLuint blue_noise;
+		GLuint extra_noise;
 	};
 
 	class NoiseManager {
@@ -27,7 +28,11 @@ namespace Boidsish {
 
 		GLuint GetBlueNoiseTexture() const { return blue_noise_texture_; }
 
-		NoiseTextures GetTextures() const { return {noise_texture_, curl_noise_texture_, blue_noise_texture_}; }
+		GLuint GetExtraNoiseTexture() const { return extra_noise_texture_; }
+
+		NoiseTextures GetTextures() const {
+			return {noise_texture_, curl_noise_texture_, blue_noise_texture_, extra_noise_texture_};
+		}
 
 		void Bind(GLuint unit) const;
 		void BindDefault(class ShaderBase& shader) const;
@@ -38,6 +43,7 @@ namespace Boidsish {
 		GLuint                         noise_texture_ = 0;
 		GLuint                         curl_noise_texture_ = 0;
 		GLuint                         blue_noise_texture_ = 0;
+		GLuint                         extra_noise_texture_ = 0;
 		int                            size_ = 64; // 64x64x64
 		int                            blue_noise_size_ = 256;
 	};
