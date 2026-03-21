@@ -21,7 +21,7 @@ uniform sampler3D      u_curlTexture;
 uniform sampler2DArray u_heightmapArray;
 uniform sampler2DArray u_biomeMap;
 
-layout(r32f, binding = 0) uniform image3D u_brickPool;
+layout(r32ui, binding = 0) uniform uimage3D u_brickPool;
 
 layout(local_size_x = 256, local_size_y = 1, local_size_z = 1) in;
 
@@ -67,9 +67,8 @@ void main() {
 			vec3  localPos = (p.pos.xyz - (vec3(gPos) * brick_world_size)) / brick_world_size;
 			ivec3 texCoord = pool_index_to_coord(poolIdx, localPos);
 
-			// Racey splatting (acceptable for density)
-			float current = imageLoad(u_brickPool, texCoord).r;
-			imageStore(u_brickPool, texCoord, vec4(current + 0.1, 0, 0, 0));
+			// Atomic accumulation (fixed-point density * 1000)
+			imageAtomicAdd(u_brickPool, texCoord, 100);
 		}
 	}
 

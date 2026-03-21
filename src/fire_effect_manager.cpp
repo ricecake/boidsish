@@ -455,7 +455,7 @@ namespace Boidsish {
 			}
 
 			if (voxel_pool_texture != 0) {
-				glBindImageTexture(0, voxel_pool_texture, 0, GL_TRUE, 0, GL_READ_WRITE, GL_R32F);
+				glBindImageTexture(0, voxel_pool_texture, 0, GL_TRUE, 0, GL_READ_WRITE, GL_R32UI);
 			}
 		};
 

@@ -68,6 +68,7 @@
 #include "trail.h"
 #include "trail_render_manager.h"
 #include "voxel_brick_manager.h"
+#include "voxel_volume.h"
 #include "ui/EffectWidget.h"
 #include "ui/EnvironmentWidget.h"
 #include "ui/ProfilerWidget.h"
@@ -753,6 +754,9 @@ namespace Boidsish {
 			sdf_volume_manager->Initialize();
 			voxel_brick_manager = std::make_unique<VoxelBrickManager>();
 			voxel_brick_manager->Initialize();
+			VoxelVolume::InitializeShaders();
+			VoxelVolume::voxel_shader_handle =
+				shader_table.Register(std::make_unique<RenderShader>(VoxelVolume::voxel_shader));
 			shadow_manager = std::make_unique<ShadowManager>();
 			scene_manager = std::make_unique<SceneManager>("scenes");
 			decor_manager = std::make_unique<DecorManager>();
@@ -2977,7 +2981,7 @@ namespace Boidsish {
 			impl->frustum_ssbo->GetBufferId(),
 			impl->frustum_ssbo->GetFrameOffset() + impl->mdi_frustum_count * sizeof(FrustumDataGPU),
 			impl->noise_manager ? impl->noise_manager->GetExtraNoiseTexture() : 0,
-			impl->voxel_brick_manager ? impl->voxel_brick_manager->GetBrickPoolTexture() : 0
+			impl->voxel_brick_manager ? impl->voxel_brick_manager->GetBrickPoolAtomicTexture() : 0
 		);
 		impl->mesh_explosion_manager->Update(impl->simulation_delta_time, impl->simulation_time);
 		impl->sound_effect_manager->Update(impl->simulation_delta_time);
