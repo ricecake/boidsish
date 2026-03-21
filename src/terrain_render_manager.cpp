@@ -20,10 +20,10 @@ namespace Boidsish {
 		// Create Biome UBO
 		glGenBuffers(1, &biome_ubo_);
 		glBindBuffer(GL_UNIFORM_BUFFER, biome_ubo_);
-		glBufferData(GL_UNIFORM_BUFFER, sizeof(BiomeShaderProperties) * kBiomes.size(), nullptr, GL_STATIC_DRAW);
+		glBufferData(GL_UNIFORM_BUFFER, sizeof(BiomeShaderProperties) * kMetaBiomes.size(), nullptr, GL_STATIC_DRAW);
 
 		std::vector<BiomeShaderProperties> shader_biomes;
-		for (const auto& b : kBiomes) {
+		for (const auto& b : kMetaBiomes) {
 			BiomeShaderProperties sb;
 			sb.albedo_roughness = glm::vec4(b.albedo, b.roughness);
 			sb.params = glm::vec4(b.metallic, b.detailStrength, b.detailScale, 0.0f);
@@ -605,9 +605,9 @@ namespace Boidsish {
 
 	std::vector<TerrainRenderManager::DecorChunkData> TerrainRenderManager::GetDecorChunkData(float world_scale) const {
 		std::lock_guard<std::recursive_mutex>     lock(mutex_);
-		std::vector<DecorChunkData>     result;
+		std::vector<DecorChunkData>               result;
 		result.reserve(chunks_.size());
-		float scaled_chunk_size = static_cast<float>(chunk_size_ * world_scale);
+		float scaled_chunk_size = static_cast<float>(chunk_size_) * world_scale;
 		for (const auto& [key, chunk] : chunks_) {
 			result.push_back({key, chunk.world_offset, static_cast<float>(chunk.texture_slice), scaled_chunk_size, chunk.update_count});
 		}
