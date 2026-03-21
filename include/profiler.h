@@ -8,30 +8,65 @@
  * unless PROFILING_ENABLED is defined at compile time.
  */
 
-#ifdef PROFILING_ENABLED
 #include <chrono>
 #include <string>
-#include <iostream>
-#include "logger.h"
+#include <map>
+#include <mutex>
+#include <vector>
+#include <cstdint>
+
+#ifdef PROFILING_ENABLED
 
 namespace Boidsish {
+
+    /**
+     * @brief Statistics for a single profile scope.
+     */
+    struct ProfileStats {
+        uint64_t count = 0;
+        double totalTimeUs = 0.0;
+        double minTimeUs = 1e30;
+        double maxTimeUs = 0.0;
+
+        double GetAverageUs() const {
+            return count > 0 ? totalTimeUs / count : 0.0;
+        }
+    };
+
+    /**
+     * @brief Centralized profiler manager.
+     */
+    class Profiler {
+    public:
+        static Profiler& GetInstance();
+
+        void RecordSample(const char* name, double durationUs);
+        void Update(float deltaTime);
+        float GetFPS() const;
+        std::map<std::string, ProfileStats> GetStats();
+        void ClearStats();
+
+    private:
+        Profiler() = default;
+        ~Profiler() = default;
+        Profiler(const Profiler&) = delete;
+        Profiler& operator=(const Profiler&) = delete;
+
+        std::map<std::string, ProfileStats> m_stats;
+        mutable std::mutex m_mutex;
+
+        float m_fps = 0.0f;
+        uint32_t m_frameCount = 0;
+        float m_accumulatedTime = 0.0f;
+    };
+
     /**
      * @brief RAII helper for timing a scope.
      */
     class ProfileScope {
     public:
-        explicit ProfileScope(const char* name) :
-            m_name(name),
-            m_start(std::chrono::high_resolution_clock::now()) {}
-
-        ~ProfileScope() {
-            auto end = std::chrono::high_resolution_clock::now();
-            auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end - m_start).count();
-
-            // Simple logging for now. In a full system, this would go to a telemetry buffer.
-            // Using logger::DEBUG to avoid cluttering normal output.
-            // logger::DEBUG("PROFILE | {} | {} us", m_name, duration);
-        }
+        explicit ProfileScope(const char* name);
+        ~ProfileScope();
 
     private:
         const char* m_name;
@@ -52,6 +87,28 @@ namespace Boidsish {
 #define PROJECT_MARKER(name) do { (void)(name); } while(0)
 
 #else
+
+namespace Boidsish {
+    class Profiler {
+    public:
+        static Profiler& GetInstance() {
+            static Profiler instance;
+            return instance;
+        }
+        void Update(float) {}
+        float GetFPS() const { return 0.0f; }
+
+        struct ProfileStats {
+            uint64_t count = 0;
+            double totalTimeUs = 0.0;
+            double minTimeUs = 0.0;
+            double maxTimeUs = 0.0;
+            double GetAverageUs() const { return 0.0; }
+        };
+        std::map<std::string, ProfileStats> GetStats() { return {}; }
+        void ClearStats() {}
+    };
+}
 
 // Zero-overhead resolution when profiling is disabled
 #define PROJECT_PROFILE_SCOPE(name) do { (void)(name); } while(0)
