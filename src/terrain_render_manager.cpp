@@ -192,26 +192,74 @@ namespace Boidsish {
 	}
 
 	void TerrainRenderManager::EnsureBufferCapacity(int required_chunks) {
-		if (terrain_vbo_ && dynamic_ebo_ && required_chunks <= max_chunks_)
+		if (terrain_vbo_ && dynamic_ebo_ && heightmap_texture_ && required_chunks <= max_chunks_)
 			return;
 
+		GLint max_layers = 0;
+		glGetIntegerv(GL_MAX_ARRAY_TEXTURE_LAYERS, &max_layers);
+		if (max_layers <= 0)
+			max_layers = 512;
+
 		int new_capacity = std::max(max_chunks_, required_chunks);
+		if (new_capacity > max_layers)
+			new_capacity = max_layers;
+
+		if (terrain_vbo_ && new_capacity <= max_chunks_)
+			return;
+
+		GLuint old_heightmap = heightmap_texture_;
+		GLuint old_biome = biome_texture_;
+		GLuint old_vbo = terrain_vbo_;
+		int    old_slice_count = next_base_vertex_ / vertices_per_chunk_;
+
 		max_chunks_ = new_capacity;
 
 		// Resize SSBOs to new capacity
+		// Metadata: read-back old data, reallocate, re-upload
+		std::vector<ChunkMetadataGPU> old_metadata;
+		if (chunk_metadata_ssbo_ && next_gpu_index_ > 0) {
+			old_metadata.resize(next_gpu_index_);
+			glBindBuffer(GL_SHADER_STORAGE_BUFFER, chunk_metadata_ssbo_);
+			glGetBufferSubData(
+				GL_SHADER_STORAGE_BUFFER,
+				0,
+				next_gpu_index_ * sizeof(ChunkMetadataGPU),
+				old_metadata.data()
+			);
+		}
 		glBindBuffer(GL_SHADER_STORAGE_BUFFER, chunk_metadata_ssbo_);
 		glBufferData(GL_SHADER_STORAGE_BUFFER, max_chunks_ * sizeof(ChunkMetadataGPU), nullptr, GL_DYNAMIC_DRAW);
+		if (!old_metadata.empty()) {
+			glBufferSubData(
+				GL_SHADER_STORAGE_BUFFER,
+				0,
+				old_metadata.size() * sizeof(ChunkMetadataGPU),
+				old_metadata.data()
+			);
+		}
 
 		glBindBuffer(GL_SHADER_STORAGE_BUFFER, visible_patches_ssbo_);
 		glBufferData(GL_SHADER_STORAGE_BUFFER, max_chunks_ * 64 * 16, nullptr, GL_DYNAMIC_DRAW);
 
 		// Large VBO for all chunks
+		glGenBuffers(1, &terrain_vbo_);
 		glBindBuffer(GL_ARRAY_BUFFER, terrain_vbo_);
 		glBufferData(GL_ARRAY_BUFFER, max_chunks_ * vertices_per_chunk_ * sizeof(TerrainVertex), nullptr, GL_STATIC_DRAW);
+		if (old_vbo && old_slice_count > 0) {
+			glBindBuffer(GL_COPY_READ_BUFFER, old_vbo);
+			glCopyBufferSubData(
+				GL_COPY_READ_BUFFER,
+				GL_ARRAY_BUFFER,
+				0,
+				0,
+				old_slice_count * vertices_per_chunk_ * sizeof(TerrainVertex)
+			);
+			glDeleteBuffers(1, &old_vbo);
+		}
 
 		// Large dynamic EBO for indices of visible patches
-		// 8x8 = 64 patches per chunk. Each patch has (chunk_size/8)^2 * 6 indices.
 		int indices_per_patch = (chunk_size_ / 8) * (chunk_size_ / 8) * 6;
+		glGenBuffers(1, &dynamic_ebo_);
 		glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, dynamic_ebo_);
 		glBufferData(
 			GL_ELEMENT_ARRAY_BUFFER,
@@ -220,9 +268,92 @@ namespace Boidsish {
 			GL_DYNAMIC_DRAW
 		);
 
+		// Texture arrays
+		glGenTextures(1, &heightmap_texture_);
+		glBindTexture(GL_TEXTURE_2D_ARRAY, heightmap_texture_);
+		glTexImage3D(
+			GL_TEXTURE_2D_ARRAY,
+			0,
+			GL_RGBA16F,
+			heightmap_resolution_,
+			heightmap_resolution_,
+			max_chunks_,
+			0,
+			GL_RGBA,
+			GL_FLOAT,
+			nullptr
+		);
+		glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+		glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+		glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+		glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+
+		glGenTextures(1, &biome_texture_);
+		glBindTexture(GL_TEXTURE_2D_ARRAY, biome_texture_);
+		glTexImage3D(
+			GL_TEXTURE_2D_ARRAY,
+			0,
+			GL_RG8,
+			heightmap_resolution_,
+			heightmap_resolution_,
+			max_chunks_,
+			0,
+			GL_RG,
+			GL_UNSIGNED_BYTE,
+			nullptr
+		);
+		glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+		glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+		glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+		glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+
+		// Copy existing texture slices
+		if (old_heightmap && old_slice_count > 0) {
+			GLuint copy_fbo = 0;
+			glGenFramebuffers(1, &copy_fbo);
+			for (int s = 0; s < old_slice_count; ++s) {
+				glBindFramebuffer(GL_READ_FRAMEBUFFER, copy_fbo);
+				glFramebufferTextureLayer(GL_READ_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, old_heightmap, 0, s);
+				glBindTexture(GL_TEXTURE_2D_ARRAY, heightmap_texture_);
+				glCopyTexSubImage3D(
+					GL_TEXTURE_2D_ARRAY,
+					0,
+					0,
+					0,
+					s,
+					0,
+					0,
+					heightmap_resolution_,
+					heightmap_resolution_
+				);
+
+				glFramebufferTextureLayer(GL_READ_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, old_biome, 0, s);
+				glBindTexture(GL_TEXTURE_2D_ARRAY, biome_texture_);
+				glCopyTexSubImage3D(
+					GL_TEXTURE_2D_ARRAY,
+					0,
+					0,
+					0,
+					s,
+					0,
+					0,
+					heightmap_resolution_,
+					heightmap_resolution_
+				);
+			}
+			glBindFramebuffer(GL_READ_FRAMEBUFFER, 0);
+			glDeleteFramebuffers(1, &copy_fbo);
+		}
+
+		if (old_heightmap)
+			glDeleteTextures(1, &old_heightmap);
+		if (old_biome)
+			glDeleteTextures(1, &old_biome);
+
 		glBindBuffer(GL_ARRAY_BUFFER, 0);
 		glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
 		glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
+		glBindTexture(GL_TEXTURE_2D_ARRAY, 0);
 
 		chunk_metadata_dirty_ = true;
 	}
@@ -233,9 +364,18 @@ namespace Boidsish {
 		const std::vector<glm::vec3>& normals,
 		const std::vector<glm::vec2>& biomes
 	) {
+		// Find world offset for this base_vertex to upload absolute positions
+		glm::vec3 world_offset(0.0f);
+		for (const auto& [key, chunk] : chunks_) {
+			if (chunk.base_vertex == base_vertex) {
+				world_offset = glm::vec3(chunk.world_offset.x, 0.0f, chunk.world_offset.y);
+				break;
+			}
+		}
+
 		std::vector<TerrainVertex> packed_data(vertices_per_chunk_);
 		for (int i = 0; i < vertices_per_chunk_; ++i) {
-			packed_data[i].position = positions[i];
+			packed_data[i].position = positions[i] + world_offset;
 			packed_data[i].normal = normals[i];
 			packed_data[i].biome = biomes[i];
 		}
@@ -248,6 +388,75 @@ namespace Boidsish {
 			packed_data.data()
 		);
 		glBindBuffer(GL_ARRAY_BUFFER, 0);
+
+		// Also upload to heightmap textures for compatibility
+		const int              res = heightmap_resolution_;
+		std::vector<float>     heightmap(res * res);
+		std::vector<glm::vec3> reordered_normals(res * res);
+		std::vector<glm::vec2> reordered_biomes(res * res);
+		for (int x = 0; x < res; ++x) {
+			for (int z = 0; z < res; ++z) {
+				int src_idx = x * res + z;
+				int dst_idx = z * res + x;
+				heightmap[dst_idx] = positions[src_idx].y;
+				reordered_normals[dst_idx] = normals[src_idx];
+				reordered_biomes[dst_idx] = biomes[src_idx];
+			}
+		}
+		UploadHeightmapSlice(base_vertex / vertices_per_chunk_, heightmap, reordered_normals, reordered_biomes);
+	}
+
+	void TerrainRenderManager::UploadHeightmapSlice(
+		int                           slice,
+		const std::vector<float>&     heightmap,
+		const std::vector<glm::vec3>& normals,
+		const std::vector<glm::vec2>& biomes
+	) {
+		const int          num_pixels = heightmap_resolution_ * heightmap_resolution_;
+		std::vector<float> packed_data;
+		packed_data.reserve(num_pixels * 4);
+		for (int i = 0; i < num_pixels; ++i) {
+			packed_data.push_back(heightmap[i]);
+			packed_data.push_back(normals[i].x);
+			packed_data.push_back(normals[i].y);
+			packed_data.push_back(normals[i].z);
+		}
+		glBindTexture(GL_TEXTURE_2D_ARRAY, heightmap_texture_);
+		glTexSubImage3D(
+			GL_TEXTURE_2D_ARRAY,
+			0,
+			0,
+			0,
+			slice,
+			heightmap_resolution_,
+			heightmap_resolution_,
+			1,
+			GL_RGBA,
+			GL_FLOAT,
+			packed_data.data()
+		);
+
+		std::vector<uint8_t> biome_data;
+		biome_data.reserve(num_pixels * 2);
+		for (int i = 0; i < num_pixels; ++i) {
+			biome_data.push_back(static_cast<uint8_t>(biomes[i].x));
+			biome_data.push_back(static_cast<uint8_t>(biomes[i].y * 255.0f + 0.5f));
+		}
+		glBindTexture(GL_TEXTURE_2D_ARRAY, biome_texture_);
+		glTexSubImage3D(
+			GL_TEXTURE_2D_ARRAY,
+			0,
+			0,
+			0,
+			slice,
+			heightmap_resolution_,
+			heightmap_resolution_,
+			1,
+			GL_RG,
+			GL_UNSIGNED_BYTE,
+			biome_data.data()
+		);
+		glBindTexture(GL_TEXTURE_2D_ARRAY, 0);
 	}
 
 	void TerrainRenderManager::RegisterChunk(
@@ -266,11 +475,11 @@ namespace Boidsish {
 			std::lock_guard<std::recursive_mutex> lock(mutex_);
 			auto                                  it = chunks_.find(chunk_key);
 			if (it != chunks_.end()) {
-				UploadChunkMesh(it->second.base_vertex, positions, normals, biomes);
 				it->second.min_y = min_y;
 				it->second.max_y = max_y;
 				it->second.update_count++;
 				chunk_metadata_dirty_ = true;
+				UploadChunkMesh(it->second.base_vertex, positions, normals, biomes);
 				return;
 			}
 			int base_vertex;
@@ -465,7 +674,7 @@ namespace Boidsish {
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::TerrainIndirect(), indirect_buffer_);
 
 		glDispatchCompute((next_gpu_index_ * 64 + 63) / 64, 1, 1);
-		glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT | GL_COMMAND_BARRIER_BIT);
+		glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT | GL_COMMAND_BARRIER_BIT | GL_ELEMENT_ARRAY_BARRIER_BIT);
 	}
 
 	void TerrainRenderManager::UpdateGridTextures(float world_scale) {
@@ -592,12 +801,6 @@ namespace Boidsish {
 
 		glBindVertexArray(mesh_vao_);
 		glBindBuffer(GL_DRAW_INDIRECT_BUFFER, indirect_buffer_);
-
-		// Read back index count for stats
-		GLuint drawn_indices = 0;
-		glGetBufferSubData(GL_DRAW_INDIRECT_BUFFER, offsetof(DrawElementsIndirectCommand, count), sizeof(GLuint), &drawn_indices);
-		int indices_per_patch = (chunk_size_ / 8) * (chunk_size_ / 8) * 6;
-		cached_visible_patch_count_ = drawn_indices / indices_per_patch;
 
 		glDrawElementsIndirect(GL_TRIANGLES, GL_UNSIGNED_INT, nullptr);
 

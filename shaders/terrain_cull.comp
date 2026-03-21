@@ -185,11 +185,12 @@ void main() {
 		bool occluded = true;
 		occluded = occluded && testPointOccluded(vec3(minCorner.x, maxCorner.y, minCorner.z), targetChunk);
 		occluded = occluded && testPointOccluded(vec3(maxCorner.x, maxCorner.y, minCorner.z), targetChunk);
-		occluded = occluded && testPointOccluded(vec3(minCorner.x, maxCorner.y, minCorner.z), targetChunk);
-		occluded = occluded && testPointOccluded(vec3(maxCorner.x, maxCorner.y, minCorner.z), targetChunk);
+		occluded = occluded && testPointOccluded(vec3(minCorner.x, maxCorner.y, maxBound.z), targetChunk);
+		occluded = occluded && testPointOccluded(vec3(maxCorner.x, maxCorner.y, maxBound.z), targetChunk);
 
 		if (!occluded) {
-			uint indices_per_patch = 96; // (4x4) * 6
+			uint patch_quads_edge = uint(u_chunkSize) / 8u;
+			uint indices_per_patch = patch_quads_edge * patch_quads_edge * 6u;
 			uint destIdx = atomicAdd(command.count, indices_per_patch);
 
 			if (destIdx + indices_per_patch <= uint(u_maxVisiblePatches) * indices_per_patch) {
@@ -197,7 +198,7 @@ void main() {
 				uint grid_w = uint(u_chunkSize) + 1;
 
 				// Offset to add to each template index to move it to the correct patch within the chunk
-				uint patch_v_offset = (pz * 4u) * grid_w + (px * 4u);
+				uint patch_v_offset = (pz * patch_quads_edge) * grid_w + (px * patch_quads_edge);
 
 				for(uint i = 0; i < indices_per_patch; ++i) {
 					dynamic_indices[destIdx + i] = base_v + patch_v_offset + patch_template_indices[i];

@@ -77,6 +77,10 @@ namespace Boidsish {
 
 		int GetChunkSize() const { return chunk_size_; }
 
+		GLuint GetHeightmapTexture() const { return heightmap_texture_; }
+
+		GLuint GetBiomeTexture() const { return biome_texture_; }
+
 		GLuint GetTerrainVbo() const { return terrain_vbo_; }
 
 		std::vector<glm::vec4> GetChunkInfo(float world_scale) const;
@@ -139,13 +143,21 @@ namespace Boidsish {
 			const std::vector<glm::vec3>& normals,
 			const std::vector<glm::vec2>& biomes
 		);
+		void UploadHeightmapSlice(
+			int                           slice,
+			const std::vector<float>&     heightmap,
+			const std::vector<glm::vec3>& normals,
+			const std::vector<glm::vec2>& biomes
+		);
 
 		int chunk_size_;
 		int max_chunks_;
 		int vertices_per_chunk_;
+		int heightmap_resolution_;
 
 		GLuint terrain_vbo_ = 0, dynamic_ebo_ = 0, patch_indices_ssbo_ = 0;
 		GLuint mesh_vao_ = 0;
+		GLuint heightmap_texture_ = 0, biome_texture_ = 0;
 		GLuint noise_texture_ = 0, curl_texture_ = 0, extra_noise_texture_ = 0, biome_ubo_ = 0;
 
 		GLuint                         chunk_metadata_ssbo_ = 0, visible_patches_ssbo_ = 0, indirect_buffer_ = 0;
@@ -159,6 +171,7 @@ namespace Boidsish {
 		GLint cull_camera_pos_loc_ = -1;
 		GLint cull_chunk_grid_loc_ = -1;
 		GLint cull_max_height_grid_loc_ = -1;
+		GLint cull_heightmap_array_loc_ = -1;
 
 		GLuint                         chunk_grid_texture_ = 0, max_height_grid_texture_ = 0, terrain_data_ubo_ = 0;
 		std::unique_ptr<ComputeShader> grid_mip_shader_;
