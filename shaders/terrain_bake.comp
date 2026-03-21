@@ -1,0 +1,53 @@
+#version 430 core
+
+layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
+
+// Output texture arrays
+layout(rgba8, binding = 0) uniform image2DArray u_bakedMaterial; // rgb=albedo, a=roughness
+layout(rgba8, binding = 1) uniform image2DArray u_bakedNormal;   // rgb=normal, a=metallic
+
+// Input: heightmap array for sampling positions and base normals
+uniform sampler2DArray u_heightmapArray;
+
+#include "helpers/fast_noise.glsl"
+#include "helpers/terrain_material.glsl"
+
+uniform float u_chunkSize;
+uniform int   u_textureSlice;
+uniform vec2  u_worldOffset;
+
+void main() {
+    ivec3 texelPos = ivec3(gl_GlobalInvocationID.xy, u_textureSlice);
+    ivec2 size = imageSize(u_bakedMaterial).xy;
+
+    if (texelPos.x >= size.x || texelPos.y >= size.y) {
+        return;
+    }
+
+    // Calculate UV for this texel within the chunk
+    vec2 uv = vec2(texelPos.xy) / (vec2(size) - 1.0);
+
+    // Sample heightmap to get world position and base normal
+    vec4 heightData = texture(u_heightmapArray, vec3(uv, float(u_textureSlice)));
+    float height = heightData.r;
+    vec3 baseNormal = normalize(heightData.gba);
+
+    // Reconstruct world position
+    vec3 worldPos;
+    worldPos.x = u_worldOffset.x + uv.x * u_chunkSize;
+    worldPos.y = height;
+    worldPos.z = u_worldOffset.y + uv.y * u_chunkSize;
+
+    // Use the shared material calculation logic
+    // We pass perturbFactor = 1.0 to ensure full detail in the bake
+    CalculatedMaterial mat = calculateTerrainMaterial(worldPos, baseNormal, uv, float(u_textureSlice), 1.0);
+
+    // Pack and write outputs
+    // Albedo is already 0-1
+    // Roughness is 0-1
+    imageStore(u_bakedMaterial, texelPos, vec4(mat.albedo, mat.roughness));
+
+    // Normal is -1 to 1, map to 0-1
+    vec3 packedNormal = mat.normal * 0.5 + 0.5;
+    imageStore(u_bakedNormal, texelPos, vec4(packedNormal, mat.metallic));
+}

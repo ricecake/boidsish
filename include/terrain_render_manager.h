@@ -68,6 +68,8 @@ namespace Boidsish {
 		int GetChunkSize() const { return chunk_size_; }
 		GLuint GetHeightmapTexture() const { return heightmap_texture_; }
 		GLuint GetBiomeTexture() const { return biome_texture_; }
+		GLuint GetBakedMaterialTexture() const { return baked_material_texture_; }
+		GLuint GetBakedNormalTexture() const { return baked_normal_texture_; }
 
 		std::vector<glm::vec4> GetChunkInfo(float world_scale) const;
 
@@ -125,10 +127,12 @@ namespace Boidsish {
 
 		GLuint grid_vao_ = 0, grid_vbo_ = 0, grid_ebo_ = 0;
 		GLuint heightmap_texture_ = 0, biome_texture_ = 0;
+		GLuint baked_material_texture_ = 0, baked_normal_texture_ = 0;
 		GLuint noise_texture_ = 0, curl_texture_ = 0, biome_ubo_ = 0;
 
 		GLuint chunk_metadata_ssbo_ = 0, visible_patches_ssbo_ = 0, indirect_buffer_ = 0;
 		std::unique_ptr<ComputeShader> cull_shader_;
+		std::unique_ptr<ComputeShader> bake_shader_;
 
 		// Cached uniform locations for cull_shader_
 		GLint cull_num_chunks_loc_ = -1;
