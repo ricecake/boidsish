@@ -27,7 +27,7 @@ uniform float          uChunkSize;
 
 #include "helpers/lighting.glsl"
 
-uniform float uTessLevelMax = 2.0;
+uniform float uTessLevelMax = 4.0;
 uniform float uTessLevelMin = 1.0;
 uniform float uTessQualityMultiplier = 1.0;
 uniform bool  uIsShadowPass = false;
@@ -95,7 +95,7 @@ float GetEdgeTessLevel(vec3 p0, vec3 p1, vec3 n0, vec3 n1) {
 	// Base tessellation: target pixels per segment
 	// Target ~8 pixels per triangle edge for high quality, 16 for medium, 32 for low
 	float targetPixels = 8.0 / uTessQualityMultiplier;
-	float baseLevel = pixelLength / targetPixels;
+	float baseLevel = round(pixelLength / targetPixels);
 
 	// 1. SILHOUETTE BOOST
 	// Boost tessellation for edges that form the silhouette to keep curves smooth
@@ -103,19 +103,19 @@ float GetEdgeTessLevel(vec3 p0, vec3 p1, vec3 n0, vec3 n1) {
 
 	// Distance fade for silhouette boost to avoid over-tessellating distant silhouettes
 	float dist = distance(viewPos, midPos);
-	float silhouetteBoost = mix(1.0, 4.0, silhouetteFactor * smoothstep(1000.0 * worldScale, 200.0 * worldScale, dist));
+	float silhouetteBoost = round(mix(1.0, 4.0, silhouetteFactor * smoothstep(1000.0 * worldScale, 200.0 * worldScale, dist)));
 
 	// 2. CURVATURE BOOST
 	// Boost tessellation where surface normal changes rapidly
 	float curvatureFactor = 1.0 - dot(ln0, ln1);
-	float curvatureBoost = mix(1.0, 4.0, clamp(curvatureFactor * 10.0, 0.0, 1.0));
+	float curvatureBoost = round(mix(1.0, 4.0, clamp(curvatureFactor * 10.0, 0.0, 1.0)));
 
 	float finalLevel = baseLevel * silhouetteBoost * curvatureBoost;
 
 	// Snap to nearest power of two to ensure stability across chunk edges.
 	// Using round() provides more natural transitions than floor().
 	// Ensure at least 2.0 for fractional_even_spacing compatibility.
-	finalLevel = roundEven(max(2.0, finalLevel));
+	finalLevel = roundEven(finalLevel);
 
 	return clamp(finalLevel, uTessLevelMin, uTessLevelMax);
 }
