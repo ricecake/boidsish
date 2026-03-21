@@ -3517,6 +3517,20 @@ namespace Boidsish {
 
 		logger::LOG("Preparing visualizer...");
 
+			// Initialize Lighting UBO with defaults before any systems (like Terrain) might need it
+			{
+				std::memset(&impl->lighting_ubo_data_, 0, sizeof(LightingUbo));
+				impl->lighting_ubo_data_.world_scale = 1.0f; // Default scale
+				impl->lighting_ubo_data_.ambient_light = impl->light_manager.GetAmbientLight();
+				impl->lighting_ubo_data_.time = 0.0f;
+				impl->lighting_ubo_data_.view_pos = impl->camera.pos();
+				impl->lighting_ubo_data_.view_dir = impl->camera.front();
+
+				glBindBuffer(GL_UNIFORM_BUFFER, impl->lighting_ubo);
+				glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(LightingUbo), &impl->lighting_ubo_data_);
+				glBindBuffer(GL_UNIFORM_BUFFER, 0);
+			}
+
 		// --- Pre-flight validation ---
 		// Verify critical systems are initialized
 		if (!impl->shader || impl->shader->ID == 0) {

@@ -66,6 +66,17 @@ namespace Boidsish {
 		cull_shader_ = std::make_unique<ComputeShader>("shaders/terrain_cull.comp");
 		bake_shader_ = std::make_unique<ComputeShader>("shaders/terrain_bake.comp");
 
+		if (bake_shader_ && bake_shader_->isValid()) {
+			GLuint biomes_idx = glGetUniformBlockIndex(bake_shader_->ID, "BiomeData");
+			if (biomes_idx != GL_INVALID_INDEX) {
+				glUniformBlockBinding(bake_shader_->ID, biomes_idx, Constants::UboBinding::Biomes());
+			}
+			GLuint lighting_idx = glGetUniformBlockIndex(bake_shader_->ID, "Lighting");
+			if (lighting_idx != GL_INVALID_INDEX) {
+				glUniformBlockBinding(bake_shader_->ID, lighting_idx, Constants::UboBinding::Lighting());
+			}
+		}
+
 		if (cull_shader_ && cull_shader_->isValid()) {
 			cull_num_chunks_loc_ = glGetUniformLocation(cull_shader_->ID, "u_numChunks");
 			cull_max_visible_patches_loc_ = glGetUniformLocation(cull_shader_->ID, "u_maxVisiblePatches");
@@ -207,10 +218,11 @@ namespace Boidsish {
 		glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
 		glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 
-		int bake_res = 512; // High-enough resolution for baked materials
+		int bake_mips = 1 + static_cast<int>(std::floor(std::log2(kBakeResolution)));
+
 		glGenTextures(1, &baked_material_texture_);
 		glBindTexture(GL_TEXTURE_2D_ARRAY, baked_material_texture_);
-		glTexImage3D(GL_TEXTURE_2D_ARRAY, 0, GL_RGBA8, bake_res, bake_res, max_chunks_, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
+		glTexStorage3D(GL_TEXTURE_2D_ARRAY, bake_mips, GL_RGBA8, kBakeResolution, kBakeResolution, max_chunks_);
 		glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
 		glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 		glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
@@ -218,7 +230,7 @@ namespace Boidsish {
 
 		glGenTextures(1, &baked_normal_texture_);
 		glBindTexture(GL_TEXTURE_2D_ARRAY, baked_normal_texture_);
-		glTexImage3D(GL_TEXTURE_2D_ARRAY, 0, GL_RGBA8, bake_res, bake_res, max_chunks_, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
+		glTexStorage3D(GL_TEXTURE_2D_ARRAY, bake_mips, GL_RGBA8, kBakeResolution, kBakeResolution, max_chunks_);
 		glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
 		glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 		glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
@@ -244,14 +256,14 @@ namespace Boidsish {
 				if (old_baked_material) {
 					glFramebufferTextureLayer(GL_READ_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, old_baked_material, 0, s);
 					glBindTexture(GL_TEXTURE_2D_ARRAY, baked_material_texture_);
-					glCopyTexSubImage3D(GL_TEXTURE_2D_ARRAY, 0, 0, 0, s, 0, 0, bake_res, bake_res);
+					glCopyTexSubImage3D(GL_TEXTURE_2D_ARRAY, 0, 0, 0, s, 0, 0, kBakeResolution, kBakeResolution);
 				}
 
 				// Copy baked normal slice
 				if (old_baked_normal) {
 					glFramebufferTextureLayer(GL_READ_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, old_baked_normal, 0, s);
 					glBindTexture(GL_TEXTURE_2D_ARRAY, baked_normal_texture_);
-					glCopyTexSubImage3D(GL_TEXTURE_2D_ARRAY, 0, 0, 0, s, 0, 0, bake_res, bake_res);
+					glCopyTexSubImage3D(GL_TEXTURE_2D_ARRAY, 0, 0, 0, s, 0, 0, kBakeResolution, kBakeResolution);
 				}
 			}
 			glBindFramebuffer(GL_READ_FRAMEBUFFER, 0);
@@ -294,7 +306,7 @@ namespace Boidsish {
 		glBindTexture(GL_TEXTURE_2D_ARRAY, 0);
 	}
 
-	void TerrainRenderManager::RegisterChunk(std::pair<int, int> chunk_key, const std::vector<glm::vec3>& positions, const std::vector<glm::vec3>& normals, const std::vector<glm::vec2>& biomes, const std::vector<unsigned int>& indices, float min_y, float max_y, const glm::vec3& world_offset) {
+	void TerrainRenderManager::RegisterChunk(std::pair<int, int> chunk_key, const std::vector<glm::vec3>& positions, const std::vector<glm::vec3>& normals, const std::vector<glm::vec2>& biomes, const std::vector<unsigned int>& indices, float min_y, float max_y, const glm::vec3& world_offset, float world_scale) {
 		bool should_notify_eviction = false;
 		std::pair<int, int> evicted_chunk_key;
 		const int res = heightmap_resolution_;
@@ -395,7 +407,8 @@ namespace Boidsish {
 			// Bake the chunk appearance immediately after upload
 			if (bake_shader_ && bake_shader_->isValid()) {
 				bake_shader_->use();
-				bake_shader_->setFloat("u_chunkSize", static_cast<float>(chunk_size_ * last_world_scale_));
+				bake_shader_->setFloat("u_chunkSize", static_cast<float>(chunk_size_ * world_scale));
+				bake_shader_->setFloat("u_worldScale", world_scale);
 				bake_shader_->setInt("u_textureSlice", slice);
 				bake_shader_->setVec2("u_worldOffset", glm::vec2(world_offset.x, world_offset.z));
 
@@ -416,13 +429,14 @@ namespace Boidsish {
 				bake_shader_->setInt("u_curlTexture", 6);
 
 				glBindBufferBase(GL_UNIFORM_BUFFER, Constants::UboBinding::Biomes(), biome_ubo_);
-				glBindBufferBase(GL_UNIFORM_BUFFER, Constants::UboBinding::Lighting(), 0); // Need worldScale from Lighting UBO
+				if (lighting_ubo_ != 0) {
+					glBindBufferBase(GL_UNIFORM_BUFFER, Constants::UboBinding::Lighting(), lighting_ubo_);
+				}
 
-				glBindImageTexture(0, baked_material_texture_, 0, GL_TRUE, slice, GL_WRITE_ONLY, GL_RGBA8);
-				glBindImageTexture(1, baked_normal_texture_, 0, GL_TRUE, slice, GL_WRITE_ONLY, GL_RGBA8);
+				glBindImageTexture(0, baked_material_texture_, 0, GL_FALSE, slice, GL_WRITE_ONLY, GL_RGBA8);
+				glBindImageTexture(1, baked_normal_texture_, 0, GL_FALSE, slice, GL_WRITE_ONLY, GL_RGBA8);
 
-				int bake_res = 512;
-				glDispatchCompute((bake_res + 7) / 8, (bake_res + 7) / 8, 1);
+				glDispatchCompute((kBakeResolution + 7) / 8, (kBakeResolution + 7) / 8, 1);
 				glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
 
 				// Generate mips for the baked textures

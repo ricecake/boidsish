@@ -87,7 +87,7 @@ void main() {
         metallic = bakedNormData.a;
     } else {
         // Compute procedural material
-        CalculatedMaterial procMat = calculateTerrainMaterial(FragPos, norm, TexCoords, TextureSlice, perturbFactor);
+        CalculatedMaterial procMat = calculateTerrainMaterial(FragPos, norm, TexCoords, TextureSlice, perturbFactor, worldScale);
 
         if (lodFactor <= 0.0) {
             albedo = procMat.albedo;

@@ -45,7 +45,8 @@ namespace Boidsish {
 			const std::vector<unsigned int>& indices,
 			float                            min_y,
 			float                            max_y,
-			const glm::vec3&                 world_offset
+			const glm::vec3&                 world_offset,
+			float                            world_scale
 		);
 
 		void UnregisterChunk(std::pair<int, int> chunk_key);
@@ -70,6 +71,7 @@ namespace Boidsish {
 		GLuint GetBiomeTexture() const { return biome_texture_; }
 		GLuint GetBakedMaterialTexture() const { return baked_material_texture_; }
 		GLuint GetBakedNormalTexture() const { return baked_normal_texture_; }
+		static constexpr int kBakeResolution = 512;
 
 		std::vector<glm::vec4> GetChunkInfo(float world_scale) const;
 
@@ -96,6 +98,8 @@ namespace Boidsish {
 			if (noise != 0) noise_texture_ = noise;
 			if (curl != 0) curl_texture_ = curl;
 		}
+
+		void SetLightingUbo(GLuint ubo) { lighting_ubo_ = ubo; }
 
 	private:
 		void UpdateGridTextures(float world_scale);
@@ -128,7 +132,7 @@ namespace Boidsish {
 		GLuint grid_vao_ = 0, grid_vbo_ = 0, grid_ebo_ = 0;
 		GLuint heightmap_texture_ = 0, biome_texture_ = 0;
 		GLuint baked_material_texture_ = 0, baked_normal_texture_ = 0;
-		GLuint noise_texture_ = 0, curl_texture_ = 0, biome_ubo_ = 0;
+		GLuint noise_texture_ = 0, curl_texture_ = 0, biome_ubo_ = 0, lighting_ubo_ = 0;
 
 		GLuint chunk_metadata_ssbo_ = 0, visible_patches_ssbo_ = 0, indirect_buffer_ = 0;
 		std::unique_ptr<ComputeShader> cull_shader_;

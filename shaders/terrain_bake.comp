@@ -2,9 +2,9 @@
 
 layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
 
-// Output texture arrays
-layout(rgba8, binding = 0) uniform image2DArray u_bakedMaterial; // rgb=albedo, a=roughness
-layout(rgba8, binding = 1) uniform image2DArray u_bakedNormal;   // rgb=normal, a=metallic
+// Output images bound to a specific slice
+layout(rgba8, binding = 0) uniform image2D u_bakedMaterial; // rgb=albedo, a=roughness
+layout(rgba8, binding = 1) uniform image2D u_bakedNormal;   // rgb=normal, a=metallic
 
 // Input: heightmap array for sampling positions and base normals
 uniform sampler2DArray u_heightmapArray;
@@ -13,11 +13,12 @@ uniform sampler2DArray u_heightmapArray;
 #include "helpers/terrain_material.glsl"
 
 uniform float u_chunkSize;
+uniform float u_worldScale;
 uniform int   u_textureSlice;
 uniform vec2  u_worldOffset;
 
 void main() {
-    ivec3 texelPos = ivec3(gl_GlobalInvocationID.xy, u_textureSlice);
+    ivec2 texelPos = ivec2(gl_GlobalInvocationID.xy);
     ivec2 size = imageSize(u_bakedMaterial).xy;
 
     if (texelPos.x >= size.x || texelPos.y >= size.y) {
@@ -40,7 +41,7 @@ void main() {
 
     // Use the shared material calculation logic
     // We pass perturbFactor = 1.0 to ensure full detail in the bake
-    CalculatedMaterial mat = calculateTerrainMaterial(worldPos, baseNormal, uv, float(u_textureSlice), 1.0);
+    CalculatedMaterial mat = calculateTerrainMaterial(worldPos, baseNormal, uv, float(u_textureSlice), 1.0, u_worldScale);
 
     // Pack and write outputs
     // Albedo is already 0-1

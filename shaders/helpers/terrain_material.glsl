@@ -18,14 +18,6 @@ layout(std140, binding = 7) uniform BiomeData {
 // Biome texture array: RG8 - R=low_idx, G=t
 uniform sampler2DArray uBiomeMap;
 
-#define HEIGHT_BEACH_END (3.0 * worldScale)
-#define HEIGHT_LOWLAND_END (20.0 * worldScale)
-#define HEIGHT_FOREST_END (50.0 * worldScale)
-#define HEIGHT_ALPINE_START (60.0 * worldScale)
-#define HEIGHT_TREELINE (80.0 * worldScale)
-#define HEIGHT_SNOW_START (90.0 * worldScale)
-#define HEIGHT_PEAK (100.0 * worldScale)
-
 // Color palette - realistic terrain tones
 const vec3 COL_SAND_WET = vec3(0.55, 0.45, 0.35);      // Wet sand near water
 const vec3 COL_SAND_DRY = vec3(0.76, 0.70, 0.55);      // Dry beach sand
@@ -81,9 +73,9 @@ float calculateValleyFactor(vec3 pos) {
 /**
  * Calculate moisture based on height, valley factor, and noise
  */
-float calculateMoisture(float height, float valleyFactor, vec3 pos) {
+float calculateMoisture(float height, float valleyFactor, vec3 pos, float effWorldScale) {
 	// Base moisture decreases with altitude (less rain at high elevations)
-	float baseMoisture = 1.0 - smoothstep(0.0, HEIGHT_PEAK, height) * 0.6;
+	float baseMoisture = 1.0 - smoothstep(0.0, 100.0 * effWorldScale, height) * 0.6;
 
 	// Valleys are more moist (water collects there)
 	float valleyMoisture = clamp(-valleyFactor * 0.5, 0.0, 0.4);
@@ -97,15 +89,23 @@ float calculateMoisture(float height, float valleyFactor, vec3 pos) {
 /**
  * Get the base biome material based on height
  */
-TerrainMaterial getBiomeMaterial(float height, float moisture, float noise) {
+TerrainMaterial getBiomeMaterial(float height, float moisture, float noise, float effWorldScale) {
 	TerrainMaterial mat;
 	mat.metallic = 0.0;
 	// Distort height with noise for natural boundaries
 	float h = height + noise * 8.0;
 
+    float beachEnd = 3.0 * effWorldScale;
+    float lowlandEnd = 20.0 * effWorldScale;
+    float forestEnd = 50.0 * effWorldScale;
+    float alpineStart = 60.0 * effWorldScale;
+    float treeline = 80.0 * effWorldScale;
+    float snowStart = 90.0 * effWorldScale;
+    float peak = 100.0 * effWorldScale;
+
 	// Beach zone (0 - 3)
-	if (h < HEIGHT_BEACH_END) {
-		float wetness = 1.0 - smoothstep(0.0, HEIGHT_BEACH_END, h);
+	if (h < beachEnd) {
+		float wetness = 1.0 - smoothstep(0.0, beachEnd, h);
 		mat.albedo = mix(COL_SAND_DRY, COL_SAND_WET, wetness);
 		mat.roughness = mix(0.9, 0.4, wetness);
 		mat.normalScale = 40.0;
@@ -114,12 +114,12 @@ TerrainMaterial getBiomeMaterial(float height, float moisture, float noise) {
 	}
 
 	// Lowland zone (3 - 25): grass/meadow, lusher in valleys
-	if (h < HEIGHT_LOWLAND_END) {
-		float t = smoothstep(HEIGHT_BEACH_END, HEIGHT_LOWLAND_END, h);
+	if (h < lowlandEnd) {
+		float t = smoothstep(beachEnd, lowlandEnd, h);
 		vec3  grassColor = mix(COL_GRASS_LUSH, COL_GRASS_DRY, t * (1.0 - moisture));
 		float grassRoughness = mix(0.7, 0.8, t * (1.0 - moisture));
 		// Blend from sand to grass
-		float sandFade = smoothstep(HEIGHT_BEACH_END, HEIGHT_BEACH_END + 5.0, h);
+		float sandFade = smoothstep(beachEnd, beachEnd + 5.0, h);
 		mat.albedo = mix(COL_SAND_DRY, grassColor, sandFade);
 		mat.roughness = mix(0.9, grassRoughness, sandFade);
 		mat.normalScale = mix(40.0, 12.0, sandFade);
@@ -128,8 +128,8 @@ TerrainMaterial getBiomeMaterial(float height, float moisture, float noise) {
 	}
 
 	// Forest zone (25 - 80): trees dominate
-	if (h < HEIGHT_FOREST_END) {
-		float t = smoothstep(HEIGHT_LOWLAND_END, HEIGHT_FOREST_END, h);
+	if (h < forestEnd) {
+		float t = smoothstep(lowlandEnd, forestEnd, h);
 		// More moisture = denser forest
 		vec3 forestColor = mix(COL_GRASS_LUSH, COL_FOREST, moisture);
 		mat.albedo = mix(forestColor, COL_GRASS_DRY, t * 0.3);
@@ -140,8 +140,8 @@ TerrainMaterial getBiomeMaterial(float height, float moisture, float noise) {
 	}
 
 	// Transition to alpine (80 - 100)
-	if (h < HEIGHT_ALPINE_START) {
-		float t = smoothstep(HEIGHT_FOREST_END, HEIGHT_ALPINE_START, h);
+	if (h < alpineStart) {
+		float t = smoothstep(forestEnd, alpineStart, h);
 		mat.albedo = mix(COL_FOREST, COL_ALPINE_MEADOW, t);
 		mat.roughness = 0.8;
 		mat.normalScale = mix(10.0, 15.0, t);
@@ -150,8 +150,8 @@ TerrainMaterial getBiomeMaterial(float height, float moisture, float noise) {
 	}
 
 	// Alpine meadow (100 - 130): above treeline
-	if (h < HEIGHT_TREELINE) {
-		float t = smoothstep(HEIGHT_ALPINE_START, HEIGHT_TREELINE, h);
+	if (h < treeline) {
+		float t = smoothstep(alpineStart, treeline, h);
 		// Grass becomes sparser, more rock showing through
 		mat.albedo = mix(COL_ALPINE_MEADOW, COL_ROCK_GREY, t * 0.4);
 		mat.roughness = mix(0.8, 0.6, t * 0.4);
@@ -161,8 +161,8 @@ TerrainMaterial getBiomeMaterial(float height, float moisture, float noise) {
 	}
 
 	// High alpine / rocky (130 - 160)
-	if (h < HEIGHT_SNOW_START) {
-		float t = smoothstep(HEIGHT_TREELINE, HEIGHT_SNOW_START, h);
+	if (h < snowStart) {
+		float t = smoothstep(treeline, snowStart, h);
 		// Mostly rock with patches of hardy vegetation
 		vec3 rockColor = mix(COL_ROCK_BROWN, COL_ROCK_GREY, noise * 0.5 + 0.5);
 		vec3 patchColor = mix(rockColor, COL_ALPINE_MEADOW, moisture * 0.3);
@@ -174,7 +174,7 @@ TerrainMaterial getBiomeMaterial(float height, float moisture, float noise) {
 	}
 
 	// Snow zone (160+)
-	float t = smoothstep(HEIGHT_SNOW_START, HEIGHT_PEAK, h);
+	float t = smoothstep(snowStart, peak, h);
 	// Higher = fresher/whiter snow
 	vec3 snowColor = mix(COL_SNOW_OLD, COL_SNOW_FRESH, t);
 	// Some rock still pokes through at lower snow zone
@@ -190,13 +190,17 @@ TerrainMaterial getBiomeMaterial(float height, float moisture, float noise) {
  * Calculate cliff/steep surface material properties
  * Steep surfaces are barren rock, with properties varying by altitude
  */
-TerrainMaterial getCliffMaterial(float height, float noise) {
+TerrainMaterial getCliffMaterial(float height, float noise, float effWorldScale) {
 	TerrainMaterial mat;
 	mat.metallic = 0.0;
 	float h = height + noise * 5.0;
 
+    float forestEnd = 50.0 * effWorldScale;
+    float snowStart = 90.0 * effWorldScale;
+    float peak = 100.0 * effWorldScale;
+
 	// Low altitude cliffs: brown/dark rock (often wet)
-	if (h < HEIGHT_FOREST_END) {
+	if (h < forestEnd) {
 		float wetness = 0.3 + noise * 0.2;
 		mat.albedo = mix(COL_ROCK_BROWN, COL_ROCK_DARK, wetness);
 		mat.roughness = mix(0.6, 0.3, wetness);
@@ -206,8 +210,8 @@ TerrainMaterial getCliffMaterial(float height, float noise) {
 	}
 
 	// Mid altitude: mixed brown/grey
-	if (h < HEIGHT_SNOW_START) {
-		float t = smoothstep(HEIGHT_FOREST_END, HEIGHT_SNOW_START, h);
+	if (h < snowStart) {
+		float t = smoothstep(forestEnd, snowStart, h);
 		mat.albedo = mix(COL_ROCK_BROWN, COL_ROCK_GREY, t + noise * 0.2);
 		mat.roughness = 0.6;
 		mat.normalScale = 3.5;
@@ -216,7 +220,7 @@ TerrainMaterial getCliffMaterial(float height, float noise) {
 	}
 
 	// High altitude cliffs: grey rock with snow patches
-	float snowPatch = smoothstep(HEIGHT_SNOW_START, HEIGHT_PEAK, h) * 0.4;
+	float snowPatch = smoothstep(snowStart, peak, h) * 0.4;
 	vec3  highRock = mix(COL_ROCK_GREY, COL_ROCK_DARK, noise * 0.3);
 	mat.albedo = mix(highRock, COL_SNOW_OLD, snowPatch);
 	mat.roughness = mix(0.6, 0.5, snowPatch);
@@ -225,11 +229,11 @@ TerrainMaterial getCliffMaterial(float height, float noise) {
 	return mat;
 }
 
-CalculatedMaterial calculateTerrainMaterial(vec3 fragPos, vec3 norm, vec2 texCoords, float textureSlice, float perturbFactor) {
+CalculatedMaterial calculateTerrainMaterial(vec3 fragPos, vec3 norm, vec2 texCoords, float textureSlice, float perturbFactor, float effWorldScale) {
     CalculatedMaterial res;
 
 	// Scale world-space position for detail noise to match terrain scaling
-	float baseFreq = 0.1 / worldScale;
+	float baseFreq = 0.1 / effWorldScale;
 	float largeNoise = fastWarpedFbm3d(fragPos * (baseFreq * 0.5));
 	float medNoise = fastWorley3d(vec3(largeNoise) * (baseFreq * 2.0));
 	float fineNoise = fastFbm3d(fragPos * (baseFreq * 5.0));
@@ -238,7 +242,7 @@ CalculatedMaterial calculateTerrainMaterial(vec3 fragPos, vec3 norm, vec2 texCoo
 
 	// Height with noise distortion for natural boundaries
 	float baseHeight = fragPos.y;
-	float distortedHeight = baseHeight + largeNoise * 5.0 * worldScale;
+	float distortedHeight = baseHeight + largeNoise * 5.0 * effWorldScale;
 
 	// Slope analysis: 1.0 = flat horizontal, 0.0 = vertical cliff
 	float slope = dot(norm, vec3(0.0, 1.0, 0.0));
@@ -255,7 +259,7 @@ CalculatedMaterial calculateTerrainMaterial(vec3 fragPos, vec3 norm, vec2 texCoo
 	float t = biomeData.g;
 
 	// Organic biome transitions using warped noise
-	float warpScale = 0.05 / worldScale;
+	float warpScale = 0.05 / effWorldScale;
 	float transitionWarp = fastWarpedFbm3d(fragPos * warpScale);
 	float organicT = clamp(t + transitionWarp * 0.4 - 0.2, 0.0, 1.0);
 	organicT = smoothstep(0.0, 1.0, organicT);
@@ -274,7 +278,7 @@ CalculatedMaterial calculateTerrainMaterial(vec3 fragPos, vec3 norm, vec2 texCoo
 	float valleyFactor = calculateValleyFactor(fragPos);
 
 	// Moisture calculation
-	float moisture = calculateMoisture(baseHeight, valleyFactor, fragPos);
+	float moisture = calculateMoisture(baseHeight, valleyFactor, fragPos, effWorldScale);
 
 	// Valley lushness boost
 	float valleyLushness = clamp(-valleyFactor, 0.0, 1.0);
@@ -285,13 +289,13 @@ CalculatedMaterial calculateTerrainMaterial(vec3 fragPos, vec3 norm, vec2 texCoo
 	// ========================================================================
 
 	// Get base biome material
-	TerrainMaterial biomeMat = getBiomeMaterial(distortedHeight, moisture, combinedNoise);
+	TerrainMaterial biomeMat = getBiomeMaterial(distortedHeight, moisture, combinedNoise, effWorldScale);
 
 	// Get cliff material
-	TerrainMaterial cliffMat = getCliffMaterial(baseHeight, medNoise);
+	TerrainMaterial cliffMat = getCliffMaterial(baseHeight, medNoise, effWorldScale);
 
 	// Cliff mask: steep surfaces become rocky
-	float cliffThreshold = mix(0.4, 0.3, smoothstep(HEIGHT_SNOW_START, HEIGHT_PEAK, baseHeight));
+	float cliffThreshold = mix(0.4, 0.3, smoothstep(90.0 * effWorldScale, 100.0 * effWorldScale, baseHeight));
 	float cliffMask = smoothstep(cliffThreshold, cliffThreshold - 0.15, distortedSlope);
 	cliffMask = max(cliffMask, verticalMask);
 
@@ -300,7 +304,7 @@ CalculatedMaterial calculateTerrainMaterial(vec3 fragPos, vec3 norm, vec2 texCoo
 	cliffMask = clamp(cliffMask, 0.0, 1.0);
 
 	// Don't make beach areas into cliffs
-	float beachMask = 1.0 - smoothstep(0.0, HEIGHT_BEACH_END + 2.0, baseHeight);
+	float beachMask = 1.0 - smoothstep(0.0, 5.0 * effWorldScale, baseHeight);
 	cliffMask *= (1.0 - beachMask);
 
 	// Blend biome with cliff material
@@ -337,7 +341,7 @@ CalculatedMaterial calculateTerrainMaterial(vec3 fragPos, vec3 norm, vec2 texCoo
 	if (perturbFactor >= 0.1 && normalStrength > 0.0) {
 		float roughnessStrength = smoothstep(0.1, 1.0, perturbFactor) * normalStrength;
 		float roughnessScale = normalScale * 0.05;
-		vec3  scaledFragPos = fragPos / worldScale;
+		vec3  scaledFragPos = fragPos / effWorldScale;
 
 		// Use finite difference to approximate the gradient of the noise field
 		float eps = 0.015;
