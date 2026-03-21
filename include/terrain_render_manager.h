@@ -104,6 +104,7 @@ namespace Boidsish {
 	private:
 		void UpdateGridTextures(float world_scale);
 		void GenerateMaxHeightMips();
+		void GenerateBakedMipmaps(int slice);
 		void UpdateChunkMetadata();
 
 		struct ChunkInfo {
@@ -137,6 +138,7 @@ namespace Boidsish {
 		GLuint chunk_metadata_ssbo_ = 0, visible_patches_ssbo_ = 0, indirect_buffer_ = 0;
 		std::unique_ptr<ComputeShader> cull_shader_;
 		std::unique_ptr<ComputeShader> bake_shader_;
+		std::unique_ptr<ComputeShader> mip_gen_shader_;
 
 		// Cached uniform locations for cull_shader_
 		GLint cull_num_chunks_loc_ = -1;

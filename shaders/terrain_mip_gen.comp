@@ -1,0 +1,29 @@
+#version 430 core
+
+layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
+
+// Source mip level (sampled)
+uniform sampler2DArray u_srcTexture;
+
+// Destination mip level (written)
+layout(rgba8, binding = 0) uniform writeonly image2D u_dstMip;
+
+uniform int u_srcLevel;
+uniform int u_slice;
+
+void main() {
+    ivec2 pixel = ivec2(gl_GlobalInvocationID.xy);
+    ivec2 dstSize = imageSize(u_dstMip);
+
+    if (pixel.x >= dstSize.x || pixel.y >= dstSize.y) {
+        return;
+    }
+
+    // Each destination pixel covers a 2x2 block in the source
+    vec2 uv = (vec2(pixel) + 0.5) / vec2(dstSize);
+
+    // Use texture() for bilinear filtering, which is basically what we want for downsampling
+    vec4 color = textureLod(u_srcTexture, vec3(uv, float(u_slice)), float(u_srcLevel));
+
+    imageStore(u_dstMip, pixel, color);
+}

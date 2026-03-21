@@ -65,6 +65,7 @@ namespace Boidsish {
 		grid_mip_shader_ = std::make_unique<ComputeShader>("shaders/terrain_hiz_generate.comp");
 		cull_shader_ = std::make_unique<ComputeShader>("shaders/terrain_cull.comp");
 		bake_shader_ = std::make_unique<ComputeShader>("shaders/terrain_bake.comp");
+		mip_gen_shader_ = std::make_unique<ComputeShader>("shaders/terrain_mip_gen.comp");
 
 		if (bake_shader_ && bake_shader_->isValid()) {
 			GLuint biomes_idx = glGetUniformBlockIndex(bake_shader_->ID, "BiomeData");
@@ -201,10 +202,10 @@ namespace Boidsish {
 		glBufferData(GL_SHADER_STORAGE_BUFFER, max_chunks_ * 64 * 16, nullptr, GL_DYNAMIC_DRAW);
 		glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
 
-		// Create new larger texture arrays
+		// Create new larger texture arrays using immutable storage
 		glGenTextures(1, &heightmap_texture_);
 		glBindTexture(GL_TEXTURE_2D_ARRAY, heightmap_texture_);
-		glTexImage3D(GL_TEXTURE_2D_ARRAY, 0, GL_RGBA16F, heightmap_resolution_, heightmap_resolution_, max_chunks_, 0, GL_RGBA, GL_FLOAT, nullptr);
+		glTexStorage3D(GL_TEXTURE_2D_ARRAY, 1, GL_RGBA16F, heightmap_resolution_, heightmap_resolution_, max_chunks_);
 		glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
 		glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 		glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
@@ -212,7 +213,7 @@ namespace Boidsish {
 
 		glGenTextures(1, &biome_texture_);
 		glBindTexture(GL_TEXTURE_2D_ARRAY, biome_texture_);
-		glTexImage3D(GL_TEXTURE_2D_ARRAY, 0, GL_RG8, heightmap_resolution_, heightmap_resolution_, max_chunks_, 0, GL_RG, GL_UNSIGNED_BYTE, nullptr);
+		glTexStorage3D(GL_TEXTURE_2D_ARRAY, 1, GL_RG8, heightmap_resolution_, heightmap_resolution_, max_chunks_);
 		glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
 		glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 		glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
@@ -268,6 +269,11 @@ namespace Boidsish {
 			}
 			glBindFramebuffer(GL_READ_FRAMEBUFFER, 0);
 			glDeleteFramebuffers(1, &copy_fbo);
+		}
+
+		// Restore mipmaps for baked textures
+		for (int s = 0; s < old_slice_count; ++s) {
+			GenerateBakedMipmaps(s);
 		}
 
 		// Clean up old textures
@@ -439,12 +445,7 @@ namespace Boidsish {
 				glDispatchCompute((kBakeResolution + 7) / 8, (kBakeResolution + 7) / 8, 1);
 				glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
 
-				// Generate mips for the baked textures
-				glBindTexture(GL_TEXTURE_2D_ARRAY, baked_material_texture_);
-				glGenerateMipmap(GL_TEXTURE_2D_ARRAY);
-				glBindTexture(GL_TEXTURE_2D_ARRAY, baked_normal_texture_);
-				glGenerateMipmap(GL_TEXTURE_2D_ARRAY);
-				glBindTexture(GL_TEXTURE_2D_ARRAY, 0);
+				GenerateBakedMipmaps(slice);
 			}
 		}
 		if (should_notify_eviction && eviction_callback_) eviction_callback_(evicted_chunk_key);
@@ -589,6 +590,33 @@ namespace Boidsish {
 			last_grid_origin_z_ = origin_z;
 			last_grid_world_scale_ = world_scale;
 		}
+	}
+
+	void TerrainRenderManager::GenerateBakedMipmaps(int slice) {
+		if (!mip_gen_shader_ || !mip_gen_shader_->isValid()) return;
+
+		int mips = 1 + static_cast<int>(std::floor(std::log2(kBakeResolution)));
+		mip_gen_shader_->use();
+		mip_gen_shader_->setInt("u_slice", slice);
+
+		auto generate_for_tex = [&](GLuint texture) {
+			glActiveTexture(GL_TEXTURE0);
+			glBindTexture(GL_TEXTURE_2D_ARRAY, texture);
+			mip_gen_shader_->setInt("u_srcTexture", 0);
+
+			for (int mip = 1; mip < mips; ++mip) {
+				int dst_size = std::max(1, kBakeResolution >> mip);
+				mip_gen_shader_->setInt("u_srcLevel", mip - 1);
+
+				glBindImageTexture(0, texture, mip, GL_FALSE, slice, GL_WRITE_ONLY, GL_RGBA8);
+				glDispatchCompute((dst_size + 7) / 8, (dst_size + 7) / 8, 1);
+				glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | GL_TEXTURE_FETCH_BARRIER_BIT);
+			}
+		};
+
+		generate_for_tex(baked_material_texture_);
+		generate_for_tex(baked_normal_texture_);
+		glBindTexture(GL_TEXTURE_2D_ARRAY, 0);
 	}
 
 	void TerrainRenderManager::GenerateMaxHeightMips() {
