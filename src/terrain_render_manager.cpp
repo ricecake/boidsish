@@ -16,7 +16,10 @@ namespace Boidsish {
 	};
 
 	TerrainRenderManager::TerrainRenderManager(int chunk_size, int max_chunks):
-		chunk_size_(chunk_size), max_chunks_(max_chunks), vertices_per_chunk_((chunk_size + 1) * (chunk_size + 1)) {
+		chunk_size_(chunk_size),
+		max_chunks_(max_chunks),
+		vertices_per_chunk_((chunk_size + 1) * (chunk_size + 1)),
+		heightmap_resolution_(chunk_size + 1) {
 		// Create Biome UBO
 		glGenBuffers(1, &biome_ubo_);
 		glBindBuffer(GL_UNIFORM_BUFFER, biome_ubo_);
@@ -76,6 +79,7 @@ namespace Boidsish {
 			cull_camera_pos_loc_ = glGetUniformLocation(cull_shader_->ID, "u_cameraPos");
 			cull_chunk_grid_loc_ = glGetUniformLocation(cull_shader_->ID, "u_chunkGrid");
 			cull_max_height_grid_loc_ = glGetUniformLocation(cull_shader_->ID, "u_maxHeightGrid");
+			cull_heightmap_array_loc_ = glGetUniformLocation(cull_shader_->ID, "u_heightmapArray");
 		}
 
 		// GPU Culling Resources
@@ -119,6 +123,10 @@ namespace Boidsish {
 			glDeleteBuffers(1, &visible_patches_ssbo_);
 		if (indirect_buffer_)
 			glDeleteBuffers(1, &indirect_buffer_);
+		if (heightmap_texture_)
+			glDeleteTextures(1, &heightmap_texture_);
+		if (biome_texture_)
+			glDeleteTextures(1, &biome_texture_);
 		if (biome_ubo_)
 			glDeleteBuffers(1, &biome_ubo_);
 		if (chunk_grid_texture_)
@@ -210,6 +218,7 @@ namespace Boidsish {
 		GLuint old_heightmap = heightmap_texture_;
 		GLuint old_biome = biome_texture_;
 		GLuint old_vbo = terrain_vbo_;
+		GLuint old_ebo = dynamic_ebo_;
 		int    old_slice_count = next_base_vertex_ / vertices_per_chunk_;
 
 		max_chunks_ = new_capacity;
@@ -242,8 +251,9 @@ namespace Boidsish {
 		glBufferData(GL_SHADER_STORAGE_BUFFER, max_chunks_ * 64 * 16, nullptr, GL_DYNAMIC_DRAW);
 
 		// Large VBO for all chunks
-		glGenBuffers(1, &terrain_vbo_);
-		glBindBuffer(GL_ARRAY_BUFFER, terrain_vbo_);
+		GLuint new_vbo;
+		glGenBuffers(1, &new_vbo);
+		glBindBuffer(GL_ARRAY_BUFFER, new_vbo);
 		glBufferData(GL_ARRAY_BUFFER, max_chunks_ * vertices_per_chunk_ * sizeof(TerrainVertex), nullptr, GL_STATIC_DRAW);
 		if (old_vbo && old_slice_count > 0) {
 			glBindBuffer(GL_COPY_READ_BUFFER, old_vbo);
@@ -256,21 +266,27 @@ namespace Boidsish {
 			);
 			glDeleteBuffers(1, &old_vbo);
 		}
+		terrain_vbo_ = new_vbo;
 
 		// Large dynamic EBO for indices of visible patches
 		int indices_per_patch = (chunk_size_ / 8) * (chunk_size_ / 8) * 6;
-		glGenBuffers(1, &dynamic_ebo_);
-		glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, dynamic_ebo_);
+		GLuint new_ebo;
+		glGenBuffers(1, &new_ebo);
+		glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, new_ebo);
 		glBufferData(
 			GL_ELEMENT_ARRAY_BUFFER,
 			max_chunks_ * 64 * indices_per_patch * sizeof(unsigned int),
 			nullptr,
 			GL_DYNAMIC_DRAW
 		);
+		if (old_ebo)
+			glDeleteBuffers(1, &old_ebo);
+		dynamic_ebo_ = new_ebo;
 
 		// Texture arrays
-		glGenTextures(1, &heightmap_texture_);
-		glBindTexture(GL_TEXTURE_2D_ARRAY, heightmap_texture_);
+		GLuint new_heightmap;
+		glGenTextures(1, &new_heightmap);
+		glBindTexture(GL_TEXTURE_2D_ARRAY, new_heightmap);
 		glTexImage3D(
 			GL_TEXTURE_2D_ARRAY,
 			0,
@@ -288,8 +304,9 @@ namespace Boidsish {
 		glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
 		glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 
-		glGenTextures(1, &biome_texture_);
-		glBindTexture(GL_TEXTURE_2D_ARRAY, biome_texture_);
+		GLuint new_biome_tex;
+		glGenTextures(1, &new_biome_tex);
+		glBindTexture(GL_TEXTURE_2D_ARRAY, new_biome_tex);
 		glTexImage3D(
 			GL_TEXTURE_2D_ARRAY,
 			0,
@@ -314,7 +331,7 @@ namespace Boidsish {
 			for (int s = 0; s < old_slice_count; ++s) {
 				glBindFramebuffer(GL_READ_FRAMEBUFFER, copy_fbo);
 				glFramebufferTextureLayer(GL_READ_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, old_heightmap, 0, s);
-				glBindTexture(GL_TEXTURE_2D_ARRAY, heightmap_texture_);
+				glBindTexture(GL_TEXTURE_2D_ARRAY, new_heightmap);
 				glCopyTexSubImage3D(
 					GL_TEXTURE_2D_ARRAY,
 					0,
@@ -328,7 +345,7 @@ namespace Boidsish {
 				);
 
 				glFramebufferTextureLayer(GL_READ_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, old_biome, 0, s);
-				glBindTexture(GL_TEXTURE_2D_ARRAY, biome_texture_);
+				glBindTexture(GL_TEXTURE_2D_ARRAY, new_biome_tex);
 				glCopyTexSubImage3D(
 					GL_TEXTURE_2D_ARRAY,
 					0,
@@ -349,6 +366,9 @@ namespace Boidsish {
 			glDeleteTextures(1, &old_heightmap);
 		if (old_biome)
 			glDeleteTextures(1, &old_biome);
+
+		heightmap_texture_ = new_heightmap;
+		biome_texture_ = new_biome_tex;
 
 		glBindBuffer(GL_ARRAY_BUFFER, 0);
 		glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
@@ -666,6 +686,10 @@ namespace Boidsish {
 		glBindTexture(GL_TEXTURE_2D, max_height_grid_texture_);
 		if (cull_max_height_grid_loc_ != -1)
 			glUniform1i(cull_max_height_grid_loc_, 12);
+		glActiveTexture(GL_TEXTURE13);
+		glBindTexture(GL_TEXTURE_2D_ARRAY, heightmap_texture_);
+		if (cull_heightmap_array_loc_ != -1)
+			glUniform1i(cull_heightmap_array_loc_, 13);
 
 		glBindBufferBase(GL_UNIFORM_BUFFER, Constants::UboBinding::TerrainData(), terrain_data_ubo_);
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, chunk_metadata_ssbo_);
@@ -754,6 +778,9 @@ namespace Boidsish {
 		glActiveTexture(GL_TEXTURE12);
 		glBindTexture(GL_TEXTURE_2D, max_height_grid_texture_);
 		shader_base.setInt("u_maxHeightGrid", 12);
+		glActiveTexture(GL_TEXTURE13);
+		glBindTexture(GL_TEXTURE_2D_ARRAY, heightmap_texture_);
+		shader_base.setInt("u_heightmapArray", 13);
 		if (extra_noise_texture_ != 0) {
 			glActiveTexture(GL_TEXTURE8);
 			glBindTexture(GL_TEXTURE_3D, extra_noise_texture_);
@@ -785,6 +812,12 @@ namespace Boidsish {
 		else
 			shader.setVec4("clipPlane", glm::vec4(0, 0, 0, 0));
 
+		glActiveTexture(GL_TEXTURE0);
+		glBindTexture(GL_TEXTURE_2D_ARRAY, heightmap_texture_);
+		shader.setInt("uHeightmap", 0);
+		glActiveTexture(GL_TEXTURE1);
+		glBindTexture(GL_TEXTURE_2D_ARRAY, biome_texture_);
+		shader.setInt("uBiomeMap", 1);
 		glActiveTexture(GL_TEXTURE5);
 		glBindTexture(GL_TEXTURE_3D, noise_texture_);
 		shader.setInt("u_noiseTexture", 5);
