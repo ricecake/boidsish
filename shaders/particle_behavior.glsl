@@ -67,34 +67,35 @@ void updateAmbientParticle(inout Particle p, float dt, float time, vec3 viewPos,
 	int   sub_style = p.emitter_id;
 
 	// Simple repulsion from other particles using the spatial grid
-	if (sub_style != 8) { // Skip debug
-		vec3  repulsion = vec3(0.0);
-		float repulsionRadius = cellSize * 0.5;
-		float repulsionStrength = 5.0;
+	if (sub_style > 0) { // Skip debug
+		p.vel.w += p.extras[0] * dt;
 
-		for (int x = -1; x <= 1; x++) {
-			for (int y = -1; y <= 1; y++) {
-				for (int z = -1; z <= 1; z++) {
-					uint cellIdx = get_cell_idx(p.pos.xyz + vec3(x, y, z) * cellSize, cellSize, gridSize);
-					int  otherIdx = grid_heads[cellIdx];
-					int  safety = 0;
-					while (otherIdx != -1 && safety < 100) {
-						if (otherIdx != int(gl_GlobalInvocationID.x)) {
-							vec3  otherPos = particles[otherIdx].pos.xyz;
-							vec3  diff = p.pos.xyz - otherPos;
-							float distSq = dot(diff, diff);
-							if (distSq > 0.0001 && distSq < repulsionRadius * repulsionRadius) {
-								float dist = sqrt(distSq);
-								repulsion += (diff / dist) * (1.0 - dist / repulsionRadius);
+		float twinkle_t = float(time) - float(p.extras[1]);
+		if (p.vel.w >= 1.0 && twinkle_t >= 2.0) {
+			p.vel.w -= 1.0;
+			p.extras[1] = time;
+		}
+		else{
+			for (int x = -1; x <= 1; x++) {
+				for (int y = -1; y <= 1; y++) {
+					for (int z = -1; z <= 1; z++) {
+						uint cellIdx = get_cell_idx(p.pos.xyz + vec3(x, y, z) * cellSize, cellSize, gridSize);
+						int  otherIdx = grid_heads[cellIdx];
+						int  safety = 0;
+						while (otherIdx != -1 && safety < 100) {
+							if (otherIdx != int(gl_GlobalInvocationID.x)) {
+								Particle  otherP = particles[otherIdx];
+								if (otherP.vel.w >= 1.0) {
+									p.vel.w += otherP.vel.w/distance(otherP.pos.xyz, p.pos.xyz);
+								}
 							}
+							otherIdx = grid_next[otherIdx];
+							safety++;
 						}
-						otherIdx = grid_next[otherIdx];
-						safety++;
 					}
 				}
 			}
 		}
-		p.vel.xyz += repulsion * repulsionStrength * dt;
 	}
 
 	if (sub_style == 0 || sub_style == 1) { // Leaf or Petal
@@ -219,7 +220,7 @@ void updateFireBehavior(inout Particle p, float dt, float time, sampler3D curlTe
 	}
 
 	if (p.style != 5 && p.style != 6 && p.style != 7 && p.style != 8 && p.style != 9) {
-		p.vel += vec4(mix(curlNoise(p.pos.xyz, time, curlTexture) * 3, vec3(0, 0, 0), length(p.vel) / maxSpeed), 0) * dt;
+		p.vel.xyz += vec3(mix(curlNoise(p.pos.xyz, time, curlTexture) * 3, vec3(0, 0, 0), length(p.vel) / maxSpeed)) * dt;
 	}
 
 	p.pos.xyz += p.vel.xyz * dt;

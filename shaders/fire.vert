@@ -13,17 +13,20 @@ uniform float frustumCullRadius = 1.0;
 out float     v_lifetime;
 out vec4      view_pos;
 out vec4      v_pos;
+out float     v_extra[2];
 out vec3      v_epicenter;
 flat out int  v_style;
 flat out int  v_emitter_index;
 flat out int  v_emitter_id;
 flat out uint v_particle_idx;
+flat out Particle v_p;
 
 void main() {
 	uint particle_idx = visible_indices[gl_VertexID];
 	Particle p = particles[particle_idx];
 	v_pos = p.pos;
 	v_epicenter = p.epicenter;
+	v_extra = p.extras;
 
 	{
 		view_pos = u_view * vec4(p.pos.xyz, 1.0);

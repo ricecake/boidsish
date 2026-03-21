@@ -170,14 +170,30 @@ void respawnParticle(inout Particle p, uint gid, int emitter_index, int num_emit
 
 					bool valid_biome = (biome_idx >= 0 && biome_idx <= 4) || biome_idx == 7;
 					if (valid_biome) {
+						float total_lifetime = 10.0 + rand(spawnSeed + 4.4) * 5.0;
+						float skipped_time = rand(spawnSeed + 7.7) * total_lifetime;
+
 						p.style = 5; // Ambient
 						p.emitter_index = biome_idx;
+						p.pos = vec4(pos.x, height + 1.0 + rand(spawnSeed + 3.3) * 2.0, pos.z, total_lifetime - skipped_time);
+						p.vel = vec4(rand3(spawnSeed + 5.5) * 0.5, 0.0);
+						p.epicenter = p.pos.xyz;
+
 
 						int sub_style = 0;
-						if (biome_idx == 7) sub_style = 3; // Snowflake
-						else if (biome_idx == 0) sub_style = 2; // Bubble
-						else {
-							if (nightFactor > 0.5) sub_style = 4; // Firefly
+						if (biome_idx == 7)
+						{
+							sub_style = 3; // Snowflake
+						}
+						else if (biome_idx == 0) {
+							sub_style = 2; // Bubble
+						} else {
+							if (nightFactor > 0.5){
+								sub_style = 4; // Firefly
+								p.extras[0] = 1/(3.0+2.0*fract(randomFloat(hash(particleSeed))));
+								p.extras[1] = time;
+								p.vel.w = 3.0*p.extras[0];
+							}
 							else {
 								float r = rand(spawnSeed + 6.6);
 								if (biome_idx == 4) sub_style = (r < 0.7) ? 1 : 0;
@@ -186,11 +202,6 @@ void respawnParticle(inout Particle p, uint gid, int emitter_index, int num_emit
 						}
 
 						p.emitter_id = sub_style;
-						float total_lifetime = 10.0 + rand(spawnSeed + 4.4) * 5.0;
-						float skipped_time = rand(spawnSeed + 7.7) * total_lifetime;
-						p.pos = vec4(pos.x, height + 1.0 + rand(spawnSeed + 3.3) * 2.0, pos.z, total_lifetime - skipped_time);
-						p.vel = vec4(rand3(spawnSeed + 5.5) * 0.5, 0.0);
-						p.epicenter = p.pos.xyz;
 
 						if (skipped_time > 0.001) {
 							updateAmbientParticle(p, skipped_time, time - skipped_time, viewPos, viewDir, cellSize, gridSize, curlTexture, num_chunks, heightmapArray);

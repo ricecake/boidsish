@@ -9,7 +9,7 @@ struct Particle {
 	int  style;
 	int  emitter_index;
 	int  emitter_id;
-	int  _padding[2];
+	float extras[2];
 };
 
 // Must match the C++ Emitter struct in fire_effect_manager.h

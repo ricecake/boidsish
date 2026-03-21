@@ -1,6 +1,7 @@
 #version 430 core
 
 #include "lighting.glsl"
+#include "particle_types.glsl"
 
 in float      v_lifetime;
 in vec4       view_pos;
@@ -11,6 +12,8 @@ flat in int   v_emitter_index;
 flat in int   v_emitter_id;
 flat in uint  v_particle_idx;
 out vec4      FragColor;
+flat in Particle v_p;
+in float     v_extra[2];
 
 uniform float u_time;
 uniform vec3  u_biomeAlbedos[8];
@@ -142,9 +145,16 @@ void main() {
 			} else if (sub_style == 4) {                      // Firefly
 				vec3 firefly_base = vec3(0.7, 0.9, 0.1);      // Yellow-Green
 				color = mix(firefly_base, biome_albedo, 0.4); // Biome biased
-				float twinkle = sin(u_time * 6.0 + float(v_particle_idx)) * 0.5 + 0.5;
+				// float twinkle = sin(u_time * 6.0 + float(v_particle_idx)) * 0.5 + 0.5;
+				// float twinkle_t = fract((u_time+sin(v_particle_idx))/(4.0+cos(v_particle_idx)));
+				// float twinkle = pow(smoothstep(0.0, 0.05, twinkle_t) * (1.0 - smoothstep(0.1, 0.2, twinkle_t)), 2);
+
+
+				float twinkle_t = float(u_time) - float(v_extra[1]);
+				float twinkle = pow(smoothstep(0.0, 0.3, twinkle_t) * (1.0 - smoothstep(0.4, 0.6, twinkle_t)), 2)*step(twinkle_t, 0.6);
+
 				color *= (2.0 + twinkle * 8.0);
-				alpha = (0.4 + twinkle * 0.6) * smoothstep(0.0, 0.5, v_lifetime);
+				alpha = step(twinkle_t, 1.0)*(0.4 + twinkle * 0.6) * smoothstep(0.0, 0.5, v_lifetime);
 			}
 		} else if (v_style == 6) { // Bubbles
 			// Use local spherical normal for better visuals
