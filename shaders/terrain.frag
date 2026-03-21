@@ -28,7 +28,7 @@ struct BiomeProperties {
 };
 
 layout(std140, binding = 7) uniform BiomeData {
-	BiomeProperties biomes[8];
+	BiomeProperties biomes[24];
 };
 
 #define HEIGHT_BEACH_END (3.0 * worldScale)
@@ -243,15 +243,36 @@ void main() {
 	Velocity = a - b;
 
 	// ========================================================================
-	// Noise Generation
+	// Noise Generation (Meta Biome Aware)
 	// ========================================================================
+	vec3 metaWeights = calculateMetaBiomeWeights(FragPos.xz, 0.001 / worldScale);
+
 	// Scale world-space position for detail noise to match terrain scaling
 	float baseFreq = 0.1 / worldScale;
-	float largeNoise = fastWarpedFbm3d(FragPos * (baseFreq * 0.5));
-	float medNoise = fastWorley3d(vec3(largeNoise) * (baseFreq * 2.0));
-	float fineNoise = fastFbm3d(FragPos * (baseFreq * 5.0));
 
-	float combinedNoise = largeNoise * 0.6 + (1.0 - medNoise) * 0.3 + fineNoise * 0.1;
+	// Grassland style: Rolling/Smooth
+	float gLarge = fastWarpedFbm3d(FragPos * (baseFreq * 0.5));
+	float gMed = fastWorley3d(vec3(gLarge) * (baseFreq * 2.0));
+	float gFine = fastFbm3d(FragPos * (baseFreq * 5.0));
+	float gNoise = gLarge * 0.6 + (1.0 - gMed) * 0.3 + gFine * 0.1;
+
+	// Desert style: Ridged/Sharp
+	float dLarge = 1.0 - abs(fastSimplex3d(FragPos * (baseFreq * 0.4)));
+	float dMed = fastWorley3d(FragPos * (baseFreq * 3.0));
+	float dFine = fastWarpedFbm3d(FragPos * (baseFreq * 8.0));
+	float dNoise = dLarge * 0.5 + dMed * 0.3 + dFine * 0.2;
+
+	// Tundra style: Flat/Cracked
+	float tLarge = fastSimplex3d(FragPos * (baseFreq * 0.2));
+	float tMed = fastWorley3d(FragPos * (baseFreq * 1.5));
+	float tFine = fastSimplex3d(FragPos * (baseFreq * 10.0)) * 0.5 + 0.5;
+	float tNoise = tLarge * 0.4 + (1.0 - tMed) * 0.5 + tFine * 0.1;
+
+	float combinedNoise = gNoise * metaWeights.x + dNoise * metaWeights.y + tNoise * metaWeights.z;
+
+	// Keep legacy variables for compatibility with existing logic
+	float largeNoise = gLarge * metaWeights.x + dLarge * metaWeights.y + tLarge * metaWeights.z;
+	float medNoise = gMed * metaWeights.x + dMed * metaWeights.y + tMed * metaWeights.z;
 
 	// Distance Fade -- precalc
 	vec3 norm = normalize(Normal);
@@ -295,12 +316,25 @@ void main() {
 	float organicT = clamp(t + transitionWarp * 0.4 - 0.2, 0.0, 1.0);
 	organicT = smoothstep(0.0, 1.0, organicT);
 
-	BiomeProperties lowBiome = biomes[lowIdx];
-	BiomeProperties highBiome = biomes[highIdx];
+	// We need actual values for the rest of the shader
+	BiomeProperties lowG = biomes[lowIdx];
+	BiomeProperties highG = biomes[highIdx];
+	BiomeProperties lowD = biomes[lowIdx + 8];
+	BiomeProperties highD = biomes[highIdx + 8];
+	BiomeProperties lowT = biomes[lowIdx + 16];
+	BiomeProperties highT = biomes[highIdx + 16];
 
-	vec3  albedo = mix(lowBiome.albedo_roughness.rgb, highBiome.albedo_roughness.rgb, organicT);
-	float roughness = mix(lowBiome.albedo_roughness.a, highBiome.albedo_roughness.a, organicT);
-	float metallic = mix(lowBiome.params.x, highBiome.params.x, organicT);
+	vec3  albedo = mix(lowG.albedo_roughness.rgb, highG.albedo_roughness.rgb, organicT) * metaWeights.x +
+		mix(lowD.albedo_roughness.rgb, highD.albedo_roughness.rgb, organicT) * metaWeights.y +
+		mix(lowT.albedo_roughness.rgb, highT.albedo_roughness.rgb, organicT) * metaWeights.z;
+
+	float roughness = mix(lowG.albedo_roughness.a, highG.albedo_roughness.a, organicT) * metaWeights.x +
+		mix(lowD.albedo_roughness.a, highD.albedo_roughness.a, organicT) * metaWeights.y +
+		mix(lowT.albedo_roughness.a, highT.albedo_roughness.a, organicT) * metaWeights.z;
+
+	float metallic = mix(lowG.params.x, highG.params.x, organicT) * metaWeights.x +
+		mix(lowD.params.x, highD.params.x, organicT) * metaWeights.y +
+		mix(lowT.params.x, highT.params.x, organicT) * metaWeights.z;
 
 	// // Slope-based cliff blending
 	float verticalMask = smoothstep(0.4, 0.2, slope);
@@ -356,8 +390,16 @@ void main() {
 	finalMaterial.normalStrength = mix(biomeMat.normalStrength, cliffMat.normalStrength, cliffMask);
 
 	albedo = finalMaterial.albedo;
+
+	// Apply Meta-Biome Tints and Light Tones
+	// Desert: Redder/Warmer
+	albedo = mix(albedo, albedo * vec3(1.2, 0.8, 0.6), metaWeights.y * 0.5);
+	// Tundra: Bluer/Colder
+	albedo = mix(albedo, albedo * vec3(0.8, 0.9, 1.2), metaWeights.z * 0.5);
+	// Grassland: Slightly greener/vibrant
+	albedo = mix(albedo, albedo * vec3(0.9, 1.1, 0.9), metaWeights.x * 0.3);
+
 	roughness = finalMaterial.roughness;
-	metallic = finalMaterial.metallic;
 
 	// ========================================================================
 	// Detail Variation
@@ -379,8 +421,12 @@ void main() {
 	// Normal Perturbation (Grain)
 	// ========================================================================
 	vec3  perturbedNorm = norm;
-	float normalStrength = mix(biomes[lowIdx].params.y, biomes[highIdx].params.y, t);
-	float normalScale = mix(biomes[lowIdx].params.z, biomes[highIdx].params.z, t);
+	float normalStrength = (mix(lowG.params.y, highG.params.y, t) * metaWeights.x +
+	                        mix(lowD.params.y, highD.params.y, t) * metaWeights.y +
+	                        mix(lowT.params.y, highT.params.y, t) * metaWeights.z);
+	float normalScale = (mix(lowG.params.z, highG.params.z, t) * metaWeights.x +
+	                     mix(lowD.params.z, highD.params.z, t) * metaWeights.y +
+	                     mix(lowT.params.z, highT.params.z, t) * metaWeights.z);
 
 	normalStrength = finalMaterial.normalStrength;
 	normalScale = finalMaterial.normalScale;

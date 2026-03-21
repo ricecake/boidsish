@@ -340,7 +340,7 @@ namespace Boidsish {
 		}
 	}
 
-	auto TerrainGenerator::fbm(float x, float z, TerrainParameters params) {
+	glm::vec3 TerrainGenerator::fbm(float x, float z, TerrainGenerator::TerrainParameters params) {
 		glm::vec3 total;
 		float     frequency = params.frequency;
 		float     amplitude = 1.0;
@@ -414,14 +414,17 @@ namespace Boidsish {
 		return visible_chunks_;
 	}
 
-	auto TerrainGenerator::biomefbm(glm::vec2 pos, BiomeAttributes attr) const {
+	glm::vec3 TerrainGenerator::biomefbm(glm::vec2 pos, BiomeAttributes attr) const {
+		return biomefbmGrassland(pos, attr);
+	}
+
+	glm::vec3 TerrainGenerator::biomefbmGrassland(glm::vec2 pos, BiomeAttributes attr) const {
 		glm::vec3 height(0, 0, 0);
 		float     amp = 0.5f;
 		float     freq = 0.99f;
 
 		// Initial low-frequency pass to establish "Base Shape"
 		glm::vec3 base = Simplex::dnoise(pos * freq);
-		// Account for frequency in analytical derivatives
 		base.y *= freq;
 		base.z *= freq;
 		height = base * amp;
@@ -433,16 +436,13 @@ namespace Boidsish {
 			n.y *= freq;
 			n.z *= freq;
 
-			// 1. Spikiness Correction using Biome Attribute
 			float slope = glm::length(glm::vec2(n.y, n.z));
 			float correction = 1.0f / (1.0f + slope * attr.spikeDamping);
-
-			// 2. Detail Masking (Valleys stay smoother than peaks)
-			auto mask = glm::mix(1.0f - attr.detailMasking, 1.0f, height.x);
+			auto  mask = glm::mix(1.0f - attr.detailMasking, 1.0f, height.x);
 			height += (n * amp * correction * mask);
 		}
 
-		// 3. Final Floor Shaping
+		// Final Floor Shaping
 		if (height.x < attr.floorLevel) {
 			float t = glm::smoothstep(attr.floorLevel - 0.1f, attr.floorLevel, height.x);
 			height.x = t * attr.floorLevel;
@@ -457,54 +457,127 @@ namespace Boidsish {
 		if (height.x > 0) {
 			float floorScale = attr.floorLevel;
 			height.x *= floorScale;
-			// Dampen normal steepness slightly to prevent extreme lighting artifacts in depressions
-			// while keeping the visual height the same. 0.4f provides a good balance.
-			float normalScale = floorScale; // * 0.4f;
+			float normalScale = floorScale;
 			height.y *= normalScale;
 			height.z *= normalScale;
 		}
 
 		return height;
-	};
+	}
 
-	void TerrainGenerator::ApplyWeightedBiome(float control_value, BiomeAttributes& current) const {
-		if (kBiomes.empty())
-			return;
-		if (kBiomes.size() == 1) {
-			current = kBiomes[0];
-			return;
+	glm::vec3 TerrainGenerator::biomefbmDesert(glm::vec2 pos, BiomeAttributes attr) const {
+		// Desert style: Plateaus and Mesas
+		glm::vec3 height(0);
+		float     amp = 0.6f;
+		float     freq = 0.8f;
+
+		// Base ridged noise for mesa edges
+		for (int i = 0; i < 4; i++) {
+			glm::vec3 n = Simplex::dnoise(pos * freq);
+			n.y *= freq;
+			n.z *= freq;
+
+			float ridge = 1.0f - std::abs(n.x);
+			ridge = ridge * ridge; // Sharpen
+
+			// Analytical derivatives for ridged noise
+			float drdx = -2.0f * (1.0f - std::abs(n.x)) * (n.x > 0 ? 1.0f : -1.0f) * n.y;
+			float drdz = -2.0f * (1.0f - std::abs(n.x)) * (n.x > 0 ? 1.0f : -1.0f) * n.z;
+
+			height.x += ridge * amp;
+			height.y += drdx * amp;
+			height.z += drdz * amp;
+
+			amp *= 0.45f;
+			freq *= 2.1f;
 		}
 
-		// Ideally, cache this
-		std::vector<float> cdf;
-		cdf.reserve(kBiomes.size());
-		float totalWeight = 0.0f;
-		for (const auto& b : kBiomes) {
-			totalWeight += b.weight;
-			cdf.push_back(totalWeight);
+		// Flattening for plateaus
+		float plateau_threshold = attr.floorLevel * 0.7f;
+		if (height.x > plateau_threshold) {
+			float t = glm::smoothstep(plateau_threshold, plateau_threshold + 0.2f, height.x);
+			height.x = glm::mix(height.x, plateau_threshold + 0.1f, t * 0.9f);
+			height.y *= (1.0f - t * 0.9f);
+			height.z *= (1.0f - t * 0.9f);
 		}
 
-		float target = std::clamp(control_value, 0.0f, 1.0f) * totalWeight;
+		height.x *= attr.floorLevel;
+		height.y *= attr.floorLevel;
+		height.z *= attr.floorLevel;
 
-		auto it = std::upper_bound(cdf.begin(), cdf.end(), target);
+		return height;
+	}
 
-		int high_idx = std::distance(cdf.begin(), it);
-		int low_idx = std::max(0, high_idx - 1);
+	glm::vec3 TerrainGenerator::biomefbmTundra(glm::vec2 pos, BiomeAttributes attr) const {
+		// Tundra style: Vast plains with small frost heaves
+		glm::vec3 height(0);
+		float     amp = 0.3f;
+		float     freq = 0.5f;
 
-		high_idx = std::min(high_idx, (int)kBiomes.size() - 1);
+		// Large scale low amplitude base
+		glm::vec3 base = Simplex::dnoise(pos * freq);
+		base.y *= freq;
+		base.z *= freq;
+		height = base * amp;
 
-		float weight_high = cdf[high_idx];
-		float weight_low = (high_idx == 0) ? 0.0f : cdf[high_idx - 1];
+		// Frost heaves (Worley-like humps)
+		float heave_freq = 4.0f;
+		float heave_amp = 2.0f;
+		float h = Simplex::worleyNoise(pos * heave_freq);
+		h = std::max(0.0f, 1.0f - h * 3.0f); // Small sharp bumps
+		height.x += h * heave_amp;
 
-		float segment_width = weight_high - weight_low;
-		float t = (segment_width > 0.0001f) ? (target - weight_low) / segment_width : 0.0f;
+		height.x += attr.floorLevel * 0.5f; // Bias height
 
-		const auto& low_item = kBiomes[low_idx];
-		const auto& high_item = kBiomes[high_idx];
+		return height;
+	}
 
-		current.spikeDamping = std::lerp(low_item.spikeDamping, high_item.spikeDamping, t);
-		current.detailMasking = std::lerp(low_item.detailMasking, high_item.detailMasking, t);
-		current.floorLevel = std::lerp(low_item.floorLevel, high_item.floorLevel, t);
+	void TerrainGenerator::ApplyWeightedBiome(float control_value, const glm::vec3& metaWeights, BiomeAttributes& current) const {
+		if (kMetaBiomes.empty())
+			return;
+
+		auto getBlendedSubBiome = [&](float ctrl) -> BiomeAttributes {
+			std::vector<float> cdf;
+			cdf.reserve(8);
+			float totalWeight = 0.0f;
+			for (int i = 0; i < 8; ++i) {
+				totalWeight += kMetaBiomes[i].weight;
+				cdf.push_back(totalWeight);
+			}
+
+			float target = std::clamp(ctrl, 0.0f, 1.0f) * totalWeight;
+			auto  it = std::upper_bound(cdf.begin(), cdf.end(), target);
+			int   high_idx = std::distance(cdf.begin(), it);
+			int   low_idx = std::max(0, high_idx - 1);
+			high_idx = std::min(high_idx, 7);
+
+			float weight_high = cdf[high_idx];
+			float weight_low = (high_idx == 0) ? 0.0f : cdf[high_idx - 1];
+			float segment_width = weight_high - weight_low;
+			float t = (segment_width > 0.0001f) ? (target - weight_low) / segment_width : 0.0f;
+
+			auto blendSet = [&](int offset) -> BiomeAttributes {
+				const auto& low_item = kMetaBiomes[offset + low_idx];
+				const auto& high_item = kMetaBiomes[offset + high_idx];
+				BiomeAttributes res;
+				res.spikeDamping = std::lerp(low_item.spikeDamping, high_item.spikeDamping, t);
+				res.detailMasking = std::lerp(low_item.detailMasking, high_item.detailMasking, t);
+				res.floorLevel = std::lerp(low_item.floorLevel, high_item.floorLevel, t);
+				return res;
+			};
+
+			BiomeAttributes g = blendSet(0);
+			BiomeAttributes d = blendSet(8);
+			BiomeAttributes tu = blendSet(16);
+
+			BiomeAttributes final_attr;
+			final_attr.spikeDamping = g.spikeDamping * metaWeights.x + d.spikeDamping * metaWeights.y + tu.spikeDamping * metaWeights.z;
+			final_attr.detailMasking = g.detailMasking * metaWeights.x + d.detailMasking * metaWeights.y + tu.detailMasking * metaWeights.z;
+			final_attr.floorLevel = g.floorLevel * metaWeights.x + d.floorLevel * metaWeights.y + tu.floorLevel * metaWeights.z;
+			return final_attr;
+		};
+
+		current = getBlendedSubBiome(control_value);
 	}
 
 	void TerrainGenerator::GetBiomeIndicesAndWeights(float control_value, int& low_idx, float& t) const {
@@ -555,11 +628,46 @@ namespace Boidsish {
 		if (std::isnan(control_value) || std::isinf(control_value)) {
 			control_value = 0.0f;
 		}
+		glm::vec3 meta_weights = getMetaBiomeWeights(sx, sz);
 
-		BiomeAttributes current;
-		ApplyWeightedBiome(control_value, current);
+		if (std::isnan(control_value) || std::isinf(control_value)) {
+			control_value = 0.0f;
+		}
 
-		glm::vec3 terrain_height = biomefbm(warped_pos, current);
+		BiomeAttributes attrG, attrD, attrT;
+		auto            getSet = [&](int offset, BiomeAttributes& attr) {
+			std::vector<float> cdf;
+			cdf.reserve(8);
+			float totalWeight = 0.0f;
+			for (int i = 0; i < 8; ++i) {
+				totalWeight += kMetaBiomes[offset + i].weight;
+				cdf.push_back(totalWeight);
+			}
+			float target = std::clamp(control_value, 0.0f, 1.0f) * totalWeight;
+			auto  it = std::upper_bound(cdf.begin(), cdf.end(), target);
+			int   high_idx = std::distance(cdf.begin(), it);
+			int   low_idx = std::max(0, high_idx - 1);
+			high_idx = std::min(high_idx, 7);
+			float weight_high = cdf[high_idx];
+			float weight_low = (high_idx == 0) ? 0.0f : cdf[high_idx - 1];
+			float segment_width = weight_high - weight_low;
+			float t = (segment_width > 0.0001f) ? (target - weight_low) / segment_width : 0.0f;
+			const auto& low_item = kMetaBiomes[offset + low_idx];
+			const auto& high_item = kMetaBiomes[offset + high_idx];
+			attr.spikeDamping = std::lerp(low_item.spikeDamping, high_item.spikeDamping, t);
+			attr.detailMasking = std::lerp(low_item.detailMasking, high_item.detailMasking, t);
+			attr.floorLevel = std::lerp(low_item.floorLevel, high_item.floorLevel, t);
+		};
+
+		getSet(0, attrG);
+		getSet(8, attrD);
+		getSet(16, attrT);
+
+		glm::vec3 hG = biomefbmGrassland(warped_pos, attrG);
+		glm::vec3 hD = biomefbmDesert(warped_pos, attrD);
+		glm::vec3 hT = biomefbmTundra(warped_pos, attrT);
+
+		glm::vec3 terrain_height = hG * meta_weights.x + hD * meta_weights.y + hT * meta_weights.z;
 
 		float path_floor_level = -0.10f;
 		terrain_height.x = glm::mix(path_floor_level, terrain_height.x, path_factor);
@@ -999,12 +1107,56 @@ namespace Boidsish {
 		float result = Simplex::noise(pos + Simplex::curlNoise(pos)) * 0.5f + 0.5f;
 
 		return std::clamp(result, 0.0f, 1.0f);
+	}
 
-		// return Simplex::worleyfBm(glm::vec2(x * control_noise_scale_, z * control_noise_scale_));
-		// float result = Simplex::noise( pos + glm::vec2( Simplex::curlNoise( pos, control_noise_scale_ ).x ) ) * 0.5f
-		// + 0.5f; float result = Simplex::worleyfBm(pos+Simplex::curlNoise(pos)) * 0.5f + 0.5f; return
-		// Simplex::worleyfBm(pos); return Simplex::worleyNoise(glm::vec2(x * control_noise_scale_, z *
-		// control_noise_scale_), 4) * 0.5f + 0.5f;
+	glm::vec3 TerrainGenerator::getMetaBiomeWeights(float x, float z) const {
+		glm::vec2 pos(x, z);
+		pos *= control_noise_scale_ * 0.1f; // Large scale (approx 10x biome scale)
+
+		glm::vec2 p = glm::floor(pos);
+		glm::vec2 f = glm::fract(pos);
+
+		float f1 = 8.0f;
+		float f2 = 8.0f;
+		int   id1 = 0;
+		int   id2 = 0;
+
+		for (int j = -1; j <= 1; j++) {
+			for (int i = -1; i <= 1; i++) {
+				glm::vec2 b = glm::vec2(i, j);
+				glm::vec2 r_pos = p + b;
+				// Jitter based on cell coordinate
+				float     h = Simplex::noise(r_pos);
+				glm::vec2 r = b - f + (h * 0.5f + 0.5f);
+				float     d = glm::dot(r, r);
+
+				// Deterministic meta-biome ID for this cell
+				int biome_id = static_cast<int>(std::abs(r_pos.x * 7.0f + r_pos.y * 13.0f)) % 3;
+
+				if (d < f1) {
+					f2 = f1;
+					id2 = id1;
+					f1 = d;
+					id1 = biome_id;
+				} else if (d < f2) {
+					f2 = d;
+					id2 = biome_id;
+				}
+			}
+		}
+
+		f1 = sqrt(f1);
+		f2 = sqrt(f2);
+
+		// Blend at boundaries
+		float edge_width = 0.2f;
+		float t = glm::smoothstep(0.0f, edge_width, f2 - f1);
+
+		glm::vec3 weights(0.0f);
+		weights[id1] += t;
+		weights[id2] += (1.0f - t);
+
+		return weights;
 	}
 
 	glm::vec2 TerrainGenerator::getDomainWarp(float x, float z) const {
