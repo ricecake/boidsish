@@ -1,63 +1,52 @@
 #version 430 core
 
-// Per-vertex attributes (from small patch quad mesh)
-layout(location = 0) in vec3 aPos;       // Range [0, 1]
-layout(location = 1) in vec2 aTexCoords; // Range [0, 1]
+// Per-vertex attributes from persistent VBO
+layout(location = 0) in vec3 aPos;    // Absolute world position
+layout(location = 1) in vec3 aNormal; // Normal
+layout(location = 2) in vec2 aBiome;  // Biome data (lowIdx, t)
 
-struct ChunkMetadata {
-	vec4 world_offset_slice; // x, z, slice, active
-	vec4 bounds;             // min_y, max_y, 0, 0
-};
+out vec3       FragPos;
+out vec4       CurPosition;
+out vec4       PrevPosition;
+out vec3       Normal;
+out vec2       TexCoords;
+flat out float TextureSlice;
+out float      perturbFactor;
+out float      tessFactor;
 
-struct VisiblePatch {
-	uint chunk_index;
-	uint patch_x; // 0-7
-	uint patch_z; // 0-7
-	uint _padding;
-};
+uniform mat4 view;
+uniform mat4 projection;
+uniform vec4 clipPlane;
 
-layout(std430, binding = 0) readonly buffer ChunkMetadataBuffer {
-	ChunkMetadata chunks[];
-};
-
-layout(std430, binding = 29) readonly buffer VisiblePatchBuffer {
-	VisiblePatch visible_patches[];
-};
-
-out vec3       LocalPos_VS_out;  // Local grid position
-out vec2       TexCoords_VS_out; // Heightmap UV
-out vec3       viewForward;
-flat out float TextureSlice_VS_out; // Which slice in texture array
-flat out vec3  WorldOffset_VS_out;  // World offset for this chunk
-flat out vec4  Bounds_VS_out;       // Min/max Y bounds
-
-uniform mat4  view;
-uniform float uChunkSize;
+#include "helpers/shockwave.glsl"
+#include "helpers/terrain_noise.glsl"
+#include "temporal_data.glsl"
+#include "visual_effects.glsl"
 
 void main() {
-	// Extract camera forward vector
-	viewForward = vec3(-view[0][2], -view[1][2], -view[2][2]);
+	FragPos = aPos;
+	Normal = normalize(aNormal);
 
-	VisiblePatch  terrain_patch = visible_patches[gl_InstanceID];
-	ChunkMetadata chunk = chunks[terrain_patch.chunk_index];
+	// Pass biome data to fragment shader via TexCoords
+	TexCoords = aBiome;
 
-	float patchSize = uChunkSize / 8.0;
-	vec2  patchOffset = vec2(float(terrain_patch.patch_x), float(terrain_patch.patch_z)) * patchSize;
+	// Apply shockwave ripple
+	FragPos += getShockwaveDisplacement(FragPos, 0.0, false);
 
-	// Scale and offset local position
-	vec3 localPos = aPos;
-	localPos.xz *= patchSize;
-	localPos.xz += patchOffset;
+	// Clip plane for reflections/refractions
+	gl_ClipDistance[0] = dot(FragPos, clipPlane.xyz) + clipPlane.w;
 
-	// Calculate UV for the whole chunk
-	vec2 uv = localPos.xz / uChunkSize;
+	// Tessellation factors are no longer relevant, but fragment shader expects them.
+	perturbFactor = 1.0;
+	tessFactor = 1.0;
 
-	LocalPos_VS_out = localPos;
-	TexCoords_VS_out = uv;
+	// TextureSlice is used for biome texture lookup in the old system.
+	// We pass 0 here; terrain.frag was updated to use interpolated biome data.
+	TextureSlice = 0.0;
 
-	TextureSlice_VS_out = chunk.world_offset_slice.z;
-	WorldOffset_VS_out = vec3(chunk.world_offset_slice.x, 0.0, chunk.world_offset_slice.y);
-	Bounds_VS_out = chunk.bounds;
+	gl_Position = projection * view * vec4(FragPos, 1.0);
+	CurPosition = gl_Position;
 
-	gl_Position = vec4(localPos, 1.0);
+	// PrevPosition for TAA/Motion blur (assuming static terrain)
+	PrevPosition = prevViewProjection * vec4(FragPos, 1.0);
 }

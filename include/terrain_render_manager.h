@@ -18,15 +18,23 @@ namespace Boidsish {
 
 	struct Frustum;
 
+	struct TerrainVertex {
+		glm::vec3 position;
+		float     padding1 = 0.0f;
+		glm::vec3 normal;
+		float     padding2 = 0.0f;
+		glm::vec2 biome;
+		glm::vec2 padding3 = glm::vec2(0.0f);
+	};
+
 	/**
-	 * @brief High-performance instanced terrain rendering with heightmap lookup.
+	 * @brief High-performance GPU-driven mesh-based terrain rendering.
 	 *
 	 * Architecture:
-	 * - Single flat grid mesh (1x1 quad) instanced for all visible patches
-	 * - Each chunk is divided into 8x8 patches (64 total) for fine-grained culling
-	 * - Heightmap stored in texture array (one slice per chunk)
-	 * - GPU-side culling (frustum + Hi-Z) populates an indirect draw buffer
-	 * - Tessellation shader samples heightmap for vertex displacement
+	 * - Each chunk's mesh (positions, normals, biomes) is uploaded to a large persistent VBO.
+	 * - Each chunk is logically divided into 8x8 patches for fine-grained culling.
+	 * - GPU-side culling (frustum + Hi-Z) writes indices for visible patches to a dynamic EBO.
+	 * - Rendering uses glDrawElementsIndirect to draw the visible patches as standard triangles.
 	 */
 	class TerrainRenderManager {
 	public:
@@ -73,6 +81,8 @@ namespace Boidsish {
 
 		GLuint GetBiomeTexture() const { return biome_texture_; }
 
+		GLuint GetTerrainVbo() const { return terrain_vbo_; }
+
 		std::vector<glm::vec4> GetChunkInfo(float world_scale) const;
 
 		struct DecorChunkData {
@@ -110,7 +120,7 @@ namespace Boidsish {
 		void UpdateChunkMetadata();
 
 		struct ChunkInfo {
-			int       texture_slice;
+			int       base_vertex;
 			float     min_y;
 			float     max_y;
 			glm::vec2 world_offset;
@@ -119,25 +129,35 @@ namespace Boidsish {
 		};
 
 		struct ChunkMetadataGPU {
-			glm::vec4 world_offset_slice; // x, z, slice, active
-			glm::vec4 bounds;             // min_y, max_y, 0, 0
+			glm::vec4 world_offset_base_vertex; // x, z, base_vertex, active
+			glm::vec4 bounds;                   // min_y, max_y, 0, 0
 		};
 
 		bool IsChunkVisible(const ChunkInfo& chunk, const Frustum& frustum, float world_scale) const;
-		void CreateGridMesh();
-		void EnsureTextureCapacity(int required_slices);
+		void CreateMeshBuffers();
+		void CreatePatchIndexTemplate();
+		void EnsureBufferCapacity(int required_chunks);
+		void UploadChunkMesh(
+			int                           base_vertex,
+			const std::vector<glm::vec3>& positions,
+			const std::vector<glm::vec3>& normals,
+			const std::vector<glm::vec2>& biomes,
+			const glm::vec3&              world_offset
+		);
 		void UploadHeightmapSlice(
 			int                           slice,
-			const std::vector<float>&     h,
-			const std::vector<glm::vec3>& n,
-			const std::vector<glm::vec2>& b
+			const std::vector<float>&     heightmap,
+			const std::vector<glm::vec3>& normals,
+			const std::vector<glm::vec2>& biomes
 		);
 
 		int chunk_size_;
 		int max_chunks_;
+		int vertices_per_chunk_;
 		int heightmap_resolution_;
 
-		GLuint grid_vao_ = 0, grid_vbo_ = 0, grid_ebo_ = 0;
+		GLuint terrain_vbo_ = 0, dynamic_ebo_ = 0, patch_indices_ssbo_ = 0;
+		GLuint mesh_vao_ = 0;
 		GLuint heightmap_texture_ = 0, biome_texture_ = 0;
 		GLuint noise_texture_ = 0, curl_texture_ = 0, extra_noise_texture_ = 0, biome_ubo_ = 0;
 
@@ -157,10 +177,9 @@ namespace Boidsish {
 		GLuint                         chunk_grid_texture_ = 0, max_height_grid_texture_ = 0, terrain_data_ubo_ = 0;
 		std::unique_ptr<ComputeShader> grid_mip_shader_;
 
-		size_t                                   grid_index_count_ = 0;
 		std::map<std::pair<int, int>, ChunkInfo> chunks_;
-		std::vector<int>                         free_slices_;
-		int                                      next_slice_ = 0;
+		std::vector<int>                         free_base_vertices_;
+		int                                      next_base_vertex_ = 0;
 
 		std::vector<int> free_gpu_indices_;
 		int              next_gpu_index_ = 0;

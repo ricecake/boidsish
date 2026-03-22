@@ -12,6 +12,7 @@
 #include <string>
 #include <string_view>
 #include <tuple>
+#include <type_traits>
 #include <utility>
 #include <vector>
 using namespace std::literals; // required for ""sv
@@ -181,21 +182,25 @@ namespace logger {
 
 			size_t searchPos = 0;
 			auto   process = [&](auto&& arg) {
-				std::stringstream ss;
 				using T = std::remove_cvref_t<decltype(arg)>;
+				std::string       replacement;
+				std::stringstream ss;
 
-				if constexpr (requires { typename std::tuple_size<T>::type; }) {
+				if constexpr (requires { std::tuple_size<T>::value; }) {
 					if constexpr (std::tuple_size_v<T> == 2) {
 						ss << std::get<0>(arg) << " => [" << std::get<1>(arg) << "]";
+						replacement = ss.str();
 					} else {
-						ss << arg;
+						replacement = "tuple<" + std::to_string(std::tuple_size_v<T>) + ">";
 					}
+				} else if constexpr (requires { static_cast<std::ostream&>(ss) << arg; }) {
+					static_cast<std::ostream&>(ss) << arg;
+					replacement = ss.str();
 				} else {
-					ss << arg;
+					replacement = "unstreamable";
 				}
 
-				std::string replacement = ss.str();
-				size_t      pos = message.find("{}", searchPos);
+				size_t pos = message.find("{}", searchPos);
 				if (pos != std::string::npos) {
 					message.replace(pos, 2, replacement);
 					searchPos = pos + replacement.length();

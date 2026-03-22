@@ -283,11 +283,11 @@ void main() {
 	// Material Calculation (Unified Biome Map)
 	// ========================================================================
 
-	// Get biome data from texture
-	vec2  biomeData = texture(uBiomeMap, vec3(TexCoords, TextureSlice)).rg;
-	int   lowIdx = int(biomeData.r * 255.0 + 0.5);
+	// Get biome data from vertex attributes (passed via TexCoords)
+	vec2  biomeData = TexCoords;
+	int   lowIdx = int(biomeData.x + 0.5);
 	int   highIdx = min(lowIdx + 1, 7);
-	float t = biomeData.g;
+	float t = biomeData.y;
 
 	// Organic biome transitions using warped noise
 	float warpScale = 0.05 / worldScale;
