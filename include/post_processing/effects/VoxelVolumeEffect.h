@@ -22,6 +22,7 @@ namespace Boidsish {
 			) override;
 			void Resize(int width, int height) override;
 			void SetTime(float time) override { time_ = time; }
+			void SetBlueNoiseTexture(GLuint tex) { blue_noise_texture_ = tex; }
 
 			bool IsEarly() const override { return false; }
 
@@ -29,6 +30,7 @@ namespace Boidsish {
 			int width_, height_;
 			std::unique_ptr<Shader> shader_;
 			float time_ = 0.0f;
+			GLuint blue_noise_texture_ = 0;
 		};
 
 	} // namespace PostProcessing

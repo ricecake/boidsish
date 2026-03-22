@@ -12,6 +12,7 @@ uniform mat4      invProjection;
 uniform float     time;
 
 uniform sampler3D u_brickPool;
+uniform sampler2D blueNoiseTexture;
 
 #include "../helpers/voxel_raymarch.glsl"
 
@@ -34,8 +35,11 @@ void main() {
 	vec4 target = invProjection * vec4(TexCoords * 2.0 - 1.0, 1.0, 1.0);
 	vec3 rayDir = normalize((invView * vec4(normalize(target.xyz), 0.0)).xyz);
 
-	// Raymarch through the sparse voxel volume
-	vec4 res = raymarch_density(cameraPos, rayDir, sceneDistance, u_brickPool);
+	// Sample jitter from blue noise with time-based animation
+	float jitter = texture(blueNoiseTexture, TexCoords * (screenSize / 256.0) + vec2(time * 0.1)).r;
+
+	// Raymarch through the sparse voxel volume with jitter and radius sampling
+	vec4 res = raymarch_density_jittered(cameraPos, rayDir, sceneDistance, jitter, u_brickPool);
 
 	float density = res.x;
 

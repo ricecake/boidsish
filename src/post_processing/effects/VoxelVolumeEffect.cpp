@@ -45,6 +45,7 @@ namespace Boidsish {
 			shader_->use();
 			shader_->setInt("sceneTexture", 0);
 			shader_->setInt("depthTexture", 1);
+			shader_->setInt("blueNoiseTexture", 2);
 			shader_->setVec2("screenSize", glm::vec2(width_, height_));
 			shader_->setVec3("cameraPos", cameraPos);
 			shader_->setMat4("invView", glm::inverse(viewMatrix));
@@ -58,6 +59,12 @@ namespace Boidsish {
 			glBindTexture(GL_TEXTURE_2D, sourceTexture);
 			glActiveTexture(GL_TEXTURE1);
 			glBindTexture(GL_TEXTURE_2D, depthTexture);
+			glActiveTexture(GL_TEXTURE2);
+			glBindTexture(GL_TEXTURE_2D, blue_noise_texture_);
+
+			// Voxel SSBOs and sampler are globally managed, but we might need
+			// to bind blue noise here if not globally available.
+			// Actually, Visualizer already manages noise textures.
 
 			glDrawArrays(GL_TRIANGLES, 0, 6);
 

@@ -1078,6 +1078,9 @@ namespace Boidsish {
 
 				auto voxel_volume_effect = std::make_shared<PostProcessing::VoxelVolumeEffect>();
 				voxel_volume_effect->SetEnabled(true);
+				if (noise_manager) {
+					voxel_volume_effect->SetBlueNoiseTexture(noise_manager->GetBlueNoiseTexture());
+				}
 				post_processing_manager_->AddEffect(voxel_volume_effect);
 
 				if (enable_hdr_) {
