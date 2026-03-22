@@ -66,8 +66,8 @@ mat3 rotationFromEuler(vec3 angles) {
 }
 
 void main() {
-	uint x = gl_GlobalInvocationID.x % 32u; // local X within the 4x4 workgroup grid
-	uint y = gl_GlobalInvocationID.y % 32u; // local Y within the 4x4 workgroup grid
+	uint x = gl_GlobalInvocationID.x % 128u; // local X within the 16x16 workgroup grid
+	uint y = gl_GlobalInvocationID.y % 128u; // local Y within the 16x16 workgroup grid
 
 	// Read chunk params from SSBO using Z workgroup as chunk index
 	uint        chunkIdx = gl_WorkGroupID.z;
@@ -86,7 +86,7 @@ void main() {
 	float maxDecorDistance = u_distanceParams.z;
 	int   maxInstances = int(u_distanceParams.w);
 
-	uint localIndex = x + y * 32u;
+	uint localIndex = x + y * 128u;
 	uint index = uint(baseInstanceIdx) + localIndex;
 
 	if (index >= maxInstances)
@@ -112,7 +112,7 @@ void main() {
 	bool            randomYaw = tp.flags.y != 0u;
 	bool            alignToTerrain = tp.flags.z != 0u;
 
-	float gridSize = 32.0;
+	float gridSize = 128.0;
 	float step = chunkSize / gridSize;
 
 	vec2 localOffset = vec2(float(x), float(y)) * step;

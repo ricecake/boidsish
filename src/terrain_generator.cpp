@@ -195,7 +195,7 @@ namespace Boidsish {
 		// Priority: 1) In frustum and close, 2) In frustum and far, 3) Out of frustum but close
 		// This prevents pop-in by pre-registering nearby chunks even if not visible yet
 		if (render_manager_) {
-			const int   max_registrations_per_frame = 64; // Increased for faster catch-up
+			const int   max_registrations_per_frame = 8; // Reduced for larger chunks
 			const float preload_distance_sq = (dynamic_view_distance * scaled_chunk_size * 0.75f) *
 				(dynamic_view_distance * scaled_chunk_size * 0.75f);
 

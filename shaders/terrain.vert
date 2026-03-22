@@ -41,13 +41,9 @@ void main() {
 	VisiblePatch  terrain_patch = visible_patches[gl_InstanceID];
 	ChunkMetadata chunk = chunks[terrain_patch.chunk_index];
 
-	float patchSize = uChunkSize / 8.0;
-	vec2  patchOffset = vec2(float(terrain_patch.patch_x), float(terrain_patch.patch_z)) * patchSize;
-
 	// Scale and offset local position
 	vec3 localPos = aPos;
-	localPos.xz *= patchSize;
-	localPos.xz += patchOffset;
+	localPos.xz *= uChunkSize;
 
 	// Calculate UV for the whole chunk
 	vec2 uv = localPos.xz / uChunkSize;

@@ -245,9 +245,9 @@ namespace Boidsish {
 		// without needing to zero 64KB of instance data per type.
 		GLuint block_validity_ssbo_ = 0;
 
-		static constexpr int kInstancesPerChunk = 1024;
-		static constexpr int kMaxActiveChunks = 1024;
-		static constexpr int kMaxInstancesPerType = kInstancesPerChunk * kMaxActiveChunks; // 147,456
+		static constexpr int kInstancesPerChunk = 16384;
+		static constexpr int kMaxActiveChunks = 256;
+		static constexpr int kMaxInstancesPerType = kInstancesPerChunk * kMaxActiveChunks; // 4,194,304
 	};
 
 } // namespace Boidsish
