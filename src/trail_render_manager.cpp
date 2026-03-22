@@ -1,5 +1,6 @@
 #include "trail_render_manager.h"
 
+#include "profiler.h"
 #include <algorithm>
 #include <cstring>
 #include <iostream>
@@ -242,6 +243,7 @@ namespace Boidsish {
 	}
 
 	void TrailRenderManager::CommitUpdates() {
+		PROJECT_PROFILE_SCOPE("TrailRenderManager::CommitUpdates");
 		std::lock_guard<std::mutex> lock(mutex_);
 		if (trail_allocations_.empty())
 			return;

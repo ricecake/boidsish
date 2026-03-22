@@ -1,5 +1,6 @@
 #include "light_manager.h"
 
+#include "profiler.h"
 #include <algorithm>
 #include <cmath>
 #include <cstdlib>
@@ -85,6 +86,7 @@ namespace Boidsish {
 	}
 
 	void LightManager::Update(float deltaTime) {
+		PROJECT_PROFILE_SCOPE("LightManager::Update");
 		if (_cycle.enabled) {
 			if (!_cycle.paused) {
 				_cycle.time += deltaTime * _cycle.speed;
