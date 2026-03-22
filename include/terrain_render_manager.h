@@ -141,7 +141,8 @@ namespace Boidsish {
 			int                           base_vertex,
 			const std::vector<glm::vec3>& positions,
 			const std::vector<glm::vec3>& normals,
-			const std::vector<glm::vec2>& biomes
+			const std::vector<glm::vec2>& biomes,
+			const glm::vec3&              world_offset
 		);
 		void UploadHeightmapSlice(
 			int                           slice,

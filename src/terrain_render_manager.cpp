@@ -71,7 +71,6 @@ namespace Boidsish {
 		if (cull_shader_ && cull_shader_->isValid()) {
 			cull_num_chunks_loc_ = glGetUniformLocation(cull_shader_->ID, "u_numChunks");
 			cull_max_visible_patches_loc_ = glGetUniformLocation(cull_shader_->ID, "u_maxVisiblePatches");
-			cull_chunk_size_loc_ = glGetUniformLocation(cull_shader_->ID, "u_chunkSize");
 			for (int i = 0; i < 6; ++i) {
 				std::string name = "u_frustumPlanes[" + std::to_string(i) + "]";
 				cull_frustum_planes_loc_[i] = glGetUniformLocation(cull_shader_->ID, name.c_str());
@@ -375,17 +374,9 @@ namespace Boidsish {
 		int                           base_vertex,
 		const std::vector<glm::vec3>& positions,
 		const std::vector<glm::vec3>& normals,
-		const std::vector<glm::vec2>& biomes
+		const std::vector<glm::vec2>& biomes,
+		const glm::vec3&              world_offset
 	) {
-		// Find world offset for this base_vertex to upload absolute positions
-		glm::vec3 world_offset(0.0f);
-		for (const auto& [key, chunk] : chunks_) {
-			if (chunk.base_vertex == base_vertex) {
-				world_offset = glm::vec3(chunk.world_offset.x, 0.0f, chunk.world_offset.y);
-				break;
-			}
-		}
-
 		std::vector<TerrainVertex> packed_data(vertices_per_chunk_);
 		for (int i = 0; i < vertices_per_chunk_; ++i) {
 			packed_data[i].position = positions[i] + world_offset;
@@ -492,7 +483,7 @@ namespace Boidsish {
 				it->second.max_y = max_y;
 				it->second.update_count++;
 				chunk_metadata_dirty_ = true;
-				UploadChunkMesh(it->second.base_vertex, positions, normals, biomes);
+				UploadChunkMesh(it->second.base_vertex, positions, normals, biomes, world_offset);
 				return;
 			}
 			int base_vertex;
@@ -540,7 +531,7 @@ namespace Boidsish {
 
 				free_gpu_indices_.push_back(evicted_gpu_index);
 			}
-			UploadChunkMesh(base_vertex, positions, normals, biomes);
+			UploadChunkMesh(base_vertex, positions, normals, biomes, world_offset);
 			int gpu_index;
 			if (!free_gpu_indices_.empty()) {
 				gpu_index = free_gpu_indices_.back();
