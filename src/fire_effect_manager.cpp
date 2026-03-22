@@ -1,5 +1,6 @@
 #include "fire_effect_manager.h"
 
+#include "profiler.h"
 #include <algorithm>
 #include <numeric>
 #include <queue>
@@ -276,6 +277,7 @@ namespace Boidsish {
 		GLintptr                      frustum_offset,
 		GLuint                        extra_noise_texture
 	) {
+		PROJECT_PROFILE_SCOPE("FireEffectManager::Update");
 		std::lock_guard<std::mutex> lock(mutex_);
 		if (!initialized_ || !lifecycle_shader_ || !lifecycle_shader_->isValid() || !behavior_shader_ ||
 		    !behavior_shader_->isValid() || !fixup_shader_ || !fixup_shader_->isValid()) {
@@ -689,6 +691,7 @@ namespace Boidsish {
 		GLuint           noise_texture,
 		GLuint           extra_noise_texture
 	) {
+		PROJECT_PROFILE_SCOPE("FireEffectManager::Render");
 		std::lock_guard<std::mutex> lock(mutex_);
 		if (!initialized_ || !lifecycle_shader_ || !lifecycle_shader_->isValid() || !behavior_shader_ ||
 		    !behavior_shader_->isValid() || !fixup_shader_ || !fixup_shader_->isValid()) {

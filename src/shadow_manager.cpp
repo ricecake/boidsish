@@ -1,5 +1,6 @@
 #include "shadow_manager.h"
 
+#include "profiler.h"
 #include <iostream>
 #include <vector>
 
@@ -106,6 +107,7 @@ namespace Boidsish {
 		float            aspect,
 		bool             clear
 	) {
+		PROJECT_PROFILE_SCOPE("ShadowManager::BeginShadowPass");
 		if (!initialized_ || map_index >= kMaxShadowMaps) {
 			return;
 		}

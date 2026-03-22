@@ -28,6 +28,12 @@ namespace Boidsish {
 		double   minTimeUs = 1e30;
 		double   maxTimeUs = 0.0;
 
+		// New metrics
+		uint64_t lastFrameCalls = 0;
+		double   avgCallsPerFrame = 0.0;
+		double   emaTimeUs = 0.0;
+		double   emaCallsPerFrame = 0.0;
+
 		double GetAverageUs() const { return count > 0 ? totalTimeUs / count : 0.0; }
 	};
 
@@ -51,11 +57,13 @@ namespace Boidsish {
 		Profiler& operator=(const Profiler&) = delete;
 
 		std::map<std::string, ProfileStats> m_stats;
+		std::map<std::string, uint64_t>     m_frameCalls;
 		mutable std::mutex                  m_mutex;
 
 		float    m_fps = 0.0f;
 		uint32_t m_frameCount = 0;
 		float    m_accumulatedTime = 0.0f;
+		uint64_t m_totalFrames = 0;
 	};
 
 	/**

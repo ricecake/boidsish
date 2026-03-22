@@ -1,5 +1,6 @@
 #include "atmosphere_manager.h"
 
+#include "profiler.h"
 #include <iostream>
 
 #include "shader.h"
@@ -76,6 +77,7 @@ namespace Boidsish {
 		float            sunIntensity,
 		const glm::vec3& cameraPos
 	) {
+		PROJECT_PROFILE_SCOPE("AtmosphereManager::Update");
 		if (_needsPrecompute) {
 			// Dispatch Transmittance
 			_transmittanceShader->use();

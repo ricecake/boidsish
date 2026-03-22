@@ -1,5 +1,6 @@
 #include "NoiseManager.h"
 
+#include "profiler.h"
 #include "logger.h"
 #include <GL/glew.h>
 
@@ -23,6 +24,7 @@ namespace Boidsish {
 	}
 
 	void NoiseManager::Initialize() {
+		PROJECT_PROFILE_SCOPE("NoiseManager::Initialize");
 		compute_shader_ = std::make_unique<ComputeShader>("shaders/noise_gen.comp");
 		if (!compute_shader_->isValid()) {
 			logger::ERROR("Failed to compile noise generation compute shader");
@@ -75,6 +77,7 @@ namespace Boidsish {
 	}
 
 	void NoiseManager::Generate() {
+		PROJECT_PROFILE_SCOPE("NoiseManager::Generate");
 		if (compute_shader_ && compute_shader_->isValid()) {
 			compute_shader_->use();
 			glBindImageTexture(0, noise_texture_, 0, GL_TRUE, 0, GL_WRITE_ONLY, GL_RGBA32F);

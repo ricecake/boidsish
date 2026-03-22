@@ -1,5 +1,6 @@
 #include "UIManager.h"
 
+#include "profiler.h"
 #include <algorithm>
 
 #include "IWidget.h"
@@ -39,6 +40,7 @@ namespace Boidsish {
 		}
 
 		void UIManager::Render() {
+			PROJECT_PROFILE_SCOPE("UIManager::Render");
 			ImGui_ImplOpenGL3_NewFrame();
 			ImGui_ImplGlfw_NewFrame();
 			ImGui::NewFrame();
