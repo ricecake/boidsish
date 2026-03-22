@@ -398,7 +398,6 @@ void main() {
 		roughness = sqrt(newGloss); // Feed this adjusted roughness into your BRDF
 	}
 
-/*
 	// Final Lighting
 	float fateFactor = fastWorley3d(vec3(FragPos.xz / 50.0, time * 0.25)) * 0.5 + 0.50;
 	vec3  windForce = fastCurl3d(
@@ -426,7 +425,8 @@ void main() {
 	albedo *= mix(1, mix(1.0, 1.25, windDistortion) * mix(1.0, 1.05, windRipple), grassFactor);
 	roughness *= mix(1.25, 1.0, windDistortion) * mix(1, mix(1.5, 1.0, windRipple), grassFactor);
 	// perturbedNorm += rawWindNudge * mix(0.0, 1.05, plainRipple);
-*/
+
+
 	vec3 lighting = apply_lighting_pbr(FragPos, perturbedNorm, albedo, roughness, metallic, 1.0).rgb;
 
 	// ========================================================================

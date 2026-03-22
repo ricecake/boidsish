@@ -69,6 +69,13 @@ void main() {
 	float perturbFactor2 = mix(perturbFactor_TC_out[3], perturbFactor_TC_out[2], uv.x);
 	perturbFactor = mix(perturbFactor1, perturbFactor2, uv.y);
 
+	FragPos+=perturbFactor;
+
+	if (uv.x < 0.01 || uv.y < 0.01 || uv.x > 0.99 || uv.y > 0.99) {
+		FragPos = roundEven(FragPos*100.0)/100.0;
+	}
+
+
 	float tessFactor1 = mix(tessFactor_TC_out[0], tessFactor_TC_out[1], uv.x);
 	float tessFactor2 = mix(tessFactor_TC_out[3], tessFactor_TC_out[2], uv.x);
 	tessFactor = mix(tessFactor1, tessFactor2, uv.y);

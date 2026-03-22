@@ -147,7 +147,7 @@ float perturbLevel(vec3 worldPos, vec3 forward) {
 	// COMBINE
 	float finalLevel = max(distanceMin, distanceLevel) * focusCull;
 
-	return clamp(0, 1, finalLevel / uTessLevelMax);
+	return clamp(0, 1, finalLevel / 32.0);
 }
 
 void main() {
