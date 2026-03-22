@@ -38,14 +38,7 @@ vec3 blackbody_hdr(float t) {
 }
 
 float turbulence(vec2 p) {
-	float sum = 0.0;
-	float amp = 0.5;
-	for (int i = 0; i < 4; i++) {
-		sum += abs(snoise(p)) * amp;
-		p *= 2.0;
-		amp *= 0.5;
-	}
-	return sum;
+	return fastRidge3d(vec3(p, u_time));
 }
 
 const float kExhaustLifetime = 2.0;
