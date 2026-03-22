@@ -170,12 +170,17 @@ namespace Boidsish {
 				int i01 = (y + 1) * chunk_vertices_edge + x;
 				int i11 = (y + 1) * chunk_vertices_edge + (x + 1);
 
+				// Counter-Clockwise (CCW) winding for X-right, Z-up world.
+				// i00=(y,x), i10=(y,x+1), i01=(y+1,x), i11=(y+1,x+1)
+				// where y is X (row) and x is Z (col).
+				// Tri 1: (0,0) -> (1,0) -> (1,1)  => i00 -> i01 -> i11
+				// Tri 2: (0,0) -> (1,1) -> (0,1)  => i00 -> i11 -> i10
 				template_indices.push_back(i00);
 				template_indices.push_back(i01);
-				template_indices.push_back(i10);
-				template_indices.push_back(i10);
-				template_indices.push_back(i01);
 				template_indices.push_back(i11);
+				template_indices.push_back(i00);
+				template_indices.push_back(i11);
+				template_indices.push_back(i10);
 			}
 		}
 
