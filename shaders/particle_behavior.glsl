@@ -88,11 +88,6 @@ void updateAmbientParticle(
 			p.vel.w += dt / p.extras[0];
 		}
 
-		if (p.vel.w >= 1.0 && twinkle_t >= 0.75) {
-			p.vel.w -= 1.0;
-			// p.vel.w = 0;
-			p.extras[1] = time;
-		}
 		if (!is_refractory) {
 			for (int x = -1; x <= 1; x++) {
 				for (int y = -1; y <= 1; y++) {
