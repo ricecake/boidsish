@@ -1,5 +1,6 @@
 #include <iostream>
 
+#include "dot.h"
 #include "fire_effect.h"
 #include "graphics.h"
 #include "logger.h"
@@ -10,8 +11,8 @@ int main() {
 	try {
 		Boidsish::Visualizer vis(1280, 720, "Fire Effect Demo");
 
-		vis.GetCamera().y = 20.0;
-		vis.GetCamera().z = 150.0;
+		vis.GetCamera().y = 10.0;
+		vis.GetCamera().z = 60.0;
 		vis.SetCameraMode(Boidsish::CameraMode::STATIONARY);
 
 		// Add a fire effect at the origin and store the pointer
@@ -22,7 +23,7 @@ int main() {
 			glm::vec3(0),
 			1000
 		);
-		auto fire3 = vis.AddFireEffect(glm::vec3(0.0f, 2.0f, 0.0f), Boidsish::FireEffectStyle::Fire, {0, 1, 0}, {0, 0, 0}, 2000);
+		auto fire3 = vis.AddFireEffect(glm::vec3(0.0f, 2.0f, 0.0f), Boidsish::FireEffectStyle::Fire, {0, 1, 0}, {0, 0, 0}, 10000);
 		auto fire4 = vis.AddFireEffect(
 			glm::vec3(0.0f, 10.0f, 10.0f),
 			Boidsish::FireEffectStyle::Sparks,
@@ -41,8 +42,12 @@ int main() {
 		);
 
 		// Add a voxel volume to visualize the density field
-		auto voxel_viz = std::make_shared<Boidsish::VoxelVolume>(0.0f, 10.0f, 0.0f, 400.0f);
+		auto voxel_viz = std::make_shared<Boidsish::VoxelVolume>(0.0f, 5.0f, 0.0f, 300.0f);
 		vis.AddShape(voxel_viz);
+
+		// Add a reference dot at the center of the volume
+		auto ref = std::make_shared<Boidsish::Dot>(999, 0, 5.0f, 0, 5.0f, 1, 0, 0);
+		vis.AddShape(ref);
 
 		float                                         boomTime = 0;
 		std::vector<std::shared_ptr<Boidsish::Shape>> vec;

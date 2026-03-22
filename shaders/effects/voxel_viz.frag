@@ -9,26 +9,27 @@ out vec4 FragColor;
 uniform sampler3D u_brickPool;
 
 void main() {
-    // Determine ray origin (camera) and direction
+    // Basic single-pass volume rendering
+    // We render both sides but only march once from the camera.
+    // DISCARD the front faces to avoid rendering twice,
+    // ensuring we only trigger the shader once per ray.
+    if (gl_FrontFacing) discard;
+
     vec3 rd = normalize(FragPos - viewPos);
     vec3 ro = viewPos;
+    float maxDist = length(FragPos - viewPos);
 
-    // Start raymarching from the proxy surface if the camera is outside
-    // For simplicity, start from viewPos and assume maxDist is sufficient
-    float maxDist = 800.0;
-
-    // Raymarch through the volume
+    // Raymarch through the volume from camera to back face
     vec4 result = raymarch_density(ro, rd, maxDist, u_brickPool);
 
     float density = result.x;
 
     // UNMISTAKABLE COLORING
     if (density > 0.0001) {
-        // Vibrant Neon Green for density
-        vec3 color = mix(vec3(0.1, 1.0, 0.2), vec3(1.0, 1.0, 1.0), clamp(density * 0.1, 0.0, 1.0));
-        FragColor = vec4(color, 0.9);
+        // Bright Cyan for detected density
+        FragColor = vec4(0.0, 1.0, 1.0, 1.0);
     } else {
-        // Semi-transparent hot pink for volume bounds (very visible)
-        FragColor = vec4(1.0, 0.0, 0.5, 0.1);
+        // Semi-transparent Magenta for the proxy boundary
+        FragColor = vec4(1.0, 0.0, 1.0, 0.2);
     }
 }

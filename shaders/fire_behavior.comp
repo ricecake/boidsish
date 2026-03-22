@@ -68,8 +68,8 @@ void main() {
 			ivec3 texCoord = pool_index_to_coord(poolIdx, localPos);
 
 			// Atomic accumulation (fixed-point density * 1000)
-			// Splat 20.0 density per particle for maximum visibility
-			imageAtomicAdd(u_brickPool, texCoord, 20000);
+			// Splat massive density per particle to ensure visibility
+			imageAtomicAdd(u_brickPool, texCoord, 200000);
 		}
 	}
 

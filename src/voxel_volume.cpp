@@ -85,6 +85,7 @@ void VoxelVolume::GenerateRenderPackets(std::vector<RenderPacket>& out_packets, 
     packet.uniforms.roughness = 1.0f;
     packet.uniforms.metallic = 0.0f;
     packet.uniforms.ao = 1.0f;
+    packet.uniforms.is_colossal = 0; // CRITICAL: must be 0 to use world position
     packet.uniforms.color = glm::vec4(GetR(), GetG(), GetB(), GetA());
 
     // Set AABB uniforms to prevent occlusion culling from hiding the volume
