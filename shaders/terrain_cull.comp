@@ -33,7 +33,6 @@ layout(std430, binding = 32) buffer IndirectBuffer {
 
 uniform int   u_numChunks;
 uniform int   u_maxVisiblePatches; // Buffer capacity — prevent overflow
-uniform float u_chunkSize;
 uniform vec4  u_frustumPlanes[6];
 
 // Raymarching-based occlusion uniforms
@@ -46,6 +45,11 @@ layout(std140, binding = 8) uniform TerrainData {
 	ivec4 u_originSize;    // x, y=z, z=size, w=isBound
 	vec4  u_terrainParams; // x=chunkSize, y=worldScale
 };
+
+// Scaled chunk size for culling logic
+float getScaledChunkSize() {
+	return u_terrainParams.x * u_terrainParams.y;
+}
 
 bool isAABBInFrustum(vec3 minCorner, vec3 maxCorner) {
 	for (int i = 0; i < 6; i++) {
@@ -151,8 +155,11 @@ void main() {
 	uint px = patchIdx % 8;
 	uint pz = patchIdx / 8;
 
-	float patchSize = u_chunkSize / 8.0;
-	float slice = floor(chunk.world_offset_base_vertex.z / ((u_chunkSize + 1) * (u_chunkSize + 1)));
+	float scaledChunkSize = getScaledChunkSize();
+	float patchSize = scaledChunkSize / 8.0;
+	uint  unscaledChunkSize = uint(u_terrainParams.x);
+	float verticesPerChunk = float((unscaledChunkSize + 1) * (unscaledChunkSize + 1));
+	float slice = floor(chunk.world_offset_base_vertex.z / verticesPerChunk);
 
 	// Sample corner heights for more accurate patch AABB from heightmap
 	vec2 uv00 = vec2(float(px), float(pz)) / 8.0;
@@ -179,23 +186,23 @@ void main() {
 	vec3  maxBound = maxCorner + vec3(margin, margin, margin);
 
 	if (isAABBInFrustum(minBound, maxBound)) {
-		ivec2 targetChunk = ivec2(floor(chunk.world_offset_base_vertex.xy / (u_chunkSize)));
+		ivec2 targetChunk = ivec2(floor(chunk.world_offset_base_vertex.xy / scaledChunkSize));
 
 		// Full occlusion test: Check 4 top corners of patch AABB
 		bool occluded = true;
 		occluded = occluded && testPointOccluded(vec3(minCorner.x, maxCorner.y, minCorner.z), targetChunk);
 		occluded = occluded && testPointOccluded(vec3(maxCorner.x, maxCorner.y, minCorner.z), targetChunk);
-		occluded = occluded && testPointOccluded(vec3(minCorner.x, maxCorner.y, maxBound.z), targetChunk);
-		occluded = occluded && testPointOccluded(vec3(maxCorner.x, maxCorner.y, maxBound.z), targetChunk);
+		occluded = occluded && testPointOccluded(vec3(minCorner.x, maxCorner.y, maxCorner.z), targetChunk);
+		occluded = occluded && testPointOccluded(vec3(maxCorner.x, maxCorner.y, maxCorner.z), targetChunk);
 
 		if (!occluded) {
-			uint patch_quads_edge = uint(u_chunkSize) / 8u;
+			uint patch_quads_edge = unscaledChunkSize / 8u;
 			uint indices_per_patch = patch_quads_edge * patch_quads_edge * 6u;
 			uint destIdx = atomicAdd(command.count, indices_per_patch);
 
 			if (destIdx + indices_per_patch <= uint(u_maxVisiblePatches) * indices_per_patch) {
 				uint base_v = uint(chunk.world_offset_base_vertex.z);
-				uint grid_w = uint(u_chunkSize) + 1;
+				uint grid_w = unscaledChunkSize + 1u;
 
 				// Offset to add to each template index to move it to the correct patch within the chunk
 				uint patch_v_offset = (pz * patch_quads_edge) * grid_w + (px * patch_quads_edge);

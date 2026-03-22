@@ -2946,9 +2946,9 @@ namespace Boidsish {
 			impl->terrain_render_manager
 				? impl->terrain_render_manager->GetChunkInfo(impl->terrain_generator->GetWorldScale())
 				: std::vector<glm::vec4>{},
-				impl->terrain_render_manager ? impl->terrain_render_manager->GetTerrainVbo() : 0,
+			impl->terrain_render_manager ? impl->terrain_render_manager->GetHeightmapTexture() : 0,
 			impl->noise_manager ? impl->noise_manager->GetCurlTexture() : 0,
-				0, // biome texture removed
+			impl->terrain_render_manager ? impl->terrain_render_manager->GetBiomeTexture() : 0,
 			impl->lighting_ubo,
 			impl->frustum_ssbo->GetBufferId(),
 			impl->frustum_ssbo->GetFrameOffset() + impl->mdi_frustum_count * sizeof(FrustumDataGPU),

@@ -87,11 +87,6 @@ namespace Boidsish {
 		glBindBuffer(GL_SHADER_STORAGE_BUFFER, chunk_metadata_ssbo_);
 		glBufferData(GL_SHADER_STORAGE_BUFFER, max_chunks * sizeof(ChunkMetadataGPU), nullptr, GL_DYNAMIC_DRAW);
 
-		glGenBuffers(1, &visible_patches_ssbo_);
-		glBindBuffer(GL_SHADER_STORAGE_BUFFER, visible_patches_ssbo_);
-		// Max 64 patches per chunk. Each VisiblePatch is 16 bytes.
-		glBufferData(GL_SHADER_STORAGE_BUFFER, max_chunks * 64 * 16, nullptr, GL_DYNAMIC_DRAW);
-
 		glGenBuffers(1, &indirect_buffer_);
 		glBindBuffer(GL_DRAW_INDIRECT_BUFFER, indirect_buffer_);
 		glBufferData(GL_DRAW_INDIRECT_BUFFER, sizeof(DrawElementsIndirectCommand), nullptr, GL_DYNAMIC_DRAW);
@@ -102,6 +97,7 @@ namespace Boidsish {
 		CreateMeshBuffers();
 		CreatePatchIndexTemplate();
 		EnsureBufferCapacity(max_chunks);
+		CreateMeshBuffers();
 
 		// Force initial grid update
 		last_grid_origin_x_ = 1000000;
@@ -119,8 +115,6 @@ namespace Boidsish {
 			glDeleteBuffers(1, &patch_indices_ssbo_);
 		if (chunk_metadata_ssbo_)
 			glDeleteBuffers(1, &chunk_metadata_ssbo_);
-		if (visible_patches_ssbo_)
-			glDeleteBuffers(1, &visible_patches_ssbo_);
 		if (indirect_buffer_)
 			glDeleteBuffers(1, &indirect_buffer_);
 		if (heightmap_texture_)
@@ -138,12 +132,12 @@ namespace Boidsish {
 	}
 
 	void TerrainRenderManager::CreateMeshBuffers() {
-		glGenVertexArrays(1, &mesh_vao_);
+		if (mesh_vao_ == 0) {
+			glGenVertexArrays(1, &mesh_vao_);
+		}
 		glBindVertexArray(mesh_vao_);
 
-		glGenBuffers(1, &terrain_vbo_);
 		glBindBuffer(GL_ARRAY_BUFFER, terrain_vbo_);
-		// Large VBO storage allocated in EnsureBufferCapacity
 
 		// Position: vec3
 		glEnableVertexAttribArray(0);
@@ -157,9 +151,7 @@ namespace Boidsish {
 		glEnableVertexAttribArray(2);
 		glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, sizeof(TerrainVertex), (void*)offsetof(TerrainVertex, biome));
 
-		glGenBuffers(1, &dynamic_ebo_);
 		glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, dynamic_ebo_);
-		// Large dynamic EBO storage allocated in EnsureBufferCapacity
 
 		glBindVertexArray(0);
 	}
@@ -246,9 +238,6 @@ namespace Boidsish {
 				old_metadata.data()
 			);
 		}
-
-		glBindBuffer(GL_SHADER_STORAGE_BUFFER, visible_patches_ssbo_);
-		glBufferData(GL_SHADER_STORAGE_BUFFER, max_chunks_ * 64 * 16, nullptr, GL_DYNAMIC_DRAW);
 
 		// Large VBO for all chunks
 		GLuint new_vbo;
@@ -370,6 +359,10 @@ namespace Boidsish {
 		heightmap_texture_ = new_heightmap;
 		biome_texture_ = new_biome_tex;
 
+		if (mesh_vao_ != 0) {
+			CreateMeshBuffers();
+		}
+
 		glBindBuffer(GL_ARRAY_BUFFER, 0);
 		glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
 		glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
@@ -418,7 +411,7 @@ namespace Boidsish {
 			for (int z = 0; z < res; ++z) {
 				int src_idx = x * res + z;
 				int dst_idx = z * res + x;
-				heightmap[dst_idx] = positions[src_idx].y;
+				heightmap[dst_idx] = positions[src_idx].y + world_offset.y;
 				reordered_normals[dst_idx] = normals[src_idx];
 				reordered_biomes[dst_idx] = biomes[src_idx];
 			}
@@ -645,6 +638,16 @@ namespace Boidsish {
 		last_world_scale_ = world_scale;
 		UpdateGridTextures(world_scale);
 		UpdateChunkMetadata();
+
+		// Async readback of visible count from previous frame
+		glBindBuffer(GL_DRAW_INDIRECT_BUFFER, indirect_buffer_);
+		uint32_t* ptr = (uint32_t*)glMapBufferRange(GL_DRAW_INDIRECT_BUFFER, 0, sizeof(uint32_t), GL_MAP_READ_BIT);
+		if (ptr) {
+			int indices_per_patch = (chunk_size_ / 8) * (chunk_size_ / 8) * 6;
+			cached_visible_patch_count_ = (*ptr) / indices_per_patch;
+			glUnmapBuffer(GL_DRAW_INDIRECT_BUFFER);
+		}
+
 		if (chunks_.empty() || !cull_shader_ || !cull_shader_->isValid())
 			return;
 
@@ -662,8 +665,6 @@ namespace Boidsish {
 			glUniform1i(cull_num_chunks_loc_, next_gpu_index_);
 		if (cull_max_visible_patches_loc_ != -1)
 			glUniform1i(cull_max_visible_patches_loc_, max_visible_patches);
-		if (cull_chunk_size_loc_ != -1)
-			glUniform1f(cull_chunk_size_loc_, static_cast<float>(chunk_size_ * world_scale));
 		for (int i = 0; i < 6; ++i) {
 			if (cull_frustum_planes_loc_[i] != -1) {
 				glUniform4f(
@@ -781,6 +782,11 @@ namespace Boidsish {
 		glActiveTexture(GL_TEXTURE13);
 		glBindTexture(GL_TEXTURE_2D_ARRAY, heightmap_texture_);
 		shader_base.setInt("u_heightmapArray", 13);
+
+		glActiveTexture(GL_TEXTURE14);
+		glBindTexture(GL_TEXTURE_2D_ARRAY, biome_texture_);
+		shader_base.trySetInt("u_biomeMap", 14);
+
 		if (extra_noise_texture_ != 0) {
 			glActiveTexture(GL_TEXTURE8);
 			glBindTexture(GL_TEXTURE_3D, extra_noise_texture_);

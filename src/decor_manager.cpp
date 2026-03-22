@@ -625,9 +625,7 @@ namespace Boidsish {
 			);
 
 			// Bind everything once, then one dispatch per type
-			placement_shader_->use();
-
-			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 4, terrain_vbo);
+			render_manager->BindTerrainData(*placement_shader_);
 
 			glBindBufferBase(GL_UNIFORM_BUFFER, Constants::UboBinding::DecorProps(), decor_props_ubo_);
 			glBindBufferBase(GL_UNIFORM_BUFFER, Constants::UboBinding::DecorPlacementGlobals(), placement_globals_ubo_);

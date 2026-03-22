@@ -183,24 +183,24 @@ namespace logger {
 			size_t searchPos = 0;
 			auto   process = [&](auto&& arg) {
 				using T = std::remove_cvref_t<decltype(arg)>;
-				std::string replacement;
+				std::string       replacement;
+				std::stringstream ss;
 
 				if constexpr (requires { std::tuple_size<T>::value; }) {
 					if constexpr (std::tuple_size_v<T> == 2) {
-						std::stringstream ss;
 						ss << std::get<0>(arg) << " => [" << std::get<1>(arg) << "]";
 						replacement = ss.str();
 					} else {
 						replacement = "tuple<" + std::to_string(std::tuple_size_v<T>) + ">";
 					}
-				} else if constexpr (requires(std::ostream& os) { os << arg; }) {
-					std::stringstream ss;
-					ss << arg;
+				} else if constexpr (requires { static_cast<std::ostream&>(ss) << arg; }) {
+					static_cast<std::ostream&>(ss) << arg;
 					replacement = ss.str();
 				} else {
 					replacement = "unstreamable";
 				}
-				size_t      pos = message.find("{}", searchPos);
+
+				size_t pos = message.find("{}", searchPos);
 				if (pos != std::string::npos) {
 					message.replace(pos, 2, replacement);
 					searchPos = pos + replacement.length();
