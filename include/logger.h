@@ -185,7 +185,7 @@ namespace logger {
 				std::ostream&     os = ss;
 				using T = std::remove_cvref_t<decltype(arg)>;
 
-				if constexpr (requires { typename std::tuple_size<T>::type; }) {
+				if constexpr (requires { std::tuple_size<T>::value; }) {
 					if constexpr (std::tuple_size_v<T> == 2) {
 						os << std::get<0>(arg) << " => [" << std::get<1>(arg) << "]";
 					} else {
