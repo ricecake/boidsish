@@ -58,8 +58,8 @@ ivec3 pool_index_to_coord(int poolIdx, vec3 localPos) {
 
 int lookup_brick(ivec3 gridPos) {
     uint slot = get_brick_hash(gridPos);
-    if (brick_metadata[slot].poolIndex != -1 && brick_metadata[slot].gridPos == gridPos) {
-        return brick_metadata[slot].poolIndex;
+    if (brick_metadata[slot].gridPos_poolIdx.w != -1 && brick_metadata[slot].gridPos_poolIdx.xyz == gridPos) {
+        return brick_metadata[slot].gridPos_poolIdx.w;
     }
     return -1;
 }

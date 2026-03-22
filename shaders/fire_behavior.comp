@@ -57,19 +57,19 @@ void main() {
 	uint  slot = get_brick_hash(gPos);
 
 	// Check if slot matches our gridPos or is empty
-	if (brick_metadata[slot].poolIndex == -1 || brick_metadata[slot].gridPos == gPos) {
-		brick_metadata[slot].gridPos = gPos;
+	if (brick_metadata[slot].gridPos_poolIdx.w == -1 || brick_metadata[slot].gridPos_poolIdx.xyz == gPos) {
+		brick_metadata[slot].gridPos_poolIdx.xyz = gPos;
 		atomicAdd(brick_votes[slot], 1);
 
-		int poolIdx = brick_metadata[slot].poolIndex;
+		int poolIdx = brick_metadata[slot].gridPos_poolIdx.w;
 		if (poolIdx != -1) {
 			float brick_world_size = float(VOXEL_BRICK_SIZE) * VOXEL_SIZE;
 			vec3  localPos = (p.pos.xyz - (vec3(gPos) * brick_world_size)) / brick_world_size;
 			ivec3 texCoord = pool_index_to_coord(poolIdx, localPos);
 
 			// Atomic accumulation (fixed-point density * 1000)
-			// Splat 1.0 density per particle for clearer visualization
-			imageAtomicAdd(u_brickPool, texCoord, 1000);
+			// Splat 20.0 density per particle for maximum visibility
+			imageAtomicAdd(u_brickPool, texCoord, 20000);
 		}
 	}
 

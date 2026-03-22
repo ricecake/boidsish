@@ -62,9 +62,8 @@ void VoxelBrickManager::_SetupBuffers() {
     glBindBuffer(GL_SHADER_STORAGE_BUFFER, brick_metadata_buffer_);
     std::vector<BrickMetadataGPU> initial_metadata(kHashTableSize);
     for (int i = 0; i < kHashTableSize; ++i) {
-        initial_metadata[i].gridPos = glm::ivec3(0);
-        initial_metadata[i].poolIndex = -1;
-        initial_metadata[i].lastUsedTime = -1000.0f;
+        initial_metadata[i].gridPos_poolIdx = glm::ivec4(0, 0, 0, -1);
+        initial_metadata[i].timing_padding = glm::vec4(-1000.0f, 0, 0, 0);
     }
     glBufferData(GL_SHADER_STORAGE_BUFFER, kHashTableSize * sizeof(BrickMetadataGPU), initial_metadata.data(), GL_DYNAMIC_DRAW);
 
@@ -120,14 +119,14 @@ void VoxelBrickManager::Update(float delta_time, float current_time) {
         glBindImageTexture(0, brick_pool_atomic_texture_, 0, GL_TRUE, 0, GL_WRITE_ONLY, GL_R32UI);
 
         glDispatchCompute(tex_dim / 8, tex_dim / 8, tex_dim / 8);
-        glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
+        glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | GL_TEXTURE_FETCH_BARRIER_BIT);
     }
 
     // 3. Management
     management_shader_->use();
     management_shader_->setFloat("u_time", current_time);
     management_shader_->setUint("u_hashTableSize", kHashTableSize);
-    management_shader_->setFloat("u_cooldown", 1.0f); // 1 second cooldown
+    management_shader_->setFloat("u_cooldown", 10.0f); // 10 second cooldown
 
     BindSSBOs();
 

@@ -2,10 +2,8 @@
 #define VOXEL_TYPES_GLSL
 
 struct BrickMetadata {
-    ivec3 gridPos;      // 12 bytes
-    int   poolIndex;    // 4 bytes -> total 16
-    float lastUsedTime; // 4 bytes
-    int   padding[3];   // 12 bytes -> total 32 bytes
+    ivec4 gridPos_poolIdx; // xyz: gridPos, w: poolIndex
+    vec4  timing_padding;  // x: lastUsedTime
 };
 
 layout(std430, binding = 36) buffer VoxelBrickVotes {

@@ -14,10 +14,12 @@ namespace Boidsish {
         glm::mat4 GetModelMatrix() const override;
 
         void GenerateRenderPackets(std::vector<RenderPacket>& out_packets, const RenderContext& context) const override;
+        void PrepareResources(Megabuffer* megabuffer = nullptr) const override;
 
         std::string GetInstanceKey() const override { return "VoxelVolume"; }
         bool IsTransparent() const override { return true; }
         bool GetDefaultCastsShadows() const override { return false; }
+        float GetBoundingRadius() const override { return size_ * 2.0f; }
 
         static void InitializeShaders();
         static ShaderHandle voxel_shader_handle;

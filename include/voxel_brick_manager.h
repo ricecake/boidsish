@@ -25,10 +25,8 @@ namespace Boidsish {
     private:
         std::unique_ptr<ComputeShader> clear_shader_;
         struct BrickMetadataGPU {
-            glm::ivec3 gridPos;
-            int        poolIndex;
-            float      lastUsedTime;
-            int        padding[3];
+            glm::ivec4 gridPos_poolIdx;
+            glm::vec4  timing_padding;
         };
 
         void _SetupBuffers();

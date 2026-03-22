@@ -18,6 +18,7 @@ static int          v_box_index_count = 0;
 VoxelVolume::VoxelVolume(float x, float y, float z, float size) :
     Shape(0, x, y, z), size_(size) {
     SetScale(glm::vec3(size));
+    local_aabb_ = AABB(glm::vec3(-0.5f), glm::vec3(0.5f));
 }
 
 void VoxelVolume::InitializeShaders() {
@@ -41,18 +42,15 @@ glm::mat4 VoxelVolume::GetModelMatrix() const {
     return model;
 }
 
-void VoxelVolume::GenerateRenderPackets(std::vector<RenderPacket>& out_packets, const RenderContext& context) const {
+void VoxelVolume::PrepareResources(Megabuffer* /*megabuffer*/) const {
     if (v_box_vao == 0) {
-        // Initialize simple unit box mesh
+        // Initialize simple unit box mesh on the main thread
         float vertices[] = {
-            -0.5f, -0.5f, -0.5f,  0.5f, -0.5f, -0.5f,  0.5f,  0.5f, -0.5f, -0.5f,  0.5f, -0.5f,
-            -0.5f, -0.5f,  0.5f,  0.5f, -0.5f,  0.5f,  0.5f,  0.5f,  0.5f, -0.5f,  0.5f,  0.5f
+            -0.5f, -0.5f, -0.5f, 0.5f, -0.5f, -0.5f, 0.5f, 0.5f, -0.5f, -0.5f, 0.5f, -0.5f,
+            -0.5f, -0.5f, 0.5f,  0.5f, -0.5f, 0.5f,  0.5f, 0.5f, 0.5f,  -0.5f, 0.5f, 0.5f
         };
-        unsigned int indices[] = {
-            0, 1, 2, 2, 3, 0,  4, 5, 6, 6, 7, 4,
-            0, 4, 7, 7, 3, 0,  1, 5, 6, 6, 2, 1,
-            3, 2, 6, 6, 7, 3,  0, 1, 5, 5, 4, 0
-        };
+        unsigned int indices[] = {0, 1, 2, 2, 3, 0, 4, 5, 6, 6, 7, 4, 0, 4, 7, 7, 3, 0,
+                                  1, 5, 6, 6, 2, 1, 3, 2, 6, 6, 7, 3, 0, 1, 5, 5, 4, 0};
         v_box_index_count = 36;
 
         glGenVertexArrays(1, &v_box_vao);
@@ -67,18 +65,36 @@ void VoxelVolume::GenerateRenderPackets(std::vector<RenderPacket>& out_packets, 
         glEnableVertexAttribArray(0);
         glBindVertexArray(0);
     }
+}
 
-    RenderPacket packet;
+void VoxelVolume::GenerateRenderPackets(std::vector<RenderPacket>& out_packets, const RenderContext& context) const {
+    RenderPacket packet{};
     packet.vao = v_box_vao;
     packet.index_count = v_box_index_count;
+    packet.base_vertex = 0;
+    packet.first_index = 0;
     packet.draw_mode = GL_TRIANGLES;
     packet.index_type = GL_UNSIGNED_INT;
     packet.shader_id = voxel_shader ? voxel_shader->ID : 0;
     packet.shader_handle = voxel_shader_handle;
     packet.no_cull = true;
+    packet.instance_count = 1;
+    packet.casts_shadows = false;
 
     packet.uniforms.model = GetModelMatrix();
+    packet.uniforms.roughness = 1.0f;
+    packet.uniforms.metallic = 0.0f;
+    packet.uniforms.ao = 1.0f;
     packet.uniforms.color = glm::vec4(GetR(), GetG(), GetB(), GetA());
+
+    // Set AABB uniforms to prevent occlusion culling from hiding the volume
+    AABB worldAABB = GetAABB();
+    packet.uniforms.aabb_min_x = worldAABB.min.x;
+    packet.uniforms.aabb_min_y = worldAABB.min.y;
+    packet.uniforms.aabb_min_z = worldAABB.min.z;
+    packet.uniforms.aabb_max_x = worldAABB.max.x;
+    packet.uniforms.aabb_max_y = worldAABB.max.y;
+    packet.uniforms.aabb_max_z = worldAABB.max.z;
 
     packet.sort_key = CalculateSortKey(
         RenderLayer::Transparent,

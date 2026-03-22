@@ -757,6 +757,7 @@ namespace Boidsish {
 			VoxelVolume::InitializeShaders();
 			VoxelVolume::voxel_shader_handle =
 				shader_table.Register(std::make_unique<RenderShader>(VoxelVolume::voxel_shader));
+			SetupShaderBindings(*VoxelVolume::voxel_shader);
 			shadow_manager = std::make_unique<ShadowManager>();
 			scene_manager = std::make_unique<SceneManager>("scenes");
 			decor_manager = std::make_unique<DecorManager>();
@@ -2964,7 +2965,6 @@ namespace Boidsish {
 		if (impl->voxel_brick_manager) {
 			impl->voxel_brick_manager->Update(impl->simulation_delta_time, impl->simulation_time);
 			impl->voxel_brick_manager->BindSSBOs();
-			impl->voxel_brick_manager->BindSampler(13);
 		}
 
 		impl->fire_effect_manager->Update(
@@ -3441,6 +3441,9 @@ namespace Boidsish {
 		glEnable(GL_BLEND);
 		glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 		glDepthMask(GL_FALSE);
+		if (impl->voxel_brick_manager) {
+			impl->voxel_brick_manager->BindSampler(13);
+		}
 		impl->ExecuteRenderQueue(
 			impl->render_queue,
 			view,

@@ -1,4 +1,4 @@
-#version 430 core
+#version 460 core
 
 #include "../helpers/voxel_raymarch.glsl"
 #include "../lighting.glsl"
@@ -13,21 +13,22 @@ void main() {
     vec3 rd = normalize(FragPos - viewPos);
     vec3 ro = viewPos;
 
-    // Total raymarching distance
-    float maxDist = 200.0;
+    // Start raymarching from the proxy surface if the camera is outside
+    // For simplicity, start from viewPos and assume maxDist is sufficient
+    float maxDist = 800.0;
 
     // Raymarch through the volume
-    // We start from the fragment position and march INTO the volume,
-    // but better yet, start from the camera if the camera is near/inside.
     vec4 result = raymarch_density(ro, rd, maxDist, u_brickPool);
 
     float density = result.x;
-    if (density <= 0.01) discard;
 
-    // Boost density for visualization
-    density *= 5.0;
-
-    // Simple glowing orange for density
-    vec3 color = vec3(1.0, 0.6, 0.2) * density;
-    FragColor = vec4(color, clamp(density, 0.0, 1.0));
+    // UNMISTAKABLE COLORING
+    if (density > 0.0001) {
+        // Vibrant Neon Green for density
+        vec3 color = mix(vec3(0.1, 1.0, 0.2), vec3(1.0, 1.0, 1.0), clamp(density * 0.1, 0.0, 1.0));
+        FragColor = vec4(color, 0.9);
+    } else {
+        // Semi-transparent hot pink for volume bounds (very visible)
+        FragColor = vec4(1.0, 0.0, 0.5, 0.1);
+    }
 }
