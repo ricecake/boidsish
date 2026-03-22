@@ -754,9 +754,22 @@ namespace Boidsish {
 			const int MAX_LIGHTS = 10;
 			glGenBuffers(1, &lighting_ubo);
 			glBindBuffer(GL_UNIFORM_BUFFER, lighting_ubo);
-			glBufferData(GL_UNIFORM_BUFFER, 704, NULL, GL_DYNAMIC_DRAW);
+			glBufferData(GL_UNIFORM_BUFFER, sizeof(LightingUbo), NULL, GL_DYNAMIC_DRAW);
+
+			// Initialize Lighting UBO with defaults immediately
+			std::memset(&lighting_ubo_data_, 0, sizeof(LightingUbo));
+			lighting_ubo_data_.world_scale = 1.0f;
+			lighting_ubo_data_.ambient_light = light_manager.GetAmbientLight();
+			glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(LightingUbo), &lighting_ubo_data_);
+
 			glBindBuffer(GL_UNIFORM_BUFFER, 0);
-			glBindBufferRange(GL_UNIFORM_BUFFER, Constants::UboBinding::Lighting(), lighting_ubo, 0, 704);
+			glBindBufferRange(
+				GL_UNIFORM_BUFFER,
+				Constants::UboBinding::Lighting(),
+				lighting_ubo,
+				0,
+				sizeof(LightingUbo)
+			);
 
 			// Temporal Data UBO
 			glGenBuffers(1, &temporal_data_ubo);
@@ -841,6 +854,7 @@ namespace Boidsish {
 				terrain_render_manager = std::make_shared<TerrainRenderManager>(32, initial_chunks);
 				terrain_generator->SetRenderManager(terrain_render_manager);
 				terrain_render_manager->SetNoise(noise_manager->GetNoiseTexture(), noise_manager->GetCurlTexture());
+				terrain_render_manager->SetLightingUbo(lighting_ubo);
 
 				// Set up eviction callback so terrain generator knows when chunks are LRU-evicted
 				// Capture weak_ptr to allow terrain generator to be swapped without dangling reference

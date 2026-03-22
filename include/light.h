@@ -46,12 +46,14 @@ namespace Boidsish {
 		alignas(16) glm::vec3 view_pos;      // offset 656, 12 bytes
 		float _pad2;                         // offset 668, 4 bytes
 		alignas(16) glm::vec3 ambient_light; // offset 672, 12 bytes
-		float time;                          // offset 684, 4 bytes
-		alignas(16) glm::vec3 view_dir;      // offset 688, 12 bytes
-		float _pad3;                         // offset 700, 4 bytes
-	}; // Total: 704 bytes
+		float _pad_ambient;                  // offset 684, 4 bytes
+		float time;                          // offset 688, 4 bytes
+		float _pad_time[3];                  // offset 692, 12 bytes
+		alignas(16) glm::vec3 view_dir;      // offset 704, 12 bytes
+		float _pad3;                         // offset 716, 4 bytes
+	}; // Total: 720 bytes
 
-	static_assert(sizeof(LightingUbo) == 704, "LightingUbo must be 704 bytes for UBO alignment");
+	static_assert(sizeof(LightingUbo) == 720, "LightingUbo must be 720 bytes for std140 alignment");
 
 	/**
 	 * @brief Light source data structure for rendering.

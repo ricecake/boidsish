@@ -1,3 +1,6 @@
+#ifndef FAST_NOISE_GLSL
+#define FAST_NOISE_GLSL
+
 // Helper functions for fast texture-based noise lookups
 // Requires noise texture samplers bound to fixed units:
 // u_noiseTexture: 3D, unit 5, R=Simplex/G=Worley/B=FBM/A=Warped
@@ -65,3 +68,5 @@ float fastBlueNoise(vec2 uv, int frequencyIndex) {
 float fastBlueNoise(vec2 uv) {
 	return texture(u_blueNoiseTexture, uv).r;
 }
+
+#endif
