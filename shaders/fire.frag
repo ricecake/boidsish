@@ -154,7 +154,7 @@ void main() {
 					step(twinkle_t, 0.6);
 
 				color *= (2.0 + twinkle * 8.0);
-				alpha = step(twinkle_t, 0.6) * (0.4 + twinkle * 0.6) * smoothstep(0.0, 0.5, v_lifetime);
+				alpha = 0.01+step(twinkle_t, 0.6) * (0.4 + twinkle * 0.6) * smoothstep(0.0, 0.5, v_lifetime);
 			}
 		} else if (v_style == 6) { // Bubbles
 			// Use local spherical normal for better visuals
