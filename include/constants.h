@@ -131,10 +131,6 @@ namespace Boidsish {
 				return 34;
 			}
 
-			constexpr int VoxelHashTable() {
-				return 35;
-			}
-
 			constexpr int VoxelBrickVotes() {
 				return 36;
 			}

@@ -4,6 +4,7 @@
 #include "graphics.h"
 #include "logger.h"
 #include "shape.h"
+#include "voxel_volume.h"
 
 int main() {
 	try {
@@ -27,6 +28,10 @@ int main() {
 			glm::vec3(0),
 			20
 		);
+
+		// Add a voxel volume to visualize the density field
+		auto voxel_viz = std::make_shared<Boidsish::VoxelVolume>(0.0f, 5.0f, 0.0f, 100.0f);
+		vis.AddShape(voxel_viz);
 
 		float                                         boomTime = 0;
 		std::vector<std::shared_ptr<Boidsish::Shape>> vec;
