@@ -20,10 +20,15 @@ void main() {
     }
 
     // Each destination pixel covers a 2x2 block in the source
-    vec2 uv = (vec2(pixel) + 0.5) / vec2(dstSize);
+    ivec2 srcCoord = pixel * 2;
 
-    // Use texture() for bilinear filtering, which is basically what we want for downsampling
-    vec4 color = textureLod(u_srcTexture, vec3(uv, float(u_slice)), float(u_srcLevel));
+    // Manual 4-tap average for better control and robustness
+    vec4 c00 = texelFetch(u_srcTexture, ivec3(srcCoord + ivec2(0, 0), u_slice), u_srcLevel);
+    vec4 c10 = texelFetch(u_srcTexture, ivec3(srcCoord + ivec2(1, 0), u_slice), u_srcLevel);
+    vec4 c01 = texelFetch(u_srcTexture, ivec3(srcCoord + ivec2(0, 1), u_slice), u_srcLevel);
+    vec4 c11 = texelFetch(u_srcTexture, ivec3(srcCoord + ivec2(1, 1), u_slice), u_srcLevel);
 
-    imageStore(u_dstMip, pixel, color);
+    vec4 avgColor = (c00 + c10 + c01 + c11) * 0.25;
+
+    imageStore(u_dstMip, pixel, avgColor);
 }

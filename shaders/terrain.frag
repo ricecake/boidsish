@@ -18,6 +18,7 @@ in float      tessFactor;
 #include "helpers/terrain_material.glsl"
 
 uniform bool uIsShadowPass = false;
+uniform int  uTerrainDebugMode = 0; // 0=Normal, 1=Baked, 2=Procedural, 3=LOD
 
 // Baked material textures
 uniform sampler2DArray uBakedMaterial; // rgb=albedo, a=roughness
@@ -76,7 +77,12 @@ void main() {
     float metallic;
     vec3 perturbedNorm;
 
-    if (lodFactor >= 1.0) {
+    if (uTerrainDebugMode == 3) {
+        FragColor = vec4(mix(vec3(1, 0, 0), vec3(0, 1, 0), lodFactor), 1.0);
+        return;
+    }
+
+    if (uTerrainDebugMode == 1 || (uTerrainDebugMode == 0 && lodFactor >= 1.0)) {
         // Use fully baked material
         vec4 bakedMat = texture(uBakedMaterial, vec3(TexCoords, TextureSlice));
         vec4 bakedNormData = texture(uBakedNormal, vec3(TexCoords, TextureSlice));
@@ -89,7 +95,7 @@ void main() {
         // Compute procedural material
         CalculatedMaterial procMat = calculateTerrainMaterial(FragPos, norm, TexCoords, TextureSlice, perturbFactor, worldScale);
 
-        if (lodFactor <= 0.0) {
+        if (uTerrainDebugMode == 2 || lodFactor <= 0.0) {
             albedo = procMat.albedo;
             roughness = procMat.roughness;
             perturbedNorm = procMat.normal;

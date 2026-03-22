@@ -443,7 +443,7 @@ namespace Boidsish {
 				glBindImageTexture(1, baked_normal_texture_, 0, GL_FALSE, slice, GL_WRITE_ONLY, GL_RGBA8);
 
 				glDispatchCompute((kBakeResolution + 7) / 8, (kBakeResolution + 7) / 8, 1);
-				glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
+				glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | GL_TEXTURE_FETCH_BARRIER_BIT);
 
 				GenerateBakedMipmaps(slice);
 			}
