@@ -12,11 +12,18 @@
 #include <string>
 #include <string_view>
 #include <tuple>
+#include <type_traits>
 #include <utility>
 #include <vector>
 using namespace std::literals; // required for ""sv
 
 namespace logger {
+	template <typename T, typename = void>
+	struct is_tuple_like: std::false_type {};
+
+	template <typename T>
+	struct is_tuple_like<T, std::void_t<decltype(std::tuple_size<T>::value)>>: std::true_type {};
+
 #if defined(__cpp_lib_source_location)
 	using source_location_type = std::source_location;
 #else
@@ -182,16 +189,19 @@ namespace logger {
 			size_t searchPos = 0;
 			auto   process = [&](auto&& arg) {
 				std::stringstream ss;
+				std::ostream&     os = ss;
 				using T = std::remove_cvref_t<decltype(arg)>;
 
-				if constexpr (requires { typename std::tuple_size<T>::type; }) {
+				if constexpr (is_tuple_like<T>::value) {
 					if constexpr (std::tuple_size_v<T> == 2) {
-						ss << std::get<0>(arg) << " => [" << std::get<1>(arg) << "]";
+						os << std::get<0>(arg) << " => [" << std::get<1>(arg) << "]";
 					} else {
-						ss << arg;
+						os << "[tuple]";
 					}
+				} else if constexpr (requires { os << arg; }) {
+					os << arg;
 				} else {
-					ss << arg;
+					os << "[non-streamable type]";
 				}
 
 				std::string replacement = ss.str();

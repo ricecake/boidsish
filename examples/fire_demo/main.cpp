@@ -9,23 +9,34 @@ int main() {
 	try {
 		Boidsish::Visualizer vis(1280, 720, "Fire Effect Demo");
 
-		vis.GetCamera().y = 5.0;
-		vis.GetCamera().z = 30.0;
+		vis.GetCamera().y = 10.0;
+		vis.GetCamera().z = 60.0;
 		vis.SetCameraMode(Boidsish::CameraMode::STATIONARY);
 
 		// Add a fire effect at the origin and store the pointer
 		auto fire1 = vis.AddFireEffect(
 			glm::vec3(-10.0f, 5.0f, 0.0f),
 			Boidsish::FireEffectStyle::MissileExhaust,
-			{0.01f, -1.0f, 0.0f}
+			{0.01f, -1.0f, 0.0f},
+			glm::vec3(0),
+			1000
 		);
-		auto fire3 = vis.AddFireEffect(glm::vec3(0.0f, 2.0f, 0.0f), Boidsish::FireEffectStyle::Fire);
+		auto fire3 = vis.AddFireEffect(glm::vec3(0.0f, 2.0f, 0.0f), Boidsish::FireEffectStyle::Fire, {0, 1, 0}, {0, 0, 0}, 20000);
 		auto fire4 = vis.AddFireEffect(
 			glm::vec3(0.0f, 10.0f, 10.0f),
 			Boidsish::FireEffectStyle::Sparks,
 			{0.01f, 1.0f, 0.0f},
 			glm::vec3(0),
-			20
+			2000
+		);
+
+		// Add a large fire effect at the center to fill the volume
+		auto fire_center = vis.AddFireEffect(
+			glm::vec3(0.0f, 2.0f, 0.0f),
+			Boidsish::FireEffectStyle::Explosion,
+			{0.0f, 1.0f, 0.0f},
+			glm::vec3(0),
+			10000
 		);
 
 		float                                         boomTime = 0;

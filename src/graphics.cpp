@@ -50,6 +50,7 @@
 #include "post_processing/effects/SuperSpeedEffect.h"
 #include "post_processing/effects/TimeStutterEffect.h"
 #include "post_processing/effects/ToneMappingEffect.h"
+#include "post_processing/effects/VoxelVolumeEffect.h"
 #include "post_processing/effects/WhispTrailEffect.h"
 #include "profiler.h"
 #include "render_queue.h"
@@ -67,6 +68,8 @@
 #include "terrain_render_manager.h"
 #include "trail.h"
 #include "trail_render_manager.h"
+#include "voxel_brick_manager.h"
+#include "voxel_volume.h"
 #include "ui/EffectWidget.h"
 #include "ui/EnvironmentWidget.h"
 #include "ui/ProfilerWidget.h"
@@ -102,6 +105,13 @@ namespace Boidsish {
 
 		// Effects
 		ShaderBase::RegisterConstant("MAX_SHOCKWAVES", Constants::Class::Shockwaves::MaxShockwaves());
+
+		// Voxel Bricks
+		ShaderBase::RegisterConstant("VOXEL_BRICK_SIZE", Constants::Class::VoxelBricks::BrickSize());
+		ShaderBase::RegisterConstant("VOXEL_MAX_BRICKS", Constants::Class::VoxelBricks::MaxBricks());
+		ShaderBase::RegisterConstant("VOXEL_HASH_TABLE_SIZE", Constants::Class::VoxelBricks::HashTableSize());
+		ShaderBase::RegisterConstant("VOXEL_SIZE", Constants::Class::VoxelBricks::VoxelSize());
+		ShaderBase::RegisterConstant("VOXEL_BRICKS_PER_DIM", static_cast<int>(std::round(std::pow(Constants::Class::VoxelBricks::MaxBricks(), 1.0/3.0))));
 
 		registered = true;
 	}
@@ -383,6 +393,7 @@ namespace Boidsish {
 		std::unique_ptr<ShockwaveManager>                 shockwave_manager;
 		std::unique_ptr<AkiraEffectManager>               akira_effect_manager;
 		std::unique_ptr<SdfVolumeManager>                 sdf_volume_manager;
+		std::unique_ptr<VoxelBrickManager>                voxel_brick_manager;
 		std::unique_ptr<ShadowManager>                    shadow_manager;
 		std::unique_ptr<AtmosphereManager>                atmosphere_manager;
 		std::shared_ptr<PostProcessing::AtmosphereEffect> atmosphere_effect;
@@ -742,6 +753,12 @@ namespace Boidsish {
 			SetupAkiraBindings();
 			sdf_volume_manager = std::make_unique<SdfVolumeManager>();
 			sdf_volume_manager->Initialize();
+			voxel_brick_manager = std::make_unique<VoxelBrickManager>();
+			voxel_brick_manager->Initialize();
+			VoxelVolume::InitializeShaders();
+			VoxelVolume::voxel_shader_handle =
+				shader_table.Register(std::make_unique<RenderShader>(VoxelVolume::voxel_shader));
+			SetupShaderBindings(*VoxelVolume::voxel_shader);
 			shadow_manager = std::make_unique<ShadowManager>();
 			scene_manager = std::make_unique<SceneManager>("scenes");
 			decor_manager = std::make_unique<DecorManager>();
@@ -1059,6 +1076,13 @@ namespace Boidsish {
 				sdf_volume_effect->SetEnabled(true);
 				post_processing_manager_->AddEffect(sdf_volume_effect);
 
+				auto voxel_volume_effect = std::make_shared<PostProcessing::VoxelVolumeEffect>();
+				voxel_volume_effect->SetEnabled(true);
+				if (noise_manager) {
+					voxel_volume_effect->SetBlueNoiseTexture(noise_manager->GetBlueNoiseTexture());
+				}
+				post_processing_manager_->AddEffect(voxel_volume_effect);
+
 				if (enable_hdr_) {
 					auto tone_mapping_effect = std::make_shared<PostProcessing::ToneMappingEffect>();
 					tone_mapping_effect->SetEnabled(true);
@@ -1144,6 +1168,8 @@ namespace Boidsish {
 			if (terrain_idx != GL_INVALID_INDEX) {
 				glUniformBlockBinding(shader_to_setup.ID, terrain_idx, Constants::UboBinding::TerrainData());
 			}
+
+			shader_to_setup.trySetInt("u_brickPool", 13);
 		}
 
 		void SetupAkiraBindings() {
@@ -2944,6 +2970,11 @@ namespace Boidsish {
 		}
 
 		impl->clone_manager->Update(impl->simulation_time, impl->camera.pos());
+		if (impl->voxel_brick_manager) {
+			impl->voxel_brick_manager->Update(impl->simulation_delta_time, impl->simulation_time);
+			impl->voxel_brick_manager->BindSSBOs();
+		}
+
 		impl->fire_effect_manager->Update(
 			impl->simulation_delta_time,
 			impl->simulation_time,
@@ -2957,7 +2988,8 @@ namespace Boidsish {
 			impl->lighting_ubo,
 			impl->frustum_ssbo->GetBufferId(),
 			impl->frustum_ssbo->GetFrameOffset() + impl->mdi_frustum_count * sizeof(FrustumDataGPU),
-			impl->noise_manager ? impl->noise_manager->GetExtraNoiseTexture() : 0
+			impl->noise_manager ? impl->noise_manager->GetExtraNoiseTexture() : 0,
+			impl->voxel_brick_manager ? impl->voxel_brick_manager->GetBrickPoolAtomicTexture() : 0
 		);
 		impl->mesh_explosion_manager->Update(impl->simulation_delta_time, impl->simulation_time);
 		impl->sound_effect_manager->Update(impl->simulation_delta_time);
@@ -3417,6 +3449,9 @@ namespace Boidsish {
 		glEnable(GL_BLEND);
 		glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 		glDepthMask(GL_FALSE);
+		if (impl->voxel_brick_manager) {
+			impl->voxel_brick_manager->BindSampler(13);
+		}
 		impl->ExecuteRenderQueue(
 			impl->render_queue,
 			view,

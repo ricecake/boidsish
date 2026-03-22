@@ -60,7 +60,8 @@ namespace Boidsish {
 			GLuint                        lighting_ubo = 0,
 			GLuint                        frustum_ubo = 0,
 			GLintptr                      frustum_offset = 0,
-			GLuint                        extra_noise_texture = 0
+			GLuint                        extra_noise_texture = 0,
+			GLuint                        voxel_pool_texture = 0
 		);
 		void Render(
 			const glm::mat4& view,
