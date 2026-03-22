@@ -643,7 +643,7 @@ namespace Boidsish {
 			for (size_t i = 0; i < decor_types_.size(); ++i) {
 				placement_shader_->setInt("u_typeIndex", (int)i);
 				glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, decor_types_[i].ssbo);
-				glDispatchCompute(4, 4, num_chunks); // Z = chunk index
+				glDispatchCompute(16, 16, num_chunks); // Z = chunk index
 			}
 			glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
 		}

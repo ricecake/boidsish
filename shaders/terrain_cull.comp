@@ -140,9 +140,7 @@ bool testPointOccluded(vec3 p_test, ivec2 targetChunk) {
 }
 
 void main() {
-	uint idx = gl_GlobalInvocationID.x;
-	uint chunkIdx = idx / 64;
-	uint patchIdx = idx % 64;
+	uint chunkIdx = gl_GlobalInvocationID.x;
 
 	if (chunkIdx >= u_numChunks)
 		return;
@@ -151,30 +149,10 @@ void main() {
 	if (chunk.world_offset_slice.w < 0.5)
 		return;
 
-	uint px = patchIdx % 8;
-	uint pz = patchIdx / 8;
-
-	float patchSize = u_chunkSize / 8.0;
 	float slice = chunk.world_offset_slice.z;
 
-	// Sample corner heights for more accurate patch AABB
-	vec2 uv00 = vec2(float(px), float(pz)) / 8.0;
-	vec2 uv11 = vec2(float(px + 1), float(pz + 1)) / 8.0;
-
-	float h00 = texture(u_heightmapArray, vec3(uv00, slice)).r;
-	float h10 = texture(u_heightmapArray, vec3(uv11.x, uv00.y, slice)).r;
-	float h01 = texture(u_heightmapArray, vec3(uv00.x, uv11.y, slice)).r;
-	float h11 = texture(u_heightmapArray, vec3(uv11.x, uv11.y, slice)).r;
-
-	float pMinY = min(min(h00, h10), min(h01, h11));
-	float pMaxY = max(max(h00, h10), max(h01, h11));
-
-	vec3 minCorner = vec3(
-		chunk.world_offset_slice.x + float(px) * patchSize,
-		pMinY,
-		chunk.world_offset_slice.y + float(pz) * patchSize
-	);
-	vec3 maxCorner = vec3(minCorner.x + patchSize, pMaxY, minCorner.z + patchSize);
+	vec3 minCorner = vec3(chunk.world_offset_slice.x, chunk.bounds.x, chunk.world_offset_slice.y);
+	vec3 maxCorner = vec3(minCorner.x + u_chunkSize, chunk.bounds.y, minCorner.z + u_chunkSize);
 
 	// Add margin for displacement effects
 	float margin = 2.0 * u_terrainParams.y;
@@ -184,7 +162,7 @@ void main() {
 	if (isAABBInFrustum(minBound, maxBound)) {
 		ivec2 targetChunk = ivec2(floor(chunk.world_offset_slice.xy / (u_chunkSize)));
 
-		// Full occlusion test: Check 4 top corners of patch AABB
+		// Full occlusion test: Check 4 top corners of chunk AABB
 		bool occluded = true;
 		occluded = occluded && testPointOccluded(vec3(minCorner.x, maxCorner.y, minCorner.z), targetChunk);
 		occluded = occluded && testPointOccluded(vec3(maxCorner.x, maxCorner.y, minCorner.z), targetChunk);
@@ -195,8 +173,8 @@ void main() {
 			uint destIdx = atomicAdd(command.instanceCount, 1);
 			if (destIdx < u_maxVisiblePatches) {
 				visible_patches[destIdx].chunk_index = chunkIdx;
-				visible_patches[destIdx].patch_x = px;
-				visible_patches[destIdx].patch_z = pz;
+				visible_patches[destIdx].patch_x = 0; // Patch ID no longer used, but kept for struct compatibility
+				visible_patches[destIdx].patch_z = 0;
 			}
 		}
 	}

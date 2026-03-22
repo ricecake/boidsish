@@ -86,8 +86,8 @@ namespace Boidsish {
 
 		glGenBuffers(1, &visible_patches_ssbo_);
 		glBindBuffer(GL_SHADER_STORAGE_BUFFER, visible_patches_ssbo_);
-		// Max 64 patches per chunk. Each VisiblePatch is 16 bytes.
-		glBufferData(GL_SHADER_STORAGE_BUFFER, max_chunks * 64 * 16, nullptr, GL_DYNAMIC_DRAW);
+		// One "patch" (the whole chunk) per chunk. Each VisiblePatch is 16 bytes.
+		glBufferData(GL_SHADER_STORAGE_BUFFER, max_chunks * 16, nullptr, GL_DYNAMIC_DRAW);
 
 		glGenBuffers(1, &indirect_buffer_);
 		glBindBuffer(GL_DRAW_INDIRECT_BUFFER, indirect_buffer_);
@@ -202,7 +202,7 @@ namespace Boidsish {
 		}
 
 		glBindBuffer(GL_SHADER_STORAGE_BUFFER, visible_patches_ssbo_);
-		glBufferData(GL_SHADER_STORAGE_BUFFER, max_chunks_ * 64 * 16, nullptr, GL_DYNAMIC_DRAW);
+		glBufferData(GL_SHADER_STORAGE_BUFFER, max_chunks_ * 16, nullptr, GL_DYNAMIC_DRAW);
 		glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
 
 		// Create new larger texture arrays
@@ -547,7 +547,7 @@ namespace Boidsish {
 		if (chunks_.empty() || !cull_shader_ || !cull_shader_->isValid())
 			return;
 
-		int                         max_visible_patches = max_chunks_ * 64;
+		int                         max_visible_patches = max_chunks_;
 		DrawElementsIndirectCommand cmd{};
 		cmd.count = static_cast<uint32_t>(grid_index_count_);
 		cmd.instanceCount = 0;
@@ -599,7 +599,7 @@ namespace Boidsish {
 		);
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::TerrainIndirect(), indirect_buffer_);
 
-		glDispatchCompute((next_gpu_index_ * 64 + 63) / 64, 1, 1);
+		glDispatchCompute((next_gpu_index_ + 63) / 64, 1, 1);
 		glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT | GL_COMMAND_BARRIER_BIT);
 	}
 
@@ -743,7 +743,7 @@ namespace Boidsish {
 
 		// Clamp instanceCount to buffer capacity.
 		// The cull shader guards writes but the atomic counter can still exceed capacity.
-		int    max_patches = max_chunks_ * 64;
+		int    max_patches = max_chunks_;
 		GLuint clamped_count = static_cast<GLuint>(max_patches);
 		glBindBuffer(GL_DRAW_INDIRECT_BUFFER, indirect_buffer_);
 		glGetBufferSubData(

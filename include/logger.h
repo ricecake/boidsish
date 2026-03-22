@@ -182,16 +182,17 @@ namespace logger {
 			size_t searchPos = 0;
 			auto   process = [&](auto&& arg) {
 				std::stringstream ss;
+				std::ostream&     os = ss;
 				using T = std::remove_cvref_t<decltype(arg)>;
 
-				if constexpr (requires { typename std::tuple_size<T>::type; }) {
-					if constexpr (std::tuple_size_v<T> == 2) {
-						ss << std::get<0>(arg) << " => [" << std::get<1>(arg) << "]";
+				if constexpr (requires { std::tuple_size<T>::value; }) {
+					if constexpr (std::tuple_size<T>::value == 2) {
+						os << std::get<0>(arg) << " => [" << std::get<1>(arg) << "]";
 					} else {
-						ss << arg;
+						os << arg;
 					}
 				} else {
-					ss << arg;
+					os << arg;
 				}
 
 				std::string replacement = ss.str();

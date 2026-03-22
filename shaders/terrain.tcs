@@ -26,7 +26,7 @@ uniform float          uChunkSize;
 
 #include "helpers/lighting.glsl"
 
-uniform float uTessLevelMax = 4.0;
+uniform float uTessLevelMax = 64.0;
 uniform float uTessLevelMin = 1.0;
 uniform float uTessQualityMultiplier = 1.0;
 uniform bool  uIsShadowPass = false;
