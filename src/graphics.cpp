@@ -50,6 +50,7 @@
 #include "post_processing/effects/SuperSpeedEffect.h"
 #include "post_processing/effects/TimeStutterEffect.h"
 #include "post_processing/effects/ToneMappingEffect.h"
+#include "post_processing/effects/VoxelVolumeEffect.h"
 #include "post_processing/effects/WhispTrailEffect.h"
 #include "profiler.h"
 #include "render_queue.h"
@@ -1074,6 +1075,10 @@ namespace Boidsish {
 				auto sdf_volume_effect = std::make_shared<PostProcessing::SdfVolumeEffect>();
 				sdf_volume_effect->SetEnabled(true);
 				post_processing_manager_->AddEffect(sdf_volume_effect);
+
+				auto voxel_volume_effect = std::make_shared<PostProcessing::VoxelVolumeEffect>();
+				voxel_volume_effect->SetEnabled(true);
+				post_processing_manager_->AddEffect(voxel_volume_effect);
 
 				if (enable_hdr_) {
 					auto tone_mapping_effect = std::make_shared<PostProcessing::ToneMappingEffect>();

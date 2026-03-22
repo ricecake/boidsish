@@ -1,11 +1,9 @@
 #include <iostream>
 
-#include "dot.h"
 #include "fire_effect.h"
 #include "graphics.h"
 #include "logger.h"
 #include "shape.h"
-#include "voxel_volume.h"
 
 int main() {
 	try {
@@ -23,13 +21,13 @@ int main() {
 			glm::vec3(0),
 			1000
 		);
-		auto fire3 = vis.AddFireEffect(glm::vec3(0.0f, 2.0f, 0.0f), Boidsish::FireEffectStyle::Fire, {0, 1, 0}, {0, 0, 0}, 10000);
+		auto fire3 = vis.AddFireEffect(glm::vec3(0.0f, 2.0f, 0.0f), Boidsish::FireEffectStyle::Fire, {0, 1, 0}, {0, 0, 0}, 20000);
 		auto fire4 = vis.AddFireEffect(
 			glm::vec3(0.0f, 10.0f, 10.0f),
 			Boidsish::FireEffectStyle::Sparks,
 			{0.01f, 1.0f, 0.0f},
 			glm::vec3(0),
-			1000
+			2000
 		);
 
 		// Add a large fire effect at the center to fill the volume
@@ -38,16 +36,8 @@ int main() {
 			Boidsish::FireEffectStyle::Explosion,
 			{0.0f, 1.0f, 0.0f},
 			glm::vec3(0),
-			5000
+			10000
 		);
-
-		// Add a voxel volume to visualize the density field
-		auto voxel_viz = std::make_shared<Boidsish::VoxelVolume>(0.0f, 5.0f, 0.0f, 300.0f);
-		vis.AddShape(voxel_viz);
-
-		// Add a reference dot at the center of the volume
-		auto ref = std::make_shared<Boidsish::Dot>(999, 0, 5.0f, 0, 5.0f, 1, 0, 0);
-		vis.AddShape(ref);
 
 		float                                         boomTime = 0;
 		std::vector<std::shared_ptr<Boidsish::Shape>> vec;
