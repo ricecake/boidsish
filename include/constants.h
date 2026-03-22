@@ -115,14 +115,6 @@ namespace Boidsish {
 				return 24;
 			}
 
-			constexpr int TerrainVisiblePatches() {
-				return 29;
-			}
-
-			constexpr int TerrainIndirect() {
-				return 32;
-			}
-
 			constexpr int LiveParticleIndices() {
 				return 33;
 			}
