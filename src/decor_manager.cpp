@@ -1,5 +1,6 @@
 #include "decor_manager.h"
 
+#include "profiler.h"
 #include <algorithm>
 #include <set>
 
@@ -412,6 +413,7 @@ namespace Boidsish {
 		const ITerrainGenerator&              terrain_gen,
 		std::shared_ptr<TerrainRenderManager> render_manager
 	) {
+		PROJECT_PROFILE_SCOPE("DecorManager::Update");
 		if (!enabled_ || !initialized_ || decor_types_.empty())
 			return;
 
@@ -658,6 +660,7 @@ namespace Boidsish {
 		const std::optional<glm::vec3>&       light_dir,
 		std::shared_ptr<TerrainRenderManager> render_manager
 	) {
+		PROJECT_PROFILE_SCOPE("DecorManager::Cull");
 		if (!enabled_ || !initialized_ || decor_types_.empty())
 			return;
 
@@ -746,6 +749,7 @@ namespace Boidsish {
 		const std::optional<glm::mat4>& light_space_matrix,
 		Shader*                         shader_override
 	) {
+		PROJECT_PROFILE_SCOPE("DecorManager::Render");
 		if (!enabled_ || !initialized_ || decor_types_.empty())
 			return;
 

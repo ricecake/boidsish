@@ -1,5 +1,6 @@
 #include "sdf_volume_manager.h"
 
+#include "profiler.h"
 #include "logger.h"
 
 namespace Boidsish {
@@ -29,6 +30,7 @@ namespace Boidsish {
 	}
 
 	void SdfVolumeManager::UpdateUBO() {
+		PROJECT_PROFILE_SCOPE("SdfVolumeManager::UpdateUBO");
 		if (!initialized_)
 			return;
 

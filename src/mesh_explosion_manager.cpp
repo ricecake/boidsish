@@ -1,5 +1,6 @@
 #include "mesh_explosion_manager.h"
 
+#include "profiler.h"
 #include <cstring>
 #include <iostream>
 #include <random>
@@ -195,6 +196,7 @@ namespace Boidsish {
 	}
 
 	void MeshExplosionManager::Update(float delta_time, float time) {
+		PROJECT_PROFILE_SCOPE("MeshExplosionManager::Update");
 		if (!initialized_ || !compute_shader_ || !compute_shader_->isValid())
 			return;
 
@@ -215,6 +217,7 @@ namespace Boidsish {
 	}
 
 	void MeshExplosionManager::Render(const glm::mat4& view, const glm::mat4& projection, const glm::vec3& camera_pos) {
+		PROJECT_PROFILE_SCOPE("MeshExplosionManager::Render");
 		if (!initialized_ || !compute_shader_ || !compute_shader_->isValid())
 			return;
 

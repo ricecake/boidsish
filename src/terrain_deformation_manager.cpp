@@ -1,5 +1,6 @@
 #include "terrain_deformation_manager.h"
 
+#include "profiler.h"
 #include <algorithm>
 #include <cmath>
 #include <set>
@@ -65,6 +66,7 @@ namespace Boidsish {
 	}
 
 	void TerrainDeformationManager::RefreshDeformationCache(uint32_t deformation_id) {
+		PROJECT_PROFILE_SCOPE("TerrainDeformationManager::RefreshDeformationCache");
 		std::unique_lock lock(mutex_);
 
 		auto it = deformations_.find(deformation_id);
@@ -84,6 +86,7 @@ namespace Boidsish {
 		float            current_height,
 		const glm::vec3& current_normal
 	) const {
+		PROJECT_PROFILE_SCOPE("TerrainDeformationManager::QueryDeformations");
 		std::shared_lock lock(mutex_);
 
 		DeformationQueryResult result;

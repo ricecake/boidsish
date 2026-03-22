@@ -1,5 +1,6 @@
 #include "hud_manager.h"
 
+#include "profiler.h"
 #include <algorithm>
 #include <cstdio>
 #include <stdexcept>
@@ -69,6 +70,7 @@ namespace Boidsish {
 	}
 
 	void HudManager::Update(float dt, const Camera& camera) {
+		PROJECT_PROFILE_SCOPE("HudManager::Update");
 		for (auto& element : m_elements) {
 			element->Update(dt, camera);
 		}

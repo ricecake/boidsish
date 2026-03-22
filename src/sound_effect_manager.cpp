@@ -1,5 +1,6 @@
 #include "sound_effect_manager.h"
 
+#include "profiler.h"
 #include <algorithm>
 
 #include "audio_manager.h"
@@ -47,6 +48,7 @@ namespace Boidsish {
 	}
 
 	void SoundEffectManager::Update(float delta_time) {
+		PROJECT_PROFILE_SCOPE("SoundEffectManager::Update");
 		std::lock_guard<std::mutex> lock(_mutex);
 		// Update positions and lifetimes
 		for (auto& effect : _effects) {

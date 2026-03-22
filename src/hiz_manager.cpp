@@ -1,5 +1,6 @@
 #include "hiz_manager.h"
 
+#include "profiler.h"
 #include <algorithm>
 #include <cmath>
 #include <iostream>
@@ -15,6 +16,7 @@ namespace Boidsish {
 	}
 
 	void HiZManager::Initialize(int width, int height) {
+		PROJECT_PROFILE_SCOPE("HiZManager::Initialize");
 		render_width_ = width;
 		render_height_ = height;
 		hiz_width_ = std::max(1, width / 2);
@@ -64,6 +66,7 @@ namespace Boidsish {
 	}
 
 	void HiZManager::GeneratePyramid(GLuint depthTexture) {
+		PROJECT_PROFILE_SCOPE("HiZManager::GeneratePyramid");
 		if (!initialized_ || !generate_shader_->isValid())
 			return;
 

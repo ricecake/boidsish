@@ -1,5 +1,6 @@
 #include "terrain_render_manager.h"
 
+#include "profiler.h"
 #include <algorithm>
 #include <iostream>
 
@@ -538,6 +539,7 @@ namespace Boidsish {
 
 	void
 	TerrainRenderManager::PrepareForRender(const Frustum& frustum, const glm::vec3& camera_pos, float world_scale) {
+		PROJECT_PROFILE_SCOPE("TerrainRenderManager::PrepareForRender");
 		std::lock_guard<std::recursive_mutex> lock(mutex_);
 
 		last_camera_pos_ = camera_pos;
@@ -698,6 +700,7 @@ namespace Boidsish {
 		const std::optional<glm::vec4>& clip_plane,
 		float                           tess_quality_multiplier
 	) {
+		PROJECT_PROFILE_SCOPE("TerrainRenderManager::Render");
 		std::lock_guard<std::recursive_mutex> lock(mutex_);
 		if (chunks_.empty() || grid_vao_ == 0 || grid_index_count_ == 0)
 			return;

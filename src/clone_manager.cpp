@@ -1,5 +1,6 @@
 #include "clone_manager.h"
 
+#include "profiler.h"
 #include <algorithm>
 #include <vector>
 
@@ -37,6 +38,7 @@ namespace Boidsish {
 	}
 
 	void CloneManager::Update(float current_time, const glm::vec3& camera_pos) {
+		PROJECT_PROFILE_SCOPE("CloneManager::Update");
 		clones_.erase(
 			std::remove_if(
 				clones_.begin(),

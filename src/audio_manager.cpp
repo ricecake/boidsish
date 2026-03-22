@@ -1,5 +1,6 @@
 #include "audio_manager.h"
 
+#include "profiler.h"
 #include "logger.h"
 #include "sound.h"
 
@@ -83,6 +84,7 @@ namespace Boidsish {
 		const float      speed,
 		const float      fov
 	) {
+		PROJECT_PROFILE_SCOPE("AudioManager::UpdateListener");
 		if (!m_pimpl->initialized)
 			return;
 
@@ -164,6 +166,7 @@ namespace Boidsish {
 	}
 
 	void AudioManager::Update() {
+		PROJECT_PROFILE_SCOPE("AudioManager::Update");
 		if (!m_pimpl->initialized)
 			return;
 
