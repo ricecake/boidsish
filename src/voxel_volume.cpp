@@ -75,6 +75,7 @@ void VoxelVolume::GenerateRenderPackets(std::vector<RenderPacket>& out_packets, 
     packet.index_type = GL_UNSIGNED_INT;
     packet.shader_id = voxel_shader ? voxel_shader->ID : 0;
     packet.shader_handle = voxel_shader_handle;
+    packet.no_cull = true;
 
     packet.uniforms.model = GetModelMatrix();
     packet.uniforms.color = glm::vec4(GetR(), GetG(), GetB(), GetA());

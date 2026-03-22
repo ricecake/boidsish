@@ -68,7 +68,8 @@ void main() {
 			ivec3 texCoord = pool_index_to_coord(poolIdx, localPos);
 
 			// Atomic accumulation (fixed-point density * 1000)
-			imageAtomicAdd(u_brickPool, texCoord, 100);
+			// Splat 1.0 density per particle for clearer visualization
+			imageAtomicAdd(u_brickPool, texCoord, 1000);
 		}
 	}
 
