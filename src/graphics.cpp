@@ -443,7 +443,6 @@ namespace Boidsish {
 		GLuint    lighting_ubo{0};
 		GLuint    visual_effects_ubo{0};
 		GLuint    temporal_data_ubo{0};
-		GLuint    frustum_ubo{0};
 		glm::mat4 projection;
 		glm::mat4 prev_view_projection{1.0f};
 
@@ -1240,6 +1239,17 @@ namespace Boidsish {
 
 			if (visual_effects_ubo) {
 				glDeleteBuffers(1, &visual_effects_ubo);
+			}
+
+			if (temporal_data_ubo) {
+				glDeleteBuffers(1, &temporal_data_ubo);
+			}
+
+			for (int i = 0; i < 3; ++i) {
+				if (mdi_fences[i]) {
+					glDeleteSync(mdi_fences[i]);
+					mdi_fences[i] = 0;
+				}
 			}
 
 			if (occlusion_visibility_ssbo_) {

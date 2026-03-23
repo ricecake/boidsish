@@ -45,4 +45,12 @@
 - **Fix 4**: Add a virtual destructor to `ShaderBase` that calls `glDeleteProgram(ID)`.
 - **Fix 5**: Implement uniform location caching in `ShaderBase` using a `std::unordered_map` to minimize `glGetUniformLocation` overhead.
 - **Fix 6**: Disable copy operations and implement move operations for `ShaderBase` (Rule of Five) to safely manage OpenGL program ownership.
-- **Fix 7**: Add `glDeleteBuffers(1, &frustum_ubo)` to `VisualizerImpl` destructor.
+- **Fix 7**: Removed unused and uninitialized `frustum_ubo` from `VisualizerImpl` to reduce code clutter.
+- **Fix 8**: Added `glDeleteBuffers(1, &temporal_data_ubo)` to `VisualizerImpl` destructor to prevent UBO leaks.
+- **Fix 9**: Added a loop to `VisualizerImpl` destructor to explicitly delete triple-buffered `mdi_fences` sync objects.
+
+### 7. Missing Resource Cleanup in MDI System
+- **Issue Type**: Memory Leak (OpenGL Sync Objects and Buffers)
+- **Location**: `src/graphics.cpp`, `VisualizerImpl::~VisualizerImpl`
+- **Evidence**: `temporal_data_ubo` and `mdi_fences` were created but not destroyed.
+- **Learning**: Triple-buffered resources and synchronization primitives (fences) require diligent tracking to ensure they are fully released during system shutdown. Unreleased fences can lead to driver-side resource exhaustion over multiple visualizer lifecycles.
