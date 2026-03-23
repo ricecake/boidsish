@@ -1,5 +1,6 @@
 #include "akira_effect.h"
 
+#include "profiler.h"
 #include "shape.h"
 #include <GL/glew.h>
 #include <glm/gtc/matrix_transform.hpp>
@@ -18,6 +19,7 @@ namespace Boidsish {
 	}
 
 	void AkiraEffectManager::Update(float delta_time, ITerrainGenerator& terrain) {
+		PROJECT_PROFILE_SCOPE("AkiraEffectManager::Update");
 		auto it = effects_.begin();
 		while (it != effects_.end()) {
 			it->elapsed_time += delta_time;
@@ -47,6 +49,7 @@ namespace Boidsish {
 	}
 
 	void AkiraEffectManager::Render(const glm::mat4& view, const glm::mat4& projection, float /* time */) {
+		PROJECT_PROFILE_SCOPE("AkiraEffectManager::Render");
 		if (effects_.empty())
 			return;
 

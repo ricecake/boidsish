@@ -3,6 +3,7 @@
 #include <algorithm>
 
 #include "logger.h"
+#include "profiler.h"
 #include "shader.h"
 #include <glm/gtc/type_ptr.hpp>
 
@@ -130,6 +131,7 @@ namespace Boidsish {
 	}
 
 	void ShockwaveManager::Update(float delta_time) {
+		PROJECT_PROFILE_SCOPE("ShockwaveManager::Update");
 		// Update all shockwaves
 		for (auto& wave : shockwaves_) {
 			wave.elapsed_time += delta_time;
@@ -150,6 +152,7 @@ namespace Boidsish {
 	}
 
 	void ShockwaveManager::UpdateShaderData() {
+		PROJECT_PROFILE_SCOPE("ShockwaveManager::UpdateShaderData");
 		if (!initialized_ || shockwaves_.empty()) {
 			return;
 		}

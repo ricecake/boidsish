@@ -7,6 +7,7 @@
 
 #include "frustum.h"
 #include "logger.h"
+#include "profiler.h"
 #include "trail.h"
 #include <shader.h>
 
@@ -242,6 +243,7 @@ namespace Boidsish {
 	}
 
 	void TrailRenderManager::CommitUpdates() {
+		PROJECT_PROFILE_SCOPE("TrailRenderManager::CommitUpdates");
 		std::lock_guard<std::mutex> lock(mutex_);
 		if (trail_allocations_.empty())
 			return;

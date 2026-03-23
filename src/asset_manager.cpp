@@ -8,6 +8,7 @@
 #include "mesh_optimizer_util.h"
 #include "miniaudio.h"
 #include "model.h"
+#include "profiler.h"
 #include "stb_image.h"
 #include <GL/glew.h>
 #include <assimp/Importer.hpp>
@@ -613,6 +614,7 @@ namespace Boidsish {
 	} // anonymous namespace
 
 	std::shared_ptr<ModelData> AssetManager::GetModelData(const std::string& path) {
+		PROJECT_PROFILE_SCOPE("AssetManager::GetModelData");
 		auto it = m_models.find(path);
 		if (it != m_models.end()) {
 			return it->second;
@@ -674,6 +676,7 @@ namespace Boidsish {
 	}
 
 	GLuint AssetManager::GetTexture(const std::string& path, const std::string& directory) {
+		PROJECT_PROFILE_SCOPE("AssetManager::GetTexture");
 		std::string filename = path;
 		std::replace(filename.begin(), filename.end(), '\\', '/');
 

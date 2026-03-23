@@ -31,6 +31,7 @@ uniform vec4 clipPlane;
 #include "helpers/shockwave.glsl"
 #include "helpers/terrain_noise.glsl"
 #include "temporal_data.glsl"
+
 // #include "helpers/fast_noise.glsl"
 
 // Sample heightmap to get world position and normal
@@ -73,9 +74,8 @@ void main() {
 	// FragPos+= fastRidge3d(FragPos) * perturbFactor * Normal;
 
 	if (uv.x < 0.01 || uv.y < 0.01 || uv.x > 0.99 || uv.y > 0.99) {
-		FragPos = roundEven(FragPos*10.0)/10.0;
+		FragPos = roundEven(FragPos * 10.0) / 10.0;
 	}
-
 
 	float tessFactor1 = mix(tessFactor_TC_out[0], tessFactor_TC_out[1], uv.x);
 	float tessFactor2 = mix(tessFactor_TC_out[3], tessFactor_TC_out[2], uv.x);

@@ -204,7 +204,7 @@ void updateFireBehavior(
 		p.vel.xyz += curlNoise(p.pos.xyz, time, curlTexture) * curlInfluence * 15.0 * dt;
 	} else if (p.style == 2) { // Fire
 		// maxSpeed = kFireSpeed;
-		p.vel.y += (kFireSpeed/p.pos.w) * dt;
+		p.vel.y += (kFireSpeed / p.pos.w) * dt;
 		p.vel.x += (rand(p.pos.xy + time) - 0.5) * kFireSpread * dt * 0.25;
 		p.vel.z += (rand(p.pos.yz + time) - 0.5) * kFireSpread * dt * 0.25;
 	} else if (p.style == 3) { // Sparks
@@ -241,7 +241,8 @@ void updateFireBehavior(
 		maxSpeed = 5.0;
 	}
 
-	if (p.style != 3 && p.style != 4 && p.style != 5 && p.style != 6 && p.style != 7 && p.style != 8 && p.style != 9 && p.style != 2) {
+	if (p.style != 3 && p.style != 4 && p.style != 5 && p.style != 6 && p.style != 7 && p.style != 8 && p.style != 9 &&
+	    p.style != 2) {
 		p.vel.y -= 0.05 * dt;
 	}
 

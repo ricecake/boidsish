@@ -6,6 +6,7 @@
 
 #include "constants.h"
 #include "logger.h"
+#include "profiler.h"
 
 namespace Boidsish {
 
@@ -29,6 +30,7 @@ namespace Boidsish {
 	}
 
 	void ConfigManager::Initialize(const std::string& app_name) {
+		PROJECT_PROFILE_SCOPE("ConfigManager::Initialize");
 		logger::Configure(m_config);
 		m_appName = app_name;
 

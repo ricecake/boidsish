@@ -5,6 +5,8 @@
 #include <cstdlib>
 #include <map>
 
+#include "profiler.h"
+
 namespace Boidsish {
 
 	static std::map<char, std::string> morse_alphabet = {
@@ -85,6 +87,7 @@ namespace Boidsish {
 	}
 
 	void LightManager::Update(float deltaTime) {
+		PROJECT_PROFILE_SCOPE("LightManager::Update");
 		if (_cycle.enabled) {
 			if (!_cycle.paused) {
 				_cycle.time += deltaTime * _cycle.speed;

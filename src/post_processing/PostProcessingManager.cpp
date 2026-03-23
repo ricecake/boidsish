@@ -2,6 +2,7 @@
 
 #include <iostream>
 
+#include "profiler.h"
 #include <shader.h>
 
 namespace Boidsish {
@@ -112,6 +113,7 @@ namespace Boidsish {
 			const glm::vec3& cameraPos,
 			float            time
 		) {
+			PROJECT_PROFILE_SCOPE("PostProcessingManager::ApplyEarlyEffects");
 			DetachDepthFromPingPongFBOs();
 
 			for (const auto& effect : pre_tone_mapping_effects_) {
@@ -127,6 +129,7 @@ namespace Boidsish {
 			const glm::vec3& cameraPos,
 			float            time
 		) {
+			PROJECT_PROFILE_SCOPE("PostProcessingManager::ApplyLateEffects");
 			for (const auto& effect : pre_tone_mapping_effects_) {
 				if (effect->IsEnabled() && !effect->IsEarly()) {
 					ApplyEffectInternal(effect, viewMatrix, projectionMatrix, cameraPos, time);

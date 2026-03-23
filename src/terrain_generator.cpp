@@ -14,6 +14,7 @@
 
 #include "graphics.h"
 #include "logger.h"
+#include "profiler.h"
 #include "stb_image_write.h"
 #include "terrain_deformations.h"
 #include "zstr.hpp"
@@ -76,6 +77,7 @@ namespace Boidsish {
 	}
 
 	void TerrainGenerator::Update(const Frustum& frustum, const Camera& camera) {
+		PROJECT_PROFILE_SCOPE("TerrainGenerator::Update");
 		float scaled_chunk_size = static_cast<float>(chunk_size_) * world_scale_;
 
 		// Use floor division for correct negative coordinate handling

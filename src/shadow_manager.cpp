@@ -5,6 +5,7 @@
 
 #include "light.h"
 #include "logger.h"
+#include "profiler.h"
 #include "shader.h"
 #include <glm/gtc/matrix_transform.hpp>
 
@@ -106,6 +107,7 @@ namespace Boidsish {
 		float            aspect,
 		bool             clear
 	) {
+		PROJECT_PROFILE_SCOPE("ShadowManager::BeginShadowPass");
 		if (!initialized_ || map_index >= kMaxShadowMaps) {
 			return;
 		}

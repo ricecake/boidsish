@@ -32,15 +32,18 @@ namespace Boidsish {
 
 				if (ImGui::BeginTable(
 						"ProfilerStats",
-						5,
+						8,
 						ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg | ImGuiTableFlags_Resizable |
 							ImGuiTableFlags_Sortable
 					)) {
 					ImGui::TableSetupColumn("Name", ImGuiTableColumnFlags_DefaultSort);
 					ImGui::TableSetupColumn("Count");
 					ImGui::TableSetupColumn("Avg (us)");
+					ImGui::TableSetupColumn("EMA (us)");
 					ImGui::TableSetupColumn("Min (us)");
 					ImGui::TableSetupColumn("Max (us)");
+					ImGui::TableSetupColumn("Avg Calls/F");
+					ImGui::TableSetupColumn("EMA Calls/F");
 					ImGui::TableHeadersRow();
 
 					std::vector<std::pair<std::string, ProfileStats>> sortedStats(statsMap.begin(), statsMap.end());
@@ -66,14 +69,29 @@ namespace Boidsish {
 																									: 0;
 										break;
 									case 3:
+										delta = (a.second.emaTimeUs < b.second.emaTimeUs) ? -1
+											: (a.second.emaTimeUs > b.second.emaTimeUs)   ? 1
+																						  : 0;
+										break;
+									case 4:
 										delta = (a.second.minTimeUs < b.second.minTimeUs) ? -1
 											: (a.second.minTimeUs > b.second.minTimeUs)   ? 1
 																						  : 0;
 										break;
-									case 4:
+									case 5:
 										delta = (a.second.maxTimeUs < b.second.maxTimeUs) ? -1
 											: (a.second.maxTimeUs > b.second.maxTimeUs)   ? 1
 																						  : 0;
+										break;
+									case 6:
+										delta = (a.second.avgCallsPerFrame < b.second.avgCallsPerFrame) ? -1
+											: (a.second.avgCallsPerFrame > b.second.avgCallsPerFrame)   ? 1
+																										: 0;
+										break;
+									case 7:
+										delta = (a.second.emaCallsPerFrame < b.second.emaCallsPerFrame) ? -1
+											: (a.second.emaCallsPerFrame > b.second.emaCallsPerFrame)   ? 1
+																										: 0;
 										break;
 									}
 									if (delta != 0) {
@@ -96,9 +114,15 @@ namespace Boidsish {
 						ImGui::TableSetColumnIndex(2);
 						ImGui::Text("%.2f", stats.GetAverageUs());
 						ImGui::TableSetColumnIndex(3);
-						ImGui::Text("%.2f", stats.minTimeUs);
+						ImGui::Text("%.2f", stats.emaTimeUs);
 						ImGui::TableSetColumnIndex(4);
+						ImGui::Text("%.2f", stats.minTimeUs);
+						ImGui::TableSetColumnIndex(5);
 						ImGui::Text("%.2f", stats.maxTimeUs);
+						ImGui::TableSetColumnIndex(6);
+						ImGui::Text("%.2f", stats.avgCallsPerFrame);
+						ImGui::TableSetColumnIndex(7);
+						ImGui::Text("%.2f", stats.emaCallsPerFrame);
 					}
 					ImGui::EndTable();
 				}

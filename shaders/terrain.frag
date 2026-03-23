@@ -242,12 +242,10 @@ void main() {
 	vec2 b = (PrevPosition.xy / PrevPosition.w) * 0.5 + 0.5;
 	Velocity = a - b;
 
-
 	// Distance Fade -- precalc
-	vec3 norm = normalize(Normal);
+	vec3  norm = normalize(Normal);
 	float baseFreq = 0.1 / worldScale;
 	float slope = dot(norm, vec3(0.0, 1.0, 0.0));
-
 
 	float dist = length(FragPos.xz - viewPos.xz);
 	// float n_fade = snoise(vec3(FragPos.xy / (25 * worldScale), time * 0.08));
@@ -270,7 +268,7 @@ void main() {
 	float macroNoise = sin(length(FragPos.xz) * 44323);
 	float combinedNoise = sin(length(FragPos.xz) * 5222343);
 
-	float distanceFactor = dist*smoothstep(0, 10.0, FragPos.y);
+	float distanceFactor = dist * smoothstep(0, 10.0, FragPos.y);
 	float noseFade = fade_start - 100.0;
 
 	if (distanceFactor < noseFade) {
@@ -281,12 +279,12 @@ void main() {
 		combinedNoise = largeNoise * 0.6 + (1.0 - medNoise) * 0.3 + fineNoise * 0.1;
 
 		if (distanceFactor > 250) {
-			float angle = 1.0-dot(viewDir, viewPos - FragPos);
-			largeNoise = mix(largeNoise, 1.0, angle*smoothstep(noseFade, fade_end, distanceFactor));
-			medNoise = mix(medNoise, 1.0, angle*smoothstep(noseFade, fade_end, distanceFactor));
-			fineNoise = mix(fineNoise, 1.0, angle*smoothstep(noseFade, fade_end, distanceFactor));
-			macroNoise = mix(macroNoise, 1.0, angle*smoothstep(noseFade, fade_end, distanceFactor));
-			combinedNoise = mix(combinedNoise, 1.0, angle*smoothstep(noseFade, fade_end, distanceFactor));
+			float angle = 1.0 - dot(viewDir, viewPos - FragPos);
+			largeNoise = mix(largeNoise, 1.0, angle * smoothstep(noseFade, fade_end, distanceFactor));
+			medNoise = mix(medNoise, 1.0, angle * smoothstep(noseFade, fade_end, distanceFactor));
+			fineNoise = mix(fineNoise, 1.0, angle * smoothstep(noseFade, fade_end, distanceFactor));
+			macroNoise = mix(macroNoise, 1.0, angle * smoothstep(noseFade, fade_end, distanceFactor));
+			combinedNoise = mix(combinedNoise, 1.0, angle * smoothstep(noseFade, fade_end, distanceFactor));
 		}
 	}
 
@@ -301,7 +299,6 @@ void main() {
 
 	// Slope analysis: 1.0 = flat horizontal, 0.0 = vertical cliff
 	float distortedSlope = slope + medNoise * 0.08;
-
 
 	// // Slope-based cliff blending
 	float verticalMask = smoothstep(0.4, 0.2, slope);
@@ -355,8 +352,6 @@ void main() {
 	float rockyMask = smoothstep(0.5, 0.2, slope); // More variety on steeper slopes
 	finalMaterial.albedo = mix(finalMaterial.albedo, finalMaterial.albedo * (1.0 + rockyVar * 0.2), rockyMask);
 
-
-
 	vec3  albedo = finalMaterial.albedo;
 	float roughness = finalMaterial.roughness;
 	float metallic = finalMaterial.metallic;
@@ -367,11 +362,10 @@ void main() {
 	// Detail Variation
 	// ========================================================================
 
-
 	// ========================================================================
 	// Normal Perturbation (Grain)
 	// ========================================================================
-	vec3  perturbedNorm = norm;
+	vec3 perturbedNorm = norm;
 
 	if (perturbFactor >= 0.1 && normalStrength > 0.0) {
 		float roughnessStrength = smoothstep(0.1, 1.0, perturbFactor) * normalStrength;
@@ -428,7 +422,6 @@ void main() {
 	albedo *= mix(1, mix(1.0, 1.25, windDistortion) * mix(1.0, 1.05, windRipple), grassFactor);
 	roughness *= mix(1.25, 1.0, windDistortion) * mix(1, mix(1.5, 1.0, windRipple), grassFactor);
 	// perturbedNorm += rawWindNudge * mix(0.0, 1.05, plainRipple);
-
 
 	vec3 lighting = apply_lighting_pbr(FragPos, perturbedNorm, albedo, roughness, metallic, 1.0).rgb;
 

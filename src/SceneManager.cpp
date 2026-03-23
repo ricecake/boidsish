@@ -4,6 +4,8 @@
 #include <filesystem>
 #include <iostream>
 
+#include "profiler.h"
+
 namespace Boidsish {
 
 	SceneManager::SceneManager(const std::string& sceneFolder): m_sceneFolder(sceneFolder) {
@@ -26,6 +28,7 @@ namespace Boidsish {
 	}
 
 	void SceneManager::LoadDictionary(const std::string& name) {
+		PROJECT_PROFILE_SCOPE("SceneManager::LoadDictionary");
 		m_currentDictionary = name;
 		m_scenes.clear();
 		std::string path = m_sceneFolder + "/" + name + ".dict";
@@ -42,6 +45,7 @@ namespace Boidsish {
 	}
 
 	void SceneManager::SaveDictionary(const std::string& name) {
+		PROJECT_PROFILE_SCOPE("SceneManager::SaveDictionary");
 		if (name.empty())
 			return;
 		m_currentDictionary = name;

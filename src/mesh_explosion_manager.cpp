@@ -5,6 +5,7 @@
 #include <random>
 
 #include "logger.h"
+#include "profiler.h"
 #include <GL/glew.h>
 #include <glm/gtc/quaternion.hpp>
 #include <glm/gtx/quaternion.hpp>
@@ -195,6 +196,7 @@ namespace Boidsish {
 	}
 
 	void MeshExplosionManager::Update(float delta_time, float time) {
+		PROJECT_PROFILE_SCOPE("MeshExplosionManager::Update");
 		if (!initialized_ || !compute_shader_ || !compute_shader_->isValid())
 			return;
 
@@ -215,6 +217,7 @@ namespace Boidsish {
 	}
 
 	void MeshExplosionManager::Render(const glm::mat4& view, const glm::mat4& projection, const glm::vec3& camera_pos) {
+		PROJECT_PROFILE_SCOPE("MeshExplosionManager::Render");
 		if (!initialized_ || !compute_shader_ || !compute_shader_->isValid())
 			return;
 

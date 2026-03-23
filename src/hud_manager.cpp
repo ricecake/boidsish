@@ -8,6 +8,7 @@
 #include "graphics.h"
 #include "imgui.h"
 #include "logger.h"
+#include "profiler.h"
 #include "stb_image.h"
 #include <GL/glew.h>
 
@@ -69,6 +70,7 @@ namespace Boidsish {
 	}
 
 	void HudManager::Update(float dt, const Camera& camera) {
+		PROJECT_PROFILE_SCOPE("HudManager::Update");
 		for (auto& element : m_elements) {
 			element->Update(dt, camera);
 		}

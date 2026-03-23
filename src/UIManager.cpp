@@ -7,6 +7,7 @@
 #include "imgui_impl_glfw.h"
 #include "imgui_impl_opengl3.h"
 #include "imgui_internal.h"
+#include "profiler.h"
 
 namespace Boidsish {
 	namespace UI {
@@ -39,6 +40,7 @@ namespace Boidsish {
 		}
 
 		void UIManager::Render() {
+			PROJECT_PROFILE_SCOPE("UIManager::Render");
 			ImGui_ImplOpenGL3_NewFrame();
 			ImGui_ImplGlfw_NewFrame();
 			ImGui::NewFrame();

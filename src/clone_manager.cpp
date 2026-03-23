@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <vector>
 
+#include "profiler.h"
 #include "shader.h"
 #include "shape.h"
 #include <glm/gtc/matrix_transform.hpp>
@@ -37,6 +38,7 @@ namespace Boidsish {
 	}
 
 	void CloneManager::Update(float current_time, const glm::vec3& camera_pos) {
+		PROJECT_PROFILE_SCOPE("CloneManager::Update");
 		clones_.erase(
 			std::remove_if(
 				clones_.begin(),
