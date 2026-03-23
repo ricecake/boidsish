@@ -41,7 +41,7 @@ namespace Boidsish {
 
 	class FireEffectManager {
 	public:
-		FireEffectManager();
+		FireEffectManager(int num_voxel_buffers = 1);
 		~FireEffectManager();
 
 		// Initialize shaders and buffers. Must be called from main thread with OpenGL context.
@@ -72,7 +72,9 @@ namespace Boidsish {
 		);
 
 		// Add a new fire effect and return a pointer to it
-		VoxelBrickManager* GetVoxelManager() { return voxel_manager_.get(); }
+		VoxelBrickManager* GetVoxelManager(int index = 0) {
+			return index < voxel_managers_.size() ? voxel_managers_[index].get() : nullptr;
+		}
 
 		std::shared_ptr<FireEffect> AddEffect(
 			const glm::vec3& position,
@@ -100,7 +102,7 @@ namespace Boidsish {
 		std::unique_ptr<ComputeShader> fixup_shader_;
 		std::unique_ptr<ComputeShader> grid_build_shader_;
 		std::unique_ptr<Shader>        render_shader_;
-		std::unique_ptr<VoxelBrickManager> voxel_manager_;
+		std::vector<std::unique_ptr<VoxelBrickManager>> voxel_managers_;
 
 		GLuint particle_buffer_{0};
 		GLuint grid_heads_buffer_{0};

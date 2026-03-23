@@ -24,7 +24,11 @@ namespace Boidsish {
 		float extras[2];
 	};
 
-	FireEffectManager::FireEffectManager() {}
+	FireEffectManager::FireEffectManager(int num_voxel_buffers) {
+		for (int i = 0; i < num_voxel_buffers; ++i) {
+			voxel_managers_.push_back(std::make_unique<VoxelBrickManager>());
+		}
+	}
 
 	void FireEffectManager::Initialize() {
 		_EnsureShaderAndBuffers();
@@ -204,8 +208,9 @@ namespace Boidsish {
 		// A dummy VAO is required by OpenGL 4.3 core profile for drawing arrays.
 		glGenVertexArrays(1, &dummy_vao_);
 
-		voxel_manager_ = std::make_unique<VoxelBrickManager>();
-		voxel_manager_->Initialize();
+		for (auto& vm : voxel_managers_) {
+			vm->Initialize();
+		}
 
 		initialized_ = true;
 	}
@@ -422,9 +427,13 @@ namespace Boidsish {
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 33, live_indices_buffer_);
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 34, behavior_command_buffer_);
 
-		// Voxel management
-		voxel_manager_->ClearAccumulation();
-		voxel_manager_->BindResources(); // Bind metadata, hash table, and accumulation buffer
+		// Voxel management (for now, just use the first manager for all particles)
+		// To truly support multiple buffers, we'd need multiple behavior dispatches or
+		// channels in the accumulation SSBO.
+		for (auto& vm : voxel_managers_) {
+			vm->ClearAccumulation();
+			vm->BindResources();
+		}
 
 		auto bind_textures_and_uniforms = [&](ComputeShader* shader) {
 			shader->use();
@@ -531,7 +540,9 @@ namespace Boidsish {
 		glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT | GL_COMMAND_BARRIER_BIT | GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
 
 		// Update Voxel system (copy accumulation to sampling)
-		voxel_manager_->Update(delta_time, time_);
+		for (auto& vm : voxel_managers_) {
+			vm->Update(delta_time, time_);
+		}
 
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 16, 0);
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::ParticleGridHeads(), 0);

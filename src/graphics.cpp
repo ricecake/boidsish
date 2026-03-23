@@ -740,7 +740,7 @@ namespace Boidsish {
 			noise_manager = std::make_unique<NoiseManager>();
 			noise_manager->Initialize();
 			clone_manager = std::make_unique<CloneManager>();
-			fire_effect_manager = std::make_unique<FireEffectManager>();
+			fire_effect_manager = std::make_unique<FireEffectManager>(2); // 2 voxel buffers by default
 			fire_effect_manager->Initialize(); // Must initialize on main thread with GL context
 			mesh_explosion_manager = std::make_unique<MeshExplosionManager>();
 			mesh_explosion_manager->Initialize(); // Must initialize on main thread with GL context

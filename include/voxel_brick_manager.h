@@ -22,7 +22,7 @@ namespace Boidsish {
 
         void Initialize();
         void Update(float delta_time, float time);
-        void BindResources();
+        void BindResources(int unit_offset = 0);
         void ClearAccumulation();
 
         GLuint GetBrickPoolTexture() const { return brick_pool_sampling_tex_; }

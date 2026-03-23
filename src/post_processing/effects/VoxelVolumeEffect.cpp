@@ -37,11 +37,12 @@ namespace Boidsish {
             shader_->setFloat("u_maxDistance", max_dist_);
             shader_->setFloat("u_densityScale", density_scale_);
             shader_->setVec3("u_ambientColor", ambient_color_);
+            shader_->setUint("u_styleMask", style_mask_);
             shader_->setVec3("u_cameraPos", cameraPos);
             shader_->setMat4("u_invProj", glm::inverse(projectionMatrix));
             shader_->setMat4("u_invView", glm::inverse(viewMatrix));
 
-            shader_->setInt("u_brickPool", Constants::Class::VoxelBricks::BrickPoolUnit());
+            shader_->setInt("u_brickPool", Constants::Class::VoxelBricks::BrickPoolUnit() + unit_offset_);
 
             // Draw full screen quad
             glDrawArrays(GL_TRIANGLES, 0, 6);

@@ -1,10 +1,22 @@
 #version 430 core
 
-layout(local_size_x = 8, local_size_y = 8, local_size_z = 8) in;
+#include "helpers/voxel_brick.glsl"
 
-layout(r32ui, binding = 0) uniform uimage3D u_brickPool;
+layout(local_size_x = 256, local_size_y = 1, local_size_z = 1) in;
 
 void main() {
-    ivec3 pool_pos = ivec3(gl_GlobalInvocationID.xyz);
-    imageStore(u_brickPool, pool_pos, uvec4(0));
+    uint i = gl_GlobalInvocationID.x;
+
+    // Clear accumulation data (4 uints per voxel)
+    if (i < V_MAX_BRICKS * 512) {
+        accumulation_data[i * 4 + 0] = 0;
+        accumulation_data[i * 4 + 1] = 0;
+        accumulation_data[i * 4 + 2] = 0;
+        accumulation_data[i * 4 + 3] = 0;
+    }
+
+    // Clear votes (can reuse threads or separate dispatch)
+    if (i < V_HASH_SIZE) {
+        votes[i] = 0;
+    }
 }

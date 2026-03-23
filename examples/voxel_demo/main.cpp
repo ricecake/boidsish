@@ -59,14 +59,19 @@ int main() {
             return std::vector<std::shared_ptr<Shape>>{};
         });
 
-        // 2. Configure Voxel Volume Effect
+        // 2. Configure Voxel Volume Effects (Multiple Invocations)
         auto& ppm = vis.GetPostProcessingManager();
+
+        // Find existing global one or we can add new ones
+        bool found_existing = false;
         for (auto& effect : ppm.GetPreToneMappingEffects()) {
             if (auto voxel_effect = std::dynamic_pointer_cast<PostProcessing::VoxelVolumeEffect>(effect)) {
                 voxel_effect->SetEnabled(true);
                 voxel_effect->SetStepSize(0.2f);
-                voxel_effect->SetDensityScale(2.5f);
+                voxel_effect->SetDensityScale(1.5f);
                 voxel_effect->SetAmbientColor(glm::vec3(0.02f, 0.02f, 0.05f));
+                voxel_effect->SetStyleMask(0xFFFFFFFF);
+                found_existing = true;
             }
         }
 

@@ -63,23 +63,29 @@ namespace Boidsish {
     void VoxelBrickManager::ClearAccumulation() {
         if (!initialized_) return;
 
-        // Clear SSBO accumulation buffer
-        glBindBuffer(GL_SHADER_STORAGE_BUFFER, accumulation_ssbo_);
-        size_t accum_size = Constants::Class::VoxelBricks::MaxBricks() * 8 * 8 * 8 * 4 * sizeof(GLuint);
-        // Using glClearBufferData for efficiency if available, otherwise map/memset
-        GLuint zero = 0;
-        glClearBufferData(GL_SHADER_STORAGE_BUFFER, GL_R32UI, GL_RED_INTEGER, GL_UNSIGNED_INT, &zero);
+        // Run clear shader to reset accumulation buffer in parallel on GPU
+        clear_shader_->use();
+        glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::VoxelAccumulation(), accumulation_ssbo_);
+        glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::VoxelBrickVotes(), votes_ssbo_);
 
-        // Clear votes SSBO
-        glBindBuffer(GL_SHADER_STORAGE_BUFFER, votes_ssbo_);
-        glClearBufferData(GL_SHADER_STORAGE_BUFFER, GL_R32I, GL_RED_INTEGER, GL_INT, &zero);
+        // Dispatch enough threads to cover all data.
+        // MaxBricks * 8*8*8 = 4096 * 512 = 2,097,152 entries.
+        // We can do this brick-by-brick or entry-by-entry.
+        glDispatchCompute((Constants::Class::VoxelBricks::MaxBricks() * 512 + 255) / 256, 1, 1);
+
+        // Also clear votes SSBO (HashTableSize entries)
+        // This is done in the same shader or another dispatch.
+        // For simplicity, let's use another dispatch for votes if it's large.
+        glDispatchCompute((Constants::Class::VoxelBricks::HashTableSize() + 255) / 256, 1, 1);
+
+        glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
     }
 
-    void VoxelBrickManager::BindResources() {
+    void VoxelBrickManager::BindResources(int unit_offset) {
         if (!initialized_) return;
 
         // Bind sampling texture to the global voxel unit
-        glActiveTexture(GL_TEXTURE0 + Constants::Class::VoxelBricks::BrickPoolUnit());
+        glActiveTexture(GL_TEXTURE0 + Constants::Class::VoxelBricks::BrickPoolUnit() + unit_offset);
         glBindTexture(GL_TEXTURE_3D, brick_pool_sampling_tex_);
 
         // Bind metadata and hash table for raymarching

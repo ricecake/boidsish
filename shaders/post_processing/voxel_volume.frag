@@ -12,6 +12,7 @@ uniform float u_stepSize;
 uniform float u_maxDistance;
 uniform float u_densityScale;
 uniform vec3  u_ambientColor;
+uniform uint  u_styleMask;
 
 uniform vec3  u_cameraPos;
 uniform mat4  u_invProj;
@@ -43,13 +44,11 @@ void main() {
     RaymarchResult res = march_voxels(ray, min(u_maxDistance, scene_dist), u_stepSize);
 
     if (res.density > 0.0) {
-        // Simple volumetric integration/blending
         float alpha = clamp(res.density * u_densityScale, 0.0, 1.0);
 
-        // Color by direction: red/x, green/y, blue/z
+        // Color by direction
         vec3 voxel_color = abs(res.direction);
 
-        // Blend with scene
         vec3 final_color = mix(scene_color, voxel_color + u_ambientColor, alpha);
         FragColor = vec4(final_color, 1.0);
     } else {

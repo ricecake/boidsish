@@ -38,22 +38,21 @@ void main() {
     }
 
     // 2. Deallocation Logic
-    // We reuse the same threads to check bricks for expiration
     if (i < V_MAX_BRICKS) {
         int brick_idx = int(i);
-        if (brick_metadata[brick_idx].grid_pos.w != -1) { // If brick is active
+        if (brick_metadata[brick_idx].grid_pos.w != -1) {
             int age = u_frameIndex - brick_metadata[brick_idx].last_voted_frame;
-            if (age > 10) { // Threshold for deallocation (10 frames of no votes)
+            if (age > 30) { // Increased threshold to 30 frames for stability
                 ivec3 grid_pos = brick_metadata[brick_idx].grid_pos.xyz;
                 uint h = hash_grid_pos(grid_pos);
 
-                // Remove from hash table if it matches this brick
-                // (Linear probing means we might need to search, but manager logic keeps it simple)
                 if (hash_table[h] == brick_idx) {
                     hash_table[h] = -1;
                     brick_metadata[brick_idx].grid_pos.w = -1;
                     int free_pos = atomicAdd(free_count, 1);
-                    free_indices[free_pos] = brick_idx;
+                    if (free_pos < V_MAX_BRICKS) {
+                        free_indices[free_pos] = brick_idx;
+                    }
                 }
             }
         }
