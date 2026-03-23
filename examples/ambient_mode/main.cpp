@@ -7,9 +7,11 @@
 #include <cstdlib>
 #include <ctime>
 
+#include "ConfigManager.h"
 #include "graphics.h"
 #include "logger.h"
 #include "light_manager.h"
+#include "terrain_generator.h"
 #include "terrain_generator_interface.h"
 #include "post_processing/effects/AutoExposureEffect.h"
 #include "decor_manager.h"
@@ -42,6 +44,10 @@ int main() {
             if (terrain) {
                 terrain->SetWorldScale(5.0f);
             }
+
+            // Disable distracted elements
+            ConfigManager::GetInstance().SetBool("enable_floor", false);
+            ConfigManager::GetInstance().SetBool("enable_skybox", false);
 
             // Alaska-style sunset setup
             auto& light_manager = viz.GetLightManager();
@@ -77,13 +83,19 @@ int main() {
         });
 
         // Probe logic variables
-        auto probe = std::make_shared<Boidsish::Dot>(0, 0, 0, 0, 1.0f);
-        probe->SetColor(0.2f, 0.8f, 1.0f);
-        probe->SetScale(glm::vec3(1.0f));
+        auto probe = std::make_shared<Boidsish::Dot>(0, 0, 0, 0, 5.0f);
+        probe->SetColor(0.2f, 0.8f, 1.0f, 0.5f); // Semi-transparent
+        probe->SetScale(glm::vec3(5.0f));
+        probe->SetRefractive(true, 1.5f);
+        probe->SetTrailLength(0);
         int probe_light_id = -1;
         float last_bubble_time = 0.0f;
         glm::vec3 probe_pos(100.0f, 0.0f, 100.0f);
+        glm::vec3 probe_target_pos(100.0f, 0.0f, 100.0f);
         glm::vec3 probe_velocity(0.0f);
+        float smoothed_probe_terrain_h = 0.0f;
+        float smoothed_cam_terrain_h = 0.0f;
+        bool first_frame = true;
 
         // Driving sun orbit and night factor override, and Probe logic
         visualizer.AddShapeHandler([&](float time) {
@@ -105,31 +117,48 @@ int main() {
             // --- Probe Movement ---
             float dt = visualizer.GetLastFrameTime();
 
-            // Search for low points (simple random walk biased towards valleys)
-            glm::vec3 random_accel(
-                (std::rand() % 100 - 50) * 0.1f,
-                0.0f,
-                (std::rand() % 100 - 50) * 0.1f
-            );
+            // Biome-aware target selection
+            static float target_timer = 0.0f;
+            target_timer += dt;
 
-            // Sample neighbors to find valley direction
-            glm::vec3 valley_bias(0.0f);
-            auto [current_h, _] = visualizer.GetTerrainPropertiesAtPoint(probe_pos.x, probe_pos.z);
-            auto [h_px, _1] = visualizer.GetTerrainPropertiesAtPoint(probe_pos.x + 5.0f, probe_pos.z);
-            auto [h_nx, _2] = visualizer.GetTerrainPropertiesAtPoint(probe_pos.x - 5.0f, probe_pos.z);
-            auto [h_pz, _3] = visualizer.GetTerrainPropertiesAtPoint(probe_pos.x, probe_pos.z + 5.0f);
-            auto [h_nz, _4] = visualizer.GetTerrainPropertiesAtPoint(probe_pos.x, probe_pos.z - 5.0f);
+            auto terrain_gen = dynamic_cast<TerrainGenerator*>(visualizer.GetTerrain().get());
+            if (terrain_gen && (target_timer > 10.0f || first_frame)) {
+                target_timer = 0.0f;
+                // Try to find a nice spot in forest/grass
+                for (int i = 0; i < 20; ++i) {
+                    float rx = probe_pos.x + (std::rand() % 1000 - 500);
+                    float rz = probe_pos.z + (std::rand() % 1000 - 500);
+                    float biome_val = terrain_gen->getBiomeControlValue(rx, rz);
 
-            valley_bias.x = h_nx - h_px;
-            valley_bias.z = h_nz - h_pz;
+                    // indices 1-3 are Lush Grass, Dry Grass, Forest
+                    if (biome_val >= 0.125f && biome_val < 0.5f) {
+                        probe_target_pos = glm::vec3(rx, 0.0f, rz);
+                        break;
+                    }
+                }
+            }
 
-            probe_velocity += (random_accel + valley_bias * 2.0f) * dt;
-            float max_speed = 5.0f;
+            glm::vec3 to_target = probe_target_pos - probe_pos;
+            to_target.y = 0;
+            if (glm::length(to_target) > 1.0f) {
+                probe_velocity += glm::normalize(to_target) * 2.0f * dt;
+            }
+
+            auto [current_h, probe_norm] = visualizer.GetTerrainPropertiesAtPoint(probe_pos.x, probe_pos.z);
+            (void)probe_norm;
+
+            float max_speed = 10.0f;
+            probe_velocity *= 0.98f; // drag
             if (glm::length(probe_velocity) > max_speed) {
                 probe_velocity = glm::normalize(probe_velocity) * max_speed;
             }
             probe_pos += probe_velocity * dt;
-            probe_pos.y = current_h + 2.0f + 0.5f * std::sin(time * 2.0f); // Float above ground
+
+            // Smooth terrain height for probe
+            if (first_frame) smoothed_probe_terrain_h = current_h;
+            else smoothed_probe_terrain_h = glm::mix(smoothed_probe_terrain_h, current_h, std::min(1.0f, dt * 2.0f));
+
+            probe_pos.y = smoothed_probe_terrain_h + 5.0f + 0.5f * std::sin(time * 2.0f); // Float above ground
 
             probe->SetPosition(probe_pos.x, probe_pos.y, probe_pos.z);
 
@@ -162,8 +191,16 @@ int main() {
 
             // Oscillate height
             float h_viz = cam_height_base + 30.0f * std::sin(time * cam_speed * 1.5f);
-            auto [h_terrain, std_ignore] = visualizer.GetTerrainPropertiesAtPoint(cam.x, cam.z);
-            cam.y = std::max(h_terrain + 10.0f, h_viz);
+            auto [h_terrain, cam_terrain_norm] = visualizer.GetTerrainPropertiesAtPoint(cam.x, cam.z);
+            (void)cam_terrain_norm;
+
+            // Smooth terrain height for camera
+            if (first_frame) smoothed_cam_terrain_h = h_terrain;
+            else smoothed_cam_terrain_h = glm::mix(smoothed_cam_terrain_h, h_terrain, std::min(1.0f, dt * 1.0f));
+
+            cam.y = std::max(smoothed_cam_terrain_h + 15.0f, h_viz);
+
+            first_frame = false;
 
             // Focus point: halfway between probe and center of orbit
             glm::vec3 target = (probe_pos + glm::vec3(cam.x, cam.y, cam.z)) * 0.5f;
