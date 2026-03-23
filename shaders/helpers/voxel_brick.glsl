@@ -9,6 +9,8 @@
 
 struct VoxelBrickMetadata {
     ivec4 grid_pos; // xyz: grid pos, w: pool index
+    int   last_voted_frame;
+    int   padding[3];
 };
 
 layout(std430, binding = 35) buffer VoxelBrickMetadataBuffer {

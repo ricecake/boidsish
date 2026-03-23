@@ -15,11 +15,13 @@ void main() {
 
     if (density_sum > 0) {
         float density = float(density_sum) / 255.0;
+        float inv_density_sum = 1.0 / float(density_sum);
 
         vec3 dir;
-        dir.x = float(accumulation_data[idx + 1]) / float(density_sum) * 2.0 - 1.0;
-        dir.y = float(accumulation_data[idx + 2]) / float(density_sum) * 2.0 - 1.0;
-        dir.z = float(accumulation_data[idx + 3]) / float(density_sum) * 2.0 - 1.0;
+        // Direction components were weighted by density during splatting
+        dir.x = float(accumulation_data[idx + 1]) * inv_density_sum * 2.0 - 1.0;
+        dir.y = float(accumulation_data[idx + 2]) * inv_density_sum * 2.0 - 1.0;
+        dir.z = float(accumulation_data[idx + 3]) * inv_density_sum * 2.0 - 1.0;
 
         if (length(dir) > 0.001) dir = normalize(dir);
 

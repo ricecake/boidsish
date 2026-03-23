@@ -424,9 +424,7 @@ namespace Boidsish {
 
 		// Voxel management
 		voxel_manager_->ClearAccumulation();
-		voxel_manager_->BindResources(); // Bind metadata and hash table
-		// Manually bind accumulation texture to unit 0 as expected by shaders
-		glBindImageTexture(0, voxel_manager_->GetAccumulationTexture(), 0, GL_TRUE, 0, GL_READ_WRITE, GL_R32UI);
+		voxel_manager_->BindResources(); // Bind metadata, hash table, and accumulation buffer
 
 		auto bind_textures_and_uniforms = [&](ComputeShader* shader) {
 			shader->use();

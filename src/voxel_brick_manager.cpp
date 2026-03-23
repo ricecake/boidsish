@@ -9,7 +9,6 @@ namespace Boidsish {
     VoxelBrickManager::VoxelBrickManager() {}
 
     VoxelBrickManager::~VoxelBrickManager() {
-        if (brick_pool_accumulation_tex_ != 0) glDeleteTextures(1, &brick_pool_accumulation_tex_);
         if (brick_pool_sampling_tex_ != 0) glDeleteTextures(1, &brick_pool_sampling_tex_);
         if (metadata_ssbo_ != 0) glDeleteBuffers(1, &metadata_ssbo_);
         if (votes_ssbo_ != 0) glDeleteBuffers(1, &votes_ssbo_);
@@ -33,10 +32,14 @@ namespace Boidsish {
     void VoxelBrickManager::Update(float delta_time, float time) {
         if (!initialized_) return;
 
+        static int frame_index = 0;
+        frame_index++;
+
         // 1. Run management shader to allocate/deallocate bricks based on votes
         manage_shader_->use();
         manage_shader_->setFloat("u_delta_time", delta_time);
         manage_shader_->setFloat("u_time", time);
+        manage_shader_->setInt("u_frameIndex", frame_index);
 
         glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::VoxelBrickMetadata(), metadata_ssbo_);
         glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::VoxelBrickVotes(), votes_ssbo_);
@@ -44,7 +47,7 @@ namespace Boidsish {
         glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::VoxelHashTable(), hash_table_ssbo_);
         glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::VoxelProposedGridPos(), proposed_pos_ssbo_);
 
-        glDispatchCompute(1, 1, 1);
+        glDispatchCompute((Constants::Class::VoxelBricks::HashTableSize() + 63) / 64, 1, 1);
         glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
 
         // 2. Normalize and copy accumulated data to sampling texture
@@ -105,7 +108,9 @@ namespace Boidsish {
         // Metadata: MaxBricks
         glGenBuffers(1, &metadata_ssbo_);
         glBindBuffer(GL_SHADER_STORAGE_BUFFER, metadata_ssbo_);
-        glBufferData(GL_SHADER_STORAGE_BUFFER, Constants::Class::VoxelBricks::MaxBricks() * sizeof(VoxelBrickMetadata), nullptr, GL_DYNAMIC_DRAW);
+        std::vector<VoxelBrickMetadata> initial_metadata(Constants::Class::VoxelBricks::MaxBricks());
+        for (auto& m : initial_metadata) m.grid_pos.w = -1; // Mark as inactive
+        glBufferData(GL_SHADER_STORAGE_BUFFER, initial_metadata.size() * sizeof(VoxelBrickMetadata), initial_metadata.data(), GL_DYNAMIC_DRAW);
 
         // Votes: HashTableSize
         glGenBuffers(1, &votes_ssbo_);

@@ -585,7 +585,7 @@ namespace Boidsish {
 				}
 
 				constexpr int BrickPoolUnit() {
-					return 13;
+					return 19;
 				}
 			} // namespace VoxelBricks
 

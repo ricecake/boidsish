@@ -3,7 +3,7 @@
 
 #include "voxel_brick.glsl"
 
-uniform sampler3D u_brickPool; // Texture unit 13 (VOXEL_BRICK_POOL_UNIT)
+uniform sampler3D u_brickPool; // Texture unit 19 (VOXEL_BRICK_POOL_UNIT)
 
 struct Ray {
     vec3 origin;
@@ -30,7 +30,7 @@ RaymarchResult march_voxels(Ray ray, float max_dist, float step_size) {
 
     // Ray start and direction setup
     vec3 p = ray.origin;
-    vec3 d = normalize(ray.direction);
+    vec3 d = normalize(ray.direction + vec3(1e-6)); // Add epsilon to avoid div-by-zero
     float t = 0.0;
 
     while (t < max_dist) {
@@ -42,7 +42,7 @@ RaymarchResult march_voxels(Ray ray, float max_dist, float step_size) {
             ivec3 pool_origin = get_brick_origin_in_pool(brick_idx);
 
             // March until we exit the brick
-            float brick_exit_t = t + brick_world_size; // Rough estimate
+            float brick_exit_t = t + brick_world_size;
             while (t < brick_exit_t && t < max_dist) {
                 vec3 pool_uv = (vec3(pool_origin) + mod(p, brick_world_size) / V_VOXEL_SIZE) / (16.0 * float(V_BRICK_SIZE));
                 vec4 sample_data = texture(u_brickPool, pool_uv);

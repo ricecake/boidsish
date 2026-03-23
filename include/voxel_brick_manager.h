@@ -11,6 +11,8 @@ namespace Boidsish {
 
     struct VoxelBrickMetadata {
         glm::ivec4 grid_pos; // xyz: grid pos, w: pool index
+        int        last_voted_frame;
+        int        padding[3];
     };
 
     class VoxelBrickManager {
@@ -24,15 +26,12 @@ namespace Boidsish {
         void ClearAccumulation();
 
         GLuint GetBrickPoolTexture() const { return brick_pool_sampling_tex_; }
-        GLuint GetAccumulationTexture() const { return brick_pool_accumulation_tex_; }
 
     private:
         bool initialized_ = false;
 
         // Dual 3D textures for the brick pool
-        // Accumulation: R32UI (fixed-point density and packed direction)
         // Sampling: RGBA16F (normalized density and direction)
-        GLuint brick_pool_accumulation_tex_ = 0;
         GLuint brick_pool_sampling_tex_ = 0;
 
         // SSBOs

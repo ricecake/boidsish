@@ -2,7 +2,7 @@
 
 #include "helpers/voxel_brick.glsl"
 
-layout(local_size_x = 1, local_size_y = 1, local_size_z = 1) in;
+layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
 
 layout(std430, binding = 37) buffer VoxelFreeListBuffer {
     int free_count;
@@ -11,23 +11,49 @@ layout(std430, binding = 37) buffer VoxelFreeListBuffer {
 
 uniform float u_delta_time;
 uniform float u_time;
+uniform int   u_frameIndex;
 
 void main() {
-    // 1. Brick Allocation based on votes
-    for (int i = 0; i < V_HASH_SIZE; ++i) {
-        if (votes[i] > 0) {
-            int existing_idx = hash_table[i];
-            if (existing_idx == -1) {
-                // Try to allocate new brick
-                if (free_count > 0) {
-                    int brick_idx = free_indices[--free_count];
+    uint i = gl_GlobalInvocationID.x;
 
-                    // Initialize brick metadata
+    // 1. Allocation Logic
+    if (i < V_HASH_SIZE) {
+        if (votes[i] > 0) {
+            if (hash_table[i] == -1) {
+                int free_idx = atomicAdd(free_count, -1);
+                if (free_idx > 0) {
+                    int brick_idx = free_indices[free_idx - 1];
                     brick_metadata[brick_idx].grid_pos = proposed_grid_pos[i];
                     brick_metadata[brick_idx].grid_pos.w = brick_idx;
-
-                    // Update hash table
+                    brick_metadata[brick_idx].last_voted_frame = u_frameIndex;
                     hash_table[i] = brick_idx;
+                } else {
+                    atomicAdd(free_count, 1);
+                }
+            } else {
+                int brick_idx = hash_table[i];
+                brick_metadata[brick_idx].last_voted_frame = u_frameIndex;
+            }
+        }
+    }
+
+    // 2. Deallocation Logic
+    // We reuse the same threads to check bricks for expiration
+    if (i < V_MAX_BRICKS) {
+        int brick_idx = int(i);
+        if (brick_metadata[brick_idx].grid_pos.w != -1) { // If brick is active
+            int age = u_frameIndex - brick_metadata[brick_idx].last_voted_frame;
+            if (age > 10) { // Threshold for deallocation (10 frames of no votes)
+                ivec3 grid_pos = brick_metadata[brick_idx].grid_pos.xyz;
+                uint h = hash_grid_pos(grid_pos);
+
+                // Remove from hash table if it matches this brick
+                // (Linear probing means we might need to search, but manager logic keeps it simple)
+                if (hash_table[h] == brick_idx) {
+                    hash_table[h] = -1;
+                    brick_metadata[brick_idx].grid_pos.w = -1;
+                    int free_pos = atomicAdd(free_count, 1);
+                    free_indices[free_pos] = brick_idx;
                 }
             }
         }
