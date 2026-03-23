@@ -649,12 +649,23 @@ namespace Boidsish {
 					float worldZ = (chunkZ * chunk_size_ + j) * world_scale_;
 
 					if (deformation_manager_.HasDeformationAt(worldX, worldZ)) {
-						// Finite differences for gradient
+						// Finite differences for gradient. To ensure consistency at chunk boundaries,
+						// we need to sample height values from neighboring points even if they're
+						// outside the current chunk's data.
 						float h_center = heightmap[i][j][0];
-						float h_left = (i > 0) ? heightmap[i - 1][j][0] : h_center;
-						float h_right = (i < num_vertices_x - 1) ? heightmap[i + 1][j][0] : h_center;
-						float h_down = (j > 0) ? heightmap[i][j - 1][0] : h_center;
-						float h_up = (j < num_vertices_z - 1) ? heightmap[i][j + 1][0] : h_center;
+						float h_left, h_right, h_down, h_up;
+
+						if (i > 0) h_left = heightmap[i-1][j][0];
+						else h_left = std::get<0>(CalculateTerrainPropertiesAtPoint(worldX - world_scale_, worldZ));
+
+						if (i < num_vertices_x - 1) h_right = heightmap[i+1][j][0];
+						else h_right = std::get<0>(CalculateTerrainPropertiesAtPoint(worldX + world_scale_, worldZ));
+
+						if (j > 0) h_down = heightmap[i][j-1][0];
+						else h_down = std::get<0>(CalculateTerrainPropertiesAtPoint(worldX, worldZ - world_scale_));
+
+						if (j < num_vertices_z - 1) h_up = heightmap[i][j+1][0];
+						else h_up = std::get<0>(CalculateTerrainPropertiesAtPoint(worldX, worldZ + world_scale_));
 
 						float dx = (h_right - h_left) * 0.5f;
 						float dz = (h_up - h_down) * 0.5f;
