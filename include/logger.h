@@ -186,12 +186,12 @@ namespace logger {
 
 				if constexpr (requires { typename std::tuple_size<T>::type; }) {
 					if constexpr (std::tuple_size_v<T> == 2) {
-						ss << std::get<0>(arg) << " => [" << std::get<1>(arg) << "]";
+						static_cast<std::ostream&>(ss) << std::get<0>(arg) << " => [" << std::get<1>(arg) << "]";
 					} else {
-						ss << arg;
+						static_cast<std::ostream&>(ss) << arg;
 					}
 				} else {
-					ss << arg;
+					static_cast<std::ostream&>(ss) << arg;
 				}
 
 				std::string replacement = ss.str();

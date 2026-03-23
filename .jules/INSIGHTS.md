@@ -48,9 +48,16 @@
 - **Fix 7**: Removed unused and uninitialized `frustum_ubo` from `VisualizerImpl` to reduce code clutter.
 - **Fix 8**: Added `glDeleteBuffers(1, &temporal_data_ubo)` to `VisualizerImpl` destructor to prevent UBO leaks.
 - **Fix 9**: Added a loop to `VisualizerImpl` destructor to explicitly delete triple-buffered `mdi_fences` sync objects.
+- **Fix 10**: Explicitly cast `std::stringstream` to `std::ostream&` in `include/logger.h` to fix MSVC template deduction errors.
 
 ### 7. Missing Resource Cleanup in MDI System
 - **Issue Type**: Memory Leak (OpenGL Sync Objects and Buffers)
 - **Location**: `src/graphics.cpp`, `VisualizerImpl::~VisualizerImpl`
 - **Evidence**: `temporal_data_ubo` and `mdi_fences` were created but not destroyed.
 - **Learning**: Triple-buffered resources and synchronization primitives (fences) require diligent tracking to ensure they are fully released during system shutdown. Unreleased fences can lead to driver-side resource exhaustion over multiple visualizer lifecycles.
+
+### 8. MSVC Template Deduction Sensitivity
+- **Issue Type**: Compilation Error (Cross-Platform)
+- **Location**: `include/logger.h`
+- **Evidence**: MSVC (cl) failed to deduce template arguments for `operator<<` when passed a `std::stringstream` directly in a variadic lambda context, whereas GCC and Clang succeeded.
+- **Learning**: When using `std::stringstream` with variadic templates and `operator<<`, explicit casting to `std::ostream&` improves portability and assists the MSVC compiler in resolving the correct overload.
