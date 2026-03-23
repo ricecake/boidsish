@@ -679,6 +679,15 @@ namespace Boidsish {
 				float dx = heightmap[i][j][1];
 				float dz = heightmap[i][j][2];
 
+				// DIRTY DIRTY HACKZ
+				// Force perimeter normals to be perfectly vertical to ensure
+				// consistency across chunk boundaries. This prevents "cracks"
+				// where tessellation levels might otherwise differ due to
+				// inconsistent normal-based boosts.
+				if (i == 0 || i == num_vertices_x - 1 || j == 0 || j == num_vertices_z - 1) {
+					dx = 0.0f;
+					dz = 0.0f;
+				}
 				positions.emplace_back(i * world_scale_, y, j * world_scale_);
 				normals.push_back(diffToNorm(dx, dz));
 				biomes_flat.push_back(biome_map[i][j]);
@@ -996,7 +1005,7 @@ namespace Boidsish {
 		// Note: coordinates already scaled if called from pointGenerate
 		glm::vec2 pos(x, z);
 		pos *= control_noise_scale_;
-		float result = Simplex::noise(pos + Simplex::curlNoise(pos)) * 0.5f + 0.5f;
+		float result = Simplex::worleyNoise(pos*0.001f) * Simplex::noise(pos * 0.1f + Simplex::curlNoise(pos*0.05f)) * 0.5f + 0.5f;
 
 		return std::clamp(result, 0.0f, 1.0f);
 

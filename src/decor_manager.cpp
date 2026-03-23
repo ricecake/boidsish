@@ -177,7 +177,7 @@ namespace Boidsish {
 		AddDecorType(
 			"assets/decor/Apple tree/AppleTree.obj",
 			{.min_density = 0.005f,
-		     .max_density = 0.01f,
+		     .max_density = 0.05f,
 		     .base_scale = 0.5f,
 		     .scale_variance = 0.01f,
 		     .min_height = 5.0f,
@@ -189,7 +189,7 @@ namespace Boidsish {
 		AddDecorType(
 			"assets/decor/Tree/tree01.obj",
 			{.min_density = 0.01f,
-		     .max_density = 0.02f,
+		     .max_density = 0.08f,
 		     .base_scale = 0.015f,
 		     .scale_variance = 0.01f,
 		     .min_height = 5.0f,
@@ -215,7 +215,7 @@ namespace Boidsish {
 		AddDecorType(
 			"assets/decor/Sunflower/PUSHILIN_sunflower.obj",
 			{.min_density = 0.01f,
-		     .max_density = 0.05f,
+		     .max_density = 0.1f,
 		     .base_scale = 0.5f,
 		     .scale_variance = 0.01f,
 		     .min_height = 5.0f,
