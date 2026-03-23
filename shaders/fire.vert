@@ -56,7 +56,10 @@ void main() {
 
 			// Vary size by sub-style and random factor
 			float size_var = fract(sin(float(particle_idx) * 123.456) * 456.789);
-			if (p.style == 6 || (p.style == 5 && v_emitter_id == 2)) { // Bubbles vary more in size
+			if (p.style == 5 && (v_emitter_id == 5 || v_emitter_id == 6)) { // Balloons and Sky Lanterns
+				gl_PointSize = 35.0 / (-view_pos.z * 0.05);
+				gl_PointSize *= (0.8 + size_var * 0.4);
+			} else if (p.style == 6 || (p.style == 5 && v_emitter_id == 2)) { // Bubbles vary more in size
 				gl_PointSize *= (0.5 + size_var * 1.5);
 			} else if (p.style == 9) { // Cinders are a bit smaller but vary
 				gl_PointSize *= (0.6 + size_var * 0.4);

@@ -141,6 +141,18 @@ void updateAmbientParticle(
 		p.vel.xyz += curlNoise(p.pos.xyz, time, curlTexture) * curlInfluence * dt;
 		p.vel.y += 0.15 * dt; // Gentle rising
 		p.vel.xyz *= pow(0.99, dt / 0.016);
+	} else if (sub_style == 5 || sub_style == 6) { // Balloon or Sky Lantern
+		float curlInfluence = 1.5 * p.extras[1];
+		p.vel.xyz += curlNoise(p.pos.xyz, time, curlTexture) * curlInfluence * dt;
+
+		// Rising behavior that slows down near target height
+		float targetHeight = p.extras[0];
+		float heightDiff = targetHeight - p.pos.y;
+		float riseAccel = 0.8 * p.extras[1] * clamp(heightDiff / (50.0 * worldScale), 0.0, 1.0);
+		p.vel.y += riseAccel * dt;
+
+		p.vel.xyz *= pow(0.97, dt / 0.016); // Drag
+		maxSpeed = 3.0;
 	} else {
 		p.vel.xyz += curlNoise(p.pos.xyz, time, curlTexture) * dt;
 		p.vel.xyz *= pow(0.99, dt / 0.016);
