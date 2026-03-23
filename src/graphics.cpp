@@ -49,6 +49,7 @@
 #include "post_processing/effects/StrobeEffect.h"
 #include "post_processing/effects/SuperSpeedEffect.h"
 #include "post_processing/effects/TimeStutterEffect.h"
+#include "post_processing/effects/VoxelVolumeEffect.h"
 #include "post_processing/effects/ToneMappingEffect.h"
 #include "post_processing/effects/WhispTrailEffect.h"
 #include "profiler.h"
@@ -102,6 +103,12 @@ namespace Boidsish {
 
 		// Effects
 		ShaderBase::RegisterConstant("MAX_SHOCKWAVES", Constants::Class::Shockwaves::MaxShockwaves());
+
+		// Voxel System
+		ShaderBase::RegisterConstant("VOXEL_BRICK_SIZE", Constants::Class::VoxelBricks::BrickSize());
+		ShaderBase::RegisterConstant("VOXEL_SIZE", Constants::Class::VoxelBricks::VoxelSize());
+		ShaderBase::RegisterConstant("VOXEL_MAX_BRICKS", Constants::Class::VoxelBricks::MaxBricks());
+		ShaderBase::RegisterConstant("VOXEL_HASH_TABLE_SIZE", Constants::Class::VoxelBricks::HashTableSize());
 
 		registered = true;
 	}
@@ -1058,6 +1065,10 @@ namespace Boidsish {
 				auto sdf_volume_effect = std::make_shared<PostProcessing::SdfVolumeEffect>();
 				sdf_volume_effect->SetEnabled(true);
 				post_processing_manager_->AddEffect(sdf_volume_effect);
+
+				auto voxel_volume_effect = std::make_shared<PostProcessing::VoxelVolumeEffect>();
+				voxel_volume_effect->SetEnabled(true);
+				post_processing_manager_->AddEffect(voxel_volume_effect);
 
 				if (enable_hdr_) {
 					auto tone_mapping_effect = std::make_shared<PostProcessing::ToneMappingEffect>();

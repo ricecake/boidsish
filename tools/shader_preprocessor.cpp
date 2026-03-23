@@ -34,6 +34,12 @@ int main(int argc, char** argv) {
     ShaderBase::RegisterConstant("CHUNK_SIZE", Boidsish::Constants::Class::Terrain::ChunkSize());
     ShaderBase::RegisterConstant("MAX_SHOCKWAVES", Boidsish::Constants::Class::Shockwaves::MaxShockwaves());
 
+    // Voxel System
+    ShaderBase::RegisterConstant("VOXEL_BRICK_SIZE", Boidsish::Constants::Class::VoxelBricks::BrickSize());
+    ShaderBase::RegisterConstant("VOXEL_SIZE", Boidsish::Constants::Class::VoxelBricks::VoxelSize());
+    ShaderBase::RegisterConstant("VOXEL_MAX_BRICKS", Boidsish::Constants::Class::VoxelBricks::MaxBricks());
+    ShaderBase::RegisterConstant("VOXEL_HASH_TABLE_SIZE", Boidsish::Constants::Class::VoxelBricks::HashTableSize());
+
     Preprocessor p;
     std::string processed = p.process(inputPath);
 

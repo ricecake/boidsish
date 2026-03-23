@@ -204,6 +204,9 @@ namespace Boidsish {
 		// A dummy VAO is required by OpenGL 4.3 core profile for drawing arrays.
 		glGenVertexArrays(1, &dummy_vao_);
 
+		voxel_manager_ = std::make_unique<VoxelBrickManager>();
+		voxel_manager_->Initialize();
+
 		initialized_ = true;
 	}
 
@@ -419,6 +422,10 @@ namespace Boidsish {
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 33, live_indices_buffer_);
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 34, behavior_command_buffer_);
 
+		// Voxel management
+		voxel_manager_->ClearAccumulation();
+		voxel_manager_->BindResources(); // Bind metadata, hash table, and accumulation buffer
+
 		auto bind_textures_and_uniforms = [&](ComputeShader* shader) {
 			shader->use();
 			shader->setFloat("u_delta_time", delta_time);
@@ -521,7 +528,10 @@ namespace Boidsish {
 		glBindBuffer(GL_DISPATCH_INDIRECT_BUFFER, 0);
 
 		// Ensure memory operations are finished before rendering
-		glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT | GL_COMMAND_BARRIER_BIT);
+		glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT | GL_COMMAND_BARRIER_BIT | GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
+
+		// Update Voxel system (copy accumulation to sampling)
+		voxel_manager_->Update(delta_time, time_);
 
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 16, 0);
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::ParticleGridHeads(), 0);
