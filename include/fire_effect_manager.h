@@ -7,6 +7,7 @@
 #include "constants.h"
 #include "fire_effect.h"
 #include "shader.h"
+#include "voxel_brick_manager.h"
 
 namespace Boidsish {
 
@@ -71,6 +72,8 @@ namespace Boidsish {
 		);
 
 		// Add a new fire effect and return a pointer to it
+		VoxelBrickManager* GetVoxelManager() { return voxel_manager_.get(); }
+
 		std::shared_ptr<FireEffect> AddEffect(
 			const glm::vec3& position,
 			FireEffectStyle  style,
@@ -97,6 +100,7 @@ namespace Boidsish {
 		std::unique_ptr<ComputeShader> fixup_shader_;
 		std::unique_ptr<ComputeShader> grid_build_shader_;
 		std::unique_ptr<Shader>        render_shader_;
+		std::unique_ptr<VoxelBrickManager> voxel_manager_;
 
 		GLuint particle_buffer_{0};
 		GLuint grid_heads_buffer_{0};
