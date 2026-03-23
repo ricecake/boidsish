@@ -740,7 +740,7 @@ namespace Boidsish {
 		shader.setMat4("model", glm::mat4(1.0f)); // Identity - instances provide world offset
 		shader.setFloat("uTessQualityMultiplier", tess_quality_multiplier);
 		shader.setFloat("uTessLevelMax", 64.0f);
-		shader.setFloat("uTessLevelMin", 1.0f);
+		shader.setFloat("uTessLevelMin", 2.0f);
 		shader.setFloat("uChunkSize", chunk_size_ * last_world_scale_);
 
 		if (clip_plane) {
