@@ -9,6 +9,7 @@
 	#include <source_location>
 #endif
 #include <sstream>
+#include <array>
 #include <string>
 #include <string_view>
 #include <tuple>
@@ -192,8 +193,10 @@ namespace logger {
 					} else {
 						os << "{ tuple-like size=" << std::tuple_size<T>::value << " }";
 					}
-				} else {
+				} else if constexpr (requires { os << arg; }) {
 					os << std::forward<decltype(arg)>(arg);
+				} else {
+					os << "{ unprintable type }";
 				}
 
 				std::string replacement = ss.str();
