@@ -10,6 +10,8 @@
 #include <GL/glew.h>
 #include <glm/glm.hpp>
 
+#include "geometry.h"
+
 class Shader;
 class ShaderBase;
 class ComputeShader;
@@ -19,28 +21,26 @@ namespace Boidsish {
 	struct Frustum;
 
 	/**
-	 * @brief High-performance instanced terrain rendering with heightmap lookup.
+	 * @brief High-performance terrain rendering using GPU-generated meshes and indirect drawing.
 	 *
 	 * Architecture:
-	 * - Single flat grid mesh (NxN quads) instanced for all visible chunks
-	 * - Heightmap stored in texture array (one slice per chunk)
-	 * - Per-instance data: world offset + heightmap slice index + bounds
-	 * - CPU frustum culling filters visible chunks before rendering
-	 * - Tessellation shader samples heightmap for vertex displacement
+	 * - Heightmap and biome data stored in texture arrays (one slice per chunk)
+	 * - Compute shader (terrain_mesh_gen.comp) generates a persistent mesh for each slice in a global SSBO
+	 * - Compute shader (terrain_cull.comp) performs frustum and Hi-Z occlusion culling on GPU
+	 * - Single glMultiDrawElementsIndirect call renders all visible chunks
+	 * - Persistent buffers and atomic counters for efficient GPU-driven pipeline
 	 *
 	 * Benefits:
-	 * - Single instanced draw call for all terrain
-	 * - Efficient frustum culling on CPU before draw
-	 * - Minimal vertex buffer (just one flat grid)
-	 * - Heightmap data doesn't need mesh-layout ordering
-	 * - GPU does displacement, reducing CPU→GPU bandwidth
+	 * - Fully GPU-driven culling and rendering
+	 * - Visual quality maintained with pre-generated high-res meshes
+	 * - Reduced CPU driver overhead via Indirect Drawing
+	 * - Persistent mesh storage avoids per-frame regeneration
 	 *
 	 * Data flow:
-	 * 1. TerrainGenerator produces heightmap data per chunk
-	 * 2. RegisterChunk() uploads heightmap to texture array slice
-	 * 3. Each frame: PrepareForRender() builds visible instance list
-	 * 4. Render() issues single instanced draw call
-	 * 5. TES shader samples heightmap to displace flat grid vertices
+	 * 1. TerrainGenerator uploads heightmap/biome data to texture arrays
+	 * 2. RegisterChunk() dispatches mesh_gen compute for new/updated slices
+	 * 3. Each frame: PrepareForRender() dispatches cull compute to fill indirect buffer
+	 * 4. Render() issues single glMultiDrawElementsIndirect call using cull results
 	 */
 	class TerrainRenderManager {
 	public:
@@ -155,6 +155,17 @@ namespace Boidsish {
 		 */
 		void BindTerrainData(ShaderBase& shader_base) const;
 
+		void SetHiZData(GLuint texture, int width, int height, int mips, const glm::mat4& prev_vp) {
+			hiz_texture_ = texture;
+			hiz_width_ = width;
+			hiz_height_ = height;
+			hiz_mips_ = mips;
+			prev_view_projection_ = prev_vp;
+			enable_hiz_ = true;
+		}
+
+		void SetHiZEnabled(bool enabled) { enable_hiz_ = enabled; }
+
 		void SetNoise(const GLuint& noise, const GLuint& curl, const GLuint& extra = 0) {
 			if (noise != 0) {
 				noise_texture_ = noise;
@@ -211,15 +222,32 @@ namespace Boidsish {
 		);
 
 		// Configuration
-		int chunk_size_;           // Grid size per chunk (e.g., 32)
+		int chunk_size_;           // Grid size per chunk (e.g., 128)
 		int max_chunks_;           // Maximum chunks in texture array
 		int heightmap_resolution_; // (chunk_size + 1) for vertex corners
 
+		struct TerrainVertex {
+			glm::vec4 position; // xyz = world pos, w = pad
+			glm::vec4 normal;   // xyz = normal, w = pad
+			glm::vec4 biome;    // xy = biome indices/weights, zw = pad
+		};
+
+		struct ChunkMetadata {
+			glm::vec4 world_offset_and_slice; // xyz = world offset, w = slice index
+			glm::vec4 bounds;                 // x = minY, y = maxY, zw = pad
+			uint32_t  is_active;              // 1 if chunk is registered, 0 otherwise
+			uint32_t  pad[3];
+		};
+
 		// OpenGL resources
-		GLuint grid_vao_ = 0;
-		GLuint grid_vbo_ = 0;
-		GLuint grid_ebo_ = 0;
-		GLuint instance_vbo_ = 0;
+		GLuint terrain_vao_ = 0;
+		GLuint terrain_ebo_ = 0;
+
+		GLuint terrain_vertices_ssbo_ = 0;
+		GLuint terrain_metadata_ssbo_ = 0;
+		GLuint terrain_indirect_args_ssbo_ = 0;
+		GLuint terrain_command_counter_buffer_ = 0;
+
 		GLuint heightmap_texture_ = 0; // GL_TEXTURE_2D_ARRAY (RGBA16F: height, normal.xyz)
 		GLuint biome_texture_ = 0;     // GL_TEXTURE_2D_ARRAY (RG8: low_idx, t)
 		GLuint noise_texture_ = 0;
@@ -233,18 +261,25 @@ namespace Boidsish {
 		GLuint terrain_data_ubo_ = 0;        // UBO for grid parameters
 
 		std::unique_ptr<ComputeShader> grid_mip_shader_;
+		std::unique_ptr<ComputeShader> mesh_gen_shader_;
+		std::unique_ptr<ComputeShader> cull_shader_;
 
 		// Grid mesh data
-		size_t grid_index_count_ = 0;
+		size_t indices_per_chunk_ = 0;
+		size_t vertices_per_chunk_ = 0;
 
 		// Chunk management
 		std::map<std::pair<int, int>, ChunkInfo> chunks_;
 		std::vector<int>                         free_slices_; // Available texture slices
 		int                                      next_slice_ = 0;
 
-		// Per-frame instance data
-		std::vector<InstanceData> visible_instances_;
-		size_t                    instance_buffer_capacity_ = 0;
+		// Hi-Z Occlusion Culling state
+		GLuint    hiz_texture_ = 0;
+		int       hiz_width_ = 0;
+		int       hiz_height_ = 0;
+		int       hiz_mips_ = 0;
+		bool      enable_hiz_ = false;
+		glm::mat4 prev_view_projection_{1.0f};
 
 		// Camera position for LRU eviction (updated by PrepareForRender)
 		glm::vec3 last_camera_pos_{0.0f, 0.0f, 0.0f};

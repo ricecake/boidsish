@@ -1,0 +1,149 @@
+#version 430 core
+
+layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
+
+struct ChunkMetadata {
+	vec4  worldOffset_and_slice; // xyz = world offset, w = slice index
+	vec4  bounds;                // x = minY, y = maxY, zw = pad
+	uint  is_active;             // 1 if chunk is registered, 0 otherwise
+	uint  pad[3];
+};
+
+layout(std430, binding = 41) readonly buffer TerrainMetadata {
+	ChunkMetadata chunk_data[];
+};
+
+struct DrawElementsIndirectCommand {
+	uint count;
+	uint instanceCount;
+	uint firstIndex;
+	int  baseVertex;
+	uint baseInstance;
+};
+
+layout(std430, binding = 42) writeonly buffer TerrainIndirectArgs {
+	DrawElementsIndirectCommand commands[];
+};
+
+// Simple atomic counter for output commands
+layout(binding = 0) uniform atomic_uint commandCount;
+
+uniform int   u_maxChunks;
+uniform float u_chunkSize;
+uniform uint  u_indicesPerChunk;
+uniform uint  u_verticesPerChunk;
+
+// Frustum planes from FrustumData UBO (binding 3)
+layout(std140, binding = 3) uniform FrustumData {
+	vec4  planes[6];
+	vec3  camera_pos;
+	float pad;
+} u_frustum;
+
+// Hi-Z occlusion culling
+uniform sampler2D u_hizTexture;
+uniform mat4      u_prevViewProjection;
+uniform ivec2     u_hizSize;
+uniform int       u_hizMipCount;
+uniform bool      u_enableHiZ;
+
+bool isInFrustum(vec3 minCorner, vec3 maxCorner) {
+	vec3 center = (minCorner + maxCorner) * 0.5;
+	vec3 halfSize = (maxCorner - minCorner) * 0.5;
+
+	for (int i = 0; i < 6; i++) {
+		float r = halfSize.x * abs(u_frustum.planes[i].x) +
+				  halfSize.y * abs(u_frustum.planes[i].y) +
+				  halfSize.z * abs(u_frustum.planes[i].z);
+		float d = dot(center, u_frustum.planes[i].xyz) + u_frustum.planes[i].w;
+
+		if (d < -r) return false;
+	}
+	return true;
+}
+
+bool isOccluded(vec3 minCorner, vec3 maxCorner) {
+	if (!u_enableHiZ) return false;
+
+	// Project AABB corners into NDC
+	vec3 corners[8];
+	corners[0] = vec3(minCorner.x, minCorner.y, minCorner.z);
+	corners[1] = vec3(minCorner.x, minCorner.y, maxCorner.z);
+	corners[2] = vec3(minCorner.x, maxCorner.y, minCorner.z);
+	corners[3] = vec3(minCorner.x, maxCorner.y, maxCorner.z);
+	corners[4] = vec3(maxCorner.x, minCorner.y, minCorner.z);
+	corners[5] = vec3(maxCorner.x, minCorner.y, maxCorner.z);
+	corners[6] = vec3(maxCorner.x, maxCorner.y, minCorner.z);
+	corners[7] = vec3(maxCorner.x, maxCorner.y, maxCorner.z);
+
+	vec2 minP = vec2(1.0);
+	vec2 maxP = vec2(-1.0);
+	float nearestDepth = 1.0;
+	int inFront = 0;
+
+	for (int i = 0; i < 8; i++) {
+		vec4 clip = u_prevViewProjection * vec4(corners[i], 1.0);
+		if (clip.w > 0.0) {
+			inFront++;
+			vec3 ndc = clip.xyz / clip.w;
+			minP = min(minP, ndc.xy);
+			maxP = max(maxP, ndc.xy);
+			nearestDepth = min(nearestDepth, ndc.z * 0.5 + 0.5);
+		}
+	}
+
+	if (inFront == 0) return false;
+	if (inFront < 8) return false; // Straddling near plane
+
+	vec2 uvMin = minP * 0.5 + 0.5;
+	vec2 uvMax = maxP * 0.5 + 0.5;
+	vec2 screenSize = (uvMax - uvMin) * vec2(u_hizSize);
+	float maxDim = max(screenSize.x, screenSize.y);
+	int mip = clamp(int(ceil(log2(max(maxDim, 1.0) / 2.0))), 0, u_hizMipCount - 1);
+
+	float hizDepth = 0.0;
+	hizDepth = max(hizDepth, textureLod(u_hizTexture, uvMin, float(mip)).r);
+	hizDepth = max(hizDepth, textureLod(u_hizTexture, vec2(uvMax.x, uvMin.y), float(mip)).r);
+	hizDepth = max(hizDepth, textureLod(u_hizTexture, vec2(uvMin.x, uvMax.y), float(mip)).r);
+	hizDepth = max(hizDepth, textureLod(u_hizTexture, uvMax, float(mip)).r);
+
+	if (hizDepth < 0.0001) return false;
+
+	return nearestDepth > hizDepth;
+}
+
+void main() {
+	uint idx = gl_GlobalInvocationID.x;
+	if (idx >= uint(u_maxChunks))
+		return;
+
+	if (chunk_data[idx].is_active == 0)
+		return;
+
+	vec3 worldOffset = chunk_data[idx].worldOffset_and_slice.xyz;
+	float minY = chunk_data[idx].bounds.x;
+	float maxY = chunk_data[idx].bounds.y;
+
+	vec3 minCorner = vec3(worldOffset.x, minY, worldOffset.z);
+	vec3 maxCorner = vec3(worldOffset.x + u_chunkSize, maxY, worldOffset.z + u_chunkSize);
+
+	// Frustum Culling
+	if (!isInFrustum(minCorner, maxCorner))
+		return;
+
+	// Hi-Z Occlusion Culling
+	if (isOccluded(minCorner, maxCorner))
+		return;
+
+	// Valid and visible: Generate indirect draw command
+	uint cmdIdx = atomicCounterIncrement(commandCount);
+
+	DrawElementsIndirectCommand cmd;
+	cmd.count = u_indicesPerChunk;
+	cmd.instanceCount = 1;
+	cmd.firstIndex = 0; // All chunks use the same static index buffer
+	cmd.baseVertex = int(idx * u_verticesPerChunk);
+	cmd.baseInstance = 0;
+
+	commands[cmdIdx] = cmd;
+}

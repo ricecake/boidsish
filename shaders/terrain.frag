@@ -2,14 +2,13 @@
 layout(location = 0) out vec4 FragColor;
 layout(location = 1) out vec2 Velocity;
 
-in vec3       Normal;
-in vec3       FragPos;
-in vec4       CurPosition;
-in vec4       PrevPosition;
-in vec2       TexCoords;
-flat in float TextureSlice;
-in float      perturbFactor;
-in float      tessFactor;
+in vec3  Normal;
+in vec3  FragPos;
+in vec4  CurPosition;
+in vec4  PrevPosition;
+in vec2  TexCoords;
+in vec2  vBiomeData;
+in vec3  viewForward;
 
 #include "helpers/fast_noise.glsl"
 #include "helpers/lighting.glsl"
@@ -372,6 +371,9 @@ void main() {
 	// Normal Perturbation (Grain)
 	// ========================================================================
 	vec3  perturbedNorm = norm;
+
+	float distToCam = length(FragPos - viewPos);
+	float perturbFactor = clamp(1.0 - distToCam / (200.0 * worldScale), 0.0, 1.0);
 
 	if (perturbFactor >= 0.1 && normalStrength > 0.0) {
 		float roughnessStrength = smoothstep(0.1, 1.0, perturbFactor) * normalStrength;
