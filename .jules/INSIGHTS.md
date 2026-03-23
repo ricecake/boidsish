@@ -48,7 +48,7 @@
 - **Fix 7**: Removed unused and uninitialized `frustum_ubo` from `VisualizerImpl` to reduce code clutter.
 - **Fix 8**: Added `glDeleteBuffers(1, &temporal_data_ubo)` to `VisualizerImpl` destructor to prevent UBO leaks.
 - **Fix 9**: Added a loop to `VisualizerImpl` destructor to explicitly delete triple-buffered `mdi_fences` sync objects.
-- **Fix 10**: Explicitly cast `std::stringstream` to `std::ostream&` in `include/logger.h` to fix MSVC template deduction errors.
+- **Fix 10**: Explicitly cast `std::stringstream` to `std::ostream&` in `include/logger.h` and updated tuple detection to use `std::tuple_size<T>::value` to fix MSVC template deduction errors.
 
 ### 7. Missing Resource Cleanup in MDI System
 - **Issue Type**: Memory Leak (OpenGL Sync Objects and Buffers)
