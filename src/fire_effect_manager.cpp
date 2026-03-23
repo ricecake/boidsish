@@ -27,6 +27,7 @@ namespace Boidsish {
 	FireEffectManager::FireEffectManager(int num_voxel_buffers) {
 		for (int i = 0; i < num_voxel_buffers; ++i) {
 			voxel_managers_.push_back(std::make_unique<VoxelBrickManager>());
+			voxel_style_masks_.push_back(0xFFFFFFFF); // All styles by default
 		}
 	}
 
@@ -108,6 +109,11 @@ namespace Boidsish {
 		grid_build_shader_ = std::make_unique<ComputeShader>("shaders/particle_grid_build.comp");
 		if (!grid_build_shader_->isValid()) {
 			logger::ERROR("Failed to compile particle grid build shader");
+		}
+
+		voxel_splat_shader_ = std::make_unique<ComputeShader>("shaders/particle_voxel_splat.comp");
+		if (!voxel_splat_shader_->isValid()) {
+			logger::ERROR("Failed to compile particle voxel splat shader");
 		}
 
 		render_shader_ = std::make_unique<Shader>("shaders/fire.vert", "shaders/fire.frag");
@@ -427,12 +433,18 @@ namespace Boidsish {
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 33, live_indices_buffer_);
 		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 34, behavior_command_buffer_);
 
-		// Voxel management (for now, just use the first manager for all particles)
-		// To truly support multiple buffers, we'd need multiple behavior dispatches or
-		// channels in the accumulation SSBO.
-		for (auto& vm : voxel_managers_) {
+		// Voxel management
+		for (size_t i = 0; i < voxel_managers_.size(); ++i) {
+			auto& vm = voxel_managers_[i];
 			vm->ClearAccumulation();
 			vm->BindResources();
+
+			// Dispatch splatting shader for this voxel buffer
+			voxel_splat_shader_->use();
+			voxel_splat_shader_->setUint("u_styleMask", voxel_style_masks_[i]);
+			voxel_splat_shader_->setInt("u_numParticles", kMaxParticles);
+			glDispatchCompute((kMaxParticles + 255) / 256, 1, 1);
+			glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
 		}
 
 		auto bind_textures_and_uniforms = [&](ComputeShader* shader) {

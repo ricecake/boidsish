@@ -76,6 +76,10 @@ namespace Boidsish {
 			return index < voxel_managers_.size() ? voxel_managers_[index].get() : nullptr;
 		}
 
+		void SetVoxelStyleMask(int index, uint32_t mask) {
+			if (index < voxel_style_masks_.size()) voxel_style_masks_[index] = mask;
+		}
+
 		std::shared_ptr<FireEffect> AddEffect(
 			const glm::vec3& position,
 			FireEffectStyle  style,
@@ -101,8 +105,10 @@ namespace Boidsish {
 		std::unique_ptr<ComputeShader> behavior_shader_;
 		std::unique_ptr<ComputeShader> fixup_shader_;
 		std::unique_ptr<ComputeShader> grid_build_shader_;
+		std::unique_ptr<ComputeShader> voxel_splat_shader_;
 		std::unique_ptr<Shader>        render_shader_;
 		std::vector<std::unique_ptr<VoxelBrickManager>> voxel_managers_;
+		std::vector<uint32_t>                            voxel_style_masks_;
 
 		GLuint particle_buffer_{0};
 		GLuint grid_heads_buffer_{0};

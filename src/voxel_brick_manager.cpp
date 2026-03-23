@@ -151,6 +151,7 @@ namespace Boidsish {
 
     void VoxelBrickManager::_LoadShaders() {
         manage_shader_ = std::make_unique<ComputeShader>("shaders/voxel_manage.comp");
+        clear_shader_ = std::make_unique<ComputeShader>("shaders/voxel_clear.comp");
         copy_shader_ = std::make_unique<ComputeShader>("shaders/voxel_copy.comp");
     }
 

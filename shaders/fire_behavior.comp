@@ -8,8 +8,6 @@
 #include "particle_lifecycle.glsl"
 #include "particle_types.glsl"
 
-#include "helpers/voxel_brick.glsl"
-
 uniform float u_delta_time;
 uniform float u_time;
 uniform float u_ambient_density;
@@ -49,30 +47,4 @@ void main() {
 
 	particles[gid] = p;
 	handleVisibility(p, gid);
-
-	// --- Voxel Splatting ---
-    // (Simplified: for now all particles splat into buffer 0)
-    // To support multiple buffers properly, we'd need multiple dispatches or
-    // to bind multiple SSBOs and select one based on p.style.
-	ivec3 grid_pos = world_to_grid(p.pos.xyz);
-	uint h = hash_grid_pos(grid_pos);
-	atomicAdd(votes[h], 1);
-	proposed_grid_pos[h] = ivec4(grid_pos, 0);
-
-	int brick_idx = find_brick_in_pool(p.pos.xyz);
-	if (brick_idx != -1) {
-		ivec3 pool_pos = world_to_pool_coords(p.pos.xyz, brick_idx);
-
-        int pool_width = 16 * V_BRICK_SIZE;
-        int idx = (pool_pos.x + (pool_pos.y + pool_pos.z * pool_width) * pool_width) * 4;
-
-        float life = clamp(1.0 - (p.pos.w / 5.0), 0.0, 1.0);
-        uint density = uint(life * 255.0);
-        vec3 dir = normalize(p.vel.xyz + vec3(1e-6));
-
-        atomicAdd(accumulation_data[idx + 0], density);
-        atomicAdd(accumulation_data[idx + 1], uint(clamp(dir.x * 0.5 + 0.5, 0.0, 1.0) * float(density)));
-        atomicAdd(accumulation_data[idx + 2], uint(clamp(dir.y * 0.5 + 0.5, 0.0, 1.0) * float(density)));
-        atomicAdd(accumulation_data[idx + 3], uint(clamp(dir.z * 0.5 + 0.5, 0.0, 1.0) * float(density)));
-	}
 }

@@ -14,44 +14,59 @@ uniform float u_time;
 uniform int   u_frameIndex;
 
 void main() {
-    uint i = gl_GlobalInvocationID.x;
+    uint h_base = gl_GlobalInvocationID.x;
+    if (h_base >= V_HASH_SIZE) return;
 
-    // 1. Allocation Logic
-    if (i < V_HASH_SIZE) {
-        if (votes[i] > 0) {
-            if (hash_table[i] == -1) {
+    // 1. Allocation Logic with Linear Probing
+    if (votes[h_base] > 0) {
+        ivec3 grid_pos = proposed_grid_pos[h_base].xyz;
+        bool found = false;
+
+        // Search for existing brick (linear probing matching lookup)
+        for (int i = 0; i < 8; ++i) {
+            uint h = (h_base + i) % V_HASH_SIZE;
+            int brick_idx = hash_table[h];
+            if (brick_idx == -1) {
+                // Found empty slot, try to allocate
                 int free_idx = atomicAdd(free_count, -1);
                 if (free_idx > 0) {
-                    int brick_idx = free_indices[free_idx - 1];
-                    brick_metadata[brick_idx].grid_pos = proposed_grid_pos[i];
-                    brick_metadata[brick_idx].grid_pos.w = brick_idx;
-                    brick_metadata[brick_idx].last_voted_frame = u_frameIndex;
-                    hash_table[i] = brick_idx;
+                    int new_brick_idx = free_indices[free_idx - 1];
+                    brick_metadata[new_brick_idx].grid_pos = ivec4(grid_pos, new_brick_idx);
+                    brick_metadata[new_brick_idx].last_voted_frame = u_frameIndex;
+                    hash_table[h] = new_brick_idx;
                 } else {
                     atomicAdd(free_count, 1);
                 }
-            } else {
-                int brick_idx = hash_table[i];
+                found = true;
+                break;
+            } else if (brick_metadata[brick_idx].grid_pos.xyz == grid_pos) {
+                // Already allocated
                 brick_metadata[brick_idx].last_voted_frame = u_frameIndex;
+                found = true;
+                break;
             }
         }
     }
 
     // 2. Deallocation Logic
-    if (i < V_MAX_BRICKS) {
-        int brick_idx = int(i);
+    if (h_base < V_MAX_BRICKS) {
+        int brick_idx = int(h_base);
         if (brick_metadata[brick_idx].grid_pos.w != -1) {
             int age = u_frameIndex - brick_metadata[brick_idx].last_voted_frame;
-            if (age > 30) { // Increased threshold to 30 frames for stability
+            if (age > 30) {
                 ivec3 grid_pos = brick_metadata[brick_idx].grid_pos.xyz;
-                uint h = hash_grid_pos(grid_pos);
+                uint h_start = hash_grid_pos(grid_pos);
 
-                if (hash_table[h] == brick_idx) {
-                    hash_table[h] = -1;
-                    brick_metadata[brick_idx].grid_pos.w = -1;
-                    int free_pos = atomicAdd(free_count, 1);
-                    if (free_pos < V_MAX_BRICKS) {
-                        free_indices[free_pos] = brick_idx;
+                for (int i = 0; i < 8; ++i) {
+                    uint h = (h_start + i) % V_HASH_SIZE;
+                    if (hash_table[h] == brick_idx) {
+                        hash_table[h] = -1;
+                        brick_metadata[brick_idx].grid_pos.w = -1;
+                        int free_pos = atomicAdd(free_count, 1);
+                        if (free_pos < V_MAX_BRICKS) {
+                            free_indices[free_pos] = brick_idx;
+                        }
+                        break;
                     }
                 }
             }
