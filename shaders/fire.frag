@@ -148,6 +148,33 @@ void main() {
 
 				color *= (2.0 + twinkle * 8.0);
 				alpha = 0.01 + step(twinkle_t, 0.6) * (0.4 + twinkle * 0.6) * smoothstep(0.0, 0.5, v_lifetime);
+			} else if (sub_style == 5) { // Balloon
+				float hue = float(v_particle_idx) * 0.123;
+				vec3  balloon_color = 0.6 + 0.4 * cos(hue + vec3(0, 2, 4));
+
+				// Specular highlight
+				vec2  spec_pos = gl_PointCoord - vec2(0.35, 0.35);
+				float spec = pow(max(0.0, 1.0 - length(spec_pos) * 6.0), 12.0);
+
+				color = balloon_color * 0.8 + spec * 0.5;
+				alpha = shapeMask * 0.95;
+			} else if (sub_style == 6) { // Sky Lantern
+				// Rectangular shape with rounded corners
+				vec2  box_coords = abs(gl_PointCoord - 0.5);
+				float box_mask = smoothstep(0.45, 0.4, max(box_coords.x, box_coords.y));
+				shapeMask = box_mask;
+
+				// Warm orange/red vertical gradient
+				float grad = gl_PointCoord.y;
+				vec3  bottom_color = vec3(1.0, 0.8, 0.2); // Yellow/White hot
+				vec3  top_color = vec3(0.8, 0.2, 0.05);   // Reddish
+				color = mix(bottom_color, top_color, grad);
+
+				// Flicker
+				float flicker = sin(u_time * 10.0 + float(v_particle_idx)) * 0.2 + 0.8;
+				color *= flicker * 2.0; // Glow
+
+				alpha = shapeMask * 0.9;
 			}
 		} else if (v_style == 6) { // Bubbles
 			// Use local spherical normal for better visuals
