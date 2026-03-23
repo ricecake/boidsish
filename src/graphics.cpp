@@ -819,9 +819,7 @@ namespace Boidsish {
 				// Use terrain shaders with heightmap texture lookup
 				Terrain::terrain_shader_ = std::make_shared<Shader>(
 					"shaders/terrain.vert",
-					"shaders/terrain.frag",
-					"shaders/terrain.tcs",
-					"shaders/terrain.tes"
+					"shaders/terrain.frag"
 				);
 				Terrain::terrain_shader_handle = shader_table.Register(
 					std::make_unique<RenderShader>(Terrain::terrain_shader_)
