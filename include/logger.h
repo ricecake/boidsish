@@ -12,6 +12,7 @@
 #include <string>
 #include <string_view>
 #include <tuple>
+#include <type_traits>
 #include <utility>
 #include <vector>
 using namespace std::literals; // required for ""sv
@@ -182,16 +183,21 @@ namespace logger {
 			size_t searchPos = 0;
 			auto   process = [&](auto&& arg) {
 				std::stringstream ss;
-				using T = std::remove_cvref_t<decltype(arg)>;
 
-				if constexpr (requires { std::tuple_size<T>::value; }) {
-					if constexpr (std::tuple_size_v<T> == 2) {
+				if constexpr (requires {
+								  typename std::tuple_size<std::remove_cvref_t<decltype(arg)>>::type;
+							  }) {
+					if constexpr (std::tuple_size_v<std::remove_cvref_t<decltype(arg)>> == 2) {
 						static_cast<std::ostream&>(ss) << std::get<0>(arg) << " => [" << std::get<1>(arg) << "]";
-					} else {
+					} else if constexpr (requires { static_cast<std::ostream&>(ss) << arg; }) {
 						static_cast<std::ostream&>(ss) << arg;
+					} else {
+						static_cast<std::ostream&>(ss) << "[tuple-like object]";
 					}
-				} else {
+				} else if constexpr (requires { static_cast<std::ostream&>(ss) << arg; }) {
 					static_cast<std::ostream&>(ss) << arg;
+				} else {
+					static_cast<std::ostream&>(ss) << "[unprintable object]";
 				}
 
 				std::string replacement = ss.str();
