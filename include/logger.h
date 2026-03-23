@@ -187,10 +187,11 @@ namespace logger {
 				using T = std::remove_cvref_t<decltype(arg)>;
 
 				if constexpr (requires { std::tuple_size<T>::value; }) {
-					if constexpr (std::tuple_size_v<T> == 2) {
+					constexpr std::size_t sz = std::tuple_size<T>::value;
+					if constexpr (sz == 2) {
 						os << std::get<0>(arg) << " => [" << std::get<1>(arg) << "]";
 					} else {
-						os << "{ tuple-like size=" << std::tuple_size_v<T> << " }";
+						os << "{ tuple-like size=" << sz << " }";
 					}
 				} else if constexpr (requires { os << arg; }) {
 					os << arg;
