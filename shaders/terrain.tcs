@@ -27,7 +27,7 @@ uniform float          uChunkSize;
 #include "frustum.glsl"
 #include "helpers/lighting.glsl"
 
-uniform float uTessLevelMax = 4.0;
+uniform float uTessLevelMax = 32.0;
 uniform float uTessLevelMin = 1.0;
 uniform float uTessQualityMultiplier = 1.0;
 uniform bool  uIsShadowPass = false;
@@ -214,25 +214,25 @@ void main() {
 					reject = true;
 				}
 
-				// 2. Conservative Backface Culling
-				if (!reject) {
-					// A patch is only safely back-facing if ALL indicators agree.
-					// For heightmaps, we check corner normals and a rough geometric normal.
-					// Winding is CW, so cross(v3-v0, v1-v0) gives an upward-facing normal.
-					vec3  faceNormal = normalize(cross(worldPos3 - worldPos0, worldPos1 - worldPos0));
-					float marginDot = -0.5;
+				// // 2. Conservative Backface Culling
+				// if (!reject) {
+				// 	// A patch is only safely back-facing if ALL indicators agree.
+				// 	// For heightmaps, we check corner normals and a rough geometric normal.
+				// 	// Winding is CW, so cross(v3-v0, v1-v0) gives an upward-facing normal.
+				// 	vec3  faceNormal = normalize(cross(worldPos3 - worldPos0, worldPos1 - worldPos0));
+				// 	float marginDot = -0.5;
 
-					bool faceBack = dot(faceNormal, viewPos - worldPos0) < -marginDot;
-					bool n0Back = dot(normal0, viewPos - worldPos0) < -marginDot;
-					bool n1Back = dot(normal1, viewPos - worldPos1) < -marginDot;
-					bool n2Back = dot(normal2, viewPos - worldPos2) < -marginDot;
-					bool n3Back = dot(normal3, viewPos - worldPos3) < -marginDot;
+				// 	bool faceBack = dot(faceNormal, viewPos - worldPos0) < -marginDot;
+				// 	bool n0Back = dot(normal0, viewPos - worldPos0) < -marginDot;
+				// 	bool n1Back = dot(normal1, viewPos - worldPos1) < -marginDot;
+				// 	bool n2Back = dot(normal2, viewPos - worldPos2) < -marginDot;
+				// 	bool n3Back = dot(normal3, viewPos - worldPos3) < -marginDot;
 
-					// Only reject if ALL normals agree it's back-facing.
-					if (faceBack && n0Back && n1Back && n2Back && n3Back) {
-						reject = true;
-					}
-				}
+				// 	// Only reject if ALL normals agree it's back-facing.
+				// 	if (faceBack && n0Back && n1Back && n2Back && n3Back) {
+				// 		reject = true;
+				// 	}
+				// }
 			}
 		}
 

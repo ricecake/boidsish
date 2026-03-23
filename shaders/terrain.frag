@@ -281,12 +281,12 @@ void main() {
 		combinedNoise = largeNoise * 0.6 + (1.0 - medNoise) * 0.3 + fineNoise * 0.1;
 
 		if (distanceFactor > 250) {
-			float angle = dot(viewDir, viewPos - FragPos);
-			largeNoise = mix(largeNoise, 1.0, smoothstep(noseFade, fade_end, distanceFactor));
-			medNoise = mix(medNoise, 1.0, smoothstep(noseFade, fade_end, distanceFactor));
-			fineNoise = mix(fineNoise, 1.0, smoothstep(noseFade, fade_end, distanceFactor));
-			macroNoise = mix(macroNoise, 1.0, smoothstep(noseFade, fade_end, distanceFactor));
-			combinedNoise = mix(combinedNoise, 1.0, smoothstep(noseFade, fade_end, distanceFactor));
+			float angle = 1.0-dot(viewDir, viewPos - FragPos);
+			largeNoise = mix(largeNoise, 1.0, angle*smoothstep(noseFade, fade_end, distanceFactor));
+			medNoise = mix(medNoise, 1.0, angle*smoothstep(noseFade, fade_end, distanceFactor));
+			fineNoise = mix(fineNoise, 1.0, angle*smoothstep(noseFade, fade_end, distanceFactor));
+			macroNoise = mix(macroNoise, 1.0, angle*smoothstep(noseFade, fade_end, distanceFactor));
+			combinedNoise = mix(combinedNoise, 1.0, angle*smoothstep(noseFade, fade_end, distanceFactor));
 		}
 	}
 
