@@ -264,26 +264,29 @@ void main() {
 	// Noise Generation
 	// ========================================================================
 	// Scale world-space position for detail noise to match terrain scaling
-	float largeNoise = 1.0;
-	float medNoise = 1.0;
-	float fineNoise = 1.0;
-	float macroNoise = 1.0;
-	float combinedNoise = 1.0;
+	float largeNoise = sin(length(FragPos.xz) * 100);
+	float medNoise = sin(length(FragPos.xz) * 2000);
+	float fineNoise = sin(length(FragPos.xz) * 3000);
+	float macroNoise = sin(length(FragPos.xz) * 44323);
+	float combinedNoise = sin(length(FragPos.xz) * 5222343);
 
-	if (dist < 400) {
+	float distanceFactor = dist*smoothstep(0, 10.0, FragPos.y);
+	float noseFade = fade_start - 100.0;
+
+	if (distanceFactor < noseFade) {
 		largeNoise = fastWarpedFbm3d(FragPos * (baseFreq * 0.5));
 		medNoise = fastWorley3d(vec3(largeNoise) * (baseFreq * 2.0));
 		fineNoise = fastFbm3d(FragPos * (baseFreq * 5.0));
 		macroNoise = fastSimplex3d(FragPos * (baseFreq * 0.1));
 		combinedNoise = largeNoise * 0.6 + (1.0 - medNoise) * 0.3 + fineNoise * 0.1;
 
-		if (dist > 250) {
+		if (distanceFactor > 250) {
 			float angle = dot(viewDir, viewPos - FragPos);
-			largeNoise = mix(largeNoise, 1.0, smoothstep(300, 400, dist));
-			medNoise = mix(medNoise, 1.0, smoothstep(300, 400, dist));
-			fineNoise = mix(fineNoise, 1.0, smoothstep(300, 400, dist));
-			macroNoise = mix(macroNoise, 1.0, smoothstep(300, 400, dist));
-			combinedNoise = mix(combinedNoise, 1.0, smoothstep(300, 400, dist));
+			largeNoise = mix(largeNoise, 1.0, smoothstep(noseFade, fade_end, distanceFactor));
+			medNoise = mix(medNoise, 1.0, smoothstep(noseFade, fade_end, distanceFactor));
+			fineNoise = mix(fineNoise, 1.0, smoothstep(noseFade, fade_end, distanceFactor));
+			macroNoise = mix(macroNoise, 1.0, smoothstep(noseFade, fade_end, distanceFactor));
+			combinedNoise = mix(combinedNoise, 1.0, smoothstep(noseFade, fade_end, distanceFactor));
 		}
 	}
 
