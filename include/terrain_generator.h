@@ -307,7 +307,7 @@ namespace Boidsish {
 
 		const int view_distance_ = Constants::Class::Terrain::DefaultViewDistance();          // in chunks
 		const int kUnloadDistanceBuffer_ = Constants::Class::Terrain::UnloadDistanceBuffer(); // in chunks
-		const int chunk_size_ = Constants::Class::Terrain::ChunkSize(); // Keep at 32 for performance
+		const int chunk_size_ = Constants::Class::Terrain::ChunkSize();
 		int       octaves_ = Constants::Class::Terrain::DefaultOctaves();
 		float     lacunarity_ = Constants::Class::Terrain::DefaultLacunarity();
 		float     persistence_ = Constants::Class::Terrain::DefaultPersistence();

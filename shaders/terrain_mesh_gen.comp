@@ -1,0 +1,55 @@
+#version 430 core
+
+layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
+
+struct TerrainVertex {
+	vec4 position; // xyz = absolute world position, w = pad
+	vec4 normal;   // xyz = normal, w = pad
+	vec4 biome;    // xy = biome indices/weights, zw = pad
+};
+
+layout(std430, binding = 40) writeonly buffer TerrainVertices {
+	TerrainVertex vertices[];
+};
+
+// Heightmap texture array: R=height, GBA=normal
+uniform sampler2DArray uHeightmap;
+// Biome texture array: RG8 - R=low_idx, G=t
+uniform sampler2DArray uBiomeMap;
+
+uniform int   u_sliceIndex;
+uniform vec3  u_worldOffset;
+uniform float u_chunkSize;
+uniform int   u_resolution; // e.g., 129 for 128x128 units
+
+void main() {
+	ivec2 id = ivec2(gl_GlobalInvocationID.xy);
+	if (id.x >= u_resolution || id.y >= u_resolution)
+		return;
+
+	// Calculate UV for sampling heightmap and biome textures
+	vec2 uv = vec2(id) / float(u_resolution - 1);
+
+	// Sample heightmap data
+	vec4 hData = textureLod(uHeightmap, vec3(uv, float(u_sliceIndex)), 0.0);
+	float height = hData.r;
+	vec3  normal = normalize(hData.gba);
+
+	// Sample biome data
+	vec2 biome = textureLod(uBiomeMap, vec3(uv, float(u_sliceIndex)), 0.0).rg;
+
+	// Calculate absolute world position
+	vec3 worldPos;
+	worldPos.x = u_worldOffset.x + uv.x * u_chunkSize;
+	worldPos.y = height;
+	worldPos.z = u_worldOffset.z + uv.y * u_chunkSize;
+
+	// Calculate vertex index in the persistent buffer
+	uint verticesPerChunk = uint(u_resolution * u_resolution);
+	uint vertexIdx = uint(u_sliceIndex) * verticesPerChunk + uint(id.y * u_resolution + id.x);
+
+	// Store baked vertex data
+	vertices[vertexIdx].position = vec4(worldPos, 1.0);
+	vertices[vertexIdx].normal = vec4(normal, 0.0);
+	vertices[vertexIdx].biome = vec4(biome, 0.0, 0.0);
+}

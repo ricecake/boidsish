@@ -122,6 +122,18 @@ namespace Boidsish {
 			constexpr int BehaviorDrawCommand() {
 				return 34;
 			}
+
+			constexpr int TerrainVertices() {
+				return 40;
+			}
+
+			constexpr int TerrainMetadata() {
+				return 41;
+			}
+
+			constexpr int TerrainIndirectArgs() {
+				return 42;
+			}
 		} // namespace SsboBinding
 
 		namespace General {
@@ -323,7 +335,7 @@ namespace Boidsish {
 
 			namespace Terrain {
 				constexpr int ChunkSize() {
-					return 32;
+					return 128;
 				}
 
 				constexpr int DefaultViewDistance() {
