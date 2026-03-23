@@ -45,4 +45,19 @@
 - **Fix 4**: Add a virtual destructor to `ShaderBase` that calls `glDeleteProgram(ID)`.
 - **Fix 5**: Implement uniform location caching in `ShaderBase` using a `std::unordered_map` to minimize `glGetUniformLocation` overhead.
 - **Fix 6**: Disable copy operations and implement move operations for `ShaderBase` (Rule of Five) to safely manage OpenGL program ownership.
-- **Fix 7**: Add `glDeleteBuffers(1, &frustum_ubo)` to `VisualizerImpl` destructor.
+- **Fix 7**: Removed unused and uninitialized `frustum_ubo` from `VisualizerImpl` to reduce code clutter.
+- **Fix 8**: Added `glDeleteBuffers(1, &temporal_data_ubo)` to `VisualizerImpl` destructor to prevent UBO leaks.
+- **Fix 9**: Added a loop to `VisualizerImpl` destructor to explicitly delete triple-buffered `mdi_fences` sync objects.
+- **Fix 10**: Explicitly cast `std::stringstream` to `std::ostream&` and refactored tuple detection to use direct `std::get` requirements in `include/logger.h` to fix MSVC cross-platform failures.
+
+### 7. Missing Resource Cleanup in MDI System
+- **Issue Type**: Memory Leak (OpenGL Sync Objects and Buffers)
+- **Location**: `src/graphics.cpp`, `VisualizerImpl::~VisualizerImpl`
+- **Evidence**: `temporal_data_ubo` and `mdi_fences` were created but not destroyed.
+- **Learning**: Triple-buffered resources and synchronization primitives (fences) require diligent tracking to ensure they are fully released during system shutdown. Unreleased fences can lead to driver-side resource exhaustion over multiple visualizer lifecycles.
+
+### 8. MSVC Portability: Template Deduction and Trait Sensitivity
+- **Issue Type**: Compilation Error (Cross-Platform)
+- **Location**: `include/logger.h`
+- **Evidence**: MSVC failed to deduce `operator<<` for `std::stringstream` in variadic lambdas and struggled with `std::tuple_size` requirements for certain tuple-like types.
+- **Learning**: Explicitly casting to `std::ostream&` and using direct detection of member functions/requirements (e.g., `std::get<N>`) is more robust than relying on complex trait specializations when targeting multiple compilers including MSVC. Added a safe fallback for unprintable types to further improve system stability.
