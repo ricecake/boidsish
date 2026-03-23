@@ -10,11 +10,13 @@
 #endif
 #include <sstream>
 #include <string>
+#include <array>
 #include <string_view>
 #include <tuple>
 #include <type_traits>
 #include <utility>
 #include <vector>
+
 using namespace std::literals; // required for ""sv
 
 namespace logger {
@@ -187,13 +189,15 @@ namespace logger {
 				using T = std::remove_cvref_t<decltype(arg)>;
 
 				if constexpr (requires { std::tuple_size<T>::value; }) {
-					if constexpr (std::tuple_size<T>::value == 2) {
+					if constexpr (std::tuple_size_v<T> == 2) {
 						os << std::get<0>(arg) << " => [" << std::get<1>(arg) << "]";
 					} else {
-						os << "{ tuple-like size=" << std::tuple_size<T>::value << " }";
+						os << "{ tuple-like size=" << std::tuple_size_v<T> << " }";
 					}
+				} else if constexpr (requires { os << arg; }) {
+					os << arg;
 				} else {
-					os << std::forward<decltype(arg)>(arg);
+					os << "{ unprintable type }";
 				}
 
 				std::string replacement = ss.str();
