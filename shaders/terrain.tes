@@ -19,6 +19,7 @@ out vec2       TexCoords;
 flat out float TextureSlice;
 out float      perturbFactor;
 out float      tessFactor;
+out float      vIsWater;
 
 // Heightmap texture array: R=height, GBA=normal
 uniform sampler2DArray uHeightmap;
@@ -31,6 +32,7 @@ uniform vec4 clipPlane;
 #include "helpers/shockwave.glsl"
 #include "helpers/terrain_noise.glsl"
 #include "temporal_data.glsl"
+#include "helpers/lighting.glsl"
 
 // #include "helpers/fast_noise.glsl"
 
@@ -59,6 +61,24 @@ void main() {
 
 	// Sample heightmap at the interpolated UV to get world position and normal
 	sampleHeightmap(TexCoords, slice, worldOffset, FragPos, Normal);
+
+	// Detect water (height < 0)
+	if (FragPos.y < 0.0) {
+		vIsWater = 1.0;
+		FragPos.y = 0.0;
+
+		// Add gentle ripple displacement
+		float rippleTime = time * 2.0;
+		float ripple = sin(FragPos.x * 0.5 + rippleTime) * 0.05 + cos(FragPos.z * 0.5 + rippleTime * 0.8) * 0.05;
+		FragPos.y += ripple;
+
+		// Approximate normal for the ripple surface
+		float dx = 0.05 * cos(FragPos.x * 0.5 + rippleTime) * 0.5;
+		float dz = 0.05 * -sin(FragPos.z * 0.5 + rippleTime * 0.8) * 0.4; // 0.5 * 0.8
+		Normal = normalize(vec3(-dx, 1.0, -dz));
+	} else {
+		vIsWater = 0.0;
+	}
 
 	// Apply shockwave ripple to terrain
 	FragPos += getShockwaveDisplacement(FragPos, 0.0, false);
