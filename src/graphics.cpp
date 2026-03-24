@@ -1181,9 +1181,9 @@ namespace Boidsish {
 						cfg.SetBool("render_terrain", false);
 					} else {
 						// Both enabled but neither just changed (initial state or both forced on then force_both disabled)
-						// Default to terrain off if both are on
-						frame_config_.render_terrain = false;
-						cfg.SetBool("render_terrain", false);
+						// Default to floor off if both are on (favor terrain)
+						frame_config_.render_floor = false;
+						cfg.SetBool("render_floor", false);
 					}
 				}
 			}

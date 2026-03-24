@@ -260,10 +260,20 @@ void main() {
 	}
 
 	if (vIsWater > 0.5) {
-		// --- Grid logic (from plane.frag) ---
+		// --- Grid logic (from plane.frag, with refraction) ---
 		float grid_spacing = 1.0;
-		vec2  coord = FragPos.xz / grid_spacing;
-		vec2  f = fwidth(coord);
+
+		// Awareness of water surface: ripple depth is FragPos.y
+		// (Water is at y=0, ripples go up/down from there)
+		float rippleHeight = FragPos.y;
+
+		// Calculate refraction offset based on surface normal and depth (distance from y=0)
+		// Since water is fixed at 0, absolute depth is abs(rippleHeight)
+		// The more the normal deviates from up (0,1,0), the more refraction
+		vec2 refractionOffset = norm.xz * abs(rippleHeight) * 2.0;
+
+		vec2 coord = (FragPos.xz + refractionOffset) / grid_spacing;
+		vec2 f = fwidth(coord);
 
 		vec2  grid_minor = abs(fract(coord - 0.5) - 0.5) / f;
 		float line_minor = min(grid_minor.x, grid_minor.y);
@@ -273,7 +283,9 @@ void main() {
 		float line_major = min(grid_major.x, grid_major.y);
 		float C_major = 1.0 - min(line_major, 1.0);
 
-		float grid_intensity = max(C_minor, C_major * 1.5) * 0.6;
+		// Add shimmer to grid intensity based on ripple height
+		float shimmer = 1.0 + rippleHeight * 2.0;
+		float grid_intensity = max(C_minor, C_major * 1.5) * 0.6 * shimmer;
 		vec3  grid_color = vec3(0.0, 0.8, 0.8) * grid_intensity;
 
 		vec3 surfaceColor = vec3(0.05, 0.05, 0.08);
