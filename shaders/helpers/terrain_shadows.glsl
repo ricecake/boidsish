@@ -31,7 +31,8 @@ float getTerrainHeight(vec2 worldXZ) {
 		return -10000.0;
 
 	vec2 uv = (worldXZ - vec2(chunkCoord) * scaledChunkSize) / scaledChunkSize;
-	return texture(u_heightmapArray, vec3(uv, float(slice))).r;
+	vec2 remappedUV = (uv * u_terrainParams.x + 0.5) / (u_terrainParams.x + 1.0);
+	return texture(u_heightmapArray, vec3(remappedUV, float(slice))).r;
 }
 
 float terrainShadowCoverage(vec3 worldPos, vec3 normal, vec3 lightDir) {
@@ -46,7 +47,8 @@ float terrainShadowCoverage(vec3 worldPos, vec3 normal, vec3 lightDir) {
 	float scaledChunkSize = u_terrainParams.x * u_terrainParams.y;
 
 	// Better initial bias: move along normal and a bit along light direction.
-	vec3  p_start = worldPos + normal * (0.2 * u_terrainParams.y) + lightDir * 1.5;
+	// Increased bias and light-dir push to prevent self-shadowing grooves at chunk boundaries.
+	vec3  p_start = worldPos + normal * (0.5 * u_terrainParams.y) + lightDir * 2.0;
 	float t = 0.0;
 	float maxDist = 1200.0 * u_terrainParams.y;
 
@@ -101,7 +103,8 @@ float terrainShadowCoverage(vec3 worldPos, vec3 normal, vec3 lightDir) {
 						while (subT < tEnd) {
 							vec3  p = p_start + subT * lightDir;
 							vec2  uv_chunk = (p.xz - vec2(currentChunk) * scaledChunkSize) / scaledChunkSize;
-							float h = texture(u_heightmapArray, vec3(uv_chunk, float(slice))).r;
+							vec2  remappedUV = (uv_chunk * u_terrainParams.x + 0.5) / (u_terrainParams.x + 1.0);
+							float h = texture(u_heightmapArray, vec3(remappedUV, float(slice))).r;
 							if (p.y < h) {
 								return 0.0; // Hit terrain!
 							}

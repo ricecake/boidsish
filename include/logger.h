@@ -169,12 +169,22 @@ namespace logger {
 	};
 
 	template <class B>
-		requires std::derived_from<B, Backend>
 	class Logger {
+		static_assert(std::is_base_of_v<Backend, B>, "Backend must derive from logger::Backend");
+
 	public:
 		B backend;
 
 	private:
+		template <typename T>
+		struct is_tuple_like : std::false_type {};
+
+		template <typename... Ts>
+		struct is_tuple_like<std::tuple<Ts...>> : std::true_type {};
+
+		template <typename T1, typename T2>
+		struct is_tuple_like<std::pair<T1, T2>> : std::true_type {};
+
 		template <typename... Ts>
 		void doLogging(const LogLevel& level, const LogSource& src, Ts&&... flags) {
 			std::string       message(src.msg);
@@ -186,7 +196,7 @@ namespace logger {
 				std::ostream&     os = ss;
 				using T = std::remove_cvref_t<decltype(arg)>;
 
-				if constexpr (requires { std::tuple_size<T>::value; }) {
+				if constexpr (is_tuple_like<T>::value) {
 					if constexpr (std::tuple_size<T>::value == 2) {
 						os << std::get<0>(arg) << " => [" << std::get<1>(arg) << "]";
 					} else {

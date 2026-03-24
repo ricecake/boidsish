@@ -498,6 +498,11 @@ namespace Boidsish {
 			chunk.world_offset.y + scaled_chunk_size
 		);
 
+		// Add a margin for displacements and safety
+		float margin = 50.0f * world_scale;
+		min_corner -= glm::vec3(margin, margin, margin);
+		max_corner += glm::vec3(margin, margin, margin);
+
 		glm::vec3 center = (min_corner + max_corner) * 0.5f;
 		glm::vec3 half_size = (max_corner - min_corner) * 0.5f;
 
@@ -740,8 +745,9 @@ namespace Boidsish {
 		shader.setMat4("model", glm::mat4(1.0f)); // Identity - instances provide world offset
 		shader.setFloat("uTessQualityMultiplier", tess_quality_multiplier);
 		shader.setFloat("uTessLevelMax", 64.0f);
-		shader.setFloat("uTessLevelMin", 1.0f);
+		shader.setFloat("uTessLevelMin", 2.0f);
 		shader.setFloat("uChunkSize", chunk_size_ * last_world_scale_);
+		shader.setFloat("uRawChunkSize", static_cast<float>(chunk_size_));
 
 		if (clip_plane) {
 			shader.setVec4("clipPlane", *clip_plane);

@@ -21,6 +21,7 @@ uniform bool uIsShadowPass = false;
 
 // Biome texture array: RG8 - R=low_idx, G=t
 uniform sampler2DArray uBiomeMap;
+uniform float          uRawChunkSize;
 
 struct BiomeProperties {
 	vec4 albedo_roughness; // rgb = albedo, w = roughness
@@ -378,10 +379,10 @@ void main() {
 		float nx = fastWorley3d(0.1 * (scaledFragPos + vec3(eps, 0.0, 0.0)) * roughnessScale);
 		float nz = fastWorley3d(0.1 * (scaledFragPos + vec3(0.0, 0.0, eps)) * roughnessScale);
 
-		// Compute local tangent space to orient the perturbation
-		vec3 tangent = normalize(cross(norm, vec3(0, 0, 1)));
-		if (abs(norm.z) > 0.9)
-			tangent = normalize(cross(norm, vec3(1, 0, 0)));
+		// Compute local tangent space to orient the perturbation.
+		// Using a stable basis that doesn't flip at Z-axis alignment.
+		vec3 v = abs(norm.z) < 0.999 ? vec3(0, 0, 1) : vec3(1, 0, 0);
+		vec3 tangent = normalize(cross(v, norm));
 		vec3 bitangent = cross(norm, tangent);
 
 		// Apply perturbation based on noise gradient
