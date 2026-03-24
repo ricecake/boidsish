@@ -211,6 +211,15 @@ namespace Boidsish {
 			return l;
 		}
 
+		static Light
+		CreateDirectional(const glm::vec3& dir, const glm::vec3& col, float intens, bool shadows = false) {
+			Light l = Create(glm::vec3(0.0f), intens, col, shadows);
+			l.type = DIRECTIONAL_LIGHT;
+			l.direction = glm::normalize(dir);
+			GetAnglesFromDirection(l.direction, l.azimuth, l.elevation);
+			return l;
+		}
+
 		static Light CreateSpot(
 			const glm::vec3& pos,
 			const glm::vec3& dir,
