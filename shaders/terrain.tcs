@@ -84,19 +84,27 @@ float GetEdgeTessLevel(vec3 p0, vec3 p1, vec3 n0, vec3 n1) {
 	if (clip0.w <= 0.0 && clip1.w <= 0.0)
 		return uTessLevelMin;
 
-	// Perspective divide to get NDC
-	// Use a small epsilon but handle near-plane crossings gracefully
-	float w0 = max(clip0.w, 0.01);
-	float w1 = max(clip1.w, 0.01);
-	vec2  ndc0 = clip0.xy / w0;
-	vec2  ndc1 = clip1.xy / w1;
+	// Hybrid Tessellation Metric:
+	// Screen-space calculation is unstable near the camera plane.
+	// We use a distance-based fallback for vertices near or behind the camera.
+	float pixelLength;
+	float minW = min(clip0.w, clip1.w);
 
-	// Convert to pixel coordinates
-	vec2 pixel0 = (ndc0 * 0.5 + 0.5) * uViewportSize;
-	vec2 pixel1 = (ndc1 * 0.5 + 0.5) * uViewportSize;
-
-	// Edge length in pixels
-	float pixelLength = length(pixel1 - pixel0);
+	if (minW < 0.1) {
+		// Near camera: use distance-based approximation
+		float dist = distance(viewPos, midPos);
+		// Estimate pixel length based on world size and distance
+		// (chunkSize / dist) * focalLengthInPixels
+		float focalLength = uViewportSize.y; // Rough approximation
+		pixelLength = (distance(lp0, lp1) / max(dist, 0.1)) * focalLength;
+	} else {
+		// Safe distance: use precise screen-space projection
+		vec2 ndc0 = clip0.xy / clip0.w;
+		vec2 ndc1 = clip1.xy / clip1.w;
+		vec2 pixel0 = (ndc0 * 0.5 + 0.5) * uViewportSize;
+		vec2 pixel1 = (ndc1 * 0.5 + 0.5) * uViewportSize;
+		pixelLength = length(pixel1 - pixel0);
+	}
 
 	// Base tessellation: target pixels per segment
 	// Target ~8 pixels per triangle edge for high quality, 16 for medium, 32 for low

@@ -46,7 +46,8 @@ float terrainShadowCoverage(vec3 worldPos, vec3 normal, vec3 lightDir) {
 	float scaledChunkSize = u_terrainParams.x * u_terrainParams.y;
 
 	// Better initial bias: move along normal and a bit along light direction.
-	vec3  p_start = worldPos + normal * (0.2 * u_terrainParams.y) + lightDir * 1.5;
+	// Increased bias and light-dir push to prevent self-shadowing grooves at chunk boundaries.
+	vec3  p_start = worldPos + normal * (0.5 * u_terrainParams.y) + lightDir * 2.0;
 	float t = 0.0;
 	float maxDist = 1200.0 * u_terrainParams.y;
 

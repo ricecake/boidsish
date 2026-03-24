@@ -642,38 +642,36 @@ namespace Boidsish {
 				}
 			}
 
-			// Recompute normals using finite differences on deformed heightmap
-			for (int i = 0; i < num_vertices_x; ++i) {
-				for (int j = 0; j < num_vertices_z; ++j) {
-					float worldX = (chunkX * chunk_size_ + i) * world_scale_;
-					float worldZ = (chunkZ * chunk_size_ + j) * world_scale_;
+		}
 
-					if (deformation_manager_.HasDeformationAt(worldX, worldZ)) {
-						// Finite differences for gradient. To ensure consistency at chunk boundaries,
-						// we need to sample height values from neighboring points even if they're
-						// outside the current chunk's data.
-						float h_center = heightmap[i][j][0];
-						float h_left, h_right, h_down, h_up;
+		// Recompute normals using finite differences for ALL chunks to ensure consistency.
+		// To ensure bit-identical results at boundaries, we sample neighboring heights
+		// even if they're outside the current chunk's data.
+		for (int i = 0; i < num_vertices_x; ++i) {
+			for (int j = 0; j < num_vertices_z; ++j) {
+				float worldX = (chunkX * chunk_size_ + i) * world_scale_;
+				float worldZ = (chunkZ * chunk_size_ + j) * world_scale_;
 
-						if (i > 0) h_left = heightmap[i-1][j][0];
-						else h_left = std::get<0>(CalculateTerrainPropertiesAtPoint(worldX - world_scale_, worldZ));
+				float h_center = heightmap[i][j][0];
+				float h_left, h_right, h_down, h_up;
 
-						if (i < num_vertices_x - 1) h_right = heightmap[i+1][j][0];
-						else h_right = std::get<0>(CalculateTerrainPropertiesAtPoint(worldX + world_scale_, worldZ));
+				if (i > 0) h_left = heightmap[i - 1][j][0];
+				else h_left = std::get<0>(CalculateTerrainPropertiesAtPoint(worldX - world_scale_, worldZ));
 
-						if (j > 0) h_down = heightmap[i][j-1][0];
-						else h_down = std::get<0>(CalculateTerrainPropertiesAtPoint(worldX, worldZ - world_scale_));
+				if (i < num_vertices_x - 1) h_right = heightmap[i + 1][j][0];
+				else h_right = std::get<0>(CalculateTerrainPropertiesAtPoint(worldX + world_scale_, worldZ));
 
-						if (j < num_vertices_z - 1) h_up = heightmap[i][j+1][0];
-						else h_up = std::get<0>(CalculateTerrainPropertiesAtPoint(worldX, worldZ + world_scale_));
+				if (j > 0) h_down = heightmap[i][j - 1][0];
+				else h_down = std::get<0>(CalculateTerrainPropertiesAtPoint(worldX, worldZ - world_scale_));
 
-						float dx = (h_right - h_left) * 0.5f;
-						float dz = (h_up - h_down) * 0.5f;
+				if (j < num_vertices_z - 1) h_up = heightmap[i][j + 1][0];
+				else h_up = std::get<0>(CalculateTerrainPropertiesAtPoint(worldX, worldZ + world_scale_));
 
-						heightmap[i][j][1] = dx;
-						heightmap[i][j][2] = dz;
-					}
-				}
+				float dx = (h_right - h_left) * 0.5f;
+				float dz = (h_up - h_down) * 0.5f;
+
+				heightmap[i][j][1] = dx;
+				heightmap[i][j][2] = dz;
 			}
 		}
 
