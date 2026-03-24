@@ -35,6 +35,7 @@
 #include "logger.h"
 #include "mesh_explosion_manager.h"
 #include "path.h"
+#include "polyhedron.h"
 #include "persistent_buffer.h"
 #include "post_processing/PostProcessingManager.h"
 #include "post_processing/effects/AtmosphereEffect.h"
@@ -1210,6 +1211,7 @@ namespace Boidsish {
 
 			Shape::DestroySphereMesh();
 			Line::DestroyLineMesh();
+			Polyhedron::DestroyPolyhedronMeshes();
 			CheckpointRingShape::DestroyQuadMesh();
 
 			if (blur_quad_vao)
