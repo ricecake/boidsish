@@ -537,6 +537,9 @@ namespace Boidsish {
 		LightingUbo           lighting_ubo_data_;
 		FrameConfigCache      frame_config_;
 
+		bool last_render_terrain_ = true;
+		bool last_render_floor_ = true;
+
 		task_thread_pool::task_thread_pool thread_pool;
 		std::unique_ptr<AudioManager>      audio_manager;
 
@@ -545,6 +548,10 @@ namespace Boidsish {
 
 			ConfigManager::GetInstance().Initialize(title);
 			enable_hdr_ = ConfigManager::GetInstance().GetAppSettingBool("enable_hdr", true);
+
+			last_render_terrain_ = ConfigManager::GetInstance().GetAppSettingBool("render_terrain", true);
+			last_render_floor_ = ConfigManager::GetInstance().GetAppSettingBool("render_floor", true);
+
 			width = ConfigManager::GetInstance().GetAppSettingInt("window_width", w);
 			height = ConfigManager::GetInstance().GetAppSettingInt("window_height", h);
 			is_fullscreen_ = ConfigManager::GetInstance().GetAppSettingBool("fullscreen", false);
@@ -1158,6 +1165,31 @@ namespace Boidsish {
 			frame_config_.render_terrain = cfg.GetAppSettingBool("render_terrain", true);
 			frame_config_.render_skybox = cfg.GetAppSettingBool("render_skybox", true);
 			frame_config_.render_floor = cfg.GetAppSettingBool("render_floor", true);
+			frame_config_.force_both_floor_and_terrain = cfg.GetAppSettingBool("force_both_floor_and_terrain", false);
+
+			// Mutual exclusion logic
+			if (!frame_config_.force_both_floor_and_terrain) {
+				bool terrain_changed = (frame_config_.render_terrain != last_render_terrain_);
+				bool floor_changed = (frame_config_.render_floor != last_render_floor_);
+
+				if (frame_config_.render_terrain && frame_config_.render_floor) {
+					if (terrain_changed) {
+						frame_config_.render_floor = false;
+						cfg.SetBool("render_floor", false);
+					} else if (floor_changed) {
+						frame_config_.render_terrain = false;
+						cfg.SetBool("render_terrain", false);
+					} else {
+						// Both enabled but neither just changed (initial state or both forced on then force_both disabled)
+						// Default to floor off if both are on (favor terrain)
+						frame_config_.render_floor = false;
+						cfg.SetBool("render_floor", false);
+					}
+				}
+			}
+			last_render_terrain_ = frame_config_.render_terrain;
+			last_render_floor_ = frame_config_.render_floor;
+
 			frame_config_.render_decor = cfg.GetAppSettingBool("render_decor", true);
 			frame_config_.artistic_ripple = cfg.GetAppSettingBool("artistic_effect_ripple", false);
 			frame_config_.artistic_color_shift = cfg.GetAppSettingBool("artistic_effect_color_shift", false);

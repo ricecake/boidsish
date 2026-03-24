@@ -10,6 +10,7 @@ in vec2       TexCoords;
 flat in float TextureSlice;
 in float      perturbFactor;
 in float      tessFactor;
+in float      vIsWater;
 
 #include "helpers/fast_noise.glsl"
 #include "helpers/lighting.glsl"
@@ -256,6 +257,47 @@ void main() {
 
 	if (fade < 0.2) {
 		discard;
+	}
+
+	if (vIsWater > 0.5) {
+		// --- Grid logic (from plane.frag, with refraction) ---
+		float grid_spacing = 1.0;
+
+		// Awareness of water surface: ripple depth is FragPos.y
+		// (Water is at y=0, ripples go up/down from there)
+		float rippleHeight = FragPos.y;
+
+		// Calculate refraction offset based on surface normal and depth (distance from y=0)
+		// Since water is fixed at 0, absolute depth is abs(rippleHeight)
+		// The more the normal deviates from up (0,1,0), the more refraction
+		vec2 refractionOffset = norm.xz * abs(rippleHeight) * 2.0;
+
+		vec2 coord = (FragPos.xz + refractionOffset) / grid_spacing;
+		vec2 f = fwidth(coord);
+
+		vec2  grid_minor = abs(fract(coord - 0.5) - 0.5) / f;
+		float line_minor = min(grid_minor.x, grid_minor.y);
+		float C_minor = 1.0 - min(line_minor, 1.0);
+
+		vec2  grid_major = abs(fract(coord / 5.0 - 0.5) - 0.5) / f;
+		float line_major = min(grid_major.x, grid_major.y);
+		float C_major = 1.0 - min(line_major, 1.0);
+
+		// Add shimmer to grid intensity based on ripple height
+		float shimmer = 1.0 + rippleHeight * 2.0;
+		float grid_intensity = max(C_minor, C_major * 1.5) * 0.6 * shimmer;
+		vec3  grid_color = vec3(0.0, 0.8, 0.8) * grid_intensity;
+
+		vec3 surfaceColor = vec3(0.05, 0.05, 0.08);
+
+		// Highly reflective PBR material
+		vec3 lighting = apply_lighting_pbr(FragPos, norm, surfaceColor, 0.05, 0.9, 1.0).rgb;
+		vec3 final_color = lighting + grid_color;
+
+		// Distance fade and distant cyan blend (matching terrain style)
+		vec4 baseColor = vec4(final_color, fade);
+		FragColor = mix(vec4(0.0, 0.7, 0.7, baseColor.a) * length(baseColor), baseColor, step(1.0, fade));
+		return;
 	}
 
 	// ========================================================================
