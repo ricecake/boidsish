@@ -70,7 +70,7 @@ namespace Boidsish {
 		};
 
 		static std::map<PolyhedronType, MeshData> s_meshes;
-		static std::mutex                         s_mesh_mutex;
+		static std::recursive_mutex               s_mesh_mutex;
 
 		void EnsureMeshInitialized(Megabuffer* megabuffer = nullptr) const;
 

@@ -2,6 +2,7 @@
 #include <memory>
 #include <vector>
 
+#include "ConfigManager.h"
 #include "graphics.h"
 #include "polyhedron.h"
 
@@ -22,15 +23,20 @@ std::vector<std::shared_ptr<Shape>> PolyhedraDemo(float time) {
 		PolyhedronType::GreatIcosahedron
 	};
 
-	float spacing = 4.0f;
+	float spacing = 5.0f;
 	int   cols = 3;
 
 	for (int i = 0; i < 9; ++i) {
 		float x = (i % cols - 1) * spacing;
-		float y = (i / cols - 1) * spacing;
+		float y = (1 - i / cols) * spacing + 5.0f; // Offset from floor
 
-		auto poly = std::make_shared<Polyhedron>(types[i], i + 1, x, y, 0.0f, 1.0f);
+		auto poly = std::make_shared<Polyhedron>(types[i], i + 1, x, y, 0.0f, 1.5f);
 		poly->SetRotation(glm::angleAxis(time, glm::vec3(0, 1, 0.5f)));
+
+		// PBR properties for better look
+		poly->SetUsePBR(true);
+		poly->SetRoughness(0.3f);
+		poly->SetMetallic(0.7f);
 
 		// Color based on index
 		float r = (i % 3) / 2.0f;
@@ -48,8 +54,17 @@ int main() {
 	try {
 		Visualizer viz(1280, 720, "Boidsish - 9 Regular Polyhedra Demo");
 
-		Camera camera(0.0f, 0.0f, 15.0f, 0.0f, 0.0f, 45.0f);
+		// Setup Camera
+		Camera camera(0.0f, 5.0f, 20.0f, 0.0f, 0.0f, 45.0f);
 		viz.SetCamera(camera);
+
+		// Setup Lighting
+		Light sun = Light::CreateDirectional(glm::vec3(0.5f, -1.0f, -0.5f), glm::vec3(1.0f, 0.95f, 0.8f), 1.5f);
+		viz.GetLightManager().AddLight(sun);
+		viz.GetLightManager().SetAmbientLight(glm::vec3(0.2f));
+
+		// Enable Floor
+		ConfigManager::GetInstance().SetBool("enable_floor", true);
 
 		viz.SetDotFunction(PolyhedraDemo);
 

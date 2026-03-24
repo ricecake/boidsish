@@ -14,7 +14,7 @@
 namespace Boidsish {
 
 	std::map<PolyhedronType, Polyhedron::MeshData> Polyhedron::s_meshes;
-	std::mutex                                     Polyhedron::s_mesh_mutex;
+	std::recursive_mutex                           Polyhedron::s_mesh_mutex;
 
 	Polyhedron::Polyhedron(
 		PolyhedronType type,
@@ -38,8 +38,8 @@ namespace Boidsish {
 
 	void Polyhedron::render(Shader& shader, const glm::mat4& model_matrix) const {
 		EnsureMeshInitialized();
-		std::lock_guard<std::mutex> lock(s_mesh_mutex);
-		auto                        it = s_meshes.find(type_);
+		std::lock_guard<std::recursive_mutex> lock(s_mesh_mutex);
+		auto                                  it = s_meshes.find(type_);
 		if (it == s_meshes.end() || it->second.vao == 0)
 			return;
 
@@ -80,8 +80,8 @@ namespace Boidsish {
 
 	void Polyhedron::GenerateRenderPackets(std::vector<RenderPacket>& out_packets, const RenderContext& context) const {
 		EnsureMeshInitialized(context.megabuffer);
-		std::lock_guard<std::mutex> lock(s_mesh_mutex);
-		auto                        it = s_meshes.find(type_);
+		std::lock_guard<std::recursive_mutex> lock(s_mesh_mutex);
+		auto                                  it = s_meshes.find(type_);
 		if (it == s_meshes.end() || it->second.vao == 0)
 			return;
 
@@ -161,7 +161,7 @@ namespace Boidsish {
 
 	AABB Polyhedron::GetAABB() const {
 		EnsureMeshInitialized();
-		std::lock_guard<std::mutex> lock(s_mesh_mutex);
+		std::lock_guard<std::recursive_mutex> lock(s_mesh_mutex);
 		return s_meshes[type_].local_aabb.Transform(GetModelMatrix());
 	}
 
@@ -174,7 +174,7 @@ namespace Boidsish {
 	}
 
 	void Polyhedron::EnsureMeshInitialized(Megabuffer* megabuffer) const {
-		std::lock_guard<std::mutex> lock(s_mesh_mutex);
+		std::lock_guard<std::recursive_mutex> lock(s_mesh_mutex);
 		if (s_meshes.count(type_) == 0 || (s_meshes[type_].vao == 0 && !s_meshes[type_].alloc.valid)) {
 			InitPolyhedronMesh(type_, megabuffer);
 		}
@@ -496,7 +496,7 @@ namespace Boidsish {
 	}
 
 	void Polyhedron::DestroyPolyhedronMeshes() {
-		std::lock_guard<std::mutex> lock(s_mesh_mutex);
+		std::lock_guard<std::recursive_mutex> lock(s_mesh_mutex);
 		for (auto& pair : s_meshes) {
 			if (pair.second.vao != 0 && !pair.second.alloc.valid) {
 				glDeleteVertexArrays(1, &pair.second.vao);
