@@ -747,6 +747,7 @@ namespace Boidsish {
 		shader.setFloat("uTessLevelMax", 64.0f);
 		shader.setFloat("uTessLevelMin", 2.0f);
 		shader.setFloat("uChunkSize", chunk_size_ * last_world_scale_);
+		shader.setFloat("uRawChunkSize", static_cast<float>(chunk_size_));
 
 		if (clip_plane) {
 			shader.setVec4("clipPlane", *clip_plane);

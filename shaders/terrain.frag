@@ -21,6 +21,7 @@ uniform bool uIsShadowPass = false;
 
 // Biome texture array: RG8 - R=low_idx, G=t
 uniform sampler2DArray uBiomeMap;
+uniform float          uRawChunkSize;
 
 struct BiomeProperties {
 	vec4 albedo_roughness; // rgb = albedo, w = roughness
