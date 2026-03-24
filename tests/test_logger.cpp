@@ -22,10 +22,12 @@ TEST(LoggerTest, TupleFormatting) {
 
     logger::INFO("Test tuple: {}", std::make_tuple("key", "value"));
     ASSERT_FALSE(backend_ptr->messages.empty());
-    EXPECT_TRUE(backend_ptr->messages.back().find("key => [value]") != std::string::npos);
+    EXPECT_NE(backend_ptr->messages.back().find("key => [value]"), std::string::npos)
+        << "Actual message: " << backend_ptr->messages.back();
 
     logger::INFO("Test pair: {}", std::make_pair("foo", 42));
-    EXPECT_TRUE(backend_ptr->messages.back().find("foo => [42]") != std::string::npos);
+    EXPECT_NE(backend_ptr->messages.back().find("foo => [42]"), std::string::npos)
+        << "Actual message: " << backend_ptr->messages.back();
 }
 
 TEST(LoggerTest, LevelFiltering) {
