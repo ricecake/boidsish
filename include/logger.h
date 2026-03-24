@@ -18,6 +18,19 @@
 using namespace std::literals; // required for ""sv
 
 namespace logger {
+
+	template <typename T>
+	struct is_tuple_like: std::false_type {};
+
+	template <typename... Args>
+	struct is_tuple_like<std::tuple<Args...>>: std::true_type {};
+
+	template <typename T1, typename T2>
+	struct is_tuple_like<std::pair<T1, T2>>: std::true_type {};
+
+	template <typename T>
+	concept tuple_like = is_tuple_like<std::remove_cvref_t<T>>::value;
+
 #if defined(__cpp_lib_source_location)
 	using source_location_type = std::source_location;
 #else
@@ -181,12 +194,12 @@ namespace logger {
 			std::stringstream tags;
 
 			size_t searchPos = 0;
-			auto   process = [&](auto&& arg) {
+			auto process = [&](auto&& arg) {
 				std::stringstream ss;
 				std::ostream&     os = ss;
 				using T = std::remove_cvref_t<decltype(arg)>;
 
-				if constexpr (requires { std::tuple_size<T>::value; }) {
+				if constexpr (tuple_like<T>) {
 					if constexpr (std::tuple_size<T>::value == 2) {
 						os << std::get<0>(arg) << " => [" << std::get<1>(arg) << "]";
 					} else {

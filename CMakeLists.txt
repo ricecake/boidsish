@@ -56,6 +56,9 @@ set_directory_properties(PROPERTIES COMPILE_OPTIONS "${OLD_COMPILE_OPTIONS}")
 # 3. Define the Library
 # Finds all .cpp files in src/
 file(GLOB_RECURSE LIB_SOURCES "src/*.cpp")
+# Ensure newly added files are included (GLOB should handle it, but explicit check or re-run)
+list(APPEND LIB_SOURCES "src/polyhedron.cpp")
+list(REMOVE_DUPLICATES LIB_SOURCES)
 
 add_library(boidsish STATIC ${LIB_SOURCES})
 target_compile_definitions(boidsish PUBLIC GLM_ENABLE_EXPERIMENTAL)

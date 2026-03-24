@@ -191,7 +191,7 @@ namespace Boidsish {
 			const glm::vec3&           p2
 		) {
 			glm::vec3 normal = glm::normalize(glm::cross(p1 - p0, p2 - p0));
-			unsigned  base = vertices.size();
+			unsigned  base = static_cast<unsigned int>(vertices.size());
 
 			Vertex v;
 			v.Normal = normal;
@@ -210,50 +210,57 @@ namespace Boidsish {
 			indices.push_back(base + 2);
 		}
 
-		void AddQuad(
+		/**
+		 * @brief Adds a triangle and ensures its winding is such that the normal points away from the center.
+		 */
+		void AddTriangleOutward(
 			std::vector<Vertex>&       vertices,
 			std::vector<unsigned int>& indices,
 			const glm::vec3&           p0,
 			const glm::vec3&           p1,
 			const glm::vec3&           p2,
-			const glm::vec3&           p3
+			const glm::vec3&           center = glm::vec3(0.0f)
 		) {
-			AddTriangle(vertices, indices, p0, p1, p2);
-			AddTriangle(vertices, indices, p0, p2, p3);
+			glm::vec3 normal = glm::cross(p1 - p0, p2 - p0);
+			glm::vec3 to_face = (p0 + p1 + p2) / 3.0f - center;
+			if (glm::dot(normal, to_face) < 0.0f) {
+				AddTriangle(vertices, indices, p0, p2, p1);
+			} else {
+				AddTriangle(vertices, indices, p0, p1, p2);
+			}
 		}
 
-		void AddPentagon(
+		void AddPentagonOutward(
 			std::vector<Vertex>&       vertices,
 			std::vector<unsigned int>& indices,
 			const glm::vec3&           p0,
 			const glm::vec3&           p1,
 			const glm::vec3&           p2,
 			const glm::vec3&           p3,
-			const glm::vec3&           p4
+			const glm::vec3&           p4,
+			const glm::vec3&           center = glm::vec3(0.0f)
 		) {
-			AddTriangle(vertices, indices, p0, p1, p2);
-			AddTriangle(vertices, indices, p0, p2, p3);
-			AddTriangle(vertices, indices, p0, p3, p4);
+			AddTriangleOutward(vertices, indices, p0, p1, p2, center);
+			AddTriangleOutward(vertices, indices, p0, p2, p3, center);
+			AddTriangleOutward(vertices, indices, p0, p3, p4, center);
 		}
 
-		void AddPentagram(
+		void AddPentagramOutward(
 			std::vector<Vertex>&       vertices,
 			std::vector<unsigned int>& indices,
 			const glm::vec3&           p0,
 			const glm::vec3&           p1,
 			const glm::vec3&           p2,
 			const glm::vec3&           p3,
-			const glm::vec3&           p4
+			const glm::vec3&           p4,
+			const glm::vec3&           center = glm::vec3(0.0f)
 		) {
-			// A pentagram has 5 points: p0, p1, p2, p3, p4.
-			// We can render this as 5 triangles from a center point to each edge,
-			// or as 5 overlapping triangles to get the true star intersection look.
-			// Let's use overlapping triangles for the star look.
-			AddTriangle(vertices, indices, p0, p2, p4);
-			AddTriangle(vertices, indices, p1, p3, p0);
-			AddTriangle(vertices, indices, p2, p4, p1);
-			AddTriangle(vertices, indices, p3, p0, p2);
-			AddTriangle(vertices, indices, p4, p1, p3);
+			// A pentagram has 5 points. We render it as 5 overlapping triangles for the star look.
+			AddTriangleOutward(vertices, indices, p0, p2, p4, center);
+			AddTriangleOutward(vertices, indices, p1, p3, p0, center);
+			AddTriangleOutward(vertices, indices, p2, p4, p1, center);
+			AddTriangleOutward(vertices, indices, p3, p0, p2, center);
+			AddTriangleOutward(vertices, indices, p4, p1, p3, center);
 		}
 	} // namespace
 
@@ -270,32 +277,38 @@ namespace Boidsish {
 			glm::vec3 p2(-s, s, -s);
 			glm::vec3 p3(s, -s, -s);
 
-			AddTriangle(vertices, indices, p0, p2, p1);
-			AddTriangle(vertices, indices, p0, p3, p2);
-			AddTriangle(vertices, indices, p0, p1, p3);
-			AddTriangle(vertices, indices, p1, p2, p3);
+			AddTriangleOutward(vertices, indices, p0, p1, p2);
+			AddTriangleOutward(vertices, indices, p0, p2, p3);
+			AddTriangleOutward(vertices, indices, p0, p3, p1);
+			AddTriangleOutward(vertices, indices, p1, p3, p2);
 		} else if (type == PolyhedronType::Cube) {
 			float     s = 1.0f;
 			glm::vec3 pts[8] = {
 				{-s, -s, s}, {s, -s, s}, {s, s, s}, {-s, s, s}, {-s, -s, -s}, {s, -s, -s}, {s, s, -s}, {-s, s, -s}
 			};
-			AddQuad(vertices, indices, pts[0], pts[1], pts[2], pts[3]); // Front
-			AddQuad(vertices, indices, pts[1], pts[5], pts[6], pts[2]); // Right
-			AddQuad(vertices, indices, pts[5], pts[4], pts[7], pts[6]); // Back
-			AddQuad(vertices, indices, pts[4], pts[0], pts[3], pts[7]); // Left
-			AddQuad(vertices, indices, pts[3], pts[2], pts[6], pts[7]); // Top
-			AddQuad(vertices, indices, pts[4], pts[5], pts[1], pts[0]); // Bottom
+			AddTriangleOutward(vertices, indices, pts[0], pts[1], pts[2]);
+			AddTriangleOutward(vertices, indices, pts[0], pts[2], pts[3]);
+			AddTriangleOutward(vertices, indices, pts[1], pts[5], pts[6]);
+			AddTriangleOutward(vertices, indices, pts[1], pts[6], pts[2]);
+			AddTriangleOutward(vertices, indices, pts[5], pts[4], pts[7]);
+			AddTriangleOutward(vertices, indices, pts[5], pts[7], pts[6]);
+			AddTriangleOutward(vertices, indices, pts[4], pts[0], pts[3]);
+			AddTriangleOutward(vertices, indices, pts[4], pts[3], pts[7]);
+			AddTriangleOutward(vertices, indices, pts[3], pts[2], pts[6]);
+			AddTriangleOutward(vertices, indices, pts[3], pts[6], pts[7]);
+			AddTriangleOutward(vertices, indices, pts[4], pts[5], pts[1]);
+			AddTriangleOutward(vertices, indices, pts[4], pts[1], pts[0]);
 		} else if (type == PolyhedronType::Octahedron) {
 			float     s = 1.0f;
 			glm::vec3 pts[6] = {{s, 0, 0}, {-s, 0, 0}, {0, s, 0}, {0, -s, 0}, {0, 0, s}, {0, 0, -s}};
-			AddTriangle(vertices, indices, pts[4], pts[0], pts[2]);
-			AddTriangle(vertices, indices, pts[4], pts[2], pts[1]);
-			AddTriangle(vertices, indices, pts[4], pts[1], pts[3]);
-			AddTriangle(vertices, indices, pts[4], pts[3], pts[0]);
-			AddTriangle(vertices, indices, pts[5], pts[2], pts[0]);
-			AddTriangle(vertices, indices, pts[5], pts[1], pts[2]);
-			AddTriangle(vertices, indices, pts[5], pts[3], pts[1]);
-			AddTriangle(vertices, indices, pts[5], pts[0], pts[3]);
+			AddTriangleOutward(vertices, indices, pts[4], pts[0], pts[2]);
+			AddTriangleOutward(vertices, indices, pts[4], pts[2], pts[1]);
+			AddTriangleOutward(vertices, indices, pts[4], pts[1], pts[3]);
+			AddTriangleOutward(vertices, indices, pts[4], pts[3], pts[0]);
+			AddTriangleOutward(vertices, indices, pts[5], pts[2], pts[0]);
+			AddTriangleOutward(vertices, indices, pts[5], pts[1], pts[2]);
+			AddTriangleOutward(vertices, indices, pts[5], pts[3], pts[1]);
+			AddTriangleOutward(vertices, indices, pts[5], pts[0], pts[3]);
 		} else if (type == PolyhedronType::Dodecahedron || type == PolyhedronType::GreatStellatedDodecahedron) {
 			float                  phi = (1.0f + sqrt(5.0f)) / 2.0f;
 			float                  inv_phi = 1.0f / phi;
@@ -315,13 +328,12 @@ namespace Boidsish {
 
 			if (type == PolyhedronType::Dodecahedron) {
 				for (auto& f : faces) {
-					AddPentagon(vertices, indices, pts[f[0]], pts[f[1]], pts[f[2]], pts[f[3]], pts[f[4]]);
+					AddPentagonOutward(vertices, indices, pts[f[0]], pts[f[1]], pts[f[2]], pts[f[3]], pts[f[4]]);
 				}
 			} else {
 				// Great Stellated Dodecahedron {5/2, 3}
-				// Pentagram faces using vertices of dodecahedron.
 				for (auto& f : faces) {
-					AddPentagram(vertices, indices, pts[f[0]], pts[f[1]], pts[f[2]], pts[f[3]], pts[f[4]]);
+					AddPentagramOutward(vertices, indices, pts[f[0]], pts[f[1]], pts[f[2]], pts[f[3]], pts[f[4]]);
 				}
 			}
 		} else if (
@@ -344,7 +356,7 @@ namespace Boidsish {
 
 			if (type == PolyhedronType::Icosahedron) {
 				for (auto& f : faces) {
-					AddTriangle(vertices, indices, pts[f[0]], pts[f[1]], pts[f[2]]);
+					AddTriangleOutward(vertices, indices, pts[f[0]], pts[f[1]], pts[f[2]]);
 				}
 			} else if (type == PolyhedronType::SmallStellatedDodecahedron) {
 				// SSD {5/2, 5}. 12 pentagrams.
@@ -380,7 +392,7 @@ namespace Boidsish {
 						}
 					}
 					if(sorted.size() == 5){
-						AddPentagram(vertices, indices, pts[sorted[0]], pts[sorted[1]], pts[sorted[2]], pts[sorted[3]], pts[sorted[4]]);
+						AddPentagramOutward(vertices, indices, pts[sorted[0]], pts[sorted[1]], pts[sorted[2]], pts[sorted[3]], pts[sorted[4]]);
 					}
 				}
 			} else if (type == PolyhedronType::GreatDodecahedron) {
@@ -416,39 +428,20 @@ namespace Boidsish {
 						}
 					}
 					if(sorted.size() == 5){
-						AddPentagon(vertices, indices, pts[sorted[0]], pts[sorted[1]], pts[sorted[2]], pts[sorted[3]], pts[sorted[4]]);
+						AddPentagonOutward(vertices, indices, pts[sorted[0]], pts[sorted[1]], pts[sorted[2]], pts[sorted[3]], pts[sorted[4]]);
 					}
 				}
 			} else if (type == PolyhedronType::GreatIcosahedron) {
 				// Great Icosahedron {3, 5/2}. 20 triangles.
-				// Vertices of icosahedron, but faces connect vertices that are "far" apart.
-				// For each face (a, b, c) of icosahedron, the Great Icosahedron face can be
-				// found by jumping over one vertex.
-				// Actually, the faces of Great Icosahedron are the triangles whose edges are
-				// the "long" diagonals of the pentagonal faces of the Great Dodecahedron.
-				// A simpler way: for each vertex i, its 5 neighbors n1..n5.
-				// The triangles are (n1, n3, n5), (n2, n4, n1), etc? No.
-				// Correct approach for Great Icosahedron {3, 5/2}:
-				// Vertices: same as Icosahedron.
-				// Faces: 20 triangles. Each face is (pts[i], pts[j], pts[k]) such that they form
-				// a large equilateral triangle.
-				// From reference: the faces of Great Icosahedron are the same as the faces
-				// of the icosahedron stellation that consists of 20 large triangles.
-				// I will use a stellation logic: each triangle is formed by 3 vertices
-				// whose distances are larger than the icosahedron edge.
+				// Search for equilateral triangles with edge length 2*phi (large diagonals of icosahedron)
 				for(int i = 0; i < 12; ++i){
 					for(int j = i+1; j < 12; ++j){
 						for(int k = j+1; k < 12; ++k){
 							float d1 = glm::distance(pts[i], pts[j]);
 							float d2 = glm::distance(pts[j], pts[k]);
 							float d3 = glm::distance(pts[k], pts[i]);
-							// The side length of Great Icosahedron is 2.
-							// For our icosahedron with coords like (1, phi, 0), the edge length is 2.
-							// The side length of GI is larger.
-							// Wait, the standard icosahedron with these coords has edge length 2.
-							// The GI with same vertices has edge length 2*phi?
 							if(std::abs(d1 - 2.0f*phi) < 0.1f && std::abs(d2 - 2.0f*phi) < 0.1f && std::abs(d3 - 2.0f*phi) < 0.1f){
-								AddTriangle(vertices, indices, pts[i], pts[j], pts[k]);
+								AddTriangleOutward(vertices, indices, pts[i], pts[j], pts[k]);
 							}
 						}
 					}
@@ -469,12 +462,12 @@ namespace Boidsish {
 			s_meshes[type].local_aabb = AABB(glm::vec3(-1.0f), glm::vec3(1.0f));
 		}
 
-		s_meshes[type].index_count = indices.size();
+		s_meshes[type].index_count = static_cast<int>(indices.size());
 
 		if (megabuffer) {
-			s_meshes[type].alloc = megabuffer->AllocateStatic(vertices.size(), indices.size());
+			s_meshes[type].alloc = megabuffer->AllocateStatic(static_cast<uint32_t>(vertices.size()), static_cast<uint32_t>(indices.size()));
 			if (s_meshes[type].alloc.valid) {
-				megabuffer->Upload(s_meshes[type].alloc, vertices.data(), vertices.size(), indices.data(), indices.size());
+				megabuffer->Upload(s_meshes[type].alloc, vertices.data(), static_cast<uint32_t>(vertices.size()), indices.data(), static_cast<uint32_t>(indices.size()));
 				s_meshes[type].vao = megabuffer->GetVAO();
 			}
 		} else {
