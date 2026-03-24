@@ -104,6 +104,22 @@ namespace Boidsish {
 
 				// 3. Terrain & Foliage (from ConfigWidget)
 				if (ImGui::CollapsingHeader("Terrain", ImGuiTreeNodeFlags_DefaultOpen)) {
+					auto& config = ConfigManager::GetInstance();
+					bool  render_terrain = config.GetAppSettingBool("render_terrain", true);
+					if (ImGui::Checkbox("Render Terrain", &render_terrain)) {
+						config.SetBool("render_terrain", render_terrain);
+					}
+					bool render_floor = config.GetAppSettingBool("render_floor", true);
+					if (ImGui::Checkbox("Render Floor", &render_floor)) {
+						config.SetBool("render_floor", render_floor);
+					}
+					bool force_both = config.GetAppSettingBool("force_both_floor_and_terrain", false);
+					if (ImGui::Checkbox("Force Both Floor and Terrain", &force_both)) {
+						config.SetBool("force_both_floor_and_terrain", force_both);
+					}
+
+					ImGui::Separator();
+
 					auto terrain = m_visualizer.GetTerrain();
 					if (terrain) {
 						float world_scale = terrain->GetWorldScale();

@@ -86,6 +86,7 @@ namespace Boidsish {
 		bool  render_skybox = true;
 		bool  render_floor = true;
 		bool  render_decor = true;
+		bool  force_both_floor_and_terrain = false;
 		bool  artistic_ripple = false;
 		bool  artistic_color_shift = false;
 		bool  artistic_black_and_white = false;
