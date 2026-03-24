@@ -11,7 +11,9 @@
 #include "terrain_generator_interface.h"
 #include "terrain_render_manager.h"
 #include <GL/glew.h>
+#include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
+#include <glm/gtx/matrix_decompose.hpp>
 
 namespace Boidsish {
 
@@ -320,11 +322,10 @@ namespace Boidsish {
 	}
 
 	void DecorManager::PrepareResources(Megabuffer* mb) {
-		if (!mb)
-			return;
-
 		for (auto& type : decor_types_) {
-			type.model->PrepareResources(mb);
+			if (mb) {
+				type.model->PrepareResources(mb);
+			}
 
 			// Update indirect buffers with correct Megabuffer offsets
 			const auto&                              meshes = type.model->getMeshes();
@@ -375,6 +376,9 @@ namespace Boidsish {
 			);
 		}
 		glBindBuffer(GL_DRAW_INDIRECT_BUFFER, 0);
+
+		if (decor_types_.empty())
+			return;
 
 		// Build and upload per-type properties UBO for the placement shader.
 		// This replaces 16+ uniform calls per type with a single UBO bind.
@@ -741,6 +745,159 @@ namespace Boidsish {
 
 			glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT | GL_COMMAND_BARRIER_BIT);
 		}
+	}
+
+	std::vector<DecorTypeResults> DecorManager::GetDecorInChunks(
+		const std::vector<std::pair<int, int>>& chunk_keys,
+		std::shared_ptr<TerrainRenderManager>   render_manager,
+		const ITerrainGenerator&                terrain_gen
+	) {
+		PROJECT_PROFILE_SCOPE("DecorManager::GetDecorInChunks");
+		if (!render_manager || decor_types_.empty())
+			return {};
+
+		float world_scale = terrain_gen.GetWorldScale();
+		auto  all_chunks = render_manager->GetDecorChunkData(world_scale);
+
+		// 1. Find the chunk data for the requested keys
+		std::vector<TerrainRenderManager::DecorChunkData> requested_chunk_data;
+		for (const auto& key : chunk_keys) {
+			auto it = std::find_if(all_chunks.begin(), all_chunks.end(), [&](const auto& cd) {
+				return cd.key == key;
+			});
+			if (it != all_chunks.end()) {
+				requested_chunk_data.push_back(*it);
+			}
+		}
+
+		if (requested_chunk_data.empty())
+			return {};
+
+		int num_requested_chunks = (int)requested_chunk_data.size();
+
+		// 2. Prepare temporary GPU resources
+		GLuint temp_instance_ssbo;
+		glGenBuffers(1, &temp_instance_ssbo);
+		glBindBuffer(GL_SHADER_STORAGE_BUFFER, temp_instance_ssbo);
+		glBufferData(
+			GL_SHADER_STORAGE_BUFFER,
+			num_requested_chunks * kInstancesPerChunk * sizeof(glm::mat4),
+			nullptr,
+			GL_DYNAMIC_DRAW
+		);
+
+		GLuint temp_chunk_params_ssbo;
+		glGenBuffers(1, &temp_chunk_params_ssbo);
+		glBindBuffer(GL_SHADER_STORAGE_BUFFER, temp_chunk_params_ssbo);
+		std::vector<ChunkParamsGPU> chunk_gpu(num_requested_chunks);
+		for (int i = 0; i < num_requested_chunks; ++i) {
+			const auto& cd = requested_chunk_data[i];
+			chunk_gpu[i].offset_slice_size = glm::vec4(cd.world_offset, cd.slice, cd.chunk_size);
+			chunk_gpu[i].indices = glm::ivec4(i * kInstancesPerChunk, 0, 0, 0);
+		}
+		glBufferData(
+			GL_SHADER_STORAGE_BUFFER,
+			num_requested_chunks * sizeof(ChunkParamsGPU),
+			chunk_gpu.data(),
+			GL_STREAM_DRAW
+		);
+
+		PlacementGlobalsGPU globals;
+		// Use a dummy camera position and large distances to ensure all decor is generated.
+		// Avoid equal values for falloff parameters to prevent smoothstep(a, a, x) issues.
+		globals.camera_and_scale = glm::vec4(0.0f, 0.0f, world_scale, terrain_gen.GetMaxHeight());
+		globals.distance_params = glm::vec4(1e6f, 2e6f, 3e6f, (float)kMaxInstancesPerType);
+
+		GLuint temp_globals_ubo;
+		glGenBuffers(1, &temp_globals_ubo);
+		glBindBuffer(GL_UNIFORM_BUFFER, temp_globals_ubo);
+		glBufferData(GL_UNIFORM_BUFFER, sizeof(PlacementGlobalsGPU), &globals, GL_STREAM_DRAW);
+
+		// 3. Dispatch placement for each type
+		placement_shader_->use();
+		glActiveTexture(GL_TEXTURE0);
+		glBindTexture(GL_TEXTURE_2D_ARRAY, render_manager->GetHeightmapTexture());
+		placement_shader_->setInt("u_heightmapArray", 0);
+
+		glActiveTexture(GL_TEXTURE1);
+		glBindTexture(GL_TEXTURE_2D_ARRAY, render_manager->GetBiomeTexture());
+		placement_shader_->setInt("u_biomeMap", 1);
+
+		glBindBufferBase(GL_UNIFORM_BUFFER, Constants::UboBinding::DecorProps(), decor_props_ubo_);
+		glBindBufferBase(GL_UNIFORM_BUFFER, Constants::UboBinding::DecorPlacementGlobals(), temp_globals_ubo);
+		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, Constants::SsboBinding::DecorChunkParams(), temp_chunk_params_ssbo);
+		// Note: decor_placement.comp uses binding 0 for DecorInstances
+		glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, temp_instance_ssbo);
+
+		int                           num_types = (int)decor_types_.size();
+		std::vector<DecorTypeResults> results(num_types);
+		size_t                        instances_per_type = num_requested_chunks * kInstancesPerChunk;
+
+		// Re-allocate temp buffer if it's too small for all types
+		glBindBuffer(GL_SHADER_STORAGE_BUFFER, temp_instance_ssbo);
+		glBufferData(
+			GL_SHADER_STORAGE_BUFFER,
+			num_types * instances_per_type * sizeof(glm::mat4),
+			nullptr,
+			GL_DYNAMIC_DRAW
+		);
+
+		for (int i = 0; i < num_types; ++i) {
+			results[i].model_path = decor_types_[i].model->GetModelPath();
+
+			// Update chunk params for this type's offset
+			for (int j = 0; j < num_requested_chunks; ++j) {
+				const auto& cd = requested_chunk_data[j];
+				chunk_gpu[j].indices.x = (i * num_requested_chunks + j) * kInstancesPerChunk;
+			}
+			glBindBuffer(GL_SHADER_STORAGE_BUFFER, temp_chunk_params_ssbo);
+			glBufferSubData(
+				GL_SHADER_STORAGE_BUFFER,
+				0,
+				num_requested_chunks * sizeof(ChunkParamsGPU),
+				chunk_gpu.data()
+			);
+
+			placement_shader_->setInt("u_typeIndex", i);
+			glDispatchCompute(4, 4, num_requested_chunks);
+		}
+
+		glMemoryBarrier(GL_BUFFER_UPDATE_BARRIER_BIT | GL_SHADER_STORAGE_BARRIER_BIT);
+
+		// 4. Single read back and process
+		std::vector<glm::mat4> all_matrices(num_types * instances_per_type);
+		glBindBuffer(GL_SHADER_STORAGE_BUFFER, temp_instance_ssbo);
+		glGetBufferSubData(
+			GL_SHADER_STORAGE_BUFFER,
+			0,
+			all_matrices.size() * sizeof(glm::mat4),
+			all_matrices.data()
+		);
+
+		for (int i = 0; i < num_types; ++i) {
+			for (size_t j = 0; j < instances_per_type; ++j) {
+				const auto& m = all_matrices[i * instances_per_type + j];
+				if (m[3][3] < 0.5f)
+					continue; // Not a valid instance (scale is 0)
+
+				DecorInstance inst;
+				glm::vec3     skew;
+				glm::vec4     perspective;
+				glm::decompose(m, inst.scale, inst.rotation, inst.center, skew, perspective);
+
+				// Calculate world-space AABB
+				inst.aabb = decor_types_[i].model->GetData()->aabb.Transform(m);
+
+				results[i].instances.push_back(inst);
+			}
+		}
+
+		// 5. Cleanup
+		glDeleteBuffers(1, &temp_instance_ssbo);
+		glDeleteBuffers(1, &temp_chunk_params_ssbo);
+		glDeleteBuffers(1, &temp_globals_ubo);
+
+		return results;
 	}
 
 	void DecorManager::Render(

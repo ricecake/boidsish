@@ -11,6 +11,7 @@
 #include "model.h"
 #include "procedural_generator.h"
 #include <glm/glm.hpp>
+#include <glm/gtc/quaternion.hpp>
 #include <shader.h>
 
 namespace Boidsish {
@@ -79,6 +80,18 @@ namespace Boidsish {
 
 		// Cached instance count (read back after compute, used during render)
 		unsigned int cached_count = 0;
+	};
+
+	struct DecorInstance {
+		glm::vec3 center;
+		glm::vec3 scale;
+		glm::quat rotation;
+		AABB      aabb;
+	};
+
+	struct DecorTypeResults {
+		std::string                model_path;
+		std::vector<DecorInstance> instances;
 	};
 
 	class DecorManager {
@@ -175,6 +188,22 @@ namespace Boidsish {
 
 		// Minimum screen-space size in pixels for culling
 		void SetMinPixelSize(float size) { min_pixel_size_ = size; }
+
+		/**
+		 * @brief Retrieves all decor instances within the specified terrain chunks.
+		 * This is an on-demand query that generates decor for the requested chunks
+		 * if they are currently registered in the render manager.
+		 *
+		 * @param chunk_keys List of (x, z) chunk coordinates to query.
+		 * @param render_manager The render manager providing terrain data.
+		 * @param terrain_gen The terrain generator providing world scale and height.
+		 * @return Vector of decor results grouped by type.
+		 */
+		std::vector<DecorTypeResults> GetDecorInChunks(
+			const std::vector<std::pair<int, int>>& chunk_keys,
+			std::shared_ptr<TerrainRenderManager>   render_manager,
+			const ITerrainGenerator&                terrain_gen
+		);
 
 	private:
 		void _Initialize();

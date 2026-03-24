@@ -9,6 +9,7 @@
 	#include <source_location>
 #endif
 #include <sstream>
+#include <array>
 #include <string>
 #include <string_view>
 #include <tuple>
@@ -159,6 +160,21 @@ namespace logger {
 		auto& getBackends() { return backends; }
 	};
 
+	template <typename T>
+	struct is_tuple_like: std::false_type {};
+
+	template <typename... Ts>
+	struct is_tuple_like<std::tuple<Ts...>>: std::true_type {};
+
+	template <typename T1, typename T2>
+	struct is_tuple_like<std::pair<T1, T2>>: std::true_type {};
+
+	template <typename T, std::size_t N>
+	struct is_tuple_like<std::array<T, N>>: std::true_type {};
+
+	template <typename T>
+	inline constexpr bool is_tuple_like_v = is_tuple_like<T>::value;
+
 	struct LogSource {
 		std::string_view     msg;
 		source_location_type loc;
@@ -186,14 +202,16 @@ namespace logger {
 				std::ostream&     os = ss;
 				using T = std::remove_cvref_t<decltype(arg)>;
 
-				if constexpr (requires { std::tuple_size<T>::value; }) {
-					if constexpr (std::tuple_size<T>::value == 2) {
+				if constexpr (is_tuple_like_v<T>) {
+					if constexpr (std::tuple_size_v<T> == 2) {
 						os << std::get<0>(arg) << " => [" << std::get<1>(arg) << "]";
 					} else {
-						os << "{ tuple-like size=" << std::tuple_size<T>::value << " }";
+						os << "{ tuple-like size=" << std::tuple_size_v<T> << " }";
 					}
-				} else {
+				} else if constexpr (requires { os << arg; }) {
 					os << std::forward<decltype(arg)>(arg);
+				} else {
+					os << "{ unprintable type }";
 				}
 
 				std::string replacement = ss.str();
