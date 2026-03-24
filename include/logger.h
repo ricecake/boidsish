@@ -9,6 +9,7 @@
 #if __has_include(<source_location>)
 	#include <source_location>
 #endif
+#include <array>
 #include <sstream>
 #include <string>
 #include <string_view>
@@ -160,15 +161,6 @@ namespace logger {
 		auto& getBackends() { return backends; }
 	};
 
-	struct LogSource {
-		std::string_view     msg;
-		source_location_type loc;
-
-		template <typename StringType>
-		constexpr LogSource(const StringType& m, const source_location_type& l = source_location_type::current()):
-			msg(m), loc(l) {}
-	};
-
 	template <typename T>
 	struct is_tuple_like: std::false_type {};
 
@@ -180,6 +172,18 @@ namespace logger {
 
 	template <typename T, size_t N>
 	struct is_tuple_like<std::array<T, N>>: std::true_type {};
+
+	template <typename T>
+	inline constexpr bool is_tuple_like_v = is_tuple_like<T>::value;
+
+	struct LogSource {
+		std::string_view     msg;
+		source_location_type loc;
+
+		template <typename StringType>
+		constexpr LogSource(const StringType& m, const source_location_type& l = source_location_type::current()):
+			msg(m), loc(l) {}
+	};
 
 	template <class B>
 		requires std::derived_from<B, Backend>
@@ -199,14 +203,16 @@ namespace logger {
 				std::ostream&     os = ss;
 				using T = std::remove_cvref_t<decltype(arg)>;
 
-				if constexpr (is_tuple_like<T>::value) {
-					if constexpr (std::tuple_size<T>::value == 2) {
+				if constexpr (is_tuple_like_v<T>) {
+					if constexpr (std::tuple_size_v<T> == 2) {
 						os << std::get<0>(arg) << " => [" << std::get<1>(arg) << "]";
 					} else {
-						os << "{ tuple-like size=" << std::tuple_size<T>::value << " }";
+						os << "{ tuple-like size=" << std::tuple_size_v<T> << " }";
 					}
-				} else {
+				} else if constexpr (requires { os << arg; }) {
 					os << std::forward<decltype(arg)>(arg);
+				} else {
+					os << "{ unprintable type }";
 				}
 
 				std::string replacement = ss.str();
