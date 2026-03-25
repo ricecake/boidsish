@@ -1,11 +1,28 @@
 #pragma once
 
+#include <array>
+#include <optional>
 #include <string>
 #include <vector>
 
 #include <glm/glm.hpp>
 
 namespace Boidsish {
+
+	enum class WeatherAttribute {
+		SunIntensity,
+		WindStrength,
+		WindSpeed,
+		WindFrequency,
+		CloudDensity,
+		CloudAltitude,
+		CloudThickness,
+		HazeDensity,
+		HazeHeight,
+		RayleighScale,
+		MieScale,
+		Count
+	};
 
 	template <typename T>
 	struct WeatherRange {
@@ -109,15 +126,41 @@ namespace Boidsish {
 
 		const CurrentWeather& GetCurrentWeather() const { return current_; }
 
+		/**
+		 * @brief Manually set a target level for a weather attribute.
+		 * While an external target is set, the manager will not use noise-derived targets for this attribute.
+		 */
+		void SetTarget(WeatherAttribute attr, float target);
+
+		/**
+		 * @brief Clear an externally set target, returning the attribute to autonomous control.
+		 */
+		void ClearTarget(WeatherAttribute attr);
+
+		/**
+		 * @brief Set the pace (omega) of the critically dampened spring for a specific attribute.
+		 * Higher values result in faster transitions.
+		 */
+		void SetPace(WeatherAttribute attr, float pace);
+
 	private:
+		struct AttributeState {
+			float                velocity = 0.0f;
+			float                omega = 2.0f; // Default pace
+			std::optional<float> external_target;
+		};
+
 		void InitializePresets();
+		void UpdateAttribute(WeatherAttribute attr, float target, float deltaTime);
 
 		bool  enabled_ = true;
-		float time_scale_ = 0.005f;     // Low frequency over time
+		float time_scale_ = 0.005f;    // Low frequency over time
 		float spatial_scale_ = 0.001f; // Low frequency over space
 
 		std::vector<WeatherPreset> presets_;
 		CurrentWeather             current_;
+
+		std::array<AttributeState, static_cast<size_t>(WeatherAttribute::Count)> attribute_states_;
 	};
 
 } // namespace Boidsish
