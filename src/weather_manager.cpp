@@ -1,6 +1,7 @@
 #include "weather_manager.h"
 
 #include <algorithm>
+#include <cmath>
 
 #include "Simplex.h"
 #include "profiler.h"
@@ -9,9 +10,107 @@ namespace Boidsish {
 
 	WeatherManager::WeatherManager() {
 		InitializePresets();
+
+		// Initialize default paces for various attributes
+		SetPace(WeatherAttribute::SunIntensity, 0.5f);
+		SetPace(WeatherAttribute::WindStrength, 0.3f);
+		SetPace(WeatherAttribute::WindSpeed, 0.3f);
+		SetPace(WeatherAttribute::WindFrequency, 0.3f);
+		SetPace(WeatherAttribute::CloudDensity, 0.2f);
+		SetPace(WeatherAttribute::CloudAltitude, 0.1f);
+		SetPace(WeatherAttribute::CloudThickness, 0.1f);
+		SetPace(WeatherAttribute::HazeDensity, 0.2f);
+		SetPace(WeatherAttribute::HazeHeight, 0.1f);
+		SetPace(WeatherAttribute::RayleighScale, 0.1f);
+		SetPace(WeatherAttribute::MieScale, 0.1f);
 	}
 
 	WeatherManager::~WeatherManager() {}
+
+	void WeatherManager::SetTarget(WeatherAttribute attr, float target) {
+		if (attr == WeatherAttribute::Count)
+			return;
+		attribute_states_[static_cast<size_t>(attr)].external_target = target;
+	}
+
+	void WeatherManager::ClearTarget(WeatherAttribute attr) {
+		if (attr == WeatherAttribute::Count)
+			return;
+		attribute_states_[static_cast<size_t>(attr)].external_target = std::nullopt;
+	}
+
+	void WeatherManager::SetPace(WeatherAttribute attr, float pace) {
+		if (attr == WeatherAttribute::Count)
+			return;
+		attribute_states_[static_cast<size_t>(attr)].omega = pace;
+	}
+
+	void WeatherManager::UpdateAttribute(WeatherAttribute attr, float target, float deltaTime) {
+		if (attr == WeatherAttribute::Count || deltaTime <= 0.0f)
+			return;
+
+		auto&  state = attribute_states_[static_cast<size_t>(attr)];
+		float* value_ptr = nullptr;
+
+		switch (attr) {
+		case WeatherAttribute::SunIntensity:
+			value_ptr = &current_.sun_intensity;
+			break;
+		case WeatherAttribute::WindStrength:
+			value_ptr = &current_.wind_strength;
+			break;
+		case WeatherAttribute::WindSpeed:
+			value_ptr = &current_.wind_speed;
+			break;
+		case WeatherAttribute::WindFrequency:
+			value_ptr = &current_.wind_frequency;
+			break;
+		case WeatherAttribute::CloudDensity:
+			value_ptr = &current_.cloud_density;
+			break;
+		case WeatherAttribute::CloudAltitude:
+			value_ptr = &current_.cloud_altitude;
+			break;
+		case WeatherAttribute::CloudThickness:
+			value_ptr = &current_.cloud_thickness;
+			break;
+		case WeatherAttribute::HazeDensity:
+			value_ptr = &current_.haze_density;
+			break;
+		case WeatherAttribute::HazeHeight:
+			value_ptr = &current_.haze_height;
+			break;
+		case WeatherAttribute::RayleighScale:
+			value_ptr = &current_.rayleigh_scale;
+			break;
+		case WeatherAttribute::MieScale:
+			value_ptr = &current_.mie_scale;
+			break;
+		default:
+			return;
+		}
+
+		float& value = *value_ptr;
+
+		// If an external target is set, override the noise-derived target
+		if (state.external_target.has_value()) {
+			target = *state.external_target;
+		}
+
+		// Analytical Critically Dampened Spring
+		// x(t) = (c1 + c2*t) * e^(-omega*t) + target
+		// where c1 = x0 - target, c2 = v0 + omega(x0 - target)
+		float x0 = value - target;
+		float v0 = state.velocity;
+		float omega = state.omega;
+
+		float expTerm = std::exp(-omega * deltaTime);
+		float c1 = x0;
+		float c2 = v0 + omega * x0;
+
+		value = (c1 + c2 * deltaTime) * expTerm + target;
+		state.velocity = (v0 - omega * c2 * deltaTime) * expTerm;
+	}
 
 	void WeatherManager::InitializePresets() {
 		// 1. Sunny
@@ -128,17 +227,17 @@ namespace Boidsish {
 			return Simplex::noise(noisePos * 2.0f + glm::vec2(offset)) * 0.5f + 0.5f;
 		};
 
-		current_.sun_intensity = blended.sun_intensity.Lerp(sampleNoise(1.1f));
-		current_.wind_strength = blended.wind_strength.Lerp(sampleNoise(2.2f));
-		current_.wind_speed = blended.wind_speed.Lerp(sampleNoise(3.3f));
-		current_.wind_frequency = blended.wind_frequency.Lerp(sampleNoise(4.4f));
-		current_.cloud_density = blended.cloud_density.Lerp(sampleNoise(5.5f));
-		current_.cloud_altitude = blended.cloud_altitude.Lerp(sampleNoise(6.6f));
-		current_.cloud_thickness = blended.cloud_thickness.Lerp(sampleNoise(7.7f));
-		current_.haze_density = blended.haze_density.Lerp(sampleNoise(8.8f));
-		current_.haze_height = blended.haze_height.Lerp(sampleNoise(9.9f));
-		current_.rayleigh_scale = blended.rayleigh_scale.Lerp(sampleNoise(10.10f));
-		current_.mie_scale = blended.mie_scale.Lerp(sampleNoise(11.11f));
+		UpdateAttribute(WeatherAttribute::SunIntensity, blended.sun_intensity.Lerp(sampleNoise(1.1f)), deltaTime);
+		UpdateAttribute(WeatherAttribute::WindStrength, blended.wind_strength.Lerp(sampleNoise(2.2f)), deltaTime);
+		UpdateAttribute(WeatherAttribute::WindSpeed, blended.wind_speed.Lerp(sampleNoise(3.3f)), deltaTime);
+		UpdateAttribute(WeatherAttribute::WindFrequency, blended.wind_frequency.Lerp(sampleNoise(4.4f)), deltaTime);
+		UpdateAttribute(WeatherAttribute::CloudDensity, blended.cloud_density.Lerp(sampleNoise(5.5f)), deltaTime);
+		UpdateAttribute(WeatherAttribute::CloudAltitude, blended.cloud_altitude.Lerp(sampleNoise(6.6f)), deltaTime);
+		UpdateAttribute(WeatherAttribute::CloudThickness, blended.cloud_thickness.Lerp(sampleNoise(7.7f)), deltaTime);
+		UpdateAttribute(WeatherAttribute::HazeDensity, blended.haze_density.Lerp(sampleNoise(8.8f)), deltaTime);
+		UpdateAttribute(WeatherAttribute::HazeHeight, blended.haze_height.Lerp(sampleNoise(9.9f)), deltaTime);
+		UpdateAttribute(WeatherAttribute::RayleighScale, blended.rayleigh_scale.Lerp(sampleNoise(10.10f)), deltaTime);
+		UpdateAttribute(WeatherAttribute::MieScale, blended.mie_scale.Lerp(sampleNoise(11.11f)), deltaTime);
 	}
 
 } // namespace Boidsish
