@@ -6,6 +6,7 @@
 #include "imgui.h"
 #include "post_processing/PostProcessingManager.h"
 #include "post_processing/effects/AtmosphereEffect.h"
+#include "post_processing/effects/GodRaysEffect.h"
 #include "terrain_generator_interface.h"
 
 namespace Boidsish {
@@ -73,6 +74,14 @@ namespace Boidsish {
 										atmosphere_effect->SetCloudColor(cloud_color);
 									}
 
+									float cloud_shadow = ConfigManager::GetInstance().GetAppSettingFloat(
+										"cloud_shadow_intensity",
+										0.5f
+									);
+									if (ImGui::SliderFloat("Cloud Shadow Intensity", &cloud_shadow, 0.0f, 1.0f)) {
+										ConfigManager::GetInstance().SetFloat("cloud_shadow_intensity", cloud_shadow);
+									}
+
 									ImGui::Separator();
 									ImGui::Text("Scattering");
 									float rayleigh = atmosphere_effect->GetRayleighScale();
@@ -102,7 +111,53 @@ namespace Boidsish {
 					}
 				}
 
-				// 3. Terrain & Foliage (from ConfigWidget)
+				// 3. God Rays
+				if (ImGui::CollapsingHeader("God Rays", ImGuiTreeNodeFlags_DefaultOpen)) {
+					auto& manager = m_visualizer.GetPostProcessingManager();
+					for (auto& effect : manager.GetPreToneMappingEffects()) {
+						if (effect->GetName() == "GodRays") {
+							bool is_enabled = effect->IsEnabled();
+							if (ImGui::Checkbox("Enable God Rays", &is_enabled)) {
+								effect->SetEnabled(is_enabled);
+								ConfigManager::GetInstance().SetBool("god_rays_enabled", is_enabled);
+							}
+
+							if (is_enabled) {
+								auto god_rays_effect = std::dynamic_pointer_cast<PostProcessing::GodRaysEffect>(effect);
+								if (god_rays_effect) {
+									int samples = god_rays_effect->GetSamples();
+									if (ImGui::SliderInt("Samples", &samples, 8, 128)) {
+										god_rays_effect->SetSamples(samples);
+										ConfigManager::GetInstance().SetInt("god_rays_samples", samples);
+									}
+									float density = god_rays_effect->GetDensity();
+									if (ImGui::SliderFloat("Density", &density, 0.0f, 1.0f)) {
+										god_rays_effect->SetDensity(density);
+										ConfigManager::GetInstance().SetFloat("god_rays_density", density);
+									}
+									float weight = god_rays_effect->GetWeight();
+									if (ImGui::SliderFloat("Weight", &weight, 0.0f, 1.0f)) {
+										god_rays_effect->SetWeight(weight);
+										ConfigManager::GetInstance().SetFloat("god_rays_weight", weight);
+									}
+									float decay = god_rays_effect->GetDecay();
+									if (ImGui::SliderFloat("Decay", &decay, 0.5f, 1.0f)) {
+										god_rays_effect->SetDecay(decay);
+										ConfigManager::GetInstance().SetFloat("god_rays_decay", decay);
+									}
+									float exposure = god_rays_effect->GetExposure();
+									if (ImGui::SliderFloat("Exposure", &exposure, 0.0f, 1.0f)) {
+										god_rays_effect->SetExposure(exposure);
+										ConfigManager::GetInstance().SetFloat("god_rays_exposure", exposure);
+									}
+								}
+							}
+							break;
+						}
+					}
+				}
+
+				// 4. Terrain & Foliage (from ConfigWidget)
 				if (ImGui::CollapsingHeader("Terrain", ImGuiTreeNodeFlags_DefaultOpen)) {
 					auto terrain = m_visualizer.GetTerrain();
 					if (terrain) {
@@ -133,7 +188,7 @@ namespace Boidsish {
 					}
 				}
 
-				// 4. Particles
+				// 5. Particles
 				if (ImGui::CollapsingHeader("Particles", ImGuiTreeNodeFlags_DefaultOpen)) {
 					auto& config = ConfigManager::GetInstance();
 					float density = config.GetAppSettingFloat("ambient_particle_density", 0.15f);
@@ -143,7 +198,7 @@ namespace Boidsish {
 					ImGui::Text("Controls the spawn rate of ambient particles.");
 				}
 
-				// 5. Wind (from EffectsWidget)
+				// 6. Wind (from EffectsWidget)
 				if (ImGui::CollapsingHeader("Wind", ImGuiTreeNodeFlags_DefaultOpen)) {
 					auto& config = ConfigManager::GetInstance();
 

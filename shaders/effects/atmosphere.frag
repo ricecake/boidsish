@@ -13,9 +13,6 @@ uniform mat4 invProjection;
 uniform float hazeDensity;
 uniform float hazeHeight;
 uniform vec3  hazeColor;
-uniform float cloudDensity;
-uniform float cloudAltitude;
-uniform float cloudThickness;
 uniform vec3  cloudColorUniform;
 
 uniform sampler2D u_transmittanceLUT;
@@ -24,6 +21,7 @@ uniform sampler3D u_aerialPerspectiveLUT;
 #include "../atmosphere/common.glsl"
 #include "../helpers/fast_noise.glsl"
 #include "../helpers/lighting.glsl"
+#include "../helpers/clouds.glsl"
 
 vec3 sampleAerialPerspective(vec3 rd, float distKM) {
 	float azimuth = atan(rd.x, -rd.z);
@@ -109,19 +107,7 @@ void main() {
 		for (int i = 0; i < samples; i++) {
 			float t = mix(t_start, t_end, (float(i) + jitter) / float(samples));
 			vec3  p = cameraPos + rayDir * t;
-			float h = (p.y - scaledCloudAltitude) / max(100 + scaledCloudThickness, 0.001);
-			float tapering = smoothstep(0.0, 0.05, h) * smoothstep(1.0, 0.95, h);
-			if (tapering <= 0.1)
-				continue;
-
-			p += 2.0 * fastCurl3d(vec3(p.xz / 500.0, time / 60.0));
-			vec3 p_scaled = p / (1000.0 * worldScale);
-
-			float noise = fastWorley3d(vec3(p_scaled.xz, p_scaled.y + time * 0.01));
-			float erosion = fastRidge3d(p / (600.0 * worldScale)) * 0.5 + 0.5;
-			noise = remap(noise, 1 - erosion, 1.0, 0.0, 1.0);
-
-			float d = smoothstep(0.2, 0.6, noise) * (workingCloudDensity)*tapering;
+			float d = calculateCloudDensity(p, cloudAltitude, weatherThickness, cloudDensity, worldScale, time);
 			cloudAcc += d;
 		}
 		cloudFactor = 1.0 - exp(-cloudAcc * (t_end - t_start) * 0.05 / float(samples));
