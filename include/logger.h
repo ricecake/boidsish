@@ -18,18 +18,15 @@
 using namespace std::literals; // required for ""sv
 
 namespace logger {
-	// Trait to detect tuple-like types (std::tuple, std::pair)
-	template <typename T>
+	// Trait to detect tuple-like types
+	template <typename T, typename = void>
 	struct is_tuple_like: std::false_type {};
 
-	template <typename... Args>
-	struct is_tuple_like<std::tuple<Args...>>: std::true_type {};
-
-	template <typename T1, typename T2>
-	struct is_tuple_like<std::pair<T1, T2>>: std::true_type {};
+	template <typename T>
+	struct is_tuple_like<T, std::void_t<decltype(std::tuple_size<T>::value)>>: std::true_type {};
 
 	template <typename T>
-	inline constexpr bool is_tuple_like_v = is_tuple_like<T>::value;
+	inline constexpr bool is_tuple_like_v = is_tuple_like<std::remove_cvref_t<T>>::value;
 
 #if defined(__cpp_lib_source_location)
 	using source_location_type = std::source_location;
