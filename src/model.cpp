@@ -548,6 +548,8 @@ namespace Boidsish {
 
 		shader.setBool("is_refractive", is_refractive_);
 		shader.setFloat("refractive_index", refractive_index_);
+		shader.setFloat("morph_factor", morph_factor_);
+		shader.setFloat("morph_target_radius", morph_target_radius_);
 
 		for (unsigned int i = 0; i < m_data->meshes.size(); i++) {
 			m_data->meshes[i].render(shader); // Use the passed shader, not Shape::shader

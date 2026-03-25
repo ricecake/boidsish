@@ -52,6 +52,8 @@ uniform mat4  view;
 uniform mat4  projection;
 uniform vec4  clipPlane;
 uniform float ripple_strength;
+uniform float morph_factor = 0.0;
+uniform float morph_target_radius = 0.0;
 uniform bool  isColossal = false;
 uniform bool  useSSBOInstancing = false;
 uniform bool  isLine = false;
@@ -94,13 +96,12 @@ void main() {
 	bool  current_isColossal = use_ssbo ? (uniforms_data[vUniformIndex].is_colossal != 0) : isColossal;
 	bool  current_useSSBOInstancing = use_ssbo ? (uniforms_data[vUniformIndex].use_ssbo_instancing != 0)
 											   : useSSBOInstancing;
+	float current_morphFactor = use_ssbo ? uniforms_data[vUniformIndex].morph_factor : morph_factor;
+	float current_morphTargetRadius = use_ssbo ? uniforms_data[vUniformIndex].morph_target_radius : morph_target_radius;
 
 	WindDeflection = 0.0;
 	vec3 displacedPos = aPos;
 	vec3 displacedNormal = aNormal;
-
-	float current_morphFactor = use_ssbo ? uniforms_data[vUniformIndex].morph_factor : 0.0;
-	float current_morphTargetRadius = use_ssbo ? uniforms_data[vUniformIndex].morph_target_radius : 0.0;
 
 	if (current_morphFactor > 0.0) {
 		float len = length(aPos);
@@ -127,8 +128,8 @@ void main() {
 				boneMatrix = finalBonesMatrices[aBoneIDs[i]];
 			}
 
-			totalPosition += (boneMatrix * vec4(aPos, 1.0)) * aWeights[i];
-			totalNormal += (mat3(boneMatrix) * aNormal) * aWeights[i];
+			totalPosition += (boneMatrix * vec4(displacedPos, 1.0)) * aWeights[i];
+			totalNormal += (mat3(boneMatrix) * displacedNormal) * aWeights[i];
 			totalWeight += aWeights[i];
 		}
 		if (totalWeight > 0.001) {
@@ -168,15 +169,16 @@ void main() {
 		float speed = 3.0;
 		float amplitude = ripple_strength;
 
-		float wave = sin(frequency * (aPos.x + aPos.z) + time * speed);
-		displacedPos = aPos + aNormal * wave * amplitude;
+		float wave = sin(frequency * (displacedPos.x + displacedPos.z) + time * speed);
+		vec3  rippleOffset = displacedNormal * wave * amplitude;
+		displacedPos += rippleOffset;
 
 		vec3 gradient = vec3(
-			cos(frequency * (aPos.x + aPos.z) + time * speed) * frequency * amplitude,
+			cos(frequency * (displacedPos.x + displacedPos.z) + time * speed) * frequency * amplitude,
 			0.0,
-			cos(frequency * (aPos.x + aPos.z) + time * speed) * frequency * amplitude
+			cos(frequency * (displacedPos.x + displacedPos.z) + time * speed) * frequency * amplitude
 		);
-		displacedNormal = normalize(aNormal - gradient);
+		displacedNormal = normalize(displacedNormal - gradient);
 	}
 
 	mat4 modelMatrix;

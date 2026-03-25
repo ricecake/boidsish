@@ -44,6 +44,9 @@ uniform bool  dissolve_enabled = false;
 uniform vec3  dissolve_plane_normal = vec3(0, 1, 0);
 uniform float dissolve_plane_dist = 0.0;
 
+uniform float morph_factor = 0.0;
+uniform float morph_target_radius = 0.0;
+
 out vec3     FragPos;
 flat out int vUniformIndex;
 
@@ -58,6 +61,8 @@ void main() {
 											  : useSSBOInstancing;
 	bool current_use_skinning = use_ssbo ? (uniforms_data[vUniformIndex].use_skinning != 0) : use_skinning;
 	int  current_bone_offset = use_ssbo ? uniforms_data[vUniformIndex].bone_matrices_offset : bone_matrices_offset;
+	float current_morphFactor = use_ssbo ? uniforms_data[vUniformIndex].morph_factor : morph_factor;
+	float current_morphTargetRadius = use_ssbo ? uniforms_data[vUniformIndex].morph_target_radius : morph_target_radius;
 
 	mat4 modelMatrix;
 	if (current_useSSBOInstancing) {
@@ -67,9 +72,6 @@ void main() {
 	}
 
 	vec3 displacedPos = aPos;
-
-	float current_morphFactor = use_ssbo ? uniforms_data[vUniformIndex].morph_factor : 0.0;
-	float current_morphTargetRadius = use_ssbo ? uniforms_data[vUniformIndex].morph_target_radius : 0.0;
 
 	if (current_morphFactor > 0.0) {
 		float len = length(aPos);
@@ -93,7 +95,7 @@ void main() {
 				boneMatrix = finalBonesMatrices[aBoneIDs[i]];
 			}
 
-			totalPosition += (boneMatrix * vec4(aPos, 1.0)) * aWeights[i];
+			totalPosition += (boneMatrix * vec4(displacedPos, 1.0)) * aWeights[i];
 			totalWeight += aWeights[i];
 		}
 		if (totalWeight > 0.001) {
