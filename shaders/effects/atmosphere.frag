@@ -6,7 +6,6 @@ in vec2 TexCoords;
 uniform sampler2D sceneTexture;
 uniform sampler2D depthTexture;
 
-uniform vec3 cameraPos;
 uniform mat4 invView;
 uniform mat4 invProjection;
 
@@ -18,10 +17,10 @@ uniform vec3  cloudColorUniform;
 uniform sampler2D u_transmittanceLUT;
 uniform sampler3D u_aerialPerspectiveLUT;
 
+#include "../helpers/lighting.glsl"
 #include "../atmosphere/common.glsl"
 #include "../helpers/fast_noise.glsl"
 #include "../helpers/clouds.glsl"
-#include "../helpers/lighting.glsl"
 
 vec3 sampleAerialPerspective(vec3 rd, float distKM) {
 	float azimuth = atan(rd.x, -rd.z);
@@ -63,12 +62,12 @@ void main() {
 	viewSpacePosition /= viewSpacePosition.w;
 	vec3 worldPos = (invView * viewSpacePosition).xyz;
 
-	vec3  rayDir = normalize(worldPos - cameraPos);
-	float dist = length(worldPos - cameraPos);
+	vec3  rayDir = normalize(worldPos - viewPos);
+	float dist = length(worldPos - viewPos);
 
 	if (depth == 1.0) {
 		dist = 1000.0 * worldScale;
-		worldPos = cameraPos + rayDir * dist;
+		worldPos = viewPos + rayDir * dist;
 	}
 
 	// Use hazeDensity to scale the effective distance in the atmosphere
@@ -81,14 +80,14 @@ void main() {
 	vec3  cloudColor = vec3(0.0);
 
 	float scaledCloudAltitude = cloudAltitude * worldScale;
-	float t_start = (scaledCloudAltitude - cameraPos.y) / (rayDir.y + 0.000001);
+	float t_start = (scaledCloudAltitude - viewPos.y) / (rayDir.y + 0.000001);
 
-	vec3  cloudPoint = cameraPos + rayDir * t_start;
+	vec3  cloudPoint = viewPos + rayDir * t_start;
 	float weatherMap = fastWorley3d(vec3(worldPos.xz / (4000 * worldScale), time * 0.01));
 
 	float weatherThickness = max(20 * weatherMap + cloudThickness, cloudThickness);
 	float scaledCloudThickness = weatherThickness * worldScale;
-	float t_end = (scaledCloudAltitude + scaledCloudThickness - cameraPos.y) / (rayDir.y + 0.000001);
+	float t_end = (scaledCloudAltitude + scaledCloudThickness - viewPos.y) / (rayDir.y + 0.000001);
 
 	float workingCloudDensity = cloudDensity + 5 * weatherMap;
 
@@ -106,12 +105,12 @@ void main() {
 		float jitter = fastBlueNoise(TexCoords * 10.0 + vec2(sin(time * 0.07), cos(time * -0.05)));
 		for (int i = 0; i < samples; i++) {
 			float t = mix(t_start, t_end, (float(i) + jitter) / float(samples));
-			vec3  p = cameraPos + rayDir * t;
+			vec3  p = viewPos + rayDir * t;
 			float d = calculateCloudDensity(p, cloudAltitude, weatherThickness, cloudDensity, worldScale, time);
 			cloudAcc += d;
 		}
 		cloudFactor = 1.0 - exp(-cloudAcc * (t_end - t_start) * 0.05 / float(samples));
-		vec3 intersect = cameraPos + rayDir * mix(t_start, t_end, 0.5);
+		vec3 intersect = viewPos + rayDir * mix(t_start, t_end, 0.5);
 		vec3 cloudScattering = vec3(0.0);
 		for (int i = 0; i < num_lights; i++) {
 			vec3  L = normalize(lights[i].position - intersect);
