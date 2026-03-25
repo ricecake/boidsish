@@ -7,6 +7,7 @@
 #include "post_processing/PostProcessingManager.h"
 #include "post_processing/effects/AtmosphereEffect.h"
 #include "terrain_generator_interface.h"
+#include "weather_manager.h"
 
 namespace Boidsish {
 	namespace UI {
@@ -20,6 +21,31 @@ namespace Boidsish {
 			ImGui::SetNextWindowPos(ImVec2(20, 20), ImGuiCond_FirstUseEver);
 			ImGui::SetNextWindowSize(ImVec2(500, 600), ImGuiCond_FirstUseEver);
 			if (ImGui::Begin("Environment", &m_show)) {
+				// 0. Weather
+				if (ImGui::CollapsingHeader("Ambient Weather", ImGuiTreeNodeFlags_DefaultOpen)) {
+					auto weather = m_visualizer.GetWeatherManager();
+					if (weather) {
+						bool enabled = weather->IsEnabled();
+						if (ImGui::Checkbox("Enable Weather System", &enabled)) {
+							weather->SetEnabled(enabled);
+						}
+
+						if (enabled) {
+							float time_scale = weather->GetTimeScale();
+							if (ImGui::SliderFloat("Weather Time Scale", &time_scale, 0.0f, 0.5f, "%.3f")) {
+								weather->SetTimeScale(time_scale);
+							}
+
+							float spatial_scale = weather->GetSpatialScale();
+							if (ImGui::SliderFloat("Weather Spatial Scale", &spatial_scale, 0.0f, 0.01f, "%.4f")) {
+								weather->SetSpatialScale(spatial_scale);
+							}
+
+							ImGui::Text("Current Weather: %s (Simulated)", "Dynamic");
+						}
+					}
+				}
+
 				// 1. Day/Night Cycle (from LightsWidget)
 				if (ImGui::CollapsingHeader("Day/Night Cycle", ImGuiTreeNodeFlags_DefaultOpen)) {
 					auto& cycle = m_visualizer.GetLightManager().GetDayNightCycle();

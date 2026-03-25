@@ -46,6 +46,7 @@ namespace Boidsish {
 	class SdfVolumeManager;
 	struct SdfSource;
 	class DecorManager;
+	class WeatherManager;
 	class Path;
 
 	namespace PostProcessing {
@@ -555,6 +556,7 @@ namespace Boidsish {
 		FireEffectManager*                     GetFireEffectManager();
 		DecorManager*                          GetDecorManager();
 		void                                   SetDecorManager(std::shared_ptr<DecorManager> decor_manager);
+		WeatherManager*                        GetWeatherManager();
 		PostProcessing::PostProcessingManager& GetPostProcessingManager();
 		float                                  GetLastFrameTime() const;
 

@@ -75,6 +75,7 @@
 #include "ui/SystemWidget.h"
 #include "ui/hud_widget.h"
 #include "visual_effects.h"
+#include "weather_manager.h"
 #include <GL/glew.h>
 #include <GLFW/glfw3.h>
 #include <glm/ext/matrix_projection.hpp>
@@ -387,6 +388,7 @@ namespace Boidsish {
 		std::unique_ptr<ShadowManager>                    shadow_manager;
 		std::unique_ptr<AtmosphereManager>                atmosphere_manager;
 		std::shared_ptr<PostProcessing::AtmosphereEffect> atmosphere_effect;
+		std::unique_ptr<WeatherManager>                   weather_manager;
 		std::unique_ptr<SceneManager>                     scene_manager;
 		std::shared_ptr<DecorManager>                     decor_manager;
 		std::map<int, std::shared_ptr<Trail>>             trails;
@@ -755,6 +757,7 @@ namespace Boidsish {
 			decor_manager = std::make_unique<DecorManager>();
 			atmosphere_manager = std::make_unique<AtmosphereManager>();
 			atmosphere_manager->Initialize();
+			weather_manager = std::make_unique<WeatherManager>();
 			audio_manager = std::make_unique<AudioManager>();
 			sound_effect_manager = std::make_unique<SoundEffectManager>(audio_manager.get());
 			trail_render_manager = std::make_unique<TrailRenderManager>();
@@ -2578,6 +2581,35 @@ namespace Boidsish {
 
 		impl->light_manager.Update(impl->simulation_delta_time);
 
+		// Update ambient weather
+		if (impl->weather_manager && impl->weather_manager->IsEnabled()) {
+			impl->weather_manager->Update(impl->simulation_delta_time, impl->simulation_time, impl->camera.pos());
+
+			const auto& w = impl->weather_manager->GetCurrentWeather();
+
+			// Apply to primary light
+			if (!impl->light_manager.GetLights().empty()) {
+				impl->light_manager.GetLights()[0].intensity = w.sun_intensity;
+			}
+
+			// Apply to wind settings in Config (for shaders)
+			auto& config = ConfigManager::GetInstance();
+			config.SetFloat("wind_strength", w.wind_strength);
+			config.SetFloat("wind_speed", w.wind_speed);
+			config.SetFloat("wind_frequency", w.wind_frequency);
+
+			// Apply to atmosphere effect
+			if (impl->atmosphere_effect) {
+				impl->atmosphere_effect->SetHazeDensity(w.haze_density);
+				impl->atmosphere_effect->SetHazeHeight(w.haze_height);
+				impl->atmosphere_effect->SetCloudDensity(w.cloud_density);
+				impl->atmosphere_effect->SetCloudAltitude(w.cloud_altitude);
+				impl->atmosphere_effect->SetCloudThickness(w.cloud_thickness);
+				impl->atmosphere_effect->SetRayleighScale(w.rayleigh_scale);
+				impl->atmosphere_effect->SetMieScale(w.mie_scale);
+			}
+		}
+
 		// --- Adaptive Tessellation Logic ---
 		glm::vec3 current_camera_pos(impl->camera.x, impl->camera.y, impl->camera.z);
 		if (delta_time > 0.0f) {
@@ -4295,6 +4327,10 @@ namespace Boidsish {
 
 	void Visualizer::SetDecorManager(std::shared_ptr<DecorManager> decor_manager) {
 		impl->decor_manager = decor_manager;
+	}
+
+	WeatherManager* Visualizer::GetWeatherManager() {
+		return impl->weather_manager.get();
 	}
 
 	PostProcessing::PostProcessingManager& Visualizer::GetPostProcessingManager() {
