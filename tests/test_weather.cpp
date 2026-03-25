@@ -33,6 +33,45 @@ TEST(WeatherManagerTest, Update) {
     // Note: This might occasionally fail due to noise nature, but usually should pass.
 }
 
+TEST(WeatherManagerTest, SmoothTransition) {
+    WeatherManager wm;
+    glm::vec3 cameraPos(0.0f);
+
+    // Initial state
+    float initial_sun = wm.GetCurrentWeather().sun_intensity;
+
+    // Tiny update should result in tiny change due to spring
+    wm.Update(0.001f, 0.0f, cameraPos);
+    float after_tiny_update = wm.GetCurrentWeather().sun_intensity;
+
+    EXPECT_NEAR(initial_sun, after_tiny_update, 0.01f);
+}
+
+TEST(WeatherManagerTest, ExternalTargetOverride) {
+    WeatherManager wm;
+    glm::vec3 cameraPos(0.0f);
+
+    float override_target = 0.5f;
+    wm.SetTarget(WeatherAttribute::SunIntensity, override_target);
+    wm.SetPace(WeatherAttribute::SunIntensity, 10.0f); // Fast pace for testing
+
+    // Update for a long time to reach target
+    for(int i = 0; i < 100; ++i) {
+        wm.Update(0.1f, i * 0.1f, cameraPos);
+    }
+
+    EXPECT_NEAR(wm.GetCurrentWeather().sun_intensity, override_target, 0.01f);
+
+    // Clear target and ensure it moves again (or at least doesn't stay fixed if we move time/space)
+    wm.ClearTarget(WeatherAttribute::SunIntensity);
+    float value_after_clear = wm.GetCurrentWeather().sun_intensity;
+
+    wm.Update(10.0f, 200.0f, cameraPos + glm::vec3(1000.0f));
+    float value_after_update = wm.GetCurrentWeather().sun_intensity;
+
+    EXPECT_NE(value_after_clear, value_after_update);
+}
+
 TEST(WeatherManagerTest, EnableDisable) {
     WeatherManager wm;
     wm.SetEnabled(false);
