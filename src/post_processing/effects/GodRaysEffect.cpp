@@ -17,7 +17,7 @@ namespace Boidsish {
             height_ = height;
 
             auto& config = ConfigManager::GetInstance();
-            enabled_ = config.GetAppSettingBool("god_rays_enabled", true);
+            is_enabled_ = config.GetAppSettingBool("god_rays_enabled", true);
             samples_ = config.GetAppSettingInt("god_rays_samples", 32);
             density_ = config.GetAppSettingFloat("god_rays_density", 0.96f);
             weight_ = config.GetAppSettingFloat("god_rays_weight", 0.58f);

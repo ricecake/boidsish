@@ -20,8 +20,8 @@ uniform sampler3D u_aerialPerspectiveLUT;
 
 #include "../atmosphere/common.glsl"
 #include "../helpers/fast_noise.glsl"
-#include "../helpers/lighting.glsl"
 #include "../helpers/clouds.glsl"
+#include "../helpers/lighting.glsl"
 
 vec3 sampleAerialPerspective(vec3 rd, float distKM) {
 	float azimuth = atan(rd.x, -rd.z);
