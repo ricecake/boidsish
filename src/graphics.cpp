@@ -60,7 +60,6 @@
 #include "shockwave_effect.h"
 #include "sound_effect_manager.h"
 #include "spline.h"
-#include "ambient_camera.h"
 #include "task_thread_pool.hpp"
 #include "temporal_data.h"
 #include "terrain.h"
@@ -466,8 +465,6 @@ namespace Boidsish {
 		float      auto_camera_angle = 0.0f;
 		float      auto_camera_height_offset = 0.0f;
 		float      auto_camera_distance = 10.0f;
-		std::unique_ptr<AmbientCameraSystem> ambient_camera_system;
-		std::shared_ptr<Dot> ambient_probe_shape;
 
 		int   tracked_dot_index = 0;
 		float single_track_orbit_yaw = 0.0f;
@@ -761,9 +758,6 @@ namespace Boidsish {
 			atmosphere_manager = std::make_unique<AtmosphereManager>();
 			atmosphere_manager->Initialize();
 			weather_manager = std::make_unique<WeatherManager>();
-			ambient_camera_system = std::make_unique<AmbientCameraSystem>();
-			ambient_probe_shape = std::make_shared<Dot>(9999, 0, 0, 0, 1.0f, 0.0f, 1.0f, 1.0f, 1.0f, 0); // Magenta probe
-			ambient_probe_shape->SetHidden(true); // Hidden by default
 			audio_manager = std::make_unique<AudioManager>();
 			sound_effect_manager = std::make_unique<SoundEffectManager>(audio_manager.get());
 			trail_render_manager = std::make_unique<TrailRenderManager>();
@@ -2193,26 +2187,71 @@ namespace Boidsish {
 		}
 
 		void UpdateAutoCamera(float delta_time, const std::vector<std::shared_ptr<Shape>>& shapes) {
-			if (camera_mode != CameraMode::AUTO) {
+			if (camera_mode != CameraMode::AUTO || shapes.empty()) {
 				return;
 			}
 
-			if (!ambient_camera_system) {
-				ambient_camera_system = std::make_unique<AmbientCameraSystem>();
+			auto_camera_time += delta_time;
+
+			float mean_x = 0.0f, mean_y = 0.0f, mean_z = 0.0f;
+			float min_x = shapes[0]->GetX(), max_x = shapes[0]->GetX();
+			float min_y = shapes[0]->GetY(), max_y = shapes[0]->GetY();
+			float min_z = shapes[0]->GetZ(), max_z = shapes[0]->GetZ();
+
+			for (const auto& shape : shapes) {
+				mean_x += shape->GetX();
+				mean_y += shape->GetY();
+				mean_z += shape->GetZ();
+				min_x = std::min(min_x, shape->GetX());
+				max_x = std::max(max_x, shape->GetX());
+				min_y = std::min(min_y, shape->GetY());
+				max_y = std::max(max_y, shape->GetY());
+				min_z = std::min(min_z, shape->GetZ());
+				max_z = std::max(max_z, shape->GetZ());
 			}
 
-			glm::vec3 probePos;
-			ambient_camera_system->Update(
-				delta_time,
-				terrain_generator.get(),
-				decor_manager.get(),
-				camera,
-				probePos
+			mean_x /= shapes.size();
+			mean_y /= shapes.size();
+			mean_z /= shapes.size();
+
+			float extent = std::max({max_x - min_x, max_y - min_y, max_z - min_z});
+			float target_distance = extent * 2.0f + 5.0f;
+
+			auto_camera_distance += (target_distance - auto_camera_distance) * delta_time * 0.5f;
+
+			float height_cycle = sin(auto_camera_time * 0.3f) * 0.5f + 0.5f;
+			float camera_height = mean_y + 1.0f + height_cycle * auto_camera_distance * 0.5f;
+
+			float rotation_speed = 0.2f + 0.1f * sin(auto_camera_time * 0.15f);
+			auto_camera_angle += rotation_speed * delta_time;
+
+			float direction_modifier = sin(auto_camera_time * 0.08f) * 0.3f;
+			float effective_angle = auto_camera_angle + direction_modifier;
+
+			glm::vec3 target_camera_pos(
+				mean_x + cos(effective_angle) * auto_camera_distance,
+				camera_height,
+				mean_z + sin(effective_angle) * auto_camera_distance
 			);
 
-			if (ambient_probe_shape) {
-				ambient_probe_shape->SetPosition(probePos.x, probePos.y, probePos.z);
-			}
+			glm::vec3 current_camera_pos(camera.x, camera.y, camera.z);
+			glm::vec3 new_pos = current_camera_pos + (target_camera_pos - current_camera_pos) * (delta_time * 1.0f);
+			camera.x = new_pos.x;
+			camera.y = new_pos.y;
+			camera.z = new_pos.z;
+
+			if (camera.y < Constants::Project::Camera::MinHeight())
+				camera.y = Constants::Project::Camera::MinHeight();
+
+			float dx = mean_x - camera.x;
+			float dy = mean_y - camera.y;
+			float dz = mean_z - camera.z;
+
+			float distance_xz = sqrt(dx * dx + dz * dz);
+
+			camera.yaw = atan2(dx, -dz) * 180.0f / Constants::General::Math::Pi();
+			camera.pitch = atan2(dy, distance_xz) * 180.0f / Constants::General::Math::Pi();
+			camera.pitch = std::max(-89.0f, std::min(30.0f, camera.pitch));
 		}
 
 		void UpdateChaseCamera(float delta_time) {
@@ -2673,11 +2712,6 @@ namespace Boidsish {
 
 		impl->shapes.clear();
 
-		// Add ambient probe to shapes if in AUTO mode
-		if (impl->camera_mode == CameraMode::AUTO && impl->ambient_probe_shape) {
-			impl->shapes.push_back(impl->ambient_probe_shape);
-		}
-
 		// Update and collect transient effects
 		auto it = impl->transient_effects.begin();
 		while (it != impl->transient_effects.end()) {
@@ -2867,9 +2901,7 @@ namespace Boidsish {
 
 		// --- Resource Preparation (Main Thread) ---
 		for (const auto& shape : impl->shapes) {
-			if (shape) {
-				shape->PrepareResources(impl->megabuffer.get());
-			}
+			shape->PrepareResources(impl->megabuffer.get());
 		}
 
 		// --- ASYNCHRONOUS PACKET GENERATION ---
