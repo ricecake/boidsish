@@ -15,7 +15,6 @@ std::vector<std::shared_ptr<Shape>> MorphExample(float time) {
 
 	if (!cube) {
 		cube = std::make_shared<Model>("assets/cube.obj");
-		cube->SetScale(glm::vec3(2.0f));
 		cube->SetColor(0.2f, 0.6f, 1.0f);
 		cube->SetUsePBR(true);
 		cube->SetRoughness(0.3f);
@@ -24,11 +23,17 @@ std::vector<std::shared_ptr<Shape>> MorphExample(float time) {
 
 	if (!teapot) {
 		teapot = std::make_shared<Model>("assets/utah_teapot.obj");
-		teapot->SetScale(glm::vec3(2.0f));
 		teapot->SetColor(1.0f, 0.4f, 0.2f);
 		teapot->SetUsePBR(true);
 		teapot->SetRoughness(0.2f);
 		teapot->SetMetallic(0.8f);
+	}
+
+	static bool morph_setup = false;
+	if (!morph_setup && cube && teapot) {
+		// Use the new helper to match sizes and set a shared intermediate radius
+		Shape::SetupMorphBetween(*cube, *teapot);
+		morph_setup = true;
 	}
 
 	std::vector<std::shared_ptr<Shape>> shapes;
@@ -51,14 +56,12 @@ std::vector<std::shared_ptr<Shape>> MorphExample(float time) {
 		// Cube to Sphere
 		float factor = (t - 2.0f) / 2.0f;
 		cube->SetMorphFactor(factor);
-		cube->SetMorphTargetRadius(1.0f);
 		cube->SetPosition(-5.0f, 0.0f, 0.0f);
 		shapes.push_back(cube);
 	} else if (t < 6.0f) {
 		// Sphere to Teapot
 		float factor = 1.0f - ((t - 4.0f) / 2.0f);
 		teapot->SetMorphFactor(factor);
-		teapot->SetMorphTargetRadius(1.0f);
 		teapot->SetPosition(5.0f, 0.0f, 0.0f);
 		shapes.push_back(teapot);
 	} else if (t < 8.0f) {
@@ -73,21 +76,20 @@ std::vector<std::shared_ptr<Shape>> MorphExample(float time) {
 			// Teapot to Sphere
 			float subFactor = factor * 2.0f;
 			teapot->SetMorphFactor(subFactor);
-			teapot->SetMorphTargetRadius(1.0f);
 			teapot->SetPosition(5.0f - 10.0f * factor, 0.0f, 0.0f);
 			shapes.push_back(teapot);
 		} else {
 			// Sphere to Cube
 			float subFactor = 1.0f - ((factor - 0.5f) * 2.0f);
 			cube->SetMorphFactor(subFactor);
-			cube->SetMorphTargetRadius(1.0f);
 			cube->SetPosition(5.0f - 10.0f * factor, 0.0f, 0.0f);
 			shapes.push_back(cube);
 		}
 	}
 
-	// Add a static sphere for comparison
-	Shape::RenderSphere(glm::vec3(0.0f, 5.0f, 0.0f), glm::vec3(0.5f), glm::vec3(1.0f), glm::quat(1,0,0,0));
+	// Add a static sphere for comparison using the same target radius
+	float targetRadius = cube->GetMorphTargetRadius();
+	Shape::RenderSphere(glm::vec3(0.0f, 5.0f, 0.0f), glm::vec3(0.5f), glm::vec3(targetRadius), glm::quat(1,0,0,0));
 
 	return shapes;
 }
@@ -103,6 +105,7 @@ int main() {
 
 		std::cout << "Morphing Demo Started!" << std::endl;
 		std::cout << "Watch the shapes morph into spheres and back into other shapes." << std::endl;
+		std::cout << "Sizes are automatically matched using Shape::SetupMorphBetween." << std::endl;
 
 		viz.Run();
 

@@ -340,4 +340,26 @@ namespace Boidsish {
 	AABB Shape::GetAABB() const {
 		return local_aabb_.Transform(GetModelMatrix());
 	}
+
+	void Shape::SetupMorphBetween(Shape& a, Shape& b) {
+		// 1. Set both shapes to a similar base size
+		a.SetScaleToMaxDimension(2.0f, 1); // Vertical axis
+		b.SetScaleToMaxDimension(2.0f, 1);
+
+		// 2. Calculate bounding radii from AABBs
+		auto getRadius = [](const Shape& s) {
+			AABB      aabb = s.GetAABB();
+			glm::vec3 center = (aabb.min + aabb.max) * 0.5f;
+			return glm::distance(center, aabb.max);
+		};
+
+		float radiusA = getRadius(a);
+		float radiusB = getRadius(b);
+
+		// 3. Set shared intermediate radius (average)
+		float targetRadius = (radiusA + radiusB) * 0.5f;
+
+		a.SetMorphTargetRadius(targetRadius);
+		b.SetMorphTargetRadius(targetRadius);
+	}
 } // namespace Boidsish

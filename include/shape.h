@@ -440,6 +440,15 @@ namespace Boidsish {
 			const glm::quat& rotation
 		);
 
+		/**
+		 * @brief Prepares two shapes for morphing by matching their sizes and
+		 * calculating a shared intermediate morph radius.
+		 *
+		 * @param a First shape
+		 * @param b Second shape
+		 */
+		static void SetupMorphBetween(Shape& a, Shape& b);
+
 	protected:
 		// Protected constructor for derived classes
 		Shape(
