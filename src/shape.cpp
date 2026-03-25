@@ -341,25 +341,46 @@ namespace Boidsish {
 		return local_aabb_.Transform(GetModelMatrix());
 	}
 
+	float Shape::GetBoundingRadius() const {
+		AABB      aabb = GetAABB();
+		glm::vec3 center = (aabb.min + aabb.max) * 0.5f;
+		return glm::distance(center, aabb.max);
+	}
+
+	float Shape::GetAverageRadius() const {
+		AABB      aabb = GetAABB();
+		glm::vec3 extent = (aabb.max - aabb.min) * 0.5f;
+
+		// Outer radius (max distance)
+		float outer = glm::length(extent);
+		// Inner radius (min distance)
+		float inner = std::min({extent.x, extent.y, extent.z});
+
+		return (outer + inner) * 0.5f;
+	}
+
 	void Shape::SetupMorphBetween(Shape& a, Shape& b) {
 		// 1. Set both shapes to a similar base size
-		a.SetScaleToMaxDimension(2.0f, 1); // Vertical axis
-		b.SetScaleToMaxDimension(2.0f, 1);
+		a.SetScaleToMaxDimension(4.0f, 1); // Vertical axis
+		b.SetScaleToMaxDimension(4.0f, 1);
 
-		// 2. Calculate bounding radii from AABBs
-		auto getRadius = [](const Shape& s) {
-			AABB      aabb = s.GetAABB();
-			glm::vec3 center = (aabb.min + aabb.max) * 0.5f;
-			return glm::distance(center, aabb.max);
-		};
-
-		float radiusA = getRadius(a);
-		float radiusB = getRadius(b);
-
-		// 3. Set shared intermediate radius (average)
-		float targetRadius = (radiusA + radiusB) * 0.5f;
+		// 2. Set shared intermediate radius (average of their natural radii)
+		float targetRadius = (a.GetAverageRadius() + b.GetAverageRadius()) * 0.5f;
 
 		a.SetMorphTargetRadius(targetRadius);
 		b.SetMorphTargetRadius(targetRadius);
+	}
+
+	void Shape::ComputeMorphState(float time, float duration, float& out_factor, bool& out_show_a) {
+		float half_dur = duration * 0.5f;
+		float t = fmod(time, duration);
+
+		if (t < half_dur) {
+			out_show_a = true;
+			out_factor = t / half_dur;
+		} else {
+			out_show_a = false;
+			out_factor = 1.0f - ((t - half_dur) / half_dur);
+		}
 	}
 } // namespace Boidsish

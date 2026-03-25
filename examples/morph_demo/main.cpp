@@ -8,7 +8,7 @@
 
 using namespace Boidsish;
 
-// Morph Demo: Morphs a cube to a sphere, then to a teapot, and back.
+// Morph Demo: Morphs between a cube and a teapot using a sphere as an intermediate.
 std::vector<std::shared_ptr<Shape>> MorphExample(float time) {
 	static std::shared_ptr<Model> cube = nullptr;
 	static std::shared_ptr<Model> teapot = nullptr;
@@ -31,81 +31,48 @@ std::vector<std::shared_ptr<Shape>> MorphExample(float time) {
 
 	static bool morph_setup = false;
 	if (!morph_setup && cube && teapot) {
-		// Use the new helper to match sizes and set a shared intermediate radius
+		// Helper automates size matching and intermediate radius calculation
 		Shape::SetupMorphBetween(*cube, *teapot);
 		morph_setup = true;
 	}
 
 	std::vector<std::shared_ptr<Shape>> shapes;
 
-	// Loop time every 10 seconds
-	float t = fmod(time, 10.0f);
+	float factor = 0.0f;
+	bool show_a = true;
+	float cycle_duration = 5.0f; // 5 seconds for A -> Sphere -> B
 
-	// Phase 0: 0-2s (Cube)
-	// Phase 1: 2-4s (Morph Cube to Sphere)
-	// Phase 2: 4-6s (Morph Sphere to Teapot)
-	// Phase 3: 6-8s (Teapot)
-	// Phase 4: 8-10s (Morph Teapot to Cube via Sphere)
+	// Logic for A -> Sphere -> B transition
+	Shape::ComputeMorphState(time, cycle_duration, factor, show_a);
 
-	if (t < 2.0f) {
-		// Just Cube
-		cube->SetMorphFactor(0.0f);
-		cube->SetPosition(-5.0f, 0.0f, 0.0f);
-		shapes.push_back(cube);
-	} else if (t < 4.0f) {
-		// Cube to Sphere
-		float factor = (t - 2.0f) / 2.0f;
+	if (show_a) {
 		cube->SetMorphFactor(factor);
-		cube->SetPosition(-5.0f, 0.0f, 0.0f);
+		cube->SetPosition(0.0f, 0.0f, 0.0f);
 		shapes.push_back(cube);
-	} else if (t < 6.0f) {
-		// Sphere to Teapot
-		float factor = 1.0f - ((t - 4.0f) / 2.0f);
-		teapot->SetMorphFactor(factor);
-		teapot->SetPosition(5.0f, 0.0f, 0.0f);
-		shapes.push_back(teapot);
-	} else if (t < 8.0f) {
-		// Just Teapot
-		teapot->SetMorphFactor(0.0f);
-		teapot->SetPosition(5.0f, 0.0f, 0.0f);
-		shapes.push_back(teapot);
 	} else {
-		// Teapot back to Cube (via Sphere)
-		float factor = (t - 8.0f) / 2.0f;
-		if (factor < 0.5f) {
-			// Teapot to Sphere
-			float subFactor = factor * 2.0f;
-			teapot->SetMorphFactor(subFactor);
-			teapot->SetPosition(5.0f - 10.0f * factor, 0.0f, 0.0f);
-			shapes.push_back(teapot);
-		} else {
-			// Sphere to Cube
-			float subFactor = 1.0f - ((factor - 0.5f) * 2.0f);
-			cube->SetMorphFactor(subFactor);
-			cube->SetPosition(5.0f - 10.0f * factor, 0.0f, 0.0f);
-			shapes.push_back(cube);
-		}
+		teapot->SetMorphFactor(factor);
+		teapot->SetPosition(0.0f, 0.0f, 0.0f);
+		shapes.push_back(teapot);
 	}
 
 	// Add a static sphere for comparison using the same target radius
 	float targetRadius = cube->GetMorphTargetRadius();
-	Shape::RenderSphere(glm::vec3(0.0f, 5.0f, 0.0f), glm::vec3(0.5f), glm::vec3(targetRadius), glm::quat(1,0,0,0));
+	Shape::RenderSphere(glm::vec3(0.0f, 8.0f, 0.0f), glm::vec3(0.5f), glm::vec3(targetRadius), glm::quat(1,0,0,0));
 
 	return shapes;
 }
 
 int main() {
 	try {
-		Visualizer viz(1280, 720, "Boidsish - Morphing Demo");
+		Visualizer viz(1280, 720, "Boidsish - Smoother Morphing Demo");
 
-		Camera camera(0.0f, 2.0f, 15.0f, -10.0f, 0.0f, 45.0f);
+		Camera camera(0.0f, 5.0f, 15.0f, -15.0f, 0.0f, 45.0f);
 		viz.SetCamera(camera);
 
 		viz.SetDotFunction(MorphExample);
 
-		std::cout << "Morphing Demo Started!" << std::endl;
-		std::cout << "Watch the shapes morph into spheres and back into other shapes." << std::endl;
-		std::cout << "Sizes are automatically matched using Shape::SetupMorphBetween." << std::endl;
+		std::cout << "Smoother Morphing Demo Started!" << std::endl;
+		std::cout << "Using Shape::ComputeMorphState for timing logic and SetupMorphBetween for sizing." << std::endl;
 
 		viz.Run();
 

@@ -319,7 +319,15 @@ namespace Boidsish {
 		 *
 		 * @return float bounding radius in world units
 		 */
-		virtual float GetBoundingRadius() const { return 5.0f; }
+		virtual float GetBoundingRadius() const;
+
+		/**
+		 * @brief Returns the average radius of the shape (mean of inner and outer extent).
+		 * Useful for finding a natural-looking sphere size for morphing.
+		 *
+		 * @return float average radius in world units
+		 */
+		virtual float GetAverageRadius() const;
 
 		/**
 		 * @brief Test for intersection with a ray.
@@ -448,6 +456,16 @@ namespace Boidsish {
 		 * @param b Second shape
 		 */
 		static void SetupMorphBetween(Shape& a, Shape& b);
+
+		/**
+		 * @brief Computes the factors for a two-phase morph transition (A -> Sphere -> B).
+		 *
+		 * @param time Current time in seconds
+		 * @param duration Total duration for a full A -> B transition
+		 * @param out_factor Resulting morph factor (0.0 to 1.0)
+		 * @param out_show_a If true, render shape A. If false, render shape B.
+		 */
+		static void ComputeMorphState(float time, float duration, float& out_factor, bool& out_show_a);
 
 	protected:
 		// Protected constructor for derived classes
