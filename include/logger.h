@@ -186,8 +186,9 @@ namespace logger {
 	};
 
 	template <class B>
-		requires std::derived_from<B, Backend>
 	class Logger {
+		static_assert(std::is_base_of_v<Backend, B>, "Backend must derive from logger::Backend");
+
 	public:
 		B backend;
 

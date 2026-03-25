@@ -131,8 +131,9 @@ void main() {
 		return;
 
 	vec2 uv = (worldPos - chunkWorldOffset) / chunkSize;
+	vec2 remappedUV = (uv * 32.0 + 0.5) / 33.0; // chunkSize is 32.0 units, heightmap is 33x33
 
-	vec4 terrainSample = textureLod(u_heightmapArray, vec3(uv, chunkSlice), 0.0);
+	vec4 terrainSample = textureLod(u_heightmapArray, vec3(remappedUV, chunkSlice), 0.0);
 
 	float height = terrainSample.r;
 	vec3  normal = vec3(terrainSample.g, terrainSample.b, terrainSample.a);
@@ -161,7 +162,7 @@ void main() {
 	if (distToCam > maxDecorDistance)
 		return;
 
-	vec2  biomeData = textureLod(u_biomeMap, vec3(uv, chunkSlice), 0.0).rg;
+	vec2  biomeData = textureLod(u_biomeMap, vec3(remappedUV, chunkSlice), 0.0).rg;
 	int   lowIdx = int(biomeData.r * 255.0 + 0.5);
 	int   highIdx = min(lowIdx + 1, 7);
 	float t = biomeData.g;
