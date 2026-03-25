@@ -18,11 +18,11 @@ namespace Boidsish {
 
             auto& config = ConfigManager::GetInstance();
             is_enabled_ = config.GetAppSettingBool("god_rays_enabled", true);
-            samples_ = config.GetAppSettingInt("god_rays_samples", 32);
-            density_ = config.GetAppSettingFloat("god_rays_density", 0.96f);
-            weight_ = config.GetAppSettingFloat("god_rays_weight", 0.58f);
-            decay_ = config.GetAppSettingFloat("god_rays_decay", 0.9f);
-            exposure_ = config.GetAppSettingFloat("god_rays_exposure", 0.2f);
+            samples_ = config.GetAppSettingInt("god_rays_samples", 64);
+            density_ = config.GetAppSettingFloat("god_rays_density", 0.99f);
+            weight_ = config.GetAppSettingFloat("god_rays_weight", 0.15f);
+            decay_ = config.GetAppSettingFloat("god_rays_decay", 0.95f);
+            exposure_ = config.GetAppSettingFloat("god_rays_exposure", 0.5f);
         }
 
         void GodRaysEffect::Apply(

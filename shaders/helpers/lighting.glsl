@@ -25,7 +25,9 @@ float calculateCloudShadow(int light_index, vec3 frag_pos) {
 	if (L.y <= 0.0)
 		return 1.0;
 
-	float scaledCloudAltitude = cloudAltitude * worldScale;
+	// Project to the middle of the cloud layer to ensure we're within the tapering range
+	float shadowAltitude = cloudAltitude + cloudThickness * 0.5;
+	float scaledCloudAltitude = shadowAltitude * worldScale;
 	float t = (scaledCloudAltitude - frag_pos.y) / L.y;
 
 	if (t < 0.0)
@@ -34,7 +36,7 @@ float calculateCloudShadow(int light_index, vec3 frag_pos) {
 	vec3 cloudPos = frag_pos + L * t;
 	float d = calculateCloudDensity(cloudPos, cloudAltitude, cloudThickness, cloudDensity, worldScale, time);
 
-	return mix(1.0, exp(-d * 0.5), cloudShadowIntensity);
+	return mix(1.0, exp(-d * 0.7), cloudShadowIntensity);
 }
 
 /**

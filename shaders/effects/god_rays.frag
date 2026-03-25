@@ -22,15 +22,11 @@ void main() {
     vec3 sunPosNDC = sunClipPos.xyz / sunClipPos.w;
     vec2 sunScreenPos = sunPosNDC.xy * 0.5 + 0.5;
 
-    // 2. Initial color from scene
-    // We want to extract only the bright parts or parts that represent the "sun"
-    // For now, let's just use the scene color, but in a more advanced version
-    // we would use a mask of the sun disk + bright sky.
-    vec3 color = texture(sceneTexture, TexCoords).rgb;
+    vec3 sceneColor = texture(sceneTexture, TexCoords).rgb;
 
-    // Check if sun is behind the camera
+    // Check if sun is behind the camera or off-screen
     if (sunClipPos.w < 0.0) {
-        FragColor = vec4(color, 1.0);
+        FragColor = vec4(sceneColor, 1.0);
         return;
     }
 
@@ -45,22 +41,26 @@ void main() {
     for (int i = 0; i < samples; i++) {
         uv -= deltaTexCoord;
 
-        // Sample scene color
-        vec3 sampleColor = texture(sceneTexture, uv).rgb;
-
-        // Sample depth to check for occlusion
+        // Sample depth to check for occlusion BEFORE color
         float depth = texture(depthTexture, uv).r;
 
-        // If depth < 1.0, it's occluded by geometry (assuming sky is at 1.0)
-        // We only want rays from the sky/sun.
-        if (depth < 1.0) {
-            sampleColor *= 0.0;
+        // Only consider pixels with background depth (1.0) as potential sources
+        // Using a small epsilon to catch potential floating point precision issues
+        if (depth > 0.9999) {
+            vec3 sampleColor = texture(sceneTexture, uv).rgb;
+            float brightness = dot(sampleColor, vec3(0.2126, 0.7152, 0.0722));
+
+            // Mask for very bright areas (the sun/bright sky)
+            float intensity = smoothstep(0.8, 1.0, brightness);
+            godRays += sampleColor * intensity * illuminationDecay * weight;
         }
 
-        sampleColor *= illuminationDecay * weight;
-        godRays += sampleColor;
         illuminationDecay *= decay;
     }
 
-    FragColor = vec4(color + godRays * exposure, 1.0);
+    // Apply distance-based falloff from the sun point
+    float distFromSun = length(TexCoords - sunScreenPos);
+    float falloff = smoothstep(1.0, 0.0, distFromSun);
+
+    FragColor = vec4(sceneColor + godRays * exposure * falloff, 1.0);
 }
