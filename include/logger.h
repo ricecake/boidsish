@@ -8,6 +8,7 @@
 #if __has_include(<source_location>)
 	#include <source_location>
 #endif
+#include <array>
 #include <sstream>
 #include <string>
 #include <string_view>
@@ -168,9 +169,16 @@ namespace logger {
 			msg(m), loc(l) {}
 	};
 
+	template <typename T, typename = void>
+	struct is_tuple_like: std::false_type {};
+
+	template <typename T>
+	struct is_tuple_like<T, std::void_t<decltype(std::tuple_size<T>::value)>>: std::true_type {};
+
 	template <class B>
-		requires std::derived_from<B, Backend>
 	class Logger {
+		static_assert(std::is_base_of<Backend, B>::value, "Backend must be derived from Backend");
+
 	public:
 		B backend;
 
@@ -184,9 +192,9 @@ namespace logger {
 			auto   process = [&](auto&& arg) {
 				std::stringstream ss;
 				std::ostream&     os = ss;
-				using T = std::remove_cvref_t<decltype(arg)>;
+				using T = std::decay_t<decltype(arg)>;
 
-				if constexpr (requires { std::tuple_size<T>::value; }) {
+				if constexpr (is_tuple_like<T>::value) {
 					if constexpr (std::tuple_size<T>::value == 2) {
 						os << std::get<0>(arg) << " => [" << std::get<1>(arg) << "]";
 					} else {

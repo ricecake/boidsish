@@ -38,6 +38,7 @@
 #include "persistent_buffer.h"
 #include "post_processing/PostProcessingManager.h"
 #include "post_processing/effects/AtmosphereEffect.h"
+#include "post_processing/effects/GodRaysEffect.h"
 #include "post_processing/effects/AutoExposureEffect.h"
 #include "post_processing/effects/BloomEffect.h"
 #include "post_processing/effects/FilmGrainEffect.h"
@@ -386,6 +387,7 @@ namespace Boidsish {
 		std::unique_ptr<ShadowManager>                    shadow_manager;
 		std::unique_ptr<AtmosphereManager>                atmosphere_manager;
 		std::shared_ptr<PostProcessing::AtmosphereEffect> atmosphere_effect;
+		std::shared_ptr<PostProcessing::GodRaysEffect>    god_rays_effect;
 		std::unique_ptr<SceneManager>                     scene_manager;
 		std::shared_ptr<DecorManager>                     decor_manager;
 		std::map<int, std::shared_ptr<Trail>>             trails;
@@ -754,9 +756,15 @@ namespace Boidsish {
 			const int MAX_LIGHTS = 10;
 			glGenBuffers(1, &lighting_ubo);
 			glBindBuffer(GL_UNIFORM_BUFFER, lighting_ubo);
-			glBufferData(GL_UNIFORM_BUFFER, 704, NULL, GL_DYNAMIC_DRAW);
+			glBufferData(GL_UNIFORM_BUFFER, sizeof(LightingUbo), NULL, GL_DYNAMIC_DRAW);
 			glBindBuffer(GL_UNIFORM_BUFFER, 0);
-			glBindBufferRange(GL_UNIFORM_BUFFER, Constants::UboBinding::Lighting(), lighting_ubo, 0, 704);
+			glBindBufferRange(
+				GL_UNIFORM_BUFFER,
+				Constants::UboBinding::Lighting(),
+				lighting_ubo,
+				0,
+				sizeof(LightingUbo)
+			);
 
 			// Temporal Data UBO
 			glGenBuffers(1, &temporal_data_ubo);
@@ -1050,6 +1058,10 @@ namespace Boidsish {
 				atmosphere_effect = std::make_shared<PostProcessing::AtmosphereEffect>();
 				atmosphere_effect->SetEnabled(true);
 				post_processing_manager_->AddEffect(atmosphere_effect);
+
+				god_rays_effect = std::make_shared<PostProcessing::GodRaysEffect>();
+				god_rays_effect->SetEnabled(true);
+				post_processing_manager_->AddEffect(god_rays_effect);
 
 				auto bloom_effect = std::make_shared<PostProcessing::BloomEffect>(render_width, render_height);
 				bloom_effect->SetEnabled(true);
@@ -2787,6 +2799,10 @@ namespace Boidsish {
 			// 20.0 is a reasonable physical-ish sun radiance.
 			impl->atmosphere_manager->Update(sun_dir, sun_color, sun_intensity * 20.0f, impl->camera.pos());
 
+			if (impl->god_rays_effect) {
+				impl->god_rays_effect->SetSunDir(sun_dir);
+			}
+
 			// Sync ambient light from atmosphere to ensure decor and world match
 			glm::vec3 estimated_ambient = impl->atmosphere_manager->GetAmbientEstimate();
 			impl->light_manager.SetAmbientLight(estimated_ambient);
@@ -3030,6 +3046,18 @@ namespace Boidsish {
 			impl->lighting_ubo_data_.ambient_light = impl->light_manager.GetAmbientLight();
 			impl->lighting_ubo_data_.time = impl->simulation_time;
 			impl->lighting_ubo_data_.view_dir = impl->camera.front();
+
+			if (impl->atmosphere_effect) {
+				impl->lighting_ubo_data_.cloudShadowIntensity = ConfigManager::GetInstance().GetAppSettingFloat(
+					"cloud_shadow_intensity",
+					0.5f
+				);
+				impl->lighting_ubo_data_.cloudAltitude = impl->atmosphere_effect->GetCloudAltitude();
+				impl->lighting_ubo_data_.cloudThickness = impl->atmosphere_effect->GetCloudThickness();
+				impl->lighting_ubo_data_.cloudDensity = impl->atmosphere_effect->GetCloudDensity();
+			} else {
+				impl->lighting_ubo_data_.cloudShadowIntensity = 0.0f;
+			}
 
 			glBindBuffer(GL_UNIFORM_BUFFER, impl->lighting_ubo);
 			glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(LightingUbo), &impl->lighting_ubo_data_);

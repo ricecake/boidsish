@@ -22,9 +22,13 @@ layout(std140) uniform Lighting {
 	float dayTime;
 	float nightFactor;
 	vec3  viewPos;
+	float cloudShadowIntensity;
 	vec3  ambient_light;
 	float time;
 	vec3  viewDir;
+	float cloudAltitude;
+	float cloudThickness;
+	float cloudDensity;
 };
 
 // Shadow mapping UBO (binding set via glUniformBlockBinding to point 2)

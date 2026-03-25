@@ -44,14 +44,17 @@ namespace Boidsish {
 		float    day_time;                   // offset 648, 4 bytes (0-24)
 		float    night_factor;               // offset 652, 4 bytes (0-1)
 		alignas(16) glm::vec3 view_pos;      // offset 656, 12 bytes
-		float _pad2;                         // offset 668, 4 bytes
+		float cloudShadowIntensity;          // offset 668, 4 bytes
 		alignas(16) glm::vec3 ambient_light; // offset 672, 12 bytes
 		float time;                          // offset 684, 4 bytes
 		alignas(16) glm::vec3 view_dir;      // offset 688, 12 bytes
-		float _pad3;                         // offset 700, 4 bytes
-	}; // Total: 704 bytes
+		float cloudAltitude;                 // offset 700, 4 bytes
+		float cloudThickness;                // offset 704, 4 bytes
+		float cloudDensity;                  // offset 708, 4 bytes
+		float _pad4[2];                      // offset 712, 8 bytes
+	}; // Total: 720 bytes
 
-	static_assert(sizeof(LightingUbo) == 704, "LightingUbo must be 704 bytes for UBO alignment");
+	static_assert(sizeof(LightingUbo) == 720, "LightingUbo must be 720 bytes for UBO alignment");
 
 	/**
 	 * @brief Light source data structure for rendering.

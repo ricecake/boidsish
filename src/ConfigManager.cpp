@@ -72,6 +72,17 @@ namespace Boidsish {
 		GetAppSettingBool("artistic_effect_glitched", false);
 		GetAppSettingBool("artistic_effect_wireframe", false);
 
+		// God Rays settings
+		GetAppSettingBool("god_rays_enabled", true);
+		GetAppSettingInt("god_rays_samples", 32);
+		GetAppSettingFloat("god_rays_density", 0.96f);
+		GetAppSettingFloat("god_rays_weight", 0.58f);
+		GetAppSettingFloat("god_rays_decay", 0.9f);
+		GetAppSettingFloat("god_rays_exposure", 0.2f);
+
+		// Cloud settings
+		GetAppSettingFloat("cloud_shadow_intensity", 0.5f);
+
 		// Foliage culling settings
 		GetAppSettingFloat("foliage_culling_pixel_threshold", 10.0f);
 

@@ -4,12 +4,38 @@
 #include "../helpers/constants.glsl"
 #include "../lighting.glsl"
 #include "terrain_shadows.glsl"
+#include "clouds.glsl"
 
 const int LIGHT_TYPE_POINT = 0;
 const int LIGHT_TYPE_DIRECTIONAL = 1;
 const int LIGHT_TYPE_SPOT = 2;
 const int LIGHT_TYPE_EMISSIVE = 3; // Glowing object light (can cast shadows)
 const int LIGHT_TYPE_FLASH = 4;    // Explosion/flash light (rapid falloff)
+
+/**
+ * Calculate cloud shadow factor for a fragment position.
+ * Projects the fragment position to the cloud layer along the light direction.
+ */
+float calculateCloudShadow(int light_index, vec3 frag_pos) {
+	if (lights[light_index].type != LIGHT_TYPE_DIRECTIONAL || cloudShadowIntensity <= 0.0) {
+		return 1.0;
+	}
+
+	vec3 L = normalize(-lights[light_index].direction);
+	if (L.y <= 0.0)
+		return 1.0;
+
+	float scaledCloudAltitude = cloudAltitude * worldScale;
+	float t = (scaledCloudAltitude - frag_pos.y) / L.y;
+
+	if (t < 0.0)
+		return 1.0;
+
+	vec3 cloudPos = frag_pos + L * t;
+	float d = calculateCloudDensity(cloudPos, cloudAltitude, cloudThickness, cloudDensity, worldScale, time);
+
+	return mix(1.0, exp(-d * 0.5), cloudShadowIntensity);
+}
 
 /**
  * Calculate shadow factor for a fragment position using a specific shadow map.
@@ -398,6 +424,11 @@ vec4 apply_lighting_pbr(vec3 frag_pos, vec3 normal, vec3 albedo, float roughness
 
 		// Calculate shadow with slope-scaled bias
 		float shadow = calculateShadow(i, frag_pos, N, L);
+
+		// Apply cloud shadow for directional lights
+		if (lights[i].type == LIGHT_TYPE_DIRECTIONAL) {
+			shadow *= calculateCloudShadow(i, frag_pos);
+		}
 
 		// Add to outgoing radiance Lo
 		vec3 specular_radiance = specular * radiance * NdotL * shadow;
