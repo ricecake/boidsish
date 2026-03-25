@@ -256,6 +256,7 @@ namespace Boidsish {
 			const glm::vec3&           center = glm::vec3(0.0f)
 		) {
 			// A pentagram has 5 points. We render it as 5 overlapping triangles for the star look.
+			// This represents the self-intersecting 'star' topology.
 			AddTriangleOutward(vertices, indices, p0, p2, p4, center);
 			AddTriangleOutward(vertices, indices, p1, p3, p0, center);
 			AddTriangleOutward(vertices, indices, p2, p4, p1, center);

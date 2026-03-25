@@ -23,7 +23,7 @@ std::vector<std::shared_ptr<Shape>> PolyhedraDemo(float time) {
 		PolyhedronType::GreatIcosahedron
 	};
 
-	float spacing = 5.0f;
+	float spacing = 6.0f;
 	int   cols = 3;
 
 	for (int i = 0; i < 9; ++i) {
@@ -35,14 +35,22 @@ std::vector<std::shared_ptr<Shape>> PolyhedraDemo(float time) {
 
 		// PBR properties for better look
 		poly->SetUsePBR(true);
-		poly->SetRoughness(0.3f);
-		poly->SetMetallic(0.7f);
+		poly->SetRoughness(0.2f);
+		poly->SetMetallic(0.8f);
 
-		// Color based on index
-		float r = (i % 3) / 2.0f;
-		float g = ((i / 3) % 3) / 2.0f;
-		float b = 1.0f - r;
-		poly->SetColor(r, g, b);
+		// Color based on index to make them distinct
+		glm::vec3 colors[] = {
+			{1.0f, 0.2f, 0.2f}, // Red
+			{0.2f, 1.0f, 0.2f}, // Green
+			{0.2f, 0.2f, 1.0f}, // Blue
+			{1.0f, 1.0f, 0.2f}, // Yellow
+			{1.0f, 0.2f, 1.0f}, // Magenta
+			{0.2f, 1.0f, 1.0f}, // Cyan
+			{1.0f, 0.5f, 0.2f}, // Orange
+			{0.5f, 0.2f, 1.0f}, // Purple
+			{0.8f, 0.8f, 0.8f}  // Silver
+		};
+		poly->SetColor(colors[i].r, colors[i].g, colors[i].b);
 
 		shapes.push_back(poly);
 	}
@@ -54,17 +62,18 @@ int main() {
 	try {
 		Visualizer viz(1280, 720, "Boidsish - 9 Regular Polyhedra Demo");
 
-		// Setup Camera
-		Camera camera(0.0f, 5.0f, 20.0f, 0.0f, 0.0f, 45.0f);
+		// Setup Camera - slightly further back and higher to see all 9
+		Camera camera(0.0f, 8.0f, 25.0f, 0.0f, -15.0f, 45.0f);
 		viz.SetCamera(camera);
 
 		// Setup Lighting
-		Light sun = Light::CreateDirectional(glm::vec3(0.5f, -1.0f, -0.5f), glm::vec3(1.0f, 0.95f, 0.8f), 1.5f);
+		Light sun = Light::CreateDirectional(glm::vec3(0.5f, -1.0f, -0.5f), glm::vec3(1.0f, 0.95f, 0.8f), 2.0f);
 		viz.GetLightManager().AddLight(sun);
-		viz.GetLightManager().SetAmbientLight(glm::vec3(0.2f));
+		viz.GetLightManager().SetAmbientLight(glm::vec3(0.3f));
 
 		// Enable Floor
 		ConfigManager::GetInstance().SetBool("enable_floor", true);
+		ConfigManager::GetInstance().SetBool("enable_skybox", true);
 
 		viz.SetDotFunction(PolyhedraDemo);
 
