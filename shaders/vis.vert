@@ -99,6 +99,19 @@ void main() {
 	vec3 displacedPos = aPos;
 	vec3 displacedNormal = aNormal;
 
+	float current_morphFactor = use_ssbo ? uniforms_data[vUniformIndex].morph_factor : 0.0;
+	float current_morphTargetRadius = use_ssbo ? uniforms_data[vUniformIndex].morph_target_radius : 0.0;
+
+	if (current_morphFactor > 0.0) {
+		float len = length(aPos);
+		if (len > 0.0001) {
+			vec3  spherePos = normalize(aPos) * current_morphTargetRadius;
+			vec3  sphereNormal = normalize(aPos);
+			displacedPos = mix(aPos, spherePos, current_morphFactor);
+			displacedNormal = mix(aNormal, sphereNormal, current_morphFactor);
+		}
+	}
+
 	if (current_use_skinning) {
 		vec4  totalPosition = vec4(0.0);
 		vec3  totalNormal = vec3(0.0);

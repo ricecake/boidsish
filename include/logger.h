@@ -18,6 +18,16 @@
 using namespace std::literals; // required for ""sv
 
 namespace logger {
+	// Trait to detect tuple-like types
+	template <typename T, typename = void>
+	struct is_tuple_like: std::false_type {};
+
+	template <typename T>
+	struct is_tuple_like<T, std::void_t<decltype(std::tuple_size<T>::value)>>: std::true_type {};
+
+	template <typename T>
+	inline constexpr bool is_tuple_like_v = is_tuple_like<std::remove_cvref_t<T>>::value;
+
 #if defined(__cpp_lib_source_location)
 	using source_location_type = std::source_location;
 #else
@@ -169,8 +179,9 @@ namespace logger {
 	};
 
 	template <class B>
-		requires std::derived_from<B, Backend>
 	class Logger {
+		static_assert(std::is_base_of_v<Backend, B>, "B must derive from Backend");
+
 	public:
 		B backend;
 
@@ -186,7 +197,7 @@ namespace logger {
 				std::ostream&     os = ss;
 				using T = std::remove_cvref_t<decltype(arg)>;
 
-				if constexpr (requires { std::tuple_size<T>::value; }) {
+				if constexpr (is_tuple_like_v<T>) {
 					if constexpr (std::tuple_size<T>::value == 2) {
 						os << std::get<0>(arg) << " => [" << std::get<1>(arg) << "]";
 					} else {
