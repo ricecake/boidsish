@@ -16,7 +16,7 @@ TEST(WeatherManagerTest, Update) {
     glm::vec3 cameraPos(0.0f);
     wm.Update(0.016f, 0.0f, cameraPos);
 
-    const auto& w1 = wm.GetCurrentWeather();
+    const auto w1 = wm.GetCurrentWeather();
 
     // Ensure values are within reasonable ranges (Sunny/Cloudy/Overcast/Foggy combined)
     EXPECT_GE(w1.sun_intensity, 0.1f);
@@ -27,10 +27,11 @@ TEST(WeatherManagerTest, Update) {
 
     // Move time and check for change
     wm.Update(1.0f, 100.0f, cameraPos);
-    const auto& w2 = wm.GetCurrentWeather();
+    const auto w2 = wm.GetCurrentWeather();
 
     // With noise, it's highly likely to change over 100 seconds
-    // Note: This might occasionally fail due to noise nature, but usually should pass.
+    EXPECT_NE(w1.sun_intensity, w2.sun_intensity);
+    EXPECT_NE(w1.wind_strength, w2.wind_strength);
 }
 
 TEST(WeatherManagerTest, EnableDisable) {

@@ -12,6 +12,7 @@ layout(std140) uniform VisualEffects {
 	float wind_strength;
 	float wind_speed;
 	float wind_frequency;
+	float wind_phase;
 };
 
 #endif

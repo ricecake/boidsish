@@ -225,8 +225,8 @@ void main() {
 			float normalizedHeight = clamp(localHeight / totalHeight, 0.0, 1.0);
 
 			// 1. Calculate raw wind magnitude and direction
-			float fateFactor = fastWorley3d(vec3(instanceCenter.xz / 25.0, time * 0.25)) * 0.5 + 0.75;
-			vec2 rawWindNudge = fateFactor * curlNoise2D(instanceCenter.xz * wind_frequency + time * wind_speed * 0.5) *
+			float fateFactor = fastWorley3d(vec3(instanceCenter.xz / 25.0, wind_phase * 0.25)) * 0.5 + 0.75;
+			vec2 rawWindNudge = fateFactor * curlNoise2D(instanceCenter.xz * wind_frequency + wind_phase * 0.5) *
 				wind_strength * u_windResponsiveness;
 
 			float windMag = length(rawWindNudge);

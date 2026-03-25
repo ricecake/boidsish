@@ -457,6 +457,7 @@ namespace Boidsish {
 		float                                          simulation_delta_time = 0.0f;
 		float                                          time_scale = 1.0f;
 		float                                          ripple_strength = 0.0f;
+		float                                          wind_phase = 0.0f;
 		std::chrono::high_resolution_clock::time_point last_frame;
 
 		CameraMode camera_mode = CameraMode::AUTO;
@@ -2543,6 +2544,10 @@ namespace Boidsish {
 			// TODO: Implement a fixed timestep for simulation stability.
 			// See performance_and_quality_audit.md#4-fixed-timestep-for-simulation-stability
 			impl->simulation_time += impl->time_scale * delta_time;
+
+			// Update wind phase based on current speed (from Config) to allow smooth parameter transitions
+			float current_wind_speed = ConfigManager::GetInstance().GetAppSettingFloat("wind_speed", 0.075f);
+			impl->wind_phase += current_wind_speed * impl->simulation_delta_time;
 		}
 
 		impl->light_manager.Update(impl->simulation_delta_time);
@@ -3030,6 +3035,7 @@ namespace Boidsish {
 			ubo_data.wind_strength = impl->frame_config_.wind_strength;
 			ubo_data.wind_speed = impl->frame_config_.wind_speed;
 			ubo_data.wind_frequency = impl->frame_config_.wind_frequency;
+			ubo_data.wind_phase = impl->wind_phase;
 			if (impl->frame_config_.artistic_ripple) {
 				ubo_data.ripple_enabled = 1;
 			}
