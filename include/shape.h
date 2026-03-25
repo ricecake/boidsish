@@ -60,7 +60,9 @@ namespace Boidsish {
 			dissolve_plane_dist_(other.dissolve_plane_dist_),
 			is_refractive_(other.is_refractive_),
 			refractive_index_(other.refractive_index_),
-			shadow_caster_override_(other.shadow_caster_override_) {}
+			shadow_caster_override_(other.shadow_caster_override_),
+			morph_factor_(other.morph_factor_),
+			morph_target_radius_(other.morph_target_radius_) {}
 
 		Shape& operator=(Shape&& other) noexcept {
 			if (this != &other) {
@@ -100,6 +102,8 @@ namespace Boidsish {
 				is_refractive_ = other.is_refractive_;
 				refractive_index_ = other.refractive_index_;
 				shadow_caster_override_ = other.shadow_caster_override_;
+				morph_factor_ = other.morph_factor_;
+				morph_target_radius_ = other.morph_target_radius_;
 			}
 			return *this;
 		}
@@ -404,6 +408,21 @@ namespace Boidsish {
 			MarkDirty();
 		}
 
+		// Morphing
+		inline float GetMorphFactor() const { return morph_factor_; }
+
+		inline void SetMorphFactor(float factor) {
+			morph_factor_ = factor;
+			MarkDirty();
+		}
+
+		inline float GetMorphTargetRadius() const { return morph_target_radius_; }
+
+		inline void SetMorphTargetRadius(float radius) {
+			morph_target_radius_ = radius;
+			MarkDirty();
+		}
+
 		// Static shader reference
 		static std::shared_ptr<Shader> shader;
 		static ShaderHandle            shader_handle;
@@ -465,7 +484,9 @@ namespace Boidsish {
 			dissolve_plane_dist_(0.0f),
 			is_refractive_(false),
 			refractive_index_(1.0f),
-			shadow_caster_override_(std::nullopt) {}
+			shadow_caster_override_(std::nullopt),
+			morph_factor_(0.0f),
+			morph_target_radius_(0.0f) {}
 
 		virtual bool GetDefaultCastsShadows() const { return !is_colossal_; }
 
@@ -506,6 +527,8 @@ namespace Boidsish {
 		float     dissolve_plane_dist_;
 		bool      is_refractive_;
 		float     refractive_index_;
+		float     morph_factor_;
+		float     morph_target_radius_;
 
 	public:
 		// Shared sphere mesh (public for instancing support)

@@ -646,6 +646,8 @@ namespace Boidsish {
 			packet.uniforms.dissolve_plane_dist = actual_dissolve_dist;
 			packet.uniforms.is_refractive = is_refractive_ ? 1 : 0;
 			packet.uniforms.refractive_index = refractive_index_;
+			packet.uniforms.morph_factor = morph_factor_;
+			packet.uniforms.morph_target_radius = morph_target_radius_;
 
 			if (m_animator && !m_data->bone_info_map.empty()) {
 				packet.uniforms.use_skinning = 1;
