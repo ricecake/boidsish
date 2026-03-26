@@ -232,9 +232,10 @@ namespace Boidsish {
 		void AddShapeHandler(ShapeFunction func);
 		void ClearShapeHandlers();
 
-		void AddShape(std::shared_ptr<Shape> shape);
-		void RemoveShape(int shape_id);
-		void ClearShapes();
+		void                                    AddShape(std::shared_ptr<Shape> shape);
+		void                                    RemoveShape(int shape_id);
+		void                                    ClearShapes();
+		std::vector<std::shared_ptr<Shape>>     GetPersistentShapes() const;
 
 		// Legacy method name for compatibility
 		void SetDotFunction(ShapeFunction func) { AddShapeHandler(func); }
