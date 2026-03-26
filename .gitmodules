@@ -34,9 +34,6 @@
 [submodule "external/meshoptimizer"]
 	path = external/meshoptimizer
 	url = https://github.com/zeux/meshoptimizer.git
-[submodule "external/quickjs"]
-	path = external/quickjs
-	url = https://github.com/bellard/quickjs
 [submodule "external/quickjspp"]
 	path = external/quickjspp
 	url = https://github.com/ftk/quickjspp
