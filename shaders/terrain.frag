@@ -63,6 +63,12 @@ struct TerrainMaterial {
 	float normalStrength;
 };
 
+float sampleGrassMap(vec2 uv) {
+	float detail = 1.0 - fastWorley3d(vec3(uv * 18.0, 0.0));
+	float clump = 1.0 - fastWorley3d(vec3(uv * 4.0, 0.0));
+	return mix(detail, detail * clump, 0.5);
+}
+
 /**
  * Calculate valley/ridge factor using noise-based curvature approximation.
  * Valleys tend to accumulate moisture and be more lush.
@@ -434,29 +440,31 @@ void main() {
 		float layerDepth = 1.0 / numLayers;
 		float currentLayerDepth = 0.0;
 		// Standard POM offset calculation: P = (V.xy / V.z) * scale
-		vec2  P = (V_tangent.xy / max(V_tangent.z, 0.001)) * grassHeightScale;
+		// Clamp parallax offset to prevent extreme texture coordinates at grazing angles
+		vec2  P = (V_tangent.xy / max(abs(V_tangent.z), 0.05)) * grassHeightScale;
 		vec2  deltaTexCoords = P / numLayers;
 
 		vec2  currentTexCoords = FragPos.xz;
-		float currentDepthMapValue = 1.0 - fastWorley3d(vec3(currentTexCoords * 15.0, 0.0));
+		float currentDepthMapValue = sampleGrassMap(currentTexCoords);
 
-		while (currentLayerDepth < currentDepthMapValue) {
+		while (currentLayerDepth < currentDepthMapValue && currentLayerDepth < 1.0) {
 			currentTexCoords -= deltaTexCoords;
 			// Wind sway: blades bend in direction of wind nudge, proportional to height from ground
-			// Since currentLayerDepth is 0 at top and 1 at base, (1 - currentLayerDepth) is height
 			vec2 windOff = -rawWindNudge.xz * (1.0 - currentLayerDepth) * 0.45;
-			currentDepthMapValue = 1.0 - fastWorley3d(vec3((currentTexCoords + windOff) * 15.0, 0.0));
+			currentDepthMapValue = sampleGrassMap(currentTexCoords + windOff);
 			currentLayerDepth += layerDepth;
 		}
 
 		// Refinement (interpolation)
 		vec2  prevTexCoords = currentTexCoords + deltaTexCoords;
 		float afterDepth = currentDepthMapValue - currentLayerDepth;
-		float beforeDepth = (1.0 - fastWorley3d(vec3((prevTexCoords - rawWindNudge.xz * (1.0 - (currentLayerDepth - layerDepth)) * 0.45) * 15.0, 0.0))) -
-			currentLayerDepth + layerDepth;
-		float weight = afterDepth / (afterDepth - beforeDepth);
+		float beforeDepth = sampleGrassMap(prevTexCoords - rawWindNudge.xz * (1.0 - (currentLayerDepth - layerDepth)) * 0.45) -
+			(currentLayerDepth - layerDepth);
+
+		// Epsilon to prevent division by zero (speckle fix)
+		float weight = afterDepth / min(-0.001, (afterDepth - beforeDepth));
 		currentTexCoords = prevTexCoords * weight + currentTexCoords * (1.0 - weight);
-		float finalDepth = currentLayerDepth - layerDepth + (1.0 - weight) * layerDepth;
+		float finalDepth = clamp(currentLayerDepth - layerDepth + (1.0 - weight) * layerDepth, 0.0, 1.0);
 		float finalGrassHeight = 1.0 - finalDepth; // 1 at tip, 0 at base
 
 		// Self-shadowing within grass: raymarch towards the light source
@@ -466,12 +474,12 @@ void main() {
 		// March from current depth towards 0 (top of grass)
 		float shadowLayerDepth = finalDepth / shadowSteps;
 		// Delta UV toward light source
-		vec2  L_delta = (L_tangent.xy / max(L_tangent.z, 0.001)) * grassHeightScale / shadowSteps;
+		vec2  L_delta = (L_tangent.xy / max(abs(L_tangent.z), 0.05)) * grassHeightScale / shadowSteps;
 		float currentShadowDepth = finalDepth - shadowLayerDepth;
 		vec2  shadowTexCoords = currentTexCoords + L_delta;
 
 		for (int i = 0; i < 6; i++) {
-			float h = 1.0 - fastWorley3d(vec3((shadowTexCoords - rawWindNudge.xz * (1.0 - currentShadowDepth) * 0.45) * 15.0, 0.0));
+			float h = sampleGrassMap(shadowTexCoords - rawWindNudge.xz * (1.0 - currentShadowDepth) * 0.45);
 			if (h < currentShadowDepth) { // Neighboring blade is higher (closer to 0 depth) than the ray
 				pomShadow *= 0.65;
 			}
@@ -480,7 +488,6 @@ void main() {
 		}
 
 		// Adjust material based on grass hit
-		// finalGrassHeight: 1 at tip (bright, rougher), 0 at base (darker, smoother/dirt)
 		albedo = mix(albedo * 0.25, albedo * 1.3, finalGrassHeight);
 		roughness = mix(0.95, 0.7, finalGrassHeight);
 	}
