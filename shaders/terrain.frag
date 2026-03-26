@@ -63,10 +63,30 @@ struct TerrainMaterial {
 	float normalStrength;
 };
 
-float sampleGrassMap(vec2 uv) {
-	float detail = 1.0 - fastWorley3d(vec3(uv * 18.0, 0.0));
-	float clump = 1.0 - fastWorley3d(vec3(uv * 4.0, 0.0));
-	return mix(detail, detail * clump, 0.5);
+float sampleProceduralHeightMap(vec2 uv, vec3 biomeWeights1, vec3 biomeWeights2, float windIntensity) {
+	// Base noises at requested lower frequencies (division instead of multiplication)
+	float worleyDetail = 1.0 - fastWorley3d(vec3(uv / 18.0, 0.0));
+	float worleyClump = 1.0 - fastWorley3d(vec3(uv / 4.0, 0.0));
+	float simplexRipple = fastSimplex3d(vec3(uv / 10.0, 0.0)) * 0.5 + 0.5;
+	float ridgeRock = fastRidge3d(vec3(uv / 8.0, 0.0));
+
+	// Biome-specific height logic
+	// biomeWeights1: x=Sand, y=LushGrass, z=DryGrass
+	// biomeWeights2: x=Forest, y=AlpineMeadow, z=Rock
+
+	float grassHeight = mix(worleyDetail, worleyDetail * worleyClump, 0.5);
+	float sandHeight = simplexRipple * 0.3 + worleyDetail * 0.1;
+	float rockHeight = ridgeRock * 0.6 + worleyDetail * 0.2;
+	float snowHeight = simplexRipple * 0.2 + worleyDetail * 0.1;
+
+	float h = 0.0;
+	h += (biomeWeights1.x) * sandHeight;               // Sand
+	h += (biomeWeights1.y + biomeWeights1.z) * grassHeight; // Grasses
+	h += (biomeWeights2.x + biomeWeights2.y) * grassHeight; // Forest/Alpine
+	h += (biomeWeights2.z) * rockHeight;               // Rock (Brown/Grey)
+	h += (1.0 - clamp(dot(biomeWeights1, vec3(1)) + dot(biomeWeights2, vec3(1)), 0, 1)) * snowHeight; // Snow
+
+	return clamp(h, 0.0, 1.0);
 }
 
 /**
@@ -383,6 +403,42 @@ void main() {
 	float beachMask = 1.0 - smoothstep(0.0, HEIGHT_BEACH_END + 2.0, baseHeight);
 	cliffMask *= (1.0 - beachMask);
 
+	// Sample Biome Map
+	vec2  remappedUV = (TexCoords * 32.0 + 0.5) / 33.0; // matching placement.comp
+	vec2  biomeData = textureLod(uBiomeMap, vec3(remappedUV, TextureSlice), 0.0).rg;
+	int   lowIdx = int(biomeData.r * 255.0 + 0.5);
+	int   highIdx = min(lowIdx + 1, 7);
+	float biomeT = biomeData.g;
+
+	vec3 bWeights1 = vec3(0.0); // Sand, LushGrass, DryGrass
+	vec3 bWeights2 = vec3(0.0); // Forest, AlpineMeadow, Rock
+
+	if (lowIdx == 0)
+		bWeights1.x += (1.0 - biomeT);
+	else if (lowIdx == 1)
+		bWeights1.y += (1.0 - biomeT);
+	else if (lowIdx == 2)
+		bWeights1.z += (1.0 - biomeT);
+	else if (lowIdx == 3)
+		bWeights2.x += (1.0 - biomeT);
+	else if (lowIdx == 4)
+		bWeights2.y += (1.0 - biomeT);
+	else if (lowIdx == 5 || lowIdx == 6)
+		bWeights2.z += (1.0 - biomeT);
+
+	if (highIdx == 0)
+		bWeights1.x += biomeT;
+	else if (highIdx == 1)
+		bWeights1.y += biomeT;
+	else if (highIdx == 2)
+		bWeights1.z += biomeT;
+	else if (highIdx == 3)
+		bWeights2.x += biomeT;
+	else if (highIdx == 4)
+		bWeights2.y += biomeT;
+	else if (highIdx == 5 || highIdx == 6)
+		bWeights2.z += biomeT;
+
 	TerrainMaterial biomeMat = getBiomeMaterial(distortedHeight, moisture, combinedNoise);
 	TerrainMaterial cliffMat = getCliffMaterial(baseHeight, medNoise);
 
@@ -425,71 +481,75 @@ void main() {
 	vec3 bitangent = cross(norm, tangent);
 
 	// ========================================================================
-	// Procedural Lawn POM
+	// Procedural Surface Detail POM
 	// ========================================================================
-	float grassFactor = smoothstep(0.25, 0.5, max(dot(albedo, COL_GRASS_LUSH), dot(albedo, COL_GRASS_DRY)));
 	float pomShadow = 1.0;
+	float grassFactor = (bWeights1.y + bWeights1.z + bWeights2.x + bWeights2.y);
+	float sandFactor = bWeights1.x;
+	float rockFactor = bWeights2.z;
+	float snowFactor = (1.0 - clamp(dot(bWeights1, vec3(1)) + dot(bWeights2, vec3(1)), 0, 1));
 
-	if (grassFactor > 0.1 && dist < 100.0) {
+	// Determine height scale for POM based on biome
+	float detailHeightScale = 0.0;
+	detailHeightScale += grassFactor * 0.35;
+	detailHeightScale += sandFactor * 0.05;
+	detailHeightScale += rockFactor * 0.15;
+	detailHeightScale += snowFactor * 0.08;
+
+	if (detailHeightScale > 0.01 && dist < 120.0) {
 		vec3  V = normalize(viewPos - FragPos);
 		vec3  V_tangent = vec3(dot(V, tangent), dot(V, bitangent), dot(V, norm));
-		float grassHeightScale = 0.35 * grassFactor; // Max height of lawn grass
 
-		// POM Loop: using standard depth convention (0.0 = top, 1.0 = base)
-		float numLayers = mix(24.0, 8.0, clamp(dist / 100.0, 0.0, 1.0));
+		// POM Loop
+		float numLayers = mix(24.0, 8.0, clamp(dist / 120.0, 0.0, 1.0));
 		float layerDepth = 1.0 / numLayers;
 		float currentLayerDepth = 0.0;
-		// Standard POM offset calculation: P = (V.xy / V.z) * scale
-		// Clamp parallax offset to prevent extreme texture coordinates at grazing angles
-		vec2  P = (V_tangent.xy / max(abs(V_tangent.z), 0.05)) * grassHeightScale;
+		vec2  P = (V_tangent.xy / max(abs(V_tangent.z), 0.05)) * detailHeightScale;
 		vec2  deltaTexCoords = P / numLayers;
 
 		vec2  currentTexCoords = FragPos.xz;
-		float currentDepthMapValue = sampleGrassMap(currentTexCoords);
+		float currentDepthMapValue = sampleProceduralHeightMap(currentTexCoords, bWeights1, bWeights2, 0.0);
 
 		while (currentLayerDepth < currentDepthMapValue && currentLayerDepth < 1.0) {
 			currentTexCoords -= deltaTexCoords;
-			// Wind sway: blades bend in direction of wind nudge, proportional to height from ground
-			vec2 windOff = -rawWindNudge.xz * (1.0 - currentLayerDepth) * 0.45;
-			currentDepthMapValue = sampleGrassMap(currentTexCoords + windOff);
+			// Wind sway: apply to grass biomes specifically, using requested division by 5 (0.2)
+			vec2 windOff = -rawWindNudge.xz * (1.0 - currentLayerDepth) * 0.2 * grassFactor;
+			currentDepthMapValue = sampleProceduralHeightMap(currentTexCoords + windOff, bWeights1, bWeights2, 0.0);
 			currentLayerDepth += layerDepth;
 		}
 
-		// Refinement (interpolation)
+		// Refinement
 		vec2  prevTexCoords = currentTexCoords + deltaTexCoords;
 		float afterDepth = currentDepthMapValue - currentLayerDepth;
-		float beforeDepth = sampleGrassMap(prevTexCoords - rawWindNudge.xz * (1.0 - (currentLayerDepth - layerDepth)) * 0.45) -
+		float beforeDepth = sampleProceduralHeightMap(prevTexCoords - rawWindNudge.xz * (1.0 - (currentLayerDepth - layerDepth)) * 0.2 * grassFactor, bWeights1, bWeights2, 0.0) -
 			(currentLayerDepth - layerDepth);
 
-		// Epsilon to prevent division by zero (speckle fix)
 		float weight = afterDepth / min(-0.001, (afterDepth - beforeDepth));
 		currentTexCoords = prevTexCoords * weight + currentTexCoords * (1.0 - weight);
 		float finalDepth = clamp(currentLayerDepth - layerDepth + (1.0 - weight) * layerDepth, 0.0, 1.0);
-		float finalGrassHeight = 1.0 - finalDepth; // 1 at tip, 0 at base
+		float finalDetailHeight = 1.0 - finalDepth;
 
-		// Self-shadowing within grass: raymarch towards the light source
+		// Self-shadowing
 		vec3  L = normalize(lights[0].position - FragPos);
 		vec3  L_tangent = vec3(dot(L, tangent), dot(L, bitangent), dot(L, norm));
-		float shadowSteps = 6.0;
-		// March from current depth towards 0 (top of grass)
+		float shadowSteps = 4.0;
 		float shadowLayerDepth = finalDepth / shadowSteps;
-		// Delta UV toward light source
-		vec2  L_delta = (L_tangent.xy / max(abs(L_tangent.z), 0.05)) * grassHeightScale / shadowSteps;
+		vec2  L_delta = (L_tangent.xy / max(abs(L_tangent.z), 0.05)) * detailHeightScale / shadowSteps;
 		float currentShadowDepth = finalDepth - shadowLayerDepth;
 		vec2  shadowTexCoords = currentTexCoords + L_delta;
 
-		for (int i = 0; i < 6; i++) {
-			float h = sampleGrassMap(shadowTexCoords - rawWindNudge.xz * (1.0 - currentShadowDepth) * 0.45);
-			if (h < currentShadowDepth) { // Neighboring blade is higher (closer to 0 depth) than the ray
-				pomShadow *= 0.65;
+		for (int i = 0; i < 4; i++) {
+			float h = sampleProceduralHeightMap(shadowTexCoords - rawWindNudge.xz * (1.0 - currentShadowDepth) * 0.2 * grassFactor, bWeights1, bWeights2, 0.0);
+			if (h < currentShadowDepth) {
+				pomShadow *= mix(1.0, 0.7, grassFactor + rockFactor * 0.5); // Less aggressive shadowing for sand/snow
 			}
 			currentShadowDepth -= shadowLayerDepth;
 			shadowTexCoords += L_delta;
 		}
 
-		// Adjust material based on grass hit
-		albedo = mix(albedo * 0.25, albedo * 1.3, finalGrassHeight);
-		roughness = mix(0.95, 0.7, finalGrassHeight);
+		// Adjust material
+		albedo = mix(albedo * (1.0 - 0.7 * (grassFactor + rockFactor * 0.3)), albedo * 1.2, finalDetailHeight);
+		roughness = mix(roughness * 1.1, roughness * 0.9, finalDetailHeight);
 	}
 
 	// ========================================================================
