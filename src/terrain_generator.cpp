@@ -795,6 +795,10 @@ namespace Boidsish {
 		return getPathDataFlat(glm::vec2(x / world_scale_, z / world_scale_));
 	}
 
+	float TerrainGenerator::GetBiomeControlValue(float x, float z) const {
+		return getBiomeControlValue(x, z);
+	}
+
 	glm::vec3 TerrainGenerator::getPathDataFlat(float x, float z) const {
 		return getPathDataFlat(glm::vec2(x, z));
 	}

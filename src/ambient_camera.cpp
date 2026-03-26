@@ -124,15 +124,38 @@ namespace Boidsish {
 		Vector3 cPos = cameraSpline.Evaluate(globalU);
 		Vector3 fPos = focusSpline.Evaluate(globalU);
 
+		glm::vec3 targetProbePos(pPos.x, pPos.y, pPos.z);
+		glm::vec3 targetCameraPos(cPos.x, cPos.y, cPos.z);
+		glm::vec3 targetFocusPos(fPos.x, fPos.y, fPos.z);
+
+		if (firstUpdate) {
+			smoothedCameraPos = targetCameraPos;
+			smoothedFocusPos = targetFocusPos;
+			firstUpdate = false;
+		}
+
+		// Critically damped spring for camera and focus
+		auto criticallyDampedSpring =
+			[](glm::vec3& current, glm::vec3& velocity, glm::vec3 target, float omega, float dt) {
+				glm::vec3 e = current - target;
+				glm::vec3 a = -2.0f * omega * velocity - omega * omega * e;
+				velocity += a * dt;
+				current += velocity * dt;
+			};
+
+		float omega = 3.0f; // Response speed
+		criticallyDampedSpring(smoothedCameraPos, cameraVelocity, targetCameraPos, omega, deltaTime);
+		criticallyDampedSpring(smoothedFocusPos, focusVelocity, targetFocusPos, omega, deltaTime);
+
 		// Update outputs
-		probePos = glm::vec3(pPos.x, pPos.y, pPos.z);
+		probePos = targetProbePos;
 
-		camera.x = cPos.x;
-		camera.y = cPos.y;
-		camera.z = cPos.z;
+		camera.x = smoothedCameraPos.x;
+		camera.y = smoothedCameraPos.y;
+		camera.z = smoothedCameraPos.z;
 
-		// Calculate yaw/pitch to look at focus
-		glm::vec3 front = glm::normalize(glm::vec3(fPos.x - cPos.x, fPos.y - cPos.y, fPos.z - cPos.z));
+		// Calculate yaw/pitch to look at smoothed focus
+		glm::vec3 front = glm::normalize(smoothedFocusPos - smoothedCameraPos);
 		camera.yaw = glm::degrees(atan2(front.x, -front.z));
 		camera.pitch = glm::degrees(asin(front.y));
 		camera.roll = 0.0f;
@@ -234,8 +257,8 @@ namespace Boidsish {
 		Vector3 current = Vector3(lastProbePos.x, lastProbePos.y, lastProbePos.z);
 		probeSpline.waypoints.push_back(current);
 
-		int   numSteps = 6;
-		float stepDist = 40.0f;
+		int   numSteps = 8;
+		float stepDist = 120.0f;
 
 		for (int i = 0; i < numSteps; ++i) {
 			Vector3 next;
@@ -306,20 +329,18 @@ namespace Boidsish {
 			Vector3 pPos = probeSpline.waypoints[i];
 
 			// Try several random points on a sphere around the probe
-			float   baseRadius = 40.0f;                     // Increased to ensure probe isn't too large
-			Vector3 bestCamPos = pPos + Vector3(0, 15, 30); // Default offset
+			float   baseRadius = 160.0f;                    // Further away to keep probe small on screen
+			Vector3 bestCamPos = pPos + Vector3(0, 30, 80); // Default offset
 			float   bestScore = -1e10f;
 
 			for (int j = 0; j < 12; ++j) {
 				float phi = (float)rand() / RAND_MAX * 2.0f * 3.14159f;
-				// Constraints: Avoid directly overhead (theta in [15, 80] degrees)
-				float thetaDeg = 15.0f + (float)rand() / RAND_MAX * 65.0f;
+				// Constraints: Avoid directly overhead (theta in [40, 85] degrees)
+				float thetaDeg = 40.0f + (float)rand() / RAND_MAX * 45.0f;
 				float theta = glm::radians(thetaDeg);
 
 				// Adjust radius based on angle (lower angle = can get closer)
-				// If thetaDeg is small (near zenith), we stay far.
-				// If thetaDeg is large (near horizon), we can get closer.
-				float angleFactor = (thetaDeg - 15.0f) / 65.0f; // 0 to 1
+				float angleFactor = (thetaDeg - 40.0f) / 45.0f; // 0 to 1
 				float radius = baseRadius * (1.5f - 0.5f * angleFactor);
 
 				Vector3 offset(radius * sin(theta) * cos(phi), radius * cos(theta), radius * sin(theta) * sin(phi));
@@ -369,15 +390,23 @@ namespace Boidsish {
 			Vector3 pPos = probeSpline.waypoints[i];
 			Vector3 cPos = cameraSpline.waypoints[i];
 
-			Vector3 targetFocus = pPos; // Default focus on probe
+			// Default focus near the probe on terrain, not the probe itself
+			float   offsetAngle = (float)rand() / RAND_MAX * 2.0f * 3.14159f;
+			float   offsetDist = 15.0f + (float)rand() / RAND_MAX * 25.0f;
+			Vector3 targetFocus = pPos + Vector3(cos(offsetAngle) * offsetDist, 0.0f, sin(offsetAngle) * offsetDist);
+			if (terrain) {
+				targetFocus.y = std::get<0>(terrain->GetTerrainPropertiesAtPoint(targetFocus.x, targetFocus.z));
+			}
 
 			// Check if probe is in a valid focus position (horizon angle constraint)
-			glm::vec3 toProbe = glm::normalize(glm::vec3(pPos.x - cPos.x, pPos.y - cPos.y, pPos.z - cPos.z));
-			float     probeAngle = asin(toProbe.y);
-			bool      probeValid = (abs(probeAngle) <= 3.14159f / 4.0f);
+			glm::vec3 toFocus = glm::normalize(
+				glm::vec3(targetFocus.x - cPos.x, targetFocus.y - cPos.y, targetFocus.z - cPos.z)
+			);
+			float focusAngle = asin(toFocus.y);
+			bool  focusValid = (abs(focusAngle) <= 3.14159f / 4.0f);
 
 			// Occasionally look at POIs, or if probe is invalid
-			if (!probeValid || rand() % 3 == 0) {
+			if (!focusValid || rand() % 2 == 0) {
 				std::vector<Vector3> pois;
 
 				// 1. Mountain peaks (proxies)
@@ -440,9 +469,9 @@ namespace Boidsish {
 					if (abs(angle) > 3.14159f / 4.0f)
 						continue;
 
-					// Score based on distance (not too far, not too close)
+					// Score based on distance (prefer distant vistas but not too far)
 					float d = (poi - cPos).Magnitude();
-					float score = -abs(d - 60.0f);
+					float score = -abs(d - 150.0f);
 
 					if (score > bestScore) {
 						bestScore = score;
