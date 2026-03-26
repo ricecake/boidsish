@@ -160,7 +160,7 @@ void respawnParticle(
 			if (gid >= (particles.length() - ambient_limit) && num_chunks > 0) {
 				uint  particleSeed = hash(gid ^ uint(time * 10.0));
 				float r_dist = randomFloat(particleSeed);
-				float dist = sqrt(100.0 + r_dist * 249900.0);
+				float dist = sqrt(100.0 + r_dist * 249900.0) * worldScale;
 
 				float u_angle = randomFloat(hash(particleSeed)) * 2.0 - 1.0;
 				float shaped_angle = mix(u_angle, u_angle * u_angle * u_angle, 0.6);
@@ -184,7 +184,7 @@ void respawnParticle(
 					}
 				}
 
-				if (chunk_idx != -1 && distance(pos.xz, viewPos.xz) <= 750.0) {
+				if (chunk_idx != -1 && distance(pos.xz, viewPos.xz) <= 750.0 * worldScale) {
 					vec2  uv = (pos.xz - chunk.worldOffset) / chunk.size;
 					vec4  terrain = texture(heightmapArray, vec3(uv, chunk.slice));
 					float height = terrain.r + 0.05;
