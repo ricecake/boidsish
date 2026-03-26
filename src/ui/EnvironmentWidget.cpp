@@ -99,6 +99,14 @@ namespace Boidsish {
 										atmosphere_effect->SetCloudColor(cloud_color);
 									}
 
+									float cloud_shadow = ConfigManager::GetInstance().GetAppSettingFloat(
+										"cloud_shadow_intensity",
+										0.5f
+									);
+									if (ImGui::SliderFloat("Cloud Shadow Intensity", &cloud_shadow, 0.0f, 1.0f)) {
+										ConfigManager::GetInstance().SetFloat("cloud_shadow_intensity", cloud_shadow);
+									}
+
 									ImGui::Separator();
 									ImGui::Text("Scattering");
 									float rayleigh = atmosphere_effect->GetRayleighScale();

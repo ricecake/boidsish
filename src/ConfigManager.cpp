@@ -71,6 +71,8 @@ namespace Boidsish {
 		GetAppSettingBool("artistic_effect_shimmery", false);
 		GetAppSettingBool("artistic_effect_glitched", false);
 		GetAppSettingBool("artistic_effect_wireframe", false);
+		// Cloud settings
+		GetAppSettingFloat("cloud_shadow_intensity", 0.5f);
 
 		// Foliage culling settings
 		GetAppSettingFloat("foliage_culling_pixel_threshold", 10.0f);

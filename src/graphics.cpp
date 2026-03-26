@@ -765,9 +765,15 @@ namespace Boidsish {
 			const int MAX_LIGHTS = 10;
 			glGenBuffers(1, &lighting_ubo);
 			glBindBuffer(GL_UNIFORM_BUFFER, lighting_ubo);
-			glBufferData(GL_UNIFORM_BUFFER, 704, NULL, GL_DYNAMIC_DRAW);
+			glBufferData(GL_UNIFORM_BUFFER, sizeof(LightingUbo), NULL, GL_DYNAMIC_DRAW);
 			glBindBuffer(GL_UNIFORM_BUFFER, 0);
-			glBindBufferRange(GL_UNIFORM_BUFFER, Constants::UboBinding::Lighting(), lighting_ubo, 0, 704);
+			glBindBufferRange(
+				GL_UNIFORM_BUFFER,
+				Constants::UboBinding::Lighting(),
+				lighting_ubo,
+				0,
+				sizeof(LightingUbo)
+			);
 
 			// Temporal Data UBO
 			glGenBuffers(1, &temporal_data_ubo);
@@ -3096,6 +3102,18 @@ namespace Boidsish {
 			impl->lighting_ubo_data_.ambient_light = impl->light_manager.GetAmbientLight();
 			impl->lighting_ubo_data_.time = impl->simulation_time;
 			impl->lighting_ubo_data_.view_dir = impl->camera.front();
+
+			if (impl->atmosphere_effect) {
+				impl->lighting_ubo_data_.cloudShadowIntensity = ConfigManager::GetInstance().GetAppSettingFloat(
+					"cloud_shadow_intensity",
+					0.5f
+				);
+				impl->lighting_ubo_data_.cloudAltitude = impl->atmosphere_effect->GetCloudAltitude();
+				impl->lighting_ubo_data_.cloudThickness = impl->atmosphere_effect->GetCloudThickness();
+				impl->lighting_ubo_data_.cloudDensity = impl->atmosphere_effect->GetCloudDensity();
+			} else {
+				impl->lighting_ubo_data_.cloudShadowIntensity = 0.0f;
+			}
 
 			glBindBuffer(GL_UNIFORM_BUFFER, impl->lighting_ubo);
 			glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(LightingUbo), &impl->lighting_ubo_data_);
