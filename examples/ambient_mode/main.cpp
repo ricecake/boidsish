@@ -88,8 +88,8 @@ int main() {
 
 		// --- Probe & Path State ---
 		auto probe = std::make_shared<Boidsish::Dot>(0, 0, 0, 0, 5.0f);
-		probe->SetColor(0.2f, 0.8f, 1.0f, 0.5f);
-		probe->SetScale(glm::vec3(45.0f));
+		probe->SetColor(0.2f, 0.8f, 1.0f, 0.2f);
+		probe->SetScale(glm::vec3(30.0f));
 		probe->SetRefractive(true, 1.5f);
 		probe->SetTrailLength(0);
 
@@ -121,6 +121,14 @@ int main() {
 			auto  terrain = visualizer.GetTerrain();
 			auto  decor = visualizer.GetDecorManager();
 			auto& cam = visualizer.GetCamera();
+
+			// Occasionally pick a random destination to demonstrate the new API
+			if (std::rand() % 500 == 0) {
+				float rx = (std::rand() % 4000 - 2000);
+				float rz = (std::rand() % 4000 - 2000);
+				ambient_system.SetDestination(glm::vec3(rx, 0, rz), 0.7f);
+				logger::LOG("New ambient destination set.");
+			}
 
 			ambient_system.Update(dt, terrain.get(), decor, cam, probe_pos);
 

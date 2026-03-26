@@ -79,6 +79,12 @@ namespace Boidsish {
     AmbientCameraSystem::AmbientCameraSystem() {}
     AmbientCameraSystem::~AmbientCameraSystem() {}
 
+    void AmbientCameraSystem::SetDestination(glm::vec3 dest, float directness) {
+        targetDestination = dest;
+        pathDirectness = std::clamp(directness, 0.0f, 1.0f);
+        hasDestination = true;
+    }
+
     void AmbientCameraSystem::Update(float deltaTime,
                                      ITerrainGenerator* terrain,
                                      DecorManager* decor,
@@ -211,9 +217,28 @@ namespace Boidsish {
         float stepDist = 40.0f;
 
         for (int i = 0; i < numSteps; ++i) {
-            // Random walk: pick a direction
-            float angle = (float)rand() / RAND_MAX * 2.0f * 3.14159f;
-            Vector3 next(current.x + cos(angle) * stepDist, 0, current.z + sin(angle) * stepDist);
+            Vector3 next;
+
+            if (hasDestination) {
+                glm::vec3 toDest = targetDestination - glm::vec3(current.x, current.y, current.z);
+                float d = glm::length(toDest);
+                if (d < 5.0f) {
+                    hasDestination = false; // Arrived
+                    float angle = (float)rand() / RAND_MAX * 2.0f * 3.14159f;
+                    next = Vector3(current.x + cos(angle) * stepDist, 0, current.z + sin(angle) * stepDist);
+                } else {
+                    glm::vec3 dir = toDest / d;
+                    // Blend between direct path and random walk
+                    float angle = (float)rand() / RAND_MAX * 2.0f * 3.14159f;
+                    glm::vec3 wander(cos(angle), 0, sin(angle));
+                    glm::vec3 finalDir = glm::normalize(glm::mix(wander, dir, pathDirectness));
+                    next = Vector3(current.x + finalDir.x * stepDist, 0, current.z + finalDir.z * stepDist);
+                }
+            } else {
+                // Random walk: pick a direction
+                float angle = (float)rand() / RAND_MAX * 2.0f * 3.14159f;
+                next = Vector3(current.x + cos(angle) * stepDist, 0, current.z + sin(angle) * stepDist);
+            }
 
             // Get terrain height at next
             if (terrain) {
@@ -260,13 +285,21 @@ namespace Boidsish {
             Vector3 pPos = probeSpline.waypoints[i];
 
             // Try several random points on a sphere around the probe
-            float radius = 25.0f;
-            Vector3 bestCamPos = pPos + Vector3(0, 15, 20); // Default offset
+            float baseRadius = 40.0f; // Increased to ensure probe isn't too large
+            Vector3 bestCamPos = pPos + Vector3(0, 15, 30); // Default offset
             float bestScore = -1e10f;
 
-            for (int j = 0; j < 8; ++j) {
+            for (int j = 0; j < 12; ++j) {
                 float phi = (float)rand() / RAND_MAX * 2.0f * 3.14159f;
-                float theta = (float)rand() / RAND_MAX * 0.5f * 3.14159f; // Only upper hemisphere
+                // Constraints: Avoid directly overhead (theta in [15, 80] degrees)
+                float thetaDeg = 15.0f + (float)rand() / RAND_MAX * 65.0f;
+                float theta = glm::radians(thetaDeg);
+
+                // Adjust radius based on angle (lower angle = can get closer)
+                // If thetaDeg is small (near zenith), we stay far.
+                // If thetaDeg is large (near horizon), we can get closer.
+                float angleFactor = (thetaDeg - 15.0f) / 65.0f; // 0 to 1
+                float radius = baseRadius * (1.5f - 0.5f * angleFactor);
 
                 Vector3 offset(
                     radius * sin(theta) * cos(phi),
@@ -319,8 +352,13 @@ namespace Boidsish {
 
             Vector3 targetFocus = pPos; // Default focus on probe
 
-            // Occasionally look at POIs
-            if (rand() % 3 == 0) {
+            // Check if probe is in a valid focus position (horizon angle constraint)
+            glm::vec3 toProbe = glm::normalize(glm::vec3(pPos.x - cPos.x, pPos.y - cPos.y, pPos.z - cPos.z));
+            float probeAngle = asin(toProbe.y);
+            bool probeValid = (abs(probeAngle) <= 3.14159f / 4.0f);
+
+            // Occasionally look at POIs, or if probe is invalid
+            if (!probeValid || rand() % 3 == 0) {
                 std::vector<Vector3> pois;
 
                 // 1. Mountain peaks (proxies)
@@ -345,7 +383,13 @@ namespace Boidsish {
 
                     auto results = decor->GetDecorInChunks(chunks, terrain->GetRenderManager(), *terrain);
                     for (const auto& tr : results) {
-                        if (tr.model_path.find("Structure") != std::string::npos || tr.model_path.find("tree") != std::string::npos) {
+                        // Select procedural structures or important trees
+                        bool isStructure = (tr.model_path.find("structure") != std::string::npos) ||
+                                           (tr.model_path.find("Structure") != std::string::npos);
+                        bool isTree = (tr.model_path.find("tree") != std::string::npos) ||
+                                      (tr.model_path.find("Tree") != std::string::npos);
+
+                        if (isStructure || (isTree && rand() % 5 == 0)) {
                            for (const auto& inst : tr.instances) {
                                pois.push_back(Vector3(inst.center.x, inst.center.y, inst.center.z));
                                if (pois.size() > 20) break;

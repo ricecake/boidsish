@@ -45,6 +45,13 @@ namespace Boidsish {
                     Camera& camera,
                     glm::vec3& probePos);
 
+        /**
+         * @brief Sets a target destination for the probe.
+         * @param dest The target world position
+         * @param directness [0, 1] where 1 is a straight line and 0 is high wander.
+         */
+        void SetDestination(glm::vec3 dest, float directness = 0.5f);
+
     private:
         void GenerateNewPaths(ITerrainGenerator* terrain, DecorManager* decor);
 
@@ -61,6 +68,11 @@ namespace Boidsish {
         float globalU = 0.0f; // Current traversal parameter [0, 1]
         float traversalSpeed = 10.0f; // Units per second
         bool pathsValid = false;
+
+        // Destination state
+        bool hasDestination = false;
+        glm::vec3 targetDestination{0.0f};
+        float pathDirectness = 0.5f;
 
         // State for path generation
         glm::vec3 lastProbePos{0.0f, 20.0f, 0.0f};
