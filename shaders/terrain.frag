@@ -63,16 +63,12 @@ struct TerrainMaterial {
 	float normalStrength;
 };
 
-float sampleProceduralHeightMap(vec2 uv, vec3 biomeWeights1, vec3 biomeWeights2, float windIntensity) {
+float sampleProceduralHeightMap(vec2 uv, float grassF, float sandF, float rockF, float snowF) {
 	// Base noises at requested lower frequencies (division instead of multiplication)
 	float worleyDetail = 1.0 - fastWorley3d(vec3(uv / 18.0, 0.0));
 	float worleyClump = 1.0 - fastWorley3d(vec3(uv / 4.0, 0.0));
 	float simplexRipple = fastSimplex3d(vec3(uv / 10.0, 0.0)) * 0.5 + 0.5;
 	float ridgeRock = fastRidge3d(vec3(uv / 8.0, 0.0));
-
-	// Biome-specific height logic
-	// biomeWeights1: x=Sand, y=LushGrass, z=DryGrass
-	// biomeWeights2: x=Forest, y=AlpineMeadow, z=Rock
 
 	float grassHeight = mix(worleyDetail, worleyDetail * worleyClump, 0.5);
 	float sandHeight = simplexRipple * 0.3 + worleyDetail * 0.1;
@@ -80,11 +76,10 @@ float sampleProceduralHeightMap(vec2 uv, vec3 biomeWeights1, vec3 biomeWeights2,
 	float snowHeight = simplexRipple * 0.2 + worleyDetail * 0.1;
 
 	float h = 0.0;
-	h += (biomeWeights1.x) * sandHeight;               // Sand
-	h += (biomeWeights1.y + biomeWeights1.z) * grassHeight; // Grasses
-	h += (biomeWeights2.x + biomeWeights2.y) * grassHeight; // Forest/Alpine
-	h += (biomeWeights2.z) * rockHeight;               // Rock (Brown/Grey)
-	h += (1.0 - clamp(dot(biomeWeights1, vec3(1)) + dot(biomeWeights2, vec3(1)), 0, 1)) * snowHeight; // Snow
+	h += sandF * sandHeight;
+	h += grassF * grassHeight;
+	h += rockF * rockHeight;
+	h += snowF * snowHeight;
 
 	return clamp(h, 0.0, 1.0);
 }
@@ -403,42 +398,6 @@ void main() {
 	float beachMask = 1.0 - smoothstep(0.0, HEIGHT_BEACH_END + 2.0, baseHeight);
 	cliffMask *= (1.0 - beachMask);
 
-	// Sample Biome Map
-	vec2  remappedUV = (TexCoords * 32.0 + 0.5) / 33.0; // matching placement.comp
-	vec2  biomeData = textureLod(uBiomeMap, vec3(remappedUV, TextureSlice), 0.0).rg;
-	int   lowIdx = int(biomeData.r * 255.0 + 0.5);
-	int   highIdx = min(lowIdx + 1, 7);
-	float biomeT = biomeData.g;
-
-	vec3 bWeights1 = vec3(0.0); // Sand, LushGrass, DryGrass
-	vec3 bWeights2 = vec3(0.0); // Forest, AlpineMeadow, Rock
-
-	if (lowIdx == 0)
-		bWeights1.x += (1.0 - biomeT);
-	else if (lowIdx == 1)
-		bWeights1.y += (1.0 - biomeT);
-	else if (lowIdx == 2)
-		bWeights1.z += (1.0 - biomeT);
-	else if (lowIdx == 3)
-		bWeights2.x += (1.0 - biomeT);
-	else if (lowIdx == 4)
-		bWeights2.y += (1.0 - biomeT);
-	else if (lowIdx == 5 || lowIdx == 6)
-		bWeights2.z += (1.0 - biomeT);
-
-	if (highIdx == 0)
-		bWeights1.x += biomeT;
-	else if (highIdx == 1)
-		bWeights1.y += biomeT;
-	else if (highIdx == 2)
-		bWeights1.z += biomeT;
-	else if (highIdx == 3)
-		bWeights2.x += biomeT;
-	else if (highIdx == 4)
-		bWeights2.y += biomeT;
-	else if (highIdx == 5 || highIdx == 6)
-		bWeights2.z += biomeT;
-
 	TerrainMaterial biomeMat = getBiomeMaterial(distortedHeight, moisture, combinedNoise);
 	TerrainMaterial cliffMat = getCliffMaterial(baseHeight, medNoise);
 
@@ -484,10 +443,10 @@ void main() {
 	// Procedural Surface Detail POM
 	// ========================================================================
 	float pomShadow = 1.0;
-	float grassFactor = (bWeights1.y + bWeights1.z + bWeights2.x + bWeights2.y);
-	float sandFactor = bWeights1.x;
-	float rockFactor = bWeights2.z;
-	float snowFactor = (1.0 - clamp(dot(bWeights1, vec3(1)) + dot(bWeights2, vec3(1)), 0, 1));
+	float rockFactor = cliffMask;
+	float sandFactor = beachMask;
+	float snowFactor = smoothstep(HEIGHT_SNOW_START, HEIGHT_PEAK, distortedHeight);
+	float grassFactor = (1.0 - rockFactor) * (1.0 - sandFactor) * (1.0 - snowFactor);
 
 	// Determine height scale for POM based on biome
 	float detailHeightScale = 0.0;
@@ -508,20 +467,20 @@ void main() {
 		vec2  deltaTexCoords = P / numLayers;
 
 		vec2  currentTexCoords = FragPos.xz;
-		float currentDepthMapValue = sampleProceduralHeightMap(currentTexCoords, bWeights1, bWeights2, 0.0);
+		float currentDepthMapValue = sampleProceduralHeightMap(currentTexCoords, grassFactor, sandFactor, rockFactor, snowFactor);
 
 		while (currentLayerDepth < currentDepthMapValue && currentLayerDepth < 1.0) {
 			currentTexCoords -= deltaTexCoords;
 			// Wind sway: apply to grass biomes specifically, using requested division by 5 (0.2)
 			vec2 windOff = -rawWindNudge.xz * (1.0 - currentLayerDepth) * 0.2 * grassFactor;
-			currentDepthMapValue = sampleProceduralHeightMap(currentTexCoords + windOff, bWeights1, bWeights2, 0.0);
+			currentDepthMapValue = sampleProceduralHeightMap(currentTexCoords + windOff, grassFactor, sandFactor, rockFactor, snowFactor);
 			currentLayerDepth += layerDepth;
 		}
 
 		// Refinement
 		vec2  prevTexCoords = currentTexCoords + deltaTexCoords;
 		float afterDepth = currentDepthMapValue - currentLayerDepth;
-		float beforeDepth = sampleProceduralHeightMap(prevTexCoords - rawWindNudge.xz * (1.0 - (currentLayerDepth - layerDepth)) * 0.2 * grassFactor, bWeights1, bWeights2, 0.0) -
+		float beforeDepth = sampleProceduralHeightMap(prevTexCoords - rawWindNudge.xz * (1.0 - (currentLayerDepth - layerDepth)) * 0.2 * grassFactor, grassFactor, sandFactor, rockFactor, snowFactor) -
 			(currentLayerDepth - layerDepth);
 
 		float weight = afterDepth / min(-0.001, (afterDepth - beforeDepth));
@@ -539,7 +498,7 @@ void main() {
 		vec2  shadowTexCoords = currentTexCoords + L_delta;
 
 		for (int i = 0; i < 4; i++) {
-			float h = sampleProceduralHeightMap(shadowTexCoords - rawWindNudge.xz * (1.0 - currentShadowDepth) * 0.2 * grassFactor, bWeights1, bWeights2, 0.0);
+			float h = sampleProceduralHeightMap(shadowTexCoords - rawWindNudge.xz * (1.0 - currentShadowDepth) * 0.2 * grassFactor, grassFactor, sandFactor, rockFactor, snowFactor);
 			if (h < currentShadowDepth) {
 				pomShadow *= mix(1.0, 0.7, grassFactor + rockFactor * 0.5); // Less aggressive shadowing for sand/snow
 			}
