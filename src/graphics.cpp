@@ -2613,6 +2613,15 @@ namespace Boidsish {
 				impl->atmosphere_effect->SetCloudThickness(w.cloud_thickness);
 				impl->atmosphere_effect->SetRayleighScale(w.rayleigh_scale);
 				impl->atmosphere_effect->SetMieScale(w.mie_scale);
+
+				// Atmosphere-specific attributes from weather
+				impl->atmosphere_effect->SetAtmosphereHeight(w.atmosphere_height);
+				impl->atmosphere_effect->SetRayleighScattering(w.rayleigh_scattering);
+				impl->atmosphere_effect->SetMieScattering(w.mie_scattering);
+				impl->atmosphere_effect->SetMieExtinction(w.mie_extinction);
+				impl->atmosphere_effect->SetOzoneAbsorption(w.ozone_absorption);
+				impl->atmosphere_effect->SetRayleighScaleHeight(w.rayleigh_scale_height);
+				impl->atmosphere_effect->SetMieScaleHeight(w.mie_scale_height);
 			}
 		}
 
@@ -2852,12 +2861,23 @@ namespace Boidsish {
 				impl->atmosphere_manager->SetMieAnisotropy(impl->atmosphere_effect->GetMieAnisotropy());
 				impl->atmosphere_manager->SetMultiScatteringScale(impl->atmosphere_effect->GetMultiScatScale());
 				impl->atmosphere_manager->SetAmbientScatteringScale(impl->atmosphere_effect->GetAmbientScatScale());
+
+				impl->atmosphere_manager->SetAtmosphereHeight(impl->atmosphere_effect->GetAtmosphereHeight());
+				impl->atmosphere_manager->SetRayleighScattering(impl->atmosphere_effect->GetRayleighScattering());
+				impl->atmosphere_manager->SetMieScattering(impl->atmosphere_effect->GetMieScattering());
+				impl->atmosphere_manager->SetMieExtinction(impl->atmosphere_effect->GetMieExtinction());
+				impl->atmosphere_manager->SetOzoneAbsorption(impl->atmosphere_effect->GetOzoneAbsorption());
+				impl->atmosphere_manager->SetRayleighScaleHeight(impl->atmosphere_effect->GetRayleighScaleHeight());
+				impl->atmosphere_manager->SetMieScaleHeight(impl->atmosphere_effect->GetMieScaleHeight());
+				impl->atmosphere_manager->SetColorVarianceScale(impl->atmosphere_effect->GetColorVarianceScale());
+				impl->atmosphere_manager->SetColorVarianceStrength(impl->atmosphere_effect->GetColorVarianceStrength());
 			}
 
 			// We multiply sun intensity by a large factor for the atmosphere model
 			// Standard directional light 1.0 is too dim for physical scattering.
 			// 20.0 is a reasonable physical-ish sun radiance.
-			impl->atmosphere_manager->Update(sun_dir, sun_color, sun_intensity * 20.0f, impl->camera.pos());
+			impl->atmosphere_manager
+				->Update(sun_dir, sun_color, sun_intensity * 20.0f, impl->camera.pos(), impl->simulation_time);
 
 			// Sync ambient light from atmosphere to ensure decor and world match
 			glm::vec3 estimated_ambient = impl->atmosphere_manager->GetAmbientEstimate();

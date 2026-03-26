@@ -129,6 +129,58 @@ namespace Boidsish {
 									if (ImGui::SliderFloat("Ambient Scat Scale", &ambient_scat, 0.0f, 1.0f)) {
 										atmosphere_effect->SetAmbientScatScale(ambient_scat);
 									}
+
+									ImGui::Separator();
+									ImGui::Text("Physical Parameters");
+
+									float atmos_height = atmosphere_effect->GetAtmosphereHeight();
+									if (ImGui::SliderFloat("Atmosphere Height (km)", &atmos_height, 10.0f, 100.0f)) {
+										atmosphere_effect->SetAtmosphereHeight(atmos_height);
+									}
+
+									glm::vec3 rayleigh_scattering = atmosphere_effect->GetRayleighScattering() *
+										1000.0f;
+									if (ImGui::ColorEdit3("Rayleigh Scattering", &rayleigh_scattering[0])) {
+										atmosphere_effect->SetRayleighScattering(rayleigh_scattering * 0.001f);
+									}
+
+									float mie_scat = atmosphere_effect->GetMieScattering() * 1000.0f;
+									if (ImGui::SliderFloat("Mie Scattering coeff", &mie_scat, 0.0f, 10.0f)) {
+										atmosphere_effect->SetMieScattering(mie_scat * 0.001f);
+									}
+
+									float mie_ext = atmosphere_effect->GetMieExtinction() * 1000.0f;
+									if (ImGui::SliderFloat("Mie Extinction coeff", &mie_ext, 0.0f, 10.0f)) {
+										atmosphere_effect->SetMieExtinction(mie_ext * 0.001f);
+									}
+
+									glm::vec3 ozone_absorption = atmosphere_effect->GetOzoneAbsorption() * 1000.0f;
+									if (ImGui::ColorEdit3("Ozone Absorption", &ozone_absorption[0])) {
+										atmosphere_effect->SetOzoneAbsorption(ozone_absorption * 0.001f);
+									}
+
+									float rayleigh_h = atmosphere_effect->GetRayleighScaleHeight();
+									if (ImGui::SliderFloat("Rayleigh Scale Height (km)", &rayleigh_h, 1.0f, 20.0f)) {
+										atmosphere_effect->SetRayleighScaleHeight(rayleigh_h);
+									}
+
+									float mie_h = atmosphere_effect->GetMieScaleHeight();
+									if (ImGui::SliderFloat("Mie Scale Height (km)", &mie_h, 0.1f, 10.0f)) {
+										atmosphere_effect->SetMieScaleHeight(mie_h);
+									}
+
+									ImGui::Separator();
+									ImGui::Text("Atmosphere Variance");
+
+									float var_scale = atmosphere_effect->GetColorVarianceScale();
+									if (ImGui::SliderFloat("Variance Scale", &var_scale, 0.1f, 10.0f)) {
+										atmosphere_effect->SetColorVarianceScale(var_scale);
+									}
+
+									float var_strength = atmosphere_effect->GetColorVarianceStrength();
+									if (ImGui::SliderFloat("Variance Strength", &var_strength, 0.0f, 0.5f)) {
+										atmosphere_effect->SetColorVarianceStrength(var_strength);
+									}
 								}
 							}
 							break;
