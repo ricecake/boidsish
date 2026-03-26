@@ -52,6 +52,7 @@ namespace Boidsish {
 	namespace PostProcessing {
 		class PostProcessingManager;
 	}
+	class ITerrainRenderManager;
 } // namespace Boidsish
 
 #include "frustum.h"
@@ -507,6 +508,8 @@ namespace Boidsish {
 		 */
 		std::shared_ptr<ITerrainGenerator>       GetTerrain();
 		std::shared_ptr<const ITerrainGenerator> GetTerrain() const;
+
+		void SetTerrainRenderManager(std::shared_ptr<ITerrainRenderManager> manager);
 
 		/**
 		 * @brief Get the terrain generator cast to TerrainGenerator (legacy).

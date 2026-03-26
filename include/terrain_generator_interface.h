@@ -12,7 +12,7 @@
 namespace Boidsish {
 
 	class Terrain;
-	class TerrainRenderManager;
+	class ITerrainRenderManager;
 	struct Frustum;
 	struct Camera;
 
@@ -91,14 +91,14 @@ namespace Boidsish {
 		 *
 		 * @param manager The render manager (nullptr to disable batched rendering)
 		 */
-		virtual void SetRenderManager(std::shared_ptr<TerrainRenderManager> manager) = 0;
+		virtual void SetRenderManager(std::shared_ptr<ITerrainRenderManager> manager) = 0;
 
 		/**
 		 * @brief Get the current render manager.
 		 *
 		 * @return Current render manager, or nullptr if not set
 		 */
-		virtual std::shared_ptr<TerrainRenderManager> GetRenderManager() const = 0;
+		virtual std::shared_ptr<ITerrainRenderManager> GetRenderManager() const = 0;
 
 		/**
 		 * @brief Notify that a chunk was evicted from GPU memory.

@@ -411,11 +411,11 @@ namespace Boidsish {
 	}
 
 	void DecorManager::Update(
-		float                                 delta_time,
-		const Camera&                         camera,
-		const Frustum&                        frustum,
-		const ITerrainGenerator&              terrain_gen,
-		std::shared_ptr<TerrainRenderManager> render_manager
+		float                                  delta_time,
+		const Camera&                          camera,
+		const Frustum&                         frustum,
+		const ITerrainGenerator&               terrain_gen,
+		std::shared_ptr<ITerrainRenderManager> render_manager
 	) {
 		PROJECT_PROFILE_SCOPE("DecorManager::Update");
 		if (!enabled_ || !initialized_ || decor_types_.empty())
@@ -438,21 +438,25 @@ namespace Boidsish {
 	}
 
 	void DecorManager::_UpdateAllocation(
-		const Camera&                         camera,
-		const Frustum&                        frustum,
-		const ITerrainGenerator&              terrain_gen,
-		std::shared_ptr<TerrainRenderManager> render_manager
+		const Camera&                          camera,
+		const Frustum&                         frustum,
+		const ITerrainGenerator&               terrain_gen,
+		std::shared_ptr<ITerrainRenderManager> render_manager
 	) {
+		auto* concrete_rm = dynamic_cast<TerrainRenderManager*>(render_manager.get());
+		if (!concrete_rm)
+			return;
+
 		float world_scale = terrain_gen.GetWorldScale();
 
-		GLuint heightmap_texture = render_manager->GetHeightmapTexture();
-		GLuint biome_texture = render_manager->GetBiomeTexture();
+		GLuint heightmap_texture = concrete_rm->GetHeightmapTexture();
+		GLuint biome_texture = concrete_rm->GetBiomeTexture();
 		if (heightmap_texture == 0 || biome_texture == 0)
 			return;
 
 		// Single call: gets keys, offsets, slices, sizes, and update counts
 		// in one mutex acquisition with no intermediate map construction.
-		auto all_chunks = render_manager->GetDecorChunkData(world_scale);
+		auto all_chunks = concrete_rm->GetDecorChunkData(world_scale);
 		if (all_chunks.empty())
 			return;
 
@@ -656,13 +660,13 @@ namespace Boidsish {
 	}
 
 	void DecorManager::Cull(
-		const glm::mat4&                      view,
-		const glm::mat4&                      projection,
-		int                                   viewport_width,
-		int                                   viewport_height,
-		const std::optional<glm::mat4>&       light_space_matrix,
-		const std::optional<glm::vec3>&       light_dir,
-		std::shared_ptr<TerrainRenderManager> render_manager
+		const glm::mat4&                       view,
+		const glm::mat4&                       projection,
+		int                                    viewport_width,
+		int                                    viewport_height,
+		const std::optional<glm::mat4>&        light_space_matrix,
+		const std::optional<glm::vec3>&        light_dir,
+		std::shared_ptr<ITerrainRenderManager> render_manager
 	) {
 		PROJECT_PROFILE_SCOPE("DecorManager::Cull");
 		if (!enabled_ || !initialized_ || decor_types_.empty())
@@ -696,7 +700,9 @@ namespace Boidsish {
 		}
 
 		if (render_manager) {
-			render_manager->BindTerrainData(*culling_shader_);
+			if (auto* tm = dynamic_cast<TerrainRenderManager*>(render_manager.get())) {
+				tm->BindTerrainData(*culling_shader_);
+			}
 		}
 
 		// Hi-Z occlusion culling uniforms
@@ -749,15 +755,16 @@ namespace Boidsish {
 
 	std::vector<DecorTypeResults> DecorManager::GetDecorInChunks(
 		const std::vector<std::pair<int, int>>& chunk_keys,
-		std::shared_ptr<TerrainRenderManager>   render_manager,
+		std::shared_ptr<ITerrainRenderManager>  render_manager,
 		const ITerrainGenerator&                terrain_gen
 	) {
 		PROJECT_PROFILE_SCOPE("DecorManager::GetDecorInChunks");
-		if (!render_manager || decor_types_.empty())
+		auto* concrete_rm = dynamic_cast<TerrainRenderManager*>(render_manager.get());
+		if (!concrete_rm || decor_types_.empty())
 			return {};
 
 		float world_scale = terrain_gen.GetWorldScale();
-		auto  all_chunks = render_manager->GetDecorChunkData(world_scale);
+		auto  all_chunks = concrete_rm->GetDecorChunkData(world_scale);
 
 		// 1. Find the chunk data for the requested keys
 		std::vector<TerrainRenderManager::DecorChunkData> requested_chunk_data;
@@ -814,11 +821,11 @@ namespace Boidsish {
 		// 3. Dispatch placement for each type
 		placement_shader_->use();
 		glActiveTexture(GL_TEXTURE0);
-		glBindTexture(GL_TEXTURE_2D_ARRAY, render_manager->GetHeightmapTexture());
+		glBindTexture(GL_TEXTURE_2D_ARRAY, concrete_rm->GetHeightmapTexture());
 		placement_shader_->setInt("u_heightmapArray", 0);
 
 		glActiveTexture(GL_TEXTURE1);
-		glBindTexture(GL_TEXTURE_2D_ARRAY, render_manager->GetBiomeTexture());
+		glBindTexture(GL_TEXTURE_2D_ARRAY, concrete_rm->GetBiomeTexture());
 		placement_shader_->setInt("u_biomeMap", 1);
 
 		glBindBufferBase(GL_UNIFORM_BUFFER, Constants::UboBinding::DecorProps(), decor_props_ubo_);

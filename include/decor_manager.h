@@ -17,6 +17,7 @@
 namespace Boidsish {
 
 	class ITerrainGenerator;
+	class ITerrainRenderManager;
 	class TerrainRenderManager;
 	struct Camera;
 
@@ -122,11 +123,11 @@ namespace Boidsish {
 		static DecorProperties GetDefaultRockProperties();
 
 		void Update(
-			float                                 delta_time,
-			const Camera&                         camera,
-			const Frustum&                        frustum,
-			const ITerrainGenerator&              terrain_gen,
-			std::shared_ptr<TerrainRenderManager> render_manager
+			float                                  delta_time,
+			const Camera&                          camera,
+			const Frustum&                         frustum,
+			const ITerrainGenerator&               terrain_gen,
+			std::shared_ptr<ITerrainRenderManager> render_manager
 		);
 
 		/**
@@ -141,13 +142,13 @@ namespace Boidsish {
 		 * Results are stored in the respective indirect buffers and visible SSBOs.
 		 */
 		void Cull(
-			const glm::mat4&                      view,
-			const glm::mat4&                      projection,
-			int                                   viewport_width,
-			int                                   viewport_height,
-			const std::optional<glm::mat4>&       light_space_matrix = std::nullopt,
-			const std::optional<glm::vec3>&       light_dir = std::nullopt,
-			std::shared_ptr<TerrainRenderManager> render_manager = nullptr
+			const glm::mat4&                       view,
+			const glm::mat4&                       projection,
+			int                                    viewport_width,
+			int                                    viewport_height,
+			const std::optional<glm::mat4>&        light_space_matrix = std::nullopt,
+			const std::optional<glm::vec3>&        light_dir = std::nullopt,
+			std::shared_ptr<ITerrainRenderManager> render_manager = nullptr
 		);
 
 		/**
@@ -201,17 +202,17 @@ namespace Boidsish {
 		 */
 		std::vector<DecorTypeResults> GetDecorInChunks(
 			const std::vector<std::pair<int, int>>& chunk_keys,
-			std::shared_ptr<TerrainRenderManager>   render_manager,
+			std::shared_ptr<ITerrainRenderManager>  render_manager,
 			const ITerrainGenerator&                terrain_gen
 		);
 
 	private:
 		void _Initialize();
 		void _UpdateAllocation(
-			const Camera&                         camera,
-			const Frustum&                        frustum,
-			const ITerrainGenerator&              terrain_gen,
-			std::shared_ptr<TerrainRenderManager> render_manager
+			const Camera&                          camera,
+			const Frustum&                         frustum,
+			const ITerrainGenerator&               terrain_gen,
+			std::shared_ptr<ITerrainRenderManager> render_manager
 		);
 
 		bool                           enabled_ = true;
