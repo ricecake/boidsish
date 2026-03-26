@@ -322,9 +322,16 @@ namespace Boidsish {
 		// Noise generators
 		// FastNoise::SmartNode<> control_noise_generator_;
 
+		struct PointData {
+			glm::vec3 height_data; // x = height, y = dx, z = dz
+			float     control_value;
+			float     path_factor;
+		};
+
 		auto      fbm(float x, float z, TerrainParameters params);
 		auto      biomefbm(glm::vec2 pos, BiomeAttributes attr) const;
 		glm::vec3 pointGenerate(float x, float y) const;
+		PointData pointGenerateAll(float x, float z) const;
 
 		glm::vec3 diffToNorm(float dx, float dz) const { return glm::normalize(glm::vec3(-dx, 1.0f, -dz)); }
 
