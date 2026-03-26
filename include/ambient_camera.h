@@ -50,6 +50,11 @@ namespace Boidsish {
 		 */
 		void SetDestination(glm::vec3 dest, float directness = 0.5f);
 
+		/**
+		 * @brief Check if the probe has reached its current destination.
+		 */
+		bool HasReachedDestination() const { return !hasDestination; }
+
 	private:
 		void GenerateNewPaths(ITerrainGenerator* terrain, DecorManager* decor);
 
@@ -75,6 +80,13 @@ namespace Boidsish {
 		// State for path generation
 		glm::vec3 lastProbePos{0.0f, 20.0f, 0.0f};
 		glm::vec3 lastCameraPos{10.0f, 25.0f, 10.0f};
+
+		// Smoothing state
+		glm::vec3 smoothedCameraPos{0.0f};
+		glm::vec3 cameraVelocity{0.0f};
+		glm::vec3 smoothedFocusPos{0.0f};
+		glm::vec3 focusVelocity{0.0f};
+		bool      firstUpdate = true;
 	};
 
 } // namespace Boidsish

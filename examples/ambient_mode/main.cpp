@@ -121,12 +121,31 @@ int main() {
 			auto  decor = visualizer.GetDecorManager();
 			auto& cam = visualizer.GetCamera();
 
-			// Occasionally pick a random destination to demonstrate the new API
-			if (std::rand() % 500 == 0) {
-				float rx = (std::rand() % 4000 - 2000);
-				float rz = (std::rand() % 4000 - 2000);
-				ambient_system.SetDestination(glm::vec3(rx, 0, rz), 0.7f);
-				logger::LOG("New ambient destination set.");
+			// Pick a new destination when the current one is reached or occasionally
+			if (ambient_system.HasReachedDestination()) {
+				// Search for a "lush" firefly biome (LushGrass/DryGrass/Forest correspond to low control values)
+				glm::vec3 bestDest = probe_pos;
+				float     bestScore = -1.0f;
+
+				for (int i = 0; i < 20; ++i) {
+					float rx = probe_pos.x + (std::rand() % 6000 - 3000);
+					float rz = probe_pos.z + (std::rand() % 6000 - 3000);
+
+					float control = terrain->GetBiomeControlValue(rx, rz);
+					// Lush biomes are at the lower end of the control range [0, 1]
+					// Sand=0, LushGrass=1, DryGrass=2, Forest=3...
+					// The control value is mapped to these biomes.
+					// Let's prefer values between 0.1 and 0.4
+					float score = 1.0f - std::abs(control - 0.25f);
+
+					if (score > bestScore) {
+						bestScore = score;
+						bestDest = glm::vec3(rx, 0, rz);
+					}
+				}
+
+				ambient_system.SetDestination(bestDest, 0.6f);
+				logger::LOG("New firefly biome destination set at ", bestDest.x, ", ", bestDest.z, " (score: ", bestScore, ")");
 			}
 
 			ambient_system.Update(dt, terrain.get(), decor, cam, probe_pos);
