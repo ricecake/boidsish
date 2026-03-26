@@ -405,8 +405,85 @@ void main() {
 	float normalScale = finalMaterial.normalScale;
 
 	// ========================================================================
-	// Detail Variation
+	// Detail Variation & Wind
 	// ========================================================================
+	float fateFactor = fastWorley3d(vec3(FragPos.xz / 50.0, time * 0.25)) * 0.5 + 0.50;
+	vec3  windForce = fastCurl3d(
+		vec3(FragPos.x * 0.0005 + time * 0.00125, FragPos.y * 0.001, FragPos.z * 0.0005 + time * 0.0125)
+	);
+	vec3 rawWindNudge = (fateFactor * windForce);
+
+	// Compute local tangent space for POM and Normal Perturbation
+	vec3 v_ref = abs(norm.z) < 0.999 ? vec3(0, 0, 1) : vec3(1, 0, 0);
+	vec3 tangent = normalize(cross(v_ref, norm));
+	vec3 bitangent = cross(norm, tangent);
+
+	// ========================================================================
+	// Procedural Lawn POM
+	// ========================================================================
+	float grassFactor = smoothstep(0.25, 0.5, max(dot(albedo, COL_GRASS_LUSH), dot(albedo, COL_GRASS_DRY)));
+	float pomShadow = 1.0;
+
+	if (grassFactor > 0.1 && dist < 100.0) {
+		vec3  V = normalize(viewPos - FragPos);
+		vec3  V_tangent = vec3(dot(V, tangent), dot(V, bitangent), dot(V, norm));
+		float grassHeightScale = 0.35 * grassFactor; // Max height of lawn grass
+
+		// POM Loop: using standard depth convention (0.0 = top, 1.0 = base)
+		float numLayers = mix(24.0, 8.0, clamp(dist / 100.0, 0.0, 1.0));
+		float layerDepth = 1.0 / numLayers;
+		float currentLayerDepth = 0.0;
+		// Standard POM offset calculation: P = (V.xy / V.z) * scale
+		vec2  P = (V_tangent.xy / max(V_tangent.z, 0.001)) * grassHeightScale;
+		vec2  deltaTexCoords = P / numLayers;
+
+		vec2  currentTexCoords = FragPos.xz;
+		float currentDepthMapValue = 1.0 - fastWorley3d(vec3(currentTexCoords * 15.0, 0.0));
+
+		while (currentLayerDepth < currentDepthMapValue) {
+			currentTexCoords -= deltaTexCoords;
+			// Wind sway: blades bend in direction of wind nudge, proportional to height from ground
+			// Since currentLayerDepth is 0 at top and 1 at base, (1 - currentLayerDepth) is height
+			vec2 windOff = -rawWindNudge.xz * (1.0 - currentLayerDepth) * 0.45;
+			currentDepthMapValue = 1.0 - fastWorley3d(vec3((currentTexCoords + windOff) * 15.0, 0.0));
+			currentLayerDepth += layerDepth;
+		}
+
+		// Refinement (interpolation)
+		vec2  prevTexCoords = currentTexCoords + deltaTexCoords;
+		float afterDepth = currentDepthMapValue - currentLayerDepth;
+		float beforeDepth = (1.0 - fastWorley3d(vec3((prevTexCoords - rawWindNudge.xz * (1.0 - (currentLayerDepth - layerDepth)) * 0.45) * 15.0, 0.0))) -
+			currentLayerDepth + layerDepth;
+		float weight = afterDepth / (afterDepth - beforeDepth);
+		currentTexCoords = prevTexCoords * weight + currentTexCoords * (1.0 - weight);
+		float finalDepth = currentLayerDepth - layerDepth + (1.0 - weight) * layerDepth;
+		float finalGrassHeight = 1.0 - finalDepth; // 1 at tip, 0 at base
+
+		// Self-shadowing within grass: raymarch towards the light source
+		vec3  L = normalize(lights[0].position - FragPos);
+		vec3  L_tangent = vec3(dot(L, tangent), dot(L, bitangent), dot(L, norm));
+		float shadowSteps = 6.0;
+		// March from current depth towards 0 (top of grass)
+		float shadowLayerDepth = finalDepth / shadowSteps;
+		// Delta UV toward light source
+		vec2  L_delta = (L_tangent.xy / max(L_tangent.z, 0.001)) * grassHeightScale / shadowSteps;
+		float currentShadowDepth = finalDepth - shadowLayerDepth;
+		vec2  shadowTexCoords = currentTexCoords + L_delta;
+
+		for (int i = 0; i < 6; i++) {
+			float h = 1.0 - fastWorley3d(vec3((shadowTexCoords - rawWindNudge.xz * (1.0 - currentShadowDepth) * 0.45) * 15.0, 0.0));
+			if (h < currentShadowDepth) { // Neighboring blade is higher (closer to 0 depth) than the ray
+				pomShadow *= 0.65;
+			}
+			currentShadowDepth -= shadowLayerDepth;
+			shadowTexCoords += L_delta;
+		}
+
+		// Adjust material based on grass hit
+		// finalGrassHeight: 1 at tip (bright, rougher), 0 at base (darker, smoother/dirt)
+		albedo = mix(albedo * 0.25, albedo * 1.3, finalGrassHeight);
+		roughness = mix(0.95, 0.7, finalGrassHeight);
+	}
 
 	// ========================================================================
 	// Normal Perturbation (Grain)
@@ -424,12 +501,6 @@ void main() {
 		float nx = fastWorley3d(0.1 * (scaledFragPos + vec3(eps, 0.0, 0.0)) * roughnessScale);
 		float nz = fastWorley3d(0.1 * (scaledFragPos + vec3(0.0, 0.0, eps)) * roughnessScale);
 
-		// Compute local tangent space to orient the perturbation.
-		// Using a stable basis that doesn't flip at Z-axis alignment.
-		vec3 v = abs(norm.z) < 0.999 ? vec3(0, 0, 1) : vec3(1, 0, 0);
-		vec3 tangent = normalize(cross(v, norm));
-		vec3 bitangent = cross(norm, tangent);
-
 		// Apply perturbation based on noise gradient
 		perturbedNorm = normalize(norm + (tangent * (n - nx) + bitangent * (n - nz)) * (roughnessStrength / eps));
 
@@ -442,12 +513,6 @@ void main() {
 	}
 
 	// Final Lighting
-	float fateFactor = fastWorley3d(vec3(FragPos.xz / 50.0, time * 0.25)) * 0.5 + 0.50;
-	vec3  windForce = fastCurl3d(
-		vec3(FragPos.x * 0.0005 + time * 0.00125, FragPos.y * 0.001, FragPos.z * 0.0005 + time * 0.0125)
-	);
-	vec3 rawWindNudge = (fateFactor * windForce); // / (abs(normalize(FragPos).y - normalize(windForce).y));
-
 	vec3  light_dir = normalize(lights[0].position - FragPos);
 	float rim = max(dot(light_dir, normalize(viewPos - FragPos)), 0.0);
 	// albedo += (1-dot(rawWindNudge, perturbedNorm)) * rim * albedo;
@@ -464,12 +529,12 @@ void main() {
 			0.5 +
 		0.5;
 	float windRipple = windDistortion * plainRipple;
-	float grassFactor = smoothstep(0.25, 0.5, max(dot(albedo, COL_GRASS_LUSH), dot(albedo, COL_GRASS_DRY)));
 	albedo *= mix(1, mix(1.0, 1.25, windDistortion) * mix(1.0, 1.05, windRipple), grassFactor);
 	roughness *= mix(1.25, 1.0, windDistortion) * mix(1, mix(1.5, 1.0, windRipple), grassFactor);
 	// perturbedNorm += rawWindNudge * mix(0.0, 1.05, plainRipple);
 
 	vec3 lighting = apply_lighting_pbr(FragPos, perturbedNorm, albedo, roughness, metallic, 1.0).rgb;
+	lighting *= pomShadow;
 
 	// ========================================================================
 	// Neon 80s Synth Style (Night Theme)
