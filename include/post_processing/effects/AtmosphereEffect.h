@@ -81,6 +81,42 @@ namespace Boidsish {
 
 			float GetAmbientScatScale() const { return ambient_scat_scale_; }
 
+			void SetAtmosphereHeight(float h) { atmosphere_height_ = h; }
+
+			float GetAtmosphereHeight() const { return atmosphere_height_; }
+
+			void SetRayleighScattering(const glm::vec3& s) { rayleigh_scattering_ = s; }
+
+			glm::vec3 GetRayleighScattering() const { return rayleigh_scattering_; }
+
+			void SetMieScattering(float s) { mie_scattering_ = s; }
+
+			float GetMieScattering() const { return mie_scattering_; }
+
+			void SetMieExtinction(float e) { mie_extinction_ = e; }
+
+			float GetMieExtinction() const { return mie_extinction_; }
+
+			void SetOzoneAbsorption(const glm::vec3& a) { ozone_absorption_ = a; }
+
+			glm::vec3 GetOzoneAbsorption() const { return ozone_absorption_; }
+
+			void SetRayleighScaleHeight(float h) { rayleigh_scale_height_ = h; }
+
+			float GetRayleighScaleHeight() const { return rayleigh_scale_height_; }
+
+			void SetMieScaleHeight(float h) { mie_scale_height_ = h; }
+
+			float GetMieScaleHeight() const { return mie_scale_height_; }
+
+			void SetColorVarianceScale(float s) { color_variance_scale_ = s; }
+
+			float GetColorVarianceScale() const { return color_variance_scale_; }
+
+			void SetColorVarianceStrength(float s) { color_variance_strength_ = s; }
+
+			float GetColorVarianceStrength() const { return color_variance_strength_; }
+
 			// Atmosphere LUTs
 			void SetAtmosphereLUTs(GLuint transmittance, GLuint multiScat, GLuint skyView, GLuint aerialPerspective) {
 				transmittance_lut_ = transmittance;
@@ -103,11 +139,20 @@ namespace Boidsish {
 			float     cloud_thickness_ = 10.0f;
 			glm::vec3 cloud_color_ = glm::vec3(0.95f, 0.95f, 1.0f);
 
-			float rayleigh_scale_ = 1.0f;
-			float mie_scale_ = 0.1f; // Reduced default to prevent "washed out" haze
-			float mie_anisotropy_ = 0.8f;
-			float multi_scat_scale_ = 0.1f;
-			float ambient_scat_scale_ = 0.750f;
+			float     rayleigh_scale_ = 1.0f;
+			float     mie_scale_ = 0.1f; // Reduced default to prevent "washed out" haze
+			float     mie_anisotropy_ = 0.8f;
+			float     multi_scat_scale_ = 0.1f;
+			float     ambient_scat_scale_ = 0.750f;
+			float     atmosphere_height_ = 60.0f;
+			glm::vec3 rayleigh_scattering_ = glm::vec3(5.802f, 13.558f, 33.100f) * 1e-3f;
+			float     mie_scattering_ = 3.996f * 1e-3f;
+			float     mie_extinction_ = 4.440f * 1e-3f;
+			glm::vec3 ozone_absorption_ = glm::vec3(0.650f, 1.881f, 0.085f) * 1e-3f;
+			float     rayleigh_scale_height_ = 8.0f;
+			float     mie_scale_height_ = 1.2f;
+			float     color_variance_scale_ = 1.0f;
+			float     color_variance_strength_ = 0.0f;
 
 			GLuint transmittance_lut_ = 0;
 			GLuint multi_scattering_lut_ = 0;

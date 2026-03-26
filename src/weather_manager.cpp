@@ -23,6 +23,9 @@ namespace Boidsish {
 		SetPace(WeatherAttribute::HazeHeight, 0.1f);
 		SetPace(WeatherAttribute::RayleighScale, 0.1f);
 		SetPace(WeatherAttribute::MieScale, 0.1f);
+		SetPace(WeatherAttribute::AtmosphereHeight, 0.05f);
+		SetPace(WeatherAttribute::RayleighScaleHeight, 0.05f);
+		SetPace(WeatherAttribute::MieScaleHeight, 0.05f);
 	}
 
 	WeatherManager::~WeatherManager() {}
@@ -86,6 +89,15 @@ namespace Boidsish {
 		case WeatherAttribute::MieScale:
 			value_ptr = &current_.mie_scale;
 			break;
+		case WeatherAttribute::AtmosphereHeight:
+			value_ptr = &current_.atmosphere_height;
+			break;
+		case WeatherAttribute::RayleighScaleHeight:
+			value_ptr = &current_.rayleigh_scale_height;
+			break;
+		case WeatherAttribute::MieScaleHeight:
+			value_ptr = &current_.mie_scale_height;
+			break;
 		default:
 			return;
 		}
@@ -128,6 +140,9 @@ namespace Boidsish {
 		sunny.settings.haze_height = {10.0f, 30.0f};
 		sunny.settings.rayleigh_scale = {1.0f, 1.2f};
 		sunny.settings.mie_scale = {0.05f, 0.15f};
+		sunny.settings.atmosphere_height = {50.0f, 70.0f};
+		sunny.settings.rayleigh_scale_height = {7.0f, 9.0f};
+		sunny.settings.mie_scale_height = {1.0f, 1.5f};
 		presets_.push_back(sunny);
 
 		// 2. Cloudy
@@ -145,6 +160,9 @@ namespace Boidsish {
 		cloudy.settings.haze_height = {30.0f, 60.0f};
 		cloudy.settings.rayleigh_scale = {1.2f, 1.5f};
 		cloudy.settings.mie_scale = {0.2f, 0.4f};
+		cloudy.settings.atmosphere_height = {40.0f, 60.0f};
+		cloudy.settings.rayleigh_scale_height = {6.0f, 8.0f};
+		cloudy.settings.mie_scale_height = {1.5f, 2.5f};
 		presets_.push_back(cloudy);
 
 		// 3. Overcast
@@ -162,6 +180,9 @@ namespace Boidsish {
 		overcast.settings.haze_height = {50.0f, 100.0f};
 		overcast.settings.rayleigh_scale = {1.5f, 2.0f};
 		overcast.settings.mie_scale = {0.5f, 1.0f};
+		overcast.settings.atmosphere_height = {30.0f, 50.0f};
+		overcast.settings.rayleigh_scale_height = {5.0f, 7.0f};
+		overcast.settings.mie_scale_height = {3.0f, 5.0f};
 		presets_.push_back(overcast);
 
 		// 4. Foggy
@@ -179,6 +200,9 @@ namespace Boidsish {
 		foggy.settings.haze_height = {80.0f, 150.0f};
 		foggy.settings.rayleigh_scale = {2.0f, 3.0f};
 		foggy.settings.mie_scale = {1.5f, 4.0f};
+		foggy.settings.atmosphere_height = {20.0f, 40.0f};
+		foggy.settings.rayleigh_scale_height = {4.0f, 6.0f};
+		foggy.settings.mie_scale_height = {5.0f, 10.0f};
 		presets_.push_back(foggy);
 	}
 
@@ -238,6 +262,21 @@ namespace Boidsish {
 		UpdateAttribute(WeatherAttribute::HazeHeight, blended.haze_height.Lerp(sampleNoise(9.9f)), deltaTime);
 		UpdateAttribute(WeatherAttribute::RayleighScale, blended.rayleigh_scale.Lerp(sampleNoise(10.10f)), deltaTime);
 		UpdateAttribute(WeatherAttribute::MieScale, blended.mie_scale.Lerp(sampleNoise(11.11f)), deltaTime);
+		UpdateAttribute(
+			WeatherAttribute::AtmosphereHeight,
+			blended.atmosphere_height.Lerp(sampleNoise(12.12f)),
+			deltaTime
+		);
+		UpdateAttribute(
+			WeatherAttribute::RayleighScaleHeight,
+			blended.rayleigh_scale_height.Lerp(sampleNoise(13.13f)),
+			deltaTime
+		);
+		UpdateAttribute(
+			WeatherAttribute::MieScaleHeight,
+			blended.mie_scale_height.Lerp(sampleNoise(14.14f)),
+			deltaTime
+		);
 	}
 
 } // namespace Boidsish

@@ -4,22 +4,30 @@
 #include "../helpers/constants.glsl"
 
 // Physical Constants
-const float kEarthRadius = 6360.0;    // km
-const float kAtmosphereHeight = 60.0; // km
-const float kTopRadius = kEarthRadius + kAtmosphereHeight;
+const float kEarthRadius = 6360.0; // km
 
-const vec3  kRayleighScattering = vec3(5.802, 13.558, 33.100) * 1e-3; // km^-1
-const float kRayleighScaleHeight = 8.0;                               // km
+uniform float u_atmosphereHeight;
+#define kAtmosphereHeight u_atmosphereHeight
+#define kTopRadius (kEarthRadius + kAtmosphereHeight)
 
-const float kMieScattering = 3.996 * 1e-3; // km^-1
-const float kMieExtinction = 4.440 * 1e-3; // km^-1
-const float kMieScaleHeight = 1.2;         // km
+uniform vec3  u_rayleighScatteringBase;
+uniform float u_rayleighScaleHeight;
+#define kRayleighScattering u_rayleighScatteringBase
+#define kRayleighScaleHeight u_rayleighScaleHeight
+
+uniform float u_mieScatteringBase;
+uniform float u_mieExtinctionBase;
+uniform float u_mieScaleHeight;
+#define kMieScattering u_mieScatteringBase
+#define kMieExtinction u_mieExtinctionBase
+#define kMieScaleHeight u_mieScaleHeight
 
 uniform float u_rayleighScale;
 uniform float u_mieScale;
 uniform float u_mieAnisotropy;
 
-const vec3 kOzoneAbsorption = vec3(0.650, 1.881, 0.085) * 1e-3; // km^-1
+uniform vec3 u_ozoneAbsorptionBase;
+#define kOzoneAbsorption u_ozoneAbsorptionBase
 
 // Helper functions
 bool intersectSphere(vec3 ro, vec3 rd, float radius, out float t0, out float t1) {

@@ -17,7 +17,13 @@ namespace Boidsish {
 		~AtmosphereManager();
 
 		void Initialize();
-		void Update(const glm::vec3& sunDir, const glm::vec3& sunColor, float sunIntensity, const glm::vec3& cameraPos);
+		void Update(
+			const glm::vec3& sunDir,
+			const glm::vec3& sunColor,
+			float            sunIntensity,
+			const glm::vec3& cameraPos,
+			float            time
+		);
 
 		glm::vec3 GetAmbientEstimate() const { return _ambientEstimate; }
 
@@ -67,6 +73,77 @@ namespace Boidsish {
 
 		float GetAmbientScatteringScale() const { return _ambientScatScale; }
 
+		void SetAtmosphereHeight(float h) {
+			if (h != _atmosphereHeight) {
+				_atmosphereHeight = h;
+				_needsPrecompute = true;
+			}
+		}
+
+		float GetAtmosphereHeight() const { return _atmosphereHeight; }
+
+		void SetRayleighScattering(const glm::vec3& s) {
+			if (s != _rayleighScattering) {
+				_rayleighScattering = s;
+				_needsPrecompute = true;
+			}
+		}
+
+		glm::vec3 GetRayleighScattering() const { return _rayleighScattering; }
+
+		void SetMieScattering(float s) {
+			if (s != _mieScattering) {
+				_mieScattering = s;
+				_needsPrecompute = true;
+			}
+		}
+
+		float GetMieScattering() const { return _mieScattering; }
+
+		void SetMieExtinction(float e) {
+			if (e != _mieExtinction) {
+				_mieExtinction = e;
+				_needsPrecompute = true;
+			}
+		}
+
+		float GetMieExtinction() const { return _mieExtinction; }
+
+		void SetOzoneAbsorption(const glm::vec3& a) {
+			if (a != _ozoneAbsorption) {
+				_ozoneAbsorption = a;
+				_needsPrecompute = true;
+			}
+		}
+
+		glm::vec3 GetOzoneAbsorption() const { return _ozoneAbsorption; }
+
+		void SetRayleighScaleHeight(float h) {
+			if (h != _rayleighScaleHeight) {
+				_rayleighScaleHeight = h;
+				_needsPrecompute = true;
+			}
+		}
+
+		float GetRayleighScaleHeight() const { return _rayleighScaleHeight; }
+
+		void SetMieScaleHeight(float h) {
+			if (h != _mieScaleHeight) {
+				_mieScaleHeight = h;
+				_needsPrecompute = true;
+			}
+		}
+
+		float GetMieScaleHeight() const { return _mieScaleHeight; }
+
+		void SetColorVarianceScale(float s) { _colorVarianceScale = s; }
+
+		float GetColorVarianceScale() const { return _colorVarianceScale; }
+
+		void SetColorVarianceStrength(float s) { _colorVarianceStrength = s; }
+
+		float GetColorVarianceStrength() const { return _colorVarianceStrength; }
+
 	private:
 		void CreateTextures();
 		void CreateShaders();
@@ -83,11 +160,20 @@ namespace Boidsish {
 
 		bool _needsPrecompute = true;
 
-		float _rayleighScale = 1.0f;
-		float _mieScale = 0.1f;
-		float _mieAnisotropy = 0.8f;
-		float _multiScatScale = 1.0f;
-		float _ambientScatScale = 1.0f;
+		float     _rayleighScale = 1.0f;
+		float     _mieScale = 0.1f;
+		float     _mieAnisotropy = 0.8f;
+		float     _multiScatScale = 1.0f;
+		float     _ambientScatScale = 1.0f;
+		float     _atmosphereHeight = 60.0f;
+		glm::vec3 _rayleighScattering = glm::vec3(5.802f, 13.558f, 33.100f) * 1e-3f;
+		float     _mieScattering = 3.996f * 1e-3f;
+		float     _mieExtinction = 4.440f * 1e-3f;
+		glm::vec3 _ozoneAbsorption = glm::vec3(0.650f, 1.881f, 0.085f) * 1e-3f;
+		float     _rayleighScaleHeight = 8.0f;
+		float     _mieScaleHeight = 1.2f;
+		float     _colorVarianceScale = 1.0f;
+		float     _colorVarianceStrength = 0.0f;
 
 		glm::vec3 _ambientEstimate = glm::vec3(0.0f);
 	};

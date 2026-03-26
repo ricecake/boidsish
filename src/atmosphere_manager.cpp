@@ -75,7 +75,8 @@ namespace Boidsish {
 		const glm::vec3& sunDir,
 		const glm::vec3& sunColor,
 		float            sunIntensity,
-		const glm::vec3& cameraPos
+		const glm::vec3& cameraPos,
+		float            time
 	) {
 		PROJECT_PROFILE_SCOPE("AtmosphereManager::Update");
 		if (_needsPrecompute) {
@@ -83,6 +84,15 @@ namespace Boidsish {
 			_transmittanceShader->use();
 			_transmittanceShader->setFloat("u_rayleighScale", _rayleighScale);
 			_transmittanceShader->setFloat("u_mieScale", _mieScale);
+
+			_transmittanceShader->setFloat("u_atmosphereHeight", _atmosphereHeight);
+			_transmittanceShader->setVec3("u_rayleighScatteringBase", _rayleighScattering);
+			_transmittanceShader->setFloat("u_mieScatteringBase", _mieScattering);
+			_transmittanceShader->setFloat("u_mieExtinctionBase", _mieExtinction);
+			_transmittanceShader->setVec3("u_ozoneAbsorptionBase", _ozoneAbsorption);
+			_transmittanceShader->setFloat("u_rayleighScaleHeight", _rayleighScaleHeight);
+			_transmittanceShader->setFloat("u_mieScaleHeight", _mieScaleHeight);
+
 			glBindImageTexture(0, _transmittanceLUT, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA32F);
 			glDispatchCompute(256 / 8, 64 / 8, 1);
 			glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
@@ -92,6 +102,15 @@ namespace Boidsish {
 			_multiScatteringShader->setFloat("u_rayleighScale", _rayleighScale);
 			_multiScatteringShader->setFloat("u_mieScale", _mieScale);
 			_multiScatteringShader->setFloat("u_mieAnisotropy", _mieAnisotropy);
+
+			_multiScatteringShader->setFloat("u_atmosphereHeight", _atmosphereHeight);
+			_multiScatteringShader->setVec3("u_rayleighScatteringBase", _rayleighScattering);
+			_multiScatteringShader->setFloat("u_mieScatteringBase", _mieScattering);
+			_multiScatteringShader->setFloat("u_mieExtinctionBase", _mieExtinction);
+			_multiScatteringShader->setVec3("u_ozoneAbsorptionBase", _ozoneAbsorption);
+			_multiScatteringShader->setFloat("u_rayleighScaleHeight", _rayleighScaleHeight);
+			_multiScatteringShader->setFloat("u_mieScaleHeight", _mieScaleHeight);
+
 			glBindImageTexture(0, _multiScatteringLUT, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA32F);
 			glActiveTexture(GL_TEXTURE1);
 			glBindTexture(GL_TEXTURE_2D, _transmittanceLUT);
@@ -114,10 +133,22 @@ namespace Boidsish {
 		_skyViewShader->setVec3("u_sunDir", sunDir);
 		_skyViewShader->setVec3("u_sunRadiance", sunColor * sunIntensity);
 		_skyViewShader->setVec3("u_cameraPos", cameraPos);
+		_skyViewShader->setFloat("u_time", time);
 		_skyViewShader->setFloat("u_rayleighScale", _rayleighScale);
 		_skyViewShader->setFloat("u_mieScale", _mieScale);
 		_skyViewShader->setFloat("u_mieAnisotropy", _mieAnisotropy);
 		_skyViewShader->setFloat("u_multiScatScale", _multiScatScale);
+
+		_skyViewShader->setFloat("u_atmosphereHeight", _atmosphereHeight);
+		_skyViewShader->setVec3("u_rayleighScatteringBase", _rayleighScattering);
+		_skyViewShader->setFloat("u_mieScatteringBase", _mieScattering);
+		_skyViewShader->setFloat("u_mieExtinctionBase", _mieExtinction);
+		_skyViewShader->setVec3("u_ozoneAbsorptionBase", _ozoneAbsorption);
+		_skyViewShader->setFloat("u_rayleighScaleHeight", _rayleighScaleHeight);
+		_skyViewShader->setFloat("u_mieScaleHeight", _mieScaleHeight);
+		_skyViewShader->setFloat("u_colorVarianceScale", _colorVarianceScale);
+		_skyViewShader->setFloat("u_colorVarianceStrength", _colorVarianceStrength);
+
 		glDispatchCompute(192 / 8, (108 + 7) / 8, 1);
 		glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
 
@@ -133,11 +164,23 @@ namespace Boidsish {
 		_aerialPerspectiveShader->setVec3("u_sunDir", sunDir);
 		_aerialPerspectiveShader->setVec3("u_sunRadiance", sunColor * sunIntensity);
 		_aerialPerspectiveShader->setVec3("u_cameraPos", cameraPos);
+		_aerialPerspectiveShader->setFloat("u_time", time);
 		_aerialPerspectiveShader->setFloat("u_rayleighScale", _rayleighScale);
 		_aerialPerspectiveShader->setFloat("u_mieScale", _mieScale);
 		_aerialPerspectiveShader->setFloat("u_mieAnisotropy", _mieAnisotropy);
 		_aerialPerspectiveShader->setFloat("u_multiScatScale", _multiScatScale);
 		_aerialPerspectiveShader->setFloat("u_ambientScatScale", _ambientScatScale);
+
+		_aerialPerspectiveShader->setFloat("u_atmosphereHeight", _atmosphereHeight);
+		_aerialPerspectiveShader->setVec3("u_rayleighScatteringBase", _rayleighScattering);
+		_aerialPerspectiveShader->setFloat("u_mieScatteringBase", _mieScattering);
+		_aerialPerspectiveShader->setFloat("u_mieExtinctionBase", _mieExtinction);
+		_aerialPerspectiveShader->setVec3("u_ozoneAbsorptionBase", _ozoneAbsorption);
+		_aerialPerspectiveShader->setFloat("u_rayleighScaleHeight", _rayleighScaleHeight);
+		_aerialPerspectiveShader->setFloat("u_mieScaleHeight", _mieScaleHeight);
+		_aerialPerspectiveShader->setFloat("u_colorVarianceScale", _colorVarianceScale);
+		_aerialPerspectiveShader->setFloat("u_colorVarianceStrength", _colorVarianceStrength);
+
 		glDispatchCompute(32 / 4, 32 / 4, 32 / 4);
 		glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
 
