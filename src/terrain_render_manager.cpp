@@ -8,6 +8,7 @@
 #include "graphics.h" // For Frustum
 #include "profiler.h"
 #include "shader.h"
+#include "terrain.h"
 
 namespace Boidsish {
 
@@ -345,7 +346,7 @@ namespace Boidsish {
 		const std::vector<glm::vec3>&    positions,
 		const std::vector<glm::vec3>&    normals,
 		const std::vector<glm::vec2>&    biomes,
-		const std::vector<unsigned int>& indices, // Not used in this implementation
+		const std::vector<unsigned int>& /*indices*/, // Not used in this implementation
 		float                            min_y,
 		float                            max_y,
 		const glm::vec3&                 world_offset
@@ -810,6 +811,10 @@ namespace Boidsish {
 	size_t TerrainRenderManager::GetVisibleChunkCount() const {
 		std::lock_guard<std::mutex> lock(mutex_);
 		return visible_instances_.size();
+	}
+
+	std::shared_ptr<Shader> TerrainRenderManager::GetDefaultShader() {
+		return Terrain::terrain_shader_;
 	}
 
 	std::vector<glm::vec4> TerrainRenderManager::GetChunkInfo(float world_scale) const {

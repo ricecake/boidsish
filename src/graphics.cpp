@@ -406,9 +406,9 @@ namespace Boidsish {
 		std::unique_ptr<PostProcessing::PostProcessingManager> post_processing_manager_;
 		int                                                    exit_key;
 
-		std::shared_ptr<ITerrainGenerator>    terrain_generator;
-		std::shared_ptr<TerrainRenderManager> terrain_render_manager;
-		std::unique_ptr<TrailRenderManager>   trail_render_manager;
+		std::shared_ptr<ITerrainGenerator>     terrain_generator;
+		std::shared_ptr<ITerrainRenderManager> terrain_render_manager;
+		std::unique_ptr<TrailRenderManager>    trail_render_manager;
 
 		std::unique_ptr<MegabufferImpl> megabuffer;
 
@@ -857,15 +857,17 @@ namespace Boidsish {
 					noise_manager->GetExtraNoiseTexture()
 				);
 
-				// Set up eviction callback so terrain generator knows when chunks are LRU-evicted
-				// Capture weak_ptr to allow terrain generator to be swapped without dangling reference
-				terrain_render_manager->SetEvictionCallback(
-					[weak_gen = std::weak_ptr<ITerrainGenerator>(terrain_generator)](std::pair<int, int> key) {
-						if (auto gen = weak_gen.lock()) {
-							gen->InvalidateChunk(key);
+				if (auto* tm = dynamic_cast<TerrainRenderManager*>(terrain_render_manager.get())) {
+					// Set up eviction callback so terrain generator knows when chunks are LRU-evicted
+					// Capture weak_ptr to allow terrain generator to be swapped without dangling reference
+					tm->SetEvictionCallback(
+						[weak_gen = std::weak_ptr<ITerrainGenerator>(terrain_generator)](std::pair<int, int> key) {
+							if (auto gen = weak_gen.lock()) {
+								gen->InvalidateChunk(key);
+							}
 						}
-					}
-				);
+					);
+				}
 			}
 
 			Shape::InitSphereMesh(megabuffer.get());
@@ -1090,7 +1092,9 @@ namespace Boidsish {
 		void BindShadows(Shader& s) {
 			s.use();
 			if (terrain_render_manager) {
-				terrain_render_manager->BindTerrainData(s);
+				if (auto* tm = dynamic_cast<TerrainRenderManager*>(terrain_render_manager.get())) {
+					tm->BindTerrainData(s);
+				}
 			}
 			if (shadow_manager && shadow_manager->IsInitialized() && frame_config_.enable_shadows) {
 				shadow_manager->BindForRendering(s);
@@ -1112,7 +1116,9 @@ namespace Boidsish {
 		void SetupShaderBindings(ShaderBase& shader_to_setup) {
 			shader_to_setup.use();
 			if (terrain_render_manager) {
-				terrain_render_manager->BindTerrainData(shader_to_setup);
+				if (auto* tm = dynamic_cast<TerrainRenderManager*>(terrain_render_manager.get())) {
+					tm->BindTerrainData(shader_to_setup);
+				}
 			}
 			shader_to_setup.setBool("uUseMDI", false);
 			shader_to_setup.setBool("useSSBOInstancing", false);
@@ -1897,16 +1903,19 @@ namespace Boidsish {
 				viewport_size = glm::vec2(render_width, render_height);
 			}
 
-			// Set up shadow uniforms for terrain shader
-			Terrain::terrain_shader_->use();
-			Terrain::terrain_shader_->setBool("uIsShadowPass", is_shadow_pass);
-
-			if (!is_shadow_pass) {
-				BindShadows(*Terrain::terrain_shader_);
-			}
-
 			// Use batched render manager if available (single draw call for all chunks)
 			if (terrain_render_manager) {
+				auto shader_ptr = terrain_render_manager->GetDefaultShader();
+				if (!shader_ptr) return;
+
+				// Set up shadow uniforms for terrain shader
+				shader_ptr->use();
+				shader_ptr->setBool("uIsShadowPass", is_shadow_pass);
+
+				if (!is_shadow_pass) {
+					BindShadows(*shader_ptr);
+				}
+
 				// Calculate frustum for culling
 				Frustum frustum = shadow_frustum.has_value() ? *shadow_frustum : CalculateFrustum(view, proj);
 
@@ -1915,7 +1924,7 @@ namespace Boidsish {
 				terrain_render_manager->PrepareForRender(frustum, camera.pos(), world_scale);
 
 				terrain_render_manager
-					->Render(*Terrain::terrain_shader_, view, proj, viewport_size, clip_plane, effective_quality);
+					->Render(*shader_ptr, view, proj, viewport_size, clip_plane, effective_quality);
 			} else {
 				// Fallback to per-chunk rendering
 				Terrain::terrain_shader_->use();
@@ -2998,16 +3007,25 @@ namespace Boidsish {
 		}
 
 		impl->clone_manager->Update(impl->simulation_time, impl->camera.pos());
+		std::vector<glm::vec4> chunk_info;
+		GLuint                 heightmap_tex = 0;
+		GLuint                 biome_tex = 0;
+		if (impl->terrain_render_manager) {
+			if (auto* tm = dynamic_cast<TerrainRenderManager*>(impl->terrain_render_manager.get())) {
+				chunk_info = tm->GetChunkInfo(impl->terrain_generator->GetWorldScale());
+				heightmap_tex = tm->GetHeightmapTexture();
+				biome_tex = tm->GetBiomeTexture();
+			}
+		}
+
 		impl->fire_effect_manager->Update(
 			impl->simulation_delta_time,
 			impl->simulation_time,
 			impl->frame_config_.ambient_particle_density,
-			impl->terrain_render_manager
-				? impl->terrain_render_manager->GetChunkInfo(impl->terrain_generator->GetWorldScale())
-				: std::vector<glm::vec4>{},
-			impl->terrain_render_manager ? impl->terrain_render_manager->GetHeightmapTexture() : 0,
+			chunk_info,
+			heightmap_tex,
 			impl->noise_manager ? impl->noise_manager->GetCurlTexture() : 0,
-			impl->terrain_render_manager ? impl->terrain_render_manager->GetBiomeTexture() : 0,
+			biome_tex,
 			impl->lighting_ubo,
 			impl->frustum_ssbo->GetBufferId(),
 			impl->frustum_ssbo->GetFrameOffset() + impl->mdi_frustum_count * sizeof(FrustumDataGPU),
@@ -4178,6 +4196,13 @@ namespace Boidsish {
 		return impl->terrain_generator;
 	}
 
+	void Visualizer::SetTerrainRenderManager(std::shared_ptr<ITerrainRenderManager> manager) {
+		impl->terrain_render_manager = manager;
+		if (impl->terrain_generator) {
+			impl->terrain_generator->SetRenderManager(manager);
+		}
+	}
+
 	const TerrainGenerator* Visualizer::GetTerrainGenerator() const {
 		// Legacy method - attempt to cast to concrete type
 		return dynamic_cast<const TerrainGenerator*>(impl->terrain_generator.get());
@@ -4191,14 +4216,16 @@ namespace Boidsish {
 		if (impl->terrain_render_manager && impl->terrain_generator) {
 			impl->terrain_generator->SetRenderManager(impl->terrain_render_manager);
 
-			// Set up eviction callback with weak_ptr to avoid preventing destruction
-			impl->terrain_render_manager->SetEvictionCallback(
-				[weak_gen = std::weak_ptr<ITerrainGenerator>(impl->terrain_generator)](std::pair<int, int> chunk_key) {
-					if (auto gen = weak_gen.lock()) {
-						gen->InvalidateChunk(chunk_key);
+			if (auto* tm = dynamic_cast<TerrainRenderManager*>(impl->terrain_render_manager.get())) {
+				// Set up eviction callback with weak_ptr to avoid preventing destruction
+				tm->SetEvictionCallback(
+					[weak_gen = std::weak_ptr<ITerrainGenerator>(impl->terrain_generator)](std::pair<int, int> chunk_key) {
+						if (auto gen = weak_gen.lock()) {
+							gen->InvalidateChunk(chunk_key);
+						}
 					}
-				}
-			);
+				);
+			}
 		}
 	}
 

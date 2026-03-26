@@ -43,6 +43,7 @@ namespace Boidsish {
 			std::pair<int, int>              chunk_key,
 			const std::vector<glm::vec3>&    positions,
 			const std::vector<glm::vec3>&    normals,
+			const std::vector<glm::vec2>&    biomes,
 			const std::vector<unsigned int>& indices,
 			float                            min_y,
 			float                            max_y,
@@ -66,8 +67,9 @@ namespace Boidsish {
 		 *
 		 * @param frustum View frustum for culling
 		 * @param camera_pos Camera position
+		 * @param world_scale Current world scale
 		 */
-		virtual void PrepareForRender(const Frustum& frustum, const glm::vec3& camera_pos) = 0;
+		virtual void PrepareForRender(const Frustum& frustum, const glm::vec3& camera_pos, float world_scale = 1.0f) = 0;
 
 		/**
 		 * @brief Render all visible terrain.
@@ -76,9 +78,12 @@ namespace Boidsish {
 			Shader&                         shader,
 			const glm::mat4&                view,
 			const glm::mat4&                projection,
+			const glm::vec2&                viewport_size,
 			const std::optional<glm::vec4>& clip_plane,
 			float                           tess_quality_multiplier
 		) = 0;
+
+		virtual std::shared_ptr<Shader> GetDefaultShader() = 0;
 
 		/**
 		 * @brief Commit any pending updates.
@@ -97,6 +102,8 @@ namespace Boidsish {
 		 * @brief Get chunk size.
 		 */
 		virtual int GetChunkSize() const = 0;
+
+		virtual void SetNoise(const GLuint& noise, const GLuint& curl, const GLuint& extra = 0) {}
 	};
 
 } // namespace Boidsish
