@@ -359,6 +359,11 @@ target_link_libraries(test_weather PRIVATE boidsish GTest::GTest GTest::Main)
 set_target_properties(test_weather PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}" EXCLUDE_FROM_ALL TRUE)
 add_test(NAME test_weather COMMAND test_weather)
 
+add_executable(test_polyhedron_movement tests/test_polyhedron_movement.cpp)
+target_link_libraries(test_polyhedron_movement PRIVATE boidsish GTest::GTest GTest::Main)
+set_target_properties(test_polyhedron_movement PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}" EXCLUDE_FROM_ALL TRUE)
+add_test(NAME test_polyhedron_movement COMMAND test_polyhedron_movement)
+
 # Group all tests into a single target for convenience
 add_custom_target(tests)
 add_dependencies(tests
@@ -385,4 +390,5 @@ add_dependencies(tests
     test_ik
     test_camera_system
     test_weather
+    test_polyhedron_movement
 )

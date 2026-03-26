@@ -58,90 +58,48 @@ namespace Boidsish {
 		if (!allocation_.valid || shader == nullptr)
 			return;
 
-		shader->use();
-		shader->setBool("isArcadeText", true);
-		shader->setInt("arcadeWaveMode", static_cast<int>(wave_mode_));
-		shader->setFloat("arcadeWaveAmplitude", wave_amplitude_);
-		shader->setFloat("arcadeWaveFrequency", wave_frequency_);
-		shader->setFloat("arcadeWaveSpeed", wave_speed_);
-
-		shader->setBool("arcadeRainbowEnabled", rainbow_enabled_);
-		shader->setFloat("arcadeRainbowSpeed", rainbow_speed_);
-		shader->setFloat("arcadeRainbowFrequency", rainbow_frequency_);
-
 		if (double_copy_) {
 			// First copy
 			glm::mat4 m1 = GetModelMatrix();
 			m1 = glm::rotate(m1, rotation_angle_, rotation_axis_);
-			render_internal(m1);
+			Text::render(*shader, m1);
 
 			// Second copy (180 degrees offset)
 			glm::mat4 m2 = GetModelMatrix();
 			m2 = glm::rotate(m2, rotation_angle_ + glm::pi<float>(), rotation_axis_);
-			render_internal(m2);
+			Text::render(*shader, m2);
 		} else {
 			glm::mat4 model = GetModelMatrix();
 			if (rotation_angle_ != 0.0f) {
 				model = glm::rotate(model, rotation_angle_, rotation_axis_);
 			}
-			render_internal(model);
+			Text::render(*shader, model);
 		}
-
-		// Reset arcade and text effect flags for subsequent renders
-		shader->setBool("isArcadeText", false);
-		shader->setBool("isTextEffect", false);
 	}
 
-	void ArcadeText::render_internal(const glm::mat4& model_matrix) const {
-		shader->setMat4("model", model_matrix);
-		shader->setVec3("objectColor", GetR(), GetG(), GetB());
-		shader->setFloat("objectAlpha", GetA());
-		shader->setBool("use_texture", false);
+	void ArcadeText::OnPreRender(Shader& shader) const {
+		Text::OnPreRender(shader);
+		shader.setBool("isArcadeText", true);
+		shader.setInt("arcadeWaveMode", static_cast<int>(wave_mode_));
+		shader.setFloat("arcadeWaveAmplitude", wave_amplitude_);
+		shader.setFloat("arcadeWaveFrequency", wave_frequency_);
+		shader.setFloat("arcadeWaveSpeed", wave_speed_);
 
-		shader->setBool("isTextEffect", is_text_effect_);
-		if (is_text_effect_) {
-			shader->setFloat("textFadeProgress", text_fade_progress_);
-			shader->setFloat("textFadeSoftness", text_fade_softness_);
-			shader->setInt("textFadeMode", text_fade_mode_);
-		}
-
-		// Set PBR material properties
-		shader->setBool("usePBR", UsePBR());
-		if (UsePBR()) {
-			shader->setFloat("roughness", GetRoughness());
-			shader->setFloat("metallic", GetMetallic());
-			shader->setFloat("ao", GetAO());
-		}
-
-		glBindVertexArray(vao_);
-		glDrawArrays(GL_TRIANGLES, static_cast<GLint>(allocation_.base_vertex), vertex_count_);
-		glBindVertexArray(0);
+		shader.setBool("arcadeRainbowEnabled", rainbow_enabled_);
+		shader.setFloat("arcadeRainbowSpeed", rainbow_speed_);
+		shader.setFloat("arcadeRainbowFrequency", rainbow_frequency_);
 	}
 
 	void ArcadeText::GenerateRenderPackets(std::vector<RenderPacket>& out_packets, const RenderContext& context) const {
-		if (vertex_count_ == 0)
+		MeshInfo mesh = GetMeshInfo(context.megabuffer);
+		if (mesh.vao == 0)
 			return;
 
 		auto create_packet = [&](const glm::mat4& model) {
 			RenderPacket packet;
-			if (allocation_.valid) {
-				packet.vao = context.megabuffer->GetVAO();
-				packet.base_vertex = allocation_.base_vertex;
-			}
-			packet.vertex_count = static_cast<unsigned int>(vertex_count_);
-			packet.draw_mode = GL_TRIANGLES;
-			packet.index_type = 0;
-			packet.shader_id = shader ? shader->ID : 0;
+			PopulatePacket(packet, mesh, context);
 
 			packet.uniforms.model = model;
-			packet.uniforms.color = glm::vec4(GetR(), GetG(), GetB(), GetA());
-			packet.uniforms.use_pbr = UsePBR();
-			packet.uniforms.roughness = GetRoughness();
-			packet.uniforms.metallic = GetMetallic();
-			packet.uniforms.ao = GetAO();
-			packet.uniforms.use_texture = false;
-			packet.uniforms.is_colossal = IsColossal();
-
 			packet.uniforms.is_text_effect = is_text_effect_ ? 1 : 0;
 			packet.uniforms.text_fade_progress = text_fade_progress_;
 			packet.uniforms.text_fade_softness = text_fade_softness_;
@@ -156,15 +114,9 @@ namespace Boidsish {
 			packet.uniforms.arcade_rainbow_speed = rainbow_speed_;
 			packet.uniforms.arcade_rainbow_frequency = rainbow_frequency_;
 
-			packet.casts_shadows = CastsShadows();
-
+			// Recalculate sort key because we changed model (for depth)
 			RenderLayer layer = RenderLayer::Transparent;
-
-			packet.shader_handle = shader_handle;
-			packet.material_handle = MaterialHandle(0);
-
-			glm::vec3 world_pos = glm::vec3(model[3]);
-			float     normalized_depth = context.CalculateNormalizedDepth(world_pos);
+			float       normalized_depth = context.CalculateNormalizedDepth(glm::vec3(model[3]));
 			packet.sort_key = CalculateSortKey(
 				layer,
 				packet.shader_handle,

@@ -23,25 +23,28 @@ namespace Boidsish {
 	std::atomic<int>        Shape::s_nextId{1};
 
 	void Shape::GenerateRenderPackets(std::vector<RenderPacket>& out_packets, const RenderContext& context) const {
-		if (sphere_vao_ == 0) {
-			InitSphereMesh(context.megabuffer);
-		}
+		MeshInfo mesh = GetMeshInfo(context.megabuffer);
+		if (mesh.vao == 0)
+			return;
 
-		// Calculate model matrix once
+		RenderPacket packet;
+		PopulatePacket(packet, mesh, context);
+		out_packets.push_back(std::move(packet));
+	}
+
+	void Shape::PopulatePacket(RenderPacket& packet, const MeshInfo& mesh, const RenderContext& context) const {
 		glm::mat4 model = GetModelMatrix();
 		glm::vec3 world_pos = glm::vec3(model[3]);
 
-		// Note: We remove CPU frustum culling here to allow packet reuse across multiple passes
-		// (e.g., main camera, reflection, shadows) with different frustums.
-		// GPU-side frustum culling in the vertex shader handles visibility for each pass.
-
-		RenderPacket packet;
-		packet.vao = sphere_vao_;
-		if (sphere_alloc_.valid) {
-			packet.base_vertex = sphere_alloc_.base_vertex;
-			packet.first_index = sphere_alloc_.first_index;
+		packet.vao = mesh.vao;
+		packet.vbo = mesh.vbo;
+		packet.ebo = mesh.ebo;
+		if (mesh.allocation.valid) {
+			packet.base_vertex = mesh.allocation.base_vertex;
+			packet.first_index = mesh.allocation.first_index;
 		}
-		packet.index_count = static_cast<unsigned int>(sphere_vertex_count_);
+		packet.vertex_count = mesh.vertex_count;
+		packet.index_count = mesh.index_count;
 		packet.draw_mode = GL_TRIANGLES;
 		packet.index_type = GL_UNSIGNED_INT;
 		packet.shader_id = shader ? shader->ID : 0;
@@ -52,7 +55,7 @@ namespace Boidsish {
 		packet.uniforms.roughness = roughness_;
 		packet.uniforms.metallic = metallic_;
 		packet.uniforms.ao = ao_;
-		packet.uniforms.use_texture = false; // Default for base sphere shape
+		packet.uniforms.use_texture = false;
 		packet.uniforms.is_colossal = is_colossal_;
 
 		packet.uniforms.dissolve_enabled = dissolve_enabled_ ? 1 : 0;
@@ -61,7 +64,6 @@ namespace Boidsish {
 		packet.uniforms.is_refractive = is_refractive_ ? 1 : 0;
 		packet.uniforms.refractive_index = refractive_index_;
 
-		// Occlusion culling AABB with velocity expansion
 		AABB      worldAABB = GetAABB();
 		glm::vec3 velocity = world_pos - GetLastPosition();
 		if (glm::dot(velocity, velocity) > 0.001f) {
@@ -76,17 +78,12 @@ namespace Boidsish {
 		packet.uniforms.aabb_max_z = worldAABB.max.z;
 
 		packet.casts_shadows = CastsShadows();
+		RenderLayer layer = IsTransparent() ? RenderLayer::Transparent : RenderLayer::Opaque;
 
-		// Default to Opaque layer unless alpha is less than 1.0
-		RenderLayer layer = (a_ < 0.99f) ? RenderLayer::Transparent : RenderLayer::Opaque;
-
-		// Handles would typically be managed by a higher-level system (e.g., AssetManager)
 		packet.shader_handle = shader_handle;
 		packet.material_handle = MaterialHandle(0);
+		packet.no_cull = ShouldDisableCulling();
 
-		packet.no_cull = dissolve_enabled_;
-
-		// Calculate depth for sorting
 		float normalized_depth = context.CalculateNormalizedDepth(world_pos);
 		packet.sort_key = CalculateSortKey(
 			layer,
@@ -98,8 +95,86 @@ namespace Boidsish {
 			normalized_depth,
 			packet.no_cull
 		);
+	}
 
-		out_packets.push_back(packet);
+	void Shape::render() const {
+		if (shader) {
+			render(*shader, GetModelMatrix());
+		}
+	}
+
+	void Shape::render(Shader& shader, const glm::mat4& model_matrix) const {
+		MeshInfo mesh = GetMeshInfo();
+		if (mesh.vao == 0)
+			return;
+
+		shader.use();
+		shader.setMat4("model", model_matrix);
+		shader.setVec3("objectColor", GetR(), GetG(), GetB());
+		shader.setFloat("objectAlpha", GetA());
+		shader.setBool("use_texture", false);
+
+		shader.setBool("usePBR", UsePBR());
+		if (UsePBR()) {
+			shader.setFloat("roughness", GetRoughness());
+			shader.setFloat("metallic", GetMetallic());
+			shader.setFloat("ao", GetAO());
+		}
+
+		OnPreRender(shader);
+
+		glBindVertexArray(mesh.vao);
+		if (mesh.allocation.valid) {
+			if (mesh.index_count > 0) {
+				glDrawElementsBaseVertex(
+					mesh.draw_mode,
+					mesh.index_count,
+					GL_UNSIGNED_INT,
+					(void*)(uintptr_t)(mesh.allocation.first_index * sizeof(unsigned int)),
+					mesh.allocation.base_vertex
+				);
+			} else {
+				glDrawArrays(mesh.draw_mode, (GLint)mesh.allocation.base_vertex, (GLsizei)mesh.vertex_count);
+			}
+		} else {
+			if (mesh.index_count > 0) {
+				glDrawElements(mesh.draw_mode, mesh.index_count, GL_UNSIGNED_INT, 0);
+			} else {
+				glDrawArrays(mesh.draw_mode, 0, mesh.vertex_count);
+			}
+		}
+		glBindVertexArray(0);
+	}
+
+	glm::mat4 Shape::GetModelMatrix() const {
+		glm::mat4 model = glm::mat4(1.0f);
+		model = glm::translate(model, glm::vec3(x_, y_, z_));
+		model *= glm::mat4_cast(rotation_);
+		model = glm::scale(model, scale_ * size_ * GetSizeMultiplier());
+		return model;
+	}
+
+	MeshInfo Shape::GetMeshInfo(Megabuffer* megabuffer) const {
+		if (sphere_vao_ == 0) {
+			const_cast<Shape*>(this)->InitSphereMesh(megabuffer);
+		}
+		MeshInfo info;
+		info.vao = sphere_vao_;
+		info.vbo = sphere_vbo_;
+		info.ebo = sphere_ebo_;
+		info.vertex_count = 0; // Not used for spheres when ebo is present
+		info.index_count = (unsigned int)sphere_vertex_count_;
+		info.allocation = sphere_alloc_;
+		return info;
+	}
+
+	bool Shape::ShouldDisableCulling() const { return dissolve_enabled_; }
+
+	float Shape::GetBoundingRadius() const {
+		AABB aabb = local_aabb_;
+		// Incorporate scaling
+		glm::vec3 dims = (aabb.max - aabb.min) * scale_ * size_ * GetSizeMultiplier();
+		return glm::length(dims) * 0.5f;
 	}
 
 	void Shape::GetGeometry(std::vector<Vertex>& vertices, std::vector<unsigned int>& indices) const {

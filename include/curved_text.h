@@ -23,8 +23,6 @@ namespace Boidsish {
 
 		bool IsExpired() const override { return age_ >= total_duration_; }
 
-		void render() const override;
-
 	protected:
 		void GenerateMesh(const std::string& text, float font_size, float depth) override;
 

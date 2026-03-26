@@ -28,148 +28,42 @@ namespace Boidsish {
 		float          b,
 		float          a
 	):
-		Shape(id, x, y, z, r, g, b, a), type_(type), size_(size) {}
+		Shape(id, x, y, z, size, r, g, b, a), type_(type) {}
 
 	Polyhedron::~Polyhedron() {}
-
-	void Polyhedron::render() const {
-		render(*shader, GetModelMatrix());
-	}
-
-	void Polyhedron::render(Shader& shader, const glm::mat4& model_matrix) const {
-		EnsureMeshInitialized();
-		std::lock_guard<std::recursive_mutex> lock(s_mesh_mutex);
-		auto                                  it = s_meshes.find(type_);
-		if (it == s_meshes.end() || it->second.vao == 0)
-			return;
-
-		shader.setMat4("model", model_matrix);
-		shader.setVec3("objectColor", GetR(), GetG(), GetB());
-		shader.setFloat("objectAlpha", GetA());
-		shader.setBool("use_texture", false);
-
-		shader.setBool("usePBR", UsePBR());
-		if (UsePBR()) {
-			shader.setFloat("roughness", GetRoughness());
-			shader.setFloat("metallic", GetMetallic());
-			shader.setFloat("ao", GetAO());
-		}
-
-		glBindVertexArray(it->second.vao);
-		if (it->second.alloc.valid) {
-			glDrawElementsBaseVertex(
-				GL_TRIANGLES,
-				it->second.index_count,
-				GL_UNSIGNED_INT,
-				(void*)(uintptr_t)(it->second.alloc.first_index * sizeof(unsigned int)),
-				it->second.alloc.base_vertex
-			);
-		} else {
-			glDrawElements(GL_TRIANGLES, it->second.index_count, GL_UNSIGNED_INT, 0);
-		}
-		glBindVertexArray(0);
-	}
-
-	glm::mat4 Polyhedron::GetModelMatrix() const {
-		glm::mat4 model = glm::mat4(1.0f);
-		model = glm::translate(model, glm::vec3(GetX(), GetY(), GetZ()));
-		model *= glm::mat4_cast(GetRotation());
-		model = glm::scale(model, GetScale() * size_);
-		return model;
-	}
-
-	void Polyhedron::GenerateRenderPackets(std::vector<RenderPacket>& out_packets, const RenderContext& context) const {
-		EnsureMeshInitialized(context.megabuffer);
-		std::lock_guard<std::recursive_mutex> lock(s_mesh_mutex);
-		auto                                  it = s_meshes.find(type_);
-		if (it == s_meshes.end() || it->second.vao == 0)
-			return;
-
-		glm::mat4 model = GetModelMatrix();
-		glm::vec3 world_pos = glm::vec3(model[3]);
-
-		RenderPacket packet;
-		packet.vao = it->second.vao;
-		if (it->second.alloc.valid) {
-			packet.base_vertex = it->second.alloc.base_vertex;
-			packet.first_index = it->second.alloc.first_index;
-		}
-		packet.index_count = static_cast<unsigned int>(it->second.index_count);
-		packet.draw_mode = GL_TRIANGLES;
-		packet.index_type = GL_UNSIGNED_INT;
-		packet.shader_id = shader ? shader->ID : 0;
-
-		packet.uniforms.model = model;
-		packet.uniforms.color = glm::vec4(GetR(), GetG(), GetB(), GetA());
-		packet.uniforms.use_pbr = UsePBR();
-		packet.uniforms.roughness = GetRoughness();
-		packet.uniforms.metallic = GetMetallic();
-		packet.uniforms.ao = GetAO();
-		packet.uniforms.use_texture = false;
-		packet.uniforms.is_colossal = IsColossal();
-
-		packet.uniforms.dissolve_enabled = dissolve_enabled_ ? 1 : 0;
-		packet.uniforms.dissolve_plane_normal = dissolve_plane_normal_;
-		packet.uniforms.dissolve_plane_dist = dissolve_plane_dist_;
-		packet.uniforms.is_refractive = is_refractive_ ? 1 : 0;
-		packet.uniforms.refractive_index = refractive_index_;
-
-		AABB      worldAABB = GetAABB();
-		glm::vec3 velocity = world_pos - GetLastPosition();
-		if (glm::dot(velocity, velocity) > 0.001f) {
-			worldAABB.min = glm::min(worldAABB.min, worldAABB.min - velocity);
-			worldAABB.max = glm::max(worldAABB.max, worldAABB.max + velocity);
-		}
-		packet.uniforms.aabb_min_x = worldAABB.min.x;
-		packet.uniforms.aabb_min_y = worldAABB.min.y;
-		packet.uniforms.aabb_min_z = worldAABB.min.z;
-		packet.uniforms.aabb_max_x = worldAABB.max.x;
-		packet.uniforms.aabb_max_y = worldAABB.max.y;
-		packet.uniforms.aabb_max_z = worldAABB.max.z;
-
-		packet.casts_shadows = CastsShadows();
-		RenderLayer layer = (GetA() < 0.99f) ? RenderLayer::Transparent : RenderLayer::Opaque;
-
-		packet.shader_handle = shader_handle;
-		packet.material_handle = MaterialHandle(0);
-
-		// Platonic solids are convex, Kepler-Poinsot are not
-		bool is_kepler_poinsot =
-			(type_ == PolyhedronType::SmallStellatedDodecahedron || type_ == PolyhedronType::GreatDodecahedron ||
-		     type_ == PolyhedronType::GreatStellatedDodecahedron || type_ == PolyhedronType::GreatIcosahedron);
-		packet.no_cull = is_kepler_poinsot || dissolve_enabled_;
-
-		float normalized_depth = context.CalculateNormalizedDepth(world_pos);
-		packet.sort_key = CalculateSortKey(
-			layer,
-			packet.shader_handle,
-			packet.vao,
-			packet.draw_mode,
-			packet.index_count > 0,
-			packet.material_handle,
-			normalized_depth,
-			packet.no_cull
-		);
-
-		out_packets.push_back(packet);
-	}
-
-	bool Polyhedron::Intersects(const Ray& ray, float& t) const {
-		return GetAABB().Intersects(ray, t);
-	}
 
 	AABB Polyhedron::GetAABB() const {
 		EnsureMeshInitialized();
 		std::lock_guard<std::recursive_mutex> lock(s_mesh_mutex);
-		return s_meshes[type_].local_aabb.Transform(GetModelMatrix());
+		return s_meshes.at(type_).local_aabb.Transform(GetModelMatrix());
 	}
 
 	std::string Polyhedron::GetInstanceKey() const {
 		return "Polyhedron:" + std::to_string(static_cast<int>(type_));
 	}
 
-	void Polyhedron::PrepareResources(Megabuffer* megabuffer) const {
+	void Polyhedron::PrepareResources(Megabuffer* megabuffer) const { EnsureMeshInitialized(megabuffer); }
+
+	MeshInfo Polyhedron::GetMeshInfo(Megabuffer* megabuffer) const {
 		EnsureMeshInitialized(megabuffer);
+		std::lock_guard<std::recursive_mutex> lock(s_mesh_mutex);
+		const auto&                           data = s_meshes.at(type_);
+		MeshInfo                              info;
+		info.vao = data.vao;
+		info.vbo = data.vbo;
+		info.ebo = data.ebo;
+		info.vertex_count = 0;
+		info.index_count = static_cast<unsigned int>(data.index_count);
+		info.allocation = data.alloc;
+		return info;
+	}
+
+	bool Polyhedron::ShouldDisableCulling() const {
+		// Platonic solids are convex, Kepler-Poinsot are not
+		bool is_kepler_poinsot =
+			(type_ == PolyhedronType::SmallStellatedDodecahedron || type_ == PolyhedronType::GreatDodecahedron ||
+		     type_ == PolyhedronType::GreatStellatedDodecahedron || type_ == PolyhedronType::GreatIcosahedron);
+		return is_kepler_poinsot || dissolve_enabled_;
 	}
 
 	void Polyhedron::EnsureMeshInitialized(Megabuffer* megabuffer) const {

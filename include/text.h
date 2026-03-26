@@ -36,11 +36,14 @@ namespace Boidsish {
 
 		void PrepareResources(Megabuffer* megabuffer = nullptr) const override;
 
-		virtual void render() const override;
 		virtual void render(Shader& shader, const glm::mat4& model_matrix) const override;
-		glm::mat4    GetModelMatrix() const override;
+		virtual void render() const override { Shape::render(); }
+
+		void OnPreRender(Shader& shader) const override;
 
 		void GenerateRenderPackets(std::vector<RenderPacket>& out_packets, const RenderContext& context) const override;
+
+		MeshInfo GetMeshInfo(Megabuffer* mb = nullptr) const override;
 
 		// Text objects are not instanced (each has unique geometry)
 		std::string GetInstanceKey() const override { return "Text:" + std::to_string(GetId()); }

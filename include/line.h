@@ -24,11 +24,11 @@ namespace Boidsish {
 
 		Line(glm::vec3 start, glm::vec3 end, float width = 1.0f);
 
-		void      render() const override;
-		void      render(Shader& shader, const glm::mat4& model_matrix) const override;
 		glm::mat4 GetModelMatrix() const override;
 
 		void GenerateRenderPackets(std::vector<RenderPacket>& out_packets, const RenderContext& context) const override;
+
+		MeshInfo GetMeshInfo(Megabuffer* mb = nullptr) const override;
 
 		inline void SetStart(const glm::vec3& start) { SetPosition(start.x, start.y, start.z); }
 
@@ -45,6 +45,11 @@ namespace Boidsish {
 		inline void SetStyle(Style style) { style_ = style; }
 
 		inline Style GetStyle() const { return style_; }
+
+		void OnPreRender(Shader& shader) const override {
+			shader.setBool("isLine", true);
+			shader.setInt("lineStyle", static_cast<int>(style_));
+		}
 
 		bool IsTransparent() const override { return GetA() < 0.99f || style_ == Style::LASER; }
 
