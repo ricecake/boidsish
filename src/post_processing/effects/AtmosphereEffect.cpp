@@ -59,6 +59,14 @@ namespace Boidsish {
 			shader_->setFloat("cloudThickness", cloud_thickness_);
 			shader_->setVec3("cloudColorUniform", cloud_color_);
 
+			shader_->setFloat("u_atmosphereHeight", atmosphere_height_);
+			shader_->setVec3("u_rayleighScatteringBase", rayleigh_scattering_);
+			shader_->setFloat("u_mieScatteringBase", mie_scattering_);
+			shader_->setFloat("u_mieExtinctionBase", mie_extinction_);
+			shader_->setVec3("u_ozoneAbsorptionBase", ozone_absorption_);
+			shader_->setFloat("u_rayleighScaleHeight", rayleigh_scale_height_);
+			shader_->setFloat("u_mieScaleHeight", mie_scale_height_);
+
 			shader_->setInt("u_transmittanceLUT", 10);
 			shader_->setInt("u_multiScatteringLUT", 11);
 			shader_->setInt("u_skyViewLUT", 12);

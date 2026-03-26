@@ -12,9 +12,14 @@ uniform vec3 u_cameraPos;
 
 uniform float u_multiScatScale;
 uniform float u_ambientScatScale;
+uniform float u_time;
+
+uniform float u_colorVarianceScale;
+uniform float u_colorVarianceStrength;
 
 #include "../lighting.glsl"
 #include "common.glsl"
+#include "../helpers/fast_noise.glsl"
 
 vec3 getTransmittance(float r, float mu) {
 	vec2 uv = transmittanceToUV(r, mu);
@@ -58,6 +63,17 @@ void main() {
 			break; // Hits ground
 
 		Sampling s = getAtmosphereProperties(h);
+
+		// Apply gentle color variance to scattering patterns
+		if (u_colorVarianceStrength > 0.0) {
+			vec3  noisePos = p * u_colorVarianceScale * 0.05 + vec3(0, u_time * 0.1, 0);
+			float variance = fastSimplex3d(noisePos);
+			float variance2 = fastSimplex3d(noisePos * 2.13 + vec3(1.5));
+
+			// Shift Rayleigh and Mie slightly
+			s.rayleigh *= (1.0 + variance * u_colorVarianceStrength);
+			s.mie *= (1.0 + variance2 * u_colorVarianceStrength);
+		}
 
 		float cosSun = dot(normalize(p), u_sunDir);
 		vec3  Ts = getTransmittance(length(p), cosSun);

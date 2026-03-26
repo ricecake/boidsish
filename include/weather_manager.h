@@ -21,6 +21,9 @@ namespace Boidsish {
 		HazeHeight,
 		RayleighScale,
 		MieScale,
+		AtmosphereHeight,
+		RayleighScaleHeight,
+		MieScaleHeight,
 		Count
 	};
 
@@ -48,6 +51,9 @@ namespace Boidsish {
 		WeatherRange<float> haze_height;
 		WeatherRange<float> rayleigh_scale;
 		WeatherRange<float> mie_scale;
+		WeatherRange<float> atmosphere_height;
+		WeatherRange<float> rayleigh_scale_height;
+		WeatherRange<float> mie_scale_height;
 
 		WeatherSettings operator+(const WeatherSettings& other) const {
 			return {
@@ -61,7 +67,10 @@ namespace Boidsish {
 				haze_density + other.haze_density,
 				haze_height + other.haze_height,
 				rayleigh_scale + other.rayleigh_scale,
-				mie_scale + other.mie_scale
+				mie_scale + other.mie_scale,
+				atmosphere_height + other.atmosphere_height,
+				rayleigh_scale_height + other.rayleigh_scale_height,
+				mie_scale_height + other.mie_scale_height
 			};
 		}
 
@@ -77,7 +86,10 @@ namespace Boidsish {
 				haze_density * f,
 				haze_height * f,
 				rayleigh_scale * f,
-				mie_scale * f
+				mie_scale * f,
+				atmosphere_height * f,
+				rayleigh_scale_height * f,
+				mie_scale_height * f
 			};
 		}
 	};
@@ -92,17 +104,24 @@ namespace Boidsish {
 	 * @brief Current weather values derived from blended ranges and noise.
 	 */
 	struct CurrentWeather {
-		float sun_intensity = 1.0f;
-		float wind_strength = 0.065f;
-		float wind_speed = 0.075f;
-		float wind_frequency = 0.01f;
-		float cloud_density = 0.5f;
-		float cloud_altitude = 175.0f;
-		float cloud_thickness = 10.0f;
-		float haze_density = 0.003f;
-		float haze_height = 20.0f;
-		float rayleigh_scale = 1.0f;
-		float mie_scale = 0.1f;
+		float     sun_intensity = 1.0f;
+		float     wind_strength = 0.065f;
+		float     wind_speed = 0.075f;
+		float     wind_frequency = 0.01f;
+		float     cloud_density = 0.5f;
+		float     cloud_altitude = 175.0f;
+		float     cloud_thickness = 10.0f;
+		float     haze_density = 0.003f;
+		float     haze_height = 20.0f;
+		float     rayleigh_scale = 1.0f;
+		float     mie_scale = 0.1f;
+		float     atmosphere_height = 60.0f;
+		glm::vec3 rayleigh_scattering = glm::vec3(5.802f, 13.558f, 33.100f) * 1e-3f;
+		float     mie_scattering = 3.996f * 1e-3f;
+		float     mie_extinction = 4.440f * 1e-3f;
+		glm::vec3 ozone_absorption = glm::vec3(0.650f, 1.881f, 0.085f) * 1e-3f;
+		float     rayleigh_scale_height = 8.0f;
+		float     mie_scale_height = 1.2f;
 	};
 
 	class WeatherManager {
