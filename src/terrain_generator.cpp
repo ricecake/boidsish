@@ -538,25 +538,34 @@ namespace Boidsish {
 		t = (segment_width > 0.0001f) ? (target - weight_low) / segment_width : 0.0f;
 	}
 
-	glm::vec3 TerrainGenerator::pointGenerate(float x, float z) const {
+	TerrainGenerator::PointData TerrainGenerator::pointGenerateAll(float x, float z) const {
 		float sx = x / world_scale_;
 		float sz = z / world_scale_;
 
-		glm::vec3 path_data = getPathInfluence(sx, sz);
-		float     path_factor = path_data.x;
+		glm::vec3 path_influence = getPathInfluence(sx, sz);
+		float     path_factor = path_influence.x;
 
-		glm::vec2 push_dir = glm::normalize(glm::vec2(path_data.y, path_data.z));
-		float     warp_strength = (1.0f - path_factor) * Constants::Class::Terrain::WarpStrength() * world_scale_;
+		glm::vec2 push_dir(0.0f);
+		float     path_grad_len = glm::length(glm::vec2(path_influence.y, path_influence.z));
+		if (path_grad_len > 0.0001f) {
+			push_dir = glm::vec2(path_influence.y, path_influence.z) / path_grad_len;
+		}
+
+		float     warp_strength = (1.0f - path_factor) * Constants::Class::Terrain::WarpStrength();
 		glm::vec2 warp = push_dir * warp_strength;
 
-		glm::vec2 pos = glm::vec2(sx, sz);
-		glm::vec2 warped_pos = pos + warp;
+		glm::vec2 warped_pos = glm::vec2(sx, sz) + warp;
 
-		float control_value = getBiomeControlValue(sx, sz);
+		// Calculate biome control value using warped coordinates for synchronization
+		glm::vec2 biome_pos = warped_pos * control_noise_scale_;
+		float     control_value = Simplex::noise(biome_pos + Simplex::curlNoise(biome_pos)) * 0.5f + 0.5f;
 
 		if (std::isnan(control_value) || std::isinf(control_value)) {
 			control_value = 0.0f;
 		}
+
+		// Force a low-altitude biome (like Sand/Grass) on the path
+		control_value = glm::mix(0.0f, control_value, path_factor);
 
 		BiomeAttributes current;
 		ApplyWeightedBiome(control_value, current);
@@ -568,9 +577,12 @@ namespace Boidsish {
 
 		// Scale height proportionally to world scale
 		terrain_height.x *= world_scale_;
-		// Derivatives stay the same to maintain slopes (h'(x) = f'(x/s) * 1/s * s = f'(x/s))
 
-		return terrain_height;
+		return {terrain_height, control_value, path_factor};
+	}
+
+	glm::vec3 TerrainGenerator::pointGenerate(float x, float z) const {
+		return pointGenerateAll(x, z).height_data;
 	}
 
 	TerrainGenerationResult TerrainGenerator::generateChunkData(int chunkX, int chunkZ) {
@@ -600,17 +612,15 @@ namespace Boidsish {
 			for (int j = 0; j < num_vertices_z; ++j) {
 				float worldX = (chunkX * chunk_size_ + i) * world_scale_;
 				float worldZ = (chunkZ * chunk_size_ + j) * world_scale_;
-				auto  noise = pointGenerate(worldX, worldZ);
-				heightmap[i][j] = noise;
-				has_terrain = has_terrain || noise[0] > 0;
 
-				// Calculate biome info
-				float sx = worldX / world_scale_;
-				float sz = worldZ / world_scale_;
-				float control_value = getBiomeControlValue(sx, sz);
+				auto res = pointGenerateAll(worldX, worldZ);
+				heightmap[i][j] = res.height_data;
+				has_terrain = has_terrain || res.height_data[0] > 0;
+
+				// Calculate biome info using the synchronized control value
 				int   low_idx;
 				float t;
-				GetBiomeIndicesAndWeights(control_value, low_idx, t);
+				GetBiomeIndicesAndWeights(res.control_value, low_idx, t);
 				biome_map[i][j] = glm::vec2(static_cast<float>(low_idx), t);
 			}
 		}
@@ -1011,18 +1021,28 @@ namespace Boidsish {
 	}
 
 	float TerrainGenerator::getBiomeControlValue(float x, float z) const {
-		// Note: coordinates already scaled if called from pointGenerate
-		glm::vec2 pos(x, z);
+		// Note: coordinates are expected to be in "natural" scale (unscaled by world_scale_)
+		// to match the behavior of pointGenerate/pointGenerateAll's internal sx, sz
+		glm::vec3 path_influence = getPathInfluence(x, z);
+		float     path_factor = path_influence.x;
+
+		glm::vec2 push_dir(0.0f);
+		float     path_grad_len = glm::length(glm::vec2(path_influence.y, path_influence.z));
+		if (path_grad_len > 0.0001f) {
+			push_dir = glm::vec2(path_influence.y, path_influence.z) / path_grad_len;
+		}
+
+		float     warp_strength = (1.0f - path_factor) * Constants::Class::Terrain::WarpStrength();
+		glm::vec2 warp = push_dir * warp_strength;
+
+		glm::vec2 pos(x + warp.x, z + warp.y);
 		pos *= control_noise_scale_;
 		float result = Simplex::noise(pos + Simplex::curlNoise(pos)) * 0.5f + 0.5f;
 
-		return std::clamp(result, 0.0f, 1.0f);
+		// Force a low-altitude biome on the path
+		result = glm::mix(0.0f, result, path_factor);
 
-		// return Simplex::worleyfBm(glm::vec2(x * control_noise_scale_, z * control_noise_scale_));
-		// float result = Simplex::noise( pos + glm::vec2( Simplex::curlNoise( pos, control_noise_scale_ ).x ) ) * 0.5f
-		// + 0.5f; float result = Simplex::worleyfBm(pos+Simplex::curlNoise(pos)) * 0.5f + 0.5f; return
-		// Simplex::worleyfBm(pos); return Simplex::worleyNoise(glm::vec2(x * control_noise_scale_, z *
-		// control_noise_scale_), 4) * 0.5f + 0.5f;
+		return std::clamp(result, 0.0f, 1.0f);
 	}
 
 	glm::vec2 TerrainGenerator::getDomainWarp(float x, float z) const {
