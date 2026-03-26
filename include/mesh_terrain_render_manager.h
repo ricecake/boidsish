@@ -59,6 +59,8 @@ namespace Boidsish {
 
 		int GetChunkSize() const override { return chunk_size_; }
 
+		void BindTerrainData(class ShaderBase& shader_base) const override;
+
 	private:
 		struct ChunkMesh {
 			GLuint vao = 0;
@@ -75,6 +77,7 @@ namespace Boidsish {
 		std::vector<ChunkMesh*> visible_chunks_;
 
 		std::shared_ptr<Shader> mesh_shader_;
+		GLuint biome_ubo_ = 0;
 
 		mutable std::mutex mutex_;
 

@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtx/norm.hpp>
+#include "biome_properties.h"
 #include "constants.h"
 #include "frustum.h"
 #include "shader.h"
@@ -11,12 +12,38 @@ namespace Boidsish {
 
 	MeshTerrainRenderManager::MeshTerrainRenderManager(int chunk_size) : chunk_size_(chunk_size) {
 		mesh_shader_ = std::make_shared<Shader>("shaders/mesh_terrain.vert", "shaders/mesh_terrain.frag");
+
+		// Create Biome UBO (binding 7)
+		GLuint biome_ubo;
+		glGenBuffers(1, &biome_ubo);
+		glBindBuffer(GL_UNIFORM_BUFFER, biome_ubo);
+		glBufferData(GL_UNIFORM_BUFFER, sizeof(BiomeShaderProperties) * kBiomes.size(), nullptr, GL_STATIC_DRAW);
+
+		std::vector<BiomeShaderProperties> shader_biomes;
+		for (const auto& b : kBiomes) {
+			BiomeShaderProperties sb;
+			sb.albedo_roughness = glm::vec4(b.albedo, b.roughness);
+			sb.params = glm::vec4(b.metallic, b.detailStrength, b.detailScale, 0.0f);
+			shader_biomes.push_back(sb);
+		}
+		glBufferSubData(
+			GL_UNIFORM_BUFFER,
+			0,
+			sizeof(BiomeShaderProperties) * shader_biomes.size(),
+			shader_biomes.data()
+		);
+		glBindBuffer(GL_UNIFORM_BUFFER, 0);
+
+		biome_ubo_ = biome_ubo;
 	}
 
 	MeshTerrainRenderManager::~MeshTerrainRenderManager() {
 		std::lock_guard<std::mutex> lock(mutex_);
 		for (auto& pair : chunks_) {
 			_DestroyChunk(*pair.second);
+		}
+		if (biome_ubo_) {
+			glDeleteBuffers(1, &biome_ubo_);
 		}
 	}
 
@@ -160,13 +187,8 @@ namespace Boidsish {
 			shader.setVec4("clipPlane", glm::vec4(0, 0, 0, 0));
 		}
 
-		// Bind lighting and biome data - Note: Mesh renderer currently expects
-		// engine to have set up global UBO bindings for Lighting etc.
-		// We explicitly bind the Biomes UBO here if we can find it.
-		// In Boidsish, Biomes are usually binding 7.
-		// However, MeshTerrainRenderManager doesn't own the biome_ubo_ like TerrainRenderManager does.
-		// For now, we assume the Visualizer has bound it, but we should make sure the shader
-		// knows we're in mesh mode.
+		// Bind Biome UBO
+		glBindBufferBase(GL_UNIFORM_BUFFER, Constants::UboBinding::Biomes(), biome_ubo_);
 
 		shader.setBool("uUseMeshMode", true);
 
@@ -188,6 +210,11 @@ namespace Boidsish {
 	size_t MeshTerrainRenderManager::GetVisibleChunkCount() const {
 		std::lock_guard<std::mutex> lock(mutex_);
 		return visible_chunks_.size();
+	}
+
+	void MeshTerrainRenderManager::BindTerrainData(class ShaderBase& shader_base) const {
+		shader_base.use();
+		glBindBufferBase(GL_UNIFORM_BUFFER, Constants::UboBinding::Biomes(), biome_ubo_);
 	}
 
 	void MeshTerrainRenderManager::_DestroyChunk(ChunkMesh& chunk) {

@@ -1092,9 +1092,7 @@ namespace Boidsish {
 		void BindShadows(Shader& s) {
 			s.use();
 			if (terrain_render_manager) {
-				if (auto* tm = dynamic_cast<TerrainRenderManager*>(terrain_render_manager.get())) {
-					tm->BindTerrainData(s);
-				}
+				terrain_render_manager->BindTerrainData(s);
 			}
 			if (shadow_manager && shadow_manager->IsInitialized() && frame_config_.enable_shadows) {
 				shadow_manager->BindForRendering(s);
@@ -1116,9 +1114,7 @@ namespace Boidsish {
 		void SetupShaderBindings(ShaderBase& shader_to_setup) {
 			shader_to_setup.use();
 			if (terrain_render_manager) {
-				if (auto* tm = dynamic_cast<TerrainRenderManager*>(terrain_render_manager.get())) {
-					tm->BindTerrainData(shader_to_setup);
-				}
+				terrain_render_manager->BindTerrainData(shader_to_setup);
 			}
 			shader_to_setup.setBool("uUseMDI", false);
 			shader_to_setup.setBool("useSSBOInstancing", false);
@@ -4200,6 +4196,12 @@ namespace Boidsish {
 		impl->terrain_render_manager = manager;
 		if (impl->terrain_generator) {
 			impl->terrain_generator->SetRenderManager(manager);
+		}
+		if (manager) {
+			auto shader_ptr = manager->GetDefaultShader();
+			if (shader_ptr) {
+				impl->SetupShaderBindings(*shader_ptr);
+			}
 		}
 	}
 

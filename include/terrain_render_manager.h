@@ -156,7 +156,7 @@ namespace Boidsish {
 		/**
 		 * @brief Bind terrain data textures and UBO to a shader.
 		 */
-		void BindTerrainData(ShaderBase& shader_base) const;
+		void BindTerrainData(ShaderBase& shader_base) const override;
 
 		void SetNoise(const GLuint& noise, const GLuint& curl, const GLuint& extra = 0) override {
 			if (noise != 0) {

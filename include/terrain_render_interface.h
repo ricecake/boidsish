@@ -7,6 +7,7 @@
 
 #include <GL/glew.h>
 #include <glm/glm.hpp>
+#include "shader.h"
 
 class Shader;
 
@@ -84,6 +85,11 @@ namespace Boidsish {
 		) = 0;
 
 		virtual std::shared_ptr<Shader> GetDefaultShader() = 0;
+
+		/**
+		 * @brief Bind implementation-specific terrain data (textures, UBOs) to a shader.
+		 */
+		virtual void BindTerrainData(class ShaderBase& shader_base) const = 0;
 
 		/**
 		 * @brief Commit any pending updates.

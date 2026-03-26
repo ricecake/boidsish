@@ -7,6 +7,7 @@ in vec3 Normal;
 in vec2 Biome;
 
 #include "helpers/lighting.glsl"
+#include "visual_effects.glsl"
 
 struct BiomeProperties {
 	vec4 albedo_roughness; // rgb = albedo, w = roughness
@@ -38,6 +39,8 @@ void main() {
     float metallic = mix(metal_low, metal_high, t);
 
     vec3 lighting = apply_lighting_pbr(FragPos, norm, albedo, roughness, metallic, 1.0).rgb;
+
+	// Note: uUseMeshMode is unused in the fragment shader but present for uniform parity
 
     // Add some simple grid lines for visual scale
     vec2 gridUV = FragPos.xz * 0.1;

@@ -11,6 +11,7 @@ out vec2 Biome;
 uniform mat4 model;
 uniform mat4 view;
 uniform mat4 projection;
+uniform vec4 clipPlane;
 uniform bool uUseMeshMode = false; // Declared for parity even if always true when this shader is used
 
 void main() {
@@ -22,6 +23,12 @@ void main() {
     // but here model is just translation, so we can use it directly or just use aNormal.
     Normal = mat3(model) * aNormal;
     Biome = aBiome;
+
+	if (length(clipPlane.xyz) > 0.0001) {
+		gl_ClipDistance[0] = dot(worldPos, clipPlane);
+	} else {
+		gl_ClipDistance[0] = 1.0;
+	}
 
     gl_Position = projection * view * worldPos;
 }
