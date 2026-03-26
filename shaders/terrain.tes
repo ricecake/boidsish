@@ -94,7 +94,7 @@ void main() {
 	float perturbFactor2 = mix(perturbFactor_TC_out[3], perturbFactor_TC_out[2], uv.x);
 	perturbFactor = mix(perturbFactor1, perturbFactor2, uv.y);
 
-	// FragPos+= fastRidge3d(FragPos) * perturbFactor * Normal;
+	FragPos+= 0.5*fastWorley3d(FragPos/50.0)*fastBlueNoise(uv.xy) * Normal * smoothstep(10, 1, FragPos.y) * smoothstep(0.01, 1, FragPos.y);
 
 	float tessFactor1 = mix(tessFactor_TC_out[0], tessFactor_TC_out[1], uv.x);
 	float tessFactor2 = mix(tessFactor_TC_out[3], tessFactor_TC_out[2], uv.x);
