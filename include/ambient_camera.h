@@ -50,6 +50,12 @@ namespace Boidsish {
 		 */
 		void SetDestination(glm::vec3 dest, float directness = 0.5f);
 
+		// Getters for visualization
+		const CoordinatedSpline& GetProbeSpline() const { return probeSpline; }
+		const CoordinatedSpline& GetCameraSpline() const { return cameraSpline; }
+		const CoordinatedSpline& GetFocusSpline() const { return focusSpline; }
+		float                    GetGlobalU() const { return globalU; }
+
 	private:
 		void GenerateNewPaths(ITerrainGenerator* terrain, DecorManager* decor);
 
