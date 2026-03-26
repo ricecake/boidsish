@@ -65,22 +65,26 @@ void main() {
 	// Sample heightmap at the interpolated UV to get world position and normal
 	sampleHeightmap(TexCoords, slice, worldOffset, FragPos, Normal);
 
-	// Detect water (height < 0)
-	if (FragPos.y <= 0.0) {
-		vIsWater = 1.0;
-		FragPos.y = 0.0;
+	// Detect water (height < 0) with a small blend range for stability
+	float waterMask = smoothstep(0.1, -0.1, FragPos.y);
+	vIsWater = waterMask;
+
+	if (waterMask > 0.0) {
+		float landHeight = FragPos.y;
+		float waterHeight = 0.0;
 
 		// Add gentle ripple displacement
 		float rippleTime = time * 2.0;
 		float ripple = sin(FragPos.x * 0.5 + rippleTime) * 0.05 + cos(FragPos.z * 0.5 + rippleTime * 0.8) * 0.05;
-		FragPos.y += ripple;
+		waterHeight += ripple;
 
 		// Approximate normal for the ripple surface
 		float dx = 0.05 * cos(FragPos.x * 0.5 + rippleTime) * 0.5;
-		float dz = 0.05 * -sin(FragPos.z * 0.5 + rippleTime * 0.8) * 0.4; // 0.5 * 0.8
-		Normal = normalize(vec3(-dx, 1.0, -dz));
-	} else {
-		vIsWater = 0.0;
+		float dz = 0.05 * -sin(FragPos.z * 0.5 + rippleTime * 0.8) * 0.4;
+		vec3  waterNormal = normalize(vec3(-dx, 1.0, -dz));
+
+		FragPos.y = mix(landHeight, waterHeight, waterMask);
+		Normal = normalize(mix(Normal, waterNormal, waterMask));
 	}
 
 	// Apply shockwave ripple to terrain
@@ -94,8 +98,9 @@ void main() {
 	float perturbFactor2 = mix(perturbFactor_TC_out[3], perturbFactor_TC_out[2], uv.x);
 	perturbFactor = mix(perturbFactor1, perturbFactor2, uv.y);
 
-	FragPos += 0.5 * fastWorley3d(FragPos / 50.0) * fastBlueNoise(uv.xy) * Normal * smoothstep(10, 1, FragPos.y) *
-		smoothstep(0.01, 1, FragPos.y);
+	// Use world-space noise for blue noise displacement to prevent shimmering during tessellation changes
+	FragPos += 0.5 * fastWorley3d(FragPos / 50.0) * fastBlueNoise(FragPos.xz * 2.0) * Normal *
+		smoothstep(10, 1, FragPos.y) * smoothstep(0.1, 1, FragPos.y);
 
 	float tessFactor1 = mix(tessFactor_TC_out[0], tessFactor_TC_out[1], uv.x);
 	float tessFactor2 = mix(tessFactor_TC_out[3], tessFactor_TC_out[2], uv.x);
