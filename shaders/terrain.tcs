@@ -102,22 +102,29 @@ float GetEdgeTessLevel(vec3 p0, vec3 p1, vec3 n0, vec3 n1) {
 	// Screen-space calculation is unstable near the camera plane.
 	// We use a distance-based fallback for vertices near or behind the camera.
 	float pixelLength;
-	float minW = min(clip0.w, clip1.w);
 
-	if (minW < 0.1) {
-		// Near camera: use distance-based approximation
-		// Estimate pixel length based on world size and distance
-		// (chunkSize / dist) * focalLengthInPixels
-		float focalLength = uViewportSize.y; // Rough approximation
-		pixelLength = (distance(lp0, lp1) / max(dist, 0.1)) * focalLength;
-	} else {
-		// Safe distance: use precise screen-space projection
+	// Use a blend range to smoothly transition between distance-based and screen-space
+	float nearLimit = 0.1;
+	float farLimit = 1.0;
+	float blend = clamp((min(clip0.w, clip1.w) - nearLimit) / (farLimit - nearLimit), 0.0, 1.0);
+
+	// Distance-based approximation (used near camera)
+	float focalLength = uViewportSize.y; // Rough approximation
+	float distPixelLength = (distance(lp0, lp1) / max(dist, 0.1)) * focalLength;
+
+	// Precise screen-space projection (used far from camera)
+	float screenPixelLength = 0.0;
+	if (clip0.w > 0.001 && clip1.w > 0.001) {
 		vec2 ndc0 = clip0.xy / clip0.w;
 		vec2 ndc1 = clip1.xy / clip1.w;
 		vec2 pixel0 = (ndc0 * 0.5 + 0.5) * uViewportSize;
 		vec2 pixel1 = (ndc1 * 0.5 + 0.5) * uViewportSize;
-		pixelLength = length(pixel1 - pixel0);
+		screenPixelLength = length(pixel1 - pixel0);
+	} else {
+		blend = 0.0; // Force distance-based if any point is behind camera
 	}
+
+	pixelLength = mix(distPixelLength, screenPixelLength, blend);
 
 	// Base tessellation: target pixels per segment
 	// Target ~8 pixels per triangle edge for high quality, 16 for medium, 32 for low
@@ -125,23 +132,17 @@ float GetEdgeTessLevel(vec3 p0, vec3 p1, vec3 n0, vec3 n1) {
 
 	// 1. SILHOUETTE BOOST
 	// Boost tessellation for edges that form the silhouette to keep curves smooth
-	float silhouetteFactor = 1.0 - abs(roundToPlaces(dot(midNormal, viewDir), 3));
+	float silhouetteFactor = 1.0 - abs(dot(midNormal, viewDir));
 
 	// Distance fade for silhouette boost to avoid over-tessellating distant silhouettes
 	float silhouetteBoost = mix(1.0, 5.0, silhouetteFactor);
 
 	// 2. CURVATURE BOOST
 	// Boost tessellation where surface normal changes rapidly
-	float curvatureFactor = 1.0 - roundToPlaces(dot(ln0, ln1), 3);
+	float curvatureFactor = 1.0 - dot(ln0, ln1);
 	float curvatureBoost = mix(1.0, 5.0, clamp(curvatureFactor * 10.0, 0.0, 1.0));
 
-	// return 16.0;//clamp(pixelLength/finalLevel, uTessLevelMin, uTessLevelMax);
-	// return clamp((pixelLength * silhouetteBoost * curvatureBoost)/targetPixels, uTessLevelMin, uTessLevelMax);
-
-	return roundToPlaces(
-		clamp((pixelLength * silhouetteBoost * curvatureBoost) / targetPixels, uTessLevelMin, uTessLevelMax),
-		2
-	);
+	return clamp((pixelLength * silhouetteBoost * curvatureBoost) / targetPixels, uTessLevelMin, uTessLevelMax);
 }
 
 float perturbLevel(vec3 worldPos, vec3 forward) {
@@ -213,28 +214,12 @@ void main() {
 		// gl_TessLevelOuter[1] -> v=0 (edge 0-1)
 		// gl_TessLevelOuter[2] -> u=1 (edge 1-2)
 		// gl_TessLevelOuter[3] -> v=1 (edge 2-3)
-		// gl_TessLevelOuter[0] = GetEdgeTessLevel(worldPos3, worldPos0, normal3, normal0);
-		// gl_TessLevelOuter[1] = GetEdgeTessLevel(worldPos0, worldPos1, normal0, normal1);
-		// gl_TessLevelOuter[2] = GetEdgeTessLevel(worldPos1, worldPos2, normal1, normal2);
-		// gl_TessLevelOuter[3] = GetEdgeTessLevel(worldPos2, worldPos3, normal2, normal3);
+		gl_TessLevelOuter[0] = GetEdgeTessLevel(worldPos3, worldPos0, normal3, normal0);
+		gl_TessLevelOuter[1] = GetEdgeTessLevel(worldPos0, worldPos1, normal0, normal1);
+		gl_TessLevelOuter[2] = GetEdgeTessLevel(worldPos1, worldPos2, normal1, normal2);
+		gl_TessLevelOuter[3] = GetEdgeTessLevel(worldPos2, worldPos3, normal2, normal3);
 
-		// gl_TessLevelInner[0] = max(gl_TessLevelOuter[1], gl_TessLevelOuter[3]);
-		// gl_TessLevelInner[1] = max(gl_TessLevelOuter[0], gl_TessLevelOuter[2]);
-
-		float edge1 = max(
-			GetEdgeTessLevel(worldPos0, worldPos1, normal0, normal1),
-			GetEdgeTessLevel(worldPos2, worldPos3, normal2, normal3)
-		);
-		float edge2 = max(
-			GetEdgeTessLevel(worldPos3, worldPos0, normal3, normal0),
-			GetEdgeTessLevel(worldPos1, worldPos2, normal1, normal2)
-		);
-
-		gl_TessLevelOuter[0] = edge2;
-		gl_TessLevelOuter[1] = edge1;
-		gl_TessLevelOuter[2] = edge2;
-		gl_TessLevelOuter[3] = edge1;
-		gl_TessLevelInner[0] = edge2;
-		gl_TessLevelInner[1] = edge1;
+		gl_TessLevelInner[0] = max(gl_TessLevelOuter[1], gl_TessLevelOuter[3]);
+		gl_TessLevelInner[1] = max(gl_TessLevelOuter[0], gl_TessLevelOuter[2]);
 	}
 }
