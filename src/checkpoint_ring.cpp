@@ -15,7 +15,7 @@ namespace Boidsish {
 	ShaderHandle            CheckpointRingShape::checkpoint_shader_handle = ShaderHandle(0);
 
 	CheckpointRingShape::CheckpointRingShape(float radius, CheckpointStyle style):
-		Shape(), radius_(radius), style_(style) {
+		Shape(0, 0, 0, 0, 1.0f), radius_(radius), style_(style) {
 		SetUsePBR(false);
 	}
 
@@ -80,6 +80,20 @@ namespace Boidsish {
 		}
 	}
 
+	MeshInfo CheckpointRingShape::GetMeshInfo(Megabuffer* mb) const {
+		if (quad_vao_ == 0) {
+			InitQuadMesh(mb);
+		}
+		MeshInfo info;
+		info.vao = quad_vao_;
+		info.vbo = quad_vbo_;
+		info.vertex_count = 4;
+		info.index_count = 0;
+		info.draw_mode = GL_TRIANGLE_STRIP;
+		info.allocation = quad_alloc_;
+		return info;
+	}
+
 	void CheckpointRingShape::DestroyQuadMesh() {
 		if (quad_vao_ != 0) {
 			glDeleteVertexArrays(1, &quad_vao_);
@@ -101,9 +115,10 @@ namespace Boidsish {
 		if (quad_vao_ == 0)
 			return;
 
-		shader.use();
-		shader.setMat4("model", model_matrix);
+		Shape::render(shader, model_matrix);
+	}
 
+	void CheckpointRingShape::OnPreRender(Shader& shader) const {
 		glm::vec3 color(1.0f);
 		switch (style_) {
 		case CheckpointStyle::GOLD:
@@ -129,37 +144,22 @@ namespace Boidsish {
 		shader.setVec3("baseColor", color);
 		shader.setInt("style", static_cast<int>(style_));
 		shader.setFloat("radius", radius_);
-		shader.setBool("use_texture", false);
-
-		glBindVertexArray(quad_vao_);
-		if (quad_alloc_.valid) {
-			glDrawArrays(GL_TRIANGLE_STRIP, static_cast<GLint>(quad_alloc_.base_vertex), 4);
-		} else {
-			glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
-		}
-		glBindVertexArray(0);
 	}
 
 	void CheckpointRingShape::GenerateRenderPackets(
 		std::vector<RenderPacket>& out_packets,
 		const RenderContext&       context
 	) const {
-		if (quad_vao_ == 0)
+		MeshInfo mesh = GetMeshInfo(context.megabuffer);
+		if (mesh.vao == 0)
 			return;
 
-		glm::mat4 model_matrix = GetModelMatrix();
-		glm::vec3 world_pos = glm::vec3(model_matrix[3]);
-
 		RenderPacket packet;
-		packet.vao = quad_vao_;
-		if (quad_alloc_.valid) {
-			packet.base_vertex = quad_alloc_.base_vertex;
-		}
-		packet.vertex_count = 4;
+		PopulatePacket(packet, mesh, context);
+
 		packet.draw_mode = GL_TRIANGLE_STRIP;
 		packet.shader_id = checkpoint_shader_ ? checkpoint_shader_->ID : 0;
-
-		packet.uniforms.model = model_matrix;
+		packet.shader_handle = checkpoint_shader_handle;
 
 		glm::vec3 color(1.0f);
 		switch (style_) {
@@ -179,26 +179,17 @@ namespace Boidsish {
 			color = Constants::Class::Checkpoint::Colors::NeonGreen();
 			break;
 		default:
-			color = glm::vec3(GetR(), GetG(), GetB());
+			color = glm::vec3(packet.uniforms.color.x, packet.uniforms.color.y, packet.uniforms.color.z);
 			break;
 		}
 
 		packet.uniforms.color = glm::vec4(color.r, color.g, color.b, GetA());
-		packet.uniforms.use_pbr = 0;
-		packet.uniforms.use_texture = 0;
-		packet.uniforms.is_colossal = IsColossal();
-
 		packet.uniforms.checkpoint_style = static_cast<int>(style_);
 		packet.uniforms.checkpoint_radius = radius_;
 
-		packet.casts_shadows = CastsShadows();
-
+		// Recalculate sort key because we changed shader and layer
 		RenderLayer layer = RenderLayer::Transparent;
-
-		packet.shader_handle = checkpoint_shader_handle;
-		packet.material_handle = MaterialHandle(0);
-
-		float normalized_depth = context.CalculateNormalizedDepth(world_pos);
+		float       normalized_depth = context.CalculateNormalizedDepth(glm::vec3(packet.uniforms.model[3]));
 		packet.sort_key = CalculateSortKey(
 			layer,
 			packet.shader_handle,
@@ -209,7 +200,7 @@ namespace Boidsish {
 			normalized_depth
 		);
 
-		out_packets.push_back(packet);
+		out_packets.push_back(std::move(packet));
 	}
 
 	glm::mat4 CheckpointRingShape::GetModelMatrix() const {

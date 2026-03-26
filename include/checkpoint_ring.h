@@ -32,7 +32,11 @@ namespace Boidsish {
 		void      render(Shader& shader, const glm::mat4& model_matrix) const override;
 		glm::mat4 GetModelMatrix() const override;
 
+		void OnPreRender(Shader& shader) const override;
+
 		void GenerateRenderPackets(std::vector<RenderPacket>& out_packets, const RenderContext& context) const override;
+
+		MeshInfo GetMeshInfo(Megabuffer* mb = nullptr) const override;
 
 		std::string GetInstanceKey() const override { return "CheckpointRing"; }
 

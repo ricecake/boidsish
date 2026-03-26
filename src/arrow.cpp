@@ -23,7 +23,10 @@ namespace Boidsish {
 		float b,
 		float a
 	):
-		Shape(id, x, y, z, r, g, b, a), cone_height_(cone_height), cone_radius_(cone_radius), rod_radius_(rod_radius) {
+		Shape(id, x, y, z, 1.0f, r, g, b, a),
+		cone_height_(cone_height),
+		cone_radius_(cone_radius),
+		rod_radius_(rod_radius) {
 		InitArrowMesh(nullptr);
 	}
 
@@ -246,83 +249,32 @@ namespace Boidsish {
 	}
 
 	void Arrow::GenerateRenderPackets(std::vector<RenderPacket>& out_packets, const RenderContext& context) const {
-		glm::mat4 model_matrix = GetModelMatrix();
-		glm::vec3 world_pos = glm::vec3(model_matrix[3]);
-
 		// Arrow has two parts: Rod and Cone
-		// For simplicity, we create two packets if needed, or one if they share state.
-		// Since they use different VAOs, we need two packets.
 
 		// Rod Packet
 		{
-			RenderPacket packet;
-			packet.vao = rod_vao_;
-			packet.vbo = rod_vbo_;
-			if (rod_alloc_.valid) {
-				packet.base_vertex = rod_alloc_.base_vertex;
-			}
-			packet.vertex_count = static_cast<unsigned int>(rod_vertex_count_);
-			packet.draw_mode = GL_TRIANGLES;
-			packet.shader_id = shader ? shader->ID : 0;
-			packet.uniforms.model = model_matrix;
-			packet.uniforms.color = glm::vec4(GetR(), GetG(), GetB(), GetA());
-			packet.uniforms.use_pbr = UsePBR();
-			packet.uniforms.roughness = GetRoughness();
-			packet.uniforms.metallic = GetMetallic();
-			packet.uniforms.ao = GetAO();
-			packet.uniforms.is_colossal = IsColossal();
+			MeshInfo rod_mesh;
+			rod_mesh.vao = rod_vao_;
+			rod_mesh.vbo = rod_vbo_;
+			rod_mesh.vertex_count = static_cast<unsigned int>(rod_vertex_count_);
+			rod_mesh.allocation = rod_alloc_;
 
-			RenderLayer layer = (GetA() < 0.99f) ? RenderLayer::Transparent : RenderLayer::Opaque;
-			float       normalized_depth = context.CalculateNormalizedDepth(world_pos);
-			packet.shader_handle = shader_handle;
-			packet.material_handle = MaterialHandle(0);
-			packet.sort_key = CalculateSortKey(
-				layer,
-				packet.shader_handle,
-				packet.vao,
-				packet.draw_mode,
-				packet.index_count > 0,
-				packet.material_handle,
-				normalized_depth
-			);
-			out_packets.push_back(packet);
+			RenderPacket packet;
+			PopulatePacket(packet, rod_mesh, context);
+			out_packets.push_back(std::move(packet));
 		}
 
 		// Cone Packet
 		{
+			MeshInfo cone_mesh;
+			cone_mesh.vao = cone_vao_;
+			cone_mesh.vbo = cone_vbo_;
+			cone_mesh.vertex_count = static_cast<unsigned int>(cone_vertex_count_);
+			cone_mesh.allocation = cone_alloc_;
+
 			RenderPacket packet;
-			packet.vao = cone_vao_;
-			packet.vbo = cone_vbo_;
-			if (cone_alloc_.valid) {
-				packet.base_vertex = cone_alloc_.base_vertex;
-			}
-			packet.vertex_count = static_cast<unsigned int>(cone_vertex_count_);
-			packet.draw_mode = GL_TRIANGLES;
-			packet.shader_id = shader ? shader->ID : 0;
-			packet.uniforms.model = model_matrix;
-			packet.uniforms.color = glm::vec4(GetR(), GetG(), GetB(), GetA());
-			packet.uniforms.use_pbr = UsePBR();
-			packet.uniforms.roughness = GetRoughness();
-			packet.uniforms.metallic = GetMetallic();
-			packet.uniforms.ao = GetAO();
-			packet.uniforms.is_colossal = IsColossal();
-
-			packet.casts_shadows = CastsShadows();
-
-			RenderLayer layer = (GetA() < 0.99f) ? RenderLayer::Transparent : RenderLayer::Opaque;
-			float       normalized_depth = context.CalculateNormalizedDepth(world_pos);
-			packet.shader_handle = shader_handle;
-			packet.material_handle = MaterialHandle(0);
-			packet.sort_key = CalculateSortKey(
-				layer,
-				packet.shader_handle,
-				packet.vao,
-				packet.draw_mode,
-				packet.index_count > 0,
-				packet.material_handle,
-				normalized_depth
-			);
-			out_packets.push_back(packet);
+			PopulatePacket(packet, cone_mesh, context);
+			out_packets.push_back(std::move(packet));
 		}
 	}
 

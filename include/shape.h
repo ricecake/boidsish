@@ -18,6 +18,19 @@ class Shader;
 
 namespace Boidsish {
 
+	/**
+	 * @brief Encapsulates mesh resources for rendering a shape.
+	 */
+	struct MeshInfo {
+		unsigned int         vao = 0;
+		unsigned int         vbo = 0;
+		unsigned int         ebo = 0;
+		unsigned int         vertex_count = 0;
+		unsigned int         index_count = 0;
+		unsigned int         draw_mode = 0x0004; // GL_TRIANGLES
+		MegabufferAllocation allocation;
+	};
+
 	// Base class for all renderable shapes
 	class Shape: public Geometry {
 	public:
@@ -28,6 +41,7 @@ namespace Boidsish {
 			Geometry(std::move(other)),
 			rotation_(std::move(other.rotation_)),
 			scale_(std::move(other.scale_)),
+			size_(other.size_),
 			local_aabb_(std::move(other.local_aabb_)),
 			clamp_to_terrain_(other.clamp_to_terrain_),
 			ground_offset_(other.ground_offset_),
@@ -67,6 +81,7 @@ namespace Boidsish {
 				Geometry::operator=(std::move(other));
 				rotation_ = std::move(other.rotation_);
 				scale_ = std::move(other.scale_);
+				size_ = other.size_;
 				local_aabb_ = std::move(other.local_aabb_);
 				clamp_to_terrain_ = other.clamp_to_terrain_;
 				ground_offset_ = other.ground_offset_;
@@ -146,13 +161,19 @@ namespace Boidsish {
 		virtual void
 		GenerateRenderPackets(std::vector<RenderPacket>& out_packets, const RenderContext& context) const override;
 
-		// Pure virtual function for legacy immediate rendering the shape
-		virtual void render() const = 0;
+		// Default implementations for legacy immediate rendering the shape using GetMeshInfo()
+		virtual void render() const;
 
 		virtual void render(Shader& shader) const final { render(shader, GetModelMatrix()); }
 
-		virtual void      render(Shader& shader, const glm::mat4& model_matrix) const = 0;
-		virtual glm::mat4 GetModelMatrix() const = 0;
+		virtual void      render(Shader& shader, const glm::mat4& model_matrix) const;
+		virtual glm::mat4 GetModelMatrix() const;
+
+		/**
+		 * @brief Hook called before legacy rendering.
+		 * Allows subclasses to set additional uniforms.
+		 */
+		virtual void OnPreRender(Shader& shader) const { (void)shader; }
 
 		// Get the active visual effects for this shape
 		virtual std::vector<VisualEffect> GetActiveEffects() const { return {}; }
@@ -176,6 +197,13 @@ namespace Boidsish {
 			x_ = x;
 			y_ = y;
 			z_ = z;
+			MarkDirty();
+		}
+
+		inline float GetSize() const { return size_; }
+
+		inline void SetSize(float size) {
+			size_ = size;
 			MarkDirty();
 		}
 
@@ -311,11 +339,28 @@ namespace Boidsish {
 		virtual bool IsTransparent() const { return a_ < 0.99f; }
 
 		/**
+		 * @brief Returns a size multiplier applied to the base size_ for model matrix calculation.
+		 * Overridden by Dot to apply its 0.01f scale factor.
+		 */
+		virtual float GetSizeMultiplier() const { return 1.0f; }
+
+		/**
+		 * @brief Returns the mesh resources for this shape.
+		 * Defaults to the shared sphere mesh.
+		 */
+		virtual MeshInfo GetMeshInfo(Megabuffer* megabuffer = nullptr) const;
+
+		/**
+		 * @brief Determines if backface culling should be disabled for this shape.
+		 */
+		virtual bool ShouldDisableCulling() const;
+
+		/**
 		 * @brief Returns the bounding radius of the shape for frustum culling.
 		 *
 		 * @return float bounding radius in world units
 		 */
-		virtual float GetBoundingRadius() const { return 5.0f; }
+		virtual float GetBoundingRadius() const;
 
 		/**
 		 * @brief Test for intersection with a ray.
@@ -428,6 +473,7 @@ namespace Boidsish {
 			float x = 0.0f,
 			float y = 0.0f,
 			float z = 0.0f,
+			float size = 1.0f,
 			float r = 1.0f,
 			float g = 1.0f,
 			float b = 1.0f,
@@ -439,6 +485,7 @@ namespace Boidsish {
 			x_(x),
 			y_(y),
 			z_(z),
+			size_(size),
 			r_(r),
 			g_(g),
 			b_(b),
@@ -469,8 +516,14 @@ namespace Boidsish {
 
 		virtual bool GetDefaultCastsShadows() const { return !is_colossal_; }
 
+		/**
+		 * @brief Fills a RenderPacket with common shape properties.
+		 */
+		void PopulatePacket(RenderPacket& packet, const MeshInfo& mesh, const RenderContext& context) const;
+
 		glm::quat rotation_;
 		glm::vec3 scale_;
+		float     size_;
 		AABB      local_aabb_;
 		bool      clamp_to_terrain_;
 		float     ground_offset_;

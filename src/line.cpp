@@ -15,10 +15,13 @@ namespace Boidsish {
 	MegabufferAllocation Line::line_allocation_;
 
 	Line::Line(int id, glm::vec3 start, glm::vec3 end, float width, float r, float g, float b, float a):
-		Shape(id, start.x, start.y, start.z, r, g, b, a), end_(end), width_(width), style_(Style::SOLID) {}
+		Shape(id, start.x, start.y, start.z, 1.0f, r, g, b, a), end_(end), width_(width), style_(Style::SOLID) {}
 
 	Line::Line(glm::vec3 start, glm::vec3 end, float width):
-		Shape(0, start.x, start.y, start.z, 1.0f, 1.0f, 1.0f, 1.0f), end_(end), width_(width), style_(Style::SOLID) {}
+		Shape(0, start.x, start.y, start.z, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f),
+		end_(end),
+		width_(width),
+		style_(Style::SOLID) {}
 
 	void Line::InitLineMesh(Megabuffer* mb) {
 		if (line_vao_ != 0 && line_allocation_.valid)
@@ -99,6 +102,18 @@ namespace Boidsish {
 		}
 	}
 
+	MeshInfo Line::GetMeshInfo(Megabuffer* mb) const {
+		if (line_vao_ == 0) {
+			InitLineMesh(mb);
+		}
+		MeshInfo info;
+		info.vao = line_vao_;
+		info.vbo = line_vbo_;
+		info.vertex_count = static_cast<unsigned int>(line_vertex_count_);
+		info.allocation = line_allocation_;
+		return info;
+	}
+
 	void Line::DestroyLineMesh() {
 		if (line_vao_ != 0) {
 			glDeleteVertexArrays(1, &line_vao_);
@@ -108,39 +123,6 @@ namespace Boidsish {
 		}
 	}
 
-	void Line::render() const {
-		if (shader) {
-			render(*shader, GetModelMatrix());
-		}
-	}
-
-	void Line::render(Shader& s, const glm::mat4& model_matrix) const {
-		s.use();
-		s.setMat4("model", model_matrix);
-
-		// Use standard uniforms for color and alpha
-		s.setVec3("objectColor", glm::vec3(GetR(), GetG(), GetB()));
-		s.setFloat("objectAlpha", GetA());
-		s.setBool("use_texture", false);
-
-		// Set Line-specific uniforms
-		s.setBool("isLine", true);
-		s.setInt("lineStyle", static_cast<int>(style_));
-
-		// Pass through isColossal from base class
-		s.setBool("isColossal", IsColossal());
-
-		glBindVertexArray(line_vao_);
-		if (line_allocation_.valid) {
-			glDrawArrays(GL_TRIANGLES, static_cast<GLint>(line_allocation_.base_vertex), line_vertex_count_);
-		} else {
-			glDrawArrays(GL_TRIANGLES, 0, line_vertex_count_);
-		}
-		glBindVertexArray(0);
-
-		// Reset uniforms to avoid affecting other shapes
-		s.setBool("isLine", false);
-	}
 
 	glm::mat4 Line::GetModelMatrix() const {
 		glm::vec3 start = GetStart();
@@ -164,51 +146,16 @@ namespace Boidsish {
 	}
 
 	void Line::GenerateRenderPackets(std::vector<RenderPacket>& out_packets, const RenderContext& context) const {
-		if (line_vao_ == 0) {
-			InitLineMesh(context.megabuffer);
-		}
-
-		glm::mat4 model_matrix = GetModelMatrix();
-		glm::vec3 world_pos = (GetStart() + GetEnd()) * 0.5f;
+		MeshInfo mesh = GetMeshInfo(context.megabuffer);
+		if (mesh.vao == 0)
+			return;
 
 		RenderPacket packet;
-		packet.vao = line_vao_;
-		if (line_allocation_.valid) {
-			packet.base_vertex = line_allocation_.base_vertex;
-		}
-		packet.vertex_count = static_cast<unsigned int>(line_vertex_count_);
-		packet.draw_mode = GL_TRIANGLES;
-		packet.shader_id = shader ? shader->ID : 0;
-
-		packet.uniforms.model = model_matrix;
-		packet.uniforms.color = glm::vec4(GetR(), GetG(), GetB(), GetA());
-		packet.uniforms.use_pbr = UsePBR();
-		packet.uniforms.roughness = GetRoughness();
-		packet.uniforms.metallic = GetMetallic();
-		packet.uniforms.ao = GetAO();
-		packet.uniforms.use_texture = false;
-		packet.uniforms.is_colossal = IsColossal();
+		PopulatePacket(packet, mesh, context);
 
 		packet.uniforms.is_line = 1;
 		packet.uniforms.line_style = static_cast<int>(style_);
 
-		packet.casts_shadows = CastsShadows();
-
-		RenderLayer layer = IsTransparent() ? RenderLayer::Transparent : RenderLayer::Opaque;
-		packet.shader_handle = shader_handle;
-		packet.material_handle = MaterialHandle(0);
-
-		float normalized_depth = context.CalculateNormalizedDepth(world_pos);
-		packet.sort_key = CalculateSortKey(
-			layer,
-			packet.shader_handle,
-			packet.vao,
-			packet.draw_mode,
-			packet.index_count > 0,
-			packet.material_handle,
-			normalized_depth
-		);
-
-		out_packets.push_back(packet);
+		out_packets.push_back(std::move(packet));
 	}
 } // namespace Boidsish
