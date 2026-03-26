@@ -300,7 +300,7 @@ void main() {
 
 		// Distance fade and distant cyan blend (matching terrain style)
 		vec4 baseColor = vec4(final_color, fade);
-		FragColor = mix(vec4(0.0, 0.7, 0.7, baseColor.a) * length(baseColor), baseColor, step(1.0, fade));
+		FragColor = mix(vec4(0.0, 0.7, 0.7, baseColor.a) * length(baseColor), baseColor, smoothstep(0.95, 1.0, fade));
 		return;
 	}
 
@@ -413,8 +413,8 @@ void main() {
 	// ========================================================================
 	vec3 perturbedNorm = norm;
 
-	if (perturbFactor >= 0.1 && normalStrength > 0.0) {
-		float roughnessStrength = smoothstep(0.1, 1.0, perturbFactor) * normalStrength;
+	if (perturbFactor > 0.0 && normalStrength > 0.0) {
+		float roughnessStrength = smoothstep(0.0, 1.0, perturbFactor) * normalStrength;
 		float roughnessScale = normalScale * 0.05;
 		vec3  scaledFragPos = FragPos / worldScale;
 
@@ -512,8 +512,10 @@ void main() {
 	// ========================================================================
 	// The AtmosphereEffect will handle the scattering over the terrain.
 	// We just handle the alpha fade for transition to the skybox.
-	vec4 baseColor = vec4(lighting, mix(0.0, fade, step(0.01, FragPos.y)));
+	// Use smoothstep for Y-alpha cutoff to prevent flickering of low-lying terrain far away.
+	vec4 baseColor = vec4(lighting, mix(0.0, fade, smoothstep(0.0, 0.1, FragPos.y)));
 
 	// Restore deliberate cyan style for distant terrain
-	FragColor = mix(vec4(0.0, 0.7, 0.7, baseColor.a) * length(baseColor), baseColor, step(1.0, fade));
+	// Use smoothstep instead of step for smooth transition to distant cyan style.
+	FragColor = mix(vec4(0.0, 0.7, 0.7, baseColor.a) * length(baseColor), baseColor, smoothstep(0.95, 1.0, fade));
 }
