@@ -41,6 +41,15 @@ namespace Boidsish {
 
 		void UIManager::Render() {
 			PROJECT_PROFILE_SCOPE("UIManager::Render");
+
+			bool any_hud_visible = std::any_of(m_widgets.begin(), m_widgets.end(), [](const auto& widget) {
+				return widget->IsHud() && widget->IsVisible();
+			});
+
+			if (!m_show_menus && !any_hud_visible) {
+				return;
+			}
+
 			ImGui_ImplOpenGL3_NewFrame();
 			ImGui_ImplGlfw_NewFrame();
 			ImGui::NewFrame();
