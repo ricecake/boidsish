@@ -51,11 +51,6 @@ void sampleHeightmap(vec2 uv, float slice, vec3 worldOffset, out vec3 worldPos, 
 	worldPos.z = worldOffset.z + uv.y * uChunkSize;
 }
 
-float roundToPlaces(float value, float places) {
-	float shift = pow(10.0, places);
-	return roundEven(value * shift) / shift;
-}
-
 bool isLess(vec3 a, vec3 b) {
 	const float epsilon = 0.001;
 	if (abs(a.x - b.x) > epsilon)
@@ -132,17 +127,17 @@ float GetEdgeTessLevel(vec3 p0, vec3 p1, vec3 n0, vec3 n1) {
 
 	// 1. SILHOUETTE BOOST
 	// Boost tessellation for edges that form the silhouette to keep curves smooth
-	float silhouetteFactor = roundToPlaces(1.0 - abs(dot(midNormal, viewDir)), 3);
+	float silhouetteFactor = 1.0 - abs(dot(midNormal, viewDir));
 
 	// Distance fade for silhouette boost to avoid over-tessellating distant silhouettes
 	float silhouetteBoost = mix(1.0, 5.0, silhouetteFactor);
 
 	// 2. CURVATURE BOOST
 	// Boost tessellation where surface normal changes rapidly
-	float curvatureFactor = roundToPlaces(1.0 - dot(ln0, ln1), 3);
+	float curvatureFactor = 1.0 - dot(ln0, ln1);
 	float curvatureBoost = mix(1.0, 5.0, clamp(curvatureFactor * 10.0, 0.0, 1.0));
 
-	return roundToPlaces(clamp((pixelLength * silhouetteBoost * curvatureBoost) / targetPixels, uTessLevelMin, uTessLevelMax), 1);
+	return clamp((pixelLength * silhouetteBoost * curvatureBoost) / targetPixels, uTessLevelMin, uTessLevelMax);
 }
 
 float perturbLevel(vec3 worldPos, vec3 forward) {

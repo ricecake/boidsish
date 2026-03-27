@@ -36,10 +36,6 @@ uniform vec4 clipPlane;
 #include "temporal_data.glsl"
 
 // #include "helpers/fast_noise.glsl"
-float roundToPlaces(float value, float places) {
-	float shift = pow(10.0, places);
-	return round(value * shift) / shift;
-}
 
 // Sample heightmap to get world position and normal
 void sampleHeightmap(vec2 uv, float slice, vec3 worldOffset, out vec3 worldPos, out vec3 normal) {
@@ -49,9 +45,9 @@ void sampleHeightmap(vec2 uv, float slice, vec3 worldOffset, out vec3 worldPos, 
 	float height = data.r;
 	normal = normalize(data.gba);
 
-	worldPos.x = roundToPlaces(worldOffset.x + uv.x * uChunkSize, 3);
-	worldPos.y = roundToPlaces(height, 3);
-	worldPos.z = roundToPlaces(worldOffset.z + uv.y * uChunkSize, 3);
+	worldPos.x = worldOffset.x + uv.x * uChunkSize;
+	worldPos.y = height;
+	worldPos.z = worldOffset.z + uv.y * uChunkSize;
 }
 
 void main() {
