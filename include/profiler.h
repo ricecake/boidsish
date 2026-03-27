@@ -106,6 +106,26 @@ namespace Boidsish {
 #else
 
 namespace Boidsish {
+
+	/**
+	 * @brief Statistics for a single profile scope (stub when disabled).
+	 */
+	struct ProfileStats {
+		uint64_t count = 0;
+		double   totalTimeUs = 0.0;
+		double   minTimeUs = 0.0;
+		double   maxTimeUs = 0.0;
+
+		// Stub metrics for consistency
+		uint64_t lastFrameCalls = 0;
+		double   avgCallsPerFrame = 0.0;
+		double   emaTimeUs = 0.0;
+		double   emaCallsPerFrame = 0.0;
+		double   impact = 0.0;
+
+		double GetAverageUs() const { return 0.0; }
+	};
+
 	class Profiler {
 	public:
 		static Profiler& GetInstance() {
@@ -113,22 +133,15 @@ namespace Boidsish {
 			return instance;
 		}
 
-		void Update(float) {}
+		void RecordSample(const char*, double) {}
+		void PushScope(const char*) {}
+		void PopScope() {}
 
-		float GetFPS() const { return 0.0f; }
-
-		struct ProfileStats {
-			uint64_t count = 0;
-			double   totalTimeUs = 0.0;
-			double   minTimeUs = 0.0;
-			double   maxTimeUs = 0.0;
-
-			double GetAverageUs() const { return 0.0; }
-		};
-
+		void                                Update(float) {}
+		float                               GetFPS() const { return 0.0f; }
 		std::map<std::string, ProfileStats> GetStats() { return {}; }
-
-		void ClearStats() {}
+		void                                ClearStats() {}
+		void                                SaveReport() {}
 	};
 } // namespace Boidsish
 

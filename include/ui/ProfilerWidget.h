@@ -13,8 +13,8 @@ namespace Boidsish {
 
 			bool IsHud() const override { return false; }
 
-			void SetVisible(bool visible);
-			bool IsVisible() const;
+			void SetVisible(bool visible) override;
+			bool IsVisible() const override;
 
 		private:
 			bool m_show = false;

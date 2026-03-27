@@ -13,7 +13,7 @@ namespace Boidsish {
 	public:
 		ProceduralWalkingCreature(int id, float x, float y, float z, float length = 4.0f);
 
-		void Update(float delta_time);
+		void Update(float delta_time) override;
 
 		void PrepareResources(Megabuffer* megabuffer = nullptr) const override;
 		void render() const override;

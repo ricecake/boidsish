@@ -14,6 +14,7 @@ namespace Boidsish {
 
 		ProfilerWidget::ProfilerWidget() : m_treeView(true) {}
 
+#ifdef PROFILING_ENABLED
 		struct ProfileNode {
 			std::string                                     name;
 			std::string                                     fullName;
@@ -57,6 +58,7 @@ namespace Boidsish {
 				ImGui::TreePop();
 			}
 		}
+#endif
 
 		void ProfilerWidget::Draw() {
 			if (!m_show)
@@ -101,6 +103,7 @@ namespace Boidsish {
 					ImGui::TableSetupColumn("Impact", ImGuiTableColumnFlags_DefaultSort);
 					ImGui::TableHeadersRow();
 
+#ifdef PROFILING_ENABLED
 					if (m_treeView) {
 						ProfileNode root("Root", "");
 						for (const auto& [path, stats] : statsMap) {
@@ -129,6 +132,9 @@ namespace Boidsish {
 							RenderProfileNode(*child);
 						}
 					} else {
+#else
+					if (true) {
+#endif
 						std::vector<std::pair<std::string, ProfileStats>> sortedStats(statsMap.begin(), statsMap.end());
 
 						if (ImGuiTableSortSpecs* sort_specs = ImGui::TableGetSortSpecs()) {
