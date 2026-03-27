@@ -41,7 +41,42 @@ namespace Boidsish {
 								weather->SetSpatialScale(spatial_scale);
 							}
 
-							ImGui::Text("Current Weather: %s (Simulated)", "Dynamic");
+							float hold_threshold = weather->GetHoldThreshold();
+							if (ImGui::SliderFloat("Hold Threshold", &hold_threshold, 0.0f, 1.0f, "%.2f")) {
+								weather->SetHoldThreshold(hold_threshold);
+							}
+
+							ImGui::Separator();
+
+							// Weather selection dropdown
+							int         manual_idx = weather->GetManualPreset();
+							int         current_item = manual_idx + 1; // 0 = Dynamic, 1+ = Presets
+							std::vector<std::string> preset_names = weather->GetPresetNames();
+							std::vector<const char*> items;
+							items.push_back("Dynamic");
+							for (const auto& name : preset_names) {
+								items.push_back(name.c_str());
+							}
+
+							if (ImGui::Combo("Weather Type", &current_item, items.data(), (int)items.size())) {
+								weather->SetManualPreset(current_item - 1);
+							}
+
+							const auto& blend = weather->GetBlendingInfo();
+							if (blend.is_manual) {
+								ImGui::Text("Current Weather: %s (Manual)", blend.low_name.c_str());
+							} else {
+								if (blend.low_name == blend.high_name) {
+									ImGui::Text("Current Weather: %s", blend.low_name.c_str());
+								} else {
+									ImGui::Text(
+										"Current Weather: %s / %s (%.0f%%)",
+										blend.low_name.c_str(),
+										blend.high_name.c_str(),
+										blend.t * 100.0f
+									);
+								}
+							}
 						}
 					}
 				}

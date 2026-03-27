@@ -88,6 +88,13 @@ namespace Boidsish {
 		float           weight = 1.0f;
 	};
 
+	struct WeatherBlendingInfo {
+		std::string low_name;
+		std::string high_name;
+		float       t = 0.0f; // Interpolation between low and high
+		bool        is_manual = false;
+	};
+
 	/**
 	 * @brief Current weather values derived from blended ranges and noise.
 	 */
@@ -127,6 +134,34 @@ namespace Boidsish {
 		const CurrentWeather& GetCurrentWeather() const { return current_; }
 
 		/**
+		 * @brief Get information about the currently blending weather presets.
+		 */
+		const WeatherBlendingInfo& GetBlendingInfo() const { return blending_info_; }
+
+		/**
+		 * @brief Get names of all available weather presets.
+		 */
+		std::vector<std::string> GetPresetNames() const;
+
+		/**
+		 * @brief Set a manual preset index (-1 for dynamic/noise-driven).
+		 */
+		void SetManualPreset(int index);
+
+		/**
+		 * @brief Get the current manual preset index.
+		 */
+		int GetManualPreset() const { return manual_preset_idx_; }
+
+		/**
+		 * @brief Set the threshold for noise-space movement before weather targets are updated.
+		 * Higher values result in longer "idling" periods.
+		 */
+		void SetHoldThreshold(float threshold) { hold_threshold_ = threshold; }
+
+		float GetHoldThreshold() const { return hold_threshold_; }
+
+		/**
 		 * @brief Manually set a target level for a weather attribute.
 		 * While an external target is set, the manager will not use noise-derived targets for this attribute.
 		 */
@@ -156,9 +191,18 @@ namespace Boidsish {
 		bool  enabled_ = true;
 		float time_scale_ = 0.005f;    // Low frequency over time
 		float spatial_scale_ = 0.001f; // Low frequency over space
+		float hold_threshold_ = 0.05f; // Noise-space distance threshold for updates
 
 		std::vector<WeatherPreset> presets_;
+		std::vector<float>         cdf_;
 		CurrentWeather             current_;
+
+		// Idling state
+		int                 manual_preset_idx_ = -1;
+		int                 last_manual_preset_idx_ = -1;
+		glm::vec2           last_control_noise_{ -1000.0f };
+		WeatherBlendingInfo blending_info_;
+		CurrentWeather      cached_targets_;
 
 		std::array<AttributeState, static_cast<size_t>(WeatherAttribute::Count)> attribute_states_;
 	};
