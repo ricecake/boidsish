@@ -14,6 +14,7 @@
 #include "post_processing/effects/BloomEffect.h"
 #include "post_processing/effects/FilmGrainEffect.h"
 #include "ui/ProfilerWidget.h"
+#include "ui/ScriptWidget.h"
 
 namespace Boidsish {
 	namespace UI {
@@ -379,6 +380,14 @@ namespace Boidsish {
 						bool show_profiler = profiler_widget->IsVisible();
 						if (ImGui::Checkbox("Show Profiler", &show_profiler)) {
 							profiler_widget->SetVisible(show_profiler);
+						}
+					}
+
+					auto script_widget = m_visualizer.GetUIManager().GetWidget<ScriptWidget>();
+					if (script_widget) {
+						bool show_script = script_widget->IsVisible();
+						if (ImGui::Checkbox("Show Script Console", &show_script)) {
+							script_widget->SetVisible(show_script);
 						}
 					}
 

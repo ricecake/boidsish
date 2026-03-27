@@ -70,8 +70,10 @@
 #include "trail_render_manager.h"
 #include "ui/EffectWidget.h"
 #include "ui/EnvironmentWidget.h"
+#include "ScriptManager.h"
 #include "ui/ProfilerWidget.h"
 #include "ui/RenderWidget.h"
+#include "ui/ScriptWidget.h"
 #include "ui/SystemWidget.h"
 #include "ui/hud_widget.h"
 #include "visual_effects.h"
@@ -396,6 +398,7 @@ namespace Boidsish {
 		LightManager                                      light_manager;
 		ShaderTable                                       shader_table;
 		RenderQueue                                       render_queue;
+		std::unique_ptr<ScriptManager>                    script_manager;
 
 		InputState                                             input_state{};
 		std::vector<InputCallback>                             input_callbacks;
@@ -1091,6 +1094,9 @@ namespace Boidsish {
 			ui_manager->AddWidget(std::make_shared<UI::RenderWidget>(*parent));
 			ui_manager->AddWidget(std::make_shared<UI::SystemWidget>(*parent, *scene_manager));
 			ui_manager->AddWidget(std::make_shared<UI::ProfilerWidget>());
+
+			script_manager = std::make_unique<ScriptManager>(*parent);
+			ui_manager->AddWidget(std::make_shared<UI::ScriptWidget>(*script_manager));
 		}
 
 		void BindShadows(Shader& s) {
@@ -2539,6 +2545,15 @@ namespace Boidsish {
 
 	void Visualizer::ClearShapes() {
 		impl->shape_command_queue.push({ShapeCommandType::Clear, nullptr, 0});
+	}
+
+	std::vector<std::shared_ptr<Shape>> Visualizer::GetPersistentShapes() const {
+		std::vector<std::shared_ptr<Shape>> shapes;
+		shapes.reserve(impl->persistent_shapes.size());
+		for (const auto& [id, shape] : impl->persistent_shapes) {
+			shapes.push_back(shape);
+		}
+		return shapes;
 	}
 
 	void Visualizer::ClearShapeHandlers() {
