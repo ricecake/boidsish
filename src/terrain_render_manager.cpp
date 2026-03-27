@@ -389,6 +389,7 @@ namespace Boidsish {
 				it->second.min_y = min_y;
 				it->second.max_y = max_y;
 				it->second.update_count++;
+				grid_dirty_ = true;
 				return;
 			}
 
@@ -462,6 +463,7 @@ namespace Boidsish {
 			info.world_offset = glm::vec2(world_offset.x, world_offset.z);
 
 			chunks_[chunk_key] = info;
+			grid_dirty_ = true;
 		} // mutex released here
 
 		// Call eviction callback outside the lock to avoid deadlock
@@ -481,6 +483,7 @@ namespace Boidsish {
 		// Return slice to free list
 		free_slices_.push_back(it->second.texture_slice);
 		chunks_.erase(it);
+		grid_dirty_ = true;
 	}
 
 	bool TerrainRenderManager::HasChunk(std::pair<int, int> chunk_key) const {
@@ -635,6 +638,11 @@ namespace Boidsish {
 		int origin_x = center_chunk_x - half_grid;
 		int origin_z = center_chunk_z - half_grid;
 
+		if (origin_x == last_grid_origin_x_ && origin_z == last_grid_origin_z_ &&
+		    world_scale == last_grid_world_scale_ && !grid_dirty_) {
+			return;
+		}
+
 		std::vector<int16_t> slice_data(grid_size * grid_size, -1);
 		std::vector<float>   height_data(grid_size * grid_size, -10000.0f);
 
@@ -664,6 +672,11 @@ namespace Boidsish {
 		glBindBuffer(GL_UNIFORM_BUFFER, terrain_data_ubo_);
 		glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(TerrainDataUbo), &ubo);
 		glBindBuffer(GL_UNIFORM_BUFFER, 0);
+
+		last_grid_origin_x_ = origin_x;
+		last_grid_origin_z_ = origin_z;
+		last_grid_world_scale_ = world_scale;
+		grid_dirty_ = false;
 	}
 
 	void TerrainRenderManager::GenerateMaxHeightMips() {
