@@ -12,7 +12,8 @@
 
 namespace Boidsish {
 
-	void CoordinatedSpline::BuildLUT(int samplesPerSegment) {
+	void CoordinatedSpline::BuildLUT(int samples) {
+		samplesPerSegment = samples;
 		arcLengthLUT.clear();
 		totalLength = 0.0f;
 
@@ -40,39 +41,39 @@ namespace Boidsish {
 		}
 	}
 
+	void CoordinatedSpline::AppendWaypoint(Vector3 wp) {
+		if (waypoints.empty()) {
+			waypoints.push_back(wp);
+			arcLengthLUT.push_back(0.0f);
+			return;
+		}
+		waypoints.push_back(wp);
+		// LUT rebuild is deferred to the end of the update cycle for efficiency
+	}
+
+	void CoordinatedSpline::PopFrontWaypoint() {
+		if (waypoints.empty())
+			return;
+		waypoints.erase(waypoints.begin());
+		// LUT rebuild is deferred to the end of the update cycle for efficiency
+	}
+
 	Vector3 CoordinatedSpline::Evaluate(float u) const {
+		return EvaluateAtDistance(u * totalLength);
+	}
+
+	Vector3 CoordinatedSpline::EvaluateAtDistance(float targetDist) const {
+		auto [segmentIdx, t] = GetSegmentAndT(targetDist);
+		return Evaluate(segmentIdx, t);
+	}
+
+	Vector3 CoordinatedSpline::Evaluate(size_t segmentIdx, float t) const {
 		if (waypoints.empty())
 			return Vector3(0.0f, 0.0f, 0.0f);
 		if (waypoints.size() == 1)
 			return waypoints[0];
-		if (u <= 0.0f)
-			return waypoints.front();
-		if (u >= 1.0f)
+		if (segmentIdx >= waypoints.size() - 1)
 			return waypoints.back();
-
-		float targetDist = u * totalLength;
-
-		// Binary search for the samples that bracket targetDist
-		auto it = std::lower_bound(arcLengthLUT.begin(), arcLengthLUT.end(), targetDist);
-		if (it == arcLengthLUT.begin())
-			return waypoints.front();
-
-		int   sampleIdx = std::distance(arcLengthLUT.begin(), it) - 1;
-		float distA = arcLengthLUT[sampleIdx];
-		float distB = arcLengthLUT[sampleIdx + 1];
-
-		// samplesPerSegment was used in BuildLUT
-		int samplesPerSegment = (arcLengthLUT.size() - 1) / (waypoints.size() - 1);
-
-		int segmentIdx = sampleIdx / samplesPerSegment;
-		int localSampleIdx = sampleIdx % samplesPerSegment;
-
-		float tA = (float)localSampleIdx / (float)samplesPerSegment;
-		float tB = (float)(localSampleIdx + 1) / (float)samplesPerSegment;
-
-		// Interpolate t based on distance
-		float f = (targetDist - distA) / (distB - distA);
-		float t = glm::mix(tA, tB, f);
 
 		// Evaluate Catmull-Rom at segmentIdx with parameter t
 		Vector3 p1 = waypoints[segmentIdx];
@@ -84,7 +85,45 @@ namespace Boidsish {
 		return Spline::CatmullRom(t, p0, p1, p2, p3);
 	}
 
-	AmbientCameraSystem::AmbientCameraSystem() {}
+	std::pair<size_t, float> CoordinatedSpline::GetSegmentAndT(float targetDist) const {
+		if (waypoints.size() < 2)
+			return {0, 0.0f};
+		if (targetDist <= 0.0f)
+			return {0, 0.0f};
+		if (targetDist >= totalLength)
+			return {GetSegmentCount() - 1, 1.0f};
+
+		// Binary search for the samples that bracket targetDist
+		auto it = std::lower_bound(arcLengthLUT.begin(), arcLengthLUT.end(), targetDist);
+		if (it == arcLengthLUT.begin())
+			return {0, 0.0f};
+
+		int   sampleIdx = std::distance(arcLengthLUT.begin(), it) - 1;
+		float distA = arcLengthLUT[sampleIdx];
+		float distB = arcLengthLUT[sampleIdx + 1];
+
+		size_t segmentIdx = sampleIdx / samplesPerSegment;
+		int    localSampleIdx = sampleIdx % samplesPerSegment;
+
+		float tA = (float)localSampleIdx / (float)samplesPerSegment;
+		float tB = (float)(localSampleIdx + 1) / (float)samplesPerSegment;
+
+		// Interpolate t based on distance
+		float f = (targetDist - distA) / (distB - distA);
+		float t = glm::mix(tA, tB, f);
+
+		return {segmentIdx, t};
+	}
+
+	float CoordinatedSpline::GetSegmentLength(size_t segmentIdx) const {
+		if (segmentIdx >= waypoints.size() - 1)
+			return 0.0f;
+		return arcLengthLUT[(segmentIdx + 1) * samplesPerSegment] - arcLengthLUT[segmentIdx * samplesPerSegment];
+	}
+
+	AmbientCameraSystem::AmbientCameraSystem() {
+		m_nextDestinationCallback = [this](ITerrainGenerator* terrain) { return GetDefaultNextDestination(terrain); };
+	}
 
 	AmbientCameraSystem::~AmbientCameraSystem() {}
 
@@ -101,28 +140,48 @@ namespace Boidsish {
 		Camera&            camera,
 		glm::vec3&         probePos
 	) {
-		if (!pathsValid || globalU >= 1.0f) {
+		if (!pathsValid) {
 			GenerateNewPaths(terrain, decor);
-			globalU = 0.0f;
 			pathsValid = true;
 		}
 
-		// Advance global traversal parameter
-		// We want a constant world-space speed.
-		// The splines might have different lengths.
-		// The Probe spline is the master for speed calculation.
-		if (probeSpline.totalLength > 0.001f) {
-			globalU += (traversalSpeed * deltaTime) / probeSpline.totalLength;
-		} else {
-			globalU = 1.0f;
+		// Advance traversal distance along probeSpline
+		traversalDistance += traversalSpeed * deltaTime;
+
+		// Sliding window management for smoothness:
+		// To evaluate segment 1 (p1 to p2) with full C1 continuity, we need p0, p1, p2, p3.
+		// We keep the active segment at index 1 so that index 0 is always a real waypoint,
+		// avoiding synthesized virtual points in Catmull-Rom.
+		bool modified = false;
+		while (probeSpline.waypoints.size() > 5 && traversalDistance > probeSpline.GetSegmentLength(0) + probeSpline.GetSegmentLength(1)) {
+			float len = probeSpline.GetSegmentLength(0);
+			traversalDistance -= len;
+
+			probeSpline.PopFrontWaypoint();
+			cameraSpline.PopFrontWaypoint();
+			focusSpline.PopFrontWaypoint();
+			modified = true;
 		}
 
-		globalU = std::clamp(globalU, 0.0f, 1.0f);
+		// Top up waypoints
+		while (probeSpline.waypoints.size() < 12) {
+			AddWaypointToAllSplines(terrain, decor);
+			modified = true;
+		}
 
-		// Evaluate all three splines
-		Vector3 pPos = probeSpline.Evaluate(globalU);
-		Vector3 cPos = cameraSpline.Evaluate(globalU);
-		Vector3 fPos = focusSpline.Evaluate(globalU);
+		if (modified) {
+			probeSpline.BuildLUT();
+			cameraSpline.BuildLUT();
+			focusSpline.BuildLUT();
+		}
+
+		// Coordination: find segment index and local t based on probeSpline
+		auto [segmentIdx, t] = probeSpline.GetSegmentAndT(traversalDistance);
+
+		// Evaluate all three splines using the SAME segment index and local t for perfect synchronization
+		Vector3 pPos = probeSpline.Evaluate(segmentIdx, t);
+		Vector3 cPos = cameraSpline.Evaluate(segmentIdx, t);
+		Vector3 fPos = focusSpline.Evaluate(segmentIdx, t);
 
 		glm::vec3 targetProbePos(pPos.x, pPos.y, pPos.z);
 		glm::vec3 targetCameraPos(cPos.x, cPos.y, cPos.z);
@@ -166,13 +225,28 @@ namespace Boidsish {
 	}
 
 	void AmbientCameraSystem::GenerateNewPaths(ITerrainGenerator* terrain, DecorManager* decor) {
-		GenerateProbePath(terrain, decor);
-		GenerateCameraPath(terrain, decor);
-		GenerateFocusPath(terrain, decor);
+		probeSpline.waypoints.clear();
+		cameraSpline.waypoints.clear();
+		focusSpline.waypoints.clear();
+
+		Vector3 p0 = Vector3(lastProbePos.x, lastProbePos.y, lastProbePos.z);
+		Vector3 c0 = Vector3(lastCameraPos.x, lastCameraPos.y, lastCameraPos.z);
+		Vector3 f0 = Vector3(lastProbePos.x, lastProbePos.y, lastProbePos.z);
+
+		probeSpline.waypoints.push_back(p0);
+		cameraSpline.waypoints.push_back(c0);
+		focusSpline.waypoints.push_back(f0);
+
+		// Build initial set of waypoints
+		for (int i = 0; i < 12; ++i) {
+			AddWaypointToAllSplines(terrain, decor);
+		}
 
 		probeSpline.BuildLUT();
 		cameraSpline.BuildLUT();
 		focusSpline.BuildLUT();
+
+		traversalDistance = 0.0f;
 	}
 
 	static bool CheckCollision(
@@ -251,146 +325,112 @@ namespace Boidsish {
 		return false;
 	}
 
-	void AmbientCameraSystem::GenerateProbePath(ITerrainGenerator* terrain, DecorManager* decor) {
-		probeSpline.waypoints.clear();
+	void AmbientCameraSystem::AddWaypointToAllSplines(ITerrainGenerator* terrain, DecorManager* decor) {
+		// 1. Generate Probe Waypoint
+		Vector3   current = probeSpline.waypoints.back();
+		float     stepDist = 120.0f;
+		glm::vec3 current_g(current.x, current.y, current.z);
 
-		Vector3 current = Vector3(lastProbePos.x, lastProbePos.y, lastProbePos.z);
-		probeSpline.waypoints.push_back(current);
+		if (!hasDestination && m_nextDestinationCallback) {
+			targetDestination = m_nextDestinationCallback(terrain);
+			hasDestination = true;
+		}
 
-		int   numSteps = 8;
-		float stepDist = 120.0f;
-
-		for (int i = 0; i < numSteps; ++i) {
-			Vector3 next;
-
-			if (hasDestination) {
-				glm::vec3 toDest = targetDestination - glm::vec3(current.x, current.y, current.z);
-				float     d = glm::length(toDest);
-				if (d < 5.0f) {
-					hasDestination = false; // Arrived
-					float angle = (float)rand() / RAND_MAX * 2.0f * 3.14159f;
-					next = Vector3(current.x + cos(angle) * stepDist, 0, current.z + sin(angle) * stepDist);
-				} else {
-					glm::vec3 dir = toDest / d;
-					// Blend between direct path and random walk
-					float     angle = (float)rand() / RAND_MAX * 2.0f * 3.14159f;
-					glm::vec3 wander(cos(angle), 0, sin(angle));
-					glm::vec3 finalDir = glm::normalize(glm::mix(wander, dir, pathDirectness));
-					next = Vector3(current.x + finalDir.x * stepDist, 0, current.z + finalDir.z * stepDist);
-				}
-			} else {
-				// Random walk: pick a direction
+		Vector3 next;
+		if (hasDestination) {
+			glm::vec3 toDest = targetDestination - current_g;
+			float     d = glm::length(toDest);
+			if (d < 10.0f) {
+				hasDestination = false; // Arrived
+				// Pick a direction for the intermediate step while we wait for next destination
 				float angle = (float)rand() / RAND_MAX * 2.0f * 3.14159f;
 				next = Vector3(current.x + cos(angle) * stepDist, 0, current.z + sin(angle) * stepDist);
-			}
-
-			// Get terrain height at next
-			if (terrain) {
-				auto [h, n] = terrain->GetTerrainPropertiesAtPoint(next.x, next.z);
-				next.y = h + 10.0f; // Maintain 10 units above ground
 			} else {
-				next.y = 20.0f;
+				glm::vec3 dir = toDest / d;
+				float     angle = (float)rand() / RAND_MAX * 2.0f * 3.14159f;
+				glm::vec3 wander(cos(angle), 0, sin(angle));
+				glm::vec3 finalDir = glm::normalize(glm::mix(wander, dir, pathDirectness));
+				next = Vector3(current.x + finalDir.x * stepDist, 0, current.z + finalDir.z * stepDist);
 			}
-
-			// Check collision/LoS and subdivide
-			int  subdivisions = 0;
-			auto addWaypoints = [&](auto& self, const Vector3& a, const Vector3& b, int depth) -> void {
-				if (depth > 3) {
-					probeSpline.waypoints.push_back(b);
-					return;
-				}
-
-				float hitT;
-				if (CheckCollision(a, b, terrain, decor, hitT)) {
-					// Collision detected. Try to go ABOVE it.
-					Vector3 mid = (a + b) * 0.5f;
-					mid.y += 15.0f; // Boost height
-					self(self, a, mid, depth + 1);
-					self(self, mid, b, depth + 1);
-				} else {
-					probeSpline.waypoints.push_back(b);
-				}
-			};
-
-			addWaypoints(addWaypoints, current, next, 0);
-			current = probeSpline.waypoints.back();
+		} else {
+			float angle = (float)rand() / RAND_MAX * 2.0f * 3.14159f;
+			next = Vector3(current.x + cos(angle) * stepDist, 0, current.z + sin(angle) * stepDist);
 		}
-	}
 
-	void AmbientCameraSystem::GenerateCameraPath(ITerrainGenerator* terrain, DecorManager* decor) {
-		cameraSpline.waypoints.clear();
+		if (terrain) {
+			auto [h, n] = terrain->GetTerrainPropertiesAtPoint(next.x, next.z);
+			next.y = h + 10.0f;
+		} else {
+			next.y = 20.0f;
+		}
 
-		// Start from last camera position
-		cameraSpline.waypoints.push_back(Vector3(lastCameraPos.x, lastCameraPos.y, lastCameraPos.z));
+		// Subdivision / Collision for Probe
+		std::vector<Vector3> tempProbeWaypoints;
+		auto addWaypoints = [&](auto& self, const Vector3& a, const Vector3& b, int depth) -> void {
+			if (depth > 2) {
+				tempProbeWaypoints.push_back(b);
+				return;
+			}
+			float hitT;
+			if (CheckCollision(a, b, terrain, decor, hitT)) {
+				Vector3 mid = (a + b) * 0.5f;
+				mid.y += 15.0f;
+				self(self, a, mid, depth + 1);
+				self(self, mid, b, depth + 1);
+			} else {
+				tempProbeWaypoints.push_back(b);
+			}
+		};
+		addWaypoints(addWaypoints, current, next, 0);
 
-		// For each probe waypoint (skipping the first one which is lastProbePos),
-		// pick a camera waypoint.
-		for (size_t i = 1; i < probeSpline.waypoints.size(); ++i) {
-			Vector3 pPos = probeSpline.waypoints[i];
+		// Now we have one or more probe points. For each, add a Camera and Focus point.
+		for (const auto& pPos : tempProbeWaypoints) {
+			probeSpline.AppendWaypoint(pPos);
 
-			// Try several random points on a sphere around the probe
-			float   baseRadius = 160.0f;                    // Further away to keep probe small on screen
-			Vector3 bestCamPos = pPos + Vector3(0, 30, 80); // Default offset
+			// 2. Generate Camera Waypoint
+			Vector3 lastCam = cameraSpline.waypoints.back();
+			float   baseRadius = 160.0f;
+			Vector3 bestCamPos = pPos + Vector3(0, 30, 80);
 			float   bestScore = -1e10f;
 
 			for (int j = 0; j < 12; ++j) {
 				float phi = (float)rand() / RAND_MAX * 2.0f * 3.14159f;
-				// Constraints: Avoid directly overhead (theta in [40, 85] degrees)
 				float thetaDeg = 40.0f + (float)rand() / RAND_MAX * 45.0f;
 				float theta = glm::radians(thetaDeg);
-
-				// Adjust radius based on angle (lower angle = can get closer)
-				float angleFactor = (thetaDeg - 40.0f) / 45.0f; // 0 to 1
+				float angleFactor = (thetaDeg - 40.0f) / 45.0f;
 				float radius = baseRadius * (1.5f - 0.5f * angleFactor);
 
 				Vector3 offset(radius * sin(theta) * cos(phi), radius * cos(theta), radius * sin(theta) * sin(phi));
 				Vector3 candidate = pPos + offset;
 
-				// Constraints:
-				// 1. Above terrain
 				if (terrain) {
 					float h = std::get<0>(terrain->GetTerrainPropertiesAtPoint(candidate.x, candidate.z));
 					if (candidate.y < h + 5.0f)
 						continue;
 				}
 
-				// 2. Path Line of Sight (collision avoidance for camera movement)
 				float hitT;
-				if (CheckCollision(cameraSpline.waypoints.back(), candidate, terrain, decor, hitT)) {
+				if (CheckCollision(lastCam, candidate, terrain, decor, hitT))
 					continue;
-				}
-
-				// 3. Line of sight to Probe
 				if (CheckCollision(candidate, pPos, terrain, decor, hitT)) {
 					if (hitT < 0.95f)
 						continue;
 				}
 
-				// Score based on distance from previous camera waypoint (prefer smooth)
-				float d = (candidate - cameraSpline.waypoints.back()).Magnitude();
+				float d = (candidate - lastCam).Magnitude();
 				float score = -d;
-
 				if (score > bestScore) {
 					bestScore = score;
 					bestCamPos = candidate;
 				}
 			}
-			cameraSpline.waypoints.push_back(bestCamPos);
-		}
-	}
+			cameraSpline.AppendWaypoint(bestCamPos);
+			lastCam = bestCamPos;
 
-	void AmbientCameraSystem::GenerateFocusPath(ITerrainGenerator* terrain, DecorManager* decor) {
-		focusSpline.waypoints.clear();
+			// 3. Generate Focus Waypoint
+			Vector3 lastFocus = focusSpline.waypoints.back();
+			Vector3 cPos = bestCamPos;
 
-		// Start from last probe position (what we were looking at)
-		focusSpline.waypoints.push_back(Vector3(lastProbePos.x, lastProbePos.y, lastProbePos.z));
-
-		// For each probe waypoint
-		for (size_t i = 1; i < probeSpline.waypoints.size(); ++i) {
-			Vector3 pPos = probeSpline.waypoints[i];
-			Vector3 cPos = cameraSpline.waypoints[i];
-
-			// Default focus near the probe on terrain, not the probe itself
 			float   offsetAngle = (float)rand() / RAND_MAX * 2.0f * 3.14159f;
 			float   offsetDist = 15.0f + (float)rand() / RAND_MAX * 25.0f;
 			Vector3 targetFocus = pPos + Vector3(cos(offsetAngle) * offsetDist, 0.0f, sin(offsetAngle) * offsetDist);
@@ -398,33 +438,24 @@ namespace Boidsish {
 				targetFocus.y = std::get<0>(terrain->GetTerrainPropertiesAtPoint(targetFocus.x, targetFocus.z));
 			}
 
-			// Check if probe is in a valid focus position (horizon angle constraint)
 			glm::vec3 toFocus = glm::normalize(
 				glm::vec3(targetFocus.x - cPos.x, targetFocus.y - cPos.y, targetFocus.z - cPos.z)
 			);
 			float focusAngle = asin(toFocus.y);
 			bool  focusValid = (abs(focusAngle) <= 3.14159f / 4.0f);
 
-			// Occasionally look at POIs, or if probe is invalid
 			if (!focusValid || rand() % 2 == 0) {
 				std::vector<Vector3> pois;
-
-				// 1. Mountain peaks (proxies)
 				if (terrain) {
 					auto chunks = terrain->GetVisibleChunks();
 					for (auto& chunk : chunks) {
-						pois.push_back(Vector3(
-							chunk->proxy.highestPoint.x,
-							chunk->proxy.highestPoint.y,
-							chunk->proxy.highestPoint.z
-						));
+						pois.push_back(
+							Vector3(chunk->proxy.highestPoint.x, chunk->proxy.highestPoint.y, chunk->proxy.highestPoint.z)
+						);
 					}
 				}
+				pois.push_back(cPos + Vector3(0, 10, -500));
 
-				// 1.5 Sunset/Sun POI
-				pois.push_back(cPos + Vector3(0, 10, -500)); // Simple "Sun" direction
-
-				// 2. Decor structures
 				if (decor && terrain) {
 					float                            worldScale = terrain->GetWorldScale();
 					float                            chunkSize = 32.0f * worldScale;
@@ -437,13 +468,9 @@ namespace Boidsish {
 
 					auto results = decor->GetDecorInChunks(chunks, terrain->GetRenderManager(), *terrain);
 					for (const auto& tr : results) {
-						// Select procedural structures or important trees
 						bool isStructure = (tr.model_path.find("structure") != std::string::npos) ||
 							(tr.model_path.find("Structure") != std::string::npos);
-						bool isTree = (tr.model_path.find("tree") != std::string::npos) ||
-							(tr.model_path.find("Tree") != std::string::npos);
-
-						if (isStructure || (isTree && rand() % 5 == 0)) {
+						if (isStructure) {
 							for (const auto& inst : tr.instances) {
 								pois.push_back(Vector3(inst.center.x, inst.center.y, inst.center.z));
 								if (pois.size() > 20)
@@ -455,33 +482,67 @@ namespace Boidsish {
 					}
 				}
 
-				// Pick the best POI
-				float bestScore = -1e10f;
+				float bestScorePOI = -1e10f;
 				for (const auto& poi : pois) {
-					// Check LoS from Camera
 					float hitT;
 					if (CheckCollision(cPos, poi, terrain, decor, hitT))
 						continue;
-
-					// Check horizon angle (max 45 degrees)
 					glm::vec3 toPoi = glm::normalize(glm::vec3(poi.x - cPos.x, poi.y - cPos.y, poi.z - cPos.z));
 					float     angle = asin(toPoi.y);
 					if (abs(angle) > 3.14159f / 4.0f)
 						continue;
-
-					// Score based on distance (prefer distant vistas but not too far)
 					float d = (poi - cPos).Magnitude();
 					float score = -abs(d - 150.0f);
-
-					if (score > bestScore) {
-						bestScore = score;
+					if (score > bestScorePOI) {
+						bestScorePOI = score;
 						targetFocus = poi;
 					}
 				}
 			}
-
-			focusSpline.waypoints.push_back(targetFocus);
+			focusSpline.AppendWaypoint(targetFocus);
 		}
+	}
+
+	glm::vec3 AmbientCameraSystem::GetDefaultNextDestination(ITerrainGenerator* terrain) {
+		if (!terrain)
+			return glm::vec3(0, 0, 0);
+
+		// Tour of biomes
+		Biome targetBiome = static_cast<Biome>(m_currentBiomeTourIndex);
+		m_currentBiomeTourIndex = (m_currentBiomeTourIndex + 1) % static_cast<int>(Biome::Count);
+
+		// Find a target control value for this biome using its weight
+		float totalWeight = 0.0f;
+		for (const auto& b : kBiomes) {
+			totalWeight += b.weight;
+		}
+
+		float accumulatedWeight = 0.0f;
+		for (uint32_t i = 0; i < static_cast<uint32_t>(targetBiome); ++i) {
+			accumulatedWeight += kBiomes[i].weight;
+		}
+		float targetControl = (accumulatedWeight + kBiomes[static_cast<uint32_t>(targetBiome)].weight * 0.5f) /
+			totalWeight;
+
+		glm::vec3 currentProbePos(probeSpline.waypoints.back().x, 0, probeSpline.waypoints.back().z);
+		glm::vec3 bestDest = currentProbePos;
+		float     bestScore = -1.0f;
+
+		for (int i = 0; i < 40; ++i) {
+			float     radius = 800.0f + (float)rand() / RAND_MAX * 1600.0f;
+			float     angle = (float)rand() / RAND_MAX * 2.0f * 3.14159f;
+			glm::vec3 candidate = currentProbePos + glm::vec3(cos(angle) * radius, 0, sin(angle) * radius);
+
+			float control = terrain->GetBiomeControlValue(candidate.x, candidate.z);
+			float score = 1.0f - std::abs(control - targetControl);
+
+			if (score > bestScore) {
+				bestScore = score;
+				bestDest = candidate;
+			}
+		}
+
+		return bestDest;
 	}
 
 } // namespace Boidsish

@@ -59,13 +59,13 @@ int main() {
 			const auto& probeSpline = ambient_system.GetProbeSpline();
 			const auto& cameraSpline = ambient_system.GetCameraSpline();
 			const auto& focusSpline = ambient_system.GetFocusSpline();
-			float       globalU = ambient_system.GetGlobalU();
+			float       traversalDist = ambient_system.GetTraversalDistance();
 
 			auto addSplineVisuals = [&](const CoordinatedSpline& spline, const glm::vec3& color, int id_offset) {
 				// Waypoints
 				for (size_t i = 0; i < spline.waypoints.size(); ++i) {
 					const auto& wp = spline.waypoints[i];
-					auto        dot = std::make_shared<Dot>(id_offset + i, wp.x, wp.y, wp.z, 2.0f);
+					auto        dot = std::make_shared<Dot>(id_offset + (int)i, wp.x, wp.y, wp.z, 2.0f);
 					dot->SetColor(color.r, color.g, color.b, 1.0f);
 					shapes.push_back(dot);
 				}
@@ -73,10 +73,10 @@ int main() {
 				// Spline segments
 				if (spline.totalLength > 0.0f) {
 					const int segments = 100;
-					Vector3   prev = spline.Evaluate(0.0f);
+					Vector3   prev = spline.EvaluateAtDistance(0.0f);
 					for (int i = 1; i <= segments; ++i) {
-						float   u = (float)i / (float)segments;
-						Vector3 curr = spline.Evaluate(u);
+						float   d = (float)i / (float)segments * spline.totalLength;
+						Vector3 curr = spline.EvaluateAtDistance(d);
 						auto    line = std::make_shared<Line>(
 							glm::vec3(prev.x, prev.y, prev.z),
 							glm::vec3(curr.x, curr.y, curr.z),
@@ -94,9 +94,9 @@ int main() {
 			addSplineVisuals(focusSpline, COLOR_FOCUS, 3000);
 
 			// Marker shapes for current positions
-			Vector3 pPos = probeSpline.Evaluate(globalU);
-			Vector3 cPos = cameraSpline.Evaluate(globalU);
-			Vector3 fPos = focusSpline.Evaluate(globalU);
+			Vector3 pPos = probeSpline.EvaluateAtDistance(traversalDist);
+			Vector3 cPos = cameraSpline.EvaluateAtDistance(traversalDist);
+			Vector3 fPos = focusSpline.EvaluateAtDistance(traversalDist);
 
 			auto pMarker = std::make_shared<Polyhedron>(PolyhedronType::Cube, 0, pPos.x, pPos.y, pPos.z, 4.0f);
 			pMarker->SetColor(COLOR_PROBE.r, COLOR_PROBE.g, COLOR_PROBE.b, 1.0f);
