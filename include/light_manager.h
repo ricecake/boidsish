@@ -17,6 +17,7 @@ namespace Boidsish {
 			bool  paused = false;
 			float night_factor = 0.0f; // 0.0 (day) to 1.0 (night)
 			float moon_offset = 12.0f; // Hours offset from sun
+			float moon_azimuth = 70.0f;
 		};
 
 		int                 AddLight(const Light& light);

@@ -91,10 +91,16 @@ namespace Boidsish {
 		if (_cycle.enabled) {
 			if (!_cycle.paused) {
 				_cycle.time += deltaTime * _cycle.speed;
-				if (_cycle.time >= 24.0f)
+				if (_cycle.time >= 24.0f) {
 					_cycle.time -= 24.0f;
-				if (_cycle.time < 0.0f)
+					// Randomize moon azimuth for the next cycle (between 45 and 135 degrees)
+					_cycle.moon_azimuth = 45.0f + static_cast<float>(rand()) / (static_cast<float>(RAND_MAX) / 90.0f);
+				}
+				if (_cycle.time < 0.0f) {
 					_cycle.time += 24.0f;
+					// Randomize if we wrap back (rare but possible)
+					_cycle.moon_azimuth = 45.0f + static_cast<float>(rand()) / (static_cast<float>(RAND_MAX) / 90.0f);
+				}
 			}
 
 			// Update default directional lights (Sun and Moon)
@@ -115,7 +121,7 @@ namespace Boidsish {
 					moon_time -= 24.0f;
 				float moon_angle_deg = (moon_time / 24.0f) * 360.0f;
 				_lights[1].elevation = moon_angle_deg - 90.0f;
-				_lights[1].azimuth = 70.0f; // Slightly different arc than sun for variety
+				_lights[1].azimuth = _cycle.moon_azimuth;
 				_lights[1].UpdateDirectionFromAngles();
 
 				float sun_vis = glm::sin(glm::radians(_lights[0].elevation));
