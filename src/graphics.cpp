@@ -1400,6 +1400,9 @@ namespace Boidsish {
 			bool                               is_shadow_pass = false,
 			bool                               dispatch_hiz_occlusion = false
 		) {
+			PROJECT_PROFILE_SCOPE(
+				layer == RenderLayer::Opaque ? "ExecuteRenderQueue::Opaque" : "ExecuteRenderQueue::Transparent"
+			);
 			// Integrate trails into the render queue for the transparent layer
 			if (layer == RenderLayer::Transparent && trail_render_manager && !is_shadow_pass) {
 				RenderContext context;
@@ -2926,8 +2929,11 @@ namespace Boidsish {
 		impl->prev_view_projection = current_vp;
 
 		// --- Resource Preparation (Main Thread) ---
-		for (const auto& shape : impl->shapes) {
-			shape->PrepareResources(impl->megabuffer.get());
+		{
+			PROJECT_PROFILE_SCOPE("PrepareResources");
+			for (const auto& shape : impl->shapes) {
+				shape->PrepareResources(impl->megabuffer.get());
+			}
 		}
 
 		// --- ASYNCHRONOUS PACKET GENERATION ---
@@ -2954,6 +2960,7 @@ namespace Boidsish {
 		for (size_t i = 0; i < num_shapes; i += chunk_size) {
 			size_t end = std::min(i + chunk_size, num_shapes);
 			packet_futures.push_back(impl->thread_pool.submit([this, impl_ptr, i, end, context]() {
+				PROJECT_PROFILE_SCOPE("PacketGenerationWorker");
 				std::vector<RenderPacket> local_packets;
 				local_packets.reserve(end - i);
 				for (size_t j = i; j < end; ++j) {
@@ -3339,10 +3346,16 @@ namespace Boidsish {
 
 		// --- SYNC POINT ---
 		// Wait for all packet generation tasks to complete
-		for (auto& f : packet_futures) {
-			f.get();
+		{
+			PROJECT_PROFILE_SCOPE("WaitForPackets");
+			for (auto& f : packet_futures) {
+				f.get();
+			}
 		}
-		impl->render_queue.Sort(impl->thread_pool);
+		{
+			PROJECT_PROFILE_SCOPE("SortRenderQueue");
+			impl->render_queue.Sort(impl->thread_pool);
+		}
 
 		// --- PHASE 2 SHADOW PASS (Shapes) ---
 		if (!maps_to_update.empty()) {
@@ -3399,6 +3412,7 @@ namespace Boidsish {
 		bool skip_intermediate = (impl->render_scale == 1.0f && !effects_enabled && !has_shockwaves);
 
 		// --- Main Scene Pass ---
+		PROJECT_PROFILE_SCOPE("MainScenePass");
 		if (skip_intermediate) {
 			glBindFramebuffer(GL_FRAMEBUFFER, 0);
 			glViewport(0, 0, impl->width, impl->height);
@@ -3460,17 +3474,24 @@ namespace Boidsish {
 			impl->enable_hiz_culling_ && impl->frame_count_ > 0
 		);
 
-		impl->RenderTerrain(view, impl->projection, std::nullopt);
+		{
+			PROJECT_PROFILE_SCOPE("RenderTerrain");
+			impl->RenderTerrain(view, impl->projection, std::nullopt);
+		}
 		impl->RenderPlane(view);
 
 		// Render sky AFTER opaque geometry so early-Z rejects covered fragments
 		// This avoids expensive noise calculations for pixels already drawn
-		impl->RenderSky(view);
+		{
+			PROJECT_PROFILE_SCOPE("RenderSky");
+			impl->RenderSky(view);
+		}
 
 		GLuint current_texture = impl->main_fbo_texture_;
 		GLuint current_depth = impl->main_fbo_depth_texture_;
 
 		if (effects_enabled) {
+			PROJECT_PROFILE_SCOPE("PostProcessing::Early");
 			impl->post_processing_manager_
 				->BeginApply(current_texture, impl->main_fbo_, current_depth, impl->main_fbo_velocity_texture_);
 			impl->post_processing_manager_
@@ -3528,6 +3549,7 @@ namespace Boidsish {
 		if (effects_enabled) {
 			// --- Post-processing Pass (renders FBO texture to screen) ---
 
+			PROJECT_PROFILE_SCOPE("PostProcessing::Late");
 			// Apply standard post-processing effects (at render resolution)
 			impl->post_processing_manager_
 				->ApplyLateEffects(view, impl->projection, impl->camera.pos(), impl->simulation_time);

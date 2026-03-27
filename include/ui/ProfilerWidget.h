@@ -18,6 +18,7 @@ namespace Boidsish {
 
 		private:
 			bool m_show = false;
+			bool m_treeView = true;
 		};
 	} // namespace UI
 } // namespace Boidsish
