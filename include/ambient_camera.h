@@ -55,6 +55,15 @@ namespace Boidsish {
 		 */
 		bool HasReachedDestination() const { return !hasDestination; }
 
+		// Getters for visualization
+		const CoordinatedSpline& GetProbeSpline() const { return probeSpline; }
+
+		const CoordinatedSpline& GetCameraSpline() const { return cameraSpline; }
+
+		const CoordinatedSpline& GetFocusSpline() const { return focusSpline; }
+
+		float GetGlobalU() const { return globalU; }
+
 	private:
 		void GenerateNewPaths(ITerrainGenerator* terrain, DecorManager* decor);
 
