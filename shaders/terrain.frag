@@ -377,27 +377,7 @@ void main() {
 	float beachMask = 1.0 - smoothstep(0.0, HEIGHT_BEACH_END + 2.0, baseHeight);
 	cliffMask *= (1.0 - beachMask);
 
-	// Sample Biome Map for procedural consistency
-	vec2  remappedUV = (TexCoords * uRawChunkSize + 0.5) / (uRawChunkSize + 1.0);
-	vec2  biomeData = texture(uBiomeMap, vec3(remappedUV, TextureSlice)).rg;
-	int   lowIdx = int(biomeData.r * 255.0 + 0.5);
-	int   highIdx = min(lowIdx + 1, 7);
-	float biomeT = biomeData.g;
-
-	BiomeProperties lowBiome = biomes[lowIdx];
-	BiomeProperties highBiome = biomes[highIdx];
-
-	vec3  proceduralAlbedo = mix(lowBiome.albedo_roughness.rgb, highBiome.albedo_roughness.rgb, biomeT);
-	float proceduralRoughness = mix(lowBiome.albedo_roughness.w, highBiome.albedo_roughness.w, biomeT);
-	float proceduralMetallic = mix(lowBiome.params.x, highBiome.params.x, biomeT);
-
 	TerrainMaterial biomeMat = getBiomeMaterial(distortedHeight, moisture, combinedNoise);
-
-	// Override heuristic albedo with procedural albedo from map
-	biomeMat.albedo = proceduralAlbedo;
-	biomeMat.roughness = mix(biomeMat.roughness, proceduralRoughness, 0.5); // Blend for detail
-	biomeMat.metallic = proceduralMetallic;
-
 	TerrainMaterial cliffMat = getCliffMaterial(baseHeight, medNoise);
 
 	// Blend biome with cliff material
