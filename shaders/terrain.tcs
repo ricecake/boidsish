@@ -29,7 +29,7 @@ uniform float          uRawChunkSize;
 #include "helpers/lighting.glsl"
 
 uniform float uTessLevelMax = 16.0;
-uniform float uTessLevelMin = 4.0;
+uniform float uTessLevelMin = 2.0;
 uniform float uTessQualityMultiplier = 1.0;
 uniform bool  uIsShadowPass = false;
 
@@ -53,7 +53,7 @@ void sampleHeightmap(vec2 uv, float slice, vec3 worldOffset, out vec3 worldPos, 
 
 float roundToPlaces(float value, float places) {
 	float shift = pow(10.0, places);
-	return round(value * shift) / shift;
+	return roundEven(value * shift) / shift;
 }
 
 bool isLess(vec3 a, vec3 b) {
@@ -104,8 +104,8 @@ float GetEdgeTessLevel(vec3 p0, vec3 p1, vec3 n0, vec3 n1) {
 	float pixelLength;
 
 	// Use a blend range to smoothly transition between distance-based and screen-space
-	float nearLimit = 0.1;
-	float farLimit = 1.0;
+	float nearLimit = 0.5;
+	float farLimit = 5.0;
 	float blend = clamp((min(clip0.w, clip1.w) - nearLimit) / (farLimit - nearLimit), 0.0, 1.0);
 
 	// Distance-based approximation (used near camera)
@@ -128,21 +128,21 @@ float GetEdgeTessLevel(vec3 p0, vec3 p1, vec3 n0, vec3 n1) {
 
 	// Base tessellation: target pixels per segment
 	// Target ~8 pixels per triangle edge for high quality, 16 for medium, 32 for low
-	float targetPixels = 8.0 / uTessQualityMultiplier;
+	float targetPixels = (8.0 / uTessQualityMultiplier);
 
 	// 1. SILHOUETTE BOOST
 	// Boost tessellation for edges that form the silhouette to keep curves smooth
-	float silhouetteFactor = 1.0 - abs(dot(midNormal, viewDir));
+	float silhouetteFactor = roundToPlaces(1.0 - abs(dot(midNormal, viewDir)), 3);
 
 	// Distance fade for silhouette boost to avoid over-tessellating distant silhouettes
 	float silhouetteBoost = mix(1.0, 5.0, silhouetteFactor);
 
 	// 2. CURVATURE BOOST
 	// Boost tessellation where surface normal changes rapidly
-	float curvatureFactor = 1.0 - dot(ln0, ln1);
+	float curvatureFactor = roundToPlaces(1.0 - dot(ln0, ln1), 3);
 	float curvatureBoost = mix(1.0, 5.0, clamp(curvatureFactor * 10.0, 0.0, 1.0));
 
-	return clamp((pixelLength * silhouetteBoost * curvatureBoost) / targetPixels, uTessLevelMin, uTessLevelMax);
+	return roundToPlaces(clamp((pixelLength * silhouetteBoost * curvatureBoost) / targetPixels, uTessLevelMin, uTessLevelMax), 1);
 }
 
 float perturbLevel(vec3 worldPos, vec3 forward) {
