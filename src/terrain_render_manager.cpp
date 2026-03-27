@@ -531,7 +531,10 @@ namespace Boidsish {
 		last_camera_pos_ = camera_pos;
 		last_world_scale_ = world_scale;
 
-		UpdateGridTextures(world_scale);
+		{
+			PROJECT_PROFILE_SCOPE("UpdateGridTextures");
+			UpdateGridTextures(world_scale);
+		}
 
 		visible_instances_.clear();
 		visible_instances_.reserve(chunks_.size());
@@ -547,8 +550,10 @@ namespace Boidsish {
 
 		glm::vec2 camera_pos_2d(camera_pos.x, camera_pos.z);
 
-		for (const auto& [key, chunk] : chunks_) {
-			if (IsChunkVisible(chunk, frustum, world_scale)) {
+		{
+			PROJECT_PROFILE_SCOPE("VisibilityCulling");
+			for (const auto& [key, chunk] : chunks_) {
+				if (IsChunkVisible(chunk, frustum, world_scale)) {
 				InstanceData instance{};
 				instance.world_offset_and_slice = glm::vec4(
 					chunk.world_offset.x,
@@ -567,13 +572,17 @@ namespace Boidsish {
 				float dist_sq = glm::dot(chunk_center - camera_pos_2d, chunk_center - camera_pos_2d);
 
 				visible_chunks.push_back({instance, dist_sq});
+				}
 			}
 		}
 
 		// Sort by distance (front-to-back for better early-Z rejection)
-		std::sort(visible_chunks.begin(), visible_chunks.end(), [](const VisibleChunk& a, const VisibleChunk& b) {
-			return a.distance_sq < b.distance_sq;
-		});
+		{
+			PROJECT_PROFILE_SCOPE("SortChunks");
+			std::sort(visible_chunks.begin(), visible_chunks.end(), [](const VisibleChunk& a, const VisibleChunk& b) {
+				return a.distance_sq < b.distance_sq;
+			});
+		}
 
 		// Build final instance list
 		for (const auto& vc : visible_chunks) {
@@ -581,6 +590,7 @@ namespace Boidsish {
 		}
 
 		// Upload instance data to GPU
+		PROJECT_PROFILE_SCOPE("UploadInstanceData");
 		if (!visible_instances_.empty()) {
 			glBindBuffer(GL_ARRAY_BUFFER, instance_vbo_);
 

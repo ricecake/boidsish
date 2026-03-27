@@ -443,7 +443,7 @@ namespace Boidsish {
 				glm::vec3(targetFocus.x - cPos.x, targetFocus.y - cPos.y, targetFocus.z - cPos.z)
 			);
 			float focusAngle = asin(toFocus.y);
-			bool  focusValid = (abs(focusAngle) <= 3.14159f / 4.0f);
+			bool  focusValid = (std::abs(focusAngle) <= 3.14159f / 4.0f);
 
 			if (!focusValid || rand() % 2 == 0) {
 				std::vector<Vector3> pois;
@@ -492,10 +492,10 @@ namespace Boidsish {
 						continue;
 					glm::vec3 toPoi = glm::normalize(glm::vec3(poi.x - cPos.x, poi.y - cPos.y, poi.z - cPos.z));
 					float     angle = asin(toPoi.y);
-					if (abs(angle) > 3.14159f / 4.0f)
+					if (std::abs(angle) > 3.14159f / 4.0f)
 						continue;
 					float d = (poi - cPos).Magnitude();
-					float score = -abs(d - 150.0f);
+					float score = -std::abs(d - 150.0f);
 					if (score > bestScorePOI) {
 						bestScorePOI = score;
 						targetFocus = poi;
