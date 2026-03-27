@@ -534,7 +534,10 @@ namespace Boidsish {
 		last_camera_pos_ = camera_pos;
 		last_world_scale_ = world_scale;
 
-		UpdateGridTextures(world_scale);
+		{
+			PROJECT_PROFILE_SCOPE("UpdateGridTextures");
+			UpdateGridTextures(world_scale);
+		}
 
 		visible_instances_.clear();
 		visible_instances_.reserve(chunks_.size());
@@ -550,33 +553,39 @@ namespace Boidsish {
 
 		glm::vec2 camera_pos_2d(camera_pos.x, camera_pos.z);
 
-		for (const auto& [key, chunk] : chunks_) {
-			if (IsChunkVisible(chunk, frustum, world_scale)) {
-				InstanceData instance{};
-				instance.world_offset_and_slice = glm::vec4(
-					chunk.world_offset.x,
-					0.0f,                 // Y offset is always 0 (height comes from heightmap)
-					chunk.world_offset.y, // This is the Z world coordinate
-					static_cast<float>(chunk.texture_slice)
-				);
-				instance.bounds = glm::vec4(chunk.min_y, chunk.max_y, 0.0f, 0.0f);
+		{
+			PROJECT_PROFILE_SCOPE("VisibilityCulling");
+			for (const auto& [key, chunk] : chunks_) {
+				if (IsChunkVisible(chunk, frustum, world_scale)) {
+					InstanceData instance{};
+					instance.world_offset_and_slice = glm::vec4(
+						chunk.world_offset.x,
+						0.0f,                 // Y offset is always 0 (height comes from heightmap)
+						chunk.world_offset.y, // This is the Z world coordinate
+						static_cast<float>(chunk.texture_slice)
+					);
+					instance.bounds = glm::vec4(chunk.min_y, chunk.max_y, 0.0f, 0.0f);
 
-				// Calculate distance from chunk center to camera
-				float     scaled_chunk_size = chunk_size_ * world_scale;
-				glm::vec2 chunk_center(
-					chunk.world_offset.x + scaled_chunk_size * 0.5f,
-					chunk.world_offset.y + scaled_chunk_size * 0.5f
-				);
-				float dist_sq = glm::dot(chunk_center - camera_pos_2d, chunk_center - camera_pos_2d);
+					// Calculate distance from chunk center to camera
+					float     scaled_chunk_size = chunk_size_ * world_scale;
+					glm::vec2 chunk_center(
+						chunk.world_offset.x + scaled_chunk_size * 0.5f,
+						chunk.world_offset.y + scaled_chunk_size * 0.5f
+					);
+					float dist_sq = glm::dot(chunk_center - camera_pos_2d, chunk_center - camera_pos_2d);
 
-				visible_chunks.push_back({instance, dist_sq});
+					visible_chunks.push_back({instance, dist_sq});
+				}
 			}
 		}
 
 		// Sort by distance (front-to-back for better early-Z rejection)
-		std::sort(visible_chunks.begin(), visible_chunks.end(), [](const VisibleChunk& a, const VisibleChunk& b) {
-			return a.distance_sq < b.distance_sq;
-		});
+		{
+			PROJECT_PROFILE_SCOPE("SortChunks");
+			std::sort(visible_chunks.begin(), visible_chunks.end(), [](const VisibleChunk& a, const VisibleChunk& b) {
+				return a.distance_sq < b.distance_sq;
+			});
+		}
 
 		// Build final instance list
 		for (const auto& vc : visible_chunks) {
@@ -584,6 +593,7 @@ namespace Boidsish {
 		}
 
 		// Upload instance data to GPU
+		PROJECT_PROFILE_SCOPE("UploadInstanceData");
 		if (!visible_instances_.empty()) {
 			glBindBuffer(GL_ARRAY_BUFFER, instance_vbo_);
 

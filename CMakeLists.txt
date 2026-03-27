@@ -6,6 +6,21 @@ set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS ON) # Corresponds to -std=gnu++23
 
+# Get the current git hash
+execute_process(
+    COMMAND git rev-parse --short HEAD
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+    OUTPUT_VARIABLE GIT_HASH
+    OUTPUT_STRIP_TRAILING_WHITESPACE
+    ERROR_QUIET
+)
+
+if(NOT GIT_HASH)
+    set(GIT_HASH "unknown")
+endif()
+
+add_definitions(-DBOIDSISH_BUILD_ID="${GIT_HASH}")
+
 option(ENABLE_PROFILING "Enable profiling instrumentation" OFF)
 if(ENABLE_PROFILING)
     add_definitions(-DPROFILING_ENABLED)

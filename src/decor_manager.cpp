@@ -443,6 +443,7 @@ namespace Boidsish {
 		const ITerrainGenerator&              terrain_gen,
 		std::shared_ptr<TerrainRenderManager> render_manager
 	) {
+		PROJECT_PROFILE_SCOPE("DecorManager::_UpdateAllocation");
 		float world_scale = terrain_gen.GetWorldScale();
 
 		GLuint heightmap_texture = render_manager->GetHeightmapTexture();

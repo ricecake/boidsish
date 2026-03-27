@@ -1,8 +1,17 @@
 #include "profiler.h"
 
+#include <cstring>
+#include <ctime>
+#include <fstream>
+#include <iomanip>
+#include <stack>
+
 #ifdef PROFILING_ENABLED
 
 namespace Boidsish {
+
+	static thread_local std::stack<const char*> s_scopeStack;
+	static thread_local std::string             s_currentPath;
 
 	Profiler& Profiler::GetInstance() {
 		static Profiler instance;
@@ -10,8 +19,20 @@ namespace Boidsish {
 	}
 
 	void Profiler::RecordSample(const char* name, double durationUs) {
+		std::string fullName = s_currentPath;
+		if (name) {
+			if (!fullName.empty())
+				fullName += "/";
+			fullName += name;
+		}
+
+		if (fullName.empty()) {
+			// If we're not in a path and have no name, use "unknown"
+			fullName = "unknown";
+		}
+
 		std::lock_guard<std::mutex> lock(m_mutex);
-		auto&                       stats = m_stats[name];
+		auto&                       stats = m_stats[fullName];
 		stats.count++;
 		stats.totalTimeUs += durationUs;
 		if (durationUs < stats.minTimeUs)
@@ -19,7 +40,7 @@ namespace Boidsish {
 		if (durationUs > stats.maxTimeUs)
 			stats.maxTimeUs = durationUs;
 
-		m_frameCalls[name]++;
+		m_frameCalls[fullName]++;
 
 		// EMA update for time
 		const double alpha = 0.05;
@@ -27,6 +48,30 @@ namespace Boidsish {
 			stats.emaTimeUs = durationUs;
 		} else {
 			stats.emaTimeUs = alpha * durationUs + (1.0 - alpha) * stats.emaTimeUs;
+		}
+	}
+
+	void Profiler::PushScope(const char* name) {
+		const char* actualName = name ? name : "unknown";
+		if (!s_currentPath.empty()) {
+			s_currentPath += "/";
+		}
+		s_currentPath += actualName;
+		s_scopeStack.push(actualName);
+	}
+
+	void Profiler::PopScope() {
+		if (s_scopeStack.empty())
+			return;
+
+		const char* topName = s_scopeStack.top();
+		s_scopeStack.pop();
+
+		size_t nameLen = strlen(topName);
+		if (s_currentPath.length() > nameLen) {
+			s_currentPath.erase(s_currentPath.length() - nameLen - 1); // Remove name and the slash
+		} else {
+			s_currentPath.clear();
 		}
 	}
 
@@ -52,6 +97,8 @@ namespace Boidsish {
 			} else {
 				stats.emaCallsPerFrame = alpha * static_cast<double>(calls) + (1.0 - alpha) * stats.emaCallsPerFrame;
 			}
+
+			stats.impact = stats.emaTimeUs * stats.emaCallsPerFrame;
 		}
 
 		m_frameCalls.clear();
@@ -79,12 +126,41 @@ namespace Boidsish {
 		m_totalFrames = 0;
 	}
 
-	ProfileScope::ProfileScope(const char* name): m_name(name), m_start(std::chrono::high_resolution_clock::now()) {}
+	void Profiler::SaveReport() {
+		std::lock_guard<std::mutex> lock(m_mutex);
+
+		auto t = std::time(nullptr);
+		auto tm = *std::localtime(&t);
+
+		std::ostringstream oss;
+		oss << "profile_" << BOIDSISH_BUILD_ID << "_";
+		oss << std::put_time(&tm, "%Y%m%d_%H%M%S") << ".csv";
+		std::string filename = oss.str();
+
+		std::ofstream file(filename);
+		if (!file.is_open())
+			return;
+
+		file << "Build ID," << BOIDSISH_BUILD_ID << "\n";
+		file << "Timestamp," << std::put_time(&tm, "%Y-%m-%d %H:%M:%S") << "\n\n";
+
+		file << "Name,Count,Avg (us),EMA (us),Min (us),Max (us),Avg Calls/F,EMA Calls/F,Impact\n";
+		for (const auto& [name, stats] : m_stats) {
+			file << "\"" << name << "\"," << stats.count << "," << (stats.totalTimeUs / stats.count) << ","
+				 << stats.emaTimeUs << "," << stats.minTimeUs << "," << stats.maxTimeUs << "," << stats.avgCallsPerFrame
+				 << "," << stats.emaCallsPerFrame << "," << stats.impact << "\n";
+		}
+	}
+
+	ProfileScope::ProfileScope(const char* name): m_name(name), m_start(std::chrono::high_resolution_clock::now()) {
+		Profiler::GetInstance().PushScope(name);
+	}
 
 	ProfileScope::~ProfileScope() {
 		auto end = std::chrono::high_resolution_clock::now();
 		auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end - m_start).count();
-		Profiler::GetInstance().RecordSample(m_name, static_cast<double>(duration));
+		Profiler::GetInstance().RecordSample(nullptr, static_cast<double>(duration));
+		Profiler::GetInstance().PopScope();
 	}
 } // namespace Boidsish
 
