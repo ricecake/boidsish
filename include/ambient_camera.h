@@ -1,5 +1,6 @@
 #pragma once
 
+#include <functional>
 #include <memory>
 #include <vector>
 
@@ -19,9 +20,20 @@ namespace Boidsish {
 		std::vector<Vector3> waypoints;
 		std::vector<float>   arcLengthLUT; // Maps index/t to cumulative distance
 		float                totalLength = 0.0f;
+		int                  samplesPerSegment = 20;
 
 		void    BuildLUT(int samplesPerSegment = 20);
-		Vector3 Evaluate(float u) const; // u in [0, 1] (normalized arc-length)
+		void    AppendWaypoint(Vector3 wp);
+		void    PopFrontWaypoint();
+		Vector3 Evaluate(float u) const;                    // u in [0, 1] (normalized arc-length)
+		Vector3 EvaluateAtDistance(float dist) const;       // Absolute distance
+		Vector3 Evaluate(size_t segmentIdx, float t) const; // t in [0, 1] within segment
+		float   GetSegmentLength(size_t segmentIdx) const;
+
+		size_t GetSegmentCount() const { return waypoints.size() < 2 ? 0 : waypoints.size() - 1; }
+
+		// Helper to find segment index and local t from absolute distance
+		std::pair<size_t, float> GetSegmentAndT(float dist) const;
 	};
 
 	/**
@@ -29,6 +41,8 @@ namespace Boidsish {
 	 */
 	class AmbientCameraSystem {
 	public:
+		using NextDestinationCallback = std::function<glm::vec3(ITerrainGenerator*)>;
+
 		AmbientCameraSystem();
 		~AmbientCameraSystem();
 
@@ -51,6 +65,11 @@ namespace Boidsish {
 		void SetDestination(glm::vec3 dest, float directness = 0.5f);
 
 		/**
+		 * @brief Sets a callback to be called when the system needs a new destination.
+		 */
+		void SetNextDestinationCallback(NextDestinationCallback cb) { m_nextDestinationCallback = cb; }
+
+		/**
 		 * @brief Check if the probe has reached its current destination.
 		 */
 		bool HasReachedDestination() const { return !hasDestination; }
@@ -62,29 +81,32 @@ namespace Boidsish {
 
 		const CoordinatedSpline& GetFocusSpline() const { return focusSpline; }
 
-		float GetGlobalU() const { return globalU; }
+		float GetTraversalDistance() const { return traversalDistance; }
 
 	private:
 		void GenerateNewPaths(ITerrainGenerator* terrain, DecorManager* decor);
 
-		// Path generation helpers
-		void GenerateProbePath(ITerrainGenerator* terrain, DecorManager* decor);
-		void GenerateCameraPath(ITerrainGenerator* terrain, DecorManager* decor);
-		void GenerateFocusPath(ITerrainGenerator* terrain, DecorManager* decor);
+		// Incremental path generation
+		void AddWaypointToAllSplines(ITerrainGenerator* terrain, DecorManager* decor);
+
+		// Default destination logic
+		glm::vec3 GetDefaultNextDestination(ITerrainGenerator* terrain);
 
 		// Splines
 		CoordinatedSpline probeSpline;
 		CoordinatedSpline cameraSpline;
 		CoordinatedSpline focusSpline;
 
-		float globalU = 0.0f;         // Current traversal parameter [0, 1]
-		float traversalSpeed = 10.0f; // Units per second
+		float traversalDistance = 0.0f; // Absolute distance along probeSpline
+		float traversalSpeed = 10.0f;   // Units per second
 		bool  pathsValid = false;
 
 		// Destination state
-		bool      hasDestination = false;
-		glm::vec3 targetDestination{0.0f};
-		float     pathDirectness = 0.5f;
+		bool                    hasDestination = false;
+		glm::vec3               targetDestination{0.0f};
+		float                   pathDirectness = 0.5f;
+		NextDestinationCallback m_nextDestinationCallback;
+		int                     m_currentBiomeTourIndex = 0;
 
 		// State for path generation
 		glm::vec3 lastProbePos{0.0f, 20.0f, 0.0f};
