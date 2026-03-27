@@ -849,7 +849,7 @@ namespace Boidsish {
 
 		void BindShadows(Shader& s) {
 			s.use();
-			if (shadow_manager && shadow_manager->IsInitialized()) {
+			if (shadow_manager && shadow_manager->IsInitialized() && frame_config_.enable_shadows) {
 				shadow_manager->BindForRendering(s);
 				std::array<int, 10> shadow_indices;
 				shadow_indices.fill(-1);
@@ -908,6 +908,7 @@ namespace Boidsish {
 			frame_config_.artistic_glitched = cfg.GetAppSettingBool("artistic_effect_glitched", false);
 			frame_config_.artistic_wireframe = cfg.GetAppSettingBool("artistic_effect_wireframe", false);
 			frame_config_.enable_floor_reflection = cfg.GetAppSettingBool("enable_floor_reflection", true);
+			frame_config_.enable_shadows = cfg.GetAppSettingBool("enable_shadows", true);
 		}
 
 		~VisualizerImpl() {
@@ -2240,7 +2241,7 @@ namespace Boidsish {
 		}
 
 		// --- Shadow Pass (render depth from each shadow-casting light) ---
-		if (impl->shadow_manager && impl->shadow_manager->IsInitialized()) {
+		if (impl->shadow_manager && impl->shadow_manager->IsInitialized() && impl->frame_config_.enable_shadows) {
 			std::vector<Light*> shadow_lights = impl->light_manager.GetShadowCastingLights();
 
 			// 1. Assign stable map indices and identify maps

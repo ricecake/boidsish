@@ -20,7 +20,8 @@ namespace Boidsish {
 					const std::string& key = pair.first;
 					const ConfigValue& val_info = pair.second;
 
-					if (key.contains("artistic_effect_") || key == "render_scale") {
+					if (key.contains("artistic_effect_") || key == "render_scale" || key == "enable_shadows" ||
+					    key == "enable_floor_reflection") {
 						continue;
 					}
 
@@ -156,6 +157,17 @@ namespace Boidsish {
 					float render_scale = m_visualizer.GetRenderScale();
 					if (ImGui::SliderFloat("Render Scale", &render_scale, 0.1f, 1.0f)) {
 						m_visualizer.SetRenderScale(render_scale);
+					}
+
+					auto& config_manager = ConfigManager::GetInstance();
+					bool  enable_shadows = config_manager.GetAppSettingBool("enable_shadows", true);
+					if (ImGui::Checkbox("Enable Shadows", &enable_shadows)) {
+						config_manager.SetBool("enable_shadows", enable_shadows);
+					}
+
+					bool enable_reflections = config_manager.GetAppSettingBool("enable_floor_reflection", true);
+					if (ImGui::Checkbox("Enable Floor Reflections", &enable_reflections)) {
+						config_manager.SetBool("enable_floor_reflection", enable_reflections);
 					}
 				}
 

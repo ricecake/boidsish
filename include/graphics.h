@@ -94,6 +94,7 @@ namespace Boidsish {
 		bool artistic_glitched = false;
 		bool artistic_wireframe = false;
 		bool enable_floor_reflection = true;
+		bool enable_shadows = true;
 	};
 
 	enum class CameraMode { FREE, AUTO, TRACKING, STATIONARY, CHASE, PATH_FOLLOW };
