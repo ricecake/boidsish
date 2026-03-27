@@ -8,6 +8,7 @@ in float perturbFactor;
 
 #include "helpers/lighting.glsl"
 #include "helpers/terrain_noise.glsl"
+#include "visual_effects.frag"
 
 uniform bool uIsShadowPass = false;
 
@@ -389,6 +390,8 @@ void main() {
 	vec3 lighting =
 		apply_lighting_pbr(FragPos, perturbedNorm, finalAlbedo, finalMaterial.roughness, finalMaterial.metallic, 1.0)
 			.rgb;
+
+	lighting = applySynthwave(lighting, FragPos, day_night_factor);
 
 	// ========================================================================
 	// Distance Fade

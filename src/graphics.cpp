@@ -70,6 +70,23 @@
 namespace Boidsish {
 
 	/**
+	 * @brief GPU-compatible lighting data for UBO upload (std140 layout).
+	 * Must match Lighting uniform block in lighting.glsl.
+	 */
+	struct LightingUbo {
+		LightGPU  lights[10];           // offset 0, 640 bytes
+		int       num_lights;           // offset 640, 4 bytes
+		int       _pad0[3];             // offset 644, 12 bytes padding (to 16-byte boundary)
+		glm::vec4 viewPos;              // offset 656, 16 bytes (using vec4 for 16-byte alignment)
+		glm::vec4 ambient_light;        // offset 672, 16 bytes
+		float     time;                 // offset 688, 4 bytes
+		int       day_count;            // offset 692, 4 bytes
+		float     day_night_factor;     // offset 696, 4 bytes
+		float     _pad1;                // offset 700, 4 bytes padding (to 16-byte boundary)
+		glm::vec4 viewDir;              // offset 704, 16 bytes
+	};                                  // Total: 720 bytes (multiple of 16)
+
+	/**
 	 * @brief Registers core C++ constants for use within shaders.
 	 * This ensures that shader-side buffers and loops always match C++ expectations.
 	 */
@@ -244,6 +261,8 @@ namespace Boidsish {
 		bool                                           paused = false;
 		float                                          simulation_time = 0.0f;
 		float                                          time_scale = 1.0f;
+		int                                            day_count = 0;
+		float                                          day_night_factor = 0.0f;
 		float                                          ripple_strength = 0.0f;
 		std::chrono::high_resolution_clock::time_point last_frame;
 
@@ -481,9 +500,15 @@ namespace Boidsish {
 			const int MAX_LIGHTS = 10;
 			glGenBuffers(1, &lighting_ubo);
 			glBindBuffer(GL_UNIFORM_BUFFER, lighting_ubo);
-			glBufferData(GL_UNIFORM_BUFFER, 704, NULL, GL_DYNAMIC_DRAW);
+		glBufferData(GL_UNIFORM_BUFFER, sizeof(LightingUbo), NULL, GL_DYNAMIC_DRAW);
 			glBindBuffer(GL_UNIFORM_BUFFER, 0);
-			glBindBufferRange(GL_UNIFORM_BUFFER, Constants::UboBinding::Lighting(), lighting_ubo, 0, 704);
+		glBindBufferRange(
+			GL_UNIFORM_BUFFER,
+			Constants::UboBinding::Lighting(),
+			lighting_ubo,
+			0,
+			sizeof(LightingUbo)
+		);
 
 			if (ConfigManager::GetInstance().GetAppSettingBool("enable_effects", true)) {
 				glGenBuffers(1, &visual_effects_ubo);
@@ -1813,9 +1838,49 @@ namespace Boidsish {
 			// TODO: Implement a fixed timestep for simulation stability.
 			// See performance_and_quality_audit.md#4-fixed-timestep-for-simulation-stability
 			impl->simulation_time += impl->time_scale * delta_time;
+
+			// Day/Night Cycle Logic
+			float cycle_length = Constants::General::DayNight::CycleLength();
+			float day_split = Constants::General::DayNight::DaySplit();
+			impl->day_count = static_cast<int>(floor(impl->simulation_time / cycle_length));
+			float cycle_time = fmod(impl->simulation_time, cycle_length);
+			float progress = cycle_time / cycle_length; // 0.0 to 1.0
+
+			// Calculate day_night_factor: 0.0 for day, 1.0 for night, with smooth transitions.
+			// Noon is at day_split / 2, Midnight is at day_split + (1.0 - day_split) / 2.
+
+			// Simple transition based on DaySplit
+			float transition_width = 0.1f;
+			if (progress < day_split) {
+				// Day time
+				float t = progress / day_split; // 0 to 1
+				// Fade in factor from previous night if at dawn
+				if (progress < transition_width) {
+					impl->day_night_factor = 0.5f * (1.0f - progress / transition_width);
+				} else if (progress > day_split - transition_width) {
+					impl->day_night_factor = 0.5f * (progress - (day_split - transition_width)) / transition_width;
+				} else {
+					impl->day_night_factor = 0.0f;
+				}
+			} else {
+				// Night time
+				float night_progress = (progress - day_split) / (1.0f - day_split); // 0 to 1
+				if (night_progress < transition_width) {
+					impl->day_night_factor = 0.5f + 0.5f * (night_progress / transition_width);
+				} else if (night_progress > 1.0f - transition_width) {
+					impl->day_night_factor = 1.0f - 0.5f * (night_progress - (1.0f - transition_width)) / transition_width;
+				} else {
+					impl->day_night_factor = 1.0f;
+				}
+			}
+
+			// Actually, a smoother way that is periodic:
+			// Just use a shifted cosine wave for now as it's most visually pleasing
+			impl->day_night_factor = 0.5f - 0.5f * cosf(2.0f * Constants::General::Math::Pi() * (progress - day_split/2.0f));
 		}
 
 		impl->light_manager.Update(impl->input_state.delta_time);
+		impl->light_manager.SetDayNightState(impl->day_count, impl->day_night_factor);
 
 		// --- Adaptive Tessellation Logic ---
 		glm::vec3 current_camera_pos(impl->camera.x, impl->camera.y, impl->camera.z);
@@ -2051,34 +2116,23 @@ namespace Boidsish {
 		}
 
 		glBindBuffer(GL_UNIFORM_BUFFER, impl->lighting_ubo);
-		const auto& lights = impl->light_manager.GetLights();
-		int         num_lights = lights.size();
+		LightingUbo ubo_data{};
 
-		// Convert lights to GPU-compatible format (32 bytes each, matching GLSL struct)
-		std::vector<LightGPU> gpu_lights;
-		gpu_lights.reserve(num_lights);
-		for (const auto& light : lights) {
-			gpu_lights.push_back(light.ToGPU());
+		const auto& lights = impl->light_manager.GetLights();
+		int         num_to_copy = std::min((int)lights.size(), 10);
+		for (int i = 0; i < num_to_copy; ++i) {
+			ubo_data.lights[i] = lights[i].ToGPU();
 		}
-		const int MAX_LIGHTS = 10;
-		glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(LightGPU) * num_lights, gpu_lights.data());
-		size_t offset = 640;
-		glBufferSubData(GL_UNIFORM_BUFFER, offset, sizeof(int), &num_lights);
-		offset += 16;
-		glBufferSubData(
-			GL_UNIFORM_BUFFER,
-			offset,
-			sizeof(glm::vec3),
-			&glm::vec3(impl->camera.x, impl->camera.y, impl->camera.z)[0]
-		);
-		offset += 16;
-		glm::vec3 ambient_light = impl->light_manager.GetAmbientLight();
-		glBufferSubData(GL_UNIFORM_BUFFER, offset, sizeof(glm::vec3), &ambient_light[0]);
-		offset += 12;
-		glBufferSubData(GL_UNIFORM_BUFFER, offset, sizeof(float), &impl->simulation_time);
-		offset += 4;
-		offset = (offset + 15) & ~15; // align to 16
-		glBufferSubData(GL_UNIFORM_BUFFER, offset, sizeof(glm::vec3), &impl->camera.front()[0]);
+
+		ubo_data.num_lights = num_to_copy;
+		ubo_data.viewPos = glm::vec4(impl->camera.x, impl->camera.y, impl->camera.z, 1.0f);
+		ubo_data.ambient_light = glm::vec4(impl->light_manager.GetAmbientLight(), 1.0f);
+		ubo_data.time = impl->simulation_time;
+		ubo_data.day_count = impl->day_count;
+		ubo_data.day_night_factor = impl->day_night_factor;
+		ubo_data.viewDir = glm::vec4(impl->camera.front(), 0.0f);
+
+		glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(LightingUbo), &ubo_data);
 		glBindBuffer(GL_UNIFORM_BUFFER, 0);
 
 		// Update Frustum UBO for GPU-side culling

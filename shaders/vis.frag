@@ -82,6 +82,7 @@ void main() {
 	}
 
 	result = applyArtisticEffects(result, FragPos, barycentric, time);
+	result = applySynthwaveBarycentric(result, barycentric, day_night_factor);
 
 	if (isLine && lineStyle == 1) { // LASER style
 		// Use Y axis for radial glow as defined in Line::InitLineMesh

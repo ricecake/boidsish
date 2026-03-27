@@ -6,6 +6,7 @@ in vec3 Normal;
 in vec4 ReflectionClipSpacePos;
 
 #include "helpers/lighting.glsl"
+#include "visual_effects.frag"
 
 uniform sampler2D reflectionTexture;
 uniform bool      useReflection;
@@ -147,6 +148,8 @@ void main() {
 	// --- Combine colors ---
 	float reflection_strength = 0.8;
 	vec3  final_color = mix(lighting * surfaceColor, reflectionColor, reflection_strength) + grid_color;
+
+	final_color = applySynthwave(final_color, WorldPos, day_night_factor);
 
 	// --- Distance Fade ---
 	vec4 outColor = vec4(final_color, fade);

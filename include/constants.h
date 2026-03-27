@@ -37,6 +37,16 @@ namespace Boidsish {
 				}
 			} // namespace Math
 
+			namespace DayNight {
+				consteval float CycleLength() {
+					return 120.0f; // 2 minutes for a full cycle
+				}
+
+				consteval float DaySplit() {
+					return 0.5f; // 50/50 split
+				}
+			} // namespace DayNight
+
 			namespace Colors {
 				// Default ambient light color: glm::vec3(90.0f/255.0f, 81.0f/255.0f, 62.0f/255.0f)
 				constexpr float DefaultAmbientR = 90.0f / 255.0f;

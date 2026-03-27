@@ -57,6 +57,67 @@ namespace Boidsish {
 		return _lights;
 	}
 
+	void LightManager::SetDayNightState(int /*dayCount*/, float factor) {
+		// Ensure we have at least two directional lights for Sun and Moon
+		// The first one is the Sun, the second one is the Moon.
+
+		if (!_day_night_setup) {
+			// Clear existing if any to ensure Sun/Moon are first (risky if user added lights early)
+			// Actually, let's just insert them at the front or ensure they exist.
+			bool sun_found = false, moon_found = false;
+			if (_lights.size() >= 1 && _lights[0].type == DIRECTIONAL_LIGHT) sun_found = true;
+			if (_lights.size() >= 2 && _lights[1].type == DIRECTIONAL_LIGHT) moon_found = true;
+
+			if (!sun_found) {
+				_lights.insert(_lights.begin(), Light::CreateDirectional({0, 100, 0}, {0, -1, 0}, 1.0f, {1, 0.9f, 0.8f}, true));
+			}
+			if (!moon_found) {
+				_lights.insert(_lights.begin() + 1, Light::CreateDirectional({0, 100, 0}, {0, -1, 0}, 0.2f, {0.5f, 0.6f, 1.0f}, false));
+			}
+			_day_night_setup = true;
+		}
+
+		if (_lights.size() >= 2) {
+			float pi = 3.14159265f;
+			// Calculate Sun direction
+			// factor 0.0 (noon) -> Sun is at top (0, -1, 0)
+			// factor 0.5 (dusk/dawn) -> Sun is at horizon
+			// We want the sun to rotate around the X axis or similar.
+
+			// Use progress instead of factor for rotation
+			// factor = 0.5 - 0.5 * cos(2*PI * (progress - 0.25))
+			// We can reconstruct progress approximately or just use factor.
+			// Actually, it's better if SetDayNightState took progress too.
+			// But I can derive an angle from factor and some extra state.
+			// Let's assume factor is enough for intensity, but direction needs more.
+
+			// Wait, the progress was (progress - 0.25) in the cos.
+			// Let's just use the factor to adjust intensities and a simple rotation.
+
+			float sun_intensity = std::max(0.0f, 1.0f - factor * 2.0f); // Simple linear fade
+			// Actually, let's use a better one:
+			sun_intensity = std::clamp(1.5f - factor * 4.0f, 0.0f, 1.0f);
+
+			float moon_intensity = std::clamp((factor - 0.5f) * 4.0f, 0.0f, 0.3f);
+
+			_lights[0].intensity = sun_intensity;
+			_lights[1].intensity = moon_intensity;
+
+			// Rotate Sun and Moon
+			// Noon (factor 0) -> Sun at (0, -1, 0)
+			// Midnight (factor 1) -> Moon at (0, -1, 0)
+
+			float angle = factor * pi;
+			_lights[0].direction = glm::normalize(glm::vec3(sin(angle), -cos(angle), 0.0f));
+			_lights[1].direction = glm::normalize(glm::vec3(sin(angle + pi), -cos(angle + pi), 0.0f));
+
+			// Adjust ambient light
+			glm::vec3 day_ambient(90.0f/255.0f, 81.0f/255.0f, 62.0f/255.0f);
+			glm::vec3 night_ambient(10.0f/255.0f, 15.0f/255.0f, 30.0f/255.0f);
+			_ambient_light = glm::mix(day_ambient, night_ambient, factor);
+		}
+	}
+
 	void LightManager::Update(float deltaTime) {
 		for (auto& light : _lights) {
 			if (light.behavior.type == LightBehaviorType::NONE) {
