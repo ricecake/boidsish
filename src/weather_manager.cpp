@@ -48,6 +48,22 @@ namespace Boidsish {
 		attribute_states_[static_cast<size_t>(attr)].omega = pace;
 	}
 
+	std::vector<std::string> WeatherManager::GetPresetNames() const {
+		std::vector<std::string> names;
+		for (const auto& p : presets_) {
+			names.push_back(p.name);
+		}
+		return names;
+	}
+
+	void WeatherManager::SetManualPreset(int index) {
+		if (index < -1 || index >= (int)presets_.size())
+			return;
+		manual_preset_idx_ = index;
+		// Force update on next frame
+		last_control_noise_ = glm::vec2(-1000.0f);
+	}
+
 	void WeatherManager::UpdateAttribute(WeatherAttribute attr, float target, float deltaTime) {
 		if (attr == WeatherAttribute::Count || deltaTime <= 0.0f)
 			return;
@@ -125,6 +141,7 @@ namespace Boidsish {
 	}
 
 	void WeatherManager::InitializePresets() {
+		presets_.clear();
 		// 1. Sunny
 		WeatherPreset sunny;
 		sunny.name = "Sunny";
@@ -204,79 +221,105 @@ namespace Boidsish {
 		foggy.settings.rayleigh_scale_height = {4.0f, 6.0f};
 		foggy.settings.mie_scale_height = {5.0f, 10.0f};
 		presets_.push_back(foggy);
+
+		// Calculate CDF
+		cdf_.clear();
+		float totalWeight = 0.0f;
+		for (const auto& p : presets_) {
+			totalWeight += p.weight;
+			cdf_.push_back(totalWeight);
+		}
 	}
 
 	void WeatherManager::Update(float deltaTime, float totalTime, const glm::vec3& cameraPos) {
-		if (!enabled_)
+		if (!enabled_ || presets_.empty())
 			return;
 
 		PROJECT_PROFILE_SCOPE("WeatherManager::Update");
 
-		// Calculate weather control value using low-frequency noise
+		// Calculate weather control coordinate in noise-space
 		glm::vec2 noisePos = glm::vec2(cameraPos.x, cameraPos.z) * spatial_scale_ + glm::vec2(totalTime * time_scale_);
 
-		float controlValue = Simplex::noise(noisePos) * 0.5f + 0.5f;
+		// Check if we need to update the targets (idling logic)
+		float dist = glm::distance(noisePos, last_control_noise_);
+		bool  manual_changed = (manual_preset_idx_ != last_manual_preset_idx_);
+		if (dist > hold_threshold_ || manual_changed) {
+			last_control_noise_ = noisePos;
+			last_manual_preset_idx_ = manual_preset_idx_;
 
-		// Blend ranges based on control value
-		if (presets_.empty())
-			return;
+			float t = 0.0f;
+			int   lowIdx = 0;
+			int   highIdx = 0;
 
-		float              totalWeight = 0.0f;
-		std::vector<float> cdf;
-		for (const auto& p : presets_) {
-			totalWeight += p.weight;
-			cdf.push_back(totalWeight);
+			if (manual_preset_idx_ != -1) {
+				lowIdx = manual_preset_idx_;
+				highIdx = manual_preset_idx_;
+				t = 0.0f;
+				blending_info_.is_manual = true;
+			} else {
+				float controlValue = Simplex::noise(noisePos) * 0.5f + 0.5f;
+				float totalWeight = cdf_.back();
+				float targetValue = std::clamp(controlValue, 0.0f, 1.0f) * totalWeight;
+
+				auto it = std::upper_bound(cdf_.begin(), cdf_.end(), targetValue);
+				highIdx = std::distance(cdf_.begin(), it);
+				lowIdx = std::max(0, highIdx - 1);
+				highIdx = std::min(highIdx, (int)presets_.size() - 1);
+
+				float weightHigh = cdf_[highIdx];
+				float weightLow = (highIdx == 0) ? 0.0f : cdf_[highIdx - 1];
+				float segmentWidth = weightHigh - weightLow;
+				t = (segmentWidth > 0.0001f) ? (targetValue - weightLow) / segmentWidth : 0.0f;
+
+				blending_info_.is_manual = false;
+			}
+
+			blending_info_.low_name = presets_[lowIdx].name;
+			blending_info_.high_name = presets_[highIdx].name;
+			blending_info_.t = t;
+
+			const auto& lowPreset = presets_[lowIdx].settings;
+			const auto& highPreset = presets_[highIdx].settings;
+
+			// Interpolated settings (blended ranges)
+			WeatherSettings blended = lowPreset * (1.0f - t) + highPreset * t;
+
+			// Use secondary noise to pick values within the blended ranges
+			auto sampleNoise = [&](float offset) {
+				return Simplex::noise(noisePos * 2.0f + glm::vec2(offset)) * 0.5f + 0.5f;
+			};
+
+			cached_targets_.sun_intensity = blended.sun_intensity.Lerp(sampleNoise(1.1f));
+			cached_targets_.wind_strength = blended.wind_strength.Lerp(sampleNoise(2.2f));
+			cached_targets_.wind_speed = blended.wind_speed.Lerp(sampleNoise(3.3f));
+			cached_targets_.wind_frequency = blended.wind_frequency.Lerp(sampleNoise(4.4f));
+			cached_targets_.cloud_density = blended.cloud_density.Lerp(sampleNoise(5.5f));
+			cached_targets_.cloud_altitude = blended.cloud_altitude.Lerp(sampleNoise(6.6f));
+			cached_targets_.cloud_thickness = blended.cloud_thickness.Lerp(sampleNoise(7.7f));
+			cached_targets_.haze_density = blended.haze_density.Lerp(sampleNoise(8.8f));
+			cached_targets_.haze_height = blended.haze_height.Lerp(sampleNoise(9.9f));
+			cached_targets_.rayleigh_scale = blended.rayleigh_scale.Lerp(sampleNoise(10.10f));
+			cached_targets_.mie_scale = blended.mie_scale.Lerp(sampleNoise(11.11f));
+			cached_targets_.atmosphere_height = blended.atmosphere_height.Lerp(sampleNoise(12.12f));
+			cached_targets_.rayleigh_scale_height = blended.rayleigh_scale_height.Lerp(sampleNoise(13.13f));
+			cached_targets_.mie_scale_height = blended.mie_scale_height.Lerp(sampleNoise(14.14f));
 		}
 
-		float target = std::clamp(controlValue, 0.0f, 1.0f) * totalWeight;
-		auto  it = std::upper_bound(cdf.begin(), cdf.end(), target);
-		int   highIdx = std::distance(cdf.begin(), it);
-		int   lowIdx = std::max(0, highIdx - 1);
-		highIdx = std::min(highIdx, (int)presets_.size() - 1);
-
-		float weightHigh = cdf[highIdx];
-		float weightLow = (highIdx == 0) ? 0.0f : cdf[highIdx - 1];
-		float segmentWidth = weightHigh - weightLow;
-		float t = (segmentWidth > 0.0001f) ? (target - weightLow) / segmentWidth : 0.0f;
-
-		const auto& lowPreset = presets_[lowIdx].settings;
-		const auto& highPreset = presets_[highIdx].settings;
-
-		// Interpolated settings (blended ranges)
-		WeatherSettings blended = lowPreset * (1.0f - t) + highPreset * t;
-
-		// Use secondary noise to pick values within the blended ranges
-		// We use slightly higher frequency or different offsets for variety
-		auto sampleNoise = [&](float offset) {
-			return Simplex::noise(noisePos * 2.0f + glm::vec2(offset)) * 0.5f + 0.5f;
-		};
-
-		UpdateAttribute(WeatherAttribute::SunIntensity, blended.sun_intensity.Lerp(sampleNoise(1.1f)), deltaTime);
-		UpdateAttribute(WeatherAttribute::WindStrength, blended.wind_strength.Lerp(sampleNoise(2.2f)), deltaTime);
-		UpdateAttribute(WeatherAttribute::WindSpeed, blended.wind_speed.Lerp(sampleNoise(3.3f)), deltaTime);
-		UpdateAttribute(WeatherAttribute::WindFrequency, blended.wind_frequency.Lerp(sampleNoise(4.4f)), deltaTime);
-		UpdateAttribute(WeatherAttribute::CloudDensity, blended.cloud_density.Lerp(sampleNoise(5.5f)), deltaTime);
-		UpdateAttribute(WeatherAttribute::CloudAltitude, blended.cloud_altitude.Lerp(sampleNoise(6.6f)), deltaTime);
-		UpdateAttribute(WeatherAttribute::CloudThickness, blended.cloud_thickness.Lerp(sampleNoise(7.7f)), deltaTime);
-		UpdateAttribute(WeatherAttribute::HazeDensity, blended.haze_density.Lerp(sampleNoise(8.8f)), deltaTime);
-		UpdateAttribute(WeatherAttribute::HazeHeight, blended.haze_height.Lerp(sampleNoise(9.9f)), deltaTime);
-		UpdateAttribute(WeatherAttribute::RayleighScale, blended.rayleigh_scale.Lerp(sampleNoise(10.10f)), deltaTime);
-		UpdateAttribute(WeatherAttribute::MieScale, blended.mie_scale.Lerp(sampleNoise(11.11f)), deltaTime);
-		UpdateAttribute(
-			WeatherAttribute::AtmosphereHeight,
-			blended.atmosphere_height.Lerp(sampleNoise(12.12f)),
-			deltaTime
-		);
-		UpdateAttribute(
-			WeatherAttribute::RayleighScaleHeight,
-			blended.rayleigh_scale_height.Lerp(sampleNoise(13.13f)),
-			deltaTime
-		);
-		UpdateAttribute(
-			WeatherAttribute::MieScaleHeight,
-			blended.mie_scale_height.Lerp(sampleNoise(14.14f)),
-			deltaTime
-		);
+		// Always update attributes toward cached targets using the spring system
+		UpdateAttribute(WeatherAttribute::SunIntensity, cached_targets_.sun_intensity, deltaTime);
+		UpdateAttribute(WeatherAttribute::WindStrength, cached_targets_.wind_strength, deltaTime);
+		UpdateAttribute(WeatherAttribute::WindSpeed, cached_targets_.wind_speed, deltaTime);
+		UpdateAttribute(WeatherAttribute::WindFrequency, cached_targets_.wind_frequency, deltaTime);
+		UpdateAttribute(WeatherAttribute::CloudDensity, cached_targets_.cloud_density, deltaTime);
+		UpdateAttribute(WeatherAttribute::CloudAltitude, cached_targets_.cloud_altitude, deltaTime);
+		UpdateAttribute(WeatherAttribute::CloudThickness, cached_targets_.cloud_thickness, deltaTime);
+		UpdateAttribute(WeatherAttribute::HazeDensity, cached_targets_.haze_density, deltaTime);
+		UpdateAttribute(WeatherAttribute::HazeHeight, cached_targets_.haze_height, deltaTime);
+		UpdateAttribute(WeatherAttribute::RayleighScale, cached_targets_.rayleigh_scale, deltaTime);
+		UpdateAttribute(WeatherAttribute::MieScale, cached_targets_.mie_scale, deltaTime);
+		UpdateAttribute(WeatherAttribute::AtmosphereHeight, cached_targets_.atmosphere_height, deltaTime);
+		UpdateAttribute(WeatherAttribute::RayleighScaleHeight, cached_targets_.rayleigh_scale_height, deltaTime);
+		UpdateAttribute(WeatherAttribute::MieScaleHeight, cached_targets_.mie_scale_height, deltaTime);
 	}
 
 } // namespace Boidsish
