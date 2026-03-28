@@ -461,7 +461,8 @@ vec4 apply_lighting_pbr_ex(
 
 		if (useGlints) {
 			float glintNDF = calculate_glint_ndf(H, N, roughness, metallic, uv, uv_J);
-			NDF = mix(NDF, glintNDF, glintIntensity);
+			// Additive blending with intensity control to prevent negative extrapolation
+			NDF = NDF + glintNDF * glintIntensity;
 		}
 
 		float G = GeometrySmith(N, V, L, roughness);
@@ -586,7 +587,8 @@ vec4 apply_lighting_pbr_no_shadows_ex(
 
 		if (useGlints) {
 			float glintNDF = calculate_glint_ndf(H, N, roughness, metallic, uv, uv_J);
-			NDF = mix(NDF, glintNDF, glintIntensity);
+			// Additive blending with intensity control to prevent negative extrapolation
+			NDF = NDF + glintNDF * glintIntensity;
 		}
 
 		float G = GeometrySmith(N, V, L, roughness);

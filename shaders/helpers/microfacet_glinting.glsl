@@ -47,8 +47,8 @@ mat2 glint_uv_ellipsoid(mat2 uv_J) {
 }
 
 float glint_QueryLod(mat2 uv_J, float filter_size) {
-    float s0 = length(uv_J[0]), s1 = length(uv_J[1]);
-    return log2(max(s0, s1) * filter_size) + pow(2., filter_size);
+	float s0 = length(uv_J[0]), s1 = length(uv_J[1]);
+	return log2(max(max(s0, s1), 1e-6) * filter_size) + pow(2., filter_size);
 }
 
 uvec2 glint_shuffle(uvec2 v) {
