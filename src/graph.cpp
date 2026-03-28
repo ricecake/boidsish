@@ -13,7 +13,7 @@
 
 namespace Boidsish {
 
-	Graph::Graph(int id, float x, float y, float z): Shape(id, x, y, z, 1.0f, 1.0f, 1.0f, 1.0f, 0) {}
+	Graph::Graph(int id, float x, float y, float z): Shape(id, x, y, z, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 0) {}
 
 	Graph::~Graph() {
 		if (buffers_initialized_) {
@@ -438,16 +438,10 @@ namespace Boidsish {
 			SetupBuffers();
 		}
 
-		shader.setMat4("model", model_matrix);
+		shader.use();
 		shader.setInt("useVertexColor", 1);
 
-		glBindVertexArray(graph_vao_);
-		if (allocation_.valid) {
-			glDrawArrays(GL_TRIANGLES, static_cast<GLint>(allocation_.base_vertex), edge_vertex_count_);
-		} else {
-			glDrawArrays(GL_TRIANGLES, 0, edge_vertex_count_);
-		}
-		glBindVertexArray(0);
+		Shape::render(shader, model_matrix);
 
 		shader.setInt("useVertexColor", 0);
 	}
@@ -457,6 +451,17 @@ namespace Boidsish {
 		model = glm::translate(model, glm::vec3(GetX(), GetY(), GetZ()));
 		// Graph doesn't have its own rotation or scale, so we don't apply them here.
 		return model;
+	}
+
+	MeshInfo Graph::GetMeshInfo(Megabuffer* mb) const {
+		PrepareResources(mb);
+		MeshInfo info;
+		info.vao = graph_vao_;
+		info.vbo = graph_vbo_;
+		info.vertex_count = static_cast<unsigned int>(edge_vertex_count_);
+		info.index_count = 0;
+		info.allocation = allocation_;
+		return info;
 	}
 
 } // namespace Boidsish
@@ -490,46 +495,15 @@ namespace Boidsish {
 		if (edges.empty())
 			return;
 
-		glm::mat4 model_matrix = GetModelMatrix();
-		glm::vec3 world_pos = glm::vec3(GetX(), GetY(), GetZ());
+		MeshInfo mesh = GetMeshInfo(context.megabuffer);
+		if (mesh.vao == 0)
+			return;
 
 		RenderPacket packet;
-		packet.vao = graph_vao_;
-		if (allocation_.valid) {
-			packet.base_vertex = allocation_.base_vertex;
-		}
-		packet.vertex_count = static_cast<unsigned int>(edge_vertex_count_);
-		packet.draw_mode = GL_TRIANGLES;
-		packet.shader_id = shader ? shader->ID : 0;
+		PopulatePacket(packet, mesh, context);
 
-		packet.uniforms.model = model_matrix;
-		packet.uniforms.color = glm::vec4(GetR(), GetG(), GetB(), GetA());
-		packet.uniforms.use_pbr = UsePBR();
-		packet.uniforms.roughness = GetRoughness();
-		packet.uniforms.metallic = GetMetallic();
-		packet.uniforms.ao = GetAO();
-		packet.uniforms.use_texture = 0;
-		packet.uniforms.use_vertex_color = 1; // Graph uses vertex colors
-		packet.uniforms.is_colossal = IsColossal();
+		packet.uniforms.use_vertex_color = 1;
 
-		packet.casts_shadows = CastsShadows();
-
-		RenderLayer layer = (GetA() < 0.99f) ? RenderLayer::Transparent : RenderLayer::Opaque;
-
-		packet.shader_handle = shader_handle;
-		packet.material_handle = MaterialHandle(0);
-
-		float normalized_depth = context.CalculateNormalizedDepth(world_pos);
-		packet.sort_key = CalculateSortKey(
-			layer,
-			packet.shader_handle,
-			packet.vao,
-			packet.draw_mode,
-			packet.index_count > 0,
-			packet.material_handle,
-			normalized_depth
-		);
-
-		out_packets.push_back(packet);
+		out_packets.push_back(std::move(packet));
 	}
 } // namespace Boidsish

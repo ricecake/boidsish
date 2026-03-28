@@ -57,10 +57,6 @@ namespace Boidsish {
 		}
 	}
 
-	void CurvedText::render() const {
-		Text::render();
-	}
-
 	void CurvedText::GenerateMesh(const std::string& text, float font_size, float depth) {
 		if (font_buffer_.empty()) {
 			return;

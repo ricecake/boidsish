@@ -24,28 +24,28 @@ namespace Boidsish {
 		    float a = 1.0f,
 		    int   trail_length = Constants::Class::Trails::DefaultTrailLength());
 
-		// Size accessor/mutator
-		inline float GetSize() const { return size_; }
-
-		inline void SetSize(float size) { size_ = size; }
-
-		// Render implementation
-		void      render() const override;
-		void      render(Shader& shader, const glm::mat4& model_matrix) const override;
-		glm::mat4 GetModelMatrix() const override;
-
-		void GenerateRenderPackets(std::vector<RenderPacket>& out_packets, const RenderContext& context) const override;
-		bool Intersects(const Ray& ray, float& t) const override;
-		AABB GetAABB() const override;
-
 		bool GetDefaultCastsShadows() const override { return false; }
 
-		float GetBoundingRadius() const override { return size_; }
+		float GetSizeMultiplier() const override { return 0.01f; }
+
+		bool Intersects(const Ray& ray, float& t) const override {
+			glm::vec3 center(GetX(), GetY(), GetZ());
+			float     radius = GetSize() * GetSizeMultiplier();
+			glm::vec3 oc = ray.origin - center;
+			float     a = glm::dot(ray.direction, ray.direction);
+			float     b = 2.0f * glm::dot(oc, ray.direction);
+			float     c = glm::dot(oc, oc) - radius * radius;
+			float     discriminant = b * b - 4 * a * c;
+
+			if (discriminant < 0) {
+				return false;
+			} else {
+				t = (-b - sqrt(discriminant)) / (2.0f * a);
+				return t > 0;
+			}
+		}
 
 		// All Dots share the same sphere mesh, so they can be instanced together
 		std::string GetInstanceKey() const override { return "Dot"; }
-
-	private:
-		float size_;
 	};
 } // namespace Boidsish

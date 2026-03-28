@@ -30,7 +30,7 @@ namespace Boidsish {
 		float              a,
 		bool               generate_mesh
 	):
-		Shape(id, x, y, z, r, g, b, a),
+		Shape(id, x, y, z, 1.0f, r, g, b, a),
 		text_(text),
 		font_path_(font_path),
 		font_size_(font_size),
@@ -207,10 +207,6 @@ namespace Boidsish {
 							);
 							glyph_vertices.insert(
 								glyph_vertices.end(),
-								{v2[0], v2[1], -depth / 2.0f, 0.0f, 0.0f, -1.0f, v2[0], v2[1]}
-							);
-							glyph_vertices.insert(
-								glyph_vertices.end(),
 								{v3[0], v3[1], -depth / 2.0f, 0.0f, 0.0f, -1.0f, v3[0], v3[1]}
 							);
 						}
@@ -352,125 +348,45 @@ namespace Boidsish {
 		}
 	}
 
-	void Text::render() const {
-		if (!allocation_.valid || shader == nullptr)
-			return;
-
-		shader->use();
-		shader->setMat4("model", GetModelMatrix());
-		shader->setVec3("objectColor", GetR(), GetG(), GetB());
-		shader->setFloat("objectAlpha", GetA());
-		shader->setBool("use_texture", false);
-
-		shader->setBool("isTextEffect", is_text_effect_);
-		if (is_text_effect_) {
-			shader->setFloat("textFadeProgress", text_fade_progress_);
-			shader->setFloat("textFadeSoftness", text_fade_softness_);
-			shader->setInt("textFadeMode", text_fade_mode_);
-		}
-
-		// Set PBR material properties
-		shader->setBool("usePBR", UsePBR());
-		if (UsePBR()) {
-			shader->setFloat("roughness", GetRoughness());
-			shader->setFloat("metallic", GetMetallic());
-			shader->setFloat("ao", GetAO());
-		}
-
-		glBindVertexArray(vao_);
-		glDrawArrays(GL_TRIANGLES, static_cast<GLint>(allocation_.base_vertex), vertex_count_);
-		shader->setBool("isTextEffect", false);
-		glBindVertexArray(0);
+	MeshInfo Text::GetMeshInfo(Megabuffer* mb) const {
+		PrepareResources(mb);
+		MeshInfo info;
+		info.vao = vao_;
+		info.vertex_count = static_cast<unsigned int>(vertex_count_);
+		info.index_count = 0;
+		info.allocation = allocation_;
+		return info;
 	}
 
 	void Text::render(Shader& shader, const glm::mat4& model_matrix) const {
 		if (!allocation_.valid)
 			return;
 
-		shader.use();
-		shader.setMat4("model", model_matrix);
-		shader.setVec3("objectColor", GetR(), GetG(), GetB());
-		shader.setFloat("objectAlpha", GetA());
-		shader.setBool("use_texture", false);
+		Shape::render(shader, model_matrix);
+	}
 
+	void Text::OnPreRender(Shader& shader) const {
 		shader.setBool("isTextEffect", is_text_effect_);
 		if (is_text_effect_) {
 			shader.setFloat("textFadeProgress", text_fade_progress_);
 			shader.setFloat("textFadeSoftness", text_fade_softness_);
 			shader.setInt("textFadeMode", text_fade_mode_);
 		}
-
-		// Set PBR material properties
-		shader.setBool("usePBR", UsePBR());
-		if (UsePBR()) {
-			shader.setFloat("roughness", GetRoughness());
-			shader.setFloat("metallic", GetMetallic());
-			shader.setFloat("ao", GetAO());
-		}
-
-		glBindVertexArray(vao_);
-		glDrawArrays(GL_TRIANGLES, static_cast<GLint>(allocation_.base_vertex), vertex_count_);
-		shader.setBool("isTextEffect", false);
-		glBindVertexArray(0);
-	}
-
-	glm::mat4 Text::GetModelMatrix() const {
-		glm::mat4 model = glm::mat4(1.0f);
-		model = glm::translate(model, glm::vec3(GetX(), GetY(), GetZ()));
-		model = model * glm::mat4_cast(GetRotation());
-		model = glm::scale(model, GetScale());
-		return model;
 	}
 
 	void Text::GenerateRenderPackets(std::vector<RenderPacket>& out_packets, const RenderContext& context) const {
-		if (vertex_count_ == 0)
+		MeshInfo mesh = GetMeshInfo(context.megabuffer);
+		if (mesh.vao == 0)
 			return;
 
-		glm::mat4 model_matrix = GetModelMatrix();
-		glm::vec3 world_pos = glm::vec3(model_matrix[3]);
-
 		RenderPacket packet;
-		if (allocation_.valid) {
-			packet.vao = context.megabuffer->GetVAO();
-			packet.base_vertex = allocation_.base_vertex;
-		}
-		packet.vertex_count = static_cast<unsigned int>(vertex_count_);
-		packet.draw_mode = GL_TRIANGLES;
-		packet.index_type = 0;
-		packet.shader_id = shader ? shader->ID : 0;
-
-		packet.uniforms.model = model_matrix;
-		packet.uniforms.color = glm::vec4(GetR(), GetG(), GetB(), GetA());
-		packet.uniforms.use_pbr = UsePBR();
-		packet.uniforms.roughness = GetRoughness();
-		packet.uniforms.metallic = GetMetallic();
-		packet.uniforms.ao = GetAO();
-		packet.uniforms.use_texture = false;
+		PopulatePacket(packet, mesh, context);
 
 		packet.uniforms.is_text_effect = is_text_effect_ ? 1 : 0;
-		packet.uniforms.is_colossal = IsColossal();
 		packet.uniforms.text_fade_progress = text_fade_progress_;
 		packet.uniforms.text_fade_softness = text_fade_softness_;
 		packet.uniforms.text_fade_mode = text_fade_mode_;
 
-		packet.casts_shadows = CastsShadows();
-
-		RenderLayer layer = RenderLayer::Transparent;
-
-		packet.shader_handle = shader_handle;
-		packet.material_handle = MaterialHandle(0);
-
-		float normalized_depth = context.CalculateNormalizedDepth(world_pos);
-		packet.sort_key = CalculateSortKey(
-			layer,
-			packet.shader_handle,
-			packet.vao,
-			packet.draw_mode,
-			packet.index_count > 0,
-			packet.material_handle,
-			normalized_depth
-		);
-
-		out_packets.push_back(packet);
+		out_packets.push_back(std::move(packet));
 	}
 } // namespace Boidsish
