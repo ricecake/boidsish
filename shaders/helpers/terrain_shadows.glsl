@@ -30,6 +30,7 @@ float getTerrainHeight(vec2 worldXZ) {
 	if (slice < 0)
 		return -10000.0;
 
+	// Use precision-safe local UV calculation
 	vec2 uv = (worldXZ - vec2(chunkCoord) * scaledChunkSize) / scaledChunkSize;
 	vec2 remappedUV = (uv * u_terrainParams.x + 0.5) / (u_terrainParams.x + 1.0);
 	return texture(u_heightmapArray, vec3(remappedUV, float(slice))).r;
@@ -102,6 +103,7 @@ float terrainShadowCoverage(vec3 worldPos, vec3 normal, vec3 lightDir) {
 						float subStep = 1.5 * u_terrainParams.y;
 						while (subT < tEnd) {
 							vec3  p = p_start + subT * lightDir;
+							// Precision-safe local UV calculation for heightmap sampling
 							vec2  uv_chunk = (p.xz - vec2(currentChunk) * scaledChunkSize) / scaledChunkSize;
 							vec2  remappedUV = (uv_chunk * u_terrainParams.x + 0.5) / (u_terrainParams.x + 1.0);
 							float h = texture(u_heightmapArray, vec3(remappedUV, float(slice))).r;
@@ -205,7 +207,8 @@ int isPointInTerrainShadowDebug(vec3 worldPos, vec3 normal, vec3 lightDir) {
 					while (subT < tEnd) {
 						vec3  p = p_start + subT * lightDir;
 						vec2  uv_chunk = (p.xz - vec2(currentChunk) * scaledChunkSize) / scaledChunkSize;
-						float h = texture(u_heightmapArray, vec3(uv_chunk, float(slice))).r;
+						vec2  remappedUV = (uv_chunk * u_terrainParams.x + 0.5) / (u_terrainParams.x + 1.0);
+						float h = texture(u_heightmapArray, vec3(remappedUV, float(slice))).r;
 						if (p.y < h) {
 							return 3; // Hit! (Magenta)
 						}

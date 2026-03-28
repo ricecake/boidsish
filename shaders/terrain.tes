@@ -36,10 +36,6 @@ uniform vec4 clipPlane;
 #include "temporal_data.glsl"
 
 // #include "helpers/fast_noise.glsl"
-float roundToPlaces(float value, float places) {
-	float shift = pow(10.0, places);
-	return round(value * shift) / shift;
-}
 
 // Sample heightmap to get world position and normal
 void sampleHeightmap(vec2 uv, float slice, vec3 worldOffset, out vec3 worldPos, out vec3 normal) {
@@ -49,9 +45,10 @@ void sampleHeightmap(vec2 uv, float slice, vec3 worldOffset, out vec3 worldPos, 
 	float height = data.r;
 	normal = normalize(data.gba);
 
-	worldPos.x = roundToPlaces(worldOffset.x + uv.x * uChunkSize, 3);
-	worldPos.y = roundToPlaces(height, 3);
-	worldPos.z = roundToPlaces(worldOffset.z + uv.y * uChunkSize, 3);
+	// Use integer chunk indices to ensure shared edges produce identical world coordinates.
+	vec2 chunkIdx = floor(worldOffset.xz / uChunkSize + 0.5);
+	worldPos.xz = (chunkIdx + uv) * uChunkSize;
+	worldPos.y = height;
 }
 
 void main() {
@@ -103,6 +100,7 @@ void main() {
 	perturbFactor = mix(perturbFactor1, perturbFactor2, uv.y);
 
 	// Use world-space noise for blue noise displacement to prevent shimmering during tessellation changes
+	// Using FragPos directly here is now safe because FragPos.xz is calculated stably.
 	FragPos += 0.5 * fastWorley3d(FragPos / 50.0) * fastBlueNoise(FragPos.xz * 2.0) * Normal *
 		smoothstep(10, 1, FragPos.y) * smoothstep(0.1, 1, FragPos.y);
 
@@ -113,8 +111,10 @@ void main() {
 	// out float tessFactor;
 	TextureSlice = slice;
 
-	// Final vertex position
-	gl_Position = projection * view * vec4(FragPos, 1.0);
+	// Final vertex position using Relative-to-Eye projection for stability
+	mat4 viewNoTranslation = view;
+	viewNoTranslation[3] = vec4(0, 0, 0, 1);
+	gl_Position = projection * viewNoTranslation * vec4(FragPos - viewPos, 1.0);
 
 	CurPosition = gl_Position;
 	PrevPosition = prevViewProjection * vec4(FragPos, 1.0);
