@@ -5,6 +5,45 @@
 #include "../lighting.glsl"
 #include "clouds.glsl"
 #include "terrain_shadows.glsl"
+#include "microfacet_glinting.glsl"
+
+/**
+ * Generate a tangent space basis from a normal.
+ */
+mat3 get_tangent_basis(vec3 N) {
+	vec3 helper = abs(N.z) < 0.999 ? vec3(0, 0, 1) : vec3(1, 0, 0);
+	vec3 T = normalize(cross(helper, N));
+	vec3 B = cross(N, T);
+	return mat3(T, B, N);
+}
+
+/**
+ * Calculate the glinty Normal Distribution Function.
+ * Derives parameters from material properties if not provided.
+ */
+float calculate_glint_ndf(vec3 H, vec3 N, float roughness, float metallic, vec2 uv, mat2 uv_J) {
+	float alpha = max(roughness * roughness, 0.0001);
+
+	// Derive glint parameters based on material properties
+	// Snow-like (rough dielectric): many fine glints
+	// Metal-like: few intense (sharp) glints
+	float g_density, g_alpha;
+	if (metallic > 0.1) {
+		// Metals: few intense glints
+		g_density = mix(1000.0, 200.0, clamp(metallic, 0.0, 1.0));
+		g_alpha = mix(0.01, 0.002, clamp(metallic, 0.0, 1.0));
+	} else {
+		// Dielectrics: more glints as it gets rougher (like snow)
+		g_density = mix(500.0, 4000.0, clamp(roughness, 0.0, 1.0));
+		g_alpha = mix(0.02, 0.01, clamp(roughness, 0.0, 1.0));
+	}
+
+	mat3 invTBN = transpose(get_tangent_basis(N));
+	vec3 h_local = invTBN * H;
+
+	// Use the Siggraph Asia 2025 glinting algorithm
+	return glint_ndf(h_local, alpha, g_alpha, uv, uv_J, g_density, DEFAULT_PIXEL_FILTER_SIZE);
+}
 
 const int LIGHT_TYPE_POINT = 0;
 const int LIGHT_TYPE_DIRECTIONAL = 1;
@@ -375,9 +414,20 @@ const float PBR_INTENSITY_BOOST = 4.0;
  * @param metallic Metallic property [0=dielectric, 1=metal]
  * @param ao Ambient occlusion [0=fully occluded, 1=no occlusion]
  */
-vec4 apply_lighting_pbr(vec3 frag_pos, vec3 normal, vec3 albedo, float roughness, float metallic, float ao) {
+vec4 apply_lighting_pbr_ex(
+	vec3  frag_pos,
+	vec3  normal,
+	vec3  albedo,
+	float roughness,
+	float metallic,
+	float ao,
+	vec2  uv,
+	mat2  uv_J
+) {
 	vec3 N = normalize(normal);
 	vec3 V = normalize(viewPos - frag_pos);
+
+	bool useGlints = (glintEnabled > 0.5);
 
 	// Calculate reflectance at normal incidence
 	// For dielectrics use 0.04, for metals use albedo color
@@ -408,6 +458,12 @@ vec4 apply_lighting_pbr(vec3 frag_pos, vec3 normal, vec3 albedo, float roughness
 
 		// Cook-Torrance BRDF
 		float NDF = DistributionGGX(N, H, roughness);
+
+		if (useGlints) {
+			float glintNDF = calculate_glint_ndf(H, N, roughness, metallic, uv, uv_J);
+			NDF = mix(NDF, glintNDF, glintIntensity);
+		}
+
 		float G = GeometrySmith(N, V, L, roughness);
 		vec3  F = fresnelSchlick(max(dot(H, V), 0.0), F0);
 
@@ -474,13 +530,36 @@ vec4 apply_lighting_pbr(vec3 frag_pos, vec3 normal, vec3 albedo, float roughness
 }
 
 /**
+ * Standard PBR lighting wrapper.
+ */
+vec4 apply_lighting_pbr(vec3 frag_pos, vec3 normal, vec3 albedo, float roughness, float metallic, float ao) {
+	vec2 uv = frag_pos.xz;
+	mat2 uv_J = mat2(0.01, 0.0, 0.0, 0.01);
+#ifdef FRAGMENT_SHADER
+	uv_J = mat2(dFdx(uv), dFdy(uv));
+#endif
+	return apply_lighting_pbr_ex(frag_pos, normal, albedo, roughness, metallic, ao, uv, uv_J);
+}
+
+/**
  * PBR lighting without shadows - for shaders that don't need shadow calculations.
  * Supports all light types (point, directional, spot).
  * Returns vec4(color.rgb, specular_luminance).
  */
-vec4 apply_lighting_pbr_no_shadows(vec3 frag_pos, vec3 normal, vec3 albedo, float roughness, float metallic, float ao) {
+vec4 apply_lighting_pbr_no_shadows_ex(
+	vec3  frag_pos,
+	vec3  normal,
+	vec3  albedo,
+	float roughness,
+	float metallic,
+	float ao,
+	vec2  uv,
+	mat2  uv_J
+) {
 	vec3 N = normalize(normal);
 	vec3 V = normalize(viewPos - frag_pos);
+
+	bool useGlints = (glintEnabled > 0.5);
 
 	vec3 F0 = vec3(0.04);
 	F0 = mix(F0, albedo, metallic);
@@ -504,6 +583,12 @@ vec4 apply_lighting_pbr_no_shadows(vec3 frag_pos, vec3 normal, vec3 albedo, floa
 		vec3 radiance = lights[i].color * attenuation;
 
 		float NDF = DistributionGGX(N, H, roughness);
+
+		if (useGlints) {
+			float glintNDF = calculate_glint_ndf(H, N, roughness, metallic, uv, uv_J);
+			NDF = mix(NDF, glintNDF, glintIntensity);
+		}
+
 		float G = GeometrySmith(N, V, L, roughness);
 		vec3  F = fresnelSchlick(max(dot(H, V), 0.0), F0);
 
@@ -536,6 +621,18 @@ vec4 apply_lighting_pbr_no_shadows(vec3 frag_pos, vec3 normal, vec3 albedo, floa
 	vec3  ambient = ambientDiffuse * (1.0 - metallic * 0.9) + ambientSpecular;
 
 	return vec4(ambient + Lo, spec_lum + get_luminance(ambientSpecular));
+}
+
+/**
+ * Standard PBR lighting wrapper without shadows.
+ */
+vec4 apply_lighting_pbr_no_shadows(vec3 frag_pos, vec3 normal, vec3 albedo, float roughness, float metallic, float ao) {
+	vec2 uv = frag_pos.xz;
+	mat2 uv_J = mat2(0.01, 0.0, 0.0, 0.01);
+#ifdef FRAGMENT_SHADER
+	uv_J = mat2(dFdx(uv), dFdy(uv));
+#endif
+	return apply_lighting_pbr_no_shadows_ex(frag_pos, normal, albedo, roughness, metallic, ao, uv, uv_J);
 }
 
 // ============================================================================

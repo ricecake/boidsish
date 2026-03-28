@@ -3142,6 +3142,13 @@ namespace Boidsish {
 				impl->lighting_ubo_data_.cloudShadowIntensity = 0.0f;
 			}
 
+			impl->lighting_ubo_data_.glint_enabled =
+				ConfigManager::GetInstance().GetAppSettingBool("glint_enabled", false) ? 1.0f : 0.0f;
+			impl->lighting_ubo_data_.glint_intensity = ConfigManager::GetInstance().GetAppSettingFloat(
+				"glint_intensity",
+				1.0f
+			);
+
 			glBindBuffer(GL_UNIFORM_BUFFER, impl->lighting_ubo);
 			glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(LightingUbo), &impl->lighting_ubo_data_);
 			glBindBuffer(GL_UNIFORM_BUFFER, 0);

@@ -29,6 +29,8 @@ layout(std140) uniform Lighting {
 	float cloudAltitude;
 	float cloudThickness;
 	float cloudDensity;
+	float glintEnabled;
+	float glintIntensity;
 };
 
 // Shadow mapping UBO (binding set via glUniformBlockBinding to point 2)

@@ -12,6 +12,7 @@ in float      perturbFactor;
 in float      tessFactor;
 in float      vIsWater;
 
+#define FRAGMENT_SHADER
 #include "helpers/fast_noise.glsl"
 #include "helpers/lighting.glsl"
 #include "helpers/terrain_noise.glsl"
@@ -295,7 +296,9 @@ void main() {
 		vec3 surfaceColor = vec3(0.05, 0.05, 0.08);
 
 		// Highly reflective PBR material
-		vec3 lighting = apply_lighting_pbr(FragPos, norm, surfaceColor, 0.05, 0.9, 1.0).rgb;
+		vec2 uv = (FragPos.xz + refractionOffset) / grid_spacing;
+		mat2 uv_J = mat2(dFdx(uv), dFdy(uv));
+		vec3 lighting = apply_lighting_pbr_ex(FragPos, norm, surfaceColor, 0.05, 0.9, 1.0, uv, uv_J).rgb;
 		vec3 final_color = lighting + grid_color;
 
 		// Distance fade and distant cyan blend (matching terrain style)
@@ -469,7 +472,9 @@ void main() {
 	roughness *= mix(1.25, 1.0, windDistortion) * mix(1, mix(1.5, 1.0, windRipple), grassFactor);
 	// perturbedNorm += rawWindNudge * mix(0.0, 1.05, plainRipple);
 
-	vec3 lighting = apply_lighting_pbr(FragPos, perturbedNorm, albedo, roughness, metallic, 1.0).rgb;
+	vec2 uv = FragPos.xz / worldScale;
+	mat2 uv_J = mat2(dFdx(uv), dFdy(uv));
+	vec3 lighting = apply_lighting_pbr_ex(FragPos, perturbedNorm, albedo, roughness, metallic, 1.0, uv, uv_J).rgb;
 
 	// ========================================================================
 	// Neon 80s Synth Style (Night Theme)
