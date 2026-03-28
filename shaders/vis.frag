@@ -13,6 +13,7 @@ layout(std430, binding = 2) buffer UniformsSSBO {
 uniform bool uUseMDI = false;
 flat in int  vUniformIndex;
 
+#define FRAGMENT_SHADER
 #include "helpers/fast_noise.glsl"
 #include "helpers/lighting.glsl"
 #include "visual_effects.frag"

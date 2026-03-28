@@ -280,7 +280,23 @@ namespace Boidsish {
 					ImGui::Text("Controls the spawn rate of ambient particles.");
 				}
 
-				// 5. Wind (from EffectsWidget)
+				// 5. Microfacet Glinting
+				if (ImGui::CollapsingHeader("Microfacet Glinting", ImGuiTreeNodeFlags_DefaultOpen)) {
+					auto& config = ConfigManager::GetInstance();
+					bool  enabled = config.GetAppSettingBool("glint_enabled", false);
+					if (ImGui::Checkbox("Enable Glints", &enabled)) {
+						config.SetBool("glint_enabled", enabled);
+					}
+
+					if (enabled) {
+						float intensity = config.GetAppSettingFloat("glint_intensity", 1.0f);
+						if (ImGui::SliderFloat("Glint Intensity", &intensity, 0.0f, 5.0f)) {
+							config.SetFloat("glint_intensity", intensity);
+						}
+					}
+				}
+
+				// 6. Wind (from EffectsWidget)
 				if (ImGui::CollapsingHeader("Wind", ImGuiTreeNodeFlags_DefaultOpen)) {
 					auto& config = ConfigManager::GetInstance();
 

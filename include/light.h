@@ -51,7 +51,8 @@ namespace Boidsish {
 		float cloudAltitude;                 // offset 700, 4 bytes
 		float cloudThickness;                // offset 704, 4 bytes
 		float cloudDensity;                  // offset 708, 4 bytes
-		float _pad4[2];                      // offset 712, 8 bytes
+		float glint_enabled;                 // offset 712, 4 bytes (0 or 1)
+		float glint_intensity;               // offset 716, 4 bytes (0-1)
 	}; // Total: 720 bytes
 
 	static_assert(sizeof(LightingUbo) == 720, "LightingUbo must be 720 bytes for UBO alignment");
