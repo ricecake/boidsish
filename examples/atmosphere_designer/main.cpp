@@ -86,6 +86,60 @@ public:
 					if (ImGui::ColorEdit3("Cloud Color", &cloudColor[0])) {
 						atmosphere->SetCloudColor(cloudColor);
 					}
+
+					float cloudShadow = ConfigManager::GetInstance().GetAppSettingFloat("cloud_shadow_intensity", 0.5f);
+					if (ImGui::SliderFloat("Cloud Shadow Intensity", &cloudShadow, 0.0f, 1.0f)) {
+						ConfigManager::GetInstance().SetFloat("cloud_shadow_intensity", cloudShadow);
+					}
+				}
+
+				if (ImGui::CollapsingHeader("Physical Parameters", ImGuiTreeNodeFlags_DefaultOpen)) {
+					float atmosHeight = atmosphere->GetAtmosphereHeight();
+					if (ImGui::SliderFloat("Atmosphere Height (km)", &atmosHeight, 10.0f, 100.0f)) {
+						atmosphere->SetAtmosphereHeight(atmosHeight);
+					}
+
+					glm::vec3 rayleighScattering = atmosphere->GetRayleighScattering() * 1000.0f;
+					if (ImGui::ColorEdit3("Rayleigh Scattering", &rayleighScattering[0])) {
+						atmosphere->SetRayleighScattering(rayleighScattering * 0.001f);
+					}
+
+					float mieScat = atmosphere->GetMieScattering() * 1000.0f;
+					if (ImGui::SliderFloat("Mie Scattering coeff", &mieScat, 0.0f, 10.0f)) {
+						atmosphere->SetMieScattering(mieScat * 0.001f);
+					}
+
+					float mieExt = atmosphere->GetMieExtinction() * 1000.0f;
+					if (ImGui::SliderFloat("Mie Extinction coeff", &mieExt, 0.0f, 10.0f)) {
+						atmosphere->SetMieExtinction(mieExt * 0.001f);
+					}
+
+					glm::vec3 ozoneAbsorption = atmosphere->GetOzoneAbsorption() * 1000.0f;
+					if (ImGui::ColorEdit3("Ozone Absorption", &ozoneAbsorption[0])) {
+						atmosphere->SetOzoneAbsorption(ozoneAbsorption * 0.001f);
+					}
+
+					float rayleighH = atmosphere->GetRayleighScaleHeight();
+					if (ImGui::SliderFloat("Rayleigh Scale Height (km)", &rayleighH, 1.0f, 20.0f)) {
+						atmosphere->SetRayleighScaleHeight(rayleighH);
+					}
+
+					float mieH = atmosphere->GetMieScaleHeight();
+					if (ImGui::SliderFloat("Mie Scale Height (km)", &mieH, 0.1f, 10.0f)) {
+						atmosphere->SetMieScaleHeight(mieH);
+					}
+				}
+
+				if (ImGui::CollapsingHeader("Atmosphere Variance", ImGuiTreeNodeFlags_DefaultOpen)) {
+					float varScale = atmosphere->GetColorVarianceScale();
+					if (ImGui::SliderFloat("Variance Scale", &varScale, 0.1f, 10.0f)) {
+						atmosphere->SetColorVarianceScale(varScale);
+					}
+
+					float varStrength = atmosphere->GetColorVarianceStrength();
+					if (ImGui::SliderFloat("Variance Strength", &varStrength, 0.0f, 0.5f)) {
+						atmosphere->SetColorVarianceStrength(varStrength);
+					}
 				}
 			} else {
 				ImGui::TextColored(ImVec4(1, 0, 0, 1), "Atmosphere effect not found!");
@@ -160,6 +214,23 @@ private:
 			file << "CloudThickness=" << atmosphere->GetCloudThickness() << "\n";
 			auto cc = atmosphere->GetCloudColor();
 			file << "CloudColor=" << cc.r << "," << cc.g << "," << cc.b << "\n";
+			file << "CloudShadowIntensity="
+				 << ConfigManager::GetInstance().GetAppSettingFloat("cloud_shadow_intensity", 0.5f) << "\n";
+
+			file << "\n[PhysicalParameters]\n";
+			file << "AtmosphereHeight=" << atmosphere->GetAtmosphereHeight() << "\n";
+			auto rs = atmosphere->GetRayleighScattering();
+			file << "RayleighScattering=" << rs.r << "," << rs.g << "," << rs.b << "\n";
+			file << "MieScattering=" << atmosphere->GetMieScattering() << "\n";
+			file << "MieExtinction=" << atmosphere->GetMieExtinction() << "\n";
+			auto oa = atmosphere->GetOzoneAbsorption();
+			file << "OzoneAbsorption=" << oa.r << "," << oa.g << "," << oa.b << "\n";
+			file << "RayleighScaleHeight=" << atmosphere->GetRayleighScaleHeight() << "\n";
+			file << "MieScaleHeight=" << atmosphere->GetMieScaleHeight() << "\n";
+
+			file << "\n[AtmosphereVariance]\n";
+			file << "ColorVarianceScale=" << atmosphere->GetColorVarianceScale() << "\n";
+			file << "ColorVarianceStrength=" << atmosphere->GetColorVarianceStrength() << "\n";
 		}
 
 		auto& lightManager = m_vis.GetLightManager();
