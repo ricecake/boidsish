@@ -35,6 +35,9 @@ namespace Boidsish {
 		void UpdateUBO();
 		void BindUBO(GLuint binding_point) const;
 
+		glm::vec3 GetMinBound() const { return min_bound_; }
+		glm::vec3 GetMaxBound() const { return max_bound_; }
+
 		int  AddSource(const SdfSource& source);
 		void UpdateSource(int id, const SdfSource& source);
 		void RemoveSource(int id);
@@ -48,6 +51,9 @@ namespace Boidsish {
 
 		std::map<int, SdfSource> sources_;
 		int                      next_id_ = 0;
+
+		glm::vec3 min_bound_{0.0f};
+		glm::vec3 max_bound_{0.0f};
 
 		static constexpr size_t kMaxSources = Constants::Class::SdfVolumes::MaxSources();
 	};
