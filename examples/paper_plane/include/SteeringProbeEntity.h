@@ -38,12 +38,12 @@ namespace Boidsish {
 
 			int checkpoint_id = probe_->HandleCheckpoints(delta_time, handler, player_);
 			if (checkpoint_id != -1) {
-				auto cp = handler.GetEntity(checkpoint_id);
-				if (cp) {
-					glm::vec3 cp_pos = cp->GetPosition().Toglm();
-					for (int i = 0; i < 3; ++i) {
-						handler.QueueAddEntity<ShieldBoid>(cp_pos);
-					}
+				// Spawn boids around the new checkpoint
+				// We use the probe's position directly since the checkpoint entity is only queued
+				glm::vec3 cp_pos = p;
+				cp_pos.y += 25.0f; // Match checkpoint height offset
+				for (int i = 0; i < 3; ++i) {
+					handler.QueueAddEntity<ShieldBoid>(cp_pos);
 				}
 			}
 

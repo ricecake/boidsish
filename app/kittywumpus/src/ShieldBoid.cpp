@@ -144,43 +144,14 @@ namespace Boidsish {
 	}
 
 	std::shared_ptr<EntityBase> ShieldBoid::FindThreat(const EntityHandler& handler, const glm::vec3& player_pos) {
-		// Look for missiles first
-		auto missiles = handler.GetEntitiesByType<GuidedMissile>();
-		for (auto* m : missiles) {
-			if (glm::distance(m->GetPosition().Toglm(), player_pos) < 100.0f) {
-				return handler.GetEntity(m->GetId());
+		const auto& entities = handler.GetAllEntities();
+		for (auto const& [id, entity] : entities) {
+			if (entity->IsThreat()) {
+				if (glm::distance(entity->GetPosition().Toglm(), player_pos) < 100.0f) {
+					return entity;
+				}
 			}
 		}
-
-		// Then other enemies
-		auto swoopers = handler.GetEntitiesByType<Swooper>();
-		for (auto* s : swoopers) {
-			if (glm::distance(s->GetPosition().Toglm(), player_pos) < 50.0f) {
-				return handler.GetEntity(s->GetId());
-			}
-		}
-
-		auto potshots = handler.GetEntitiesByType<Potshot>();
-		for (auto* p : potshots) {
-			if (glm::distance(p->GetPosition().Toglm(), player_pos) < 50.0f) {
-				return handler.GetEntity(p->GetId());
-			}
-		}
-
-		auto marchers = handler.GetEntitiesByType<CongaMarcher>();
-		for (auto* m : marchers) {
-			if (glm::distance(m->GetPosition().Toglm(), player_pos) < 30.0f) {
-				return handler.GetEntity(m->GetId());
-			}
-		}
-
-		auto redDots = handler.GetEntitiesByType<RedDotEnemy>();
-		for (auto* r : redDots) {
-			if (glm::distance(r->GetPosition().Toglm(), player_pos) < 50.0f) {
-				return handler.GetEntity(r->GetId());
-			}
-		}
-
 		return nullptr;
 	}
 
