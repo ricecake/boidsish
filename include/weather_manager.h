@@ -24,6 +24,7 @@ namespace Boidsish {
 		AtmosphereHeight,
 		RayleighScaleHeight,
 		MieScaleHeight,
+		CloudCoverage,
 		Count
 	};
 
@@ -54,6 +55,7 @@ namespace Boidsish {
 		WeatherRange<float> atmosphere_height;
 		WeatherRange<float> rayleigh_scale_height;
 		WeatherRange<float> mie_scale_height;
+		WeatherRange<float> cloud_coverage;
 
 		WeatherSettings operator+(const WeatherSettings& other) const {
 			return {
@@ -70,7 +72,8 @@ namespace Boidsish {
 				mie_scale + other.mie_scale,
 				atmosphere_height + other.atmosphere_height,
 				rayleigh_scale_height + other.rayleigh_scale_height,
-				mie_scale_height + other.mie_scale_height
+				mie_scale_height + other.mie_scale_height,
+				cloud_coverage + other.cloud_coverage
 			};
 		}
 
@@ -89,7 +92,8 @@ namespace Boidsish {
 				mie_scale * f,
 				atmosphere_height * f,
 				rayleigh_scale_height * f,
-				mie_scale_height * f
+				mie_scale_height * f,
+				cloud_coverage * f
 			};
 		}
 	};
@@ -129,6 +133,7 @@ namespace Boidsish {
 		glm::vec3 ozone_absorption = glm::vec3(0.650f, 1.881f, 0.085f) * 1e-3f;
 		float     rayleigh_scale_height = 8.0f;
 		float     mie_scale_height = 1.2f;
+		float     cloud_coverage = 0.5f;
 	};
 
 	class WeatherManager {

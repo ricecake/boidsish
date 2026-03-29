@@ -26,6 +26,7 @@ namespace Boidsish {
 		SetPace(WeatherAttribute::AtmosphereHeight, 0.05f);
 		SetPace(WeatherAttribute::RayleighScaleHeight, 0.05f);
 		SetPace(WeatherAttribute::MieScaleHeight, 0.05f);
+		SetPace(WeatherAttribute::CloudCoverage, 0.2f);
 	}
 
 	WeatherManager::~WeatherManager() {}
@@ -114,6 +115,9 @@ namespace Boidsish {
 		case WeatherAttribute::MieScaleHeight:
 			value_ptr = &current_.mie_scale_height;
 			break;
+		case WeatherAttribute::CloudCoverage:
+			value_ptr = &current_.cloud_coverage;
+			break;
 		default:
 			return;
 		}
@@ -160,6 +164,7 @@ namespace Boidsish {
 		sunny.settings.atmosphere_height = {50.0f, 70.0f};
 		sunny.settings.rayleigh_scale_height = {7.0f, 9.0f};
 		sunny.settings.mie_scale_height = {1.0f, 1.5f};
+		sunny.settings.cloud_coverage = {0.1f, 0.3f};
 		presets_.push_back(sunny);
 
 		// 2. Cloudy
@@ -180,6 +185,7 @@ namespace Boidsish {
 		cloudy.settings.atmosphere_height = {40.0f, 60.0f};
 		cloudy.settings.rayleigh_scale_height = {6.0f, 8.0f};
 		cloudy.settings.mie_scale_height = {1.5f, 2.5f};
+		cloudy.settings.cloud_coverage = {0.4f, 0.7f};
 		presets_.push_back(cloudy);
 
 		// 3. Overcast
@@ -200,6 +206,7 @@ namespace Boidsish {
 		overcast.settings.atmosphere_height = {30.0f, 50.0f};
 		overcast.settings.rayleigh_scale_height = {5.0f, 7.0f};
 		overcast.settings.mie_scale_height = {3.0f, 5.0f};
+		overcast.settings.cloud_coverage = {0.8f, 1.0f};
 		presets_.push_back(overcast);
 
 		// 4. Foggy
@@ -220,6 +227,7 @@ namespace Boidsish {
 		foggy.settings.atmosphere_height = {20.0f, 40.0f};
 		foggy.settings.rayleigh_scale_height = {4.0f, 6.0f};
 		foggy.settings.mie_scale_height = {5.0f, 10.0f};
+		foggy.settings.cloud_coverage = {0.2f, 0.4f};
 		presets_.push_back(foggy);
 
 		// Calculate CDF
@@ -303,6 +311,7 @@ namespace Boidsish {
 			cached_targets_.atmosphere_height = blended.atmosphere_height.Lerp(sampleNoise(12.12f));
 			cached_targets_.rayleigh_scale_height = blended.rayleigh_scale_height.Lerp(sampleNoise(13.13f));
 			cached_targets_.mie_scale_height = blended.mie_scale_height.Lerp(sampleNoise(14.14f));
+			cached_targets_.cloud_coverage = blended.cloud_coverage.Lerp(sampleNoise(15.15f));
 		}
 
 		// Always update attributes toward cached targets using the spring system
@@ -320,6 +329,7 @@ namespace Boidsish {
 		UpdateAttribute(WeatherAttribute::AtmosphereHeight, cached_targets_.atmosphere_height, deltaTime);
 		UpdateAttribute(WeatherAttribute::RayleighScaleHeight, cached_targets_.rayleigh_scale_height, deltaTime);
 		UpdateAttribute(WeatherAttribute::MieScaleHeight, cached_targets_.mie_scale_height, deltaTime);
+		UpdateAttribute(WeatherAttribute::CloudCoverage, cached_targets_.cloud_coverage, deltaTime);
 	}
 
 } // namespace Boidsish
