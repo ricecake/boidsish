@@ -13,6 +13,7 @@ namespace Boidsish {
 		void OnHit(const EntityHandler& handler, float damage) override;
 
 		bool IsTargetable() const override { return state_ == State::ALIVE; }
+		bool IsThreat() const override { return state_ == State::ALIVE; }
 
 	private:
 		enum class State {
