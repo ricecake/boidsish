@@ -1,6 +1,7 @@
 #pragma once
 
 #include "KittywumpusPlane.h"
+#include "ShieldBoid.h"
 #include "entity.h"
 #include "steering_probe.h"
 
@@ -35,7 +36,16 @@ namespace Boidsish {
 			auto p = probe_->GetPosition();
 			SetPosition(p.x, p.y, p.z);
 
-			probe_->HandleCheckpoints(delta_time, handler, player_);
+			int checkpoint_id = probe_->HandleCheckpoints(delta_time, handler, player_);
+			if (checkpoint_id != -1) {
+				auto cp = handler.GetEntity(checkpoint_id);
+				if (cp) {
+					glm::vec3 cp_pos = cp->GetPosition().Toglm();
+					for (int i = 0; i < 3; ++i) {
+						handler.QueueAddEntity<ShieldBoid>(cp_pos);
+					}
+				}
+			}
 
 			UpdateShape();
 		}
