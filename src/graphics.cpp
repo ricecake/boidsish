@@ -1968,13 +1968,16 @@ namespace Boidsish {
 				sky_shader->setInt("u_multiScatteringLUT", 11);
 				sky_shader->setInt("u_skyViewLUT", 12);
 
-				glm::vec3 sun_color = glm::vec3(1.0f);
-				float     sun_intensity = 1.0f;
-				if (!light_manager.GetLights().empty()) {
-					sun_color = light_manager.GetLights()[0].color;
-					sun_intensity = light_manager.GetLights()[0].intensity;
+				const auto& lights = light_manager.GetLights();
+				if (!lights.empty()) {
+					sky_shader->setVec3("u_sunRadiance", lights[0].color * lights[0].intensity * 20.0f);
+					if (lights.size() >= 2) {
+						sky_shader->setVec3("u_moonRadiance", lights[1].color * lights[1].intensity * 10.0f);
+						sky_shader->setVec3("u_moonDir", glm::normalize(-lights[1].direction));
+					} else {
+						sky_shader->setVec3("u_moonRadiance", glm::vec3(0.0f));
+					}
 				}
-				sky_shader->setVec3("u_sunRadiance", sun_color * sun_intensity * 20.0f);
 			}
 
 			glBindVertexArray(sky_vao);
@@ -2848,14 +2851,20 @@ namespace Boidsish {
 			float     sun_intensity = 1.0f;
 
 			if (!impl->light_manager.GetLights().empty()) {
-				const auto& main_light = impl->light_manager.GetLights()[0];
-				if (main_light.type == DIRECTIONAL_LIGHT) {
-					sun_dir = glm::normalize(-main_light.direction);
+				// Choose the most dominant light (Sun or Moon) for atmospheric scattering
+				const auto& lights = impl->light_manager.GetLights();
+				const auto& sun = lights[0];
+				const auto& moon = (lights.size() >= 2) ? lights[1] : sun;
+
+				const auto& primary_light = (sun.intensity >= moon.intensity) ? sun : moon;
+
+				if (primary_light.type == DIRECTIONAL_LIGHT) {
+					sun_dir = glm::normalize(-primary_light.direction);
 				} else {
-					sun_dir = glm::normalize(main_light.position - impl->camera.pos());
+					sun_dir = glm::normalize(primary_light.position - impl->camera.pos());
 				}
-				sun_color = main_light.color;
-				sun_intensity = main_light.intensity;
+				sun_color = primary_light.color;
+				sun_intensity = primary_light.intensity;
 			}
 
 			if (impl->atmosphere_effect) {

@@ -91,14 +91,21 @@ namespace Boidsish {
 		if (_cycle.enabled) {
 			if (!_cycle.paused) {
 				_cycle.time += deltaTime * _cycle.speed;
-				if (_cycle.time >= 24.0f)
+				if (_cycle.time >= 24.0f) {
 					_cycle.time -= 24.0f;
-				if (_cycle.time < 0.0f)
+					// Randomize moon azimuth for the next cycle (between 45 and 135 degrees)
+					_cycle.moon_azimuth = 45.0f + static_cast<float>(rand()) / (static_cast<float>(RAND_MAX) / 90.0f);
+				}
+				if (_cycle.time < 0.0f) {
 					_cycle.time += 24.0f;
+					// Randomize if we wrap back (rare but possible)
+					_cycle.moon_azimuth = 45.0f + static_cast<float>(rand()) / (static_cast<float>(RAND_MAX) / 90.0f);
+				}
 			}
 
-			// Update default directional light
-			if (!_lights.empty() && _lights[0].type == DIRECTIONAL_LIGHT) {
+			// Update default directional lights (Sun and Moon)
+			if (_lights.size() >= 2 && _lights[0].type == DIRECTIONAL_LIGHT && _lights[1].type == DIRECTIONAL_LIGHT) {
+				// Sun: Follows standard day/night path
 				float sun_angle_deg = (_cycle.time / 24.0f) * 360.0f;
 				// t=0 (mid) -> angle=0, elevation=-90
 				// t=6 (rise) -> angle=90, elevation=0 (East)
@@ -108,19 +115,33 @@ namespace Boidsish {
 				_lights[0].azimuth = 90.0f;
 				_lights[0].UpdateDirectionFromAngles();
 
+				// Moon: Follows offset path
+				float moon_time = _cycle.time + _cycle.moon_offset;
+				if (moon_time >= 24.0f)
+					moon_time -= 24.0f;
+				float moon_angle_deg = (moon_time / 24.0f) * 360.0f;
+				_lights[1].elevation = moon_angle_deg - 90.0f;
+				_lights[1].azimuth = _cycle.moon_azimuth;
+				_lights[1].UpdateDirectionFromAngles();
+
+				float sun_vis = glm::sin(glm::radians(_lights[0].elevation));
+				float moon_vis = glm::sin(glm::radians(_lights[1].elevation));
+
 				// With physical atmosphere, we don't manually dim the sun.
 				// The atmosphere LUTs (transmittance) will handle the color and intensity
 				// change naturally. We keep the sun "on" as long as it's not deep below horizon.
-				float elevation_rad = glm::radians(_lights[0].elevation);
-				float sun_vis = glm::sin(elevation_rad);
-
-				// Keep sun at base intensity when above horizon.
-				// Dim it only when it's significantly below to avoid sudden pops if the atmosphere
-				// doesn't perfectly occlude it at -1 degree.
 				if (sun_vis > -0.1f) {
 					_lights[0].base_intensity = 1.0f;
 				} else {
 					_lights[0].base_intensity = 0.0f;
+				}
+
+				// Moon is active only when sun is down, and has its own intensity curve
+				float moon_active = glm::smoothstep(-0.1f, -0.4f, sun_vis);
+				if (moon_vis > 0.0f) {
+					_lights[1].base_intensity = 0.15f * moon_active;
+				} else {
+					_lights[1].base_intensity = 0.0f;
 				}
 
 				// Update night factor for transitions based on sun visibility
@@ -130,7 +151,11 @@ namespace Boidsish {
 				// Basic fallback ambient - mostly handled by Atmosphere system now
 				glm::vec3 day_ambient = Constants::General::Colors::DefaultAmbient();
 				glm::vec3 night_ambient = day_ambient * 0.15f;
-				float     ambient_factor = std::clamp(sun_vis * 5.0f + 0.5f, 0.0f, 1.0f);
+
+				// Subtle moon contribution to night ambient
+				night_ambient += glm::vec3(0.01f, 0.02f, 0.04f) * std::max(0.0f, moon_vis) * moon_active;
+
+				float ambient_factor = std::clamp(sun_vis * 5.0f + 0.5f, 0.0f, 1.0f);
 				_ambient_light = glm::mix(night_ambient, day_ambient, ambient_factor);
 			}
 		}

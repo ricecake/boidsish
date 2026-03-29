@@ -16,6 +16,8 @@ namespace Boidsish {
 			float speed = 0.125f; // Rate of time passage
 			bool  paused = false;
 			float night_factor = 0.0f; // 0.0 (day) to 1.0 (night)
+			float moon_offset = 12.0f; // Hours offset from sun
+			float moon_azimuth = 70.0f;
 		};
 
 		int                 AddLight(const Light& light);
@@ -42,12 +44,16 @@ namespace Boidsish {
 		int GetShadowCastingLightCount() const;
 
 	private:
-		// Default light casts shadows
-		// Initial azimuth 0 (North), elevation 45 degrees
-		std::vector<Light> _lights{Light::CreateDirectional(0.0f, 45.0f, 1.0f, {1.0f, 0.50196f, 0.25098f}, true)};
-		glm::vec3          _ambient_light = Constants::General::Colors::DefaultAmbient();
-		DayNightCycle      _cycle;
-		int                _next_light_id = 1;
+		// Default lights cast shadows
+		// Sun: Initial azimuth 0 (North), elevation 45 degrees
+		// Moon: Initial azimuth 180 (South), elevation -45 degrees
+		std::vector<Light> _lights{
+			Light::CreateDirectional(0.0f, 45.0f, 1.0f, {1.0f, 0.50196f, 0.25098f}, true),
+			Light::CreateDirectional(180.0f, -45.0f, 0.1f, {0.8f, 0.9f, 1.0f}, true)
+		};
+		glm::vec3     _ambient_light = Constants::General::Colors::DefaultAmbient();
+		DayNightCycle _cycle;
+		int           _next_light_id = 1;
 		/*
 		    ambient: 53/58/44
 		    def: 231/27/0 @0,100,-100->0,-5.7,7.5 and 6.3 intense

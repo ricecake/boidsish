@@ -14,6 +14,8 @@ uniform sampler2D u_transmittanceLUT;
 uniform sampler2D u_skyViewLUT;
 
 uniform vec3 u_sunRadiance; // Added for consistency with scattering
+uniform vec3 u_moonRadiance;
+uniform vec3 u_moonDir;
 
 vec3 getTransmittance(float r, float mu) {
 	vec2 uv = transmittanceToUV(r, mu);
@@ -190,7 +192,36 @@ void main() {
 	vec3 skyTransmittance = getTransmittance(r, world_ray.y);
 	vec3 spaceBackground = (stars + nebula) * skyTransmittance;
 
-	vec3 finalColor = skyRadiance + sunDisc + spaceBackground;
+	// 4. Moon Disc with Atmospheric Refraction
+	vec3  moonDir = normalize(u_moonDir);
+	float cosMoon = dot(world_ray, moonDir);
+	float moonAngularRadius = 0.018; // Slightly smaller than sun
+
+	// Moon frame
+	vec3 moonUp = vec3(0, 1, 0);
+	vec3 moonRight = normalize(cross(moonUp, moonDir));
+	moonUp = cross(moonDir, moonRight);
+
+	float moonLocalX = dot(world_ray, moonRight);
+	float moonLocalY = dot(world_ray, moonUp);
+	float moonLocalZ = dot(world_ray, moonDir);
+
+	// Moon refraction flattening
+	float moonAtmRefraction = 1.0 + 0.6 * exp(-max(0.0, moonDir.y * 10.0));
+	float moonFlattenedY = moonLocalY * moonAtmRefraction;
+
+	float moonDistSq = moonLocalX * moonLocalX + moonFlattenedY * moonFlattenedY;
+	float moonMask = smoothstep(
+		moonAngularRadius * moonAngularRadius,
+		(moonAngularRadius - 0.001) * (moonAngularRadius - 0.001),
+		moonDistSq
+	);
+	moonMask *= step(0.99, moonLocalZ);
+
+	vec3 moonTransmittance = getTransmittance(r, moonDir.y);
+	vec3 moonDisc = u_moonRadiance * moonMask * moonTransmittance;
+
+	vec3 finalColor = skyRadiance + sunDisc + moonDisc + spaceBackground;
 
 	FragColor = vec4(finalColor, 1.0);
 }
