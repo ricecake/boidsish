@@ -15,12 +15,14 @@ uniform vec3  hazeColor;
 uniform vec3  cloudColorUniform;
 
 uniform sampler2D u_transmittanceLUT;
+uniform sampler2D u_skyViewLUT;
 uniform sampler3D u_aerialPerspectiveLUT;
 
 #include "../atmosphere/common.glsl"
 #include "../helpers/clouds.glsl"
 #include "../helpers/fast_noise.glsl"
 #include "../helpers/lighting.glsl"
+#include "helpers/math.glsl"
 
 vec3 sampleAerialPerspective(vec3 rd, float distKM) {
 	float azimuth = atan(rd.x, -rd.z);
@@ -48,6 +50,20 @@ float sampleAerialPerspectiveTransmittance(vec3 rd, float distKM) {
 	return texture(u_aerialPerspectiveLUT, vec3(u, v, w)).a;
 }
 
+vec3 sampleSkyView(vec3 rd) {
+	float azimuth = atan(rd.x, -rd.z);
+	if (azimuth < 0.0)
+		azimuth += 2.0 * PI;
+	float elevation = asin(clamp(rd.y, -1.0, 1.0));
+
+	float u = azimuth / (2.0 * PI);
+	float adjV = sqrt(abs(elevation) / (PI * 0.5));
+	float v = (elevation < 0.0) ? (1.0 - adjV) * 0.5 : (adjV + 1.0) * 0.5;
+
+	return texture(u_skyViewLUT, vec2(u, v)).rgb;
+}
+
+
 float remap(float value, float low1, float high1, float low2, float high2) {
 	return low2 + (value - low1) * (high2 - low2) / max(0.0001, (high1 - low1));
 }
@@ -55,6 +71,7 @@ float remap(float value, float low1, float high1, float low2, float high2) {
 void main() {
 	float depth = texture(depthTexture, TexCoords).r;
 	vec3  sceneColor = texture(sceneTexture, TexCoords).rgb;
+	vec3 zenithRadiance = sampleSkyView(vec3(0, 1, 0)) * 4.0;
 
 	float z = depth * 2.0 - 1.0;
 	vec4  clipSpacePosition = vec4(TexCoords * 2.0 - 1.0, z, 1.0);
@@ -79,17 +96,21 @@ void main() {
 	float cloudFactor = 0.0;
 	vec3  cloudColor = vec3(0.0);
 
-	float scaledCloudAltitude = cloudAltitude * worldScale;
+	float  weatherWarp = 1;//fastRidge3d(vec3(worldPos.xz / (4000* worldScale), time * 0.05)) * 0.5 + 0.5;
+	float weatherMap = weatherWarp*fastWorley3d(vec3(worldPos.xz / (4000 * worldScale), time * 0.01)) * 0.5 + 0.5;
+
+	float scaledCloudAltitude = max(20 * weatherMap + cloudThickness, cloudAltitude)  * worldScale;
 	float t_start = (scaledCloudAltitude - viewPos.y) / (rayDir.y + 0.000001);
 
 	vec3  cloudPoint = viewPos + rayDir * t_start;
-	float weatherMap = fastWorley3d(vec3(worldPos.xz / (4000 * worldScale), time * 0.01));
+	// float weatherMap = fastWorley3d(vec3(worldPos.xz / (4000 * worldScale), time * 0.01)) * 0.5 + 0.5;
+	// float weatherMap = fastWorley3d(vec3(p.xz / (400.0 * worldScale), time * 0.01));
 
-	float weatherThickness = max(20 * weatherMap + cloudThickness, cloudThickness);
-	float scaledCloudThickness = weatherThickness * worldScale;
+	float scaledCloudThickness = max(20 * weatherMap + cloudThickness, cloudThickness) * worldScale;
 	float t_end = (scaledCloudAltitude + scaledCloudThickness - viewPos.y) / (rayDir.y + 0.000001);
 
 	float workingCloudDensity = cloudDensity + 5 * weatherMap;
+
 
 	if (t_start > t_end) {
 		float temp = t_start;
@@ -99,31 +120,69 @@ void main() {
 	t_start = max(t_start, 0.0);
 	t_end = min(t_end, dist);
 
+	float cloudTransmittance = 1.0;
 	if (t_start < t_end) {
 		float cloudAcc = 0.0;
-		int   samples = 4 * int(weatherThickness / cloudThickness);
+		vec3  lightEnergy = vec3(0.0);
+
+		int   samples = 12 * int(scaledCloudThickness / cloudThickness);
+		int   shadow_samples = int(samples / 2.0);
+
 		float jitter = fastBlueNoise(TexCoords * 10.0 + vec2(sin(time * 0.07), cos(time * -0.05)));
+		float stepSize = (t_end - t_start) / float(samples);
+
 		for (int i = 0; i < samples; i++) {
 			float t = mix(t_start, t_end, (float(i) + jitter) / float(samples));
+
 			vec3  p = viewPos + rayDir * t;
-			float d = calculateCloudDensity(p, cloudAltitude, weatherThickness, cloudDensity, worldScale, time);
-			cloudAcc += d;
+
+			float d = calculateCloudDensity(p, weatherMap, cloudAltitude, scaledCloudThickness, cloudDensity, worldScale, time, false);
+			float stepDensity = d * stepSize * 0.01;
+			float transmittanceAtStep = exp(-stepDensity);
+
+			vec3 stepScattering = vec3(0.0);
+			if (d > 0.01) {
+				for (int j = 0; j < num_lights; j++) {
+					if (lights[j].type != LIGHT_TYPE_DIRECTIONAL) {
+						continue;
+					}
+
+					vec3  L = normalize(-lights[j].direction);
+					float cosTheta = dot(rayDir, L);
+					float phase = cloudPhase(cosTheta);
+
+					float shadowTerm = 1.0;
+					float shadowDensity = 0.0;
+					float shadowStepSize = scaledCloudThickness / float(shadow_samples) * 0.5;
+					for (int k = 0; k < shadow_samples; k++) {
+						vec3 sp = p + L * (float(k) + 0.5) * shadowStepSize;
+						shadowDensity += calculateCloudDensity(sp, weatherMap, cloudAltitude, scaledCloudThickness, cloudDensity, worldScale, time, true);
+					}
+					float opticalDepthToLight = shadowDensity * shadowStepSize * 0.02;
+					float beer = beerPowder(opticalDepthToLight, d);
+					float multScat = exp(-opticalDepthToLight) * 0.5;
+					shadowTerm = mix(beer, multScat, 0.57);
+
+					stepScattering += lights[j].color * shadowTerm * phase * lights[j].intensity * mix(1, 10, step(j, 0));
+				}
+
+				// Enhanced ambient - use zenith radiance from sky-view LUT
+				vec3 ambient = mix(ambient_light, zenithRadiance, 0.5) * 0.5;
+
+				vec3 S = stepScattering + ambient;
+				lightEnergy += cloudTransmittance * S * stepDensity;
+				cloudTransmittance *= transmittanceAtStep;
+
+				if (cloudTransmittance < 0.01) break;
+			}
 		}
-		cloudFactor = 1.0 - exp(-cloudAcc * (t_end - t_start) * 0.05 / float(samples));
-		vec3 intersect = viewPos + rayDir * mix(t_start, t_end, 0.5);
-		vec3 cloudScattering = vec3(0.0);
-		for (int i = 0; i < num_lights; i++) {
-			vec3  L = normalize(lights[i].position - intersect);
-			float d = max(0.0, dot(vec3(0, 1, 0), L));
-			float silver = pow(max(0.0, dot(rayDir, L)), 4.0) * 0.5;
-			cloudScattering += lights[i].color * (d * 0.5 + 0.5 + silver) * lights[i].intensity;
-		}
-		cloudColor = cloudColorUniform * (ambient_light + cloudScattering * 0.5);
+
+		cloudColor = lightEnergy * cloudColorUniform;
 	}
 
 	// Combine everything
-	vec3 result = mix(sceneColor, cloudColor, cloudFactor);
-
+	// vec3 result = mix(sceneColor, cloudColor, cloudFactor);
+	vec3 result = sceneColor * cloudTransmittance + cloudColor;
 	// Apply physically accurate atmosphere
 	if (depth < 1.0) {
 		result = result * transmittance + inScattering;

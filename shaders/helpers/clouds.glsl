@@ -7,14 +7,19 @@
 // Returns a density value [0, 1+] based on world-space position
 float calculateCloudDensity(
 	vec3  p,
+	float weatherMap,
 	float cloudAltitude,
 	float cloudThickness,
 	float cloudDensityBase,
 	float worldScale,
-	float time
+	float time,
+	bool simplified
 ) {
-	float scaledCloudAltitude = cloudAltitude * worldScale;
-	float scaledCloudThickness = cloudThickness * worldScale;
+	// Weather map for large-scale variation
+	// float weatherMap = fastWorley3d(vec3(p.xz / (400.0 * worldScale), time * 0.01));
+
+	float scaledCloudAltitude = (cloudAltitude   + 10 * weatherMap) * worldScale;
+	float scaledCloudThickness = (cloudThickness + 150 * weatherMap) * worldScale;
 
 	// Height-based tapering
 	float h = (p.y - scaledCloudAltitude) / max(scaledCloudThickness, 0.001);
@@ -22,9 +27,12 @@ float calculateCloudDensity(
 	if (tapering <= 0.01)
 		return 0.0;
 
-	// Weather map for large-scale variation
-	float weatherMap = fastWorley3d(vec3(p.xz / (4000.0 * worldScale), time * 0.01));
-	float workingCloudDensity = cloudDensityBase + 5.0 * weatherMap;
+	float workingCloudDensity = cloudDensityBase + 5.0 * (1.0-weatherMap);
+
+	if (simplified) {
+		return smoothstep(0.4, 0.7, workingCloudDensity) * cloudDensityBase * tapering;
+	}
+
 
 	// Detail noise
 	vec3 p_noise = p + 2.0 * fastCurl3d(vec3(p.xz / 500.0, time / 60.0));
