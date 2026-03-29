@@ -129,6 +129,14 @@ namespace Boidsish {
 									if (ImGui::SliderFloat("Cloud Thickness", &cloud_thickness, 0.0f, 50.0f)) {
 										atmosphere_effect->SetCloudThickness(cloud_thickness);
 									}
+									float cloud_coverage = atmosphere_effect->GetCloudCoverage();
+									if (ImGui::SliderFloat("Cloud Coverage", &cloud_coverage, 0.0f, 1.0f)) {
+										atmosphere_effect->SetCloudCoverage(cloud_coverage);
+									}
+									float cloud_warp = atmosphere_effect->GetCloudWarp();
+									if (ImGui::SliderFloat("Camera Cloud Buffer", &cloud_warp, 0.0f, 1000.0f)) {
+										atmosphere_effect->SetCloudWarp(cloud_warp);
+									}
 									glm::vec3 cloud_color = atmosphere_effect->GetCloudColor();
 									if (ImGui::ColorEdit3("Cloud Color", &cloud_color[0])) {
 										atmosphere_effect->SetCloudColor(cloud_color);

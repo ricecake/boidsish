@@ -60,6 +60,14 @@ namespace Boidsish {
 
 			glm::vec3 GetCloudColor() const { return cloud_color_; }
 
+			void SetCloudCoverage(float coverage) { cloud_coverage_ = coverage; }
+
+			float GetCloudCoverage() const { return cloud_coverage_; }
+
+			void SetCloudWarp(float warp) { cloud_warp_ = warp; }
+
+			float GetCloudWarp() const { return cloud_warp_; }
+
 			// Scattering parameters
 			void SetRayleighScale(float s) { rayleigh_scale_ = s; }
 
@@ -137,6 +145,8 @@ namespace Boidsish {
 			float     cloud_density_ = 0.5f;
 			float     cloud_altitude_ = 175.0f;
 			float     cloud_thickness_ = 10.0f;
+			float     cloud_coverage_ = 0.5f;
+			float     cloud_warp_ = 0.0f;
 			glm::vec3 cloud_color_ = glm::vec3(0.95f, 0.95f, 1.0f);
 
 			float     rayleigh_scale_ = 1.0f;

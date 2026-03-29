@@ -57,6 +57,8 @@ namespace Boidsish {
 			shader_->setFloat("cloudDensity", cloud_density_);
 			shader_->setFloat("cloudAltitude", cloud_altitude_);
 			shader_->setFloat("cloudThickness", cloud_thickness_);
+			shader_->setFloat("cloudCoverage", cloud_coverage_);
+			shader_->setFloat("cloudWarp", cloud_warp_);
 			shader_->setVec3("cloudColorUniform", cloud_color_);
 
 			shader_->setFloat("u_atmosphereHeight", atmosphere_height_);
