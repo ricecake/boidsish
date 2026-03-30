@@ -442,11 +442,10 @@ namespace Boidsish {
 		ShaderHandle            shadow_shader_handle{0};
 		GLuint                  plane_vao{0}, plane_vbo{0}, sky_vao{0}, blur_quad_vao{0}, blur_quad_vbo{0};
 		GLuint main_fbo_{0}, main_fbo_texture_{0}, main_fbo_velocity_texture_{0}, main_fbo_depth_texture_{0},
-			main_fbo_rbo_{0}, refraction_texture_{0};
+			refraction_texture_{0};
 		GLuint    lighting_ubo{0};
 		GLuint    visual_effects_ubo{0};
 		GLuint    temporal_data_ubo{0};
-		GLuint    frustum_ubo{0};
 		glm::mat4 projection;
 		glm::mat4 prev_view_projection{1.0f};
 
@@ -1283,6 +1282,10 @@ namespace Boidsish {
 
 			if (visual_effects_ubo) {
 				glDeleteBuffers(1, &visual_effects_ubo);
+			}
+
+			if (temporal_data_ubo) {
+				glDeleteBuffers(1, &temporal_data_ubo);
 			}
 
 			if (occlusion_visibility_ssbo_) {
@@ -2559,6 +2562,16 @@ namespace Boidsish {
 		PROJECT_PROFILE_SCOPE("Update");
 		impl->frame_count_++;
 		impl->hud_manager->Update(impl->input_state.delta_time, impl->camera);
+
+		// Prune expired chase targets to prevent unbounded resource growth
+		if (impl->frame_count_ % 500 == 0 && impl->chase_targets_.size() > 50) {
+			auto it = std::remove_if(
+				impl->chase_targets_.begin(),
+				impl->chase_targets_.end(),
+				[](const std::weak_ptr<EntityBase>& target) { return target.expired(); }
+			);
+			impl->chase_targets_.erase(it, impl->chase_targets_.end());
+		}
 
 		// Reset per-frame input state
 		std::fill_n(impl->input_state.key_down, Constants::Library::Input::MaxKeys(), false);

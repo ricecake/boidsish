@@ -38,6 +38,10 @@ namespace Boidsish {
 		setupMesh(nullptr); // Initial setup (legacy if no megabuffer yet)
 	}
 
+	Mesh::~Mesh() {
+		Cleanup();
+	}
+
 	Mesh::Mesh(const Mesh& other) {
 		vertices = other.vertices;
 		indices = other.indices;
@@ -168,15 +172,15 @@ namespace Boidsish {
 	}
 
 	void Mesh::Cleanup() {
-		if (VAO != 0) {
+		if (VAO != 0 && !allocation.valid) {
 			glDeleteVertexArrays(1, &VAO);
 			VAO = 0;
 		}
-		if (VBO != 0) {
+		if (VBO != 0 && !allocation.valid) {
 			glDeleteBuffers(1, &VBO);
 			VBO = 0;
 		}
-		if (EBO != 0) {
+		if (EBO != 0 && !allocation.valid) {
 			glDeleteBuffers(1, &EBO);
 			EBO = 0;
 		}

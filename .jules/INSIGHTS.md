@@ -46,3 +46,26 @@
 - **Fix 5**: Implement uniform location caching in `ShaderBase` using a `std::unordered_map` to minimize `glGetUniformLocation` overhead.
 - **Fix 6**: Disable copy operations and implement move operations for `ShaderBase` (Rule of Five) to safely manage OpenGL program ownership.
 - **Fix 7**: Add `glDeleteBuffers(1, &frustum_ubo)` to `VisualizerImpl` destructor.
+
+### 7. Missing Resource Cleanup in Visualizer (Part 2)
+- **Issue Type**: Memory Leak (OpenGL Buffer)
+- **Location**: `src/graphics.cpp`, `VisualizerImpl::~VisualizerImpl`
+- **Evidence**: `temporal_data_ubo` was created in the constructor but not deleted in the destructor.
+- **Learning**: All UBOs and global GPU resources must be tracked in the central lifecycle manager or explicitly handled in the destructor.
+
+### 8. Missing RAII in Mesh Class
+- **Issue Type**: Memory Leak (OpenGL Objects)
+- **Location**: `include/model.h`, `src/model.cpp`
+- **Evidence**: The `Mesh` class managed several OpenGL objects (VAO, VBO, EBO) but lacked a destructor to release them, leading to leaks when `Mesh` objects were destroyed.
+- **Learning**: Core resource-holding classes must implement the Rule of Five or use smart RAII wrappers to ensure GPU memory is reclaimed.
+
+### 9. Unbounded Container Growth (Heuristic)
+- **Issue Type**: Memory Growth (CPU Memory)
+- **Location**: `src/graphics.cpp`, `Visualizer::Update`
+- **Evidence**: `chase_targets_` grew every time a target was added but was only sporadically cleaned up.
+- **Learning**: Long-lived containers that accumulate handles must have predictable pruning logic to maintain a stable memory footprint.
+
+## Rationale for Fixes (Updated)
+- **Fix 8**: Add `glDeleteBuffers(1, &temporal_data_ubo)` to `VisualizerImpl` destructor.
+- **Fix 9**: Implement `Mesh` destructor and update `Cleanup()` to safely release owned OpenGL resources.
+- **Fix 10**: Implement proactive pruning of `chase_targets_` in the main update loop.
