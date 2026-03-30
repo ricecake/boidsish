@@ -3506,6 +3506,9 @@ namespace Boidsish {
 			impl->post_processing_manager_
 				->ApplyEarlyEffects(view, impl->projection, impl->camera.pos(), impl->simulation_time);
 
+			// Ensure we are back to full resolution before rendering transparent objects and capturing refraction
+			impl->post_processing_manager_->EnsureFullRes();
+
 			// Re-bind shadows for transparent objects as early effects may have changed texture bindings
 			impl->BindShadows(*impl->shader);
 

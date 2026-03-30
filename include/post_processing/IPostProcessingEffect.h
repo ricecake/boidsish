@@ -36,9 +36,14 @@ namespace Boidsish {
 
 			virtual bool IsEarly() const { return false; }
 
+			virtual float GetRenderScale() const { return render_scale_; }
+
+			virtual void SetRenderScale(float scale) { render_scale_ = scale; }
+
 		protected:
 			std::string name_;
 			bool        is_enabled_ = true;
+			float       render_scale_ = 1.0f;
 		};
 
 	} // namespace PostProcessing
