@@ -142,11 +142,11 @@ namespace Boidsish {
 			float     haze_density_ = 0.003f;
 			float     haze_height_ = 20.0f;
 			glm::vec3 haze_color_ = glm::vec3(0.6f, 0.7f, 0.8f);
-			float     cloud_density_ = 0.5f;
-			float     cloud_altitude_ = 175.0f;
-			float     cloud_thickness_ = 10.0f;
-			float     cloud_coverage_ = 0.5f;
-			float     cloud_warp_ = 0.0f;
+			float     cloud_density_ = 20.0f;
+			float     cloud_altitude_ = 400.0f;
+			float     cloud_thickness_ = 200.0f;
+			float     cloud_coverage_ = 0.75f;
+			float     cloud_warp_ = 75.0f;
 			glm::vec3 cloud_color_ = glm::vec3(0.95f, 0.95f, 1.0f);
 
 			float     rayleigh_scale_ = 1.0f;
@@ -154,7 +154,7 @@ namespace Boidsish {
 			float     mie_anisotropy_ = 0.8f;
 			float     multi_scat_scale_ = 0.1f;
 			float     ambient_scat_scale_ = 0.750f;
-			float     atmosphere_height_ = 60.0f;
+			float     atmosphere_height_ = 120.0f;
 			glm::vec3 rayleigh_scattering_ = glm::vec3(5.802f, 13.558f, 33.100f) * 1e-3f;
 			float     mie_scattering_ = 3.996f * 1e-3f;
 			float     mie_extinction_ = 4.440f * 1e-3f;

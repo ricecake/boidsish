@@ -3060,7 +3060,7 @@ namespace Boidsish {
 
 		if (impl->decor_manager && impl->terrain_generator && impl->terrain_render_manager) {
 			impl->decor_manager->SetMinPixelSize(
-				ConfigManager::GetInstance().GetAppSettingFloat("foliage_culling_pixel_threshold", 10.0f)
+				ConfigManager::GetInstance().GetAppSettingFloat("foliage_culling_pixel_threshold", 8.0f)
 			);
 			impl->decor_manager->Update(
 				impl->simulation_delta_time,
