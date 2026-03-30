@@ -177,8 +177,8 @@ void main() {
 	vec3  instanceCenter = vec3(modelMatrix[3]);
 	float instanceScale = length(vec3(modelMatrix[0])); // Approximate scale from first column
 
-	// GPU frustum culling - output degenerate triangle if outside frustum
-	if (enableFrustumCulling && !current_isColossal) {
+	// GPU frustum culling - skipped if using MDI since compute shader handles it
+	if (enableFrustumCulling && !uUseMDI && !current_isColossal) {
 		// Use sphere test with approximate radius based on scale
 		float effectiveRadius = frustumCullRadius * instanceScale;
 

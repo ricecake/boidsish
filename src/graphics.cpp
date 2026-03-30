@@ -427,6 +427,9 @@ namespace Boidsish {
 		uint32_t mdi_frustum_count = 0;
 		uint32_t mdi_bone_count = 0;
 
+		// GPU-Accelerated Frustum Culling
+		std::unique_ptr<ComputeShader> frustum_cull_shader_;
+
 		// Hi-Z occlusion culling
 		std::unique_ptr<HiZManager>    hiz_manager;
 		std::unique_ptr<ComputeShader> occlusion_cull_shader_;
@@ -458,6 +461,8 @@ namespace Boidsish {
 		float                                          simulation_delta_time = 0.0f;
 		float                                          time_scale = 1.0f;
 		float                                          ripple_strength = 0.0f;
+		float                                          simulation_accumulator = 0.0f;
+		const float                                    fixed_delta_time = 1.0f / 60.0f;
 		std::chrono::high_resolution_clock::time_point last_frame;
 
 		CameraMode camera_mode = CameraMode::AUTO;
@@ -717,6 +722,12 @@ namespace Boidsish {
 			uniforms_ssbo = std::make_unique<PersistentBuffer<CommonUniforms>>(GL_SHADER_STORAGE_BUFFER, 65536);
 			frustum_ssbo = std::make_unique<PersistentBuffer<FrustumDataGPU>>(GL_UNIFORM_BUFFER, 64);
 			bone_matrices_ssbo = std::make_unique<PersistentBuffer<glm::mat4>>(GL_SHADER_STORAGE_BUFFER, 65536);
+
+			// GPU-Accelerated Frustum Culling
+			frustum_cull_shader_ = std::make_unique<ComputeShader>("shaders/frustum_cull.comp");
+			if (!frustum_cull_shader_->isValid()) {
+				logger::ERROR("GPU Frustum culling shader failed to compile!");
+			}
 
 			// Hi-Z occlusion culling
 			hiz_manager = std::make_unique<HiZManager>();
@@ -1501,51 +1512,33 @@ namespace Boidsish {
 			};
 
 			// 1. Build batches and fill uniform/command buffers
+			// Note: We process indexed packets first, then array packets to ensure
+			// they are contiguous in the uniform buffer for easier compute shader indexing.
+
 			const RenderPacket* last_processed_packet = nullptr;
+			uint32_t            indexed_uniform_start = mdi_uniform_count;
+			uint32_t            indexed_draw_count = 0;
 
 			for (size_t i = 0; i < packets.size(); ++i) {
 				const auto& packet = packets[i];
-
-				// Filter for shadow pass
+				if (packet.index_count == 0)
+					continue;
 				if (is_shadow_pass && !packet.casts_shadows)
 					continue;
-
-				// Skip packets with invalid shader or exhausted uniform buffer
 				if (packet.shader_id == 0)
 					continue;
-				if (mdi_uniform_count >= max_elements) {
+
+				if (mdi_uniform_count >= max_elements || mdi_elements_count >= max_elements) {
 					static bool uniform_warning_logged = false;
 					if (!uniform_warning_logged) {
-						logger::WARNING("MDI uniform buffer exhausted - some objects may not render");
+						logger::WARNING("MDI uniform or element buffer exhausted - some objects may not render");
 						uniform_warning_logged = true;
 					}
 					continue;
 				}
 
-				bool is_indexed = (packet.index_count > 0);
-
-				// Safety check for command buffer capacity
-				if (is_indexed && mdi_elements_count >= max_elements) {
-					static bool elements_warning_logged = false;
-					if (!elements_warning_logged) {
-						logger::WARNING("MDI indexed command buffer exhausted");
-						elements_warning_logged = true;
-					}
-					continue;
-				}
-				if (!is_indexed && mdi_arrays_count >= max_elements) {
-					static bool arrays_warning_logged = false;
-					if (!arrays_warning_logged) {
-						logger::WARNING("MDI array command buffer exhausted");
-						arrays_warning_logged = true;
-					}
-					continue;
-				}
-
-				// Copy uniforms to persistent SSBO
 				uniforms_ptr[mdi_uniform_count] = packet.uniforms;
 
-				// Handle skeletal animation data
 				if (!packet.bone_matrices.empty()) {
 					uint32_t bone_count = static_cast<uint32_t>(packet.bone_matrices.size());
 					if (mdi_bone_count + bone_count <= 65536) {
@@ -1562,15 +1555,15 @@ namespace Boidsish {
 				if (batches.empty() || !last_processed_packet || !can_batch(*last_processed_packet, packet)) {
 					Batch new_batch;
 					new_batch.shader_handle = shader_override.value_or(packet.shader_handle);
-					new_batch.shader_id = is_shadow_pass ? 999999 : packet.shader_id; // Dummy ID if overridden
+					new_batch.shader_id = is_shadow_pass ? 999999 : packet.shader_id;
 					new_batch.vao = packet.vao;
 					new_batch.draw_mode = packet.draw_mode;
 					new_batch.index_type = packet.index_type;
 					new_batch.no_cull = packet.no_cull;
 					new_batch.textures = packet.textures;
-					new_batch.first_command = is_indexed ? mdi_elements_count : mdi_arrays_count;
+					new_batch.first_command = mdi_elements_count;
 					new_batch.command_count = 0;
-					new_batch.is_indexed = is_indexed;
+					new_batch.is_indexed = true;
 					new_batch.base_uniform_index = frame_element_offset + mdi_uniform_count;
 					batches.push_back(new_batch);
 				}
@@ -1578,37 +1571,147 @@ namespace Boidsish {
 				auto& current_batch = batches.back();
 				current_batch.command_count++;
 
-				bool uses_megabuffer = (packet.vao == megabuffer->GetVAO());
-
-				if (is_indexed) {
-					DrawElementsIndirectCommand cmd{};
-					bool                        use_shadow_indices = (is_shadow_pass && packet.shadow_index_count > 0);
-					cmd.count = use_shadow_indices ? packet.shadow_index_count : packet.index_count;
-					cmd.instanceCount = std::max(1, packet.instance_count);
-					cmd.firstIndex = (use_shadow_indices ? packet.shadow_first_index : packet.first_index) +
-						(uses_megabuffer ? index_frame_offset : 0);
-					cmd.baseVertex = static_cast<int32_t>(
-						packet.base_vertex + (uses_megabuffer ? vertex_frame_offset : 0)
-					);
-					cmd.baseInstance = 0;
-					elements_cmd_ptr[mdi_elements_count++] = cmd;
-				} else {
-					DrawArraysIndirectCommand cmd{};
-					cmd.count = packet.vertex_count;
-					cmd.instanceCount = std::max(1, packet.instance_count);
-					cmd.first = packet.base_vertex + (uses_megabuffer ? vertex_frame_offset : 0);
-					cmd.baseInstance = 0;
-					arrays_cmd_ptr[mdi_arrays_count++] = cmd;
-				}
+				bool                        uses_megabuffer = (packet.vao == megabuffer->GetVAO());
+				DrawElementsIndirectCommand cmd{};
+				bool                        use_shadow_indices = (is_shadow_pass && packet.shadow_index_count > 0);
+				cmd.count = use_shadow_indices ? packet.shadow_index_count : packet.index_count;
+				cmd.instanceCount = std::max(1, packet.instance_count);
+				cmd.firstIndex = (use_shadow_indices ? packet.shadow_first_index : packet.first_index) +
+					(uses_megabuffer ? index_frame_offset : 0);
+				cmd.baseVertex = static_cast<int32_t>(packet.base_vertex + (uses_megabuffer ? vertex_frame_offset : 0));
+				cmd.baseInstance = 0;
+				elements_cmd_ptr[mdi_elements_count++] = cmd;
 
 				last_processed_packet = &packet;
 				mdi_uniform_count++;
+				indexed_draw_count++;
+			}
+
+			uint32_t array_uniform_start = mdi_uniform_count;
+			uint32_t array_draw_count = 0;
+			last_processed_packet = nullptr;
+
+			for (size_t i = 0; i < packets.size(); ++i) {
+				const auto& packet = packets[i];
+				if (packet.index_count > 0)
+					continue;
+				if (is_shadow_pass && !packet.casts_shadows)
+					continue;
+				if (packet.shader_id == 0)
+					continue;
+
+				if (mdi_uniform_count >= max_elements || mdi_arrays_count >= max_elements) {
+					static bool uniform_warning_logged = false;
+					if (!uniform_warning_logged) {
+						logger::WARNING("MDI uniform or array buffer exhausted - some objects may not render");
+						uniform_warning_logged = true;
+					}
+					continue;
+				}
+
+				uniforms_ptr[mdi_uniform_count] = packet.uniforms;
+
+				if (!packet.bone_matrices.empty()) {
+					uint32_t bone_count = static_cast<uint32_t>(packet.bone_matrices.size());
+					if (mdi_bone_count + bone_count <= 65536) {
+						std::memcpy(
+							&bones_ptr[mdi_bone_count],
+							packet.bone_matrices.data(),
+							bone_count * sizeof(glm::mat4)
+						);
+						uniforms_ptr[mdi_uniform_count].bone_matrices_offset = (int)mdi_bone_count;
+						mdi_bone_count += bone_count;
+					}
+				}
+
+				if (batches.empty() || !last_processed_packet || !can_batch(*last_processed_packet, packet)) {
+					Batch new_batch;
+					new_batch.shader_handle = shader_override.value_or(packet.shader_handle);
+					new_batch.shader_id = is_shadow_pass ? 999999 : packet.shader_id;
+					new_batch.vao = packet.vao;
+					new_batch.draw_mode = packet.draw_mode;
+					new_batch.index_type = packet.index_type;
+					new_batch.no_cull = packet.no_cull;
+					new_batch.textures = packet.textures;
+					new_batch.first_command = mdi_arrays_count;
+					new_batch.command_count = 0;
+					new_batch.is_indexed = false;
+					new_batch.base_uniform_index = frame_element_offset + mdi_uniform_count;
+					batches.push_back(new_batch);
+				}
+
+				auto& current_batch = batches.back();
+				current_batch.command_count++;
+
+				bool                      uses_megabuffer = (packet.vao == megabuffer->GetVAO());
+				DrawArraysIndirectCommand cmd{};
+				cmd.count = packet.vertex_count;
+				cmd.instanceCount = std::max(1, packet.instance_count);
+				cmd.first = packet.base_vertex + (uses_megabuffer ? vertex_frame_offset : 0);
+				cmd.baseInstance = 0;
+				arrays_cmd_ptr[mdi_arrays_count++] = cmd;
+
+				last_processed_packet = &packet;
+				mdi_uniform_count++;
+				array_draw_count++;
 			}
 
 			// Ensure all CPU writes to persistent mapped buffers are visible to GPU
 			glMemoryBarrier(
 				GL_CLIENT_MAPPED_BUFFER_BARRIER_BIT | GL_COMMAND_BARRIER_BIT | GL_SHADER_STORAGE_BARRIER_BIT
 			);
+
+			// GPU-Accelerated Frustum Culling dispatch
+			if (frustum_cull_shader_ && frustum_cull_shader_->isValid() && mdi_uniform_count > 0 && !is_shadow_pass) {
+				frustum_cull_shader_->use();
+
+				// Bind the indirect command buffers as SSBOs for the compute shader to modify
+				if (indexed_draw_count > 0) {
+					glBindBufferRange(
+						GL_SHADER_STORAGE_BUFFER,
+						0,
+						indirect_elements_buffer->GetBufferId(),
+						indirect_elements_buffer->GetFrameOffset(),
+						indexed_draw_count * sizeof(DrawElementsIndirectCommand)
+					);
+				}
+				if (array_draw_count > 0) {
+					glBindBufferRange(
+						GL_SHADER_STORAGE_BUFFER,
+						1,
+						indirect_arrays_buffer->GetBufferId(),
+						indirect_arrays_buffer->GetFrameOffset() + (mdi_arrays_count - array_draw_count) * sizeof(DrawArraysIndirectCommand),
+						array_draw_count * sizeof(DrawArraysIndirectCommand)
+					);
+				}
+
+				// Bind uniforms SSBO for AABBs
+				glBindBufferRange(
+					GL_SHADER_STORAGE_BUFFER,
+					2,
+					uniforms_ssbo->GetBufferId(),
+					frame_element_offset * sizeof(CommonUniforms),
+					mdi_uniform_count * sizeof(CommonUniforms)
+				);
+
+				// Dispatch for indexed commands
+				if (indexed_draw_count > 0) {
+					frustum_cull_shader_->setInt("u_drawCount", static_cast<int>(indexed_draw_count));
+					frustum_cull_shader_->setInt("u_uniformOffset", static_cast<int>(indexed_uniform_start));
+					frustum_cull_shader_->setBool("u_isIndexed", true);
+					glDispatchCompute((indexed_draw_count + 63) / 64, 1, 1);
+				}
+
+				// Dispatch for array commands
+				if (array_draw_count > 0) {
+					frustum_cull_shader_->setInt("u_drawCount", static_cast<int>(array_draw_count));
+					frustum_cull_shader_->setInt("u_uniformOffset", static_cast<int>(array_uniform_start));
+					frustum_cull_shader_->setBool("u_isIndexed", false);
+					glDispatchCompute((array_draw_count + 63) / 64, 1, 1);
+				}
+
+				glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT | GL_COMMAND_BARRIER_BIT);
+			}
 
 			// Hi-Z occlusion culling dispatch (between uniform fill and draw calls)
 			if (dispatch_hiz_occlusion && occlusion_cull_shader_ && occlusion_cull_shader_->isValid() && hiz_manager &&
@@ -2556,7 +2659,7 @@ namespace Boidsish {
 	}
 
 	void Visualizer::Update() {
-		PROJECT_PROFILE_SCOPE("Update");
+		PROJECT_PROFILE_SCOPE("Visualizer::Update");
 		impl->frame_count_++;
 		impl->hud_manager->Update(impl->input_state.delta_time, impl->camera);
 
@@ -2586,50 +2689,116 @@ namespace Boidsish {
 		}
 
 		if (!impl->paused) {
-			// TODO: Implement a fixed timestep for simulation stability.
-			// See performance_and_quality_audit.md#4-fixed-timestep-for-simulation-stability
-			impl->simulation_time += impl->time_scale * delta_time;
+			impl->simulation_accumulator += impl->time_scale * delta_time;
+			while (impl->simulation_accumulator >= impl->fixed_delta_time) {
+				impl->simulation_delta_time = impl->fixed_delta_time;
+				impl->simulation_time += impl->fixed_delta_time;
+
+				impl->light_manager.Update(impl->simulation_delta_time);
+
+				// Update ambient weather
+				if (impl->weather_manager && impl->weather_manager->IsEnabled()) {
+					impl->weather_manager->Update(
+						impl->simulation_delta_time,
+						impl->simulation_time,
+						impl->camera.pos()
+					);
+
+					const auto& w = impl->weather_manager->GetCurrentWeather();
+
+					// Apply to primary light
+					if (!impl->light_manager.GetLights().empty()) {
+						impl->light_manager.GetLights()[0].intensity = w.sun_intensity;
+					}
+
+					// Apply to wind settings in Config (for shaders)
+					auto& config = ConfigManager::GetInstance();
+					config.SetFloat("wind_strength", w.wind_strength);
+					config.SetFloat("wind_speed", w.wind_speed);
+					config.SetFloat("wind_frequency", w.wind_frequency);
+
+					// Apply to atmosphere effect
+					if (impl->atmosphere_effect) {
+						impl->atmosphere_effect->SetHazeDensity(w.haze_density);
+						impl->atmosphere_effect->SetHazeHeight(w.haze_height);
+						impl->atmosphere_effect->SetCloudDensity(w.cloud_density);
+						impl->atmosphere_effect->SetCloudAltitude(w.cloud_altitude);
+						impl->atmosphere_effect->SetCloudThickness(w.cloud_thickness);
+						impl->atmosphere_effect->SetRayleighScale(w.rayleigh_scale);
+						impl->atmosphere_effect->SetMieScale(w.mie_scale);
+
+						// Atmosphere-specific attributes from weather
+						impl->atmosphere_effect->SetAtmosphereHeight(w.atmosphere_height);
+						impl->atmosphere_effect->SetRayleighScattering(w.rayleigh_scattering);
+						impl->atmosphere_effect->SetMieScattering(w.mie_scattering);
+						impl->atmosphere_effect->SetMieExtinction(w.mie_extinction);
+						impl->atmosphere_effect->SetOzoneAbsorption(w.ozone_absorption);
+						impl->atmosphere_effect->SetRayleighScaleHeight(w.rayleigh_scale_height);
+						impl->atmosphere_effect->SetMieScaleHeight(w.mie_scale_height);
+					}
+				}
+
+				impl->mesh_explosion_manager->Update(impl->simulation_delta_time, impl->simulation_time);
+				impl->sound_effect_manager->Update(impl->simulation_delta_time);
+				impl->shockwave_manager->Update(impl->simulation_delta_time);
+				if (impl->akira_effect_manager && impl->terrain_generator) {
+					impl->akira_effect_manager->Update(impl->simulation_delta_time, *impl->terrain_generator);
+				}
+
+				// Move decor and fire effect update here as well to keep it in sync with terrain
+				if (impl->decor_manager && impl->terrain_generator && impl->terrain_render_manager) {
+					impl->decor_manager->SetMinPixelSize(
+						ConfigManager::GetInstance().GetAppSettingFloat("foliage_culling_pixel_threshold", 10.0f)
+					);
+					// Re-calculate frustum inside loop to ensure correctness for every sub-step
+					// Construction view and projection matrices from current camera state
+					float     world_scale_val = impl->terrain_generator->GetWorldScale();
+					float     far_plane_val = 1000.0f * std::max(1.0f, world_scale_val);
+					float     generator_fov = impl->camera.fov + 15.0f;
+					glm::mat4 generator_proj = glm::perspective(
+						glm::radians(generator_fov),
+						(float)impl->width / (float)impl->height,
+						0.1f,
+						far_plane_val
+					);
+
+					glm::vec3 cameraPos(impl->camera.x, impl->camera.y, impl->camera.z);
+					glm::mat4 view_mat = glm::lookAt(cameraPos, cameraPos + impl->camera.front(), impl->camera.up());
+					Frustum   current_frustum = Frustum::FromViewProjection(view_mat, generator_proj);
+
+					impl->terrain_generator->Update(current_frustum, impl->camera);
+
+					impl->decor_manager->Update(
+						impl->simulation_delta_time,
+						impl->camera,
+						current_frustum,
+						*impl->terrain_generator,
+						impl->terrain_render_manager
+					);
+				}
+
+				impl->fire_effect_manager->Update(
+					impl->simulation_delta_time,
+					impl->simulation_time,
+					impl->frame_config_.ambient_particle_density,
+					impl->terrain_render_manager
+						? impl->terrain_render_manager->GetChunkInfo(impl->terrain_generator->GetWorldScale())
+						: std::vector<glm::vec4>{},
+					impl->terrain_render_manager ? impl->terrain_render_manager->GetHeightmapTexture() : 0,
+					impl->noise_manager ? impl->noise_manager->GetCurlTexture() : 0,
+					impl->terrain_render_manager ? impl->terrain_render_manager->GetBiomeTexture() : 0,
+					impl->lighting_ubo,
+					impl->frustum_ssbo->GetBufferId(),
+					impl->frustum_ssbo->GetFrameOffset() + impl->mdi_frustum_count * sizeof(FrustumDataGPU),
+					impl->noise_manager ? impl->noise_manager->GetExtraNoiseTexture() : 0
+				);
+
+				impl->simulation_accumulator -= impl->fixed_delta_time;
+			}
+		} else {
+			impl->simulation_delta_time = 0.0f;
 		}
 
-		impl->light_manager.Update(impl->simulation_delta_time);
-
-		// Update ambient weather
-		if (impl->weather_manager && impl->weather_manager->IsEnabled()) {
-			impl->weather_manager->Update(impl->simulation_delta_time, impl->simulation_time, impl->camera.pos());
-
-			const auto& w = impl->weather_manager->GetCurrentWeather();
-
-			// Apply to primary light
-			if (!impl->light_manager.GetLights().empty()) {
-				impl->light_manager.GetLights()[0].intensity = w.sun_intensity;
-			}
-
-			// Apply to wind settings in Config (for shaders)
-			auto& config = ConfigManager::GetInstance();
-			config.SetFloat("wind_strength", w.wind_strength);
-			config.SetFloat("wind_speed", w.wind_speed);
-			config.SetFloat("wind_frequency", w.wind_frequency);
-
-			// Apply to atmosphere effect
-			if (impl->atmosphere_effect) {
-				impl->atmosphere_effect->SetHazeDensity(w.haze_density);
-				impl->atmosphere_effect->SetHazeHeight(w.haze_height);
-				impl->atmosphere_effect->SetCloudDensity(w.cloud_density);
-				impl->atmosphere_effect->SetCloudAltitude(w.cloud_altitude);
-				impl->atmosphere_effect->SetCloudThickness(w.cloud_thickness);
-				impl->atmosphere_effect->SetRayleighScale(w.rayleigh_scale);
-				impl->atmosphere_effect->SetMieScale(w.mie_scale);
-
-				// Atmosphere-specific attributes from weather
-				impl->atmosphere_effect->SetAtmosphereHeight(w.atmosphere_height);
-				impl->atmosphere_effect->SetRayleighScattering(w.rayleigh_scattering);
-				impl->atmosphere_effect->SetMieScattering(w.mie_scattering);
-				impl->atmosphere_effect->SetMieExtinction(w.mie_extinction);
-				impl->atmosphere_effect->SetOzoneAbsorption(w.ozone_absorption);
-				impl->atmosphere_effect->SetRayleighScaleHeight(w.rayleigh_scale_height);
-				impl->atmosphere_effect->SetMieScaleHeight(w.mie_scale_height);
-			}
-		}
 
 		// --- Adaptive Tessellation Logic ---
 		glm::vec3 current_camera_pos(impl->camera.x, impl->camera.y, impl->camera.z);
@@ -2702,7 +2871,7 @@ namespace Boidsish {
 	}
 
 	void Visualizer::Render() {
-		PROJECT_PROFILE_SCOPE("Render");
+		PROJECT_PROFILE_SCOPE("Visualizer::Render");
 		impl->RefreshFrameConfig();
 
 		// Advance persistent buffers and handle synchronization
@@ -3040,44 +3209,11 @@ namespace Boidsish {
 		}
 
 		impl->clone_manager->Update(impl->simulation_time, impl->camera.pos());
-		impl->fire_effect_manager->Update(
-			impl->simulation_delta_time,
-			impl->simulation_time,
-			impl->frame_config_.ambient_particle_density,
-			impl->terrain_render_manager
-				? impl->terrain_render_manager->GetChunkInfo(impl->terrain_generator->GetWorldScale())
-				: std::vector<glm::vec4>{},
-			impl->terrain_render_manager ? impl->terrain_render_manager->GetHeightmapTexture() : 0,
-			impl->noise_manager ? impl->noise_manager->GetCurlTexture() : 0,
-			impl->terrain_render_manager ? impl->terrain_render_manager->GetBiomeTexture() : 0,
-			impl->lighting_ubo,
-			impl->frustum_ssbo->GetBufferId(),
-			impl->frustum_ssbo->GetFrameOffset() + impl->mdi_frustum_count * sizeof(FrustumDataGPU),
-			impl->noise_manager ? impl->noise_manager->GetExtraNoiseTexture() : 0
-		);
-		impl->mesh_explosion_manager->Update(impl->simulation_delta_time, impl->simulation_time);
-		impl->sound_effect_manager->Update(impl->simulation_delta_time);
-		impl->shockwave_manager->Update(impl->simulation_delta_time);
-		if (impl->akira_effect_manager && impl->terrain_generator) {
-			impl->akira_effect_manager->Update(impl->simulation_delta_time, *impl->terrain_generator);
-		}
 		impl->sdf_volume_manager->UpdateUBO();
 		impl->sdf_volume_manager->BindUBO(Constants::UboBinding::SdfVolumes());
 		impl->shockwave_manager->UpdateShaderData();
 		impl->shockwave_manager->BindUBO(Constants::UboBinding::Shockwaves());
 
-		if (impl->decor_manager && impl->terrain_generator && impl->terrain_render_manager) {
-			impl->decor_manager->SetMinPixelSize(
-				ConfigManager::GetInstance().GetAppSettingFloat("foliage_culling_pixel_threshold", 10.0f)
-			);
-			impl->decor_manager->Update(
-				impl->simulation_delta_time,
-				impl->camera,
-				generator_frustum,
-				*impl->terrain_generator,
-				impl->terrain_render_manager
-			);
-		}
 
 		if (impl->frame_config_.effects_enabled) {
 			VisualEffectsUbo ubo_data{};
