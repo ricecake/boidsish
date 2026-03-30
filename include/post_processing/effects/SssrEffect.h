@@ -12,7 +12,7 @@ namespace Boidsish {
 
 		class SssrEffect: public IPostProcessingEffect {
 		public:
-			SssrEffect();
+			SssrEffect(const GLuint& hizTexture, const int& hizLevels);
 			~SssrEffect();
 
 			void Initialize(int width, int height) override;
@@ -30,7 +30,6 @@ namespace Boidsish {
 
 			bool IsEarly() const override { return true; }
 
-			GLuint GetResultTexture() const override { return temporal_accumulator_.GetResult(); }
 
 			// Parameters
 			void  SetIntensity(float intensity) { intensity_ = intensity; }
@@ -55,8 +54,8 @@ namespace Boidsish {
 			std::unique_ptr<ComputeShader> spatial_filter_shader_;
 			std::unique_ptr<Shader>        composite_shader_;
 
-			GLuint hi_z_texture_ = 0;
-			int    hi_z_levels_ = 0;
+			const GLuint& hi_z_texture_;
+			const int&    hi_z_levels_;
 
 			GLuint trace_texture_ = 0;
 			GLuint filter_texture_ = 0;

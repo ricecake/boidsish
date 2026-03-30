@@ -9,26 +9,29 @@
 namespace Boidsish {
 	namespace PostProcessing {
 
-		SssrEffect::SssrEffect() {
+		SssrEffect::SssrEffect(const GLuint& hizTexture, const int& hizLevels):
+			hi_z_texture_(hizTexture), hi_z_levels_(hizLevels) {
 			name_ = "SSSR";
 			is_enabled_ = true;
 		}
 
 		SssrEffect::~SssrEffect() {
-			if (hi_z_texture_) glDeleteTextures(1, &hi_z_texture_);
-			if (trace_texture_) glDeleteTextures(1, &trace_texture_);
-			if (filter_texture_) glDeleteTextures(1, &filter_texture_);
+			if (trace_texture_)
+				glDeleteTextures(1, &trace_texture_);
+			if (filter_texture_)
+				glDeleteTextures(1, &filter_texture_);
 		}
 
 		void SssrEffect::Initialize(int width, int height) {
 			width_ = width;
 			height_ = height;
 
-			hi_z_copy_shader_ = std::make_unique<ComputeShader>("shaders/effects/sssr_copy_depth.comp");
-			hi_z_shader_ = std::make_unique<ComputeShader>("shaders/effects/sssr_hi_z.comp");
 			sssr_shader_ = std::make_unique<ComputeShader>("shaders/effects/sssr_trace.comp");
 			spatial_filter_shader_ = std::make_unique<ComputeShader>("shaders/effects/sssr_spatial_filter.comp");
-			composite_shader_ = std::make_unique<Shader>("shaders/postprocess.vert", "shaders/effects/sssr_composite.frag");
+			composite_shader_ = std::make_unique<Shader>(
+				"shaders/postprocess.vert",
+				"shaders/effects/sssr_composite.frag"
+			);
 
 			// Bind standard UBOs for SSSR shader
 			sssr_shader_->use();
@@ -54,19 +57,10 @@ namespace Boidsish {
 		}
 
 		void SssrEffect::InitializeFBOs() {
-			if (hi_z_texture_) glDeleteTextures(1, &hi_z_texture_);
-			if (trace_texture_) glDeleteTextures(1, &trace_texture_);
-			if (filter_texture_) glDeleteTextures(1, &filter_texture_);
-
-			// Hi-Z Texture (Max Mips)
-			hi_z_levels_ = static_cast<int>(std::floor(std::log2(std::max(width_, height_)))) + 1;
-			glGenTextures(1, &hi_z_texture_);
-			glBindTexture(GL_TEXTURE_2D, hi_z_texture_);
-			glTexStorage2D(GL_TEXTURE_2D, hi_z_levels_, GL_R32F, width_, height_);
-			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST_MIPMAP_NEAREST);
-			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+			if (trace_texture_)
+				glDeleteTextures(1, &trace_texture_);
+			if (filter_texture_)
+				glDeleteTextures(1, &filter_texture_);
 
 			// Trace Texture (Result of ray marching)
 			glGenTextures(1, &trace_texture_);
@@ -85,56 +79,21 @@ namespace Boidsish {
 			glBindTexture(GL_TEXTURE_2D, 0);
 		}
 
-		void SssrEffect::GenerateHiZ(GLuint depthTexture) {
-			if (!hi_z_copy_shader_ || !hi_z_copy_shader_->isValid()) return;
-			if (!hi_z_shader_ || !hi_z_shader_->isValid()) return;
-
-			// 1. Copy depth to Level 0
-			hi_z_copy_shader_->use();
-			glActiveTexture(GL_TEXTURE1);
-			glBindTexture(GL_TEXTURE_2D, depthTexture);
-			glBindImageTexture(0, hi_z_texture_, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_R32F);
-			glDispatchCompute((width_ + 7) / 8, (height_ + 7) / 8, 1);
-			glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | GL_TEXTURE_FETCH_BARRIER_BIT);
-
-			// 2. Reduce mips
-			hi_z_shader_->use();
-			int currW = width_;
-			int currH = height_;
-
-			for (int i = 1; i < hi_z_levels_; ++i) {
-				currW = std::max(1, currW / 2);
-				currH = std::max(1, currH / 2);
-
-				hi_z_shader_->setInt("uSourceLevel", i - 1);
-				hi_z_shader_->setVec2("uDestSize", glm::vec2((float)currW, (float)currH));
-
-				glActiveTexture(GL_TEXTURE1);
-				glBindTexture(GL_TEXTURE_2D, hi_z_texture_);
-				glBindImageTexture(0, hi_z_texture_, i, GL_FALSE, 0, GL_WRITE_ONLY, GL_R32F);
-
-				glDispatchCompute((currW + 7) / 8, (currH + 7) / 8, 1);
-				glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | GL_TEXTURE_FETCH_BARRIER_BIT);
-			}
-		}
-
 		void SssrEffect::Apply(
-			GLuint sourceTexture,
-			GLuint depthTexture,
-			GLuint velocityTexture,
-			GLuint normalTexture,
-			GLuint materialTexture,
+			GLuint           sourceTexture,
+			GLuint           depthTexture,
+			GLuint           velocityTexture,
+			GLuint           normalTexture,
+			GLuint           materialTexture,
 			const glm::mat4& viewMatrix,
 			const glm::mat4& projectionMatrix,
 			const glm::vec3& cameraPos
 		) {
-			if (!is_enabled_) return;
+			if (!is_enabled_)
+				return;
 			frame_count_++;
 
-			// 1. Generate Hi-Z
-			GenerateHiZ(depthTexture);
-
-			// 2. Stochastic Trace
+			// 1. Stochastic Trace
 			if (sssr_shader_ && sssr_shader_->isValid()) {
 				sssr_shader_->use();
 				sssr_shader_->setMat4("uView", viewMatrix);

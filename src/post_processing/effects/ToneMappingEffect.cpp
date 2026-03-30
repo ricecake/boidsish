@@ -18,9 +18,11 @@ namespace Boidsish {
 		}
 
 		void ToneMappingEffect::Apply(
-			GLuint sourceTexture,
-			GLuint depthTexture,
+			GLuint           sourceTexture,
+			GLuint           depthTexture,
 			GLuint /* velocityTexture */,
+			GLuint /* normalTexture */,
+			GLuint /* materialTexture */,
 			const glm::mat4& viewMatrix,
 			const glm::mat4& projectionMatrix,
 			const glm::vec3& cameraPos

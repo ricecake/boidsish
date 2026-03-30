@@ -65,12 +65,13 @@ namespace Boidsish {
 		}
 	}
 
-	void HiZManager::GeneratePyramid(GLuint depthTexture) {
+	void HiZManager::GeneratePyramid(GLuint depthTexture, bool useMin) {
 		PROJECT_PROFILE_SCOPE("HiZManager::GeneratePyramid");
 		if (!initialized_ || !generate_shader_->isValid())
 			return;
 
 		generate_shader_->use();
+		generate_shader_->setBool("u_useMin", useMin);
 
 		// Mip 0 source is the full-resolution depth buffer.
 		// All subsequent mips source from the previous Hi-Z mip.
@@ -82,7 +83,7 @@ namespace Boidsish {
 			int dst_h = std::max(1, hiz_height_ >> mip);
 
 			// Set source size uniform
-			glUniform2i(glGetUniformLocation(generate_shader_->ID, "u_srcSize"), src_w, src_h);
+			generate_shader_->setVec2("u_srcSize", glm::vec2((float)src_w, (float)src_h));
 
 			// Bind source texture
 			glActiveTexture(GL_TEXTURE0);

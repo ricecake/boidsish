@@ -47,6 +47,7 @@
 #include "post_processing/effects/NegativeEffect.h"
 #include "post_processing/effects/OpticalFlowEffect.h"
 #include "post_processing/effects/SdfVolumeEffect.h"
+#include "post_processing/effects/SssrEffect.h"
 #include "post_processing/effects/StrobeEffect.h"
 #include "post_processing/effects/SuperSpeedEffect.h"
 #include "post_processing/effects/TimeStutterEffect.h"
@@ -441,8 +442,8 @@ namespace Boidsish {
 		std::shared_ptr<Shader> postprocess_shader_;
 		ShaderHandle            shadow_shader_handle{0};
 		GLuint                  plane_vao{0}, plane_vbo{0}, sky_vao{0}, blur_quad_vao{0}, blur_quad_vbo{0};
-		GLuint main_fbo_{0}, main_fbo_texture_{0}, main_fbo_velocity_texture_{0}, main_fbo_depth_texture_{0},
-			main_fbo_rbo_{0}, refraction_texture_{0};
+		GLuint main_fbo_{0}, main_fbo_texture_{0}, main_fbo_velocity_texture_{0}, main_fbo_normal_texture_{0},
+			main_fbo_material_texture_{0}, main_fbo_depth_texture_{0}, main_fbo_rbo_{0}, refraction_texture_{0};
 		GLuint    lighting_ubo{0};
 		GLuint    visual_effects_ubo{0};
 		GLuint    temporal_data_ubo{0};
@@ -970,6 +971,22 @@ namespace Boidsish {
 			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 			glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT1, GL_TEXTURE_2D, main_fbo_velocity_texture_, 0);
 
+			// Normal attachment
+			glGenTextures(1, &main_fbo_normal_texture_);
+			glBindTexture(GL_TEXTURE_2D, main_fbo_normal_texture_);
+			glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, render_width, render_height, 0, GL_RGBA, GL_FLOAT, NULL);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+			glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT2, GL_TEXTURE_2D, main_fbo_normal_texture_, 0);
+
+			// Material attachment
+			glGenTextures(1, &main_fbo_material_texture_);
+			glBindTexture(GL_TEXTURE_2D, main_fbo_material_texture_);
+			glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, render_width, render_height, 0, GL_RGBA, GL_FLOAT, NULL);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+			glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT3, GL_TEXTURE_2D, main_fbo_material_texture_, 0);
+
 			// Depth-stencil texture (for shockwave depth testing and stencil operations)
 			// Using GL_DEPTH24_STENCIL8 allows sampling depth while also providing stencil
 			glGenTextures(1, &main_fbo_depth_texture_);
@@ -1031,6 +1048,13 @@ namespace Boidsish {
 				auto gtao_effect = std::make_shared<PostProcessing::GtaoEffect>();
 				gtao_effect->SetEnabled(true);
 				post_processing_manager_->AddEffect(gtao_effect);
+
+				auto sssr_effect = std::make_shared<PostProcessing::SssrEffect>(
+					hiz_manager->hiz_texture_,
+					hiz_manager->mip_count_
+				);
+				sssr_effect->SetEnabled(true);
+				post_processing_manager_->AddEffect(sssr_effect);
 
 				auto negative_effect = std::make_shared<PostProcessing::NegativeEffect>();
 				negative_effect->SetEnabled(false);
@@ -1271,6 +1295,8 @@ namespace Boidsish {
 				glDeleteFramebuffers(1, &main_fbo_);
 				glDeleteTextures(1, &main_fbo_texture_);
 				glDeleteTextures(1, &main_fbo_velocity_texture_);
+				glDeleteTextures(1, &main_fbo_normal_texture_);
+				glDeleteTextures(1, &main_fbo_material_texture_);
 				glDeleteTextures(1, &main_fbo_depth_texture_);
 				if (refraction_texture_) {
 					glDeleteTextures(1, &refraction_texture_);
@@ -2487,6 +2513,14 @@ namespace Boidsish {
 			glBindTexture(GL_TEXTURE_2D, main_fbo_velocity_texture_);
 			glTexImage2D(GL_TEXTURE_2D, 0, GL_RG16F, render_width, render_height, 0, GL_RG, GL_FLOAT, NULL);
 
+			// Resize normal texture
+			glBindTexture(GL_TEXTURE_2D, main_fbo_normal_texture_);
+			glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, render_width, render_height, 0, GL_RGBA, GL_FLOAT, NULL);
+
+			// Resize material texture
+			glBindTexture(GL_TEXTURE_2D, main_fbo_material_texture_);
+			glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, render_width, render_height, 0, GL_RGBA, GL_FLOAT, NULL);
+
 			// Resize refraction texture
 			glBindTexture(GL_TEXTURE_2D, refraction_texture_);
 			if (enable_hdr_) {
@@ -2915,9 +2949,12 @@ namespace Boidsish {
 		glm::mat4 hiz_prev_vp = impl->prev_view_projection;
 
 		// Generate Hi-Z pyramid from previous frame's depth buffer (still in main_fbo_depth_texture_)
-		if (impl->hiz_manager && impl->hiz_manager->IsInitialized() && impl->enable_hiz_culling_ &&
-		    impl->frame_count_ > 0) {
-			impl->hiz_manager->GeneratePyramid(impl->main_fbo_depth_texture_);
+		// SSSR uses MIN-depth Hi-Z for ray marching. Occlusion culling uses MAX-depth.
+		// Since we only have one shared Hi-Z manager/texture for now, we'll favor SSSR's MIN depth
+		// as it's more critical for the visual quality of reflections.
+		if (impl->hiz_manager && impl->hiz_manager->IsInitialized() && impl->frame_count_ > 0) {
+			bool use_min_hiz = true; // Required for SSR trace
+			impl->hiz_manager->GeneratePyramid(impl->main_fbo_depth_texture_, use_min_hiz);
 		}
 
 		// Update Temporal UBO for motion blur and reprojection
@@ -3428,8 +3465,13 @@ namespace Boidsish {
 		} else {
 			glBindFramebuffer(GL_FRAMEBUFFER, impl->main_fbo_);
 			glViewport(0, 0, impl->render_width, impl->render_height);
-			GLuint attachments[2] = {GL_COLOR_ATTACHMENT0, GL_COLOR_ATTACHMENT1};
-			glDrawBuffers(2, attachments);
+			GLuint attachments[4] = {
+				GL_COLOR_ATTACHMENT0,
+				GL_COLOR_ATTACHMENT1,
+				GL_COLOR_ATTACHMENT2,
+				GL_COLOR_ATTACHMENT3
+			};
+			glDrawBuffers(4, attachments);
 		}
 
 		glEnable(GL_DEPTH_TEST);
@@ -3501,8 +3543,14 @@ namespace Boidsish {
 
 		if (effects_enabled) {
 			PROJECT_PROFILE_SCOPE("PostProcessing::Early");
-			impl->post_processing_manager_
-				->BeginApply(current_texture, impl->main_fbo_, current_depth, impl->main_fbo_velocity_texture_);
+			impl->post_processing_manager_->BeginApply(
+				current_texture,
+				impl->main_fbo_,
+				current_depth,
+				impl->main_fbo_velocity_texture_,
+				impl->main_fbo_normal_texture_,
+				impl->main_fbo_material_texture_
+			);
 			impl->post_processing_manager_
 				->ApplyEarlyEffects(view, impl->projection, impl->camera.pos(), impl->simulation_time);
 
