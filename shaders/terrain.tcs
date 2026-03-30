@@ -135,13 +135,16 @@ float GetEdgeTessLevel(vec3 p0, vec3 p1, vec3 n0, vec3 n1) {
 	float curvatureFactor = 1.0 - roundToPlaces(dot(ln0, ln1), 3);
 	float curvatureBoost = mix(1.0, 5.0, clamp(curvatureFactor * 10.0, 0.0, 1.0));
 
-	// return 16.0;//clamp(pixelLength/finalLevel, uTessLevelMin, uTessLevelMax);
-	// return clamp((pixelLength * silhouetteBoost * curvatureBoost)/targetPixels, uTessLevelMin, uTessLevelMax);
+	// 3. FOCUS BOOST
+	// Significant boost for areas the camera is looking directly at, up to a higher max
+	vec3  dirToMid = normalize(midPos - viewPos);
+	float focusAlign = max(0.0, dot(dirToMid, viewDir));
+	float focusBoost = pow(focusAlign, 16.0) * 4.0; // Sharp falloff from center
+	focusBoost *= smoothstep(400.0, 100.0, dist);  // Only boost near the camera
 
-	return roundToPlaces(
-		clamp((pixelLength * silhouetteBoost * curvatureBoost) / targetPixels, uTessLevelMin, uTessLevelMax),
-		2
-	);
+	float maxTess = mix(uTessLevelMax, 64.0, focusBoost);
+
+	return roundToPlaces(clamp((pixelLength * silhouetteBoost * curvatureBoost) / targetPixels, uTessLevelMin, maxTess), 2);
 }
 
 float perturbLevel(vec3 worldPos, vec3 forward) {
@@ -193,6 +196,24 @@ void main() {
 	perturbFactor_TC_out[gl_InvocationID] = perturbLevel(pos, viewForward[gl_InvocationID]);
 
 	if (gl_InvocationID == 0) {
+		// 1. FRUSTUM CULLING
+		// Perform a quick AABB check against the camera frustum.
+		// If the entire chunk is outside, we set tessellation levels to 0 to cull it.
+		if (!uIsShadowPass) {
+			vec3 minBound = vec3(worldOffset.x, Bounds_VS_out[0].x, worldOffset.z);
+			vec3 maxBound = vec3(worldOffset.x + uChunkSize, Bounds_VS_out[0].y, worldOffset.z + uChunkSize);
+
+			if (!isAABBInFrustum(minBound, maxBound)) {
+				gl_TessLevelOuter[0] = 0;
+				gl_TessLevelOuter[1] = 0;
+				gl_TessLevelOuter[2] = 0;
+				gl_TessLevelOuter[3] = 0;
+				gl_TessLevelInner[0] = 0;
+				gl_TessLevelInner[1] = 0;
+				return;
+			}
+		}
+
 		// Sample heightmap for all 4 corners to get world positions and normals
 		vec3 worldPos0, worldPos1, worldPos2, worldPos3;
 		vec3 normal0, normal1, normal2, normal3;
