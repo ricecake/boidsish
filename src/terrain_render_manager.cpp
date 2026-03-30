@@ -35,45 +35,21 @@ namespace Boidsish {
 	}
 
 	void TerrainRenderManager::CreateGridMesh() {
-		// Create a flat grid of quads for one chunk
-		// Vertices are at integer coordinates [0, chunk_size] in XZ plane, Y=0
-		// The tessellation/vertex shader will displace Y based on heightmap lookup
-
-		const int num_verts = heightmap_resolution_ * heightmap_resolution_;
-		const int num_quads = chunk_size_ * chunk_size_;
+		// Create a single quad for one chunk.
+		// The tessellation shader will subdivide it according to need.
+		// This avoids having a minimum tessellation level above what may be strictly needed.
 
 		// Vertex data: position (x, y, z) + texcoord (u, v) = 5 floats per vertex
-		std::vector<float> vertices;
-		vertices.reserve(num_verts * 5);
+		// Corners: (0,0), (chunk_size, 0), (chunk_size, chunk_size), (0, chunk_size)
+		std::vector<float> vertices = {
+			0.0f,               0.0f, 0.0f,                 0.0f, 0.0f, // Top-left
+			(float)chunk_size_, 0.0f, 0.0f,                 1.0f, 0.0f, // Top-right
+			(float)chunk_size_, 0.0f, (float)chunk_size_,   1.0f, 1.0f, // Bottom-right
+			0.0f,               0.0f, (float)chunk_size_,   0.0f, 1.0f  // Bottom-left
+		};
 
-		for (int z = 0; z < heightmap_resolution_; ++z) {
-			for (int x = 0; x < heightmap_resolution_; ++x) {
-				// Position (flat grid, Y=0)
-				vertices.push_back(static_cast<float>(x));
-				vertices.push_back(0.0f);
-				vertices.push_back(static_cast<float>(z));
-				// Texcoord (normalized 0-1 for heightmap sampling)
-				vertices.push_back(static_cast<float>(x) / chunk_size_);
-				vertices.push_back(static_cast<float>(z) / chunk_size_);
-			}
-		}
-
-		// Indices for quads (4 vertices per quad for GL_PATCHES)
-		std::vector<unsigned int> indices;
-		indices.reserve(num_quads * 4);
-
-		for (int z = 0; z < chunk_size_; ++z) {
-			for (int x = 0; x < chunk_size_; ++x) {
-				int i0 = z * heightmap_resolution_ + x;
-				int i1 = z * heightmap_resolution_ + (x + 1);
-				int i2 = (z + 1) * heightmap_resolution_ + (x + 1);
-				int i3 = (z + 1) * heightmap_resolution_ + x;
-				indices.push_back(i0);
-				indices.push_back(i1);
-				indices.push_back(i2);
-				indices.push_back(i3);
-			}
-		}
+		// Indices for a single quad patch
+		std::vector<unsigned int> indices = { 0, 1, 2, 3 };
 
 		grid_index_count_ = indices.size();
 
