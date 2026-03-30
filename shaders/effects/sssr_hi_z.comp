@@ -1,0 +1,21 @@
+#version 430 core
+layout(local_size_x = 8, local_size_y = 8) in;
+
+layout(binding = 0, r32f) uniform image2D outHiZ; // Dest Level
+layout(binding = 1) uniform sampler2D uSourceHiZ; // Whole texture
+uniform vec2 uDestSize;
+uniform int uSourceLevel;
+
+void main() {
+    ivec2 pixel = ivec2(gl_GlobalInvocationID.xy);
+    if (pixel.x >= int(uDestSize.x) || pixel.y >= int(uDestSize.y)) return;
+
+    ivec2 srcCoord = pixel * 2;
+    float d0 = texelFetch(uSourceHiZ, srcCoord + ivec2(0, 0), uSourceLevel).r;
+    float d1 = texelFetch(uSourceHiZ, srcCoord + ivec2(1, 0), uSourceLevel).r;
+    float d2 = texelFetch(uSourceHiZ, srcCoord + ivec2(0, 1), uSourceLevel).r;
+    float d3 = texelFetch(uSourceHiZ, srcCoord + ivec2(1, 1), uSourceLevel).r;
+
+    float minDepth = min(min(d0, d1), min(d2, d3));
+    imageStore(outHiZ, pixel, vec4(minDepth));
+}
