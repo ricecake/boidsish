@@ -102,7 +102,7 @@ void main() {
 			float rocks = fastWorley3d(scaledPos * 0.5);
 			float divots = fastSimplex3d(scaledPos * 1.0);
 
-			float displacement = (rocks * 0.15 - abs(divots) * 0.1) * detailFade;
+			float displacement = (rocks * 1.15 - abs(divots) * 1.17) * detailFade;
 			FragPos += Normal * displacement;
 		}
 	}
