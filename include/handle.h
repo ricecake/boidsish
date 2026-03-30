@@ -13,6 +13,25 @@
 namespace Boidsish {
 
 	template <typename T>
+	class IPoolA {
+	};
+
+	template <typename T, typename Tag = T, Tag* pool_ = static_cast<IPoolA<T>*>(nullptr)>
+	struct HandleA {
+	public:
+		using ValueType = uint32_t;
+
+		ValueType id = 0;
+	};
+
+	template <typename T>
+	class PoolX : IPoolA<T> {
+		static T thing[5];
+	public:
+		struct HandleN : HandleA<T, PoolX, &thing> {};
+	};
+
+	template <typename T>
 	class IPool {
 	public:
 		virtual ~IPool() = default;
@@ -24,23 +43,14 @@ namespace Boidsish {
 		virtual void unlock() const = 0;
 	};
 
-	template <typename T>
-	struct PoolAccessor {
-		// Function pointer to retrieve the static pool instance
-		IPool<T>* (*get_pool)() = nullptr;
-	};
-
 	/**
 	 * @brief A generic type-safe and tagged handle for resources.
-	 *
-	 * @tparam T The type of the resource this handle refers to.
-	 * @tparam Tag A unique tag to differentiate handle types for different resource categories.
+	 * * Uses a direct function pointer NTTP for zero-overhead static pool linkage.
 	 */
-	template <typename T, typename Tag = T, PoolAccessor<T> pool_ = {}>
+	template <typename T, typename Tag = T, IPool<T>* (*GetPoolFn)() = nullptr>
 	struct Handle {
 	public:
 		using ValueType = uint32_t;
-		using PoolType = decltype(pool_);
 
 		ValueType id = 0;
 
@@ -48,7 +58,12 @@ namespace Boidsish {
 
 		constexpr explicit Handle(ValueType id): id(id) {}
 
-		constexpr bool IsValid() const { return id != 0 && (pool_ == nullptr || pool_->IsValid(id)); }
+		constexpr bool IsValid() const {
+			if constexpr (GetPoolFn != nullptr) {
+				return id != 0 && GetPoolFn()->IsValid(id);
+			}
+			return id != 0;
+		}
 
 		constexpr explicit operator bool() const { return IsValid(); }
 
@@ -57,29 +72,26 @@ namespace Boidsish {
 
 		T* operator->() const {
 			assert(IsValid());
-			return pool_->Get(id);
+			return GetPoolFn()->Get(id);
 		}
 
 		T& operator*() const {
 			assert(IsValid());
-			return *pool_->Get(id);
+			return *GetPoolFn()->Get(id);
 		}
 
-		T* Get() const { return IsValid() ? pool_->Get(id) : nullptr; }
+		T* Get() const { return IsValid() ? GetPoolFn()->Get(id) : nullptr; }
 
 		ValueType GetId() const { return id; }
 	};
 
 	/**
 	 * @brief A pool that stores objects of type T in contiguous memory.
-	 * Uses a sparse-dense array (SoA) approach to maintain locality during iteration
-	 * while allowing stable handles.
+	 * * @tparam HandleType The specific Handle signature this pool should allocate and return.
 	 */
-	template <typename T>
+	template <typename T, typename HandleType = Handle<T>>
 	class Pool: public IPool<T> {
 	public:
-		using Handle = Handle<T, >;
-
 		Pool(size_t initial_capacity = 1024) {
 			data_.reserve(initial_capacity);
 			dense_to_sparse_.reserve(initial_capacity);
@@ -92,7 +104,7 @@ namespace Boidsish {
 		}
 
 		template <typename... Args>
-		Handle Allocate(Args&&... args) {
+		HandleType Allocate(Args&&... args) {
 			std::lock_guard<std::recursive_mutex> lock(mutex_);
 			if (free_slots_.empty()) {
 				Grow();
@@ -108,11 +120,12 @@ namespace Boidsish {
 			sparse_[sparse_index] = dense_index;
 
 			uint32_t id = Pack(sparse_index, generations_[sparse_index]);
-			return Handle(id);
+
+			// Returns the fully bound handle type specified in the class template
+			return HandleType(id);
 		}
 
-		void Free(Handle handle) {
-			std::lock_guard<std::recursive_mutex> lock(mutex_);
+		void Free(HandleType handle) {
 			if (!IsValid(handle.GetId()))
 				return;
 			FreeById(handle.GetId());
@@ -149,8 +162,7 @@ namespace Boidsish {
 			uint32_t index = UnpackIndex(id);
 			if (index >= generations_.size())
 				return false;
-			uint16_t generation = UnpackGeneration(id);
-			return generations_[index] == generation;
+			return generations_[index] == UnpackGeneration(id);
 		}
 
 		T* Get(uint32_t id) override {
@@ -172,8 +184,6 @@ namespace Boidsish {
 			return data_.size();
 		}
 
-		// Warning: begin/end are not thread-safe if the pool can be modified during iteration.
-		// Use ForEach instead.
 		auto begin() { return data_.begin(); }
 
 		auto end() { return data_.end(); }
@@ -185,17 +195,15 @@ namespace Boidsish {
 		template <typename Func>
 		void ForEach(Func&& func) {
 			std::lock_guard<std::recursive_mutex> lock(mutex_);
-			for (auto& item : data_) {
+			for (auto& item : data_)
 				func(item);
-			}
 		}
 
 		template <typename Func>
 		void ForEach(Func&& func) const {
 			std::lock_guard<std::recursive_mutex> lock(mutex_);
-			for (const auto& item : data_) {
+			for (const auto& item : data_)
 				func(item);
-			}
 		}
 
 		void Clear() {
@@ -213,10 +221,6 @@ namespace Boidsish {
 			}
 		}
 
-		/**
-		 * @brief Creates a shared_ptr with a no-op deleter that points to an object in the pool.
-		 * Useful for backward compatibility with systems expecting shared_ptrs.
-		 */
 		std::shared_ptr<T> GetAsShared(uint32_t id) {
 			std::lock_guard<std::recursive_mutex> lock(mutex_);
 			if (!IsValid(id))
@@ -259,8 +263,8 @@ namespace Boidsish {
 
 // Hash support for using Handle in unordered maps
 namespace std {
-	template <typename T, typename Tag>
-	struct hash<Boidsish::Handle<T, Tag>> {
-		size_t operator()(const Boidsish::Handle<T, Tag>& h) const { return hash<uint32_t>{}(h.id); }
+	template <typename T, typename Tag, Boidsish::IPool<T>* (*GetPoolFn)()>
+	struct hash<Boidsish::Handle<T, Tag, GetPoolFn>> {
+		size_t operator()(const Boidsish::Handle<T, Tag, GetPoolFn>& h) const { return hash<uint32_t>{}(h.id); }
 	};
 } // namespace std
