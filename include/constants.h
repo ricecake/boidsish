@@ -326,6 +326,10 @@ namespace Boidsish {
 					return 32;
 				}
 
+				constexpr int ChunkSizePlus1() {
+					return ChunkSize() + 1;
+				}
+
 				constexpr int DefaultViewDistance() {
 					return 10;
 				}
