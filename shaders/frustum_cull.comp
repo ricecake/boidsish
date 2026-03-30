@@ -1,0 +1,72 @@
+#version 430 core
+
+layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
+
+#include "common_uniforms.glsl"
+#include "frustum.glsl"
+
+struct DrawElementsIndirectCommand {
+	uint count;
+	uint instanceCount;
+	uint firstIndex;
+	uint baseVertex;
+	uint baseInstance;
+};
+
+struct DrawArraysIndirectCommand {
+	uint count;
+	uint instanceCount;
+	uint first;
+	uint baseInstance;
+};
+
+// Input: per-draw uniforms (SSBO binding 2)
+layout(std430, binding = 2) readonly buffer UniformsSSBO {
+	CommonUniforms uniforms_data[];
+};
+
+// Output/Input: indirect command buffer
+layout(std430, binding = 0) buffer IndirectElementsBuffer {
+	DrawElementsIndirectCommand elements_commands[];
+};
+
+layout(std430, binding = 1) buffer IndirectArraysBuffer {
+	DrawArraysIndirectCommand arrays_commands[];
+};
+
+uniform int  u_drawCount;
+uniform int  u_uniformOffset; // Start index in uniforms_data for this pass
+uniform bool u_isIndexed;
+
+void main() {
+	uint idx = gl_GlobalInvocationID.x;
+	if (idx >= u_drawCount)
+		return;
+
+	uint uniformIdx = u_uniformOffset + idx;
+
+	// Colossal objects (skybox) should always be visible
+	if (uniforms_data[uniformIdx].is_colossal != 0) {
+		return;
+	}
+
+	vec3 aabbMin = vec3(
+		uniforms_data[uniformIdx].aabb_min_x,
+		uniforms_data[uniformIdx].aabb_min_y,
+		uniforms_data[uniformIdx].aabb_min_z
+	);
+	vec3 aabbMax = vec3(
+		uniforms_data[uniformIdx].aabb_max_x,
+		uniforms_data[uniformIdx].aabb_max_y,
+		uniforms_data[uniformIdx].aabb_max_z
+	);
+
+	// Perform frustum culling
+	if (!isAABBInFrustum(aabbMin, aabbMax)) {
+		if (u_isIndexed) {
+			elements_commands[idx].instanceCount = 0;
+		} else {
+			arrays_commands[idx].instanceCount = 0;
+		}
+	}
+}
