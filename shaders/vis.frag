@@ -2,6 +2,8 @@
 #extension GL_GOOGLE_include_directive : enable
 layout(location = 0) out vec4 FragColor;
 layout(location = 1) out vec2 Velocity;
+layout(location = 2) out vec4 WorldNormal;
+layout(location = 3) out vec4 Material;
 
 #include "common_uniforms.glsl"
 #include "temporal_data.glsl"
@@ -332,6 +334,10 @@ void main() {
 	// }
 
 	FragColor = outColor;
+
+	// G-buffer outputs for SSR
+	WorldNormal = vec4(norm, 1.0);
+	Material = vec4(tex_roughness, tex_metallic, tex_ao, 1.0);
 
 	// Calculate screen-space velocity
 	vec2 a = (CurPosition.xy / CurPosition.w) * 0.5 + 0.5;

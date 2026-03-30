@@ -12,7 +12,7 @@ namespace Boidsish {
 
 		class SssrEffect: public IPostProcessingEffect {
 		public:
-			SssrEffect(const GLuint& hizTexture, const int& hizLevels);
+			SssrEffect();
 			~SssrEffect();
 
 			void Initialize(int width, int height) override;
@@ -30,7 +30,6 @@ namespace Boidsish {
 
 			bool IsEarly() const override { return true; }
 
-
 			// Parameters
 			void  SetIntensity(float intensity) { intensity_ = intensity; }
 			float GetIntensity() const { return intensity_; }
@@ -41,21 +40,23 @@ namespace Boidsish {
 			void  SetRoughnessThreshold(float threshold) { roughness_threshold_ = threshold; }
 			float GetRoughnessThreshold() const { return roughness_threshold_; }
 
+			void SetHiZTexture(GLuint texture, int levels) {
+				hi_z_texture_ = texture;
+				hi_z_levels_ = levels;
+			}
+
 		private:
 			void InitializeFBOs();
-			void GenerateHiZ(GLuint depthTexture);
 
 			int width_ = 0;
 			int height_ = 0;
 
-			std::unique_ptr<ComputeShader> hi_z_copy_shader_;
-			std::unique_ptr<ComputeShader> hi_z_shader_;
 			std::unique_ptr<ComputeShader> sssr_shader_;
 			std::unique_ptr<ComputeShader> spatial_filter_shader_;
 			std::unique_ptr<Shader>        composite_shader_;
 
-			const GLuint& hi_z_texture_;
-			const int&    hi_z_levels_;
+			GLuint hi_z_texture_ = 0;
+			int    hi_z_levels_ = 0;
 
 			GLuint trace_texture_ = 0;
 			GLuint filter_texture_ = 0;

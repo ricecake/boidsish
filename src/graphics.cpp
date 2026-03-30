@@ -1049,10 +1049,7 @@ namespace Boidsish {
 				gtao_effect->SetEnabled(true);
 				post_processing_manager_->AddEffect(gtao_effect);
 
-				auto sssr_effect = std::make_shared<PostProcessing::SssrEffect>(
-					hiz_manager->hiz_texture_,
-					hiz_manager->mip_count_
-				);
+				auto sssr_effect = std::make_shared<PostProcessing::SssrEffect>();
 				sssr_effect->SetEnabled(true);
 				post_processing_manager_->AddEffect(sssr_effect);
 
@@ -2948,15 +2945,6 @@ namespace Boidsish {
 		// Save previous frame's VP for Hi-Z reprojection (before we overwrite it)
 		glm::mat4 hiz_prev_vp = impl->prev_view_projection;
 
-		// Generate Hi-Z pyramid from previous frame's depth buffer (still in main_fbo_depth_texture_)
-		// SSSR uses MIN-depth Hi-Z for ray marching. Occlusion culling uses MAX-depth.
-		// Since we only have one shared Hi-Z manager/texture for now, we'll favor SSSR's MIN depth
-		// as it's more critical for the visual quality of reflections.
-		if (impl->hiz_manager && impl->hiz_manager->IsInitialized() && impl->frame_count_ > 0) {
-			bool use_min_hiz = true; // Required for SSR trace
-			impl->hiz_manager->GeneratePyramid(impl->main_fbo_depth_texture_, use_min_hiz);
-		}
-
 		// Update Temporal UBO for motion blur and reprojection
 		TemporalUbo temporal_data;
 		temporal_data.viewProjection = current_vp;
@@ -3530,6 +3518,22 @@ namespace Boidsish {
 			impl->RenderTerrain(view, impl->projection, std::nullopt);
 		}
 		impl->RenderPlane(view);
+
+		// Generate Hi-Z pyramid from CURRENT frame's depth buffer after opaque pass
+		// SSSR uses MIN-depth Hi-Z for ray marching.
+		if (impl->hiz_manager && impl->hiz_manager->IsInitialized()) {
+			impl->hiz_manager->GeneratePyramid(impl->main_fbo_depth_texture_);
+
+			// Update SssrEffect with the latest Hi-Z texture handles
+			if (impl->post_processing_manager_) {
+				for (auto& effect : impl->post_processing_manager_->GetPreToneMappingEffects()) {
+					if (auto sssr = std::dynamic_pointer_cast<PostProcessing::SssrEffect>(effect)) {
+						sssr->SetHiZTexture(impl->hiz_manager->GetHiZTexture(), impl->hiz_manager->GetMipCount());
+						break;
+					}
+				}
+			}
+		}
 
 		// Render sky AFTER opaque geometry so early-Z rejects covered fragments
 		// This avoids expensive noise calculations for pixels already drawn

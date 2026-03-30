@@ -15,11 +15,10 @@ namespace Boidsish {
 	class Visualizer;
 
 	/**
-	 * @brief Manages a Hi-Z (Hierarchical Z-buffer) pyramid for GPU occlusion culling.
+	 * @brief Manages a Hi-Z (Hierarchical Z-buffer) pyramid for GPU occlusion culling and SSR.
 	 *
 	 * Generates a mip chain from the previous frame's depth buffer where each mip level
-	 * stores the MAX depth of its 2x2 source texels. This creates a conservative depth
-	 * representation that can be tested against object AABBs to determine occlusion.
+	 * stores the MIN depth in R and MAX depth in G of its 2x2 source texels.
 	 */
 	class HiZManager {
 		friend class PostProcessing::SssrEffect;
@@ -40,8 +39,7 @@ namespace Boidsish {
 		/// Call at the START of each frame, before occlusion culling.
 		/// The depth texture should contain the previous frame's depth data.
 		/// @param depthTexture The main FBO depth texture (GL_DEPTH24_STENCIL8 or GL_DEPTH_COMPONENT)
-		/// @param useMin If true, generates a MIN-depth pyramid. If false, MAX-depth (default).
-		void GeneratePyramid(GLuint depthTexture, bool useMin = false);
+		void GeneratePyramid(GLuint depthTexture);
 
 		GLuint GetHiZTexture() const { return hiz_texture_; }
 

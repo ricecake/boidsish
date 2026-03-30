@@ -50,7 +50,8 @@ namespace Boidsish {
 
 		glGenTextures(1, &hiz_texture_);
 		glBindTexture(GL_TEXTURE_2D, hiz_texture_);
-		glTexStorage2D(GL_TEXTURE_2D, mip_count_, GL_R32F, hiz_width_, hiz_height_);
+		// Store MIN depth in R and MAX depth in G
+		glTexStorage2D(GL_TEXTURE_2D, mip_count_, GL_RG32F, hiz_width_, hiz_height_);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST_MIPMAP_NEAREST);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
@@ -65,13 +66,12 @@ namespace Boidsish {
 		}
 	}
 
-	void HiZManager::GeneratePyramid(GLuint depthTexture, bool useMin) {
+	void HiZManager::GeneratePyramid(GLuint depthTexture) {
 		PROJECT_PROFILE_SCOPE("HiZManager::GeneratePyramid");
 		if (!initialized_ || !generate_shader_->isValid())
 			return;
 
 		generate_shader_->use();
-		generate_shader_->setBool("u_useMin", useMin);
 
 		// Mip 0 source is the full-resolution depth buffer.
 		// All subsequent mips source from the previous Hi-Z mip.
@@ -84,14 +84,15 @@ namespace Boidsish {
 
 			// Set source size uniform
 			generate_shader_->setVec2("u_srcSize", glm::vec2((float)src_w, (float)src_h));
+			generate_shader_->setBool("u_isFirstMip", mip == 0);
 
 			// Bind source texture
 			glActiveTexture(GL_TEXTURE0);
 			if (mip == 0) {
-				// Mip 0: 2x MAX downsample from full-res depth buffer → half-res Hi-Z base
+				// Mip 0: 2x MIN/MAX downsample from full-res depth buffer → half-res Hi-Z base
 				glBindTexture(GL_TEXTURE_2D, depthTexture);
 			} else {
-				// Mip N: 2x MAX downsample from previous Hi-Z mip
+				// Mip N: 2x MIN/MAX downsample from previous Hi-Z mip
 				glBindTexture(GL_TEXTURE_2D, hiz_texture_);
 				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_BASE_LEVEL, mip - 1);
 				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, mip - 1);
@@ -99,7 +100,7 @@ namespace Boidsish {
 			generate_shader_->setInt("u_srcDepth", 0);
 
 			// Bind destination mip as image
-			glBindImageTexture(0, hiz_texture_, mip, GL_FALSE, 0, GL_WRITE_ONLY, GL_R32F);
+			glBindImageTexture(0, hiz_texture_, mip, GL_FALSE, 0, GL_WRITE_ONLY, GL_RG32F);
 
 			// Dispatch
 			glDispatchCompute((dst_w + 7) / 8, (dst_h + 7) / 8, 1);

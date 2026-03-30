@@ -8,6 +8,7 @@ layout(binding = 1) uniform sampler2D uSceneTexture;
 layout(binding = 2) uniform sampler2D uHiZTexture;
 layout(binding = 3) uniform sampler2D uNormalTexture;
 layout(binding = 4) uniform sampler2D uMaterialTexture;
+layout(binding = 5) uniform sampler2D uDepthTexture;
 
 uniform mat4 uView;
 uniform mat4 uProj;
@@ -214,7 +215,7 @@ void main() {
         return;
     }
 
-    float depth = textureLod(uHiZTexture, uv, 0).r;
+    float depth = textureLod(uDepthTexture, uv, 0).r;
     if (isnan(depth) || depth >= 1.0) {
         imageStore(uOutRadiance, pixel, vec4(0.0));
         return;

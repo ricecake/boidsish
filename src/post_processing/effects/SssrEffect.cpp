@@ -9,8 +9,7 @@
 namespace Boidsish {
 	namespace PostProcessing {
 
-		SssrEffect::SssrEffect(const GLuint& hizTexture, const int& hizLevels):
-			hi_z_texture_(hizTexture), hi_z_levels_(hizLevels) {
+		SssrEffect::SssrEffect() {
 			name_ = "SSSR";
 			is_enabled_ = true;
 		}
@@ -115,6 +114,8 @@ namespace Boidsish {
 				glBindTexture(GL_TEXTURE_2D, normalTexture);
 				glActiveTexture(GL_TEXTURE4);
 				glBindTexture(GL_TEXTURE_2D, materialTexture);
+				glActiveTexture(GL_TEXTURE5);
+				glBindTexture(GL_TEXTURE_2D, depthTexture);
 
 				glBindImageTexture(0, trace_texture_, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA16F);
 
@@ -122,7 +123,7 @@ namespace Boidsish {
 				glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
 			}
 
-			// 3. Spatial Filter
+			// 2. Spatial Filter
 			if (spatial_filter_shader_ && spatial_filter_shader_->isValid()) {
 				spatial_filter_shader_->use();
 				glActiveTexture(GL_TEXTURE1);
@@ -138,15 +139,29 @@ namespace Boidsish {
 				glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
 			} else {
 				// Fallback if shader fails
-				glCopyImageSubData(trace_texture_, GL_TEXTURE_2D, 0, 0, 0, 0,
-								   filter_texture_, GL_TEXTURE_2D, 0, 0, 0, 0,
-								   width_, height_, 1);
+				glCopyImageSubData(
+					trace_texture_,
+					GL_TEXTURE_2D,
+					0,
+					0,
+					0,
+					0,
+					filter_texture_,
+					GL_TEXTURE_2D,
+					0,
+					0,
+					0,
+					0,
+					width_,
+					height_,
+					1
+				);
 			}
 
-			// 4. Temporal Accumulation
+			// 3. Temporal Accumulation
 			GLuint accumulatedSSR = temporal_accumulator_.Accumulate(filter_texture_, velocityTexture, depthTexture);
 
-			// 5. Composite
+			// 4. Composite
 			if (composite_shader_ && composite_shader_->isValid()) {
 				composite_shader_->use();
 				composite_shader_->setInt("uSceneTexture", 0);
