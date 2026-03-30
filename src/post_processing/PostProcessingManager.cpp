@@ -10,43 +10,59 @@ namespace Boidsish {
 
 		PostProcessingManager::PostProcessingManager(int width, int height, GLuint quad_vao):
 			width_(width), height_(height), quad_vao_(quad_vao) {
-			pingpong_fbo_[0] = 0;
-			pingpong_fbo_[1] = 0;
 		}
 
 		PostProcessingManager::~PostProcessingManager() {
-			glDeleteFramebuffers(2, pingpong_fbo_);
-			glDeleteTextures(2, pingpong_texture_);
+			for (auto& pair : scaled_buffers_) {
+				glDeleteFramebuffers(2, pair.second.fbo);
+				glDeleteTextures(2, pair.second.texture);
+			}
 		}
 
 		void PostProcessingManager::Initialize() {
 			InitializeFBOs();
+			passthrough_shader_ = std::make_unique<Shader>("shaders/postprocess.vert", "shaders/postprocess.frag");
 		}
 
 		void PostProcessingManager::InitializeFBOs() {
 			// Clean up existing resources if any
-			if (pingpong_fbo_[0] != 0) {
-				glDeleteFramebuffers(2, pingpong_fbo_);
-				glDeleteTextures(2, pingpong_texture_);
+			for (auto& pair : scaled_buffers_) {
+				glDeleteFramebuffers(2, pair.second.fbo);
+				glDeleteTextures(2, pair.second.texture);
+			}
+			scaled_buffers_.clear();
+
+			InitializeScaledBuffer(1.0f);
+		}
+
+		void PostProcessingManager::InitializeScaledBuffer(float scale) {
+			if (scaled_buffers_.find(scale) != scaled_buffers_.end()) {
+				return;
 			}
 
-			glGenFramebuffers(2, pingpong_fbo_);
-			glGenTextures(2, pingpong_texture_);
+			PingPongBuffer buffer;
+			buffer.width = static_cast<int>(width_ * scale);
+			buffer.height = static_cast<int>(height_ * scale);
+			buffer.fbo_index = 0;
+
+			glGenFramebuffers(2, buffer.fbo);
+			glGenTextures(2, buffer.texture);
 
 			for (unsigned int i = 0; i < 2; i++) {
-				glBindFramebuffer(GL_FRAMEBUFFER, pingpong_fbo_[i]);
-				glBindTexture(GL_TEXTURE_2D, pingpong_texture_[i]);
-				glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB16F, width_, height_, 0, GL_RGB, GL_FLOAT, NULL);
+				glBindFramebuffer(GL_FRAMEBUFFER, buffer.fbo[i]);
+				glBindTexture(GL_TEXTURE_2D, buffer.texture[i]);
+				glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB16F, buffer.width, buffer.height, 0, GL_RGB, GL_FLOAT, NULL);
 				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
 				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
 				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-				glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, pingpong_texture_[i], 0);
+				glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, buffer.texture[i], 0);
 
 				if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
-					std::cerr << "ERROR::FRAMEBUFFER:: Ping-pong FBO is not complete!" << std::endl;
+					std::cerr << "ERROR::FRAMEBUFFER:: Ping-pong FBO (scale " << scale << ") is not complete!" << std::endl;
 			}
 			glBindFramebuffer(GL_FRAMEBUFFER, 0);
+			scaled_buffers_[scale] = buffer;
 		}
 
 		void PostProcessingManager::AddEffect(std::shared_ptr<IPostProcessingEffect> effect) {
@@ -76,7 +92,7 @@ namespace Boidsish {
 			current_fbo_ = sourceFbo;
 			depth_texture_ = depthTexture;
 			velocity_texture_ = velocityTexture;
-			fbo_index_ = 0;
+			current_scale_ = 1.0f;
 			glViewport(0, 0, width_, height_);
 
 			DetachDepthFromPingPongFBOs();
@@ -87,7 +103,16 @@ namespace Boidsish {
 				return;
 
 			// Only attach to our ping-pong FBOs, not the source FBO (which should already have its own depth)
-			if (current_fbo_ == pingpong_fbo_[0] || current_fbo_ == pingpong_fbo_[1]) {
+			// Need to check if current_fbo_ is in any of our scaled buffers
+			bool is_pingpong = false;
+			for (const auto& pair : scaled_buffers_) {
+				if (current_fbo_ == pair.second.fbo[0] || current_fbo_ == pair.second.fbo[1]) {
+					is_pingpong = true;
+					break;
+				}
+			}
+
+			if (is_pingpong) {
 				glBindFramebuffer(GL_FRAMEBUFFER, current_fbo_);
 				glFramebufferTexture2D(
 					GL_FRAMEBUFFER,
@@ -100,9 +125,11 @@ namespace Boidsish {
 		}
 
 		void PostProcessingManager::DetachDepthFromPingPongFBOs() {
-			for (int i = 0; i < 2; ++i) {
-				glBindFramebuffer(GL_FRAMEBUFFER, pingpong_fbo_[i]);
-				glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_TEXTURE_2D, 0, 0);
+			for (auto& pair : scaled_buffers_) {
+				for (int i = 0; i < 2; ++i) {
+					glBindFramebuffer(GL_FRAMEBUFFER, pair.second.fbo[i]);
+					glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_TEXTURE_2D, 0, 0);
+				}
 			}
 			glBindFramebuffer(GL_FRAMEBUFFER, 0);
 		}
@@ -140,6 +167,9 @@ namespace Boidsish {
 				ApplyEffectInternal(tone_mapping_effect_, viewMatrix, projectionMatrix, cameraPos, time);
 			}
 
+			// Ensure we are at full resolution before finishing
+			EnsureFullRes();
+
 			glBindFramebuffer(GL_FRAMEBUFFER, 0);
 		}
 
@@ -152,6 +182,42 @@ namespace Boidsish {
 			}
 		}
 
+		void PostProcessingManager::EnsureFullRes() {
+			if (current_scale_ == 1.0f) {
+				return;
+			}
+
+			PROJECT_PROFILE_SCOPE("PostProcess::EnsureFullRes");
+
+			float target_scale = 1.0f;
+			InitializeScaledBuffer(target_scale);
+			auto& buffer = scaled_buffers_[target_scale];
+
+			glBindFramebuffer(GL_FRAMEBUFFER, buffer.fbo[buffer.fbo_index]);
+			glViewport(0, 0, buffer.width, buffer.height);
+			glClear(GL_COLOR_BUFFER_BIT);
+
+			glDisable(GL_DEPTH_TEST);
+			glDepthMask(GL_FALSE);
+
+			passthrough_shader_->use();
+			passthrough_shader_->setInt("sceneTexture", 0);
+			glActiveTexture(GL_TEXTURE0);
+			glBindTexture(GL_TEXTURE_2D, current_texture_);
+
+			glBindVertexArray(quad_vao_);
+			glDrawArrays(GL_TRIANGLES, 0, 6);
+			glBindVertexArray(0);
+
+			glEnable(GL_DEPTH_TEST);
+			glDepthMask(GL_TRUE);
+
+			current_texture_ = buffer.texture[buffer.fbo_index];
+			current_fbo_ = buffer.fbo[buffer.fbo_index];
+			buffer.fbo_index = 1 - buffer.fbo_index;
+			current_scale_ = target_scale;
+		}
+
 		void PostProcessingManager::ApplyEffectInternal(
 			std::shared_ptr<IPostProcessingEffect> effect,
 			const glm::mat4&                       viewMatrix,
@@ -159,8 +225,13 @@ namespace Boidsish {
 			const glm::vec3&                       cameraPos,
 			float                                  time
 		) {
+			float target_scale = effect->GetRenderScale();
+			InitializeScaledBuffer(target_scale);
+			auto& buffer = scaled_buffers_[target_scale];
+
 			effect->SetTime(time);
-			glBindFramebuffer(GL_FRAMEBUFFER, pingpong_fbo_[fbo_index_]);
+			glBindFramebuffer(GL_FRAMEBUFFER, buffer.fbo[buffer.fbo_index]);
+			glViewport(0, 0, buffer.width, buffer.height);
 			glClear(GL_COLOR_BUFFER_BIT);
 
 			// Post-processing quads should not be depth-tested or write to depth buffer
@@ -174,9 +245,10 @@ namespace Boidsish {
 			glEnable(GL_DEPTH_TEST);
 			glDepthMask(GL_TRUE);
 
-			current_texture_ = pingpong_texture_[fbo_index_];
-			current_fbo_ = pingpong_fbo_[fbo_index_];
-			fbo_index_ = 1 - fbo_index_;
+			current_texture_ = buffer.texture[buffer.fbo_index];
+			current_fbo_ = buffer.fbo[buffer.fbo_index];
+			buffer.fbo_index = 1 - buffer.fbo_index;
+			current_scale_ = target_scale;
 		}
 
 		GLuint PostProcessingManager::ApplyEffects(

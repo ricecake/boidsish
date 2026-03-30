@@ -105,6 +105,12 @@ namespace Boidsish {
 									effect
 								);
 								if (atmosphere_effect) {
+									float atmosphere_scale = atmosphere_effect->GetRenderScale();
+									if (ImGui::SliderFloat("Render Scale", &atmosphere_scale, 0.1f, 1.0f, "%.2f")) {
+										atmosphere_effect->SetRenderScale(atmosphere_scale);
+									}
+									ImGui::Separator();
+
 									float haze_density = atmosphere_effect->GetHazeDensity();
 									if (ImGui::SliderFloat("Haze Density", &haze_density, 0.0f, 0.05f, "%.4f")) {
 										atmosphere_effect->SetHazeDensity(haze_density);

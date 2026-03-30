@@ -8,6 +8,7 @@ namespace Boidsish {
 
 		AtmosphereEffect::AtmosphereEffect() {
 			name_ = "Atmosphere";
+			render_scale_ = 0.25f;
 		}
 
 		AtmosphereEffect::~AtmosphereEffect() {}

@@ -1,5 +1,6 @@
 #pragma once
 
+#include <map>
 #include <memory>
 #include <vector>
 
@@ -42,6 +43,12 @@ namespace Boidsish {
 
 			void SetNightFactor(float factor);
 
+			/**
+			 * @brief Ensures the current post-processing pipeline is at full resolution.
+			 * If the last effect rendered at a lower scale, this will perform an upscale.
+			 */
+			void EnsureFullRes();
+
 			GLuint GetFinalTexture() const { return current_texture_; }
 
 			GLuint GetCurrentFBO() const { return current_fbo_; }
@@ -64,7 +71,16 @@ namespace Boidsish {
 			std::shared_ptr<IPostProcessingEffect> GetToneMappingEffect() { return tone_mapping_effect_; }
 
 		private:
+			struct PingPongBuffer {
+				GLuint fbo[2];
+				GLuint texture[2];
+				int    width;
+				int    height;
+				int    fbo_index = 0;
+			};
+
 			void InitializeFBOs();
+			void InitializeScaledBuffer(float scale);
 			void ApplyEffectInternal(
 				std::shared_ptr<IPostProcessingEffect> effect,
 				const glm::mat4&                       viewMatrix,
@@ -78,8 +94,9 @@ namespace Boidsish {
 			std::shared_ptr<IPostProcessingEffect>              tone_mapping_effect_;
 			GLuint                                              quad_vao_;
 
-			GLuint pingpong_fbo_[2];
-			GLuint pingpong_texture_[2];
+			std::map<float, PingPongBuffer> scaled_buffers_;
+			std::unique_ptr<Shader>         passthrough_shader_;
+
 			GLuint shared_depth_texture_ = 0;
 
 			// State for multi-stage application
@@ -87,7 +104,7 @@ namespace Boidsish {
 			GLuint current_fbo_ = 0;
 			GLuint depth_texture_ = 0;
 			GLuint velocity_texture_ = 0;
-			int    fbo_index_ = 0;
+			float  current_scale_ = 1.0f;
 		};
 
 	} // namespace PostProcessing
