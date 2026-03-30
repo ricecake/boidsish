@@ -1,6 +1,8 @@
 #version 430 core
 layout(location = 0) out vec4 FragColor;
 layout(location = 1) out vec2 Velocity;
+layout(location = 2) out vec4 WorldNormal;
+layout(location = 3) out vec4 Material;
 
 in vec3       Normal;
 in vec3       FragPos;
@@ -301,6 +303,10 @@ void main() {
 		// Distance fade and distant cyan blend (matching terrain style)
 		vec4 baseColor = vec4(final_color, fade);
 		FragColor = mix(vec4(0.0, 0.7, 0.7, baseColor.a) * length(baseColor), baseColor, step(1.0, fade));
+
+		// Water is high specular, low roughness
+		WorldNormal = vec4(norm, 1.0);
+		Material = vec4(0.05, 0.9, 1.0, 1.0); // Roughness: 0.05, Metallic: 0.9, AO: 1.0
 		return;
 	}
 
@@ -516,4 +522,8 @@ void main() {
 
 	// Restore deliberate cyan style for distant terrain
 	FragColor = mix(vec4(0.0, 0.7, 0.7, baseColor.a) * length(baseColor), baseColor, step(1.0, fade));
+
+	// G-buffer outputs for SSR
+	WorldNormal = vec4(perturbedNorm, 1.0);
+	Material = vec4(roughness, metallic, 1.0, 1.0);
 }

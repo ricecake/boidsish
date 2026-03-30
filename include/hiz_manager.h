@@ -8,14 +8,22 @@ class ComputeShader;
 
 namespace Boidsish {
 
+	namespace PostProcessing {
+		class SssrEffect;
+	}
+
+	class Visualizer;
+
 	/**
-	 * @brief Manages a Hi-Z (Hierarchical Z-buffer) pyramid for GPU occlusion culling.
+	 * @brief Manages a Hi-Z (Hierarchical Z-buffer) pyramid for GPU occlusion culling and SSR.
 	 *
 	 * Generates a mip chain from the previous frame's depth buffer where each mip level
-	 * stores the MAX depth of its 2x2 source texels. This creates a conservative depth
-	 * representation that can be tested against object AABBs to determine occlusion.
+	 * stores the MIN depth in R and MAX depth in G of its 2x2 source texels.
 	 */
 	class HiZManager {
+		friend class PostProcessing::SssrEffect;
+		friend class Visualizer;
+
 	public:
 		HiZManager();
 		~HiZManager();

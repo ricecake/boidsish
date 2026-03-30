@@ -30,8 +30,6 @@ namespace Boidsish {
 
 			bool IsEarly() const override { return true; }
 
-			GLuint GetResultTexture() const override { return temporal_accumulator_.GetResult(); }
-
 			// Parameters
 			void  SetIntensity(float intensity) { intensity_ = intensity; }
 			float GetIntensity() const { return intensity_; }
@@ -42,15 +40,17 @@ namespace Boidsish {
 			void  SetRoughnessThreshold(float threshold) { roughness_threshold_ = threshold; }
 			float GetRoughnessThreshold() const { return roughness_threshold_; }
 
+			void SetHiZTexture(GLuint texture, int levels) {
+				hi_z_texture_ = texture;
+				hi_z_levels_ = levels;
+			}
+
 		private:
 			void InitializeFBOs();
-			void GenerateHiZ(GLuint depthTexture);
 
 			int width_ = 0;
 			int height_ = 0;
 
-			std::unique_ptr<ComputeShader> hi_z_copy_shader_;
-			std::unique_ptr<ComputeShader> hi_z_shader_;
 			std::unique_ptr<ComputeShader> sssr_shader_;
 			std::unique_ptr<ComputeShader> spatial_filter_shader_;
 			std::unique_ptr<Shader>        composite_shader_;

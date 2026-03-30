@@ -8,6 +8,7 @@
 #include "post_processing/effects/BloomEffect.h"
 #include "post_processing/effects/FilmGrainEffect.h"
 #include "post_processing/effects/GtaoEffect.h"
+#include "post_processing/effects/SssrEffect.h"
 #include "post_processing/effects/ToneMappingEffect.h"
 
 namespace Boidsish {
@@ -110,6 +111,24 @@ namespace Boidsish {
 								float intensity = film_grain_effect->GetIntensity();
 								if (ImGui::SliderFloat("Intensity##FilmGrain", &intensity, 0.0f, 1.0f)) {
 									film_grain_effect->SetIntensity(intensity);
+								}
+							}
+						}
+
+						if (effect->GetName() == "SSSR" && is_enabled) {
+							auto sssr_effect = std::dynamic_pointer_cast<PostProcessing::SssrEffect>(effect);
+							if (sssr_effect) {
+								float intensity = sssr_effect->GetIntensity();
+								if (ImGui::SliderFloat("Intensity##SSSR", &intensity, 0.0f, 5.0f)) {
+									sssr_effect->SetIntensity(intensity);
+								}
+								float roughness_threshold = sssr_effect->GetRoughnessThreshold();
+								if (ImGui::SliderFloat("Roughness Threshold##SSSR", &roughness_threshold, 0.0f, 1.0f)) {
+									sssr_effect->SetRoughnessThreshold(roughness_threshold);
+								}
+								int max_steps = sssr_effect->GetMaxSteps();
+								if (ImGui::SliderInt("Max Steps##SSSR", &max_steps, 1, 256)) {
+									sssr_effect->SetMaxSteps(max_steps);
 								}
 							}
 						}
