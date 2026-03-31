@@ -1,213 +1,175 @@
-# Boidsish - Simple 3D Visualization Framework
+# Boidsish
 
-A lightweight, cross-platform 3D visualization framework designed for creating interactive particle and dot-based visualizations in C++. Perfect for simulating flocking behaviors, particle systems, mathematical visualizations, and other dynamic 3D scenes.
+A 3D visualization and simulation framework in C++ that started as a boids flocking demo and kept growing legs. Now features GPU-driven rendering, procedural terrain with tessellation, atmospheric scattering, compute-shader particle effects, and enough post-processing to make a film student nervous.
+
+Still has boids, though.
+
+---
+
+## What It Does
+
+Boidsish provides a programmable 3D scene where you define what exists and how it behaves, and the framework handles rendering, terrain, lighting, shadows, trails, audio, and camera. You write functions that produce shapes and entities; it draws them at 60+ fps with PBR materials, cascaded shadow maps, and hierarchical occlusion culling.
+
+It's built for experimentation — flocking simulations, procedural creatures, particle art, terrain exploration, physics demos, or whatever you want to throw into a 3D space and watch happen.
 
 ## Features
 
-- **Simple Interface**: Define your visualization with a single function that returns dot positions, colors, and trails
-- **Cross-Platform**: Works on Linux and macOS with simple make commands
-- **Real-time Rendering**: Smooth OpenGL-based 3D rendering with depth testing and transparency
-- **Trail System**: Automatic trail rendering with customizable length and fade effects
-- **Camera Controls**: WASD movement and mouse look controls
-- **Lightweight**: Minimal dependencies - just OpenGL, GLFW, and GLEW
+**Rendering**
+- GPU-driven pipeline: Multi-Draw Indirect with megabuffer, per-draw visibility via compute shader, Hi-Z occlusion culling
+- PBR materials with roughness, metallic, AO, and emissive channels
+- Cascaded shadow mapping with debt-based update scheduling
+- Post-processing chain: GTAO, bloom, auto-exposure, film grain, temporal accumulation
+- Decor system: GPU-placed vegetation with per-instance wind, terrain-aware occlusion, and compute-shader placement
 
-## Dependencies
+**Terrain**
+- Procedural generation with biome blending and noise-based features
+- GPU tessellation with adaptive screen-space LOD, silhouette boost, and curvature boost
+- Patch-based compute-shader culling (8×8 patches per chunk, frustum + terrain-raycast occlusion)
+- Runtime deformation (craters, flattening) with async regeneration
+- Heightmap texture array streaming with non-destructive growth
 
-### Linux (Ubuntu/Debian)
+**Atmosphere & Environment**
+- Physically-based sky with Rayleigh + Mie scattering via precomputed LUTs
+- Procedural volumetric clouds
+- Dynamic weather system
+- Moon and celestial rendering
+
+**Effects**
+- GPU compute fire/explosion particles with multiple styles and curl noise turbulence
+- Shockwave ring distortion (terrain + object displacement)
+- Mesh explosion debris with per-fragment physics
+- SDF volume effects
+- GPU-tessellated trails with iridescence, rocket mode, and PBR materials
+
+**Entities & Simulation**
+- Template-based entity system with shape generation callbacks
+- Procedural walking creatures with inverse kinematics
+- Flocking behaviors, steering probes, spatial octree queries
+- Spline-based paths with multiple camera modes (free, tracking, chase, path-follow, ambient cinematic)
+
+**Audio**
+- OpenAL-based 3D positional audio
+- Sound effect management with listener tracking
+
+**Tools**
+- ImGui widget system (profiler, environment controls, effect tweaking)
+- 20 test suites covering core systems
+- Built-in frame profiler with per-section GPU timing
+- 67 example programs
+
+## Building
+
+**Requirements:** CMake 3.16+, C++23 compiler, OpenGL 4.3+
+
+**macOS:**
 ```bash
-sudo apt-get install libglfw3-dev libglew-dev libgl1-mesa-dev
+brew install glfw glew glm assimp
 ```
 
-### macOS
+**Linux (Ubuntu/Debian):**
 ```bash
-brew install glfw glew
+sudo apt-get install libglfw3-dev libglew-dev libglm-dev libassimp-dev libopenal-dev
+```
+
+**Build:**
+```bash
+mkdir build && cd build
+cmake ..
+cmake --build . --target boidsish
+```
+
+**Build an example:**
+```bash
+cmake --build . --target fire_demo
+./examples/fire_demo/fire_demo
+```
+
+**Run tests:**
+```bash
+cmake --build . --target test_terrain
+./tests/test_terrain
 ```
 
 ## Quick Start
 
-1. **Install dependencies** (see above)
-
-2. **Clone and build**:
-```bash
-cd boidsish
-make
-```
-
-3. **Run the example**:
-```bash
-./boidsish
-```
-
-## Building
-
-- `make` - Build the main example program
-- `make examples` - Build additional example programs
-- `make clean` - Clean build artifacts
-- `make help` - Show all available targets
-
-## Usage
-
-### Basic Example
-
 ```cpp
-#include "boidsish.h"
-#include <cmath>
-
+#include "graphics.h"
 using namespace Boidsish;
 
-// Define a function that returns dots for each frame
-std::vector<Dot> MyVisualization(float time) {
-    std::vector<Dot> dots;
-
-    // Create a rotating dot
-    float x = cos(time) * 3.0f;
-    float y = sin(time * 0.5f);
-    float z = sin(time) * 3.0f;
-
-    // Dot parameters: position, size, color (RGBA), trail_length
-    dots.emplace_back(x, y, z, 8.0f, 1.0f, 0.5f, 0.0f, 1.0f, 15);
-
-    return dots;
-}
-
 int main() {
-    Visualizer viz(800, 600, "My Visualization");
-    viz.SetDotFunction(MyVisualization);
+    Visualizer viz(1280, 720, "Hello Boidsish");
+
+    // Add some shapes each frame
+    viz.SetShapeFunction([](float time) {
+        std::vector<std::shared_ptr<Shape>> shapes;
+
+        auto dot = std::make_shared<Dot>();
+        dot->SetPosition(cos(time) * 5.0f, sin(time * 0.7f) * 2.0f, sin(time) * 5.0f);
+        dot->SetColor(1.0f, 0.5f, 0.2f);
+        dot->SetTrailLength(40);
+        shapes.push_back(dot);
+
+        return shapes;
+    });
+
     viz.Run();
     return 0;
 }
 ```
 
-### Dot Structure
+For terrain, decor, fire, audio, entities, and more — see the `examples/` directory. There are 67 of them.
 
-```cpp
-struct Dot {
-    float x, y, z;           // Position in 3D space
-    float size;              // Size of the dot (in pixels)
-    float r, g, b, a;        // Color (red, green, blue, alpha)
-    int trail_length;        // Number of trail segments
-};
+## Camera Controls
+
+| Key | Action |
+|-----|--------|
+| WASD | Move horizontally |
+| Space / Shift | Move up / down |
+| Mouse | Look around |
+| Scroll | Adjust speed |
+| 1-5 | Camera modes (free, auto, tracking, chase, path) |
+| ESC | Exit |
+
+## Architecture Overview
+
+```
+Visualizer
+├── RenderQueue (parallel packet generation, MDI batching)
+├── ShadowManager (4-cascade CSM, two-phase render)
+├── TerrainGenerator → TerrainRenderManager (GPU tessellation, patch culling)
+├── DecorManager (GPU placement, block validity, terrain occlusion)
+├── HiZManager (depth pyramid for occlusion culling)
+├── AtmosphereManager (LUT-based scattering)
+├── FireEffectManager (GPU compute particles)
+├── TrailRenderManager (GPU tessellation)
+├── MeshExplosionManager (fragment physics)
+├── ShockwaveManager (ring distortion)
+├── PostProcessingManager (GTAO, bloom, exposure, grain)
+├── AudioManager (OpenAL 3D audio)
+├── LightManager (10 lights, PBR evaluation)
+└── EntityHandler (shape generation, entity lifecycle)
 ```
 
-### Camera Controls
+Shaders live in `shaders/` and use `#include` for shared code (`helpers/lighting.glsl`, `helpers/terrain_shadows.glsl`, `helpers/noise.glsl`, etc.). Compute shaders handle culling, placement, particle simulation, trail generation, Hi-Z pyramid building, and atmosphere LUT precomputation.
 
-The visualization includes built-in first-person camera controls:
+## Project Structure
 
-- **WASD** - Move horizontally (forward, left, back, right)
-- **Space** - Move up
-- **Shift** - Move down
-- **Mouse** - Look around
-- **ESC** - Exit
-
-### Advanced Usage
-
-```cpp
-// Set custom camera position
-Camera camera(x, y, z, pitch, yaw, fov);
-viz.SetCamera(camera);
-
-// Update loop for custom control
-while (!viz.ShouldClose()) {
-    viz.Update();  // Handle input and timing
-    viz.Render();  // Render the frame
-}
+```
+include/           Headers for all systems
+src/               Implementation files
+shaders/           GLSL shaders (vert, frag, comp, tcs, tes, glsl helpers)
+external/          Third-party libraries (ImGui, stb, FastNoise2, etc.)
+examples/          67 example programs
+tests/             20 test suites
+assets/            Models, textures
 ```
 
-## Examples
+## Dependencies
 
-The `examples/` directory contains several demonstrations:
+Bundled in `external/`: ImGui, stb_image, FastNoise2, meshoptimizer, task-thread-pool, libmorton, Bonxai, lygia, QuickJS (optional).
 
-### Example 1: Spiral Particles
-Multiple colored particles following spiral paths with varying trail lengths.
-
-### Example 2: Random Walk
-Particles performing random walks with boundary constraints and distance-based coloring.
-
-### Example 3: Wave Function
-Grid-based wave simulation showing mathematical function visualization.
-
-**Run examples:**
-```bash
-cd examples
-make
-./advanced_examples 1  # Spiral particles
-./advanced_examples 2  # Random walk
-./advanced_examples 3  # Wave function
-```
-
-## Architecture
-
-### Core Components
-
-- **Visualizer**: Main class handling window, rendering, and input
-- **Dot**: Structure representing a single particle/point
-- **Camera**: 3D camera with position and orientation
-- **DotFunction**: User-defined function type for generating dots
-
-### Rendering Pipeline
-
-1. User function generates dots for current time
-2. Trail system updates position history
-3. OpenGL renders trails (lines) and dots (points)
-4. Camera transformation applied
-5. Grid overlay for spatial reference
-
-### Platform Abstraction
-
-The Makefile automatically detects the platform and configures:
-- OpenGL linking (Linux vs macOS frameworks)
-- Library paths (Homebrew on macOS)
-- Compiler flags for compatibility
-
-## Customization
-
-### Grid and Environment
-
-Modify `RenderGrid()` in `src/boidsish.cpp` to change the spatial reference grid.
-
-### Rendering Style
-
-- Point sizes, line widths, and colors can be customized per dot
-- Alpha blending is enabled for transparency effects
-- Depth testing provides proper 3D occlusion
-
-### Performance
-
-- Dots are rendered as OpenGL points for efficiency
-- Trails use line strips for smooth curves
-- No complex geometry or textures for maximum performance
-
-## Troubleshooting
-
-### Build Issues
-
-1. **Missing headers**: Ensure development packages are installed
-2. **Library not found**: Check library paths in Makefile
-3. **OpenGL version**: Requires OpenGL 3.3+ compatible drivers
-
-### Runtime Issues
-
-1. **Black screen**: Check OpenGL drivers and version
-2. **No response**: Verify GLFW initialization
-3. **Crashes**: Enable debug builds with `-g -DDEBUG`
-
-### Platform-Specific
-
-**macOS**: If Homebrew libraries aren't found, manually set paths:
-```bash
-export CPPFLAGS=-I$(brew --prefix)/include
-export LDFLAGS=-L$(brew --prefix)/lib
-make
-```
-
-**Linux**: For different distributions, package names may vary:
-- Fedora: `mesa-libGL-devel glfw-devel glew-devel`
-- Arch: `mesa glfw-x11 glew`
+System: OpenGL, GLFW, GLEW, GLM, ASSIMP, OpenAL-Soft.
 
 ## License
 
-This project is provided as example code for educational and development purposes.
-
-## Contributing
-
-Feel free to submit issues and enhancement requests. This framework is designed to be simple and focused - complex features should be implemented in user code rather than the core library.
+This project is provided for educational and development purposes.
