@@ -142,8 +142,11 @@ vec4 ErosionFilter(
 	out float ridgeMap,
 	out float debug
 ) {
-	strength *= scale;
+	strength *= (scale+10.0);
 	fadeTarget = clamp(fadeTarget, -1.0, 1.0);
+
+	scale *= 100.0;
+	// cellScale *= 5.0;
 
 	vec3  inputHeightAndSlope = heightAndSlope;
 	float freq = 1.0 / (scale * cellScale);

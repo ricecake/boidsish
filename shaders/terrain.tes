@@ -71,13 +71,16 @@ void main() {
 	// ========================================================================
 	// Advanced Erosion Filter Application
 	// ========================================================================
+	float terrainDistance = distance(viewPos.xz, FragPos.xz);
+	float blendScale = smoothstep(450*worldScale, 200*worldScale, terrainDistance);
+	if (terrainDistance < 450*worldScale) {
 	// Note: We apply the erosion filter directly to the geometry for evaluation.
 	float ridgeMapOutput = 0.0;
 	float debugOutput = 0.0;
 
 	// In the framework, HEIGHT_PEAK is defined as 100.0 * worldScale.
 	// We need to use the same logic here for consistency.
-	float frameworkHeightPeak = 100.0 * worldScale;
+	float frameworkHeightPeak = 200.0 * worldScale;
 	float erosionFadeTarget = clamp(FragPos.y / (frameworkHeightPeak * 0.6), -1.0, 1.0);
 
 	// Approximate local slope from normal for the filter
@@ -87,10 +90,10 @@ void main() {
 
 	vec4 erosionResult = ErosionFilter(
 		FragPos.xz / worldScale, hAndS, erosionFadeTarget,
-		0.12, 0.5, 1.5,
+		blendScale * 0.12, 0.5, 1.5,
 		vec4(0.1, 0.0, 0.1, 2.0), vec4(1.25, 1.25, 2.8, 1.5),
 		vec2(0.7, 1.0),
-		0.15, 5, 2.0,
+		worldScale * 0.15, 5, 2.0,
 		0.5, 0.7, 0.5,
 		ridgeMapOutput, debugOutput
 	);
@@ -98,15 +101,16 @@ void main() {
 	// Apply height change
 	// Note: We multiply by worldScale to keep it consistent with our coordinate system.
 	float heightDelta = erosionResult.x * worldScale;
-	FragPos.y += heightDelta;
+	FragPos.y += blendScale*heightDelta;
 
 	// Update normal based on slope delta
 	// erosionResult.yz is the delta for dh/dx and dh/dz.
 	vec2 updatedDeriv = hAndS.yz + erosionResult.yz;
-	Normal = normalize(vec3(-updatedDeriv.x, 1.0, -updatedDeriv.y));
+	Normal = mix(Normal, normalize(vec3(-updatedDeriv.x, 1.0, -updatedDeriv.y)), blendScale);
 
 	vErosionDelta = erosionResult.x; // Keep unscaled for color mapping
 	vRidgeMap = ridgeMapOutput;
+	}
 
 	// Detect water (height < 0) with a small blend range for stability
 	float waterMask = smoothstep(0.1, -0.1, FragPos.y);
