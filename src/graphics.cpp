@@ -1354,40 +1354,6 @@ namespace Boidsish {
 
 		glm::mat4 SetupMatrices() { return SetupMatrices(camera); }
 
-		void RenderShapes(
-			const glm::mat4&                           view,
-			const std::vector<std::shared_ptr<Shape>>& shapes,
-			float                                      time,
-			const std::optional<glm::vec4>&            clip_plane
-		) {
-			(void)shapes; // All shapes now use data-driven path via ExecuteRenderQueue
-
-			shader->use();
-			shader->setFloat("time", time);
-			shader->setFloat("u_windResponsiveness", 0.0f);
-			shader->setFloat("u_windRimHighlight", 0.0f);
-			shader->setFloat(
-				"ripple_strength",
-				ConfigManager::GetInstance().GetAppSettingBool("artistic_effect_ripple", false) ? 0.05f : 0.0f
-			);
-			shader->setMat4("view", view);
-			if (clip_plane) {
-				shader->setVec4("clipPlane", *clip_plane);
-			} else {
-				shader->setVec4("clipPlane", glm::vec4(0, 0, 0, 0)); // No clipping
-			}
-
-			// Enable GPU frustum culling for instanced rendering
-			shader->setBool("enableFrustumCulling", true);
-			shader->setInt("useVertexColor", 0);
-
-			// Render clones (captured via FREEZE_FRAME_TRAIL effect)
-			clone_manager->Render(*shader);
-
-			// Disable frustum culling after shapes are rendered
-			shader->setBool("enableFrustumCulling", false);
-		}
-
 		void ExecuteRenderQueue(
 			RenderQueue&                       queue,
 			const glm::mat4&                   view_mat,
