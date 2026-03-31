@@ -6,8 +6,8 @@
 #include <cstdint>
 #include <memory>
 #include <mutex>
-#include <vector>
 #include <span>
+#include <vector>
 
 namespace Boidsish {
 
@@ -34,6 +34,43 @@ namespace Boidsish {
 		bool operator==(const Handle&) const = default;
 	};
 
+	template <typename T, typename Tag>
+	class Pool;
+
+	/**
+	 * @brief The bound handle that intrinsically routes to the parent Pool's static state.
+	 */
+	template <typename T, typename Tag = T>
+	struct PoolHandle {
+		using ValueType = uint32_t;
+		ValueType id = 0;
+
+		constexpr PoolHandle() = default;
+
+		constexpr explicit PoolHandle(ValueType id): id(id) {}
+
+		bool IsValid() const { return Pool<T, Tag>::IsValid(id); }
+
+		explicit operator bool() const { return IsValid(); }
+
+		auto operator<=>(const PoolHandle&) const = default;
+		bool operator==(const PoolHandle&) const = default;
+
+		T* operator->() const {
+			assert(IsValid());
+			return Pool<T, Tag>::Get(id);
+		}
+
+		T& operator*() const {
+			assert(IsValid());
+			return *Pool<T, Tag>::Get(id);
+		}
+
+		T* Get() const { return Pool<T, Tag>::Get(id); }
+
+		ValueType GetId() const { return id; }
+	};
+
 	/**
 	 * @brief A monostate pool that stores objects of type T in contiguous memory.
 	 * * @tparam T The type of the resource.
@@ -41,6 +78,8 @@ namespace Boidsish {
 	 */
 	template <typename T, typename Tag = T>
 	class Pool {
+		using Handle = PoolHandle<T, Tag>;
+
 	private:
 		// All storage is static inline, ensuring one global instance per <T, Tag> pair.
 		static inline std::vector<T>        data_;
@@ -78,39 +117,6 @@ namespace Boidsish {
 		}
 
 	public:
-		/**
-		 * @brief The bound handle that intrinsically routes to the parent Pool's static state.
-		 */
-		struct Handle {
-			using ValueType = uint32_t;
-			ValueType id = 0;
-
-			constexpr Handle() = default;
-
-			constexpr explicit Handle(ValueType id): id(id) {}
-
-			bool IsValid() const { return Pool::IsValid(id); }
-
-			explicit operator bool() const { return IsValid(); }
-
-			auto operator<=>(const Handle&) const = default;
-			bool operator==(const Handle&) const = default;
-
-			T* operator->() const {
-				assert(IsValid());
-				return Pool::Get(id);
-			}
-
-			T& operator*() const {
-				assert(IsValid());
-				return *Pool::Get(id);
-			}
-
-			T* Get() const { return Pool::Get(id); }
-
-			ValueType GetId() const { return id; }
-		};
-
 		/**
 		 * @brief Represents a reserved contiguous block of the pool.
 		 */
@@ -317,10 +323,10 @@ namespace Boidsish {
 
 // Hash support for unordered maps
 namespace std {
-	// template <typename T, typename Tag>
-	// struct hash<typename Boidsish::Pool<T, Tag>::Handle> {
-	// 	size_t operator()(const typename Boidsish::Pool<T, Tag>::Handle& h) const { return hash<uint32_t>{}(h.id); }
-	// };
+	template <typename T, typename Tag>
+	struct hash<typename Boidsish::PoolHandle<T, Tag>> {
+		size_t operator()(const typename Boidsish::PoolHandle<T, Tag>& h) const { return hash<uint32_t>{}(h.id); }
+	};
 
 	template <typename T, typename Tag>
 	struct hash<Boidsish::Handle<T, Tag>> {
