@@ -7,8 +7,32 @@
 #include <memory>
 #include <mutex>
 #include <vector>
+#include <span>
 
 namespace Boidsish {
+
+	/**
+	 * @brief A generic type-safe and tagged handle for resources.
+	 *
+	 * @tparam T The type of the resource this handle refers to.
+	 * @tparam Tag A unique tag to differentiate handle types for different resource categories.
+	 */
+	template <typename T, typename Tag = T>
+	struct Handle {
+		using ValueType = uint32_t;
+		ValueType id = 0;
+
+		constexpr Handle() = default;
+
+		constexpr explicit Handle(ValueType id): id(id) {}
+
+		constexpr bool IsValid() const { return id != 0; }
+
+		constexpr explicit operator bool() const { return IsValid(); }
+
+		auto operator<=>(const Handle&) const = default;
+		bool operator==(const Handle&) const = default;
+	};
 
 	/**
 	 * @brief A monostate pool that stores objects of type T in contiguous memory.
@@ -37,6 +61,15 @@ namespace Boidsish {
 		static void Grow() {
 			size_t old_size = sparse_.size();
 			size_t new_size = old_size == 0 ? 1024 : old_size * 2; // Lazy initialization
+			Grow(new_size);
+		}
+
+		static void Grow(const auto& new_size) {
+			size_t old_size = sparse_.size();
+			if (new_size <= old_size) {
+				return;
+			}
+
 			sparse_.resize(new_size);
 			generations_.resize(new_size, 1);
 			for (size_t i = old_size; i < new_size; ++i) {
@@ -284,8 +317,13 @@ namespace Boidsish {
 
 // Hash support for unordered maps
 namespace std {
+	// template <typename T, typename Tag>
+	// struct hash<typename Boidsish::Pool<T, Tag>::Handle> {
+	// 	size_t operator()(const typename Boidsish::Pool<T, Tag>::Handle& h) const { return hash<uint32_t>{}(h.id); }
+	// };
+
 	template <typename T, typename Tag>
-	struct hash<typename Boidsish::Pool<T, Tag>::Handle> {
-		size_t operator()(const typename Boidsish::Pool<T, Tag>::Handle& h) const { return hash<uint32_t>{}(h.id); }
+	struct hash<Boidsish::Handle<T, Tag>> {
+		size_t operator()(const Boidsish::Handle<T, Tag>& h) const { return hash<uint32_t>{}(h.id); }
 	};
 } // namespace std
