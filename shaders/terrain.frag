@@ -11,6 +11,8 @@ flat in float TextureSlice;
 in float      perturbFactor;
 in float      tessFactor;
 in float      vIsWater;
+in float      vErosionDelta;
+in float      vRidgeMap;
 
 #include "helpers/fast_noise.glsl"
 #include "helpers/lighting.glsl"
@@ -400,32 +402,10 @@ void main() {
 	finalMaterial.albedo = mix(finalMaterial.albedo, finalMaterial.albedo * (1.0 + rockyVar * 0.2), rockyMask);
 
 	// ========================================================================
-	// Advanced Erosion Filter Application (for evaluation)
+	// Advanced Erosion Filter Coloration
 	// ========================================================================
-	// Note: This is an overlay application for visual evaluation.
-	// Since we already have a heightmap, we apply it as a color/normal filter.
-	// The parameters here match the creator's recommended defaults.
-	float ridgeMapOutput = 0.0;
-	float debugOutput = 0.0;
-	float erosionFadeTarget = clamp(FragPos.y / (HEIGHT_PEAK * 0.6), -1.0, 1.0);
-
-	// Approximate local slope from normal for the filter
-	// In the original, yz are derivatives dh/dx and dh/dz.
-	// Our normal is (-dx, 1, -dz) normalized. So -norm.x and -norm.z are approx derivatives.
-	vec3 hAndS = vec3(FragPos.y / worldScale, -norm.x, -norm.z);
-
-	vec4 erosionResult = ErosionFilter(
-		FragPos.xz / worldScale, hAndS, erosionFadeTarget,
-		0.12, 0.5, 1.5,
-		vec4(0.1, 0.0, 0.1, 2.0), vec4(1.25, 1.25, 2.8, 1.5),
-		vec2(0.7, 1.0),
-		0.15, 5, 2.0,
-		0.5, 0.7, 0.5,
-		ridgeMapOutput, debugOutput
-	);
-
-	// Apply the extracted color mapping
-	finalMaterial.albedo = applyErosionColorMappingDefault(finalMaterial.albedo, ridgeMapOutput, erosionResult.x);
+	// Apply the extracted color mapping using the data passed from the tessellation shader
+	finalMaterial.albedo = applyErosionColorMappingDefault(finalMaterial.albedo, vRidgeMap, vErosionDelta);
 
 	vec3  albedo = finalMaterial.albedo;
 	float roughness = finalMaterial.roughness;
