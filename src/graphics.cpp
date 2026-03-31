@@ -101,6 +101,7 @@ namespace Boidsish {
 
 		// Terrain and Decor
 		ShaderBase::RegisterConstant("CHUNK_SIZE", Constants::Class::Terrain::ChunkSize());
+		ShaderBase::RegisterConstant("CHUNK_SIZE_PLUS_1", Constants::Class::Terrain::ChunkSizePlus1());
 
 		// Effects
 		ShaderBase::RegisterConstant("MAX_SHOCKWAVES", Constants::Class::Shockwaves::MaxShockwaves());
@@ -871,7 +872,10 @@ namespace Boidsish {
 					"Terrain render manager: GPU supports " + std::to_string(max_layers) +
 					" texture array layers, using " + std::to_string(initial_chunks)
 				);
-				terrain_render_manager = std::make_shared<TerrainRenderManager>(32, initial_chunks);
+				terrain_render_manager = std::make_shared<TerrainRenderManager>(
+					Constants::Class::Terrain::ChunkSize(),
+					initial_chunks
+				);
 				terrain_generator->SetRenderManager(terrain_render_manager);
 				terrain_render_manager->SetNoise(
 					noise_manager->GetNoiseTexture(),

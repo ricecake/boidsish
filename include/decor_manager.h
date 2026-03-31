@@ -7,6 +7,7 @@
 #include <vector>
 
 #include "biome_properties.h"
+#include "constants.h"
 #include "frustum.h"
 #include "model.h"
 #include "procedural_generator.h"
@@ -274,9 +275,10 @@ namespace Boidsish {
 		// without needing to zero 64KB of instance data per type.
 		GLuint block_validity_ssbo_ = 0;
 
-		static constexpr int kInstancesPerChunk = 1024;
+		static constexpr int kInstancesPerChunk =
+			Constants::Class::Terrain::ChunkSize() * Constants::Class::Terrain::ChunkSize();
 		static constexpr int kMaxActiveChunks = 1024;
-		static constexpr int kMaxInstancesPerType = kInstancesPerChunk * kMaxActiveChunks; // 147,456
+		static constexpr int kMaxInstancesPerType = kInstancesPerChunk * kMaxActiveChunks;
 	};
 
 } // namespace Boidsish
