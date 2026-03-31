@@ -546,6 +546,22 @@ namespace Boidsish {
 		task_thread_pool::task_thread_pool thread_pool;
 		std::unique_ptr<AudioManager>      audio_manager;
 
+		// Frame-specific state shared across refactored methods
+		struct MapUpdateInfo {
+			int    map_index;
+			Light* light;
+			int    cascade_index; // -1 for standard
+			float  weight;
+		};
+		std::vector<MapUpdateInfo> shadow_map_registry;
+		std::vector<int>           maps_to_update;
+		std::vector<Light*>        shadow_lights;
+		glm::vec3                  scene_center{0.0f};
+		Frustum                    generator_frustum;
+		glm::mat4                  current_view_matrix{1.0f};
+		std::vector<std::future<void>> pending_packet_futures;
+
+
 		VisualizerImpl(Visualizer* p, int w, int h, const char* title): parent(p), width(w), height(h) {
 			RegisterShaderConstants();
 
@@ -2011,6 +2027,841 @@ namespace Boidsish {
 			glBindVertexArray(0);
 		}
 
+		void GatherShapes() {
+			shapes.clear();
+
+			// Update and collect transient effects
+			auto it = transient_effects.begin();
+			while (it != transient_effects.end()) {
+				(*it)->Update(simulation_delta_time);
+				if ((*it)->IsExpired()) {
+					it = transient_effects.erase(it);
+				} else {
+					shapes.push_back(*it);
+					++it;
+				}
+			}
+
+			// Shape generation and updates (must happen before any rendering)
+			if (!shape_functions.empty()) {
+				for (const auto& func : shape_functions) {
+					auto new_shapes = func(simulation_time);
+					shapes.insert(shapes.end(), new_shapes.begin(), new_shapes.end());
+				}
+			}
+
+			ShapeCommand command;
+			while (shape_command_queue.try_pop(command)) {
+				switch (command.type) {
+				case ShapeCommandType::Add:
+					persistent_shapes[command.shape->GetId()] = command.shape;
+					break;
+				case ShapeCommandType::Remove:
+					persistent_shapes.erase(command.shape_id);
+					break;
+				case ShapeCommandType::Clear:
+					persistent_shapes.clear();
+					break;
+				}
+			}
+
+			for (const auto& pair : persistent_shapes) {
+				shapes.push_back(pair.second);
+			}
+
+			// Handle terrain clamping for shapes
+			for (auto& shape : shapes) {
+				if (shape->IsClampedToTerrain()) {
+					float     height;
+					glm::vec3 normal;
+					std::tie(height, normal) = parent->GetTerrainPropertiesAtPoint(shape->GetX(), shape->GetZ());
+					shape->SetPosition(shape->GetX(), height + shape->GetGroundOffset(), shape->GetZ());
+				}
+			}
+		}
+
+		void UpdateCamera() {
+			if (camera_mode == CameraMode::TRACKING) {
+				UpdateSingleTrackCamera(input_state.delta_time, shapes);
+			} else if (camera_mode == CameraMode::AUTO) {
+				UpdateAutoCamera(input_state.delta_time, shapes);
+			} else if (camera_mode == CameraMode::CHASE) {
+				UpdateChaseCamera(input_state.delta_time);
+			} else if (camera_mode == CameraMode::PATH_FOLLOW) {
+				UpdatePathFollowCamera(input_state.delta_time);
+			}
+		}
+
+		void UpdateAudio() {
+			audio_manager->UpdateListener(
+				camera.pos(),
+				camera.front(),
+				camera.up(),
+				camera_velocity_,
+				camera.fov
+			);
+			audio_manager->SetGlobalPitch(time_scale);
+			audio_manager->Update();
+		}
+
+		void UpdateAtmosphere() {
+			if (!atmosphere_manager)
+				return;
+
+			glm::vec3 sun_dir = glm::normalize(glm::vec3(0.0f, 1.0f, 0.0f)); // Default
+			glm::vec3 sun_color = glm::vec3(1.0f);
+			float     sun_intensity = 1.0f;
+
+			if (!light_manager.GetLights().empty()) {
+				// Choose the most dominant light (Sun or Moon) for atmospheric scattering
+				const auto& lights = light_manager.GetLights();
+				const auto& sun = lights[0];
+				const auto& moon = (lights.size() >= 2) ? lights[1] : sun;
+
+				const auto& primary_light = (sun.intensity >= moon.intensity) ? sun : moon;
+
+				if (primary_light.type == DIRECTIONAL_LIGHT) {
+					sun_dir = glm::normalize(-primary_light.direction);
+				} else {
+					sun_dir = glm::normalize(primary_light.position - camera.pos());
+				}
+				sun_color = primary_light.color;
+				sun_intensity = primary_light.intensity;
+			}
+
+			if (atmosphere_effect) {
+				atmosphere_manager->SetRayleighScale(atmosphere_effect->GetRayleighScale());
+				atmosphere_manager->SetMieScale(atmosphere_effect->GetMieScale());
+				atmosphere_manager->SetMieAnisotropy(atmosphere_effect->GetMieAnisotropy());
+				atmosphere_manager->SetMultiScatteringScale(atmosphere_effect->GetMultiScatScale());
+				atmosphere_manager->SetAmbientScatteringScale(atmosphere_effect->GetAmbientScatScale());
+
+				atmosphere_manager->SetAtmosphereHeight(atmosphere_effect->GetAtmosphereHeight());
+				atmosphere_manager->SetRayleighScattering(atmosphere_effect->GetRayleighScattering());
+				atmosphere_manager->SetMieScattering(atmosphere_effect->GetMieScattering());
+				atmosphere_manager->SetMieExtinction(atmosphere_effect->GetMieExtinction());
+				atmosphere_manager->SetOzoneAbsorption(atmosphere_effect->GetOzoneAbsorption());
+				atmosphere_manager->SetRayleighScaleHeight(atmosphere_effect->GetRayleighScaleHeight());
+				atmosphere_manager->SetMieScaleHeight(atmosphere_effect->GetMieScaleHeight());
+				atmosphere_manager->SetColorVarianceScale(atmosphere_effect->GetColorVarianceScale());
+				atmosphere_manager->SetColorVarianceStrength(atmosphere_effect->GetColorVarianceStrength());
+			}
+
+			// We multiply sun intensity by a large factor for the atmosphere model
+			// Standard directional light 1.0 is too dim for physical scattering.
+			// 20.0 is a reasonable physical-ish sun radiance.
+			atmosphere_manager->Update(sun_dir, sun_color, sun_intensity * 20.0f, camera.pos(), simulation_time);
+
+			// Sync ambient light from atmosphere to ensure decor and world match
+			glm::vec3 estimated_ambient = atmosphere_manager->GetAmbientEstimate();
+			light_manager.SetAmbientLight(estimated_ambient);
+
+			if (atmosphere_effect) {
+				atmosphere_effect->SetAtmosphereLUTs(
+					atmosphere_manager->GetTransmittanceLUT(),
+					atmosphere_manager->GetMultiScatteringLUT(),
+					atmosphere_manager->GetSkyViewLUT(),
+					atmosphere_manager->GetAerialPerspectiveLUT()
+				);
+				if (noise_manager) {
+					atmosphere_effect->SetNoiseTextures(noise_manager->GetTextures());
+				}
+			}
+		}
+
+		void UpdateTrailsLogical() { UpdateTrails(shapes, simulation_time); }
+
+		void PrepareShadows() {
+			any_shadow_caster_moved = false;
+			glm::vec3 scene_center(0.0f);
+			bool      has_shapes = !shapes.empty();
+			int       shadow_caster_count = 0;
+			if (has_shapes) {
+				for (const auto& shape : shapes) {
+					if (shape->CastsShadows()) {
+						scene_center += glm::vec3(shape->GetX(), shape->GetY(), shape->GetZ());
+						shadow_caster_count++;
+						float distance_moved =
+							glm::distance(shape->GetLastPosition(), glm::vec3(shape->GetX(), shape->GetY(), shape->GetZ()));
+						if (distance_moved > 0.01f) { // Movement threshold
+							any_shadow_caster_moved = true;
+						}
+					}
+				}
+				if (shadow_caster_count > 0) {
+					scene_center /= static_cast<float>(shadow_caster_count);
+				} else {
+					scene_center = camera.pos();
+				}
+			}
+
+			float distance_to_scene = has_shapes ? glm::distance(camera.pos(), scene_center) : 0.0f;
+			bool  has_terrain = (terrain_generator != nullptr);
+
+			if (has_terrain || distance_to_scene > shadow_update_distance_threshold) {
+				float grid_size = 10.0f;
+				scene_center.x = std::floor(camera.pos().x / grid_size) * grid_size;
+				scene_center.y = std::floor(camera.pos().y / grid_size) * grid_size;
+				scene_center.z = std::floor(camera.pos().z / grid_size) * grid_size;
+				camera_is_close_to_scene = true;
+			} else {
+				camera_is_close_to_scene = (distance_to_scene < shadow_update_distance_threshold);
+			}
+
+			scene_center = scene_center;
+
+			// Re-calculate registry and maps to update (from Render logic)
+			shadow_map_registry.clear();
+			maps_to_update.clear();
+			shadow_lights.clear();
+
+			auto light_count = light_manager.GetShadowCastingLightCount();
+			if (shadow_manager && shadow_manager->IsInitialized() && frame_config_.enable_shadows && light_count > 0) {
+				shadow_lights = light_manager.GetShadowCastingLights();
+
+				for (auto& light : light_manager.GetLights()) {
+					light.shadow_map_index = -1;
+				}
+
+				int next_map_idx = 0;
+				for (auto light : shadow_lights) {
+					if (next_map_idx >= ShadowManager::kMaxShadowMaps)
+						break;
+					light->shadow_map_index = next_map_idx;
+					if (light->type == DIRECTIONAL_LIGHT) {
+						for (int c = 0; c < ShadowManager::kMaxCascades; ++c) {
+							if (next_map_idx < ShadowManager::kMaxShadowMaps) {
+								float weight = (c == 0) ? 8.0f : (c == 1) ? 4.0f : (c == 2) ? 2.0f : 1.0f;
+								shadow_map_registry.push_back({next_map_idx++, light, c, weight});
+							}
+						}
+					} else {
+						shadow_map_registry.push_back({next_map_idx++, light, -1, 4.0f});
+					}
+				}
+
+				float camera_rotation_delta = 1.0f - glm::dot(camera.front(), last_shadow_update_camera_front);
+				bool  significant_rotation = camera_rotation_delta > 0.001f;
+				bool  major_rotation = camera_rotation_delta > 0.01f;
+
+				const int max_updates_per_frame = major_rotation ? 4 : (significant_rotation ? 3 : 2);
+
+				for (const auto& info : shadow_map_registry) {
+					auto& state = shadow_map_states_[info.map_index];
+					float camera_move_dist = glm::distance(camera.pos(), state.last_pos);
+					float rotation_change = 1.0f - glm::dot(camera.front(), state.last_front);
+					bool  light_moved = glm::distance(info.light->position, state.last_light_pos) > 0.1f ||
+						glm::distance(info.light->direction, state.last_light_dir) > 0.01f;
+
+					float rotation_sensitivity = (info.cascade_index == 0) ? 50.0f
+						: (info.cascade_index == 1)                        ? 100.0f
+						: (info.cascade_index == 2)                        ? 200.0f
+																		   : 400.0f;
+					state.rotation_accumulator += rotation_change * rotation_sensitivity;
+
+					float movement_threshold = (info.cascade_index == 0) ? 0.5f
+						: (info.cascade_index == 1)                      ? 2.0f
+						: (info.cascade_index == 2)                      ? 5.0f
+																		 : 10.0f;
+					float rotation_threshold = (info.cascade_index == 0) ? 1.0f
+						: (info.cascade_index == 1)                      ? 0.7f
+						: (info.cascade_index == 2)                      ? 0.5f
+																		 : 0.3f;
+
+					bool needs_movement_update = camera_move_dist > movement_threshold;
+					bool needs_rotation_update = state.rotation_accumulator > rotation_threshold;
+					bool movement_detected = any_shadow_caster_moved || light_moved ||
+						(has_terrain && (needs_movement_update || needs_rotation_update));
+
+					if (movement_detected && camera_is_close_to_scene) {
+						float urgency = info.weight;
+						if (needs_rotation_update)
+							urgency *= (1.5f + info.cascade_index * 0.5f);
+						if (any_shadow_caster_moved)
+							urgency *= 1.5f;
+						state.debt += urgency;
+					} else {
+						state.debt += (0.02f + info.cascade_index * 0.005f);
+					}
+				}
+
+				std::vector<std::pair<float, int>> debt_sorted;
+				float                              debt_threshold = significant_rotation ? 1.5f : 2.5f;
+				for (const auto& info : shadow_map_registry) {
+					auto& state = shadow_map_states_[info.map_index];
+					if (state.debt >= debt_threshold)
+						debt_sorted.push_back({state.debt, info.map_index});
+				}
+				std::sort(debt_sorted.begin(), debt_sorted.end(), std::greater<>());
+
+				for (int i = 0; i < std::min((int)debt_sorted.size(), max_updates_per_frame); ++i)
+					maps_to_update.push_back(debt_sorted[i].second);
+
+				if (major_rotation && maps_to_update.size() < shadow_map_registry.size()) {
+					for (const auto& info : shadow_map_registry) {
+						if (std::find(maps_to_update.begin(), maps_to_update.end(), info.map_index) ==
+						    maps_to_update.end())
+							maps_to_update.push_back(info.map_index);
+					}
+				}
+
+				if (maps_to_update.empty() && !shadow_map_registry.empty()) {
+					shadow_update_round_robin_ = (shadow_update_round_robin_ + 1) % shadow_map_registry.size();
+					if (frame_count_ % 2 == 0) {
+						maps_to_update.push_back(shadow_map_registry[shadow_update_round_robin_].map_index);
+					}
+				}
+			}
+		}
+
+		void PrepareFrame() {
+			// Advance persistent buffers and handle synchronization
+			indirect_elements_buffer->AdvanceFrame();
+			indirect_arrays_buffer->AdvanceFrame();
+			uniforms_ssbo->AdvanceFrame();
+			frustum_ssbo->AdvanceFrame();
+			bone_matrices_ssbo->AdvanceFrame();
+			megabuffer->AdvanceFrame();
+
+			int current_idx = uniforms_ssbo->GetCurrentBufferIndex();
+			if (mdi_fences[current_idx]) {
+				glClientWaitSync(mdi_fences[current_idx], GL_SYNC_FLUSH_COMMANDS_BIT, GL_TIMEOUT_IGNORED);
+				glDeleteSync(mdi_fences[current_idx]);
+				mdi_fences[current_idx] = 0;
+			}
+
+			// Reset MDI offsets for the new frame
+			mdi_elements_count = 0;
+			mdi_arrays_count = 0;
+			mdi_uniform_count = 0;
+			mdi_frustum_count = 0;
+			mdi_bone_count = 0;
+		}
+
+		void PrepareUBOs() {
+			current_view_matrix = SetupMatrices();
+			glm::mat4 current_vp = projection * current_view_matrix;
+
+			// Save previous frame's VP for Hi-Z reprojection (before we overwrite it)
+			glm::mat4 hiz_prev_vp = prev_view_projection;
+
+			// Generate Hi-Z pyramid from previous frame's depth buffer (still in main_fbo_depth_texture_)
+			if (hiz_manager && hiz_manager->IsInitialized() && enable_hiz_culling_ && frame_count_ > 0) {
+				hiz_manager->GeneratePyramid(main_fbo_depth_texture_);
+			}
+
+			// Update Temporal UBO for motion blur and reprojection
+			TemporalUbo temporal_data;
+			temporal_data.viewProjection = current_vp;
+			temporal_data.prevViewProjection = prev_view_projection;
+			temporal_data.uProjection = projection;
+			temporal_data.invProjection = glm::inverse(projection);
+			temporal_data.invView = glm::inverse(current_view_matrix);
+			temporal_data.texelSize = glm::vec2(1.0f / render_width, 1.0f / render_height);
+			temporal_data.frameIndex = static_cast<int>(frame_count_);
+			temporal_data.padding = 0.0f;
+
+			glBindBuffer(GL_UNIFORM_BUFFER, temporal_data_ubo);
+			glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(TemporalUbo), &temporal_data);
+			glBindBuffer(GL_UNIFORM_BUFFER, 0);
+
+			prev_view_projection = current_vp;
+
+			// Resource Preparation (Main Thread)
+			{
+				PROJECT_PROFILE_SCOPE("PrepareResources");
+				for (const auto& shape : shapes) {
+					shape->PrepareResources(megabuffer.get());
+				}
+			}
+
+			// Visual Effects UBO
+			if (frame_config_.effects_enabled) {
+				VisualEffectsUbo ubo_data{};
+				for (const auto& shape : shapes) {
+					for (const auto& effect : shape->GetActiveEffects()) {
+						if (effect == VisualEffect::RIPPLE) {
+							ubo_data.ripple_enabled = 1;
+						} else if (effect == VisualEffect::COLOR_SHIFT) {
+							ubo_data.color_shift_enabled = 1;
+						} else if (effect == VisualEffect::FREEZE_FRAME_TRAIL) {
+							clone_manager->CaptureClone(shape, simulation_time);
+						}
+					}
+				}
+
+				ubo_data.black_and_white_enabled = frame_config_.artistic_black_and_white;
+				ubo_data.negative_enabled = frame_config_.artistic_negative;
+				ubo_data.shimmery_enabled = frame_config_.artistic_shimmery;
+				ubo_data.glitched_enabled = frame_config_.artistic_glitched;
+				ubo_data.wireframe_enabled = frame_config_.artistic_wireframe;
+				ubo_data.color_shift_enabled = ubo_data.color_shift_enabled || frame_config_.artistic_color_shift;
+				ubo_data.wind_strength = frame_config_.wind_strength;
+				ubo_data.wind_speed = frame_config_.wind_speed;
+				ubo_data.wind_frequency = frame_config_.wind_frequency;
+				if (frame_config_.artistic_ripple) {
+					ubo_data.ripple_enabled = 1;
+				}
+
+				glBindBuffer(GL_UNIFORM_BUFFER, visual_effects_ubo);
+				glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(VisualEffectsUbo), &ubo_data);
+				glBindBuffer(GL_UNIFORM_BUFFER, 0);
+			}
+
+			// Lighting UBO
+			{
+				if (CheckpointRingShape::GetShader()) {
+					CheckpointRingShape::GetShader()->use();
+					CheckpointRingShape::GetShader()->setFloat("time", simulation_time);
+				}
+				const auto& lights = light_manager.GetLights();
+				int         num_lights = std::min(static_cast<int>(lights.size()), 10);
+
+				gpu_lights_cache_.clear();
+				for (int i = 0; i < num_lights; ++i) {
+					gpu_lights_cache_.push_back(lights[i].ToGPU());
+				}
+
+				std::memset(&lighting_ubo_data_, 0, sizeof(LightingUbo));
+				std::memcpy(lighting_ubo_data_.lights, gpu_lights_cache_.data(), num_lights * sizeof(LightGPU));
+				lighting_ubo_data_.num_lights = num_lights;
+				lighting_ubo_data_.world_scale = terrain_generator ? terrain_generator->GetWorldScale() : 1.0f;
+				lighting_ubo_data_.day_time = light_manager.GetDayNightCycle().time;
+				lighting_ubo_data_.night_factor = light_manager.GetDayNightCycle().night_factor;
+				if (post_processing_manager_) {
+					post_processing_manager_->SetNightFactor(lighting_ubo_data_.night_factor);
+				}
+				lighting_ubo_data_.view_pos = camera.pos();
+				lighting_ubo_data_.ambient_light = light_manager.GetAmbientLight();
+				lighting_ubo_data_.time = simulation_time;
+				lighting_ubo_data_.view_dir = camera.front();
+
+				if (atmosphere_effect) {
+					lighting_ubo_data_.cloudShadowIntensity =
+						ConfigManager::GetInstance().GetAppSettingFloat("cloud_shadow_intensity", 0.5f);
+					lighting_ubo_data_.cloudAltitude = atmosphere_effect->GetCloudAltitude();
+					lighting_ubo_data_.cloudThickness = atmosphere_effect->GetCloudThickness();
+					lighting_ubo_data_.cloudDensity = atmosphere_effect->GetCloudDensity();
+				} else {
+					lighting_ubo_data_.cloudShadowIntensity = 0.0f;
+				}
+
+				glBindBuffer(GL_UNIFORM_BUFFER, lighting_ubo);
+				glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(LightingUbo), &lighting_ubo_data_);
+				glBindBuffer(GL_UNIFORM_BUFFER, 0);
+			}
+
+			// Frustum UBO for generic passes
+			{
+				glm::mat4 view_mat = glm::lookAt(camera.pos(), camera.pos() + camera.front(), camera.up());
+				UpdateFrustumUbo(view_mat, projection, camera.pos());
+			}
+		}
+
+		void GenerateRenderPacketsAsync() {
+			render_queue.Clear();
+
+			RenderContext context;
+			context.view = current_view_matrix;
+			context.projection = projection;
+			context.view_pos = camera.pos();
+			context.time = simulation_time;
+
+			float world_scale = terrain_generator ? terrain_generator->GetWorldScale() : 1.0f;
+			context.far_plane = 1000.0f * std::max(1.0f, world_scale);
+			context.frustum = Frustum::FromViewProjection(current_view_matrix, projection);
+			context.shader_table = &shader_table;
+			context.megabuffer = megabuffer.get();
+
+			const size_t num_shapes = shapes.size();
+			const size_t chunk_size = 64;
+			pending_packet_futures.clear();
+
+			for (size_t i = 0; i < num_shapes; i += chunk_size) {
+				size_t end = std::min(i + chunk_size, num_shapes);
+				pending_packet_futures.push_back(thread_pool.submit([this, i, end, context]() {
+					PROJECT_PROFILE_SCOPE("PacketGenerationWorker");
+					std::vector<RenderPacket> local_packets;
+					local_packets.reserve(end - i);
+					for (size_t j = i; j < end; ++j) {
+						auto& shape = shapes[j];
+						if (auto* cached = shape->GetCachedPackets(); cached && !cached->empty()) {
+							for (auto packet : *cached) {
+								glm::vec3   world_pos = glm::vec3(packet.uniforms.model[3]);
+								float       normalized_depth = context.CalculateNormalizedDepth(world_pos);
+								RenderLayer layer = (packet.uniforms.color.a < 0.99f) ? RenderLayer::Transparent
+																					  : RenderLayer::Opaque;
+								packet.sort_key = CalculateSortKey(
+									layer,
+									packet.shader_handle,
+									packet.vao,
+									packet.draw_mode,
+									packet.index_count > 0,
+									packet.material_handle,
+									normalized_depth
+								);
+								local_packets.push_back(std::move(packet));
+							}
+						} else {
+							std::vector<RenderPacket> new_packets;
+							shape->GenerateRenderPackets(new_packets, context);
+							for (const auto& packet : new_packets) {
+								local_packets.push_back(packet);
+							}
+							shape->CachePackets(std::move(new_packets));
+							shape->MarkClean();
+						}
+					}
+					if (!local_packets.empty()) {
+						render_queue.Submit(std::move(local_packets));
+					}
+				}));
+			}
+		}
+
+		void SyncAndSortPackets() {
+			{
+				PROJECT_PROFILE_SCOPE("WaitForPackets");
+				for (auto& f : pending_packet_futures) {
+					f.get();
+				}
+				pending_packet_futures.clear();
+			}
+			{
+				PROJECT_PROFILE_SCOPE("SortRenderQueue");
+				render_queue.Sort(thread_pool);
+			}
+		}
+
+		void UpdateSystems() {
+			// Calculate frustum for terrain generation and decor placement
+			if (terrain_generator) {
+				float     world_scale_val = terrain_generator->GetWorldScale();
+				float     far_plane_val = 1000.0f * std::max(1.0f, world_scale_val);
+				float     generator_fov = camera.fov + 15.0f;
+				glm::mat4 generator_proj =
+					glm::perspective(glm::radians(generator_fov), (float)width / (float)height, 0.1f, far_plane_val);
+
+				float lead_time = 0.4f;
+				float predicted_yaw = camera.yaw + camera_angular_velocity_.x * lead_time;
+				float predicted_pitch = camera.pitch + camera_angular_velocity_.y * lead_time;
+
+				Camera predicted_cam = camera;
+				predicted_cam.yaw = predicted_yaw;
+				predicted_cam.pitch = predicted_pitch;
+
+				glm::vec3 cameraPos(predicted_cam.x, predicted_cam.y, predicted_cam.z);
+				glm::mat4 predicted_view = glm::lookAt(cameraPos, cameraPos + predicted_cam.front(), predicted_cam.up());
+
+				generator_frustum = CalculateFrustum(predicted_view, generator_proj);
+				terrain_generator->Update(generator_frustum, camera);
+			}
+
+			clone_manager->Update(simulation_time, camera.pos());
+			fire_effect_manager->Update(
+				simulation_delta_time,
+				simulation_time,
+				frame_config_.ambient_particle_density,
+				terrain_render_manager ? terrain_render_manager->GetChunkInfo(terrain_generator->GetWorldScale())
+									   : std::vector<glm::vec4>{},
+				terrain_render_manager ? terrain_render_manager->GetHeightmapTexture() : 0,
+				noise_manager ? noise_manager->GetCurlTexture() : 0,
+				terrain_render_manager ? terrain_render_manager->GetBiomeTexture() : 0,
+				lighting_ubo,
+				frustum_ssbo->GetBufferId(),
+				frustum_ssbo->GetFrameOffset() + mdi_frustum_count * sizeof(FrustumDataGPU),
+				noise_manager ? noise_manager->GetExtraNoiseTexture() : 0
+			);
+			mesh_explosion_manager->Update(simulation_delta_time, simulation_time);
+			sound_effect_manager->Update(simulation_delta_time);
+			shockwave_manager->Update(simulation_delta_time);
+			if (akira_effect_manager && terrain_generator) {
+				akira_effect_manager->Update(simulation_delta_time, *terrain_generator);
+			}
+			sdf_volume_manager->UpdateUBO();
+			sdf_volume_manager->BindUBO(Constants::UboBinding::SdfVolumes());
+			shockwave_manager->UpdateShaderData();
+			shockwave_manager->BindUBO(Constants::UboBinding::Shockwaves());
+
+			if (decor_manager && terrain_generator && terrain_render_manager) {
+				decor_manager->SetMinPixelSize(ConfigManager::GetInstance().GetAppSettingFloat("foliage_culling_pixel_threshold", 10.0f));
+				decor_manager->Update(simulation_delta_time, camera, generator_frustum, *terrain_generator, terrain_render_manager);
+			}
+		}
+
+		void RenderShadowPasses(const glm::mat4& view) {
+			if (maps_to_update.empty())
+				return;
+
+			glEnable(GL_DEPTH_TEST);
+			if (noise_manager) {
+				shadow_manager->GetShadowShader().use();
+				noise_manager->BindDefault(*shadow_manager->GetShadowShaderPtr());
+			}
+
+			// Phase 1: Render Decor and Terrain into shadow maps
+			std::map<Light*, std::vector<int>> updates_by_light;
+			for (int map_idx : maps_to_update) {
+				updates_by_light[shadow_map_registry[map_idx].light].push_back(map_idx);
+			}
+
+			for (auto& [light, map_indices] : updates_by_light) {
+				if (decor_manager) {
+					int   best_map_idx = -1;
+					float max_split = -1.0f;
+					for (int map_idx : map_indices) {
+						int cascade = shadow_map_registry[map_idx].cascade_index;
+						if (cascade == -1) {
+							best_map_idx = map_idx;
+							break;
+						}
+						float split = shadow_manager->GetCascadeSplits()[cascade];
+						if (split > max_split) {
+							max_split = split;
+							best_map_idx = map_idx;
+						}
+					}
+
+					const auto& best_info = shadow_map_registry[best_map_idx];
+					glm::vec3   light_dir_to_light = (light->type == DIRECTIONAL_LIGHT)
+						? glm::normalize(-light->direction)
+						: glm::normalize(light->position - scene_center);
+
+					decor_manager->Cull(
+						view,
+						projection,
+						ShadowManager::kShadowMapSize,
+						ShadowManager::kShadowMapSize,
+						shadow_manager->GetLightSpaceMatrix(best_info.map_index),
+						light_dir_to_light,
+						terrain_render_manager
+					);
+				}
+
+				for (int map_idx : map_indices) {
+					const auto& info = shadow_map_registry[map_idx];
+					float world_scale_val = terrain_generator ? terrain_generator->GetWorldScale() : 1.0f;
+					shadow_manager->BeginShadowPass(
+						info.map_index,
+						*info.light,
+						scene_center,
+						500.0f * std::max(1.0f, world_scale_val),
+						info.cascade_index,
+						view,
+						camera.fov,
+						(float)width / (float)height,
+						true // Clear depth
+					);
+
+					if (decor_manager) {
+						decor_manager->Render(
+							view,
+							projection,
+							shadow_manager->GetLightSpaceMatrix(info.map_index),
+							shadow_manager->GetShadowShaderPtr().get()
+						);
+					}
+					shadow_manager->EndShadowPass();
+				}
+			}
+
+			// Phase 2: Render Shapes into shadow maps
+			for (int map_idx : maps_to_update) {
+				const auto& info = shadow_map_registry[map_idx];
+				auto&       state = shadow_map_states_[map_idx];
+				float       world_scale_val = terrain_generator ? terrain_generator->GetWorldScale() : 1.0f;
+
+				shadow_manager->BeginShadowPass(
+					info.map_index,
+					*info.light,
+					scene_center,
+					500.0f * std::max(1.0f, world_scale_val),
+					info.cascade_index,
+					view,
+					camera.fov,
+					(float)width / (float)height,
+					false // DO NOT CLEAR
+				);
+
+				ExecuteRenderQueue(
+					render_queue,
+					view,
+					projection,
+					camera.pos(),
+					RenderLayer::Opaque,
+					shadow_shader_handle,
+					shadow_manager->GetLightSpaceMatrix(info.map_index),
+					std::nullopt,
+					true
+				);
+
+				shadow_manager->EndShadowPass();
+
+				state.debt = 0.0f;
+				state.rotation_accumulator = 0.0f;
+				state.last_update_frame = frame_count_;
+				state.last_light_space_matrix = shadow_manager->GetLightSpaceMatrix(info.map_index);
+				state.last_pos = camera.pos();
+				state.last_front = camera.front();
+				state.last_light_pos = info.light->position;
+				state.last_light_dir = info.light->direction;
+			}
+			last_shadow_update_camera_front = camera.front();
+			shadow_manager->UpdateShadowUBO(shadow_lights);
+			glBindFramebuffer(GL_FRAMEBUFFER, 0);
+		}
+
+		void RenderOpaqueScene(const glm::mat4& view, const glm::mat4& hiz_prev_vp, bool has_shockwaves) {
+			bool effects_enabled = frame_config_.effects_enabled;
+			bool skip_intermediate = (render_scale == 1.0f && !effects_enabled && !has_shockwaves);
+
+			PROJECT_PROFILE_SCOPE("MainScenePass");
+			if (skip_intermediate) {
+				glBindFramebuffer(GL_FRAMEBUFFER, 0);
+				glViewport(0, 0, width, height);
+			} else {
+				glBindFramebuffer(GL_FRAMEBUFFER, main_fbo_);
+				glViewport(0, 0, render_width, render_height);
+				GLuint attachments[2] = {GL_COLOR_ATTACHMENT0, GL_COLOR_ATTACHMENT1};
+				glDrawBuffers(2, attachments);
+			}
+
+			glEnable(GL_DEPTH_TEST);
+			glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+			BindShadows(*shader);
+			UpdateFrustumUbo(view, projection, camera.pos());
+
+			if (decor_manager) {
+				if (hiz_manager && hiz_manager->IsInitialized() && enable_hiz_culling_ && frame_count_ > 0) {
+					decor_manager->SetHiZData(hiz_manager->GetHiZTexture(), hiz_manager->GetWidth(),
+					                          hiz_manager->GetHeight(), hiz_manager->GetMipCount(), hiz_prev_vp);
+				} else {
+					decor_manager->SetHiZEnabled(false);
+				}
+				decor_manager->Cull(view, projection, render_width, render_height, std::nullopt, std::nullopt,
+				                    terrain_render_manager);
+				decor_manager->Render(view, projection);
+			}
+
+			ExecuteRenderQueue(render_queue, view, projection, camera.pos(), RenderLayer::Opaque, std::nullopt,
+			                   std::nullopt, std::nullopt, false, enable_hiz_culling_ && frame_count_ > 0);
+
+			{
+				PROJECT_PROFILE_SCOPE("RenderTerrain");
+				RenderTerrain(view, projection, std::nullopt);
+			}
+			RenderPlane(view);
+
+			{
+				PROJECT_PROFILE_SCOPE("RenderSky");
+				RenderSky(view);
+			}
+		}
+
+		void RenderTransparentScene(const glm::mat4& view, bool has_shockwaves) {
+			bool effects_enabled = frame_config_.effects_enabled;
+			bool skip_intermediate = (render_scale == 1.0f && !effects_enabled && !has_shockwaves);
+
+			GLuint current_texture = main_fbo_texture_;
+			GLuint current_depth = main_fbo_depth_texture_;
+
+			if (effects_enabled) {
+				PROJECT_PROFILE_SCOPE("PostProcessing::Early");
+				post_processing_manager_->BeginApply(current_texture, main_fbo_, current_depth,
+				                                     main_fbo_velocity_texture_);
+				post_processing_manager_->ApplyEarlyEffects(view, projection, camera.pos(), simulation_time);
+				BindShadows(*shader);
+				post_processing_manager_->AttachDepthToCurrentFBO();
+				glBindFramebuffer(GL_FRAMEBUFFER, post_processing_manager_->GetCurrentFBO());
+				current_texture = post_processing_manager_->GetFinalTexture();
+			}
+
+			fire_effect_manager->Render(view, projection, camera.pos(),
+			                            noise_manager ? noise_manager->GetNoiseTexture() : 0,
+			                            noise_manager ? noise_manager->GetExtraNoiseTexture() : 0);
+			mesh_explosion_manager->Render(view, projection, camera.pos());
+			if (akira_effect_manager) {
+				akira_effect_manager->Render(view, projection, simulation_time);
+			}
+
+			// Capture background for refraction
+			if (skip_intermediate) {
+				glBindFramebuffer(GL_READ_FRAMEBUFFER, 0);
+			} else {
+				glBindFramebuffer(GL_READ_FRAMEBUFFER,
+				                  effects_enabled ? post_processing_manager_->GetCurrentFBO() : main_fbo_);
+			}
+			glBindTexture(GL_TEXTURE_2D, refraction_texture_);
+			glCopyTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, 0, 0, render_width, render_height);
+			glBindFramebuffer(GL_READ_FRAMEBUFFER, 0);
+
+			glEnable(GL_BLEND);
+			glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+			glDepthMask(GL_FALSE);
+			ExecuteRenderQueue(render_queue, view, projection, camera.pos(), RenderLayer::Transparent);
+			glDepthMask(GL_TRUE);
+		}
+
+		void RenderPostProcessing(const glm::mat4& view, bool has_shockwaves) {
+			if (frame_config_.effects_enabled) {
+				PROJECT_PROFILE_SCOPE("PostProcessing::Late");
+				post_processing_manager_->ApplyLateEffects(view, projection, camera.pos(), simulation_time);
+				GLuint final_texture = post_processing_manager_->GetFinalTexture();
+
+				glBindFramebuffer(GL_FRAMEBUFFER, 0);
+				glViewport(0, 0, width, height);
+				glDisable(GL_DEPTH_TEST);
+				glClear(GL_COLOR_BUFFER_BIT);
+
+				if (has_shockwaves) {
+					shockwave_manager->ApplyScreenSpaceEffect(final_texture, main_fbo_depth_texture_, view, projection,
+					                                          camera.pos(), blur_quad_vao, width, height);
+				} else {
+					postprocess_shader_->use();
+					postprocess_shader_->setInt("sceneTexture", 0);
+					glActiveTexture(GL_TEXTURE0);
+					glBindTexture(GL_TEXTURE_2D, final_texture);
+					glBindVertexArray(blur_quad_vao);
+					glDrawArrays(GL_TRIANGLES, 0, 6);
+				}
+			} else {
+				bool skip_intermediate = (render_scale == 1.0f && !has_shockwaves);
+
+				if (!skip_intermediate) {
+					glBindFramebuffer(GL_FRAMEBUFFER, 0);
+					glViewport(0, 0, width, height);
+					glDisable(GL_DEPTH_TEST);
+					glClear(GL_COLOR_BUFFER_BIT);
+
+					if (has_shockwaves) {
+						shockwave_manager->ApplyScreenSpaceEffect(main_fbo_texture_, main_fbo_depth_texture_, view,
+						                                          projection, camera.pos(), blur_quad_vao, width,
+						                                          height);
+					} else {
+						glBindFramebuffer(GL_READ_FRAMEBUFFER, main_fbo_);
+						glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
+						glBlitFramebuffer(0, 0, render_width, render_height, 0, 0, width, height, GL_COLOR_BUFFER_BIT,
+						                  GL_LINEAR);
+						glBindFramebuffer(GL_FRAMEBUFFER, 0);
+					}
+				}
+			}
+
+			for (const auto& shape : shapes) {
+				shape->UpdateLastPosition();
+			}
+		}
+
+		void FinalizeFrame() {
+			ui_manager->Render();
+			int current_idx = uniforms_ssbo->GetCurrentBufferIndex();
+			if (mdi_fences[current_idx])
+				glDeleteSync(mdi_fences[current_idx]);
+			mdi_fences[current_idx] = glFenceSync(GL_SYNC_GPU_COMMANDS_COMPLETE, 0);
+			glfwSwapBuffers(window);
+		}
+
 		void DefaultInputHandler(const InputState& state) {
 			// Camera movement, orbit, and zoom controls
 			switch (camera_mode) {
@@ -2699,956 +3550,37 @@ namespace Boidsish {
 		} else {
 			impl->shake_offset = glm::vec3(0.0f);
 		}
+
+		// Logical updates migrated from Render
+		impl->GatherShapes();
+		impl->UpdateCamera();
+		impl->UpdateAudio();
+		impl->UpdateAtmosphere();
+		impl->UpdateTrailsLogical();
+		impl->PrepareShadows();
 	}
 
 	void Visualizer::Render() {
 		PROJECT_PROFILE_SCOPE("Render");
 		impl->RefreshFrameConfig();
+		impl->PrepareFrame();
 
-		// Advance persistent buffers and handle synchronization
-		impl->indirect_elements_buffer->AdvanceFrame();
-		impl->indirect_arrays_buffer->AdvanceFrame();
-		impl->uniforms_ssbo->AdvanceFrame();
-		impl->frustum_ssbo->AdvanceFrame();
-		impl->bone_matrices_ssbo->AdvanceFrame();
-		impl->megabuffer->AdvanceFrame();
-
-		int current_idx = impl->uniforms_ssbo->GetCurrentBufferIndex(); // I need to add this method or keep track
-		if (impl->mdi_fences[current_idx]) {
-			glClientWaitSync(impl->mdi_fences[current_idx], GL_SYNC_FLUSH_COMMANDS_BIT, GL_TIMEOUT_IGNORED);
-			glDeleteSync(impl->mdi_fences[current_idx]);
-			impl->mdi_fences[current_idx] = 0;
-		}
-
-		// Reset MDI offsets for the new frame
-		impl->mdi_elements_count = 0;
-		impl->mdi_arrays_count = 0;
-		impl->mdi_uniform_count = 0;
-		impl->mdi_frustum_count = 0;
-		impl->mdi_bone_count = 0;
-
-		// --- 1. BASIC INFORMATION READINESS ---
-		// We collect all shapes and update the camera first so that we can start
-		// the asynchronous packet generation as early as possible.
-
-		impl->shapes.clear();
-
-		// Update and collect transient effects
-		auto it = impl->transient_effects.begin();
-		while (it != impl->transient_effects.end()) {
-			(*it)->Update(impl->simulation_delta_time);
-			if ((*it)->IsExpired()) {
-				it = impl->transient_effects.erase(it);
-			} else {
-				impl->shapes.push_back(*it);
-				++it;
-			}
-		}
-
-		// Shape generation and updates (must happen before any rendering)
-		if (!impl->shape_functions.empty()) {
-			for (const auto& func : impl->shape_functions) {
-				auto new_shapes = func(impl->simulation_time);
-				impl->shapes.insert(impl->shapes.end(), new_shapes.begin(), new_shapes.end());
-			}
-		}
-
-		ShapeCommand command;
-		while (impl->shape_command_queue.try_pop(command)) {
-			switch (command.type) {
-			case ShapeCommandType::Add:
-				impl->persistent_shapes[command.shape->GetId()] = command.shape;
-				break;
-			case ShapeCommandType::Remove:
-				impl->persistent_shapes.erase(command.shape_id);
-				break;
-			case ShapeCommandType::Clear:
-				impl->persistent_shapes.clear();
-				break;
-			}
-		}
-
-		for (const auto& pair : impl->persistent_shapes) {
-			impl->shapes.push_back(pair.second);
-		}
-
-		// Handle terrain clamping for shapes
-		for (auto& shape : impl->shapes) {
-			if (shape->IsClampedToTerrain()) {
-				float     height;
-				glm::vec3 normal;
-				std::tie(height, normal) = GetTerrainPropertiesAtPoint(shape->GetX(), shape->GetZ());
-				shape->SetPosition(shape->GetX(), height + shape->GetGroundOffset(), shape->GetZ());
-			}
-		}
-
-		// --- Camera and Audio Updates ---
-		if (impl->camera_mode == CameraMode::TRACKING) {
-			impl->UpdateSingleTrackCamera(impl->input_state.delta_time, impl->shapes);
-		} else if (impl->camera_mode == CameraMode::AUTO) {
-			impl->UpdateAutoCamera(impl->input_state.delta_time, impl->shapes);
-		} else if (impl->camera_mode == CameraMode::CHASE) {
-			impl->UpdateChaseCamera(impl->input_state.delta_time);
-		} else if (impl->camera_mode == CameraMode::PATH_FOLLOW) {
-			impl->UpdatePathFollowCamera(impl->input_state.delta_time);
-		}
-
-		// --- Shadow Optimization Pre-calc ---
-		impl->any_shadow_caster_moved = false;
-		glm::vec3 scene_center(0.0f);
-		bool      has_shapes = !impl->shapes.empty();
-		int       shadow_caster_count = 0;
-		if (has_shapes) {
-			for (const auto& shape : impl->shapes) {
-				if (shape->CastsShadows()) {
-					scene_center += glm::vec3(shape->GetX(), shape->GetY(), shape->GetZ());
-					shadow_caster_count++;
-					float distance_moved = glm::distance(
-						shape->GetLastPosition(),
-						glm::vec3(shape->GetX(), shape->GetY(), shape->GetZ())
-					);
-					if (distance_moved > 0.01f) { // Movement threshold
-						impl->any_shadow_caster_moved = true;
-					}
-				}
-			}
-			if (shadow_caster_count > 0) {
-				scene_center /= static_cast<float>(shadow_caster_count);
-			} else {
-				scene_center = impl->camera.pos();
-			}
-		}
-
-		float distance_to_scene = has_shapes ? glm::distance(impl->camera.pos(), scene_center) : 0.0f;
-		bool  has_terrain = (impl->terrain_generator != nullptr);
-
-		if (has_terrain || distance_to_scene > impl->shadow_update_distance_threshold) {
-			float grid_size = 10.0f;
-			scene_center.x = std::floor(impl->camera.pos().x / grid_size) * grid_size;
-			scene_center.y = std::floor(impl->camera.pos().y / grid_size) * grid_size;
-			scene_center.z = std::floor(impl->camera.pos().z / grid_size) * grid_size;
-			impl->camera_is_close_to_scene = true;
-		} else {
-			impl->camera_is_close_to_scene = (distance_to_scene < impl->shadow_update_distance_threshold);
-		}
-
-		impl->audio_manager->UpdateListener(
-			impl->camera.pos(),
-			impl->camera.front(),
-			impl->camera.up(),
-			impl->camera_velocity_,
-			impl->camera.fov
-		);
-		impl->audio_manager->SetGlobalPitch(impl->time_scale);
-		impl->audio_manager->Update();
-
-		impl->UpdateTrails(impl->shapes, impl->simulation_time);
-
-		// Update atmosphere LUTs
-		if (impl->atmosphere_manager) {
-			glm::vec3 sun_dir = glm::normalize(glm::vec3(0.0f, 1.0f, 0.0f)); // Default
-			glm::vec3 sun_color = glm::vec3(1.0f);
-			float     sun_intensity = 1.0f;
-
-			if (!impl->light_manager.GetLights().empty()) {
-				// Choose the most dominant light (Sun or Moon) for atmospheric scattering
-				const auto& lights = impl->light_manager.GetLights();
-				const auto& sun = lights[0];
-				const auto& moon = (lights.size() >= 2) ? lights[1] : sun;
-
-				const auto& primary_light = (sun.intensity >= moon.intensity) ? sun : moon;
-
-				if (primary_light.type == DIRECTIONAL_LIGHT) {
-					sun_dir = glm::normalize(-primary_light.direction);
-				} else {
-					sun_dir = glm::normalize(primary_light.position - impl->camera.pos());
-				}
-				sun_color = primary_light.color;
-				sun_intensity = primary_light.intensity;
-			}
-
-			if (impl->atmosphere_effect) {
-				impl->atmosphere_manager->SetRayleighScale(impl->atmosphere_effect->GetRayleighScale());
-				impl->atmosphere_manager->SetMieScale(impl->atmosphere_effect->GetMieScale());
-				impl->atmosphere_manager->SetMieAnisotropy(impl->atmosphere_effect->GetMieAnisotropy());
-				impl->atmosphere_manager->SetMultiScatteringScale(impl->atmosphere_effect->GetMultiScatScale());
-				impl->atmosphere_manager->SetAmbientScatteringScale(impl->atmosphere_effect->GetAmbientScatScale());
-
-				impl->atmosphere_manager->SetAtmosphereHeight(impl->atmosphere_effect->GetAtmosphereHeight());
-				impl->atmosphere_manager->SetRayleighScattering(impl->atmosphere_effect->GetRayleighScattering());
-				impl->atmosphere_manager->SetMieScattering(impl->atmosphere_effect->GetMieScattering());
-				impl->atmosphere_manager->SetMieExtinction(impl->atmosphere_effect->GetMieExtinction());
-				impl->atmosphere_manager->SetOzoneAbsorption(impl->atmosphere_effect->GetOzoneAbsorption());
-				impl->atmosphere_manager->SetRayleighScaleHeight(impl->atmosphere_effect->GetRayleighScaleHeight());
-				impl->atmosphere_manager->SetMieScaleHeight(impl->atmosphere_effect->GetMieScaleHeight());
-				impl->atmosphere_manager->SetColorVarianceScale(impl->atmosphere_effect->GetColorVarianceScale());
-				impl->atmosphere_manager->SetColorVarianceStrength(impl->atmosphere_effect->GetColorVarianceStrength());
-			}
-
-			// We multiply sun intensity by a large factor for the atmosphere model
-			// Standard directional light 1.0 is too dim for physical scattering.
-			// 20.0 is a reasonable physical-ish sun radiance.
-			impl->atmosphere_manager
-				->Update(sun_dir, sun_color, sun_intensity * 20.0f, impl->camera.pos(), impl->simulation_time);
-
-			// Sync ambient light from atmosphere to ensure decor and world match
-			glm::vec3 estimated_ambient = impl->atmosphere_manager->GetAmbientEstimate();
-			impl->light_manager.SetAmbientLight(estimated_ambient);
-
-			if (impl->atmosphere_effect) {
-				impl->atmosphere_effect->SetAtmosphereLUTs(
-					impl->atmosphere_manager->GetTransmittanceLUT(),
-					impl->atmosphere_manager->GetMultiScatteringLUT(),
-					impl->atmosphere_manager->GetSkyViewLUT(),
-					impl->atmosphere_manager->GetAerialPerspectiveLUT()
-				);
-				if (impl->noise_manager) {
-					impl->atmosphere_effect->SetNoiseTextures(impl->noise_manager->GetTextures());
-				}
-			}
-		}
-
-		glm::mat4 view = impl->SetupMatrices();
-		glm::mat4 current_vp = impl->projection * view;
-
-		// Save previous frame's VP for Hi-Z reprojection (before we overwrite it)
+		// Capture previous frame's VP for Hi-Z reprojection before it's updated in PrepareUBOs
 		glm::mat4 hiz_prev_vp = impl->prev_view_projection;
 
-		// Generate Hi-Z pyramid from previous frame's depth buffer (still in main_fbo_depth_texture_)
-		if (impl->hiz_manager && impl->hiz_manager->IsInitialized() && impl->enable_hiz_culling_ &&
-		    impl->frame_count_ > 0) {
-			impl->hiz_manager->GeneratePyramid(impl->main_fbo_depth_texture_);
-		}
-
-		// Update Temporal UBO for motion blur and reprojection
-		TemporalUbo temporal_data;
-		temporal_data.viewProjection = current_vp;
-		temporal_data.prevViewProjection = impl->prev_view_projection;
-		temporal_data.uProjection = impl->projection;
-		temporal_data.invProjection = glm::inverse(impl->projection);
-		temporal_data.invView = glm::inverse(view);
-		temporal_data.texelSize = glm::vec2(1.0f / impl->render_width, 1.0f / impl->render_height);
-		temporal_data.frameIndex = static_cast<int>(impl->frame_count_);
-		temporal_data.padding = 0.0f;
-
-		glBindBuffer(GL_UNIFORM_BUFFER, impl->temporal_data_ubo);
-		glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(TemporalUbo), &temporal_data);
-		glBindBuffer(GL_UNIFORM_BUFFER, 0);
-
-		impl->prev_view_projection = current_vp;
-
-		// --- Resource Preparation (Main Thread) ---
-		{
-			PROJECT_PROFILE_SCOPE("PrepareResources");
-			for (const auto& shape : impl->shapes) {
-				shape->PrepareResources(impl->megabuffer.get());
-			}
-		}
-
-		// --- ASYNCHRONOUS PACKET GENERATION ---
-		// Start this early to overlap with other CPU work.
-		impl->render_queue.Clear();
-
-		RenderContext context;
-		context.view = view;
-		context.projection = impl->projection;
-		context.view_pos = impl->camera.pos();
-		context.time = impl->simulation_time;
-
-		float world_scale = impl->terrain_generator ? impl->terrain_generator->GetWorldScale() : 1.0f;
-		context.far_plane = 1000.0f * std::max(1.0f, world_scale);
-		context.frustum = Frustum::FromViewProjection(view, impl->projection);
-		context.shader_table = &impl->shader_table;
-		context.megabuffer = impl->megabuffer.get();
-
-		const size_t                   num_shapes = impl->shapes.size();
-		const size_t                   chunk_size = 64;
-		std::vector<std::future<void>> packet_futures;
-		auto*                          impl_ptr = impl.get();
-
-		for (size_t i = 0; i < num_shapes; i += chunk_size) {
-			size_t end = std::min(i + chunk_size, num_shapes);
-			packet_futures.push_back(impl->thread_pool.submit([this, impl_ptr, i, end, context]() {
-				PROJECT_PROFILE_SCOPE("PacketGenerationWorker");
-				std::vector<RenderPacket> local_packets;
-				local_packets.reserve(end - i);
-				for (size_t j = i; j < end; ++j) {
-					auto& shape = impl_ptr->shapes[j];
-					if (auto* cached = shape->GetCachedPackets(); cached && !cached->empty()) {
-						for (auto packet : *cached) {
-							glm::vec3   world_pos = glm::vec3(packet.uniforms.model[3]);
-							float       normalized_depth = context.CalculateNormalizedDepth(world_pos);
-							RenderLayer layer = (packet.uniforms.color.a < 0.99f) ? RenderLayer::Transparent
-																				  : RenderLayer::Opaque;
-							packet.sort_key = CalculateSortKey(
-								layer,
-								packet.shader_handle,
-								packet.vao,
-								packet.draw_mode,
-								packet.index_count > 0,
-								packet.material_handle,
-								normalized_depth
-							);
-							local_packets.push_back(std::move(packet));
-						}
-					} else {
-						std::vector<RenderPacket> new_packets;
-						shape->GenerateRenderPackets(new_packets, context);
-						for (const auto& packet : new_packets) {
-							local_packets.push_back(packet);
-						}
-						shape->CachePackets(std::move(new_packets));
-						shape->MarkClean();
-					}
-				}
-				if (!local_packets.empty()) {
-					impl->render_queue.Submit(std::move(local_packets));
-				}
-			}));
-		}
-
-		// --- CPU WORK OVERLAP ---
-		// While packets are generating on worker threads, the main thread performs
-		// system updates and UBO preparation.
-
-		// Calculate frustum for terrain generation and decor placement
-		Frustum generator_frustum;
-		if (impl->terrain_generator) {
-			float     world_scale_val = impl->terrain_generator->GetWorldScale();
-			float     far_plane_val = 1000.0f * std::max(1.0f, world_scale_val);
-			float     generator_fov = impl->camera.fov + 15.0f;
-			glm::mat4 generator_proj = glm::perspective(
-				glm::radians(generator_fov),
-				(float)impl->width / (float)impl->height,
-				0.1f,
-				far_plane_val
-			);
-
-			float lead_time = 0.4f;
-			float predicted_yaw = impl->camera.yaw + impl->camera_angular_velocity_.x * lead_time;
-			float predicted_pitch = impl->camera.pitch + impl->camera_angular_velocity_.y * lead_time;
-
-			Camera predicted_cam = impl->camera;
-			predicted_cam.yaw = predicted_yaw;
-			predicted_cam.pitch = predicted_pitch;
-
-			glm::vec3 cameraPos(predicted_cam.x, predicted_cam.y, predicted_cam.z);
-			glm::mat4 predicted_view = glm::lookAt(cameraPos, cameraPos + predicted_cam.front(), predicted_cam.up());
-
-			generator_frustum = impl->CalculateFrustum(predicted_view, generator_proj);
-			impl->terrain_generator->Update(generator_frustum, impl->camera);
-		}
-
-		impl->clone_manager->Update(impl->simulation_time, impl->camera.pos());
-		impl->fire_effect_manager->Update(
-			impl->simulation_delta_time,
-			impl->simulation_time,
-			impl->frame_config_.ambient_particle_density,
-			impl->terrain_render_manager
-				? impl->terrain_render_manager->GetChunkInfo(impl->terrain_generator->GetWorldScale())
-				: std::vector<glm::vec4>{},
-			impl->terrain_render_manager ? impl->terrain_render_manager->GetHeightmapTexture() : 0,
-			impl->noise_manager ? impl->noise_manager->GetCurlTexture() : 0,
-			impl->terrain_render_manager ? impl->terrain_render_manager->GetBiomeTexture() : 0,
-			impl->lighting_ubo,
-			impl->frustum_ssbo->GetBufferId(),
-			impl->frustum_ssbo->GetFrameOffset() + impl->mdi_frustum_count * sizeof(FrustumDataGPU),
-			impl->noise_manager ? impl->noise_manager->GetExtraNoiseTexture() : 0
-		);
-		impl->mesh_explosion_manager->Update(impl->simulation_delta_time, impl->simulation_time);
-		impl->sound_effect_manager->Update(impl->simulation_delta_time);
-		impl->shockwave_manager->Update(impl->simulation_delta_time);
-		if (impl->akira_effect_manager && impl->terrain_generator) {
-			impl->akira_effect_manager->Update(impl->simulation_delta_time, *impl->terrain_generator);
-		}
-		impl->sdf_volume_manager->UpdateUBO();
-		impl->sdf_volume_manager->BindUBO(Constants::UboBinding::SdfVolumes());
-		impl->shockwave_manager->UpdateShaderData();
-		impl->shockwave_manager->BindUBO(Constants::UboBinding::Shockwaves());
-
-		if (impl->decor_manager && impl->terrain_generator && impl->terrain_render_manager) {
-			impl->decor_manager->SetMinPixelSize(
-				ConfigManager::GetInstance().GetAppSettingFloat("foliage_culling_pixel_threshold", 10.0f)
-			);
-			impl->decor_manager->Update(
-				impl->simulation_delta_time,
-				impl->camera,
-				generator_frustum,
-				*impl->terrain_generator,
-				impl->terrain_render_manager
-			);
-		}
-
-		if (impl->frame_config_.effects_enabled) {
-			VisualEffectsUbo ubo_data{};
-			for (const auto& shape : impl->shapes) {
-				for (const auto& effect : shape->GetActiveEffects()) {
-					if (effect == VisualEffect::RIPPLE) {
-						ubo_data.ripple_enabled = 1;
-					} else if (effect == VisualEffect::COLOR_SHIFT) {
-						ubo_data.color_shift_enabled = 1;
-					} else if (effect == VisualEffect::FREEZE_FRAME_TRAIL) {
-						impl->clone_manager->CaptureClone(shape, impl->simulation_time);
-					}
-				}
-			}
-
-			ubo_data.black_and_white_enabled = impl->frame_config_.artistic_black_and_white;
-			ubo_data.negative_enabled = impl->frame_config_.artistic_negative;
-			ubo_data.shimmery_enabled = impl->frame_config_.artistic_shimmery;
-			ubo_data.glitched_enabled = impl->frame_config_.artistic_glitched;
-			ubo_data.wireframe_enabled = impl->frame_config_.artistic_wireframe;
-			ubo_data.color_shift_enabled = ubo_data.color_shift_enabled || impl->frame_config_.artistic_color_shift;
-			ubo_data.wind_strength = impl->frame_config_.wind_strength;
-			ubo_data.wind_speed = impl->frame_config_.wind_speed;
-			ubo_data.wind_frequency = impl->frame_config_.wind_frequency;
-			if (impl->frame_config_.artistic_ripple) {
-				ubo_data.ripple_enabled = 1;
-			}
-
-			glBindBuffer(GL_UNIFORM_BUFFER, impl->visual_effects_ubo);
-			glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(VisualEffectsUbo), &ubo_data);
-			glBindBuffer(GL_UNIFORM_BUFFER, 0);
-		}
-
-		{
-			if (CheckpointRingShape::GetShader()) {
-				CheckpointRingShape::GetShader()->use();
-				CheckpointRingShape::GetShader()->setFloat("time", impl->simulation_time);
-			}
-			const auto& lights = impl->light_manager.GetLights();
-			int         num_lights = std::min(static_cast<int>(lights.size()), 10);
-
-			impl->gpu_lights_cache_.clear();
-			for (int i = 0; i < num_lights; ++i) {
-				impl->gpu_lights_cache_.push_back(lights[i].ToGPU());
-			}
-
-			std::memset(&impl->lighting_ubo_data_, 0, sizeof(LightingUbo));
-			std::memcpy(impl->lighting_ubo_data_.lights, impl->gpu_lights_cache_.data(), num_lights * sizeof(LightGPU));
-			impl->lighting_ubo_data_.num_lights = num_lights;
-			impl->lighting_ubo_data_.world_scale = impl->terrain_generator ? impl->terrain_generator->GetWorldScale()
-																		   : 1.0f;
-			impl->lighting_ubo_data_.day_time = impl->light_manager.GetDayNightCycle().time;
-			impl->lighting_ubo_data_.night_factor = impl->light_manager.GetDayNightCycle().night_factor;
-			if (impl->post_processing_manager_) {
-				impl->post_processing_manager_->SetNightFactor(impl->lighting_ubo_data_.night_factor);
-			}
-			impl->lighting_ubo_data_.view_pos = impl->camera.pos();
-			impl->lighting_ubo_data_.ambient_light = impl->light_manager.GetAmbientLight();
-			impl->lighting_ubo_data_.time = impl->simulation_time;
-			impl->lighting_ubo_data_.view_dir = impl->camera.front();
-
-			if (impl->atmosphere_effect) {
-				impl->lighting_ubo_data_.cloudShadowIntensity = ConfigManager::GetInstance().GetAppSettingFloat(
-					"cloud_shadow_intensity",
-					0.5f
-				);
-				impl->lighting_ubo_data_.cloudAltitude = impl->atmosphere_effect->GetCloudAltitude();
-				impl->lighting_ubo_data_.cloudThickness = impl->atmosphere_effect->GetCloudThickness();
-				impl->lighting_ubo_data_.cloudDensity = impl->atmosphere_effect->GetCloudDensity();
-			} else {
-				impl->lighting_ubo_data_.cloudShadowIntensity = 0.0f;
-			}
-
-			glBindBuffer(GL_UNIFORM_BUFFER, impl->lighting_ubo);
-			glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(LightingUbo), &impl->lighting_ubo_data_);
-			glBindBuffer(GL_UNIFORM_BUFFER, 0);
-		}
-
-		{
-			glm::mat4 view_mat = glm::lookAt(
-				impl->camera.pos(),
-				impl->camera.pos() + impl->camera.front(),
-				impl->camera.up()
-			);
-			impl->UpdateFrustumUbo(view_mat, impl->projection, impl->camera.pos());
-		}
-
-		// --- PHASE 1 SHADOW PASS (Decor) ---
-		// We can render decor into shadow maps while shapes' packets are generating.
-		struct MapUpdateInfo {
-			int    map_index;
-			Light* light;
-			int    cascade_index; // -1 for standard
-			float  weight;
-		};
-
-		std::vector<MapUpdateInfo> shadow_map_registry;
-		std::vector<int>           maps_to_update;
-		std::vector<Light*>        shadow_lights;
-
-		auto light_count = impl->light_manager.GetShadowCastingLightCount();
-		if (impl->shadow_manager && impl->shadow_manager->IsInitialized() && impl->frame_config_.enable_shadows &&
-		    light_count > 0) {
-			glEnable(GL_DEPTH_TEST);
-
-			if (impl->noise_manager) {
-				impl->shadow_manager->GetShadowShader().use();
-				impl->noise_manager->BindDefault(*impl->shadow_manager->GetShadowShaderPtr());
-			}
-
-			shadow_lights = impl->light_manager.GetShadowCastingLights();
-
-			for (auto& light : impl->light_manager.GetLights()) {
-				light.shadow_map_index = -1;
-			}
-
-			int next_map_idx = 0;
-			for (auto light : shadow_lights) {
-				if (next_map_idx >= ShadowManager::kMaxShadowMaps)
-					break;
-				light->shadow_map_index = next_map_idx;
-				if (light->type == DIRECTIONAL_LIGHT) {
-					for (int c = 0; c < ShadowManager::kMaxCascades; ++c) {
-						if (next_map_idx < ShadowManager::kMaxShadowMaps) {
-							float weight = (c == 0) ? 8.0f : (c == 1) ? 4.0f : (c == 2) ? 2.0f : 1.0f;
-							shadow_map_registry.push_back({next_map_idx++, light, c, weight});
-						}
-					}
-				} else {
-					shadow_map_registry.push_back({next_map_idx++, light, -1, 4.0f});
-				}
-			}
-
-			float camera_rotation_delta = 1.0f - glm::dot(impl->camera.front(), impl->last_shadow_update_camera_front);
-			bool  significant_rotation = camera_rotation_delta > 0.001f;
-			bool  major_rotation = camera_rotation_delta > 0.01f;
-
-			const int max_updates_per_frame = major_rotation ? 4 : (significant_rotation ? 3 : 2);
-
-			for (const auto& info : shadow_map_registry) {
-				auto& state = impl->shadow_map_states_[info.map_index];
-				float camera_move_dist = glm::distance(impl->camera.pos(), state.last_pos);
-				float rotation_change = 1.0f - glm::dot(impl->camera.front(), state.last_front);
-				bool  light_moved = glm::distance(info.light->position, state.last_light_pos) > 0.1f ||
-					glm::distance(info.light->direction, state.last_light_dir) > 0.01f;
-
-				float rotation_sensitivity = (info.cascade_index == 0) ? 50.0f
-					: (info.cascade_index == 1)                        ? 100.0f
-					: (info.cascade_index == 2)                        ? 200.0f
-																	   : 400.0f;
-				state.rotation_accumulator += rotation_change * rotation_sensitivity;
-
-				float movement_threshold = (info.cascade_index == 0) ? 0.5f
-					: (info.cascade_index == 1)                      ? 2.0f
-					: (info.cascade_index == 2)                      ? 5.0f
-																	 : 10.0f;
-				float rotation_threshold = (info.cascade_index == 0) ? 1.0f
-					: (info.cascade_index == 1)                      ? 0.7f
-					: (info.cascade_index == 2)                      ? 0.5f
-																	 : 0.3f;
-
-				bool needs_movement_update = camera_move_dist > movement_threshold;
-				bool needs_rotation_update = state.rotation_accumulator > rotation_threshold;
-				bool movement_detected = impl->any_shadow_caster_moved || light_moved ||
-					(has_terrain && (needs_movement_update || needs_rotation_update));
-
-				if (movement_detected && impl->camera_is_close_to_scene) {
-					float urgency = info.weight;
-					if (needs_rotation_update)
-						urgency *= (1.5f + info.cascade_index * 0.5f);
-					if (impl->any_shadow_caster_moved)
-						urgency *= 1.5f;
-					state.debt += urgency;
-				} else {
-					state.debt += (0.02f + info.cascade_index * 0.005f);
-				}
-			}
-
-			std::vector<std::pair<float, int>> debt_sorted;
-			float                              debt_threshold = significant_rotation ? 1.5f : 2.5f;
-			for (const auto& info : shadow_map_registry) {
-				auto& state = impl->shadow_map_states_[info.map_index];
-				if (state.debt >= debt_threshold)
-					debt_sorted.push_back({state.debt, info.map_index});
-			}
-			std::sort(debt_sorted.begin(), debt_sorted.end(), std::greater<>());
-
-			for (int i = 0; i < std::min((int)debt_sorted.size(), max_updates_per_frame); ++i)
-				maps_to_update.push_back(debt_sorted[i].second);
-
-			if (major_rotation && maps_to_update.size() < shadow_map_registry.size()) {
-				for (const auto& info : shadow_map_registry) {
-					if (std::find(maps_to_update.begin(), maps_to_update.end(), info.map_index) == maps_to_update.end())
-						maps_to_update.push_back(info.map_index);
-				}
-			}
-
-			if (maps_to_update.empty() && !shadow_map_registry.empty()) {
-				impl->shadow_update_round_robin_ = (impl->shadow_update_round_robin_ + 1) % shadow_map_registry.size();
-				// Every other frame, force a background update (was every 4th)
-				if (impl->frame_count_ % 2 == 0) {
-					maps_to_update.push_back(shadow_map_registry[impl->shadow_update_round_robin_].map_index);
-				}
-			}
-
-			// Phase 1: Render Decor and Terrain into shadow maps
-			// Group updates by light to reuse culling results
-			std::map<Light*, std::vector<int>> updates_by_light;
-			for (int map_idx : maps_to_update) {
-				updates_by_light[shadow_map_registry[map_idx].light].push_back(map_idx);
-			}
-
-			for (auto& [light, map_indices] : updates_by_light) {
-				if (impl->decor_manager) {
-					// Cull once for this light using the most encompassing cascade's frustum
-					// Usually the last cascade has the largest frustum.
-					int   best_map_idx = -1;
-					float max_split = -1.0f;
-					for (int map_idx : map_indices) {
-						int cascade = shadow_map_registry[map_idx].cascade_index;
-						if (cascade == -1) {
-							best_map_idx = map_idx;
-							break;
-						}
-						float split = impl->shadow_manager->GetCascadeSplits()[cascade];
-						if (split > max_split) {
-							max_split = split;
-							best_map_idx = map_idx;
-						}
-					}
-
-					const auto& best_info = shadow_map_registry[best_map_idx];
-					glm::vec3   light_dir_to_light = (light->type == DIRECTIONAL_LIGHT)
-						? glm::normalize(-light->direction)
-						: glm::normalize(light->position - scene_center);
-
-					impl->decor_manager->Cull(
-						view,
-						impl->projection,
-						ShadowManager::kShadowMapSize,
-						ShadowManager::kShadowMapSize,
-						impl->shadow_manager->GetLightSpaceMatrix(best_info.map_index),
-						light_dir_to_light,
-						impl->terrain_render_manager
-					);
-				}
-
-				for (int map_idx : map_indices) {
-					const auto& info = shadow_map_registry[map_idx];
-					float world_scale_val = impl->terrain_generator ? impl->terrain_generator->GetWorldScale() : 1.0f;
-					impl->shadow_manager->BeginShadowPass(
-						info.map_index,
-						*info.light,
-						scene_center,
-						500.0f * std::max(1.0f, world_scale_val),
-						info.cascade_index,
-						view,
-						impl->camera.fov,
-						(float)impl->width / (float)impl->height,
-						true // Clear depth
-					);
-
-					if (impl->decor_manager) {
-						impl->decor_manager->Render(
-							view,
-							impl->projection,
-							impl->shadow_manager->GetLightSpaceMatrix(info.map_index),
-							impl->shadow_manager->GetShadowShaderPtr().get()
-						);
-					}
-					impl->shadow_manager->EndShadowPass();
-				}
-			}
-		}
-
-		// --- SYNC POINT ---
-		// Wait for all packet generation tasks to complete
-		{
-			PROJECT_PROFILE_SCOPE("WaitForPackets");
-			for (auto& f : packet_futures) {
-				f.get();
-			}
-		}
-		{
-			PROJECT_PROFILE_SCOPE("SortRenderQueue");
-			impl->render_queue.Sort(impl->thread_pool);
-		}
-
-		// --- PHASE 2 SHADOW PASS (Shapes) ---
-		if (!maps_to_update.empty()) {
-			for (int map_idx : maps_to_update) {
-				const auto& info = shadow_map_registry[map_idx];
-				auto&       state = impl->shadow_map_states_[map_idx];
-				float       world_scale_val = impl->terrain_generator ? impl->terrain_generator->GetWorldScale() : 1.0f;
-
-				impl->shadow_manager->BeginShadowPass(
-					info.map_index,
-					*info.light,
-					scene_center,
-					500.0f * std::max(1.0f, world_scale_val),
-					info.cascade_index,
-					view,
-					impl->camera.fov,
-					(float)impl->width / (float)impl->height,
-					false // DO NOT CLEAR - keep decor shadows
-				);
-
-				impl->ExecuteRenderQueue(
-					impl->render_queue,
-					view,
-					impl->projection,
-					impl->camera.pos(),
-					RenderLayer::Opaque,
-					impl->shadow_shader_handle,
-					impl->shadow_manager->GetLightSpaceMatrix(info.map_index),
-					std::nullopt,
-					true
-				);
-
-				impl->shadow_manager->EndShadowPass();
-
-				// Update state after both phases complete
-				state.debt = 0.0f;
-				state.rotation_accumulator = 0.0f;
-				state.last_update_frame = impl->frame_count_;
-				state.last_light_space_matrix = impl->shadow_manager->GetLightSpaceMatrix(info.map_index);
-				state.last_pos = impl->camera.pos();
-				state.last_front = impl->camera.front();
-				state.last_light_pos = info.light->position;
-				state.last_light_dir = info.light->direction;
-			}
-			impl->last_shadow_update_camera_front = impl->camera.front();
-			impl->shadow_manager->UpdateShadowUBO(shadow_lights);
-
-			// Unbind shadow FBO once after all passes are complete
-			glBindFramebuffer(GL_FRAMEBUFFER, 0);
-		}
-
-		bool effects_enabled = impl->frame_config_.effects_enabled;
-		bool has_shockwaves = impl->shockwave_manager && impl->shockwave_manager->HasActiveShockwaves();
-		bool skip_intermediate = (impl->render_scale == 1.0f && !effects_enabled && !has_shockwaves);
-
-		// --- Main Scene Pass ---
-		PROJECT_PROFILE_SCOPE("MainScenePass");
-		if (skip_intermediate) {
-			glBindFramebuffer(GL_FRAMEBUFFER, 0);
-			glViewport(0, 0, impl->width, impl->height);
-		} else {
-			glBindFramebuffer(GL_FRAMEBUFFER, impl->main_fbo_);
-			glViewport(0, 0, impl->render_width, impl->render_height);
-			GLuint attachments[2] = {GL_COLOR_ATTACHMENT0, GL_COLOR_ATTACHMENT1};
-			glDrawBuffers(2, attachments);
-		}
-
-		glEnable(GL_DEPTH_TEST);
-		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-
-		view = impl->SetupMatrices();
-
-		// ALWAYS bind shadow maps (even if empty) to prevent sampler errors
-		// An unbound sampler2DArrayShadow can cause shader failures on some GPUs
-		impl->BindShadows(*impl->shader);
-
-		impl->UpdateFrustumUbo(view, impl->projection, impl->camera.pos());
-
-		// Render opaque geometry first (terrain, plane, shapes) to populate depth buffer
-		if (impl->decor_manager) {
-			// Set Hi-Z data for decor occlusion culling
-			if (impl->hiz_manager && impl->hiz_manager->IsInitialized() && impl->enable_hiz_culling_ &&
-			    impl->frame_count_ > 0) {
-				impl->decor_manager->SetHiZData(
-					impl->hiz_manager->GetHiZTexture(),
-					impl->hiz_manager->GetWidth(),
-					impl->hiz_manager->GetHeight(),
-					impl->hiz_manager->GetMipCount(),
-					hiz_prev_vp
-				);
-			} else {
-				impl->decor_manager->SetHiZEnabled(false);
-			}
-			impl->decor_manager->Cull(
-				view,
-				impl->projection,
-				impl->render_width,
-				impl->render_height,
-				std::nullopt,
-				std::nullopt,
-				impl->terrain_render_manager
-			);
-			impl->decor_manager->Render(view, impl->projection);
-		}
-
-		impl->ExecuteRenderQueue(
-			impl->render_queue,
-			view,
-			impl->projection,
-			impl->camera.pos(),
-			RenderLayer::Opaque,
-			std::nullopt,
-			std::nullopt,
-			std::nullopt,
-			false,
-			impl->enable_hiz_culling_ && impl->frame_count_ > 0
-		);
-
-		{
-			PROJECT_PROFILE_SCOPE("RenderTerrain");
-			impl->RenderTerrain(view, impl->projection, std::nullopt);
-		}
-		impl->RenderPlane(view);
-
-		// Render sky AFTER opaque geometry so early-Z rejects covered fragments
-		// This avoids expensive noise calculations for pixels already drawn
-		{
-			PROJECT_PROFILE_SCOPE("RenderSky");
-			impl->RenderSky(view);
-		}
-
-		GLuint current_texture = impl->main_fbo_texture_;
-		GLuint current_depth = impl->main_fbo_depth_texture_;
-
-		if (effects_enabled) {
-			PROJECT_PROFILE_SCOPE("PostProcessing::Early");
-			impl->post_processing_manager_
-				->BeginApply(current_texture, impl->main_fbo_, current_depth, impl->main_fbo_velocity_texture_);
-			impl->post_processing_manager_
-				->ApplyEarlyEffects(view, impl->projection, impl->camera.pos(), impl->simulation_time);
-
-			// Re-bind shadows for transparent objects as early effects may have changed texture bindings
-			impl->BindShadows(*impl->shader);
-
-			impl->post_processing_manager_->AttachDepthToCurrentFBO();
-			glBindFramebuffer(GL_FRAMEBUFFER, impl->post_processing_manager_->GetCurrentFBO());
-			current_texture = impl->post_processing_manager_->GetFinalTexture();
-		}
-
-		// Render transparent/particle effects so they are captured in the refraction texture
-		impl->fire_effect_manager->Render(
-			view,
-			impl->projection,
-			impl->camera.pos(),
-			impl->noise_manager ? impl->noise_manager->GetNoiseTexture() : 0,
-			impl->noise_manager ? impl->noise_manager->GetExtraNoiseTexture() : 0
-		);
-		impl->mesh_explosion_manager->Render(view, impl->projection, impl->camera.pos());
-		if (impl->akira_effect_manager) {
-			impl->akira_effect_manager->Render(view, impl->projection, impl->simulation_time);
-		}
-
-		// Capture background for refraction before rendering transparency
-		if (skip_intermediate) {
-			glBindFramebuffer(GL_READ_FRAMEBUFFER, 0);
-		} else {
-			glBindFramebuffer(
-				GL_READ_FRAMEBUFFER,
-				effects_enabled ? impl->post_processing_manager_->GetCurrentFBO() : impl->main_fbo_
-			);
-		}
-		glBindTexture(GL_TEXTURE_2D, impl->refraction_texture_);
-		glCopyTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, 0, 0, impl->render_width, impl->render_height);
-		glBindFramebuffer(GL_READ_FRAMEBUFFER, 0);
-
-		// Render transparent shapes after sky and early post-processing
-		// impl->UpdateFrustumUbo(view, impl->projection, impl->camera.pos());
-		glEnable(GL_BLEND);
-		glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-		glDepthMask(GL_FALSE);
-		impl->ExecuteRenderQueue(
-			impl->render_queue,
-			view,
-			impl->projection,
-			impl->camera.pos(),
-			RenderLayer::Transparent
-		);
-
-		glDepthMask(GL_TRUE);
-
-		if (effects_enabled) {
-			// --- Post-processing Pass (renders FBO texture to screen) ---
-
-			PROJECT_PROFILE_SCOPE("PostProcessing::Late");
-			// Apply standard post-processing effects (at render resolution)
-			impl->post_processing_manager_
-				->ApplyLateEffects(view, impl->projection, impl->camera.pos(), impl->simulation_time);
-			GLuint final_texture = impl->post_processing_manager_->GetFinalTexture();
-
-			// Return to display resolution for final output
-			glBindFramebuffer(GL_FRAMEBUFFER, 0);
-			glViewport(0, 0, impl->width, impl->height);
-			glDisable(GL_DEPTH_TEST);
-			glClear(GL_COLOR_BUFFER_BIT);
-
-			// Apply shockwave effect as the final pass (after other post-processing)
-			// This ensures the distortion is visible and not processed by other effects
-			if (has_shockwaves) {
-				// We need to pass the target resolution for the viewport
-				impl->shockwave_manager->ApplyScreenSpaceEffect(
-					final_texture,
-					impl->main_fbo_depth_texture_,
-					view,
-					impl->projection,
-					impl->camera.pos(),
-					impl->blur_quad_vao,
-					impl->width,
-					impl->height
-				);
-			} else {
-				// No shockwaves - just render the post-processed texture (upscales automatically via viewport)
-				impl->postprocess_shader_->use();
-				impl->postprocess_shader_->setInt("sceneTexture", 0);
-				glActiveTexture(GL_TEXTURE0);
-				glBindTexture(GL_TEXTURE_2D, final_texture);
-
-				glBindVertexArray(impl->blur_quad_vao);
-				glDrawArrays(GL_TRIANGLES, 0, 6);
-			}
-		} else {
-			// --- Passthrough without Post-processing ---
-			if (!skip_intermediate) {
-				glBindFramebuffer(GL_FRAMEBUFFER, 0);
-				glViewport(0, 0, impl->width, impl->height);
-				glDisable(GL_DEPTH_TEST);
-				glClear(GL_COLOR_BUFFER_BIT);
-
-				// Still apply shockwave if active
-				if (has_shockwaves) {
-					impl->shockwave_manager->ApplyScreenSpaceEffect(
-						impl->main_fbo_texture_,
-						impl->main_fbo_depth_texture_,
-						view,
-						impl->projection,
-						impl->camera.pos(),
-						impl->blur_quad_vao,
-						impl->width,
-						impl->height
-					);
-				} else {
-					// Direct blit with upscaling
-					glBindFramebuffer(GL_READ_FRAMEBUFFER, impl->main_fbo_);
-					glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
-					glBlitFramebuffer(
-						0,
-						0,
-						impl->render_width,
-						impl->render_height,
-						0,
-						0,
-						impl->width,
-						impl->height,
-						GL_COLOR_BUFFER_BIT,
-						GL_LINEAR
-					);
-					glBindFramebuffer(GL_FRAMEBUFFER, 0);
-				}
-			}
-		}
-
-		// --- Shadow Optimization: Update last known positions for the next frame ---
-		for (const auto& shape : impl->shapes) {
-			shape->UpdateLastPosition();
-		}
-
-		// --- UI Pass (renders on top of the fullscreen quad) ---
-		impl->ui_manager->Render();
-
-		// Create synchronization fence for the current frame's buffers
-		if (impl->mdi_fences[current_idx])
-			glDeleteSync(impl->mdi_fences[current_idx]);
-		impl->mdi_fences[current_idx] = glFenceSync(GL_SYNC_GPU_COMMANDS_COMPLETE, 0);
-
-		glfwSwapBuffers(impl->window);
+		impl->PrepareUBOs();
+		impl->GenerateRenderPacketsAsync();
+		impl->UpdateSystems();
+		impl->SyncAndSortPackets();
+
+		glm::mat4 view = impl->current_view_matrix;
+		bool      has_shockwaves = impl->shockwave_manager && impl->shockwave_manager->HasActiveShockwaves();
+
+		impl->RenderShadowPasses(view);
+		impl->RenderOpaqueScene(view, hiz_prev_vp, has_shockwaves);
+		impl->RenderTransparentScene(view, has_shockwaves);
+		impl->RenderPostProcessing(view, has_shockwaves);
+		impl->FinalizeFrame();
 	}
 
 	void Visualizer::Prepare() {
