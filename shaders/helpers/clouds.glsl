@@ -2,6 +2,38 @@
 #define HELPERS_CLOUDS_GLSL
 
 #include "fast_noise.glsl"
+#include "../lighting.glsl"
+
+// Warp cloud position away from the camera's view axis (capsule-based sliding warp)
+// Returns the warped position and a fade factor for density
+vec3 getWarpedCloudPos(vec3 p, out float fade) {
+	fade = 1.0;
+	if (cloudWarp <= 0.0) return p;
+
+	vec3  relP = p - viewPos;
+	float projection = dot(relP, viewDir);
+
+	// Capsule distance: distance to the forward ray starting at viewPos
+	vec3  axisPoint = viewPos + viewDir * max(0.0, projection);
+	vec3  toP = p - axisPoint;
+	float d = length(toP);
+	float R = cloudWarp * worldScale;
+
+	// To "push" clouds out, we sample from a position CLOSER to the axis.
+	// This maps the region [R, inf] to [0, inf].
+	float d_sampling = max(0.0, d - R);
+	float scale = d_sampling / max(d, 0.0001);
+
+	// Fade out density in the inner core to create a clean hole and avoid sampling artifacts
+	fade = smoothstep(R * 0.5, R, d);
+
+	return axisPoint + toP * scale;
+}
+
+// Helper to sample the base weather map noise
+float sampleWeatherMap(vec3 p) {
+	return fastWorley3d(vec3(p.xz / (4000.0 * worldScale), time * 0.01)) * 0.5 + 0.5;
+}
 
 // Cloud density calculation helper
 // Returns a density value [0, 1+] based on world-space position
