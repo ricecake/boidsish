@@ -60,6 +60,14 @@ namespace Boidsish {
 
 			glm::vec3 GetCloudColor() const { return cloud_color_; }
 
+			void SetCloudCoverage(float coverage) { cloud_coverage_ = coverage; }
+
+			float GetCloudCoverage() const { return cloud_coverage_; }
+
+			void SetCloudWarp(float warp) { cloud_warp_ = warp; }
+
+			float GetCloudWarp() const { return cloud_warp_; }
+
 			// Scattering parameters
 			void SetRayleighScale(float s) { rayleigh_scale_ = s; }
 
@@ -127,16 +135,30 @@ namespace Boidsish {
 
 			void SetNoiseTextures(const NoiseTextures& textures) { noise_textures_ = textures; }
 
+			void SetRenderScale(float scale) {
+				if (render_scale_ != scale) {
+					render_scale_ = scale;
+					InitializeLowResResources();
+				}
+			}
+
+			float GetRenderScale() const { return render_scale_; }
+
 		private:
+			void InitializeLowResResources();
+
 			std::unique_ptr<Shader> shader_;
+			std::unique_ptr<Shader> composite_shader_;
 			float                   time_ = 0.0f;
 
 			float     haze_density_ = 0.003f;
 			float     haze_height_ = 20.0f;
 			glm::vec3 haze_color_ = glm::vec3(0.6f, 0.7f, 0.8f);
-			float     cloud_density_ = 0.5f;
-			float     cloud_altitude_ = 175.0f;
-			float     cloud_thickness_ = 10.0f;
+			float     cloud_density_ = 20.0f;
+			float     cloud_altitude_ = 400.0f;
+			float     cloud_thickness_ = 200.0f;
+			float     cloud_coverage_ = 0.75f;
+			float     cloud_warp_ = 75.0f;
 			glm::vec3 cloud_color_ = glm::vec3(0.95f, 0.95f, 1.0f);
 
 			float     rayleigh_scale_ = 1.0f;
@@ -144,7 +166,7 @@ namespace Boidsish {
 			float     mie_anisotropy_ = 0.8f;
 			float     multi_scat_scale_ = 0.1f;
 			float     ambient_scat_scale_ = 0.750f;
-			float     atmosphere_height_ = 60.0f;
+			float     atmosphere_height_ = 120.0f;
 			glm::vec3 rayleigh_scattering_ = glm::vec3(5.802f, 13.558f, 33.100f) * 1e-3f;
 			float     mie_scattering_ = 3.996f * 1e-3f;
 			float     mie_extinction_ = 4.440f * 1e-3f;
@@ -161,8 +183,12 @@ namespace Boidsish {
 
 			NoiseTextures noise_textures_ = {0, 0, 0};
 
-			int width_ = 0;
-			int height_ = 0;
+			int   width_ = 0;
+			int   height_ = 0;
+			float render_scale_ = 0.25f;
+
+			GLuint low_res_fbo_ = 0;
+			GLuint low_res_texture_ = 0;
 		};
 
 	} // namespace PostProcessing

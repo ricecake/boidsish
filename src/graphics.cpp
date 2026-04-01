@@ -2617,6 +2617,7 @@ namespace Boidsish {
 				impl->atmosphere_effect->SetCloudDensity(w.cloud_density);
 				impl->atmosphere_effect->SetCloudAltitude(w.cloud_altitude);
 				impl->atmosphere_effect->SetCloudThickness(w.cloud_thickness);
+				impl->atmosphere_effect->SetCloudCoverage(w.cloud_coverage);
 				impl->atmosphere_effect->SetRayleighScale(w.rayleigh_scale);
 				impl->atmosphere_effect->SetMieScale(w.mie_scale);
 
@@ -3068,7 +3069,7 @@ namespace Boidsish {
 
 		if (impl->decor_manager && impl->terrain_generator && impl->terrain_render_manager) {
 			impl->decor_manager->SetMinPixelSize(
-				ConfigManager::GetInstance().GetAppSettingFloat("foliage_culling_pixel_threshold", 10.0f)
+				ConfigManager::GetInstance().GetAppSettingFloat("foliage_culling_pixel_threshold", 8.0f)
 			);
 			impl->decor_manager->Update(
 				impl->simulation_delta_time,
@@ -3147,6 +3148,8 @@ namespace Boidsish {
 				impl->lighting_ubo_data_.cloudAltitude = impl->atmosphere_effect->GetCloudAltitude();
 				impl->lighting_ubo_data_.cloudThickness = impl->atmosphere_effect->GetCloudThickness();
 				impl->lighting_ubo_data_.cloudDensity = impl->atmosphere_effect->GetCloudDensity();
+				impl->lighting_ubo_data_.cloudCoverage = impl->atmosphere_effect->GetCloudCoverage();
+				impl->lighting_ubo_data_.cloudWarp = impl->atmosphere_effect->GetCloudWarp();
 			} else {
 				impl->lighting_ubo_data_.cloudShadowIntensity = 0.0f;
 			}

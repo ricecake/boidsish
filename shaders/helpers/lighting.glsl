@@ -33,10 +33,29 @@ float calculateCloudShadow(int light_index, vec3 frag_pos) {
 	if (t < 0.0)
 		return 1.0;
 
-	vec3  cloudPos = frag_pos + L * t;
-	float d = calculateCloudDensity(cloudPos, cloudAltitude, cloudThickness, cloudDensity, worldScale, time);
+	vec3 cloudPos = frag_pos + L * t;
 
-	return mix(1.0, exp(-d * 0.7), cloudShadowIntensity);
+	float weatherWarpFactor = 1.0;
+	if (cloudWarp > 0.0) {
+		float camDist = length(frag_pos.xz - viewPos.xz);
+		weatherWarpFactor = smoothstep(0.0, cloudWarp * worldScale, camDist);
+	}
+	float weatherMap = weatherWarpFactor *
+		(fastWorley3d(vec3(frag_pos.xz / (4000 * worldScale), time * 0.01)) * 0.5 + 0.5);
+
+	float d = calculateCloudDensity(
+		cloudPos,
+		weatherMap,
+		cloudAltitude,
+		cloudThickness,
+		cloudDensity,
+		cloudCoverage,
+		worldScale,
+		time,
+		true
+	);
+
+	return mix(1.0, exp(-d * 1.5), cloudShadowIntensity);
 }
 
 /**

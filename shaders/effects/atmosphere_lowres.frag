@@ -3,52 +3,21 @@ out vec4 FragColor;
 
 in vec2 TexCoords;
 
-uniform sampler2D sceneTexture;
 uniform sampler2D depthTexture;
 
 uniform mat4 invView;
 uniform mat4 invProjection;
 
-uniform float hazeDensity;
-uniform float hazeHeight;
-uniform vec3  hazeColor;
-uniform vec3  cloudColorUniform;
+uniform vec3 cloudColorUniform;
 
-uniform sampler2D u_transmittanceLUT;
-uniform sampler2D u_skyViewLUT;
-uniform sampler3D u_aerialPerspectiveLUT;
-
+// Atmosphere common defines and includes
 #include "../atmosphere/common.glsl"
 #include "../helpers/clouds.glsl"
 #include "../helpers/fast_noise.glsl"
 #include "../helpers/lighting.glsl"
 #include "helpers/math.glsl"
 
-vec3 sampleAerialPerspective(vec3 rd, float distKM) {
-	float azimuth = atan(rd.x, -rd.z);
-	if (azimuth < 0.0)
-		azimuth += 2.0 * PI;
-	float elevation = asin(clamp(rd.y, -1.0, 1.0));
-
-	float u = azimuth / (2.0 * PI);
-	float v = elevation / PI + 0.5;
-	float w = distKM / 32.0; // maxDist in AP LUT
-
-	return texture(u_aerialPerspectiveLUT, vec3(u, v, w)).rgb;
-}
-
-float sampleAerialPerspectiveTransmittance(vec3 rd, float distKM) {
-	float azimuth = atan(rd.x, -rd.z);
-	if (azimuth < 0.0)
-		azimuth += 2.0 * PI;
-	float elevation = asin(clamp(rd.y, -1.0, 1.0));
-
-	float u = azimuth / (2.0 * PI);
-	float v = elevation / PI + 0.5;
-	float w = distKM / 32.0;
-
-	return texture(u_aerialPerspectiveLUT, vec3(u, v, w)).a;
-}
+uniform sampler2D u_skyViewLUT;
 
 vec3 sampleSkyView(vec3 rd) {
 	float azimuth = atan(rd.x, -rd.z);
@@ -63,13 +32,8 @@ vec3 sampleSkyView(vec3 rd) {
 	return texture(u_skyViewLUT, vec2(u, v)).rgb;
 }
 
-float remap(float value, float low1, float high1, float low2, float high2) {
-	return low2 + (value - low1) * (high2 - low2) / max(0.0001, (high1 - low1));
-}
-
 void main() {
 	float depth = texture(depthTexture, TexCoords).r;
-	vec3  sceneColor = texture(sceneTexture, TexCoords).rgb;
 	vec3  zenithRadiance = sampleSkyView(vec3(0, 1, 0)) * 4.0;
 
 	float z = depth * 2.0 - 1.0;
@@ -86,15 +50,6 @@ void main() {
 		worldPos = viewPos + rayDir * dist;
 	}
 
-	// Use hazeDensity to scale the effective distance in the atmosphere
-	float distKM = (dist / 1000.0) * (hazeDensity * 300.0);
-	vec3  inScattering = sampleAerialPerspective(rayDir, distKM);
-	float transmittance = sampleAerialPerspectiveTransmittance(rayDir, distKM);
-
-	// 2. Cloud Layer (Simplified but preserved)
-	float cloudFactor = 0.0;
-	vec3  cloudColor = vec3(0.0);
-
 	float weatherWarpFactor = 1.0;
 	if (cloudWarp > 0.0) {
 		float camDist = length(worldPos.xz - viewPos.xz);
@@ -103,7 +58,6 @@ void main() {
 	float weatherMap = weatherWarpFactor *
 		(fastWorley3d(vec3(worldPos.xz / (4000 * worldScale), time * 0.01)) * 0.5 + 0.5);
 
-	// Cloud layer boundaries (matching calculateCloudDensity but for ray-box intersection)
 	float baseFloor = (cloudAltitude - 10.0) * worldScale;
 	float baseCeiling = (cloudAltitude + cloudThickness + 300.0) * worldScale;
 
@@ -118,12 +72,13 @@ void main() {
 	t_start = max(t_start, 0.0);
 	t_end = min(t_end, dist);
 
+	vec3  cloudColor = vec3(0.0);
 	float cloudTransmittance = 1.0;
-	if (t_start < t_end) {
-		float cloudAcc = 0.0;
-		vec3  lightEnergy = vec3(0.0);
 
-		int samples = 48; // Fixed high-quality sample count
+	if (t_start < t_end) {
+		vec3 lightEnergy = vec3(0.0);
+
+		int samples = 48;
 		int shadow_samples = 4;
 
 		float jitter = fastBlueNoise(TexCoords * 10.0 + vec2(sin(time * 0.07), cos(time * -0.05)));
@@ -197,13 +152,5 @@ void main() {
 		cloudColor = lightEnergy * cloudColorUniform;
 	}
 
-	// Combine everything
-	// vec3 result = mix(sceneColor, cloudColor, cloudFactor);
-	vec3 result = sceneColor * cloudTransmittance + cloudColor;
-	// Apply physically accurate atmosphere
-	if (depth < 1.0) {
-		result = result * transmittance + inScattering;
-	}
-
-	FragColor = vec4(result, 1.0);
+	FragColor = vec4(cloudColor, cloudTransmittance);
 }

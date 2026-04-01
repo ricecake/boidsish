@@ -7,37 +7,66 @@
 // Returns a density value [0, 1+] based on world-space position
 float calculateCloudDensity(
 	vec3  p,
+	float weatherMap,
 	float cloudAltitude,
 	float cloudThickness,
 	float cloudDensityBase,
+	float cloudCoverage,
 	float worldScale,
-	float time
+	float time,
+	bool  simplified
 ) {
-	float scaledCloudAltitude = cloudAltitude * worldScale;
-	float scaledCloudThickness = cloudThickness * worldScale;
+	// Dynamic ceiling and floor based on weatherMap
+	// Dense areas (high weatherMap) get lower floor and much higher ceiling (tall clouds)
+	// Sparse areas get higher floor and thinner layer (wispy clouds)
+	float floorOffset = mix(20.0, -10.0, weatherMap) * worldScale;
+	float ceilingOffset = mix(10.0, 300.0, weatherMap * weatherMap) * worldScale;
 
-	// Height-based tapering
-	float h = (p.y - scaledCloudAltitude) / max(scaledCloudThickness, 0.001);
-	float tapering = smoothstep(0.0, 0.1, h) * smoothstep(1.0, 0.9, h);
-	if (tapering <= 0.01)
+	float baseFloor = cloudAltitude * worldScale + floorOffset;
+	float baseCeiling = (cloudAltitude + cloudThickness) * worldScale + ceilingOffset;
+	float currentThickness = baseCeiling - baseFloor;
+
+	if (p.y < baseFloor || p.y > baseCeiling)
 		return 0.0;
 
-	// Weather map for large-scale variation
-	float weatherMap = fastWorley3d(vec3(p.xz / (4000.0 * worldScale), time * 0.01));
-	float workingCloudDensity = cloudDensityBase + 5.0 * weatherMap;
+	// Height-based tapering with a more natural profile
+	float h = (p.y - baseFloor) / max(currentThickness, 0.001);
+	float tapering = smoothstep(0.0, 0.15, h) * smoothstep(1.0, 0.7, h);
 
-	// Detail noise
-	vec3 p_noise = p + 2.0 * fastCurl3d(vec3(p.xz / 500.0, time / 60.0));
-	vec3 p_scaled = p_noise / (1000.0 * worldScale);
+	// Tall cloud profile: more density at the bottom, anvil-like top
+	float densityProfile = mix(tapering, pow(tapering, 0.5), weatherMap);
 
-	float noise = fastWorley3d(vec3(p_scaled.xz, p_scaled.y + time * 0.01));
-	float erosion = fastRidge3d(p_noise / (600.0 * worldScale)) * 0.5 + 0.5;
+	float coverageThreshold = 1.0 - cloudCoverage;
+	float localDensity = weatherMap * cloudDensityBase;
 
-	// Remap noise with erosion
-	noise = (noise - (1.0 - erosion)) / max(0.0001, 1.0 - (1.0 - erosion));
-	noise = clamp(noise, 0.0, 1.0);
+	if (simplified) {
+		return smoothstep(coverageThreshold, coverageThreshold + 0.2, localDensity) * densityProfile * cloudDensityBase;
+	}
 
-	return smoothstep(0.2, 0.6, noise) * workingCloudDensity * tapering;
+	// Base noise for cloud shapes
+	vec3 p_warped = p + 5.0 * fastCurl3d(p / (400.0 * worldScale) + time * 0.02);
+	vec3 p_scaled = p_warped / (700.0 * worldScale);
+
+	float baseNoise = 1.0 - fastWorley3d(p_scaled + time * 0.005);
+
+	// Add ridges and textures for definition
+	float ridges = fastRidge3d(p_warped / (600.0 * worldScale));
+	float detail = fastFbm3d(p_warped / (450.0 * worldScale) + time * 0.01) * 0.5 + 0.5;
+
+	// Combine noises
+	float finalNoise = baseNoise * (0.6 + 0.4 * ridges);
+	finalNoise = mix(finalNoise, finalNoise * detail, 0.3);
+
+	// Apply coverage and local density
+	float density = smoothstep(coverageThreshold, coverageThreshold + 0.4, finalNoise * weatherMap);
+
+	// Giant tall clouds vs wispy things
+	// High weatherMap = tall, dense, sharp
+	// Low weatherMap = wispy, thin, soft
+	float wispyFactor = smoothstep(0.2, 035, weatherMap);
+	density *= mix(0.6, 1.0, wispyFactor);
+
+	return density * densityProfile * cloudDensityBase * 3.0;
 }
 
 #endif // HELPERS_CLOUDS_GLSL
