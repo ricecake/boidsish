@@ -9,9 +9,15 @@ layout(std140) uniform VisualEffects {
 	int   shimmery_enabled;
 	int   glitched_enabled;
 	int   wireframe_enabled;
+	int   erosion_enabled;
 	float wind_strength;
 	float wind_speed;
 	float wind_frequency;
+	float erosion_strength;
+	float erosion_scale;
+	float erosion_detail;
+	float erosion_gully_weight;
+	float erosion_max_dist;
 };
 
 #endif

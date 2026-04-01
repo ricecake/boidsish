@@ -37,6 +37,7 @@ uniform vec4 clipPlane;
 #include "helpers/terrain_noise.glsl"
 #include "helpers/erosion.glsl"
 #include "temporal_data.glsl"
+#include "visual_effects.glsl"
 
 // #include "helpers/fast_noise.glsl"
 
@@ -71,42 +72,49 @@ void main() {
 	// ========================================================================
 	// Advanced Erosion Filter Application
 	// ========================================================================
-	// Note: We apply the erosion filter directly to the geometry for evaluation.
-	float ridgeMapOutput = 0.0;
-	float debugOutput = 0.0;
+	float terrainDistance = distance(viewPos.xz, FragPos.xz);
+	float blendScale = smoothstep(erosion_max_dist * worldScale, (erosion_max_dist * 0.444) * worldScale, terrainDistance);
 
-	// In the framework, HEIGHT_PEAK is defined as 100.0 * worldScale.
-	// We need to use the same logic here for consistency.
-	float frameworkHeightPeak = 100.0 * worldScale;
-	float erosionFadeTarget = clamp(FragPos.y / (frameworkHeightPeak * 0.6), -1.0, 1.0);
+	if (erosion_enabled > 0 && terrainDistance < erosion_max_dist * worldScale) {
+		// Note: We apply the erosion filter directly to the geometry for evaluation.
+		float ridgeMapOutput = 0.0;
+		float debugOutput = 0.0;
 
-	// Approximate local slope from normal for the filter
-	// In the original, yz are derivatives dh/dx and dh/dz.
-	// Our normal is (-dx, 1, -dz) normalized. So -Normal.x and -Normal.z are approx derivatives.
-	vec3 hAndS = vec3(FragPos.y / worldScale, -Normal.x, -Normal.z);
+		// We update frameworkHeightPeak to provide more vertical range for the eroded features.
+		float frameworkHeightPeak = 200.0 * worldScale;
+		float erosionFadeTarget = clamp(FragPos.y / (frameworkHeightPeak * 0.6), -1.0, 1.0);
 
-	vec4 erosionResult = ErosionFilter(
-		FragPos.xz / worldScale, hAndS, erosionFadeTarget,
-		0.12, 0.5, 1.5,
-		vec4(0.1, 0.0, 0.1, 2.0), vec4(1.25, 1.25, 2.8, 1.5),
-		vec2(0.7, 1.0),
-		0.15, 5, 2.0,
-		0.5, 0.7, 0.5,
-		ridgeMapOutput, debugOutput
-	);
+		// Approximate local slope from normal for the filter
+		// In the original, yz are derivatives dh/dx and dh/dz.
+		// Our normal is (-dx, 1, -dz) normalized. So -Normal.x and -Normal.z are approx derivatives.
+		vec3 hAndS = vec3(FragPos.y / worldScale, -Normal.x, -Normal.z);
 
-	// Apply height change
-	// Note: We multiply by worldScale to keep it consistent with our coordinate system.
-	float heightDelta = erosionResult.x * worldScale;
-	FragPos.y += heightDelta;
+		vec4 erosionResult = ErosionFilter(
+			FragPos.xz / worldScale, hAndS, erosionFadeTarget,
+			blendScale * erosion_strength, erosion_gully_weight, erosion_detail,
+			vec4(0.1, 0.0, 0.1, 2.0), vec4(1.25, 1.25, 2.8, 1.5),
+			vec2(0.7, 1.0),
+			worldScale * erosion_scale, 5, 2.0,
+			0.5, 0.7, 0.5,
+			ridgeMapOutput, debugOutput
+		);
 
-	// Update normal based on slope delta
-	// erosionResult.yz is the delta for dh/dx and dh/dz.
-	vec2 updatedDeriv = hAndS.yz + erosionResult.yz;
-	Normal = normalize(vec3(-updatedDeriv.x, 1.0, -updatedDeriv.y));
+		// Apply height change
+		// Note: We multiply by worldScale to keep it consistent with our coordinate system.
+		float heightDelta = erosionResult.x * worldScale;
+		FragPos.y += blendScale * heightDelta;
 
-	vErosionDelta = erosionResult.x; // Keep unscaled for color mapping
-	vRidgeMap = ridgeMapOutput;
+		// Update normal based on slope delta
+		// erosionResult.yz is the delta for dh/dx and dh/dz.
+		vec2 updatedDeriv = hAndS.yz + erosionResult.yz;
+		Normal = mix(Normal, normalize(vec3(-updatedDeriv.x, 1.0, -updatedDeriv.y)), blendScale);
+
+		vErosionDelta = erosionResult.x; // Keep unscaled for color mapping
+		vRidgeMap = ridgeMapOutput;
+	} else {
+		vErosionDelta = 0.0;
+		vRidgeMap = 0.0;
+	}
 
 	// Detect water (height < 0) with a small blend range for stability
 	float waterMask = smoothstep(0.1, -0.1, FragPos.y);
