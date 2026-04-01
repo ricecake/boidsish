@@ -20,9 +20,14 @@ namespace Boidsish {
 		int   shimmery_enabled;
 		int   glitched_enabled;
 		int   wireframe_enabled;
+		int   erosion_enabled;
 		float wind_strength;
 		float wind_speed;
 		float wind_frequency;
-		float _pad; // Padding for 16-byte alignment
+		float erosion_strength;
+		float erosion_scale;
+		float erosion_detail;
+		float erosion_gully_weight;
+		float erosion_max_dist;
 	};
 } // namespace Boidsish
