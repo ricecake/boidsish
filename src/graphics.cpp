@@ -14,6 +14,8 @@
 
 #include "ConfigManager.h"
 #include "frame_data.h"
+#include "render_passes.h"
+#include "scene_compositor.h"
 #include "shadow_render_pass.h"
 #include "NoiseManager.h"
 #include "SceneManager.h"
@@ -443,9 +445,7 @@ namespace Boidsish {
 		ShaderHandle            trail_shader_handle;
 		std::shared_ptr<Shader> postprocess_shader_;
 		ShaderHandle            shadow_shader_handle{0};
-		GLuint                  plane_vao{0}, plane_vbo{0}, sky_vao{0}, blur_quad_vao{0}, blur_quad_vbo{0};
-		GLuint main_fbo_{0}, main_fbo_texture_{0}, main_fbo_velocity_texture_{0}, main_fbo_depth_texture_{0},
-			main_fbo_rbo_{0}, refraction_texture_{0};
+		GLuint plane_vao{0}, plane_vbo{0}, sky_vao{0}, blur_quad_vao{0}, blur_quad_vbo{0};
 		GLuint    lighting_ubo{0};
 		GLuint    visual_effects_ubo{0};
 		GLuint    temporal_data_ubo{0};
@@ -531,8 +531,13 @@ namespace Boidsish {
 		// Canonical frame data — temporal chain lives here between frames
 		FrameData current_frame_;
 
-		// Extracted render passes
-		std::unique_ptr<ShadowRenderPass> shadow_pass_;
+		// Extracted render passes and compositor
+		std::unique_ptr<ShadowRenderPass>  shadow_pass_;
+		std::unique_ptr<SceneCompositor>   compositor_;
+		std::unique_ptr<OpaqueScenePass>   opaque_pass_;
+		std::unique_ptr<EarlyEffectsPass>  early_effects_pass_;
+		std::unique_ptr<ParticleEffectsPass> particle_pass_;
+		std::unique_ptr<TransparentPass>   transparent_pass_;
 
 		// Scene center computed by shadow pass, used by other systems
 		glm::vec3                  scene_center{0.0f};
@@ -931,73 +936,10 @@ namespace Boidsish {
 				glBindVertexArray(0);
 			}
 
-			// --- Main Scene Framebuffer ---
-			glGenFramebuffers(1, &main_fbo_);
-			glBindFramebuffer(GL_FRAMEBUFFER, main_fbo_);
+			// --- Main Scene Framebuffer (owned by SceneCompositor) ---
+			compositor_ = std::make_unique<SceneCompositor>(render_width, render_height, enable_hdr_, blur_quad_vao);
 
-			// Color attachment
-			glGenTextures(1, &main_fbo_texture_);
-			glBindTexture(GL_TEXTURE_2D, main_fbo_texture_);
-			if (enable_hdr_) {
-				glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB16F, render_width, render_height, 0, GL_RGB, GL_FLOAT, NULL);
-			} else {
-				glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, render_width, render_height, 0, GL_RGB, GL_UNSIGNED_BYTE, NULL);
-			}
-			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-			glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, main_fbo_texture_, 0);
-
-			// Refraction attachment (copy of scene before transparency)
-			glGenTextures(1, &refraction_texture_);
-			glBindTexture(GL_TEXTURE_2D, refraction_texture_);
-			if (enable_hdr_) {
-				glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB16F, render_width, render_height, 0, GL_RGB, GL_FLOAT, NULL);
-			} else {
-				glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, render_width, render_height, 0, GL_RGB, GL_UNSIGNED_BYTE, NULL);
-			}
-			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-
-			// Velocity attachment
-			glGenTextures(1, &main_fbo_velocity_texture_);
-			glBindTexture(GL_TEXTURE_2D, main_fbo_velocity_texture_);
-			glTexImage2D(GL_TEXTURE_2D, 0, GL_RG16F, render_width, render_height, 0, GL_RG, GL_FLOAT, NULL);
-			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-			glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT1, GL_TEXTURE_2D, main_fbo_velocity_texture_, 0);
-
-			// Depth-stencil texture (for shockwave depth testing and stencil operations)
-			// Using GL_DEPTH24_STENCIL8 allows sampling depth while also providing stencil
-			glGenTextures(1, &main_fbo_depth_texture_);
-			glBindTexture(GL_TEXTURE_2D, main_fbo_depth_texture_);
-			glTexImage2D(
-				GL_TEXTURE_2D,
-				0,
-				GL_DEPTH24_STENCIL8,
-				render_width,
-				render_height,
-				0,
-				GL_DEPTH_STENCIL,
-				GL_UNSIGNED_INT_24_8,
-				NULL
-			);
-			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-			glFramebufferTexture2D(
-				GL_FRAMEBUFFER,
-				GL_DEPTH_STENCIL_ATTACHMENT,
-				GL_TEXTURE_2D,
-				main_fbo_depth_texture_,
-				0
-			);
-
-			if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
-				std::cerr << "ERROR::FRAMEBUFFER:: Main framebuffer is not complete!" << std::endl;
-			glBindFramebuffer(GL_FRAMEBUFFER, 0);
+			// FBOs now fully owned by compositor_
 
 			// --- Shadow Manager (initialize unconditionally) ---
 			shadow_manager->Initialize();
@@ -1020,7 +962,7 @@ namespace Boidsish {
 					blur_quad_vao
 				);
 				post_processing_manager_->Initialize();
-				post_processing_manager_->SetSharedDepthTexture(main_fbo_depth_texture_);
+				post_processing_manager_->SetSharedDepthTexture(compositor_->GetDepthTexture());
 
 				// --- Shockwave Manager ---
 				shockwave_manager->Initialize(render_width, render_height);
@@ -1268,15 +1210,8 @@ namespace Boidsish {
 				glDeleteVertexArrays(1, &sky_vao);
 			}
 
-			if (main_fbo_) {
-				glDeleteFramebuffers(1, &main_fbo_);
-				glDeleteTextures(1, &main_fbo_texture_);
-				glDeleteTextures(1, &main_fbo_velocity_texture_);
-				glDeleteTextures(1, &main_fbo_depth_texture_);
-				if (refraction_texture_) {
-					glDeleteTextures(1, &refraction_texture_);
-				}
-			}
+			// FBOs owned by compositor_ — cleaned up by its destructor
+			compositor_.reset();
 
 			if (lighting_ubo) {
 				glDeleteBuffers(1, &lighting_ubo);
@@ -1650,7 +1585,7 @@ namespace Boidsish {
 					if (!is_shadow_pass) {
 						// Bind refraction texture to a fixed unit (14) if not a shadow pass
 						glActiveTexture(GL_TEXTURE14);
-						glBindTexture(GL_TEXTURE_2D, refraction_texture_);
+						glBindTexture(GL_TEXTURE_2D, compositor_->GetRefractionTexture());
 						s->trySetInt("refractionTexture", 14);
 					}
 				}
@@ -2206,9 +2141,9 @@ namespace Boidsish {
 			// Save previous frame's VP for Hi-Z reprojection (before we overwrite it)
 			glm::mat4 hiz_prev_vp = prev_view_projection;
 
-			// Generate Hi-Z pyramid from previous frame's depth buffer (still in main_fbo_depth_texture_)
-			if (hiz_manager && hiz_manager->IsInitialized() && enable_hiz_culling_ && frame_count_ > 0) {
-				hiz_manager->GeneratePyramid(main_fbo_depth_texture_);
+			// Generate Hi-Z pyramid from previous frame's depth buffer
+			if (hiz_manager && hiz_manager->IsInitialized() && enable_hiz_culling_ && frame_count_ > 0 && compositor_) {
+				hiz_manager->GeneratePyramid(compositor_->GetDepthTexture());
 			}
 
 			// Update Temporal UBO for motion blur and reprojection
@@ -2380,7 +2315,13 @@ namespace Boidsish {
 			}
 		}
 
-		void SyncAndSortPackets() {
+		bool packets_synced_ = false;
+
+		// Lazy sync — blocks on first call, no-op on subsequent calls.
+		// Shadow decor rendering can proceed without packets; the shape
+		// callback triggers this when packets are first needed.
+		void EnsurePacketsSynced() {
+			if (packets_synced_) return;
 			{
 				PROJECT_PROFILE_SCOPE("WaitForPackets");
 				for (auto& f : pending_packet_futures) {
@@ -2392,6 +2333,7 @@ namespace Boidsish {
 				PROJECT_PROFILE_SCOPE("SortRenderQueue");
 				render_queue.Sort(thread_pool);
 			}
+			packets_synced_ = true;
 		}
 
 		void UpdateSystems() {
@@ -2457,6 +2399,7 @@ namespace Boidsish {
 			// The shadow pass needs a callback to render shapes because
 			// ExecuteRenderQueue lives here with the MDI infrastructure.
 			auto render_shapes = [this, &frame](const glm::mat4& light_space_matrix) {
+				EnsurePacketsSynced(); // lazy sync — shadow decor runs without packets
 				ExecuteRenderQueue(
 					render_queue,
 					frame.view,
@@ -2475,156 +2418,74 @@ namespace Boidsish {
 			scene_center = shadow_pass_->GetSceneCenter();
 		}
 
+		RenderCallbacks MakeRenderCallbacks(const FrameData& frame) {
+			return {
+				.execute_queue = [this, &frame](RenderLayer layer, bool dispatch_hiz) {
+					ExecuteRenderQueue(
+						render_queue, frame.view, frame.projection, frame.camera_pos,
+						layer, std::nullopt, std::nullopt, std::nullopt, false, dispatch_hiz
+					);
+				},
+				.bind_shadows = [this](Shader& s) { BindShadows(s); },
+				.update_frustum_ubo = [this, &frame]() {
+					UpdateFrustumUbo(frame.view, frame.projection, frame.camera_pos);
+				},
+				.render_terrain = [this, &frame]() {
+					PROJECT_PROFILE_SCOPE("RenderTerrain");
+					RenderTerrain(frame.view, frame.projection, std::nullopt);
+				},
+				.render_plane = [this, &frame]() { RenderPlane(frame.view); },
+				.render_sky = [this, &frame]() {
+					PROJECT_PROFILE_SCOPE("RenderSky");
+					RenderSky(frame.view);
+				},
+			};
+		}
+
 		void RenderOpaqueScene(const FrameData& frame) {
-			const glm::mat4& view = frame.view;
-			const glm::mat4& hiz_prev_vp = frame.prev_view_projection;
-			bool              has_shockwaves = frame.has_shockwaves;
-			bool              effects_enabled = frame.config.effects_enabled;
-			bool              skip_intermediate = (render_scale == 1.0f && !effects_enabled && !has_shockwaves);
-
-			PROJECT_PROFILE_SCOPE("MainScenePass");
-			if (skip_intermediate) {
-				glBindFramebuffer(GL_FRAMEBUFFER, 0);
-				glViewport(0, 0, width, height);
-			} else {
-				glBindFramebuffer(GL_FRAMEBUFFER, main_fbo_);
-				glViewport(0, 0, render_width, render_height);
-				GLuint attachments[2] = {GL_COLOR_ATTACHMENT0, GL_COLOR_ATTACHMENT1};
-				glDrawBuffers(2, attachments);
-			}
-
-			glEnable(GL_DEPTH_TEST);
-			glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-
-			BindShadows(*shader);
-			UpdateFrustumUbo(view, projection, camera.pos());
-
-			if (decor_manager) {
-				if (hiz_manager && hiz_manager->IsInitialized() && enable_hiz_culling_ && frame_count_ > 0) {
-					decor_manager->SetHiZData(hiz_manager->GetHiZTexture(), hiz_manager->GetWidth(),
-					                          hiz_manager->GetHeight(), hiz_manager->GetMipCount(), hiz_prev_vp);
-				} else {
-					decor_manager->SetHiZEnabled(false);
-				}
-				decor_manager->Cull(view, projection, render_width, render_height, std::nullopt, std::nullopt,
-				                    terrain_render_manager);
-				decor_manager->Render(view, projection);
-			}
-
-			ExecuteRenderQueue(render_queue, view, projection, camera.pos(), RenderLayer::Opaque, std::nullopt,
-			                   std::nullopt, std::nullopt, false, enable_hiz_culling_ && frame_count_ > 0);
-
-			{
-				PROJECT_PROFILE_SCOPE("RenderTerrain");
-				RenderTerrain(view, projection, std::nullopt);
-			}
-			RenderPlane(view);
-
-			{
-				PROJECT_PROFILE_SCOPE("RenderSky");
-				RenderSky(view);
+			if (opaque_pass_ && compositor_) {
+				opaque_pass_->Execute(frame, *compositor_, render_scale, MakeRenderCallbacks(frame));
 			}
 		}
 
 		void RenderTransparentScene(const FrameData& frame) {
-			const glm::mat4& view = frame.view;
-			bool              has_shockwaves = frame.has_shockwaves;
-			bool              effects_enabled = frame.config.effects_enabled;
-			bool skip_intermediate = (render_scale == 1.0f && !effects_enabled && !has_shockwaves);
-
-			GLuint current_texture = main_fbo_texture_;
-			GLuint current_depth = main_fbo_depth_texture_;
-
-			if (effects_enabled) {
-				PROJECT_PROFILE_SCOPE("PostProcessing::Early");
-				post_processing_manager_->BeginApply(current_texture, main_fbo_, current_depth,
-				                                     main_fbo_velocity_texture_);
-				post_processing_manager_->ApplyEarlyEffects(view, projection, camera.pos(), simulation_time);
-				BindShadows(*shader);
-				post_processing_manager_->AttachDepthToCurrentFBO();
-				glBindFramebuffer(GL_FRAMEBUFFER, post_processing_manager_->GetCurrentFBO());
-				current_texture = post_processing_manager_->GetFinalTexture();
+			if (early_effects_pass_ && compositor_) {
+				early_effects_pass_->Execute(frame, *compositor_);
 			}
 
-			fire_effect_manager->Render(view, projection, camera.pos(),
-			                            noise_manager ? noise_manager->GetNoiseTexture() : 0,
-			                            noise_manager ? noise_manager->GetExtraNoiseTexture() : 0);
-			mesh_explosion_manager->Render(view, projection, camera.pos());
-			if (akira_effect_manager) {
-				akira_effect_manager->Render(view, projection, simulation_time);
+			if (particle_pass_) {
+				particle_pass_->Execute(frame);
 			}
 
 			// Capture background for refraction
-			if (skip_intermediate) {
-				glBindFramebuffer(GL_READ_FRAMEBUFFER, 0);
-			} else {
-				glBindFramebuffer(GL_READ_FRAMEBUFFER,
-				                  effects_enabled ? post_processing_manager_->GetCurrentFBO() : main_fbo_);
+			if (compositor_) {
+				bool effects_enabled = frame.config.effects_enabled;
+				GLuint post_fx_fbo = (effects_enabled && post_processing_manager_)
+					? post_processing_manager_->GetCurrentFBO() : 0;
+				compositor_->CaptureRefraction(frame, effects_enabled, post_fx_fbo);
 			}
-			glBindTexture(GL_TEXTURE_2D, refraction_texture_);
-			glCopyTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, 0, 0, render_width, render_height);
-			glBindFramebuffer(GL_READ_FRAMEBUFFER, 0);
 
-			glEnable(GL_BLEND);
-			glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-			glDepthMask(GL_FALSE);
-			ExecuteRenderQueue(render_queue, view, projection, camera.pos(), RenderLayer::Transparent);
-			glDepthMask(GL_TRUE);
+			if (transparent_pass_) {
+				transparent_pass_->Execute(frame, MakeRenderCallbacks(frame));
+			}
 		}
 
 		void RenderPostProcessing(const FrameData& frame) {
-			const glm::mat4& view = frame.view;
-			bool              has_shockwaves = frame.has_shockwaves;
-			if (frame.config.effects_enabled) {
-				PROJECT_PROFILE_SCOPE("PostProcessing::Late");
-				post_processing_manager_->ApplyLateEffects(view, projection, camera.pos(), simulation_time);
-				GLuint final_texture = post_processing_manager_->GetFinalTexture();
-
-				glBindFramebuffer(GL_FRAMEBUFFER, 0);
-				glViewport(0, 0, width, height);
-				glDisable(GL_DEPTH_TEST);
-				glClear(GL_COLOR_BUFFER_BIT);
-
-				if (has_shockwaves) {
-					shockwave_manager->ApplyScreenSpaceEffect(final_texture, main_fbo_depth_texture_, view, projection,
-					                                          camera.pos(), blur_quad_vao, width, height);
-				} else {
-					postprocess_shader_->use();
-					postprocess_shader_->setInt("sceneTexture", 0);
-					glActiveTexture(GL_TEXTURE0);
-					glBindTexture(GL_TEXTURE_2D, final_texture);
-					glBindVertexArray(blur_quad_vao);
-					glDrawArrays(GL_TRIANGLES, 0, 6);
-				}
-			} else {
-				bool skip_intermediate = (render_scale == 1.0f && !has_shockwaves);
-
-				if (!skip_intermediate) {
-					glBindFramebuffer(GL_FRAMEBUFFER, 0);
-					glViewport(0, 0, width, height);
-					glDisable(GL_DEPTH_TEST);
-					glClear(GL_COLOR_BUFFER_BIT);
-
-					if (has_shockwaves) {
-						shockwave_manager->ApplyScreenSpaceEffect(main_fbo_texture_, main_fbo_depth_texture_, view,
-						                                          projection, camera.pos(), blur_quad_vao, width,
-						                                          height);
-					} else {
-						glBindFramebuffer(GL_READ_FRAMEBUFFER, main_fbo_);
-						glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
-						glBlitFramebuffer(0, 0, render_width, render_height, 0, 0, width, height, GL_COLOR_BUFFER_BIT,
-						                  GL_LINEAR);
-						glBindFramebuffer(GL_FRAMEBUFFER, 0);
-					}
-				}
-			}
-
-			for (const auto& shape : shapes) {
-				shape->UpdateLastPosition();
-			}
+			PROJECT_PROFILE_SCOPE("PostProcessing");
+			compositor_->ResolveToScreen(
+				frame,
+				render_scale,
+				frame.config.effects_enabled ? post_processing_manager_.get() : nullptr,
+				(frame.has_shockwaves && shockwave_manager) ? shockwave_manager.get() : nullptr
+			);
 		}
 
 		void FinalizeFrame() {
+			// Update shape positions for motion vectors / trail tracking
+			for (const auto& shape : shapes) {
+				shape->UpdateLastPosition();
+			}
+
 			ui_manager->Render();
 			int current_idx = uniforms_ssbo->GetCurrentBufferIndex();
 			if (mdi_fences[current_idx])
@@ -3098,38 +2959,10 @@ namespace Boidsish {
 			render_width = static_cast<int>(width * render_scale);
 			render_height = static_cast<int>(height * render_scale);
 
-			// --- Resize main scene framebuffer ---
-			glBindTexture(GL_TEXTURE_2D, main_fbo_texture_);
-			if (enable_hdr_) {
-				glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB16F, render_width, render_height, 0, GL_RGB, GL_FLOAT, NULL);
-			} else {
-				glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, render_width, render_height, 0, GL_RGB, GL_UNSIGNED_BYTE, NULL);
+			// Resize compositor FBOs and refresh aliases
+			if (compositor_) {
+				compositor_->Resize(render_width, render_height, enable_hdr_);
 			}
-			// Resize velocity texture
-			glBindTexture(GL_TEXTURE_2D, main_fbo_velocity_texture_);
-			glTexImage2D(GL_TEXTURE_2D, 0, GL_RG16F, render_width, render_height, 0, GL_RG, GL_FLOAT, NULL);
-
-			// Resize refraction texture
-			glBindTexture(GL_TEXTURE_2D, refraction_texture_);
-			if (enable_hdr_) {
-				glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB16F, render_width, render_height, 0, GL_RGB, GL_FLOAT, NULL);
-			} else {
-				glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, render_width, render_height, 0, GL_RGB, GL_UNSIGNED_BYTE, NULL);
-			}
-
-			// Resize depth-stencil texture
-			glBindTexture(GL_TEXTURE_2D, main_fbo_depth_texture_);
-			glTexImage2D(
-				GL_TEXTURE_2D,
-				0,
-				GL_DEPTH24_STENCIL8,
-				render_width,
-				render_height,
-				0,
-				GL_DEPTH_STENCIL,
-				GL_UNSIGNED_INT_24_8,
-				NULL
-			);
 
 			// --- Resize Hi-Z pyramid ---
 			if (hiz_manager && hiz_manager->IsInitialized()) {
@@ -3139,7 +2972,7 @@ namespace Boidsish {
 			// --- Resize post-processing manager ---
 			if (post_processing_manager_) {
 				post_processing_manager_->Resize(render_width, render_height);
-				post_processing_manager_->SetSharedDepthTexture(main_fbo_depth_texture_);
+				post_processing_manager_->SetSharedDepthTexture(compositor_->GetDepthTexture());
 			}
 
 			// --- Resize shockwave manager ---
@@ -3352,11 +3185,15 @@ namespace Boidsish {
 		impl->PopulateFrameData(frame);
 
 		impl->PrepareUBOs();
+		impl->packets_synced_ = false;
 		impl->GenerateRenderPacketsAsync();
 		impl->UpdateSystems();
-		impl->SyncAndSortPackets();
 
+		// Shadow decor renders during the overlap window (no packets needed).
+		// The shape callback triggers lazy sync when packets are first needed.
 		impl->RenderShadowPasses(frame);
+		impl->EnsurePacketsSynced(); // fallback if no shadow shapes triggered it
+
 		impl->RenderOpaqueScene(frame);
 		impl->RenderTransparentScene(frame);
 		impl->RenderPostProcessing(frame);
@@ -3403,7 +3240,7 @@ namespace Boidsish {
 				impl->decor_manager->Render(view, impl->projection);
 			}
 
-			// Create shadow render pass now that all dependencies are initialized
+			// Create render passes now that all dependencies are initialized
 			if (impl->shadow_manager && impl->decor_manager && impl->noise_manager) {
 				impl->shadow_pass_ = std::make_unique<ShadowRenderPass>(
 					*impl->shadow_manager,
@@ -3414,6 +3251,35 @@ namespace Boidsish {
 					impl->shadow_shader_handle
 				);
 			}
+
+			if (impl->decor_manager && impl->hiz_manager && impl->shadow_manager && impl->shader) {
+				impl->opaque_pass_ = std::make_unique<OpaqueScenePass>(
+					*impl->decor_manager,
+					*impl->hiz_manager,
+					*impl->shadow_manager,
+					*impl->shader,
+					impl->terrain_render_manager
+				);
+			}
+
+			if (impl->post_processing_manager_ && impl->shadow_manager && impl->shader) {
+				impl->early_effects_pass_ = std::make_unique<EarlyEffectsPass>(
+					*impl->post_processing_manager_,
+					*impl->shadow_manager,
+					*impl->shader
+				);
+			}
+
+			if (impl->fire_effect_manager && impl->mesh_explosion_manager && impl->noise_manager) {
+				impl->particle_pass_ = std::make_unique<ParticleEffectsPass>(
+					*impl->fire_effect_manager,
+					*impl->mesh_explosion_manager,
+					impl->akira_effect_manager.get(),
+					*impl->noise_manager
+				);
+			}
+
+			impl->transparent_pass_ = std::make_unique<TransparentPass>();
 
 			// Update terrain once to start chunk loading around the camera
 			impl->terrain_generator->Update(impl->CalculateFrustum(view, proj), impl->camera);

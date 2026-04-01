@@ -3,6 +3,8 @@
 #include <memory>
 #include <vector>
 
+#include "IManager.h"
+
 #include "constants.h"
 #include "shader.h"
 #include "shape.h"
@@ -24,13 +26,13 @@ namespace Boidsish {
 		glm::vec4 color;  // color (rgb), alpha (a)
 	};
 
-	class MeshExplosionManager {
+	class MeshExplosionManager : public IManager {
 	public:
 		MeshExplosionManager();
 		~MeshExplosionManager();
 
 		// Initialize shaders and buffers. Must be called from main thread with OpenGL context.
-		void Initialize();
+		void Initialize() override;
 
 		// Returns true if mesh explosions are available (compute shader compiled successfully)
 		bool IsAvailable() const;

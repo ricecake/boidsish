@@ -4,6 +4,8 @@
 #include <memory>
 #include <vector>
 
+#include "IManager.h"
+
 #include "constants.h"
 #include "frustum.h"
 #include <GL/glew.h>
@@ -25,7 +27,7 @@ namespace Boidsish {
 	 *
 	 * Shadow maps use a texture array to support multiple shadow-casting lights.
 	 */
-	class ShadowManager {
+	class ShadowManager : public IManager {
 	public:
 		/// Maximum number of shadow-casting lights supported
 		static constexpr int kMaxShadowLights = Constants::Class::Shadows::MaxLights();
@@ -48,7 +50,7 @@ namespace Boidsish {
 		 * Creates the shadow map FBO, depth texture array, and shadow shader.
 		 * Call once after OpenGL context creation.
 		 */
-		void Initialize();
+		void Initialize() override;
 
 		/**
 		 * @brief Begin rendering to a shadow map for a specific light.
