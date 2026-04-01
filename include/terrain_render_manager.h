@@ -9,7 +9,6 @@
 
 #include <GL/glew.h>
 #include <glm/glm.hpp>
-#include "constants.h"
 
 class Shader;
 class ShaderBase;
@@ -45,10 +44,7 @@ namespace Boidsish {
 	 */
 	class TerrainRenderManager {
 	public:
-		TerrainRenderManager(
-			int chunk_size = Constants::Class::Terrain::ChunkSize(),
-			int max_chunks = 512
-		);
+		TerrainRenderManager(int chunk_size = 32, int max_chunks = 512);
 		~TerrainRenderManager();
 
 		// Non-copyable

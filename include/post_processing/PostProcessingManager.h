@@ -3,7 +3,6 @@
 #include <memory>
 #include <vector>
 
-#include "IManager.h"
 #include "IPostProcessingEffect.h"
 #include <GL/glew.h>
 
@@ -12,12 +11,12 @@ class Shader; // Forward declaration
 namespace Boidsish {
 	namespace PostProcessing {
 
-		class PostProcessingManager : public IManager {
+		class PostProcessingManager {
 		public:
 			PostProcessingManager(int width, int height, GLuint quad_vao);
 			~PostProcessingManager();
 
-			void Initialize() override;
+			void Initialize();
 			void AddEffect(std::shared_ptr<IPostProcessingEffect> effect);
 			void SetToneMappingEffect(std::shared_ptr<IPostProcessingEffect> effect);
 

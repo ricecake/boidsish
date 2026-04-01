@@ -2,7 +2,6 @@
 
 #include <memory>
 
-#include "IManager.h"
 #include "shader.h"
 #include <GL/glew.h>
 
@@ -15,12 +14,12 @@ namespace Boidsish {
 		GLuint extra_noise;
 	};
 
-	class NoiseManager: public IManager {
+	class NoiseManager {
 	public:
 		NoiseManager();
-		~NoiseManager() override;
+		~NoiseManager();
 
-		void Initialize() override;
+		void Initialize();
 		void Generate();
 
 		GLuint GetNoiseTexture() const { return noise_texture_; }

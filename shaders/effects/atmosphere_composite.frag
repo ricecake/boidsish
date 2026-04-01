@@ -5,7 +5,7 @@ in vec2 TexCoords;
 
 uniform sampler2D sceneTexture;
 uniform sampler2D depthTexture;
-uniform sampler2D cloudTexture; // Low-res clouds (temporally accumulated)
+uniform sampler2D cloudTexture; // Low-res clouds
 
 uniform mat4 invView;
 uniform mat4 invProjection;
@@ -13,8 +13,6 @@ uniform mat4 invProjection;
 uniform float hazeDensity;
 uniform float hazeHeight;
 uniform vec3  hazeColor;
-
-uniform vec2 cloudTexelSize; // 1.0 / lowResSize
 
 uniform sampler2D u_transmittanceLUT;
 uniform sampler2D u_skyViewLUT;
@@ -67,52 +65,8 @@ void main() {
 		dist = 50000.0 * worldScale;
 	}
 
-	// 1. Bilateral upsample of low-res clouds
-	// Weight nearby low-res texels by depth similarity to avoid bleeding across edges
-	float centerDepth = dist;
-	vec4  cloudData = vec4(0.0);
-	float totalWeight = 0.0;
-
-	// Sample a 2x2 neighborhood of the nearest low-res texels
-	vec2 lowResUV = TexCoords / cloudTexelSize - 0.5;
-	vec2 baseTexel = floor(lowResUV);
-	vec2 frac_ = lowResUV - baseTexel;
-
-	for (int dy = 0; dy <= 1; dy++) {
-		for (int dx = 0; dx <= 1; dx++) {
-			vec2 sampleUV = (baseTexel + vec2(dx, dy) + 0.5) * cloudTexelSize;
-			sampleUV = clamp(sampleUV, cloudTexelSize * 0.5, 1.0 - cloudTexelSize * 0.5);
-
-			// Reconstruct depth at this low-res texel center
-			float sampleDepthRaw = texture(depthTexture, sampleUV).r;
-			float sampleDist;
-			if (sampleDepthRaw >= 1.0) {
-				sampleDist = 50000.0 * worldScale;
-			} else {
-				float sz = sampleDepthRaw * 2.0 - 1.0;
-				vec4 sClip = vec4(sampleUV * 2.0 - 1.0, sz, 1.0);
-				vec4 sView = invProjection * sClip;
-				sView /= sView.w;
-				vec3 sWorld = (invView * sView).xyz;
-				sampleDist = length(sWorld - viewPos);
-			}
-
-			// Bilinear weight
-			float bx = (dx == 0) ? (1.0 - frac_.x) : frac_.x;
-			float by = (dy == 0) ? (1.0 - frac_.y) : frac_.y;
-			float spatialW = bx * by;
-
-			// Depth similarity weight — exponential falloff
-			float depthDiff = abs(centerDepth - sampleDist) / max(centerDepth, 1.0);
-			float depthW = exp(-depthDiff * 50.0);
-
-			float w = spatialW * depthW;
-			cloudData += texture(cloudTexture, sampleUV) * w;
-			totalWeight += w;
-		}
-	}
-	cloudData /= max(totalWeight, 1e-6);
-
+	// 1. Sample Low-res Clouds
+	vec4  cloudData = texture(cloudTexture, TexCoords);
 	vec3  cloudColor = cloudData.rgb;
 	float cloudTransmittance = cloudData.a;
 

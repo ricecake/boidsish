@@ -5,8 +5,7 @@
 #include "NoiseManager.h"
 #include "post_processing/IPostProcessingEffect.h"
 
-class Shader;
-class ComputeShader;
+class Shader; // Forward declaration
 
 namespace Boidsish {
 	namespace PostProcessing {
@@ -140,7 +139,6 @@ namespace Boidsish {
 				if (render_scale_ != scale) {
 					render_scale_ = scale;
 					InitializeLowResResources();
-					InitializeTemporalResources();
 				}
 			}
 
@@ -148,13 +146,10 @@ namespace Boidsish {
 
 		private:
 			void InitializeLowResResources();
-			void InitializeTemporalResources();
 
-			std::unique_ptr<Shader>        shader_;
-			std::unique_ptr<Shader>        composite_shader_;
-			std::unique_ptr<ComputeShader> temporal_shader_;
-			float                          time_ = 0.0f;
-			int                            frame_index_ = 0;
+			std::unique_ptr<Shader> shader_;
+			std::unique_ptr<Shader> composite_shader_;
+			float                   time_ = 0.0f;
 
 			float     haze_density_ = 0.003f;
 			float     haze_height_ = 20.0f;
@@ -194,12 +189,6 @@ namespace Boidsish {
 
 			GLuint low_res_fbo_ = 0;
 			GLuint low_res_texture_ = 0;
-
-			// Temporal reprojection: double-buffered history at low res
-			GLuint temporal_textures_[2] = {0, 0};
-			int    temporal_index_ = 0;
-			glm::mat4 prev_view_projection_ = glm::mat4(1.0f);
-			bool      has_valid_history_ = false;
 		};
 
 	} // namespace PostProcessing

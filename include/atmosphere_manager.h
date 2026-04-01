@@ -4,8 +4,6 @@
 #include <memory>
 #include <vector>
 
-#include "IManager.h"
-
 #include <GL/glew.h>
 #include <glm/glm.hpp>
 
@@ -13,12 +11,12 @@ class ComputeShader;
 
 namespace Boidsish {
 
-	class AtmosphereManager : public IManager {
+	class AtmosphereManager {
 	public:
 		AtmosphereManager();
 		~AtmosphereManager();
 
-		void Initialize() override;
+		void Initialize();
 		void Update(
 			const glm::vec3& sunDir,
 			const glm::vec3& sunColor,

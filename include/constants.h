@@ -323,11 +323,7 @@ namespace Boidsish {
 
 			namespace Terrain {
 				constexpr int ChunkSize() {
-					return 64;
-				}
-
-				constexpr int ChunkSizePlus1() {
-					return ChunkSize() + 1;
+					return 32;
 				}
 
 				constexpr int DefaultViewDistance() {

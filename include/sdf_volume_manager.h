@@ -4,8 +4,6 @@
 #include <memory>
 #include <vector>
 
-#include "IManager.h"
-
 #include "constants.h"
 #include <GL/glew.h>
 #include <glm/glm.hpp>
@@ -28,12 +26,12 @@ namespace Boidsish {
 		glm::vec4 charge_type_unused; // x: charge, y: type, zw: unused
 	};
 
-	class SdfVolumeManager : public IManager {
+	class SdfVolumeManager {
 	public:
 		SdfVolumeManager();
 		~SdfVolumeManager();
 
-		void Initialize() override;
+		void Initialize();
 		void UpdateUBO();
 		void BindUBO(GLuint binding_point) const;
 
