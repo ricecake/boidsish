@@ -127,10 +127,11 @@ void main() {
 			if (t > dist) break;
 
 			vec3  p = viewPos + rayDir * t;
-			vec3  p_warped = getWarpedCloudPos(p);
+			float fade;
+			vec3  p_warped = getWarpedCloudPos(p, fade);
 			float weatherMap = sampleWeatherMap(p_warped);
 
-			float d = calculateCloudDensity(p_warped, weatherMap, cloudAltitude, cloudThickness, cloudDensity, cloudCoverage, worldScale, time, false);
+			float d = calculateCloudDensity(p_warped, weatherMap, cloudAltitude, cloudThickness, cloudDensity, cloudCoverage, worldScale, time, false) * fade;
 			if (d <= 0.01) continue;
 
 			float stepDensity = d * stepSize * 0.005;
@@ -147,9 +148,10 @@ void main() {
 				float shadowDensity = 0.0;
 				float shadowStepSize = (baseCeiling - baseFloor) / float(shadow_samples) * 0.1;
 				for (int k = 0; k < shadow_samples; k++) {
-					vec3 sp = p + L * (float(k) + 0.5) * shadowStepSize;
-					vec3 sp_warped = getWarpedCloudPos(sp);
-					shadowDensity += calculateCloudDensity(sp_warped, weatherMap, cloudAltitude, cloudThickness, cloudDensity, cloudCoverage, worldScale, time, true);
+					vec3  sp = p + L * (float(k) + 0.5) * shadowStepSize;
+					float sp_fade;
+					vec3  sp_warped = getWarpedCloudPos(sp, sp_fade);
+					shadowDensity += calculateCloudDensity(sp_warped, weatherMap, cloudAltitude, cloudThickness, cloudDensity, cloudCoverage, worldScale, time, true) * sp_fade;
 				}
 				float opticalDepthToLight = shadowDensity * shadowStepSize * 0.01;
 				float shadowTerm = mix(beerPowder(opticalDepthToLight, d), exp(-opticalDepthToLight) * 0.5, 0.6);

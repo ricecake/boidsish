@@ -34,10 +34,11 @@ float calculateCloudShadow(int light_index, vec3 frag_pos) {
 		return 1.0;
 
 	vec3  cloudPos = frag_pos + L * t;
-	vec3  cloudPosWarped = getWarpedCloudPos(cloudPos);
+	float fade;
+	vec3  cloudPosWarped = getWarpedCloudPos(cloudPos, fade);
 	float weatherMap = sampleWeatherMap(cloudPosWarped);
 
-	float d = calculateCloudDensity(cloudPosWarped, weatherMap, cloudAltitude, cloudThickness, cloudDensity, cloudCoverage, worldScale, time, true);
+	float d = calculateCloudDensity(cloudPosWarped, weatherMap, cloudAltitude, cloudThickness, cloudDensity, cloudCoverage, worldScale, time, true) * fade;
 
 	return mix(1.0, exp(-d * 1.5), cloudShadowIntensity);
 }

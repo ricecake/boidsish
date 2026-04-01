@@ -5,27 +5,27 @@
 #include "../lighting.glsl"
 
 // Warp cloud position away from the camera's view axis (capsule-based sliding warp)
-vec3 getWarpedCloudPos(vec3 p) {
+// Returns the warped position and a fade factor for density
+vec3 getWarpedCloudPos(vec3 p, out float fade) {
+	fade = 1.0;
 	if (cloudWarp <= 0.0) return p;
 
 	vec3  relP = p - viewPos;
-	float distSq = dot(relP, relP);
-	if (distSq < 0.0001) return p;
-
 	float projection = dot(relP, viewDir);
-	// Only warp if in front of camera or within a small buffer behind it
-	if (projection < -100.0 * worldScale) return p;
 
-	vec3  axisPoint = viewPos + viewDir * projection;
+	// Capsule distance: distance to the forward ray starting at viewPos
+	vec3  axisPoint = viewPos + viewDir * max(0.0, projection);
 	vec3  toP = p - axisPoint;
-	float d2 = dot(toP, toP);
+	float d = length(toP);
 	float R = cloudWarp * worldScale;
-	float R2 = R * R;
 
-	// Sliding warp: maps d -> sqrt(d^2 + R^2)
-	// This pushes points out such that d=0 becomes d=R
-	float newD2 = d2 + R2;
-	float scale = sqrt(newD2 / max(d2, 0.0001));
+	// To "push" clouds out, we sample from a position CLOSER to the axis.
+	// This maps the region [R, inf] to [0, inf].
+	float d_sampling = max(0.0, d - R);
+	float scale = d_sampling / max(d, 0.0001);
+
+	// Fade out density in the inner core to create a clean hole and avoid sampling artifacts
+	fade = smoothstep(R * 0.5, R, d);
 
 	return axisPoint + toP * scale;
 }
