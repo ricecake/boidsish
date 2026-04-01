@@ -62,7 +62,7 @@ void main() {
 	float dist = length(worldPos - viewPos);
 
 	if (depth == 1.0) {
-		dist = 1000.0 * worldScale;
+		dist = 50000.0 * worldScale;
 	}
 
 	// 1. Sample Low-res Clouds

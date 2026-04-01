@@ -45,31 +45,37 @@ void main() {
 	vec3  rayDir = normalize(worldPos - viewPos);
 	float dist = length(worldPos - viewPos);
 
+	float R_earth = kEarthRadius * 1000.0 * worldScale;
 	if (depth == 1.0) {
-		dist = 1000.0 * worldScale;
+		dist = 50000.0 * worldScale;
 		worldPos = viewPos + rayDir * dist;
 	}
 
-	float weatherWarpFactor = 1.0;
-	if (cloudWarp > 0.0) {
-		float camDist = length(worldPos.xz - viewPos.xz);
-		weatherWarpFactor = smoothstep(0.0, cloudWarp * worldScale, camDist);
-	}
-	float weatherMap = weatherWarpFactor *
-		(fastWorley3d(vec3(worldPos.xz / (4000 * worldScale), time * 0.01)) * 0.5 + 0.5);
-
 	float baseFloor = (cloudAltitude - 10.0) * worldScale;
 	float baseCeiling = (cloudAltitude + cloudThickness + 300.0) * worldScale;
+	float R_floor = R_earth + baseFloor;
+	float R_ceiling = R_earth + baseCeiling;
 
-	float t_start = (baseFloor - viewPos.y) / (rayDir.y + 0.000001);
-	float t_end = (baseCeiling - viewPos.y) / (rayDir.y + 0.000001);
+	vec3 earthCenter = vec3(viewPos.x, -R_earth, viewPos.z);
+	vec3 relRo = viewPos - earthCenter;
 
-	if (t_start > t_end) {
-		float temp = t_start;
-		t_start = t_end;
-		t_end = temp;
+	float t_start = 1e10;
+	float t_end = -1e10;
+
+	float t0, t1;
+	if (intersectSphere(relRo, rayDir, R_ceiling, t0, t1)) {
+		t_start = max(0.0, t0);
+		t_end = t1;
+
+		if (intersectSphere(relRo, rayDir, R_floor, t0, t1)) {
+			if (t0 < 0.0) {
+				t_start = max(t_start, t1);
+			} else {
+				t_end = min(t_end, t0);
+			}
+		}
 	}
-	t_start = max(t_start, 0.0);
+
 	t_end = min(t_end, dist);
 
 	vec3  cloudColor = vec3(0.0);
@@ -90,10 +96,18 @@ void main() {
 				break;
 
 			vec3 p = viewPos + rayDir * t;
+			vec3 p_curved = p;
+			p_curved.y = length(p - earthCenter) - R_earth;
+
+			float localWarp = 1.0;
+			if (cloudWarp > 0.0) {
+				localWarp = smoothstep(0.0, cloudWarp * worldScale, length(p.xz - viewPos.xz));
+			}
+			float localWeather = localWarp * (fastWorley3d(vec3(p.xz / (4000 * worldScale), time * 0.01)) * 0.5 + 0.5);
 
 			float d = calculateCloudDensity(
-				p,
-				weatherMap,
+				p_curved,
+				localWeather,
 				cloudAltitude,
 				cloudThickness,
 				cloudDensity,
@@ -121,9 +135,12 @@ void main() {
 				float shadowStepSize = (baseCeiling - baseFloor) / float(shadow_samples) * 0.1;
 				for (int k = 0; k < shadow_samples; k++) {
 					vec3 sp = p + L * (float(k) + 0.5) * shadowStepSize;
+					vec3 sp_curved = sp;
+					sp_curved.y = length(sp - earthCenter) - R_earth;
+
 					shadowDensity += calculateCloudDensity(
-						sp,
-						weatherMap,
+						sp_curved,
+						localWeather,
 						cloudAltitude,
 						cloudThickness,
 						cloudDensity,
