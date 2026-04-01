@@ -135,8 +135,20 @@ namespace Boidsish {
 
 			void SetNoiseTextures(const NoiseTextures& textures) { noise_textures_ = textures; }
 
+			void  SetRenderScale(float scale) {
+				if (render_scale_ != scale) {
+					render_scale_ = scale;
+					InitializeLowResResources();
+				}
+			}
+
+			float GetRenderScale() const { return render_scale_; }
+
 		private:
+			void InitializeLowResResources();
+
 			std::unique_ptr<Shader> shader_;
+			std::unique_ptr<Shader> composite_shader_;
 			float                   time_ = 0.0f;
 
 			float     haze_density_ = 0.003f;
@@ -171,8 +183,12 @@ namespace Boidsish {
 
 			NoiseTextures noise_textures_ = {0, 0, 0};
 
-			int width_ = 0;
-			int height_ = 0;
+			int   width_ = 0;
+			int   height_ = 0;
+			float render_scale_ = 0.25f;
+
+			GLuint low_res_fbo_ = 0;
+			GLuint low_res_texture_ = 0;
 		};
 
 	} // namespace PostProcessing
