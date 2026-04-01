@@ -96,13 +96,6 @@ void main() {
 	float cloudFactor = 0.0;
 	vec3  cloudColor = vec3(0.0);
 
-	float  weatherWarpFactor = 1.0;
-	if (cloudWarp > 0.0) {
-		float camDist = length(worldPos.xz - viewPos.xz);
-		weatherWarpFactor = smoothstep(0.0, cloudWarp * worldScale, camDist);
-	}
-	float weatherMap = weatherWarpFactor * (fastWorley3d(vec3(worldPos.xz / (4000 * worldScale), time * 0.01)) * 0.5 + 0.5);
-
 	// Cloud layer boundaries (matching calculateCloudDensity but for ray-box intersection)
 	float baseFloor = (cloudAltitude - 10.0) * worldScale;
 	float baseCeiling = (cloudAltitude + cloudThickness + 300.0) * worldScale;
@@ -134,8 +127,10 @@ void main() {
 			if (t > dist) break;
 
 			vec3  p = viewPos + rayDir * t;
+			vec3  p_warped = getWarpedCloudPos(p);
+			float weatherMap = sampleWeatherMap(p_warped);
 
-			float d = calculateCloudDensity(p, weatherMap, cloudAltitude, cloudThickness, cloudDensity, cloudCoverage, worldScale, time, false);
+			float d = calculateCloudDensity(p_warped, weatherMap, cloudAltitude, cloudThickness, cloudDensity, cloudCoverage, worldScale, time, false);
 			if (d <= 0.01) continue;
 
 			float stepDensity = d * stepSize * 0.005;
@@ -153,7 +148,8 @@ void main() {
 				float shadowStepSize = (baseCeiling - baseFloor) / float(shadow_samples) * 0.1;
 				for (int k = 0; k < shadow_samples; k++) {
 					vec3 sp = p + L * (float(k) + 0.5) * shadowStepSize;
-					shadowDensity += calculateCloudDensity(sp, weatherMap, cloudAltitude, cloudThickness, cloudDensity, cloudCoverage, worldScale, time, true);
+					vec3 sp_warped = getWarpedCloudPos(sp);
+					shadowDensity += calculateCloudDensity(sp_warped, weatherMap, cloudAltitude, cloudThickness, cloudDensity, cloudCoverage, worldScale, time, true);
 				}
 				float opticalDepthToLight = shadowDensity * shadowStepSize * 0.01;
 				float shadowTerm = mix(beerPowder(opticalDepthToLight, d), exp(-opticalDepthToLight) * 0.5, 0.6);
