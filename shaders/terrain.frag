@@ -11,10 +11,13 @@ flat in float TextureSlice;
 in float      perturbFactor;
 in float      tessFactor;
 in float      vIsWater;
+in float      vErosionDelta;
+in float      vRidgeMap;
 
 #include "helpers/fast_noise.glsl"
 #include "helpers/lighting.glsl"
 #include "helpers/terrain_noise.glsl"
+#include "helpers/erosion.glsl"
 #include "visual_effects.glsl"
 // #include "helpers/noise.glsl"
 
@@ -397,6 +400,12 @@ void main() {
 	float rockyVar = fineNoise;
 	float rockyMask = smoothstep(0.5, 0.2, slope); // More variety on steeper slopes
 	finalMaterial.albedo = mix(finalMaterial.albedo, finalMaterial.albedo * (1.0 + rockyVar * 0.2), rockyMask);
+
+	// ========================================================================
+	// Advanced Erosion Filter Coloration
+	// ========================================================================
+	// Apply the extracted color mapping using the data passed from the tessellation shader
+	finalMaterial.albedo = applyErosionColorMappingDefault(finalMaterial.albedo, vRidgeMap, vErosionDelta);
 
 	vec3  albedo = finalMaterial.albedo;
 	float roughness = finalMaterial.roughness;

@@ -1208,6 +1208,12 @@ namespace Boidsish {
 			frame_config_.artistic_shimmery = cfg.GetAppSettingBool("artistic_effect_shimmery", false);
 			frame_config_.artistic_glitched = cfg.GetAppSettingBool("artistic_effect_glitched", false);
 			frame_config_.artistic_wireframe = cfg.GetAppSettingBool("artistic_effect_wireframe", false);
+			frame_config_.erosion_enabled = cfg.GetAppSettingBool("erosion_enabled", true);
+			frame_config_.erosion_strength = cfg.GetAppSettingFloat("erosion_strength", 0.12f);
+			frame_config_.erosion_scale = cfg.GetAppSettingFloat("erosion_scale", 0.15f);
+			frame_config_.erosion_detail = cfg.GetAppSettingFloat("erosion_detail", 1.5f);
+			frame_config_.erosion_gully_weight = cfg.GetAppSettingFloat("erosion_gully_weight", 0.5f);
+			frame_config_.erosion_max_dist = cfg.GetAppSettingFloat("erosion_max_dist", 450.0f);
 			frame_config_.ambient_particle_density = cfg.GetAppSettingFloat(
 				"ambient_particle_density",
 				Constants::Class::Particles::DefaultAmbientDensity()
@@ -3098,10 +3104,16 @@ namespace Boidsish {
 			ubo_data.shimmery_enabled = impl->frame_config_.artistic_shimmery;
 			ubo_data.glitched_enabled = impl->frame_config_.artistic_glitched;
 			ubo_data.wireframe_enabled = impl->frame_config_.artistic_wireframe;
+			ubo_data.erosion_enabled = impl->frame_config_.erosion_enabled;
 			ubo_data.color_shift_enabled = ubo_data.color_shift_enabled || impl->frame_config_.artistic_color_shift;
 			ubo_data.wind_strength = impl->frame_config_.wind_strength;
 			ubo_data.wind_speed = impl->frame_config_.wind_speed;
 			ubo_data.wind_frequency = impl->frame_config_.wind_frequency;
+			ubo_data.erosion_strength = impl->frame_config_.erosion_strength;
+			ubo_data.erosion_scale = impl->frame_config_.erosion_scale;
+			ubo_data.erosion_detail = impl->frame_config_.erosion_detail;
+			ubo_data.erosion_gully_weight = impl->frame_config_.erosion_gully_weight;
+			ubo_data.erosion_max_dist = impl->frame_config_.erosion_max_dist;
 			if (impl->frame_config_.artistic_ripple) {
 				ubo_data.ripple_enabled = 1;
 			}
