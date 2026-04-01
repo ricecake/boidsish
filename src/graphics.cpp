@@ -13,6 +13,8 @@
 #include <vector>
 
 #include "ConfigManager.h"
+#include "frame_data.h"
+#include "shadow_render_pass.h"
 #include "NoiseManager.h"
 #include "SceneManager.h"
 #include "UIManager.h"
@@ -513,28 +515,7 @@ namespace Boidsish {
 		float camera_speed_step_;
 		bool  enable_hdr_ = true;
 
-		// Shadow optimization state
-		bool      any_shadow_caster_moved = true;
-		bool      camera_is_close_to_scene = true;
-		float     shadow_update_distance_threshold = 200.0f;
-		glm::vec3 last_shadow_update_camera_pos{0.0f, -1000.0f, 0.0f};
-		glm::vec3 last_shadow_update_camera_front{0.0f, 0.0f, -1.0f};
 		uint64_t  frame_count_ = 0;
-
-		struct ShadowMapState {
-			float     debt = 0.0f;
-			int       last_update_frame = 0;
-			bool      needs_update = false;
-			glm::vec3 last_pos{0.0f, -1000.0f, 0.0f};
-			glm::vec3 last_front{0.0f, 0.0f, -1.0f};
-			glm::vec3 last_light_pos{0.0f};
-			glm::vec3 last_light_dir{0.0f, -1.0f, 0.0f};
-			glm::mat4 last_light_space_matrix{1.0f}; // Cache for temporal stability
-			float     rotation_accumulator = 0.0f;   // Track cumulative rotation
-		};
-
-		std::array<ShadowMapState, 16> shadow_map_states_;
-		int shadow_update_round_robin_ = 0; // For ensuring all cascades get updated periodically
 
 		// Performance optimization: batched UBO updates and config caching
 		std::vector<LightGPU> gpu_lights_cache_;
@@ -547,16 +528,13 @@ namespace Boidsish {
 		task_thread_pool::task_thread_pool thread_pool;
 		std::unique_ptr<AudioManager>      audio_manager;
 
-		// Frame-specific state shared across refactored methods
-		struct MapUpdateInfo {
-			int    map_index;
-			Light* light;
-			int    cascade_index; // -1 for standard
-			float  weight;
-		};
-		std::vector<MapUpdateInfo> shadow_map_registry;
-		std::vector<int>           maps_to_update;
-		std::vector<Light*>        shadow_lights;
+		// Canonical frame data — temporal chain lives here between frames
+		FrameData current_frame_;
+
+		// Extracted render passes
+		std::unique_ptr<ShadowRenderPass> shadow_pass_;
+
+		// Scene center computed by shadow pass, used by other systems
 		glm::vec3                  scene_center{0.0f};
 		Frustum                    generator_frustum;
 		glm::mat4                  current_view_matrix{1.0f};
@@ -1027,6 +1005,9 @@ namespace Boidsish {
 			shadow_shader_handle = shader_table.Register(
 				std::make_unique<RenderShader>(shadow_manager->GetShadowShaderPtr())
 			);
+
+			// Shadow render pass — created here but decor/noise/terrain references
+			// are set later via SetShadowPassDependencies() once those managers exist.
 
 			// Initialize Hi-Z manager with render dimensions
 			hiz_manager->Initialize(render_width, render_height);
@@ -2141,146 +2122,56 @@ namespace Boidsish {
 
 		void UpdateTrailsLogical() { UpdateTrails(shapes, simulation_time); }
 
-		void PrepareShadows() {
-			any_shadow_caster_moved = false;
-			glm::vec3 scene_center(0.0f);
-			bool      has_shapes = !shapes.empty();
-			int       shadow_caster_count = 0;
-			if (has_shapes) {
-				for (const auto& shape : shapes) {
-					if (shape->CastsShadows()) {
-						scene_center += glm::vec3(shape->GetX(), shape->GetY(), shape->GetZ());
-						shadow_caster_count++;
-						float distance_moved =
-							glm::distance(shape->GetLastPosition(), glm::vec3(shape->GetX(), shape->GetY(), shape->GetZ()));
-						if (distance_moved > 0.01f) { // Movement threshold
-							any_shadow_caster_moved = true;
-						}
-					}
-				}
-				if (shadow_caster_count > 0) {
-					scene_center /= static_cast<float>(shadow_caster_count);
-				} else {
-					scene_center = camera.pos();
-				}
-			}
+		void PopulateFrameData(FrameData& frame) {
+			frame.view = SetupMatrices();
+			frame.projection = projection;
+			frame.view_projection = projection * frame.view;
+			frame.inv_view = glm::inverse(frame.view);
 
-			float distance_to_scene = has_shapes ? glm::distance(camera.pos(), scene_center) : 0.0f;
-			bool  has_terrain = (terrain_generator != nullptr);
+			frame.camera_pos = camera.pos();
+			frame.camera_front = camera.front();
+			frame.camera_fov = camera.fov;
 
-			if (has_terrain || distance_to_scene > shadow_update_distance_threshold) {
-				float grid_size = 10.0f;
-				scene_center.x = std::floor(camera.pos().x / grid_size) * grid_size;
-				scene_center.y = std::floor(camera.pos().y / grid_size) * grid_size;
-				scene_center.z = std::floor(camera.pos().z / grid_size) * grid_size;
-				camera_is_close_to_scene = true;
-			} else {
-				camera_is_close_to_scene = (distance_to_scene < shadow_update_distance_threshold);
-			}
+			frame.simulation_time = simulation_time;
+			frame.simulation_delta_time = simulation_delta_time;
+			frame.frame_count = frame_count_;
 
-			scene_center = scene_center;
+			frame.world_scale = terrain_generator ? terrain_generator->GetWorldScale() : 1.0f;
+			frame.far_plane = 1000.0f * std::max(1.0f, frame.world_scale);
 
-			// Re-calculate registry and maps to update (from Render logic)
-			shadow_map_registry.clear();
-			maps_to_update.clear();
-			shadow_lights.clear();
+			frame.render_width = render_width;
+			frame.render_height = render_height;
+			frame.window_width = width;
+			frame.window_height = height;
 
-			auto light_count = light_manager.GetShadowCastingLightCount();
-			if (shadow_manager && shadow_manager->IsInitialized() && frame_config_.enable_shadows && light_count > 0) {
-				shadow_lights = light_manager.GetShadowCastingLights();
+			frame.has_shockwaves = shockwave_manager && shockwave_manager->HasActiveShockwaves();
+			frame.has_terrain = (terrain_generator != nullptr);
 
-				for (auto& light : light_manager.GetLights()) {
-					light.shadow_map_index = -1;
-				}
+			frame.config = frame_config_;
 
-				int next_map_idx = 0;
-				for (auto light : shadow_lights) {
-					if (next_map_idx >= ShadowManager::kMaxShadowMaps)
-						break;
-					light->shadow_map_index = next_map_idx;
-					if (light->type == DIRECTIONAL_LIGHT) {
-						for (int c = 0; c < ShadowManager::kMaxCascades; ++c) {
-							if (next_map_idx < ShadowManager::kMaxShadowMaps) {
-								float weight = (c == 0) ? 8.0f : (c == 1) ? 4.0f : (c == 2) ? 2.0f : 1.0f;
-								shadow_map_registry.push_back({next_map_idx++, light, c, weight});
-							}
-						}
-					} else {
-						shadow_map_registry.push_back({next_map_idx++, light, -1, 4.0f});
-					}
-				}
+			frame.camera_frustum = Frustum::FromViewProjection(frame.view, frame.projection);
 
-				float camera_rotation_delta = 1.0f - glm::dot(camera.front(), last_shadow_update_camera_front);
-				bool  significant_rotation = camera_rotation_delta > 0.001f;
-				bool  major_rotation = camera_rotation_delta > 0.01f;
+			// Build predictive generator frustum (wider FOV + angular velocity lead)
+			if (terrain_generator) {
+				float generator_fov = camera.fov + 15.0f;
+				float lead_time = 0.4f;
+				float predicted_yaw = camera.yaw + camera_angular_velocity_.x * lead_time;
+				float predicted_pitch = camera.pitch + camera_angular_velocity_.y * lead_time;
 
-				const int max_updates_per_frame = major_rotation ? 4 : (significant_rotation ? 3 : 2);
+				glm::vec3 predicted_front;
+				predicted_front.x = cos(glm::radians(predicted_pitch)) * sin(glm::radians(predicted_yaw));
+				predicted_front.y = sin(glm::radians(predicted_pitch));
+				predicted_front.z = -cos(glm::radians(predicted_pitch)) * cos(glm::radians(predicted_yaw));
+				predicted_front = glm::normalize(predicted_front);
 
-				for (const auto& info : shadow_map_registry) {
-					auto& state = shadow_map_states_[info.map_index];
-					float camera_move_dist = glm::distance(camera.pos(), state.last_pos);
-					float rotation_change = 1.0f - glm::dot(camera.front(), state.last_front);
-					bool  light_moved = glm::distance(info.light->position, state.last_light_pos) > 0.1f ||
-						glm::distance(info.light->direction, state.last_light_dir) > 0.01f;
-
-					float rotation_sensitivity = (info.cascade_index == 0) ? 50.0f
-						: (info.cascade_index == 1)                        ? 100.0f
-						: (info.cascade_index == 2)                        ? 200.0f
-																		   : 400.0f;
-					state.rotation_accumulator += rotation_change * rotation_sensitivity;
-
-					float movement_threshold = (info.cascade_index == 0) ? 0.5f
-						: (info.cascade_index == 1)                      ? 2.0f
-						: (info.cascade_index == 2)                      ? 5.0f
-																		 : 10.0f;
-					float rotation_threshold = (info.cascade_index == 0) ? 1.0f
-						: (info.cascade_index == 1)                      ? 0.7f
-						: (info.cascade_index == 2)                      ? 0.5f
-																		 : 0.3f;
-
-					bool needs_movement_update = camera_move_dist > movement_threshold;
-					bool needs_rotation_update = state.rotation_accumulator > rotation_threshold;
-					bool movement_detected = any_shadow_caster_moved || light_moved ||
-						(has_terrain && (needs_movement_update || needs_rotation_update));
-
-					if (movement_detected && camera_is_close_to_scene) {
-						float urgency = info.weight;
-						if (needs_rotation_update)
-							urgency *= (1.5f + info.cascade_index * 0.5f);
-						if (any_shadow_caster_moved)
-							urgency *= 1.5f;
-						state.debt += urgency;
-					} else {
-						state.debt += (0.02f + info.cascade_index * 0.005f);
-					}
-				}
-
-				std::vector<std::pair<float, int>> debt_sorted;
-				float                              debt_threshold = significant_rotation ? 1.5f : 2.5f;
-				for (const auto& info : shadow_map_registry) {
-					auto& state = shadow_map_states_[info.map_index];
-					if (state.debt >= debt_threshold)
-						debt_sorted.push_back({state.debt, info.map_index});
-				}
-				std::sort(debt_sorted.begin(), debt_sorted.end(), std::greater<>());
-
-				for (int i = 0; i < std::min((int)debt_sorted.size(), max_updates_per_frame); ++i)
-					maps_to_update.push_back(debt_sorted[i].second);
-
-				if (major_rotation && maps_to_update.size() < shadow_map_registry.size()) {
-					for (const auto& info : shadow_map_registry) {
-						if (std::find(maps_to_update.begin(), maps_to_update.end(), info.map_index) ==
-						    maps_to_update.end())
-							maps_to_update.push_back(info.map_index);
-					}
-				}
-
-				if (maps_to_update.empty() && !shadow_map_registry.empty()) {
-					shadow_update_round_robin_ = (shadow_update_round_robin_ + 1) % shadow_map_registry.size();
-					if (frame_count_ % 2 == 0) {
-						maps_to_update.push_back(shadow_map_registry[shadow_update_round_robin_].map_index);
-					}
-				}
+				glm::mat4 gen_view = glm::lookAt(frame.camera_pos, frame.camera_pos + predicted_front, camera.up());
+				glm::mat4 gen_proj = glm::perspective(
+					glm::radians(generator_fov),
+					(float)width / (float)height,
+					0.1f,
+					frame.far_plane
+				);
+				frame.generator_frustum = Frustum::FromViewProjection(gen_view, gen_proj);
 			}
 		}
 
@@ -2559,131 +2450,37 @@ namespace Boidsish {
 			}
 		}
 
-		void RenderShadowPasses(const glm::mat4& view) {
-			if (maps_to_update.empty())
+		void RenderShadowPasses(const FrameData& frame) {
+			if (!shadow_pass_ || !shadow_pass_->HasUpdates())
 				return;
 
-			glEnable(GL_DEPTH_TEST);
-			if (noise_manager) {
-				shadow_manager->GetShadowShader().use();
-				noise_manager->BindDefault(*shadow_manager->GetShadowShaderPtr());
-			}
-
-			// Phase 1: Render Decor and Terrain into shadow maps
-			std::map<Light*, std::vector<int>> updates_by_light;
-			for (int map_idx : maps_to_update) {
-				updates_by_light[shadow_map_registry[map_idx].light].push_back(map_idx);
-			}
-
-			for (auto& [light, map_indices] : updates_by_light) {
-				if (decor_manager) {
-					int   best_map_idx = -1;
-					float max_split = -1.0f;
-					for (int map_idx : map_indices) {
-						int cascade = shadow_map_registry[map_idx].cascade_index;
-						if (cascade == -1) {
-							best_map_idx = map_idx;
-							break;
-						}
-						float split = shadow_manager->GetCascadeSplits()[cascade];
-						if (split > max_split) {
-							max_split = split;
-							best_map_idx = map_idx;
-						}
-					}
-
-					const auto& best_info = shadow_map_registry[best_map_idx];
-					glm::vec3   light_dir_to_light = (light->type == DIRECTIONAL_LIGHT)
-						? glm::normalize(-light->direction)
-						: glm::normalize(light->position - scene_center);
-
-					decor_manager->Cull(
-						view,
-						projection,
-						ShadowManager::kShadowMapSize,
-						ShadowManager::kShadowMapSize,
-						shadow_manager->GetLightSpaceMatrix(best_info.map_index),
-						light_dir_to_light,
-						terrain_render_manager
-					);
-				}
-
-				for (int map_idx : map_indices) {
-					const auto& info = shadow_map_registry[map_idx];
-					float world_scale_val = terrain_generator ? terrain_generator->GetWorldScale() : 1.0f;
-					shadow_manager->BeginShadowPass(
-						info.map_index,
-						*info.light,
-						scene_center,
-						500.0f * std::max(1.0f, world_scale_val),
-						info.cascade_index,
-						view,
-						camera.fov,
-						(float)width / (float)height,
-						true // Clear depth
-					);
-
-					if (decor_manager) {
-						decor_manager->Render(
-							view,
-							projection,
-							shadow_manager->GetLightSpaceMatrix(info.map_index),
-							shadow_manager->GetShadowShaderPtr().get()
-						);
-					}
-					shadow_manager->EndShadowPass();
-				}
-			}
-
-			// Phase 2: Render Shapes into shadow maps
-			for (int map_idx : maps_to_update) {
-				const auto& info = shadow_map_registry[map_idx];
-				auto&       state = shadow_map_states_[map_idx];
-				float       world_scale_val = terrain_generator ? terrain_generator->GetWorldScale() : 1.0f;
-
-				shadow_manager->BeginShadowPass(
-					info.map_index,
-					*info.light,
-					scene_center,
-					500.0f * std::max(1.0f, world_scale_val),
-					info.cascade_index,
-					view,
-					camera.fov,
-					(float)width / (float)height,
-					false // DO NOT CLEAR
-				);
-
+			// The shadow pass needs a callback to render shapes because
+			// ExecuteRenderQueue lives here with the MDI infrastructure.
+			auto render_shapes = [this, &frame](const glm::mat4& light_space_matrix) {
 				ExecuteRenderQueue(
 					render_queue,
-					view,
-					projection,
-					camera.pos(),
+					frame.view,
+					frame.projection,
+					frame.camera_pos,
 					RenderLayer::Opaque,
 					shadow_shader_handle,
-					shadow_manager->GetLightSpaceMatrix(info.map_index),
+					light_space_matrix,
 					std::nullopt,
 					true
 				);
+			};
 
-				shadow_manager->EndShadowPass();
+			shadow_pass_->Execute(frame, render_shapes);
 
-				state.debt = 0.0f;
-				state.rotation_accumulator = 0.0f;
-				state.last_update_frame = frame_count_;
-				state.last_light_space_matrix = shadow_manager->GetLightSpaceMatrix(info.map_index);
-				state.last_pos = camera.pos();
-				state.last_front = camera.front();
-				state.last_light_pos = info.light->position;
-				state.last_light_dir = info.light->direction;
-			}
-			last_shadow_update_camera_front = camera.front();
-			shadow_manager->UpdateShadowUBO(shadow_lights);
-			glBindFramebuffer(GL_FRAMEBUFFER, 0);
+			scene_center = shadow_pass_->GetSceneCenter();
 		}
 
-		void RenderOpaqueScene(const glm::mat4& view, const glm::mat4& hiz_prev_vp, bool has_shockwaves) {
-			bool effects_enabled = frame_config_.effects_enabled;
-			bool skip_intermediate = (render_scale == 1.0f && !effects_enabled && !has_shockwaves);
+		void RenderOpaqueScene(const FrameData& frame) {
+			const glm::mat4& view = frame.view;
+			const glm::mat4& hiz_prev_vp = frame.prev_view_projection;
+			bool              has_shockwaves = frame.has_shockwaves;
+			bool              effects_enabled = frame.config.effects_enabled;
+			bool              skip_intermediate = (render_scale == 1.0f && !effects_enabled && !has_shockwaves);
 
 			PROJECT_PROFILE_SCOPE("MainScenePass");
 			if (skip_intermediate) {
@@ -2729,8 +2526,10 @@ namespace Boidsish {
 			}
 		}
 
-		void RenderTransparentScene(const glm::mat4& view, bool has_shockwaves) {
-			bool effects_enabled = frame_config_.effects_enabled;
+		void RenderTransparentScene(const FrameData& frame) {
+			const glm::mat4& view = frame.view;
+			bool              has_shockwaves = frame.has_shockwaves;
+			bool              effects_enabled = frame.config.effects_enabled;
 			bool skip_intermediate = (render_scale == 1.0f && !effects_enabled && !has_shockwaves);
 
 			GLuint current_texture = main_fbo_texture_;
@@ -2773,8 +2572,10 @@ namespace Boidsish {
 			glDepthMask(GL_TRUE);
 		}
 
-		void RenderPostProcessing(const glm::mat4& view, bool has_shockwaves) {
-			if (frame_config_.effects_enabled) {
+		void RenderPostProcessing(const FrameData& frame) {
+			const glm::mat4& view = frame.view;
+			bool              has_shockwaves = frame.has_shockwaves;
+			if (frame.config.effects_enabled) {
 				PROJECT_PROFILE_SCOPE("PostProcessing::Late");
 				post_processing_manager_->ApplyLateEffects(view, projection, camera.pos(), simulation_time);
 				GLuint final_texture = post_processing_manager_->GetFinalTexture();
@@ -3527,7 +3328,18 @@ namespace Boidsish {
 		impl->UpdateAudio();
 		impl->UpdateAtmosphere();
 		impl->UpdateTrailsLogical();
-		impl->PrepareShadows();
+
+		// Shadow scheduling needs FrameData, so we do a lightweight populate here.
+		// The full PopulateFrameData in Render() will overwrite with final values.
+		if (impl->shadow_pass_) {
+			FrameData shadow_frame;
+			shadow_frame.camera_pos = impl->camera.pos();
+			shadow_frame.camera_front = impl->camera.front();
+			shadow_frame.has_terrain = (impl->terrain_generator != nullptr);
+			shadow_frame.config = impl->frame_config_;
+			shadow_frame.frame_count = impl->frame_count_;
+			impl->shadow_pass_->ScheduleUpdates(shadow_frame, impl->shapes);
+		}
 	}
 
 	void Visualizer::Render() {
@@ -3535,22 +3347,23 @@ namespace Boidsish {
 		impl->RefreshFrameConfig();
 		impl->PrepareFrame();
 
-		// Capture previous frame's VP for Hi-Z reprojection before it's updated in PrepareUBOs
-		glm::mat4 hiz_prev_vp = impl->prev_view_projection;
+		// Build this frame's data from the temporal chain
+		FrameData frame = impl->current_frame_.NextFrame();
+		impl->PopulateFrameData(frame);
 
 		impl->PrepareUBOs();
 		impl->GenerateRenderPacketsAsync();
 		impl->UpdateSystems();
 		impl->SyncAndSortPackets();
 
-		glm::mat4 view = impl->current_view_matrix;
-		bool      has_shockwaves = impl->shockwave_manager && impl->shockwave_manager->HasActiveShockwaves();
-
-		impl->RenderShadowPasses(view);
-		impl->RenderOpaqueScene(view, hiz_prev_vp, has_shockwaves);
-		impl->RenderTransparentScene(view, has_shockwaves);
-		impl->RenderPostProcessing(view, has_shockwaves);
+		impl->RenderShadowPasses(frame);
+		impl->RenderOpaqueScene(frame);
+		impl->RenderTransparentScene(frame);
+		impl->RenderPostProcessing(frame);
 		impl->FinalizeFrame();
+
+		// Commit for next frame's temporal chain
+		impl->current_frame_ = frame;
 	}
 
 	void Visualizer::Prepare() {
@@ -3588,6 +3401,18 @@ namespace Boidsish {
 
 				impl->decor_manager->Cull(view, impl->projection, impl->render_width, impl->render_height);
 				impl->decor_manager->Render(view, impl->projection);
+			}
+
+			// Create shadow render pass now that all dependencies are initialized
+			if (impl->shadow_manager && impl->decor_manager && impl->noise_manager) {
+				impl->shadow_pass_ = std::make_unique<ShadowRenderPass>(
+					*impl->shadow_manager,
+					impl->light_manager,
+					*impl->decor_manager,
+					*impl->noise_manager,
+					impl->terrain_render_manager,
+					impl->shadow_shader_handle
+				);
 			}
 
 			// Update terrain once to start chunk loading around the camera
