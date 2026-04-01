@@ -307,6 +307,43 @@ namespace Boidsish {
 						config.SetFloat("wind_frequency", wind_frequency);
 					}
 				}
+
+				// 6. Terrain Erosion
+				if (ImGui::CollapsingHeader("Terrain Erosion", ImGuiTreeNodeFlags_DefaultOpen)) {
+					auto& config = ConfigManager::GetInstance();
+
+					bool erosion_enabled = config.GetAppSettingBool("erosion_enabled", true);
+					if (ImGui::Checkbox("Enable Erosion Filter", &erosion_enabled)) {
+						config.SetBool("erosion_enabled", erosion_enabled);
+					}
+
+					if (erosion_enabled) {
+						float erosion_strength = config.GetAppSettingFloat("erosion_strength", 0.12f);
+						if (ImGui::SliderFloat("Erosion Strength", &erosion_strength, 0.0f, 0.5f, "%.3f")) {
+							config.SetFloat("erosion_strength", erosion_strength);
+						}
+
+						float erosion_scale = config.GetAppSettingFloat("erosion_scale", 0.15f);
+						if (ImGui::SliderFloat("Erosion Scale", &erosion_scale, 0.01f, 1.0f, "%.2f")) {
+							config.SetFloat("erosion_scale", erosion_scale);
+						}
+
+						float erosion_detail = config.GetAppSettingFloat("erosion_detail", 1.5f);
+						if (ImGui::SliderFloat("Erosion Detail", &erosion_detail, 0.1f, 5.0f, "%.1f")) {
+							config.SetFloat("erosion_detail", erosion_detail);
+						}
+
+						float erosion_gully_weight = config.GetAppSettingFloat("erosion_gully_weight", 0.5f);
+						if (ImGui::SliderFloat("Gully Weight", &erosion_gully_weight, 0.0f, 1.0f, "%.2f")) {
+							config.SetFloat("erosion_gully_weight", erosion_gully_weight);
+						}
+
+						float erosion_max_dist = config.GetAppSettingFloat("erosion_max_dist", 450.0f);
+						if (ImGui::SliderFloat("Erosion Max Dist", &erosion_max_dist, 50.0f, 1000.0f, "%.0f")) {
+							config.SetFloat("erosion_max_dist", erosion_max_dist);
+						}
+					}
+				}
 			}
 			ImGui::End();
 		}

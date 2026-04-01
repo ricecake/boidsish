@@ -11,7 +11,10 @@ flat in float TextureSlice;
 in float      perturbFactor;
 in float      tessFactor;
 in float      vIsWater;
+in float      vErosionDelta;
+in float      vRidgeMap;
 
+#include "helpers/erosion.glsl"
 #include "helpers/fast_noise.glsl"
 #include "helpers/lighting.glsl"
 #include "helpers/terrain_noise.glsl"
@@ -252,7 +255,7 @@ void main() {
 
 	float dist = length(FragPos.xz - viewPos.xz);
 	// float n_fade = snoise(vec3(FragPos.xy / (25 * worldScale), time * 0.08));
-	float n_fade = fastSimplex3d(vec3(scaledFragPos.xy / (125 * worldScale), time * 0.09));
+	float n_fade = fastSimplex3d(vec3(FragPos.xz / (250 * worldScale), time * 0.09));
 	float fade_start = 560.0 * worldScale;
 	float fade_end = 570.0 * worldScale;
 	float fade = 1.0 - smoothstep(fade_start, fade_end, dist + n_fade * 40.0);
@@ -309,37 +312,34 @@ void main() {
 	// Noise Generation
 	// ========================================================================
 	// Scale world-space position for detail noise to match terrain scaling
-	// float largeNoise = sin(length(FragPos.xz) * 100);
-	// float medNoise = sin(length(FragPos.xz) * 2000);
-	// float fineNoise = sin(length(FragPos.xz) * 3000);
-	// float macroNoise = sin(length(FragPos.xz) * 44323);
-	// float combinedNoise = sin(length(FragPos.xz) * 5222343);
-
-	float largeNoise = sin(length(FragPos.xz) * 5);
-	float medNoise = sin(length(FragPos.xz) * 11);
-	float fineNoise = sin(length(FragPos.xz) * 13);
-	float macroNoise = sin(length(FragPos.xz) * 5);
-	float combinedNoise = sin(length(FragPos.xz) * 53);
+	// float largeNoise =    mix(fastFbm3d(FragPos * (baseFreq * 5.0)), fastWarpedFbm3d(FragPos * (baseFreq * 0.5)),
+	// fastWorley3d(FragPos * (baseFreq * 0.1)));
+	float largeNoise = fastWarpedFbm3d(FragPos * (baseFreq * 0.1));
+	float medNoise = largeNoise;
+	float fineNoise = largeNoise;
+	float macroNoise = largeNoise;
+	float combinedNoise = largeNoise;
 
 	float distanceFactor = dist * smoothstep(0, 10.0, FragPos.y);
 	float noseFade = fade_start - 100.0;
+	/*
+	    if (distanceFactor < noseFade) {
+	        largeNoise = fastWarpedFbm3d(FragPos * (baseFreq * 0.5));
+	        medNoise = fastWorley3d(vec3(largeNoise) * (baseFreq * 2.0));
+	        fineNoise = fastFbm3d(FragPos * (baseFreq * 5.0));
+	        macroNoise = fastSimplex3d(FragPos * (baseFreq * 0.1));
+	        combinedNoise = largeNoise * 0.6 + (1.0 - medNoise) * 0.3 + fineNoise * 0.1;
 
-	if (distanceFactor < noseFade) {
-		largeNoise = fastWarpedFbm3d(FragPos * (baseFreq * 0.5));
-		medNoise = fastWorley3d(vec3(largeNoise) * (baseFreq * 2.0));
-		fineNoise = fastFbm3d(FragPos * (baseFreq * 5.0));
-		macroNoise = fastSimplex3d(FragPos * (baseFreq * 0.1));
-		combinedNoise = largeNoise * 0.6 + (1.0 - medNoise) * 0.3 + fineNoise * 0.1;
-
-		if (distanceFactor > 250) {
-			float angle = 1.0 - dot(viewDir, viewPos - FragPos);
-			largeNoise = mix(largeNoise, 1.0, angle * smoothstep(noseFade, fade_end, distanceFactor));
-			medNoise = mix(medNoise, 1.0, angle * smoothstep(noseFade, fade_end, distanceFactor));
-			fineNoise = mix(fineNoise, 1.0, angle * smoothstep(noseFade, fade_end, distanceFactor));
-			macroNoise = mix(macroNoise, 1.0, angle * smoothstep(noseFade, fade_end, distanceFactor));
-			combinedNoise = mix(combinedNoise, 1.0, angle * smoothstep(noseFade, fade_end, distanceFactor));
-		}
-	}
+	        if (distanceFactor > 250) {
+	            float angle = 1.0 - dot(viewDir, viewPos - FragPos);
+	            largeNoise = mix(largeNoise, 1.0, angle * smoothstep(noseFade, fade_end, distanceFactor));
+	            medNoise = mix(medNoise, 1.0, angle * smoothstep(noseFade, fade_end, distanceFactor));
+	            fineNoise = mix(fineNoise, 1.0, angle * smoothstep(noseFade, fade_end, distanceFactor));
+	            macroNoise = mix(macroNoise, 1.0, angle * smoothstep(noseFade, fade_end, distanceFactor));
+	            combinedNoise = mix(combinedNoise, 1.0, angle * smoothstep(noseFade, fade_end, distanceFactor));
+	        }
+	    }
+	*/
 
 	TerrainMaterial finalMaterial;
 	// ========================================================================
@@ -404,6 +404,12 @@ void main() {
 	float rockyVar = fineNoise;
 	float rockyMask = smoothstep(0.5, 0.2, slope); // More variety on steeper slopes
 	finalMaterial.albedo = mix(finalMaterial.albedo, finalMaterial.albedo * (1.0 + rockyVar * 0.2), rockyMask);
+
+	// ========================================================================
+	// Advanced Erosion Filter Coloration
+	// ========================================================================
+	// Apply the extracted color mapping using the data passed from the tessellation shader
+	finalMaterial.albedo = applyErosionColorMappingDefault(finalMaterial.albedo, vRidgeMap, vErosionDelta);
 
 	vec3  albedo = finalMaterial.albedo;
 	float roughness = finalMaterial.roughness;

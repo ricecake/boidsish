@@ -4,6 +4,7 @@
 #include <mutex>
 #include <vector>
 
+#include "IManager.h"
 #include "constants.h"
 #include "fire_effect.h"
 #include "shader.h"
@@ -38,13 +39,13 @@ namespace Boidsish {
 		int       _padding_emitter[2];
 	};
 
-	class FireEffectManager {
+	class FireEffectManager: public IManager {
 	public:
 		FireEffectManager();
 		~FireEffectManager();
 
 		// Initialize shaders and buffers. Must be called from main thread with OpenGL context.
-		void Initialize();
+		void Initialize() override;
 
 		// Returns true if fire effects are available (compute shader compiled successfully)
 		bool IsAvailable() const;

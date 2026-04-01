@@ -95,10 +95,16 @@ namespace Boidsish {
 		bool  artistic_shimmery = false;
 		bool  artistic_glitched = false;
 		bool  artistic_wireframe = false;
+		bool  erosion_enabled = true;
 		bool  enable_shadows = true;
 		float wind_strength = 0.15f;
 		float wind_speed = 0.15f;
 		float wind_frequency = 0.1f;
+		float erosion_strength = 0.12f;
+		float erosion_scale = 0.15f;
+		float erosion_detail = 1.5f;
+		float erosion_gully_weight = 0.5f;
+		float erosion_max_dist = 450.0f;
 		float ambient_particle_density = 0.15f;
 	};
 
