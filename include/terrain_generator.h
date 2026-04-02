@@ -20,6 +20,7 @@
 namespace Boidsish {
 	struct Frustum;
 	struct Camera;
+	class TerrainGPUGenerator;
 } // namespace Boidsish
 
 namespace Boidsish {
@@ -339,9 +340,11 @@ namespace Boidsish {
 
 		// Cache and async management
 		ThreadPool                                                         thread_pool_;
+		std::unique_ptr<TerrainGPUGenerator>                               gpu_generator_;
 		std::map<std::pair<int, int>, std::shared_ptr<Terrain>>            chunk_cache_;
 		std::vector<std::shared_ptr<Terrain>>                              visible_chunks_;
 		std::map<std::pair<int, int>, TaskHandle<TerrainGenerationResult>> pending_chunks_;
+		std::set<std::pair<int, int>>                                      pending_gpu_chunks_;
 
 		// Deformation-specific async management
 		std::map<std::pair<int, int>, TaskHandle<TerrainGenerationResult>> pending_deformations_;

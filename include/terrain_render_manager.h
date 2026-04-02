@@ -69,6 +69,25 @@ namespace Boidsish {
 		);
 
 		/**
+		 * @brief Allocate a texture slice for a chunk that will be generated on the GPU.
+		 * Uses LRU eviction if necessary.
+		 * @return The allocated slice index, or -1 on failure.
+		 */
+		int AllocateSlice(std::pair<int, int> chunk_key);
+
+		/**
+		 * @brief Register a chunk that has already been populated on the GPU.
+		 * Skips data upload.
+		 */
+		void RegisterPrepopulatedChunk(
+			std::pair<int, int> chunk_key,
+			int                 slice,
+			float               min_y,
+			float               max_y,
+			const glm::vec3&    world_offset
+		);
+
+		/**
 		 * @brief Unregister a terrain chunk, freeing its texture slice.
 		 */
 		void UnregisterChunk(std::pair<int, int> chunk_key);
@@ -156,6 +175,11 @@ namespace Boidsish {
 		 */
 		void BindTerrainData(ShaderBase& shader_base) const;
 
+		/**
+		 * @brief Bind terrain textures as images for compute shader writing.
+		 */
+		void BindTerrainImages(GLuint height_unit, GLuint biome_unit) const;
+
 		void SetNoise(const GLuint& noise, const GLuint& curl, const GLuint& extra = 0) {
 			if (noise != 0) {
 				noise_texture_ = noise;
@@ -226,7 +250,8 @@ namespace Boidsish {
 		GLuint noise_texture_ = 0;
 		GLuint curl_texture_ = 0;
 		GLuint extra_noise_texture_ = 0;
-		GLuint biome_ubo_ = 0; // UBO for BiomeShaderProperties
+		GLuint biome_ubo_ = 0;     // UBO for BiomeShaderProperties
+		GLuint biome_gen_ubo_ = 0; // UBO for biome generation parameters
 
 		// Global terrain grid resources
 		GLuint chunk_grid_texture_ = 0;      // GL_TEXTURE_2D (R16I: texture_slice index, -1 if none)
