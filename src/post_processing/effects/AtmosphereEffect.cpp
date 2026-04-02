@@ -170,7 +170,7 @@ namespace Boidsish {
 				int next_temporal = 1 - temporal_index_;
 
 				temporal_shader_->use();
-				temporal_shader_->setFloat("uBlendAlpha", has_valid_history_ ? 0.9f : 0.0f);
+				temporal_shader_->setFloat("uBlendAlpha", has_valid_history_ ? 0.75f : 0.0f);
 				temporal_shader_->setInt("uFrameIndex", frame_index_);
 				temporal_shader_->setMat4("uInvView", invView);
 				temporal_shader_->setMat4("uInvProjection", invProj);

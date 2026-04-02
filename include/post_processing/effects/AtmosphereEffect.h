@@ -190,7 +190,7 @@ namespace Boidsish {
 
 			int   width_ = 0;
 			int   height_ = 0;
-			float render_scale_ = 0.25f;
+			float render_scale_ = 0.50f;
 
 			GLuint low_res_fbo_ = 0;
 			GLuint low_res_texture_ = 0;
