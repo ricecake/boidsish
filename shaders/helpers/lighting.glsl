@@ -37,20 +37,34 @@ float calculateCloudShadow(int light_index, vec3 frag_pos) {
 
 	float weatherWarpFactor = 1.0;
 	if (cloudWarp > 0.0) {
-		float camDist = length(frag_pos.xz - viewPos.xz);
+		float camDist = length(cloudPos.xz - viewPos.xz);
 		weatherWarpFactor = smoothstep(0.0, cloudWarp * worldScale, camDist);
 	}
-	float weatherMap = weatherWarpFactor *
-		(fastWorley3d(vec3(frag_pos.xz / (4000 * worldScale), time * 0.01)) * 0.5 + 0.5);
+
+	vec2 weatherUV = cloudPos.xz / (4000.0 * worldScale);
+	float weatherMap = weatherWarpFactor * (fastWorley3d(vec3(weatherUV, time * 0.01)) * 0.5 + 0.5);
+
+	vec2 heightUV = cloudPos.xz / (2500.0 * worldScale);
+	float heightMap = weatherWarpFactor * (fastWorley3d(vec3(heightUV, time * 0.004)) * 0.5 + 0.5);
+
+	CloudWeather weather;
+	weather.weatherMap = weatherMap;
+	weather.heightMap = heightMap;
+
+	CloudProperties props;
+	props.altitude = cloudAltitude;
+	props.thickness = cloudThickness;
+	props.densityBase = cloudDensity;
+	props.coverage = cloudCoverage;
+	props.worldScale = worldScale;
+
+	CloudLayer layer = computeCloudLayer(weather, props);
 
 	float d = calculateCloudDensity(
 		cloudPos,
-		weatherMap,
-		cloudAltitude,
-		cloudThickness,
-		cloudDensity,
-		cloudCoverage,
-		worldScale,
+		weather,
+		layer,
+		props,
 		time,
 		true
 	);
@@ -797,7 +811,7 @@ vec4 apply_emissive_surface(
  *
  * @param frag_pos Fragment world position
  * @param normal Surface normal
- * @param emissive_color The glow color
+ * @param emissive_color The glow color of the object
  * @param emissive_intensity Glow brightness (box HDR, can exceed 1.0)
  * @param base_albedo Base color for non-emissive parts
  * @param roughness PBR roughness for non-emissive parts

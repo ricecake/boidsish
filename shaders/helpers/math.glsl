@@ -26,3 +26,7 @@ float beerPowder(float d, float local_d) {
 	// Ensuring sunny side isn't black when d is small
 	return max(exp(-d), exp(-d * 0.15) * 0.7 * (1.0 - exp(-local_d * 2.0)));
 }
+
+float remap(float value, float low1, float high1, float low2, float high2) {
+	return low2 + (value - low1) * (high2 - low2) / max(0.0001, (high1 - low1));
+}

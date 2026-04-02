@@ -51,10 +51,17 @@ void main() {
 		worldPos = viewPos + rayDir * dist;
 	}
 
-	float baseFloor = (cloudAltitude - 10.0) * worldScale;
-	float baseCeiling = (cloudAltitude + cloudThickness + 300.0) * worldScale;
-	float R_floor = R_earth + baseFloor;
-	float R_ceiling = R_earth + baseCeiling;
+	// Dynamic cloud parameters
+	CloudProperties props;
+	props.altitude = cloudAltitude;
+	props.thickness = cloudThickness;
+	props.densityBase = cloudDensity;
+	props.coverage = cloudCoverage;
+	props.worldScale = worldScale;
+
+	// Wide vertical bounds for intersection (covering all possible dynamic offsets)
+	float R_floor = R_earth + (cloudAltitude - 100.0) * worldScale;
+	float R_ceiling = R_earth + (cloudAltitude + cloudThickness + 1100.0) * worldScale;
 
 	vec3 earthCenter = vec3(viewPos.x, -R_earth, viewPos.z);
 	vec3 relRo = viewPos - earthCenter;
@@ -90,11 +97,6 @@ void main() {
 		float jitter = fastBlueNoise(TexCoords * 10.0 + vec2(sin(time * 0.07), cos(time * -0.05)));
 		float stepSize = (t_end - t_start) / float(samples);
 
-		vec3 local = viewPos + rayDir * t_start;
-		float adjustedTime = dayTime * smoothstep(0, 1, dayTime) * smoothstep(24, 23, dayTime);
-		vec3 localWeatherDelta = fastCurl3d((local.xyz / (1000 * worldScale)) + vec3(time*0.001));
-		float localWeather = (fastWorley3d(vec3((local.xz + adjustedTime*localWeatherDelta.xz) / (4000 * worldScale), time * 0.005)) * 0.5 + 0.5);
-
 		for (int i = 0; i < samples; i++) {
 			float t = t_start + (float(i) + jitter) * stepSize;
 			if (t > dist)
@@ -104,14 +106,30 @@ void main() {
 			vec3 p_curved = p;
 			p_curved.y = length(p - earthCenter) - R_earth;
 
+			// Sample weather at current ray position to avoid depth dependency
+			float weatherWarpFactor = 1.0;
+			if (cloudWarp > 0.0) {
+				float camDist = length(p.xz - viewPos.xz);
+				weatherWarpFactor = smoothstep(0.0, cloudWarp * worldScale, camDist);
+			}
+
+			vec2 weatherUV = p.xz / (4000.0 * worldScale);
+			float weatherMap = weatherWarpFactor * (fastWorley3d(vec3(weatherUV, time * 0.01)) * 0.5 + 0.5);
+
+			vec2 heightUV = p.xz / (2500.0 * worldScale);
+			float heightMap = weatherWarpFactor * (fastWorley3d(vec3(heightUV, time * 0.004)) * 0.5 + 0.5);
+
+			CloudWeather weather;
+			weather.weatherMap = weatherMap;
+			weather.heightMap = heightMap;
+
+			CloudLayer layer = computeCloudLayer(weather, props);
+
 			float d = calculateCloudDensity(
 				p_curved,
-				localWeather,
-				cloudAltitude,
-				cloudThickness,
-				cloudDensity,
-				cloudCoverage,
-				worldScale,
+				weather,
+				layer,
+				props,
 				time,
 				false
 			);
@@ -132,7 +150,7 @@ void main() {
 				float phase = cloudPhase(cosTheta);
 
 				float shadowDensity = 0.0;
-				float shadowStepSize = (baseCeiling - baseFloor) / float(shadow_samples) * 0.1;
+				float shadowStepSize = layer.thickness / float(shadow_samples) * 0.1;
 				for (int k = 0; k < shadow_samples; k++) {
 					vec3 sp = p + L * (float(k) + 0.5) * shadowStepSize;
 					vec3 sp_curved = sp;
@@ -140,12 +158,9 @@ void main() {
 
 					shadowDensity += calculateCloudDensity(
 						sp_curved,
-						localWeather,
-						cloudAltitude,
-						cloudThickness,
-						cloudDensity,
-						cloudCoverage,
-						worldScale,
+						weather,
+						layer,
+						props,
 						time,
 						true
 					);
