@@ -166,7 +166,7 @@ namespace Boidsish {
 			float     cloud_warp_ = 75.0f;
 			glm::vec3 cloud_color_ = glm::vec3(0.95f, 0.95f, 1.0f);
 
-			float     rayleigh_scale_ = 1.0f;
+			float     rayleigh_scale_ = 1.1f;
 			float     mie_scale_ = 0.1f; // Reduced default to prevent "washed out" haze
 			float     mie_anisotropy_ = 0.8f;
 			float     multi_scat_scale_ = 0.1f;
