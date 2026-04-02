@@ -90,6 +90,9 @@ void main() {
 		float jitter = fastBlueNoise(TexCoords * 10.0 + vec2(sin(time * 0.07), cos(time * -0.05)));
 		float stepSize = (t_end - t_start) / float(samples);
 
+		vec3 local = viewPos + rayDir * t_start;
+		float localWeather = (fastWorley3d(vec3(local.xz / (4000 * worldScale), time * 0.01)) * 0.5 + 0.5);
+
 		for (int i = 0; i < samples; i++) {
 			float t = t_start + (float(i) + jitter) * stepSize;
 			if (t > dist)
@@ -98,12 +101,6 @@ void main() {
 			vec3 p = viewPos + rayDir * t;
 			vec3 p_curved = p;
 			p_curved.y = length(p - earthCenter) - R_earth;
-
-			float localWarp = 1.0;
-			if (cloudWarp > 0.0) {
-				localWarp = smoothstep(0.0, cloudWarp * worldScale, length(p.xz - viewPos.xz));
-			}
-			float localWeather = localWarp * (fastWorley3d(vec3(p.xz / (4000 * worldScale), time * 0.01)) * 0.5 + 0.5);
 
 			float d = calculateCloudDensity(
 				p_curved,
@@ -151,7 +148,7 @@ void main() {
 					);
 				}
 				float opticalDepthToLight = shadowDensity * shadowStepSize * 0.01;
-				float shadowTerm = mix(beerPowder(opticalDepthToLight, d), exp(-opticalDepthToLight) * 0.5, 0.6);
+				float shadowTerm = mix(beerPowder(opticalDepthToLight, d), exp(-opticalDepthToLight) * 0.5, 0.0);
 
 				stepScattering += lights[j].color * shadowTerm * phase * lights[j].intensity * (j == 0 ? 10.0 : 2.0);
 			}

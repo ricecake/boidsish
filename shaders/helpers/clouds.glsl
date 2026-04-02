@@ -44,14 +44,14 @@ float calculateCloudDensity(
 	}
 
 	// Base noise for cloud shapes
-	vec3 p_warped = p + 5.0 * fastCurl3d(p / (400.0 * worldScale) + time * 0.02);
-	vec3 p_scaled = p_warped / (700.0 * worldScale);
+	vec3 p_warped = p + 5.0 * fastCurl3d(p / (900.0 * worldScale) + time * 0.02);
+	vec3 p_scaled = p_warped / (50000.0 * worldScale);
 
-	float baseNoise = 1.0 - fastWorley3d(p_scaled + time * 0.005);
+	float baseNoise = fastWorley3d(p_scaled + time * 0.005);
 
 	// Add ridges and textures for definition
-	float ridges = fastRidge3d(p_warped / (600.0 * worldScale));
-	float detail = fastFbm3d(p_warped / (450.0 * worldScale) + time * 0.01) * 0.5 + 0.5;
+	float ridges = fastRidge3d(p_warped / (1600.0 * worldScale));
+	float detail = fastFbm3d(p_warped / (1450.0 * worldScale) + time * 0.01) * 0.5 + 0.5;
 
 	// Combine noises
 	float finalNoise = baseNoise * (0.6 + 0.4 * ridges);
