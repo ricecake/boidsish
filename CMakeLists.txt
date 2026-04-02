@@ -197,6 +197,9 @@ add_executable(shader_preprocessor tools/shader_preprocessor.cpp)
 target_link_libraries(shader_preprocessor PRIVATE boidsish)
 add_dependencies(check shader_preprocessor)
 
+add_executable(terrain_analyzer tools/terrain_analyzer.cpp)
+target_link_libraries(terrain_analyzer PRIVATE boidsish)
+
 # Find glslangValidator
 find_program(GLSLANG_VALIDATOR_EXE NAMES glslangValidator)
 

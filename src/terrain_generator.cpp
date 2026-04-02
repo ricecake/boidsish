@@ -418,8 +418,8 @@ namespace Boidsish {
 
 	auto TerrainGenerator::biomefbm(glm::vec2 pos, BiomeAttributes attr) const {
 		glm::vec3 height(0, 0, 0);
-		float     amp = 0.5f;
-		float     freq = 0.99f;
+		float     amp = 0.8f;
+		float     freq = 0.005f;
 
 		// Initial low-frequency pass to establish "Base Shape"
 		glm::vec3 base = Simplex::dnoise(pos * freq);
@@ -429,8 +429,8 @@ namespace Boidsish {
 		height = base * amp;
 
 		for (int i = 1; i < 6; i++) {
-			amp *= 0.5f;
-			freq *= 2.0f;
+			amp *= 0.45f;
+			freq *= 2.1f;
 			glm::vec3 n = Simplex::dnoise(pos * freq);
 			n.y *= freq;
 			n.z *= freq;
@@ -444,27 +444,19 @@ namespace Boidsish {
 			height += (n * amp * correction * mask);
 		}
 
-		// 3. Final Floor Shaping
-		if (height.x < attr.floorLevel) {
-			float t = glm::smoothstep(attr.floorLevel - 0.1f, attr.floorLevel, height.x);
-			height.x = t * attr.floorLevel;
-			height.y *= t;
-			height.z *= t;
-		}
+		// 3. Normalization and Non-linear Shaping (for Smooth Plains and Broad Valleys)
+		float h_norm = std::clamp(height.x * 0.5f + 0.5f, 0.0001f, 1.0f);
+		float h_shaped = std::pow(h_norm, 1.5f);
+		float dh_dh = 1.5f * std::pow(h_norm, 0.5f);
 
-		height.x = height.x * 0.5f + 0.5f;
-		height.y = height.y * 0.5f;
-		height.z = height.z * 0.5f;
+		height.x = h_shaped;
+		height.y *= 0.5f * dh_dh;
+		height.z *= 0.5f * dh_dh;
 
-		if (height.x > 0) {
-			float floorScale = attr.floorLevel;
-			height.x *= floorScale;
-			// Dampen normal steepness slightly to prevent extreme lighting artifacts in depressions
-			// while keeping the visual height the same. 0.4f provides a good balance.
-			float normalScale = floorScale; // * 0.4f;
-			height.y *= normalScale;
-			height.z *= normalScale;
-		}
+		float floorScale = attr.floorLevel;
+		height.x *= floorScale;
+		height.y *= floorScale;
+		height.z *= floorScale;
 
 		return height;
 	};
