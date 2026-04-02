@@ -240,7 +240,7 @@ namespace Boidsish {
 	}
 
 	void WeatherManager::Update(float deltaTime, float totalTime, const glm::vec3& cameraPos) {
-		if (!enabled_ || presets_.empty())
+		if (presets_.empty())
 			return;
 
 		PROJECT_PROFILE_SCOPE("WeatherManager::Update");
@@ -313,6 +313,9 @@ namespace Boidsish {
 			cached_targets_.mie_scale_height = blended.mie_scale_height.Lerp(sampleNoise(14.14f));
 			cached_targets_.cloud_coverage = blended.cloud_coverage.Lerp(sampleNoise(15.15f));
 		}
+
+		if (!enabled_)
+			return;
 
 		// Always update attributes toward cached targets using the spring system
 		UpdateAttribute(WeatherAttribute::SunIntensity, cached_targets_.sun_intensity, deltaTime);
