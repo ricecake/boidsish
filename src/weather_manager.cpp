@@ -10,6 +10,7 @@ namespace Boidsish {
 
 	WeatherManager::WeatherManager() {
 		InitializePresets();
+		SetEnabled(true);
 
 		// Initialize default paces for various attributes
 		SetPace(WeatherAttribute::SunIntensity, 0.5f);

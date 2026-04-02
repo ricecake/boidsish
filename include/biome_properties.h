@@ -61,14 +61,14 @@ namespace Boidsish {
 
 	inline static const std::array<BiomeAttributes, 8> kBiomes = {
 		// spikeDamp, detailMask, floor, weight, albedo, roughness, metallic, detailStr, detailScale
-		BiomeAttributes{1.00f, 0.90f, 5.00f, 5.0f, glm::vec3(0.76f, 0.70f, 0.55f), 0.90f, 0.0f, 0.10f, 40.0f},  // Sand
-		BiomeAttributes{0.80f, 0.50f, 20.00f, 3.0f, glm::vec3(0.20f, 0.45f, 0.15f), 0.70f, 0.0f, 0.20f, 20.0f}, // Lush
+		BiomeAttributes{2.00f, 0.95f, 5.00f, 5.0f, glm::vec3(0.76f, 0.70f, 0.55f), 0.90f, 0.0f, 0.10f, 40.0f},  // Sand
+		BiomeAttributes{1.50f, 0.80f, 20.00f, 3.0f, glm::vec3(0.20f, 0.45f, 0.15f), 0.70f, 0.0f, 0.20f, 20.0f}, // Lush
 	                                                                                                            // Grass
-		BiomeAttributes{0.05f, 0.60f, 40.00f, 2.0f, glm::vec3(0.45f, 0.50f, 0.25f), 0.80f, 0.0f, 0.15f, 15.0f}, // Dry
+		BiomeAttributes{1.00f, 0.70f, 40.00f, 2.0f, glm::vec3(0.45f, 0.50f, 0.25f), 0.80f, 0.0f, 0.15f, 15.0f}, // Dry
 	                                                                                                            // Grass
 		BiomeAttributes{
-			0.30f,
-			0.50f,
+			0.80f,
+			0.60f,
 			60.00f,
 			1.0f,
 			glm::vec3(0.12f, 0.28f, 0.10f),
@@ -78,8 +78,8 @@ namespace Boidsish {
 			10.0f
 		}, // Forest
 		BiomeAttributes{
-			0.40f,
-			0.40f,
+			0.60f,
+			0.50f,
 			80.00f,
 			6.0f,
 			glm::vec3(0.35f, 0.45f, 0.25f),
@@ -88,11 +88,11 @@ namespace Boidsish {
 			0.25f,
 			15.0f
 		}, // Alpine Meadow
-		BiomeAttributes{0.30f, 0.20f, 100.0f, 1.0f, glm::vec3(0.35f, 0.30f, 0.25f), 0.60f, 0.0f, 0.50f, 5.0f}, // Brown
+		BiomeAttributes{0.40f, 0.30f, 100.0f, 1.0f, glm::vec3(0.35f, 0.30f, 0.25f), 0.60f, 0.0f, 0.50f, 5.0f}, // Brown
 	                                                                                                           // Rock
-		BiomeAttributes{0.10f, 0.10f, 150.0f, 3.0f, glm::vec3(0.45f, 0.45f, 0.48f), 0.60f, 0.0f, 0.40f, 4.0f}, // Grey
+		BiomeAttributes{0.20f, 0.20f, 150.0f, 3.0f, glm::vec3(0.45f, 0.45f, 0.48f), 0.60f, 0.0f, 0.40f, 4.0f}, // Grey
 	                                                                                                           // Rock
-		BiomeAttributes{0.05f, 0.50f, 250.0f, 5.0f, glm::vec3(0.95f, 0.97f, 1.00f), 0.40f, 0.0f, 0.05f, 30.0f} // Snow
+		BiomeAttributes{0.10f, 0.50f, 250.0f, 5.0f, glm::vec3(0.95f, 0.97f, 1.00f), 0.40f, 0.0f, 0.05f, 30.0f} // Snow
 	};
 
 } // namespace Boidsish
