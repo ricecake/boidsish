@@ -116,24 +116,24 @@ namespace Boidsish {
 	 */
 	struct CurrentWeather {
 		float     sun_intensity = 1.0f;
-		float     wind_strength = 0.065f;
+		float     wind_strength = 0.05f;
 		float     wind_speed = 0.075f;
 		float     wind_frequency = 0.01f;
-		float     cloud_density = 0.5f;
-		float     cloud_altitude = 175.0f;
-		float     cloud_thickness = 10.0f;
+		float     cloud_density = 20.0f;
+		float     cloud_altitude = 400.0f;
+		float     cloud_thickness = 200.0f;
 		float     haze_density = 0.003f;
 		float     haze_height = 20.0f;
-		float     rayleigh_scale = 1.0f;
+		float     rayleigh_scale = 1.1f;
 		float     mie_scale = 0.1f;
-		float     atmosphere_height = 60.0f;
+		float     atmosphere_height = 120.0f;
 		glm::vec3 rayleigh_scattering = glm::vec3(5.802f, 13.558f, 33.100f) * 1e-3f;
 		float     mie_scattering = 3.996f * 1e-3f;
 		float     mie_extinction = 4.440f * 1e-3f;
 		glm::vec3 ozone_absorption = glm::vec3(0.650f, 1.881f, 0.085f) * 1e-3f;
 		float     rayleigh_scale_height = 8.0f;
 		float     mie_scale_height = 1.2f;
-		float     cloud_coverage = 0.5f;
+		float     cloud_coverage = 0.75f;
 	};
 
 	class WeatherManager {
@@ -212,7 +212,7 @@ namespace Boidsish {
 		void InitializePresets();
 		void UpdateAttribute(WeatherAttribute attr, float target, float deltaTime);
 
-		bool  enabled_ = false;
+		bool  enabled_ = true;
 		float time_scale_ = 0.005f;    // Low frequency over time
 		float spatial_scale_ = 0.001f; // Low frequency over space
 		float hold_threshold_ = 0.05f; // Noise-space distance threshold for updates

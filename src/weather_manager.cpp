@@ -145,68 +145,71 @@ namespace Boidsish {
 	}
 
 	void WeatherManager::InitializePresets() {
+		// Initialize cached targets to default sunny values to prevent initial transition
+		cached_targets_ = current_;
+
 		presets_.clear();
 		// 1. Sunny
 		WeatherPreset sunny;
 		sunny.name = "Sunny";
 		sunny.weight = 10.0f;
-		sunny.settings.sun_intensity = {0.8f, 1.2f};
+		sunny.settings.sun_intensity = {0.9f, 1.1f};
 		sunny.settings.wind_strength = {0.02f, 0.08f};
-		sunny.settings.wind_speed = {0.05f, 0.15f};
-		sunny.settings.wind_frequency = {0.01f, 0.03f};
-		sunny.settings.cloud_density = {0.0f, 0.2f};
-		sunny.settings.cloud_altitude = {180.0f, 220.0f};
-		sunny.settings.cloud_thickness = {5.0f, 15.0f};
-		sunny.settings.haze_density = {0.001f, 0.003f};
-		sunny.settings.haze_height = {10.0f, 30.0f};
+		sunny.settings.wind_speed = {0.05f, 0.10f};
+		sunny.settings.wind_frequency = {0.01f, 0.02f};
+		sunny.settings.cloud_density = {18.0f, 22.0f};
+		sunny.settings.cloud_altitude = {380.0f, 420.0f};
+		sunny.settings.cloud_thickness = {180.0f, 220.0f};
+		sunny.settings.haze_density = {0.002f, 0.004f};
+		sunny.settings.haze_height = {15.0f, 25.0f};
 		sunny.settings.rayleigh_scale = {1.0f, 1.2f};
-		sunny.settings.mie_scale = {0.05f, 0.15f};
-		sunny.settings.atmosphere_height = {50.0f, 70.0f};
+		sunny.settings.mie_scale = {0.08f, 0.12f};
+		sunny.settings.atmosphere_height = {110.0f, 130.0f};
 		sunny.settings.rayleigh_scale_height = {7.0f, 9.0f};
-		sunny.settings.mie_scale_height = {1.0f, 1.5f};
-		sunny.settings.cloud_coverage = {0.1f, 0.3f};
+		sunny.settings.mie_scale_height = {1.0f, 1.4f};
+		sunny.settings.cloud_coverage = {0.70f, 0.80f};
 		presets_.push_back(sunny);
 
 		// 2. Cloudy
 		WeatherPreset cloudy;
 		cloudy.name = "Cloudy";
 		cloudy.weight = 6.0f;
-		cloudy.settings.sun_intensity = {0.4f, 0.7f};
+		cloudy.settings.sun_intensity = {0.5f, 0.8f};
 		cloudy.settings.wind_strength = {0.1f, 0.2f};
 		cloudy.settings.wind_speed = {0.2f, 0.4f};
 		cloudy.settings.wind_frequency = {0.02f, 0.05f};
-		cloudy.settings.cloud_density = {0.4f, 0.7f};
-		cloudy.settings.cloud_altitude = {150.0f, 180.0f};
-		cloudy.settings.cloud_thickness = {20.0f, 40.0f};
-		cloudy.settings.haze_density = {0.004f, 0.008f};
+		cloudy.settings.cloud_density = {30.0f, 50.0f};
+		cloudy.settings.cloud_altitude = {250.0f, 350.0f};
+		cloudy.settings.cloud_thickness = {300.0f, 500.0f};
+		cloudy.settings.haze_density = {0.005f, 0.010f};
 		cloudy.settings.haze_height = {30.0f, 60.0f};
 		cloudy.settings.rayleigh_scale = {1.2f, 1.5f};
 		cloudy.settings.mie_scale = {0.2f, 0.4f};
-		cloudy.settings.atmosphere_height = {40.0f, 60.0f};
+		cloudy.settings.atmosphere_height = {80.0f, 110.0f};
 		cloudy.settings.rayleigh_scale_height = {6.0f, 8.0f};
 		cloudy.settings.mie_scale_height = {1.5f, 2.5f};
-		cloudy.settings.cloud_coverage = {0.4f, 0.7f};
+		cloudy.settings.cloud_coverage = {0.80f, 0.90f};
 		presets_.push_back(cloudy);
 
 		// 3. Overcast
 		WeatherPreset overcast;
 		overcast.name = "Overcast";
 		overcast.weight = 4.0f;
-		overcast.settings.sun_intensity = {0.2f, 0.4f};
+		overcast.settings.sun_intensity = {0.2f, 0.5f};
 		overcast.settings.wind_strength = {0.2f, 0.5f};
 		overcast.settings.wind_speed = {0.4f, 0.8f};
 		overcast.settings.wind_frequency = {0.04f, 0.08f};
-		overcast.settings.cloud_density = {0.8f, 1.0f};
-		overcast.settings.cloud_altitude = {100.0f, 140.0f};
-		overcast.settings.cloud_thickness = {40.0f, 70.0f};
+		overcast.settings.cloud_density = {60.0f, 100.0f};
+		overcast.settings.cloud_altitude = {100.0f, 200.0f};
+		overcast.settings.cloud_thickness = {500.0f, 800.0f};
 		overcast.settings.haze_density = {0.01f, 0.02f};
 		overcast.settings.haze_height = {50.0f, 100.0f};
 		overcast.settings.rayleigh_scale = {1.5f, 2.0f};
 		overcast.settings.mie_scale = {0.5f, 1.0f};
-		overcast.settings.atmosphere_height = {30.0f, 50.0f};
+		overcast.settings.atmosphere_height = {50.0f, 80.0f};
 		overcast.settings.rayleigh_scale_height = {5.0f, 7.0f};
 		overcast.settings.mie_scale_height = {3.0f, 5.0f};
-		overcast.settings.cloud_coverage = {0.8f, 1.0f};
+		overcast.settings.cloud_coverage = {0.90f, 1.00f};
 		presets_.push_back(overcast);
 
 		// 4. Foggy
@@ -217,17 +220,17 @@ namespace Boidsish {
 		foggy.settings.wind_strength = {0.01f, 0.05f};
 		foggy.settings.wind_speed = {0.01f, 0.1f};
 		foggy.settings.wind_frequency = {0.005f, 0.02f};
-		foggy.settings.cloud_density = {0.3f, 0.6f};
-		foggy.settings.cloud_altitude = {200.0f, 300.0f};
-		foggy.settings.cloud_thickness = {10.0f, 30.0f};
+		foggy.settings.cloud_density = {20.0f, 40.0f};
+		foggy.settings.cloud_altitude = {150.0f, 250.0f};
+		foggy.settings.cloud_thickness = {50.0f, 150.0f};
 		foggy.settings.haze_density = {0.03f, 0.06f};
 		foggy.settings.haze_height = {80.0f, 150.0f};
 		foggy.settings.rayleigh_scale = {2.0f, 3.0f};
 		foggy.settings.mie_scale = {1.5f, 4.0f};
-		foggy.settings.atmosphere_height = {20.0f, 40.0f};
+		foggy.settings.atmosphere_height = {30.0f, 50.0f};
 		foggy.settings.rayleigh_scale_height = {4.0f, 6.0f};
 		foggy.settings.mie_scale_height = {5.0f, 10.0f};
-		foggy.settings.cloud_coverage = {0.2f, 0.4f};
+		foggy.settings.cloud_coverage = {0.3f, 0.5f};
 		presets_.push_back(foggy);
 
 		// Calculate CDF

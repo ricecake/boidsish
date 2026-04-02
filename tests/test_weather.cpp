@@ -23,7 +23,7 @@ TEST(WeatherManagerTest, Update) {
     EXPECT_LE(w1.sun_intensity, 1.2f);
 
     EXPECT_GE(w1.cloud_density, 0.0f);
-    EXPECT_LE(w1.cloud_density, 1.0f);
+    EXPECT_LE(w1.cloud_density, 100.0f);
 
     // Move time and check for change
     wm.Update(1.0f, 100.0f, cameraPos);
