@@ -32,12 +32,12 @@ namespace Boidsish {
 
 						if (enabled) {
 							float time_scale = weather->GetTimeScale();
-							if (ImGui::SliderFloat("Weather Time Scale", &time_scale, 0.0f, 0.5f, "%.3f")) {
+							if (ImGui::SliderFloat("Weather Time Scale", &time_scale, 0.0f, 0.015f, "%.3f")) {
 								weather->SetTimeScale(time_scale);
 							}
 
 							float spatial_scale = weather->GetSpatialScale();
-							if (ImGui::SliderFloat("Weather Spatial Scale", &spatial_scale, 0.0f, 0.01f, "%.4f")) {
+							if (ImGui::SliderFloat("Weather Spatial Scale", &spatial_scale, 0.0f, 0.003f, "%.4f")) {
 								weather->SetSpatialScale(spatial_scale);
 							}
 
@@ -106,11 +106,11 @@ namespace Boidsish {
 								);
 								if (atmosphere_effect) {
 									float haze_density = atmosphere_effect->GetHazeDensity();
-									if (ImGui::SliderFloat("Haze Density", &haze_density, 0.0f, 0.05f, "%.4f")) {
+									if (ImGui::SliderFloat("Haze Density", &haze_density, 0.0f, 0.01f, "%.4f")) {
 										atmosphere_effect->SetHazeDensity(haze_density);
 									}
 									float haze_height = atmosphere_effect->GetHazeHeight();
-									if (ImGui::SliderFloat("Haze Height", &haze_height, 0.0f, 100.0f)) {
+									if (ImGui::SliderFloat("Haze Height", &haze_height, 0.0f, 50.0f)) {
 										atmosphere_effect->SetHazeHeight(haze_height);
 									}
 									glm::vec3 haze_color = atmosphere_effect->GetHazeColor();
@@ -118,19 +118,19 @@ namespace Boidsish {
 										atmosphere_effect->SetHazeColor(haze_color);
 									}
 									float cloud_density = atmosphere_effect->GetCloudDensity();
-									if (ImGui::SliderFloat("Cloud Density", &cloud_density, 0.0f, 1.0f)) {
+									if (ImGui::SliderFloat("Cloud Density", &cloud_density, 0.0f, 50.0f)) {
 										atmosphere_effect->SetCloudDensity(cloud_density);
 									}
 									float cloud_altitude = atmosphere_effect->GetCloudAltitude();
-									if (ImGui::SliderFloat("Cloud Altitude", &cloud_altitude, 0.0f, 200.0f)) {
+									if (ImGui::SliderFloat("Cloud Altitude", &cloud_altitude, 0.0f, 1000.0f)) {
 										atmosphere_effect->SetCloudAltitude(cloud_altitude);
 									}
 									float cloud_thickness = atmosphere_effect->GetCloudThickness();
-									if (ImGui::SliderFloat("Cloud Thickness", &cloud_thickness, 0.0f, 50.0f)) {
+									if (ImGui::SliderFloat("Cloud Thickness", &cloud_thickness, 0.0f, 500.0f)) {
 										atmosphere_effect->SetCloudThickness(cloud_thickness);
 									}
 									float cloud_coverage = atmosphere_effect->GetCloudCoverage();
-									if (ImGui::SliderFloat("Cloud Coverage", &cloud_coverage, 0.0f, 1.0f)) {
+									if (ImGui::SliderFloat("Cloud Coverage", &cloud_coverage, 0.0f, 2.0f)) {
 										atmosphere_effect->SetCloudCoverage(cloud_coverage);
 									}
 									float cloud_warp = atmosphere_effect->GetCloudWarp();
@@ -153,11 +153,11 @@ namespace Boidsish {
 									ImGui::Separator();
 									ImGui::Text("Scattering");
 									float rayleigh = atmosphere_effect->GetRayleighScale();
-									if (ImGui::SliderFloat("Rayleigh Scale", &rayleigh, 0.0f, 10.0f)) {
+									if (ImGui::SliderFloat("Rayleigh Scale", &rayleigh, 0.0f, 3.0f)) {
 										atmosphere_effect->SetRayleighScale(rayleigh);
 									}
 									float mie = atmosphere_effect->GetMieScale();
-									if (ImGui::SliderFloat("Mie Scale", &mie, 0.0f, 10.0f)) {
+									if (ImGui::SliderFloat("Mie Scale", &mie, 0.0f, 0.25f)) {
 										atmosphere_effect->SetMieScale(mie);
 									}
 									float mie_g = atmosphere_effect->GetMieAnisotropy();
@@ -165,11 +165,11 @@ namespace Boidsish {
 										atmosphere_effect->SetMieAnisotropy(mie_g);
 									}
 									float multi_scat = atmosphere_effect->GetMultiScatScale();
-									if (ImGui::SliderFloat("MultiScat Scale", &multi_scat, 0.0f, 2.0f)) {
+									if (ImGui::SliderFloat("MultiScat Scale", &multi_scat, 0.0f, 0.25f)) {
 										atmosphere_effect->SetMultiScatScale(multi_scat);
 									}
 									float ambient_scat = atmosphere_effect->GetAmbientScatScale();
-									if (ImGui::SliderFloat("Ambient Scat Scale", &ambient_scat, 0.0f, 1.0f)) {
+									if (ImGui::SliderFloat("Ambient Scat Scale", &ambient_scat, 0.0f, 2.0f)) {
 										atmosphere_effect->SetAmbientScatScale(ambient_scat);
 									}
 
@@ -177,7 +177,7 @@ namespace Boidsish {
 									ImGui::Text("Physical Parameters");
 
 									float atmos_height = atmosphere_effect->GetAtmosphereHeight();
-									if (ImGui::SliderFloat("Atmosphere Height (km)", &atmos_height, 10.0f, 100.0f)) {
+									if (ImGui::SliderFloat("Atmosphere Height (km)", &atmos_height, 0.0f, 300.0f)) {
 										atmosphere_effect->SetAtmosphereHeight(atmos_height);
 									}
 
@@ -203,12 +203,12 @@ namespace Boidsish {
 									}
 
 									float rayleigh_h = atmosphere_effect->GetRayleighScaleHeight();
-									if (ImGui::SliderFloat("Rayleigh Scale Height (km)", &rayleigh_h, 1.0f, 20.0f)) {
+									if (ImGui::SliderFloat("Rayleigh Scale Height (km)", &rayleigh_h, 0.0f, 20.0f)) {
 										atmosphere_effect->SetRayleighScaleHeight(rayleigh_h);
 									}
 
 									float mie_h = atmosphere_effect->GetMieScaleHeight();
-									if (ImGui::SliderFloat("Mie Scale Height (km)", &mie_h, 0.1f, 10.0f)) {
+									if (ImGui::SliderFloat("Mie Scale Height (km)", &mie_h, 0.0f, 3.0f)) {
 										atmosphere_effect->SetMieScaleHeight(mie_h);
 									}
 
@@ -216,7 +216,7 @@ namespace Boidsish {
 									ImGui::Text("Atmosphere Variance");
 
 									float var_scale = atmosphere_effect->GetColorVarianceScale();
-									if (ImGui::SliderFloat("Variance Scale", &var_scale, 0.1f, 10.0f)) {
+									if (ImGui::SliderFloat("Variance Scale", &var_scale, 0.0f, 2.5f)) {
 										atmosphere_effect->SetColorVarianceScale(var_scale);
 									}
 

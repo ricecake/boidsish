@@ -115,7 +115,7 @@ namespace Boidsish {
 							if (lights[i].type == DIRECTIONAL_LIGHT) {
 								bool changed = false;
 								changed |= ImGui::SliderFloat("Azimuth", &lights[i].azimuth, 0.0f, 360.0f);
-								changed |= ImGui::SliderFloat("Elevation", &lights[i].elevation, -90.0f, 90.0f);
+								changed |= ImGui::SliderFloat("Elevation", &lights[i].elevation, 0.0f, 180.0f);
 								if (changed) {
 									lights[i].UpdateDirectionFromAngles();
 								}
