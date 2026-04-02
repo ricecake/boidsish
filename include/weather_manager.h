@@ -133,7 +133,7 @@ namespace Boidsish {
 		glm::vec3 ozone_absorption = glm::vec3(0.650f, 1.881f, 0.085f) * 1e-3f;
 		float     rayleigh_scale_height = 8.0f;
 		float     mie_scale_height = 1.2f;
-		float     cloud_coverage = 0.5f;
+		float     cloud_coverage = 0.75f;
 	};
 
 	class WeatherManager {
