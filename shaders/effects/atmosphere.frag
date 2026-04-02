@@ -63,10 +63,6 @@ vec3 sampleSkyView(vec3 rd) {
 	return texture(u_skyViewLUT, vec2(u, v)).rgb;
 }
 
-float remap(float value, float low1, float high1, float low2, float high2) {
-	return low2 + (value - low1) * (high2 - low2) / max(0.0001, (high1 - low1));
-}
-
 void main() {
 	float depth = texture(depthTexture, TexCoords).r;
 	vec3  sceneColor = texture(sceneTexture, TexCoords).rgb;
@@ -100,15 +96,28 @@ void main() {
 		float camDist = length(worldPos.xz - viewPos.xz);
 		weatherWarpFactor = smoothstep(0.0, cloudWarp * worldScale, camDist);
 	}
-	float weatherMap = weatherWarpFactor *
-		(fastWorley3d(vec3(worldPos.xz / (4000 * worldScale), time * 0.01)) * 0.5 + 0.5);
 
-	// Cloud layer boundaries (matching calculateCloudDensity but for ray-box intersection)
-	float baseFloor = (cloudAltitude - 10.0) * worldScale;
-	float baseCeiling = (cloudAltitude + cloudThickness + 300.0) * worldScale;
+	vec2 weatherUV = worldPos.xz / (4000.0 * worldScale);
+	float weatherMap = weatherWarpFactor * (fastWorley3d(vec3(weatherUV, time * 0.01)) * 0.5 + 0.5);
 
-	float t_start = (baseFloor - viewPos.y) / (rayDir.y + 0.000001);
-	float t_end = (baseCeiling - viewPos.y) / (rayDir.y + 0.000001);
+	vec2 heightUV = worldPos.xz / (2500.0 * worldScale);
+	float heightMap = weatherWarpFactor * (fastWorley3d(vec3(heightUV, time * 0.004)) * 0.5 + 0.5);
+
+	CloudWeather weather;
+	weather.weatherMap = weatherMap;
+	weather.heightMap = heightMap;
+
+	CloudProperties props;
+	props.altitude = cloudAltitude;
+	props.thickness = cloudThickness;
+	props.densityBase = cloudDensity;
+	props.coverage = cloudCoverage;
+	props.worldScale = worldScale;
+
+	CloudLayer layer = computeCloudLayer(weather, props);
+
+	float t_start = (layer.baseFloor - viewPos.y) / (rayDir.y + 0.000001);
+	float t_end = (layer.baseCeiling - viewPos.y) / (rayDir.y + 0.000001);
 
 	if (t_start > t_end) {
 		float temp = t_start;
@@ -138,12 +147,9 @@ void main() {
 
 			float d = calculateCloudDensity(
 				p,
-				weatherMap,
-				cloudAltitude,
-				cloudThickness,
-				cloudDensity,
-				cloudCoverage,
-				worldScale,
+				weather,
+				layer,
+				props,
 				time,
 				false
 			);
@@ -163,17 +169,14 @@ void main() {
 				float phase = cloudPhase(cosTheta);
 
 				float shadowDensity = 0.0;
-				float shadowStepSize = (baseCeiling - baseFloor) / float(shadow_samples) * 0.1;
+				float shadowStepSize = layer.thickness / float(shadow_samples) * 0.1;
 				for (int k = 0; k < shadow_samples; k++) {
 					vec3 sp = p + L * (float(k) + 0.5) * shadowStepSize;
 					shadowDensity += calculateCloudDensity(
 						sp,
-						weatherMap,
-						cloudAltitude,
-						cloudThickness,
-						cloudDensity,
-						cloudCoverage,
-						worldScale,
+						weather,
+						layer,
+						props,
 						time,
 						true
 					);
