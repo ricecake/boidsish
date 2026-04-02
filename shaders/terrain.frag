@@ -66,6 +66,27 @@ struct TerrainMaterial {
 	float normalStrength;
 };
 
+float sampleProceduralHeightMap(vec2 uv, float grassF, float sandF, float rockF, float snowF) {
+	// Base noises at requested lower frequencies (division instead of multiplication)
+	float worleyDetail = 1.0 - fastWorley3d(vec3(uv / 18.0, 0.0));
+	float worleyClump = 1.0 - fastWorley3d(vec3(uv / 4.0, 0.0));
+	float simplexRipple = fastSimplex3d(vec3(uv / 10.0, 0.0)) * 0.5 + 0.5;
+	float ridgeRock = fastRidge3d(vec3(uv / 8.0, 0.0));
+
+	float grassHeight = mix(worleyDetail, worleyDetail * worleyClump, 0.5);
+	float sandHeight = simplexRipple * 0.3 + worleyDetail * 0.1;
+	float rockHeight = ridgeRock * 0.6 + worleyDetail * 0.2;
+	float snowHeight = simplexRipple * 0.2 + worleyDetail * 0.1;
+
+	float h = 0.0;
+	h += sandF * sandHeight;
+	h += grassF * grassHeight;
+	h += rockF * rockHeight;
+	h += snowF * snowHeight;
+
+	return clamp(h, 0.0, 1.0);
+}
+
 /**
  * Calculate valley/ridge factor using noise-based curvature approximation.
  * Valleys tend to accumulate moisture and be more lush.
@@ -418,8 +439,90 @@ void main() {
 	float normalScale = finalMaterial.normalScale;
 
 	// ========================================================================
-	// Detail Variation
+	// Detail Variation & Wind
 	// ========================================================================
+	float fateFactor = fastWorley3d(vec3(FragPos.xz / 50.0, time * 0.25)) * 0.5 + 0.50;
+	vec3  windForce = fastCurl3d(
+		vec3(FragPos.x * 0.0005 + time * 0.00125, FragPos.y * 0.001, FragPos.z * 0.0005 + time * 0.0125)
+	);
+	vec3 rawWindNudge = (fateFactor * windForce);
+
+	// Compute local tangent space for POM and Normal Perturbation
+	vec3 v_ref = abs(norm.z) < 0.999 ? vec3(0, 0, 1) : vec3(1, 0, 0);
+	vec3 tangent = normalize(cross(v_ref, norm));
+	vec3 bitangent = cross(norm, tangent);
+
+	// ========================================================================
+	// Procedural Surface Detail POM
+	// ========================================================================
+	float pomShadow = 1.0;
+	float rockFactor = cliffMask;
+	float sandFactor = beachMask;
+	float snowFactor = smoothstep(HEIGHT_SNOW_START, HEIGHT_PEAK, distortedHeight);
+	float grassFactor = (1.0 - rockFactor) * (1.0 - sandFactor) * (1.0 - snowFactor);
+
+	// Determine height scale for POM based on biome
+	float detailHeightScale = 0.0;
+	detailHeightScale += grassFactor * 0.35;
+	detailHeightScale += sandFactor * 0.05;
+	detailHeightScale += rockFactor * 0.15;
+	detailHeightScale += snowFactor * 0.08;
+
+	if (detailHeightScale > 0.01 && dist < 120.0) {
+		vec3  V = normalize(viewPos - FragPos);
+		vec3  V_tangent = vec3(dot(V, tangent), dot(V, bitangent), dot(V, norm));
+
+		// POM Loop
+		float numLayers = mix(24.0, 8.0, clamp(dist / 120.0, 0.0, 1.0));
+		float layerDepth = 1.0 / numLayers;
+		float currentLayerDepth = 0.0;
+		vec2  P = (V_tangent.xy / max(abs(V_tangent.z), 0.05)) * detailHeightScale;
+		vec2  deltaTexCoords = P / numLayers;
+
+		vec2  currentTexCoords = FragPos.xz;
+		float currentDepthMapValue = sampleProceduralHeightMap(currentTexCoords, grassFactor, sandFactor, rockFactor, snowFactor);
+
+		while (currentLayerDepth < currentDepthMapValue && currentLayerDepth < 1.0) {
+			currentTexCoords -= deltaTexCoords;
+			// Wind sway: apply to grass biomes specifically, using requested division by 5 (0.2)
+			vec2 windOff = -rawWindNudge.xz * (1.0 - currentLayerDepth) * 0.2 * grassFactor;
+			currentDepthMapValue = sampleProceduralHeightMap(currentTexCoords + windOff, grassFactor, sandFactor, rockFactor, snowFactor);
+			currentLayerDepth += layerDepth;
+		}
+
+		// Refinement
+		vec2  prevTexCoords = currentTexCoords + deltaTexCoords;
+		float afterDepth = currentDepthMapValue - currentLayerDepth;
+		float beforeDepth = sampleProceduralHeightMap(prevTexCoords - rawWindNudge.xz * (1.0 - (currentLayerDepth - layerDepth)) * 0.2 * grassFactor, grassFactor, sandFactor, rockFactor, snowFactor) -
+			(currentLayerDepth - layerDepth);
+
+		float weight = afterDepth / min(-0.001, (afterDepth - beforeDepth));
+		currentTexCoords = prevTexCoords * weight + currentTexCoords * (1.0 - weight);
+		float finalDepth = clamp(currentLayerDepth - layerDepth + (1.0 - weight) * layerDepth, 0.0, 1.0);
+		float finalDetailHeight = 1.0 - finalDepth;
+
+		// Self-shadowing
+		vec3  L = normalize(lights[0].position - FragPos);
+		vec3  L_tangent = vec3(dot(L, tangent), dot(L, bitangent), dot(L, norm));
+		float shadowSteps = 4.0;
+		float shadowLayerDepth = finalDepth / shadowSteps;
+		vec2  L_delta = (L_tangent.xy / max(abs(L_tangent.z), 0.05)) * detailHeightScale / shadowSteps;
+		float currentShadowDepth = finalDepth - shadowLayerDepth;
+		vec2  shadowTexCoords = currentTexCoords + L_delta;
+
+		for (int i = 0; i < 4; i++) {
+			float h = sampleProceduralHeightMap(shadowTexCoords - rawWindNudge.xz * (1.0 - currentShadowDepth) * 0.2 * grassFactor, grassFactor, sandFactor, rockFactor, snowFactor);
+			if (h < currentShadowDepth) {
+				pomShadow *= mix(1.0, 0.7, grassFactor + rockFactor * 0.5); // Less aggressive shadowing for sand/snow
+			}
+			currentShadowDepth -= shadowLayerDepth;
+			shadowTexCoords += L_delta;
+		}
+
+		// Adjust material
+		albedo = mix(albedo * (1.0 - 0.7 * (grassFactor + rockFactor * 0.3)), albedo * 1.2, finalDetailHeight);
+		roughness = mix(roughness * 1.1, roughness * 0.9, finalDetailHeight);
+	}
 
 	// ========================================================================
 	// Normal Perturbation (Grain)
@@ -437,12 +540,6 @@ void main() {
 		float nx = fastWorley3d(0.1 * (scaledFragPos + vec3(eps, 0.0, 0.0)) * roughnessScale);
 		float nz = fastWorley3d(0.1 * (scaledFragPos + vec3(0.0, 0.0, eps)) * roughnessScale);
 
-		// Compute local tangent space to orient the perturbation.
-		// Using a stable basis that doesn't flip at Z-axis alignment.
-		vec3 v = abs(norm.z) < 0.999 ? vec3(0, 0, 1) : vec3(1, 0, 0);
-		vec3 tangent = normalize(cross(v, norm));
-		vec3 bitangent = cross(norm, tangent);
-
 		// Apply perturbation based on noise gradient
 		perturbedNorm = normalize(norm + (tangent * (n - nx) + bitangent * (n - nz)) * (roughnessStrength / eps));
 
@@ -455,12 +552,6 @@ void main() {
 	}
 
 	// Final Lighting
-	float fateFactor = fastWorley3d(vec3(FragPos.xz / 50.0, time * 0.25)) * 0.5 + 0.50;
-	vec3  windForce = fastCurl3d(
-		vec3(FragPos.x * 0.0005 + time * 0.00125, FragPos.y * 0.001, FragPos.z * 0.0005 + time * 0.0125)
-	);
-	vec3 rawWindNudge = (fateFactor * windForce); // / (abs(normalize(FragPos).y - normalize(windForce).y));
-
 	vec3  light_dir = normalize(lights[0].position - FragPos);
 	float rim = max(dot(light_dir, normalize(viewPos - FragPos)), 0.0);
 	// albedo += (1-dot(rawWindNudge, perturbedNorm)) * rim * albedo;
@@ -477,12 +568,12 @@ void main() {
 			0.5 +
 		0.5;
 	float windRipple = windDistortion * plainRipple;
-	float grassFactor = smoothstep(0.25, 0.5, max(dot(albedo, COL_GRASS_LUSH), dot(albedo, COL_GRASS_DRY)));
 	albedo *= mix(1, mix(1.0, 1.25, windDistortion) * mix(1.0, 1.05, windRipple), grassFactor);
 	roughness *= mix(1.25, 1.0, windDistortion) * mix(1, mix(1.5, 1.0, windRipple), grassFactor);
 	// perturbedNorm += rawWindNudge * mix(0.0, 1.05, plainRipple);
 
 	vec3 lighting = apply_lighting_pbr(FragPos, perturbedNorm, albedo, roughness, metallic, 1.0).rgb;
+	lighting *= pomShadow;
 
 	// ========================================================================
 	// Neon 80s Synth Style (Night Theme)
