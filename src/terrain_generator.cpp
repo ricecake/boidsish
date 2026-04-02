@@ -1,4 +1,5 @@
 #include "terrain_generator.h"
+#include "terrain_gpu_generator.h"
 
 #include <algorithm>
 #include <chrono>
@@ -44,6 +45,7 @@ namespace Boidsish {
 
 	TerrainGenerator::TerrainGenerator(int seed): seed_(seed), thread_pool_(), eng_(rd_()) {
 		Simplex::seed(seed_);
+		gpu_generator_ = std::make_unique<TerrainGPUGenerator>(chunk_size_);
 	}
 
 	TerrainGenerator::~TerrainGenerator() {
@@ -78,6 +80,11 @@ namespace Boidsish {
 
 	void TerrainGenerator::Update(const Frustum& frustum, const Camera& camera) {
 		PROJECT_PROFILE_SCOPE("TerrainGenerator::Update");
+
+		if (gpu_generator_ && render_manager_) {
+			gpu_generator_->SetRenderManager(render_manager_);
+		}
+
 		float scaled_chunk_size = static_cast<float>(chunk_size_) * world_scale_;
 
 		// Use floor division for correct negative coordinate handling
@@ -113,7 +120,8 @@ namespace Boidsish {
 			for (int z = current_chunk_z - dynamic_view_distance; z <= current_chunk_z + dynamic_view_distance; ++z) {
 				std::pair<int, int> chunk_coord = {x, z};
 				if (chunk_cache_.find(chunk_coord) == chunk_cache_.end() &&
-				    pending_chunks_.find(chunk_coord) == pending_chunks_.end()) {
+				    pending_chunks_.find(chunk_coord) == pending_chunks_.end() &&
+				    pending_gpu_chunks_.find(chunk_coord) == pending_gpu_chunks_.end()) {
 					bool in_frustum = isChunkInFrustum(frustum, x, z, scaled_chunk_size, max_h);
 
 					// Calculate distance from chunk center to camera
@@ -147,6 +155,21 @@ namespace Boidsish {
 		// Enqueue in sorted order
 		for (const auto& chunk : chunks_to_enqueue) {
 			std::pair<int, int> chunk_coord = {chunk.x, chunk.z};
+
+			if (gpu_generator_ && render_manager_) {
+				int slice = render_manager_->AllocateSlice(chunk_coord);
+				if (slice != -1) {
+					gpu_generator_->RequestChunk(
+						chunk_coord,
+						slice,
+						glm::vec3(chunk.x * scaled_chunk_size, 0, chunk.z * scaled_chunk_size),
+						world_scale_
+					);
+					pending_gpu_chunks_.insert(chunk_coord);
+					continue;
+				}
+			}
+
 			pending_chunks_.emplace(
 				chunk_coord,
 				thread_pool_.enqueue(chunk.priority, &TerrainGenerator::generateChunkData, this, chunk.x, chunk.z)
@@ -191,6 +214,73 @@ namespace Boidsish {
 
 		for (const auto& key : completed_chunks) {
 			pending_chunks_.erase(key);
+		}
+
+		// Process completed GPU chunks
+		if (gpu_generator_) {
+			std::vector<std::pair<int, int>> completed_gpu;
+			for (const auto& key : pending_gpu_chunks_) {
+				auto res = gpu_generator_->TryGetResult(key);
+				if (res.has_value()) {
+					auto& result = res.value();
+
+					// Use the read-back data directly
+					std::vector<glm::vec3> positions = std::move(result.positions);
+					std::vector<glm::vec3> normals = std::move(result.normals);
+					std::vector<glm::vec2> biomes = std::move(result.biomes);
+
+					// Compute PatchProxy
+					PatchProxy proxy;
+					proxy.center = std::accumulate(positions.begin(), positions.end(), glm::vec3(0.0f)) /
+						(float)positions.size();
+					proxy.totalNormal = std::accumulate(normals.begin(), normals.end(), glm::vec3(0.0f));
+
+					float max_dist_sq = 0.0f;
+					proxy.minY = std::numeric_limits<float>::max();
+					proxy.maxY = std::numeric_limits<float>::lowest();
+
+					for (const auto& pos : positions) {
+						if (pos.y < proxy.minY) {
+							proxy.minY = pos.y;
+							proxy.lowestPoint = pos;
+						}
+						if (pos.y > proxy.maxY) {
+							proxy.maxY = pos.y;
+							proxy.highestPoint = pos;
+						}
+						float dist_sq = glm::dot(pos - proxy.center, pos - proxy.center);
+						if (dist_sq > max_dist_sq) {
+							max_dist_sq = dist_sq;
+						}
+					}
+					proxy.radiusSq = max_dist_sq;
+
+					auto terrain_chunk = std::make_shared<Terrain>(
+						std::vector<unsigned int>{}, // Not used for managed
+						positions,
+						normals,
+						biomes,
+						proxy
+					);
+					terrain_chunk->SetPosition(result.chunkX * scaled_chunk_size, 0, result.chunkZ * scaled_chunk_size);
+					terrain_chunk->SetManagedByRenderManager(true);
+
+					render_manager_->RegisterPrepopulatedChunk(
+						key,
+						result.slice,
+						proxy.minY,
+						proxy.maxY,
+						glm::vec3(result.chunkX * scaled_chunk_size, 0, result.chunkZ * scaled_chunk_size)
+					);
+
+					chunk_cache_[key] = terrain_chunk;
+					completed_gpu.push_back(key);
+				}
+			}
+
+			for (const auto& key : completed_gpu) {
+				pending_gpu_chunks_.erase(key);
+			}
 		}
 
 		// 3. Registration Pass: Register chunks with render manager
@@ -294,6 +384,22 @@ namespace Boidsish {
 		for (const auto& key : to_cancel) {
 			pending_chunks_.at(key).cancel();
 			pending_chunks_.erase(key);
+		}
+
+		std::vector<std::pair<int, int>> to_cancel_gpu;
+		for (const auto& key : pending_gpu_chunks_) {
+			int dx = std::abs(key.first - current_chunk_x);
+			int dz = std::abs(key.second - current_chunk_z);
+			int limit = dynamic_view_distance + kUnloadDistanceBuffer_;
+			if (dx > limit || dz > limit) {
+				to_cancel_gpu.push_back(key);
+			}
+		}
+		for (const auto& key : to_cancel_gpu) {
+			if (gpu_generator_) {
+				gpu_generator_->CancelRequest(key);
+			}
+			pending_gpu_chunks_.erase(key);
 		}
 
 		ProcessPendingDeformations();

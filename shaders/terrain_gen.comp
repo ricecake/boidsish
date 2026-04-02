@@ -1,0 +1,235 @@
+#version 430 core
+
+#include "helpers/simplex_exact.glsl"
+
+layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
+
+// Uniforms
+uniform int   u_chunkX;
+uniform int   u_chunkZ;
+uniform float u_worldScale;
+uniform int   u_chunkSize;
+uniform int   u_slice;
+
+// Biome generation parameters
+struct BiomeGenProperties {
+	vec4 params; // x = spikeDamping, y = detailMasking, z = floorLevel, w = cumulativeWeight
+};
+
+layout(std140, binding = 7) uniform BiomeGenData {
+	BiomeGenProperties u_biomes[8];
+};
+
+// Outputs
+layout(rgba16f, binding = 0) uniform image2DArray u_heightmapImage;
+layout(rg8, binding = 1) uniform image2DArray u_biomeImage;
+
+layout(std430, binding = 2) buffer PositionBuffer {
+	float out_positions[]; // (N+1)*(N+1) * 3
+};
+
+layout(std430, binding = 3) buffer NormalBuffer {
+	float out_normals[]; // (N+1)*(N+1) * 3
+};
+
+layout(std430, binding = 4) buffer BiomeBuffer {
+	float out_biomes[]; // (N+1)*(N+1) * 2
+};
+
+const float kControlNoiseScale = 0.001;
+const float kPathFrequency = 0.002;
+const float kPathCorridorWidth = 0.35;
+const float kWarpStrength = 20.0;
+
+void getWeightedBiome(float control_value, out float spikeDamping, out float detailMasking, out float floorLevel) {
+	float totalWeight = u_biomes[7].params.w;
+	float target = clamp(control_value, 0.0, 1.0) * totalWeight;
+
+	int low_idx = 0;
+	for (int i = 0; i < 8; ++i) {
+		if (u_biomes[i].params.w >= target) {
+			low_idx = max(0, i - 1);
+			break;
+		}
+	}
+	int high_idx = min(low_idx + 1, 7);
+
+	float weight_high = u_biomes[high_idx].params.w;
+	float weight_low = (high_idx == 0) ? 0.0 : u_biomes[high_idx - 1].params.w;
+
+	float segment_width = weight_high - weight_low;
+	float t = (segment_width > 0.0001) ? (target - weight_low) / segment_width : 0.0;
+
+	spikeDamping = mix(u_biomes[low_idx].params.x, u_biomes[high_idx].params.x, t);
+	detailMasking = mix(u_biomes[low_idx].params.y, u_biomes[high_idx].params.y, t);
+	floorLevel = mix(u_biomes[low_idx].params.z, u_biomes[high_idx].params.z, t);
+}
+
+void getBiomeIndicesAndWeights(float control_value, out int low_idx, out float t) {
+	float totalWeight = u_biomes[7].params.w;
+	float target = clamp(control_value, 0.0, 1.0) * totalWeight;
+
+	low_idx = 0;
+	for (int i = 0; i < 8; ++i) {
+		if (u_biomes[i].params.w >= target) {
+			low_idx = max(0, i - 1);
+			break;
+		}
+	}
+	int high_idx = min(low_idx + 1, 7);
+
+	float weight_high = u_biomes[high_idx].params.w;
+	float weight_low = (high_idx == 0) ? 0.0 : u_biomes[high_idx - 1].params.w;
+
+	float segment_width = weight_high - weight_low;
+	t = (segment_width > 0.0001) ? (target - weight_low) / segment_width : 0.0;
+}
+
+vec3 biomefbm(vec2 pos, float spikeDamping, float detailMasking, float floorLevel) {
+	vec3  height = vec3(0.0);
+	float amp = 0.5;
+	float freq = 0.99;
+
+	vec3 base = simplexDNoise2D(pos * freq);
+	base.yz *= freq;
+	height = base * amp;
+
+	for (int i = 1; i < 6; ++i) {
+		amp *= 0.5;
+		freq *= 2.0;
+		vec3 n = simplexDNoise2D(pos * freq);
+		n.yz *= freq;
+
+		float slope = length(n.yz);
+		float correction = 1.0 / (1.0 + slope * spikeDamping);
+		float mask = mix(1.0 - detailMasking, 1.0, height.x);
+		height += (n * amp * correction * mask);
+	}
+
+	if (height.x < floorLevel) {
+		float t = smoothstep(floorLevel - 0.1, floorLevel, height.x);
+		height.x = t * floorLevel;
+		height.yz *= t;
+	}
+
+	height.x = height.x * 0.5 + 0.5;
+	height.yz *= 0.5;
+
+	if (height.x > 0.0) {
+		height.x *= floorLevel;
+		height.yz *= floorLevel;
+	}
+
+	return height;
+}
+
+float getHeightAt(float worldX, float worldZ) {
+	float sx = worldX / u_worldScale;
+	float sz = worldZ / u_worldScale;
+
+	vec3  path_data = simplexDNoise2D(vec2(sx, sz) * kPathFrequency);
+	float distance_from_spine = abs(path_data.x);
+	float path_factor = smoothstep(0.0, kPathCorridorWidth, distance_from_spine);
+
+	vec2  push_dir = vec2(0.0);
+	float path_grad_len = length(path_data.yz);
+	if (path_grad_len > 0.0001) {
+		push_dir = path_data.yz / path_grad_len;
+	}
+
+	float warp_strength = (1.0 - path_factor) * kWarpStrength;
+	vec2  warp = push_dir * warp_strength;
+	vec2  warped_pos = vec2(sx, sz) + warp;
+
+	vec2  biome_pos = warped_pos * kControlNoiseScale;
+	vec2  curl = simplexCurlNoise2D(biome_pos);
+	float control_value = simplexNoise2D(biome_pos + curl) * 0.5 + 0.5;
+
+	control_value = mix(0.0, control_value, path_factor);
+
+	float spikeDamping, detailMasking, floorLevel;
+	getWeightedBiome(control_value, spikeDamping, detailMasking, floorLevel);
+
+	vec3 terrain_height = biomefbm(warped_pos, spikeDamping, detailMasking, floorLevel);
+
+	float path_floor_level = -0.10;
+	float h = mix(path_floor_level, terrain_height.x, path_factor);
+
+	return h * u_worldScale;
+}
+
+void main() {
+	uint i = gl_GlobalInvocationID.x;
+	uint j = gl_GlobalInvocationID.y;
+	uint res = uint(u_chunkSize + 1);
+
+	if (i >= res || j >= res)
+		return;
+
+	float worldX = (float(u_chunkX * u_chunkSize) + float(i)) * u_worldScale;
+	float worldZ = (float(u_chunkZ * u_chunkSize) + float(j)) * u_worldScale;
+
+	// Calculate height and biome info
+	float sx = worldX / u_worldScale;
+	float sz = worldZ / u_worldScale;
+
+	vec3  path_data = simplexDNoise2D(vec2(sx, sz) * kPathFrequency);
+	float distance_from_spine = abs(path_data.x);
+	float path_factor = smoothstep(0.0, kPathCorridorWidth, distance_from_spine);
+
+	vec2  push_dir = vec2(0.0);
+	float path_grad_len = length(path_data.yz);
+	if (path_grad_len > 0.0001) {
+		push_dir = path_data.yz / path_grad_len;
+	}
+
+	float warp_strength = (1.0 - path_factor) * kWarpStrength;
+	vec2  warp = push_dir * warp_strength;
+	vec2  warped_pos = vec2(sx, sz) + warp;
+
+	vec2  biome_pos = warped_pos * kControlNoiseScale;
+	vec2  curl = simplexCurlNoise2D(biome_pos);
+	float control_value = simplexNoise2D(biome_pos + curl) * 0.5 + 0.5;
+
+	control_value = mix(0.0, control_value, path_factor);
+
+	float spikeDamping, detailMasking, floorLevel;
+	getWeightedBiome(control_value, spikeDamping, detailMasking, floorLevel);
+
+	vec3 terrain_height = biomefbm(warped_pos, spikeDamping, detailMasking, floorLevel);
+
+	float path_floor_level = -0.10;
+	float h = mix(path_floor_level, terrain_height.x, path_factor);
+	h *= u_worldScale;
+
+	// Finite difference normal
+	float h_left = getHeightAt(worldX - u_worldScale, worldZ);
+	float h_right = getHeightAt(worldX + u_worldScale, worldZ);
+	float h_down = getHeightAt(worldX, worldZ - u_worldScale);
+	float h_up = getHeightAt(worldX, worldZ + u_worldScale);
+
+	float dx = (h_right - h_left) * 0.5;
+	float dz = (h_up - h_down) * 0.5;
+	vec3  normal = normalize(vec3(-dx, 1.0, -dz));
+
+	int   low_idx;
+	float t;
+	getBiomeIndicesAndWeights(control_value, low_idx, t);
+
+	// Output to images (Z-major / row-major for texture mapping)
+	imageStore(u_heightmapImage, ivec3(i, j, u_slice), vec4(h, normal.x, normal.y, normal.z));
+	imageStore(u_biomeImage, ivec3(i, j, u_slice), vec4(float(low_idx) / 255.0, t, 0.0, 0.0));
+
+	// Output to SSBO (X-major for CPU consistency)
+	uint idx = i * res + j;
+	out_positions[idx * 3 + 0] = float(i) * u_worldScale; // Relative to chunk origin
+	out_positions[idx * 3 + 1] = h;
+	out_positions[idx * 3 + 2] = float(j) * u_worldScale;
+
+	out_normals[idx * 3 + 0] = normal.x;
+	out_normals[idx * 3 + 1] = normal.y;
+	out_normals[idx * 3 + 2] = normal.z;
+
+	out_biomes[idx * 2 + 0] = float(low_idx);
+	out_biomes[idx * 2 + 1] = t;
+}
