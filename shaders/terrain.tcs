@@ -51,10 +51,6 @@ void sampleHeightmap(vec2 uv, float slice, vec3 worldOffset, out vec3 worldPos, 
 	worldPos.z = worldOffset.z + uv.y * uChunkSize;
 }
 
-float roundToPlaces(float value, float places) {
-	float shift = pow(10.0, places);
-	return round(value * shift) / shift;
-}
 
 bool isLess(vec3 a, vec3 b) {
 	const float epsilon = 0.001;
