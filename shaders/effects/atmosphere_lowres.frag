@@ -51,7 +51,7 @@ void main() {
 		worldPos = viewPos + rayDir * dist;
 	}
 
-	// 1. Setup cloud properties and weather (consistent with atmosphere.frag)
+	// Dynamic cloud parameters
 	CloudProperties props;
 	props.altitude = cloudAltitude;
 	props.thickness = cloudThickness;
@@ -59,27 +59,9 @@ void main() {
 	props.coverage = cloudCoverage;
 	props.worldScale = worldScale;
 
-	float weatherWarpFactor = 1.0;
-	if (cloudWarp > 0.0) {
-		float camDist = length(worldPos.xz - viewPos.xz);
-		weatherWarpFactor = smoothstep(0.0, cloudWarp * worldScale, camDist);
-	}
-
-	vec2 weatherUV = worldPos.xz / (4000.0 * worldScale);
-	float weatherMap = weatherWarpFactor * (fastWorley3d(vec3(weatherUV, time * 0.01)) * 0.5 + 0.5);
-
-	vec2 heightUV = worldPos.xz / (2500.0 * worldScale);
-	float heightMap = weatherWarpFactor * (fastWorley3d(vec3(heightUV, time * 0.004)) * 0.5 + 0.5);
-
-	CloudWeather weather;
-	weather.weatherMap = weatherMap;
-	weather.heightMap = heightMap;
-
-	CloudLayer layer = computeCloudLayer(weather, props);
-
-	// 2. Intersection with the dynamic cloud layer
-	float R_floor = R_earth + layer.baseFloor;
-	float R_ceiling = R_earth + layer.baseCeiling;
+	// Wide vertical bounds for intersection (covering all possible dynamic offsets)
+	float R_floor = R_earth + (cloudAltitude - 100.0) * worldScale;
+	float R_ceiling = R_earth + (cloudAltitude + cloudThickness + 1100.0) * worldScale;
 
 	vec3 earthCenter = vec3(viewPos.x, -R_earth, viewPos.z);
 	vec3 relRo = viewPos - earthCenter;
@@ -123,6 +105,25 @@ void main() {
 			vec3 p = viewPos + rayDir * t;
 			vec3 p_curved = p;
 			p_curved.y = length(p - earthCenter) - R_earth;
+
+			// Sample weather at current ray position to avoid depth dependency
+			float weatherWarpFactor = 1.0;
+			if (cloudWarp > 0.0) {
+				float camDist = length(p.xz - viewPos.xz);
+				weatherWarpFactor = smoothstep(0.0, cloudWarp * worldScale, camDist);
+			}
+
+			vec2 weatherUV = p.xz / (4000.0 * worldScale);
+			float weatherMap = weatherWarpFactor * (fastWorley3d(vec3(weatherUV, time * 0.01)) * 0.5 + 0.5);
+
+			vec2 heightUV = p.xz / (2500.0 * worldScale);
+			float heightMap = weatherWarpFactor * (fastWorley3d(vec3(heightUV, time * 0.004)) * 0.5 + 0.5);
+
+			CloudWeather weather;
+			weather.weatherMap = weatherMap;
+			weather.heightMap = heightMap;
+
+			CloudLayer layer = computeCloudLayer(weather, props);
 
 			float d = calculateCloudDensity(
 				p_curved,

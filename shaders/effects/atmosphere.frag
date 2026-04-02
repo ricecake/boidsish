@@ -78,7 +78,7 @@ void main() {
 	float dist = length(worldPos - viewPos);
 
 	if (depth == 1.0) {
-		dist = 1000.0 * worldScale;
+		dist = 50000.0 * worldScale;
 		worldPos = viewPos + rayDir * dist;
 	}
 
@@ -87,25 +87,9 @@ void main() {
 	vec3  inScattering = sampleAerialPerspective(rayDir, distKM);
 	float transmittance = sampleAerialPerspectiveTransmittance(rayDir, distKM);
 
-	// 2. Cloud Layer (Simplified but preserved)
-	float cloudFactor = 0.0;
+	// Cloud Layer
 	vec3  cloudColor = vec3(0.0);
-
-	float weatherWarpFactor = 1.0;
-	if (cloudWarp > 0.0) {
-		float camDist = length(worldPos.xz - viewPos.xz);
-		weatherWarpFactor = smoothstep(0.0, cloudWarp * worldScale, camDist);
-	}
-
-	vec2 weatherUV = worldPos.xz / (4000.0 * worldScale);
-	float weatherMap = weatherWarpFactor * (fastWorley3d(vec3(weatherUV, time * 0.01)) * 0.5 + 0.5);
-
-	vec2 heightUV = worldPos.xz / (2500.0 * worldScale);
-	float heightMap = weatherWarpFactor * (fastWorley3d(vec3(heightUV, time * 0.004)) * 0.5 + 0.5);
-
-	CloudWeather weather;
-	weather.weatherMap = weatherMap;
-	weather.heightMap = heightMap;
+	float cloudTransmittance = 1.0;
 
 	CloudProperties props;
 	props.altitude = cloudAltitude;
@@ -114,10 +98,12 @@ void main() {
 	props.coverage = cloudCoverage;
 	props.worldScale = worldScale;
 
-	CloudLayer layer = computeCloudLayer(weather, props);
+	// Wide vertical bounds for intersection (covering all possible dynamic offsets)
+	float baseFloor = (cloudAltitude - 100.0) * worldScale;
+	float baseCeiling = (cloudAltitude + cloudThickness + 1100.0) * worldScale;
 
-	float t_start = (layer.baseFloor - viewPos.y) / (rayDir.y + 0.000001);
-	float t_end = (layer.baseCeiling - viewPos.y) / (rayDir.y + 0.000001);
+	float t_start = (baseFloor - viewPos.y) / (rayDir.y + 0.000001);
+	float t_end = (baseCeiling - viewPos.y) / (rayDir.y + 0.000001);
 
 	if (t_start > t_end) {
 		float temp = t_start;
@@ -127,12 +113,10 @@ void main() {
 	t_start = max(t_start, 0.0);
 	t_end = min(t_end, dist);
 
-	float cloudTransmittance = 1.0;
 	if (t_start < t_end) {
-		float cloudAcc = 0.0;
 		vec3  lightEnergy = vec3(0.0);
 
-		int samples = 48; // Fixed high-quality sample count
+		int samples = 48;
 		int shadow_samples = 4;
 
 		float jitter = fastBlueNoise(TexCoords * 10.0 + vec2(sin(time * 0.07), cos(time * -0.05)));
@@ -144,6 +128,25 @@ void main() {
 				break;
 
 			vec3 p = viewPos + rayDir * t;
+
+			// Sample weather at current ray position to avoid depth dependency
+			float weatherWarpFactor = 1.0;
+			if (cloudWarp > 0.0) {
+				float camDist = length(p.xz - viewPos.xz);
+				weatherWarpFactor = smoothstep(0.0, cloudWarp * worldScale, camDist);
+			}
+
+			vec2 weatherUV = p.xz / (4000.0 * worldScale);
+			float weatherMap = weatherWarpFactor * (fastWorley3d(vec3(weatherUV, time * 0.01)) * 0.5 + 0.5);
+
+			vec2 heightUV = p.xz / (2500.0 * worldScale);
+			float heightMap = weatherWarpFactor * (fastWorley3d(vec3(heightUV, time * 0.004)) * 0.5 + 0.5);
+
+			CloudWeather weather;
+			weather.weatherMap = weatherMap;
+			weather.heightMap = heightMap;
+
+			CloudLayer layer = computeCloudLayer(weather, props);
 
 			float d = calculateCloudDensity(
 				p,
@@ -201,7 +204,6 @@ void main() {
 	}
 
 	// Combine everything
-	// vec3 result = mix(sceneColor, cloudColor, cloudFactor);
 	vec3 result = sceneColor * cloudTransmittance + cloudColor;
 	// Apply physically accurate atmosphere
 	if (depth < 1.0) {
