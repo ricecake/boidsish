@@ -145,6 +145,9 @@ namespace Boidsish {
 	}
 
 	void WeatherManager::InitializePresets() {
+		// Initialize cached targets to default sunny values to prevent initial transition
+		cached_targets_ = current_;
+
 		presets_.clear();
 		// 1. Sunny
 		WeatherPreset sunny;
