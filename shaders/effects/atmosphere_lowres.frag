@@ -91,8 +91,9 @@ void main() {
 		float stepSize = (t_end - t_start) / float(samples);
 
 		vec3 local = viewPos + rayDir * t_start;
+		float adjustedTime = dayTime * smoothstep(0, 1, dayTime) * smoothstep(24, 23, dayTime);
 		vec3 localWeatherDelta = fastCurl3d((local.xyz / (1000 * worldScale)) + vec3(time*0.001));
-		float localWeather = (fastWorley3d(vec3((local.xz + localWeatherDelta.xz) / (4000 * worldScale), time * 0.05)) * 0.5 + 0.5);
+		float localWeather = (fastWorley3d(vec3((local.xz + adjustedTime*localWeatherDelta.xz) / (4000 * worldScale), time * 0.005)) * 0.5 + 0.5);
 
 		for (int i = 0; i < samples; i++) {
 			float t = t_start + (float(i) + jitter) * stepSize;
@@ -122,8 +123,9 @@ void main() {
 
 			vec3 stepScattering = vec3(0.0);
 			for (int j = 0; j < num_lights; j++) {
-				if (lights[j].type != LIGHT_TYPE_DIRECTIONAL)
+				if (lights[j].type != LIGHT_TYPE_DIRECTIONAL) {
 					continue;
+				}
 
 				vec3  L = normalize(-lights[j].direction);
 				float cosTheta = dot(rayDir, L);
