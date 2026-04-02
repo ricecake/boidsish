@@ -25,14 +25,14 @@ struct CloudLayer {
 
 CloudLayer computeCloudLayer(CloudWeather weather, CloudProperties props) {
 	// Use heightMap for vertical expansion to decouple it from horizontal coverage
-	float floorOffset = mix(20.0, -50.0, weather.heightMap) * props.worldScale;
-	float ceilingOffset = mix(10.0, 500.0, weather.heightMap) * props.worldScale;
+	float floorOffset = mix(20.0, -50.0, weather.heightMap);
+	float ceilingOffset = mix(10.0, 500.0, weather.heightMap);
 
-	float altitudeOffset = mix(0.0, 500.0, weather.heightMap) * props.worldScale;
+	float altitudeOffset = mix(0.0, 500.0, weather.heightMap);
 
 	CloudLayer layer;
-	layer.baseFloor = (altitudeOffset + props.altitude) * props.worldScale + floorOffset;
-	layer.baseCeiling = ((altitudeOffset + props.altitude) + props.thickness) * props.worldScale + ceilingOffset;
+	layer.baseFloor = (altitudeOffset + props.altitude + floorOffset) * props.worldScale;
+	layer.baseCeiling = (altitudeOffset + props.altitude + props.thickness + ceilingOffset) * props.worldScale;
 	layer.thickness = max(layer.baseCeiling - layer.baseFloor, 0.001);
 	return layer;
 }
