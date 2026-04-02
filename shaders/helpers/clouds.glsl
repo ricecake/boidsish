@@ -19,11 +19,13 @@ float calculateCloudDensity(
 	// Dynamic ceiling and floor based on weatherMap
 	// Dense areas (high weatherMap) get lower floor and much higher ceiling (tall clouds)
 	// Sparse areas get higher floor and thinner layer (wispy clouds)
-	float floorOffset = mix(20.0, -10.0, weatherMap) * worldScale;
-	float ceilingOffset = mix(10.0, 300.0, weatherMap * weatherMap) * worldScale;
+	float floorOffset = mix(20.0, -50.0, weatherMap) * worldScale;
+	float ceilingOffset = mix(10.0, 500.0, weatherMap) * worldScale;
 
-	float baseFloor = cloudAltitude * worldScale + floorOffset;
-	float baseCeiling = (cloudAltitude + cloudThickness) * worldScale + ceilingOffset;
+	float altitudeOffset = mix(0.0, 500.0, weatherMap) * worldScale;
+
+	float baseFloor = (altitudeOffset+cloudAltitude) * worldScale + floorOffset;
+	float baseCeiling = ((altitudeOffset+cloudAltitude) + cloudThickness) * worldScale + ceilingOffset;
 	float currentThickness = baseCeiling - baseFloor;
 
 	if (p.y < baseFloor || p.y > baseCeiling)

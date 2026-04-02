@@ -162,8 +162,9 @@ void main() {
 			lightEnergy += cloudTransmittance * S * stepDensity;
 			cloudTransmittance *= transmittanceAtStep;
 
-			if (cloudTransmittance < 0.01)
+			if (cloudTransmittance < 0.01) {
 				break;
+			}
 		}
 
 		cloudColor = lightEnergy * cloudColorUniform;
