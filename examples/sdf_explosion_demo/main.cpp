@@ -23,10 +23,10 @@ public:
     void TriggerExplosion() {
         glm::vec3 pos(
             (float(rand()) / RAND_MAX - 0.5f) * 20.0f,
-            (float(rand()) / RAND_MAX) * 10.0f + 2.0f,
+            1.0f,
             (float(rand()) / RAND_MAX - 0.5f) * 20.0f
         );
-        viz_.TriggerSdfExplosion(pos, 15.5f);
+        viz_.TriggerSdfExplosion(pos, 5.5f);
         std::cout << "Triggered SDF Explosion at (" << pos.x << ", " << pos.y << ", " << pos.z << ")" << std::endl;
     }
 

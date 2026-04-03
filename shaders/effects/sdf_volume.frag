@@ -127,18 +127,108 @@ vec3 getNormal(vec3 p) {
 	));
 }
 
+float smin( float a, float b, float k )
+{
+    float h = max(k-abs(a-b),0.0);
+    return min(a, b) - h*h*0.25/k;
+}
+
 // --- Mushroom-shaped SDF ---
+// SDF for a cylinder (stem)
+float cylinderSDF( vec3 p, float h, float r ) {
+    vec2 d = abs(vec2(length(p.xz),p.y)) - vec2(h,r);
+    return min(max(d.x,d.y),0.0) + length(max(d,0.0));
+}
 
-float mushroomSDF(vec3 rel, float radius, float ntime) {
-	float elongation = mix(1.2, 1.8, ntime);
-	vec3 warped = rel;
-	warped.y /= elongation;
+// SDF for a capped cone (cap)
+float sdCappedCone(vec3 p, vec2 c) {
+    // p.y -= 0.5; // Move cap up
+    vec2 q = vec2(length(p.xz), p.y);
+    float d = dot(q, c);
+    return length(q - c * max(min(d, 1.0), 0.0)) * sign(q.y - c.y);
+}
 
-	float height_frac = clamp((warped.y / radius) + 0.5, 0.0, 1.0);
-	float xz_scale = mix(0.4, 1.2, smoothstep(0.15, 0.6, height_frac));
-	warped.xz /= xz_scale;
+// Combine shapes
+float sdMushroom(vec3 p, float radius, float ntime) {
+    // Stem
+    float stem = cylinderSDF(p, radius/5.0, 5*radius*ntime);
 
-	return sphereSDF(warped, radius);
+	// return sphereSDF(warped, radius);
+    // Cap
+
+    float cap = sdCappedCone(vec3(p.x, p.y-(5*radius*ntime), p.z), vec2(radius*ntime));
+
+    // Smooth blending
+    float d = smin(stem, cap, 0.1);
+    // return smoothUnion(stem, cap, 0.1); // Requires a smooth union function
+    return d;
+}
+
+
+// float mushroomSDF(vec3 rel, float radius, float ntime) {
+// 	// float elongation = mix(1.2, 1.8, ntime);
+// 	// vec3 warped = rel;
+// 	// warped.y /= elongation;
+
+// 	// float height_frac = clamp((warped.y / radius) + 0.5, 0.0, 1.0);
+// 	// float xz_scale = mix(0.4, 1.2, smoothstep(0.15, 0.6, height_frac));
+// 	// warped.xz /= xz_scale;
+
+//     return sdMushroom(rel, radius/20.0, ntime);
+// }
+
+// float mushroomSDF(vec3 p, float radius, float ntime) {
+//     // Offset the center up
+//     p.y -= radius;
+
+//     // Pinch the XZ plane based on the Y height
+//     // When Y is lower, we shrink the radius to form a stem.
+//     // When Y is higher, we leave it wide for the cap.
+//     float pinch = mix(0.2, 1.0, smoothstep(-radius, radius, 8.0*ntime*p.y));
+
+//     vec3 warped = p;
+//     warped.y /= mix(1.0, pinch, smoothstep(0.35, 0.0, ntime));
+//     warped.xz /= mix(1.0, pinch, smoothstep(0, 0.25, ntime));
+
+//     // Evaluate as a sphere (remember to scale the distance back by the pinch
+//     // to avoid raymarching artifacts, or use a smaller ray step multiplier)
+//     return ((length(warped) - radius) * 0.5);
+// }
+
+
+float mushroomSDF(vec3 p, float radius, float ntime) {
+    p.y -= radius;
+
+    // 1. Normalize the height to a 0.0 (base) to 1.0 (top) range
+    float h = clamp((p.y + radius) / (2.0 * radius), 0.0, 1.0);
+
+    // 2. Define the two flares independently
+    // Cap flare: 0.0 at the stem, smoothly reaching 1.0 at the top
+    float cap_flare = smoothstep(0.4, 0.9, h);
+
+    // Base flare: 1.0 at the very bottom, smoothly dropping to 0.0 at the stem
+    float base_flare = smoothstep(0.3, 0.0, h);
+
+    // 3. Scale the base dynamically based on time so it keeps expanding
+    // You can adjust the 2.5 multiplier to control how wide the base gets
+    float base_width_over_time = mix(0.0, 2.5, ntime);
+
+    // 4. Combine to form the final profile
+    // 0.2 is your core stem thickness
+    float target_pinch = 0.2 + cap_flare + (base_flare * base_width_over_time);
+
+    // 5. Morph from a sphere (pinch = 1.0) to the mushroom profile
+    float pinch = mix(1.0, target_pinch, smoothstep(0.0, 0.3, ntime));
+
+    vec3 warped = p;
+    // Apply the pinch. (Removed the Y warping here for clarity, but you can
+    // reintroduce it if you want the vertical flattening effect).
+    warped.xz /= pinch;
+
+    // Note: Aggressive domain warping (like expanding the base significantly)
+    // heavily breaks the distance field. If you notice raymarching artifacts
+    // or banding near the base, drop this multiplier below 0.5.
+    return ((length(warped) - radius) * 0.4);
 }
 
 // --- Per-source volumetric density with rich noise ---
@@ -160,10 +250,10 @@ float sampleSourceDensity(vec3 p, int index) {
 	float normalized_d = clamp(-d / radius, 0.0, 1.0);
 
 	// Height profile: dense cap, thinner stem
-	float height_frac = clamp((rel.y / radius) + 0.5, 0.0, 1.0);
-	float cap_density = smoothstep(0.0, 0.25, height_frac) * (0.3 + 0.7 * smoothstep(0.35, 0.75, height_frac));
+	// float height_frac = clamp((rel.y / radius) + 0.5, 0.0, 1.0);
+	// float cap_density = smoothstep(0.0, 0.25, height_frac) * (0.3 + 0.7 * smoothstep(0.35, 0.75, height_frac));
 
-	float density = sources[index].volumetric_params.x * normalized_d * cap_density;
+	float density = sources[index].volumetric_params.x * normalized_d;// * cap_density;
 
 	// Rich noise stack from the earlier shader:
 	// 1. Curl-warped FBM for large-scale billowing displacement
@@ -211,6 +301,9 @@ vec3 explosionColor(float normalized_d, float ntime, vec3 color_inner, vec3 colo
 		col = mix(yellow, orange, (temperature - 0.5) / 0.3);
 	else
 		col = mix(red, yellow, (temperature - 0.25) / 0.25);
+
+
+    return mix(color_inner, color_outer, ntime);
 
 	return col;
 }
