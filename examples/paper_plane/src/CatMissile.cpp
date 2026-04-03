@@ -346,6 +346,7 @@ namespace Boidsish {
 				-1,
 				1.0f
 			);
+			handler.vis->TriggerSdfExplosion(pos, 5.5f);
 			this->explode_sound_ =
 				handler.vis->AddSoundEffect("assets/rocket_explosion.wav", pos.Toglm(), GetVelocity().Toglm(), 25.0f);
 		});
