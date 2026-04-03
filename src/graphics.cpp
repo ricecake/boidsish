@@ -197,9 +197,9 @@ namespace Boidsish {
 		}
 
 		std::cerr << "\n[OpenGL Debug] " << severityStr << " | " << typeStr << " | " << sourceStr << "\n"
-				  << "  ID: " << id << "\n"
-				  << "  Message: " << message << "\n"
-				  << std::endl;
+		          << "  ID: " << id << "\n"
+		          << "  Message: " << message << "\n"
+		          << std::endl;
 
 		// Break into debugger on high severity errors (optional)
 		if (severity == GL_DEBUG_SEVERITY_HIGH && type == GL_DEBUG_TYPE_ERROR) {

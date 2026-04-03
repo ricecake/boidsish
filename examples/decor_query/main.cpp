@@ -96,7 +96,7 @@ int main() {
 		for (size_t i = 0; i < std::min(res.instances.size(), size_t(2)); ++i) {
 			const auto& inst = res.instances[i];
 			std::cout << "  Instance " << i << ": pos(" << inst.center.x << ", " << inst.center.y << ", "
-					  << inst.center.z << ")" << std::endl;
+			          << inst.center.z << ")" << std::endl;
 		}
 	}
 

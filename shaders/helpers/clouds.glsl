@@ -24,8 +24,8 @@ float calculateCloudDensity(
 
 	float altitudeOffset = mix(0.0, 500.0, weatherMap) * worldScale;
 
-	float baseFloor = (altitudeOffset+cloudAltitude) * worldScale + floorOffset;
-	float baseCeiling = ((altitudeOffset+cloudAltitude) + cloudThickness) * worldScale + ceilingOffset;
+	float baseFloor = (altitudeOffset + cloudAltitude) * worldScale + floorOffset;
+	float baseCeiling = ((altitudeOffset + cloudAltitude) + cloudThickness) * worldScale + ceilingOffset;
 	float currentThickness = baseCeiling - baseFloor;
 
 	if (p.y < baseFloor || p.y > baseCeiling)

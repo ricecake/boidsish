@@ -57,7 +57,7 @@ int main() {
 					currentAnim = (currentAnim + 1) % data->animations.size();
 					bird->SetAnimation(currentAnim);
 					std::cout << "Switched to animation [" << currentAnim << "]: " << data->animations[currentAnim].name
-							  << std::endl;
+					          << std::endl;
 				}
 			}
 
@@ -74,14 +74,14 @@ int main() {
 			std::cout << "Animations found: " << data->animations.size() << std::endl;
 			for (size_t i = 0; i < data->animations.size(); i++) {
 				std::cout << "  [" << i << "] " << data->animations[i].name
-						  << " (Duration: " << data->animations[i].duration << ")" << std::endl;
+				          << " (Duration: " << data->animations[i].duration << ")" << std::endl;
 			}
 
 			AABB aabb = data->aabb;
 			std::cout << "Model AABB Min: (" << aabb.min.x << ", " << aabb.min.y << ", " << aabb.min.z << ")"
-					  << std::endl;
+			          << std::endl;
 			std::cout << "Model AABB Max: (" << aabb.max.x << ", " << aabb.max.y << ", " << aabb.max.z << ")"
-					  << std::endl;
+			          << std::endl;
 
 			// Print first 5 bone names if they exist
 			int count = 0;

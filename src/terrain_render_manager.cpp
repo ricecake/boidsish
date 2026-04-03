@@ -27,7 +27,7 @@ namespace Boidsish {
 		for (const auto& b : kBiomes) {
 			BiomeShaderProperties sb;
 			sb.albedo_roughness = glm::vec4(b.albedo, b.roughness);
-			sb.params = glm::vec4(b.metallic, b.detailStrength, b.detailScale, 0.0f);
+			sb.params = glm::vec4(b.metallic, b.detailStrength, b.detailScale, b.noiseType);
 			shader_biomes.push_back(sb);
 		}
 		glBufferSubData(
@@ -205,7 +205,7 @@ namespace Boidsish {
 		// This shouldn't happen often with proper capacity management
 		if (heightmap_texture_) {
 			std::cerr << "[TerrainRenderManager] WARNING: Texture array resize from " << max_chunks_ << " to "
-					  << new_capacity << " - existing heightmap data will be lost!" << std::endl;
+			          << new_capacity << " - existing heightmap data will be lost!" << std::endl;
 			glDeleteTextures(1, &heightmap_texture_);
 			heightmap_texture_ = 0;
 
@@ -245,7 +245,7 @@ namespace Boidsish {
 		GLenum err = glGetError();
 		if (err != GL_NO_ERROR) {
 			std::cerr << "[TerrainRenderManager] ERROR: glTexImage3D failed with error " << err
-					  << " (resolution=" << heightmap_resolution_ << ", slices=" << max_chunks_ << ")" << std::endl;
+			          << " (resolution=" << heightmap_resolution_ << ", slices=" << max_chunks_ << ")" << std::endl;
 		}
 
 		// Filtering for smooth interpolation

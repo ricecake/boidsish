@@ -90,10 +90,13 @@ void main() {
 		float jitter = fastBlueNoise(TexCoords * 10.0 + vec2(sin(time * 0.07), cos(time * -0.05)));
 		float stepSize = (t_end - t_start) / float(samples);
 
-		vec3 local = viewPos + rayDir * t_start;
+		vec3  local = viewPos + rayDir * t_start;
 		float adjustedTime = dayTime * smoothstep(0, 1, dayTime) * smoothstep(24, 23, dayTime);
-		vec3 localWeatherDelta = fastCurl3d((local.xyz / (1000 * worldScale)) + vec3(time*0.001));
-		float localWeather = (fastWorley3d(vec3((local.xz + adjustedTime*localWeatherDelta.xz) / (4000 * worldScale), time * 0.005)) * 0.5 + 0.5);
+		vec3  localWeatherDelta = fastCurl3d((local.xyz / (1000 * worldScale)) + vec3(time * 0.001));
+		float localWeather =
+			(fastWorley3d(vec3((local.xz + adjustedTime * localWeatherDelta.xz) / (4000 * worldScale), time * 0.005)) *
+		         0.5 +
+		     0.5);
 
 		for (int i = 0; i < samples; i++) {
 			float t = t_start + (float(i) + jitter) * stepSize;

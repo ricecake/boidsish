@@ -112,10 +112,10 @@ private:
 
 				for (size_t i = 0; i < mesh.indices.size(); i += 3) {
 					file << "f " << vertex_offset + mesh.indices[i] << "/" << vertex_offset + mesh.indices[i] << "/"
-						 << vertex_offset + mesh.indices[i] << " " << vertex_offset + mesh.indices[i + 1] << "/"
-						 << vertex_offset + mesh.indices[i + 1] << "/" << vertex_offset + mesh.indices[i + 1] << " "
-						 << vertex_offset + mesh.indices[i + 2] << "/" << vertex_offset + mesh.indices[i + 2] << "/"
-						 << vertex_offset + mesh.indices[i + 2] << "\n";
+					     << vertex_offset + mesh.indices[i] << " " << vertex_offset + mesh.indices[i + 1] << "/"
+					     << vertex_offset + mesh.indices[i + 1] << "/" << vertex_offset + mesh.indices[i + 1] << " "
+					     << vertex_offset + mesh.indices[i + 2] << "/" << vertex_offset + mesh.indices[i + 2] << "/"
+					     << vertex_offset + mesh.indices[i + 2] << "\n";
 				}
 				vertex_offset += (int)mesh.vertices.size();
 			}

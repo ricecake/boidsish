@@ -215,7 +215,7 @@ private:
 			auto cc = atmosphere->GetCloudColor();
 			file << "CloudColor=" << cc.r << "," << cc.g << "," << cc.b << "\n";
 			file << "CloudShadowIntensity="
-				 << ConfigManager::GetInstance().GetAppSettingFloat("cloud_shadow_intensity", 0.5f) << "\n";
+			     << ConfigManager::GetInstance().GetAppSettingFloat("cloud_shadow_intensity", 0.5f) << "\n";
 
 			file << "\n[PhysicalParameters]\n";
 			file << "AtmosphereHeight=" << atmosphere->GetAtmosphereHeight() << "\n";

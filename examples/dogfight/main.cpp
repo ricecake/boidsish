@@ -21,7 +21,7 @@ int main() {
 		std::cout << "Dogfight Demo starting..." << std::endl;
 		std::cout << "Red and Blue teams will chase each other and engage in combat." << std::endl;
 		std::cout << "Planes will explode if an enemy stays behind them for too long or if they hit terrain."
-				  << std::endl;
+		          << std::endl;
 
 		visualizer->Run();
 	} catch (const std::exception& e) {

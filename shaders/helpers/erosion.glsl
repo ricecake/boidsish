@@ -120,6 +120,7 @@ vec2 safe_normalize(vec2 n) {
  * @param cellScale Size of Phacelle noise cells.
  * @param normalization Consistency of gully magnitudes.
  * @param ridgeMap Output: -1 on creases, 1 on ridges.
+ * @param substrate Output: -1 for heavy erosion (valleys), 1 for deposition (plains/ridges).
  * @param debug Output: for visualization.
  * @return vec4(heightDelta, slopeDelta.xy, totalMagnitude)
  */
@@ -140,6 +141,7 @@ vec4 ErosionFilter(
 	float     cellScale,
 	float     normalization,
 	out float ridgeMap,
+	out float substrate,
 	out float debug
 ) {
 	strength *= (scale + 10.0);
@@ -189,6 +191,7 @@ vec4 ErosionFilter(
 	}
 
 	ridgeMap = ridgeMapFadeTarget * (1.0 - ridgeMapCombiMask);
+	substrate = clamp(fadeTarget, -1.0, 1.0);
 	debug = fadeTarget;
 
 	vec3 heightAndSlopeDelta = heightAndSlope - inputHeightAndSlope;

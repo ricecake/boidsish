@@ -22,6 +22,7 @@ out float      tessFactor;
 out float      vIsWater;
 out float      vErosionDelta;
 out float      vRidgeMap;
+out float      vSubstrate;
 
 // Heightmap texture array: R=height, GBA=normal
 uniform sampler2DArray uHeightmap;
@@ -83,6 +84,7 @@ void main() {
 	if (erosion_enabled > 0 && terrainDistance < erosion_max_dist * worldScale) {
 		// Note: We apply the erosion filter directly to the geometry for evaluation.
 		float ridgeMapOutput = 0.0;
+		float substrateOutput = 0.0;
 		float debugOutput = 0.0;
 
 		// We update frameworkHeightPeak to provide more vertical range for the eroded features.
@@ -111,6 +113,7 @@ void main() {
 			0.7,
 			0.5,
 			ridgeMapOutput,
+			substrateOutput,
 			debugOutput
 		);
 
@@ -126,9 +129,11 @@ void main() {
 
 		vErosionDelta = erosionResult.x; // Keep unscaled for color mapping
 		vRidgeMap = ridgeMapOutput;
+		vSubstrate = substrateOutput;
 	} else {
 		vErosionDelta = 0.0;
 		vRidgeMap = 0.0;
+		vSubstrate = 0.0;
 	}
 
 	// Detect water (height < 0) with a small blend range for stability
@@ -167,7 +172,11 @@ void main() {
 			float rocks = fastWorley3d(scaledPos * 0.5);
 			float divots = fastSimplex3d(scaledPos * 1.0);
 
-			float displacement = (rocks * 1.15 - abs(divots) * 1.17) * detailFade;
+			// Substrate modulation: eroded areas (substrate < 0) are more rocky/rough,
+			// while deposition areas (substrate > 0) are smoother.
+			float substrateMod = mix(1.2, 0.4, clamp(vSubstrate * 0.5 + 0.5, 0.0, 1.0));
+
+			float displacement = (rocks * 1.15 - abs(divots) * 1.17) * detailFade * substrateMod;
 			FragPos += Normal * displacement;
 		}
 	}

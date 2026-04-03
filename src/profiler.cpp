@@ -147,8 +147,8 @@ namespace Boidsish {
 		file << "Name,Count,Avg (us),EMA (us),Min (us),Max (us),Avg Calls/F,EMA Calls/F,Impact\n";
 		for (const auto& [name, stats] : m_stats) {
 			file << "\"" << name << "\"," << stats.count << "," << (stats.totalTimeUs / stats.count) << ","
-				 << stats.emaTimeUs << "," << stats.minTimeUs << "," << stats.maxTimeUs << "," << stats.avgCallsPerFrame
-				 << "," << stats.emaCallsPerFrame << "," << stats.impact << "\n";
+			     << stats.emaTimeUs << "," << stats.minTimeUs << "," << stats.maxTimeUs << "," << stats.avgCallsPerFrame
+			     << "," << stats.emaCallsPerFrame << "," << stats.impact << "\n";
 		}
 	}
 

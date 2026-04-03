@@ -13,6 +13,7 @@ in float      tessFactor;
 in float      vIsWater;
 in float      vErosionDelta;
 in float      vRidgeMap;
+in float      vSubstrate;
 
 #include "helpers/erosion.glsl"
 #include "helpers/fast_noise.glsl"
@@ -387,6 +388,11 @@ void main() {
 	TerrainMaterial biomeMat = getBiomeMaterial(distortedHeight, moisture, combinedNoise);
 	TerrainMaterial cliffMat = getCliffMaterial(baseHeight, medNoise);
 
+	// Substrate-based blending: eroded substrate tends to be rockier, while
+	// deposition substrate (plains/ridges) can be lusher.
+	float substrateCliffFactor = smoothstep(0.2, -0.6, vSubstrate);
+	cliffMask = clamp(cliffMask + substrateCliffFactor * 0.4, 0.0, 1.0);
+
 	// Blend biome with cliff material
 	finalMaterial.albedo = mix(biomeMat.albedo, cliffMat.albedo, cliffMask);
 	finalMaterial.roughness = mix(biomeMat.roughness, cliffMat.roughness, cliffMask);
@@ -431,11 +437,34 @@ void main() {
 		float roughnessScale = normalScale * 0.05;
 		vec3  scaledFragPos = FragPos / worldScale;
 
+		// Sample biome noise type (using unused params.w)
+		vec2  biomeUV = (TexCoords * uRawChunkSize + 0.5) / (uRawChunkSize + 1.0);
+		vec2  biomeInfo = texture(uBiomeMap, vec3(biomeUV, TextureSlice)).rg;
+		float noiseTypeA = biomes[int(biomeInfo.x)].params.w;
+		float noiseTypeB = biomes[min(int(biomeInfo.x) + 1, 7)].params.w;
+		float noiseType = mix(noiseTypeA, noiseTypeB, biomeInfo.y);
+
 		// Use finite difference to approximate the gradient of the noise field
 		float eps = 0.015;
-		float n = fastWorley3d(0.1 * scaledFragPos * roughnessScale);
-		float nx = fastWorley3d(0.1 * (scaledFragPos + vec3(eps, 0.0, 0.0)) * roughnessScale);
-		float nz = fastWorley3d(0.1 * (scaledFragPos + vec3(0.0, 0.0, eps)) * roughnessScale);
+		float n, nx, nz;
+
+		if (noiseType < 0.5) { // Simplex (0)
+			n = fastSimplex3d(0.1 * scaledFragPos * roughnessScale);
+			nx = fastSimplex3d(0.1 * (scaledFragPos + vec3(eps, 0.0, 0.0)) * roughnessScale);
+			nz = fastSimplex3d(0.1 * (scaledFragPos + vec3(0.0, 0.0, eps)) * roughnessScale);
+		} else if (noiseType < 1.5) { // Worley (1)
+			n = fastWorley3d(0.1 * scaledFragPos * roughnessScale);
+			nx = fastWorley3d(0.1 * (scaledFragPos + vec3(eps, 0.0, 0.0)) * roughnessScale);
+			nz = fastWorley3d(0.1 * (scaledFragPos + vec3(0.0, 0.0, eps)) * roughnessScale);
+		} else if (noiseType < 2.5) { // FBM (2)
+			n = fastFbm3d(0.1 * scaledFragPos * roughnessScale);
+			nx = fastFbm3d(0.1 * (scaledFragPos + vec3(eps, 0.0, 0.0)) * roughnessScale);
+			nz = fastFbm3d(0.1 * (scaledFragPos + vec3(0.0, 0.0, eps)) * roughnessScale);
+		} else { // Ridge (3)
+			n = fastRidge3d(0.1 * scaledFragPos * roughnessScale);
+			nx = fastRidge3d(0.1 * (scaledFragPos + vec3(eps, 0.0, 0.0)) * roughnessScale);
+			nz = fastRidge3d(0.1 * (scaledFragPos + vec3(0.0, 0.0, eps)) * roughnessScale);
+		}
 
 		// Compute local tangent space to orient the perturbation.
 		// Using a stable basis that doesn't flip at Z-axis alignment.
