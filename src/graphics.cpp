@@ -47,7 +47,6 @@
 #include "post_processing/effects/GtaoEffect.h"
 #include "post_processing/effects/NegativeEffect.h"
 #include "post_processing/effects/OpticalFlowEffect.h"
-#include "post_processing/effects/SdfVolumeEffect.h"
 #include "post_processing/effects/StrobeEffect.h"
 #include "post_processing/effects/SuperSpeedEffect.h"
 #include "post_processing/effects/TimeStutterEffect.h"
@@ -58,6 +57,7 @@
 #include "render_queue.h"
 #include "scene_compositor.h"
 #include "sdf_volume_manager.h"
+#include "shape.h"
 #include "shader_table.h"
 #include "shadow_manager.h"
 #include "shadow_render_pass.h"
@@ -537,6 +537,7 @@ namespace Boidsish {
 		std::unique_ptr<OpaqueScenePass>     opaque_pass_;
 		std::unique_ptr<EarlyEffectsPass>    early_effects_pass_;
 		std::unique_ptr<ParticleEffectsPass> particle_pass_;
+		std::unique_ptr<SdfVolumePass>       sdf_volume_pass_;
 		std::unique_ptr<TransparentPass>     transparent_pass_;
 
 		// Scene center computed by shadow pass, used by other systems
@@ -1014,9 +1015,6 @@ namespace Boidsish {
 				bloom_effect->SetEnabled(true);
 				post_processing_manager_->AddEffect(bloom_effect);
 
-				auto sdf_volume_effect = std::make_shared<PostProcessing::SdfVolumeEffect>();
-				sdf_volume_effect->SetEnabled(true);
-				post_processing_manager_->AddEffect(sdf_volume_effect);
 
 				if (enable_hdr_) {
 					auto tone_mapping_effect = std::make_shared<PostProcessing::ToneMappingEffect>();
@@ -1070,10 +1068,6 @@ namespace Boidsish {
 			shader_to_setup.setVec4("clipPlane", glm::vec4(0.0f));
 			if (noise_manager) {
 				noise_manager->BindDefault(shader_to_setup);
-			}
-			GLuint sdf_volumes_idx = glGetUniformBlockIndex(shader_to_setup.ID, "SdfVolumes");
-			if (sdf_volumes_idx != GL_INVALID_INDEX) {
-				glUniformBlockBinding(shader_to_setup.ID, sdf_volumes_idx, Constants::UboBinding::SdfVolumes());
 			}
 			GLuint lighting_idx = glGetUniformBlockIndex(shader_to_setup.ID, "Lighting");
 			if (lighting_idx != GL_INVALID_INDEX) {
@@ -2080,6 +2074,7 @@ namespace Boidsish {
 
 			frame.has_shockwaves = shockwave_manager && shockwave_manager->HasActiveShockwaves();
 			frame.has_terrain = (terrain_generator != nullptr);
+			frame.temporal_ubo = temporal_data_ubo;
 
 			frame.config = frame_config_;
 
@@ -2392,8 +2387,8 @@ namespace Boidsish {
 			if (akira_effect_manager && terrain_generator) {
 				akira_effect_manager->Update(simulation_delta_time, *terrain_generator);
 			}
-			sdf_volume_manager->UpdateUBO();
-			sdf_volume_manager->BindUBO(Constants::UboBinding::SdfVolumes());
+			sdf_volume_manager->UpdateSSBO();
+			sdf_volume_manager->BindSSBO(Constants::SsboBinding::SdfVolumes());
 			shockwave_manager->UpdateShaderData();
 			shockwave_manager->BindUBO(Constants::UboBinding::Shockwaves());
 
@@ -2480,6 +2475,12 @@ namespace Boidsish {
 		void RenderTransparentScene(const FrameData& frame) {
 			if (early_effects_pass_ && compositor_) {
 				early_effects_pass_->Execute(frame, *compositor_);
+			}
+
+			if (sdf_volume_pass_ && compositor_) {
+				glBindVertexArray(blur_quad_vao); // Use standard full-screen quad
+				sdf_volume_pass_->Execute(frame, *compositor_);
+				glBindVertexArray(0);
 			}
 
 			if (particle_pass_) {
@@ -3310,6 +3311,7 @@ namespace Boidsish {
 				);
 			}
 
+			impl->sdf_volume_pass_ = std::make_unique<SdfVolumePass>(*impl->sdf_volume_manager);
 			impl->transparent_pass_ = std::make_unique<TransparentPass>();
 
 			// Update terrain once to start chunk loading around the camera
@@ -4126,6 +4128,10 @@ namespace Boidsish {
 		impl->sdf_volume_manager->RemoveSource(id);
 	}
 
+	SdfVolumeManager& Visualizer::GetSdfVolumeManager() {
+		return *impl->sdf_volume_manager;
+	}
+
 	void Visualizer::ExplodeShape(std::shared_ptr<Shape> shape, float intensity, const glm::vec3& velocity) {
 		impl->mesh_explosion_manager->ExplodeShape(shape, intensity, velocity);
 	}
@@ -4188,6 +4194,29 @@ namespace Boidsish {
 		effect->SetColor(color.r, color.g, color.b);
 		impl->transient_effects.push_back(effect);
 		return effect;
+	}
+
+	void Visualizer::TriggerSdfExplosion(const glm::vec3& position, float intensity) {
+		SdfSource source;
+		source.position = position;
+		source.radius = 1.0f; // Start small
+		source.color = glm::vec3(1.0f, 0.5f, 0.1f);
+		source.smoothness = 5.0f;
+		source.charge = 1.0f;
+		source.type = SdfType::Sphere;
+
+		source.volumetric = true;
+		source.density = 2.0f * intensity;
+		source.absorption = 0.5f;
+		source.noise_scale = 0.2f;
+		source.noise_intensity = 0.8f;
+		source.color_inner = glm::vec3(1.0f, 0.8f, 0.2f);
+		source.color_outer = glm::vec3(1.0f, 0.2f, 0.0f);
+
+		auto shape = std::make_shared<SdfShape>(*impl->sdf_volume_manager, source);
+		shape->SetLifetime(1.5f * intensity);
+
+		impl->transient_effects.push_back(shape);
 	}
 
 	void Visualizer::TriggerComplexExplosion(

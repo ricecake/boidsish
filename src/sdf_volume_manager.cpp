@@ -8,8 +8,8 @@ namespace Boidsish {
 	SdfVolumeManager::SdfVolumeManager() {}
 
 	SdfVolumeManager::~SdfVolumeManager() {
-		if (ubo_ != 0) {
-			glDeleteBuffers(1, &ubo_);
+		if (ssbo_ != 0) {
+			glDeleteBuffers(1, &ssbo_);
 		}
 	}
 
@@ -17,20 +17,20 @@ namespace Boidsish {
 		if (initialized_)
 			return;
 
-		glGenBuffers(1, &ubo_);
-		glBindBuffer(GL_UNIFORM_BUFFER, ubo_);
+		glGenBuffers(1, &ssbo_);
+		glBindBuffer(GL_SHADER_STORAGE_BUFFER, ssbo_);
 
 		// Allocate space for: count (padded to 16 bytes) + array of SdfSourceGPU
-		size_t ubo_size = 16 + kMaxSources * sizeof(SdfSourceGPU);
-		glBufferData(GL_UNIFORM_BUFFER, ubo_size, nullptr, GL_DYNAMIC_DRAW);
-		glBindBuffer(GL_UNIFORM_BUFFER, 0);
+		size_t ssbo_size = 16 + kMaxSources * sizeof(SdfSourceGPU);
+		std::vector<uint8_t> zero(ssbo_size, 0); glBufferData(GL_SHADER_STORAGE_BUFFER, ssbo_size, zero.data(), GL_DYNAMIC_DRAW);
+		glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
 
 		initialized_ = true;
-		logger::INFO("SdfVolumeManager initialized");
+		logger::INFO("SdfVolumeManager initialized with SSBO");
 	}
 
-	void SdfVolumeManager::UpdateUBO() {
-		PROJECT_PROFILE_SCOPE("SdfVolumeManager::UpdateUBO");
+	void SdfVolumeManager::UpdateSSBO() {
+		PROJECT_PROFILE_SCOPE("SdfVolumeManager::UpdateSSBO");
 		if (!initialized_)
 			return;
 
@@ -44,27 +44,41 @@ namespace Boidsish {
 			SdfSourceGPU data;
 			data.position_radius = glm::vec4(source.position, source.radius);
 			data.color_smoothness = glm::vec4(source.color, source.smoothness);
-			data.charge_type_unused = glm::vec4(source.charge, static_cast<float>(source.type), 0.0f, 0.0f);
+			data.charge_type_vol_unused = glm::vec4(
+				source.charge,
+				static_cast<float>(source.type),
+				source.volumetric ? 1.0f : 0.0f,
+				0.0f
+			);
+			data.volumetric_params = glm::vec4(
+				source.density,
+				source.absorption,
+				source.noise_scale,
+				source.noise_intensity
+			);
+			data.color_inner = glm::vec4(source.color_inner, 1.0f);
+			data.color_outer = glm::vec4(source.color_outer, 1.0f);
+			data.prim_params = glm::vec4(source.size, source.height);
 			gpu_data.push_back(data);
 		}
 
-		glBindBuffer(GL_UNIFORM_BUFFER, ubo_);
+		glBindBuffer(GL_SHADER_STORAGE_BUFFER, ssbo_);
 
 		// Update count
 		int count = static_cast<int>(gpu_data.size());
-		glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(int), &count);
+		glBufferSubData(GL_SHADER_STORAGE_BUFFER, 0, sizeof(int), &count);
 
 		// Update array data
 		if (!gpu_data.empty()) {
-			glBufferSubData(GL_UNIFORM_BUFFER, 16, gpu_data.size() * sizeof(SdfSourceGPU), gpu_data.data());
+			glBufferSubData(GL_SHADER_STORAGE_BUFFER, 16, gpu_data.size() * sizeof(SdfSourceGPU), gpu_data.data());
 		}
 
-		glBindBuffer(GL_UNIFORM_BUFFER, 0);
+		glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
 	}
 
-	void SdfVolumeManager::BindUBO(GLuint binding_point) const {
-		if (ubo_ != 0) {
-			glBindBufferBase(GL_UNIFORM_BUFFER, binding_point, ubo_);
+	void SdfVolumeManager::BindSSBO(GLuint binding_point) const {
+		if (ssbo_ != 0) {
+			glBindBufferBase(GL_SHADER_STORAGE_BUFFER, binding_point, ssbo_);
 		}
 	}
 

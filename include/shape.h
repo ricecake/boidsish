@@ -10,6 +10,7 @@
 #include "collision.h"
 #include "constants.h"
 #include "geometry.h"
+#include "sdf_volume_manager.h"
 #include "visual_effects.h"
 #include <glm/glm.hpp>
 #include <glm/gtc/quaternion.hpp>
@@ -567,6 +568,42 @@ namespace Boidsish {
 		static unsigned int         sphere_ebo_;
 		static int                  sphere_vertex_count_;
 		static MegabufferAllocation sphere_alloc_;
+	};
+
+	class SdfShape: public Shape {
+	public:
+		SdfShape(SdfVolumeManager& manager, const SdfSource& source);
+		virtual ~SdfShape();
+
+		void Update(float delta_time) override;
+
+		bool IsExpired() const override { return age_ >= lifetime_ && lifetime_ > 0.0f; }
+		void SetLifetime(float lifetime) { lifetime_ = lifetime; }
+
+		void SetType(SdfType type) { source_.type = type; MarkDirty(); }
+		void SetBoxSize(const glm::vec3& size) { source_.size = size; MarkDirty(); }
+		void SetCapsuleHeight(float h) { source_.height = h; MarkDirty(); }
+
+		std::string GetInstanceKey() const override { return "SdfShape_" + std::to_string(GetId()); }
+
+		// SdfShape doesn't use the standard mesh renderer, but we need to satisfy the interface
+		MeshInfo GetMeshInfo(Megabuffer* megabuffer = nullptr) const override { return {}; }
+		void     GenerateRenderPackets(std::vector<RenderPacket>&, const RenderContext&) const override {
+            // SdfShapes are rendered via the SdfVolumePass, so they don't generate standard packets.
+        }
+
+		// Access to the underlying SDF source
+		SdfSource&       GetSource() { return source_; }
+		const SdfSource& GetSource() const { return source_; }
+
+	private:
+		SdfVolumeManager& manager_;
+		SdfSource         source_;
+		int               source_id_;
+		float             age_ = 0.0f;
+		float             lifetime_ = 0.0f;
+		float             initial_radius_;
+		float             initial_density_;
 	};
 
 	// Function type for user-defined shape generation

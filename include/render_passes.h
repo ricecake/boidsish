@@ -1,5 +1,6 @@
 #pragma once
 
+#include <GL/glew.h>
 #include <cstdint>
 #include <functional>
 #include <memory>
@@ -22,6 +23,7 @@ namespace Boidsish {
 	class NoiseManager;
 	class SceneCompositor;
 	class ShadowManager;
+	class SdfVolumeManager;
 	class TerrainRenderManager;
 
 	namespace PostProcessing {
@@ -104,6 +106,27 @@ namespace Boidsish {
 		MeshExplosionManager& explosions_;
 		AkiraEffectManager*   akira_;
 		NoiseManager&         noise_;
+	};
+
+	/**
+	 * @brief Renders SDF volumes and surfaces with temporal reprojection and depth guidance.
+	 */
+	class SdfVolumePass {
+	public:
+		SdfVolumePass(SdfVolumeManager& manager);
+		~SdfVolumePass();
+
+		void Execute(const FrameData& frame, SceneCompositor& compositor);
+
+	private:
+		SdfVolumeManager& manager_;
+		std::unique_ptr<Shader> shader_;
+		GLuint history_textures_[2] = {0, 0};
+		GLuint history_fbos_[2] = {0, 0};
+		int width_ = 0, height_ = 0;
+		int frame_index_ = 0;
+
+		void EnsureResources(int w, int h);
 	};
 
 	/**

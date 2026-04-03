@@ -12,6 +12,8 @@
 #include "profiler.h"
 #include "scene_compositor.h"
 #include "shadow_manager.h"
+#include "sdf_volume_manager.h"
+#include "temporal_data.h"
 #include "terrain_render_manager.h"
 #include <GL/glew.h>
 #include <shader.h>
@@ -128,6 +130,120 @@ namespace Boidsish {
 		if (akira_) {
 			akira_->Render(frame.view, frame.projection, frame.simulation_time);
 		}
+	}
+
+	// --- SdfVolumePass ---
+
+	SdfVolumePass::SdfVolumePass(SdfVolumeManager& manager): manager_(manager) {
+		shader_ = std::make_unique<Shader>("shaders/postprocess.vert", "shaders/effects/sdf_volume.frag");
+	}
+
+	SdfVolumePass::~SdfVolumePass() {
+		if (history_textures_[0] != 0) {
+			glDeleteTextures(2, history_textures_);
+			glDeleteFramebuffers(2, history_fbos_);
+		}
+	}
+
+	void SdfVolumePass::EnsureResources(int w, int h) {
+		if (width_ == w && height_ == h)
+			return;
+
+		if (history_textures_[0] != 0) {
+			glDeleteTextures(2, history_textures_);
+			glDeleteFramebuffers(2, history_fbos_);
+		}
+
+		width_ = w;
+		height_ = h;
+
+		glGenTextures(2, history_textures_);
+		glGenFramebuffers(2, history_fbos_);
+
+		for (int i = 0; i < 2; ++i) {
+			glBindTexture(GL_TEXTURE_2D, history_textures_[i]);
+			glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, width_, height_, 0, GL_RGBA, GL_FLOAT, nullptr);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+
+			glBindFramebuffer(GL_FRAMEBUFFER, history_fbos_[i]);
+			glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, history_textures_[i], 0);
+			glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
+			glClear(GL_COLOR_BUFFER_BIT);
+		}
+		glBindFramebuffer(GL_FRAMEBUFFER, 0);
+	}
+
+	void SdfVolumePass::Execute(const FrameData& frame, SceneCompositor& compositor) {
+		if (manager_.GetSourceCount() == 0)
+			return;
+
+		PROJECT_PROFILE_SCOPE("SdfVolumePass");
+
+		EnsureResources(frame.render_width, frame.render_height);
+
+		int write_idx = frame_index_ % 2;
+		int read_idx = (frame_index_ + 1) % 2;
+
+		glBindFramebuffer(GL_FRAMEBUFFER, history_fbos_[write_idx]);
+		// Ensure we are drawing to the color attachment
+		GLenum drawBuffers[] = {GL_COLOR_ATTACHMENT0};
+		glDrawBuffers(1, drawBuffers);
+
+		// Bind Temporal Data UBO
+		glBindBufferRange(
+			GL_UNIFORM_BUFFER,
+			Constants::UboBinding::TemporalData(),
+			frame.temporal_ubo,
+			0,
+			sizeof(TemporalUbo)
+		);
+
+		shader_->use();
+		shader_->setInt("sceneTexture", 0);
+		shader_->setInt("depthTexture", 1);
+		shader_->setInt("historyTexture", 2);
+		shader_->setVec2("screenSize", glm::vec2(width_, height_));
+		shader_->setVec3("cameraPos", frame.camera_pos);
+		shader_->setMat4("invView", frame.inv_view);
+		shader_->setMat4("invProjection", glm::inverse(frame.projection));
+		shader_->setFloat("time", frame.simulation_time);
+
+		glActiveTexture(GL_TEXTURE0);
+		glBindTexture(GL_TEXTURE_2D, compositor.GetColorTexture());
+		glActiveTexture(GL_TEXTURE1);
+		glBindTexture(GL_TEXTURE_2D, compositor.GetDepthTexture());
+		glActiveTexture(GL_TEXTURE2);
+		glBindTexture(GL_TEXTURE_2D, history_textures_[read_idx]);
+
+		manager_.BindSSBO(Constants::SsboBinding::SdfVolumes());
+
+		glDisable(GL_DEPTH_TEST);
+		glDepthMask(GL_FALSE);
+		glEnable(GL_BLEND);
+		glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+		// Drawing the full-screen quad (the VAO is assumed to be bound by the caller in graphics.cpp)
+		glDrawArrays(GL_TRIANGLES, 0, 6);
+
+		glDepthMask(GL_TRUE);
+		glEnable(GL_DEPTH_TEST);
+
+		// Blit the result from history FBO back to the main compositor FBO
+		glBindFramebuffer(GL_READ_FRAMEBUFFER, history_fbos_[write_idx]);
+		glReadBuffer(GL_COLOR_ATTACHMENT0);
+		glBindFramebuffer(GL_DRAW_FRAMEBUFFER, compositor.GetMainFBO());
+		glDrawBuffer(GL_COLOR_ATTACHMENT0);
+		glBlitFramebuffer(0, 0, width_, height_, 0, 0, width_, height_, GL_COLOR_BUFFER_BIT, GL_NEAREST);
+
+		// Restore default draw buffers for next passes (SceneCompositor might expect multiple)
+		GLenum mainBuffers[] = {GL_COLOR_ATTACHMENT0, GL_COLOR_ATTACHMENT1};
+		glDrawBuffers(2, mainBuffers);
+		glBindFramebuffer(GL_FRAMEBUFFER, compositor.GetMainFBO());
+
+		frame_index_++;
 	}
 
 	// --- TransparentPass ---

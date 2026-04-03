@@ -409,6 +409,8 @@ namespace Boidsish {
 		void UpdateSdfSource(int id, const SdfSource& source);
 		void RemoveSdfSource(int id);
 
+		SdfVolumeManager& GetSdfVolumeManager();
+
 		/**
 		 * @brief Create an explosion with fire particles and shockwave.
 		 *
@@ -448,6 +450,8 @@ namespace Boidsish {
 			float                  intensity = 1.0f,
 			FireEffectStyle        fire_style = FireEffectStyle::Explosion
 		);
+
+		void TriggerSdfExplosion(const glm::vec3& position, float intensity = 1.0f);
 
 		/**
 		 * @brief Add a curved text effect in world space.

@@ -25,10 +25,6 @@ namespace Boidsish {
 				return 4;
 			}
 
-			consteval int SdfVolumes() {
-				return 5;
-			}
-
 			consteval int TemporalData() {
 				return 6;
 			}
@@ -113,6 +109,10 @@ namespace Boidsish {
 
 			consteval int SliceData() {
 				return 24;
+			}
+
+			consteval int SdfVolumes() {
+				return 25;
 			}
 
 			consteval int LiveParticleIndices() {
