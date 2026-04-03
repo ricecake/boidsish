@@ -580,6 +580,10 @@ namespace Boidsish {
 		bool IsExpired() const override { return age_ >= lifetime_ && lifetime_ > 0.0f; }
 		void SetLifetime(float lifetime) { lifetime_ = lifetime; }
 
+		void SetType(SdfType type) { source_.type = type; MarkDirty(); }
+		void SetBoxSize(const glm::vec3& size) { source_.size = size; MarkDirty(); }
+		void SetCapsuleHeight(float h) { source_.height = h; MarkDirty(); }
+
 		std::string GetInstanceKey() const override { return "SdfShape_" + std::to_string(GetId()); }
 
 		// SdfShape doesn't use the standard mesh renderer, but we need to satisfy the interface

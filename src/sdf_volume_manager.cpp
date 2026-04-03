@@ -22,7 +22,7 @@ namespace Boidsish {
 
 		// Allocate space for: count (padded to 16 bytes) + array of SdfSourceGPU
 		size_t ssbo_size = 16 + kMaxSources * sizeof(SdfSourceGPU);
-		glBufferData(GL_SHADER_STORAGE_BUFFER, ssbo_size, nullptr, GL_DYNAMIC_DRAW);
+		std::vector<uint8_t> zero(ssbo_size, 0); glBufferData(GL_SHADER_STORAGE_BUFFER, ssbo_size, zero.data(), GL_DYNAMIC_DRAW);
 		glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
 
 		initialized_ = true;
@@ -58,6 +58,7 @@ namespace Boidsish {
 			);
 			data.color_inner = glm::vec4(source.color_inner, 1.0f);
 			data.color_outer = glm::vec4(source.color_outer, 1.0f);
+			data.prim_params = glm::vec4(source.size, source.height);
 			gpu_data.push_back(data);
 		}
 

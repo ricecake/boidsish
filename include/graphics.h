@@ -409,6 +409,8 @@ namespace Boidsish {
 		void UpdateSdfSource(int id, const SdfSource& source);
 		void RemoveSdfSource(int id);
 
+		SdfVolumeManager& GetSdfVolumeManager();
+
 		/**
 		 * @brief Create an explosion with fire particles and shockwave.
 		 *

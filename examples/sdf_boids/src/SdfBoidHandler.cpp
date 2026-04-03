@@ -114,7 +114,7 @@ namespace Boidsish {
 			source.color = is_predator ? glm::vec3(1.0f, 0.2f, 0.2f) : glm::vec3(0.2f, 0.6f, 1.0f);
 			source.charge = is_predator ? -5.0f : 1.0f; // Predator cancels, others merge
 			source.smoothness = 4.0f;
-			source.type = 0; // Sphere
+			source.type = SdfType::Sphere;
 
 			int sid = visualizer->AddSdfSource(source);
 			boid->SetSdfSourceId(sid);
@@ -139,7 +139,7 @@ namespace Boidsish {
 			source.color = boid->IsPredator() ? glm::vec3(1.0f, 0.2f, 0.2f) : glm::vec3(0.2f, 0.6f, 1.0f);
 			source.charge = boid->IsPredator() ? -1.0f : 1.0f;
 			source.smoothness = 4.0f;
-			source.type = 0;
+			source.type = SdfType::Sphere;
 
 			vis->UpdateSdfSource(boid->GetSdfSourceId(), source);
 		}

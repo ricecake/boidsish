@@ -13,6 +13,7 @@
 #include "scene_compositor.h"
 #include "shadow_manager.h"
 #include "sdf_volume_manager.h"
+#include "temporal_data.h"
 #include "terrain_render_manager.h"
 #include <GL/glew.h>
 #include <shader.h>
@@ -169,6 +170,8 @@ namespace Boidsish {
 
 			glBindFramebuffer(GL_FRAMEBUFFER, history_fbos_[i]);
 			glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, history_textures_[i], 0);
+			glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
+			glClear(GL_COLOR_BUFFER_BIT);
 		}
 		glBindFramebuffer(GL_FRAMEBUFFER, 0);
 	}
@@ -185,7 +188,18 @@ namespace Boidsish {
 		int read_idx = (frame_index_ + 1) % 2;
 
 		glBindFramebuffer(GL_FRAMEBUFFER, history_fbos_[write_idx]);
-		// We don't clear, we might want to blend or overwrite
+		// Ensure we are drawing to the color attachment
+		GLenum drawBuffers[] = {GL_COLOR_ATTACHMENT0};
+		glDrawBuffers(1, drawBuffers);
+
+		// Bind Temporal Data UBO
+		glBindBufferRange(
+			GL_UNIFORM_BUFFER,
+			Constants::UboBinding::TemporalData(),
+			frame.temporal_ubo,
+			0,
+			sizeof(TemporalUbo)
+		);
 
 		shader_->use();
 		shader_->setInt("sceneTexture", 0);
@@ -219,8 +233,14 @@ namespace Boidsish {
 
 		// Blit the result from history FBO back to the main compositor FBO
 		glBindFramebuffer(GL_READ_FRAMEBUFFER, history_fbos_[write_idx]);
+		glReadBuffer(GL_COLOR_ATTACHMENT0);
 		glBindFramebuffer(GL_DRAW_FRAMEBUFFER, compositor.GetMainFBO());
+		glDrawBuffer(GL_COLOR_ATTACHMENT0);
 		glBlitFramebuffer(0, 0, width_, height_, 0, 0, width_, height_, GL_COLOR_BUFFER_BIT, GL_NEAREST);
+
+		// Restore default draw buffers for next passes (SceneCompositor might expect multiple)
+		GLenum mainBuffers[] = {GL_COLOR_ATTACHMENT0, GL_COLOR_ATTACHMENT1};
+		glDrawBuffers(2, mainBuffers);
 		glBindFramebuffer(GL_FRAMEBUFFER, compositor.GetMainFBO());
 
 		frame_index_++;

@@ -49,6 +49,7 @@ namespace Boidsish {
 
 		bool has_shockwaves{false};
 		bool has_terrain{false};
+		uint32_t temporal_ubo{0};
 
 		FrameConfigCache config;
 
