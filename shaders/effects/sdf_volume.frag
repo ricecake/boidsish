@@ -259,17 +259,17 @@ float sampleSourceDensity(vec3 p, int index) {
 	// 1. Curl-warped FBM for large-scale billowing displacement
 	vec3 noise_p = p * noise_scale;
 	vec3 warp = fastCurl3d((p + time * 0.5) / (10.0 * max(0.01, noise_intensity)));
-	float warped_fbm = fastWarpedFbm3d(noise_p * 0.1 + warp * 0.3 + vec3(0.0, -time * 0.3, 0.0));
+	// float warped_fbm = fastWarpedFbm3d(noise_p * 0.1 + warp * 0.3 + vec3(0.0, -time * 0.3, 0.0));
 
 	// 2. Ridged FBm for sharp crease detail
 	float ridges = ridgedFbm(noise_p * 0.15 + time * 0.4);
 
 	// 3. Base FBm for softer variation
-	float base_fbm = fastFbm3d(noise_p * 0.08 + vec3(0.0, -time * 0.5, 0.0)) * 0.5 + 0.5;
+	// float base_fbm = fastFbm3d(noise_p * 0.08 + vec3(0.0, -time * 0.5, 0.0)) * 0.5 + 0.5;
 
 	// Combine: ridges give definition, warped fbm gives large-scale structure
 	density *= mix(0.2, 2.0, ridges) * mix(0.4, 1.4, base_fbm);
-	density += density * warped_fbm * noise_intensity * 0.5;
+	// density += density * 1.0 * noise_intensity * 0.5;
 
 	// Soft edges
 	density *= smoothstep(0.0, 0.12, normalized_d);
