@@ -1,0 +1,2158 @@
+#version 420 core
+#ifndef GSHADERS_TERRAIN_TES
+#define GSHADERS_TERRAIN_TES
+
+layout(quads, fractional_even_spacing, cw) in;
+
+// Input from Tessellation Control Shader
+in vec3       LocalPos_TC_out[];
+in vec2       TexCoords_TC_out[];
+flat in float TextureSlice_TC_out[];
+flat in vec3  WorldOffset_TC_out[];
+in float      perturbFactor_TC_out[];
+in float      tessFactor_TC_out[];
+
+// Output to Fragment Shader
+out vec3       FragPos;
+out vec4       CurPosition;
+out vec4       PrevPosition;
+out vec3       Normal;
+out vec2       TexCoords;
+flat out float TextureSlice;
+out float      perturbFactor;
+out float      tessFactor;
+out float      vIsWater;
+out float      vErosionDelta;
+out float      vRidgeMap;
+out float      vSubstrate;
+
+// Heightmap texture array: R=height, GBA=normal
+uniform sampler2DArray uHeightmap;
+uniform float          uChunkSize;
+uniform float          uRawChunkSize;
+
+uniform mat4 view;
+uniform mat4 projection;
+uniform vec4 clipPlane;
+uniform bool uIsShadowPass = false;
+
+//START shaders/helpers/erosion.glsl
+#ifndef GSHADERS_HELPERS_EROSION_GLSL
+#define GSHADERS_HELPERS_EROSION_GLSL
+#ifndef HELPERS_EROSION_GLSL
+#define HELPERS_EROSION_GLSL
+
+/*
+================================================================================
+Advanced terrain erosion filter based on stacked faded gullies.
+Adapted from Rune Skovbo Johansen's technique (runevision).
+Original source: https://www.shadertoy.com/view/33cXW8
+Blog post: https://blog.runevision.com/2026/03/fast-and-gorgeous-erosion-filter.html
+
+Phacelle Noise function copyright (c) 2025 Rune Skovbo Johansen
+Advanced Terrain Erosion Filter copyright (c) 2025 Rune Skovbo Johansen
+
+This Source Code Form is subject to the terms of the Mozilla Public
+License, v. 2.0. If a copy of the MPL was not distributed with this
+file, You can obtain one at https://mozilla.org/MPL/2.0/.
+================================================================================
+*/
+
+#define TAU 6.28318530717959
+
+// Compatible hash function returning vec2 in range [-1, 1]
+vec2 hash(vec2 p) {
+	p = vec2(dot(p, vec2(127.1, 311.7)), dot(p, vec2(269.5, 183.3)));
+	return fract(sin(p) * 43758.5453123) * 2.0 - 1.0;
+}
+
+float clamp01(float t) {
+	return clamp(t, 0.0, 1.0);
+}
+
+// The Simple Phacelle Noise function produces a stripe pattern aligned with the input vector.
+// The name Phacelle is a portmanteau of phase and cell, since the function produces a phase by
+// interpolating cosine and sine waves from multiple cells.
+//  - p is the input point being evaluated.
+//  - normDir is the direction of the stripes at this point. It must be a normalized vector.
+//  - freq is the freqency of the stripes within each cell. It's best to keep it close to 1.0.
+//  - offset is the phase offset of the stripes, where 1.0 is a full cycle.
+//  - normalization is the degree of normalization applied, between 0 and 1.
+vec4 PhacelleNoise(in vec2 p, vec2 normDir, float freq, float offset, float normalization) {
+	// Get a vector orthogonal to the input direction, with a
+	// magnitude proportional to the frequency of the stripes.
+	vec2 sideDir = normDir.yx * vec2(-1.0, 1.0) * freq * TAU;
+	offset *= TAU;
+
+	vec2  pInt = floor(p);
+	vec2  pFrac = fract(p);
+	vec2  phaseDir = vec2(0.0);
+	float weightSum = 0.0;
+	for (int i = -1; i <= 2; i++) {
+		for (int j = -1; j <= 2; j++) {
+			vec2 gridOffset = vec2(i, j);
+			vec2 gridPoint = pInt + gridOffset;
+			vec2 randomOffset = hash(gridPoint) * 0.5;
+			vec2 vectorFromCellPoint = pFrac - gridOffset - randomOffset;
+
+			// Bell-shaped weight function
+			float sqrDist = dot(vectorFromCellPoint, vectorFromCellPoint);
+			float weight = exp(-sqrDist * 2.0);
+			weight = max(0.0, weight - 0.01111);
+
+			weightSum += weight;
+			float waveInput = dot(vectorFromCellPoint, sideDir) + offset;
+
+			// Add this cell's cosine and sine wave contributions
+			phaseDir += vec2(cos(waveInput), sin(waveInput)) * weight;
+		}
+	}
+
+	vec2  interpolated = phaseDir / weightSum;
+	float magnitude = sqrt(dot(interpolated, interpolated));
+	magnitude = max(1.0 - normalization, magnitude);
+	return vec4(interpolated / magnitude, sideDir);
+}
+
+// -----------------------------------------------------------------------------
+// EROSION UTILITIES
+// -----------------------------------------------------------------------------
+
+float pow_inv(float t, float power) {
+	return 1.0 - pow(1.0 - clamp01(t), power);
+}
+
+float ease_out(float t) {
+	float v = 1.0 - clamp01(t);
+	return 1.0 - v * v;
+}
+
+float smooth_start(float t, float smoothing) {
+	if (t >= smoothing)
+		return t - 0.5 * smoothing;
+	return 0.5 * t * t / smoothing;
+}
+
+vec2 safe_normalize(vec2 n) {
+	float l = length(n);
+	return (abs(l) > 1e-10) ? (n / l) : n;
+}
+
+// -----------------------------------------------------------------------------
+// EROSION FILTER
+// -----------------------------------------------------------------------------
+
+/**
+ * Advanced Terrain Erosion Filter
+ *
+ * @param p World or UV coordinates for evaluation.
+ * @param heightAndSlope Input height (x) and derivative (yz).
+ * @param fadeTarget Value to fade towards (-1 at valleys, 1 at peaks).
+ * @param strength Overall erosion strength.
+ * @param gullyWeight Balance between sharpening and gullies (0 to 1).
+ * @param detail Detail restriction (higher = more detail on shallow slopes).
+ * @param rounding Rounding parameters (x: ridge, y: crease, z: input mult, w: octave mult).
+ * @param onset Controls where erosion takes effect (x: initial, y: octave, z: ridgemap initial, w: ridgemap octave).
+ * @param assumedSlope Override slope for initial gully direction (x: value, y: override amount).
+ * @param scale Spatial scale of the erosion.
+ * @param octaves Number of gully scales to layer.
+ * @param lacunarity Frequency multiplier per octave.
+ * @param gain Magnitude multiplier per octave.
+ * @param cellScale Size of Phacelle noise cells.
+ * @param normalization Consistency of gully magnitudes.
+ * @param ridgeMap Output: -1 on creases, 1 on ridges.
+ * @param substrate Output: -1 for heavy erosion (valleys), 1 for deposition (plains/ridges).
+ * @param debug Output: for visualization.
+ * @return vec4(heightDelta, slopeDelta.xy, totalMagnitude)
+ */
+vec4 ErosionFilter(
+	in vec2   p,
+	vec3      heightAndSlope,
+	float     fadeTarget,
+	float     strength,
+	float     gullyWeight,
+	float     detail,
+	vec4      rounding,
+	vec4      onset,
+	vec2      assumedSlope,
+	float     scale,
+	int       octaves,
+	float     lacunarity,
+	float     gain,
+	float     cellScale,
+	float     normalization,
+	out float ridgeMap,
+	out float substrate,
+	out float debug
+) {
+	strength *= (scale + 10.0);
+	fadeTarget = clamp(fadeTarget, -1.0, 1.0);
+
+	scale *= 100.0;
+
+	vec3  inputHeightAndSlope = heightAndSlope;
+	float freq = 1.0 / (scale * cellScale);
+	float slopeLength = max(length(heightAndSlope.yz), 1e-10);
+	float magnitude = 0.0;
+	float roundingMult = 1.0;
+
+	float roundingForInput = mix(rounding.y, rounding.x, clamp01(fadeTarget + 0.5)) * rounding.z;
+	float combiMask = ease_out(smooth_start(slopeLength * onset.x, roundingForInput * onset.x));
+
+	float ridgeMapCombiMask = ease_out(slopeLength * onset.z);
+	float ridgeMapFadeTarget = fadeTarget;
+
+	vec2 gullySlope = mix(heightAndSlope.yz, heightAndSlope.yz / slopeLength * assumedSlope.x, assumedSlope.y);
+
+	for (int i = 0; i < octaves; i++) {
+		vec4 phacelle = PhacelleNoise(p * freq, safe_normalize(gullySlope), cellScale, 0.25, normalization);
+		phacelle.zw *= -freq;
+		float sloping = abs(phacelle.y);
+
+		gullySlope += sign(phacelle.y) * phacelle.zw * strength * gullyWeight;
+
+		vec3 gullies = vec3(phacelle.x, phacelle.y * phacelle.zw);
+		vec3 fadedGullies = mix(vec3(fadeTarget, 0.0, 0.0), gullies * gullyWeight, combiMask);
+		heightAndSlope += fadedGullies * strength;
+		magnitude += strength;
+
+		fadeTarget = fadedGullies.x;
+
+		float roundingForOctave = mix(rounding.y, rounding.x, clamp01(phacelle.x + 0.5)) * roundingMult;
+		float newMask = ease_out(smooth_start(sloping * onset.y, roundingForOctave * onset.y));
+		combiMask = pow_inv(combiMask, detail) * newMask;
+
+		ridgeMapFadeTarget = mix(ridgeMapFadeTarget, gullies.x, ridgeMapCombiMask);
+		float newRidgeMapMask = ease_out(sloping * onset.w);
+		ridgeMapCombiMask = ridgeMapCombiMask * newRidgeMapMask;
+
+		strength *= gain;
+		freq *= lacunarity;
+		roundingMult *= rounding.w;
+	}
+
+	ridgeMap = ridgeMapFadeTarget * (1.0 - ridgeMapCombiMask);
+	substrate = clamp(fadeTarget, -1.0, 1.0);
+	debug = fadeTarget;
+
+	vec3 heightAndSlopeDelta = heightAndSlope - inputHeightAndSlope;
+	return vec4(heightAndSlopeDelta, magnitude);
+}
+
+// -----------------------------------------------------------------------------
+// COLOR MAPPING
+// -----------------------------------------------------------------------------
+
+/**
+ * Apply realistic erosion color mapping.
+ *
+ * @param albedo Base terrain color.
+ * @param ridgeMap Ridge map output from ErosionFilter (-1 to 1).
+ * @param heightDelta Height change from erosion.
+ * @param sedimentColor Color of accumulated sediment in creases.
+ * @param ridgeColor Color of exposed rock on ridges.
+ */
+vec3 applyErosionColorMapping(vec3 albedo, float ridgeMap, float heightDelta, vec3 sedimentColor, vec3 ridgeColor) {
+	// Darken/Color creases (sediment/water accumulation)
+	float creaseMask = smoothstep(0.2, -0.8, ridgeMap);
+	albedo = mix(albedo, sedimentColor, creaseMask * 0.5);
+
+	// Highlight ridges (exposed rock/weathering)
+	float ridgeMask = smoothstep(0.2, 0.8, ridgeMap);
+	albedo = mix(albedo, ridgeColor, ridgeMask * 0.3);
+
+	// Subtle darkening in deeper eroded areas
+	albedo *= (1.0 - clamp01(-heightDelta * 2.0) * 0.2);
+
+	return albedo;
+}
+
+/**
+ * Default color mapping with sensible defaults.
+ */
+vec3 applyErosionColorMappingDefault(vec3 albedo, float ridgeMap, float heightDelta) {
+	vec3 sediment = vec3(0.1, 0.08, 0.05); // Dark dirt/moist soil
+	vec3 rock = vec3(0.8, 0.75, 0.7);      // Lighter exposed rock
+	return applyErosionColorMapping(albedo, ridgeMap, heightDelta, sediment, rock);
+}
+
+#endif // HELPERS_EROSION_GLSL
+#endif // GSHADERS_HELPERS_EROSION_GLSL
+//END shaders/helpers/erosion.glsl (returning to shaders/terrain.tes)
+//START shaders/helpers/lighting.glsl
+#ifndef GSHADERS_HELPERS_LIGHTING_GLSL
+#define GSHADERS_HELPERS_LIGHTING_GLSL
+#ifndef HELPERS_LIGHTING_GLSL
+#define HELPERS_LIGHTING_GLSL
+
+//START shaders/helpers/../helpers/constants.glsl
+#ifndef GSHADERS_HELPERS_CONSTANTS_GLSL
+#define GSHADERS_HELPERS_CONSTANTS_GLSL
+#ifndef CONSTANTS
+#define CONSTANTS
+
+const float PI = 3.14159265359;
+
+#endif
+#endif // GSHADERS_HELPERS_CONSTANTS_GLSL
+//END shaders/helpers/../helpers/constants.glsl (returning to shaders/helpers/lighting.glsl)
+//START shaders/helpers/../lighting.glsl
+#ifndef GSHADERS_LIGHTING_GLSL
+#define GSHADERS_LIGHTING_GLSL
+#ifndef LIGHTING_GLSL
+#define LIGHTING_GLSL
+
+struct Light {
+	vec3  position;
+	float intensity;
+	vec3  color;
+	int   type;
+	vec3  direction;
+	float inner_cutoff; // Also: emissive_radius (EMISSIVE), flash_radius (FLASH)
+	float outer_cutoff; // Also: falloff_exp (FLASH)
+};
+
+const int MAX_LIGHTS = 10;
+const int MAX_SHADOW_MAPS = 16;
+const int MAX_CASCADES = 4;
+
+layout(std140) uniform Lighting {
+	Light lights[MAX_LIGHTS];
+	int   num_lights;
+	float worldScale;
+	float dayTime;
+	float nightFactor;
+	vec3  viewPos;
+	float cloudShadowIntensity;
+	vec3  ambient_light;
+	float time;
+	vec3  viewDir;
+	float cloudAltitude;
+	float cloudThickness;
+	float cloudDensity;
+	float cloudCoverage;
+	float cloudWarp;
+};
+
+// Shadow mapping UBO (binding set via glUniformBlockBinding to point 2)
+layout(std140) uniform Shadows {
+	mat4 lightSpaceMatrices[MAX_SHADOW_MAPS];
+	vec4 cascadeSplits;
+	int  numShadowLights;
+};
+
+// Shadow map texture array - bound to texture unit 4
+uniform sampler2DArrayShadow shadowMaps;
+
+// Per-light shadow map index (-1 if no shadow for this light)
+// This is set via uniform since the Light struct can't easily store it
+uniform int lightShadowIndices[MAX_LIGHTS];
+
+#endif
+#endif // GSHADERS_LIGHTING_GLSL
+//END shaders/helpers/../lighting.glsl (returning to shaders/helpers/lighting.glsl)
+//START shaders/helpers/clouds.glsl
+#ifndef GSHADERS_HELPERS_CLOUDS_GLSL
+#define GSHADERS_HELPERS_CLOUDS_GLSL
+#ifndef HELPERS_CLOUDS_GLSL
+#define HELPERS_CLOUDS_GLSL
+
+//START shaders/helpers/fast_noise.glsl
+#ifndef GSHADERS_HELPERS_FAST_NOISE_GLSL
+#define GSHADERS_HELPERS_FAST_NOISE_GLSL
+// Helper functions for fast texture-based noise lookups
+// Requires noise texture samplers bound to fixed units:
+// u_noiseTexture: 3D, unit 5, R=Simplex/G=Worley/B=FBM/A=Warped
+// u_curlTexture: 3D, unit 6, RGB=Curl/A=FBM Curl Mag
+// u_blueNoiseTexture: 2D, unit 7, RGBA tiling blue noise at 4 frequencies
+// u_extraNoiseTexture: 3D, unit 8, R=Ridge/G=Gradient
+
+uniform sampler3D u_noiseTexture;
+uniform sampler3D u_curlTexture;
+uniform sampler2D u_blueNoiseTexture;
+uniform sampler3D u_extraNoiseTexture;
+
+// R: Simplex 3D
+float fastSimplex3d(vec3 p) {
+	return texture(u_noiseTexture, p).r * 2.0 - 1.0;
+}
+
+// G: Worley 3D
+float fastWorley3d(vec3 p) {
+	return texture(u_noiseTexture, p).g;
+}
+
+// B: FBM 3D
+float fastFbm3d(vec3 p) {
+	return texture(u_noiseTexture, p).b * 2.0 - 1.0;
+}
+
+// A: Warped FBM 3D
+float fastWarpedFbm3d(vec3 p) {
+	return texture(u_noiseTexture, p).a * 2.0 - 1.0;
+}
+
+// Extra Noises (from u_extraNoiseTexture)
+// R: Ridge 3D
+float fastRidge3d(vec3 p) {
+	return texture(u_extraNoiseTexture, p).r;
+}
+
+// G: Gradient 3D
+float fastGradient3d(vec3 p) {
+	return texture(u_extraNoiseTexture, p).g * 2.0 - 1.0;
+}
+
+// Multi-octave texture FBM
+float fastTextureFbm(vec3 p, int octaves) {
+	float value = 0.0;
+	float amplitude = 0.5;
+	for (int i = 0; i < octaves; i++) {
+		value += amplitude * (texture(u_noiseTexture, p).r * 2.0 - 1.0);
+		p *= 2.0;
+		amplitude *= 0.5;
+	}
+	return value;
+}
+
+// Curl Noise lookup
+vec3 fastCurl3d(vec3 p) {
+	return texture(u_curlTexture, p).rgb;
+}
+
+// FBM Curl magnitude lookup
+float fastFbmCurl3d(vec3 p) {
+	return texture(u_curlTexture, p).a;
+}
+
+// Blue Noise lookups (at different frequencies)
+float fastBlueNoise(vec2 uv, int frequencyIndex) {
+	vec4 bn = texture(u_blueNoiseTexture, uv);
+	if (frequencyIndex == 0)
+		return bn.r;
+	if (frequencyIndex == 1)
+		return bn.g;
+	if (frequencyIndex == 2)
+		return bn.b;
+	return bn.a;
+}
+
+float fastBlueNoise(vec2 uv) {
+	return texture(u_blueNoiseTexture, uv).r;
+}
+#endif // GSHADERS_HELPERS_FAST_NOISE_GLSL
+//END shaders/helpers/fast_noise.glsl (returning to shaders/helpers/clouds.glsl)
+
+// Cloud density calculation helper
+// Returns a density value [0, 1+] based on world-space position
+float calculateCloudDensity(
+	vec3  p,
+	float weatherMap,
+	float cloudAltitude,
+	float cloudThickness,
+	float cloudDensityBase,
+	float cloudCoverage,
+	float worldScale,
+	float time,
+	bool  simplified
+) {
+	// Dynamic ceiling and floor based on weatherMap
+	// Dense areas (high weatherMap) get lower floor and much higher ceiling (tall clouds)
+	// Sparse areas get higher floor and thinner layer (wispy clouds)
+	float floorOffset = mix(20.0, -50.0, weatherMap) * worldScale;
+	float ceilingOffset = mix(10.0, 500.0, weatherMap) * worldScale;
+
+	float altitudeOffset = mix(0.0, 500.0, weatherMap) * worldScale;
+
+	float baseFloor = (altitudeOffset+cloudAltitude) * worldScale + floorOffset;
+	float baseCeiling = ((altitudeOffset+cloudAltitude) + cloudThickness) * worldScale + ceilingOffset;
+	float currentThickness = baseCeiling - baseFloor;
+
+	if (p.y < baseFloor || p.y > baseCeiling)
+		return 0.0;
+
+	// Height-based tapering with a more natural profile
+	float h = (p.y - baseFloor) / max(currentThickness, 0.001);
+	float tapering = smoothstep(0.0, 0.15, h) * smoothstep(1.0, 0.7, h);
+
+	// Tall cloud profile: more density at the bottom, anvil-like top
+	float densityProfile = mix(tapering, pow(tapering, 0.5), weatherMap);
+
+	float coverageThreshold = 1.0 - cloudCoverage;
+	float localDensity = weatherMap * cloudDensityBase;
+
+	if (simplified) {
+		return smoothstep(coverageThreshold, coverageThreshold + 0.2, localDensity) * densityProfile * cloudDensityBase;
+	}
+
+	// Base noise for cloud shapes
+	vec3 p_warped = p + 5.0 * fastCurl3d(p / (900.0 * worldScale) + time * 0.02);
+	vec3 p_scaled = p_warped / (50000.0 * worldScale);
+
+	float baseNoise = fastWorley3d(p_scaled + time * 0.005);
+
+	// Add ridges and textures for definition
+	float ridges = fastRidge3d(p_warped / (1600.0 * worldScale));
+	float detail = fastFbm3d(p_warped / (1450.0 * worldScale) + time * 0.01) * 0.5 + 0.5;
+
+	// Combine noises
+	float finalNoise = baseNoise * (0.6 + 0.4 * ridges);
+	finalNoise = mix(finalNoise, finalNoise * detail, 0.3);
+
+	// Apply coverage and local density
+	float density = smoothstep(coverageThreshold, coverageThreshold + 0.4, finalNoise * weatherMap);
+
+	// Giant tall clouds vs wispy things
+	// High weatherMap = tall, dense, sharp
+	// Low weatherMap = wispy, thin, soft
+	float wispyFactor = smoothstep(0.2, 035, weatherMap);
+	density *= mix(0.6, 1.0, wispyFactor);
+
+	return density * densityProfile * cloudDensityBase * 3.0;
+}
+
+#endif // HELPERS_CLOUDS_GLSL
+#endif // GSHADERS_HELPERS_CLOUDS_GLSL
+//END shaders/helpers/clouds.glsl (returning to shaders/helpers/lighting.glsl)
+//START shaders/helpers/terrain_shadows.glsl
+#ifndef GSHADERS_HELPERS_TERRAIN_SHADOWS_GLSL
+#define GSHADERS_HELPERS_TERRAIN_SHADOWS_GLSL
+#ifndef TERRAIN_SHADOWS_GLSL
+#define TERRAIN_SHADOWS_GLSL
+
+//START shaders/helpers/fast_noise.glsl
+//END shaders/helpers/fast_noise.glsl (returning to shaders/helpers/terrain_shadows.glsl)
+
+layout(std140, binding = 8) uniform TerrainData {
+	ivec4 u_originSize;    // x, y=z, z=size, w=isBound
+	vec4  u_terrainParams; // x=chunkSize, y=worldScale
+};
+
+uniform isampler2D u_chunkGrid;
+uniform sampler2D  u_maxHeightGrid;
+// u_heightmapArray is bound to unit 13
+uniform sampler2DArray u_heightmapArray;
+
+float getTerrainHeight(vec2 worldXZ) {
+	if (u_originSize.w < 1)
+		return -10000.0;
+	float scaledChunkSize = u_terrainParams.x * u_terrainParams.y;
+	vec2  gridPos = worldXZ / scaledChunkSize;
+	ivec2 chunkCoord = ivec2(floor(gridPos));
+	ivec2 localGridCoord = chunkCoord - u_originSize.xy;
+
+	if (localGridCoord.x < 0 || localGridCoord.x >= u_originSize.z || localGridCoord.y < 0 ||
+	    localGridCoord.y >= u_originSize.z) {
+		return -9999.0; // Debug value
+	}
+
+	int slice = texelFetch(u_chunkGrid, localGridCoord, 0).r;
+	if (slice < 0)
+		return -10000.0;
+
+	vec2 uv = (worldXZ - vec2(chunkCoord) * scaledChunkSize) / scaledChunkSize;
+	vec2 remappedUV = (uv * u_terrainParams.x + 0.5) / (u_terrainParams.x + 1.0);
+	return texture(u_heightmapArray, vec3(remappedUV, float(slice))).r;
+}
+
+float terrainShadowCoverage(vec3 worldPos, vec3 normal, vec3 lightDir) {
+	if (u_originSize.w < 1)
+		return 1.0;
+	// lightDir is from fragment to light
+	float sundownShadow = smoothstep(0.0, 0.02, lightDir.y);
+	if (lightDir.y <= 0.02) {
+		return sundownShadow;
+	}
+
+	float scaledChunkSize = u_terrainParams.x * u_terrainParams.y;
+
+	// Better initial bias: move along normal and a bit along light direction.
+	// Increased bias and light-dir push to prevent self-shadowing grooves at chunk boundaries.
+	vec3  p_start = worldPos + normal * (0.5 * u_terrainParams.y) + lightDir * 2.0;
+	float t = 0.0;
+	float maxDist = 1200.0 * u_terrainParams.y;
+
+	vec2 rayDir = vec2(lightDir.x, lightDir.z);
+	vec2 stepDir = sign(rayDir);
+	// Avoid division by zero
+	vec2 safeRayDir = vec2(abs(rayDir.x) < 1e-6 ? 1e-6 : abs(rayDir.x), abs(rayDir.y) < 1e-6 ? 1e-6 : abs(rayDir.y));
+	vec2 tDelta = scaledChunkSize / safeRayDir;
+
+	vec2  gridPos = p_start.xz / scaledChunkSize;
+	ivec2 currentChunk = ivec2(floor(gridPos));
+
+	vec2 tMax;
+	tMax.x = (stepDir.x > 0.0) ? (floor(gridPos.x) + 1.0 - gridPos.x) * tDelta.x
+							   : (gridPos.x - floor(gridPos.x)) * tDelta.x;
+	tMax.y = (stepDir.y > 0.0) ? (floor(gridPos.y) + 1.0 - gridPos.y) * tDelta.y
+							   : (gridPos.y - floor(gridPos.y)) * tDelta.y;
+
+	float closest = 1.0;
+	int   iter = 0;
+
+	while (t < maxDist && iter < 128) {
+		iter++;
+
+		ivec2 localGridCoord = currentChunk - u_originSize.xy;
+		if (localGridCoord.x < 0 || localGridCoord.x >= u_originSize.z || localGridCoord.y < 0 ||
+		    localGridCoord.y >= u_originSize.z) {
+			break; // Out of grid bounds
+		}
+
+		float tNext = min(tMax.x, tMax.y);
+		float tEnd = min(tNext, maxDist);
+
+		vec2 gridUV = (vec2(localGridCoord) + 0.5) / float(u_originSize.z);
+
+		// Hi-Z Skip: Mip 3 covers 8x8 chunks
+		float h_max3 = textureLod(u_maxHeightGrid, gridUV, 3.0).r;
+		float rayYAtT = p_start.y + t * lightDir.y;
+
+		if (rayYAtT < h_max3 + 1.0) {
+			// Check mip 1 (2x2 chunks)
+			float h_max1 = textureLod(u_maxHeightGrid, gridUV, 1.0).r;
+			if (rayYAtT < h_max1 + 0.5) {
+				// At LOD 0, check actual chunk height
+				float h_max0 = textureLod(u_maxHeightGrid, gridUV, 0.0).r;
+				if (rayYAtT < h_max0 + 0.25) {
+					int slice = texelFetch(u_chunkGrid, localGridCoord, 0).r;
+					if (slice >= 0) {
+						// Sub-march inside this chunk
+						float subT = t;
+						float subStep = 1.5 * u_terrainParams.y;
+						while (subT < tEnd) {
+							vec3  p = p_start + subT * lightDir;
+							vec2  uv_chunk = (p.xz - vec2(currentChunk) * scaledChunkSize) / scaledChunkSize;
+							vec2  remappedUV = (uv_chunk * u_terrainParams.x + 0.5) / (u_terrainParams.x + 1.0);
+							float h = texture(u_heightmapArray, vec3(remappedUV, float(slice))).r;
+							if (p.y < h) {
+								return 0.0; // Hit terrain!
+							}
+							closest = min(closest, 8.0 * ((p.y - h) / subT));
+							subT += subStep;
+						}
+					}
+				}
+			}
+		}
+
+		t = tEnd;
+		if (t >= maxDist)
+			break;
+
+		if (tMax.x < tMax.y) {
+			tMax.x += tDelta.x;
+			currentChunk.x += int(stepDir.x);
+		} else {
+			tMax.y += tDelta.y;
+			currentChunk.y += int(stepDir.y);
+		}
+	}
+
+	return closest;
+}
+
+bool isPointInTerrainShadow(vec3 worldPos, vec3 normal, vec3 lightDir) {
+	return terrainShadowCoverage(worldPos, normal, lightDir) <= 0.0;
+}
+
+int isPointInTerrainShadowDebug(vec3 worldPos, vec3 normal, vec3 lightDir) {
+	if (u_originSize.w < 1)
+		return -3; // Blue
+	if (u_terrainParams.y <= 0.0)
+		return -1; // Cyan
+	if (u_terrainParams.x <= 0.0)
+		return -4; // White (Invalid chunkSize)
+	if (lightDir.y <= 0.02)
+		return -2; // Orange-ish (Light below horizon or too low)
+
+	float scaledChunkSize = u_terrainParams.x * u_terrainParams.y;
+	vec3  p_start = worldPos + normal * (0.2 * u_terrainParams.y) + lightDir * 1.5;
+	float t = 0.0;
+	float maxDist = 1200.0 * u_terrainParams.y;
+
+	vec2 rayDir = vec2(lightDir.x, lightDir.z);
+	vec2 stepDir = sign(rayDir);
+	vec2 safeRayDir = vec2(abs(rayDir.x) < 1e-6 ? 1e-6 : abs(rayDir.x), abs(rayDir.y) < 1e-6 ? 1e-6 : abs(rayDir.y));
+	vec2 tDelta = scaledChunkSize / safeRayDir;
+
+	vec2  gridPos = p_start.xz / scaledChunkSize;
+	ivec2 currentChunk = ivec2(floor(gridPos));
+
+	vec2 tMax;
+	tMax.x = (stepDir.x > 0.0) ? (floor(gridPos.x) + 1.0 - gridPos.x) * tDelta.x
+							   : (gridPos.x - floor(gridPos.x)) * tDelta.x;
+	tMax.y = (stepDir.y > 0.0) ? (floor(gridPos.y) + 1.0 - gridPos.y) * tDelta.y
+							   : (gridPos.y - floor(gridPos.y)) * tDelta.y;
+
+	int iter = 0;
+	while (t < maxDist && iter < 128) {
+		iter++;
+
+		ivec2 localGridCoord = currentChunk - u_originSize.xy;
+		if (localGridCoord.x < 0)
+			return 11;
+		if (localGridCoord.x >= u_originSize.z)
+			return 12;
+		if (localGridCoord.y < 0)
+			return 13;
+		if (localGridCoord.y >= u_originSize.z)
+			return 14;
+
+		if (u_originSize.z != 128)
+			return 5;
+
+		float tNext = min(tMax.x, tMax.y);
+		float tEnd = min(tNext, maxDist);
+
+		vec2  gridUV = (vec2(localGridCoord) + 0.5) / float(u_originSize.z);
+		float h_max3 = textureLod(u_maxHeightGrid, gridUV, 3.0).r;
+		float rayYAtT = p_start.y + t * lightDir.y;
+
+		if (rayYAtT < h_max3 + 1.0) {
+			float h_max1 = textureLod(u_maxHeightGrid, gridUV, 1.0).r;
+			if (rayYAtT < h_max1 + 0.5) {
+				float h_max0 = textureLod(u_maxHeightGrid, gridUV, 0.0).r;
+				if (rayYAtT < h_max0 + 0.25) {
+					int slice = texelFetch(u_chunkGrid, localGridCoord, 0).r;
+					if (slice < 0) {
+						return 2; // No slice (Yellow)
+					}
+
+					// Sub-march inside this chunk
+					float subT = t;
+					float subStep = 1.5 * u_terrainParams.y;
+					while (subT < tEnd) {
+						vec3  p = p_start + subT * lightDir;
+						vec2  uv_chunk = (p.xz - vec2(currentChunk) * scaledChunkSize) / scaledChunkSize;
+						float h = texture(u_heightmapArray, vec3(uv_chunk, float(slice))).r;
+						if (p.y < h) {
+							return 3; // Hit! (Magenta)
+						}
+						subT += subStep;
+					}
+				}
+			}
+		}
+
+		t = tEnd;
+		if (t >= maxDist)
+			break;
+
+		if (tMax.x < tMax.y) {
+			tMax.x += tDelta.x;
+			currentChunk.x += int(stepDir.x);
+		} else {
+			tMax.y += tDelta.y;
+			currentChunk.y += int(stepDir.y);
+		}
+	}
+
+	return 0; // Miss (Green)
+}
+
+#endif
+#endif // GSHADERS_HELPERS_TERRAIN_SHADOWS_GLSL
+//END shaders/helpers/terrain_shadows.glsl (returning to shaders/helpers/lighting.glsl)
+
+const int LIGHT_TYPE_POINT = 0;
+const int LIGHT_TYPE_DIRECTIONAL = 1;
+const int LIGHT_TYPE_SPOT = 2;
+const int LIGHT_TYPE_EMISSIVE = 3; // Glowing object light (can cast shadows)
+const int LIGHT_TYPE_FLASH = 4;    // Explosion/flash light (rapid falloff)
+
+/**
+ * Calculate cloud shadow factor for a fragment position.
+ * Projects the fragment position to the cloud layer along the light direction.
+ */
+float calculateCloudShadow(int light_index, vec3 frag_pos) {
+	if (lights[light_index].type != LIGHT_TYPE_DIRECTIONAL || cloudShadowIntensity <= 0.0) {
+		return 1.0;
+	}
+
+	vec3 L = normalize(-lights[light_index].direction);
+	if (L.y <= 0.0)
+		return 1.0;
+
+	// Project to the middle of the cloud layer to ensure we're within the tapering range
+	float shadowAltitude = cloudAltitude + cloudThickness * 0.5;
+	float scaledCloudAltitude = shadowAltitude * worldScale;
+	float t = (scaledCloudAltitude - frag_pos.y) / L.y;
+
+	if (t < 0.0)
+		return 1.0;
+
+	vec3 cloudPos = frag_pos + L * t;
+
+	float weatherWarpFactor = 1.0;
+	if (cloudWarp > 0.0) {
+		float camDist = length(frag_pos.xz - viewPos.xz);
+		weatherWarpFactor = smoothstep(0.0, cloudWarp * worldScale, camDist);
+	}
+	float weatherMap = weatherWarpFactor *
+		(fastWorley3d(vec3(frag_pos.xz / (4000 * worldScale), time * 0.01)) * 0.5 + 0.5);
+
+	float d = calculateCloudDensity(
+		cloudPos,
+		weatherMap,
+		cloudAltitude,
+		cloudThickness,
+		cloudDensity,
+		cloudCoverage,
+		worldScale,
+		time,
+		true
+	);
+
+	return mix(1.0, exp(-d * 1.5), cloudShadowIntensity);
+}
+
+/**
+ * Calculate shadow factor for a fragment position using a specific shadow map.
+ * Returns 0.0 if fully in shadow, 1.0 if fully lit.
+ * Uses PCF (Percentage Closer Filtering) for soft shadow edges.
+ */
+float calculateShadow(int light_index, vec3 frag_pos, vec3 normal, vec3 light_dir) {
+	// Optimization: Quick terrain raycast for directional lights (Sun)
+	float terrainShadow = 1.0;
+	if (lights[light_index].type == LIGHT_TYPE_DIRECTIONAL) {
+		terrainShadow = terrainShadowCoverage(frag_pos, normal, light_dir);
+		if (terrainShadow <= 0.0) {
+			return terrainShadow;
+		}
+	}
+
+	int shadow_index = lightShadowIndices[light_index];
+
+	// Early out for invalid indices or when no shadow lights are active
+	// This MUST return before any texture operations to avoid driver issues
+	if (shadow_index < 0) {
+		return terrainShadow; // No shadow for this light
+	}
+	if (numShadowLights <= 0) {
+		return terrainShadow; // No shadow maps active at all
+	}
+
+	// Handle Cascaded Shadow Maps for directional lights
+	int   cascade = 0;
+	float cascade_blend = 0.0; // Blend factor for smooth cascade transitions
+	int   next_cascade = -1;
+
+	if (lights[light_index].type == LIGHT_TYPE_DIRECTIONAL) {
+		// Use linear depth along camera forward for more consistent splits
+		float depth = dot(frag_pos - viewPos, viewDir);
+		cascade = -1;
+		for (int i = 0; i < MAX_CASCADES; ++i) {
+			if (depth < cascadeSplits[i]) {
+				cascade = i;
+				break;
+			}
+		}
+
+		if (cascade == -1) {
+			// Beyond all cascade splits - use the last cascade as catchall
+			// The far cascade is configured with extended range specifically for this
+			cascade = MAX_CASCADES - 1;
+		}
+
+		// Calculate blend zone for smooth cascade transitions
+		// This eliminates the harsh "perspective shift" at cascade boundaries
+		// Note: Don't blend for the last cascade since it's the catchall
+		if (cascade < MAX_CASCADES - 1) {
+			float cascade_start = (cascade == 0) ? 0.0 : cascadeSplits[cascade - 1];
+			float cascade_end = cascadeSplits[cascade];
+			float cascade_range = cascade_end - cascade_start;
+
+			// Blend zone is the last 15% of each cascade
+			float blend_zone_start = cascade_end - cascade_range * 0.15;
+			if (depth > blend_zone_start) {
+				cascade_blend = (depth - blend_zone_start) / (cascade_end - blend_zone_start);
+				cascade_blend = smoothstep(0.0, 1.0, cascade_blend); // Smooth the transition
+				next_cascade = cascade + 1;
+			}
+		}
+
+		shadow_index += cascade;
+	}
+
+	if (shadow_index >= MAX_SHADOW_MAPS) {
+		return terrainShadow; // Index out of bounds
+	}
+
+	// Transform fragment position to light space
+	vec4 frag_pos_light_space = lightSpaceMatrices[shadow_index] * vec4(frag_pos, 1.0);
+
+	// Perspective divide (guard against division by zero)
+	if (abs(frag_pos_light_space.w) < 0.0001) {
+		return terrainShadow;
+	}
+	vec3 proj_coords = frag_pos_light_space.xyz / frag_pos_light_space.w;
+
+	// Transform to [0,1] range for texture sampling
+	proj_coords = proj_coords * 0.5 + 0.5;
+
+	// Check if fragment is outside the shadow map frustum
+	if (proj_coords.x < 0.0 || proj_coords.x > 1.0 || proj_coords.y < 0.0 || proj_coords.y > 1.0 ||
+	    proj_coords.z > 1.0 || proj_coords.z < 0.0) {
+		return terrainShadow; // Outside shadow frustum, fully lit
+	}
+
+	// Current depth from light's perspective
+	float current_depth = proj_coords.z;
+
+	// Improved bias calculation to prevent shadow acne while keeping shadows connected to geometry
+	// The key insight: larger cascades have lower resolution (larger texels), so need larger bias
+	// But the bias should NOT be so large that shadows appear "floating" above terrain
+	float slope_factor = max(1.0 - dot(normal, light_dir), 0.0); // 0 when facing light, 1 when perpendicular
+
+	// Base bias: very small for direct facing surfaces
+	float base_bias = 0.0001;
+
+	// Slope bias: increases for steep angles relative to light
+	float slope_bias = 0.001 * slope_factor;
+
+	// Cascade-specific bias: accounts for texel size differences
+	// CRITICAL: This should be modest - previous 5x multiplier was too aggressive
+	// Near cascade (0): finest resolution, minimal extra bias needed
+	// Far cascade (3): coarsest resolution, but still shouldn't be huge
+	float cascade_bias_scale = 1.0 + float(cascade) * 0.8; // Was 5.0, now 0.8
+
+	// Calculate texel size in world units for this cascade (approximate)
+	vec2 texel_size = 1.0 / vec2(textureSize(shadowMaps, 0).xy);
+
+	// Final bias combines all factors
+	float bias = (base_bias + slope_bias) * cascade_bias_scale;
+
+	// Clamp to prevent over-biasing that causes disconnected shadows
+	bias = clamp(bias, 0.0001, 0.01);
+
+	// PCF - sample multiple texels for soft shadows
+	// Use larger kernel for distant cascades to match their lower resolution
+	float shadow = 0.0;
+	int   kernel_size = (cascade < 2) ? 1 : 2; // 3x3 for near, 5x5 for far
+	float sample_count = 0.0;
+
+	for (int x = -kernel_size; x <= kernel_size; ++x) {
+		for (int y = -kernel_size; y <= kernel_size; ++y) {
+			vec2 offset = vec2(x, y) * texel_size;
+			// sampler2DArrayShadow expects (u, v, layer, compare_value)
+			vec4 shadow_coord = vec4(proj_coords.xy + offset, float(shadow_index), current_depth - bias);
+			shadow += texture(shadowMaps, shadow_coord);
+			sample_count += 1.0;
+		}
+	}
+	shadow /= sample_count;
+
+	// Blend with next cascade if in transition zone
+	// This smooths the visual transition and eliminates the "perspective shift" artifact
+	if (cascade_blend > 0.0 && next_cascade >= 0 && next_cascade < MAX_CASCADES) {
+		int next_shadow_index = shadow_index - cascade + next_cascade;
+		if (next_shadow_index < MAX_SHADOW_MAPS) {
+			// Sample from next cascade with its own bias
+			float next_cascade_bias_scale = 1.0 + float(next_cascade) * 0.8;
+			float next_bias = (base_bias + slope_bias) * next_cascade_bias_scale;
+			next_bias = clamp(next_bias, 0.0001, 0.01);
+
+			// Transform to next cascade's light space
+			vec4 next_frag_pos_light_space = lightSpaceMatrices[next_shadow_index] * vec4(frag_pos, 1.0);
+			if (abs(next_frag_pos_light_space.w) > 0.0001) {
+				vec3 next_proj_coords = next_frag_pos_light_space.xyz / next_frag_pos_light_space.w;
+				next_proj_coords = next_proj_coords * 0.5 + 0.5;
+
+				// Only blend if also within next cascade's valid range
+				if (next_proj_coords.x >= 0.0 && next_proj_coords.x <= 1.0 && next_proj_coords.y >= 0.0 &&
+				    next_proj_coords.y <= 1.0 && next_proj_coords.z >= 0.0 && next_proj_coords.z <= 1.0) {
+					float next_shadow = 0.0;
+					int   next_kernel_size = (next_cascade < 2) ? 1 : 2;
+					float next_sample_count = 0.0;
+
+					for (int x = -next_kernel_size; x <= next_kernel_size; ++x) {
+						for (int y = -next_kernel_size; y <= next_kernel_size; ++y) {
+							vec2 offset = vec2(x, y) * texel_size;
+							vec4 shadow_coord = vec4(
+								next_proj_coords.xy + offset,
+								float(next_shadow_index),
+								next_proj_coords.z - next_bias
+							);
+							next_shadow += texture(shadowMaps, shadow_coord);
+							next_sample_count += 1.0;
+						}
+					}
+					next_shadow /= next_sample_count;
+
+					// Blend between cascades
+					shadow = mix(shadow, next_shadow, cascade_blend);
+				}
+			}
+		}
+	}
+
+	return min(terrainShadow, shadow);
+}
+
+/**
+ * Calculate the relative luminance of a color.
+ * Used for determining how much a specular highlight should contribute to fragment opacity.
+ */
+float get_luminance(vec3 color) {
+	return dot(color, vec3(0.2126, 0.7152, 0.0722));
+}
+
+// ============================================================================
+// PBR Functions (Cook-Torrance BRDF)
+// ============================================================================
+
+// Normal Distribution Function (GGX/Trowbridge-Reitz)
+float DistributionGGX(vec3 N, vec3 H, float roughness) {
+	// Clamp roughness to avoid singularity at 0 (causes black surfaces)
+	float r = max(roughness, 0.04);
+	float a = r * r;
+	float a2 = a * a;
+	float NdotH = max(dot(N, H), 0.0);
+	float NdotH2 = NdotH * NdotH;
+
+	float nom = a2;
+	float denom = (NdotH2 * (a2 - 1.0) + 1.0);
+	denom = PI * denom * denom;
+
+	return nom / max(denom, 0.0001);
+}
+
+// Geometry function (Schlick-GGX)
+float GeometrySchlickGGX(float NdotV, float roughness) {
+	float r = (roughness + 1.0);
+	float k = (r * r) / 8.0;
+
+	float nom = NdotV;
+	float denom = NdotV * (1.0 - k) + k;
+
+	return nom / max(denom, 0.0001);
+}
+
+// Smith's method for geometry obstruction and shadowing
+float GeometrySmith(vec3 N, vec3 V, vec3 L, float roughness) {
+	float NdotV = max(dot(N, V), 0.0);
+	float NdotL = max(dot(N, L), 0.0);
+	float ggx2 = GeometrySchlickGGX(NdotV, roughness);
+	float ggx1 = GeometrySchlickGGX(NdotL, roughness);
+
+	return ggx1 * ggx2;
+}
+
+// Fresnel-Schlick approximation
+vec3 fresnelSchlick(float cosTheta, vec3 F0) {
+	return F0 + (1.0 - F0) * pow(clamp(1.0 - cosTheta, 0.0, 1.0), 5.0);
+}
+
+// Fresnel-Schlick with roughness - for environment reflections
+// Rough surfaces have less pronounced Fresnel effect
+vec3 fresnelSchlickRoughness(float cosTheta, vec3 F0, float roughness) {
+	return F0 + (max(vec3(1.0 - roughness), F0) - F0) * pow(clamp(1.0 - cosTheta, 0.0, 1.0), 5.0);
+}
+
+// ============================================================================
+// Attenuation Helpers for Light Types
+// ============================================================================
+
+/**
+ * Calculate light direction and attenuation for any light type.
+ * @param light_index Index into the lights array
+ * @param frag_pos Fragment world position
+ * @param light_dir Output: normalized direction from fragment to light
+ * @param attenuation Output: combined distance and angular attenuation
+ */
+void calculateLightContribution(int light_index, vec3 frag_pos, out vec3 light_dir, out float attenuation) {
+	attenuation = 1.0;
+
+	if (lights[light_index].type == LIGHT_TYPE_POINT) {
+		// Point light: attenuates with distance
+		light_dir = normalize(lights[light_index].position - frag_pos);
+		float distance = length(lights[light_index].position - frag_pos);
+		// Practical attenuation curve (inverse square falloff with linear term)
+		attenuation = 1.0 / (1.0 + 0.09 * distance + 0.032 * distance * distance);
+
+	} else if (lights[light_index].type == LIGHT_TYPE_DIRECTIONAL) {
+		// Directional light: no attenuation, parallel rays
+		light_dir = normalize(-lights[light_index].direction);
+		attenuation = 1.0;
+
+	} else if (lights[light_index].type == LIGHT_TYPE_SPOT) {
+		// Spot light: distance attenuation + angular falloff
+		light_dir = normalize(lights[light_index].position - frag_pos);
+		float distance = length(lights[light_index].position - frag_pos);
+		attenuation = 1.0 / (1.0 + 0.09 * distance + 0.032 * distance * distance);
+
+		// Angular falloff using inner/outer cutoff angles
+		float theta = dot(light_dir, normalize(-lights[light_index].direction));
+		float epsilon = lights[light_index].inner_cutoff - lights[light_index].outer_cutoff;
+		float angular_intensity = clamp((theta - lights[light_index].outer_cutoff) / epsilon, 0.0, 1.0);
+		attenuation *= angular_intensity;
+
+	} else if (lights[light_index].type == LIGHT_TYPE_EMISSIVE) {
+		// Emissive/glowing object light: similar to point light but with soft near-field
+		// inner_cutoff stores the emissive object radius for soft falloff
+		light_dir = normalize(lights[light_index].position - frag_pos);
+		float distance = length(lights[light_index].position - frag_pos);
+		float emissive_radius = lights[light_index].inner_cutoff;
+
+		// Soft falloff that accounts for the size of the glowing object
+		// Avoids harsh falloff when very close to the light source
+		float effective_dist = max(distance - emissive_radius * 0.5, 0.0);
+		attenuation = 1.0 / (1.0 + 0.09 * effective_dist + 0.032 * effective_dist * effective_dist);
+
+		// Boost intensity when inside or near the emissive radius
+		float proximity_boost = smoothstep(emissive_radius * 2.0, 0.0, distance);
+		attenuation = mix(attenuation, 1.0, proximity_boost * 0.5);
+
+	} else if (lights[light_index].type == LIGHT_TYPE_FLASH) {
+		// Flash/explosion light: very bright with rapid falloff
+		// inner_cutoff = flash radius, outer_cutoff = falloff exponent
+		light_dir = normalize(lights[light_index].position - frag_pos);
+		float distance = length(lights[light_index].position - frag_pos);
+		float flash_radius = lights[light_index].inner_cutoff;
+		float falloff_exp = lights[light_index].outer_cutoff;
+
+		// Normalized distance (0 at center, 1 at radius edge)
+		float norm_dist = distance / max(flash_radius, 0.001);
+
+		// Sharp inverse-power falloff for explosive effect
+		// Falls off rapidly but smoothly
+		attenuation = 1.0 / pow(1.0 + norm_dist, falloff_exp);
+
+		// Hard cutoff at 2x radius to prevent distant influence
+		attenuation *= smoothstep(2.0, 1.5, norm_dist);
+	}
+}
+
+// ============================================================================
+// PBR Lighting Functions
+// ============================================================================
+
+// PBR intensity multiplier to compensate for energy conservation
+// PBR is inherently darker than legacy Phong, so we boost it
+const float PBR_INTENSITY_BOOST = 4.0;
+
+/**
+ * PBR lighting with Cook-Torrance BRDF - supports all light types.
+ * Returns vec4(color.rgb, specular_luminance).
+ *
+ * @param frag_pos Fragment world position
+ * @param normal Surface normal (must be normalized)
+ * @param albedo Base color of the material
+ * @param roughness Surface roughness [0=smooth, 1=rough]
+ * @param metallic Metallic property [0=dielectric, 1=metal]
+ * @param ao Ambient occlusion [0=fully occluded, 1=no occlusion]
+ */
+vec4 apply_lighting_pbr(vec3 frag_pos, vec3 normal, vec3 albedo, float roughness, float metallic, float ao) {
+	vec3 N = normalize(normal);
+	vec3 V = normalize(viewPos - frag_pos);
+
+	// Calculate reflectance at normal incidence
+	// For dielectrics use 0.04, for metals use albedo color
+	vec3 F0 = vec3(0.04);
+	F0 = mix(F0, albedo, metallic);
+
+	vec3  Lo = vec3(0.0);
+	float spec_lum = 0.0;
+
+	for (int i = 0; i < num_lights; ++i) {
+		// Get light direction and attenuation based on light type
+		vec3  L;
+		float base_attenuation;
+		calculateLightContribution(i, frag_pos, L, base_attenuation);
+
+		vec3  H = normalize(V + L);
+		float distance = length(lights[i].position - frag_pos);
+
+		// For PBR, we apply intensity boost to compensate for energy conservation
+		// Note: directional lights don't use distance attenuation
+		float attenuation;
+		if (lights[i].type == LIGHT_TYPE_DIRECTIONAL) {
+			attenuation = lights[i].intensity * PBR_INTENSITY_BOOST;
+		} else {
+			attenuation = (lights[i].intensity * PBR_INTENSITY_BOOST) * base_attenuation;
+		}
+		vec3 radiance = lights[i].color * attenuation;
+
+		// Cook-Torrance BRDF
+		float NDF = DistributionGGX(N, H, roughness);
+		float G = GeometrySmith(N, V, L, roughness);
+		vec3  F = fresnelSchlick(max(dot(H, V), 0.0), F0);
+
+		vec3  numerator = NDF * G * F;
+		float denominator = 4.0 * max(dot(N, V), 0.0) * max(dot(N, L), 0.0) + 0.0001;
+		vec3  specular = numerator / denominator;
+
+		// kS is Fresnel (specular component)
+		vec3 kS = F;
+		// kD is diffuse component (energy conservation: kD + kS = 1.0)
+		vec3 kD = vec3(1.0) - kS;
+		// Metals don't have diffuse lighting
+		kD *= 1.0 - metallic;
+
+		float NdotL = max(dot(N, L), 0.0);
+
+		// Calculate shadow with slope-scaled bias
+		float shadow = calculateShadow(i, frag_pos, N, L);
+
+		// Apply cloud shadow for directional lights
+		if (lights[i].type == LIGHT_TYPE_DIRECTIONAL) {
+			shadow *= calculateCloudShadow(i, frag_pos);
+		}
+
+		// Add to outgoing radiance Lo
+		vec3 specular_radiance = specular * radiance * NdotL * shadow;
+		Lo += (kD * albedo / PI) * radiance * NdotL * shadow + specular_radiance;
+		spec_lum += get_luminance(specular_radiance);
+	}
+
+	// Ambient lighting for PBR (uses ambient_light uniform from main branch)
+	vec3 ambientDiffuse = ambient_light * albedo * ao;
+
+	// Environment reflection approximation for glossy surfaces
+	vec3 R = reflect(-V, N);
+
+	// Fresnel at grazing angles - smooth surfaces reflect more at edges
+	vec3  F0_env = mix(vec3(0.04), albedo, metallic);
+	float NdotV = max(dot(N, V), 0.0);
+	vec3  F_env = fresnelSchlickRoughness(NdotV, F0_env, roughness);
+
+	// Fake environment color - gradient from horizon to sky
+	// Scaled by ambient_light to respond to time-of-day
+	float upAmount = R.y * 0.5 + 0.5;
+	vec3  envColor = mix(
+		ambient_light * 0.2, // Ground color (approximate bounce)
+		ambient_light * 1.2, // Sky color (approximate)
+		smoothstep(0.0, 0.7, upAmount)
+	);
+
+	// Environment reflection strength based on smoothness
+	float smoothness = 1.0 - roughness;
+	float envStrength = smoothness * smoothness * 0.8;
+
+	// Metallic surfaces should reflect the environment color tinted by albedo
+	// Non-metallic surfaces reflect environment but less strongly
+	vec3 ambientSpecular = F_env * envColor * envStrength * ao;
+
+	// Combine diffuse and specular ambient
+	vec3 ambient = ambientDiffuse * (1.0 - metallic * 0.9) + ambientSpecular;
+	vec3 color = ambient + Lo;
+
+	return vec4(color, spec_lum + get_luminance(ambientSpecular));
+}
+
+/**
+ * PBR lighting without shadows - for shaders that don't need shadow calculations.
+ * Supports all light types (point, directional, spot).
+ * Returns vec4(color.rgb, specular_luminance).
+ */
+vec4 apply_lighting_pbr_no_shadows(vec3 frag_pos, vec3 normal, vec3 albedo, float roughness, float metallic, float ao) {
+	vec3 N = normalize(normal);
+	vec3 V = normalize(viewPos - frag_pos);
+
+	vec3 F0 = vec3(0.04);
+	F0 = mix(F0, albedo, metallic);
+
+	vec3  Lo = vec3(0.0);
+	float spec_lum = 0.0;
+
+	for (int i = 0; i < num_lights; ++i) {
+		vec3  L;
+		float base_attenuation;
+		calculateLightContribution(i, frag_pos, L, base_attenuation);
+
+		vec3 H = normalize(V + L);
+
+		float attenuation;
+		if (lights[i].type == LIGHT_TYPE_DIRECTIONAL) {
+			attenuation = lights[i].intensity * PBR_INTENSITY_BOOST;
+		} else {
+			attenuation = (lights[i].intensity * PBR_INTENSITY_BOOST) * base_attenuation;
+		}
+		vec3 radiance = lights[i].color * attenuation;
+
+		float NDF = DistributionGGX(N, H, roughness);
+		float G = GeometrySmith(N, V, L, roughness);
+		vec3  F = fresnelSchlick(max(dot(H, V), 0.0), F0);
+
+		vec3  numerator = NDF * G * F;
+		float denominator = 4.0 * max(dot(N, V), 0.0) * max(dot(N, L), 0.0) + 0.0001;
+		vec3  specular = numerator / denominator;
+
+		vec3 kS = F;
+		vec3 kD = vec3(1.0) - kS;
+		kD *= 1.0 - metallic;
+
+		float NdotL = max(dot(N, L), 0.0);
+
+		vec3 specular_radiance = specular * radiance * NdotL;
+		Lo += (kD * albedo / PI) * radiance * NdotL + specular_radiance;
+		spec_lum += get_luminance(specular_radiance);
+	}
+
+	// Ambient (same as shadowed version)
+	vec3  ambientDiffuse = ambient_light * albedo * ao;
+	vec3  R = reflect(-V, N);
+	vec3  F0_env = mix(vec3(0.04), albedo, metallic);
+	float NdotV = max(dot(N, V), 0.0);
+	vec3  F_env = fresnelSchlickRoughness(NdotV, F0_env, roughness);
+	float upAmount = R.y * 0.5 + 0.5;
+	vec3  envColor = mix(ambient_light * 0.2, ambient_light * 1.2, smoothstep(0.0, 0.7, upAmount));
+	float smoothness = 1.0 - roughness;
+	float envStrength = smoothness * smoothness * 0.8;
+	vec3  ambientSpecular = F_env * envColor * envStrength * ao;
+	vec3  ambient = ambientDiffuse * (1.0 - metallic * 0.9) + ambientSpecular;
+
+	return vec4(ambient + Lo, spec_lum + get_luminance(ambientSpecular));
+}
+
+// ============================================================================
+// Legacy/Phong Lighting Functions
+// ============================================================================
+
+/**
+ * Apply lighting with shadow support - supports all light types.
+ * Returns vec4(color.rgb, specular_luminance).
+ */
+vec4 apply_lighting(vec3 frag_pos, vec3 normal, vec3 albedo, float specular_strength) {
+	vec3  result = ambient_light * albedo;
+	float spec_lum = 0.0;
+
+	for (int i = 0; i < num_lights; ++i) {
+		vec3  light_dir;
+		float attenuation;
+		calculateLightContribution(i, frag_pos, light_dir, attenuation);
+
+		// Calculate shadow factor for this light with slope-scaled bias
+		float shadow = calculateShadow(i, frag_pos, normal, light_dir);
+
+		// Diffuse
+		float diff = max(dot(normal, light_dir), 0.0);
+		vec3  diffuse = lights[i].color * diff * albedo;
+
+		// Specular (Blinn-Phong)
+		vec3  view_dir = normalize(viewPos - frag_pos);
+		vec3  reflect_dir = reflect(-light_dir, normal);
+		float spec = pow(max(dot(view_dir, reflect_dir), 0.0), 32);
+		vec3  specular_contribution = lights[i].color * spec * specular_strength * lights[i].intensity * shadow *
+			attenuation;
+
+		// Apply shadow and attenuation to diffuse and specular, but not ambient
+		result += (diffuse * lights[i].intensity * shadow * attenuation) + specular_contribution;
+		spec_lum += get_luminance(specular_contribution);
+	}
+
+	return vec4(result, spec_lum);
+}
+
+/**
+ * Apply lighting without shadows - supports all light types.
+ * Returns vec4(color.rgb, specular_luminance).
+ */
+vec4 apply_lighting_no_shadows(vec3 frag_pos, vec3 normal, vec3 albedo, float specular_strength) {
+	vec3  result = ambient_light * albedo;
+	float spec_lum = 0.0;
+
+	for (int i = 0; i < num_lights; ++i) {
+		vec3  light_dir;
+		float attenuation;
+		calculateLightContribution(i, frag_pos, light_dir, attenuation);
+
+		// Diffuse
+		float diff = max(dot(normal, light_dir), 0.0);
+		vec3  diffuse = lights[i].color * diff * albedo;
+
+		// Specular
+		vec3  view_dir = normalize(viewPos - frag_pos);
+		vec3  reflect_dir = reflect(-light_dir, normal);
+		float spec = pow(max(dot(view_dir, reflect_dir), 0.0), 32);
+		vec3  specular_contribution = lights[i].color * spec * specular_strength * lights[i].intensity * attenuation;
+
+		result += (diffuse * lights[i].intensity * attenuation) + specular_contribution;
+		spec_lum += get_luminance(specular_contribution);
+	}
+
+	return vec4(result, spec_lum);
+}
+
+// ============================================================================
+// Iridescent/Special Effect Lighting
+// ============================================================================
+
+/**
+ * Calculate iridescent color based on view angle and surface normal.
+ * Returns a rainbow-shifted color that changes with viewing angle.
+ *
+ * @param view_dir Normalized view direction
+ * @param normal Normalized surface normal
+ * @param base_color Optional base color to blend with
+ * @param time_offset Animation time for swirling effect
+ */
+vec3 calculate_iridescence(vec3 view_dir, vec3 normal, vec3 base_color, float time_offset) {
+	// Fresnel-based angle factor
+	float NdotV = abs(dot(view_dir, normal));
+	float angle_factor = 1.0 - NdotV;
+	angle_factor = pow(angle_factor, 2.0);
+
+	// Add time-based swirl for animation
+	float swirl = sin(time_offset * 0.5) * 0.5 + 0.5;
+	vec3  iridescent = vec3(
+		sin(angle_factor * 10.0 + swirl * 5.0) * 0.5 + 0.5,
+		sin(angle_factor * 10.0 + swirl * 5.0 + 2.0) * 0.5 + 0.5,
+		sin(angle_factor * 10.0 + swirl * 5.0 + 4.0) * 0.5 + 0.5
+	);
+
+	// Blend with base color based on angle
+	return mix(base_color, iridescent, angle_factor * 0.8 + 0.2);
+}
+
+/**
+ * PBR iridescent material - combines PBR lighting with thin-film interference.
+ * Returns vec4(color.rgb, specular_luminance).
+ *
+ * @param frag_pos Fragment world position
+ * @param normal Surface normal
+ * @param base_color Base/underlying color
+ * @param roughness Surface roughness [0=mirror, 1=matte]
+ * @param iridescence_strength How much iridescence to apply [0-1]
+ */
+vec4 apply_lighting_pbr_iridescent_no_shadows(
+	vec3  frag_pos,
+	vec3  normal,
+	vec3  base_color,
+	float roughness,
+	float iridescence_strength
+) {
+	vec3  N = normalize(normal);
+	vec3  V = normalize(viewPos - frag_pos);
+	float NdotV = max(dot(N, V), 0.0);
+
+	// Calculate iridescent color based on view angle
+	vec3 iridescent_color = calculate_iridescence(V, N, base_color, time + frag_pos.y * 2.0);
+
+	// Base iridescent appearance (always visible, angle-dependent)
+	float angle_factor = 1.0 - NdotV;
+	vec3  base_iridescent = iridescent_color * (0.4 + angle_factor * 0.6);
+
+	// Add specular highlights from lights
+	vec3  specular_total = vec3(0.0);
+	float spec_lum = 0.0;
+
+	for (int i = 0; i < num_lights; ++i) {
+		vec3  L;
+		float base_attenuation;
+		calculateLightContribution(i, frag_pos, L, base_attenuation);
+
+		vec3  H = normalize(V + L);
+		float NdotL = max(dot(N, L), 0.0);
+		float HdotV = max(dot(H, V), 0.0);
+
+		float attenuation;
+		if (lights[i].type == LIGHT_TYPE_DIRECTIONAL) {
+			attenuation = lights[i].intensity * PBR_INTENSITY_BOOST;
+		} else {
+			attenuation = (lights[i].intensity * PBR_INTENSITY_BOOST) * base_attenuation;
+		}
+		vec3 radiance = lights[i].color * attenuation;
+
+		// GGX specular for sharp highlights
+		float NDF = DistributionGGX(N, H, roughness);
+		float G = GeometrySmith(N, V, L, roughness);
+
+		// Fresnel with iridescent F0
+		vec3 F0 = iridescent_color * 0.8 + vec3(0.2);
+		vec3 F = fresnelSchlick(HdotV, F0);
+
+		vec3  numerator = NDF * G * F;
+		float denominator = 4.0 * NdotV * NdotL + 0.0001;
+		vec3  specular = numerator / denominator;
+
+		vec3 specular_contribution = specular * radiance * NdotL;
+		specular_total += specular_contribution;
+		spec_lum += get_luminance(specular_contribution);
+	}
+
+	// Fresnel rim - strong white/iridescent edge glow
+	float fresnel_rim = pow(1.0 - NdotV, 4.0);
+	vec3  rim_color = mix(vec3(1.0), iridescent_color, 0.5) * fresnel_rim * 0.8;
+
+	// Combine: base iridescent appearance + specular highlights + rim
+	return vec4(base_iridescent + specular_total + rim_color, spec_lum + get_luminance(rim_color));
+}
+
+// ============================================================================
+// Emissive and Flash Effect Functions
+// ============================================================================
+
+/**
+ * Emissive glow calculation for rocket/flame trails.
+ * Creates a hot, glowing effect that emits light.
+ *
+ * @param base_emission Base emissive color (e.g., orange for flames)
+ * @param intensity Glow intensity multiplier
+ * @param falloff How quickly the glow fades [0=sharp, 1=soft]
+ */
+vec3 calculate_emission(vec3 base_emission, float intensity, float falloff) {
+	// HDR emission - can exceed 1.0 for bloom effects
+	return base_emission * intensity * (1.0 + falloff);
+}
+
+/**
+ * Render a glowing/emissive object surface.
+ * Combines emissive self-illumination with optional environmental lighting.
+ * Use this for objects that ARE the light source (lamps, magic orbs, etc.)
+ * Returns vec4(color.rgb, specular_luminance).
+ *
+ * @param frag_pos Fragment world position
+ * @param normal Surface normal
+ * @param emissive_color The glow color of the object
+ * @param emissive_intensity How bright the glow is (can exceed 1.0 for HDR/bloom)
+ * @param base_albedo Optional base color for non-emissive parts
+ * @param emissive_coverage How much of surface is emissive [0=none, 1=fully glowing]
+ */
+vec4 apply_emissive_surface(
+	vec3  frag_pos,
+	vec3  normal,
+	vec3  emissive_color,
+	float emissive_intensity,
+	vec3  base_albedo,
+	float emissive_coverage
+) {
+	vec3 N = normalize(normal);
+	vec3 V = normalize(viewPos - frag_pos);
+
+	// The emissive part - self-illuminated, not affected by external lighting
+	vec3 emission = emissive_color * emissive_intensity;
+
+	// Add subtle Fresnel glow at edges for a more volumetric feel
+	float fresnel = pow(1.0 - max(dot(N, V), 0.0), 3.0);
+	emission += emissive_color * fresnel * emissive_intensity * 0.5;
+
+	// The non-emissive part gets regular lighting
+	vec4 lit_surface = vec4(0.0);
+	if (emissive_coverage < 1.0) {
+		lit_surface = apply_lighting_no_shadows(frag_pos, normal, base_albedo, 0.5);
+	}
+
+	// Blend between emissive and lit surface
+	// Emissions are considered fully opaque specular-like contributors for alpha purposes
+	return mix(lit_surface, vec4(emission, get_luminance(emission)), emissive_coverage);
+}
+
+/**
+ * Render a glowing object with PBR properties for non-emissive regions.
+ * The emissive parts glow while other parts use PBR lighting.
+ * Returns vec4(color.rgb, specular_luminance).
+ *
+ * @param frag_pos Fragment world position
+ * @param normal Surface normal
+ * @param emissive_color The glow color
+ * @param emissive_intensity Glow brightness (box HDR, can exceed 1.0)
+ * @param base_albedo Base color for non-emissive parts
+ * @param roughness PBR roughness for non-emissive parts
+ * @param metallic PBR metallic for non-emissive parts
+ * @param emissive_mask Per-fragment emissive coverage [0-1]
+ */
+vec4 apply_emissive_surface_pbr(
+	vec3  frag_pos,
+	vec3  normal,
+	vec3  emissive_color,
+	float emissive_intensity,
+	vec3  base_albedo,
+	float roughness,
+	float metallic,
+	float emissive_mask
+) {
+	vec3 N = normalize(normal);
+	vec3 V = normalize(viewPos - frag_pos);
+
+	// Emissive component
+	vec3  emission = emissive_color * emissive_intensity;
+	float fresnel = pow(1.0 - max(dot(N, V), 0.0), 3.0);
+	emission += emissive_color * fresnel * emissive_intensity * 0.3;
+
+	// PBR lit component for non-emissive parts
+	vec4 pbr_lit = apply_lighting_pbr_no_shadows(frag_pos, normal, base_albedo, roughness, metallic, 1.0);
+
+	// Blend based on emissive mask
+	return mix(pbr_lit, vec4(emission, get_luminance(emission)), emissive_mask);
+}
+
+/**
+ * Calculate flash/explosion illumination contribution to a surface.
+ * Call this in addition to regular lighting for surfaces hit by a flash.
+ * Returns additive light contribution.
+ *
+ * @param frag_pos Fragment world position
+ * @param normal Surface normal
+ * @param flash_pos Explosion/flash center position
+ * @param flash_color Flash color (typically warm white/orange)
+ * @param flash_intensity Flash brightness (can be very high, e.g., 10-50)
+ * @param flash_radius Effective radius of the flash
+ * @param flash_time Normalized time since flash [0=peak, 1=faded]
+ */
+vec3 calculate_flash_contribution(
+	vec3  frag_pos,
+	vec3  normal,
+	vec3  flash_pos,
+	vec3  flash_color,
+	float flash_intensity,
+	float flash_radius,
+	float flash_time
+) {
+	vec3  L = normalize(flash_pos - frag_pos);
+	float distance = length(flash_pos - frag_pos);
+	float NdotL = max(dot(normalize(normal), L), 0.0);
+
+	// Distance attenuation with sharp falloff
+	float norm_dist = distance / max(flash_radius, 0.001);
+	float dist_atten = 1.0 / pow(1.0 + norm_dist, 2.0);
+	dist_atten *= smoothstep(2.0, 1.0, norm_dist); // Hard cutoff
+
+	// Time-based fade (flash decays rapidly)
+	// Starts bright, fades quickly, with slight persistence
+	float time_atten = pow(1.0 - clamp(flash_time, 0.0, 1.0), 3.0);
+
+	// Combine for final flash contribution
+	return flash_color * flash_intensity * dist_atten * time_atten * NdotL;
+}
+
+/**
+ * Full flash effect - returns both the flash illumination and suggested bloom.
+ * Use the bloom value to drive post-processing bloom intensity.
+ *
+ * @param frag_pos Fragment world position
+ * @param normal Surface normal
+ * @param albedo Surface base color
+ * @param flash_pos Flash center
+ * @param flash_color Flash color
+ * @param flash_intensity Flash brightness
+ * @param flash_radius Flash radius
+ * @param flash_time Normalized time [0=peak, 1=faded]
+ * @param out_bloom Output: suggested bloom intensity for post-processing
+ */
+vec3 apply_flash_lighting(
+	vec3      frag_pos,
+	vec3      normal,
+	vec3      albedo,
+	vec3      flash_pos,
+	vec3      flash_color,
+	float     flash_intensity,
+	float     flash_radius,
+	float     flash_time,
+	out float out_bloom
+) {
+	vec3 flash = calculate_flash_contribution(
+		frag_pos,
+		normal,
+		flash_pos,
+		flash_color,
+		flash_intensity,
+		flash_radius,
+		flash_time
+	);
+
+	// Flash contribution adds to surface color
+	vec3 result = albedo * flash;
+
+	// Calculate bloom intensity based on flash brightness at this point
+	// Surfaces closer to flash should bloom more
+	out_bloom = length(flash) * 0.1; // Scale for bloom post-process
+
+	return result;
+}
+
+#endif // HELPERS_LIGHTING_GLSL
+#endif // GSHADERS_HELPERS_LIGHTING_GLSL
+//END shaders/helpers/lighting.glsl (returning to shaders/terrain.tes)
+//START shaders/helpers/shockwave.glsl
+#ifndef GSHADERS_HELPERS_SHOCKWAVE_GLSL
+#define GSHADERS_HELPERS_SHOCKWAVE_GLSL
+#ifndef SHOCKWAVE_HELPER_GLSL
+#define SHOCKWAVE_HELPER_GLSL
+
+// Maximum number of simultaneous shockwaves (must match C++ kMaxShockwaves)
+#define MAX_SHOCKWAVES 16
+
+// Shockwave data structure (matches ShockwaveGPUData in C++)
+struct ShockwaveData {
+	vec4 center_radius; // xyz = center, w = current_radius
+	vec4 normal;        // xyz = normal, w = unused
+	vec4 params;        // x = intensity, y = ring_width, z = max_radius, w = normalized_age
+	vec4 color_unused;  // xyz = color, w = unused
+};
+
+// Shockwave UBO (binding point 4)
+layout(std140, binding = 4) uniform Shockwaves {
+	int           shockwave_count; // Padded to 16 bytes
+	int           _pad1, _pad2, _pad3;
+	ShockwaveData shockwaves[MAX_SHOCKWAVES];
+};
+
+/**
+ * Calculate shockwave displacement at a given world position.
+ * Returns a displacement vector that can be added to the world position.
+ *
+ * @param worldPos The world-space position of the vertex
+ * @param localHeight The local height of the vertex (for swaying)
+ * @param useSway If true, applies a swaying effect. If false, applies a general push.
+ */
+vec3 getShockwaveDisplacement(vec3 worldPos, float localHeight, bool useSway) {
+	vec3 totalDisplacement = vec3(0.0);
+
+	for (int i = 0; i < shockwave_count && i < MAX_SHOCKWAVES; ++i) {
+		vec3  center = shockwaves[i].center_radius.xyz;
+		float currentRadius = shockwaves[i].center_radius.w;
+		float intensity = shockwaves[i].params.x;
+		float ringWidth = shockwaves[i].params.y;
+		float maxRadius = shockwaves[i].params.z;
+
+		float dist = length(worldPos - center);
+		if (dist > maxRadius || dist < 0.01)
+			continue;
+
+		float distFromRing = abs(dist - currentRadius);
+
+		// Gaussian falloff for ring width
+		float ringFactor = exp(-distFromRing * distFromRing / (2.0 * ringWidth * ringWidth));
+
+		if (ringFactor > 0.001) {
+			vec3 dir = normalize(worldPos - center);
+
+			// Pressure wave profile: push out, then slight pull back
+			float profile;
+			if (dist < currentRadius) {
+				profile = -0.7 * (1.0 - smoothstep(currentRadius - ringWidth, currentRadius, dist));
+			} else {
+				profile = 1.0 * (1.0 - smoothstep(currentRadius, currentRadius + ringWidth, dist));
+			}
+
+			float strength = ringFactor * intensity * profile * 1.5; // * 0.8;
+
+			if (useSway) {
+				// Sway effect: displacement scales with height
+				totalDisplacement += dir * strength * max(0.0, localHeight);
+			} else {
+				// General push
+				totalDisplacement += dir * strength;
+			}
+		}
+	}
+
+	return totalDisplacement;
+}
+
+#endif
+#endif // GSHADERS_HELPERS_SHOCKWAVE_GLSL
+//END shaders/helpers/shockwave.glsl (returning to shaders/terrain.tes)
+//START shaders/helpers/terrain_noise.glsl
+#ifndef GSHADERS_HELPERS_TERRAIN_NOISE_GLSL
+#define GSHADERS_HELPERS_TERRAIN_NOISE_GLSL
+#ifndef TERRAIN_NOISE_GLSL
+#define TERRAIN_NOISE_GLSL
+
+vec3 mod289(vec3 x) {
+	return x - floor(x * (1.0 / 289.0)) * 289.0;
+}
+
+vec4 mod289(vec4 x) {
+	return x - floor(x * (1.0 / 289.0)) * 289.0;
+}
+
+vec4 permute(vec4 x) {
+	return mod289(((x * 34.0) + 1.0) * x);
+}
+
+vec4 taylorInvSqrt(vec4 r) {
+	return 1.79284291400159 - 0.85373472095314 * r;
+}
+
+float snoise(vec3 v) {
+	const vec2 C = vec2(1.0 / 6.0, 1.0 / 3.0);
+	const vec4 D = vec4(0.0, 0.5, 1.0, 2.0);
+
+	// First corner
+	vec3 i = floor(v + dot(v, C.yyy));
+	vec3 x0 = v - i + dot(i, C.xxx);
+
+	// Other corners
+	vec3 g = step(x0.yzx, x0.xyz);
+	vec3 l = 1.0 - g;
+	vec3 i1 = min(g.xyz, l.zxy);
+	vec3 i2 = max(g.xyz, l.zxy);
+
+	vec3 x1 = x0 - i1 + C.xxx;
+	vec3 x2 = x0 - i2 + C.yyy;
+	vec3 x3 = x0 - D.yyy;
+
+	// Permutations
+	i = mod289(i);
+	vec4 p = permute(
+		permute(permute(i.z + vec4(0.0, i1.z, i2.z, 1.0)) + i.y + vec4(0.0, i1.y, i2.y, 1.0)) + i.x +
+		vec4(0.0, i1.x, i2.x, 1.0)
+	);
+
+	float n_ = 0.142857142857;
+	vec3  ns = n_ * D.wyz - D.xzx;
+
+	vec4 j = p - 49.0 * floor(p * ns.z * ns.z);
+
+	vec4 x_ = floor(j * ns.z);
+	vec4 y_ = floor(j - 7.0 * x_);
+
+	vec4 x = x_ * ns.x + ns.yyyy;
+	vec4 y = y_ * ns.x + ns.yyyy;
+	vec4 h = 1.0 - abs(x) - abs(y);
+
+	vec4 b0 = vec4(x.xy, y.xy);
+	vec4 b1 = vec4(x.zw, y.zw);
+
+	vec4 s0 = floor(b0) * 2.0 + 1.0;
+	vec4 s1 = floor(b1) * 2.0 + 1.0;
+	vec4 sh = -step(h, vec4(0.0));
+
+	vec4 a0 = b0.xzyw + s0.xzyw * sh.xxyy;
+	vec4 a1 = b1.xzyw + s1.xzyw * sh.zzww;
+
+	vec3 p0 = vec3(a0.xy, h.x);
+	vec3 p1 = vec3(a0.zw, h.y);
+	vec3 p2 = vec3(a1.xy, h.z);
+	vec3 p3 = vec3(a1.zw, h.w);
+
+	// Normalise gradients
+	vec4 norm = taylorInvSqrt(vec4(dot(p0, p0), dot(p1, p1), dot(p2, p2), dot(p3, p3)));
+	p0 *= norm.x;
+	p1 *= norm.y;
+	p2 *= norm.z;
+	p3 *= norm.w;
+
+	// Mix final noise value
+	vec4 m = max(0.6 - vec4(dot(x0, x0), dot(x1, x1), dot(x2, x2), dot(x3, x3)), 0.0);
+	m = m * m;
+	return 42.0 * dot(m * m, vec4(dot(p0, x0), dot(p1, x1), dot(p2, x2), dot(p3, x3)));
+}
+
+float fbm(vec3 p) {
+	float value = 0.0;
+	float amplitude = 0.5;
+	for (int i = 0; i < 4; i++) {
+		value += amplitude * snoise(p);
+		p *= 2.0;
+		amplitude *= 0.5;
+	}
+	return value;
+}
+
+// Higher octave FBM for fine detail
+float[6] fbm_detail(vec3 p) {
+	float values[6];
+	float value = 0.0;
+	float amplitude = 0.5;
+	for (int i = 0; i < 6; i++) {
+		value += amplitude * snoise(p);
+		p *= 2.0;
+		amplitude *= 0.5;
+		values[i] = value;
+	}
+	return values;
+}
+
+// Standard 2D hash for pseudo-random impulse generation
+vec2 hash22(vec2 p) {
+	p = vec2(dot(p, vec2(127.1, 311.7)), dot(p, vec2(269.5, 183.3)));
+	return fract(sin(p) * 43758.5453123);
+}
+
+// pos: The world or UV coordinate being shaded
+// curlVec: The sampled vector from curl texture at 'pos'
+// time: Animation time to drive the wind ripples
+// freq: The spatial frequency of the ripples inside the gust
+// bandwidth: Controls the tightness of the Gaussian envelope (higher = smaller/sharper gusts)
+// sparsity: Threshold to cull impulses (0.0 to 1.0, higher = sparser gusts)
+float gaborWindNoise(vec2 pos, vec2 curlVec, float time, float freq, float bandwidth, float sparsity) {
+	vec2 gridId = floor(pos);
+	vec2 gridFract = fract(pos);
+
+	float noiseAcc = 0.0;
+
+	// Normalize the sampled curl vector to strictly control the ripple direction
+	vec2 dir = length(curlVec) > 0.001 ? normalize(curlVec) : vec2(1.0, 0.0);
+	vec2 F = dir * freq;
+
+	// 3x3 grid traversal to find neighboring impulses
+	for (int y = -1; y <= 1; y++) {
+		for (int x = -1; x <= 1; x++) {
+			vec2 neighborOffset = vec2(float(x), float(y));
+			vec2 cellId = gridId + neighborOffset;
+
+			// Generate random properties for this cell's impulse
+			vec2 randVal = hash22(cellId);
+
+			// Check for sparsity: skip this cell entirely if it doesn't meet the threshold
+			if (randVal.y < sparsity)
+				continue;
+
+			// Calculate vector from fragment to the random impulse position in the neighbor cell
+			vec2 impulsePos = neighborOffset + randVal;
+			vec2 p = gridFract - impulsePos;
+
+			// Distance squared for the Gaussian envelope
+			float distSq = dot(p, p);
+
+			// 1. Evaluate the Gaussian Envelope
+			// e^(-pi * a^2 * d^2)
+			float envelope = exp(-3.14159 * bandwidth * bandwidth * distSq);
+
+			// 2. Evaluate the Harmonic Carrier
+			// Animate phase with time, offset randomly per cell so they don't pulse synchronously
+			float phase = (time * 5.0) + (randVal.x * 6.28318);
+			float carrier = cos(6.28318 * dot(F, p) + phase);
+
+			// Accumulate the result, scaling intensity by the random value for variety
+			noiseAcc += randVal.y * envelope * carrier;
+		}
+	}
+
+	return noiseAcc;
+}
+
+float tangentGabor(
+	vec3  worldPos,
+	vec3  worldNormal,
+	vec3  curlVec3D,
+	float time,
+	float freq,
+	float bandwidth,
+	float sparsity
+) {
+	// 1. Construct the TBN frame
+	vec3 N = normalize(worldNormal);
+
+	// Choose an 'up' vector, switching to X-axis if the normal is perfectly vertical
+	vec3 referenceUp = abs(N.y) < 0.999 ? vec3(0.0, 1.0, 0.0) : vec3(1.0, 0.0, 0.0);
+
+	vec3 T = normalize(cross(referenceUp, N));
+	vec3 B = normalize(cross(N, T));
+
+	// 2. Project world position into 2D surface space
+	vec2 surfacePos = vec2(dot(worldPos, T), dot(worldPos, B));
+
+	// 3. Project 3D wind curl vector into 2D surface space
+	vec2 surfaceCurl = vec2(dot(curlVec3D, T), dot(curlVec3D, B));
+
+	// 4. Evaluate the 2D Gabor Noise
+	return gaborWindNoise(surfacePos, surfaceCurl, time, freq, bandwidth, sparsity);
+}
+
+#endif // TERRAIN_NOISE_GLSL
+#endif // GSHADERS_HELPERS_TERRAIN_NOISE_GLSL
+//END shaders/helpers/terrain_noise.glsl (returning to shaders/terrain.tes)
+//START shaders/temporal_data.glsl
+#ifndef GSHADERS_TEMPORAL_DATA_GLSL
+#define GSHADERS_TEMPORAL_DATA_GLSL
+layout(std140, binding = 6) uniform TemporalData {
+	mat4  viewProjection;
+	mat4  prevViewProjection;
+	mat4  uProjection;
+	mat4  invProjection;
+	mat4  invView;
+	vec2  texelSize;
+	int   frameIndex;
+	float padding_temporal;
+};
+#endif // GSHADERS_TEMPORAL_DATA_GLSL
+//END shaders/temporal_data.glsl (returning to shaders/terrain.tes)
+//START shaders/visual_effects.glsl
+#ifndef GSHADERS_VISUAL_EFFECTS_GLSL
+#define GSHADERS_VISUAL_EFFECTS_GLSL
+#ifndef VISUAL_EFFECTS_GLSL
+#define VISUAL_EFFECTS_GLSL
+
+layout(std140) uniform VisualEffects {
+	int   ripple_enabled;
+	int   color_shift_enabled;
+	int   black_and_white_enabled;
+	int   negative_enabled;
+	int   shimmery_enabled;
+	int   glitched_enabled;
+	int   wireframe_enabled;
+	int   erosion_enabled;
+	float wind_strength;
+	float wind_speed;
+	float wind_frequency;
+	float erosion_strength;
+	float erosion_scale;
+	float erosion_detail;
+	float erosion_gully_weight;
+	float erosion_max_dist;
+};
+
+#endif
+#endif // GSHADERS_VISUAL_EFFECTS_GLSL
+//END shaders/visual_effects.glsl (returning to shaders/terrain.tes)
+
+// #include "helpers/fast_noise.glsl"
+
+// Sample heightmap to get world position and normal
+void sampleHeightmap(vec2 uv, float slice, vec3 worldOffset, out vec3 worldPos, out vec3 normal) {
+	// Remap UV to match the grid center alignment of the heightmap texture
+	vec2  remappedUV = (uv * uRawChunkSize + 0.5) / (uRawChunkSize + 1.0);
+	vec4  data = texture(uHeightmap, vec3(remappedUV, slice));
+	float height = data.r;
+	normal = normalize(data.gba);
+
+	worldPos.x = worldOffset.x + uv.x * uChunkSize;
+	worldPos.y = height;
+	worldPos.z = worldOffset.z + uv.y * uChunkSize;
+}
+
+void main() {
+	vec2 uv = gl_TessCoord.xy;
+
+	// Get instance data (same for all corners)
+	float slice = TextureSlice_TC_out[0];
+	vec3  worldOffset = WorldOffset_TC_out[0];
+
+	// Interpolate texture coordinates for this tessellated vertex
+	vec2 texCoord1 = mix(TexCoords_TC_out[0], TexCoords_TC_out[1], uv.x);
+	vec2 texCoord2 = mix(TexCoords_TC_out[3], TexCoords_TC_out[2], uv.x);
+	TexCoords = mix(texCoord1, texCoord2, uv.y);
+
+	// Sample heightmap at the interpolated UV to get world position and normal
+	sampleHeightmap(TexCoords, slice, worldOffset, FragPos, Normal);
+
+	// ========================================================================
+	// Advanced Erosion Filter Application
+	// ========================================================================
+	float terrainDistance = distance(viewPos.xz, FragPos.xz);
+	float blendScale = smoothstep(
+		erosion_max_dist * worldScale,
+		(erosion_max_dist * 0.5) * worldScale,
+		terrainDistance
+	);
+
+	if (erosion_enabled > 0 && terrainDistance < erosion_max_dist * worldScale) {
+		// Note: We apply the erosion filter directly to the geometry for evaluation.
+		float ridgeMapOutput = 0.0;
+		float substrateOutput = 0.0;
+		float debugOutput = 0.0;
+
+		// We update frameworkHeightPeak to provide more vertical range for the eroded features.
+		float frameworkHeightPeak = 200.0 * worldScale;
+		float erosionFadeTarget = clamp(FragPos.y / (frameworkHeightPeak * 0.6), -1.0, 1.0);
+
+		// Approximate local slope from normal for the filter
+		// In the original, yz are derivatives dh/dx and dh/dz.
+		// Our normal is (-dx, 1, -dz) normalized. So -Normal.x and -Normal.z are approx derivatives.
+		vec3 hAndS = vec3(FragPos.y / worldScale, -Normal.x, -Normal.z);
+
+		vec4 erosionResult = ErosionFilter(
+			FragPos.xz / worldScale,
+			hAndS,
+			erosionFadeTarget,
+			blendScale * erosion_strength,
+			erosion_gully_weight,
+			erosion_detail,
+			vec4(0.1, 0.0, 0.1, 2.0),
+			vec4(1.25, 1.25, 2.8, 1.5),
+			vec2(0.7, 1.0),
+			worldScale * erosion_scale,
+			5,
+			2.0,
+			0.5,
+			0.7,
+			0.5,
+			ridgeMapOutput,
+			substrateOutput,
+			debugOutput
+		);
+
+		// Apply height change
+		// Note: We multiply by worldScale to keep it consistent with our coordinate system.
+		float heightDelta = erosionResult.x * worldScale;
+		FragPos.y += blendScale * heightDelta;
+
+		// Update normal based on slope delta
+		// erosionResult.yz is the delta for dh/dx and dh/dz.
+		vec2 updatedDeriv = hAndS.yz + erosionResult.yz;
+		Normal = mix(Normal, normalize(vec3(-updatedDeriv.x, 1.0, -updatedDeriv.y)), blendScale);
+
+		vErosionDelta = erosionResult.x; // Keep unscaled for color mapping
+		vRidgeMap = ridgeMapOutput;
+		vSubstrate = substrateOutput;
+	} else {
+		vErosionDelta = 0.0;
+		vRidgeMap = 0.0;
+		vSubstrate = 0.0;
+	}
+
+	// Detect water (height < 0) with a small blend range for stability
+	float waterMask = smoothstep(0.1, -0.1, FragPos.y);
+	vIsWater = waterMask;
+
+	if (waterMask > 0.0) {
+		float landHeight = FragPos.y;
+		float waterHeight = 0.0;
+
+		// Add gentle ripple displacement
+		float rippleTime = time * 2.0;
+		float ripple = sin(FragPos.x * 0.5 + rippleTime) * 0.05 + cos(FragPos.z * 0.5 + rippleTime * 0.8) * 0.05;
+		waterHeight += ripple;
+
+		// Approximate normal for the ripple surface
+		float dx = 0.05 * cos(FragPos.x * 0.5 + rippleTime) * 0.5;
+		float dz = 0.05 * -sin(FragPos.z * 0.5 + rippleTime * 0.8) * 0.4;
+		vec3  waterNormal = normalize(vec3(-dx, 1.0, -dz));
+
+		FragPos.y = mix(landHeight, waterHeight, waterMask);
+		Normal = normalize(mix(Normal, waterNormal, waterMask));
+	}
+
+	// Apply shockwave ripple to terrain
+	FragPos += getShockwaveDisplacement(FragPos, 0.0, false);
+
+	// Micro-relief displacement (rocks and divots)
+	if (!uIsShadowPass && waterMask <= 0.0) {
+		float dist = distance(viewPos, FragPos);
+		// Only apply where there is enough tessellation and the camera is close
+		float detailFade = smoothstep(200.0, 50.0, dist) * smoothstep(16.0, 32.0, tessFactor);
+
+		if (detailFade > 0.0) {
+			vec3  scaledPos = FragPos * 2.0;
+			float rocks = fastWorley3d(scaledPos * 0.5);
+			float divots = fastSimplex3d(scaledPos * 1.0);
+
+			// Substrate modulation: eroded areas (substrate < 0) are more rocky/rough,
+			// while deposition areas (substrate > 0) are smoother.
+			float substrateMod = mix(1.2, 0.4, clamp(vSubstrate * 0.5 + 0.5, 0.0, 1.0));
+
+			float displacement = (rocks * 1.15 - abs(divots) * 1.17) * detailFade * substrateMod;
+			FragPos += Normal * displacement;
+		}
+	}
+
+	// Clip plane for reflections
+	gl_ClipDistance[0] = dot(FragPos, clipPlane.xyz) + clipPlane.w;
+
+	// How much to perturb normal
+	float perturbFactor1 = mix(perturbFactor_TC_out[0], perturbFactor_TC_out[1], uv.x);
+	float perturbFactor2 = mix(perturbFactor_TC_out[3], perturbFactor_TC_out[2], uv.x);
+	perturbFactor = mix(perturbFactor1, perturbFactor2, uv.y);
+
+	FragPos += 0.5 * fastWorley3d(FragPos / 50.0) * fastBlueNoise(uv.xy) * Normal * smoothstep(10, 1, FragPos.y) *
+		smoothstep(0.01, 1, FragPos.y);
+
+	float tessFactor1 = mix(tessFactor_TC_out[0], tessFactor_TC_out[1], uv.x);
+	float tessFactor2 = mix(tessFactor_TC_out[3], tessFactor_TC_out[2], uv.x);
+	tessFactor = mix(tessFactor1, tessFactor2, uv.y);
+
+	// out float tessFactor;
+	TextureSlice = slice;
+
+	// Final vertex position
+	gl_Position = projection * view * vec4(FragPos, 1.0);
+
+	CurPosition = gl_Position;
+	PrevPosition = prevViewProjection * vec4(FragPos, 1.0);
+}
+#endif // GSHADERS_TERRAIN_TES
