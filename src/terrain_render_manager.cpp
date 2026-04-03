@@ -27,7 +27,7 @@ namespace Boidsish {
 		for (const auto& b : kBiomes) {
 			BiomeShaderProperties sb;
 			sb.albedo_roughness = glm::vec4(b.albedo, b.roughness);
-			sb.params = glm::vec4(b.metallic, b.detailStrength, b.detailScale, 0.0f);
+			sb.params = glm::vec4(b.metallic, b.detailStrength, b.detailScale, b.noiseType);
 			shader_biomes.push_back(sb);
 		}
 		glBufferSubData(
