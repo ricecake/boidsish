@@ -415,4 +415,39 @@ namespace Boidsish {
 	AABB Shape::GetAABB() const {
 		return local_aabb_.Transform(GetModelMatrix());
 	}
+
+	// --- SdfShape ---
+
+	SdfShape::SdfShape(SdfVolumeManager& manager, const SdfSource& source):
+		Shape(0, source.position.x, source.position.y, source.position.z),
+		manager_(manager),
+		source_(source) {
+		// Update initial position from source
+		SetPosition(source.position.x, source.position.y, source.position.z);
+		source_id_ = manager_.AddSource(source_);
+		initial_radius_ = source_.radius;
+		initial_density_ = source_.density;
+	}
+
+	SdfShape::~SdfShape() {
+		manager_.RemoveSource(source_id_);
+	}
+
+	void SdfShape::Update(float delta_time) {
+		age_ += delta_time;
+
+		if (lifetime_ > 0.0f) {
+			float t = age_ / lifetime_;
+			if (t > 1.0f)
+				t = 1.0f;
+
+			// Simple explosion animation: grow radius, fade density
+			source_.radius = initial_radius_ * (1.0f + t * 2.0f);
+			source_.density = initial_density_ * (1.0f - t);
+		}
+
+		// Sync source position with shape position (which might be updated by other systems)
+		source_.position = GetPosition();
+		manager_.UpdateSource(source_id_, source_);
+	}
 } // namespace Boidsish

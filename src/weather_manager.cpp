@@ -9,6 +9,7 @@
 namespace Boidsish {
 
 	WeatherManager::WeatherManager() {
+		SetEnabled(true);
 		InitializePresets();
 
 		// Initialize default paces for various attributes

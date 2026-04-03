@@ -449,6 +449,8 @@ namespace Boidsish {
 			FireEffectStyle        fire_style = FireEffectStyle::Explosion
 		);
 
+		void TriggerSdfExplosion(const glm::vec3& position, float intensity = 1.0f);
+
 		/**
 		 * @brief Add a curved text effect in world space.
 		 *

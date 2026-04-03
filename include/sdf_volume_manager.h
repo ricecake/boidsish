@@ -17,14 +17,26 @@ namespace Boidsish {
 		glm::vec3 color;
 		float     smoothness;
 		float     charge; // Positive for union, negative for subtraction
-		int       type;   // 0 for sphere, can add more later
+		int       type;   // 0 for sphere, etc.
+
+		// Volumetric properties
+		bool      volumetric = false;
+		float     density = 1.0f;
+		float     absorption = 0.5f;
+		float     noise_scale = 0.1f;
+		float     noise_intensity = 0.5f;
+		glm::vec3 color_inner = glm::vec3(1.0f, 0.5f, 0.0f);
+		glm::vec3 color_outer = glm::vec3(1.0f, 0.1f, 0.0f);
 	};
 
-	// GPU-friendly structure for UBO
+	// GPU-friendly structure for SSBO
 	struct SdfSourceGPU {
-		glm::vec4 position_radius;    // xyz: pos, w: radius
-		glm::vec4 color_smoothness;   // rgb: color, a: smoothness
-		glm::vec4 charge_type_unused; // x: charge, y: type, zw: unused
+		glm::vec4 position_radius;      // xyz: pos, w: radius
+		glm::vec4 color_smoothness;     // rgb: color, a: smoothness
+		glm::vec4 charge_type_vol_unused; // x: charge, y: type, z: volumetric (0 or 1), w: unused
+		glm::vec4 volumetric_params;    // x: density, y: absorption, z: noise_scale, w: noise_intensity
+		glm::vec4 color_inner;          // rgb: inner color, a: unused
+		glm::vec4 color_outer;          // rgb: outer color, a: unused
 	};
 
 	class SdfVolumeManager: public IManager {
@@ -33,8 +45,8 @@ namespace Boidsish {
 		~SdfVolumeManager();
 
 		void Initialize() override;
-		void UpdateUBO();
-		void BindUBO(GLuint binding_point) const;
+		void UpdateSSBO();
+		void BindSSBO(GLuint binding_point) const;
 
 		int  AddSource(const SdfSource& source);
 		void UpdateSource(int id, const SdfSource& source);
@@ -44,7 +56,7 @@ namespace Boidsish {
 		size_t GetSourceCount() const { return sources_.size(); }
 
 	private:
-		GLuint ubo_ = 0;
+		GLuint ssbo_ = 0;
 		bool   initialized_ = false;
 
 		std::map<int, SdfSource> sources_;
