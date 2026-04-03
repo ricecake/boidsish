@@ -108,9 +108,11 @@ void main() {
 
 			// Sample weather at current ray position to avoid depth dependency
 			float weatherWarpFactor = 1.0;
+			vec3 p_curved_warped = vec3(0);
 			if (cloudWarp > 0.0) {
 				float camDist = length(p.xz - viewPos.xz);
-				weatherWarpFactor = smoothstep(0.0, cloudWarp * worldScale, camDist);
+				// weatherWarpFactor = smoothstep(0.0, cloudWarp * worldScale, camDist);
+				p_curved_warped = getWarpedCloudPos(p_curved, weatherWarpFactor);
 			}
 
 			vec2 weatherUV = p.xz / (4000.0 * worldScale);
@@ -126,7 +128,7 @@ void main() {
 			CloudLayer layer = computeCloudLayer(weather, props);
 
 			float d = calculateCloudDensity(
-				p_curved,
+				p_curved_warped,
 				weather,
 				layer,
 				props,
@@ -166,7 +168,7 @@ void main() {
 					);
 				}
 				float opticalDepthToLight = shadowDensity * shadowStepSize * 0.01;
-				float shadowTerm = mix(beerPowder(opticalDepthToLight, d), exp(-opticalDepthToLight) * 0.5, smoothstep(0, 1, transmittanceAtStep));
+				float shadowTerm = mix(beerPowder(opticalDepthToLight, d), exp(-opticalDepthToLight), smoothstep(0, 1, 2*transmittanceAtStep));
 
 				stepScattering += lights[j].color * shadowTerm * phase * lights[j].intensity * (j == 0 ? 10.0 : 2.0);
 			}
