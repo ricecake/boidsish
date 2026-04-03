@@ -3322,6 +3322,10 @@ namespace Boidsish {
 			}
 
 			impl->sdf_volume_pass_ = std::make_unique<SdfVolumePass>(*impl->sdf_volume_manager);
+			if (impl->noise_manager) {
+				auto tex = impl->noise_manager->GetTextures();
+				impl->sdf_volume_pass_->SetNoiseTextures(tex.noise, tex.curl, tex.blue_noise, tex.extra_noise);
+			}
 			impl->transparent_pass_ = std::make_unique<TransparentPass>();
 
 			// Update terrain once to start chunk loading around the camera

@@ -231,6 +231,23 @@ namespace Boidsish {
 		glActiveTexture(GL_TEXTURE2);
 		glBindTexture(GL_TEXTURE_2D, history_textures_[read_idx]);
 
+		// Bind noise textures for rich volumetric detail
+		if (noise_tex_) {
+			shader_->trySetInt("u_noiseTexture", 5);
+			shader_->trySetInt("u_curlTexture", 6);
+			shader_->trySetInt("u_blueNoiseTexture", 7);
+			shader_->trySetInt("u_extraNoiseTexture", 8);
+
+			glActiveTexture(GL_TEXTURE5);
+			glBindTexture(GL_TEXTURE_3D, noise_tex_);
+			glActiveTexture(GL_TEXTURE6);
+			glBindTexture(GL_TEXTURE_3D, curl_tex_);
+			glActiveTexture(GL_TEXTURE7);
+			glBindTexture(GL_TEXTURE_2D, blue_noise_tex_);
+			glActiveTexture(GL_TEXTURE8);
+			glBindTexture(GL_TEXTURE_3D, extra_noise_tex_);
+		}
+
 		manager_.BindSSBO(Constants::SsboBinding::SdfVolumes());
 
 		glDisable(GL_DEPTH_TEST);
