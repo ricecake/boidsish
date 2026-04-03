@@ -10,22 +10,41 @@ vec3 getWarpedCloudPos(vec3 p, out float fade) {
 	fade = 1.0;
 	if (cloudWarp <= 0.0) return p;
 
-	vec3  relP = p - viewPos;
-	float projection = dot(relP, viewDir);
+	// vec3  relP = p - viewPos;
+	// float projection = dot(relP, viewDir);
 
 	// Capsule distance: distance to the forward ray starting at viewPos
-	vec3  axisPoint = viewPos + viewDir * max(0.0, projection);
-	vec3  toP = p - axisPoint;
-	float d = length(toP);
+	// vec3  axisPoint = viewPos + viewDir * max(0.0, projection);
+	// vec3  toP = p - axisPoint;
+	// float d = length(toP);
 	float R = cloudWarp * worldScale;
+
+
+	// New uniform or constant for how far the bubble extends
+	float capsuleLength = cloudWarp * worldScale * 3.0; // Example ratio
+	vec3 ap = p - viewPos;
+	// t is the projection of the current point onto the view direction
+	float t = dot(ap, viewDir);
+	// Clamp the projection to the segment bounds [0, capsuleLength]
+	float t_clamped = clamp(t, 0.0, capsuleLength);
+	// Find the closest point on the clamped segment
+	vec3 axisPoint = viewPos + viewDir * t_clamped;
+	// Vector from the closest point to the actual point
+	vec3 toP = p - axisPoint;
+	// d is now the distance to a capsule core, rather than a cylinder core
+	float d = length(toP);
 
 	// To "push" clouds out, we sample from a position CLOSER to the axis.
 	// This maps the region [R, inf] to [0, inf].
-	float d_sampling = max(0.0, d - R);
+	// float d_sampling = max(0.0, d - R);
+	float d_sampling = d * ((d * d) / (d * d + R * R));
+	// float d_sampling = d * (1.0 - exp(-d / R));
+	// float d_sampling = d * (d / (d + R));
 	float scale = d_sampling / max(d, 0.0001);
 
 	// Fade out density in the inner core to create a clean hole and avoid sampling artifacts
-	fade = smoothstep(R * 0.5, R, d);
+	fade = smoothstep(R * 0.1, R, d);
+	// fade = 1;
 
 	return axisPoint + toP * scale;
 }
