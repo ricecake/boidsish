@@ -27,6 +27,11 @@ namespace Boidsish {
 		float     noise_intensity = 0.5f;
 		glm::vec3 color_inner = glm::vec3(1.0f, 0.5f, 0.0f);
 		glm::vec3 color_outer = glm::vec3(1.0f, 0.1f, 0.0f);
+
+		// Animation/explosion parameters (packed into unused .w/.a slots on GPU)
+		float normalized_time = 0.0f; // 0–1 progress through lifetime
+		float emission = 0.0f;        // self-illumination intensity
+		float ground_y = -1e6f;       // terrain floor (prevents explosion below ground)
 	};
 
 	// GPU-friendly structure for SSBO

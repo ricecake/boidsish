@@ -600,6 +600,7 @@ namespace Boidsish {
 		float             lifetime_ = 0.0f;
 		float             initial_radius_;
 		float             initial_density_;
+		glm::vec3         initial_position_;
 	};
 
 	// Function type for user-defined shape generation

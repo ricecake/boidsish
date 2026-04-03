@@ -14,7 +14,7 @@ class SdfExplosionDemo {
 public:
     SdfExplosionDemo(Visualizer& viz) : viz_(viz) {
         viz_.AddInputCallback([this](const InputState& state) {
-            if (state.key_down[GLFW_KEY_E]) {
+            if (state.key_down[GLFW_KEY_F]) {
                 TriggerExplosion();
             }
         });
@@ -26,7 +26,7 @@ public:
             (float(rand()) / RAND_MAX) * 10.0f + 2.0f,
             (float(rand()) / RAND_MAX - 0.5f) * 20.0f
         );
-        viz_.TriggerSdfExplosion(pos, 1.5f);
+        viz_.TriggerSdfExplosion(pos, 15.5f);
         std::cout << "Triggered SDF Explosion at (" << pos.x << ", " << pos.y << ", " << pos.z << ")" << std::endl;
     }
 

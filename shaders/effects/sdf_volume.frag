@@ -13,12 +13,12 @@ uniform mat4      invProjection;
 uniform float     time;
 
 struct SdfSource {
-	vec4 position_radius;      // xyz: pos, w: radius
-	vec4 color_smoothness;     // rgb: color, a: smoothness
-	vec4 charge_type_vol_unused; // x: charge, y: type, z: volumetric, w: unused
-	vec4 volumetric_params;    // x: density, y: absorption, z: noise_scale, w: noise_intensity
-	vec4 color_inner;          // rgb: inner color, a: unused
-	vec4 color_outer;          // rgb: outer color, a: unused
+	vec4 position_radius;        // xyz: pos, w: radius
+	vec4 color_smoothness;       // rgb: color, a: smoothness
+	vec4 charge_type_vol_time;   // x: charge, y: type, z: volumetric, w: normalized_time (0-1)
+	vec4 volumetric_params;      // x: density, y: absorption, z: noise_scale, w: noise_intensity
+	vec4 color_inner;            // rgb: inner color, a: emission intensity
+	vec4 color_outer;            // rgb: outer color, a: ground_y
 };
 
 layout(std430, binding = 25) buffer SdfVolumes {
@@ -62,7 +62,7 @@ float mapDistance(vec3 p) {
 
 	// Union of positive charges
 	for (int i = 0; i < numSources; ++i) {
-		if (sources[i].charge_type_vol_unused.x > 0.0 && sources[i].charge_type_vol_unused.z < 0.5) {
+		if (sources[i].charge_type_vol_time.x > 0.0 && sources[i].charge_type_vol_time.z < 0.5) {
 			float d_src = sphereSDF(p - sources[i].position_radius.xyz, sources[i].position_radius.w);
             if (d > 1e9) d = d_src;
 			else {
@@ -75,7 +75,7 @@ float mapDistance(vec3 p) {
 
 	// Subtraction of negative charges
 	for (int i = 0; i < numSources; ++i) {
-		if (sources[i].charge_type_vol_unused.x < 0.0) {
+		if (sources[i].charge_type_vol_time.x < 0.0) {
 			float d_src = sphereSDF(p - sources[i].position_radius.xyz, sources[i].position_radius.w);
             float k = sources[i].color_smoothness.a;
             float h = clamp(0.5 - 0.5 * (d + d_src) / k, 0.0, 1.0);
@@ -91,7 +91,7 @@ vec4 mapColor(vec3 p) {
     bool first = true;
 
     for (int i = 0; i < numSources; ++i) {
-        if (sources[i].charge_type_vol_unused.x > 0.0 && sources[i].charge_type_vol_unused.z < 0.5) {
+        if (sources[i].charge_type_vol_time.x > 0.0 && sources[i].charge_type_vol_time.z < 0.5) {
             float d = sphereSDF(p - sources[i].position_radius.xyz, sources[i].position_radius.w);
             if (first) {
                 res = vec4(sources[i].color_smoothness.rgb, d);
@@ -103,7 +103,7 @@ vec4 mapColor(vec3 p) {
     }
 
     for (int i = 0; i < numSources; ++i) {
-        if (sources[i].charge_type_vol_unused.x < 0.0) {
+        if (sources[i].charge_type_vol_time.x < 0.0) {
             float d = sphereSDF(p - sources[i].position_radius.xyz, sources[i].position_radius.w);
             if (!first) {
                 res = opSubtractionColored(vec4(sources[i].color_smoothness.rgb, d), res, sources[i].color_smoothness.a);
@@ -122,25 +122,117 @@ vec3 getNormal(vec3 p) {
 	));
 }
 
-// Volumetric density function
+// Multi-octave turbulent noise for billowing explosion shapes
+float turbulentNoise(vec3 p, float scale, int octaves) {
+    float val = 0.0;
+    float amp = 1.0;
+    float freq = scale;
+    float total_amp = 0.0;
+    for (int i = 0; i < octaves; i++) {
+        val += abs(snoise3d(p * freq)) * amp;
+        total_amp += amp;
+        freq *= 2.1;
+        amp *= 0.45;
+    }
+    return val / total_amp;
+}
+
+// Evaluate the mushroom-shaped distance field.
+// Warps coordinate space so the silhouette itself is non-spherical:
+// vertically elongated, with a wide cap and narrow stem.
+float mushroomSDF(vec3 rel, float radius, float ntime) {
+    // Vertical elongation increases with time — early fireball is rounder,
+    // mature explosion is taller. This also means higher-intensity explosions
+    // (which have larger radius and longer lifetime) get more pronounced mushrooms.
+    float elongation = mix(1.2, 1.8, ntime);
+    vec3 warped = rel;
+    warped.y /= elongation;
+
+    // Height-dependent horizontal pinch: narrow at the bottom (stem),
+    // wide at the top (cap). This is the key to the mushroom silhouette.
+    float height_frac = clamp((warped.y / radius) + 0.5, 0.0, 1.0);
+    // Stem is pinched to ~40% width, cap expands to ~120%
+    float xz_scale = mix(0.4, 1.2, smoothstep(0.15, 0.6, height_frac));
+    warped.xz /= xz_scale;
+
+    return sphereSDF(warped, radius);
+}
+
+// Volumetric density for explosions with mushroom cloud and roiling
 float getVolumetricDensity(vec3 p, int index) {
     vec3 center = sources[index].position_radius.xyz;
     float radius = sources[index].position_radius.w;
-    float d = sphereSDF(p - center, radius);
+    float ground_y = sources[index].color_outer.a;
+    float ntime = sources[index].charge_type_vol_time.w;
 
-    if (d > 0.0) return 0.0;
+    if (p.y < ground_y) return 0.0;
 
-    // Density increases towards the center
-    float normalized_d = -d / radius; // 0 at surface, 1 at center
-    float density = sources[index].volumetric_params.x * normalized_d;
+    vec3 rel = p - center;
 
-    // Add noise
+    // Use the mushroom-shaped SDF instead of a plain sphere
+    float d = mushroomSDF(rel, radius, ntime);
+
+    // Allow some density beyond the hard surface for soft edges
+    if (d > radius * 0.05) return 0.0;
+
+    float normalized_d = clamp(-d / radius, 0.0, 1.0);
+
+    // Height profile within the mushroom: dense cap, thinner stem
+    float height_frac = clamp((rel.y / radius) + 0.5, 0.0, 1.0);
+    float cap_density = smoothstep(0.0, 0.25, height_frac) * (0.3 + 0.7 * smoothstep(0.35, 0.75, height_frac));
+
+    float density = sources[index].volumetric_params.x * normalized_d * cap_density;
+
+    // Deep roiling turbulence
     float noise_scale = sources[index].volumetric_params.z;
     float noise_intensity = sources[index].volumetric_params.w;
-    float n = snoise3d(p * noise_scale + time * 0.5);
-    density *= (1.0 + n * noise_intensity);
+
+    // Noise drifts upward to simulate rising hot gas
+    vec3 noise_pos = p * noise_scale + vec3(0.0, -time * 1.5, 0.0);
+    float turb = turbulentNoise(noise_pos, 1.0, 4);
+
+    // Large-scale billowing structure
+    float billow = snoise3d(noise_pos * 0.4 + time * 0.3) * 0.5 + 0.5;
+
+    density *= mix(0.2, 2.0, turb) * mix(0.5, 1.3, billow);
+
+    // Soft edges
+    float edge_fade = smoothstep(0.0, 0.12, normalized_d);
+    density *= edge_fade;
+
+    // Ground interaction: rolling dense base
+    float ground_dist = (p.y - ground_y) / max(radius, 0.01);
+    if (ground_dist < 0.3) {
+        density *= 1.0 + 2.5 * smoothstep(0.3, 0.0, ground_dist);
+    }
 
     return max(0.0, density);
+}
+
+// Explosion color based on temperature (normalized_d) and time
+vec3 explosionColor(float normalized_d, float ntime, vec3 color_inner, vec3 color_outer) {
+    // Temperature gradient: hot core → warm middle → cool smoke
+    // As time progresses, everything cools (shifts toward smoke)
+    float temperature = normalized_d * (1.0 - ntime * 0.7);
+
+    // White-hot core → yellow → orange → red → dark smoke
+    vec3 white_hot = vec3(1.0, 0.95, 0.8);
+    vec3 yellow    = vec3(1.0, 0.8, 0.2);
+    vec3 orange    = color_inner;
+    vec3 red       = color_outer;
+    vec3 smoke     = vec3(0.15, 0.1, 0.08);
+
+    vec3 col;
+    if (temperature > 0.8)
+        col = mix(orange, white_hot, (temperature - 0.8) / 0.2);
+    else if (temperature > 0.5)
+        col = mix(yellow, orange, (temperature - 0.5) / 0.3);
+    else if (temperature > 0.25)
+        col = mix(red, yellow, (temperature - 0.25) / 0.25);
+    else
+        col = mix(smoke, red, temperature / 0.25);
+
+    return col;
 }
 
 void main() {
@@ -180,20 +272,27 @@ void main() {
 
     vec3 currentFrameColor = sceneColor;
     float t_surface = t;
+    bool had_sdf_contribution = hit_surface && t_surface < sceneDistance;
 
     // --- Part 2: Volumetric Raymarching ---
     vec3 volAccumColor = vec3(0.0);
     float transmittance = 1.0;
 
     for (int i = 0; i < numSources; ++i) {
-        if (sources[i].charge_type_vol_unused.z > 0.5) { // Volumetric
+        if (sources[i].charge_type_vol_time.z > 0.5) { // Volumetric
             vec3 center = sources[i].position_radius.xyz;
             float radius = sources[i].position_radius.w;
+            float ntime = sources[i].charge_type_vol_time.w;
+            float emission = sources[i].color_inner.a;
+
+            // Expand bounding sphere to cover the elongated mushroom shape
+            // (up to 1.8x vertical stretch + noise displacement)
+            float bound_radius = radius * 2.0;
 
             // Check intersection with bounding sphere
             vec3 co = cameraPos - center;
             float b_dot = dot(rayDir, co);
-            float c_det = dot(co, co) - radius * radius;
+            float c_det = dot(co, co) - bound_radius * bound_radius;
             float det = b_dot * b_dot - c_det;
 
             if (det > 0.0) {
@@ -204,30 +303,46 @@ void main() {
                 float t_end = min(sceneDistance, t2);
 
                 if (t_start < t_end) {
-                    // Raymarch through the volume
-                    float stepSize = (t_end - t_start) / 32.0;
-                    for (int j = 0; j < 32; ++j) {
+                    // More samples for quality; adaptive based on radius
+                    int num_steps = 48;
+                    float stepSize = (t_end - t_start) / float(num_steps);
+
+                    for (int j = 0; j < num_steps; ++j) {
                         float curT = t_start + stepSize * (float(j) + 0.5);
                         vec3 p = cameraPos + rayDir * curT;
 
-                        float d = sphereSDF(p - center, radius);
-                        if (d < 0.0) {
-                            float density = getVolumetricDensity(p, i);
-                            float absorption = sources[i].volumetric_params.y;
+                        float density = getVolumetricDensity(p, i);
+                        if (density <= 0.0) continue;
 
-                            float normalized_d = -d / radius;
-                            vec3 color = mix(sources[i].color_outer.rgb, sources[i].color_inner.rgb, normalized_d);
+                        float absorption = sources[i].volumetric_params.y;
+                        float d = mushroomSDF(p - center, radius, ntime);
+                        float normalized_d = clamp(-d / radius, 0.0, 1.0);
 
-                            float alpha = 1.0 - exp(-density * stepSize);
-                            volAccumColor += transmittance * alpha * color;
-                            transmittance *= exp(-absorption * density * stepSize);
+                        // Temperature-based color with time evolution
+                        vec3 color = explosionColor(
+                            normalized_d, ntime,
+                            sources[i].color_inner.rgb,
+                            sources[i].color_outer.rgb
+                        );
 
-                            if (transmittance < 0.01) break;
-                        }
+                        // Self-illumination: hot core glows, fading over time
+                        float emit = emission * normalized_d * (1.0 - ntime);
+                        color += color * emit;
+
+                        float alpha = 1.0 - exp(-density * stepSize);
+                        volAccumColor += transmittance * alpha * color;
+                        transmittance *= exp(-absorption * density * stepSize);
+
+                        if (transmittance < 0.01) break;
                     }
                 }
             }
         }
+    }
+
+    // Mark as SDF-affected if we accumulated any volumetric content
+    if (transmittance < 0.99) {
+        had_sdf_contribution = true;
     }
 
 	if (hit_surface && t_surface < sceneDistance) {
@@ -246,21 +361,27 @@ void main() {
 		currentFrameColor = volAccumColor + transmittance * sceneColor;
 	}
 
-    // --- Part 3: Temporal Reprojection ---
-    vec3 reprojWorldPos = worldPos.xyz;
-    if (hit_surface && t_surface < sceneDistance) {
-        reprojWorldPos = cameraPos + rayDir * t_surface;
+    // --- Part 3: Temporal Reprojection (only for SDF-affected pixels) ---
+    if (!had_sdf_contribution) {
+        // No SDF content here — pass scene through directly, no history blend
+        FragColor = vec4(currentFrameColor, 1.0);
+    } else {
+        // For surface hits use the surface point; for volumetric-only use scene depth
+        vec3 reprojWorldPos = (hit_surface && t_surface < sceneDistance)
+            ? cameraPos + rayDir * t_surface
+            : worldPos.xyz;
+        vec4 reprojectedPos = prevViewProjection * vec4(reprojWorldPos, 1.0);
+        vec2 prevTexCoords = (reprojectedPos.xy / reprojectedPos.w) * 0.5 + 0.5;
+
+        vec4 historyColor = texture(historyTexture, prevTexCoords);
+
+        bool onScreen = prevTexCoords.x >= 0.0 && prevTexCoords.x <= 1.0 &&
+                        prevTexCoords.y >= 0.0 && prevTexCoords.y <= 1.0;
+
+        // Lower blend for volumetric content so turbulence detail isn't washed out
+        float baseBlend = (hit_surface && t_surface < sceneDistance) ? 0.85 : 0.6;
+        float blendFactor = (onScreen && frameIndex > 0) ? baseBlend : 0.0;
+
+        FragColor = mix(vec4(currentFrameColor, 1.0), historyColor, blendFactor);
     }
-    vec4 reprojectedPos = prevViewProjection * vec4(reprojWorldPos, 1.0);
-    vec2 prevTexCoords = (reprojectedPos.xy / reprojectedPos.w) * 0.5 + 0.5;
-
-    vec4 historyColor = texture(historyTexture, prevTexCoords);
-
-    // Check if reprojected coordinates are within screen bounds
-    bool onScreen = prevTexCoords.x >= 0.0 && prevTexCoords.x <= 1.0 &&
-                    prevTexCoords.y >= 0.0 && prevTexCoords.y <= 1.0;
-
-    float blendFactor = (onScreen && frameIndex > 0) ? 0.9 : 0.0;
-
-    FragColor = mix(vec4(currentFrameColor, 1.0), historyColor, blendFactor);
 }

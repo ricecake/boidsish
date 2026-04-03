@@ -2477,8 +2477,19 @@ namespace Boidsish {
 			}
 
 			if (sdf_volume_pass_ && compositor_) {
-				glBindVertexArray(blur_quad_vao); // Use standard full-screen quad
-				sdf_volume_pass_->Execute(frame, *compositor_);
+				// After early effects, the scene lives in the post-processing pipeline's
+				// ping-pong FBO. Use that as the source so SDF composites on top of
+				// the post-effects scene, and writes back to the correct FBO.
+				GLuint scene_tex = (post_processing_manager_ && frame.config.effects_enabled)
+					? post_processing_manager_->GetFinalTexture()
+					: compositor_->GetColorTexture();
+				GLuint depth_tex = compositor_->GetDepthTexture();
+				GLuint target_fbo = (post_processing_manager_ && frame.config.effects_enabled)
+					? post_processing_manager_->GetCurrentFBO()
+					: compositor_->GetMainFBO();
+
+				glBindVertexArray(blur_quad_vao);
+				sdf_volume_pass_->Execute(frame, scene_tex, depth_tex, target_fbo);
 				glBindVertexArray(0);
 			}
 
@@ -4194,22 +4205,24 @@ namespace Boidsish {
 	void Visualizer::TriggerSdfExplosion(const glm::vec3& position, float intensity) {
 		SdfSource source;
 		source.position = position;
-		source.radius = 1.0f; // Start small
-		source.color = glm::vec3(1.0f, 0.5f, 0.1f);
-		source.smoothness = 5.0f;
+		source.radius = 0.5f * intensity; // Start small, will expand via SdfShape
+		source.color = glm::vec3(1.0f, 0.6f, 0.15f);
+		source.smoothness = 3.0f;
 		source.charge = 1.0f;
-		source.type = 0; // Sphere
+		source.type = 0;
 
 		source.volumetric = true;
-		source.density = 2.0f * intensity;
-		source.absorption = 0.5f;
-		source.noise_scale = 0.2f;
-		source.noise_intensity = 0.8f;
-		source.color_inner = glm::vec3(1.0f, 0.8f, 0.2f);
-		source.color_outer = glm::vec3(1.0f, 0.2f, 0.0f);
+		source.density = 1.5f * intensity;
+		source.absorption = 0.8f;
+		source.noise_scale = 0.15f;
+		source.noise_intensity = 0.9f;
+		source.color_inner = glm::vec3(1.0f, 0.85f, 0.3f);  // Yellow-white hot core
+		source.color_outer = glm::vec3(0.9f, 0.15f, 0.02f);  // Deep red exterior
+		source.emission = 5.0f * intensity;
+		source.ground_y = position.y - 0.1f; // Default ground at spawn point
 
 		auto shape = std::make_shared<SdfShape>(*impl->sdf_volume_manager, source);
-		shape->SetLifetime(1.5f * intensity);
+		shape->SetLifetime(2.5f * sqrt(0.5f*intensity));
 
 		impl->transient_effects.push_back(shape);
 	}

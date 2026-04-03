@@ -173,19 +173,46 @@ namespace Boidsish {
 		glBindFramebuffer(GL_FRAMEBUFFER, 0);
 	}
 
-	void SdfVolumePass::Execute(const FrameData& frame, SceneCompositor& compositor) {
-		if (manager_.GetSourceCount() == 0)
+	void SdfVolumePass::ClearHistory() {
+		if (history_fbos_[0] == 0)
 			return;
+		for (int i = 0; i < 2; ++i) {
+			glBindFramebuffer(GL_FRAMEBUFFER, history_fbos_[i]);
+			glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
+			glClear(GL_COLOR_BUFFER_BIT);
+		}
+		frame_index_ = 0;
+	}
+
+	void SdfVolumePass::Execute(const FrameData& frame, GLuint sceneTexture, GLuint depthTexture, GLuint targetFBO) {
+		bool has_sources = manager_.GetSourceCount() > 0;
+
+		if (!has_sources) {
+			// Invalidate history when all sources disappear so we don't
+			// get a stale flash when new sources appear later
+			if (had_sources_) {
+				ClearHistory();
+			}
+			had_sources_ = false;
+			return;
+		}
 
 		PROJECT_PROFILE_SCOPE("SdfVolumePass");
 
 		EnsureResources(frame.render_width, frame.render_height);
 
+		// Clear history when sources first appear (or reappear after a gap)
+		if (!had_sources_) {
+			ClearHistory();
+		}
+		had_sources_ = true;
+
 		int write_idx = frame_index_ % 2;
 		int read_idx = (frame_index_ + 1) % 2;
 
+		// --- Draw SDF scene into history FBO ---
 		glBindFramebuffer(GL_FRAMEBUFFER, history_fbos_[write_idx]);
-		// We don't clear, we might want to blend or overwrite
+		glDrawBuffer(GL_COLOR_ATTACHMENT0);
 
 		shader_->use();
 		shader_->setInt("sceneTexture", 0);
@@ -198,9 +225,9 @@ namespace Boidsish {
 		shader_->setFloat("time", frame.simulation_time);
 
 		glActiveTexture(GL_TEXTURE0);
-		glBindTexture(GL_TEXTURE_2D, compositor.GetColorTexture());
+		glBindTexture(GL_TEXTURE_2D, sceneTexture);
 		glActiveTexture(GL_TEXTURE1);
-		glBindTexture(GL_TEXTURE_2D, compositor.GetDepthTexture());
+		glBindTexture(GL_TEXTURE_2D, depthTexture);
 		glActiveTexture(GL_TEXTURE2);
 		glBindTexture(GL_TEXTURE_2D, history_textures_[read_idx]);
 
@@ -208,20 +235,21 @@ namespace Boidsish {
 
 		glDisable(GL_DEPTH_TEST);
 		glDepthMask(GL_FALSE);
-		glEnable(GL_BLEND);
-		glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+		glDisable(GL_BLEND);
 
-		// Drawing the full-screen quad (the VAO is assumed to be bound by the caller in graphics.cpp)
 		glDrawArrays(GL_TRIANGLES, 0, 6);
 
+		// --- Blit result to the target FBO (post-processing pipeline's current FBO) ---
+		glBindFramebuffer(GL_READ_FRAMEBUFFER, history_fbos_[write_idx]);
+		glReadBuffer(GL_COLOR_ATTACHMENT0);
+		glBindFramebuffer(GL_DRAW_FRAMEBUFFER, targetFBO);
+		glDrawBuffer(GL_COLOR_ATTACHMENT0);
+		glBlitFramebuffer(0, 0, width_, height_, 0, 0, width_, height_, GL_COLOR_BUFFER_BIT, GL_NEAREST);
+
+		// Restore state: bind the target FBO and re-enable depth
+		glBindFramebuffer(GL_FRAMEBUFFER, targetFBO);
 		glDepthMask(GL_TRUE);
 		glEnable(GL_DEPTH_TEST);
-
-		// Blit the result from history FBO back to the main compositor FBO
-		glBindFramebuffer(GL_READ_FRAMEBUFFER, history_fbos_[write_idx]);
-		glBindFramebuffer(GL_DRAW_FRAMEBUFFER, compositor.GetMainFBO());
-		glBlitFramebuffer(0, 0, width_, height_, 0, 0, width_, height_, GL_COLOR_BUFFER_BIT, GL_NEAREST);
-		glBindFramebuffer(GL_FRAMEBUFFER, compositor.GetMainFBO());
 
 		frame_index_++;
 	}

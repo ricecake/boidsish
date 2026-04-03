@@ -48,7 +48,7 @@ namespace Boidsish {
 				source.charge,
 				static_cast<float>(source.type),
 				source.volumetric ? 1.0f : 0.0f,
-				0.0f
+				source.normalized_time
 			);
 			data.volumetric_params = glm::vec4(
 				source.density,
@@ -56,8 +56,8 @@ namespace Boidsish {
 				source.noise_scale,
 				source.noise_intensity
 			);
-			data.color_inner = glm::vec4(source.color_inner, 1.0f);
-			data.color_outer = glm::vec4(source.color_outer, 1.0f);
+			data.color_inner = glm::vec4(source.color_inner, source.emission);
+			data.color_outer = glm::vec4(source.color_outer, source.ground_y);
 			gpu_data.push_back(data);
 		}
 

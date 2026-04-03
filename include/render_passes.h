@@ -116,7 +116,10 @@ namespace Boidsish {
 		SdfVolumePass(SdfVolumeManager& manager);
 		~SdfVolumePass();
 
-		void Execute(const FrameData& frame, SceneCompositor& compositor);
+		// sceneTexture: current scene color (post early-effects)
+		// depthTexture: scene depth buffer
+		// targetFBO: FBO to composite the SDF result into
+		void Execute(const FrameData& frame, GLuint sceneTexture, GLuint depthTexture, GLuint targetFBO);
 
 	private:
 		SdfVolumeManager& manager_;
@@ -125,8 +128,10 @@ namespace Boidsish {
 		GLuint history_fbos_[2] = {0, 0};
 		int width_ = 0, height_ = 0;
 		int frame_index_ = 0;
+		bool had_sources_ = false;
 
 		void EnsureResources(int w, int h);
+		void ClearHistory();
 	};
 
 	/**

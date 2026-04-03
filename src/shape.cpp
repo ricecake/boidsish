@@ -422,11 +422,11 @@ namespace Boidsish {
 		Shape(0, source.position.x, source.position.y, source.position.z),
 		manager_(manager),
 		source_(source) {
-		// Update initial position from source
 		SetPosition(source.position.x, source.position.y, source.position.z);
 		source_id_ = manager_.AddSource(source_);
 		initial_radius_ = source_.radius;
 		initial_density_ = source_.density;
+		initial_position_ = source_.position;
 	}
 
 	SdfShape::~SdfShape() {
@@ -437,17 +437,28 @@ namespace Boidsish {
 		age_ += delta_time;
 
 		if (lifetime_ > 0.0f) {
-			float t = age_ / lifetime_;
-			if (t > 1.0f)
-				t = 1.0f;
+			float t = std::min(age_ / lifetime_, 1.0f);
+			source_.normalized_time = t;
 
-			// Simple explosion animation: grow radius, fade density
-			source_.radius = initial_radius_ * (1.0f + t * 2.0f);
-			source_.density = initial_density_ * (1.0f - t);
+			// Non-linear expansion: fast initial burst, slowing down (sqrt curve)
+			float expansion = std::sqrt(t);
+			source_.radius = initial_radius_ * (1.0f + expansion * 8.0f);
+
+			// Density peaks early then fades — fireball is densest shortly after detonation
+			float density_curve = std::sin(t * 3.14159f) * (1.0f - t * 0.5f);
+			source_.density = initial_density_ * std::max(0.0f, density_curve);
+
+			// Emission fades as the explosion cools
+			source_.emission = initial_density_ * 3.0f * (1.0f - t) * (1.0f - t);
+
+			// Upward drift: hot gas rises, creating mushroom shape
+			glm::vec3 pos = initial_position_;
+			pos.y += expansion * initial_radius_ * 3.0f;
+			source_.position = pos;
+		} else {
+			source_.position = GetPosition();
 		}
 
-		// Sync source position with shape position (which might be updated by other systems)
-		source_.position = GetPosition();
 		manager_.UpdateSource(source_id_, source_);
 	}
 } // namespace Boidsish
