@@ -507,6 +507,7 @@ namespace Boidsish {
 		current.spikeDamping = std::lerp(low_item.spikeDamping, high_item.spikeDamping, t);
 		current.detailMasking = std::lerp(low_item.detailMasking, high_item.detailMasking, t);
 		current.floorLevel = std::lerp(low_item.floorLevel, high_item.floorLevel, t);
+		current.noiseType = (t < 0.5f) ? low_item.noiseType : high_item.noiseType;
 	}
 
 	void TerrainGenerator::GetBiomeIndicesAndWeights(float control_value, int& low_idx, float& t) const {
