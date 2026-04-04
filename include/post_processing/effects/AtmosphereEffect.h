@@ -69,6 +69,42 @@ namespace Boidsish {
 
 			float GetCloudWarp() const { return cloud_warp_; }
 
+			void SetCloudPhaseG1(float g) { cloud_phase_g1_ = g; }
+			float GetCloudPhaseG1() const { return cloud_phase_g1_; }
+
+			void SetCloudPhaseG2(float g) { cloud_phase_g2_ = g; }
+			float GetCloudPhaseG2() const { return cloud_phase_g2_; }
+
+			void SetCloudPhaseAlpha(float a) { cloud_phase_alpha_ = a; }
+			float GetCloudPhaseAlpha() const { return cloud_phase_alpha_; }
+
+			void SetCloudPhaseIsotropic(float i) { cloud_phase_isotropic_ = i; }
+			float GetCloudPhaseIsotropic() const { return cloud_phase_isotropic_; }
+
+			void SetCloudPowderScale(float s) { cloud_powder_scale_ = s; }
+			float GetCloudPowderScale() const { return cloud_powder_scale_; }
+
+			void SetCloudPowderMultiplier(float m) { cloud_powder_multiplier_ = m; }
+			float GetCloudPowderMultiplier() const { return cloud_powder_multiplier_; }
+
+			void SetCloudPowderLocalScale(float s) { cloud_powder_local_scale_ = s; }
+			float GetCloudPowderLocalScale() const { return cloud_powder_local_scale_; }
+
+			void SetCloudShadowOpticalDepthMultiplier(float m) { cloud_shadow_optical_depth_multiplier_ = m; }
+			float GetCloudShadowOpticalDepthMultiplier() const { return cloud_shadow_optical_depth_multiplier_; }
+
+			void SetCloudShadowStepMultiplier(float m) { cloud_shadow_step_multiplier_ = m; }
+			float GetCloudShadowStepMultiplier() const { return cloud_shadow_step_multiplier_; }
+
+			void SetCloudSunLightScale(float s) { cloud_sun_light_scale_ = s; }
+			float GetCloudSunLightScale() const { return cloud_sun_light_scale_; }
+
+			void SetCloudMoonLightScale(float s) { cloud_moon_light_scale_ = s; }
+			float GetCloudMoonLightScale() const { return cloud_moon_light_scale_; }
+
+			void SetCloudBeerPowderMix(float m) { cloud_beer_powder_mix_ = m; }
+			float GetCloudBeerPowderMix() const { return cloud_beer_powder_mix_; }
+
 			// Scattering parameters
 			void SetRayleighScale(float s) { rayleigh_scale_ = s; }
 
@@ -165,6 +201,19 @@ namespace Boidsish {
 			float     cloud_coverage_ = 0.75f;
 			float     cloud_warp_ = 75.0f;
 			glm::vec3 cloud_color_ = glm::vec3(0.95f, 0.95f, 1.0f);
+
+			float     cloud_phase_g1_ = 0.7f;
+			float     cloud_phase_g2_ = -0.2f;
+			float     cloud_phase_alpha_ = 0.15f;
+			float     cloud_phase_isotropic_ = 0.05f;
+			float     cloud_powder_scale_ = 0.35f;
+			float     cloud_powder_multiplier_ = 0.4f;
+			float     cloud_powder_local_scale_ = 2.0f;
+			float     cloud_shadow_optical_depth_multiplier_ = 0.1f;
+			float     cloud_shadow_step_multiplier_ = 0.1f;
+			float     cloud_sun_light_scale_ = 10.0f;
+			float     cloud_moon_light_scale_ = 2.0f;
+			float     cloud_beer_powder_mix_ = 0.5f;
 
 			float     rayleigh_scale_ = 1.1f;
 			float     mie_scale_ = 0.1f; // Reduced default to prevent "washed out" haze
