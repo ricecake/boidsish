@@ -115,10 +115,10 @@ float calculateCloudDensity(
 	}
 
 	// Base noise for cloud shapes
-	vec3 p_warped = p + 5.0 * fastCurl3d(p / (900.0 * props.worldScale) + time * 0.02);
+	vec3 p_warped = p + 5.0 * fastCurl3d(p / (900.0 * props.worldScale) + time * 0.002);
 	vec3 p_scaled = p_warped / (50000.0 * props.worldScale);
 
-	float baseNoise = fastWorley3d(p_scaled + time * 0.005);
+	float baseNoise = fastWorley3d(p_scaled + time * 0.0005);
 
 	// Implement "Roll": Billowy edges that vary with height
 	// We remap the base noise threshold based on the vertical position
@@ -127,7 +127,7 @@ float calculateCloudDensity(
 
 	// Add ridges and textures for definition
 	float ridges = fastRidge3d(p_warped / (1600.0 * props.worldScale));
-	float detail = fastFbm3d(p_warped / (1450.0 * props.worldScale) + time * 0.01) * 0.5 + 0.5;
+	float detail = fastFbm3d(p_warped / (1450.0 * props.worldScale) + time * 0.001) * 0.5 + 0.5;
 
 	// Combine noises
 	float finalNoise = rolledNoise * (0.6 + 0.4 * ridges);

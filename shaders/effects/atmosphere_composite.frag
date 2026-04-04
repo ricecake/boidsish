@@ -104,7 +104,7 @@ void main() {
 
 			// Depth similarity weight — exponential falloff
 			float depthDiff = abs(centerDepth - sampleDist) / max(centerDepth, 1.0);
-			float depthW = exp(-depthDiff * 50.0);
+			float depthW = exp(-depthDiff * 150.0);
 
 			float w = spatialW * depthW;
 			cloudData += texture(cloudTexture, sampleUV) * w;

@@ -116,10 +116,10 @@ void main() {
 			}
 
 			vec2 weatherUV = p.xz / (4000.0 * worldScale);
-			float weatherMap = weatherWarpFactor * (fastWorley3d(vec3(weatherUV, time * 0.01)) * 0.5 + 0.5);
+			float weatherMap = weatherWarpFactor * (fastWorley3d(vec3(weatherUV, time * 0.001)) * 0.5 + 0.5);
 
 			vec2 heightUV = p.xz / (2500.0 * worldScale);
-			float heightMap = weatherWarpFactor * (fastWorley3d(vec3(heightUV, time * 0.004)) * 0.5 + 0.5);
+			float heightMap = weatherWarpFactor * (fastWorley3d(vec3(heightUV, time * 0.0004)) * 0.5 + 0.5);
 
 			CloudWeather weather;
 			weather.weatherMap = weatherMap;
@@ -168,7 +168,7 @@ void main() {
 					);
 				}
 				float opticalDepthToLight = shadowDensity * shadowStepSize * 0.01;
-				float shadowTerm = mix(beerPowder(opticalDepthToLight, d), exp(-opticalDepthToLight), smoothstep(0, 1, 2*transmittanceAtStep));
+				float shadowTerm = mix(beerPowder(opticalDepthToLight, d), exp(-opticalDepthToLight), 0.0);//smoothstep(0, 1, 2*transmittanceAtStep));
 
 				stepScattering += lights[j].color * shadowTerm * phase * lights[j].intensity * (j == 0 ? 10.0 : 2.0);
 			}
