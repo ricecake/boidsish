@@ -258,21 +258,23 @@ float sampleSourceDensity(vec3 p, int index) {
 	// Rich noise stack from the earlier shader:
 	// 1. Curl-warped FBM for large-scale billowing displacement
 	vec3 noise_p = p * noise_scale;
-	vec3 warp = fastCurl3d((p + time * 0.5) / (10.0 * max(0.01, noise_intensity)));
+	// vec3 warp = fastCurl3d((p/100 + time * 0.5) / (10.0 * max(0.01, noise_intensity)));
+	vec3 warp = fastCurl3d(p/100);
 	// float warped_fbm = fastWarpedFbm3d(noise_p * 0.1 + warp * 0.3 + vec3(0.0, -time * 0.3, 0.0));
 
 	// 2. Ridged FBm for sharp crease detail
-	float ridges = ridgedFbm(noise_p * 0.15 + time * 0.4);
+	float ridges = ridgedFbm(noise_p / 500 + warp *fract(time * 0.01));
 
 	// 3. Base FBm for softer variation
-	// float base_fbm = fastFbm3d(noise_p * 0.08 + vec3(0.0, -time * 0.5, 0.0)) * 0.5 + 0.5;
+	float base_fbm = fastFbm3d(noise_p * 0.08 + vec3(0.0, -time * 0.5, 0.0)) * 0.5 + 0.5;
 
 	// Combine: ridges give definition, warped fbm gives large-scale structure
-	density *= mix(0.2, 2.0, ridges) * mix(0.4, 1.4, base_fbm);
+	// density *= mix(0.2, 2.0, ridges) * mix(0.4, 1.4, base_fbm);
+    density *= ridges * 0.5 + 0.5;
 	// density += density * 1.0 * noise_intensity * 0.5;
 
 	// Soft edges
-	density *= smoothstep(0.0, 0.12, normalized_d);
+	// density *= smoothstep(0.0, 0.12, normalized_d);
 
 	// Ground interaction: rolling dense base
 	float ground_dist = (p.y - ground_y) / max(radius, 0.01);
@@ -299,11 +301,12 @@ vec3 explosionColor(float normalized_d, float ntime, vec3 color_inner, vec3 colo
 		col = mix(orange, white_hot, (temperature - 0.8) / 0.2);
 	else if (temperature > 0.33)
 		col = mix(yellow, orange, (temperature - 0.5) / 0.3);
-	else
+    else if (temperature > 0.15)
 		col = mix(red, yellow, (temperature - 0.25) / 0.25);
+	else
+        col = mix(smoke, red, temperature / 0.25);
 
-
-    return mix(color_inner, color_outer, ntime);
+    // return mix(color_inner, color_outer, ntime);
 
 	return col;
 }
@@ -373,7 +376,7 @@ void volumetricMarch(
 
 			float ntime = sources[i].charge_type_vol_time.w;
 
-            float fader = smoothstep(1.0, 0.85, ntime);
+            float fader = 1.0;//smoothstep(1.0, 0.85, ntime);
 
 			float d = sampleSourceDensity(p, i) * fader;
 
