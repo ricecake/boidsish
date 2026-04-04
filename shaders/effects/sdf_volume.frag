@@ -204,7 +204,7 @@ float mushroomSDF(vec3 p, float radius, float ntime) {
 
     // 2. Define the two flares independently
     // Cap flare: 0.0 at the stem, smoothly reaching 1.0 at the top
-    float cap_flare = smoothstep(0.4, 0.9, h);
+    float cap_flare = smoothstep(0.4, 0.9, h)*1.43;
 
     // Base flare: 1.0 at the very bottom, smoothly dropping to 0.0 at the stem
     float base_flare = smoothstep(0.3, 0.0, h);
@@ -218,7 +218,7 @@ float mushroomSDF(vec3 p, float radius, float ntime) {
     float target_pinch = 0.2 + cap_flare + (base_flare * base_width_over_time);
 
     // 5. Morph from a sphere (pinch = 1.0) to the mushroom profile
-    float pinch = mix(1.0, target_pinch, smoothstep(0.0, 0.3, ntime));
+    float pinch = mix(1.0, target_pinch, smoothstep(0.0, 0.6, ntime));
 
     vec3 warped = p;
     // Apply the pinch. (Removed the Y warping here for clarity, but you can
@@ -258,23 +258,24 @@ float sampleSourceDensity(vec3 p, int index) {
 	// Rich noise stack from the earlier shader:
 	// 1. Curl-warped FBM for large-scale billowing displacement
 	vec3 noise_p = p * noise_scale;
-	// vec3 warp = fastCurl3d((p/100 + time * 0.5) / (10.0 * max(0.01, noise_intensity)));
-	vec3 warp = fastCurl3d(p/100);
-	// float warped_fbm = fastWarpedFbm3d(noise_p * 0.1 + warp * 0.3 + vec3(0.0, -time * 0.3, 0.0));
+	vec3 warp = fastCurl3d(((p/400.0) + time * 0.5) / (10.0 * max(0.01, noise_intensity)));
+	// vec3 warp = fastCurl3d(p/100);
+	float warped_fbm = fastWarpedFbm3d(noise_p * 0.001 + warp * 0.3 + vec3(0.0, -time * 0.3, 0.0));
 
 	// 2. Ridged FBm for sharp crease detail
 	float ridges = ridgedFbm(noise_p / 500 + warp *fract(time * 0.01));
 
 	// 3. Base FBm for softer variation
-	float base_fbm = fastFbm3d(noise_p * 0.08 + vec3(0.0, -time * 0.5, 0.0)) * 0.5 + 0.5;
+	float base_fbm = fastFbm3d(noise_p * 0.008 + vec3(0.0, -time * 0.5, 0.0)) * 0.5 + 0.5;
 
 	// Combine: ridges give definition, warped fbm gives large-scale structure
-	// density *= mix(0.2, 2.0, ridges) * mix(0.4, 1.4, base_fbm);
-    density *= ridges * 0.5 + 0.5;
-	// density += density * 1.0 * noise_intensity * 0.5;
+	density *= mix(0.2, 2.0, ridges) * mix(0.4, 1.4, base_fbm);
+    density *= 100*pow(warped_fbm * 0.5 + 0.5, 5);
+
+	density += density * 1.0 * noise_intensity * 0.5;
 
 	// Soft edges
-	// density *= smoothstep(0.0, 0.12, normalized_d);
+	density *= smoothstep(0.0, 0.12, normalized_d);
 
 	// Ground interaction: rolling dense base
 	float ground_dist = (p.y - ground_y) / max(radius, 0.01);
@@ -388,7 +389,7 @@ void volumetricMarch(
 			float absorption = sources[i].volumetric_params.y;
 
 			float md = mushroomSDF(p - center, radius, ntime);
-			float nd = clamp(-md / radius, 0.0, 1.0);
+			float nd = d*clamp(-md / radius, 0.0, 1.0);
 
 			vec3 col = explosionColor(nd, ntime, sources[i].color_inner.rgb, sources[i].color_outer.rgb) * fader;
 			float emit = emission * nd * (1.0 - ntime);
@@ -493,7 +494,7 @@ void main() {
 		                prevTexCoords.y >= 0.0 && prevTexCoords.y <= 1.0;
 
 		// Lower blend for volumetric so turbulence detail comes through
-		float baseBlend = (hit_surface && t_surface < sceneDistance) ? 0.85 : 0.55;
+		float baseBlend = (hit_surface && t_surface < sceneDistance) ? 0.85 : 0.25;
 		float blendFactor = (onScreen && frameIndex > 0) ? baseBlend : 0.0;
 
 		FragColor = mix(vec4(currentFrameColor, 1.0), historyColor, blendFactor);

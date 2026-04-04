@@ -451,10 +451,10 @@ namespace Boidsish {
 			// Emission fades as the explosion cools
 			source_.emission = initial_density_ * 3.0f * (1.0f - t) * (1.0f - t);
 
-			// Upward drift: hot gas rises, creating mushroom shape
-			glm::vec3 pos = initial_position_;
-			pos.y += expansion * initial_radius_ * 3.0f;
-			source_.position = pos;
+			// // Upward drift: hot gas rises, creating mushroom shape
+			// glm::vec3 pos = initial_position_;
+			// pos.y += expansion * initial_radius_ * 3.0f;
+			// source_.position = pos;
 		} else {
 			source_.position = GetPosition();
 		}
