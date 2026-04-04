@@ -244,15 +244,53 @@ float sampleSourceDensity(vec3 p, int index) {
 	if (p.y < ground_y) return 0.0;
 
 	vec3 rel = p - center;
-	float d = mushroomSDF(rel, radius, ntime);
+	float d = mushroomSDF(rel, radius * (fastWarpedFbm3d(p/30.0+time*0.8*1/radius)*0.65+0.98) , ntime);
 	if (d > radius * 0.05) return 0.0;
 
 	float normalized_d = clamp(-d / radius, 0.0, 1.0);
+	float dist = distance(p.xz, center.xz);
+	vec3 warp = fastCurl3d((p+time)/ (10.0*noise_intensity));
+	d += (fastFbm3d(p*warp / (10.0*noise_intensity) * d*time*0.5)*0.5+0.5) * smoothstep(0, 0.25, noise_intensity);
+	d += fastRidge3d(rel/(10.0*noise_intensity) * smoothstep(0, 0.5, noise_intensity)+time*0.75);
+	d += pow(1-abs(fastWarpedFbm3d(rel/10.0 * 0.6*smoothstep(0, 0.75, dist) + warp*time*0.00005)), 5);
+    d += fastWorley3d(rel/100.0 *smoothstep(0, 0.75, d) + time*0.5);
+	float ground_dist = (p.y - ground_y) / max(radius, 0.01);
+	if (ground_dist < 0.3) {
+		d *= 1.0 + 2.5 * smoothstep(0.3, 0.0, ground_dist);
+	}
+
+	return max(0.0, d);
+
+
+/*
+
+
+
+	float dist = distance(p.xz, center.xz);
+	float d = sphereSDF(pos, radius * (fastWarpedFbm3d(p/30.0+time*0.8*1/radius)*0.65+0.98));
+
+	vec3 warp = fastCurl3d((p+time)/ (10.0*noise_intensity));
+
+
+	d += (fastFbm3d(p*warp / (10.0*noise_intensity) * d*time*0.5)*0.5+0.5) * smoothstep(0, 0.25, noise_intensity);
+	d += ridged_fBm(pos/10.0 * smoothstep(0, 0.5, noise_intensity)+time*0.75);
+	d += pow(1-abs(fastWarpedFbm3d(pos/10.0 * 0.6*smoothstep(0, 0.75, dist) + warp*time*0.00005)), 5);
+	// d += fastWorley3d(pos/100.0 *smoothstep(0, 0.75, d) + time*0.5);
+	return d * 0.5 * distance(pos, center)/radius;
+
+}
+
+
+*/
+
+
+
+
 
 	// Height profile: dense cap, thinner stem
 	// float height_frac = clamp((rel.y / radius) + 0.5, 0.0, 1.0);
 	// float cap_density = smoothstep(0.0, 0.25, height_frac) * (0.3 + 0.7 * smoothstep(0.35, 0.75, height_frac));
-
+/*
 	float density = sources[index].volumetric_params.x * normalized_d;// * cap_density;
 
 	// Rich noise stack from the earlier shader:
@@ -276,7 +314,6 @@ float sampleSourceDensity(vec3 p, int index) {
 
 	// Soft edges
 	density *= smoothstep(0.0, 0.12, normalized_d);
-
 	// Ground interaction: rolling dense base
 	float ground_dist = (p.y - ground_y) / max(radius, 0.01);
 	if (ground_dist < 0.3) {
@@ -284,6 +321,7 @@ float sampleSourceDensity(vec3 p, int index) {
 	}
 
 	return max(0.0, density);
+*/
 }
 
 // --- Temperature-driven color ---
@@ -298,11 +336,11 @@ vec3 explosionColor(float normalized_d, float ntime, vec3 color_inner, vec3 colo
 	vec3 smoke     = vec3(0.15, 0.1, 0.08);
 
 	vec3 col;
-	if (temperature > 0.66)
+	if (temperature > 0.6)
 		col = mix(orange, white_hot, (temperature - 0.8) / 0.2);
 	else if (temperature > 0.33)
 		col = mix(yellow, orange, (temperature - 0.5) / 0.3);
-    else if (temperature > 0.15)
+    else if (temperature > 0.10)
 		col = mix(red, yellow, (temperature - 0.25) / 0.25);
 	else
         col = mix(smoke, red, temperature / 0.25);
@@ -332,7 +370,7 @@ void volumetricMarch(
 		if (sources[i].charge_type_vol_time.z < 0.5) continue;
 
 		vec3  center = sources[i].position_radius.xyz;
-		float bound_radius = sources[i].position_radius.w * 2.0;
+		float bound_radius = sources[i].position_radius.w * 4.0;
 
 		vec3  co = rayOrigin - center;
 		float b_dot = dot(rayDir, co);
@@ -377,7 +415,7 @@ void volumetricMarch(
 
 			float ntime = sources[i].charge_type_vol_time.w;
 
-            float fader = 1.0;//smoothstep(1.0, 0.85, ntime);
+            float fader = smoothstep(1.0, 0.85, ntime);
 
 			float d = sampleSourceDensity(p, i) * fader;
 
@@ -388,17 +426,19 @@ void volumetricMarch(
 			float emission = sources[i].color_inner.a;
 			float absorption = sources[i].volumetric_params.y;
 
-			float md = mushroomSDF(p - center, radius, ntime);
+            vec3 thing = p - center;//vec3(center.x, p.y, center.z);
+            // thing.y = 0.0;
+			float md = mushroomSDF(thing, radius, ntime);
 			float nd = d*clamp(-md / radius, 0.0, 1.0);
 
-			vec3 col = explosionColor(nd, ntime, sources[i].color_inner.rgb, sources[i].color_outer.rgb) * fader;
-			float emit = emission * nd * (1.0 - ntime);
+			vec3 col = explosionColor(nd, ntime, sources[i].color_inner.rgb, sources[i].color_outer.rgb);
+			float emit = emission * nd * (1.0 - ntime) * fader;
 			col += col * emit;
 
-			totalDensity += d;
-			totalColor += col * d;
-			totalAbsorption += absorption * d;
-			totalWeight += d;
+			totalDensity += d * fader;
+			totalColor += col * d * fader;
+			totalAbsorption += absorption * d * fader;
+			totalWeight += d * fader;
 		}
 
 		if (totalWeight <= 0.0) continue;
@@ -494,7 +534,7 @@ void main() {
 		                prevTexCoords.y >= 0.0 && prevTexCoords.y <= 1.0;
 
 		// Lower blend for volumetric so turbulence detail comes through
-		float baseBlend = (hit_surface && t_surface < sceneDistance) ? 0.85 : 0.25;
+		float baseBlend = (hit_surface && t_surface < sceneDistance) ? 0.85 : 0.15;
 		float blendFactor = (onScreen && frameIndex > 0) ? baseBlend : 0.0;
 
 		FragColor = mix(vec4(currentFrameColor, 1.0), historyColor, blendFactor);
