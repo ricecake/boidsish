@@ -168,7 +168,7 @@ void main() {
 					);
 				}
 				float opticalDepthToLight = shadowDensity * shadowStepSize * cloudShadowOpticalDepthMultiplier;
-				float shadowTerm = mix(beerPowder(opticalDepthToLight, d), exp(-opticalDepthToLight), smoothstep(0, 1, dot(viewPos - p_curved, viewDir)));//smoothstep(0, 1, 2*transmittanceAtStep));
+				float shadowTerm = mix(beerPowder(opticalDepthToLight, d), exp(-opticalDepthToLight), cloudBeerPowderMix);
 
 				stepScattering += lights[j].color * shadowTerm * phase * lights[j].intensity * (j == 0 ? cloudSunLightScale : cloudMoonLightScale);
 			}

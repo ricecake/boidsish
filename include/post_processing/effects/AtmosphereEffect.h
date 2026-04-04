@@ -102,6 +102,9 @@ namespace Boidsish {
 			void SetCloudMoonLightScale(float s) { cloud_moon_light_scale_ = s; }
 			float GetCloudMoonLightScale() const { return cloud_moon_light_scale_; }
 
+			void SetCloudBeerPowderMix(float m) { cloud_beer_powder_mix_ = m; }
+			float GetCloudBeerPowderMix() const { return cloud_beer_powder_mix_; }
+
 			// Scattering parameters
 			void SetRayleighScale(float s) { rayleigh_scale_ = s; }
 
@@ -210,6 +213,7 @@ namespace Boidsish {
 			float     cloud_shadow_step_multiplier_ = 0.1f;
 			float     cloud_sun_light_scale_ = 10.0f;
 			float     cloud_moon_light_scale_ = 2.0f;
+			float     cloud_beer_powder_mix_ = 0.5f;
 
 			float     rayleigh_scale_ = 1.1f;
 			float     mie_scale_ = 0.1f; // Reduced default to prevent "washed out" haze

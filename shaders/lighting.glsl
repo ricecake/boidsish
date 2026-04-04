@@ -42,7 +42,7 @@ layout(std140) uniform Lighting {
 	float cloudShadowStepMultiplier;
 	float cloudSunLightScale;
 	float cloudMoonLightScale;
-	float _padding2;
+	float cloudBeerPowderMix;
 };
 
 // Shadow mapping UBO (binding set via glUniformBlockBinding to point 2)

@@ -64,7 +64,7 @@ namespace Boidsish {
 		float cloudShadowStepMultiplier;      // offset 752, 4 bytes
 		float cloudSunLightScale;            // offset 756, 4 bytes
 		float cloudMoonLightScale;           // offset 760, 4 bytes
-		float _padding2;                     // offset 764, 4 bytes
+		float cloudBeerPowderMix;            // offset 764, 4 bytes
 	}; // Total: 768 bytes
 
 	static_assert(sizeof(LightingUbo) == 768, "LightingUbo must be 768 bytes for UBO alignment");

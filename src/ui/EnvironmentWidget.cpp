@@ -142,63 +142,79 @@ namespace Boidsish {
 										atmosphere_effect->SetCloudColor(cloud_color);
 									}
 
-									float cloud_shadow = ConfigManager::GetInstance().GetAppSettingFloat(
-										"cloud_shadow_intensity",
-										0.5f
-									);
+									auto& cfg = ConfigManager::GetInstance();
+
+									float cloud_shadow = cfg.GetAppSettingFloat("cloud_shadow_intensity", 0.5f);
 									if (ImGui::SliderFloat("Cloud Shadow Intensity", &cloud_shadow, 0.0f, 1.0f)) {
-										ConfigManager::GetInstance().SetFloat("cloud_shadow_intensity", cloud_shadow);
+										cfg.SetFloat("cloud_shadow_intensity", cloud_shadow);
 									}
 
 									ImGui::Separator();
 									ImGui::Text("Advanced Cloud Parameters");
 
-									float g1 = atmosphere_effect->GetCloudPhaseG1();
+									float g1 = cfg.GetAppSettingFloat("cloud_phase_g1", atmosphere_effect->GetCloudPhaseG1());
 									if (ImGui::SliderFloat("Phase G1 (Forward)", &g1, 0.0f, 0.99f)) {
 										atmosphere_effect->SetCloudPhaseG1(g1);
+										cfg.SetFloat("cloud_phase_g1", g1);
 									}
-									float g2 = atmosphere_effect->GetCloudPhaseG2();
+									float g2 = cfg.GetAppSettingFloat("cloud_phase_g2", atmosphere_effect->GetCloudPhaseG2());
 									if (ImGui::SliderFloat("Phase G2 (Backward)", &g2, -0.99f, 0.0f)) {
 										atmosphere_effect->SetCloudPhaseG2(g2);
+										cfg.SetFloat("cloud_phase_g2", g2);
 									}
-									float alpha = atmosphere_effect->GetCloudPhaseAlpha();
+									float alpha = cfg.GetAppSettingFloat("cloud_phase_alpha", atmosphere_effect->GetCloudPhaseAlpha());
 									if (ImGui::SliderFloat("Phase Mix Alpha", &alpha, 0.0f, 1.0f)) {
 										atmosphere_effect->SetCloudPhaseAlpha(alpha);
+										cfg.SetFloat("cloud_phase_alpha", alpha);
 									}
-									float isotropic = atmosphere_effect->GetCloudPhaseIsotropic();
+									float isotropic = cfg.GetAppSettingFloat("cloud_phase_isotropic", atmosphere_effect->GetCloudPhaseIsotropic());
 									if (ImGui::SliderFloat("Phase Isotropic Mix", &isotropic, 0.0f, 1.0f)) {
 										atmosphere_effect->SetCloudPhaseIsotropic(isotropic);
+										cfg.SetFloat("cloud_phase_isotropic", isotropic);
 									}
 
-									float p_scale = atmosphere_effect->GetCloudPowderScale();
+									float p_scale = cfg.GetAppSettingFloat("cloud_powder_scale", atmosphere_effect->GetCloudPowderScale());
 									if (ImGui::SliderFloat("Powder Scale", &p_scale, 0.0f, 2.0f)) {
 										atmosphere_effect->SetCloudPowderScale(p_scale);
+										cfg.SetFloat("cloud_powder_scale", p_scale);
 									}
-									float p_mult = atmosphere_effect->GetCloudPowderMultiplier();
+									float p_mult = cfg.GetAppSettingFloat("cloud_powder_multiplier", atmosphere_effect->GetCloudPowderMultiplier());
 									if (ImGui::SliderFloat("Powder Multiplier", &p_mult, 0.0f, 2.0f)) {
 										atmosphere_effect->SetCloudPowderMultiplier(p_mult);
+										cfg.SetFloat("cloud_powder_multiplier", p_mult);
 									}
-									float p_local = atmosphere_effect->GetCloudPowderLocalScale();
+									float p_local = cfg.GetAppSettingFloat("cloud_powder_local_scale", atmosphere_effect->GetCloudPowderLocalScale());
 									if (ImGui::SliderFloat("Powder Local Scale", &p_local, 0.0f, 10.0f)) {
 										atmosphere_effect->SetCloudPowderLocalScale(p_local);
+										cfg.SetFloat("cloud_powder_local_scale", p_local);
 									}
 
-									float s_opt = atmosphere_effect->GetCloudShadowOpticalDepthMultiplier();
+									float s_opt = cfg.GetAppSettingFloat("cloud_shadow_optical_depth_multiplier", atmosphere_effect->GetCloudShadowOpticalDepthMultiplier());
 									if (ImGui::SliderFloat("Shadow Optical Depth Mult", &s_opt, 0.0f, 1.0f)) {
 										atmosphere_effect->SetCloudShadowOpticalDepthMultiplier(s_opt);
+										cfg.SetFloat("cloud_shadow_optical_depth_multiplier", s_opt);
 									}
-									float s_step = atmosphere_effect->GetCloudShadowStepMultiplier();
+									float s_step = cfg.GetAppSettingFloat("cloud_shadow_step_multiplier", atmosphere_effect->GetCloudShadowStepMultiplier());
 									if (ImGui::SliderFloat("Shadow Step Mult", &s_step, 0.0f, 1.0f)) {
 										atmosphere_effect->SetCloudShadowStepMultiplier(s_step);
+										cfg.SetFloat("cloud_shadow_step_multiplier", s_step);
 									}
 
-									float sun_scale = atmosphere_effect->GetCloudSunLightScale();
+									float sun_scale = cfg.GetAppSettingFloat("cloud_sun_light_scale", atmosphere_effect->GetCloudSunLightScale());
 									if (ImGui::SliderFloat("Sun Light Scale", &sun_scale, 0.0f, 50.0f)) {
 										atmosphere_effect->SetCloudSunLightScale(sun_scale);
+										cfg.SetFloat("cloud_sun_light_scale", sun_scale);
 									}
-									float moon_scale = atmosphere_effect->GetCloudMoonLightScale();
+									float moon_scale = cfg.GetAppSettingFloat("cloud_moon_light_scale", atmosphere_effect->GetCloudMoonLightScale());
 									if (ImGui::SliderFloat("Moon Light Scale", &moon_scale, 0.0f, 20.0f)) {
 										atmosphere_effect->SetCloudMoonLightScale(moon_scale);
+										cfg.SetFloat("cloud_moon_light_scale", moon_scale);
+									}
+
+									float bp_mix = cfg.GetAppSettingFloat("cloud_beer_powder_mix", atmosphere_effect->GetCloudBeerPowderMix());
+									if (ImGui::SliderFloat("Beer-Powder Mix", &bp_mix, 0.0f, 1.0f)) {
+										atmosphere_effect->SetCloudBeerPowderMix(bp_mix);
+										cfg.SetFloat("cloud_beer_powder_mix", bp_mix);
 									}
 
 									ImGui::Separator();
