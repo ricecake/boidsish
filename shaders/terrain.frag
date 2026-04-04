@@ -23,6 +23,10 @@ in float      vRidgeMap;
 
 uniform bool uIsShadowPass = false;
 
+uniform int   uLODLevel = 0;
+uniform float uFadeStart = 0.0;
+uniform float uFadeEnd = 1000.0;
+
 // Biome texture array: RG8 - R=low_idx, G=t
 uniform sampler2DArray uBiomeMap;
 uniform float          uRawChunkSize;
@@ -254,15 +258,27 @@ void main() {
 	vec3  scaledFragPos = FragPos / worldScale;
 
 	float dist = length(FragPos.xz - viewPos.xz);
-	// float n_fade = snoise(vec3(FragPos.xy / (25 * worldScale), time * 0.08));
-	float n_fade = fastSimplex3d(vec3(FragPos.xz / (250 * worldScale), time * 0.09));
-	float fade_start = 560.0 * worldScale;
-	float fade_end = 570.0 * worldScale;
-	float fade = 1.0 - smoothstep(fade_start, fade_end, dist + n_fade * 40.0);
 
-	if (fade < 0.2) {
+	// Multi-LOD Fading logic
+	float fade = 1.0;
+	float n_fade = fastSimplex3d(vec3(FragPos.xz / (250 * worldScale), time * 0.09));
+
+	if (uLODLevel == 0) {
+		// LOD 0 fades out at its own boundary
+		fade = 1.0 - smoothstep(uFadeStart, uFadeEnd, dist + n_fade * 40.0);
+	} else {
+		// LOD 1 fades in at the start and out at its far boundary
+		float fadeIn = smoothstep(uFadeStart - 100.0 * worldScale, uFadeStart, dist + n_fade * 40.0);
+		float fadeOut = 1.0 - smoothstep(uFadeEnd - 100.0 * worldScale, uFadeEnd, dist + n_fade * 40.0);
+		fade = fadeIn * fadeOut;
+	}
+
+	if (fade <= 0.001) {
 		discard;
 	}
+
+	float fade_start = 560.0 * worldScale;
+	float fade_end = 570.0 * worldScale;
 
 	if (vIsWater > 0.5) {
 		// --- Grid logic (from plane.frag, with refraction) ---

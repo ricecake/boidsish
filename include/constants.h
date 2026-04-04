@@ -330,6 +330,14 @@ namespace Boidsish {
 					return ChunkSize() + 1;
 				}
 
+				consteval int LOD1ChunkSizeMultiplier() {
+					return 16;
+				}
+
+				consteval int LOD1ViewDistance() {
+					return 4;
+				}
+
 				consteval int DefaultViewDistance() {
 					return (32 * 10) / ChunkSize();
 				}

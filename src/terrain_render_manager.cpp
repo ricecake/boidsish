@@ -16,8 +16,11 @@ namespace Boidsish {
 		glm::vec4  terrain_params; // chunk_size, world_scale, unused, unused
 	};
 
-	TerrainRenderManager::TerrainRenderManager(int chunk_size, int max_chunks):
-		chunk_size_(chunk_size), max_chunks_(max_chunks), heightmap_resolution_(chunk_size + 1) {
+	TerrainRenderManager::TerrainRenderManager(int chunk_size, int max_chunks, float world_chunk_size):
+		chunk_size_(chunk_size),
+		world_chunk_size_(world_chunk_size > 0.0f ? world_chunk_size : static_cast<float>(chunk_size)),
+		max_chunks_(max_chunks),
+		heightmap_resolution_(chunk_size + 1) {
 		// Create Biome UBO
 		glGenBuffers(1, &biome_ubo_);
 		glBindBuffer(GL_UNIFORM_BUFFER, biome_ubo_);
@@ -769,7 +772,7 @@ namespace Boidsish {
 		shader.setFloat("uTessQualityMultiplier", tess_quality_multiplier);
 		shader.setFloat("uTessLevelMax", 64.0f);
 		shader.setFloat("uTessLevelMin", 2.0f);
-		shader.setFloat("uChunkSize", chunk_size_ * last_world_scale_);
+		shader.setFloat("uChunkSize", world_chunk_size_ * last_world_scale_);
 		shader.setFloat("uRawChunkSize", static_cast<float>(chunk_size_));
 
 		if (clip_plane) {

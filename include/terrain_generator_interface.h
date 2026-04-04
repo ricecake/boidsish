@@ -90,15 +90,17 @@ namespace Boidsish {
 		 * rendering for all terrain.
 		 *
 		 * @param manager The render manager (nullptr to disable batched rendering)
+		 * @param lod_level The LOD level this manager handles (0 = base, 1 = distant)
 		 */
-		virtual void SetRenderManager(std::shared_ptr<TerrainRenderManager> manager) = 0;
+		virtual void SetRenderManager(std::shared_ptr<TerrainRenderManager> manager, int lod_level = 0) = 0;
 
 		/**
-		 * @brief Get the current render manager.
+		 * @brief Get the current render manager for an LOD level.
 		 *
+		 * @param lod_level The LOD level
 		 * @return Current render manager, or nullptr if not set
 		 */
-		virtual std::shared_ptr<TerrainRenderManager> GetRenderManager() const = 0;
+		virtual std::shared_ptr<TerrainRenderManager> GetRenderManager(int lod_level = 0) const = 0;
 
 		/**
 		 * @brief Notify that a chunk was evicted from GPU memory.
@@ -108,8 +110,9 @@ namespace Boidsish {
 		 * invalidate CPU cache or simply re-register when visible again.
 		 *
 		 * @param chunk_key The (chunk_x, chunk_z) key of the evicted chunk
+		 * @param lod_level The LOD level of the evicted chunk
 		 */
-		virtual void InvalidateChunk(std::pair<int, int> chunk_key) = 0;
+		virtual void InvalidateChunk(std::pair<int, int> chunk_key, int lod_level = 0) = 0;
 
 		// ==================== Terrain Queries ====================
 
