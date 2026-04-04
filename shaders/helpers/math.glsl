@@ -17,14 +17,14 @@ float henyeyGreenstein(float g, float cosTheta) {
 float cloudPhase(float cosTheta) {
 	// Dual-lobe Henyey-Greenstein for forward and back scattering
 	// Blended with a large isotropic component to ensure visibility at all angles
-	float hg = mix(henyeyGreenstein(0.7, cosTheta), henyeyGreenstein(-0.2, cosTheta), 0.5);
-	return mix(hg, 1.0 / (4.0 * PI), 0.4);
+	float hg = mix(henyeyGreenstein(0.7, cosTheta), henyeyGreenstein(-0.2, cosTheta), 0.15);
+	return mix(hg, 1.0 / (4.0 * PI), 0.05);
 }
 
 float beerPowder(float d, float local_d) {
 	// Approximation of multiple scattering (Beer-Powder law)
 	// Ensuring sunny side isn't black when d is small
-	return max(exp(-d), exp(-d * 0.15) * 0.7 * (1.0 - exp(-local_d * 2.0)));
+	return max(exp(-d), exp(-d * 0.35) * 0.4 * (1.0 - exp(-local_d * 2.0)));
 }
 
 float remap(float value, float low1, float high1, float low2, float high2) {

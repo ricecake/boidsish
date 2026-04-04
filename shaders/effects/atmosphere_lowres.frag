@@ -167,8 +167,8 @@ void main() {
 						true
 					);
 				}
-				float opticalDepthToLight = shadowDensity * shadowStepSize * 0.01;
-				float shadowTerm = mix(beerPowder(opticalDepthToLight, d), exp(-opticalDepthToLight), 0.0);//smoothstep(0, 1, 2*transmittanceAtStep));
+				float opticalDepthToLight = shadowDensity * shadowStepSize * 0.1;
+				float shadowTerm = mix(beerPowder(opticalDepthToLight, d), exp(-opticalDepthToLight), smoothstep(0, 1, dot(viewPos - p_curved, viewDir)));//smoothstep(0, 1, 2*transmittanceAtStep));
 
 				stepScattering += lights[j].color * shadowTerm * phase * lights[j].intensity * (j == 0 ? 10.0 : 2.0);
 			}
@@ -176,7 +176,8 @@ void main() {
 			vec3 ambient = mix(ambient_light, zenithRadiance, 0.5) * 0.5;
 			vec3 S = (stepScattering + ambient);
 
-			lightEnergy += cloudTransmittance * S * stepDensity;
+			// lightEnergy += cloudTransmittance * S * stepDensity;
+			lightEnergy += cloudTransmittance * S * (1.0 - transmittanceAtStep);
 			cloudTransmittance *= transmittanceAtStep;
 
 			if (cloudTransmittance < 0.01) {
