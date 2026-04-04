@@ -339,7 +339,7 @@ namespace Boidsish {
 				}
 
 				consteval int DefaultViewDistance() {
-					return (32 * 10) / ChunkSize();
+					return (32 * 18) / ChunkSize();
 				}
 
 				consteval int MaxViewDistance() {

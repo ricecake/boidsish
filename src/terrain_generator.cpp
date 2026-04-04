@@ -29,7 +29,10 @@ namespace Boidsish {
 			amplitude / 2.0f,
 			chunkZ * chunkSize + chunkSize / 2.0f
 		);
-		glm::vec3 halfSize(chunkSize / 2.0f, amplitude / 2.0f, chunkSize / 2.0f);
+
+		// Add 10% safety margin to account for displacement/tessellation
+		float margin = 1.1f;
+		glm::vec3 halfSize(chunkSize / 2.0f * margin, amplitude / 2.0f * margin, chunkSize / 2.0f * margin);
 
 		for (int i = 0; i < 6; ++i) {
 			float r = halfSize.x * std::abs(frustum.planes[i].normal.x) +

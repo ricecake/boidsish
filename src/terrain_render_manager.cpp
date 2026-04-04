@@ -416,7 +416,7 @@ namespace Boidsish {
 						std::pair<int, int> farthest_key;
 
 						for (const auto& [key, chunk] : chunks_) {
-							float     scaled_chunk_size = chunk_size_ * last_world_scale_;
+							float     scaled_chunk_size = world_chunk_size_ * last_world_scale_;
 							glm::vec2 chunk_center(
 								chunk.world_offset.x + scaled_chunk_size * 0.5f,
 								chunk.world_offset.y + scaled_chunk_size * 0.5f
@@ -496,7 +496,7 @@ namespace Boidsish {
 
 	bool TerrainRenderManager::IsChunkVisible(const ChunkInfo& chunk, const Frustum& frustum, float world_scale) const {
 		// Build AABB for this chunk
-		float     scaled_chunk_size = chunk_size_ * world_scale;
+		float     scaled_chunk_size = world_chunk_size_ * world_scale;
 		glm::vec3 min_corner(chunk.world_offset.x, chunk.min_y, chunk.world_offset.y);
 		glm::vec3 max_corner(
 			chunk.world_offset.x + scaled_chunk_size,
@@ -511,6 +511,9 @@ namespace Boidsish {
 
 		glm::vec3 center = (min_corner + max_corner) * 0.5f;
 		glm::vec3 half_size = (max_corner - min_corner) * 0.5f;
+
+		// Add safety margin
+		half_size *= 1.1f;
 
 		// Test against all 6 frustum planes
 		for (int i = 0; i < 6; ++i) {
@@ -570,7 +573,7 @@ namespace Boidsish {
 					instance.bounds = glm::vec4(chunk.min_y, chunk.max_y, 0.0f, 0.0f);
 
 					// Calculate distance from chunk center to camera
-					float     scaled_chunk_size = chunk_size_ * world_scale;
+					float     scaled_chunk_size = world_chunk_size_ * world_scale;
 					glm::vec2 chunk_center(
 						chunk.world_offset.x + scaled_chunk_size * 0.5f,
 						chunk.world_offset.y + scaled_chunk_size * 0.5f
@@ -644,7 +647,7 @@ namespace Boidsish {
 		int grid_size = Constants::Class::Terrain::SliceMapSize();
 		int half_grid = grid_size / 2;
 
-		float scaled_chunk_size = chunk_size_ * world_scale;
+		float scaled_chunk_size = world_chunk_size_ * world_scale;
 		int   center_chunk_x = static_cast<int>(std::floor(last_camera_pos_.x / scaled_chunk_size));
 		int   center_chunk_z = static_cast<int>(std::floor(last_camera_pos_.z / scaled_chunk_size));
 
@@ -680,7 +683,7 @@ namespace Boidsish {
 
 		TerrainDataUbo ubo{};
 		ubo.origin_size = glm::ivec4(origin_x, origin_z, grid_size, 1);
-		ubo.terrain_params = glm::vec4(static_cast<float>(chunk_size_), world_scale, 0.0f, 0.0f);
+		ubo.terrain_params = glm::vec4(world_chunk_size_, world_scale, static_cast<float>(chunk_size_), 0.0f);
 
 		glBindBuffer(GL_UNIFORM_BUFFER, terrain_data_ubo_);
 		glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(TerrainDataUbo), &ubo);
@@ -848,7 +851,7 @@ namespace Boidsish {
 					chunk.world_offset.x, // x world offset
 					chunk.world_offset.y, // z world offset (stored as y in vec2)
 					static_cast<float>(chunk.texture_slice),
-					static_cast<float>(chunk_size_ * world_scale)
+					static_cast<float>(world_chunk_size_ * world_scale)
 				)
 			);
 		}
@@ -859,7 +862,7 @@ namespace Boidsish {
 		std::lock_guard<std::mutex> lock(mutex_);
 		std::vector<DecorChunkData> result;
 		result.reserve(chunks_.size());
-		float scaled_chunk_size = static_cast<float>(chunk_size_ * world_scale);
+		float scaled_chunk_size = static_cast<float>(world_chunk_size_ * world_scale);
 		for (const auto& [key, chunk] : chunks_) {
 			result.push_back({
 				key,
