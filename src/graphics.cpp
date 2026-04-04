@@ -2243,6 +2243,18 @@ namespace Boidsish {
 					lighting_ubo_data_.cloudDensity = atmosphere_effect->GetCloudDensity();
 					lighting_ubo_data_.cloudCoverage = atmosphere_effect->GetCloudCoverage();
 					lighting_ubo_data_.cloudWarp = atmosphere_effect->GetCloudWarp();
+					lighting_ubo_data_.cloudPhaseG1 = atmosphere_effect->GetCloudPhaseG1();
+					lighting_ubo_data_.cloudPhaseG2 = atmosphere_effect->GetCloudPhaseG2();
+					lighting_ubo_data_.cloudPhaseAlpha = atmosphere_effect->GetCloudPhaseAlpha();
+					lighting_ubo_data_.cloudPhaseIsotropic = atmosphere_effect->GetCloudPhaseIsotropic();
+					lighting_ubo_data_.cloudPowderScale = atmosphere_effect->GetCloudPowderScale();
+					lighting_ubo_data_.cloudPowderMultiplier = atmosphere_effect->GetCloudPowderMultiplier();
+					lighting_ubo_data_.cloudPowderLocalScale = atmosphere_effect->GetCloudPowderLocalScale();
+					lighting_ubo_data_.cloudShadowOpticalDepthMultiplier =
+						atmosphere_effect->GetCloudShadowOpticalDepthMultiplier();
+					lighting_ubo_data_.cloudShadowStepMultiplier = atmosphere_effect->GetCloudShadowStepMultiplier();
+					lighting_ubo_data_.cloudSunLightScale = atmosphere_effect->GetCloudSunLightScale();
+					lighting_ubo_data_.cloudMoonLightScale = atmosphere_effect->GetCloudMoonLightScale();
 
 				} else {
 					lighting_ubo_data_.cloudShadowIntensity = 0.0f;

@@ -53,9 +53,21 @@ namespace Boidsish {
 		float cloudDensity;                  // offset 708, 4 bytes
 		float cloudCoverage;                 // offset 712, 4 bytes
 		float cloudWarp;                     // offset 716, 4 bytes
-	}; // Total: 720 bytes
+		float cloudPhaseG1;                  // offset 720, 4 bytes
+		float cloudPhaseG2;                  // offset 724, 4 bytes
+		float cloudPhaseAlpha;               // offset 728, 4 bytes
+		float cloudPhaseIsotropic;           // offset 732, 4 bytes
+		float cloudPowderScale;              // offset 736, 4 bytes
+		float cloudPowderMultiplier;         // offset 740, 4 bytes
+		float cloudPowderLocalScale;         // offset 744, 4 bytes
+		float cloudShadowOpticalDepthMultiplier; // offset 748, 4 bytes
+		float cloudShadowStepMultiplier;      // offset 752, 4 bytes
+		float cloudSunLightScale;            // offset 756, 4 bytes
+		float cloudMoonLightScale;           // offset 760, 4 bytes
+		float _padding2;                     // offset 764, 4 bytes
+	}; // Total: 768 bytes
 
-	static_assert(sizeof(LightingUbo) == 720, "LightingUbo must be 720 bytes for UBO alignment");
+	static_assert(sizeof(LightingUbo) == 768, "LightingUbo must be 768 bytes for UBO alignment");
 
 	/**
 	 * @brief Light source data structure for rendering.

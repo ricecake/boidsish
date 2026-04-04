@@ -151,6 +151,57 @@ namespace Boidsish {
 									}
 
 									ImGui::Separator();
+									ImGui::Text("Advanced Cloud Parameters");
+
+									float g1 = atmosphere_effect->GetCloudPhaseG1();
+									if (ImGui::SliderFloat("Phase G1 (Forward)", &g1, 0.0f, 0.99f)) {
+										atmosphere_effect->SetCloudPhaseG1(g1);
+									}
+									float g2 = atmosphere_effect->GetCloudPhaseG2();
+									if (ImGui::SliderFloat("Phase G2 (Backward)", &g2, -0.99f, 0.0f)) {
+										atmosphere_effect->SetCloudPhaseG2(g2);
+									}
+									float alpha = atmosphere_effect->GetCloudPhaseAlpha();
+									if (ImGui::SliderFloat("Phase Mix Alpha", &alpha, 0.0f, 1.0f)) {
+										atmosphere_effect->SetCloudPhaseAlpha(alpha);
+									}
+									float isotropic = atmosphere_effect->GetCloudPhaseIsotropic();
+									if (ImGui::SliderFloat("Phase Isotropic Mix", &isotropic, 0.0f, 1.0f)) {
+										atmosphere_effect->SetCloudPhaseIsotropic(isotropic);
+									}
+
+									float p_scale = atmosphere_effect->GetCloudPowderScale();
+									if (ImGui::SliderFloat("Powder Scale", &p_scale, 0.0f, 2.0f)) {
+										atmosphere_effect->SetCloudPowderScale(p_scale);
+									}
+									float p_mult = atmosphere_effect->GetCloudPowderMultiplier();
+									if (ImGui::SliderFloat("Powder Multiplier", &p_mult, 0.0f, 2.0f)) {
+										atmosphere_effect->SetCloudPowderMultiplier(p_mult);
+									}
+									float p_local = atmosphere_effect->GetCloudPowderLocalScale();
+									if (ImGui::SliderFloat("Powder Local Scale", &p_local, 0.0f, 10.0f)) {
+										atmosphere_effect->SetCloudPowderLocalScale(p_local);
+									}
+
+									float s_opt = atmosphere_effect->GetCloudShadowOpticalDepthMultiplier();
+									if (ImGui::SliderFloat("Shadow Optical Depth Mult", &s_opt, 0.0f, 1.0f)) {
+										atmosphere_effect->SetCloudShadowOpticalDepthMultiplier(s_opt);
+									}
+									float s_step = atmosphere_effect->GetCloudShadowStepMultiplier();
+									if (ImGui::SliderFloat("Shadow Step Mult", &s_step, 0.0f, 1.0f)) {
+										atmosphere_effect->SetCloudShadowStepMultiplier(s_step);
+									}
+
+									float sun_scale = atmosphere_effect->GetCloudSunLightScale();
+									if (ImGui::SliderFloat("Sun Light Scale", &sun_scale, 0.0f, 50.0f)) {
+										atmosphere_effect->SetCloudSunLightScale(sun_scale);
+									}
+									float moon_scale = atmosphere_effect->GetCloudMoonLightScale();
+									if (ImGui::SliderFloat("Moon Light Scale", &moon_scale, 0.0f, 20.0f)) {
+										atmosphere_effect->SetCloudMoonLightScale(moon_scale);
+									}
+
+									ImGui::Separator();
 									ImGui::Text("Scattering");
 									float rayleigh = atmosphere_effect->GetRayleighScale();
 									if (ImGui::SliderFloat("Rayleigh Scale", &rayleigh, 0.0f, 3.0f)) {

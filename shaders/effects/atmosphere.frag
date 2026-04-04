@@ -172,7 +172,7 @@ void main() {
 				float phase = cloudPhase(cosTheta);
 
 				float shadowDensity = 0.0;
-				float shadowStepSize = layer.thickness / float(shadow_samples) * 0.1;
+				float shadowStepSize = layer.thickness / float(shadow_samples) * cloudShadowStepMultiplier;
 				for (int k = 0; k < shadow_samples; k++) {
 					vec3 sp = p + L * (float(k) + 0.5) * shadowStepSize;
 					shadowDensity += calculateCloudDensity(
@@ -184,10 +184,10 @@ void main() {
 						true
 					);
 				}
-				float opticalDepthToLight = shadowDensity * shadowStepSize * 0.01;
-				float shadowTerm = mix(beerPowder(opticalDepthToLight, d), exp(-opticalDepthToLight) * 0.5, 0.6);
+				float opticalDepthToLight = shadowDensity * shadowStepSize * cloudShadowOpticalDepthMultiplier;
+				float shadowTerm = mix(beerPowder(opticalDepthToLight, d), exp(-opticalDepthToLight), 0.5);
 
-				stepScattering += lights[j].color * shadowTerm * phase * lights[j].intensity * (j == 0 ? 10.0 : 2.0);
+				stepScattering += lights[j].color * shadowTerm * phase * lights[j].intensity * (j == 0 ? cloudSunLightScale : cloudMoonLightScale);
 			}
 
 			vec3 ambient = mix(ambient_light, zenithRadiance, 0.5) * 0.5;

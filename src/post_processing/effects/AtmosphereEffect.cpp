@@ -138,6 +138,18 @@ namespace Boidsish {
 			shader_->setFloat("cloudWarp", cloud_warp_);
 			shader_->setVec3("cloudColorUniform", cloud_color_);
 
+			shader_->setFloat("cloudPhaseG1", cloud_phase_g1_);
+			shader_->setFloat("cloudPhaseG2", cloud_phase_g2_);
+			shader_->setFloat("cloudPhaseAlpha", cloud_phase_alpha_);
+			shader_->setFloat("cloudPhaseIsotropic", cloud_phase_isotropic_);
+			shader_->setFloat("cloudPowderScale", cloud_powder_scale_);
+			shader_->setFloat("cloudPowderMultiplier", cloud_powder_multiplier_);
+			shader_->setFloat("cloudPowderLocalScale", cloud_powder_local_scale_);
+			shader_->setFloat("cloudShadowOpticalDepthMultiplier", cloud_shadow_optical_depth_multiplier_);
+			shader_->setFloat("cloudShadowStepMultiplier", cloud_shadow_step_multiplier_);
+			shader_->setFloat("cloudSunLightScale", cloud_sun_light_scale_);
+			shader_->setFloat("cloudMoonLightScale", cloud_moon_light_scale_);
+
 			shader_->setInt("u_skyViewLUT", 12);
 			shader_->trySetInt("u_noiseTexture", 5);
 			shader_->trySetInt("u_curlTexture", 6);
