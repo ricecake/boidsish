@@ -5,6 +5,19 @@
 #include "math.glsl"
 #include "../lighting.glsl"
 
+float cloudPhase(float cosTheta) {
+	// Dual-lobe Henyey-Greenstein for forward and back scattering
+	// Blended with a large isotropic component to ensure visibility at all angles
+	float hg = mix(henyeyGreenstein(cloudPhaseG1, cosTheta), henyeyGreenstein(cloudPhaseG2, cosTheta), cloudPhaseAlpha);
+	return mix(hg, 1.0 / (4.0 * PI), cloudPhaseIsotropic);
+}
+
+float beerPowder(float d, float local_d) {
+	// Approximation of multiple scattering (Beer-Powder law)
+	// Ensuring sunny side isn't black when d is small
+	return max(exp(-d), exp(-d * cloudPowderScale) * cloudPowderMultiplier * (1.0 - exp(-local_d * cloudPowderLocalScale)));
+}
+
 struct CloudProperties {
 	float altitude;
 	float thickness;

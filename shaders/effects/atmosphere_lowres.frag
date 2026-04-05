@@ -152,7 +152,28 @@ void main() {
 				float phase = cloudPhase(cosTheta);
 
 				float shadowDensity = 0.0;
-				float shadowStepSize = layer.thickness / float(shadow_samples) * 0.1;
+				// float shadowStepSize = layer.thickness / float(shadow_samples) * cloudShadowStepMultiplier;
+				// intersectSphere(p, L, R_ceiling);
+
+				float st_start = 1e10;
+				float st_end = -1e10;
+
+				float t0, t1;
+				if (intersectSphere(p, L, R_ceiling, t0, t1)) {
+					st_start = max(0.0, t0);
+					st_end = t1;
+
+					if (intersectSphere(p, L, R_floor, t0, t1)) {
+						if (t0 < 0.0) {
+							st_start = max(t_start, t1);
+						} else {
+							st_end = min(t_end, t0);
+						}
+					}
+				}
+
+				float shadowStepSize = st_end - st_start / float(shadow_samples);
+
 				for (int k = 0; k < shadow_samples; k++) {
 					vec3 sp = p + L * (float(k) + 0.5) * shadowStepSize;
 					vec3 sp_curved = sp;
@@ -167,10 +188,10 @@ void main() {
 						true
 					);
 				}
-				float opticalDepthToLight = shadowDensity * shadowStepSize * 0.1;
-				float shadowTerm = mix(beerPowder(opticalDepthToLight, d), exp(-opticalDepthToLight), smoothstep(0, 1, dot(viewPos - p_curved, viewDir)));//smoothstep(0, 1, 2*transmittanceAtStep));
+				float opticalDepthToLight = shadowDensity * shadowStepSize * cloudShadowOpticalDepthMultiplier;
+				float shadowTerm = mix(beerPowder(opticalDepthToLight, d), exp(-opticalDepthToLight), cloudBeerPowderMix);
 
-				stepScattering += lights[j].color * shadowTerm * phase * lights[j].intensity * (j == 0 ? 10.0 : 2.0);
+				stepScattering += lights[j].color * shadowTerm * phase * lights[j].intensity * (j == 0 ? cloudSunLightScale : cloudMoonLightScale);
 			}
 
 			vec3 ambient = mix(ambient_light, zenithRadiance, 0.5) * 0.5;

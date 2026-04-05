@@ -2234,15 +2234,44 @@ namespace Boidsish {
 				lighting_ubo_data_.view_dir = camera.front();
 
 				if (atmosphere_effect) {
-					lighting_ubo_data_.cloudShadowIntensity = ConfigManager::GetInstance().GetAppSettingFloat(
+					auto& cfg = ConfigManager::GetInstance();
+					lighting_ubo_data_.cloudShadowIntensity = cfg.GetAppSettingFloat(
 						"cloud_shadow_intensity",
 						0.5f
 					);
+
+					// Sync with atmosphere_effect based on ConfigManager
+					atmosphere_effect->SetCloudPhaseG1(cfg.GetAppSettingFloat("cloud_phase_g1", 0.7f));
+					atmosphere_effect->SetCloudPhaseG2(cfg.GetAppSettingFloat("cloud_phase_g2", -0.2f));
+					atmosphere_effect->SetCloudPhaseAlpha(cfg.GetAppSettingFloat("cloud_phase_alpha", 0.15f));
+					atmosphere_effect->SetCloudPhaseIsotropic(cfg.GetAppSettingFloat("cloud_phase_isotropic", 0.05f));
+					atmosphere_effect->SetCloudPowderScale(cfg.GetAppSettingFloat("cloud_powder_scale", 0.35f));
+					atmosphere_effect->SetCloudPowderMultiplier(cfg.GetAppSettingFloat("cloud_powder_multiplier", 0.4f));
+					atmosphere_effect->SetCloudPowderLocalScale(cfg.GetAppSettingFloat("cloud_powder_local_scale", 2.0f));
+					atmosphere_effect->SetCloudShadowOpticalDepthMultiplier(cfg.GetAppSettingFloat("cloud_shadow_optical_depth_multiplier", 0.1f));
+					atmosphere_effect->SetCloudShadowStepMultiplier(cfg.GetAppSettingFloat("cloud_shadow_step_multiplier", 0.1f));
+					atmosphere_effect->SetCloudSunLightScale(cfg.GetAppSettingFloat("cloud_sun_light_scale", 10.0f));
+					atmosphere_effect->SetCloudMoonLightScale(cfg.GetAppSettingFloat("cloud_moon_light_scale", 2.0f));
+					atmosphere_effect->SetCloudBeerPowderMix(cfg.GetAppSettingFloat("cloud_beer_powder_mix", 0.5f));
+
 					lighting_ubo_data_.cloudAltitude = atmosphere_effect->GetCloudAltitude();
 					lighting_ubo_data_.cloudThickness = atmosphere_effect->GetCloudThickness();
 					lighting_ubo_data_.cloudDensity = atmosphere_effect->GetCloudDensity();
 					lighting_ubo_data_.cloudCoverage = atmosphere_effect->GetCloudCoverage();
 					lighting_ubo_data_.cloudWarp = atmosphere_effect->GetCloudWarp();
+					lighting_ubo_data_.cloudPhaseG1 = atmosphere_effect->GetCloudPhaseG1();
+					lighting_ubo_data_.cloudPhaseG2 = atmosphere_effect->GetCloudPhaseG2();
+					lighting_ubo_data_.cloudPhaseAlpha = atmosphere_effect->GetCloudPhaseAlpha();
+					lighting_ubo_data_.cloudPhaseIsotropic = atmosphere_effect->GetCloudPhaseIsotropic();
+					lighting_ubo_data_.cloudPowderScale = atmosphere_effect->GetCloudPowderScale();
+					lighting_ubo_data_.cloudPowderMultiplier = atmosphere_effect->GetCloudPowderMultiplier();
+					lighting_ubo_data_.cloudPowderLocalScale = atmosphere_effect->GetCloudPowderLocalScale();
+					lighting_ubo_data_.cloudShadowOpticalDepthMultiplier =
+						atmosphere_effect->GetCloudShadowOpticalDepthMultiplier();
+					lighting_ubo_data_.cloudShadowStepMultiplier = atmosphere_effect->GetCloudShadowStepMultiplier();
+					lighting_ubo_data_.cloudSunLightScale = atmosphere_effect->GetCloudSunLightScale();
+					lighting_ubo_data_.cloudMoonLightScale = atmosphere_effect->GetCloudMoonLightScale();
+					lighting_ubo_data_.cloudBeerPowderMix = atmosphere_effect->GetCloudBeerPowderMix();
 
 				} else {
 					lighting_ubo_data_.cloudShadowIntensity = 0.0f;
