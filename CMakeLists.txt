@@ -193,12 +193,16 @@ target_link_libraries(check PRIVATE boidsish)
 set_target_properties(check PROPERTIES EXCLUDE_FROM_ALL TRUE)
 
 # Add shader preprocessor tool
+# Link against GLEW/glfw to avoid circular dependency with boidsish
 add_executable(shader_preprocessor tools/shader_preprocessor.cpp)
-target_link_libraries(shader_preprocessor PRIVATE boidsish)
+target_include_directories(shader_preprocessor PRIVATE include external/include)
+target_link_libraries(shader_preprocessor PRIVATE OpenGL::GL GLEW::GLEW glfw)
 add_dependencies(check shader_preprocessor)
 
 # Find glslangValidator
 find_program(GLSLANG_VALIDATOR_EXE NAMES glslangValidator)
+
+option(ENABLE_SPIRV "Compile shaders to SPIR-V" OFF)
 
 if(GLSLANG_VALIDATOR_EXE)
     file(GLOB_RECURSE SHADER_FILES
@@ -214,6 +218,7 @@ if(GLSLANG_VALIDATOR_EXE)
     list(REMOVE_ITEM SHADER_FILES "${CMAKE_CURRENT_SOURCE_DIR}/shaders/visual_effects.frag")
     list(REMOVE_ITEM SHADER_FILES "${CMAKE_CURRENT_SOURCE_DIR}/shaders/visual_effects.vert")
 
+    set(SPIRV_OUTPUTS "")
     set(VALIDATION_OUTPUTS "")
     foreach(SHADER_FILE ${SHADER_FILES})
         get_filename_component(SHADER_NAME ${SHADER_FILE} NAME)
@@ -227,21 +232,34 @@ if(GLSLANG_VALIDATOR_EXE)
             set(VAL_EXT ".tese")
         endif()
 
-        # Determine preprocessed path
+        # Determine relative path from shaders/
         file(RELATIVE_PATH REL_SHADER ${CMAKE_CURRENT_SOURCE_DIR}/shaders ${SHADER_FILE})
         get_filename_component(REL_DIR ${REL_SHADER} DIRECTORY)
         get_filename_component(BASE_NAME ${REL_SHADER} NAME_WE)
 
         set(PREPROCESSED_FILE "${CMAKE_BINARY_DIR}/shaders_preprocessed/${REL_DIR}/${BASE_NAME}${VAL_EXT}")
+        set(DEP_FILE "${PREPROCESSED_FILE}.d")
+        set(SPIRV_FILE "${CMAKE_BINARY_DIR}/shaders/${REL_DIR}/${BASE_NAME}${SHADER_EXT}.spv")
         set(STAMP_FILE "${PREPROCESSED_FILE}.validated")
 
         add_custom_command(
             OUTPUT ${PREPROCESSED_FILE}
-            COMMAND shader_preprocessor ${SHADER_FILE} ${PREPROCESSED_FILE}
+            COMMAND shader_preprocessor --depfile ${DEP_FILE} ${SHADER_FILE} ${PREPROCESSED_FILE}
             DEPENDS shader_preprocessor ${SHADER_FILE}
+            DEPFILE ${DEP_FILE}
             WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
             COMMENT "Preprocessing shader ${REL_SHADER}"
         )
+
+        if(ENABLE_SPIRV)
+            add_custom_command(
+                OUTPUT ${SPIRV_FILE}
+                COMMAND ${GLSLANG_VALIDATOR_EXE} -V --client opengl100 -o ${SPIRV_FILE} ${PREPROCESSED_FILE}
+                DEPENDS ${PREPROCESSED_FILE}
+                COMMENT "Compiling shader to SPIR-V: ${REL_SHADER}"
+            )
+            list(APPEND SPIRV_OUTPUTS ${SPIRV_FILE})
+        endif()
 
         add_custom_command(
             OUTPUT ${STAMP_FILE}
@@ -254,6 +272,10 @@ if(GLSLANG_VALIDATOR_EXE)
         list(APPEND VALIDATION_OUTPUTS ${STAMP_FILE})
     endforeach()
 
+    if(ENABLE_SPIRV)
+        add_custom_target(all_shaders_spv ALL DEPENDS ${SPIRV_OUTPUTS})
+        add_dependencies(boidsish all_shaders_spv)
+    endif()
     add_custom_target(glcheck DEPENDS ${VALIDATION_OUTPUTS})
 else()
     message(WARNING "glslangValidator not found. 'glcheck' target will be empty.")
