@@ -1877,7 +1877,7 @@ namespace Boidsish {
 
 				const auto& lights = light_manager.GetLights();
 				if (!lights.empty()) {
-					sky_shader->setVec3("u_sunRadiance", lights[0].color * lights[0].intensity * 20.0f);
+					sky_shader->setVec3("u_sunRadiance", lights[0].color * lights[0].intensity * 50.0f);
 					if (lights.size() >= 2) {
 						sky_shader->setVec3("u_moonRadiance", lights[1].color * lights[1].intensity * 10.0f);
 						sky_shader->setVec3("u_moonDir", glm::normalize(-lights[1].direction));
@@ -2034,8 +2034,8 @@ namespace Boidsish {
 
 			// We multiply sun intensity by a large factor for the atmosphere model
 			// Standard directional light 1.0 is too dim for physical scattering.
-			// 20.0 is a reasonable physical-ish sun radiance.
-			atmosphere_manager->Update(sun_dir, sun_color, sun_intensity * 20.0f, camera.pos(), simulation_time);
+			// 50.0 is a reasonable physical-ish sun radiance for this model.
+			atmosphere_manager->Update(sun_dir, sun_color, sun_intensity * 50.0f, camera.pos(), simulation_time);
 
 			// Sync ambient light from atmosphere to ensure decor and world match
 			glm::vec3 estimated_ambient = atmosphere_manager->GetAmbientEstimate();

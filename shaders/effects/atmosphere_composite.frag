@@ -16,12 +16,12 @@ uniform vec3  hazeColor;
 
 uniform vec2 cloudTexelSize; // 1.0 / lowResSize
 
-uniform sampler2D u_transmittanceLUT;
+// u_transmittanceLUT is declared in helpers/lighting.glsl
 uniform sampler2D u_skyViewLUT;
 uniform sampler3D u_aerialPerspectiveLUT;
 
-#include "../atmosphere/common.glsl"
 #include "../helpers/lighting.glsl"
+#include "../atmosphere/common.glsl"
 #include "helpers/math.glsl"
 
 vec3 sampleAerialPerspective(vec3 rd, float distKM) {

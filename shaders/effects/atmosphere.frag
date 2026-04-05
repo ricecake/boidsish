@@ -14,14 +14,14 @@ uniform float hazeHeight;
 uniform vec3  hazeColor;
 uniform vec3  cloudColorUniform;
 
-uniform sampler2D u_transmittanceLUT;
+// u_transmittanceLUT is declared in helpers/lighting.glsl
 uniform sampler2D u_skyViewLUT;
 uniform sampler3D u_aerialPerspectiveLUT;
 
+#include "../helpers/lighting.glsl"
 #include "../atmosphere/common.glsl"
 #include "../helpers/clouds.glsl"
 #include "../helpers/fast_noise.glsl"
-#include "../helpers/lighting.glsl"
 #include "helpers/math.glsl"
 
 vec3 sampleAerialPerspective(vec3 rd, float distKM) {

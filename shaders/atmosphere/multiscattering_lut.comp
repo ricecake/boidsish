@@ -3,8 +3,7 @@
 layout(local_size_x = 32, local_size_y = 32) in;
 layout(rgba32f, binding = 0) uniform image2D outMultiScattering;
 
-uniform sampler2D u_transmittanceLUT;
-
+// u_transmittanceLUT is declared in common.glsl
 #include "common.glsl"
 
 vec3 getTransmittance(float r, float mu) {

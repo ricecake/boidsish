@@ -4,13 +4,13 @@ out vec4 FragColor;
 
 in vec2 TexCoords;
 
-#include "atmosphere/common.glsl"
 #include "helpers/lighting.glsl"
+#include "atmosphere/common.glsl"
 
 uniform mat4 invProjection;
 uniform mat4 invView;
 
-uniform sampler2D u_transmittanceLUT;
+// u_transmittanceLUT is declared in helpers/lighting.glsl
 uniform sampler2D u_skyViewLUT;
 
 uniform vec3 u_sunRadiance; // Added for consistency with scattering
@@ -175,10 +175,10 @@ void main() {
 	// Ensure we are in front of the sun
 	sunMask *= step(0.99, rayLocalZ);
 
-	float r = kEarthRadius + viewPos.y / 1000.0;
+	float r = kEarthRadius + viewPos.y / (1000.0 * worldScale);
 	vec3  sunTransmittance = getTransmittance(r, sunDir.y);
 	// Use u_sunRadiance if available (via AtmosphereManager) or fallback to simple sunColor
-	vec3 radiance = length(u_sunRadiance) > 0.0 ? u_sunRadiance : (sunColor * 20.0);
+	vec3 radiance = length(u_sunRadiance) > 0.0 ? u_sunRadiance : (sunColor * 50.0);
 	vec3 sunDisc = radiance * sunMask * sunTransmittance;
 
 	// 3. Stars and Nebula

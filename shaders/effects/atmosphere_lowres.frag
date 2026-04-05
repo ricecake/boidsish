@@ -4,7 +4,7 @@ out vec4 FragColor;
 in vec2 TexCoords;
 
 uniform sampler2D depthTexture;
-uniform sampler2D u_transmittanceLUT;
+// u_transmittanceLUT is declared in helpers/lighting.glsl
 
 uniform mat4 invView;
 uniform mat4 invProjection;
@@ -12,10 +12,10 @@ uniform mat4 invProjection;
 uniform vec3 cloudColorUniform;
 
 // Atmosphere common defines and includes
+#include "../helpers/lighting.glsl"
 #include "../atmosphere/common.glsl"
 #include "../helpers/clouds.glsl"
 #include "../helpers/fast_noise.glsl"
-#include "../helpers/lighting.glsl"
 #include "helpers/math.glsl"
 
 uniform sampler2D u_skyViewLUT;

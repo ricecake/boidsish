@@ -6,6 +6,29 @@
 #include "clouds.glsl"
 #include "terrain_shadows.glsl"
 
+// Atmosphere constants for transmittance lookup
+const float kEarthRadiusKM = 6360.0;
+
+#ifndef ATMOSPHERE_HEIGHT_DEFINED
+#define ATMOSPHERE_HEIGHT_DEFINED
+uniform float u_atmosphereHeight; // usually 100.0 km
+#endif
+
+#ifndef TRANSMITTANCE_LUT_DEFINED
+#define TRANSMITTANCE_LUT_DEFINED
+uniform sampler2D u_transmittanceLUT;
+#endif
+
+/**
+ * Maps height and sun cosine angle to UV coordinates for the transmittance LUT.
+ * Matches logic in atmosphere/common.glsl but standalone here for convenience.
+ */
+vec2 getTransmittanceUV(float r, float mu) {
+	float x_mu = mu * 0.5 + 0.5;
+	float x_r = (r - kEarthRadiusKM) / u_atmosphereHeight;
+	return vec2(x_mu, x_r);
+}
+
 const int LIGHT_TYPE_POINT = 0;
 const int LIGHT_TYPE_DIRECTIONAL = 1;
 const int LIGHT_TYPE_SPOT = 2;
@@ -432,12 +455,19 @@ vec4 apply_lighting_pbr(vec3 frag_pos, vec3 normal, vec3 albedo, float roughness
 		// For PBR, we apply intensity boost to compensate for energy conservation
 		// Note: directional lights don't use distance attenuation
 		float attenuation;
+		vec3 atmosphereTransmittance = vec3(1.0);
+
 		if (lights[i].type == LIGHT_TYPE_DIRECTIONAL) {
 			attenuation = lights[i].intensity * PBR_INTENSITY_BOOST;
+
+			// Apply atmospheric attenuation for directional lights (Sun/Moon)
+			float r = kEarthRadiusKM + (frag_pos.y / (1000.0 * worldScale));
+			float mu = L.y;
+			atmosphereTransmittance = texture(u_transmittanceLUT, getTransmittanceUV(r, mu)).rgb;
 		} else {
 			attenuation = (lights[i].intensity * PBR_INTENSITY_BOOST) * base_attenuation;
 		}
-		vec3 radiance = lights[i].color * attenuation;
+		vec3 radiance = lights[i].color * attenuation * atmosphereTransmittance;
 
 		// Cook-Torrance BRDF
 		float NDF = DistributionGGX(N, H, roughness);
@@ -529,12 +559,19 @@ vec4 apply_lighting_pbr_no_shadows(vec3 frag_pos, vec3 normal, vec3 albedo, floa
 		vec3 H = normalize(V + L);
 
 		float attenuation;
+		vec3 atmosphereTransmittance = vec3(1.0);
+
 		if (lights[i].type == LIGHT_TYPE_DIRECTIONAL) {
 			attenuation = lights[i].intensity * PBR_INTENSITY_BOOST;
+
+			// Apply atmospheric attenuation
+			float r = kEarthRadiusKM + (frag_pos.y / (1000.0 * worldScale));
+			float mu = L.y;
+			atmosphereTransmittance = texture(u_transmittanceLUT, getTransmittanceUV(r, mu)).rgb;
 		} else {
 			attenuation = (lights[i].intensity * PBR_INTENSITY_BOOST) * base_attenuation;
 		}
-		vec3 radiance = lights[i].color * attenuation;
+		vec3 radiance = lights[i].color * attenuation * atmosphereTransmittance;
 
 		float NDF = DistributionGGX(N, H, roughness);
 		float G = GeometrySmith(N, V, L, roughness);
@@ -591,16 +628,24 @@ vec4 apply_lighting(vec3 frag_pos, vec3 normal, vec3 albedo, float specular_stre
 		// Calculate shadow factor for this light with slope-scaled bias
 		float shadow = calculateShadow(i, frag_pos, normal, light_dir);
 
+		// Atmospheric attenuation for directional light
+		vec3 atmosphereTransmittance = vec3(1.0);
+		if (lights[i].type == LIGHT_TYPE_DIRECTIONAL) {
+			float r = kEarthRadiusKM + (frag_pos.y / (1000.0 * worldScale));
+			float mu = light_dir.y;
+			atmosphereTransmittance = texture(u_transmittanceLUT, getTransmittanceUV(r, mu)).rgb;
+		}
+
 		// Diffuse
 		float diff = max(dot(normal, light_dir), 0.0);
-		vec3  diffuse = lights[i].color * diff * albedo;
+		vec3  diffuse = lights[i].color * atmosphereTransmittance * diff * albedo;
 
 		// Specular (Blinn-Phong)
 		vec3  view_dir = normalize(viewPos - frag_pos);
 		vec3  reflect_dir = reflect(-light_dir, normal);
 		float spec = pow(max(dot(view_dir, reflect_dir), 0.0), 32);
-		vec3  specular_contribution = lights[i].color * spec * specular_strength * lights[i].intensity * shadow *
-			attenuation;
+		vec3  specular_contribution = lights[i].color * atmosphereTransmittance * spec * specular_strength *
+			lights[i].intensity * shadow * attenuation;
 
 		// Apply shadow and attenuation to diffuse and specular, but not ambient
 		result += (diffuse * lights[i].intensity * shadow * attenuation) + specular_contribution;
@@ -623,15 +668,24 @@ vec4 apply_lighting_no_shadows(vec3 frag_pos, vec3 normal, vec3 albedo, float sp
 		float attenuation;
 		calculateLightContribution(i, frag_pos, light_dir, attenuation);
 
+		// Atmospheric attenuation for directional light
+		vec3 atmosphereTransmittance = vec3(1.0);
+		if (lights[i].type == LIGHT_TYPE_DIRECTIONAL) {
+			float r = kEarthRadiusKM + (frag_pos.y / (1000.0 * worldScale));
+			float mu = light_dir.y;
+			atmosphereTransmittance = texture(u_transmittanceLUT, getTransmittanceUV(r, mu)).rgb;
+		}
+
 		// Diffuse
 		float diff = max(dot(normal, light_dir), 0.0);
-		vec3  diffuse = lights[i].color * diff * albedo;
+		vec3  diffuse = lights[i].color * atmosphereTransmittance * diff * albedo;
 
 		// Specular
 		vec3  view_dir = normalize(viewPos - frag_pos);
 		vec3  reflect_dir = reflect(-light_dir, normal);
 		float spec = pow(max(dot(view_dir, reflect_dir), 0.0), 32);
-		vec3  specular_contribution = lights[i].color * spec * specular_strength * lights[i].intensity * attenuation;
+		vec3  specular_contribution = lights[i].color * atmosphereTransmittance * spec * specular_strength *
+			lights[i].intensity * attenuation;
 
 		result += (diffuse * lights[i].intensity * attenuation) + specular_contribution;
 		spec_lum += get_luminance(specular_contribution);
@@ -713,12 +767,19 @@ vec4 apply_lighting_pbr_iridescent_no_shadows(
 		float HdotV = max(dot(H, V), 0.0);
 
 		float attenuation;
+		vec3 atmosphereTransmittance = vec3(1.0);
+
 		if (lights[i].type == LIGHT_TYPE_DIRECTIONAL) {
 			attenuation = lights[i].intensity * PBR_INTENSITY_BOOST;
+
+			// Apply atmospheric attenuation
+			float r = kEarthRadiusKM + (frag_pos.y / (1000.0 * worldScale));
+			float mu = L.y;
+			atmosphereTransmittance = texture(u_transmittanceLUT, getTransmittanceUV(r, mu)).rgb;
 		} else {
 			attenuation = (lights[i].intensity * PBR_INTENSITY_BOOST) * base_attenuation;
 		}
-		vec3 radiance = lights[i].color * attenuation;
+		vec3 radiance = lights[i].color * attenuation * atmosphereTransmittance;
 
 		// GGX specular for sharp highlights
 		float NDF = DistributionGGX(N, H, roughness);
