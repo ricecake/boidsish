@@ -141,22 +141,23 @@ void main() {
 	cloudDist = clamp(cloudDist, 0.0, dist);
 	float cloudDistKM = (cloudDist / 1000.0) * (hazeDensity * 300.0);
 
-	vec3  cloudInScattering = sampleAerialPerspective(rayDir, cloudDistKM);
-	float cloudAtmosTransmittance = sampleAerialPerspectiveTransmittance(rayDir, cloudDistKM);
-
-	// Attenuate cloud radiance and add atmosphere in front of it
-	vec3 finalCloudRadiance = cloudColor * cloudAtmosTransmittance + cloudInScattering * (1.0 - cloudTransmittance);
+	vec3  atmosInScattering = sampleAerialPerspective(rayDir, cloudDistKM);
+	float atmosTransmittance = sampleAerialPerspectiveTransmittance(rayDir, cloudDistKM);
 
 	// Combine everything
 	vec3 result;
 	if (depth < 1.0) {
-		// Scene objects are attenuated by clouds and have their own atmosphere
-		result = sceneColor * cloudTransmittance + finalCloudRadiance;
-		result = result * transmittance + inScattering;
+		// 1. Terrain attenuated by clouds
+		vec3 terrainWithClouds = sceneColor * cloudTransmittance + cloudColor;
+		// 2. Apply atmosphere to the terrain+cloud composite
+		result = terrainWithClouds * transmittance + inScattering;
 	} else {
-		// Sky: Sample sky view (which already includes sun/moon disc and scattering)
-		// and attenuate by clouds, then add clouds (which have their own atmosphere)
-		result = sampleSkyView(rayDir) * cloudTransmittance + finalCloudRadiance;
+		// 1. Sky view (distant)
+		vec3 sky = sampleSkyView(rayDir);
+		// 2. Add atmospheric haze in front of clouds (using estimated cloud distance)
+		// Sky radiance already includes distant atmosphere. We just add clouds and
+		// ensure clouds are slightly fogged by the atmosphere between them and camera.
+		result = sky * cloudTransmittance + (cloudColor * atmosTransmittance + atmosInScattering * (1.0 - cloudTransmittance));
 	}
 
 	FragColor = vec4(result, 1.0);

@@ -417,8 +417,8 @@ void calculateLightContribution(int light_index, vec3 frag_pos, out vec3 light_d
 // ============================================================================
 
 // PBR intensity multiplier to compensate for energy conservation
-// PBR is inherently darker than legacy Phong, so we boost it
-const float PBR_INTENSITY_BOOST = 4.0;
+// PBR is inherently darker than legacy Phong.
+const float PBR_INTENSITY_BOOST = 1.0;
 
 /**
  * PBR lighting with Cook-Torrance BRDF - supports all light types.
