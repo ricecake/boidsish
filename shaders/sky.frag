@@ -178,7 +178,8 @@ void main() {
 	float r = kEarthRadius + viewPos.y / (1000.0 * worldScale);
 	vec3  sunTransmittance = getTransmittance(r, sunDir.y);
 	// Use u_sunRadiance if available (via AtmosphereManager) or fallback to simple sunColor
-	vec3 radiance = length(u_sunRadiance) > 0.0 ? u_sunRadiance : (sunColor * 50.0);
+	// We divide by PI for physical consistency if it's treated as irradiance
+	vec3 radiance = length(u_sunRadiance) > 0.0 ? u_sunRadiance : sunColor;
 	vec3 sunDisc = radiance * sunMask * sunTransmittance;
 
 	// 3. Stars and Nebula

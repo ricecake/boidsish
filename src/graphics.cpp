@@ -1040,6 +1040,15 @@ namespace Boidsish {
 			if (terrain_render_manager) {
 				terrain_render_manager->BindTerrainData(s);
 			}
+
+			if (atmosphere_manager) {
+				atmosphere_manager->BindTextures(10);
+				s.trySetInt("u_transmittanceLUT", 10);
+				s.trySetInt("u_skyViewLUT", 12);
+				s.trySetInt("u_aerialPerspectiveLUT", 13);
+				s.trySetFloat("u_atmosphereHeight", atmosphere_manager->GetAtmosphereHeight());
+			}
+
 			if (shadow_manager && shadow_manager->IsInitialized() && frame_config_.enable_shadows) {
 				shadow_manager->BindForRendering(s);
 				std::array<int, 10> shadow_indices;
@@ -1061,6 +1070,12 @@ namespace Boidsish {
 			shader_to_setup.use();
 			if (terrain_render_manager) {
 				terrain_render_manager->BindTerrainData(shader_to_setup);
+			}
+			if (atmosphere_manager) {
+				shader_to_setup.trySetInt("u_transmittanceLUT", 10);
+				shader_to_setup.trySetInt("u_skyViewLUT", 12);
+				shader_to_setup.trySetInt("u_aerialPerspectiveLUT", 13);
+				shader_to_setup.trySetFloat("u_atmosphereHeight", atmosphere_manager->GetAtmosphereHeight());
 			}
 			shader_to_setup.setBool("uUseMDI", false);
 			shader_to_setup.setBool("useSSBOInstancing", false);
@@ -1592,6 +1607,13 @@ namespace Boidsish {
 						glActiveTexture(GL_TEXTURE14);
 						glBindTexture(GL_TEXTURE_2D, compositor_->GetRefractionTexture());
 						s->trySetInt("refractionTexture", 14);
+
+						if (atmosphere_manager) {
+							s->trySetInt("u_transmittanceLUT", 10);
+							s->trySetInt("u_skyViewLUT", 12);
+							s->trySetInt("u_aerialPerspectiveLUT", 13);
+							s->trySetFloat("u_atmosphereHeight", atmosphere_manager->GetAtmosphereHeight());
+						}
 					}
 				}
 
@@ -1877,9 +1899,9 @@ namespace Boidsish {
 
 				const auto& lights = light_manager.GetLights();
 				if (!lights.empty()) {
-					sky_shader->setVec3("u_sunRadiance", lights[0].color * lights[0].intensity * 50.0f);
+					sky_shader->setVec3("u_sunRadiance", lights[0].color * lights[0].intensity);
 					if (lights.size() >= 2) {
-						sky_shader->setVec3("u_moonRadiance", lights[1].color * lights[1].intensity * 10.0f);
+						sky_shader->setVec3("u_moonRadiance", lights[1].color * lights[1].intensity);
 						sky_shader->setVec3("u_moonDir", glm::normalize(-lights[1].direction));
 					} else {
 						sky_shader->setVec3("u_moonRadiance", glm::vec3(0.0f));
@@ -2032,10 +2054,8 @@ namespace Boidsish {
 				atmosphere_manager->SetColorVarianceStrength(atmosphere_effect->GetColorVarianceStrength());
 			}
 
-			// We multiply sun intensity by a large factor for the atmosphere model
-			// Standard directional light 1.0 is too dim for physical scattering.
-			// 50.0 is a reasonable physical-ish sun radiance for this model.
-			atmosphere_manager->Update(sun_dir, sun_color, sun_intensity * 50.0f, camera.pos(), simulation_time);
+			// Update the atmosphere model with the current sun/moon light
+			atmosphere_manager->Update(sun_dir, sun_color, sun_intensity, camera.pos(), simulation_time);
 
 			// Sync ambient light from atmosphere to ensure decor and world match
 			glm::vec3 estimated_ambient = atmosphere_manager->GetAmbientEstimate();
@@ -2157,6 +2177,10 @@ namespace Boidsish {
 			glBindBuffer(GL_UNIFORM_BUFFER, 0);
 
 			prev_view_projection = current_vp;
+
+			if (atmosphere_manager) {
+				atmosphere_manager->BindTextures(10);
+			}
 
 			// Resource Preparation (Main Thread)
 			{

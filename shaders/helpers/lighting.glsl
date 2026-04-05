@@ -25,8 +25,8 @@ uniform sampler2D u_transmittanceLUT;
  */
 vec2 getTransmittanceUV(float r, float mu) {
 	float x_mu = mu * 0.5 + 0.5;
-	float x_r = (r - kEarthRadiusKM) / u_atmosphereHeight;
-	return vec2(x_mu, x_r);
+	float x_r = (r - kEarthRadiusKM) / max(u_atmosphereHeight, 1.0);
+	return vec2(clamp(x_mu, 0.0, 1.0), clamp(x_r, 0.0, 1.0));
 }
 
 const int LIGHT_TYPE_POINT = 0;

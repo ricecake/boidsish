@@ -153,7 +153,7 @@ namespace Boidsish {
 		WeatherPreset sunny;
 		sunny.name = "Sunny";
 		sunny.weight = 10.0f;
-		sunny.settings.sun_intensity = {0.9f, 1.1f};
+		sunny.settings.sun_intensity = {18.0f, 22.0f};
 		sunny.settings.wind_strength = {0.02f, 0.08f};
 		sunny.settings.wind_speed = {0.05f, 0.10f};
 		sunny.settings.wind_frequency = {0.01f, 0.02f};
@@ -174,7 +174,7 @@ namespace Boidsish {
 		WeatherPreset cloudy;
 		cloudy.name = "Cloudy";
 		cloudy.weight = 6.0f;
-		cloudy.settings.sun_intensity = {0.5f, 0.8f};
+		cloudy.settings.sun_intensity = {10.0f, 15.0f};
 		cloudy.settings.wind_strength = {0.1f, 0.2f};
 		cloudy.settings.wind_speed = {0.2f, 0.4f};
 		cloudy.settings.wind_frequency = {0.02f, 0.05f};
@@ -195,7 +195,7 @@ namespace Boidsish {
 		WeatherPreset overcast;
 		overcast.name = "Overcast";
 		overcast.weight = 4.0f;
-		overcast.settings.sun_intensity = {0.2f, 0.5f};
+		overcast.settings.sun_intensity = {4.0f, 10.0f};
 		overcast.settings.wind_strength = {0.2f, 0.5f};
 		overcast.settings.wind_speed = {0.4f, 0.8f};
 		overcast.settings.wind_frequency = {0.04f, 0.08f};
@@ -216,7 +216,7 @@ namespace Boidsish {
 		WeatherPreset foggy;
 		foggy.name = "Foggy";
 		foggy.weight = 2.0f;
-		foggy.settings.sun_intensity = {0.1f, 0.3f};
+		foggy.settings.sun_intensity = {2.0f, 6.0f};
 		foggy.settings.wind_strength = {0.01f, 0.05f};
 		foggy.settings.wind_speed = {0.01f, 0.1f};
 		foggy.settings.wind_frequency = {0.005f, 0.02f};

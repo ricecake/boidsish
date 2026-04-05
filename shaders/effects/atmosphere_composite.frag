@@ -24,6 +24,19 @@ uniform sampler3D u_aerialPerspectiveLUT;
 #include "../atmosphere/common.glsl"
 #include "helpers/math.glsl"
 
+vec3 sampleSkyView(vec3 rd) {
+	float elevation = asin(clamp(rd.y, -1.0, 1.0));
+	float azimuth = atan(rd.x, -rd.z);
+	if (azimuth < 0.0)
+		azimuth += 2.0 * PI;
+
+	// Non-linear mapping for better horizon detail
+	float v = (elevation < 0.0) ? (0.5 - 0.5 * sqrt(-elevation / (PI * 0.5)))
+								: (0.5 + 0.5 * sqrt(elevation / (PI * 0.5)));
+	vec2  uv = vec2(azimuth / (2.0 * PI), v);
+	return texture(u_skyViewLUT, uv).rgb;
+}
+
 vec3 sampleAerialPerspective(vec3 rd, float distKM) {
 	float azimuth = atan(rd.x, -rd.z);
 	if (azimuth < 0.0)
@@ -121,12 +134,29 @@ void main() {
 	vec3  inScattering = sampleAerialPerspective(rayDir, distKM);
 	float transmittance = sampleAerialPerspectiveTransmittance(rayDir, distKM);
 
-	// Combine everything
-	vec3 result = sceneColor * cloudTransmittance + cloudColor;
+	// 3. Cloud Atmospheric Integration
+	// Clouds should also be affected by the atmosphere between them and the camera.
+	// We estimate the cloud distance based on their altitude and ray direction.
+	float cloudDist = (cloudAltitude * worldScale - viewPos.y) / max(abs(rayDir.y), 0.01);
+	cloudDist = clamp(cloudDist, 0.0, dist);
+	float cloudDistKM = (cloudDist / 1000.0) * (hazeDensity * 300.0);
 
-	// Apply physically accurate atmosphere
+	vec3  cloudInScattering = sampleAerialPerspective(rayDir, cloudDistKM);
+	float cloudAtmosTransmittance = sampleAerialPerspectiveTransmittance(rayDir, cloudDistKM);
+
+	// Attenuate cloud radiance and add atmosphere in front of it
+	vec3 finalCloudRadiance = cloudColor * cloudAtmosTransmittance + cloudInScattering * (1.0 - cloudTransmittance);
+
+	// Combine everything
+	vec3 result;
 	if (depth < 1.0) {
+		// Scene objects are attenuated by clouds and have their own atmosphere
+		result = sceneColor * cloudTransmittance + finalCloudRadiance;
 		result = result * transmittance + inScattering;
+	} else {
+		// Sky: Sample sky view (which already includes sun/moon disc and scattering)
+		// and attenuate by clouds, then add clouds (which have their own atmosphere)
+		result = sampleSkyView(rayDir) * cloudTransmittance + finalCloudRadiance;
 	}
 
 	FragColor = vec4(result, 1.0);
