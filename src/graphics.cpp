@@ -1042,10 +1042,10 @@ namespace Boidsish {
 			}
 
 			if (atmosphere_manager) {
-				atmosphere_manager->BindTextures(10);
-				s.trySetInt("u_transmittanceLUT", 10);
-				s.trySetInt("u_skyViewLUT", 12);
-				s.trySetInt("u_aerialPerspectiveLUT", 13);
+				atmosphere_manager->BindTextures(20);
+				s.trySetInt("u_transmittanceLUT", 20);
+				s.trySetInt("u_skyViewLUT", 22);
+				s.trySetInt("u_aerialPerspectiveLUT", 23);
 				s.trySetFloat("u_atmosphereHeight", atmosphere_manager->GetAtmosphereHeight());
 			}
 
@@ -1072,9 +1072,9 @@ namespace Boidsish {
 				terrain_render_manager->BindTerrainData(shader_to_setup);
 			}
 			if (atmosphere_manager) {
-				shader_to_setup.trySetInt("u_transmittanceLUT", 10);
-				shader_to_setup.trySetInt("u_skyViewLUT", 12);
-				shader_to_setup.trySetInt("u_aerialPerspectiveLUT", 13);
+				shader_to_setup.trySetInt("u_transmittanceLUT", 20);
+				shader_to_setup.trySetInt("u_skyViewLUT", 22);
+				shader_to_setup.trySetInt("u_aerialPerspectiveLUT", 23);
 				shader_to_setup.trySetFloat("u_atmosphereHeight", atmosphere_manager->GetAtmosphereHeight());
 			}
 			shader_to_setup.setBool("uUseMDI", false);
@@ -1892,10 +1892,10 @@ namespace Boidsish {
 			sky_shader->setMat4("invView", glm::inverse(view));
 
 			if (atmosphere_manager) {
-				atmosphere_manager->BindTextures(10);
-				sky_shader->setInt("u_transmittanceLUT", 10);
-				sky_shader->setInt("u_multiScatteringLUT", 11);
-				sky_shader->setInt("u_skyViewLUT", 12);
+				atmosphere_manager->BindTextures(20);
+				sky_shader->setInt("u_transmittanceLUT", 20);
+				sky_shader->setInt("u_multiScatteringLUT", 21);
+				sky_shader->setInt("u_skyViewLUT", 22);
 
 				const auto& lights = light_manager.GetLights();
 				if (!lights.empty()) {
@@ -2179,7 +2179,7 @@ namespace Boidsish {
 			prev_view_projection = current_vp;
 
 			if (atmosphere_manager) {
-				atmosphere_manager->BindTextures(10);
+				atmosphere_manager->BindTextures(20);
 			}
 
 			// Resource Preparation (Main Thread)
