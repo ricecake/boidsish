@@ -195,22 +195,22 @@ namespace Boidsish {
 			float     haze_density_ = 0.003f;
 			float     haze_height_ = 20.0f;
 			glm::vec3 haze_color_ = glm::vec3(0.6f, 0.7f, 0.8f);
-			float     cloud_density_ = 20.0f;
+			float     cloud_density_ = 0.50f;
 			float     cloud_altitude_ = 400.0f;
 			float     cloud_thickness_ = 200.0f;
 			float     cloud_coverage_ = 0.75f;
 			float     cloud_warp_ = 75.0f;
 			glm::vec3 cloud_color_ = glm::vec3(0.95f, 0.95f, 1.0f);
 
-			float     cloud_phase_g1_ = 0.7f;
+			float     cloud_phase_g1_ = 0.350f;
 			float     cloud_phase_g2_ = -0.2f;
-			float     cloud_phase_alpha_ = 0.15f;
+			float     cloud_phase_alpha_ = 0.45f;
 			float     cloud_phase_isotropic_ = 0.05f;
 			float     cloud_powder_scale_ = 0.35f;
 			float     cloud_powder_multiplier_ = 0.4f;
 			float     cloud_powder_local_scale_ = 2.0f;
 			float     cloud_shadow_optical_depth_multiplier_ = 0.1f;
-			float     cloud_shadow_step_multiplier_ = 0.1f;
+			float     cloud_shadow_step_multiplier_ = 1.0f;
 			float     cloud_sun_light_scale_ = 10.0f;
 			float     cloud_moon_light_scale_ = 2.0f;
 			float     cloud_beer_powder_mix_ = 0.5f;

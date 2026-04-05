@@ -187,7 +187,7 @@ void main() {
 	vec3  p = world_ray * 4.0;
 	vec3  warp_offset = vec3(fbm(p + time * 0.05));
 	float nebula_noise = fbm(p + warp_offset * 0.5);
-	vec3  nebula = mix(vec3(0.0, 0.1, 0.4), vec3(0.8, 0.2, 0.7), nebula_noise) * 0.4;
+	vec3  nebula = vec3(0.0);//mix(vec3(0.0, 0.1, 0.4), vec3(0.8, 0.2, 0.7), nebula_noise) * 0.4;
 
 	vec3 skyTransmittance = getTransmittance(r, world_ray.y);
 	vec3 spaceBackground = (stars + nebula) * skyTransmittance;

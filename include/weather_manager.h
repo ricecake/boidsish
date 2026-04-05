@@ -212,7 +212,7 @@ namespace Boidsish {
 		void InitializePresets();
 		void UpdateAttribute(WeatherAttribute attr, float target, float deltaTime);
 
-		bool  enabled_ = true;
+		bool  enabled_ = false;
 		float time_scale_ = 0.005f;    // Low frequency over time
 		float spatial_scale_ = 0.001f; // Low frequency over space
 		float hold_threshold_ = 0.05f; // Noise-space distance threshold for updates

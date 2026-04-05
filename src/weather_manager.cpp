@@ -27,8 +27,6 @@ namespace Boidsish {
 		SetPace(WeatherAttribute::RayleighScaleHeight, 0.05f);
 		SetPace(WeatherAttribute::MieScaleHeight, 0.05f);
 		SetPace(WeatherAttribute::CloudCoverage, 0.2f);
-
-		SetEnabled(true);
 	}
 
 	WeatherManager::~WeatherManager() {}

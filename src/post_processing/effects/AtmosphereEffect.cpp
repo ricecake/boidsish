@@ -138,6 +138,7 @@ namespace Boidsish {
 			shader_->setFloat("cloudWarp", cloud_warp_);
 			shader_->setVec3("cloudColorUniform", cloud_color_);
 
+			shader_->setInt("u_transmittanceLUT", 10);
 			shader_->setInt("u_skyViewLUT", 12);
 			shader_->trySetInt("u_noiseTexture", 5);
 			shader_->trySetInt("u_curlTexture", 6);

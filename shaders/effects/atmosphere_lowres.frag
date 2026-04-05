@@ -4,6 +4,7 @@ out vec4 FragColor;
 in vec2 TexCoords;
 
 uniform sampler2D depthTexture;
+uniform sampler2D u_transmittanceLUT;
 
 uniform mat4 invView;
 uniform mat4 invProjection;
@@ -148,6 +149,12 @@ void main() {
 				}
 
 				vec3  L = normalize(-lights[j].direction);
+
+				vec3 voxelToCenter = p - earthCenter;
+				float r = length(voxelToCenter);
+				float r_world = length(p - earthCenter);
+				float r_km = r_world / (1000.0 * worldScale);
+				float mu = dot(voxelToCenter / r, L);
 				float cosTheta = dot(rayDir, L);
 				float phase = cloudPhase(cosTheta);
 
@@ -172,8 +179,11 @@ void main() {
 					}
 				}
 
-				float shadowStepSize = st_end - st_start / float(shadow_samples);
+				// vec2 transUV = transmittanceToUV(r, mu);
+				vec2 transUV = transmittanceToUV(r_km, mu);
+				vec3 sunTransmittance = texture(u_transmittanceLUT, transUV).rgb;
 
+				float shadowStepSize = (st_end - st_start) / float(shadow_samples);
 				for (int k = 0; k < shadow_samples; k++) {
 					vec3 sp = p + L * (float(k) + 0.5) * shadowStepSize;
 					vec3 sp_curved = sp;
@@ -191,7 +201,8 @@ void main() {
 				float opticalDepthToLight = shadowDensity * shadowStepSize * cloudShadowOpticalDepthMultiplier;
 				float shadowTerm = mix(beerPowder(opticalDepthToLight, d), exp(-opticalDepthToLight), cloudBeerPowderMix);
 
-				stepScattering += lights[j].color * shadowTerm * phase * lights[j].intensity * (j == 0 ? cloudSunLightScale : cloudMoonLightScale);
+				// stepScattering += lights[j].color * shadowTerm * phase * lights[j].intensity * (j == 0 ? cloudSunLightScale : cloudMoonLightScale);
+				stepScattering += sunTransmittance * lights[j].color * shadowTerm * phase * lights[j].intensity * (j == 0 ? cloudSunLightScale : cloudMoonLightScale);
 			}
 
 			vec3 ambient = mix(ambient_light, zenithRadiance, 0.5) * 0.5;
@@ -206,7 +217,7 @@ void main() {
 			}
 		}
 
-		cloudColor = lightEnergy * cloudColorUniform;
+		cloudColor = lightEnergy;// * cloudColorUniform;
 	}
 
 	FragColor = vec4(cloudColor, cloudTransmittance);
