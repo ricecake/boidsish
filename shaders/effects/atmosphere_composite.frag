@@ -130,16 +130,15 @@ void main() {
 	float cloudTransmittance = cloudData.a;
 
 	// 2. High-res Atmosphere (Haze)
-	float distKM = (dist / 1000.0) * (hazeDensity * 300.0);
+	float distKM = (dist / 1000.0) * hazeDensity;
 	vec3  inScattering = sampleAerialPerspective(rayDir, distKM);
 	float transmittance = sampleAerialPerspectiveTransmittance(rayDir, distKM);
 
 	// 3. Cloud Atmospheric Integration
 	// Clouds should also be affected by the atmosphere between them and the camera.
-	// We estimate the cloud distance based on their altitude and ray direction.
 	float cloudDist = (cloudAltitude * worldScale - viewPos.y) / max(abs(rayDir.y), 0.01);
 	cloudDist = clamp(cloudDist, 0.0, dist);
-	float cloudDistKM = (cloudDist / 1000.0) * (hazeDensity * 300.0);
+	float cloudDistKM = (cloudDist / 1000.0) * hazeDensity;
 
 	vec3  atmosInScattering = sampleAerialPerspective(rayDir, cloudDistKM);
 	float atmosTransmittance = sampleAerialPerspectiveTransmittance(rayDir, cloudDistKM);
@@ -147,17 +146,16 @@ void main() {
 	// Combine everything
 	vec3 result;
 	if (depth < 1.0) {
-		// 1. Terrain attenuated by clouds
-		vec3 terrainWithClouds = sceneColor * cloudTransmittance + cloudColor;
-		// 2. Apply atmosphere to the terrain+cloud composite
-		result = terrainWithClouds * transmittance + inScattering;
+		// 1. Terrain with its own atmosphere
+		vec3 terrainAtmos = sceneColor * transmittance + inScattering;
+		// 2. Blend in clouds (which also have atmosphere applied)
+		vec3 cloudsAtmos = cloudColor * atmosTransmittance + atmosInScattering * (1.0 - cloudTransmittance);
+		result = mix(cloudsAtmos, terrainAtmos, cloudTransmittance);
 	} else {
-		// 1. Sky view (distant)
+		// Sky
 		vec3 sky = sampleSkyView(rayDir);
-		// 2. Add atmospheric haze in front of clouds (using estimated cloud distance)
-		// Sky radiance already includes distant atmosphere. We just add clouds and
-		// ensure clouds are slightly fogged by the atmosphere between them and camera.
-		result = sky * cloudTransmittance + (cloudColor * atmosTransmittance + atmosInScattering * (1.0 - cloudTransmittance));
+		vec3 cloudsAtmos = cloudColor * atmosTransmittance + atmosInScattering * (1.0 - cloudTransmittance);
+		result = sky * cloudTransmittance + cloudsAtmos;
 	}
 
 	FragColor = vec4(result, 1.0);

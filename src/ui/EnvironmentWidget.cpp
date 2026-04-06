@@ -106,7 +106,7 @@ namespace Boidsish {
 								);
 								if (atmosphere_effect) {
 									float haze_density = atmosphere_effect->GetHazeDensity();
-									if (ImGui::SliderFloat("Haze Density", &haze_density, 0.0f, 0.01f, "%.4f")) {
+									if (ImGui::SliderFloat("Haze Density", &haze_density, 0.0f, 5.0f, "%.2f")) {
 										atmosphere_effect->SetHazeDensity(haze_density);
 									}
 									float haze_height = atmosphere_effect->GetHazeHeight();

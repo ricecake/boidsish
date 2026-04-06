@@ -83,7 +83,7 @@ void main() {
 	}
 
 	// Use hazeDensity to scale the effective distance in the atmosphere
-	float distKM = (dist / 1000.0) * (hazeDensity * 300.0);
+	float distKM = (dist / 1000.0) * hazeDensity;
 	vec3  inScattering = sampleAerialPerspective(rayDir, distKM);
 	float transmittance = sampleAerialPerspectiveTransmittance(rayDir, distKM);
 

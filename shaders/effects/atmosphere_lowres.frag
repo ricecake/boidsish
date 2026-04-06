@@ -201,8 +201,7 @@ void main() {
 				float opticalDepthToLight = shadowDensity * shadowStepSize * cloudShadowOpticalDepthMultiplier;
 				float shadowTerm = mix(beerPowder(opticalDepthToLight, d), exp(-opticalDepthToLight), cloudBeerPowderMix);
 
-				// stepScattering += sunTransmittance * lights[j].color * shadowTerm * phase * lights[j].intensity * (j == 0 ? cloudSunLightScale : cloudMoonLightScale);
-				stepScattering += sunTransmittance * lights[j].color * shadowTerm * phase * lights[j].intensity;
+				stepScattering += sunTransmittance * lights[j].color * shadowTerm * phase * lights[j].intensity * (j == 0 ? cloudSunLightScale : cloudMoonLightScale);
 			}
 
 			vec3 ambient = mix(ambient_light, zenithRadiance, 0.5) * 0.5;
