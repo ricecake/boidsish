@@ -2297,6 +2297,10 @@ namespace Boidsish {
 					lighting_ubo_data_.cloudMoonLightScale = atmosphere_effect->GetCloudMoonLightScale();
 					lighting_ubo_data_.cloudBeerPowderMix = atmosphere_effect->GetCloudBeerPowderMix();
 
+					if (atmosphere_manager) {
+						const glm::vec4* sh = atmosphere_manager->GetSHCoefficients();
+						std::memcpy(lighting_ubo_data_.sh_coeffs, sh, 9 * sizeof(glm::vec4));
+					}
 				} else {
 					lighting_ubo_data_.cloudShadowIntensity = 0.0f;
 				}
