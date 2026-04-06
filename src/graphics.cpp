@@ -18,6 +18,7 @@
 #include "UIManager.h"
 #include "akira_effect.h"
 #include "arcade_text.h"
+#include "asset_manager.h"
 #include "atmosphere_manager.h"
 #include "audio_manager.h"
 #include "checkpoint_ring.h"
@@ -432,11 +433,11 @@ namespace Boidsish {
 		uint32_t mdi_frustum_count = 0;
 		uint32_t mdi_bone_count = 0;
 
-		// Hi-Z occlusion culling
+		// GPU Culling (MDI)
 		std::unique_ptr<HiZManager>    hiz_manager;
-		std::unique_ptr<ComputeShader> occlusion_cull_shader_;
-		GLuint                         occlusion_visibility_ssbo_{0};
+		std::unique_ptr<ComputeShader> mdi_cull_shader_;
 		bool                           enable_hiz_culling_{true};
+		bool                           enable_bindless_textures_{false};
 
 		std::shared_ptr<Shader> shader;
 		std::shared_ptr<Shader> plane_shader;
@@ -459,6 +460,8 @@ namespace Boidsish {
 		bool                                           paused = false;
 		float                                          simulation_time = 0.0f;
 		float                                          simulation_delta_time = 0.0f;
+		float                                          accumulator = 0.0f;
+		const float                                    fixed_delta_time = 1.0f / 60.0f;
 		float                                          time_scale = 1.0f;
 		float                                          ripple_strength = 0.0f;
 		std::chrono::high_resolution_clock::time_point last_frame;
@@ -717,19 +720,17 @@ namespace Boidsish {
 			frustum_ssbo = std::make_unique<PersistentBuffer<FrustumDataGPU>>(GL_UNIFORM_BUFFER, 64);
 			bone_matrices_ssbo = std::make_unique<PersistentBuffer<glm::mat4>>(GL_SHADER_STORAGE_BUFFER, 65536);
 
-			// Hi-Z occlusion culling
+			// GPU-Accelerated MDI Culling
 			hiz_manager = std::make_unique<HiZManager>();
-			occlusion_cull_shader_ = std::make_unique<ComputeShader>("shaders/occlusion_cull.comp");
-			if (!occlusion_cull_shader_->isValid()) {
-				logger::WARNING("Hi-Z occlusion culling shader failed to compile - disabling");
-				enable_hiz_culling_ = false;
+			mdi_cull_shader_ = std::make_unique<ComputeShader>("shaders/mdi_cull.comp");
+			if (!mdi_cull_shader_->isValid()) {
+				logger::WARNING("MDI culling shader failed to compile - culling will be performed in vertex shader");
 			}
-			// Create visibility SSBO (GPU-only buffer, written by compute, read by vertex shader)
-			glGenBuffers(1, &occlusion_visibility_ssbo_);
-			glBindBuffer(GL_SHADER_STORAGE_BUFFER, occlusion_visibility_ssbo_);
-			std::vector<uint32_t> initial_vis(65536, 1u); // All visible initially
-			glBufferStorage(GL_SHADER_STORAGE_BUFFER, 65536 * sizeof(uint32_t), initial_vis.data(), 0);
-			glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
+
+			if (glewIsExtensionSupported("GL_ARB_bindless_texture")) {
+				enable_bindless_textures_ = true;
+				logger::LOG("Bindless textures supported and enabled");
+			}
 			if (ConfigManager::GetInstance().GetAppSettingBool("enable_effects", true)) {
 				postprocess_shader_ = std::make_shared<Shader>("shaders/postprocess.vert", "shaders/postprocess.frag");
 				shader_table.Register(std::make_unique<RenderShader>(postprocess_shader_));
@@ -1226,9 +1227,6 @@ namespace Boidsish {
 				glDeleteBuffers(1, &visual_effects_ubo);
 			}
 
-			if (occlusion_visibility_ssbo_) {
-				glDeleteBuffers(1, &occlusion_visibility_ssbo_);
-			}
 
 			if (window)
 				glfwDestroyWindow(window);
@@ -1308,7 +1306,8 @@ namespace Boidsish {
 			bool                               dispatch_hiz_occlusion = false
 		) {
 			PROJECT_PROFILE_SCOPE(
-				layer == RenderLayer::Opaque ? "ExecuteRenderQueue::Opaque" : "ExecuteRenderQueue::Transparent"
+				is_shadow_pass ? "ExecuteRenderQueue::Shadow" : (layer == RenderLayer::Opaque ? "ExecuteRenderQueue::Opaque"
+																							  : "ExecuteRenderQueue::Transparent")
 			);
 			// Integrate trails into the render queue for the transparent layer
 			if (layer == RenderLayer::Transparent && trail_render_manager && !is_shadow_pass) {
@@ -1394,8 +1393,8 @@ namespace Boidsish {
 				if (a.uniforms.bone_matrices_offset != b.uniforms.bone_matrices_offset)
 					return false;
 
-				// 4. Textures (only if not a shadow pass)
-				if (!is_shadow_pass) {
+				// 4. Textures (only if not a shadow pass and bindless is disabled)
+				if (!is_shadow_pass && !enable_bindless_textures_) {
 					if (a.textures.size() != b.textures.size())
 						return false;
 					for (size_t i = 0; i < a.textures.size(); ++i) {
@@ -1408,6 +1407,7 @@ namespace Boidsish {
 			};
 
 			// 1. Build batches and fill uniform/command buffers
+			PROJECT_PROFILE_SCOPE("MDI_BatchBuilding");
 			const RenderPacket* last_processed_packet = nullptr;
 
 			for (size_t i = 0; i < packets.size(); ++i) {
@@ -1451,6 +1451,25 @@ namespace Boidsish {
 
 				// Copy uniforms to persistent SSBO
 				uniforms_ptr[mdi_uniform_count] = packet.uniforms;
+
+				// Fill bindless texture handles if enabled
+				if (enable_bindless_textures_ && !is_shadow_pass) {
+					for (const auto& tex : packet.textures) {
+						uint64_t handle = AssetManager::GetInstance().GetBindlessHandle(tex.id);
+						if (tex.type == "texture_diffuse")
+							uniforms_ptr[mdi_uniform_count].texture_handles[0] = handle;
+						else if (tex.type == "texture_normal")
+							uniforms_ptr[mdi_uniform_count].texture_handles[1] = handle;
+						else if (tex.type == "texture_metallic")
+							uniforms_ptr[mdi_uniform_count].texture_handles[2] = handle;
+						else if (tex.type == "texture_roughness")
+							uniforms_ptr[mdi_uniform_count].texture_handles[3] = handle;
+						else if (tex.type == "texture_ao")
+							uniforms_ptr[mdi_uniform_count].texture_handles[4] = handle;
+						else if (tex.type == "texture_emissive")
+							uniforms_ptr[mdi_uniform_count].texture_handles[5] = handle;
+					}
+				}
 
 				// Handle skeletal animation data
 				if (!packet.bone_matrices.empty()) {
@@ -1517,12 +1536,16 @@ namespace Boidsish {
 				GL_CLIENT_MAPPED_BUFFER_BARRIER_BIT | GL_COMMAND_BARRIER_BIT | GL_SHADER_STORAGE_BARRIER_BIT
 			);
 
-			// Hi-Z occlusion culling dispatch (between uniform fill and draw calls)
-			if (dispatch_hiz_occlusion && occlusion_cull_shader_ && occlusion_cull_shader_->isValid() && hiz_manager &&
-			    hiz_manager->IsInitialized() && mdi_uniform_count > 0) {
-				occlusion_cull_shader_->use();
+			// GPU-Accelerated MDI Culling Dispatch
+			if (mdi_cull_shader_ && mdi_cull_shader_->isValid() && mdi_uniform_count > 0) {
+				PROJECT_PROFILE_SCOPE("GPU_MDI_Culling");
+				mdi_cull_shader_->use();
 
-				// Bind uniforms SSBO (current frame's data) for compute to read AABBs
+				// 1. Bind indirect buffers as SSBOs for modification
+				glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, indirect_elements_buffer->GetBufferId());
+				glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, indirect_arrays_buffer->GetBufferId());
+
+				// 2. Bind uniforms SSBO
 				glBindBufferRange(
 					GL_SHADER_STORAGE_BUFFER,
 					2,
@@ -1531,33 +1554,47 @@ namespace Boidsish {
 					mdi_uniform_count * sizeof(CommonUniforms)
 				);
 
-				// Bind visibility SSBO for compute to write
-				glBindBufferBase(
-					GL_SHADER_STORAGE_BUFFER,
-					Constants::SsboBinding::OcclusionVisibility(),
-					occlusion_visibility_ssbo_
-				);
+				// 3. Bind Hi-Z if available and requested
+				if (dispatch_hiz_occlusion && hiz_manager && hiz_manager->IsInitialized()) {
+					glActiveTexture(GL_TEXTURE15);
+					glBindTexture(GL_TEXTURE_2D, hiz_manager->GetHiZTexture());
+					mdi_cull_shader_->setInt("u_hizTexture", 15);
+					glUniform2i(
+						glGetUniformLocation(mdi_cull_shader_->ID, "u_hizSize"),
+						hiz_manager->GetWidth(),
+						hiz_manager->GetHeight()
+					);
+					mdi_cull_shader_->setInt("u_hizMipCount", hiz_manager->GetMipCount());
+					mdi_cull_shader_->setBool("u_enableHiZCulling", true);
+				} else {
+					mdi_cull_shader_->setBool("u_enableHiZCulling", false);
+				}
 
-				// Bind Hi-Z texture
-				glActiveTexture(GL_TEXTURE15);
-				glBindTexture(GL_TEXTURE_2D, hiz_manager->GetHiZTexture());
-				occlusion_cull_shader_->setInt("u_hizTexture", 15);
+				// 4. Set common parameters and dispatch
+				mdi_cull_shader_->setInt("u_drawCount", static_cast<int>(mdi_uniform_count));
+				mdi_cull_shader_->setBool("u_enableFrustumCulling", !is_shadow_pass);
+				mdi_cull_shader_->setFloat("u_screenExpansion", 4.0f);
+				mdi_cull_shader_->setInt("u_uniformOffset", 0); // We bound the range starting at frame_element_offset
 
-				// Set uniforms
-				occlusion_cull_shader_->setInt("u_drawCount", static_cast<int>(mdi_uniform_count));
-				glUniform2i(
-					glGetUniformLocation(occlusion_cull_shader_->ID, "u_hizSize"),
-					hiz_manager->GetWidth(),
-					hiz_manager->GetHeight()
-				);
-				occlusion_cull_shader_->setInt("u_hizMipCount", hiz_manager->GetMipCount());
-				occlusion_cull_shader_->setFloat("u_screenExpansion", 4.0f);
+				// Process indexed draws
+				if (mdi_elements_count > 0) {
+					mdi_cull_shader_->setBool("u_isIndexed", true);
+					mdi_cull_shader_->setInt("u_commandOffset", indirect_elements_buffer->GetCurrentBufferIndex() * 65536);
+					glDispatchCompute((mdi_elements_count + 63) / 64, 1, 1);
+				}
 
-				glDispatchCompute((mdi_uniform_count + 63) / 64, 1, 1);
-				glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
+				// Process array draws
+				if (mdi_arrays_count > 0) {
+					mdi_cull_shader_->setBool("u_isIndexed", false);
+					mdi_cull_shader_->setInt("u_commandOffset", indirect_arrays_buffer->GetCurrentBufferIndex() * 65536);
+					glDispatchCompute((mdi_arrays_count + 63) / 64, 1, 1);
+				}
+
+				glMemoryBarrier(GL_COMMAND_BARRIER_BIT | GL_SHADER_STORAGE_BARRIER_BIT);
 			}
 
 			// 2. Execute batches
+			PROJECT_PROFILE_SCOPE("MDI_DrawExecution");
 			unsigned int          current_vao = 0;
 			unsigned int          current_bound_shader_id = 0;
 			std::set<ShaderBase*> used_shaders;
@@ -1576,8 +1613,12 @@ namespace Boidsish {
 					s->setMat4("view", view_mat);
 					s->setMat4("projection", proj_mat);
 					s->setFloat("time", simulation_time);
-					s->setBool("enableFrustumCulling", !is_shadow_pass);
-					s->setBool("enableHiZCulling", dispatch_hiz_occlusion && !is_shadow_pass);
+
+					// Note: GPU culling is now handled by mdi_cull.comp,
+					// so we disable the vertex-shader-side culling to avoid double-processing.
+					s->setBool("enableFrustumCulling", false);
+					s->setBool("enableHiZCulling", false);
+
 					if (light_space_mat) {
 						s->setMat4("lightSpaceMatrix", *light_space_mat);
 					}
@@ -1616,58 +1657,52 @@ namespace Boidsish {
 				);
 				s->setBool("uUseMDI", true);
 
-				// Bind visibility SSBO for Hi-Z occlusion culling (matching uniform indexing)
-				if (dispatch_hiz_occlusion && !is_shadow_pass) {
-					glBindBufferRange(
-						GL_SHADER_STORAGE_BUFFER,
-						Constants::SsboBinding::OcclusionVisibility(),
-						occlusion_visibility_ssbo_,
-						(batch.base_uniform_index - frame_element_offset) * sizeof(uint32_t),
-						batch.command_count * sizeof(uint32_t)
-					);
-				}
-
 				if (!is_shadow_pass) {
-					unsigned int diffuseNr = 1;
-					unsigned int specularNr = 1;
-					unsigned int normalNr = 1;
-					unsigned int heightNr = 1;
+					if (enable_bindless_textures_) {
+						s->setBool("uUseBindless", true);
+					} else {
+						s->setBool("uUseBindless", false);
+						unsigned int diffuseNr = 1;
+						unsigned int specularNr = 1;
+						unsigned int normalNr = 1;
+						unsigned int heightNr = 1;
 
-					for (size_t i = 0; i < batch.textures.size(); ++i) {
-						glActiveTexture(GL_TEXTURE0 + i);
-						glBindTexture(GL_TEXTURE_2D, batch.textures[i].id);
+						for (size_t i = 0; i < batch.textures.size(); ++i) {
+							glActiveTexture(GL_TEXTURE0 + i);
+							glBindTexture(GL_TEXTURE_2D, batch.textures[i].id);
 
-						std::string number;
-						std::string name = batch.textures[i].type;
-						if (name == "texture_diffuse")
-							number = std::to_string(diffuseNr++);
-						else if (name == "texture_specular")
-							number = std::to_string(specularNr++);
-						else if (name == "texture_normal")
-							number = std::to_string(normalNr++);
-						else if (name == "texture_height")
-							number = std::to_string(heightNr++);
+							std::string number;
+							std::string name = batch.textures[i].type;
+							if (name == "texture_diffuse")
+								number = std::to_string(diffuseNr++);
+							else if (name == "texture_specular")
+								number = std::to_string(specularNr++);
+							else if (name == "texture_normal")
+								number = std::to_string(normalNr++);
+							else if (name == "texture_height")
+								number = std::to_string(heightNr++);
 
-						s->setInt((name + number).c_str(), i);
+							s->setInt((name + number).c_str(), i);
+						}
+						// Note: use_texture is now a bitmask handled in RenderPacket::uniforms (SSBO)
+						// This uniform is only used for non-MDI fallback or special passes
+						int use_texture_mask = 0;
+						for (const auto& tex : batch.textures) {
+							if (tex.type == "texture_diffuse")
+								use_texture_mask |= 1;
+							else if (tex.type == "texture_normal")
+								use_texture_mask |= 2;
+							else if (tex.type == "texture_metallic")
+								use_texture_mask |= 4;
+							else if (tex.type == "texture_roughness")
+								use_texture_mask |= 8;
+							else if (tex.type == "texture_ao")
+								use_texture_mask |= 16;
+							else if (tex.type == "texture_emissive")
+								use_texture_mask |= 32;
+						}
+						s->setInt("use_texture", use_texture_mask);
 					}
-					// Note: use_texture is now a bitmask handled in RenderPacket::uniforms (SSBO)
-					// This uniform is only used for non-MDI fallback or special passes
-					int use_texture_mask = 0;
-					for (const auto& tex : batch.textures) {
-						if (tex.type == "texture_diffuse")
-							use_texture_mask |= 1;
-						else if (tex.type == "texture_normal")
-							use_texture_mask |= 2;
-						else if (tex.type == "texture_metallic")
-							use_texture_mask |= 4;
-						else if (tex.type == "texture_roughness")
-							use_texture_mask |= 8;
-						else if (tex.type == "texture_ao")
-							use_texture_mask |= 16;
-						else if (tex.type == "texture_emissive")
-							use_texture_mask |= 32;
-					}
-					s->setInt("use_texture", use_texture_mask);
 				}
 
 				if (batch.vao != current_vao) {
@@ -2344,6 +2379,7 @@ namespace Boidsish {
 		}
 
 		void UpdateSystems() {
+			PROJECT_PROFILE_SCOPE("UpdateSystems");
 			// Calculate frustum for terrain generation and decor placement
 			if (terrain_generator) {
 				float     world_scale_val = terrain_generator->GetWorldScale();
@@ -3071,55 +3107,73 @@ namespace Boidsish {
 		}
 
 		if (!impl->paused) {
-			// TODO: Implement a fixed timestep for simulation stability.
-			// See performance_and_quality_audit.md#4-fixed-timestep-for-simulation-stability
-			impl->simulation_time += impl->time_scale * delta_time;
-		}
+			impl->accumulator += impl->time_scale * delta_time;
+			while (impl->accumulator >= impl->fixed_delta_time) {
+				impl->simulation_delta_time = impl->fixed_delta_time;
+				impl->simulation_time += impl->fixed_delta_time;
 
-		impl->light_manager.Update(impl->simulation_delta_time);
+				impl->light_manager.Update(impl->simulation_delta_time);
 
-		// Update ambient weather
-		if (impl->weather_manager && impl->weather_manager->IsEnabled()) {
-			impl->weather_manager->Update(impl->simulation_delta_time, impl->simulation_time, impl->camera.pos());
+				// Update ambient weather
+				if (impl->weather_manager && impl->weather_manager->IsEnabled()) {
+					impl->weather_manager->Update(
+						impl->simulation_delta_time,
+						impl->simulation_time,
+						impl->camera.pos()
+					);
 
-			const auto& w = impl->weather_manager->GetCurrentWeather();
+					const auto& w = impl->weather_manager->GetCurrentWeather();
 
-			// Apply to primary lights (Sun and Moon)
-			// We multiply instead of assigning to preserve the Day/Night cycle's intensity curves.
-			if (!impl->light_manager.GetLights().empty()) {
-				impl->light_manager.GetLights()[0].intensity *= w.sun_intensity;
+					// Apply to primary lights (Sun and Moon)
+					// We multiply instead of assigning to preserve the Day/Night cycle's intensity curves.
+					if (!impl->light_manager.GetLights().empty()) {
+						impl->light_manager.GetLights()[0].intensity *= w.sun_intensity;
+					}
+					if (impl->light_manager.GetLights().size() > 1 &&
+					    impl->light_manager.GetLights()[1].type == DIRECTIONAL_LIGHT) {
+						impl->light_manager.GetLights()[1].intensity *= w.sun_intensity;
+					}
+
+					// Apply to wind settings in Config (for shaders)
+					auto& config = ConfigManager::GetInstance();
+					config.SetFloat("wind_strength", w.wind_strength);
+					config.SetFloat("wind_speed", w.wind_speed);
+					config.SetFloat("wind_frequency", w.wind_frequency);
+
+					// Apply to atmosphere effect
+					if (impl->atmosphere_effect) {
+						impl->atmosphere_effect->SetHazeDensity(w.haze_density);
+						impl->atmosphere_effect->SetHazeHeight(w.haze_height);
+						impl->atmosphere_effect->SetCloudDensity(w.cloud_density);
+						impl->atmosphere_effect->SetCloudAltitude(w.cloud_altitude);
+						impl->atmosphere_effect->SetCloudThickness(w.cloud_thickness);
+						impl->atmosphere_effect->SetCloudCoverage(w.cloud_coverage);
+						impl->atmosphere_effect->SetRayleighScale(w.rayleigh_scale);
+						impl->atmosphere_effect->SetMieScale(w.mie_scale);
+
+						// Atmosphere-specific attributes from weather
+						impl->atmosphere_effect->SetAtmosphereHeight(w.atmosphere_height);
+						impl->atmosphere_effect->SetRayleighScattering(w.rayleigh_scattering);
+						impl->atmosphere_effect->SetMieScattering(w.mie_scattering);
+						impl->atmosphere_effect->SetMieExtinction(w.mie_extinction);
+						impl->atmosphere_effect->SetOzoneAbsorption(w.ozone_absorption);
+						impl->atmosphere_effect->SetRayleighScaleHeight(w.rayleigh_scale_height);
+						impl->atmosphere_effect->SetMieScaleHeight(w.mie_scale_height);
+					}
+				}
+
+				impl->UpdateSystems();
+				impl->UpdateTrailsLogical();
+
+				// Update transient effects and collect shapes
+				impl->GatherShapes();
+
+				impl->accumulator -= impl->fixed_delta_time;
 			}
-			if (impl->light_manager.GetLights().size() > 1 &&
-			    impl->light_manager.GetLights()[1].type == DIRECTIONAL_LIGHT) {
-				impl->light_manager.GetLights()[1].intensity *= w.sun_intensity;
-			}
-
-			// Apply to wind settings in Config (for shaders)
-			auto& config = ConfigManager::GetInstance();
-			config.SetFloat("wind_strength", w.wind_strength);
-			config.SetFloat("wind_speed", w.wind_speed);
-			config.SetFloat("wind_frequency", w.wind_frequency);
-
-			// Apply to atmosphere effect
-			if (impl->atmosphere_effect) {
-				impl->atmosphere_effect->SetHazeDensity(w.haze_density);
-				impl->atmosphere_effect->SetHazeHeight(w.haze_height);
-				impl->atmosphere_effect->SetCloudDensity(w.cloud_density);
-				impl->atmosphere_effect->SetCloudAltitude(w.cloud_altitude);
-				impl->atmosphere_effect->SetCloudThickness(w.cloud_thickness);
-				impl->atmosphere_effect->SetCloudCoverage(w.cloud_coverage);
-				impl->atmosphere_effect->SetRayleighScale(w.rayleigh_scale);
-				impl->atmosphere_effect->SetMieScale(w.mie_scale);
-
-				// Atmosphere-specific attributes from weather
-				impl->atmosphere_effect->SetAtmosphereHeight(w.atmosphere_height);
-				impl->atmosphere_effect->SetRayleighScattering(w.rayleigh_scattering);
-				impl->atmosphere_effect->SetMieScattering(w.mie_scattering);
-				impl->atmosphere_effect->SetMieExtinction(w.mie_extinction);
-				impl->atmosphere_effect->SetOzoneAbsorption(w.ozone_absorption);
-				impl->atmosphere_effect->SetRayleighScaleHeight(w.rayleigh_scale_height);
-				impl->atmosphere_effect->SetMieScaleHeight(w.mie_scale_height);
-			}
+			impl->simulation_delta_time = 0.0f;
+		} else {
+			impl->simulation_delta_time = 0.0f;
+			impl->GatherShapes(); // Still need to gather shapes even if paused/no steps
 		}
 
 		// --- Adaptive Tessellation Logic ---
@@ -3192,11 +3246,9 @@ namespace Boidsish {
 		}
 
 		// Logical updates migrated from Render
-		impl->GatherShapes();
 		impl->UpdateCamera();
 		impl->UpdateAudio();
 		impl->UpdateAtmosphere();
-		impl->UpdateTrailsLogical();
 
 		// Shadow scheduling needs FrameData, so we do a lightweight populate here.
 		// The full PopulateFrameData in Render() will overwrite with final values.
@@ -3223,7 +3275,6 @@ namespace Boidsish {
 		impl->PrepareUBOs();
 		impl->packets_synced_ = false;
 		impl->GenerateRenderPacketsAsync();
-		impl->UpdateSystems();
 
 		// Shadow decor renders during the overlap window (no packets needed).
 		// The shape callback triggers lazy sync when packets are first needed.

@@ -147,29 +147,35 @@ namespace Boidsish {
 		// Dissolve Effects
 		glm::vec3 dissolve_plane_normal = glm::vec3(0, 1, 0); // 12 bytes
 		float     dissolve_plane_dist = 0.0f;                 // 4 bytes -> 16 bytes
-		int       dissolve_enabled = 0;                       // 4 bytes
 
 		// Skeletal Animation
+		int   dissolve_enabled = 0;      // 4 bytes
 		int   bone_matrices_offset = -1; // 4 bytes
 		int   use_skinning = 0;          // 4 bytes
-		float anim_padding[2];           // 8 bytes -> 16 bytes
+		int   is_refractive = 0;         // 4 bytes -> 16 bytes
 
-		// Occlusion culling AABB (world space) - individual floats for std430 alignment safety
+		float refractive_index = 1.0f; // 4 bytes
 		float aabb_min_x = 0.0f;       // 4 bytes
 		float aabb_min_y = 0.0f;       // 4 bytes
-		float aabb_min_z = 0.0f;       // 4 bytes
-		float aabb_max_x = 0.0f;       // 4 bytes -> 16
-		float aabb_max_y = 0.0f;       // 4 bytes
-		float aabb_max_z = 0.0f;       // 4 bytes
-		int   is_refractive = 0;       // 4 bytes
-		float refractive_index = 1.0f; // 4 bytes -> 16
-		// Padding to 256 bytes for SSBO alignment safety
-		float emissive_r = 0.0f;
-		float emissive_g = 0.0f;
-		float emissive_b = 0.0f;
+		float aabb_min_z = 0.0f;       // 4 bytes -> 16 bytes
+
+		float aabb_max_x = 0.0f; // 4 bytes
+		float aabb_max_y = 0.0f; // 4 bytes
+		float aabb_max_z = 0.0f; // 4 bytes
+		float emissive_r = 0.0f; // 4 bytes -> 16 bytes
+
+		float emissive_g = 0.0f;     // 4 bytes
+		float emissive_b = 0.0f;     // 4 bytes
+		float padding_to_handles[2]; // 8 bytes (align to 8 for handles) -> 16 bytes
+
+		// Bindless Texture Handles (requires GL_ARB_bindless_texture)
+		// Layout: [diffuse, normal, metallic, roughness, ao, emissive, reserved1, reserved2]
+		uint64_t texture_handles[8] = {0, 0, 0, 0, 0, 0, 0, 0}; // 64 bytes
+
+		float ssbo_padding[16]; // Padding to 384 bytes
 	};
 
-	static_assert(sizeof(CommonUniforms) == 256, "CommonUniforms must be exactly 256 bytes for SSBO alignment");
+	static_assert(sizeof(CommonUniforms) == 384, "CommonUniforms must be exactly 384 bytes for SSBO alignment");
 
 	/**
 	 * @brief Contains all the data necessary for a single draw call.
@@ -218,6 +224,7 @@ namespace Boidsish {
 		// Texture information
 		struct TextureInfo {
 			unsigned int id;
+			uint64_t     handle = 0; // Bindless handle
 			std::string  type;
 		};
 
