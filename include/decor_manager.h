@@ -190,6 +190,8 @@ namespace Boidsish {
 		// Minimum screen-space size in pixels for culling
 		void SetMinPixelSize(float size) { min_pixel_size_ = size; }
 
+		void SetAtmosphereManager(class AtmosphereManager* mgr) { atmosphere_manager_ = mgr; }
+
 		/**
 		 * @brief Retrieves all decor instances within the specified terrain chunks.
 		 * This is an on-demand query that generates decor for the requested chunks
@@ -261,6 +263,7 @@ namespace Boidsish {
 		float density_falloff_end_ = 500.0f;
 		float max_decor_distance_ = 600.0f;
 		float min_pixel_size_ = 4.0f;
+		class AtmosphereManager* atmosphere_manager_ = nullptr;
 
 		// Hi-Z occlusion culling data (set per-frame by SetHiZData)
 		GLuint    hiz_texture_ = 0;

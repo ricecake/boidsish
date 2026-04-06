@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <set>
 
+#include "atmosphere_manager.h"
 #include "ConfigManager.h"
 #include "geometry.h"
 #include "graphics.h"
@@ -930,6 +931,14 @@ namespace Boidsish {
 			"ripple_strength",
 			ConfigManager::GetInstance().GetAppSettingBool("artistic_effect_ripple", false) ? 0.05f : 0.0f
 		);
+
+		// Atmosphere texture bindings for cloud shadows and transmittance-based lighting.
+		// The textures are already bound to units 20-23 by the main render setup;
+		// we just need the uniform locations set on the decor shader program.
+		if (atmosphere_manager_) {
+			shader->trySetInt("u_transmittanceLUT", 20);
+			shader->trySetFloat("u_atmosphereHeight", atmosphere_manager_->GetAtmosphereHeight());
+		}
 
 		for (size_t i = 0; i < decor_types_.size(); ++i) {
 			auto& type = decor_types_[i];

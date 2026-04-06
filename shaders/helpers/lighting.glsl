@@ -94,7 +94,7 @@ float calculateCloudShadow(int light_index, vec3 frag_pos) {
 		true
 	);
 
-	return mix(1.0, exp(-d * 20.0), cloudShadowIntensity);
+	return mix(1.0, exp(-d * 3.0), cloudShadowIntensity);
 }
 
 /**

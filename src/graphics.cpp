@@ -2460,6 +2460,9 @@ namespace Boidsish {
 				decor_manager->SetMinPixelSize(
 					ConfigManager::GetInstance().GetAppSettingFloat("foliage_culling_pixel_threshold", 8.0f)
 				);
+				if (atmosphere_manager) {
+					decor_manager->SetAtmosphereManager(atmosphere_manager.get());
+				}
 				decor_manager->Update(
 					simulation_delta_time,
 					camera,
